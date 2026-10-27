@@ -28,6 +28,7 @@ GLM-Hourness
 │  ├─ 通道：glm-llm（adapter）、glm-login（命令）
 │  └─ 方言：glm-prompt（提示词、工具面与工具检索）、glm-compact（压缩镜像）
 └─ 编排层
+   ├─ data（数据目录服务，§2.4）
    ├─ guard、memory、workflow、hourness（用量与报告）
    └─ 呈现：独立 UI bundle
 ```
@@ -40,6 +41,7 @@ GLM-Hourness
 | `glm-hourness/glm-login` | `dist/glm-llm/login-row.js` | 通道 | `/glm-login`、`/glm-status`、`/glm-logout` |
 | `glm-hourness/glm-prompt` | `dist/glm-prompt/index.js` | 方言 | 见 §5 |
 | `glm-hourness/glm-compact` | `dist/glm-prompt/compact-row.js` | 方言 | 见 §5.6 |
+| `glm-hourness/data` | `dist/data/index.js` | 编排 | 数据目录服务 `glmHournessData`，见 §2.4 |
 | `glm-hourness/guard` | `dist/guard/index.js` | 编排 | 见 `ORCHESTRATION.md` §6 |
 | `glm-hourness/memory` | `dist/memory/index.js` | 编排 | 见 `ORCHESTRATION.md` §8 |
 | `glm-hourness/workflow` | `dist/workflow/index.js` | 编排 | 仅记录派遣类工具调用 |
@@ -52,19 +54,31 @@ GLM-Hourness
 
 仓库不拆分〔定案〕：两层都属于同一个项目，同仓维护。
 
-### 2.4 共享服务〔规划〕
+### 2.4 数据目录服务〔已实现 2026-10-28，`ROADMAP.md` M1.4〕
 
-现状问题：各行通过 YAML 各自配置 `home`，guard 的违规回调无法从配置传入，导致违规审计为空；2026-10-27 15:36–17:22（本地时间）期间用量记录写进了 `~/.dsh/profiles/desktop/.llm/`，共 190 条，`/hourness` 读不到〔实读〕。
+原问题〔实读 2026-10-27〕：各行通过 YAML 各自配置 `home`，guard 的违规回调无法从配置传入，违规审计为空；2026-10-27 15:36–17:22（本地时间）期间 190 条用量记录与 1 条记忆写进了 `~/.dsh/profiles/desktop/.llm/`，`/hourness` 读不到。
 
-设计：由一行提供数据目录与审计流水服务，其余行以可选依赖注入。
+数据分两级：
 
 | 数据 | 位置 | 理由 |
 | --- | --- | --- |
-| 凭证、deviceMid、用量流水 | 用户级，一台机器一份 | 额度跟账号走，按项目拆开反而看不全 |
-| 记忆（事实）、违规、决策 | 工作区 `.llm/` | 记录的是在这个项目里学到的东西与犯过的错，混在一起会互相污染 |
+| 用量流水；以后还有凭证、deviceMid、偏好类记忆 | 用户级目录 `$DSH_HOME/glm-hourness/`，默认 `C:\Users\29596\.dsh\glm-hourness\` | 额度跟账号走，一台机器一份，按项目拆开反而看不全 |
+| 记忆（事实）、违规、决策 | 项目目录，即工作区 `.llm/` | 记录的是在这个项目里学到的东西与犯过的错，混在一起会互相污染 |
 | 项目图 | 仓库内 | 项目知识，随 git 版本化（`ORCHESTRATION.md` §2.6） |
 
-用户级的具体目录与偏好类记忆的归属见 `ORCHESTRATION.md` §15 待定项。
+用户级目录的定案〔用户 2026-10-28〕：按 DSH 自己的布局。DSH 把全部用户数据放在一个根目录下，解析顺序是显式配置 > `$DSH_HOME` > `~/.dsh`（rc.3 `dsh-home-paths` `resolveDshHome`，lib/index.js:109，空白的 `$DSH_HOME` 视为未设）；插件在根目录下占一个以自己命名的目录（先例：`dsh-llm-deepseek` 写 `$DSH_HOME/llm-deepseek/files-v3.json`，llm-deepseek:824）。偏好类记忆随之放用户级目录，项目事实与项目规范放工作区。运行时包不能从本仓库解析（`glm-compact` 遇到过的同一问题，§5.6），所以三步解析在 `src/shared/data-home.ts` 照抄并注明出处，不导入 `@deepseek-ai/dsh-home-paths`。宿主根上下文另有一个 `dshHomePath` 服务（app-boot:4526），它不接受显式配置，本包不用。
+
+实现：
+
+- 新行 `glm-hourness/data`（`dist/data/index.js`）经 `ctx.provide` 提供 cordis 服务 `glmHournessData`，值为 `{userHome, projectHome?}`。`userHome` 按上面的顺序解析，行配置 `dshHome` 是显式项，测试与探针用它指向临时目录；`projectHome` 取行配置，bundle 默认为本仓库的 `.llm`（与通道两行相同的 `USERPROFILE` 相对写法）。激活期不做 I/O，不抛错；流水在第一次写入时建目录。
+- 流水路由（`src/memory/audit.ts`）：用量写 `<userHome>/audit/usage.jsonl`，违规与决策写 `<projectHome>/audit/`。各行的目录在每次写入时解析，所以数据行晚于使用者激活也不影响。写入失败不抛给调用方，每条流水第一次失败时在控制台报一次（缺目录也算失败）。
+- 取值顺序：项目目录取行配置的 `home`（用户 profile 补丁给 memory、workflow、hourness 配了仓库 `.llm`，照旧生效），没有再取服务的 `projectHome`；用户级目录只取服务，没有数据行就不写用量，保证没有任何一行把用户级数据写到数据行没解析过的地方。
+- 各行：guard 每次拦截都写违规流水，`onViolation` 回调删除；memory 的用量只经服务写用户级目录，记忆工具仍用行的 `home`，没有 `home` 时只关记忆工具；workflow 的决策与 hourness 的报告按上面的顺序取目录；`/hourness` 从用户级目录读用量，缺哪个目录就在输出里写明。
+- 验证：L2 覆盖三步解析、服务提供与撤回、取值顺序、有无服务两种情况；L3 探针确认数据行在真运行时上提供服务，用量只落在场景的用户级目录、真实的 `~/.dsh/glm-hourness` 不变，guard 拦下的 shell 写入在场景项目目录留下违规记录（带规则、工具、agent 与会话 id）。数据行经探针证明后默认启用。
+
+迁移〔2026-10-28〕：从 `~/.dsh/profiles/desktop/.llm/`（只读）与仓库 `.llm/audit/usage.jsonl` 复制，按整行去重。用户级用量流水共 1080 条：仓库 890 条加旧目录 190 条，两者没有重复，按时间排序，最晚一条 2026-10-27T12:29:08.993Z。旧目录的 1 条记忆（`glm-hourness-handoff`）并入仓库 `.llm/memory.json`；旧目录的 3 条决策在仓库决策流水里都已存在。源文件未改动，旧目录的删除由用户决定（`ROADMAP.md` §3）。桌面版重启加载新代码之前，运行中的旧代码仍会把用量追加到仓库 `.llm/audit/usage.jsonl`，重启后需补拷一次（`ROADMAP.md` §3）。
+
+凭证与 deviceMid〔定案 2026-10-28，用户选 A〕：保留加密凭证文件，搬到 `$DSH_HOME/glm-hourness/`，deviceMid 随行；在原生通道的 L4 验收之后再搬，本条目不改 `glm-llm` / `glm-login` 的 `home`。加密密钥由 `GLM_HOURNESS_CREDENTIAL_SECRET` 或 `HOME`/`USERPROFILE`、平台、架构推导（§4.1，`src/glm-llm/auth/store.ts`），与文件路径无关，搬家后同一台机器照样能解密。
 
 ### 2.4a 运行时契约来源〔实读 2026-10-27〕
 
@@ -93,7 +107,8 @@ GLM-Hourness
 | 模块导出 `name`、`inject`、`Config`、`apply(ctx, config)` | 全部行 | cordis:1625–1635（读 `plugin.name`、`plugin.Config`、`plugin.inject`），cordis:1536（`plugin.apply`），cordis:956–961（`Config` 经 `~standard` 校验） | 一致 |
 | Loader 行的 `inject` 与模块的 `inject` 合并 | glm-llm、glm-login、memory、hourness | cordis-plugin-loader:631 | 一致 |
 | `ctx.on(name, listener, options)`；`prepend` 排到最外层，`global` 跳过分发过滤 | 全部行 | cordis:372–381、cordis:263；服务的过滤只认同一 isolate，cordis:1785–1787 | 一致 |
-| `ctx.get(name)`：不需要 inject，提供方 fiber 未激活时为 `undefined` | glm-llm（`attachments`、`fs`） | cordis:763–766 | 一致 |
+| `ctx.get(name)`：不需要 inject，提供方 fiber 未激活时为 `undefined` | glm-llm（`attachments`、`fs`）；guard、memory、workflow、hourness（`glmHournessData`，每次写入或命令调用时读） | cordis:763–766 | 一致；L3 探针实测 guard 与 memory 经它拿到数据行的目录 |
+| `ctx.provide(name, value)`：服务归调用方 fiber，同名第二个提供方抛错，返回的 disposer 撤销服务，fiber 卸载时自动撤销 | data | cordis:800–830（经 `fiber.effect` 注册）；同一用法 cmdline:29–31 | 一致；激活期的抛错被捕获，降级为 warn |
 
 事件：
 
@@ -450,8 +465,9 @@ L3 探针：沙盒里把压缩阈值调低，摘要请求末条是 ZCode 提示�
 | glm-prompt | 退回 DSH 原生工具面与文案 | 行健康 |
 | glm-compact | 压缩请求原样放行，profile 原有压缩照常 | 行健康 |
 | 工具检索（glm-prompt 内） | `toolSearchMode: off` 或会话历史不可读时全量直载 | 行健康 |
+| data | 不写用量流水；违规与决策只由配了 `home` 的行写；`/hourness` 写明缺哪个目录 | 行健康、`/hourness` |
 | guard | 无门禁 | 行健康（显式禁用除外） |
-| memory | 无记忆、无审计 | 行健康 |
+| memory | 无记忆、无用量流水 | 行健康 |
 | workflow / hourness | 无记录、无报告 | 行健康 |
 
 激活期（`apply`）不抛错：配置缺失降级为 warn 与 no-op，因为激活失败会拖垮宿主启动（2026-10-27 事故）。降级必须上报，不得只打一行警告（`CHARTER.md` §6.1 条款 7）。

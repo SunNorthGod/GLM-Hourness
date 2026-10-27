@@ -49,6 +49,7 @@ M1 进度：
 - 1.10 todo 提醒按助手轮次计数：完成（2026-10-28，`DESIGN.md` §5.5）。按 ZCode 3.16.3 改为每步在 `agent/pre-step` 从会话历史重新计算：一条 GLM 助手消息算一轮，经 `DeferredToolCall` 的 TodoWrite 算写入，提醒以 `<system-reminder>` notice 递送并写入会话，排在 deferred 名单公告之前；非 GLM 路由与工具面没有 TodoWrite 时不提醒。回显改为取历史中最近一次成功的写入。原 `tools/post-execute` 计数与按 agent 记录路由的 `createRouteTracker` 删除。L2 198 用例；L3 探针 35/35（新增：一轮两个并行调用、提醒恰好在第 12 次请求出现一次、包装正文与回显位于最后一批工具结果之后）。
 - 1.3 反代文案：完成（2026-10-28，`DESIGN.md` §1）。删除授权冒烟脚本的「reverse proxy can retire」输出、设置页的「无反向代理」、原生通道两处源码注释的「No reverse proxy in the path」；参考手册把 zcode-api 称作「反代工程」「反代项目」的四处改为直接写 zcode-api，其中补凭证的验证路径改为 `/glm-login`。保留移植出处注释、ZCode 服务端字段 `proxyEndpoint`、用户 profile 的 8317 路由说明。代码中本来就没有识别反代路由的判断。
 - 1.6 DSH 接口对照：完成（2026-10-28，`DESIGN.md` §2.4a、§8）。本包用到的每个钩子、服务成员、载荷字段与工具名逐项对照 rc.3 运行时包，接口对照表写明包与行号。发现并修复两处行为偏差：guard 的违规记录从 `tools/pre-execute` 载荷上不存在的 `agentId` / `sessionId` 取值，记录里永远为空，改为取调用方 agent 的 id 与会话 id；workflow 的派遣名单缺 base profile 的 `subagent_fork`。另删去四处类型偏差或死类型（agent 的 `model` 成员、memory 的两参数 `tools.register`、无人使用的 `ctx.systemPrompt` 与 `tools/post-execute`）。宿主结构类型收进薄适配层 `src/shared/dsh-min.ts` 与 `src/shared/lm-min.ts`（原 `src/glm-llm/lm-min.ts` 迁入，GLM 模型目录拆到 `src/glm-llm/models.ts`），各行不再自带；装了官方 `.d.ts` 的两处加编译期检查（`GenerateOptions`、`AttachmentStore`）。L2 199 用例；L3 探针 38/38（新增：用量流水按步记录路由与会话 id、压缩调用带 `purpose`、运行时的 `subagent` 与 `subagent_fork` 都在派遣名单里）。
+- 1.4 共享数据目录：完成（2026-10-28，`DESIGN.md` §2.4）。新行 `glm-hourness/data` 提供数据目录服务：用户级目录按 DSH 的布局解析为 `$DSH_HOME/glm-hourness/`（默认 `~/.dsh/glm-hourness/`，用户定案），项目目录是工作区 `.llm/`。用量流水改写用户级目录，违规与决策写项目目录；guard 每次拦截都落盘，原来无法从配置传入的回调删除；各行在每次写入时取目录，有无数据行都能激活，用户 profile 补丁里的 `home` 照旧优先。数据行经探针证明后默认启用。迁移：用户级用量流水 1080 条（仓库 890 条加旧目录 190 条，无重复），旧目录的 1 条记忆并入仓库 `.llm/memory.json`，3 条决策仓库里已有；源文件未改动。加密凭证按用户定案 A 在 L4 验收后再搬（§3）。L2 215 用例（22 个 spec）；L3 探针 41/41（新增：用量只落在场景的用户级目录、真实目录不变；shell 写入被拦并在场景项目目录留下违规记录）。
 - 调整后的顺序：① 修用量块（完成）；② 先做 1.7 的 L3 探针（用探针确认现状、验证后续每一步）；③ 1.2 路由收口，工具面改为在组装瀑布中逐请求改写；④ 工具检索按 ZCode local 模式移植（`DESIGN.md` §5.10）；⑤ 六个工具描述按源码重建，垫片兑现原文的参数与行为。
 
 ### M2 项目图行走骨架
@@ -100,7 +101,9 @@ M1 进度：
 | --- | --- |
 | L4 真机验收（重启桌面版、真实会话） | M1.11，以及之后每个涉及运行时的里程碑 |
 | 是否关闭 cot-translation 实验行（会把推理碎片显示到界面；改 profile 需用户同意） | 任意时间 |
-| 清理 profile 目录中的备份 `cordis.patch.yml.bak-1793101338423` 与旧数据目录 `~/.dsh/profiles/desktop/.llm/`（迁移完成后） | M1.4 之后 |
+| 清理 profile 目录中的备份 `cordis.patch.yml.bak-1793101338423` 与旧数据目录 `~/.dsh/profiles/desktop/.llm/`（记录已于 2026-10-28 复制完，`DESIGN.md` §2.4） | 任意时间 |
+| 桌面版重启后补拷用量：重启前运行中的旧代码仍把用量写进仓库 `.llm/audit/usage.jsonl`，把其中晚于 2026-10-27T12:29:08.993Z 的记录按整行去重复制到 `~/.dsh/glm-hourness/audit/usage.jsonl`；此后仓库里的这份用量流水是否删除由用户决定 | L4 重启之后（Kiro 执行） |
+| 加密凭证 `credentials.json` 与 `device-mid.txt` 搬到 `~/.dsh/glm-hourness/`（用户定案 A），同时把 `glm-llm`、`glm-login` 的 `home` 改过去；密钥推导与文件路径无关，搬后可直接解密（`DESIGN.md` §2.4） | 原生通道 L4 验收之后 |
 | profile 中指向 8317 的 pi-ai `glm` 路由去留（用户配置，本项目不改） | 任意时间 |
 | 删除已迁入本仓库的旧文件夹 `Desktop\Project\dsh-glm-dialect`（工作区外） | 任意时间 |
 | 新增开发依赖与检查器的决策卡 | M1.9 |
