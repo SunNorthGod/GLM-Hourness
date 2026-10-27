@@ -44,6 +44,7 @@ M1 进度：
 - ④ 工具检索：完成（2026-10-27）。按 3.16.3 安装包移植 local 模式（安装包把检索工具改名为 `LocalToolSearch`，与 3.16.2 源码不同，`DESIGN.md` §5.10 已更正）；并入 `glm-prompt`，`toolsearch` 行删除；deferred 声明段删除；逐字门禁改为按镜像文件的字面量片段检查，已知偏差剩 6 条（六个工具描述）。L2 165 用例；L3 探针 15/15（检索、公告、`DeferredToolCall` 调 TodoWrite 都在真运行时上执行）。顺带修复：合成 notice 缺 `id` / `role`；探针脚本被会话标题请求打乱顺序。
 - 新发现：`glm-compact` 在桌面版上从未挂载。已修（2026-10-27）：改在 `llm/stream` 瀑布上替换 GLM 压缩请求的指令并格式化产物，不再另挂引擎（`DESIGN.md` §5.6）；L3 探针加压缩场景，17/17。
 - ⑤ 工具描述重建，第一批 Read、Write、Edit：完成（2026-10-28）。描述、schema、结果文本按 3.16.3 安装包重建，放进镜像文件 `src/glm-prompt/zcode-tool-text.ts`；垫片兑现描述的承诺（cat -n 行号形态、部分视图提醒、图片转 `read_image`、二进制与视频拒读、`offset` 0、`replace_all` 语义布尔、沙盒升级字段），兑现不了的行删去（`DESIGN.md` §5.4）。逐字门禁 223 段通过、已知偏差剩 3 条（TodoWrite、Glob、Grep，M1.1b）；L2 176 用例；L3 探针 23/23（新增 Write、Edit、回读、覆盖未读文件被拒）。新发现：原生通道丢弃图片块，经 `glm-zcode` 读图只得到文字摘要（`DESIGN.md` §5.4 已知缺口）。
+- ⑤ 工具描述重建，第二批 Glob、Grep、TodoWrite、Bash：完成（2026-10-28）。描述、schema 与 Glob、Grep 的结果文本按 3.16.3 安装包重建，放进镜像文件。Glob 按 ZCode 从新到旧取前 100 条；Grep 的 `-i`、`glob`、`type`、`output_mode`、`-n`、`head_limit`、`offset` 在垫片里按 ZCode 实现，原生做不到的 `-A`、`-B`、`-C`、`context`、`-o`、`multiline` 从 schema 删去；Bash 只改 shell 与工作目录两行，去掉 `dangerouslyDisableSandbox`，`timeout` 改为毫秒（此前按秒换算，与 ZCode 不符），`working_dir` 删去（`DESIGN.md` §5.4）。逐字门禁 397 段通过、已知偏差 0 条；L2 184 用例；L3 探针 28/28（新增 Glob、Grep、Bash 的工具面与执行检查）。M1.1 的方言文本重建至此完成。
 - 调整后的顺序：① 修用量块（完成）；② 先做 1.7 的 L3 探针（用探针确认现状、验证后续每一步）；③ 1.2 路由收口，工具面改为在组装瀑布中逐请求改写；④ 工具检索按 ZCode local 模式移植（`DESIGN.md` §5.10）；⑤ 六个工具描述按源码重建，垫片兑现原文的参数与行为。
 
 ### M2 项目图行走骨架
