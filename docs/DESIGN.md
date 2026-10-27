@@ -38,7 +38,7 @@ GLM-Hourness
 | 行 id | 入口 | 层 | 现状 |
 | --- | --- | --- | --- |
 | `glm-hourness/glm-llm` | `dist/glm-llm/index.js` | 通道 | 真网冒烟通过〔实测〕；DSH 真实会话尚未使用过〔实读审计数据〕 |
-| `glm-hourness/glm-login` | `dist/glm-llm/login-row.js` | 通道 | `/glm-login`、`/glm-status`、`/glm-logout` |
+| `glm-hourness/glm-login` | `dist/glm-llm/login-row.js` | 通道 | `/glm-login`、`/glm-status`（凭证状态与行健康表，§2.5）、`/glm-logout` |
 | `glm-hourness/glm-prompt` | `dist/glm-prompt/index.js` | 方言 | 见 §5 |
 | `glm-hourness/glm-compact` | `dist/glm-prompt/compact-row.js` | 方言 | 见 §5.6 |
 | `glm-hourness/data` | `dist/data/index.js` | 编排 | 数据目录服务 `glmHournessData`，见 §2.4 |
@@ -107,8 +107,8 @@ GLM-Hourness
 | 模块导出 `name`、`inject`、`Config`、`apply(ctx, config)` | 全部行 | cordis:1625–1635（读 `plugin.name`、`plugin.Config`、`plugin.inject`），cordis:1536（`plugin.apply`），cordis:956–961（`Config` 经 `~standard` 校验） | 一致 |
 | Loader 行的 `inject` 与模块的 `inject` 合并 | glm-llm、glm-login、memory、hourness | cordis-plugin-loader:631 | 一致 |
 | `ctx.on(name, listener, options)`；`prepend` 排到最外层，`global` 跳过分发过滤 | 全部行 | cordis:372–381、cordis:263；服务的过滤只认同一 isolate，cordis:1785–1787 | 一致 |
-| `ctx.get(name)`：不需要 inject，提供方 fiber 未激活时为 `undefined` | glm-llm（`attachments`、`fs`）；guard、memory、workflow、hourness（`glmHournessData`，每次写入或命令调用时读） | cordis:763–766 | 一致；L3 探针实测 guard 与 memory 经它拿到数据行的目录 |
-| `ctx.provide(name, value)`：服务归调用方 fiber，同名第二个提供方抛错，返回的 disposer 撤销服务，fiber 卸载时自动撤销 | data | cordis:800–830（经 `fiber.effect` 注册）；同一用法 cmdline:29–31 | 一致；激活期的抛错被捕获，降级为 warn |
+| `ctx.get(name)`：不需要 inject，提供方 fiber 未激活时为 `undefined` | glm-llm（`attachments`、`fs`）；guard、memory、workflow、hourness（`glmHournessData`，每次写入或命令调用时读）；glm-login（各行的 `glmHournessHealth/<行>`，`/glm-status` 调用时读） | cordis:763–766 | 一致；L3 探针实测 guard 与 memory 经它拿到数据行的目录，`/glm-status` 经它读到各行的健康视图 |
+| `ctx.provide(name, value)`：服务归调用方 fiber，同名第二个提供方抛错，返回的 disposer 撤销服务，fiber 卸载时自动撤销 | data（`glmHournessData`）；全部主机行（`glmHournessHealth/<行>`，§2.5） | cordis:800–830（经 `fiber.effect` 注册）；同一用法 cmdline:29–31 | 一致；激活期的抛错被捕获，降级为 warn |
 
 事件：
 
@@ -133,7 +133,7 @@ GLM-Hourness
 | 工具体 `execute(args, exec)`；`render(exec.arguments, value)`、`presentationMeta` | 全部别名与自有工具 | tools:3406、tools:3644、tools:3650–3653 | 一致 |
 | `llm.registerAdapter(providers, adapter)`，返回带 `replace` 的 disposer | glm-llm | llm:1842；adapter 本身由 `AdapterContractCheck` 对照官方 `LlmAdapter`（§8） | 一致 |
 | `llm.stream(options)` | glm-compact（重新派发） | llm:2393–2396 | 一致 |
-| `commands.register(definition)`：`name` 须匹配 `/^[a-z][a-z0-9_-]*$/u`，`description` 非空；调用参数 `rawInput`；结果 `success`（`text` 可选）/ `error`（`text` 非空） | glm-login、hourness | commands:266–269、commands:78、commands:148–180、commands:382、commands:186–206 | 一致；hourness 上下文类型里多余的 `effect?: never` 删除 |
+| `commands.register(definition)`：`name` 须匹配 `/^[a-z][a-z0-9_-]*$/u`，`description` 非空；调用参数 `{commandId, agent, rawInput, attachments, signal}`，本包读 `rawInput` 与 `agent`（行健康按 `agent` 取会话）；结果 `success`（`text` 可选）/ `error`（`text` 非空） | glm-login、hourness | commands:266–269、commands:78、commands:148–180、commands:379–385、commands:186–206 | 一致；hourness 上下文类型里多余的 `effect?: never` 删除 |
 | `attachments.readImageRequest(ref, target, signal?)`、`attachments.imageHostPath(ref)` | glm-llm（读图） | attachment:290、attachment:338（抽象），attachment-local:1038、attachment-local:1053；编译期检查 `AttachmentsContractCheck` 对照官方 `AttachmentStore` | 一致 |
 | `fs.processPathFromHostPath(hostPath)` | glm-llm（卸载图片的占位路径） | fs:95、fs-local:792–795；pi-ai 同一用法 llm-pi-ai:2908–2909 | 一致 |
 
@@ -154,9 +154,36 @@ GLM-Hourness
 | 派遣工具 `spawn_teammate`、`send_message`、`team_task_create`、`team_task_update`、`subagent`、`subagent_fork` | workflow | experimental-tool-agent-team:251、293、365、457；tool-subagent-control:23；tool-subagent:313（`toolName` 默认 `subagent`），base 的 `cordis.patch.yml`:384、395（`subagent`、`subagent_fork` 两行） | **偏差已修**：`subagent_fork` 不在名单里，fork 派遣从未记录。L3 探针实测运行时工具面同时有 `subagent` 与 `subagent_fork` |
 | compaction-basic 的指令开头、`purpose: 'compaction'`、经 `ctx.llm.stream()` 摘要 | glm-compact | compaction-basic:244、320、323 | 一致 |
 
-### 2.5 行健康〔规划〕
+### 2.5 行健康〔已实现 2026-10-28，`ROADMAP.md` M1.5〕
 
-每行在每个会话中第一次触发时上报一条状态：已生效，或未生效及原因。`/glm-status` 与 UI 显示行健康表。真实会话里「哪几行在起作用」目前无法回答，这一机制补上该缺口。
+原问题：真实会话里「哪几行在起作用」无法回答，降级只在控制台打一行警告。现在每行自报状态：激活时报一次，此后每次在某个会话里起作用时报该会话的状态，第一次与状态变化时记下。`/glm-status` 在凭证状态之后列出调用会话的行健康表。
+
+机制（`src/shared/health.ts`）：
+
+- 每行激活时经 `ctx.provide` 提供自己的只读视图，服务名 `glmHournessHealth/<行>`。视图含激活状态和按会话的最近一次报告，每行保留最近 64 个会话。
+- `/glm-status` 经 `ctx.get` 逐行读视图，取不到的行显示「未加载」（行未启用，或激活没有完成）。读写双方不依赖加载顺序，也不依赖共享的模块实例；行卸载时视图随 fiber 撤销。行健康不经数据目录行，`data` 行未启用时其他行照样上报。
+- 会话以 agent id 为键（rc.3 的 agent 与会话共用 id）：组装与工具调用取调用方 agent，`llm/stream` 一侧取请求的 `sessionId`，命令取调用参数里的 `agent`（commands:379–385）。没有会话 id 的报告丢弃。
+- 报告只在主机进程内存里，不写文件，不进模型可见的对话；桌面版重启后清空。
+
+状态分生效、部分生效、未生效三种；表里另有「已加载，本会话未触发」与「未加载」。激活时就未生效的行（例如缺 `home`）不看会话报告，直接显示激活原因；`glm-login` 与 `data` 不按会话起作用，只显示激活状态。
+
+| 行 | 何时上报 | 生效 | 部分生效或未生效的原因 |
+| --- | --- | --- | --- |
+| glm-llm | 激活；每次请求 | 已注册路由；上游已应答 | `home` 未配置；未登录（凭证为空）；凭证不可读；上游返回非 2xx 状态码 |
+| glm-login | 激活 | 三个命令已注册 | `home` 未配置：只保留 `/glm-status`，`/glm-login`、`/glm-logout` 关闭 |
+| glm-prompt | 激活；每步组装 | GLM 路由，ZCode 提示词与工具面，工具检索 local 或关闭 | 非 GLM 路由；工具检索未安装（会话历史不可读，部分生效）；方言安装失败 |
+| glm-compact | 激活；每次压缩请求 | GLM 压缩请求改用 ZCode 指令与摘要格式 | 非 GLM 路由；未识别 compaction-basic 的指令（原样放行） |
+| data | 激活 | 用户级目录与项目目录都已解析 | 项目目录未配置（部分生效）；服务提供失败 |
+| guard | 激活；每次根调用 | 门禁生效，写明圈禁根与违规目录 | 会话没有工作目录（圈禁规则跳过）；无项目目录（违规不落盘） |
+| memory | 激活；每次模型调用 | 用量记入用户级目录，记忆工具可用 | 数据目录行未启用（用量不记录）；`home` 未配置（记忆工具关闭） |
+| workflow | 激活；每次根调用 | 派遣决策记入项目目录 | 无项目目录 |
+| hourness | 激活；每次 `/hourness` | 两个目录都可读 | 缺项目目录或用户级目录 |
+
+UI 包的行运行在客户端，不在表内。
+
+`/glm-status` 的第一行仍是凭证状态（设置页按它解析登录状态），空一行后是 Markdown 表。`glm-login` 没有 `home` 时只注册 `/glm-status`，凭证行写明凭证位置未知。设置页目前把整段文本原样显示，表格的界面呈现属于 M8。
+
+验证：L2 覆盖每行的上报与 `/glm-status` 的输出（`tests/health.spec.ts`；通道请求的三种结果在 `tests/glm-zcode.spec.ts`）。L3 探针在 GLM、非 GLM、压缩三个场景的最后一步调用本包真实的 `/glm-status` 处理函数，检查表列出全部 9 行、各行状态与原因符合路由，并确认表的内容没有进入任何模型请求。探针里 `glm-llm` 显示未加载：bundle 默认禁用该行，探针用的是脚本化 provider。
 
 ## 3. 路由判定〔已实现 2026-10-27〕
 
@@ -457,14 +484,16 @@ L3 探针：沙盒里把压缩阈值调低，摘要请求末条是 ZCode 提示�
 
 ## 7. 降级与上报
 
-| 行 | 故障或禁用时 | 上报位置〔规划〕 |
+行健康已实现（§2.5，2026-10-28）；签名与端点路由的状态、用量记录的签名标注仍属规划（§4.3）。
+
+| 行 | 故障或禁用时 | 上报位置 |
 | --- | --- | --- |
-| glm-llm | GLM 通道不可用，其他 provider 不受影响 | 行健康、`/glm-status` |
-| glm-llm 签名 | 无签发送 | 状态、用量记录的签名标注 |
-| glm-llm 路由 | 保持原 URL | 状态 |
+| glm-llm | GLM 通道不可用，其他 provider 不受影响 | 行健康（`/glm-status`） |
+| glm-llm 签名 | 无签发送 | 状态、用量记录的签名标注〔规划〕 |
+| glm-llm 路由 | 保持原 URL | 状态〔规划〕 |
 | glm-prompt | 退回 DSH 原生工具面与文案 | 行健康 |
 | glm-compact | 压缩请求原样放行，profile 原有压缩照常 | 行健康 |
-| 工具检索（glm-prompt 内） | `toolSearchMode: off` 或会话历史不可读时全量直载 | 行健康 |
+| 工具检索（glm-prompt 内） | `toolSearchMode: off` 或会话历史不可读时全量直载 | 行健康（glm-prompt 一行的说明） |
 | data | 不写用量流水；违规与决策只由配了 `home` 的行写；`/hourness` 写明缺哪个目录 | 行健康、`/hourness` |
 | guard | 无门禁 | 行健康（显式禁用除外） |
 | memory | 无记忆、无用量流水 | 行健康 |

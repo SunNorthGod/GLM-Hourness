@@ -16,7 +16,7 @@
 
 ```
 src/           主包 TypeScript 源码
-tests/         22 个 spec，215 用例；tests/fake-rc3.ts 为 rc.3 运行时替身
+tests/         23 个 spec，233 用例；tests/fake-rc3.ts 为 rc.3 运行时替身
 ui/            独立 UI bundle（纯 JS，不参与 tsc）
 scripts/       preflight-bundle.mjs、check-verbatim.mjs、smoke-zcode*.mjs、probe/（L3 探针）；scripts/dev/ 为历史调试脚本，部分针对已不存在的接口
 docs/          宪章、设计、编排、路线、事实账、流程、交接；docs/reference/ 为事实参考原文
@@ -33,7 +33,7 @@ dist/          不入库：tsc 产物（profile 通过 pnpm link 使用）
 | 行 | 状态 |
 | --- | --- |
 | `glm-llm` | 真网冒烟通过（coding-plan，模型返回 `pong`；2026-10-28 GLM-5.3-Flash 读图一次，答对颜色）；按 rc.3 消息形状编码（工具调用块、图片块）；DSH 真实会话中尚未被使用 |
-| `glm-login` | 可用 |
+| `glm-login` | 可用；`/glm-status` 输出凭证状态与调用会话的行健康表（2026-10-28，L3 探针验证），没有 `home` 时也保留 |
 | `glm-prompt` | 在 rc.3 运行时上生效，含 ZCode 3.16.3 local 工具检索；七个别名的描述与 schema 均已按 3.16.3 重建；todo 提醒按助手轮次从会话历史计数（L3 探针 35/35，2026-10-28）；桌面版需重启才加载 |
 | `glm-compact` | 改为在 `llm/stream` 上替换压缩指令（2026-10-27），L3 探针实测压缩生效 |
 | `data` | 2026-10-28 新增，默认启用：提供数据目录服务（用户级 `~/.dsh/glm-hourness/`、项目 `.llm/`）；L3 探针验证，桌面版重启后生效 |
@@ -43,7 +43,9 @@ dist/          不入库：tsc 产物（profile 通过 pnpm link 使用）
 | `hourness` | `/hourness` 可用；峰谷口径错误 |
 | `glm-hourness/ui` | 功能可用，视觉未被接受 |
 
-装机：10 行均 `fiberPhase: active`，无激活错误（2026-10-27 删除 `toolsearch` 行之前的记录；`data` 行尚未在桌面版上加载过）。门禁 `npm run build`、`npm run preflight`、`npm test`（215 用例，逐字门禁 397 段、已知偏差 0 条）全绿，`npm run probe` 41/41（2026-10-28）。
+行健康（2026-10-28，`DESIGN.md` §2.5）：主包 9 行都在激活时与会话中上报生效、部分生效或未生效及原因，`/glm-status` 显示；桌面版重启后生效。
+
+装机：10 行均 `fiberPhase: active`，无激活错误（2026-10-27 删除 `toolsearch` 行之前的记录；`data` 行尚未在桌面版上加载过）。门禁 `npm run build`、`npm run preflight`、`npm test`（233 用例，逐字门禁 397 段、已知偏差 0 条）全绿，`npm run probe` 46/46（2026-10-28）。
 
 宿主接口：每个用到的 DSH 钩子、服务成员与载荷字段都已对照 rc.3 运行时包，证据见 `DESIGN.md` §2.4a 接口对照表；宿主结构类型集中在 `src/shared/dsh-min.ts` 与 `src/shared/lm-min.ts`。
 
@@ -75,6 +77,8 @@ dist/          不入库：tsc 产物（profile 通过 pnpm link 使用）
 16. 2026-10-27 之前创建的合成 notice 没有 `id` 与 `role`；同一步里有两条这样的 notice 待处理时，DSH inbox 会抛「already pending」。已修（`createUserNotice`）。
 17. 原生通道的图片：已修（2026-10-28，`DESIGN.md` §4.5a）。GLM-5.3-Flash 收到 Anthropic base64 图片块（用户消息与 `tool_result` 内）；GLM-5.3 改为只声明文本，DSH 在适配器之前把图片换成文字占位，`read_image` 拒读。L3 探针与一次真网请求验证。GLM 端点的请求级图片上限未知，本通道不发卸载信号（`DESIGN.md` §9）。
 18. 2026-10-28 之前原生通道的编码器按 `toolCalls` 字段读助手的工具调用，rc.3 用 `tool-call` 内容块，工具调用会被全部丢弃，任何多轮工具会话都会被上游拒绝。已修（`DESIGN.md` §4.5）；多轮工具调用经原生通道的真机验证随 L4。
+
+19. 行健康只保存在主机进程内存里，桌面版重启后清空，历史状态查不到；设置页把 `/glm-status` 的整段文本（含 Markdown 表）原样显示，表格的界面呈现随 M8（`DESIGN.md` §2.5）。
 
 反向代理已从项目范围移除（`DESIGN.md` §1）；profile 中指向 8317 的 pi-ai `glm` 路由属于用户配置，本项目不改。
 
