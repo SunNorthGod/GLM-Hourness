@@ -34,7 +34,7 @@ dist/          不入库：tsc 产物（profile 通过 pnpm link 使用）
 | `glm-llm` | 真网冒烟通过（coding-plan，模型返回 `pong`）；DSH 真实会话中尚未被使用 |
 | `glm-login` | 可用 |
 | `glm-prompt` | 在 rc.3 运行时上生效，含 ZCode 3.16.3 local 工具检索（L3 探针 15/15，2026-10-27）；桌面版需重启才加载 |
-| `glm-compact` | 已实现；桌面版上镜像引擎未挂载（已知问题 15） |
+| `glm-compact` | 改为在 `llm/stream` 上替换压缩指令（2026-10-27），L3 探针实测压缩生效 |
 | `guard` | 拦截与纠偏可用；告知、申报、记录三段未接通 |
 | `memory` | 工具与用量流水可用；记忆几乎未被使用 |
 | `workflow` | 只记录派遣类调用 |
@@ -66,7 +66,7 @@ dist/          不入库：tsc 产物（profile 通过 pnpm link 使用）
 12. 凭证加密密钥可由本机信息推导（`DESIGN.md` §4.1）。
 13. 修正前写入的用量流水，原生通道请求的输入 token 均为 0（解码器缺陷已修，`DESIGN.md` §4.6a）；旧流水不能用于积分统计。
 14. 2026-10-27 之前，`glm-prompt` 与 `toolsearch` 依赖桌面版运行时不存在的 `tools.executable()`，在桌面版上从未生效（L3 探针确认）。两者均已在 rc.3 接口上重写。桌面版重启后，GLM 会话将第一次真正看到 ZCode 方言与工具检索。
-15. `glm-compact` 在桌面版上从未挂载：从仓库路径加载时解析不到 `@deepseek-ai/dsh-compaction-basic`，该行按设计降级（每次 L3 探针的 stderr 都有记录，`DESIGN.md` §5.6）。
+15. 2026-10-27 之前 `glm-compact` 在桌面版上从未挂载（解析不到 `@deepseek-ai/dsh-compaction-basic`），原设计还会形成第二个压缩引擎。已改为 `llm/stream` 接缝（`DESIGN.md` §5.6）。
 16. 2026-10-27 之前创建的合成 notice 没有 `id` 与 `role`；同一步里有两条这样的 notice 待处理时，DSH inbox 会抛「already pending」。已修（`createUserNotice`）。
 
 反向代理已从项目范围移除（`DESIGN.md` §1）；profile 中指向 8317 的 pi-ai `glm` 路由属于用户配置，本项目不改。

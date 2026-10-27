@@ -210,7 +210,13 @@ todo 在编排层降级为项目图的视图（`ORCHESTRATION.md` §2.5），Tod
 
 ### 5.6 压缩镜像
 
-ZCode compact 提示词（`<analysis>` 先行、9 节摘要、安全指令保留；有 3 行与原文不一致，见 §5.9），产物剥 `<analysis>`。挂在 DSH `BasicCompactionEngine.summarize()` 上，GLM 路由走镜像，其余委托基类；基类缺失时该行降级为不挂载〔实读〕。L3 探针的每次运行都走了降级：从仓库路径加载时解析不到 `@deepseek-ai/dsh-compaction-basic`，stderr 记录「mirror engine not mounted」，即桌面版上镜像引擎从未挂载〔实测 2026-10-27〕，待修。ZCode 的 autoCompact 阈值（166k）与 microcompact 公式记录在 `reference/zcode-capabilities.md` §11.2，未接入。
+ZCode compact 提示词（`<analysis>` 先行、9 节摘要、安全指令保留；3 行偏差已修正，见 §5.9），产物经 ZCode `formatCompactSummary` 剥 `<analysis>`、`<summary>` 改写为「Summary:」。
+
+接缝〔已实现 2026-10-27，L3 实测〕：DSH 的压缩由 `compaction-basic` 负责，它是本上下文唯一的 `ctx.compaction` 实现（`dsh-compaction` 规定每个上下文只载一个）。它通过 `ctx.llm.stream()` 发起摘要请求，`purpose` 为 `compaction`，回放对话后把自己的指令作为最后一条用户消息。每次调用都经过 `llm/stream` 瀑布，但 `next()` 不带参数，监听器换不了请求。`glm-compact` 行注册一个最外层的全局 `llm/stream` 监听器：模型属于 GLM 族、且最后一条是 `compaction-basic` 指令的压缩请求，复制一份、把末条换成 ZCode 提示词后重新派发，并对返回的文本做 ZCode 格式化；其他请求原样放行。触发策略、保留区间、检查点外框仍归 `compaction-basic`。
+
+更正：原设计是挂一个 `BasicCompactionEngine` 子类。它在桌面版上从未挂载（从仓库路径解析不到 `@deepseek-ai/dsh-compaction-basic`），而且即使挂上也会成为第二个压缩引擎，并且只认 provider `glm`，不认原生通道 `glm-zcode`。已整体替换。
+
+L3 探针：沙盒里把压缩阈值调低，摘要请求末条是 ZCode 提示词，下一次请求里的检查点内容为「Summary:\nprobe summary」，不含 `<analysis>`。外框仍是 DSH 的检查点前言加 `<compacted-summary>` 标签，与 ZCode 续接消息的写法不同，属于已知差异。ZCode 的 autoCompact 阈值（166k）与 microcompact 公式记录在 `reference/zcode-capabilities.md` §11.2，未接入。
 
 压缩后的重新锚定属于编排层（`ORCHESTRATION.md` §2.5）。
 
@@ -243,7 +249,7 @@ ZCode compact 提示词（`<analysis>` 先行、9 节摘要、安全指令保留
 | 3 | 身份节 | 方言 | 同名替换 | 已实现 |
 | 4 | todo 提醒 10/10 | 方言 | 逐字文案与阈值 | 已实现，计数口径有偏差，真机未确认生效 |
 | 5 | 合成消息通道 | 同构 | 不动 | — |
-| 6 | compact 提示词 | 方言 | 镜像引擎 | 已实现 |
+| 6 | compact 提示词 | 方言 | `llm/stream` 上替换压缩指令并格式化产物（§5.6） | 已实现，L3 探针通过，真机未验收 |
 | 7 | beta 能力头 | 通道 | 按能力集动态添加 | 未实现 |
 | 8 | 工具懒加载 | 缺口 | glm-prompt 内的 local 工具检索（§5.7） | 已实现，L3 探针通过，真机未验收 |
 | 9 | 服务端 web 工具 | 缺口 | 待实测 `web_search_prime` / webReader 直连闸门 | 挂账 |
@@ -317,7 +323,7 @@ ZCode compact 提示词（`<analysis>` 先行、9 节摘要、安全指令保留
 | glm-llm 签名 | 无签发送 | 状态、用量记录的签名标注 |
 | glm-llm 路由 | 保持原 URL | 状态 |
 | glm-prompt | 退回 DSH 原生工具面与文案 | 行健康 |
-| glm-compact | 不挂载，profile 原有压缩照常 | 行健康 |
+| glm-compact | 压缩请求原样放行，profile 原有压缩照常 | 行健康 |
 | 工具检索（glm-prompt 内） | `toolSearchMode: off` 或会话历史不可读时全量直载 | 行健康 |
 | guard | 无门禁 | 行健康（显式禁用除外） |
 | memory | 无记忆、无审计 | 行健康 |
