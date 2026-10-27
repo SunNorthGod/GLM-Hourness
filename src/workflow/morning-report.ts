@@ -4,8 +4,9 @@
  * Granularity: exceptions first, then curve movement, then plain
  * facts; no padding, no restatement of completed work.
  */
-import type { DecisionRecord, UsageRecord } from '../memory/audit.ts'
+import { auditPaths, type DecisionRecord, type UsageRecord } from '../memory/audit.ts'
 import type { ViolationRecord } from '../guard/index.ts'
+import type { DataHomes } from '../shared/data-home.ts'
 
 export interface ReportInput {
   readonly decisions: readonly DecisionRecord[]
@@ -68,13 +69,16 @@ export interface ReportFs {
 }
 
 /**
- * Assemble the morning report from the audit journal files under one home.
+ * Assemble the morning report from the audit journal files: decisions and
+ * violations from the project directory, usage from the user directory
+ * (docs/DESIGN.md §2.4); an unknown directory reads as an empty journal.
  * `since` (ISO instant) bounds the period: only records stamped at or after
  * it enter the report, so one period reports on that window, not on all
  * history.
  */
-export async function reportFromFiles(fs: ReportFs, home: string, period: string, since?: string): Promise<string> {
-  const readJsonl = async (path: string) => {
+export async function reportFromFiles(fs: ReportFs, homes: DataHomes, period: string, since?: string): Promise<string> {
+  const readJsonl = async (path: string | undefined) => {
+    if (path === undefined) return []
     try {
       const raw = await fs.readFile(path)
       return raw.split('\n').filter(line => line.trim().length > 0).flatMap(line => {
@@ -96,11 +100,11 @@ export async function reportFromFiles(fs: ReportFs, home: string, period: string
   const inPeriod = (records: Array<{ at?: unknown }>) => sinceMs === undefined || Number.isNaN(sinceMs)
     ? records
     : records.filter(record => typeof record.at === 'string' && !Number.isNaN(Date.parse(record.at)) && Date.parse(record.at) >= sinceMs)
-  const root = `${home.replace(/[\\/]+$/, '')}/audit`
+  const paths = auditPaths(homes)
   return morningReport({
-    decisions: inPeriod(await readJsonl(`${root}/decisions.jsonl`)) as DecisionRecord[],
-    violations: inPeriod(await readJsonl(`${root}/violations.jsonl`)) as ViolationRecord[],
-    usage: inPeriod(await readJsonl(`${root}/usage.jsonl`)) as UsageRecord[],
+    decisions: inPeriod(await readJsonl(paths.decisions)) as DecisionRecord[],
+    violations: inPeriod(await readJsonl(paths.violations)) as ViolationRecord[],
+    usage: inPeriod(await readJsonl(paths.usage)) as UsageRecord[],
     period,
   })
 }

@@ -2,13 +2,15 @@
  * dsh-workflow row entry: grades autonomous dispatch through the team seams
  * and journals every decision. DSH's Agent Team owns the actual spawning;
  * this row only observes (L1 logged silently, L2 journaled, L3 journaled —
- * the ask-now path is the guard's 申报 protocol, not ours). A row without a
- * usable home degrades to a no-op instead of failing activation.
+ * the ask-now path is the guard's 申报 protocol, not ours). Decisions go to
+ * the project directory (the row's own home, else the data service's,
+ * docs/DESIGN.md §2.4); without either, the write is reported once and
+ * dispatch goes on.
  */
-import type { AuditJournal } from '../memory/audit.ts'
-import { journalFor, requireHome } from '../memory/index.ts'
+import { rowJournal, type AuditFs, type AuditJournal } from '../memory/audit.ts'
 import { gradeDecision } from './decisions.ts'
-import type { PreExecuteHost } from '../shared/dsh-min.ts'
+import { dataHomes } from '../shared/data-home.ts'
+import type { PreExecuteHost, ServiceLookup } from '../shared/dsh-min.ts'
 
 /**
  * Dispatch tool names of the rc.3 composition: the Agent Team tools
@@ -45,24 +47,22 @@ function subjectOf(args: unknown): string {
   return 'dispatch'
 }
 
-/** Row config (installer form): build the journal from the memory home. Required: the row cannot infer the workspace at activation. */
+/** Row config (installer form). */
 export interface WorkflowConfig {
-  /** The agent home directory; the decision journal lives under `<home>/audit`. */
+  /** The project directory (workspace `.llm`); the decision journal lives under `<home>/audit`. Defaults to the data service's. */
   readonly home?: string
+  /** Injected filesystem override for tests. */
+  readonly fs?: AuditFs
 }
 
 /** cordis plugin identity. */
 export const name = 'dsh-glm-hourness/workflow'
 
-/** cordis plugin entry: accepts an injected journal (tests) or a home config (installer). */
-export function apply(ctx: PreExecuteHost, journalOrConfig: (Pick<AuditJournal, 'decision'>) | WorkflowConfig = {}): () => void {
+/** cordis plugin entry: accepts an injected journal (tests) or a config (installer). */
+export function apply(ctx: PreExecuteHost & ServiceLookup, journalOrConfig: (Pick<AuditJournal, 'decision'>) | WorkflowConfig = {}): () => void {
   if (typeof (journalOrConfig as Pick<AuditJournal, 'decision'>).decision === 'function') {
     return applyOverJournal(ctx, journalOrConfig as Pick<AuditJournal, 'decision'>)
   }
   const config = journalOrConfig as WorkflowConfig
-  if (config.home === undefined || config.home.length === 0) {
-    console.warn('dsh-glm-hourness/workflow: home is not configured; the decision journal stays off (set config.home)')
-    return () => {}
-  }
-  return applyOverJournal(ctx, journalFor({ home: requireHome(config.home) }))
+  return applyOverJournal(ctx, rowJournal(name, () => dataHomes(ctx, config.home), config.fs))
 }
