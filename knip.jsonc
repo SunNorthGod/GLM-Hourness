@@ -1,0 +1,17 @@
+// knip: unused files, exports and dependencies (docs/ROADMAP.md M1.9).
+// Entries found automatically: package.json exports (dist mapped back to src
+// through tsconfig.json) and the files package.json scripts run.
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    // UI bundle rows: DSH loads them through ui/package.json and ui/cordis.patch.yml.
+    "ui/index.js",
+    "ui/client.js",
+    // Probe provider: run-probe.mjs passes its path to the DSH Loader.
+    "scripts/probe/probe-llm.mjs"
+  ],
+  "project": ["src/**/*.ts", "tests/**/*.ts", "scripts/**/*.{mjs,cjs,ts}", "ui/**/*.js"],
+  // ui/client.js gets React from the DSH client module table (require('react')),
+  // not from node_modules.
+  "ignoreDependencies": ["react"]
+}

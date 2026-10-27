@@ -4,7 +4,7 @@ import {
   emptyStore, forget, loadStore, parseStore, remember, retrieve, saveStore, shouldStore, strengthen, strength,
   type MemoryEntry,
 } from '../src/memory/store.ts'
-import { isPersonaLevel, personaSection, PERSONA_LEVELS } from '../src/glm-prompt/persona.ts'
+import { isPersonaLevel, PERSONA_LEVELS } from '../src/glm-prompt/persona.ts'
 import { dialectSections } from '../src/glm-prompt/index.ts'
 import { dispatchPanel, offPeakBadge, parseJsonl, usagePanel } from '../src/ui/panel.ts'
 import { defaultKnowableFromGit, memoryTools, storeIo } from '../src/memory/tools.ts'

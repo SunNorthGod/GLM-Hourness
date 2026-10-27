@@ -86,10 +86,8 @@ test('handshake failure fails open to unsigned', async () => {
 })
 
 test('401 VERIFY ladder: retry once, then permanent bypass', async () => {
-  let handshakes = 0
   const manager = new ClientSigningManager({
     fetchImpl: (async () => {
-      handshakes += 1
       return jsonRespond(500, {})
     }) as typeof fetch,
   })
