@@ -3,11 +3,14 @@
  * server-mediated ZCode OAuth flow and replies with the authorize URL; the
  * poll completes in the background and the resolved coding-plan credential
  * lands in the encrypted store. `/glm-status` reports whether a credential is
- * present (key preview, JWT age on start-plan). A missing home degrades to a
- * no-op instead of failing activation.
+ * present (key preview, JWT age on start-plan), followed by the row health
+ * table of the invoking session (src/shared/health.ts). A missing home turns
+ * /glm-login and /glm-logout off instead of failing activation; /glm-status
+ * stays, so the table can say what is missing.
  */
 import { ZcodeLogin, ZcodeAdapter, logout } from './zcode.ts'
-import type { CommandsHost } from '../shared/dsh-min.ts'
+import { collectHealth, provideRowHealth, renderHealthTable, sessionIdOf } from '../shared/health.ts'
+import type { CommandDefinitionLike, CommandInvocationLike, CommandsHost, ProvideHost, ServiceLookup } from '../shared/dsh-min.ts'
 
 export interface LoginConfig {
   /** The agent home directory (`.llm`): credentials.json + device-mid.txt live here. Required. */
@@ -20,15 +23,34 @@ export interface LoginConfig {
 export const name = 'dsh-glm-hourness/glm-login'
 export const inject = ['commands']
 
+/** The row health table for the session the command runs in. */
+function healthText(ctx: ServiceLookup, invocation: CommandInvocationLike): string {
+  const sessionId = sessionIdOf(invocation.agent)
+  return renderHealthTable(collectHealth(ctx, sessionId), sessionId)
+}
+
 /** cordis plugin entry: registers /glm-login, /glm-status, and /glm-logout. */
-export function apply(ctx: CommandsHost, config: LoginConfig = {}): () => void {
+export function apply(ctx: CommandsHost & ServiceLookup & Partial<ProvideHost>, config: LoginConfig = {}): () => void {
   if (config.home === undefined || config.home.length === 0) {
     console.warn('dsh-glm-hourness/glm-login: home is not configured; /glm-login stays off (set config.home)')
-    return () => {}
+    const health = provideRowHealth(ctx, 'glm-login', 'inactive', 'home 未配置，/glm-login 与 /glm-logout 关闭')
+    const unregister = ctx.commands.register(statusCommand(async invocation => `glm-zcode：未登录（glm-login 行未配置 home，凭证位置未知）\n\n${healthText(ctx, invocation)}`))
+    return () => {
+      unregister()
+      health.dispose()
+    }
   }
   const home = config.home
   const login = new ZcodeLogin({ home, ...(config.fetchImpl === undefined ? {} : { fetchImpl: config.fetchImpl }) })
   const adapter = new ZcodeAdapter({ home, ...(config.fetchImpl === undefined ? {} : { fetchImpl: config.fetchImpl }) })
+  const health = provideRowHealth(ctx, 'glm-login', 'active', '/glm-login、/glm-status、/glm-logout 已注册')
+  const credentialText = async (): Promise<string> => {
+    const status = await adapter.status()
+    if (!status.logged) {
+      return `glm-zcode：未登录（套餐 ${status.plan}）。运行 /glm-login 开始登录${login.state.error === undefined ? '' : `\n上次登录错误：${login.state.error}`}`
+    }
+    return `glm-zcode：已登录（套餐 ${status.plan}，Key ${status.keyPreview}${status.userId === undefined ? '' : `，账号 ${status.userId}`}${status.jwtAgeHours === undefined ? '' : `，JWT 已用 ${status.jwtAgeHours} 小时`}）`
+  }
   const disposers = [
     ctx.commands.register({
       definitionId: 'dsh-glm-hourness/glm-login',
@@ -44,18 +66,7 @@ export function apply(ctx: CommandsHost, config: LoginConfig = {}): () => void {
         }
       },
     }),
-    ctx.commands.register({
-      definitionId: 'dsh-glm-hourness/glm-status',
-      name: 'glm-status',
-      description: '查看原生 ZCode 通道的凭证状态',
-      handler: async () => {
-        const status = await adapter.status()
-        if (!status.logged) {
-          return { kind: 'success', text: `glm-zcode：未登录（套餐 ${status.plan}）。运行 /glm-login 开始登录${login.state.error === undefined ? '' : `\n上次登录错误：${login.state.error}`}` }
-        }
-        return { kind: 'success', text: `glm-zcode：已登录（套餐 ${status.plan}，Key ${status.keyPreview}${status.userId === undefined ? '' : `，账号 ${status.userId}`}${status.jwtAgeHours === undefined ? '' : `，JWT 已用 ${status.jwtAgeHours} 小时`}）` }
-      },
-    }),
+    ctx.commands.register(statusCommand(async invocation => `${await credentialText()}\n\n${healthText(ctx, invocation)}`)),
     ctx.commands.register({
       definitionId: 'dsh-glm-hourness/glm-logout',
       name: 'glm-logout',
@@ -66,6 +77,17 @@ export function apply(ctx: CommandsHost, config: LoginConfig = {}): () => void {
         return { kind: 'success', text: 'glm-zcode：凭证已清除' }
       },
     }),
+    () => health.dispose(),
   ]
   return () => { for (const dispose of disposers) dispose() }
+}
+
+/** `/glm-status`: the credential line (first, the settings page parses it) and the health table. */
+function statusCommand(render: (invocation: CommandInvocationLike) => Promise<string>): CommandDefinitionLike {
+  return {
+    definitionId: 'dsh-glm-hourness/glm-status',
+    name: 'glm-status',
+    description: '查看原生 ZCode 通道的凭证状态与各行健康',
+    handler: async invocation => ({ kind: 'success', text: await render(invocation) }),
+  }
 }

@@ -232,13 +232,19 @@ export interface ServiceLookup {
   get?(name: string): unknown
 }
 
+/** cordis `ctx.provide(name, value)`: register a service owned by the calling fiber; the disposer unregisters it (also on unload). */
+export interface ProvideHost {
+  provide(name: string, value: unknown): () => void
+}
+
 /** The `fs` service member that maps a host path into the tool execution world (undefined when that world cannot read it). */
 export interface FsPathService {
   processPathFromHostPath(hostPath: string): string | undefined
 }
 
-/** A human command invocation (dsh-commands): the text after `/name`. */
+/** A human command invocation (dsh-commands `execute`): the exact receiving agent and the text after `/name`. */
 export interface CommandInvocationLike {
+  readonly agent: { readonly id: string, readonly session?: { readonly id: string } }
   readonly rawInput: string
 }
 

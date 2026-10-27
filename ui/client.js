@@ -298,7 +298,7 @@ window.__ModuleLoader__.load({
             copied ? '已复制 /glm-login' : '复制 /glm-login'),
           h('ul', { className: 'glmh-list' },
             h('li', null, '/glm-login — 打开浏览器授权，完成登录'),
-            h('li', null, '/glm-status — 查看登录状态与 key 预览'),
+            h('li', null, '/glm-status — 查看登录状态、key 预览与各行健康'),
             h('li', null, '/glm-logout — 清除本机凭证'),
           ),
         ),

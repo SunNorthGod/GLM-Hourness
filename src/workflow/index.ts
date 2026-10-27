@@ -2,13 +2,16 @@
  * dsh-workflow row entry: grades autonomous dispatch through the team seams
  * and journals every decision. DSH's Agent Team owns the actual spawning;
  * this row only observes (L1 logged silently, L2 journaled, L3 journaled —
- * the ask-now path is the guard's 申报 protocol, not ours). A row without a
- * usable home degrades to a no-op instead of failing activation.
+ * the ask-now path is the guard's 申报 protocol, not ours). Decisions go to
+ * the project directory (the row's own home, else the data service's,
+ * docs/DESIGN.md §2.4); without either, the write is reported once and
+ * dispatch goes on.
  */
-import type { AuditJournal } from '../memory/audit.ts'
-import { journalFor, requireHome } from '../memory/index.ts'
+import { rowJournal, type AuditFs, type AuditJournal } from '../memory/audit.ts'
 import { gradeDecision } from './decisions.ts'
-import type { PreExecuteHost } from '../shared/dsh-min.ts'
+import { dataHomes } from '../shared/data-home.ts'
+import { provideRowHealth, sessionIdOf, type HealthState } from '../shared/health.ts'
+import type { PreExecuteHost, ProvideHost, ServiceLookup, ToolExecutionPayload } from '../shared/dsh-min.ts'
 
 /**
  * Dispatch tool names of the rc.3 composition: the Agent Team tools
@@ -19,8 +22,10 @@ import type { PreExecuteHost } from '../shared/dsh-min.ts'
  */
 export const DISPATCH_TOOLS = ['spawn_teammate', 'team_task_create', 'team_task_update', 'send_message', 'subagent', 'subagent_fork'] as const
 
-export function applyOverJournal(ctx: PreExecuteHost, journal: Pick<AuditJournal, 'decision'>): () => void {
+/** Observe root tool calls; dispatches are journaled, every root call reaches `observe` (row health). */
+export function applyOverJournal(ctx: PreExecuteHost, journal: Pick<AuditJournal, 'decision'>, observe?: (payload: ToolExecutionPayload) => void): () => void {
   return ctx.on('tools/pre-execute', (payload, next) => {
+    if (payload.parent === undefined) observe?.(payload)
     if (payload.parent === undefined && (DISPATCH_TOOLS as readonly string[]).includes(payload.name)) {
       const level = gradeDecision('dispatch')
       void journal.decision({
@@ -45,24 +50,36 @@ function subjectOf(args: unknown): string {
   return 'dispatch'
 }
 
-/** Row config (installer form): build the journal from the memory home. Required: the row cannot infer the workspace at activation. */
+/** Row config (installer form). */
 export interface WorkflowConfig {
-  /** The agent home directory; the decision journal lives under `<home>/audit`. */
+  /** The project directory (workspace `.llm`); the decision journal lives under `<home>/audit`. Defaults to the data service's. */
   readonly home?: string
+  /** Injected filesystem override for tests. */
+  readonly fs?: AuditFs
 }
 
 /** cordis plugin identity. */
 export const name = 'dsh-glm-hourness/workflow'
 
-/** cordis plugin entry: accepts an injected journal (tests) or a home config (installer). */
-export function apply(ctx: PreExecuteHost, journalOrConfig: (Pick<AuditJournal, 'decision'>) | WorkflowConfig = {}): () => void {
+/** The row's status for one call's session (row health): where dispatch decisions go. */
+export function workflowHealth(projectHome: string | undefined): [HealthState, string] {
+  return projectHome === undefined
+    ? ['inactive', '无项目目录（行 home 或数据目录行 projectHome），派遣决策不落盘']
+    : ['active', `派遣决策记入 ${projectHome}`]
+}
+
+/** cordis plugin entry: accepts an injected journal (tests) or a config (installer, which also reports row health). */
+export function apply(ctx: PreExecuteHost & ServiceLookup & Partial<ProvideHost>, journalOrConfig: (Pick<AuditJournal, 'decision'>) | WorkflowConfig = {}): () => void {
   if (typeof (journalOrConfig as Pick<AuditJournal, 'decision'>).decision === 'function') {
     return applyOverJournal(ctx, journalOrConfig as Pick<AuditJournal, 'decision'>)
   }
   const config = journalOrConfig as WorkflowConfig
-  if (config.home === undefined || config.home.length === 0) {
-    console.warn('dsh-glm-hourness/workflow: home is not configured; the decision journal stays off (set config.home)')
-    return () => {}
+  const health = provideRowHealth(ctx, 'workflow', 'active', '已加载，记录派遣类调用')
+  const dispose = applyOverJournal(ctx, rowJournal(name, () => dataHomes(ctx, config.home), config.fs), payload => {
+    health.report(sessionIdOf(payload.agent), ...workflowHealth(dataHomes(ctx, config.home).projectHome))
+  })
+  return () => {
+    dispose()
+    health.dispose()
   }
-  return applyOverJournal(ctx, journalFor({ home: requireHome(config.home) }))
 }

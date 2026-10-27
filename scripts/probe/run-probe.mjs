@@ -14,11 +14,13 @@
  * (gitignored).
  */
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { crc32, deflateSync } from 'node:zlib'
 import { DISPATCH_TOOLS } from '../../dist/workflow/index.js'
+import { userDataHome } from '../../dist/shared/data-home.js'
+import { HEALTH_ROWS } from '../../dist/shared/health.js'
 
 const repo = resolve(fileURLToPath(new URL('../..', import.meta.url)))
 const desktop = process.env.DSH_DESKTOP_DIR ?? join(process.env.LOCALAPPDATA ?? '', 'Programs', 'DeepSeek Harness')
@@ -55,10 +57,19 @@ function redPng(size = 8) {
 /** Overlay lines that keep the attachment store of a scenario inside its own directory. */
 const attachmentsIn = dir => ['- id: attachment-local', `  config: { dshHome: ${JSON.stringify(slash(join(dir, 'dsh-home')))} }`]
 
+// The real user-level directory (<DSH home>/glm-hourness) must not change
+// during a run: every scenario points the data row at its own DSH home.
+const realUsage = join(userDataHome(), 'audit', 'usage.jsonl')
+const usageStamp = () => existsSync(realUsage) ? (({ size, mtimeMs }) => `${size}/${mtimeMs}`)(statSync(realUsage)) : 'absent'
+const realUsageBefore = usageStamp()
+
 /**
  * Boot one headless task on `model` with a scripted reply sequence and return
  * the main agent's step requests plus the compaction requests (the
- * session-title request carries no tools). `overlay` adds patch lines.
+ * session-title request carries no tools). `overlay` adds patch lines. The
+ * scenario's project directory is `<dir>/home` (memory, workflow and
+ * hourness get it as their row home, as the user's profile patch does; the
+ * guard reads it from the data service) and its DSH home is `<dir>/dsh-home`.
  */
 function runScenario(name, model, script, task, overlay = []) {
   const dir = join(runDir, name)
@@ -74,6 +85,12 @@ function runScenario(name, model, script, task, overlay = []) {
     '- id: agent-default-model',
     `  config: { provider: glm-probe, model: ${JSON.stringify(model)} }`,
     ...['memory', 'workflow', 'hourness'].flatMap(row => [`- id: glm-hourness/${row}`, `  config: { home: ${JSON.stringify(slash(home))} }`]),
+    // /glm-status reads the credential store under the glm-login home; the
+    // scenario home has none, so the probe never reads the real store.
+    '- id: glm-hourness/glm-login',
+    `  config: { home: ${JSON.stringify(slash(home))} }`,
+    '- id: glm-hourness/data',
+    `  config: { dshHome: ${JSON.stringify(slash(join(dir, 'dsh-home')))}, projectHome: ${JSON.stringify(slash(home))} }`,
     '- insert:',
     '    - id: glm-hourness-probe/llm',
     `      name: ${JSON.stringify(slash(join(repo, 'scripts', 'probe', 'probe-llm.mjs')))}`,
@@ -113,12 +130,14 @@ const announcements = step => (step?.messages ?? []).filter(message => message.r
 // Write description promises that fails), list both scratch files with Glob
 // (newest first), search package.json with Grep (content mode, -i), run a
 // command through Bash (timeout in milliseconds, no description), read a
-// PNG (GLM-5.3 is text-only, so read_image refuses), finish.
+// PNG (GLM-5.3 is text-only, so read_image refuses), write a file through
+// the shell (the guard denies it and journals the violation), finish.
 // The scratch files live in the scenario directory inside the workspace.
 const glmDir = join(runDir, 'glm')
 mkdirSync(glmDir, { recursive: true })
 const scratch = join(glmDir, 'scratch.txt')
 const unread = join(glmDir, 'unread.txt')
+const blocked = join(glmDir, 'blocked.txt')
 writeFileSync(unread, 'existing\n')
 const png = join(runDir, 'red.png')
 writeFileSync(png, redPng())
@@ -134,8 +153,9 @@ const glm = runScenario('glm', 'glm-5.3', [
   { tool: { name: 'Grep', arguments: { 'pattern': 'DSH-GLM-HOURNESS', 'path': join(repo, 'package.json'), 'output_mode': 'content', '-i': true } } },
   { tool: { name: 'Bash', arguments: { command: 'Write-Output probe-bash', timeout: 30000 } } },
   { tool: { name: 'Read', arguments: { file_path: png } } },
-  { text: 'done' },
-], 'Load TodoWrite, record one todo, read package.json, write, edit and re-read a scratch file, list, search, run a command, read an image, then reply done.', attachmentsIn(glmDir))
+  { tool: { name: 'Bash', arguments: { command: `Set-Content -Path '${blocked}' -Value probe` } } },
+  { text: 'done', status: true },
+], 'Load TodoWrite, record one todo, read package.json, write, edit and re-read a scratch file, list, search, run a command, read an image, write a file through the shell, then reply done.', attachmentsIn(glmDir))
 const glmFirst = glm.steps[0]
 const glmTools = names(glmFirst)
 const glmTool = name => (glmFirst?.tools ?? []).find(tool => tool.name === name)
@@ -151,6 +171,7 @@ const globResult = lastToolResult(glm.steps[8])
 const grepResult = lastToolResult(glm.steps[9])
 const bashResult = lastToolResult(glm.steps[10])
 const imageRefusal = lastToolResult(glm.steps[11])
+const blockedResult = lastToolResult(glm.steps[12])
 const READ_IMAGE_LINE = '- Reads images (PNG, JPG, …) and presents them visually.'
 const imageFree = steps => steps.every(step => step.messages.every(message => message.images === undefined) && step.wire?.images?.length === 0)
 
@@ -189,12 +210,12 @@ const todoParallel = todo.steps[2]?.messages.findLast(message => message.role ==
 // at the second step boundary (sandbox overlay only).
 const compacted = runScenario('glm-compact', 'glm-5.3', [
   { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } } },
-  { text: 'done' },
+  { text: 'done', status: true },
 ], 'Read package.json and reply done.', [
   '- id: compaction-basic',
   '  config: { thresholdRatio: 0.02, retainTokens: 0 }',
 ])
-const plain = runScenario('non-glm', 'deepseek-probe', [{ text: 'done' }], 'Reply done.')
+const plain = runScenario('non-glm', 'deepseek-probe', [{ text: 'done', status: true }], 'Reply done.')
 const plainFirst = plain.steps[0]
 const plainTools = names(plainFirst)
 
@@ -204,16 +225,40 @@ const checkpoint = compacted.steps.at(-1)?.messages.find(message => message.sour
 
 // The memory row journals one usage record per model call from the
 // llm/stream request fields (rc.3 GenerateOptions: provider, model,
-// sessionId, purpose) into the scenario's home.
-const usageOf = scenario => {
-  const file = join(runDir, scenario, 'home', 'audit', 'usage.jsonl')
-  return existsSync(file) ? readFileSync(file, 'utf8').split('\n').filter(line => line.length > 0).map(line => JSON.parse(line)) : []
-}
+// sessionId, purpose) into the user-level directory the data row provides
+// (<DSH home>/glm-hourness, the scenario's dsh-home); the guard journals
+// each denial into the project directory it reads from the data service.
+const jsonl = file => existsSync(file) ? readFileSync(file, 'utf8').split('\n').filter(line => line.length > 0).map(line => JSON.parse(line)) : []
+const usageOf = scenario => jsonl(join(runDir, scenario, 'dsh-home', 'glm-hourness', 'audit', 'usage.jsonl'))
 const glmUsage = usageOf('glm').filter(record => record.purpose === undefined)
 const compactUsage = usageOf('glm-compact').filter(record => record.purpose === 'compaction')
+const projectUsage = ['glm', 'glm-flash', 'glm-todo', 'glm-compact', 'non-glm'].filter(scenario => existsSync(join(runDir, scenario, 'home', 'audit', 'usage.jsonl')))
+const glmViolations = jsonl(join(glmDir, 'home', 'audit', 'violations.jsonl'))
+const realUsageAfter = usageStamp()
 // The workflow row journals dispatch calls by tool name; the names must be
 // the ones the rc.3 composition registers.
 const plainSubagentTools = [...plainTools].filter(name => name === 'subagent' || name === 'subagent_fork')
+
+// Row health: the probe provider ran the bundle's /glm-status handler for
+// the session at the last scripted step of a scenario. Each table line is
+// `| row | status | reason |`.
+const statusStep = scenario => scenario.steps.findLast(step => step.status !== undefined)
+const healthOf = (scenario) => {
+  const step = statusStep(scenario)
+  const lines = (step?.status ?? '').split('\n').filter(line => HEALTH_ROWS.some(row => line.startsWith(`| ${row} | `)))
+  return Object.fromEntries(lines.map((line) => {
+    const [row, status, ...reason] = line.slice(2, -2).split(' | ')
+    return [row, { status, reason: reason.join(' | ') }]
+  }))
+}
+const glmHealth = healthOf(glm)
+const plainHealth = healthOf(plain)
+const compactHealth = healthOf(compacted)
+const glmStatusText = statusStep(glm)?.status ?? ''
+const healthLine = (health, row) => health[row] === undefined ? `${row}: missing` : `${row}: ${health[row].status}`
+const ACTED = '生效'
+const IDLE = '已加载，本会话未触发'
+const conversationTexts = [glm, plain, compacted].flatMap(scenario => scenario.steps.flatMap(step => [step.system, ...step.messages.map(message => message.text)]))
 
 
 const checks = [
@@ -259,7 +304,15 @@ const checks = [
   ['glm compact: the checkpoint carries the formatted summary', checkpoint !== undefined && checkpoint.text.includes('Summary:\nprobe summary') && !checkpoint.text.includes('<analysis>'), checkpoint === undefined ? 'no checkpoint in the next request' : checkpoint.text.slice(0, 80).replace(/\n/g, ' ')],
   ['memory usage: one record per GLM step with the request provider, model and session id', glmUsage.length === glm.steps.length && glmUsage.every(record => record.provider === 'glm-probe' && record.model === 'glm-5.3' && typeof record.sessionId === 'string' && record.sessionId.length > 0), `${glmUsage.length} record(s) for ${glm.steps.length} step(s); first: ${JSON.stringify(glmUsage[0] ?? null).slice(0, 120)}`],
   ['memory usage: the compaction call is recorded with purpose compaction', compactUsage.length === compacted.compactions.length && compactUsage.length > 0, `${compactUsage.length} compaction record(s) for ${compacted.compactions.length} request(s)`],
+  ['data: usage lands only in the user-level directory, never in a project directory or the real one', projectUsage.length === 0 && realUsageBefore === realUsageAfter, `project usage files: ${projectUsage.join(', ') || 'none'}; real ${realUsage}: ${realUsageBefore} -> ${realUsageAfter}`],
+  ['guard: a shell write is denied with the four-part correction and the file is not created', blockedResult?.isError === true && blockedResult.text.includes('Shell file writes are not permitted') && !existsSync(blocked), blockedResult === undefined ? 'no tool result' : blockedResult.text.slice(0, 100).replace(/\n/g, ' ')],
+  ['guard: the denial is journaled in the scenario project directory with rule, tool and the calling agent ids', glmViolations.length === 1 && glmViolations[0].rule === 'file-tools-only' && glmViolations[0].tool === 'Bash' && typeof glmViolations[0].agentId === 'string' && glmViolations[0].agentId.length > 0 && glmViolations[0].sessionId === glmUsage[0]?.sessionId, `${glmViolations.length} record(s); first: ${JSON.stringify(glmViolations[0] ?? null).slice(0, 140)}`],
   ['workflow: the runtime subagent tools are journaled dispatch names', plainSubagentTools.length === 2 && plainSubagentTools.every(name => DISPATCH_TOOLS.includes(name)), `runtime subagent tools: ${plainSubagentTools.join(', ') || 'none'}`],
+  ['health: /glm-status prints the credential line and the health table of the session, one line per bundle row', glmStatusText.startsWith('glm-zcode：未登录（套餐 coding-plan）') && glmStatusText.includes(`## 行健康（会话 ${statusStep(glm)?.sessionId}）`) && HEALTH_ROWS.every(row => glmHealth[row] !== undefined) && Object.keys(glmHealth).length === HEALTH_ROWS.length, `${Object.keys(glmHealth).length} row(s); ${glmStatusText.split('\n')[0]}`],
+  ['health: on the GLM route glm-prompt, guard, memory, workflow, data and glm-login report in effect; glm-compact and hourness have not acted', glmHealth['glm-prompt']?.status === ACTED && glmHealth['glm-prompt'].reason.startsWith('GLM 路由 glm-probe/glm-5.3：') && ['guard', 'memory', 'workflow', 'data', 'glm-login'].every(row => glmHealth[row]?.status === ACTED) && ['glm-compact', 'hourness'].every(row => glmHealth[row]?.status === IDLE), HEALTH_ROWS.map(row => healthLine(glmHealth, row)).join('; ')],
+  ['health: on the non-GLM route glm-prompt reports why it is not in effect', plainHealth['glm-prompt']?.status === '未生效' && plainHealth['glm-prompt'].reason.startsWith('非 GLM 路由 glm-probe/deepseek-probe'), JSON.stringify(plainHealth['glm-prompt'] ?? null)],
+  ['health: after a GLM compaction glm-compact reports the mirror in effect', compactHealth['glm-compact']?.status === ACTED && compactHealth['glm-compact'].reason.startsWith('GLM 压缩请求改用 ZCode 指令'), JSON.stringify(compactHealth['glm-compact'] ?? null)],
+  ['health: the reports stay out of the model-visible conversation', conversationTexts.length > 0 && conversationTexts.every(text => !text.includes('行健康') && !text.includes('glmHournessHealth')), `${conversationTexts.length} text(s) checked`],
   ['non-glm boot: the runtime reached the probe provider', plainFirst !== undefined, `exit ${plain.status}, ${plain.steps.length} step(s)`],
   ['non-glm prompt: DSH identity untouched', plainFirst?.system.includes('powered by DeepSeek Harness') === true && !plainFirst.system.includes('You are ZCode'), ''],
   ['non-glm tools: natives present, no aliases', plainFirst !== undefined && nativeFace.every(name => plainTools.has(name)) && zcodeFace.every(name => !plainTools.has(name)), zcodeFace.filter(name => plainTools.has(name)).join(', ') || ''],

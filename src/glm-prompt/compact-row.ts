@@ -12,11 +12,13 @@
  * copy's text output with ZCode's formatCompactSummary. Registered outermost,
  * no other listener sees the original request; the copy runs the full chain
  * once. Trigger policy, retention and the checkpoint framing stay with
- * compaction-basic. Any other request passes through untouched.
+ * compaction-basic. Any other request passes through untouched. Every
+ * compaction request reports the row health of its session, mirrored or not.
  */
 import { buildCompactPrompt, formatCompactSummary } from './compact.ts'
 import { isGlmModel } from '../shared/route.ts'
-import type { LlmStreamHost, LlmStreamOptions, LlmStreamService } from '../shared/dsh-min.ts'
+import { provideRowHealth, type HealthState } from '../shared/health.ts'
+import type { LlmStreamHost, LlmStreamOptions, LlmStreamService, ProvideHost } from '../shared/dsh-min.ts'
 import type { StreamChunk } from '../shared/lm-min.ts'
 
 /** The row's context: the `llm/stream` waterfall and the injected `llm` service. */
@@ -88,14 +90,28 @@ export const name = 'dsh-glm-hourness/glm-compact'
 /** The row re-dispatches through the LLM service. */
 export const inject = ['llm']
 
+/** The mirror's status for one compaction request (row health). */
+export function compactionHealth(options: LlmStreamOptions, mirrored: boolean): [HealthState, string] {
+  const route = `${options.provider}/${options.model}`
+  if (mirrored) return ['active', `GLM 压缩请求改用 ZCode 指令与摘要格式（${route}）`]
+  if (!isGlmModel(options.model)) return ['inactive', `非 GLM 路由 ${route}，压缩请求原样放行`]
+  return ['inactive', `未识别 compaction-basic 的压缩指令，原样放行（${route}）`]
+}
+
 /** cordis plugin entry. */
-export function apply(ctx: CompactRowContext): () => void {
+export function apply(ctx: CompactRowContext & Partial<ProvideHost>): () => void {
+  const health = provideRowHealth(ctx, 'glm-compact', 'active', '已加载，只作用于压缩请求')
   const copies = new WeakSet<object>()
-  return ctx.on('llm/stream', (options, next) => {
+  const dispose = ctx.on('llm/stream', (options, next) => {
     if (copies.has(options)) return formatSummaryStream(next())
     const copy = withZcodeInstruction(options)
+    if (options.purpose === 'compaction') health.report(options.sessionId, ...compactionHealth(options, copy !== undefined))
     if (copy === undefined) return next()
     copies.add(copy)
     return ctx.llm.stream(copy)
   }, { global: true, prepend: true })
+  return () => {
+    dispose()
+    health.dispose()
+  }
 }

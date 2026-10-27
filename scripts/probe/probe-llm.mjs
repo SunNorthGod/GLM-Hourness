@@ -8,7 +8,10 @@
  * The model catalog (ids and input modalities) and the image request target
  * come from the built glm-zcode channel (dist/), and each request is also
  * run through the channel's real encoder with the runtime's attachment
- * service, so the dump shows the image blocks glm-zcode would send.
+ * service, so the dump shows the image blocks glm-zcode would send. A
+ * scripted step marked `status` also records what the bundle's `/glm-status`
+ * command prints for the session at that point (credential line and row
+ * health table).
  *
  * Not part of the bundle: loaded only through the overlay that
  * scripts/probe/run-probe.mjs generates for each run.
@@ -24,7 +27,7 @@ export const inject = ['llm']
 /** Reply to compaction summaries, in the shape the ZCode compact prompt asks for. */
 const COMPACTION_REPLY = '<analysis>probe analysis</analysis>\n\n<summary>probe summary</summary>'
 
-/** One scripted reply per request, in order; the last entry repeats. Entries: `{ tool }`, `{ tools: [...] }` or `{ text }`. */
+/** One scripted reply per request, in order; the last entry repeats. Entries: `{ tool }`, `{ tools: [...] }` or `{ text }`, optionally with `status: true`. */
 function parseScript(raw) {
   if (typeof raw !== 'string' || raw.length === 0) return [{ text: 'ok' }]
   return JSON.parse(raw)
@@ -63,6 +66,20 @@ function wireImages(body) {
     if (block.type === 'tool_result' && Array.isArray(block.content)) return block.content.filter(part => part.type === 'image').map(part => ({ where: 'tool_result', ...summary(part) }))
     return []
   }))
+}
+
+/**
+ * Run the bundle's real `/glm-status` handler for the request's session, the
+ * way dsh-commands `execute` invokes it (the exact agent, the raw input),
+ * without the command lifecycle events: the agent is mid-step.
+ */
+async function glmStatus(ctx, request) {
+  const agent = ctx.get('agents')?.get(request.sessionId)
+  if (agent === undefined) return `probe: no live agent for session ${request.sessionId}`
+  const definition = ctx.get('commands')?.find(agent, 'glm-status')
+  if (definition === undefined) return 'probe: /glm-status is not registered'
+  const result = await definition.handler(Object.freeze({ commandId: 'probe-glm-status', agent, rawInput: '', attachments: Object.freeze([]), signal: request.signal ?? new AbortController().signal }))
+  return result.text ?? ''
 }
 
 class ProbeAdapter {
@@ -109,6 +126,8 @@ class ProbeAdapter {
       : { text: compaction ? COMPACTION_REPLY : 'Probe session' }
     if (scripted) this.calls += 1
     this.requests += 1
+    // A step marked `status` records the /glm-status text before replying.
+    const status = step.status === true ? await glmStatus(this.ctx, request).catch(error => `probe: /glm-status failed: ${error instanceof Error ? error.message : String(error)}`) : undefined
     if (this.dump !== undefined) {
       // The glm-zcode encoder over this exact request, with the runtime's
       // attachment and fs services (the channel row reads them the same way).
@@ -128,6 +147,8 @@ class ProbeAdapter {
         model: request.model,
         wire,
         ...(request.purpose === undefined ? {} : { purpose: request.purpose }),
+        ...(request.sessionId === undefined ? {} : { sessionId: request.sessionId }),
+        ...(status === undefined ? {} : { status }),
         // The runtime delivers the prompt as leading system messages (the
         // channel lifts them the same way, src/glm-llm/anthropic.ts).
         system: [request.system ?? '', ...leadingSystem(request.messages ?? [])].filter(text => text.length > 0).join('\n\n'),

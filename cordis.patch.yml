@@ -1,7 +1,8 @@
 # GLM-Hourness bundle patch (DSH Loader dialect). Rows are independent:
 # disable any line and the session degrades gracefully (fail-open).
-# Machine-specific values (the `.llm` home) live in the user's profile patch,
-# not here.
+# The channel rows and the data row default to this repository's `.llm`
+# (USERPROFILE-relative); the user's profile patch overrides per row (it sets
+# `home` for memory, workflow and hourness).
 - insert:
     - id: glm-hourness/glm-llm
       # Native ZCode channel: /glm-login fills the encrypted credential store;
@@ -24,6 +25,14 @@
     - id: glm-hourness/glm-compact
       name: ./dist/glm-prompt/compact-row.js
       config: {}
+    - id: glm-hourness/data
+      # Data directory service (docs/DESIGN.md §2.4): the user-level
+      # directory resolves to $DSH_HOME/glm-hourness (default ~/.dsh); the
+      # project directory is the workspace `.llm`. Guard, memory, workflow
+      # and hourness read it lazily and keep working without it.
+      name: ./dist/data/index.js
+      config:
+        projectHome: !!js "process.env.USERPROFILE + '/Desktop/Project/GLM-Hourness/.llm'"
     - id: glm-hourness/guard
       name: ./dist/guard/index.js
       config: {}

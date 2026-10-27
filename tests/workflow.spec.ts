@@ -65,10 +65,10 @@ test('clean period reports 无 exceptions and empty usage', () => {
   assert.ok(report.includes('- 无模型调用'))
 })
 
-test('report entry folds the three journal files and tolerates missing ones', async () => {
+test('report entry folds the three journal files from both directories and tolerates missing ones', async () => {
   const files = new Map<string, string>([
     ['C:/ws/.llm/audit/decisions.jsonl', JSON.stringify({ at: 't1', level: 'L1', kind: 'dispatch:spawn_teammate', subject: 'researcher' })],
-    ['C:/ws/.llm/audit/usage.jsonl', JSON.stringify({ at: 't2', provider: 'glm', model: 'glm-5.3', usage: { inputTokens: 9, outputTokens: 1 } })],
+    ['C:/u/glm-hourness/audit/usage.jsonl', JSON.stringify({ at: 't2', provider: 'glm', model: 'glm-5.3', usage: { inputTokens: 9, outputTokens: 1 } })],
   ])
   const fs = { readFile: async (path: string) => {
     const content = files.get(path)
@@ -79,11 +79,13 @@ test('report entry folds the three journal files and tolerates missing ones', as
     }
     return content
   } }
-  const report = await reportFromFiles(fs, 'C:/ws/.llm/', '2026-10-27')
+  const report = await reportFromFiles(fs, { projectHome: 'C:/ws/.llm/', userHome: 'C:/u/glm-hourness' }, '2026-10-27')
   assert.ok(report.includes('# 晨报 2026-10-27'))
   assert.ok(report.includes('L1 自主 1'))
   assert.ok(report.includes('glm-5.3: 1 次'))
   assert.ok(report.includes('- 无')) // no violations journal, no exceptions
+  const projectOnly = await reportFromFiles(fs, { projectHome: 'C:/ws/.llm' }, '2026-10-27')
+  assert.ok(projectOnly.includes('- 无模型调用')) // no user directory: the usage journal reads as empty
 })
 
 test('report entry honors the period bound: older records stay out', async () => {
@@ -94,7 +96,7 @@ test('report entry honors the period bound: older records stay out', async () =>
     ].join('\n')],
   ])
   const fs = { readFile: async (path: string) => files.get(path)! }
-  const report = await reportFromFiles(fs, 'C:/ws/.llm', '2026-10-27', '2026-10-27T00:00:00Z')
+  const report = await reportFromFiles(fs, { projectHome: 'C:/ws/.llm' }, '2026-10-27', '2026-10-27T00:00:00Z')
   assert.ok(report.includes('L1 自主 1 · L2 次日报备 0 · L3 当次申报 0')) // today's record counted
   assert.ok(!report.includes('out-of-workspace: old')) // yesterday's L3 stayed out of the exceptions
 })
@@ -131,4 +133,26 @@ test('both subagent tools of the rc.3 base profile are dispatches', async () => 
   }
   await new Promise(resolve => setImmediate(resolve))
   assert.deepEqual(decisions.map(record => [record.kind, record.subject]), [['dispatch:subagent', 'subagent task'], ['dispatch:subagent_fork', 'subagent_fork task']])
+})
+
+test('the installer form journals decisions into the row home, else the data service project directory', async () => {
+  const files = new Map<string, string>()
+  const fs = { mkdir: async () => undefined, appendFile: async (path: string, data: string) => { files.set(path, (files.get(path) ?? '') + data) } }
+  const run = async (config: { home?: string }, data: unknown) => {
+    const listeners: Array<(payload: unknown, next: () => Promise<unknown>) => Promise<unknown>> = []
+    apply({ on: (_event, listener) => { listeners.push(listener as typeof listeners[number]); return () => {} }, get: name => name === 'glmHournessData' ? data : undefined }, { ...config, fs })
+    await listeners[0]!({ name: 'subagent', arguments: { description: 'task' } }, async () => ({ kind: 'allow' }))
+    await new Promise(resolve => setImmediate(resolve))
+  }
+  await run({}, { userHome: 'C:/u/glm-hourness', projectHome: 'C:/svc/.llm' })
+  await run({ home: 'C:/row/.llm' }, { userHome: 'C:/u/glm-hourness', projectHome: 'C:/svc/.llm' })
+  const warn = console.warn
+  console.warn = () => {}
+  try {
+    await run({}, undefined) // no directory: dispatch still delegates, the record is reported and dropped
+  }
+  finally {
+    console.warn = warn
+  }
+  assert.deepEqual([...files.keys()].sort(), ['C:/row/.llm/audit/decisions.jsonl', 'C:/svc/.llm/audit/decisions.jsonl'])
 })
