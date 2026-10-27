@@ -189,16 +189,32 @@ DSH 的 `TokenUsage` 各计数互不重叠：`inputTokens` 只算未命中缓存
 | ③ | Environment | ZCode 骨架，填 DSH 真实目录、git、平台、shell |
 | ④ | Desktop context | DSH 无对应特性的部分裁掉 |
 | ⑤ | Skills 引导 | DSH 技能清单 |
-| ⑥ | 工具 schema 中的行为断言 | Bash 实为 pwsh、超时单位、工作目录参数；垫片必须兑现 schema 的承诺，兑现不了就改写该句 |
+| ⑥ | 工具描述与 schema 中的行为断言 | 垫片必须兑现描述与 schema 的承诺，兑现不了就改写或删去该句；Read、Write、Edit 的处理见 §5.4，Bash 实为 pwsh、超时单位、工作目录参数 |
 | ⑦ | Context management | 逐字，承诺与 DSH 压缩一致 |
 | ⑧ | Memory | 写入纪律改为 memory 工具族与工作区 `.llm` |
 | ⑨ | Deferred 声明 | 不设；名单公告与工具检索按 ZCode 原文（§5.7） |
 
 ### 5.4 工具面
 
-- 别名：`Read`、`Write`、`Edit`、`Glob`、`Grep`、`Bash`、`TodoWrite`，执行时委托捕获的原生执行器〔实读〕。描述与 schema 当前取自 `reference/zcode-tool-schemas.md` 记载的「3.16.3 协议采样」，复核发现这些描述不是 ZCode 原文，需按源码重建（§5.9）。
-- 原生 `read`、`write`、`edit`、`glob`、`grep`、`pwsh`、`todo_write` 从 GLM 请求的工具面中滤掉，非 GLM 请求则滤掉别名；两组都保持注册，逐请求在组装监听器里决定（§3）。
-- 参数映射：`Bash` 的 `timeout`（秒）转 `timeoutMs`，`working_dir` 转 `workdir`；ZCode 的 `description` 可选而 DSH `pwsh` 要求非空，缺省时取命令首行（最长 80 字符）；`Glob` 的 `ip` 原生无对应，丢弃；`TodoWrite` 的 `priority`（`high`/`medium`/`low`）在执行边界剥离。
+- 别名：`Read`、`Write`、`Edit`、`Glob`、`Grep`、`Bash`、`TodoWrite`，执行时委托捕获的原生定义〔实读〕。`Read`、`Write`、`Edit` 的描述、schema 与结果文本已按 3.16.3 安装包重建（2026-10-28，镜像文件 `src/glm-prompt/zcode-tool-text.ts`）；`Glob`、`Grep`、`TodoWrite` 仍取自 `reference/zcode-tool-schemas.md`，待重建（§5.9）。
+- 工具面：别名只遮住它实际包住的原生工具。`Read` 包住 `read`，组合里有 `read_image` 时也包住它；其余别名各包一个（`write`、`edit`、`glob`、`grep`、`pwsh`、`todo_write`）。被包住的原生工具从 GLM 请求的工具面中滤掉，非 GLM 请求则滤掉别名；两组都保持注册，逐请求在组装监听器里决定（§3）。L3 探针（2026-10-28）：GLM 首个请求 16 个工具（14 个常驻加两个检索控制工具），13 个延迟；非 GLM 请求 28 个原生工具。
+- schema：三个工具都是 ZCode 发给模型的形态，即合同中的 zod 对象经 `toToolJsonSchema`（zod-to-json-schema 3.25.2，jsonSchema7，`effectStrategy: input`）转换后再加 `$schema`（2020-12）。所以有 `integer`、`minimum`、`exclusiveMinimum`、`additionalProperties: false`、`default`。rc.3 不校验原样注册的工具参数，这些关键字原样到达模型（L3 探针实测）。`Read` 用不带 PDF 的形态：ZCode 只对声明 PDF 输入的模型加 `pages` 参数与 PDF 说明行，GLM 不声明。
+- 映射与兑现（Read，`src/glm-prompt/read-alias.ts`）：
+  - 描述删去视频一行：DSH 没有视频输入。组合里没有 `read_image` 时再删去图片一行。其余各行逐字。
+  - 结果按 ZCode 的 cat -n 形态渲染（`行号\t内容`），不用原生的 `行号: 内容` 外框。Edit 描述要求模型「去掉 Read 的行号前缀（行号加 tab）」，依赖这个形态。空文件回 ZCode 的空文件提醒。
+  - 原生窗口受 2000 行与 50 KB 两个上限。窗口没读到文件末尾、且不是模型自己给的 `limit` 截住的，结果前加 ZCode 部分视图提醒的后两句（「Showing a partial view of lines …」「Use Read with offset … to continue …」）。第一句讲的是 ZCode 的 token 预算，与原生上限不符，不用。
+  - `offset` 为 0 时按 ZCode 从第 1 行读（原生从 1 计）；`limit` 超过原生窗口 2000 行时截到 2000，结果用上面的提醒说明续读位置。垫片按原生默认配置写死 2000。
+  - 图片扩展名（ZCode 的集合，与 `read_image` 相同）转给 `read_image`，`offset`、`limit` 对图片不适用，与 ZCode 一致；图片结果用 `read_image` 自己的渲染。
+  - ZCode 的二进制扩展名（`.exe`、`.zip` 等 19 个）与视频扩展名直接拒绝，组合里没有 `read_image` 时图片扩展名也拒绝；错误文本用 ZCode 的二进制拒读原文。
+  - 输出合同：有 `read_image` 时是两个原生输出 schema 的 `oneOf`，渲染与 `presentationMeta` 交给产出该值的原生工具，参数先映射。
+- 映射与兑现（Write、Edit，`src/glm-prompt/aliases.ts`）：
+  - Write 映射 `file_path`、`content`。「覆盖没读过的已有文件会失败」由默认的 `fs-observation-policy` 保证：没观察过的目标按 create-if-absent 写，已有文件被拒（L3 探针实测，文件内容不变）。
+  - Edit 映射 `file_path`、`old_string`、`new_string`；`replace_all` 按 ZCode 的语义布尔转换（`true`/`1`/`yes`/`y`/`on` 与对应的假值字符串，数字 1/0），其余值原样交给原生工具报错。「必须先 Read」「old_string 必须唯一」由原生 `edit` 与观察策略保证。
+  - 原生 `write`、`edit` 在受限文件系统下多出 `sandbox_permissions`、`justification` 两个字段，沙盒拒绝时提示模型带上它们重试。原生声明了这两个字段时，别名把原生的字段定义原样追加到 ZCode schema 的 `properties` 末尾并转发；原生没有时 schema 与 ZCode 逐字一致。这是本地化，不属于逐字声明。
+  - 结果文本用 ZCode 的原文（「File created successfully at: …」「The file … has been updated successfully.」「… All occurrences were successfully replaced.」，后接「(file state is current in your context — no need to Read it back)」）。值的形状不对时退回原生渲染。
+- 与 ZCode 的已知差异（未移植）：Read 的「文件未变」短路（`file_unchanged`）、超 token 预算报错与 Read 状态元数据；Edit 的模糊匹配与引号归一（ZCode 会兜底匹配，DSH 原生只做精确匹配，与描述一致）；Edit 用空 `old_string` 新建文件（原生拒绝空 `old_string`）。
+- 已知缺口：原生通道 `glm-zcode` 的编码器只发送工具结果与用户消息里的文本块，图片块被丢掉（`src/glm-llm/anthropic.ts`）。因此经 `glm-zcode` 时 Read 读图只能看到 `read_image` 的文字摘要，描述中的「presents them visually」在该通道上不成立；经 pi-ai 等支持图片的路由时成立。修复属于通道层，单独排期。
+- 其余参数映射：`Bash` 的 `timeout`（秒）转 `timeoutMs`，`working_dir` 转 `workdir`；ZCode 的 `description` 可选而 DSH `pwsh` 要求非空，缺省时取命令首行（最长 80 字符）；`Glob` 的 `ip` 原生无对应，丢弃；`TodoWrite` 的 `priority`（`high`/`medium`/`low`）在执行边界剥离。
 
 ### 5.5 todo 提醒
 
@@ -227,7 +243,7 @@ L3 探针：沙盒里把压缩阈值调低，摘要请求末条是 ZCode 提示�
 - 开关：`glm-prompt` 配置 `toolSearchMode`，`local`（默认）或 `off`。
 - 安装：`agent/created` 时在 agent 作用域注册 `LocalToolSearch` 与 `DeferredToolCall`，并注册一个 `agent/pre-step` 监听器。
 - 工具面：GLM 请求先做别名改写，再交给 `buildToolExposure`：延迟工具离开工具面，两个控制工具留下；没有延迟工具时控制工具也离开。非 GLM 请求只去掉控制工具。
-- 分类：ZCode 常驻名单保持常驻；有 ZCode 对应物的 DSH 工具跟随对应物（`read_image`、`subagent`、`subagent_fork`、`skill`、`workflow`、`get_goal`、`ask_user_question`、`bash`、`str_replace_editor`）；记忆工具常驻（`ORCHESTRATION.md` §8）；其余 DSH 工具按 MCP 规则延迟。L3 探针中的 28 个 GLM 工具，13 个延迟：TodoWrite、create_goal、exit_plan_mode、interrupt_agent、job_kill、job_list、job_output、list_agents、send_message、update_goal、web_fetch、web_search、working_directory。
+- 分类：ZCode 常驻名单保持常驻；有 ZCode 对应物的 DSH 工具跟随对应物（`read_image`、`subagent`、`subagent_fork`、`skill`、`workflow`、`get_goal`、`ask_user_question`、`bash`、`str_replace_editor`）；记忆工具常驻（`ORCHESTRATION.md` §8）；其余 DSH 工具按 MCP 规则延迟。L3 探针中的 GLM 工具面（2026-10-27 为 28 个；2026-10-28 起 `read_image` 由 Read 别名包住，为 27 个），13 个延迟：TodoWrite、create_goal、exit_plan_mode、interrupt_agent、job_kill、job_list、job_output、list_agents、send_message、update_goal、web_fetch、web_search、working_directory。
 - 公告：每步在 `agent/pre-step` 计算新增、恢复、移除的 deferred 名单，追加一条 `<system-reminder>` notice（来源 `glm-tool-search`）；增量事实存在 notice 的 `source.toolSearchAnnouncement`，与 ZCode 公告元数据一致。已公告状态每步从 `session.deriveMessages()` 重新推出，所以续跑、重启和压缩后都按模型实际看得到的历史计算。
 - 检索结果：执行 `LocalToolSearch` 时按 ZCode 投影生成内容，即 `<functions>` 定义块、「Loaded: …」提醒、「Tool definitions already available …」提醒。「已加载」只认最近一条助手消息之前的成功检索结果（ZCode 同批不互相去重的语义）。
 - `DeferredToolCall`：校验与拒绝文案按 ZCode `resolveDeferredToolCall`；通过后经 `tools.execute` 执行目标，不带 `parent` 令牌。ZCode 在派发前就把包装还原成目标调用，所以 guard、审计流水、todo 提醒、会话检查点看到的都应该是目标本身；todo 提醒跳过包装调用，避免重复计数。
@@ -244,7 +260,7 @@ L3 探针：沙盒里把压缩阈值调低，摘要请求末条是 ZCode 提示�
 
 | # | 能力 | 类 | 处置 | 状态 |
 | --- | --- | --- | --- | --- |
-| 1 | 工具命名与 schema | 方言 | 别名投影 | 已实现 |
+| 1 | 工具命名与 schema | 方言 | 别名投影；Read、Write、Edit 按 3.16.3 重建并兑现（§5.4） | 已实现，Glob、Grep、TodoWrite、Bash 待重建 |
 | 2 | TodoWrite 三字段 | 方言 | 垫片剥离 priority | 已实现 |
 | 3 | 身份节 | 方言 | 同名替换 | 已实现 |
 | 4 | todo 提醒 10/10 | 方言 | 逐字文案与阈值 | 已实现，计数口径有偏差，真机未确认生效 |
@@ -279,17 +295,18 @@ L3 探针：沙盒里把压缩阈值调低，摘要请求末条是 ZCode 提示�
 | ToolSearch 描述 | 旧 `toolsearch/index.ts` | 首句一致，之后不一致。已按 3.16.3 安装包重建为 `LocalToolSearch` 描述（2026-10-27） | 安装包；源码 `tool/search/description.ts` 是 3.16.2 版本 |
 | Deferred 声明段 | 旧 `verbatim.ts` `DEFERRED_DECLARATION` | 任何来源中都找不到；ZCode 系统提示词没有这一段，已删除（2026-10-27） | — |
 | 工具检索全部文本 | `toolsearch/zcode-text.ts` | 一致（门禁按字面量片段检查） | 安装包 |
-| TodoWrite、Read、Write、Edit、Glob、Grep 描述 | `todowrite.ts`、`aliases.ts` | 任何来源中都找不到；源码中的描述是另一套文本 | `tool/handlers/*.ts` |
+| Read、Write、Edit 描述、schema 与结果文本 | `zcode-tool-text.ts`（镜像文件） | 旧文本任何来源中都找不到，已按 3.16.3 安装包重建（2026-10-28）；Read 描述按 §5.4 删去不能兑现的行。schema 用 ZCode 锁定的 zod-to-json-schema 3.25.2 复算，与安装包中的 zod 定义一致 | 安装包；源码 `tool/handlers/read.ts`、`write.ts`、`edit.ts`、`contracts/src/tools/` |
+| TodoWrite、Glob、Grep 描述 | `todowrite.ts`、`aliases.ts` | 任何来源中都找不到；源码中的描述是另一套文本 | `tool/handlers/*.ts` |
 | Bash 描述 | `aliases.ts` | 按本地化清单 ⑥ 改写，不要求逐字；改写所依据的原文需按源码重核 | `tool/handlers/bash*.ts` |
 
-结论：身份类文本与 context management 是原文；todo 提醒正文、compact 提示词的小处偏差已修正；start-plan 三块系统提示中的静态文本与原文一致；工具描述、deferred 声明段与 ToolSearch 描述的大部分不是 ZCode 3.16.x 的原文。这些文本只存在于 `reference/zcode-tool-schemas.md`，其「协议采样」的出处无法追溯。工具参数 schema 尚未比对。
+结论：身份类文本与 context management 是原文；todo 提醒正文、compact 提示词的小处偏差已修正；start-plan 三块系统提示中的静态文本与原文一致；工具描述、deferred 声明段与 ToolSearch 描述的大部分不是 ZCode 3.16.x 的原文。这些文本只存在于 `reference/zcode-tool-schemas.md`，其「协议采样」的出处无法追溯。Read、Write、Edit 已按安装包重建（含参数 schema）；其余四个工具的参数 schema 尚未比对。
 
 处置：
 
-- 来源优先级：3.16.3 安装包为准（用户补丁的安全声明除外，该段以源码与 pristine 为准）；源码作为可读参考。源码（3.16.2）与安装包的已知差异：compact 结尾 `REMINDER` 行；工具检索的 local 模式（§5.10）。
+- 来源优先级：3.16.3 安装包为准（用户补丁的安全声明除外，该段以源码与 pristine 为准）；源码作为可读参考。源码（3.16.2）与安装包的已知差异：compact 结尾 `REMINDER` 行；工具检索的 local 模式（§5.10）；Read 部分视图提醒与正文之间，安装包用一个换行，源码用两个。
 - 逐字门禁 `scripts/check-verbatim.mjs`（`npm test` 的一道）：每段号称逐字的文本逐行必须出现在安装包或源码中；尚未重建的条目列为已知偏差，只许减少，某条一旦对上而未从名单删除也会失败，名单里的条目不再被检查时同样失败；机器上没有参考源时跳过〔已实现〕。
-- 镜像文件：整份文件都是逐字声明的源文件（目前只有 `src/toolsearch/zcode-text.ts`），门禁抽出其中每个字符串与模板字面量片段逐行比对，模板按插值点切开。这样带插值的模板也能逐片检查。镜像文件里不能出现正则字面量和除法，扫描器不解析它们。
-- 已知偏差（待重建）：六个工具描述。重建牵涉垫片能否兑现原文描述的参数与行为。
+- 镜像文件：整份文件都是逐字声明的源文件（`src/toolsearch/zcode-text.ts`、`src/glm-prompt/zcode-tool-text.ts`），门禁抽出其中每个字符串与模板字面量片段逐行比对，模板按插值点切开。这样带插值的模板也能逐片检查。镜像文件里不能出现正则字面量和除法，扫描器不解析它们。本地化的组合（删去哪几行、追加哪些字段）写在镜像文件之外。
+- 已知偏差（待重建）：TodoWrite、Glob、Grep 三个工具描述（`ROADMAP.md` M1.1b）。重建牵涉垫片能否兑现原文描述的参数与行为。
 
 ### 5.10 ZCode 的工具检索机制（3.16.3）
 
@@ -345,6 +362,7 @@ L3 探针：沙盒里把压缩阈值调低，摘要请求末条是 ZCode 提示�
 | 原生通道在 DSH 真实会话中端到端可用 | L4 真机（需用户） |
 | 签名握手失败的根因与 3.16.3 协议变化 | 对照 zcode-api 与本机 ZCode 3.16.3 机制 |
 | start-plan 真机授权 | L4 |
-| 方言文本按源码重建后的工具参数 schema 对齐 | 对照 `tool/handlers/*.ts` 的 schema 定义 |
+| Glob、Grep、TodoWrite、Bash 的参数 schema 对齐（Read、Write、Edit 已完成） | 对照安装包中的 zod 定义与 `tool/handlers/*.ts` |
+| 原生通道发送图片块（工具结果与用户消息） | 编码器单测；L4 真机读图 |
 | native ToolSearch 透传（K2）、服务端 web 工具闸门（K4） | 需活 token 实测 |
 | beta 头、OutputStyle 列表、实跑采样参数 | 抓包 |
