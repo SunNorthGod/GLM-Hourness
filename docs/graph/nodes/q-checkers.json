@@ -1,0 +1,52 @@
+{
+  "id": "q-checkers",
+  "type": "question",
+  "title": "M1.9 新增开发依赖与检查器",
+  "status": "done",
+  "parent": "m1",
+  "body": "本仓库目前只有 tsc 类型检查，缺规范检查、死代码检查、重复检查（ORCHESTRATION.md §7.7）。新增开发依赖要用户同意（ROADMAP.md §3）。推荐 A：每种语言用专门的工具，现有告警记为基线，只减不增（ORCHESTRATION.md §7.6）。",
+  "options": [
+    {
+      "key": "A",
+      "label": "ESLint 与 typescript-eslint、knip、jscpd，精确版本的开发依赖，不加格式化器",
+      "consequence": "规范、死代码、重复检查进门禁，现有告警记为基线；多四个开发依赖，要定期更新"
+    },
+    {
+      "key": "B",
+      "label": "不加检查器，只用 tsc",
+      "consequence": "不新增依赖；规范、死代码与重复检查继续缺位"
+    }
+  ],
+  "recommend": "A",
+  "decision": "A",
+  "evidence": [
+    {
+      "kind": "decision",
+      "ref": "A"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-27T20:04:04.463Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "迁移：ROADMAP.md §3 需要用户的事项",
+      "to": "approved"
+    },
+    {
+      "at": "2026-10-27T20:04:04.473Z",
+      "actor": "human",
+      "op": "decide",
+      "reason": "迁移：用户 2026-10-27 在对话中选 A；ROADMAP.md §3 的这一行待主线更新",
+      "from": "approved",
+      "to": "done",
+      "option": "A",
+      "evidence": [
+        {
+          "kind": "decision",
+          "ref": "A"
+        }
+      ]
+    }
+  ]
+}

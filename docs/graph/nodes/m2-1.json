@@ -1,0 +1,27 @@
+{
+  "id": "m2-1",
+  "type": "task",
+  "title": "2.1 存储格式定案",
+  "status": "proposed",
+  "parent": "m2",
+  "kind": "docs",
+  "body": "存储格式与位置向用户发决策卡（ROADMAP.md M2 2.1，ORCHESTRATION.md §2.6）。",
+  "acceptance": [
+    "用户批准"
+  ],
+  "edges": [
+    {
+      "type": "depends",
+      "to": "q-graph-design"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-27T20:04:04.720Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "迁移：ROADMAP.md M2 2.1",
+      "to": "proposed"
+    }
+  ]
+}

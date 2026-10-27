@@ -1,0 +1,75 @@
+{
+  "id": "m1-2",
+  "type": "task",
+  "title": "1.2 路由判定收口",
+  "status": "done",
+  "parent": "m1",
+  "kind": "implement",
+  "body": "共享判定函数 src/shared/route.ts：方言按模型族、通道按 provider；删除旧构建分支；单测假宿主只提供 rc.3 的信号。glm-prompt 改在组装瀑布中逐请求改写提示词与工具面，工具检索并入 glm-prompt（ROADMAP.md M1 1.2 与 ④，DESIGN.md §3）。",
+  "acceptance": [
+    "L2：只有组装变量携带路由时，方言、工具检索、todo 提醒均生效"
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "e64bd65",
+      "note": "逐请求改写提示词与工具面"
+    },
+    {
+      "kind": "commit",
+      "ref": "9ac065d",
+      "note": "移植 3.16.3 local 工具检索"
+    },
+    {
+      "kind": "commit",
+      "ref": "5944958",
+      "note": "合成 notice 带 id 与 role"
+    },
+    {
+      "kind": "test",
+      "ref": "npm run probe",
+      "exit": 0,
+      "note": "L3 探针 15/15（2026-10-27）"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-27T20:04:04.395Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "迁移：ROADMAP.md M1 1.2",
+      "to": "approved"
+    },
+    {
+      "at": "2026-10-27T20:04:04.401Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "1.2 完成：glm-prompt 与工具检索都按共享路由判定生效（ROADMAP.md M1 进度）",
+      "from": "approved",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "e64bd65",
+          "note": "逐请求改写提示词与工具面"
+        },
+        {
+          "kind": "commit",
+          "ref": "9ac065d",
+          "note": "移植 3.16.3 local 工具检索"
+        },
+        {
+          "kind": "commit",
+          "ref": "5944958",
+          "note": "合成 notice 带 id 与 role"
+        },
+        {
+          "kind": "test",
+          "ref": "npm run probe",
+          "exit": 0,
+          "note": "L3 探针 15/15（2026-10-27）"
+        }
+      ]
+    }
+  ]
+}

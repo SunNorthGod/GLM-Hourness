@@ -1,0 +1,36 @@
+{
+  "id": "q-old-folder",
+  "type": "question",
+  "title": "删除旧文件夹 dsh-glm-dialect",
+  "status": "approved",
+  "parent": "hourness",
+  "body": "Desktop\\Project\\dsh-glm-dialect 是旧工作名时期的文件夹，文档已在 M0 迁入本仓库（提交 c518317）。它在工作区外，只有用户能删（ROADMAP.md §3）。推荐 A：迁入的原文留在 git 历史中，留着旧文件夹只会让人读到过时的副本。",
+  "options": [
+    {
+      "key": "A",
+      "label": "删除",
+      "consequence": "少一份过时副本；删除不可撤销，迁入的原文仍在本仓库 git 历史中"
+    },
+    {
+      "key": "B",
+      "label": "保留",
+      "consequence": "两处并存，以后可能读到过时的副本"
+    }
+  ],
+  "recommend": "A",
+  "edges": [
+    {
+      "type": "source",
+      "to": "m0"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-27T20:04:04.372Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "迁移：ROADMAP.md §3 需要用户的事项",
+      "to": "approved"
+    }
+  ]
+}

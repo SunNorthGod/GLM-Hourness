@@ -1,0 +1,22 @@
+{
+  "id": "m1-4",
+  "type": "task",
+  "title": "1.4 共享数据目录与审计服务",
+  "status": "approved",
+  "parent": "m1",
+  "kind": "implement",
+  "body": "共享数据目录与审计服务（DESIGN.md §2.4）；guard 违规落盘；迁移 profile 目录下的 190 条用量记录与 1 条记忆（ROADMAP.md M1 1.4，HANDOFF.md §4）。",
+  "acceptance": [
+    "L2",
+    "L3 中 guard 拦截后违规流水有记录"
+  ],
+  "history": [
+    {
+      "at": "2026-10-27T20:04:04.418Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "迁移：ROADMAP.md M1 1.4",
+      "to": "approved"
+    }
+  ]
+}

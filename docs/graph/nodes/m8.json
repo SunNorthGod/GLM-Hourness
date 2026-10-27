@@ -1,0 +1,17 @@
+{
+  "id": "m8",
+  "type": "feature",
+  "title": "M8 呈现",
+  "status": "proposed",
+  "parent": "orch",
+  "body": "按 ORCHESTRATION.md §13 实现 UI；核实 ui-primitives 可用性；替换现有设置页与 pill；按截图迭代，用户终审（ROADMAP.md M8）。项目图的 DSH 右侧栏标签页在这里做，沿用本机查看器的服务端 API（ORCHESTRATION.md §2.10）。",
+  "history": [
+    {
+      "at": "2026-10-27T20:04:04.930Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "迁移：ROADMAP.md M8；新开分支属计划外，等人批准",
+      "to": "proposed"
+    }
+  ]
+}

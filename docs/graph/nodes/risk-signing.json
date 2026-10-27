@@ -1,0 +1,17 @@
+{
+  "id": "risk-signing",
+  "type": "risk",
+  "title": "签名握手失败，1.5 倍用量是否到手未验证",
+  "status": "approved",
+  "parent": "bottom",
+  "body": "签名握手对当前凭证失败，按设计无签发送；对 ZCode 渠道 1.5 倍用量的影响未验证，签名状态不可见（HANDOFF.md §5 第 5 条）。",
+  "history": [
+    {
+      "at": "2026-10-27T20:04:04.689Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "迁移：HANDOFF.md §5",
+      "to": "approved"
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "id": "orch",
+  "type": "feature",
+  "title": "编排层：LLM 之上的工作流",
+  "status": "approved",
+  "parent": "hourness",
+  "slope": "uphill",
+  "stage": "design",
+  "body": "项目图与主 Agent、设计循环、guard、环境与检查器、记忆与学习、用量与峰谷、运维、报告、UI 呈现（CHARTER.md §4，设计见 ORCHESTRATION.md）。",
+  "acceptance": [
+    "决定 LLM 怎么干活，人怎么看见并管住它"
+  ],
+  "history": [
+    {
+      "at": "2026-10-27T20:04:04.368Z",
+      "actor": "human",
+      "op": "propose",
+      "reason": "迁移：CHARTER.md §4 分层",
+      "to": "approved"
+    }
+  ]
+}

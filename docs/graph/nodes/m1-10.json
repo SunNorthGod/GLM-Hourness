@@ -1,0 +1,65 @@
+{
+  "id": "m1-10",
+  "type": "task",
+  "title": "1.10 todo 提醒按助手轮次计数",
+  "status": "done",
+  "parent": "m1",
+  "kind": "implement",
+  "body": "按 ZCode 3.16.3 每步在 agent/pre-step 从会话历史重新计算：一条 GLM 助手消息算一轮，经 DeferredToolCall 的 TodoWrite 算写入（ROADMAP.md M1 1.10，DESIGN.md §5.5）。",
+  "acceptance": [
+    "L2"
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "939ea90",
+      "note": "todo 提醒按助手轮次计数"
+    },
+    {
+      "kind": "commit",
+      "ref": "e353450",
+      "note": "记录按轮次计数的 todo 提醒"
+    },
+    {
+      "kind": "test",
+      "ref": "npm run probe",
+      "exit": 0,
+      "note": "L3 探针 35/35（2026-10-28）"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-27T20:04:04.486Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "迁移：ROADMAP.md M1 1.10",
+      "to": "approved"
+    },
+    {
+      "at": "2026-10-27T20:04:04.498Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "1.10 完成（ROADMAP.md M1 进度）",
+      "from": "approved",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "939ea90",
+          "note": "todo 提醒按助手轮次计数"
+        },
+        {
+          "kind": "commit",
+          "ref": "e353450",
+          "note": "记录按轮次计数的 todo 提醒"
+        },
+        {
+          "kind": "test",
+          "ref": "npm run probe",
+          "exit": 0,
+          "note": "L3 探针 35/35（2026-10-28）"
+        }
+      ]
+    }
+  ]
+}

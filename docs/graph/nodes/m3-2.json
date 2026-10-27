@@ -1,0 +1,18 @@
+{
+  "id": "m3-2",
+  "type": "task",
+  "title": "3.2 许愿访谈八步与需求卡",
+  "status": "proposed",
+  "parent": "m3",
+  "kind": "implement",
+  "body": "访谈过程中图实时生长（ORCHESTRATION.md §4.2）。",
+  "history": [
+    {
+      "at": "2026-10-27T20:04:04.802Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "迁移：ROADMAP.md M3 3.2",
+      "to": "proposed"
+    }
+  ]
+}

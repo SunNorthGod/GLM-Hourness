@@ -1,0 +1,28 @@
+{
+  "id": "m1-8",
+  "type": "task",
+  "title": "1.8 guard 引号感知与影子模式",
+  "status": "approved",
+  "parent": "m1",
+  "kind": "implement",
+  "body": "file-tools-only 改为引号感知：只看命令位置与引号外的真实重定向，git 子命令放行；规则声明注入提示词；执行后以工作区变更记录兜底，只记录不拦截（影子模式）（ROADMAP.md M1 1.8，ORCHESTRATION.md §6.4、§6.5）。影子模式的记录写进 1.4 的审计服务。",
+  "acceptance": [
+    "L2 覆盖 =>、>>>、-> 与 git 子命令",
+    "L3"
+  ],
+  "edges": [
+    {
+      "type": "depends",
+      "to": "m1-4"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-27T20:04:04.457Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "迁移：ROADMAP.md M1 1.8",
+      "to": "approved"
+    }
+  ]
+}

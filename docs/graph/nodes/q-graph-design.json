@@ -1,0 +1,35 @@
+{
+  "id": "q-graph-design",
+  "type": "question",
+  "title": "批准项目图引擎设计与文件格式",
+  "status": "approved",
+  "parent": "m2",
+  "body": "设计在 ORCHESTRATION.md §2.6、§2.9–§2.13，原型在 graph-engine 分支；§15 列出原型按推荐项实现、待批准的细则。推荐 A：原型按推荐项实现并有测试，细则可以在用的过程中逐条改。",
+  "options": [
+    {
+      "key": "A",
+      "label": "按原型批准，§15 的细则逐条确认",
+      "consequence": "M2.2 起在这套文件格式与引擎 API 上做 DSH 图工具；graph-engine 分支可以合入 main"
+    },
+    {
+      "key": "B",
+      "label": "批准引擎，节点文件改为 Markdown 加 frontmatter",
+      "consequence": "正文更好读；要自写 frontmatter 子集解析器与一套嵌套语法，存储层重做"
+    },
+    {
+      "key": "C",
+      "label": "打回，重新设计",
+      "consequence": "M2 推迟；原型留在分支上不合入"
+    }
+  ],
+  "recommend": "A",
+  "history": [
+    {
+      "at": "2026-10-27T20:04:04.709Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "迁移：ROADMAP.md §3 M2.1 的审阅事项",
+      "to": "approved"
+    }
+  ]
+}

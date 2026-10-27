@@ -1,0 +1,17 @@
+{
+  "id": "m5",
+  "type": "feature",
+  "title": "M5 记忆与学习",
+  "status": "proposed",
+  "parent": "orch",
+  "body": "事实与偏好分类；会话开局召回；记忆工具常驻；取消路径判据；学习流水线；汇报细度闭环（ROADMAP.md M5）。",
+  "history": [
+    {
+      "at": "2026-10-27T20:04:04.886Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "迁移：ROADMAP.md M5；新开分支属计划外，等人批准",
+      "to": "proposed"
+    }
+  ]
+}

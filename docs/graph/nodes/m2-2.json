@@ -1,0 +1,27 @@
+{
+  "id": "m2-2",
+  "type": "task",
+  "title": "2.2 图工具：读投影、提议、带证据改状态",
+  "status": "proposed",
+  "parent": "m2",
+  "kind": "implement",
+  "body": "DSH 图工具照命令行契约暴露（ORCHESTRATION.md §2.10）。",
+  "acceptance": [
+    "L2：无证据不能标完成"
+  ],
+  "edges": [
+    {
+      "type": "depends",
+      "to": "m2-1"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-27T20:04:04.730Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "迁移：ROADMAP.md M2 2.2",
+      "to": "proposed"
+    }
+  ]
+}

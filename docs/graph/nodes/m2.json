@@ -1,0 +1,19 @@
+{
+  "id": "m2",
+  "type": "feature",
+  "title": "M2 项目图行走骨架",
+  "status": "proposed",
+  "parent": "orch",
+  "slope": "uphill",
+  "stage": "release",
+  "body": "项目图取代 todo 成为项目的骨架（ORCHESTRATION.md §2）。M2 完成后，后续所有条目都作为任务节点挂在项目图上推进（ROADMAP.md §1）。原型在 graph-engine 分支：节点文件、引擎规则、SVG 渲染、命令行与本机查看器，本图就是经它的引擎 API 写出的，等用户审阅（ROADMAP.md §3）。",
+  "history": [
+    {
+      "at": "2026-10-27T20:04:04.699Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "迁移：ROADMAP.md M2；新开分支属计划外，等人批准",
+      "to": "proposed"
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "id": "m1-9",
+  "type": "task",
+  "title": "1.9 规范、死代码、重复检查与告警基线",
+  "status": "approved",
+  "parent": "m1",
+  "kind": "implement",
+  "body": "按 ORCHESTRATION.md §7.5 给本仓库补规范检查、死代码检查、重复检查，记录告警基线；新增开发依赖先告知用户（ROADMAP.md M1 1.9）。",
+  "acceptance": [
+    "门禁中可运行，基线入库"
+  ],
+  "edges": [
+    {
+      "type": "depends",
+      "to": "q-checkers"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-27T20:04:04.479Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "迁移：ROADMAP.md M1 1.9",
+      "to": "approved"
+    }
+  ]
+}

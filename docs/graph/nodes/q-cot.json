@@ -1,0 +1,30 @@
+{
+  "id": "q-cot",
+  "type": "question",
+  "title": "是否关闭 cot-translation 实验行",
+  "status": "approved",
+  "parent": "bottom",
+  "body": "cot-translation 是 DSH 官方的实验行，不是本项目组件，会把推理碎片显示到界面（HANDOFF.md §5 第 11 条）。关它要改用户的 profile，需要用户同意（ROADMAP.md §3）。推荐 A：推理碎片显示在界面上干扰阅读，备份后随时可以改回。",
+  "options": [
+    {
+      "key": "A",
+      "label": "关闭，改 profile 前先备份",
+      "consequence": "界面不再显示推理碎片；用户 profile 多一处改动"
+    },
+    {
+      "key": "B",
+      "label": "保留",
+      "consequence": "界面照旧显示推理碎片；profile 不动"
+    }
+  ],
+  "recommend": "A",
+  "history": [
+    {
+      "at": "2026-10-27T20:04:04.651Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "迁移：ROADMAP.md §3 需要用户的事项",
+      "to": "approved"
+    }
+  ]
+}

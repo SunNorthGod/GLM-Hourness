@@ -1,0 +1,31 @@
+{
+  "id": "bottom",
+  "type": "feature",
+  "title": "底层：通道与方言",
+  "status": "doing",
+  "parent": "hourness",
+  "slope": "downhill",
+  "stage": "execute",
+  "body": "通道：凭证与登录、身份头、签名、端点路由、传输、模型目录、思考档位、额度数据。方言：提示词镜像、工具别名、todo 提醒、压缩镜像、工具检索（CHARTER.md §4，设计见 DESIGN.md）。",
+  "acceptance": [
+    "服务端接受请求并正确计费",
+    "模型处在训练分布中"
+  ],
+  "history": [
+    {
+      "at": "2026-10-27T20:04:04.361Z",
+      "actor": "human",
+      "op": "propose",
+      "reason": "迁移：CHARTER.md §4 分层",
+      "to": "approved"
+    },
+    {
+      "at": "2026-10-27T20:04:04.365Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "M1 底层收口进行中（ROADMAP.md M1）",
+      "from": "approved",
+      "to": "doing"
+    }
+  ]
+}

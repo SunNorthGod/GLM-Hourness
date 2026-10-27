@@ -1,0 +1,27 @@
+{
+  "id": "m2-4",
+  "type": "task",
+  "title": "2.4 只读视图",
+  "status": "proposed",
+  "parent": "m2",
+  "kind": "implement",
+  "body": "先以命令输出文本树，UI 标签页放在 M8（ROADMAP.md M2 2.4）。原型已有命令行 show、open 与本机查看器（ORCHESTRATION.md §2.10）。",
+  "acceptance": [
+    "命令可用"
+  ],
+  "edges": [
+    {
+      "type": "depends",
+      "to": "m2-1"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-27T20:04:04.753Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "迁移：ROADMAP.md M2 2.4",
+      "to": "proposed"
+    }
+  ]
+}

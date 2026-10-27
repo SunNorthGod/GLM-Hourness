@@ -1,0 +1,36 @@
+{
+  "id": "q-profile-cleanup",
+  "type": "question",
+  "title": "清理 profile 里的备份与旧数据目录",
+  "status": "approved",
+  "parent": "m1",
+  "body": "profile 目录里有 2026-10-27 启动崩溃后的恢复来源 cordis.patch.yml.bak-1793101338423，以及旧数据目录 ~/.dsh/profiles/desktop/.llm/（190 条用量记录与 1 条记忆，HANDOFF.md §4、§6）。删除是用户的决定，要等 1.4 把记录迁到共享数据目录之后（ROADMAP.md §3）。推荐 A：迁移核对之后，旧目录只会让排查读错地方。",
+  "options": [
+    {
+      "key": "A",
+      "label": "1.4 迁移并核对条数后删除两者",
+      "consequence": "profile 目录只剩在用的文件；删除不可撤销，所以先核对迁移条数"
+    },
+    {
+      "key": "B",
+      "label": "保留",
+      "consequence": "旧目录继续存在，排查时可能读错目录"
+    }
+  ],
+  "recommend": "A",
+  "edges": [
+    {
+      "type": "source",
+      "to": "m1-4"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-27T20:04:04.423Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "迁移：ROADMAP.md §3 需要用户的事项",
+      "to": "approved"
+    }
+  ]
+}

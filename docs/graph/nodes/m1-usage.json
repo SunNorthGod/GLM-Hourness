@@ -1,0 +1,53 @@
+{
+  "id": "m1-usage",
+  "type": "task",
+  "title": "用量块：输入与缓存计数",
+  "status": "done",
+  "parent": "m1",
+  "kind": "implement",
+  "body": "原生通道的用量块输入计为 0（DESIGN.md §4.6a）；改为发一个合并的用量块，带缓存计数（ROADMAP.md M1 调整后的顺序 ①）。修正前的用量流水输入 token 均为 0，不能用于积分统计（HANDOFF.md §5 第 13 条）。",
+  "acceptance": [
+    "真网实测输入与缓存计数正确"
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "c8f49d4",
+      "note": "合并的用量块带缓存计数"
+    },
+    {
+      "kind": "commit",
+      "ref": "5c5f178",
+      "note": "记录用量块缺陷"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-27T20:04:04.518Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "迁移：ROADMAP.md M1 进度（用量块）",
+      "to": "approved"
+    },
+    {
+      "at": "2026-10-27T20:04:04.530Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "用量块修复完成，真网实测计数正确（ROADMAP.md M1 进度）",
+      "from": "approved",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "c8f49d4",
+          "note": "合并的用量块带缓存计数"
+        },
+        {
+          "kind": "commit",
+          "ref": "5c5f178",
+          "note": "记录用量块缺陷"
+        }
+      ]
+    }
+  ]
+}

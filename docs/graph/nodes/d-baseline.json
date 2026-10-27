@@ -1,0 +1,54 @@
+{
+  "id": "d-baseline",
+  "type": "decision",
+  "title": "ZCode 基线统一为 3.16.3",
+  "status": "approved",
+  "parent": "bottom",
+  "verification": "sandbox",
+  "body": "身份头、签名、提示词与工具面以同一版本为准。本机安装版被用户打过补丁，只作机制参考；逐字文本的来源记录在 docs/reference/zcode-verbatim.md（AGENTS.md 基线，DESIGN.md §1）。",
+  "evidence": [
+    {
+      "kind": "check",
+      "ref": "npm run check:verbatim",
+      "exit": 0,
+      "note": "397 段通过，已知偏差 0（2026-10-28）"
+    },
+    {
+      "kind": "test",
+      "ref": "npm run smoke:authorized",
+      "exit": 0,
+      "note": "真网返回 pong（2026-10-27）"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-27T20:04:04.603Z",
+      "actor": "human",
+      "op": "propose",
+      "reason": "迁移：用户定案 2026-10-27（DESIGN.md §1）",
+      "to": "approved"
+    },
+    {
+      "at": "2026-10-27T20:04:04.618Z",
+      "actor": "llm",
+      "op": "verify",
+      "reason": "逐字门禁与真网冒烟通过",
+      "from": "unverified",
+      "to": "sandbox",
+      "evidence": [
+        {
+          "kind": "check",
+          "ref": "npm run check:verbatim",
+          "exit": 0,
+          "note": "397 段通过，已知偏差 0（2026-10-28）"
+        },
+        {
+          "kind": "test",
+          "ref": "npm run smoke:authorized",
+          "exit": 0,
+          "note": "真网返回 pong（2026-10-27）"
+        }
+      ]
+    }
+  ]
+}

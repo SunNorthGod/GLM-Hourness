@@ -1,0 +1,42 @@
+{
+  "id": "d-toolsearch",
+  "type": "decision",
+  "title": "工具检索默认开启，按 ZCode 3.16.3 local 模式实现",
+  "status": "approved",
+  "parent": "bottom",
+  "verification": "sandbox",
+  "body": "ZCode 默认关闭工具检索，本项目按用户定案默认开启，实现与 ZCode 一致；3.16.3 安装包把检索工具叫 LocalToolSearch（DESIGN.md §5.7、§5.10）。",
+  "evidence": [
+    {
+      "kind": "test",
+      "ref": "npm run probe",
+      "exit": 0,
+      "note": "L3 探针在真运行时上执行检索、公告与 DeferredToolCall（15/15，2026-10-27）"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-27T20:04:04.626Z",
+      "actor": "human",
+      "op": "propose",
+      "reason": "迁移：用户定案 2026-10-27（ROADMAP.md M1 进度）",
+      "to": "approved"
+    },
+    {
+      "at": "2026-10-27T20:04:04.642Z",
+      "actor": "llm",
+      "op": "verify",
+      "reason": "L3 探针通过",
+      "from": "unverified",
+      "to": "sandbox",
+      "evidence": [
+        {
+          "kind": "test",
+          "ref": "npm run probe",
+          "exit": 0,
+          "note": "L3 探针在真运行时上执行检索、公告与 DeferredToolCall（15/15，2026-10-27）"
+        }
+      ]
+    }
+  ]
+}

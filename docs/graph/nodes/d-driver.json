@@ -1,0 +1,18 @@
+{
+  "id": "d-driver",
+  "type": "decision",
+  "title": "驱动循环：DSH goal 加 goal-round-driver，每拍注入投影",
+  "status": "approved",
+  "parent": "orch",
+  "verification": "unverified",
+  "body": "驱动循环借用 DSH 会话目标与 goal-round-driver，每拍注入项目图投影（ORCHESTRATION.md §2.5，DESIGN.md §6），完成目标要过证据门禁。用户 2026-10-28 采纳 DSH 借用审计的这条建议。",
+  "history": [
+    {
+      "at": "2026-10-27T20:04:05.000Z",
+      "actor": "human",
+      "op": "propose",
+      "reason": "迁移：用户定案 2026-10-28（DSH 借用审计）",
+      "to": "approved"
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "id": "m1-11",
+  "type": "task",
+  "title": "1.11 L4 真机验收",
+  "status": "approved",
+  "parent": "m1",
+  "kind": "test",
+  "body": "用户重启桌面版，选 glm-zcode 发消息（ROADMAP.md M1 1.11）。",
+  "acceptance": [
+    "行健康全绿",
+    "会话文件中系统提示词含方言",
+    "用量记录 provider 为 glm-zcode"
+  ],
+  "edges": [
+    {
+      "type": "depends",
+      "to": "m1-5"
+    },
+    {
+      "type": "depends",
+      "to": "q-l4"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-27T20:04:04.511Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "迁移：ROADMAP.md M1 1.11",
+      "to": "approved"
+    }
+  ]
+}

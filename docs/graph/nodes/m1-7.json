@@ -1,0 +1,63 @@
+{
+  "id": "m1-7",
+  "type": "task",
+  "title": "1.7 L3 沙盒自动化与标定测试集",
+  "status": "doing",
+  "parent": "m1",
+  "kind": "test",
+  "body": "真实启动 + 行为探针（方言前缀、工具面、提醒）作为门禁；标定测试集起步，先 1–2 个任务（ROADMAP.md M1 1.7，ORCHESTRATION.md §10.5）。探针 npm run probe 已上线并随每批改动扩充，2026-10-28 为 35 项；标定测试集未起步。",
+  "acceptance": [
+    "一条命令跑完，结果可机检"
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "81e2043",
+      "note": "L3 行为探针第一版"
+    },
+    {
+      "kind": "commit",
+      "ref": "ffa6cfd",
+      "note": "探针首跑发现原生通道不发送 DSH 系统提示词，已修"
+    },
+    {
+      "kind": "commit",
+      "ref": "8e0f966",
+      "note": "探针覆盖工具检索"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-27T20:04:04.440Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "迁移：ROADMAP.md M1 1.7",
+      "to": "approved"
+    },
+    {
+      "at": "2026-10-27T20:04:04.451Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "探针已上线；标定测试集未起步（ROADMAP.md M1 进度）",
+      "from": "approved",
+      "to": "doing",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "81e2043",
+          "note": "L3 行为探针第一版"
+        },
+        {
+          "kind": "commit",
+          "ref": "ffa6cfd",
+          "note": "探针首跑发现原生通道不发送 DSH 系统提示词，已修"
+        },
+        {
+          "kind": "commit",
+          "ref": "8e0f966",
+          "note": "探针覆盖工具检索"
+        }
+      ]
+    }
+  ]
+}

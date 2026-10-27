@@ -1,0 +1,99 @@
+{
+  "id": "m1-1",
+  "type": "task",
+  "title": "1.1 版本基线 3.16.3 与方言文本重建",
+  "status": "done",
+  "parent": "m1",
+  "kind": "implement",
+  "body": "身份头 appVersion、OAuth、签名平面 clientVersion 共用一个版本常量，按 3.16.3 复核三处协议变化。方言文本按 ZCode 源码重建：工具描述与参数 schema、deferred 声明段、ToolSearch 描述、todo 提醒正文、compact 三处，并加逐字比对检查（ROADMAP.md M1 1.1，DESIGN.md §5.9）。",
+  "acceptance": [
+    "L2 单测",
+    "逐字检查对照 reference/ZCode 全部通过",
+    "smoke:authorized 真网通过"
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "b555795",
+      "note": "版本基线统一到 3.16.3"
+    },
+    {
+      "kind": "commit",
+      "ref": "8900926",
+      "note": "逐字门禁；todo 提醒与 compact 文本按原文修正"
+    },
+    {
+      "kind": "commit",
+      "ref": "bd94921",
+      "note": "Read、Write、Edit 按 3.16.3 重建"
+    },
+    {
+      "kind": "commit",
+      "ref": "cf1ec13",
+      "note": "Glob、Grep、TodoWrite、Bash 按 3.16.3 重建"
+    },
+    {
+      "kind": "check",
+      "ref": "npm run check:verbatim",
+      "exit": 0,
+      "note": "397 段通过，已知偏差 0（2026-10-28，HANDOFF.md §3）"
+    },
+    {
+      "kind": "test",
+      "ref": "npm run smoke:authorized",
+      "exit": 0,
+      "note": "真网返回 pong（2026-10-27）"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-27T20:04:04.384Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "迁移：ROADMAP.md M1 1.1",
+      "to": "approved"
+    },
+    {
+      "at": "2026-10-27T20:04:04.390Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "1.1 完成：三处版本统一为 3.16.3；七个工具别名按 3.16.3 重建，逐字门禁已知偏差 0（ROADMAP.md M1 进度）",
+      "from": "approved",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "b555795",
+          "note": "版本基线统一到 3.16.3"
+        },
+        {
+          "kind": "commit",
+          "ref": "8900926",
+          "note": "逐字门禁；todo 提醒与 compact 文本按原文修正"
+        },
+        {
+          "kind": "commit",
+          "ref": "bd94921",
+          "note": "Read、Write、Edit 按 3.16.3 重建"
+        },
+        {
+          "kind": "commit",
+          "ref": "cf1ec13",
+          "note": "Glob、Grep、TodoWrite、Bash 按 3.16.3 重建"
+        },
+        {
+          "kind": "check",
+          "ref": "npm run check:verbatim",
+          "exit": 0,
+          "note": "397 段通过，已知偏差 0（2026-10-28，HANDOFF.md §3）"
+        },
+        {
+          "kind": "test",
+          "ref": "npm run smoke:authorized",
+          "exit": 0,
+          "note": "真网返回 pong（2026-10-27）"
+        }
+      ]
+    }
+  ]
+}

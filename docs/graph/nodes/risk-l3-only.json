@@ -1,0 +1,17 @@
+{
+  "id": "risk-l3-only",
+  "type": "risk",
+  "title": "运行时改动只有 L3 证据，未经真机验收",
+  "status": "approved",
+  "parent": "bottom",
+  "body": "方言提示词、工具检索、压缩镜像、读图、多轮工具调用的编码都只经 L3 探针、单测与真网冒烟验证；DSH 真实会话里走 glm-zcode 的请求为 0（HANDOFF.md §4）。桌面版重启后，GLM 会话才第一次真正看到这些改动（HANDOFF.md §5 第 14 条）。缓解：1.11 的 L4 验收。",
+  "history": [
+    {
+      "at": "2026-10-27T20:04:04.669Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "迁移：HANDOFF.md §4、§5",
+      "to": "approved"
+    }
+  ]
+}

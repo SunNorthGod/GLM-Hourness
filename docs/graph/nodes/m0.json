@@ -1,0 +1,59 @@
+{
+  "id": "m0",
+  "type": "feature",
+  "title": "M0 文档沉淀",
+  "status": "done",
+  "parent": "hourness",
+  "body": "宪章、总体与底层设计、编排层设计、事实账、路线、流程、交接整理入库；git 之前的记录导入后由新文档取代（ROADMAP.md M0）。",
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "c518317",
+      "note": "导入 git 之前的设计记录"
+    },
+    {
+      "kind": "commit",
+      "ref": "f2e0b36",
+      "note": "导入事实参考原文"
+    },
+    {
+      "kind": "commit",
+      "ref": "4037701",
+      "note": "整合宪章、设计、编排、路线与事实账"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-27T20:04:04.353Z",
+      "actor": "human",
+      "op": "propose",
+      "reason": "迁移：ROADMAP.md M0",
+      "to": "approved"
+    },
+    {
+      "at": "2026-10-27T20:04:04.358Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "M0 已完成（ROADMAP.md M0）",
+      "from": "approved",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "c518317",
+          "note": "导入 git 之前的设计记录"
+        },
+        {
+          "kind": "commit",
+          "ref": "f2e0b36",
+          "note": "导入事实参考原文"
+        },
+        {
+          "kind": "commit",
+          "ref": "4037701",
+          "note": "整合宪章、设计、编排、路线与事实账"
+        }
+      ]
+    }
+  ]
+}

@@ -374,3 +374,13 @@ test('npm run graph:render writes the renderer output for a graph directory', as
     await rm(dir, { recursive: true, force: true })
   }
 })
+
+test('the committed project graph is valid and docs/graph/graph.svg is its renderer output', async () => {
+  const dir = join(repository, 'docs', 'graph')
+  const graph = await loadGraph(dir)
+  assert.ok(graph.nodes.size > 0, 'docs/graph/nodes holds the project graph')
+  assert.deepEqual(graph.issues, [], 'node files are valid and canonical')
+  const expected = renderGraph(graph)
+  assert.ok(expected.ok)
+  assert.equal(await readFile(join(dir, 'graph.svg'), 'utf8'), expected.svg, 'docs/graph/graph.svg is stale: run npm run graph:render and commit it with the node files')
+})

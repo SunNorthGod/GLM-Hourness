@@ -1,0 +1,38 @@
+{
+  "id": "hourness",
+  "type": "goal",
+  "title": "GLM-Hourness：GLM 以 ZCode 训练分布住进 DSH，开发体系由 harness 保证实施",
+  "status": "doing",
+  "stage": "execute",
+  "body": "GLM-Hourness = GLM + House + Harness：让 GLM 住进 DeepSeek Harness（DSH），并把它当作一项标准的 harness 工程来建造。模型权重不可改，能改的是模型所处的环境（CHARTER.md §1）。\n分工：人负责发现需求、制定目标、设计架构与流程；代码编写、测试、运维、报告交给 LLM（CHARTER.md §3）。",
+  "acceptance": [
+    "无损：GLM 以 ZCode 训练分布接入 DSH，模型质量与官方 ZCode 一致，不为照顾宿主裁剪",
+    "治顽疾：修复工具 schema 负担、上下文膨胀、记忆陈旧、长程任务的目标漂移与计划过时",
+    "自由度：每个能力是独立插件行，可单独禁用，故障时降级，不影响其他 provider",
+    "调校：开发体系量化成标准与规范，由 harness 在执行边界保证实施，不依赖 LLM 或人的自觉",
+    "工程美学：CHARTER.md §6 的条款作为设计约束"
+  ],
+  "nonGoals": [
+    "不替用户在模型、套餐、渠道上做主，不做自动切换（CHARTER.md §5）",
+    "不依赖反向代理：任何插件行都不识别、不依赖反代路由（AGENTS.md，DESIGN.md §1）",
+    "不设积分与轮次预算，积分消耗只披露（ORCHESTRATION.md §4.3）",
+    "人设与个人习惯不进插件（CHARTER.md §8）"
+  ],
+  "history": [
+    {
+      "at": "2026-10-27T20:04:04.348Z",
+      "actor": "human",
+      "op": "propose",
+      "reason": "迁移：目标与验收取自用户定下的 CHARTER.md §1–§3，非目标取自 CHARTER.md §5、§8，DESIGN.md §1 与 ORCHESTRATION.md §4.3",
+      "to": "approved"
+    },
+    {
+      "at": "2026-10-27T20:05:15.326Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "项目进行中：M1 底层收口在 main 上推进（ROADMAP.md M1 进度）",
+      "from": "approved",
+      "to": "doing"
+    }
+  ]
+}

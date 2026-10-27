@@ -1,0 +1,17 @@
+{
+  "id": "m6",
+  "type": "feature",
+  "title": "M6 用量与峰谷",
+  "status": "proposed",
+  "parent": "orch",
+  "body": "积分口径与峰谷修正（ORCHESTRATION.md §11.2）；通道额度取数（DESIGN.md §4.7）；高峰提醒；排期功能（ROADMAP.md M6）。",
+  "history": [
+    {
+      "at": "2026-10-27T20:04:04.900Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "迁移：ROADMAP.md M6；新开分支属计划外，等人批准",
+      "to": "proposed"
+    }
+  ]
+}

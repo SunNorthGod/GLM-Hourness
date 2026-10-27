@@ -1,0 +1,17 @@
+{
+  "id": "risk-rc3",
+  "type": "risk",
+  "title": "DSH rc.3 运行时与参考源码不一致，且还在变",
+  "status": "approved",
+  "parent": "bottom",
+  "body": "桌面版 0.2.1-rc.3 的运行时接口与 reference/deepseek-harness 不同：tools.executable() 不存在，工具调用以 tool-call 内容块传递（DESIGN.md §2.4a、§4.5）。glm-prompt 与 toolsearch 因此在桌面版上从未生效，glm-compact 解析不到压缩包、从未挂载，都是 L3 探针查出来的（HANDOFF.md §5 第 14、15 条）。DSH 每次升级都可能再变。缓解：1.6 契约对照与薄适配层；升级时先跑标定测试集与行为探针（ORCHESTRATION.md §12）。",
+  "history": [
+    {
+      "at": "2026-10-27T20:04:04.679Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "迁移：DESIGN.md §2.4a，HANDOFF.md §5",
+      "to": "approved"
+    }
+  ]
+}

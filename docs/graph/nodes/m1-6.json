@@ -1,0 +1,21 @@
+{
+  "id": "m1-6",
+  "type": "task",
+  "title": "1.6 DSH 契约对照与薄适配层",
+  "status": "approved",
+  "parent": "m1",
+  "kind": "implement",
+  "body": "事件钩子与服务对照官方类型；DSH 接口收进薄适配层（ROADMAP.md M1 1.6）。桌面版运行时接口与 reference/deepseek-harness 不同（DESIGN.md §2.4a），对照以 rc.3 运行时为准。",
+  "acceptance": [
+    "L1"
+  ],
+  "history": [
+    {
+      "at": "2026-10-27T20:04:04.434Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "迁移：ROADMAP.md M1 1.6",
+      "to": "approved"
+    }
+  ]
+}

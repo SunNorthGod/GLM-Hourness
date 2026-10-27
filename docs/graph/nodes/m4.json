@@ -1,0 +1,17 @@
+{
+  "id": "m4",
+  "type": "feature",
+  "title": "M4 guard 补齐与环境",
+  "status": "proposed",
+  "parent": "orch",
+  "body": "ORCHESTRATION.md §6.4 的规划规矩；影子模式机制；检查器运行与当轮回传；告警棘轮与压制规则；环境分支与草稿区；清理 .llm/docs/ 下的抓取脚本（ROADMAP.md M4）。",
+  "history": [
+    {
+      "at": "2026-10-27T20:04:04.872Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "迁移：ROADMAP.md M4；新开分支属计划外，等人批准",
+      "to": "proposed"
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "id": "d-async-cards",
+  "type": "decision",
+  "title": "异步决策卡自建：卡即项目图上的待决节点",
+  "status": "approved",
+  "parent": "orch",
+  "verification": "unverified",
+  "body": "待决节点进决策队列，先提的在前；人在界面上选一个选项拍板，不阻塞 agent；拍板经引擎写回，LLM 下次读投影就能看到（ORCHESTRATION.md §2.9）。同步决策卡借用 DSH user-approval（ORCHESTRATION.md §5）。",
+  "history": [
+    {
+      "at": "2026-10-27T20:04:04.985Z",
+      "actor": "human",
+      "op": "propose",
+      "reason": "迁移：用户定案 2026-10-28（ORCHESTRATION.md §2.9）",
+      "to": "approved"
+    }
+  ]
+}

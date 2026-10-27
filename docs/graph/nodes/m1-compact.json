@@ -1,0 +1,65 @@
+{
+  "id": "m1-compact",
+  "type": "task",
+  "title": "glm-compact 改走 llm/stream 瀑布",
+  "status": "done",
+  "parent": "m1",
+  "kind": "implement",
+  "body": "glm-compact 在桌面版上从未挂载（解析不到 @deepseek-ai/dsh-compaction-basic），原设计还会形成第二个压缩引擎。改在 llm/stream 瀑布上替换 GLM 压缩请求的指令并格式化产物，不另挂引擎（DESIGN.md §5.6，HANDOFF.md §5 第 15 条）。",
+  "acceptance": [
+    "L3 探针的压缩场景通过"
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "4e409aa",
+      "note": "经 llm/stream 瀑布镜像 ZCode 压缩"
+    },
+    {
+      "kind": "commit",
+      "ref": "44fb4bd",
+      "note": "记录压缩镜像"
+    },
+    {
+      "kind": "test",
+      "ref": "npm run probe",
+      "exit": 0,
+      "note": "L3 探针 17/17，含压缩场景"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-27T20:04:04.537Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "迁移：ROADMAP.md M1 进度（glm-compact）",
+      "to": "approved"
+    },
+    {
+      "at": "2026-10-27T20:04:04.550Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "glm-compact 镜像完成（ROADMAP.md M1 进度）",
+      "from": "approved",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "4e409aa",
+          "note": "经 llm/stream 瀑布镜像 ZCode 压缩"
+        },
+        {
+          "kind": "commit",
+          "ref": "44fb4bd",
+          "note": "记录压缩镜像"
+        },
+        {
+          "kind": "test",
+          "ref": "npm run probe",
+          "exit": 0,
+          "note": "L3 探针 17/17，含压缩场景"
+        }
+      ]
+    }
+  ]
+}

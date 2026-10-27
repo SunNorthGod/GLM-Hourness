@@ -1,0 +1,17 @@
+{
+  "id": "m7",
+  "type": "feature",
+  "title": "M7 执行、汇合与运维",
+  "status": "proposed",
+  "parent": "orch",
+  "body": "ROADMAP.md M7 原文：队友角色卡、简报门禁、并发补位提醒；独立审查；汇合门禁；四答晨报；巡检；规范阶梯与周报；DORA 指标；标定测试集扩充。其中队友角色卡已被 d-dispatch 取代：任务节点带派发属性，主 Agent 派给后台子 agent。",
+  "history": [
+    {
+      "at": "2026-10-27T20:04:04.915Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "迁移：ROADMAP.md M7；新开分支属计划外，等人批准",
+      "to": "proposed"
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "id": "d-direct",
+  "type": "decision",
+  "title": "原生通道在插件内直连，不经反向代理",
+  "status": "approved",
+  "parent": "bottom",
+  "verification": "sandbox",
+  "body": "岔路是进程外反代与 DSH 插件内直连，选直连：少一个常驻进程，DSH 能感知额度与错误（ORCHESTRATION.md §4.2 需求卡）。反向代理 zcode-proxy.exe（8317 端口）不在本项目范围内（DESIGN.md §1）。",
+  "evidence": [
+    {
+      "kind": "test",
+      "ref": "npm run smoke:authorized",
+      "exit": 0,
+      "note": "真网返回 pong（coding-plan，2026-10-27）"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-27T20:04:04.580Z",
+      "actor": "human",
+      "op": "propose",
+      "reason": "迁移：用户定案 2026-10-27（DESIGN.md §1）",
+      "to": "approved"
+    },
+    {
+      "at": "2026-10-27T20:04:04.595Z",
+      "actor": "llm",
+      "op": "verify",
+      "reason": "原生通道真网冒烟通过；DSH 真实会话尚未使用（HANDOFF.md §3）",
+      "from": "unverified",
+      "to": "sandbox",
+      "evidence": [
+        {
+          "kind": "test",
+          "ref": "npm run smoke:authorized",
+          "exit": 0,
+          "note": "真网返回 pong（coding-plan，2026-10-27）"
+        }
+      ]
+    }
+  ]
+}

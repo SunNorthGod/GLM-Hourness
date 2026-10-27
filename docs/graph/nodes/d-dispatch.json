@@ -1,0 +1,24 @@
+{
+  "id": "d-dispatch",
+  "type": "decision",
+  "title": "不设队友角色：主 Agent 把任务节点派给后台子 agent",
+  "status": "approved",
+  "parent": "orch",
+  "verification": "unverified",
+  "body": "派发属性写在任务节点上（种类、写入范围、模型档位、交回结构、是否独立工作树，验收条件用公共字段），harness 派发时读取；写入范围由 guard 在子 agent 的 tools/pre-execute 里拦；主 Agent 不写代码也由 guard 拦，不用预设；主 Agent 的身份是本项目自己的提示词：三问四答、五键、架构师访谈（ORCHESTRATION.md §2.2）。同一晚先定过「角色队友是带角色预设的普通 subagent，不启用 Agent Team」，随后被本决定取代。",
+  "edges": [
+    {
+      "type": "supersedes",
+      "to": "d-role-cards"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-27T20:04:04.967Z",
+      "actor": "human",
+      "op": "propose",
+      "reason": "迁移：用户定案 2026-10-28，取代队友角色卡（ORCHESTRATION.md §2.2）",
+      "to": "approved"
+    }
+  ]
+}

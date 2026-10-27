@@ -1,0 +1,27 @@
+{
+  "id": "m2-5",
+  "type": "task",
+  "title": "2.5 迁移本项目",
+  "status": "proposed",
+  "parent": "m2",
+  "kind": "docs",
+  "body": "底层与编排两大分支、设计决策（带验证状态）、已知问题（风险）、本路线条目（任务）（ROADMAP.md M2 2.5）。graph-engine 分支上的 docs/graph 是按原型格式做的一次迁移，也就是本图（ORCHESTRATION.md §2.13）。",
+  "acceptance": [
+    "用户能在图上看到项目全貌"
+  ],
+  "edges": [
+    {
+      "type": "depends",
+      "to": "m2-1"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-27T20:04:04.765Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "迁移：ROADMAP.md M2 2.5",
+      "to": "proposed"
+    }
+  ]
+}

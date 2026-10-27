@@ -1,0 +1,26 @@
+{
+  "id": "m3",
+  "type": "feature",
+  "title": "M3 设计循环最小闭环",
+  "status": "proposed",
+  "parent": "orch",
+  "body": "设计循环见 ORCHESTRATION.md §4（ROADMAP.md M3）。",
+  "acceptance": [
+    "标定测试集中的「需求访谈」任务，从一句话到骨架放行全程走通"
+  ],
+  "edges": [
+    {
+      "type": "depends",
+      "to": "m2"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-27T20:04:04.776Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "迁移：ROADMAP.md M3；新开分支属计划外，等人批准",
+      "to": "proposed"
+    }
+  ]
+}
