@@ -7,7 +7,8 @@
  * Scenarios: a GLM route must get the ZCode dialect; a non-GLM route through
  * the same provider must stay untouched (no cross-route pollution). The
  * guard's shadow scenario runs in a scratch git repository under the run
- * directory with dsh-workspace-changes mounted through the overlay.
+ * directory with dsh-workspace-changes mounted through the overlay. Two
+ * scenarios check the calibration run bounds (scripts/calibrate/limits.mjs).
  *
  * Usage: node scripts/probe/run-probe.mjs
  * Requires the desktop install (DSH_DESKTOP_DIR overrides the location) and
@@ -17,24 +18,16 @@
  */
 import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
-import { join, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { crc32, deflateSync } from 'node:zlib'
 import { DISPATCH_TOOLS } from '../../dist/workflow/index.js'
 import { userDataHome } from '../../dist/shared/data-home.js'
 import { HEALTH_ROWS } from '../../dist/shared/health.js'
+import { attachmentsIn, dataRows, initRepo, limitsRow, repo, requireDesktop, sandboxCommand, slash, workspaceChangesRow } from '../sandbox.mjs'
 
-const repo = resolve(fileURLToPath(new URL('../..', import.meta.url)))
-const desktop = process.env.DSH_DESKTOP_DIR ?? join(process.env.LOCALAPPDATA ?? '', 'Programs', 'DeepSeek Harness')
-const exe = join(desktop, 'DeepSeek Harness.exe')
-const bin = join(desktop, 'resources', 'app.asar', 'dsh', 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js')
-if (!existsSync(exe)) {
-  console.error(`probe: desktop runtime not found at ${exe} (set DSH_DESKTOP_DIR)`)
-  process.exit(2)
-}
+requireDesktop('probe')
 
 const runDir = join(repo, '.llm', 'probe-runs', new Date().toISOString().replace(/[:.]/g, '-'))
-const slash = path => path.replaceAll('\\', '/')
 
 /** A solid red 8x8 RGB PNG, built byte by byte so the fixture needs no binary file. */
 function redPng(size = 8) {
@@ -56,9 +49,6 @@ function redPng(size = 8) {
   return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', header), chunk('IDAT', pixels), chunk('IEND', Buffer.alloc(0))])
 }
 
-/** Overlay lines that keep the attachment store of a scenario inside its own directory. */
-const attachmentsIn = dir => ['- id: attachment-local', `  config: { dshHome: ${JSON.stringify(slash(join(dir, 'dsh-home')))} }`]
-
 // The real user-level directory (<DSH home>/glm-hourness) must not change
 // during a run: every scenario points the data row at its own DSH home.
 const realUsage = join(userDataHome(), 'audit', 'usage.jsonl')
@@ -68,10 +58,10 @@ const realUsageBefore = usageStamp()
 /**
  * Boot one headless task on `model` with a scripted reply sequence and return
  * the main agent's step requests plus the compaction requests (the
- * session-title request carries no tools). `overlay` adds patch lines. The
- * scenario's project directory is `<dir>/home` (memory, workflow and
- * hourness get it as their row home, as the user's profile patch does; the
- * guard reads it from the data service) and its DSH home is `<dir>/dsh-home`.
+ * session-title request carries no tools), the exit status and the wall
+ * time. `overlay` adds patch lines. The scenario keeps its data in its own
+ * directory (scripts/sandbox.mjs dataRows: project directory `<dir>/home`,
+ * DSH home `<dir>/dsh-home`).
  */
 function runScenario(name, model, script, task, overlay = [], cwd = repo) {
   const dir = join(runDir, name)
@@ -79,20 +69,15 @@ function runScenario(name, model, script, task, overlay = [], cwd = repo) {
   mkdirSync(home, { recursive: true })
   const dump = join(dir, 'requests.jsonl')
   writeFileSync(dump, '')
-  // The overlay is generated per run with literal values: the loader validates
-  // a row's `name` before `!!js` expressions evaluate, so paths cannot be
-  // computed inside the patch. JSON strings are valid YAML scalars.
   const patch = join(dir, 'probe.patch.yml')
   writeFileSync(patch, [
     '- id: agent-default-model',
     `  config: { provider: glm-probe, model: ${JSON.stringify(model)} }`,
-    ...['memory', 'workflow', 'hourness'].flatMap(row => [`- id: glm-hourness/${row}`, `  config: { home: ${JSON.stringify(slash(home))} }`]),
+    ...dataRows(dir),
     // /glm-status reads the credential store under the glm-login home; the
     // scenario home has none, so the probe never reads the real store.
     '- id: glm-hourness/glm-login',
     `  config: { home: ${JSON.stringify(slash(home))} }`,
-    '- id: glm-hourness/data',
-    `  config: { dshHome: ${JSON.stringify(slash(join(dir, 'dsh-home')))}, projectHome: ${JSON.stringify(slash(home))} }`,
     '- insert:',
     '    - id: glm-hourness-probe/llm',
     `      name: ${JSON.stringify(slash(join(repo, 'scripts', 'probe', 'probe-llm.mjs')))}`,
@@ -101,17 +86,16 @@ function runScenario(name, model, script, task, overlay = [], cwd = repo) {
     ...overlay,
     '',
   ].join('\n'))
-  const result = spawnSync(exe, [bin, '--profile', 'glmsandbox', '--patch', patch, task], {
-    cwd,
-    encoding: 'utf8',
-    timeout: 180_000,
-    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
-  })
+  const { exe, args, env } = sandboxCommand(patch, [task])
+  const started = Date.now()
+  const result = spawnSync(exe, args, { cwd, encoding: 'utf8', timeout: 180_000, env })
+  const elapsedMs = Date.now() - started
   writeFileSync(join(dir, 'stdout.txt'), result.stdout ?? '')
   writeFileSync(join(dir, 'stderr.txt'), result.stderr ?? '')
   const requests = readFileSync(dump, 'utf8').split('\n').filter(line => line.length > 0).map(line => JSON.parse(line))
   return {
     status: result.status,
+    elapsedMs,
     steps: requests.filter(request => request.tools.length > 0 && request.purpose !== 'compaction'),
     compactions: requests.filter(request => request.purpose === 'compaction'),
   }
@@ -227,8 +211,7 @@ const shadowDir = join(runDir, 'glm-shadow')
 const shadowWs = join(shadowDir, 'ws')
 mkdirSync(shadowWs, { recursive: true })
 writeFileSync(join(shadowWs, 'README.md'), 'probe workspace\n')
-const git = args => spawnSync('git', ['-c', 'user.name=probe', '-c', 'user.email=probe@localhost', '-c', 'commit.gpgsign=false', ...args], { cwd: shadowWs, encoding: 'utf8' })
-const gitReady = [['init', '-q'], ['add', 'README.md'], ['commit', '-q', '-m', 'init']].every(args => git(args).status === 0)
+const gitReady = initRepo(shadowWs)
 const shadowFile = join(shadowWs, 'shadow.txt')
 const toolFile = join(shadowWs, 'tool.txt')
 const dotnetWrite = `[System.IO.File]::WriteAllText('${slash(shadowFile)}', 'probe')`
@@ -238,11 +221,7 @@ const shadow = runScenario('glm-shadow', 'glm-5.3', [
   { tool: { name: 'Bash', arguments: { command: dotnetWrite } } },
   { tool: { name: 'Write', arguments: { file_path: toolFile, content: 'tool\n' } } },
   { text: 'done', status: true },
-], 'Run three commands, write a file, then reply done.', [
-  '- insert:',
-  '    - id: glm-hourness-probe/workspace-changes',
-  '      name: \'@deepseek-ai/dsh-workspace-changes\'',
-], shadowWs)
+], 'Run three commands, write a file, then reply done.', workspaceChangesRow('glm-hourness-probe/workspace-changes'), shadowWs)
 const arrowsResult = lastToolResult(shadow.steps[1])
 const gitResult = lastToolResult(shadow.steps[2])
 const dotnetResult = lastToolResult(shadow.steps[3])
@@ -250,6 +229,19 @@ const dotnetResult = lastToolResult(shadow.steps[3])
 const plain = runScenario('non-glm', 'deepseek-probe', [{ text: 'done', status: true }], 'Reply done.')
 const plainFirst = plain.steps[0]
 const plainTools = names(plainFirst)
+
+// Calibration run bounds (scripts/calibrate/limits.mjs, ROADMAP M1.7). The
+// step limit rejects the third step of a script that would read forever;
+// the time limit cancels the agent five seconds after its creation, in the
+// middle of a 60-second shell command, and rejects every later step.
+const limitsRecord = scenario => join(runDir, scenario, 'limits.jsonl')
+const stepLimited = runScenario('limits-steps', 'glm-5.3', [
+  { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } } },
+], 'Read package.json until stopped.', limitsRow({ maxSteps: 2, record: slash(limitsRecord('limits-steps')) }))
+const timeLimited = runScenario('limits-time', 'glm-5.3', [
+  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 60; Write-Output slept', timeout: 120000 } } },
+  { text: 'done' },
+], 'Sleep, then reply done.', limitsRow({ timeLimitMs: 5000, record: slash(limitsRecord('limits-time')) }))
 
 const compactRequest = compacted.compactions[0]
 const compactInstruction = compactRequest?.messages.at(-1)
@@ -264,8 +256,10 @@ const jsonl = file => existsSync(file) ? readFileSync(file, 'utf8').split('\n').
 const usageOf = scenario => jsonl(join(runDir, scenario, 'dsh-home', 'glm-hourness', 'audit', 'usage.jsonl'))
 const glmUsage = usageOf('glm').filter(record => record.purpose === undefined)
 const compactUsage = usageOf('glm-compact').filter(record => record.purpose === 'compaction')
-const projectUsage = ['glm', 'glm-flash', 'glm-todo', 'glm-compact', 'glm-shadow', 'non-glm'].filter(scenario => existsSync(join(runDir, scenario, 'home', 'audit', 'usage.jsonl')))
+const projectUsage = ['glm', 'glm-flash', 'glm-todo', 'glm-compact', 'glm-shadow', 'non-glm', 'limits-steps', 'limits-time'].filter(scenario => existsSync(join(runDir, scenario, 'home', 'audit', 'usage.jsonl')))
 const glmViolations = jsonl(join(glmDir, 'home', 'audit', 'violations.jsonl'))
+const stepLimits = jsonl(limitsRecord('limits-steps'))
+const timeLimits = jsonl(limitsRecord('limits-time'))
 const realUsageAfter = usageStamp()
 // The workflow row journals dispatch calls by tool name; the names must be
 // the ones the rc.3 composition registers.
@@ -353,6 +347,8 @@ const checks = [
   ['health: on the non-GLM route glm-prompt reports why it is not in effect', plainHealth['glm-prompt']?.status === '未生效' && plainHealth['glm-prompt'].reason.startsWith('非 GLM 路由 glm-probe/deepseek-probe'), JSON.stringify(plainHealth['glm-prompt'] ?? null)],
   ['health: after a GLM compaction glm-compact reports the mirror in effect', compactHealth['glm-compact']?.status === ACTED && compactHealth['glm-compact'].reason.startsWith('GLM 压缩请求改用 ZCode 指令'), JSON.stringify(compactHealth['glm-compact'] ?? null)],
   ['health: the reports stay out of the model-visible conversation', conversationTexts.length > 0 && conversationTexts.every(text => !text.includes('行健康') && !text.includes('glmHournessHealth')), `${conversationTexts.length} text(s) checked`],
+  ['calibration limits: the step past maxSteps is rejected, the turn ends blocked and the run exits non-zero', stepLimited.steps.length === 2 && stepLimits.length === 1 && stepLimits[0].kind === 'step-limit' && stepLimited.status !== 0, `exit ${stepLimited.status}, ${stepLimited.steps.length} step(s), record: ${JSON.stringify(stepLimits)}`],
+  ['calibration limits: the time limit cancels a running 60-second shell command and no later step runs', timeLimited.steps.length === 1 && timeLimits.length === 1 && timeLimits[0].kind === 'time-limit' && timeLimited.elapsedMs < 45_000 && timeLimited.status !== 0, `exit ${timeLimited.status} after ${Math.round(timeLimited.elapsedMs / 1000)} s, ${timeLimited.steps.length} step(s), record: ${JSON.stringify(timeLimits)}`],
   ['non-glm boot: the runtime reached the probe provider', plainFirst !== undefined, `exit ${plain.status}, ${plain.steps.length} step(s)`],
   ['non-glm prompt: DSH identity untouched', plainFirst?.system.includes('powered by DeepSeek Harness') === true && !plainFirst.system.includes('You are ZCode'), ''],
   ['non-glm tools: natives present, no aliases', plainFirst !== undefined && nativeFace.every(name => plainTools.has(name)) && zcodeFace.every(name => !plainTools.has(name)), zcodeFace.filter(name => plainTools.has(name)).join(', ') || ''],

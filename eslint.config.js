@@ -62,7 +62,8 @@ export default defineConfig([
     },
   },
   {
-    files: ['scripts/**/*.{js,mjs,cjs}', 'ui/index.js', '*.js'],
+    // Calibration checkers and fixtures (tests/calibration/) run under Node too.
+    files: ['scripts/**/*.{js,mjs,cjs}', 'tests/**/*.{js,mjs,cjs}', 'ui/index.js', '*.js'],
     languageOptions: { globals: nodeGlobals },
   },
   {

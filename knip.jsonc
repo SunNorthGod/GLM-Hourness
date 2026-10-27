@@ -8,9 +8,13 @@
     "ui/index.js",
     "ui/client.js",
     // Probe provider: run-probe.mjs passes its path to the DSH Loader.
-    "scripts/probe/probe-llm.mjs"
+    "scripts/probe/probe-llm.mjs",
+    // Calibration bounds row: scripts/sandbox.mjs passes its path to the DSH Loader.
+    "scripts/calibrate/limits.mjs",
+    // Calibration checkers: run-calibrate.mjs starts each task's check.mjs by path.
+    "tests/calibration/*/check.mjs"
   ],
-  "project": ["src/**/*.ts", "tests/**/*.ts", "scripts/**/*.{mjs,cjs,ts}", "ui/**/*.js"],
+  "project": ["src/**/*.ts", "tests/**/*.{ts,mjs}", "scripts/**/*.{mjs,cjs,ts}", "ui/**/*.js"],
   // ui/client.js gets React from the DSH client module table (require('react')),
   // not from node_modules.
   "ignoreDependencies": ["react"]
