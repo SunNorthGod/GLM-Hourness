@@ -1,0 +1,213 @@
+/**
+ * Read projections (docs/ORCHESTRATION.md §2.5, §2.9): what one step needs
+ * to know about one node, and the open items across the graph. Pure
+ * functions over a loaded graph. Gates are reported, never enforced. The
+ * graph may carry validation errors (reads stay available), so every walk
+ * guards against cycles.
+ */
+import { failure, type Failure } from './mutation.ts'
+import type { GraphNode, HistoryEntry, NodeType, Stage, Status } from './schema.ts'
+import type { LoadedGraph } from './store.ts'
+
+/** Statuses of nodes that are still open: not done, dropped or superseded. */
+export const OPEN_STATUSES: ReadonlySet<Status> = new Set(['proposed', 'approved', 'doing'])
+
+/** History entries a projection carries; the full history stays in the node file. */
+const RECENT_HISTORY = 5
+
+export interface NodeRef {
+  readonly id: string
+  readonly type: NodeType
+  readonly title: string
+  readonly status: Status
+  /** Revision to pass back in a mutation of this node. */
+  readonly rev: string
+  readonly verification?: GraphNode['verification']
+  readonly decision?: string
+}
+
+/** An ancestor; the goal at the end of the chain carries its acceptance criteria and non-goals. */
+export interface AncestorRef extends NodeRef {
+  readonly acceptance?: readonly string[]
+  readonly nonGoals?: readonly string[]
+}
+
+export type NodeDetail = Omit<GraphNode, 'history'> & { readonly rev: string }
+
+export const GATE_KINDS = ['dependencies', 'approval', 'questions', 'acceptance', 'children', 'verification'] as const
+export type GateKind = typeof GATE_KINDS[number]
+
+export interface Gate {
+  readonly kind: GateKind
+  readonly message: string
+  readonly ids: readonly string[]
+}
+
+export interface Projection {
+  /** Graph revision the projection was read at. */
+  readonly revision: string
+  readonly node: NodeDetail
+  readonly historyCount: number
+  readonly recentHistory: readonly HistoryEntry[]
+  /** Parent first, goal last. */
+  readonly ancestors: readonly AncestorRef[]
+  readonly children: readonly NodeRef[]
+  /** Nodes this one depends on, and nodes that depend on it. */
+  readonly dependsOn: readonly NodeRef[]
+  readonly dependents: readonly NodeRef[]
+  /** Nodes this one exists because of, and nodes that exist because of it. */
+  readonly sources: readonly NodeRef[]
+  readonly sourceOf: readonly NodeRef[]
+  readonly supersedes: readonly NodeRef[]
+  readonly supersededBy: readonly NodeRef[]
+  /** Own stage, or the stage of the nearest ancestor that has one. */
+  readonly stage: Stage | null
+  readonly gates: readonly Gate[]
+}
+
+export interface OpenItems {
+  readonly revision: string
+  /** Proposals waiting for a human to approve or reject them. */
+  readonly proposals: readonly NodeRef[]
+  /** Approved questions waiting for a human decision. */
+  readonly questions: readonly NodeRef[]
+  readonly doing: readonly NodeRef[]
+  /** Approved tasks without open or finished children whose dependencies are all done. */
+  readonly ready: readonly NodeRef[]
+  /** Adopted decisions (approved, doing or done) still unverified. */
+  readonly verificationDebt: readonly NodeRef[]
+}
+
+function nodeRef(graph: LoadedGraph, node: GraphNode): NodeRef {
+  return {
+    id: node.id,
+    type: node.type,
+    title: node.title,
+    status: node.status,
+    rev: graph.revisions.get(node.id)!,
+    ...(node.verification === undefined ? {} : { verification: node.verification }),
+    ...(node.decision === undefined ? {} : { decision: node.decision }),
+  }
+}
+
+function childrenIndex(graph: LoadedGraph): ReadonlyMap<string, readonly GraphNode[]> {
+  const index = new Map<string, GraphNode[]>()
+  for (const node of graph.nodes.values()) {
+    if (node.parent === undefined) continue
+    const list = index.get(node.parent)
+    if (list === undefined) index.set(node.parent, [node])
+    else list.push(node)
+  }
+  return index
+}
+
+/** Targets of this node's edges of one type that exist in the graph. */
+function targets(graph: LoadedGraph, node: GraphNode, type: 'depends' | 'source' | 'supersedes'): GraphNode[] {
+  return (node.edges ?? []).filter(edge => edge.type === type).flatMap(edge => {
+    const target = graph.nodes.get(edge.to)
+    return target === undefined ? [] : [target]
+  })
+}
+
+/** Nodes with an edge of one type pointing at this node, in id order. */
+function referrers(graph: LoadedGraph, id: string, type: 'depends' | 'source' | 'supersedes'): GraphNode[] {
+  return [...graph.nodes.values()].filter(node => (node.edges ?? []).some(edge => edge.type === type && edge.to === id))
+}
+
+function ancestorsOf(graph: LoadedGraph, node: GraphNode): GraphNode[] {
+  const chain: GraphNode[] = []
+  const seen = new Set([node.id])
+  let parent = node.parent === undefined ? undefined : graph.nodes.get(node.parent)
+  while (parent !== undefined && !seen.has(parent.id)) {
+    seen.add(parent.id)
+    chain.push(parent)
+    parent = parent.parent === undefined ? undefined : graph.nodes.get(parent.parent)
+  }
+  return chain
+}
+
+/** The node and all its descendants. */
+function subtreeOf(index: ReadonlyMap<string, readonly GraphNode[]>, node: GraphNode): GraphNode[] {
+  const out: GraphNode[] = []
+  const seen = new Set<string>()
+  const queue = [node]
+  for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
+    if (seen.has(next.id)) continue
+    seen.add(next.id)
+    out.push(next)
+    queue.push(...index.get(next.id) ?? [])
+  }
+  return out
+}
+
+function ids(nodes: readonly GraphNode[]): string[] {
+  return nodes.map(node => node.id)
+}
+
+function gatesOf(node: GraphNode, dependsOn: readonly GraphNode[], children: readonly GraphNode[], subtree: readonly GraphNode[]): Gate[] {
+  const gates: Gate[] = []
+  const openDependencies = dependsOn.filter(target => target.status !== 'done')
+  if (openDependencies.length > 0) gates.push({ kind: 'dependencies', message: 'depends on nodes that are not done', ids: ids(openDependencies) })
+  if (node.status === 'proposed') gates.push({ kind: 'approval', message: 'waits for a human to approve or reject it', ids: [node.id] })
+  const openQuestions = subtree.filter(entry => entry.type === 'question' && OPEN_STATUSES.has(entry.status))
+  if (openQuestions.length > 0) gates.push({ kind: 'questions', message: 'questions in this subtree wait for a human decision', ids: ids(openQuestions) })
+  if (node.type === 'task' && (node.acceptance ?? []).length === 0) gates.push({ kind: 'acceptance', message: 'the task has no acceptance criteria', ids: [node.id] })
+  const openChildren = children.filter(child => OPEN_STATUSES.has(child.status))
+  if (openChildren.length > 0) gates.push({ kind: 'children', message: 'children are not all closed', ids: ids(openChildren) })
+  if (node.type === 'decision' && node.verification === 'unverified') gates.push({ kind: 'verification', message: 'the decision is not verified yet', ids: [node.id] })
+  return gates
+}
+
+export function projectNode(graph: LoadedGraph, id: string): { readonly ok: true, readonly projection: Projection } | Failure {
+  const node = graph.nodes.get(id)
+  if (node === undefined) return failure('not_found', `no readable node "${id}"`, 'list the nodes with load or the open items; a file that fails to parse is reported in the load issues', 'id')
+  const index = childrenIndex(graph)
+  const ref = (entry: GraphNode): NodeRef => nodeRef(graph, entry)
+  const ancestors = ancestorsOf(graph, node)
+  const children = index.get(id) ?? []
+  const dependsOn = targets(graph, node, 'depends')
+  const { history, ...fields } = node
+  const stage = [node, ...ancestors].find(entry => entry.stage !== undefined)?.stage ?? null
+  return {
+    ok: true,
+    projection: {
+      revision: graph.revision,
+      node: { ...fields, rev: graph.revisions.get(id)! },
+      historyCount: history.length,
+      recentHistory: history.slice(-RECENT_HISTORY),
+      ancestors: ancestors.map(entry => entry.type !== 'goal' ? ref(entry) : {
+        ...ref(entry),
+        ...(entry.acceptance === undefined ? {} : { acceptance: entry.acceptance }),
+        ...(entry.nonGoals === undefined ? {} : { nonGoals: entry.nonGoals }),
+      }),
+      children: children.map(ref),
+      dependsOn: dependsOn.map(ref),
+      dependents: referrers(graph, id, 'depends').map(ref),
+      sources: targets(graph, node, 'source').map(ref),
+      sourceOf: referrers(graph, id, 'source').map(ref),
+      supersedes: targets(graph, node, 'supersedes').map(ref),
+      supersededBy: referrers(graph, id, 'supersedes').map(ref),
+      stage,
+      gates: gatesOf(node, dependsOn, children, subtreeOf(index, node)),
+    },
+  }
+}
+
+export function listOpenItems(graph: LoadedGraph): OpenItems {
+  const index = childrenIndex(graph)
+  const all = [...graph.nodes.values()]
+  const ref = (entry: GraphNode): NodeRef => nodeRef(graph, entry)
+  const ready = all.filter(node =>
+    node.type === 'task'
+    && node.status === 'approved'
+    && (index.get(node.id) ?? []).every(child => child.status === 'dropped' || child.status === 'superseded')
+    && targets(graph, node, 'depends').every(target => target.status === 'done'))
+  return {
+    revision: graph.revision,
+    proposals: all.filter(node => node.status === 'proposed').map(ref),
+    questions: all.filter(node => node.type === 'question' && (node.status === 'approved' || node.status === 'doing')).map(ref),
+    doing: all.filter(node => node.status === 'doing').map(ref),
+    ready: ready.map(ref),
+    verificationDebt: all.filter(node => node.type === 'decision' && node.verification === 'unverified' && (node.status === 'approved' || node.status === 'doing' || node.status === 'done')).map(ref),
+  }
+}

@@ -276,6 +276,16 @@ function historyEntry(value: unknown, path: string, report: Report): unknown {
 }
 
 /**
+ * Shape-check one value of a node field, reporting under `path`; the engine
+ * uses it for request values such as attached evidence. Returns undefined
+ * when the value is malformed; rule violations are reported but keep the value.
+ */
+export function checkFieldValue(field: typeof NODE_FIELDS[number], value: unknown, file: string, path: string, issues: GraphIssue[]): unknown {
+  const checked = FIELD_CHECKERS[field](value, path, reporter(file, issues))
+  return checked === INVALID ? undefined : checked
+}
+
+/**
  * Check one parsed node file. Returns the typed node when every known
  * field has the right shape; rule violations are reported but keep the
  * node, so readers can still show it.
