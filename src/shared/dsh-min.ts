@@ -100,6 +100,8 @@ export interface ToolDefinitionLike {
   readonly output: {
     readonly schema: Record<string, unknown>
     render(args: unknown, value: unknown): Array<{ type: string, text?: string }>
+    /** Optional UI metadata projection (dsh-tools `register` rejects a present non-function). */
+    presentationMeta?(args: unknown, value: unknown): unknown
   }
   execute(args: unknown, exec: unknown): Promise<unknown>
 }

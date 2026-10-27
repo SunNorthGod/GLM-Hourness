@@ -74,26 +74,47 @@ function runScenario(name, model, script, task, overlay = []) {
 }
 
 const zcodeFace = ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash']
-const nativeFace = ['read', 'write', 'edit', 'glob', 'grep', 'pwsh']
+// read_image is covered by the Read alias (image paths route to it).
+const nativeFace = ['read', 'write', 'edit', 'glob', 'grep', 'pwsh', 'read_image']
 const searchControls = ['LocalToolSearch', 'DeferredToolCall']
 const names = step => new Set((step?.tools ?? []).map(tool => tool.name))
 const lastToolResult = step => step?.messages.filter(message => message.role === 'tool').at(-1)
 const announcements = step => (step?.messages ?? []).filter(message => message.role === 'user' && message.source === 'glm-tool-search')
 
 // GLM steps: load TodoWrite through local tool search, call it through
-// DeferredToolCall, read a file through the Read alias, finish.
+// DeferredToolCall, read a file through the Read alias, create a file with
+// Write, edit it with Edit (replace_all as a ZCode semantic-boolean string),
+// read it back, try to overwrite an existing file that was never read (the
+// Write description promises that fails), finish. The scratch files live in
+// the scenario directory inside the workspace.
+const glmDir = join(runDir, 'glm')
+mkdirSync(glmDir, { recursive: true })
+const scratch = join(glmDir, 'scratch.txt')
+const unread = join(glmDir, 'unread.txt')
+writeFileSync(unread, 'existing\n')
 const glm = runScenario('glm', 'glm-5.3', [
   { tool: { name: 'LocalToolSearch', arguments: { query: 'select:TodoWrite', max_results: 5 } } },
   { tool: { name: 'DeferredToolCall', arguments: { name: 'TodoWrite', input: { todos: [{ content: 'probe', status: 'in_progress', priority: 'high' }] } } } },
   { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } } },
+  { tool: { name: 'Write', arguments: { file_path: scratch, content: 'alpha beta alpha\n' } } },
+  { tool: { name: 'Edit', arguments: { file_path: scratch, old_string: 'alpha', new_string: 'gamma', replace_all: 'true' } } },
+  { tool: { name: 'Read', arguments: { file_path: scratch, offset: 0 } } },
+  { tool: { name: 'Write', arguments: { file_path: unread, content: 'clobbered\n' } } },
   { text: 'done' },
-], 'Load TodoWrite, record one todo, read package.json and reply done.')
+], 'Load TodoWrite, record one todo, read package.json, write, edit and re-read a scratch file, then reply done.')
 const glmFirst = glm.steps[0]
 const glmTools = names(glmFirst)
+const glmTool = name => (glmFirst?.tools ?? []).find(tool => tool.name === name)
+const plainToolOf = (step, name) => (step?.tools ?? []).find(tool => tool.name === name)
 const searchResult = lastToolResult(glm.steps[1])
 const deferredResult = lastToolResult(glm.steps[2])
 const readResult = lastToolResult(glm.steps[3])
+const writeResult = lastToolResult(glm.steps[4])
+const editResult = lastToolResult(glm.steps[5])
+const rereadResult = lastToolResult(glm.steps[6])
+const overwriteResult = lastToolResult(glm.steps[7])
 const firstAnnouncement = announcements(glmFirst)[0]
+const zcodeSchema = 'https://json-schema.org/draft/2020-12/schema'
 
 // GLM compaction: a low pressure threshold makes compaction-basic compact
 // at the second step boundary (sandbox overlay only).
@@ -104,13 +125,15 @@ const compacted = runScenario('glm-compact', 'glm-5.3', [
   '- id: compaction-basic',
   '  config: { thresholdRatio: 0.02, retainTokens: 0 }',
 ])
+const plain = runScenario('non-glm', 'deepseek-probe', [{ text: 'done' }], 'Reply done.')
+const plainFirst = plain.steps[0]
+const plainTools = names(plainFirst)
+
 const compactRequest = compacted.compactions[0]
 const compactInstruction = compactRequest?.messages.at(-1)
 const checkpoint = compacted.steps.at(-1)?.messages.find(message => message.source === 'compact-checkpoint')
 
-const plain = runScenario('non-glm', 'deepseek-probe', [{ text: 'done' }], 'Reply done.')
-const plainFirst = plain.steps[0]
-const plainTools = names(plainFirst)
+
 
 const checks = [
   ['glm boot: the runtime reached the probe provider', glmFirst !== undefined, `exit ${glm.status}, ${glm.steps.length} step(s)`],
@@ -123,7 +146,17 @@ const checks = [
   ['glm announcement: not repeated on later steps', announcements(glm.steps.at(-1)).length === 1, `${announcements(glm.steps.at(-1)).length} notice(s) in the last request`],
   ['glm search: LocalToolSearch returned the definition and the loaded reminder', searchResult !== undefined && searchResult.isError !== true && searchResult.text.includes('<functions>\n<function>{"description":') && searchResult.text.includes('Loaded: TodoWrite. Call it now with DeferredToolCall'), searchResult === undefined ? 'no tool result' : searchResult.text.slice(0, 80).replace(/\n/g, ' ')],
   ['glm deferred call: DeferredToolCall ran TodoWrite', deferredResult !== undefined && deferredResult.isError !== true && deferredResult.text.length > 0, deferredResult === undefined ? 'no tool result' : deferredResult.text.slice(0, 80).replace(/\n/g, ' ')],
-  ['glm execution: Read alias returned the file', readResult !== undefined && readResult.isError !== true && readResult.text.includes('dsh-glm-hourness'), readResult === undefined ? 'no tool result' : readResult.text.slice(0, 80).replace(/\n/g, ' ')],
+  ['glm tools: Read, Write and Edit carry the ZCode 3.16.3 descriptions and schemas', glmTool('Read')?.description.startsWith('Reads a file from the local filesystem.\n\n- `file_path` must be an absolute path.') === true && !glmTool('Read').description.includes('Reads videos') && glmTool('Write')?.description.startsWith('Writes a file to the local filesystem, overwriting if one exists.') === true && glmTool('Edit')?.description.startsWith('Performs exact string replacement in a file.') === true && ['Read', 'Write', 'Edit'].every(name => glmTool(name)?.parameters.$schema === zcodeSchema), ['Read', 'Write', 'Edit'].map(name => `${name}: ${(glmTool(name)?.description ?? 'missing').slice(0, 30)}`).join('; ')],
+  ['glm tools: Write and Edit declare the native sandbox escalation fields exactly when the natives do', ['write', 'edit'].every((nativeName) => {
+    const nativeHas = plainToolOf(plainFirst, nativeName)?.parameters.properties?.sandbox_permissions !== undefined
+    const aliasHas = glmTool(nativeName === 'write' ? 'Write' : 'Edit')?.parameters.properties?.sandbox_permissions !== undefined
+    return plainFirst !== undefined && nativeHas === aliasHas
+  }), `native write escalation: ${plainToolOf(plainFirst, 'write')?.parameters.properties?.sandbox_permissions !== undefined}`],
+  ['glm execution: Read alias returned the file in cat -n form', readResult !== undefined && readResult.isError !== true && readResult.text.startsWith('1\t{\n') && readResult.text.includes('\t  "name": "dsh-glm-hourness",'), readResult === undefined ? 'no tool result' : readResult.text.slice(0, 80).replace(/\n/g, ' ')],
+  ['glm execution: Write alias created the file with the ZCode result text', writeResult !== undefined && writeResult.isError !== true && writeResult.text.startsWith('File created successfully at: ') && writeResult.text.endsWith('no need to Read it back)'), writeResult === undefined ? 'no tool result' : writeResult.text.slice(0, 80).replace(/\n/g, ' ')],
+  ['glm execution: Edit alias replaced all occurrences (replace_all "true")', editResult !== undefined && editResult.isError !== true && editResult.text.includes('has been updated. All occurrences were successfully replaced.'), editResult === undefined ? 'no tool result' : editResult.text.slice(0, 100).replace(/\n/g, ' ')],
+  ['glm execution: Read alias shows the edited file (offset 0 reads from line 1)', rereadResult !== undefined && rereadResult.isError !== true && rereadResult.text === '1\tgamma beta gamma', rereadResult === undefined ? 'no tool result' : rereadResult.text.slice(0, 80).replace(/\n/g, ' ')],
+  ['glm execution: Write over an existing file that was never read fails and leaves it intact', overwriteResult?.isError === true && readFileSync(unread, 'utf8') === 'existing\n', overwriteResult === undefined ? 'no tool result' : overwriteResult.text.slice(0, 100).replace(/\n/g, ' ')],
   ['glm compact: the summarization request ends with the ZCode compact prompt', compactInstruction?.role === 'user' && compactInstruction.text.startsWith('CRITICAL: Respond with TEXT ONLY.'), compactRequest === undefined ? `no compaction request (exit ${compacted.status})` : compactInstruction?.text.slice(0, 60).replace(/\n/g, ' ')],
   ['glm compact: the checkpoint carries the formatted summary', checkpoint !== undefined && checkpoint.text.includes('Summary:\nprobe summary') && !checkpoint.text.includes('<analysis>'), checkpoint === undefined ? 'no checkpoint in the next request' : checkpoint.text.slice(0, 80).replace(/\n/g, ' ')],
   ['non-glm boot: the runtime reached the probe provider', plainFirst !== undefined, `exit ${plain.status}, ${plain.steps.length} step(s)`],

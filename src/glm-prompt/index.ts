@@ -17,7 +17,7 @@
  * agent's failure leaves the others.
  */
 import { buildIdentitySection } from './identity.ts'
-import { aliasSpecs, buildAlias, hiddenNatives } from './aliases.ts'
+import { buildAliases, type BuiltAlias } from './aliases.ts'
 import { CLI_PREFIX } from './verbatim.ts'
 import { personaSection, PERSONA_LEVELS, type PersonaLevel } from './persona.ts'
 import { buildEnvInfoSection, CONTEXT_MANAGEMENT_DSH, MEMORY_SECTION_DSH, SESSION_GUIDANCE_DSH, SKILLS_NOTE_DSH } from './localize.ts'
@@ -102,22 +102,19 @@ export function todoWriteAliasTool(delegate: (args: { todos: Array<{ content: st
   }
 }
 
-/** Native names the TodoWrite alias covers in addition to the eight-pack aliases. */
+/** Native the TodoWrite alias covers. */
 const TODO_NATIVE = 'todo_write'
 
 /**
- * Build the ZCode-facing aliases over the natives this agent sees. An alias
- * whose native is absent in this composition is skipped (its native stays
- * hidden from nothing, since it does not exist).
+ * Build the ZCode-facing aliases over the natives this agent sees, each with
+ * the natives it covers. An alias whose native is absent in this composition
+ * is skipped and covers nothing.
  */
-export function buildAgentAliases(agent: AgentLike): ToolDefinitionLike[] {
-  const aliases: ToolDefinitionLike[] = []
-  for (const spec of aliasSpecs) {
-    const native = agent.ctx.tools.get(spec.nativeName, agent)
-    if (native !== undefined) aliases.push(buildAlias(spec, (args, exec) => native.execute(args, exec), native.output))
-  }
-  const todo = agent.ctx.tools.get(TODO_NATIVE, agent)
-  if (todo !== undefined) aliases.push(todoWriteAliasTool((args, exec) => todo.execute(args, exec), todo.output))
+export function buildAgentAliases(agent: AgentLike): BuiltAlias[] {
+  const lookup = (name: string): ToolDefinitionLike | undefined => agent.ctx.tools.get(name, agent)
+  const aliases = buildAliases(lookup)
+  const todo = lookup(TODO_NATIVE)
+  if (todo !== undefined) aliases.push({ tool: todoWriteAliasTool((args, exec) => todo.execute(args, exec), todo.output), covers: [TODO_NATIVE] })
   return aliases
 }
 
@@ -131,9 +128,9 @@ export function buildAgentAliases(agent: AgentLike): ToolDefinitionLike[] {
 export function installDialect(agent: AgentLike, config: GlmPromptConfig = {}, onRoute?: (route: ReturnType<typeof assemblyRoute>) => void): () => void {
   const sections = dialectSections(false, config.persona ?? 'balanced', config)
   const aliases = buildAgentAliases(agent)
-  const aliasNames = new Set(aliases.map(alias => alias.name))
-  const coveredNatives = new Set([...hiddenNatives].filter(name => agent.ctx.tools.get(name, agent) !== undefined))
-  const disposers = aliases.map(alias => agent.ctx.tools.register(alias))
+  const aliasNames = new Set(aliases.map(alias => alias.tool.name))
+  const coveredNatives = new Set(aliases.flatMap(alias => alias.covers))
+  const disposers = aliases.map(alias => agent.ctx.tools.register(alias.tool))
   const toolSearch = (config.toolSearchMode ?? 'local') === 'local' ? installToolSearch(agent) : undefined
   if (toolSearch !== undefined) disposers.push(() => toolSearch.dispose())
   disposers.push(agent.ctx.on('system-prompt/assemble', async (_assembly: AssemblePayload, _context: unknown, next: () => Promise<AssemblePayload>) => {

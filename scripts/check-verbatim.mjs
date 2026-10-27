@@ -18,9 +18,6 @@ import { join } from 'node:path'
 /** Items still awaiting the source rebuild (ROADMAP M1.1). Shrink only. */
 const KNOWN_DEVIATIONS = new Set([
   'TodoWrite description',
-  'Read description',
-  'Write description',
-  'Edit description',
   'Glob description',
   'Grep description',
 ])
@@ -31,7 +28,7 @@ const KNOWN_DEVIATIONS = new Set([
  * between their interpolations. The scanner skips comments and does not
  * parse regex literals or division, which these files must not contain.
  */
-const MIRROR_FILES = ['src/toolsearch/zcode-text.ts']
+const MIRROR_FILES = ['src/toolsearch/zcode-text.ts', 'src/glm-prompt/zcode-tool-text.ts']
 
 /** Minimum line length checked; shorter fragments are structural (headings, blank joints). */
 const MIN_LINE = 13
@@ -146,6 +143,9 @@ async function loadItems() {
     ...Object.fromEntries(system.ZCODE_SYSTEM.stableSections.map((text, index) => [`start-plan stable section ${index + 1}`, text])),
   }
   // Bash is a localized rewrite (DESIGN.md §5.3 ⑥), not a verbatim claim.
+  // Read is not an alias spec: its description is the mirror file's line
+  // list minus the lines DSH cannot honor (read-alias.ts readDescription),
+  // and the mirror check below covers every piece of those lines.
   for (const spec of aliases.aliasSpecs) if (spec.zcodeName !== 'Bash') items[`${spec.zcodeName} description`] = spec.description
   for (const file of MIRROR_FILES) {
     literalChunks(readFileSync(file, 'utf8')).forEach((chunk, index) => { items[`${file} literal ${index + 1}`] = unescapeJs(chunk) })
