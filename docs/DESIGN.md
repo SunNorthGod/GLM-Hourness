@@ -114,9 +114,11 @@ GLM-Hourness
 
 | 接口 | 使用者 | rc.3 证据 | 结论 |
 | --- | --- | --- | --- |
-| `agent/created`（serial，`{agent, source, signal?}`） | glm-prompt | agent:581–585 | 一致 |
-| `system-prompt/assemble`（waterfall，`(assembly, context, next)`，按 agent 作用域分发） | glm-prompt | system-prompt:398；`assembly` 的 `sections{name, text, interpolate?}`、`contexts`、`tools{name, description, parameters, deferLoading?}`、`variables` 见 system-prompt:365–393；完整节在瀑布之后恢复，system-prompt:399–405 | 一致 |
-| 组装变量 `variables.provider` / `variables.model` | glm-prompt（`src/shared/route.ts`） | agent:167–181（`installModelSelection` 在 `next()` 之后写入） | 一致 |
+| `agent/created`（serial，`{agent, source, signal?}`） | glm-prompt、guard | agent:581–585 | 一致 |
+| `system-prompt/assemble`（waterfall，`(assembly, context, next)`，按 agent 作用域分发） | glm-prompt、guard（规则声明节） | system-prompt:398；`assembly` 的 `sections{name, text, interpolate?}`、`contexts`、`tools{name, description, parameters, deferLoading?}`、`variables` 见 system-prompt:365–393；完整节在瀑布之后恢复，system-prompt:399–405；`interpolate: false` 的节原样渲染，system-prompt:109–118 | 一致 |
+| 组装变量 `variables.provider` / `variables.model` | glm-prompt、guard（`src/shared/route.ts`） | agent:167–181（`installModelSelection` 在 `next()` 之后写入） | 一致 |
+| `session/event`（只观察，`(session, event)`，在 `append` 内同步调用）；事件冻结为 `{type, seq, time, data}` | guard（影子兜底） | session:1517–1536（`append`）、session:1579–1598（`commit` 同步通知观察者）；`turn/start` 的 `data.turn` 见 agent-loop:945；`workspace/changes` 的 `data.turn` 见 workspace-changes:871 | 一致；观察者运行时摘要还没存进去（workspace-changes:871 先追加事件，873 才存摘要），所以晚一个微任务再读 |
+| `session/disposed`（只观察，`(session)`） | guard（影子兜底） | session:1925–1936 | 一致 |
 | `agent/pre-step`（waterfall，`{agent, messages, turn, step, signal}`；默认决策 `enter` 带本步认领的消息） | glm-prompt（工具检索公告、todo 提醒） | agent-loop:901–925；`agent` 由 agent:241–245 并入；空决策守卫照抄 agent:193–197 | 一致；本节上文原写载荷无 `turn`，已更正 |
 | `tools/pre-execute`（waterfall，`(exec, next)`，默认 `allow`） | guard、workflow | tools:3320–3321；决策 `allow` / `deny{reason, info?}` / `ask` / `cancel`，tools:3322–3345 | 一致；guard 的决策类型补上 `ask`、`cancel` 透传 |
 | `exec` 字段：`callId`、`rootCallId`、`name`、`arguments`、`signal`、`agent?`、`parent?`、`schema?`、`deferContext`、`concludeTurn` | guard、workflow | tools:3229–3260 | **偏差已修**：guard 从 `exec.agentId` / `exec.sessionId` 取违规记录的 id，rc.3 没有这两个字段，记录里永远为空；改为 `exec.agent.id` 与 `exec.agent.session.id` |
@@ -136,6 +138,7 @@ GLM-Hourness
 | `commands.register(definition)`：`name` 须匹配 `/^[a-z][a-z0-9_-]*$/u`，`description` 非空；调用参数 `{commandId, agent, rawInput, attachments, signal}`，本包读 `rawInput` 与 `agent`（行健康按 `agent` 取会话）；结果 `success`（`text` 可选）/ `error`（`text` 非空） | glm-login、hourness | commands:266–269、commands:78、commands:148–180、commands:379–385、commands:186–206 | 一致；hourness 上下文类型里多余的 `effect?: never` 删除 |
 | `attachments.readImageRequest(ref, target, signal?)`、`attachments.imageHostPath(ref)` | glm-llm（读图） | attachment:290、attachment:338（抽象），attachment-local:1038、attachment-local:1053；编译期检查 `AttachmentsContractCheck` 对照官方 `AttachmentStore` | 一致 |
 | `fs.processPathFromHostPath(hostPath)` | glm-llm（卸载图片的占位路径） | fs:95、fs-local:792–795；pi-ai 同一用法 llm-pi-ai:2908–2909 | 一致 |
+| `workspaceChanges.summary(sessionId, seq)`：`{turn, cwd, files[{path, display, …}], total, …}`，`path` 在会话目录内为相对路径、目录外为绝对路径；只记录有工作目录的顶层会话 | guard（影子兜底，`ctx.get` 读，不需要 inject） | workspace-changes:1019–1022、workspace-changes:871–885、workspace-changes:958–961；包说明 README（非 git 目录只列文件工具的改动） | 一致；该包只在 `dsh-web-app` 的 patch 里（web-app `cordis.patch.yml`:357），桌面版组合有，沙盒模板没有，探针在影子场景经覆盖层挂载 |
 
 对象与消息：
 
@@ -151,6 +154,8 @@ GLM-Hourness
 | 名字 | 使用者 | rc.3 证据 | 结论 |
 | --- | --- | --- | --- |
 | 别名覆盖的原生工具 `read`、`write`、`edit`、`read_image`、`glob`、`grep`、`pwsh`、`todo_write` | glm-prompt | tool-fs:251、549、690、986；tool-fs-search:782、1090；tool-pwsh:466；tool-todo:96 | 一致 |
+| shell 工具与命令文本字段：`pwsh` 与 `bash` 读 `command`，`terminal_send` 读 `text`（终端后端可以是 bash 或 pwsh，`terminal-bash` 的 `shellDialect`） | guard（file-tools-only） | tool-pwsh:466、474；tool-bash:493、501；tool-terminal:320、328；terminal-bash:28、39 | **偏差已修（2026-10-28，M1.8）**：guard 对 `terminal_send` 读 `command`，rc.3 没有这个参数，终端输入从未被检查；改读 `text`，两种方言都判 |
+| 文件工具与目标字段：`write`、`edit` 读 `file_path`，`str_replace_editor` 读 `path` | guard（影子兜底记本回合的目标） | tool-fs:549–555、690；str-replace-editor:267、281 | 一致 |
 | 派遣工具 `spawn_teammate`、`send_message`、`team_task_create`、`team_task_update`、`subagent`、`subagent_fork` | workflow | experimental-tool-agent-team:251、293、365、457；tool-subagent-control:23；tool-subagent:313（`toolName` 默认 `subagent`），base 的 `cordis.patch.yml`:384、395（`subagent`、`subagent_fork` 两行） | **偏差已修**：`subagent_fork` 不在名单里，fork 派遣从未记录。L3 探针实测运行时工具面同时有 `subagent` 与 `subagent_fork` |
 | compaction-basic 的指令开头、`purpose: 'compaction'`、经 `ctx.llm.stream()` 摘要 | glm-compact | compaction-basic:244、320、323 | 一致 |
 
@@ -174,7 +179,7 @@ GLM-Hourness
 | glm-prompt | 激活；每步组装 | GLM 路由，ZCode 提示词与工具面，工具检索 local 或关闭 | 非 GLM 路由；工具检索未安装（会话历史不可读，部分生效）；方言安装失败 |
 | glm-compact | 激活；每次压缩请求 | GLM 压缩请求改用 ZCode 指令与摘要格式 | 非 GLM 路由；未识别 compaction-basic 的指令（原样放行） |
 | data | 激活 | 用户级目录与项目目录都已解析 | 项目目录未配置（部分生效）；服务提供失败 |
-| guard | 激活；每次根调用 | 门禁生效，写明圈禁根与违规目录 | 会话没有工作目录（圈禁规则跳过）；无项目目录（违规不落盘） |
+| guard | 激活；每次根调用 | 门禁生效，写明圈禁根、违规目录与影子兜底是否可用 | 会话没有工作目录（圈禁规则跳过）；无项目目录（违规不落盘）。组合里没有 workspace-changes 时说明写「影子兜底未启用」，状态不降级：影子兜底只记录，门禁本身不受影响 |
 | memory | 激活；每次模型调用 | 用量记入用户级目录，记忆工具可用 | 数据目录行未启用（用量不记录）；`home` 未配置（记忆工具关闭） |
 | workflow | 激活；每次根调用 | 派遣决策记入项目目录 | 无项目目录 |
 | hourness | 激活；每次 `/hourness` | 两个目录都可读 | 缺项目目录或用户级目录 |
@@ -293,6 +298,9 @@ DSH 的 `TokenUsage` 各计数互不重叠：`inputTokens` 只算未命中缓存
 | `glm:memory` | 2350 | coding-plan |
 | `glm:persona`（汇报细度） | 2360 | 两档 |
 | `glm:context-management` | 2400 | coding-plan |
+| `glm:guard`（guard 行添加） | 最后一节 | 两档；列出生效的规则，`interpolate: false`（`ORCHESTRATION.md` §6.1） |
+
+`glm:guard` 不属于方言：由 guard 行在自己的组装监听器里追加，只在 GLM 路由上出现，文本是本项目的（不在镜像文件里，不属于逐字声明）。两个 prepend 监听器谁在外层都一样，这一节总在最后：guard 在外层时追加在方言改写之后；guard 在内层时方言改写保留其余节的顺序，只把方言节插到身份节之后。规则只随会话目录变化，会话目录不可变，所以每步的系统提示词不变，不影响提示词缓存。
 
 原先的 `glm:deferred-tools` 节（order 2500）已删除：ZCode 的系统提示词里没有 deferred 声明段，deferred 名单以 `<system-reminder>` 公告递送（§5.7）。
 
@@ -496,6 +504,7 @@ L3 探针：沙盒里把压缩阈值调低，摘要请求末条是 ZCode 提示�
 | 工具检索（glm-prompt 内） | `toolSearchMode: off` 或会话历史不可读时全量直载 | 行健康（glm-prompt 一行的说明） |
 | data | 不写用量流水；违规与决策只由配了 `home` 的行写；`/hourness` 写明缺哪个目录 | 行健康、`/hourness` |
 | guard | 无门禁 | 行健康（显式禁用除外） |
+| guard 影子兜底 | 组合里没有 workspace-changes：只少影子记录，门禁照常 | 行健康（guard 一行的说明） |
 | memory | 无记忆、无用量流水 | 行健康 |
 | workflow / hourness | 无记录、无报告 | 行健康 |
 
