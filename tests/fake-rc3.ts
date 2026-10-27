@@ -6,7 +6,7 @@
  * derived history. The route reaches plugins solely through the assembly
  * variables, exactly as installModelSelection injects them.
  */
-import type { AgentLike, AssemblePayload, AssembledTool, PluginContext, PostExecuteDecision, PreStepDecision, PreStepPayload, ToolDefinitionLike, ToolExecuteInput, ToolExecutionPayload, ToolFinalResult } from '../src/shared/dsh-min.ts'
+import type { AgentLike, AssemblePayload, AssembledTool, PluginContext, PreStepDecision, PreStepPayload, ToolDefinitionLike, ToolExecuteInput, ToolFinalResult } from '../src/shared/dsh-min.ts'
 
 type Listener = (...args: never[]) => unknown
 
@@ -31,8 +31,6 @@ export interface FakeRuntime {
   create(): Promise<void>
   /** Run `agent/pre-step` for one step; the runtime's default decision admits the claimed messages. */
   preStep(options?: { messages?: readonly unknown[], step?: number, turn?: number }): Promise<PreStepDecision>
-  /** Run `tools/post-execute` for one completed call. */
-  postExecute(exec: Omit<ToolExecutionPayload, 'agent'>): Promise<PostExecuteDecision>
   /** Execute a visible tool by name the way the runtime resolves calls (scoped shadows global); returns the body's value. */
   execute(name: string, args: unknown): Promise<unknown>
 }
@@ -70,22 +68,14 @@ export function fakeRuntime(options: { natives?: readonly string[], calls?: Arra
     deferContext(context: unknown) { contexts.push(context) },
     concludeTurn() {},
   })
-  const postExecute = async (exec: ToolExecutionPayload): Promise<PostExecuteDecision> => {
-    const chain = of('tools/post-execute').reduceRight<() => Promise<PostExecuteDecision>>(
-      (next, listener) => async () => (listener as unknown as (e: ToolExecutionPayload, r: unknown, n: () => Promise<PostExecuteDecision>) => Promise<PostExecuteDecision>)(exec, undefined, next),
-      async () => ({ kind: 'accept' }),
-    )
-    return chain()
-  }
   const ctx: PluginContext = {
-    systemPrompt: { section: () => () => {} },
     tools: {
       register: definition => {
         scoped.push(definition)
         return () => { scoped.splice(scoped.indexOf(definition), 1) }
       },
       get: name => visible().find(tool => tool.name === name),
-      // Pipeline order of ToolRuntime.execute: body, output render, post-execute.
+      // Pipeline order of ToolRuntime.execute: body, output render, deferred contexts.
       async execute(input): Promise<ToolFinalResult> {
         executed.push(input)
         const tool = visible().find(candidate => candidate.name === input.name)
@@ -100,9 +90,7 @@ export function fakeRuntime(options: { natives?: readonly string[], calls?: Arra
           const message = error instanceof Error ? error.message : String(error)
           result = { isError: true, content: [{ type: 'text', text: `Error: ${message}` }], error: { message } }
         }
-        const decision = await postExecute({ name: input.name, arguments: input.arguments, ...(input.agent === undefined ? {} : { agent: input.agent }) })
-        const additional = [...contexts, ...(decision.additionalContexts ?? [])]
-        return additional.length > 0 ? { ...result, additionalContexts: additional } : result
+        return contexts.length > 0 ? { ...result, additionalContexts: contexts } : result
       },
     },
     on: ((event: string, listener: Listener, opts?: { prepend?: boolean }) => {
@@ -112,7 +100,7 @@ export function fakeRuntime(options: { natives?: readonly string[], calls?: Arra
       return () => { listeners.splice(listeners.indexOf(entry), 1) }
     }) as PluginContext['on'],
   }
-  const agent: AgentLike = { id: 'agent-1', ctx, session: { deriveMessages: () => [...history] } }
+  const agent: AgentLike = { id: 'agent-1', ctx, session: { id: 'agent-1', header: { id: 'agent-1' }, deriveMessages: () => [...history] } }
   return {
     ctx,
     agent,
@@ -143,7 +131,6 @@ export function fakeRuntime(options: { natives?: readonly string[], calls?: Arra
       )
       return chain()
     },
-    postExecute: exec => postExecute({ ...exec, agent }),
     async execute(name, args) {
       const tool = visible().find(candidate => candidate.name === name)
       if (tool === undefined) throw new Error(`unknown tool "${name}"`)

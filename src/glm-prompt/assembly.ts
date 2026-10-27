@@ -8,26 +8,11 @@
  * model-selection listener injected after its own `next()` and rewrites both
  * for that request alone.
  */
-import type { AssembledTool } from '../shared/dsh-min.ts'
+import type { AssembledSection, AssembledTool, AssemblePayload } from '../shared/dsh-min.ts'
 import { assemblyRoute, isGlmModel } from '../shared/route.ts'
 
-/** One assembled prompt section as the assemble waterfall carries it. */
-export interface AssemblySection {
-  readonly name: string
-  readonly text: string
-  readonly interpolate?: boolean
-}
-
-/** The assembly object passed through the `system-prompt/assemble` waterfall. */
-export interface PromptAssembly {
-  readonly sections: readonly AssemblySection[]
-  readonly contexts: readonly unknown[]
-  readonly tools: readonly AssembledTool[]
-  readonly variables: Record<string, unknown>
-}
-
 /** Whether the assembly's resolved route serves a GLM model (dialect follows the model family). */
-export function isGlmAssembly(assembly: PromptAssembly): boolean {
+export function isGlmAssembly(assembly: AssemblePayload): boolean {
   return isGlmModel(assemblyRoute(assembly).model)
 }
 
@@ -38,11 +23,11 @@ export function isGlmAssembly(assembly: PromptAssembly): boolean {
  * @param assembly - the post-waterfall assembly.
  * @param wanted - the dialect sections (`dialectSections()` output).
  */
-export function rewriteDialectSections<T extends PromptAssembly>(assembly: T, wanted: readonly { name: string, text: string }[]): T {
+export function rewriteDialectSections<T extends AssemblePayload>(assembly: T, wanted: readonly { name: string, text: string }[]): T {
   const replacement = new Map(wanted.map(section => [section.name, section]))
   const identity = replacement.get('harness:identity')
   const cliPrefix = replacement.get('glm:cli-prefix')
-  const out: AssemblySection[] = []
+  const out: AssembledSection[] = []
   if (cliPrefix !== undefined) out.push({ name: cliPrefix.name, text: cliPrefix.text })
   let identityIndex = -1
   for (const section of assembly.sections) {

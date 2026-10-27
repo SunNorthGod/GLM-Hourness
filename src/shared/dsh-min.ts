@@ -1,35 +1,52 @@
 /**
- * Minimal structural types for the DSH plugin surface this package touches.
+ * Minimal structural types for the DSH plugin surface this package touches:
+ * the thin adapter layer, together with src/shared/lm-min.ts (LLM message
+ * and stream vocabulary). Rows import host types from here instead of
+ * declaring their own, so a host upgrade changes these two files.
  *
- * Verified against the desktop runtime packages (reference/dsh-desktop-0.2.1-rc.3,
- * exported from app.asar; docs/DESIGN.md §2.4a), which differ from the
- * reference/deepseek-harness main branch that carries the same version string:
- * - ctx.tools.register(definition) — no activation options; a registration
- *   through agent.ctx is scoped to that agent and shadows a global of the
- *   same name
- * - ctx.tools.get(name, scope) — the definition a scope sees (no executable())
- * - agent.ctx.on('system-prompt/assemble') — runs every step before
- *   agent/pre-step; the request carries exactly the returned `tools`, and the
- *   route lives only in `variables.provider` / `variables.model`
- * - ctx.on('tools/post-execute') — (exec, result, next) waterfall whose
- *   decision may attach `additionalContexts`; nested sub-dispatches carry
- *   `exec.parent`
- * - ctx.tools.execute(input) — one same-process call through pre-execute,
- *   guards, dispatch and post-execute, resolving to the materialized result
- * - agent.ctx.on('agent/pre-step') — after the step's assembly; a decision's
- *   `messages` are appended to the session as the step's input
- * - agent.session.deriveMessages() — the request-visible history (after
- *   compaction projections)
+ * Every member is verified against the desktop runtime packages
+ * (reference/dsh-desktop-0.2.1-rc.3, exported from app.asar), which differ
+ * from the reference/deepseek-harness main branch that carries the same
+ * version string; the surface table with package and line evidence is
+ * docs/DESIGN.md §2.4a. Where the official .d.ts is installed
+ * (@deepseek-ai/dsh-llm, @deepseek-ai/dsh-attachment) a type-level contract
+ * check pins the structural type to it.
  */
 import { randomUUID } from 'node:crypto'
+import type { GenerateOptions } from '@deepseek-ai/dsh-llm'
+import type { StreamChunk } from './lm-min.ts'
 
+/** The session members rows read (dsh-session `Session`: `id` getter, `header`, `deriveMessages`). */
+export interface SessionLike {
+  /** The session identity (the header's `id`). */
+  readonly id: string
+  /** Immutable creation metadata; `cwd` is the session working directory when the store recorded one. */
+  readonly header: { readonly id: string, readonly cwd?: string }
+  /** The request-visible history, after compaction projections. */
+  deriveMessages(): readonly unknown[]
+}
+
+/** A live agent (dsh-agent-loop `ReactLoopAgent`): its id (shared with its session), scoped context and session. */
 export interface AgentLike {
   readonly id: string
   readonly ctx: PluginContext
-  /** Model route holder; rc.3 desktop answers `{}` for the main agent (route lives in the assembly). */
-  readonly model?: { current(): { provider?: string, model?: string } | undefined }
   /** The agent's session; absent only outside the agent runtime. */
-  readonly session?: { deriveMessages(): readonly unknown[] }
+  readonly session?: SessionLike
+}
+
+/**
+ * A message from `session.deriveMessages()` (dsh-session `deriveEventMessage`),
+ * as far as the rows read it. Assistant messages carry `source.kind: 'model'`
+ * with `provider` / `model` and their tool calls as `tool-call` blocks whose
+ * `arguments` is the provider's JSON text; tool results carry `toolCallId`
+ * and `isError`; notices keep the `source` they were created with.
+ */
+export interface DerivedMessage {
+  readonly role: string
+  readonly content?: ReadonlyArray<{ readonly type: string, readonly text?: string, readonly id?: string, readonly name?: string, readonly arguments?: unknown }>
+  readonly source?: Readonly<Record<string, unknown>>
+  readonly toolCallId?: string
+  readonly isError?: boolean
 }
 
 /** The execution object a tool body receives as its second argument (dsh-tools `createExecution`). */
@@ -65,6 +82,32 @@ export interface ToolFinalResult {
   readonly concludesTurn?: true
 }
 
+/**
+ * The `tools/pre-execute` payload as far as the rows read it: the execution
+ * dsh-tools `createExecution` builds. It carries the calling agent, not an
+ * agent or session id; both are `agent.id` and `agent.session.id`.
+ */
+export interface ToolExecutionPayload {
+  readonly name: string
+  readonly arguments: unknown
+  readonly agent?: AgentLike
+  /** Opaque token set on transport sub-dispatches (e.g. a run_code binding call). */
+  readonly parent?: unknown
+}
+
+/** `tools/pre-execute` decision (dsh-tools `prepareExecution`); `ask` and `cancel` pass through listeners that do not decide. */
+export type PreExecuteDecision =
+  | { readonly kind: 'allow' }
+  | { readonly kind: 'deny', readonly reason: string, readonly info?: unknown }
+  | { readonly kind: 'ask' | 'cancel', readonly [key: string]: unknown }
+
+export type PreExecuteListener = (exec: ToolExecutionPayload, next: () => Promise<PreExecuteDecision>) => Promise<PreExecuteDecision>
+
+/** A context that observes or gates tool calls. */
+export interface PreExecuteHost {
+  on(event: 'tools/pre-execute', listener: PreExecuteListener): () => void
+}
+
 /** `agent/pre-step` payload. */
 export interface PreStepPayload {
   readonly agent: AgentLike
@@ -80,19 +123,6 @@ export type PreStepDecision =
   | { readonly kind: 'reject', readonly [key: string]: unknown }
   | { readonly kind: 'enter', readonly messages: readonly unknown[], readonly [key: string]: unknown }
 
-export interface SectionSpec {
-  readonly name: string
-  readonly order: number
-  readonly text: string
-  readonly interpolate?: boolean
-}
-
-export interface SystemPromptLike {
-  section(spec: SectionSpec): () => void
-  /** Dynamic context (team:identity pattern): text resolves at assembly time. */
-  context?(spec: { name: string, order: number, text: () => string }): () => void
-}
-
 export interface ToolDefinitionLike {
   readonly name: string
   readonly description: string
@@ -100,24 +130,19 @@ export interface ToolDefinitionLike {
   readonly output: {
     readonly schema: Record<string, unknown>
     render(args: unknown, value: unknown): Array<{ type: string, text?: string }>
+    /** Optional UI metadata projection (dsh-tools `register` rejects a present non-function). */
+    presentationMeta?(args: unknown, value: unknown): unknown
   }
   execute(args: unknown, exec: unknown): Promise<unknown>
 }
 
 export interface ToolsLike {
+  /** Register globally, or in the agent scope when called through `agent.ctx`; a scoped tool shadows a global of the same name. */
   register(definition: ToolDefinitionLike): () => void
   /** The definition a scope resolves (scoped shadows global; a restricted-away global reads as absent). */
   get(name: string, scope?: unknown): ToolDefinitionLike | undefined
   /** Run one call through the full tool pipeline. */
   execute(input: ToolExecuteInput): Promise<ToolFinalResult>
-}
-
-export interface ToolExecutionPayload {
-  readonly name: string
-  readonly arguments?: unknown
-  readonly agent?: AgentLike
-  /** Opaque token set on transport sub-dispatches (e.g. a run_code binding call). */
-  readonly parent?: unknown
 }
 
 /**
@@ -133,13 +158,6 @@ export interface UserNotice {
   readonly source: { readonly kind: string, readonly form: 'notice', readonly summary: string, readonly [fact: string]: unknown }
 }
 
-/** Duck-typed post-execute decision: unknown DSH variants pass through via spread. */
-export interface PostExecuteDecision {
-  readonly kind: string
-  readonly additionalContexts?: unknown[]
-  readonly [key: string]: unknown
-}
-
 /** One model-facing tool schema as the assembly carries it. */
 export interface AssembledTool {
   readonly name: string
@@ -148,26 +166,106 @@ export interface AssembledTool {
   readonly deferLoading?: true
 }
 
+/** One assembled prompt section as the assemble waterfall carries it. */
+export interface AssembledSection {
+  readonly name: string
+  readonly text: string
+  readonly interpolate?: boolean
+}
+
 /** The assembly object passed through the `system-prompt/assemble` waterfall. */
 export interface AssemblePayload {
-  readonly sections: readonly { readonly name: string, readonly text: string, readonly interpolate?: boolean }[]
+  readonly sections: readonly AssembledSection[]
   readonly contexts: readonly unknown[]
   readonly tools: readonly AssembledTool[]
   readonly variables: Record<string, unknown>
   readonly [key: string]: unknown
 }
 
+/** The context the dialect row runs on: the tools service and the agent lifecycle and per-step waterfalls. */
 export interface PluginContext {
-  readonly systemPrompt: SystemPromptLike
   readonly tools: ToolsLike
   /** Awaited serially before agent creation resolves; the first step sees the effects. */
   on(event: 'agent/created', listener: (payload: { agent: AgentLike, source?: unknown }) => Promise<void> | void): () => void
-  on(event: 'tools/post-execute', listener: (exec: ToolExecutionPayload, result: unknown, next: () => Promise<PostExecuteDecision>) => Promise<PostExecuteDecision>): () => void
   /** Per-request prompt assembly; `options.prepend` registers outermost so post-`next()` sees injected variables. */
   on(event: 'system-prompt/assemble', listener: (assembly: AssemblePayload, context: unknown, next: () => Promise<AssemblePayload>) => Promise<AssemblePayload>, options?: { prepend?: boolean }): () => void
   /** Step admission (agent-scoped): runs after the step's assembly, before the request. */
   on(event: 'agent/pre-step', listener: (payload: PreStepPayload, next: () => Promise<PreStepDecision>) => Promise<PreStepDecision>, options?: { prepend?: boolean }): () => void
 }
+
+/**
+ * The `llm/stream` request fields the rows read (dsh-llm `GenerateOptions`).
+ * Loop-built requests arrive deep-frozen; listeners read them and pass a new
+ * object when they need different options.
+ */
+export interface LlmStreamOptions {
+  readonly provider: string
+  readonly model: string
+  readonly messages: readonly unknown[]
+  readonly sessionId?: string
+  readonly purpose?: 'compaction' | 'session-title'
+}
+
+export type LlmStreamListener = (options: LlmStreamOptions, next: () => AsyncIterable<StreamChunk>) => AsyncIterable<StreamChunk>
+
+/** A context that wraps model calls; `global` admits calls from isolated `llm` services too. */
+export interface LlmStreamHost {
+  on(event: 'llm/stream', listener: LlmStreamListener, options?: { global?: boolean, prepend?: boolean }): () => void
+}
+
+/** The `llm` service member a row calls to stream through the full waterfall. */
+export interface LlmStreamService {
+  stream(options: LlmStreamOptions): AsyncIterable<StreamChunk>
+}
+
+/** The `llm` service member that registers an adapter for provider routes; the disposer also carries `replace`. */
+export interface AdapterRegistry<Adapter> {
+  registerAdapter(providers: readonly string[], adapter: Adapter): () => void
+}
+
+/** cordis `ctx.get(name)`: an optional service without the inject requirement; undefined until its fiber is active. */
+export interface ServiceLookup {
+  get?(name: string): unknown
+}
+
+/** The `fs` service member that maps a host path into the tool execution world (undefined when that world cannot read it). */
+export interface FsPathService {
+  processPathFromHostPath(hostPath: string): string | undefined
+}
+
+/** A human command invocation (dsh-commands): the text after `/name`. */
+export interface CommandInvocationLike {
+  readonly rawInput: string
+}
+
+/** A command result; an error needs non-empty text (dsh-commands `normalizeResult`). */
+export interface CommandResultLike {
+  readonly kind: 'success' | 'error'
+  readonly text: string
+}
+
+/** A command definition (dsh-commands `normalizeDefinition`): `name` matches /^[a-z][a-z0-9_-]*$/, `description` is non-empty. */
+export interface CommandDefinitionLike {
+  readonly definitionId: string
+  readonly name: string
+  readonly description: string
+  handler(invocation: CommandInvocationLike): Promise<CommandResultLike>
+}
+
+/** A context with the commands service injected. */
+export interface CommandsHost {
+  readonly commands: { register(definition: CommandDefinitionLike): () => void }
+}
+
+/**
+ * Compile-time contract check against the installed @deepseek-ai/dsh-llm
+ * types: every request the runtime streams offers the fields `llm/stream`
+ * listeners read, with compatible types.
+ */
+export type LlmStreamOptionsContractCheck = GenerateOptions extends LlmStreamOptions ? true : never
+/** Referenced so the conditional type is evaluated by tsc. */
+const llmStreamOptionsContractCheck: LlmStreamOptionsContractCheck = true
+void llmStreamOptionsContractCheck
 
 /** Recursively freeze a freshly built JSON value (createMessage freezes its output). */
 function deepFreeze<T>(value: T): T {

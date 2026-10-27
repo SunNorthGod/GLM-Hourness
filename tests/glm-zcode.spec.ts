@@ -6,7 +6,7 @@ import { ANTHROPIC_SDK_UA } from '../src/glm-llm/headers.ts'
 import { apply as loginApply } from '../src/glm-llm/login-row.ts'
 import { saveCredential, type StoreFs } from '../src/glm-llm/auth/store.ts'
 import type { Credential } from '../src/glm-llm/auth/types.ts'
-import type { GenerateOptionsLike, StreamChunk } from '../src/glm-llm/lm-min.ts'
+import type { GenerateOptionsLike, StreamChunk } from '../src/shared/lm-min.ts'
 
 function memoryStore(): { fs: StoreFs, files: Map<string, string> } {
   const files = new Map<string, string>()
@@ -50,9 +50,46 @@ test('adapter model catalog satisfies the DSH contract at runtime', async () => 
   // Anthropic has no mid-conversation system role: the adapter must not
   // declare in-history updates (the encoder lifts the leading system prompt).
   assert.equal(resolved.systemPromptUpdate, undefined)
-  // The adapter base default preserves normalized images unchanged.
-  const target = adapter.imageRequestTarget('glm-zcode', 'glm-5.3', { attachmentId: 'a1', mediaType: 'image/png', bytes: 1024, width: 640, height: 480 } as never)
-  assert.deepEqual(target, { width: 640, height: 480, maxBytes: 1024 })
+  // ZCode's model-image bounds; a small image keeps its size.
+  const target = adapter.imageRequestTarget('glm-zcode', 'glm-5.3-flash', { attachmentId: 'a1', mediaType: 'image/png', bytes: 1024, width: 640, height: 480 } as never)
+  assert.deepEqual(target, { width: 640, height: 480, maxBytes: 3_932_160 })
+})
+
+test('input modalities are truthful per model: GLM-5.3 text-only, GLM-5.3-Flash text and image', async () => {
+  const { fs } = memoryStore()
+  const adapter = new ZcodeAdapter({ home: 'C:/ws/.llm', fetchImpl: makeUpstream(), storeFs: fs })
+  const listed = Object.fromEntries((await adapter.listModels('glm-zcode')).map(model => [model.id, model.inputModalities]))
+  assert.deepEqual(listed, { 'glm-5.3': ['text'], 'glm-5.3-flash': ['text', 'image'] })
+  assert.deepEqual((await adapter.resolveModel('glm-zcode', 'glm-5.3')).inputModalities, ['text'])
+  assert.deepEqual((await adapter.resolveModel('glm-zcode', 'glm-5.3-flash')).inputModalities, ['text', 'image'])
+  // An id outside the catalog is not claimed to accept images.
+  assert.deepEqual((await adapter.resolveModel('glm-zcode', 'glm-next')).inputModalities, ['text'])
+})
+
+test('stream sends image blocks through the attachment service; without it an image request fails', async () => {
+  const { fs } = memoryStore()
+  await saveCredential(fs, 'C:/ws/.llm/credentials.json', credential)
+  const captured: { body?: Record<string, unknown> } = {}
+  const reads: string[] = []
+  const attachments = {
+    async readImageRequest(ref: { attachmentId: string, mediaType: string }) {
+      reads.push(ref.attachmentId)
+      return { data: new Uint8Array([137, 80, 78, 71]), mediaType: ref.mediaType }
+    },
+    imageHostPath: () => undefined,
+  }
+  const image = { attachmentId: 'sha256:cccc', mediaType: 'image/png', bytes: 4, width: 1, height: 1 }
+  const options = {
+    provider: 'glm-zcode', model: 'glm-5.3-flash',
+    messages: [{ role: 'user', content: [{ type: 'text', text: 'colour?' }, { type: 'image', attachment: image }] }],
+  } as GenerateOptionsLike
+  const adapter = new ZcodeAdapter({ home: 'C:/ws/.llm', fetchImpl: makeUpstream(captured), storeFs: fs, env: {} as NodeJS.ProcessEnv, resolveAttachments: () => attachments })
+  for await (const _chunk of adapter.stream(options as never)) { void _chunk }
+  assert.deepEqual(reads, ['sha256:cccc'])
+  const messages = captured.body!.messages as Array<{ content: unknown[] }>
+  assert.deepEqual(messages[0]!.content[1], { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'iVBORw==' } })
+  const bare = new ZcodeAdapter({ home: 'C:/ws/.llm', fetchImpl: makeUpstream(), storeFs: fs, env: {} as NodeJS.ProcessEnv })
+  await assert.rejects(async () => { for await (const chunk of bare.stream(options as never)) void chunk }, /attachment service/)
 })
 
 function makeUpstream(captured: { url?: string, headers?: Record<string, string>, body?: Record<string, unknown> } = {}) {
@@ -118,7 +155,9 @@ test('the DSH system prompt arrives as leading system messages and lands in the 
   assert.deepEqual(captured.body!.system, [{ type: 'text', text: 'You are ZCode, an interactive coding agent' }])
   const messages = captured.body!.messages as Array<{ role: string, content: Array<{ type: string, text?: string }> }>
   assert.equal(messages[0]!.role, 'user') // the leading system message left the history
-  assert.equal(messages.at(-1)!.content[0]!.text, '<system-reminder>\nharness notice\n</system-reminder>')
+  // The later developer notice rides the same user turn as a system reminder.
+  assert.equal(messages.length, 1)
+  assert.equal(messages[0]!.content.at(-1)!.text, '<system-reminder>\nharness notice\n</system-reminder>')
 })
 
 test('start-plan wraps the system in the 3-block assembly and pins the currentDate prefix once', async () => {

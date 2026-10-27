@@ -33,4 +33,4 @@ for await (const chunk of adapter.stream({
 console.log(`text: ${JSON.stringify(text.trim())}`)
 console.log(`usage: ${JSON.stringify(usage)}`)
 console.log(`finish: ${finish}`)
-console.log(finish === 'stop' && text.length > 0 ? 'SMOKE OK — native channel live, reverse proxy can retire.' : 'SMOKE INCOMPLETE')
+console.log(finish === 'stop' && text.length > 0 ? 'SMOKE OK — native channel live.' : 'SMOKE INCOMPLETE')

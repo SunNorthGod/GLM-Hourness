@@ -5,7 +5,7 @@
  * JSON object per line and never rewrites history.
  */
 import type { ViolationRecord } from '../guard/index.ts'
-import type { TokenUsage } from '../glm-llm/lm-min.ts'
+import type { TokenUsage } from '../shared/lm-min.ts'
 
 export type AppendLine = (path: string, line: string) => Promise<void>
 

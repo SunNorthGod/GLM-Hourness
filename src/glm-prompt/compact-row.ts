@@ -16,30 +16,11 @@
  */
 import { buildCompactPrompt, formatCompactSummary } from './compact.ts'
 import { isGlmModel } from '../shared/route.ts'
+import type { LlmStreamHost, LlmStreamOptions, LlmStreamService } from '../shared/dsh-min.ts'
+import type { StreamChunk } from '../shared/lm-min.ts'
 
-/** The `llm/stream` options this row reads (dsh-llm StreamOptions). */
-export interface StreamOptions {
-  readonly provider: string
-  readonly model: string
-  readonly purpose?: string
-  readonly messages: readonly unknown[]
-  readonly [key: string]: unknown
-}
-
-/** One stream chunk, as far as this row reads it (dsh-llm StreamChunk). */
-export interface StreamChunk {
-  readonly type: string
-  readonly index?: number
-  readonly blockType?: string
-  readonly text?: string
-  readonly block?: { readonly type: string, readonly text?: string }
-  readonly [key: string]: unknown
-}
-
-export interface CompactRowContext {
-  readonly llm: { stream(options: StreamOptions): AsyncIterable<StreamChunk> }
-  on(event: 'llm/stream', listener: (options: StreamOptions, next: () => AsyncIterable<StreamChunk>) => AsyncIterable<StreamChunk>, options?: { global?: boolean, prepend?: boolean }): () => void
-}
+/** The row's context: the `llm/stream` waterfall and the injected `llm` service. */
+export type CompactRowContext = LlmStreamHost & { readonly llm: LlmStreamService }
 
 /** Opening of compaction-basic's COMPACTION_INSTRUCTION; the row replaces only that instruction. */
 const DSH_INSTRUCTION_OPENING = 'You are now acting as a compaction engine for this AI coding assistant.'
@@ -53,7 +34,7 @@ function isDshCompactionInstruction(message: unknown): boolean {
 }
 
 /** The ZCode copy of a GLM compaction request, or undefined when the request is not one. */
-export function withZcodeInstruction(options: StreamOptions): StreamOptions | undefined {
+export function withZcodeInstruction(options: LlmStreamOptions): LlmStreamOptions | undefined {
   if (options.purpose !== 'compaction' || !isGlmModel(options.model)) return undefined
   if (!isDshCompactionInstruction(options.messages.at(-1))) return undefined
   return {
@@ -62,10 +43,12 @@ export function withZcodeInstruction(options: StreamOptions): StreamOptions | un
   }
 }
 
-const isTextChunk = (chunk: StreamChunk): boolean =>
+type TextChunk = Extract<StreamChunk, { type: 'block-start' | 'text-delta' | 'block-end' }>
+
+const isTextChunk = (chunk: StreamChunk): chunk is TextChunk =>
   (chunk.type === 'block-start' && chunk.blockType === 'text')
   || chunk.type === 'text-delta'
-  || (chunk.type === 'block-end' && chunk.block?.type === 'text')
+  || (chunk.type === 'block-end' && chunk.block.type === 'text')
 
 /**
  * Apply ZCode's summary formatting to a finished stream: the text blocks are
@@ -82,11 +65,10 @@ export async function* formatSummaryStream(stream: AsyncIterable<StreamChunk>): 
   chunks.forEach((chunk, position) => {
     if (!isTextChunk(chunk)) return
     if (firstText < 0) firstText = position
-    const index = chunk.index ?? 0
-    const text = texts.get(index) ?? { deltas: '' }
-    texts.set(index, text)
-    if (chunk.type === 'text-delta') text.deltas += chunk.text ?? ''
-    if (chunk.type === 'block-end' && typeof chunk.block?.text === 'string') text.block = chunk.block.text
+    const text = texts.get(chunk.index) ?? { deltas: '' }
+    texts.set(chunk.index, text)
+    if (chunk.type === 'text-delta') text.deltas += chunk.text
+    if (chunk.type === 'block-end' && chunk.block.type === 'text') text.block = chunk.block.text
   })
   const formatted = formatCompactSummary([...texts.values()].map(text => text.block ?? text.deltas).join('\n'))
   const index = texts.keys().next().value ?? 0

@@ -5,7 +5,26 @@
  * SSE event stream back into seam stream chunks. GLM models always think;
  * the real client sends no thinking field, so neither does this encoder.
  */
-import type { GenerateOptionsLike, RequestMessageLike, StreamChunk, ToolSchemaLike, TokenUsage, FinishReason } from './lm-min.ts'
+import { messageText, type ContentBlockLike, type GenerateOptionsLike, type RequestMessageLike, type StreamChunk, type ToolSchemaLike, type TokenUsage, type FinishReason } from '../shared/lm-min.ts'
+import type { RequestImages } from './images.ts'
+
+/** Anthropic text block. */
+type WireText = { type: 'text', text: string }
+/** Anthropic base64 image block, the shape ZCode's AI SDK Anthropic provider emits. */
+type WireImageBlock = { type: 'image', source: { type: 'base64', media_type: string, data: string } }
+
+/** One Anthropic content block the encoder emits. */
+export type WireBlock =
+  | WireText
+  | WireImageBlock
+  | { type: 'tool_use', id: string, name: string, input: unknown }
+  | { type: 'tool_result', tool_use_id: string, content: string | Array<WireText | WireImageBlock>, is_error?: true }
+
+/** One Anthropic message. */
+export interface WireMessage {
+  role: 'user' | 'assistant'
+  content: WireBlock[]
+}
 
 /** Anthropic Messages request body. */
 export interface AnthropicRequest {
@@ -13,10 +32,13 @@ export interface AnthropicRequest {
   readonly max_tokens: number
   readonly stream: true
   readonly system?: ReadonlyArray<{ type: 'text', text: string, cache_control?: { type: 'ephemeral' } }>
-  readonly messages: ReadonlyArray<{ role: 'user' | 'assistant', content: unknown }>
+  readonly messages: readonly WireMessage[]
   readonly tools?: ReadonlyArray<{ name: string, description: string, input_schema: Record<string, unknown> }>
   readonly temperature?: number
 }
+
+/** ZCode's wire fallback for a user turn without content (3.16.3 bundle, `toAiSdkUserContent`). */
+const EMPTY_USER_CONTENT_FALLBACK = '(no content)'
 
 /**
  * Split the DSH request into the Anthropic system text and the remaining
@@ -30,7 +52,7 @@ export function splitSystemPrompt(options: Pick<GenerateOptionsLike, 'system' | 
   let end = 0
   for (const message of options.messages) {
     if (message.role !== 'system') break
-    parts.push(message.content.map(part => part.text ?? '').join(''))
+    parts.push(messageText(message, ''))
     end += 1
   }
   return { system: parts.filter(part => part.length > 0).join('\n\n'), messages: options.messages.slice(end) }
@@ -41,45 +63,95 @@ function systemReminder(text: string): string {
   return ['<system-reminder>', text, '</system-reminder>'].join('\n')
 }
 
-/** Encode one seam message into the Anthropic messages array. */
-export function encodeMessage(message: RequestMessageLike): { role: 'user' | 'assistant', content: unknown } | undefined {
+/** Text and image blocks of user-side content in order; empty text drops (ZCode transform). */
+function userSideBlocks(content: readonly ContentBlockLike[], images: RequestImages | undefined): Array<WireText | WireImageBlock> {
+  const blocks: Array<WireText | WireImageBlock> = []
+  for (const block of content) {
+    if (block.type === 'text' && block.text.length > 0) blocks.push({ type: 'text', text: block.text })
+    else if (block.type === 'image') blocks.push(imageBlock(block, images))
+  }
+  return blocks
+}
+
+/** One image occurrence on the wire: the prepared request version, or DSH's placeholder when offloaded. */
+function imageBlock(block: Extract<ContentBlockLike, { type: 'image' }>, images: RequestImages | undefined): WireText | WireImageBlock {
+  if (images === undefined) throw new Error('glm-zcode: request images were not prepared')
+  if (block.offloaded === true) return { type: 'text', text: images.offloadedText(block.attachment) }
+  const version = images.versions.get(block.attachment.attachmentId)
+  if (version === undefined) throw new Error(`glm-zcode: no request version for image ${block.attachment.attachmentId}`)
+  return { type: 'image', source: { type: 'base64', media_type: version.mediaType, data: version.data } }
+}
+
+/**
+ * Encode one seam message into an Anthropic message. Content blocks keep
+ * their order; empty text blocks are dropped, as ZCode's transform does.
+ * Images in user and tool messages need `images` (prepareRequestImages);
+ * a tool result with an image carries block content inside `tool_result`,
+ * the placement ZCode uses for Anthropic routes.
+ */
+export function encodeMessage(message: RequestMessageLike, images?: RequestImages): WireMessage | undefined {
   if (message.role === 'system' || message.role === 'developer') {
     // A system or developer message after the leading prompt is harness
     // context; Anthropic has no mid-conversation system role, so it rides a
     // user turn as a system reminder.
-    const text = message.content.map(part => part.type === 'text' ? part.text ?? '' : '').join('\n').trim()
+    const text = messageText(message, '\n').trim()
     return text.length === 0 ? undefined : { role: 'user', content: [{ type: 'text', text: systemReminder(text) }] }
   }
   if (message.role === 'tool') {
-    const text = message.content.map(part => part.text ?? '').join('\n')
-    return { role: 'user', content: [{ type: 'tool_result', tool_use_id: message.toolCallId ?? '', content: text.length > 0 ? text : '(no output)' }] }
+    const text = messageText(message, '\n')
+    const withImages = message.isError !== true && message.content.some(block => block.type === 'image')
+    return {
+      role: 'user',
+      content: [{
+        type: 'tool_result',
+        tool_use_id: message.toolCallId ?? '',
+        // Text-only results go as one string; ZCode sends failed results as
+        // error text with is_error set.
+        content: withImages ? userSideBlocks(message.content, images) : text.length > 0 ? text : '(no output)',
+        ...(message.isError === true ? { is_error: true } : {}),
+      }],
+    }
   }
   if (message.role === 'assistant') {
-    const blocks: Array<{ type: 'text', text: string } | { type: 'tool_use', id: string, name: string, input: unknown }> = []
-    for (const part of message.content) {
-      if (part.type === 'text' && typeof part.text === 'string' && part.text.length > 0) blocks.push({ type: 'text', text: part.text })
+    // rc.3 carries tool calls as `tool-call` content blocks; reasoning has no
+    // replayable signature on this channel and is not sent back.
+    const blocks: WireBlock[] = []
+    for (const block of message.content) {
+      if (block.type === 'text' && block.text.length > 0) blocks.push({ type: 'text', text: block.text })
+      else if (block.type === 'tool-call') blocks.push({ type: 'tool_use', id: block.id, name: block.name, input: safeParse(block.arguments) })
     }
-    for (const call of message.toolCalls ?? []) {
-      blocks.push({ type: 'tool_use', id: call.id, name: call.name, input: safeParse(call.arguments) })
-    }
-    if (blocks.length === 0) return undefined
-    return { role: 'assistant', content: blocks }
+    return blocks.length === 0 ? undefined : { role: 'assistant', content: blocks }
   }
-  // user: text parts joined; tool outputs already folded into tool messages
-  const text = message.content.map(part => part.text ?? '').join('\n')
-  return { role: 'user', content: text.length > 0 ? [{ type: 'text', text }] : [{ type: 'text', text: '' }] }
+  const blocks = userSideBlocks(message.content, images)
+  return { role: 'user', content: blocks.length > 0 ? blocks : [{ type: 'text', text: EMPTY_USER_CONTENT_FALLBACK }] }
 }
 
 function safeParse(raw: string): unknown {
   try { return JSON.parse(raw) } catch { return {} }
 }
 
-/** Encode the full seam request into the upstream Anthropic body. */
-export function encodeRequest(options: GenerateOptionsLike, systemBlocks?: ReadonlyArray<{ type: 'text', text: string, cache_control?: { type: 'ephemeral' } }>): AnthropicRequest {
+/**
+ * Merge consecutive same-role messages into one turn, as the AI SDK
+ * Anthropic provider under ZCode does (tool results and the user content
+ * that follows them share one user message; parallel tool results land in
+ * the single user turn after the assistant's tool_use blocks).
+ */
+function groupTurns(messages: readonly WireMessage[]): WireMessage[] {
+  const grouped: WireMessage[] = []
+  for (const message of messages) {
+    const last = grouped.at(-1)
+    if (last !== undefined && last.role === message.role) last.content.push(...message.content)
+    else grouped.push({ role: message.role, content: [...message.content] })
+  }
+  return grouped
+}
+
+/** Encode the full seam request into the upstream Anthropic body; `images` comes from prepareRequestImages. */
+export function encodeRequest(options: GenerateOptionsLike, systemBlocks?: ReadonlyArray<{ type: 'text', text: string, cache_control?: { type: 'ephemeral' } }>, images?: RequestImages): AnthropicRequest {
   // Leading system messages belong to `systemBlocks` (see splitSystemPrompt).
-  const messages = splitSystemPrompt(options).messages
-    .map(encodeMessage)
-    .filter((message): message is { role: 'user' | 'assistant', content: unknown } => message !== undefined)
+  const messages = groupTurns(splitSystemPrompt(options).messages
+    .map(message => encodeMessage(message, images))
+    .filter((message): message is WireMessage => message !== undefined))
   const request: AnthropicRequest = {
     model: options.model,
     max_tokens: options.maxTokens ?? 32000,

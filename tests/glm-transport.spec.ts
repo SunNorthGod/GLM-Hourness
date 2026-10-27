@@ -3,6 +3,8 @@ import test from 'node:test'
 import { buildLlmIdentityHeaders, buildContextIdentityHeaders, ensureDeviceMid, DEFAULT_IDENTITY, ZCODE_APP_VERSION } from '../src/glm-llm/identity.ts'
 import { buildAuthHeaders, buildTraceHeaders, ANTHROPIC_SDK_UA } from '../src/glm-llm/headers.ts'
 import { encodeRequest, encodeMessage, decodeFrame, decodeSse } from '../src/glm-llm/anthropic.ts'
+import { glmImageRequestTarget, prepareRequestImages, offloadedImageText, ZCODE_IMAGE_TARGET_BYTES } from '../src/glm-llm/images.ts'
+import type { AttachmentsLike, ImageRefLike, ImageTarget, RequestMessageLike } from '../src/shared/lm-min.ts'
 import type { Credential } from '../src/glm-llm/auth/types.ts'
 
 const env = {
@@ -88,10 +90,54 @@ test('encodeMessage folds seam roles into anthropic blocks', () => {
     encodeMessage({ role: 'tool', toolCallId: 'tu1', content: [{ type: 'text', text: 'done' }] }),
     { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'tu1', content: 'done' }] },
   )
+  // A failed result is error text with is_error set (ZCode's error-text output).
   assert.deepEqual(
-    encodeMessage({ role: 'assistant', content: [{ type: 'text', text: 'hi' }], toolCalls: [{ id: 'c1', name: 'Grep', arguments: '{"q":1}' }] }),
-    { role: 'assistant', content: [{ type: 'text', text: 'hi' }, { type: 'tool_use', id: 'c1', name: 'Grep', input: { q: 1 } }] },
+    encodeMessage({ role: 'tool', toolCallId: 'tu2', isError: true, content: [{ type: 'text', text: 'Error: boom' }] }),
+    { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'tu2', content: 'Error: boom', is_error: true }] },
   )
+  // rc.3 carries tool calls as tool-call content blocks; reasoning is not sent back.
+  assert.deepEqual(
+    encodeMessage({ role: 'assistant', content: [
+      { type: 'reasoning', text: 'think' },
+      { type: 'text', text: 'hi' },
+      { type: 'tool-call', id: 'c1', name: 'Grep', arguments: '{"q":1}' },
+      { type: 'tool-call', id: 'c2', name: 'Read', arguments: 'not json' },
+    ] }),
+    { role: 'assistant', content: [
+      { type: 'text', text: 'hi' },
+      { type: 'tool_use', id: 'c1', name: 'Grep', input: { q: 1 } },
+      { type: 'tool_use', id: 'c2', name: 'Read', input: {} },
+    ] },
+  )
+  assert.equal(encodeMessage({ role: 'assistant', content: [{ type: 'reasoning', text: 'only thinking' }] }), undefined)
+  // User text blocks stay separate; empty ones drop; an empty turn gets ZCode's fallback.
+  assert.deepEqual(
+    encodeMessage({ role: 'user', content: [{ type: 'text', text: 'a' }, { type: 'text', text: '' }, { type: 'text', text: 'b' }] }),
+    { role: 'user', content: [{ type: 'text', text: 'a' }, { type: 'text', text: 'b' }] },
+  )
+  assert.deepEqual(encodeMessage({ role: 'user', content: [] }), { role: 'user', content: [{ type: 'text', text: '(no content)' }] })
+})
+
+test('encodeRequest groups consecutive same-role turns the way the ZCode client sends them', () => {
+  const request = encodeRequest({
+    provider: 'glm-zcode', model: 'glm-5.3',
+    messages: [
+      { role: 'user', content: [{ type: 'text', text: 'go' }] },
+      { role: 'assistant', content: [{ type: 'tool-call', id: 'c1', name: 'Read', arguments: '{}' }, { type: 'tool-call', id: 'c2', name: 'Glob', arguments: '{}' }] },
+      { role: 'tool', toolCallId: 'c1', content: [{ type: 'text', text: 'one' }] },
+      { role: 'tool', toolCallId: 'c2', content: [{ type: 'text', text: 'two' }] },
+      { role: 'user', content: [{ type: 'text', text: '<system-reminder>\nnotice\n</system-reminder>' }] },
+    ],
+  })
+  assert.deepEqual(request.messages, [
+    { role: 'user', content: [{ type: 'text', text: 'go' }] },
+    { role: 'assistant', content: [{ type: 'tool_use', id: 'c1', name: 'Read', input: {} }, { type: 'tool_use', id: 'c2', name: 'Glob', input: {} }] },
+    { role: 'user', content: [
+      { type: 'tool_result', tool_use_id: 'c1', content: 'one' },
+      { type: 'tool_result', tool_use_id: 'c2', content: 'two' },
+      { type: 'text', text: '<system-reminder>\nnotice\n</system-reminder>' },
+    ] },
+  ])
 })
 
 test('encodeRequest builds the streaming body with system blocks and tools', () => {
@@ -108,12 +154,96 @@ test('encodeRequest builds the streaming body with system blocks and tools', () 
   assert.equal(request.stream, true)
   assert.equal(request.max_tokens, 4096)
   assert.deepEqual(request.system, [{ type: 'text', text: 'sys', cache_control: { type: 'ephemeral' } }])
-  // The leading system message is the caller's system block; a later one rides a user turn.
+  // The leading system message is the caller's system block; a later one rides
+  // the user turn as a system reminder (consecutive user turns merge).
   assert.deepEqual(request.messages, [
-    { role: 'user', content: [{ type: 'text', text: 'hello' }] },
-    { role: 'user', content: [{ type: 'text', text: '<system-reminder>\nlater\n</system-reminder>' }] },
+    { role: 'user', content: [{ type: 'text', text: 'hello' }, { type: 'text', text: '<system-reminder>\nlater\n</system-reminder>' }] },
   ])
   assert.deepEqual(request.tools, [{ name: 'TodoWrite', description: 'd', input_schema: { type: 'object' } }])
+})
+
+const png: ImageRefLike = { attachmentId: 'sha256:aaaa', mediaType: 'image/png', bytes: 1200, width: 640, height: 480, name: 'shot.png' }
+const jpeg: ImageRefLike = { attachmentId: 'sha256:bbbb', mediaType: 'image/jpeg', bytes: 900_000, width: 4000, height: 1000 }
+
+/** Attachment-store double: a deterministic request version per reference, every call recorded. */
+function attachmentStore(hostPaths: Record<string, string> = {}): AttachmentsLike & { calls: Array<{ id: string, target: ImageTarget }> } {
+  const calls: Array<{ id: string, target: ImageTarget }> = []
+  return {
+    calls,
+    async readImageRequest(ref, target) {
+      calls.push({ id: ref.attachmentId, target })
+      return { data: new TextEncoder().encode(`bytes:${ref.attachmentId}`), mediaType: ref.mediaType }
+    },
+    imageHostPath: ref => hostPaths[ref.attachmentId],
+  }
+}
+
+const base64 = (text: string): string => Buffer.from(text).toString('base64')
+
+test('glmImageRequestTarget applies ZCode bounds: long edge 2000 px, raw bytes within 3/4 of 5 MiB', () => {
+  assert.equal(ZCODE_IMAGE_TARGET_BYTES, 3_932_160)
+  assert.deepEqual(glmImageRequestTarget(png), { width: 640, height: 480, maxBytes: 3_932_160 })
+  assert.deepEqual(glmImageRequestTarget(jpeg), { width: 2000, height: 500, maxBytes: 3_932_160 })
+  assert.deepEqual(glmImageRequestTarget({ width: 1000, height: 3001 }), { width: 666, height: 2000, maxBytes: 3_932_160 })
+})
+
+test('prepareRequestImages reads one request version per attachment from user and tool messages', async () => {
+  const store = attachmentStore()
+  const messages: RequestMessageLike[] = [
+    { role: 'user', content: [{ type: 'text', text: 'look' }, { type: 'image', attachment: png }] },
+    { role: 'tool', toolCallId: 't1', content: [{ type: 'image', attachment: jpeg }, { type: 'image', attachment: png }] },
+  ]
+  const images = await prepareRequestImages(messages, store, undefined, undefined)
+  assert.deepEqual(store.calls, [
+    { id: 'sha256:aaaa', target: { width: 640, height: 480, maxBytes: 3_932_160 } },
+    { id: 'sha256:bbbb', target: { width: 2000, height: 500, maxBytes: 3_932_160 } },
+  ])
+  assert.deepEqual(images?.versions.get('sha256:bbbb'), { mediaType: 'image/jpeg', data: base64('bytes:sha256:bbbb') })
+  // No image, nothing to prepare; an image without the service fails loudly.
+  assert.equal(await prepareRequestImages([{ role: 'user', content: [{ type: 'text', text: 'hi' }] }], undefined, undefined, undefined), undefined)
+  await assert.rejects(prepareRequestImages(messages, undefined, undefined, undefined), /attachment service/)
+})
+
+test('offloaded images send the DSH placeholder text, with the read-only path when one resolves', async () => {
+  const store = attachmentStore({ 'sha256:aaaa': 'C:/dsh/attachments/v1/aa.png' })
+  const messages: RequestMessageLike[] = [
+    { role: 'user', content: [{ type: 'image', attachment: png, offloaded: true }, { type: 'image', attachment: jpeg, offloaded: true }] },
+  ]
+  const images = await prepareRequestImages(messages, store, hostPath => hostPath.replace('C:/dsh', 'D:/world'), undefined)
+  assert.deepEqual(store.calls, []) // offloaded occurrences read no bytes
+  const encoded = encodeMessage(messages[0]!, images)
+  assert.deepEqual(encoded, { role: 'user', content: [
+    { type: 'text', text: offloadedImageText(png, 'D:/world/attachments/v1/aa.png') },
+    { type: 'text', text: offloadedImageText(jpeg, undefined) },
+  ] })
+  assert.equal(offloadedImageText(jpeg, undefined), '[image omitted to fit request image limits; sha256:bbbb. No local normalized image path is available; ask the user to attach it again if needed.]')
+  assert.equal(
+    offloadedImageText(png, 'D:/a.png'),
+    '[image omitted to fit request image limits; "shot.png" (sha256:aaaa). Normalized copy (read-only; may be resized or re-encoded): "D:/a.png" (640x480px, image/png). Source dimensions, format, and byte size may differ. Copy to a writable path ending in .png before editing.]',
+  )
+})
+
+test('image blocks reach the request body as Anthropic base64 image blocks, inside tool_result for tool results', async () => {
+  const messages: RequestMessageLike[] = [
+    { role: 'user', content: [{ type: 'text', text: 'what is this?' }, { type: 'image', attachment: png }] },
+    { role: 'assistant', content: [{ type: 'tool-call', id: 'c1', name: 'Read', arguments: '{"file_path":"C:/x.jpg"}' }] },
+    { role: 'tool', toolCallId: 'c1', content: [{ type: 'text', text: '<path>C:/x.jpg</path>' }, { type: 'image', attachment: jpeg }] },
+  ]
+  const images = await prepareRequestImages(messages, attachmentStore(), undefined, undefined)
+  const request = encodeRequest({ provider: 'glm-zcode', model: 'glm-5.3-flash', messages }, [], images)
+  assert.deepEqual(request.messages, [
+    { role: 'user', content: [
+      { type: 'text', text: 'what is this?' },
+      { type: 'image', source: { type: 'base64', media_type: 'image/png', data: base64('bytes:sha256:aaaa') } },
+    ] },
+    { role: 'assistant', content: [{ type: 'tool_use', id: 'c1', name: 'Read', input: { file_path: 'C:/x.jpg' } }] },
+    { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'c1', content: [
+      { type: 'text', text: '<path>C:/x.jpg</path>' },
+      { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64('bytes:sha256:bbbb') } },
+    ] }] },
+  ])
+  // Encoding an image without prepared versions is a programming error, not a silent drop.
+  assert.throws(() => encodeMessage(messages[0]!), /not prepared/)
 })
 
 test('decodeFrame maps the wire events to seam chunks', () => {

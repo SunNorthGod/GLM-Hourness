@@ -2,8 +2,8 @@
  * Native ZCode client adapter for the DSH LLM seam: assembles the full
  * upstream chain — encrypted credential store → persistent deviceMid →
  * endpoint routing → identity/auth headers → V4 signing ladder → Anthropic
- * Messages transport. No reverse proxy in the path; the channel speaks to
- * the ZCode backend exactly the way the desktop client does.
+ * Messages transport. The channel speaks to the ZCode backend exactly the
+ * way the desktop client does.
  *
  * coding-plan sends the caller's system as one text block; start-plan
  * replaces it with the gateway-fingerprinted 3-block assembly and pins the
@@ -21,8 +21,10 @@ import { buildAuthHeaders, type PlanId } from './headers.ts'
 import { EndpointRoutingService } from './endpoint-routing.ts'
 import { ClientSigningManager, sendWithClientSigning } from './signing.ts'
 import { encodeRequest, decodeSse, splitSystemPrompt } from './anthropic.ts'
+import { glmImageRequestTarget, prepareRequestImages } from './images.ts'
 import { buildStartPlanSystem, buildContextPrefixMessage } from './start-plan.ts'
-import { GLM_DEFAULT_MAX_TOKENS, GLM_REASONING_EFFORTS, type GenerateOptionsLike } from './lm-min.ts'
+import { GLM_DEFAULT_MAX_TOKENS, GLM_MODELS, GLM_REASONING_EFFORTS, glmInputModalities } from './models.ts'
+import { messageText, type AttachmentsLike, type GenerateOptionsLike } from '../shared/lm-min.ts'
 import type {
   GenerateOptions,
   LlmAdapter,
@@ -51,6 +53,10 @@ export interface ZcodeAdapterOptions {
   readonly onEvent?: (message: string) => void
   /** Injected credential-store filesystem for tests. */
   readonly storeFs?: StoreFs
+  /** The durable attachment service, read per request (images need it). */
+  readonly resolveAttachments?: () => AttachmentsLike | undefined
+  /** Map a host path into the tool execution world (the `fs` service), for offloaded-image placeholders. */
+  readonly mapHostPath?: (hostPath: string) => string | undefined
 }
 
 const storeFsDefault: StoreFs = {
@@ -164,11 +170,12 @@ export class ZcodeAdapter {
   }
 
   /**
-   * Preserve the normalized image unchanged (the adapter base default):
-   * GLM's vision route accepts the stored dimensions and byte length as-is.
+   * ZCode's model-image bounds (long edge 2000 px, base64 within 5 MiB); the
+   * same target the request encoder reads each image version with, as the
+   * LlmAdapter contract requires.
    */
   imageRequestTarget(_provider: string, _model: string, image: ImageAttachmentRef): ImageRequestTarget {
-    return { width: image.width, height: image.height, maxBytes: image.bytes }
+    return glmImageRequestTarget(image)
   }
 
   /** Bind metadata and dispatch to one adapter generation (LlmAdapter base contract). */
@@ -181,10 +188,7 @@ export class ZcodeAdapter {
 
   /** Advertise the catalog models for GUI selection (LlmAdapter base contract). */
   listModels(provider: string): Promise<readonly LlmModelInfo[]> {
-    return Promise.resolve([
-      { provider, id: 'glm-5.3', name: 'GLM-5.3', inputModalities: ['text', 'image'] as const },
-      { provider, id: 'glm-5.3-flash', name: 'GLM-5.3-Flash', inputModalities: ['text', 'image'] as const },
-    ])
+    return Promise.resolve(GLM_MODELS.map(model => ({ provider, id: model.id, name: model.name, inputModalities: [...model.inputModalities] })))
   }
 
   resolveModel(provider: string, model: string, _signal?: AbortSignal): Promise<LlmResolvedModelInfo> {
@@ -192,7 +196,8 @@ export class ZcodeAdapter {
       provider,
       id: model,
       name: model,
-      inputModalities: ['text', 'image'] as const,
+      // A text-only declaration makes DSH project images to text before stream().
+      inputModalities: [...glmInputModalities(model)],
       context: { contextWindow: 512_000 },
       defaultMaxTokens: GLM_DEFAULT_MAX_TOKENS,
       // No `systemPromptUpdate`: Anthropic has no mid-conversation system
@@ -270,7 +275,8 @@ export class ZcodeAdapter {
     const messages = plan === 'start-plan' && !hasCurrentDatePrefix(history)
       ? [buildContextPrefixMessage(), ...history]
       : history
-    const body = JSON.stringify(encodeRequest({ ...options, messages }, systemBlocks))
+    const images = await prepareRequestImages(messages, this.options.resolveAttachments?.(), this.options.mapHostPath, options.signal)
+    const body = JSON.stringify(encodeRequest({ ...options, messages }, systemBlocks, images))
 
     const upstreamBase = `${BIGMODEL_ANTHROPIC_BASE}/v1/messages`
     const routed = await this.routing.resolve(upstreamBase, credential.apiKey, credential.jwt).catch((): { routed: boolean, url: string, headers?: Record<string, string> } => ({ routed: false, url: upstreamBase }))
@@ -304,7 +310,7 @@ export class ZcodeAdapter {
 /** Whether the first user turn already carries the currentDate context prefix (start-plan pins it once). */
 function hasCurrentDatePrefix(messages: readonly GenerateOptionsLike['messages'][number][]): boolean {
   const first = messages.find(message => message.role === 'user')
-  const text = first?.content.map(part => part.text ?? '').join('\n') ?? ''
+  const text = first === undefined ? '' : messageText(first, '\n')
   return text.includes('# currentDate') && text.includes('<system-reminder>')
 }
 

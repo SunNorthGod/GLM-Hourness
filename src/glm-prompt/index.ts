@@ -13,21 +13,21 @@
  * cover, with ZCode's local tool search applied on top (src/toolsearch/);
  * any other request sees the natives and not the aliases or the search
  * controls. Nothing is restricted or unmounted, so a mid-session route
- * switch takes effect on the next step. Activation never throws; one
- * agent's failure leaves the others.
+ * switch takes effect on the next step. The ZCode todo reminder rides the
+ * same step: its `agent/pre-step` listener reads what this step's rewrite
+ * decided. Activation never throws; one agent's failure leaves the others.
  */
 import { buildIdentitySection } from './identity.ts'
-import { aliasSpecs, buildAlias, hiddenNatives } from './aliases.ts'
+import { buildAliases, type BuiltAlias } from './aliases.ts'
 import { CLI_PREFIX } from './verbatim.ts'
 import { personaSection, PERSONA_LEVELS, type PersonaLevel } from './persona.ts'
 import { buildEnvInfoSection, CONTEXT_MANAGEMENT_DSH, MEMORY_SECTION_DSH, SESSION_GUIDANCE_DSH, SKILLS_NOTE_DSH } from './localize.ts'
 import { isGlmAssembly, rewriteDialectSections, rewriteToolFace } from './assembly.ts'
-import { mapTodoWriteToDsh, zcodeTodoWriteDescription, zcodeTodoWriteSchema } from './todowrite.ts'
-import { initialReminderState, observeToolCall, type ReminderState } from './todo-reminder.ts'
-import { assemblyRoute, createRouteTracker } from '../shared/route.ts'
+import { mapTodoWriteToDsh } from './todowrite.ts'
+import { TODO_WRITE_DESCRIPTION, TODO_WRITE_INPUT_SCHEMA } from './zcode-tool-text.ts'
+import { installTodoReminder, TODO_NATIVE, TODO_WRITE_NAME } from './todo-reminder.ts'
 import { installToolSearch } from '../toolsearch/index.ts'
-import { DEFERRED_TOOL_CALL_NAME } from '../toolsearch/zcode-text.ts'
-import { createUserNotice, type AgentLike, type AssemblePayload, type PluginContext, type ToolDefinitionLike, type UserNotice } from '../shared/dsh-min.ts'
+import type { AgentLike, AssemblePayload, PluginContext, ToolDefinitionLike } from '../shared/dsh-min.ts'
 import Schema from '../shared/schemastery.ts'
 import type { JsonValue } from './json.ts'
 
@@ -89,9 +89,9 @@ export function dialectSections(outputStyleActive = false, persona: PersonaLevel
 /** ZCode TodoWrite alias delegating to the DSH todo_write executor. */
 export function todoWriteAliasTool(delegate: (args: { todos: Array<{ content: string, status: string }> }, exec: unknown) => Promise<unknown>, nativeOutput?: ToolDefinitionLike['output']): ToolDefinitionLike {
   return {
-    name: 'TodoWrite',
-    description: zcodeTodoWriteDescription,
-    parameters: zcodeTodoWriteSchema,
+    name: TODO_WRITE_NAME,
+    description: TODO_WRITE_DESCRIPTION,
+    parameters: TODO_WRITE_INPUT_SCHEMA,
     output: nativeOutput ?? {
       schema: { type: 'object', properties: { todos: { type: 'array' } } },
       render: () => [{ type: 'text', text: 'todo list updated' }],
@@ -102,61 +102,51 @@ export function todoWriteAliasTool(delegate: (args: { todos: Array<{ content: st
   }
 }
 
-/** Native names the TodoWrite alias covers in addition to the eight-pack aliases. */
-const TODO_NATIVE = 'todo_write'
-
 /**
- * Build the ZCode-facing aliases over the natives this agent sees. An alias
- * whose native is absent in this composition is skipped (its native stays
- * hidden from nothing, since it does not exist).
+ * Build the ZCode-facing aliases over the natives this agent sees, each with
+ * the natives it covers. An alias whose native is absent in this composition
+ * is skipped and covers nothing.
  */
-export function buildAgentAliases(agent: AgentLike): ToolDefinitionLike[] {
-  const aliases: ToolDefinitionLike[] = []
-  for (const spec of aliasSpecs) {
-    const native = agent.ctx.tools.get(spec.nativeName, agent)
-    if (native !== undefined) aliases.push(buildAlias(spec, (args, exec) => native.execute(args, exec), native.output))
-  }
-  const todo = agent.ctx.tools.get(TODO_NATIVE, agent)
-  if (todo !== undefined) aliases.push(todoWriteAliasTool((args, exec) => todo.execute(args, exec), todo.output))
+export function buildAgentAliases(agent: AgentLike): BuiltAlias[] {
+  const lookup = (name: string): ToolDefinitionLike | undefined => agent.ctx.tools.get(name, agent)
+  const aliases = buildAliases(lookup)
+  const todo = lookup(TODO_NATIVE)
+  if (todo !== undefined) aliases.push({ tool: todoWriteAliasTool((args, exec) => todo.execute(args, exec), todo.output), covers: [TODO_NATIVE] })
   return aliases
 }
 
 /**
  * Install the dialect on one agent: scoped alias registrations, tool search
- * (unless `toolSearchMode` is `off`), and the per-request rewrite. Tool
- * search runs on the alias face, so its resident/deferred split sees ZCode
- * names. `onRoute` observes every assembled route (the todo reminder reads
- * it back within the same step).
+ * (unless `toolSearchMode` is `off`), the per-request rewrite and the todo
+ * reminder. Tool search runs on the alias face, so its resident/deferred
+ * split sees ZCode names. The reminder reads this step's rewrite: GLM route
+ * and TodoWrite on the face before tool search defers it (ZCode checks the
+ * turn tools, not the request's resident face).
  */
-export function installDialect(agent: AgentLike, config: GlmPromptConfig = {}, onRoute?: (route: ReturnType<typeof assemblyRoute>) => void): () => void {
+export function installDialect(agent: AgentLike, config: GlmPromptConfig = {}): () => void {
   const sections = dialectSections(false, config.persona ?? 'balanced', config)
   const aliases = buildAgentAliases(agent)
-  const aliasNames = new Set(aliases.map(alias => alias.name))
-  const coveredNatives = new Set([...hiddenNatives].filter(name => agent.ctx.tools.get(name, agent) !== undefined))
-  const disposers = aliases.map(alias => agent.ctx.tools.register(alias))
+  const aliasNames = new Set(aliases.map(alias => alias.tool.name))
+  const coveredNatives = new Set(aliases.flatMap(alias => alias.covers))
+  const disposers = aliases.map(alias => agent.ctx.tools.register(alias.tool))
   const toolSearch = (config.toolSearchMode ?? 'local') === 'local' ? installToolSearch(agent) : undefined
   if (toolSearch !== undefined) disposers.push(() => toolSearch.dispose())
+  let todoReminderEligible = false
   disposers.push(agent.ctx.on('system-prompt/assemble', async (_assembly: AssemblePayload, _context: unknown, next: () => Promise<AssemblePayload>) => {
     const assembled = await next()
-    onRoute?.(assemblyRoute(assembled))
     const glm = isGlmAssembly(assembled)
     const withSections = glm ? rewriteDialectSections(assembled, sections) : assembled
     const face = rewriteToolFace(withSections.tools, glm, aliasNames, coveredNatives)
+    todoReminderEligible = glm && face.some(tool => tool.name === TODO_WRITE_NAME)
     const tools = toolSearch === undefined ? face : glm ? toolSearch.expose(face) : toolSearch.hide(face)
     return { ...withSections, tools }
   }, { prepend: true }))
+  // Registered after tool search's pre-step listener, so it runs inside it
+  // and the reminder precedes the deferred-tools announcement, the order in
+  // which ZCode collects the two attachments.
+  const todoReminder = installTodoReminder(agent, () => todoReminderEligible)
+  if (todoReminder !== undefined) disposers.push(todoReminder)
   return () => { for (const dispose of disposers.splice(0)) dispose() }
-}
-
-/** Extract the ZCode-facing todo list from a TodoWrite alias call, when present. */
-function todosFromCall(args: unknown): Array<{ content: string, status: string }> | undefined {
-  if (typeof args !== 'object' || args === null || Array.isArray(args)) return undefined
-  const todos = (args as Record<string, unknown>).todos
-  if (!Array.isArray(todos)) return undefined
-  return todos.filter((todo): todo is { content: string, status: string } =>
-    typeof todo === 'object' && todo !== null
-    && typeof (todo as Record<string, unknown>).content === 'string'
-    && typeof (todo as Record<string, unknown>).status === 'string')
 }
 
 /** cordis plugin identity. */
@@ -164,40 +154,20 @@ export const name = 'dsh-glm-hourness/glm-prompt'
 
 /** cordis plugin entry. */
 export function apply(ctx: PluginContext, config: GlmPromptConfig = {}): () => void {
-  const routes = createRouteTracker<AgentLike>()
   const installed = new WeakSet<AgentLike>()
-  const reminderStates = new WeakMap<AgentLike, ReminderState>()
   const disposers: Array<() => void> = []
 
   disposers.push(ctx.on('agent/created', ({ agent }) => {
     if (installed.has(agent)) return
     installed.add(agent)
     try {
-      disposers.push(installDialect(agent, config, route => routes.record(agent, route)))
+      disposers.push(installDialect(agent, config))
     }
     catch (error) {
       // One agent's dialect must never break agent creation (activation-time
       // fail-open); the agent runs with the native face.
       console.warn(`dsh-glm-hourness/glm-prompt: dialect not installed for agent ${agent.id}: ${error instanceof Error ? error.message : String(error)}`)
     }
-  }))
-
-  // Todo reminder loop (ZCode 10/10): observe completed calls in GLM-routed
-  // steps, deliver the verbatim nudge as a labeled notice riding the result.
-  disposers.push(ctx.on('tools/post-execute', (exec, _result, next) => {
-    const agent = exec.agent
-    if (agent === undefined || exec.parent !== undefined || !routes.isGlm(agent)) return next()
-    // The wrapper is transparent: its target runs as a call of its own (ZCode
-    // keeps the target identity in history), so it is counted there.
-    if (exec.name === DEFERRED_TOOL_CALL_NAME) return next()
-    const observed = observeToolCall(reminderStates.get(agent) ?? initialReminderState(), exec.name, todosFromCall(exec.arguments))
-    reminderStates.set(agent, observed.state)
-    if (observed.reminder === undefined) return next()
-    const notice: UserNotice = createUserNotice('glm-todo-reminder', 'todo reminder', observed.reminder)
-    return next().then(downstream => ({
-      ...downstream,
-      additionalContexts: [notice, ...(downstream.additionalContexts ?? [])],
-    }))
   }))
 
   return () => { for (const dispose of disposers.splice(0)) dispose() }

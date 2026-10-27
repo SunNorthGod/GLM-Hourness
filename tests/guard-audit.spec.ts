@@ -1,32 +1,42 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { apply, type GuardContext, type PreExecuteDecision, type PreExecutePayload, type ViolationRecord } from '../src/guard/index.ts'
+import { apply, type ViolationRecord } from '../src/guard/index.ts'
+import type { AgentLike, PreExecuteDecision, PreExecuteHost, ToolExecutionPayload } from '../src/shared/dsh-min.ts'
 
-function harness(roots: readonly string[]): { decisions: PreExecuteDecision[]; violations: ViolationRecord[]; run: (payload: PreExecutePayload) => Promise<void> } {
+/**
+ * The calling agent as an rc.3 execution carries it (dsh-tools createExecution:
+ * no agentId or sessionId fields): its id, its session's id and working directory.
+ */
+function agentAt(cwd: string | undefined, id = 'a1', sessionId = id): AgentLike {
+  return { id, ctx: {} as AgentLike['ctx'], session: { id: sessionId, header: { id: sessionId, ...(cwd === undefined ? {} : { cwd }) }, deriveMessages: () => [] } }
+}
+
+function harness(roots: readonly string[]): { decisions: PreExecuteDecision[]; violations: ViolationRecord[]; run: (payload: ToolExecutionPayload) => Promise<void> } {
   const decisions: PreExecuteDecision[] = []
   const violations: ViolationRecord[] = []
-  const ctx: GuardContext = {
+  const ctx: PreExecuteHost = {
     on: (_event, listener) => {
       run = payload => listener(payload, async () => ({ kind: 'allow' })).then(decision => { decisions.push(decision) })
       return () => {}
     },
   }
-  let run: (payload: PreExecutePayload) => Promise<void> = () => Promise.resolve()
+  let run: (payload: ToolExecutionPayload) => Promise<void> = () => Promise.resolve()
   apply(ctx, { workspaceRoots: roots, onViolation: record => violations.push(record) })
   return { decisions, violations, run }
 }
 
 const decisionOf = (h: { decisions: PreExecuteDecision[] }) => h.decisions[0]
 
-test('out-of-workspace write is denied and audited with rule id and correction', async () => {
+test('out-of-workspace write is denied and audited with rule id, correction and the calling agent ids', async () => {
   const h = harness(['C:\\ws'])
-  await h.run({ name: 'Write', arguments: { file_path: 'C:\\Windows\\x.dll' }, agentId: 'a1', sessionId: 's1' })
+  await h.run({ name: 'Write', arguments: { file_path: 'C:\\Windows\\x.dll' }, agent: agentAt(undefined, 'a1', 's1') })
   assert.equal(decisionOf(h)!.kind, 'deny')
   assert.equal(h.violations.length, 1)
   const record = h.violations[0]!
   assert.equal(record.rule, 'workspace-containment')
   assert.equal(record.tool, 'Write')
   assert.equal(record.agentId, 'a1')
+  assert.equal(record.sessionId, 's1')
   assert.ok(record.correction.includes('Right path:'))
   assert.ok(!Number.isNaN(Date.parse(record.at)))
 })
@@ -52,24 +62,24 @@ test('terminal_send write commands are denied like shell writes', async () => {
 
 test('roots default to the calling agent session directory', async () => {
   const decisions: PreExecuteDecision[] = []
-  let run: (payload: PreExecutePayload) => Promise<void> = () => Promise.resolve()
-  const ctx: GuardContext = {
+  let run: (payload: ToolExecutionPayload) => Promise<void> = () => Promise.resolve()
+  const ctx: PreExecuteHost = {
     on: (_event, listener) => {
       run = payload => listener(payload, async () => ({ kind: 'allow' })).then(decision => { decisions.push(decision) })
       return () => {}
     },
   }
   apply(ctx, {})
-  await run({ name: 'Write', arguments: { file_path: 'C:\\ws\\src\\a.ts' }, agent: { session: { header: { cwd: 'C:\\ws' } } } })
+  await run({ name: 'Write', arguments: { file_path: 'C:\\ws\\src\\a.ts' }, agent: agentAt('C:\\ws') })
   assert.equal(decisions[0]!.kind, 'allow') // inside the agent session directory
-  await run({ name: 'Write', arguments: { file_path: 'C:\\elsewhere\\a.ts' }, agent: { session: { header: { cwd: 'C:\\ws' } } } })
+  await run({ name: 'Write', arguments: { file_path: 'C:\\elsewhere\\a.ts' }, agent: agentAt('C:\\ws') })
   assert.equal(decisions[1]!.kind, 'deny') // outside it
 })
 
 test('a call without config or agent directory keeps file-tools-only but skips containment', async () => {
   const decisions: PreExecuteDecision[] = []
-  let run: (payload: PreExecutePayload) => Promise<void> = () => Promise.resolve()
-  const ctx: GuardContext = {
+  let run: (payload: ToolExecutionPayload) => Promise<void> = () => Promise.resolve()
+  const ctx: PreExecuteHost = {
     on: (_event, listener) => {
       run = payload => listener(payload, async () => ({ kind: 'allow' })).then(decision => { decisions.push(decision) })
       return () => {}

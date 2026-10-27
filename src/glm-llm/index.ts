@@ -1,17 +1,19 @@
 /**
  * dsh-glm-llm — channel row: registers the native ZCode client adapter for
- * its provider route on the DSH LLM seam. No reverse proxy in the path: the
- * adapter resolves the credential from the encrypted store (filled by
+ * its provider route on the DSH LLM seam. The adapter resolves the
+ * credential from the encrypted store (filled by
  * /glm-login), signs like the desktop client, and speaks Anthropic Messages
  * to the ZCode backend. A missing home degrades to a no-op; a missing
  * credential fails the stream with the re-login instruction.
  */
 import { ZcodeAdapter } from './zcode.ts'
+import { asAttachments } from './images.ts'
 import Schema from '../shared/schemastery.ts'
+import type { AdapterRegistry, FsPathService, ServiceLookup } from '../shared/dsh-min.ts'
+import type { AttachmentsLike } from '../shared/lm-min.ts'
 
-export interface LlmContextLike {
-  registerAdapter(providers: readonly string[], adapter: ZcodeAdapter): () => void
-}
+/** The `llm` service as this row uses it. */
+export type LlmContextLike = AdapterRegistry<ZcodeAdapter>
 
 /** The seam lives on the llm service (`ctx.llm`); the flat form covers test doubles. */
 export type AdapterRegistrar = (providers: readonly string[], adapter: ZcodeAdapter) => () => void
@@ -43,7 +45,7 @@ export const Config = Schema.object({
 export const name = 'dsh-glm-hourness/glm-llm'
 
 /** cordis plugin entry: register the adapter; activation never throws. */
-export function apply(ctx: LlmContextLike | { llm?: LlmContextLike }, config: GlmConfig = {}): (() => void) | void {
+export function apply(ctx: (LlmContextLike | { llm?: LlmContextLike }) & ServiceLookup, config: GlmConfig = {}): (() => void) | void {
   if (config.home === undefined || config.home.length === 0) {
     console.warn('dsh-glm-hourness/glm-llm: home is not configured; the native channel stays off (set config.home, then run /glm-login)')
     return () => {}
@@ -52,5 +54,20 @@ export function apply(ctx: LlmContextLike | { llm?: LlmContextLike }, config: Gl
   return registrarOf(ctx)([provider], new ZcodeAdapter({
     home: config.home,
     ...(config.plan === undefined ? {} : { plan: config.plan }),
+    ...imageServices(ctx),
   }))
+}
+
+/**
+ * The adapter's per-request access to the attachment service and the `fs`
+ * path mapping, read lazily through cordis `ctx.get`, the way the rc.3 pi-ai
+ * adapter reads them without injecting them: the channel works without
+ * either and needs them only for images.
+ */
+export function imageServices(ctx: ServiceLookup): { resolveAttachments: () => AttachmentsLike | undefined, mapHostPath: (hostPath: string) => string | undefined } {
+  const lookup = (name: string): unknown => typeof ctx.get === 'function' ? ctx.get(name) : undefined
+  return {
+    resolveAttachments: () => asAttachments(lookup('attachments')),
+    mapHostPath: hostPath => (lookup('fs') as Partial<FsPathService> | undefined)?.processPathFromHostPath?.(hostPath),
+  }
 }

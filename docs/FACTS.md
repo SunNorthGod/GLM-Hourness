@@ -21,6 +21,7 @@
 | 八件套工具定义原文在源码 `apps/zcode-cli/packages/core/src/tool/handlers/`；`reference/zcode-tool-schemas.md` 中的工具描述与 deferred 声明段无法追溯出处，SessionGuidance、Skills 引导段待同样复核 | `DESIGN.md` §5.9 |
 | TodoWrite `priority` 为字符串三枚举 `high` / `medium` / `low` | `reference/zcode-capabilities.md` §11.3 |
 | todo 提醒双阈值 10/10，GLM 启用 | `reference/zcode-capabilities.md` §4.2 |
+| todo 提醒按助手消息计轮（一条助手消息一轮，不论工具调用数），每次模型请求前从历史重新计算；本回合工具有 TodoWrite 才检查；作为 `todo_reminder` 附件递送并持久化；3.16.3 对 id 含 `claude` 的模型不提醒；`supportsMidConversationSystem` 为真时投影为对话中段 system 消息，否则为 `<system-reminder>` 用户消息，GLM 的取值来自远端配置 | 安装包 `XNa`、`U4o`、`z4o`、`Rwe`；源码 `runtime/helpers/runtime-reminders.ts`、`runtime/methods/turn-loop.ts`、`runtime/helpers/provider-mid-conversation-system.ts`〔实读 2026-10-28〕；`DESIGN.md` §5.5 |
 | compact：默认窗口 200k，输出预留 min(maxOutputTokens, 21k)，autoCompact 阈值 166k；microcompact 公式 | `reference/zcode-capabilities.md` §11.2 |
 | 默认 `max_tokens` 32000；thinking 启用时剥离采样参数 | `reference/zcode-capabilities.md` §10.1、§11.7 |
 | effort：anthropic 通道 `output_config.effort` 五档词汇；GLM 实用三档 low / high / max | `reference/zcode-capabilities.md` §11.1；用户定案 |
@@ -42,6 +43,7 @@
 ### 2.2 模型参数
 
 - GLM-5.3 系强制思考，`thinking.type` 只接受 `enabled`。
+- 输入模态：GLM-5.3 没有视觉塔，只接受文本；GLM-5.3-Flash 是多模态（用户提供，2026-10-28）。GLM-5.3-Flash 经 Anthropic 兼容通道接受 base64 图片块〔实测 2026-10-28，一次请求，`DESIGN.md` §4.5a〕。
 - Preserved Thinking（`clear_thinking: false`）：套餐端点默认开，标准端点默认关；回传 `reasoning_content` 提高缓存命中。
 - 1M 上下文：Anthropic 通道在模型名后加 `[1m]`。
 

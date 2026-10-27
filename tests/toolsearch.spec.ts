@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { mcpPresentation, searchTools, type ToolSearchCandidate } from '../src/toolsearch/search.ts'
-import { announcementDelta, announcementHistory, buildToolExposure, loadedDefinitions, projectSearchResult, type DerivedMessage } from '../src/toolsearch/exposure.ts'
+import { announcementDelta, announcementHistory, buildToolExposure, loadedDefinitions, projectSearchResult } from '../src/toolsearch/exposure.ts'
 import {
   LOCAL_TOOL_SEARCH_DESCRIPTION,
   NO_MATCHING_DEFERRED_TOOLS,
@@ -11,7 +11,7 @@ import {
   wrapSystemReminder,
 } from '../src/toolsearch/zcode-text.ts'
 import { apply as glmPromptApply } from '../src/glm-prompt/index.ts'
-import type { AssembledTool, PreStepDecision, UserNotice } from '../src/shared/dsh-min.ts'
+import type { AssembledTool, DerivedMessage, PreStepDecision, UserNotice } from '../src/shared/dsh-min.ts'
 import { fakeRuntime } from './fake-rc3.ts'
 
 const tool = (name: string, description = `native ${name}`): AssembledTool => ({ name, description, parameters: { type: 'object', properties: {} } })
@@ -239,21 +239,4 @@ test('DeferredToolCall rejects resident, control, unknown and malformed calls wi
   await assert.rejects(rt.execute('DeferredToolCall', { name: 'web_fetch', input: {}, extra: 1 }), { message: 'Invalid DeferredToolCall input.' })
   await rt.assemble({ model: 'deepseek-flash' })
   await assert.rejects(rt.execute('DeferredToolCall', { name: 'web_fetch', input: {} }), { message: 'DeferredToolCall is not available for this request.' })
-})
-
-test('a TodoWrite through DeferredToolCall resets the todo reminder; the wrapper itself is not counted', async () => {
-  const { rt } = await glmAgent()
-  const notices: unknown[] = []
-  const call = async (name: string, args: unknown) => {
-    const decision = await rt.postExecute({ name, arguments: args })
-    notices.push(...(decision.additionalContexts ?? []))
-  }
-  for (let i = 0; i < 9; i++) await call('Read', {})
-  // The nested target reaches post-execute as TodoWrite (fake pipeline), then the wrapper completes.
-  await rt.execute('DeferredToolCall', { name: 'TodoWrite', input: { todos: [] } })
-  await call('DeferredToolCall', { name: 'TodoWrite', input: { todos: [] } })
-  for (let i = 0; i < 9; i++) await call('Read', {})
-  assert.equal(notices.length, 0)
-  await call('Read', {})
-  assert.equal(notices.length, 1)
 })

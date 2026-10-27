@@ -60,7 +60,7 @@ $bin = 'C:\Users\29596\AppData\Local\Programs\DeepSeek Harness\resources\app.asa
 & $exe $bin --profile glmsandbox --patch <repo>\.llm\sandbox-enable.yml "Say hi in one word"
 ```
 
-行为探针（`npm run probe`，`scripts/probe/`）：在 `glmsandbox` 上真实启动桌面版运行时，用脚本化的探针 provider（`glm-probe`，模型 `glm-5.3`，不联网）替代真实模型，记录运行时发给模型的每个请求（系统提示词、工具面、消息摘要），并检查方言提示词、工具面与别名执行是否生效。每次运行的覆盖补丁、请求记录与日志写在 `.llm/probe-runs/<时间戳>/`。覆盖补丁由运行器按次生成，因为 Loader 在 `!!js` 求值前就校验行的 `name`。探针不进 `npm test`（需要本机桌面版）；涉及运行时行为的改动以它为 L3 门禁。
+行为探针（`npm run probe`，`scripts/probe/`）：在 `glmsandbox` 上真实启动桌面版运行时，用脚本化的探针 provider（`glm-probe`，模型 `glm-5.3`，不联网）替代真实模型，记录运行时发给模型的每个请求（系统提示词、工具面、消息摘要），并检查方言提示词、工具面、别名执行与 todo 提醒是否生效。脚本的每一步可以是一次工具调用、同一轮里的多个并行调用，或一段文本。探针 provider 的模型目录（含输入模态）与图片目标取自 `dist/glm-llm`，并用原生通道的真实编码器与运行时附件服务编码每个请求，记录图片块的落点，所以跑探针前先 `npm run build`。图片场景把附件存储指到场景目录（覆盖 `attachment-local` 的 `dshHome`），不写 `~/.dsh`。每次运行的覆盖补丁、请求记录与日志写在 `.llm/probe-runs/<时间戳>/`。覆盖补丁由运行器按次生成，因为 Loader 在 `!!js` 求值前就校验行的 `name`。探针不进 `npm test`（需要本机桌面版）；涉及运行时行为的改动以它为 L3 门禁。
 
 注意：`--profile desktop` 会被拒绝（Electron 独占 profile），必须用独立 profile。沙盒里的 `MISSING_CREDENTIAL`、`home is not configured`、缺 compaction 引擎属于模板差异，不是被测插件的问题；判据是**没有出现被测插件的契约/激活错误**。
 
@@ -69,9 +69,10 @@ $bin = 'C:\Users\29596\AppData\Local\Programs\DeepSeek Harness\resources\app.asa
 DSH 官方类型已作为 devDependency 安装（`@deepseek-ai/dsh-llm`、`@deepseek-ai/dsh-attachment`、`@deepseek-ai/cordis`，版本 `0.2.1-rc.3`，与运行时一致）。
 
 - `src/glm-llm/zcode.ts` 底部有 `AdapterContractCheck`：`ZcodeAdapter` 必须结构兼容 `LlmAdapter` 的全部公开成员。任何签名/返回形状漂移 → `npm run build` 失败。
+- 薄适配层（`src/shared/dsh-min.ts`、`src/shared/lm-min.ts`）里有两处同样的检查：`LlmStreamOptionsContractCheck`（官方 `GenerateOptions` 必须覆盖 `llm/stream` 监听器读取的字段）、`AttachmentsContractCheck`（官方 `AttachmentStore` 必须覆盖通道读图用的成员）。其余宿主接口没有已安装的官方类型，逐项证据见 `DESIGN.md` §2.4a 接口对照表。
 - 新增 adapter / 服务实现时，同样用「官方类型 + 类型级断言」把契约钉死在 tsc 里，禁止只靠运行时手测。
 - 契约来源优先级：桌面版运行时的包（`reference/dsh-desktop-0.2.1-rc.3/`，从 `app.asar` 导出）> 官方 `.d.ts` > `reference/deepseek-harness` 源码 > 运行时行为观察。`reference/deepseek-harness` 是更新的主干，版本号相同但接口不同，只用来理解设计意图（`DESIGN.md` §2.4a）。
-- 重新导出运行时包（桌面版升级后）：用 Electron node 模式读 `resources/app.asar/dsh/node_modules/@deepseek-ai/` 并整目录复制到 `reference/dsh-desktop-<版本>/`（跳过嵌套 `node_modules`）。
+- 重新导出运行时包（桌面版升级后）：用 Electron node 模式读 `resources/app.asar/dsh/node_modules/@deepseek-ai/` 并整目录复制到 `reference/dsh-desktop-<版本>/`（跳过嵌套 `node_modules`）。然后按 `DESIGN.md` §2.4a 接口对照表逐项复核，改动只落在薄适配层，再跑 `npm run probe`。
 
 ## 5. 纪律
 
@@ -117,6 +118,8 @@ DSH 官方类型已作为 devDependency 安装（`@deepseek-ai/dsh-llm`、`@deep
 | 2026-10-27 | 15:36–17:22 的 190 条用量记录与 1 条记忆写进 `~/.dsh/profiles/desktop/.llm/`，`/hourness` 读不到 | 审计数据复查 | 各行各自配置 `home`，没有单一数据目录 | 规划：共享数据目录服务（`ROADMAP.md` M1.4） |
 | 2026-10-27 | guard 把 shell 命令文本里的 `=>`、`>>>`、`->` 当成重定向拦截，共 3 次 | L4 | 正则检测无引号感知；新门禁没有影子期 | 规划：引号感知检测 + 影子模式（`ROADMAP.md` M1.8、`ORCHESTRATION.md` §6.5） |
 | 2026-10-27 | guard 已知拦截至少 3 次，违规审计 0 条 | 审计数据复查 | 违规回调无法从配置传入，降级没有上报 | 规划：共享审计服务 + 行健康（`ROADMAP.md` M1.4、M1.5） |
+| 2026-10-28 | 原生通道编码器按 `toolCalls` 字段读助手的工具调用，rc.3 以 `tool-call` 内容块传递，工具调用会被全部丢弃 | 读 rc.3 运行时包（修图片时） | `lm-min.ts` 的结构类型对照的是 `reference/deepseek-harness` 主干；通道只有单测和真网单轮冒烟，没有多轮工具调用的验证 | 结构类型按 rc.3 重写；探针请求摘要读 `tool-call` 块（`DESIGN.md` §4.5）；多轮工具调用的真机验证随 L4 |
+| 2026-10-28 | guard 违规记录的 `agentId` / `sessionId` 读自 `tools/pre-execute` 载荷上不存在的字段，永远为空；workflow 的派遣名单缺 base profile 的 `subagent_fork`，fork 派遣从未记录 | 读 rc.3 运行时包（M1.6 逐项对照） | 各行自带宿主结构类型，没有逐项对照 rc.3；探针没有覆盖审计流水 | 接口对照表（`DESIGN.md` §2.4a）；宿主类型收进薄适配层；探针加用量流水与派遣工具名检查 |
 
 ## 8. 变更检查清单
 
