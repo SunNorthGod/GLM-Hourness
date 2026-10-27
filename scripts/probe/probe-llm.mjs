@@ -15,6 +15,9 @@ export const inject = ['llm']
 
 const MODEL = 'glm-5.3'
 
+/** Reply to compaction summaries, in the shape the ZCode compact prompt asks for. */
+const COMPACTION_REPLY = '<analysis>probe analysis</analysis>\n\n<summary>probe summary</summary>'
+
 /** One scripted reply per request, in order; the last entry repeats. */
 function parseScript(raw) {
   if (typeof raw !== 'string' || raw.length === 0) return [{ text: 'ok' }]
@@ -76,11 +79,14 @@ class ProbeAdapter {
   }
 
   async * stream(request) {
-    // Only agent steps (requests that carry tools) follow the script; side
-    // requests such as the session title get a fixed reply, so their timing
-    // cannot shift the scripted sequence.
-    const scripted = (request.tools ?? []).length > 0
-    const step = scripted ? this.script[Math.min(this.calls, this.script.length - 1)] : { text: 'Probe session' }
+    // Only agent steps follow the script; side requests (session title,
+    // compaction summaries) get fixed replies, so their timing cannot shift
+    // the scripted sequence. Compaction requests carry tools too.
+    const compaction = request.purpose === 'compaction'
+    const scripted = !compaction && (request.tools ?? []).length > 0
+    const step = scripted
+      ? this.script[Math.min(this.calls, this.script.length - 1)]
+      : { text: compaction ? COMPACTION_REPLY : 'Probe session' }
     if (scripted) this.calls += 1
     this.requests += 1
     if (this.dump !== undefined) {
@@ -88,6 +94,7 @@ class ProbeAdapter {
         call: this.requests,
         provider: request.provider,
         model: request.model,
+        ...(request.purpose === undefined ? {} : { purpose: request.purpose }),
         // The runtime delivers the prompt as leading system messages (the
         // channel lifts them the same way, src/glm-llm/anthropic.ts).
         system: [request.system ?? '', ...leadingSystem(request.messages ?? [])].filter(text => text.length > 0).join('\n\n'),

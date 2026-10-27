@@ -1,12 +1,9 @@
 /**
  * ZCode compaction mirror, verbatim from the official source
- * (apps/zcode-cli/packages/core/src/compact/prompt.ts). The DSH compaction
- * engine owns region selection and checkpoint events and stays untouched;
- * this module carries the GLM-paired text so a delegating engine (or an
- * upstream instruction seam) can adopt it without re-deriving it. Design
- * note (s1-progress Round 13): full engine replacement deferred — no per-
- * provider instruction seam exists upstream, and llm/stream freezes
- * loop-built requests.
+ * (apps/zcode-cli/packages/core/src/compact/prompt.ts; the closing REMINDER
+ * line follows the 3.16.3 bundle). The DSH compaction engine owns region
+ * selection and checkpoint events and stays untouched; compact-row.ts swaps
+ * this instruction into GLM compaction requests and formats their output.
  */
 
 const NO_TOOLS_PREAMBLE = `CRITICAL: Respond with TEXT ONLY. Do NOT call any tools.
