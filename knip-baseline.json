@@ -12,7 +12,6 @@
     "exports src/shared/data-home.ts USER_DATA_DIR_NAME",
     "exports src/toolsearch/exposure.ts RESIDENT_TOOLS",
     "exports src/toolsearch/exposure.ts isConfiguredDeferred",
-    "exports src/ui/panel.ts DEFAULT_OFF_PEAK",
     "files scripts/dev/check-system-message.cjs",
     "files scripts/dev/debug-prestep.mjs",
     "files scripts/dev/dump-request-context.cjs",

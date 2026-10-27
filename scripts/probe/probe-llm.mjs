@@ -143,6 +143,8 @@ class ProbeAdapter {
       }
       appendFileSync(this.dump, `${JSON.stringify({
         call: this.requests,
+        // The runtime's wall clock at this request (the probe clock row may move it).
+        clock: Date.now(),
         provider: request.provider,
         model: request.model,
         wire,

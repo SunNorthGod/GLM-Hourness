@@ -31,9 +31,11 @@ test('renderHourness folds report and panel summary from both directories, bound
   assert.ok(text.includes('# 晨报 2026-10-27'))
   assert.ok(text.includes('L1 自主 1 · L2 次日报备 0 · L3 当次申报 0')) // yesterday's L3 filtered out
   assert.ok(!text.includes('yesterday must not leak in'))
-  assert.ok(text.includes('## 面板'))
-  assert.ok(text.includes('调用 2 · in 110 / out 55 / total 165')) // panel reads the full journal
-  assert.ok(text.includes('谷时占比 谷 50%'))
+  // The panel reads the full journal on the credit basis: 0.0945 off-peak
+  // (02:00, half of 0.189) plus 0.0189 in peak (Tuesday 15:00).
+  assert.ok(text.includes('## 面板\n- 全部用量记录；'))
+  assert.ok(text.includes('- 合计：积分 0.11 · 高峰 17% · 缓存命中 0%'))
+  assert.ok(text.includes('- glm-5.3：2 次 · 积分 0.11 · 高峰 17% · 缓存命中 0%'))
   assert.ok(!text.includes('## 数据目录'))
 })
 

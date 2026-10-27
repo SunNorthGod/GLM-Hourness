@@ -268,7 +268,7 @@
   },
   "tests/s5.spec.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 15
+      "count": 14
     },
     "@typescript-eslint/require-await": {
       "count": 3

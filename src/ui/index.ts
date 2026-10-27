@@ -1,7 +1,7 @@
 /**
  * dsh-hourness row: the `/hourness` human command renders the audit journal —
- * morning report (exceptions → decision curve → usage) plus the current
- * usage-panel summary — from the project directory (decisions, violations)
+ * morning report (exceptions → decision curve → usage) plus the usage panel
+ * on the credit basis — from the project directory (decisions, violations)
  * and the user-level directory (usage, docs/DESIGN.md §2.4). Pure data plane
  * from src/ui/panel.ts and src/workflow/morning-report.ts; no separate
  * bookkeeping. Registers through the DSH commands seam (command-compact is
@@ -11,7 +11,7 @@
 import { readFile } from 'node:fs/promises'
 import { auditPaths } from '../memory/audit.ts'
 import { reportFromFiles } from '../workflow/morning-report.ts'
-import { offPeakBadge, usagePanel } from './panel.ts'
+import { usagePanel, usagePanelLines } from './panel.ts'
 import { dataHomes, type DataHomes } from '../shared/data-home.ts'
 import { provideRowHealth, sessionIdOf, type HealthState } from '../shared/health.ts'
 import type { CommandsHost, ProvideHost, ServiceLookup } from '../shared/dsh-min.ts'
@@ -35,13 +35,7 @@ export async function renderHourness(homes: DataHomes, fs: { readFile(path: stri
   const usagePath = auditPaths(homes).usage
   const usageRaw = usagePath === undefined ? '' : await fs.readFile(usagePath).catch(() => '')
   if (usageRaw.length === 0) return report + notice
-  const panel = usagePanel(usageRaw)
-  const summary = [
-    '',
-    '## 面板',
-    `- 调用 ${panel.totals.calls} · in ${panel.totals.inputTokens} / out ${panel.totals.outputTokens} / total ${panel.totals.totalTokens}`,
-    `- 谷时占比 ${offPeakBadge(panel.offPeakShare)}`,
-  ].join('\n')
+  const summary = ['', '## 面板', ...usagePanelLines(usagePanel(usageRaw))].join('\n')
   return report + summary + notice
 }
 

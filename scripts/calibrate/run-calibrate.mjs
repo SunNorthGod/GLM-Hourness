@@ -22,17 +22,14 @@ import { spawn, spawnSync } from 'node:child_process'
 import { cpSync, createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { parseArgs } from 'node:util'
+// The credit plan (docs/FACTS.md §2.4) the usage panel uses too.
+import { chargedCredits, CREDIT_RATES, fullCredits, peakWindowAt } from '../../dist/shared/credits.js'
 import { attachmentsIn, dataRows, initRepo, limitsRow, repo, requireDesktop, sandboxCommand, slash, workspaceChangesRow } from '../sandbox.mjs'
 
 requireDesktop('calibrate')
 
 const TASKS_DIR = join(repo, 'tests', 'calibration')
 const PROVIDER = 'glm-zcode'
-/** Credit coefficients per 10,000 tokens (docs/FACTS.md §2.4). */
-const CREDIT_RATES = new Map([
-  ['glm-5.3', { input: 6.9, cached: 1.7, output: 24 }],
-  ['glm-5.3-flash', { input: 2.3, cached: 0.56, output: 8 }],
-])
 /** File-writing tools and the argument naming the file (the guard's file tools). */
 const FILE_TOOLS = new Map([['Write', 'file_path'], ['Edit', 'file_path'], ['write', 'file_path'], ['edit', 'file_path'], ['str_replace_editor', 'path']])
 const SHELL_TOOLS = new Set(['Bash', 'pwsh', 'bash', 'terminal_send'])
@@ -194,12 +191,7 @@ function reworkOf(calls, results) {
 }
 
 /** Weekdays 14:00-18:00 UTC+8 are peak (docs/FACTS.md §2.4); everything else, weekends included, is charged at 50 percent. */
-function isPeak(at) {
-  const local = new Date(Date.parse(at) + 8 * 3_600_000)
-  const day = local.getUTCDay()
-  const hour = local.getUTCHours()
-  return day >= 1 && day <= 5 && hour >= 14 && hour < 18
-}
+const isPeak = at => peakWindowAt(Date.parse(at)) !== undefined
 
 /** Token totals of the run's usage journal (one record per model call, side calls included). */
 function tokensOf(records) {
@@ -222,9 +214,8 @@ function creditsOf(records) {
       unpriced += 1
       continue
     }
-    const value = (((usage.inputTokens ?? 0) + (usage.cacheWriteTokens ?? 0)) * rate.input + (usage.cacheReadTokens ?? 0) * rate.cached + (usage.outputTokens ?? 0) * rate.output) / 10_000
-    raw += value
-    charged += isPeak(at) ? value : value / 2
+    raw += fullCredits(rate, usage)
+    charged += chargedCredits(rate, usage, Date.parse(at))
   }
   return { raw: round(raw), charged: round(charged), ...(unpriced === 0 ? {} : { unpriced }) }
 }
