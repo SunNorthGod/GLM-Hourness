@@ -16,7 +16,7 @@
 
 ```
 src/           主包 TypeScript 源码
-tests/         24 个 spec，250 用例；tests/fake-rc3.ts 为 rc.3 运行时替身；tests/tsconfig.json 只给 ESLint 提供类型信息；tests/calibration/ 为标定测试集（两个任务，ORCHESTRATION.md §10.5）
+tests/         25 个 spec，258 用例；tests/fake-rc3.ts 为 rc.3 运行时替身；tests/tsconfig.json 只给 ESLint 提供类型信息；tests/calibration/ 为标定测试集（两个任务，ORCHESTRATION.md §10.5）
 ui/            独立 UI bundle（纯 JS，不参与 tsc）
 scripts/       preflight-bundle.mjs、check-verbatim.mjs、check-lint.mjs（检查器门禁）、deps-check.mjs（依赖报告）、smoke-zcode*.mjs、sandbox.mjs（glmsandbox 启动与覆盖行，探针与标定共用）、probe/（L3 探针）、calibrate/（标定运行器与边界插件）；scripts/dev/ 为历史调试脚本，部分针对已不存在的接口（去留见 ROADMAP.md §3）
 eslint.config.js、knip.jsonc、.jscpd.json  检查器配置；eslint-suppressions.json、knip-baseline.json、.jscpd-baseline.json 为告警基线（DEVELOPMENT.md §10）
@@ -35,18 +35,18 @@ dist/          不入库：tsc 产物（profile 通过 pnpm link 使用）
 | --- | --- |
 | `glm-llm` | 真网冒烟通过（coding-plan，模型返回 `pong`；2026-10-28 GLM-5.3-Flash 读图一次，答对颜色）；按 rc.3 消息形状编码（工具调用块、图片块）；2026-10-28 在 `glmsandbox` 的 headless 会话里跑完标定基线（两档模型各 6 次多轮工具会话，全部完成，`ORCHESTRATION.md` §10.5.2），桌面版真实会话中尚未被使用 |
 | `glm-login` | 可用；`/glm-status` 输出凭证状态与调用会话的行健康表（2026-10-28，L3 探针验证），没有 `home` 时也保留 |
-| `glm-prompt` | 在 rc.3 运行时上生效，含 ZCode 3.16.3 local 工具检索；七个别名的描述与 schema 均已按 3.16.3 重建；todo 提醒按助手轮次从会话历史计数（L3 探针 35/35，2026-10-28）；桌面版需重启才加载 |
+| `glm-prompt` | 在 rc.3 运行时上生效，含 ZCode 3.16.3 local 工具检索；七个别名的描述与 schema 均已按 3.16.3 重建；todo 提醒按助手轮次从会话历史计数（L3 探针 35/35，2026-10-28）；2026-10-28 起 GLM 会话进入高峰时段时收到一条提醒（`ORCHESTRATION.md` §11.4，L3 探针验证）；桌面版需重启才加载 |
 | `glm-compact` | 改为在 `llm/stream` 上替换压缩指令（2026-10-27），L3 探针实测压缩生效 |
 | `data` | 2026-10-28 新增，默认启用：提供数据目录服务（用户级 `~/.dsh/glm-hourness/`、项目 `.llm/`）；L3 探针验证，桌面版重启后生效 |
 | `guard` | 拦截与纠偏可用；违规落盘（项目目录 `audit/violations.jsonl`）；2026-10-28 起 `file-tools-only` 引号感知，规则声明进 GLM 系统提示词，工作区变更兜底以影子模式记录（需要 `workspace-changes`，桌面版 profile 有）；均经 L3 探针验证，桌面版重启后生效；申报未接通 |
 | `memory` | 工具与用量流水可用，用量改写用户级目录（2026-10-28）；记忆几乎未被使用 |
 | `workflow` | 只记录派遣类调用（2026-10-28 起含 `subagent_fork`） |
-| `hourness` | `/hourness` 可用；峰谷口径错误 |
+| `hourness` | `/hourness` 可用；面板 2026-10-28 改为积分口径（`ORCHESTRATION.md` §11.2、§11.3），额度类数据未实现；桌面版重启后生效 |
 | `glm-hourness/ui` | 功能可用，视觉未被接受 |
 
 行健康（2026-10-28，`DESIGN.md` §2.5）：主包 9 行都在激活时与会话中上报生效、部分生效或未生效及原因，`/glm-status` 显示；桌面版重启后生效。
 
-装机：10 行均 `fiberPhase: active`，无激活错误（2026-10-27 删除 `toolsearch` 行之前的记录；`data` 行尚未在桌面版上加载过）。门禁 `npm run build`、`npm run preflight`、`npm test`（250 用例，逐字门禁 397 段、已知偏差 0 条，检查器门禁对照基线 ESLint 317 条、knip 35 条、jscpd 7 处克隆）全绿，`npm run probe` 53/53（2026-10-28）。标定基线（`npm run calibrate`，提交 `4cb8799`）：两个起步任务、两档模型各 3 次，12/12 完成（`ORCHESTRATION.md` §10.5.2）。
+装机：10 行均 `fiberPhase: active`，无激活错误（2026-10-27 删除 `toolsearch` 行之前的记录；`data` 行尚未在桌面版上加载过）。门禁 `npm run build`、`npm run preflight`、`npm test`（258 用例，逐字门禁 397 段、已知偏差 0 条，检查器门禁对照基线 ESLint 316 条、knip 34 条、jscpd 7 处克隆）全绿，`npm run probe` 57/57（2026-10-28）。标定基线（`npm run calibrate`，提交 `4cb8799`）：两个起步任务、两档模型各 3 次，12/12 完成（`ORCHESTRATION.md` §10.5.2）。
 
 宿主接口：每个用到的 DSH 钩子、服务成员与载荷字段都已对照 rc.3 运行时包，证据见 `DESIGN.md` §2.4a 接口对照表；宿主结构类型集中在 `src/shared/dsh-min.ts` 与 `src/shared/lm-min.ts`。
 
@@ -66,13 +66,13 @@ dist/          不入库：tsc 产物（profile 通过 pnpm link 使用）
 4. 数据目录分裂：已修（2026-10-28，`DESIGN.md` §2.4）。用户级数据在 `~/.dsh/glm-hourness/`，项目数据在工作区 `.llm/`；凭证与 deviceMid 在 L4 验收后再搬（`ROADMAP.md` §3）。
 5. 签名握手对当前凭证失败，按设计无签发送；对 1.5 倍用量的影响未验证，签名状态不可见。
 6. start-plan 档只有单测，未做真机授权验证。
-7. 峰谷口径：面板把谷时写死为每天 0–8 点，并按调用次数统计（`ORCHESTRATION.md` §11.2）。
+7. 峰谷口径：已修（2026-10-28，`ORCHESTRATION.md` §11.2）。面板按积分计，高峰为工作日 14:00–18:00（UTC+8），其余时段按 50%；5 小时窗口、周额度、预估耗尽时间要等通道取数（`DESIGN.md` §4.7）。
 8. 记忆存储判据过严，路径或文件名样式的文字一律被拒（`ORCHESTRATION.md` §8.1）。
 9. 方言逐字文本：七个工具别名都已按 3.16.3 重建（2026-10-28），逐字门禁已知偏差为 0；Grep 与 Bash 是本地化组合，删改及与 ZCode 的剩余差异见 `DESIGN.md` §5.4。todo 提醒正文、compact 提示词、工具检索文本已按原文重建，deferred 声明段已删除（`DESIGN.md` §5.9）。工具检索在 ZCode 默认关闭，本项目按用户定案默认开启；与 ZCode 的剩余差异见 `DESIGN.md` §5.7。
 10. UI 视觉未被接受。
 11. cot-translation（DSH 官方实验行，非本项目组件）会把推理碎片显示到界面。
 12. 凭证加密密钥可由本机信息推导（`DESIGN.md` §4.1）。
-13. 修正前写入的用量流水，原生通道请求的输入 token 均为 0（解码器缺陷已修，`DESIGN.md` §4.6a）；旧流水不能用于积分统计。
+13. 修正前写入的用量流水，原生通道请求的输入 token 均为 0（解码器缺陷已修，`DESIGN.md` §4.6a）；面板按记录形态识别这类记录，不计入积分，只报条数（2026-10-28）。真实流水里目前没有这类记录。
 14. 2026-10-27 之前，`glm-prompt` 与 `toolsearch` 依赖桌面版运行时不存在的 `tools.executable()`，在桌面版上从未生效（L3 探针确认）。两者均已在 rc.3 接口上重写。桌面版重启后，GLM 会话将第一次真正看到 ZCode 方言与工具检索。
 15. 2026-10-27 之前 `glm-compact` 在桌面版上从未挂载（解析不到 `@deepseek-ai/dsh-compaction-basic`），原设计还会形成第二个压缩引擎。已改为 `llm/stream` 接缝（`DESIGN.md` §5.6）。
 16. 2026-10-27 之前创建的合成 notice 没有 `id` 与 `role`；同一步里有两条这样的 notice 待处理时，DSH inbox 会抛「already pending」。已修（`createUserNotice`）。
