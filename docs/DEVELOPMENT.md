@@ -24,10 +24,10 @@ L2 的 mock **只允许 mock 外部网络和文件系统**；不得 mock DSH 契
 ```powershell
 npm run build        # tsc：含 adapter 契约检查（见 §4）
 npm run preflight    # dist 产物、patch 行文件、client 半一包一源约束
-npm test             # 全部 spec
+npm test             # preflight + 逐字门禁 + 全部 spec
 ```
 
-`npm test` 的第一道就是 preflight；`npm run preflight` 单独跑用于安装前快检。
+`npm test` 的前两道是 preflight 与逐字门禁（`npm run check:verbatim`，规则见 `DESIGN.md` §5.9）；`npm run preflight` 单独跑用于安装前快检。
 
 ## 3. 测试 profile 沙盒（L3）
 

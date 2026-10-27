@@ -25,6 +25,7 @@
 | 默认 `max_tokens` 32000；thinking 启用时剥离采样参数 | `reference/zcode-capabilities.md` §10.1、§11.7 |
 | effort：anthropic 通道 `output_config.effort` 五档词汇；GLM 实用三档 low / high / max | `reference/zcode-capabilities.md` §11.1；用户定案 |
 | 记忆目录结构与 project-hash 算法 | `reference/zcode-capabilities.md` §10.6 |
+| 工具检索模式默认 `off`（桌面版设置 `toolSearchMode` 与 CLI `--toolsearch-mode` 均如此）；deferred 工具名以 `<system-reminder>` 公告递送，不写进系统提示词 | `DESIGN.md` §5.10〔实读〕 |
 | off-peak 是服务端排队协议（`x-off-peak-ticket-id`、429/3105 排队豁免重试、3102 续跑），客户端没有本地峰谷窗口常量 | S1 进度台账 Round 17（git 历史） |
 | 使用统计口径（summary、heatmap、按模型、按工具） | `reference/zcode-capabilities.md` §12 |
 

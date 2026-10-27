@@ -61,7 +61,7 @@ dist/          不入库：tsc 产物（profile 通过 pnpm link 使用）
 6. start-plan 档只有单测，未做真机授权验证。
 7. 峰谷口径：面板把谷时写死为每天 0–8 点，并按调用次数统计（`ORCHESTRATION.md` §11.2）。
 8. 记忆存储判据过严，路径或文件名样式的文字一律被拒（`ORCHESTRATION.md` §8.1）。
-9. 方言逐字文本有偏差：工具描述、deferred 声明段、ToolSearch 描述的大部分不是 ZCode 原文；todo 提醒正文两处、compact 提示词三行与原文不一致。身份类文本经复核是原文（`DESIGN.md` §5.9）。
+9. 方言逐字文本：工具描述、deferred 声明段、ToolSearch 描述的大部分不是 ZCode 原文，由逐字门禁列为已知偏差；todo 提醒正文与 compact 提示词已修正（`DESIGN.md` §5.9）。工具检索在 ZCode 默认关闭，本项目默认开启且未公告 deferred 工具名（`DESIGN.md` §5.10）。
 10. UI 视觉未被接受。
 11. cot-translation（DSH 官方实验行，非本项目组件）会把推理碎片显示到界面。
 12. 凭证加密密钥可由本机信息推导（`DESIGN.md` §4.1）。

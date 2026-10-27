@@ -193,7 +193,7 @@ ZCode compact 提示词（`<analysis>` 先行、9 节摘要、安全指令保留
 
 ZCode deferred 机制的 local 模式：驻留面之外的原生工具进入延迟目录；`ToolSearch`（描述首句之后与原文不一致，见 §5.9）支持 `select:<name>` 精确选择与关键词检索，结果以 `<functions>` 块回注，并以作用域内同名包装注册激活〔实读〕。
 
-已知问题：激活只在 `agent/created` 时 provider 为 `glm` 才发生，原生通道与 rc.3 下不触发（§3）〔推断〕。记忆工具应常驻，不进延迟目录（`ORCHESTRATION.md` §8）。
+已知问题：激活只在 `agent/created` 时 provider 为 `glm` 才发生，原生通道与 rc.3 下不触发（§3）〔推断〕。deferred 工具名从未公告给模型；ZCode 默认根本不开工具检索（§5.10）。记忆工具应常驻，不进延迟目录（`ORCHESTRATION.md` §8）。
 
 ### 5.8 与 ZCode 的差异总表
 
@@ -228,17 +228,31 @@ ZCode deferred 机制的 local 模式：驻留面之外的原生工具进入延�
 | 官方安全声明 | `verbatim.ts` `SECURITY_NOTICE_OFFICIAL` | 与源码、pristine 一致；本机安装包此处为用户补丁 | `context/sections/identity.ts` |
 | Harness 块 | `verbatim.ts` `HARNESS_BLOCK` | 一致 | `context/sections/identity.ts` |
 | todo 提醒回显标题 | `verbatim.ts` `TODO_REMINDER_ECHO_HEADER` | 一致 | `runtime/helpers/runtime-reminders.ts` |
-| todo 提醒正文 | `verbatim.ts` `TODO_REMINDER_BODY` | 两处不一致：原文为 `to track progress`，代码为 `to track the progress you're working on`；原文为 `if has become stale`（原文语法如此），代码为 `if it has become stale` | `runtime/helpers/runtime-reminders.ts` |
+| todo 提醒正文 | `verbatim.ts` `TODO_REMINDER_BODY` | 曾有两处不一致（`to track progress`、`if has become stale`，原文语法如此），已按原文修正 | `runtime/helpers/runtime-reminders.ts` |
 | Context management | `localize.ts` `CONTEXT_MANAGEMENT_DSH` | 一致 | 源码与安装包 |
-| compact 提示词 | `compact.ts` | 64 行中 3 行不一致：第 4 节少 `that you received`，第 8 节少 `both`，第 9 节原文为 `then only list next steps if they are explicitly in line with the users request`，代码为 `then only only list next steps if the users request` | `compact/prompt.ts` |
+| compact 提示词 | `compact.ts` | 曾有 3 行不一致（第 4、8、9 节漏词），已按原文修正。结尾的 `REMINDER` 行与 3.16.3 安装包、pristine 一致，与源码不同，按安装包保留 | `compact/prompt.ts` |
 | ToolSearch 描述 | `toolsearch/index.ts` | 首句一致，之后不一致 | `tool/search/description.ts` |
 | Deferred 声明段 | `verbatim.ts` `DEFERRED_DECLARATION` | 任何来源中都找不到 | — |
 | TodoWrite、Read、Write、Edit、Glob、Grep 描述 | `todowrite.ts`、`aliases.ts` | 任何来源中都找不到；源码中的描述是另一套文本 | `tool/handlers/*.ts` |
 | Bash 描述 | `aliases.ts` | 按本地化清单 ⑥ 改写，不要求逐字；改写所依据的原文需按源码重核 | `tool/handlers/bash*.ts` |
 
-结论：身份类文本与 context management 是原文；todo 提醒正文、compact 提示词有小处偏差；工具描述、deferred 声明段与 ToolSearch 描述的大部分不是 ZCode 3.16.x 的原文。这些文本只存在于 `reference/zcode-tool-schemas.md`，其「协议采样」的出处无法追溯。工具参数 schema 尚未比对。
+结论：身份类文本与 context management 是原文；todo 提醒正文、compact 提示词的小处偏差已修正；start-plan 三块系统提示中的静态文本与原文一致；工具描述、deferred 声明段与 ToolSearch 描述的大部分不是 ZCode 3.16.x 的原文。这些文本只存在于 `reference/zcode-tool-schemas.md`，其「协议采样」的出处无法追溯。工具参数 schema 尚未比对。
 
-处置：按源码重建上述文本，并加一个逐字比对检查，在 `reference/ZCode` 存在时对照源码运行（`ROADMAP.md` M1.1）。
+处置：
+
+- 来源优先级：3.16.3 安装包为准（用户补丁的安全声明除外，该段以源码与 pristine 为准）；源码作为可读参考。源码与安装包有一处已知差异（compact 结尾 `REMINDER` 行）。
+- 逐字门禁 `scripts/check-verbatim.mjs`（`npm test` 的一道）：每段号称逐字的文本逐行必须出现在安装包或源码中；尚未重建的条目列为已知偏差，只许减少，某条一旦对上而未从名单删除也会失败；机器上没有参考源时跳过〔已实现〕。
+- 已知偏差（待重建）：Deferred 声明段、ToolSearch 描述、六个工具描述。工具描述的重建牵涉垫片能否兑现原文描述的参数与行为，Deferred 与 ToolSearch 的重建取决于 §5.7 的模式定案。
+
+### 5.10 ZCode 的工具检索机制（3.16.3）
+
+〔实读，源码 `tool/search/`、安装包配置默认值〕
+
+- 模式：`off` / `local` / `native` / `auto`。桌面版设置 `toolSearchMode` 默认 `off`，CLI 参数 `--toolsearch-mode` 默认也是 `off`。默认配置下所有工具直接加载，没有 ToolSearch，也没有 deferred。
+- `native`：模型侧支持服务端工具检索时使用；检索返回的 schema 加载后可直接调用。
+- `local`：客户端检索；deferred 工具经 `DeferredToolCall({name, input})` 包装调用。
+- 名单公告：deferred 工具名不写进系统提示词，而是以 `<system-reminder>` 公告递送（「The following deferred tools are now available via ToolSearch…」），名单变化时补发新增、恢复、移除的公告。系统提示词里没有 deferred 声明段。
+- 对本项目的影响：`toolsearch` 行默认开启，是 ZCode 默认分布之外的做法；它也从未向模型公告 deferred 工具名。是否默认关闭、开启时按 `native` 还是 `local` 语义实现，待定（`ROADMAP.md` M1.2 前决定）。
 
 ## 6. 注入约定〔定案〕
 
