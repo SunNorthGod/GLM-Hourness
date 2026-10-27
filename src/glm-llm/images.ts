@@ -10,27 +10,14 @@
  * contracts/src/tools/read.ts READ_IMAGE_MAX_DIMENSION and
  * READ_IMAGE_TARGET_BYTES, runtime/types.ts MAX_IMAGE_ATTACHMENT_DIMENSION).
  */
-import type { ImageRefLike, RequestMessageLike } from './lm-min.ts'
+import type { AttachmentsLike, ImageRefLike, ImageTarget, RequestMessageLike } from '../shared/lm-min.ts'
 
 /** ZCode's long-edge bound for model images (Read results and attachments). */
 export const ZCODE_IMAGE_MAX_DIMENSION = 2000
 /** ZCode's raw-byte target for model images: the base64 form stays within 5 MiB. */
 export const ZCODE_IMAGE_TARGET_BYTES = Math.floor((5 * 1024 * 1024 * 3) / 4)
 
-/** Route-chosen request version bounds (dsh-attachment `ImageRequestTarget`). */
-export interface ImageTarget {
-  width: number
-  height: number
-  maxBytes: number
-}
-
-/** The attachment service members the channel uses (dsh-attachment `AttachmentStore`). */
-export interface AttachmentsLike {
-  readImageRequest(ref: ImageRefLike, target: ImageTarget, signal?: AbortSignal): Promise<{ data: Uint8Array, mediaType: string }>
-  imageHostPath(ref: ImageRefLike): string | undefined
-}
-
-/** The attachment service when `value` offers the members above, otherwise undefined. */
+/** The attachment service when `value` offers the `AttachmentsLike` members, otherwise undefined. */
 export function asAttachments(value: unknown): AttachmentsLike | undefined {
   if (typeof value !== 'object' || value === null) return undefined
   const service = value as Partial<Record<keyof AttachmentsLike, unknown>>

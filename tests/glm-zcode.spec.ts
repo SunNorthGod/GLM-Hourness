@@ -6,7 +6,7 @@ import { ANTHROPIC_SDK_UA } from '../src/glm-llm/headers.ts'
 import { apply as loginApply } from '../src/glm-llm/login-row.ts'
 import { saveCredential, type StoreFs } from '../src/glm-llm/auth/store.ts'
 import type { Credential } from '../src/glm-llm/auth/types.ts'
-import type { GenerateOptionsLike, StreamChunk } from '../src/glm-llm/lm-min.ts'
+import type { GenerateOptionsLike, StreamChunk } from '../src/shared/lm-min.ts'
 
 function memoryStore(): { fs: StoreFs, files: Map<string, string> } {
   const files = new Map<string, string>()

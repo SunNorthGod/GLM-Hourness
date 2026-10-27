@@ -8,21 +8,18 @@
 import type { AuditJournal } from '../memory/audit.ts'
 import { journalFor, requireHome } from '../memory/index.ts'
 import { gradeDecision } from './decisions.ts'
+import type { PreExecuteHost } from '../shared/dsh-min.ts'
 
-/** Dispatch-observable tool names on the DSH team seams. */
-export const DISPATCH_TOOLS = ['spawn_teammate', 'team_task_create', 'team_task_update', 'send_message', 'subagent'] as const
+/**
+ * Dispatch tool names of the rc.3 composition: the Agent Team tools
+ * (dsh-experimental-tool-agent-team), `send_message` (also
+ * dsh-tool-subagent-control), and the two dsh-tool-subagent rows of the
+ * base profile, `subagent` (spawn) and `subagent_fork` (fork; dsh-base
+ * cordis.patch.yml `toolName`).
+ */
+export const DISPATCH_TOOLS = ['spawn_teammate', 'team_task_create', 'team_task_update', 'send_message', 'subagent', 'subagent_fork'] as const
 
-export interface DispatchPayload {
-  readonly name: string
-  readonly arguments?: unknown
-  readonly parent?: unknown
-}
-
-export interface WorkflowContext {
-  on(event: 'tools/pre-execute', listener: (payload: DispatchPayload, next: () => Promise<unknown>) => Promise<unknown>): () => void
-}
-
-export function applyOverJournal(ctx: WorkflowContext, journal: Pick<AuditJournal, 'decision'>): () => void {
+export function applyOverJournal(ctx: PreExecuteHost, journal: Pick<AuditJournal, 'decision'>): () => void {
   return ctx.on('tools/pre-execute', (payload, next) => {
     if (payload.parent === undefined && (DISPATCH_TOOLS as readonly string[]).includes(payload.name)) {
       const level = gradeDecision('dispatch')
@@ -58,7 +55,7 @@ export interface WorkflowConfig {
 export const name = 'dsh-glm-hourness/workflow'
 
 /** cordis plugin entry: accepts an injected journal (tests) or a home config (installer). */
-export function apply(ctx: WorkflowContext, journalOrConfig: (Pick<AuditJournal, 'decision'>) | WorkflowConfig = {}): () => void {
+export function apply(ctx: PreExecuteHost, journalOrConfig: (Pick<AuditJournal, 'decision'>) | WorkflowConfig = {}): () => void {
   if (typeof (journalOrConfig as Pick<AuditJournal, 'decision'>).decision === 'function') {
     return applyOverJournal(ctx, journalOrConfig as Pick<AuditJournal, 'decision'>)
   }

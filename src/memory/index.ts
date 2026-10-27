@@ -8,7 +8,8 @@
 import { mkdir, appendFile } from 'node:fs/promises'
 import { auditJournal, auditPaths, fsAppender, type AuditJournal, type UsageRecord } from './audit.ts'
 import { memoryTools, storeIo } from './tools.ts'
-import type { StreamChunk, TokenUsage } from '../glm-llm/lm-min.ts'
+import type { TokenUsage } from '../shared/lm-min.ts'
+import type { LlmStreamHost, ToolsLike } from '../shared/dsh-min.ts'
 
 export interface MemoryConfig {
   /** The agent home directory (workspace `.llm`); audit lives under `<home>/audit`, the store at `<home>/memory.json`. Required: the row cannot infer the workspace at activation. */
@@ -19,22 +20,8 @@ export interface MemoryConfig {
   readonly knowableFromGit?: (text: string) => boolean
 }
 
-export interface UsageStreamOptions {
-  readonly provider?: string
-  readonly model?: string
-  readonly sessionId?: string
-  readonly purpose?: 'compaction' | 'session-title'
-}
-
-export interface LlmStreamContext {
-  on(event: 'llm/stream', listener: (options: UsageStreamOptions, next: () => AsyncIterable<StreamChunk>) => AsyncIterable<StreamChunk>): () => void
-}
-
-export interface ToolsContext {
-  tools: {
-    register(tool: unknown, options?: unknown): () => void
-  }
-}
+/** The row's context: the `llm/stream` waterfall and the injected tools service. */
+export type MemoryContext = LlmStreamHost & { readonly tools: Pick<ToolsLike, 'register'> }
 
 /** cordis plugin identity: needs the tools service (memory tools family). */
 export const name = 'dsh-glm-hourness/memory'
@@ -46,7 +33,7 @@ export const inject = ['tools']
  * activation must never throw, because an activation failure takes the whole
  * host startup down.
  */
-export function apply(ctx: LlmStreamContext & ToolsContext, config: MemoryConfig = {}): () => void {
+export function apply(ctx: MemoryContext, config: MemoryConfig = {}): () => void {
   if (config.home === undefined || config.home.length === 0) {
     console.warn('dsh-glm-hourness/memory: home is not configured; memory tools and usage journal stay off (set config.home)')
     return () => {}
@@ -69,8 +56,8 @@ export function apply(ctx: LlmStreamContext & ToolsContext, config: MemoryConfig
         const record: UsageRecord = {
           at: new Date().toISOString(),
           ...(options.sessionId === undefined ? {} : { sessionId: options.sessionId }),
-          provider: options.provider ?? 'unknown',
-          model: options.model ?? 'unknown',
+          provider: options.provider,
+          model: options.model,
           ...(options.purpose === undefined ? {} : { purpose: options.purpose }),
           usage,
         }

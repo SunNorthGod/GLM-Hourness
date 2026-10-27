@@ -21,9 +21,10 @@ import { buildAuthHeaders, type PlanId } from './headers.ts'
 import { EndpointRoutingService } from './endpoint-routing.ts'
 import { ClientSigningManager, sendWithClientSigning } from './signing.ts'
 import { encodeRequest, decodeSse, splitSystemPrompt } from './anthropic.ts'
-import { glmImageRequestTarget, prepareRequestImages, type AttachmentsLike } from './images.ts'
+import { glmImageRequestTarget, prepareRequestImages } from './images.ts'
 import { buildStartPlanSystem, buildContextPrefixMessage } from './start-plan.ts'
-import { GLM_DEFAULT_MAX_TOKENS, GLM_MODELS, GLM_REASONING_EFFORTS, glmInputModalities, messageText, type GenerateOptionsLike } from './lm-min.ts'
+import { GLM_DEFAULT_MAX_TOKENS, GLM_MODELS, GLM_REASONING_EFFORTS, glmInputModalities } from './models.ts'
+import { messageText, type AttachmentsLike, type GenerateOptionsLike } from '../shared/lm-min.ts'
 import type {
   GenerateOptions,
   LlmAdapter,

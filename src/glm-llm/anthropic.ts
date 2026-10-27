@@ -5,7 +5,7 @@
  * SSE event stream back into seam stream chunks. GLM models always think;
  * the real client sends no thinking field, so neither does this encoder.
  */
-import { messageText, type ContentBlockLike, type GenerateOptionsLike, type RequestMessageLike, type StreamChunk, type ToolSchemaLike, type TokenUsage, type FinishReason } from './lm-min.ts'
+import { messageText, type ContentBlockLike, type GenerateOptionsLike, type RequestMessageLike, type StreamChunk, type ToolSchemaLike, type TokenUsage, type FinishReason } from '../shared/lm-min.ts'
 import type { RequestImages } from './images.ts'
 
 /** Anthropic text block. */

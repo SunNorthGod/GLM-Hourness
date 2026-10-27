@@ -7,6 +7,7 @@
  * no-op instead of failing activation.
  */
 import { ZcodeLogin, ZcodeAdapter, logout } from './zcode.ts'
+import type { CommandsHost } from '../shared/dsh-min.ts'
 
 export interface LoginConfig {
   /** The agent home directory (`.llm`): credentials.json + device-mid.txt live here. Required. */
@@ -15,27 +16,12 @@ export interface LoginConfig {
   readonly fetchImpl?: typeof fetch
 }
 
-export interface CommandInvocationLike {
-  readonly rawInput: string
-}
-
-export interface CommandResultLike {
-  readonly kind: 'success' | 'error'
-  readonly text: string
-}
-
-export interface CommandsContext {
-  commands: {
-    register(definition: { definitionId: string, name: string, description: string, handler: (invocation: CommandInvocationLike) => Promise<CommandResultLike> }): () => void
-  }
-}
-
 /** cordis plugin identity: needs the commands service. */
 export const name = 'dsh-glm-hourness/glm-login'
 export const inject = ['commands']
 
 /** cordis plugin entry: registers /glm-login, /glm-status, and /glm-logout. */
-export function apply(ctx: CommandsContext, config: LoginConfig = {}): () => void {
+export function apply(ctx: CommandsHost, config: LoginConfig = {}): () => void {
   if (config.home === undefined || config.home.length === 0) {
     console.warn('dsh-glm-hourness/glm-login: home is not configured; /glm-login stays off (set config.home)')
     return () => {}

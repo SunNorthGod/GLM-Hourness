@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { auditJournal, auditPaths } from '../src/memory/audit.ts'
 import { apply, journalFor } from '../src/memory/index.ts'
-import type { StreamChunk } from '../src/glm-llm/lm-min.ts'
+import type { StreamChunk } from '../src/shared/lm-min.ts'
 
 function fakeFs() {
   const files = new Map<string, string>()

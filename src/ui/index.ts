@@ -10,26 +10,11 @@ import { readFile } from 'node:fs/promises'
 import { requireHome } from '../memory/index.ts'
 import { reportFromFiles } from '../workflow/morning-report.ts'
 import { offPeakBadge, usagePanel } from './panel.ts'
+import type { CommandsHost } from '../shared/dsh-min.ts'
 
 export interface HournessConfig {
   /** The agent home directory (`.llm`); the audit journal lives under `<home>/audit`. Required: the row cannot infer the workspace at activation. */
   readonly home?: string
-}
-
-export interface CommandInvocationLike {
-  readonly rawInput: string
-}
-
-export interface CommandResultLike {
-  readonly kind: 'success' | 'error'
-  readonly text: string
-}
-
-export interface CommandsContext {
-  effect?: never
-  commands: {
-    register(definition: { definitionId: string, name: string, description: string, handler: (invocation: CommandInvocationLike) => Promise<CommandResultLike> }): () => void
-  }
 }
 
 /** Render the report text for one resolved home (injected fs for tests). */
@@ -56,7 +41,7 @@ export const name = 'dsh-glm-hourness/hourness'
 export const inject = ['commands']
 
 /** cordis plugin entry: register `/hourness`. */
-export function apply(ctx: CommandsContext, config: HournessConfig = {}): () => void {
+export function apply(ctx: CommandsHost, config: HournessConfig = {}): () => void {
   if (config.home === undefined || config.home.length === 0) {
     console.warn('dsh-glm-hourness/hourness: home is not configured; /hourness stays off (set config.home)')
     return () => {}

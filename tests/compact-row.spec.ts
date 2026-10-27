@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { apply, formatSummaryStream, withZcodeInstruction, type CompactRowContext, type StreamChunk, type StreamOptions } from '../src/glm-prompt/compact-row.ts'
+import { apply, formatSummaryStream, withZcodeInstruction, type CompactRowContext } from '../src/glm-prompt/compact-row.ts'
+import type { LlmStreamOptions } from '../src/shared/dsh-min.ts'
+import type { StreamChunk } from '../src/shared/lm-min.ts'
+
+/** A request with one field the row does not read, which must survive the rewrite. */
+type StreamOptions = LlmStreamOptions & { readonly maxTokens?: number }
 
 /** compaction-basic's instruction message (opening line as in rc.3 COMPACTION_INSTRUCTION). */
 const DSH_INSTRUCTION = Object.freeze({

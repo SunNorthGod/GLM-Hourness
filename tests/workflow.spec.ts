@@ -119,3 +119,16 @@ test('apply journals dispatch decisions and always delegates', async () => {
   assert.equal(record.level, 'L1')
   assert.equal(record.subject, 'researcher')
 })
+
+test('both subagent tools of the rc.3 base profile are dispatches', async () => {
+  // dsh-base cordis.patch.yml mounts dsh-tool-subagent twice: toolName subagent (spawn) and subagent_fork (fork).
+  const decisions: DecisionRecord[] = []
+  const journal = { decision: async (record: DecisionRecord) => { decisions.push(record) } }
+  const listeners: Array<(payload: unknown, next: () => Promise<unknown>) => Promise<unknown>> = []
+  apply({ on: (_event, listener) => { listeners.push(listener as typeof listeners[number]); return () => {} } }, journal)
+  for (const name of ['subagent', 'subagent_fork']) {
+    await listeners[0]!({ name, arguments: { description: `${name} task` } }, async () => ({ kind: 'allow' }))
+  }
+  await new Promise(resolve => setImmediate(resolve))
+  assert.deepEqual(decisions.map(record => [record.kind, record.subject]), [['dispatch:subagent', 'subagent task'], ['dispatch:subagent_fork', 'subagent_fork task']])
+})

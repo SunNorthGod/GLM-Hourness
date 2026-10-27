@@ -14,7 +14,7 @@
  * scripts/probe/run-probe.mjs generates for each run.
  */
 import { appendFileSync } from 'node:fs'
-import { GLM_MODELS, glmInputModalities } from '../../dist/glm-llm/lm-min.js'
+import { GLM_MODELS, glmInputModalities } from '../../dist/glm-llm/models.js'
 import { asAttachments, glmImageRequestTarget, prepareRequestImages } from '../../dist/glm-llm/images.js'
 import { encodeRequest, splitSystemPrompt } from '../../dist/glm-llm/anthropic.js'
 
