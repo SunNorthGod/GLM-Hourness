@@ -4,10 +4,12 @@
  * the tools enforce the engine's rules and no others; a refusal comes back
  * as a tool error whose text is the engine's {code, message, field?, hint}.
  * The operations only a human performs (approve, reject, decide, supersede)
- * are not tools. The graph directory is resolved per call: an absolute dir
- * from the row config as is, a relative one (default docs/graph) under the
- * calling agent's session working directory. A missing directory is
- * reported, never created.
+ * are not tools. graph_focus writes nothing to the graph: it sets the
+ * session's focus node for the step projection (reminder.ts, §2.5). The
+ * graph directory is resolved per call: an absolute dir from the row
+ * config as is, a relative one (default docs/graph) under the calling
+ * agent's session working directory. A missing directory is reported,
+ * never created.
  */
 import { stat } from 'node:fs/promises'
 import { isAbsolute, resolve } from 'node:path'
@@ -40,15 +42,17 @@ function refuse(result: Failure): never {
 
 const ROW_HINT = `set an absolute dir in the ${GRAPH_ROW_ID} row config`
 
-/** The graph directory for one call, or a refusal when there is none to work on. */
-async function graphDir(configured: string, exec: unknown): Promise<string> {
+/**
+ * The graph directory of the configured dir (absolute, or relative to the
+ * session working directory `cwd`), or not_found when there is none to work on.
+ */
+export async function locateGraph(configured: string, cwd: string | undefined): Promise<string | Failure> {
   let dir: string
   if (isAbsolute(configured)) {
     dir = resolve(configured)
   }
   else {
-    const cwd = (exec as ToolExecutionContext | undefined)?.agent?.session?.header.cwd
-    if (typeof cwd !== 'string' || cwd.length === 0) refuse(failure('not_found', `this session has no working directory to find ${configured} in`, ROW_HINT))
+    if (typeof cwd !== 'string' || cwd.length === 0) return failure('not_found', `this session has no working directory to find ${configured} in`, ROW_HINT)
     dir = resolve(cwd, configured)
   }
   try {
@@ -58,8 +62,24 @@ async function graphDir(configured: string, exec: unknown): Promise<string> {
     const code = (error as NodeJS.ErrnoException).code
     if (code !== 'ENOENT' && code !== 'ENOTDIR') throw error
   }
-  return refuse(failure('not_found', `no project graph at ${dir}`, `an empty directory is an empty graph: create ${dir} to start one, or ${ROW_HINT}`))
+  return failure('not_found', `no project graph at ${dir}`, `an empty directory is an empty graph: create ${dir} to start one, or ${ROW_HINT}`)
 }
+
+/** The graph directory for one call, or a refusal when there is none to work on. */
+async function graphDir(configured: string, exec: unknown): Promise<string> {
+  const located = await locateGraph(configured, (exec as ToolExecutionContext | undefined)?.agent?.session?.header.cwd)
+  return typeof located === 'string' ? located : refuse(located)
+}
+
+/**
+ * Focus node per session id, set by graph_focus. The step projection
+ * (reminder.ts) reads the focus from the session history and falls back to
+ * this map when a compaction has removed it from there.
+ */
+export type FocusMemory = Map<string, string>
+
+/** The tool that sets the focus node; the step projection finds its calls in the history. */
+export const FOCUS_TOOL = 'graph_focus'
 
 /** Refuse fields a read tool does not take; reads have no engine parser to do it. */
 function readRequest(tool: string, args: unknown, fields: readonly string[]): Record<string, unknown> {
@@ -170,6 +190,20 @@ const INVALID: JsonSchema = {
 }
 const SHOW_OUTPUT: JsonSchema = { type: 'object', properties: { ok: OK, projection: { type: 'object' }, invalid: INVALID }, required: ['ok', 'projection'] }
 const OPEN_OUTPUT: JsonSchema = { type: 'object', properties: { ok: OK, items: { type: 'object' }, invalid: INVALID }, required: ['ok', 'items'] }
+const FOCUS_OUTPUT: JsonSchema = {
+  type: 'object',
+  properties: {
+    ok: OK,
+    focus: {
+      type: 'object',
+      properties: { id: { type: 'string' }, type: { type: 'string' }, title: { type: 'string' }, status: { type: 'string' } },
+      required: ['id', 'type', 'title', 'status'],
+      additionalProperties: false,
+    },
+    invalid: INVALID,
+  },
+  required: ['ok', 'focus'],
+}
 const WRITE_OUTPUT: JsonSchema = {
   type: 'object',
   properties: {
@@ -248,10 +282,11 @@ function writeTool(dir: string, op: LlmOp, description: string, parameters: Json
 
 /**
  * The graph tools over one configured directory (absolute, or relative to
- * the session working directory), reads first. src/toolsearch/exposure.ts
- * keeps every one of them resident on GLM requests.
+ * the session working directory), reads and the focus first; graph_focus
+ * records the focus in `focuses`. src/toolsearch/exposure.ts keeps every
+ * one of them resident on GLM requests.
  */
-export function graphTools(dir: string): ToolDefinitionLike[] {
+export function graphTools(dir: string, focuses: FocusMemory): ToolDefinitionLike[] {
   return [
     {
       name: 'graph_show',
@@ -276,6 +311,23 @@ export function graphTools(dir: string): ToolDefinitionLike[] {
         readRequest('graph_open', args, [])
         const graph = await openEngine(await graphDir(dir, exec)).load()
         return { ok: true, items: listOpenItems(graph), ...invalidOf(graph) }
+      },
+    },
+    {
+      name: FOCUS_TOOL,
+      description: 'Set the node you are working on, usually the task in progress. From the next step on, its projection (path to the goal, children, dependencies, stage, open gates) arrives as a system reminder whenever it changes, after a compaction and with every goal round. One focus per session; call again to move it.',
+      parameters: object({ id: ID }, ['id']),
+      output: { schema: FOCUS_OUTPUT, render },
+      async execute(args, exec) {
+        const { id } = readRequest(FOCUS_TOOL, args, ['id'])
+        if (typeof id !== 'string') refuse(failure('invalid', 'id must be a node id', 'pass {"id": "<node id>"}; graph_open lists the open nodes', 'id'))
+        const session = (exec as ToolExecutionContext | undefined)?.agent?.session
+        if (session === undefined) refuse(failure('invalid', `${FOCUS_TOOL} needs the session of the calling agent`, 'call it from an agent step; graph_show reads a node without a focus'))
+        const graph = await openEngine(await graphDir(dir, exec)).load()
+        const node = graph.nodes.get(id)
+        if (node === undefined) refuse(failure('not_found', `no readable node "${id}"`, 'graph_open lists the open nodes', 'id'))
+        focuses.set(session.id, id)
+        return { ok: true, focus: { id, type: node.type, title: node.title, status: node.status }, ...invalidOf(graph) }
       },
     },
     ...WRITES.map(write => writeTool(dir, write.op, write.description, write.parameters)),

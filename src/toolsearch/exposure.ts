@@ -45,7 +45,7 @@ export const RESIDENT_TOOLS: ReadonlySet<string> = new Set([
   // Project decision: memory stays at hand (ORCHESTRATION.md §8).
   'memory_store', 'memory_query', 'memory_forget',
   // Project decision: the main agent reads and writes the project graph every beat (ORCHESTRATION.md §2.8, §2.10; src/graph/tools.ts).
-  'graph_show', 'graph_open', 'graph_propose', 'graph_status', 'graph_edit', 'graph_link', 'graph_unlink', 'graph_comment', 'graph_verify',
+  'graph_show', 'graph_open', 'graph_focus', 'graph_propose', 'graph_status', 'graph_edit', 'graph_link', 'graph_unlink', 'graph_comment', 'graph_verify',
 ])
 
 /** Whether a face tool is deferred by configuration (ZCode `isDeferredTool`). */

@@ -13,7 +13,7 @@ import { RESIDENT_TOOLS, buildToolExposure } from '../src/toolsearch/exposure.ts
 import { DEFERRED_TOOL_CALL_NAME, LOCAL_TOOL_SEARCH_NAME } from '../src/toolsearch/zcode-text.ts'
 import { fakeRuntime, schemaViolations, type FakeRuntime } from './fake-rc3.ts'
 
-const TOOL_NAMES = ['graph_show', 'graph_open', 'graph_propose', 'graph_status', 'graph_edit', 'graph_link', 'graph_unlink', 'graph_comment', 'graph_verify']
+const TOOL_NAMES = ['graph_show', 'graph_open', 'graph_focus', 'graph_propose', 'graph_status', 'graph_edit', 'graph_link', 'graph_unlink', 'graph_comment', 'graph_verify']
 
 interface Fixture {
   /** The session working directory; the graph is docs/graph under it. */
@@ -116,7 +116,7 @@ test('the row registers one tool per llm operation with schemas inside the rc.3 
 test('every graph tool stays resident on GLM requests', () => {
   const contract = (tool: ToolDefinitionLike) => ({ name: tool.name, description: tool.description, parameters: tool.parameters })
   const face = [
-    ...graphTools('docs/graph').map(contract),
+    ...graphTools('docs/graph', new Map()).map(contract),
     { name: 'web_fetch', description: 'fetch', parameters: { type: 'object' } },
     { name: LOCAL_TOOL_SEARCH_NAME, description: 'search', parameters: { type: 'object' } },
     { name: DEFERRED_TOOL_CALL_NAME, description: 'call', parameters: { type: 'object' } },
@@ -150,6 +150,16 @@ toolTest('graph_open lists the decision queue with options and the node that rai
   assert.deepEqual(items.ready.map((entry: { id: string }) => entry.id), ['task-1'])
   assert.deepEqual(items.verificationDebt.map((entry: { id: string }) => entry.id), ['decision-1'])
   refused(await call('graph_open', { all: true }), 'invalid', 'all')
+})
+
+toolTest('graph_focus sets the session focus and writes nothing to the graph', async ({ call, graph, runtime }) => {
+  const before = (await loadGraph(graph)).revision
+  const value = ok(await call('graph_focus', { id: 'task-1' }))
+  assert.deepEqual(value.focus, { id: 'task-1', type: 'task', title: '读投影', status: 'approved' })
+  assert.equal((await loadGraph(graph)).revision, before)
+  refused(await call('graph_focus', { id: 'task-9' }), 'not_found', 'id')
+  refused(await call('graph_focus', { id: 'task-1', depth: 1 }), 'invalid', 'depth')
+  refused(await runtime.ctx.tools.execute({ callId: 'no-agent', name: 'graph_focus', arguments: { id: 'task-1' }, signal: new AbortController().signal }), 'invalid')
 })
 
 toolTest('graph_propose writes as llm: planned work starts approved, a new branch waits for a human', async ({ call, graph }) => {
@@ -290,14 +300,17 @@ test('activation never throws: a bad config or a failed registration warns and s
 
   const disposed: string[] = []
   let registered = 0
+  const listened: string[] = []
   const failing = await captureWarnings(() => apply({
     tools: {
       register: tool => {
-        if (++registered === 3) throw new Error('tool "graph_propose" is already registered')
+        if (++registered === 3) throw new Error('tool "graph_focus" is already registered')
         return () => { disposed.push(tool.name) }
       },
     },
+    on: event => { listened.push(event); return () => {} },
   }, {}))
+  assert.deepEqual(listened, [], 'a row that stays off installs no step projection')
   assert.deepEqual(disposed, ['graph_open', 'graph_show'], 'tools registered before the failure are removed again')
   assert.match(failing.warnings.join('\n'), /registering the graph tools failed/)
   failing.result()

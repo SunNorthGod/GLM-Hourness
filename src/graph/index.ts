@@ -1,25 +1,30 @@
 /**
- * glm-hourness/graph row entry (docs/ORCHESTRATION.md §2.10): registers the
- * project graph tools (tools.ts) globally, so every agent on every route
- * has the right path that the graph guard points to. Ships disabled in
- * cordis.patch.yml until the sandbox run (L3). Activation never throws: a
- * bad config or a failed registration warns and leaves the row a no-op; a
- * configured absolute directory that does not exist yet warns, and the
- * tools report it on every call until it exists.
+ * glm-hourness/graph row entry (docs/ORCHESTRATION.md §2.5, §2.10):
+ * registers the project graph tools (tools.ts) globally, so every agent on
+ * every route has the right path that the graph guard points to, and at
+ * agent creation installs the step projection (reminder.ts) for the focus
+ * node an agent sets with graph_focus. Ships disabled in cordis.patch.yml
+ * until the sandbox run (L3). Activation never throws: a bad config or a
+ * failed registration warns and leaves the row a no-op; a configured
+ * absolute directory that does not exist yet warns, and the tools and the
+ * projection report it until it exists.
  */
 import { existsSync } from 'node:fs'
 import { isAbsolute } from 'node:path'
-import type { ToolsLike } from '../shared/dsh-min.ts'
-import { DEFAULT_GRAPH_DIR, graphTools } from './tools.ts'
+import type { AgentLike, ToolsLike } from '../shared/dsh-min.ts'
+import { installProjection } from './reminder.ts'
+import { DEFAULT_GRAPH_DIR, graphTools, type FocusMemory } from './tools.ts'
 
 export interface GraphConfig {
   /** Graph directory: absolute, or relative to the session working directory. Default docs/graph. */
   readonly dir?: string
 }
 
-/** The row's context: the injected tools service. */
+/** The row's context: the injected tools service and the agent lifecycle event. */
 export interface GraphContext {
   readonly tools: Pick<ToolsLike, 'register'>
+  /** Awaited serially before agent creation resolves; the first step sees the effects. */
+  on(event: 'agent/created', listener: (payload: { agent: AgentLike }) => Promise<void> | void): () => void
 }
 
 /** cordis plugin identity: needs the tools service. */
@@ -40,13 +45,27 @@ export function apply(ctx: GraphContext, config: GraphConfig = {}): () => void {
   const dispose = (): void => {
     for (const disposer of disposers.splice(0).reverse()) disposer()
   }
+  const focuses: FocusMemory = new Map()
   try {
-    for (const tool of graphTools(dir)) disposers.push(ctx.tools.register(tool))
+    for (const tool of graphTools(dir, focuses)) disposers.push(ctx.tools.register(tool))
   }
   catch (error) {
     dispose()
     console.warn(`${name}: registering the graph tools failed, the row stays off: ${error instanceof Error ? error.message : String(error)}`)
     return () => {}
   }
+  const installed = new WeakSet<AgentLike>()
+  disposers.push(ctx.on('agent/created', ({ agent }) => {
+    if (installed.has(agent)) return
+    installed.add(agent)
+    try {
+      const uninstall = installProjection(agent, dir, focuses)
+      if (uninstall !== undefined) disposers.push(uninstall)
+    }
+    catch (error) {
+      // One agent's projection must never break agent creation; its tools still work.
+      console.warn(`${name}: step projection not installed for agent ${agent.id}: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }))
   return dispose
 }
