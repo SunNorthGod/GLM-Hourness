@@ -40,8 +40,8 @@ test('file-tools-only denies shell write patterns inside the workspace too', () 
   }
 })
 
-test('file-tools-only allows execution-style shell commands', () => {
-  for (const command of ['npm test', 'git status', 'ls -la', 'node server.js &']) {
+test('file-tools-only allows execution-style shell commands, quoted arrows and git subcommands', () => {
+  for (const command of ['npm test', 'git status', 'ls -la', 'node server.js &', 'git commit -m "a -> b => c"', 'git rm old.ts', 'npm test 2>&1']) {
     assert.equal(evaluate([fileToolsOnly], bash(command)).kind, 'allow', command)
   }
 })

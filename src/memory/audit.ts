@@ -1,12 +1,12 @@
 /**
  * dsh-memory (audit foundation) — durable JSONL sinks under `<dir>/audit/`:
  * usage (per model-call token accounting) in the user-level directory,
- * violations (guard denials) and workflow decisions in the project directory
+ * violations (guard denials and shadow records) and workflow decisions in the project directory
  * (docs/DESIGN.md §2.4). The filesystem is injected; every sink appends one
  * JSON object per line and never rewrites history.
  */
 import { appendFile, mkdir } from 'node:fs/promises'
-import type { ViolationRecord } from '../guard/index.ts'
+import type { GuardRecord } from '../guard/index.ts'
 import type { DataHomes } from '../shared/data-home.ts'
 import type { TokenUsage } from '../shared/lm-min.ts'
 
@@ -48,7 +48,8 @@ export function auditPaths(homes: DataHomes): AuditPaths {
 }
 
 export interface AuditJournal {
-  violation(record: ViolationRecord): Promise<void>
+  /** A guard denial, or a shadow record of the workspace-change fallback (`mode: 'shadow'`). */
+  violation(record: GuardRecord): Promise<void>
   usage(record: UsageRecord): Promise<void>
   decision(record: DecisionRecord): Promise<void>
 }

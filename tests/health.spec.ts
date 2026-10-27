@@ -254,7 +254,7 @@ test('glm-compact: compaction requests report mirrored, non-GLM or unrecognized;
 function preExecuteRow(applyRow: (ctx: never, config: never) => () => void, config: Record<string, unknown>, data?: unknown) {
   const store = serviceStore()
   let listener: ((payload: ToolExecutionPayload, next: () => Promise<PreExecuteDecision>) => Promise<PreExecuteDecision>) | undefined
-  const ctx = { on: (_event: string, registered: typeof listener) => { listener = registered; return () => {} }, ...store, get: (name: string) => name === 'glmHournessData' ? data : store.get(name) }
+  const ctx = { on: (event: string, registered: typeof listener) => { if (event === 'tools/pre-execute') listener = registered; return () => {} }, ...store, get: (name: string) => name === 'glmHournessData' ? data : store.get(name) }
   applyRow(ctx as never, config as never)
   return { store, call: (payload: ToolExecutionPayload) => listener!(payload, async () => ({ kind: 'allow' })) }
 }
@@ -264,14 +264,17 @@ const memoryFs = { mkdir: async () => undefined, appendFile: async () => {} }
 test('guard: in effect with a session directory and a project directory, degraded with the gap named', async () => {
   const { store, call } = preExecuteRow(guardApply as never, { fs: memoryFs }, { userHome: 'C:/u/glm-hourness', projectHome: 'C:/ws/.llm' })
   await call({ name: 'Read', arguments: { file_path: 'C:\\ws\\a.ts' }, agent: agentIn('s1', 'C:\\ws') })
-  assert.deepEqual(inSession(store, 'guard', 's1'), { state: 'active', reason: '门禁生效（file-tools-only，圈禁根 C:\\ws）；违规记入 C:/ws/.llm' })
+  assert.deepEqual(inSession(store, 'guard', 's1'), { state: 'active', reason: '门禁生效（file-tools-only，圈禁根 C:\\ws）；违规记入 C:/ws/.llm；影子兜底未启用（组合里没有 workspace-changes）' })
   await call({ name: 'Read', arguments: {}, agent: agentIn('s2') })
-  assert.deepEqual(inSession(store, 'guard', 's2'), { state: 'degraded', reason: '门禁生效（file-tools-only）；会话没有工作目录，圈禁规则跳过' })
+  assert.deepEqual(inSession(store, 'guard', 's2'), { state: 'degraded', reason: '门禁生效（file-tools-only）；会话没有工作目录，圈禁规则跳过；影子兜底未启用（组合里没有 workspace-changes）' })
+  store.services.set('workspaceChanges', { summary: () => undefined })
+  await call({ name: 'Read', arguments: {}, agent: agentIn('s4', 'C:\\ws') })
+  assert.ok(inSession(store, 'guard', 's4')!.reason.endsWith('；影子兜底：工作区变更记录'))
   await call({ name: 'Read', arguments: {}, agent: agentIn('s3'), parent: 'token' })
   assert.equal(view(store, 'guard').session('s3'), undefined) // transport sub-calls are not the row acting
   const bare = preExecuteRow(guardApply as never, { fs: memoryFs })
   await bare.call({ name: 'Read', arguments: {}, agent: agentIn('s1', 'C:\\ws') })
-  assert.ok(inSession(bare.store, 'guard', 's1')!.reason.endsWith('无项目目录，违规不落盘'))
+  assert.ok(inSession(bare.store, 'guard', 's1')!.reason.includes('；无项目目录，违规不落盘；'))
 })
 
 test('workflow: in effect with a project directory, inactive without one', async () => {

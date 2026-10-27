@@ -108,6 +108,43 @@ export interface PreExecuteHost {
   on(event: 'tools/pre-execute', listener: PreExecuteListener): () => void
 }
 
+/** A frozen session log event (dsh-session `append`: `{type, seq, time, data}`). */
+export interface SessionEventLike {
+  readonly type: string
+  readonly seq: number
+  readonly data?: unknown
+}
+
+/**
+ * A context that observes session logs (dsh-session `commit`,
+ * `emitDisposed`): observe-only listeners, called synchronously while the
+ * appending code is still running.
+ */
+export interface SessionEventHost {
+  on(event: 'session/event', listener: (session: SessionLike, event: SessionEventLike) => void): () => void
+  on(event: 'session/disposed', listener: (session: SessionLike) => void): () => void
+}
+
+/** One changed file of a workspace-changes summary: `path` relative to the session directory inside it, absolute elsewhere. */
+export interface WorkspaceChangedFile {
+  readonly path: string
+  readonly display: string
+}
+
+/** The summary one `workspace/changes` session event announced (dsh-workspace-changes `TurnRecorder.record`). */
+export interface WorkspaceChangesSummary {
+  readonly turn: number
+  readonly cwd: string
+  /** At most the plugin's `maxFiles` entries; `total` counts every changed file. */
+  readonly files: readonly WorkspaceChangedFile[]
+  readonly total: number
+}
+
+/** The `workspaceChanges` service member the guard reads (dsh-workspace-changes `apply`). */
+export interface WorkspaceChangesService {
+  summary(sessionId: string, seq: number): WorkspaceChangesSummary | undefined
+}
+
 /** `agent/pre-step` payload. */
 export interface PreStepPayload {
   readonly agent: AgentLike
