@@ -6,7 +6,8 @@
  * Classification (docs/DESIGN.md §5.10): ZCode defers tools that declare
  * `shouldDefer` and MCP tools; a DSH tool with a ZCode counterpart follows
  * the counterpart, and a DSH tool without one follows the MCP rule (deferred).
- * Memory tools stay resident by project decision (ORCHESTRATION.md §8).
+ * Memory and project graph tools stay resident by project decision
+ * (ORCHESTRATION.md §8, §2.10).
  *
  * ZCode recomputes history projections on every request; DSH persists each
  * tool result once. So the projection runs when LocalToolSearch executes,
@@ -43,6 +44,8 @@ export const RESIDENT_TOOLS: ReadonlySet<string> = new Set([
   'skill', 'workflow', 'get_goal', 'ask_user_question',
   // Project decision: memory stays at hand (ORCHESTRATION.md §8).
   'memory_store', 'memory_query', 'memory_forget',
+  // Project decision: the main agent reads and writes the project graph every beat (ORCHESTRATION.md §2.8, §2.10; src/graph/tools.ts).
+  'graph_show', 'graph_open', 'graph_propose', 'graph_status', 'graph_edit', 'graph_link', 'graph_unlink', 'graph_comment', 'graph_verify',
 ])
 
 /** Whether a face tool is deferred by configuration (ZCode `isDeferredTool`). */

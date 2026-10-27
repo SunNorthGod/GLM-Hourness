@@ -1,10 +1,12 @@
 /**
  * Test double of the rc.3 runtime surface the dialect rows touch
  * (docs/DESIGN.md §2.4a). It offers only what the desktop runtime offers:
- * scoped `tools.register(definition)`, `tools.get(name, scope)`,
- * `tools.execute(input)`, the agent-scoped waterfalls, and the session's
- * derived history. The route reaches plugins solely through the assembly
- * variables, exactly as installModelSelection injects them.
+ * scoped `tools.register(definition)` (rejecting output schemas outside the
+ * enforced subset), `tools.get(name, scope)`, `tools.execute(input)`
+ * (validating success values against the output schema), the agent-scoped
+ * waterfalls, and the session's derived history. The route reaches plugins
+ * solely through the assembly variables, exactly as installModelSelection
+ * injects them.
  */
 import type { AgentLike, AssemblePayload, AssembledTool, PluginContext, PreStepDecision, PreStepPayload, ToolDefinitionLike, ToolExecuteInput, ToolFinalResult } from '../src/shared/dsh-min.ts'
 
@@ -47,7 +49,109 @@ function native(name: string, calls: Array<{ name: string, args: unknown }>): To
 
 export const NATIVE_NAMES = ['read', 'write', 'edit', 'glob', 'grep', 'pwsh', 'todo_write', 'web_fetch'] as const
 
-export function fakeRuntime(options: { natives?: readonly string[], calls?: Array<{ name: string, args: unknown }> } = {}): FakeRuntime {
+const SCHEMA_CONSTRAINTS = new Set(['type', 'oneOf', 'properties', 'required', 'additionalProperties', 'items', 'enum', 'const'])
+const SCHEMA_ANNOTATIONS = new Set(['description', 'title', 'default', 'examples'])
+const SCHEMA_TYPES = ['object', 'array', 'string', 'number', 'integer', 'boolean', 'null']
+const BESIDE_ONE_OF = ['properties', 'required', 'additionalProperties', 'items', 'enum', 'const']
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function scalarMatches(type: string, value: unknown): boolean {
+  switch (type) {
+    case 'string': return typeof value === 'string'
+    case 'number': return typeof value === 'number' && Number.isFinite(value)
+    case 'integer': return Number.isInteger(value)
+    case 'boolean': return typeof value === 'boolean'
+    default: return value === null
+  }
+}
+
+/**
+ * Violations of the JSON Schema subset rc.3 enforces on tool output schemas
+ * at `tools.register` (dsh-tools `assertSupportedJsonSchema`, tools:323,
+ * called at tools:2978): `type` (one string) or `oneOf` (two or more
+ * branches), object `properties` / `required` / boolean
+ * `additionalProperties`, array `items`, scalar `enum` / `const`, and the
+ * annotations description, title, default and examples.
+ */
+export function schemaViolations(schema: unknown, path = 'schema'): string[] {
+  if (!isRecord(schema)) return [`${path} must be a schema object`]
+  const out = Object.keys(schema).filter(key => !SCHEMA_CONSTRAINTS.has(key) && !SCHEMA_ANNOTATIONS.has(key)).map(key => `${path}.${key} is not a supported keyword`)
+  const has = (key: string): boolean => Object.hasOwn(schema, key)
+  if (has('type') && has('oneOf')) return [...out, `${path} cannot declare both type and oneOf`]
+  if (has('oneOf')) {
+    out.push(...BESIDE_ONE_OF.filter(has).map(key => `${path}.${key} is not supported beside oneOf`))
+    const branches = schema.oneOf
+    if (!Array.isArray(branches) || branches.length < 2) return [...out, `${path}.oneOf must be an array of at least two schemas`]
+    return [...out, ...branches.flatMap((branch, index) => schemaViolations(branch, `${path}.oneOf[${index}]`))]
+  }
+  if (!has('type')) return [...out, ...BESIDE_ONE_OF.filter(has).map(key => `${path}.${key} requires type or oneOf`)]
+  const type = schema.type
+  if (typeof type !== 'string' || !SCHEMA_TYPES.includes(type)) return [...out, `${path}.type must be one of ${SCHEMA_TYPES.join('/')}`]
+  const placement: Record<string, readonly string[]> = { properties: ['object'], required: ['object'], additionalProperties: ['object'], items: ['array'], enum: SCHEMA_TYPES.slice(2), const: SCHEMA_TYPES.slice(2) }
+  out.push(...Object.entries(placement).filter(([key, types]) => has(key) && !types.includes(type)).map(([key]) => `${path}.${key} is not supported on type "${type}"`))
+  if (type === 'object') {
+    const properties = schema.properties
+    if (has('properties') && !isRecord(properties)) out.push(`${path}.properties must be an object of schemas`)
+    const declared = isRecord(properties) ? properties : {}
+    for (const [key, child] of Object.entries(declared)) out.push(...schemaViolations(child, `${path}.properties.${key}`))
+    const required = schema.required
+    if (has('required')) {
+      if (!Array.isArray(required) || required.some(entry => typeof entry !== 'string')) out.push(`${path}.required must be an array of strings`)
+      else out.push(...required.filter(key => !Object.hasOwn(declared, key)).map(key => `${path}.required names "${key}" which is not in properties`))
+    }
+    if (has('additionalProperties') && typeof schema.additionalProperties !== 'boolean') out.push(`${path}.additionalProperties must be a boolean`)
+  }
+  else if (type === 'array') {
+    if (has('items')) out.push(...schemaViolations(schema.items, `${path}.items`))
+  }
+  else {
+    const allowed = schema.enum
+    if (has('enum') && (!Array.isArray(allowed) || allowed.length === 0 || !allowed.every(entry => scalarMatches(type, entry)))) out.push(`${path}.enum must be a non-empty array of ${type} values`)
+    if (has('const') && !scalarMatches(type, schema.const)) out.push(`${path}.const must be a ${type} value`)
+  }
+  return out
+}
+
+/**
+ * Violations of a successful tool value against its output schema: rc.3
+ * validates every body value before rendering it and turns a mismatch into
+ * an error result (dsh-tools `createSuccessResult`, tools:3637–3640).
+ */
+export function valueViolations(schema: Record<string, unknown>, value: unknown, path = 'value'): string[] {
+  if (Array.isArray(schema.oneOf)) {
+    const matches = schema.oneOf.filter(branch => valueViolations(branch as Record<string, unknown>, value, path).length === 0).length
+    return matches === 1 ? [] : [`"${path}" must match exactly one oneOf branch (matched ${matches})`]
+  }
+  switch (schema.type) {
+    case undefined: return []
+    case 'object': {
+      if (!isRecord(value)) return [`"${path}" must be an object`]
+      const properties = isRecord(schema.properties) ? schema.properties : {}
+      const out = ((schema.required ?? []) as string[]).filter(key => value[key] === undefined).map(key => `missing required property "${path}.${key}"`)
+      for (const [key, child] of Object.entries(properties)) {
+        if (value[key] !== undefined) out.push(...valueViolations(child as Record<string, unknown>, value[key], `${path}.${key}`))
+      }
+      if (schema.additionalProperties === false) out.push(...Object.keys(value).filter(key => !Object.hasOwn(properties, key)).map(key => `"${path}.${key}" is not a declared property (additionalProperties: false)`))
+      return out
+    }
+    case 'array': {
+      if (!Array.isArray(value)) return [`"${path}" must be an array`]
+      const items = schema.items as Record<string, unknown> | undefined
+      return items === undefined ? [] : value.flatMap((entry, index) => valueViolations(items, entry, `${path}[${index}]`))
+    }
+    default: {
+      if (!scalarMatches(schema.type as string, value)) return [`"${path}" must be a ${String(schema.type)}`]
+      if (Array.isArray(schema.enum) && !schema.enum.includes(value)) return [`"${path}" must be one of ${JSON.stringify(schema.enum)}`]
+      if (Object.hasOwn(schema, 'const') && value !== schema.const) return [`"${path}" must be ${JSON.stringify(schema.const)}`]
+      return []
+    }
+  }
+}
+
+export function fakeRuntime(options: { natives?: readonly string[], calls?: Array<{ name: string, args: unknown }>, cwd?: string } = {}): FakeRuntime {
   const calls = options.calls ?? []
   const natives = new Map((options.natives ?? NATIVE_NAMES).map(name => [name, native(name, calls)]))
   const scoped: ToolDefinitionLike[] = []
@@ -71,6 +175,8 @@ export function fakeRuntime(options: { natives?: readonly string[], calls?: Arra
   const ctx: PluginContext = {
     tools: {
       register: definition => {
+        const violations = schemaViolations(definition.output.schema)
+        if (violations.length > 0) throw new TypeError(`unsupported JSON schema: ${violations.join('; ')}`)
         scoped.push(definition)
         return () => { scoped.splice(scoped.indexOf(definition), 1) }
       },
@@ -83,7 +189,9 @@ export function fakeRuntime(options: { natives?: readonly string[], calls?: Arra
         let result: ToolFinalResult
         try {
           if (tool === undefined) throw new Error(`unknown tool "${input.name}"`)
-          const value = await tool.execute(input.arguments, execution(input.callId, input.signal, contexts))
+          const value = await tool.execute(input.arguments, { ...execution(input.callId, input.signal, contexts), ...(input.agent === undefined ? {} : { agent: input.agent }) })
+          const violations = valueViolations(tool.output.schema, value)
+          if (violations.length > 0) throw new Error(`tool "${tool.name}" returned an invalid value: ${violations.join('; ')}`)
           result = { isError: false, value, content: tool.output.render(input.arguments, value) }
         }
         catch (error) {
@@ -100,7 +208,9 @@ export function fakeRuntime(options: { natives?: readonly string[], calls?: Arra
       return () => { listeners.splice(listeners.indexOf(entry), 1) }
     }) as PluginContext['on'],
   }
-  const agent: AgentLike = { id: 'agent-1', ctx, session: { id: 'agent-1', header: { id: 'agent-1' }, deriveMessages: () => [...history] } }
+  // rc.3 session header: `cwd` is present when the store recorded a working directory (session:1820–1826).
+  const header = options.cwd === undefined ? { id: 'agent-1' } : { id: 'agent-1', cwd: options.cwd }
+  const agent: AgentLike = { id: 'agent-1', ctx, session: { id: 'agent-1', header, deriveMessages: () => [...history] } }
   return {
     ctx,
     agent,

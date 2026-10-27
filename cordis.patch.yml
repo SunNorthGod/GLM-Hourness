@@ -38,3 +38,13 @@
       name: ./dist/ui/index.js
       inject: [commands]
       config: {}
+    - id: glm-hourness/graph
+      # Project graph tools (docs/ORCHESTRATION.md §2.10): the engine's read
+      # and write operations with actor llm. The graph is docs/graph under
+      # the session working directory unless config.dir names another (an
+      # absolute path, or one relative to that directory). Ships disabled
+      # until the sandbox (docs/DEVELOPMENT.md §3) passes.
+      name: ./dist/graph/index.js
+      disabled: true
+      inject: [tools]
+      config: {}

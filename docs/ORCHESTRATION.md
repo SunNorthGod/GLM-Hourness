@@ -151,7 +151,7 @@ todo 撑不起上百轮的大项目：它是平的，没有层级与因果；它
 | LLM | 只通过一组图工具读写，不直接改图文件（guard 拦截） |
 | harness | harness 代码自动发起的变更（例：已关闭节点的关联文件被改动后重开），权限与 LLM 相同 |
 
-这三种身份在引擎里是 `actor` 的三个取值：`human`、`llm`、`harness`。actor 由客户端入口决定，不从请求数据里读：查看器的写入一律记为 `human`，命令行一律记为 `llm`，以后的 DSH 钩子记为 `harness`。每种操作对各身份的限制见 §2.9。
+这三种身份在引擎里是 `actor` 的三个取值：`human`、`llm`、`harness`。actor 由客户端入口决定，不从请求数据里读：查看器的写入一律记为 `human`，命令行与 DSH 图工具一律记为 `llm`，以后的 DSH 钩子记为 `harness`。每种操作对各身份的限制见 §2.9。
 
 | 变更 | 分类 | 处理 |
 | --- | --- | --- |
@@ -233,7 +233,7 @@ todo 撑不起上百轮的大项目：它是平的，没有层级与因果；它
 | --- | --- | --- |
 | 图片 | `npm run graph:render` 写出 `docs/graph/graph.svg`。SVG 不依赖任何渲染库，能显示 SVG 的地方都能看（2026-10-28 实测：Kiro 对话能显示 SVG，不渲染 Mermaid） | 晨报与汇报里附图 |
 | 人：查看器 | `npm run graph:serve` 在本机起服务，浏览器打开单文件查看器 | DSH 右侧边栏标签页（M8），沿用同一套服务端 API |
-| LLM：命令行 | `npm run -s graph -- <命令>`，JSON 进、JSON 出，actor 固定为 `llm` | DSH 图工具（`ROADMAP.md` 2.2），命令即工具契约 |
+| LLM：命令行与 DSH 图工具 | 命令行 `npm run -s graph -- <命令>`，JSON 进、JSON 出，actor 固定为 `llm`；DSH 图工具按命令行契约实现，行 `glm-hourness/graph` 默认禁用（见下） | 图工具经 L3、L4 验证后启用；命令行留给在 Kiro 里开发本仓库时用 |
 
 人在查看器里能做的：平移与缩放；展开与折叠子树；按类型与状态筛选；点开节点看详情（字段、验收条件、证据、历史、批注）；高亮它到目标的路径；批注；批准或否决提议；在待决上选一个选项拍板；带证据改状态；改目标、验收条件与非目标。查看器画的图来自服务端的渲染器，与 `graph.svg` 是同一份布局，查看器只在上面挂交互，不另做布局。
 
@@ -269,9 +269,9 @@ npm run graph:serve -- [--dir 图目录] [--port 端口]
 1. 现在：Desktop rc.3 默认启用内置 Browser 标签页（`dsh-web-app/cordis.patch.yml` 中的 `ui-sidebar-browser` 行）。一个客户端插件调用 `ctx.sidebarRight.openTab('browser', { params: { url } })`（`dsh-client-ui-sidebar-browser/README.md`）即可在右侧栏打开本查看器的回环地址；那是 Electron `<webview>`，页面里没有 DSH API，读写都经本服务，查看器原样可用。本分支不写这段插件代码。
 2. 以后（M8）：原生右侧栏标签页（`sidebarRightTabs.register` + 槽 `sidebar.right.pane.tab`，`dsh-client-ui-sidebar-right/README.md`），用 React 渲染同一份 SVG；读图经 `remote.workspaceFiles`（只读，带变更订阅，`dsh-api-workspace-files/README.md`），写回经命令通道 `remote.commands.execute` 进入宿主侧的图服务，人和 LLM 走同一个引擎、同一套规则。客户端可调用的 Remote 能力在 `dsh-api-remotes` 构建时固定（其 README），第三方插件实际上不能注册自定义 Remote 服务，所以不走那条路。
 
-LLM 经命令行能做的：读投影、列待办、提议节点、带证据改状态、加连线、批注。两边的写入都经过同一个 `apply`，规则一致；人在查看器里批准、拍板的结果，LLM 下一次读投影就能看到。
+LLM 经命令行或 DSH 图工具能做的：读投影、列待办、提议节点、带证据改状态、加连线、批注。两边的写入都经过同一个 `apply`，规则一致；人在查看器里批准、拍板的结果，LLM 下一次读投影就能看到。
 
-命令行契约〔已实现，`src/graph/cli.ts`，入口 `scripts/graph/cli.ts`〕，以后的 DSH 图工具照此暴露：
+命令行契约〔已实现，`src/graph/cli.ts`，入口 `scripts/graph/cli.ts`〕，DSH 图工具照此暴露（见下）：
 
 ```
 npm run -s graph -- [--dir 图目录] show <id>
@@ -290,6 +290,25 @@ npm run -s graph -- [--dir 图目录] <op> [<JSON> | --file <文件>]
 - stdout 永远是一个 JSON 文档（两空格缩进，换行结尾）。失败也一样，是 `{ok: false, error: {code, message, field?, hint}}`。退出码：0 成功；1 引擎拒绝（错误码见 §2.9）；2 命令行或输入本身有问题（未知命令、参数个数不对、未知选项、JSON 语法错、请求不是对象、`--file` 读不到），错误码为 `invalid`，`hint` 是用法。
 - `npm run` 不带 `-s` 时 npm 会先往 stdout 打两行命令回显，读 JSON 的一方要用 `-s`，或直接运行 `node --experimental-strip-types --no-warnings scripts/graph/cli.ts`。
 - Windows PowerShell 5.1 下另有三个坑（2026-10-28 本机实测）：往 `npm` 管道送 stdin 时 `--` 被 npm 的 PowerShell 外壳吞掉，`--dir` 被 npm 当成自己的选项；管道文本按 `$OutputEncoding`（默认 ASCII）编码，中文到引擎时已是问号；命令行参数里 JSON 的双引号被剥掉，引擎收到的不是合法 JSON。在这个环境下用 `--file`，文件存为 UTF-8。
+
+DSH 图工具〔已实现，`src/graph/tools.ts`，行入口 `src/graph/index.ts`；行 `glm-hourness/graph` 默认 `disabled: true`，只在 L2 验证过；`ROADMAP.md` 2.2〕：命令行的每个命令注册为一个工具，身份固定为 `llm`。
+
+| 工具 | 参数 | 引擎调用 | 成功时的值 |
+| --- | --- | --- | --- |
+| `graph_show` | `{id}` | `projection(id)` | `{ok: true, projection, invalid?}` |
+| `graph_open` | 无 | `openItems()`，`items.questions` 是决策队列 | `{ok: true, items, invalid?}` |
+| `graph_propose`、`graph_status`、`graph_edit`、`graph_link`、`graph_unlink`、`graph_comment`、`graph_verify` | 该操作除 `op` 以外的字段，同命令行 | `apply('llm', {...参数, op})` | `{ok: true, id, rev, revision, node, changed}` |
+
+- 只认人的四个操作（`approve`、`reject`、`decide`、`supersede`）不做成工具，`graph_open` 的描述写明它们归人、在查看器里处理。命令行把它们转给引擎拿 `forbidden`，工具面上干脆没有，模型调不到。
+- 引擎拒绝时工具报错（rc.3 的结果带 `isError`）：错误文本是 `Error: ` 加引擎结构化错误 `{code, message, field?, hint}` 的 JSON，与命令行输出里的 `error` 相同，模型照 `hint` 走正路。参数里带 `actor` 按多余字段拒绝；带 `op` 且与工具不符时拒绝（`invalid`，`field` 为 `op`）；读工具不认识的参数同样按 `invalid` 拒绝。
+- 写结果里的 `node` 不带 `history`：刚写的那条历史模型自己知道，要看历史就读投影（最近 5 条）。这是与命令行输出唯一的不同，为的是不让每次写入都把整段历史塞回上下文。
+- 图有校验错误时，读工具照常返回，另带 `invalid`（错误数、前 5 条、提示「写入一律被拒，告诉人」）；写工具拿到 `graph_invalid`。
+- 图目录：行配置 `dir`，绝对路径照用；相对路径（默认 `docs/graph`）按调用方 agent 的会话工作目录（`session.header.cwd`）解析，每次调用重新解析，所以一个行配置适用于任何工作区。目录不存在时报 `not_found`，提示「空目录就是空图」，工具不替模型建目录，免得在不用项目图的工作区里凭空长出 `docs/graph`；会话没有工作目录而 `dir` 是相对路径时同样报 `not_found`，提示在行配置里写绝对路径。
+- 激活期不抛错（`DESIGN.md` §7）：`dir` 不是非空字符串时告警、不注册任何工具；绝对路径的目录还不存在时告警，工具照常注册，每次调用报告；注册失败（重名、输出 schema 被宿主拒收）时撤掉已注册的工具并告警。
+- schema：参数与输出 schema 都在 rc.3 `tools.register` 校验的子集内（`dsh-tools` 的 `assertSupportedJsonSchema`：`type`、`properties`、`required`、布尔 `additionalProperties`、`items`、`enum`、`const` 与注解），子集外的输出 schema 会让注册抛错。rc.3 不校验原样注册的工具参数，参数由引擎的请求解析逐字段校验；rc.3 按输出 schema 校验工具返回值，不符时变成错误结果。
+- 谁拿到工具：行在全局注册，所有 agent、所有路由都有这组工具，GLM 与非 GLM、主 Agent 与子 agent 都一样。理由：图是项目状态，不是方言；guard 拦直接改图文件（§2.7、§6.4）对哪条路由都生效，被拦的一方必须手边就有正路。GLM 请求里它们常驻，不进延迟目录（`src/toolsearch/exposure.ts`，主 Agent 每拍都用，§2.8）；非 GLM 请求里是普通工具。子 agent 该不该写图、能写什么，等派发（M7）知道谁是主 Agent 时再定，在那之前子 agent 写图也只有 `llm` 的权限。
+- 每个操作一个工具，不合成一个带 `op` 字段的写工具：每个工具的参数 schema 只列本操作的字段与必填项，模型不用记哪个操作要哪些字段，枚举值（例 `status` 的 `to`）直接写在 schema 里。代价是 GLM 请求多 9 个常驻工具的 schema；它们每步不变，落在可命中提示词缓存的前缀里（推断，未实测命中率）。
+- 验证：`tests/graph-tools.spec.ts` 在假宿主 `tests/fake-rc3.ts` 上（L2）覆盖注册与 schema 子集、每个工具、拒绝路径（无证据、过期修订号、无权、多余字段、坏图、缺目录、没有工作目录）、激活期降级、GLM 工具面常驻与行默认禁用。假宿主为此补了 rc.3 的三处行为：`tools.register` 拒收子集外的输出 schema（tools:323、2978），`tools.execute` 把调用方 agent 交给工具体（tools:3227–3260、3406）并按输出 schema 校验返回值（tools:3637–3640）；会话头可带 `cwd`（session:1820–1826）。L3、L4 未做，在合入 main 之后按 `ROADMAP.md` M2 进度的检查清单执行。
 
 本机服务的安全措施〔已实现〕：
 
@@ -800,6 +819,7 @@ LLM 不讲人话，多半是默认在向评审汇报，想显得周全。做法�
 | 任务派发属性 | 原型按此实现，待用户批准（§2.2、§2.6、§2.9）：删除 `owner`；任务节点带 `kind`、`tier`、`worktree`、`outputSchema`、`writeScope`，都可选；`tier` 分 `hard`、`standard`、`simple` 三档，对应 §3.5 的难题、常规、简单；LLM 可以改已批准任务的派发属性，写入范围也在内，验收条件仍只有人能改。备选是写入范围在任务批准后只有人能改。推荐放开：派发本来就是主 Agent 的事，不让它改范围，它只会另提一个范围不同的新任务，安全上没有收益 |
 | 决策队列 | 原型按此实现，待用户批准（§2.9）：队列只放待决节点，提议另列；按提出时间从早到晚；「提出它的节点」取父节点，来源连线另列；拍板时的理由就是人的附言 |
 | 命令行细则 | 原型按此实现，待用户批准（§2.10）：写命令名就是操作名，只认人的操作也转给引擎，由引擎拒绝并给正路；请求从参数、`--file` 或 stdin 读；退出码 0 成功、1 引擎拒绝、2 用法错误；输出两空格缩进的 JSON |
+| DSH 图工具细则 | 原型按此实现，待用户批准（§2.10）：每个 LLM 能做的操作一个工具，共 9 个，只认人的操作不做成工具；行在全局注册，所有 agent、所有路由都有，GLM 请求里常驻；写结果里的节点不带历史；图目录默认是会话工作目录下的 `docs/graph`，目录不存在时只报告、不自动建。备选：合成 `graph_show`、`graph_open`、`graph_apply` 三个工具（工具面小，代价是写工具的 schema 列不出每个操作的必填项）；只给 GLM 路由或只给主 Agent（要另挂组装监听器或识别主 Agent，被 guard 拦下的其他 agent 没有正路）。推荐按原型：图工具是主 Agent 每拍的主要动作，schema 写清楚比工具面小更要紧 |
 | 查看器细则 | 原型按此实现，待用户批准（§2.10、§2.11）：读请求不要令牌，只查 `Host` 与 `Origin`；筛选让节点变淡而不是从图上拿掉（布局不跳；备选是按筛选重新布局，图更小但位置会变）；有未提交输入的面板在实时更新时不重建，只提示「图刚被别处改过」；状态表单只列 `status` 转换表允许的目标；人在查看器里的编辑不含 `parent`、选项与连线（引擎允许，界面先不做）；服务端口默认取空闲端口，令牌每次启动重新生成，所以地址每次都变 |
 | 本项目图的迁移写法 | 原型按此实现，待用户批准（§2.13）：用户已定案的内容以 `human` 写入，理由以「迁移：」开头并写出处，其余以 `llm` 写入；历史时间取写入时刻。备选是全部以 `llm` 提议、由用户在查看器里逐个批准，代价是批准之前整张图都是虚线，M1 条目也标不了完成 |
 | 合入后进度记在哪里 | 待用户定（§2.13）：推荐 2.1 批准、本分支合入后进度只记在图上，`ROADMAP.md` 只留里程碑与验收，免得两处记录不一致；备选是图与 `ROADMAP.md` 并行，每次进展两处都写 |

@@ -53,6 +53,8 @@ export interface DerivedMessage {
 export interface ToolExecutionContext {
   readonly callId: string
   readonly rootCallId?: string
+  /** The calling agent, when the call came from one (tools:3227–3260; the body gets the same object, tools:3406). */
+  readonly agent?: AgentLike
   readonly signal: AbortSignal
   /** Attach a context message to this call's result. */
   deferContext(context: unknown): void
