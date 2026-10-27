@@ -67,11 +67,18 @@ const FULL_TASK = [
   '  "title": "图存储",',
   '  "status": "done",',
   '  "parent": "feature-1",',
-  '  "owner": "实现",',
   '  "slope": "downhill",',
+  '  "kind": "implement",',
+  '  "tier": "standard",',
+  '  "worktree": true,',
+  '  "outputSchema": "handback-implement",',
   '  "body": "第一行\\n第二行",',
   '  "acceptance": [',
   '    "往返逐字节一致"',
+  '  ],',
+  '  "writeScope": [',
+  '    "src/graph/",',
+  '    "tests/graph-store.spec.ts"',
   '  ],',
   '  "edges": [',
   '    {',
@@ -158,11 +165,15 @@ function scrambledTask(): GraphNode {
     ],
     evidence: [{ ref: 'e1c4c15', kind: 'commit' }, { note: '全绿', exit: 0, ref: 'npm test', kind: 'test' }],
     edges: [{ to: 'feature-1', type: 'source' }, { to: 'task-0', type: 'depends' }],
+    writeScope: ['src/graph/', 'tests/graph-store.spec.ts'],
     nonGoals: [],
     acceptance: ['往返逐字节一致'],
     body: '第一行\n第二行',
+    outputSchema: 'handback-implement',
+    worktree: true,
+    tier: 'standard',
+    kind: 'implement',
     slope: 'downhill',
-    owner: '实现',
     parent: 'feature-1',
     status: 'done',
     title: '图存储',
@@ -245,6 +256,17 @@ const ERROR_CASES: readonly ErrorCase[] = [
   { name: 'decision without verification', files: { 'decision-1': { ...decision, verification: undefined } }, file: 'nodes/decision-1.json', field: 'verification', message: /required for a decision node/ },
   { name: 'unknown verification state', files: { 'decision-1': { ...decision, verification: 'tested' } }, file: 'nodes/decision-1.json', field: 'verification', message: /must be one of unverified/ },
   { name: 'verification on a task', files: { 'task-1': task('task-1', { verification: 'sandbox' }) }, file: 'nodes/task-1.json', field: 'verification', message: /only decision nodes/ },
+  { name: 'unknown task kind', files: { 'task-1': task('task-1', { kind: 'deploy' }) }, file: 'nodes/task-1.json', field: 'kind', message: /must be one of implement, test, review, docs/ },
+  { name: 'unknown model tier', files: { 'task-1': task('task-1', { tier: 'max' }) }, file: 'nodes/task-1.json', field: 'tier', message: /must be one of hard, standard, simple/ },
+  { name: 'worktree flag that is not a boolean', files: { 'task-1': task('task-1', { worktree: 'yes' }) }, file: 'nodes/task-1.json', field: 'worktree', message: /true or false/ },
+  { name: 'multi-line output schema', files: { 'task-1': task('task-1', { outputSchema: 'a\nb' }) }, file: 'nodes/task-1.json', field: 'outputSchema', message: /single line/ },
+  { name: 'absolute write scope', files: { 'task-1': task('task-1', { writeScope: ['/etc/passwd'] }) }, file: 'nodes/task-1.json', field: 'writeScope[0]', message: /repository-relative path/ },
+  { name: 'write scope leaving the repository', files: { 'task-1': task('task-1', { writeScope: ['src/../../x'] }) }, file: 'nodes/task-1.json', field: 'writeScope[0]', message: /repository-relative path/ },
+  { name: 'write scope with a drive or backslash', files: { 'task-1': task('task-1', { writeScope: ['src/ok.ts', 'C:\\work'] }) }, file: 'nodes/task-1.json', field: 'writeScope[1]', message: /repository-relative path/ },
+  { name: 'write scope with a glob', files: { 'task-1': task('task-1', { writeScope: ['src/*.ts'] }) }, file: 'nodes/task-1.json', field: 'writeScope[0]', message: /repository-relative path/ },
+  { name: 'duplicate write scope path', files: { 'task-1': task('task-1', { writeScope: ['src/graph/', 'src/graph/'] }) }, file: 'nodes/task-1.json', field: 'writeScope[1]', message: /duplicate path "src\/graph\/"/ },
+  { name: 'review task with a write scope', files: { 'task-1': task('task-1', { kind: 'review', writeScope: ['src/graph/'] }) }, file: 'nodes/task-1.json', field: 'writeScope', message: /review task writes nothing/ },
+  { name: 'dispatch attribute on a feature', files: { 'feature-2': { ...feature(), id: 'feature-2', tier: 'hard' } }, file: 'nodes/feature-2.json', field: 'tier', message: /only task nodes carry dispatch attributes/ },
   { name: 'question without options', files: { 'question-1': question({ options: undefined, recommend: undefined }) }, file: 'nodes/question-1.json', field: 'options', message: /required for a question node/ },
   { name: 'question with one option', files: { 'question-1': question({ options: [{ key: 'A', label: 'JSON', consequence: '无' }] }) }, file: 'nodes/question-1.json', field: 'options', message: /2 to 4 options/ },
   { name: 'duplicate option key', files: { 'question-1': question({ options: [{ key: 'A', label: 'x', consequence: 'y' }, { key: 'A', label: 'z', consequence: 'w' }] }) }, file: 'nodes/question-1.json', field: 'options[1].key', message: /duplicate option key/ },
@@ -309,7 +331,12 @@ for (const errorCase of ERROR_CASES) {
 }
 
 test('the valid goal, feature, decision and question fixtures load without issues', async () => {
-  const dir = await graphWith({ 'decision-1': decision, 'question-1': question({ status: 'done', decision: 'A', evidence: [{ kind: 'decision', ref: 'A' }] }), 'task-1': task('task-1') })
+  const dir = await graphWith({
+    'decision-1': decision,
+    'question-1': question({ status: 'done', decision: 'A', evidence: [{ kind: 'decision', ref: 'A' }] }),
+    'task-1': task('task-1'),
+    'task-2': task('task-2', { kind: 'review', tier: 'hard', worktree: false, outputSchema: 'handback-review' }),
+  })
   try {
     const graph = await loadGraph(dir)
     assert.deepEqual(graph.issues, [])

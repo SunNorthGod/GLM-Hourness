@@ -5,8 +5,9 @@
  * graph may carry validation errors (reads stay available), so every walk
  * guards against cycles.
  */
+import { compareText } from './format.ts'
 import { failure, type Failure } from './mutation.ts'
-import type { GraphNode, HistoryEntry, NodeType, Stage, Status } from './schema.ts'
+import type { Actor, DecisionOption, GraphNode, HistoryEntry, NodeType, Stage, Status } from './schema.ts'
 import type { LoadedGraph } from './store.ts'
 
 /** Statuses of nodes that are still open: not done, dropped or superseded. */
@@ -65,12 +66,26 @@ export interface Projection {
   readonly gates: readonly Gate[]
 }
 
+/** One card of the decision queue (§5): an open question with what the human needs to decide it. */
+export interface QueueEntry extends NodeRef {
+  readonly body?: string
+  readonly options: readonly DecisionOption[]
+  readonly recommend?: string
+  /** The node the question was raised under (its parent); null when the parent is missing. */
+  readonly raisedBy: NodeRef | null
+  /** Nodes the question exists because of (its source edges). */
+  readonly sources: readonly NodeRef[]
+  /** Time and actor of the proposal, from the first history entry (absent only in a graph with validation errors); the queue runs oldest first. */
+  readonly askedAt?: string
+  readonly askedBy?: Actor
+}
+
 export interface OpenItems {
   readonly revision: string
   /** Proposals waiting for a human to approve or reject them. */
   readonly proposals: readonly NodeRef[]
-  /** Approved questions waiting for a human decision. */
-  readonly questions: readonly NodeRef[]
+  /** The decision queue: approved or reopened questions waiting for a human decision, oldest first. */
+  readonly questions: readonly QueueEntry[]
   readonly doing: readonly NodeRef[]
   /** Approved tasks without open or finished children whose dependencies are all done. */
   readonly ready: readonly NodeRef[]
@@ -193,6 +208,27 @@ export function projectNode(graph: LoadedGraph, id: string): { readonly ok: true
   }
 }
 
+function queueEntry(graph: LoadedGraph, node: GraphNode): QueueEntry {
+  const parent = node.parent === undefined ? undefined : graph.nodes.get(node.parent)
+  const first = node.history[0]
+  return {
+    ...nodeRef(graph, node),
+    ...(node.body === undefined ? {} : { body: node.body }),
+    options: node.options ?? [],
+    ...(node.recommend === undefined ? {} : { recommend: node.recommend }),
+    raisedBy: parent === undefined ? null : nodeRef(graph, parent),
+    sources: targets(graph, node, 'source').map(entry => nodeRef(graph, entry)),
+    ...(first === undefined ? {} : { askedAt: first.at, askedBy: first.actor }),
+  }
+}
+
+/** Oldest first by proposal time, then id; entries without a time go last. */
+function compareQueue(a: QueueEntry, b: QueueEntry): number {
+  const time = (entry: QueueEntry): number => entry.askedAt === undefined ? Infinity : Date.parse(entry.askedAt)
+  // Infinity - Infinity is NaN, which falls through to the id like a tie.
+  return time(a) - time(b) || compareText(a.id, b.id)
+}
+
 export function listOpenItems(graph: LoadedGraph): OpenItems {
   const index = childrenIndex(graph)
   const all = [...graph.nodes.values()]
@@ -205,7 +241,9 @@ export function listOpenItems(graph: LoadedGraph): OpenItems {
   return {
     revision: graph.revision,
     proposals: all.filter(node => node.status === 'proposed').map(ref),
-    questions: all.filter(node => node.type === 'question' && (node.status === 'approved' || node.status === 'doing')).map(ref),
+    questions: all.filter(node => node.type === 'question' && (node.status === 'approved' || node.status === 'doing'))
+      .map(node => queueEntry(graph, node))
+      .sort(compareQueue),
     doing: all.filter(node => node.status === 'doing').map(ref),
     ready: ready.map(ref),
     verificationDebt: all.filter(node => node.type === 'decision' && node.verification === 'unverified' && (node.status === 'approved' || node.status === 'doing' || node.status === 'done')).map(ref),

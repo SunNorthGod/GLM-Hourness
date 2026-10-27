@@ -22,6 +22,14 @@ export type Stage = typeof STAGES[number]
 export const VERIFICATIONS = ['unverified', 'sandbox', 'device', 'overturned', 'superseded'] as const
 export type Verification = typeof VERIFICATIONS[number]
 
+/** Kinds of work a task is dispatched as; a review writes nothing. */
+export const TASK_KINDS = ['implement', 'test', 'review', 'docs'] as const
+export type TaskKind = typeof TASK_KINDS[number]
+
+/** Model tiers by difficulty (§3.5); the harness maps a tier to agentOptions when dispatching. */
+export const TIERS = ['hard', 'standard', 'simple'] as const
+export type Tier = typeof TIERS[number]
+
 export const EDGE_TYPES = ['depends', 'source', 'supersedes'] as const
 export type EdgeType = typeof EDGE_TYPES[number]
 
@@ -55,11 +63,14 @@ export interface Evidence {
   readonly note?: string
 }
 
-/** Fields an `edit` mutation may change; status, links, evidence and decisions have their own operations. */
-export const EDITABLE_FIELDS = ['title', 'parent', 'owner', 'slope', 'stage', 'body', 'acceptance', 'nonGoals', 'options', 'recommend'] as const
+/** Fields an `edit` mutation may change, in write order; status, links, evidence and decisions have their own operations. */
+export const EDITABLE_FIELDS = [
+  'title', 'parent', 'slope', 'stage', 'kind', 'tier', 'worktree', 'outputSchema', 'body',
+  'acceptance', 'nonGoals', 'writeScope', 'options', 'recommend',
+] as const
 export type EditableField = typeof EDITABLE_FIELDS[number]
 
-export type FieldValue = string | readonly string[] | readonly DecisionOption[]
+export type FieldValue = string | boolean | readonly string[] | readonly DecisionOption[]
 
 /** Old and new value of one edited field; null means the field was absent. */
 export interface FieldChange {
@@ -96,13 +107,21 @@ export interface GraphNode {
   readonly title: string
   readonly status: Status
   readonly parent?: string
-  readonly owner?: string
   readonly slope?: Slope
   readonly stage?: Stage
   readonly verification?: Verification
+  /** Dispatch attributes of a task node: what the harness reads when it hands the task to a subagent. */
+  readonly kind?: TaskKind
+  readonly tier?: Tier
+  /** Give the subagent its own git worktree (cwd), for write tasks that run in parallel. */
+  readonly worktree?: boolean
+  /** Name or repository path of the hand-back schema the subagent's result must match. */
+  readonly outputSchema?: string
   readonly body?: string
   readonly acceptance?: readonly string[]
   readonly nonGoals?: readonly string[]
+  /** Repository-relative files and directories the subagent may write; none for a review. */
+  readonly writeScope?: readonly string[]
   readonly options?: readonly DecisionOption[]
   readonly recommend?: string
   readonly decision?: string
@@ -113,9 +132,13 @@ export interface GraphNode {
 
 /** Write order of node fields (§2.6 table order). */
 export const NODE_FIELDS = [
-  'id', 'type', 'title', 'status', 'parent', 'owner', 'slope', 'stage', 'verification', 'body',
-  'acceptance', 'nonGoals', 'options', 'recommend', 'decision', 'edges', 'evidence', 'history',
+  'id', 'type', 'title', 'status', 'parent', 'slope', 'stage', 'verification',
+  'kind', 'tier', 'worktree', 'outputSchema', 'body', 'acceptance', 'nonGoals', 'writeScope',
+  'options', 'recommend', 'decision', 'edges', 'evidence', 'history',
 ] as const satisfies readonly (keyof GraphNode)[]
+
+/** Fields only task nodes carry. */
+export const DISPATCH_FIELDS = ['kind', 'tier', 'worktree', 'outputSchema', 'writeScope'] as const satisfies readonly EditableField[]
 
 /** Write order of history entry fields. */
 export const HISTORY_FIELDS = [

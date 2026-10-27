@@ -11,6 +11,7 @@ import { checkNode, nodeFile, type GraphIssue } from './format.ts'
 import { PROPOSE_FIELDS, failure, parseMutation, type Failure, type Mutation, type ProposedNode } from './mutation.ts'
 import { OPEN_STATUSES, listOpenItems, projectNode, type OpenItems, type Projection } from './projection.ts'
 import {
+  DISPATCH_FIELDS,
   EDITABLE_FIELDS,
   isPassingEvidence,
   type Actor,
@@ -82,8 +83,12 @@ function exclusive<T>(dir: string, task: () => Promise<T>): Promise<T> {
 /** Operations only a human may perform (§2.9 table). */
 const HUMAN_ONLY = new Set<Mutation['op']>(['approve', 'reject', 'decide', 'supersede'])
 
-/** Fields llm and harness may edit on nodes other than their own open proposals. */
-const LLM_EDITABLE = new Set<string>(['title', 'body', 'owner', 'slope'])
+/**
+ * Fields llm and harness may edit on nodes other than their own open
+ * proposals: wording, slope and the task dispatch attributes the main
+ * agent sets when it hands a task out. Acceptance criteria stay the human's.
+ */
+const LLM_EDITABLE = new Set<string>(['title', 'body', 'slope', ...DISPATCH_FIELDS])
 
 /** Types an llm or harness proposal may open directly under any open parent. */
 const OPEN_PARENT_TYPES = new Set<NodeType>(['risk', 'question', 'retro'])
@@ -391,7 +396,7 @@ function planEdit(context: Context, node: GraphNode, set: Readonly<Partial<Recor
     const ownProposal = node.status === 'proposed' && first?.op === 'propose' && first.actor === actor
     const denied = ownProposal ? undefined : fields.find(field => !LLM_EDITABLE.has(field))
     if (denied !== undefined) {
-      return failure('forbidden', `${actor} cannot edit ${denied} of "${node.id}"`, `${actor} edits title, body, owner and slope, or any field of its own open proposal; propose a question node to change the rest`, `set.${denied}`)
+      return failure('forbidden', `${actor} cannot edit ${denied} of "${node.id}"`, `${actor} edits ${[...LLM_EDITABLE].join(', ')}, or any field of its own open proposal; propose a question node to change the rest`, `set.${denied}`)
     }
   }
   const raw: Record<string, unknown> = { ...node }

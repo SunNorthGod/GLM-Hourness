@@ -251,9 +251,21 @@ graphTest('edit by the llm: the goal, acceptance criteria and non-goals are refu
   assert.deepEqual((await g.node('task-1')).acceptance, ['往返逐字节一致'])
 })
 
-graphTest('edit by the llm: title, body, owner and slope; every field of its own open proposal', async g => {
-  const edited = must(await g.act('llm', { op: 'edit', id: 'task-1', reason: '补正文', set: { title: '图存储', body: '读写节点文件', owner: '实现', slope: 'downhill' } }))
+graphTest('edit by the llm: title, body, slope and dispatch attributes; every field of its own open proposal', async g => {
+  const edited = must(await g.act('llm', { op: 'edit', id: 'task-1', reason: '补正文', set: { title: '图存储', body: '读写节点文件', slope: 'downhill' } }))
   assert.equal(edited.node.title, '图存储')
+  const dispatch = must(await g.act('llm', {
+    op: 'edit', id: 'task-1', reason: '派发前补齐',
+    set: { writeScope: ['src/graph/'], outputSchema: 'handback-implement', worktree: true, tier: 'hard', kind: 'implement' },
+  }))
+  assert.deepEqual(dispatch.node.history.at(-1)!.changes, {
+    kind: { from: null, to: 'implement' },
+    tier: { from: null, to: 'hard' },
+    worktree: { from: null, to: true },
+    outputSchema: { from: null, to: 'handback-implement' },
+    writeScope: { from: null, to: ['src/graph/'] },
+  })
+  assert.deepEqual(Object.keys(dispatch.node.history.at(-1)!.changes!), ['kind', 'tier', 'worktree', 'outputSchema', 'writeScope'], 'changes follow the field write order')
   const proposal = await g.run('llm', { op: 'propose', reason: '新分支', node: { type: 'feature', title: '查看器', parent: 'goal-1' } })
   must(await g.act('llm', { op: 'edit', id: proposal.id, reason: '补验收', set: { acceptance: ['能点开节点'], stage: 'design' } }))
   const human = await g.run('human', { op: 'propose', reason: '人提的', node: { type: 'feature', title: '报告', parent: 'goal-1' } })
@@ -279,6 +291,28 @@ graphTest('edit by a human can move a node to another parent', async g => {
   const moved = must(await g.act('human', { op: 'edit', id: 'task-2', reason: '归到渲染', set: { parent: 'feature-2' } }))
   assert.equal(moved.node.parent, 'feature-2')
   assert.deepEqual(moved.node.history.at(-1)!.changes, { parent: { from: 'feature-1', to: 'feature-2' } })
+})
+
+// task dispatch attributes
+
+graphTest('dispatch attributes: proposed with a task, shown in its projection, refused elsewhere', async g => {
+  const task = await g.run('llm', {
+    op: 'propose', reason: '拆出可派发的叶子',
+    node: { type: 'task', title: '命令行', parent: 'feature-1', kind: 'implement', tier: 'standard', writeScope: ['src/graph/cli.ts', 'tests/'], worktree: true, outputSchema: 'handback-implement', acceptance: ['被拒的变更返回结构化错误'] },
+  })
+  assert.equal(task.node.status, 'approved')
+  const result = await g.engine.projection(task.id)
+  assert.ok(result.ok)
+  const { node } = result.projection
+  assert.deepEqual([node.kind, node.tier, node.writeScope, node.worktree, node.outputSchema], ['implement', 'standard', ['src/graph/cli.ts', 'tests/'], true, 'handback-implement'])
+  assert.equal('owner' in node, false)
+  refused(await g.engine.apply('human', { op: 'propose', reason: '特性不派发', node: { type: 'feature', title: '查看器', parent: 'goal-1', kind: 'implement' } }), 'invalid', 'node.kind')
+  refused(await g.engine.apply('llm', { op: 'propose', reason: '审查带写入', node: { type: 'task', title: '审查', parent: 'feature-1', kind: 'review', writeScope: ['src/'] } }), 'invalid', 'node.writeScope')
+  refused(await g.engine.apply('llm', { op: 'propose', reason: '越界', node: { type: 'task', title: '越界', parent: 'feature-1', writeScope: ['../outside'] } }), 'invalid', 'node.writeScope[0]')
+  refused(await g.engine.apply('llm', { op: 'propose', reason: '旧字段', node: { type: 'task', title: '旧', parent: 'feature-1', owner: '实现' } }), 'invalid', 'node.owner')
+  refused(await g.act('llm', { op: 'edit', id: task.id, reason: '放宽验收', set: { acceptance: ['能跑就行'] } }), 'forbidden', 'set.acceptance')
+  const review = must(await g.act('human', { op: 'edit', id: task.id, reason: '改成审查', set: { kind: 'review', writeScope: null, worktree: null } }))
+  assert.deepEqual([review.node.kind, review.node.writeScope, review.node.worktree], ['review', undefined, undefined])
 })
 
 // link and unlink
@@ -527,4 +561,42 @@ graphTest('open items: proposals, questions, doing, ready leaves and verificatio
   items = await g.engine.openItems()
   assert.deepEqual(items.ready.map(entry => entry.id), ['task-2'])
   assert.equal(items.ready[0]!.rev, await g.rev('task-2'))
+})
+
+graphTest('decision queue: oldest first with options and the raising node; a human decides, the llm sees it', async g => {
+  const later = { ...QUESTION, title: '渲染方案', parent: 'task-2' }
+  const first = await g.run('llm', { op: 'propose', reason: '先问格式', node: { ...QUESTION, id: 'question-b', body: '推荐 JSON：不新增解析器', edges: [{ type: 'source', to: 'task-1' }] } })
+  const second = await g.run('harness', { op: 'propose', reason: '再问渲染', node: { ...later, id: 'question-a' } })
+  const queue = (await g.engine.openItems()).questions
+  assert.deepEqual(queue.map(entry => entry.id), [first.id, second.id], 'oldest first, not id order')
+  assert.deepEqual(queue[0], {
+    id: 'question-b', type: 'question', title: '存储格式', status: 'approved', rev: await g.rev('question-b'),
+    body: '推荐 JSON：不新增解析器',
+    options: QUESTION.options,
+    recommend: 'A',
+    raisedBy: { id: 'feature-1', type: 'feature', title: '引擎', status: 'approved', rev: await g.rev('feature-1') },
+    sources: [{ id: 'task-1', type: 'task', title: '存储', status: 'approved', rev: await g.rev('task-1') }],
+    askedAt: first.node.history[0]!.at,
+    askedBy: 'llm',
+  })
+  assert.equal(queue[1]!.askedBy, 'harness')
+  assert.equal(queue[1]!.raisedBy?.id, 'task-2')
+
+  refused(await g.act('llm', { op: 'decide', id: 'question-b', option: 'A', reason: '自己定' }), 'forbidden')
+  must(await g.act('human', { op: 'decide', id: 'question-b', option: 'B', reason: '正文好读更要紧' }))
+  assert.deepEqual((await g.engine.openItems()).questions.map(entry => entry.id), ['question-a'])
+
+  const parent = await g.engine.projection('feature-1')
+  assert.ok(parent.ok)
+  const card = parent.projection.children.find(entry => entry.id === 'question-b')
+  assert.deepEqual([card?.status, card?.decision], ['done', 'B'])
+  const decided = await g.engine.projection('question-b')
+  assert.ok(decided.ok)
+  assert.equal(decided.projection.node.decision, 'B')
+  assert.deepEqual(decided.projection.recentHistory.at(-1)!, {
+    at: decided.projection.recentHistory.at(-1)!.at, actor: 'human', op: 'decide', reason: '正文好读更要紧', from: 'approved', to: 'done', option: 'B', evidence: [{ kind: 'decision', ref: 'B' }],
+  })
+  const source = await g.engine.projection('task-1')
+  assert.ok(source.ok)
+  assert.deepEqual(source.projection.sourceOf.map(entry => [entry.id, entry.decision]), [['question-b', 'B']])
 })

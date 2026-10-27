@@ -16,9 +16,12 @@ import {
   NODE_TYPES,
   OPS,
   OPTION_KEY_PATTERN,
+  DISPATCH_FIELDS,
   SLOPES,
   STAGES,
   STATUSES,
+  TASK_KINDS,
+  TIERS,
   TIMESTAMP_PATTERN,
   VERIFICATIONS,
   isPassingEvidence,
@@ -161,6 +164,28 @@ function oneOf(values: readonly string[]): Checker {
   }
 }
 
+const flag: Checker = (value, path, report) => {
+  if (typeof value !== 'boolean') {
+    report(path, 'must be true or false')
+    return INVALID
+  }
+  return value
+}
+
+/** Characters that make a path absolute, a glob or unusable on Windows. */
+const NOT_IN_PATHS = /[\\:*?"<>|\u0000-\u001f]/
+
+/** A repository-relative path: / separators, no empty, . or .. segments; a directory may end with /. */
+const scopePath: Checker = (value, path, report) => {
+  const segments = typeof value === 'string' ? value.split('/') : []
+  if (segments.length > 1 && segments.at(-1) === '') segments.pop()
+  if (typeof value !== 'string' || NOT_IN_PATHS.test(value) || segments.some(segment => segment === '' || segment === '.' || segment === '..')) {
+    report(path, 'must be a repository-relative path with / separators and no empty, . or .. segments (a directory may end with /)')
+    return INVALID
+  }
+  return value
+}
+
 const integer: Checker = (value, path, report) => {
   if (typeof value !== 'number' || !Number.isInteger(value)) {
     report(path, 'must be an integer')
@@ -213,13 +238,17 @@ const FIELD_CHECKERS: Record<typeof NODE_FIELDS[number], Checker> = {
   title: line,
   status: oneOf(STATUSES),
   parent: nodeId,
-  owner: line,
   slope: oneOf(SLOPES),
   stage: oneOf(STAGES),
   verification: oneOf(VERIFICATIONS),
+  kind: oneOf(TASK_KINDS),
+  tier: oneOf(TIERS),
+  worktree: flag,
+  outputSchema: line,
   body: text,
   acceptance: list(text),
   nonGoals: list(text),
+  writeScope: list(scopePath),
   options: list(option),
   recommend: optionKey,
   decision: optionKey,
@@ -311,6 +340,17 @@ export function nodeRuleIssues(node: GraphNode, file: string): GraphIssue[] {
     report('parent', `is required for a ${node.type} node`)
   }
   if (node.stage !== undefined && node.type !== 'goal' && node.type !== 'feature') report('stage', 'only goal and feature nodes carry a stage')
+  if (node.type === 'task') {
+    if (node.kind === 'review' && (node.writeScope ?? []).length > 0) report('writeScope', 'a review task writes nothing: its write scope stays empty')
+    node.writeScope?.forEach((entry, index) => {
+      if (node.writeScope!.indexOf(entry) !== index) report(`writeScope[${index}]`, `duplicate path "${entry}"`)
+    })
+  }
+  else {
+    for (const field of DISPATCH_FIELDS) {
+      if (node[field] !== undefined) report(field, 'only task nodes carry dispatch attributes (kind, tier, worktree, outputSchema, writeScope)')
+    }
+  }
   if (node.type === 'decision') {
     if (node.verification === undefined) report('verification', 'is required for a decision node')
   }
