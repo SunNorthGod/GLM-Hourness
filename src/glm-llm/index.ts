@@ -1,7 +1,7 @@
 /**
  * dsh-glm-llm — channel row: registers the native ZCode client adapter for
- * its provider route on the DSH LLM seam. No reverse proxy in the path: the
- * adapter resolves the credential from the encrypted store (filled by
+ * its provider route on the DSH LLM seam. The adapter resolves the
+ * credential from the encrypted store (filled by
  * /glm-login), signs like the desktop client, and speaks Anthropic Messages
  * to the ZCode backend. A missing home degrades to a no-op; a missing
  * credential fails the stream with the re-login instruction.

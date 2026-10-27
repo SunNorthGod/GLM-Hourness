@@ -2,8 +2,8 @@
  * Native ZCode client adapter for the DSH LLM seam: assembles the full
  * upstream chain — encrypted credential store → persistent deviceMid →
  * endpoint routing → identity/auth headers → V4 signing ladder → Anthropic
- * Messages transport. No reverse proxy in the path; the channel speaks to
- * the ZCode backend exactly the way the desktop client does.
+ * Messages transport. The channel speaks to the ZCode backend exactly the
+ * way the desktop client does.
  *
  * coding-plan sends the caller's system as one text block; start-plan
  * replaces it with the gateway-fingerprinted 3-block assembly and pins the

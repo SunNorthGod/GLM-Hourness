@@ -285,7 +285,7 @@ window.__ModuleLoader__.load({
       return h('div', { className: 'glmh-panel' },
         h('style', null, CSS),
         h('h2', { className: 'glmh-title' }, 'GLM Hourness 通道'),
-        h('p', { className: 'glmh-desc' }, '原生 ZCode 客户端通道（coding-plan 直连，无反向代理）。凭证加密保存在本机，登录一次长期有效。'),
+        h('p', { className: 'glmh-desc' }, '原生 ZCode 客户端通道（coding-plan 直连）。凭证加密保存在本机，登录一次长期有效。'),
         h('div', { className: 'glmh-card' },
           row('通道', 'glm-zcode（GLM-5.3 / GLM-5.3-Flash）'),
           row('凭证存放', '%USERPROFILE%\\Desktop\\Project\\GLM-Hourness\\.llm\\credentials.json'),
