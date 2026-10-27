@@ -1,6 +1,6 @@
 # ZCode 逐字原文档案
 
-> 状态：参考原文，2026-10-27 迁入本仓库（来源 `.llm/docs/05-zcode-verbatim.md`，原样导入见提交 `f2e0b36`）。正文中「02 文档」指 `zcode-tool-schemas.md`，「手册」指 `zcode-capabilities.md`。待办：`src/glm-prompt/verbatim.ts` 注释称文本取自本机安装 bundle，与本文件「安装版是用户补丁」的结论冲突，需按 3.16.3 原文复核（`../ROADMAP.md` M1.1）。
+> 状态：参考原文，2026-10-27 迁入本仓库（来源 `.llm/docs/05-zcode-verbatim.md`，原样导入见提交 `f2e0b36`）。正文中「02 文档」指 `zcode-tool-schemas.md`，「手册」指 `zcode-capabilities.md`。复核（2026-10-27）：本文件记录的 CLI 前缀、身份节、官方安全声明、Harness 块与 ZCode 源码（`reference/ZCode`，3.16.2）、pristine 3.15.1 逐字一致；本机 3.16.3 安装包除用户补丁的安全声明外也一致。用户确认安装版打过补丁。其余方言文本的复核见 `../DESIGN.md` §5.9。
 
 
 证据源分级（2026-10-27 勘误后）：

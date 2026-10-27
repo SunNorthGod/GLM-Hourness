@@ -62,7 +62,7 @@ dist/          不入库：tsc 产物（profile 通过 pnpm link 使用）
 7. 峰谷口径：面板把谷时写死为每天 0–8 点，并按调用次数统计（`ORCHESTRATION.md` §11.2）。
 8. 五键释义：`FIVE_KEYS` 中「太简单」「太麻烦」的含义与用户原语相反（`ORCHESTRATION.md` §4.4）。
 9. 记忆存储判据过严，路径或文件名样式的文字一律被拒（`ORCHESTRATION.md` §8.1）。
-10. `verbatim.ts` 注释称文本取自本机安装 bundle，而本机安装版被用户打过补丁，来源需复核（`DESIGN.md` §9）。
+10. 方言逐字文本有偏差：工具描述、deferred 声明段、ToolSearch 描述的大部分不是 ZCode 原文；todo 提醒正文两处、compact 提示词三行与原文不一致。身份类文本经复核是原文（`DESIGN.md` §5.9）。
 11. UI 视觉未被接受。
 12. cot-translation（DSH 官方实验行，非本项目组件）会把推理碎片显示到界面。
 13. 凭证加密密钥可由本机信息推导（`DESIGN.md` §4.1）。

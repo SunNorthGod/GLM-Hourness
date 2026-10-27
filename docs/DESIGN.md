@@ -14,7 +14,7 @@
 | DSH | Desktop 0.2.1-rc.3，profile `desktop` | 官方类型 `@deepseek-ai/dsh-llm@0.2.1-rc.3` 等作为 devDependency |
 | 模型 | GLM-5.3、GLM-5.3-Flash | 通道目录 |
 
-本机 ZCode 安装版被用户打过补丁，只能作为机制参考，不能作为逐字文本来源。逐字文本的权威来源见 `reference/zcode-verbatim.md`。
+本机 ZCode 安装版被用户打过补丁（用户确认 2026-10-27），只能作为机制参考，不能作为逐字文本来源。逐字文本以 ZCode 官方源码为准：`reference/ZCode`（`package.json` 版本 3.16.2，2026-10-20 同步）；在已比对的文本上，源码、本机 3.16.3 安装包与 pristine 3.15.1 三者一致（用户补丁的安全声明除外）。复核结果见 §5.9。
 
 反向代理（`zcode-proxy.exe`，8317 端口）不在本项目范围内〔定案 2026-10-27〕。任何插件行都不识别、不依赖反代路由；代码与文档中与反代有关的判断和描述在路由收口时删除（`ROADMAP.md` M1）。
 
@@ -165,7 +165,7 @@ LLM 平面（bundle `g6n` 形态）：`HTTP-Referer`、`User-Agent: ZCode/<ver>`
 
 ### 5.4 工具面
 
-- 别名：`Read`、`Write`、`Edit`、`Glob`、`Grep`、`Bash`、`TodoWrite`，schema 逐字取自 3.16.3 协议采样（`reference/zcode-tool-schemas.md`），执行时委托捕获的原生执行器〔实读〕。
+- 别名：`Read`、`Write`、`Edit`、`Glob`、`Grep`、`Bash`、`TodoWrite`，执行时委托捕获的原生执行器〔实读〕。描述与 schema 当前取自 `reference/zcode-tool-schemas.md` 记载的「3.16.3 协议采样」，复核发现这些描述不是 ZCode 原文，需按源码重建（§5.9）。
 - 原生 `read`、`write`、`edit`、`glob`、`grep`、`pwsh`、`todo_write` 在 GLM 路由下隐藏，切走即恢复。
 - 参数映射：`Bash` 的 `timeout`（秒）转 `timeoutMs`，`working_dir` 转 `workdir`；`Glob` 的 `ip` 原生无对应，丢弃；`TodoWrite` 的 `priority`（`high`/`medium`/`low`）在执行边界剥离。
 
@@ -173,19 +173,19 @@ LLM 平面（bundle `g6n` 形态）：`HTTP-Referer`、`User-Agent: ZCode/<ver>`
 
 ZCode 双阈值 10/10：距上次 TodoWrite 与距上次提醒都达到 10 轮时，注入逐字提醒并回显当前 todo。
 
-偏差〔实读〕：现在按完成的工具调用计数，官方按助手轮次计数，一轮并行调用多个工具会多计，提醒来得比官方早。路由收口后改为按轮次计数。
+偏差〔实读〕：现在按完成的工具调用计数，官方按助手轮次计数，一轮并行调用多个工具会多计，提醒来得比官方早。路由收口后改为按轮次计数。提醒正文有两处与原文不一致（§5.9）。
 
 todo 在编排层降级为项目图的视图（`ORCHESTRATION.md` §2.5），TodoWrite 本身保留，因为它是 GLM 的训练习惯。
 
 ### 5.6 压缩镜像
 
-ZCode compact 提示词逐字（`<analysis>` 先行、9 节摘要、安全指令保留），产物剥 `<analysis>`。挂在 DSH `BasicCompactionEngine.summarize()` 上，GLM 路由走镜像，其余委托基类；基类缺失时该行降级为不挂载〔实读〕。ZCode 的 autoCompact 阈值（166k）与 microcompact 公式记录在 `reference/zcode-capabilities.md` §11.2，未接入。
+ZCode compact 提示词（`<analysis>` 先行、9 节摘要、安全指令保留；有 3 行与原文不一致，见 §5.9），产物剥 `<analysis>`。挂在 DSH `BasicCompactionEngine.summarize()` 上，GLM 路由走镜像，其余委托基类；基类缺失时该行降级为不挂载〔实读〕。ZCode 的 autoCompact 阈值（166k）与 microcompact 公式记录在 `reference/zcode-capabilities.md` §11.2，未接入。
 
 压缩后的重新锚定属于编排层（`ORCHESTRATION.md` §2.5）。
 
 ### 5.7 工具检索
 
-ZCode deferred 机制的 local 模式：驻留面之外的原生工具进入延迟目录；`ToolSearch`（schema 逐字）支持 `select:<name>` 精确选择与关键词检索，结果以 `<functions>` 块回注，并以作用域内同名包装注册激活〔实读〕。
+ZCode deferred 机制的 local 模式：驻留面之外的原生工具进入延迟目录；`ToolSearch`（描述首句之后与原文不一致，见 §5.9）支持 `select:<name>` 精确选择与关键词检索，结果以 `<functions>` 块回注，并以作用域内同名包装注册激活〔实读〕。
 
 已知问题：激活只在 `agent/created` 时 provider 为 `glm` 才发生，原生通道与 rc.3 下不触发（§3）〔推断〕。记忆工具应常驻，不进延迟目录（`ORCHESTRATION.md` §8）。
 
@@ -208,6 +208,31 @@ ZCode deferred 机制的 local 模式：驻留面之外的原生工具进入延�
 | 13 | 日期与输出风格提醒族 | 方言 | 低成本可选 | 未实现 |
 | 14 | 缓存断点参数 | 通道 | 低优先级 | 未实现 |
 | 16 | thinking 与采样参数 | 通道 | effort 三档、thinking 时剥采样参数 | 已实现 effort |
+
+第 1、2、4、6、8 项的文本对齐状态以 §5.9 为准。
+
+### 5.9 逐字复核（2026-10-27）
+
+方法：把方言里每段号称逐字的文本按行比对 ZCode 源码（`reference/ZCode/apps` 与 `packages`）、本机 3.16.3 安装包、pristine 3.15.1，以及 `reference/zcode-api`〔实读〕。源码路径相对 `apps/zcode-cli/packages/core/src/`。
+
+| 文本 | 代码位置 | 结果 | 原文位置 |
+| --- | --- | --- | --- |
+| CLI 前缀 | `verbatim.ts` `CLI_PREFIX` | 一致 | `context/sections/cli-prefix.ts` |
+| 身份开头两句 | `verbatim.ts` `IDENTITY_OPENING_*` | 一致 | `context/sections/identity.ts` |
+| 官方安全声明 | `verbatim.ts` `SECURITY_NOTICE_OFFICIAL` | 与源码、pristine 一致；本机安装包此处为用户补丁 | `context/sections/identity.ts` |
+| Harness 块 | `verbatim.ts` `HARNESS_BLOCK` | 一致 | `context/sections/identity.ts` |
+| todo 提醒回显标题 | `verbatim.ts` `TODO_REMINDER_ECHO_HEADER` | 一致 | `runtime/helpers/runtime-reminders.ts` |
+| todo 提醒正文 | `verbatim.ts` `TODO_REMINDER_BODY` | 两处不一致：原文为 `to track progress`，代码为 `to track the progress you're working on`；原文为 `if has become stale`（原文语法如此），代码为 `if it has become stale` | `runtime/helpers/runtime-reminders.ts` |
+| Context management | `localize.ts` `CONTEXT_MANAGEMENT_DSH` | 一致 | 源码与安装包 |
+| compact 提示词 | `compact.ts` | 64 行中 3 行不一致：第 4 节少 `that you received`，第 8 节少 `both`，第 9 节原文为 `then only list next steps if they are explicitly in line with the users request`，代码为 `then only only list next steps if the users request` | `compact/prompt.ts` |
+| ToolSearch 描述 | `toolsearch/index.ts` | 首句一致，之后不一致 | `tool/search/description.ts` |
+| Deferred 声明段 | `verbatim.ts` `DEFERRED_DECLARATION` | 任何来源中都找不到 | — |
+| TodoWrite、Read、Write、Edit、Glob、Grep 描述 | `todowrite.ts`、`aliases.ts` | 任何来源中都找不到；源码中的描述是另一套文本 | `tool/handlers/*.ts` |
+| Bash 描述 | `aliases.ts` | 按本地化清单 ⑥ 改写，不要求逐字；改写所依据的原文需按源码重核 | `tool/handlers/bash*.ts` |
+
+结论：身份类文本与 context management 是原文；todo 提醒正文、compact 提示词有小处偏差；工具描述、deferred 声明段与 ToolSearch 描述的大部分不是 ZCode 3.16.x 的原文。这些文本只存在于 `reference/zcode-tool-schemas.md`，其「协议采样」的出处无法追溯。工具参数 schema 尚未比对。
+
+处置：按源码重建上述文本，并加一个逐字比对检查，在 `reference/ZCode` 存在时对照源码运行（`ROADMAP.md` M1.1）。
 
 ## 6. 注入约定〔定案〕
 
@@ -248,6 +273,6 @@ ZCode deferred 机制的 local 模式：驻留面之外的原生工具进入延�
 | 原生通道在 DSH 真实会话中端到端可用 | L4 真机（需用户） |
 | 签名握手失败的根因与 3.16.3 协议变化 | 对照 zcode-api 与本机 ZCode 3.16.3 机制 |
 | start-plan 真机授权 | L4 |
-| `src/glm-prompt/verbatim.ts` 注释称文本取自本机安装 bundle（MD5 `c7d641da…`），而本机安装版被用户打过补丁 | 按 3.16.3 原文逐字复核来源 |
+| 方言文本按源码重建后的工具参数 schema 对齐 | 对照 `tool/handlers/*.ts` 的 schema 定义 |
 | native ToolSearch 透传（K2）、服务端 web 工具闸门（K4） | 需活 token 实测 |
 | beta 头、OutputStyle 列表、实跑采样参数 | 抓包 |

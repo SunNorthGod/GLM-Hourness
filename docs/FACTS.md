@@ -10,11 +10,13 @@
 | --- | --- |
 | 本机安装 ZCode 3.16.3 | 卸载注册表〔实读 2026-10-27〕 |
 | 方言基线为 3.16.3 协议采样；ZCode master 的演进只作机制参考 | 用户定案；`reference/zcode-verbatim.md` §4 |
-| 本机安装版 `C:\Program Files\ZCode\resources\glm\zcode.cjs` 被用户打过补丁，不得作为官方原文 | `reference/zcode-verbatim.md` 开头 |
+| 本机安装版 `C:\Program Files\ZCode\resources\glm\zcode.cjs`（MD5 `c7d641da7407083165533fb29fb29a9e`）被用户打过补丁，不得作为官方原文 | `reference/zcode-verbatim.md` 开头；用户确认 2026-10-27 |
+| ZCode 官方源码 `reference/ZCode`：`package.json` 版本 3.16.2，最近提交 2026-10-20「chore: sync ZCode source」；逐字文本以它为准 | 〔实读〕 |
+| 方言逐字文本复核：身份类与 context management 是原文；工具描述、deferred 声明段、ToolSearch 描述大部分不是原文；todo 提醒正文与 compact 提示词有小处偏差 | `DESIGN.md` §5.9 |
 | 官方原文权威源：pristine 3.15.1 副本 `C:\Users\29596\Desktop\Project\Zcode\zcode-patch\pristine-3151\zcode.cjs`（MD5 `87225203a43f8009e403c57532922f4c`）；3.16.3 pristine 副本本地没有 | 同上 |
 | 官方开源仓库 zai-org/ZCode，Apache-2.0 | `README.md` |
 | 身份节组装、安全声明官方原文、Harness 节 | `reference/zcode-verbatim.md` |
-| 八件套工具 schema 原文、deferred 声明段、SessionGuidance、Skills 引导段 | `reference/zcode-tool-schemas.md` |
+| 八件套工具定义原文在源码 `apps/zcode-cli/packages/core/src/tool/handlers/`；`reference/zcode-tool-schemas.md` 中的工具描述与 deferred 声明段无法追溯出处，SessionGuidance、Skills 引导段待同样复核 | `DESIGN.md` §5.9 |
 | TodoWrite `priority` 为字符串三枚举 `high` / `medium` / `low` | `reference/zcode-capabilities.md` §11.3 |
 | todo 提醒双阈值 10/10，GLM 启用 | `reference/zcode-capabilities.md` §4.2 |
 | compact：默认窗口 200k，输出预留 min(maxOutputTokens, 21k)，autoCompact 阈值 166k；microcompact 公式 | `reference/zcode-capabilities.md` §11.2 |
