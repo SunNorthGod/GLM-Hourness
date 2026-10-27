@@ -5,3 +5,4 @@ dist/
 /reference/
 *.tsbuildinfo
 .agents/
+.worktrees/
