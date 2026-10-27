@@ -1,5 +1,8 @@
 # ZCode 逐字原文档案
 
+> 状态：参考原文，2026-10-27 迁入本仓库（来源 `.llm/docs/05-zcode-verbatim.md`，原样导入见提交 `f2e0b36`）。正文中「02 文档」指 `zcode-tool-schemas.md`，「手册」指 `zcode-capabilities.md`。待办：`src/glm-prompt/verbatim.ts` 注释称文本取自本机安装 bundle，与本文件「安装版是用户补丁」的结论冲突，需按 3.16.3 原文复核（`../ROADMAP.md` M1.1）。
+
+
 证据源分级（2026-10-27 勘误后）：
 - **pristine 3.15.1**：`C:\Users\29596\Desktop\Project\Zcode\zcode-patch\pristine-3151\zcode.cjs`（15,126,820 B，MD5 87225203a43f8009e403c57532922f4c）——**官方原文权威源**。
 - **本机安装版**：`C:\Program Files\ZCode\resources\glm\zcode.cjs`（15,247,142 B）——**用户打过补丁，只能当用户改动的参照，不得当官方原文**。

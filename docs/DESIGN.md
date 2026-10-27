@@ -1,263 +1,253 @@
-# dsh-glm-dialect 设计文档
+# GLM-Hourness 总体架构与底层设计
 
-> **[归档标注 2026-10-27]** 项目已更名 **GLM-Hourness**，本文档为早期设计稿 v0.1，部分结论（工具对齐策略、字节级验收、凭据复用假设）已被 `dsh-glm-dialect/docs/` 下的宪章与 01/02 系列文档取代，仅作历史参考。现行权威：`00-charter.md`（理念与度量）、`01-zcode-capabilities-reference.md`（ZCode 事实）、`02-dsh-zcode-divergence.md`（差异与定案）、`02-zcode-tool-schemas.md`（schema 原文）。
+版本：0.3（2026-10-27）
+状态：生效。取代设计稿 v0.1（原 `docs/DESIGN.md`）、运行时设计 v0.1 的底层部分（`.llm/docs/03-runtime-design.md` §1/§2/§5/§6/§10）与差异底账 v0.1（`dsh-glm-dialect/docs/02-dsh-zcode-divergence.md`）。旧文本见 git 历史（提交 `c518317`、`9266fb6`）。
+前置：`CHARTER.md`。编排层见 `ORCHESTRATION.md`。
 
-版本：0.1（设计评审稿）
-日期：2026-10-26
-目标形态：DSH（DeepSeek Harness，0.2.1-rc 线）bundle 插件，npm 包 + `cordis.patch.yml`
+标注：〔实读〕代码或源码已读；〔实测〕真网或真机验证过；〔推断〕由代码与数据推出，未在真机逐项验证；〔定案〕用户决议；〔规划〕尚未实现。
 
----
+## 1. 范围与基线
 
-## 1. 目标与非目标
+| 项 | 基线 | 依据 |
+| --- | --- | --- |
+| ZCode | 3.16.3 | 用户定案 2026-10-27；本机安装版为 3.16.3（卸载注册表）〔实读〕 |
+| DSH | Desktop 0.2.1-rc.3，profile `desktop` | 官方类型 `@deepseek-ai/dsh-llm@0.2.1-rc.3` 等作为 devDependency |
+| 模型 | GLM-5.3、GLM-5.3-Flash | 通道目录 |
 
-### 1.1 总目标
+本机 ZCode 安装版被用户打过补丁，只能作为机制参考，不能作为逐字文本来源。逐字文本的权威来源见 `reference/zcode-verbatim.md`。
 
-**模型质量与官方 ZCode 完全一致，尽可能对齐 GLM 的官方训练分布；不为照顾 DSH harness 而裁剪。**
+反向代理（`zcode-proxy.exe`，8317 端口）不在本项目范围内〔定案 2026-10-27〕。任何插件行都不识别、不依赖反代路由；代码与文档中与反代有关的判断和描述在路由收口时删除（`ROADMAP.md` M1）。
 
-分解为两条保真轴：
+## 2. 架构总览
 
-| 轴 | 含义 | 验收标准 |
-|---|---|---|
-| 服务路径保真 | GLM 服务端无法区分我们的请求与官方 ZCode 客户端的请求 | 逐项对齐官方客户端的请求形态：身份头、签名、路由、凭据流 |
-| 训练分布保真 | GLM 模型无法区分自己在 ZCode 里干活还是在 DSH 里干活 | 模型可见输入（系统提示词、工具名/描述/参数 schema、消息形态）逐项镜像 ZCode 官方 harness |
-
-### 1.2 非目标
-
-- 不做请求内容的"优化改写"——一切内容差异以 ZCode 官方形态为准，不做自创措辞
-- 不做本地 HTTP 中间人代理——原反代（zcode-proxy.exe）的进程外职责全部内化，装完插件后反代可退役
-- 不追求支持 DSH 全部 agent preset 的方言覆盖——按 agent 路由过滤，只覆盖有官方对齐范本的场景
-
-### 1.3 事实来源（全部本地可验证）
-
-| 机制 | 权威来源 | 位置 |
-|---|---|---|
-| OAuth 登录流 | ZCode 官方源码 | `repos/ZCode/packages/services/src/oauth/`（zai/bigmodel 双 adapter） |
-| 身份头 | 官方源码 | `repos/ZCode/packages/shared/src/zcode-source-headers.ts` |
-| V4 签名 | 官方发行 bundle | `zcode-patch/pristine-3163/zcode.cjs.pristine`（`ClientRequestSigningV4Signer`，已逐符号核实） |
-| 端点路由 | 官方 bundle + 反代 config | `ProviderEndpointRoutingService` / `endpointRouting` 节 |
-| 工具方言 | 官方 bundle | pristine bundle 内工具定义（PascalCase 工具名、`TodoWrite{content,status,priority}` 等） |
-| 系统提示词 | 官方源码 + bundle | `packages/services/src/zcode-agent/` 组装逻辑 + bundle 内最终文本 |
-| 反代行为基线 | `工具目录/zcode-api/config.yaml` + exe 实测 | 逆向结论与官方源码互相印证 |
-
-> 注：TriDefender/zcode-api GitHub 仓库因网络不可达未直接读取；本机官方源码与 pristine bundle 是其上位替代，且更权威。
-
----
-
-## 2. 总体架构
+### 2.1 分层
 
 ```
-dsh-glm-dialect（bundle：npm 包声明 dsh.bundle + cordis.patch.yml）
-│
-├─ 插件行 1：dsh-llm-glm（Host 侧，llm adapter）
-│   注册 provider "glm" 到 ctx.llm —— 服务路径保真
-│
-└─ 插件行 2：dsh-glm-prompt（Host 侧，system-prompt + tool 投影）
-    仅 provider=glm 时生效 —— 训练分布保真
+GLM-Hourness
+├─ 底层
+│  ├─ 通道：glm-llm（adapter）、glm-login（命令）
+│  └─ 方言：glm-prompt（提示词与工具面）、glm-compact（压缩镜像）、toolsearch（工具检索）
+└─ 编排层
+   ├─ guard、memory、workflow、hourness（用量与报告）
+   └─ 呈现：独立 UI bundle
 ```
 
-两行独立可禁用（patch 中各自一行）。若未来 pi-ai 上游原生支持 GLM 生态传输，插件行 1 整体下线，插件行 2 无感存活。
+### 2.2 插件行（现状）
 
-### 2.1 与 DSH 深冻结铁律的映射
+| 行 id | 入口 | 层 | 现状 |
+| --- | --- | --- | --- |
+| `glm-hourness/glm-llm` | `dist/glm-llm/index.js` | 通道 | 真网冒烟通过〔实测〕；DSH 真实会话尚未使用过〔实读审计数据〕 |
+| `glm-hourness/glm-login` | `dist/glm-llm/login-row.js` | 通道 | `/glm-login`、`/glm-status`、`/glm-logout` |
+| `glm-hourness/glm-prompt` | `dist/glm-prompt/index.js` | 方言 | 见 §5 |
+| `glm-hourness/glm-compact` | `dist/glm-prompt/compact-row.js` | 方言 | 见 §5.6 |
+| `glm-hourness/toolsearch` | `dist/toolsearch/index.js` | 方言 | 见 §5.7 |
+| `glm-hourness/guard` | `dist/guard/index.js` | 编排 | 见 `ORCHESTRATION.md` §6 |
+| `glm-hourness/memory` | `dist/memory/index.js` | 编排 | 见 `ORCHESTRATION.md` §8 |
+| `glm-hourness/workflow` | `dist/workflow/index.js` | 编排 | 仅记录派遣类工具调用 |
+| `glm-hourness/hourness` | `dist/ui/index.js` | 编排 | `/hourness` 命令 |
+| `glm-hourness/ui` | `ui/`（独立包） | 呈现 | 设置页说明 + 输入框「GLM 通道」pill |
 
-| 层 | 操作对象 | 合法性 |
-|---|---|---|
-| transport（插件行 1） | 冻结请求的伴随元数据：URL、HTTP 头、签名、凭据 | 合法（transport 层） |
-| content（插件行 2） | model-visible 字节：提示词节、工具声明 | 必须走构建层：`ctx.systemPrompt.section()/variable()` 与工具注册/装饰接口；发送后的冻结请求零改写 |
+### 2.3 两个 bundle 与一包一源
 
----
+主包 `dsh-glm-hourness` 是多行 cordis 插件包。DSH 的 client-modules 按包名组成 web 启动图，同一个包若被多个 active Loader 行解析且声明了 `dsh.client`，启动失败（`resolves from multiple active Loader sources`）〔实测，2026-10-27 事故〕。因此 client 半必须放在独立的单入口包 `dsh-glm-hourness-ui`，主包不得声明 `dsh.client`。preflight 固化了这条检查。
 
-## 3. 插件行 1：dsh-llm-glm（transport）
+仓库不拆分〔定案〕：两层都属于同一个项目，同仓维护。
 
-### 3.1 Identity（身份头）
+### 2.4 共享服务〔规划〕
 
-语义级移植 `buildZCodeSourceHeadersFromContext`（纯函数，70 行）：
+现状问题：各行通过 YAML 各自配置 `home`，guard 的违规回调无法从配置传入，导致违规审计为空；2026-10-27 15:36–17:22（本地时间）期间用量记录写进了 `~/.dsh/profiles/desktop/.llm/`，共 190 条，`/hourness` 读不到〔实读〕。
 
-- 固定集：`User-Agent: ZCode/<ver>`、`X-ZCode-App-Version`、`X-Title: Z Code@<source>`、`HTTP-Referer`
-- 动态集：`X-Platform: <platform>-<arch>`、`X-Os-Category`、`X-Os-Version`、`X-Client-Language`、`X-Client-Timezone`、`X-Release-Channel`、`X-Device-Mid`
-- 保留官方的 ASCII 可打印规范化（`normalizeZCodeSourceHeaderValue`），避免头部格式异常暴露非官方客户端
-- `appVersion` 默认跟随当前 ZCode 稳定版（反代基线 3.14.0），`deviceMid` 生成一次永久复用
-- 开放问题 A1：`X-ZCode-Agent` 头未出现在源码 `zcode-source-headers.ts`，需在 pristine bundle 中二次确认；若为发行版追加头则一并移植
+设计：由一行提供数据目录与审计流水服务，其余行以可选依赖注入。
 
-### 3.2 SigningV4（clientSigning）
+| 数据 | 位置 | 理由 |
+| --- | --- | --- |
+| 凭证、deviceMid、用量流水 | 用户级，一台机器一份 | 额度跟账号走，按项目拆开反而看不全 |
+| 记忆（事实）、违规、决策 | 工作区 `.llm/` | 记录的是在这个项目里学到的东西与犯过的错，混在一起会互相污染 |
+| 项目图 | 仓库内 | 项目知识，随 git 版本化（`ORCHESTRATION.md` §2.6） |
 
-按 pristine bundle 逐符号移植（实现阶段直接对照反编译符号）：
+用户级的具体目录与偏好类记忆的归属见 `ORCHESTRATION.md` §15 待定项。
 
-1. **开关探测**：GET `{origin}/api/v1/agent/configs`（缓存 1h），仅当 `data.codingPlanSignature.enable=true` 才签名
-2. **握手**：`POST {provider}/api/paas/c1f3a7e2/v2/client`，body `{[handshakeField]: credential, nonce, sig, ts}`，10s 超时
-3. **密钥协商**：响应 `data.privateCipher` → HKDF-SHA256（salt=`WD_CLIENT_SIGN_KDF_SALT`，info=`ed25519_priv`，256bit）→ Ed25519 私钥
-4. **业务签名**：`signBusinessMessage` 消息签名 + proof-of-work（前导零位难度 16bit，随机 hex nonce）
-5. **fail-open 梯**（移植官方错误分类学）：每个失败点带 `failOpenEligible` 语义——两次 401 VERIFY 拒绝 → 永久无签名旁路；start-plan / off-peak 路径永不签名
+### 2.5 行健康〔规划〕
 
-### 3.3 Router（上游路由）
+每行在每个会话中第一次触发时上报一条状态：已生效，或未生效及原因。`/glm-status` 与 UI 显示行健康表。真实会话里「哪几行在起作用」目前无法回答，这一机制补上该缺口。
 
-- 静态矩阵：BigModel `{anthropic: open.bigmodel.cn/api/anthropic, openai: open.bigmodel.cn/api/coding/paas/v4}` 主选；zai 同构端点备选
-- anthropic 协议为主通道（pi-ai adapter 原生），openai 兼容端点为降级通道
-- 动态路由：探测 `{origin}/api/v1/agent/configs` 的 `proxyEndpoint.mapping`，镜像官方 `ProviderEndpointRoutingService` 的 URL 重写（如 coding-plan anthropic → zcode.z.ai ultra 端点）；任何 fetch/parse 失败保持原 URL（fail-open）
-- 开放问题 A2：ultra 端点映射语义需对照官方 bundle `ProviderEndpointRoutingService` 逐符号核实
+## 3. 路由判定〔定案，待实现〕
 
-### 3.4 Vault（凭据）
+现状〔实读〕：各行判断「是否 GLM 会话」的写法不一致。`glm-prompt` 认 provider `glm` 或模型名前缀 `glm`；`toolsearch` 在 `agent/created` 时只认 `agent.model.current().provider === 'glm'`；todo 提醒依赖 `agent.model.current()`。rc.3 桌面版在 `agent/created` 与 `agent/pre-step` 上给出的路由为空（`legacy/desktop-dialect-triage.md`，git 历史），唯一可靠的信号是 `system-prompt/assemble` 瀑布中 `variables.provider` / `variables.model`。原生通道的 provider id 是 `glm-zcode`。由此推断 todo 提醒与工具检索在真机上未生效〔推断〕。
 
-#### 3.4.1 双凭据模式
+定案：
 
-| 模式 | 凭据 | 适用 |
-|---|---|---|
-| OAuth 模式 | `~/.zcode-proxy/credentials.json`（与原反代共享登录态） | Coding Plan 用户（默认） |
-| API key 模式 | 普通 BigModel/zai API key | 按 token 计费用户 / OAuth 不可用时降级 |
+1. 方言跟着模型族走：训练分布是模型的属性。判据为模型 id 属于 GLM 族。
+2. 通道跟着路由走：ZCode 身份是传输层的属性。判据为 provider id 是本通道注册的 id（默认 `glm-zcode`）。
+3. 判定函数只有一处（`src/shared/`），所有行共用。
+4. 只对准 rc.3 的可靠信号；兼容旧构建的分支删除。
+5. 单测里的假宿主必须给出与 rc.3 相同的信号，不得提供真宿主不提供的路由字段。
 
-#### 3.4.2 登录流（"ZCode 怎么登录我们就怎么登录"）
+## 4. 通道
 
-复刻官方 OAuth 授权码流（`packages/services/src/oauth/`）：
+请求流程（`ZcodeAdapter.stream`）〔实读〕：加载凭证 → deviceMid → 端点路由 → 组装身份头与鉴权头 → 签名 V4（失败放行）→ Anthropic Messages 传输。
 
-```
-login(provider: zai | bigmodel)
-  1. 构造 authorize URL（zai: chat.z.ai/api/oauth/authorize；client_id 公开标识）
-  2. 打开系统浏览器；回调捕获用本地 loopback 监听
-     （官方桌面端为 zcode://oauth/callback deep-link；我们无协议注册权限，
-      loopback 等价承载 code+state，其余字节不变）
-  3. code → POST https://zcode.z.ai/api/v1/oauth/token 换 token
-  4. provider=zai 时：追加官方的 /api/auth/z/login 业务 token 交换
-     provider=bigmodel 时：落 JWT
-  5. 按官方键结构持久化：oauth:<provider>:access_token / refresh_token / user_info
-     （文件：~/.zcode-proxy/credentials.json，格式与原反代兼容）
-  6. 拉取 userinfo 完成登录态确认
-```
+### 4.1 凭证与登录
 
-refresh 链、损坏态清理（解密失败→强制登出→可重登）均按官方 `oauthCredentialRepo` 行为复刻。
+- 登录：ZCode 账号体系的 bigmodel 轮询登录（`/glm-login` 打开浏览器授权，5 分钟超时），解析出套餐 API Key，名称与 ZCode 客户端一致（`zcode-api-key`），两者共用同一把 Key〔实读〕。
+- 存储：`<home>/credentials.json`，AES-256-GCM，原子写入〔实读〕。
+- 风险：加密密钥由 `HOME`/`USERPROFILE`、平台与架构推导，看过源码即可算出；`GLM_HOURNESS_CREDENTIAL_SECRET` 可覆盖。凭证文件不入库，当前可接受。后续迁到系统钥匙串或 DSH 凭证服务〔规划〕。
 
-#### 3.4.3 凭据状态机
+### 4.2 身份头
 
-```
-empty ──login──▶ authorized ──exchange──▶ active
-                                    │ 401/过期
-active ◀─refresh── expired ◀────────┘
-active/expired ──refresh 失败──▶ re-login 提示
-任意态可并行配置 API key 作为 fail-open 降级通道
-```
+LLM 平面（bundle `g6n` 形态）：`HTTP-Referer`、`User-Agent: ZCode/<ver>`、`X-ZCode-App-Version`、`X-Title: Z Code@cli`、`X-Release-Channel`、`X-Client-Language`、`X-Client-Timezone`、`X-ZCode-Agent: glm`、`X-Platform`、`X-Os-Category`、`X-Os-Version`；不带 `X-Device-Mid`。上下文平面（bundle `TV`，用于端点路由与签名）带 `X-Device-Mid`，不带 `X-ZCode-Agent`。值经可打印 ASCII 规范化〔实读〕。
 
-- 进程内直连后，原反代的本地 `proxyApiKey` 客户端鉴权整体取消（它的唯一职责是中间人场景准入）
-- 凭据文件读写加锁，避免与残留反代进程并发写
+版本不一致〔实读〕：身份头默认 `3.14.0`，签名平面的 `clientVersion` 为 `3.15.1`，提示词与工具面镜像 3.16.3。统一到 3.16.3，并按 3.16.3 复核三处协议是否有变化（`ROADMAP.md` M1.1）。
 
-### 3.5 Catalog（模型目录）
+### 4.3 签名 V4
 
-- 静态清单 11 模型：`glm-4.5-air / 4.6 / 4.6v / 4.7 / 5 / 5-turbo / 5v-turbo / 5.1 / 5.2 / 5.3 / 5.3-flash`，随 provider 注册进 `ctx.llm`
-- 每模型声明协议映射（anthropic 主 / openai 降级）、上下文窗、能力位（vision 标记于 4.6v / 5v-turbo）
-- **登录即点亮**：provider 注册后模型即出现在 DSH 模型选择界面；凭据就绪前灰显（可配置为隐藏）；登录成功后全部激活，并可自动将默认模型设为 `glm-5.3-flash`（可关闭）
-- 模型名静态管理：上游动态配置只用于路由，不作为模型目录来源（保证与会话记录/计费展示一致）；可选开关：登录后向上游请求最新模型列表补全目录
+移植自 zcode-api 的 `client-signing`（对应 ZCode 3.15.1 `ClientRequestSigningV4Signer`）：握手 `POST /api/paas/c1f3a7e2/v2/client` → HKDF 派生 → Ed25519 业务签名 + PoW → 七个签名头。start-plan 与 off-peak 路径不签名。失败梯：握手失败无签发送；连续两次 401 VERIFY 拒绝后对该（origin, credential）永久旁路〔实读〕。
 
----
+现状：握手对当前凭证失败，按设计无签发送，请求成功〔实测〕。签名对 coding-plan 1.5 倍用量的影响未验证。要求：签名结果对系统可见，即状态里显示签名情况，每条用量记录标注是否签名（条款 7）〔规划〕。
 
-## 4. 插件行 2：dsh-glm-prompt（content）
+### 4.4 端点路由
 
-生效条件：`provider=glm`（经 assemble context 按 agent 路由过滤）。其他 provider 零影响。
+`GET https://zcode.z.ai/api/v1/agent/configs`，按 `data.proxyEndpoint.mapping` 改写请求 URL；成功缓存 300 秒，失败冷却 30 秒，超时 3 秒；任何失败保持原 URL。同一快照携带 3.16.3 的请求验证（captcha）开关〔实读〕。
 
-### 4.1 提示词方言（Prompt Dialect）
+### 4.5 传输与档位
 
-对齐方法论——**范本是提取的官方事实，不是猜的**：
+- 上游：`https://open.bigmodel.cn/api/anthropic/v1/messages`（路由改写前），`anthropic-version: 2023-06-01`〔实读〕。
+- 档位：coding-plan（默认，签名，享 ZCode 渠道用量加成）与 start-plan（网关要求的三块系统提示、JWT 鉴权、currentDate 前缀）。start-plan 的三块系统提示属于底层：网关缺了就拒收（3012/405）。
+- 状态：coding-plan 端到端真网成功，模型返回 `pong`〔实测，`scripts/smoke-zcode-authorized.mjs`〕；start-plan 只有单测。
 
-1. 从本地官方源码（`zcode-agent` 组装逻辑）与 pristine bundle 提取 ZCode 各 agent 的最终系统提示词节
-2. 与 DSH `ctx.systemPrompt` 组装产物逐节 diff
-3. 每处分歧三选一：{ 镜像 ZCode 措辞 / 保留 DSH（ZCode 无对应节或与 DSH 机制强绑定）/ 有害分歧需适配 }
-4. 仅第 1、3 类落进 `ctx.systemPrompt.section()/variable()` 覆盖，节 id 稳定命名，便于后续 diff 维护
+### 4.6 模型目录与思考档位
 
-已知需要处理的分歧（待提取后确认完整清单）：
+- 目录：`glm-5.3`（GLM-5.3）、`glm-5.3-flash`（GLM-5.3-Flash），输入模态文本与图像；上下文窗口 512,000；默认 `max_tokens` 32000〔实读〕。
+- 思考：GLM-5.3 系强制思考；effort 三档 `low` / `high` / `max`，默认 `high`〔定案 2026-10-27，五档词汇 API 接受但 GLM 不用〕。
 
-- 引导措辞：ZCode 对 GLM 的习惯称呼/角色设定/输出风格节
-- 合成消息形态：两家同族（user 轮合成、节式 system），基本无需改写，逐项确认即可
+### 4.7 额度数据〔规划〕
 
-### 4.2 工具方言（Tool Dialect）——完全对齐 ZCode
+通道负责取数，编排层负责展示：5 小时窗口剩余、周额度、积分余额、MCP 余额，以及错误码 1308/1310/1316–1321 携带的 `next_flush_time`。计算口径见 `ORCHESTRATION.md` §11 与 `FACTS.md` §2.4。
 
-**设计决策（用户裁定）：工具面以 ZCode 为唯一基准，不做"按 DSH 微调"。**
+## 5. 方言
 
-模型可见的工具声明（名称、描述、参数 schema）整体镜像 ZCode 官方 harness：
+### 5.1 原则〔定案〕
 
-| 模型看到的（ZCode 形态） | DSH 内部对应 | 垫片策略 |
-|---|---|---|
-| `TodoWrite{content,status,priority}` | `todo_write{content,status}` | 垫片接受三字段，`priority` 透传 DSH todo 存储（若存储不支持则接受后忽略，模型侧永远合法） |
-| `TodoRead` | todo 读取 | 直映射 |
-| `Bash/Glob/Grep/Read` | `pwsh/glob/grep/read` 等工具 | 名称与描述投影；参数 schema 以 ZCode 为准，垫片做字段翻译 |
-| `WebFetch/WebSearch` | `web_fetch/web_search` | 同上 |
+- 行为习惯类内容逐字镜像 ZCode 3.16.3（训练分布）。
+- 宿主事实类断言（界面呈现、权限语义、shell、路径、记忆位置）必须与 DSH 实际行为一致；对不上就按 DSH 实况改写，措辞贴原句形态。
+- start-plan 档：除 agentsMd 节外，系统提示词与 ZCode 逐字节一致。
+- coding-plan 档：安全声明段替换为用户的工程环境声明，其余按 §5.3 本地化。
+- 只作用于 GLM 会话（§3），非 GLM 会话零影响。
 
-实现机制（构建层，合法路径）：
+### 5.2 提示词节
 
-- 在工具注册/装饰接口处按 provider 过滤，glm 会话的模型可见工具面替换为 ZCode 形态
-- 垫片负责 ZCode 形态调用 → DSH 工具执行器的双向翻译（入参翻译、结果回填保持 ZCode 风格的输出格式）
-- 原反代实测结论（GLM 正确读 DSH 两字段 schema）仍然成立，但既然目标是与官方完全一致，三字段形态是更强对齐：模型在其训练分布内零偏移
-- 风险与对策：DSH 工具执行器若拒绝未知键，垫片在边界处完成剥离，执行器永远只见合法输入；投影层有单测锁定每工具的字段映射
+`system-prompt/assemble` 瀑布上以 `prepend` 注册的监听器在 `next()` 之后读取路由变量并改写节列表（rc.3 唯一可行的接缝）〔实读〕。
 
-### 4.3 明确不做
+| 节 | order | 档位 |
+| --- | --- | --- |
+| `glm:cli-prefix` | -1001 | 两档 |
+| `harness:identity`（同名替换 DSH 身份节） | -1000 | 两档；安全声明按档位二选一 |
+| `glm:environment` | -900 | coding-plan，需配置 `env` |
+| `glm:session-guidance` | 2300 | coding-plan |
+| `glm:memory` | 2350 | coding-plan |
+| `glm:persona`（汇报细度） | 2360 | 两档 |
+| `glm:context-management` | 2400 | coding-plan |
+| `glm:deferred-tools` | 2500 | toolsearch 行启用时 |
 
-- 不给非 glm provider 的会话做任何投影（按 agent 路由 + provider 双重过滤）
-- 不改 DSH 工具的存储/权限/沙箱语义——投影只动"模型可见面"，不动执行面
+### 5.3 本地化清单（coding-plan）
 
----
+| # | 节 | 处理 |
+| --- | --- | --- |
+| ① | Harness 块 | 「终端显示」改为「DSH Web GUI 显示」，其余逐字 |
+| ② | Session guidance | 技能规则改写为 DSH 技能接缝 |
+| ③ | Environment | ZCode 骨架，填 DSH 真实目录、git、平台、shell |
+| ④ | Desktop context | DSH 无对应特性的部分裁掉 |
+| ⑤ | Skills 引导 | DSH 技能清单 |
+| ⑥ | 工具 schema 中的行为断言 | Bash 实为 pwsh、超时单位、工作目录参数；垫片必须兑现 schema 的承诺，兑现不了就改写该句 |
+| ⑦ | Context management | 逐字，承诺与 DSH 压缩一致 |
+| ⑧ | Memory | 写入纪律改为 memory 工具族与工作区 `.llm` |
+| ⑨ | Deferred 声明 | 与工具检索机制自证一致 |
 
-## 5. Fail-open 矩阵（全插件统一纪律）
+### 5.4 工具面
 
-| 故障点 | 降级行为 | 用户感知 |
-|---|---|---|
-| 签名探测/握手/签名失败 | 无签名直发（官方 fail-open 梯：两次 401 VERIFY 后永久旁路） | 无（服务端接受裸请求则正常） |
-| agent/configs 路由探测失败 | 静态双端点矩阵 | 无 |
-| OAuth refresh 失败 | 提示重登；若配了 API key 则自动切 key 模式 | 设置页横幅 |
-| 工具投影垫片异常 | 该工具回退 DSH 原生形态（模型仍可用，口音略偏） | debug 日志 |
-| 提示词节覆盖异常 | 该节保留 DSH 原文 | 无 |
-| **任何一层** | **绝不回退到"改写请求内容"**——保真只降级 transport 强度，永不改变 model-visible 字节 | — |
+- 别名：`Read`、`Write`、`Edit`、`Glob`、`Grep`、`Bash`、`TodoWrite`，schema 逐字取自 3.16.3 协议采样（`reference/zcode-tool-schemas.md`），执行时委托捕获的原生执行器〔实读〕。
+- 原生 `read`、`write`、`edit`、`glob`、`grep`、`pwsh`、`todo_write` 在 GLM 路由下隐藏，切走即恢复。
+- 参数映射：`Bash` 的 `timeout`（秒）转 `timeoutMs`，`working_dir` 转 `workdir`；`Glob` 的 `ip` 原生无对应，丢弃；`TodoWrite` 的 `priority`（`high`/`medium`/`low`）在执行边界剥离。
 
----
+### 5.5 todo 提醒
 
-## 6. 配置（Config schema 草案）
+ZCode 双阈值 10/10：距上次 TodoWrite 与距上次提醒都达到 10 轮时，注入逐字提醒并回显当前 todo。
 
-```
-glm:
-  provider: bigmodel | zai            # 上游，默认 bigmodel
-  credentialMode: oauth | apikey      # 默认 oauth
-  identity:
-    appVersion: "3.14.0"              # 跟随 ZCode 稳定版
-    sourceTitle: "cli"
-    deviceMid: <auto-once>            # 生成一次永久复用
-  clientSigning:
-    enabled: true                     # 探测驱动 + fail-open
-  endpointRouting:
-    enabled: true                     # 探测驱动 + fail-open
-  models:
-    autoActivateOnLogin: true
-    defaultOnLogin: glm-5.3-flash | null
-    dynamicDiscovery: false           # 登录后拉上游列表补全（实验开关）
-  dialect:
-    prompt: true                      # 提示词方言
-    tools: full | off                 # 工具方言投影，默认 full
-```
+偏差〔实读〕：现在按完成的工具调用计数，官方按助手轮次计数，一轮并行调用多个工具会多计，提醒来得比官方早。路由收口后改为按轮次计数。
 
-凭据、签名私钥等敏感值不进 Config，走凭据文件。
+todo 在编排层降级为项目图的视图（`ORCHESTRATION.md` §2.5），TodoWrite 本身保留，因为它是 GLM 的训练习惯。
 
----
+### 5.6 压缩镜像
 
-## 7. 发布与安装形态
+ZCode compact 提示词逐字（`<analysis>` 先行、9 节摘要、安全指令保留），产物剥 `<analysis>`。挂在 DSH `BasicCompactionEngine.summarize()` 上，GLM 路由走镜像，其余委托基类；基类缺失时该行降级为不挂载〔实读〕。ZCode 的 autoCompact 阈值（166k）与 microcompact 公式记录在 `reference/zcode-capabilities.md` §11.2，未接入。
 
-- npm 包（workspace 内开发），`package.json` 声明 `dsh.bundle`
-- `cordis.patch.yml`：插入两 Host 插件行（`dsh-llm-glm`、`dsh-glm-prompt`）
-- 经 `plugin_manager install_bundle` 安装进 profile，全 profile 会话生效、重启存活
-- 显示元数据（标题/描述/图标/本地化资源）按 DSH host-plugin 规范齐全
-- **安装门禁**：`npm run preflight`（`npm test` 的第一道）。检查 dist 产物齐全、patch 行文件存在、`dsh.client` 声明合法。门禁红 = 不许安装。
-- **一包一源的硬约束**（2026-10-27 事故）：client-modules 按**包名**组成 web 启动图，若同一包被多个 active loader 行解析且声明了 `dsh.client`，boot 直接失败（`resolves from multiple active Loader sources`，`client-hmr` 等 `clientModules` 至死）。本包是多行架构，**其 UI 半必须放独立单入口包**，不得在本包 `package.json` 声明 `dsh.client`。preflight 已固化该检查。
+压缩后的重新锚定属于编排层（`ORCHESTRATION.md` §2.5）。
 
----
+### 5.7 工具检索
 
-## 8. 开放问题
+ZCode deferred 机制的 local 模式：驻留面之外的原生工具进入延迟目录；`ToolSearch`（schema 逐字）支持 `select:<name>` 精确选择与关键词检索，结果以 `<functions>` 块回注，并以作用域内同名包装注册激活〔实读〕。
 
-| # | 问题 | 解决路径 |
-|---|---|---|
-| A1 | `X-ZCode-Agent` 头是否存在于发行 bundle | pristine bundle 二次 grep |
-| A2 | ultra 端点映射（proxyEndpoint.mapping）精确语义 | 对照 bundle `ProviderEndpointRoutingService` |
-| A3 | ZCode 系统提示词完整提取与 DSH 逐节 diff 清单 | 实现阶段第一步产出《方言对齐 diff 表》 |
-| A4 | 工具投影与 DSH 各 agent preset（standard/ptc/minimal/cordis）的组合矩阵 | 按 preset 逐一验证，先覆盖 standard |
-| A5 | credentials.json 与残留反代进程的并发写风险 | 文件锁 + 启动检测提示退役反代 |
+已知问题：激活只在 `agent/created` 时 provider 为 `glm` 才发生，原生通道与 rc.3 下不触发（§3）〔推断〕。记忆工具应常驻，不进延迟目录（`ORCHESTRATION.md` §8）。
 
----
+### 5.8 与 ZCode 的差异总表
 
-## 9. 里程碑
+| # | 能力 | 类 | 处置 | 状态 |
+| --- | --- | --- | --- | --- |
+| 1 | 工具命名与 schema | 方言 | 别名投影 | 已实现 |
+| 2 | TodoWrite 三字段 | 方言 | 垫片剥离 priority | 已实现 |
+| 3 | 身份节 | 方言 | 同名替换 | 已实现 |
+| 4 | todo 提醒 10/10 | 方言 | 逐字文案与阈值 | 已实现，计数口径有偏差，真机未确认生效 |
+| 5 | 合成消息通道 | 同构 | 不动 | — |
+| 6 | compact 提示词 | 方言 | 镜像引擎 | 已实现 |
+| 7 | beta 能力头 | 通道 | 按能力集动态添加 | 未实现 |
+| 8 | 工具懒加载 | 缺口 | toolsearch 行 | 已实现，真机未确认生效 |
+| 9 | 服务端 web 工具 | 缺口 | 待实测 `web_search_prime` / webReader 直连闸门 | 挂账 |
+| 10 | 持久记忆 | 缺口 | memory 行（编排层） | 已实现，未被真正使用 |
+| 11 | 身份头、签名、路由 | 通道 | glm-llm | 已实现，版本待统一 |
+| 12 | 模型目录、登录 | 通道 | glm-llm、glm-login | 已实现 |
+| 13 | 日期与输出风格提醒族 | 方言 | 低成本可选 | 未实现 |
+| 14 | 缓存断点参数 | 通道 | 低优先级 | 未实现 |
+| 16 | thinking 与采样参数 | 通道 | effort 三档、thinking 时剥采样参数 | 已实现 effort |
 
-1. **M0 方言对齐底账**：A1–A3 解决，产出身份头终版清单、签名移植笔记、提示词/工具 diff 表（本设计的附录）
-2. **M1 transport MVP**：dsh-llm-glm——身份头 + 静态路由 + API key 模式 + 模型目录点亮
-3. **M2 OAuth**：登录/refresh/共享 credentials.json + 签名 V4 + 动态路由
-4. **M3 content**：提示词方言节 + 工具投影垫片（含单测锁定映射）
-5. **M4 收尾**：fail-open 全矩阵验证、配置 UI、显示资源、文档
+## 6. 注入约定〔定案〕
+
+方言层与编排层都要往对话里放 harness 生成的内容（提醒、投影、检查结果、纠偏），约定如下：
+
+1. 格式：用 GLM 熟悉的 `<system-reminder>` 形态，写短，位置固定。ZCode 自身以这种形态递送 deferred 名单与提醒（`reference/zcode-tool-schemas.md` §8）。
+2. 位置：动态内容放在对话末尾，不放进系统提示词。系统提示词保持稳定，以免每一步都让提示词缓存失效。按积分公式，GLM-5.3 缓存命中系数 1.7、普通输入 6.9，命中部分约省四分之三（`FACTS.md` §2.4）。
+3. 通道：沿用 `tools/post-execute` 的 `additionalContexts`（带来源标签的合成 notice，与 DSH repeat-tool-reminder 同一机制），或 `agent/pre-step` 的消息修正。
+4. 来源标签唯一，便于审计与用量归因。
+
+## 7. 降级与上报
+
+| 行 | 故障或禁用时 | 上报位置〔规划〕 |
+| --- | --- | --- |
+| glm-llm | GLM 通道不可用，其他 provider 不受影响 | 行健康、`/glm-status` |
+| glm-llm 签名 | 无签发送 | 状态、用量记录的签名标注 |
+| glm-llm 路由 | 保持原 URL | 状态 |
+| glm-prompt | 退回 DSH 原生工具面与文案 | 行健康 |
+| glm-compact | 不挂载，profile 原有压缩照常 | 行健康 |
+| toolsearch | 全量直载 | 行健康 |
+| guard | 无门禁 | 行健康（显式禁用除外） |
+| memory | 无记忆、无审计 | 行健康 |
+| workflow / hourness | 无记录、无报告 | 行健康 |
+
+激活期（`apply`）不抛错：配置缺失降级为 warn 与 no-op，因为激活失败会拖垮宿主启动（2026-10-27 事故）。降级必须上报，不得只打一行警告（`CHARTER.md` §6.1 条款 7）。
+
+## 8. 契约与适配层
+
+- adapter：`ZcodeAdapter` 底部有编译期检查 `AdapterContractCheck`，对照官方 `LlmAdapter` 类型〔实读〕。
+- 事件钩子与服务：其余行使用手写结构类型（`src/shared/dsh-min.ts`），没有对照官方类型。rc.3 已漂移过一次（路由字段为空）。改为对照官方 `.d.ts` 做类型级检查〔规划〕。
+- 适配层：所有用到 DSH 接口的地方收进一层薄适配，宿主升级只改这一层〔规划〕。
+- 回归：L3 沙盒真实启动加行为探针做成门禁；每次 DSH 升级先跑一遍（`DEVELOPMENT.md` §3、`ROADMAP.md` M1.7）。
+
+## 9. 开放问题
+
+| 项 | 验证路径 |
+| --- | --- |
+| 原生通道在 DSH 真实会话中端到端可用 | L4 真机（需用户） |
+| 签名握手失败的根因与 3.16.3 协议变化 | 对照 zcode-api 与本机 ZCode 3.16.3 机制 |
+| start-plan 真机授权 | L4 |
+| `src/glm-prompt/verbatim.ts` 注释称文本取自本机安装 bundle（MD5 `c7d641da…`），而本机安装版被用户打过补丁 | 按 3.16.3 原文逐字复核来源 |
+| native ToolSearch 透传（K2）、服务端 web 工具闸门（K4） | 需活 token 实测 |
+| beta 头、OutputStyle 列表、实跑采样参数 | 抓包 |

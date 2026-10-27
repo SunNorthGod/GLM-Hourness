@@ -1,5 +1,8 @@
 # BigModel 文档站 guide 板块消化文档
 
+> 状态：参考原文，2026-10-27 迁入本仓库（来源 `.llm/docs/bigmodel-guide-digest.md`，原样导入见提交 `f2e0b36`）。下文「本目录 `_bigmodel_md/`」现位于工作区 `.llm/docs/_bigmodel_md/`（不入库）。旧文档编号对应：01 → `zcode-capabilities.md`；02（工具 schema）→ `zcode-tool-schemas.md`；02（差异底账）→ `../DESIGN.md` §5.8；03 → `../DESIGN.md` 与 `../ORCHESTRATION.md`；04 → `../FACTS.md`；05 → `zcode-verbatim.md`。与 `../FACTS.md` 冲突时以 FACTS 为准。
+
+
 > 来源：https://docs.bigmodel.cn 的 `cn/guide` 子树全量（37/37 页），按任务最高优先级补抓 guide 子树外的计费/套餐/错误码/限流 9 页（`cn/coding-plan`、`cn/api`、`cn/faq`，已单独标注）。
 > 抓取方式：站点为 Mintlify，任意页面 URL 追加 `.md` 返回原始 Markdown；全量索引在 https://docs.bigmodel.cn/llms.txt 。原始快照存于本目录 `_bigmodel_md/`。
 > 抓取时间：2026-10-27。所有端点、字段名、数值照抄原文，未做推断。

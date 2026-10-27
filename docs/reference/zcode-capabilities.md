@@ -1,5 +1,8 @@
 # ZCode（GLM Coding Agent）能力技术参考手册
 
+> 状态：参考原文，2026-10-27 迁入本仓库（来源 `Desktop\Project\dsh-glm-dialect\docs\01-zcode-capabilities-reference.md`，原样导入见提交 `f2e0b36`）。正文中的「参考手册」即本文件；旧文档编号对应：02（工具 schema）→ `zcode-tool-schemas.md`；02（差异底账）→ `../DESIGN.md` §5.8；`DESIGN.md` v0.1 → `../DESIGN.md`；05 → `zcode-verbatim.md`。正文中 DSH 侧落点（附录 B 等）为早期设想，以 `../DESIGN.md` 为准；与 `../FACTS.md` 冲突时以 FACTS 为准。
+
+
 供 DSH（DeepSeek Harness）插件工程参考。定位：ZCode 各项 harness 能力的机制级功能文档——描述 ZCode 如何做、为何这样做、哪些设计点与 GLM 训练特性耦合。不规定 DSH 侧实现方式；DSH 侧的架构落点（bundle 结构、接管点）仅作为索引附注。
 
 ## 0. 文档定位与证据基准

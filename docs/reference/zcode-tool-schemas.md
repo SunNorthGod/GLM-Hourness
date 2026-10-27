@@ -1,5 +1,8 @@
 # ZCode 内置八件套：发给模型的完整工具定义原文
 
+> 状态：参考原文，2026-10-27 迁入本仓库（来源 `Desktop\Project\dsh-glm-dialect\docs\02-zcode-tool-schemas.md`，原样导入见提交 `f2e0b36`）。早期文档中的「02 文档」「docs/02」均指本文件。
+
+
 来源：ZCode Desktop 3.16.3 会话协议采样（发给 GLM 的 tools 数组原文，逐字段转录）。deferred 工具（WebSearch/WebFetch/Agent/SendMessage/workflow 族/mcp__*）schema 在被 ToolSearch 拉取时同样下发，形态同源。
 
 ## 1. TodoWrite

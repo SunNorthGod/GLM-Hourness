@@ -1,5 +1,8 @@
 # BigModel coding-plan/learning-resources 板块消化文档
 
+> 状态：参考原文，2026-10-27 迁入本仓库（来源 `.llm/docs/bigmodel-coding-plan-digest.md`，原样导入见提交 `f2e0b36`）。正文中的旧文档编号对应：01 → `zcode-capabilities.md`；02（工具 schema）→ `zcode-tool-schemas.md`；02（差异底账）→ `../DESIGN.md` §5.8；03 → `../DESIGN.md` 与 `../ORCHESTRATION.md`；04 → `../FACTS.md`；05 → `zcode-verbatim.md`。与 `../FACTS.md` 冲突时以 FACTS 为准。
+
+
 来源：docs.bigmodel.cn（Mintlify 托管，每页可经 `.md` 后缀取 markdown 源）。
 抓取方式：sitemap.xml 全量枚举 + 页面侧栏链接交叉核对，板块成员两源一致。
 用途：GLM-Hourness 项目（GLM 按 ZCode 训练分布无损接入 DeepSeek Harness 的插件工程）设计参考。
