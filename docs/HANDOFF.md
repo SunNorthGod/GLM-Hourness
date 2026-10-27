@@ -16,7 +16,7 @@
 
 ```
 src/           主包 TypeScript 源码
-tests/         21 个 spec，192 用例；tests/fake-rc3.ts 为 rc.3 运行时替身
+tests/         21 个 spec，198 用例；tests/fake-rc3.ts 为 rc.3 运行时替身
 ui/            独立 UI bundle（纯 JS，不参与 tsc）
 scripts/       preflight-bundle.mjs、check-verbatim.mjs、smoke-zcode*.mjs、probe/（L3 探针）；scripts/dev/ 为历史调试脚本，部分针对已不存在的接口
 docs/          宪章、设计、编排、路线、事实账、流程、交接；docs/reference/ 为事实参考原文
@@ -33,7 +33,7 @@ dist/          不入库：tsc 产物（profile 通过 pnpm link 使用）
 | --- | --- |
 | `glm-llm` | 真网冒烟通过（coding-plan，模型返回 `pong`；2026-10-28 GLM-5.3-Flash 读图一次，答对颜色）；按 rc.3 消息形状编码（工具调用块、图片块）；DSH 真实会话中尚未被使用 |
 | `glm-login` | 可用 |
-| `glm-prompt` | 在 rc.3 运行时上生效，含 ZCode 3.16.3 local 工具检索；七个别名的描述与 schema 均已按 3.16.3 重建（L3 探针 28/28，2026-10-28）；桌面版需重启才加载 |
+| `glm-prompt` | 在 rc.3 运行时上生效，含 ZCode 3.16.3 local 工具检索；七个别名的描述与 schema 均已按 3.16.3 重建；todo 提醒按助手轮次从会话历史计数（L3 探针 35/35，2026-10-28）；桌面版需重启才加载 |
 | `glm-compact` | 改为在 `llm/stream` 上替换压缩指令（2026-10-27），L3 探针实测压缩生效 |
 | `guard` | 拦截与纠偏可用；告知、申报、记录三段未接通 |
 | `memory` | 工具与用量流水可用；记忆几乎未被使用 |
@@ -41,7 +41,7 @@ dist/          不入库：tsc 产物（profile 通过 pnpm link 使用）
 | `hourness` | `/hourness` 可用；峰谷口径错误 |
 | `glm-hourness/ui` | 功能可用，视觉未被接受 |
 
-装机：10 行均 `fiberPhase: active`，无激活错误（2026-10-27 删除 `toolsearch` 行之前的记录）。门禁 `npm run build`、`npm run preflight`、`npm test`（192 用例，逐字门禁 397 段、已知偏差 0 条）全绿，`npm run probe` 32/32（2026-10-28）。
+装机：10 行均 `fiberPhase: active`，无激活错误（2026-10-27 删除 `toolsearch` 行之前的记录）。门禁 `npm run build`、`npm run preflight`、`npm test`（198 用例，逐字门禁 397 段、已知偏差 0 条）全绿，`npm run probe` 35/35（2026-10-28）。
 
 ## 4. 审计数据快照（2026-10-27）
 
@@ -52,7 +52,7 @@ dist/          不入库：tsc 产物（profile 通过 pnpm link 使用）
 
 ## 5. 已知问题
 
-1. 路由判定已收口到 `src/shared/route.ts`，`glm-prompt`（含工具检索）与 todo 提醒都已改用（`DESIGN.md` §3）。
+1. 路由判定已收口到 `src/shared/route.ts`，`glm-prompt`（含工具检索与 todo 提醒）已改用（`DESIGN.md` §3）。todo 提醒自 2026-10-28 起按 ZCode 的助手轮次口径计数（`DESIGN.md` §5.5）。
 2. 版本基线已统一为 3.16.3；`X-Title` 用 `cli` 还是桌面版的 `electron` 待定（`DESIGN.md` §4.2）。
 3. guard 闭环缺三段，且对 `=>`、`>>>`、`->` 误判（`ORCHESTRATION.md` §6）。
 4. 数据目录分裂（§4）。

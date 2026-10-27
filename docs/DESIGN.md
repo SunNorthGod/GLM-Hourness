@@ -98,7 +98,7 @@ GLM-Hourness
 4. 只对准 rc.3 的可靠信号；兼容旧构建的分支删除。
 5. 单测里的假宿主必须给出与 rc.3 相同的信号，不得提供真宿主不提供的路由字段。
 
-实现：`src/shared/route.ts`（`isGlmModel`、`assemblyRoute`、按 agent 记录路由的 `createRouteTracker`）；`glm-prompt` 在 `agent/created` 时于 agent 作用域注册别名，并注册一个 prepend 组装监听器，在 `next()` 之后按本次请求的路由改写提示词节与工具面，不再调用 `restrict()`，也不再挂载 / 卸载。同一步里的其他钩子（如 todo 提醒）读回该路由。单测替身 `tests/fake-rc3.ts` 只提供 rc.3 的接口。L3 探针 9/9：GLM 路由得到 ZCode 身份与别名面、`Read` 别名真实执行；非 GLM 路由保持 DSH 原文与原生工具。工具检索在同一个组装监听器里、别名改写之后执行（§5.7），探针扩到 15 项，全部通过。
+实现：`src/shared/route.ts`（`isGlmModel`、`assemblyRoute`）；`glm-prompt` 在 `agent/created` 时于 agent 作用域注册别名，并注册一个 prepend 组装监听器，在 `next()` 之后按本次请求的路由改写提示词节与工具面，不再调用 `restrict()`，也不再挂载 / 卸载。同一步里的其他钩子读的是该监听器本步的判定（todo 提醒读「GLM 路由且工具面有 TodoWrite」，§5.5）；原先按 agent 记录路由的 `createRouteTracker` 随 todo 提醒改到 `agent/pre-step` 后不再有使用者，已删除（2026-10-28）。单测替身 `tests/fake-rc3.ts` 只提供 rc.3 的接口。L3 探针 9/9：GLM 路由得到 ZCode 身份与别名面、`Read` 别名真实执行；非 GLM 路由保持 DSH 原文与原生工具。工具检索在同一个组装监听器里、别名改写之后执行（§5.7），探针扩到 15 项，全部通过。
 
 ## 4. 通道
 
@@ -255,7 +255,23 @@ DSH 的 `TokenUsage` 各计数互不重叠：`inputTokens` 只算未命中缓存
 
 ZCode 双阈值 10/10：距上次 TodoWrite 与距上次提醒都达到 10 轮时，注入逐字提醒并回显当前 todo。
 
-偏差〔实读〕：现在按完成的工具调用计数，官方按助手轮次计数，一轮并行调用多个工具会多计，提醒来得比官方早。路由收口后改为按轮次计数。提醒正文有两处与原文不一致（§5.9）。
+ZCode 的做法〔实读，3.16.3 安装包 `XNa`、`U4o`、`z4o` 与回合循环的附件收集；源码 `runtime/helpers/runtime-reminders.ts`、`runtime/methods/turn-loop.ts`〕：每次模型请求之前，若本回合的工具里有 TodoWrite（工具检索延迟之前的全量工具），从历史末尾往前数助手消息，一条助手消息算一轮，不论它带几个工具调用；距最后一条调用 TodoWrite 的助手消息与距最后一条 `todo_reminder` 都不少于 10 轮时，生成提醒正文（逐字提醒加会话 todo 存储的回显），作为 `todo_reminder` 附件以 `<system-reminder>` 包裹递送，并持久化为合成用户消息，之后的请求从它起算。找不到标记时按整段历史的轮数计。经 `DeferredToolCall` 调用的 TodoWrite 在 ZCode 历史里记为目标名（包装只留标记），同样算 TodoWrite。3.16.3 安装包比源码多一个条件：模型 id 含 `claude` 时不提醒，与 GLM 无关。
+
+实现〔已实现 2026-10-28，L3 实测〕：`src/glm-prompt/todo-reminder.ts`，由 `installDialect` 安装在每个 agent 上。
+
+- 时机：`agent/pre-step`，即本步组装之后、请求之前，对应 ZCode 的附件收集。只在组装监听器判定本步为 GLM 路由、且别名改写后的工具面（工具检索延迟之前）有 TodoWrite 时检查；非 GLM 路由永远不提醒。
+- 计数：每步从 `session.deriveMessages()`（请求可见历史，跟随压缩与续跑）重新推出，不在内存里累加。只有 GLM 模型产生的助手消息算轮次（rc.3 助手消息的 `source.model`）。todo 写入包括 TodoWrite、点名 TodoWrite 的 `DeferredToolCall`，以及非 GLM 步里的原生 `todo_write`（写的是同一份清单）。提醒标记是来源 `glm-todo-reminder` 的用户消息。
+- 递送：`createUserNotice` 生成的 notice（来源 `glm-todo-reminder`），正文按 ZCode 的 `<system-reminder>` 包装（与工具检索公告共用 `wrapSystemReminder`），追加在本步已接纳的消息之后；同一步还有 deferred 名单公告时，提醒排在公告之前，与 ZCode 收集附件的先后一致。notice 写入会话，下一步的计数据此起算。
+- 回显：取请求可见历史中最近一次成功的 todo 写入的清单。ZCode 读会话 todo 存储；DSH 没有对应的持久存储（`dsh-tool-todo` 的 `todos` 投影在每个回合开始时清空），所以从历史推出。
+- 验证：L2 覆盖多调用轮、TodoWrite 重置、经 `DeferredToolCall` 的 TodoWrite、提醒标记、非 GLM 路由与非 GLM 轮次、工具面无 TodoWrite、空首步、与公告的先后；L3 探针：先记一条 todo，再连续 10 轮每轮两个并行 Read，提醒恰好出现在第 12 次请求、只出现一次，正文为包装后的原文加回显，位于最后一批工具结果之后。
+
+与 ZCode 的差异：
+
+- 递送形态：ZCode 在模型属性 `supportsMidConversationSystem` 为真（或配置强制）时，把 `todo_reminder` 投影成对话中段的 system 消息，否则是包在 `<system-reminder>` 里的用户消息。GLM 模型的这一属性来自远端配置，安装包里没有具体取值。本项目一律按后一种递送，与工具检索公告相同。
+- 回显来源：见上；压缩把最近的 todo 写入移出可见历史后，回显为空，ZCode 仍能回显存储里的清单。
+- 计数口径：非 GLM 步的助手消息不算轮次。ZCode 不区分模型，按全部助手消息计。
+
+2026-10-28 之前的实现在 `tools/post-execute` 上按完成的工具调用计数，一轮并行调用多个工具会多计，提醒来得比 ZCode 早；提醒随工具结果的 `additionalContexts` 递送，没有 `<system-reminder>` 包装；回显取内存中最近一次 TodoWrite 的参数，续跑后丢失。已整体替换。
 
 todo 在编排层降级为项目图的视图（`ORCHESTRATION.md` §2.5），TodoWrite 本身保留，因为它是 GLM 的训练习惯。
 
@@ -281,7 +297,7 @@ L3 探针：沙盒里把压缩阈值调低，摘要请求末条是 ZCode 提示�
 - 分类：ZCode 常驻名单保持常驻；有 ZCode 对应物的 DSH 工具跟随对应物（`read_image`、`subagent`、`subagent_fork`、`skill`、`workflow`、`get_goal`、`ask_user_question`、`bash`、`str_replace_editor`）；记忆工具常驻（`ORCHESTRATION.md` §8）；其余 DSH 工具按 MCP 规则延迟。L3 探针中的 GLM 工具面（2026-10-27 为 28 个；2026-10-28 起 `read_image` 由 Read 别名包住，为 27 个），13 个延迟：TodoWrite、create_goal、exit_plan_mode、interrupt_agent、job_kill、job_list、job_output、list_agents、send_message、update_goal、web_fetch、web_search、working_directory。
 - 公告：每步在 `agent/pre-step` 计算新增、恢复、移除的 deferred 名单，追加一条 `<system-reminder>` notice（来源 `glm-tool-search`）；增量事实存在 notice 的 `source.toolSearchAnnouncement`，与 ZCode 公告元数据一致。已公告状态每步从 `session.deriveMessages()` 重新推出，所以续跑、重启和压缩后都按模型实际看得到的历史计算。
 - 检索结果：执行 `LocalToolSearch` 时按 ZCode 投影生成内容，即 `<functions>` 定义块、「Loaded: …」提醒、「Tool definitions already available …」提醒。「已加载」只认最近一条助手消息之前的成功检索结果（ZCode 同批不互相去重的语义）。
-- `DeferredToolCall`：校验与拒绝文案按 ZCode `resolveDeferredToolCall`；通过后经 `tools.execute` 执行目标，不带 `parent` 令牌。ZCode 在派发前就把包装还原成目标调用，所以 guard、审计流水、todo 提醒、会话检查点看到的都应该是目标本身；todo 提醒跳过包装调用，避免重复计数。
+- `DeferredToolCall`：校验与拒绝文案按 ZCode `resolveDeferredToolCall`；通过后经 `tools.execute` 执行目标，不带 `parent` 令牌。ZCode 在派发前就把包装还原成目标调用，所以 guard、审计流水、会话检查点看到的都应该是目标本身。todo 提醒从会话历史计数，历史里记的是模型发出的 `DeferredToolCall`，所以按其参数里的目标名识别 TodoWrite（§5.5）。
 - 文本：逐字镜像在 `src/toolsearch/zcode-text.ts`，逐字门禁按字面量片段检查整份文件（§5.9）。
 
 与 ZCode 的差异：
@@ -298,7 +314,7 @@ L3 探针：沙盒里把压缩阈值调低，摘要请求末条是 ZCode 提示�
 | 1 | 工具命名与 schema | 方言 | 别名投影；七个别名按 3.16.3 重建并兑现，Grep、Bash 为本地化组合（§5.4） | 已实现，L3 探针通过，真机未验收 |
 | 2 | TodoWrite 三字段 | 方言 | 垫片剥离 priority | 已实现 |
 | 3 | 身份节 | 方言 | 同名替换 | 已实现 |
-| 4 | todo 提醒 10/10 | 方言 | 逐字文案与阈值 | 已实现，计数口径有偏差，真机未确认生效 |
+| 4 | todo 提醒 10/10 | 方言 | 逐字文案与阈值；按助手轮次从会话历史计数，`agent/pre-step` 递送（§5.5） | 已实现，L3 探针通过，真机未验收 |
 | 5 | 合成消息通道 | 同构 | 不动 | — |
 | 6 | compact 提示词 | 方言 | `llm/stream` 上替换压缩指令并格式化产物（§5.6） | 已实现，L3 探针通过，真机未验收 |
 | 7 | beta 能力头 | 通道 | 按能力集动态添加 | 未实现 |
@@ -364,7 +380,7 @@ L3 探针：沙盒里把压缩阈值调低，摘要请求末条是 ZCode 提示�
 
 1. 格式：用 GLM 熟悉的 `<system-reminder>` 形态，写短，位置固定。ZCode 自身以这种形态递送 deferred 名单与提醒（§5.10）。
 2. 位置：动态内容放在对话末尾，不放进系统提示词。系统提示词保持稳定，以免每一步都让提示词缓存失效。按积分公式，GLM-5.3 缓存命中系数 1.7、普通输入 6.9，命中部分约省四分之三（`FACTS.md` §2.4）。
-3. 通道：沿用 `tools/post-execute` 的 `additionalContexts`（带来源标签的合成 notice，与 DSH repeat-tool-reminder 同一机制），或 `agent/pre-step` 的消息修正（工具检索公告用这一条）。notice 必须带 `id` 与 `role`（`src/shared/dsh-min.ts` `createUserNotice`，§2.4a）。
+3. 通道：沿用 `tools/post-execute` 的 `additionalContexts`（带来源标签的合成 notice，与 DSH repeat-tool-reminder 同一机制），或 `agent/pre-step` 的消息修正（工具检索公告与 todo 提醒用这一条）。notice 必须带 `id` 与 `role`（`src/shared/dsh-min.ts` `createUserNotice`，§2.4a）。
 4. 来源标签唯一，便于审计与用量归因。
 
 ## 7. 降级与上报
