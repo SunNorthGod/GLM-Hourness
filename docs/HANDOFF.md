@@ -65,7 +65,7 @@ dist/          不入库：tsc 产物（profile 通过 pnpm link 使用）
 10. UI 视觉未被接受。
 11. cot-translation（DSH 官方实验行，非本项目组件）会把推理碎片显示到界面。
 12. 凭证加密密钥可由本机信息推导（`DESIGN.md` §4.1）。
-13. 用量的输入 token 计为 0、缓存读写未解析：根因是 SSE 解码器在流尾发出 `inputTokens: 0` 的用量块（`DESIGN.md` §4.6a）。
+13. 修正前写入的用量流水，原生通道请求的输入 token 均为 0（解码器缺陷已修，`DESIGN.md` §4.6a）；旧流水不能用于积分统计。
 14. `glm-prompt` 与 `toolsearch` 调用了桌面版运行时不存在的 `tools.executable()`，推断这两行在桌面版上从未生效（`DESIGN.md` §2.4a）；待 L3 探针确认。
 
 反向代理已从项目范围移除（`DESIGN.md` §1）；profile 中指向 8317 的 pi-ai `glm` 路由属于用户配置，本项目不改。

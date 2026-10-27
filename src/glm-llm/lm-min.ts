@@ -5,10 +5,13 @@
  * "off" into low), default max_tokens 32000.
  */
 
+/** DSH usage record: counts are disjoint (inputTokens excludes cache reads and writes). */
 export interface TokenUsage {
   inputTokens: number
   outputTokens: number
   totalTokens?: number
+  cacheReadTokens?: number
+  cacheWriteTokens?: number
   reasoningTokens?: number
 }
 

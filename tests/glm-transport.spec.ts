@@ -108,14 +108,12 @@ test('encodeRequest builds the streaming body with system blocks and tools', () 
 })
 
 test('decodeFrame maps the wire events to seam chunks', () => {
-  assert.deepEqual(
-    decodeFrame({ type: 'message_start', message: { usage: { input_tokens: 12, output_tokens: 0 } } }),
-    [{ type: 'usage', usage: { inputTokens: 12, outputTokens: 0 } }],
-  )
+  // Usage is stream-level state (decodeSse merges it); a single frame never emits it.
+  assert.deepEqual(decodeFrame({ type: 'message_start', message: { usage: { input_tokens: 12, output_tokens: 0 } } }), [])
   assert.deepEqual(decodeFrame({ type: 'content_block_start', index: 0, content_block: { type: 'thinking' } }), [{ type: 'block-start', index: 0, blockType: 'reasoning' }])
   assert.deepEqual(decodeFrame({ type: 'content_block_delta', index: 1, delta: { type: 'text_delta', text: 'a' } }), [{ type: 'text-delta', index: 1, text: 'a' }])
   assert.deepEqual(decodeFrame({ type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: 't' } }), [{ type: 'reasoning-delta', index: 0, text: 't' }])
-  assert.deepEqual(decodeFrame({ type: 'message_delta', delta: { stop_reason: 'tool_use' }, usage: { output_tokens: 7 } })[0], { type: 'usage', usage: { inputTokens: 0, outputTokens: 7 } })
+  assert.deepEqual(decodeFrame({ type: 'message_delta', delta: { stop_reason: 'tool_use' }, usage: { output_tokens: 7 } }), [{ type: 'finish', reason: { kind: 'tool-calls' } }])
   assert.deepEqual(decodeFrame({ type: 'message_delta', delta: { stop_reason: 'end_turn' } })[0], { type: 'finish', reason: { kind: 'stop' } })
   assert.deepEqual(decodeFrame({ type: 'message_delta', delta: { stop_reason: 'max_tokens' } })[0], { type: 'finish', reason: { kind: 'max-tokens' } })
 })
@@ -152,5 +150,31 @@ test('decodeSse aggregates a full thinking/text/tool_use stream into seam chunks
     { type: 'block-end', index: 2, block: { type: 'tool-call', id: 'tu9', name: 'TodoWrite', arguments: '{"todos":[]}' } },
   ])
   assert.ok(chunks.some(chunk => JSON.stringify(chunk).includes('"finish"') && JSON.stringify(chunk).includes('tool-calls')))
-  assert.ok(chunks.some(chunk => JSON.stringify(chunk).includes('"outputTokens":40')))
+  // One merged usage chunk: input from message_start, output from message_delta.
+  const usages = chunks.filter(chunk => (chunk as { type: string }).type === 'usage')
+  assert.deepEqual(usages, [{ type: 'usage', usage: { inputTokens: 9, outputTokens: 40, totalTokens: 49 } }])
+})
+
+test('decodeSse merges cache counters and emits usage once, right before finish', async () => {
+  const frames = [
+    'data: {"type":"message_start","message":{"usage":{"input_tokens":120,"cache_read_input_tokens":3000,"cache_creation_input_tokens":40,"output_tokens":1}}}',
+    'data: {"type":"content_block_start","index":0,"content_block":{"type":"text"}}',
+    'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"pong"}}',
+    'data: {"type":"content_block_stop","index":0}',
+    'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":3}}',
+    'data: {"type":"message_stop"}',
+  ]
+  const encoder = new TextEncoder()
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const frame of frames) controller.enqueue(encoder.encode(`${frame}\n\n`))
+      controller.close()
+    },
+  })
+  const chunks: Array<{ type: string }> = []
+  for await (const chunk of decodeSse(stream)) chunks.push(chunk as { type: string })
+  const kinds = chunks.map(chunk => chunk.type)
+  assert.deepEqual(kinds.slice(-2), ['usage', 'finish'])
+  assert.equal(kinds.filter(kind => kind === 'usage').length, 1)
+  assert.deepEqual((chunks.at(-2) as unknown as { usage: unknown }).usage, { inputTokens: 120, outputTokens: 3, cacheReadTokens: 3000, cacheWriteTokens: 40, totalTokens: 3163 })
 })

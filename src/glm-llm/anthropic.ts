@@ -71,8 +71,16 @@ interface AnthropicEvent {
   index?: number
   content_block?: { type?: string, id?: string, name?: string, text?: string, thinking?: string }
   delta?: { type?: string, text?: string, thinking?: string, partial_json?: string, stop_reason?: string }
-  message?: { usage?: { input_tokens?: number, output_tokens?: number } }
-  usage?: { input_tokens?: number, output_tokens?: number }
+  message?: { usage?: WireUsage }
+  usage?: WireUsage
+}
+
+/** Anthropic usage counters; input excludes the cache counters (disjoint, like DSH TokenUsage). */
+interface WireUsage {
+  input_tokens?: number
+  output_tokens?: number
+  cache_read_input_tokens?: number
+  cache_creation_input_tokens?: number
 }
 
 function finishReason(stop: string | undefined): FinishReason {
@@ -86,15 +94,13 @@ function finishReason(stop: string | undefined): FinishReason {
 /**
  * Decode one SSE frame (a `data:` JSON payload) into seam chunks. The decoder
  * aggregates deltas per block index so `block-end` carries the complete
- * block, and emits one final `usage` chunk from the message envelope.
+ * block. Usage is not a per-frame chunk: `message_start` and
+ * `message_delta` each carry part of it, so `decodeSse` accumulates both
+ * and emits one merged `usage` chunk right before `finish`.
  */
 export function decodeFrame(frame: unknown): ReadonlyArray<StreamChunk> {
   const event = frame as AnthropicEvent
   switch (event.type) {
-    case 'message_start': {
-      const input = event.message?.usage?.input_tokens
-      return input === undefined ? [] : [{ type: 'usage', usage: { inputTokens: input, outputTokens: event.message?.usage?.output_tokens ?? 0 } }]
-    }
     case 'content_block_start': {
       const index = event.index ?? 0
       const block = event.content_block
@@ -117,11 +123,7 @@ export function decodeFrame(frame: unknown): ReadonlyArray<StreamChunk> {
     }
     case 'message_delta': {
       const stop = event.delta?.stop_reason
-      const output = event.usage?.output_tokens
-      const chunks: StreamChunk[] = []
-      if (output !== undefined) chunks.push({ type: 'usage', usage: { inputTokens: 0, outputTokens: output } })
-      if (typeof stop === 'string') chunks.push({ type: 'finish', reason: finishReason(stop) })
-      return chunks
+      return typeof stop === 'string' ? [{ type: 'finish', reason: finishReason(stop) }] : []
     }
     default:
       return []
@@ -141,6 +143,7 @@ interface OpenBlock {
 export async function* decodeSse(body: ReadableStream<Uint8Array>): AsyncGenerator<StreamChunk> {
   const decoder = new TextDecoder()
   const openBlocks = new Map<number, OpenBlock>()
+  let usage: WireUsage = {}
   let buffer = ''
   for await (const bytes of body) {
     buffer += decoder.decode(bytes, { stream: true })
@@ -154,6 +157,12 @@ export async function* decodeSse(body: ReadableStream<Uint8Array>): AsyncGenerat
       let frame: unknown
       try { frame = JSON.parse(payload) } catch { continue }
       const event = frame as AnthropicEvent
+      if (event.type === 'message_start') usage = accumulateUsage(usage, event.message?.usage)
+      if (event.type === 'message_delta') {
+        usage = accumulateUsage(usage, event.usage)
+        const merged = toTokenUsage(usage)
+        if (merged !== undefined) yield { type: 'usage', usage: merged }
+      }
       if (event.type === 'content_block_start') {
         const index = event.index ?? 0
         const type = event.content_block?.type
@@ -186,12 +195,30 @@ export async function* decodeSse(body: ReadableStream<Uint8Array>): AsyncGenerat
   }
 }
 
-/** Merge two usage chunks (message_start carries input, message_delta carries output). */
-export function mergeUsage(a: TokenUsage | undefined, b: TokenUsage | undefined): TokenUsage | undefined {
-  if (a === undefined) return b
-  if (b === undefined) return a
+/** Fold one event's usage counters into the running totals (later non-empty values win). */
+function accumulateUsage(total: WireUsage, next: WireUsage | undefined): WireUsage {
+  if (next === undefined) return total
   return {
-    inputTokens: Math.max(a.inputTokens, b.inputTokens),
-    outputTokens: Math.max(a.outputTokens, b.outputTokens),
+    ...total,
+    ...(next.input_tokens === undefined ? {} : { input_tokens: next.input_tokens }),
+    ...(next.output_tokens === undefined ? {} : { output_tokens: next.output_tokens }),
+    ...(next.cache_read_input_tokens === undefined ? {} : { cache_read_input_tokens: next.cache_read_input_tokens }),
+    ...(next.cache_creation_input_tokens === undefined ? {} : { cache_creation_input_tokens: next.cache_creation_input_tokens }),
+  }
+}
+
+/** The merged DSH usage record, or undefined when the stream reported no counters. */
+export function toTokenUsage(usage: WireUsage): TokenUsage | undefined {
+  if (usage.input_tokens === undefined && usage.output_tokens === undefined) return undefined
+  const inputTokens = usage.input_tokens ?? 0
+  const outputTokens = usage.output_tokens ?? 0
+  const cacheReadTokens = usage.cache_read_input_tokens
+  const cacheWriteTokens = usage.cache_creation_input_tokens
+  return {
+    inputTokens,
+    outputTokens,
+    ...(cacheReadTokens === undefined ? {} : { cacheReadTokens }),
+    ...(cacheWriteTokens === undefined ? {} : { cacheWriteTokens }),
+    totalTokens: inputTokens + (cacheReadTokens ?? 0) + (cacheWriteTokens ?? 0) + outputTokens,
   }
 }
