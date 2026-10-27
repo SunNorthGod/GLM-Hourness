@@ -42,6 +42,7 @@
 ### 2.2 模型参数
 
 - GLM-5.3 系强制思考，`thinking.type` 只接受 `enabled`。
+- 输入模态：GLM-5.3 没有视觉塔，只接受文本；GLM-5.3-Flash 是多模态（用户提供，2026-10-28）。GLM-5.3-Flash 经 Anthropic 兼容通道接受 base64 图片块〔实测 2026-10-28，一次请求，`DESIGN.md` §4.5a〕。
 - Preserved Thinking（`clear_thinking: false`）：套餐端点默认开，标准端点默认关；回传 `reasoning_content` 提高缓存命中。
 - 1M 上下文：Anthropic 通道在模型名后加 `[1m]`。
 

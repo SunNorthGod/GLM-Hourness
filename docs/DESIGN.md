@@ -138,10 +138,27 @@ LLM 平面（bundle `g6n` 形态）：`HTTP-Referer`、`User-Agent: ZCode/<ver>`
 - 档位：coding-plan（默认，签名，享 ZCode 渠道用量加成）与 start-plan（网关要求的三块系统提示、JWT 鉴权、currentDate 前缀）。start-plan 的三块系统提示属于底层：网关缺了就拒收（3012/405）。
 - 状态：coding-plan 端到端真网成功，模型返回 `pong`〔实测，`scripts/smoke-zcode-authorized.mjs`〕；start-plan 只有单测。
 - 系统提示词：DSH 把组装好的系统提示词作为历史开头的 `system` 消息下发，`GenerateOptions.system` 为空〔L3 探针实测〕。编码器把请求级文本与开头的全部 `system` 消息依次合并进 Anthropic 的 `system` 字段（与 DSH 自带 pi-ai 适配器同一规则）；之后出现的 `system` / `developer` 消息作为 `<system-reminder>` 包裹的用户轮发送。适配器不声明 `systemPromptUpdate: 'in-history'`，提示词变化时由 DSH 改写开头那条消息〔已实现 2026-10-27〕。此前编码器丢弃全部 `system` 消息而适配器又声明 in-history，原生通道在 DSH 会话里会发出没有系统提示词的请求；冒烟脚本直接传 `system` 参数，所以没有暴露。
+- 消息编码〔已实现 2026-10-28，`src/glm-llm/anthropic.ts`〕：按 rc.3 的消息形状（`dsh-llm` `ContentBlockMap`）逐块编码，块序不变，空文本块丢弃，与 ZCode 的 AI SDK 转换一致：
+  - 助手消息：`text` 块发文本，`tool-call` 块发 `tool_use`（参数解析失败时为 `{}`）；`reasoning` 块在本通道没有可回放的签名，不回传。
+  - 工具结果：`tool_result`，纯文本结果为一个字符串，空结果为 `(no output)`；失败结果带 `is_error: true`（ZCode 的 error-text 输出）；带图片的结果见 §4.5a。
+  - 用户消息：文本块各自成块；没有内容时发 ZCode 的占位 `(no content)`（3.16.3 安装包 `toAiSdkUserContent`），不再发空文本块。
+  - 相邻同角色的消息合并为一轮，与 ZCode 经 AI SDK Anthropic provider 发出的形态一致：并行调用的多个工具结果与其后的提醒落在同一个用户轮里。
+  - 曾有缺陷：编码器按 `reference/deepseek-harness` 主干的 `toolCalls` 字段读工具调用，rc.3 没有这个字段（全部运行时包中无一处使用），工具调用在 `content` 里以 `tool-call` 块出现。结果是助手的工具调用全被丢弃，下一条 `tool_result` 引用的 `tool_use` 从未发出。原生通道尚未在 DSH 会话中跑过，所以没有暴露；L3 探针的请求摘要现在读 `tool-call` 块，实测每条助手消息都带工具调用块。
+
+### 4.5a 图片〔已实现 2026-10-28〕
+
+- 形态：DSH 的图片是持久附件引用（`image` 块）。适配器经附件服务读出每个附件的请求版本（`AttachmentStore.readImageRequest`，rc.3 pi-ai 适配器的同一调用），编码为 Anthropic base64 图片块 `{type: 'image', source: {type: 'base64', media_type, data}}`。用户消息里的图片在用户轮内容中；工具结果里的图片放进 `tool_result` 的内容数组，与文本块按原顺序排列。这是 ZCode 对 Anthropic 路由的放法（3.16.3 安装包：AI SDK Anthropic provider 把工具结果的 `image-data` 转为同样的图片块；源码 `adapters/src/model/transform.ts`）。DSH 的 `read_image` 结果本身带一段文字信封（路径、尺寸、字节数），随图片一起发送。
+- 不加 DSH 的附件把手文本：pi-ai 在每张图片前插一句附件标识与只读路径（`requestImageHandleText`），ZCode 不加（工具结果只保留媒体块），本通道随 ZCode。
+- 请求版本的上限按 ZCode 的模型图片上限：长边 2000 像素（`READ_IMAGE_MAX_DIMENSION`、`MAX_IMAGE_ATTACHMENT_DIMENSION`），原始字节不超过 5 MiB 的四分之三，即 base64 不超过 5 MiB（`READ_IMAGE_TARGET_BYTES`）。`imageRequestTarget` 返回同一目标，满足 `LlmAdapter` 合同「与请求序列化所用目标一致」的要求。ZCode 对 Read 读出的图片另有 25,000 估算 token 的上限（base64 长度乘 0.125）；DSH 的目标按路由、模型与图片给出，分不出图片来自 Read 还是附件，所以不用这一条。
+- 卸载：带 `offloaded` 标记的图片不读字节，发送 DSH 的占位文本（`offloadedImageText`，能解析只读路径时附路径）。卸载集合是会话的持久事实，每个路由都按同一集合发送。运行时包不能从本仓库解析，占位文本按 `dsh-llm` 0.2.1-rc.3 原文复制在 `src/glm-llm/images.ts`，注明出处。
+- 附件服务与 `fs` 服务按请求经 `ctx.get` 读取，不注入（与 pi-ai 相同）；请求带图片而附件服务不存在时，请求失败并说明原因。
+- 请求级图片预算：本通道不发 `IMAGE_OFFLOAD_REQUIRED`。ZCode 没有请求级的图片总量上限，GLM 端点的上限未知（§9）。
+- 验证：编码器与适配器单测；L3 探针在 GLM-5.3-Flash 上读 PNG，探针 provider 用本通道的真实编码器与运行时附件服务编码同一请求，图片以 base64 PNG 出现在 `tool_result` 中；真网一次（coding-plan，`glm-5.3-flash`，32×32 纯红 PNG，问颜色），模型答「Red」，用量输入 41、输出 32 token〔实测 2026-10-28〕。只有一次请求，猜中的可能不能完全排除。
 
 ### 4.6 模型目录与思考档位
 
-- 目录：`glm-5.3`（GLM-5.3）、`glm-5.3-flash`（GLM-5.3-Flash），输入模态文本与图像；上下文窗口 512,000；默认 `max_tokens` 32000〔实读〕。
+- 目录：`glm-5.3`（GLM-5.3）、`glm-5.3-flash`（GLM-5.3-Flash）；上下文窗口 512,000；默认 `max_tokens` 32000〔实读〕。
+- 输入模态按模型如实声明（`src/glm-llm/lm-min.ts` `GLM_MODELS`）：GLM-5.3 没有视觉塔，只声明文本；GLM-5.3-Flash 声明文本与图像〔用户提供的事实 2026-10-28〕。目录外的模型 id 只声明文本。此前两个模型都声明图像。只声明文本的路由上，DSH 在适配器之前把请求里的图片换成文字占位（`dsh-llm` `projectImagesForTextModel`：「[image omitted because this model accepts text only; attachment sha256:…]」），`read_image` 拒读（「… does not declare image input; switch to an image-capable model to read images」），会话控制器拒收用户附图。
 - 思考：GLM-5.3 系强制思考；effort 三档 `low` / `high` / `max`，默认 `high`〔定案 2026-10-27，五档词汇 API 接受但 GLM 不用〕。
 
 ### 4.6a 用量块
@@ -205,6 +222,7 @@ DSH 的 `TokenUsage` 各计数互不重叠：`inputTokens` 只算未命中缓存
   - 原生窗口受 2000 行与 50 KB 两个上限。窗口没读到文件末尾、且不是模型自己给的 `limit` 截住的，结果前加 ZCode 部分视图提醒的后两句（「Showing a partial view of lines …」「Use Read with offset … to continue …」）。第一句讲的是 ZCode 的 token 预算，与原生上限不符，不用。
   - `offset` 为 0 时按 ZCode 从第 1 行读（原生从 1 计）；`limit` 超过原生窗口 2000 行时截到 2000，结果用上面的提醒说明续读位置。垫片按原生默认配置写死 2000。
   - 图片扩展名（ZCode 的集合，与 `read_image` 相同）转给 `read_image`，`offset`、`limit` 对图片不适用，与 ZCode 一致；图片结果用 `read_image` 自己的渲染。
+  - 图片一行不按模型取舍：ZCode 3.16.3 的 Read 描述只对声明 PDF 输入的模型加 PDF 一行（`resolveReadProviderDescription`），图片一行对纯文本模型也保留。所以 GLM-5.3 与 GLM-5.3-Flash 看到同一份描述（L3 探针实测）。两者在纯文本模型上的实际所得不同：ZCode 读图成功，请求里图片换成它的文字占位，后接一行「[Media omitted from provider request because the selected model does not support image input.]」（`createUnsupportedModelInputMediaText`）；DSH 的 `read_image` 在只声明文本的路由上直接报错，GLM-5.3 收到的是拒读错误（L3 探针实测）。两种结果都告诉模型看不到图片，本项目不改写这条错误。
   - ZCode 的二进制扩展名（`.exe`、`.zip` 等 19 个）与视频扩展名直接拒绝，组合里没有 `read_image` 时图片扩展名也拒绝；错误文本用 ZCode 的二进制拒读原文。
   - 输出合同：有 `read_image` 时是两个原生输出 schema 的 `oneOf`，渲染与 `presentationMeta` 交给产出该值的原生工具，参数先映射。
 - 映射与兑现（Write、Edit，`src/glm-prompt/aliases.ts`）：
@@ -231,7 +249,7 @@ DSH 的 `TokenUsage` 各计数互不重叠：`inputTokens` 只算未命中缓存
   - Grep：`files_with_matches` 模式 ZCode 按修改时间排序，垫片保持 ripgrep 的输出顺序；ZCode 搜索隐藏文件（`--hidden`），原生不搜；ZCode 让 ripgrep 略去超过 500 列的行（`--max-columns 500`），原生返回整行；以 `!` 开头的排除模式原生拒绝，模型收到原生的报错。
   - TodoWrite：ZCode 的结果是 `{oldTodos, todos, summary}` 的 JSON，垫片用原生的「Updated todo list: …」。
   - Bash：结果形态与 ZCode 不同（见上）。
-- 已知缺口：原生通道 `glm-zcode` 的编码器只发送工具结果与用户消息里的文本块，图片块被丢掉（`src/glm-llm/anthropic.ts`）。因此经 `glm-zcode` 时 Read 读图只能看到 `read_image` 的文字摘要，描述中的「presents them visually」在该通道上不成立；经 pi-ai 等支持图片的路由时成立。修复属于通道层，单独排期。
+- 读图经原生通道：2026-10-28 之前 `glm-zcode` 的编码器丢弃图片块，经该通道读图只得到 `read_image` 的文字信封。现在 GLM-5.3-Flash 收到真实图片块（§4.5a），描述中的「presents them visually」成立；GLM-5.3 只声明文本，读图被拒（见上）。
 
 ### 5.5 todo 提醒
 
@@ -379,6 +397,7 @@ L3 探针：沙盒里把压缩阈值调低，摘要请求末条是 ZCode 提示�
 | 原生通道在 DSH 真实会话中端到端可用 | L4 真机（需用户） |
 | 签名握手失败的根因与 3.16.3 协议变化 | 对照 zcode-api 与本机 ZCode 3.16.3 机制 |
 | start-plan 真机授权 | L4 |
-| 原生通道发送图片块（工具结果与用户消息） | 编码器单测；L4 真机读图 |
+| GLM 端点的请求级图片上限（张数、总字节）；超限时本通道不发 `IMAGE_OFFLOAD_REQUIRED`，会话会卡在上游报错（§4.5a） | 查 bigmodel 文档或实测；必要时按实测上限发卸载信号 |
+| 原生通道读图在 DSH 真实会话中可用（GLM-5.3-Flash） | L4 真机读图 |
 | native ToolSearch 透传（K2）、服务端 web 工具闸门（K4） | 需活 token 实测 |
 | beta 头、OutputStyle 列表、实跑采样参数 | 抓包 |

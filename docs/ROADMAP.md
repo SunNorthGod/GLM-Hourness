@@ -45,6 +45,7 @@ M1 进度：
 - 新发现：`glm-compact` 在桌面版上从未挂载。已修（2026-10-27）：改在 `llm/stream` 瀑布上替换 GLM 压缩请求的指令并格式化产物，不再另挂引擎（`DESIGN.md` §5.6）；L3 探针加压缩场景，17/17。
 - ⑤ 工具描述重建，第一批 Read、Write、Edit：完成（2026-10-28）。描述、schema、结果文本按 3.16.3 安装包重建，放进镜像文件 `src/glm-prompt/zcode-tool-text.ts`；垫片兑现描述的承诺（cat -n 行号形态、部分视图提醒、图片转 `read_image`、二进制与视频拒读、`offset` 0、`replace_all` 语义布尔、沙盒升级字段），兑现不了的行删去（`DESIGN.md` §5.4）。逐字门禁 223 段通过、已知偏差剩 3 条（TodoWrite、Glob、Grep，M1.1b）；L2 176 用例；L3 探针 23/23（新增 Write、Edit、回读、覆盖未读文件被拒）。新发现：原生通道丢弃图片块，经 `glm-zcode` 读图只得到文字摘要（`DESIGN.md` §5.4 已知缺口）。
 - ⑤ 工具描述重建，第二批 Glob、Grep、TodoWrite、Bash：完成（2026-10-28）。描述、schema 与 Glob、Grep 的结果文本按 3.16.3 安装包重建，放进镜像文件。Glob 按 ZCode 从新到旧取前 100 条；Grep 的 `-i`、`glob`、`type`、`output_mode`、`-n`、`head_limit`、`offset` 在垫片里按 ZCode 实现，原生做不到的 `-A`、`-B`、`-C`、`context`、`-o`、`multiline` 从 schema 删去；Bash 只改 shell 与工作目录两行，去掉 `dangerouslyDisableSandbox`，`timeout` 改为毫秒（此前按秒换算，与 ZCode 不符），`working_dir` 删去（`DESIGN.md` §5.4）。逐字门禁 397 段通过、已知偏差 0 条；L2 184 用例；L3 探针 28/28（新增 Glob、Grep、Bash 的工具面与执行检查）。M1.1 的方言文本重建至此完成。
+- 原生通道读图：完成（2026-10-28，`DESIGN.md` §4.5a）。GLM-5.3 改为只声明文本（用户提供的事实），GLM-5.3-Flash 声明文本与图像；Flash 收到 ZCode 形态的 base64 图片块（用户消息与 `tool_result` 内），请求版本按 ZCode 的长边 2000 像素与 5 MiB 上限读取。Read 描述的图片一行按 ZCode 不随模型取舍。修图片时发现编码器按 rc.3 不存在的 `toolCalls` 字段读工具调用，助手的工具调用会被全部丢弃，一并修复，相邻同角色消息按 ZCode 合并（`DESIGN.md` §4.5）。L2 192 用例；L3 探针 32/32（新增：纯文本模型拒读、Flash 的 `tool_result` 图片块）；真网一次读图答对颜色。
 - 调整后的顺序：① 修用量块（完成）；② 先做 1.7 的 L3 探针（用探针确认现状、验证后续每一步）；③ 1.2 路由收口，工具面改为在组装瀑布中逐请求改写；④ 工具检索按 ZCode local 模式移植（`DESIGN.md` §5.10）；⑤ 六个工具描述按源码重建，垫片兑现原文的参数与行为。
 
 ### M2 项目图行走骨架
