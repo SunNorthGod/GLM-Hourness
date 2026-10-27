@@ -47,7 +47,10 @@ class ProbeAdapter {
   constructor(config) {
     this.dump = config.dump
     this.script = parseScript(config.script)
+    /** Scripted (agent-step) requests answered so far. */
     this.calls = 0
+    /** All requests answered so far, side requests included. */
+    this.requests = 0
   }
 
   providerInfo(provider) { return { id: provider, name: 'GLM-Hourness probe' } }
@@ -73,11 +76,16 @@ class ProbeAdapter {
   }
 
   async * stream(request) {
-    const step = this.script[Math.min(this.calls, this.script.length - 1)]
-    this.calls += 1
+    // Only agent steps (requests that carry tools) follow the script; side
+    // requests such as the session title get a fixed reply, so their timing
+    // cannot shift the scripted sequence.
+    const scripted = (request.tools ?? []).length > 0
+    const step = scripted ? this.script[Math.min(this.calls, this.script.length - 1)] : { text: 'Probe session' }
+    if (scripted) this.calls += 1
+    this.requests += 1
     if (this.dump !== undefined) {
       appendFileSync(this.dump, `${JSON.stringify({
-        call: this.calls,
+        call: this.requests,
         provider: request.provider,
         model: request.model,
         // The runtime delivers the prompt as leading system messages (the
@@ -88,7 +96,7 @@ class ProbeAdapter {
       })}\n`)
     }
     if (step.tool !== undefined) {
-      const id = `probe-call-${this.calls}`
+      const id = `probe-call-${this.requests}`
       const args = JSON.stringify(step.tool.arguments ?? {})
       yield { type: 'block-start', index: 0, blockType: 'tool-call' }
       yield { type: 'tool-call-delta', index: 0, id, name: step.tool.name, argumentsDelta: '' }
