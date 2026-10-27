@@ -105,6 +105,10 @@
 | 会话存储：`~/.dsh/sessions/<workspace-slug>/<session>/session.v4.jsonl.zstd`，多帧 zstd；`system/message` 事件含完整组装后的系统提示词 | 排查记录〔实测〕 |
 | 桌面版完全重启才加载新的 dist，重开窗口不够 | 排查记录〔实测〕 |
 | 桌面版 `dsh` 不在 PATH；headless 沙盒用 Electron 的 node 模式调用；`--profile desktop` 被拒绝 | `DEVELOPMENT.md` §3 |
+| headless 的 `--json` 输出按会话事件投影成逐行 JSON：`session`、`status`（`turn_start`、`step_start`、`step_end` 带该步用量、`turn_end` 带结束原因）、`tool_call`、`tool_result`、`text`、`thinking`、`final`；任务写 `-` 时从 stdin 读 | `reference/dsh-desktop-0.2.1-rc.3/dsh-headless` json-stream 172 行起、startup 35 行〔实读〕 |
+| headless 模板的沙盒策略行与审批行读环境变量 `DSH_PERMISSION_MODE`（缺省 `workspace-write`，审批 `ask`；`danger-full-access` 时审批 `never`）；用户桌面版 profile 的默认预设是 `danger-full-access`，审批 `never` | `glmsandbox --dump-config`、`~/.dsh/profiles/desktop/cordis.patch.yml`〔实读 2026-10-28〕 |
+| `workspace-write` 下 pwsh 经 Windows ACL 沙盒运行，`node --test` 派生测试子进程报 `spawn EPERM`（单独 `node <文件>` 可以运行）；`danger-full-access` 下正常 | 标定试跑 2026-10-28（`ORCHESTRATION.md` §10.5.1）〔实测〕；`dsh-sandbox-windows-acl` 791 行的注释描述了同一类失败 |
+| `agent/pre-step` 返回 `{ kind: 'reject' }` 时回合以 `blocked` 结束；`agent.cancel` 的取消原因有 `user`、`parent`、`disposed`、`hook`（带 `reason`） | `dsh-agent-loop` 961 行、815 行、731 行〔实读〕；探针 `limits-steps`、`limits-time`〔实测〕 |
 | client-modules 一包一源约束 | `DESIGN.md` §2.3 |
 | 静态包 client 半只拿到 `require` 模块表 | `DEVELOPMENT.md` §5 |
 | `@deepseek-ai/schemastery` 在已安装的 profile bundle 中无法解析；插件管理器只把原生 Schemastery `Config` 导出投影成表单 | `README.md` |

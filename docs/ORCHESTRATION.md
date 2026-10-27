@@ -486,7 +486,44 @@ LLM 不讲人话，多半是默认在向评审汇报，想显得周全。做法�
 - 标定：对 GLM-5.3 与 GLM-5.3-Flash 各跑出基线，之后 harness 的每次改动按增量衡量。
 - 用途：harness 改动前后各跑一遍；DSH 升级回归；原生通道验收。
 - 运行环境：尽量在 L3 headless 沙盒内运行（`DEVELOPMENT.md` §3）。
-- 任务清单与存放位置待定（§15）。
+- 存放〔定案 2026-10-28〕：`tests/calibration/`，入库，每个任务一个目录。M1.7 起步两个任务，M3、M7 扩充。
+
+#### 10.5.1 运行器〔已实现 2026-10-28，`ROADMAP.md` M1.7〕
+
+`npm run calibrate`（`scripts/calibrate/run-calibrate.mjs`）在 `glmsandbox` 上以 headless 方式启动桌面版运行时，经按次生成的覆盖补丁启用原生通道行 `glm-hourness/glm-llm`（provider `glm-zcode`），把默认模型设为被测模型，每次运行把任务的 fixture 复制到 `.llm/calibration-runs/<时间戳>/<任务>--<模型>[--序号]/ws/` 并初始化为一个 git 仓库，以它为会话工作目录发出任务提示词，结束后运行任务的验收脚本并记分。这是真实请求，消耗积分。参数：`--tasks`、`--models`（默认 `glm-5.3,glm-5.3-flash`）、`--repeat`、`--max-steps`（默认 40）、`--minutes`（默认 15）、`--permission`。
+
+- 任务目录：`fixture/`（一个很小的 Node 项目，无依赖，`npm test` 即 `node --test`）、`prompt.md`（原样发给模型的提示词）、`task.json`（类别与任务允许改动的文件）、`check.mjs`（验收脚本，在模型结束后以独立进程运行，断言不放进 fixture，模型看不到）。验收脚本的公共部分在 `tests/calibration/lib.mjs`。
+- 现有任务：`feature-parse-duration`（小功能：给 `formatDuration` 补逆运算 `parseDuration`；验收：提示词里的例子、对 `formatDuration` 所有输出的还原、12 种非法输入抛 `TypeError`、`formatDuration` 不变、工作区测试通过且新增了 `parseDuration` 的测试、README 写了说明）；`bugfix-csv-quotes`（修 bug：引号字段里的转义引号 `""` 没有跳过第二个引号；验收：报告的那一行、另外 4 种转义写法、6 项无关行为不变、工作区测试通过且新增了测试，并且把 fixture 原来的 `src/` 放回后工作区测试会失败，即新测试确实复现了 bug）。两个验收脚本都核对过：原样的 fixture 不通过，参考解通过。
+- 数据隔离：覆盖补丁把数据目录行、memory、workflow、hourness 的目录指向本次运行的目录，用量流水与违规流水都落在运行目录里，真实的 `~/.dsh/glm-hourness/` 不变；附件存储同样指向运行目录；另挂 `@deepseek-ai/dsh-workspace-changes`（桌面版 profile 有，沙盒模板没有），guard 的影子兜底照常记录。
+- 权限：headless 模板的沙盒策略行与审批行读环境变量 `DSH_PERMISSION_MODE`（缺省 `workspace-write`）。运行器默认传 `danger-full-access`，与用户桌面版 profile 的默认预设一致（`danger-full-access`，审批 `never`）。首次试跑用的是缺省的 `workspace-write`：Windows ACL 沙盒下 `node --test` 派生子进程报 `spawn EPERM`，模型无法确认测试通过，转而申请沙盒升级，headless 没有审批通道，申请失败（`FACTS.md` §3）。
+- 边界：覆盖层插入一行只在标定时加载的插件 `scripts/calibrate/limits.mjs`（不属于 bundle）。它对进程内全部 agent（含子 agent）的模型步数计数，第 `maxSteps + 1` 步在 `agent/pre-step` 返回 `reject`，回合以 `blocked` 结束（rc.3 `dsh-agent-loop` 961 行）；首个 agent 创建后满 `timeLimitMs`，以 `{ kind: 'hook' }` 取消所有运行中的 agent（`cancel` 815 行、取消原因 731 行），之后的步一律拒绝。运行器在时间上限之后再等 2 分钟，仍未退出就结束整个进程树。探针有两个场景验证这两道边界（`DEVELOPMENT.md` §3）。
+- 事件来源：headless 的 `--json` 输出（`dsh-headless` json-stream 172 行起：`session`、`status` 的 `step_start` / `step_end` / `turn_end`、`tool_call`、`tool_result`、`text`、`final`），任务提示词经 stdin 传入。
+
+记分口径（每次运行一份 `result.json`，整次调用一份 `results.json`，含日期、提交与工作区是否有未提交改动）：
+
+| 指标 | 口径 |
+| --- | --- |
+| 完成 | 验收脚本全部通过 |
+| 返工 | 一次成功的文件写入（`Write`、`Edit` 等）落在本次运行已写过的文件上，且两次写入之间跑过 shell 命令。即「改了、跑了、又回去改同一个文件」的次数 |
+| 打扰人 | `approval/asked` 会话事件数（`dsh-user-approval` 132 行，交互会话里这一刻会弹审批；headless 无应答方，按拒绝处理）加 `ask_user_question` 调用数。沙盒的工具面没有 `ask_user_question` |
+| 积分 | 本次运行用量流水的每条记录按 `FACTS.md` §2.4 的系数计算，非高峰按 50%；公式没有缓存写入的系数，缓存写入按输入计。用量流水含会话标题请求 |
+| 违规 | guard 违规流水里的拦截记录数；影子记录另计 |
+| 其他 | 结束原因（完成、步数上限、时间上限、被结束、错误）、步数、工具调用与失败数、改动的文件、`task.json` 之外的多余文件、各类 token 数、耗时 |
+
+#### 10.5.2 基线（2026-10-28，提交 `4cb8799`）
+
+每格 3 次运行，均值（打扰、违规、多余文件为合计）。时段 06:10–06:31（UTC+8，周三），全部非高峰；边界 40 步、15 分钟；权限 `danger-full-access`。
+
+| 任务 | 模型 | 完成 | 步数 | 工具调用 | 返工 | 打扰 | 违规 | 多余文件 | 积分（计费） | 分钟 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| bugfix-csv-quotes | GLM-5.3 | 3/3 | 5.67 | 6.33 | 0 | 0 | 0 | 0 | 9.45 | 0.63 |
+| feature-parse-duration | GLM-5.3 | 3/3 | 11.67 | 13.33 | 1 | 0 | 0 | 0 | 21.61 | 1.50 |
+| bugfix-csv-quotes | GLM-5.3-Flash | 3/3 | 6.33 | 7.33 | 0 | 0 | 0 | 0 | 4.15 | 0.95 |
+| feature-parse-duration | GLM-5.3-Flash | 3/3 | 10.67 | 13.00 | 1 | 0 | 0 | 0 | 12.17 | 3.60 |
+
+按模型：GLM-5.3 六次全部完成，平均 8.67 步、15.53 积分、1.07 分钟；GLM-5.3-Flash 六次全部完成，平均 8.50 步、8.16 积分、2.28 分钟。工具失败、打扰、违规、影子记录、多余文件都是 0。Flash 在功能任务上输出 token 是 GLM-5.3 的约 3 倍（每次 6.5k–12.4k 对 2.7k–3.8k），所以积分省一半，耗时却长一倍多。基线连同两次试跑共花约 155 积分（计费口径）。
+
+解读与局限：两个起步任务对两档模型都没有区分度（12/12 完成），能拉开差距的只有积分、耗时与返工；区分完成率要靠 M3、M7 扩充的更难任务（重构、长程多步、需求访谈）。每格 3 次，样本小，单次波动明显（同一格的积分相差到 1.6 倍）。headless 没有人，打扰只能按审批申请与提问工具计。用量流水不报推理 token（`reasoningTokens` 恒为 0），推理计在输出里。
 
 ## 11. 用量与峰谷
 
@@ -567,4 +604,3 @@ LLM 不讲人话，多半是默认在向评审汇报，想显得周全。做法�
 | `ui-primitives` 能否被第三方 client 包引用 | 实现前核实 |
 | 小改动简报的简化形态 | M7 设计 |
 | 审查 agent 的模型档位 | M7 设计 |
-| 标定测试集的任务清单与存放位置 | M1.7 起步，M3/M7 扩充 |
