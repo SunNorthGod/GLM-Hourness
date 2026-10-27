@@ -70,11 +70,11 @@ M1 进度：
 
 | # | 条目 |
 | --- | --- |
-| 3.1 | 主 Agent 角色卡；主 Agent 工具面去掉写文件工具 |
+| 3.1 | 主 Agent 身份文本（三问四答、五键、许愿访谈）；guard 拦主 Agent 的写入，不靠 preset（`ORCHESTRATION.md` §3.1） |
 | 3.2 | 许愿访谈八步与需求卡；访谈过程中图实时生长 |
-| 3.3 | 方案五栏与设计门禁 |
+| 3.3 | 方案五栏与设计门禁：五栏门禁挂在 `exit_plan_mode` 的 `tools/pre-execute`；设计期只读由 guard 实现，计划模式只靠提示词（`ORCHESTRATION.md` §4.5） |
 | 3.4 | 五键（`ORCHESTRATION.md` §4.4），借用 `user-questions` |
-| 3.5 | 决策卡（同步 / 异步），借用 `user-approval`；取代 L1/L2/L3 |
+| 3.5 | 决策卡：同步借用 `user-approval` 与 `user-questions`，异步自建在图的待决节点上（`ORCHESTRATION.md` §5）；取代 L1/L2/L3 |
 | 3.6 | 阶段状态机：阶段提醒、门禁、最小流程条 |
 
 验收：标定测试集中的「需求访谈」任务，从一句话到骨架放行全程走通。
@@ -97,11 +97,36 @@ M6 进度：
 
 ### M7 执行、汇合与运维
 
-队友角色卡、简报门禁、并发补位提醒；独立审查；汇合门禁；四答晨报；巡检；规范阶梯与周报；DORA 指标；标定测试集扩充。
+后台派发：主 Agent 把任务节点派给后台子 agent（`subagents.startActivation`，spawn 后端），派发属性取自任务节点（种类、写入范围、模型档位、验收条件、交回结构、独立工作树，`ORCHESTRATION.md` §3.2），没有队友角色与角色 preset；子 agent 的写入范围门禁；驱动循环用 goal 加 `goal-round-driver`，由人发起创建与恢复，完成门禁核对图上证据（§2.1）；简报门禁、并发补位提醒；独立审查；汇合门禁；四答晨报；巡检（固定运维会话）；规范阶梯与周报；DORA 指标；标定测试集扩充。
 
 ### M8 呈现
 
-按 `ORCHESTRATION.md` §13 实现 UI；核实 `ui-primitives` 可用性；替换现有设置页与 pill；按截图迭代，用户终审。
+按 `ORCHESTRATION.md` §13 实现 UI：项目图查看器先经 Desktop 的 Browser 标签页打开，再做原生右侧栏标签页；`ui-primitives` 在壳层模块表里（2026-10-28 读 rc.3 确认），组件以 rc.3 官方包实际用到的为准；替换现有设置页与 pill；按截图迭代，用户终审。
+
+### 借用组件核实清单（L3 / L4）
+
+2026-10-28 对照 rc.3 运行时包的只读核查（结论见 `ORCHESTRATION.md` §2.1、§3、§4.5、§5、§13、§14 与 `FACTS.md` §3）留下的真机核实项，按依赖顺序排列。L3 在 `glmsandbox` 上用探针做（`DEVELOPMENT.md` §3），L4 要在桌面版真实会话里看界面。同日的定案（不用队友角色与角色 preset，不用 Agent Team）让其中几项不再需要，保留编号备查。4、4b、12 三项在 M3、M7 动工之前由一次派发可行性验证一并做（L3，探针 provider 同时为子 agent 脚本化应答），结论写进 `DESIGN.md` §2.4a 与 `ORCHESTRATION.md` §2.1、§3。
+
+| # | 核实项 | 层 | 依赖它的条目 | 状态 |
+| --- | --- | --- | --- | --- |
+| 1 | 启用 `agent-team-profile` 后根会话的工具面：是否同时有 `subagent`、`subagent_fork` 与 Team 九个工具，`send_message` 是否为 Team 版本 | L3 | 无（不用 Agent Team） | 不再需要 |
+| 2 | 宿主层插件调用 `ctx.agentPresets.serviceFor(agent, 'planMode')` 能否拿到控制器，`set(agent, true)` 是否生效 | L3 | M3.3、M3.6 | 待核实 |
+| 3 | bundle 插入的 preset：子行以包名子路径引用本包模块能否解析和激活，persona 与 `tool-fs` 的 `write: false` 是否生效，能否在设置与新会话中选到 | L3 / L4 | 无（不用角色 preset） | 不再需要 |
+| 4 | 本包的宿主插件经 `subagents.startActivation` 启动后台子 agent，带 prompt、cwd、agentOptions、outputSchema；父 agent 的步继续；完成通知带结构化结果回到父 agent。原项「preset 内的 `tool-subagent` 派出角色 preset 子 agent」按定案改为这一项 | L3 | M7 后台派发 | 待核实（派发可行性验证 a） |
+| 4b | `tools/pre-execute` 看到子 agent 的工具调用，`exec.agent` 能映射回派发它的任务；范围外的写入被拒，拒绝以工具错误回到子 agent | L3 | M7 写入范围门禁 | 待核实（派发可行性验证 b） |
+| 5 | 第三方右侧栏标签页：`sidebarRightTabs.register`（带 `extension`）、正文槽与 guide 入口是否出现；`dsh.client.inject` 列出 sidebar-right 后加载顺序是否正确 | L4 | M8 | 待核实 |
+| 6 | 第三方客户端调用 `ctx.sidebarRight.openTab('browser', { params: { url: 'http://127.0.0.1:<端口>/' } })`，webview 能否打开本机查看器并正常交互（含实时推送） | L4 | M8 查看器第一步 | 待核实 |
+| 7 | 自己标签页里的 `<iframe>` 指向回环地址在 Desktop 是否被拦 | L4 | M8 | 待核实 |
+| 8 | 第三方客户端 inject `remote.workspaceFiles` 后 `read`、`list`、`changes` 是否可用 | L4 | M8 原生标签页 | 待核实 |
+| 9 | 第三方宿主插件注册的会话投影能否经 `faceOf(key)` 到达客户端 | L3（宿主侧注册）/ L4 | M8 | 待核实 |
+| 10 | 第三方以 `pwsh`、`write` 为键注册 `tool.call.toolview` 的行为（覆盖、优先级、报错） | L4 | M8 guard 卡片 | 待核实 |
+| 11 | 匹配 `tool/result` 的第三方聊天节点定义能否渲染在工具行之后 | L4 | M8 guard 卡片 | 待核实 |
+| 12 | 在 `agent/pre-step` 给目标轮追加的 notice 是否破坏 `goal-round-driver` 的预约校验；`update_goal` 的 `complete` 能否在 `tools/pre-execute` 拦下 | L3 | M2.3 目标轮投影、M7 完成门禁 | 待核实（派发可行性验证 c） |
+| 13 | guard 在 `tools/pre-execute` 里调用 `userQuestions.ask` 与 `approval.request` 时卡片是否出现、取消时信号是否正确；`conversation.approval.detail` 子槽能否由第三方占用 | L4 | M3.5 | 待核实 |
+| 14 | `tool-ask-user` 改为 `mode: timed` 后，pending 与晚到答复的完整路径 | L4 | M3.4、M3.5（若用 timed 卡） | 待核实 |
+| 15 | 用命令通道做 UI 写回时会话日志的增长量，以及确认命令运行不进模型请求 | L3（不进模型）/ L4（UI 写回） | M3.5 异步卡回写、M8 | 待核实 |
+| 16 | 主 Agent 身份文本与 `glm-prompt` 方言改写的叠加结果。原项「`glm-prompt` 与 preset persona 的叠加」按定案改为这一项 | L3 | M3.1 | 待核实 |
+| 17 | schedule 投递到冷会话时，恢复出的 agent 的工具面与本包各行是否齐全 | L4 | M7 巡检、M6 排期 | 待核实 |
 
 ## 3. 需要用户的事项
 
