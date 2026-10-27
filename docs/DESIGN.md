@@ -74,13 +74,70 @@ GLM-Hourness
 - `register(definition)` 没有第二个参数，不存在 `when` 激活谓词；作用域内注册遮蔽全局同名工具。
 - `restrict()` 只能在作用域上下文调用，只过滤继承来的工具，不影响本作用域自己的注册；名字必须是已知的全局工具。
 - 每一步先执行 `system-prompt/assemble`，再执行 `agent/pre-step`。发给模型的工具列表就是组装结果里的 `assembly.tools`（名称、描述、参数、`deferLoading`），组装瀑布可以逐请求改写它。
-- 路由只出现在组装变量 `variables.provider` / `variables.model` 中（由 `installModelSelection` 注入）；`agent/pre-step` 载荷只有 `{agent, messages, signal, step}`。
+- 路由只出现在组装变量 `variables.provider` / `variables.model` 中（由 `installModelSelection` 注入）；`agent/pre-step` 载荷只有 `{agent, messages, turn, step, signal}`。
 - 工具执行按名在调用方作用域的可见定义中解析，与本次请求的工具面无关：不在工具面里的已注册工具被直接调用时照常执行。
 - `tools.execute(input)` 让一次调用走完 pre-execute、guard、执行、post-execute 与结果渲染；带 `parent` 令牌的调用被各监听器视为传输层子调用（`run_code` 的先例），会话检查点等监听器跳过它。
 - `agent/pre-step` 的决策 `messages` 会作为该步输入追加进会话；inbox 按消息 `id` 去重，重复或缺失 `id` 会抛错，因此合成 notice 必须带 `id` 与 `role`（与 `createUserMessage` 同形）。
 - `session.deriveMessages()` 给出请求可见的历史（已应用压缩投影）。消息 `source` 只校验 `kind` 非空，其余字段原样保存。
 
 影响：`glm-prompt` 与 `toolsearch` 依赖 `executable()` 捕获原生执行器，在桌面版运行时会抛错；`glm-prompt` 的异常被捕获后，提示词改写与别名都不会安装。L3 探针确认（2026-10-27）：GLM 路由下系统提示词仍是 DSH 原文，工具面是 28 个原生工具，模型调用 `Read` 得到 `unknown tool "Read"`；工具检索也没有延迟任何工具。
+
+#### 接口对照表〔实读 2026-10-28，`ROADMAP.md` M1.6〕
+
+本包用到的每个 DSH 钩子、服务成员与载荷字段，逐项对照 `reference/dsh-desktop-0.2.1-rc.3/<包>/lib/index.js`。证据写作「包:行」，包名省略 `dsh-` 前缀；`官方` 指已安装的官方 `.d.ts`（`@deepseek-ai/dsh-llm`、`@deepseek-ai/dsh-attachment`）。结构类型集中在薄适配层：`src/shared/dsh-min.ts`（宿主钩子、服务、载荷）与 `src/shared/lm-min.ts`（LLM 消息与流的词汇、附件服务成员）；各行不再自带宿主类型。宿主升级时，先重新导出运行时包，再按本表逐项复核这两个文件。
+
+插件与 Loader：
+
+| 接口 | 使用者 | rc.3 证据 | 结论 |
+| --- | --- | --- | --- |
+| 模块导出 `name`、`inject`、`Config`、`apply(ctx, config)` | 全部行 | cordis:1625–1635（读 `plugin.name`、`plugin.Config`、`plugin.inject`），cordis:1536（`plugin.apply`），cordis:956–961（`Config` 经 `~standard` 校验） | 一致 |
+| Loader 行的 `inject` 与模块的 `inject` 合并 | glm-llm、glm-login、memory、hourness | cordis-plugin-loader:631 | 一致 |
+| `ctx.on(name, listener, options)`；`prepend` 排到最外层，`global` 跳过分发过滤 | 全部行 | cordis:372–381、cordis:263；服务的过滤只认同一 isolate，cordis:1785–1787 | 一致 |
+| `ctx.get(name)`：不需要 inject，提供方 fiber 未激活时为 `undefined` | glm-llm（`attachments`、`fs`） | cordis:763–766 | 一致 |
+
+事件：
+
+| 接口 | 使用者 | rc.3 证据 | 结论 |
+| --- | --- | --- | --- |
+| `agent/created`（serial，`{agent, source, signal?}`） | glm-prompt | agent:581–585 | 一致 |
+| `system-prompt/assemble`（waterfall，`(assembly, context, next)`，按 agent 作用域分发） | glm-prompt | system-prompt:398；`assembly` 的 `sections{name, text, interpolate?}`、`contexts`、`tools{name, description, parameters, deferLoading?}`、`variables` 见 system-prompt:365–393；完整节在瀑布之后恢复，system-prompt:399–405 | 一致 |
+| 组装变量 `variables.provider` / `variables.model` | glm-prompt（`src/shared/route.ts`） | agent:167–181（`installModelSelection` 在 `next()` 之后写入） | 一致 |
+| `agent/pre-step`（waterfall，`{agent, messages, turn, step, signal}`；默认决策 `enter` 带本步认领的消息） | glm-prompt（工具检索公告、todo 提醒） | agent-loop:901–925；`agent` 由 agent:241–245 并入；空决策守卫照抄 agent:193–197 | 一致；本节上文原写载荷无 `turn`，已更正 |
+| `tools/pre-execute`（waterfall，`(exec, next)`，默认 `allow`） | guard、workflow | tools:3320–3321；决策 `allow` / `deny{reason, info?}` / `ask` / `cancel`，tools:3322–3345 | 一致；guard 的决策类型补上 `ask`、`cancel` 透传 |
+| `exec` 字段：`callId`、`rootCallId`、`name`、`arguments`、`signal`、`agent?`、`parent?`、`schema?`、`deferContext`、`concludeTurn` | guard、workflow | tools:3229–3260 | **偏差已修**：guard 从 `exec.agentId` / `exec.sessionId` 取违规记录的 id，rc.3 没有这两个字段，记录里永远为空；改为 `exec.agent.id` 与 `exec.agent.session.id` |
+| `llm/stream`（waterfall，`(options, next)`） | memory（用量流水）、glm-compact | llm:2397；`options` 即 `GenerateOptions`（官方 types.d.ts:506–548：`provider`、`model`、`messages`、`sessionId?`、`purpose?`），编译期检查 `LlmStreamOptionsContractCheck` | 一致；memory 对 `provider` / `model` 的 `'unknown'` 兜底删除（两者必填）。L3 探针实测每个 GLM 步一条用量记录，带 `sessionId`；压缩调用带 `purpose: 'compaction'` |
+| `tools/post-execute`、`ctx.systemPrompt` | 无 | tools:3600 | 已无行使用（todo 提醒改到 `agent/pre-step` 之后），结构类型删除 |
+
+服务：
+
+| 接口 | 使用者 | rc.3 证据 | 结论 |
+| --- | --- | --- | --- |
+| `tools.register(definition)`：校验 `output{schema, render, presentationMeta?}`，`run_code` 保留；经 `agent.ctx` 注册即作用域注册 | glm-prompt（别名、检索工具）、memory（记忆工具） | tools:2974–2984 | 类型偏差已修：memory 声明了不存在的第二参数 |
+| `tools.get(name, scope)` | glm-prompt | tools:3091–3094 | 一致 |
+| `tools.execute(input)`，最终结果 `{isError, content, error?, value?, additionalContexts?, concludesTurn?}` | DeferredToolCall | tools:3210–3212、tools:3229–3260；tools:3687–3706 | 一致 |
+| 工具体 `execute(args, exec)`；`render(exec.arguments, value)`、`presentationMeta` | 全部别名与自有工具 | tools:3406、tools:3644、tools:3650–3653 | 一致 |
+| `llm.registerAdapter(providers, adapter)`，返回带 `replace` 的 disposer | glm-llm | llm:1842；adapter 本身由 `AdapterContractCheck` 对照官方 `LlmAdapter`（§8） | 一致 |
+| `llm.stream(options)` | glm-compact（重新派发） | llm:2393–2396 | 一致 |
+| `commands.register(definition)`：`name` 须匹配 `/^[a-z][a-z0-9_-]*$/u`，`description` 非空；调用参数 `rawInput`；结果 `success`（`text` 可选）/ `error`（`text` 非空） | glm-login、hourness | commands:266–269、commands:78、commands:148–180、commands:382、commands:186–206 | 一致；hourness 上下文类型里多余的 `effect?: never` 删除 |
+| `attachments.readImageRequest(ref, target, signal?)`、`attachments.imageHostPath(ref)` | glm-llm（读图） | attachment:290、attachment:338（抽象），attachment-local:1038、attachment-local:1053；编译期检查 `AttachmentsContractCheck` 对照官方 `AttachmentStore` | 一致 |
+| `fs.processPathFromHostPath(hostPath)` | glm-llm（卸载图片的占位路径） | fs:95、fs-local:792–795；pi-ai 同一用法 llm-pi-ai:2908–2909 | 一致 |
+
+对象与消息：
+
+| 接口 | 使用者 | rc.3 证据 | 结论 |
+| --- | --- | --- | --- |
+| agent：`id`（与会话共用）、`ctx`（作用域上下文）、`session` | glm-prompt、guard、工具检索 | agent-loop:748–781 | 类型偏差已修：结构类型里的 `model` 成员在 rc.3 不存在，删除 |
+| session：`id`（取自 `header.id`）、`header{id, createdAt, cwd?, parentSession?, isSeeded}`、`deriveMessages()` | guard（`header.cwd` 作包含根）、工具检索、todo 提醒 | session:1344–1346、session:1820–1826、session:1672–1686 | 一致 |
+| 派生消息：助手消息 `source{kind: 'model', provider, model}`，工具调用为 `tool-call` 块；工具结果带 `toolCallId`、`isError` | todo 提醒、工具检索 | llm:66–78（`createAssistantMessage`），session:862–868、session:1217–1218 | 一致 |
+| 合成 notice 与 `createUserMessage` 同形（`id`、`role: 'user'`、冻结） | 工具检索公告、todo 提醒 | llm:37–66 | 一致 |
+
+工具名：
+
+| 名字 | 使用者 | rc.3 证据 | 结论 |
+| --- | --- | --- | --- |
+| 别名覆盖的原生工具 `read`、`write`、`edit`、`read_image`、`glob`、`grep`、`pwsh`、`todo_write` | glm-prompt | tool-fs:251、549、690、986；tool-fs-search:782、1090；tool-pwsh:466；tool-todo:96 | 一致 |
+| 派遣工具 `spawn_teammate`、`send_message`、`team_task_create`、`team_task_update`、`subagent`、`subagent_fork` | workflow | experimental-tool-agent-team:251、293、365、457；tool-subagent-control:23；tool-subagent:313（`toolName` 默认 `subagent`），base 的 `cordis.patch.yml`:384、395（`subagent`、`subagent_fork` 两行） | **偏差已修**：`subagent_fork` 不在名单里，fork 派遣从未记录。L3 探针实测运行时工具面同时有 `subagent` 与 `subagent_fork` |
+| compaction-basic 的指令开头、`purpose: 'compaction'`、经 `ctx.llm.stream()` 摘要 | glm-compact | compaction-basic:244、320、323 | 一致 |
 
 ### 2.5 行健康〔规划〕
 
@@ -158,7 +215,7 @@ LLM 平面（bundle `g6n` 形态）：`HTTP-Referer`、`User-Agent: ZCode/<ver>`
 ### 4.6 模型目录与思考档位
 
 - 目录：`glm-5.3`（GLM-5.3）、`glm-5.3-flash`（GLM-5.3-Flash）；上下文窗口 512,000；默认 `max_tokens` 32000〔实读〕。
-- 输入模态按模型如实声明（`src/glm-llm/lm-min.ts` `GLM_MODELS`）：GLM-5.3 没有视觉塔，只声明文本；GLM-5.3-Flash 声明文本与图像〔用户提供的事实 2026-10-28〕。目录外的模型 id 只声明文本。此前两个模型都声明图像。只声明文本的路由上，DSH 在适配器之前把请求里的图片换成文字占位（`dsh-llm` `projectImagesForTextModel`：「[image omitted because this model accepts text only; attachment sha256:…]」），`read_image` 拒读（「… does not declare image input; switch to an image-capable model to read images」），会话控制器拒收用户附图。
+- 输入模态按模型如实声明（`src/glm-llm/models.ts` `GLM_MODELS`）：GLM-5.3 没有视觉塔，只声明文本；GLM-5.3-Flash 声明文本与图像〔用户提供的事实 2026-10-28〕。目录外的模型 id 只声明文本。此前两个模型都声明图像。只声明文本的路由上，DSH 在适配器之前把请求里的图片换成文字占位（`dsh-llm` `projectImagesForTextModel`：「[image omitted because this model accepts text only; attachment sha256:…]」），`read_image` 拒读（「… does not declare image input; switch to an image-capable model to read images」），会话控制器拒收用户附图。
 - 思考：GLM-5.3 系强制思考；effort 三档 `low` / `high` / `max`，默认 `high`〔定案 2026-10-27，五档词汇 API 接受但 GLM 不用〕。
 
 ### 4.6a 用量块
@@ -402,8 +459,8 @@ L3 探针：沙盒里把压缩阈值调低，摘要请求末条是 ZCode 提示�
 ## 8. 契约与适配层
 
 - adapter：`ZcodeAdapter` 底部有编译期检查 `AdapterContractCheck`，对照官方 `LlmAdapter` 类型〔实读〕。
-- 事件钩子与服务：其余行使用手写结构类型（`src/shared/dsh-min.ts`），没有对照官方类型。rc.3 已漂移过一次（路由字段为空）。改为对照官方 `.d.ts` 做类型级检查〔规划〕。
-- 适配层：所有用到 DSH 接口的地方收进一层薄适配，宿主升级只改这一层〔规划〕。
+- 事件钩子与服务：结构类型逐项对照 rc.3 运行时包，证据见 §2.4a 接口对照表〔实读 2026-10-28〕。官方 `.d.ts` 只装了 `dsh-llm`、`dsh-attachment`、`cordis` 三个包（新增开发依赖须用户批准），装了的地方加编译期检查：`LlmStreamOptionsContractCheck`（`GenerateOptions` 覆盖 `llm/stream` 监听器读取的字段）、`AttachmentsContractCheck`（`AttachmentStore` 覆盖通道读图用的成员）。其余接口没有官方类型可对照，靠对照表与 L3 探针。
+- 适配层：薄适配层是 `src/shared/dsh-min.ts`（宿主钩子、服务、载荷、命令、会话）与 `src/shared/lm-min.ts`（LLM 消息与流的词汇、附件服务成员）。各行只从这两个文件取宿主类型；GLM 模型目录在 `src/glm-llm/models.ts`，不属于适配层〔已实现 2026-10-28〕。
 - 回归：L3 沙盒真实启动加行为探针做成门禁；每次 DSH 升级先跑一遍（`DEVELOPMENT.md` §3、`ROADMAP.md` M1.7）。
 
 ## 9. 开放问题

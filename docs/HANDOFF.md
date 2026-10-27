@@ -16,7 +16,7 @@
 
 ```
 src/           主包 TypeScript 源码
-tests/         21 个 spec，198 用例；tests/fake-rc3.ts 为 rc.3 运行时替身
+tests/         21 个 spec，199 用例；tests/fake-rc3.ts 为 rc.3 运行时替身
 ui/            独立 UI bundle（纯 JS，不参与 tsc）
 scripts/       preflight-bundle.mjs、check-verbatim.mjs、smoke-zcode*.mjs、probe/（L3 探针）；scripts/dev/ 为历史调试脚本，部分针对已不存在的接口
 docs/          宪章、设计、编排、路线、事实账、流程、交接；docs/reference/ 为事实参考原文
@@ -35,13 +35,15 @@ dist/          不入库：tsc 产物（profile 通过 pnpm link 使用）
 | `glm-login` | 可用 |
 | `glm-prompt` | 在 rc.3 运行时上生效，含 ZCode 3.16.3 local 工具检索；七个别名的描述与 schema 均已按 3.16.3 重建；todo 提醒按助手轮次从会话历史计数（L3 探针 35/35，2026-10-28）；桌面版需重启才加载 |
 | `glm-compact` | 改为在 `llm/stream` 上替换压缩指令（2026-10-27），L3 探针实测压缩生效 |
-| `guard` | 拦截与纠偏可用；告知、申报、记录三段未接通 |
+| `guard` | 拦截与纠偏可用；告知、申报、记录三段未接通（违规记录的 agent 与会话 id 取值已按 rc.3 修正，2026-10-28） |
 | `memory` | 工具与用量流水可用；记忆几乎未被使用 |
-| `workflow` | 只记录派遣类调用 |
+| `workflow` | 只记录派遣类调用（2026-10-28 起含 `subagent_fork`） |
 | `hourness` | `/hourness` 可用；峰谷口径错误 |
 | `glm-hourness/ui` | 功能可用，视觉未被接受 |
 
-装机：10 行均 `fiberPhase: active`，无激活错误（2026-10-27 删除 `toolsearch` 行之前的记录）。门禁 `npm run build`、`npm run preflight`、`npm test`（198 用例，逐字门禁 397 段、已知偏差 0 条）全绿，`npm run probe` 35/35（2026-10-28）。
+装机：10 行均 `fiberPhase: active`，无激活错误（2026-10-27 删除 `toolsearch` 行之前的记录）。门禁 `npm run build`、`npm run preflight`、`npm test`（199 用例，逐字门禁 397 段、已知偏差 0 条）全绿，`npm run probe` 38/38（2026-10-28）。
+
+宿主接口：每个用到的 DSH 钩子、服务成员与载荷字段都已对照 rc.3 运行时包，证据见 `DESIGN.md` §2.4a 接口对照表；宿主结构类型集中在 `src/shared/dsh-min.ts` 与 `src/shared/lm-min.ts`。
 
 ## 4. 审计数据快照（2026-10-27）
 
