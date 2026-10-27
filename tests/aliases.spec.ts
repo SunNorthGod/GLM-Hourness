@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict'
+import { sep } from 'node:path'
 import test from 'node:test'
-import { aliasSpecs, buildAlias, buildAliases, semanticBoolean } from '../src/glm-prompt/aliases.ts'
+import { aliasSpecs, bashDescription, bashSchema, buildAlias, buildAliases, semanticBoolean, semanticNumber } from '../src/glm-prompt/aliases.ts'
 import { buildReadAlias, fileExtension, mapReadArgs, readDescription, renderReadWindow } from '../src/glm-prompt/read-alias.ts'
-import { READ_IMAGE_LINE, READ_INPUT_SCHEMA, READ_VIDEO_LINE } from '../src/glm-prompt/zcode-tool-text.ts'
+import { globResultText, GREP_DESCRIPTION, GREP_SCHEMA, grepNativeCalls, grepResultText, splitGlobPatterns, typeGlobPattern, zcodeDisplayPath } from '../src/glm-prompt/search-alias.ts'
+import { READ_IMAGE_LINE, READ_INPUT_SCHEMA, READ_VIDEO_LINE, TODO_WRITE_DESCRIPTION, TODO_WRITE_INPUT_SCHEMA } from '../src/glm-prompt/zcode-tool-text.ts'
 import { installDialect } from '../src/glm-prompt/index.ts'
 import type { ToolDefinitionLike } from '../src/shared/dsh-min.ts'
 import { fakeRuntime, NATIVE_NAMES } from './fake-rc3.ts'
@@ -20,11 +22,11 @@ const ESCALATION = {
   sandbox_permissions: { type: 'string', description: 'The narrowest wider sandbox mode for a one-shot retry of the exact operation the sandbox just denied; the retry asks the user for approval.', enum: ['workspace-write', 'danger-full-access'] },
   justification: { type: 'string', description: 'Required with sandbox_permissions: one sentence for the user explaining why this exact file operation needs the wider access.' },
 }
-function native(name: string, rec: Recorder, value: (args: unknown) => unknown, options: { escalation?: boolean, schema?: Record<string, unknown> } = {}): ToolDefinitionLike {
+function native(name: string, rec: Recorder, value: (args: unknown) => unknown, options: { escalation?: boolean, schema?: Record<string, unknown>, properties?: Record<string, unknown> } = {}): ToolDefinitionLike {
   return {
     name,
     description: `native ${name}`,
-    parameters: { type: 'object', properties: { file_path: { type: 'string' }, ...(options.escalation === true ? ESCALATION : {}) }, required: ['file_path'] },
+    parameters: { type: 'object', properties: { file_path: { type: 'string' }, ...options.properties, ...(options.escalation === true ? ESCALATION : {}) }, required: ['file_path'] },
     output: {
       schema: options.schema ?? { type: 'object' },
       render: (args, result) => [{ type: 'text', text: `native ${name} ${JSON.stringify(args)} ${JSON.stringify(result)}` }],
@@ -73,12 +75,129 @@ test('the Read description drops what DSH cannot honor: video always, images wit
   assert.equal(buildReadAlias(readNative(rec), imageNative(rec)).description, readDescription(true))
 })
 
-test('Bash maps seconds to timeoutMs and working_dir to workdir; shell is dropped', async () => {
+test('Glob and TodoWrite carry the 3.16.3 descriptions and schemas', () => {
+  assert.equal(spec('Glob').description, 'Fast file pattern matching. Supports glob patterns like "**/*.js" or "src/**/*.ts". Returns matching file paths sorted by modification time.')
+  assert.equal(JSON.stringify(spec('Glob').schema), '{"type":"object","properties":{"pattern":{"type":"string","description":"The glob pattern to match files against"},"path":{"type":"string","description":"The directory to search in. If not specified, the current working directory will be used. IMPORTANT: Omit this field to use the default directory. DO NOT enter \\"undefined\\" or \\"null\\" - simply omit it for the default behavior. Must be a valid directory path if provided."}},"required":["pattern"],"additionalProperties":false,"$schema":"https://json-schema.org/draft/2020-12/schema"}')
+  assert.equal(TODO_WRITE_DESCRIPTION, 'Create and update a task list for the current session. The list is rendered to the user as your working plan.\n\n- Each todo has `content`, `status` ("pending" | "in_progress" | "completed"), and `priority` ("high" | "medium" | "low").\n- Send the full list each call; it replaces the previous one.\n- Keep one item `in_progress` at a time and mark it `completed` when done.')
+  assert.equal(JSON.stringify(TODO_WRITE_INPUT_SCHEMA), '{"type":"object","properties":{"todos":{"type":"array","items":{"type":"object","properties":{"content":{"type":"string","minLength":1,"description":"Brief description of the task"},"status":{"type":"string","enum":["pending","in_progress","completed"],"description":"Current status of the task"},"priority":{"type":"string","enum":["high","medium","low"],"description":"Priority level of the task"}},"required":["content","status","priority"],"additionalProperties":false},"description":"The complete updated todo list. At most one item may be in_progress at a time."}},"required":["todos"],"additionalProperties":false,"$schema":"https://json-schema.org/draft/2020-12/schema"}')
+})
+
+test('Grep is the 3.16.3 description and schema without what the native cannot honor', () => {
+  assert.equal(spec('Grep').localized, true)
+  assert.equal(GREP_DESCRIPTION, 'Content search built on ripgrep. Prefer this over `grep`/`rg` via Bash \u2014 results integrate with the permission UI and file links.\n\n- Full regex syntax (e.g. "log.*Error", "function\\s+\\w+"). Ripgrep, not grep \u2014 escape literal braces (`interface\\{\\}`).\n- Filter with `glob` (e.g. "**/*.tsx") or `type` (e.g. "js", "py", "rust").\n- `output_mode`: "content" (matching lines), "files_with_matches" (paths only, default), or "count".')
+  assert.equal(JSON.stringify(GREP_SCHEMA), '{"type":"object","properties":{"pattern":{"type":"string","description":"The regular expression pattern to search for in file contents"},"path":{"type":"string","description":"File or directory to search in (rg PATH). Defaults to current working directory."},"glob":{"type":"string","description":"Glob pattern to filter files (e.g. \\"*.js\\", \\"*.{ts,tsx}\\") - maps to rg --glob"},"output_mode":{"type":"string","enum":["content","files_with_matches","count"],"description":"Output mode: \\"content\\" shows matching lines (supports -n line numbers, head_limit), \\"files_with_matches\\" shows file paths (supports head_limit), \\"count\\" shows match counts (supports head_limit). Defaults to \\"files_with_matches\\"."},"-n":{"type":"boolean","description":"Show line numbers in output (rg -n). Requires output_mode: \\"content\\", ignored otherwise. Defaults to true."},"-i":{"type":"boolean","description":"Case insensitive search (rg -i)"},"type":{"type":"string","description":"File type to search (rg --type). Common types: js, py, rust, go, java, etc. More efficient than include for standard file types."},"head_limit":{"type":"number","description":"Limit output to first N lines/entries, equivalent to \\"| head -N\\". Works across all output modes: content (limits output lines), files_with_matches (limits file paths), count (limits count entries). Defaults to 250 when unspecified. Pass 0 for unlimited (use sparingly \u2014 large result sets waste context)."},"offset":{"type":"number","description":"Skip first N lines/entries before applying head_limit, equivalent to \\"| tail -n +N | head -N\\". Works across all output modes. Defaults to 0."}},"required":["pattern"],"additionalProperties":false,"$schema":"https://json-schema.org/draft/2020-12/schema"}')
+  assert.equal(spec('Grep').schema, GREP_SCHEMA)
+})
+
+test('Bash is the ZCode description and schema with only the pwsh localizations', () => {
+  assert.equal(bashDescription(true), [
+    'Executes a PowerShell command and returns its output.',
+    '',
+    "- Working directory does not persist between calls: each call starts a fresh process in the session working directory, so prefer absolute paths. Shell state (env vars, functions) does not persist; the shell starts without the user's profile.",
+    '- IMPORTANT: Avoid using this tool to run `find`, `grep`, `cat`, `head`, `tail`, `sed`, `awk`, or `echo` commands, unless explicitly instructed or after you have verified that a dedicated tool cannot accomplish your task. Instead, use the appropriate dedicated tool as this will provide a much better experience for the user.',
+    '- `timeout` is in milliseconds: default 120000, max 600000.',
+    '- `run_in_background` runs the command detached: it keeps running across turns and re-invokes you when it exits. No `&` needed.',
+    '',
+    '# Git',
+    '- Interactive flags (`-i`, e.g. `git rebase -i`, `git add -i`) are not supported in this environment.',
+    '- Use the `gh` CLI for GitHub operations (PRs, issues, API).',
+    '- Commit or push only when the user asks. If on the default branch, branch first.',
+  ].join('\n'))
+  assert.ok(!bashDescription(false).includes('run_in_background'))
+  const field = 'Clear, concise description of what this command does in active voice. Never use words like \\"complex\\" or \\"risk\\" in the description - just describe what it does.\\n\\nFor simple commands (git, npm, standard CLI tools), keep it brief (5-10 words):\\n- ls \u2192 \\"List files in current directory\\"\\n- git status \u2192 \\"Show working tree status\\"\\n- npm install \u2192 \\"Install package dependencies\\"\\n\\nFor commands that are harder to parse at a glance (piped commands, obscure flags, etc.), add enough context to clarify what it does:\\n- find . -name \\"*.tmp\\" -exec rm {} \\\\; \u2192 \\"Find and delete all .tmp files recursively\\"\\n- git reset --hard origin/main \u2192 \\"Discard all local changes and match remote main\\"\\n- curl -s url | jq \'.data[]\' \u2192 \\"Fetch JSON from URL and extract data array elements\\"'
+  assert.equal(JSON.stringify(bashSchema(true)), `{"type":"object","properties":{"command":{"type":"string","description":"The command to execute"},"timeout":{"type":"number","description":"Optional timeout in milliseconds (max 600000)"},"description":{"type":"string","description":"${field}"},"run_in_background":{"type":"boolean","description":"Set to true to run this command in the background."}},"required":["command"],"additionalProperties":false,"$schema":"https://json-schema.org/draft/2020-12/schema"}`)
+  assert.deepEqual(Object.keys(bashSchema(false).properties as object), ['command', 'timeout', 'description'])
+})
+
+test('Bash follows the native: background line and field only when pwsh offers background runs, escalation fields appended', () => {
   const rec = recorder()
-  const alias = buildAlias(spec('Bash'), native('pwsh', rec, () => ({})))
-  await alias.execute({ command: 'npm test', timeout: 30, working_dir: 'C:/ws', shell: 'bash' }, undefined)
-  // description is optional in ZCode but required by pwsh: the shim derives it from the command.
-  assert.deepEqual(rec.calls[0]!.args, { command: 'npm test', description: 'npm test', timeoutMs: 30000, workdir: 'C:/ws' })
+  const background = { run_in_background: { type: 'boolean' } }
+  const full = buildAlias(spec('Bash'), native('pwsh', rec, () => ({}), { escalation: true, properties: background }))
+  assert.equal(full.description, bashDescription(true))
+  assert.deepEqual(Object.keys(full.parameters.properties as object), ['command', 'timeout', 'description', 'run_in_background', 'sandbox_permissions', 'justification'])
+  const bare = buildAlias(spec('Bash'), native('pwsh', rec, () => ({})))
+  assert.equal(bare.description, bashDescription(false))
+  assert.deepEqual(bare.parameters, bashSchema(false))
+})
+
+test('Bash maps ZCode milliseconds and semantic values onto pwsh; description is derived when absent', async () => {
+  const rec = recorder()
+  const alias = buildAlias(spec('Bash'), native('pwsh', rec, () => ({}), { escalation: true }))
+  await alias.execute({ command: 'npm test', timeout: 30000, description: 'Run tests', run_in_background: 'yes', dangerouslyDisableSandbox: true, sandbox_permissions: 'workspace-write', justification: 'needed' }, undefined)
+  await alias.execute({ command: 'git status\ngit log -1', timeout: ' 45000 ' }, undefined)
+  await alias.execute({ command: 'Get-ChildItem', timeout: 0, run_in_background: false }, undefined)
+  await alias.execute({ command: 'x', timeout: 'soon' }, undefined)
+  assert.deepEqual(rec.calls.map(call => call.args), [
+    { command: 'npm test', description: 'Run tests', timeoutMs: 30000, run_in_background: true, sandbox_permissions: 'workspace-write', justification: 'needed' },
+    { command: 'git status\ngit log -1', description: 'git status', timeoutMs: 45000 },
+    // ZCode reads timeout 0 as the default; pwsh rejects 0, so the shim omits it.
+    { command: 'Get-ChildItem', description: 'Get-ChildItem', run_in_background: false },
+    // Not a number: passed on for the native to reject, as ZCode's schema would.
+    { command: 'x', description: 'x', timeoutMs: 'soon' },
+  ])
+  assert.deepEqual([' 12 ', '', 'x', 7, null].map(value => semanticNumber(value)), [12, '', 'x', 7, null])
+})
+
+test('Glob maps pattern (trimmed) and path, and renders ZCode\'s list: newest first, display paths, at most 100', async () => {
+  const rec = recorder()
+  const alias = buildAlias(spec('Glob'), native('glob', rec, () => ({ root: '.', paths: [['src', 'old.ts'].join(sep), ['src', 'new.ts'].join(sep)] })))
+  const value = await alias.execute({ pattern: ' **/*.ts ', path: 'src', ip: '.git' }, undefined)
+  assert.deepEqual(rec.calls[0]!.args, { pattern: '**/*.ts', path: 'src' })
+  assert.deepEqual(alias.output.render({ pattern: '**/*.ts' }, value), [{ type: 'text', text: 'src/new.ts\nsrc/old.ts' }])
+  assert.equal(globResultText([]), 'No files found')
+  const many = Array.from({ length: 101 }, (_, index) => `f${index}.ts`)
+  const lines = globResultText(many).split('\n')
+  assert.equal(lines.length, 101)
+  assert.equal(lines[0], 'f100.ts')
+  assert.equal(lines.at(-1), '(Results are truncated. Consider using a more specific path or pattern.)')
+  assert.equal(zcodeDisplayPath('C:\\ws\\outside.ts'), 'C:\\ws\\outside.ts')
+  alias.output.presentationMeta!({ pattern: ' a ' }, value)
+  assert.deepEqual(rec.metaArgs, [{ pattern: 'a' }])
+})
+
+test('Grep turns -i, glob and type into native calls the way ZCode builds its ripgrep filters', () => {
+  assert.deepEqual(grepNativeCalls({ pattern: '  todo  ', path: 'src', output_mode: 'content', '-n': false }), [{ pattern: 'todo', path: 'src' }])
+  assert.deepEqual(grepNativeCalls({ pattern: 'todo', '-i': true }), [{ pattern: '(?i)todo' }])
+  assert.deepEqual(grepNativeCalls({ pattern: ' ', '-i': true }), [{ pattern: '' }])
+  assert.deepEqual(grepNativeCalls({ pattern: 'x', glob: '*.{ts,tsx}' }), [{ pattern: 'x', include: '*.{ts,tsx}' }])
+  assert.deepEqual(grepNativeCalls({ pattern: 'x', glob: '*.ts,*.js  !dist/**', type: 'py' }).map(call => call.include), ['*.ts', '*.js', '!dist/**', '*.py'])
+  assert.deepEqual(splitGlobPatterns(' a,b  {c,d} '), ['a', 'b', '{c,d}'])
+  assert.deepEqual(['js', '.TS', 'go', 'vue', 'c#', ''].map(typeGlobPattern), ['*{.js,.jsx,.mjs,.cjs}', '*{.ts,.tsx,.mts,.cts}', '*.go', '*.vue', undefined, undefined])
+})
+
+test('Grep runs one native call per filter and merges the matches', async () => {
+  const rec = recorder()
+  const byInclude: Record<string, unknown> = {
+    '*.ts': { matches: [{ path: 'a.ts', lineNumber: 1, line: 'x' }, { path: 'b.ts', lineNumber: 2, line: 'x' }] },
+    '*.py': { matches: [{ path: 'c.py', lineNumber: 3, line: 'x' }, { path: 'a.ts', lineNumber: 1, line: 'x' }] },
+  }
+  const alias = buildAlias(spec('Grep'), native('grep', rec, args => byInclude[(args as { include: string }).include]))
+  const value = await alias.execute({ pattern: 'x', glob: '*.ts', type: 'py', output_mode: 'content' }, undefined)
+  assert.deepEqual(rec.calls.map(call => call.args), [{ pattern: 'x', include: '*.ts' }, { pattern: 'x', include: '*.py' }])
+  assert.deepEqual(value, { matches: [{ path: 'a.ts', lineNumber: 1, line: 'x' }, { path: 'b.ts', lineNumber: 2, line: 'x' }, { path: 'c.py', lineNumber: 3, line: 'x' }] })
+  assert.deepEqual(alias.output.render({ pattern: 'x', output_mode: 'content' }, value), [{ type: 'text', text: 'a.ts:1:x\nb.ts:2:x\nc.py:3:x' }])
+  // One filter (or none): the native value comes back as it is.
+  const single = buildAlias(spec('Grep'), native('grep', rec, () => ({ matches: [] })))
+  assert.deepEqual(await single.execute({ pattern: 'x' }, undefined), { matches: [] })
+})
+
+test('Grep renders ZCode\'s output modes and pagination over the native matches', () => {
+  const at = (path: string, lineNumber: number, line = 'hit') => ({ path: ['src', path].join(sep), lineNumber, line })
+  const value = { matches: [at('a.ts', 1), at('a.ts', 5, 'hit again'), at('b.ts', 2), at('c.ts', 9)] }
+  assert.equal(grepResultText({ pattern: 'hit' }, value), 'Found 3 files\nsrc/a.ts\nsrc/b.ts\nsrc/c.ts')
+  assert.equal(grepResultText({ pattern: 'hit', head_limit: 2 }, value), 'Found 2 files limit: 2\nsrc/a.ts\nsrc/b.ts')
+  assert.equal(grepResultText({ pattern: 'hit', head_limit: 2, offset: 2 }, value), 'Found 1 file offset: 2\nsrc/c.ts')
+  assert.equal(grepResultText({ pattern: 'hit', offset: 5 }, value), 'No files found')
+  assert.equal(grepResultText({ pattern: 'hit', output_mode: 'content' }, value), 'src/a.ts:1:hit\nsrc/a.ts:5:hit again\nsrc/b.ts:2:hit\nsrc/c.ts:9:hit')
+  assert.equal(grepResultText({ pattern: 'hit', output_mode: 'content', '-n': false, head_limit: 1, offset: 1 }, value), 'src/a.ts:hit again\n[Showing results with pagination = limit: 1, offset: 1]')
+  assert.equal(grepResultText({ pattern: 'hit', output_mode: 'content', head_limit: 0, offset: 3 }, value), 'src/c.ts:9:hit\n[Showing results with pagination = offset: 3]')
+  assert.equal(grepResultText({ pattern: 'hit', output_mode: 'count' }, value), 'src/a.ts:2\nsrc/b.ts:1\nsrc/c.ts:1\nFound 4 total occurrences across 3 files.')
+  assert.equal(grepResultText({ pattern: 'hit', output_mode: 'count', head_limit: 1 }, value), 'src/a.ts:2\nFound 4 total occurrences across 3 files. with pagination = limit: 1')
+  assert.equal(grepResultText({ pattern: 'none', output_mode: 'content' }, { matches: [] }), 'No matches found')
+  assert.equal(grepResultText({ pattern: 'none', output_mode: 'count' }, { matches: [] }), 'No matches found\nFound 0 total occurrences across 0 files.')
+  assert.equal(grepResultText({ pattern: 'x' }, { other: true }), undefined)
+  const many = { matches: Array.from({ length: 300 }, (_, index) => at(`f${index}.ts`, 1)) }
+  assert.match(grepResultText({ pattern: 'hit' }, many)!, /^Found 250 files limit: 250\n/)
 })
 
 test('Write maps file_path and content and drops everything else when the native has no escalation fields', async () => {

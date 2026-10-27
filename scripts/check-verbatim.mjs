@@ -15,12 +15,8 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
-/** Items still awaiting the source rebuild (ROADMAP M1.1). Shrink only. */
-const KNOWN_DEVIATIONS = new Set([
-  'TodoWrite description',
-  'Glob description',
-  'Grep description',
-])
+/** Items still awaiting a source rebuild. Shrink only; empty since the M1.1 tool rebuild. */
+const KNOWN_DEVIATIONS = new Set([])
 
 /**
  * Verbatim mirror files: every string and template-literal chunk they
@@ -125,7 +121,6 @@ async function loadItems() {
   const verbatim = await import('../src/glm-prompt/verbatim.ts')
   const compact = await import('../src/glm-prompt/compact.ts')
   const localize = await import('../src/glm-prompt/localize.ts')
-  const todowrite = await import('../src/glm-prompt/todowrite.ts')
   const aliases = await import('../src/glm-prompt/aliases.ts')
   const system = await import('../src/glm-llm/zcode-system.ts')
   const items = {
@@ -138,15 +133,16 @@ async function loadItems() {
     TODO_REMINDER_ECHO_HEADER: verbatim.TODO_REMINDER_ECHO_HEADER,
     'compact prompt': compact.buildCompactPrompt(undefined),
     CONTEXT_MANAGEMENT_DSH: localize.CONTEXT_MANAGEMENT_DSH,
-    'TodoWrite description': todowrite.zcodeTodoWriteDescription,
     'start-plan cliPrefix': system.ZCODE_SYSTEM.cliPrefix,
     ...Object.fromEntries(system.ZCODE_SYSTEM.stableSections.map((text, index) => [`start-plan stable section ${index + 1}`, text])),
   }
-  // Bash is a localized rewrite (DESIGN.md §5.3 ⑥), not a verbatim claim.
-  // Read is not an alias spec: its description is the mirror file's line
-  // list minus the lines DSH cannot honor (read-alias.ts readDescription),
-  // and the mirror check below covers every piece of those lines.
-  for (const spec of aliases.aliasSpecs) if (spec.zcodeName !== 'Bash') items[`${spec.zcodeName} description`] = spec.description
+  // Localized aliases (Grep, Bash; DESIGN.md §5.3 ⑥, §5.4) compose their
+  // descriptions from mirror-file lines minus or rewriting what DSH cannot
+  // honor, so they are not verbatim claims as a whole. Read is not an alias
+  // spec and composes its description the same way (read-alias.ts
+  // readDescription); TodoWrite's description is a mirror-file constant. The
+  // mirror check below covers every verbatim piece.
+  for (const spec of aliases.aliasSpecs) if (spec.localized !== true) items[`${spec.zcodeName} description`] = spec.description
   for (const file of MIRROR_FILES) {
     literalChunks(readFileSync(file, 'utf8')).forEach((chunk, index) => { items[`${file} literal ${index + 1}`] = unescapeJs(chunk) })
   }

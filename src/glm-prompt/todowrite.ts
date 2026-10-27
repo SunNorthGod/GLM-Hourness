@@ -1,34 +1,13 @@
 /**
- * TodoWrite alias: ZCode-facing schema and the shim mapping onto the DSH
- * todo_write executor. The model sees the ZCode three-field schema verbatim
- * (content/status/priority, all required); priority is advisory and is
- * stripped at the execution boundary (DSH todo items carry content+status).
+ * TodoWrite alias shim onto the DSH todo_write executor. The model sees the
+ * ZCode 3.16.3 description and three-field schema (TODO_WRITE_DESCRIPTION,
+ * TODO_WRITE_INPUT_SCHEMA in zcode-tool-text.ts; content/status/priority,
+ * all required). DSH todo items carry content and status only, so priority
+ * is validated and then stripped at the execution boundary. The native
+ * replaces the whole list per call and the DSH UI renders it as the todo
+ * panel, as the description says (dsh-tool-todo, dsh-client-ui-conversation).
  */
 import type { JsonRecord, JsonValue } from './json.ts'
-
-/** ZCode TodoWrite input_schema, verbatim (docs/reference/zcode-tool-schemas.md §1). */
-export const zcodeTodoWriteSchema: JsonRecord = {
-  type: 'object',
-  properties: {
-    todos: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          content: { type: 'string', description: 'Brief description of the task' },
-          status: { type: 'string', enum: ['pending', 'in_progress', 'completed'], description: 'Current status of the task' },
-          priority: { type: 'string', enum: ['high', 'medium', 'low'], description: 'Priority level of the task' },
-        },
-        required: ['content', 'status', 'priority'],
-      },
-    },
-  },
-  required: ['todos'],
-}
-
-/** ZCode TodoWrite description, verbatim. */
-export const zcodeTodoWriteDescription
-  = 'Create and update your task list for the user. Only use this tool if you have more than one substantial task to complete or the user explicitly requests it. This tool should be called sparingly, not for trivial tasks.'
 
 const TODO_STATUSES = new Set(['pending', 'in_progress', 'completed'])
 const TODO_PRIORITIES = new Set(['high', 'medium', 'low'])

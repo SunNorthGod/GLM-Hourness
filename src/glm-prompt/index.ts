@@ -22,7 +22,8 @@ import { CLI_PREFIX } from './verbatim.ts'
 import { personaSection, PERSONA_LEVELS, type PersonaLevel } from './persona.ts'
 import { buildEnvInfoSection, CONTEXT_MANAGEMENT_DSH, MEMORY_SECTION_DSH, SESSION_GUIDANCE_DSH, SKILLS_NOTE_DSH } from './localize.ts'
 import { isGlmAssembly, rewriteDialectSections, rewriteToolFace } from './assembly.ts'
-import { mapTodoWriteToDsh, zcodeTodoWriteDescription, zcodeTodoWriteSchema } from './todowrite.ts'
+import { mapTodoWriteToDsh } from './todowrite.ts'
+import { TODO_WRITE_DESCRIPTION, TODO_WRITE_INPUT_SCHEMA } from './zcode-tool-text.ts'
 import { initialReminderState, observeToolCall, type ReminderState } from './todo-reminder.ts'
 import { assemblyRoute, createRouteTracker } from '../shared/route.ts'
 import { installToolSearch } from '../toolsearch/index.ts'
@@ -90,8 +91,8 @@ export function dialectSections(outputStyleActive = false, persona: PersonaLevel
 export function todoWriteAliasTool(delegate: (args: { todos: Array<{ content: string, status: string }> }, exec: unknown) => Promise<unknown>, nativeOutput?: ToolDefinitionLike['output']): ToolDefinitionLike {
   return {
     name: 'TodoWrite',
-    description: zcodeTodoWriteDescription,
-    parameters: zcodeTodoWriteSchema,
+    description: TODO_WRITE_DESCRIPTION,
+    parameters: TODO_WRITE_INPUT_SCHEMA,
     output: nativeOutput ?? {
       schema: { type: 'object', properties: { todos: { type: 'array' } } },
       render: () => [{ type: 'text', text: 'todo list updated' }],

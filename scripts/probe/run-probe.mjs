@@ -85,8 +85,10 @@ const announcements = step => (step?.messages ?? []).filter(message => message.r
 // DeferredToolCall, read a file through the Read alias, create a file with
 // Write, edit it with Edit (replace_all as a ZCode semantic-boolean string),
 // read it back, try to overwrite an existing file that was never read (the
-// Write description promises that fails), finish. The scratch files live in
-// the scenario directory inside the workspace.
+// Write description promises that fails), list both scratch files with Glob
+// (newest first), search package.json with Grep (content mode, -i), run a
+// command through Bash (timeout in milliseconds, no description), finish.
+// The scratch files live in the scenario directory inside the workspace.
 const glmDir = join(runDir, 'glm')
 mkdirSync(glmDir, { recursive: true })
 const scratch = join(glmDir, 'scratch.txt')
@@ -100,8 +102,11 @@ const glm = runScenario('glm', 'glm-5.3', [
   { tool: { name: 'Edit', arguments: { file_path: scratch, old_string: 'alpha', new_string: 'gamma', replace_all: 'true' } } },
   { tool: { name: 'Read', arguments: { file_path: scratch, offset: 0 } } },
   { tool: { name: 'Write', arguments: { file_path: unread, content: 'clobbered\n' } } },
+  { tool: { name: 'Glob', arguments: { pattern: '{scratch,unread}.txt', path: glmDir } } },
+  { tool: { name: 'Grep', arguments: { 'pattern': 'DSH-GLM-HOURNESS', 'path': join(repo, 'package.json'), 'output_mode': 'content', '-i': true } } },
+  { tool: { name: 'Bash', arguments: { command: 'Write-Output probe-bash', timeout: 30000 } } },
   { text: 'done' },
-], 'Load TodoWrite, record one todo, read package.json, write, edit and re-read a scratch file, then reply done.')
+], 'Load TodoWrite, record one todo, read package.json, write, edit and re-read a scratch file, list, search, run a command, then reply done.')
 const glmFirst = glm.steps[0]
 const glmTools = names(glmFirst)
 const glmTool = name => (glmFirst?.tools ?? []).find(tool => tool.name === name)
@@ -113,6 +118,10 @@ const writeResult = lastToolResult(glm.steps[4])
 const editResult = lastToolResult(glm.steps[5])
 const rereadResult = lastToolResult(glm.steps[6])
 const overwriteResult = lastToolResult(glm.steps[7])
+const globResult = lastToolResult(glm.steps[8])
+const grepResult = lastToolResult(glm.steps[9])
+const bashResult = lastToolResult(glm.steps[10])
+const properties = tool => Object.keys(tool?.parameters.properties ?? {})
 const firstAnnouncement = announcements(glmFirst)[0]
 const zcodeSchema = 'https://json-schema.org/draft/2020-12/schema'
 
@@ -157,6 +166,16 @@ const checks = [
   ['glm execution: Edit alias replaced all occurrences (replace_all "true")', editResult !== undefined && editResult.isError !== true && editResult.text.includes('has been updated. All occurrences were successfully replaced.'), editResult === undefined ? 'no tool result' : editResult.text.slice(0, 100).replace(/\n/g, ' ')],
   ['glm execution: Read alias shows the edited file (offset 0 reads from line 1)', rereadResult !== undefined && rereadResult.isError !== true && rereadResult.text === '1\tgamma beta gamma', rereadResult === undefined ? 'no tool result' : rereadResult.text.slice(0, 80).replace(/\n/g, ' ')],
   ['glm execution: Write over an existing file that was never read fails and leaves it intact', overwriteResult?.isError === true && readFileSync(unread, 'utf8') === 'existing\n', overwriteResult === undefined ? 'no tool result' : overwriteResult.text.slice(0, 100).replace(/\n/g, ' ')],
+  ['glm tools: Glob, Grep, Bash and TodoWrite carry the 3.16.3 texts with the documented localizations', glmTool('Glob')?.description.startsWith('Fast file pattern matching. Supports glob patterns like') === true
+    && glmTool('Grep')?.description.startsWith('Content search built on ripgrep.') === true && !glmTool('Grep').description.includes('multiline')
+    && properties(glmTool('Grep')).includes('-i') && properties(glmTool('Grep')).includes('type') && !properties(glmTool('Grep')).some(key => ['-A', '-B', '-C', 'context', '-o', 'multiline'].includes(key))
+    && glmTool('Bash')?.description.startsWith('Executes a PowerShell command and returns its output.') === true && properties(glmTool('Bash')).includes('timeout') && !properties(glmTool('Bash')).includes('dangerouslyDisableSandbox')
+    && ['Glob', 'Grep', 'Bash'].every(name => glmTool(name)?.parameters.$schema === zcodeSchema)
+    && searchResult?.text.includes('Create and update a task list for the current session.') === true, ['Glob', 'Grep', 'Bash'].map(name => `${name}: ${(glmTool(name)?.description ?? 'missing').slice(0, 30)}`).join('; ')],
+  ['glm tools: Bash declares run_in_background and the escalation fields exactly when pwsh does', ['run_in_background', 'sandbox_permissions', 'justification'].every(field => plainFirst !== undefined && properties(plainToolOf(plainFirst, 'pwsh')).includes(field) === properties(glmTool('Bash')).includes(field)), `Bash: ${properties(glmTool('Bash')).join(', ')}`],
+  ['glm execution: Glob lists both scratch files newest first with ZCode display paths', globResult !== undefined && globResult.isError !== true && /\/glm\/scratch\.txt\n.*\/glm\/unread\.txt$/.test(globResult.text) && !globResult.text.includes('\\'), globResult === undefined ? 'no tool result' : globResult.text.slice(0, 160).replace(/\n/g, ' | ')],
+  ['glm execution: Grep -i in content mode returns the package name line', grepResult !== undefined && grepResult.isError !== true && grepResult.text === 'package.json:2:  "name": "dsh-glm-hourness",', grepResult === undefined ? 'no tool result' : grepResult.text.slice(0, 100).replace(/\n/g, ' | ')],
+  ['glm execution: Bash ran the command through pwsh without a description', bashResult !== undefined && bashResult.isError !== true && bashResult.text.includes('probe-bash'), bashResult === undefined ? 'no tool result' : bashResult.text.slice(0, 100).replace(/\n/g, ' | ')],
   ['glm compact: the summarization request ends with the ZCode compact prompt', compactInstruction?.role === 'user' && compactInstruction.text.startsWith('CRITICAL: Respond with TEXT ONLY.'), compactRequest === undefined ? `no compaction request (exit ${compacted.status})` : compactInstruction?.text.slice(0, 60).replace(/\n/g, ' ')],
   ['glm compact: the checkpoint carries the formatted summary', checkpoint !== undefined && checkpoint.text.includes('Summary:\nprobe summary') && !checkpoint.text.includes('<analysis>'), checkpoint === undefined ? 'no checkpoint in the next request' : checkpoint.text.slice(0, 80).replace(/\n/g, ' ')],
   ['non-glm boot: the runtime reached the probe provider', plainFirst !== undefined, `exit ${plain.status}, ${plain.steps.length} step(s)`],
