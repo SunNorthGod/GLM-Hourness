@@ -7,7 +7,7 @@ GLM + House + Harness：让 GLM 以 ZCode 训练分布住进 DeepSeek Harness（
 | 层 | 行 | 作用 |
 | --- | --- | --- |
 | 底层 · 通道 | `glm-llm`、`glm-login` | 原生 ZCode 客户端通道：账号登录与加密凭证、身份头、签名 V4、端点路由、Anthropic Messages 传输、coding-plan / start-plan 双档；`/glm-login`、`/glm-status`、`/glm-logout` |
-| 底层 · 方言 | `glm-prompt`、`glm-compact`、`toolsearch` | 提示词与工具面镜像 ZCode 3.16.3、todo 提醒 10/10、压缩镜像、deferred 工具检索 |
+| 底层 · 方言 | `glm-prompt`、`glm-compact` | 提示词与工具面镜像 ZCode 3.16.3、local 工具检索（LocalToolSearch / DeferredToolCall）、todo 提醒 10/10、压缩镜像 |
 | 编排层 | `guard`、`memory`、`workflow`、`hourness` | 执行边界、记忆与审计流水、决策日志与晨报、用量报告 |
 | 呈现 | `dsh-glm-hourness-ui`（独立包） | 设置页与会话输入框 pill |
 

@@ -12,7 +12,7 @@
 | 方言基线为 3.16.3 协议采样；ZCode master 的演进只作机制参考 | 用户定案；`reference/zcode-verbatim.md` §4 |
 | 本机安装版 `C:\Program Files\ZCode\resources\glm\zcode.cjs`（MD5 `c7d641da7407083165533fb29fb29a9e`）被用户打过补丁，不得作为官方原文 | `reference/zcode-verbatim.md` 开头；用户确认 2026-10-27 |
 | ZCode 官方源码 `reference/ZCode`：`package.json` 版本 3.16.2，最近提交 2026-10-20「chore: sync ZCode source」；逐字文本以它为准 | 〔实读〕 |
-| 方言逐字文本复核：身份类与 context management 是原文；工具描述、deferred 声明段、ToolSearch 描述大部分不是原文；todo 提醒正文与 compact 提示词有小处偏差 | `DESIGN.md` §5.9 |
+| 方言逐字文本复核：身份类与 context management 是原文；工具描述、deferred 声明段、ToolSearch 描述大部分不是原文；todo 提醒正文与 compact 提示词有小处偏差。后两者与工具检索文本已按原文重建，deferred 声明段已删除 | `DESIGN.md` §5.9 |
 | 3.16.3 的 `X-Title` 来源标题：agent 进程参数含 `app-server` / `agent-server` 时为 `electron`，否则为 `cli`；桌面版以 `app-server --stdio` 启动 agent 进程 | 安装包 `detectDefaultProviderSourceTitle`、agent 运行时描述〔实读〕 |
 | 3.16.3 的签名 `clientVersion` 与项目令牌 `clientVersion` 共用常量 `__ZCODE_VERSION__`（构建期注入，安装包文本中未替换）；`X-ZCode-App-Version` 取自环境变量 `ZCODE_APP_VERSION` | 安装包〔实读〕；实际取值未验证 |
 | 官方原文权威源：pristine 3.15.1 副本 `C:\Users\29596\Desktop\Project\Zcode\zcode-patch\pristine-3151\zcode.cjs`（MD5 `87225203a43f8009e403c57532922f4c`）；3.16.3 pristine 副本本地没有 | 同上 |
@@ -26,6 +26,7 @@
 | effort：anthropic 通道 `output_config.effort` 五档词汇；GLM 实用三档 low / high / max | `reference/zcode-capabilities.md` §11.1；用户定案 |
 | 记忆目录结构与 project-hash 算法 | `reference/zcode-capabilities.md` §10.6 |
 | 工具检索模式默认 `off`（桌面版设置 `toolSearchMode` 与 CLI `--toolsearch-mode` 均如此）；deferred 工具名以 `<system-reminder>` 公告递送，不写进系统提示词 | `DESIGN.md` §5.10〔实读〕 |
+| 3.16.3 的 local 模式把检索工具暴露为 `LocalToolSearch`，描述与提醒文案与 3.16.2 源码不同 | 安装包 `toolSearchNameForMode`〔实读〕；`DESIGN.md` §5.10 |
 | off-peak 是服务端排队协议（`x-off-peak-ticket-id`、429/3105 排队豁免重试、3102 续跑），客户端没有本地峰谷窗口常量 | S1 进度台账 Round 17（git 历史） |
 | 使用统计口径（summary、heatmap、按模型、按工具） | `reference/zcode-capabilities.md` §12 |
 

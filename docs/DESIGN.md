@@ -26,7 +26,7 @@
 GLM-Hourness
 ├─ 底层
 │  ├─ 通道：glm-llm（adapter）、glm-login（命令）
-│  └─ 方言：glm-prompt（提示词与工具面）、glm-compact（压缩镜像）、toolsearch（工具检索）
+│  └─ 方言：glm-prompt（提示词、工具面与工具检索）、glm-compact（压缩镜像）
 └─ 编排层
    ├─ guard、memory、workflow、hourness（用量与报告）
    └─ 呈现：独立 UI bundle
@@ -40,7 +40,6 @@ GLM-Hourness
 | `glm-hourness/glm-login` | `dist/glm-llm/login-row.js` | 通道 | `/glm-login`、`/glm-status`、`/glm-logout` |
 | `glm-hourness/glm-prompt` | `dist/glm-prompt/index.js` | 方言 | 见 §5 |
 | `glm-hourness/glm-compact` | `dist/glm-prompt/compact-row.js` | 方言 | 见 §5.6 |
-| `glm-hourness/toolsearch` | `dist/toolsearch/index.js` | 方言 | 见 §5.7 |
 | `glm-hourness/guard` | `dist/guard/index.js` | 编排 | 见 `ORCHESTRATION.md` §6 |
 | `glm-hourness/memory` | `dist/memory/index.js` | 编排 | 见 `ORCHESTRATION.md` §8 |
 | `glm-hourness/workflow` | `dist/workflow/index.js` | 编排 | 仅记录派遣类工具调用 |
@@ -76,7 +75,10 @@ GLM-Hourness
 - `restrict()` 只能在作用域上下文调用，只过滤继承来的工具，不影响本作用域自己的注册；名字必须是已知的全局工具。
 - 每一步先执行 `system-prompt/assemble`，再执行 `agent/pre-step`。发给模型的工具列表就是组装结果里的 `assembly.tools`（名称、描述、参数、`deferLoading`），组装瀑布可以逐请求改写它。
 - 路由只出现在组装变量 `variables.provider` / `variables.model` 中（由 `installModelSelection` 注入）；`agent/pre-step` 载荷只有 `{agent, messages, signal, step}`。
-- 工具执行按名在调用方作用域的可见定义中解析。
+- 工具执行按名在调用方作用域的可见定义中解析，与本次请求的工具面无关：不在工具面里的已注册工具被直接调用时照常执行。
+- `tools.execute(input)` 让一次调用走完 pre-execute、guard、执行、post-execute 与结果渲染；带 `parent` 令牌的调用被各监听器视为传输层子调用（`run_code` 的先例），会话检查点等监听器跳过它。
+- `agent/pre-step` 的决策 `messages` 会作为该步输入追加进会话；inbox 按消息 `id` 去重，重复或缺失 `id` 会抛错，因此合成 notice 必须带 `id` 与 `role`（与 `createUserMessage` 同形）。
+- `session.deriveMessages()` 给出请求可见的历史（已应用压缩投影）。消息 `source` 只校验 `kind` 非空，其余字段原样保存。
 
 影响：`glm-prompt` 与 `toolsearch` 依赖 `executable()` 捕获原生执行器，在桌面版运行时会抛错；`glm-prompt` 的异常被捕获后，提示词改写与别名都不会安装。L3 探针确认（2026-10-27）：GLM 路由下系统提示词仍是 DSH 原文，工具面是 28 个原生工具，模型调用 `Read` 得到 `unknown tool "Read"`；工具检索也没有延迟任何工具。
 
@@ -96,7 +98,7 @@ GLM-Hourness
 4. 只对准 rc.3 的可靠信号；兼容旧构建的分支删除。
 5. 单测里的假宿主必须给出与 rc.3 相同的信号，不得提供真宿主不提供的路由字段。
 
-实现：`src/shared/route.ts`（`isGlmModel`、`assemblyRoute`、按 agent 记录路由的 `createRouteTracker`）；`glm-prompt` 在 `agent/created` 时于 agent 作用域注册别名，并注册一个 prepend 组装监听器，在 `next()` 之后按本次请求的路由改写提示词节与工具面，不再调用 `restrict()`，也不再挂载 / 卸载。同一步里的其他钩子（如 todo 提醒）读回该路由。单测替身 `tests/fake-rc3.ts` 只提供 rc.3 的接口。L3 探针 9/9：GLM 路由得到 ZCode 身份与别名面、`Read` 别名真实执行；非 GLM 路由保持 DSH 原文与原生工具。`toolsearch` 仍待按 §5.10 移植。
+实现：`src/shared/route.ts`（`isGlmModel`、`assemblyRoute`、按 agent 记录路由的 `createRouteTracker`）；`glm-prompt` 在 `agent/created` 时于 agent 作用域注册别名，并注册一个 prepend 组装监听器，在 `next()` 之后按本次请求的路由改写提示词节与工具面，不再调用 `restrict()`，也不再挂载 / 卸载。同一步里的其他钩子（如 todo 提醒）读回该路由。单测替身 `tests/fake-rc3.ts` 只提供 rc.3 的接口。L3 探针 9/9：GLM 路由得到 ZCode 身份与别名面、`Read` 别名真实执行；非 GLM 路由保持 DSH 原文与原生工具。工具检索在同一个组装监听器里、别名改写之后执行（§5.7），探针扩到 15 项，全部通过。
 
 ## 4. 通道
 
@@ -175,7 +177,8 @@ DSH 的 `TokenUsage` 各计数互不重叠：`inputTokens` 只算未命中缓存
 | `glm:memory` | 2350 | coding-plan |
 | `glm:persona`（汇报细度） | 2360 | 两档 |
 | `glm:context-management` | 2400 | coding-plan |
-| `glm:deferred-tools` | 2500 | toolsearch 行启用时 |
+
+原先的 `glm:deferred-tools` 节（order 2500）已删除：ZCode 的系统提示词里没有 deferred 声明段，deferred 名单以 `<system-reminder>` 公告递送（§5.7）。
 
 ### 5.3 本地化清单（coding-plan）
 
@@ -189,7 +192,7 @@ DSH 的 `TokenUsage` 各计数互不重叠：`inputTokens` 只算未命中缓存
 | ⑥ | 工具 schema 中的行为断言 | Bash 实为 pwsh、超时单位、工作目录参数；垫片必须兑现 schema 的承诺，兑现不了就改写该句 |
 | ⑦ | Context management | 逐字，承诺与 DSH 压缩一致 |
 | ⑧ | Memory | 写入纪律改为 memory 工具族与工作区 `.llm` |
-| ⑨ | Deferred 声明 | 与工具检索机制自证一致 |
+| ⑨ | Deferred 声明 | 不设；名单公告与工具检索按 ZCode 原文（§5.7） |
 
 ### 5.4 工具面
 
@@ -207,15 +210,29 @@ todo 在编排层降级为项目图的视图（`ORCHESTRATION.md` §2.5），Tod
 
 ### 5.6 压缩镜像
 
-ZCode compact 提示词（`<analysis>` 先行、9 节摘要、安全指令保留；有 3 行与原文不一致，见 §5.9），产物剥 `<analysis>`。挂在 DSH `BasicCompactionEngine.summarize()` 上，GLM 路由走镜像，其余委托基类；基类缺失时该行降级为不挂载〔实读〕。ZCode 的 autoCompact 阈值（166k）与 microcompact 公式记录在 `reference/zcode-capabilities.md` §11.2，未接入。
+ZCode compact 提示词（`<analysis>` 先行、9 节摘要、安全指令保留；有 3 行与原文不一致，见 §5.9），产物剥 `<analysis>`。挂在 DSH `BasicCompactionEngine.summarize()` 上，GLM 路由走镜像，其余委托基类；基类缺失时该行降级为不挂载〔实读〕。L3 探针的每次运行都走了降级：从仓库路径加载时解析不到 `@deepseek-ai/dsh-compaction-basic`，stderr 记录「mirror engine not mounted」，即桌面版上镜像引擎从未挂载〔实测 2026-10-27〕，待修。ZCode 的 autoCompact 阈值（166k）与 microcompact 公式记录在 `reference/zcode-capabilities.md` §11.2，未接入。
 
 压缩后的重新锚定属于编排层（`ORCHESTRATION.md` §2.5）。
 
-### 5.7 工具检索
+### 5.7 工具检索〔已实现 2026-10-27〕
 
-ZCode deferred 机制的 local 模式：驻留面之外的原生工具进入延迟目录；`ToolSearch`（描述首句之后与原文不一致，见 §5.9）支持 `select:<name>` 精确选择与关键词检索，结果以 `<functions>` 块回注，并以作用域内同名包装注册激活〔实读〕。
+按 ZCode 3.16.3 的 local 模式移植（机制见 §5.10），属于方言，由 `glm-prompt` 驱动；原来独立的 `glm-hourness/toolsearch` 行已删除。原因：工具检索必须作用在别名改写之后的工具面上，才能按 ZCode 名字分常驻与延迟；两行各自注册组装监听器时先后顺序取决于 Loader，放进同一个监听器就没有顺序问题。
 
-已知问题：激活只在 `agent/created` 时 provider 为 `glm` 才发生，原生通道与 rc.3 下不触发（§3）〔推断〕。deferred 工具名从未公告给模型；ZCode 默认根本不开工具检索（§5.10）。记忆工具应常驻，不进延迟目录（`ORCHESTRATION.md` §8）。
+- 开关：`glm-prompt` 配置 `toolSearchMode`，`local`（默认）或 `off`。
+- 安装：`agent/created` 时在 agent 作用域注册 `LocalToolSearch` 与 `DeferredToolCall`，并注册一个 `agent/pre-step` 监听器。
+- 工具面：GLM 请求先做别名改写，再交给 `buildToolExposure`：延迟工具离开工具面，两个控制工具留下；没有延迟工具时控制工具也离开。非 GLM 请求只去掉控制工具。
+- 分类：ZCode 常驻名单保持常驻；有 ZCode 对应物的 DSH 工具跟随对应物（`read_image`、`subagent`、`subagent_fork`、`skill`、`workflow`、`get_goal`、`ask_user_question`、`bash`、`str_replace_editor`）；记忆工具常驻（`ORCHESTRATION.md` §8）；其余 DSH 工具按 MCP 规则延迟。L3 探针中的 28 个 GLM 工具，13 个延迟：TodoWrite、create_goal、exit_plan_mode、interrupt_agent、job_kill、job_list、job_output、list_agents、send_message、update_goal、web_fetch、web_search、working_directory。
+- 公告：每步在 `agent/pre-step` 计算新增、恢复、移除的 deferred 名单，追加一条 `<system-reminder>` notice（来源 `glm-tool-search`）；增量事实存在 notice 的 `source.toolSearchAnnouncement`，与 ZCode 公告元数据一致。已公告状态每步从 `session.deriveMessages()` 重新推出，所以续跑、重启和压缩后都按模型实际看得到的历史计算。
+- 检索结果：执行 `LocalToolSearch` 时按 ZCode 投影生成内容，即 `<functions>` 定义块、「Loaded: …」提醒、「Tool definitions already available …」提醒。「已加载」只认最近一条助手消息之前的成功检索结果（ZCode 同批不互相去重的语义）。
+- `DeferredToolCall`：校验与拒绝文案按 ZCode `resolveDeferredToolCall`；通过后经 `tools.execute` 执行目标，不带 `parent` 令牌。ZCode 在派发前就把包装还原成目标调用，所以 guard、审计流水、todo 提醒、会话检查点看到的都应该是目标本身；todo 提醒跳过包装调用，避免重复计数。
+- 文本：逐字镜像在 `src/toolsearch/zcode-text.ts`，逐字门禁按字面量片段检查整份文件（§5.9）。
+
+与 ZCode 的差异：
+
+- 只有 local 模式，没有 native 与 auto。
+- ZCode 每次请求都从历史重新投影检索结果；DSH 的工具结果执行时生成一次后固定，之后工具定义变化不会回写旧结果。
+- 没有移植压缩后把已加载工具提升为常驻（`preCompactDiscoveredTools`）：DSH 压缩之后，已加载的工具会重新公告，需要再检索一次。
+- `LocalToolSearch` 入参校验失败的报错文案是本项目的（ZCode 由执行器的 schema 校验给出，格式未核实）；直接调用未加载的延迟工具时，ZCode 在校验失败的结果后附「Load the tool first …」提示，本项目未实现。
 
 ### 5.8 与 ZCode 的差异总表
 
@@ -228,7 +245,7 @@ ZCode deferred 机制的 local 模式：驻留面之外的原生工具进入延�
 | 5 | 合成消息通道 | 同构 | 不动 | — |
 | 6 | compact 提示词 | 方言 | 镜像引擎 | 已实现 |
 | 7 | beta 能力头 | 通道 | 按能力集动态添加 | 未实现 |
-| 8 | 工具懒加载 | 缺口 | toolsearch 行 | 已实现，真机未确认生效 |
+| 8 | 工具懒加载 | 缺口 | glm-prompt 内的 local 工具检索（§5.7） | 已实现，L3 探针通过，真机未验收 |
 | 9 | 服务端 web 工具 | 缺口 | 待实测 `web_search_prime` / webReader 直连闸门 | 挂账 |
 | 10 | 持久记忆 | 缺口 | memory 行（编排层） | 已实现，未被真正使用 |
 | 11 | 身份头、签名、路由 | 通道 | glm-llm | 已实现，版本待统一 |
@@ -253,8 +270,9 @@ ZCode deferred 机制的 local 模式：驻留面之外的原生工具进入延�
 | todo 提醒正文 | `verbatim.ts` `TODO_REMINDER_BODY` | 曾有两处不一致（`to track progress`、`if has become stale`，原文语法如此），已按原文修正 | `runtime/helpers/runtime-reminders.ts` |
 | Context management | `localize.ts` `CONTEXT_MANAGEMENT_DSH` | 一致 | 源码与安装包 |
 | compact 提示词 | `compact.ts` | 曾有 3 行不一致（第 4、8、9 节漏词），已按原文修正。结尾的 `REMINDER` 行与 3.16.3 安装包、pristine 一致，与源码不同，按安装包保留 | `compact/prompt.ts` |
-| ToolSearch 描述 | `toolsearch/index.ts` | 首句一致，之后不一致 | `tool/search/description.ts` |
-| Deferred 声明段 | `verbatim.ts` `DEFERRED_DECLARATION` | 任何来源中都找不到 | — |
+| ToolSearch 描述 | 旧 `toolsearch/index.ts` | 首句一致，之后不一致。已按 3.16.3 安装包重建为 `LocalToolSearch` 描述（2026-10-27） | 安装包；源码 `tool/search/description.ts` 是 3.16.2 版本 |
+| Deferred 声明段 | 旧 `verbatim.ts` `DEFERRED_DECLARATION` | 任何来源中都找不到；ZCode 系统提示词没有这一段，已删除（2026-10-27） | — |
+| 工具检索全部文本 | `toolsearch/zcode-text.ts` | 一致（门禁按字面量片段检查） | 安装包 |
 | TodoWrite、Read、Write、Edit、Glob、Grep 描述 | `todowrite.ts`、`aliases.ts` | 任何来源中都找不到；源码中的描述是另一套文本 | `tool/handlers/*.ts` |
 | Bash 描述 | `aliases.ts` | 按本地化清单 ⑥ 改写，不要求逐字；改写所依据的原文需按源码重核 | `tool/handlers/bash*.ts` |
 
@@ -262,31 +280,33 @@ ZCode deferred 机制的 local 模式：驻留面之外的原生工具进入延�
 
 处置：
 
-- 来源优先级：3.16.3 安装包为准（用户补丁的安全声明除外，该段以源码与 pristine 为准）；源码作为可读参考。源码与安装包有一处已知差异（compact 结尾 `REMINDER` 行）。
-- 逐字门禁 `scripts/check-verbatim.mjs`（`npm test` 的一道）：每段号称逐字的文本逐行必须出现在安装包或源码中；尚未重建的条目列为已知偏差，只许减少，某条一旦对上而未从名单删除也会失败；机器上没有参考源时跳过〔已实现〕。
-- 已知偏差（待重建）：Deferred 声明段、ToolSearch 描述、六个工具描述。工具描述的重建牵涉垫片能否兑现原文描述的参数与行为，Deferred 与 ToolSearch 的重建取决于 §5.7 的模式定案。
+- 来源优先级：3.16.3 安装包为准（用户补丁的安全声明除外，该段以源码与 pristine 为准）；源码作为可读参考。源码（3.16.2）与安装包的已知差异：compact 结尾 `REMINDER` 行；工具检索的 local 模式（§5.10）。
+- 逐字门禁 `scripts/check-verbatim.mjs`（`npm test` 的一道）：每段号称逐字的文本逐行必须出现在安装包或源码中；尚未重建的条目列为已知偏差，只许减少，某条一旦对上而未从名单删除也会失败，名单里的条目不再被检查时同样失败；机器上没有参考源时跳过〔已实现〕。
+- 镜像文件：整份文件都是逐字声明的源文件（目前只有 `src/toolsearch/zcode-text.ts`），门禁抽出其中每个字符串与模板字面量片段逐行比对，模板按插值点切开。这样带插值的模板也能逐片检查。镜像文件里不能出现正则字面量和除法，扫描器不解析它们。
+- 已知偏差（待重建）：六个工具描述。重建牵涉垫片能否兑现原文描述的参数与行为。
 
 ### 5.10 ZCode 的工具检索机制（3.16.3）
 
-〔实读，源码 `tool/search/`、安装包配置默认值〕
+〔实读，3.16.3 安装包 `zcode.cjs` 与源码 `tool/search/`（3.16.2）〕
 
 - 模式：`off` / `local` / `native` / `auto`。桌面版设置 `toolSearchMode` 默认 `off`，CLI 参数 `--toolsearch-mode` 默认也是 `off`。默认配置下所有工具直接加载，没有 ToolSearch，也没有 deferred。
-- `native`：模型侧支持服务端工具检索时使用；检索返回的 schema 加载后可直接调用。
-- `local`：客户端检索；deferred 工具经 `DeferredToolCall({name, input})` 包装调用。
-- 名单公告：deferred 工具名不写进系统提示词，而是以 `<system-reminder>` 公告递送（「The following deferred tools are now available via ToolSearch…」），名单变化时补发新增、恢复、移除的公告。系统提示词里没有 deferred 声明段。
+- `native`：模型侧支持服务端工具检索时使用；工具名 `ToolSearch`，检索返回的 schema 加载后可直接调用。
+- `local`：客户端检索。3.16.3 把检索工具改名为 `LocalToolSearch`（`toolSearchNameForMode`，注册名仍是 `ToolSearch`，`LocalToolSearch` 是别名），描述换成 local 版本；deferred 工具经 `DeferredToolCall({name, input})` 包装调用。3.16.2 源码里 local 模式仍叫 `ToolSearch`。
+- 名单公告：deferred 工具名不写进系统提示词，而是作为附件以 `<system-reminder>` 包裹的用户消息递送。local 模式的开头是「The following deferred tools are available via LocalToolSearch. Use query … then call them through DeferredToolCall with {name, input}. Call resident tools directly:」，native 模式是「…are now available via ToolSearch…」。名单变化时补发新增、恢复、移除的公告；增量事实随公告落盘。系统提示词里没有 deferred 声明段。
 - 哪些工具延迟：只有声明了 `shouldDefer` 的工具与 MCP 工具。常驻：Read、Write、Edit、Glob、Grep、Bash、ApplyPatch、Agent、Skill、Workflow、GoalRead、AskUserQuestion、ToolSearch、DeferredToolCall。延迟：TodoWrite、TodoRead、WebFetch、WebSearch、Cron 族、计划模式进出、SendMessage、TaskOutput、TaskStop、工作流管理族、`js` 等。
-- 检索：`select:a,b` 精确选择（含别名），否则按名称分词、描述与 searchHint 打分，`+词` 表示必须命中，默认返回 5 个。
-- local 模式的结果：匹配到的定义以 `<functions>` 块内一行一个 `<function>{description,name,parameters}</function>` 回到工具结果里，后跟 `<system-reminder>` 包裹的「Loaded: … Call it now with DeferredToolCall …」提示；已加载过的工具再搜，回「Tool definitions already available …」提示。
-- `DeferredToolCall({name, input})`：只接受当前目录里的延迟工具；对常驻工具或控制工具本身回「Call X directly using its normal tool call; DeferredToolCall only accepts deferred tools.」。
+- 检索：`select:a,b` 精确选择（含别名，常驻工具也可选），否则按名称分词、描述与 searchHint 打分，`+词` 表示必须命中，默认返回 5 个；3.16.3 的描述与 `query` 参数说明都写明不支持正则。
+- local 模式的结果：匹配到的定义以 `<functions>` 块内一行一个 `<function>{description,name,parameters}</function>` 回到工具结果里，后跟 `<system-reminder>` 包裹的「Loaded: … Call it now with DeferredToolCall … No additional LocalToolSearch is needed …」提示；最近一条助手消息之前已经交付过的定义再搜，回「Tool definitions already available …」提示；没有匹配时回「No matching deferred tools found. Loaded tools are not searchable here …」。
+- `DeferredToolCall({name, input})`：只接受当前目录里的延迟工具；对常驻工具或控制工具本身回「Call X directly using its normal tool call; DeferredToolCall only accepts deferred tools.」。包装在派发前还原为目标调用，历史里记录目标身份。
+- 更正（2026-10-27）：本节初版按 3.16.2 源码记载 local 模式的工具名与文案，与 3.16.3 安装包不符；移植时对照安装包发现并更正。
 - 定案〔用户 2026-10-27〕：本项目默认开启工具检索，实现与 ZCode 一致。没有服务端检索能力时，ZCode `auto` 模式回落到 `local`，本项目按 `local` 语义实现。DSH 独有、ZCode 无对应的工具按 MCP 工具的规则处理（延迟）；有对应的随对应工具的常驻 / 延迟属性。
 
 ## 6. 注入约定〔定案〕
 
 方言层与编排层都要往对话里放 harness 生成的内容（提醒、投影、检查结果、纠偏），约定如下：
 
-1. 格式：用 GLM 熟悉的 `<system-reminder>` 形态，写短，位置固定。ZCode 自身以这种形态递送 deferred 名单与提醒（`reference/zcode-tool-schemas.md` §8）。
+1. 格式：用 GLM 熟悉的 `<system-reminder>` 形态，写短，位置固定。ZCode 自身以这种形态递送 deferred 名单与提醒（§5.10）。
 2. 位置：动态内容放在对话末尾，不放进系统提示词。系统提示词保持稳定，以免每一步都让提示词缓存失效。按积分公式，GLM-5.3 缓存命中系数 1.7、普通输入 6.9，命中部分约省四分之三（`FACTS.md` §2.4）。
-3. 通道：沿用 `tools/post-execute` 的 `additionalContexts`（带来源标签的合成 notice，与 DSH repeat-tool-reminder 同一机制），或 `agent/pre-step` 的消息修正。
+3. 通道：沿用 `tools/post-execute` 的 `additionalContexts`（带来源标签的合成 notice，与 DSH repeat-tool-reminder 同一机制），或 `agent/pre-step` 的消息修正（工具检索公告用这一条）。notice 必须带 `id` 与 `role`（`src/shared/dsh-min.ts` `createUserNotice`，§2.4a）。
 4. 来源标签唯一，便于审计与用量归因。
 
 ## 7. 降级与上报
@@ -298,7 +318,7 @@ ZCode deferred 机制的 local 模式：驻留面之外的原生工具进入延�
 | glm-llm 路由 | 保持原 URL | 状态 |
 | glm-prompt | 退回 DSH 原生工具面与文案 | 行健康 |
 | glm-compact | 不挂载，profile 原有压缩照常 | 行健康 |
-| toolsearch | 全量直载 | 行健康 |
+| 工具检索（glm-prompt 内） | `toolSearchMode: off` 或会话历史不可读时全量直载 | 行健康 |
 | guard | 无门禁 | 行健康（显式禁用除外） |
 | memory | 无记忆、无审计 | 行健康 |
 | workflow / hourness | 无记录、无报告 | 行健康 |
