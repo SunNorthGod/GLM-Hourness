@@ -118,3 +118,24 @@ test('setBypass permanently stops signing for the pair', async () => {
   const outcome = await manager.signWithStatus(url, [['x-session-id', 's1']], { credential: 'id.secret', appVersion: '3.14.0' })
   assert.equal(outcome.signed, false)
 })
+
+test('project-token mint sends the same clientVersion the signer signs with', async () => {
+  // 3.16.3 feeds one version constant to both the access_tokens body and the
+  // signer; the channel passes its app baseline through the signing credential.
+  const bodies: string[] = []
+  const fetchImpl = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input)
+    if (url.endsWith('/api/biz/customer/getCustomerInfo')) {
+      return jsonRespond(200, { data: { organizations: [{ organizationId: 'org', organizationName: '默认机构', projects: [{ projectId: 'proj', projectName: '默认项目', projectType: '1' }] }] } })
+    }
+    if (url.endsWith('/access_tokens')) {
+      bodies.push(String(init?.body))
+      return jsonRespond(200, { code: 500 })
+    }
+    return jsonRespond(500, {}) // handshake: fail open
+  }) as typeof fetch
+  const manager = new ClientSigningManager({ fetchImpl })
+  await manager.signWithStatus('https://x/api/anthropic/v1/messages', [['x-session-id', 's1']], { credential: 'id.secret', appVersion: '9.9.9', oauthAccessToken: 'oauth-tok' })
+  assert.equal(bodies.length, 1)
+  assert.deepEqual(JSON.parse(bodies[0]!), { clientType: 'zcode', clientVersion: '9.9.9' })
+})

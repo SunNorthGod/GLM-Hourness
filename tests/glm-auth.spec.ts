@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { ZCODE_APP_VERSION } from '../src/glm-llm/identity.ts'
 import { PollOAuthClient, buildDesktopOAuthRedirectParam, parsePastedCallbackUrl, exchangeCode, buildPasteAuthorizeUrl, freshPasteState } from '../src/glm-llm/auth/oauth.ts'
 import { loadCredential, saveCredential, clearCredential, type StoreFs } from '../src/glm-llm/auth/store.ts'
 import { resolveCodingPlanCredential } from '../src/glm-llm/auth/resolver.ts'
@@ -21,7 +22,7 @@ test('poll flow init appends the desktop interstitial redirect param', async () 
   assert.match(seen[0]!.authorization!, /^Bearer [0-9a-f]{64}$/) // 32 random bytes hex as the poll token
   const url = new URL(started.authorizeUrl)
   assert.equal(url.searchParams.get('client'), 'x')
-  assert.equal(url.searchParams.get('redirect'), buildDesktopOAuthRedirectParam('3.14.0'))
+  assert.equal(url.searchParams.get('redirect'), buildDesktopOAuthRedirectParam(ZCODE_APP_VERSION))
 })
 
 test('poll flow completes on ready with provider token, jwt, and user id', async () => {

@@ -21,8 +21,16 @@ export interface ZcodeIdentity {
   readonly deviceMid?: string
 }
 
+/**
+ * ZCode release this channel presents as (docs/DESIGN.md §1). One value
+ * feeds every version-bearing field: `User-Agent` / `X-ZCode-App-Version`,
+ * the OAuth redirect `app_version`, the signing `X-Client-Version`, and the
+ * project-token `clientVersion` (3.16.3 uses one constant for the last two).
+ */
+export const ZCODE_APP_VERSION = '3.16.3'
+
 export const DEFAULT_IDENTITY: ZcodeIdentity = {
-  appVersion: '3.14.0',
+  appVersion: ZCODE_APP_VERSION,
   sourceTitle: 'cli',
   refererOrigin: 'https://zcode.z.ai',
 }

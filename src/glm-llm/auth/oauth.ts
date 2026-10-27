@@ -12,6 +12,7 @@
  *   URL back, and the code exchanges at the shared zcode.z.ai token endpoint.
  */
 import { randomBytes } from 'node:crypto'
+import { ZCODE_APP_VERSION } from '../identity.ts'
 
 /** zcode.z.ai API base (cli-login + token endpoints hang off it). */
 const ZCODE_API_BASE = 'https://zcode.z.ai/api/v1'
@@ -107,7 +108,7 @@ export class PollOAuthClient {
   private readonly sleep: (ms: number) => Promise<void>
   private readonly appVersion: string
 
-  constructor(fetchImpl: FetchFn = fetch, sleep: (ms: number) => Promise<void> = defaultSleep, appVersion: string = '3.14.0') {
+  constructor(fetchImpl: FetchFn = fetch, sleep: (ms: number) => Promise<void> = defaultSleep, appVersion: string = ZCODE_APP_VERSION) {
     this.fetchImpl = fetchImpl
     this.sleep = sleep
     this.appVersion = appVersion

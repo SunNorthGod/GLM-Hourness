@@ -13,6 +13,8 @@
 | 本机安装版 `C:\Program Files\ZCode\resources\glm\zcode.cjs`（MD5 `c7d641da7407083165533fb29fb29a9e`）被用户打过补丁，不得作为官方原文 | `reference/zcode-verbatim.md` 开头；用户确认 2026-10-27 |
 | ZCode 官方源码 `reference/ZCode`：`package.json` 版本 3.16.2，最近提交 2026-10-20「chore: sync ZCode source」；逐字文本以它为准 | 〔实读〕 |
 | 方言逐字文本复核：身份类与 context management 是原文；工具描述、deferred 声明段、ToolSearch 描述大部分不是原文；todo 提醒正文与 compact 提示词有小处偏差 | `DESIGN.md` §5.9 |
+| 3.16.3 的 `X-Title` 来源标题：agent 进程参数含 `app-server` / `agent-server` 时为 `electron`，否则为 `cli`；桌面版以 `app-server --stdio` 启动 agent 进程 | 安装包 `detectDefaultProviderSourceTitle`、agent 运行时描述〔实读〕 |
+| 3.16.3 的签名 `clientVersion` 与项目令牌 `clientVersion` 共用常量 `__ZCODE_VERSION__`（构建期注入，安装包文本中未替换）；`X-ZCode-App-Version` 取自环境变量 `ZCODE_APP_VERSION` | 安装包〔实读〕；实际取值未验证 |
 | 官方原文权威源：pristine 3.15.1 副本 `C:\Users\29596\Desktop\Project\Zcode\zcode-patch\pristine-3151\zcode.cjs`（MD5 `87225203a43f8009e403c57532922f4c`）；3.16.3 pristine 副本本地没有 | 同上 |
 | 官方开源仓库 zai-org/ZCode，Apache-2.0 | `README.md` |
 | 身份节组装、安全声明官方原文、Harness 节 | `reference/zcode-verbatim.md` |

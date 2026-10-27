@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { ZcodeAdapter, ZcodeLogin, logout } from '../src/glm-llm/zcode.ts'
+import { ZCODE_APP_VERSION } from '../src/glm-llm/identity.ts'
+import { ANTHROPIC_SDK_UA } from '../src/glm-llm/headers.ts'
 import { apply as loginApply } from '../src/glm-llm/login-row.ts'
 import { saveCredential, type StoreFs } from '../src/glm-llm/auth/store.ts'
 import type { Credential } from '../src/glm-llm/auth/types.ts'
@@ -86,7 +88,7 @@ test('coding-plan stream walks the full chain: store → headers → unsigned si
   assert.equal(captured.url, UPSTREAM)
   assert.equal(captured.headers!.authorization, 'Bearer id.secret')
   assert.equal(captured.headers!['x-api-key'], 'id.secret')
-  assert.match(captured.headers!['User-Agent'], /^ZCode\/3\.14\.0 ai-sdk\/anthropic\/3\.0\.81$/)
+  assert.equal(captured.headers!['User-Agent'], `ZCode/${ZCODE_APP_VERSION} ${ANTHROPIC_SDK_UA}`)
   assert.ok(captured.headers!['x-session-id'] !== undefined)
   assert.deepEqual((captured.body!.system as unknown[]), [{ type: 'text', text: 'be brief' }])
   const text = chunks.filter(chunk => chunk.type === 'block-end').map(chunk => chunk.type === 'block-end' && chunk.block.type === 'text' ? chunk.block.text : '').join('')

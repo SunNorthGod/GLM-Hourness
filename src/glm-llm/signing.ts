@@ -323,7 +323,7 @@ export class ClientSigningManager {
     }
     if (now < this.mintNegUntil) return direct
     if (this.mintInFlight !== null) return this.mintInFlight
-    const promise = this.mintProjectJwt(cred.oauthAccessToken, direct?.apiKeyId).then(minted => {
+    const promise = this.mintProjectJwt(cred.oauthAccessToken, direct?.apiKeyId, cred.appVersion).then(minted => {
       if (minted === null) {
         this.mintNegUntil = this.now() + MINT_FAILURE_COOLDOWN_MS
         return direct
@@ -343,7 +343,7 @@ export class ClientSigningManager {
   }
 
   /** Mint the project-access JWT (getCustomerInfo → api_keys/{id}/access_tokens); null on any failure. */
-  private async mintProjectJwt(oauthAccessToken: string, apiKeyId: string | undefined): Promise<{ jwt: string, expMs: number } | null> {
+  private async mintProjectJwt(oauthAccessToken: string, apiKeyId: string | undefined, clientVersion: string): Promise<{ jwt: string, expMs: number } | null> {
     if (apiKeyId === undefined) {
       this.noteOnce('pt-key', 'project token mint skipped: credential has no apiKeyId segment')
       return null
@@ -366,7 +366,7 @@ export class ClientSigningManager {
       const ptResp = await this.fetchImpl(`${BIGMODEL_HOST}/api/biz/v1/organization/${encodeURIComponent(org.organizationId)}/projects/${encodeURIComponent(project.projectId)}/api_keys/${encodeURIComponent(apiKeyId)}/access_tokens`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${bare}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clientType: 'zcode', clientVersion: '3.15.1' }),
+        body: JSON.stringify({ clientType: 'zcode', clientVersion }),
         redirect: 'manual',
         signal: controller.signal,
       })

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { buildLlmIdentityHeaders, buildContextIdentityHeaders, ensureDeviceMid, DEFAULT_IDENTITY } from '../src/glm-llm/identity.ts'
+import { buildLlmIdentityHeaders, buildContextIdentityHeaders, ensureDeviceMid, DEFAULT_IDENTITY, ZCODE_APP_VERSION } from '../src/glm-llm/identity.ts'
 import { buildAuthHeaders, buildTraceHeaders, ANTHROPIC_SDK_UA } from '../src/glm-llm/headers.ts'
 import { encodeRequest, encodeMessage, decodeFrame, decodeSse } from '../src/glm-llm/anthropic.ts'
 import type { Credential } from '../src/glm-llm/auth/types.ts'
@@ -20,7 +20,7 @@ test('LLM identity headers mirror the g6n shape (agent 8th, no device mid)', () 
     'HTTP-Referer', 'User-Agent', 'X-ZCode-App-Version', 'X-Title', 'X-Release-Channel',
     'X-Client-Language', 'X-Client-Timezone', 'X-ZCode-Agent', 'X-Platform', 'X-Os-Category', 'X-Os-Version',
   ])
-  assert.equal(headers['User-Agent'], 'ZCode/3.14.0')
+  assert.equal(headers['User-Agent'], `ZCode/${ZCODE_APP_VERSION}`)
   assert.equal(headers['X-Title'], 'Z Code@cli')
   assert.equal(headers['X-Platform'], 'win32-x64')
   assert.equal(headers['X-Os-Category'], 'windows')
@@ -56,7 +56,7 @@ test('coding-plan anthropic auth carries the dual header pair plus SDK UA suffix
   assert.equal(headers['x-api-key'], 'sk-full')
   assert.equal(headers.authorization, 'Bearer sk-full')
   assert.equal(headers['anthropic-version'], '2023-06-01')
-  assert.equal(headers['User-Agent'], `ZCode/3.14.0 ${ANTHROPIC_SDK_UA}`)
+  assert.equal(headers['User-Agent'], `ZCode/${ZCODE_APP_VERSION} ${ANTHROPIC_SDK_UA}`)
   assert.ok(headers['x-session-id'] !== undefined) // coding-plan always carries one
   assert.ok(headers['x-query-id'] !== undefined)
   assert.equal(headers['x-zcode-session-type'], 'main')
