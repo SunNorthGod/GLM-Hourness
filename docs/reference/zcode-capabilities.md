@@ -65,7 +65,7 @@ ZCode 未开源：无源码工程、无官方文档。本手册全部机制描�
 - 缓存断点：请求级 `cacheControl: {type:"ephemeral", ttl?: "5m"|"1h"}`（偏移 3587213）；工具级 cache_control 见 2.2。
 - beta 能力集：按请求能力动态添加 header 标记（集合注入模式），实测枚举：`advanced-tool-use-2025-11-20`、`structured-outputs-2025-11-13`、`code-execution-2025-05-22`、`code-execution-2025-08-25`。
 - 工具定义组装字段（偏移 3544479）：`{name, description, input_schema, cache_control?, eager_input_streaming?, strict?, defer_loading?, allowed_callers?}`。`defer_loading` 为工具级懒加载开关（与第 3 章联动）。
-- 客户端身份头（反代工程已逆向的语义）：`User-Agent`、`X-ZCode-App-Version`、`X-Title`、`X-ZCode-Agent`、`HTTP-Referer`、`X-Platform`、`X-Os-Category`、`X-Os-Version`；请求签名 clientSigning V4。绑定计费渠道，非协议必需。
+- 客户端身份头（zcode-api 已逆向的语义，`reference/zcode-api`）：`User-Agent`、`X-ZCode-App-Version`、`X-Title`、`X-ZCode-Agent`、`HTTP-Referer`、`X-Platform`、`X-Os-Category`、`X-Os-Version`；请求签名 clientSigning V4。绑定计费渠道，非协议必需。
 
 ### 1.3 合成消息体系
 
@@ -282,7 +282,7 @@ DSH 无原生记忆体系（无包、无文档）。可经 system prompt section
 | 4 | compact 的 `<analysis>` 先行 + 9 节 summary + 安全指令 verbatim 保留 | 5.2 原文 | 提示词结构对 GLM 成熟配对，可直接借鉴 |
 | 5 | deferred 工具机制的系统提示词声明段与「不再检索」服从性 | 3.3 | GLM 已训练对齐该协议；DSH 复刻时保留文案语义 |
 | 6 | 服务端工具（web 搜索/翻译）渠道绑定 | 6.1 | 非 ZCode 身份可用性未验证；不可用时走独立搜索后端等价实现 |
-| 7 | 身份头与 clientSigning V4 | 反代工程逆向 | 仅影响计费渠道与套餐识别，不影响模型行为 |
+| 7 | 身份头与 clientSigning V4 | zcode-api 逆向 | 仅影响计费渠道与套餐识别，不影响模型行为 |
 | 8 | 日期变更提醒、输出风格提醒等合成提醒族 | 4.3 | 低成本行为增强，可选移植 |
 
 非耦合项（通用工程，DSH 已有等价物或哲学不同）：请求组装字段、缓存断点策略、工具面大小、子代理体系、MCP 挂载。
@@ -380,7 +380,7 @@ DSH 无原生记忆体系（无包、无文档）。可经 system prompt section
 
 ### 10.5 模型表与 autoCompact 默认值
 
-`"glm-5.3"` 等模型名字符串在 bundle 零命中——**模型目录（contextWindow/maxOutputTokens/thinking 默认/supportsNativeWebSearch 等字段）由服务端下发**，客户端 schema（Gme，偏移 550208）只定义字段形状：`{requiresMfjsToolSchema, contextWindow, inputFormat, outputFormat, supportsToolCall, supportsJsonSchemaOutput, supportsNativeWebSearch, supportsMidConversationSystem, ...}`。GLM-5.3 与 glm-5.3-flash 的具体 contextWindow/预算值不在客户端 [未取证]；本机抓包参照（反代项目 config）：GLM 目录覆盖 glm-4.5-air 至 glm-5.3-flash，thinking 预算字段随模型下发。autoCompactThresholdTokens 的默认值/比例同样未在 bundle 静态出现（字段从 usage 快照传递）[未取证]。
+`"glm-5.3"` 等模型名字符串在 bundle 零命中——**模型目录（contextWindow/maxOutputTokens/thinking 默认/supportsNativeWebSearch 等字段）由服务端下发**，客户端 schema（Gme，偏移 550208）只定义字段形状：`{requiresMfjsToolSchema, contextWindow, inputFormat, outputFormat, supportsToolCall, supportsJsonSchemaOutput, supportsNativeWebSearch, supportsMidConversationSystem, ...}`。GLM-5.3 与 glm-5.3-flash 的具体 contextWindow/预算值不在客户端 [未取证]；本机抓包参照（zcode-api 的 config）：GLM 目录覆盖 glm-4.5-air 至 glm-5.3-flash，thinking 预算字段随模型下发。autoCompactThresholdTokens 的默认值/比例同样未在 bundle 静态出现（字段从 usage 快照传递）[未取证]。
 
 ### 10.6 记忆目录结构与 project-hash 算法（本机实测定案）
 
@@ -401,7 +401,7 @@ DSH 无原生记忆体系（无包、无文档）。可经 system prompt section
 
 ### 10.8 服务端工具直连闸门实测记录
 
-以本机 ZCode 静态凭据（credentials.json 的 access_token 与 zcodejwttoken，Bearer 与 x-api-key 两种形态）+ ZCode 身份头 + `anthropic-beta: advanced-tool-use-2025-11-20` 直连 `open.bigmodel.cn/api/anthropic/v1/messages` 声明 `tool_search_tool_regex_20251119`：**三种组合均 401「令牌已过期或验证不正确」**。判定：401 发生在认证层，静态度量凭据已过期（运行中的 ZCode 使用内存内刷新 token），**工具闸门结论未知**。后续验证路径：从运行中 ZCode 进程取活 token 重试，或经反代项目 `auth login` 产出新鲜凭据对照测。
+以本机 ZCode 静态凭据（credentials.json 的 access_token 与 zcodejwttoken，Bearer 与 x-api-key 两种形态）+ ZCode 身份头 + `anthropic-beta: advanced-tool-use-2025-11-20` 直连 `open.bigmodel.cn/api/anthropic/v1/messages` 声明 `tool_search_tool_regex_20251119`：**三种组合均 401「令牌已过期或验证不正确」**。判定：401 发生在认证层，静态度量凭据已过期（运行中的 ZCode 使用内存内刷新 token），**工具闸门结论未知**。后续验证路径：从运行中 ZCode 进程取活 token 重试，或经 `/glm-login`（移植自 zcode-api 的 `auth login`）产出新鲜凭据对照测。
 
 ### 10.9 八件套 schema 获取方式
 
