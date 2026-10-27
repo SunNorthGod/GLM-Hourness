@@ -122,7 +122,7 @@ test('toolSearchMode off registers the aliases only and leaves deferrable tools 
   assert.deepEqual(rt.scoped.map(tool => tool.name), ZCODE_FACE)
   const names = (await rt.assemble({ model: 'glm-5.3' })).tools.map(tool => tool.name)
   assert.ok(names.includes('TodoWrite') && names.includes('web_fetch'))
-  assert.equal(rt.listeners.some(entry => entry.event === 'agent/pre-step'), false)
+  assert.equal(rt.listeners.filter(entry => entry.event === 'agent/pre-step').length, 1) // the todo reminder; no announcement
 })
 
 test('a GLM request gets the ZCode identity and resident face; deferred tools and covered natives leave it', async () => {

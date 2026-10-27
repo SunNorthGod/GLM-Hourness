@@ -14,10 +14,10 @@
  *
  * DeferredToolCall runs its target through `ctx.tools.execute` without a
  * parent token: ZCode resolves the wrapper before dispatch, so the target is
- * the call every pre/post-execute listener (guard, journal, todo reminder,
- * checkpoints) should see under its own name.
+ * the call every pre/post-execute listener (guard, journal, checkpoints)
+ * should see under its own name.
  */
-import { createUserNotice, type AgentLike, type AssembledTool, type ToolDefinitionLike, type ToolExecutionContext } from '../shared/dsh-min.ts'
+import { createUserNotice, type AgentLike, type AssembledTool, type DerivedMessage, type ToolDefinitionLike, type ToolExecutionContext } from '../shared/dsh-min.ts'
 import { searchTools } from './search.ts'
 import {
   ANNOUNCEMENT_SOURCE,
@@ -26,7 +26,6 @@ import {
   buildToolExposure,
   loadedDefinitions,
   projectSearchResult,
-  type DerivedMessage,
   type ToolSearchExposure,
 } from './exposure.ts'
 import {

@@ -10,8 +10,8 @@
  * agent-scoped `system-prompt/assemble` result: the model-selection listener
  * writes `variables.provider` / `variables.model` after its `next()`, and the
  * runtime assembles before `agent/pre-step` and before any tool runs in that
- * step (DESIGN.md §2.4a). A row records the route from its own prepend
- * listener and reads it back from later hooks of the same step.
+ * step (DESIGN.md §2.4a). A row reads the route in its own prepend listener
+ * and carries what it decided to later hooks of the same step.
  */
 
 export interface Route {
@@ -30,19 +30,5 @@ export function assemblyRoute(assembly: { readonly variables: Record<string, unk
   return {
     ...(typeof provider === 'string' ? { provider } : {}),
     ...(typeof model === 'string' ? { model } : {}),
-  }
-}
-
-/** Per-agent memory of the latest assembled route (one per row; agents are the keys). */
-export function createRouteTracker<Agent extends object>(): {
-  record(agent: Agent, route: Route): void
-  current(agent: Agent): Route | undefined
-  isGlm(agent: Agent): boolean
-} {
-  const routes = new WeakMap<Agent, Route>()
-  return {
-    record: (agent, route) => { routes.set(agent, route) },
-    current: agent => routes.get(agent),
-    isGlm: agent => isGlmModel(routes.get(agent)?.model),
   }
 }

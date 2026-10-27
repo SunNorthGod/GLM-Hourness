@@ -24,7 +24,7 @@ export const inject = ['llm']
 /** Reply to compaction summaries, in the shape the ZCode compact prompt asks for. */
 const COMPACTION_REPLY = '<analysis>probe analysis</analysis>\n\n<summary>probe summary</summary>'
 
-/** One scripted reply per request, in order; the last entry repeats. */
+/** One scripted reply per request, in order; the last entry repeats. Entries: `{ tool }`, `{ tools: [...] }` or `{ text }`. */
 function parseScript(raw) {
   if (typeof raw !== 'string' || raw.length === 0) return [{ text: 'ok' }]
   return JSON.parse(raw)
@@ -135,12 +135,16 @@ class ProbeAdapter {
         messages: (request.messages ?? []).map(summarizeMessage),
       })}\n`)
     }
-    if (step.tool !== undefined) {
-      const id = `probe-call-${this.requests}`
-      const args = JSON.stringify(step.tool.arguments ?? {})
-      yield { type: 'block-start', index: 0, blockType: 'tool-call' }
-      yield { type: 'tool-call-delta', index: 0, id, name: step.tool.name, argumentsDelta: '' }
-      yield { type: 'block-end', index: 0, block: { type: 'tool-call', id, name: step.tool.name, arguments: args } }
+    // A step calls one tool (`tool`) or several in one assistant turn (`tools`).
+    const calls = step.tools ?? (step.tool === undefined ? [] : [step.tool])
+    if (calls.length > 0) {
+      for (const [index, call] of calls.entries()) {
+        const id = `probe-call-${this.requests}-${index}`
+        const args = JSON.stringify(call.arguments ?? {})
+        yield { type: 'block-start', index, blockType: 'tool-call' }
+        yield { type: 'tool-call-delta', index, id, name: call.name, argumentsDelta: '' }
+        yield { type: 'block-end', index, block: { type: 'tool-call', id, name: call.name, arguments: args } }
+      }
       yield { type: 'usage', usage: { inputTokens: 1, outputTokens: 1 } }
       yield { type: 'finish', reason: { kind: 'tool-calls' } }
       return

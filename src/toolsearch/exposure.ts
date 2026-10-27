@@ -16,7 +16,7 @@
  * promotion of loaded tools to resident (ZCode `preCompactDiscoveredTools`);
  * after a DSH compaction, loaded tools are announced and searched again.
  */
-import type { AssembledTool } from '../shared/dsh-min.ts'
+import type { AssembledTool, DerivedMessage } from '../shared/dsh-min.ts'
 import { mcpPresentation, type ToolSearchCandidate } from './search.ts'
 import {
   DEFERRED_TOOL_CALL_NAME,
@@ -146,15 +146,6 @@ export function projectSearchResult(matches: readonly string[], exposure: ToolSe
   if (newlyLoaded.length > 0) blocks.push(localToolsLoadedReminder(newlyLoaded))
   if (alreadyLoaded.length > 0) blocks.push(localToolsAlreadyLoadedReminder(alreadyLoaded))
   return blocks.length > 0 ? blocks : [TOOL_REFERENCES_REMOVED]
-}
-
-/** A message from `session.deriveMessages()` (the request-visible history), as far as this module reads it. */
-export interface DerivedMessage {
-  readonly role: string
-  readonly content?: ReadonlyArray<{ readonly type: string, readonly text?: string, readonly id?: string, readonly name?: string }>
-  readonly source?: Readonly<Record<string, unknown>>
-  readonly toolCallId?: string
-  readonly isError?: boolean
 }
 
 /** Source kind of the persisted announcement notice. */

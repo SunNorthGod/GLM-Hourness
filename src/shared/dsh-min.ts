@@ -32,6 +32,21 @@ export interface AgentLike {
   readonly session?: { deriveMessages(): readonly unknown[] }
 }
 
+/**
+ * A message from `session.deriveMessages()` (dsh-session `deriveEventMessage`),
+ * as far as the rows read it. Assistant messages carry `source.kind: 'model'`
+ * with `provider` / `model` and their tool calls as `tool-call` blocks whose
+ * `arguments` is the provider's JSON text; tool results carry `toolCallId`
+ * and `isError`; notices keep the `source` they were created with.
+ */
+export interface DerivedMessage {
+  readonly role: string
+  readonly content?: ReadonlyArray<{ readonly type: string, readonly text?: string, readonly id?: string, readonly name?: string, readonly arguments?: unknown }>
+  readonly source?: Readonly<Record<string, unknown>>
+  readonly toolCallId?: string
+  readonly isError?: boolean
+}
+
 /** The execution object a tool body receives as its second argument (dsh-tools `createExecution`). */
 export interface ToolExecutionContext {
   readonly callId: string
