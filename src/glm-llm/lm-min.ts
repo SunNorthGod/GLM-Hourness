@@ -39,15 +39,27 @@ export interface ToolSchemaLike {
   deferLoading?: true
 }
 
+/** Durable normalized image reference (dsh-attachment `ImageAttachmentRef`): the fields the channel reads. */
+export interface ImageRefLike {
+  attachmentId: string
+  mediaType: string
+  bytes: number
+  width: number
+  height: number
+  name?: string
+}
+
 /**
  * The rc.3 content blocks an adapter receives (dsh-llm `ContentBlockMap`).
  * Assistant tool calls are `tool-call` blocks in the content, not a separate
- * field. File blocks never reach an adapter (the runtime projects them to
- * text); other block types fall through unread.
+ * field. Images are durable references (`offloaded` marks an occurrence every
+ * route sends as placeholder text). File blocks never reach an adapter (the
+ * runtime projects them to text); other block types fall through unread.
  */
 export type ContentBlockLike =
   | { type: 'text', text: string }
   | { type: 'reasoning', text: string }
+  | { type: 'image', attachment: ImageRefLike, offloaded?: true }
   | { type: 'tool-call', id: string, name: string, arguments: string }
 
 export interface RequestMessageLike {
@@ -85,3 +97,20 @@ export const GLM_REASONING_EFFORTS = [
 
 /** ZCode default output cap. */
 export const GLM_DEFAULT_MAX_TOKENS = 32000
+
+/**
+ * The channel's model catalog with truthful input modalities: GLM-5.3 has no
+ * vision tower and is text-only; GLM-5.3-Flash is multimodal (user,
+ * 2026-10-28). A text-only route makes DSH project request images to text
+ * before the adapter (dsh-llm `projectImagesForTextModel`) and makes
+ * `read_image` refuse (dsh-tool-fs `assertImageCapableRoute`).
+ */
+export const GLM_MODELS = [
+  { id: 'glm-5.3', name: 'GLM-5.3', inputModalities: ['text'] },
+  { id: 'glm-5.3-flash', name: 'GLM-5.3-Flash', inputModalities: ['text', 'image'] },
+] as const
+
+/** Declared input modalities of one model id; ids outside the catalog are text-only. */
+export function glmInputModalities(model: string): ReadonlyArray<'text' | 'image'> {
+  return GLM_MODELS.find(entry => entry.id === model)?.inputModalities ?? ['text']
+}

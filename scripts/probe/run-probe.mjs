@@ -17,6 +17,7 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { crc32, deflateSync } from 'node:zlib'
 
 const repo = resolve(fileURLToPath(new URL('../..', import.meta.url)))
 const desktop = process.env.DSH_DESKTOP_DIR ?? join(process.env.LOCALAPPDATA ?? '', 'Programs', 'DeepSeek Harness')
@@ -29,6 +30,29 @@ if (!existsSync(exe)) {
 
 const runDir = join(repo, '.llm', 'probe-runs', new Date().toISOString().replace(/[:.]/g, '-'))
 const slash = path => path.replaceAll('\\', '/')
+
+/** A solid red 8x8 RGB PNG, built byte by byte so the fixture needs no binary file. */
+function redPng(size = 8) {
+  const chunk = (type, data) => {
+    const body = Buffer.concat([Buffer.from(type, 'ascii'), data])
+    const out = Buffer.alloc(body.length + 8)
+    out.writeUInt32BE(data.length, 0)
+    body.copy(out, 4)
+    out.writeUInt32BE(crc32(body), body.length + 4)
+    return out
+  }
+  const header = Buffer.alloc(13)
+  header.writeUInt32BE(size, 0)
+  header.writeUInt32BE(size, 4)
+  header[8] = 8 // bit depth; colour type 2 (truecolour), default compression, filter, interlace
+  header[9] = 2
+  const row = Buffer.concat([Buffer.from([0]), Buffer.alloc(size * 3, Buffer.from([255, 0, 0]))])
+  const pixels = deflateSync(Buffer.concat(Array.from({ length: size }, () => row)))
+  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', header), chunk('IDAT', pixels), chunk('IEND', Buffer.alloc(0))])
+}
+
+/** Overlay lines that keep the attachment store of a scenario inside its own directory. */
+const attachmentsIn = dir => ['- id: attachment-local', `  config: { dshHome: ${JSON.stringify(slash(join(dir, 'dsh-home')))} }`]
 
 /**
  * Boot one headless task on `model` with a scripted reply sequence and return
@@ -87,13 +111,16 @@ const announcements = step => (step?.messages ?? []).filter(message => message.r
 // read it back, try to overwrite an existing file that was never read (the
 // Write description promises that fails), list both scratch files with Glob
 // (newest first), search package.json with Grep (content mode, -i), run a
-// command through Bash (timeout in milliseconds, no description), finish.
+// command through Bash (timeout in milliseconds, no description), read a
+// PNG (GLM-5.3 is text-only, so read_image refuses), finish.
 // The scratch files live in the scenario directory inside the workspace.
 const glmDir = join(runDir, 'glm')
 mkdirSync(glmDir, { recursive: true })
 const scratch = join(glmDir, 'scratch.txt')
 const unread = join(glmDir, 'unread.txt')
 writeFileSync(unread, 'existing\n')
+const png = join(runDir, 'red.png')
+writeFileSync(png, redPng())
 const glm = runScenario('glm', 'glm-5.3', [
   { tool: { name: 'LocalToolSearch', arguments: { query: 'select:TodoWrite', max_results: 5 } } },
   { tool: { name: 'DeferredToolCall', arguments: { name: 'TodoWrite', input: { todos: [{ content: 'probe', status: 'in_progress', priority: 'high' }] } } } },
@@ -105,8 +132,9 @@ const glm = runScenario('glm', 'glm-5.3', [
   { tool: { name: 'Glob', arguments: { pattern: '{scratch,unread}.txt', path: glmDir } } },
   { tool: { name: 'Grep', arguments: { 'pattern': 'DSH-GLM-HOURNESS', 'path': join(repo, 'package.json'), 'output_mode': 'content', '-i': true } } },
   { tool: { name: 'Bash', arguments: { command: 'Write-Output probe-bash', timeout: 30000 } } },
+  { tool: { name: 'Read', arguments: { file_path: png } } },
   { text: 'done' },
-], 'Load TodoWrite, record one todo, read package.json, write, edit and re-read a scratch file, list, search, run a command, then reply done.')
+], 'Load TodoWrite, record one todo, read package.json, write, edit and re-read a scratch file, list, search, run a command, read an image, then reply done.', attachmentsIn(glmDir))
 const glmFirst = glm.steps[0]
 const glmTools = names(glmFirst)
 const glmTool = name => (glmFirst?.tools ?? []).find(tool => tool.name === name)
@@ -121,6 +149,20 @@ const overwriteResult = lastToolResult(glm.steps[7])
 const globResult = lastToolResult(glm.steps[8])
 const grepResult = lastToolResult(glm.steps[9])
 const bashResult = lastToolResult(glm.steps[10])
+const imageRefusal = lastToolResult(glm.steps[11])
+const READ_IMAGE_LINE = '- Reads images (PNG, JPG, …) and presents them visually.'
+const imageFree = steps => steps.every(step => step.messages.every(message => message.images === undefined) && step.wire?.images?.length === 0)
+
+// GLM-5.3-Flash declares image input: Read of the PNG goes through
+// read_image, the image block reaches the adapter, and the glm-zcode encoder
+// places it inside tool_result as a base64 image block.
+const flashDir = join(runDir, 'glm-flash')
+const flash = runScenario('glm-flash', 'glm-5.3-flash', [
+  { tool: { name: 'Read', arguments: { file_path: png } } },
+  { text: 'done' },
+], 'Read the image and reply done.', attachmentsIn(flashDir))
+const flashRead = lastToolResult(flash.steps[1])
+const flashWire = flash.steps[1]?.wire
 const properties = tool => Object.keys(tool?.parameters.properties ?? {})
 const firstAnnouncement = announcements(glmFirst)[0]
 const zcodeSchema = 'https://json-schema.org/draft/2020-12/schema'
@@ -176,6 +218,10 @@ const checks = [
   ['glm execution: Glob lists both scratch files newest first with ZCode display paths', globResult !== undefined && globResult.isError !== true && /\/glm\/scratch\.txt\n.*\/glm\/unread\.txt$/.test(globResult.text) && !globResult.text.includes('\\'), globResult === undefined ? 'no tool result' : globResult.text.slice(0, 160).replace(/\n/g, ' | ')],
   ['glm execution: Grep -i in content mode returns the package name line', grepResult !== undefined && grepResult.isError !== true && grepResult.text === 'package.json:2:  "name": "dsh-glm-hourness",', grepResult === undefined ? 'no tool result' : grepResult.text.slice(0, 100).replace(/\n/g, ' | ')],
   ['glm execution: Bash ran the command through pwsh without a description', bashResult !== undefined && bashResult.isError !== true && bashResult.text.includes('probe-bash'), bashResult === undefined ? 'no tool result' : bashResult.text.slice(0, 100).replace(/\n/g, ' | ')],
+  ['glm image: Read keeps the ZCode image line on both models (ZCode does not condition it on image input)', glmTool('Read')?.description.includes(READ_IMAGE_LINE) === true && (flash.steps[0]?.tools ?? []).find(tool => tool.name === 'Read')?.description.includes(READ_IMAGE_LINE) === true, `flash steps: ${flash.steps.length}`],
+  ['glm image: on text-only GLM-5.3 read_image refuses the PNG and no image reaches the request', imageRefusal?.isError === true && imageRefusal.text.includes('does not declare image input') && imageFree(glm.steps), imageRefusal === undefined ? 'no tool result' : imageRefusal.text.slice(0, 120).replace(/\n/g, ' ')],
+  ['glm-flash image: Read returns the read_image envelope with one image block', flashRead !== undefined && flashRead.isError !== true && flashRead.images === 1 && flashRead.text.includes('<type>image</type>'), flashRead === undefined ? `no tool result (exit ${flash.status})` : `${flashRead.images ?? 0} image(s): ${flashRead.text.slice(0, 80).replace(/\n/g, ' ')}`],
+  ['glm-flash wire: the glm-zcode encoder sends the PNG inside tool_result as a base64 image block', flashWire?.images?.length === 1 && flashWire.images[0].where === 'tool_result' && flashWire.images[0].mediaType === 'image/png' && flashWire.images[0].png === true && flashWire.images[0].base64Length > 0, JSON.stringify(flashWire ?? null)],
   ['glm compact: the summarization request ends with the ZCode compact prompt', compactInstruction?.role === 'user' && compactInstruction.text.startsWith('CRITICAL: Respond with TEXT ONLY.'), compactRequest === undefined ? `no compaction request (exit ${compacted.status})` : compactInstruction?.text.slice(0, 60).replace(/\n/g, ' ')],
   ['glm compact: the checkpoint carries the formatted summary', checkpoint !== undefined && checkpoint.text.includes('Summary:\nprobe summary') && !checkpoint.text.includes('<analysis>'), checkpoint === undefined ? 'no checkpoint in the next request' : checkpoint.text.slice(0, 80).replace(/\n/g, ' ')],
   ['non-glm boot: the runtime reached the probe provider', plainFirst !== undefined, `exit ${plain.status}, ${plain.steps.length} step(s)`],
