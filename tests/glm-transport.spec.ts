@@ -88,10 +88,54 @@ test('encodeMessage folds seam roles into anthropic blocks', () => {
     encodeMessage({ role: 'tool', toolCallId: 'tu1', content: [{ type: 'text', text: 'done' }] }),
     { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'tu1', content: 'done' }] },
   )
+  // A failed result is error text with is_error set (ZCode's error-text output).
   assert.deepEqual(
-    encodeMessage({ role: 'assistant', content: [{ type: 'text', text: 'hi' }], toolCalls: [{ id: 'c1', name: 'Grep', arguments: '{"q":1}' }] }),
-    { role: 'assistant', content: [{ type: 'text', text: 'hi' }, { type: 'tool_use', id: 'c1', name: 'Grep', input: { q: 1 } }] },
+    encodeMessage({ role: 'tool', toolCallId: 'tu2', isError: true, content: [{ type: 'text', text: 'Error: boom' }] }),
+    { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'tu2', content: 'Error: boom', is_error: true }] },
   )
+  // rc.3 carries tool calls as tool-call content blocks; reasoning is not sent back.
+  assert.deepEqual(
+    encodeMessage({ role: 'assistant', content: [
+      { type: 'reasoning', text: 'think' },
+      { type: 'text', text: 'hi' },
+      { type: 'tool-call', id: 'c1', name: 'Grep', arguments: '{"q":1}' },
+      { type: 'tool-call', id: 'c2', name: 'Read', arguments: 'not json' },
+    ] }),
+    { role: 'assistant', content: [
+      { type: 'text', text: 'hi' },
+      { type: 'tool_use', id: 'c1', name: 'Grep', input: { q: 1 } },
+      { type: 'tool_use', id: 'c2', name: 'Read', input: {} },
+    ] },
+  )
+  assert.equal(encodeMessage({ role: 'assistant', content: [{ type: 'reasoning', text: 'only thinking' }] }), undefined)
+  // User text blocks stay separate; empty ones drop; an empty turn gets ZCode's fallback.
+  assert.deepEqual(
+    encodeMessage({ role: 'user', content: [{ type: 'text', text: 'a' }, { type: 'text', text: '' }, { type: 'text', text: 'b' }] }),
+    { role: 'user', content: [{ type: 'text', text: 'a' }, { type: 'text', text: 'b' }] },
+  )
+  assert.deepEqual(encodeMessage({ role: 'user', content: [] }), { role: 'user', content: [{ type: 'text', text: '(no content)' }] })
+})
+
+test('encodeRequest groups consecutive same-role turns the way the ZCode client sends them', () => {
+  const request = encodeRequest({
+    provider: 'glm-zcode', model: 'glm-5.3',
+    messages: [
+      { role: 'user', content: [{ type: 'text', text: 'go' }] },
+      { role: 'assistant', content: [{ type: 'tool-call', id: 'c1', name: 'Read', arguments: '{}' }, { type: 'tool-call', id: 'c2', name: 'Glob', arguments: '{}' }] },
+      { role: 'tool', toolCallId: 'c1', content: [{ type: 'text', text: 'one' }] },
+      { role: 'tool', toolCallId: 'c2', content: [{ type: 'text', text: 'two' }] },
+      { role: 'user', content: [{ type: 'text', text: '<system-reminder>\nnotice\n</system-reminder>' }] },
+    ],
+  })
+  assert.deepEqual(request.messages, [
+    { role: 'user', content: [{ type: 'text', text: 'go' }] },
+    { role: 'assistant', content: [{ type: 'tool_use', id: 'c1', name: 'Read', input: {} }, { type: 'tool_use', id: 'c2', name: 'Glob', input: {} }] },
+    { role: 'user', content: [
+      { type: 'tool_result', tool_use_id: 'c1', content: 'one' },
+      { type: 'tool_result', tool_use_id: 'c2', content: 'two' },
+      { type: 'text', text: '<system-reminder>\nnotice\n</system-reminder>' },
+    ] },
+  ])
 })
 
 test('encodeRequest builds the streaming body with system blocks and tools', () => {
@@ -108,10 +152,10 @@ test('encodeRequest builds the streaming body with system blocks and tools', () 
   assert.equal(request.stream, true)
   assert.equal(request.max_tokens, 4096)
   assert.deepEqual(request.system, [{ type: 'text', text: 'sys', cache_control: { type: 'ephemeral' } }])
-  // The leading system message is the caller's system block; a later one rides a user turn.
+  // The leading system message is the caller's system block; a later one rides
+  // the user turn as a system reminder (consecutive user turns merge).
   assert.deepEqual(request.messages, [
-    { role: 'user', content: [{ type: 'text', text: 'hello' }] },
-    { role: 'user', content: [{ type: 'text', text: '<system-reminder>\nlater\n</system-reminder>' }] },
+    { role: 'user', content: [{ type: 'text', text: 'hello' }, { type: 'text', text: '<system-reminder>\nlater\n</system-reminder>' }] },
   ])
   assert.deepEqual(request.tools, [{ name: 'TodoWrite', description: 'd', input_schema: { type: 'object' } }])
 })

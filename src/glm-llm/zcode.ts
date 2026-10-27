@@ -22,7 +22,7 @@ import { EndpointRoutingService } from './endpoint-routing.ts'
 import { ClientSigningManager, sendWithClientSigning } from './signing.ts'
 import { encodeRequest, decodeSse, splitSystemPrompt } from './anthropic.ts'
 import { buildStartPlanSystem, buildContextPrefixMessage } from './start-plan.ts'
-import { GLM_DEFAULT_MAX_TOKENS, GLM_REASONING_EFFORTS, type GenerateOptionsLike } from './lm-min.ts'
+import { GLM_DEFAULT_MAX_TOKENS, GLM_REASONING_EFFORTS, messageText, type GenerateOptionsLike } from './lm-min.ts'
 import type {
   GenerateOptions,
   LlmAdapter,
@@ -304,7 +304,7 @@ export class ZcodeAdapter {
 /** Whether the first user turn already carries the currentDate context prefix (start-plan pins it once). */
 function hasCurrentDatePrefix(messages: readonly GenerateOptionsLike['messages'][number][]): boolean {
   const first = messages.find(message => message.role === 'user')
-  const text = first?.content.map(part => part.text ?? '').join('\n') ?? ''
+  const text = first === undefined ? '' : messageText(first, '\n')
   return text.includes('# currentDate') && text.includes('<system-reminder>')
 }
 

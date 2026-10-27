@@ -118,7 +118,9 @@ test('the DSH system prompt arrives as leading system messages and lands in the 
   assert.deepEqual(captured.body!.system, [{ type: 'text', text: 'You are ZCode, an interactive coding agent' }])
   const messages = captured.body!.messages as Array<{ role: string, content: Array<{ type: string, text?: string }> }>
   assert.equal(messages[0]!.role, 'user') // the leading system message left the history
-  assert.equal(messages.at(-1)!.content[0]!.text, '<system-reminder>\nharness notice\n</system-reminder>')
+  // The later developer notice rides the same user turn as a system reminder.
+  assert.equal(messages.length, 1)
+  assert.equal(messages[0]!.content.at(-1)!.text, '<system-reminder>\nharness notice\n</system-reminder>')
 })
 
 test('start-plan wraps the system in the 3-block assembly and pins the currentDate prefix once', async () => {

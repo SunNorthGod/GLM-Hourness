@@ -1,8 +1,9 @@
 /**
- * Minimal structural types for the DSH LLM seam (verified against
- * packages/llm/llm/src/types.ts, commit 22ddee37). GLM models: thinking
- * efforts low/high/max per the ZCode training distribution (GLM-5.3 folds
- * "off" into low), default max_tokens 32000.
+ * Minimal structural types for the DSH LLM seam (verified against the rc.3
+ * runtime: reference/dsh-desktop-0.2.1-rc.3/dsh-llm and the official
+ * @deepseek-ai/dsh-llm 0.2.1-rc.3 types). GLM models: thinking efforts
+ * low/high/max per the ZCode training distribution (GLM-5.3 folds "off" into
+ * low), default max_tokens 32000.
  */
 
 /** DSH usage record: counts are disjoint (inputTokens excludes cache reads and writes). */
@@ -38,18 +39,29 @@ export interface ToolSchemaLike {
   deferLoading?: true
 }
 
+/**
+ * The rc.3 content blocks an adapter receives (dsh-llm `ContentBlockMap`).
+ * Assistant tool calls are `tool-call` blocks in the content, not a separate
+ * field. File blocks never reach an adapter (the runtime projects them to
+ * text); other block types fall through unread.
+ */
+export type ContentBlockLike =
+  | { type: 'text', text: string }
+  | { type: 'reasoning', text: string }
+  | { type: 'tool-call', id: string, name: string, arguments: string }
+
 export interface RequestMessageLike {
   role: 'system' | 'user' | 'assistant' | 'tool' | 'developer'
-  content: ReadonlyArray<{
-    type: string
-    text?: string
-    id?: string
-    name?: string
-    arguments?: string
-    toolName?: string
-  }>
-  toolCalls?: ReadonlyArray<{ id: string, name: string, arguments: string }>
+  content: readonly ContentBlockLike[]
+  /** Tool-role messages: the provider-issued id of the call this result answers. */
   toolCallId?: string
+  /** Tool-role messages: whether the invocation failed. */
+  isError?: boolean
+}
+
+/** The concatenated text blocks of one message, in order. */
+export function messageText(message: Pick<RequestMessageLike, 'content'>, separator: string): string {
+  return message.content.flatMap(block => block.type === 'text' ? [block.text] : []).join(separator)
 }
 
 export interface GenerateOptionsLike {

@@ -41,7 +41,8 @@ function summarizeMessage(message) {
     text: text.slice(0, 4000),
     ...(message.toolCallId === undefined ? {} : { toolCallId: message.toolCallId }),
     ...(message.isError === undefined ? {} : { isError: message.isError }),
-    ...(Array.isArray(message.toolCalls) && message.toolCalls.length > 0 ? { toolCalls: message.toolCalls.map(call => call.name) } : {}),
+    // rc.3 carries assistant tool calls as tool-call content blocks.
+    ...(parts.some(part => part.type === 'tool-call') ? { toolCalls: parts.filter(part => part.type === 'tool-call').map(part => part.name) } : {}),
     ...(message.source === undefined ? {} : { source: message.source.kind }),
   }
 }
