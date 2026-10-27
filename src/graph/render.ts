@@ -4,10 +4,10 @@
  * web font or external reference), so any SVG viewer shows the same
  * picture. Shape encodes the node type and colour the status, after the
  * sketch the user accepted on 2026-10-28; the legend is part of the
- * picture. Node groups carry data-id and edges data-edge, data-node and
- * data-to, so the interactive viewer attaches its behaviour to this output
- * instead of laying the graph out again. One element per line keeps diffs
- * of the committed picture readable.
+ * picture. Node groups carry data-id, count badges data-badge, and edges
+ * data-edge, data-node and data-to, so the interactive viewer attaches its
+ * behaviour to this output instead of laying the graph out again. One
+ * element per line keeps diffs of the committed picture readable.
  */
 import { STATUS_LABELS, TYPE_LABELS, VERIFICATION_LABELS } from './labels.ts'
 import {
@@ -176,7 +176,7 @@ function drawNode(box: NodeBox): string {
     top += font.line
   }
   parts.push(element('text', { x, 'y': baseline(top, TEXT.meta), 'text-anchor': 'middle', 'font-size': TEXT.meta.size, 'fill': MUTED }, escapeXml(box.meta)))
-  if (box.badge !== undefined) parts.push(...badge(box.badge, `+${box.hidden}`))
+  if (box.badge !== undefined) parts.push(group({ 'data-badge': 'true' }, badge(box.badge, `+${box.hidden}`)))
   return group({
     'data-id': node.id,
     'data-type': node.type,

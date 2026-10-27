@@ -1,8 +1,8 @@
 /**
  * Chinese display names of the schema enumerations (docs/ORCHESTRATION.md
- * §2.6 field table), shared by the picture and later clients.
+ * §2.6 field table, §2.9 history), shared by the picture and the viewer.
  */
-import type { NodeType, Status, Verification } from './schema.ts'
+import type { Actor, EdgeType, EvidenceKind, NodeType, Op, Slope, Stage, Status, TaskKind, Tier, Verification } from './schema.ts'
 
 export const TYPE_LABELS: Readonly<Record<NodeType, string>> = {
   goal: '目标',
@@ -31,4 +31,67 @@ export const VERIFICATION_LABELS: Readonly<Record<Verification, string>> = {
   device: '真机验证',
   overturned: '被推翻',
   superseded: '被取代',
+}
+
+/** Design-loop stages (§4.1). */
+export const STAGE_LABELS: Readonly<Record<Stage, string>> = {
+  wish: '许愿',
+  interview: '访谈',
+  design: '设计',
+  release: '放行',
+  decompose: '分解',
+  execute: '执行',
+  merge: '汇合',
+  operate: '运维',
+}
+
+export const SLOPE_LABELS: Readonly<Record<Slope, string>> = {
+  uphill: '爬坡',
+  downhill: '下坡',
+}
+
+export const KIND_LABELS: Readonly<Record<TaskKind, string>> = {
+  implement: '实现',
+  test: '测试',
+  review: '审查',
+  docs: '文档',
+}
+
+export const TIER_LABELS: Readonly<Record<Tier, string>> = {
+  hard: '难题',
+  standard: '常规',
+  simple: '简单',
+}
+
+export const EDGE_LABELS: Readonly<Record<EdgeType, string>> = {
+  depends: '依赖',
+  source: '来源',
+  supersedes: '取代',
+}
+
+export const EVIDENCE_LABELS: Readonly<Record<EvidenceKind, string>> = {
+  commit: '提交',
+  test: '测试',
+  check: '检查',
+  decision: '拍板',
+}
+
+export const ACTOR_LABELS: Readonly<Record<Actor, string>> = {
+  human: '人',
+  llm: 'LLM',
+  harness: 'harness',
+}
+
+export const OP_LABELS: Readonly<Record<Op, string>> = {
+  propose: '提议',
+  approve: '批准',
+  reject: '否决',
+  status: '改状态',
+  edit: '编辑',
+  link: '加连线',
+  unlink: '删连线',
+  comment: '批注',
+  decide: '拍板',
+  verify: '验证',
+  supersede: '取代',
 }

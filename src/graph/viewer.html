@@ -1,0 +1,1040 @@
+<!doctype html>
+<!--
+  Interactive viewer of the project graph (docs/ORCHESTRATION.md §2.10).
+  Served by src/graph/server.ts, which replaces __NONCE__ with the
+  per-response CSP nonce. The picture is the renderer's SVG; this page only
+  attaches pan, zoom, filters, selection and forms to its data-* attributes.
+  Every write is one engine mutation sent to /api/apply; the engine decides,
+  this page shows its answer.
+-->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>项目图</title>
+<link rel="icon" href="data:,">
+<style nonce="__NONCE__">
+  [hidden] { display: none !important; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    display: grid; grid-template-rows: auto 1fr; overflow: hidden;
+    font: 13px/1.5 system-ui, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif;
+    color: #111827; background: #f3f4f6;
+  }
+  header { background: #fff; border-bottom: 1px solid #e5e7eb; padding: 6px 12px; }
+  .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 2px 0; }
+  .spacer { flex: 1; }
+  .muted { color: #6b7280; }
+  button {
+    font: inherit; padding: 3px 10px; border: 1px solid #d1d5db; border-radius: 6px;
+    background: #fff; color: inherit; cursor: pointer;
+  }
+  button:hover { background: #f9fafb; }
+  button:disabled { opacity: .5; cursor: default; }
+  button.primary { background: #2563eb; border-color: #2563eb; color: #fff; }
+  button.primary:hover { background: #1d4ed8; }
+  button.danger { border-color: #dc2626; color: #b91c1c; }
+  button.link { border: none; padding: 0; background: none; color: #1d4ed8; text-align: left; }
+  button.link:hover { text-decoration: underline; }
+  .chip { padding: 1px 8px; border-radius: 999px; color: #6b7280; }
+  .chip.on { background: #eff6ff; border-color: #93c5fd; color: #1e3a8a; }
+  .live { color: #9ca3af; font-size: 15px; }
+  .live.on { color: #16a34a; }
+  main { display: grid; grid-template-columns: minmax(0, 1fr) 420px; min-height: 0; }
+  #canvas {
+    position: relative; overflow: hidden; background: #fff; cursor: grab;
+    touch-action: none; user-select: none;
+  }
+  #canvas.panning { cursor: grabbing; }
+  #stage, #stage svg { width: 100%; height: 100%; display: block; }
+  .hint { position: absolute; left: 10px; bottom: 8px; color: #9ca3af; font-size: 12px; pointer-events: none; }
+  #stage g[data-id] { cursor: pointer; }
+  #stage [data-badge] { cursor: zoom-in; }
+  #stage .dim { opacity: .12; }
+  #stage g.sel { filter: drop-shadow(0 0 5px rgba(37, 99, 235, .95)); }
+  #stage g.onpath { filter: drop-shadow(0 0 3px rgba(37, 99, 235, .6)); }
+  #stage path.onpath { stroke: #2563eb; stroke-width: 3px; }
+  aside { display: flex; flex-direction: column; min-height: 0; background: #fff; border-left: 1px solid #e5e7eb; }
+  nav { display: flex; gap: 4px; padding: 8px 10px 0; border-bottom: 1px solid #e5e7eb; }
+  nav button { border-bottom: none; border-radius: 6px 6px 0 0; }
+  nav button.on { background: #eff6ff; border-color: #93c5fd; }
+  .count { color: #b91c1c; font-weight: 600; }
+  .tab { flex: 1; overflow: auto; padding: 4px 14px 24px; }
+  h2 { font-size: 16px; margin: 6px 0; }
+  h3 { font-size: 13px; margin: 14px 0 6px; color: #374151; }
+  section h3 { border-bottom: 1px solid #f3f4f6; padding-bottom: 2px; }
+  .row, .tools { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 10px; }
+  .crumbs { margin: 4px 0; }
+  .pill { padding: 0 8px; border-radius: 999px; border: 1px solid #d1d5db; background: #f3f4f6; }
+  .st-done { background: #dcfce7; border-color: #16a34a; }
+  .st-doing { background: #fef3c7; border-color: #d97706; }
+  .st-proposed { background: #fff; border-style: dashed; border-color: #6b7280; }
+  .st-dropped, .st-superseded { opacity: .6; }
+  .tag { margin-left: 6px; padding: 0 6px; border-radius: 4px; background: #ede9fe; color: #5b21b6; font-size: 12px; }
+  .body { white-space: pre-wrap; margin: 4px 0; }
+  dl.facts { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; margin: 0; }
+  dl.facts dt { color: #6b7280; }
+  dl.facts dd { margin: 0; overflow-wrap: anywhere; }
+  ul { margin: 4px 0; padding-left: 18px; }
+  li.chosen b { color: #15803d; }
+  ul.history { list-style: none; padding: 0; }
+  ul.history > li { border-left: 3px solid #e5e7eb; padding: 2px 8px; margin: 6px 0; }
+  ul.history > li.comment { border-left-color: #93c5fd; background: #f8fafc; }
+  ul.history .meta { color: #6b7280; font-size: 12px; }
+  ul.history .text { white-space: pre-wrap; }
+  ul.changes { color: #374151; font-size: 12px; }
+  .card { border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px 10px; margin: 8px 0; }
+  .card-title { font-weight: 600; }
+  form.action { border: 1px solid #e5e7eb; border-radius: 8px; padding: 6px 10px 10px; margin: 10px 0; background: #fcfcfd; }
+  form.action h3 { margin-top: 4px; }
+  label.field { display: block; margin: 6px 0; }
+  label.field > span { display: block; color: #374151; }
+  label.field small { display: block; }
+  label.option { display: flex; gap: 6px; align-items: flex-start; margin: 4px 0; }
+  label.check { display: flex; gap: 6px; align-items: center; margin: 6px 0; }
+  input:not([type=radio]):not([type=checkbox]), textarea, select {
+    width: 100%; font: inherit; padding: 4px 6px; border: 1px solid #d1d5db; border-radius: 6px; background: #fff;
+  }
+  textarea { resize: vertical; }
+  .buttons { display: flex; gap: 8px; margin-top: 8px; }
+  .err { margin-top: 8px; padding: 6px 8px; border-radius: 6px; background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
+  .stale { margin: 8px 0; padding: 6px 8px; border-radius: 6px; background: #fffbeb; border: 1px solid #fde68a; }
+  .stale button { margin-left: 8px; }
+  ul.issues li.error b { color: #b91c1c; }
+  /* Narrow hosts (a side bar browser tab): picture above, panel below. */
+  @media (max-width: 900px) {
+    main { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 55fr) minmax(0, 45fr); }
+    aside { border-left: none; border-top: 1px solid #e5e7eb; }
+    .hint { display: none; }
+  }
+  #toast {
+    position: fixed; right: 16px; bottom: 16px; max-width: 420px; padding: 8px 12px; border-radius: 8px;
+    background: #111827; color: #fff; opacity: 0; transition: opacity .2s; pointer-events: none;
+  }
+  #toast.show { opacity: .95; }
+  #toast.bad { background: #991b1b; }
+  #toast.good { background: #166534; }
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <strong>项目图</strong>
+    <span id="caption" class="muted">读取中…</span>
+    <span id="live" class="live" title="未连接">●</span>
+    <span class="spacer"></span>
+    <button type="button" id="whole" hidden>回到整张图</button>
+    <button type="button" id="shallow" title="折叠目标以下第二层的子树">只看前两层</button>
+    <button type="button" id="expand">全部展开</button>
+    <button type="button" id="fit">适应窗口</button>
+  </div>
+  <div class="bar" id="filters"></div>
+  <div class="bar" id="readonly" hidden><span class="stale">地址里没有令牌：只能看，不能写。用 npm run graph:serve 启动时打印的地址打开。</span></div>
+</header>
+<main>
+  <section id="canvas" aria-label="项目图">
+    <div id="stage"></div>
+    <div class="hint">拖动平移 · 滚轮缩放 · 点节点看详情 · 点 +N 展开 · 双击节点折叠或展开 · Esc 取消选中</div>
+  </section>
+  <aside>
+    <nav id="tabs">
+      <button type="button" data-tab="queue">待处理 <span id="queue-count" class="count"></span></button>
+      <button type="button" data-tab="detail">节点详情</button>
+      <button type="button" data-tab="issues">校验 <span id="issue-count" class="count"></span></button>
+    </nav>
+    <div class="tab" id="tab-queue"></div>
+    <div class="tab" id="tab-detail" hidden></div>
+    <div class="tab" id="tab-issues" hidden></div>
+  </aside>
+</main>
+<div id="toast"></div>
+<script nonce="__NONCE__">
+'use strict'
+
+const TOKEN = new URLSearchParams(location.hash.slice(1)).get('token') || ''
+const MIN_SCALE = 0.1
+const MAX_SCALE = 4
+/** Smallest zoom the first picture opens at; a larger graph opens at its top left corner instead. */
+const OPEN_SCALE = 0.35
+const DOUBLE_CLICK_MS = 400
+
+const FIELD_LABELS = {
+  title: '标题', parent: '父节点', slope: '坡位', stage: '阶段', kind: '种类', tier: '模型档位',
+  worktree: '独立工作树', outputSchema: '交回结构', body: '正文', acceptance: '验收条件', nonGoals: '非目标',
+  writeScope: '写入范围', options: '选项', recommend: '推荐',
+}
+const ERROR_TITLES = {
+  invalid: '请求不合法', not_found: '找不到', conflict: '冲突', stale_revision: '节点已被改动，先载入最新再决定',
+  forbidden: '被拒绝', evidence_required: '缺少证据', bad_transition: '状态不能这样转',
+  graph_invalid: '图有校验错误，先修节点文件', internal: '服务出错', network: '连不上服务',
+}
+const GATE_LABELS = {
+  dependencies: '依赖未完成', approval: '等人批准', questions: '子树里有待拍板的问题',
+  acceptance: '缺验收条件', children: '子节点未全部关闭', verification: '决策未验证',
+}
+
+const state = {
+  schema: null,
+  /** Last /api/graph answer. */
+  data: null,
+  nodes: new Map(),
+  children: new Map(),
+  collapsed: new Set(),
+  /** Node of the projection view, or null for the whole graph. */
+  focus: null,
+  selected: null,
+  types: new Set(),
+  statuses: new Set(),
+  /** Pan and zoom: top left corner in picture units, and screen pixels per picture unit. */
+  view: null,
+  /** The user has panned or zoomed; until then a resize fits the picture again. */
+  moved: false,
+  natural: null,
+  loading: null,
+  again: false,
+}
+
+const $ = id => document.getElementById(id)
+const clamp = (value, low, high) => Math.min(high, Math.max(low, value))
+const labels = () => state.schema.labels
+
+/** Build an element; text always goes in as text, never as markup. */
+function h(tag, props, ...children) {
+  const element = document.createElement(tag)
+  for (const [key, value] of Object.entries(props || {})) {
+    if (value === undefined || value === null || value === false) continue
+    if (key === 'class') element.className = value
+    else if (key.startsWith('on')) element.addEventListener(key.slice(2), value)
+    else if (key === 'value' || key === 'checked' || key === 'selected') element[key] = value
+    else element.setAttribute(key, value === true ? '' : String(value))
+  }
+  for (const child of children.flat(Infinity)) {
+    if (child === undefined || child === null || child === false) continue
+    element.append(child instanceof Node ? child : document.createTextNode(String(child)))
+  }
+  return element
+}
+
+function time(at) {
+  const date = new Date(at)
+  return Number.isNaN(date.getTime()) ? String(at) : date.toLocaleString('zh-CN', { hour12: false })
+}
+
+function joined(items, separator) {
+  return items.map((item, index) => [index > 0 ? separator : '', item])
+}
+
+// ---- server calls
+
+async function call(path, init) {
+  try {
+    const response = await fetch(path, init)
+    return await response.json()
+  }
+  catch (error) {
+    return { ok: false, error: { code: 'network', message: String(error && error.message || error), hint: '确认 npm run graph:serve 还在运行' } }
+  }
+}
+
+function apply(mutation) {
+  return call('/api/apply', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Graph-Token': TOKEN },
+    body: JSON.stringify(mutation),
+  })
+}
+
+// ---- loading
+
+function graphPath() {
+  const params = new URLSearchParams()
+  for (const id of state.collapsed) params.append('collapse', id)
+  if (state.focus !== null) params.set('focus', state.focus)
+  const query = params.toString()
+  return query === '' ? '/api/graph' : `/api/graph?${query}`
+}
+
+/** Fetch the graph again; calls during a load are folded into one more load after it. */
+function reload() {
+  if (state.loading !== null) {
+    state.again = true
+    return state.loading
+  }
+  state.loading = (async () => {
+    try {
+      do {
+        state.again = false
+        const data = await call(graphPath())
+        if (data.ok) {
+          show(data)
+        }
+        else if (data.error.code === 'not_found' && state.focus !== null) {
+          toast(`投影的节点 ${state.focus} 已不在图里，回到整张图`, 'bad')
+          state.focus = null
+          state.again = true
+        }
+        else {
+          toast(errorText(data.error), 'bad')
+        }
+      } while (state.again)
+    }
+    finally {
+      state.loading = null
+    }
+  })()
+  return state.loading
+}
+
+function show(data) {
+  const first = state.data === null
+  state.data = data
+  state.nodes = new Map(data.nodes.map(node => [node.id, node]))
+  state.children = new Map()
+  for (const node of data.nodes) {
+    if (node.parent === undefined) continue
+    const list = state.children.get(node.parent)
+    if (list === undefined) state.children.set(node.parent, [node.id])
+    else list.push(node.id)
+  }
+  drawSvg(data.svg, first)
+  caption()
+  renderQueue(false)
+  renderDetail(false)
+  renderIssues()
+}
+
+// ---- picture
+
+const svgElement = () => $('stage').querySelector('svg')
+
+function drawnGroup(id) {
+  const svg = svgElement()
+  return svg === null ? null : svg.querySelector(`g[data-id="${CSS.escape(id)}"]`)
+}
+
+function drawSvg(text, first) {
+  // The renderer escapes every text and attribute value; scripts inserted this way never run.
+  $('stage').innerHTML = text
+  const svg = svgElement()
+  if (svg === null) return
+  state.natural = { width: Number(svg.getAttribute('width')) || 1, height: Number(svg.getAttribute('height')) || 1 }
+  svg.removeAttribute('width')
+  svg.removeAttribute('height')
+  svg.setAttribute('preserveAspectRatio', 'xMinYMin meet')
+  if (first || state.view === null) fit(OPEN_SCALE)
+  else applyView()
+  decorate()
+}
+
+function canvasSize() {
+  const rect = $('canvas').getBoundingClientRect()
+  return { width: Math.max(1, rect.width), height: Math.max(1, rect.height) }
+}
+
+function applyView() {
+  const svg = svgElement()
+  if (svg === null || state.view === null) return
+  const area = canvasSize()
+  const { x, y, scale } = state.view
+  svg.setAttribute('viewBox', `${x} ${y} ${area.width / scale} ${area.height / scale}`)
+}
+
+/** Fit the picture into the canvas, but not below a zoom of minimum; then a larger picture starts at its top left. */
+function fit(minimum) {
+  if (state.natural === null) return
+  const area = canvasSize()
+  const { width, height } = state.natural
+  const scale = clamp(Math.min(area.width / width, area.height / height) * 0.96, minimum, 1)
+  const spanX = area.width / scale
+  const spanY = area.height / scale
+  state.view = { scale, x: spanX >= width ? -(spanX - width) / 2 : 0, y: spanY >= height ? -(spanY - height) / 2 : 0 }
+  state.moved = false
+  applyView()
+}
+
+function zoomAt(px, py, factor) {
+  const view = state.view
+  if (view === null) return
+  const scale = clamp(view.scale * factor, MIN_SCALE, MAX_SCALE)
+  state.moved = true
+  const sx = view.x + px / view.scale
+  const sy = view.y + py / view.scale
+  state.view = { scale, x: sx - px / scale, y: sy - py / scale }
+  applyView()
+}
+
+function centerOn(id) {
+  const group = drawnGroup(id)
+  if (group === null || state.view === null) return
+  const box = group.getBoundingClientRect()
+  const area = $('canvas').getBoundingClientRect()
+  const view = state.view
+  state.moved = true
+  state.view = {
+    ...view,
+    x: view.x + (box.left + box.width / 2 - (area.left + area.width / 2)) / view.scale,
+    y: view.y + (box.top + box.height / 2 - (area.top + area.height / 2)) / view.scale,
+  }
+  applyView()
+}
+
+/** Ancestor ids of a node, parent first, goal last. */
+function chainOf(id) {
+  const chain = []
+  const seen = new Set([id])
+  let node = state.nodes.get(id)
+  while (node !== undefined && node.parent !== undefined && !seen.has(node.parent)) {
+    seen.add(node.parent)
+    chain.push(node.parent)
+    node = state.nodes.get(node.parent)
+  }
+  return chain
+}
+
+/** Filters dim what they leave out, so the layout does not jump; the selection and its path to the goal light up. */
+function decorate() {
+  const svg = svgElement()
+  if (svg === null) return
+  const path = state.selected === null ? new Set() : new Set([state.selected, ...chainOf(state.selected)])
+  const dimmed = new Set()
+  for (const group of svg.querySelectorAll('g[data-id]')) {
+    const { id, type, status } = group.dataset
+    const off = !state.types.has(type) || !state.statuses.has(status)
+    if (off) dimmed.add(id)
+    group.classList.toggle('dim', off)
+    group.classList.toggle('sel', id === state.selected)
+    group.classList.toggle('onpath', path.has(id) && id !== state.selected)
+  }
+  for (const edge of svg.querySelectorAll('path[data-edge]')) {
+    const { node, to } = edge.dataset
+    edge.classList.toggle('dim', dimmed.has(node) || dimmed.has(to))
+    edge.classList.toggle('onpath', edge.dataset.edge === 'parent' && path.has(node) && path.has(to))
+  }
+}
+
+// ---- interaction
+
+async function select(id, reveal) {
+  state.selected = id
+  if (id !== null) setTab('detail')
+  renderDetail(true)
+  decorate()
+  if (id === null || !reveal) return
+  if (drawnGroup(id) === null) {
+    for (const ancestor of chainOf(id)) state.collapsed.delete(ancestor)
+    state.focus = null
+    await reload()
+  }
+  centerOn(id)
+}
+
+function toggleCollapse(id) {
+  if (state.collapsed.has(id)) state.collapsed.delete(id)
+  else if (state.children.has(id)) state.collapsed.add(id)
+  else return
+  reload()
+}
+
+async function setFocus(id) {
+  state.focus = id
+  await reload()
+  fit(OPEN_SCALE)
+}
+
+function collapseShallow() {
+  for (const [id] of state.children) {
+    if (chainOf(id).length === 1) state.collapsed.add(id)
+  }
+  reload()
+}
+
+function bindCanvas() {
+  const canvas = $('canvas')
+  let drag = null
+  let lastClick = { id: null, at: 0 }
+  canvas.addEventListener('wheel', event => {
+    event.preventDefault()
+    const rect = canvas.getBoundingClientRect()
+    const delta = event.deltaMode === 1 ? event.deltaY * 16 : event.deltaY
+    zoomAt(event.clientX - rect.left, event.clientY - rect.top, Math.exp(-delta * 0.0015))
+  }, { passive: false })
+  canvas.addEventListener('pointerdown', event => {
+    if (event.button !== 0 || state.view === null) return
+    drag = { pointer: event.pointerId, x: event.clientX, y: event.clientY, view: { ...state.view }, moved: false, target: event.target }
+    canvas.setPointerCapture(event.pointerId)
+  })
+  canvas.addEventListener('pointermove', event => {
+    if (drag === null || drag.pointer !== event.pointerId) return
+    const dx = event.clientX - drag.x
+    const dy = event.clientY - drag.y
+    if (!drag.moved && Math.hypot(dx, dy) < 4) return
+    drag.moved = true
+    state.moved = true
+    canvas.classList.add('panning')
+    state.view = { ...drag.view, x: drag.view.x - dx / drag.view.scale, y: drag.view.y - dy / drag.view.scale }
+    applyView()
+  })
+  const end = event => {
+    if (drag === null || drag.pointer !== event.pointerId) return
+    const { moved, target } = drag
+    drag = null
+    canvas.classList.remove('panning')
+    if (event.type !== 'pointerup' || moved) return
+    const element = target instanceof Element ? target : null
+    const group = element === null ? null : element.closest('g[data-id]')
+    // A click on empty canvas keeps the selection, so a half-filled form is not thrown away.
+    if (group === null) return
+    const id = group.dataset.id
+    if (element.closest('[data-badge]') !== null) {
+      toggleCollapse(id)
+      return
+    }
+    const now = Date.now()
+    const double = lastClick.id === id && now - lastClick.at < DOUBLE_CLICK_MS
+    lastClick = { id, at: double ? 0 : now }
+    if (double && (state.children.has(id) || state.collapsed.has(id))) toggleCollapse(id)
+    else select(id)
+  }
+  canvas.addEventListener('pointerup', end)
+  canvas.addEventListener('pointercancel', end)
+  window.addEventListener('resize', () => {
+    if (state.moved) applyView()
+    else fit(OPEN_SCALE)
+  })
+}
+
+function buildFilters() {
+  const { types, statuses } = state.schema
+  const row = (title, values, names, active) => [
+    h('span', { class: 'muted' }, title),
+    values.map(value => {
+      const chip = h('button', { 'type': 'button', 'class': 'chip on', 'data-value': value }, names[value])
+      chip.addEventListener('click', () => {
+        if (active.has(value)) active.delete(value)
+        else active.add(value)
+        chip.classList.toggle('on', active.has(value))
+        decorate()
+      })
+      return chip
+    }),
+  ]
+  const reset = h('button', { type: 'button', onclick: () => {
+    for (const value of types) state.types.add(value)
+    for (const value of statuses) state.statuses.add(value)
+    for (const chip of $('filters').querySelectorAll('.chip')) chip.classList.add('on')
+    decorate()
+  } }, '重置筛选')
+  $('filters').replaceChildren(...row('类型', types, labels().types, state.types).flat(), h('span', { class: 'muted' }, ' '), ...row('状态', statuses, labels().statuses, state.statuses).flat(), reset)
+}
+
+// ---- panels
+
+function setTab(name) {
+  for (const button of document.querySelectorAll('#tabs button')) button.classList.toggle('on', button.dataset.tab === name)
+  for (const panel of document.querySelectorAll('.tab')) panel.hidden = panel.id !== `tab-${name}`
+}
+
+function rebuild(panel, key, children, scroll) {
+  panel.replaceChildren(...children.flat(Infinity).filter(child => child !== null && child !== undefined))
+  panel.dataset.key = key
+  delete panel.dataset.dirty
+  panel.scrollTop = scroll
+}
+
+/** A panel with typed input is not rebuilt under the user; it says the graph moved instead. */
+function staleNotice(panel, again) {
+  if (panel.querySelector('.stale') !== null) return
+  panel.prepend(h('div', { class: 'stale' },
+    '图刚被别处改过，这里显示的不是最新。你填的内容还在；提交时引擎按修订号检查，过期的会被拒绝。',
+    h('button', { type: 'button', onclick: again }, '载入最新')))
+}
+
+function caption() {
+  const data = state.data
+  const errors = data.issues.filter(issue => issue.severity === 'error').length
+  const view = state.focus === null ? '整张图' : `投影 ${state.focus}`
+  $('caption').textContent = `${view} · 修订 ${data.revision} · ${data.nodes.length} 个节点${errors > 0 ? ` · 校验错误 ${errors} 条` : ''}`
+  $('whole').hidden = state.focus === null
+}
+
+function link(id, text) {
+  const node = state.nodes.get(id)
+  return h('button', { type: 'button', class: 'link', title: id, onclick: () => select(id, true) }, text || (node === undefined ? id : node.title))
+}
+
+function section(title, ...content) {
+  return h('section', {}, h('h3', {}, title), content)
+}
+
+function errorText(error) {
+  return `${ERROR_TITLES[error.code] || error.code}：${error.message}`
+}
+
+function errorBox(error) {
+  return h('div', { class: 'err' },
+    h('b', {}, ERROR_TITLES[error.code] || error.code),
+    h('div', {}, error.message),
+    error.field ? h('div', {}, `字段：${error.field}`) : null,
+    error.hint ? h('div', {}, `正路：${error.hint}`) : null)
+}
+
+let toastTimer = 0
+function toast(text, kind) {
+  const box = $('toast')
+  box.textContent = text
+  box.className = `show ${kind || ''}`
+  clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => { box.className = '' }, 4000)
+}
+
+function optionName(node, key) {
+  const option = (node.options || []).find(entry => entry.key === key)
+  return option === undefined ? key : `${key} · ${option.label}`
+}
+
+function optionList(entry) {
+  return h('ul', {}, entry.options.map(option => h('li', { class: option.key === entry.decision ? 'chosen' : '' },
+    h('b', {}, `${option.key} · ${option.label}`),
+    option.key === entry.recommend ? h('span', { class: 'tag' }, '推荐') : null,
+    option.key === entry.decision ? h('span', { class: 'tag' }, '已选') : null,
+    h('div', { class: 'muted' }, option.consequence))))
+}
+
+function brief(value) {
+  if (value === null || value === undefined) return '（无）'
+  if (value === true) return '是'
+  if (value === false) return '否'
+  const text = Array.isArray(value) ? value.map(item => typeof item === 'object' ? `${item.key} ${item.label}` : item).join('；') : String(value)
+  return text.length > 120 ? `${text.slice(0, 120)}…` : text
+}
+
+function evidenceText(evidence) {
+  const parts = [`${labels().evidence[evidence.kind] || evidence.kind} ${evidence.ref}`]
+  if (evidence.exit !== undefined) parts.push(`退出码 ${evidence.exit}`)
+  if (evidence.note) parts.push(evidence.note)
+  return parts.join(' · ')
+}
+
+function historyItem(entry) {
+  const names = labels()
+  const stateName = value => value === undefined ? '' : (entry.op === 'verify' ? names.verifications : names.statuses)[value] || value
+  const head = [time(entry.at), names.actors[entry.actor] || entry.actor, names.ops[entry.op] || entry.op]
+  if (entry.to !== undefined) head.push(entry.from === undefined ? `→ ${stateName(entry.to)}` : `${stateName(entry.from)} → ${stateName(entry.to)}`)
+  if (entry.option) head.push(`选 ${entry.option}`)
+  if (entry.edge) head.push(`${names.edges[entry.edge.type] || entry.edge.type} ${entry.edge.to}`)
+  if (entry.by) head.push(`被 ${entry.by} 取代`)
+  return h('li', { class: entry.op === 'comment' ? 'comment' : '' },
+    h('div', { class: 'meta' }, head.join(' · ')),
+    entry.reason ? h('div', {}, entry.reason) : null,
+    entry.text ? h('div', { class: 'text' }, entry.text) : null,
+    entry.changes ? h('ul', { class: 'changes' }, Object.entries(entry.changes).map(([name, change]) =>
+      h('li', {}, `${FIELD_LABELS[name] || name}：${brief(change.from)} → ${brief(change.to)}`))) : null,
+    entry.evidence ? h('ul', { class: 'changes' }, entry.evidence.map(evidence => h('li', {}, evidenceText(evidence)))) : null)
+}
+
+function facts(node) {
+  const names = labels()
+  const rows = []
+  const add = (label, value) => rows.push(h('dt', {}, label), h('dd', {}, value))
+  if (node.verification) add('验证状态', names.verifications[node.verification])
+  if (node.stage) add('阶段', names.stages[node.stage])
+  if (node.slope) add('坡位', names.slopes[node.slope])
+  if (node.type === 'task') {
+    add('种类', node.kind ? names.kinds[node.kind] : '未设')
+    add('模型档位', node.tier ? names.tiers[node.tier] : '未设')
+    add('独立工作树', node.worktree ? '是' : '否')
+    add('交回结构', node.outputSchema || '未设')
+    add('写入范围', node.writeScope ? node.writeScope.join('、') : node.kind === 'review' ? '无（审查不写文件）' : '未设')
+  }
+  if (node.decision) add('拍板结果', optionName(node, node.decision))
+  else if (node.recommend) add('推荐', optionName(node, node.recommend))
+  const first = node.history[0]
+  if (first !== undefined) add('提出', `${time(first.at)} · ${names.actors[first.actor] || first.actor}`)
+  add('修订号', node.rev)
+  return h('dl', { class: 'facts' }, rows)
+}
+
+function relations(node) {
+  const rows = []
+  const add = (label, ids) => {
+    if (ids.length > 0) rows.push(h('dt', {}, label), h('dd', {}, joined(ids.map(id => link(id)), '、')))
+  }
+  const out = type => (node.edges || []).filter(edge => edge.type === type).map(edge => edge.to)
+  const into = type => [...state.nodes.values()].filter(other => (other.edges || []).some(edge => edge.type === type && edge.to === node.id)).map(other => other.id)
+  add('子节点', state.children.get(node.id) || [])
+  add('依赖', out('depends'))
+  add('被依赖', into('depends'))
+  add('来源', out('source'))
+  add('因它而有', into('source'))
+  add('取代', out('supersedes'))
+  add('被取代于', into('supersedes'))
+  return rows.length === 0 ? null : section('连线', h('dl', { class: 'facts' }, rows))
+}
+
+async function loadGates(node) {
+  const result = await call(`/api/projection?id=${encodeURIComponent(node.id)}`)
+  const box = $('gates')
+  if (box === null || state.selected !== node.id) return
+  if (!result.ok) {
+    box.replaceChildren(errorBox(result.error))
+    return
+  }
+  const { gates, stage } = result.projection
+  box.replaceChildren(
+    stage === null ? '' : h('div', {}, `所在阶段：${labels().stages[stage]}`),
+    gates.length === 0
+      ? h('div', {}, '没有未通过的门禁。')
+      : h('ul', {}, gates.map(gate => h('li', {}, GATE_LABELS[gate.kind] || gate.kind,
+        gate.ids.some(id => id !== node.id) ? ['：', joined(gate.ids.filter(id => id !== node.id).map(id => link(id)), '、')] : null))))
+}
+
+function detailView(node) {
+  const names = labels()
+  const tools = []
+  if (state.children.has(node.id) || state.collapsed.has(node.id)) {
+    tools.push(h('button', { type: 'button', onclick: () => toggleCollapse(node.id) }, state.collapsed.has(node.id) ? '展开子树' : '折叠子树'))
+  }
+  tools.push(state.focus === node.id
+    ? h('button', { type: 'button', onclick: () => setFocus(null) }, '回到整张图')
+    : h('button', { type: 'button', title: 'LLM 读这个节点的投影时看到的范围', onclick: () => setFocus(node.id) }, '只看它的投影'))
+  tools.push(h('button', { type: 'button', onclick: () => centerOn(node.id) }, '在图上定位'))
+  const chain = chainOf(node.id)
+  const comments = node.history.filter(entry => entry.op === 'comment')
+  const decidable = TOKEN !== '' && node.type === 'question' && (node.status === 'approved' || node.status === 'doing')
+  return [
+    h('div', { class: 'row' }, h('span', { class: `pill st-${node.status}` }, names.statuses[node.status]), h('span', { class: 'muted' }, `${names.types[node.type]} · ${node.id}`)),
+    h('h2', {}, node.title),
+    chain.length > 0 ? h('div', { class: 'crumbs' }, '到目标：', joined([...chain].reverse().map(id => link(id)), ' › ')) : null,
+    h('div', { class: 'tools' }, tools),
+    node.body ? section('正文', h('p', { class: 'body' }, node.body)) : null,
+    node.acceptance ? section('验收条件', h('ul', {}, node.acceptance.map(item => h('li', {}, item)))) : null,
+    node.nonGoals ? section('非目标', h('ul', {}, node.nonGoals.map(item => h('li', {}, item)))) : null,
+    decidable ? decideForm(node) : node.options ? section('选项', optionList(node)) : null,
+    TOKEN !== '' && node.status === 'proposed' ? reviewForm(node) : null,
+    section('字段', facts(node)),
+    relations(node),
+    node.evidence ? section('证据', h('ul', {}, node.evidence.map(evidence => h('li', {}, evidenceText(evidence))))) : null,
+    section('门禁（LLM 读投影时看到的）', h('div', { id: 'gates', class: 'muted' }, '读取中…')),
+    TOKEN !== '' ? [statusForm(node), commentForm(node), editForm(node)] : null,
+    comments.length > 0 ? section(`批注（${comments.length}）`, h('ul', { class: 'history' }, [...comments].reverse().map(historyItem))) : null,
+    section(`历史（${node.history.length}，新的在前）`, h('ul', { class: 'history' }, [...node.history].reverse().map(historyItem))),
+  ]
+}
+
+function renderDetail(force) {
+  const panel = $('tab-detail')
+  const node = state.selected === null ? undefined : state.nodes.get(state.selected)
+  const key = node === undefined ? `${state.selected}` : `${node.id} ${node.rev}`
+  if (!force && panel.dataset.dirty === '1') {
+    if (panel.dataset.key !== key) staleNotice(panel, () => renderDetail(true))
+    return
+  }
+  const content = node !== undefined
+    ? detailView(node)
+    : [h('p', { class: 'muted' }, state.selected === null ? '点图上的节点看详情。' : `节点 ${state.selected} 已不在图里。`)]
+  rebuild(panel, key, content, force ? 0 : panel.scrollTop)
+  if (node !== undefined) loadGates(node)
+}
+
+function compactList(title, refs) {
+  if (refs.length === 0) return null
+  return section(`${title}（${refs.length}）`, h('ul', {}, refs.map(ref => h('li', {}, link(ref.id), h('span', { class: 'muted' }, ` ${ref.id}`)))))
+}
+
+function renderQueue(force) {
+  const panel = $('tab-queue')
+  const { questions, proposals, doing, ready, verificationDebt } = state.data.items
+  $('queue-count').textContent = String(questions.length + proposals.length || '')
+  const key = JSON.stringify([questions.map(entry => `${entry.id} ${entry.rev}`), proposals.map(entry => `${entry.id} ${entry.rev}`)])
+  if (!force && panel.dataset.dirty === '1') {
+    if (panel.dataset.key !== key) staleNotice(panel, () => renderQueue(true))
+    return
+  }
+  const names = labels()
+  const content = [
+    h('h3', {}, `决策队列（${questions.length}），先提的在前`),
+    questions.length === 0 ? h('p', { class: 'muted' }, '没有等你拍板的问题。') : null,
+    questions.map(entry => h('div', { class: 'card' },
+      h('div', { class: 'card-title' }, link(entry.id)),
+      h('div', { class: 'muted' },
+        entry.id,
+        entry.askedAt ? ` · ${names.actors[entry.askedBy] || entry.askedBy} 提于 ${time(entry.askedAt)}` : '',
+        entry.raisedBy ? [' · 挂在 ', link(entry.raisedBy.id)] : null),
+      entry.sources.length > 0 ? h('div', { class: 'muted' }, '来源：', joined(entry.sources.map(source => link(source.id)), '、')) : null,
+      entry.body ? h('p', { class: 'body' }, entry.body) : null,
+      TOKEN ? decideForm(entry) : optionList(entry))),
+    h('h3', {}, `待批准的提议（${proposals.length}）`),
+    proposals.length === 0 ? h('p', { class: 'muted' }, '没有等你批准的提议。') : null,
+    proposals.map(entry => {
+      const node = state.nodes.get(entry.id)
+      const first = node === undefined ? undefined : node.history[0]
+      return h('div', { class: 'card' },
+        h('div', { class: 'card-title' }, link(entry.id)),
+        h('div', { class: 'muted' },
+          `${names.types[entry.type]} · ${entry.id}`,
+          first ? ` · ${names.actors[first.actor] || first.actor} 提于 ${time(first.at)}` : '',
+          node && node.parent ? [' · 挂在 ', link(node.parent)] : null),
+        first && first.reason ? h('div', {}, `提议理由：${first.reason}`) : null,
+        TOKEN && node ? reviewForm(node) : null)
+    }),
+    compactList('进行中', doing),
+    compactList('可以开工', ready),
+    compactList('验证债（已采纳、未验证的决策）', verificationDebt),
+  ]
+  rebuild(panel, key, content, force ? 0 : panel.scrollTop)
+}
+
+function renderIssues() {
+  const issues = state.data.issues
+  const errors = issues.filter(issue => issue.severity === 'error').length
+  $('issue-count').textContent = errors > 0 ? String(errors) : ''
+  $('tab-issues').replaceChildren(issues.length === 0
+    ? h('p', { class: 'muted' }, '节点文件全部通过校验。')
+    : h('ul', { class: 'issues' }, issues.map(issue => h('li', { class: issue.severity },
+      h('b', {}, issue.severity === 'error' ? '错误' : '提示'),
+      ` ${issue.file}${issue.field ? ` ${issue.field}` : ''}：${issue.message}`))))
+}
+
+// ---- forms: each builds one engine mutation; the engine checks it
+
+const valueOf = (form, name) => form.elements.namedItem(name).value.trim()
+
+function field(label, control, hint) {
+  return h('label', { class: 'field' }, h('span', {}, label), control, hint ? h('small', { class: 'muted' }, hint) : null)
+}
+
+function textInput(name, value, placeholder) {
+  return h('input', { name, value: value || '', placeholder })
+}
+
+function textArea(name, value, placeholder, rows) {
+  return h('textarea', { name, rows: rows || 3, placeholder, value: value || '' })
+}
+
+function choice(name, values, names, current, empty) {
+  return h('select', { name },
+    empty === undefined ? null : h('option', { value: '', selected: current === undefined }, empty),
+    values.map(value => h('option', { value, selected: value === current }, names[value] || value)))
+}
+
+const reasonField = () => field('理由', textArea('reason', '', '为什么这样做（必填，记进历史）', 2))
+
+function withReason(form, mutation) {
+  const reason = valueOf(form, 'reason')
+  return reason === '' ? '写一句理由' : { ...mutation, reason }
+}
+
+function actionForm(title, controls, buttons, note) {
+  return h('form', { class: 'action', onsubmit: event => event.preventDefault() },
+    h('h3', {}, title),
+    note ? h('p', { class: 'muted' }, note) : null,
+    controls,
+    h('div', { class: 'buttons' }, buttons),
+    h('div', { class: 'result' }))
+}
+
+/** A button that builds a mutation from its form (or a message when the form is incomplete) and applies it. */
+function actionButton(label, make, kind) {
+  const button = h('button', { type: 'button', class: kind || 'primary' }, label)
+  button.addEventListener('click', async () => {
+    const form = button.closest('form')
+    const result = form.querySelector('.result')
+    const mutation = make(form)
+    if (typeof mutation === 'string') {
+      result.replaceChildren(h('div', { class: 'err' }, mutation))
+      return
+    }
+    const buttons = [...form.querySelectorAll('button')]
+    for (const each of buttons) each.disabled = true
+    result.replaceChildren(h('div', { class: 'muted' }, '提交中…'))
+    const outcome = await apply(mutation)
+    for (const each of buttons) each.disabled = false
+    if (!outcome.ok) {
+      result.replaceChildren(errorBox(outcome.error))
+      return
+    }
+    const panel = form.closest('.tab')
+    if (panel !== null) delete panel.dataset.dirty
+    toast(`已${labels().ops[mutation.op]}：${outcome.node.title}`, 'good')
+    await reload()
+  })
+  return button
+}
+
+function decideForm(entry) {
+  const radios = entry.options.map(option => h('label', { class: 'option' },
+    h('input', { type: 'radio', name: 'option', value: option.key }),
+    h('span', {},
+      h('b', {}, `${option.key} · ${option.label}`),
+      option.key === entry.recommend ? h('span', { class: 'tag' }, '推荐') : null,
+      h('div', { class: 'muted' }, option.consequence))))
+  return actionForm('拍板', [radios, field('理由或附言', textArea('reason', '', '必填，记进历史；LLM 读投影时能看到', 2))], [
+    actionButton('拍板', form => {
+      const chosen = form.querySelector('input[name="option"]:checked')
+      if (chosen === null) return '先选一个选项'
+      return withReason(form, { op: 'decide', id: entry.id, rev: entry.rev, option: chosen.value })
+    }),
+  ])
+}
+
+function reviewForm(node) {
+  return actionForm('审批提议', [reasonField()], [
+    actionButton('批准', form => withReason(form, { op: 'approve', id: node.id, rev: node.rev })),
+    actionButton('否决', form => withReason(form, { op: 'reject', id: node.id, rev: node.rev }), 'danger'),
+  ], '批准后节点由虚线变实线；否决后转为废弃')
+}
+
+function statusForm(node) {
+  const { transitions, evidenceKinds } = state.schema
+  const targets = transitions[node.status] || []
+  if (node.status === 'proposed' || targets.length === 0) return null
+  const names = labels()
+  return actionForm('改状态', [
+    field('改为', choice('to', targets, names.statuses)),
+    field('证据', choice('evidence', evidenceKinds, names.evidence, undefined, '不附证据'), '标完成必须附通过的证据：提交号，或退出码为 0 的测试或检查'),
+    field('证据内容', textInput('ref', '', '提交号，或命令、检查器名')),
+    field('退出码', h('input', { name: 'exit', type: 'number', step: '1', value: '0' }), '只用于测试与检查'),
+    field('证据备注', textInput('note', '', '可选')),
+    reasonField(),
+  ], [
+    actionButton('改状态', form => {
+      const mutation = withReason(form, { op: 'status', id: node.id, rev: node.rev, to: valueOf(form, 'to') })
+      const kind = valueOf(form, 'evidence')
+      if (typeof mutation === 'string' || kind === '') return mutation
+      const ref = valueOf(form, 'ref')
+      if (ref === '') return '证据要写提交号，或命令、检查器名'
+      const evidence = { kind, ref }
+      if (kind !== 'commit') {
+        const exit = Number(valueOf(form, 'exit'))
+        if (valueOf(form, 'exit') === '' || !Number.isInteger(exit)) return '退出码要是整数'
+        evidence.exit = exit
+      }
+      const note = valueOf(form, 'note')
+      if (note !== '') evidence.note = note
+      return { ...mutation, evidence: [evidence] }
+    }),
+  ])
+}
+
+function commentForm(node) {
+  return actionForm('批注', [textArea('text', '', '写给 LLM 或自己看，记进历史', 3)], [
+    actionButton('发送', form => {
+      const text = valueOf(form, 'text')
+      return text === '' ? '批注不能为空' : { op: 'comment', id: node.id, text }
+    }),
+  ])
+}
+
+function editForm(node) {
+  const { slopes, stages, kinds, tiers } = state.schema
+  const names = labels()
+  const lines = list => (list || []).join('\n')
+  const controls = [
+    field('标题', textInput('title', node.title)),
+    field('正文', textArea('body', node.body, '', 4)),
+    field('验收条件', textArea('acceptance', lines(node.acceptance), '每行一条', 3)),
+    field('非目标', textArea('nonGoals', lines(node.nonGoals), '每行一条', 2)),
+    field('坡位', choice('slope', slopes, names.slopes, node.slope, '（不设）')),
+  ]
+  if (node.type === 'goal' || node.type === 'feature') controls.push(field('阶段', choice('stage', stages, names.stages, node.stage, '（不设）')))
+  if (node.type === 'question' && node.options) {
+    controls.push(field('推荐', choice('recommend', node.options.map(option => option.key), Object.fromEntries(node.options.map(option => [option.key, `${option.key} · ${option.label}`])), node.recommend)))
+  }
+  if (node.type === 'task') {
+    controls.push(
+      field('种类', choice('kind', kinds, names.kinds, node.kind, '（不设）')),
+      field('模型档位', choice('tier', tiers, names.tiers, node.tier, '（不设）')),
+      field('交回结构', textInput('outputSchema', node.outputSchema, '名字或仓库内路径')),
+      field('写入范围', textArea('writeScope', lines(node.writeScope), '每行一个仓库相对路径，目录以 / 结尾；审查任务留空', 3)),
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', name: 'worktree', checked: node.worktree === true }), '给子 agent 独立的 git 工作树'),
+    )
+  }
+  controls.push(reasonField())
+  return actionForm('编辑', controls, [
+    actionButton('保存', form => {
+      const set = {}
+      const put = (name, value) => {
+        const current = node[name]
+        const same = JSON.stringify(value) === JSON.stringify(current === undefined ? null : current)
+          || (typeof value === 'string' && typeof current === 'string' && value === current.trim())
+        if (!same) set[name] = value
+      }
+      const present = name => form.elements.namedItem(name) !== null
+      const text = name => valueOf(form, name) === '' ? null : valueOf(form, name)
+      const list = name => {
+        const items = form.elements.namedItem(name).value.split('\n').map(item => item.trim()).filter(item => item !== '')
+        return items.length === 0 ? null : items
+      }
+      for (const name of ['title', 'body', 'slope', 'stage', 'recommend', 'kind', 'tier', 'outputSchema']) {
+        if (present(name)) put(name, text(name))
+      }
+      for (const name of ['acceptance', 'nonGoals', 'writeScope']) {
+        if (present(name)) put(name, list(name))
+      }
+      if (present('worktree')) {
+        const checked = form.elements.namedItem('worktree').checked
+        if (checked !== (node.worktree === true)) set.worktree = checked ? true : null
+      }
+      if (Object.keys(set).length === 0) return '没有改动'
+      return withReason(form, { op: 'edit', id: node.id, rev: node.rev, set })
+    }),
+  ], '只发改过的字段；清空即删除该字段')
+}
+
+// ---- start
+
+function connect() {
+  const source = new EventSource('/api/events')
+  const live = on => {
+    const dot = $('live')
+    dot.classList.toggle('on', on)
+    dot.title = on ? '实时同步中：命令行、手改文件、git 与别的标签页的改动会自动出现' : '同步断开，正在重连'
+  }
+  source.addEventListener('open', () => live(true))
+  source.addEventListener('error', () => live(false))
+  source.addEventListener('revision', event => {
+    const { revision } = JSON.parse(event.data)
+    if (state.data === null || revision !== state.data.revision) reload()
+  })
+}
+
+async function start() {
+  for (const panel of document.querySelectorAll('.tab')) {
+    panel.addEventListener('input', () => { panel.dataset.dirty = '1' })
+  }
+  for (const button of document.querySelectorAll('#tabs button')) {
+    button.addEventListener('click', () => setTab(button.dataset.tab))
+  }
+  $('whole').addEventListener('click', () => setFocus(null))
+  $('shallow').addEventListener('click', collapseShallow)
+  $('expand').addEventListener('click', () => {
+    state.collapsed.clear()
+    reload()
+  })
+  $('fit').addEventListener('click', () => fit(MIN_SCALE))
+  document.addEventListener('keydown', event => {
+    if (event.key !== 'Escape' || $('tab-detail').dataset.dirty === '1') return
+    if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return
+    select(null)
+  })
+  bindCanvas()
+  const result = await call('/api/schema')
+  if (!result.ok) {
+    $('stage').replaceChildren(errorBox(result.error))
+    return
+  }
+  state.schema = result.schema
+  for (const type of state.schema.types) state.types.add(type)
+  for (const status of state.schema.statuses) state.statuses.add(status)
+  buildFilters()
+  $('readonly').hidden = TOKEN !== ''
+  setTab('queue')
+  await reload()
+  connect()
+}
+
+start()
+</script>
+</body>
+</html>

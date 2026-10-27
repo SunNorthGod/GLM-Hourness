@@ -96,8 +96,8 @@ const OPEN_PARENT_TYPES = new Set<NodeType>(['risk', 'question', 'retro'])
 /** Statuses a node can be superseded from: adopted, in progress or finished. */
 const SUPERSEDABLE = new Set<Status>(['approved', 'doing', 'done'])
 
-/** Status transitions of the status operation (§2.9 table). */
-const TRANSITIONS: Readonly<Record<Status, readonly Status[]>> = {
+/** Status transitions of the status operation (§2.9 table); the viewer offers these. */
+export const TRANSITIONS: Readonly<Record<Status, readonly Status[]>> = {
   proposed: [],
   approved: ['doing', 'done', 'dropped'],
   doing: ['done', 'dropped'],

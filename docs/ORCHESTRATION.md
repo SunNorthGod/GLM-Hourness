@@ -237,6 +237,38 @@ todo 撑不起上百轮的大项目：它是平的，没有层级与因果；它
 
 人在查看器里能做的：平移与缩放；展开与折叠子树；按类型与状态筛选；点开节点看详情（字段、验收条件、证据、历史、批注）；高亮它到目标的路径；批注；批准或否决提议；在待决上选一个选项拍板；带证据改状态；改目标、验收条件与非目标。查看器画的图来自服务端的渲染器，与 `graph.svg` 是同一份布局，查看器只在上面挂交互，不另做布局。
 
+查看器〔已实现，服务 `src/graph/server.ts`，页面 `src/graph/viewer.html`，入口 `scripts/graph/serve.ts`〕：
+
+```
+npm run graph:serve -- [--dir 图目录] [--port 端口]
+```
+
+默认读 `docs/graph/`，端口默认 0（取空闲端口）。图目录必须存在（空目录是空图）。启动后打印 `http://127.0.0.1:<端口>/#token=<令牌>`，用浏览器打开这个地址；Ctrl+C 停止。
+
+| 路由 | 作用 | 成功时返回 |
+| --- | --- | --- |
+| `GET /` | 查看器页面（一个 HTML 文件，样式与脚本内联，不引用任何外部资源） | HTML |
+| `GET /api/schema` | 枚举、中文名、`status` 的状态转换表、`edit` 能改的字段，查看器据此建筛选与表单 | `{ok, schema}` |
+| `GET /api/graph` | 查询参数 `collapse`（可重复）、`root`、`focus`，都是节点 id，同 `graph:render`。返回渲染好的 SVG、全部节点（带完整历史与修订号 `rev`）、校验问题与 `openItems` 的结果 | `{ok, revision, svg, nodes, issues, items}` |
+| `GET /api/projection?id=` | `projection(id)`，查看器用它显示「LLM 读投影时看到的门禁」 | `{ok, projection}` |
+| `GET /api/events` | SSE，事件名 `revision`，数据 `{"revision": 图修订号}`；连上即发一次当前修订号（§2.11） | 事件流 |
+| `POST /api/apply` | 请求体是一个 mutation（§2.9），原样交给 `apply('human', …)` | `apply` 的返回值 |
+
+- 失败一律是 `{ok: false, error: {code, message, field?, hint}}`，与命令行相同。引擎错误码对应的 HTTP 状态：`invalid` 400，`forbidden` 403，`not_found` 404，`conflict`、`stale_revision`、`graph_invalid` 409，`evidence_required`、`bad_transition` 422。服务自己的拒绝也用这套错误码：`Host`、`Origin`、令牌不对为 403 `forbidden`；未知路由 404 `not_found`；方法不对 405、`Content-Type` 不是 `application/json` 415、请求体超过 256 KB 413、JSON 语法错与未知查询参数 400，错误码都是 `invalid`。服务内部异常为 500，错误码 `internal`，详情打到服务的 stderr。
+- 页面上的筛选把不符合的节点与连线变淡，不从图上拿掉，布局不跳。点节点选中，选中的节点与它到目标的路径（节点与分解连线）高亮；点 `+N` 角标展开，双击节点折叠或展开；「只看前两层」折叠目标以下第二层的子树；节点详情里的「只看它的投影」切到 `focus` 视图，即 LLM 读这个节点投影时看到的范围。右侧「待处理」页列决策队列（先提的在前，每张卡带选项、后果、推荐项、提出者与时间、挂在哪个节点下，选一项、写理由即拍板）、待批准的提议、进行中、可以开工与验证债；「节点详情」页列字段、正文、验收条件、非目标、选项、连线（两个方向）、证据、门禁、批注与全部历史，以及批准或否决、拍板、改状态（目标状态只列 `schema.transitions` 允许的）、批注、编辑（标题、正文、验收条件、非目标、坡位，目标与特性的阶段，待决的推荐项，任务的派发属性）表单；「校验」页列校验问题。
+- 每个表单只拼出一个 mutation 发给 `/api/apply`，规则全在引擎：被拒绝时表单下方显示错误码的中文说明、`message`、`field` 与 `hint`（正路）。表单只做「必填项没填」「没有改动」这类不必问引擎的提示。
+- 实时更新时，有未提交输入的面板不重建，以免冲掉人正在填的内容：所看节点被别处改过时，面板顶上提示「图刚被别处改过」，人点「载入最新」再继续；照旧提交会因修订号过期拿到 `stale_revision`。
+- 地址里没有令牌时页面只读，表单不显示。
+- 宽度 900 px 以下（例如 DSH 右侧栏）改为图在上、面板在下。
+- 构建（`tsc`）不复制 `viewer.html` 到 `dist/`；本原型的服务只从 `src/` 经 `--experimental-strip-types` 运行。以后由宿主插件起服务时，要把这个文件随包发布。
+
+自动检查：`tests/graph-server.spec.ts` 覆盖安全检查、每种人的操作、校验错误与实时通知；`npm run graph:smoke`（也在 `npm test` 里）在临时图上把服务作为独立进程启动，取页面与图 JSON，经 HTTP 写一条人的批注、经命令行进程写一条 LLM 的批注，确认两次都收到修订号事件、两条批注都在图 JSON 里，然后停掉服务。页面脚本在浏览器里的行为（平移、缩放、选中、折叠、筛选、表单）2026-10-28 用 Playwright 驱动的 Chromium 在样例图上逐项手动核对过，没有自动化测试。
+
+在 DSH 里用〔规划；2026-10-28 读 rc.3 包文档与源码所得，实读，未真机验证〕：
+
+1. 现在：Desktop rc.3 默认启用内置 Browser 标签页（`dsh-web-app/cordis.patch.yml` 中的 `ui-sidebar-browser` 行）。一个客户端插件调用 `ctx.sidebarRight.openTab('browser', { params: { url } })`（`dsh-client-ui-sidebar-browser/README.md`）即可在右侧栏打开本查看器的回环地址；那是 Electron `<webview>`，页面里没有 DSH API，读写都经本服务，查看器原样可用。本分支不写这段插件代码。
+2. 以后（M8）：原生右侧栏标签页（`sidebarRightTabs.register` + 槽 `sidebar.right.pane.tab`，`dsh-client-ui-sidebar-right/README.md`），用 React 渲染同一份 SVG；读图经 `remote.workspaceFiles`（只读，带变更订阅，`dsh-api-workspace-files/README.md`），写回经命令通道 `remote.commands.execute` 进入宿主侧的图服务，人和 LLM 走同一个引擎、同一套规则。客户端可调用的 Remote 能力在 `dsh-api-remotes` 构建时固定（其 README），第三方插件实际上不能注册自定义 Remote 服务，所以不走那条路。
+
 LLM 经命令行能做的：读投影、列待办、提议节点、带证据改状态、加连线、批注。两边的写入都经过同一个 `apply`，规则一致；人在查看器里批准、拍板的结果，LLM 下一次读投影就能看到。
 
 命令行契约〔已实现，`src/graph/cli.ts`，入口 `scripts/graph/cli.ts`〕，以后的 DSH 图工具照此暴露：
@@ -259,17 +291,18 @@ npm run -s graph -- [--dir 图目录] <op> [<JSON> | --file <文件>]
 - `npm run` 不带 `-s` 时 npm 会先往 stdout 打两行命令回显，读 JSON 的一方要用 `-s`，或直接运行 `node --experimental-strip-types --no-warnings scripts/graph/cli.ts`。
 - Windows PowerShell 5.1 下另有三个坑（2026-10-28 本机实测）：往 `npm` 管道送 stdin 时 `--` 被 npm 的 PowerShell 外壳吞掉，`--dir` 被 npm 当成自己的选项；管道文本按 `$OutputEncoding`（默认 ASCII）编码，中文到引擎时已是问号；命令行参数里 JSON 的双引号被剥掉，引擎收到的不是合法 JSON。在这个环境下用 `--file`，文件存为 UTF-8。
 
-本机服务的安全措施：
+本机服务的安全措施〔已实现〕：
 
 - 只监听 127.0.0.1。
-- 每次启动生成随机令牌，启动时打印带令牌的地址。令牌放在 URL 的 `#` 片段里，不出现在请求行与 Referer 中。
-- 每个请求检查 `Host` 是本服务的地址，挡住 DNS 重绑定。
-- 写请求另须带请求头 `X-Graph-Token`，且 `Origin` 必须是本服务；别的网页发来的跨站请求既拿不到令牌，也过不了 `Origin` 检查。
-- 请求体按 mutation 的结构逐字段校验；只经引擎写图目录；不执行请求数据里的任何内容。
+- 每次启动生成随机令牌（24 字节，base64url），启动时打印带令牌的地址。令牌放在 URL 的 `#` 片段里，不出现在请求行与 Referer 中（另发 `Referrer-Policy: no-referrer`）。
+- 每个请求检查 `Host` 是 `127.0.0.1:<端口>` 或 `localhost:<端口>`，挡住 DNS 重绑定；带了 `Origin` 的请求（读也一样），`Origin` 必须是这两个地址之一。
+- 写请求（`POST /api/apply`）必须带 `Origin` 且是本服务，另须带请求头 `X-Graph-Token`（按常数时间比较），`Content-Type` 必须是 `application/json`；别的网页发来的跨站请求既拿不到令牌，也过不了 `Origin` 检查。读请求不要令牌：别的网页读不到跨源响应（不发 CORS 头），本机其他程序本来就能直接读图文件。
+- 页面带 `Content-Security-Policy`：`default-src 'none'`，脚本与样式只认每次响应新生成的 nonce，`connect-src 'self'`，`frame-ancestors 'none'`、`form-action 'none'`、`base-uri 'none'`。服务端 SVG 以 `innerHTML` 插入，渲染器转义了全部文本与属性值；即使漏了一处，内联事件属性也因 nonce 策略不会执行。所有响应 `Cache-Control: no-store`、`X-Content-Type-Options: nosniff`。
+- 请求体先过上面的检查，再由引擎按 mutation 的结构逐字段校验；actor 固定为 `human`，请求里带 `actor` 字段按多余字段拒绝。只经引擎写图目录；不执行请求数据里的任何内容。
 
 ### 2.11 实时同步与并发〔规划，待用户批准〕
 
-- 服务监视 `docs/graph/nodes/`（`fs.watch`，100 ms 内的连续事件合并处理），重算图修订号，修订号变了就经 SSE（`/api/events`）通知查看器，查看器收到后重新取图。命令行、手改文件、git 操作、另一个标签页的改动都经这条路径出现在页面上，不用刷新。
+- 服务监视整个图目录（`fs.watch` 递归，这样启动后才建的 `nodes/` 也在内；100 ms 内的连续事件合并处理），重算图修订号，修订号变了就经 SSE（`/api/events`）通知查看器，查看器收到后重新取图。命令行、手改文件、git 操作、另一个标签页的改动都经这条路径出现在页面上，不用刷新。服务自己写成功后不等文件事件，先重算并推送修订号，再返回写入结果。监视出错时服务照常服务，在 stderr 报告「实时更新已停」，人要手动刷新页面。〔已实现，`src/graph/server.ts`〕
 - 同一进程内的写入按图目录排队串行执行，同一进程里对同一目录开的多个引擎实例共用一条队列。每次写入先重读整张图、比对修订号，再写临时文件、改名替换，读的一方看不到写了一半的文件。
 - 跨进程（服务与命令行同时写同一个节点）靠修订号检查，后写的一方拿到 `stale_revision`。比对与改名之间仍有毫秒级的窗口；单用户原型接受这个窗口，不加锁文件，因为进程崩溃后锁文件会残留在图目录里，要另做清理。
 
@@ -298,7 +331,7 @@ npm run -s graph -- [--dir 图目录] <op> [<JSON> | --file <文件>]
 - 连线：分解为灰色实线；依赖为带箭头的虚线；来源为带箭头的点线；取代为带箭头的紫色实线。箭头一律指向后来的一方：从前置指向依赖它的节点，从来源指向因它而有的节点，从旧节点指向取代它的新节点。
 - 图内带图例。图例首行写视图、图修订号、节点数（含折叠的）与校验错误数，人与 LLM 可以核对看的是不是同一版图。整张图白底，深色主题的宿主里也看得清。
 
-SVG 只用表现属性，不含脚本、样式表、网络字体与外部引用，任何能显示 SVG 的地方效果相同。每个节点组带 `data-id`、`data-type`、`data-status`、`data-tone`（折叠的另带 `data-hidden`），每条连线带 `data-edge`（`parent`、`depends`、`source`、`supersedes`）、`data-node`（存这条连线的节点，分解连线是子节点）与 `data-to`；查看器（§2.10）据此挂交互，不另做布局。每个元素占一行，提交的 `graph.svg` 的 diff 可读。
+SVG 只用表现属性，不含脚本、样式表、网络字体与外部引用，任何能显示 SVG 的地方效果相同。每个节点组带 `data-id`、`data-type`、`data-status`、`data-tone`（折叠的另带 `data-hidden`，角标是其中带 `data-badge` 的子组），每条连线带 `data-edge`（`parent`、`depends`、`source`、`supersedes`）、`data-node`（存这条连线的节点，分解连线是子节点）与 `data-to`；查看器（§2.10）据此挂交互，不另做布局。每个元素占一行，提交的 `graph.svg` 的 diff 可读。
 
 命令：`npm run graph:render -- [--dir 图目录] [--out 文件] [--root id | --focus id] [--collapse id]…`，默认读 `docs/graph/`、写 `docs/graph/graph.svg`。图有校验错误时照常出图，错误列在 stderr；`root` 与 `focus` 同时给出返回 `invalid`，节点不存在返回 `not_found`，未知的折叠 id 忽略。
 
@@ -751,6 +784,8 @@ LLM 不讲人话，多半是默认在向评审汇报，想显得周全。做法�
 | 任务派发属性 | 原型按此实现，待用户批准（§2.2、§2.6、§2.9）：删除 `owner`；任务节点带 `kind`、`tier`、`worktree`、`outputSchema`、`writeScope`，都可选；`tier` 分 `hard`、`standard`、`simple` 三档，对应 §3.5 的难题、常规、简单；LLM 可以改已批准任务的派发属性，写入范围也在内，验收条件仍只有人能改。备选是写入范围在任务批准后只有人能改。推荐放开：派发本来就是主 Agent 的事，不让它改范围，它只会另提一个范围不同的新任务，安全上没有收益 |
 | 决策队列 | 原型按此实现，待用户批准（§2.9）：队列只放待决节点，提议另列；按提出时间从早到晚；「提出它的节点」取父节点，来源连线另列；拍板时的理由就是人的附言 |
 | 命令行细则 | 原型按此实现，待用户批准（§2.10）：写命令名就是操作名，只认人的操作也转给引擎，由引擎拒绝并给正路；请求从参数、`--file` 或 stdin 读；退出码 0 成功、1 引擎拒绝、2 用法错误；输出两空格缩进的 JSON |
+| 查看器细则 | 原型按此实现，待用户批准（§2.10、§2.11）：读请求不要令牌，只查 `Host` 与 `Origin`；筛选让节点变淡而不是从图上拿掉（布局不跳；备选是按筛选重新布局，图更小但位置会变）；有未提交输入的面板在实时更新时不重建，只提示「图刚被别处改过」；状态表单只列 `status` 转换表允许的目标；人在查看器里的编辑不含 `parent`、选项与连线（引擎允许，界面先不做）；服务端口默认取空闲端口，令牌每次启动重新生成，所以地址每次都变 |
+| 查看器在 DSH 里的落点 | 规划（§2.10）：先经内置 Browser 标签页打开本查看器的回环地址，再在 M8 做原生右侧栏标签页，读经 `remote.workspaceFiles`，写经命令通道进宿主侧图服务。待真机核实 Browser 标签页对回环地址与 SSE 的表现 |
 | 草稿区位置 | 工作区内通用目录，汇合门禁检查 |
 | 用户级数据目录 | 用户主目录下单一目录 |
 | 偏好类记忆的归属 | 关于人的偏好放用户级，项目事实与项目规范放工作区 |
