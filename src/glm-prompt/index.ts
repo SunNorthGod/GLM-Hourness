@@ -75,7 +75,7 @@ function isGlm(selection: ModelSelection | undefined): boolean {
   return selection?.provider === GLM_PROVIDER || (selection?.model?.startsWith('glm') ?? false)
 }
 
-/** Sections the dialect adds beyond the shadowed identity. Tier selects the localization ledger (03 §10). */
+/** Sections the dialect adds beyond the shadowed identity. Tier selects the localization ledger (docs/DESIGN.md §5.3). */
 export function dialectSections(outputStyleActive = false, persona: PersonaLevel = 'balanced', config: GlmPromptConfig = {}): Array<{ name: string, order: number, text: string }> {
   const codingTier = (config.tier ?? 'coding-plan') === 'coding-plan'
   const sections: Array<{ name: string, order: number, text: string }> = [

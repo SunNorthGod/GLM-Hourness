@@ -6,7 +6,7 @@
  */
 import type { JsonRecord, JsonValue } from './json.ts'
 
-/** ZCode TodoWrite input_schema, verbatim (docs/02-zcode-tool-schemas.md §1). */
+/** ZCode TodoWrite input_schema, verbatim (docs/reference/zcode-tool-schemas.md §1). */
 export const zcodeTodoWriteSchema: JsonRecord = {
   type: 'object',
   properties: {

@@ -1,5 +1,5 @@
 /**
- * Localization ledger for the coding-plan tier (03-runtime-design §10 nine
+ * Localization ledger for the coding-plan tier (docs/DESIGN.md §5.3, nine
  * points): ZCode behavior text stays verbatim; host-fact assertions are
  * rewritten to match actual DSH behavior, keeping the original phrasing
  * shape. Each constant names its ledger entry. The start-plan tier never

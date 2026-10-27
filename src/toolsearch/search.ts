@@ -1,6 +1,6 @@
 /**
  * ToolSearch query and rendering (pure). Dialect baseline: the 3.16.3
- * protocol capture (docs/02 §8): `select:<name>[,<name>...]` picks exact
+ * protocol capture (docs/reference/zcode-tool-schemas.md §8): `select:<name>[,<name>...]` picks exact
  * names, plain queries match keywords against name + description, no regex;
  * each match renders as one `<function>{"description":…,"name":…,"parameters":…}</function>`
  * line inside a `<functions>` block.

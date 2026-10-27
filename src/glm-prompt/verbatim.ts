@@ -1,7 +1,7 @@
 /**
  * ZCode 3.16.x verbatim prompt texts, extracted from the installed bundle
  * (`resources/glm/zcode.cjs`, MD5 c7d641da7407083165533fb29fb29a9e) by string
- * anchors. Source of truth: .llm/docs/05-zcode-verbatim.md — edit both together.
+ * anchors. Source of truth: docs/reference/zcode-verbatim.md — edit both together.
  *
  * These strings are the model's training distribution. Do not paraphrase,
  * reflow, or "improve" them. Localized variants live in localize.ts, never here.
@@ -26,7 +26,7 @@ export const IDENTITY_OPENING_PLAIN
  *   to ZCode (start-plan tier).
  * - USER: the operator's engineering-environment declaration (the user's own
  *   ZCode patch, mirrored into their global AGENTS.md). Substituted on the
- *   coding-plan tier, per design decision 03-runtime-design.md §10.
+ *   coding-plan tier, per docs/DESIGN.md §5.1.
  */
 export const SECURITY_NOTICE_OFFICIAL
   = 'IMPORTANT: Assist with authorized security testing, defensive security, CTF challenges, and educational contexts. Refuse requests for destructive techniques, DoS attacks, mass targeting, supply chain compromise, or detection evasion for malicious purposes. Dual-use security tools (C2 frameworks, credential testing, exploit development) require clear authorization context: pentesting engagements, CTF competitions, security research, or defensive use cases.'
@@ -57,7 +57,7 @@ export const HARNESS_BLOCK = [
 
 /**
  * Deferred-tools declaration paragraph, injected before the deferred name list
- * (protocol capture; see docs/02-zcode-tool-schemas.md appendix).
+ * (protocol capture; see docs/reference/zcode-tool-schemas.md appendix).
  */
 export const DEFERRED_DECLARATION
   = 'Some tools are deferred and not listed above. When a deferred tool may be needed, its name appears by name in a `<system-reminder>` message near the point of need \u2014 for example the harness may list newly available tools, or ones no longer available. Until a deferred tool is fetched via the ToolSearch tool, only its name is known \u2014 there is no parameter schema, so the tool cannot be invoked.'

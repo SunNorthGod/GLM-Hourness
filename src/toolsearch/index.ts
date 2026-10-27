@@ -13,7 +13,7 @@ import { renderFunctionsBlock, searchTools, type DeferredToolEntry } from './sea
 
 const GLM_PROVIDER = 'glm'
 
-/** ToolSearch description, verbatim from the 3.16.3 capture (docs/02 §8). */
+/** ToolSearch description, verbatim from the 3.16.3 capture (docs/reference/zcode-tool-schemas.md §8). */
 export const TOOLSEARCH_DESCRIPTION
   = 'Fetches full schema definitions for deferred tools so they can be called. Deferred tools appear by name in <system-reminder> messages. Until fetched, only the name is known — there is no parameter schema, so the tool cannot be invoked. This tool takes a query, matches it against the deferred tool list, and returns the matched tools\' complete JSONSchema definitions inside a <functions> block. Result format: each matched tool appears as one `<function>{"description": "...", "name": "...", "parameters": {...}}</function>` line. Use "select:<tool_name>" for direct selection.'
 

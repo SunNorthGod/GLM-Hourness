@@ -1,6 +1,6 @@
 /**
  * Eight-pack alias surface (S1): ZCode-facing schemas (verbatim, from the
- * 3.16.3 protocol captures in docs/02-zcode-tool-schemas.md) plus argument
+ * 3.16.3 protocol captures in docs/reference/zcode-tool-schemas.md) plus argument
  * mapping onto captured native DSH executors. ToolSearch ships with the
  * toolsearch row (S3) — its deferred registry does not exist yet, so S1
  * exposes seven aliases and the deferred declaration stays honest about

@@ -5,7 +5,7 @@ import { morningReport, reportFromFiles, usageByModel } from '../src/workflow/mo
 import { apply } from '../src/workflow/index.ts'
 import type { AuditJournal, DecisionRecord, UsageRecord } from '../src/memory/audit.ts'
 
-test('decision grading follows the 03 §10 table', () => {
+test('decision grading follows the L1/L2/L3 table', () => {
   assert.equal(gradeDecision('dispatch'), 'L1')
   assert.equal(gradeDecision('tool-call'), 'L1')
   assert.equal(gradeDecision('model-route'), 'L2')

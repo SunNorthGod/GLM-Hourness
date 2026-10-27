@@ -2,10 +2,10 @@
  * dsh-workflow — the tuning layer over DSH's Agent Team: decision grading,
  * the decision journal, the five-key design-phase review card, and the
  * harvest morning report. Dispatch itself stays fully autonomous on DSH's
- * own team seams; this row only observes and records (03 §10-11).
+ * own team seams; this row only observes and records.
  */
 
-/** Decision grading (03 §10). */
+/** Decision grading. */
 export type DecisionLevel = 'L1' | 'L2' | 'L3'
 
 /** Grade one dispatch/autonomy decision. */

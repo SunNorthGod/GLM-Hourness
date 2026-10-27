@@ -19,7 +19,7 @@ export interface UsageRecord {
   readonly usage: TokenUsage
 }
 
-/** One workflow decision record (grading per 03 §10: L1 autonomous / L2 notify / L3 ask). */
+/** One workflow decision record (grading: L1 autonomous / L2 notify / L3 ask). */
 export interface DecisionRecord {
   readonly at: string
   readonly level: 'L1' | 'L2' | 'L3'

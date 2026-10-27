@@ -1,7 +1,7 @@
 /**
  * Morning report: fold one period of the audit journal (decisions, violations,
  * usage) into the harvest report. Pure — reads parsed JSONL lines, emits text.
- * Granularity (03 §11): exceptions first, then curve movement, then plain
+ * Granularity: exceptions first, then curve movement, then plain
  * facts; no padding, no restatement of completed work.
  */
 import type { DecisionRecord, UsageRecord } from '../memory/audit.ts'
