@@ -2,7 +2,7 @@
   "id": "m1-8",
   "type": "task",
   "title": "1.8 guard 引号感知与影子模式",
-  "status": "approved",
+  "status": "done",
   "parent": "m1",
   "kind": "implement",
   "body": "file-tools-only 改为引号感知：只看命令位置与引号外的真实重定向，git 子命令放行；规则声明注入提示词；执行后以工作区变更记录兜底，只记录不拦截（影子模式）（ROADMAP.md M1 1.8，ORCHESTRATION.md §6.4、§6.5）。影子模式的记录写进 1.4 的审计服务。",
@@ -16,6 +16,30 @@
       "to": "m1-4"
     }
   ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "8467c33",
+      "note": "file-tools-only 引号感知、规则声明节 glm:guard、工作区变更兜底（影子模式）"
+    },
+    {
+      "kind": "commit",
+      "ref": "29211ed",
+      "note": "记录引号感知 guard、规则声明与影子兜底（ORCHESTRATION.md §6.1、§6.5）"
+    },
+    {
+      "kind": "test",
+      "ref": "npm test",
+      "exit": 0,
+      "note": "L2 250 用例，24 个 spec（ROADMAP.md M1 进度，2026-10-28）"
+    },
+    {
+      "kind": "test",
+      "ref": "npm run probe",
+      "exit": 0,
+      "note": "L3 探针 51/51，含引号里的箭头放行与恰好一条影子记录（ROADMAP.md M1 进度，2026-10-28）"
+    }
+  ],
   "history": [
     {
       "at": "2026-10-27T20:04:04.457Z",
@@ -23,6 +47,38 @@
       "op": "propose",
       "reason": "迁移：ROADMAP.md M1 1.8",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-27T21:24:18.345Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "1.8 guard 完成（origin/main 29211ed 的 ROADMAP.md M1 进度与 git log）",
+      "from": "approved",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "8467c33",
+          "note": "file-tools-only 引号感知、规则声明节 glm:guard、工作区变更兜底（影子模式）"
+        },
+        {
+          "kind": "commit",
+          "ref": "29211ed",
+          "note": "记录引号感知 guard、规则声明与影子兜底（ORCHESTRATION.md §6.1、§6.5）"
+        },
+        {
+          "kind": "test",
+          "ref": "npm test",
+          "exit": 0,
+          "note": "L2 250 用例，24 个 spec（ROADMAP.md M1 进度，2026-10-28）"
+        },
+        {
+          "kind": "test",
+          "ref": "npm run probe",
+          "exit": 0,
+          "note": "L3 探针 51/51，含引号里的箭头放行与恰好一条影子记录（ROADMAP.md M1 进度，2026-10-28）"
+        }
+      ]
     }
   ]
 }

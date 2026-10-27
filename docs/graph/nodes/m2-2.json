@@ -22,6 +22,12 @@
       "op": "propose",
       "reason": "迁移：ROADMAP.md M2 2.2",
       "to": "proposed"
+    },
+    {
+      "at": "2026-10-27T21:29:02.788Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "分支 graph-engine 上已做（提交 d8527fe、a6bb8a2）：DSH 图工具 10 个（含 graph_focus），身份 llm，引擎的拒绝作为带错误码与正路的工具错误返回；同一行注册的门禁 graph-files-only 拦直接写图目录。行 glm-hourness/graph 默认禁用，只有 L2（tests/fake-rc3.ts）；L3 检查清单与启用前的跟进项在 ROADMAP.md M2 进度，合入 main 后做。"
     }
   ]
 }

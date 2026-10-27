@@ -2,13 +2,37 @@
   "id": "m1-4",
   "type": "task",
   "title": "1.4 共享数据目录与审计服务",
-  "status": "approved",
+  "status": "done",
   "parent": "m1",
   "kind": "implement",
   "body": "共享数据目录与审计服务（DESIGN.md §2.4）；guard 违规落盘；迁移 profile 目录下的 190 条用量记录与 1 条记忆（ROADMAP.md M1 1.4，HANDOFF.md §4）。",
   "acceptance": [
     "L2",
     "L3 中 guard 拦截后违规流水有记录"
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "380c4c4",
+      "note": "数据目录行与服务 glmHournessData；guard 违规经数据目录服务落盘"
+    },
+    {
+      "kind": "commit",
+      "ref": "fa9d5df",
+      "note": "记录数据目录服务与 M1.4 迁移（DESIGN.md §2.4）"
+    },
+    {
+      "kind": "test",
+      "ref": "npm test",
+      "exit": 0,
+      "note": "L2 215 用例，22 个 spec（ROADMAP.md M1 进度，2026-10-28）"
+    },
+    {
+      "kind": "test",
+      "ref": "npm run probe",
+      "exit": 0,
+      "note": "L3 探针 41/41，含 shell 写入被拦后场景项目目录的违规记录（ROADMAP.md M1 进度，2026-10-28）"
+    }
   ],
   "history": [
     {
@@ -17,6 +41,38 @@
       "op": "propose",
       "reason": "迁移：ROADMAP.md M1 1.4",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-27T21:24:17.090Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "1.4 共享数据目录完成（origin/main 29211ed 的 ROADMAP.md M1 进度与 git log）",
+      "from": "approved",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "380c4c4",
+          "note": "数据目录行与服务 glmHournessData；guard 违规经数据目录服务落盘"
+        },
+        {
+          "kind": "commit",
+          "ref": "fa9d5df",
+          "note": "记录数据目录服务与 M1.4 迁移（DESIGN.md §2.4）"
+        },
+        {
+          "kind": "test",
+          "ref": "npm test",
+          "exit": 0,
+          "note": "L2 215 用例，22 个 spec（ROADMAP.md M1 进度，2026-10-28）"
+        },
+        {
+          "kind": "test",
+          "ref": "npm run probe",
+          "exit": 0,
+          "note": "L3 探针 41/41，含 shell 写入被拦后场景项目目录的违规记录（ROADMAP.md M1 进度，2026-10-28）"
+        }
+      ]
     }
   ]
 }

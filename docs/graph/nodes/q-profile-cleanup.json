@@ -31,6 +31,12 @@
       "op": "propose",
       "reason": "迁移：ROADMAP.md §3 需要用户的事项",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-27T21:24:18.972Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "1.4 已于 2026-10-28 把旧目录的记录复制到新位置：190 条用量并入用户级流水 ~/.dsh/glm-hourness/audit/usage.jsonl，1 条记忆并入仓库 .llm/memory.json，源文件未改动（origin/main 380c4c4、ROADMAP.md §3）。这张卡不再等 1.4，任何时间都可以拍板。"
     }
   ]
 }

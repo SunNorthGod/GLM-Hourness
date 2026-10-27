@@ -2,12 +2,36 @@
   "id": "m1-5",
   "type": "task",
   "title": "1.5 行健康上报与 /glm-status 健康表",
-  "status": "approved",
+  "status": "done",
   "parent": "m1",
   "kind": "implement",
   "body": "每个插件行报告生效或失败原因，/glm-status 列出健康表（ROADMAP.md M1 1.5，CHARTER.md §6.1 条款 7 失败要出声）。",
   "acceptance": [
     "L3：每行在会话中报告生效或原因"
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "bb179df",
+      "note": "行健康上报与 /glm-status 健康表（src/shared/health.ts）"
+    },
+    {
+      "kind": "commit",
+      "ref": "14a4600",
+      "note": "记录行健康与 /glm-status 健康表（DESIGN.md §2.5）"
+    },
+    {
+      "kind": "test",
+      "ref": "npm test",
+      "exit": 0,
+      "note": "L2 233 用例，23 个 spec（ROADMAP.md M1 进度，2026-10-28）"
+    },
+    {
+      "kind": "test",
+      "ref": "npm run probe",
+      "exit": 0,
+      "note": "L3 探针 46/46，GLM、非 GLM、压缩三个场景的健康表（ROADMAP.md M1 进度，2026-10-28）"
+    }
   ],
   "history": [
     {
@@ -16,6 +40,38 @@
       "op": "propose",
       "reason": "迁移：ROADMAP.md M1 1.5",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-27T21:24:17.743Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "1.5 行健康完成（origin/main 29211ed 的 ROADMAP.md M1 进度与 git log）",
+      "from": "approved",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "bb179df",
+          "note": "行健康上报与 /glm-status 健康表（src/shared/health.ts）"
+        },
+        {
+          "kind": "commit",
+          "ref": "14a4600",
+          "note": "记录行健康与 /glm-status 健康表（DESIGN.md §2.5）"
+        },
+        {
+          "kind": "test",
+          "ref": "npm test",
+          "exit": 0,
+          "note": "L2 233 用例，23 个 spec（ROADMAP.md M1 进度，2026-10-28）"
+        },
+        {
+          "kind": "test",
+          "ref": "npm run probe",
+          "exit": 0,
+          "note": "L3 探针 46/46，GLM、非 GLM、压缩三个场景的健康表（ROADMAP.md M1 进度，2026-10-28）"
+        }
+      ]
     }
   ]
 }

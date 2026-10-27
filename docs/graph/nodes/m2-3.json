@@ -22,6 +22,12 @@
       "op": "propose",
       "reason": "迁移：ROADMAP.md M2 2.3",
       "to": "proposed"
+    },
+    {
+      "at": "2026-10-27T21:29:03.398Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "分支 graph-engine 上已做（提交 b58e485）：graph_focus 设定焦点后，每步在 agent/pre-step 末尾按需追加投影 notice（新焦点、正文变化、压缩之后、目标轮），压缩检查点之后重锚。同在默认禁用的行里，只有 L2；验收要的 L3（模型请求中可见投影）在合入 main 后按 ROADMAP.md M2 进度的检查清单做。"
     }
   ]
 }
