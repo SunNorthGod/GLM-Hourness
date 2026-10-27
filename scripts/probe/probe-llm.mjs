@@ -13,6 +13,13 @@
  * command prints for the session at that point (credential line and row
  * health table).
  *
+ * Each session follows its own script: the first session that sends a
+ * scripted request follows `script`; each later one (a subagent, or a
+ * second root agent the dispatch spike creates) takes the next entry of
+ * `others`, in the order of its first scripted request. A step marked `goal`
+ * fills `goal_id` and `revision` of its `update_goal` calls (direct or
+ * through DeferredToolCall) from the session's live goal.
+ *
  * Not part of the bundle: loaded only through the overlay that
  * scripts/probe/run-probe.mjs generates for each run.
  */
@@ -27,10 +34,25 @@ export const inject = ['llm']
 /** Reply to compaction summaries, in the shape the ZCode compact prompt asks for. */
 const COMPACTION_REPLY = '<analysis>probe analysis</analysis>\n\n<summary>probe summary</summary>'
 
-/** One scripted reply per request, in order; the last entry repeats. Entries: `{ tool }`, `{ tools: [...] }` or `{ text }`, optionally with `status: true`. */
+/** One scripted reply per request, in order; the last entry repeats. Entries: `{ tool }`, `{ tools: [...] }` or `{ text }`, optionally with `status: true` or `goal: true`. */
 function parseScript(raw) {
   if (typeof raw !== 'string' || raw.length === 0) return [{ text: 'ok' }]
   return JSON.parse(raw)
+}
+
+/** The scripts of later sessions: a JSON array of scripts. */
+function parseOthers(raw) {
+  if (typeof raw !== 'string' || raw.length === 0) return []
+  return JSON.parse(raw)
+}
+
+/** `call` with `goal_id` and `revision` of `goal` filled into its update_goal arguments. */
+function withGoal(call, goal) {
+  if (goal === undefined) return call
+  const ref = { goal_id: goal.id, revision: goal.revision }
+  if (call.name === 'update_goal') return { ...call, arguments: { ...call.arguments, ...ref } }
+  if (call.name === 'DeferredToolCall' && call.arguments?.name === 'update_goal') return { ...call, arguments: { ...call.arguments, input: { ...call.arguments.input, ...ref } } }
+  return call
 }
 
 function leadingSystem(messages) {
@@ -86,11 +108,28 @@ class ProbeAdapter {
   constructor(ctx, config) {
     this.ctx = ctx
     this.dump = config.dump
-    this.script = parseScript(config.script)
-    /** Scripted (agent-step) requests answered so far. */
-    this.calls = 0
+    /** Unassigned scripts, in the order sessions claim them. */
+    this.scripts = [parseScript(config.script), ...parseOthers(config.others)]
+    /** Each session's script and the scripted (agent-step) requests it answered so far. */
+    this.cursors = new Map()
     /** All requests answered so far, side requests included. */
     this.requests = 0
+  }
+
+  /** The cursor of a session, claiming the next unassigned script on its first scripted request. */
+  cursorOf(sessionId) {
+    let cursor = this.cursors.get(sessionId)
+    if (cursor === undefined) {
+      cursor = { script: this.scripts.shift() ?? [{ text: 'ok' }], calls: 0 }
+      this.cursors.set(sessionId, cursor)
+    }
+    return cursor
+  }
+
+  /** The live goal of a request's session, if any. */
+  goalOf(request) {
+    const agent = this.ctx.get('agents')?.get(request.sessionId)
+    return agent === undefined ? undefined : this.ctx.get('goals')?.get(agent)
   }
 
   providerInfo(provider) { return { id: provider, name: 'GLM-Hourness probe' } }
@@ -121,10 +160,11 @@ class ProbeAdapter {
     // the scripted sequence. Compaction requests carry tools too.
     const compaction = request.purpose === 'compaction'
     const scripted = !compaction && (request.tools ?? []).length > 0
-    const step = scripted
-      ? this.script[Math.min(this.calls, this.script.length - 1)]
-      : { text: compaction ? COMPACTION_REPLY : 'Probe session' }
-    if (scripted) this.calls += 1
+    const cursor = scripted ? this.cursorOf(request.sessionId) : undefined
+    const step = cursor === undefined
+      ? { text: compaction ? COMPACTION_REPLY : 'Probe session' }
+      : cursor.script[Math.min(cursor.calls, cursor.script.length - 1)]
+    if (cursor !== undefined) cursor.calls += 1
     this.requests += 1
     // A step marked `status` records the /glm-status text before replying.
     const status = step.status === true ? await glmStatus(this.ctx, request).catch(error => `probe: /glm-status failed: ${error instanceof Error ? error.message : String(error)}`) : undefined
@@ -159,7 +199,9 @@ class ProbeAdapter {
       })}\n`)
     }
     // A step calls one tool (`tool`) or several in one assistant turn (`tools`).
-    const calls = step.tools ?? (step.tool === undefined ? [] : [step.tool])
+    const scriptedCalls = step.tools ?? (step.tool === undefined ? [] : [step.tool])
+    const goal = step.goal === true ? this.goalOf(request) : undefined
+    const calls = scriptedCalls.map(call => withGoal(call, goal))
     if (calls.length > 0) {
       for (const [index, call] of calls.entries()) {
         const id = `probe-call-${this.requests}-${index}`

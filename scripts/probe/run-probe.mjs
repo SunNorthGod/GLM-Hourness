@@ -10,7 +10,11 @@
  * directory with dsh-workspace-changes mounted through the overlay. Two
  * scenarios check the calibration run bounds (scripts/calibrate/limits.mjs).
  * The peak scenario and the non-GLM one run on the probe clock
- * (scripts/probe/probe-clock.mjs), set inside a peak window.
+ * (scripts/probe/probe-clock.mjs), set inside a peak window. Three
+ * scenarios run the dispatch feasibility spike
+ * (scripts/probe/probe-dispatch.mjs): a background child with a write
+ * scope, a plugin-created goal driven through two rounds, and the headless
+ * runner's exit with an armed goal.
  *
  * Usage: node scripts/probe/run-probe.mjs
  * Requires the desktop install (DSH_DESKTOP_DIR overrides the location) and
@@ -28,6 +32,7 @@ import { peakWindowAt } from '../../dist/shared/credits.js'
 import { userDataHome } from '../../dist/shared/data-home.js'
 import { HEALTH_ROWS } from '../../dist/shared/health.js'
 import { attachmentsIn, dataRows, initRepo, limitsRow, repo, requireDesktop, sandboxCommand, slash, workspaceChangesRow } from '../sandbox.mjs'
+import { GOAL_GATE_DENIAL, PROJECTION_SOURCE, SCOPE_DENIAL } from './probe-dispatch.mjs'
 
 requireDesktop('probe')
 
@@ -65,9 +70,11 @@ const realUsageBefore = usageStamp()
  * session-title request carries no tools), the exit status and the wall
  * time. `overlay` adds patch lines. The scenario keeps its data in its own
  * directory (scripts/sandbox.mjs dataRows: project directory `<dir>/home`,
- * DSH home `<dir>/dsh-home`).
+ * DSH home `<dir>/dsh-home`). `others` holds the scripts of later sessions
+ * (subagents, extra root agents) in the order they first ask; their
+ * requests are in `steps` too, under their own session id.
  */
-function runScenario(name, model, script, task, overlay = [], cwd = repo) {
+function runScenario(name, model, script, task, overlay = [], cwd = repo, others = []) {
   const dir = join(runDir, name)
   const home = join(dir, 'home')
   mkdirSync(home, { recursive: true })
@@ -86,7 +93,7 @@ function runScenario(name, model, script, task, overlay = [], cwd = repo) {
     '    - id: glm-hourness-probe/llm',
     `      name: ${JSON.stringify(slash(join(repo, 'scripts', 'probe', 'probe-llm.mjs')))}`,
     '      inject: [llm]',
-    `      config: { dump: ${JSON.stringify(slash(dump))}, script: ${JSON.stringify(JSON.stringify(script))} }`,
+    `      config: { dump: ${JSON.stringify(slash(dump))}, script: ${JSON.stringify(JSON.stringify(script))}, others: ${JSON.stringify(JSON.stringify(others))} }`,
     ...overlay,
     '',
   ].join('\n'))
@@ -271,6 +278,102 @@ const timeLimited = runScenario('limits-time', 'glm-5.3', [
   { text: 'done' },
 ], 'Sleep, then reply done.', limitsRow({ timeLimitMs: 5000, record: slash(limitsRecord('limits-time')) }))
 
+const jsonl = file => existsSync(file) ? readFileSync(file, 'utf8').split('\n').filter(line => line.length > 0).map(line => JSON.parse(line)) : []
+
+// Dispatch feasibility spike (docs/ORCHESTRATION.md §2.1, §3.2; DESIGN.md
+// §2.4a). The overlay-only row scripts/probe/probe-dispatch.mjs records what
+// it observes in <scenario>/dispatch.jsonl.
+const dispatchRow = record => [
+  '- insert:',
+  '    - id: glm-hourness-probe/dispatch',
+  `      name: ${JSON.stringify(slash(join(repo, 'scripts', 'probe', 'probe-dispatch.mjs')))}`,
+  '      inject: [subagents, goals, agents, tools]',
+  `      config: { record: ${JSON.stringify(slash(record))} }`,
+]
+const dispatchRecord = scenario => jsonl(join(runDir, scenario, 'dispatch.jsonl'))
+const bySession = (scenario, sessionId) => scenario.steps.filter(step => step.sessionId === sessionId)
+const messagesOf = (step, source) => (step?.messages ?? []).filter(message => message.source === source)
+
+// (a) and (b): the GLM main agent dispatches task T1 through the spike's
+// tool (deferred on GLM, so through DeferredToolCall) to a background child
+// on GLM-5.3-Flash in its own directory with write scope `allowed/` and a
+// structured hand-back, reads a file while the child sleeps, and ends its
+// turn; the completion notice wakes it once more. The child sleeps, prints
+// its working directory, tries a write outside its scope, writes inside it,
+// and submits the structured result.
+const dispatchDir = join(runDir, 'glm-dispatch')
+const dispatchWs = join(dispatchDir, 'ws')
+mkdirSync(join(dispatchWs, 'allowed'), { recursive: true })
+const outsideFile = join(dispatchWs, 'outside.txt')
+const insideFile = join(dispatchWs, 'allowed', 'inside.txt')
+const CHILD_PROMPT = 'Probe task T1: write allowed/inside.txt and report.'
+const HAND_BACK = { summary: 'wrote allowed/inside.txt', files: ['allowed/inside.txt'] }
+const dispatch = runScenario('glm-dispatch', 'glm-5.3', [
+  { tool: { name: 'DeferredToolCall', arguments: { name: 'probe_dispatch', input: { task: 'T1', prompt: CHILD_PROMPT, cwd: dispatchWs, scope: 'allowed', model: 'glm-5.3-flash' } } } },
+  { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } } },
+  { text: 'Waiting for task T1.' },
+  { text: 'done', status: true },
+], 'Dispatch task T1, keep working, then reply done.', dispatchRow(join(dispatchDir, 'dispatch.jsonl')), repo, [[
+  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 3; (Get-Location).Path' } } },
+  { tool: { name: 'Write', arguments: { file_path: outsideFile, content: 'outside\n' } } },
+  { tool: { name: 'Write', arguments: { file_path: insideFile, content: 'inside\n' } } },
+  { tool: { name: 'DeferredToolCall', arguments: { name: 'structured_output', input: HAND_BACK } } },
+  { text: 'child done' },
+]])
+const dispatchNotes = dispatchRecord('glm-dispatch')
+const started = dispatchNotes.find(entry => entry.kind === 'started')
+const dispatchMain = bySession(dispatch, started?.parentId)
+const dispatchChild = bySession(dispatch, started?.childId)
+const childCalls = dispatchNotes.filter(entry => entry.kind === 'call')
+const childResult = dispatchNotes.find(entry => entry.kind === 'result')
+const settled = messagesOf(dispatchMain.at(-1), 'subagent-settled')
+const childBash = lastToolResult(dispatchChild[1])
+const scopeDenied = lastToolResult(dispatchChild[2])
+const childFirstUser = dispatchChild[0]?.messages.find(message => message.source === 'user')
+
+// (c): the GLM main agent runs the spike's goal tool, which creates a second
+// root agent with a plugin-created goal (three rounds at most) and waits for
+// it. Round 1 tries to complete without evidence (denied), writes the
+// evidence and ends the turn with the goal active; round 2 completes.
+const goalDir = join(runDir, 'glm-goal')
+const goalWs = join(goalDir, 'ws')
+mkdirSync(goalWs, { recursive: true })
+const evidenceFile = join(goalWs, 'evidence.txt')
+const completeGoal = { tool: { name: 'DeferredToolCall', arguments: { name: 'update_goal', input: { action: 'complete' } } }, goal: true }
+const goalRun = runScenario('glm-goal', 'glm-5.3', [
+  { tool: { name: 'DeferredToolCall', arguments: { name: 'probe_goal_run', input: { objective: 'Produce evidence.txt, then mark the goal complete.', cwd: goalWs, evidence: 'evidence.txt', maxGoalRounds: 3 } } } },
+  { text: 'done', status: true },
+], 'Run the goal probe, then reply done.', dispatchRow(join(goalDir, 'dispatch.jsonl')), repo, [[
+  completeGoal,
+  { tool: { name: 'Write', arguments: { file_path: evidenceFile, content: 'evidence\n' } } },
+  { text: 'Evidence written; the goal stays active for the next round.' },
+  completeGoal,
+  { text: 'Goal complete.' },
+]])
+const goalNotes = dispatchRecord('glm-goal')
+const goalCreated = goalNotes.find(entry => entry.kind === 'goal-created')
+const goalFinal = goalNotes.find(entry => entry.kind === 'goal-final')
+const goalGates = goalNotes.filter(entry => entry.kind === 'goal-gate')
+const goalSteps = bySession(goalRun, goalCreated?.agentId)
+const goalMain = goalRun.steps.filter(step => step.sessionId !== goalCreated?.agentId)
+const roundMessages = step => messagesOf(step, 'goal')
+const roundOf = (step, round) => roundMessages(step).some(message => message.text.startsWith('<goal_round>\nObjective: ') && message.text.includes(`\nRound: ${round}/3\n`))
+const projections = step => messagesOf(step, PROJECTION_SOURCE)
+const firstRoundOrder = goalSteps[0] === undefined ? [] : [goalSteps[0].messages.findIndex(message => message.source === 'goal'), goalSteps[0].messages.findIndex(message => message.source === PROJECTION_SOURCE)]
+const gateDenied = lastToolResult(goalSteps[1])
+const goalCompleted = lastToolResult(goalSteps[4])
+const goalRunResult = lastToolResult(goalMain.at(-1))
+
+// The headless runner exits at the first quiescent idle of its own agent: an
+// armed goal created in the task turn gets no round before exit (the reason
+// the goal scenario drives a second root agent from inside a tool call).
+const headlessGoal = runScenario('goal-headless', 'glm-5.3', [
+  { tool: { name: 'DeferredToolCall', arguments: { name: 'create_goal', input: { objective: 'Probe objective.', max_goal_rounds: 2 } } } },
+  { text: 'Goal created.' },
+  { text: 'round reply' },
+], 'Create a goal for the probe objective.')
+const headlessCreated = lastToolResult(headlessGoal.steps[1])
+
 const compactRequest = compacted.compactions[0]
 const compactInstruction = compactRequest?.messages.at(-1)
 const checkpoint = compacted.steps.at(-1)?.messages.find(message => message.source === 'compact-checkpoint')
@@ -280,11 +383,10 @@ const checkpoint = compacted.steps.at(-1)?.messages.find(message => message.sour
 // sessionId, purpose) into the user-level directory the data row provides
 // (<DSH home>/glm-hourness, the scenario's dsh-home); the guard journals
 // each denial into the project directory it reads from the data service.
-const jsonl = file => existsSync(file) ? readFileSync(file, 'utf8').split('\n').filter(line => line.length > 0).map(line => JSON.parse(line)) : []
 const usageOf = scenario => jsonl(join(runDir, scenario, 'dsh-home', 'glm-hourness', 'audit', 'usage.jsonl'))
 const glmUsage = usageOf('glm').filter(record => record.purpose === undefined)
 const compactUsage = usageOf('glm-compact').filter(record => record.purpose === 'compaction')
-const projectUsage = ['glm', 'glm-flash', 'glm-todo', 'glm-compact', 'glm-shadow', 'glm-peak', 'non-glm', 'limits-steps', 'limits-time'].filter(scenario => existsSync(join(runDir, scenario, 'home', 'audit', 'usage.jsonl')))
+const projectUsage = ['glm', 'glm-flash', 'glm-todo', 'glm-compact', 'glm-shadow', 'glm-peak', 'non-glm', 'limits-steps', 'limits-time', 'glm-dispatch', 'glm-goal', 'goal-headless'].filter(scenario => existsSync(join(runDir, scenario, 'home', 'audit', 'usage.jsonl')))
 const glmViolations = jsonl(join(glmDir, 'home', 'audit', 'violations.jsonl'))
 const stepLimits = jsonl(limitsRecord('limits-steps'))
 const timeLimits = jsonl(limitsRecord('limits-time'))
@@ -381,6 +483,18 @@ const checks = [
   ['health: the reports stay out of the model-visible conversation', conversationTexts.length > 0 && conversationTexts.every(text => !text.includes('行健康') && !text.includes('glmHournessHealth')), `${conversationTexts.length} text(s) checked`],
   ['calibration limits: the step past maxSteps is rejected, the turn ends blocked and the run exits non-zero', stepLimited.steps.length === 2 && stepLimits.length === 1 && stepLimits[0].kind === 'step-limit' && stepLimited.status !== 0, `exit ${stepLimited.status}, ${stepLimited.steps.length} step(s), record: ${JSON.stringify(stepLimits)}`],
   ['calibration limits: the time limit cancels a running 60-second shell command and no later step runs', timeLimited.steps.length === 1 && timeLimits.length === 1 && timeLimits[0].kind === 'time-limit' && timeLimited.elapsedMs < 45_000 && timeLimited.status !== 0, `exit ${timeLimited.status} after ${Math.round(timeLimited.elapsedMs / 1000)} s, ${timeLimited.steps.length} step(s), record: ${JSON.stringify(timeLimits)}`],
+  ['dispatch (a): a host-level row starts a background child through subagents.startActivation; the dispatch call returns at once with the reserved child id', started !== undefined && started.childId.startsWith('probe-task-') && lastToolResult(dispatchMain[1])?.isError !== true && lastToolResult(dispatchMain[1])?.text.includes(started.childId) === true && dispatchChild.length > 0, started === undefined ? `no start recorded (exit ${dispatch.status}): ${JSON.stringify(dispatchNotes.find(entry => entry.kind === 'dispatch-failed') ?? null)}` : `child ${started.childId}: ${dispatchChild.length} request(s)`],
+  ['dispatch (a): the child gets the prompt, runs in the requested cwd and on the agentOptions model', childFirstUser?.text.startsWith(CHILD_PROMPT) === true && childBash?.isError !== true && childBash?.text.trim() === dispatchWs && dispatchChild.every(step => step.model === 'glm-5.3-flash') && dispatchMain.every(step => step.model === 'glm-5.3'), `prompt: ${(childFirstUser?.text ?? 'none').slice(0, 60).replace(/\n/g, ' ')}; cwd: ${(childBash?.text ?? 'no tool result').trim()}; models: ${[...new Set(dispatchChild.map(step => step.model))].join(', ')}`],
+  ['dispatch (a): the parent keeps working while the child runs (its next two steps come before the child finishes, without a completion notice)', dispatchMain.length === 4 && dispatchChild.length >= 4 && dispatchMain[2].clock < dispatchChild.at(-1).clock && [1, 2].every(index => messagesOf(dispatchMain[index], 'subagent-settled').length === 0), `parent clocks ${dispatchMain.map(step => step.clock - (dispatchMain[0]?.clock ?? 0)).join(', ')} ms; child clocks ${dispatchChild.map(step => step.clock - (dispatchMain[0]?.clock ?? 0)).join(', ')} ms`],
+  ['dispatch (a): the completion notice reaches the parent with the structured result; the activation result carries it too', settled.length === 1 && settled[0].text.includes(`Structured result: ${JSON.stringify(HAND_BACK)}`) && childResult?.stopReason === 'completed' && JSON.stringify(childResult.structured) === JSON.stringify(HAND_BACK), `${(settled[0]?.text ?? 'no notice').slice(-120).replace(/\n/g, ' | ')}; result: ${JSON.stringify(childResult ?? null).slice(0, 120)}`],
+  ['dispatch (b): tools/pre-execute sees each child call with the child agent, whose id maps to the task; the parent\'s calls do not map', childCalls.length === 5 && childCalls.every(entry => entry.task === 'T1' && entry.agentId === started?.childId && entry.sessionId === started.childId && entry.nested === false) && JSON.stringify(childCalls.map(entry => entry.tool)) === JSON.stringify(['Bash', 'Write', 'Write', 'DeferredToolCall', 'structured_output']), childCalls.map(entry => entry.tool).join(', ') || 'no calls recorded'],
+  ['dispatch (b): a write outside the task scope is denied and reaches the child as a tool error; the write inside the scope runs', scopeDenied?.isError === true && scopeDenied.text.includes(SCOPE_DENIAL) && !existsSync(outsideFile) && existsSync(insideFile) && readFileSync(insideFile, 'utf8') === 'inside\n' && dispatchNotes.filter(entry => entry.kind === 'scope-deny').length === 1, scopeDenied === undefined ? 'no tool result' : scopeDenied.text.slice(0, 100).replace(/\n/g, ' ')],
+  ['dispatch (b): the child session header keeps the parent directory; the requested cwd is only the child working directory', childCalls.length > 0 && childCalls.every(entry => entry.headerCwd === repo) && childBash?.text.trim() === dispatchWs, `header cwd ${childCalls[0]?.headerCwd ?? 'none'}`],
+  ['goal (c): a plugin-created goal on a second root agent gets round 1 from the driver, and the notice appended in agent/pre-step enters with it', goalCreated?.root === true && goalCreated.goal?.activation === 'armed' && roundOf(goalSteps[0], 1) && projections(goalSteps[0]).length === 1 && firstRoundOrder[0] >= 0 && firstRoundOrder[1] > firstRoundOrder[0], goalSteps[0] === undefined ? `no goal-agent request (exit ${goalRun.status})` : `sources: ${goalSteps[0].messages.map(message => message.source ?? message.role).slice(-6).join(', ')}`],
+  ['goal (c): update_goal complete through DeferredToolCall is denied in tools/pre-execute and the goal stays active', gateDenied?.isError === true && gateDenied.text.includes(GOAL_GATE_DENIAL) && goalGates[0]?.decision === 'deny' && goalGates[0].goal?.phase === 'active' && goalGates[0].goal.roundsStarted === 1, gateDenied === undefined ? 'no tool result' : gateDenied.text.slice(0, 100).replace(/\n/g, ' ')],
+  ['goal (c): the driver starts round 2 after the round that carried the notice; each round carries one notice; no round 3', goalSteps.length === 5 && roundOf(goalSteps[3], 2) && projections(goalSteps[3]).length === 2 && goalSteps.every(step => !roundOf(step, 3)), `${goalSteps.length} goal-agent request(s); notices per request: ${goalSteps.map(step => projections(step).length).join(', ')}`],
+  ['goal (c): with the evidence present the gate allows complete in round 2; the goal ends complete and disarmed after 2 rounds', goalGates.length === 2 && goalGates[1].decision === 'allow' && goalCompleted?.isError !== true && goalCompleted?.text.includes('"phase":"complete"') === true && goalFinal?.goal?.phase === 'complete' && goalFinal.goal.roundsStarted === 2 && goalFinal.goal.activation === 'disarmed' && goalRunResult?.text.includes('"phase":"complete"') === true, JSON.stringify(goalFinal ?? null).slice(0, 160)],
+  ['goal (headless): the one-shot runner exits at its agent\'s first quiescent idle, so an armed goal created in the task turn gets no round', headlessCreated?.isError !== true && headlessCreated?.text.includes('"activation":"armed"') === true && headlessGoal.steps.length === 2 && headlessGoal.steps.every(step => roundMessages(step).length === 0), `exit ${headlessGoal.status}, ${headlessGoal.steps.length} step(s); ${(headlessCreated?.text ?? 'no tool result').slice(0, 80)}`],
   ['non-glm boot: the runtime reached the probe provider', plainFirst !== undefined, `exit ${plain.status}, ${plain.steps.length} step(s)`],
   ['non-glm prompt: DSH identity untouched', plainFirst?.system.includes('powered by DeepSeek Harness') === true && !plainFirst.system.includes('You are ZCode'), ''],
   ['non-glm tools: natives present, no aliases', plainFirst !== undefined && nativeFace.every(name => plainTools.has(name)) && zcodeFace.every(name => !plainTools.has(name)), zcodeFace.filter(name => plainTools.has(name)).join(', ') || ''],
