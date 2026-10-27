@@ -9,7 +9,8 @@
 import { ZcodeAdapter } from './zcode.ts'
 import { asAttachments } from './images.ts'
 import Schema from '../shared/schemastery.ts'
-import type { AdapterRegistry, FsPathService, ServiceLookup } from '../shared/dsh-min.ts'
+import { provideRowHealth } from '../shared/health.ts'
+import type { AdapterRegistry, FsPathService, ProvideHost, ServiceLookup } from '../shared/dsh-min.ts'
 import type { AttachmentsLike } from '../shared/lm-min.ts'
 
 /** The `llm` service as this row uses it. */
@@ -45,17 +46,25 @@ export const Config = Schema.object({
 export const name = 'dsh-glm-hourness/glm-llm'
 
 /** cordis plugin entry: register the adapter; activation never throws. */
-export function apply(ctx: (LlmContextLike | { llm?: LlmContextLike }) & ServiceLookup, config: GlmConfig = {}): (() => void) | void {
+export function apply(ctx: (LlmContextLike | { llm?: LlmContextLike }) & ServiceLookup & Partial<ProvideHost>, config: GlmConfig = {}): (() => void) | void {
   if (config.home === undefined || config.home.length === 0) {
     console.warn('dsh-glm-hourness/glm-llm: home is not configured; the native channel stays off (set config.home, then run /glm-login)')
-    return () => {}
+    const health = provideRowHealth(ctx, 'glm-llm', 'inactive', 'home 未配置，原生通道关闭（配置 home 后运行 /glm-login）')
+    return () => health.dispose()
   }
   const provider = config.provider ?? 'glm-zcode'
-  return registrarOf(ctx)([provider], new ZcodeAdapter({
+  const plan = config.plan ?? 'coding-plan'
+  const health = provideRowHealth(ctx, 'glm-llm', 'active', `已注册路由 ${provider}（套餐 ${plan}）`)
+  const unregister = registrarOf(ctx)([provider], new ZcodeAdapter({
     home: config.home,
     ...(config.plan === undefined ? {} : { plan: config.plan }),
     ...imageServices(ctx),
+    report: (sessionId, state, reason) => health.report(sessionId, state, reason),
   }))
+  return () => {
+    unregister()
+    health.dispose()
+  }
 }
 
 /**

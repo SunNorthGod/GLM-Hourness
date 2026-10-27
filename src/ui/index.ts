@@ -13,7 +13,8 @@ import { auditPaths } from '../memory/audit.ts'
 import { reportFromFiles } from '../workflow/morning-report.ts'
 import { offPeakBadge, usagePanel } from './panel.ts'
 import { dataHomes, type DataHomes } from '../shared/data-home.ts'
-import type { CommandsHost, ServiceLookup } from '../shared/dsh-min.ts'
+import { provideRowHealth, sessionIdOf, type HealthState } from '../shared/health.ts'
+import type { CommandsHost, ProvideHost, ServiceLookup } from '../shared/dsh-min.ts'
 
 export interface HournessConfig {
   /** The project directory (workspace `.llm`); decisions and violations live under `<home>/audit`. Defaults to the data service's. */
@@ -48,9 +49,20 @@ export async function renderHourness(homes: DataHomes, fs: { readFile(path: stri
 export const name = 'dsh-glm-hourness/hourness'
 export const inject = ['commands']
 
+/** The row's status for one invocation's session (row health): which journals the report can read. */
+export function hournessHealth(homes: DataHomes): [HealthState, string] {
+  const missing = [
+    ...(homes.projectHome === undefined ? ['项目目录未配置，决策与违规读不到'] : []),
+    ...(homes.userHome === undefined ? ['用户级目录不可用，用量读不到'] : []),
+  ]
+  if (missing.length === 0) return ['active', '报告读取项目目录与用户级目录']
+  return [missing.length === 2 ? 'inactive' : 'degraded', missing.join('；')]
+}
+
 /** cordis plugin entry: register `/hourness`. */
-export function apply(ctx: CommandsHost & ServiceLookup, config: HournessConfig = {}): () => void {
-  return ctx.commands.register({
+export function apply(ctx: CommandsHost & ServiceLookup & Partial<ProvideHost>, config: HournessConfig = {}): () => void {
+  const health = provideRowHealth(ctx, 'hourness', 'active', '/hourness 已注册')
+  const unregister = ctx.commands.register({
     definitionId: 'dsh-glm-hourness/hourness',
     name: 'hourness',
     description: 'Morning report and usage panel from the audit journal',
@@ -58,12 +70,18 @@ export function apply(ctx: CommandsHost & ServiceLookup, config: HournessConfig 
       if (invocation.rawInput.trim().length > 0) {
         return { kind: 'error', text: 'Usage: /hourness (no arguments)' }
       }
+      const homes = dataHomes(ctx, config.home)
+      health.report(sessionIdOf(invocation.agent), ...hournessHealth(homes))
       try {
-        return { kind: 'success', text: await renderHourness(dataHomes(ctx, config.home)) }
+        return { kind: 'success', text: await renderHourness(homes) }
       }
       catch (error) {
         return { kind: 'error', text: `hourness report failed: ${(error as Error).message}` }
       }
     },
   })
+  return () => {
+    unregister()
+    health.dispose()
+  }
 }

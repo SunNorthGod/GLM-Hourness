@@ -10,7 +10,8 @@
 import { rowJournal, type AuditFs, type AuditJournal } from '../memory/audit.ts'
 import { gradeDecision } from './decisions.ts'
 import { dataHomes } from '../shared/data-home.ts'
-import type { PreExecuteHost, ServiceLookup } from '../shared/dsh-min.ts'
+import { provideRowHealth, sessionIdOf, type HealthState } from '../shared/health.ts'
+import type { PreExecuteHost, ProvideHost, ServiceLookup, ToolExecutionPayload } from '../shared/dsh-min.ts'
 
 /**
  * Dispatch tool names of the rc.3 composition: the Agent Team tools
@@ -21,8 +22,10 @@ import type { PreExecuteHost, ServiceLookup } from '../shared/dsh-min.ts'
  */
 export const DISPATCH_TOOLS = ['spawn_teammate', 'team_task_create', 'team_task_update', 'send_message', 'subagent', 'subagent_fork'] as const
 
-export function applyOverJournal(ctx: PreExecuteHost, journal: Pick<AuditJournal, 'decision'>): () => void {
+/** Observe root tool calls; dispatches are journaled, every root call reaches `observe` (row health). */
+export function applyOverJournal(ctx: PreExecuteHost, journal: Pick<AuditJournal, 'decision'>, observe?: (payload: ToolExecutionPayload) => void): () => void {
   return ctx.on('tools/pre-execute', (payload, next) => {
+    if (payload.parent === undefined) observe?.(payload)
     if (payload.parent === undefined && (DISPATCH_TOOLS as readonly string[]).includes(payload.name)) {
       const level = gradeDecision('dispatch')
       void journal.decision({
@@ -58,11 +61,25 @@ export interface WorkflowConfig {
 /** cordis plugin identity. */
 export const name = 'dsh-glm-hourness/workflow'
 
-/** cordis plugin entry: accepts an injected journal (tests) or a config (installer). */
-export function apply(ctx: PreExecuteHost & ServiceLookup, journalOrConfig: (Pick<AuditJournal, 'decision'>) | WorkflowConfig = {}): () => void {
+/** The row's status for one call's session (row health): where dispatch decisions go. */
+export function workflowHealth(projectHome: string | undefined): [HealthState, string] {
+  return projectHome === undefined
+    ? ['inactive', '无项目目录（行 home 或数据目录行 projectHome），派遣决策不落盘']
+    : ['active', `派遣决策记入 ${projectHome}`]
+}
+
+/** cordis plugin entry: accepts an injected journal (tests) or a config (installer, which also reports row health). */
+export function apply(ctx: PreExecuteHost & ServiceLookup & Partial<ProvideHost>, journalOrConfig: (Pick<AuditJournal, 'decision'>) | WorkflowConfig = {}): () => void {
   if (typeof (journalOrConfig as Pick<AuditJournal, 'decision'>).decision === 'function') {
     return applyOverJournal(ctx, journalOrConfig as Pick<AuditJournal, 'decision'>)
   }
   const config = journalOrConfig as WorkflowConfig
-  return applyOverJournal(ctx, rowJournal(name, () => dataHomes(ctx, config.home), config.fs))
+  const health = provideRowHealth(ctx, 'workflow', 'active', '已加载，记录派遣类调用')
+  const dispose = applyOverJournal(ctx, rowJournal(name, () => dataHomes(ctx, config.home), config.fs), payload => {
+    health.report(sessionIdOf(payload.agent), ...workflowHealth(dataHomes(ctx, config.home).projectHome))
+  })
+  return () => {
+    dispose()
+    health.dispose()
+  }
 }

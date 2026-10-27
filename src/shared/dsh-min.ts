@@ -238,8 +238,9 @@ export interface FsPathService {
   processPathFromHostPath(hostPath: string): string | undefined
 }
 
-/** A human command invocation (dsh-commands): the text after `/name`. */
+/** A human command invocation (dsh-commands `execute`): the exact receiving agent and the text after `/name`. */
 export interface CommandInvocationLike {
+  readonly agent: { readonly id: string, readonly session?: { readonly id: string } }
   readonly rawInput: string
 }
 

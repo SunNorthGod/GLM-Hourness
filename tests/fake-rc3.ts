@@ -2,16 +2,39 @@
  * Test double of the rc.3 runtime surface the dialect rows touch
  * (docs/DESIGN.md §2.4a). It offers only what the desktop runtime offers:
  * scoped `tools.register(definition)`, `tools.get(name, scope)`,
- * `tools.execute(input)`, the agent-scoped waterfalls, and the session's
- * derived history. The route reaches plugins solely through the assembly
- * variables, exactly as installModelSelection injects them.
+ * `tools.execute(input)`, the agent-scoped waterfalls, the session's
+ * derived history, and cordis `get` / `provide`. The route reaches plugins
+ * solely through the assembly variables, exactly as installModelSelection
+ * injects them.
  */
-import type { AgentLike, AssemblePayload, AssembledTool, PluginContext, PreStepDecision, PreStepPayload, ToolDefinitionLike, ToolExecuteInput, ToolFinalResult } from '../src/shared/dsh-min.ts'
+import type { AgentLike, AssemblePayload, AssembledTool, PluginContext, PreStepDecision, PreStepPayload, ProvideHost, ServiceLookup, ToolDefinitionLike, ToolExecuteInput, ToolFinalResult } from '../src/shared/dsh-min.ts'
 
 type Listener = (...args: never[]) => unknown
 
+/**
+ * A cordis service store as far as the rows use it (rc.3 cordis
+ * lib/index.js:763 `get`, :800 `provide`): `get` reads undefined until a
+ * fiber provides the name, a second provider of the same name throws, and
+ * the disposer unregisters.
+ */
+export function serviceStore(): ServiceLookup & ProvideHost & { readonly services: Map<string, unknown>, get(name: string): unknown } {
+  const services = new Map<string, unknown>()
+  return {
+    services,
+    get: (name: string) => services.get(name),
+    provide: (name: string, value: unknown) => {
+      if (services.has(name)) throw new Error(`service "${name}" has been registered`)
+      services.set(name, value)
+      return () => { services.delete(name) }
+    },
+  }
+}
+
 export interface FakeRuntime {
-  readonly ctx: PluginContext
+  /** The context every row receives; cordis contexts also read and provide services. */
+  readonly ctx: PluginContext & ServiceLookup & ProvideHost
+  /** The services provided through `ctx.provide`. */
+  readonly services: Map<string, unknown>
   readonly agent: AgentLike
   /** Natives registered globally, by name. */
   readonly natives: Map<string, ToolDefinitionLike>
@@ -68,7 +91,10 @@ export function fakeRuntime(options: { natives?: readonly string[], calls?: Arra
     deferContext(context: unknown) { contexts.push(context) },
     concludeTurn() {},
   })
-  const ctx: PluginContext = {
+  const store = serviceStore()
+  const ctx: FakeRuntime['ctx'] = {
+    get: store.get,
+    provide: store.provide,
     tools: {
       register: definition => {
         scoped.push(definition)
@@ -103,6 +129,7 @@ export function fakeRuntime(options: { natives?: readonly string[], calls?: Arra
   const agent: AgentLike = { id: 'agent-1', ctx, session: { id: 'agent-1', header: { id: 'agent-1' }, deriveMessages: () => [...history] } }
   return {
     ctx,
+    services: store.services,
     agent,
     natives,
     scoped,

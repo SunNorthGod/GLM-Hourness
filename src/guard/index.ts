@@ -6,7 +6,8 @@
  * text blocks the call before execution. The four-part corrective message is
  * the reason — deny stays hard, teaching rides along. Every denial is
  * journaled in the project directory (`<home>/audit/violations.jsonl`; the
- * row's own home, else the data service's, docs/DESIGN.md §2.4).
+ * row's own home, else the data service's, docs/DESIGN.md §2.4). Each
+ * root call reports the row health of its session (src/shared/health.ts).
  *
  * Containment roots come from config, else the calling Agent's immutable
  * session directory (session.header.cwd), else the containment rule is
@@ -16,8 +17,9 @@
 import { evaluate, fileToolsOnly, renderCorrection, workspaceContainment, type GuardRule, type ToolCall } from './rules.ts'
 import { rowJournal, type AuditFs } from '../memory/audit.ts'
 import { dataHomes } from '../shared/data-home.ts'
+import { provideRowHealth, sessionIdOf, type HealthState } from '../shared/health.ts'
 import type { JsonValue } from '../glm-prompt/json.ts'
-import type { PreExecuteHost, ServiceLookup, ToolExecutionPayload } from '../shared/dsh-min.ts'
+import type { PreExecuteHost, ProvideHost, ServiceLookup, ToolExecutionPayload } from '../shared/dsh-min.ts'
 
 /** One audit record (JSONL line) for a denied call. */
 export interface ViolationRecord {
@@ -55,13 +57,26 @@ export function rootsFor(payload: ToolExecutionPayload, config: GuardConfig): re
 /** cordis plugin identity. */
 export const name = 'dsh-glm-hourness/guard'
 
+/** The guard's status for one call's session (row health): which rules can judge, and where denials go. */
+export function guardHealth(roots: readonly string[] | undefined, projectHome: string | undefined): [HealthState, string] {
+  const scope = roots === undefined ? '门禁生效（file-tools-only）' : `门禁生效（file-tools-only，圈禁根 ${roots.join('、')}）`
+  const gaps = [
+    ...(roots === undefined ? ['会话没有工作目录，圈禁规则跳过'] : []),
+    ...(projectHome === undefined ? ['无项目目录，违规不落盘'] : []),
+  ]
+  return gaps.length === 0 ? ['active', `${scope}；违规记入 ${projectHome}`] : ['degraded', `${scope}；${gaps.join('；')}`]
+}
+
 /** cordis plugin entry. */
-export function apply(ctx: PreExecuteHost & ServiceLookup, config: GuardConfig = {}): () => void {
+export function apply(ctx: PreExecuteHost & ServiceLookup & Partial<ProvideHost>, config: GuardConfig = {}): () => void {
+  const health = provideRowHealth(ctx, 'guard', 'active', config.workspaceRoots === undefined ? '已加载，圈禁根取会话目录' : '已加载，圈禁根取配置')
   const journal = rowJournal(name, () => dataHomes(ctx, config.home), config.fs)
-  return ctx.on('tools/pre-execute', async (payload, next) => {
+  const dispose = ctx.on('tools/pre-execute', async (payload, next) => {
     if (payload.parent !== undefined) return next()
     const call: ToolCall = { name: payload.name, arguments: (payload.arguments ?? {}) as JsonValue }
-    const rules = activeRules({ ...config, workspaceRoots: rootsFor(payload, config) })
+    const roots = rootsFor(payload, config)
+    health.report(sessionIdOf(payload.agent), ...guardHealth(roots, dataHomes(ctx, config.home).projectHome))
+    const rules = activeRules({ ...config, workspaceRoots: roots })
     const verdict = evaluate(rules, call)
     if (verdict.kind === 'deny') {
       // rc.3 executions carry the calling agent, not its ids (dsh-tools createExecution).
@@ -77,4 +92,8 @@ export function apply(ctx: PreExecuteHost & ServiceLookup, config: GuardConfig =
     }
     return next()
   })
+  return () => {
+    dispose()
+    health.dispose()
+  }
 }

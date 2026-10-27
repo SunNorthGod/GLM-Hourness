@@ -212,10 +212,38 @@ test('login row registers the three commands and /glm-login returns the authoriz
   dispose()
 })
 
-test('login row degrades to a no-op without a home', () => {
-  const dispose = loginApply({ commands: { register: () => () => {} } }, {})
-  assert.equal(typeof dispose, 'function')
+test('login row without a home keeps only /glm-status instead of failing activation', () => {
+  const registered: string[] = []
+  const warn = console.warn
+  console.warn = () => {}
+  let dispose: () => void
+  try {
+    dispose = loginApply({ commands: { register: definition => { registered.push(definition.name); return () => {} } } }, {})
+  }
+  finally {
+    console.warn = warn
+  }
+  assert.deepEqual(registered, ['glm-status'])
   dispose()
+})
+
+test('each request reports its session to the row health: answered, refused upstream, unreadable store', async () => {
+  const { fs, files } = memoryStore()
+  await saveCredential(fs, 'C:/ws/.llm/credentials.json', credential)
+  const reports: Array<[string | undefined, string, string]> = []
+  const report = (sessionId: string | undefined, state: string, reason: string) => { reports.push([sessionId, state, reason]) }
+  const ok = new ZcodeAdapter({ home: 'C:/ws/.llm', fetchImpl: makeUpstream(), storeFs: fs, env: {} as NodeJS.ProcessEnv, report })
+  for await (const _chunk of ok.stream({ ...request(), sessionId: 's1' } as never)) { void _chunk }
+  const refusing = (async () => new Response('quota', { status: 429 })) as unknown as typeof fetch
+  const refused = new ZcodeAdapter({ home: 'C:/ws/.llm', fetchImpl: refusing, storeFs: fs, env: {} as NodeJS.ProcessEnv, report })
+  await assert.rejects(async () => { for await (const chunk of refused.stream({ ...request(), sessionId: 's2' } as never)) void chunk }, /glm-zcode 429/)
+  files.set('C:/ws/.llm/credentials.json', 'not json')
+  await assert.rejects(async () => { for await (const chunk of ok.stream({ ...request(), sessionId: 's3' } as never)) void chunk }, /corrupted/)
+  assert.deepEqual(reports, [
+    ['s1', 'active', '上游已应答（套餐 coding-plan）'],
+    ['s2', 'inactive', '上游返回 429'],
+    ['s3', 'inactive', '凭证不可读：credential store is corrupted (not JSON): C:/ws/.llm/credentials.json'],
+  ])
 })
 
 test('ZcodeLogin.start surfaces the authorize URL and completes into the store', async () => {

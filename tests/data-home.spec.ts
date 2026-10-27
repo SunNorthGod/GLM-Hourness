@@ -3,25 +3,7 @@ import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { apply, dataServiceFor } from '../src/data/index.ts'
 import { DATA_SERVICE, dataHomes, dataService, expandHomePath, resolveDshHome, userDataHome } from '../src/shared/data-home.ts'
-
-/**
- * A cordis service store as far as the rows use it (rc.3 cordis
- * lib/index.js:763 `get`, :800 `provide`): `get` reads undefined until a
- * fiber provides the name, a second provider of the same name throws, and
- * the disposer unregisters.
- */
-function serviceStore() {
-  const services = new Map<string, unknown>()
-  return {
-    services,
-    get: (name: string) => services.get(name),
-    provide: (name: string, value: unknown) => {
-      if (services.has(name)) throw new Error(`service "${name}" has been registered`)
-      services.set(name, value)
-      return () => { services.delete(name) }
-    },
-  }
-}
+import { serviceStore } from './fake-rc3.ts'
 
 const HOME = resolve('/users/me')
 

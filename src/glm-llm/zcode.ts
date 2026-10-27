@@ -25,6 +25,7 @@ import { glmImageRequestTarget, prepareRequestImages } from './images.ts'
 import { buildStartPlanSystem, buildContextPrefixMessage } from './start-plan.ts'
 import { GLM_DEFAULT_MAX_TOKENS, GLM_MODELS, GLM_REASONING_EFFORTS, glmInputModalities } from './models.ts'
 import { messageText, type AttachmentsLike, type GenerateOptionsLike } from '../shared/lm-min.ts'
+import type { HealthState } from '../shared/health.ts'
 import type {
   GenerateOptions,
   LlmAdapter,
@@ -57,6 +58,8 @@ export interface ZcodeAdapterOptions {
   readonly resolveAttachments?: () => AttachmentsLike | undefined
   /** Map a host path into the tool execution world (the `fs` service), for offloaded-image placeholders. */
   readonly mapHostPath?: (hostPath: string) => string | undefined
+  /** Row health sink (src/shared/health.ts): each request's outcome, keyed by its session. */
+  readonly report?: (sessionId: string | undefined, state: HealthState, reason: string) => void
 }
 
 const storeFsDefault: StoreFs = {
@@ -257,8 +260,13 @@ export class ZcodeAdapter {
     // wire shape; the cast documents that boundary in one place.
     const options = request as unknown as GenerateOptionsLike
     const plan = this.options.plan ?? 'coding-plan'
-    const credential = await this.loadCredential()
+    const report = (state: HealthState, reason: string): void => this.options.report?.(request.sessionId, state, reason)
+    const credential = await this.loadCredential().catch((error: unknown) => {
+      report('inactive', `凭证不可读：${(error as Error).message}`)
+      throw error
+    })
     if (credential === undefined) {
+      report('inactive', '未登录：凭证为空，运行 /glm-login')
       throw new Error('glm-zcode: not logged in — run /glm-login (the credential store is empty)')
     }
     const fetchImpl = this.options.fetchImpl ?? fetch
@@ -296,10 +304,12 @@ export class ZcodeAdapter {
       }),
     })
     if (!response.ok) {
+      report('inactive', `上游返回 ${response.status}`)
       const detail = await response.text()
       throw new Error(`glm-zcode ${response.status}: ${detail.slice(0, 400)}`)
     }
     if (response.body === null) throw new Error('glm-zcode: response has no stream body')
+    report('active', `上游已应答（套餐 ${plan}）`)
     // decodeSse emits the internal structural chunk vocabulary; it is
     // field-compatible with the DSH StreamChunk protocol (only the branded id
     // types differ, and brands exist only at the type level).

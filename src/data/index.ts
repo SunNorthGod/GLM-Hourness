@@ -7,8 +7,10 @@
  * the `glmHournessData` cordis service. The guard, memory, workflow and
  * hourness rows read it lazily and keep working without it. Activation
  * does no I/O: the journals create their directories on the first write.
+ * The row health (src/shared/health.ts) states which directories resolved.
  */
 import { DATA_SERVICE, userDataHome, type DataService } from '../shared/data-home.ts'
+import { provideRowHealth } from '../shared/health.ts'
 import type { ProvideHost } from '../shared/dsh-min.ts'
 
 export interface DataConfig {
@@ -30,17 +32,26 @@ export function dataServiceFor(config: DataConfig): DataService {
   })
 }
 
-/** cordis plugin entry: provide the directories; activation never throws. */
+/** cordis plugin entry: provide the directories and the row health; activation never throws. */
 export function apply(ctx: ProvideHost, config: DataConfig = {}): () => void {
   const service = dataServiceFor(config)
   if (service.projectHome === undefined) {
     console.warn('dsh-glm-hourness/data: projectHome is not configured; violations and decisions are journaled only by rows with their own home (set config.projectHome)')
   }
+  let withdraw: () => void
   try {
-    return ctx.provide(DATA_SERVICE, service)
+    withdraw = ctx.provide(DATA_SERVICE, service)
   }
   catch (error) {
     console.warn(`dsh-glm-hourness/data: providing ${DATA_SERVICE} failed; rows fall back to their own home: ${(error as Error).message}`)
-    return () => {}
+    const health = provideRowHealth(ctx, 'data', 'inactive', `数据目录服务未提供：${(error as Error).message}`)
+    return () => health.dispose()
+  }
+  const health = service.projectHome === undefined
+    ? provideRowHealth(ctx, 'data', 'degraded', `用户级目录 ${service.userHome}；项目目录未配置，违规与决策只由配了 home 的行写入`)
+    : provideRowHealth(ctx, 'data', 'active', `用户级目录 ${service.userHome}；项目目录 ${service.projectHome}`)
+  return () => {
+    health.dispose()
+    withdraw()
   }
 }
