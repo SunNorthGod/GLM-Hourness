@@ -16,9 +16,10 @@
 
 ```
 src/           主包 TypeScript 源码
-tests/         24 个 spec，250 用例；tests/fake-rc3.ts 为 rc.3 运行时替身
+tests/         24 个 spec，250 用例；tests/fake-rc3.ts 为 rc.3 运行时替身；tests/tsconfig.json 只给 ESLint 提供类型信息
 ui/            独立 UI bundle（纯 JS，不参与 tsc）
-scripts/       preflight-bundle.mjs、check-verbatim.mjs、smoke-zcode*.mjs、probe/（L3 探针）；scripts/dev/ 为历史调试脚本，部分针对已不存在的接口
+scripts/       preflight-bundle.mjs、check-verbatim.mjs、check-lint.mjs（检查器门禁）、deps-check.mjs（依赖报告）、smoke-zcode*.mjs、probe/（L3 探针）；scripts/dev/ 为历史调试脚本，部分针对已不存在的接口（去留见 ROADMAP.md §3）
+eslint.config.js、knip.jsonc、.jscpd.json  检查器配置；eslint-suppressions.json、knip-baseline.json、.jscpd-baseline.json 为告警基线（DEVELOPMENT.md §10）
 docs/          宪章、设计、编排、路线、事实账、流程、交接；docs/reference/ 为事实参考原文
 AGENTS.md      仓库规则
 cordis.patch.yml  主包 Loader patch
@@ -45,7 +46,7 @@ dist/          不入库：tsc 产物（profile 通过 pnpm link 使用）
 
 行健康（2026-10-28，`DESIGN.md` §2.5）：主包 9 行都在激活时与会话中上报生效、部分生效或未生效及原因，`/glm-status` 显示；桌面版重启后生效。
 
-装机：10 行均 `fiberPhase: active`，无激活错误（2026-10-27 删除 `toolsearch` 行之前的记录；`data` 行尚未在桌面版上加载过）。门禁 `npm run build`、`npm run preflight`、`npm test`（250 用例，逐字门禁 397 段、已知偏差 0 条）全绿，`npm run probe` 51/51（2026-10-28）。
+装机：10 行均 `fiberPhase: active`，无激活错误（2026-10-27 删除 `toolsearch` 行之前的记录；`data` 行尚未在桌面版上加载过）。门禁 `npm run build`、`npm run preflight`、`npm test`（250 用例，逐字门禁 397 段、已知偏差 0 条，检查器门禁对照基线 ESLint 317 条、knip 35 条、jscpd 7 处克隆）全绿，`npm run probe` 51/51（2026-10-28）。
 
 宿主接口：每个用到的 DSH 钩子、服务成员与载荷字段都已对照 rc.3 运行时包，证据见 `DESIGN.md` §2.4a 接口对照表；宿主结构类型集中在 `src/shared/dsh-min.ts` 与 `src/shared/lm-min.ts`。
 
@@ -79,6 +80,7 @@ dist/          不入库：tsc 产物（profile 通过 pnpm link 使用）
 18. 2026-10-28 之前原生通道的编码器按 `toolCalls` 字段读助手的工具调用，rc.3 用 `tool-call` 内容块，工具调用会被全部丢弃，任何多轮工具会话都会被上游拒绝。已修（`DESIGN.md` §4.5）；多轮工具调用经原生通道的真机验证随 L4。
 
 19. 行健康只保存在主机进程内存里，桌面版重启后清空，历史状态查不到；设置页把 `/glm-status` 的整段文本（含 Markdown 表）原样显示，表格的界面呈现随 M8（`DESIGN.md` §2.5）。
+20. 依赖安装：`pnpm add`、`pnpm update` 要带 `--store-dir .pnpm-store`（`node_modules` 链接自仓库内的 store）；`pnpm install --frozen-lockfile` 失败，根 `package.json` 的 `peerDependencies` 不在锁文件里，M1.9 之前即如此（`DEVELOPMENT.md` §11）。检查器基线里的存量告警（多为测试里多余的类型断言与无 `await` 的 async 回调）尚未清理，`graph-engine` 合并后再修（`ORCHESTRATION.md` §7.7）。
 
 反向代理已从项目范围移除（`DESIGN.md` §1）；profile 中指向 8317 的 pi-ai `glm` 路由属于用户配置，本项目不改。
 

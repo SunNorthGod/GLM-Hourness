@@ -52,6 +52,7 @@ M1 进度：
 - 1.4 共享数据目录：完成（2026-10-28，`DESIGN.md` §2.4）。新行 `glm-hourness/data` 提供数据目录服务：用户级目录按 DSH 的布局解析为 `$DSH_HOME/glm-hourness/`（默认 `~/.dsh/glm-hourness/`，用户定案），项目目录是工作区 `.llm/`。用量流水改写用户级目录，违规与决策写项目目录；guard 每次拦截都落盘，原来无法从配置传入的回调删除；各行在每次写入时取目录，有无数据行都能激活，用户 profile 补丁里的 `home` 照旧优先。数据行经探针证明后默认启用。迁移：用户级用量流水 1080 条（仓库 890 条加旧目录 190 条，无重复），旧目录的 1 条记忆并入仓库 `.llm/memory.json`，3 条决策仓库里已有；源文件未改动。加密凭证按用户定案 A 在 L4 验收后再搬（§3）。L2 215 用例（22 个 spec）；L3 探针 41/41（新增：用量只落在场景的用户级目录、真实目录不变；shell 写入被拦并在场景项目目录留下违规记录）。
 - 1.5 行健康：完成（2026-10-28，`DESIGN.md` §2.5）。每行激活时提供自己的健康视图，在会话中起作用时报告生效、部分生效或未生效及原因（例如非 GLM 路由、缺凭证、缺项目目录）；`/glm-status` 在凭证状态之后列出调用会话的行健康表，未启用的行显示未加载。`glm-login` 没有 `home` 时保留 `/glm-status`。报告只在主机进程内存里，不进模型请求。L2 233 用例（23 个 spec）；L3 探针 46/46（新增：真实的 `/glm-status` 处理函数在 GLM、非 GLM、压缩三个场景输出 9 行的健康表，状态与原因符合路由，表的内容不进模型请求）。
 - 1.8 guard：完成（2026-10-28，`ORCHESTRATION.md` §6.1、§6.5）。`file-tools-only` 改为引号感知：按 PowerShell 与 POSIX 两种方言读命令，引号、here-string、here-document、注释里的 `=>`、`>>>`、`->` 不再误拦，只认命令位置上的写文件命令（命令集不变）与引号外指向文件的重定向，git 子命令放行；`bash -c`、`pwsh -Command` 的脚本与子表达式照样检查。规则声明以 `glm:guard` 一节放在 GLM 系统提示词最后。工作区变更兜底按影子模式实现：读 DSH `workspace-changes` 的回合摘要，跑过 shell 的回合里有文件不是文件工具的目标时只记录、不拦截，晨报单列。顺带修复：`terminal_send` 的命令文本参数是 `text`，guard 原先读 `command`，终端输入从未被检查。L2 250 用例（24 个 spec）；L3 探针 51/51（新增：GLM 提示词带规则声明、非 GLM 不带；引号里的箭头与带引号箭头的 git 子命令放行；临时 git 仓库里 .NET 写文件照常执行并留下恰好一条影子记录；行健康写明影子兜底状态）。
+- 1.9 检查器与依赖例行：完成（2026-10-28，`ORCHESTRATION.md` §7.7，`DEVELOPMENT.md` §10、§11）。按用户选定的方案 A 装 ESLint 10.13.0、typescript-eslint 8.72.1、knip 6.43.0、jscpd 5.4.2（精确版本、开发依赖，没有其他新增依赖）。`npm run lint` 接入 `npm test`，三项各自对照入库的基线，只减不增：ESLint 317 条、knip 35 条、jscpd 7 处克隆。上线时用临时违规演示过一次：三项都失败，`npm run lint:update` 拒绝写入；撤回后全绿。顺手修了 3 处明确安全的真问题；175 条多余的类型断言可自动修复，等 `graph-engine` 分支合并后再修，免得冲突。依赖例行：`npm run deps:check` 汇总 `pnpm outdated` 与 `pnpm audit` 并逐条写出处理方式，`@deepseek-ai/*` 钉在桌面版运行时的版本。当前结果：TypeScript 7 是主版本升级，待用户决定；zod 的高危公告只经 DSH 包进入，随桌面版处理。gitleaks、`@eslint/js`、`scripts/dev/` 的去留列入 §3。L2 250 用例（24 个 spec）；L3 探针 51/51（本条不改运行时行为，照跑一次）。
 - 调整后的顺序：① 修用量块（完成）；② 先做 1.7 的 L3 探针（用探针确认现状、验证后续每一步）；③ 1.2 路由收口，工具面改为在组装瀑布中逐请求改写；④ 工具检索按 ZCode local 模式移植（`DESIGN.md` §5.10）；⑤ 六个工具描述按源码重建，垫片兑现原文的参数与行为。
 
 ### M2 项目图行走骨架
@@ -108,4 +109,8 @@ M1 进度：
 | 加密凭证 `credentials.json` 与 `device-mid.txt` 搬到 `~/.dsh/glm-hourness/`（用户定案 A），同时把 `glm-llm`、`glm-login` 的 `home` 改过去；密钥推导与文件路径无关，搬后可直接解密（`DESIGN.md` §2.4） | 原生通道 L4 验收之后 |
 | profile 中指向 8317 的 pi-ai `glm` 路由去留（用户配置，本项目不改） | 任意时间 |
 | 删除已迁入本仓库的旧文件夹 `Desktop\Project\dsh-glm-dialect`（工作区外） | 任意时间 |
-| 新增开发依赖与检查器的决策卡 | M1.9 |
+| 密钥扫描 gitleaks（`ORCHESTRATION.md` §7.5）：工作区外的独立二进制，安装要用户同意。选项：A 装到用户级工具目录，接成 `npm test` 的一道；B 不装，维持提交前人工扫描。推荐 A | 任意时间 |
+| 是否新增 `@eslint/js`（ESLint 官方的推荐规则包，ESLint 10 起不随 ESLint 安装）：现在的配置从 ESLint 规则元数据取推荐清单，用的是 ESLint 标为「自担风险」的接口，取到的 64 条规则与 `@eslint/js` 10.0.1 的推荐清单相同。选项：A 加 `@eslint/js` 精确版本，配置改成社区常规写法；B 保持现状，不加依赖。推荐 A，升级 ESLint 时少一处风险 | 任意时间 |
+| `scripts/dev/` 的 9 个历史调试脚本：部分针对已不存在的接口，没有任何入口引用（knip 报未用文件），占 ESLint 基线 11 条、jscpd 克隆 4 处。推荐删除（git 历史保留），基线随之缩小 | 任意时间 |
+| TypeScript 升级：当前 5.7.2，最新 7.0.2 是主版本；typescript-eslint 8.72.1 只支持低于 6.1 的 TypeScript。选项：A 先按例行流程升到 5.x 线的 5.9.3（次版本，过全部门禁），7.x 等 typescript-eslint 支持后再议；B 维持 5.7.2。推荐 A（尚未做，`DEVELOPMENT.md` §11） | 任意时间 |
+| `graph-engine` 分支合并：合并到 main 时要过 `npm run lint`，分支新增的文件不在基线里，按新代码零告警处理；两边都改了 `package.json` 的 `test` 脚本，合并时保留检查器门禁那一道 | M2.1 评审与合并时 |

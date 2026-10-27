@@ -24,10 +24,10 @@ L2 的 mock **只允许 mock 外部网络和文件系统**；不得 mock DSH 契
 ```powershell
 npm run build        # tsc：含 adapter 契约检查（见 §4）
 npm run preflight    # dist 产物、patch 行文件、client 半一包一源约束
-npm test             # preflight + 逐字门禁 + 全部 spec
+npm test             # preflight + 逐字门禁 + 检查器门禁 + 全部 spec
 ```
 
-`npm test` 的前两道是 preflight 与逐字门禁（`npm run check:verbatim`，规则见 `DESIGN.md` §5.9）；`npm run preflight` 单独跑用于安装前快检。
+`npm test` 的前三道是 preflight、逐字门禁（`npm run check:verbatim`，规则见 `DESIGN.md` §5.9）与检查器门禁（`npm run lint`，§10）；`npm run preflight` 单独跑用于安装前快检。
 
 ## 3. 测试 profile 沙盒（L3）
 
@@ -104,8 +104,9 @@ DSH 官方类型已作为 devDependency 安装（`@deepseek-ai/dsh-llm`、`@deep
 | `dsh headless` | 真实 boot 的沙盒（见 §3） |
 | `plugin_manager` 返回 | 行激活状态、warnings、安装期诊断 |
 | `npm run preflight` | 本项目自定义门禁 |
+| `npm run lint` | ESLint、knip、jscpd 对照基线（§10） |
 
-**边界**：官方没有 lint/doctor 类静态分析；运行时校验只有在真实宿主里才触发。因此本项目用「官方类型 + tsc」补编译期，用「headless 沙盒」补启动期，用 preflight 补产物与组合完整性。
+**边界**：官方没有 lint/doctor 类静态分析；运行时校验只有在真实宿主里才触发。因此本项目用「官方类型 + tsc」补编译期，用「headless 沙盒」补启动期，用 preflight 补产物与组合完整性，用 ESLint、knip、jscpd 补规范、死代码与重复检查。
 
 ## 7. 事故记录
 
@@ -130,7 +131,8 @@ DSH 官方类型已作为 devDependency 安装（`@deepseek-ai/dsh-llm`、`@deep
 - [ ] 新行 `disabled: true`，或已在临时 profile 验证
 - [ ] 临时 profile headless boot 干净（涉及 loader/激活/新包时必做）
 - [ ] 装后验证：`application: applied` + 刷新/重启后无新错误
-- [ ] 不新增编译器或检查器告警；新增的压制注释写明理由
+- [ ] 不新增编译器或检查器告警（`npm run lint`，已含在 `npm test` 中）；新增的压制注释写明理由
+- [ ] 修掉了基线里的告警：`npm run lint:update` 缩小基线，与代码同一批提交
 - [ ] 文档同步（`DESIGN.md` / `ORCHESTRATION.md` / `ROADMAP.md` / 本文件），与代码同一批提交
 
 ## 9. 版本控制
@@ -144,4 +146,33 @@ DSH 官方类型已作为 devDependency 安装（`@deepseek-ai/dsh-llm`、`@deep
 
 ## 10. 检查器与告警
 
-规则见 `ORCHESTRATION.md` §7.5–§7.6：新代码零告警，存量按棘轮只减不增；压制注释写理由；放宽检查配置需用户批准。本仓库目前只有 tsc，规范、死代码、重复检查按 `ROADMAP.md` M1.9 补齐。
+规则见 `ORCHESTRATION.md` §7.5–§7.7：新代码零告警，存量按棘轮只减不增；压制注释写理由；放宽检查配置需用户批准。工具由用户选定（`ROADMAP.md` M1.9 方案 A），精确版本、开发依赖，不做格式化。
+
+| 检查 | 工具 | 配置 | 基线 |
+| --- | --- | --- | --- |
+| 规范（类型感知） | ESLint 10.13.0、typescript-eslint 8.72.1 | `eslint.config.js`；`tests/tsconfig.json` 给测试文件提供类型信息 | `eslint-suppressions.json`（ESLint 自带的批量压制，按文件与规则计数） |
+| 死代码（未用文件、导出、依赖） | knip 6.43.0 | `knip.jsonc` | `knip-baseline.json`（按类型、文件、名称，不含行号） |
+| 重复 | jscpd 5.4.2 | `.jscpd.json` | `.jscpd-baseline.json`（jscpd 自带的克隆指纹） |
+
+- `npm run lint`（`scripts/check-lint.mjs`，已接入 `npm test`）：三项各自对照基线。基线之外的新发现使门禁失败；基线里已经不再出现的条目也使门禁失败，并提示运行 `npm run lint:update`。ESLint 这两种失败由它的批量压制自己给出（多出的违规退出码 1，未修剪的压制退出码 2）；knip 没有基线功能，由脚本比对清单；jscpd 的新克隆由它自己的基线判定，失效的指纹由脚本按数量判定。
+- `npm run lint:update`：把基线缩到当前状态（ESLint `--prune-suppressions`、knip 重写清单、jscpd `--update-baseline`）。存在任何新发现时拒绝写入，所以基线只减不增。基线文件缺失时按当前状态新建；删掉基线再重建等于接受全部现有告警，需用户批准（`ORCHESTRATION.md` §7.6）。
+- 修掉基线里的告警后，代码改动与 `npm run lint:update` 的基线变化同一批提交。
+- 范围：`src/`、`tests/`、`scripts/`、`ui/` 与根目录配置文件；不查 `dist/`、`reference/`、`.llm/`、`.agents/`、`.worktrees/`、`.pnpm-store/`。`src/shared/schemastery.ts` 是 vendored 上游代码（文件头写明来源），不进 ESLint 与 jscpd，knip 照常检查对它的引用。配置上的取舍见 `ORCHESTRATION.md` §7.7。
+- 基线（2026-10-28，门禁上线时）：ESLint 317 条，分布在 41 个文件（`tests/` 248、`src/` 58、`scripts/dev/` 11）；按规则：`no-unnecessary-type-assertion` 175、`require-await` 77、`no-unsafe-member-access` 16、`no-base-to-string` 15、`unbound-method` 8、`no-unsafe-assignment` 8、`no-unsafe-argument` 5、`no-unsafe-return` 4，其余 9 条分属 5 条规则。knip 35 条：`scripts/dev/` 的 9 个未用文件、13 个未用导出、13 个未用导出类型（其中 3 个是编译期契约检查类型）。jscpd 7 处克隆，75 行（0.57%），4 处在 `scripts/dev/`。
+- 门禁上线时演示过一次：临时加一条 `debugger`、一个未用导出、一段复制的函数，并删掉一处被压制的类型断言，三项检查都失败，`npm run lint:update` 拒绝写入、knip 与 jscpd 的基线文件不变；撤回后全绿。
+- jscpd 5 是原生二进制，在本机写不进 `%TEMP%`（拒绝访问），门禁让它把 JSON 报告写到 `.llm/checks/`，读完即删。
+
+## 11. 依赖更新
+
+`npm run deps:check`（`scripts/deps-check.mjs`）运行 `pnpm outdated` 与 `pnpm audit`，逐条写出处理方式，不改任何文件。没有待办时退出码 0，有待办时 1，pnpm 报不出结果时 2。它的输出是定期巡检（`ORCHESTRATION.md` §12）的一项输入。
+
+处理规则：
+
+1. 补丁与次版本升级：一次一个提交，过全部门禁（build、preflight、`npm test`；动到运行时会加载的依赖再加 `npm run probe`），提交信息写明升级前后的版本与变更要点。
+2. 主版本升级：作为决策交给用户（`ROADMAP.md` §3），不自行升级。
+3. `@deepseek-ai/*`（`cordis` 与 `dsh-*`）钉在桌面版运行时所带的版本（`dsh-*` 为 `0.2.1-rc.3`，`cordis` 为 `4.0.5`，与 `reference/dsh-desktop-0.2.1-rc.3/` 一致），不跟注册表走，只在桌面版升级时一起动：按 §4 重新导出 `reference/dsh-desktop-<版本>/`，按 `DESIGN.md` §2.4a 接口对照表逐项复核，再跑 `npm run probe`。只经这些包进入本仓库的安全公告同样随桌面版处理。
+4. 新增依赖一律精确版本（`pnpm add -D -E <包>@<版本>`），任何新增先问用户。
+5. pnpm 的 store：本仓库的 `node_modules` 链接自仓库内的 `.pnpm-store/`（不入库），与本机全局 store 不同，所以 `pnpm add`、`pnpm update` 要在仓库根目录带 `--store-dir .pnpm-store`，否则报 `ERR_PNPM_UNEXPECTED_STORE`。`pnpm install --frozen-lockfile` 目前失败：根 `package.json` 的 `peerDependencies` 不在锁文件里（M1.9 之前即如此），尚未处理。
+6. 升级检查器后重跑 `npm run lint`：新版规则带来的新告警按新代码处理，修掉；修不掉的交给用户决定，不扩大基线。
+
+2026-10-28 的结果：`typescript` 5.7.2 → 7.0.2 是主版本升级（typescript-eslint 8.72.1 只支持低于 6.1 的 TypeScript；5.x 线最新为 5.9.3），已列入 `ROADMAP.md` §3。`pnpm audit` 报 1 条高危：zod 4.4.3（GHSA-mrhx-c7xc-m3w5，4.6.6 修复），只经 `@deepseek-ai/dsh-llm` 进入本仓库，那是只用于类型检查的开发依赖，随桌面版处理。
