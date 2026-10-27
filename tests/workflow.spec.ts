@@ -63,6 +63,22 @@ test('clean period reports 无 exceptions and empty usage', () => {
   const report = morningReport({ period: 'p', decisions: [], violations: [], usage: [] })
   assert.ok(report.includes('- 无'))
   assert.ok(report.includes('- 无模型调用'))
+  assert.ok(!report.includes('影子记录'))
+})
+
+test('shadow records are counted apart from denials: never blocked, not exceptions', () => {
+  const report = morningReport({
+    period: 'p',
+    decisions: [],
+    violations: [
+      { at: 't1', rule: 'file-tools-only', mode: 'shadow', sessionId: 's1', turn: 1, paths: ['gen.txt'], calls: [{ tool: 'Bash', command: '[IO.File]::WriteAllText(…)' }] },
+      { at: 't2', rule: 'file-tools-only', mode: 'shadow', sessionId: 's1', turn: 2, paths: ['b.txt'], calls: [{ tool: 'Bash', command: 'cmd /c …' }] },
+    ],
+    usage: [],
+  })
+  assert.ok(report.includes('## 例外（先看）\n- 无'))
+  assert.ok(!report.includes('违规 file-tools-only'))
+  assert.ok(report.includes('## 影子记录（只记录，未拦截）\n- file-tools-only × 2'))
 })
 
 test('report entry folds the three journal files from both directories and tolerates missing ones', async () => {

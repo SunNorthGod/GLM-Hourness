@@ -5,7 +5,9 @@
  * what the GLM-Hourness rows actually did to the model-visible request.
  *
  * Scenarios: a GLM route must get the ZCode dialect; a non-GLM route through
- * the same provider must stay untouched (no cross-route pollution).
+ * the same provider must stay untouched (no cross-route pollution). The
+ * guard's shadow scenario runs in a scratch git repository under the run
+ * directory with dsh-workspace-changes mounted through the overlay.
  *
  * Usage: node scripts/probe/run-probe.mjs
  * Requires the desktop install (DSH_DESKTOP_DIR overrides the location) and
@@ -71,7 +73,7 @@ const realUsageBefore = usageStamp()
  * hourness get it as their row home, as the user's profile patch does; the
  * guard reads it from the data service) and its DSH home is `<dir>/dsh-home`.
  */
-function runScenario(name, model, script, task, overlay = []) {
+function runScenario(name, model, script, task, overlay = [], cwd = repo) {
   const dir = join(runDir, name)
   const home = join(dir, 'home')
   mkdirSync(home, { recursive: true })
@@ -100,7 +102,7 @@ function runScenario(name, model, script, task, overlay = []) {
     '',
   ].join('\n'))
   const result = spawnSync(exe, [bin, '--profile', 'glmsandbox', '--patch', patch, task], {
-    cwd: repo,
+    cwd,
     encoding: 'utf8',
     timeout: 180_000,
     env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
@@ -215,6 +217,36 @@ const compacted = runScenario('glm-compact', 'glm-5.3', [
   '- id: compaction-basic',
   '  config: { thresholdRatio: 0.02, retainTokens: 0 }',
 ])
+// Guard, quote-aware reading and the workspace-change fallback (shadow
+// mode): the session runs in a scratch git repository with
+// dsh-workspace-changes mounted (the desktop profile has it through
+// dsh-web-app; the sandbox template does not). Quoted arrows and a git
+// subcommand run; a .NET file write the reader cannot see runs too and must
+// leave one shadow record naming that file, not the file Write created.
+const shadowDir = join(runDir, 'glm-shadow')
+const shadowWs = join(shadowDir, 'ws')
+mkdirSync(shadowWs, { recursive: true })
+writeFileSync(join(shadowWs, 'README.md'), 'probe workspace\n')
+const git = args => spawnSync('git', ['-c', 'user.name=probe', '-c', 'user.email=probe@localhost', '-c', 'commit.gpgsign=false', ...args], { cwd: shadowWs, encoding: 'utf8' })
+const gitReady = [['init', '-q'], ['add', 'README.md'], ['commit', '-q', '-m', 'init']].every(args => git(args).status === 0)
+const shadowFile = join(shadowWs, 'shadow.txt')
+const toolFile = join(shadowWs, 'tool.txt')
+const dotnetWrite = `[System.IO.File]::WriteAllText('${slash(shadowFile)}', 'probe')`
+const shadow = runScenario('glm-shadow', 'glm-5.3', [
+  { tool: { name: 'Bash', arguments: { command: 'Write-Output \'a => b -> c >>> d\'' } } },
+  { tool: { name: 'Bash', arguments: { command: 'git log -1 --format="%s => %h"' } } },
+  { tool: { name: 'Bash', arguments: { command: dotnetWrite } } },
+  { tool: { name: 'Write', arguments: { file_path: toolFile, content: 'tool\n' } } },
+  { text: 'done', status: true },
+], 'Run three commands, write a file, then reply done.', [
+  '- insert:',
+  '    - id: glm-hourness-probe/workspace-changes',
+  '      name: \'@deepseek-ai/dsh-workspace-changes\'',
+], shadowWs)
+const arrowsResult = lastToolResult(shadow.steps[1])
+const gitResult = lastToolResult(shadow.steps[2])
+const dotnetResult = lastToolResult(shadow.steps[3])
+
 const plain = runScenario('non-glm', 'deepseek-probe', [{ text: 'done', status: true }], 'Reply done.')
 const plainFirst = plain.steps[0]
 const plainTools = names(plainFirst)
@@ -232,7 +264,7 @@ const jsonl = file => existsSync(file) ? readFileSync(file, 'utf8').split('\n').
 const usageOf = scenario => jsonl(join(runDir, scenario, 'dsh-home', 'glm-hourness', 'audit', 'usage.jsonl'))
 const glmUsage = usageOf('glm').filter(record => record.purpose === undefined)
 const compactUsage = usageOf('glm-compact').filter(record => record.purpose === 'compaction')
-const projectUsage = ['glm', 'glm-flash', 'glm-todo', 'glm-compact', 'non-glm'].filter(scenario => existsSync(join(runDir, scenario, 'home', 'audit', 'usage.jsonl')))
+const projectUsage = ['glm', 'glm-flash', 'glm-todo', 'glm-compact', 'glm-shadow', 'non-glm'].filter(scenario => existsSync(join(runDir, scenario, 'home', 'audit', 'usage.jsonl')))
 const glmViolations = jsonl(join(glmDir, 'home', 'audit', 'violations.jsonl'))
 const realUsageAfter = usageStamp()
 // The workflow row journals dispatch calls by tool name; the names must be
@@ -254,11 +286,14 @@ const healthOf = (scenario) => {
 const glmHealth = healthOf(glm)
 const plainHealth = healthOf(plain)
 const compactHealth = healthOf(compacted)
+const shadowHealth = healthOf(shadow)
+const shadowRecords = jsonl(join(shadowDir, 'home', 'audit', 'violations.jsonl'))
+const GUARD_SECTION = '# Workspace rules\nThe harness checks every tool call against these rules before it runs;'
 const glmStatusText = statusStep(glm)?.status ?? ''
 const healthLine = (health, row) => health[row] === undefined ? `${row}: missing` : `${row}: ${health[row].status}`
 const ACTED = '生效'
 const IDLE = '已加载，本会话未触发'
-const conversationTexts = [glm, plain, compacted].flatMap(scenario => scenario.steps.flatMap(step => [step.system, ...step.messages.map(message => message.text)]))
+const conversationTexts = [glm, plain, compacted, shadow].flatMap(scenario => scenario.steps.flatMap(step => [step.system, ...step.messages.map(message => message.text)]))
 
 
 const checks = [
@@ -307,6 +342,11 @@ const checks = [
   ['data: usage lands only in the user-level directory, never in a project directory or the real one', projectUsage.length === 0 && realUsageBefore === realUsageAfter, `project usage files: ${projectUsage.join(', ') || 'none'}; real ${realUsage}: ${realUsageBefore} -> ${realUsageAfter}`],
   ['guard: a shell write is denied with the four-part correction and the file is not created', blockedResult?.isError === true && blockedResult.text.includes('Shell file writes are not permitted') && !existsSync(blocked), blockedResult === undefined ? 'no tool result' : blockedResult.text.slice(0, 100).replace(/\n/g, ' ')],
   ['guard: the denial is journaled in the scenario project directory with rule, tool and the calling agent ids', glmViolations.length === 1 && glmViolations[0].rule === 'file-tools-only' && glmViolations[0].tool === 'Bash' && typeof glmViolations[0].agentId === 'string' && glmViolations[0].agentId.length > 0 && glmViolations[0].sessionId === glmUsage[0]?.sessionId, `${glmViolations.length} record(s); first: ${JSON.stringify(glmViolations[0] ?? null).slice(0, 140)}`],
+  ['guard: the GLM system prompt declares the active rules (containment and file-tools-only) after the dialect sections; the non-GLM prompt does not', glmFirst?.system.includes(GUARD_SECTION) === true && glmFirst.system.includes('\n- You may only create and modify files inside the user\'s workspace.') && glmFirst.system.includes('\n- Modify files and code only with the dedicated Write/Edit tools.') && glmFirst.system.indexOf(GUARD_SECTION) > glmFirst.system.indexOf('# Context management') && plainFirst !== undefined && !plainFirst.system.includes('# Workspace rules'), glmFirst === undefined ? 'no request' : `section at ${glmFirst.system.indexOf(GUARD_SECTION)} of ${glmFirst.system.length}`],
+  ['guard: quoted =>, -> and >>> and a git subcommand with a quoted arrow run through Bash', arrowsResult !== undefined && arrowsResult.isError !== true && arrowsResult.text.includes('a => b -> c >>> d') && gitResult !== undefined && gitResult.isError !== true && gitResult.text.includes('init => '), `${(arrowsResult?.text ?? 'no tool result').slice(0, 60).replace(/\n/g, ' ')} | ${(gitResult?.text ?? 'no tool result').slice(0, 60).replace(/\n/g, ' ')}`],
+  ['guard shadow: a .NET file write the reader cannot see runs, and Write creates its file (shadow mode never blocks)', gitReady && dotnetResult !== undefined && dotnetResult.isError !== true && existsSync(shadowFile) && existsSync(toolFile), `git repo: ${gitReady}; ${(dotnetResult?.text ?? 'no tool result').slice(0, 80).replace(/\n/g, ' ')}`],
+  ['guard shadow: one shadow record names the shell-written file, not the Write target, with the turn, the session and the three shell calls', shadowRecords.length === 1 && shadowRecords[0].mode === 'shadow' && shadowRecords[0].rule === 'file-tools-only' && JSON.stringify(shadowRecords[0].paths) === '["shadow.txt"]' && typeof shadowRecords[0].turn === 'number' && shadowRecords[0].calls?.length === 3 && shadowRecords[0].calls.some(call => call.tool === 'Bash' && call.command === dotnetWrite) && shadowRecords[0].sessionId === statusStep(shadow)?.sessionId, `${shadowRecords.length} record(s); first: ${JSON.stringify(shadowRecords[0] ?? null).slice(0, 200)}`],
+  ['health: the guard names the shadow fallback: on with workspace-changes mounted, off without it', shadowHealth.guard?.status === ACTED && shadowHealth.guard.reason.endsWith('影子兜底：工作区变更记录') && glmHealth.guard?.reason.endsWith('影子兜底未启用（组合里没有 workspace-changes）') === true, `${JSON.stringify(shadowHealth.guard ?? null)} | ${JSON.stringify(glmHealth.guard ?? null)}`],
   ['workflow: the runtime subagent tools are journaled dispatch names', plainSubagentTools.length === 2 && plainSubagentTools.every(name => DISPATCH_TOOLS.includes(name)), `runtime subagent tools: ${plainSubagentTools.join(', ') || 'none'}`],
   ['health: /glm-status prints the credential line and the health table of the session, one line per bundle row', glmStatusText.startsWith('glm-zcode：未登录（套餐 coding-plan）') && glmStatusText.includes(`## 行健康（会话 ${statusStep(glm)?.sessionId}）`) && HEALTH_ROWS.every(row => glmHealth[row] !== undefined) && Object.keys(glmHealth).length === HEALTH_ROWS.length, `${Object.keys(glmHealth).length} row(s); ${glmStatusText.split('\n')[0]}`],
   ['health: on the GLM route glm-prompt, guard, memory, workflow, data and glm-login report in effect; glm-compact and hourness have not acted', glmHealth['glm-prompt']?.status === ACTED && glmHealth['glm-prompt'].reason.startsWith('GLM 路由 glm-probe/glm-5.3：') && ['guard', 'memory', 'workflow', 'data', 'glm-login'].every(row => glmHealth[row]?.status === ACTED) && ['glm-compact', 'hourness'].every(row => glmHealth[row]?.status === IDLE), HEALTH_ROWS.map(row => healthLine(glmHealth, row)).join('; ')],

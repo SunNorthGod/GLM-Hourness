@@ -107,20 +107,21 @@ guardTest('paths outside the graph directory pass', async ({ workspace, call, ca
 })
 
 guardTest('write-shaped shell commands that name the graph are denied with the graph correction', async ({ graph, call, calls }) => {
-  for (const [name, command] of [
-    ['pwsh', 'Remove-Item docs/graph/nodes/goal-1.json'],
-    ['Bash', 'echo {} > docs\\graph\\nodes\\task-9.json'],
-    ['terminal_send', `Set-Content -Path "${graph}\\nodes\\task-9.json" -Value x`],
-    ['pwsh', 'cd .\\docs\\graph; Remove-Item nodes\\goal-1.json'],
+  // The shell text field is the one file-tools-only reads: `command`, and `text` for terminal_send.
+  for (const [name, args] of [
+    ['pwsh', { command: 'Remove-Item docs/graph/nodes/goal-1.json' }],
+    ['Bash', { command: 'echo {} > docs\\graph\\nodes\\task-9.json' }],
+    ['terminal_send', { text: `Set-Content -Path "${graph}\\nodes\\task-9.json" -Value x` }],
+    ['pwsh', { command: 'cd .\\docs\\graph; Remove-Item nodes\\goal-1.json' }],
   ] as const) {
-    const text = deniedByGraphRule(await call(name, { command }))
+    const text = deniedByGraphRule(await call(name, args))
     assert.ok(text.includes('through the shell'), text)
   }
-  // Commands file-tools-only does not count as writes, and writes elsewhere, are not this rule's.
-  for (const command of ['npm run graph:render', 'Get-Content docs/graph/nodes/goal-1.json', 'git diff docs/graph', 'Remove-Item build/out.txt', 'Remove-Item docs/graphs/x.md']) {
+  // Commands file-tools-only does not count as writes (quoted arrows included), and writes elsewhere, are not this rule's.
+  for (const command of ['npm run graph:render', 'Get-Content docs/graph/nodes/goal-1.json', 'git diff docs/graph', 'Write-Output "docs/graph => nodes"', 'Remove-Item build/out.txt', 'Remove-Item docs/graphs/x.md']) {
     passed(await call('pwsh', { command }))
   }
-  assert.equal(calls.length, 5)
+  assert.equal(calls.length, 6)
 })
 
 guardTest('the graph tools still write the graph', async ({ graph, call }) => {

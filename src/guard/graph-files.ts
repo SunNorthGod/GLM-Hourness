@@ -4,15 +4,18 @@
  * history and check revisions, evidence and permissions. File tools that
  * target the graph directory, and shell commands that file-tools-only
  * counts as writes and that name the graph directory, are denied with a
- * four-part correction pointing at those tools. The rule uses the guard
- * framework (rules.ts) but is registered by the glm-hourness/graph row
- * (installGraphFileGuard): only that row knows the graph directory, and
- * only with it enabled does the right path exist.
+ * four-part correction pointing at those tools. Shell text is taken as
+ * file-tools-only takes it (shellCommandOf: `command`, or `text` for
+ * terminal_send) and counts as a write only where that quote-aware rule
+ * says so. The rule uses the guard framework (rules.ts) but is
+ * registered by the glm-hourness/graph row (installGraphFileGuard): only
+ * that row knows the graph directory, and only with it enabled does the
+ * right path exist.
  */
 import { isAbsolute, relative, resolve } from 'node:path'
 import type { JsonValue } from '../glm-prompt/json.ts'
 import type { PreExecuteHost } from '../shared/dsh-min.ts'
-import { evaluate, fileToolsOnly, renderCorrection, type Correction, type GuardRule, type RuleVerdict, type ToolCall } from './rules.ts'
+import { evaluate, fileToolsOnly, renderCorrection, shellCommandOf, type Correction, type GuardRule, type RuleVerdict, type ToolCall } from './rules.ts'
 
 export const GRAPH_FILES_RULE = 'graph-files-only'
 
@@ -72,10 +75,11 @@ export function graphFilesOnly(graphDir: string, cwd: string | undefined): Guard
     detect(call) {
       const target = writeTarget(call)
       if (target !== undefined) return inside(target) ? deny(`You tried to write "${target}".`) : ALLOW
-      const command = argsOf(call)?.command
-      if (typeof command !== 'string' || fileToolsOnly.detect(call).kind !== 'deny') return ALLOW
-      const normalized = pathKey(command)
-      return mentions.some(pattern => pattern.test(normalized)) ? deny(`You tried to change project graph files through the shell: "${command}".`) : ALLOW
+      // The shell text as file-tools-only reads it (terminal_send carries it in `text`).
+      const shell = shellCommandOf(call)
+      if (shell === undefined || fileToolsOnly.detect(call).kind !== 'deny') return ALLOW
+      const normalized = pathKey(shell.command)
+      return mentions.some(pattern => pattern.test(normalized)) ? deny(`You tried to change project graph files through the shell: "${shell.command}".`) : ALLOW
     },
   }
 }

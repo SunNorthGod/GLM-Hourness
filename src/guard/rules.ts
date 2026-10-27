@@ -5,6 +5,7 @@
  * path / exception). No soft-allow tier: a denied action never executes.
  */
 import type { JsonValue } from '../glm-prompt/json.ts'
+import { describeWrite, shellWrites, type ShellDialect } from './shell.ts'
 
 /** Four-part corrective message parts. */
 export interface Correction {
@@ -25,7 +26,7 @@ export type RuleVerdict =
 
 export interface GuardRule {
   readonly id: string
-  /** Verbatim declaration injected into the dialect's guard notice section. */
+  /** The rule as the model is told it: one line of the guard section in GLM system prompts (src/guard/index.ts). */
   readonly declare: string
   /** Decide for one tool call; throwing counts as allow (fail-open). */
   detect(call: ToolCall): RuleVerdict
@@ -34,8 +35,8 @@ export interface GuardRule {
 const APPLICATION_PROTOCOL
   = 'To operate outside the workspace, file a request stating: target path or command, purpose, reversibility and blast-radius self-check, and alternatives you considered. A human approves each request individually; no grant outlives the call it approved.'
 
-/** Normalize a path for containment checks (case-insensitive Windows file systems). */
-function normalizePath(path: string): string {
+/** Normalize a path for containment checks and path comparison (case-insensitive Windows file systems). */
+export function normalizePath(path: string): string {
   return path.replaceAll('/', '\\').replaceAll('\\\\', '\\').toLowerCase().replaceAll('\\', '/')
 }
 
@@ -72,47 +73,46 @@ export function workspaceContainment(roots: readonly string[]): GuardRule {
 }
 
 /**
- * Rule 2: file modification goes through the dedicated tools. Shell commands
- * that rewrite files are denied even inside the workspace — a successful
- * shell write would reinforce the habit this rule exists to break.
+ * Shell tools, the argument that carries their command text, and the
+ * dialects it is read in: the ZCode Bash alias runs over pwsh, `bash` is
+ * POSIX, and `terminal_send` writes `text` to a terminal whose backend runs
+ * bash or pwsh (dsh-terminal-bash `shellDialect`), so both dialects apply.
  */
-const SHELL_WRITE_PATTERNS: readonly RegExp[] = [
-  // POSIX write-shaped commands (rename/copy/delete/truncate/create)
-  /\b(mv|cp|rm|rmdir|dd|touch|truncate)\b/i,
-  /\bsed\s+(-\S+\s+)*-i\b/i,
-  // PowerShell write-shaped cmdlets
-  /\bset-content\b/i,
-  /\badd-content\b/i,
-  /\bclear-content\b/i,
-  /\bout-file\b/i,
-  /\btee\b/i,
-  /\bmove-item\b/i,
-  /\bcopy-item\b/i,
-  /\bremove-item\b/i,
-  /\bnew-item\b/i,
-  // Redirection into a file (single or appending). The lookbehind keeps
-  // stderr/stdout stream numbers (2>, 2>&1) out — those are not file writes.
-  /(?<![\w$])>{1,2}\s*\S/,
-]
+const SHELL_TOOLS: ReadonlyMap<string, { readonly field: 'command' | 'text', readonly dialects: readonly ShellDialect[] }> = new Map([
+  ['Bash', { field: 'command', dialects: ['pwsh'] }],
+  ['pwsh', { field: 'command', dialects: ['pwsh'] }],
+  ['bash', { field: 'command', dialects: ['posix'] }],
+  ['terminal_send', { field: 'text', dialects: ['pwsh', 'posix'] }],
+])
 
+/** The shell text one call runs, if it is a shell call. */
+export function shellCommandOf(call: ToolCall): { readonly command: string, readonly dialects: readonly ShellDialect[] } | undefined {
+  const tool = SHELL_TOOLS.get(call.name)
+  if (tool === undefined || typeof call.arguments !== 'object' || call.arguments === null || Array.isArray(call.arguments)) return undefined
+  const command = (call.arguments as Record<string, JsonValue>)[tool.field]
+  return typeof command === 'string' ? { command, dialects: tool.dialects } : undefined
+}
+
+/**
+ * Rule 2: file modification goes through the dedicated tools. Shell commands
+ * that write files are denied even inside the workspace — a successful
+ * shell write would reinforce the habit this rule exists to break. The
+ * command text is read quote-aware (src/guard/shell.ts): only command
+ * positions and real redirections count, so arrows and operators inside
+ * quoted text are not writes and git subcommands are never write commands.
+ */
 export const fileToolsOnly: GuardRule = {
   id: 'file-tools-only',
-  declare: 'Modify files and code only with the dedicated Write/Edit tools. The shell is for execution (tests, builds, git), not for writing files.',
+  declare: 'Modify files and code only with the dedicated Write/Edit tools. The shell is for execution (tests, builds, git), not for writing files: a redirection into a file (`>`, `>>`) or a file-changing command (Set-Content, Add-Content, Clear-Content, Out-File, Tee-Object, New-Item, Copy-Item, Move-Item, Remove-Item, rm, rmdir, mv, cp, dd, touch, truncate, tee, sed -i) is denied.',
   detect(call) {
-    // `terminal_send` carries raw shell text too: the same write-shaped
-    // command patterns apply wherever a shell executes.
-    if (call.name !== 'Bash' && call.name !== 'bash' && call.name !== 'pwsh' && call.name !== 'terminal_send') return { kind: 'allow' }
-    const command = typeof call.arguments === 'object' && call.arguments !== null && !Array.isArray(call.arguments)
-      ? (call.arguments as Record<string, JsonValue>).command
-      : undefined
-    if (typeof command !== 'string' || !SHELL_WRITE_PATTERNS.some(pattern => pattern.test(command))) {
-      return { kind: 'allow' }
-    }
+    const shell = shellCommandOf(call)
+    const write = shell?.dialects.flatMap(dialect => shellWrites(shell.command, dialect))[0]
+    if (shell === undefined || write === undefined) return { kind: 'allow' }
     return {
       kind: 'deny',
       rule: 'file-tools-only',
       correction: {
-        fact: `You tried to modify files through the shell: "${command}".`,
+        fact: `You tried to modify files through the shell: "${shell.command}" (${describeWrite(write)}).`,
         violation: 'Shell file writes are not permitted; file changes go through the dedicated tools.',
         rightPath: 'Read the target with Read, then apply the change with Write or Edit.',
         exception: 'If a task genuinely requires shell-side file generation (e.g. a build tool), follow the application protocol. ' + APPLICATION_PROTOCOL,

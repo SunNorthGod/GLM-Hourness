@@ -5,12 +5,13 @@
  * facts; no padding, no restatement of completed work.
  */
 import { auditPaths, type DecisionRecord, type UsageRecord } from '../memory/audit.ts'
-import type { ViolationRecord } from '../guard/index.ts'
+import type { GuardRecord } from '../guard/index.ts'
 import type { DataHomes } from '../shared/data-home.ts'
 
 export interface ReportInput {
   readonly decisions: readonly DecisionRecord[]
-  readonly violations: readonly ViolationRecord[]
+  /** Guard denials and shadow records (`mode: 'shadow'`, recorded without blocking). */
+  readonly violations: readonly GuardRecord[]
   readonly usage: readonly UsageRecord[]
   readonly period: string
 }
@@ -34,16 +35,21 @@ export function morningReport(input: ReportInput): string {
   const lines: string[] = [`# 晨报 ${input.period}`]
 
   const l3 = input.decisions.filter(decision => decision.level === 'L3')
+  const denials = input.violations.filter(violation => !('mode' in violation))
+  const shadows = input.violations.filter(violation => 'mode' in violation && violation.mode === 'shadow')
+  const countByRule = (records: readonly GuardRecord[]): Map<string, number> => {
+    const byRule = new Map<string, number>()
+    for (const record of records) byRule.set(record.rule, (byRule.get(record.rule) ?? 0) + 1)
+    return byRule
+  }
   lines.push('')
   lines.push('## 例外（先看）')
-  if (l3.length === 0 && input.violations.length === 0) {
+  if (l3.length === 0 && denials.length === 0) {
     lines.push('- 无')
   }
   else {
     for (const decision of l3) lines.push(`- [L3] ${decision.kind}: ${decision.subject}`)
-    const byRule = new Map<string, number>()
-    for (const violation of input.violations) byRule.set(violation.rule, (byRule.get(violation.rule) ?? 0) + 1)
-    for (const [rule, count] of byRule) lines.push(`- 违规 ${rule} × ${count}`)
+    for (const [rule, count] of countByRule(denials)) lines.push(`- 违规 ${rule} × ${count}`)
   }
 
   lines.push('')
@@ -51,6 +57,13 @@ export function morningReport(input: ReportInput): string {
   const graded = new Map<string, number>()
   for (const decision of input.decisions) graded.set(decision.level, (graded.get(decision.level) ?? 0) + 1)
   lines.push(`- L1 自主 ${graded.get('L1') ?? 0} · L2 次日报备 ${graded.get('L2') ?? 0} · L3 当次申报 ${graded.get('L3') ?? 0}`)
+
+  // Shadow records were never blocked; they measure a rule before it is enforced.
+  if (shadows.length > 0) {
+    lines.push('')
+    lines.push('## 影子记录（只记录，未拦截）')
+    for (const [rule, count] of countByRule(shadows)) lines.push(`- ${rule} × ${count}`)
+  }
 
   lines.push('')
   lines.push('## 用量')
@@ -103,7 +116,7 @@ export async function reportFromFiles(fs: ReportFs, homes: DataHomes, period: st
   const paths = auditPaths(homes)
   return morningReport({
     decisions: inPeriod(await readJsonl(paths.decisions)) as DecisionRecord[],
-    violations: inPeriod(await readJsonl(paths.violations)) as ViolationRecord[],
+    violations: inPeriod(await readJsonl(paths.violations)) as GuardRecord[],
     usage: inPeriod(await readJsonl(paths.usage)) as UsageRecord[],
     period,
   })
