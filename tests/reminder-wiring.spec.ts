@@ -31,6 +31,19 @@ test('reminder fires on a GLM route after 10 non-todo calls and rides additional
   assert.ok(h.notices[0]!.content[0]!.text.includes("hasn't been used"))
 })
 
+test('reminder notices carry the createUserMessage identity the inbox keys on', async () => {
+  const h = await harness('glm-5.3')
+  for (let i = 0; i < 20; i++) await h.call('Read', { file_path: 'a' })
+  assert.equal(h.notices.length, 2)
+  for (const notice of h.notices) {
+    assert.equal(notice.role, 'user')
+    assert.equal(typeof notice.id, 'string')
+    assert.ok(Object.isFrozen(notice) && Object.isFrozen(notice.content[0]))
+  }
+  // The inbox rejects a second pending message with the same id.
+  assert.notEqual(h.notices[0]!.id, h.notices[1]!.id)
+})
+
 test('TodoWrite resets the counter and carries the todo echo', async () => {
   const h = await harness('glm-5.3')
   for (let i = 0; i < 9; i++) await h.call('Read')

@@ -17,6 +17,7 @@
  *   decision may attach `additionalContexts`; nested sub-dispatches carry
  *   `exec.parent`
  */
+import { randomUUID } from 'node:crypto'
 
 export interface AgentLike {
   readonly id: string
@@ -67,10 +68,17 @@ export interface ToolExecutionPayload {
   readonly parent?: unknown
 }
 
-/** Model-facing synthetic user notice (createUserMessage shape, repeat-tool-reminder pattern). */
+/**
+ * Model-facing synthetic user notice, shaped like the runtime's
+ * `createUserMessage` output (repeat-tool-reminder pattern): the agent inbox
+ * keys pending messages by `id` and rejects duplicates, and the session
+ * projects them by `role`.
+ */
 export interface UserNotice {
-  readonly content: Array<{ readonly type: 'text', readonly text: string }>
-  readonly source: { readonly kind: string, readonly form: 'notice', readonly summary: string }
+  readonly id: string
+  readonly role: 'user'
+  readonly content: ReadonlyArray<{ readonly type: 'text', readonly text: string }>
+  readonly source: { readonly kind: string, readonly form: 'notice', readonly summary: string, readonly [fact: string]: unknown }
 }
 
 /** Duck-typed post-execute decision: unknown DSH variants pass through via spread. */
@@ -107,10 +115,25 @@ export interface PluginContext {
   on(event: 'system-prompt/assemble', listener: (assembly: AssemblePayload, context: unknown, next: () => Promise<AssemblePayload>) => Promise<AssemblePayload>, options?: { prepend?: boolean }): () => void
 }
 
-/** Build a labeled synthetic user notice (the harness→model reminder channel). */
-export function createUserNotice(kind: string, summary: string, text: string): UserNotice {
-  return {
-    content: [{ type: 'text', text }],
-    source: { kind, form: 'notice', summary },
+/** Recursively freeze a freshly built JSON value (createMessage freezes its output). */
+function deepFreeze<T>(value: T): T {
+  if (typeof value === 'object' && value !== null) {
+    for (const member of Object.values(value)) deepFreeze(member)
+    Object.freeze(value)
   }
+  return value
+}
+
+/**
+ * Build a labeled synthetic user notice (the harness→model reminder channel)
+ * with a fresh stable identity, as `createUserMessage` does.
+ * @param facts - extra source fields persisted with the notice (lossless JSON).
+ */
+export function createUserNotice(kind: string, summary: string, text: string, facts: Readonly<Record<string, unknown>> = {}): UserNotice {
+  return deepFreeze({
+    id: randomUUID(),
+    role: 'user' as const,
+    content: [{ type: 'text' as const, text }],
+    source: { ...facts, kind, form: 'notice' as const, summary },
+  })
 }
