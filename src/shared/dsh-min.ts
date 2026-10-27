@@ -1,31 +1,27 @@
 /**
  * Minimal structural types for the DSH plugin surface this package touches.
  *
- * These duck-type the verified APIs (deepseek-harness source, 2026-10-27):
- * - ctx.on('agent/pre-step', (payload, next) => ...) — agent-loop waterfall
- * - ctx.systemPrompt.section({ name, order, text }) — scoped registration
- *   shadows a same-name global section
- * - ctx.tools.register(def, { when: async ({ modelSelection }) => boolean })
- *   — step-time activation; ctx.tools.restrict({ deny }) hides global tools
- *   for the calling agent scope
- * The package deliberately depends on no @deepseek-ai packages at build time;
- * structural compatibility is guarded by integration probes against a live DSH.
+ * Verified against the desktop runtime packages (reference/dsh-desktop-0.2.1-rc.3,
+ * exported from app.asar; docs/DESIGN.md §2.4a), which differ from the
+ * reference/deepseek-harness main branch that carries the same version string:
+ * - ctx.tools.register(definition) — no activation options; a registration
+ *   through agent.ctx is scoped to that agent and shadows a global of the
+ *   same name
+ * - ctx.tools.get(name, scope) — the definition a scope sees (no executable())
+ * - ctx.tools.restrict({ allow, deny }) — scoped only; filters inherited
+ *   tools, never the scope's own registrations
+ * - agent.ctx.on('system-prompt/assemble') — runs every step before
+ *   agent/pre-step; the request carries exactly the returned `tools`, and the
+ *   route lives only in `variables.provider` / `variables.model`
+ * - ctx.on('tools/post-execute') — (exec, result, next) waterfall whose
+ *   decision may attach `additionalContexts`; nested sub-dispatches carry
+ *   `exec.parent`
  */
-
-export interface ModelSelection {
-  readonly provider?: string
-  readonly model?: string
-}
-
-export interface PreStepPayload {
-  readonly agent?: AgentLike
-  readonly modelSelection?: ModelSelection
-}
 
 export interface AgentLike {
   readonly id: string
   readonly ctx: PluginContext
-  /** Model route holder; `current()` answers {provider, model} once configured. */
+  /** Model route holder; rc.3 desktop answers `{}` for the main agent (route lives in the assembly). */
   readonly model?: { current(): { provider?: string, model?: string } | undefined }
 }
 
@@ -39,11 +35,7 @@ export interface SectionSpec {
 export interface SystemPromptLike {
   section(spec: SectionSpec): () => void
   /** Dynamic context (team:identity pattern): text resolves at assembly time. */
-  context(spec: { name: string, order: number, text: () => string }): () => void
-}
-
-export interface ToolRegistrationOptions {
-  when?: (context: { modelSelection?: ModelSelection }) => Promise<boolean> | boolean
+  context?(spec: { name: string, order: number, text: () => string }): () => void
 }
 
 export interface ToolDefinitionLike {
@@ -59,19 +51,20 @@ export interface ToolDefinitionLike {
 }
 
 export interface ToolsLike {
-  register(definition: ToolDefinitionLike, options?: ToolRegistrationOptions): () => void
+  register(definition: ToolDefinitionLike): () => void
   restrict(filter: { allow?: string[], deny?: string[] }): () => void
-  /** Registry listing before dialect restrictions apply; the first parameter is the upstream scope key (an agent scope), not the agent object. */
-  schemas(scope?: unknown, toolSet?: unknown): Array<{ name: string }>
-  /** Registry lookup before dialect restrictions apply (used to capture natives for alias delegation). */
-  executable(name: string): ToolDefinitionLike | undefined
+  /** Visible schemas for a scope (the agent); omitted = the global view. */
+  schemas(scope?: unknown): Array<{ name: string }>
+  /** The definition a scope resolves (scoped shadows global; a restricted-away global reads as absent). */
+  get(name: string, scope?: unknown): ToolDefinitionLike | undefined
 }
 
 export interface ToolExecutionPayload {
   readonly name: string
   readonly arguments?: unknown
   readonly agent?: AgentLike
-  readonly nested?: boolean
+  /** Opaque token set on transport sub-dispatches (e.g. a run_code binding call). */
+  readonly parent?: unknown
 }
 
 /** Model-facing synthetic user notice (createUserMessage shape, repeat-tool-reminder pattern). */
@@ -87,24 +80,31 @@ export interface PostExecuteDecision {
   readonly [key: string]: unknown
 }
 
-export interface PluginContext {
-  readonly systemPrompt: SystemPromptLike
-  readonly tools: ToolsLike
-  /** Awaited serially before agent creation resolves; the first step sees the effects. */
-  on(event: 'agent/created', listener: (payload: { agent: AgentLike, source?: unknown }) => Promise<void> | void): () => void
-  on(event: 'agent/pre-step', listener: (payload: PreStepPayload, next: () => Promise<void>) => Promise<void>): () => void
-  on(event: 'tools/post-execute', listener: (exec: ToolExecutionPayload, result: unknown, next: () => Promise<PostExecuteDecision>) => Promise<PostExecuteDecision>): () => void
-  /** Per-request prompt assembly; `options.prepend` registers outermost so post-`next()` sees injected variables. */
-  on(event: 'system-prompt/assemble', listener: (assembly: AssemblePayload, context: unknown, next: () => Promise<AssemblePayload>) => Promise<AssemblePayload>, options?: { prepend?: boolean }): () => void
+/** One model-facing tool schema as the assembly carries it. */
+export interface AssembledTool {
+  readonly name: string
+  readonly description: string
+  readonly parameters: Record<string, unknown>
+  readonly deferLoading?: true
 }
 
 /** The assembly object passed through the `system-prompt/assemble` waterfall. */
 export interface AssemblePayload {
   readonly sections: readonly { readonly name: string, readonly text: string, readonly interpolate?: boolean }[]
   readonly contexts: readonly unknown[]
-  readonly tools: readonly unknown[]
+  readonly tools: readonly AssembledTool[]
   readonly variables: Record<string, unknown>
   readonly [key: string]: unknown
+}
+
+export interface PluginContext {
+  readonly systemPrompt: SystemPromptLike
+  readonly tools: ToolsLike
+  /** Awaited serially before agent creation resolves; the first step sees the effects. */
+  on(event: 'agent/created', listener: (payload: { agent: AgentLike, source?: unknown }) => Promise<void> | void): () => void
+  on(event: 'tools/post-execute', listener: (exec: ToolExecutionPayload, result: unknown, next: () => Promise<PostExecuteDecision>) => Promise<PostExecuteDecision>): () => void
+  /** Per-request prompt assembly; `options.prepend` registers outermost so post-`next()` sees injected variables. */
+  on(event: 'system-prompt/assemble', listener: (assembly: AssemblePayload, context: unknown, next: () => Promise<AssemblePayload>) => Promise<AssemblePayload>, options?: { prepend?: boolean }): () => void
 }
 
 /** Build a labeled synthetic user notice (the harness→model reminder channel). */

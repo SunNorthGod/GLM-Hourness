@@ -8,7 +8,7 @@
  * DSH itself emits the tool-addition developer notice when the resolved face
  * grows (integration-probe evidence), matching ZCode's reminder flow.
  */
-import type { AgentLike, ModelSelection, PluginContext, ToolDefinitionLike } from '../shared/dsh-min.ts'
+import type { AgentLike, PluginContext, ToolDefinitionLike } from '../shared/dsh-min.ts'
 import { renderFunctionsBlock, searchTools, type DeferredToolEntry } from './search.ts'
 
 const GLM_PROVIDER = 'glm'
@@ -42,7 +42,7 @@ export function buildCatalog(agent: AgentLike): { catalog: DeferredToolEntry[], 
   const natives = new Map<string, ToolDefinitionLike>()
   for (const tool of agent.ctx.tools.schemas(agent)) {
     if (RESIDENT_NATIVES.has(tool.name)) continue
-    const native = agent.ctx.tools.executable(tool.name)
+    const native = agent.ctx.tools.get(tool.name, agent)
     if (native === undefined) continue
     natives.set(tool.name, native)
     catalog.push({ name: tool.name, description: native.description, parameters: native.parameters })
@@ -111,9 +111,7 @@ export function apply(ctx: PluginContext): () => void {
         }
       },
     }
-    state.disposers.push(agent.ctx.tools.register(toolSearch, {
-      when: ({ modelSelection }: { modelSelection?: ModelSelection }) => modelSelection?.provider === GLM_PROVIDER,
-    }))
+    state.disposers.push(agent.ctx.tools.register(toolSearch))
   })
   return () => {
     disposeWatch()

@@ -33,7 +33,7 @@ dist/          不入库：tsc 产物（profile 通过 pnpm link 使用）
 | --- | --- |
 | `glm-llm` | 真网冒烟通过（coding-plan，模型返回 `pong`）；DSH 真实会话中尚未被使用 |
 | `glm-login` | 可用 |
-| `glm-prompt` | 已实现；真机上是否对原生路由生效未确认（路由判定问题，见 §5.1） |
+| `glm-prompt` | 在 rc.3 运行时上生效（L3 探针 9/9，2026-10-27）；桌面版需重启才加载 |
 | `glm-compact` | 已实现 |
 | `toolsearch` | 已实现；在原生路由与 rc.3 下推断不触发 |
 | `guard` | 拦截与纠偏可用；告知、申报、记录三段未接通 |
@@ -53,7 +53,7 @@ dist/          不入库：tsc 产物（profile 通过 pnpm link 使用）
 
 ## 5. 已知问题
 
-1. 路由判定不一致：各行判断「是否 GLM 会话」的写法不同，rc.3 只在提示词组装变量里给出路由；todo 提醒与工具检索推断未生效（`DESIGN.md` §3）。
+1. 路由判定已收口到 `src/shared/route.ts`，`glm-prompt` 已改用；`toolsearch` 仍是旧写法，待重写（`DESIGN.md` §3、§5.10）。
 2. 版本基线已统一为 3.16.3；`X-Title` 用 `cli` 还是桌面版的 `electron` 待定（`DESIGN.md` §4.2）。
 3. guard 闭环缺三段，且对 `=>`、`>>>`、`->` 误判（`ORCHESTRATION.md` §6）。
 4. 数据目录分裂（§4）。
@@ -66,7 +66,7 @@ dist/          不入库：tsc 产物（profile 通过 pnpm link 使用）
 11. cot-translation（DSH 官方实验行，非本项目组件）会把推理碎片显示到界面。
 12. 凭证加密密钥可由本机信息推导（`DESIGN.md` §4.1）。
 13. 修正前写入的用量流水，原生通道请求的输入 token 均为 0（解码器缺陷已修，`DESIGN.md` §4.6a）；旧流水不能用于积分统计。
-14. `glm-prompt` 与 `toolsearch` 调用了桌面版运行时不存在的 `tools.executable()`，在桌面版上从未生效：L3 探针确认 GLM 路由下仍是 DSH 原生提示词与工具面（`DESIGN.md` §2.4a）。
+14. 2026-10-27 之前，`glm-prompt` 与 `toolsearch` 依赖桌面版运行时不存在的 `tools.executable()`，在桌面版上从未生效（L3 探针确认）。`glm-prompt` 已修；`toolsearch` 待重写。桌面版重启后，GLM 会话将第一次真正看到 ZCode 方言。
 
 反向代理已从项目范围移除（`DESIGN.md` §1）；profile 中指向 8317 的 pi-ai `glm` 路由属于用户配置，本项目不改。
 

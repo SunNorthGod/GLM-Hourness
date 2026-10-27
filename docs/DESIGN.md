@@ -84,7 +84,7 @@ GLM-Hourness
 
 每行在每个会话中第一次触发时上报一条状态：已生效，或未生效及原因。`/glm-status` 与 UI 显示行健康表。真实会话里「哪几行在起作用」目前无法回答，这一机制补上该缺口。
 
-## 3. 路由判定〔定案，待实现〕
+## 3. 路由判定〔已实现 2026-10-27〕
 
 现状〔实读〕：各行判断「是否 GLM 会话」的写法不一致。`glm-prompt` 认 provider `glm` 或模型名前缀 `glm`；`toolsearch` 在 `agent/created` 时只认 `agent.model.current().provider === 'glm'`；todo 提醒依赖 `agent.model.current()`。rc.3 桌面版在 `agent/created` 与 `agent/pre-step` 上给出的路由为空（`legacy/desktop-dialect-triage.md`，git 历史），唯一可靠的信号是 `system-prompt/assemble` 瀑布中 `variables.provider` / `variables.model`。原生通道的 provider id 是 `glm-zcode`。由此推断 todo 提醒与工具检索在真机上未生效〔推断〕。
 
@@ -95,6 +95,8 @@ GLM-Hourness
 3. 判定函数只有一处（`src/shared/`），所有行共用。
 4. 只对准 rc.3 的可靠信号；兼容旧构建的分支删除。
 5. 单测里的假宿主必须给出与 rc.3 相同的信号，不得提供真宿主不提供的路由字段。
+
+实现：`src/shared/route.ts`（`isGlmModel`、`assemblyRoute`、按 agent 记录路由的 `createRouteTracker`）；`glm-prompt` 在 `agent/created` 时于 agent 作用域注册别名，并注册一个 prepend 组装监听器，在 `next()` 之后按本次请求的路由改写提示词节与工具面，不再调用 `restrict()`，也不再挂载 / 卸载。同一步里的其他钩子（如 todo 提醒）读回该路由。单测替身 `tests/fake-rc3.ts` 只提供 rc.3 的接口。L3 探针 9/9：GLM 路由得到 ZCode 身份与别名面、`Read` 别名真实执行；非 GLM 路由保持 DSH 原文与原生工具。`toolsearch` 仍待按 §5.10 移植。
 
 ## 4. 通道
 
@@ -192,8 +194,8 @@ DSH 的 `TokenUsage` 各计数互不重叠：`inputTokens` 只算未命中缓存
 ### 5.4 工具面
 
 - 别名：`Read`、`Write`、`Edit`、`Glob`、`Grep`、`Bash`、`TodoWrite`，执行时委托捕获的原生执行器〔实读〕。描述与 schema 当前取自 `reference/zcode-tool-schemas.md` 记载的「3.16.3 协议采样」，复核发现这些描述不是 ZCode 原文，需按源码重建（§5.9）。
-- 原生 `read`、`write`、`edit`、`glob`、`grep`、`pwsh`、`todo_write` 在 GLM 路由下隐藏，切走即恢复。
-- 参数映射：`Bash` 的 `timeout`（秒）转 `timeoutMs`，`working_dir` 转 `workdir`；`Glob` 的 `ip` 原生无对应，丢弃；`TodoWrite` 的 `priority`（`high`/`medium`/`low`）在执行边界剥离。
+- 原生 `read`、`write`、`edit`、`glob`、`grep`、`pwsh`、`todo_write` 从 GLM 请求的工具面中滤掉，非 GLM 请求则滤掉别名；两组都保持注册，逐请求在组装监听器里决定（§3）。
+- 参数映射：`Bash` 的 `timeout`（秒）转 `timeoutMs`，`working_dir` 转 `workdir`；ZCode 的 `description` 可选而 DSH `pwsh` 要求非空，缺省时取命令首行（最长 80 字符）；`Glob` 的 `ip` 原生无对应，丢弃；`TodoWrite` 的 `priority`（`high`/`medium`/`low`）在执行边界剥离。
 
 ### 5.5 todo 提醒
 

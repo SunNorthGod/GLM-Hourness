@@ -41,10 +41,10 @@ function fakeAgent(natives: Record<string, ToolDefinitionLike>): { agent: AgentL
   const ctx: PluginContext = {
     systemPrompt: { section: spec => { t.sections.push(spec.name); return () => {} } },
     tools: {
-      register: (def, _options) => { t.registered.push(def); return () => {} },
+      register: def => { t.registered.push(def); return () => {} },
       restrict: filter => { t.restricted.push(filter); return () => {} },
       schemas: () => Object.keys(natives).map(name => ({ name })),
-      executable: name => natives[name],
+      get: name => natives[name],
     },
     on: () => () => {},
   }
@@ -84,7 +84,7 @@ test('ToolSearch execution activates matches and renders the block', async () =>
       register: (def: ToolDefinitionLike) => { registrations.push(def); return () => {} },
       restrict: () => () => {},
       schemas: () => [{ name: 'web_search' }],
-      executable: (name: string) => name === 'web_search' ? nativeWeb : undefined,
+      get: (name: string) => name === 'web_search' ? nativeWeb : undefined,
     },
     on: (event: string, listener: unknown) => {
       if (event === 'agent/created') listeners.push(listener as typeof listeners[number])

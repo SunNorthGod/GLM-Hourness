@@ -1,13 +1,17 @@
 /**
  * L3 behavior probe (docs/DEVELOPMENT.md §3, ROADMAP M1.7): boots the real
  * desktop DSH runtime headless on the glmsandbox profile with the probe
- * provider (scripts/probe/probe-llm.mjs), runs one scripted task, and checks
+ * provider (scripts/probe/probe-llm.mjs), runs scripted tasks, and checks
  * what the GLM-Hourness rows actually did to the model-visible request.
+ *
+ * Scenarios: a GLM route must get the ZCode dialect; a non-GLM route through
+ * the same provider must stay untouched (no cross-route pollution).
  *
  * Usage: node scripts/probe/run-probe.mjs
  * Requires the desktop install (DSH_DESKTOP_DIR overrides the location) and
- * the glmsandbox profile linked to this repository. Each run writes its dump
- * and logs under .llm/probe-runs/<timestamp>/ (gitignored).
+ * the glmsandbox profile linked to this repository. Each run writes its
+ * overlays, request dumps and logs under .llm/probe-runs/<timestamp>/
+ * (gitignored).
  */
 import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -24,58 +28,71 @@ if (!existsSync(exe)) {
 }
 
 const runDir = join(repo, '.llm', 'probe-runs', new Date().toISOString().replace(/[:.]/g, '-'))
-const home = join(runDir, 'home')
-mkdirSync(home, { recursive: true })
-const dump = join(runDir, 'requests.jsonl')
-writeFileSync(dump, '')
-
-/** Scripted replies: read a known file through the ZCode-facing Read, then finish. */
-const script = [
-  { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } } },
-  { text: 'done' },
-]
-
-// The overlay is generated per run with literal values: the loader validates a
-// row's `name` before `!!js` expressions evaluate, so paths cannot be computed
-// inside the patch. JSON strings are valid YAML scalars.
 const slash = path => path.replaceAll('\\', '/')
-const patch = join(runDir, 'probe.patch.yml')
-writeFileSync(patch, [
-  '- id: agent-default-model',
-  '  config: { provider: glm-probe, model: glm-5.3 }',
-  ...['memory', 'workflow', 'hourness'].flatMap(row => [`- id: glm-hourness/${row}`, `  config: { home: ${JSON.stringify(slash(home))} }`]),
-  '- insert:',
-  '    - id: glm-hourness-probe/llm',
-  `      name: ${JSON.stringify(slash(join(repo, 'scripts', 'probe', 'probe-llm.mjs')))}`,
-  '      inject: [llm]',
-  `      config: { dump: ${JSON.stringify(slash(dump))}, script: ${JSON.stringify(JSON.stringify(script))} }`,
-  '',
-].join('\n'))
 
-const result = spawnSync(exe, [bin, '--profile', 'glmsandbox', '--patch', patch, 'Read package.json and reply done.'], {
-  cwd: repo,
-  encoding: 'utf8',
-  timeout: 180_000,
-  env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
-})
-writeFileSync(join(runDir, 'stdout.txt'), result.stdout ?? '')
-writeFileSync(join(runDir, 'stderr.txt'), result.stderr ?? '')
+/**
+ * Boot one headless task on `model` with a scripted reply sequence and return
+ * the main agent's requests (the session-title request carries no tools).
+ */
+function runScenario(name, model, script, task) {
+  const dir = join(runDir, name)
+  const home = join(dir, 'home')
+  mkdirSync(home, { recursive: true })
+  const dump = join(dir, 'requests.jsonl')
+  writeFileSync(dump, '')
+  // The overlay is generated per run with literal values: the loader validates
+  // a row's `name` before `!!js` expressions evaluate, so paths cannot be
+  // computed inside the patch. JSON strings are valid YAML scalars.
+  const patch = join(dir, 'probe.patch.yml')
+  writeFileSync(patch, [
+    '- id: agent-default-model',
+    `  config: { provider: glm-probe, model: ${JSON.stringify(model)} }`,
+    ...['memory', 'workflow', 'hourness'].flatMap(row => [`- id: glm-hourness/${row}`, `  config: { home: ${JSON.stringify(slash(home))} }`]),
+    '- insert:',
+    '    - id: glm-hourness-probe/llm',
+    `      name: ${JSON.stringify(slash(join(repo, 'scripts', 'probe', 'probe-llm.mjs')))}`,
+    '      inject: [llm]',
+    `      config: { dump: ${JSON.stringify(slash(dump))}, script: ${JSON.stringify(JSON.stringify(script))} }`,
+    '',
+  ].join('\n'))
+  const result = spawnSync(exe, [bin, '--profile', 'glmsandbox', '--patch', patch, task], {
+    cwd: repo,
+    encoding: 'utf8',
+    timeout: 180_000,
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+  })
+  writeFileSync(join(dir, 'stdout.txt'), result.stdout ?? '')
+  writeFileSync(join(dir, 'stderr.txt'), result.stderr ?? '')
+  const requests = readFileSync(dump, 'utf8').split('\n').filter(line => line.length > 0).map(line => JSON.parse(line))
+  return { status: result.status, steps: requests.filter(request => request.tools.length > 0) }
+}
 
-const requests = readFileSync(dump, 'utf8').split('\n').filter(line => line.length > 0).map(line => JSON.parse(line))
-const first = requests[0]
-const second = requests[1]
-const toolNames = new Set((first?.tools ?? []).map(tool => tool.name))
 const zcodeFace = ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash']
 const nativeFace = ['read', 'write', 'edit', 'glob', 'grep', 'pwsh']
-const readResult = second?.messages.find(message => message.role === 'tool')
+const names = step => new Set((step?.tools ?? []).map(tool => tool.name))
+
+const glm = runScenario('glm', 'glm-5.3', [
+  { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } } },
+  { text: 'done' },
+], 'Read package.json and reply done.')
+const glmFirst = glm.steps[0]
+const glmTools = names(glmFirst)
+const readResult = glm.steps[1]?.messages.find(message => message.role === 'tool')
+
+const plain = runScenario('non-glm', 'deepseek-probe', [{ text: 'done' }], 'Reply done.')
+const plainFirst = plain.steps[0]
+const plainTools = names(plainFirst)
 
 const checks = [
-  ['boot: the runtime reached the probe provider', first !== undefined, `exit ${result.status}, ${requests.length} request(s)`],
-  ['dialect prompt: ZCode CLI prefix in the system prompt', first?.system.includes('You are ZCode, an interactive coding agent') === true, first === undefined ? 'no request' : first.system.slice(0, 80).replace(/\n/g, ' ')],
-  ['dialect prompt: DSH identity replaced', first !== undefined && !first.system.includes('powered by DeepSeek Harness'), ''],
-  ['dialect tools: ZCode-facing aliases present', zcodeFace.every(name => toolNames.has(name)), zcodeFace.filter(name => !toolNames.has(name)).join(', ') || 'all present'],
-  ['dialect tools: covered natives hidden', nativeFace.every(name => !toolNames.has(name)), nativeFace.filter(name => toolNames.has(name)).join(', ') || 'none visible'],
-  ['alias execution: Read returned the file', readResult !== undefined && readResult.isError !== true && readResult.text.includes('dsh-glm-hourness'), readResult === undefined ? 'no tool result' : readResult.text.slice(0, 80).replace(/\n/g, ' ')],
+  ['glm boot: the runtime reached the probe provider', glmFirst !== undefined, `exit ${glm.status}, ${glm.steps.length} step(s)`],
+  ['glm prompt: ZCode CLI prefix in the system prompt', glmFirst?.system.includes('You are ZCode, an interactive coding agent') === true, glmFirst === undefined ? 'no request' : glmFirst.system.slice(0, 80).replace(/\n/g, ' ')],
+  ['glm prompt: DSH identity replaced', glmFirst !== undefined && !glmFirst.system.includes('powered by DeepSeek Harness'), ''],
+  ['glm tools: ZCode-facing aliases present', zcodeFace.every(name => glmTools.has(name)), zcodeFace.filter(name => !glmTools.has(name)).join(', ') || 'all present'],
+  ['glm tools: covered natives hidden', nativeFace.every(name => !glmTools.has(name)), nativeFace.filter(name => glmTools.has(name)).join(', ') || 'none visible'],
+  ['glm execution: Read alias returned the file', readResult !== undefined && readResult.isError !== true && readResult.text.includes('dsh-glm-hourness'), readResult === undefined ? 'no tool result' : readResult.text.slice(0, 80).replace(/\n/g, ' ')],
+  ['non-glm boot: the runtime reached the probe provider', plainFirst !== undefined, `exit ${plain.status}, ${plain.steps.length} step(s)`],
+  ['non-glm prompt: DSH identity untouched', plainFirst?.system.includes('powered by DeepSeek Harness') === true && !plainFirst.system.includes('You are ZCode'), ''],
+  ['non-glm tools: natives present, no aliases', plainFirst !== undefined && nativeFace.every(name => plainTools.has(name)) && zcodeFace.every(name => !plainTools.has(name)), zcodeFace.filter(name => plainTools.has(name)).join(', ') || ''],
 ]
 
 let failed = 0

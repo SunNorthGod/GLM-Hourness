@@ -126,6 +126,12 @@ export const aliasSpecs: readonly AliasSpec[] = [
     // timeoutMs, `working_dir` becomes workdir.
     map: (args) => {
       const out = pick(args, ['command', 'description', 'run_in_background'])
+      // ZCode's `description` is optional; the DSH pwsh executor rejects a
+      // missing or blank one, so the shim derives it from the command.
+      if (typeof out.description !== 'string' || out.description.trim().length === 0) {
+        const firstLine = typeof args.command === 'string' ? args.command.trim().split('\n')[0] ?? '' : ''
+        out.description = firstLine.length > 80 ? `${firstLine.slice(0, 77)}...` : firstLine || 'Run command'
+      }
       if (typeof args.working_dir === 'string') out.workdir = args.working_dir
       if (typeof args.timeout === 'number') out.timeoutMs = args.timeout * 1000
       return out

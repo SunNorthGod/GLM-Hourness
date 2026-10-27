@@ -1,15 +1,15 @@
 /**
- * Post-waterfall prompt assembly rewrite for the ZCode dialect.
+ * Per-request assembly rewrite for the ZCode dialect.
  *
- * rc.3 harness builds resolve the model route inside the
- * `system-prompt/assemble` waterfall (the model-selection listener injects
- * `variables.provider`/`variables.model` after its `next()`), and the final
- * prompt renders only after the waterfall completes. A prepend-registered
- * listener therefore sees the route-bearing variables in its own post-`next()`
- * assembly and can rewrite `sections` before rendering — the one seam that
- * works across both the rc desktop and the reference builds, where
- * `agent.model.current()` and `agent/pre-step` payloads carry no route.
+ * In the rc.3 runtime the agent-scoped `system-prompt/assemble` waterfall
+ * runs every step before `agent/pre-step`, the rendered prompt comes from the
+ * returned `sections`, and the request carries exactly the returned `tools`
+ * (docs/DESIGN.md §2.4a). A prepend-registered listener sees the route the
+ * model-selection listener injected after its own `next()` and rewrites both
+ * for that request alone.
  */
+import type { AssembledTool } from '../shared/dsh-min.ts'
+import { assemblyRoute, isGlmModel } from '../shared/route.ts'
 
 /** One assembled prompt section as the assemble waterfall carries it. */
 export interface AssemblySection {
@@ -22,30 +22,23 @@ export interface AssemblySection {
 export interface PromptAssembly {
   readonly sections: readonly AssemblySection[]
   readonly contexts: readonly unknown[]
-  readonly tools: readonly unknown[]
+  readonly tools: readonly AssembledTool[]
   readonly variables: Record<string, unknown>
 }
 
-/** Provider id the dialect activates on. */
-export const GLM_PROVIDER = 'glm'
-
-/** Whether the assembly's resolved variables route the request to glm. */
+/** Whether the assembly's resolved route serves a GLM model (dialect follows the model family). */
 export function isGlmAssembly(assembly: PromptAssembly): boolean {
-  const provider = assembly.variables.provider
-  const model = assembly.variables.model
-  return provider === GLM_PROVIDER || (typeof model === 'string' && model.startsWith('glm'))
+  return isGlmModel(assemblyRoute(assembly).model)
 }
 
 /**
- * Rewrite one assembly's sections for the dialect: the harness identity
- * section is replaced with the ZCode mirror, the CLI prefix is prepended, and
- * the remaining dialect sections are inserted after the identity in their
- * declared order. A non-glm assembly returns unchanged.
- * @param assembly - the post-waterfall assembly with route-bearing variables.
+ * Rewrite one GLM assembly's sections: the harness identity section is
+ * replaced with the ZCode mirror, the CLI prefix is prepended, and the
+ * remaining dialect sections follow the identity in their declared order.
+ * @param assembly - the post-waterfall assembly.
  * @param wanted - the dialect sections (`dialectSections()` output).
  */
-export function rewriteDialectAssembly<T extends PromptAssembly>(assembly: T, wanted: readonly { name: string, text: string }[]): T {
-  if (!isGlmAssembly(assembly)) return assembly
+export function rewriteDialectSections<T extends PromptAssembly>(assembly: T, wanted: readonly { name: string, text: string }[]): T {
   const replacement = new Map(wanted.map(section => [section.name, section]))
   const identity = replacement.get('harness:identity')
   const cliPrefix = replacement.get('glm:cli-prefix')
@@ -74,4 +67,19 @@ export function rewriteDialectAssembly<T extends PromptAssembly>(assembly: T, wa
     .map(section => ({ name: section.name, text: section.text }))
   out.splice(identityIndex + 1, 0, ...extras)
   return { ...assembly, sections: out }
+}
+
+/**
+ * Rewrite one request's tool face. A GLM request sees the ZCode-facing
+ * aliases and not the natives they cover; any other request sees the natives
+ * and not the aliases. Both sets stay registered, so the switch costs nothing
+ * and follows a mid-session route change on the next step.
+ * @param tools - the assembled tool schemas.
+ * @param glm - whether the request serves a GLM model.
+ * @param aliasNames - ZCode-facing names this row registered.
+ * @param coveredNatives - native names those aliases stand in for.
+ */
+export function rewriteToolFace(tools: readonly AssembledTool[], glm: boolean, aliasNames: ReadonlySet<string>, coveredNatives: ReadonlySet<string>): readonly AssembledTool[] {
+  const hidden = glm ? coveredNatives : aliasNames
+  return tools.filter(tool => !hidden.has(tool.name))
 }

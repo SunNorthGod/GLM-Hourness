@@ -21,7 +21,8 @@ test('Bash maps seconds to timeoutMs and working_dir to workdir; shell is droppe
   const calls: unknown[] = []
   const alias = buildAlias(spec, async args => { calls.push(args); return {} })
   await alias.execute({ command: 'npm test', timeout: 30, working_dir: 'C:/ws', shell: 'bash' }, undefined)
-  assert.deepEqual(calls[0], { command: 'npm test', timeoutMs: 30000, workdir: 'C:/ws' })
+  // description is optional in ZCode but required by pwsh: the shim derives it from the command.
+  assert.deepEqual(calls[0], { command: 'npm test', description: 'npm test', timeoutMs: 30000, workdir: 'C:/ws' })
 })
 
 test('Read passes only the native fields through', async () => {

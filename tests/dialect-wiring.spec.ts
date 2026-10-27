@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { evaluate, fileToolsOnly, renderCorrection, workspaceContainment } from '../src/guard/rules.ts'
-import { apply as glmPromptApply, dialectSections, initDialectScope } from '../src/glm-prompt/index.ts'
-import type { AgentLike, PluginContext, PreStepPayload, ToolDefinitionLike } from '../src/shared/dsh-min.ts'
+import { apply as glmPromptApply, dialectSections, installDialect } from '../src/glm-prompt/index.ts'
+import { isGlmModel } from '../src/shared/route.ts'
+import { fakeRuntime } from './fake-rc3.ts'
 
 const rule = workspaceContainment(['C:\\ws\\proj'])
 const write = (path: string) => ({ name: 'Write', arguments: { file_path: path } })
@@ -50,56 +51,6 @@ test('a throwing detector fails open', () => {
   assert.equal(evaluate([broken, rule], write('C:\\Windows\\x')).kind, 'deny')
 })
 
-function fakeAgent(): { agent: AgentLike, sections: Array<{ name: string, order: number, text: string }>, tools: Array<{ def: ToolDefinitionLike, when?: unknown }>, restricted: Array<{ allow?: string[], deny?: string[] }>, listeners: Record<string, { listener: (...args: never[]) => Promise<unknown>, options?: { prepend?: boolean } }>, registrations: Record<string, number> } {
-  const state = { sections: [] as Array<{ name: string, order: number, text: string }>, tools: [] as Array<{ def: ToolDefinitionLike, when?: unknown }>, restricted: [] as Array<{ allow?: string[], deny?: string[] }>, listeners: {} as Record<string, { listener: (...args: never[]) => Promise<unknown>, options?: { prepend?: boolean } }>, registrations: {} as Record<string, number> }
-  const ctx: PluginContext = {
-    systemPrompt: {
-      section: spec => { state.sections.push(spec); return () => {} },
-      context: spec => { state.sections.push(spec as { name: string, order: number, text: string }); return () => {} },
-    },
-    tools: {
-      register: (def, options) => { state.tools.push({ def, options }); return () => {} },
-      restrict: filter => { state.restricted.push(filter); return () => {} },
-      schemas: () => [],
-      executable: () => undefined,
-    },
-    on: ((event: string, listener: (...args: never[]) => Promise<unknown>, options?: { prepend?: boolean }) => {
-      state.listeners[event] = { listener, options }
-      state.registrations[event] = (state.registrations[event] ?? 0) + 1
-      return () => {}
-    }) as PluginContext['on'],
-  }
-  return { agent: { id: 'a1', ctx }, ...state }
-}
-
-/** Run the registered assemble rewrite over one minimal assembly. */
-async function runRewrite(f: ReturnType<typeof fakeAgent>, variables: Record<string, unknown>): Promise<{ sections: Array<{ name: string, text: string }> }> {
-  const registered = f.listeners['system-prompt/assemble']
-  assert.ok(registered, 'assemble listener registered')
-  const assembly = { sections: [{ name: 'harness:identity', text: 'You are an AI agent powered by DeepSeek Harness.' }], contexts: [], tools: [], variables }
-  const rewritten = await registered.listener(assembly as never, undefined, async () => assembly) as typeof assembly
-  return rewritten
-}
-
-test('initDialectScope registers a prepend assemble rewrite that resolves per model route', async () => {
-  const f = fakeAgent()
-  const alias = { name: 'TodoWrite', description: 'd', parameters: {}, output: { schema: {}, render: () => [{ type: 'text', text: '' }] }, execute: async () => ({}) }
-  initDialectScope(f.agent, [alias])
-  assert.deepEqual(f.listeners['system-prompt/assemble']!.options, { prepend: true })
-  // glm route: identity replaced with the ZCode mirror, CLI prefix prepended.
-  const glm = await runRewrite(f, { provider: 'glm', model: 'glm-5.3' })
-  assert.equal(glm.sections[0]!.name, 'glm:cli-prefix')
-  assert.equal(glm.sections[1]!.name, 'harness:identity')
-  assert.ok(glm.sections[1]!.text.includes('ZCode'))
-  assert.ok(!glm.sections[1]!.text.includes('DeepSeek Harness.'))
-  // Other routes pass through untouched.
-  const other = await runRewrite(f, { provider: 'deepseek', model: 'deepseek-flash' })
-  assert.equal(other.sections.length, 1)
-  assert.ok(other.sections[0]!.text.includes('DeepSeek Harness.'))
-  // Model-only signal (provider omitted) still lights the dialect.
-  const modelOnly = await runRewrite(f, { model: 'glm-5.3-flash' })
-  assert.ok(modelOnly.sections[0]!.name === 'glm:cli-prefix')
-})
 
 test('dialect sections mirror order anchors and carry verbatim content', () => {
   const sections = dialectSections()
@@ -140,113 +91,104 @@ test('skills note appends to session guidance when skills exist', () => {
   assert.ok(guidance.text.includes('only use skills it lists'))
 })
 
-test('initDialectScope shadows identity, mounts aliases on glm routes, and hides natives', async () => {
-  const f = fakeAgent()
-  const alias = { name: 'TodoWrite', description: 'd', parameters: {}, output: { schema: {}, render: () => [{ type: 'text', text: '' }] }, execute: async () => ({}) }
-  const scope = initDialectScope(f.agent, [alias]) // default: assembly rewrite + tool face
-  const glm = await runRewrite(f, { provider: 'glm' })
-  assert.equal(glm.sections[1]!.name, 'harness:identity') // shadowed by rewrite, not stacked
-  assert.deepEqual(f.restricted, []) // restriction follows the route, not construction
-  assert.equal(f.tools.length, 0) // aliases mount only on a glm route
-  scope.syncRoute(true)
-  assert.deepEqual(f.restricted, [{ deny: ['read', 'write', 'edit', 'glob', 'grep', 'pwsh', 'todo_write'] }])
-  assert.equal(f.tools.length, 1)
-  assert.equal(f.tools[0]!.def.name, 'TodoWrite')
-  scope.syncRoute(false) // switched away: aliases unmount, the deny lifts
-  assert.equal(f.restricted.length, 1)
-  assert.equal(f.tools.length, 1)
-  scope.syncRoute(true) // back on glm: remounted and re-restricted
-  assert.equal(f.restricted.length, 2)
-  assert.equal(f.tools.length, 2)
+
+// rc.3 wiring (docs/DESIGN.md §2.4a, §3): the route reaches the row only
+// through the assembly variables; the tool face is rewritten per request.
+
+const ZCODE_FACE = ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash', 'TodoWrite']
+const COVERED = ['read', 'write', 'edit', 'glob', 'grep', 'pwsh', 'todo_write']
+
+test('the dialect follows the model family, case-insensitively', () => {
+  assert.equal(isGlmModel('glm-5.3'), true)
+  assert.equal(isGlmModel('GLM-5.3-Flash'), true)
+  assert.equal(isGlmModel('deepseek-flash'), false)
+  assert.equal(isGlmModel(undefined), false)
 })
 
-test('apply lifts and re-applies the restriction as the route switches mid-session', async () => {
-  const listeners: Record<string, (payload: unknown, next: () => Promise<void>) => unknown> = {}
-  const ctx: PluginContext = {
-    systemPrompt: { section: () => () => {} },
-    tools: { register: () => () => {}, restrict: () => () => {}, schemas: () => [], executable: () => undefined },
-    on: (event, listener) => {
-      listeners[event] = listener as typeof listeners[string]
-      return () => {}
-    },
-  }
-  glmPromptApply(ctx)
-  const f = fakeAgent()
-  let provider: string | undefined
-  ;(f.agent as { model?: unknown }).model = { current: () => ({ provider }) }
-  const step = (nextProvider: string | undefined) => {
-    provider = nextProvider
-    return listeners['agent/pre-step']!({ agent: f.agent, modelSelection: { provider: nextProvider } }, async () => {}) as Promise<void>
-  }
-  await step('glm')
-  assert.equal(f.restricted.length, 1)
-  await step('deepseek')
-  assert.equal(f.restricted.length, 1) // switched away: no re-restriction, the deny is lifted
-  await step('deepseek')
-  assert.equal(f.restricted.length, 1)
-  await step('glm')
-  assert.equal(f.restricted.length, 2) // back on glm: the native deny re-applies
+test('installDialect registers the aliases in scope and one prepend assemble rewrite', () => {
+  const rt = fakeRuntime()
+  installDialect(rt.agent)
+  assert.deepEqual(rt.scoped.map(tool => tool.name), ZCODE_FACE)
+  const assemble = rt.listeners.filter(entry => entry.event === 'system-prompt/assemble')
+  assert.equal(assemble.length, 1)
+  assert.deepEqual(assemble[0]!.options, { prepend: true })
 })
 
-test('apply initializes a glm agent exactly once at creation and passes others through', async () => {
-  const listeners: Record<string, (payload: unknown) => unknown> = {}
-  const ctx: PluginContext = {
-    systemPrompt: { section: () => () => {} },
-    tools: { register: () => () => {}, restrict: () => () => {}, schemas: () => [], executable: () => undefined },
-    on: (event, listener) => {
-      listeners[event] = listener as typeof listeners[string]
-      return () => {}
-    },
-  }
-  glmPromptApply(ctx)
-  const f = fakeAgent()
-  let provider: string | undefined
-  ;(f.agent as { model?: unknown }).model = { current: () => ({ provider }) }
-  const create = (nextProvider?: string) => {
-    provider = nextProvider
-    return listeners['agent/created']!({ agent: f.agent }) as Promise<void> | undefined
-  }
-  await create('glm'); await create('glm'); await create('deepseek')
-  assert.equal(f.registrations['system-prompt/assemble'], 1) // one rewrite registration despite repeated creations
+test('a GLM request gets the ZCode identity and alias face; covered natives leave it', async () => {
+  const rt = fakeRuntime()
+  installDialect(rt.agent)
+  const assembled = await rt.assemble({ provider: 'glm-zcode', model: 'glm-5.3' })
+  assert.equal(assembled.sections[0]!.name, 'glm:cli-prefix')
+  assert.equal(assembled.sections[1]!.name, 'harness:identity')
+  assert.ok(assembled.sections[1]!.text.includes('ZCode'))
+  assert.ok(!assembled.sections.some(section => section.text.includes('powered by DeepSeek Harness')))
+  const names = assembled.tools.map(tool => tool.name)
+  for (const name of ZCODE_FACE) assert.ok(names.includes(name), name)
+  for (const name of COVERED) assert.ok(!names.includes(name), name)
+  assert.ok(names.includes('web_fetch')) // uncovered natives stay (tool search decides deferral)
 })
 
-test('apply retries initialization at pre-step when creation ran before the model was bound', async () => {
-  const listeners: Record<string, (payload: unknown, next: () => Promise<void>) => unknown> = {}
-  const ctx: PluginContext = {
-    systemPrompt: { section: () => () => {}, context: () => () => {} },
-    tools: { register: () => () => {}, restrict: () => () => {}, schemas: () => [], executable: () => undefined },
-    on: (event, listener) => {
-      listeners[event] = listener as typeof listeners[string]
-      return () => {}
-    },
-  }
-  glmPromptApply(ctx)
-  const f = fakeAgent()
-  // The scoped retry registers on the agent's own context at creation.
-  const scopedListeners: Array<(payload: unknown, next: () => Promise<void>) => Promise<void>> = []
-  const origAgentOn = f.agent.ctx.on.bind(f.agent.ctx)
-  f.agent.ctx.on = ((event: string, listener: unknown) => {
-    if (event === 'agent/pre-step') scopedListeners.push(listener as typeof scopedListeners[number])
-    return origAgentOn(event, listener as never)
-  }) as typeof f.agent.ctx.on
-  let provider: string | undefined
-  ;(f.agent as { model?: unknown }).model = { current: () => ({ provider }) }
+test('a non-GLM request keeps the DSH prompt and natives and never sees the aliases', async () => {
+  const rt = fakeRuntime()
+  installDialect(rt.agent)
+  const assembled = await rt.assemble({ provider: 'deepseek-official', model: 'deepseek-flash' })
+  assert.deepEqual(assembled.sections.map(section => section.name), ['harness:identity'])
+  assert.ok(assembled.sections[0]!.text.includes('powered by DeepSeek Harness'))
+  const names = assembled.tools.map(tool => tool.name)
+  for (const name of ZCODE_FACE) assert.ok(!names.includes(name), name)
+  for (const name of COVERED) assert.ok(names.includes(name), name)
+})
 
-  // Creation with no model bound yet: the assemble rewrite lands unconditionally.
-  provider = undefined
-  await listeners['agent/created']!({ agent: f.agent }) as Promise<void>
-  assert.equal(f.registrations['system-prompt/assemble'], 1) // rewrite registered at creation
-  assert.equal(scopedListeners.length, 1)
+test('a route switch mid-session changes the next request only, with no registration churn', async () => {
+  const rt = fakeRuntime()
+  installDialect(rt.agent)
+  const before = rt.scoped.length
+  assert.ok((await rt.assemble({ model: 'glm-5.3' })).tools.some(tool => tool.name === 'Read'))
+  assert.ok((await rt.assemble({ model: 'deepseek-flash' })).tools.some(tool => tool.name === 'read'))
+  assert.ok((await rt.assemble({ model: 'glm-5.3-flash' })).tools.some(tool => tool.name === 'Read'))
+  assert.equal(rt.scoped.length, before)
+})
 
-  // First scoped pre-step carries the resolved glm route: tool face lands.
-  let delegated = false
-  await scopedListeners[0]!({ modelSelection: { provider: 'glm', model: 'glm-5.3' } }, async () => { delegated = true })
-  assert.equal(delegated, true)
-  assert.equal(f.restricted.length, 1) // natives hidden once glm is confirmed
-  assert.equal(f.tools.length, 0) // no natives captured in this fake, so no aliases
+test('a provider id alone does not light the dialect (model family decides)', async () => {
+  const rt = fakeRuntime()
+  installDialect(rt.agent)
+  const assembled = await rt.assemble({ provider: 'glm' })
+  assert.ok(assembled.sections[0]!.text.includes('powered by DeepSeek Harness'))
+})
 
-  // Later pre-steps (scoped or global) do not re-initialize.
-  await scopedListeners[0]!({ modelSelection: { provider: 'glm' } }, async () => {})
-  await listeners['agent/pre-step']!({ agent: f.agent, modelSelection: { provider: 'glm' } }, async () => {})
-  assert.equal(f.restricted.length, 1)
+test('aliases execute the captured natives with mapped arguments', async () => {
+  const calls: Array<{ name: string, args: unknown }> = []
+  const rt = fakeRuntime({ calls })
+  installDialect(rt.agent)
+  await rt.execute('Read', { file_path: 'C:/ws/a.ts', offset: 2 })
+  await rt.execute('Bash', { command: 'npm test', description: 'run tests', timeout: 30, working_dir: 'C:/ws' })
+  await rt.execute('Bash', { command: 'git status\ngit log -1' }) // ZCode description is optional; pwsh requires one
+  await rt.execute('TodoWrite', { todos: [{ content: 'a', status: 'pending', priority: 'high' }] })
+  assert.deepEqual(calls, [
+    { name: 'read', args: { file_path: 'C:/ws/a.ts', offset: 2 } },
+    { name: 'pwsh', args: { command: 'npm test', description: 'run tests', workdir: 'C:/ws', timeoutMs: 30_000 } },
+    { name: 'pwsh', args: { command: 'git status\ngit log -1', description: 'git status' } },
+    { name: 'todo_write', args: { todos: [{ content: 'a', status: 'pending' }] } },
+  ])
+})
+
+test('an alias whose native is absent is skipped, and its name is not hidden', async () => {
+  const rt = fakeRuntime({ natives: ['read', 'web_fetch'] })
+  installDialect(rt.agent)
+  assert.deepEqual(rt.scoped.map(tool => tool.name), ['Read'])
+  const names = (await rt.assemble({ model: 'glm-5.3' })).tools.map(tool => tool.name)
+  assert.deepEqual(names.sort(), ['Read', 'web_fetch'])
+})
+
+test('apply installs once per agent and never throws out of agent creation', async () => {
+  const rt = fakeRuntime()
+  glmPromptApply(rt.ctx)
+  await rt.create()
+  await rt.create()
+  assert.equal(rt.listeners.filter(entry => entry.event === 'system-prompt/assemble').length, 1)
+  const broken = fakeRuntime()
+  ;(broken.ctx.tools as { get: unknown }).get = () => { throw new Error('registry gone') }
+  glmPromptApply(broken.ctx)
+  await broken.create() // fail-open: logged, not thrown
+  assert.equal(broken.scoped.length, 0)
 })
