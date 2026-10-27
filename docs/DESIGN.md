@@ -67,6 +67,19 @@ GLM-Hourness
 
 用户级的具体目录与偏好类记忆的归属见 `ORCHESTRATION.md` §15 待定项。
 
+### 2.4a 运行时契约来源〔实读 2026-10-27〕
+
+`reference/deepseek-harness` 的源码版本号同样标 0.2.1-rc.3，但它是 2026-10-23 的主干，接口与桌面版运行时不同。桌面版运行时的包已从 `app.asar` 导出到 `reference/dsh-desktop-0.2.1-rc.3/`（只有编译后的 `lib`，没有 `.d.ts`），以它为准。已确认的差异与事实：
+
+- 工具服务没有 `executable()`；按名查定义用 `get(name, scope)`（受限制隐藏的全局工具读作不存在）。
+- `register(definition)` 没有第二个参数，不存在 `when` 激活谓词；作用域内注册遮蔽全局同名工具。
+- `restrict()` 只能在作用域上下文调用，只过滤继承来的工具，不影响本作用域自己的注册；名字必须是已知的全局工具。
+- 每一步先执行 `system-prompt/assemble`，再执行 `agent/pre-step`。发给模型的工具列表就是组装结果里的 `assembly.tools`（名称、描述、参数、`deferLoading`），组装瀑布可以逐请求改写它。
+- 路由只出现在组装变量 `variables.provider` / `variables.model` 中（由 `installModelSelection` 注入）；`agent/pre-step` 载荷只有 `{agent, messages, signal, step}`。
+- 工具执行按名在调用方作用域的可见定义中解析。
+
+影响：`glm-prompt` 与 `toolsearch` 依赖 `executable()` 捕获原生执行器，在桌面版运行时会抛错；`glm-prompt` 的异常被捕获后，提示词改写与别名都不会安装。即这两行在桌面版上大概率从未生效〔推断，待 L3 探针确认〕。
+
 ### 2.5 行健康〔规划〕
 
 每行在每个会话中第一次触发时上报一条状态：已生效，或未生效及原因。`/glm-status` 与 UI 显示行健康表。真实会话里「哪几行在起作用」目前无法回答，这一机制补上该缺口。
@@ -125,6 +138,12 @@ LLM 平面（bundle `g6n` 形态）：`HTTP-Referer`、`User-Agent: ZCode/<ver>`
 
 - 目录：`glm-5.3`（GLM-5.3）、`glm-5.3-flash`（GLM-5.3-Flash），输入模态文本与图像；上下文窗口 512,000；默认 `max_tokens` 32000〔实读〕。
 - 思考：GLM-5.3 系强制思考；effort 三档 `low` / `high` / `max`，默认 `high`〔定案 2026-10-27，五档词汇 API 接受但 GLM 不用〕。
+
+### 4.6a 用量块
+
+DSH 的 `TokenUsage` 各计数互不重叠：`inputTokens` 只算未命中缓存的输入，缓存读写分别记在 `cacheReadTokens` / `cacheWriteTokens`（官方类型注释）。Anthropic 流的 `message_start` 带 `input_tokens`、`cache_read_input_tokens`、`cache_creation_input_tokens`，`message_delta` 只带 `output_tokens`。
+
+缺陷〔实读〕：解码器在 `message_delta` 上发出 `{inputTokens: 0, outputTokens}`，下游取最后一个用量块，于是输入计为 0；缓存读写从未解析。积分口径依赖这三项（`FACTS.md` §2.4）。修正：整个流只在结束时发一个合并后的用量块。
 
 ### 4.7 额度数据〔规划〕
 
@@ -252,7 +271,11 @@ ZCode deferred 机制的 local 模式：驻留面之外的原生工具进入延�
 - `native`：模型侧支持服务端工具检索时使用；检索返回的 schema 加载后可直接调用。
 - `local`：客户端检索；deferred 工具经 `DeferredToolCall({name, input})` 包装调用。
 - 名单公告：deferred 工具名不写进系统提示词，而是以 `<system-reminder>` 公告递送（「The following deferred tools are now available via ToolSearch…」），名单变化时补发新增、恢复、移除的公告。系统提示词里没有 deferred 声明段。
-- 对本项目的影响：`toolsearch` 行默认开启，是 ZCode 默认分布之外的做法；它也从未向模型公告 deferred 工具名。是否默认关闭、开启时按 `native` 还是 `local` 语义实现，待定（`ROADMAP.md` M1.2 前决定）。
+- 哪些工具延迟：只有声明了 `shouldDefer` 的工具与 MCP 工具。常驻：Read、Write、Edit、Glob、Grep、Bash、ApplyPatch、Agent、Skill、Workflow、GoalRead、AskUserQuestion、ToolSearch、DeferredToolCall。延迟：TodoWrite、TodoRead、WebFetch、WebSearch、Cron 族、计划模式进出、SendMessage、TaskOutput、TaskStop、工作流管理族、`js` 等。
+- 检索：`select:a,b` 精确选择（含别名），否则按名称分词、描述与 searchHint 打分，`+词` 表示必须命中，默认返回 5 个。
+- local 模式的结果：匹配到的定义以 `<functions>` 块内一行一个 `<function>{description,name,parameters}</function>` 回到工具结果里，后跟 `<system-reminder>` 包裹的「Loaded: … Call it now with DeferredToolCall …」提示；已加载过的工具再搜，回「Tool definitions already available …」提示。
+- `DeferredToolCall({name, input})`：只接受当前目录里的延迟工具；对常驻工具或控制工具本身回「Call X directly using its normal tool call; DeferredToolCall only accepts deferred tools.」。
+- 定案〔用户 2026-10-27〕：本项目默认开启工具检索，实现与 ZCode 一致。没有服务端检索能力时，ZCode `auto` 模式回落到 `local`，本项目按 `local` 语义实现。DSH 独有、ZCode 无对应的工具按 MCP 工具的规则处理（延迟）；有对应的随对应工具的常驻 / 延迟属性。
 
 ## 6. 注入约定〔定案〕
 

@@ -96,6 +96,7 @@
 
 | 事实 | 来源 |
 | --- | --- |
+| 桌面版运行时接口以 `reference/dsh-desktop-0.2.1-rc.3/` 为准：无 `tools.executable()`、`register()` 无激活谓词、组装先于 pre-step、请求工具取自 `assembly.tools` | `DESIGN.md` §2.4a〔实读〕 |
 | rc.3 桌面版在 `agent/created` 与 `agent/pre-step` 上：`agent.model.current()` 返回空对象；主会话 agent 的 `pre-step` 载荷 `modelSelection` 为空（会话标题 agent 有 provider） | 桌面方言排查记录（git 历史，`docs/legacy/desktop-dialect-triage.md`）〔实测〕 |
 | 路由信息在 `system-prompt/assemble` 瀑布的 `variables.provider` / `variables.model` 中可见 | `src/glm-prompt/assembly.ts`〔实读〕 |
 | 会话存储：`~/.dsh/sessions/<workspace-slug>/<session>/session.v4.jsonl.zstd`，多帧 zstd；`system/message` 事件含完整组装后的系统提示词 | 排查记录〔实测〕 |
