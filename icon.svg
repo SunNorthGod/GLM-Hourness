@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- GLM-Hourness: a hourglass whose sand flows as circuit traces -->
+  <rect x="4" y="4" width="56" height="56" rx="14" fill="#101826"/>
+  <path d="M18 12h28v6c0 8-7 12-10 14 3 2 10 6 10 14v6H18v-6c0-8 7-12 10-14-3-2-10-6-10-14z" fill="none" stroke="#5eead4" stroke-width="3" stroke-linejoin="round"/>
+  <circle cx="32" cy="30" r="2.2" fill="#5eead4"/>
+  <path d="M26 44h12M28 48h8" stroke="#f59e0b" stroke-width="2" stroke-linecap="round"/>
+  <path d="M32 33v9" stroke="#5eead4" stroke-width="1.6" stroke-dasharray="2 3"/>
+</svg>

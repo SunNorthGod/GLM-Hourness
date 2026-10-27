@@ -1,0 +1,27 @@
+{
+  "name": "dsh-glm-hourness-ui",
+  "version": "0.1.0",
+  "private": true,
+  "description": "GLM Hourness settings panel: native ZCode channel status and login guidance rendered in the Harness Web UI.",
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": []
+    }
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml"
+  ]
+}

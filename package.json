@@ -1,0 +1,53 @@
+{
+  "name": "dsh-glm-hourness",
+  "version": "0.2.0",
+  "description": "GLM-Hourness: run GLM in DeepSeek Harness on its ZCode training distribution, with a tuning layer (guard rails, orchestration, memory, usage panel) built as independent cordis plugin rows.",
+  "type": "module",
+  "license": "MIT",
+  "main": "./dist/glm-prompt/index.js",
+  "exports": {
+    "./glm-llm": "./dist/glm-llm/index.js",
+    "./glm-login": "./dist/glm-llm/login-row.js",
+    "./glm-prompt": "./dist/glm-prompt/index.js",
+    "./glm-compact": "./dist/glm-prompt/compact-row.js",
+    "./toolsearch": "./dist/toolsearch/index.js",
+    "./guard": "./dist/guard/index.js",
+    "./memory": "./dist/memory/index.js",
+    "./workflow": "./dist/workflow/index.js",
+    "./hourness": "./dist/ui/index.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "files": [
+    "dist",
+    "cordis.patch.yml",
+    "locale",
+    "icon.svg"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "preflight": "node scripts/preflight-bundle.mjs",
+    "smoke": "node --experimental-strip-types scripts/smoke-zcode.mjs",
+    "smoke:authorized": "node --experimental-strip-types scripts/smoke-zcode-authorized.mjs",
+    "test": "node scripts/preflight-bundle.mjs && node --experimental-strip-types tests/glm-prompt.spec.ts && node --experimental-strip-types tests/todowrite.spec.ts && node --experimental-strip-types tests/dialect-wiring.spec.ts && node --experimental-strip-types tests/aliases.spec.ts && node --experimental-strip-types tests/todo-reminder.spec.ts && node --experimental-strip-types tests/reminder-wiring.spec.ts && node --experimental-strip-types tests/guard-audit.spec.ts && node --experimental-strip-types tests/glm-channel.spec.ts && node --experimental-strip-types tests/glm-auth.spec.ts && node --experimental-strip-types tests/glm-transport.spec.ts && node --experimental-strip-types tests/glm-signing.spec.ts && node --experimental-strip-types tests/glm-routing.spec.ts && node --experimental-strip-types tests/glm-startplan.spec.ts && node --experimental-strip-types tests/glm-zcode.spec.ts && node --experimental-strip-types tests/toolsearch.spec.ts && node --experimental-strip-types tests/compact.spec.ts && node --experimental-strip-types tests/memory-audit.spec.ts && node --experimental-strip-types tests/workflow.spec.ts && node --experimental-strip-types tests/compact-engine.spec.ts && node --experimental-strip-types tests/s5.spec.ts && node --experimental-strip-types tests/hourness.spec.ts"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "*",
+    "@deepseek-ai/cosmokit": "*",
+    "@standard-schema/spec": "*"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "4.0.5",
+    "@deepseek-ai/dsh-attachment": "0.2.1-rc.3",
+    "@deepseek-ai/dsh-llm": "0.2.1-rc.3",
+    "typescript": "^5.7.0"
+  },
+  "dependencies": {
+    "@types/node": "^26.6.5"
+  }
+}

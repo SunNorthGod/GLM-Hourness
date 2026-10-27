@@ -1,0 +1,43 @@
+# GLM-Hourness bundle patch (DSH Loader dialect). Rows are independent:
+# disable any line and the session degrades gracefully (fail-open).
+# Machine-specific values (the `.llm` home) live in the user's profile patch,
+# not here.
+- insert:
+    - id: glm-hourness/glm-llm
+      # Native ZCode channel: /glm-login fills the encrypted credential store;
+      # a missing credential fails the stream with the re-login instruction.
+      # Ships disabled until the sandbox (docs/DEVELOPMENT.md §3) passes: an
+      # unverified adapter row must never activate on the user's next restart.
+      name: ./dist/glm-llm/index.js
+      disabled: true
+      inject: [llm]
+      config:
+        home: !!js "process.env.USERPROFILE + '/Desktop/Project/GLM-Hourness/.llm'"
+    - id: glm-hourness/glm-login
+      name: ./dist/glm-llm/login-row.js
+      inject: [commands]
+      config:
+        home: !!js "process.env.USERPROFILE + '/Desktop/Project/GLM-Hourness/.llm'"
+    - id: glm-hourness/glm-prompt
+      name: ./dist/glm-prompt/index.js
+      config: {}
+    - id: glm-hourness/glm-compact
+      name: ./dist/glm-prompt/compact-row.js
+      config: {}
+    - id: glm-hourness/toolsearch
+      name: ./dist/toolsearch/index.js
+      config: {}
+    - id: glm-hourness/guard
+      name: ./dist/guard/index.js
+      config: {}
+    - id: glm-hourness/memory
+      name: ./dist/memory/index.js
+      inject: [tools]
+      config: {}
+    - id: glm-hourness/workflow
+      name: ./dist/workflow/index.js
+      config: {}
+    - id: glm-hourness/hourness
+      name: ./dist/ui/index.js
+      inject: [commands]
+      config: {}
