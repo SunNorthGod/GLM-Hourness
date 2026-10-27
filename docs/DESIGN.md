@@ -237,7 +237,7 @@ LLM 平面（bundle `g6n` 形态）：`HTTP-Referer`、`User-Agent: ZCode/<ver>`
 对照本机 3.16.3 安装包〔实读〕：
 
 - LLM 平面身份头的组装函数（`buildCliZCodeSourceHeaders`）字段与顺序和本实现一致。
-- `X-Title` 的来源标题：进程参数含 `app-server` 或 `agent-server` 时为 `electron`，否则为 `cli`。桌面版以 `app-server` 方式启动 agent 进程，所以桌面版真实流量是 `Z Code@electron`；本实现发 `Z Code@cli`，对应 ZCode CLI 的身份。是否改为 `electron` 待定（`FACTS.md` §1）。
+- `X-Title` 的来源标题：进程参数含 `app-server` 或 `agent-server` 时为 `electron`，否则为 `cli`。桌面版以 `app-server` 方式启动 agent 进程，所以桌面版真实流量是 `Z Code@electron`；本实现发 `Z Code@cli`，对应 ZCode CLI 的身份。〔定案 2026-10-27〕保持 `cli`（用户定案，`ROADMAP.md` M1 进度；事实见 `FACTS.md` §1）。
 - 签名与项目令牌共用一个版本常量（构建期 `__ZCODE_VERSION__`），`X-ZCode-App-Version` 取自环境变量 `ZCODE_APP_VERSION`。安装包文本中前者未被构建替换，实际取值未验证；本实现两处都用应用版本。
 
 ### 4.3 签名 V4
