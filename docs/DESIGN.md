@@ -159,6 +159,20 @@ GLM-Hourness
 | 派遣工具 `spawn_teammate`、`send_message`、`team_task_create`、`team_task_update`、`subagent`、`subagent_fork` | workflow | experimental-tool-agent-team:251、293、365、457；tool-subagent-control:23；tool-subagent:313（`toolName` 默认 `subagent`），base 的 `cordis.patch.yml`:384、395（`subagent`、`subagent_fork` 两行） | **偏差已修**：`subagent_fork` 不在名单里，fork 派遣从未记录。L3 探针实测运行时工具面同时有 `subagent` 与 `subagent_fork` |
 | compaction-basic 的指令开头、`purpose: 'compaction'`、经 `ctx.llm.stream()` 摘要 | glm-compact | compaction-basic:244、320、323 | 一致 |
 
+派发与驱动循环〔实测 2026-10-28，L3 派发可行性验证；`ORCHESTRATION.md` §2.1、§3.2〕：M7 后台派发与 goal 驱动要用的接口。现在只有探针覆盖层里的验证插件 `scripts/probe/probe-dispatch.mjs` 在用，它不属于 bundle，也不是产品功能；证据列的「探针」指 `npm run probe` 的场景。
+
+| 接口 | 使用者 | rc.3 证据 | 结论 |
+| --- | --- | --- | --- |
+| `subagents.startActivation({provider, label, childId?, request{prompt, parent, cwd?, agentOptions?, outputSchema?, maxDepth?}, signal, delivery})` 返回 `{childId, messageId?, result, dispose}`；子 agent 被接受时即返回 | 验证插件（M7 派发工具的计划用法） | subagent:3036–3048、1391–1477；`agentOptions` 合并在父 agent 的路由之上，subagent:315；深度只在传了 `maxDepth` 时检查，subagent:279–283 | 成立（探针 `glm-dispatch`）：宿主层插件 inject `subagents` 即可调用；派发工具当场返回，主 Agent 继续走步 |
+| 结构化交回：`outputSchema` 启动前按对象 schema 校验，子 agent 得到 `structured_output` 工具，提交后回合结束；完成通知带 `Structured result: <JSON>`，`result` 带 `structured` 与 `stopReason` | 同上 | subagent:3046、873、889–960、526 | 成立；GLM 路由上 `structured_output` 是延迟工具，经 DeferredToolCall 提交同样被捕获 |
+| 子 agent 的会话头：`cwd` 取父会话头，另带 `parentSession`、`origin: 'subagent'`、`delegationDepth`；请求里的 `cwd` 只成为工作目录 | guard（包含根读会话头 `cwd`）；M7 写入范围 | subagent:346–355、1415 | 实测如此：子 agent 的 `header.cwd` 是父目录，guard 对子 agent 的包含根因而是父工作区；写入范围不能拿会话头判定 |
+| `tools/pre-execute` 里子 agent 的调用：`exec.agent` 是子 agent，`exec.agent.id` 等于预留的 `childId` | 验证插件（写入范围门禁） | tools:3229–3260；agent id 必须等于会话 id，agent:514 | 成立：每次调用都能映射回任务，拒绝以工具错误回到子 agent |
+| `goals.create(agent, {objective, maxGoalRounds?})`、`goals.get(agent)`（视图带 `id`、`revision`、`phase`、`roundsStarted`、`maxGoalRounds`、`activation`）；`goal/changed` 事件 `{agent, change{operation}}` | 验证插件（驱动循环） | goal:611、635、877；goal-round-driver:243 | 成立（探针 `glm-goal`）：插件建的 goal 由驱动器照常推进 |
+| `agents.create({sessionId, meta{cwd}, agentOptions})` 返回带 `agent` 的句柄；`agents.withoutInitiator(op)`；`agents.roots()` | 验证插件 | agent:453、414、623；agent-loop:1893 | 成立：不传 `parentAgent` 时新 agent 是根 agent |
+| goal-round-driver 的 `agent/pre-step` 预约校验（下游监听器前后各一次）与收件箱竞争判定 | glm-prompt 的步 notice（目标轮上同样追加）；M2.3 的投影注入 | goal-round-driver:249、286–350 | 成立：`next()` 之后追加到决策 `messages` 的 notice 不破坏预约，下一轮照常开始；经收件箱投递会被判为竞争输入 |
+| `update_goal` 的完成授权（直接人类输入或当前目标轮）与收尾消息 `<goal_complete>` | 验证插件（完成门禁） | tool-goal:27、54、72、365 | 成立：经 DeferredToolCall 调用时 `tools/pre-execute` 看到的是 `update_goal`，可以拒绝 `complete` |
+| headless 运行器的退出条件：agent 空闲、`waitForChildren` 为假、会话序号不变 | 探针、标定运行器 | headless:349–351 | 实测：第一次静止空闲就退出，任务回合里建的 goal 一轮都跑不到（探针 `goal-headless`） |
+
 ### 2.5 行健康〔已实现 2026-10-28，`ROADMAP.md` M1.5〕
 
 原问题：真实会话里「哪几行在起作用」无法回答，降级只在控制台打一行警告。现在每行自报状态：激活时报一次，此后每次在某个会话里起作用时报该会话的状态，第一次与状态变化时记下。`/glm-status` 在凭证状态之后列出调用会话的行健康表。

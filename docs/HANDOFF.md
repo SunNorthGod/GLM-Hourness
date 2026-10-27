@@ -46,9 +46,11 @@ dist/          不入库：tsc 产物（profile 通过 pnpm link 使用）
 
 行健康（2026-10-28，`DESIGN.md` §2.5）：主包 9 行都在激活时与会话中上报生效、部分生效或未生效及原因，`/glm-status` 显示；桌面版重启后生效。
 
-装机：10 行均 `fiberPhase: active`，无激活错误（2026-10-27 删除 `toolsearch` 行之前的记录；`data` 行尚未在桌面版上加载过）。门禁 `npm run build`、`npm run preflight`、`npm test`（258 用例，逐字门禁 397 段、已知偏差 0 条，检查器门禁对照基线 ESLint 316 条、knip 34 条、jscpd 7 处克隆）全绿，`npm run probe` 57/57（2026-10-28）。标定基线（`npm run calibrate`，提交 `4cb8799`）：两个起步任务、两档模型各 3 次，12/12 完成（`ORCHESTRATION.md` §10.5.2）。
+装机：10 行均 `fiberPhase: active`，无激活错误（2026-10-27 删除 `toolsearch` 行之前的记录；`data` 行尚未在桌面版上加载过）。门禁 `npm run build`、`npm run preflight`、`npm test`（258 用例，逐字门禁 397 段、已知偏差 0 条，检查器门禁对照基线 ESLint 316 条、knip 34 条、jscpd 7 处克隆）全绿，`npm run probe` 69/69（2026-10-28，含派发可行性验证的 12 项）。标定基线（`npm run calibrate`，提交 `4cb8799`）：两个起步任务、两档模型各 3 次，12/12 完成（`ORCHESTRATION.md` §10.5.2）。
 
 宿主接口：每个用到的 DSH 钩子、服务成员与载荷字段都已对照 rc.3 运行时包，证据见 `DESIGN.md` §2.4a 接口对照表；宿主结构类型集中在 `src/shared/dsh-min.ts` 与 `src/shared/lm-min.ts`。
+
+派发可行性验证（2026-10-28，L3）：后台派发、子 agent 写入范围门禁、goal 驱动下的目标轮注入与完成门禁都在 rc.3 运行时上走通，只用探针覆盖层里的验证插件 `scripts/probe/probe-dispatch.mjs`，bundle 没有新行（`ORCHESTRATION.md` §2.1、§3.2，`DESIGN.md` §2.4a）。
 
 ## 4. 审计数据快照（2026-10-28）
 
@@ -83,6 +85,7 @@ dist/          不入库：tsc 产物（profile 通过 pnpm link 使用）
 20. 依赖安装：`pnpm add`、`pnpm update` 要带 `--store-dir .pnpm-store`（`node_modules` 链接自仓库内的 store）；`pnpm install --frozen-lockfile` 失败，根 `package.json` 的 `peerDependencies` 不在锁文件里，M1.9 之前即如此（`DEVELOPMENT.md` §11）。检查器基线里的存量告警（多为测试里多余的类型断言与无 `await` 的 async 回调）尚未清理，`graph-engine` 合并后再修（`ORCHESTRATION.md` §7.7）。
 21. 权限预设 `workspace-write` 下，pwsh 经 Windows ACL 沙盒运行，`node --test` 派生测试子进程报 `spawn EPERM`，模型确认不了测试结果，会转而申请沙盒升级（`FACTS.md` §3）。用户桌面版的默认预设是 `danger-full-access`，目前不受影响；标定运行器按桌面版预设传 `DSH_PERMISSION_MODE`。
 22. 标定起步的两个任务对两档模型都没有区分度（基线 12/12 完成），只能比积分、耗时与返工；更难的任务随 M3、M7 扩充（`ORCHESTRATION.md` §10.5.2）。
+23. 派发可行性验证的发现，M7 实现时处理（`ORCHESTRATION.md` §2.1、§3.2）：子 agent 的会话头 `cwd` 是父 agent 的目录，guard 对子 agent 的包含根因而是父工作区，DSH 的文件沙盒根也是父工作区，独立工作树要建在父工作区之内；服务只按调用方传入的 `maxDepth` 限深，本包的派发工具要传；GLM 路由上 `structured_output`、`send_message`、`update_goal` 是延迟工具，要经 DeferredToolCall 调用；headless 运行器在第一次静止空闲时退出，不跑目标轮，用 goal 驱动的标定任务要另想办法撑住进程。
 
 反向代理已从项目范围移除（`DESIGN.md` §1）；profile 中指向 8317 的 pi-ai `glm` 路由属于用户配置，本项目不改。
 

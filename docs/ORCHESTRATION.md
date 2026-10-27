@@ -46,6 +46,13 @@ todo 撑不起上百轮的大项目：它是平的，没有层级与因果；它
 2. 每拍注入：在 `agent/pre-step` 识别目标轮消息后追加投影 notice（§2.5）。
 3. 完成门禁：`update_goal` 的 `complete` 在 `tools/pre-execute` 核对图上的证据，缺证据就拒绝并给出正路。
 
+L3 核实〔实测 2026-10-28，派发可行性验证 (c)，`ROADMAP.md` 借用组件核实清单第 12 项〕：探针覆盖层里的验证插件（`scripts/probe/probe-dispatch.mjs`，不属于 bundle）在一次工具调用里新建一个根 agent，经 `goals.create` 给它建 goal（插件建，不经模型工具），驱动器照常投递第 1 轮。三件事的接缝都成立，证据是探针场景 `glm-goal`：
+
+- 每拍注入：在 agent 作用域的 `agent/pre-step` 里于 `next()` 之后把 notice 追加到决策的 `messages`，notice 随目标轮进入该步。驱动器在下游监听器前后各做一次预约校验（`dsh-goal-round-driver` 286–350 行），没有受影响：第 1 轮结束后第 2 轮照常开始，每轮各一条 notice。注入不能改用 `agent.followup` 或 `steer`：进入下一回合收件箱的消息会被驱动器当作竞争输入，预约作废（249 行）。
+- 完成门禁：GLM 路由上 `update_goal` 是延迟工具（`get_goal` 常驻），模型经 DeferredToolCall 调用，`tools/pre-execute` 看到的是 `update_goal` 本身。缺证据时拒绝 `complete`，拒绝以工具错误回到模型，goal 保持 active；证据就位后放行，goal 进入 complete 并 disarm，`dsh-tool-goal` 追加收尾消息 `<goal_complete>`（365 行），驱动器不再开新一轮。
+- 由人发起：服务层不查人类授权，插件建的 goal 照常被驱动，所以「只由人发起」完全由本包的命令入口守住。
+- 限制：headless 一次性运行器在自己 agent 第一次静止空闲时退出（`dsh-headless` 349–351 行），任务回合里建的 goal 一轮都跑不到（探针场景 `goal-headless`）。探针因此让 goal 跑在第二个根 agent 上，由还停在工具调用里的 headless 根 agent 撑住进程；以后标定任务若要用 goal 驱动，运行器也要这样做。桌面版上 goal 服务与驱动器在宿主层、`tool-goal` 在 `preset-standard` 里（`dsh-web-app/cordis.patch.yml` 525–533 行，`presets/standard.patch.yml` 43 行），沙盒模板是平铺组合。宿主层的 `tools/pre-execute` 在桌面版上看得到 preset 内工具的调用（guard 在桌面版拦过 preset 内 `pwsh` 的调用，`DEVELOPMENT.md` §7），完整流程在桌面版组合上的表现随 L4 核实。
+
 不用的接缝：`tool-ralph` 是模型调用的前台工具，阻塞调用方的回合直到全部轮次结束，提示词规定只在人明确要求时使用，依赖 `workflowEngine` 与固定脚本，所在的可选包默认关闭（`dsh-tool-ralph/README.md` 12、162 行，lib 13、36 行）；用它做主驱动，主 Agent 不能并行派发，也不能发出异步卡后转做别的。`schedule` 按墙钟时间投递一条提醒消息，不是节拍，用于晨报、巡检与谷段排期（§11.4、§12）。自己写空闲驱动也能做，但驱动器的代码大半是竞争保护（预约、`agent/pre-step` 前后两次校验、`sessions.flush` 检查点、卸载时取消），重写的收益只是换一套提示词。
 
 ### 2.2 节点
@@ -142,7 +149,17 @@ todo 撑不起上百轮的大项目：它是平的，没有层级与因果；它
 - 子 agent 的身份只有简报（§3.3）。派发不选 preset，子 agent 加入父 agent 当前的 preset（`dsh-subagent` 346、373 行），工具面与主 Agent 相同，限制靠 guard 的写入范围。
 - 深度：`maxDepth` 默认 1，子 agent 不能再派发；`maxActiveSubagents` 默认 8（`dsh-subagent` 2979–2980 行）。
 - 子 agent 调用 `userQuestions.ask` 会被拒（`DELEGATED_CALLER`，`dsh-user-questions` 534 行），委派出去的子 agent 审批策略固定为 `never`，出界请求由主 Agent 汇总后向人申报（§6.2）。
-- 待真机核实：本包的宿主插件能否启动后台子 agent 并带上 prompt、cwd、agentOptions、outputSchema，父 agent 的步不被阻塞，完成通知带着结构化结果回到父 agent；`tools/pre-execute` 里子 agent 的调用能否映射回派发它的任务（`ROADMAP.md` 借用组件核实清单）。
+L3 核实〔实测 2026-10-28，派发可行性验证 (a)(b)，`ROADMAP.md` 借用组件核实清单第 4、4b 项〕：探针覆盖层里的验证插件（`scripts/probe/probe-dispatch.mjs`）是宿主层插件，inject `subagents`，注册一个派发工具；GLM 主 Agent 经 DeferredToolCall 调它，派出任务 T1，证据是探针场景 `glm-dispatch`：
+
+- (a) 后台派发成立。`startActivation`（spawn、`delivery: 'parent'`、预留 `childId`）在子 agent 被接受时返回，派发工具当场把子 agent 的 id 交回；主 Agent 接着又走了两步，都在子 agent 第一次请求之前。子 agent 收到的首条用户消息是简报原文，后面附有运行时加的「结束前用 `send_message` 把结果发给父 agent」的指引（`dsh-subagent` 472 行）；工作目录是请求里的 `cwd`；模型是 `agentOptions` 指定的 GLM-5.3-Flash（只传 `model`，provider 继承父 agent，315 行）。子 agent 经 DeferredToolCall 提交 `structured_output` 后回合结束，主 Agent 收到完成通知，通知里带 `Structured result: <JSON>`（526 行），`startActivation` 返回的 `result` 也带同一份结构化结果，`stopReason` 为 `completed`。
+- (b) 写入范围门禁成立。宿主层的 `tools/pre-execute` 看到子 agent 的每一次调用，`exec.agent.id` 等于预留的 `childId`（rc.3 的 agent id 就是会话 id），据此映射回任务；主 Agent 自己的调用映射不到任何任务。范围外的 `Write` 被拒，拒绝以工具错误回到子 agent，文件没有写出；范围内的 `Write` 照常执行。
+
+由此带来的实现约束（M7）：
+
+- 任务映射用派发时预留的 `childId`，不靠会话头。子 agent 的会话头 `cwd` 是父 agent 的目录，请求里的 `cwd` 只成为工作目录（`dsh-subagent` 346–355 行；探针实测）。guard 现在以会话头 `cwd` 作包含根（`DESIGN.md` §2.4a），子 agent 的包含根因而是父 agent 的工作区；DSH 自己的文件沙盒根也是父会话的工作区。所以独立工作树要建在父 agent 的工作区之内（例如不入库的 `.worktrees/`），写入范围按任务属性另行判定，不能拿会话头当范围。
+- 预留的 `childId` 可以编码任务节点 id，宿主重启后从子会话 id 就能找回任务；映射表只放在内存里时，冷恢复的子 agent 会失去写入范围。
+- GLM 路由上 `structured_output` 与 `send_message` 都是延迟工具（不在常驻名单里，`src/toolsearch/exposure.ts`），子 agent 要经 DeferredToolCall 调用。探针实测经 DeferredToolCall 提交的结构化结果能被捕获；是否把这两个工具列为子 agent 的常驻工具，在 M7 的派发实现里定。
+- 子 agent 的工具面里仍有 `subagent`、`subagent_fork`；这两个工具把设置里的 `maxDepth`（默认 1）传给服务，服务按它拒绝更深的派发（`dsh-subagent` 279–283 行）。服务只检查调用方传进来的 `maxDepth`，验证插件没有传；本包的派发工具要传 `subagents.resolveMaxDepth()` 的结果，否则子 agent 能经它再派发。
 
 ### 3.3 简报与交回
 
@@ -331,7 +348,7 @@ todo 撑不起上百轮的大项目：它是平的，没有层级与因果；它
 | 压制注释必须写理由并挂节点 | 规划 |
 | 放宽检查配置走决策卡 | 规划 |
 | 同一处第三次修复走决策卡 | 规划 |
-| 子 agent 只写任务节点的写入范围 | 规划（§3.2） |
+| 子 agent 只写任务节点的写入范围 | 规划；接缝已经 L3 核实（2026-10-28，§3.2） |
 
 ### 6.5 影子模式
 
