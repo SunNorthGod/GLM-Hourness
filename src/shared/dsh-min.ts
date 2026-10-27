@@ -105,9 +105,9 @@ export type PreExecuteDecision =
 
 export type PreExecuteListener = (exec: ToolExecutionPayload, next: () => Promise<PreExecuteDecision>) => Promise<PreExecuteDecision>
 
-/** A context that observes or gates tool calls. */
+/** A context that observes or gates tool calls; `options.prepend` registers outermost, deciding before earlier listeners (cordis:372–381). */
 export interface PreExecuteHost {
-  on(event: 'tools/pre-execute', listener: PreExecuteListener): () => void
+  on(event: 'tools/pre-execute', listener: PreExecuteListener, options?: { prepend?: boolean }): () => void
 }
 
 /** `agent/pre-step` payload. */
@@ -184,11 +184,13 @@ export interface AssemblePayload {
   readonly [key: string]: unknown
 }
 
-/** The context the dialect row runs on: the tools service and the agent lifecycle and per-step waterfalls. */
+/** The context the dialect and graph rows run on: the tools service, the agent lifecycle, per-step and tool-call waterfalls. */
 export interface PluginContext {
   readonly tools: ToolsLike
   /** Awaited serially before agent creation resolves; the first step sees the effects. */
   on(event: 'agent/created', listener: (payload: { agent: AgentLike, source?: unknown }) => Promise<void> | void): () => void
+  /** Tool-call gate before every `tools.execute` body (tools:3320–3321): a deny decision becomes the call's error result (tools:3337–3353). */
+  on(event: 'tools/pre-execute', listener: PreExecuteListener, options?: { prepend?: boolean }): () => void
   /** Per-request prompt assembly; `options.prepend` registers outermost so post-`next()` sees injected variables. */
   on(event: 'system-prompt/assemble', listener: (assembly: AssemblePayload, context: unknown, next: () => Promise<AssemblePayload>) => Promise<AssemblePayload>, options?: { prepend?: boolean }): () => void
   /** Step admission (agent-scoped): runs after the step's assembly, before the request. */

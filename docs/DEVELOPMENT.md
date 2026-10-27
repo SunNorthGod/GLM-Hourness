@@ -161,8 +161,8 @@ DSH 官方类型已作为 devDependency 安装（`@deepseek-ai/dsh-llm`、`@deep
 
 规则：
 
-1. LLM（包括在 Kiro 里开发本仓库时）只经命令行写节点文件，不直接编辑（`ORCHESTRATION.md` §2.7）。手改的文件下一次读就生效，但不留历史；改出校验错误时整张图拒绝写入，直到改回或用 git 还原。
+1. LLM（包括在 Kiro 里开发本仓库时）只经命令行写节点文件，不直接编辑（`ORCHESTRATION.md` §2.7）；在 DSH 里图行启用后，guard 规则 `graph-files-only` 拦直接写图目录。手改的文件下一次读就生效，但不留历史；改出校验错误时整张图拒绝写入，直到改回或用 git 还原。
 2. 改了 `docs/graph/nodes/` 就运行 `npm run graph:render`，`graph.svg` 与节点文件同批提交。`npm test` 检查节点文件没有校验问题、`graph.svg` 与渲染器的输出逐字节相同，没重新出图会失败。
 3. 读 JSON 输出用 `npm run -s`，否则 npm 先往 stdout 打两行命令回显。Windows PowerShell 5.1 下写请求一律用 `--file`：经管道送 stdin 时 `--` 被吞、中文变问号，参数里的 JSON 会丢引号（`ORCHESTRATION.md` §2.10）。
 4. 试写不要用 `docs/graph`：复制到临时目录，命令加 `--dir`。
-5. 引擎、命令行与查看器不碰 DSH，改它们只需过 `npm run build`、`npm run preflight`、`npm test`，不需要 `npm run probe`。接触 DSH 的只有图行（`src/graph/index.ts`、`tools.ts`、`reminder.ts`，行 `glm-hourness/graph`，`ORCHESTRATION.md` §2.5、§2.10）：L2 在假宿主 `tests/fake-rc3.ts` 上，行默认禁用，启用前按 §1 补 L3 探针与 L4 验收。
+5. 引擎、命令行与查看器不碰 DSH，改它们只需过 `npm run build`、`npm run preflight`、`npm test`，不需要 `npm run probe`。接触 DSH 的只有图行（`src/graph/index.ts`、`tools.ts`、`reminder.ts`，以及它注册的门禁规则 `src/guard/graph-files.ts`，行 `glm-hourness/graph`，`ORCHESTRATION.md` §2.5、§2.7、§2.10）：L2 在假宿主 `tests/fake-rc3.ts` 上，行默认禁用，启用前按 §1 补 L3 探针与 L4 验收。

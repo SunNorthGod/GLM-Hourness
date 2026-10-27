@@ -40,8 +40,10 @@
       config: {}
     - id: glm-hourness/graph
       # Project graph tools (docs/ORCHESTRATION.md §2.10): the engine's read
-      # and write operations with actor llm, and the per-step projection of
-      # the focus node an agent sets with graph_focus (§2.5). The graph is
+      # and write operations with actor llm, the per-step projection of the
+      # focus node an agent sets with graph_focus (§2.5), and the guard rule
+      # graph-files-only that denies direct writes into the graph (§2.7),
+      # decided before the guard row's rules. The graph is
       # docs/graph under the session working directory unless config.dir
       # names another (an absolute path, or one relative to that directory).
       # Ships disabled until the sandbox (docs/DEVELOPMENT.md §3) passes.

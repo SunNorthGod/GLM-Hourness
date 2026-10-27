@@ -43,18 +43,22 @@ function refuse(result: Failure): never {
 const ROW_HINT = `set an absolute dir in the ${GRAPH_ROW_ID} row config`
 
 /**
+ * The path of the configured dir: absolute as is, relative under the
+ * session working directory `cwd`; undefined when a relative dir has no
+ * working directory to resolve against. Whether it exists is not checked.
+ */
+export function resolveGraphDir(configured: string, cwd: string | undefined): string | undefined {
+  if (isAbsolute(configured)) return resolve(configured)
+  return typeof cwd === 'string' && cwd.length > 0 ? resolve(cwd, configured) : undefined
+}
+
+/**
  * The graph directory of the configured dir (absolute, or relative to the
  * session working directory `cwd`), or not_found when there is none to work on.
  */
 export async function locateGraph(configured: string, cwd: string | undefined): Promise<string | Failure> {
-  let dir: string
-  if (isAbsolute(configured)) {
-    dir = resolve(configured)
-  }
-  else {
-    if (typeof cwd !== 'string' || cwd.length === 0) return failure('not_found', `this session has no working directory to find ${configured} in`, ROW_HINT)
-    dir = resolve(cwd, configured)
-  }
+  const dir = resolveGraphDir(configured, cwd)
+  if (dir === undefined) return failure('not_found', `this session has no working directory to find ${configured} in`, ROW_HINT)
   try {
     if ((await stat(dir)).isDirectory()) return dir
   }

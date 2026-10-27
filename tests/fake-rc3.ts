@@ -3,12 +3,12 @@
  * (docs/DESIGN.md §2.4a). It offers only what the desktop runtime offers:
  * scoped `tools.register(definition)` (rejecting output schemas outside the
  * enforced subset), `tools.get(name, scope)`, `tools.execute(input)`
- * (validating success values against the output schema), the agent-scoped
- * waterfalls, and the session's derived history. The route reaches plugins
- * solely through the assembly variables, exactly as installModelSelection
- * injects them.
+ * (gated by `tools/pre-execute`, validating success values against the
+ * output schema), the agent-scoped waterfalls, and the session's derived
+ * history. The route reaches plugins solely through the assembly
+ * variables, exactly as installModelSelection injects them.
  */
-import type { AgentLike, AssemblePayload, AssembledTool, PluginContext, PreStepDecision, PreStepPayload, ToolDefinitionLike, ToolExecuteInput, ToolFinalResult } from '../src/shared/dsh-min.ts'
+import type { AgentLike, AssemblePayload, AssembledTool, PluginContext, PreExecuteDecision, PreExecuteListener, PreStepDecision, PreStepPayload, ToolDefinitionLike, ToolExecuteInput, ToolExecutionPayload, ToolFinalResult } from '../src/shared/dsh-min.ts'
 
 type Listener = (...args: never[]) => unknown
 
@@ -181,9 +181,18 @@ export function fakeRuntime(options: { natives?: readonly string[], calls?: Arra
         return () => { scoped.splice(scoped.indexOf(definition), 1) }
       },
       get: name => visible().find(tool => tool.name === name),
-      // Pipeline order of ToolRuntime.execute: body, output render, deferred contexts.
+      // Pipeline order of ToolRuntime.execute: pre-execute gate, body, output render, deferred contexts.
       async execute(input): Promise<ToolFinalResult> {
         executed.push(input)
+        // prepareExecution (tools:3320–3321, 3337–3353): the waterfall defaults to allow; a deny reason
+        // becomes the error result and the body never runs. ask and cancel are not modeled.
+        const pending: ToolExecutionPayload = { name: input.name, arguments: input.arguments, ...(input.agent === undefined ? {} : { agent: input.agent }), ...(input.parent === undefined ? {} : { parent: input.parent }) }
+        const gate = await of('tools/pre-execute').reduceRight<() => Promise<PreExecuteDecision>>(
+          (next, listener) => async () => (listener as unknown as PreExecuteListener)(pending, next),
+          async () => ({ kind: 'allow' }),
+        )()
+        if (gate.kind === 'deny') return { isError: true, content: [{ type: 'text', text: `Error: ${gate.reason}` }], error: { message: gate.reason } }
+        if (gate.kind !== 'allow') throw new Error(`fake-rc3 does not model the ${gate.kind} decision`)
         const tool = visible().find(candidate => candidate.name === input.name)
         const contexts: unknown[] = []
         let result: ToolFinalResult

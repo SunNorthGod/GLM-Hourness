@@ -70,6 +70,7 @@ M2 进度：
   - LLM 的命令行（`src/graph/cli.ts`）：JSON 进、JSON 出，身份固定为 `llm`；命令就是 DSH 图工具的契约。
   - DSH 图工具（`src/graph/tools.ts`，行入口 `src/graph/index.ts`，2026-10-28）：命令行契约按操作注册为 9 个工具（读投影、列待办，以及提议、改状态、改字段、加删连线、批注、改验证状态），身份固定为 `llm`，引擎的拒绝以带错误码与正路的工具错误返回；只认人的操作不做成工具。另有设定焦点的 `graph_focus`，不写图。行 `glm-hourness/graph` 默认禁用，所有 agent、所有路由都有这组工具，GLM 请求里常驻。图目录默认是会话工作目录下的 `docs/graph`（`ORCHESTRATION.md` §2.10）。
   - 每步投影与压缩后重锚（`src/graph/reminder.ts`，同一行，2026-10-28）：agent 用 `graph_focus` 设定焦点节点后，每步在 `agent/pre-step` 末尾追加一条 `<system-reminder>` notice，内容是焦点节点、到目标的祖先链、阶段、子节点、来源、依赖两个方向与未通过的门禁。只在需要时注入：新焦点、投影正文变了、压缩之后、每个目标轮；其余步不加，请求前缀不变。焦点存在会话历史里，续跑后找回，压缩后靠内存里的副本重锚（`ORCHESTRATION.md` §2.5）。
+  - 图文件门禁（`src/guard/graph-files.ts`，由同一行注册，2026-10-28）：guard 规则 `graph-files-only` 拦 LLM 用文件工具或 shell 写图目录，四段式纠偏的正路是图工具；在 guard 行之前判断，图目录以外的调用照旧归 guard 行。这是 `ORCHESTRATION.md` §6.4 规矩清单里「图文件只经图工具修改」一条，提前在本分支做了（§2.7）。
   - 人的查看器（`src/graph/server.ts`、`viewer.html`）：本机服务加一个单文件页面，身份固定为 `human`。能平移缩放、折叠展开、按类型与状态筛选、看节点详情、高亮到目标的路径、批注、批准或否决提议、在决策队列里拍板、带证据改状态、改目标与验收条件；命令行、手改文件、git 操作带来的改动不用刷新就出现在页面上。
   - 本项目的图：55 个节点，取自 main 在 `abec5e1` 时的本文件、`HANDOFF.md` 与 git log；2026-10-28 补到 main 的 `37b7eae`（1.6 完成，读图条目写明 GLM-5.3 与 GLM-5.3-Flash 的事实，`ORCHESTRATION.md` §2.13）。
   - 与本里程碑条目的对应：2.1 待批（图上是待决 `q-graph-design`）；2.2 的规则、命令行与 DSH 图工具已有，图工具在默认禁用的行里，只有 L2（无证据不能标完成由单测覆盖）；2.3 的投影注入与压缩后重锚已有，同在默认禁用的行里，只有 L2，验收要的 L3（模型请求中可见投影）在合入 main 之后做，重锚时的规范摘要与违规计数未做；2.4 做成了可交互的本机查看器与 SVG 图片，没有进 DSH；2.5 原型迁移完成。
@@ -84,9 +85,9 @@ M2 进度：
   ```
 
   查看器里的操作与命令行的写入都直接改 `docs/graph/nodes/` 下已提交的文件。只想试一试时，把 `docs/graph` 复制到别处，命令里加 `--dir <副本>`（例 `npm run graph:serve -- --dir <副本>`、`npm run -s graph -- --dir <副本> open`）；在原目录里试过的，用 `git restore docs/graph` 还原。要保留的改动，重新出图后与节点文件同批提交（`DEVELOPMENT.md` §11）。
-- 没有接入的：DSH 运行时接了图工具（2.2）与每步投影（2.3），行默认禁用，没在沙盒或真机上跑过；重锚只重注投影，规范摘要与本会话违规计数等 M4；guard 不拦 LLM 直接改图文件（`ORCHESTRATION.md` §2.7）；`harness` 身份还没有调用方；证据只查格式，提交号是否存在、命令是否真跑过要等汇合门禁（`ORCHESTRATION.md` §4.7）。
+- 没有接入的：DSH 运行时接了图工具（2.2）、每步投影（2.3）与图文件门禁，行默认禁用，没在沙盒或真机上跑过；重锚只重注投影，规范摘要与本会话违规计数等 M4；图文件门禁的拒绝不进违规审计，合入 main 后接进 M1.4 的流水；`harness` 身份还没有调用方；证据只查格式，提交号是否存在、命令是否真跑过要等汇合门禁（`ORCHESTRATION.md` §4.7）。
 - 查看器在 DSH 里的落点（规划，`ORCHESTRATION.md` §2.10）：先由一个客户端插件调用 `ctx.sidebarRight.openTab('browser', { params: { url } })`，在内置 Browser 标签页里打开查看器的回环地址，页面原样可用；M8 再做原生右侧栏标签页，用 React 画同一份 SVG，读图经 `remote.workspaceFiles`，写回经命令通道 `remote.commands.execute` 进宿主侧的图服务，人和 LLM 走同一个引擎、同一套规则。Browser 标签页对回环地址与 SSE 的表现还没在真机上看过。
-- 验证：门禁 `npm run build`、`npm run preflight`、`npm test` 全绿，`npm test` 362 用例（合入 main 的 `37b7eae` 之后，含 DSH 图工具与每步投影；其中项目图 7 个 spec、163 用例），最后一道是查看器冒烟 `npm run graph:smoke`。图工具与每步投影在假宿主 `tests/fake-rc3.ts` 上验证（L2）；本分支不跑 `npm run probe`（L3 探针属于 main 的通道）。页面脚本的行为（选中、折叠、筛选、表单、实时更新）只在 Playwright 驱动的 Chromium 里手工核对过，没有自动化测试。
+- 验证：门禁 `npm run build`、`npm run preflight`、`npm test` 全绿，`npm test` 372 用例（合入 main 的 `37b7eae` 之后，含 DSH 图工具、每步投影与图文件门禁；其中项目图 8 个 spec、173 用例），最后一道是查看器冒烟 `npm run graph:smoke`。图工具、每步投影与图文件门禁在假宿主 `tests/fake-rc3.ts` 上验证（L2）；本分支不跑 `npm run probe`（L3 探针属于 main 的通道）。页面脚本的行为（选中、折叠、筛选、表单、实时更新）只在 Playwright 驱动的 Chromium 里手工核对过，没有自动化测试。
 
 ### M3 设计循环最小闭环
 
@@ -148,4 +149,5 @@ M2.1 审阅：原型在 `graph-engine` 分支上按推荐项实现（M2 进度�
   9. 查看器页面的自动化测试：要浏览器驱动，属新增开发依赖；推荐查看器进 DSH 之前加上。
   10. DSH 图工具细则：每个操作一个工具（备选是合成三个工具）；所有 agent、所有路由都有，GLM 请求里常驻（备选是只给 GLM 或只给主 Agent）；写结果不带节点历史；图目录默认是会话工作目录下的 `docs/graph`，缺目录只报告、不自动建。
   11. 每步投影细则：焦点由 agent 调 `graph_focus` 设定，属于会话、不写进图（备选是写进图）；只在新焦点、投影变化、压缩之后与目标轮注入（备选是每步都注入）；投影不带目标的验收条件与非目标（备选是带上，投影长一倍）；不分路由。
+  12. 图文件门禁细则：规则由图行注册、跟图行一起启停，先于 guard 行判断（备选是放进 guard 行，违规审计现成，代价是图行禁用时也拦、被拦的一方没有图工具）；拦整个图目录，含 `graph.svg`（备选是只拦 `nodes/`）；直接拦截，不先走影子模式；拒绝暂不进违规审计。
 - 与 main 文档不一致的三处，合入时处理：图上 `d-driver`（驱动循环用 goal 加 goal-round-driver）、`d-dispatch`（不设队友角色，任务节点派给后台子 agent）、`d-async-cards`（异步决策卡自建）是用户 2026-10-28 的定案，`ORCHESTRATION.md` §3 的角色卡、§3.6 的 Agent Team 与 §15「驱动循环借用哪个接缝」一行要等主线按 DSH 借用审计改文档时更新；图上 `q-checkers` 已按用户的选择拍板为 A，本节「新增开发依赖与检查器的决策卡」一行还是待定；图是 main 在 `37b7eae` 时的快照，之后的进展按第 8 条定下的做法补进图。

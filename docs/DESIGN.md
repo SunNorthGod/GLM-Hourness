@@ -44,7 +44,7 @@ GLM-Hourness
 | `glm-hourness/memory` | `dist/memory/index.js` | 编排 | 见 `ORCHESTRATION.md` §8 |
 | `glm-hourness/workflow` | `dist/workflow/index.js` | 编排 | 仅记录派遣类工具调用 |
 | `glm-hourness/hourness` | `dist/ui/index.js` | 编排 | `/hourness` 命令 |
-| `glm-hourness/graph` | `dist/graph/index.js` | 编排 | 项目图工具与每步投影（`ORCHESTRATION.md` §2.5、§2.10），默认禁用，只有 L2 |
+| `glm-hourness/graph` | `dist/graph/index.js` | 编排 | 项目图工具、每步投影与图文件门禁（`ORCHESTRATION.md` §2.5、§2.7、§2.10），默认禁用，只有 L2 |
 | `glm-hourness/ui` | `ui/`（独立包） | 呈现 | 设置页说明 + 输入框「GLM 通道」pill |
 
 ### 2.3 两个 bundle 与一包一源
@@ -104,7 +104,7 @@ GLM-Hourness
 | `system-prompt/assemble`（waterfall，`(assembly, context, next)`，按 agent 作用域分发） | glm-prompt | system-prompt:398；`assembly` 的 `sections{name, text, interpolate?}`、`contexts`、`tools{name, description, parameters, deferLoading?}`、`variables` 见 system-prompt:365–393；完整节在瀑布之后恢复，system-prompt:399–405 | 一致 |
 | 组装变量 `variables.provider` / `variables.model` | glm-prompt（`src/shared/route.ts`） | agent:167–181（`installModelSelection` 在 `next()` 之后写入） | 一致 |
 | `agent/pre-step`（waterfall，`{agent, messages, turn, step, signal}`；默认决策 `enter` 带本步认领的消息） | glm-prompt（工具检索公告、todo 提醒）、graph（每步投影） | agent-loop:901–925；`agent` 由 agent:241–245 并入；空决策守卫照抄 agent:193–197 | 一致；本节上文原写载荷无 `turn`，已更正 |
-| `tools/pre-execute`（waterfall，`(exec, next)`，默认 `allow`） | guard、workflow | tools:3320–3321；决策 `allow` / `deny{reason, info?}` / `ask` / `cancel`，tools:3322–3345 | 一致；guard 的决策类型补上 `ask`、`cancel` 透传 |
+| `tools/pre-execute`（waterfall，`(exec, next)`，默认 `allow`） | guard、workflow、graph（图文件门禁，`prepend` 注册） | tools:3320–3321；决策 `allow` / `deny{reason, info?}` / `ask` / `cancel`，tools:3322–3345；拒绝时结果为 `Error: ` 加理由，工具体不执行，tools:3337–3353 | 一致；guard 的决策类型补上 `ask`、`cancel` 透传 |
 | `exec` 字段：`callId`、`rootCallId`、`name`、`arguments`、`signal`、`agent?`、`parent?`、`schema?`、`deferContext`、`concludeTurn` | guard、workflow | tools:3229–3260 | **偏差已修**：guard 从 `exec.agentId` / `exec.sessionId` 取违规记录的 id，rc.3 没有这两个字段，记录里永远为空；改为 `exec.agent.id` 与 `exec.agent.session.id` |
 | `llm/stream`（waterfall，`(options, next)`） | memory（用量流水）、glm-compact | llm:2397；`options` 即 `GenerateOptions`（官方 types.d.ts:506–548：`provider`、`model`、`messages`、`sessionId?`、`purpose?`），编译期检查 `LlmStreamOptionsContractCheck` | 一致；memory 对 `provider` / `model` 的 `'unknown'` 兜底删除（两者必填）。L3 探针实测每个 GLM 步一条用量记录，带 `sessionId`；压缩调用带 `purpose: 'compaction'` |
 | `tools/post-execute`、`ctx.systemPrompt` | 无 | tools:3600 | 已无行使用（todo 提醒改到 `agent/pre-step` 之后），结构类型删除 |
@@ -456,7 +456,7 @@ L3 探针：沙盒里把压缩阈值调低，摘要请求末条是 ZCode 提示�
 | guard | 无门禁 | 行健康（显式禁用除外） |
 | memory | 无记忆、无审计 | 行健康 |
 | workflow / hourness | 无记录、无报告 | 行健康 |
-| graph | 没有图工具与每步投影；图目录缺失或图有校验错误时，工具照常注册并把问题报给模型，投影注入一条说明；读图抛错时本步不带投影 | 告警、工具错误；行健康 |
+| graph | 没有图工具、每步投影与图文件门禁；图目录缺失或图有校验错误时，工具照常注册并把问题报给模型，投影注入一条说明；读图抛错时本步不带投影；会话没有工作目录时门禁只判断绝对路径 | 告警、工具错误；行健康 |
 
 激活期（`apply`）不抛错：配置缺失降级为 warn 与 no-op，因为激活失败会拖垮宿主启动（2026-10-27 事故）。降级必须上报，不得只打一行警告（`CHARTER.md` §6.1 条款 7）。
 
