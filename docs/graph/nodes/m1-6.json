@@ -2,12 +2,36 @@
   "id": "m1-6",
   "type": "task",
   "title": "1.6 DSH 契约对照与薄适配层",
-  "status": "approved",
+  "status": "done",
   "parent": "m1",
   "kind": "implement",
   "body": "事件钩子与服务对照官方类型；DSH 接口收进薄适配层（ROADMAP.md M1 1.6）。桌面版运行时接口与 reference/deepseek-harness 不同（DESIGN.md §2.4a），对照以 rc.3 运行时为准。",
   "acceptance": [
     "L1"
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "72c282e",
+      "note": "宿主结构类型按 rc.3 运行时对齐，收进薄适配层 src/shared/dsh-min.ts 与 lm-min.ts"
+    },
+    {
+      "kind": "commit",
+      "ref": "37b7eae",
+      "note": "记录 rc.3 接口对照表（DESIGN.md §2.4a）与薄适配层"
+    },
+    {
+      "kind": "test",
+      "ref": "npm test",
+      "exit": 0,
+      "note": "L2 199 用例（ROADMAP.md M1 进度，2026-10-28）"
+    },
+    {
+      "kind": "test",
+      "ref": "npm run probe",
+      "exit": 0,
+      "note": "L3 探针 38/38（ROADMAP.md M1 进度，2026-10-28）"
+    }
   ],
   "history": [
     {
@@ -16,6 +40,38 @@
       "op": "propose",
       "reason": "迁移：ROADMAP.md M1 1.6",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-27T20:25:21.939Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "1.6 DSH 接口对照完成（origin/main 37b7eae 的 ROADMAP.md M1 进度与 git log）",
+      "from": "approved",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "72c282e",
+          "note": "宿主结构类型按 rc.3 运行时对齐，收进薄适配层 src/shared/dsh-min.ts 与 lm-min.ts"
+        },
+        {
+          "kind": "commit",
+          "ref": "37b7eae",
+          "note": "记录 rc.3 接口对照表（DESIGN.md §2.4a）与薄适配层"
+        },
+        {
+          "kind": "test",
+          "ref": "npm test",
+          "exit": 0,
+          "note": "L2 199 用例（ROADMAP.md M1 进度，2026-10-28）"
+        },
+        {
+          "kind": "test",
+          "ref": "npm run probe",
+          "exit": 0,
+          "note": "L3 探针 38/38（ROADMAP.md M1 进度，2026-10-28）"
+        }
+      ]
     }
   ]
 }

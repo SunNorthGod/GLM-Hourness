@@ -69,7 +69,7 @@ M2 进度：
   - 图片：自建分层布局的 SVG 渲染（`src/graph/layout.ts`、`render.ts`），样式按用户认可的草图，`docs/graph/graph.svg` 就是本项目的图。
   - LLM 的命令行（`src/graph/cli.ts`）：JSON 进、JSON 出，身份固定为 `llm`；命令就是以后 DSH 图工具的契约。
   - 人的查看器（`src/graph/server.ts`、`viewer.html`）：本机服务加一个单文件页面，身份固定为 `human`。能平移缩放、折叠展开、按类型与状态筛选、看节点详情、高亮到目标的路径、批注、批准或否决提议、在决策队列里拍板、带证据改状态、改目标与验收条件；命令行、手改文件、git 操作带来的改动不用刷新就出现在页面上。
-  - 本项目的图：55 个节点，取自 main 在 `abec5e1` 时的本文件、`HANDOFF.md` 与 git log；之后 main 上的进展（例如 1.6 完成）还没进图。
+  - 本项目的图：55 个节点，取自 main 在 `abec5e1` 时的本文件、`HANDOFF.md` 与 git log；2026-10-28 补到 main 的 `37b7eae`（1.6 完成，读图条目写明 GLM-5.3 与 GLM-5.3-Flash 的事实，`ORCHESTRATION.md` §2.13）。
   - 与本里程碑条目的对应：2.1 待批（图上是待决 `q-graph-design`）；2.2 的规则与命令行已有，DSH 图工具未做；2.3 未做；2.4 做成了可交互的本机查看器与 SVG 图片，没有进 DSH；2.5 原型迁移完成。
 - 试用：在 `graph-engine` 分支的检出目录里运行（本机现成的检出是工作树 `.worktrees\graph-engine`），只需 Node 22，不用先 build。
 
@@ -84,7 +84,7 @@ M2 进度：
   查看器里的操作与命令行的写入都直接改 `docs/graph/nodes/` 下已提交的文件。只想试一试时，把 `docs/graph` 复制到别处，命令里加 `--dir <副本>`（例 `npm run graph:serve -- --dir <副本>`、`npm run -s graph -- --dir <副本> open`）；在原目录里试过的，用 `git restore docs/graph` 还原。要保留的改动，重新出图后与节点文件同批提交（`DEVELOPMENT.md` §11）。
 - 没有接入的：DSH 运行时一处都没接，不注册工具、钩子与 Loader 行。没有 DSH 图工具（2.2），没有每步投影注入与压缩后重锚（2.3）；guard 不拦 LLM 直接改图文件（`ORCHESTRATION.md` §2.7）；`harness` 身份还没有调用方；证据只查格式，提交号是否存在、命令是否真跑过要等汇合门禁（`ORCHESTRATION.md` §4.7）。
 - 查看器在 DSH 里的落点（规划，`ORCHESTRATION.md` §2.10）：先由一个客户端插件调用 `ctx.sidebarRight.openTab('browser', { params: { url } })`，在内置 Browser 标签页里打开查看器的回环地址，页面原样可用；M8 再做原生右侧栏标签页，用 React 画同一份 SVG，读图经 `remote.workspaceFiles`，写回经命令通道 `remote.commands.execute` 进宿主侧的图服务，人和 LLM 走同一个引擎、同一套规则。Browser 标签页对回环地址与 SSE 的表现还没在真机上看过。
-- 验证：门禁 `npm run build`、`npm run preflight`、`npm test` 全绿，`npm test` 300 用例（其中项目图 5 个 spec、135 用例），最后一道是查看器冒烟 `npm run graph:smoke`。页面脚本的行为（选中、折叠、筛选、表单、实时更新）只在 Playwright 驱动的 Chromium 里手工核对过，没有自动化测试。
+- 验证：门禁 `npm run build`、`npm run preflight`、`npm test` 全绿，`npm test` 334 用例（合入 main 的 `37b7eae` 之后；其中项目图 5 个 spec、135 用例），最后一道是查看器冒烟 `npm run graph:smoke`。页面脚本的行为（选中、折叠、筛选、表单、实时更新）只在 Playwright 驱动的 Chromium 里手工核对过，没有自动化测试。
 
 ### M3 设计循环最小闭环
 
@@ -144,4 +144,4 @@ M2.1 审阅：原型在 `graph-engine` 分支上按推荐项实现（M2 进度�
   7. 本项目图的迁移写法：用户已定案的内容以 `human` 写入；备选是全部以 `llm` 提议、由用户逐个批准。
   8. 合入后进度记在哪里：推荐只记在图上，本文件只留里程碑与验收；备选是两处并行。
   9. 查看器页面的自动化测试：要浏览器驱动，属新增开发依赖；推荐查看器进 DSH 之前加上。
-- 与 main 文档不一致的三处，合入时处理：图上 `d-driver`（驱动循环用 goal 加 goal-round-driver）、`d-dispatch`（不设队友角色，任务节点派给后台子 agent）、`d-async-cards`（异步决策卡自建）是用户 2026-10-28 的定案，`ORCHESTRATION.md` §3 的角色卡、§3.6 的 Agent Team 与 §15「驱动循环借用哪个接缝」一行要等主线按 DSH 借用审计改文档时更新；图上 `q-checkers` 已按用户的选择拍板为 A，本节「新增开发依赖与检查器的决策卡」一行还是待定；图是 main 在 `abec5e1` 时的快照，之后的进展按第 8 条定下的做法补进图。
+- 与 main 文档不一致的三处，合入时处理：图上 `d-driver`（驱动循环用 goal 加 goal-round-driver）、`d-dispatch`（不设队友角色，任务节点派给后台子 agent）、`d-async-cards`（异步决策卡自建）是用户 2026-10-28 的定案，`ORCHESTRATION.md` §3 的角色卡、§3.6 的 Agent Team 与 §15「驱动循环借用哪个接缝」一行要等主线按 DSH 借用审计改文档时更新；图上 `q-checkers` 已按用户的选择拍板为 A，本节「新增开发依赖与检查器的决策卡」一行还是待定；图是 main 在 `37b7eae` 时的快照，之后的进展按第 8 条定下的做法补进图。

@@ -12,6 +12,12 @@
       "op": "propose",
       "reason": "迁移：DESIGN.md §2.4a，HANDOFF.md §5",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-27T20:25:22.036Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "缓解的第一步已完成：1.6 接口对照与薄适配层（72c282e、37b7eae），接口对照表在 DESIGN.md §2.4a，宿主结构类型集中在 src/shared/dsh-min.ts 与 lm-min.ts。风险仍在：DSH 每次升级后要按对照表逐项复核并跑探针（DEVELOPMENT.md §4）。"
     }
   ]
 }

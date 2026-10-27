@@ -5,7 +5,7 @@
   "status": "done",
   "parent": "m1",
   "kind": "implement",
-  "body": "GLM-5.3-Flash 收到 ZCode 形态的 base64 图片块（用户消息与 tool_result 内），GLM-5.3 只声明文本。修图片时发现编码器按 rc.3 不存在的 toolCalls 字段读工具调用，助手的工具调用会被全部丢弃，改按 tool-call 内容块编码，相邻同角色消息按 ZCode 合并（DESIGN.md §4.5、§4.5a）。多轮工具调用的真机验证随 L4。",
+  "body": "GLM-5.3 没有视觉塔，只有 GLM-5.3-Flash 是多模态（用户 2026-10-28 提供的事实）。据此 GLM-5.3 只声明文本，GLM-5.3-Flash 收到 ZCode 形态的 base64 图片块（用户消息与 tool_result 内）。修图片时发现编码器按 rc.3 不存在的 toolCalls 字段读工具调用，助手的工具调用会被全部丢弃，改按 tool-call 内容块编码，相邻同角色消息按 ZCode 合并（DESIGN.md §4.5、§4.5a）。多轮工具调用的真机验证随 L4。",
   "acceptance": [
     "L3 探针覆盖纯文本模型拒读与 Flash 的 tool_result 图片块",
     "真网读图一次答对"
@@ -71,6 +71,18 @@
           "note": "L3 探针 32/32（2026-10-28）"
         }
       ]
+    },
+    {
+      "at": "2026-10-27T20:25:21.988Z",
+      "actor": "human",
+      "op": "edit",
+      "reason": "迁移：用户 2026-10-28 在对话中提供的事实「glm5.3 没有视觉塔，只有 glm5.3flash 是多模态」（ROADMAP.md M1 进度「GLM-5.3 改为只声明文本（用户提供的事实）」）",
+      "changes": {
+        "body": {
+          "from": "GLM-5.3-Flash 收到 ZCode 形态的 base64 图片块（用户消息与 tool_result 内），GLM-5.3 只声明文本。修图片时发现编码器按 rc.3 不存在的 toolCalls 字段读工具调用，助手的工具调用会被全部丢弃，改按 tool-call 内容块编码，相邻同角色消息按 ZCode 合并（DESIGN.md §4.5、§4.5a）。多轮工具调用的真机验证随 L4。",
+          "to": "GLM-5.3 没有视觉塔，只有 GLM-5.3-Flash 是多模态（用户 2026-10-28 提供的事实）。据此 GLM-5.3 只声明文本，GLM-5.3-Flash 收到 ZCode 形态的 base64 图片块（用户消息与 tool_result 内）。修图片时发现编码器按 rc.3 不存在的 toolCalls 字段读工具调用，助手的工具调用会被全部丢弃，改按 tool-call 内容块编码，相邻同角色消息按 ZCode 合并（DESIGN.md §4.5、§4.5a）。多轮工具调用的真机验证随 L4。"
+        }
+      }
     }
   ]
 }
