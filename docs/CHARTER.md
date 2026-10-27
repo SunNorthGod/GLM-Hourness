@@ -128,4 +128,5 @@ Harness 原意是驾驭。在本项目中，harness 工程指调校大模型：�
 | `docs/FACTS.md` | 外部事实账（ZCode、BigModel、DSH）与挂账项 |
 | `docs/DEVELOPMENT.md` | 开发与交付流程、DSH 报错机制、事故记录 |
 | `docs/HANDOFF.md` | 当前状态与已知问题 |
+| `docs/graph/` | 本项目的项目图：节点文件与渲染出的 `graph.svg`（原型，待用户批准，`ORCHESTRATION.md` §2.13） |
 | `docs/reference/` | 事实参考原文：ZCode 能力手册、工具 schema、逐字文本档案、BigModel 文档消化 |
