@@ -60,12 +60,11 @@ dist/          不入库：tsc 产物（profile 通过 pnpm link 使用）
 5. 签名握手对当前凭证失败，按设计无签发送；对 1.5 倍用量的影响未验证，签名状态不可见。
 6. start-plan 档只有单测，未做真机授权验证。
 7. 峰谷口径：面板把谷时写死为每天 0–8 点，并按调用次数统计（`ORCHESTRATION.md` §11.2）。
-8. 五键释义：`FIVE_KEYS` 中「太简单」「太麻烦」的含义与用户原语相反（`ORCHESTRATION.md` §4.4）。
-9. 记忆存储判据过严，路径或文件名样式的文字一律被拒（`ORCHESTRATION.md` §8.1）。
-10. 方言逐字文本有偏差：工具描述、deferred 声明段、ToolSearch 描述的大部分不是 ZCode 原文；todo 提醒正文两处、compact 提示词三行与原文不一致。身份类文本经复核是原文（`DESIGN.md` §5.9）。
-11. UI 视觉未被接受。
-12. cot-translation（DSH 官方实验行，非本项目组件）会把推理碎片显示到界面。
-13. 凭证加密密钥可由本机信息推导（`DESIGN.md` §4.1）。
+8. 记忆存储判据过严，路径或文件名样式的文字一律被拒（`ORCHESTRATION.md` §8.1）。
+9. 方言逐字文本有偏差：工具描述、deferred 声明段、ToolSearch 描述的大部分不是 ZCode 原文；todo 提醒正文两处、compact 提示词三行与原文不一致。身份类文本经复核是原文（`DESIGN.md` §5.9）。
+10. UI 视觉未被接受。
+11. cot-translation（DSH 官方实验行，非本项目组件）会把推理碎片显示到界面。
+12. 凭证加密密钥可由本机信息推导（`DESIGN.md` §4.1）。
 
 反向代理已从项目范围移除（`DESIGN.md` §1）；profile 中指向 8317 的 pi-ai `glm` 路由属于用户配置，本项目不改。
 

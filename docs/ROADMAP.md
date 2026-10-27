@@ -49,7 +49,7 @@
 | 3.1 | 主 Agent 角色卡；主 Agent 工具面去掉写文件工具 |
 | 3.2 | 许愿访谈八步与需求卡；访谈过程中图实时生长 |
 | 3.3 | 方案五栏与设计门禁 |
-| 3.4 | 五键（修正 `FIVE_KEYS` 释义，见 `ORCHESTRATION.md` §4.4），借用 `user-questions` |
+| 3.4 | 五键（`ORCHESTRATION.md` §4.4），借用 `user-questions` |
 | 3.5 | 决策卡（同步 / 异步），借用 `user-approval`；取代 L1/L2/L3 |
 | 3.6 | 阶段状态机：阶段提醒、门禁、最小流程条 |
 

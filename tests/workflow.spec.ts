@@ -16,10 +16,13 @@ test('decision grading follows the L1/L2/L3 table', () => {
 })
 
 test('five-key card keeps the user-owned vocabulary in order', () => {
-  assert.deepEqual(FIVE_KEYS.map(entry => entry.key), ['approve', 'reject', 'augment', 'too-simple', 'too-complex'])
+  assert.deepEqual(FIVE_KEYS.map(entry => entry.key), ['approve', 'reject', 'augment', 'more-detail', 'to-the-point'])
   assert.ok(FIVE_KEYS[1]!.label.includes('理由'))
-  assert.ok(FIVE_KEYS[3]!.meaning.includes('调粗'))
-  assert.ok(FIVE_KEYS[4]!.meaning.includes('调细'))
+  // User decision 2026-10-27: the depth keys are labelled by the action they request.
+  assert.equal(FIVE_KEYS[3]!.label, '讲细点')
+  assert.ok(FIVE_KEYS[3]!.meaning.includes('上调'))
+  assert.equal(FIVE_KEYS[4]!.label, '说重点')
+  assert.ok(FIVE_KEYS[4]!.meaning.includes('下调'))
 })
 
 const usage: UsageRecord[] = [

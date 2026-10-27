@@ -29,8 +29,8 @@ export const FIVE_KEYS = [
   { key: 'approve', label: '批准', meaning: '按方案放行，进入完全自主执行。' },
   { key: 'reject', label: '拒绝（带理由）', meaning: '理由会随拒绝一起返回，供重新设计。' },
   { key: 'augment', label: '补充', meaning: '补充上下文或约束后重提方案。' },
-  { key: 'too-simple', label: '太简单', meaning: '汇报粒度调粗：方案展开过细，下一版合并叙述。' },
-  { key: 'too-complex', label: '太麻烦', meaning: '汇报粒度调细：方案展开不足，下一版拆开岔路逐条讲。' },
+  { key: 'more-detail', label: '讲细点', meaning: '汇报细度上调一档：展开理由、证据与岔路对比，并记入画像。' },
+  { key: 'to-the-point', label: '说重点', meaning: '汇报细度下调一档：只留结论、影响与要拍板的岔路，并记入画像。' },
 ] as const
 
 export type FiveKey = (typeof FIVE_KEYS)[number]['key']
