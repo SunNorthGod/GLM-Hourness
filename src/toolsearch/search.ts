@@ -1,65 +1,102 @@
 /**
- * ToolSearch query and rendering (pure). Dialect baseline: the 3.16.3
- * protocol capture (docs/reference/zcode-tool-schemas.md §8): `select:<name>[,<name>...]` picks exact
- * names, plain queries match keywords against name + description, no regex;
- * each match renders as one `<function>{"description":…,"name":…,"parameters":…}</function>`
- * line inside a `<functions>` block.
+ * Deferred-tool search, ported from ZCode 3.16.3 (bundle `searchTools`,
+ * `tokenize`, `resolveName`; same algorithm as the 3.16.2 source
+ * core/src/tool/search/search.ts).
+ *
+ * `select:a,b` resolves exact names and aliases (deferred first, then the
+ * whole catalog, then MCP raw tool names); a query equal to one tool name
+ * returns it; an `mcp__` prefix lists that server's deferred tools; otherwise
+ * deferred tools are scored on name parts, MCP server/tool parts, the search
+ * hint and the description, with `+term` marking required terms.
  */
 
-export interface DeferredToolEntry {
+/** One tool as the search sees it (ZCode `ToolSearchCandidate`). */
+export interface ToolSearchCandidate {
   readonly name: string
-  readonly description: string
-  readonly parameters: Record<string, unknown>
+  readonly aliases?: readonly string[]
+  /** MCP presentation. DSH publishes MCP tools as `mcp__<server>__<tool>` without metadata, so it is derived from the name. */
+  readonly mcp?: { readonly serverName: string, readonly toolName: string }
+  readonly description?: string
+  readonly searchHint?: string
+  readonly deferred: boolean
 }
 
-export interface ToolSearchArgs {
-  readonly query: string
-  readonly max_results?: number
+const MCP_NAME = /^mcp__(.+?)__(.+)$/
+
+/** Derive the MCP presentation ZCode keeps as metadata from a DSH MCP tool name. */
+export function mcpPresentation(name: string): ToolSearchCandidate['mcp'] {
+  const match = MCP_NAME.exec(name)
+  return match === null ? undefined : { serverName: match[1]!, toolName: match[2]! }
 }
 
-export interface ToolSearchOutcome {
-  /** Matched tools in relevance order, at most `max_results`. */
-  readonly matches: DeferredToolEntry[]
-  readonly total: number
+function tokenize(tool: ToolSearchCandidate): { coarse: string[], parts: string[], full: string, mcp: boolean } {
+  const name = tool.name
+  const mcp = tool.mcp !== undefined ? [name, tool.mcp.serverName, tool.mcp.toolName] : MCP_NAME.exec(name)
+  const coarse = mcp !== null ? [mcp[1]!, mcp[2]!].map(part => part.toLowerCase()) : [name.toLowerCase()]
+  const parts = mcp !== null
+    ? coarse.flatMap(part => part.split(/[\s_.]+/)).filter(Boolean)
+    : name.replace(/([a-z])([A-Z])/g, '$1 $2').replaceAll('_', ' ').toLowerCase().split(/\s+/).filter(Boolean)
+  return { coarse, parts, full: parts.join(' '), mcp: mcp !== null }
 }
 
-const SELECT_PREFIX = 'select:'
+function resolveName(name: string, catalog: readonly ToolSearchCandidate[]): ToolSearchCandidate | undefined {
+  return catalog.find(tool => tool.name === name || tool.aliases?.includes(name) === true)
+}
 
-/** Keyword score: name hits outweigh description hits; ties keep catalog order. */
-function score(entry: DeferredToolEntry, terms: readonly string[]): number {
-  const name = entry.name.toLowerCase()
-  const description = entry.description.toLowerCase()
-  let points = 0
-  for (const term of terms) {
-    if (name.includes(term)) points += 2
-    else if (description.includes(term)) points += 1
+/**
+ * Search the catalog. Returns tool names in result order; `maxResults` caps
+ * keyword and prefix results only (direct selection is uncapped).
+ */
+export function searchTools(query: string, catalog: readonly ToolSearchCandidate[], maxResults = 5): string[] {
+  const deferred = catalog.filter(tool => tool.deferred)
+  const select = /^select:(.+)$/i.exec(query)
+  if (select !== null) {
+    return [...new Set(select[1]!.split(',').flatMap((value) => {
+      const name = value.trim()
+      const exact = resolveName(name, deferred) ?? resolveName(name, catalog)
+      if (exact !== undefined) return [exact.name]
+      // ZCode also compares the model-visible form of the raw MCP name; the
+      // part derived from a DSH public name is already that form.
+      return catalog
+        .filter(tool => tool.mcp !== undefined && tool.mcp.toolName === name)
+        .map(tool => tool.name)
+    }))]
   }
-  return points
-}
-
-/** Search the deferred catalog for one query. */
-export function searchTools(catalog: readonly DeferredToolEntry[], args: ToolSearchArgs): ToolSearchOutcome {
-  const limit = args.max_results === undefined || args.max_results <= 0 ? 5 : args.max_results
-  const query = args.query.trim()
-  if (query.startsWith(SELECT_PREFIX)) {
-    // Baseline behavior (ZCode tool-search-result-budget test): `select:`
-    // direct picks are NOT capped by max_results; only keyword search is.
-    const wanted = query.slice(SELECT_PREFIX.length).split(',').map(name => name.trim()).filter(name => name.length > 0)
-    const matches = catalog.filter(entry => wanted.includes(entry.name))
-    return { matches, total: catalog.length }
+  const text = query.toLowerCase().trim()
+  const exact = deferred.find(tool => tool.name.toLowerCase() === text) ?? catalog.find(tool => tool.name.toLowerCase() === text)
+  if (exact !== undefined) return [exact.name]
+  if (text.startsWith('mcp__') && text.length > 5) {
+    const names = deferred.filter(tool => tool.name.toLowerCase().startsWith(text)).slice(0, maxResults).map(tool => tool.name)
+    if (names.length > 0) return names
   }
-  const terms = query.toLowerCase().split(/\s+/).filter(term => term.length > 0)
-  if (terms.length === 0) return { matches: [], total: catalog.length }
-  const ranked = catalog
-    .map(entry => ({ entry, points: score(entry, terms) }))
-    .filter(candidate => candidate.points > 0)
-    .sort((a, b) => b.points - a.points)
-    .map(candidate => candidate.entry)
-  return { matches: ranked.slice(0, limit), total: catalog.length }
-}
-
-/** Render matched tools as the 3.16.3 `<functions>` block (one line each). */
-export function renderFunctionsBlock(matches: readonly DeferredToolEntry[]): string {
-  const lines = matches.map(entry => `<function>${JSON.stringify({ description: entry.description, name: entry.name, parameters: entry.parameters })}</function>`)
-  return ['<functions>', ...lines, '</functions>'].join('\n')
+  const terms = text.split(/\s+/).filter(Boolean)
+  const required = terms.filter(term => term.startsWith('+') && term.length > 1).map(term => term.slice(1))
+  const keywords = required.length > 0 ? [...required, ...terms.filter(term => !(term.startsWith('+') && term.length > 1))] : terms
+  const patterns = new Map(keywords.map(term => [term, new RegExp(`\\b${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`)]))
+  return deferred
+    .map((tool) => {
+      const name = tokenize(tool)
+      const description = tool.description?.toLowerCase() ?? ''
+      const hint = tool.searchHint?.toLowerCase() ?? ''
+      const matches = (term: string): boolean => name.parts.some(part => part.includes(term))
+        || name.coarse.some(part => part.includes(term))
+        || patterns.get(term)!.test(description)
+        || patterns.get(term)!.test(hint)
+      if (!required.every(matches)) return { name: tool.name, score: 0 }
+      let score = 0
+      for (const term of keywords) {
+        if (name.parts.includes(term)) score += name.mcp ? 12 : 10
+        else if (name.parts.some(part => part.includes(term))) score += name.mcp ? 6 : 5
+        if (name.coarse.includes(term)) score += name.mcp ? 12 : 10
+        else if (name.coarse.some(part => part.includes(term))) score += name.mcp ? 4 : 3
+        if (name.full.includes(term) && score === 0) score += 3
+        if (hint.length > 0 && patterns.get(term)!.test(hint)) score += 4
+        if (patterns.get(term)!.test(description)) score += 2
+      }
+      return { name: tool.name, score }
+    })
+    .filter(tool => tool.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, maxResults)
+    .map(tool => tool.name)
 }

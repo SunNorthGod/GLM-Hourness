@@ -1,123 +1,216 @@
 /**
- * dsh-toolsearch — lazy-loading row: for glm agents, every native tool
- * outside the resident eight-pack face leaves the first request and enters
- * the deferred catalog. The ToolSearch alias (verbatim 3.16.3 schema) searches
- * that catalog and activates matches by registering a scoped same-name
- * wrapper — restrictions do not affect scoped registrations (dsh-tools
- * contracts), so activation re-exposes the native from the next request on.
- * DSH itself emits the tool-addition developer notice when the resolved face
- * grows (integration-probe evidence), matching ZCode's reminder flow.
+ * ZCode local tool search on one agent (docs/DESIGN.md §5.7, §5.10): part of
+ * the dialect, driven by the glm-prompt row's per-request rewrite.
+ *
+ * Installation registers LocalToolSearch and DeferredToolCall in the agent
+ * scope and one `agent/pre-step` listener. For each GLM request the dialect
+ * hands its rewritten face to `expose()`: deferred tools leave the face and
+ * the control tools stay. Non-GLM requests go through `hide()`, which only
+ * removes the control tools. The pre-step listener appends the ZCode
+ * announcement of added, re-added and removed deferred names as a
+ * `<system-reminder>` notice whose delta persists in the notice source, so
+ * later steps, resumed sessions and compacted histories re-derive what the
+ * model has been told.
+ *
+ * DeferredToolCall runs its target through `ctx.tools.execute` without a
+ * parent token: ZCode resolves the wrapper before dispatch, so the target is
+ * the call every pre/post-execute listener (guard, journal, todo reminder,
+ * checkpoints) should see under its own name.
  */
-import type { AgentLike, PluginContext, ToolDefinitionLike } from '../shared/dsh-min.ts'
-import { renderFunctionsBlock, searchTools, type DeferredToolEntry } from './search.ts'
+import { createUserNotice, type AgentLike, type AssembledTool, type ToolDefinitionLike, type ToolExecutionContext } from '../shared/dsh-min.ts'
+import { searchTools } from './search.ts'
+import {
+  ANNOUNCEMENT_SOURCE,
+  announcementDelta,
+  announcementHistory,
+  buildToolExposure,
+  loadedDefinitions,
+  projectSearchResult,
+  type DerivedMessage,
+  type ToolSearchExposure,
+} from './exposure.ts'
+import {
+  DEFERRED_TOOL_CALL_DESCRIPTION,
+  DEFERRED_TOOL_CALL_INVALID,
+  DEFERRED_TOOL_CALL_NAME,
+  DEFERRED_TOOL_CALL_PARAMETERS,
+  DEFERRED_TOOL_CALL_UNAVAILABLE,
+  LOCAL_TOOL_SEARCH_DESCRIPTION,
+  LOCAL_TOOL_SEARCH_NAME,
+  LOCAL_TOOL_SEARCH_PARAMETERS,
+  TOOL_SEARCH_DEFAULT_RESULTS,
+  TOOL_SEARCH_NAME,
+  TOOL_SEARCH_NOT_ENABLED,
+  deferredToolNotAvailable,
+  deferredToolResident,
+  renderToolSearchAnnouncement,
+  wrapSystemReminder,
+} from './zcode-text.ts'
 
-const GLM_PROVIDER = 'glm'
+/** The dialect's handle on one agent's tool search. */
+export interface ToolSearchHandle {
+  /** Rewrite one GLM request's face (the dialect's alias face). */
+  expose(face: readonly AssembledTool[]): readonly AssembledTool[]
+  /** Rewrite one non-GLM request's face: the control tools leave it. */
+  hide(face: readonly AssembledTool[]): readonly AssembledTool[]
+  dispose(): void
+}
 
-/** ToolSearch description, verbatim from the 3.16.3 capture (docs/reference/zcode-tool-schemas.md §8). */
-export const TOOLSEARCH_DESCRIPTION
-  = 'Fetches full schema definitions for deferred tools so they can be called. Deferred tools appear by name in <system-reminder> messages. Until fetched, only the name is known — there is no parameter schema, so the tool cannot be invoked. This tool takes a query, matches it against the deferred tool list, and returns the matched tools\' complete JSONSchema definitions inside a <functions> block. Result format: each matched tool appears as one `<function>{"description": "...", "name": "...", "parameters": {...}}</function>` line. Use "select:<tool_name>" for direct selection.'
+interface SearchValue {
+  readonly query: string
+  readonly matches: readonly string[]
+  readonly total_deferred_tools: number
+  /** Model-visible text blocks, projected at execution time. */
+  readonly content: readonly string[]
+}
 
-const TOOLSEARCH_PARAMETERS = {
+const SEARCH_OUTPUT_SCHEMA = {
   type: 'object',
   properties: {
-    query: { type: 'string', description: 'Query to find deferred tools. Use "select:<tool_name>" for direct selection, or keywords to search. Regular expressions are not supported.' },
-    max_results: { type: 'number', description: 'Maximum number of results to return (default: 5)' },
+    query: { type: 'string' },
+    matches: { type: 'array', items: { type: 'string' } },
+    total_deferred_tools: { type: 'number' },
+    content: { type: 'array', items: { type: 'string' } },
   },
-  required: ['query', 'max_results'],
-} as const
-
-interface AgentState {
-  catalog: DeferredToolEntry[]
-  activated: Set<string>
-  natives: Map<string, ToolDefinitionLike>
-  disposers: Array<() => void>
+  required: ['query', 'matches', 'total_deferred_tools', 'content'],
+  additionalProperties: false,
 }
 
-/** Resident face: the eight-pack aliases cover these natives; everything else defers. */
-const RESIDENT_NATIVES = new Set(['read', 'write', 'edit', 'glob', 'grep', 'pwsh', 'todo_write'])
+interface DeferredValue {
+  readonly name: string
+  /** The target's rendered content, passed through unchanged. */
+  readonly content: ReadonlyArray<{ readonly type: string, readonly text?: string }>
+}
 
-/** Compute the deferred catalog from the native tools visible at agent creation. */
-export function buildCatalog(agent: AgentLike): { catalog: DeferredToolEntry[], natives: Map<string, ToolDefinitionLike> } {
-  const catalog: DeferredToolEntry[] = []
-  const natives = new Map<string, ToolDefinitionLike>()
-  for (const tool of agent.ctx.tools.schemas(agent)) {
-    if (RESIDENT_NATIVES.has(tool.name)) continue
-    const native = agent.ctx.tools.get(tool.name, agent)
-    if (native === undefined) continue
-    natives.set(tool.name, native)
-    catalog.push({ name: tool.name, description: native.description, parameters: native.parameters })
+const DEFERRED_OUTPUT_SCHEMA = {
+  type: 'object',
+  properties: { name: { type: 'string' }, content: { type: 'array' } },
+  required: ['name', 'content'],
+  additionalProperties: false,
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+
+/** ZCode `ToolSearchInputSchema.parse`: `query` string, optional numeric `max_results` (default 5, not clamped). */
+function parseSearchInput(args: unknown): { query: string, maxResults: number } | undefined {
+  if (!isRecord(args) || typeof args.query !== 'string') return undefined
+  const max = args.max_results
+  if (max === undefined) return { query: args.query, maxResults: TOOL_SEARCH_DEFAULT_RESULTS }
+  return typeof max === 'number' && Number.isFinite(max) ? { query: args.query, maxResults: max } : undefined
+}
+
+/** ZCode `DeferredToolCallInputSchema` (strict): exactly a non-empty `name` and an object `input`. */
+function parseDeferredInput(args: unknown): { name: string, input: Record<string, unknown> } | undefined {
+  if (!isRecord(args) || Object.keys(args).some(key => key !== 'name' && key !== 'input')) return undefined
+  const { name, input } = args
+  return typeof name === 'string' && name.length > 0 && isRecord(input) ? { name, input } : undefined
+}
+
+/**
+ * Install tool search on one agent. Returns undefined, leaving the face
+ * untouched, when the agent has no session history to derive state from.
+ */
+export function installToolSearch(agent: AgentLike): ToolSearchHandle | undefined {
+  const session = agent.session
+  if (typeof session?.deriveMessages !== 'function') {
+    console.warn(`dsh-glm-hourness/glm-prompt: tool search not installed for agent ${agent.id}: no session history`)
+    return undefined
   }
-  return { catalog, natives }
-}
+  const history = (): readonly DerivedMessage[] => session.deriveMessages() as readonly DerivedMessage[]
+  // The latest assembled GLM request; tool calls and the pre-step of a step
+  // always follow that step's assembly.
+  let current: ToolSearchExposure | undefined
 
-/** Activate one deferred tool: scoped same-name wrapper with deferLoading. */
-export function activateTool(agent: AgentLike, state: AgentState, name: string): void {
-  if (state.activated.has(name)) return
-  const native = state.natives.get(name)
-  if (native === undefined) return
-  state.activated.add(name)
-  const wrapper: ToolDefinitionLike = {
-    name: native.name,
-    description: native.description,
-    parameters: native.parameters,
-    output: native.output,
-    deferLoading: true,
-    async execute(args, exec) {
-      return native.execute(args, exec) as Promise<unknown>
+  const localToolSearch: ToolDefinitionLike = {
+    name: LOCAL_TOOL_SEARCH_NAME,
+    description: LOCAL_TOOL_SEARCH_DESCRIPTION,
+    parameters: LOCAL_TOOL_SEARCH_PARAMETERS,
+    output: {
+      schema: SEARCH_OUTPUT_SCHEMA,
+      render: (_args, value) => (value as SearchValue).content.map(text => ({ type: 'text', text })),
+    },
+    async execute(args) {
+      const exposure = current
+      if (exposure?.enabled !== true) throw new Error(TOOL_SEARCH_NOT_ENABLED)
+      const input = parseSearchInput(args)
+      if (input === undefined) throw new Error(`Invalid ${LOCAL_TOOL_SEARCH_NAME} input: query must be a string and max_results a number.`)
+      const matches = searchTools(input.query, exposure.catalog, input.maxResults)
+      const value: SearchValue = {
+        query: input.query,
+        matches,
+        total_deferred_tools: exposure.catalog.filter(tool => tool.deferred).length,
+        content: projectSearchResult(matches, exposure, loadedDefinitions(history())),
+      }
+      return value
     },
   }
-  state.disposers.push(agent.ctx.tools.register(wrapper))
-}
 
-/** cordis plugin identity. */
-export const name = 'dsh-glm-hourness/toolsearch'
+  const deferredToolCall: ToolDefinitionLike = {
+    name: DEFERRED_TOOL_CALL_NAME,
+    description: DEFERRED_TOOL_CALL_DESCRIPTION,
+    parameters: DEFERRED_TOOL_CALL_PARAMETERS,
+    output: {
+      schema: DEFERRED_OUTPUT_SCHEMA,
+      render: (_args, value) => [...(value as DeferredValue).content] as Array<{ type: string, text?: string }>,
+    },
+    async execute(args, exec) {
+      const exposure = current
+      if (exposure?.enabled !== true || !exposure.catalog.some(tool => tool.name === DEFERRED_TOOL_CALL_NAME)) throw new Error(DEFERRED_TOOL_CALL_UNAVAILABLE)
+      const input = parseDeferredInput(args)
+      if (input === undefined) throw new Error(DEFERRED_TOOL_CALL_INVALID)
+      const { name } = input
+      const candidate = exposure.catalog.find(tool => tool.name === name)
+      // The catalog names the search tool ToolSearch; DSH registers it as LocalToolSearch.
+      const entry = agent.ctx.tools.get(name === TOOL_SEARCH_NAME ? LOCAL_TOOL_SEARCH_NAME : name, agent)
+      if (candidate === undefined || entry === undefined) throw new Error(deferredToolNotAvailable(name))
+      if (name === TOOL_SEARCH_NAME || name === DEFERRED_TOOL_CALL_NAME || !candidate.deferred) throw new Error(deferredToolResident(name))
+      const call = exec as ToolExecutionContext
+      const result = await agent.ctx.tools.execute({
+        callId: `${call.callId}:deferred`,
+        rootCallId: call.rootCallId ?? call.callId,
+        name,
+        arguments: input.input,
+        agent,
+        signal: call.signal,
+      })
+      for (const context of result.additionalContexts ?? []) call.deferContext(context)
+      if (result.concludesTurn === true) call.concludeTurn()
+      if (result.isError) throw new Error(result.error?.message ?? result.content.map(block => block.text ?? '').join('\n'))
+      const value: DeferredValue = { name, content: result.content }
+      return value
+    },
+  }
 
-/** cordis plugin entry; the returned disposer undoes every agent's registrations. */
-export function apply(ctx: PluginContext): () => void {
-  const states = new WeakMap<AgentLike, AgentState>()
-  const tracked: AgentState[] = []
-  const disposeWatch = ctx.on('agent/created', ({ agent }) => {
-    const provider = agent.model?.current()?.provider
-    if (provider !== GLM_PROVIDER) return
-    const { catalog, natives } = buildCatalog(agent)
-    const state: AgentState = { catalog, natives, activated: new Set(), disposers: [] }
-    states.set(agent, state)
-    tracked.push(state)
-    // Restrictions intersect with the dialect row's: every deferred native
-    // leaves the model-visible face until ToolSearch activates it.
-    if (catalog.length > 0) {
-      state.disposers.push(agent.ctx.tools.restrict({ deny: catalog.map(entry => entry.name) }))
-    }
+  const disposers = [agent.ctx.tools.register(localToolSearch), agent.ctx.tools.register(deferredToolCall)]
 
-    const toolSearch: ToolDefinitionLike = {
-      name: 'ToolSearch',
-      description: TOOLSEARCH_DESCRIPTION,
-      parameters: TOOLSEARCH_PARAMETERS as unknown as Record<string, unknown>,
-      output: {
-        schema: { type: 'object', properties: { matches: { type: 'array', items: { type: 'string' } }, query: { type: 'string' }, total_deferred_tools: { type: 'number' } } },
-        render: (_args, value) => [{ type: 'text', text: typeof (value as { block?: unknown }).block === 'string' ? (value as { block: string }).block : 'no matching deferred tools found' }],
-      },
-      async execute(args, exec) {
-        const target = (exec as { agent?: AgentLike } | undefined)?.agent ?? agent
-        const current = states.get(target)
-        if (current === undefined) return { matches: [], query: String((args as { query?: unknown }).query ?? ''), total_deferred_tools: 0 }
-        const outcome = searchTools(current.catalog, args as { query: string, max_results?: number })
-        for (const match of outcome.matches) activateTool(target, current, match.name)
-        return {
-          matches: outcome.matches.map(match => match.name),
-          query: (args as { query: string }).query,
-          total_deferred_tools: outcome.total,
-          block: renderFunctionsBlock(outcome.matches),
-        }
-      },
-    }
-    state.disposers.push(agent.ctx.tools.register(toolSearch))
-  })
-  return () => {
-    disposeWatch()
-    for (const state of tracked) {
-      for (const dispose of state.disposers.splice(0)) dispose()
-    }
-    tracked.length = 0
+  // Announcement (ZCode attachment collection): after the step's input is
+  // admitted, before the request. Mirrors installModelSelection's guard so
+  // an empty decision never turns into a step.
+  disposers.push(agent.ctx.on('agent/pre-step', async ({ messages, signal, step }, next) => {
+    const decision = await next()
+    if (decision.kind === 'reject' || signal.aborted) return decision
+    if (decision.messages.length === 0 && (step === 1 || messages.length > 0)) return decision
+    const exposure = current
+    if (exposure === undefined) return decision
+    const delta = announcementDelta(announcementHistory(history()), exposure)
+    if (delta === undefined) return decision
+    const summary = `deferred tools: ${delta.addedNames.length} added, ${delta.removedNames.length} removed`
+    const notice = createUserNotice(ANNOUNCEMENT_SOURCE, summary, wrapSystemReminder(renderToolSearchAnnouncement(delta)), { toolSearchAnnouncement: delta })
+    return { ...decision, messages: [...decision.messages, notice] }
+  }))
+
+  return {
+    expose(face) {
+      current = buildToolExposure(face)
+      return current.tools
+    },
+    hide(face) {
+      current = undefined
+      return face.filter(tool => tool.name !== LOCAL_TOOL_SEARCH_NAME && tool.name !== DEFERRED_TOOL_CALL_NAME)
+    },
+    dispose() {
+      for (const dispose of disposers.splice(0)) dispose()
+    },
   }
 }

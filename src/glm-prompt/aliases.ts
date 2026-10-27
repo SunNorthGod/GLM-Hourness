@@ -1,10 +1,8 @@
 /**
- * Eight-pack alias surface (S1): ZCode-facing schemas (verbatim, from the
- * 3.16.3 protocol captures in docs/reference/zcode-tool-schemas.md) plus argument
- * mapping onto captured native DSH executors. ToolSearch ships with the
- * toolsearch row (S3) — its deferred registry does not exist yet, so S1
- * exposes seven aliases and the deferred declaration stays honest about
- * "fetch via ToolSearch" only once that row lands.
+ * Alias surface: ZCode-facing schemas (taken from docs/reference/zcode-tool-schemas.md,
+ * pending the source rebuild, DESIGN.md §5.9) plus argument mapping onto
+ * captured native DSH executors. Tool search (LocalToolSearch,
+ * DeferredToolCall) lives in src/toolsearch/.
  */
 import type { JsonRecord } from './json.ts'
 import type { ToolDefinitionLike } from '../shared/dsh-min.ts'
@@ -139,7 +137,7 @@ export const aliasSpecs: readonly AliasSpec[] = [
   },
 ]
 
-/** Native names the dialect hides once aliases cover them (ToolSearch: S3). */
+/** Native names the dialect hides once aliases cover them. */
 export const hiddenNatives: readonly string[] = ['read', 'write', 'edit', 'glob', 'grep', 'pwsh', 'todo_write']
 
 /** Build a ZCode-facing alias tool delegating to a captured native executor. */

@@ -10,7 +10,6 @@
     "./glm-login": "./dist/glm-llm/login-row.js",
     "./glm-prompt": "./dist/glm-prompt/index.js",
     "./glm-compact": "./dist/glm-prompt/compact-row.js",
-    "./toolsearch": "./dist/toolsearch/index.js",
     "./guard": "./dist/guard/index.js",
     "./memory": "./dist/memory/index.js",
     "./workflow": "./dist/workflow/index.js",

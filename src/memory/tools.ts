@@ -1,9 +1,9 @@
 /**
  * Memory tools (memory_store / memory_query / memory_forget): model-facing
  * surface over the persistent store. They register through the normal tools
- * seam, so the toolsearch row automatically defers them into the lazy
- * catalog for glm agents (non-resident until ToolSearch activates them).
- * The git policy refuses storing what the repository can already answer.
+ * seam; GLM tool search keeps them resident (ORCHESTRATION.md §8,
+ * src/toolsearch/exposure.ts). The git policy refuses storing what the
+ * repository can already answer.
  */
 import type { ToolDefinitionLike } from '../shared/dsh-min.ts'
 import { forget, loadStore, remember, retrieve, saveStore, shouldStore, strengthen, type MemoryStoreData } from './store.ts'

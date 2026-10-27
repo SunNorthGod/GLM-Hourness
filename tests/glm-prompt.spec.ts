@@ -3,7 +3,6 @@ import test from 'node:test'
 import { buildIdentitySection } from '../src/glm-prompt/identity.ts'
 import {
   CLI_PREFIX,
-  DEFERRED_DECLARATION,
   HARNESS_BLOCK,
   SECURITY_NOTICE_OFFICIAL,
   SECURITY_NOTICE_USER,
@@ -33,10 +32,6 @@ test('keeps the harness block at five bullets plus heading', () => {
 
 test('freezes reminder thresholds at 10/10', () => {
   assert.deepEqual(TODO_REMINDER_THRESHOLDS, { TURNS_SINCE_WRITE: 10, TURNS_BETWEEN_REMINDERS: 10 })
-})
-
-test('declares deferred mechanics without a schema promise', () => {
-  assert.ok(DEFERRED_DECLARATION.includes('no parameter schema'))
 })
 
 test('identity assembly mirrors the bundle join with the chosen notice', () => {

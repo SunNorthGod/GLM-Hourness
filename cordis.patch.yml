@@ -24,9 +24,6 @@
     - id: glm-hourness/glm-compact
       name: ./dist/glm-prompt/compact-row.js
       config: {}
-    - id: glm-hourness/toolsearch
-      name: ./dist/toolsearch/index.js
-      config: {}
     - id: glm-hourness/guard
       name: ./dist/guard/index.js
       config: {}

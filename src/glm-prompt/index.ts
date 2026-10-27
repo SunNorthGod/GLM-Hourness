@@ -10,19 +10,23 @@
  * that listener reads the route the model-selection listener injected and,
  * for that request alone, rewrites the sections and the tool face: a GLM
  * request sees the ZCode identity and aliases instead of the natives they
- * cover; any other request sees the natives and not the aliases. Nothing is
- * restricted or unmounted, so a mid-session route switch takes effect on the
- * next step. Activation never throws; one agent's failure leaves the others.
+ * cover, with ZCode's local tool search applied on top (src/toolsearch/);
+ * any other request sees the natives and not the aliases or the search
+ * controls. Nothing is restricted or unmounted, so a mid-session route
+ * switch takes effect on the next step. Activation never throws; one
+ * agent's failure leaves the others.
  */
 import { buildIdentitySection } from './identity.ts'
 import { aliasSpecs, buildAlias, hiddenNatives } from './aliases.ts'
-import { CLI_PREFIX, DEFERRED_DECLARATION } from './verbatim.ts'
+import { CLI_PREFIX } from './verbatim.ts'
 import { personaSection, PERSONA_LEVELS, type PersonaLevel } from './persona.ts'
 import { buildEnvInfoSection, CONTEXT_MANAGEMENT_DSH, MEMORY_SECTION_DSH, SESSION_GUIDANCE_DSH, SKILLS_NOTE_DSH } from './localize.ts'
 import { isGlmAssembly, rewriteDialectSections, rewriteToolFace } from './assembly.ts'
 import { mapTodoWriteToDsh, zcodeTodoWriteDescription, zcodeTodoWriteSchema } from './todowrite.ts'
 import { initialReminderState, observeToolCall, type ReminderState } from './todo-reminder.ts'
 import { assemblyRoute, createRouteTracker } from '../shared/route.ts'
+import { installToolSearch } from '../toolsearch/index.ts'
+import { DEFERRED_TOOL_CALL_NAME } from '../toolsearch/zcode-text.ts'
 import { createUserNotice, type AgentLike, type AssemblePayload, type PluginContext, type ToolDefinitionLike, type UserNotice } from '../shared/dsh-min.ts'
 import Schema from '../shared/schemastery.ts'
 import type { JsonValue } from './json.ts'
@@ -37,8 +41,8 @@ export interface GlmPromptConfig {
   readonly env?: { cwd: string, platform: string, shell: string, osVersion: string, isGitRepository: boolean, additionalDirectories?: readonly string[], modelLine?: string }
   /** Whether user-invocable skills exist (ledger ⑤ adds the skills note). */
   readonly skills?: boolean
-  /** Whether the toolsearch row ships, so the deferred-tools declaration is honest. Default true. */
-  readonly toolsearch?: boolean
+  /** ZCode tool search for GLM requests: `local` (default, DESIGN.md §5.10) or `off` (every tool loads directly). */
+  readonly toolSearchMode?: 'local' | 'off'
 }
 
 /** Runtime Config schema: exposes the row knobs (reporting depth included) as real switches in the DSH plugin manager. */
@@ -55,7 +59,7 @@ export const Config = Schema.object({
     modelLine: Schema.string(),
   }); delete (env.meta as { default?: unknown }).default; return env })().description('Host facts for the Environment section; omitted skips the section.'),
   skills: Schema.boolean().default(false).description('Whether user-invocable skills exist (adds the skills note).'),
-  toolsearch: Schema.boolean().default(true).description('Whether the toolsearch row ships, keeping the deferred-tools declaration honest.'),
+  toolSearchMode: Schema.union(['local', 'off'].map(value => Schema.const(value))).default('local').description('ZCode tool search for GLM requests: local defers tools behind LocalToolSearch and DeferredToolCall; off loads every tool directly.'),
 })
 
 /** Order of the harness identity section this row shadows (SECTION_ORDERS.HARNESS_IDENTITY). */
@@ -78,9 +82,6 @@ export function dialectSections(outputStyleActive = false, persona: PersonaLevel
           { name: 'glm:memory', order: 2350, text: MEMORY_SECTION_DSH },
           { name: 'glm:context-management', order: 2400, text: CONTEXT_MANAGEMENT_DSH },
         ]
-      : []),
-    ...((config.toolsearch ?? true) === true
-      ? [{ name: 'glm:deferred-tools', order: 2500, text: DEFERRED_DECLARATION }]
       : []),
   ]
 }
@@ -121,9 +122,11 @@ export function buildAgentAliases(agent: AgentLike): ToolDefinitionLike[] {
 }
 
 /**
- * Install the dialect on one agent: scoped alias registrations plus the
- * per-request rewrite. `onRoute` observes every assembled route (the todo
- * reminder reads it back within the same step).
+ * Install the dialect on one agent: scoped alias registrations, tool search
+ * (unless `toolSearchMode` is `off`), and the per-request rewrite. Tool
+ * search runs on the alias face, so its resident/deferred split sees ZCode
+ * names. `onRoute` observes every assembled route (the todo reminder reads
+ * it back within the same step).
  */
 export function installDialect(agent: AgentLike, config: GlmPromptConfig = {}, onRoute?: (route: ReturnType<typeof assemblyRoute>) => void): () => void {
   const sections = dialectSections(false, config.persona ?? 'balanced', config)
@@ -131,12 +134,16 @@ export function installDialect(agent: AgentLike, config: GlmPromptConfig = {}, o
   const aliasNames = new Set(aliases.map(alias => alias.name))
   const coveredNatives = new Set([...hiddenNatives].filter(name => agent.ctx.tools.get(name, agent) !== undefined))
   const disposers = aliases.map(alias => agent.ctx.tools.register(alias))
+  const toolSearch = (config.toolSearchMode ?? 'local') === 'local' ? installToolSearch(agent) : undefined
+  if (toolSearch !== undefined) disposers.push(() => toolSearch.dispose())
   disposers.push(agent.ctx.on('system-prompt/assemble', async (_assembly: AssemblePayload, _context: unknown, next: () => Promise<AssemblePayload>) => {
     const assembled = await next()
     onRoute?.(assemblyRoute(assembled))
     const glm = isGlmAssembly(assembled)
     const withSections = glm ? rewriteDialectSections(assembled, sections) : assembled
-    return { ...withSections, tools: rewriteToolFace(withSections.tools, glm, aliasNames, coveredNatives) }
+    const face = rewriteToolFace(withSections.tools, glm, aliasNames, coveredNatives)
+    const tools = toolSearch === undefined ? face : glm ? toolSearch.expose(face) : toolSearch.hide(face)
+    return { ...withSections, tools }
   }, { prepend: true }))
   return () => { for (const dispose of disposers.splice(0)) dispose() }
 }
@@ -180,6 +187,9 @@ export function apply(ctx: PluginContext, config: GlmPromptConfig = {}): () => v
   disposers.push(ctx.on('tools/post-execute', (exec, _result, next) => {
     const agent = exec.agent
     if (agent === undefined || exec.parent !== undefined || !routes.isGlm(agent)) return next()
+    // The wrapper is transparent: its target runs as a call of its own (ZCode
+    // keeps the target identity in history), so it is counted there.
+    if (exec.name === DEFERRED_TOOL_CALL_NAME) return next()
     const observed = observeToolCall(reminderStates.get(agent) ?? initialReminderState(), exec.name, todosFromCall(exec.arguments))
     reminderStates.set(agent, observed.state)
     if (observed.reminder === undefined) return next()

@@ -55,13 +55,6 @@ export const HARNESS_BLOCK = [
   '- Reference code as `file_path:line_number` \u2014 it\'s clickable.',
 ].join('\n')
 
-/**
- * Deferred-tools declaration paragraph, injected before the deferred name list
- * (protocol capture; see docs/reference/zcode-tool-schemas.md appendix).
- */
-export const DEFERRED_DECLARATION
-  = 'Some tools are deferred and not listed above. When a deferred tool may be needed, its name appears by name in a `<system-reminder>` message near the point of need \u2014 for example the harness may list newly available tools, or ones no longer available. Until a deferred tool is fetched via the ToolSearch tool, only its name is known \u2014 there is no parameter schema, so the tool cannot be invoked.'
-
 /** Todo reminder body (z4o). Verbatim. */
 export const TODO_REMINDER_BODY
   = 'The TodoWrite tool hasn\'t been used recently. If you\'re working on tasks that would benefit from tracking progress, consider using the TodoWrite tool to track progress. Also consider cleaning up the todo list if has become stale and no longer matches what you are working on. Only use it if it\'s relevant to the current work. This is just a gentle reminder - ignore if not applicable.'

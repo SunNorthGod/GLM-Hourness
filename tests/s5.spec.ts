@@ -113,7 +113,7 @@ test('persona slider keeps three levels and injects as a dialect section', () =>
   assert.ok(persona!.text.includes('# Reporting Depth'))
   assert.ok(persona!.text.includes('简洁（concise）'))
   assert.ok(persona!.text.includes('start there and adjust per task'))
-  assert.deepEqual(sections.map(section => section.name), ['glm:cli-prefix', 'harness:identity', 'glm:persona', 'glm:deferred-tools'])
+  assert.deepEqual(sections.map(section => section.name), ['glm:cli-prefix', 'harness:identity', 'glm:persona'])
 })
 
 const usageJsonl = [

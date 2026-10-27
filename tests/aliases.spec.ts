@@ -2,9 +2,9 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { aliasSpecs, buildAlias, hiddenNatives } from '../src/glm-prompt/aliases.ts'
 
-test('six aliases ship in S1 (ToolSearch lands with the toolsearch row)', () => {
+test('six aliases ship over natives (TodoWrite is built separately; tool search lives in src/toolsearch/)', () => {
   assert.deepEqual(aliasSpecs.map(spec => spec.zcodeName), ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash'])
-  assert.ok(!hiddenNatives.includes('toolsearch'))
+  assert.deepEqual(hiddenNatives, ['read', 'write', 'edit', 'glob', 'grep', 'pwsh', 'todo_write'])
 })
 
 test('every alias keeps its verbatim required fields', () => {

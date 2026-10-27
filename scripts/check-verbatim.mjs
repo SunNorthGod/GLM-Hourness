@@ -17,8 +17,6 @@ import { join } from 'node:path'
 
 /** Items still awaiting the source rebuild (ROADMAP M1.1). Shrink only. */
 const KNOWN_DEVIATIONS = new Set([
-  'DEFERRED_DECLARATION',
-  'TOOLSEARCH_DESCRIPTION',
   'TodoWrite description',
   'Read description',
   'Write description',
@@ -26,6 +24,14 @@ const KNOWN_DEVIATIONS = new Set([
   'Glob description',
   'Grep description',
 ])
+
+/**
+ * Verbatim mirror files: every string and template-literal chunk they
+ * contain is a verbatim claim, so templates are checked piece by piece
+ * between their interpolations. The scanner skips comments and does not
+ * parse regex literals or division, which these files must not contain.
+ */
+const MIRROR_FILES = ['src/toolsearch/zcode-text.ts']
 
 /** Minimum line length checked; shorter fragments are structural (headings, blank joints). */
 const MIN_LINE = 13
@@ -58,6 +64,58 @@ function collectSource(root) {
   return out.join('\n')
 }
 
+/**
+ * Raw (still escaped) text of every string literal and template-literal
+ * chunk in a TypeScript source, including literals nested in `${}`.
+ */
+function literalChunks(source) {
+  const chunks = []
+  let i = 0
+  const quoted = (quote) => {
+    let text = ''
+    for (i += 1; i < source.length && source[i] !== quote; i += 1) {
+      if (source[i] === BACKSLASH) { text += source.slice(i, i + 2); i += 1 }
+      else text += source[i]
+    }
+    i += 1
+    chunks.push(text)
+  }
+  const template = () => {
+    let text = ''
+    for (i += 1; i < source.length && source[i] !== '`'; i += 1) {
+      if (source[i] === BACKSLASH) { text += source.slice(i, i + 2); i += 1 }
+      else if (source[i] === '$' && source[i + 1] === '{') {
+        chunks.push(text)
+        text = ''
+        i += 2
+        code('}')
+      }
+      else text += source[i]
+    }
+    i += 1
+    chunks.push(text)
+  }
+  // Scan code until the closing brace of an interpolation (or end of file).
+  const code = (until) => {
+    let depth = 0
+    while (i < source.length) {
+      const char = source[i]
+      if (char === '/' && source[i + 1] === '/') { i = source.indexOf('\n', i); if (i < 0) i = source.length; continue }
+      if (char === '/' && source[i + 1] === '*') { i = source.indexOf('*/', i + 2) + 2; if (i < 2) i = source.length; continue }
+      if (char === '\'' || char === '"') { quoted(char); continue }
+      if (char === '`') { template(); continue }
+      if (char === '{') depth += 1
+      if (char === '}') {
+        if (depth === 0 && until === '}') return
+        depth -= 1
+      }
+      i += 1
+    }
+  }
+  code(undefined)
+  return chunks
+}
+
 function loadReferences() {
   const refs = []
   const bundle = process.env.ZCODE_BUNDLE ?? 'C:/Program Files/ZCode/resources/glm/zcode.cjs'
@@ -70,7 +128,6 @@ async function loadItems() {
   const verbatim = await import('../src/glm-prompt/verbatim.ts')
   const compact = await import('../src/glm-prompt/compact.ts')
   const localize = await import('../src/glm-prompt/localize.ts')
-  const toolsearch = await import('../src/toolsearch/index.ts')
   const todowrite = await import('../src/glm-prompt/todowrite.ts')
   const aliases = await import('../src/glm-prompt/aliases.ts')
   const system = await import('../src/glm-llm/zcode-system.ts')
@@ -80,18 +137,19 @@ async function loadItems() {
     IDENTITY_OPENING_PLAIN: verbatim.IDENTITY_OPENING_PLAIN,
     SECURITY_NOTICE_OFFICIAL: verbatim.SECURITY_NOTICE_OFFICIAL,
     HARNESS_BLOCK: verbatim.HARNESS_BLOCK,
-    DEFERRED_DECLARATION: verbatim.DEFERRED_DECLARATION,
     TODO_REMINDER_BODY: verbatim.TODO_REMINDER_BODY,
     TODO_REMINDER_ECHO_HEADER: verbatim.TODO_REMINDER_ECHO_HEADER,
     'compact prompt': compact.buildCompactPrompt(undefined),
     CONTEXT_MANAGEMENT_DSH: localize.CONTEXT_MANAGEMENT_DSH,
-    TOOLSEARCH_DESCRIPTION: toolsearch.TOOLSEARCH_DESCRIPTION,
     'TodoWrite description': todowrite.zcodeTodoWriteDescription,
     'start-plan cliPrefix': system.ZCODE_SYSTEM.cliPrefix,
     ...Object.fromEntries(system.ZCODE_SYSTEM.stableSections.map((text, index) => [`start-plan stable section ${index + 1}`, text])),
   }
   // Bash is a localized rewrite (DESIGN.md §5.3 ⑥), not a verbatim claim.
   for (const spec of aliases.aliasSpecs) if (spec.zcodeName !== 'Bash') items[`${spec.zcodeName} description`] = spec.description
+  for (const file of MIRROR_FILES) {
+    literalChunks(readFileSync(file, 'utf8')).forEach((chunk, index) => { items[`${file} literal ${index + 1}`] = unescapeJs(chunk) })
+  }
   return items
 }
 
@@ -103,6 +161,9 @@ if (references.length === 0) {
 const items = await loadItems()
 const failures = []
 const deviations = []
+for (const name of KNOWN_DEVIATIONS) {
+  if (!(name in items)) failures.push(`${name}: listed in KNOWN_DEVIATIONS but no longer checked; remove it`)
+}
 for (const [name, text] of Object.entries(items)) {
   const lines = String(text).split('\n').map(line => line.trim()).filter(line => line.length >= MIN_LINE)
   const missing = lines.filter(line => !references.some(ref => ref.text.includes(line)))

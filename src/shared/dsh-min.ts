@@ -8,14 +8,18 @@
  *   through agent.ctx is scoped to that agent and shadows a global of the
  *   same name
  * - ctx.tools.get(name, scope) — the definition a scope sees (no executable())
- * - ctx.tools.restrict({ allow, deny }) — scoped only; filters inherited
- *   tools, never the scope's own registrations
  * - agent.ctx.on('system-prompt/assemble') — runs every step before
  *   agent/pre-step; the request carries exactly the returned `tools`, and the
  *   route lives only in `variables.provider` / `variables.model`
  * - ctx.on('tools/post-execute') — (exec, result, next) waterfall whose
  *   decision may attach `additionalContexts`; nested sub-dispatches carry
  *   `exec.parent`
+ * - ctx.tools.execute(input) — one same-process call through pre-execute,
+ *   guards, dispatch and post-execute, resolving to the materialized result
+ * - agent.ctx.on('agent/pre-step') — after the step's assembly; a decision's
+ *   `messages` are appended to the session as the step's input
+ * - agent.session.deriveMessages() — the request-visible history (after
+ *   compaction projections)
  */
 import { randomUUID } from 'node:crypto'
 
@@ -24,7 +28,57 @@ export interface AgentLike {
   readonly ctx: PluginContext
   /** Model route holder; rc.3 desktop answers `{}` for the main agent (route lives in the assembly). */
   readonly model?: { current(): { provider?: string, model?: string } | undefined }
+  /** The agent's session; absent only outside the agent runtime. */
+  readonly session?: { deriveMessages(): readonly unknown[] }
 }
+
+/** The execution object a tool body receives as its second argument (dsh-tools `createExecution`). */
+export interface ToolExecutionContext {
+  readonly callId: string
+  readonly rootCallId?: string
+  readonly signal: AbortSignal
+  /** Attach a context message to this call's result. */
+  deferContext(context: unknown): void
+  /** Mark this call as concluding the turn. */
+  concludeTurn(): void
+}
+
+/** Input of `ctx.tools.execute`. */
+export interface ToolExecuteInput {
+  readonly callId: string
+  readonly rootCallId?: string
+  readonly name: string
+  readonly arguments: unknown
+  readonly agent?: AgentLike
+  /** Transport sub-dispatch token; listeners treat a call carrying it as nested. */
+  readonly parent?: unknown
+  readonly signal: AbortSignal
+}
+
+/** The materialized final result `ctx.tools.execute` resolves to. */
+export interface ToolFinalResult {
+  readonly isError: boolean
+  readonly content: ReadonlyArray<{ readonly type: string, readonly text?: string }>
+  readonly value?: unknown
+  readonly error?: { readonly message: string }
+  readonly additionalContexts?: readonly unknown[]
+  readonly concludesTurn?: true
+}
+
+/** `agent/pre-step` payload. */
+export interface PreStepPayload {
+  readonly agent: AgentLike
+  /** Messages claimed from the inbox for this step. */
+  readonly messages: readonly unknown[]
+  readonly signal: AbortSignal
+  readonly turn: number
+  readonly step: number
+}
+
+/** `agent/pre-step` decision; unknown fields pass through. */
+export type PreStepDecision =
+  | { readonly kind: 'reject', readonly [key: string]: unknown }
+  | { readonly kind: 'enter', readonly messages: readonly unknown[], readonly [key: string]: unknown }
 
 export interface SectionSpec {
   readonly name: string
@@ -47,17 +101,15 @@ export interface ToolDefinitionLike {
     readonly schema: Record<string, unknown>
     render(args: unknown, value: unknown): Array<{ type: string, text?: string }>
   }
-  deferLoading?: true
   execute(args: unknown, exec: unknown): Promise<unknown>
 }
 
 export interface ToolsLike {
   register(definition: ToolDefinitionLike): () => void
-  restrict(filter: { allow?: string[], deny?: string[] }): () => void
-  /** Visible schemas for a scope (the agent); omitted = the global view. */
-  schemas(scope?: unknown): Array<{ name: string }>
   /** The definition a scope resolves (scoped shadows global; a restricted-away global reads as absent). */
   get(name: string, scope?: unknown): ToolDefinitionLike | undefined
+  /** Run one call through the full tool pipeline. */
+  execute(input: ToolExecuteInput): Promise<ToolFinalResult>
 }
 
 export interface ToolExecutionPayload {
@@ -113,6 +165,8 @@ export interface PluginContext {
   on(event: 'tools/post-execute', listener: (exec: ToolExecutionPayload, result: unknown, next: () => Promise<PostExecuteDecision>) => Promise<PostExecuteDecision>): () => void
   /** Per-request prompt assembly; `options.prepend` registers outermost so post-`next()` sees injected variables. */
   on(event: 'system-prompt/assemble', listener: (assembly: AssemblePayload, context: unknown, next: () => Promise<AssemblePayload>) => Promise<AssemblePayload>, options?: { prepend?: boolean }): () => void
+  /** Step admission (agent-scoped): runs after the step's assembly, before the request. */
+  on(event: 'agent/pre-step', listener: (payload: PreStepPayload, next: () => Promise<PreStepDecision>) => Promise<PreStepDecision>, options?: { prepend?: boolean }): () => void
 }
 
 /** Recursively freeze a freshly built JSON value (createMessage freezes its output). */
