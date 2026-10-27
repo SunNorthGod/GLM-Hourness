@@ -81,6 +81,10 @@ test('trace headers use the exact context when provided', () => {
 test('encodeMessage folds seam roles into anthropic blocks', () => {
   assert.equal(encodeMessage({ role: 'system', content: [] }), undefined)
   assert.deepEqual(
+    encodeMessage({ role: 'developer', content: [{ type: 'text', text: 'note' }] }),
+    { role: 'user', content: [{ type: 'text', text: '<system-reminder>\nnote\n</system-reminder>' }] },
+  )
+  assert.deepEqual(
     encodeMessage({ role: 'tool', toolCallId: 'tu1', content: [{ type: 'text', text: 'done' }] }),
     { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'tu1', content: 'done' }] },
   )
@@ -94,8 +98,9 @@ test('encodeRequest builds the streaming body with system blocks and tools', () 
   const request = encodeRequest({
     provider: 'glm', model: 'glm-5.3',
     messages: [
-      { role: 'user', content: [{ type: 'text', text: 'hello' }] },
       { role: 'system', content: [{ type: 'text', text: 'sys' }] },
+      { role: 'user', content: [{ type: 'text', text: 'hello' }] },
+      { role: 'system', content: [{ type: 'text', text: 'later' }] },
     ],
     tools: [{ name: 'TodoWrite', description: 'd', parameters: { type: 'object' } }],
     maxTokens: 4096,
@@ -103,7 +108,11 @@ test('encodeRequest builds the streaming body with system blocks and tools', () 
   assert.equal(request.stream, true)
   assert.equal(request.max_tokens, 4096)
   assert.deepEqual(request.system, [{ type: 'text', text: 'sys', cache_control: { type: 'ephemeral' } }])
-  assert.deepEqual(request.messages, [{ role: 'user', content: [{ type: 'text', text: 'hello' }] }])
+  // The leading system message is the caller's system block; a later one rides a user turn.
+  assert.deepEqual(request.messages, [
+    { role: 'user', content: [{ type: 'text', text: 'hello' }] },
+    { role: 'user', content: [{ type: 'text', text: '<system-reminder>\nlater\n</system-reminder>' }] },
+  ])
   assert.deepEqual(request.tools, [{ name: 'TodoWrite', description: 'd', input_schema: { type: 'object' } }])
 })
 

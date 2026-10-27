@@ -47,7 +47,9 @@ test('adapter model catalog satisfies the DSH contract at runtime', async () => 
   assert.equal(resolved.id, 'glm-5.3')
   assert.ok((resolved.context?.contextWindow ?? 0) > 0)
   assert.equal(resolved.reasoning?.efforts.length, 3)
-  assert.equal(resolved.systemPromptUpdate, 'in-history')
+  // Anthropic has no mid-conversation system role: the adapter must not
+  // declare in-history updates (the encoder lifts the leading system prompt).
+  assert.equal(resolved.systemPromptUpdate, undefined)
   // The adapter base default preserves normalized images unchanged.
   const target = adapter.imageRequestTarget('glm-zcode', 'glm-5.3', { attachmentId: 'a1', mediaType: 'image/png', bytes: 1024, width: 640, height: 480 } as never)
   assert.deepEqual(target, { width: 640, height: 480, maxBytes: 1024 })
@@ -94,6 +96,29 @@ test('coding-plan stream walks the full chain: store → headers → unsigned si
   const text = chunks.filter(chunk => chunk.type === 'block-end').map(chunk => chunk.type === 'block-end' && chunk.block.type === 'text' ? chunk.block.text : '').join('')
   assert.equal(text, 'ok')
   assert.ok(chunks.some(chunk => chunk.type === 'finish' && chunk.reason.kind === 'stop'))
+})
+
+test('the DSH system prompt arrives as leading system messages and lands in the system field', async () => {
+  // DSH runtimes deliver the assembled prompt in history, not GenerateOptions.system
+  // (L3 probe 2026-10-27); dropping those messages would send GLM no system prompt.
+  const { fs } = memoryStore()
+  await saveCredential(fs, 'C:/ws/.llm/credentials.json', credential)
+  const captured: { body?: Record<string, unknown> } = {}
+  const adapter = new ZcodeAdapter({ home: 'C:/ws/.llm', fetchImpl: makeUpstream(captured), storeFs: fs, env: {} as NodeJS.ProcessEnv })
+  const { system: _requestLevel, ...base } = request()
+  const options = {
+    ...base,
+    messages: [
+      { role: 'system', content: [{ type: 'text', text: 'You are ZCode, an interactive coding agent' }] },
+      ...base.messages,
+      { role: 'developer', content: [{ type: 'text', text: 'harness notice' }] },
+    ],
+  } as unknown as typeof base
+  for await (const _chunk of adapter.stream(options)) { void _chunk }
+  assert.deepEqual(captured.body!.system, [{ type: 'text', text: 'You are ZCode, an interactive coding agent' }])
+  const messages = captured.body!.messages as Array<{ role: string, content: Array<{ type: string, text?: string }> }>
+  assert.equal(messages[0]!.role, 'user') // the leading system message left the history
+  assert.equal(messages.at(-1)!.content[0]!.text, '<system-reminder>\nharness notice\n</system-reminder>')
 })
 
 test('start-plan wraps the system in the 3-block assembly and pins the currentDate prefix once', async () => {

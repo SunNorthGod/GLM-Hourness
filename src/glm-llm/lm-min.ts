@@ -64,15 +64,6 @@ export interface GenerateOptionsLike {
   signal?: AbortSignal
 }
 
-export interface ResolvedModelInfoLike {
-  provider: string
-  id: string
-  name: string
-  defaultMaxTokens: number
-  reasoning: { efforts: ReadonlyArray<{ id: string, name: string, description: string }>, defaultEffort: string }
-  systemPromptUpdate: 'in-history'
-}
-
 /** GLM thinking efforts in the ZCode distribution: low / high / max. */
 export const GLM_REASONING_EFFORTS = [
   { id: 'low', name: 'Low', description: 'Routine or latency-sensitive tasks; also the floor when thinking cannot be disabled.' },

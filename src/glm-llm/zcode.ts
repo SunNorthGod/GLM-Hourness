@@ -20,7 +20,7 @@ import { DEFAULT_IDENTITY, ensureDeviceMid, resolveEnvPromptInfo, type ZcodeIden
 import { buildAuthHeaders, type PlanId } from './headers.ts'
 import { EndpointRoutingService } from './endpoint-routing.ts'
 import { ClientSigningManager, sendWithClientSigning } from './signing.ts'
-import { encodeRequest, decodeSse } from './anthropic.ts'
+import { encodeRequest, decodeSse, splitSystemPrompt } from './anthropic.ts'
 import { buildStartPlanSystem, buildContextPrefixMessage } from './start-plan.ts'
 import { GLM_DEFAULT_MAX_TOKENS, GLM_REASONING_EFFORTS, type GenerateOptionsLike } from './lm-min.ts'
 import type {
@@ -195,8 +195,10 @@ export class ZcodeAdapter {
       inputModalities: ['text', 'image'] as const,
       context: { contextWindow: 512_000 },
       defaultMaxTokens: GLM_DEFAULT_MAX_TOKENS,
+      // No `systemPromptUpdate`: Anthropic has no mid-conversation system
+      // role, so a changed prompt must rewrite the leading system message
+      // (which the encoder lifts into the `system` field).
       reasoning: { efforts: GLM_REASONING_EFFORTS.map(effort => ({ ...effort, id: effort.id as ReasoningEffortId })), defaultEffort: 'high' as ReasoningEffortId },
-      systemPromptUpdate: 'in-history',
     })
   }
 
@@ -258,14 +260,16 @@ export class ZcodeAdapter {
     const deviceMid = await this.deviceMid().catch(() => undefined)
     const identity = { ...DEFAULT_IDENTITY, ...this.options.identity, ...(deviceMid === undefined ? {} : { deviceMid }) }
 
-    // System blocks: coding-plan passes the caller's system through; start-plan
-    // wraps it in the gateway-fingerprinted 3-block assembly.
+    // System blocks: DSH delivers the system prompt as leading system
+    // messages; coding-plan sends it as one block, start-plan wraps it in the
+    // gateway-fingerprinted 3-block assembly.
+    const { system, messages: history } = splitSystemPrompt(options)
     const systemBlocks = plan === 'start-plan'
-      ? buildStartPlanSystem(options.system ?? '', resolveEnvPromptInfo(this.options.env), 'bigmodel', options.model)
-      : options.system === undefined ? [] : [{ type: 'text' as const, text: options.system }]
-    const messages = plan === 'start-plan' && !hasCurrentDatePrefix(options.messages)
-      ? [buildContextPrefixMessage(), ...options.messages]
-      : options.messages
+      ? buildStartPlanSystem(system, resolveEnvPromptInfo(this.options.env), 'bigmodel', options.model)
+      : system.length === 0 ? [] : [{ type: 'text' as const, text: system }]
+    const messages = plan === 'start-plan' && !hasCurrentDatePrefix(history)
+      ? [buildContextPrefixMessage(), ...history]
+      : history
     const body = JSON.stringify(encodeRequest({ ...options, messages }, systemBlocks))
 
     const upstreamBase = `${BIGMODEL_ANTHROPIC_BASE}/v1/messages`

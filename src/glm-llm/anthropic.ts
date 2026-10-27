@@ -18,9 +18,38 @@ export interface AnthropicRequest {
   readonly temperature?: number
 }
 
+/**
+ * Split the DSH request into the Anthropic system text and the remaining
+ * history. DSH delivers the system prompt as leading `system` messages
+ * (not `GenerateOptions.system`); the request-level text and every leading
+ * system message join, in order, into the top-level `system` field — the
+ * same rule as DSH's own pi-ai adapter.
+ */
+export function splitSystemPrompt(options: Pick<GenerateOptionsLike, 'system' | 'messages'>): { system: string, messages: readonly RequestMessageLike[] } {
+  const parts = options.system === undefined ? [] : [options.system]
+  let end = 0
+  for (const message of options.messages) {
+    if (message.role !== 'system') break
+    parts.push(message.content.map(part => part.text ?? '').join(''))
+    end += 1
+  }
+  return { system: parts.filter(part => part.length > 0).join('\n\n'), messages: options.messages.slice(end) }
+}
+
+/** Wrap harness text in the `<system-reminder>` envelope GLM reads mid-conversation (ZCode format). */
+function systemReminder(text: string): string {
+  return ['<system-reminder>', text, '</system-reminder>'].join('\n')
+}
+
 /** Encode one seam message into the Anthropic messages array. */
 export function encodeMessage(message: RequestMessageLike): { role: 'user' | 'assistant', content: unknown } | undefined {
-  if (message.role === 'system' || message.role === 'developer') return undefined // system rides the `system` field
+  if (message.role === 'system' || message.role === 'developer') {
+    // A system or developer message after the leading prompt is harness
+    // context; Anthropic has no mid-conversation system role, so it rides a
+    // user turn as a system reminder.
+    const text = message.content.map(part => part.type === 'text' ? part.text ?? '' : '').join('\n').trim()
+    return text.length === 0 ? undefined : { role: 'user', content: [{ type: 'text', text: systemReminder(text) }] }
+  }
   if (message.role === 'tool') {
     const text = message.content.map(part => part.text ?? '').join('\n')
     return { role: 'user', content: [{ type: 'tool_result', tool_use_id: message.toolCallId ?? '', content: text.length > 0 ? text : '(no output)' }] }
@@ -47,7 +76,8 @@ function safeParse(raw: string): unknown {
 
 /** Encode the full seam request into the upstream Anthropic body. */
 export function encodeRequest(options: GenerateOptionsLike, systemBlocks?: ReadonlyArray<{ type: 'text', text: string, cache_control?: { type: 'ephemeral' } }>): AnthropicRequest {
-  const messages = options.messages
+  // Leading system messages belong to `systemBlocks` (see splitSystemPrompt).
+  const messages = splitSystemPrompt(options).messages
     .map(encodeMessage)
     .filter((message): message is { role: 'user' | 'assistant', content: unknown } => message !== undefined)
   const request: AnthropicRequest = {
