@@ -627,6 +627,23 @@ async function capturingAdapter(): Promise<{ adapter: ZcodeAdapter, captured: { 
   return { adapter: new ZcodeAdapter({ home: 'C:/ws/.llm', fetchImpl: makeUpstream(captured), storeFs: fs, env: isolatedEnv() }), captured }
 }
 
+test('compaction carries the effort of the session\'s latest main step (3.16.3 compacts with the session selection), not DSH\'s route default', async () => {
+  const { adapter, captured } = await capturingAdapter()
+  const send = async (options: { sessionId: string, purpose?: 'compaction', reasoningEffort?: string }): Promise<unknown> => {
+    for await (const chunk of adapter.stream({ ...request(), ...options } as never)) void chunk
+    return captured.body?.output_config
+  }
+  // Before the session's first step the compaction keeps its own effort (or the DSH default).
+  assert.deepEqual(await send({ sessionId: 'session-fresh', purpose: 'compaction' }), { effort: 'high' })
+  await send({ sessionId: 'session-max', reasoningEffort: 'max' })
+  await send({ sessionId: 'session-low', reasoningEffort: 'low' })
+  assert.deepEqual(await send({ sessionId: 'session-max', purpose: 'compaction', reasoningEffort: 'high' }), { effort: 'max' })
+  assert.deepEqual(await send({ sessionId: 'session-low', purpose: 'compaction' }), { effort: 'low' })
+  // A later step at another level moves the session's level.
+  await send({ sessionId: 'session-max', reasoningEffort: 'low' })
+  assert.deepEqual(await send({ sessionId: 'session-max', purpose: 'compaction', reasoningEffort: 'high' }), { effort: 'low' })
+})
+
 test('the session title goes out as 3.16.3 generateText sends it: no stream key, one JSON answer decoded into the usual chunks', async () => {
   const { adapter, captured } = await capturingAdapter()
   const chunks: StreamChunk[] = []

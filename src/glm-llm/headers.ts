@@ -67,6 +67,8 @@ interface SessionTrace {
   queryId?: string | undefined
   /** The query id was opened by a session-title request and no turn has claimed it yet. */
   titleOpened?: boolean | undefined
+  /** The reasoning effort of the session's latest main step. */
+  stepEffort?: string | undefined
 }
 
 /** The turn of a request: the id of its latest message typed by the user (`source.kind: 'user'`). */
@@ -96,6 +98,10 @@ function turnKeyOf(messages: readonly RequestMessageLike[]): string | undefined 
  * - session type and query source: title `other` + `session_title`,
  *   compaction `other` + `compact`, a delegated child `subagent` +
  *   `subagent`, otherwise `main` + `main_turn` (`Y0n` @4065835, `mDn`).
+ *
+ * It also keeps the reasoning effort of each session's latest main step:
+ * 3.16.3 compacts with the session's model selection (`c3a` @13387356,
+ * `jT` @12830530), and a DSH compaction request carries no effort of its own.
  */
 export class RequestAttributionTracker {
   private readonly sessions = new Map<string, SessionTrace>()
@@ -105,7 +111,7 @@ export class RequestAttributionTracker {
     this.headerOf = headerOf
   }
 
-  attribute(request: { readonly sessionId?: string | undefined, readonly purpose?: 'compaction' | 'session-title' | undefined, readonly messages: readonly RequestMessageLike[] }): Omit<TraceContext, 'requestId'> {
+  attribute(request: { readonly sessionId?: string | undefined, readonly purpose?: 'compaction' | 'session-title' | undefined, readonly reasoningEffort?: string | undefined, readonly messages: readonly RequestMessageLike[] }): Omit<TraceContext, 'requestId'> {
     const sessionId = upstreamSessionId(request.sessionId)
     const subagent = request.sessionId !== undefined && this.headerOf(request.sessionId)?.origin === 'subagent'
     const kind = request.purpose === 'session-title'
@@ -122,6 +128,7 @@ export class RequestAttributionTracker {
       }
       return { sessionId, traceId: state.traceId, queryId: state.queryId, ...kind }
     }
+    if (request.reasoningEffort !== undefined) state.stepEffort = request.reasoningEffort
     const turnKey = turnKeyOf(request.messages)
     if (turnKey === undefined || state.turnKey === turnKey) state.queryId ??= randomUUID()
     else {
@@ -130,6 +137,11 @@ export class RequestAttributionTracker {
       state.titleOpened = false
     }
     return { sessionId, traceId: state.traceId, queryId: state.queryId, ...kind }
+  }
+
+  /** The reasoning effort of the session's latest main step; undefined before its first one. */
+  stepEffortOf(sessionId: string | undefined): string | undefined {
+    return sessionId === undefined ? undefined : this.sessions.get(sessionId)?.stepEffort
   }
 
   private stateOf(sessionId: string, depth: number): SessionTrace {

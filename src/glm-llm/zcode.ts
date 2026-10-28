@@ -437,9 +437,9 @@ export class ZcodeAdapter {
     // (session trace, turn query id, query source, subagent type);
     // start-plan keeps its earlier shape.
     const attribution: Omit<TraceContext, 'requestId'> = plan === 'coding-plan'
-      ? this.attribution.attribute({ sessionId: request.sessionId, purpose: request.purpose, messages: options.messages })
+      ? this.attribution.attribute({ sessionId: request.sessionId, purpose: request.purpose, reasoningEffort: options.reasoningEffort, messages: options.messages })
       : { sessionId: upstreamSessionId(request.sessionId), sessionType: request.purpose === undefined ? 'main' : 'other', traceId: randomUUID() }
-    const wire = plan === 'coding-plan' ? codingPlanWire(options, request.purpose) : undefined
+    const wire = plan === 'coding-plan' ? codingPlanWire(options, request.purpose, this.attribution.stepEffortOf(request.sessionId)) : undefined
     const body = JSON.stringify(encodeRequest({ ...options, messages }, systemBlocks, images, metadataUserId(deviceMid, attribution.sessionId), wire))
     const upstreamBase = `${BIGMODEL_ANTHROPIC_BASE}/v1/messages`
 
@@ -508,11 +508,14 @@ export class ZcodeAdapter {
  * the official model casing, and for a catalog model the option map of its
  * reasoning level: the DSH effort when the catalog lists it, else `high`
  * (the DSH default, §4.6); the session title uses the catalog's first level
- * (3.16.3 `auxiliaryModelOptions` `PP` @7759001).
+ * (3.16.3 `auxiliaryModelOptions` `PP` @7759001); compaction uses the
+ * effort of the session's latest main step (`sessionEffort`), as 3.16.3
+ * compacts with the session's selection (`c3a` @13387356), and the
+ * request's own effort before the session's first step.
  */
-function codingPlanWire(options: GenerateOptionsLike, purpose: GenerateOptions['purpose']): WireShape {
+function codingPlanWire(options: GenerateOptionsLike, purpose: GenerateOptions['purpose'], sessionEffort: string | undefined): WireShape {
   const rule = zcodeModelRule(options.model)
-  const requested = options.reasoningEffort
+  const requested = purpose === 'compaction' ? sessionEffort ?? options.reasoningEffort : options.reasoningEffort
   const level = rule === undefined ? undefined : purpose === 'session-title' ? rule.reasoningLevels[0] : requested !== undefined && rule.reasoningLevels.includes(requested) ? requested : 'high'
   // max_tokens as 3.16.3 picks it (token-budget.ts); DSH's maxTokens is not
   // used for catalog models. Outside the catalog the DSH value stays.

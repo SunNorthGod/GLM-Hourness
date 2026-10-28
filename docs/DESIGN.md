@@ -321,7 +321,7 @@ start-plan 只做了离线验证：3.16.3 对 start-plan 不签名（`FACTS.md`�
 - coding-plan 请求体〔已实现 2026-10-28，m1-parity 第 6 项，`src/glm-llm/anthropic.ts` `WireShape`〕：按 3.16.3 内 AI SDK 的 `getArgs`（@3599845，体字面量在 @3603239）与选项映射 fetch（`TQr` @3836714）组体：
   - 键序：`model, max_tokens, [temperature], metadata, system, messages, tools, tool_choice, stream`，未定义的字段不出现（`JSON.stringify` 丢掉 `undefined`），再由选项映射按 `mergeObject`（`Zpr` @547735：在副本上逐键赋值，对象递归合并，`null` 删除，新键排在最后）追加 `thinking`、`output_config`。
   - `model`：官方大小写（`normalizeOfficialGlmModelId` `GZt` @526265，官方 id 表 `Cpr` @526343），`glm-5.3` 发 `GLM-5.3`、`glm-5.3-flash` 发 `GLM-5.3-Flash`。DSH 侧的模型 id 与回放信封里的 `model` 仍是小写。
-  - `thinking` 与 `output_config`：GLM-5.3 系的目录规则（§4.6）给出 `{"thinking": {"type": "enabled"}, "output_config": {"effort": <档位>}}`。档位取 DSH 请求的 `reasoningEffort`（`low` / `high` / `max`），缺省或不在目录档位里时取 `high`；会话标题取目录的第一档 `low`（`auxiliaryModelOptions` `PP` @7759001）。AI SDK 不知道这个 thinking（不是 providerOptions 给的），所以不剥采样参数、不加思考预算。
+  - `thinking` 与 `output_config`：GLM-5.3 系的目录规则（§4.6）给出 `{"thinking": {"type": "enabled"}, "output_config": {"effort": <档位>}}`。档位取 DSH 请求的 `reasoningEffort`（`low` / `high` / `max`），缺省或不在目录档位里时取 `high`；会话标题取目录的第一档 `low`（`auxiliaryModelOptions` `PP` @7759001）。压缩取会话最近一个主步的档位：3.16.3 用会话的模型选择建压缩模型（`c3a` @13387356 的 `jT(this, {selection: this.getSessionModelSelection()})`，`jT` @12830530），会话在 `max` 就按 `max` 压缩；DSH 的压缩请求不带自己的档位（rc.3 compaction-basic `summarizeWithLlm`），适配器只能看到空值或 DSH 路由的缺省 `high`。会话的档位按 DSH 会话记在进程内（与 trace id 同一份会话状态，§4.5b）；会话还没有主步时（例如重启后的手动压缩）用压缩请求自己的档位，缺省 `high`。AI SDK 不知道这个 thinking（不是 providerOptions 给的），所以不剥采样参数、不加思考预算。
   - `tool_choice`：有工具时 AI SDK 的 `prepareToolsAndToolChoice`（`nro` @3929119）给 `{type: "auto"}`，Anthropic provider 发 `tool_choice: {type: "auto"}`（`Jjs` @3543299）；没有工具时两者都不发。工具定义是 `{name, description, input_schema}`：3.16.3 对 anthropic 工具传 `eagerInputStreaming: false`（`EVs` @4101395），不发 `eager_input_streaming`。
   - 目录外的模型 id 不加选项映射，`max_tokens` 用 DSH 的值。start-plan 与探针 provider 不传 `WireShape`，保持原形态。
   - 会话标题〔已实现 2026-10-28，m1-parity 第 6 项〕：3.16.3 用 `generateText` 发标题请求（`v4a` @13066475，`tools: []`），不是流：正文没有 `stream` 与 `tools`，键序 `model, max_tokens, metadata, system, messages, thinking, output_config`，档位 `low`、`max_tokens` 5000（§4.6），User-Agent 多一段 `ai/6.0.193`（§4.2）。本包对 `purpose: 'session-title'` 同样不带 `stream`，按 JSON 读整条响应，`decodeMessage` 合成与流式相同的块序列（块开始、增量、块结束、合并后的用量、带信封的 `finish`），DSH 侧看不出区别。DSH 给标题请求的工具集由 DSH 决定（目前没有工具）。压缩与主步走 `streamText`，照旧流式。
@@ -454,6 +454,7 @@ DSH 的 `TokenUsage` 各计数互不重叠：`inputTokens` 只算未命中缓存
 - `max_tokens` 的用量基线来自本适配器写在回放信封里的用量；别的路由、m1-parity 之前的历史只能整段估算；ZCode 消息模型与 DSH 块的对应是近似（§4.6）。
 - 项目令牌被拒的判断里，3.16.3 错误解析器给出的「provider 错误码」按信封的 `code`、`error.code`、`error.message` 近似（§4.1）。
 - 设备 ID：3.16.3 在状态文件没有 deviceMid 时生成并写回，本包只读，这时用本包自己的 deviceMid，行健康注明（§4.5b）。本机状态文件有 deviceMid。
+- 压缩的档位：3.16.3 取会话的模型选择，DSH 的压缩请求不带档位，本包取会话最近一个主步的档位；会话在本进程里还没有主步时取压缩请求自己的档位，缺省 `high`（§4.5）。
 
 十项之外、仍与 3.16.3 不同的地方（不在 m1-parity 范围，留给用户决定）：
 
@@ -623,7 +624,7 @@ L3 探针：沙盒里把压缩阈值调低，摘要请求末条是 ZCode 提示�
 | 12 | 模型目录、登录 | 通道 | glm-llm、glm-login | 已实现 |
 | 13 | 日期与输出风格提醒族 | 方言 | 低成本可选 | 未实现 |
 | 14 | 缓存断点参数 | 通道 | 末条消息带断点；系统块按 ZCode 拆三块未做，实测不影响命中（§4.5b） | 部分实现 2026-10-28 |
-| 16 | thinking 与采样参数 | 通道 | 按 3.16.3 目录的选项映射发 `thinking: {type: "enabled"}` 与 `output_config.effort`（DSH 档位，缺省 high；标题 low）；不剥采样参数（AI SDK 不知道这个 thinking），是否带 `temperature` 由 DSH 决定 | 已实现 2026-10-28（m1-parity） |
+| 16 | thinking 与采样参数 | 通道 | 按 3.16.3 目录的选项映射发 `thinking: {type: "enabled"}` 与 `output_config.effort`（DSH 档位，缺省 high；标题 low；压缩取会话最近主步的档位）；不剥采样参数（AI SDK 不知道这个 thinking），是否带 `temperature` 由 DSH 决定 | 已实现 2026-10-28（m1-parity） |
 | 17 | 保留式思考：历史中的 reasoning 带签名回传 | 通道 | 签名只回同一路由；ZCode 的签名拒收重试未移植（端点不校验，§4.5c） | 已实现 2026-10-28 |
 | 18 | 请求归因：会话 id、会话类型、请求与追踪 id、query id 与来源、`metadata.user_id` | 通道 | 按 3.16.3：会话级 trace id、回合级 query id、`main_turn` / `compact` / `session_title` / `subagent` 来源；委派子会话经 `agents` 服务的会话头判定（§4.5b） | 已实现 2026-10-28（m1-parity） |
 
