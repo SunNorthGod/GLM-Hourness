@@ -45,6 +45,22 @@ export function upstreamSessionId(sessionId: string | undefined): string {
 }
 
 /**
+ * The attribution of one request from the two DSH request fields the
+ * adapter contract offers for transport metadata (`GenerateOptions.sessionId`
+ * and `.purpose`): agent steps carry the conversation session as `main`;
+ * compaction carries the same session (it shares the conversation prefix)
+ * as `other`, ZCode's type for every non-step operation (3.16.3
+ * `resolveModelRequestSessionType`); the session title gets a session id of
+ * its own. DSH starts the title request together with a conversation's
+ * first step; on the conversation's session id it moved the gateway's cache
+ * affinity and the second step missed (docs/DESIGN.md §4.5b).
+ */
+export function requestAttribution(sessionId: string | undefined, purpose: string | undefined): { sessionId: string, sessionType: 'main' | 'other' } {
+  if (purpose === 'session-title') return { sessionId: randomUUID(), sessionType: 'other' }
+  return { sessionId: upstreamSessionId(sessionId), sessionType: purpose === undefined ? 'main' : 'other' }
+}
+
+/**
  * Trace headers: the given context, with the fields ZCode always sends
  * synthesized when absent. ZCode 3.16.3 runner-attribution
  * `createModelRequestAttributionHeaders` emits x-request-id,

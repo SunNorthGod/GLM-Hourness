@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { ZcodeAdapter, ZcodeLogin, logout } from '../src/glm-llm/zcode.ts'
 import { ZCODE_APP_VERSION } from '../src/glm-llm/identity.ts'
-import { ANTHROPIC_SDK_UA, upstreamSessionId } from '../src/glm-llm/headers.ts'
+import { ANTHROPIC_SDK_UA, requestAttribution, upstreamSessionId } from '../src/glm-llm/headers.ts'
 import { apply as loginApply } from '../src/glm-llm/login-row.ts'
 import { saveCredential, type StoreFs } from '../src/glm-llm/auth/store.ts'
 import type { Credential } from '../src/glm-llm/auth/types.ts'
@@ -158,6 +158,24 @@ test('x-session-id is one value per DSH session (the gateway cache affinity key)
   assert.equal(await sessionOf('session-0f0f0f0f-1111-4222-8333-444444444444'), '0f0f0f0f-1111-4222-8333-444444444444')
   const fresh = [await sessionOf(undefined), await sessionOf(undefined)]
   assert.ok(fresh.every(id => /^[0-9a-f-]{36}$/.test(id)) && fresh[0] !== fresh[1])
+})
+
+test('the session title gets its own x-session-id; compaction keeps the conversation session; both are typed other', async () => {
+  const { fs } = memoryStore()
+  await saveCredential(fs, 'C:/ws/.llm/credentials.json', credential)
+  const captured: { headers?: Record<string, string>, body?: Record<string, unknown> } = {}
+  const adapter = new ZcodeAdapter({ home: 'C:/ws/.llm', fetchImpl: makeUpstream(captured), storeFs: fs, env: {} })
+  const attributionOf = async (purpose: 'compaction' | 'session-title' | undefined): Promise<[string, string, string]> => {
+    for await (const chunk of adapter.stream({ ...request(), sessionId: 'session-conv-1', ...(purpose === undefined ? {} : { purpose }) })) void chunk
+    const userId = JSON.parse((captured.body?.metadata as { user_id: string }).user_id) as { session_id: string }
+    return [captured.headers?.['x-session-id'] ?? '', captured.headers?.['x-zcode-session-type'] ?? '', userId.session_id]
+  }
+  assert.deepEqual(await attributionOf(undefined), ['conv-1', 'main', 'conv-1'])
+  assert.deepEqual(await attributionOf('compaction'), ['conv-1', 'other', 'conv-1'])
+  const [titleSession, titleType, titleUserSession] = await attributionOf('session-title')
+  assert.match(titleSession, /^[0-9a-f-]{36}$/)
+  assert.deepEqual([titleType, titleUserSession], ['other', titleSession])
+  assert.deepEqual(requestAttribution(undefined, undefined).sessionType, 'main')
 })
 
 test('upstreamSessionId strips the DSH prefix, keeps other header-safe ids, and replaces unusable ones', () => {
