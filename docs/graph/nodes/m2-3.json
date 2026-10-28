@@ -2,7 +2,7 @@
   "id": "m2-3",
   "type": "task",
   "title": "2.3 每步投影注入与压缩后重锚",
-  "status": "approved",
+  "status": "done",
   "parent": "m2",
   "kind": "implement",
   "body": "按 DESIGN.md §6 的约定把投影注入在对话末尾；压缩完成后立即重新注入投影（ORCHESTRATION.md §2.5）。",
@@ -13,6 +13,17 @@
     {
       "type": "depends",
       "to": "m2-2"
+    }
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "e22d38e"
+    },
+    {
+      "kind": "test",
+      "ref": "npm run probe (89/89)",
+      "exit": 0
     }
   ],
   "history": [
@@ -43,6 +54,33 @@
       "actor": "llm",
       "op": "comment",
       "text": "投影注入与压缩重锚在 L2 覆盖（tests/graph-reminder.spec.ts）；验收要求 L3 在模型请求里看到投影，随图行的 L3、L4 一起做（m2-11）。"
+    },
+    {
+      "at": "2026-10-28T11:09:39.136Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "验收的 L3 随 m2-11 做了",
+      "from": "approved",
+      "to": "doing"
+    },
+    {
+      "at": "2026-10-28T11:09:39.193Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "L3 探针场景 glm-graph、glm-graph-compact、glm-graph-goal 在模型请求里看到投影：设焦点后（focus）、改标题后（changed）、压缩检查点之后（compaction）、目标轮（goal-round）；L4 桌面版同样可见",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "e22d38e"
+        },
+        {
+          "kind": "test",
+          "ref": "npm run probe (89/89)",
+          "exit": 0
+        }
+      ]
     }
   ]
 }
