@@ -1,0 +1,19 @@
+{
+  "id": "d-native-panel",
+  "type": "decision",
+  "title": "人的界面放进 DSH 原生右侧栏面板，不做网页",
+  "status": "approved",
+  "parent": "orch",
+  "verification": "unverified",
+  "body": "React 18 取自 DSH 客户端模块表，只打包本项目的 TSX（esbuild）；动画用 CSS 与 Web Animations，不加动画库。读图经 remote.workspaceFiles，写回经命令通道进宿主侧引擎。面板可用后删除本机查看器与服务（ORCHESTRATION.md §2.10、§13）。",
+  "history": [
+    {
+      "at": "2026-10-28T07:31:33.282Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "用户：人的界面应与 IDE 深度耦合，不放网页",
+      "relay": "我不是很想把这个东西放到网页，这个应该和IDE深度耦合对不对？",
+      "to": "approved"
+    }
+  ]
+}

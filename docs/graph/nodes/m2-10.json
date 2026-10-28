@@ -1,0 +1,28 @@
+{
+  "id": "m2-10",
+  "type": "task",
+  "title": "2.10 删除本机查看器与服务",
+  "status": "approved",
+  "parent": "m2",
+  "kind": "implement",
+  "body": "删除 src/graph/viewer.html、src/graph/server.ts、scripts/graph/serve.ts 与对应测试、npm 脚本，冒烟改为不起服务。",
+  "acceptance": [
+    "仓库里没有查看器与服务的代码",
+    "npm test 全绿"
+  ],
+  "edges": [
+    {
+      "type": "depends",
+      "to": "m2-7"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-28T07:31:33.354Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "不留死代码：原生面板取代本机查看器",
+      "to": "approved"
+    }
+  ]
+}

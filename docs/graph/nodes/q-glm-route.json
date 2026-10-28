@@ -2,7 +2,7 @@
   "id": "q-glm-route",
   "type": "question",
   "title": "8317 的 pi-ai glm 路由去留",
-  "status": "approved",
+  "status": "done",
   "parent": "bottom",
   "body": "profile 里有一条指向 8317 端口的 pi-ai glm 路由，属于用户配置，本项目不改（DESIGN.md §1）。到 2026-10-27 为止的 GLM 请求全部经这条旧路由，原生通道 glm-zcode 还没在真实会话里用过（HANDOFF.md §4）。推荐 A：L4 通过前，它是唯一在真实会话里用过的 GLM 路由。",
   "options": [
@@ -18,6 +18,13 @@
     }
   ],
   "recommend": "A",
+  "decision": "A",
+  "evidence": [
+    {
+      "kind": "decision",
+      "ref": "A"
+    }
+  ],
   "history": [
     {
       "at": "2026-10-27T20:04:04.660Z",
@@ -25,6 +32,22 @@
       "op": "propose",
       "reason": "迁移：ROADMAP.md §3 需要用户的事项",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-28T07:31:32.692Z",
+      "actor": "llm",
+      "op": "decide",
+      "reason": "保留到 L4 第二轮通过，之后随清理删除（m1-cleanup）",
+      "relay": "都同意，你来干，缓存也得仔细查",
+      "from": "approved",
+      "to": "done",
+      "option": "A",
+      "evidence": [
+        {
+          "kind": "decision",
+          "ref": "A"
+        }
+      ]
     }
   ]
 }

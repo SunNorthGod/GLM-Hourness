@@ -1,0 +1,28 @@
+{
+  "id": "m2-9",
+  "type": "task",
+  "title": "2.9 节点上的运行控制",
+  "status": "approved",
+  "parent": "m2",
+  "kind": "implement",
+  "body": "第一版三个动作：从这里开始做、暂停、改了验收条件后重做。要先查清 DSH 给会话发消息与中断 agent 的接口。",
+  "acceptance": [
+    "在节点上点「从这里开始做」，主 Agent 收到以该节点为焦点的指令",
+    "点「暂停」能停下正在做这个节点的 agent"
+  ],
+  "edges": [
+    {
+      "type": "depends",
+      "to": "m2-7"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-28T07:31:33.337Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "在图上编程：人在节点上发起与停下工作",
+      "to": "approved"
+    }
+  ]
+}

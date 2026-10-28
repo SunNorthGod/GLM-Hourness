@@ -1,0 +1,23 @@
+{
+  "id": "m2-11",
+  "type": "task",
+  "title": "2.11 图行 L3、L4 验收后启用",
+  "status": "approved",
+  "parent": "m2",
+  "kind": "test",
+  "body": "探针覆盖图工具、每步投影与压缩重锚（m2-3 的验收）；真机 GLM 会话里调用图工具、看到投影；通过后把 glm-hourness/graph 行改为启用。",
+  "acceptance": [
+    "probe 覆盖图工具与投影并通过",
+    "真机 GLM 会话里图工具可用、投影可见",
+    "图行启用后无新错误"
+  ],
+  "history": [
+    {
+      "at": "2026-10-28T07:31:33.374Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "图行默认禁用，启用前要 L3、L4",
+      "to": "approved"
+    }
+  ]
+}

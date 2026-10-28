@@ -1,0 +1,28 @@
+{
+  "id": "m1-cache-flash",
+  "type": "task",
+  "title": "Flash 会话第二步缓存未命中",
+  "status": "approved",
+  "parent": "m1",
+  "kind": "test",
+  "body": "Flash 的未命中只出现在会话第 1 步之后的那一步（6 个会话里 4 到 5 个，每次约 4k token），只命中跨会话共享的前缀（6784、8256、8320）。假设：第一步从冷启动写入约 12k token 的缓存，第二步到达时还没写完；未验证。抓到的完整请求体在 .agents/tasks/cache-2026-10-28/runs/。",
+  "acceptance": [
+    "重放抓到的请求体，证实或否定异步写入的假设",
+    "有可行的缓解就实现并标定，没有就记下原因"
+  ],
+  "edges": [
+    {
+      "type": "source",
+      "to": "m1-cache"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-28T07:31:33.603Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "缓存调查剩下的未命中",
+      "to": "approved"
+    }
+  ]
+}

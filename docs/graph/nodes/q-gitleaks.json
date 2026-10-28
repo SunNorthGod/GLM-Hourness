@@ -2,7 +2,7 @@
   "id": "q-gitleaks",
   "type": "question",
   "title": "密钥扫描 gitleaks 装不装",
-  "status": "approved",
+  "status": "done",
   "parent": "m1",
   "body": "ORCHESTRATION.md §7.5 的密钥扫描用 gitleaks。它是工作区外的独立二进制，安装要用户同意（ROADMAP.md §3）。推荐 A：提交前的密钥扫描进门禁，不再只靠人工。",
   "options": [
@@ -18,10 +18,17 @@
     }
   ],
   "recommend": "A",
+  "decision": "A",
   "edges": [
     {
       "type": "source",
       "to": "m1-9"
+    }
+  ],
+  "evidence": [
+    {
+      "kind": "decision",
+      "ref": "A"
     }
   ],
   "history": [
@@ -31,6 +38,22 @@
       "op": "propose",
       "reason": "迁移：origin/main 1ae8222 的 ROADMAP.md §3 需要用户的事项",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-28T07:31:32.843Z",
+      "actor": "llm",
+      "op": "decide",
+      "reason": "用户同意安装与清理，按推荐项执行（m1-followups）",
+      "relay": "其余可以，能装，清理你自己定就行",
+      "from": "approved",
+      "to": "done",
+      "option": "A",
+      "evidence": [
+        {
+          "kind": "decision",
+          "ref": "A"
+        }
+      ]
     }
   ]
 }

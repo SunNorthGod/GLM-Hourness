@@ -2,7 +2,7 @@
   "id": "q-l4",
   "type": "question",
   "title": "L4 真机验收什么时候做",
-  "status": "approved",
+  "status": "done",
   "parent": "m1",
   "body": "原生通道、方言提示词、工具检索、压缩镜像、读图都只有 L3 探针、单测与真网冒烟的证据；到 2026-10-27 为止，DSH 真实会话里走原生路由 glm-zcode 的请求为 0（HANDOFF.md §4）。L4 要用户重启桌面版并在真实会话中发消息（ROADMAP.md §3）。推荐 B：已完成的运行时改动越早在真实会话里跑一遍，出问题时要回头查的提交越少。",
   "options": [
@@ -18,6 +18,13 @@
     }
   ],
   "recommend": "B",
+  "decision": "B",
+  "evidence": [
+    {
+      "kind": "decision",
+      "ref": "B"
+    }
+  ],
   "history": [
     {
       "at": "2026-10-27T20:04:04.504Z",
@@ -43,6 +50,22 @@
       "actor": "llm",
       "op": "comment",
       "text": "L4 真机验收由用户安排在 2026-10-28（origin/main 1ae8222 的 ROADMAP.md §3）。核对项见 ROADMAP.md M1「2026-10-28 夜间运行小结」：1.11 的三项验收（行健康全绿、会话文件里的系统提示词含方言、用量记录 provider 为 glm-zcode），同一会话里让 GLM 跑一次多轮工具调用，确认原生通道的工具调用编码，再用 /glm-status 看 data 行在桌面版上是否生效。"
+    },
+    {
+      "at": "2026-10-28T07:31:32.729Z",
+      "actor": "llm",
+      "op": "decide",
+      "reason": "用户 2026-10-28 做了第一轮；之后每批运行时改动由 agent 在真机上自验",
+      "relay": "我就不试了，你自己验证就行",
+      "from": "approved",
+      "to": "done",
+      "option": "B",
+      "evidence": [
+        {
+          "kind": "decision",
+          "ref": "B"
+        }
+      ]
     }
   ]
 }

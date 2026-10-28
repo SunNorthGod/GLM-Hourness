@@ -2,7 +2,7 @@
   "id": "m7",
   "type": "feature",
   "title": "M7 执行、汇合与运维",
-  "status": "proposed",
+  "status": "approved",
   "parent": "orch",
   "body": "ROADMAP.md M7 原文：队友角色卡、简报门禁、并发补位提醒；独立审查；汇合门禁；四答晨报；巡检；规范阶梯与周报；DORA 指标；标定测试集扩充。其中队友角色卡已被 d-dispatch 取代：任务节点带派发属性，主 Agent 派给后台子 agent。",
   "history": [
@@ -18,6 +18,15 @@
       "actor": "llm",
       "op": "comment",
       "text": "M7 依赖的派发可行性验证已在 main 完成（提交 953fc39、d6977ad；origin/main 1ae8222 的 ROADMAP.md M7 进度，ORCHESTRATION.md §2.1、§3.2，DESIGN.md §2.4a）：后台派发、子 agent 的写入范围门禁、goal 驱动下的目标轮注入与完成门禁在 rc.3 运行时上都走通，只用了探针覆盖层里的验证插件，bundle 没有新行。验证：L2 258 用例，L3 探针 69/69（新增 12 项）。实现时要照顾的三点：独立工作树建在父工作区之内；派发工具传 maxDepth；GLM 子 agent 的 structured_output、send_message 是否常驻。d-dispatch、d-driver 的验证状态据此改为沙盒验证。M7 还是提议，状态不动。"
+    },
+    {
+      "at": "2026-10-28T07:31:32.533Z",
+      "actor": "llm",
+      "op": "approve",
+      "reason": "路线导入的里程碑与条目视为已批准（ORCHESTRATION.md §2.9.1，用户批准了决策分级）",
+      "relay": "其余全部按你的来",
+      "from": "proposed",
+      "to": "approved"
     }
   ]
 }

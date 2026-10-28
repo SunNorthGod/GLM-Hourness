@@ -111,7 +111,7 @@ L3 核实〔实测 2026-10-28，派发可行性验证 (c)，`ROADMAP.md` 借用�
 - 出错：焦点节点不在图里、图目录不存在时，注入一条说明（同样只在变化时注入）；读图时抛出异常则告警，本步原样放行。
 - 路由：与图工具一样不分路由，GLM 与非 GLM 都注入，只有调过 `graph_focus` 的 agent 收到投影。`agent/pre-step` 的载荷里没有路由（`DESIGN.md` §2.4a），要按路由区分就得另挂组装监听器；图是项目状态，不是方言，不需要区分。
 - 没做：重锚时的规范摘要与本会话违规计数（等 guard 的违规记录与规范体系，M4）；todo 视图。
-- 验证：`tests/graph-reminder.spec.ts` 在假宿主 `tests/fake-rc3.ts` 上（L2）覆盖设定焦点后的首次注入、不变不重注、投影内外的改动、焦点移动与被拒的调用、压缩重锚（检查点替换整段历史，以及旧投影留在保留区间）、目标轮、续跑与崩溃后从历史找回焦点、坏图与焦点节点消失、空决策、每个 agent 只装一次、没有会话的 agent 与读图失败。真实请求里的投影与压缩后的重锚（L3）在合入 main 之后按 `ROADMAP.md` M2 进度的检查清单做。
+- 验证：`tests/graph-reminder.spec.ts` 在假宿主 `tests/fake-rc3.ts` 上（L2）覆盖设定焦点后的首次注入、不变不重注、投影内外的改动、焦点移动与被拒的调用、压缩重锚（检查点替换整段历史，以及旧投影留在保留区间）、目标轮、续跑与崩溃后从历史找回焦点、坏图与焦点节点消失、空决策、每个 agent 只装一次、没有会话的 agent 与读图失败。真实请求里的投影与压缩后的重锚（L3）按 `ROADMAP.md` M2 2.11 的检查清单做。
 
 ### 2.6 存储与文件格式〔已实现，2026-10-28 用户批准原型〕
 
@@ -200,7 +200,7 @@ guard 拦截〔已实现，规则 `graph-files-only`，`src/guard/graph-files.ts
 - 注册：图行在 `tools/pre-execute` 上以 `prepend` 注册（排在最外层），先于 guard 行判断：shell 写图目录拿到的是图工具这条正路，而不是 file-tools-only 的「改用 Write 或 Edit」，否则模型照做后还要再被拦一次。guard 行的规则不变，图目录以外的调用照旧由它判断。与 guard 行一样，带 `parent` 令牌的传输层子调用直接放行（`DESIGN.md` §2.4a）。规则跟图行走：图行禁用时没有图工具，也就没有这道门禁，被拦的一方手边总有正路。
 - 图目录不存在时同样拦：手写节点文件也是绕过引擎。开始一张新图的正路是建一个空目录（图工具报 `not_found` 时的提示里写着）；`mkdir docs/graph` 不在 file-tools-only 的写文件模式里，本规则也就不拦。
 - 直接拦截，不先走影子模式（§6.5）：新规则先只记录的通用机制还没有（M4）；M1.8 的影子兜底只记 file-tools-only 看不见的 shell 写入（§6.5.2），不是这种机制。本规则只看图目录里的目标，误伤面小；行默认禁用，启用前还有 L3、L4。
-- 拒绝不进违规审计：本分支合入 main 的 `29211ed` 之后已有违规流水（M1.4）与影子兜底（M1.8），图行的拒绝还没有接进流水。接法是图行像 guard 行一样经数据目录服务取项目目录，写同一份 `audit/violations.jsonl`（合入后的跟进项，`ROADMAP.md` M2 进度）。规则声明同样没有进 GLM 系统提示词的 `glm:guard` 一节，那一节只列 guard 行自己的规则；图工具的描述就是这条规矩的告知。
+- 拒绝不进违规审计：本分支合入 main 的 `29211ed` 之后已有违规流水（M1.4）与影子兜底（M1.8），图行的拒绝还没有接进流水。接法是图行像 guard 行一样经数据目录服务取项目目录，写同一份 `audit/violations.jsonl`（启用图行之前的跟进项，`ROADMAP.md` M2 2.11）。规则声明同样没有进 GLM 系统提示词的 `glm:guard` 一节，那一节只列 guard 行自己的规则；图工具的描述就是这条规矩的告知。
 - 与 guard 影子兜底的交互〔推断，未在 L3 验证〕：图工具经引擎写节点文件，不经文件工具，`workspace-changes` 的回合摘要会列出这些文件。同一回合里只要还放行过一次 shell 调用，影子兜底就会把图节点文件记成「文件工具没碰过的改动」，是误报。合入后要让影子兜底把图工具写的文件算作已知来源（跟进项）。
 
 | 变更 | 分类 | 处理 |
@@ -387,7 +387,7 @@ DSH 图工具〔已实现，`src/graph/tools.ts`，行入口 `src/graph/index.ts
 - schema：参数与输出 schema 都在 rc.3 `tools.register` 校验的子集内（`dsh-tools` 的 `assertSupportedJsonSchema`：`type`、`properties`、`required`、布尔 `additionalProperties`、`items`、`enum`、`const` 与注解），子集外的输出 schema 会让注册抛错。rc.3 不校验原样注册的工具参数，参数由引擎的请求解析逐字段校验；rc.3 按输出 schema 校验工具返回值，不符时变成错误结果。
 - 谁拿到工具：行在全局注册，所有 agent、所有路由都有这组工具，GLM 与非 GLM、主 Agent 与子 agent 都一样。理由：图是项目状态，不是方言；guard 拦直接改图文件（§2.7、§6.4）对哪条路由都生效，被拦的一方必须手边就有正路。GLM 请求里它们常驻，不进延迟目录（`src/toolsearch/exposure.ts`，主 Agent 每拍都用，§2.8）；非 GLM 请求里是普通工具。子 agent 该不该写图、能写什么，等派发（M7）知道谁是主 Agent 时再定，在那之前子 agent 写图也只有 `llm` 的权限。
 - 每个操作一个工具，不合成一个带 `op` 字段的写工具：每个工具的参数 schema 只列本操作的字段与必填项，模型不用记哪个操作要哪些字段，枚举值（例 `status` 的 `to`）直接写在 schema 里。代价是 GLM 请求多 13 个常驻工具的 schema（含 `graph_focus`）；它们每步不变，落在可命中提示词缓存的前缀里（推断，未实测命中率）。
-- 验证：`tests/graph-tools.spec.ts` 在假宿主 `tests/fake-rc3.ts` 上（L2）覆盖注册与 schema 子集、每个工具（含 `graph_focus` 不改图）、拒绝路径（无证据、过期修订号、无权、多余字段、坏图、缺目录、没有工作目录）、激活期降级、GLM 工具面常驻与行默认禁用。假宿主为此补了 rc.3 的三处行为：`tools.register` 拒收子集外的输出 schema（tools:323、2978），`tools.execute` 把调用方 agent 交给工具体（tools:3227–3260、3406）并按输出 schema 校验返回值（tools:3637–3640）；会话头可带 `cwd`（session:1820–1826）。图文件门禁（§2.7）由 `tests/graph-guard.spec.ts` 覆盖：各种写法的路径、`str_replace_editor`、shell 写法、图目录以外放行、图工具照常写、与 guard 行同时启用时的先后、子调用放行、没有工作目录、行卸载后规则撤掉；为此假宿主的 `tools.execute` 先走 `tools/pre-execute` 瀑布，拒绝时返回 `Error: ` 加理由的错误结果、不执行工具体（tools:3320–3321、3337–3353）。L3、L4 未做，在合入 main 之后按 `ROADMAP.md` M2 进度的检查清单执行。
+- 验证：`tests/graph-tools.spec.ts` 在假宿主 `tests/fake-rc3.ts` 上（L2）覆盖注册与 schema 子集、每个工具（含 `graph_focus` 不改图）、拒绝路径（无证据、过期修订号、无权、多余字段、坏图、缺目录、没有工作目录）、激活期降级、GLM 工具面常驻与行默认禁用。假宿主为此补了 rc.3 的三处行为：`tools.register` 拒收子集外的输出 schema（tools:323、2978），`tools.execute` 把调用方 agent 交给工具体（tools:3227–3260、3406）并按输出 schema 校验返回值（tools:3637–3640）；会话头可带 `cwd`（session:1820–1826）。图文件门禁（§2.7）由 `tests/graph-guard.spec.ts` 覆盖：各种写法的路径、`str_replace_editor`、shell 写法、图目录以外放行、图工具照常写、与 guard 行同时启用时的先后、子调用放行、没有工作目录、行卸载后规则撤掉；为此假宿主的 `tools.execute` 先走 `tools/pre-execute` 瀑布，拒绝时返回 `Error: ` 加理由的错误结果、不执行工具体（tools:3320–3321、3337–3353）。L3、L4 未做，按 `ROADMAP.md` M2 2.11 的检查清单执行。
 
 本机服务的安全措施〔已实现〕：
 
@@ -780,7 +780,7 @@ LLM 爱造轮子，因为写脚本只花当前这一轮的力气，装工具却�
 
 配置取舍（都写在配置文件的注释里）：
 
-- 规则集：typescript-eslint 的 `recommendedTypeChecked`，加 ESLint 核心推荐规则。ESLint 10 不再自带 `@eslint/js`，批准的依赖里也没有它，配置从 ESLint 自身的规则元数据里取标为推荐的规则（`@eslint/js` 的推荐清单就是这样生成的）；是否改装 `@eslint/js` 列为待定（`ROADMAP.md` §3）。全部规则设为 error，批量压制只对 error 生效。
+- 规则集：typescript-eslint 的 `recommendedTypeChecked`，加 ESLint 核心推荐规则。ESLint 10 不再自带 `@eslint/js`，批准的依赖里也没有它，配置从 ESLint 自身的规则元数据里取标为推荐的规则（`@eslint/js` 的推荐清单就是这样生成的）；用户 2026-10-28 同意改装 `@eslint/js`（项目图 `q-eslint-js`，执行在 `m1-followups`）。全部规则设为 error，批量压制只对 error 生效。
 - 与 tsc 对齐：以下划线开头的参数不算未使用（同 tsc `noUnusedParameters`）；与剩余元素并列解构出来的属性不算未使用（省略字段的写法）。
 - `node:test` 的 `test()`、`describe()` 返回由测试运行器等待的 Promise，按 typescript-eslint 文档登记为已知安全调用，不算悬空 Promise。
 - 环境全局量：脚本取运行 ESLint 的 Node 的全局名；`ui/client.js` 在 DSH 网页端运行，只登记它用到的浏览器全局量。
@@ -788,7 +788,7 @@ LLM 爱造轮子，因为写脚本只花当前这一轮的力气，装工具却�
 - knip：`ui/` 的两个入口由 DSH 经 `ui/package.json` 加载，探针 provider 由探针运行器把路径交给 Loader，三者登记为入口；`ui/client.js` 的 `react` 来自 DSH 客户端模块表，不是 npm 依赖。
 - 现有告警没有成批修：175 条多余的类型断言可自动修复，但会和 `graph-engine` 分支改动的文件冲突，等该分支合并后再修；门禁上线时只修了 3 处明确安全的真问题（测试里一个从不读取的计数变量、一个未用导入、一个被 `unknown` 吞掉的联合类型）。
 
-未做：§7.5 所说「每次改完文件由 harness 在执行边界跑检查并当轮回传」属于 M4；密钥扫描 gitleaks 是工作区外的独立二进制，安装待用户决定（`ROADMAP.md` §3）。
+未做：§7.5 所说「每次改完文件由 harness 在执行边界跑检查并当轮回传」属于 M4；密钥扫描 gitleaks 是工作区外的独立二进制，用户 2026-10-28 同意装到用户级工具目录并接进 `npm test`（项目图 `q-gitleaks`，执行在 `m1-followups`）。
 
 度量：每个目标新增的临时脚本数与转正数、同一功能被重复编写的次数、工具箱命中率、压制注释数。
 

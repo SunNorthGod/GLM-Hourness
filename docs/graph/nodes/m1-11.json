@@ -2,7 +2,7 @@
   "id": "m1-11",
   "type": "task",
   "title": "1.11 L4 真机验收",
-  "status": "approved",
+  "status": "doing",
   "parent": "m1",
   "kind": "test",
   "body": "用户重启桌面版，选 glm-zcode 发消息（ROADMAP.md M1 1.11）。",
@@ -28,6 +28,14 @@
       "op": "propose",
       "reason": "迁移：ROADMAP.md M1 1.11",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-28T07:31:33.184Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "用户 2026-10-28 做了第一轮（docs fe57cfc），第二轮由 agent 自验",
+      "from": "approved",
+      "to": "doing"
     }
   ]
 }

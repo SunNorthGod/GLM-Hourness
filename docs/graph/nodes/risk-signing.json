@@ -12,6 +12,12 @@
       "op": "propose",
       "reason": "迁移：HANDOFF.md §5",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-28T07:31:33.686Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-10-28 核实：握手地址返回 404，每次请求前重试约 90 ms；端点不校验思考签名。排查立为 m1-signing。"
     }
   ]
 }

@@ -1,0 +1,66 @@
+{
+  "id": "m1-cache",
+  "type": "task",
+  "title": "提示词缓存：会话 id、线上对齐与保留思考",
+  "status": "done",
+  "parent": "m1",
+  "kind": "implement",
+  "body": "主因是每次请求随机生成 x-session-id，网关按它分配缓存亲和；改为 DSH 会话 id（8a212cd）。另对齐 ZCode 的请求头与末条消息 cache_control（cbdaf04），保留思考块回放（87179f0），辅助调用沿用会话 id、类型标为 other（8a08c1f）。标定：GLM-5.3 缓存占输入 91.9%–92.5%，Flash 78.5% 升到 81.7%–82.5%（DESIGN.md §4.5b、§4.5c）。",
+  "acceptance": [
+    "同一会话的后续请求命中最新前缀",
+    "标定 12/12 跑完"
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "8a212cd"
+    },
+    {
+      "kind": "commit",
+      "ref": "cbdaf04"
+    },
+    {
+      "kind": "commit",
+      "ref": "87179f0"
+    },
+    {
+      "kind": "commit",
+      "ref": "8a08c1f"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-28T07:31:33.545Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "用户：缓存也得仔细查",
+      "to": "approved"
+    },
+    {
+      "at": "2026-10-28T07:31:33.582Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "已提交并标定",
+      "from": "approved",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "8a212cd"
+        },
+        {
+          "kind": "commit",
+          "ref": "cbdaf04"
+        },
+        {
+          "kind": "commit",
+          "ref": "87179f0"
+        },
+        {
+          "kind": "commit",
+          "ref": "8a08c1f"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "id": "m2-7",
+  "type": "task",
+  "title": "2.7 DSH 原生右侧栏面板",
+  "status": "approved",
+  "parent": "m2",
+  "kind": "implement",
+  "tier": "hard",
+  "body": "右侧栏标签页：需要你、agent 自己定的、正在做（现场）、图四个视图；读优先的节点详情，id 隐藏，只有需要人的事用红色；拍板、批准、批注在面板里直接做。React 18 + TypeScript + esbuild，打进独立 UI 包。",
+  "acceptance": [
+    "在 DSH 桌面端右侧栏打开，读到本项目的图并随节点文件变更刷新",
+    "在面板里拍板、批准，写入经引擎、身份为 human",
+    "经 DevTools 协议截图核对四个视图"
+  ],
+  "edges": [
+    {
+      "type": "source",
+      "to": "d-native-panel"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-28T07:31:33.300Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "原生面板（d-native-panel）",
+      "to": "approved"
+    }
+  ]
+}

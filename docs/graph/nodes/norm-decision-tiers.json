@@ -1,0 +1,18 @@
+{
+  "id": "norm-decision-tiers",
+  "type": "norm",
+  "title": "决策分级：只有五类事问人",
+  "status": "approved",
+  "parent": "orch",
+  "body": "必须问人：1 改目标、验收条件或非目标；2 仓库以外的动作（用户 profile、安装程序、删工作区外的文件）；3 不可逆或对外的动作；4 新增运行时依赖或升大版本；5 以后改起来很贵的方向性岔路。其余 agent 自己定：提一张决定者为 agent 的待决并拍板，人可推翻。人在对话里说的话由 LLM 带原话转述写进图。常设授权：清理由 agent 定（2026-10-28）；每次提交推送 Gitee。ORCHESTRATION.md §2.9.1。",
+  "history": [
+    {
+      "at": "2026-10-28T07:31:33.449Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "用户批准的决策分级，作为规范留在图上",
+      "relay": "其余全部按你的来",
+      "to": "approved"
+    }
+  ]
+}

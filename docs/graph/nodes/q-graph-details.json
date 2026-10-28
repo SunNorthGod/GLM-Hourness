@@ -1,0 +1,53 @@
+{
+  "id": "q-graph-details",
+  "type": "question",
+  "title": "项目图原型的实现细则",
+  "status": "done",
+  "parent": "m2",
+  "body": "ORCHESTRATION.md §15 中标「agent 定（按原型）」的各行：存储、渲染、并发、校验错误时的写入、引擎规则、节点文件、派发属性、决策队列、命令行、图工具、每步投影、图文件门禁、查看器、迁移写法。各行写有备选与取舍。",
+  "options": [
+    {
+      "key": "A",
+      "label": "按原型",
+      "consequence": "不改代码；人不同意哪一条，就在对话里说或在面板里推翻"
+    },
+    {
+      "key": "B",
+      "label": "逐条重审",
+      "consequence": "每行都要人看一遍，正是决策分级要去掉的负担"
+    }
+  ],
+  "recommend": "A",
+  "decider": "agent",
+  "decision": "A",
+  "evidence": [
+    {
+      "kind": "decision",
+      "ref": "A"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-28T07:31:33.393Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "原型的实现细则由 agent 定，合成一张卡供人推翻",
+      "to": "approved"
+    },
+    {
+      "at": "2026-10-28T07:31:33.430Z",
+      "actor": "llm",
+      "op": "decide",
+      "reason": "原型已在 L2 全部覆盖，用户把细则交给 agent（§15）",
+      "from": "approved",
+      "to": "done",
+      "option": "A",
+      "evidence": [
+        {
+          "kind": "decision",
+          "ref": "A"
+        }
+      ]
+    }
+  ]
+}

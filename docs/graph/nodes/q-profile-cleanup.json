@@ -2,7 +2,7 @@
   "id": "q-profile-cleanup",
   "type": "question",
   "title": "清理 profile 里的备份与旧数据目录",
-  "status": "approved",
+  "status": "done",
   "parent": "m1",
   "body": "profile 目录里有 2026-10-27 启动崩溃后的恢复来源 cordis.patch.yml.bak-1793101338423，以及旧数据目录 ~/.dsh/profiles/desktop/.llm/（190 条用量记录与 1 条记忆，HANDOFF.md §4、§6）。删除是用户的决定，要等 1.4 把记录迁到共享数据目录之后（ROADMAP.md §3）。推荐 A：迁移核对之后，旧目录只会让排查读错地方。",
   "options": [
@@ -18,10 +18,17 @@
     }
   ],
   "recommend": "A",
+  "decision": "A",
   "edges": [
     {
       "type": "source",
       "to": "m1-4"
+    }
+  ],
+  "evidence": [
+    {
+      "kind": "decision",
+      "ref": "A"
     }
   ],
   "history": [
@@ -37,6 +44,22 @@
       "actor": "llm",
       "op": "comment",
       "text": "1.4 已于 2026-10-28 把旧目录的记录复制到新位置：190 条用量并入用户级流水 ~/.dsh/glm-hourness/audit/usage.jsonl，1 条记忆并入仓库 .llm/memory.json，源文件未改动（origin/main 380c4c4、ROADMAP.md §3）。这张卡不再等 1.4，任何时间都可以拍板。"
+    },
+    {
+      "at": "2026-10-28T07:31:32.804Z",
+      "actor": "llm",
+      "op": "decide",
+      "reason": "清理交给 agent，L4 第二轮通过后执行（m1-cleanup）",
+      "relay": "其余可以，能装，清理你自己定就行",
+      "from": "approved",
+      "to": "done",
+      "option": "A",
+      "evidence": [
+        {
+          "kind": "decision",
+          "ref": "A"
+        }
+      ]
     }
   ]
 }

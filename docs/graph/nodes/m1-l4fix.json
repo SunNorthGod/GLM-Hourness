@@ -1,0 +1,62 @@
+{
+  "id": "m1-l4fix",
+  "type": "task",
+  "title": "L4 第一轮跟进修复",
+  "status": "done",
+  "parent": "m1",
+  "kind": "implement",
+  "body": "凭证搬到 ~/.dsh/glm-hourness（e1d2e1c）；guard 只管 GLM 路由、相对路径按会话工作目录解析（d27a891）；桌面 profile 去掉 agent-team 与 cot-translation 两个包（改前备份）。",
+  "acceptance": [
+    "probe 全过",
+    "真机上 DeepSeek 会话不受 guard 影响（L4 第二轮核对）"
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "e1d2e1c"
+    },
+    {
+      "kind": "commit",
+      "ref": "d27a891"
+    },
+    {
+      "kind": "check",
+      "ref": "npm run probe",
+      "exit": 0,
+      "note": "73/73"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-28T07:31:33.488Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "L4 第一轮发现的问题",
+      "to": "approved"
+    },
+    {
+      "at": "2026-10-28T07:31:33.526Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "已提交，probe 73/73",
+      "from": "approved",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "e1d2e1c"
+        },
+        {
+          "kind": "commit",
+          "ref": "d27a891"
+        },
+        {
+          "kind": "check",
+          "ref": "npm run probe",
+          "exit": 0,
+          "note": "73/73"
+        }
+      ]
+    }
+  ]
+}

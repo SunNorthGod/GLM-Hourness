@@ -1,0 +1,28 @@
+{
+  "id": "m1-signing",
+  "type": "task",
+  "title": "签名握手 404：找 3.16.3 的握手地址与失败缓存",
+  "status": "approved",
+  "parent": "m1",
+  "kind": "test",
+  "body": "握手 zcode.z.ai/api/paas/c1f3a7e2/v2/client 返回 404，且每次请求前都重试（约 90 ms）。查 ZCode 3.16.3 的真实握手地址，以及它失败后怎么缓存、多久重试。",
+  "acceptance": [
+    "握手成功，或确认 3.16.3 也失败并照它的方式缓存失败",
+    "失败时不再每次请求重试"
+  ],
+  "edges": [
+    {
+      "type": "source",
+      "to": "risk-signing"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-28T07:31:33.624Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "签名握手每次都失败",
+      "to": "approved"
+    }
+  ]
+}

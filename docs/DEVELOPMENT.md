@@ -125,7 +125,7 @@ DSH 官方类型已作为 devDependency 安装（`@deepseek-ai/dsh-llm`、`@deep
 | 2026-10-28 | guard 对 `terminal_send` 读 `command` 参数，rc.3 的参数名是 `text`，终端里的 shell 写入从未被检查（桌面版 profile 装了终端包） | 读 rc.3 运行时包（M1.8） | M1.6 的接口对照只核了钩子、服务与载荷，没有逐个核对工具参数名；单测用的是同一个错误字段 | 改读 `text`，按 bash 与 pwsh 两种方言判；接口对照表加 shell 工具与文件工具的参数行（`DESIGN.md` §2.4a） |
 | 2026-10-28 | guard 违规记录的 `agentId` / `sessionId` 读自 `tools/pre-execute` 载荷上不存在的字段，永远为空；workflow 的派遣名单缺 base profile 的 `subagent_fork`，fork 派遣从未记录 | 读 rc.3 运行时包（M1.6 逐项对照） | 各行自带宿主结构类型，没有逐项对照 rc.3；探针没有覆盖审计流水 | 接口对照表（`DESIGN.md` §2.4a）；宿主类型收进薄适配层；探针加用量流水与派遣工具名检查 |
 | 2026-10-28 | guard 把工作区内的相对路径写入（`.llm/l4-dsh/calc.mjs`）判为工作区外并拒绝；同一判定对 `C:\ws\..\elsewhere` 这类写法放行 | L4 | 圈禁只做大小写与分隔符归一化，没有按文件工具的方式解析路径；单测与探针只用绝对路径 | 相对路径按会话工作目录解析，`path.resolve` 折叠 `..`（`ORCHESTRATION.md` §6.1）；L2 覆盖相对路径、`..`、同前缀兄弟目录、`cd` 后的工作目录；L3 探针加 GLM 相对写入放行与 `..` 越界拒绝 |
-| 2026-10-28 | 原生通道的提示词缓存常常没命中最新前缀：修复前的标定基线里 GLM-5.3-Flash 45 次后续请求有 16 次（4 次整段未命中），L4 桌面 GLM-5.3 会话 17 次有 5 次 | L4 与标定数据复查 | 从 zcode-api 移植到原生适配器时，按会话固定的 `x-session-id` 变成了每请求随机；「会话 id 是网关的缓存亲和键」没有记成接口事实；没有按步统计命中的检查 | 会话 id 按 DSH 会话固定（`DESIGN.md` §4.5b，实测表）；修复后 Flash 只剩会话第二步没命中，原因未明。另一次修复（标题请求另起会话 id）经完整标定证伪后撤回。修复前后的标定见 `ROADMAP.md` M1 |
+| 2026-10-28 | 原生通道的提示词缓存常常没命中最新前缀：修复前的标定基线里 GLM-5.3-Flash 45 次后续请求有 16 次（4 次整段未命中），L4 桌面 GLM-5.3 会话 17 次有 5 次 | L4 与标定数据复查 | 从 zcode-api 移植到原生适配器时，按会话固定的 `x-session-id` 变成了每请求随机；「会话 id 是网关的缓存亲和键」没有记成接口事实；没有按步统计命中的检查 | 会话 id 按 DSH 会话固定（`DESIGN.md` §4.5b，实测表）；修复后 Flash 只剩会话第二步没命中，原因未明。另一次修复（标题请求另起会话 id）经完整标定证伪后撤回。修复前后的标定见 `DESIGN.md` §4.5b 实测表 |
 | 2026-10-28 | 原生通道丢弃历史中的 reasoning；BigModel 要求 Coding Plan 端点上把 reasoning 原样传回 | 查缓存时读 BigModel 文档与 ZCode | 编码器注释断言「本通道没有可回放的签名」，没有实测过流里有没有签名 | 实测签名形态；解码把签名存进 DSH 回放信封，编码按 ZCode 回放（`DESIGN.md` §4.5c） |
 | 2026-10-28 | 移植丢了 ZCode 请求的四处细节：`x-request-id`、`x-zcode-trace-id`、`metadata.user_id`、末条消息的缓存断点 | 同上 | 移植时没有对照 zcode-api 的请求体变换（`body-transformer.ts`）与追踪头逐项核对 | 补齐（`DESIGN.md` §4.5b）；与缓存命中无关，实测确认 |
 | 2026-10-28 | guard 拦下 DeepSeek 会话的写入（§6.2 定案只管 GLM，未实现） | L4 | 定案写进文档但标着「尚未实现」，没有挂进待办；拦截处没有路由信号 | 按会话请求头判路由，只拦 GLM 调用（`ORCHESTRATION.md` §6.2）；非 GLM 会话的行健康写明不介入；L3 探针加非 GLM 会话的相对写入与 shell 写入都放行、无违规记录 |
@@ -177,13 +177,13 @@ DSH 官方类型已作为 devDependency 安装（`@deepseek-ai/dsh-llm`、`@deep
 处理规则：
 
 1. 补丁与次版本升级：一次一个提交，过全部门禁（build、preflight、`npm test`；动到运行时会加载的依赖再加 `npm run probe`），提交信息写明升级前后的版本与变更要点。
-2. 主版本升级：作为决策交给用户（`ROADMAP.md` §3），不自行升级。
+2. 主版本升级：作为决策交给用户（决策分级第 4 类，`ORCHESTRATION.md` §2.9.1），不自行升级。
 3. `@deepseek-ai/*`（`cordis` 与 `dsh-*`）钉在桌面版运行时所带的版本（`dsh-*` 为 `0.2.1-rc.3`，`cordis` 为 `4.0.5`，与 `reference/dsh-desktop-0.2.1-rc.3/` 一致），不跟注册表走，只在桌面版升级时一起动：按 §4 重新导出 `reference/dsh-desktop-<版本>/`，按 `DESIGN.md` §2.4a 接口对照表逐项复核，再跑 `npm run probe`。只经这些包进入本仓库的安全公告同样随桌面版处理。
 4. 新增依赖一律精确版本（`pnpm add -D -E <包>@<版本>`），任何新增先问用户。
 5. pnpm 的 store：本仓库的 `node_modules` 链接自仓库内的 `.pnpm-store/`（不入库），与本机全局 store 不同，所以 `pnpm add`、`pnpm update` 要在仓库根目录带 `--store-dir .pnpm-store`，否则报 `ERR_PNPM_UNEXPECTED_STORE`。`pnpm install --frozen-lockfile` 目前失败：根 `package.json` 的 `peerDependencies` 不在锁文件里（M1.9 之前即如此），尚未处理。
 6. 升级检查器后重跑 `npm run lint`：新版规则带来的新告警按新代码处理，修掉；修不掉的交给用户决定，不扩大基线。
 
-2026-10-28 的结果：`typescript` 5.7.2 → 7.0.2 是主版本升级（typescript-eslint 8.72.1 只支持低于 6.1 的 TypeScript；5.x 线最新为 5.9.3），已列入 `ROADMAP.md` §3。`pnpm audit` 报 1 条高危：zod 4.4.3（GHSA-mrhx-c7xc-m3w5，4.6.6 修复），只经 `@deepseek-ai/dsh-llm` 进入本仓库，那是只用于类型检查的开发依赖，随桌面版处理。
+2026-10-28 的结果：`typescript` 5.7.2 → 7.0.2 是主版本升级（typescript-eslint 8.72.1 只支持低于 6.1 的 TypeScript；5.x 线最新为 5.9.3），用户 2026-10-28 选先升到 5.9.3（项目图 `m1-followups`）。`pnpm audit` 报 1 条高危：zod 4.4.3（GHSA-mrhx-c7xc-m3w5，4.6.6 修复），只经 `@deepseek-ai/dsh-llm` 进入本仓库，那是只用于类型检查的开发依赖，随桌面版处理。
 
 ## 12. 项目图
 
@@ -204,4 +204,4 @@ DSH 官方类型已作为 devDependency 安装（`@deepseek-ai/dsh-llm`、`@deep
 2. 改了 `docs/graph/nodes/` 就运行 `npm run graph:render`，`graph.svg` 与节点文件同批提交。`npm test` 检查节点文件没有校验问题、`graph.svg` 与渲染器的输出逐字节相同，没重新出图会失败。
 3. 读 JSON 输出用 `npm run -s`，否则 npm 先往 stdout 打两行命令回显。Windows PowerShell 5.1 下写请求一律用 `--file`：经管道送 stdin 时 `--` 被吞、中文变问号，参数里的 JSON 会丢引号（`ORCHESTRATION.md` §2.10）。
 4. 试写不要用 `docs/graph`：复制到临时目录，命令加 `--dir`。
-5. 引擎、命令行与查看器不碰 DSH，改它们只需过 `npm run build`、`npm run preflight`、`npm test`，不需要 `npm run probe`。接触 DSH 的只有图行（`src/graph/index.ts`、`tools.ts`、`reminder.ts`，以及它注册的门禁规则 `src/guard/graph-files.ts`，行 `glm-hourness/graph`，`ORCHESTRATION.md` §2.5、§2.7、§2.10）：L2 在假宿主 `tests/fake-rc3.ts` 上，行默认禁用，启用前按 §1 补 L3 探针与 L4 验收（沙盒里的启用方法、L3 检查清单与启用前的跟进项见 `ROADMAP.md` M2 进度）。
+5. 引擎、命令行与查看器不碰 DSH，改它们只需过 `npm run build`、`npm run preflight`、`npm test`，不需要 `npm run probe`。接触 DSH 的只有图行（`src/graph/index.ts`、`tools.ts`、`reminder.ts`，以及它注册的门禁规则 `src/guard/graph-files.ts`，行 `glm-hourness/graph`，`ORCHESTRATION.md` §2.5、§2.7、§2.10）：L2 在假宿主 `tests/fake-rc3.ts` 上，行默认禁用，启用前按 §1 补 L3 探针与 L4 验收（L3 检查清单与启用前的跟进项见 `ROADMAP.md` M2 2.11；沙盒里的启用方法在提交 `d4cd7e2` 的 `ROADMAP.md` M2 进度）。

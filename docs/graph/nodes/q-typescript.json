@@ -2,7 +2,7 @@
   "id": "q-typescript",
   "type": "question",
   "title": "TypeScript 升级",
-  "status": "approved",
+  "status": "done",
   "parent": "m1",
   "body": "当前 5.7.2，最新 7.0.2 是主版本；typescript-eslint 8.72.1 只支持低于 6.1 的 TypeScript，5.x 线最新为 5.9.3（ROADMAP.md §3，DEVELOPMENT.md §11）。推荐 A：次版本按例行流程升级，主版本等检查器支持后再议。",
   "options": [
@@ -18,10 +18,17 @@
     }
   ],
   "recommend": "A",
+  "decision": "A",
   "edges": [
     {
       "type": "source",
       "to": "m1-9"
+    }
+  ],
+  "evidence": [
+    {
+      "kind": "decision",
+      "ref": "A"
     }
   ],
   "history": [
@@ -31,6 +38,22 @@
       "op": "propose",
       "reason": "迁移：origin/main 1ae8222 的 ROADMAP.md §3 需要用户的事项",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-28T07:31:32.956Z",
+      "actor": "llm",
+      "op": "decide",
+      "reason": "用户同意安装与清理，按推荐项执行（m1-followups）",
+      "relay": "其余可以，能装，清理你自己定就行",
+      "from": "approved",
+      "to": "done",
+      "option": "A",
+      "evidence": [
+        {
+          "kind": "decision",
+          "ref": "A"
+        }
+      ]
     }
   ]
 }

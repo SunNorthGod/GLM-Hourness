@@ -2,7 +2,7 @@
   "id": "q-graph-design",
   "type": "question",
   "title": "批准项目图引擎设计与文件格式",
-  "status": "approved",
+  "status": "done",
   "parent": "m2",
   "body": "设计在 ORCHESTRATION.md §2.6、§2.9–§2.13，原型在 graph-engine 分支；§15 列出原型按推荐项实现、待批准的细则。推荐 A：原型按推荐项实现并有测试，细则可以在用的过程中逐条改。",
   "options": [
@@ -23,6 +23,13 @@
     }
   ],
   "recommend": "A",
+  "decision": "A",
+  "evidence": [
+    {
+      "kind": "decision",
+      "ref": "A"
+    }
+  ],
   "history": [
     {
       "at": "2026-10-27T20:04:04.709Z",
@@ -36,6 +43,22 @@
       "actor": "llm",
       "op": "comment",
       "text": "graph-engine 已把 origin/main 1ae8222 合并进来（合并提交 7e2ce0f）：package.json、DESIGN.md、DEVELOPMENT.md、ROADMAP.md 的冲突逐处保留两边的内容；分支代码按 main 的检查器门禁零新增告警，基线没有扩大（knip 基线少了 2 条）；build、preflight、npm test 全绿（431 用例，33 个 spec）。选 A 时 main 可以用 git merge --ff-only 快进合入；main 在此之后有新提交时，先再合并一次进分支。"
+    },
+    {
+      "at": "2026-10-28T07:31:32.612Z",
+      "actor": "llm",
+      "op": "decide",
+      "reason": "用户批准原型（M2.1 选 A）并合入 main；§15 的细则交给 agent 定，记为 q-graph-details",
+      "relay": "图大体的思路是没问题的 …… 其余全部按你的来",
+      "from": "approved",
+      "to": "done",
+      "option": "A",
+      "evidence": [
+        {
+          "kind": "decision",
+          "ref": "A"
+        }
+      ]
     }
   ]
 }

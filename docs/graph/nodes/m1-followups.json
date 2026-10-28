@@ -1,0 +1,41 @@
+{
+  "id": "m1-followups",
+  "type": "task",
+  "title": "M1.9 跟进：gitleaks、@eslint/js、删 scripts/dev、TypeScript 5.9.3",
+  "status": "approved",
+  "parent": "m1",
+  "kind": "implement",
+  "body": "gitleaks 装到用户级工具目录并接进 npm test；@eslint/js 精确版本；删除 scripts/dev/；TypeScript 升到 5.9.3。",
+  "acceptance": [
+    "npm test 含密钥扫描且全绿",
+    "scripts/dev/ 不存在",
+    "tsc 5.9.3 构建通过"
+  ],
+  "edges": [
+    {
+      "type": "source",
+      "to": "q-eslint-js"
+    },
+    {
+      "type": "source",
+      "to": "q-gitleaks"
+    },
+    {
+      "type": "source",
+      "to": "q-scripts-dev"
+    },
+    {
+      "type": "source",
+      "to": "q-typescript"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-28T07:31:33.645Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "用户同意的 M1.9 跟进",
+      "to": "approved"
+    }
+  ]
+}

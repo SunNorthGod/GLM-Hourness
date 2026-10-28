@@ -1,7 +1,7 @@
 # 交接说明
 
-版本：0.3（2026-10-28）
-本文件记录当前状态，供接手者继续工作。2026-10-28 夜间无人值守运行的小结（落地条目与提交、需要用户的事、建议的下一步）见 `ROADMAP.md` M1 的「2026-10-28 夜间运行小结」。设计以 `CHARTER.md`、`DESIGN.md`、`ORCHESTRATION.md` 为准，下一步以 `ROADMAP.md` 为准。
+版本：0.4（2026-10-28）
+本文件记录环境、组件状态与已知问题，供接手者继续工作。进度与下一步只记在项目图 `docs/graph/` 上（`ORCHESTRATION.md` §2.13）：`npm run -s graph -- open` 列出进行中、可以开工与等人的事。设计以 `CHARTER.md`、`DESIGN.md`、`ORCHESTRATION.md` 为准，里程碑与验收以 `ROADMAP.md` 为准。
 
 ## 1. 项目概况
 
@@ -16,19 +16,19 @@
 
 ```
 src/           主包 TypeScript 源码
-tests/         25 个 spec，258 用例；tests/fake-rc3.ts 为 rc.3 运行时替身；tests/tsconfig.json 只给 ESLint 提供类型信息；tests/calibration/ 为标定测试集（两个任务，ORCHESTRATION.md §10.5）
+tests/         33 个 spec，453 用例（2026-10-28，`d4cd7e2` 之后）；tests/fake-rc3.ts 为 rc.3 运行时替身；tests/tsconfig.json 只给 ESLint 提供类型信息；tests/calibration/ 为标定测试集（两个任务，ORCHESTRATION.md §10.5）
 ui/            独立 UI bundle（纯 JS，不参与 tsc）
-scripts/       preflight-bundle.mjs、check-verbatim.mjs、check-lint.mjs（检查器门禁）、deps-check.mjs（依赖报告）、smoke-zcode*.mjs、sandbox.mjs（glmsandbox 启动与覆盖行，探针与标定共用）、probe/（L3 探针）、calibrate/（标定运行器与边界插件）；scripts/dev/ 为历史调试脚本，部分针对已不存在的接口（去留见 ROADMAP.md §3）
+scripts/       preflight-bundle.mjs、check-verbatim.mjs、check-lint.mjs（检查器门禁）、deps-check.mjs（依赖报告）、smoke-zcode*.mjs、sandbox.mjs（glmsandbox 启动与覆盖行，探针与标定共用）、probe/（L3 探针）、calibrate/（标定运行器与边界插件）、graph/（项目图命令行、出图、查看器服务与冒烟）；scripts/dev/ 为历史调试脚本，用户同意删除（项目图 m1-followups）
 eslint.config.js、knip.jsonc、.jscpd.json  检查器配置；eslint-suppressions.json、knip-baseline.json、.jscpd-baseline.json 为告警基线（DEVELOPMENT.md §10）
-docs/          宪章、设计、编排、路线、事实账、流程、交接；docs/reference/ 为事实参考原文
+docs/          宪章、设计、编排、路线、事实账、流程、交接；docs/graph/ 为本项目的项目图（进度的事实源）；docs/reference/ 为事实参考原文
 AGENTS.md      仓库规则
 cordis.patch.yml  主包 Loader patch
 .llm/          不入库，项目目录：credentials.json 与 device-mid.txt（已搬到用户级目录，原件待删）、audit/（违规与决策；2026-10-28 之前的用量）、memory.json、docs/（原始资料快照与抓取脚本）、probe-runs/、calibration-runs/
 ~/.dsh/glm-hourness/  仓库外，用户级目录：audit/usage.jsonl、credentials.json、device-mid.txt（DESIGN.md §2.4）
 reference/     不入库：审计用参考源码（zcode-api、deepseek-harness、ZCode、zcode-plugins）与桌面版运行时包导出 dsh-desktop-0.2.1-rc.3/，约 2.5 GB
 dist/          不入库：tsc 产物（profile 通过 pnpm link 使用）
-.agents/       不入库：编排任务状态（夜间运行清单、借用审计报告 dsh-borrow-audit/report.md、graph-engine 并行线清单）
-.worktrees/    不入库：并行线的 git 工作树（graph-engine）
+.agents/       不入库：编排任务状态与一次性脚本（夜间运行清单、借用审计报告 dsh-borrow-audit/report.md、缓存调查 cache-2026-10-28/、补图脚本 m2-graph/）
+.worktrees/    不入库：并行线的 git 工作树（graph-engine 已合入，留下一个空目录待删）
 ```
 
 ## 3. 组件状态
@@ -48,11 +48,11 @@ dist/          不入库：tsc 产物（profile 通过 pnpm link 使用）
 
 行健康（2026-10-28，`DESIGN.md` §2.5）：主包 9 行都在激活时与会话中上报生效、部分生效或未生效及原因，`/glm-status` 显示；桌面版重启后生效。
 
-装机：10 行均 `fiberPhase: active`，无激活错误（2026-10-27 删除 `toolsearch` 行之前的记录；`data` 行尚未在桌面版上加载过）。2026-10-28 的全部运行时改动只经 L1–L3 验证，桌面版重启后才加载，随后做 L4（`ROADMAP.md` §3）。
+装机：10 行均 `fiberPhase: active`，无激活错误（2026-10-27 删除 `toolsearch` 行之前的记录；`data` 行尚未在桌面版上加载过）。2026-10-28 用户重启桌面版做了 L4 第一轮；之后的运行时改动由 Kiro 重启桌面版自验（L4 第二轮，项目图 `m1-11`）。
 
 门禁（2026-10-28 夜间运行收尾时，提交 `d6977ad` 之上）：`npm run build`、`npm run preflight` 通过；`npm test` 25 个 spec、258 用例通过、0 失败，逐字门禁 397 段、已知偏差 0 条，检查器门禁对照基线 ESLint 316 条、knip 34 条、jscpd 7 处克隆（75 行）；`npm run probe` 69/69（运行 `2026-10-27T23-38-41-366Z`，含派发可行性验证的 12 项）。标定基线（`npm run calibrate`，提交 `4cb8799`）：两个起步任务、两档模型各 3 次，12/12 完成（`ORCHESTRATION.md` §10.5.2）。
 
-并行分支 `graph-engine`（项目图引擎原型，M2）：已推送，已把 main 的 `1ae8222` 合并进来（合并提交 `7e2ce0f`），main 没有新提交时可以 `git merge --ff-only` 快进合入；分支清单 9 项全部完成，另加第二阶段（DSH 图工具、每步投影、图文件门禁，新行 `glm-hourness/graph` 默认禁用）。合并后分支上的门禁：33 个 spec、431 用例通过，检查器门禁对照基线 ESLint 316 条、knip 32 条、jscpd 7 处克隆（在分支工作树里跑）。项目图已补到 `1ae8222`。未合入 main，等用户的 M2.1 审阅（`ROADMAP.md` §3；审阅要点写在该分支的 `ROADMAP.md` M2 进度与「M2.1 审阅」）。
+项目图（M2）：引擎原型经用户批准（M2.1 选 A），`graph-engine` 于 2026-10-28 合入 main（`5463662`）；同日加上决策分级与转述（`d4cd7e2`，`ORCHESTRATION.md` §2.9.1）。新行 `glm-hourness/graph`（DSH 图工具、每步投影、图文件门禁）默认禁用，启用前的验收见 `ROADMAP.md` M2 2.11。门禁（`d4cd7e2`）：33 个 spec、453 用例，检查器基线 ESLint 315 条、knip 32 条、jscpd 7 处克隆，`npm run probe` 73/73。远端分支 `origin/graph-engine` 还在，随清理删除。
 
 宿主接口：每个用到的 DSH 钩子、服务成员与载荷字段都已对照 rc.3 运行时包，证据见 `DESIGN.md` §2.4a 接口对照表；宿主结构类型集中在 `src/shared/dsh-min.ts` 与 `src/shared/lm-min.ts`。
 
@@ -61,7 +61,7 @@ dist/          不入库：tsc 产物（profile 通过 pnpm link 使用）
 ## 4. 审计数据快照（2026-10-28）
 
 - 用户级 `~/.dsh/glm-hourness/audit/usage.jsonl` 1080 条（2026-10-28 迁移所得，`DESIGN.md` §2.4）：`glm/glm-5.3` 796，`deepseek-account/deepseek-flash` 274，`glm/glm-5.3-flash` 10；最晚一条 2026-10-27T12:29:08.993Z。
-- 迁移来源（均未改动）：仓库 `.llm/audit/usage.jsonl` 890 条；`~/.dsh/profiles/desktop/.llm/audit/usage.jsonl` 190 条，全部 `glm/glm-5.3`，时间 15:36–17:22（本地）。两者无重复。桌面版重启前，运行中的旧代码仍写仓库那份，重启后需补拷（`ROADMAP.md` §3）。2026-10-28 07:40（UTC+8）复查：仓库那份仍是 890 条，没有晚于截止点的记录，用户级那份仍是 1080 条。
+- 迁移来源（均未改动）：仓库 `.llm/audit/usage.jsonl` 890 条；`~/.dsh/profiles/desktop/.llm/audit/usage.jsonl` 190 条，全部 `glm/glm-5.3`，时间 15:36–17:22（本地）。两者无重复。桌面版重启前，运行中的旧代码仍写仓库那份，重启后需补拷（项目图 `m1-cleanup`）。2026-10-28 07:40（UTC+8）复查：仓库那份仍是 890 条，没有晚于截止点的记录，用户级那份仍是 1080 条。
 - 记忆：仓库 `.llm/memory.json` 1 条（从旧目录复制）。
 - 走原生路由 `glm-zcode` 的请求：0 条。上述 GLM 请求全部经旧的 `glm` 路由。
 - 违规流水：仓库 `.llm/audit/` 下还没有文件（已知拦截至少 3 次未落盘）；落盘代码随桌面版重启生效。
@@ -71,8 +71,8 @@ dist/          不入库：tsc 产物（profile 通过 pnpm link 使用）
 1. 路由判定已收口到 `src/shared/route.ts`，`glm-prompt`（含工具检索与 todo 提醒）已改用（`DESIGN.md` §3）。todo 提醒自 2026-10-28 起按 ZCode 的助手轮次口径计数（`DESIGN.md` §5.5）。
 2. 版本基线已统一为 3.16.3；`X-Title` 按用户定案（2026-10-27）保持 `cli`，桌面版 ZCode 的真实流量是 `electron`（`DESIGN.md` §4.2）。
 3. guard 闭环缺申报一段（记录、告知已于 2026-10-28 接通）。`=>`、`>>>`、`->` 误判已修（2026-10-28，引号感知，`ORCHESTRATION.md` §6.5.1）；读不到的 shell 写法（.NET 调用、`cmd /c`、PowerShell 别名如 `del`）只由工作区变更兜底记录，不拦截（§6.5.2）。L4 暴露的两处已修（2026-10-28）：拦截只对 GLM 调用生效，路由取会话请求头（§6.2）；相对路径按会话工作目录解析，`..` 折叠（§6.1）。
-4. 数据目录分裂：已修（2026-10-28，`DESIGN.md` §2.4）。用户级数据在 `~/.dsh/glm-hourness/`，项目数据在工作区 `.llm/`；凭证与 deviceMid 已于 2026-10-28 搬到用户级目录，仓库里的原件待删（`ROADMAP.md` §3）。
-5. 签名握手对当前凭证失败，按设计无签发送；对 1.5 倍用量的影响未验证，签名状态不可见。2026-10-28 截包：握手每次 404，且每个请求前都重试一次（`DESIGN.md` §4.3，`ROADMAP.md` §3）。
+4. 数据目录分裂：已修（2026-10-28，`DESIGN.md` §2.4）。用户级数据在 `~/.dsh/glm-hourness/`，项目数据在工作区 `.llm/`；凭证与 deviceMid 已于 2026-10-28 搬到用户级目录，仓库里的原件待删（项目图 `m1-cleanup`）。
+5. 签名握手对当前凭证失败，按设计无签发送；对 1.5 倍用量的影响未验证，签名状态不可见。2026-10-28 截包：握手每次 404，且每个请求前都重试一次（`DESIGN.md` §4.3，项目图 `m1-signing`）。
 6. start-plan 档只有单测，未做真机授权验证。
 7. 峰谷口径：已修（2026-10-28，`ORCHESTRATION.md` §11.2）。面板按积分计，高峰为工作日 14:00–18:00（UTC+8），其余时段按 50%；5 小时窗口、周额度、预估耗尽时间要等通道取数（`DESIGN.md` §4.7）。
 8. 记忆存储判据过严，路径或文件名样式的文字一律被拒（`ORCHESTRATION.md` §8.1）。
@@ -94,11 +94,11 @@ dist/          不入库：tsc 产物（profile 通过 pnpm link 使用）
 23. 派发可行性验证的发现，M7 实现时处理（`ORCHESTRATION.md` §2.1、§3.2）：子 agent 的会话头 `cwd` 是父 agent 的目录，guard 对子 agent 的包含根因而是父工作区，DSH 的文件沙盒根也是父工作区，独立工作树要建在父工作区之内；服务只按调用方传入的 `maxDepth` 限深，本包的派发工具要传；GLM 路由上 `structured_output`、`send_message`、`update_goal` 是延迟工具，要经 DeferredToolCall 调用；headless 运行器在第一次静止空闲时退出，不跑目标轮，用 goal 驱动的标定任务要另想办法撑住进程。
 24. 原生通道的提示词缓存：2026-10-28 修复主因（`DESIGN.md` §4.5b）。网关按 `x-session-id` 做缓存亲和，通道此前每请求随机生成；现在按 DSH 会话固定。GLM-5.3-Flash 在会话第二步仍常只命中共用前缀，原因未明。同批补上保留式思考（历史 reasoning 带签名回传，§4.5c，命中率不变、每步未命中输入变多）与四处 ZCode 请求细节。桌面版重启后生效。
 
-反向代理已从项目范围移除（`DESIGN.md` §1）；profile 中指向 8317 的 pi-ai `glm` 路由属于用户配置，本项目不改。
+反向代理已从项目范围移除（`DESIGN.md` §1）；profile 中指向 8317 的 pi-ai `glm` 路由属于用户配置，用户 2026-10-28 把清理交给 agent，L4 第二轮通过后删除（项目图 `m1-cleanup`，改前备份）。
 
 ## 6. 环境事实
 
-- 凭证：`~/.dsh/glm-hourness/credentials.json` 与 `device-mid.txt`（AES-256-GCM；`GLM_HOURNESS_CREDENTIAL_SECRET` 可覆盖密钥）。`glm-llm`、`glm-login` 不配 `home` 时默认读这里（`DESIGN.md` §2.4）。仓库 `.llm/` 里的原件保留到桌面版重启验证之后再删（`ROADMAP.md` §3）。
+- 凭证：`~/.dsh/glm-hourness/credentials.json` 与 `device-mid.txt`（AES-256-GCM；`GLM_HOURNESS_CREDENTIAL_SECRET` 可覆盖密钥）。`glm-llm`、`glm-login` 不配 `home` 时默认读这里（`DESIGN.md` §2.4）。仓库 `.llm/` 里的原件保留到桌面版重启验证之后再删（项目图 `m1-cleanup`）。
 - 数据目录：用户级 `~/.dsh/glm-hourness/`（`$DSH_HOME` 可改根目录），项目 `.llm/`；由 `data` 行的服务提供（`DESIGN.md` §2.4）。
 - 模型：`glm-zcode` 路由提供 GLM-5.3、GLM-5.3-Flash。
 - 沙盒：profile `glmsandbox`，命令见 `DEVELOPMENT.md` §3；探针（`npm run probe`，离线）与标定（`npm run calibrate`，真实请求、消耗积分）共用，不要同时运行。沙盒模板的权限模式由 `DSH_PERMISSION_MODE` 决定（缺省 `workspace-write`），桌面版 profile 的默认预设是 `danger-full-access`。
@@ -107,11 +107,4 @@ dist/          不入库：tsc 产物（profile 通过 pnpm link 使用）
 
 ## 7. 下一步
 
-M1 只剩 1.11（L4 真机验收）。建议顺序（理由见 `ROADMAP.md` M1 的「2026-10-28 夜间运行小结」）：
-
-1. L4：用户重启桌面版，在真实会话里选 `glm-zcode` 发消息并跑一次多轮工具调用，按 `ROADMAP.md` M1.11 的验收项核对。
-2. L4 之后由 Kiro 执行：补拷用量（若有新记录）、搬加密凭证与 deviceMid（用户定案 A）。
-3. M2.1 审阅 `graph-engine`，选 A 则合入 main，再做分支列出的四项跟进与六项 L3 检查。
-4. 合入之后清理检查器基线里可自动修复的存量告警，然后进入 M3。
-
-需要用户参与的事项见 `ROADMAP.md` §3。
+在项目图上（`npm run -s graph -- open`）：进行中的 `m1-11`（L4 第二轮）与 `m2`；可以开工的叶子里，M2 的原生面板 `m2-7` 排在实时现场 `m2-8`、运行控制 `m2-9` 与删除查看器 `m2-10` 之前；M1 剩缓存 `m1-cache-flash`、签名 `m1-signing`、跟进 `m1-followups` 与清理 `m1-cleanup`（依赖 `m1-11`）。人的决策队列为空。

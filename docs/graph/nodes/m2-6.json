@@ -1,0 +1,65 @@
+{
+  "id": "m2-6",
+  "type": "task",
+  "title": "2.6 决策分级与转述",
+  "status": "done",
+  "parent": "m2",
+  "kind": "implement",
+  "body": "待决的决定者（human / agent）、LLM 写入可带人的原话转述、完成的待决可直接再拍；人的队列只放决定者为人的待决，agent 自己的另列，最近的拍板供人推翻（ORCHESTRATION.md §2.9.1）。",
+  "acceptance": [
+    "人的决策队列只剩非人不可的事",
+    "LLM 能带人的原话替人批准、拍板，原话留在历史里",
+    "人能推翻 agent 定的事"
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "d4cd7e2"
+    },
+    {
+      "kind": "test",
+      "ref": "npm test",
+      "exit": 0
+    },
+    {
+      "kind": "check",
+      "ref": "npm run probe",
+      "exit": 0,
+      "note": "73/73"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-28T07:31:33.233Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "用户：待办太多、认知负担太重；只把非人不可的事放到人面前",
+      "to": "approved"
+    },
+    {
+      "at": "2026-10-28T07:31:33.264Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "引擎、图工具与文档已提交",
+      "from": "approved",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "d4cd7e2"
+        },
+        {
+          "kind": "test",
+          "ref": "npm test",
+          "exit": 0
+        },
+        {
+          "kind": "check",
+          "ref": "npm run probe",
+          "exit": 0,
+          "note": "73/73"
+        }
+      ]
+    }
+  ]
+}

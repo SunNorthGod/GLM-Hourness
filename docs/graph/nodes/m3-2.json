@@ -2,7 +2,7 @@
   "id": "m3-2",
   "type": "task",
   "title": "3.2 许愿访谈八步与需求卡",
-  "status": "proposed",
+  "status": "approved",
   "parent": "m3",
   "kind": "implement",
   "body": "访谈过程中图实时生长（ORCHESTRATION.md §4.2）。",
@@ -13,6 +13,15 @@
       "op": "propose",
       "reason": "迁移：ROADMAP.md M3 3.2",
       "to": "proposed"
+    },
+    {
+      "at": "2026-10-28T07:31:32.209Z",
+      "actor": "llm",
+      "op": "approve",
+      "reason": "路线导入的里程碑与条目视为已批准（ORCHESTRATION.md §2.9.1，用户批准了决策分级）",
+      "relay": "其余全部按你的来",
+      "from": "proposed",
+      "to": "approved"
     }
   ]
 }

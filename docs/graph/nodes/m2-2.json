@@ -2,7 +2,7 @@
   "id": "m2-2",
   "type": "task",
   "title": "2.2 图工具：读投影、提议、带证据改状态",
-  "status": "proposed",
+  "status": "done",
   "parent": "m2",
   "kind": "implement",
   "body": "DSH 图工具照命令行契约暴露（ORCHESTRATION.md §2.10）。",
@@ -13,6 +13,17 @@
     {
       "type": "depends",
       "to": "m2-1"
+    }
+  ],
+  "evidence": [
+    {
+      "kind": "test",
+      "ref": "node --experimental-strip-types tests/graph-tools.spec.ts",
+      "exit": 0
+    },
+    {
+      "kind": "commit",
+      "ref": "d4cd7e2"
     }
   ],
   "history": [
@@ -28,6 +39,34 @@
       "actor": "llm",
       "op": "comment",
       "text": "分支 graph-engine 上已做（提交 d8527fe、a6bb8a2）：DSH 图工具 10 个（含 graph_focus），身份 llm，引擎的拒绝作为带错误码与正路的工具错误返回；同一行注册的门禁 graph-files-only 拦直接写图目录。行 glm-hourness/graph 默认禁用，只有 L2（tests/fake-rc3.ts）；L3 检查清单与启用前的跟进项在 ROADMAP.md M2 进度，合入 main 后做。"
+    },
+    {
+      "at": "2026-10-28T07:31:31.964Z",
+      "actor": "llm",
+      "op": "approve",
+      "reason": "路线导入的里程碑与条目视为已批准（ORCHESTRATION.md §2.9.1，用户批准了决策分级）",
+      "relay": "其余全部按你的来",
+      "from": "proposed",
+      "to": "approved"
+    },
+    {
+      "at": "2026-10-28T07:31:33.066Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "图工具在 L2 覆盖无证据不能标完成等拒绝路径；L3、L4 另立 m2-11",
+      "from": "approved",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "test",
+          "ref": "node --experimental-strip-types tests/graph-tools.spec.ts",
+          "exit": 0
+        },
+        {
+          "kind": "commit",
+          "ref": "d4cd7e2"
+        }
+      ]
     }
   ]
 }

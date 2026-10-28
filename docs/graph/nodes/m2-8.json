@@ -1,0 +1,29 @@
+{
+  "id": "m2-8",
+  "type": "task",
+  "title": "2.8 实时现场：agent 与子 agent 在图上",
+  "status": "approved",
+  "parent": "m2",
+  "kind": "implement",
+  "tier": "hard",
+  "body": "主 Agent 的徽标落在焦点节点上，子 agent 落在它的任务节点上；徽标显示是谁、模型、当前动作与用时，工作时呼吸、完成时有动画；现场视图列每个 agent 最近几步与用量。宿主侧图行节流写 .llm/graph-live.json，面板订阅文件变更（第三方插件不能追加自定义会话事件）。M7 派发之前，DSH 内置子 agent 挂在父 agent 的节点下。",
+  "acceptance": [
+    "主 Agent 与子 agent 的位置与动作在 2 秒内出现在图上",
+    "现场文件写入节流，不进 git"
+  ],
+  "edges": [
+    {
+      "type": "depends",
+      "to": "m2-7"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-28T07:31:33.317Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "用户：要能在项目图上看见实时的工作，每个子代理在哪里干什么",
+      "to": "approved"
+    }
+  ]
+}

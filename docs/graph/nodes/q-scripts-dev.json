@@ -2,7 +2,7 @@
   "id": "q-scripts-dev",
   "type": "question",
   "title": "scripts/dev/ 的 9 个历史调试脚本去留",
-  "status": "approved",
+  "status": "done",
   "parent": "m1",
   "body": "这些脚本部分针对已不存在的接口，没有任何入口引用（knip 报未用文件），占 ESLint 基线 11 条、jscpd 克隆 4 处（ROADMAP.md §3）。推荐 A：git 历史保留原文，基线随之缩小。",
   "options": [
@@ -18,10 +18,17 @@
     }
   ],
   "recommend": "A",
+  "decision": "A",
   "edges": [
     {
       "type": "source",
       "to": "m1-9"
+    }
+  ],
+  "evidence": [
+    {
+      "kind": "decision",
+      "ref": "A"
     }
   ],
   "history": [
@@ -31,6 +38,22 @@
       "op": "propose",
       "reason": "迁移：origin/main 1ae8222 的 ROADMAP.md §3 需要用户的事项",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-28T07:31:32.920Z",
+      "actor": "llm",
+      "op": "decide",
+      "reason": "用户同意安装与清理，按推荐项执行（m1-followups）",
+      "relay": "其余可以，能装，清理你自己定就行",
+      "from": "approved",
+      "to": "done",
+      "option": "A",
+      "evidence": [
+        {
+          "kind": "decision",
+          "ref": "A"
+        }
+      ]
     }
   ]
 }

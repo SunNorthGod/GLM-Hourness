@@ -1,0 +1,19 @@
+{
+  "id": "d-graph-programming",
+  "type": "decision",
+  "title": "第一理念：在图上编程",
+  "status": "approved",
+  "parent": "hourness",
+  "verification": "unverified",
+  "body": "项目图是骨架，LLM 是驱动：人在图上改节点就是在写程序，图下的工作交给 harness 与 LLM（CHARTER.md §2，提交 fb35ffc）。是否成立按只在图上交付功能、通过验收且返工少来衡量，验证状态在这之前保持未验证。",
+  "history": [
+    {
+      "at": "2026-10-28T07:31:33.467Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "章程 0.4 的第一理念",
+      "relay": "以后在图上改就相当于写程序！…… 立马把它也变成我们的第一理念",
+      "to": "approved"
+    }
+  ]
+}

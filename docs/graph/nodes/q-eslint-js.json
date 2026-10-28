@@ -2,7 +2,7 @@
   "id": "q-eslint-js",
   "type": "question",
   "title": "是否新增 @eslint/js",
-  "status": "approved",
+  "status": "done",
   "parent": "m1",
   "body": "@eslint/js 是 ESLint 官方的推荐规则包，ESLint 10 起不随 ESLint 安装。现在的配置从 ESLint 规则元数据取推荐清单，用的是 ESLint 标为「自担风险」的接口，取到的 64 条规则与 @eslint/js 10.0.1 的推荐清单相同（ROADMAP.md §3）。推荐 A：升级 ESLint 时少一处风险。",
   "options": [
@@ -18,10 +18,17 @@
     }
   ],
   "recommend": "A",
+  "decision": "A",
   "edges": [
     {
       "type": "source",
       "to": "m1-9"
+    }
+  ],
+  "evidence": [
+    {
+      "kind": "decision",
+      "ref": "A"
     }
   ],
   "history": [
@@ -31,6 +38,22 @@
       "op": "propose",
       "reason": "迁移：origin/main 1ae8222 的 ROADMAP.md §3 需要用户的事项",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-28T07:31:32.882Z",
+      "actor": "llm",
+      "op": "decide",
+      "reason": "用户同意安装与清理，按推荐项执行（m1-followups）",
+      "relay": "其余可以，能装，清理你自己定就行",
+      "from": "approved",
+      "to": "done",
+      "option": "A",
+      "evidence": [
+        {
+          "kind": "decision",
+          "ref": "A"
+        }
+      ]
     }
   ]
 }
