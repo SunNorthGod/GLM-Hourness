@@ -475,6 +475,10 @@ export class ZcodeAdapter {
     // failure rejects the project token; refresh it once, forcing a new
     // mint, and retry once as a new attempt.
     if (projectToken !== undefined && await isProjectTokenRejection(response)) {
+      // The rejected answer is done with (its clone was read for the check):
+      // cancel its body before the retry so nothing stays buffered or
+      // open, as 3.16.3 drains discarded bodies (`DQr` @3843990).
+      await response.body?.cancel().catch(() => { /* already closed */ })
       projectToken = await this.projectToken(credential, await projectTokenFingerprint(projectToken.token)).catch((error: unknown) => failClosed(report, error))
       response = await attempt(projectToken)
     }

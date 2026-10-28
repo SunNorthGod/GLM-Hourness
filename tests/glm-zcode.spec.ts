@@ -347,7 +347,10 @@ test('the routing config request names the project token\'s API key in x-api-key
 test('a 401 that is not a request-security failure refreshes the project token once and retries as a new attempt', async () => {
   const pat = patPlane()
   const rejected = (): Response => new Response(JSON.stringify({ error: { type: 'authentication_error', message: 'token expired' } }), { status: 401 })
-  const wire = await runOnGateway({ pat, model: attempt => attempt === 1 ? rejected() : sseOk() })
+  const first = rejected()
+  const wire = await runOnGateway({ pat, model: attempt => attempt === 1 ? first : sseOk() })
+  // The rejected answer's body is cancelled before the retry (only its clone was read for the check).
+  assert.equal(first.bodyUsed, true)
   const models = wire.filter(isModelRequest)
   assert.equal(models.length, 2)
   assert.equal(pat.mints(), 2)
