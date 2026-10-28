@@ -1,0 +1,36 @@
+{
+  "id": "q-gitleaks",
+  "type": "question",
+  "title": "密钥扫描 gitleaks 装不装",
+  "status": "approved",
+  "parent": "m1",
+  "body": "ORCHESTRATION.md §7.5 的密钥扫描用 gitleaks。它是工作区外的独立二进制，安装要用户同意（ROADMAP.md §3）。推荐 A：提交前的密钥扫描进门禁，不再只靠人工。",
+  "options": [
+    {
+      "key": "A",
+      "label": "装到用户级工具目录，接成 npm test 的一道",
+      "consequence": "每次跑门禁都扫密钥；工作区外多一个要定期更新的程序"
+    },
+    {
+      "key": "B",
+      "label": "不装，维持提交前人工扫描",
+      "consequence": "不新增程序；漏扫只能靠人工把关"
+    }
+  ],
+  "recommend": "A",
+  "edges": [
+    {
+      "type": "source",
+      "to": "m1-9"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-28T00:17:43.176Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "迁移：origin/main 1ae8222 的 ROADMAP.md §3 需要用户的事项",
+      "to": "approved"
+    }
+  ]
+}

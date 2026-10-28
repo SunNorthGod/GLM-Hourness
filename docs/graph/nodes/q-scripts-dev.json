@@ -1,0 +1,36 @@
+{
+  "id": "q-scripts-dev",
+  "type": "question",
+  "title": "scripts/dev/ 的 9 个历史调试脚本去留",
+  "status": "approved",
+  "parent": "m1",
+  "body": "这些脚本部分针对已不存在的接口，没有任何入口引用（knip 报未用文件），占 ESLint 基线 11 条、jscpd 克隆 4 处（ROADMAP.md §3）。推荐 A：git 历史保留原文，基线随之缩小。",
+  "options": [
+    {
+      "key": "A",
+      "label": "删除",
+      "consequence": "检查器基线缩小；要用时从 git 历史取回"
+    },
+    {
+      "key": "B",
+      "label": "保留",
+      "consequence": "基线不变；针对旧接口的脚本留在仓库里"
+    }
+  ],
+  "recommend": "A",
+  "edges": [
+    {
+      "type": "source",
+      "to": "m1-9"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-28T00:17:43.497Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "迁移：origin/main 1ae8222 的 ROADMAP.md §3 需要用户的事项",
+      "to": "approved"
+    }
+  ]
+}

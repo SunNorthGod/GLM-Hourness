@@ -12,6 +12,12 @@
       "op": "propose",
       "reason": "迁移：ROADMAP.md M7；新开分支属计划外，等人批准",
       "to": "proposed"
+    },
+    {
+      "at": "2026-10-28T00:17:42.353Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M7 依赖的派发可行性验证已在 main 完成（提交 953fc39、d6977ad；origin/main 1ae8222 的 ROADMAP.md M7 进度，ORCHESTRATION.md §2.1、§3.2，DESIGN.md §2.4a）：后台派发、子 agent 的写入范围门禁、goal 驱动下的目标轮注入与完成门禁在 rc.3 运行时上都走通，只用了探针覆盖层里的验证插件，bundle 没有新行。验证：L2 258 用例，L3 探针 69/69（新增 12 项）。实现时要照顾的三点：独立工作树建在父工作区之内；派发工具传 maxDepth；GLM 子 agent 的 structured_output、send_message 是否常驻。d-dispatch、d-driver 的验证状态据此改为沙盒验证。M7 还是提议，状态不动。"
     }
   ]
 }

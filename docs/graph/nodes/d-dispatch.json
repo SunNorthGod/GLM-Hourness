@@ -4,12 +4,25 @@
   "title": "不设队友角色：主 Agent 把任务节点派给后台子 agent",
   "status": "approved",
   "parent": "orch",
-  "verification": "unverified",
+  "verification": "sandbox",
   "body": "派发属性写在任务节点上（种类、写入范围、模型档位、交回结构、是否独立工作树，验收条件用公共字段），harness 派发时读取；写入范围由 guard 在子 agent 的 tools/pre-execute 里拦；主 Agent 不写代码也由 guard 拦，不用预设；主 Agent 的身份是本项目自己的提示词：三问四答、五键、架构师访谈（ORCHESTRATION.md §2.2）。同一晚先定过「角色队友是带角色预设的普通 subagent，不启用 Agent Team」，随后被本决定取代。",
   "edges": [
     {
       "type": "supersedes",
       "to": "d-role-cards"
+    }
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "953fc39",
+      "note": "探针覆盖层里的验证插件 scripts/probe/probe-dispatch.mjs 与场景 glm-dispatch，不属于 bundle"
+    },
+    {
+      "kind": "test",
+      "ref": "npm run probe",
+      "exit": 0,
+      "note": "L3 探针 69/69，新增 12 项；glm-dispatch：startActivation 后台派发，父 agent 的步继续，完成通知带结构化结果，范围外的写入以工具错误拒绝（运行 2026-10-27T23-38-41-366Z）"
     }
   ],
   "history": [
@@ -19,6 +32,27 @@
       "op": "propose",
       "reason": "迁移：用户定案 2026-10-28，取代队友角色卡（ORCHESTRATION.md §2.2）",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-28T00:17:41.687Z",
+      "actor": "llm",
+      "op": "verify",
+      "reason": "派发可行性验证在 rc.3 运行时上走通后台派发与写入范围门禁（L3；origin/main 1ae8222 的 ROADMAP.md M7 进度，借用组件核实清单第 4、4b 项）；桌面版组合随 L4",
+      "from": "unverified",
+      "to": "sandbox",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "953fc39",
+          "note": "探针覆盖层里的验证插件 scripts/probe/probe-dispatch.mjs 与场景 glm-dispatch，不属于 bundle"
+        },
+        {
+          "kind": "test",
+          "ref": "npm run probe",
+          "exit": 0,
+          "note": "L3 探针 69/69，新增 12 项；glm-dispatch：startActivation 后台派发，父 agent 的步继续，完成通知带结构化结果，范围外的写入以工具错误拒绝（运行 2026-10-27T23-38-41-366Z）"
+        }
+      ]
     }
   ]
 }

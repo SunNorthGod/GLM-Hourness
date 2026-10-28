@@ -12,6 +12,12 @@
       "op": "propose",
       "reason": "迁移：ROADMAP.md M6；新开分支属计划外，等人批准",
       "to": "proposed"
+    },
+    {
+      "at": "2026-10-28T00:17:42.184Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "6.1 积分口径与高峰提醒已在 main 完成（提交 91c9ace、5e84582；origin/main 1ae8222 的 ROADMAP.md M6 进度，ORCHESTRATION.md §11.2–§11.4）：积分规则收进 src/shared/credits.ts，面板、高峰提醒与标定运行器共用；/hourness 面板改为积分口径；GLM 会话在高峰时段的第一个步收到一条提醒，只告知，不换模型、不拦截。验证：L2 258 用例（25 个 spec），L3 探针 57/57。5 小时窗口、周额度、预估耗尽时间（要通道取数）与排期功能未做。M6 还是提议，图上没有 6.1 的节点，状态不动：提议下的条目要人批准后才能标完成。"
     }
   ]
 }

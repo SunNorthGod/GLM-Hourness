@@ -37,6 +37,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "L4 重启之后还有两件事挂在这张卡后面（origin/main 29211ed 的 ROADMAP.md §3）：Kiro 把重启前旧代码写进仓库 .llm/audit/usage.jsonl、晚于 2026-10-27T12:29:08.993Z 的用量按整行去重补拷到 ~/.dsh/glm-hourness/audit/usage.jsonl；原生通道 L4 验收之后，按用户定案 A 把加密凭证与 device-mid.txt 搬到 ~/.dsh/glm-hourness/，同时改 glm-llm、glm-login 的 home。"
+    },
+    {
+      "at": "2026-10-28T00:17:42.681Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "L4 真机验收由用户安排在 2026-10-28（origin/main 1ae8222 的 ROADMAP.md §3）。核对项见 ROADMAP.md M1「2026-10-28 夜间运行小结」：1.11 的三项验收（行健康全绿、会话文件里的系统提示词含方言、用量记录 provider 为 glm-zcode），同一会话里让 GLM 跑一次多轮工具调用，确认原生通道的工具调用编码，再用 /glm-status 看 data 行在桌面版上是否生效。"
     }
   ]
 }

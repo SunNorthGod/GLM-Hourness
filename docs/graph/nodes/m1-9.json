@@ -2,7 +2,7 @@
   "id": "m1-9",
   "type": "task",
   "title": "1.9 规范、死代码、重复检查与告警基线",
-  "status": "approved",
+  "status": "done",
   "parent": "m1",
   "kind": "implement",
   "body": "按 ORCHESTRATION.md §7.5 给本仓库补规范检查、死代码检查、重复检查，记录告警基线；新增开发依赖先告知用户（ROADMAP.md M1 1.9）。",
@@ -15,6 +15,36 @@
       "to": "q-checkers"
     }
   ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "c964f75",
+      "note": "ESLint、typescript-eslint、knip、jscpd 以精确版本的开发依赖加入，只减不增的基线门禁 npm run lint 接入 npm test"
+    },
+    {
+      "kind": "commit",
+      "ref": "33345dd",
+      "note": "记录检查器门禁与依赖例行（DEVELOPMENT.md §10、§11，ORCHESTRATION.md §7.7）"
+    },
+    {
+      "kind": "check",
+      "ref": "npm run lint",
+      "exit": 0,
+      "note": "上线时基线 ESLint 317 条、knip 35 条、jscpd 7 处克隆；临时违规演示时三项都失败，撤回后全绿（ROADMAP.md M1 进度，2026-10-28）"
+    },
+    {
+      "kind": "test",
+      "ref": "npm test",
+      "exit": 0,
+      "note": "L2 250 用例，24 个 spec（ROADMAP.md M1 进度，2026-10-28）"
+    },
+    {
+      "kind": "test",
+      "ref": "npm run probe",
+      "exit": 0,
+      "note": "L3 探针 51/51，本条不改运行时行为，照跑一次（ROADMAP.md M1 进度，2026-10-28）"
+    }
+  ],
   "history": [
     {
       "at": "2026-10-27T20:04:04.479Z",
@@ -22,6 +52,44 @@
       "op": "propose",
       "reason": "迁移：ROADMAP.md M1 1.9",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-28T00:17:40.721Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "1.9 检查器与依赖例行完成（origin/main 1ae8222 的 ROADMAP.md M1 进度与 git log）",
+      "from": "approved",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "c964f75",
+          "note": "ESLint、typescript-eslint、knip、jscpd 以精确版本的开发依赖加入，只减不增的基线门禁 npm run lint 接入 npm test"
+        },
+        {
+          "kind": "commit",
+          "ref": "33345dd",
+          "note": "记录检查器门禁与依赖例行（DEVELOPMENT.md §10、§11，ORCHESTRATION.md §7.7）"
+        },
+        {
+          "kind": "check",
+          "ref": "npm run lint",
+          "exit": 0,
+          "note": "上线时基线 ESLint 317 条、knip 35 条、jscpd 7 处克隆；临时违规演示时三项都失败，撤回后全绿（ROADMAP.md M1 进度，2026-10-28）"
+        },
+        {
+          "kind": "test",
+          "ref": "npm test",
+          "exit": 0,
+          "note": "L2 250 用例，24 个 spec（ROADMAP.md M1 进度，2026-10-28）"
+        },
+        {
+          "kind": "test",
+          "ref": "npm run probe",
+          "exit": 0,
+          "note": "L3 探针 51/51，本条不改运行时行为，照跑一次（ROADMAP.md M1 进度，2026-10-28）"
+        }
+      ]
     }
   ]
 }

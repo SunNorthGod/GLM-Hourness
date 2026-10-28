@@ -17,6 +17,12 @@
       "op": "propose",
       "reason": "迁移：CHARTER.md §4 分层",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-28T00:17:42.517Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "DSH 借用审计已落文档（origin/main f9a6a95，只改文档）：d-dispatch、d-driver、d-async-cards 三条用户 2026-10-28 的定案写进 ORCHESTRATION.md（§2.1 驱动循环，§3、§3.2 后台派发与任务节点的派发属性，§3.6 不用 Agent Team 与工作流引擎，§5 异步决策卡自建），与定案冲突的建议（队友角色 preset）按定案改写；按 rc.3 更正的事实写进 ORCHESTRATION.md §4.5、§7.5、§13，DEVELOPMENT.md §5.6 与 FACTS.md §3；余下的真机核实项在 ROADMAP.md 借用组件核实清单。审计报告 .agents/tasks/dsh-borrow-audit/report.md 不入库，可选阅读（ROADMAP.md §3）。"
     }
   ]
 }

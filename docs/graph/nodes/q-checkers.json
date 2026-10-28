@@ -47,6 +47,12 @@
           "ref": "A"
         }
       ]
+    },
+    {
+      "at": "2026-10-28T00:17:42.857Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "main 已按 A 执行（提交 c964f75、33345dd，M1.9 完成），origin/main 1ae8222 的 ROADMAP.md §3 删去了这一行。检查器带出的后续待决（gitleaks、@eslint/js、scripts/dev/ 的去留、TypeScript 升级）各成一张卡，挂在 m1 下，来源连到 m1-9。"
     }
   ]
 }

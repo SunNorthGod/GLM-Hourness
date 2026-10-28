@@ -52,7 +52,7 @@ dist/          不入库：tsc 产物（profile 通过 pnpm link 使用）
 
 门禁（2026-10-28 夜间运行收尾时，提交 `d6977ad` 之上）：`npm run build`、`npm run preflight` 通过；`npm test` 25 个 spec、258 用例通过、0 失败，逐字门禁 397 段、已知偏差 0 条，检查器门禁对照基线 ESLint 316 条、knip 34 条、jscpd 7 处克隆（75 行）；`npm run probe` 69/69（运行 `2026-10-27T23-38-41-366Z`，含派发可行性验证的 12 项）。标定基线（`npm run calibrate`，提交 `4cb8799`）：两个起步任务、两档模型各 3 次，12/12 完成（`ORCHESTRATION.md` §10.5.2）。
 
-并行分支 `graph-engine`（项目图引擎原型，M2）：已推送，头部 `44952fb`，与 main 的合并基点是 `29211ed`，此后 main 又有 9 个提交；分支清单 9 项全部完成，另加第二阶段（DSH 图工具、每步投影、图文件门禁，新行 `glm-hourness/graph` 默认禁用）。分支最后一个提交记录的门禁结果是 32 个 spec、423 用例通过（在分支工作树里跑，主线没有重跑）。未合入 main，等用户的 M2.1 审阅（`ROADMAP.md` §3；审阅要点写在该分支的 `ROADMAP.md` M2 进度与「M2.1 审阅」）。
+并行分支 `graph-engine`（项目图引擎原型，M2）：已推送，已把 main 的 `1ae8222` 合并进来（合并提交 `7e2ce0f`），main 没有新提交时可以 `git merge --ff-only` 快进合入；分支清单 9 项全部完成，另加第二阶段（DSH 图工具、每步投影、图文件门禁，新行 `glm-hourness/graph` 默认禁用）。合并后分支上的门禁：33 个 spec、431 用例通过，检查器门禁对照基线 ESLint 316 条、knip 32 条、jscpd 7 处克隆（在分支工作树里跑）。项目图已补到 `1ae8222`。未合入 main，等用户的 M2.1 审阅（`ROADMAP.md` §3；审阅要点写在该分支的 `ROADMAP.md` M2 进度与「M2.1 审阅」）。
 
 宿主接口：每个用到的 DSH 钩子、服务成员与载荷字段都已对照 rc.3 运行时包，证据见 `DESIGN.md` §2.4a 接口对照表；宿主结构类型集中在 `src/shared/dsh-min.ts` 与 `src/shared/lm-min.ts`。
 

@@ -30,6 +30,12 @@
       "op": "propose",
       "reason": "迁移：ROADMAP.md §3 M2.1 的审阅事项",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-28T00:17:43.019Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "graph-engine 已把 origin/main 1ae8222 合并进来（合并提交 7e2ce0f）：package.json、DESIGN.md、DEVELOPMENT.md、ROADMAP.md 的冲突逐处保留两边的内容；分支代码按 main 的检查器门禁零新增告警，基线没有扩大（knip 基线少了 2 条）；build、preflight、npm test 全绿（431 用例，33 个 spec）。选 A 时 main 可以用 git merge --ff-only 快进合入；main 在此之后有新提交时，先再合并一次进分支。"
     }
   ]
 }

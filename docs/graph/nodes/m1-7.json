@@ -2,10 +2,10 @@
   "id": "m1-7",
   "type": "task",
   "title": "1.7 L3 沙盒自动化与标定测试集",
-  "status": "doing",
+  "status": "done",
   "parent": "m1",
   "kind": "test",
-  "body": "真实启动 + 行为探针（方言前缀、工具面、提醒）作为门禁；标定测试集起步，先 1–2 个任务（ROADMAP.md M1 1.7，ORCHESTRATION.md §10.5）。探针 npm run probe 已上线并随每批改动扩充，2026-10-28 为 35 项；标定测试集未起步。",
+  "body": "真实启动 + 行为探针（方言前缀、工具面、提醒）作为门禁；标定测试集起步，先 1–2 个任务（ROADMAP.md M1 1.7，ORCHESTRATION.md §10.5）。探针 npm run probe 随每批改动扩充，1.7 完成时 53 项；标定运行器 npm run calibrate 在 glmsandbox 上经原生通道跑真实模型，起步的两个任务放在 tests/calibration/（ORCHESTRATION.md §10.5.1、§10.5.2）。",
   "acceptance": [
     "一条命令跑完，结果可机检"
   ],
@@ -24,6 +24,28 @@
       "kind": "commit",
       "ref": "8e0f966",
       "note": "探针覆盖工具检索"
+    },
+    {
+      "kind": "commit",
+      "ref": "4cb8799",
+      "note": "标定运行器 npm run calibrate、两个起步任务与步数、时间上限；基线每格 3 次，两档模型 12/12 完成"
+    },
+    {
+      "kind": "commit",
+      "ref": "7561e4b",
+      "note": "记录标定运行器与第一份基线（ORCHESTRATION.md §10.5.1、§10.5.2）"
+    },
+    {
+      "kind": "test",
+      "ref": "npm test",
+      "exit": 0,
+      "note": "L2 250 用例，24 个 spec（ROADMAP.md M1 进度，2026-10-28）"
+    },
+    {
+      "kind": "test",
+      "ref": "npm run probe",
+      "exit": 0,
+      "note": "L3 探针 53/53，新增步数上限拒绝第 3 步、时间上限在 5 秒时取消一条 60 秒的 shell 命令（ROADMAP.md M1 进度，2026-10-28）"
     }
   ],
   "history": [
@@ -56,6 +78,50 @@
           "kind": "commit",
           "ref": "8e0f966",
           "note": "探针覆盖工具检索"
+        }
+      ]
+    },
+    {
+      "at": "2026-10-28T00:17:41.051Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "正文停在标定未起步，按 origin/main 1ae8222 的 ROADMAP.md M1 进度更新",
+      "changes": {
+        "body": {
+          "from": "真实启动 + 行为探针（方言前缀、工具面、提醒）作为门禁；标定测试集起步，先 1–2 个任务（ROADMAP.md M1 1.7，ORCHESTRATION.md §10.5）。探针 npm run probe 已上线并随每批改动扩充，2026-10-28 为 35 项；标定测试集未起步。",
+          "to": "真实启动 + 行为探针（方言前缀、工具面、提醒）作为门禁；标定测试集起步，先 1–2 个任务（ROADMAP.md M1 1.7，ORCHESTRATION.md §10.5）。探针 npm run probe 随每批改动扩充，1.7 完成时 53 项；标定运行器 npm run calibrate 在 glmsandbox 上经原生通道跑真实模型，起步的两个任务放在 tests/calibration/（ORCHESTRATION.md §10.5.1、§10.5.2）。"
+        }
+      }
+    },
+    {
+      "at": "2026-10-28T00:17:41.358Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "1.7 的两部分（L3 探针、标定起步）都已完成（origin/main 1ae8222 的 ROADMAP.md M1 进度与 git log）",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "4cb8799",
+          "note": "标定运行器 npm run calibrate、两个起步任务与步数、时间上限；基线每格 3 次，两档模型 12/12 完成"
+        },
+        {
+          "kind": "commit",
+          "ref": "7561e4b",
+          "note": "记录标定运行器与第一份基线（ORCHESTRATION.md §10.5.1、§10.5.2）"
+        },
+        {
+          "kind": "test",
+          "ref": "npm test",
+          "exit": 0,
+          "note": "L2 250 用例，24 个 spec（ROADMAP.md M1 进度，2026-10-28）"
+        },
+        {
+          "kind": "test",
+          "ref": "npm run probe",
+          "exit": 0,
+          "note": "L3 探针 53/53，新增步数上限拒绝第 3 步、时间上限在 5 秒时取消一条 60 秒的 shell 命令（ROADMAP.md M1 进度，2026-10-28）"
         }
       ]
     }

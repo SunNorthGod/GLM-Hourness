@@ -4,8 +4,21 @@
   "title": "驱动循环：DSH goal 加 goal-round-driver，每拍注入投影",
   "status": "approved",
   "parent": "orch",
-  "verification": "unverified",
+  "verification": "sandbox",
   "body": "驱动循环借用 DSH 会话目标与 goal-round-driver，每拍注入项目图投影（ORCHESTRATION.md §2.5，DESIGN.md §6），完成目标要过证据门禁。用户 2026-10-28 采纳 DSH 借用审计的这条建议。",
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "953fc39",
+      "note": "验证插件 scripts/probe/probe-dispatch.mjs 与场景 glm-goal、goal-headless"
+    },
+    {
+      "kind": "test",
+      "ref": "npm run probe",
+      "exit": 0,
+      "note": "L3 探针 69/69，新增 12 项；glm-goal：插件建的 goal 由驱动器推进，next() 之后追加的 notice 不破坏预约，update_goal 的 complete 在 tools/pre-execute 拦下（运行 2026-10-27T23-38-41-366Z）"
+    }
+  ],
   "history": [
     {
       "at": "2026-10-27T20:04:05.000Z",
@@ -13,6 +26,27 @@
       "op": "propose",
       "reason": "迁移：用户定案 2026-10-28（DSH 借用审计）",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-28T00:17:42.015Z",
+      "actor": "llm",
+      "op": "verify",
+      "reason": "派发可行性验证在 rc.3 运行时上走通 goal 驱动下的目标轮注入与完成门禁（L3；origin/main 1ae8222 的 ROADMAP.md M7 进度，借用组件核实清单第 12 项）；headless 运行器不跑目标轮，桌面版组合随 L4",
+      "from": "unverified",
+      "to": "sandbox",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "953fc39",
+          "note": "验证插件 scripts/probe/probe-dispatch.mjs 与场景 glm-goal、goal-headless"
+        },
+        {
+          "kind": "test",
+          "ref": "npm run probe",
+          "exit": 0,
+          "note": "L3 探针 69/69，新增 12 项；glm-goal：插件建的 goal 由驱动器推进，next() 之后追加的 notice 不破坏预约，update_goal 的 complete 在 tools/pre-execute 拦下（运行 2026-10-27T23-38-41-366Z）"
+        }
+      ]
     }
   ]
 }
