@@ -150,16 +150,70 @@ export const DECIDED_BY_LABELS: Readonly<Record<DecidedBy, string>> = {
   human: '你拍的',
 }
 
-/** Closed and total direct children of a node. */
-export function progressOf(graph: LoadedGraph, id: string): { readonly done: number, readonly total: number } {
+/** Child types that are work: a node's progress counts these only. */
+const WORK_TYPES: ReadonlySet<GraphNode['type']> = new Set(['task', 'feature'])
+
+export interface Progress {
+  /** Done and total work children (tasks and features). */
+  readonly done: number
+  readonly total: number
+  /** Decided and total questions among the children. */
+  readonly decided: number
+  readonly questions: number
+}
+
+/**
+ * Progress of a node over its direct children, leaving out dropped and
+ * superseded ones. Work (tasks and features) is counted apart from
+ * questions: a decided question is not work done, so a task whose only
+ * children are decided questions has no work progress at all. Decisions,
+ * norms, risks, tools and retros count for neither.
+ */
+export function progressOf(graph: LoadedGraph, id: string): Progress {
   let done = 0
   let total = 0
+  let decided = 0
+  let questions = 0
   for (const node of graph.nodes.values()) {
     if (node.parent !== id || node.status === 'dropped' || node.status === 'superseded') continue
-    total++
-    if (node.status === 'done') done++
+    if (WORK_TYPES.has(node.type)) {
+      total++
+      if (node.status === 'done') done++
+    }
+    else if (node.type === 'question') {
+      questions++
+      if (node.status === 'done') decided++
+    }
   }
-  return { done, total }
+  return { done, total, decided, questions }
+}
+
+/** The progress a row or a title states: work, then questions; each left out when the node has none. */
+export function progressText(progress: Progress): { readonly work: string | undefined, readonly questions: string | undefined } {
+  return {
+    work: progress.total === 0 ? undefined : `工作完成 ${progress.done}/${progress.total}`,
+    questions: progress.questions === 0 ? undefined : `待决已定 ${progress.decided}/${progress.questions}`,
+  }
+}
+
+/**
+ * Where an agent stands, as 现场 says it: a running agent is at its focus
+ * now; one that stopped stays on it while the node is open, and on a node
+ * that is closed it only worked there last.
+ */
+export function placeText(title: string, status: GraphNode['status'], running: boolean): string {
+  if (running) return `在「${title}」`
+  return OPEN_STATUSES.has(status) ? `停在「${title}」` : `上次在「${title}」`
+}
+
+/**
+ * The note of 现场 when no agent of the session runs. The panel sees only
+ * the main agent of its session and the subagents it started, so nodes in
+ * progress may be worked on where it cannot see.
+ */
+export function nobodyRunningText(doing: number): string {
+  const seen = '这个 DSH 会话里现在没有 agent 在跑。现场只看得见这个会话的主 Agent 和它派出的子 agent'
+  return doing === 0 ? `${seen}。` : `${seen}；标着进行中的 ${doing} 个节点，活可能在别的会话或 DSH 之外。`
 }
 
 /** The goal the panel names in its header: the first goal by id that is not closed, else the first goal. */

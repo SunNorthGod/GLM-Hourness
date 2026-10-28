@@ -7,7 +7,7 @@ import { openEngine } from '../src/graph/engine.ts'
 import { graphRevision, loadGraph, revisionOf } from '../src/graph/store.ts'
 import type { GraphNode } from '../src/graph/schema.ts'
 import type { RemoteRoot, StreamItem, WatchFrame } from '../ui/src/dsh.ts'
-import { decidedBy, graphRevisionOf, historyText, presenceText, revisionOfBytes, statusText, visibleGraph } from '../ui/src/graph/model.ts'
+import { decidedBy, graphRevisionOf, historyText, nobodyRunningText, placeText, presenceText, progressOf, progressText, revisionOfBytes, statusText, visibleGraph } from '../ui/src/graph/model.ts'
 import { GraphSource, type GraphSnapshot } from '../ui/src/graph/source.ts'
 import { fixtureTest, seedAsHuman } from './graph-helpers.ts'
 
@@ -67,6 +67,32 @@ graphTest('filters: open hides closed subtrees and counts closed children, mine 
   const mine = visibleGraph(graph, 'mine')
   assert.deepEqual([...mine.nodes.keys()].sort(), ['feature-1', 'feature-3', 'goal-1', 'question-1'])
   assert.equal(visibleGraph(graph, 'all').nodes.size, graph.nodes.size)
+})
+
+graphTest('progress counts work children only; decided questions are counted apart and risks not at all', async ({ dir }) => {
+  // A risk under feature-1, and a question under task-3 that the human decides: m1-parity's shape, a task whose only children are decided questions.
+  await seedAsHuman(dir, [
+    { type: 'risk', title: '风险', parent: 'feature-1' },
+    { type: 'question', title: '再问', parent: 'task-3', options: [{ key: 'A', label: '甲案', consequence: '快' }, { key: 'B', label: '乙案', consequence: '稳' }], recommend: 'A' },
+  ])
+  const decided = await openEngine(dir).apply('human', { op: 'decide', id: 'question-2', rev: (await loadGraph(dir)).revisions.get('question-2')!, option: 'A', reason: '快' })
+  assert.ok(decided.ok, JSON.stringify(decided))
+  const graph = await loadGraph(dir)
+  assert.deepEqual(progressOf(graph, 'feature-1'), { done: 2, total: 3, decided: 0, questions: 1 })
+  assert.deepEqual(progressText(progressOf(graph, 'feature-1')), { work: '工作完成 2/3', questions: '待决已定 0/1' })
+  assert.deepEqual(progressOf(graph, 'task-3'), { done: 0, total: 0, decided: 1, questions: 1 })
+  assert.deepEqual(progressText(progressOf(graph, 'task-3')), { work: undefined, questions: '待决已定 1/1' }, 'no work children: no work progress, so no bar')
+  assert.deepEqual(progressOf(graph, 'goal-1'), { done: 1, total: 3, decided: 0, questions: 0 }, 'direct children only: feature-1 doing, feature-2 done, feature-3 proposed')
+  assert.deepEqual(progressText(progressOf(graph, 'task-1')), { work: undefined, questions: undefined })
+})
+
+test('现场 says where an idle agent was, and what it cannot see when nothing runs', () => {
+  assert.equal(placeText('甲', 'doing', true), '在「甲」')
+  assert.equal(placeText('甲', 'doing', false), '停在「甲」')
+  assert.equal(placeText('甲', 'done', false), '上次在「甲」')
+  assert.equal(placeText('甲', 'dropped', false), '上次在「甲」')
+  assert.equal(nobodyRunningText(0), '这个 DSH 会话里现在没有 agent 在跑。现场只看得见这个会话的主 Agent 和它派出的子 agent。')
+  assert.equal(nobodyRunningText(5), '这个 DSH 会话里现在没有 agent 在跑。现场只看得见这个会话的主 Agent 和它派出的子 agent；标着进行中的 5 个节点，活可能在别的会话或 DSH 之外。')
 })
 
 test('status lines say what a node waits for', () => {

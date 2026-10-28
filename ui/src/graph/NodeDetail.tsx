@@ -6,27 +6,17 @@
  * the bottom, for telling the LLM which node is meant.
  */
 import { Button, IconChevronLeftOutlineRegular, Tag } from '@deepseek-ai/dsh-client-ui-primitives'
-import { useState, type ReactElement, type ReactNode } from 'react'
+import { useState, type ReactElement } from 'react'
 import { EVIDENCE_LABELS, KIND_LABELS, STAGE_LABELS, STATUS_LABELS, TIER_LABELS, TYPE_LABELS, VERIFICATION_LABELS } from '../../../src/graph/labels.ts'
 import type { LoadedGraph } from '../../../src/graph/parse.ts'
 import { ancestorsOf } from '../../../src/graph/projection.ts'
 import { RUN_LABELS, nodeRefusal, offersRedo } from '../../../src/graph/run.ts'
 import type { GraphNode } from '../../../src/graph/schema.ts'
 import { placements, type AgentLive } from './agents.ts'
-import { Folded, Markdown, Options, Outcome, revOf, useServices, useWriter } from './common.tsx'
-import { historyText, needsHuman, presenceText, statusText, timeAgo } from './model.ts'
+import { Folded, Markdown, Options, Outcome, Part, revOf, useServices, useWriter } from './common.tsx'
+import { historyText, needsHuman, presenceText, progressOf, progressText, statusText, timeAgo } from './model.ts'
 
 const HISTORY_SHOWN = 6
-
-/** One part of the detail below the body: a title over its content, set off from the part above by a rule. */
-function Part({ title, children }: { readonly title: ReactNode, readonly children: ReactNode }): ReactElement {
-  return (
-    <section className="glmg-part">
-      <div className="glmg-section">{title}</div>
-      {children}
-    </section>
-  )
-}
 
 function Comment({ node }: { readonly node: GraphNode }): ReactElement {
   const writer = useWriter()
@@ -97,6 +87,7 @@ export function NodeDetail({ graph, id, agents, onClose }: { readonly graph: Loa
   }
   const ancestors = ancestorsOf(graph, node).reverse()
   const children = [...graph.nodes.values()].filter(child => child.parent === node.id)
+  const progress = progressText(progressOf(graph, node.id))
   const history = node.history.slice(-HISTORY_SHOWN).reverse()
   const done = node.status === 'done'
   return (
@@ -130,7 +121,7 @@ export function NodeDetail({ graph, id, agents, onClose }: { readonly graph: Loa
         {children.length === 0
           ? null
           : (
-              <Part title={`下面的节点 · ${children.filter(child => child.status === 'done').length}/${children.length}`}>
+              <Part title={['下面的节点', progress.work, progress.questions].filter(part => part !== undefined).join(' · ')}>
                 {children.map(child => (
                   <div key={child.id} className="glmg-row" onClick={() => { open(child.id) }}>
                     <span className={`glmg-dot ${needsHuman(child) ? 'wait' : child.status === 'proposed' ? 'proposed' : child.status}`} />

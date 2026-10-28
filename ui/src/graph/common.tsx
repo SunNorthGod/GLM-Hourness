@@ -1,8 +1,8 @@
 /**
  * Pieces every view of the graph panel shares: the services context, the
  * write hook (graph writes and run controls), markdown with its copy
- * labels, folding of long content, and the option picker that decides (or
- * overturns) a question.
+ * labels, folding of long content, the titled parts views are made of,
+ * and the option picker that decides (or overturns) a question.
  */
 import { Button, Input, MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
 import { createContext, useContext, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode } from 'react'
@@ -100,6 +100,16 @@ export function Folded({ lines, className, children }: { readonly lines: number,
       </div>
       {open || overflows ? <button type="button" className="glmg-more" aria-expanded={open} onClick={() => { setOpen(!open) }}>{open ? '收起' : '展开'}</button> : null}
     </div>
+  )
+}
+
+/** One part of a view or of the node detail: a title over its content, set off from the part above by a rule. */
+export function Part({ title, children }: { readonly title: ReactNode, readonly children: ReactNode }): ReactElement {
+  return (
+    <section className="glmg-part">
+      <div className="glmg-section">{title}</div>
+      {children}
+    </section>
   )
 }
 

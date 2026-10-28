@@ -58,17 +58,21 @@ export const PANEL_CSS = `
 .glmg-empty{display:flex;flex-direction:column;align-items:center;gap:8px;padding:44px 12px 24px;text-align:center;color:var(--g-ink3)}
 .glmg-empty-mark{display:flex;align-items:center;justify-content:center;width:46px;height:46px;border-radius:50%;background:color-mix(in srgb,var(--g-done) 16%,transparent);color:var(--g-done);animation:glmg-pop .45s cubic-bezier(.2,1.4,.4,1) both}
 .glmg-empty-title{color:var(--g-ink);font-size:14px;font-weight:600}
-.glmg-row{display:flex;gap:10px;align-items:flex-start;padding:9px 6px;border-radius:var(--dsw-radius-md,8px);cursor:pointer;transition:background .12s}
+.glmg-row{position:relative;display:flex;gap:10px;align-items:flex-start;padding:9px 6px;border-radius:var(--dsw-radius-md,8px);cursor:pointer;transition:background .12s}
 .glmg-row:hover{background:var(--g-hover)}
-.glmg-row+.glmg-row{border-top:1px solid var(--g-line)}
+/* one straight rule between rows of any list (a border would bend with the hover radius) */
+:is(.glmg-row,.glmg-agent)+:is(.glmg-row,.glmg-agent)::before{content:"";position:absolute;top:0;left:6px;right:6px;height:1px;background:var(--g-line)}
 .glmg-row-main{flex:1;min-width:0}
+.glmg :is(.glmg-row,.glmg-agent) .glmg-meta{column-gap:12px}
 .glmg-row-title{color:var(--g-ink);font-weight:500;overflow-wrap:anywhere}
 .glmg-who{flex:none;margin-top:1px;padding:0 6px;border-radius:5px;font-size:11px;line-height:18px;white-space:nowrap}
 .glmg-who.agent{background:color-mix(in srgb,var(--g-purple) 16%,transparent);color:var(--g-purple)}
 .glmg-who.relay{background:color-mix(in srgb,var(--g-accent) 14%,transparent);color:var(--g-accent)}
 .glmg-who.human{background:var(--g-hover);color:var(--g-ink2)}
 .glmg-quote{margin:8px 0 0;padding:6px 10px;border-left:2px solid var(--g-accent);color:var(--g-ink2);font-size:12.5px;white-space:pre-wrap;overflow-wrap:anywhere;background:color-mix(in srgb,var(--g-accent) 6%,transparent);border-radius:0 6px 6px 0}
-.glmg-progress{position:relative;height:4px;margin-top:6px;border-radius:2px;background:var(--g-hover);overflow:hidden}
+/* progress sits on the meta line as a short bar before its count, so rows with and without it are the same height */
+.glmg-meter{display:inline-flex;align-items:center;gap:6px}
+.glmg-progress{position:relative;display:inline-block;flex:none;width:56px;height:4px;border-radius:2px;background:var(--g-hover);overflow:hidden}
 .glmg-progress b{position:absolute;inset:0 auto 0 0;border-radius:2px;background:var(--g-done);transition:width .5s cubic-bezier(.2,.8,.2,1)}
 .glmg-dot{flex:none;width:8px;height:8px;margin-top:6px;border-radius:50%;background:var(--g-ink3)}
 .glmg-dot.doing{background:var(--g-doing);animation:glmg-breathe 2.2s ease-in-out infinite}
@@ -76,8 +80,13 @@ export const PANEL_CSS = `
 .glmg-dot.wait{background:var(--g-wait)}
 .glmg-dot.proposed{background:transparent;border:1.5px dashed var(--g-ink3)}
 /* live agents */
-.glmg-agent{display:flex;gap:10px;align-items:flex-start;padding:9px 6px}
-.glmg-agent+.glmg-agent{border-top:1px solid var(--g-line)}
+.glmg-agent{position:relative;display:flex;gap:10px;align-items:flex-start;padding:9px 6px}
+/* idle or stopped: one dimmed line, full strength on hover */
+.glmg-agent.quiet{padding:7px 6px;opacity:.6;transition:opacity .15s}
+.glmg-agent.quiet:hover{opacity:1}
+.glmg-agent.quiet .glmg-row-title{font-size:12.5px}
+.glmg-agent.quiet .glmg-agent-mark{margin-top:4px}
+.glmg-agent.quiet .glmg-agent-mark.done{margin-top:1px}
 .glmg-agent-mark{flex:none;display:inline-flex;align-items:center;justify-content:center;width:10px;height:10px;margin-top:5px;border-radius:50%;background:var(--g-ink3);font-size:0}
 .glmg-agent-mark.running{background:var(--g-doing);animation:glmg-breathe 2.2s ease-in-out infinite}
 .glmg-agent-mark.done{width:16px;height:16px;margin-top:2px;background:color-mix(in srgb,var(--g-done) 18%,transparent);color:var(--g-done);font-size:10px;font-weight:700;animation:glmg-pop .45s cubic-bezier(.2,1.4,.4,1) both}
@@ -85,7 +94,7 @@ export const PANEL_CSS = `
 .glmg-agent-tokens{color:var(--g-ink3);font-size:11px;font-variant-numeric:tabular-nums}
 .glmg-chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px}
 .glmg-chip{padding:0 6px;border-radius:5px;background:var(--g-hover);color:var(--g-ink2);font-family:var(--dsw-font-mono,ui-monospace,monospace);font-size:11px;line-height:18px}
-.glmg-earlier{display:block;margin:4px 6px 0}
+.glmg-toggle{display:block;margin:6px 6px 2px}
 .glmg-chip.bad{background:color-mix(in srgb,var(--g-wait) 14%,transparent);color:var(--g-wait)}
 /* graph view */
 .glmg-graph{position:absolute;inset:0;display:flex;flex-direction:column}
@@ -136,7 +145,9 @@ export const PANEL_CSS = `
 .glmg-part{margin-top:16px;padding-top:12px;border-top:1px solid var(--g-line)}
 .glmg .glmg-part>.glmg-section{margin:0 2px 8px}
 .glmg .glmg-part>.glmg-section+*{margin-top:0}
-.glmg .glmg-part>.glmg-section+.glmg-row{margin-top:-6px}
+.glmg .glmg-part>.glmg-section+:is(.glmg-row,.glmg-agent){margin-top:-6px}
+.glmg-part>.glmg-notice+.glmg-agent{margin-top:4px}
+.glmg-view>.glmg-part:first-child{margin-top:4px;padding-top:0;border-top:0}
 .glmg-part .glmg-actions{margin-top:8px}
 .glmg-notes{display:flex;flex-direction:column;gap:2px;color:var(--g-ink3);font-size:12px}
 .glmg-list{margin:4px 0 0;padding:0;list-style:none}
