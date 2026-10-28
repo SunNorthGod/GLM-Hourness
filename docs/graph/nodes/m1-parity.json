@@ -97,6 +97,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "独立评审第 2 轮：CHANGES_REQUESTED，阻断 1 条（.agents/tasks/zcode-parity/review.md、review.json）。第 1 轮的 6 条全部解决（FACTS.md 重建、凭证写入串行化、/glm-status 不再把用不了的登录显示为已登录、apiKey 残留分支删除、401 重试前取消原响应体、偏移改指声明处）。十项按 3.16.3 pristine 包与 app.asar 重新核对：1–4、8、9（只读方案）一致，5 在 DSH 给得出输入的范围内一致。阻断项在第 7 项：RequestAttributionTracker 对压缩请求也取回合键；DSH compaction-basic 的压缩请求只含被压缩区间（最近约 16% 预算的尾部不发），当前回合的用户消息落在尾部、区间里有更早回合的用户消息时，压缩请求拿到新的 x-query-id，会话被改记到旧消息上，本回合之后的主步再换一个；3.16.3 的压缩上下文由回合派生（c3a @13387356 的 nS(t, …)，nS @12816000 保留 queryId），压缩与本回合各步共用回合的 query id。改法：辅助请求（压缩与标题）不改回合键、沿用会话当前的 query id，认领分支只认标题开的 id，补 DSH 形状的测试，DESIGN §4.5b 写明。非阻断 3 条：压缩请求的 effort 恒为 high（3.16.3 用会话档位，likely）；bac18b4 是 2bfbeef 的 lint 修补，合入前合并；FACTS 三处一个偏移标两个符号（补 Lw @1422054、nS @12816000、f5s @3840311）。"
+    },
+    {
+      "at": "2026-10-28T17:38:11.275Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "评审两轮用完仍有 1 条阻塞（压缩请求会把本轮的 x-query-id 换掉，3.16.3 里压缩沿用本轮的 query id），按 question-11 自动加第三轮修复与评审；第三轮仍不过就停下等人。非阻塞：压缩请求的 effort 应随会话、合并一个修补提交、FACTS.md 三处共用偏移补全。"
     }
   ]
 }
