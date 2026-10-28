@@ -172,14 +172,18 @@ const flag: Checker = (value, path, report) => {
   return value
 }
 
-/** Characters that make a path absolute, a glob or unusable on Windows. */
-const NOT_IN_PATHS = /[\\:*?"<>|\u0000-\u001f]/
+/** Characters that make a path absolute, a glob or unusable on Windows; control characters U+0000–U+001F are checked apart. */
+const NOT_IN_PATHS = /[\\:*?"<>|]/
+
+function unusableInPath(text: string): boolean {
+  return NOT_IN_PATHS.test(text) || [...text].some(char => char.charCodeAt(0) < 0x20)
+}
 
 /** A repository-relative path: / separators, no empty, . or .. segments; a directory may end with /. */
 const scopePath: Checker = (value, path, report) => {
   const segments = typeof value === 'string' ? value.split('/') : []
   if (segments.length > 1 && segments.at(-1) === '') segments.pop()
-  if (typeof value !== 'string' || NOT_IN_PATHS.test(value) || segments.some(segment => segment === '' || segment === '.' || segment === '..')) {
+  if (typeof value !== 'string' || unusableInPath(value) || segments.some(segment => segment === '' || segment === '.' || segment === '..')) {
     report(path, 'must be a repository-relative path with / separators and no empty, . or .. segments (a directory may end with /)')
     return INVALID
   }
@@ -330,7 +334,7 @@ export function checkNode(value: unknown, file: string, issues: GraphIssue[]): G
 }
 
 /** Cross-field rules of one node (§2.6 validation list). */
-export function nodeRuleIssues(node: GraphNode, file: string): GraphIssue[] {
+function nodeRuleIssues(node: GraphNode, file: string): GraphIssue[] {
   const issues: GraphIssue[] = []
   const report = reporter(file, issues)
   if (node.type === 'goal') {

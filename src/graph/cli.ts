@@ -11,7 +11,7 @@ import { openEngine } from './engine.ts'
 import { failure, type Failure } from './mutation.ts'
 import { OPS, type Op } from './schema.ts'
 
-export const CLI_USAGE = `npm run -s graph -- [--dir <graph dir>] show <id> | open | <op> [<json> | --file <path>]; without json or --file the request is read from stdin; op is one of ${OPS.join(', ')}`
+const CLI_USAGE = `npm run -s graph -- [--dir <graph dir>] show <id> | open | <op> [<json> | --file <path>]; without json or --file the request is read from stdin; op is one of ${OPS.join(', ')}`
 
 export interface CliIo {
   /** Graph directory used when --dir is absent. */
@@ -74,7 +74,7 @@ export async function runCli(args: readonly string[], io: CliIo): Promise<CliRes
       return done({ ok: true, items: await engine.openItems() })
     }
     if (rest.length !== 1) return usage('show takes one node id')
-    return done(await engine.projection(rest[0]!))
+    return done(await engine.projection(rest[0]))
   }
   if (!isOp(command)) return usage(`unknown command "${command}"`)
   if (rest.length > 1) return usage(`${command} takes one JSON request`)
@@ -92,7 +92,7 @@ export async function runCli(args: readonly string[], io: CliIo): Promise<CliRes
   }
   if (typeof request !== 'object' || request === null || Array.isArray(request)) return usage('the request must be a JSON object of the operation fields')
   const fields = request as Record<string, unknown>
-  if (fields.op !== undefined && fields.op !== command) return usage(`the request names op "${String(fields.op)}" but the command is ${command}`, 'op')
+  if (fields.op !== undefined && fields.op !== command) return usage(`the request names op ${JSON.stringify(fields.op)} but the command is ${command}`, 'op')
   return done(await engine.apply('llm', { ...fields, op: command }))
 }
 

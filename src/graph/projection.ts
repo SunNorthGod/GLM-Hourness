@@ -28,17 +28,16 @@ export interface NodeRef {
 }
 
 /** An ancestor; the goal at the end of the chain carries its acceptance criteria and non-goals. */
-export interface AncestorRef extends NodeRef {
+interface AncestorRef extends NodeRef {
   readonly acceptance?: readonly string[]
   readonly nonGoals?: readonly string[]
 }
 
-export type NodeDetail = Omit<GraphNode, 'history'> & { readonly rev: string }
+type NodeDetail = Omit<GraphNode, 'history'> & { readonly rev: string }
 
-export const GATE_KINDS = ['dependencies', 'approval', 'questions', 'acceptance', 'children', 'verification'] as const
-export type GateKind = typeof GATE_KINDS[number]
+type GateKind = 'dependencies' | 'approval' | 'questions' | 'acceptance' | 'children' | 'verification'
 
-export interface Gate {
+interface Gate {
   readonly kind: GateKind
   readonly message: string
   readonly ids: readonly string[]
@@ -67,7 +66,7 @@ export interface Projection {
 }
 
 /** One card of the decision queue (§5): an open question with what the human needs to decide it. */
-export interface QueueEntry extends NodeRef {
+interface QueueEntry extends NodeRef {
   readonly body?: string
   readonly options: readonly DecisionOption[]
   readonly recommend?: string

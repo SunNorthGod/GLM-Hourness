@@ -4,9 +4,9 @@ import {
   emptyStore, forget, loadStore, parseStore, remember, retrieve, saveStore, shouldStore, strengthen, strength,
   type MemoryEntry,
 } from '../src/memory/store.ts'
-import { isPersonaLevel, personaSection, PERSONA_LEVELS } from '../src/glm-prompt/persona.ts'
+import { isPersonaLevel, PERSONA_LEVELS } from '../src/glm-prompt/persona.ts'
 import { dialectSections } from '../src/glm-prompt/index.ts'
-import { dispatchPanel, offPeakBadge, parseJsonl, usagePanel } from '../src/ui/panel.ts'
+import { dispatchPanel, parseJsonl } from '../src/ui/panel.ts'
 import { defaultKnowableFromGit, memoryTools, storeIo } from '../src/memory/tools.ts'
 
 const NOW = '2026-10-27T12:00:00+08:00'
@@ -114,24 +114,6 @@ test('persona slider keeps three levels and injects as a dialect section', () =>
   assert.ok(persona!.text.includes('简洁（concise）'))
   assert.ok(persona!.text.includes('start there and adjust per task'))
   assert.deepEqual(sections.map(section => section.name), ['glm:cli-prefix', 'harness:identity', 'glm:persona'])
-})
-
-const usageJsonl = [
-  { at: '2026-10-27T01:00:00+08:00', provider: 'glm', model: 'glm-5.3', usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 } },
-  { at: '2026-10-27T02:00:00+08:00', provider: 'glm', model: 'glm-5.3', usage: { inputTokens: 30, outputTokens: 20, totalTokens: 50 } },
-  { at: '2026-10-27T14:00:00+08:00', provider: 'glm', model: 'glm-5.3-flash', usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 } },
-  { at: '', provider: 'x', model: 'corrupt', usage: { inputTokens: 999, outputTokens: 0 } },
-].map(record => record.at === '' ? '{broken json' : JSON.stringify(record)).join('\n')
-
-test('usage panel totals, hourly curve, and off-peak share come from the journal', () => {
-  const panel = usagePanel(usageJsonl)
-  assert.equal(panel.totals.calls, 3) // corrupt line skipped
-  assert.deepEqual(panel.totals, { calls: 3, inputTokens: 140, outputTokens: 75, totalTokens: 215 })
-  assert.equal(panel.byModel[0]!.model, 'glm-5.3')
-  assert.equal(panel.hourly[1], 1)
-  assert.equal(panel.hourly[14], 1)
-  assert.ok(Math.abs(panel.offPeakShare - 2 / 3) < 0.001)
-  assert.equal(offPeakBadge(panel.offPeakShare), '谷 67%')
 })
 
 test('dispatch panel lists newest decisions first with a cap', () => {

@@ -7,7 +7,14 @@
  * Scenarios: a GLM route must get the ZCode dialect; a non-GLM route through
  * the same provider must stay untouched (no cross-route pollution). The
  * guard's shadow scenario runs in a scratch git repository under the run
- * directory with dsh-workspace-changes mounted through the overlay.
+ * directory with dsh-workspace-changes mounted through the overlay. Two
+ * scenarios check the calibration run bounds (scripts/calibrate/limits.mjs).
+ * The peak scenario and the non-GLM one run on the probe clock
+ * (scripts/probe/probe-clock.mjs), set inside a peak window. Three
+ * scenarios run the dispatch feasibility spike
+ * (scripts/probe/probe-dispatch.mjs): a background child with a write
+ * scope, a plugin-created goal driven through two rounds, and the headless
+ * runner's exit with an armed goal.
  *
  * Usage: node scripts/probe/run-probe.mjs
  * Requires the desktop install (DSH_DESKTOP_DIR overrides the location) and
@@ -17,24 +24,19 @@
  */
 import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
-import { join, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { crc32, deflateSync } from 'node:zlib'
 import { DISPATCH_TOOLS } from '../../dist/workflow/index.js'
+import { PEAK_REMINDER_SOURCE, PEAK_REMINDER_TEXT } from '../../dist/glm-prompt/peak-reminder.js'
+import { peakWindowAt } from '../../dist/shared/credits.js'
 import { userDataHome } from '../../dist/shared/data-home.js'
 import { HEALTH_ROWS } from '../../dist/shared/health.js'
+import { attachmentsIn, dataRows, initRepo, limitsRow, repo, requireDesktop, sandboxCommand, slash, workspaceChangesRow } from '../sandbox.mjs'
+import { GOAL_GATE_DENIAL, PROJECTION_SOURCE, SCOPE_DENIAL } from './probe-dispatch.mjs'
 
-const repo = resolve(fileURLToPath(new URL('../..', import.meta.url)))
-const desktop = process.env.DSH_DESKTOP_DIR ?? join(process.env.LOCALAPPDATA ?? '', 'Programs', 'DeepSeek Harness')
-const exe = join(desktop, 'DeepSeek Harness.exe')
-const bin = join(desktop, 'resources', 'app.asar', 'dsh', 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js')
-if (!existsSync(exe)) {
-  console.error(`probe: desktop runtime not found at ${exe} (set DSH_DESKTOP_DIR)`)
-  process.exit(2)
-}
+requireDesktop('probe')
 
 const runDir = join(repo, '.llm', 'probe-runs', new Date().toISOString().replace(/[:.]/g, '-'))
-const slash = path => path.replaceAll('\\', '/')
 
 /** A solid red 8x8 RGB PNG, built byte by byte so the fixture needs no binary file. */
 function redPng(size = 8) {
@@ -56,9 +58,6 @@ function redPng(size = 8) {
   return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', header), chunk('IDAT', pixels), chunk('IEND', Buffer.alloc(0))])
 }
 
-/** Overlay lines that keep the attachment store of a scenario inside its own directory. */
-const attachmentsIn = dir => ['- id: attachment-local', `  config: { dshHome: ${JSON.stringify(slash(join(dir, 'dsh-home')))} }`]
-
 // The real user-level directory (<DSH home>/glm-hourness) must not change
 // during a run: every scenario points the data row at its own DSH home.
 const realUsage = join(userDataHome(), 'audit', 'usage.jsonl')
@@ -68,50 +67,46 @@ const realUsageBefore = usageStamp()
 /**
  * Boot one headless task on `model` with a scripted reply sequence and return
  * the main agent's step requests plus the compaction requests (the
- * session-title request carries no tools). `overlay` adds patch lines. The
- * scenario's project directory is `<dir>/home` (memory, workflow and
- * hourness get it as their row home, as the user's profile patch does; the
- * guard reads it from the data service) and its DSH home is `<dir>/dsh-home`.
+ * session-title request carries no tools), the exit status and the wall
+ * time. `overlay` adds patch lines. The scenario keeps its data in its own
+ * directory (scripts/sandbox.mjs dataRows: project directory `<dir>/home`,
+ * DSH home `<dir>/dsh-home`). `others` holds the scripts of later sessions
+ * (subagents, extra root agents) in the order they first ask; their
+ * requests are in `steps` too, under their own session id.
  */
-function runScenario(name, model, script, task, overlay = [], cwd = repo) {
+function runScenario(name, model, script, task, overlay = [], cwd = repo, others = []) {
   const dir = join(runDir, name)
   const home = join(dir, 'home')
   mkdirSync(home, { recursive: true })
   const dump = join(dir, 'requests.jsonl')
   writeFileSync(dump, '')
-  // The overlay is generated per run with literal values: the loader validates
-  // a row's `name` before `!!js` expressions evaluate, so paths cannot be
-  // computed inside the patch. JSON strings are valid YAML scalars.
   const patch = join(dir, 'probe.patch.yml')
   writeFileSync(patch, [
     '- id: agent-default-model',
     `  config: { provider: glm-probe, model: ${JSON.stringify(model)} }`,
-    ...['memory', 'workflow', 'hourness'].flatMap(row => [`- id: glm-hourness/${row}`, `  config: { home: ${JSON.stringify(slash(home))} }`]),
+    ...dataRows(dir),
     // /glm-status reads the credential store under the glm-login home; the
     // scenario home has none, so the probe never reads the real store.
     '- id: glm-hourness/glm-login',
     `  config: { home: ${JSON.stringify(slash(home))} }`,
-    '- id: glm-hourness/data',
-    `  config: { dshHome: ${JSON.stringify(slash(join(dir, 'dsh-home')))}, projectHome: ${JSON.stringify(slash(home))} }`,
     '- insert:',
     '    - id: glm-hourness-probe/llm',
     `      name: ${JSON.stringify(slash(join(repo, 'scripts', 'probe', 'probe-llm.mjs')))}`,
     '      inject: [llm]',
-    `      config: { dump: ${JSON.stringify(slash(dump))}, script: ${JSON.stringify(JSON.stringify(script))} }`,
+    `      config: { dump: ${JSON.stringify(slash(dump))}, script: ${JSON.stringify(JSON.stringify(script))}, others: ${JSON.stringify(JSON.stringify(others))} }`,
     ...overlay,
     '',
   ].join('\n'))
-  const result = spawnSync(exe, [bin, '--profile', 'glmsandbox', '--patch', patch, task], {
-    cwd,
-    encoding: 'utf8',
-    timeout: 180_000,
-    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
-  })
+  const { exe, args, env } = sandboxCommand(patch, [task])
+  const started = Date.now()
+  const result = spawnSync(exe, args, { cwd, encoding: 'utf8', timeout: 180_000, env })
+  const elapsedMs = Date.now() - started
   writeFileSync(join(dir, 'stdout.txt'), result.stdout ?? '')
   writeFileSync(join(dir, 'stderr.txt'), result.stderr ?? '')
   const requests = readFileSync(dump, 'utf8').split('\n').filter(line => line.length > 0).map(line => JSON.parse(line))
   return {
     status: result.status,
+    elapsedMs,
     steps: requests.filter(request => request.tools.length > 0 && request.purpose !== 'compaction'),
     compactions: requests.filter(request => request.purpose === 'compaction'),
   }
@@ -227,8 +222,7 @@ const shadowDir = join(runDir, 'glm-shadow')
 const shadowWs = join(shadowDir, 'ws')
 mkdirSync(shadowWs, { recursive: true })
 writeFileSync(join(shadowWs, 'README.md'), 'probe workspace\n')
-const git = args => spawnSync('git', ['-c', 'user.name=probe', '-c', 'user.email=probe@localhost', '-c', 'commit.gpgsign=false', ...args], { cwd: shadowWs, encoding: 'utf8' })
-const gitReady = [['init', '-q'], ['add', 'README.md'], ['commit', '-q', '-m', 'init']].every(args => git(args).status === 0)
+const gitReady = initRepo(shadowWs)
 const shadowFile = join(shadowWs, 'shadow.txt')
 const toolFile = join(shadowWs, 'tool.txt')
 const dotnetWrite = `[System.IO.File]::WriteAllText('${slash(shadowFile)}', 'probe')`
@@ -238,18 +232,147 @@ const shadow = runScenario('glm-shadow', 'glm-5.3', [
   { tool: { name: 'Bash', arguments: { command: dotnetWrite } } },
   { tool: { name: 'Write', arguments: { file_path: toolFile, content: 'tool\n' } } },
   { text: 'done', status: true },
-], 'Run three commands, write a file, then reply done.', [
-  '- insert:',
-  '    - id: glm-hourness-probe/workspace-changes',
-  '      name: \'@deepseek-ai/dsh-workspace-changes\'',
-], shadowWs)
+], 'Run three commands, write a file, then reply done.', workspaceChangesRow('glm-hourness-probe/workspace-changes'), shadowWs)
 const arrowsResult = lastToolResult(shadow.steps[1])
 const gitResult = lastToolResult(shadow.steps[2])
 const dotnetResult = lastToolResult(shadow.steps[3])
 
-const plain = runScenario('non-glm', 'deepseek-probe', [{ text: 'done', status: true }], 'Reply done.')
+// Peak-hour reminder (docs/ORCHESTRATION.md §11.4). The probe clock row
+// (scripts/probe/probe-clock.mjs) starts the runtime's Date.now() at a
+// Wednesday 15:00 UTC+8: the first GLM request gets the notice, later
+// requests carry it once because it persists, and the non-GLM scenario runs
+// on the same clock and gets none. Each request records the runtime clock.
+const PEAK_AT = '2026-10-28T15:00:00+08:00'
+const clockRow = at => [
+  '- insert:',
+  '    - id: glm-hourness-probe/clock',
+  `      name: ${JSON.stringify(slash(join(repo, 'scripts', 'probe', 'probe-clock.mjs')))}`,
+  `      config: { at: ${JSON.stringify(at)} }`,
+]
+const peak = runScenario('glm-peak', 'glm-5.3', [
+  { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } } },
+  { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } } },
+  { text: 'done' },
+], 'Read package.json twice, then reply done.', clockRow(PEAK_AT))
+const peakNotices = step => (step?.messages ?? []).filter(message => message.role === 'user' && message.source === PEAK_REMINDER_SOURCE)
+/** Peak notices each request should carry: one per distinct peak window among the clocks of the requests so far (a notice persists). */
+const expectedPeakCounts = steps => steps.map((_, index) => new Set(steps.slice(0, index + 1).map(step => peakWindowAt(step.clock)).filter(window => window !== undefined)).size)
+const peakCountsMatch = scenario => scenario.steps.length > 0 && expectedPeakCounts(scenario.steps).every((count, index) => peakNotices(scenario.steps[index]).length === count)
+const peakFirst = peakNotices(peak.steps[0])
+const PEAK_NOTICE = `<system-reminder>\n${PEAK_REMINDER_TEXT}\n</system-reminder>`
+
+const plain = runScenario('non-glm', 'deepseek-probe', [{ text: 'done', status: true }], 'Reply done.', clockRow(PEAK_AT))
 const plainFirst = plain.steps[0]
 const plainTools = names(plainFirst)
+
+// Calibration run bounds (scripts/calibrate/limits.mjs, ROADMAP M1.7). The
+// step limit rejects the third step of a script that would read forever;
+// the time limit cancels the agent five seconds after its creation, in the
+// middle of a 60-second shell command, and rejects every later step.
+const limitsRecord = scenario => join(runDir, scenario, 'limits.jsonl')
+const stepLimited = runScenario('limits-steps', 'glm-5.3', [
+  { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } } },
+], 'Read package.json until stopped.', limitsRow({ maxSteps: 2, record: slash(limitsRecord('limits-steps')) }))
+const timeLimited = runScenario('limits-time', 'glm-5.3', [
+  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 60; Write-Output slept', timeout: 120000 } } },
+  { text: 'done' },
+], 'Sleep, then reply done.', limitsRow({ timeLimitMs: 5000, record: slash(limitsRecord('limits-time')) }))
+
+const jsonl = file => existsSync(file) ? readFileSync(file, 'utf8').split('\n').filter(line => line.length > 0).map(line => JSON.parse(line)) : []
+
+// Dispatch feasibility spike (docs/ORCHESTRATION.md §2.1, §3.2; DESIGN.md
+// §2.4a). The overlay-only row scripts/probe/probe-dispatch.mjs records what
+// it observes in <scenario>/dispatch.jsonl.
+const dispatchRow = record => [
+  '- insert:',
+  '    - id: glm-hourness-probe/dispatch',
+  `      name: ${JSON.stringify(slash(join(repo, 'scripts', 'probe', 'probe-dispatch.mjs')))}`,
+  '      inject: [subagents, goals, agents, tools]',
+  `      config: { record: ${JSON.stringify(slash(record))} }`,
+]
+const dispatchRecord = scenario => jsonl(join(runDir, scenario, 'dispatch.jsonl'))
+const bySession = (scenario, sessionId) => scenario.steps.filter(step => step.sessionId === sessionId)
+const messagesOf = (step, source) => (step?.messages ?? []).filter(message => message.source === source)
+
+// (a) and (b): the GLM main agent dispatches task T1 through the spike's
+// tool (deferred on GLM, so through DeferredToolCall) to a background child
+// on GLM-5.3-Flash in its own directory with write scope `allowed/` and a
+// structured hand-back, reads a file while the child sleeps, and ends its
+// turn; the completion notice wakes it once more. The child sleeps, prints
+// its working directory, tries a write outside its scope, writes inside it,
+// and submits the structured result.
+const dispatchDir = join(runDir, 'glm-dispatch')
+const dispatchWs = join(dispatchDir, 'ws')
+mkdirSync(join(dispatchWs, 'allowed'), { recursive: true })
+const outsideFile = join(dispatchWs, 'outside.txt')
+const insideFile = join(dispatchWs, 'allowed', 'inside.txt')
+const CHILD_PROMPT = 'Probe task T1: write allowed/inside.txt and report.'
+const HAND_BACK = { summary: 'wrote allowed/inside.txt', files: ['allowed/inside.txt'] }
+const dispatch = runScenario('glm-dispatch', 'glm-5.3', [
+  { tool: { name: 'DeferredToolCall', arguments: { name: 'probe_dispatch', input: { task: 'T1', prompt: CHILD_PROMPT, cwd: dispatchWs, scope: 'allowed', model: 'glm-5.3-flash' } } } },
+  { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } } },
+  { text: 'Waiting for task T1.' },
+  { text: 'done', status: true },
+], 'Dispatch task T1, keep working, then reply done.', dispatchRow(join(dispatchDir, 'dispatch.jsonl')), repo, [[
+  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 3; (Get-Location).Path' } } },
+  { tool: { name: 'Write', arguments: { file_path: outsideFile, content: 'outside\n' } } },
+  { tool: { name: 'Write', arguments: { file_path: insideFile, content: 'inside\n' } } },
+  { tool: { name: 'DeferredToolCall', arguments: { name: 'structured_output', input: HAND_BACK } } },
+  { text: 'child done' },
+]])
+const dispatchNotes = dispatchRecord('glm-dispatch')
+const started = dispatchNotes.find(entry => entry.kind === 'started')
+const dispatchMain = bySession(dispatch, started?.parentId)
+const dispatchChild = bySession(dispatch, started?.childId)
+const childCalls = dispatchNotes.filter(entry => entry.kind === 'call')
+const childResult = dispatchNotes.find(entry => entry.kind === 'result')
+const settled = messagesOf(dispatchMain.at(-1), 'subagent-settled')
+const childBash = lastToolResult(dispatchChild[1])
+const scopeDenied = lastToolResult(dispatchChild[2])
+const childFirstUser = dispatchChild[0]?.messages.find(message => message.source === 'user')
+
+// (c): the GLM main agent runs the spike's goal tool, which creates a second
+// root agent with a plugin-created goal (three rounds at most) and waits for
+// it. Round 1 tries to complete without evidence (denied), writes the
+// evidence and ends the turn with the goal active; round 2 completes.
+const goalDir = join(runDir, 'glm-goal')
+const goalWs = join(goalDir, 'ws')
+mkdirSync(goalWs, { recursive: true })
+const evidenceFile = join(goalWs, 'evidence.txt')
+const completeGoal = { tool: { name: 'DeferredToolCall', arguments: { name: 'update_goal', input: { action: 'complete' } } }, goal: true }
+const goalRun = runScenario('glm-goal', 'glm-5.3', [
+  { tool: { name: 'DeferredToolCall', arguments: { name: 'probe_goal_run', input: { objective: 'Produce evidence.txt, then mark the goal complete.', cwd: goalWs, evidence: 'evidence.txt', maxGoalRounds: 3 } } } },
+  { text: 'done', status: true },
+], 'Run the goal probe, then reply done.', dispatchRow(join(goalDir, 'dispatch.jsonl')), repo, [[
+  completeGoal,
+  { tool: { name: 'Write', arguments: { file_path: evidenceFile, content: 'evidence\n' } } },
+  { text: 'Evidence written; the goal stays active for the next round.' },
+  completeGoal,
+  { text: 'Goal complete.' },
+]])
+const goalNotes = dispatchRecord('glm-goal')
+const goalCreated = goalNotes.find(entry => entry.kind === 'goal-created')
+const goalFinal = goalNotes.find(entry => entry.kind === 'goal-final')
+const goalGates = goalNotes.filter(entry => entry.kind === 'goal-gate')
+const goalSteps = bySession(goalRun, goalCreated?.agentId)
+const goalMain = goalRun.steps.filter(step => step.sessionId !== goalCreated?.agentId)
+const roundMessages = step => messagesOf(step, 'goal')
+const roundOf = (step, round) => roundMessages(step).some(message => message.text.startsWith('<goal_round>\nObjective: ') && message.text.includes(`\nRound: ${round}/3\n`))
+const projections = step => messagesOf(step, PROJECTION_SOURCE)
+const firstRoundOrder = goalSteps[0] === undefined ? [] : [goalSteps[0].messages.findIndex(message => message.source === 'goal'), goalSteps[0].messages.findIndex(message => message.source === PROJECTION_SOURCE)]
+const gateDenied = lastToolResult(goalSteps[1])
+const goalCompleted = lastToolResult(goalSteps[4])
+const goalRunResult = lastToolResult(goalMain.at(-1))
+
+// The headless runner exits at the first quiescent idle of its own agent: an
+// armed goal created in the task turn gets no round before exit (the reason
+// the goal scenario drives a second root agent from inside a tool call).
+const headlessGoal = runScenario('goal-headless', 'glm-5.3', [
+  { tool: { name: 'DeferredToolCall', arguments: { name: 'create_goal', input: { objective: 'Probe objective.', max_goal_rounds: 2 } } } },
+  { text: 'Goal created.' },
+  { text: 'round reply' },
+], 'Create a goal for the probe objective.')
+const headlessCreated = lastToolResult(headlessGoal.steps[1])
 
 const compactRequest = compacted.compactions[0]
 const compactInstruction = compactRequest?.messages.at(-1)
@@ -260,12 +383,13 @@ const checkpoint = compacted.steps.at(-1)?.messages.find(message => message.sour
 // sessionId, purpose) into the user-level directory the data row provides
 // (<DSH home>/glm-hourness, the scenario's dsh-home); the guard journals
 // each denial into the project directory it reads from the data service.
-const jsonl = file => existsSync(file) ? readFileSync(file, 'utf8').split('\n').filter(line => line.length > 0).map(line => JSON.parse(line)) : []
 const usageOf = scenario => jsonl(join(runDir, scenario, 'dsh-home', 'glm-hourness', 'audit', 'usage.jsonl'))
 const glmUsage = usageOf('glm').filter(record => record.purpose === undefined)
 const compactUsage = usageOf('glm-compact').filter(record => record.purpose === 'compaction')
-const projectUsage = ['glm', 'glm-flash', 'glm-todo', 'glm-compact', 'glm-shadow', 'non-glm'].filter(scenario => existsSync(join(runDir, scenario, 'home', 'audit', 'usage.jsonl')))
+const projectUsage = ['glm', 'glm-flash', 'glm-todo', 'glm-compact', 'glm-shadow', 'glm-peak', 'non-glm', 'limits-steps', 'limits-time', 'glm-dispatch', 'glm-goal', 'goal-headless'].filter(scenario => existsSync(join(runDir, scenario, 'home', 'audit', 'usage.jsonl')))
 const glmViolations = jsonl(join(glmDir, 'home', 'audit', 'violations.jsonl'))
+const stepLimits = jsonl(limitsRecord('limits-steps'))
+const timeLimits = jsonl(limitsRecord('limits-time'))
 const realUsageAfter = usageStamp()
 // The workflow row journals dispatch calls by tool name; the names must be
 // the ones the rc.3 composition registers.
@@ -335,6 +459,10 @@ const checks = [
   ['glm todo: a scripted turn carries two parallel tool calls', todoParallel?.length === 2, `steps: ${todo.steps.length}, calls in the first Read turn: ${todoParallel?.join(', ') ?? 'none'}`],
   ['glm todo: the reminder fires once, before the twelfth request (10 assistant turns after TodoWrite)', todo.steps.length === 12 && todoReminderSteps.length === 1 && todoReminderSteps[0] === 12, `reminder in request(s): ${todoReminderSteps.join(', ') || 'none'} of ${todo.steps.length}`],
   ['glm todo: the reminder is the wrapped ZCode text with the todo echo, after the last tool results', todoNotice !== undefined && todoNotice.text.startsWith("<system-reminder>\nThe TodoWrite tool hasn't been used recently.") && todoNotice.text.endsWith('[1. [in_progress] probe todo]\n</system-reminder>') && todoNoticeIndex > todoLastResult, todoNotice === undefined ? 'no notice' : `${todoNotice.text.slice(-60).replace(/\n/g, ' ')} (at ${todoNoticeIndex}, last tool result at ${todoLastResult})`],
+  ['glm peak: with the probe clock at Wednesday 15:00 UTC+8 the first GLM request carries the wrapped peak reminder once', peakWindowAt(peak.steps[0]?.clock) === '2026-10-28' && peakFirst.length === 1 && peakFirst[0].text === PEAK_NOTICE, peak.steps[0] === undefined ? `no request (exit ${peak.status})` : `clock ${new Date(peak.steps[0].clock).toISOString()}, ${peakFirst.length} notice(s): ${(peakFirst[0]?.text ?? '').slice(0, 60).replace(/\n/g, ' ')}`],
+  ['glm peak: the reminder persists in the session and is not repeated on later steps', peak.steps.length === 3 && peakNotices(peak.steps.at(-1)).length === 1 && peakCountsMatch(peak), `notices per request: ${peak.steps.map(step => peakNotices(step).length).join(', ')}`],
+  ['glm peak (real clock): the GLM scenario carries a reminder exactly for the peak windows its requests fell in', peakCountsMatch(glm), `windows: ${[...new Set(glm.steps.map(step => peakWindowAt(step.clock) ?? 'off-peak'))].join(', ')}; notices per request: ${glm.steps.map(step => peakNotices(step).length).join(', ')}`],
+  ['non-glm peak: a non-GLM session in peak hours gets no peak reminder', plainFirst !== undefined && peakWindowAt(plainFirst.clock) === '2026-10-28' && peakNotices(plainFirst).length === 0, plainFirst === undefined ? 'no request' : `clock ${new Date(plainFirst.clock).toISOString()}, ${peakNotices(plainFirst).length} notice(s)`],
   ['glm compact: the summarization request ends with the ZCode compact prompt', compactInstruction?.role === 'user' && compactInstruction.text.startsWith('CRITICAL: Respond with TEXT ONLY.'), compactRequest === undefined ? `no compaction request (exit ${compacted.status})` : compactInstruction?.text.slice(0, 60).replace(/\n/g, ' ')],
   ['glm compact: the checkpoint carries the formatted summary', checkpoint !== undefined && checkpoint.text.includes('Summary:\nprobe summary') && !checkpoint.text.includes('<analysis>'), checkpoint === undefined ? 'no checkpoint in the next request' : checkpoint.text.slice(0, 80).replace(/\n/g, ' ')],
   ['memory usage: one record per GLM step with the request provider, model and session id', glmUsage.length === glm.steps.length && glmUsage.every(record => record.provider === 'glm-probe' && record.model === 'glm-5.3' && typeof record.sessionId === 'string' && record.sessionId.length > 0), `${glmUsage.length} record(s) for ${glm.steps.length} step(s); first: ${JSON.stringify(glmUsage[0] ?? null).slice(0, 120)}`],
@@ -353,6 +481,20 @@ const checks = [
   ['health: on the non-GLM route glm-prompt reports why it is not in effect', plainHealth['glm-prompt']?.status === '未生效' && plainHealth['glm-prompt'].reason.startsWith('非 GLM 路由 glm-probe/deepseek-probe'), JSON.stringify(plainHealth['glm-prompt'] ?? null)],
   ['health: after a GLM compaction glm-compact reports the mirror in effect', compactHealth['glm-compact']?.status === ACTED && compactHealth['glm-compact'].reason.startsWith('GLM 压缩请求改用 ZCode 指令'), JSON.stringify(compactHealth['glm-compact'] ?? null)],
   ['health: the reports stay out of the model-visible conversation', conversationTexts.length > 0 && conversationTexts.every(text => !text.includes('行健康') && !text.includes('glmHournessHealth')), `${conversationTexts.length} text(s) checked`],
+  ['calibration limits: the step past maxSteps is rejected, the turn ends blocked and the run exits non-zero', stepLimited.steps.length === 2 && stepLimits.length === 1 && stepLimits[0].kind === 'step-limit' && stepLimited.status !== 0, `exit ${stepLimited.status}, ${stepLimited.steps.length} step(s), record: ${JSON.stringify(stepLimits)}`],
+  ['calibration limits: the time limit cancels a running 60-second shell command and no later step runs', timeLimited.steps.length === 1 && timeLimits.length === 1 && timeLimits[0].kind === 'time-limit' && timeLimited.elapsedMs < 45_000 && timeLimited.status !== 0, `exit ${timeLimited.status} after ${Math.round(timeLimited.elapsedMs / 1000)} s, ${timeLimited.steps.length} step(s), record: ${JSON.stringify(timeLimits)}`],
+  ['dispatch (a): a host-level row starts a background child through subagents.startActivation; the dispatch call returns at once with the reserved child id', started !== undefined && started.childId.startsWith('probe-task-') && lastToolResult(dispatchMain[1])?.isError !== true && lastToolResult(dispatchMain[1])?.text.includes(started.childId) === true && dispatchChild.length > 0, started === undefined ? `no start recorded (exit ${dispatch.status}): ${JSON.stringify(dispatchNotes.find(entry => entry.kind === 'dispatch-failed') ?? null)}` : `child ${started.childId}: ${dispatchChild.length} request(s)`],
+  ['dispatch (a): the child gets the prompt, runs in the requested cwd and on the agentOptions model', childFirstUser?.text.startsWith(CHILD_PROMPT) === true && childBash?.isError !== true && childBash?.text.trim() === dispatchWs && dispatchChild.every(step => step.model === 'glm-5.3-flash') && dispatchMain.every(step => step.model === 'glm-5.3'), `prompt: ${(childFirstUser?.text ?? 'none').slice(0, 60).replace(/\n/g, ' ')}; cwd: ${(childBash?.text ?? 'no tool result').trim()}; models: ${[...new Set(dispatchChild.map(step => step.model))].join(', ')}`],
+  ['dispatch (a): the parent keeps working while the child runs (its next two steps come before the child finishes, without a completion notice)', dispatchMain.length === 4 && dispatchChild.length >= 4 && dispatchMain[2].clock < dispatchChild.at(-1).clock && [1, 2].every(index => messagesOf(dispatchMain[index], 'subagent-settled').length === 0), `parent clocks ${dispatchMain.map(step => step.clock - (dispatchMain[0]?.clock ?? 0)).join(', ')} ms; child clocks ${dispatchChild.map(step => step.clock - (dispatchMain[0]?.clock ?? 0)).join(', ')} ms`],
+  ['dispatch (a): the completion notice reaches the parent with the structured result; the activation result carries it too', settled.length === 1 && settled[0].text.includes(`Structured result: ${JSON.stringify(HAND_BACK)}`) && childResult?.stopReason === 'completed' && JSON.stringify(childResult.structured) === JSON.stringify(HAND_BACK), `${(settled[0]?.text ?? 'no notice').slice(-120).replace(/\n/g, ' | ')}; result: ${JSON.stringify(childResult ?? null).slice(0, 120)}`],
+  ['dispatch (b): tools/pre-execute sees each child call with the child agent, whose id maps to the task; the parent\'s calls do not map', childCalls.length === 5 && childCalls.every(entry => entry.task === 'T1' && entry.agentId === started?.childId && entry.sessionId === started.childId && entry.nested === false) && JSON.stringify(childCalls.map(entry => entry.tool)) === JSON.stringify(['Bash', 'Write', 'Write', 'DeferredToolCall', 'structured_output']), childCalls.map(entry => entry.tool).join(', ') || 'no calls recorded'],
+  ['dispatch (b): a write outside the task scope is denied and reaches the child as a tool error; the write inside the scope runs', scopeDenied?.isError === true && scopeDenied.text.includes(SCOPE_DENIAL) && !existsSync(outsideFile) && existsSync(insideFile) && readFileSync(insideFile, 'utf8') === 'inside\n' && dispatchNotes.filter(entry => entry.kind === 'scope-deny').length === 1, scopeDenied === undefined ? 'no tool result' : scopeDenied.text.slice(0, 100).replace(/\n/g, ' ')],
+  ['dispatch (b): the child session header keeps the parent directory; the requested cwd is only the child working directory', childCalls.length > 0 && childCalls.every(entry => entry.headerCwd === repo) && childBash?.text.trim() === dispatchWs, `header cwd ${childCalls[0]?.headerCwd ?? 'none'}`],
+  ['goal (c): a plugin-created goal on a second root agent gets round 1 from the driver, and the notice appended in agent/pre-step enters with it', goalCreated?.root === true && goalCreated.goal?.activation === 'armed' && roundOf(goalSteps[0], 1) && projections(goalSteps[0]).length === 1 && firstRoundOrder[0] >= 0 && firstRoundOrder[1] > firstRoundOrder[0], goalSteps[0] === undefined ? `no goal-agent request (exit ${goalRun.status})` : `sources: ${goalSteps[0].messages.map(message => message.source ?? message.role).slice(-6).join(', ')}`],
+  ['goal (c): update_goal complete through DeferredToolCall is denied in tools/pre-execute and the goal stays active', gateDenied?.isError === true && gateDenied.text.includes(GOAL_GATE_DENIAL) && goalGates[0]?.decision === 'deny' && goalGates[0].goal?.phase === 'active' && goalGates[0].goal.roundsStarted === 1, gateDenied === undefined ? 'no tool result' : gateDenied.text.slice(0, 100).replace(/\n/g, ' ')],
+  ['goal (c): the driver starts round 2 after the round that carried the notice; each round carries one notice; no round 3', goalSteps.length === 5 && roundOf(goalSteps[3], 2) && projections(goalSteps[3]).length === 2 && goalSteps.every(step => !roundOf(step, 3)), `${goalSteps.length} goal-agent request(s); notices per request: ${goalSteps.map(step => projections(step).length).join(', ')}`],
+  ['goal (c): with the evidence present the gate allows complete in round 2; the goal ends complete and disarmed after 2 rounds', goalGates.length === 2 && goalGates[1].decision === 'allow' && goalCompleted?.isError !== true && goalCompleted?.text.includes('"phase":"complete"') === true && goalFinal?.goal?.phase === 'complete' && goalFinal.goal.roundsStarted === 2 && goalFinal.goal.activation === 'disarmed' && goalRunResult?.text.includes('"phase":"complete"') === true, JSON.stringify(goalFinal ?? null).slice(0, 160)],
+  ['goal (headless): the one-shot runner exits at its agent\'s first quiescent idle, so an armed goal created in the task turn gets no round', headlessCreated?.isError !== true && headlessCreated?.text.includes('"activation":"armed"') === true && headlessGoal.steps.length === 2 && headlessGoal.steps.every(step => roundMessages(step).length === 0), `exit ${headlessGoal.status}, ${headlessGoal.steps.length} step(s); ${(headlessCreated?.text ?? 'no tool result').slice(0, 80)}`],
   ['non-glm boot: the runtime reached the probe provider', plainFirst !== undefined, `exit ${plain.status}, ${plain.steps.length} step(s)`],
   ['non-glm prompt: DSH identity untouched', plainFirst?.system.includes('powered by DeepSeek Harness') === true && !plainFirst.system.includes('You are ZCode'), ''],
   ['non-glm tools: natives present, no aliases', plainFirst !== undefined && nativeFace.every(name => plainTools.has(name)) && zcodeFace.every(name => !plainTools.has(name)), zcodeFace.filter(name => plainTools.has(name)).join(', ') || ''],

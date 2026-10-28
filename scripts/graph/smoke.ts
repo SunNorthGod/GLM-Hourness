@@ -42,7 +42,7 @@ function addressOf(server: ChildProcess, output: string[]): Promise<{ origin: st
     server.stdout!.on('data', (chunk: string) => {
       text += chunk
       const match = /graph:serve: (http:\/\/127\.0\.0\.1:\d+)\/#token=([A-Za-z0-9_-]+)/.exec(text)
-      if (match !== null) resolve({ origin: match[1]!, token: match[2]! })
+      if (match !== null) resolve({ origin: match[1], token: match[2] })
     })
     server.stderr!.setEncoding('utf8')
     server.stderr!.on('data', (chunk: string) => output.push(chunk))
@@ -75,7 +75,7 @@ async function openEvents(origin: string): Promise<Events> {
         buffer = buffer.slice(end + 2)
         const data = /^data: (.*)$/m.exec(block)
         if (!/^event: revision$/m.test(block) || data === null) continue
-        const revision = (JSON.parse(data[1]!) as { revision: string }).revision
+        const revision = (JSON.parse(data[1]) as { revision: string }).revision
         seen.add(revision)
         waiting.get(revision)?.()
       }
@@ -90,17 +90,25 @@ async function openEvents(origin: string): Promise<Events> {
   }
 }
 
-async function json(response: Response, what: string): Promise<Record<string, any>> {
-  const body = await response.json() as Record<string, any>
+/** The fields of the JSON answers this smoke reads: every answer has ok and the graph revision; GET /api/graph adds the picture and the nodes. */
+interface Answer {
+  readonly ok: boolean
+  readonly revision: string
+  readonly svg?: string
+  readonly nodes?: readonly { readonly id: string, readonly history: readonly { readonly actor: string, readonly op: string, readonly text?: string }[] }[]
+}
+
+async function json(response: Response, what: string): Promise<Answer> {
+  const body = await response.json() as Answer
   if (response.status !== 200 || body.ok !== true) fail(`${what} answered ${response.status}: ${JSON.stringify(body)}`)
   return body
 }
 
-function runCli(args: readonly string[]): Promise<Record<string, any>> {
+function runCli(args: readonly string[]): Promise<Answer> {
   return within(new Promise((resolve, reject) => {
     execFile(process.execPath, [...flags, join(here, 'cli.ts'), ...args], { encoding: 'utf8' }, (error, stdout, stderr) => {
       if (error !== null) reject(new Error(`graph cli ${args.join(' ')} failed: ${error.message} ${stdout} ${stderr}`))
-      else resolve(JSON.parse(stdout) as Record<string, any>)
+      else resolve(JSON.parse(stdout) as Answer)
     })
   }), 'the graph command line')
 }
@@ -127,7 +135,7 @@ async function smoke(dir: string, output: string[]): Promise<string> {
     if (nonce === undefined || !html.includes(`<script nonce="${nonce}">`) || html.includes('__NONCE__')) fail('the viewer page and its CSP nonce do not match')
 
     const before = await json(await fetch(`${origin}/api/graph`), 'GET /api/graph')
-    if (before.nodes.length !== 3 || !String(before.svg).startsWith('<svg')) fail(`GET /api/graph returned ${before.nodes.length} nodes`)
+    if (before.nodes?.length !== 3 || before.svg?.startsWith('<svg') !== true) fail(`GET /api/graph returned ${before.nodes?.length} nodes`)
     const events = await openEvents(origin)
     try {
       const human = await json(await fetch(`${origin}/api/apply`, {
@@ -144,7 +152,7 @@ async function smoke(dir: string, output: string[]): Promise<string> {
       await events.waitFor(llm.revision)
 
       const after = await json(await fetch(`${origin}/api/graph`), 'GET /api/graph')
-      const history = (after.nodes as { id: string, history: { actor: string, op: string, text?: string }[] }[]).find(node => node.id === 'task-1')!.history
+      const history = after.nodes?.find(node => node.id === 'task-1')?.history ?? []
       const has = (actor: string, text: string): boolean => history.some(entry => entry.op === 'comment' && entry.actor === actor && entry.text === text)
       if (!has('human', '人在查看器里写的批注') || !has('llm', 'LLM 经命令行写的批注')) fail(`the graph JSON lacks a comment: ${JSON.stringify(history)}`)
       if (after.revision !== llm.revision) fail(`the graph is at ${after.revision}, the command line wrote ${llm.revision}`)

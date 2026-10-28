@@ -49,7 +49,7 @@ function isSealed(value: unknown): value is SealedCredential {
 }
 
 /** Load the stored credential; a missing store returns undefined, corruption or a wrong secret throws. */
-export async function loadCredential(fs: StoreFs, storePath: string): Promise<unknown | undefined> {
+export async function loadCredential(fs: StoreFs, storePath: string): Promise<unknown> {
   let raw: string
   try {
     raw = await fs.readFile(storePath)

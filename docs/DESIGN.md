@@ -39,13 +39,13 @@ GLM-Hourness
 | --- | --- | --- | --- |
 | `glm-hourness/glm-llm` | `dist/glm-llm/index.js` | 通道 | 真网冒烟通过〔实测〕；DSH 真实会话尚未使用过〔实读审计数据〕 |
 | `glm-hourness/glm-login` | `dist/glm-llm/login-row.js` | 通道 | `/glm-login`、`/glm-status`（凭证状态与行健康表，§2.5）、`/glm-logout` |
-| `glm-hourness/glm-prompt` | `dist/glm-prompt/index.js` | 方言 | 见 §5 |
+| `glm-hourness/glm-prompt` | `dist/glm-prompt/index.js` | 方言 | 见 §5；另带高峰提醒（本项目的 notice，`ORCHESTRATION.md` §11.4） |
 | `glm-hourness/glm-compact` | `dist/glm-prompt/compact-row.js` | 方言 | 见 §5.6 |
 | `glm-hourness/data` | `dist/data/index.js` | 编排 | 数据目录服务 `glmHournessData`，见 §2.4 |
 | `glm-hourness/guard` | `dist/guard/index.js` | 编排 | 见 `ORCHESTRATION.md` §6 |
 | `glm-hourness/memory` | `dist/memory/index.js` | 编排 | 见 `ORCHESTRATION.md` §8 |
 | `glm-hourness/workflow` | `dist/workflow/index.js` | 编排 | 仅记录派遣类工具调用 |
-| `glm-hourness/hourness` | `dist/ui/index.js` | 编排 | `/hourness` 命令 |
+| `glm-hourness/hourness` | `dist/ui/index.js` | 编排 | `/hourness` 命令：晨报与积分口径的用量面板（`ORCHESTRATION.md` §11.2、§11.3） |
 | `glm-hourness/graph` | `dist/graph/index.js` | 编排 | 项目图工具、每步投影与图文件门禁（`ORCHESTRATION.md` §2.5、§2.7、§2.10），默认禁用，只有 L2 |
 | `glm-hourness/ui` | `ui/`（独立包） | 呈现 | 设置页说明 + 输入框「GLM 通道」pill |
 
@@ -120,7 +120,7 @@ GLM-Hourness
 | 组装变量 `variables.provider` / `variables.model` | glm-prompt、guard（`src/shared/route.ts`） | agent:167–181（`installModelSelection` 在 `next()` 之后写入） | 一致 |
 | `session/event`（只观察，`(session, event)`，在 `append` 内同步调用）；事件冻结为 `{type, seq, time, data}` | guard（影子兜底） | session:1517–1536（`append`）、session:1579–1598（`commit` 同步通知观察者）；`turn/start` 的 `data.turn` 见 agent-loop:945；`workspace/changes` 的 `data.turn` 见 workspace-changes:871 | 一致；观察者运行时摘要还没存进去（workspace-changes:871 先追加事件，873 才存摘要），所以晚一个微任务再读 |
 | `session/disposed`（只观察，`(session)`） | guard（影子兜底） | session:1925–1936 | 一致 |
-| `agent/pre-step`（waterfall，`{agent, messages, turn, step, signal}`；默认决策 `enter` 带本步认领的消息） | glm-prompt（工具检索公告、todo 提醒）、graph（每步投影） | agent-loop:901–925；`agent` 由 agent:241–245 并入；空决策守卫照抄 agent:193–197 | 一致；本节上文原写载荷无 `turn`，已更正 |
+| `agent/pre-step`（waterfall，`{agent, messages, turn, step, signal}`；默认决策 `enter` 带本步认领的消息） | glm-prompt（工具检索公告、todo 提醒、高峰提醒）、graph（每步投影） | agent-loop:901–925；`agent` 由 agent:241–245 并入；空决策守卫照抄 agent:193–197 | 一致；本节上文原写载荷无 `turn`，已更正 |
 | `tools/pre-execute`（waterfall，`(exec, next)`，默认 `allow`） | guard、workflow、graph（图文件门禁，`prepend` 注册） | tools:3320–3321；决策 `allow` / `deny{reason, info?}` / `ask` / `cancel`，tools:3322–3345；拒绝时结果为 `Error: ` 加理由，工具体不执行，tools:3337–3353 | 一致；guard 的决策类型补上 `ask`、`cancel` 透传 |
 | `exec` 字段：`callId`、`rootCallId`、`name`、`arguments`、`signal`、`agent?`、`parent?`、`schema?`、`deferContext`、`concludeTurn` | guard、workflow | tools:3229–3260 | **偏差已修**：guard 从 `exec.agentId` / `exec.sessionId` 取违规记录的 id，rc.3 没有这两个字段，记录里永远为空；改为 `exec.agent.id` 与 `exec.agent.session.id` |
 | `llm/stream`（waterfall，`(options, next)`） | memory（用量流水）、glm-compact | llm:2397；`options` 即 `GenerateOptions`（官方 types.d.ts:506–548：`provider`、`model`、`messages`、`sessionId?`、`purpose?`），编译期检查 `LlmStreamOptionsContractCheck` | 一致；memory 对 `provider` / `model` 的 `'unknown'` 兜底删除（两者必填）。L3 探针实测每个 GLM 步一条用量记录，带 `sessionId`；压缩调用带 `purpose: 'compaction'` |
@@ -161,6 +161,20 @@ GLM-Hourness
 | 文件工具与目标字段：`write`、`edit` 读 `file_path`，`str_replace_editor` 读 `path` | guard（影子兜底记本回合的目标）、graph（图文件门禁判断目标是否在图目录里） | tool-fs:549–555、690；str-replace-editor:267、281 | 一致 |
 | 派遣工具 `spawn_teammate`、`send_message`、`team_task_create`、`team_task_update`、`subagent`、`subagent_fork` | workflow | experimental-tool-agent-team:251、293、365、457；tool-subagent-control:23；tool-subagent:313（`toolName` 默认 `subagent`），base 的 `cordis.patch.yml`:384、395（`subagent`、`subagent_fork` 两行） | **偏差已修**：`subagent_fork` 不在名单里，fork 派遣从未记录。L3 探针实测运行时工具面同时有 `subagent` 与 `subagent_fork` |
 | compaction-basic 的指令开头、`purpose: 'compaction'`、经 `ctx.llm.stream()` 摘要 | glm-compact | compaction-basic:244、320、323 | 一致 |
+
+派发与驱动循环〔实测 2026-10-28，L3 派发可行性验证；`ORCHESTRATION.md` §2.1、§3.2〕：M7 后台派发与 goal 驱动要用的接口。现在只有探针覆盖层里的验证插件 `scripts/probe/probe-dispatch.mjs` 在用，它不属于 bundle，也不是产品功能；证据列的「探针」指 `npm run probe` 的场景。
+
+| 接口 | 使用者 | rc.3 证据 | 结论 |
+| --- | --- | --- | --- |
+| `subagents.startActivation({provider, label, childId?, request{prompt, parent, cwd?, agentOptions?, outputSchema?, maxDepth?}, signal, delivery})` 返回 `{childId, messageId?, result, dispose}`；子 agent 被接受时即返回 | 验证插件（M7 派发工具的计划用法） | subagent:3036–3048、1391–1477；`agentOptions` 合并在父 agent 的路由之上，subagent:315；深度只在传了 `maxDepth` 时检查，subagent:279–283 | 成立（探针 `glm-dispatch`）：宿主层插件 inject `subagents` 即可调用；派发工具当场返回，主 Agent 继续走步 |
+| 结构化交回：`outputSchema` 启动前按对象 schema 校验，子 agent 得到 `structured_output` 工具，提交后回合结束；完成通知带 `Structured result: <JSON>`，`result` 带 `structured` 与 `stopReason` | 同上 | subagent:3046、873、889–960、526 | 成立；GLM 路由上 `structured_output` 是延迟工具，经 DeferredToolCall 提交同样被捕获 |
+| 子 agent 的会话头：`cwd` 取父会话头，另带 `parentSession`、`origin: 'subagent'`、`delegationDepth`；请求里的 `cwd` 只成为工作目录 | guard（包含根读会话头 `cwd`）；M7 写入范围 | subagent:346–355、1415 | 实测如此：子 agent 的 `header.cwd` 是父目录，guard 对子 agent 的包含根因而是父工作区；写入范围不能拿会话头判定 |
+| `tools/pre-execute` 里子 agent 的调用：`exec.agent` 是子 agent，`exec.agent.id` 等于预留的 `childId` | 验证插件（写入范围门禁） | tools:3229–3260；agent id 必须等于会话 id，agent:514 | 成立：每次调用都能映射回任务，拒绝以工具错误回到子 agent |
+| `goals.create(agent, {objective, maxGoalRounds?})`、`goals.get(agent)`（视图带 `id`、`revision`、`phase`、`roundsStarted`、`maxGoalRounds`、`activation`）；`goal/changed` 事件 `{agent, change{operation}}` | 验证插件（驱动循环） | goal:611、635、877；goal-round-driver:243 | 成立（探针 `glm-goal`）：插件建的 goal 由驱动器照常推进 |
+| `agents.create({sessionId, meta{cwd}, agentOptions})` 返回带 `agent` 的句柄；`agents.withoutInitiator(op)`；`agents.roots()` | 验证插件 | agent:453、414、623；agent-loop:1893 | 成立：不传 `parentAgent` 时新 agent 是根 agent |
+| goal-round-driver 的 `agent/pre-step` 预约校验（下游监听器前后各一次）与收件箱竞争判定 | glm-prompt 的步 notice（目标轮上同样追加）；M2.3 的投影注入 | goal-round-driver:249、286–350 | 成立：`next()` 之后追加到决策 `messages` 的 notice 不破坏预约，下一轮照常开始；经收件箱投递会被判为竞争输入 |
+| `update_goal` 的完成授权（直接人类输入或当前目标轮）与收尾消息 `<goal_complete>` | 验证插件（完成门禁） | tool-goal:27、54、72、365 | 成立：经 DeferredToolCall 调用时 `tools/pre-execute` 看到的是 `update_goal`，可以拒绝 `complete` |
+| headless 运行器的退出条件：agent 空闲、`waitForChildren` 为假、会话序号不变 | 探针、标定运行器 | headless:349–351 | 实测：第一次静止空闲就退出，任务回合里建的 goal 一轮都跑不到（探针 `goal-headless`） |
 
 ### 2.5 行健康〔已实现 2026-10-28，`ROADMAP.md` M1.5〕
 
@@ -226,7 +240,7 @@ LLM 平面（bundle `g6n` 形态）：`HTTP-Referer`、`User-Agent: ZCode/<ver>`
 对照本机 3.16.3 安装包〔实读〕：
 
 - LLM 平面身份头的组装函数（`buildCliZCodeSourceHeaders`）字段与顺序和本实现一致。
-- `X-Title` 的来源标题：进程参数含 `app-server` 或 `agent-server` 时为 `electron`，否则为 `cli`。桌面版以 `app-server` 方式启动 agent 进程，所以桌面版真实流量是 `Z Code@electron`；本实现发 `Z Code@cli`，对应 ZCode CLI 的身份。是否改为 `electron` 待定（`FACTS.md` §1）。
+- `X-Title` 的来源标题：进程参数含 `app-server` 或 `agent-server` 时为 `electron`，否则为 `cli`。桌面版以 `app-server` 方式启动 agent 进程，所以桌面版真实流量是 `Z Code@electron`；本实现发 `Z Code@cli`，对应 ZCode CLI 的身份。〔定案 2026-10-27〕保持 `cli`（用户定案，`ROADMAP.md` M1 进度；事实见 `FACTS.md` §1）。
 - 签名与项目令牌共用一个版本常量（构建期 `__ZCODE_VERSION__`），`X-ZCode-App-Version` 取自环境变量 `ZCODE_APP_VERSION`。安装包文本中前者未被构建替换，实际取值未验证；本实现两处都用应用版本。
 
 ### 4.3 签名 V4
@@ -272,7 +286,7 @@ LLM 平面（bundle `g6n` 形态）：`HTTP-Referer`、`User-Agent: ZCode/<ver>`
 
 DSH 的 `TokenUsage` 各计数互不重叠：`inputTokens` 只算未命中缓存的输入，缓存读写分别记在 `cacheReadTokens` / `cacheWriteTokens`（官方类型注释）。Anthropic 流的 `message_start` 带 `input_tokens`、`cache_read_input_tokens`、`cache_creation_input_tokens`，`message_delta` 只带 `output_tokens`。
 
-曾有缺陷：解码器在 `message_delta` 上发出 `{inputTokens: 0, outputTokens}`，下游取最后一个用量块，于是输入计为 0；缓存读写从未解析。积分口径依赖这三项（`FACTS.md` §2.4）。现在整个流只在 `finish` 前发一个合并后的用量块，含 `cacheReadTokens` / `cacheWriteTokens`〔已实现 2026-10-27；真网冒烟实测 `inputTokens: 24, outputTokens: 3, cacheReadTokens: 0`〕。此前写入的用量流水中输入计数均为 0，不能用于积分统计。
+曾有缺陷：解码器在 `message_delta` 上发出 `{inputTokens: 0, outputTokens}`，下游取最后一个用量块，于是输入计为 0；缓存读写从未解析。积分口径依赖这三项（`FACTS.md` §2.4）。现在整个流只在 `finish` 前发一个合并后的用量块，含 `cacheReadTokens` / `cacheWriteTokens`〔已实现 2026-10-27；真网冒烟实测 `inputTokens: 24, outputTokens: 3, cacheReadTokens: 0`〕。此前写入的用量流水中输入计数均为 0，不能用于积分统计。那版解码器的用量块没有 `totalTokens`，修正后的总带它；用量面板据此（provider `glm-zcode`、输入 0、无 `totalTokens`）识别修正前的记录，不计入积分，只报条数（2026-10-28，`ORCHESTRATION.md` §11.2）。
 
 ### 4.7 额度数据〔规划〕
 
@@ -367,7 +381,7 @@ ZCode 双阈值 10/10：距上次 TodoWrite 与距上次提醒都达到 10 轮�
 
 ZCode 的做法〔实读，3.16.3 安装包 `XNa`、`U4o`、`z4o` 与回合循环的附件收集；源码 `runtime/helpers/runtime-reminders.ts`、`runtime/methods/turn-loop.ts`〕：每次模型请求之前，若本回合的工具里有 TodoWrite（工具检索延迟之前的全量工具），从历史末尾往前数助手消息，一条助手消息算一轮，不论它带几个工具调用；距最后一条调用 TodoWrite 的助手消息与距最后一条 `todo_reminder` 都不少于 10 轮时，生成提醒正文（逐字提醒加会话 todo 存储的回显），作为 `todo_reminder` 附件以 `<system-reminder>` 包裹递送，并持久化为合成用户消息，之后的请求从它起算。找不到标记时按整段历史的轮数计。经 `DeferredToolCall` 调用的 TodoWrite 在 ZCode 历史里记为目标名（包装只留标记），同样算 TodoWrite。3.16.3 安装包比源码多一个条件：模型 id 含 `claude` 时不提醒，与 GLM 无关。
 
-实现〔已实现 2026-10-28，L3 实测〕：`src/glm-prompt/todo-reminder.ts`，由 `installDialect` 安装在每个 agent 上。
+实现〔已实现 2026-10-28，L3 实测〕：`src/glm-prompt/todo-reminder.ts`，由 `installDialect` 安装在每个 agent 上。`agent/pre-step` 监听器（判定、空首步保护、追加 notice）在 `src/glm-prompt/step-notice.ts`，与高峰提醒（`ORCHESTRATION.md` §11.4）、项目图的每步投影（`ORCHESTRATION.md` §2.5）共用；读历史的两个函数（工具调用的参数、有结果与失败的调用）也在这个文件里，todo 提醒与每步投影共用。
 
 - 时机：`agent/pre-step`，即本步组装之后、请求之前，对应 ZCode 的附件收集。只在组装监听器判定本步为 GLM 路由、且别名改写后的工具面（工具检索延迟之前）有 TodoWrite 时检查；非 GLM 路由永远不提醒。
 - 计数：每步从 `session.deriveMessages()`（请求可见历史，跟随压缩与续跑）重新推出，不在内存里累加。只有 GLM 模型产生的助手消息算轮次（rc.3 助手消息的 `source.model`）。todo 写入包括 TodoWrite、点名 TodoWrite 的 `DeferredToolCall`，以及非 GLM 步里的原生 `todo_write`（写的是同一份清单）。提醒标记是来源 `glm-todo-reminder` 的用户消息。
@@ -490,7 +504,7 @@ L3 探针：沙盒里把压缩阈值调低，摘要请求末条是 ZCode 提示�
 
 1. 格式：用 GLM 熟悉的 `<system-reminder>` 形态，写短，位置固定。ZCode 自身以这种形态递送 deferred 名单与提醒（§5.10）。
 2. 位置：动态内容放在对话末尾，不放进系统提示词。系统提示词保持稳定，以免每一步都让提示词缓存失效。按积分公式，GLM-5.3 缓存命中系数 1.7、普通输入 6.9，命中部分约省四分之三（`FACTS.md` §2.4）。
-3. 通道：沿用 `tools/post-execute` 的 `additionalContexts`（带来源标签的合成 notice，与 DSH repeat-tool-reminder 同一机制），或 `agent/pre-step` 的消息修正（工具检索公告、todo 提醒与项目图的每步投影用这一条）。notice 必须带 `id` 与 `role`（`src/shared/dsh-min.ts` `createUserNotice`，§2.4a）。
+3. 通道：沿用 `tools/post-execute` 的 `additionalContexts`（带来源标签的合成 notice，与 DSH repeat-tool-reminder 同一机制），或 `agent/pre-step` 的消息修正（工具检索公告、todo 提醒、高峰提醒与项目图的每步投影用这一条）。notice 必须带 `id` 与 `role`（`src/shared/dsh-min.ts` `createUserNotice`，§2.4a）。
 4. 来源标签唯一，便于审计与用量归因。
 
 ## 7. 降级与上报

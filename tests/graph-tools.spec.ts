@@ -4,14 +4,15 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { openEngine } from '../src/graph/engine.ts'
 import { apply } from '../src/graph/index.ts'
+import type { GraphNode } from '../src/graph/schema.ts'
 import { graphTools } from '../src/graph/tools.ts'
 import { loadGraph } from '../src/graph/store.ts'
 import type { ToolDefinitionLike, ToolFinalResult } from '../src/shared/dsh-min.ts'
 import { RESIDENT_TOOLS, buildToolExposure } from '../src/toolsearch/exposure.ts'
 import { DEFERRED_TOOL_CALL_NAME, LOCAL_TOOL_SEARCH_NAME } from '../src/toolsearch/zcode-text.ts'
 import { fakeRuntime, schemaViolations, type FakeRuntime } from './fake-rc3.ts'
+import { captureWarnings, seedAsHuman, type GraphAnswer } from './graph-helpers.ts'
 
 const TOOL_NAMES = ['graph_show', 'graph_open', 'graph_focus', 'graph_propose', 'graph_status', 'graph_edit', 'graph_link', 'graph_unlink', 'graph_comment', 'graph_verify']
 
@@ -20,8 +21,15 @@ interface Fixture {
   readonly workspace: string
   readonly graph: string
   readonly runtime: FakeRuntime
-  call(name: string, args?: unknown): Promise<ToolFinalResult>
-  rev(id: string): Promise<string>
+  readonly call: (name: string, args?: unknown) => Promise<ToolFinalResult>
+  readonly rev: (id: string) => Promise<string>
+}
+
+/** A graph tool's value: the shared answer shapes; a write's node comes without its history. */
+interface ToolValue extends Omit<GraphAnswer, 'node'> {
+  readonly node: Partial<GraphNode>
+  readonly focus: Pick<GraphNode, 'id' | 'type' | 'title' | 'status'>
+  readonly invalid?: { readonly errors: number, readonly first: readonly { readonly file: string, readonly field?: string, readonly message: string }[] }
 }
 
 /**
@@ -32,17 +40,13 @@ interface Fixture {
  *   decision-1 approved, unverified
  */
 async function seed(graph: string): Promise<void> {
-  const human = openEngine(graph)
-  for (const node of [
+  await seedAsHuman(graph, [
     { type: 'goal', title: '项目图', acceptance: ['人能看，LLM 能读写'] },
     { type: 'feature', title: '图工具', parent: 'goal-1' },
     { type: 'task', title: '读投影', parent: 'feature-1', acceptance: ['单测通过'] },
     { type: 'question', title: '工具给谁', parent: 'feature-1', options: [{ key: 'A', label: '全部 agent', consequence: '都有正路' }, { key: 'B', label: '只给主 Agent', consequence: '要识别主 Agent' }], recommend: 'A' },
     { type: 'decision', title: '每个操作一个工具', parent: 'goal-1' },
-  ]) {
-    const result = await human.apply('human', { op: 'propose', reason: '建图', node })
-    assert.ok(result.ok, JSON.stringify(result))
-  }
+  ])
 }
 
 function caller(runtime: FakeRuntime): Fixture['call'] {
@@ -68,16 +72,16 @@ function toolTest(name: string, body: (fixture: Fixture) => Promise<void>): void
 }
 
 /** The value of a successful call; its content is the value as JSON. */
-function ok(result: ToolFinalResult): Record<string, any> {
+function ok(result: ToolFinalResult): ToolValue {
   assert.equal(result.isError, false, JSON.stringify(result.content))
-  assert.deepEqual(JSON.parse(result.content[0]!.text!), result.value)
-  return result.value as Record<string, any>
+  assert.deepEqual(JSON.parse(result.content[0].text!), result.value)
+  return result.value as ToolValue
 }
 
 /** The engine error a refused call carries in its error text. */
 function refused(result: ToolFinalResult, code: string, field?: string): Record<string, string> {
   assert.equal(result.isError, true, JSON.stringify(result.value))
-  const text = result.content[0]!.text!
+  const text = result.content[0].text!
   assert.ok(text.startsWith('Error: '), text)
   const error = JSON.parse(text.slice('Error: '.length)) as Record<string, string>
   assert.equal(error.code, code, text)
@@ -86,17 +90,6 @@ function refused(result: ToolFinalResult, code: string, field?: string): Record<
   return error
 }
 
-async function captureWarnings<T>(body: () => T): Promise<{ result: T, warnings: string[] }> {
-  const warnings: string[] = []
-  const original = console.warn
-  console.warn = (...args: unknown[]) => { warnings.push(args.map(String).join(' ')) }
-  try {
-    return { result: await body(), warnings }
-  }
-  finally {
-    console.warn = original
-  }
-}
 
 test('the row registers one tool per llm operation with schemas inside the rc.3 subset', () => {
   // The fake register rejects output schemas outside the subset, as rc.3 does at activation.
@@ -146,7 +139,7 @@ toolTest('graph_open lists the decision queue with options and the node that rai
   const items = ok(await call('graph_open')).items
   assert.deepEqual(items.questions.map((entry: { id: string }) => entry.id), ['question-1'])
   assert.deepEqual(items.questions[0].options.map((option: { key: string }) => option.key), ['A', 'B'])
-  assert.equal(items.questions[0].raisedBy.id, 'feature-1')
+  assert.equal(items.questions[0].raisedBy?.id, 'feature-1')
   assert.deepEqual(items.ready.map((entry: { id: string }) => entry.id), ['task-1'])
   assert.deepEqual(items.verificationDebt.map((entry: { id: string }) => entry.id), ['decision-1'])
   refused(await call('graph_open', { all: true }), 'invalid', 'all')
@@ -236,9 +229,9 @@ toolTest('the actor comes from the tool entry point, never from the arguments', 
 toolTest('an invalid graph stays readable and refuses every write', async ({ call, graph }) => {
   await writeFile(join(graph, 'nodes', 'task-9.json'), '{ not json')
   const value = ok(await call('graph_show', { id: 'task-1' }))
-  assert.equal(value.invalid.errors, 1)
-  assert.equal(value.invalid.first[0].file, 'nodes/task-9.json')
-  assert.equal(ok(await call('graph_open')).invalid.errors, 1)
+  assert.equal(value.invalid?.errors, 1)
+  assert.equal(value.invalid?.first[0].file, 'nodes/task-9.json')
+  assert.equal(ok(await call('graph_open')).invalid?.errors, 1)
   refused(await call('graph_comment', { id: 'task-1', text: '写不进去' }), 'graph_invalid')
 })
 

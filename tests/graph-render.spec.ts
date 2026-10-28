@@ -102,18 +102,18 @@ const TYPES: readonly NodeType[] = ['feature', 'task', 'task', 'task', 'decision
 /** A random tree of `count` nodes under one goal, with cross edges only toward earlier nodes (so no dependency cycles). */
 function generated(count: number, seed: number): GraphNode[] {
   const random = mulberry32(seed)
-  const pick = <T>(list: readonly T[]): T => list[Math.floor(random() * list.length)]!
+  const pick = <T>(list: readonly T[]): T => list[Math.floor(random() * list.length)]
   const nodes = [make('goal-1', 'goal', undefined, { title: '生成的大图：一百二十个节点的布局检查' })]
   for (let index = 1; index < count; index++) {
     const type = pick(TYPES)
     const title = Array.from({ length: 1 + Math.floor(random() * 9) }, () => pick(WORDS)).join('')
     const edges: { type: 'depends' | 'source' | 'supersedes', to: string }[] = []
     for (const [type, chance] of [['depends', 0.35], ['source', 0.1], ['supersedes', 0.05]] as const) {
-      if (index > 2 && random() < chance) edges.push({ type, to: nodes[1 + Math.floor(random() * (index - 1))]!.id })
+      if (index > 2 && random() < chance) edges.push({ type, to: nodes[1 + Math.floor(random() * (index - 1))].id })
     }
     const extra: Partial<GraphNode> = { title, status: pick(STATUSES), ...(edges.length === 0 ? {} : { edges }) }
     const decided = type === 'question' && random() < 0.4 ? { decision: 'B' } : {}
-    nodes.push(make(`n-${index}`, type, nodes[Math.floor(random() * index)]!.id, { ...extra, ...decided }))
+    nodes.push(make(`n-${index}`, type, nodes[Math.floor(random() * index)].id, { ...extra, ...decided }))
   }
   return nodes
 }
@@ -140,10 +140,10 @@ test('120 generated nodes get boxes that do not overlap, in columns by depth, wi
     const layout = layoutOf(nodes)
     assert.equal(layout.nodes.length, 120)
     for (let i = 0; i < layout.nodes.length; i++) {
-      const a = layout.nodes[i]!
+      const a = layout.nodes[i]
       assert.ok(a.x >= 0 && a.y >= 0 && a.x + a.width <= layout.width && a.y + a.height <= layout.height, `${a.node.id} lies inside the picture`)
       for (let j = i + 1; j < layout.nodes.length; j++) {
-        const b = layout.nodes[j]!
+        const b = layout.nodes[j]
         assert.ok(!overlaps(a, b), `seed ${seed}: ${a.node.id} overlaps ${b.node.id}`)
       }
       const font = a.node.type === 'goal' ? TEXT.goal : TEXT.title
@@ -158,7 +158,7 @@ test('120 generated nodes get boxes that do not overlap, in columns by depth, wi
     }
     for (const edge of layout.edges) {
       for (let i = 0; i < edge.path.length; i += 2) {
-        const [x, y] = [edge.path[i]!, edge.path[i + 1]!]
+        const [x, y] = [edge.path[i], edge.path[i + 1]]
         assert.ok(Number.isFinite(x) && Number.isFinite(y) && x >= 0 && y >= 0 && x <= layout.width && y <= layout.height, `${edge.type} ${edge.node} -> ${edge.to} stays inside the picture`)
       }
     }
@@ -184,9 +184,9 @@ test('decomposition edges never cross: every subtree keeps a contiguous band', (
   for (const entry of layout.nodes) {
     const children = layout.nodes.filter(child => child.node.parent === entry.node.id)
     for (let i = 1; i < children.length; i++) {
-      const above = bands.get(children[i - 1]!.node.id)!
-      const below = bands.get(children[i]!.node.id)!
-      assert.ok(above.bottom < below.top, `subtrees of ${children[i - 1]!.node.id} and ${children[i]!.node.id} are disjoint`)
+      const above = bands.get(children[i - 1].node.id)!
+      const below = bands.get(children[i].node.id)!
+      assert.ok(above.bottom < below.top, `subtrees of ${children[i - 1].node.id} and ${children[i].node.id} are disjoint`)
     }
   }
 })

@@ -8,7 +8,7 @@ import type { GraphNode } from './schema.ts'
 
 /** Rotate a cycle so it starts at its smallest id, then close it: a -> b -> a. */
 function describeCycle(cycle: readonly string[]): { readonly start: string, readonly text: string } {
-  const start = [...cycle].sort(compareText)[0]!
+  const start = [...cycle].sort(compareText)[0]
   const offset = cycle.indexOf(start)
   const rotated = [...cycle.slice(offset), ...cycle.slice(0, offset), start]
   return { start, text: rotated.join(' -> ') }

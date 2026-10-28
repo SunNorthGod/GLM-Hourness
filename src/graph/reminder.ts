@@ -19,6 +19,7 @@
  * loses it until graph_focus is called again.
  */
 import { createHash } from 'node:crypto'
+import { installStepNotice, toolCallArguments, toolCallOutcomes } from '../glm-prompt/step-notice.ts'
 import { createUserNotice, type AgentLike, type DerivedMessage, type UserNotice } from '../shared/dsh-min.ts'
 import { wrapSystemReminder } from '../toolsearch/zcode-text.ts'
 import { projectNode, type NodeRef, type Projection } from './projection.ts'
@@ -38,12 +39,12 @@ export const CHECKPOINT_SOURCE = 'compact-checkpoint'
 /** Source kind of a goal round message, queued with agent.followup and admitted by the next step (goal-round-driver:144–151, 164). */
 export const GOAL_ROUND_SOURCE = 'goal'
 
-export const PROJECTION_REASONS = ['compaction', 'goal-round', 'focus', 'changed'] as const
+const PROJECTION_REASONS = ['compaction', 'goal-round', 'focus', 'changed'] as const
 /** Why a notice was added: the first rule of projectionReason that applied. */
-export type ProjectionReason = typeof PROJECTION_REASONS[number]
+type ProjectionReason = typeof PROJECTION_REASONS[number]
 
 /** Facts persisted in the notice source; later steps re-derive what the model was shown from them. */
-export interface ProjectionFacts {
+interface ProjectionFacts {
   readonly focus: string
   /** First 12 hex digits of the SHA-256 of the reminder body. */
   readonly digest: string
@@ -53,31 +54,15 @@ export interface ProjectionFacts {
 }
 
 /** What the request-visible history shows about the step projection. */
-export interface ProjectionHistory {
+interface ProjectionHistory {
   /** The latest focus: a successful graph_focus call or a projection notice, whichever is later. */
   readonly focus?: string
   readonly notice?: ProjectionFacts & { readonly index: number }
   readonly checkpoint?: { readonly index: number, readonly id?: string }
 }
 
-type Block = NonNullable<DerivedMessage['content']>[number]
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-/** A tool-call block's arguments as an object (rc.3 stores the provider's JSON text). */
-function callArguments(block: Block): Record<string, unknown> | undefined {
-  const raw = block.arguments
-  if (isRecord(raw)) return raw
-  if (typeof raw !== 'string') return undefined
-  try {
-    const parsed: unknown = JSON.parse(raw)
-    return isRecord(parsed) ? parsed : undefined
-  }
-  catch {
-    return undefined
-  }
 }
 
 function noticeFacts(value: unknown): ProjectionFacts | undefined {
@@ -92,29 +77,23 @@ function noticeFacts(value: unknown): ProjectionFacts | undefined {
 function focusCall(message: DerivedMessage, answered: ReadonlySet<string>, failed: ReadonlySet<string>): string | undefined {
   const blocks = message.content ?? []
   for (let position = blocks.length - 1; position >= 0; position--) {
-    const block = blocks[position]!
+    const block = blocks[position]
     if (block.type !== 'tool-call' || block.name !== FOCUS_TOOL || typeof block.id !== 'string') continue
     if (!answered.has(block.id) || failed.has(block.id)) continue
-    const id = callArguments(block)?.id
+    const id = toolCallArguments(block)?.id
     if (typeof id === 'string') return id
   }
   return undefined
 }
 
-export function projectionHistory(history: readonly DerivedMessage[]): ProjectionHistory {
-  const answered = new Set<string>()
-  const failed = new Set<string>()
-  for (const message of history) {
-    if (message.role !== 'tool' || message.toolCallId === undefined) continue
-    answered.add(message.toolCallId)
-    if (message.isError === true) failed.add(message.toolCallId)
-  }
+function projectionHistory(history: readonly DerivedMessage[]): ProjectionHistory {
+  const { answered, failed } = toolCallOutcomes(history)
   let focus: string | undefined
   let notice: ProjectionHistory['notice']
   let checkpoint: ProjectionHistory['checkpoint']
   for (let index = history.length - 1; index >= 0; index--) {
     if (focus !== undefined && notice !== undefined && checkpoint !== undefined) break
-    const message = history[index]!
+    const message = history[index]
     const kind = message.source?.kind
     if (kind === CHECKPOINT_SOURCE) {
       const id = message.source?.compactionId
@@ -138,7 +117,7 @@ export function projectionHistory(history: readonly DerivedMessage[]): Projectio
 }
 
 /** Why this step needs a notice, or undefined when the history already shows the current projection. */
-export function projectionReason(state: ProjectionHistory, focus: string, digest: string, goalRound: boolean): ProjectionReason | undefined {
+function projectionReason(state: ProjectionHistory, focus: string, digest: string, goalRound: boolean): ProjectionReason | undefined {
   const { notice, checkpoint } = state
   if (checkpoint !== undefined && (notice === undefined || notice.index < checkpoint.index || notice.anchor !== checkpoint.id)) return 'compaction'
   if (goalRound) return 'goal-round'
@@ -159,7 +138,7 @@ function refLine(ref: Ref): string {
  * a comment or a write elsewhere in the graph does not change it.
  * @param errors - validation errors of the graph.
  */
-export function renderProjection(projection: Projection, errors: number): string {
+function renderProjection(projection: Projection, errors: number): string {
   const lines = [
     'Project graph: projection of your focus node. graph_show gives every field and the revs a change needs; change the graph only through the graph tools.',
     `Focus: ${refLine(projection.node)}`,
@@ -193,7 +172,7 @@ function isGoalRound(message: unknown): boolean {
   return isRecord(message) && isRecord(message.source) && message.source.kind === GOAL_ROUND_SOURCE
 }
 
-export interface ProjectionInput {
+interface ProjectionInput {
   /** The request-visible history (`session.deriveMessages()`). */
   readonly history: readonly DerivedMessage[]
   /** The messages the step admits. */
@@ -207,7 +186,7 @@ export interface ProjectionInput {
 }
 
 /** The notice this step needs, or undefined; keeps the focus it used in `focuses`. */
-export async function projectionNotice(input: ProjectionInput): Promise<UserNotice | undefined> {
+async function projectionNotice(input: ProjectionInput): Promise<UserNotice | undefined> {
   const state = projectionHistory(input.history)
   const focus = state.focus ?? input.focuses.get(input.sessionId)
   if (focus === undefined) return undefined
@@ -222,36 +201,20 @@ export async function projectionNotice(input: ProjectionInput): Promise<UserNoti
 }
 
 /**
- * Install the step projection on one agent: an `agent/pre-step` listener
- * that appends the notice after the step's admitted messages. A failure
- * while reading the graph warns and leaves the step as it was. Returns
- * undefined, installing nothing, when the agent has no session history.
+ * Install the step projection on one agent through the shared step notice
+ * seam (src/glm-prompt/step-notice.ts), on every route: a step that needs
+ * the notice gets it after its admitted messages. A failure while reading
+ * the graph warns and leaves the step as it was. Returns undefined,
+ * installing nothing, when the agent has no session history.
  */
 export function installProjection(agent: AgentLike, dir: string, focuses: FocusMemory): (() => void) | undefined {
-  const session = agent.session
-  if (typeof session?.deriveMessages !== 'function') {
-    console.warn(`dsh-glm-hourness/graph: step projection not installed for agent ${agent.id}: no session history`)
-    return undefined
-  }
-  return agent.ctx.on('agent/pre-step', async ({ messages, signal, step }, next) => {
-    const decision = await next()
-    if (decision.kind === 'reject' || signal.aborted) return decision
-    // installModelSelection's guard: an empty decision never turns into a step.
-    if (decision.messages.length === 0 && (step === 1 || messages.length > 0)) return decision
+  return installStepNotice(agent, 'step projection', () => true, async (history, { admitted, session }) => {
     try {
-      const notice = await projectionNotice({
-        history: session.deriveMessages() as readonly DerivedMessage[],
-        admitted: decision.messages,
-        sessionId: session.id,
-        cwd: session.header.cwd,
-        dir,
-        focuses,
-      })
-      return notice === undefined ? decision : { ...decision, messages: [...decision.messages, notice] }
+      return await projectionNotice({ history, admitted, sessionId: session.id, cwd: session.header.cwd, dir, focuses })
     }
     catch (error) {
       console.warn(`dsh-glm-hourness/graph: step projection skipped for agent ${agent.id}: ${error instanceof Error ? error.message : String(error)}`)
-      return decision
+      return undefined
     }
-  })
+  }, 'graph')
 }

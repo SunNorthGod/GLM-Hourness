@@ -27,6 +27,7 @@ import { isGlmModel } from '../shared/route.ts'
 import { createUserNotice, type AgentLike, type DerivedMessage } from '../shared/dsh-min.ts'
 import { DEFERRED_TOOL_CALL_NAME, wrapSystemReminder } from '../toolsearch/zcode-text.ts'
 import { TODO_REMINDER_BODY, TODO_REMINDER_ECHO_HEADER, TODO_REMINDER_THRESHOLDS } from './verbatim.ts'
+import { installStepNotice, toolCallArguments, toolCallOutcomes } from './step-notice.ts'
 
 /** Source kind of the persisted reminder notice (ZCode `todo_reminder`). */
 export const TODO_REMINDER_SOURCE = 'glm-todo-reminder'
@@ -62,26 +63,12 @@ type Block = NonNullable<DerivedMessage['content']>[number]
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
-/** A tool-call block's arguments as an object (rc.3 stores the provider's JSON text). */
-function callArguments(block: Block): Record<string, unknown> | undefined {
-  const raw = block.arguments
-  if (isRecord(raw)) return raw
-  if (typeof raw !== 'string') return undefined
-  try {
-    const parsed: unknown = JSON.parse(raw)
-    return isRecord(parsed) ? parsed : undefined
-  }
-  catch {
-    return undefined
-  }
-}
-
 /** The arguments of a tool-call block that writes the todo list, or undefined for any other block. */
 function todoWriteArguments(block: Block): Record<string, unknown> | undefined {
   if (block.type !== 'tool-call') return undefined
-  if (block.name === TODO_WRITE_NAME || block.name === TODO_NATIVE) return callArguments(block) ?? {}
+  if (block.name === TODO_WRITE_NAME || block.name === TODO_NATIVE) return toolCallArguments(block) ?? {}
   if (block.name !== DEFERRED_TOOL_CALL_NAME) return undefined
-  const wrapper = callArguments(block)
+  const wrapper = toolCallArguments(block)
   if (wrapper?.name !== TODO_WRITE_NAME) return undefined
   return isRecord(wrapper.input) ? wrapper.input : {}
 }
@@ -120,13 +107,7 @@ export function shouldBuildTodoReminder(history: readonly DerivedMessage[]): boo
 
 /** The list written by the latest successful todo write in the history; empty when there is none. */
 export function latestTodos(history: readonly DerivedMessage[]): TodoItem[] {
-  const failed = new Set<string>()
-  const answered = new Set<string>()
-  for (const message of history) {
-    if (message.role !== 'tool' || message.toolCallId === undefined) continue
-    answered.add(message.toolCallId)
-    if (message.isError === true) failed.add(message.toolCallId)
-  }
+  const { answered, failed } = toolCallOutcomes(history)
   for (let index = history.length - 1; index >= 0; index--) {
     const message = history[index]!
     if (message.role !== 'assistant') continue
@@ -144,28 +125,15 @@ export function latestTodos(history: readonly DerivedMessage[]): TodoItem[] {
 }
 
 /**
- * Install the reminder on one agent: an `agent/pre-step` listener (after the
- * step's assembly, before its request; ZCode's attachment collection) that,
- * when `eligible()` says the assembled request is GLM-routed with TodoWrite
- * on its face, appends the reminder as a `<system-reminder>` notice after
+ * Install the reminder on one agent (src/glm-prompt/step-notice.ts): when
+ * `eligible()` says the assembled request is GLM-routed with TodoWrite on
+ * its face, the reminder is appended as a `<system-reminder>` notice after
  * the step's admitted messages. The notice persists in the session, so the
  * next steps count from it. Returns undefined, installing nothing, when the
  * agent has no session history to count from.
  */
 export function installTodoReminder(agent: AgentLike, eligible: () => boolean): (() => void) | undefined {
-  const session = agent.session
-  if (typeof session?.deriveMessages !== 'function') {
-    console.warn(`dsh-glm-hourness/glm-prompt: todo reminder not installed for agent ${agent.id}: no session history`)
-    return undefined
-  }
-  return agent.ctx.on('agent/pre-step', async ({ messages, signal, step }, next) => {
-    const decision = await next()
-    if (decision.kind === 'reject' || signal.aborted || !eligible()) return decision
-    // installModelSelection's guard: an empty decision never turns into a step.
-    if (decision.messages.length === 0 && (step === 1 || messages.length > 0)) return decision
-    const history = session.deriveMessages() as readonly DerivedMessage[]
-    if (!shouldBuildTodoReminder(history)) return decision
-    const notice = createUserNotice(TODO_REMINDER_SOURCE, 'todo reminder', wrapSystemReminder(buildTodoReminderBody(latestTodos(history))))
-    return { ...decision, messages: [...decision.messages, notice] }
-  })
+  return installStepNotice(agent, 'todo reminder', eligible, history => shouldBuildTodoReminder(history)
+    ? createUserNotice(TODO_REMINDER_SOURCE, 'todo reminder', wrapSystemReminder(buildTodoReminderBody(latestTodos(history))))
+    : undefined)
 }

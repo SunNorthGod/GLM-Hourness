@@ -30,7 +30,9 @@ GLM + House + Harness：让 GLM 以 ZCode 训练分布住进 DeepSeek Harness（
 ```
 npm run build      # tsc（含 adapter 契约检查），产物在 dist/
 npm run preflight  # 产物齐全、patch 行文件存在、client 半一包一源
-npm test           # preflight + 全部 spec
+npm test           # preflight + 逐字门禁 + 检查器门禁 + 全部 spec
+npm run lint       # ESLint、knip、jscpd 对照基线（只减不增）；lint:update 缩小基线
+npm run deps:check # pnpm outdated 与 pnpm audit，标出处理方式（docs/DEVELOPMENT.md §11）
 npm run smoke      # 免登录真网探针
 npm run smoke:authorized  # 需凭证：coding-plan 端到端请求
 ```

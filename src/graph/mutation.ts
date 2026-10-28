@@ -24,8 +24,7 @@ import {
   type Verification,
 } from './schema.ts'
 
-export const ERROR_CODES = ['invalid', 'not_found', 'conflict', 'stale_revision', 'forbidden', 'evidence_required', 'bad_transition', 'graph_invalid'] as const
-export type ErrorCode = typeof ERROR_CODES[number]
+export type ErrorCode = 'invalid' | 'not_found' | 'conflict' | 'stale_revision' | 'forbidden' | 'evidence_required' | 'bad_transition' | 'graph_invalid'
 
 export interface EngineError {
   readonly code: ErrorCode
@@ -52,7 +51,7 @@ export type ProposedNode =
   & Pick<GraphNode, 'type' | 'title'>
   & Partial<Pick<GraphNode, 'id' | EditableField | 'edges'>>
 
-export type LinkType = Exclude<GraphEdge['type'], 'supersedes'>
+type LinkType = Exclude<GraphEdge['type'], 'supersedes'>
 
 interface Targeted {
   readonly id: string

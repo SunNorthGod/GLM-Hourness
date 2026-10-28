@@ -8,16 +8,30 @@ import test from 'node:test'
 import { Script } from 'node:vm'
 import { runCli } from '../src/graph/cli.ts'
 import { openEngine } from '../src/graph/engine.ts'
+import type { GraphIssue } from '../src/graph/format.ts'
 import type { GraphNode } from '../src/graph/schema.ts'
 import { MAX_BODY, startServer, type GraphServer } from '../src/graph/server.ts'
 import { loadGraph } from '../src/graph/store.ts'
+import type { GraphAnswer } from './graph-helpers.ts'
+
+/** The server's JSON answers: the shared shapes plus GET /api/graph and GET /api/schema. */
+interface ServerAnswer extends GraphAnswer {
+  readonly svg: string
+  readonly nodes: readonly (GraphNode & { readonly rev: string })[]
+  readonly issues: readonly GraphIssue[]
+  readonly schema: {
+    readonly transitions: Readonly<Record<string, readonly string[]>>
+    readonly evidenceKinds: readonly string[]
+    readonly labels: Readonly<Record<string, Readonly<Record<string, string>>>>
+  }
+}
 
 interface Reply {
   readonly status: number
   readonly headers: IncomingHttpHeaders
   readonly text: string
   /** The parsed body; undefined when it is not JSON. */
-  readonly json: Record<string, any> | undefined
+  readonly json: ServerAnswer | undefined
 }
 
 /** Header values; undefined leaves a default header out. */
@@ -42,7 +56,7 @@ interface Fixture {
   revision(): Promise<string>
   rev(id: string): Promise<string>
   node(id: string): Promise<GraphNode>
-  llm(args: readonly string[]): Promise<Record<string, any>>
+  llm(args: readonly string[]): Promise<GraphAnswer>
 }
 
 const WAIT_MS = 5000
@@ -94,9 +108,9 @@ async function fixture(): Promise<Fixture> {
       response.on('data', (chunk: Buffer) => chunks.push(chunk))
       response.on('end', () => {
         const text = Buffer.concat(chunks).toString('utf8')
-        let json: Record<string, any> | undefined
+        let json: ServerAnswer | undefined
         try {
-          json = JSON.parse(text) as Record<string, any>
+          json = JSON.parse(text) as ServerAnswer
         }
         catch {
           json = undefined
@@ -126,7 +140,7 @@ async function fixture(): Promise<Fixture> {
           buffer = buffer.slice(end + 2)
           const match = /^event: revision\ndata: (.*)$/.exec(block)
           assert.ok(match !== null, `unexpected event block ${JSON.stringify(block)}`)
-          const revision = (JSON.parse(match[1]!) as { revision: string }).revision
+          const revision = (JSON.parse(match[1]) as { revision: string }).revision
           seen.add(revision)
           waiting.get(revision)?.()
           if (first) {
@@ -161,8 +175,8 @@ async function fixture(): Promise<Fixture> {
     rev: async id => (await loadGraph(dir)).revisions.get(id)!,
     node: async id => (await loadGraph(dir)).nodes.get(id)!,
     llm: async args => {
-      const result = await runCli(['--dir', dir, ...args], { dir, now, stdin: async () => '' })
-      return JSON.parse(result.text) as Record<string, any>
+      const result = await runCli(['--dir', dir, ...args], { dir, now, stdin: () => Promise.resolve('') })
+      return JSON.parse(result.text) as GraphAnswer
     },
   }
 }
@@ -183,17 +197,19 @@ function serverTest(name: string, body: (fixture: Fixture) => Promise<void>): vo
 function refused(reply: Reply, status: number, code: string, field?: string): void {
   assert.equal(reply.status, status, reply.text)
   assert.match(String(reply.headers['content-type']), /^application\/json/)
-  assert.equal(reply.json?.ok, false, reply.text)
-  assert.equal(reply.json.error.code, code, reply.text)
-  if (field !== undefined) assert.equal(reply.json.error.field, field, reply.text)
-  assert.equal(typeof reply.json.error.message, 'string')
-  assert.ok(reply.json.error.hint.length > 0, 'every refusal names the way forward')
+  const json = reply.json
+  assert.ok(json !== undefined && json.ok === false, reply.text)
+  assert.equal(json.error.code, code, reply.text)
+  if (field !== undefined) assert.equal(json.error.field, field, reply.text)
+  assert.equal(typeof json.error.message, 'string')
+  assert.ok(json.error.hint.length > 0, 'every refusal names the way forward')
 }
 
-function accepted(reply: Reply): Record<string, any> {
+function accepted(reply: Reply): ServerAnswer {
   assert.equal(reply.status, 200, reply.text)
-  assert.equal(reply.json?.ok, true, reply.text)
-  return reply.json
+  const json = reply.json
+  assert.ok(json !== undefined && json.ok === true, reply.text)
+  return json
 }
 
 serverTest('the server binds 127.0.0.1 and serves one self-contained viewer page under a nonce CSP', async g => {
@@ -214,7 +230,7 @@ serverTest('the server binds 127.0.0.1 and serves one self-contained viewer page
   assert.ok(!page.text.includes('__NONCE__'))
   assert.doesNotMatch(page.text, /https?:\/\//, 'no network reference')
   assert.doesNotMatch(page.text, /\s(src|href)="(?!data:)/, 'no external script, style or image')
-  const script = /<script nonce="[^"]+">([\s\S]*)<\/script>/.exec(page.text)![1]!
+  const script = /<script nonce="[^"]+">([\s\S]*)<\/script>/.exec(page.text)![1]
   assert.doesNotThrow(() => new Script(script, { filename: 'viewer.html' }), 'the viewer script compiles')
   const again = await g.call('GET', '/')
   assert.notEqual(/script-src 'nonce-([^']+)'/.exec(String(again.headers['content-security-policy']))?.[1], nonce, 'a fresh nonce per response')
@@ -284,10 +300,10 @@ serverTest('reads: the picture, every node with its revision, the issues, the op
   assert.ok(graph.svg.includes(`data-revision="${loaded.revision}"`))
   assert.deepEqual(graph.nodes.map((node: { id: string }) => node.id), [...loaded.nodes.keys()])
   for (const node of graph.nodes) assert.equal(node.rev, loaded.revisions.get(node.id))
-  assert.equal(graph.nodes.find((node: { id: string }) => node.id === 'task-1').history.length, 1, 'nodes carry their full history')
+  assert.equal(graph.nodes.find(node => node.id === 'task-1')?.history.length, 1, 'nodes carry their full history')
   assert.deepEqual(graph.issues, [])
   assert.deepEqual(graph.items.proposals.map((entry: { id: string }) => entry.id), ['feature-2', 'feature-3'])
-  assert.deepEqual(graph.items.questions.map((entry: { id: string, raisedBy: { id: string } }) => [entry.id, entry.raisedBy.id]), [['question-1', 'feature-1']])
+  assert.deepEqual(graph.items.questions.map(entry => [entry.id, entry.raisedBy?.id]), [['question-1', 'feature-1']])
   const collapsed = accepted(await g.call('GET', '/api/graph?collapse=feature-1&collapse=nope'))
   assert.match(collapsed.svg, /<g data-id="feature-1"[^>]*data-hidden="2"/)
   assert.match(collapsed.svg, /<g data-badge="true">/)
@@ -307,7 +323,7 @@ serverTest('reads: the picture, every node with its revision, the issues, the op
 
 serverTest('the human acts as human: comment, approve, reject, decide with a note, status with evidence, edit goal and dispatch fields', async g => {
   const comment = accepted(await g.write({ op: 'comment', id: 'task-1', text: '先跑冒烟' }))
-  assert.equal(comment.node.history.at(-1).actor, 'human')
+  assert.equal(comment.node.history.at(-1)?.actor, 'human')
   const approved = accepted(await g.write({ op: 'approve', id: 'feature-2', rev: await g.rev('feature-2'), reason: '先做 Browser 标签页' }))
   assert.equal(approved.node.status, 'approved')
   const rejected = accepted(await g.write({ op: 'reject', id: 'feature-3', rev: await g.rev('feature-3'), reason: '不做手机端' }))
@@ -348,10 +364,10 @@ serverTest('the human acts as human: comment, approve, reject, decide with a not
 
   // The llm sees the decision in the projections it reads after the human decided.
   const parent = await g.llm(['show', 'feature-1'])
-  assert.equal(parent.projection.children.find((entry: { id: string }) => entry.id === 'question-1').decision, 'B')
+  assert.equal(parent.projection.children.find(entry => entry.id === 'question-1')?.decision, 'B')
   const question = await g.llm(['show', 'question-1'])
   assert.equal(question.projection.node.decision, 'B')
-  assert.deepEqual([question.projection.recentHistory.at(-1).actor, question.projection.recentHistory.at(-1).reason], ['human', '节点多时要小图'])
+  assert.deepEqual([question.projection.recentHistory.at(-1)?.actor, question.projection.recentHistory.at(-1)?.reason], ['human', '节点多时要小图'])
   const open = await g.llm(['open'])
   assert.deepEqual(open.items.questions, [], 'the decided card left the queue')
 })
@@ -377,7 +393,7 @@ serverTest('a command line write, a hand edit of a node file and the server\'s o
   await stream.until(cli.revision)
   const graph = accepted(await g.call('GET', '/api/graph'))
   assert.equal(graph.revision, cli.revision)
-  assert.deepEqual(graph.nodes.find((node: { id: string }) => node.id === 'task-1').history.at(-1), { at: cli.node.history.at(-1).at, actor: 'llm', op: 'comment', text: 'LLM 的批注' })
+  assert.deepEqual(graph.nodes.find(node => node.id === 'task-1')?.history.at(-1), { at: cli.node.history.at(-1)?.at, actor: 'llm', op: 'comment', text: 'LLM 的批注' })
 
   const file = join(g.dir, 'nodes', 'feature-2.json')
   await writeFile(file, JSON.stringify(JSON.parse(await readFile(file, 'utf8'))))

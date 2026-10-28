@@ -22,7 +22,7 @@ export const GRAPH_FILES_RULE = 'graph-files-only'
 const ALLOW: RuleVerdict = { kind: 'allow' }
 
 function argsOf(call: ToolCall): Record<string, JsonValue> | undefined {
-  return typeof call.arguments === 'object' && call.arguments !== null && !Array.isArray(call.arguments) ? call.arguments as Record<string, JsonValue> : undefined
+  return typeof call.arguments === 'object' && call.arguments !== null && !Array.isArray(call.arguments) ? call.arguments : undefined
 }
 
 /** The path a file tool writes: Write/Edit and their natives take file_path; str_replace_editor writes on every command but view. */

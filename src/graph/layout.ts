@@ -71,7 +71,7 @@ export type DrawnEdgeType = 'parent' | EdgeType
 /** Cubic Bézier: start, two control points, end. */
 export type CurvePath = readonly [number, number, number, number, number, number, number, number]
 
-export interface EdgeRoute {
+interface EdgeRoute {
   readonly type: DrawnEdgeType
   /** The node that stores the edge: the child of a decomposition edge, the owner of a cross edge. */
   readonly node: string
@@ -450,8 +450,8 @@ function countCrossings(edges: readonly EdgeRoute[]): number {
   let count = 0
   for (let i = 0; i < edges.length; i++) {
     for (let j = i + 1; j < edges.length; j++) {
-      const a = edges[i]!
-      const b = edges[j]!
+      const a = edges[i]
+      const b = edges[j]
       if (a.type === 'parent' && b.type === 'parent') continue
       if (a.node === b.node || a.node === b.to || a.to === b.node || a.to === b.to) continue
       if (segmentsCross(a.path, b.path)) count++
@@ -538,7 +538,7 @@ export function layoutGraph(nodes: ReadonlyMap<string, GraphNode>, options: Layo
   // Depths are contiguous: every drawn node below a root has its drawn parent one column to the left.
   const columnX: number[] = []
   for (let depth = 0; depth < columnWidth.length; depth++) {
-    columnX[depth] = depth === 0 ? 0 : columnX[depth - 1]! + columnWidth[depth - 1]! + COLUMN_GAP
+    columnX[depth] = depth === 0 ? 0 : columnX[depth - 1] + columnWidth[depth - 1] + COLUMN_GAP
   }
   const crossEdges = crossEdgesOf(nodes, selected, tree.drawnAs)
 
@@ -551,7 +551,7 @@ export function layoutGraph(nodes: ReadonlyMap<string, GraphNode>, options: Layo
       const list = kids(id)
       let total = 0
       list.forEach((child, index) => {
-        total += bandOf(child) + (index > 0 ? gap(list[index - 1]!, child) : 0)
+        total += bandOf(child) + (index > 0 ? gap(list[index - 1], child) : 0)
       })
       stack.set(id, total)
       const value = Math.max(measured.get(id)!.height, total)
@@ -567,7 +567,7 @@ export function layoutGraph(nodes: ReadonlyMap<string, GraphNode>, options: Layo
       let y = top + (own - stack.get(id)!) / 2
       const list = kids(id)
       list.forEach((child, index) => {
-        if (index > 0) y += gap(list[index - 1]!, child)
+        if (index > 0) y += gap(list[index - 1], child)
         assign(child, y)
         y += band.get(child)!
       })
@@ -591,9 +591,9 @@ export function layoutGraph(nodes: ReadonlyMap<string, GraphNode>, options: Layo
         depth,
         hidden,
         focus: id === options.focus,
-        x: columnX[depth]!,
+        x: columnX[depth],
         y: tops.get(id)!,
-        width: columnWidth[depth]!,
+        width: columnWidth[depth],
         height,
       }
       if (hidden === 0) {
@@ -617,8 +617,8 @@ export function layoutGraph(nodes: ReadonlyMap<string, GraphNode>, options: Layo
     }
     for (const edge of edges) {
       for (let i = 0; i < edge.path.length; i += 2) {
-        width = Math.max(width, edge.path[i]!)
-        height = Math.max(height, edge.path[i + 1]!)
+        width = Math.max(width, edge.path[i])
+        height = Math.max(height, edge.path[i + 1])
       }
     }
     return {

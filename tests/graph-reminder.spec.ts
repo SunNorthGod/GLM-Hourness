@@ -9,18 +9,19 @@ import { CHECKPOINT_SOURCE, GOAL_ROUND_SOURCE, PROJECTION_SOURCE } from '../src/
 import { loadGraph } from '../src/graph/store.ts'
 import type { AgentLike, UserNotice } from '../src/shared/dsh-min.ts'
 import { fakeRuntime, type FakeRuntime } from './fake-rc3.ts'
+import { captureWarnings, seedAsHuman } from './graph-helpers.ts'
 
 interface Fixture {
   readonly workspace: string
   readonly graph: string
   readonly runtime: FakeRuntime
   /** Call graph_focus the way a model step does: execute it, then record the call and its result in the history. */
-  focus(id: string): Promise<boolean>
+  readonly focus: (id: string) => Promise<boolean>
   /** Run one step and append what it admits to the history, as the session does; returns the projection notices. */
-  step(options?: { messages?: readonly unknown[], step?: number }): Promise<UserNotice[]>
+  readonly step: (options?: { messages?: readonly unknown[], step?: number }) => Promise<UserNotice[]>
   /** Write as the human through the engine. */
-  human(mutation: Record<string, unknown>): Promise<void>
-  rev(id: string): Promise<string>
+  readonly human: (mutation: Record<string, unknown>) => Promise<void>
+  readonly rev: (id: string) => Promise<string>
 }
 
 /**
@@ -31,17 +32,13 @@ interface Fixture {
  *     question-1
  */
 async function seed(graph: string): Promise<void> {
-  const human = openEngine(graph)
-  for (const node of [
+  await seedAsHuman(graph, [
     { type: 'goal', title: '项目图', acceptance: ['人能看，LLM 能读写'] },
     { type: 'feature', title: '图工具', parent: 'goal-1', stage: 'execute' },
     { id: 'task-2', type: 'task', title: '写引擎', parent: 'feature-1', acceptance: ['单测通过'] },
     { id: 'task-1', type: 'task', title: '读投影', parent: 'feature-1', acceptance: ['每步可见'], edges: [{ type: 'depends', to: 'task-2' }] },
     { type: 'question', title: '投影放多少', parent: 'feature-1', options: [{ key: 'A', label: '短', consequence: '省 token' }, { key: 'B', label: '全', consequence: '少读一次' }], recommend: 'A' },
-  ]) {
-    const result = await human.apply('human', { op: 'propose', reason: '建图', node })
-    assert.ok(result.ok, JSON.stringify(result))
-  }
+  ])
 }
 
 function userMessage(text: string, source: Record<string, unknown> = { kind: 'user' }): Record<string, unknown> {
@@ -108,24 +105,13 @@ function reminderTest(name: string, body: (fixture: Fixture) => Promise<void>): 
 }
 
 function text(notice: UserNotice): string {
-  return notice.content[0]!.text
+  return notice.content[0].text
 }
 
 function facts(notice: UserNotice): Record<string, unknown> {
   return notice.source.graphProjection as Record<string, unknown>
 }
 
-async function captureWarnings<T>(body: () => Promise<T>): Promise<{ result: T, warnings: string[] }> {
-  const warnings: string[] = []
-  const original = console.warn
-  console.warn = (...args: unknown[]) => { warnings.push(args.map(String).join(' ')) }
-  try {
-    return { result: await body(), warnings }
-  }
-  finally {
-    console.warn = original
-  }
-}
 
 reminderTest('an agent without a focus gets no projection', async ({ step }) => {
   assert.deepEqual(await step(), [])
@@ -280,7 +266,7 @@ test('the row installs the projection per agent; an agent without a session or a
   await runtime.create()
   assert.equal(runtime.listeners.filter(entry => entry.event === 'agent/pre-step').length, 1, 'one listener per agent')
   const created = runtime.listeners.find(entry => entry.event === 'agent/created')!.listener as unknown as (payload: { agent: AgentLike }) => void
-  const sessionless = await captureWarnings(async () => created({ agent: { id: 'agent-2', ctx: runtime.ctx } }))
+  const sessionless = await captureWarnings(() => created({ agent: { id: 'agent-2', ctx: runtime.ctx } }))
   assert.match(sessionless.warnings.join('\n'), /step projection not installed for agent agent-2: no session history/)
   assert.equal(runtime.listeners.filter(entry => entry.event === 'agent/pre-step').length, 1)
 

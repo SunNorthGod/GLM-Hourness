@@ -21,7 +21,7 @@ interface Fixture {
   readonly runtime: FakeRuntime
   /** Bodies that ran: a denied call never reaches its body. */
   readonly calls: Array<{ name: string, args: unknown }>
-  call(name: string, args: unknown, extra?: { parent?: unknown }): Promise<ToolFinalResult>
+  readonly call: (name: string, args: unknown, extra?: { parent?: unknown }) => Promise<ToolFinalResult>
 }
 
 function caller(runtime: FakeRuntime): Fixture['call'] {
@@ -58,7 +58,7 @@ function guardTest(name: string, body: (fixture: Fixture) => Promise<void>, opti
 /** The four-part correction of a denied call, as the model reads it. */
 function denied(result: ToolFinalResult): string {
   assert.equal(result.isError, true, JSON.stringify(result))
-  const text = result.content[0]!.text!
+  const text = result.content[0].text!
   assert.ok(text.startsWith('Error: You tried to '), text)
   return text
 }

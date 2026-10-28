@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import test from 'node:test'
 import { openEngine, type ApplyResult, type GraphEngine } from '../src/graph/engine.ts'
 import { serializeNode } from '../src/graph/format.ts'
 import type { Actor, GraphNode } from '../src/graph/schema.ts'
 import { loadGraph } from '../src/graph/store.ts'
+import { fixtureTest } from './graph-helpers.ts'
 
 type Success = Extract<ApplyResult, { ok: true }>
 
@@ -22,12 +22,12 @@ interface Fixture {
 
 function must(result: ApplyResult): Success {
   assert.ok(result.ok, `expected success, got ${JSON.stringify(result)}`)
-  return result as Success
+  return result
 }
 
 function refused(result: ApplyResult, code: string, field?: string): void {
   assert.equal(result.ok, false, `expected ${code}, got success`)
-  const { error } = result as Extract<ApplyResult, { ok: false }>
+  const { error } = result
   assert.equal(error.code, code, JSON.stringify(error))
   if (field !== undefined) assert.equal(error.field, field, JSON.stringify(error))
   assert.ok(error.hint.length > 0, 'every refusal names the way forward')
@@ -55,17 +55,7 @@ async function fixture(): Promise<Fixture> {
   return { dir, engine, rev, node, run, act }
 }
 
-function graphTest(name: string, body: (fixture: Fixture) => Promise<void>): void {
-  test(name, async () => {
-    const graph = await fixture()
-    try {
-      await body(graph)
-    }
-    finally {
-      await rm(graph.dir, { recursive: true, force: true })
-    }
-  })
-}
+const graphTest = fixtureTest(fixture)
 
 const QUESTION = {
   type: 'question',
@@ -100,7 +90,7 @@ graphTest('propose by the llm: tasks under open work and risks under open nodes 
   assert.equal((await g.run('llm', { op: 'propose', reason: '风险', node: { type: 'risk', title: '风险', parent: 'feature-1' } })).node.status, 'approved')
   assert.equal((await g.run('llm', { op: 'propose', reason: '问人', node: QUESTION })).node.status, 'approved')
   const history = (await g.node('task-3')).history
-  assert.deepEqual(history[0], { at: history[0]!.at, actor: 'llm', op: 'propose', reason: '计划内', to: 'approved' })
+  assert.deepEqual(history[0], { at: history[0].at, actor: 'llm', op: 'propose', reason: '计划内', to: 'approved' })
 })
 
 graphTest('propose by the llm: new branches, decisions, goals and supersessions wait as proposals', async g => {
@@ -437,7 +427,7 @@ graphTest('concurrent writes in one process are serialized, across engine instan
     g.engine.apply('llm', { op: 'comment', id: 'task-1', text: '并发批注' }),
   ])
   assert.deepEqual(results.map(result => result.ok), [true, false, true])
-  refused(results[1]!, 'stale_revision')
+  refused(results[1], 'stale_revision')
   const node = await g.node('task-1')
   assert.equal(node.title, '甲')
   assert.deepEqual(node.history.slice(-2).map(entry => entry.op), ['edit', 'comment'])
@@ -496,7 +486,7 @@ graphTest('projection: node, ancestor chain to the goal with acceptance and non-
     id: 'goal-1', type: 'goal', title: '项目图引擎', status: 'approved', rev: graph.revisions.get('goal-1'),
     acceptance: ['人能看，LLM 能读写'], nonGoals: ['不接 DSH 运行时'],
   })
-  assert.equal('acceptance' in projection.ancestors[0]!, false)
+  assert.equal('acceptance' in projection.ancestors[0], false)
   assert.deepEqual(projection.children.map(entry => entry.id), ['task-3'])
   assert.deepEqual(projection.dependsOn.map(entry => entry.id), ['task-1'])
   assert.deepEqual(projection.sources.map(entry => entry.id), ['feature-1'])
@@ -560,7 +550,7 @@ graphTest('open items: proposals, questions, doing, ready leaves and verificatio
   await g.act('llm', { op: 'status', id: 'task-1', to: 'done', reason: '完成', evidence: [{ kind: 'commit', ref: '17b8e3f' }] })
   items = await g.engine.openItems()
   assert.deepEqual(items.ready.map(entry => entry.id), ['task-2'])
-  assert.equal(items.ready[0]!.rev, await g.rev('task-2'))
+  assert.equal(items.ready[0].rev, await g.rev('task-2'))
 })
 
 graphTest('decision queue: oldest first with options and the raising node; a human decides, the llm sees it', async g => {
@@ -576,11 +566,11 @@ graphTest('decision queue: oldest first with options and the raising node; a hum
     recommend: 'A',
     raisedBy: { id: 'feature-1', type: 'feature', title: '引擎', status: 'approved', rev: await g.rev('feature-1') },
     sources: [{ id: 'task-1', type: 'task', title: '存储', status: 'approved', rev: await g.rev('task-1') }],
-    askedAt: first.node.history[0]!.at,
+    askedAt: first.node.history[0].at,
     askedBy: 'llm',
   })
-  assert.equal(queue[1]!.askedBy, 'harness')
-  assert.equal(queue[1]!.raisedBy?.id, 'task-2')
+  assert.equal(queue[1].askedBy, 'harness')
+  assert.equal(queue[1].raisedBy?.id, 'task-2')
 
   refused(await g.act('llm', { op: 'decide', id: 'question-b', option: 'A', reason: '自己定' }), 'forbidden')
   must(await g.act('human', { op: 'decide', id: 'question-b', option: 'B', reason: '正文好读更要紧' }))

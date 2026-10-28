@@ -10,7 +10,7 @@ import { checkNode, compareText, serializeNode, type GraphIssue } from './format
 import { ID_PATTERN, type GraphNode } from './schema.ts'
 import { validateGraph } from './validate.ts'
 
-export const NODES_DIR = 'nodes'
+const NODES_DIR = 'nodes'
 
 /** First 12 hex digits of the SHA-256 of a node file's bytes. */
 export function revisionOf(bytes: Uint8Array | string): string {

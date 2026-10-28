@@ -1,17 +1,16 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import test from 'node:test'
 import { runCli, type CliResult } from '../src/graph/cli.ts'
-import { openEngine } from '../src/graph/engine.ts'
 import type { GraphNode } from '../src/graph/schema.ts'
 import { loadGraph } from '../src/graph/store.ts'
+import { fixtureTest, seedAsHuman, type GraphAnswer } from './graph-helpers.ts'
 
 interface Run {
   readonly exitCode: CliResult['exitCode']
   /** The parsed stdout document. */
-  readonly out: Record<string, any>
+  readonly out: GraphAnswer
   readonly readStdin: boolean
 }
 
@@ -32,15 +31,11 @@ async function fixture(): Promise<Fixture> {
   const dir = await mkdtemp(join(tmpdir(), 'graph-cli-'))
   let tick = 0
   const now = () => new Date(Date.UTC(2026, 9, 28, 9, 0, tick++))
-  const human = openEngine(dir, { now })
-  for (const node of [
+  await seedAsHuman(dir, [
     { type: 'goal', title: '项目图引擎', acceptance: ['人能看，LLM 能读写'] },
     { type: 'feature', title: '命令行', parent: 'goal-1' },
     { type: 'task', title: '读投影', parent: 'feature-1' },
-  ]) {
-    const result = await human.apply('human', { op: 'propose', reason: '建图', node })
-    assert.ok(result.ok, JSON.stringify(result))
-  }
+  ], { now })
   return {
     dir,
     async cli(args, stdin = '') {
@@ -48,30 +43,20 @@ async function fixture(): Promise<Fixture> {
       const result = await runCli(['--dir', dir, ...args], {
         dir: join(dir, 'unused'),
         now,
-        stdin: async () => {
+        stdin: () => {
           readStdin = true
-          return stdin
+          return Promise.resolve(stdin)
         },
       })
       assert.ok(result.text.endsWith('\n'), 'stdout is one newline-terminated document')
-      return { exitCode: result.exitCode, out: JSON.parse(result.text) as Record<string, any>, readStdin }
+      return { exitCode: result.exitCode, out: JSON.parse(result.text) as GraphAnswer, readStdin }
     },
     rev: async id => (await loadGraph(dir)).revisions.get(id)!,
     node: async id => (await loadGraph(dir)).nodes.get(id)!,
   }
 }
 
-function cliTest(name: string, body: (fixture: Fixture) => Promise<void>): void {
-  test(name, async () => {
-    const graph = await fixture()
-    try {
-      await body(graph)
-    }
-    finally {
-      await rm(graph.dir, { recursive: true, force: true })
-    }
-  })
-}
+const cliTest = fixtureTest(fixture)
 
 function refused(result: Run, exitCode: 1 | 2, code: string, field?: string): void {
   assert.equal(result.exitCode, exitCode, JSON.stringify(result.out))
@@ -100,7 +85,7 @@ cliTest('open lists the open items with the decision queue', async g => {
   assert.deepEqual(open.out.items.ready.map((entry: { id: string }) => entry.id), ['task-1'])
   assert.equal(open.out.items.questions.length, 1)
   const card = open.out.items.questions[0]
-  assert.deepEqual([card.id, card.recommend, card.raisedBy.id, card.askedBy, card.options.length], ['question-1', 'A', 'feature-1', 'llm', 2])
+  assert.deepEqual([card.id, card.recommend, card.raisedBy?.id, card.askedBy, card.options.length], ['question-1', 'A', 'feature-1', 'llm', 2])
 })
 
 cliTest('propose from a JSON argument writes as the llm: plan-internal approved, plan-external proposed', async g => {
@@ -139,7 +124,7 @@ cliTest('link from --file and comment; the edge and the text land in history', a
   refused(await g.cli(['link', '--file', request]), 1, 'stale_revision', 'rev')
   const commented = await g.cli(['comment', JSON.stringify({ id: 'task-2', text: '等 task-1' })])
   assert.equal(commented.exitCode, 0)
-  assert.deepEqual((await g.node('task-2')).history.at(-1), { at: commented.out.node.history.at(-1).at, actor: 'llm', op: 'comment', text: '等 task-1' })
+  assert.deepEqual((await g.node('task-2')).history.at(-1), { at: commented.out.node.history.at(-1)?.at, actor: 'llm', op: 'comment', text: '等 task-1' })
   const shown = await g.cli(['show', 'task-1'])
   assert.deepEqual(shown.out.projection.dependents.map((entry: { id: string }) => entry.id), ['task-2'])
 })

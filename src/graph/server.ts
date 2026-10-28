@@ -50,7 +50,7 @@ import {
 import { loadGraph } from './store.ts'
 
 /** Request header that carries the per-start token on writes. */
-export const TOKEN_HEADER = 'x-graph-token'
+const TOKEN_HEADER = 'x-graph-token'
 
 /** Largest accepted request body; a mutation is a few kilobytes. */
 export const MAX_BODY = 256 * 1024

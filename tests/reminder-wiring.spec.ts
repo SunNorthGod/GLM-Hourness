@@ -1,8 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { apply } from '../src/glm-prompt/index.ts'
+import { PEAK_REMINDER_SOURCE, PEAK_REMINDER_TEXT, peakWindowToAnnounce } from '../src/glm-prompt/peak-reminder.ts'
 import type { DerivedMessage, PreStepDecision, UserNotice } from '../src/shared/dsh-min.ts'
 import { fakeRuntime, NATIVE_NAMES } from './fake-rc3.ts'
+
+/** A Wednesday morning (UTC+8), outside peak hours: the default clock of these tests. */
+const OFF_PEAK = Date.parse('2026-10-28T10:00:00+08:00')
 
 let ids = 0
 /** One assistant message (rc.3 shape) and its tool results. */
@@ -20,10 +24,10 @@ const sourced = (decision: PreStepDecision, kind: string): UserNotice[] =>
   decision.kind === 'enter' ? decision.messages.filter((message): message is UserNotice => (message as UserNotice).source?.kind === kind) : []
 const reminders = (decision: PreStepDecision): UserNotice[] => sourced(decision, 'glm-todo-reminder')
 
-/** The dialect row applied, the agent created, and one step assembled on `model` over `history`. */
-async function step(model: string, history: readonly DerivedMessage[], options: { natives?: readonly string[], toolSearchMode?: 'local' | 'off', messages?: readonly unknown[], stepNo?: number } = {}) {
+/** The dialect row applied, the agent created, and one step assembled on `model` over `history`; `clock` reads the wall clock (default off-peak). */
+async function step(model: string, history: readonly DerivedMessage[], options: { natives?: readonly string[], toolSearchMode?: 'local' | 'off', messages?: readonly unknown[], stepNo?: number, clock?: () => number } = {}) {
   const rt = fakeRuntime(options.natives === undefined ? {} : { natives: options.natives })
-  apply(rt.ctx, options.toolSearchMode === undefined ? {} : { toolSearchMode: options.toolSearchMode })
+  apply(rt.ctx, options.toolSearchMode === undefined ? {} : { toolSearchMode: options.toolSearchMode }, options.clock ?? (() => OFF_PEAK))
   await rt.create()
   rt.history.push(...history)
   await rt.assemble({ model }) // rc.3: the step's route reaches the row through the assembly
@@ -95,4 +99,52 @@ test('the reminder precedes the deferred-tools announcement, in ZCode collection
 test('with tool search off the reminder still fires (TodoWrite stays on the face)', async () => {
   const { decision } = await step('glm-5.3', turns(10), { toolSearchMode: 'off' })
   assert.equal(reminders(decision).length, 1)
+})
+
+// --- peak-hour reminder (docs/ORCHESTRATION.md §11.4) ---
+
+const peakNotices = (decision: PreStepDecision): UserNotice[] => sourced(decision, PEAK_REMINDER_SOURCE)
+
+test('the peak reminder fires once when a GLM session crosses into peak hours, and again in the next window', async () => {
+  let now = Date.parse('2026-10-28T13:59:00+08:00')
+  const { rt, decision } = await step('glm-5.3', turns(1), { clock: () => now })
+  assert.deepEqual(peakNotices(decision), []) // previous step off-peak
+  const next = async (iso: string, stepNo: number) => {
+    now = Date.parse(iso)
+    rt.history.push(...turns(1))
+    await rt.assemble({ model: 'glm-5.3' })
+    return rt.preStep({ step: stepNo })
+  }
+  const [notice, extra] = peakNotices(await next('2026-10-28T14:00:00+08:00', 3))
+  assert.ok(notice !== undefined && extra === undefined)
+  assert.deepEqual(notice.content, [{ type: 'text', text: `<system-reminder>\n${PEAK_REMINDER_TEXT}\n</system-reminder>` }])
+  assert.equal(notice.source.peakWindow, '2026-10-28')
+  assert.ok(Object.isFrozen(notice))
+  rt.history.push(notice) // the notice persists in the session
+  assert.deepEqual(peakNotices(await next('2026-10-28T14:30:00+08:00', 4)), [])
+  assert.deepEqual(peakNotices(await next('2026-10-28T17:59:00+08:00', 5)), [])
+  assert.deepEqual(peakNotices(await next('2026-10-28T19:00:00+08:00', 6)), [])
+  assert.equal(peakNotices(await next('2026-10-29T14:05:00+08:00', 7)).length, 1) // Thursday's window
+})
+
+test('a GLM session that starts inside peak hours is told at its first step', async () => {
+  const { decision } = await step('glm-5.3', [], { messages: [userInput], stepNo: 1, clock: () => Date.parse('2026-10-28T15:00:00+08:00') })
+  assert.equal(peakNotices(decision).length, 1)
+})
+
+test('no peak reminder on non-GLM routes, at weekends, on an empty first step, or when the history already has this window', async () => {
+  const inPeak = () => Date.parse('2026-10-28T15:00:00+08:00')
+  assert.deepEqual(peakNotices((await step('deepseek-flash', turns(1), { clock: inPeak })).decision), [])
+  assert.deepEqual(peakNotices((await step('glm-5.3', turns(1), { clock: () => Date.parse('2026-10-31T15:00:00+08:00') })).decision), [])
+  assert.deepEqual(peakNotices((await step('glm-5.3', turns(1), { stepNo: 1, clock: inPeak })).decision), [])
+  const told: DerivedMessage = { role: 'user', content: [{ type: 'text', text: 'told' }], source: { kind: PEAK_REMINDER_SOURCE, form: 'notice', peakWindow: '2026-10-28' } }
+  assert.deepEqual(peakNotices((await step('glm-5.3', [told, ...turns(1)], { clock: inPeak })).decision), []) // resumed session
+  assert.equal(peakWindowToAnnounce([told], Date.parse('2026-10-29T15:00:00+08:00')), '2026-10-29')
+})
+
+test('the peak reminder precedes the ZCode notices of the same step', async () => {
+  const { decision } = await step('glm-5.3', turns(10), { messages: [userInput], clock: () => Date.parse('2026-10-28T15:00:00+08:00') })
+  assert.ok(decision.kind === 'enter')
+  const kinds = decision.messages.map(message => (message as UserNotice).source.kind)
+  assert.deepEqual(kinds, ['user', PEAK_REMINDER_SOURCE, 'glm-todo-reminder', 'glm-tool-search'])
 })

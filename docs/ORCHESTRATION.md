@@ -15,7 +15,7 @@
 2. 流程对人和 LLM 同时可见：每个阶段都有告知（给 LLM）、门禁（在执行边界检查证据）、呈现（给人看的 UI）。
 3. DSH 已有的能力尽量借用官方组件，不自创；但不因此放弃功能，没有的就自己做。
 
-现状〔已实现〕：workflow 行只记录派遣类工具调用（`spawn_teammate`、`team_task_create`、`team_task_update`、`send_message`、`subagent`、`subagent_fork`），分级恒为 L1；五键文案已定义但没有任何调用点；晨报从三条审计流水聚合，决策与违规取自项目目录、用量取自用户级目录（`DESIGN.md` §2.4）；`/hourness` 命令输出晨报与用量摘要。
+现状〔已实现〕：workflow 行只记录派遣类工具调用（`spawn_teammate`、`team_task_create`、`team_task_update`、`send_message`、`subagent`、`subagent_fork`），分级恒为 L1；五键文案已定义但没有任何调用点；晨报从三条审计流水聚合，决策与违规取自项目目录、用量取自用户级目录（`DESIGN.md` §2.4）；`/hourness` 命令输出晨报与积分口径的用量面板（§11.3）；GLM 会话进入高峰时段时收到一条提醒（§11.4）。
 
 ## 2. 项目图即主 Agent
 
@@ -31,7 +31,29 @@ todo 撑不起上百轮的大项目：它是平的，没有层级与因果；它
 | 驱动循环 | 节拍：每一拍读投影、选动作、执行或派发、写回结果与证据 |
 | LLM | 每一拍里的大脑 |
 
-状态全在图里，主 Agent 的会话随时可以丢弃：压缩、崩溃、换会话都不丢东西，上下文保持很小。先例：Ralph 循环每轮新开 agent、进度只写文件；DSH 的 `tool-ralph` 每轮只传有界报告，工作区即长期记忆。本设计把清单换成树。
+状态全在图里，主 Agent 的会话随时可以丢弃：压缩、崩溃、换会话都不丢东西，上下文保持很小。先例：Ralph 循环每轮新开 agent、进度只写文件；DSH 的 `tool-ralph` 每轮只传有界报告，工作区即长期记忆。本设计沿用的是「状态在文件里」这个思路，并把清单换成树；执行模型不沿用 Ralph，见下面的驱动循环。
+
+驱动循环〔定案 2026-10-28〕：节拍用 DSH 的会话目标 `goal` 加 `goal-round-driver`，在主 Agent 的同一个会话里推进。rc.3 的机制〔实读〕：
+
+- goal 服务与驱动器在宿主层（`dsh-web-app/cordis.patch.yml` 525 行注释），本包的宿主插件 inject `goals` 即可。agent 空闲、goal 处于 active 且 armed 时，驱动器以 `agent.followup` 投递一条 `<goal_round>` 用户消息（`dsh-goal-round-driver` 164 行），提示词固定，只含目标原文与轮次（11 行 `renderGoalRoundPrompt`）。
+- 有 subagent 服务时，驱动器在每轮之前等待这个 agent 正在推进的子 agent 结束（132 行 `waitForChildren`）。所以一轮之内主 Agent 派出后台子 agent 后可以继续做别的（§3.6），下一轮要等子 agent 都结束才开始。
+- 每个 goal 都有轮次上限：`maxGoalRounds` 只接受正整数，`create` 不传时取服务配置 `defaultMaxGoalRounds`，默认 256（`dsh-goal` 455、588 行）。本项目设一个大值，到上限时 goal 记 `round-limit` 阻塞，当作要向人汇报的事件，不当预算（§4.3）。
+- 会话恢复或 fork 之后 goal 不会自动 arm（`dsh-goal-round-driver/README.md` 57 行）；遇到 max-tokens、取消、刷盘失败时驱动器 disarm。
+
+本包的宿主插件负责三件事〔规划〕：
+
+1. 由人发起：经命令或 UI 按钮创建、恢复 goal，目标文本取项目图的当前目标。`goals.create` 与 `resume` 在服务层只检查 agent 是否 live（`dsh-goal` 635、686、755 行），「必须由人直接发起」只在模型工具 `dsh-tool-goal` 里检查，所以「不自动复活」由本包自己守住。
+2. 每拍注入：在 `agent/pre-step` 识别目标轮消息后追加投影 notice（§2.5）。
+3. 完成门禁：`update_goal` 的 `complete` 在 `tools/pre-execute` 核对图上的证据，缺证据就拒绝并给出正路。
+
+L3 核实〔实测 2026-10-28，派发可行性验证 (c)，`ROADMAP.md` 借用组件核实清单第 12 项〕：探针覆盖层里的验证插件（`scripts/probe/probe-dispatch.mjs`，不属于 bundle）在一次工具调用里新建一个根 agent，经 `goals.create` 给它建 goal（插件建，不经模型工具），驱动器照常投递第 1 轮。三件事的接缝都成立，证据是探针场景 `glm-goal`：
+
+- 每拍注入：在 agent 作用域的 `agent/pre-step` 里于 `next()` 之后把 notice 追加到决策的 `messages`，notice 随目标轮进入该步。驱动器在下游监听器前后各做一次预约校验（`dsh-goal-round-driver` 286–350 行），没有受影响：第 1 轮结束后第 2 轮照常开始，每轮各一条 notice。注入不能改用 `agent.followup` 或 `steer`：进入下一回合收件箱的消息会被驱动器当作竞争输入，预约作废（249 行）。
+- 完成门禁：GLM 路由上 `update_goal` 是延迟工具（`get_goal` 常驻），模型经 DeferredToolCall 调用，`tools/pre-execute` 看到的是 `update_goal` 本身。缺证据时拒绝 `complete`，拒绝以工具错误回到模型，goal 保持 active；证据就位后放行，goal 进入 complete 并 disarm，`dsh-tool-goal` 追加收尾消息 `<goal_complete>`（365 行），驱动器不再开新一轮。
+- 由人发起：服务层不查人类授权，插件建的 goal 照常被驱动，所以「只由人发起」完全由本包的命令入口守住。
+- 限制：headless 一次性运行器在自己 agent 第一次静止空闲时退出（`dsh-headless` 349–351 行），任务回合里建的 goal 一轮都跑不到（探针场景 `goal-headless`）。探针因此让 goal 跑在第二个根 agent 上，由还停在工具调用里的 headless 根 agent 撑住进程；以后标定任务若要用 goal 驱动，运行器也要这样做。桌面版上 goal 服务与驱动器在宿主层、`tool-goal` 在 `preset-standard` 里（`dsh-web-app/cordis.patch.yml` 525–533 行，`presets/standard.patch.yml` 43 行），沙盒模板是平铺组合。宿主层的 `tools/pre-execute` 在桌面版上看得到 preset 内工具的调用（guard 在桌面版拦过 preset 内 `pwsh` 的调用，`DEVELOPMENT.md` §7），完整流程在桌面版组合上的表现随 L4 核实。
+
+不用的接缝：`tool-ralph` 是模型调用的前台工具，阻塞调用方的回合直到全部轮次结束，提示词规定只在人明确要求时使用，依赖 `workflowEngine` 与固定脚本，所在的可选包默认关闭（`dsh-tool-ralph/README.md` 12、162 行，lib 13、36 行）；用它做主驱动，主 Agent 不能并行派发，也不能发出异步卡后转做别的。`schedule` 按墙钟时间投递一条提醒消息，不是节拍，用于晨报、巡检与谷段排期（§11.4、§12）。自己写空闲驱动也能做，但驱动器的代码大半是竞争保护（预约、`agent/pre-step` 前后两次校验、`sessions.flush` 检查点、卸载时取消），重写的收益只是换一套提示词。
 
 ### 2.2 节点
 
@@ -77,7 +99,7 @@ todo 撑不起上百轮的大项目：它是平的，没有层级与因果；它
 每步投影〔已实现，`src/graph/reminder.ts`；行 `glm-hourness/graph` 默认禁用，只在 L2 验证过；`ROADMAP.md` 2.3〕：
 
 - 当前节点：agent 用图工具 `graph_focus {id}` 设定自己的焦点节点（一般是正在做的任务），每个会话一个，再调一次就移走。`graph_focus` 不写图，只确认节点存在，返回它的类型、标题与状态；投影从下一步起送到。
-- 注入：行在 `agent/created` 时给每个 agent 装一个 `agent/pre-step` 监听器，把投影追加在本步已接纳的消息之后。投影是 `createUserNotice` 生成的 notice（来源 `glm-graph-projection`），正文用 `<system-reminder>` 包装（与工具检索公告共用 `wrapSystemReminder`），不进系统提示词（`DESIGN.md` §6）。不会变成请求的空决策不加。
+- 注入：行在 `agent/created` 时给每个 agent 装一个 `agent/pre-step` 监听器，把投影追加在本步已接纳的消息之后；监听器用 todo 提醒与高峰提醒的同一个接缝（`src/glm-prompt/step-notice.ts`，`DESIGN.md` §5.5）。投影是 `createUserNotice` 生成的 notice（来源 `glm-graph-projection`），正文用 `<system-reminder>` 包装（与工具检索公告共用 `wrapSystemReminder`），不进系统提示词（`DESIGN.md` §6）。不会变成请求的空决策不加。
 - 内容：焦点节点与它的验收条件；到目标的祖先链（父节点在前）；阶段；子节点；来源（它因哪些节点而存在）；它依赖的节点与依赖它的节点；未通过的门禁；图有校验错误时另加一行「写入一律被拒，告诉人」。每个节点一行：类型、id、状态（决策另带验证状态，拍过板的待决带 `decided <选项>`）、标题。不带修订号、历史、正文，也不带目标的验收条件与非目标：修订号与历史每次写入都变，带上就要每次重注；正文与目标的条件太长。这些用 `graph_show` 读。
 - 何时注入：每步从 `session.deriveMessages()`（请求可见的历史）重新推出，按下面的顺序取第一条成立的规则，规则名记在 notice 来源的 `graphProjection.reason`：
   1. `compaction`：历史里最近的压缩检查点（来源 `compact-checkpoint`，带 `compactionId`）在最近一条投影之后，或最近一条投影记下的 `anchor`（注入时可见的最近检查点的 `compactionId`）不是这个检查点。旧投影留在压缩的保留区间里也算没锚过，所以每次压缩之后都重注一次。
@@ -415,19 +437,46 @@ SVG 只用表现属性，不含脚本、样式表、网络字体与外部引用�
 
 ## 3. 角色
 
-形态与 DSH Agent Team 相近：一个 Lead，若干有名字的队友，一块共享任务板，每个成员通过运行时上下文拿到自己的角色与名字〔定案〕。
+没有队友角色，也没有角色 preset〔定案 2026-10-28，取代原先「一个 Lead 加若干具名队友、共享任务板」的角色设计与队友角色卡〕。主 Agent 把项目图上的任务节点派给后台子 agent：经 `subagents.startActivation` 用 spawn 后端启动，结果送回主 Agent（`delivery: 'parent'`），主 Agent 不等它，继续做别的，子 agent 完成时收到通知。原来写在角色卡上的内容改为任务节点的派发属性，由 harness 在派发时读取（§3.2）。
 
-### 3.1 主 Agent（项目经理）角色卡
+### 3.1 主 Agent（项目经理）
+
+主 Agent 是会话的根 agent。
 
 - 职责：访谈、规划、派发、验收、汇报。
-- 不写代码〔定案〕：工具面里不放写文件的工具，作为硬约束。
+- 身份〔定案 2026-10-28〕：本项目自己的提示词文本，内容是三问四答（`CHARTER.md` §3）、五键（§4.4）与许愿访谈（§4.2）。不用 DSH 的 agent preset 或 persona 行承载。
+- 不写代码〔定案；机制于 2026-10-28 改定〕：由 guard 在主 Agent 的 `tools/pre-execute` 拦下写文件的调用（文件工具与写文件的 shell），正路是派发任务。主 Agent 的工具面不变，不靠 preset 去掉写文件工具（原定「工具面里不放写文件的工具」作废）。
 - 说话方式：聊天、少术语、一次只问一个问题、每个问题带选项与推荐。
-- 人设分层：用户的人设管「怎么说」，角色卡管「做什么」，两层叠加互不干扰。
+- 人设分层：用户的人设管「怎么说」，主 Agent 的身份文本管「做什么」，两层叠加互不干扰。身份文本与 `glm-prompt` 的方言改写怎样叠加，实现前在沙盒验证（`ROADMAP.md` 借用组件核实清单）。
 - 分布说明：ZCode 里的 GLM 是自己写代码的单 agent，「主 Agent 只编排」在 ZCode 训练分布之外，子 agent 干活仍在分布内。用户判断后续模型会具备编排能力〔定案〕；这一层单独度量简报完整率、返工率与主 Agent 上下文占用。
 
-### 3.2 队友角色卡
+### 3.2 任务节点的派发属性
 
-实现、测试、审查、文档、运维。每张卡写明职责范围、工具白名单（最小权限）、独立记忆目录、交回契约，以及「何时用我」的描述（供自动委派）。
+〔定案 2026-10-28，取代队友角色卡〕任务节点带以下属性，主 Agent 派发时由 harness 读取。节点没有角色字段，§2.2 公共字段里的「负责角色」作废。
+
+| 属性 | 内容 | 落到 DSH |
+| --- | --- | --- |
+| 种类 | 实现、测试、审查、文档 | 简报模板与交回要求 |
+| 写入范围 | 子 agent 可写的文件与目录；审查为空 | guard 在子 agent 的 `tools/pre-execute` 拒绝范围外的写入，拒绝以工具错误回到子 agent |
+| 模型档位 | 难题、常规、简单（§3.5） | `startActivation` 的 `request.agentOptions` |
+| 验收条件 | 节点的公共字段（§2.2） | 简报的「验收条件」一栏，也是审查的依据 |
+| 交回结构 | 交回内容的 JSON Schema | `request.outputSchema`（启动前校验为对象 schema，`dsh-subagent` 3036 行起） |
+| 独立工作树 | 多个写任务并行时，各给一个独立的 git 工作树 | `request.cwd` |
+
+- 子 agent 的身份只有简报（§3.3）。派发不选 preset，子 agent 加入父 agent 当前的 preset（`dsh-subagent` 346、373 行），工具面与主 Agent 相同，限制靠 guard 的写入范围。
+- 深度：`maxDepth` 默认 1，子 agent 不能再派发；`maxActiveSubagents` 默认 8（`dsh-subagent` 2979–2980 行）。
+- 子 agent 调用 `userQuestions.ask` 会被拒（`DELEGATED_CALLER`，`dsh-user-questions` 534 行），委派出去的子 agent 审批策略固定为 `never`，出界请求由主 Agent 汇总后向人申报（§6.2）。
+L3 核实〔实测 2026-10-28，派发可行性验证 (a)(b)，`ROADMAP.md` 借用组件核实清单第 4、4b 项〕：探针覆盖层里的验证插件（`scripts/probe/probe-dispatch.mjs`）是宿主层插件，inject `subagents`，注册一个派发工具；GLM 主 Agent 经 DeferredToolCall 调它，派出任务 T1，证据是探针场景 `glm-dispatch`：
+
+- (a) 后台派发成立。`startActivation`（spawn、`delivery: 'parent'`、预留 `childId`）在子 agent 被接受时返回，派发工具当场把子 agent 的 id 交回；主 Agent 接着又走了两步，都在子 agent 第一次请求之前。子 agent 收到的首条用户消息是简报原文，后面附有运行时加的「结束前用 `send_message` 把结果发给父 agent」的指引（`dsh-subagent` 472 行）；工作目录是请求里的 `cwd`；模型是 `agentOptions` 指定的 GLM-5.3-Flash（只传 `model`，provider 继承父 agent，315 行）。子 agent 经 DeferredToolCall 提交 `structured_output` 后回合结束，主 Agent 收到完成通知，通知里带 `Structured result: <JSON>`（526 行），`startActivation` 返回的 `result` 也带同一份结构化结果，`stopReason` 为 `completed`。
+- (b) 写入范围门禁成立。宿主层的 `tools/pre-execute` 看到子 agent 的每一次调用，`exec.agent.id` 等于预留的 `childId`（rc.3 的 agent id 就是会话 id），据此映射回任务；主 Agent 自己的调用映射不到任何任务。范围外的 `Write` 被拒，拒绝以工具错误回到子 agent，文件没有写出；范围内的 `Write` 照常执行。
+
+由此带来的实现约束（M7）：
+
+- 任务映射用派发时预留的 `childId`，不靠会话头。子 agent 的会话头 `cwd` 是父 agent 的目录，请求里的 `cwd` 只成为工作目录（`dsh-subagent` 346–355 行；探针实测）。guard 现在以会话头 `cwd` 作包含根（`DESIGN.md` §2.4a），子 agent 的包含根因而是父 agent 的工作区；DSH 自己的文件沙盒根也是父会话的工作区。所以独立工作树要建在父 agent 的工作区之内（例如不入库的 `.worktrees/`），写入范围按任务属性另行判定，不能拿会话头当范围。
+- 预留的 `childId` 可以编码任务节点 id，宿主重启后从子会话 id 就能找回任务；映射表只放在内存里时，冷恢复的子 agent 会失去写入范围。
+- GLM 路由上 `structured_output` 与 `send_message` 都是延迟工具（不在常驻名单里，`src/toolsearch/exposure.ts`），子 agent 要经 DeferredToolCall 调用。探针实测经 DeferredToolCall 提交的结构化结果能被捕获；是否把这两个工具列为子 agent 的常驻工具，在 M7 的派发实现里定。
+- 子 agent 的工具面里仍有 `subagent`、`subagent_fork`；这两个工具把设置里的 `maxDepth`（默认 1）传给服务，服务按它拒绝更深的派发（`dsh-subagent` 279–283 行）。服务只检查调用方传进来的 `maxDepth`，验证插件没有传；本包的派发工具要传 `subagents.resolveMaxDepth()` 的结果，否则子 agent 能经它再派发。
 
 ### 3.3 简报与交回
 
@@ -437,7 +486,7 @@ SVG 只用表现属性，不含脚本、样式表、网络字体与外部引用�
 
 ### 3.4 审查独立
 
-交回的证据由独立的审查 agent 在另一个上下文中核对，可行时用另一档模型。同一上下文不自己批自己。
+交回的证据由独立的审查 agent 在另一个上下文中核对，可行时用另一档模型。审查是一个种类为审查、写入范围为空的任务节点（§3.2）。同一上下文不自己批自己。
 
 ### 3.5 模型档位与并发
 
@@ -447,7 +496,11 @@ SVG 只用表现属性，不含脚本、样式表、网络字体与外部引用�
 
 ### 3.6 借用
 
-DSH Agent Team（实验）：Lead、具名队友、收件箱消息、可冷恢复、持久任务 DAG、建议性写入范围与重叠告警，需要持久会话存储。项目图的叶子投影到 Team 的任务板上执行。注意：启用 Team 的整包会关闭普通 subagent 委派。Team 不可用时退到 subagent 或工作流引擎。
+〔定案 2026-10-28〕派发借用 DSH 的 subagent 系列，不用 Agent Team，也不用工作流引擎承载派发。rc.3 的依据〔实读〕：
+
+- subagent：服务 `subagents` 在宿主层。`startActivation({ provider, label, request: { prompt, parent, cwd?, agentPreset?, agentOptions?, outputSchema?, maxDepth? }, signal, delivery: 'parent' | 'caller', childId? })` 返回 `{ childId, messageId?, result, dispose }`（`dsh-subagent` 3036 行）；另有 `sendMessage`、`interrupt`、`listChildren`、`waitForChildren`、`drainChildren`。spawn 后端支持 `agentOptions`、`agentPreset`、`outputSchema`、`depthLimit`（`dsh-subagent-spawn-in-process` 21–27 行），`cwd` 由服务按父 agent 的工作目录解析；fork 后端继承父会话已完成的回合，拒绝 `agentPreset`。本项目的派发用 spawn。
+- 不用 Agent Team：Team 队友由 `subagents.startActivation` 创建，不带 `agentPreset`，工具面与 Lead 相同（`dsh-experimental-agent-team` 1032 行）；Team 作用于 profile 里的每个根 agent，包括非 GLM 会话，与 §6.2 冲突；Team 的任务板与项目图会成为两份状态；所有成员共享一个 checkout，写入范围只是建议；整套是实验包，所在可选包默认关闭（`dsh-app-boot` 579 行 `OPTIONAL_BUNDLES`）。原文「启用 Team 的整包会关闭普通 subagent 委派」不对：Team 的 profile 层只禁用四个顶层行 id（`dsh-experimental-agent-team-profile/cordis.patch.yml` 4–14 行），而 Desktop 上真正提供委派工具的是 `preset-standard` 内 `delegation` 组的同名子行，按 id 打补丁碰不到 preset 内的子行（`dsh-app-boot` 61–68 行），所以 `subagent`、`subagent_fork` 仍在；但 Team 的九个工具装在每个根 agent 的作用域里，以同名遮蔽 `send_message`、`list_agents`、`interrupt_agent`（`dsh-experimental-tool-agent-team/README.md` 12 行），普通子 agent 就不能再续聊、列出或中断（推断，未在真机确认）。
+- 不用工作流引擎承载派发：`workflowEngine` 在 Desktop `preset-standard` 的 `delegation` 组内隔离，宿主层插件取不到（`dsh-web-app/presets/standard.patch.yml` 83–87 行）；脚本的 `agent()` 也选不了 preset。它适合一次性的大批量审计或迁移。
 
 ## 4. 设计循环
 
@@ -505,7 +558,7 @@ DSH Agent Team（实验）：Lead、具名队友、收件箱消息、可冷恢�
 
 附带风险（事前验尸）。五栏缺任何一栏，不能离开设计阶段。
 
-不设积分与轮次预算〔定案〕：预算会导致赶工或半途停下。积分消耗只在晨报中披露，范围由非目标约束。
+不设积分与轮次预算〔定案〕：预算会导致赶工或半途停下。积分消耗只在晨报中披露，范围由非目标约束。DSH 的 goal 必有轮次上限（默认 256，只接受正整数），本项目设一个大值，到上限当作汇报事件处理，不当预算（§2.1）。
 
 ### 4.4 五键
 
@@ -523,14 +576,20 @@ DSH Agent Team（实验）：Lead、具名队友、收件箱消息、可冷恢�
 
 ### 4.5 放行
 
-借用 DSH 计划模式：设计期只读，退出需用户审阅。放行后对应分支由虚线变实线。
+借用 DSH 计划模式 `plan-mode` 的三样东西：提示词节 `plan:policy`、审阅卡（`exit_plan_mode` 经 `userQuestions.ask` 发出带 `plan-review` 意图的卡，`dsh-plan-mode` 257、275 行）与 `plan/mode` 状态。计划模式只靠提示词，所有工具照常可调（`dsh-plan-mode/README.md` 184 行「Guidance, not enforcement」）〔实读〕，所以：
+
+- 设计期只读由 guard 实现〔规划〕：设计阶段在 `tools/pre-execute` 拦下写文件与写文件的 shell，正路是提议节点的图工具（§6.3）。
+- 五栏门禁挂在 `exit_plan_mode` 的 `tools/pre-execute`：五栏缺项直接拒绝并给正路，审阅卡不出现。
+- 审阅批准时工具返回 `{ approved: true }`，这就是放行信号，对应分支由虚线变实线。
+
+在 Desktop 上，计划模式在 `preset-standard` 的 `planning` 组里，`planMode` 服务隔离在组内（`dsh-web-app/presets/standard.patch.yml` 45–49 行），宿主层插件的普通查找取到的是宿主域。读写计划状态要经 `ctx.agentPresets.serviceFor(agent, 'planMode')`（`dsh-agent-preset-registry` 725 行），能否取到并生效待沙盒验证（`ROADMAP.md` 借用组件核实清单）。
 
 ### 4.6 分解与执行
 
 - 每个分支先打通行走骨架：一条最细的端到端通路，再加宽。
 - 叶子都有验收条件，按难度定模型档位（§3.5）。
 - 执行期自主推进，不打断人：计划内决策自主执行并留痕；计划外决策发异步决策卡，不阻断也不放行，agent 转去做计划内的其他工作。
-- 长任务借用 DSH 会话目标（goal）；进度写在图里，会话崩溃后从图续上。
+- 长任务由 goal 加 `goal-round-driver` 推进（§2.1）；进度写在图里，会话崩溃后从图续上，goal 由人恢复。
 
 ### 4.7 汇合门禁
 
@@ -562,7 +621,11 @@ DSH Agent Team（实验）：Lead、具名队友、收件箱消息、可冷恢�
 - 问题必须问在项目经理这一层：不带选项与后果、或问的是代码层面问题的卡，被打回重写。
 - 批准只放行当次，不产生残留授权，界面不提供「以后都允许」。
 - UI 上只有一个决策队列；积压量与处理时长是度量，等待人拍板的卡也要提醒人。
-- 借用：DSH `user-approval`（一次性、默认失败即拒）、`user-questions` / `ask_user_question`、行动卡片（实验）。
+- 同步卡借用 DSH〔实读〕：`approval.request`（`dsh-user-approval` 128 行）只有「允许一次 / 拒绝」，返回 `allowed-once`、`rejected`、`cancelled`、`unavailable` 之一，必须在打开的回合内调用，没有应答者时失败即拒，与「批准只放行当次」一致。需要多个选项、推荐与后果的同步卡用 `userQuestions.ask`（`dsh-user-questions` 668 行）：卡面有短标题、问题、Markdown 详情、带一句说明的选项、自由文本与跳过，没有「来源节点」「后果」这类结构化字段，这些写进详情。两者都阻塞当次工具调用；子 agent 调用都被拒（§3.2）。
+- 异步卡自建〔定案 2026-10-28〕。rc.3 没有插件可用的异步通道：行动卡片只在 DSH 主干（`main:packages/experimental/action-cards`），rc.3 没有这个包；插件自己调 `userQuestions.askTimed` 时，超时后投影不跟踪这次调用，晚到的答复丢失（`dsh-user-questions` 199–201、552 行）；第三方也不能新增转发给客户端的 waterfall（`dsh-api-remotes/README.md` 77–78 行）。做法：
+  - 存储：异步卡就是图上的待决节点，存在节点文件里，跨回合、跨重启都在。
+  - 呈现：回合末尾卡片、右侧栏决策队列、输入框上方条显示待批数（§13）。
+  - 回写：人拍板时客户端经命令通道调用本包的命令，宿主侧写回节点文件，再向 agent 送一条用户角色消息，运行中用 steer、空闲时用 followup（会开启新回合），来源用本项目自己的 `kind`。命令运行记入会话日志、不进模型（`dsh-commands/README.md` 12、88 行），同时充当审计流水。
 - 取代现有的 L1/L2/L3 分级。
 
 ## 6. guard：门禁与正路
@@ -577,7 +640,7 @@ DSH Agent Team（实验）：Lead、具名队友、收件箱消息、可冷恢�
 
 ### 6.2 作用范围
 
-先只作用于 GLM 会话，误伤清零后再考虑放开〔定案〕。子 agent 的出界请求默认拒绝，由主 Agent 汇总后统一向人申报。
+先只作用于 GLM 会话，误伤清零后再考虑放开〔定案〕。子 agent 的出界请求默认拒绝，由主 Agent 汇总后统一向人申报。DSH 在宿主层已是这样：委派出去的子 agent 审批策略固定为 `never`，`userQuestions.ask` 拒绝子 agent 调用（§3.2）。
 
 ### 6.3 正路
 
@@ -595,13 +658,14 @@ DSH Agent Team（实验）：Lead、具名队友、收件箱消息、可冷恢�
 | --- | --- |
 | 工作区圈禁：写操作只在工作区内 | 已实现 |
 | 文件修改只用专用工具：shell 不写文件 | 已实现；2026-10-28 改为识别引号（`=>`、`>>>`、`->` 误判已发生 3 次）：只看命令位置与引号外的真实重定向，git 子命令放行；执行后以工作区变更记录兜底，只记录不拦截（§6.5） |
-| 设计阶段不写代码 | 规划 |
+| 设计阶段不写代码 | 规划；计划模式不拦工具，由 guard 实现（§4.5） |
 | 主 Agent 不写文件 | 规划 |
 | 图文件只经图工具修改 | 已实现（规则 `graph-files-only`，由行 `glm-hourness/graph` 注册，默认禁用，只有 L2；§2.7） |
 | 临时脚本只在草稿区 | 规划 |
 | 压制注释必须写理由并挂节点 | 规划 |
 | 放宽检查配置走决策卡 | 规划 |
 | 同一处第三次修复走决策卡 | 规划 |
+| 子 agent 只写任务节点的写入范围 | 规划；接缝已经 L3 核实（2026-10-28，§3.2） |
 
 ### 6.5 影子模式
 
@@ -668,7 +732,7 @@ LLM 爱造轮子，因为写脚本只花当前这一轮的力气，装工具却�
 - 先识别项目语言；项目有自己的配置就用项目的，没有就按社区默认方案发一张决策卡，批一次后记入环境分支。
 - 每次改完文件，由 harness 在执行边界跑相关检查，结果当轮回传给模型（`DESIGN.md` §6 注入约定）。模型不需要自己记得去跑。
 - 格式类问题自动修；规范类问题必须由模型修。
-- DSH 的 LSP 包只提供跳转定义、查引用、查实现、悬停，没有诊断〔实读〕，检查器运行由本层实现。
+- rc.3 桌面版没有 LSP 包（`dsh`、`dsh-web-app` 的依赖里都没有）；DSH 主干的 `packages/lsp` 也只提供跳转定义、查引用、查实现、悬停，没有诊断〔实读〕。检查器运行由本层实现。
 
 ### 7.6 告警
 
@@ -679,7 +743,19 @@ LLM 爱造轮子，因为写脚本只花当前这一轮的力气，装工具却�
 
 ### 7.7 本仓库
 
-目前只有 tsc 类型检查，缺规范检查、死代码检查、重复检查，按 §7.5 补齐（`ROADMAP.md` M1.9）。
+〔已实现 2026-10-28，`ROADMAP.md` M1.9〕tsc 之外，规范检查用 ESLint 加 typescript-eslint 的类型感知规则，死代码检查用 knip，重复检查用 jscpd（用户选定方案 A），精确版本、开发依赖，不做格式化。`npm run lint` 接入 `npm test`，三项各自对照入库的基线，按 §7.6 的棘轮执行：基线之外的新发现失败，基线里已不再出现的条目也失败，直到 `npm run lint:update` 把基线缩小；有新发现时 `lint:update` 拒绝写入。ESLint 用自带的批量压制，jscpd 用自带的指纹基线，knip 没有基线功能，由脚本按类型、文件、名称比对清单。命令、范围与基线数字见 `DEVELOPMENT.md` §10。
+
+配置取舍（都写在配置文件的注释里）：
+
+- 规则集：typescript-eslint 的 `recommendedTypeChecked`，加 ESLint 核心推荐规则。ESLint 10 不再自带 `@eslint/js`，批准的依赖里也没有它，配置从 ESLint 自身的规则元数据里取标为推荐的规则（`@eslint/js` 的推荐清单就是这样生成的）；是否改装 `@eslint/js` 列为待定（`ROADMAP.md` §3）。全部规则设为 error，批量压制只对 error 生效。
+- 与 tsc 对齐：以下划线开头的参数不算未使用（同 tsc `noUnusedParameters`）；与剩余元素并列解构出来的属性不算未使用（省略字段的写法）。
+- `node:test` 的 `test()`、`describe()` 返回由测试运行器等待的 Promise，按 typescript-eslint 文档登记为已知安全调用，不算悬空 Promise。
+- 环境全局量：脚本取运行 ESLint 的 Node 的全局名；`ui/client.js` 在 DSH 网页端运行，只登记它用到的浏览器全局量。
+- 排除：vendored 上游代码 `src/shared/schemastery.ts` 不进 ESLint 与 jscpd（它随重新 vendor 变化，不随 lint 修复变化）。
+- knip：`ui/` 的两个入口由 DSH 经 `ui/package.json` 加载，探针 provider 由探针运行器把路径交给 Loader，三者登记为入口；`ui/client.js` 的 `react` 来自 DSH 客户端模块表，不是 npm 依赖。
+- 现有告警没有成批修：175 条多余的类型断言可自动修复，但会和 `graph-engine` 分支改动的文件冲突，等该分支合并后再修；门禁上线时只修了 3 处明确安全的真问题（测试里一个从不读取的计数变量、一个未用导入、一个被 `unknown` 吞掉的联合类型）。
+
+未做：§7.5 所说「每次改完文件由 harness 在执行边界跑检查并当轮回传」属于 M4；密钥扫描 gitleaks 是工作区外的独立二进制，安装待用户决定（`ROADMAP.md` §3）。
 
 度量：每个目标新增的临时脚本数与转正数、同一功能被重复编写的次数、工具箱命中率、压制注释数。
 
@@ -791,7 +867,44 @@ LLM 不讲人话，多半是默认在向评审汇报，想显得周全。做法�
 - 标定：对 GLM-5.3 与 GLM-5.3-Flash 各跑出基线，之后 harness 的每次改动按增量衡量。
 - 用途：harness 改动前后各跑一遍；DSH 升级回归；原生通道验收。
 - 运行环境：尽量在 L3 headless 沙盒内运行（`DEVELOPMENT.md` §3）。
-- 任务清单与存放位置待定（§15）。
+- 存放〔定案 2026-10-28〕：`tests/calibration/`，入库，每个任务一个目录。M1.7 起步两个任务，M3、M7 扩充。
+
+#### 10.5.1 运行器〔已实现 2026-10-28，`ROADMAP.md` M1.7〕
+
+`npm run calibrate`（`scripts/calibrate/run-calibrate.mjs`）在 `glmsandbox` 上以 headless 方式启动桌面版运行时，经按次生成的覆盖补丁启用原生通道行 `glm-hourness/glm-llm`（provider `glm-zcode`），把默认模型设为被测模型，每次运行把任务的 fixture 复制到 `.llm/calibration-runs/<时间戳>/<任务>--<模型>[--序号]/ws/` 并初始化为一个 git 仓库，以它为会话工作目录发出任务提示词，结束后运行任务的验收脚本并记分。这是真实请求，消耗积分。参数：`--tasks`、`--models`（默认 `glm-5.3,glm-5.3-flash`）、`--repeat`、`--max-steps`（默认 40）、`--minutes`（默认 15）、`--permission`。
+
+- 任务目录：`fixture/`（一个很小的 Node 项目，无依赖，`npm test` 即 `node --test`）、`prompt.md`（原样发给模型的提示词）、`task.json`（类别与任务允许改动的文件）、`check.mjs`（验收脚本，在模型结束后以独立进程运行，断言不放进 fixture，模型看不到）。验收脚本的公共部分在 `tests/calibration/lib.mjs`。
+- 现有任务：`feature-parse-duration`（小功能：给 `formatDuration` 补逆运算 `parseDuration`；验收：提示词里的例子、对 `formatDuration` 所有输出的还原、12 种非法输入抛 `TypeError`、`formatDuration` 不变、工作区测试通过且新增了 `parseDuration` 的测试、README 写了说明）；`bugfix-csv-quotes`（修 bug：引号字段里的转义引号 `""` 没有跳过第二个引号；验收：报告的那一行、另外 4 种转义写法、6 项无关行为不变、工作区测试通过且新增了测试，并且把 fixture 原来的 `src/` 放回后工作区测试会失败，即新测试确实复现了 bug）。两个验收脚本都核对过：原样的 fixture 不通过，参考解通过。
+- 数据隔离：覆盖补丁把数据目录行、memory、workflow、hourness 的目录指向本次运行的目录，用量流水与违规流水都落在运行目录里，真实的 `~/.dsh/glm-hourness/` 不变；附件存储同样指向运行目录；另挂 `@deepseek-ai/dsh-workspace-changes`（桌面版 profile 有，沙盒模板没有），guard 的影子兜底照常记录。
+- 权限：headless 模板的沙盒策略行与审批行读环境变量 `DSH_PERMISSION_MODE`（缺省 `workspace-write`）。运行器默认传 `danger-full-access`，与用户桌面版 profile 的默认预设一致（`danger-full-access`，审批 `never`）。首次试跑用的是缺省的 `workspace-write`：Windows ACL 沙盒下 `node --test` 派生子进程报 `spawn EPERM`，模型无法确认测试通过，转而申请沙盒升级，headless 没有审批通道，申请失败（`FACTS.md` §3）。
+- 边界：覆盖层插入一行只在标定时加载的插件 `scripts/calibrate/limits.mjs`（不属于 bundle）。它对进程内全部 agent（含子 agent）的模型步数计数，第 `maxSteps + 1` 步在 `agent/pre-step` 返回 `reject`，回合以 `blocked` 结束（rc.3 `dsh-agent-loop` 961 行）；首个 agent 创建后满 `timeLimitMs`，以 `{ kind: 'hook' }` 取消所有运行中的 agent（`cancel` 815 行、取消原因 731 行），之后的步一律拒绝。运行器在时间上限之后再等 2 分钟，仍未退出就结束整个进程树。探针有两个场景验证这两道边界（`DEVELOPMENT.md` §3）。
+- 事件来源：headless 的 `--json` 输出（`dsh-headless` json-stream 172 行起：`session`、`status` 的 `step_start` / `step_end` / `turn_end`、`tool_call`、`tool_result`、`text`、`final`），任务提示词经 stdin 传入。
+
+记分口径（每次运行一份 `result.json`，整次调用一份 `results.json`，含日期、提交与工作区是否有未提交改动）：
+
+| 指标 | 口径 |
+| --- | --- |
+| 完成 | 验收脚本全部通过 |
+| 返工 | 一次成功的文件写入（`Write`、`Edit` 等）落在本次运行已写过的文件上，且两次写入之间跑过 shell 命令。即「改了、跑了、又回去改同一个文件」的次数 |
+| 打扰人 | `approval/asked` 会话事件数（`dsh-user-approval` 132 行，交互会话里这一刻会弹审批；headless 无应答方，按拒绝处理）加 `ask_user_question` 调用数。沙盒的工具面没有 `ask_user_question` |
+| 积分 | 本次运行用量流水的每条记录按 `FACTS.md` §2.4 的系数计算，非高峰按 50%；公式没有缓存写入的系数，缓存写入按输入计。用量流水含会话标题请求 |
+| 违规 | guard 违规流水里的拦截记录数；影子记录另计 |
+| 其他 | 结束原因（完成、步数上限、时间上限、被结束、错误）、步数、工具调用与失败数、改动的文件、`task.json` 之外的多余文件、各类 token 数、耗时 |
+
+#### 10.5.2 基线（2026-10-28，提交 `4cb8799`）
+
+每格 3 次运行，均值（打扰、违规、多余文件为合计）。时段 06:10–06:31（UTC+8，周三），全部非高峰；边界 40 步、15 分钟；权限 `danger-full-access`。
+
+| 任务 | 模型 | 完成 | 步数 | 工具调用 | 返工 | 打扰 | 违规 | 多余文件 | 积分（计费） | 分钟 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| bugfix-csv-quotes | GLM-5.3 | 3/3 | 5.67 | 6.33 | 0 | 0 | 0 | 0 | 9.45 | 0.63 |
+| feature-parse-duration | GLM-5.3 | 3/3 | 11.67 | 13.33 | 1 | 0 | 0 | 0 | 21.61 | 1.50 |
+| bugfix-csv-quotes | GLM-5.3-Flash | 3/3 | 6.33 | 7.33 | 0 | 0 | 0 | 0 | 4.15 | 0.95 |
+| feature-parse-duration | GLM-5.3-Flash | 3/3 | 10.67 | 13.00 | 1 | 0 | 0 | 0 | 12.17 | 3.60 |
+
+按模型：GLM-5.3 六次全部完成，平均 8.67 步、15.53 积分、1.07 分钟；GLM-5.3-Flash 六次全部完成，平均 8.50 步、8.16 积分、2.28 分钟。工具失败、打扰、违规、影子记录、多余文件都是 0。Flash 在功能任务上输出 token 是 GLM-5.3 的约 3 倍（每次 6.5k–12.4k 对 2.7k–3.8k），所以积分省一半，耗时却长一倍多。基线连同两次试跑共花约 155 积分（计费口径）。
+
+解读与局限：两个起步任务对两档模型都没有区分度（12/12 完成），能拉开差距的只有积分、耗时与返工；区分完成率要靠 M3、M7 扩充的更难任务（重构、长程多步、需求访谈）。每格 3 次，样本小，单次波动明显（同一格的积分相差到 1.6 倍）。headless 没有人，打扰只能按审批申请与提问工具计。用量流水不报推理 token（`reasoningTokens` 恒为 0），推理计在输出里。
 
 ## 11. 用量与峰谷
 
@@ -799,23 +912,45 @@ LLM 不讲人话，多半是默认在向评审汇报，想显得周全。做法�
 
 用户套餐为新版积分制〔定案〕。积分公式、系数、高峰时段与额度见 `FACTS.md` §2.4。要点：高峰为周一至周五 14:00–18:00（UTC+8），其余时段（含周末全天）积分按 50% 抵扣。
 
-### 11.2 现状错误
+### 11.2 积分口径〔已实现 2026-10-28，`ROADMAP.md` M6.1〕
 
-`src/ui/panel.ts` 把谷时写死为每天 0–8 点（`DEFAULT_OFF_PEAK`），且统计的是调用次数而非积分〔实读〕。按 §11.1 改为积分口径。
+原问题〔实读〕：`src/ui/panel.ts` 把谷时写死为每天 0–8 点，统计的是调用次数而非积分。
+
+现在积分规则只有一处：`src/shared/credits.ts`，面板、高峰提醒与标定运行器（§10.5.1）共用。
+
+- 一次调用的积分 = （输入 × Input + 缓存命中 × Cached + 输出 × Output）/ 10000，系数按模型 id 取（不分大小写），见 `FACTS.md` §2.4。公式没有缓存写入的系数，缓存写入按输入计。不在积分套餐里的模型（如 `deepseek-flash`）只计次数，不计积分。
+- 高峰为周一至周五 14:00–18:00（UTC+8），14:00 整属于高峰，18:00 整不属于；按 UTC+8 判定，与本机时区无关。高峰按全价计，其余时段（含周末全天）按 50% 计。
+- 按模型而不是按 provider 计：旧的 `glm` 路由与原生通道 `glm-zcode` 用的是同一份套餐。
+- 修正前的用量记录：原生通道的用量块缺陷修正之前（`DESIGN.md` §4.6a），那版解码器写下的记录输入为 0、没有 `totalTokens`。面板按这个形态（provider `glm-zcode`、输入 0、无 `totalTokens`）识别它们，不计入任何数字，只报条数。其他路由同形态的记录照常计（例如旧 `glm` 路由的空回复）。2026-10-28 的真实流水里没有这类记录（原生通道还没在桌面版会话中用过）。
+- 读不出时间或 token 计数的行、不是 JSON 的行，计为「无法读取」，同样只报条数。
+- MCP 工具调用（每次 1.2 积分）不在用量流水里，面板不计。
+
+验证：L2 用手算的记录覆盖高峰与非高峰、周末下午、缓存命中与缓存写入、修正前的记录、套餐外的模型、无法读取的行，以及边界时刻（`tests/credits.spec.ts`）。标定基线的 12 次运行用新模块重算，积分与当时记录的完全一致。
 
 ### 11.3 面板
 
-按模型的积分消耗、缓存命中率、峰谷占比（按积分加权）、5 小时窗口剩余、周额度、预估耗尽时间、MCP 余额（独立一行）。额度类数据由通道取数（`DESIGN.md` §4.7）。
+`/hourness` 的「面板」一节〔已实现 2026-10-28〕：范围是用量流水的全部记录；先列合计，再按模型列出调用次数、积分、高峰占比（高峰时段的积分占该行积分的比例）与缓存命中率（缓存命中 / 全部输入，全部输入含未命中、命中与写入），然后是不计积分的模型、修正前的记录数与无法读取的记录数。
+
+尚未实现：5 小时窗口剩余、周额度、预估耗尽时间、MCP 余额。原因：5 小时窗口从服务端记录的消耗起点刷新，周期自下单日起算，用户档位也未记录（`FACTS.md` §2.4）；用量流水只看得到经 DSH 发出的请求，同一账号在 ZCode 等其他客户端的消耗看不到，本地算出的剩余量会偏高。这几项等通道取数（`DESIGN.md` §4.7）。
 
 ### 11.4 提醒与排期
 
-- 进入高峰时提醒 LLM。
-- 排期功能要有：可把不急的重活（批量测试、巡检、大范围重构）用 DSH 定时提醒排到谷段。高峰期排不排、排哪些，到时候由用户决定〔定案〕。交互中的任务不动，模型与套餐不自动更换。
+- 进入高峰时提醒 LLM〔已实现 2026-10-28，`ROADMAP.md` M6.1〕。实现在 `src/glm-prompt/peak-reminder.ts`，由 `glm-prompt` 行装在每个 agent 上，与 todo 提醒、工具检索公告用同一个接缝（`agent/pre-step`，本步组装之后、请求之前）。规则：本步是 GLM 路由，此刻处在某个高峰时段，且请求可见历史（`session.deriveMessages()`）里没有这个时段的提醒，就在本步已接纳的消息之后追加一条 `<system-reminder>` notice（来源 `glm-peak-reminder`，`source.peakWindow` 记这个时段的 UTC+8 日期）。效果：会话在高峰中开始，或上一步在高峰之前，都只提醒一次；之后同一时段的步不再提醒；次日的高峰再提醒一次。状态在会话里，不在内存里，所以续跑与重启后不重复；压缩把这条 notice 移出可见历史后，同一时段的下一个 GLM 步会再提醒一次，因为模型已经看不到它。非 GLM 路由永远不提醒；同一步里它排在 todo 提醒与 deferred 公告之前。时间经可注入的时钟读取（默认 `Date.now()`），单测用假时钟。
+- 提醒正文（本项目的文本，不是 ZCode 原文，不在镜像文件里）：
+
+  ```text
+  Peak hours have started (weekdays 14:00-18:00 UTC+8). Until 18:00, GLM usage is charged at the full credit rate; outside peak hours it costs half. This is for your information only: keep working on the current task, and do not switch models or plans, or pause or postpone work, unless the user asks.
+  ```
+
+- 提醒只告知：不换模型、不换套餐、不拦截、不推迟任何工作。
+- 验证：L2 用假时钟覆盖跨入高峰、高峰中开局、同一时段不重复、次日再提醒、周末、非 GLM 路由、空首步、续跑会话、与 ZCode notice 的先后（`tests/reminder-wiring.spec.ts`）。L3 探针用只存在于覆盖层的时钟行（`scripts/probe/probe-clock.mjs`，把运行时的 `Date.now()` 平移到周三 15:00 UTC+8）：第一个 GLM 请求带恰好一条提醒，之后的请求仍只带这一条；同一时钟下的非 GLM 会话没有提醒；按真实时钟运行的 GLM 场景，提醒条数与各请求所在的高峰时段一致（夜间运行时为 0）。
+- 排期功能要有：可把不急的重活（批量测试、巡检、大范围重构）用 DSH 定时提醒排到谷段。高峰期排不排、排哪些，到时候由用户决定〔定案〕。交互中的任务不动，模型与套餐不自动更换。尚未实现。
+- DSH 定时提醒 `schedule` 的边界〔实读〕：`schedule.create(sessionId, { prompt, title, at | after_seconds | every_seconds | daily | weekly | cron })`（`dsh-schedule` 2083 行）。提醒只投递到创建它的会话，不支持每次新开会话（`dsh-schedule/README.md` 157 行）；宿主必须在运行，投递失败不自动重试，等下一次唤醒、任务变更或宿主重启（153 行）；`every_seconds` 至少 60 秒；子 agent 的会话拒绝创建。到期时投递的是一条用户角色的提醒消息（来源 `{ kind: 'schedule' }`，lib 1594 行），工作由那个会话的 agent 执行。所以排期与巡检用一个固定的运维会话〔规划〕。
 - 不设预算约束，花费只披露（§4.3）。
 
 ## 12. 运维与晨报
 
-- 巡检：仓库卫生（死代码、重复、过期文档）、图卫生（陈旧节点、无证据的完成）、记忆卫生、依赖与安全更新、指标周报。由 DSH 定时提醒触发，结果进晨报或决策卡。
+- 巡检：仓库卫生（死代码、重复、过期文档）、图卫生（陈旧节点、无证据的完成）、记忆卫生、依赖与安全更新、指标周报。由 DSH 定时提醒在固定的运维会话里触发（提醒只投递到创建它的会话，§11.4），结果进晨报或决策卡。提醒消息的来源不是 `user`，`dsh-tool-goal` 要求当前回合有人直接发的消息才执行的操作（`create_goal`，`update_goal` 的编辑、暂停、恢复）不会因它而执行。本仓库的依赖与安全更新取 `npm run deps:check` 的输出，处理规则见 `DEVELOPMENT.md` §11：补丁与次版本升级过全部门禁、一次一个提交，主版本升级交给用户，`@deepseek-ai/*` 随桌面版运行时升级。
 - 交付指标（DORA）：交付频率、变更失败率、恢复时长。
 - 事故：生成无责复盘节点，再变成规范进入阶梯。
 - DSH 升级：先跑标定测试集与行为探针。
@@ -823,7 +958,7 @@ LLM 不讲人话，多半是默认在向评审汇报，想显得周全。做法�
 
 ## 13. 呈现
 
-风格贴近 DSH 原生〔定案〕。优先使用 DSH 的基础组件库 `ui-primitives`（第三方 client 包能否引用待核实，§15），否则用 DSH 主题 token。上一版不被接受的原因判断为照着颜色变量手搓组件。
+风格贴近 DSH 原生〔定案〕。用 DSH 的基础组件库 `ui-primitives`：壳层的客户端模块表里有 `@deepseek-ai/dsh-client-ui-primitives`，第三方静态包可以 `require`（`dsh-web-frontend` 的 `index-BXV-oxvX.js` 中 `OZ()`，与 DSH 主干 `packages/client/web/src/platform.ts` 一致）〔实读 2026-10-28〕。组件名以 rc.3 官方包实际用到的为准：`Button`、`Modal`、`Menu`、`Tooltip`、`Switch`、`SegmentedControl`、`Pill`、`Tag`、`StateDot`、`MarkdownText`、`CodeBlock`、`DiffBlock`、`JsonTree`、`DisclosureRow`、`SettingsForm`、`Toast` 与一组 `Icon*`。颜色用 DSH 主题 token `--dsw-*`。上一版不被接受的原因判断为照着颜色变量手搓组件。
 
 | 内容 | 位置 |
 | --- | --- |
@@ -834,32 +969,38 @@ LLM 不讲人话，多半是默认在向评审汇报，想显得周全。做法�
 | 记忆：条目、强度、复审、编辑删除、卫生提醒 | 右侧边栏标签页 |
 | 行健康、规范与违规曲线 | 右侧边栏标签页 |
 | 登录、账号、套餐、签名与路由状态、版本基线 | 插件管理器中本插件的配置页（命令留作后备） |
-| guard 拒绝 | 工具调用行的自定义渲染，四段式卡片 |
+| guard 拒绝 | 四段式卡片，渲染在被拒的工具行之后：一个聊天节点定义匹配 guard 拒绝产生的 `tool/result`（结果文本带本项目的标记），做法同 `ui-workflow-run`。按工具名注册的工具行视图（槽 `tool.call.toolview`）只用于本项目自己的工具（图工具、派发工具）；原生工具（`pwsh`、`write`、`edit`）的行由 `ui-tool` 内置，第三方同名注册是覆盖、并列还是报错未核实 |
 | 晨报、决策卡、五键 | 会话回合末尾的卡片 |
 | 方言档位、汇报细度、各行开关 | 插件管理器自动生成的配置表单（补全 `Config` 声明） |
 
 不上 UI：凭证明文、签名细节、提示词原文（只保留一个只读的「查看本会话方言」调试入口）。
 
-约束：client 半只能在独立 UI 包（`DESIGN.md` §2.3）；静态包 client 半只拿到 `require` 模块表（`DEVELOPMENT.md` §5）。
+约束：client 半只能在独立 UI 包（`DESIGN.md` §2.3）。静态包的 factory 只收到 `require`（模块表），但它导出的 `inject` 与 `apply(ctx)` 会被加载器调用，`ctx` 上是声明过的客户端服务（`DEVELOPMENT.md` §5.6）〔实读〕。由此：
+
+- 可用的落点：右侧栏标签页（`sidebarRightTabs.register` 加正文槽 `sidebar.right.pane.tab`）、全局页面（根作用域 `main` 键控槽）、输入框上方条（槽 `conversation.input.dock`，DSH 目标条在这里）、回合末尾卡片（槽 `conversation.chat.turnTail`）、独立聊天节点（`uiConversation.events.register` 加槽 `conversation.chat.node`）、按工具名的工具行视图（槽 `tool.call.toolview`）。证据：`dsh-client-ui-sidebar-right/README.md` 81–84 行、`dsh-client-ui-plan/lib/client.js` 629–705 行、`dsh-client-ui-layout/README.md` 32 行、`dsh-client-ui-goal/lib/client.js` 604 行、`dsh-client-ui-workflow-run/lib/client.js` 591–660 行、`dsh-client-ui-tool/README.md` 36–41 行。
+- 读写：读图文件用 `remote.workspaceFiles`（`read`、`list`、`stat`、`changes` 变更订阅，没有写操作，`dsh-api-workspace-files/README.md` 12 行）；宿主推给客户端用会话投影，投影只能折叠已有的会话事件，第三方插件不能追加自定义事件（`dsh-session/README.md` 70 行）；写回走命令通道 `remote.commands.execute` 或图工具。客户端可调用的 Remote 能力集合在构建时固定，自定义 Remote 服务对第三方不现实（`dsh-api-remotes/README.md` 77–78 行）。
+
+项目图查看器的落点〔规划〕：先在 Desktop 的 Browser 标签页里打开本机查看器的回环地址（`ctx.sidebarRight.openTab('browser', { params: { url } })`，`dsh-client-ui-sidebar-browser/README.md` 43 行；Desktop 默认启用这一行，`dsh-web-app/cordis.patch.yml` 296–298 行）。页面在 Electron webview 里，没有 DSH API，读写由查看器自己的本机服务完成。之后在 M8 做原生右侧栏标签页：React 渲染 SVG，经 `remote.workspaceFiles` 读图文件并订阅变更，写回经命令进入与图工具同一个宿主侧图服务，人和 LLM 的改动走同一套校验与 guard。回环页面在 Browser 标签页里的表现、自己标签页里的 `<iframe>` 会不会被拦，待真机核实（`ROADMAP.md` 借用组件核实清单）。
 
 ## 14. 借用与自建
 
 | 环节 | 借用 DSH | 自建 |
 | --- | --- | --- |
-| 设计期只读、放行审阅 | 计划模式 `plan-mode` | 五栏门禁 |
-| 五键、访谈提问 | `user-questions`、行动卡片（实验） | 五键语义、拨档与画像 |
-| 决策卡（同步） | `user-approval`（一次性、默认失败即拒） | 卡面格式、项目经理层问题门禁 |
-| 分解与并行 | Agent Team（实验）、subagent、工作流引擎 | 难度对应档位、补位提醒、简报门禁 |
-| 驱动循环 | 会话目标、`goal-round-driver`、`tool-ralph` | 项目图与每拍动作 |
-| 汇合门禁 | 工作区文件变更记录 `workspace-changes` | 测试证据检查、知识同步检查 |
+| 设计期只读、放行审阅 | 计划模式 `plan-mode` 的提示词节、审阅卡与 plan 状态（不拦工具，§4.5） | 设计期只读（guard）、五栏门禁 |
+| 五键、访谈提问 | `user-questions`（同步卡） | 五键语义、拨档与画像 |
+| 决策卡（同步） | `user-approval`（只有允许一次 / 拒绝，失败即拒）、`user-questions`（多选项） | 卡面格式、项目经理层问题门禁 |
+| 决策卡（异步） | 无（行动卡片只在 DSH 主干，rc.3 没有） | 图上的待决节点、决策队列、命令回写（§5） |
+| 分解与并行 | subagent（spawn 后端，后台派发；不用 Agent Team 与工作流引擎，§3.6） | 任务节点的派发属性与写入范围门禁（§3.2）、难度对应档位、补位提醒、简报门禁 |
+| 驱动循环 | 会话目标 `goal`、`goal-round-driver`（不用 `tool-ralph`，§2.1） | 由人发起、每拍注入投影、完成门禁；项目图与每拍动作 |
+| 汇合门禁 | 工作区文件变更记录 `workspace-changes`（数据只在宿主进程内存里，会话释放或宿主重启后没有） | 测试证据检查、知识同步检查；要跨重启保留的证据写进图 |
 | guard 影子兜底 | `workspace-changes` 的回合摘要（已接入 2026-10-28，接口见 `DESIGN.md` §2.4a） | 与文件工具目标比对、影子记录（§6.5.2） |
-| 运维与晨报 | 定时提醒 `schedule` | 巡检内容、四答对账 |
+| 运维与晨报 | 定时提醒 `schedule`（只投递到创建它的会话，§11.4） | 固定运维会话、巡检内容、四答对账 |
 | 用量底座 | `token-meter`、`session-stats` | 积分与峰谷口径、额度 |
 | 外部工具 | MCP 客户端 | 环境分支 |
-| 检查器 | 无（LSP 无诊断） | 检查器运行与回传 |
+| 检查器 | 无（rc.3 没有 LSP 包，§7.5） | 检查器运行与回传 |
 | 状态机、阶段提醒、流程条、项目图 | 无 | 全部自建 |
 
-借用一栏目前只读过各包的说明文档，接口在实现前逐个核实。
+借用一栏已于 2026-10-28 对照 rc.3 运行时包只读核查，证据按包与行号写在正文各节与 `FACTS.md` §3；`token-meter`、`session-stats` 只核到服务名与投影键，`mcp-client` 只读了说明文档。与本包插件配合的部分（宿主插件启动后台子 agent、读计划状态、目标轮注入、第三方客户端落点）还要在沙盒或真机上核实，清单见 `ROADMAP.md` 借用组件核实清单。
 
 ## 15. 待定项
 
@@ -886,9 +1027,5 @@ LLM 不讲人话，多半是默认在向评审汇报，想显得周全。做法�
 | 查看器页面的自动化测试 | 待用户定（§2.10）：服务端 API 有单测与冒烟，页面脚本（选中、折叠、筛选、表单、实时更新）只手工核对过。自动化要浏览器驱动（例 Playwright），属新增开发依赖，走决策卡。推荐查看器进 DSH 的 Browser 标签页之前加上；备选是 M8 做原生标签页时再加 |
 | 查看器在 DSH 里的落点 | 规划（§2.10）：先经内置 Browser 标签页打开本查看器的回环地址，再在 M8 做原生右侧栏标签页，读经 `remote.workspaceFiles`，写经命令通道进宿主侧图服务。待真机核实 Browser 标签页对回环地址与 SSE 的表现 |
 | 草稿区位置 | 工作区内通用目录，汇合门禁检查 |
-| 驱动循环借用哪个接缝 | 读 `goal-round-driver`、`schedule`、`tool-ralph` 接口后决定 |
-| Agent Team 实验状态与普通 subagent 委派互斥的影响 | 实现前评估 |
-| `ui-primitives` 能否被第三方 client 包引用 | 实现前核实 |
 | 小改动简报的简化形态 | M7 设计 |
 | 审查 agent 的模型档位 | M7 设计 |
-| 标定测试集的任务清单与存放位置 | M1.7 起步，M3/M7 扩充 |

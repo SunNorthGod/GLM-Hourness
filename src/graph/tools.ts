@@ -21,7 +21,7 @@ import { NODE_TYPES, SLOPES, STAGES, TASK_KINDS, TIERS } from './schema.ts'
 import type { LoadedGraph } from './store.ts'
 
 /** Loader row id, named in hints so the model can point the human at the config. */
-export const GRAPH_ROW_ID = 'glm-hourness/graph'
+const GRAPH_ROW_ID = 'glm-hourness/graph'
 
 /** Graph directory under the session working directory when the row config names none. */
 export const DEFAULT_GRAPH_DIR = 'docs/graph'
@@ -272,7 +272,7 @@ function writeTool(dir: string, op: LlmOp, description: string, parameters: Json
     output: { schema: WRITE_OUTPUT, render },
     async execute(args, exec) {
       if (isRecord(args) && args.op !== undefined && args.op !== op) {
-        refuse(failure('invalid', `graph_${op} performs ${op}, not ${String(args.op)}`, 'call the tool named after the operation; approve, reject, decide and supersede are the human\'s', 'op'))
+        refuse(failure('invalid', `graph_${op} performs ${op}, not ${typeof args.op === 'string' ? args.op : JSON.stringify(args.op)}`, 'call the tool named after the operation; approve, reject, decide and supersede are the human\'s', 'op'))
       }
       const engine = openEngine(await graphDir(dir, exec))
       // The actor is this entry point's, never the request's: an actor field is refused as an extra field.

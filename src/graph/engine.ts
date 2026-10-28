@@ -142,7 +142,7 @@ async function apply(dir: string, actor: Actor, input: unknown, now: () => Date)
     const graph = await loadGraph(dir)
     if (hasErrors(graph)) {
       const errors = graph.issues.filter(issue => issue.severity === 'error')
-      return failure('graph_invalid', `the graph has ${errors.length} validation error(s); first: ${describeIssue(errors[0]!)}`, 'fix the node files by hand or restore them with git, then retry')
+      return failure('graph_invalid', `the graph has ${errors.length} validation error(s); first: ${describeIssue(errors[0])}`, 'fix the node files by hand or restore them with git, then retry')
     }
     const context: Context = { graph, actor, at: now().toISOString() }
     const plan = mutation.op === 'propose' ? planPropose(context, mutation.node, mutation.reason) : planChange(context, mutation)
@@ -164,7 +164,7 @@ function requestFields(file: string, base: string, settable: readonly string[]):
   const keys = new Set(settable)
   return issue => {
     if (issue.field === undefined || issue.file !== file) return issue.field
-    const top = issue.field.split(/[.[]/)[0]!
+    const top = issue.field.split(/[.[]/)[0]
     return keys.has(top) ? `${base}.${issue.field}` : issue.field
   }
 }

@@ -15,9 +15,10 @@
  * controls. Nothing is restricted or unmounted, so a mid-session route
  * switch takes effect on the next step. The ZCode todo reminder rides the
  * same step: its `agent/pre-step` listener reads what this step's rewrite
- * decided. Each assembled request reports the row health of its session
- * (src/shared/health.ts). Activation never throws; one agent's failure
- * leaves the others.
+ * decided. So does the peak-hour reminder (docs/ORCHESTRATION.md §11.4), a
+ * harness notice of this project, not a ZCode text. Each assembled request
+ * reports the row health of its session (src/shared/health.ts). Activation
+ * never throws; one agent's failure leaves the others.
  */
 import { buildIdentitySection } from './identity.ts'
 import { buildAliases, type BuiltAlias } from './aliases.ts'
@@ -28,6 +29,7 @@ import { isGlmAssembly, rewriteDialectSections, rewriteToolFace } from './assemb
 import { mapTodoWriteToDsh } from './todowrite.ts'
 import { TODO_WRITE_DESCRIPTION, TODO_WRITE_INPUT_SCHEMA } from './zcode-tool-text.ts'
 import { installTodoReminder, TODO_NATIVE, TODO_WRITE_NAME } from './todo-reminder.ts'
+import { installPeakReminder } from './peak-reminder.ts'
 import { installToolSearch } from '../toolsearch/index.ts'
 import { provideRowHealth, sessionIdOf, type HealthState, type RowHealth } from '../shared/health.ts'
 import { assemblyRoute, type Route } from '../shared/route.ts'
@@ -125,9 +127,10 @@ export function buildAgentAliases(agent: AgentLike): BuiltAlias[] {
  * reminder. Tool search runs on the alias face, so its resident/deferred
  * split sees ZCode names. The reminder reads this step's rewrite: GLM route
  * and TodoWrite on the face before tool search defers it (ZCode checks the
- * turn tools, not the request's resident face).
+ * turn tools, not the request's resident face). The peak-hour reminder
+ * reads the GLM route of the step and the wall clock `now`.
  */
-export function installDialect(agent: AgentLike, config: GlmPromptConfig = {}, health?: Pick<RowHealth, 'report'>): () => void {
+export function installDialect(agent: AgentLike, config: GlmPromptConfig = {}, health?: Pick<RowHealth, 'report'>, now: () => number = () => Date.now()): () => void {
   const sections = dialectSections(false, config.persona ?? 'balanced', config)
   const aliases = buildAgentAliases(agent)
   const aliasNames = new Set(aliases.map(alias => alias.tool.name))
@@ -137,9 +140,11 @@ export function installDialect(agent: AgentLike, config: GlmPromptConfig = {}, h
   const toolSearch = searchMode === 'local' ? installToolSearch(agent) : undefined
   if (toolSearch !== undefined) disposers.push(() => toolSearch.dispose())
   let todoReminderEligible = false
+  let glmStep = false
   disposers.push(agent.ctx.on('system-prompt/assemble', async (_assembly: AssemblePayload, _context: unknown, next: () => Promise<AssemblePayload>) => {
     const assembled = await next()
     const glm = isGlmAssembly(assembled)
+    glmStep = glm
     health?.report(sessionIdOf(agent), ...dialectHealth(assemblyRoute(assembled), glm, searchMode === 'off' ? 'off' : toolSearch === undefined ? 'missing' : 'local'))
     const withSections = glm ? rewriteDialectSections(assembled, sections) : assembled
     const face = rewriteToolFace(withSections.tools, glm, aliasNames, coveredNatives)
@@ -152,6 +157,10 @@ export function installDialect(agent: AgentLike, config: GlmPromptConfig = {}, h
   // which ZCode collects the two attachments.
   const todoReminder = installTodoReminder(agent, () => todoReminderEligible)
   if (todoReminder !== undefined) disposers.push(todoReminder)
+  // Registered last, so it runs innermost: its notice precedes the ZCode
+  // notices, which keep their collection order after it.
+  const peakReminder = installPeakReminder(agent, () => glmStep, now)
+  if (peakReminder !== undefined) disposers.push(peakReminder)
   return () => { for (const dispose of disposers.splice(0)) dispose() }
 }
 
@@ -166,8 +175,8 @@ export function dialectHealth(route: Route, glm: boolean, search: 'local' | 'off
 /** cordis plugin identity. */
 export const name = 'dsh-glm-hourness/glm-prompt'
 
-/** cordis plugin entry. */
-export function apply(ctx: PluginContext & Partial<ProvideHost>, config: GlmPromptConfig = {}): () => void {
+/** cordis plugin entry (cordis passes `ctx` and `config`; `now` is the wall clock, injectable for tests). */
+export function apply(ctx: PluginContext & Partial<ProvideHost>, config: GlmPromptConfig = {}, now: () => number = () => Date.now()): () => void {
   const installed = new WeakSet<AgentLike>()
   const health = provideRowHealth(ctx, 'glm-prompt', 'active', `已加载（工具检索 ${config.toolSearchMode ?? 'local'}）`)
   const disposers: Array<() => void> = [() => health.dispose()]
@@ -176,7 +185,7 @@ export function apply(ctx: PluginContext & Partial<ProvideHost>, config: GlmProm
     if (installed.has(agent)) return
     installed.add(agent)
     try {
-      disposers.push(installDialect(agent, config, health))
+      disposers.push(installDialect(agent, config, health, now))
     }
     catch (error) {
       // One agent's dialect must never break agent creation (activation-time

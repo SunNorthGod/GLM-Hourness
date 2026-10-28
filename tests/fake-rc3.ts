@@ -81,6 +81,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every(entry => typeof entry === 'string')
+}
+
 function scalarMatches(type: string, value: unknown): boolean {
   switch (type) {
     case 'string': return typeof value === 'string'
@@ -122,7 +126,7 @@ export function schemaViolations(schema: unknown, path = 'schema'): string[] {
     for (const [key, child] of Object.entries(declared)) out.push(...schemaViolations(child, `${path}.properties.${key}`))
     const required = schema.required
     if (has('required')) {
-      if (!Array.isArray(required) || required.some(entry => typeof entry !== 'string')) out.push(`${path}.required must be an array of strings`)
+      if (!isStringArray(required)) out.push(`${path}.required must be an array of strings`)
       else out.push(...required.filter(key => !Object.hasOwn(declared, key)).map(key => `${path}.required names "${key}" which is not in properties`))
     }
     if (has('additionalProperties') && typeof schema.additionalProperties !== 'boolean') out.push(`${path}.additionalProperties must be a boolean`)
@@ -143,7 +147,7 @@ export function schemaViolations(schema: unknown, path = 'schema'): string[] {
  * validates every body value before rendering it and turns a mismatch into
  * an error result (dsh-tools `createSuccessResult`, tools:3637–3640).
  */
-export function valueViolations(schema: Record<string, unknown>, value: unknown, path = 'value'): string[] {
+function valueViolations(schema: Record<string, unknown>, value: unknown, path = 'value'): string[] {
   if (Array.isArray(schema.oneOf)) {
     const matches = schema.oneOf.filter(branch => valueViolations(branch as Record<string, unknown>, value, path).length === 0).length
     return matches === 1 ? [] : [`"${path}" must match exactly one oneOf branch (matched ${matches})`]
@@ -215,7 +219,7 @@ export function fakeRuntime(options: { natives?: readonly string[], calls?: Arra
         const pending: ToolExecutionPayload = { name: input.name, arguments: input.arguments, ...(input.agent === undefined ? {} : { agent: input.agent }), ...(input.parent === undefined ? {} : { parent: input.parent }) }
         const gate = await of('tools/pre-execute').reduceRight<() => Promise<PreExecuteDecision>>(
           (next, listener) => async () => (listener as unknown as PreExecuteListener)(pending, next),
-          async () => ({ kind: 'allow' }),
+          () => Promise.resolve<PreExecuteDecision>({ kind: 'allow' }),
         )()
         if (gate.kind === 'deny') return { isError: true, content: [{ type: 'text', text: `Error: ${gate.reason}` }], error: { message: gate.reason } }
         if (gate.kind !== 'allow') throw new Error(`fake-rc3 does not model the ${gate.kind} decision`)
