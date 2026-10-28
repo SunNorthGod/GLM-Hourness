@@ -2,8 +2,10 @@
  * Anthropic Messages wire codec for the native ZCode client: encodes DSH LLM
  * seam requests into the upstream Anthropic shape (the ZCode client's own
  * protocol since both plans moved to Anthropic upstreams) and decodes the
- * SSE event stream back into seam stream chunks. GLM models always think;
+ * SSE event stream back into seam stream chunks. GLM decides when to think;
  * the real client sends no thinking field, so neither does this encoder.
+ * Thinking blocks carry signatures; the decoder stores them as replay
+ * metadata and the encoder sends the reasoning back (docs/DESIGN.md §4.5c).
  */
 import { messageText, type ContentBlockLike, type GenerateOptionsLike, type RequestMessageLike, type StreamChunk, type ToolSchemaLike, type TokenUsage, type FinishReason } from '../shared/lm-min.ts'
 import type { RequestImages } from './images.ts'
@@ -13,13 +15,59 @@ type WireText = { type: 'text', text: string }
 /** Anthropic base64 image block, the shape ZCode's AI SDK Anthropic provider emits. */
 type WireImageBlock = { type: 'image', source: { type: 'base64', media_type: string, data: string } }
 
+/** Anthropic thinking block as replayed in history; `signature` is '' for unsigned reasoning (ZCode's empty-signature form). */
+type WireThinking = { type: 'thinking', thinking: string, signature: string }
+
 /** One Anthropic content block the encoder emits; any block may carry the cache breakpoint. */
 export type WireBlock = (
   | WireText
   | WireImageBlock
+  | WireThinking
   | { type: 'tool_use', id: string, name: string, input: unknown }
   | { type: 'tool_result', tool_use_id: string, content: string | Array<WireText | WireImageBlock>, is_error?: true }
 ) & { cache_control?: { type: 'ephemeral' } }
+
+/** The route one request targets: replayed signatures must come from the same one. */
+export interface TargetRoute {
+  readonly provider: string
+  readonly model: string
+}
+
+/** Per-block replay metadata of one glm-zcode response, in emitted block order. */
+export type ReplayBlock =
+  | { type: 'text' }
+  | { type: 'reasoning', signature?: string }
+  | { type: 'tool-call' }
+
+/** The kind and version tag of this channel's replay envelope. */
+const REPLAY_KIND = 'glm-zcode'
+const REPLAY_VERSION = 1
+
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value)
+
+/**
+ * The replay entries of one assistant message when they are this channel's
+ * and still align with its content (the shape DSH's own deepseek-messages
+ * adapter validates, rc.3 dsh-llm-deepseek `validateReplay`): kind and
+ * version, the model of the source, one entry per content block with the
+ * same type, signatures only on reasoning. Anything else is unusable and
+ * the message is encoded without signatures.
+ */
+export function replayBlocksOf(message: RequestMessageLike): readonly ReplayBlock[] | undefined {
+  const source = message.source
+  if (source?.kind !== 'model' || !isRecord(source.replayState)) return undefined
+  const { response, blocks } = source.replayState
+  if (!isRecord(response) || response.kind !== REPLAY_KIND || response.version !== REPLAY_VERSION || response.model !== source.model) return undefined
+  if (!Array.isArray(blocks) || blocks.length !== message.content.length) return undefined
+  const entries: ReplayBlock[] = []
+  for (const [index, entry] of (blocks as unknown[]).entries()) {
+    const type = message.content[index]?.type
+    if (!isRecord(entry) || entry.type !== type || (type !== 'text' && type !== 'reasoning' && type !== 'tool-call')) return undefined
+    if (entry.signature !== undefined && (type !== 'reasoning' || typeof entry.signature !== 'string')) return undefined
+    entries.push(type === 'reasoning' ? { type, ...(typeof entry.signature === 'string' ? { signature: entry.signature } : {}) } : { type })
+  }
+  return entries
+}
 
 /** One Anthropic message. */
 export interface WireMessage {
@@ -119,7 +167,7 @@ function imageBlock(block: Extract<ContentBlockLike, { type: 'image' }>, images:
  * a tool result with an image carries block content inside `tool_result`,
  * the placement ZCode uses for Anthropic routes.
  */
-export function encodeMessage(message: RequestMessageLike, images?: RequestImages): WireMessage | undefined {
+export function encodeMessage(message: RequestMessageLike, images?: RequestImages, route?: TargetRoute): WireMessage | undefined {
   if (message.role === 'system' || message.role === 'developer') {
     // A system or developer message after the leading prompt is harness
     // context; Anthropic has no mid-conversation system role, so it rides a
@@ -142,18 +190,46 @@ export function encodeMessage(message: RequestMessageLike, images?: RequestImage
       }],
     }
   }
-  if (message.role === 'assistant') {
-    // rc.3 carries tool calls as `tool-call` content blocks; reasoning has no
-    // replayable signature on this channel and is not sent back.
-    const blocks: WireBlock[] = []
-    for (const block of message.content) {
-      if (block.type === 'text' && block.text.length > 0) blocks.push({ type: 'text', text: block.text })
-      else if (block.type === 'tool-call') blocks.push({ type: 'tool_use', id: block.id, name: block.name, input: safeParse(block.arguments) })
-    }
-    return blocks.length === 0 ? undefined : { role: 'assistant', content: blocks }
-  }
+  if (message.role === 'assistant') return encodeAssistant(message, route)
   const blocks = userSideBlocks(message.content, images)
   return { role: 'user', content: blocks.length > 0 ? blocks : [{ type: 'text', text: EMPTY_USER_CONTENT_FALLBACK }] }
+}
+
+/**
+ * One assistant message: rc.3 carries tool calls as `tool-call` content
+ * blocks; reasoning goes back as thinking blocks in stream order (preserved
+ * thinking, docs/DESIGN.md §4.5c), following ZCode's history normalization
+ * (3.16.3 adapters reasoning-history-normalization, anthropic-reasoning-metadata):
+ * - a signature replays only to the route that issued it (same provider and
+ *   model; signatures are model-bound), and signed reasoning from another
+ *   route is removed;
+ * - unsigned reasoning goes back with the empty signature;
+ * - an empty reasoning block without a signature is a stream shell and drops;
+ * - a message left with reasoning only (no text, no tool call) drops.
+ */
+function encodeAssistant(message: RequestMessageLike, route: TargetRoute | undefined): WireMessage | undefined {
+  const replay = replayBlocksOf(message)
+  const sameRoute = route !== undefined && message.source?.provider === route.provider && message.source.model === route.model
+  const blocks: WireBlock[] = []
+  for (const [index, block] of message.content.entries()) {
+    if (block.type === 'text' && block.text.length > 0) blocks.push({ type: 'text', text: block.text })
+    else if (block.type === 'tool-call') blocks.push({ type: 'tool_use', id: block.id, name: block.name, input: safeParse(block.arguments) })
+    else if (block.type === 'reasoning') {
+      const entry = replay?.[index]
+      const signature = entry?.type === 'reasoning' ? entry.signature ?? '' : ''
+      if (signature.length > 0 && !sameRoute) continue
+      if (block.text.length === 0 && signature.length === 0) continue
+      blocks.push({ type: 'thinking', thinking: block.text, signature })
+    }
+  }
+  return blocks.some(block => block.type !== 'thinking') ? { role: 'assistant', content: blocks } : undefined
+}
+
+/** Remove the thinking blocks that end a trailing assistant message (ZCode `removeTrailingReasoning`). */
+function dropTrailingThinking(messages: WireMessage[]): void {
+  const last = messages.at(-1)
+  if (last?.role !== 'assistant') return
+  while (last.content.at(-1)?.type === 'thinking') last.content.pop()
 }
 
 function safeParse(raw: string): unknown {
@@ -183,9 +259,11 @@ function groupTurns(messages: readonly WireMessage[]): WireMessage[] {
  */
 export function encodeRequest(options: GenerateOptionsLike, systemBlocks?: ReadonlyArray<{ type: 'text', text: string, cache_control?: { type: 'ephemeral' } }>, images?: RequestImages, userId?: string): AnthropicRequest {
   // Leading system messages belong to `systemBlocks` (see splitSystemPrompt).
+  const route: TargetRoute = { provider: options.provider, model: options.model }
   const messages = groupTurns(splitSystemPrompt(options).messages
-    .map(message => encodeMessage(message, images))
+    .map(message => encodeMessage(message, images, route))
     .filter((message): message is WireMessage => message !== undefined))
+  dropTrailingThinking(messages)
   markLastMessage(messages)
   const request: AnthropicRequest = {
     model: options.model,
@@ -207,8 +285,8 @@ function encodeTool(tool: ToolSchemaLike): { name: string, description: string, 
 interface AnthropicEvent {
   type: string
   index?: number
-  content_block?: { type?: string, id?: string, name?: string, text?: string, thinking?: string }
-  delta?: { type?: string, text?: string, thinking?: string, partial_json?: string, stop_reason?: string }
+  content_block?: { type?: string, id?: string, name?: string, text?: string, thinking?: string, signature?: string }
+  delta?: { type?: string, text?: string, thinking?: string, signature?: string, partial_json?: string, stop_reason?: string }
   message?: { usage?: WireUsage }
   usage?: WireUsage
 }
@@ -268,19 +346,40 @@ export function decodeFrame(frame: unknown): ReadonlyArray<StreamChunk> {
   }
 }
 
-/** Per-block aggregation state while an SSE stream is open. */
+/** Per-block aggregation state while an SSE stream is open; `replay` is the block's entry in the replay envelope. */
 interface OpenBlock {
   type: 'text' | 'reasoning' | 'tool-call'
   text: string
   id?: string | undefined
   name?: string | undefined
   arguments: string
+  replay: ReplayBlock
+  /** The signature so far came from the start event; a signature_delta replaces it instead of extending it. */
+  startSignature?: boolean
 }
 
-/** Parse an SSE stream body into seam chunks (aggregating per-block state for `block-end`). */
-export async function* decodeSse(body: ReadableStream<Uint8Array>): AsyncGenerator<StreamChunk> {
+/**
+ * The finish chunk of one response: with `model` known and at least one
+ * reasoning block emitted, it carries the replay envelope (one entry per
+ * emitted block, in first-seen order; a reasoning entry holds its non-empty
+ * signature).
+ */
+function finishChunk(stop: string, model: string | undefined, replay: readonly ReplayBlock[]): StreamChunk {
+  const reason = finishReason(stop)
+  if (model === undefined || !replay.some(entry => entry.type === 'reasoning')) return { type: 'finish', reason }
+  const blocks = replay.map(entry => entry.type === 'reasoning' && entry.signature !== undefined && entry.signature.length === 0 ? { type: 'reasoning' as const } : { ...entry })
+  return { type: 'finish', reason, replayState: { response: { kind: REPLAY_KIND, version: REPLAY_VERSION, model }, blocks } }
+}
+
+/**
+ * Parse an SSE stream body into seam chunks (aggregating per-block state for
+ * `block-end`). `model` is the requested model the replay envelope names;
+ * without it no envelope is emitted.
+ */
+export async function* decodeSse(body: ReadableStream<Uint8Array>, model?: string): AsyncGenerator<StreamChunk> {
   const decoder = new TextDecoder()
   const openBlocks = new Map<number, OpenBlock>()
+  const replay: ReplayBlock[] = []
   let usage: WireUsage = {}
   let buffer = ''
   for await (const bytes of body) {
@@ -300,15 +399,25 @@ export async function* decodeSse(body: ReadableStream<Uint8Array>): AsyncGenerat
         usage = accumulateUsage(usage, event.usage)
         const merged = toTokenUsage(usage)
         if (merged !== undefined) yield { type: 'usage', usage: merged }
+        const stop = event.delta?.stop_reason
+        if (typeof stop === 'string') yield finishChunk(stop, model, replay)
+        continue
       }
       if (event.type === 'content_block_start') {
         const index = event.index ?? 0
-        const type = event.content_block?.type
-        if (type === 'text') openBlocks.set(index, { type: 'text', text: '', arguments: '' })
-        else if (type === 'thinking') openBlocks.set(index, { type: 'reasoning', text: '', arguments: '' })
-        else if (type === 'tool_use') {
-          openBlocks.set(index, { type: 'tool-call', text: '', id: event.content_block?.id, name: event.content_block?.name, arguments: '' })
+        const start = event.content_block
+        const open = (block: Omit<OpenBlock, 'text' | 'arguments'>): void => {
+          openBlocks.set(index, { text: '', arguments: '', ...block })
+          replay.push(block.replay)
         }
+        if (start?.type === 'text') open({ type: 'text', replay: { type: 'text' } })
+        // Some Anthropic-compatible servers put the final signature on the
+        // start event instead of a signature_delta (ZCode anthropic-stream-compat).
+        else if (start?.type === 'thinking') {
+          const signature = typeof start.signature === 'string' ? start.signature : ''
+          open({ type: 'reasoning', replay: { type: 'reasoning', signature }, startSignature: signature.length > 0 })
+        }
+        else if (start?.type === 'tool_use') open({ type: 'tool-call', id: start.id, name: start.name, replay: { type: 'tool-call' } })
       }
       if (event.type === 'content_block_delta') {
         const index = event.index ?? 0
@@ -317,6 +426,10 @@ export async function* decodeSse(body: ReadableStream<Uint8Array>): AsyncGenerat
           if (event.delta?.type === 'text_delta' && typeof event.delta.text === 'string') block.text += event.delta.text
           if (event.delta?.type === 'thinking_delta' && typeof event.delta.thinking === 'string') block.text += event.delta.thinking
           if (event.delta?.type === 'input_json_delta' && typeof event.delta.partial_json === 'string') block.arguments += event.delta.partial_json
+          if (event.delta?.type === 'signature_delta' && typeof event.delta.signature === 'string' && block.replay.type === 'reasoning') {
+            block.replay.signature = (block.startSignature === true ? '' : block.replay.signature ?? '') + event.delta.signature
+            block.startSignature = false
+          }
         }
       }
       if (event.type === 'content_block_stop') {

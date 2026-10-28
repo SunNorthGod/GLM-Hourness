@@ -264,7 +264,7 @@ LLM 平面（bundle `g6n` 形态）：`HTTP-Referer`、`User-Agent: ZCode/<ver>`
 - 状态：coding-plan 端到端真网成功，模型返回 `pong`〔实测，`scripts/smoke-zcode-authorized.mjs`〕；start-plan 只有单测。
 - 系统提示词：DSH 把组装好的系统提示词作为历史开头的 `system` 消息下发，`GenerateOptions.system` 为空〔L3 探针实测〕。编码器把请求级文本与开头的全部 `system` 消息依次合并进 Anthropic 的 `system` 字段（与 DSH 自带 pi-ai 适配器同一规则）；之后出现的 `system` / `developer` 消息作为 `<system-reminder>` 包裹的用户轮发送。适配器不声明 `systemPromptUpdate: 'in-history'`，提示词变化时由 DSH 改写开头那条消息〔已实现 2026-10-27〕。此前编码器丢弃全部 `system` 消息而适配器又声明 in-history，原生通道在 DSH 会话里会发出没有系统提示词的请求；冒烟脚本直接传 `system` 参数，所以没有暴露。
 - 消息编码〔已实现 2026-10-28，`src/glm-llm/anthropic.ts`〕：按 rc.3 的消息形状（`dsh-llm` `ContentBlockMap`）逐块编码，块序不变，空文本块丢弃，与 ZCode 的 AI SDK 转换一致：
-  - 助手消息：`text` 块发文本，`tool-call` 块发 `tool_use`（参数解析失败时为 `{}`）；`reasoning` 块在本通道没有可回放的签名，不回传。
+  - 助手消息：`text` 块发文本，`tool-call` 块发 `tool_use`（参数解析失败时为 `{}`）；`reasoning` 块按 §4.5c 作为 thinking 块回传（2026-10-28 之前不回传）。
   - 工具结果：`tool_result`，纯文本结果为一个字符串，空结果为 `(no output)`；失败结果带 `is_error: true`（ZCode 的 error-text 输出）；带图片的结果见 §4.5a。
   - 用户消息：文本块各自成块；没有内容时发 ZCode 的占位 `(no content)`（3.16.3 安装包 `toAiSdkUserContent`），不再发空文本块。
   - 相邻同角色的消息合并为一轮，与 ZCode 经 AI SDK Anthropic provider 发出的形态一致：并行调用的多个工具结果与其后的提醒落在同一个用户轮里。
@@ -279,6 +279,21 @@ LLM 平面（bundle `g6n` 形态）：`HTTP-Referer`、`User-Agent: ZCode/<ver>`
 - 附件服务与 `fs` 服务按请求经 `ctx.get` 读取，不注入（与 pi-ai 相同）；请求带图片而附件服务不存在时，请求失败并说明原因。
 - 请求级图片预算：本通道不发 `IMAGE_OFFLOAD_REQUIRED`。ZCode 没有请求级的图片总量上限，GLM 端点的上限未知（§9）。
 - 验证：编码器与适配器单测；L3 探针在 GLM-5.3-Flash 上读 PNG，探针 provider 用本通道的真实编码器与运行时附件服务编码同一请求，图片以 base64 PNG 出现在 `tool_result` 中；真网一次（coding-plan，`glm-5.3-flash`，32×32 纯红 PNG，问颜色），模型答「Red」，用量输入 41、输出 32 token〔实测 2026-10-28〕。只有一次请求，猜中的可能不能完全排除。
+
+### 4.5c 保留式思考〔已实现 2026-10-28〕
+
+BigModel 的思考文档写明：保留式思考在 Coding Plan 端点默认开启，要把完整、未修改的 reasoning 原样传回，否则效果与缓存命中都会下降；交错思考加工具时，必须在返回工具结果时一并返回 reasoning（`.llm/docs/_bigmodel_md/cn__guide__capabilities__thinking-mode.md`）。ZCode 照此回放（3.16.3 `adapters/src/model/reasoning-history-normalization.ts`、`anthropic-reasoning-metadata.ts`）。本通道此前丢弃全部 reasoning。
+
+- 实测〔2026-10-28，coding-plan〕：GLM 只在需要时思考（简单的工具调用请求没有 thinking 块）；thinking 块在 `content_block_start` 带空的 `signature` 字段，签名经 `signature_delta` 送达，24 个字符。端点不校验签名：正确签名、空签名、无签名字段、乱码签名、改过正文的原签名、外来正文加空签名，六种回放全部 200。
+- 解码：每个 thinking 块的签名记进 DSH 的回放信封（`finish.replayState`，`{response: {kind: 'glm-zcode', version: 1, model}, blocks}`，每个发出的块一项，按首次出现的顺序；DSH 自带的 deepseek-messages 适配器用同一形状）。只有出现过 reasoning 块的响应才带信封。开始事件上已有签名时也认，随后的 `signature_delta` 替换它（ZCode `anthropic-stream-compat` 的兼容处理）。助手消息由运行时组装时，信封随消息存进 `source.replayState`；不归本适配器的历史路由，运行时会先剥掉信封（rc.3 `LlmRuntime.forAdapter`）。
+- 编码，按 ZCode 的历史归一化：
+  - 信封可用（kind、version、模型与消息来源一致，块数与类型逐项对齐）且消息来自同一路由（provider 与模型都相同）时，reasoning 带原签名回放。
+  - 带签名的 reasoning 只回给签发它的路由；换了模型就删掉（ZCode `removeCrossModelReasoning`：签名绑定模型）。
+  - 没有签名的 reasoning（本次改动之前的历史、信封对不上、其他适配器的历史）以空签名回放（ZCode 用空签名表示保留的未签名 thinking）。
+  - 空正文且无签名的 reasoning 是流里的空壳，丢弃；只剩 reasoning、没有文本与工具调用的助手消息整条丢弃；请求以助手轮结尾时，去掉结尾的 thinking 块（ZCode `removeReasoningOnlyAssistants`、`removeTrailingReasoning`）。
+- 与 ZCode 的差异：ZCode 在端点以签名错误拒收时会删掉带签名的 reasoning 重试一次（`repairReasoningHistoryAfterSignatureRejection`）。端点实测不校验签名，本通道没有移植这一步；若出现点名 thinking 签名的 400，再移植。
+- 对缓存的影响：没有。缓存只存提示词，不存输出（§4.5b），回放 thinking 不能把命中延伸到上一步的输出。升级后已有会话的第一次请求，历史里多出 reasoning，前缀与上一次不同，会有一次未命中。
+- 验证：解码与编码单测，其中一条用 rc.3 真实的 `BlockAssembler` 组装解码结果，再编码下一次请求，确认签名回到同一路由、换模型时删除（`tests/glm-transport.spec.ts`）；真网一次完整往返（真实适配器加 `BlockAssembler`，glm-5.3）：第二步发出 `thinking`（64 字符，24 字符签名）、`text`、`tool_use`，端点接受。
 
 ### 4.6 模型目录与思考档位
 

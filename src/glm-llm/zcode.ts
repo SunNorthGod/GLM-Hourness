@@ -315,7 +315,7 @@ export class ZcodeAdapter {
     // decodeSse emits the internal structural chunk vocabulary; it is
     // field-compatible with the DSH StreamChunk protocol (only the branded id
     // types differ, and brands exist only at the type level).
-    yield* decodeSse(response.body) as AsyncIterable<LlmStreamChunk>
+    yield* decodeSse(response.body, options.model) as AsyncIterable<LlmStreamChunk>
   }
 }
 
