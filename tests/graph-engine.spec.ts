@@ -353,7 +353,11 @@ graphTest('decide: a human picks an option, the question is done with decision e
   assert.deepEqual(decided.node.history.at(-1), {
     at: decided.node.history.at(-1)!.at, actor: 'human', op: 'decide', reason: '正文好读', from: 'approved', to: 'done', option: 'B', evidence: [{ kind: 'decision', ref: 'B' }],
   })
-  refused(await g.act('human', { op: 'decide', id: question.id, option: 'A', reason: '再定' }), 'bad_transition')
+  refused(await g.act('human', { op: 'decide', id: question.id, option: 'B', reason: '再定' }), 'bad_transition', 'option')
+  const overturned = must(await g.act('human', { op: 'decide', id: question.id, option: 'A', reason: '还是不加解析器' }))
+  assert.equal(overturned.node.decision, 'A')
+  assert.deepEqual(overturned.node.evidence, [{ kind: 'decision', ref: 'B' }, { kind: 'decision', ref: 'A' }])
+  assert.deepEqual([overturned.node.history.at(-1)?.from, overturned.node.history.at(-1)?.to], ['done', 'done'], 'a done question is decided again in place')
 })
 
 graphTest('decide applies to approved questions only', async g => {
@@ -564,6 +568,7 @@ graphTest('decision queue: oldest first with options and the raising node; a hum
     body: '推荐 JSON：不新增解析器',
     options: QUESTION.options,
     recommend: 'A',
+    decider: 'human',
     raisedBy: { id: 'feature-1', type: 'feature', title: '引擎', status: 'approved', rev: await g.rev('feature-1') },
     sources: [{ id: 'task-1', type: 'task', title: '存储', status: 'approved', rev: await g.rev('task-1') }],
     askedAt: first.node.history[0].at,
@@ -589,4 +594,91 @@ graphTest('decision queue: oldest first with options and the raising node; a hum
   const source = await g.engine.projection('task-1')
   assert.ok(source.ok)
   assert.deepEqual(source.projection.sourceOf.map(entry => [entry.id, entry.decision]), [['question-b', 'B']])
+})
+
+// decision tiers and relay (§2.9)
+
+const AGENT_QUESTION = { ...QUESTION, title: '缓存目录名', decider: 'agent' }
+
+graphTest('an agent question: the llm decides it itself, it stays out of the human queue, the human overturns it', async g => {
+  const question = await g.run('llm', { op: 'propose', reason: '自己定的细节', node: AGENT_QUESTION })
+  assert.equal(question.node.status, 'approved')
+  let items = await g.engine.openItems()
+  assert.deepEqual(items.questions, [], 'the human queue holds only the human\'s questions')
+  assert.deepEqual(items.agentQueue.map(entry => [entry.id, entry.decider]), [[question.id, 'agent']])
+
+  const decided = must(await g.act('llm', { op: 'decide', id: question.id, option: 'A', reason: '按原型' }))
+  assert.equal(decided.node.decision, 'A')
+  assert.equal(decided.node.history.at(-1)?.actor, 'llm')
+  items = await g.engine.openItems()
+  assert.deepEqual(items.agentQueue, [])
+  assert.deepEqual(items.recentDecisions.map(entry => [entry.id, entry.decision, entry.label, entry.decidedBy, entry.decider, entry.rounds]), [[question.id, 'A', 'JSON', 'llm', 'agent', 1]])
+  assert.equal(items.recentDecisions[0].raisedBy?.id, 'feature-1')
+  assert.equal('relay' in items.recentDecisions[0], false)
+
+  must(await g.act('llm', { op: 'decide', id: question.id, option: 'B', reason: '改主意' }))
+  must(await g.act('human', { op: 'decide', id: question.id, option: 'A', reason: '推翻：不加解析器' }))
+  const latest = (await g.engine.openItems()).recentDecisions[0]
+  assert.deepEqual([latest.decision, latest.decidedBy, latest.rounds, latest.reason], ['A', 'human', 3, '推翻：不加解析器'])
+  refused(await g.act('llm', { op: 'decide', id: question.id, option: 'B', reason: '再改回来' }), 'forbidden')
+  await g.act('llm', { op: 'status', id: question.id, to: 'doing', reason: '重开' })
+  refused(await g.act('llm', { op: 'decide', id: question.id, option: 'B', reason: '重开后再定' }), 'forbidden')
+})
+
+graphTest('the llm refusal to decide a human question comes before the rev check', async g => {
+  const question = await g.run('llm', { op: 'propose', reason: '问人', node: QUESTION })
+  refused(await g.engine.apply('llm', { op: 'decide', id: question.id, rev: 'stale', option: 'A', reason: '自己定' }), 'forbidden')
+})
+
+graphTest('relay: an llm write carrying the human\'s words has the human\'s permissions and records the words', async g => {
+  const said = '都同意，你来干'
+  const proposal = await g.run('llm', { op: 'propose', reason: '新分支', node: { type: 'feature', title: '查看器', parent: 'goal-1' } })
+  const approved = must(await g.act('llm', { op: 'approve', id: proposal.id, reason: '人在对话里同意', relay: said }))
+  assert.equal(approved.node.status, 'approved')
+  assert.deepEqual(approved.node.history.at(-1), { at: approved.node.history.at(-1)!.at, actor: 'llm', op: 'approve', reason: '人在对话里同意', relay: said, from: 'proposed', to: 'approved' })
+
+  const question = await g.run('llm', { op: 'propose', reason: '问人', node: QUESTION })
+  must(await g.act('llm', { op: 'decide', id: question.id, option: 'B', reason: '人选了 B', relay: '选 B' }))
+  const record = (await g.engine.openItems()).recentDecisions[0]
+  assert.deepEqual([record.decidedBy, record.relay, record.decider], ['llm', '选 B', 'human'])
+  refused(await g.act('llm', { op: 'decide', id: question.id, option: 'A', reason: '自己改' }), 'forbidden')
+
+  const branch = await g.run('llm', { op: 'propose', reason: '人要的分支', relay: '加一个渲染分支', node: { type: 'feature', title: '渲染', parent: 'goal-1' } })
+  assert.equal(branch.node.status, 'approved', 'a relayed proposal is approved at once')
+  must(await g.act('llm', { op: 'edit', id: 'task-1', reason: '人改验收', relay: '验收加上中文不乱码', set: { acceptance: ['往返逐字节一致', '中文不乱码'] } }))
+  must(await g.act('llm', { op: 'edit', id: 'goal-1', reason: '人改非目标', relay: '非目标去掉 DSH 那条', set: { nonGoals: null } }))
+  must(await g.act('llm', { op: 'status', id: branch.id, to: 'dropped', reason: '人不要了', relay: '渲染分支先不做了' }))
+  const rejected = await g.run('llm', { op: 'propose', reason: '新分支', node: { type: 'feature', title: '导出', parent: 'goal-1' } })
+  assert.equal(must(await g.act('llm', { op: 'reject', id: rejected.id, reason: '人否了', relay: '导出不要' })).node.status, 'dropped')
+  const replacement = await g.run('llm', { op: 'propose', reason: '换掉', relay: '存储重写', node: { type: 'task', title: '新存储', parent: 'feature-1', edges: [{ type: 'supersedes', to: 'task-1' }] } })
+  assert.deepEqual(replacement.changed, [replacement.id, 'task-1'])
+  assert.equal((await g.node('task-1')).history.at(-1)?.relay, '存储重写', 'cascaded entries carry the relay too')
+  assert.deepEqual((await loadGraph(g.dir)).issues, [])
+})
+
+graphTest('relay is the llm\'s alone, must be text and is not a field of comment', async g => {
+  refused(await g.act('human', { op: 'edit', id: 'task-1', reason: 'x', relay: '我说的', set: { title: '甲' } }), 'invalid', 'relay')
+  refused(await g.act('harness', { op: 'edit', id: 'task-1', reason: 'x', relay: '人说的', set: { title: '甲' } }), 'invalid', 'relay')
+  refused(await g.act('llm', { op: 'edit', id: 'task-1', reason: 'x', relay: '', set: { title: '甲' } }), 'invalid', 'relay')
+  refused(await g.act('llm', { op: 'edit', id: 'task-1', reason: 'x', relay: '长'.repeat(2001), set: { title: '甲' } }), 'invalid', 'relay')
+  refused(await g.engine.apply('llm', { op: 'comment', id: 'task-1', text: 'x', relay: '人说的' }), 'invalid', 'relay')
+})
+
+graphTest('decider: the llm hands a question to the human at will and takes one only with a relay', async g => {
+  const agent = await g.run('llm', { op: 'propose', reason: '自己定', node: AGENT_QUESTION })
+  must(await g.act('llm', { op: 'edit', id: agent.id, reason: '这条该人定', set: { decider: 'human' } }))
+  assert.deepEqual((await g.engine.openItems()).questions.map(entry => entry.id), [agent.id])
+  refused(await g.act('llm', { op: 'edit', id: agent.id, reason: '还是我来', set: { decider: 'agent' } }), 'forbidden', 'set.decider')
+  must(await g.act('llm', { op: 'edit', id: agent.id, reason: '人让我定', relay: '这个你自己定', set: { decider: 'agent' } }))
+  assert.deepEqual((await g.engine.openItems()).agentQueue.map(entry => entry.id), [agent.id])
+  must(await g.act('llm', { op: 'edit', id: agent.id, reason: '去掉字段即归人', set: { decider: null } }))
+  assert.equal((await g.node(agent.id)).decider, undefined)
+  refused(await g.act('human', { op: 'edit', id: 'task-1', reason: 'x', set: { decider: 'agent' } }), 'invalid', 'set.decider')
+})
+
+graphTest('an agent question in a subtree opens a decisions gate, not the human questions gate', async g => {
+  const question = await g.run('llm', { op: 'propose', reason: '自己定', node: { ...AGENT_QUESTION, parent: 'task-2' } })
+  const task2 = await g.engine.projection('task-2')
+  assert.ok(task2.ok)
+  assert.deepEqual(task2.projection.gates.map(gate => [gate.kind, gate.ids]), [['decisions', [question.id]], ['acceptance', ['task-2']], ['children', [question.id]]])
 })

@@ -80,15 +80,21 @@ function exclusive<T>(dir: string, task: () => Promise<T>): Promise<T> {
   return run
 }
 
-/** Operations only a human may perform (§2.9 table). */
+/**
+ * Operations that need the human's authority (§2.9 table): the human, or an
+ * llm write that relays the human's words. An llm decides a question on its
+ * own only when the question's decider is the agent (checked per node).
+ */
 const HUMAN_ONLY = new Set<Mutation['op']>(['approve', 'reject', 'decide', 'supersede'])
 
 /**
  * Fields llm and harness may edit on nodes other than their own open
- * proposals: wording, slope and the task dispatch attributes the main
- * agent sets when it hands a task out. Acceptance criteria stay the human's.
+ * proposals: wording, slope, the task dispatch attributes the main agent
+ * sets when it hands a task out, and the decider of a question (handing a
+ * question to the human is always allowed; taking one from the human needs
+ * a relay). Acceptance criteria stay the human's.
  */
-const LLM_EDITABLE = new Set<string>(['title', 'body', 'slope', ...DISPATCH_FIELDS])
+const LLM_EDITABLE = new Set<string>(['title', 'body', 'slope', 'decider', ...DISPATCH_FIELDS])
 
 /** Types an llm or harness proposal may open directly under any open parent. */
 const OPEN_PARENT_TYPES = new Set<NodeType>(['risk', 'question', 'retro'])
@@ -106,7 +112,7 @@ export const TRANSITIONS: Readonly<Record<Status, readonly Status[]>> = {
   superseded: [],
 }
 
-const HUMAN_HINT = 'leave it for a human: the proposal or question shows up in the decision queue of the viewer'
+const HUMAN_HINT = 'leave it for the human (it shows up in their decision queue); if the human asked for it in the chat, send their words verbatim as relay'
 
 /** One node file to write: the raw would-be node, checked again before the write. */
 interface Draft {
@@ -127,15 +133,24 @@ interface Context {
   readonly graph: LoadedGraph
   readonly actor: Actor
   readonly at: string
+  /** The human's words an llm write relays; recorded in every history entry the write appends. */
+  readonly relay: string | undefined
+  /** The write has the human's permissions: the human, or a relayed llm write. */
+  readonly privileged: boolean
 }
 
 async function apply(dir: string, actor: Actor, input: unknown, now: () => Date): Promise<ApplyResult> {
   const parsed = parseMutation(input)
   if (!parsed.ok) return parsed
   const mutation = parsed.mutation
-  if (actor !== 'human' && HUMAN_ONLY.has(mutation.op)) {
+  const relay = mutation.op === 'comment' ? undefined : mutation.relay
+  if (relay !== undefined && actor !== 'llm') {
+    return failure('invalid', `${actor} writes do not relay`, actor === 'human' ? 'the human acts directly; leave relay out' : 'harness writes act on their own rules; leave relay out', 'relay')
+  }
+  const privileged = actor === 'human' || relay !== undefined
+  if (!privileged && HUMAN_ONLY.has(mutation.op) && mutation.op !== 'decide') {
     return failure('forbidden', `${actor} cannot ${mutation.op}`, mutation.op === 'supersede'
-      ? 'propose the new node with a supersedes edge; it takes effect when a human approves it'
+      ? 'propose the new node with a supersedes edge; it takes effect when the human approves it, or at once with the human\'s words as relay'
       : HUMAN_HINT)
   }
   return exclusive(dir, async () => {
@@ -144,7 +159,7 @@ async function apply(dir: string, actor: Actor, input: unknown, now: () => Date)
       const errors = graph.issues.filter(issue => issue.severity === 'error')
       return failure('graph_invalid', `the graph has ${errors.length} validation error(s); first: ${describeIssue(errors[0])}`, 'fix the node files by hand or restore them with git, then retry')
     }
-    const context: Context = { graph, actor, at: now().toISOString() }
+    const context: Context = { graph, actor, at: now().toISOString(), relay, privileged }
     const plan = mutation.op === 'propose' ? planPropose(context, mutation.node, mutation.reason) : planChange(context, mutation)
     if (!plan.ok) return plan
     return commit(dir, graph, plan)
@@ -209,8 +224,30 @@ function change(context: Context, node: GraphNode, patch: Readonly<Record<string
     if (value === null) delete raw[field]
     else raw[field] = value
   }
-  raw.history = [...node.history, entry]
+  raw.history = [...node.history, relayed(context, entry)]
   return { id: node.id, raw, expected: context.graph.revisions.get(node.id)! }
+}
+
+/** The history entry with the relayed words of the write, when it has any. */
+function relayed(context: Context, entry: HistoryEntry): HistoryEntry {
+  return context.relay === undefined ? entry : { ...entry, relay: context.relay }
+}
+
+/** A decide by the human or with the human's words; after one, only the human's authority decides the question again. */
+function decidedByHuman(node: GraphNode): boolean {
+  return node.history.some(entry => entry.op === 'decide' && (entry.actor === 'human' || entry.relay !== undefined))
+}
+
+/**
+ * Why the actor may not decide this question without the human's
+ * authority, or undefined when it may: the llm decides questions whose
+ * decider is the agent, until the human has decided one of them.
+ */
+function decideRefusal(context: Context, node: GraphNode): Failure | undefined {
+  if (context.privileged) return undefined
+  if (node.decider !== 'agent') return failure('forbidden', `${context.actor} cannot decide "${node.id}": the human decides it`, HUMAN_HINT)
+  if (decidedByHuman(node)) return failure('forbidden', `"${node.id}" was decided by the human; only the human decides it again`, HUMAN_HINT)
+  return undefined
 }
 
 function plan(target: string, drafts: readonly Draft[], fieldOf: Plan['fieldOf'] = issue => issue.field): Plan {
@@ -242,7 +279,7 @@ function supersedeTargets(context: Context, by: string, edges: readonly GraphEdg
 
 /** Initial status of a proposal (§2.9 propose row). */
 function initialStatus(context: Context, node: ProposedNode): Status {
-  if (context.actor === 'human') return 'approved'
+  if (context.privileged) return 'approved'
   // Supersession is a human decision, so a proposal that supersedes anything waits for approval.
   if ((node.edges ?? []).some(edge => edge.type === 'supersedes')) return 'proposed'
   const parent = node.parent === undefined ? undefined : context.graph.nodes.get(node.parent)
@@ -274,7 +311,7 @@ function planPropose(context: Context, node: ProposedNode, reason: string): Plan
     id,
     status,
     ...(node.type === 'decision' ? { verification: 'unverified' } : {}),
-    history: [{ at: context.at, actor: context.actor, op: 'propose', reason, to: status }],
+    history: [relayed(context, { at: context.at, actor: context.actor, op: 'propose', reason, to: status })],
   }
   const drafts: Draft[] = [{ id, raw, expected: null }]
   if (status === 'approved') drafts.push(...supersedeTargets(context, id, node.edges, reason))
@@ -289,6 +326,10 @@ function planChange(context: Context, mutation: Change): Plan | Failure {
   if (node === undefined) return failure('not_found', `no node "${mutation.id}"`, 'check the id against the open items or a projection', 'id')
   if (mutation.op === 'comment') {
     return plan(node.id, [change(context, node, {}, { at, actor, op: 'comment', text: mutation.text })])
+  }
+  if (mutation.op === 'decide' && node.type === 'question') {
+    const refusal = decideRefusal(context, node)
+    if (refusal !== undefined) return refusal
   }
   const rev = graph.revisions.get(node.id)!
   if (mutation.rev !== rev) {
@@ -310,7 +351,7 @@ function planChange(context: Context, mutation: Change): Plan | Failure {
       return planEdit(context, node, mutation.set, reason)
     case 'link':
     case 'unlink': {
-      if (actor !== 'human' && node.type === 'goal') return failure('forbidden', `${actor} cannot change the edges of the goal`, HUMAN_HINT)
+      if (!context.privileged && node.type === 'goal') return failure('forbidden', `${actor} cannot change the edges of the goal`, HUMAN_HINT)
       const edge: GraphEdge = { type: mutation.type, to: mutation.to }
       const edges = node.edges ?? []
       const exists = edges.some(entry => entry.type === edge.type && entry.to === edge.to)
@@ -324,11 +365,13 @@ function planChange(context: Context, mutation: Change): Plan | Failure {
     }
     case 'decide': {
       if (node.type !== 'question') return failure('invalid', `"${node.id}" is a ${node.type} node; decide applies to question nodes`, 'decide a question node', 'id')
-      if (node.status !== 'approved' && node.status !== 'doing') {
-        return failure('bad_transition', `"${node.id}" is ${node.status}`, node.status === 'proposed' ? 'approve the question first' : 'reopen the question with status doing to decide it again')
+      // A done question is decided again in place: the human overturns a decision without reopening it first.
+      if (node.status !== 'approved' && node.status !== 'doing' && node.status !== 'done') {
+        return failure('bad_transition', `"${node.id}" is ${node.status}`, node.status === 'proposed' ? 'approve the question first' : 'it is closed; propose a new question')
       }
       const keys = (node.options ?? []).map(entry => entry.key)
       if (!keys.includes(mutation.option)) return failure('invalid', `"${mutation.option}" is not an option of "${node.id}"`, `choose one of ${keys.join(', ')}`, 'option')
+      if (node.status === 'done' && node.decision === mutation.option) return failure('bad_transition', `"${node.id}" is already decided ${mutation.option}`, 'nothing to change', 'option')
       const evidence: Evidence[] = [{ kind: 'decision', ref: mutation.option }]
       return plan(node.id, [change(context, node, { status: 'done', decision: mutation.option, ...withEvidence(node, evidence) }, {
         at, actor, op: 'decide', reason, from: node.status, to: 'done', option: mutation.option, evidence,
@@ -375,7 +418,7 @@ function planStatus(context: Context, node: GraphNode, to: Status, evidence: rea
   if (!TRANSITIONS[from].includes(to)) {
     return failure('bad_transition', `"${node.id}" cannot go from ${from} to ${to}`, `from ${from} the status can go to ${TRANSITIONS[from].join(', ')}`, 'to')
   }
-  if (actor !== 'human') {
+  if (!context.privileged) {
     if ((node.type === 'goal' || node.type === 'feature') && (to === 'dropped' || from === 'dropped')) {
       return failure('forbidden', `${actor} cannot drop or restore a ${node.type}`, 'dropping or restoring a branch is plan-external: propose a question node under it for a human')
     }
@@ -390,13 +433,17 @@ function planStatus(context: Context, node: GraphNode, to: Status, evidence: rea
 function planEdit(context: Context, node: GraphNode, set: Readonly<Partial<Record<EditableField, unknown>>>, reason: string): Plan | Failure {
   const { actor, at } = context
   const fields = Object.keys(set) as EditableField[]
-  if (actor !== 'human') {
-    if (node.type === 'goal') return failure('forbidden', `${actor} cannot edit the goal`, 'goals, acceptance criteria and non-goals are the human\'s: propose a question node under the goal')
+  if (!context.privileged) {
+    const relayHint = 'if the human asked for it in the chat, send their words verbatim as relay'
+    if (node.type === 'goal') return failure('forbidden', `${actor} cannot edit the goal`, `goals, acceptance criteria and non-goals are the human's: propose a question node under the goal; ${relayHint}`)
     const first = node.history[0]
     const ownProposal = node.status === 'proposed' && first?.op === 'propose' && first.actor === actor
     const denied = ownProposal ? undefined : fields.find(field => !LLM_EDITABLE.has(field))
     if (denied !== undefined) {
-      return failure('forbidden', `${actor} cannot edit ${denied} of "${node.id}"`, `${actor} edits ${[...LLM_EDITABLE].join(', ')}, or any field of its own open proposal; propose a question node to change the rest`, `set.${denied}`)
+      return failure('forbidden', `${actor} cannot edit ${denied} of "${node.id}"`, `${actor} edits ${[...LLM_EDITABLE].join(', ')}, or any field of its own open proposal; propose a question node to change the rest; ${relayHint}`, `set.${denied}`)
+    }
+    if (set.decider === 'agent' && node.decider !== 'agent') {
+      return failure('forbidden', `${actor} cannot take "${node.id}" from the human`, `the human decides it; ${relayHint}`, 'set.decider')
     }
   }
   const raw: Record<string, unknown> = { ...node }

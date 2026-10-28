@@ -7,6 +7,7 @@
 import {
   ACTORS,
   COMMIT_PATTERN,
+  DECIDERS,
   EDGE_TYPES,
   EDITABLE_FIELDS,
   EVIDENCE_KINDS,
@@ -255,6 +256,7 @@ const FIELD_CHECKERS: Record<typeof NODE_FIELDS[number], Checker> = {
   writeScope: list(scopePath),
   options: list(option),
   recommend: optionKey,
+  decider: oneOf(DECIDERS),
   decision: optionKey,
   edges: list(edge),
   evidence: list(evidenceItem),
@@ -293,6 +295,7 @@ function historyEntry(value: unknown, path: string, report: Report): unknown {
     ['actor', oneOf(ACTORS), true],
     ['op', oneOf(OPS), true],
     ['reason', text, false],
+    ['relay', text, false],
     ['from', oneOf(TRANSITION_STATES), false],
     ['to', oneOf(TRANSITION_STATES), false],
     ['option', optionKey, false],
@@ -305,6 +308,7 @@ function historyEntry(value: unknown, path: string, report: Report): unknown {
   if (out === INVALID) return INVALID
   if (out.op !== 'comment' && out.reason === undefined) report(`${path}.reason`, 'is required for every operation except comment')
   if (out.op === 'comment' && out.text === undefined) report(`${path}.text`, 'is required for a comment')
+  if (out.relay !== undefined && out.actor !== 'llm') report(`${path}.relay`, 'only an llm write relays the human\'s words')
   return out
 }
 
@@ -373,8 +377,8 @@ function nodeRuleIssues(node: GraphNode, file: string): GraphIssue[] {
     if (node.decision !== undefined && !keys.has(node.decision)) report('decision', `"${node.decision}" is not an option key`)
   }
   else {
-    for (const field of ['options', 'recommend', 'decision'] as const) {
-      if (node[field] !== undefined) report(field, 'only question nodes carry options, recommend and decision')
+    for (const field of ['options', 'recommend', 'decider', 'decision'] as const) {
+      if (node[field] !== undefined) report(field, 'only question nodes carry options, recommend, decider and decision')
     }
   }
   node.edges?.forEach((entry, index) => {

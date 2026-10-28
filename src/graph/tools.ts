@@ -3,8 +3,10 @@
  * as model-facing tools. Every call is one engine call with actor llm, so
  * the tools enforce the engine's rules and no others; a refusal comes back
  * as a tool error whose text is the engine's {code, message, field?, hint}.
- * The operations only a human performs (approve, reject, decide, supersede)
- * are not tools. graph_focus writes nothing to the graph: it sets the
+ * The operations that need the human's authority (approve, reject, decide)
+ * succeed with the human's words as relay, or for decide on a question the
+ * agent decides; supersede is not a tool (a proposal with a supersedes edge
+ * does it). graph_focus writes nothing to the graph: it sets the
  * session's focus node for the step projection (reminder.ts, §2.5). The
  * graph directory is resolved per call: an absolute dir from the row
  * config as is, a relative one (default docs/graph) under the calling
@@ -26,8 +28,8 @@ const GRAPH_ROW_ID = 'glm-hourness/graph'
 /** Graph directory under the session working directory when the row config names none. */
 export const DEFAULT_GRAPH_DIR = 'docs/graph'
 
-/** Engine operations an llm can perform, one tool each. */
-type LlmOp = 'propose' | 'status' | 'edit' | 'link' | 'unlink' | 'comment' | 'verify'
+/** Engine operations an llm can perform, one tool each; supersede goes through propose with a supersedes edge. */
+type LlmOp = 'propose' | 'status' | 'edit' | 'link' | 'unlink' | 'comment' | 'verify' | 'decide' | 'approve' | 'reject'
 
 type JsonSchema = Record<string, unknown>
 
@@ -117,6 +119,10 @@ const render: ToolDefinitionLike['output']['render'] = (_args, value) => [{ type
 const ID: JsonSchema = { type: 'string', description: 'Node id, for example task-3.' }
 const REV: JsonSchema = { type: 'string', description: 'The node rev from your latest graph_show or graph_open; a stale rev is refused.' }
 const REASON: JsonSchema = { type: 'string', description: 'Why, in one sentence; kept in the node history.' }
+const RELAY: JsonSchema = {
+  type: 'string',
+  description: 'Only when the human asked for this change in the chat: their words, quoted verbatim (at most 2000 characters). The write then has the human\'s permissions; the words are kept in the node history and shown to the human. Never paraphrase or invent them.',
+}
 const STRINGS: JsonSchema = { type: 'array', items: { type: 'string' } }
 const EVIDENCE: JsonSchema = {
   type: 'array',
@@ -163,6 +169,7 @@ const NODE: JsonSchema = {
       },
     },
     recommend: { type: 'string', description: 'Question only: key of the recommended option.' },
+    decider: { type: 'string', enum: ['human', 'agent'], description: 'Question only: who decides it; leave out for the human. Agent questions are yours to decide with graph_decide.' },
     edges: {
       type: 'array',
       items: {
@@ -224,33 +231,34 @@ const WRITE_OUTPUT: JsonSchema = {
 const WRITES: ReadonlyArray<{ readonly op: LlmOp, readonly description: string, readonly parameters: JsonSchema }> = [
   {
     op: 'propose',
-    description: 'Add a node to the project graph. Planned work starts approved: a task under an approved or in-progress feature or task; a risk, question or retro under an open node. Anything else (a new branch, decision, norm, tool or goal, or a supersedes edge) waits as a proposal for a human.',
-    parameters: object({ node: NODE, reason: REASON }, ['node', 'reason']),
+    description: 'Add a node to the project graph. Planned work starts approved: a task under an approved or in-progress feature or task; a risk, question or retro under an open node. Anything else (new branch, decision, norm, tool, goal, supersedes edge) waits for the human unless relayed. Record a choice of your own as a question with decider agent, then graph_decide it.',
+    parameters: object({ node: NODE, reason: REASON, relay: RELAY }, ['node', 'reason']),
   },
   {
     op: 'status',
-    description: 'Move a node: approved to doing, done or dropped; doing to done or dropped; done back to doing (reopen); dropped back to approved. Done needs passing evidence: a commit, or a test or check run with exit 0. A question closes only when a human decides it.',
-    parameters: object({ id: ID, rev: REV, to: { type: 'string', enum: ['approved', 'doing', 'done', 'dropped'] }, reason: REASON, evidence: EVIDENCE }, ['id', 'rev', 'to', 'reason']),
+    description: 'Move a node: approved to doing, done or dropped; doing to done or dropped; done back to doing (reopen); dropped back to approved. Done needs passing evidence: a commit, or a test or check run with exit 0. A question closes only through graph_decide. Dropping or restoring a goal or feature, and dropping a question, need the human\'s words as relay.',
+    parameters: object({ id: ID, rev: REV, to: { type: 'string', enum: ['approved', 'doing', 'done', 'dropped'] }, reason: REASON, evidence: EVIDENCE, relay: RELAY }, ['id', 'rev', 'to', 'reason']),
   },
   {
     op: 'edit',
-    description: 'Change fields of a node: title, body, slope, and on a task its dispatch attributes (kind, tier, worktree, outputSchema, writeScope); any field of your own proposal while it waits. The goal, acceptance criteria and non-goals are the human\'s: propose a question instead.',
+    description: 'Change fields of a node: title, body, slope, a question\'s decider, and on a task its dispatch attributes (kind, tier, worktree, outputSchema, writeScope); any field of your own proposal while it waits. Decider human is always allowed; decider agent, the goal, acceptance criteria and non-goals need the human\'s words as relay.',
     parameters: object({
       id: ID,
       rev: REV,
       set: { type: 'object', description: 'Field name to new value; null removes the field.' },
       reason: REASON,
+      relay: RELAY,
     }, ['id', 'rev', 'set', 'reason']),
   },
   {
     op: 'link',
     description: 'Add an edge from a node: depends (it needs `to` done first) or source (it exists because of `to`).',
-    parameters: object({ id: ID, rev: REV, type: { type: 'string', enum: ['depends', 'source'] }, to: ID, reason: REASON }, ['id', 'rev', 'type', 'to', 'reason']),
+    parameters: object({ id: ID, rev: REV, type: { type: 'string', enum: ['depends', 'source'] }, to: ID, reason: REASON, relay: RELAY }, ['id', 'rev', 'type', 'to', 'reason']),
   },
   {
     op: 'unlink',
     description: 'Remove a depends or source edge from a node.',
-    parameters: object({ id: ID, rev: REV, type: { type: 'string', enum: ['depends', 'source'] }, to: ID, reason: REASON }, ['id', 'rev', 'type', 'to', 'reason']),
+    parameters: object({ id: ID, rev: REV, type: { type: 'string', enum: ['depends', 'source'] }, to: ID, reason: REASON, relay: RELAY }, ['id', 'rev', 'type', 'to', 'reason']),
   },
   {
     op: 'comment',
@@ -260,7 +268,22 @@ const WRITES: ReadonlyArray<{ readonly op: LlmOp, readonly description: string, 
   {
     op: 'verify',
     description: 'Record how far a decision node is verified: unverified, sandbox, device or overturned. Sandbox and device need a test or check run with exit 0.',
-    parameters: object({ id: ID, rev: REV, to: { type: 'string', enum: ['unverified', 'sandbox', 'device', 'overturned'] }, reason: REASON, evidence: EVIDENCE }, ['id', 'rev', 'to', 'reason']),
+    parameters: object({ id: ID, rev: REV, to: { type: 'string', enum: ['unverified', 'sandbox', 'device', 'overturned'] }, reason: REASON, evidence: EVIDENCE, relay: RELAY }, ['id', 'rev', 'to', 'reason']),
+  },
+  {
+    op: 'decide',
+    description: 'Decide a question: pick one of its options; the question becomes done with the choice recorded. Questions with decider agent are yours, until the human has decided one. The human\'s questions need their words as relay: decide only what they chose in the chat. A done question can be decided again (overturned) by whoever may decide it.',
+    parameters: object({ id: ID, rev: REV, option: { type: 'string', description: 'Key of the chosen option.' }, reason: REASON, relay: RELAY }, ['id', 'rev', 'option', 'reason']),
+  },
+  {
+    op: 'approve',
+    description: 'Approve a proposal for the human. Needs their words from the chat as relay; without them the proposal waits in their queue.',
+    parameters: object({ id: ID, rev: REV, reason: REASON, relay: RELAY }, ['id', 'rev', 'reason', 'relay']),
+  },
+  {
+    op: 'reject',
+    description: 'Reject a proposal for the human: it becomes dropped. Needs their words from the chat as relay.',
+    parameters: object({ id: ID, rev: REV, reason: REASON, relay: RELAY }, ['id', 'rev', 'reason', 'relay']),
   },
 ]
 
@@ -272,7 +295,7 @@ function writeTool(dir: string, op: LlmOp, description: string, parameters: Json
     output: { schema: WRITE_OUTPUT, render },
     async execute(args, exec) {
       if (isRecord(args) && args.op !== undefined && args.op !== op) {
-        refuse(failure('invalid', `graph_${op} performs ${op}, not ${typeof args.op === 'string' ? args.op : JSON.stringify(args.op)}`, 'call the tool named after the operation; approve, reject, decide and supersede are the human\'s', 'op'))
+        refuse(failure('invalid', `graph_${op} performs ${op}, not ${typeof args.op === 'string' ? args.op : JSON.stringify(args.op)}`, 'call the tool named after the operation; a supersession is a proposal with a supersedes edge', 'op'))
       }
       const engine = openEngine(await graphDir(dir, exec))
       // The actor is this entry point's, never the request's: an actor field is refused as an extra field.
@@ -308,7 +331,7 @@ export function graphTools(dir: string, focuses: FocusMemory): ToolDefinitionLik
     },
     {
       name: 'graph_open',
-      description: 'List the open work in the project graph: proposals waiting for a human, the decision queue (questions only a human decides, oldest first), nodes in progress, tasks ready to start, and adopted decisions not yet verified. Approving, rejecting, deciding and superseding are the human\'s, in the graph viewer.',
+      description: 'List the open work in the project graph: proposals waiting for the human, the human\'s decision queue (questions), your own (agentQueue: questions with decider agent), the latest decisions (recentDecisions: who decided, relayed words), nodes in progress, tasks ready to start, and adopted decisions not yet verified. The human approves and decides in their panel or in the chat.',
       parameters: object({}, []),
       output: { schema: OPEN_OUTPUT, render },
       async execute(args, exec) {

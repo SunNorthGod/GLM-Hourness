@@ -53,7 +53,12 @@ export type ProposedNode =
 
 type LinkType = Exclude<GraphEdge['type'], 'supersedes'>
 
-interface Targeted {
+interface Relayed {
+  /** The human's words from the chat that ask for this llm write, verbatim (§2.9 relay). */
+  readonly relay?: string
+}
+
+interface Targeted extends Relayed {
   readonly id: string
   /** Revision of the target node the caller read. */
   readonly rev: string
@@ -61,7 +66,7 @@ interface Targeted {
 }
 
 export type Mutation =
-  | { readonly op: 'propose', readonly node: ProposedNode, readonly reason: string }
+  | (Relayed & { readonly op: 'propose', readonly node: ProposedNode, readonly reason: string })
   | (Targeted & { readonly op: 'approve' | 'reject' })
   | (Targeted & { readonly op: 'status', readonly to: Status, readonly evidence?: readonly Evidence[] })
   | (Targeted & { readonly op: 'edit', readonly set: Readonly<Partial<Record<EditableField, FieldValue | null>>> })
@@ -130,11 +135,20 @@ const fieldSet: FieldCheck = (value, field) => {
   return extra === undefined ? undefined : invalid(`${field}.${extra}`, 'is not an editable field', EDIT_HINT)
 }
 
-const targeted = { id: nodeId, rev: text, reason: text } as const
+/** Longest relay kept in a history entry; a relay quotes what the human said, not a document. */
+const RELAY_LIMIT = 2000
 
-/** Fields of each operation and their checks; evidence is the only optional one. */
+const relay: FieldCheck = (value, field) => {
+  const bad = text(value, field)
+  if (bad !== undefined) return bad
+  return (value as string).length <= RELAY_LIMIT ? undefined : invalid(field, `must be at most ${RELAY_LIMIT} characters`, 'quote the sentences of the human that ask for this change, not the whole conversation')
+}
+
+const targeted = { id: nodeId, rev: text, reason: text, relay } as const
+
+/** Fields of each operation and their checks; evidence and relay are the optional ones. */
 const OP_FIELDS: Readonly<Record<Op, Readonly<Record<string, FieldCheck>>>> = {
-  propose: { node: proposedNode, reason: text },
+  propose: { node: proposedNode, reason: text, relay },
   approve: targeted,
   reject: targeted,
   status: { ...targeted, to: oneOf(STATUSES), evidence },
@@ -147,7 +161,7 @@ const OP_FIELDS: Readonly<Record<Op, Readonly<Record<string, FieldCheck>>>> = {
   supersede: { ...targeted, by: nodeId },
 }
 
-const OPTIONAL_FIELDS = new Set(['evidence'])
+const OPTIONAL_FIELDS = new Set(['evidence', 'relay'])
 
 /** Check the request shape; the engine applies the graph rules afterwards. */
 export function parseMutation(input: unknown): { readonly ok: true, readonly mutation: Mutation } | Failure {

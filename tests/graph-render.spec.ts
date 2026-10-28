@@ -256,6 +256,12 @@ test('styles follow the sketch: colour by status, shape by type, dashed proposal
   assert.match(nodeGroup(after, 'question-1'), /question-1 · 选 B/)
   assert.match(nodeGroup(after, 'question-1'), /拍板：B 乙/)
   assert.match(nodeGroup(after, 'task-3'), /data-tone="todo"/, 'no longer held up once the question is decided')
+
+  const agents = small().map(node => node.id === 'question-1' ? { ...node, decider: 'agent' as const } : node)
+  const agentSvg = svgOf(agents)
+  assert.match(nodeGroup(agentSvg, 'question-1'), /data-tone="todo"[\s\S]*<polygon [^>]*fill="#ede9fe"/, 'an agent question is not red')
+  assert.match(nodeGroup(agentSvg, 'question-1'), /question-1 · 待 agent 定/)
+  assert.match(nodeGroup(agentSvg, 'task-3'), /data-tone="todo"/, 'nothing waits for the human on an agent question')
 })
 
 test('arrows point at the later party and cross edges never move a node', () => {

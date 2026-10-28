@@ -39,6 +39,10 @@ export type EvidenceKind = typeof EVIDENCE_KINDS[number]
 export const ACTORS = ['human', 'llm', 'harness'] as const
 export type Actor = typeof ACTORS[number]
 
+/** Who decides a question (§2.9 decision tiers); a question without one is the human's. */
+export const DECIDERS = ['human', 'agent'] as const
+export type Decider = typeof DECIDERS[number]
+
 /** Mutation operations (§2.9); every history entry names one. */
 export const OPS = ['propose', 'approve', 'reject', 'status', 'edit', 'link', 'unlink', 'comment', 'decide', 'verify', 'supersede'] as const
 export type Op = typeof OPS[number]
@@ -66,7 +70,7 @@ export interface Evidence {
 /** Fields an `edit` mutation may change, in write order; status, links, evidence and decisions have their own operations. */
 export const EDITABLE_FIELDS = [
   'title', 'parent', 'slope', 'stage', 'kind', 'tier', 'worktree', 'outputSchema', 'body',
-  'acceptance', 'nonGoals', 'writeScope', 'options', 'recommend',
+  'acceptance', 'nonGoals', 'writeScope', 'options', 'recommend', 'decider',
 ] as const
 export type EditableField = typeof EDITABLE_FIELDS[number]
 
@@ -85,6 +89,11 @@ export interface HistoryEntry {
   readonly op: Op
   /** Required for every operation except comment. */
   readonly reason?: string
+  /**
+   * The human's words from the chat that asked for this llm write, quoted
+   * verbatim. A relayed write has the human's permissions (§2.9).
+   */
+  readonly relay?: string
   /** Status (or, for verify, verification state) before and after. */
   readonly from?: string
   readonly to?: string
@@ -124,6 +133,8 @@ export interface GraphNode {
   readonly writeScope?: readonly string[]
   readonly options?: readonly DecisionOption[]
   readonly recommend?: string
+  /** Question only: who decides it; absent means the human. */
+  readonly decider?: Decider
   readonly decision?: string
   readonly edges?: readonly GraphEdge[]
   readonly evidence?: readonly Evidence[]
@@ -134,7 +145,7 @@ export interface GraphNode {
 export const NODE_FIELDS = [
   'id', 'type', 'title', 'status', 'parent', 'slope', 'stage', 'verification',
   'kind', 'tier', 'worktree', 'outputSchema', 'body', 'acceptance', 'nonGoals', 'writeScope',
-  'options', 'recommend', 'decision', 'edges', 'evidence', 'history',
+  'options', 'recommend', 'decider', 'decision', 'edges', 'evidence', 'history',
 ] as const satisfies readonly (keyof GraphNode)[]
 
 /** Fields only task nodes carry. */
@@ -142,7 +153,7 @@ export const DISPATCH_FIELDS = ['kind', 'tier', 'worktree', 'outputSchema', 'wri
 
 /** Write order of history entry fields. */
 export const HISTORY_FIELDS = [
-  'at', 'actor', 'op', 'reason', 'from', 'to', 'option', 'by', 'edge', 'changes', 'evidence', 'text',
+  'at', 'actor', 'op', 'reason', 'relay', 'from', 'to', 'option', 'by', 'edge', 'changes', 'evidence', 'text',
 ] as const satisfies readonly (keyof HistoryEntry)[]
 
 export const ID_PATTERN = /^[a-z][a-z0-9-]{0,47}$/

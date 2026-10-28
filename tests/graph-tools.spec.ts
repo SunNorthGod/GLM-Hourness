@@ -14,7 +14,10 @@ import { DEFERRED_TOOL_CALL_NAME, LOCAL_TOOL_SEARCH_NAME } from '../src/toolsear
 import { fakeRuntime, schemaViolations, type FakeRuntime } from './fake-rc3.ts'
 import { captureWarnings, seedAsHuman, type GraphAnswer } from './graph-helpers.ts'
 
-const TOOL_NAMES = ['graph_show', 'graph_open', 'graph_focus', 'graph_propose', 'graph_status', 'graph_edit', 'graph_link', 'graph_unlink', 'graph_comment', 'graph_verify']
+const TOOL_NAMES = [
+  'graph_show', 'graph_open', 'graph_focus', 'graph_propose', 'graph_status', 'graph_edit', 'graph_link', 'graph_unlink', 'graph_comment', 'graph_verify',
+  'graph_decide', 'graph_approve', 'graph_reject',
+]
 
 interface Fixture {
   /** The session working directory; the graph is docs/graph under it. */
@@ -100,8 +103,8 @@ test('the row registers one tool per llm operation with schemas inside the rc.3 
     assert.deepEqual(schemaViolations(tool.parameters, `${tool.name}.parameters`), [])
     assert.ok(tool.description.length > 0 && tool.description.length < 400, tool.name)
   }
-  // Approval, rejection, decisions and supersession are the human's (ORCHESTRATION.md §2.9).
-  for (const human of ['approve', 'reject', 'decide', 'supersede']) assert.equal(runtime.ctx.tools.get(`graph_${human}`), undefined)
+  // A supersession is a proposal with a supersedes edge (ORCHESTRATION.md §2.9); it has no tool of its own.
+  assert.equal(runtime.ctx.tools.get('graph_supersede'), undefined)
   dispose()
   assert.deepEqual(runtime.scoped, [])
 })
@@ -210,6 +213,27 @@ toolTest('graph_comment needs no rev', async ({ call, graph }) => {
   assert.equal(commented.id, 'question-1')
   const entry = (await loadGraph(graph)).nodes.get('question-1')!.history.at(-1)!
   assert.deepEqual([entry.actor, entry.op, entry.text], ['llm', 'comment', '倾向 A'])
+})
+
+toolTest('graph_decide: agent questions are the llm\'s, the human\'s need their words as relay', async ({ call, rev, graph }) => {
+  const human = refused(await call('graph_decide', { id: 'question-1', rev: await rev('question-1'), option: 'A', reason: '自己定' }), 'forbidden')
+  assert.match(human.hint, /relay/)
+  const relayed = ok(await call('graph_decide', { id: 'question-1', rev: await rev('question-1'), option: 'A', reason: '人选了 A', relay: '工具给全部 agent' }))
+  assert.equal(relayed.node.decision, 'A')
+  assert.equal((await loadGraph(graph)).nodes.get('question-1')!.history.at(-1)!.relay, '工具给全部 agent')
+  const own = ok(await call('graph_propose', { node: { type: 'question', title: '缓存目录名', parent: 'feature-1', decider: 'agent', options: [{ key: 'A', label: '.cache', consequence: '常见' }, { key: 'B', label: 'tmp', consequence: '易混' }], recommend: 'A' }, reason: '自己定的细节' }))
+  assert.equal(ok(await call('graph_decide', { id: own.id, rev: await rev(own.id), option: 'A', reason: '常见写法' })).node.status, 'done')
+  const items = ok(await call('graph_open')).items
+  assert.deepEqual(items.recentDecisions.map(entry => [entry.id, entry.decidedBy, entry.relay ?? null]), [[own.id, 'llm', null], ['question-1', 'llm', '工具给全部 agent']])
+})
+
+toolTest('graph_approve and graph_reject act for the human only with a relay', async ({ call, rev }) => {
+  const branch = ok(await call('graph_propose', { node: { type: 'feature', title: '新分支', parent: 'goal-1' }, reason: '计划外' }))
+  refused(await call('graph_approve', { id: branch.id, rev: await rev(branch.id), reason: '自批' }), 'forbidden')
+  assert.equal(ok(await call('graph_approve', { id: branch.id, rev: await rev(branch.id), reason: '人同意', relay: '可以，开这个分支' })).node.status, 'approved')
+  const other = ok(await call('graph_propose', { node: { type: 'feature', title: '另一个分支', parent: 'goal-1' }, reason: '计划外' }))
+  refused(await call('graph_reject', { id: other.id, rev: await rev(other.id), reason: '自否' }), 'forbidden')
+  assert.equal(ok(await call('graph_reject', { id: other.id, rev: await rev(other.id), reason: '人不要', relay: '这个不要' })).node.status, 'dropped')
 })
 
 toolTest('graph_verify needs a passing test or check for sandbox and device', async ({ call, rev }) => {

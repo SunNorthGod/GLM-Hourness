@@ -12,7 +12,7 @@
 import { compareText } from './format.ts'
 import { VERIFICATION_LABELS } from './labels.ts'
 import { failure, type Failure } from './mutation.ts'
-import { OPEN_STATUSES } from './projection.ts'
+import { OPEN_STATUSES, deciderOf, waitsForHuman } from './projection.ts'
 import { EDGE_TYPES, type EdgeType, type GraphNode, type NodeType } from './schema.ts'
 
 /** Font sizes, line heights and padding in px; render.ts places the text with the same numbers. */
@@ -207,16 +207,15 @@ export function wrapText(text: string, maxWidth: number, size: number): string[]
   return lines
 }
 
-function undecided(node: GraphNode | undefined): boolean {
-  return node !== undefined && node.type === 'question' && OPEN_STATUSES.has(node.status)
-}
-
 function toneOf(node: GraphNode, nodes: ReadonlyMap<string, GraphNode>): Tone {
   if (node.status === 'dropped' || node.status === 'superseded') return 'closed'
   if (node.status === 'proposed') return 'proposed'
   if (node.status === 'done') return 'done'
-  if (node.type === 'question') return 'waiting'
-  if ((node.edges ?? []).some(edge => edge.type === 'depends' && undecided(nodes.get(edge.to)))) return 'waiting'
+  if (waitsForHuman(node)) return 'waiting'
+  if ((node.edges ?? []).some(edge => {
+    const target = edge.type === 'depends' ? nodes.get(edge.to) : undefined
+    return target !== undefined && waitsForHuman(target)
+  })) return 'waiting'
   return node.status === 'doing' ? 'doing' : 'todo'
 }
 
@@ -224,7 +223,7 @@ function metaOf(node: GraphNode): string {
   if (node.type === 'decision' && node.verification !== undefined) return `${node.id} · ${VERIFICATION_LABELS[node.verification]}`
   if (node.type === 'question') {
     if (node.decision !== undefined) return `${node.id} · 选 ${node.decision}`
-    if (OPEN_STATUSES.has(node.status)) return `${node.id} · 待拍板`
+    if (OPEN_STATUSES.has(node.status)) return `${node.id} · ${deciderOf(node) === 'agent' ? '待 agent 定' : '待拍板'}`
   }
   return node.id
 }

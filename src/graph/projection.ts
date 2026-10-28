@@ -7,7 +7,7 @@
  */
 import { compareText } from './format.ts'
 import { failure, type Failure } from './mutation.ts'
-import type { Actor, DecisionOption, GraphNode, HistoryEntry, NodeType, Stage, Status } from './schema.ts'
+import type { Actor, Decider, DecisionOption, GraphNode, HistoryEntry, NodeType, Stage, Status } from './schema.ts'
 import type { LoadedGraph } from './store.ts'
 
 /** Statuses of nodes that are still open: not done, dropped or superseded. */
@@ -15,6 +15,19 @@ export const OPEN_STATUSES: ReadonlySet<Status> = new Set(['proposed', 'approved
 
 /** History entries a projection carries; the full history stays in the node file. */
 const RECENT_HISTORY = 5
+
+/** Decisions the open items list, newest first; older ones stay on their question nodes. */
+const RECENT_DECISIONS = 20
+
+/** Who decides a question: its decider, the human when it names none. */
+export function deciderOf(node: GraphNode): Decider {
+  return node.decider ?? 'human'
+}
+
+/** An open question waiting for the human: a question the agent decides never makes anything wait for the human. */
+export function waitsForHuman(node: GraphNode): boolean {
+  return node.type === 'question' && OPEN_STATUSES.has(node.status) && deciderOf(node) === 'human'
+}
 
 export interface NodeRef {
   readonly id: string
@@ -35,7 +48,7 @@ interface AncestorRef extends NodeRef {
 
 type NodeDetail = Omit<GraphNode, 'history'> & { readonly rev: string }
 
-type GateKind = 'dependencies' | 'approval' | 'questions' | 'acceptance' | 'children' | 'verification'
+type GateKind = 'dependencies' | 'approval' | 'questions' | 'decisions' | 'acceptance' | 'children' | 'verification'
 
 interface Gate {
   readonly kind: GateKind
@@ -65,11 +78,12 @@ export interface Projection {
   readonly gates: readonly Gate[]
 }
 
-/** One card of the decision queue (§5): an open question with what the human needs to decide it. */
+/** One card of a decision queue (§5): an open question with what its decider needs to decide it. */
 interface QueueEntry extends NodeRef {
   readonly body?: string
   readonly options: readonly DecisionOption[]
   readonly recommend?: string
+  readonly decider: Decider
   /** The node the question was raised under (its parent); null when the parent is missing. */
   readonly raisedBy: NodeRef | null
   /** Nodes the question exists because of (its source edges). */
@@ -79,12 +93,31 @@ interface QueueEntry extends NodeRef {
   readonly askedBy?: Actor
 }
 
+/** The latest decide of a question: what was chosen, by whom, and whether it relayed the human's words. */
+interface DecisionRecord extends NodeRef {
+  readonly decision: string
+  /** Label of the chosen option. */
+  readonly label: string
+  readonly decider: Decider
+  readonly decidedAt: string
+  readonly decidedBy: Actor
+  readonly relay?: string
+  readonly reason?: string
+  /** Number of decides; above 1 means the question was decided again (overturned). */
+  readonly rounds: number
+  readonly raisedBy: NodeRef | null
+}
+
 export interface OpenItems {
   readonly revision: string
   /** Proposals waiting for a human to approve or reject them. */
   readonly proposals: readonly NodeRef[]
-  /** The decision queue: approved or reopened questions waiting for a human decision, oldest first. */
+  /** The human's decision queue: approved or reopened questions the human decides, oldest first. */
   readonly questions: readonly QueueEntry[]
+  /** Approved or reopened questions the agent decides itself, oldest first. */
+  readonly agentQueue: readonly QueueEntry[]
+  /** The latest decides across the graph, newest first, at most RECENT_DECISIONS; the human overturns any of them. */
+  readonly recentDecisions: readonly DecisionRecord[]
   readonly doing: readonly NodeRef[]
   /** Approved tasks without open or finished children whose dependencies are all done. */
   readonly ready: readonly NodeRef[]
@@ -163,8 +196,10 @@ function gatesOf(node: GraphNode, dependsOn: readonly GraphNode[], children: rea
   const openDependencies = dependsOn.filter(target => target.status !== 'done')
   if (openDependencies.length > 0) gates.push({ kind: 'dependencies', message: 'depends on nodes that are not done', ids: ids(openDependencies) })
   if (node.status === 'proposed') gates.push({ kind: 'approval', message: 'waits for a human to approve or reject it', ids: [node.id] })
-  const openQuestions = subtree.filter(entry => entry.type === 'question' && OPEN_STATUSES.has(entry.status))
-  if (openQuestions.length > 0) gates.push({ kind: 'questions', message: 'questions in this subtree wait for a human decision', ids: ids(openQuestions) })
+  const humanQuestions = subtree.filter(waitsForHuman)
+  if (humanQuestions.length > 0) gates.push({ kind: 'questions', message: 'questions in this subtree wait for a human decision', ids: ids(humanQuestions) })
+  const agentQuestions = subtree.filter(entry => entry.type === 'question' && OPEN_STATUSES.has(entry.status) && deciderOf(entry) === 'agent')
+  if (agentQuestions.length > 0) gates.push({ kind: 'decisions', message: 'questions in this subtree are the agent\'s to decide', ids: ids(agentQuestions) })
   if (node.type === 'task' && (node.acceptance ?? []).length === 0) gates.push({ kind: 'acceptance', message: 'the task has no acceptance criteria', ids: [node.id] })
   const openChildren = children.filter(child => OPEN_STATUSES.has(child.status))
   if (openChildren.length > 0) gates.push({ kind: 'children', message: 'children are not all closed', ids: ids(openChildren) })
@@ -215,6 +250,7 @@ function queueEntry(graph: LoadedGraph, node: GraphNode): QueueEntry {
     ...(node.body === undefined ? {} : { body: node.body }),
     options: node.options ?? [],
     ...(node.recommend === undefined ? {} : { recommend: node.recommend }),
+    decider: deciderOf(node),
     raisedBy: parent === undefined ? null : nodeRef(graph, parent),
     sources: targets(graph, node, 'source').map(entry => nodeRef(graph, entry)),
     ...(first === undefined ? {} : { askedAt: first.at, askedBy: first.actor }),
@@ -228,6 +264,30 @@ function compareQueue(a: QueueEntry, b: QueueEntry): number {
   return time(a) - time(b) || compareText(a.id, b.id)
 }
 
+function decisionRecord(graph: LoadedGraph, node: GraphNode): DecisionRecord | undefined {
+  const decides = node.history.filter(entry => entry.op === 'decide')
+  const last = decides.at(-1)
+  if (node.status !== 'done' || node.decision === undefined || last === undefined) return undefined
+  const parent = node.parent === undefined ? undefined : graph.nodes.get(node.parent)
+  return {
+    ...nodeRef(graph, node),
+    decision: node.decision,
+    label: node.options?.find(entry => entry.key === node.decision)?.label ?? node.decision,
+    decider: deciderOf(node),
+    decidedAt: last.at,
+    decidedBy: last.actor,
+    ...(last.relay === undefined ? {} : { relay: last.relay }),
+    ...(last.reason === undefined ? {} : { reason: last.reason }),
+    rounds: decides.length,
+    raisedBy: parent === undefined ? null : nodeRef(graph, parent),
+  }
+}
+
+/** Newest first by decide time, then id. */
+function compareDecisions(a: DecisionRecord, b: DecisionRecord): number {
+  return Date.parse(b.decidedAt) - Date.parse(a.decidedAt) || compareText(a.id, b.id)
+}
+
 export function listOpenItems(graph: LoadedGraph): OpenItems {
   const index = childrenIndex(graph)
   const all = [...graph.nodes.values()]
@@ -237,12 +297,18 @@ export function listOpenItems(graph: LoadedGraph): OpenItems {
     && node.status === 'approved'
     && (index.get(node.id) ?? []).every(child => child.status === 'dropped' || child.status === 'superseded')
     && targets(graph, node, 'depends').every(target => target.status === 'done'))
+  const open = all.filter(node => node.type === 'question' && (node.status === 'approved' || node.status === 'doing'))
+  const queue = (decider: Decider): QueueEntry[] => open.filter(node => deciderOf(node) === decider)
+    .map(node => queueEntry(graph, node))
+    .sort(compareQueue)
   return {
     revision: graph.revision,
     proposals: all.filter(node => node.status === 'proposed').map(ref),
-    questions: all.filter(node => node.type === 'question' && (node.status === 'approved' || node.status === 'doing'))
-      .map(node => queueEntry(graph, node))
-      .sort(compareQueue),
+    questions: queue('human'),
+    agentQueue: queue('agent'),
+    recentDecisions: all.flatMap(node => node.type === 'question' ? decisionRecord(graph, node) ?? [] : [])
+      .sort(compareDecisions)
+      .slice(0, RECENT_DECISIONS),
     doing: all.filter(node => node.status === 'doing').map(ref),
     ready: ready.map(ref),
     verificationDebt: all.filter(node => node.type === 'decision' && node.verification === 'unverified' && (node.status === 'approved' || node.status === 'doing' || node.status === 'done')).map(ref),
