@@ -167,7 +167,7 @@ DSH 官方类型已作为 devDependency 安装（`@deepseek-ai/dsh-llm`、`@deep
 - `npm run lint:update`：把基线缩到当前状态（ESLint `--prune-suppressions`、knip 重写清单、jscpd `--update-baseline`）。存在任何新发现时拒绝写入，所以基线只减不增。基线文件缺失时按当前状态新建；删掉基线再重建等于接受全部现有告警，需用户批准（`ORCHESTRATION.md` §7.6）。
 - 修掉基线里的告警后，代码改动与 `npm run lint:update` 的基线变化同一批提交。
 - 范围：`src/`、`tests/`、`scripts/`、`ui/` 与根目录配置文件；不查 `dist/`、`reference/`、`.llm/`、`.agents/`、`.worktrees/`、`.pnpm-store/`。`src/shared/schemastery.ts` 是 vendored 上游代码（文件头写明来源），不进 ESLint 与 jscpd，knip 照常检查对它的引用。配置上的取舍见 `ORCHESTRATION.md` §7.7。
-- 基线（2026-10-28，删除历史调试脚本目录 `scripts/dev/` 之后，项目图 `m1-followups`）：ESLint 304 条，分布在 36 个文件（`tests/` 247、`src/` 57）；按规则：`no-unnecessary-type-assertion` 174、`require-await` 76、`no-base-to-string` 15、`no-unsafe-member-access` 12、`unbound-method` 8、`no-unsafe-assignment` 7、`no-unsafe-argument` 5、`no-unsafe-return` 4，其余 3 条分属 2 条规则。knip 22 条：11 个未用导出、11 个未用导出类型（其中 3 个是编译期契约检查类型）。jscpd 3 处克隆，26 行。门禁上线时（提交 `33345dd`）是 ESLint 317 条、knip 35 条、jscpd 7 处 75 行，其中 ESLint 11 条、knip 9 条（9 个未用文件）、jscpd 4 处来自 `scripts/dev/`。
+- 基线（2026-10-28，删除历史调试脚本目录 `scripts/dev/`、升级 TypeScript 5.9.3 之后，项目图 `m1-followups`）：ESLint 303 条，分布在 36 个文件（`tests/` 246、`src/` 57）；按规则：`no-unnecessary-type-assertion` 174、`require-await` 76、`no-base-to-string` 15、`no-unsafe-member-access` 12、`unbound-method` 8、`no-unsafe-assignment` 7、`no-unsafe-argument` 4、`no-unsafe-return` 4，其余 3 条分属 2 条规则。knip 22 条：11 个未用导出、11 个未用导出类型（其中 3 个是编译期契约检查类型）。jscpd 3 处克隆，26 行。门禁上线时（提交 `33345dd`）是 ESLint 317 条、knip 35 条、jscpd 7 处 75 行，其中 ESLint 11 条、knip 9 条（9 个未用文件）、jscpd 4 处来自 `scripts/dev/`；TypeScript 5.9 的 Web Crypto 类型让测试里一处 `no-unsafe-argument` 不再出现。
 - 门禁上线时演示过一次：临时加一条 `debugger`、一个未用导出、一段复制的函数，并删掉一处被压制的类型断言，三项检查都失败，`npm run lint:update` 拒绝写入、knip 与 jscpd 的基线文件不变；撤回后全绿。
 - jscpd 5 是原生二进制，在本机写不进 `%TEMP%`（拒绝访问），门禁让它把 JSON 报告写到 `.llm/checks/`，读完即删。
 
@@ -184,7 +184,7 @@ DSH 官方类型已作为 devDependency 安装（`@deepseek-ai/dsh-llm`、`@deep
 5. pnpm 的 store：本仓库的 `node_modules` 链接自仓库内的 `.pnpm-store/`（不入库），与本机全局 store 不同，所以 `pnpm add`、`pnpm update` 要在仓库根目录带 `--store-dir .pnpm-store`，否则报 `ERR_PNPM_UNEXPECTED_STORE`。`pnpm install --frozen-lockfile` 目前失败：根 `package.json` 的 `peerDependencies` 不在锁文件里（M1.9 之前即如此），尚未处理。
 6. 升级检查器后重跑 `npm run lint`：新版规则带来的新告警按新代码处理，修掉；修不掉的交给用户决定，不扩大基线。
 
-2026-10-28 的结果：`typescript` 5.7.2 → 7.0.2 是主版本升级（typescript-eslint 8.72.1 只支持低于 6.1 的 TypeScript；5.x 线最新为 5.9.3），用户 2026-10-28 选先升到 5.9.3（项目图 `m1-followups`）。`pnpm audit` 报 1 条高危：zod 4.4.3（GHSA-mrhx-c7xc-m3w5，4.6.6 修复），只经 `@deepseek-ai/dsh-llm` 进入本仓库，那是只用于类型检查的开发依赖，随桌面版处理。
+2026-10-28 的结果：`typescript` 5.7.2 → 7.0.2 是主版本升级（typescript-eslint 8.72.1 只支持低于 6.1 的 TypeScript；5.x 线最新为 5.9.3），用户 2026-10-28 选先升到 5.9.3（项目图 `q-typescript`），已升，精确版本 `5.9.3`（`m1-followups`）。5.9 的 DOM 类型把 Web Crypto 的 `BufferSource` 限定为 ArrayBuffer 上的视图，签名模块的两个字节函数改为声明 `Uint8Array<ArrayBuffer>`，面板的修订号计算对远端字节先复制再求摘要。`pnpm audit` 报 1 条高危：zod 4.4.3（GHSA-mrhx-c7xc-m3w5，4.6.6 修复），只经 `@deepseek-ai/dsh-llm` 进入本仓库，那是只用于类型检查的开发依赖，随桌面版处理。
 
 ## 12. 项目图
 

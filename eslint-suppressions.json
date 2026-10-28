@@ -158,9 +158,6 @@
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 11
     },
-    "@typescript-eslint/no-unsafe-argument": {
-      "count": 1
-    },
     "@typescript-eslint/require-await": {
       "count": 7
     }

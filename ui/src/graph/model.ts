@@ -9,9 +9,13 @@ import { revisionInput, type LoadedGraph } from '../../../src/graph/parse.ts'
 import { OPEN_STATUSES, deciderOf, waitsForHuman, type DecisionRecord } from '../../../src/graph/projection.ts'
 import type { GraphNode } from '../../../src/graph/schema.ts'
 
-/** First 12 hex digits of the SHA-256 of some bytes: the revision store.ts computes with node:crypto. */
+/**
+ * First 12 hex digits of the SHA-256 of some bytes: the revision store.ts
+ * computes with node:crypto. Web Crypto takes only ArrayBuffer-backed views,
+ * and the remote's bytes may sit on any buffer, so the digest reads a copy.
+ */
 export async function revisionOfBytes(bytes: Uint8Array): Promise<string> {
-  const digest = new Uint8Array(await globalThis.crypto.subtle.digest('SHA-256', bytes))
+  const digest = new Uint8Array(await globalThis.crypto.subtle.digest('SHA-256', new Uint8Array(bytes)))
   let hex = ''
   for (const byte of digest.subarray(0, 6)) hex += byte.toString(16).padStart(2, '0')
   return hex

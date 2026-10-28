@@ -78,7 +78,7 @@ function randomHex(byteCount: number): string {
   return bytesToHex(crypto.getRandomValues(new Uint8Array(byteCount)))
 }
 
-function base64ToBytes(value: string): Uint8Array {
+function base64ToBytes(value: string): Uint8Array<ArrayBuffer> {
   if (value.length === 0 || value.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(value)) throw new Error('invalid base64')
   const binary = atob(value)
   const out = new Uint8Array(binary.length)
@@ -86,7 +86,7 @@ function base64ToBytes(value: string): Uint8Array {
   return out
 }
 
-async function hkdfBytes(secret: string, info: string): Promise<Uint8Array> {
+async function hkdfBytes(secret: string, info: string): Promise<Uint8Array<ArrayBuffer>> {
   const key = await crypto.subtle.importKey('raw', encodeUtf8(secret), 'HKDF', false, ['deriveBits'])
   return new Uint8Array(await crypto.subtle.deriveBits({ name: 'HKDF', hash: 'SHA-256', salt: encodeUtf8(KDF_SALT), info: encodeUtf8(info) }, key, 256))
 }

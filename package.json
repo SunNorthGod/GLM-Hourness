@@ -62,7 +62,7 @@
     "eslint": "10.13.0",
     "jscpd": "5.4.2",
     "knip": "6.43.0",
-    "typescript": "^5.7.0",
+    "typescript": "5.9.3",
     "typescript-eslint": "8.72.1"
   },
   "dependencies": {
