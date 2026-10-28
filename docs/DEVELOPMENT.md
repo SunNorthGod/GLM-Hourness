@@ -24,10 +24,10 @@ L2 的 mock **只允许 mock 外部网络和文件系统**；不得 mock DSH 契
 ```powershell
 npm run build        # tsc：含 adapter 契约检查（见 §4）
 npm run preflight    # dist 产物、patch 行文件、client 半一包一源约束
-npm test             # preflight + 逐字门禁 + 检查器门禁 + 全部 spec
+npm test             # preflight + 逐字门禁 + 检查器门禁 + 密钥扫描 + 全部 spec
 ```
 
-`npm test` 的前三道是 preflight、逐字门禁（`npm run check:verbatim`，规则见 `DESIGN.md` §5.9）与检查器门禁（`npm run lint`，§10），最后一道是项目图入口脚本的冒烟（`npm run graph:smoke`，§12）；`npm run preflight` 单独跑用于安装前快检。
+`npm test` 的前四道是 preflight、逐字门禁（`npm run check:verbatim`，规则见 `DESIGN.md` §5.9）、检查器门禁（`npm run lint`，§10）与密钥扫描（`npm run check:secrets`，§10），最后一道是项目图入口脚本的冒烟（`npm run graph:smoke`，§12）；`npm run preflight` 单独跑用于安装前快检。
 
 ## 3. 测试 profile 沙盒（L3）
 
@@ -107,8 +107,9 @@ DSH 官方类型已作为 devDependency 安装（`@deepseek-ai/dsh-llm`、`@deep
 | `plugin_manager` 返回 | 行激活状态、warnings、安装期诊断 |
 | `npm run preflight` | 本项目自定义门禁 |
 | `npm run lint` | ESLint、knip、jscpd 对照基线（§10） |
+| `npm run check:secrets` | gitleaks 密钥扫描（§10） |
 
-**边界**：官方没有 lint/doctor 类静态分析；运行时校验只有在真实宿主里才触发。因此本项目用「官方类型 + tsc」补编译期，用「headless 沙盒」补启动期，用 preflight 补产物与组合完整性，用 ESLint、knip、jscpd 补规范、死代码与重复检查。
+**边界**：官方没有 lint/doctor 类静态分析；运行时校验只有在真实宿主里才触发。因此本项目用「官方类型 + tsc」补编译期，用「headless 沙盒」补启动期，用 preflight 补产物与组合完整性，用 ESLint、knip、jscpd 补规范、死代码与重复检查，用 gitleaks 补密钥扫描。
 
 ## 7. 事故记录
 
@@ -149,7 +150,7 @@ DSH 官方类型已作为 devDependency 安装（`@deepseek-ai/dsh-llm`、`@deep
 - 仓库：git，远端为 Gitee 私有仓库 `NorthGod_BFDG/GLM-Hourness`（`origin`），主分支 `main`。仓库由 Kiro 管理。
 - 一件事一个提交；提交信息用技术话术写清改了什么、为什么、怎么验证的（干净区）。项目图上线后，提交信息带节点 id。
 - 不强推，不改写已推送的历史，不跳过钩子。
-- 不入库：`.llm/`（凭证、记忆、审计、原始资料）、`/reference/`（审计用参考源码）、`dist/`、`node_modules/`、`.pnpm-store/`。提交前扫描密钥。
+- 不入库：`.llm/`（凭证、记忆、审计、原始资料）、`/reference/`（审计用参考源码）、`dist/`、`node_modules/`、`.pnpm-store/`。提交前扫描密钥（`npm test` 含密钥扫描，§10）。
 - 换行：`.gitattributes` 固定 LF。
 - 被取代的文档直接删除，原文留在 git 历史中。
 
@@ -162,6 +163,7 @@ DSH 官方类型已作为 devDependency 安装（`@deepseek-ai/dsh-llm`、`@deep
 | 规范（类型感知） | ESLint 10.13.0、`@eslint/js` 10.0.1（核心推荐规则）、typescript-eslint 8.72.1 | `eslint.config.js`；`tests/tsconfig.json` 给测试文件提供类型信息 | `eslint-suppressions.json`（ESLint 自带的批量压制，按文件与规则计数） |
 | 死代码（未用文件、导出、依赖） | knip 6.43.0 | `knip.jsonc` | `knip-baseline.json`（按类型、文件、名称，不含行号） |
 | 重复 | jscpd 5.4.2 | `.jscpd.json` | `.jscpd-baseline.json`（jscpd 自带的克隆指纹） |
+| 密钥 | gitleaks 8.30.1（独立二进制，§11） | 默认规则；误报才加 `.gitleaks.toml`（目前没有） | 无，任何发现都失败 |
 
 - `npm run lint`（`scripts/check-lint.mjs`，已接入 `npm test`）：三项各自对照基线。基线之外的新发现使门禁失败；基线里已经不再出现的条目也使门禁失败，并提示运行 `npm run lint:update`。ESLint 这两种失败由它的批量压制自己给出（多出的违规退出码 1，未修剪的压制退出码 2）；knip 没有基线功能，由脚本比对清单；jscpd 的新克隆由它自己的基线判定，失效的指纹由脚本按数量判定。
 - `npm run lint:update`：把基线缩到当前状态（ESLint `--prune-suppressions`、knip 重写清单、jscpd `--update-baseline`）。存在任何新发现时拒绝写入，所以基线只减不增。基线文件缺失时按当前状态新建；删掉基线再重建等于接受全部现有告警，需用户批准（`ORCHESTRATION.md` §7.6）。
@@ -170,6 +172,7 @@ DSH 官方类型已作为 devDependency 安装（`@deepseek-ai/dsh-llm`、`@deep
 - 基线（2026-10-28，删除历史调试脚本目录 `scripts/dev/`、升级 TypeScript 5.9.3 之后，项目图 `m1-followups`）：ESLint 303 条，分布在 36 个文件（`tests/` 246、`src/` 57）；按规则：`no-unnecessary-type-assertion` 174、`require-await` 76、`no-base-to-string` 15、`no-unsafe-member-access` 12、`unbound-method` 8、`no-unsafe-assignment` 7、`no-unsafe-argument` 4、`no-unsafe-return` 4，其余 3 条分属 2 条规则。knip 22 条：11 个未用导出、11 个未用导出类型（其中 3 个是编译期契约检查类型）。jscpd 3 处克隆，26 行。门禁上线时（提交 `33345dd`）是 ESLint 317 条、knip 35 条、jscpd 7 处 75 行，其中 ESLint 11 条、knip 9 条（9 个未用文件）、jscpd 4 处来自 `scripts/dev/`；TypeScript 5.9 的 Web Crypto 类型让测试里一处 `no-unsafe-argument` 不再出现。
 - 门禁上线时演示过一次：临时加一条 `debugger`、一个未用导出、一段复制的函数，并删掉一处被压制的类型断言，三项检查都失败，`npm run lint:update` 拒绝写入、knip 与 jscpd 的基线文件不变；撤回后全绿。
 - jscpd 5 是原生二进制，在本机写不进 `%TEMP%`（拒绝访问），门禁让它把 JSON 报告写到 `.llm/checks/`，读完即删。
+- `npm run check:secrets`（`scripts/check-secrets.mjs`，`npm test` 里紧接检查器门禁）：gitleaks 扫 HEAD 可达的提交，再扫已跟踪文件的未提交改动（暂存区、工作区各一次）；未跟踪与被忽略的文件（`.llm/` 里的凭证等）不读。历史只到 HEAD，结果只取决于本检出，不受同仓库其他分支与工作树影响；gitleaks 读的是 `git log -p`，合并提交自身的改动不在其中。输出里的密钥一律遮盖。误报只在仓库根的 `.gitleaks.toml` 里按路径与正则精确放行；环境变量 `GITLEAKS_CONFIG`、`GITLEAKS_CONFIG_TOML` 不传给 gitleaks，行内 `gitleaks:allow` 注释不生效。找二进制的顺序：`GITLEAKS_PATH`、`%LOCALAPPDATA%\Programs\gitleaks\gitleaks.exe`、PATH；找不到就失败并提示安装方法（§11），不跳过。上线时（2026-10-28）HEAD 上 87 个非合并提交无发现，按 gitleaks 默认范围（全部引用）扫一次也无发现，所以没有 `.gitleaks.toml`。演示过一次：暂存的新文件与已跟踪文件的未暂存改动里各放一个随机生成的 GitHub token 形状字符串，两处都报出、门禁失败；`.llm/` 下的同样内容不报。
 
 ## 11. 依赖更新
 
@@ -183,6 +186,7 @@ DSH 官方类型已作为 devDependency 安装（`@deepseek-ai/dsh-llm`、`@deep
 4. 新增依赖一律精确版本（`pnpm add -D -E <包>@<版本>`），任何新增先问用户。
 5. pnpm 的 store：本仓库的 `node_modules` 链接自仓库内的 `.pnpm-store/`（不入库），与本机全局 store 不同，所以 `pnpm add`、`pnpm update` 要在仓库根目录带 `--store-dir .pnpm-store`，否则报 `ERR_PNPM_UNEXPECTED_STORE`。`pnpm install --frozen-lockfile` 目前失败：根 `package.json` 的 `peerDependencies` 不在锁文件里（M1.9 之前即如此），尚未处理。
 6. 升级检查器后重跑 `npm run lint`：新版规则带来的新告警按新代码处理，修掉；修不掉的交给用户决定，不扩大基线。
+7. gitleaks（§10）不经 pnpm：本机装在 `%LOCALAPPDATA%\Programs\gitleaks\gitleaks.exe`，8.30.1（2026-10-28，项目图 `q-gitleaks`）。安装或升级：从 https://github.com/gitleaks/gitleaks/releases 下载最新版的 `gitleaks_<版本>_windows_x64.zip` 与 `gitleaks_<版本>_checksums.txt`，zip 的 SHA-256 与 checksums 文件里对应的一行一致才解压到该目录；装在别处时用 `GITLEAKS_PATH` 指向它。`npm run deps:check` 不报它的新版本，定期巡检时看 releases 页，升级按第 1、2 条处理，升级后重跑 `npm run check:secrets`。
 
 2026-10-28 的结果：`typescript` 5.7.2 → 7.0.2 是主版本升级（typescript-eslint 8.72.1 只支持低于 6.1 的 TypeScript；5.x 线最新为 5.9.3），用户 2026-10-28 选先升到 5.9.3（项目图 `q-typescript`），已升，精确版本 `5.9.3`（`m1-followups`）。5.9 的 DOM 类型把 Web Crypto 的 `BufferSource` 限定为 ArrayBuffer 上的视图，签名模块的两个字节函数改为声明 `Uint8Array<ArrayBuffer>`，面板的修订号计算对远端字节先复制再求摘要。`pnpm audit` 报 1 条高危：zod 4.4.3（GHSA-mrhx-c7xc-m3w5，4.6.6 修复），只经 `@deepseek-ai/dsh-llm` 进入本仓库，那是只用于类型检查的开发依赖，随桌面版处理。
 

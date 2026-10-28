@@ -18,7 +18,7 @@
 src/           主包 TypeScript 源码
 tests/         33 个 spec，453 用例（2026-10-28，`d4cd7e2` 之后）；tests/fake-rc3.ts 为 rc.3 运行时替身；tests/tsconfig.json 只给 ESLint 提供类型信息；tests/calibration/ 为标定测试集（两个任务，ORCHESTRATION.md §10.5）
 ui/            独立 UI bundle（纯 JS，不参与 tsc）
-scripts/       preflight-bundle.mjs、check-verbatim.mjs、check-lint.mjs（检查器门禁）、deps-check.mjs（依赖报告）、smoke-zcode*.mjs、sandbox.mjs（glmsandbox 启动与覆盖行，探针与标定共用）、probe/（L3 探针）、calibrate/（标定运行器与边界插件）、graph/（项目图命令行、出图与冒烟）
+scripts/       preflight-bundle.mjs、check-verbatim.mjs、check-lint.mjs（检查器门禁）、check-secrets.mjs（密钥扫描）、deps-check.mjs（依赖报告）、smoke-zcode*.mjs、sandbox.mjs（glmsandbox 启动与覆盖行，探针与标定共用）、probe/（L3 探针）、calibrate/（标定运行器与边界插件）、graph/（项目图命令行、出图与冒烟）
 eslint.config.js、knip.jsonc、.jscpd.json  检查器配置；eslint-suppressions.json、knip-baseline.json、.jscpd-baseline.json 为告警基线（DEVELOPMENT.md §10）
 docs/          宪章、设计、编排、路线、事实账、流程、交接；docs/graph/ 为本项目的项目图（进度的事实源）；docs/reference/ 为事实参考原文
 AGENTS.md      仓库规则
@@ -106,6 +106,7 @@ dist/          不入库：tsc 产物（profile 通过 pnpm link 使用）
 - 桌面版输入框的模型菜单换模型时，DSH 会把选中的模型写进 profile 的 `agent-default-model`，作为新会话的默认模型（2026-10-28 L4 实测）。用桌面版做验证时换过模型，结束后经同一菜单换回，并核对这一项。2026-10-28 `m2-8` 的 L4 验证把它从 `deepseek-account` / `deepseek-flash` / `high` 改成了 `glm-zcode` / `glm-5.3-flash` / `high`，验证后已换回，profile 其余内容未动。
 - Windows PowerShell 5.1 的 `Get-Content`、`Set-Content` 不带 `-Encoding` 时按系统 ANSI 代码页读写，UTF-8 文件往返一次，非 ASCII 字符就坏了（2026-10-28 损坏过 `src/shared/dsh-min.ts` 的 en dash，已修复）。改文件用编辑工具或 Node 脚本；经 CDP 往页面送含中文的表达式或文本，用 `.agents/tasks/m2-panel/cdp.mjs` 的 `evalfile`、`typefile`。
 - 旧工作名文件夹 `Desktop\Project\dsh-glm-dialect` 的文档已迁入本仓库，可由用户删除。
+- gitleaks 8.30.1 装在 `%LOCALAPPDATA%\Programs\gitleaks\gitleaks.exe`（仓库外，`npm test` 的密钥扫描用它，没有它门禁失败；安装与升级见 `DEVELOPMENT.md` §11）。
 
 ## 7. 下一步
 
