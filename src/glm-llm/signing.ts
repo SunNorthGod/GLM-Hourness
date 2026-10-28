@@ -219,7 +219,8 @@ export class ClientSigningManager {
    * Add V4 signing headers. Every outcome is a fresh `Headers` copy cleared of
    * signing headers (3.16.3 `sendUnsigned` / `sendSigned` both start from
    * `zrt`); a signed one then gets the seven `set` calls of `sendSigned`
-   * @3828487 in their order, which renames `x-session-id` in place.
+   * (@3827896, the calls at @3828487) in their order, which renames
+   * `x-session-id` in place.
    */
   async signWithStatus(url: string, headers: HeadersInit, cred: SigningCredential): Promise<SignOutcome> {
     const unsigned = (): SignOutcome => ({ headers: stripSigningHeaders(headers), signed: false })

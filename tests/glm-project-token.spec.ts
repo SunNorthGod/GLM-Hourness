@@ -3,7 +3,7 @@ import test from 'node:test'
 import { ProjectAccessTokenClient, projectTokenFingerprint, projectTokenRequest, type ProjectKeyLocationStore, type ProjectTokenRequest } from '../src/glm-llm/auth/project-token.ts'
 import { fakeProjectToken } from './glm-fixtures.ts'
 
-// Fake tokens only. The client is ported from ZCode 3.16.3 ProjectAccessTokenClient (sge @1083993).
+// Fake tokens only. The client is ported from ZCode 3.16.3 ProjectAccessTokenClient (sge @1082916).
 
 interface Call { url: string, method: string, headers: Record<string, string>, body?: string }
 

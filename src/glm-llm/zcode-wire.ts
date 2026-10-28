@@ -8,7 +8,7 @@
  */
 
 /**
- * ProjectAccessTokenClient error codes (`sge` @1083993 and its cache `Urt`
+ * ProjectAccessTokenClient error codes (`sge` @1082916 and its cache `Urt`
  * @1080367; the desktop host carries the same client). The resolve path
  * rethrows every failure as one of these messages.
  */

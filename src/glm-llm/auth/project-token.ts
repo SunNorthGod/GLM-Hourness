@@ -1,7 +1,7 @@
 /**
  * The project access token (PAT) of a bigmodel personal coding plan, ported
  * from ZCode 3.16.3 `ProjectAccessTokenClient` and `ProjectAccessTokenCache`
- * (CLI bundle `sge` @1083993 and `Urt` @1080367; the desktop host chunk
+ * (CLI bundle `sge` @1082916 and `Urt` @1080367; the desktop host chunk
  * `out/host/chunk-5YNPFY3L.js` carries the same code, `My` and `wc`). 3.16.3
  * account mode sends this token as the model request credential and signs
  * with it.

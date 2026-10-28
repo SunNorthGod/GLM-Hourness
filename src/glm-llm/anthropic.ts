@@ -291,8 +291,9 @@ function groupTurns(messages: readonly WireMessage[]): WireMessage[] {
  * comes from prepareRequestImages, `metadataUserId` from `metadataUserId()`.
  * The last message's last block carries the cache breakpoint. With `wire`
  * (coding-plan) the body is the one the AI SDK inside 3.16.3 sends
- * (`getArgs` @3603239): `model, max_tokens, [temperature], metadata,
- * system, messages, tools, tool_choice, stream`, undefined fields left out,
+ * (`getArgs` @3599845, body literal @3603239): `model, max_tokens,
+ * [temperature], metadata, system, messages, tools, tool_choice, stream`,
+ * undefined fields left out,
  * `tool_choice: {type: "auto"}` with any tools (`prepareToolsAndToolChoice`
  * `nro` @3929119, `prepareTools` `Jjs` @3543299), then the option map
  * (`createModelOptionMapFetch` `TQr` @3836714). Without it the earlier shape
@@ -418,7 +419,7 @@ interface OpenBlock {
  * The response usage in ZCode's token shape, the baseline of the next
  * request's `max_tokens` estimate (token-budget.ts): `input` is the whole
  * prompt with cache reads and writes, as the AI SDK Anthropic provider
- * counts it (`EZr` @3549947: input plus cache creation plus cache read).
+ * counts it (`EZr` @3549441: input plus cache creation plus cache read).
  */
 function zcodeTokens(usage: WireUsage): { input: number, output: number, total: number, cache: { read: number, write: number } } | undefined {
   if (usage.input_tokens === undefined && usage.output_tokens === undefined) return undefined
