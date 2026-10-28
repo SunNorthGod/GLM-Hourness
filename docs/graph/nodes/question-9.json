@@ -1,0 +1,54 @@
+{
+  "id": "question-9",
+  "type": "question",
+  "title": "没有 ZCode 设备 id 时怎么办",
+  "status": "done",
+  "parent": "m1-parity",
+  "body": "3.16.3 的 ensureCliDeviceMid 读 ~/.zcode/v2/telemetry-state.json 的 deviceMid；没有就随机生成 UUID，用临时文件加改名、带锁写回同一文件，写失败也照用。本机有 deviceMid，不会走到写这一步。",
+  "options": [
+    {
+      "key": "A",
+      "label": "照 ZCode 做：生成并写回 ~/.zcode",
+      "consequence": "与 3.16.3 完全一致，以后装上 ZCode 两边读同一个 id；会写仓库外的 ZCode 文件"
+    },
+    {
+      "key": "B",
+      "label": "只读，没有就用本包自己的 id",
+      "consequence": "不碰 ZCode 目录；这种机器上设备 id 与 ZCode 对不上"
+    }
+  ],
+  "recommend": "A",
+  "decision": "A",
+  "evidence": [
+    {
+      "kind": "decision",
+      "ref": "A"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-28T13:56:34.910Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "写 ~/.zcode 是仓库外的动作，问了用户",
+      "relay": "A",
+      "to": "approved"
+    },
+    {
+      "at": "2026-10-28T13:56:34.965Z",
+      "actor": "llm",
+      "op": "decide",
+      "reason": "用户选 A，彻底一样",
+      "relay": "A",
+      "from": "approved",
+      "to": "done",
+      "option": "A",
+      "evidence": [
+        {
+          "kind": "decision",
+          "ref": "A"
+        }
+      ]
+    }
+  ]
+}
