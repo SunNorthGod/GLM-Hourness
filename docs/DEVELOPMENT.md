@@ -167,7 +167,7 @@ DSH 官方类型已作为 devDependency 安装（`@deepseek-ai/dsh-llm`、`@deep
 - `npm run lint:update`：把基线缩到当前状态（ESLint `--prune-suppressions`、knip 重写清单、jscpd `--update-baseline`）。存在任何新发现时拒绝写入，所以基线只减不增。基线文件缺失时按当前状态新建；删掉基线再重建等于接受全部现有告警，需用户批准（`ORCHESTRATION.md` §7.6）。
 - 修掉基线里的告警后，代码改动与 `npm run lint:update` 的基线变化同一批提交。
 - 范围：`src/`、`tests/`、`scripts/`、`ui/` 与根目录配置文件；不查 `dist/`、`reference/`、`.llm/`、`.agents/`、`.worktrees/`、`.pnpm-store/`。`src/shared/schemastery.ts` 是 vendored 上游代码（文件头写明来源），不进 ESLint 与 jscpd，knip 照常检查对它的引用。配置上的取舍见 `ORCHESTRATION.md` §7.7。
-- 基线（2026-10-28，门禁上线时）：ESLint 317 条，分布在 41 个文件（`tests/` 248、`src/` 58、`scripts/dev/` 11）；按规则：`no-unnecessary-type-assertion` 175、`require-await` 77、`no-unsafe-member-access` 16、`no-base-to-string` 15、`unbound-method` 8、`no-unsafe-assignment` 8、`no-unsafe-argument` 5、`no-unsafe-return` 4，其余 9 条分属 5 条规则。knip 35 条：`scripts/dev/` 的 9 个未用文件、13 个未用导出、13 个未用导出类型（其中 3 个是编译期契约检查类型）。jscpd 7 处克隆，75 行（0.57%），4 处在 `scripts/dev/`。
+- 基线（2026-10-28，删除历史调试脚本目录 `scripts/dev/` 之后，项目图 `m1-followups`）：ESLint 304 条，分布在 36 个文件（`tests/` 247、`src/` 57）；按规则：`no-unnecessary-type-assertion` 174、`require-await` 76、`no-base-to-string` 15、`no-unsafe-member-access` 12、`unbound-method` 8、`no-unsafe-assignment` 7、`no-unsafe-argument` 5、`no-unsafe-return` 4，其余 3 条分属 2 条规则。knip 22 条：11 个未用导出、11 个未用导出类型（其中 3 个是编译期契约检查类型）。jscpd 3 处克隆，26 行。门禁上线时（提交 `33345dd`）是 ESLint 317 条、knip 35 条、jscpd 7 处 75 行，其中 ESLint 11 条、knip 9 条（9 个未用文件）、jscpd 4 处来自 `scripts/dev/`。
 - 门禁上线时演示过一次：临时加一条 `debugger`、一个未用导出、一段复制的函数，并删掉一处被压制的类型断言，三项检查都失败，`npm run lint:update` 拒绝写入、knip 与 jscpd 的基线文件不变；撤回后全绿。
 - jscpd 5 是原生二进制，在本机写不进 `%TEMP%`（拒绝访问），门禁让它把 JSON 报告写到 `.llm/checks/`，读完即删。
 

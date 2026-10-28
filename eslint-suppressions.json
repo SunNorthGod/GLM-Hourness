@@ -1,33 +1,4 @@
 {
-  "scripts/dev/debug-prestep.mjs": {
-    "no-unused-vars": {
-      "count": 1
-    }
-  },
-  "scripts/dev/inspect-session-types.cjs": {
-    "no-empty": {
-      "count": 1
-    },
-    "no-unused-vars": {
-      "count": 1
-    }
-  },
-  "scripts/dev/inspect-session.cjs": {
-    "no-useless-assignment": {
-      "count": 2
-    }
-  },
-  "scripts/dev/verify-profile-patch.ts": {
-    "@typescript-eslint/no-unsafe-assignment": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unsafe-call": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unsafe-member-access": {
-      "count": 4
-    }
-  },
   "src/glm-llm/auth/jwt.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 1
