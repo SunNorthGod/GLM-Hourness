@@ -37,7 +37,7 @@ GLM-Hourness
 
 | 行 id | 入口 | 层 | 现状 |
 | --- | --- | --- | --- |
-| `glm-hourness/glm-llm` | `dist/glm-llm/index.js` | 通道 | 真网冒烟通过〔实测〕；DSH 真实会话尚未使用过〔实读审计数据〕 |
+| `glm-hourness/glm-llm` | `dist/glm-llm/index.js` | 通道 | 真网冒烟通过〔实测〕；2026-10-28 桌面版 L4 真实会话通过（GLM-5.3 多轮工具调用、GLM-5.3-Flash 收图）〔实读会话记录〕；凭证目录见 §2.4 |
 | `glm-hourness/glm-login` | `dist/glm-llm/login-row.js` | 通道 | `/glm-login`、`/glm-status`（凭证状态与行健康表，§2.5）、`/glm-logout` |
 | `glm-hourness/glm-prompt` | `dist/glm-prompt/index.js` | 方言 | 见 §5；另带高峰提醒（本项目的 notice，`ORCHESTRATION.md` §11.4） |
 | `glm-hourness/glm-compact` | `dist/glm-prompt/compact-row.js` | 方言 | 见 §5.6 |
@@ -62,7 +62,7 @@ GLM-Hourness
 
 | 数据 | 位置 | 理由 |
 | --- | --- | --- |
-| 用量流水；以后还有凭证、deviceMid、偏好类记忆 | 用户级目录 `$DSH_HOME/glm-hourness/`，默认 `C:\Users\29596\.dsh\glm-hourness\` | 额度跟账号走，一台机器一份，按项目拆开反而看不全 |
+| 用量流水、加密凭证、deviceMid；以后还有偏好类记忆 | 用户级目录 `$DSH_HOME/glm-hourness/`，默认 `C:\Users\29596\.dsh\glm-hourness\` | 额度跟账号走，一台机器一份，按项目拆开反而看不全 |
 | 记忆（事实）、违规、决策 | 项目目录，即工作区 `.llm/` | 记录的是在这个项目里学到的东西与犯过的错，混在一起会互相污染 |
 | 项目图 | 仓库内 | 项目知识，随 git 版本化（`ORCHESTRATION.md` §2.6） |
 
@@ -78,7 +78,10 @@ GLM-Hourness
 
 迁移〔2026-10-28〕：从 `~/.dsh/profiles/desktop/.llm/`（只读）与仓库 `.llm/audit/usage.jsonl` 复制，按整行去重。用户级用量流水共 1080 条：仓库 890 条加旧目录 190 条，两者没有重复，按时间排序，最晚一条 2026-10-27T12:29:08.993Z。旧目录的 1 条记忆（`glm-hourness-handoff`）并入仓库 `.llm/memory.json`；旧目录的 3 条决策在仓库决策流水里都已存在。源文件未改动，旧目录的删除由用户决定（`ROADMAP.md` §3）。桌面版重启加载新代码之前，运行中的旧代码仍会把用量追加到仓库 `.llm/audit/usage.jsonl`，重启后需补拷一次（`ROADMAP.md` §3）。
 
-凭证与 deviceMid〔定案 2026-10-28，用户选 A〕：保留加密凭证文件，搬到 `$DSH_HOME/glm-hourness/`，deviceMid 随行；在原生通道的 L4 验收之后再搬，本条目不改 `glm-llm` / `glm-login` 的 `home`。加密密钥由 `GLM_HOURNESS_CREDENTIAL_SECRET` 或 `HOME`/`USERPROFILE`、平台、架构推导（§4.1，`src/glm-llm/auth/store.ts`），与文件路径无关，搬家后同一台机器照样能解密。
+凭证与 deviceMid〔定案 2026-10-28，用户选 A；已实现 2026-10-28，L4 验收之后〕：保留加密凭证文件，搬到 `$DSH_HOME/glm-hourness/`，deviceMid 随行。加密密钥由 `GLM_HOURNESS_CREDENTIAL_SECRET` 或 `HOME`/`USERPROFILE`、平台、架构推导（§4.1，`src/glm-llm/auth/store.ts`），与文件路径无关，搬家后同一台机器照样能解密。
+
+- 解析：`glm-llm` 与 `glm-login` 的 `home` 改为可选，`credentialHome(home)`（`src/shared/data-home.ts`）取非空的行 `home`，否则取用户级目录。两行不读数据目录服务：通道行激活时数据行可能还没激活，而凭证目录在激活时就要定下来。bundle patch 删去两行的 `home`；探针与测试仍显式传 `home` 指向临时目录。
+- 文件：两份文件已复制到 `C:\Users\29596\.dsh\glm-hourness\`，与仓库 `.llm/` 里的原件逐字节相同。原件保留到桌面版重启、确认新代码从用户级目录读到凭证之后再删（`ROADMAP.md` §3）：重启前运行中的旧代码仍读写仓库 `.llm/`，期间若重新登录，删之前要先把较新的一份补拷过去。
 
 ### 2.4a 运行时契约来源〔实读 2026-10-27〕
 
@@ -184,12 +187,12 @@ GLM-Hourness
 - 会话以 agent id 为键（rc.3 的 agent 与会话共用 id）：组装与工具调用取调用方 agent，`llm/stream` 一侧取请求的 `sessionId`，命令取调用参数里的 `agent`（commands:379–385）。没有会话 id 的报告丢弃。
 - 报告只在主机进程内存里，不写文件，不进模型可见的对话；桌面版重启后清空。
 
-状态分生效、部分生效、未生效三种；表里另有「已加载，本会话未触发」与「未加载」。激活时就未生效的行（例如缺 `home`）不看会话报告，直接显示激活原因；`glm-login` 与 `data` 不按会话起作用，只显示激活状态。
+状态分生效、部分生效、未生效三种；表里另有「已加载，本会话未触发」与「未加载」。激活时就未生效的行（例如数据目录服务提供失败）不看会话报告，直接显示激活原因；`glm-login` 与 `data` 不按会话起作用，只显示激活状态。
 
 | 行 | 何时上报 | 生效 | 部分生效或未生效的原因 |
 | --- | --- | --- | --- |
-| glm-llm | 激活；每次请求 | 已注册路由；上游已应答 | `home` 未配置；未登录（凭证为空）；凭证不可读；上游返回非 2xx 状态码 |
-| glm-login | 激活 | 三个命令已注册 | `home` 未配置：只保留 `/glm-status`，`/glm-login`、`/glm-logout` 关闭 |
+| glm-llm | 激活；每次请求 | 已注册路由，写明套餐与凭证目录；上游已应答 | 未登录（凭证为空）；凭证不可读；上游返回非 2xx 状态码 |
+| glm-login | 激活 | 三个命令已注册 | 无（凭证目录总能解析，§2.4） |
 | glm-prompt | 激活；每步组装 | GLM 路由，ZCode 提示词与工具面，工具检索 local 或关闭 | 非 GLM 路由；工具检索未安装（会话历史不可读，部分生效）；方言安装失败 |
 | glm-compact | 激活；每次压缩请求 | GLM 压缩请求改用 ZCode 指令与摘要格式 | 非 GLM 路由；未识别 compaction-basic 的指令（原样放行） |
 | data | 激活 | 用户级目录与项目目录都已解析 | 项目目录未配置（部分生效）；服务提供失败 |
@@ -200,7 +203,7 @@ GLM-Hourness
 
 UI 包的行运行在客户端，不在表内。
 
-`/glm-status` 的第一行仍是凭证状态（设置页按它解析登录状态），空一行后是 Markdown 表。`glm-login` 没有 `home` 时只注册 `/glm-status`，凭证行写明凭证位置未知。设置页目前把整段文本原样显示，表格的界面呈现属于 M8。
+`/glm-status` 的第一行仍是凭证状态（设置页按它解析登录状态），空一行后是 Markdown 表。设置页目前把整段文本原样显示，表格的界面呈现属于 M8。
 
 验证：L2 覆盖每行的上报与 `/glm-status` 的输出（`tests/health.spec.ts`；通道请求的三种结果在 `tests/glm-zcode.spec.ts`）。L3 探针在 GLM、非 GLM、压缩三个场景的最后一步调用本包真实的 `/glm-status` 处理函数，检查表列出全部 9 行、各行状态与原因符合路由，并确认表的内容没有进入任何模型请求。探针里 `glm-llm` 显示未加载：bundle 默认禁用该行，探针用的是脚本化 provider。
 
@@ -225,7 +228,7 @@ UI 包的行运行在客户端，不在表内。
 ### 4.1 凭证与登录
 
 - 登录：ZCode 账号体系的 bigmodel 轮询登录（`/glm-login` 打开浏览器授权，5 分钟超时），解析出套餐 API Key，名称与 ZCode 客户端一致（`zcode-api-key`），两者共用同一把 Key〔实读〕。
-- 存储：`<home>/credentials.json`，AES-256-GCM，原子写入〔实读〕。
+- 存储：`<home>/credentials.json`，AES-256-GCM，原子写入〔实读〕。`home` 默认是用户级目录 `$DSH_HOME/glm-hourness/`（§2.4）。
 - 风险：加密密钥由 `HOME`/`USERPROFILE`、平台与架构推导，看过源码即可算出；`GLM_HOURNESS_CREDENTIAL_SECRET` 可覆盖。凭证文件不入库，当前可接受。后续迁到系统钥匙串或 DSH 凭证服务〔规划〕。
 
 ### 4.2 身份头

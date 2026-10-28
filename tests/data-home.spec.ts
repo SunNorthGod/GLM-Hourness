@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { apply, dataServiceFor } from '../src/data/index.ts'
-import { DATA_SERVICE, dataHomes, dataService, expandHomePath, resolveDshHome, userDataHome } from '../src/shared/data-home.ts'
+import { credentialHome, DATA_SERVICE, dataHomes, dataService, expandHomePath, resolveDshHome, userDataHome } from '../src/shared/data-home.ts'
 import { serviceStore } from './fake-rc3.ts'
 
 const HOME = resolve('/users/me')
@@ -26,6 +26,12 @@ test('tilde expansion covers ~, ~/ and ~\\ only', () => {
 test('the user-level directory is <DSH home>/glm-hourness', () => {
   assert.equal(userDataHome(undefined, {}, HOME), join(HOME, '.dsh', 'glm-hourness'))
   assert.equal(userDataHome('/scratch/dsh-home', {}, HOME), join(resolve('/scratch/dsh-home'), 'glm-hourness'))
+})
+
+test('the credential directory is a non-empty row home, else the user-level directory (no data service needed)', () => {
+  assert.equal(credentialHome('C:/ws/.llm', { DSH_HOME: '/env/home' }), 'C:/ws/.llm')
+  assert.equal(credentialHome(undefined, { DSH_HOME: '/env/home' }), join(resolve('/env/home'), 'glm-hourness'))
+  assert.equal(credentialHome('', { DSH_HOME: '/env/home' }), join(resolve('/env/home'), 'glm-hourness'))
 })
 
 test('the data row provides both directories as the glmHournessData service and withdraws it on dispose', () => {

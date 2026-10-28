@@ -1,12 +1,14 @@
 /**
  * Authorized real-network smoke: one full native-channel request through the
  * assembled chain (store → deviceMid → routing → headers → signing → SSE).
- * Prerequisite: /glm-login completed (`.llm/credentials.json` present).
+ * Prerequisite: /glm-login completed (`credentials.json` present in the
+ * user-level directory `<DSH home>/glm-hourness`, docs/DESIGN.md §2.4).
  * Run: node --experimental-strip-types scripts/smoke-zcode-authorized.mjs
  */
 import { ZcodeAdapter } from '../src/glm-llm/zcode.ts'
+import { credentialHome } from '../src/shared/data-home.ts'
 
-const home = process.env.USERPROFILE + '/Desktop/Project/GLM-Hourness/.llm'
+const home = credentialHome(undefined)
 const adapter = new ZcodeAdapter({ home, onEvent: message => console.log(`[signing] ${message}`) })
 
 const status = await adapter.status()

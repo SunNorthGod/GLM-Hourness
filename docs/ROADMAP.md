@@ -192,7 +192,7 @@ M7 进度：
 | 是否关闭 cot-translation 实验行（会把推理碎片显示到界面；改 profile 需用户同意） | 任意时间 |
 | 清理 profile 目录中的备份 `cordis.patch.yml.bak-1793101338423` 与旧数据目录 `~/.dsh/profiles/desktop/.llm/`（记录已于 2026-10-28 复制完，`DESIGN.md` §2.4） | 任意时间 |
 | 桌面版重启后补拷用量：重启前运行中的旧代码仍把用量写进仓库 `.llm/audit/usage.jsonl`，把其中晚于 2026-10-27T12:29:08.993Z 的记录按整行去重复制到 `~/.dsh/glm-hourness/audit/usage.jsonl`；此后仓库里的这份用量流水是否删除由用户决定 | L4 重启之后（Kiro 执行） |
-| 加密凭证 `credentials.json` 与 `device-mid.txt` 搬到 `~/.dsh/glm-hourness/`（用户定案 A），同时把 `glm-llm`、`glm-login` 的 `home` 改过去；密钥推导与文件路径无关，搬后可直接解密（`DESIGN.md` §2.4） | 原生通道 L4 验收之后 |
+| 删除仓库 `.llm/` 里的 `credentials.json` 与 `device-mid.txt` 原件：两份文件已于 2026-10-28 复制到 `~/.dsh/glm-hourness/`，`glm-llm`、`glm-login` 默认读那里（`DESIGN.md` §2.4）。删之前比较两边，原件较新（重启前重新登录过）就先补拷 | 桌面版重启、`/glm-status` 显示已登录之后（Kiro 执行） |
 | profile 中指向 8317 的 pi-ai `glm` 路由去留（用户配置，本项目不改） | 任意时间 |
 | 删除已迁入本仓库的旧文件夹 `Desktop\Project\dsh-glm-dialect`（工作区外） | 任意时间 |
 | 密钥扫描 gitleaks（`ORCHESTRATION.md` §7.5）：工作区外的独立二进制，安装要用户同意。选项：A 装到用户级工具目录，接成 `npm test` 的一道；B 不装，维持提交前人工扫描。推荐 A | 任意时间 |

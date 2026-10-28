@@ -212,21 +212,6 @@ test('login row registers the three commands and /glm-login returns the authoriz
   dispose()
 })
 
-test('login row without a home keeps only /glm-status instead of failing activation', () => {
-  const registered: string[] = []
-  const warn = console.warn
-  console.warn = () => {}
-  let dispose: () => void
-  try {
-    dispose = loginApply({ commands: { register: definition => { registered.push(definition.name); return () => {} } } }, {})
-  }
-  finally {
-    console.warn = warn
-  }
-  assert.deepEqual(registered, ['glm-status'])
-  dispose()
-})
-
 test('each request reports its session to the row health: answered, refused upstream, unreadable store', async () => {
   const { fs, files } = memoryStore()
   await saveCredential(fs, 'C:/ws/.llm/credentials.json', credential)

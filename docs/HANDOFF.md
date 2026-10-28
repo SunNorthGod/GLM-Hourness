@@ -23,8 +23,8 @@ eslint.config.js、knip.jsonc、.jscpd.json  检查器配置；eslint-suppressio
 docs/          宪章、设计、编排、路线、事实账、流程、交接；docs/reference/ 为事实参考原文
 AGENTS.md      仓库规则
 cordis.patch.yml  主包 Loader patch
-.llm/          不入库，项目目录：credentials.json（加密凭证）、device-mid.txt、audit/（违规与决策；2026-10-28 之前的用量）、memory.json、docs/（原始资料快照与抓取脚本）、probe-runs/、calibration-runs/
-~/.dsh/glm-hourness/  仓库外，用户级目录：audit/usage.jsonl（DESIGN.md §2.4）
+.llm/          不入库，项目目录：credentials.json 与 device-mid.txt（已搬到用户级目录，原件待删）、audit/（违规与决策；2026-10-28 之前的用量）、memory.json、docs/（原始资料快照与抓取脚本）、probe-runs/、calibration-runs/
+~/.dsh/glm-hourness/  仓库外，用户级目录：audit/usage.jsonl、credentials.json、device-mid.txt（DESIGN.md §2.4）
 reference/     不入库：审计用参考源码（zcode-api、deepseek-harness、ZCode、zcode-plugins）与桌面版运行时包导出 dsh-desktop-0.2.1-rc.3/，约 2.5 GB
 dist/          不入库：tsc 产物（profile 通过 pnpm link 使用）
 .agents/       不入库：编排任务状态（夜间运行清单、借用审计报告 dsh-borrow-audit/report.md、graph-engine 并行线清单）
@@ -97,7 +97,7 @@ dist/          不入库：tsc 产物（profile 通过 pnpm link 使用）
 
 ## 6. 环境事实
 
-- 凭证：`.llm/credentials.json`（AES-256-GCM；`GLM_HOURNESS_CREDENTIAL_SECRET` 可覆盖密钥）。按用户定案 A，L4 验收后搬到 `~/.dsh/glm-hourness/`。
+- 凭证：`~/.dsh/glm-hourness/credentials.json` 与 `device-mid.txt`（AES-256-GCM；`GLM_HOURNESS_CREDENTIAL_SECRET` 可覆盖密钥）。`glm-llm`、`glm-login` 不配 `home` 时默认读这里（`DESIGN.md` §2.4）。仓库 `.llm/` 里的原件保留到桌面版重启验证之后再删（`ROADMAP.md` §3）。
 - 数据目录：用户级 `~/.dsh/glm-hourness/`（`$DSH_HOME` 可改根目录），项目 `.llm/`；由 `data` 行的服务提供（`DESIGN.md` §2.4）。
 - 模型：`glm-zcode` 路由提供 GLM-5.3、GLM-5.3-Flash。
 - 沙盒：profile `glmsandbox`，命令见 `DEVELOPMENT.md` §3；探针（`npm run probe`，离线）与标定（`npm run calibrate`，真实请求、消耗积分）共用，不要同时运行。沙盒模板的权限模式由 `DSH_PERMISSION_MODE` 决定（缺省 `workspace-write`），桌面版 profile 的默认预设是 `danger-full-access`。

@@ -1,8 +1,8 @@
 /**
  * The bundle's data directories (docs/DESIGN.md §2.4).
  *
- * User-level data (the usage journal; later deviceMid, the credential file
- * and preference memory) lives in one directory per machine, named after this
+ * User-level data (the usage journal, the encrypted credential file and
+ * deviceMid; later preference memory) lives in one directory per machine, named after this
  * project under the DSH home: DSH keeps all user data under one root and a
  * plugin owns a directory named after itself there (dsh-llm-deepseek writes
  * `$DSH_HOME/llm-deepseek/files-v3.json`, rc.3 dsh-llm-deepseek
@@ -64,6 +64,15 @@ export function resolveDshHome(configured?: string, env: Readonly<Record<string,
 /** The user-level directory under the resolved DSH home. */
 export function userDataHome(configured?: string, env: Readonly<Record<string, string | undefined>> = process.env, home: string = homedir()): string {
   return join(resolveDshHome(configured, env, home), USER_DATA_DIR_NAME)
+}
+
+/**
+ * The credential directory of the channel rows (glm-llm, glm-login): a
+ * non-empty row `home`, else the user-level directory. Resolved without the
+ * data service, which may not be active when the channel row activates.
+ */
+export function credentialHome(home: string | undefined, env: Readonly<Record<string, string | undefined>> = process.env): string {
+  return home !== undefined && home.length > 0 ? home : userDataHome(undefined, env)
 }
 
 function isDataService(value: unknown): value is DataService {

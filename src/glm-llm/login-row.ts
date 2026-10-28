@@ -4,16 +4,16 @@
  * poll completes in the background and the resolved coding-plan credential
  * lands in the encrypted store. `/glm-status` reports whether a credential is
  * present (key preview, JWT age on start-plan), followed by the row health
- * table of the invoking session (src/shared/health.ts). A missing home turns
- * /glm-login and /glm-logout off instead of failing activation; /glm-status
- * stays, so the table can say what is missing.
+ * table of the invoking session (src/shared/health.ts). The credential
+ * directory is the channel row's: `home`, else `<DSH home>/glm-hourness`.
  */
 import { ZcodeLogin, ZcodeAdapter, logout } from './zcode.ts'
+import { credentialHome } from '../shared/data-home.ts'
 import { collectHealth, provideRowHealth, renderHealthTable, sessionIdOf } from '../shared/health.ts'
 import type { CommandDefinitionLike, CommandInvocationLike, CommandsHost, ProvideHost, ServiceLookup } from '../shared/dsh-min.ts'
 
 export interface LoginConfig {
-  /** The agent home directory (`.llm`): credentials.json + device-mid.txt live here. Required. */
+  /** The credential directory (credentials.json + device-mid.txt); default `<DSH home>/glm-hourness`, as the channel row. */
   readonly home?: string
   /** Injected transport for tests. */
   readonly fetchImpl?: typeof fetch
@@ -31,16 +31,7 @@ function healthText(ctx: ServiceLookup, invocation: CommandInvocationLike): stri
 
 /** cordis plugin entry: registers /glm-login, /glm-status, and /glm-logout. */
 export function apply(ctx: CommandsHost & ServiceLookup & Partial<ProvideHost>, config: LoginConfig = {}): () => void {
-  if (config.home === undefined || config.home.length === 0) {
-    console.warn('dsh-glm-hourness/glm-login: home is not configured; /glm-login stays off (set config.home)')
-    const health = provideRowHealth(ctx, 'glm-login', 'inactive', 'home 未配置，/glm-login 与 /glm-logout 关闭')
-    const unregister = ctx.commands.register(statusCommand(async invocation => `glm-zcode：未登录（glm-login 行未配置 home，凭证位置未知）\n\n${healthText(ctx, invocation)}`))
-    return () => {
-      unregister()
-      health.dispose()
-    }
-  }
-  const home = config.home
+  const home = credentialHome(config.home)
   const login = new ZcodeLogin({ home, ...(config.fetchImpl === undefined ? {} : { fetchImpl: config.fetchImpl }) })
   const adapter = new ZcodeAdapter({ home, ...(config.fetchImpl === undefined ? {} : { fetchImpl: config.fetchImpl }) })
   const health = provideRowHealth(ctx, 'glm-login', 'active', '/glm-login、/glm-status、/glm-logout 已注册')
