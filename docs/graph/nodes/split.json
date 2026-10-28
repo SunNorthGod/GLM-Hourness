@@ -48,6 +48,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "设计第一轮写完：同仓两包加一个伞包，行 id 不改，桌面 profile 零改动；待人定的有目标文字、guard 在非方言路由上的行为、包名。设计评审进行中，稿在 .agents/tasks/split/design.md。"
+    },
+    {
+      "at": "2026-10-28T18:08:36.429Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "设计评审第一轮：CHANGES_REQUESTED，HIGH 0、MEDIUM 5（R01–R05）、LOW 9。布局本身成立：桌面 profile 的两项 bundle 与五条覆盖项在伞包布局下都能对上同 id 的行，profile 不用改；跨包导入只有 X1–X4，GLM 包没有反向导入。要改的举两条：R01 第 3 步把 guard 的拦截范围从「GLM 模型」改成「方言接管的路由」，与「留给人定」的说法自相矛盾；R02 搬出镜像文件的符号会脱离逐字门禁，建议在公共库另开镜像文件加进 MIRROR_FILES。设计第二轮进行中；评审稿 .agents/tasks/split/design-review.md。"
     }
   ]
 }
