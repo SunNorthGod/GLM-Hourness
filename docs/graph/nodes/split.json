@@ -42,6 +42,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "设计在 .agents/tasks/split/design.md，评审结论在 design-review.json。要人定的：两个目标的文字、是否要改用户 profile（目标是不改）、guard 在非 GLM 路由上怎么生效。"
+    },
+    {
+      "at": "2026-10-28T17:11:58.601Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "设计第一轮写完：同仓两包加一个伞包，行 id 不改，桌面 profile 零改动；待人定的有目标文字、guard 在非方言路由上的行为、包名。设计评审进行中，稿在 .agents/tasks/split/design.md。"
     }
   ]
 }

@@ -85,6 +85,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "独立评审第 1 轮：CHANGES_REQUESTED，阻断 1 条（.agents/tasks/zcode-parity/review.md、review.json）。十项按 3.16.3 pristine 包与 app.asar 的偏移逐项核对，代码级都一致。阻断项是 docs/FACTS.md 被拼接损坏：59722e3 与 0f507cf 把文件开头整段重复插入五次（标题与 §1 前二十行各出现六次，72,533 字节对 main 的 24,206），PAT 客户端、bigmodel origin、归因头三行在 `K$`、`D$`、`{1,128}$` 处被截断；需从 23292da 的干净版本按原意重建。非阻断 5 条：凭证写入未串行化且共用一个临时文件；没有 OAuth 令牌或 userId 的记录在 /glm-status 显示已登录；buildAuthHeaders 残留 apiKey 分支与误名测试；401 刷新重试未释放原响应体；FACTS 部分偏移指向函数内部而非声明处。"
+    },
+    {
+      "at": "2026-10-28T17:11:58.559Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "修复第一轮：评审第一轮提出的 1 条阻塞（docs/FACTS.md 被两次提交拼接）与 5 条非阻塞全部处理，分支上 7 个提交 2386f6e..bac18b4；build、preflight、npm test 全过，544 个测试，ESLint 256 / knip 21 / jscpd 2，gitleaks 干净，逐字 443 段。等评审第二轮。"
     }
   ]
 }

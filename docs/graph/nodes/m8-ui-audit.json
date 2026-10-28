@@ -34,6 +34,12 @@
       "reason": "派出 ui-audit-all-surfaces（wf_4f796b871f55d1fd）：先只读盘点，用桌面版与改主检出前向编排者申请桌面时段，排在 m8-doing-layout 之后",
       "from": "approved",
       "to": "doing"
+    },
+    {
+      "at": "2026-10-28T17:11:58.508Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "只读盘点完成：20 个界面，41 条问题（高 2、中 15、低 24），其中 8 条落在 m1-parity 分支尚未合入的 ui/src/channel.js 上，合入后复核；清单在 .agents/tasks/ui-audit/audit.md。桌面时段交给 desktop-survey 做截图走查（只读）。"
     }
   ]
 }
