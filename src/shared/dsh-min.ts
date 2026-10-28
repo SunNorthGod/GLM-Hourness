@@ -293,6 +293,32 @@ export interface ServiceLookup {
   get?(name: string): unknown
 }
 
+/**
+ * cordis `ctx.inject(names, callback)`: runs the callback in a child fiber
+ * whose context carries the named services once they are present, and
+ * disposes that fiber when they leave (rc.3 dsh-subagent and
+ * dsh-user-questions register their projection units this way).
+ */
+export interface InjectHost {
+  inject(names: readonly string[], callback: (ctx: { readonly sessionProjections: SessionProjectionsService }) => void): unknown
+}
+
+/**
+ * The `sessionProjections` service member a unit registrar calls
+ * (dsh-session-projection `register`): the registration is an effect of the
+ * calling fiber and leaves with it.
+ */
+interface SessionProjectionsService {
+  register(definition: {
+    readonly key: string
+    readonly stateVersion: number
+    readonly stateSchema: { parse(value: unknown): unknown }
+    init(header: unknown, inheritedEventCount: number): unknown
+    apply(state: never, event: never): unknown
+    readonly wire?: { readonly viewSchema: { parse(value: unknown): unknown }, view(state: never): unknown }
+  }): () => void
+}
+
 /** cordis `ctx.provide(name, value)`: register a service owned by the calling fiber; the disposer unregisters it (also on unload). */
 export interface ProvideHost {
   provide(name: string, value: unknown): () => void

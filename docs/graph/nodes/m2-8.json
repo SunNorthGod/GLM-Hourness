@@ -2,11 +2,11 @@
   "id": "m2-8",
   "type": "task",
   "title": "2.8 实时现场：agent 与子 agent 在图上",
-  "status": "approved",
+  "status": "doing",
   "parent": "m2",
   "kind": "implement",
   "tier": "hard",
-  "body": "主 Agent 的徽标落在焦点节点上，子 agent 落在它的任务节点上；徽标显示是谁、模型、当前动作与用时，工作时呼吸、完成时有动画；现场视图列每个 agent 最近几步与用量。宿主侧图行节流写 .llm/graph-live.json，面板订阅文件变更（第三方插件不能追加自定义会话事件）。M7 派发之前，DSH 内置子 agent 挂在父 agent 的节点下。",
+  "body": "主 Agent 的徽标落在焦点节点上，子 agent 落在它自己的焦点上，还没有焦点的挂在父 agent 的焦点节点下；徽标显示是谁、模型、当前动作与用时，工作时呼吸、完成时有动画；现场视图列每个 agent 最近几步与用量。数据路径：图面板行注册会话投影 graphLive（src/graph/live.ts），从会话自己的事件折叠出焦点、模型、本轮步数、在跑的工具、最近几次工具结果和子 agent 目录；面板用客户端的会话投影读主会话，对子会话 retain 后读同一个投影。不写盘：取代原先节流写 .llm/graph-live.json 的方案，投影是 DSH 原生路径，会话日志本身就是记录。M7 派发之前，DSH 内置子 agent 挂在父 agent 的节点下。",
   "acceptance": [
     "主 Agent 与子 agent 的位置与动作在 2 秒内出现在图上",
     "现场文件写入节流，不进 git"
@@ -30,6 +30,32 @@
       "actor": "llm",
       "op": "comment",
       "text": "下一步做这个：主 Agent 与子 agent 的位置会实时出现在图上。"
+    },
+    {
+      "at": "2026-10-28T09:24:13.053Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "开工：宿主侧投影",
+      "from": "approved",
+      "to": "doing"
+    },
+    {
+      "at": "2026-10-28T09:24:13.118Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "数据路径从现场文件改为会话投影：不写盘，走 DSH 原生投影",
+      "changes": {
+        "body": {
+          "from": "主 Agent 的徽标落在焦点节点上，子 agent 落在它的任务节点上；徽标显示是谁、模型、当前动作与用时，工作时呼吸、完成时有动画；现场视图列每个 agent 最近几步与用量。宿主侧图行节流写 .llm/graph-live.json，面板订阅文件变更（第三方插件不能追加自定义会话事件）。M7 派发之前，DSH 内置子 agent 挂在父 agent 的节点下。",
+          "to": "主 Agent 的徽标落在焦点节点上，子 agent 落在它自己的焦点上，还没有焦点的挂在父 agent 的焦点节点下；徽标显示是谁、模型、当前动作与用时，工作时呼吸、完成时有动画；现场视图列每个 agent 最近几步与用量。数据路径：图面板行注册会话投影 graphLive（src/graph/live.ts），从会话自己的事件折叠出焦点、模型、本轮步数、在跑的工具、最近几次工具结果和子 agent 目录；面板用客户端的会话投影读主会话，对子会话 retain 后读同一个投影。不写盘：取代原先节流写 .llm/graph-live.json 的方案，投影是 DSH 原生路径，会话日志本身就是记录。M7 派发之前，DSH 内置子 agent 挂在父 agent 的节点下。"
+        }
+      }
+    },
+    {
+      "at": "2026-10-28T09:24:13.183Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "宿主侧完成：graphLive 投影由 graph-panel 行注册，L2 规格 7/7；L3 探针 78/78，新增两项：面板场景读到 glm-5.3、本轮 2 步、Read 成功、没有在跑的工具；派发场景父会话列出子 agent，子会话读到 glm-5.3-flash 与 Bash 成功、越界 Write 失败、域内 Write 成功。验收第二条“现场文件写入节流，不进 git”在新路径下没有文件可写，自然满足；措辞要不要改由人定。下一步：面板客户端。"
     }
   ]
 }

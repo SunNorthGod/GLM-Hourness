@@ -23,8 +23,9 @@ import { installStepNotice, toolCallArguments, toolCallOutcomes } from '../glm-p
 import { createUserNotice, type AgentLike, type DerivedMessage, type UserNotice } from '../shared/dsh-min.ts'
 import { wrapSystemReminder } from '../toolsearch/zcode-text.ts'
 import { projectNode, type NodeRef, type Projection } from './projection.ts'
+import { FOCUS_TOOL } from './live.ts'
 import { loadGraph } from './store.ts'
-import { FOCUS_TOOL, locateGraph, type FocusMemory } from './tools.ts'
+import { locateGraph, type FocusMemory } from './tools.ts'
 
 /** Source kind of the persisted projection notice. */
 export const PROJECTION_SOURCE = 'glm-graph-projection'

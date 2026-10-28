@@ -17,6 +17,7 @@ import { stat } from 'node:fs/promises'
 import { isAbsolute, resolve } from 'node:path'
 import type { ToolDefinitionLike, ToolExecutionContext } from '../shared/dsh-min.ts'
 import { openEngine } from './engine.ts'
+import { FOCUS_TOOL } from './live.ts'
 import { failure, type Failure } from './mutation.ts'
 import { listOpenItems, projectNode } from './projection.ts'
 import { NODE_TYPES, SLOPES, STAGES, TASK_KINDS, TIERS } from './schema.ts'
@@ -84,8 +85,6 @@ async function graphDir(configured: string, exec: unknown): Promise<string> {
  */
 export type FocusMemory = Map<string, string>
 
-/** The tool that sets the focus node; the step projection finds its calls in the history. */
-export const FOCUS_TOOL = 'graph_focus'
 
 /** Refuse fields a read tool does not take; reads have no engine parser to do it. */
 function readRequest(tool: string, args: unknown, fields: readonly string[]): Record<string, unknown> {

@@ -11,7 +11,8 @@
  * service, so the dump shows the image blocks glm-zcode would send. A
  * scripted step marked `status` also records what the bundle's `/glm-status`
  * command prints for the session at that point (credential line and row
- * health table).
+ * health table); a step marked `live` records the graph panel's live view
+ * of the session (the graphLive projection, src/graph/live.ts).
  *
  * Each session follows its own script: the first session that sends a
  * scripted request follows `script`; each later one (a subagent, or a
@@ -109,6 +110,18 @@ async function glmStatus(ctx, request) {
   return (await runCommand(ctx, request, 'glm-status', '')).text
 }
 
+/**
+ * The graph panel's live view of the request's session (src/graph/live.ts),
+ * read from the session projection registry the way the client's
+ * projection snapshot does; null when the unit or the agent is missing.
+ */
+function liveOf(ctx, request) {
+  const session = ctx.get('agents')?.get(request.sessionId)?.session
+  const projections = ctx.get('sessionProjections')
+  if (session === undefined || typeof projections?.snapshot !== 'function') return null
+  return projections.snapshot(session).values.graphLive ?? null
+}
+
 class ProbeAdapter {
   constructor(ctx, config) {
     this.ctx = ctx
@@ -172,8 +185,18 @@ class ProbeAdapter {
     if (cursor !== undefined) cursor.calls += 1
     this.requests += 1
     // A step marked `status` records the /glm-status text before replying;
-    // a step with `command: { name, input }` runs that command and records its result.
+    // a step with `command: { name, input }` runs that command and records its result;
+    // a step marked `live` records the graph panel's live view of the session.
     const status = step.status === true ? await glmStatus(this.ctx, request).catch(error => `probe: /glm-status failed: ${error instanceof Error ? error.message : String(error)}`) : undefined
+    let live
+    if (step.live === true) {
+      try {
+        live = liveOf(this.ctx, request)
+      }
+      catch (error) {
+        live = { error: error instanceof Error ? error.message : String(error) }
+      }
+    }
     const command = step.command === undefined
       ? undefined
       : { name: step.command.name, ...await runCommand(this.ctx, request, step.command.name, step.command.input ?? '').catch(error => ({ kind: 'error', text: `probe: /${step.command.name} threw: ${error instanceof Error ? error.message : String(error)}` })) }
@@ -201,6 +224,7 @@ class ProbeAdapter {
         ...(request.sessionId === undefined ? {} : { sessionId: request.sessionId }),
         ...(status === undefined ? {} : { status }),
         ...(command === undefined ? {} : { command }),
+        ...(live === undefined ? {} : { live }),
         // The runtime delivers the prompt as leading system messages (the
         // channel lifts them the same way, src/glm-llm/anthropic.ts).
         system: [request.system ?? '', ...leadingSystem(request.messages ?? [])].filter(text => text.length > 0).join('\n\n'),

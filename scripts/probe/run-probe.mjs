@@ -321,6 +321,9 @@ const dispatchRow = record => [
   '      inject: [subagents, goals, agents, tools]',
   `      config: { record: ${JSON.stringify(slash(record))} }`,
 ]
+// The graph panel row (disabled by default until the L3 checklist passes)
+// also registers the graphLive projection the live view reads.
+const PANEL_ROW = ['- id: glm-hourness/graph-panel', '  disabled: false']
 const dispatchRecord = scenario => jsonl(join(runDir, scenario, 'dispatch.jsonl'))
 const bySession = (scenario, sessionId) => scenario.steps.filter(step => step.sessionId === sessionId)
 const messagesOf = (step, source) => (step?.messages ?? []).filter(message => message.source === source)
@@ -343,12 +346,12 @@ const dispatch = runScenario('glm-dispatch', 'glm-5.3', [
   { tool: { name: 'DeferredToolCall', arguments: { name: 'probe_dispatch', input: { task: 'T1', prompt: CHILD_PROMPT, cwd: dispatchWs, scope: 'allowed', model: 'glm-5.3-flash' } } } },
   { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } } },
   { text: 'Waiting for task T1.' },
-  { text: 'done', status: true },
-], 'Dispatch task T1, keep working, then reply done.', dispatchRow(join(dispatchDir, 'dispatch.jsonl')), repo, [[
+  { text: 'done', status: true, live: true },
+], 'Dispatch task T1, keep working, then reply done.', [...dispatchRow(join(dispatchDir, 'dispatch.jsonl')), ...PANEL_ROW], repo, [[
   { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 3; (Get-Location).Path' } } },
   { tool: { name: 'Write', arguments: { file_path: outsideFile, content: 'outside\n' } } },
   { tool: { name: 'Write', arguments: { file_path: insideFile, content: 'inside\n' } } },
-  { tool: { name: 'DeferredToolCall', arguments: { name: 'structured_output', input: HAND_BACK } } },
+  { tool: { name: 'DeferredToolCall', arguments: { name: 'structured_output', input: HAND_BACK } }, live: true },
   { text: 'child done' },
 ]])
 const dispatchNotes = dispatchRecord('glm-dispatch')
@@ -425,12 +428,21 @@ for (const node of [
 const panelQuestionRev = (await loadGraph(panelGraph)).revisions.get('question-1')
 const graphPanel = runScenario('glm-graph-panel', 'glm-5.3', [
   { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } }, command: { name: 'graph-apply', input: JSON.stringify({ op: 'comment', id: 'goal-1', text: 'probe comment' }) } },
-  { text: 'done', command: { name: 'graph-apply', input: JSON.stringify({ op: 'decide', id: 'question-1', rev: panelQuestionRev, option: 'A', reason: 'probe decide' }) } },
-], 'Read package.json, then reply done.', ['- id: glm-hourness/graph-panel', '  disabled: false'], panelWs)
+  { text: 'done', live: true, command: { name: 'graph-apply', input: JSON.stringify({ op: 'decide', id: 'question-1', rev: panelQuestionRev, option: 'A', reason: 'probe decide' }) } },
+], 'Read package.json, then reply done.', PANEL_ROW, panelWs)
 const panelCommands = graphPanel.steps.flatMap(step => step.command === undefined ? [] : [step.command])
 const panelAfter = await loadGraph(panelGraph)
 const panelLast = id => panelAfter.nodes.get(id)?.history.at(-1)
 const panelStderr = existsSync(join(panelDir, 'stderr.txt')) ? readFileSync(join(panelDir, 'stderr.txt'), 'utf8') : ''
+
+// Live view (docs/ORCHESTRATION.md §2.10, m2-8): the graphLive projection
+// the panel row registers, read mid-step from the session projection
+// registry: the panel scenario's second step, the dispatch parent's last
+// step and the child's last step.
+const panelLive = graphPanel.steps.find(step => step.live !== undefined)?.live ?? null
+const parentLive = dispatchMain.find(step => step.live !== undefined)?.live ?? null
+const childLive = dispatchChild.find(step => step.live !== undefined)?.live ?? null
+const liveCalls = live => (live?.recent ?? []).map(call => `${call.name}:${call.ok ? 'ok' : 'error'}`)
 
 const compactRequest = compacted.compactions[0]
 const compactInstruction = compactRequest?.messages.at(-1)
@@ -485,6 +497,8 @@ const checks = [
   ['glm boot: the runtime reached the probe provider', glmFirst !== undefined, `exit ${glm.status}, ${glm.steps.length} step(s)`],
   ['graph panel: /graph-apply comments as the human in the graph under the session working directory', panelCommands[0]?.kind === 'success' && panelCommands[0].text === '已批注「探针目标」' && panelLast('goal-1')?.actor === 'human' && panelLast('goal-1')?.text === 'probe comment', JSON.stringify(panelCommands[0] ?? null)],
   ['graph panel: /graph-apply decides with the question rev as the human', panelCommands[1]?.kind === 'success' && panelCommands[1].text === '已拍板「探针问题」：A 甲' && panelAfter.nodes.get('question-1')?.status === 'done' && panelLast('question-1')?.actor === 'human' && panelLast('question-1')?.op === 'decide', JSON.stringify(panelCommands[1] ?? null)],
+  ['graph live: the session view has the model, the steps of the open turn and the finished Read, nothing running, no focus', panelLive?.model === 'glm-5.3' && panelLive.steps >= 2 && typeof panelLive.turnSince === 'number' && panelLive.tool === null && panelLive.focus === null && liveCalls(panelLive).includes('Read:ok'), JSON.stringify(panelLive)],
+  ['graph live: the dispatch parent lists its child; the child view has its own model and the scope-denied Write as an error', parentLive?.children?.some(child => child.id === started?.childId) === true && childLive?.model === 'glm-5.3-flash' && liveCalls(childLive).includes('Write:error') && liveCalls(childLive).includes('Write:ok'), `parent ${JSON.stringify(parentLive?.children ?? null)}; child ${childLive?.model ?? 'none'} ${liveCalls(childLive).join(', ')}`],
   ['graph panel: the row adds nothing to the model face and activates without warnings', graphPanel.steps.length > 0 && graphPanel.steps.every(step => step.tools.every(tool => !tool.name.startsWith('graph_'))) && !panelStderr.includes('graph-panel'), `exit ${graphPanel.status}, ${graphPanel.steps.length} step(s); stderr mentions graph-panel: ${panelStderr.includes('graph-panel')}`],
   ['glm prompt: ZCode CLI prefix in the system prompt', glmFirst?.system.includes('You are ZCode, an interactive coding agent') === true, glmFirst === undefined ? 'no request' : glmFirst.system.slice(0, 80).replace(/\n/g, ' ')],
   ['glm prompt: DSH identity replaced', glmFirst !== undefined && !glmFirst.system.includes('powered by DeepSeek Harness'), ''],

@@ -13,9 +13,10 @@
  * conversation shows the readable outcome line instead of raw JSON. The
  * row registers nothing model-facing. Activation never throws.
  */
-import type { CommandInvocationLike, CommandResultLike, CommandsHost } from '../shared/dsh-min.ts'
+import type { CommandInvocationLike, CommandResultLike, CommandsHost, InjectHost } from '../shared/dsh-min.ts'
 import { openEngine } from './engine.ts'
 import { STATUS_LABELS } from './labels.ts'
+import { liveProjection } from './live.ts'
 import type { EngineError, Mutation } from './mutation.ts'
 import type { GraphNode } from './schema.ts'
 import { DEFAULT_GRAPH_DIR, locateGraph } from './tools.ts'
@@ -76,8 +77,31 @@ export async function applyFromCommand(invocation: CommandInvocationLike, config
   return { kind: 'success', text: outcomeText(mutation as Mutation, result.node) }
 }
 
-/** cordis plugin entry: register /graph-apply. */
-export function apply(ctx: CommandsHost, config: GraphPanelConfig = {}): () => void {
+/**
+ * Register the live projection (live.ts) once the session projection
+ * registry is present; without it the panel shows no live state and the
+ * write path still works.
+ */
+function installLive(ctx: Partial<InjectHost>): void {
+  if (typeof ctx.inject !== 'function') return
+  try {
+    ctx.inject(['sessionProjections'], projectionCtx => {
+      try {
+        projectionCtx.sessionProjections.register(liveProjection)
+      }
+      catch (error) {
+        console.warn(`${name}: the live projection is off: ${error instanceof Error ? error.message : String(error)}`)
+      }
+    })
+  }
+  catch (error) {
+    console.warn(`${name}: the live projection is off: ${error instanceof Error ? error.message : String(error)}`)
+  }
+}
+
+/** cordis plugin entry: register /graph-apply and the live projection. */
+export function apply(ctx: CommandsHost & Partial<InjectHost>, config: GraphPanelConfig = {}): () => void {
+  installLive(ctx)
   const dir: unknown = config.dir ?? DEFAULT_GRAPH_DIR
   if (typeof dir !== 'string' || dir.trim().length === 0) {
     console.warn(`${name}: config.dir must be a non-empty path; /${APPLY_COMMAND} stays off`)
