@@ -415,16 +415,32 @@ interface OpenBlock {
 }
 
 /**
- * The finish chunk of one response: with `model` known and at least one
- * reasoning block emitted, it carries the replay envelope (one entry per
- * emitted block, in first-seen order; a reasoning entry holds its non-empty
- * signature).
+ * The response usage in ZCode's token shape, the baseline of the next
+ * request's `max_tokens` estimate (token-budget.ts): `input` is the whole
+ * prompt with cache reads and writes, as the AI SDK Anthropic provider
+ * counts it (`EZr` @3549947: input plus cache creation plus cache read).
  */
-function finishChunk(stop: string, model: string | undefined, replay: readonly ReplayBlock[]): StreamChunk {
+function zcodeTokens(usage: WireUsage): { input: number, output: number, total: number, cache: { read: number, write: number } } | undefined {
+  if (usage.input_tokens === undefined && usage.output_tokens === undefined) return undefined
+  const read = usage.cache_read_input_tokens ?? 0
+  const write = usage.cache_creation_input_tokens ?? 0
+  const input = (usage.input_tokens ?? 0) + read + write
+  const output = usage.output_tokens ?? 0
+  return { input, output, total: input + output, cache: { read, write } }
+}
+
+/**
+ * The finish chunk of one response: with `model` known it carries the
+ * replay envelope (one entry per emitted block, in first-seen order; a
+ * reasoning entry holds its non-empty signature) and, when the response
+ * reported counters, its usage in ZCode's token shape.
+ */
+function finishChunk(stop: string, model: string | undefined, replay: readonly ReplayBlock[], usage: WireUsage): StreamChunk {
   const reason = finishReason(stop)
-  if (model === undefined || !replay.some(entry => entry.type === 'reasoning')) return { type: 'finish', reason }
+  if (model === undefined) return { type: 'finish', reason }
   const blocks = replay.map(entry => entry.type === 'reasoning' && entry.signature !== undefined && entry.signature.length === 0 ? { type: 'reasoning' as const } : { ...entry })
-  return { type: 'finish', reason, replayState: { response: { kind: REPLAY_KIND, version: REPLAY_VERSION, model }, blocks } }
+  const tokens = zcodeTokens(usage)
+  return { type: 'finish', reason, replayState: { response: { kind: REPLAY_KIND, version: REPLAY_VERSION, model, ...(tokens === undefined ? {} : { usage: tokens }) }, blocks } }
 }
 
 /**
@@ -456,7 +472,7 @@ export async function* decodeSse(body: ReadableStream<Uint8Array>, model?: strin
         const merged = toTokenUsage(usage)
         if (merged !== undefined) yield { type: 'usage', usage: merged }
         const stop = event.delta?.stop_reason
-        if (typeof stop === 'string') yield finishChunk(stop, model, replay)
+        if (typeof stop === 'string') yield finishChunk(stop, model, replay, usage)
         continue
       }
       if (event.type === 'content_block_start') {

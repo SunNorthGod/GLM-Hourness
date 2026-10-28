@@ -25,6 +25,7 @@ import { encodeRequest, decodeSse, metadataUserId, splitSystemPrompt, type WireS
 import { glmImageRequestTarget, prepareRequestImages } from './images.ts'
 import { buildStartPlanSystem, buildContextPrefixMessage } from './start-plan.ts'
 import { GLM_DEFAULT_MAX_TOKENS, GLM_MODELS, GLM_REASONING_EFFORTS, glmInputModalities, zcodeModelRule, zcodeWireModelId } from './models.ts'
+import { maxOutputTokensFor } from './token-budget.ts'
 import { messageText, type AttachmentsLike, type GenerateOptionsLike } from '../shared/lm-min.ts'
 import type { HealthState } from '../shared/health.ts'
 import type {
@@ -490,9 +491,12 @@ function codingPlanWire(options: GenerateOptionsLike, purpose: GenerateOptions['
   const rule = zcodeModelRule(options.model)
   const requested = options.reasoningEffort
   const level = rule === undefined ? undefined : purpose === 'session-title' ? rule.reasoningLevels[0] : requested !== undefined && rule.reasoningLevels.includes(requested) ? requested : 'high'
+  // max_tokens as 3.16.3 picks it (token-budget.ts); DSH's maxTokens is not
+  // used for catalog models. Outside the catalog the DSH value stays.
+  const kind = purpose === 'session-title' ? 'auxiliary' : purpose === 'compaction' ? 'compaction' : 'step'
   return {
     model: zcodeWireModelId(options.model),
-    maxTokens: options.maxTokens ?? GLM_DEFAULT_MAX_TOKENS,
+    maxTokens: rule === undefined ? options.maxTokens ?? GLM_DEFAULT_MAX_TOKENS : maxOutputTokensFor(kind, rule.maxOutputTokens, rule.contextWindow, options.messages),
     stream: true,
     optionPatch: rule === undefined || level === undefined ? undefined : rule.optionPatch(level),
   }

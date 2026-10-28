@@ -6,6 +6,7 @@ import { BlockAssembler } from '@deepseek-ai/dsh-llm'
 import { encodeRequest, encodeMessage, decodeFrame, decodeSse, metadataUserId, replayBlocksOf, type AnthropicRequest } from '../src/glm-llm/anthropic.ts'
 import { glmImageRequestTarget, prepareRequestImages, offloadedImageText, ZCODE_IMAGE_TARGET_BYTES } from '../src/glm-llm/images.ts'
 import { zcodeModelRule, zcodeWireModelId } from '../src/glm-llm/models.ts'
+import { estimateCurrentUsage, estimateMessageTokens, maxOutputTokensFor, stepMaxOutputTokens } from '../src/glm-llm/token-budget.ts'
 import type { AttachmentsLike, ImageRefLike, ImageTarget, RequestMessageLike } from '../src/shared/lm-min.ts'
 
 const env = {
@@ -498,12 +499,12 @@ test('decodeSse carries the thinking signature in the finish replay envelope, on
   assert.deepEqual(await finishOf(decodeSse(sse(SIGNED_RESPONSE), 'glm-5.3')), {
     type: 'finish',
     reason: { kind: 'tool-calls' },
-    replayState: { response: { kind: 'glm-zcode', version: 1, model: 'glm-5.3' }, blocks: [{ type: 'reasoning', signature: 'c2lnLTEyMzQ=' }, { type: 'text' }, { type: 'tool-call' }] },
+    replayState: { response: { kind: 'glm-zcode', version: 1, model: 'glm-5.3', usage: { input: 50, output: 20, total: 70, cache: { read: 0, write: 0 } } }, blocks: [{ type: 'reasoning', signature: 'c2lnLTEyMzQ=' }, { type: 'text' }, { type: 'tool-call' }] },
   })
-  // No model, no envelope; a response without reasoning has nothing to replay.
+  // No model, no envelope. A response without reasoning still carries one: its usage is the next request's max_tokens baseline.
   assert.deepEqual(await finishOf(decodeSse(sse(SIGNED_RESPONSE))), { type: 'finish', reason: { kind: 'tool-calls' } })
   const plain = SIGNED_RESPONSE.filter(frame => !frame.includes('"index":0'))
-  assert.deepEqual(await finishOf(decodeSse(sse(plain), 'glm-5.3')), { type: 'finish', reason: { kind: 'tool-calls' } })
+  assert.deepEqual((await finishOf(decodeSse(sse(plain), 'glm-5.3')))?.replayState, { response: { kind: 'glm-zcode', version: 1, model: 'glm-5.3', usage: { input: 50, output: 20, total: 70, cache: { read: 0, write: 0 } } }, blocks: [{ type: 'text' }, { type: 'tool-call' }] })
   // A signature on the start event (some Anthropic-compatible servers) counts; a later delta replaces it.
   const onStart = ['{"type":"content_block_start","index":0,"content_block":{"type":"thinking","signature":"start-sig"}}', '{"type":"content_block_stop","index":0}', '{"type":"message_delta","delta":{"stop_reason":"end_turn"}}']
   assert.deepEqual((await finishOf(decodeSse(sse(onStart), 'glm-5.3')))?.replayState, { response: { kind: 'glm-zcode', version: 1, model: 'glm-5.3' }, blocks: [{ type: 'reasoning', signature: 'start-sig' }] })
@@ -529,6 +530,60 @@ const nextRequest = (assistant: RequestMessageLike, model: string): AnthropicReq
     assistant,
     { role: 'tool', toolCallId: 'tu1', content: [{ type: 'text', text: 'export {}' }] },
   ],
+})
+
+test('stepMaxOutputTokens follows 3.16.3 resolveModelStepMaxOutputTokens: baseline unless the window leaves less', () => {
+  assert.equal(stepMaxOutputTokens({ baseline: 128_000, contextWindow: undefined, estimatedCurrentUsage: 10 }), 128_000)
+  assert.equal(stepMaxOutputTokens({ baseline: 128_000, contextWindow: 0, estimatedCurrentUsage: 10 }), 128_000)
+  assert.equal(stepMaxOutputTokens({ baseline: 128_000, contextWindow: 1_000_000, estimatedCurrentUsage: -1 }), 128_000)
+  assert.equal(stepMaxOutputTokens({ baseline: 128_000, contextWindow: 1_000_000, estimatedCurrentUsage: 999_000 }), 128_000) // no room left: baseline
+  assert.equal(stepMaxOutputTokens({ baseline: 128_000, contextWindow: 1_000_000, estimatedCurrentUsage: 990_000.5 }), 8_999)
+  assert.equal(stepMaxOutputTokens({ baseline: 128_000, contextWindow: 1_000_000, estimatedCurrentUsage: 10_000 }), 128_000)
+})
+
+test('the token estimate follows 3.16.3 estimateMessageTokens: three characters a token, tool calls as name plus input JSON, images as placeholders', () => {
+  assert.equal(estimateMessageTokens([{ role: 'user', content: [{ type: 'text', text: 'abcdef' }] }]), 2)
+  assert.equal(estimateMessageTokens([{ role: 'user', content: [{ type: 'text', text: 'abcd' }] }]), 2) // rounded up
+  // Blocks join with a newline; empty ones drop.
+  assert.equal(estimateMessageTokens([{ role: 'user', content: [{ type: 'text', text: 'ab' }, { type: 'text', text: '' }, { type: 'text', text: 'c' }] }]), 2)
+  // 'x' + 'Read' + '{"a":1}' (the input re-serialized) = 12 characters.
+  assert.equal(estimateMessageTokens([{ role: 'assistant', content: [{ type: 'text', text: 'x' }, { type: 'tool-call', id: 'c1', name: 'Read', arguments: '{ "a" : 1 }' }] }]), 4)
+  assert.equal(estimateMessageTokens([{ role: 'assistant', content: [{ type: 'tool-call', id: 'c1', name: 'Grep', arguments: 'not json' }] }]), 2) // 'Grep{}'
+  assert.equal(estimateMessageTokens([{ role: 'user', content: [{ type: 'image', attachment: png }] }]), 7) // '[Attached image/png]'
+  assert.equal(estimateMessageTokens([{ role: 'system', content: [{ type: 'text', text: 'abc' }] }, { role: 'user', content: [{ type: 'text', text: 'abc' }] }]), 2)
+})
+
+/** An assistant message as the channel's decoder leaves it: the replay envelope with ZCode-shaped usage. */
+function answered(usage: Record<string, unknown>, text = 'done'): RequestMessageLike {
+  return { role: 'assistant', content: [{ type: 'text', text }], source: { kind: 'model', provider: 'glm-zcode', model: 'glm-5.3', replayState: { response: { kind: 'glm-zcode', version: 1, model: 'glm-5.3', usage }, blocks: [{ type: 'text' }] } } }
+}
+
+test('the usage estimate anchors on the latest recorded usage (3.16.3 estimateCurrentContextUsage) and estimates the rest', () => {
+  const question: RequestMessageLike = { role: 'user', content: [{ type: 'text', text: 'a'.repeat(30) }] }
+  const result: RequestMessageLike = { role: 'tool', toolCallId: 't1', content: [{ type: 'text', text: 'b'.repeat(9) }] }
+  // input + output is the context after the response; only later messages are estimated.
+  assert.equal(estimateCurrentUsage([question, answered({ input: 1000, output: 200, total: 1200, cache: { read: 800, write: 0 } }), result]), 1203)
+  // Without output (and no usable total) the response itself is estimated on top of the input.
+  assert.equal(estimateCurrentUsage([question, answered({ input: 1000, output: 0, cache: { read: 0, write: 0 } }, 'abcdef'), result]), 1000 + 2 + 3)
+  // No recorded usage anywhere: the whole history is estimated.
+  assert.equal(estimateCurrentUsage([question, { role: 'assistant', content: [{ type: 'text', text: 'abc' }] }, result]), 10 + 1 + 3)
+  // A foreign envelope does not count.
+  const foreign: RequestMessageLike = { role: 'assistant', content: [{ type: 'text', text: 'abc' }], source: { kind: 'model', replayState: { response: { kind: 'pi-ai', version: 1, usage: { input: 9999 } } } } }
+  assert.equal(estimateCurrentUsage([question, foreign]), 11)
+})
+
+test('max_tokens per request kind (3.16.3): steps take the catalog maximum or the window room, compaction 20000, auxiliary 5000', () => {
+  const short: RequestMessageLike[] = [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }]
+  assert.equal(maxOutputTokensFor('step', 128_000, 1_000_000, short), 128_000)
+  assert.equal(maxOutputTokensFor('compaction', 128_000, 1_000_000, short), 20_000)
+  assert.equal(maxOutputTokensFor('auxiliary', 128_000, 1_000_000, short), 5_000)
+  assert.equal(maxOutputTokensFor('step', 128_000, 1_000_000, [...short, answered({ input: 980_000, output: 10_000 })]), 9_000)
+})
+
+test('the recorded usage survives the rc.3 assembler and anchors the next estimate', async () => {
+  const assistant = await assembled(SIGNED_RESPONSE, { provider: 'glm-zcode', model: 'glm-5.3' })
+  assert.notEqual(replayBlocksOf(assistant), undefined) // the envelope still aligns with the blocks
+  assert.equal(estimateCurrentUsage([{ role: 'user', content: [{ type: 'text', text: 'go' }] }, assistant]), 70)
 })
 
 test('a stored glm-zcode response replays its reasoning with the signature to the same route only', async () => {

@@ -552,10 +552,21 @@ test('coding-plan body: the official model casing, the 3.16.3 key order, thinkin
   assert.equal('thinking' in other, false)
 })
 
-test('start-plan keeps its earlier body: the DSH model id, no thinking, no output_config', async () => {
-  const body = await bodyOf({ reasoningEffort: 'max' }, 'start-plan')
+test('start-plan keeps its earlier body: the DSH model id, no thinking, no output_config, the DSH max_tokens', async () => {
+  const body = await bodyOf({ reasoningEffort: 'max', maxTokens: 4096 }, 'start-plan')
   assert.equal(body.model, 'glm-5.3')
   assert.equal('thinking' in body || 'output_config' in body, false)
+  assert.equal(body.max_tokens, 4096)
+})
+
+test('coding-plan max_tokens follows 3.16.3, not the DSH value: steps 128000 or the window room, compaction 20000, the title 5000', async () => {
+  assert.equal((await bodyOf({ maxTokens: 32_000 })).max_tokens, 128_000)
+  assert.equal((await bodyOf({ maxTokens: 32_000, purpose: 'compaction' })).max_tokens, 20_000)
+  assert.equal((await bodyOf({ maxTokens: 32_000, purpose: 'session-title' })).max_tokens, 5_000)
+  // A history whose recorded usage nears the 1,000,000 window: 1,000,000 − estimate − 1000.
+  const heavy = { role: 'assistant', content: [{ type: 'text', text: 'ok' }], source: { kind: 'model', provider: 'glm-zcode', model: 'glm-5.3', replayState: { response: { kind: 'glm-zcode', version: 1, model: 'glm-5.3', usage: { input: 985_000, output: 5_000, total: 990_000, cache: { read: 0, write: 0 } } }, blocks: [{ type: 'text' }] } } }
+  const next = typed('m2', 'abc') // one estimated token after the baseline
+  assert.equal((await bodyOf({ messages: [typed('m1', 'go'), heavy, next] as never })).max_tokens, 1_000_000 - 990_001 - 1_000)
 })
 
 test('upstreamSessionId strips the DSH prefix, keeps other header-safe ids, and replaces unusable ones', () => {

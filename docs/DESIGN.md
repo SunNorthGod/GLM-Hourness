@@ -399,7 +399,7 @@ Flash 没命中的位置：修复前第二步 4 次、之后各步 12 次；固�
 BigModel 的思考文档写明：保留式思考在 Coding Plan 端点默认开启，要把完整、未修改的 reasoning 原样传回，否则效果与缓存命中都会下降；交错思考加工具时，必须在返回工具结果时一并返回 reasoning（`.llm/docs/_bigmodel_md/cn__guide__capabilities__thinking-mode.md`）。ZCode 照此回放（3.16.3 `adapters/src/model/reasoning-history-normalization.ts`、`anthropic-reasoning-metadata.ts`）。本通道此前丢弃全部 reasoning。
 
 - 实测〔2026-10-28，coding-plan〕：GLM 只在需要时思考（简单的工具调用请求没有 thinking 块）；thinking 块在 `content_block_start` 带空的 `signature` 字段，签名经 `signature_delta` 送达，24 个字符。端点不校验签名：正确签名、空签名、无签名字段、乱码签名、改过正文的原签名、外来正文加空签名，六种回放全部 200。
-- 解码：每个 thinking 块的签名记进 DSH 的回放信封（`finish.replayState`，`{response: {kind: 'glm-zcode', version: 1, model}, blocks}`，每个发出的块一项，按首次出现的顺序；DSH 自带的 deepseek-messages 适配器用同一形状）。只有出现过 reasoning 块的响应才带信封。开始事件上已有签名时也认，随后的 `signature_delta` 替换它（ZCode `anthropic-stream-compat` 的兼容处理）。助手消息由运行时组装时，信封随消息存进 `source.replayState`；不归本适配器的历史路由，运行时会先剥掉信封（rc.3 `LlmRuntime.forAdapter`）。
+- 解码：每个 thinking 块的签名记进 DSH 的回放信封（`finish.replayState`，`{response: {kind: 'glm-zcode', version: 1, model}, blocks}`，每个发出的块一项，按首次出现的顺序；DSH 自带的 deepseek-messages 适配器用同一形状）。自 m1-parity 起每个响应（知道模型时）都带信封，信封里另记 ZCode 口径的用量，供下一次请求的 `max_tokens` 估算（§4.6）。开始事件上已有签名时也认，随后的 `signature_delta` 替换它（ZCode `anthropic-stream-compat` 的兼容处理）。助手消息由运行时组装时，信封随消息存进 `source.replayState`；不归本适配器的历史路由，运行时会先剥掉信封（rc.3 `LlmRuntime.forAdapter`）。
 - 编码，按 ZCode 的历史归一化：
   - 信封可用（kind、version、模型与消息来源一致，块数与类型逐项对齐）且消息来自同一路由（provider 与模型都相同）时，reasoning 带原签名回放。
   - 带签名的 reasoning 只回给签发它的路由；换了模型就删掉（ZCode `removeCrossModelReasoning`：签名绑定模型）。
@@ -415,6 +415,13 @@ BigModel 的思考文档写明：保留式思考在 Coding Plan 端点默认开�
 - ZCode 目录规则〔m1-parity，`src/glm-llm/models.ts` `zcodeModelRule`〕：取开源 3.16.2 树的内置目录（`reference/ZCode/config/provider/zcode-builtin.json`，revision 33）里 GLM-5.3 系的两条规则：模型规则 `.*glm-5\.3.*`（`contextWindow` 1,000,000，`maxOutputTokens.max` 128000，`reasoningLevel.values` `["low", "high", "max"]`）与 anthropic-messages 规则（选项映射 `thinking` enabled、`output_config.effort`）。3.16.3 按锚定、忽略大小写匹配（`wYt` @557708，调用 @563982），后命中的规则覆盖前面的 `.*glm-5.*`，`.*glm-5\.3-flash.*` 只改输入格式。3.16.3 实际运行的目录由桌面壳下发，pristine 副本里没有；若活动目录不同，这两条要跟着改（§4.8）。
 - 输入模态按模型如实声明（`src/glm-llm/models.ts` `GLM_MODELS`）：GLM-5.3 没有视觉塔，只声明文本；GLM-5.3-Flash 声明文本与图像〔用户提供的事实 2026-10-28〕。目录外的模型 id 只声明文本。此前两个模型都声明图像。只声明文本的路由上，DSH 在适配器之前把请求里的图片换成文字占位（`dsh-llm` `projectImagesForTextModel`：「[image omitted because this model accepts text only; attachment sha256:…]」），`read_image` 拒读（「… does not declare image input; switch to an image-capable model to read images」），会话控制器拒收用户附图。
 - 思考：GLM-5.3 系强制思考；effort 三档 `low` / `high` / `max`，默认 `high`〔定案 2026-10-27，五档词汇 API 接受但 GLM 不用〕。
+- `max_tokens`〔已实现 2026-10-28，m1-parity 第 5 项，定案 2026-10-28 用户选 B，项目图 `question-7`；`src/glm-llm/token-budget.ts`〕：coding-plan 对目录内的模型不再用 DSH 给的 `maxTokens`，按 3.16.3 取值：
+  - agent 步：`resolveModelStepMaxOutputTokens`（`aUo` @13215830）。基线是目录的 `maxOutputTokens.max`（`resolveNormalRequestMaxOutputTokens` `VZ` @13215775，没有时 32000）；上下文窗口与当前用量估算都有效时，取 `min(基线, floor(窗口 − 估算 − 1000))`，这个值不大于 0 时取基线。
+  - 压缩：`min(VZ(max), 20000, max)`（`p3a` @13395552，`I0t`），GLM-5.3 系为 20000。
+  - 会话标题等辅助请求：`min(5000, max)`（`auxiliaryModelOptions` `PP` @7759001），为 5000。
+  - 当前用量估算（`estimateCurrentContextUsage` `uzo` @13313841）：从后往前找第一条带服务端用量的助手消息作基线（`CDn` @13313415、`d5o` @13260048）；用量按 `Xgt` @4979924 换算（输入取 `input`，否则 `total − output`，否则缓存读写之和；输出大于 0 时上下文用量为输入加输出，否则取不小于输入的 `total`）；有上下文用量时只估算基线之后的消息，没有时从基线那条起估算；没有基线时整段估算。估算按 `estimateMessageTokens`（`TP` @5067698）：每条消息的块文本（文本与 reasoning 原样，图片记 `[Attached <类型>]`）以换行连接，加每个工具调用的名称与输入 JSON，三个字符一 token（`ere` @814022），向上取整；系统消息也计入。
+  - 用量基线的来源：ZCode 从会话条目读用量。DSH 的请求不带历史响应的用量，本包的解码器在每个响应的回放信封（`finish.replayState.response`）里记下 ZCode 口径的用量 `usage: {input, output, total, cache: {read, write}}`（`input` 含缓存读写，与 AI SDK Anthropic provider 的口径相同，`EZr` @3549947），信封 `version` 仍为 1；DSH 组装助手消息时把信封存进 `source.replayState`，下一次请求从这里读。为此信封改为只要知道模型就发，不再只在有 reasoning 时发（§4.5c）。
+  - 与 3.16.3 的差异（§4.8）：只有本适配器产出、运行时仍把回放状态交回本适配器的助手消息有基线，别的路由的历史与 m1-parity 之前的历史只能整段估算；ZCode 按会话条目与消息对齐取下标，DSH 只有一份消息列表，按它取；工具调用参数先解析再序列化，解析失败计 `{}`，工具结果计其文本块与图片占位（ZCode 的消息模型与 DSH 块不完全一一对应）。窗口取目录的 1,000,000，而 DSH 按声明的 512,000 先压缩，所以实际上主步恒为 128000；公式照移植。
 
 ### 4.6a 用量块
 

@@ -173,7 +173,7 @@
 | todo 提醒双阈值 10/10，GLM 启用 | `reference/zcode-capabilities.md` §4.2 |
 | todo 提醒按助手消息计轮（一条助手消息一轮，不论工具调用数），每次模型请求前从历史重新计算；本回合工具有 TodoWrite 才检查；作为 `todo_reminder` 附件递送并持久化；3.16.3 对 id 含 `claude` 的模型不提醒；`supportsMidConversationSystem` 为真时投影为对话中段 system 消息，否则为 `<system-reminder>` 用户消息，GLM 的取值来自远端配置 | 安装包 `XNa`、`U4o`、`z4o`、`Rwe`；源码 `runtime/helpers/runtime-reminders.ts`、`runtime/methods/turn-loop.ts`、`runtime/helpers/provider-mid-conversation-system.ts`〔实读 2026-10-28〕；`DESIGN.md` §5.5 |
 | compact：默认窗口 200k，输出预留 min(maxOutputTokens, 21k)，autoCompact 阈值 166k；microcompact 公式 | `reference/zcode-capabilities.md` §11.2 |
-| 默认 `max_tokens` 32000；thinking 启用时剥离采样参数 | `reference/zcode-capabilities.md` §10.1、§11.7 |
+| 3.16.3 的 `max_tokens`：agent 步取 `min(目录 maxOutputTokens.max 或 32000, floor(上下文窗口 − 当前用量估算 − 1000))`，后者不大于 0 或输入无效时取前者；压缩 `min(VZ(max), 20000, max)`；辅助请求（会话标题）`min(5000, max)` 且档位取目录第一档。当前用量以最近一条带服务端用量的助手消息为基线，其后的消息按三字符一 token 估算（工具调用计名称加输入 JSON）。目录的 thinking 经选项映射追加，AI SDK 不知道它，不剥离采样参数 | 3.16.3 pristine 包 `VZ` @13215775、`aUo` @13215830、`Yja` / `Qja` @13216560、`pBa` @13320731、`p3a` @13395552、`I0t` @5070582、`PP` @7759001、`uzo` @13313841、`CDn` @13313415、`d5o` @13260048、`Xgt` @4979924、`Bla` @4980209、`TP` @5067698、`tsn` @1317782、`ere` @814022、`z0o` @5068462〔实读 2026-10-28〕；旧的 32000 与「剥离采样参数」出自 `reference/zcode-capabilities.md` §10.1、§11.7，与 3.16.3 不符 |
 | effort：anthropic 通道 `output_config.effort` 五档词汇；GLM 实用三档 low / high / max | `reference/zcode-capabilities.md` §11.1；用户定案 |
 | 记忆目录结构与 project-hash 算法 | `reference/zcode-capabilities.md` §10.6 |
 | 工具检索模式默认 `off`（桌面版设置 `toolSearchMode` 与 CLI `--toolsearch-mode` 均如此）；deferred 工具名以 `<system-reminder>` 公告递送，不写进系统提示词 | `DESIGN.md` §5.10〔实读〕 |
