@@ -4,10 +4,10 @@
  * and no DSH service, so the specs run them under Node.
  */
 import { compareText } from '../../../src/graph/format.ts'
-import { STATUS_LABELS } from '../../../src/graph/labels.ts'
+import { ACTOR_LABELS, OP_LABELS, STATUS_LABELS } from '../../../src/graph/labels.ts'
 import { revisionInput, type LoadedGraph } from '../../../src/graph/parse.ts'
 import { OPEN_STATUSES, deciderOf, waitsForHuman, type DecisionRecord } from '../../../src/graph/projection.ts'
-import type { GraphNode } from '../../../src/graph/schema.ts'
+import { EDITABLE_FIELDS, type EditableField, type GraphNode, type HistoryEntry } from '../../../src/graph/schema.ts'
 
 /**
  * First 12 hex digits of the SHA-256 of some bytes: the revision store.ts
@@ -166,6 +166,56 @@ export function progressOf(graph: LoadedGraph, id: string): { readonly done: num
 export function headlineGoal(graph: LoadedGraph): GraphNode | undefined {
   const goals = [...graph.nodes.values()].filter(node => node.type === 'goal').sort((a, b) => compareText(a.id, b.id))
   return goals.find(node => OPEN_STATUSES.has(node.status)) ?? goals[0]
+}
+
+/** Display names of the fields an edit changes (docs/ORCHESTRATION.md §2.6 field table). */
+const FIELD_LABELS: Readonly<Record<EditableField, string>> = {
+  title: '标题',
+  parent: '父节点',
+  slope: '坡向',
+  stage: '阶段',
+  kind: '派发种类',
+  tier: '档位',
+  worktree: '工作树',
+  outputSchema: '交回结构',
+  body: '正文',
+  acceptance: '验收条件',
+  nonGoals: '非目标',
+  writeScope: '写入范围',
+  options: '选项',
+  recommend: '推荐项',
+  decider: '决定者',
+}
+
+/** A relayed reason that opens by naming the human repeats the 你（经对话） label; the display drops it, the stored entry keeps it. */
+const RELAY_PREFIX = /^用户说?\s*[：:]\s*/
+
+/**
+ * One history entry as the detail view says it: who wrote it, and what
+ * happened with the reason. An edit names the fields it changed, in
+ * write order. The relay itself is shown apart, as a quote.
+ */
+export function historyText(entry: HistoryEntry): { readonly who: string, readonly what: string } {
+  const who = entry.relay !== undefined ? '你（经对话）' : entry.actor === 'human' ? '你' : entry.actor === 'llm' ? 'agent' : ACTOR_LABELS[entry.actor]
+  if (entry.op === 'comment') return { who, what: `批注：${entry.text ?? ''}` }
+  const { changes } = entry
+  const fields = changes === undefined ? '' : EDITABLE_FIELDS.filter(field => changes[field] !== undefined).map(field => FIELD_LABELS[field]).join('、')
+  const action = `${OP_LABELS[entry.op]}${fields}${entry.option === undefined ? '' : ` ${entry.option}`}`
+  const reason = entry.relay === undefined ? entry.reason : entry.reason?.replace(RELAY_PREFIX, '')
+  return { who, what: reason === undefined || reason.length === 0 ? action : `${action}：${reason}` }
+}
+
+/**
+ * Who works on a task, as its run controls say it. The panel sees only the
+ * agents of its own session (the main agent and its subagents), so an
+ * empty list means nobody in this DSH session; a task marked in progress
+ * may be worked on elsewhere. A done task needs no such line.
+ */
+export function presenceText(status: GraphNode['status'], names: readonly string[]): string | undefined {
+  if (names.length > 0) return `在这里干活：${names.join('、')}`
+  if (status === 'done') return undefined
+  const none = '这个 DSH 会话里没有 agent 在做它'
+  return status === 'doing' ? `${none}；状态是进行中，活可能在别的会话或 DSH 之外` : none
 }
 
 /** "3 分钟前" style time for the lists; absolute date beyond a week. */

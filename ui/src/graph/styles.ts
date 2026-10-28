@@ -26,9 +26,20 @@ export const PANEL_CSS = `
 .glmg-card-title{margin:0 0 2px;font-size:14px;font-weight:600;line-height:1.4;color:var(--g-ink);cursor:pointer}
 .glmg-card-title:hover{text-decoration:underline;text-decoration-color:var(--g-line-strong)}
 .glmg-meta{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center;color:var(--g-ink3);font-size:11.5px}
-.glmg-text{margin:8px 0 0;color:var(--g-ink2);font-size:12.5px}
-.glmg-text.clamp{display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+.glmg-text{margin:8px 0 0;color:var(--g-ink2);font-size:12.5px;line-height:1.65;overflow-wrap:anywhere}
 .glmg-more{margin-top:2px;padding:0;border:0;background:none;color:var(--g-accent);font:inherit;font-size:12px;cursor:pointer}
+/* folding (common.tsx Folded): the height limit is inline, in lines of the box's own line height */
+.glmg-fold .clamp{overflow:hidden}
+.glmg-fold .faded{-webkit-mask-image:linear-gradient(180deg,#000 calc(100% - 1.6lh),transparent);mask-image:linear-gradient(180deg,#000 calc(100% - 1.6lh),transparent)}
+/* markdown (common.tsx Markdown): the container's type scale, short paragraph gaps, inline code on the panel's tokens */
+.glmg .glmg-md>div,.glmg .glmg-md :is(p,li,ul,ol,blockquote){font-size:inherit;line-height:inherit;color:inherit}
+.glmg .glmg-md :is(p,ul,ol,pre,blockquote,table){margin:0 0 8px}
+.glmg .glmg-md>div>:last-child{margin-bottom:0}
+.glmg .glmg-md :is(ul,ol){padding-left:18px}
+.glmg .glmg-md li+li{margin-top:2px}
+.glmg .glmg-md :is(h1,h2,h3,h4,h5,h6){margin:10px 0 4px;color:var(--g-ink);font-size:1em;line-height:inherit;font-weight:600}
+.glmg .glmg-md>div>:is(h1,h2,h3,h4,h5,h6):first-child{margin-top:0}
+.glmg .glmg-md :not(pre)>code{padding:0 4px;border-radius:4px;background:var(--g-hover);color:var(--g-ink);font-size:.9em;line-height:inherit;overflow-wrap:anywhere}
 .glmg-options{display:flex;flex-direction:column;gap:6px;margin-top:10px}
 .glmg-option{display:flex;flex-direction:column;gap:2px;width:100%;padding:8px 10px;border:1px solid var(--g-line);border-radius:var(--dsw-radius-md,8px);background:transparent;color:var(--g-ink);font:inherit;text-align:left;cursor:pointer;transition:border-color .15s,background .15s,transform .15s}
 .glmg-option:hover{background:var(--g-hover);border-color:var(--g-line-strong)}
@@ -56,7 +67,7 @@ export const PANEL_CSS = `
 .glmg-who.agent{background:color-mix(in srgb,var(--g-purple) 16%,transparent);color:var(--g-purple)}
 .glmg-who.relay{background:color-mix(in srgb,var(--g-accent) 14%,transparent);color:var(--g-accent)}
 .glmg-who.human{background:var(--g-hover);color:var(--g-ink2)}
-.glmg-quote{margin:8px 0 0;padding:6px 10px;border-left:2px solid var(--g-accent);color:var(--g-ink2);font-size:12.5px;background:color-mix(in srgb,var(--g-accent) 6%,transparent);border-radius:0 6px 6px 0}
+.glmg-quote{margin:8px 0 0;padding:6px 10px;border-left:2px solid var(--g-accent);color:var(--g-ink2);font-size:12.5px;white-space:pre-wrap;overflow-wrap:anywhere;background:color-mix(in srgb,var(--g-accent) 6%,transparent);border-radius:0 6px 6px 0}
 .glmg-progress{position:relative;height:4px;margin-top:6px;border-radius:2px;background:var(--g-hover);overflow:hidden}
 .glmg-progress b{position:absolute;inset:0 auto 0 0;border-radius:2px;background:var(--g-done);transition:width .5s cubic-bezier(.2,.8,.2,1)}
 .glmg-dot{flex:none;width:8px;height:8px;margin-top:6px;border-radius:50%;background:var(--g-ink3)}
@@ -116,17 +127,29 @@ export const PANEL_CSS = `
 .glmg-detail{position:absolute;inset:0;z-index:2;display:flex;flex-direction:column;background:var(--dsw-alias-bg-base,var(--dsw-specific-sidebar-fill,#1d1d1f));animation:glmg-slide .24s cubic-bezier(.2,.8,.2,1)}
 .glmg-detail-head{display:flex;align-items:center;gap:6px;padding:8px 10px;border-bottom:1px solid var(--g-line)}
 .glmg-detail-body{flex:1;min-height:0;overflow:auto;padding:12px 14px 20px}
-.glmg-detail h2{margin:6px 0 4px;font-size:16px;line-height:1.4;font-weight:600}
+.glmg-detail-body>h2{margin:6px 0 6px;font-size:16px;line-height:1.4;font-weight:600}
+.glmg-detail-body>.glmg-fold>.glmg-text{margin-top:12px;font-size:13px}
 .glmg-crumbs{display:flex;flex-wrap:wrap;gap:2px 4px;color:var(--g-ink3);font-size:11.5px}
 .glmg-crumbs button{padding:0;border:0;background:none;color:inherit;font:inherit;cursor:pointer}
 .glmg-crumbs button:hover{color:var(--g-ink)}
+/* the parts below the body: one rule above each, the same gap under every title */
+.glmg-part{margin-top:16px;padding-top:12px;border-top:1px solid var(--g-line)}
+.glmg .glmg-part>.glmg-section{margin:0 2px 8px}
+.glmg .glmg-part>.glmg-section+*{margin-top:0}
+.glmg .glmg-part>.glmg-section+.glmg-row{margin-top:-6px}
+.glmg-part .glmg-actions{margin-top:8px}
+.glmg-notes{display:flex;flex-direction:column;gap:2px;color:var(--g-ink3);font-size:12px}
 .glmg-list{margin:4px 0 0;padding:0;list-style:none}
 .glmg-list li{display:flex;gap:8px;align-items:flex-start;padding:3px 0;color:var(--g-ink2)}
 .glmg-list li::before{content:"";flex:none;width:6px;height:6px;margin-top:7px;border-radius:50%;background:var(--g-ink3)}
 .glmg-list.ok li::before{background:var(--g-done)}
-.glmg-history{margin-top:4px;font-size:12px;color:var(--g-ink3)}
-.glmg-history div{padding:4px 0;border-top:1px dashed var(--g-line)}
-.glmg-id{margin-top:18px;color:var(--g-ink3);font-size:11px}
+.glmg-history{margin-top:4px;font-size:12px;line-height:1.55;color:var(--g-ink2);overflow-wrap:anywhere}
+.glmg-history>div{padding:6px 0}
+.glmg-history>div:first-child{padding-top:0}
+.glmg-history>div+div{border-top:1px dashed var(--g-line)}
+.glmg-history-when{color:var(--g-ink3)}
+.glmg-history .glmg-quote{margin-top:6px}
+.glmg-id{margin-top:16px;padding-top:12px;border-top:1px solid var(--g-line);color:var(--g-ink3);font-size:11px}
 .glmg-id code{font-family:var(--dsw-font-mono,ui-monospace,monospace)}
 .glmg-comment{display:flex;flex-direction:column;gap:6px;margin-top:6px}
 .glmg-comment textarea{min-height:56px;padding:6px 8px;border:1px solid var(--g-line);border-radius:var(--dsw-radius-md,8px);background:transparent;color:var(--g-ink);font:inherit;resize:vertical}

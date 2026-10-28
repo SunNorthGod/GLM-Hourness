@@ -7,7 +7,7 @@ import { openEngine } from '../src/graph/engine.ts'
 import { graphRevision, loadGraph, revisionOf } from '../src/graph/store.ts'
 import type { GraphNode } from '../src/graph/schema.ts'
 import type { RemoteRoot, StreamItem, WatchFrame } from '../ui/src/dsh.ts'
-import { decidedBy, graphRevisionOf, revisionOfBytes, statusText, visibleGraph } from '../ui/src/graph/model.ts'
+import { decidedBy, graphRevisionOf, historyText, presenceText, revisionOfBytes, statusText, visibleGraph } from '../ui/src/graph/model.ts'
 import { GraphSource, type GraphSnapshot } from '../ui/src/graph/source.ts'
 import { fixtureTest, seedAsHuman } from './graph-helpers.ts'
 
@@ -80,6 +80,26 @@ test('status lines say what a node waits for', () => {
   assert.equal(decidedBy({ decidedBy: 'llm' }), 'agent')
   assert.equal(decidedBy({ decidedBy: 'llm', relay: '选 A' }), 'relay')
   assert.equal(decidedBy({ decidedBy: 'human' }), 'human')
+})
+
+test('history lines name the edited fields and do not repeat the relay label', () => {
+  const at = '2026-10-28T13:26:37.663Z'
+  // m1-parity's relayed edit: the stored reason opens with 用户：, the display drops it; the entry is not touched.
+  const relayed = { at, actor: 'llm', op: 'edit', reason: '用户：额度扣减看不出来，按代码级别一致验收', relay: '看量或者扣减看不出来的。\n\nB，彻底一样', changes: { acceptance: { from: ['a'], to: ['b'] } } } as const
+  assert.deepEqual(historyText(relayed), { who: '你（经对话）', what: '编辑验收条件：额度扣减看不出来，按代码级别一致验收' })
+  assert.equal(relayed.reason, '用户：额度扣减看不出来，按代码级别一致验收')
+  // Without a relay the reason is shown as written; several fields follow the write order of EDITABLE_FIELDS.
+  assert.deepEqual(historyText({ at, actor: 'llm', op: 'edit', reason: '用户：原话', changes: { acceptance: { from: null, to: ['x'] }, body: { from: null, to: 'y' } } }), { who: 'agent', what: '编辑正文、验收条件：用户：原话' })
+  assert.deepEqual(historyText({ at, actor: 'human', op: 'decide', reason: '稳', option: 'B' }), { who: '你', what: '拍板 B：稳' })
+  assert.deepEqual(historyText({ at, actor: 'human', op: 'comment', text: '看一下' }), { who: '你', what: '批注：看一下' })
+  assert.deepEqual(historyText({ at, actor: 'harness', op: 'status', reason: '派发', from: 'approved', to: 'doing' }), { who: 'harness', what: '改状态：派发' })
+})
+
+test('run-control presence lines say the panel sees only its own DSH session', () => {
+  assert.equal(presenceText('doing', ['主 Agent', '子 agent']), '在这里干活：主 Agent、子 agent')
+  assert.equal(presenceText('approved', []), '这个 DSH 会话里没有 agent 在做它')
+  assert.equal(presenceText('doing', []), '这个 DSH 会话里没有 agent 在做它；状态是进行中，活可能在别的会话或 DSH 之外')
+  assert.equal(presenceText('done', []), undefined)
 })
 
 /** A Remote face over a directory on disk, with a change feed the test drives. */

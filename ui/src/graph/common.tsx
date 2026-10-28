@@ -1,10 +1,11 @@
 /**
  * Pieces every view of the graph panel shares: the services context, the
  * write hook (graph writes and run controls), markdown with its copy
- * labels, and the option picker that decides (or overturns) a question.
+ * labels, folding of long content, and the option picker that decides (or
+ * overturns) a question.
  */
 import { Button, Input, MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
-import { createContext, useContext, useState, type ReactElement } from 'react'
+import { createContext, useContext, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode } from 'react'
 import type { LoadedGraph } from '../../../src/graph/parse.ts'
 import type { DecisionOption, GraphNode } from '../../../src/graph/schema.ts'
 import type { RunAction } from '../../../src/graph/run.ts'
@@ -60,8 +61,46 @@ const MARKDOWN_LABELS = {
   footnotes: '脚注',
 } as const
 
-export function Markdown({ text, className }: { readonly text: string, readonly className?: string }): ReactElement {
-  return <MarkdownText text={text} labels={MARKDOWN_LABELS} {...(className === undefined ? {} : { className })} />
+/**
+ * Markdown sized by its container: MarkdownText drops a className and sets
+ * its own type scale, so the wrapper carries the panel's sizes and
+ * paragraph spacing (styles.ts, .glmg-md).
+ */
+export function Markdown({ text }: { readonly text: string }): ReactElement {
+  return <div className="glmg-md"><MarkdownText text={text} labels={MARKDOWN_LABELS} /></div>
+}
+
+/**
+ * Content folded to `lines` lines of its own line height behind 展开
+ * (收起 folds it back). The fold is measured, not guessed from the text:
+ * the toggle and the fade appear only when the content overflows the
+ * folded height at the current width.
+ */
+export function Folded({ lines, className, children }: { readonly lines: number, readonly className?: string, readonly children: ReactNode }): ReactElement {
+  const box = useRef<HTMLDivElement>(null)
+  const inner = useRef<HTMLDivElement>(null)
+  const [open, setOpen] = useState(false)
+  const [overflows, setOverflows] = useState(false)
+  useLayoutEffect(() => {
+    const element = box.current
+    if (element === null || inner.current === null || open) return undefined
+    const measure = (): void => { setOverflows(element.scrollHeight > element.clientHeight + 1) }
+    measure()
+    // The box changes size with the width; the content changes size when it re-renders.
+    const observer = new ResizeObserver(measure)
+    observer.observe(element)
+    observer.observe(inner.current)
+    return () => { observer.disconnect() }
+  }, [open])
+  const folded = open ? '' : overflows ? ' clamp faded' : ' clamp'
+  return (
+    <div className="glmg-fold">
+      <div ref={box} className={`${className ?? ''}${folded}`} style={open ? undefined : { maxHeight: `${lines}lh` }}>
+        <div ref={inner}>{children}</div>
+      </div>
+      {open || overflows ? <button type="button" className="glmg-more" aria-expanded={open} onClick={() => { setOpen(!open) }}>{open ? '收起' : '展开'}</button> : null}
+    </div>
+  )
 }
 
 /** The revision a write to this node must carry. */

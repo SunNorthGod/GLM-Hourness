@@ -10,19 +10,12 @@ import { TYPE_LABELS } from '../../../src/graph/labels.ts'
 import type { LoadedGraph } from '../../../src/graph/parse.ts'
 import type { OpenItems } from '../../../src/graph/projection.ts'
 import type { GraphNode } from '../../../src/graph/schema.ts'
-import { Markdown, Options, Outcome, revOf, useServices, useWriter } from './common.tsx'
+import { Folded, Markdown, Options, Outcome, revOf, useServices, useWriter } from './common.tsx'
 import { decidedBy, timeAgo } from './model.ts'
 
 function Body({ text }: { readonly text: string | undefined }): ReactElement | null {
-  const [open, setOpen] = useState(false)
   if (text === undefined) return null
-  const long = text.length > 160
-  return (
-    <div>
-      <Markdown text={text} className={`glmg-text${long && !open ? ' clamp' : ''}`} />
-      {long ? <button type="button" className="glmg-more" onClick={() => { setOpen(!open) }}>{open ? '收起' : '展开'}</button> : null}
-    </div>
-  )
+  return <Folded lines={4} className="glmg-text"><Markdown text={text} /></Folded>
 }
 
 function CardHead({ node, graph }: { readonly node: GraphNode, readonly graph: LoadedGraph }): ReactElement {
