@@ -2,7 +2,7 @@
   "id": "m1-parity",
   "type": "task",
   "title": "coding-plan 请求与 ZCode 3.16.3 一致（150% 加成）",
-  "status": "approved",
+  "status": "doing",
   "parent": "m1",
   "kind": "implement",
   "tier": "hard",
@@ -41,6 +41,14 @@
           ]
         }
       }
+    },
+    {
+      "at": "2026-10-28T14:12:29.860Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "实现流程在跑（worktree .worktrees/m1-parity），状态补记",
+      "from": "approved",
+      "to": "doing"
     }
   ]
 }

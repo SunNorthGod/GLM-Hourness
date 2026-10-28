@@ -18,6 +18,10 @@
     },
     {
       "type": "depends",
+      "to": "m1-parity"
+    },
+    {
+      "type": "depends",
       "to": "q-l4"
     }
   ],
@@ -36,6 +40,22 @@
       "reason": "用户 2026-10-28 做了第一轮（docs fe57cfc），第二轮由 agent 自验",
       "from": "approved",
       "to": "doing"
+    },
+    {
+      "at": "2026-10-28T14:12:29.921Z",
+      "actor": "llm",
+      "op": "link",
+      "reason": "M1 的批次 L4 等 m1-parity 合入后一起做（norm-verify-tiers）",
+      "edge": {
+        "type": "depends",
+        "to": "m1-parity"
+      }
+    },
+    {
+      "at": "2026-10-28T14:12:29.952Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "状态说明：第一轮 L4 已做，第二轮是 M1 的批次 L4，等 m1-parity 合入后做，现在没人在做它。要在桌面版上看的：签名请求（m1-signing，沙盒已验过）、与 ZCode 一致后的请求（m1-parity）、GLM 通道与面板在一次重启后都正常。"
     }
   ]
 }
