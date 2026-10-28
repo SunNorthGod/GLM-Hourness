@@ -19,7 +19,7 @@ import { DEFAULT_IDENTITY, ensureDeviceMid, resolveEnvPromptInfo, type ZcodeIden
 import { buildAuthHeaders, upstreamSessionId, type PlanId } from './headers.ts'
 import { EndpointRoutingService } from './endpoint-routing.ts'
 import { ClientSigningManager, sendWithClientSigning } from './signing.ts'
-import { encodeRequest, decodeSse, splitSystemPrompt } from './anthropic.ts'
+import { encodeRequest, decodeSse, metadataUserId, splitSystemPrompt } from './anthropic.ts'
 import { glmImageRequestTarget, prepareRequestImages } from './images.ts'
 import { buildStartPlanSystem, buildContextPrefixMessage } from './start-plan.ts'
 import { GLM_DEFAULT_MAX_TOKENS, GLM_MODELS, GLM_REASONING_EFFORTS, glmInputModalities } from './models.ts'
@@ -283,12 +283,14 @@ export class ZcodeAdapter {
       ? [buildContextPrefixMessage(), ...history]
       : history
     const images = await prepareRequestImages(messages, this.options.resolveAttachments?.(), this.options.mapHostPath, options.signal)
-    const body = JSON.stringify(encodeRequest({ ...options, messages }, systemBlocks, images))
+    // One x-session-id per DSH session: the gateway's cache affinity key
+    // (DESIGN.md §4.5b); metadata.user_id carries the same id, as ZCode's does.
+    const sessionId = upstreamSessionId(request.sessionId)
+    const body = JSON.stringify(encodeRequest({ ...options, messages }, systemBlocks, images, metadataUserId(deviceMid, sessionId)))
 
     const upstreamBase = `${BIGMODEL_ANTHROPIC_BASE}/v1/messages`
     const routed = await this.routing.resolve(upstreamBase, credential.apiKey, credential.jwt).catch((): { routed: boolean, url: string, headers?: Record<string, string> } => ({ routed: false, url: upstreamBase }))
-    // One x-session-id per DSH session: the gateway's cache affinity key (DESIGN.md §4.6).
-    const headers = buildAuthHeaders(credential, identity, plan, { sessionId: upstreamSessionId(request.sessionId), sessionType: 'main' }, this.options.env)
+    const headers = buildAuthHeaders(credential, identity, plan, { sessionId, sessionType: 'main' }, this.options.env)
 
     const response = await sendWithClientSigning(this.signer, {
       url: routed.url,

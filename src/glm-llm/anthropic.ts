@@ -13,12 +13,13 @@ type WireText = { type: 'text', text: string }
 /** Anthropic base64 image block, the shape ZCode's AI SDK Anthropic provider emits. */
 type WireImageBlock = { type: 'image', source: { type: 'base64', media_type: string, data: string } }
 
-/** One Anthropic content block the encoder emits. */
-export type WireBlock =
+/** One Anthropic content block the encoder emits; any block may carry the cache breakpoint. */
+export type WireBlock = (
   | WireText
   | WireImageBlock
   | { type: 'tool_use', id: string, name: string, input: unknown }
   | { type: 'tool_result', tool_use_id: string, content: string | Array<WireText | WireImageBlock>, is_error?: true }
+) & { cache_control?: { type: 'ephemeral' } }
 
 /** One Anthropic message. */
 export interface WireMessage {
@@ -35,6 +36,35 @@ export interface AnthropicRequest {
   readonly messages: readonly WireMessage[]
   readonly tools?: ReadonlyArray<{ name: string, description: string, input_schema: Record<string, unknown> }>
   readonly temperature?: number
+  /** The device/session blob ZCode attaches to every Anthropic request (see `metadataUserId`). */
+  readonly metadata?: { readonly user_id: string }
+}
+
+/**
+ * `metadata.user_id` as ZCode 3.16.3 builds it for every Anthropic-kind
+ * request on both plans (adapters anthropic-request-metadata
+ * `createAnthropicRequestMetadataUserId`): the deviceMid, an always-empty
+ * account uuid, and the upstream session id. An unknown deviceMid leaves
+ * the key out, as JSON.stringify does there.
+ */
+export function metadataUserId(deviceMid: string | undefined, sessionId: string): string {
+  return JSON.stringify({ device_id: deviceMid, account_uuid: '', session_id: sessionId })
+}
+
+/** One Anthropic cache breakpoint. */
+const EPHEMERAL = { type: 'ephemeral' } as const
+
+/**
+ * Mark the last content block of the last message as a cache breakpoint,
+ * the message half of ZCode's placement (core
+ * `finalizeLatestNonSystemMessageCacheControl`, serialized by the AI SDK
+ * Anthropic provider onto the message's last part). The BigModel cache is
+ * implicit and the marker did not change the hits measured on 2026-10-28
+ * (docs/DESIGN.md §4.5b); it is sent for wire parity.
+ */
+function markLastMessage(messages: WireMessage[]): void {
+  const last = messages.at(-1)?.content.at(-1)
+  if (last !== undefined) last.cache_control = EPHEMERAL
 }
 
 /** ZCode's wire fallback for a user turn without content (3.16.3 bundle, `toAiSdkUserContent`). */
@@ -146,12 +176,17 @@ function groupTurns(messages: readonly WireMessage[]): WireMessage[] {
   return grouped
 }
 
-/** Encode the full seam request into the upstream Anthropic body; `images` comes from prepareRequestImages. */
-export function encodeRequest(options: GenerateOptionsLike, systemBlocks?: ReadonlyArray<{ type: 'text', text: string, cache_control?: { type: 'ephemeral' } }>, images?: RequestImages): AnthropicRequest {
+/**
+ * Encode the full seam request into the upstream Anthropic body; `images`
+ * comes from prepareRequestImages, `metadataUserId` from `metadataUserId()`.
+ * The last message's last block carries the cache breakpoint.
+ */
+export function encodeRequest(options: GenerateOptionsLike, systemBlocks?: ReadonlyArray<{ type: 'text', text: string, cache_control?: { type: 'ephemeral' } }>, images?: RequestImages, userId?: string): AnthropicRequest {
   // Leading system messages belong to `systemBlocks` (see splitSystemPrompt).
   const messages = groupTurns(splitSystemPrompt(options).messages
     .map(message => encodeMessage(message, images))
     .filter((message): message is WireMessage => message !== undefined))
+  markLastMessage(messages)
   const request: AnthropicRequest = {
     model: options.model,
     max_tokens: options.maxTokens ?? 32000,
@@ -160,6 +195,7 @@ export function encodeRequest(options: GenerateOptionsLike, systemBlocks?: Reado
     ...(systemBlocks === undefined || systemBlocks.length === 0 ? {} : { system: systemBlocks }),
     ...(options.tools === undefined || options.tools.length === 0 ? {} : { tools: options.tools.map(encodeTool) }),
     ...(options.temperature === undefined ? {} : { temperature: options.temperature }),
+    ...(userId === undefined ? {} : { metadata: { user_id: userId } }),
   }
   return request
 }

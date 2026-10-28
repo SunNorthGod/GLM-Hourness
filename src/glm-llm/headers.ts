@@ -35,7 +35,7 @@ const SESSION_ID_PATTERN = /^[A-Za-z0-9_.:-]{1,128}$/
  * conversation carries the same value, as ZCode does (3.16.3
  * runner-attribution `createModelRequestAttributionHeaders`, which strips its
  * own internal `sess_` prefix). The BigModel gateway routes by this header
- * for prompt-cache affinity (docs/DESIGN.md §4.6, measured 2026-10-28).
+ * for prompt-cache affinity (docs/DESIGN.md §4.5b, measured 2026-10-28).
  * Without a usable session id the request gets a fresh one.
  */
 export function upstreamSessionId(sessionId: string | undefined): string {
@@ -44,14 +44,22 @@ export function upstreamSessionId(sessionId: string | undefined): string {
   return SESSION_ID_PATTERN.test(bare) ? bare : randomUUID()
 }
 
-/** Trace headers: exact context when provided, synthesized UUIDs otherwise (coding-plan gains x-query-id/x-session-id). */
+/**
+ * Trace headers: the given context, with the fields ZCode always sends
+ * synthesized when absent. ZCode 3.16.3 runner-attribution
+ * `createModelRequestAttributionHeaders` emits x-request-id,
+ * x-zcode-session-type and x-zcode-trace-id on every model request, then
+ * x-query-id and x-session-id when known; coding-plan always carries a
+ * session id (signing requires it). Without a context the coding-plan set
+ * also synthesizes x-query-id.
+ */
 export function buildTraceHeaders(plan: PlanId, trace?: TraceContext): Record<string, string> {
   if (trace !== undefined) {
     const sessionId = trace.sessionId ?? (plan === 'coding-plan' ? randomUUID() : undefined)
     return {
-      ...(trace.requestId === undefined ? {} : { 'x-request-id': trace.requestId }),
-      ...(trace.sessionType === undefined ? {} : { 'x-zcode-session-type': trace.sessionType }),
-      ...(trace.traceId === undefined ? {} : { 'x-zcode-trace-id': trace.traceId }),
+      'x-request-id': trace.requestId ?? randomUUID(),
+      'x-zcode-session-type': trace.sessionType ?? 'main',
+      'x-zcode-trace-id': trace.traceId ?? randomUUID(),
       ...(trace.queryId === undefined ? {} : { 'x-query-id': trace.queryId }),
       ...(sessionId === undefined ? {} : { 'x-session-id': sessionId }),
     }

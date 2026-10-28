@@ -87,7 +87,7 @@ test('stream sends image blocks through the attachment service; without it an im
   for await (const _chunk of adapter.stream(options as never)) { void _chunk }
   assert.deepEqual(reads, ['sha256:cccc'])
   const messages = captured.body!.messages as Array<{ content: unknown[] }>
-  assert.deepEqual(messages[0]!.content[1], { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'iVBORw==' } })
+  assert.deepEqual(messages[0]!.content[1], { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'iVBORw==' }, cache_control: { type: 'ephemeral' } })
   const bare = new ZcodeAdapter({ home: 'C:/ws/.llm', fetchImpl: makeUpstream(), storeFs: fs, env: {} as NodeJS.ProcessEnv })
   await assert.rejects(async () => { for await (const chunk of bare.stream(options as never)) void chunk }, /attachment service/)
 })
@@ -129,7 +129,15 @@ test('coding-plan stream walks the full chain: store → headers → unsigned si
   assert.equal(captured.headers!['x-api-key'], 'id.secret')
   assert.equal(captured.headers!['User-Agent'], `ZCode/${ZCODE_APP_VERSION} ${ANTHROPIC_SDK_UA}`)
   assert.ok(captured.headers!['x-session-id'] !== undefined)
+  // ZCode's attribution set: request, session type and trace ids on every request.
+  assert.deepEqual(['x-request-id', 'x-zcode-session-type', 'x-zcode-trace-id', 'x-session-id'].map(name => name in captured.headers!), [true, true, true, true])
+  assert.equal(captured.headers!['x-zcode-session-type'], 'main')
   assert.deepEqual((captured.body!.system as unknown[]), [{ type: 'text', text: 'be brief' }])
+  // metadata.user_id names the deviceMid and the same session id as the header.
+  const userId = JSON.parse((captured.body!.metadata as { user_id: string }).user_id) as Record<string, string>
+  assert.deepEqual(Object.keys(userId), ['device_id', 'account_uuid', 'session_id'])
+  assert.equal(userId.account_uuid, '')
+  assert.equal(userId.session_id, captured.headers!['x-session-id'])
   const text = chunks.filter(chunk => chunk.type === 'block-end').map(chunk => chunk.type === 'block-end' && chunk.block.type === 'text' ? chunk.block.text : '').join('')
   assert.equal(text, 'ok')
   assert.ok(chunks.some(chunk => chunk.type === 'finish' && chunk.reason.kind === 'stop'))

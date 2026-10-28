@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { buildLlmIdentityHeaders, buildContextIdentityHeaders, ensureDeviceMid, DEFAULT_IDENTITY, ZCODE_APP_VERSION } from '../src/glm-llm/identity.ts'
 import { buildAuthHeaders, buildTraceHeaders, ANTHROPIC_SDK_UA } from '../src/glm-llm/headers.ts'
-import { encodeRequest, encodeMessage, decodeFrame, decodeSse } from '../src/glm-llm/anthropic.ts'
+import { encodeRequest, encodeMessage, decodeFrame, decodeSse, metadataUserId } from '../src/glm-llm/anthropic.ts'
 import { glmImageRequestTarget, prepareRequestImages, offloadedImageText, ZCODE_IMAGE_TARGET_BYTES } from '../src/glm-llm/images.ts'
 import type { AttachmentsLike, ImageRefLike, ImageTarget, RequestMessageLike } from '../src/shared/lm-min.ts'
 import type { Credential } from '../src/glm-llm/auth/types.ts'
@@ -135,9 +135,21 @@ test('encodeRequest groups consecutive same-role turns the way the ZCode client 
     { role: 'user', content: [
       { type: 'tool_result', tool_use_id: 'c1', content: 'one' },
       { type: 'tool_result', tool_use_id: 'c2', content: 'two' },
-      { type: 'text', text: '<system-reminder>\nnotice\n</system-reminder>' },
+      { type: 'text', text: '<system-reminder>\nnotice\n</system-reminder>', cache_control: { type: 'ephemeral' } },
     ] },
   ])
+})
+
+test('the last block of the last message is the one cache breakpoint; metadata.user_id is the ZCode device/session blob', () => {
+  const history: RequestMessageLike[] = [{ role: 'user', content: [{ type: 'text', text: 'list the sources' }] }]
+  history.push({ role: 'assistant', content: [{ type: 'text', text: 'Listing.' }, { type: 'tool-call', id: 'k1', name: 'Glob', arguments: '{"pattern":"src/**"}' }] })
+  history.push({ role: 'tool', toolCallId: 'k1', content: [{ type: 'text', text: 'src/a.ts' }] })
+  const request = encodeRequest({ provider: 'glm-zcode', model: 'glm-5.3-flash', messages: history }, undefined, undefined, metadataUserId('mid-1', 'sess-1'))
+  const marked = request.messages.flatMap(message => message.content.filter(block => block.cache_control !== undefined))
+  assert.deepEqual(marked, [{ type: 'tool_result', tool_use_id: 'k1', content: 'src/a.ts', cache_control: { type: 'ephemeral' } }])
+  assert.deepEqual(request.metadata, { user_id: '{"device_id":"mid-1","account_uuid":"","session_id":"sess-1"}' })
+  assert.equal(metadataUserId(undefined, 's'), '{"account_uuid":"","session_id":"s"}') // an unknown deviceMid drops the key
+  assert.equal(encodeRequest({ provider: 'glm-zcode', model: 'glm-5.3', messages: [{ role: 'user', content: [{ type: 'text', text: 'x' }] }] }).metadata, undefined)
 })
 
 test('encodeRequest builds the streaming body with system blocks and tools', () => {
@@ -157,7 +169,7 @@ test('encodeRequest builds the streaming body with system blocks and tools', () 
   // The leading system message is the caller's system block; a later one rides
   // the user turn as a system reminder (consecutive user turns merge).
   assert.deepEqual(request.messages, [
-    { role: 'user', content: [{ type: 'text', text: 'hello' }, { type: 'text', text: '<system-reminder>\nlater\n</system-reminder>' }] },
+    { role: 'user', content: [{ type: 'text', text: 'hello' }, { type: 'text', text: '<system-reminder>\nlater\n</system-reminder>', cache_control: { type: 'ephemeral' } }] },
   ])
   assert.deepEqual(request.tools, [{ name: 'TodoWrite', description: 'd', input_schema: { type: 'object' } }])
 })
@@ -237,7 +249,7 @@ test('image blocks reach the request body as Anthropic base64 image blocks, insi
       { type: 'image', source: { type: 'base64', media_type: 'image/png', data: base64('bytes:sha256:aaaa') } },
     ] },
     { role: 'assistant', content: [{ type: 'tool_use', id: 'c1', name: 'Read', input: { file_path: 'C:/x.jpg' } }] },
-    { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'c1', content: [
+    { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'c1', cache_control: { type: 'ephemeral' }, content: [
       { type: 'text', text: '<path>C:/x.jpg</path>' },
       { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64('bytes:sha256:bbbb') } },
     ] }] },
