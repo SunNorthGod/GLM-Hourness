@@ -9,7 +9,6 @@
  * replaces it with the gateway-fingerprinted 3-block assembly and pins the
  * currentDate context-prefix message ahead of the first user turn.
  */
-import { randomUUID } from 'node:crypto'
 import { readFile, writeFile, rename } from 'node:fs/promises'
 import type { Credential } from './auth/types.ts'
 import { loadCredential, saveCredential, clearCredential, type StoreFs } from './auth/store.ts'
@@ -17,7 +16,7 @@ import { resolveCodingPlanCredential } from './auth/resolver.ts'
 import { PollOAuthClient, LOGIN_TIMEOUT_MS, buildPasteAuthorizeUrl } from './auth/oauth.ts'
 import { inspectJwt } from './auth/jwt.ts'
 import { DEFAULT_IDENTITY, ensureDeviceMid, resolveEnvPromptInfo, type ZcodeIdentity } from './identity.ts'
-import { buildAuthHeaders, type PlanId } from './headers.ts'
+import { buildAuthHeaders, upstreamSessionId, type PlanId } from './headers.ts'
 import { EndpointRoutingService } from './endpoint-routing.ts'
 import { ClientSigningManager, sendWithClientSigning } from './signing.ts'
 import { encodeRequest, decodeSse, splitSystemPrompt } from './anthropic.ts'
@@ -288,7 +287,8 @@ export class ZcodeAdapter {
 
     const upstreamBase = `${BIGMODEL_ANTHROPIC_BASE}/v1/messages`
     const routed = await this.routing.resolve(upstreamBase, credential.apiKey, credential.jwt).catch((): { routed: boolean, url: string, headers?: Record<string, string> } => ({ routed: false, url: upstreamBase }))
-    const headers = buildAuthHeaders(credential, identity, plan, { sessionId: randomUUID(), sessionType: 'main' }, this.options.env)
+    // One x-session-id per DSH session: the gateway's cache affinity key (DESIGN.md §4.6).
+    const headers = buildAuthHeaders(credential, identity, plan, { sessionId: upstreamSessionId(request.sessionId), sessionType: 'main' }, this.options.env)
 
     const response = await sendWithClientSigning(this.signer, {
       url: routed.url,

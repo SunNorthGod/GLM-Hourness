@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { ZcodeAdapter, ZcodeLogin, logout } from '../src/glm-llm/zcode.ts'
 import { ZCODE_APP_VERSION } from '../src/glm-llm/identity.ts'
-import { ANTHROPIC_SDK_UA } from '../src/glm-llm/headers.ts'
+import { ANTHROPIC_SDK_UA, upstreamSessionId } from '../src/glm-llm/headers.ts'
 import { apply as loginApply } from '../src/glm-llm/login-row.ts'
 import { saveCredential, type StoreFs } from '../src/glm-llm/auth/store.ts'
 import type { Credential } from '../src/glm-llm/auth/types.ts'
@@ -133,6 +133,31 @@ test('coding-plan stream walks the full chain: store → headers → unsigned si
   const text = chunks.filter(chunk => chunk.type === 'block-end').map(chunk => chunk.type === 'block-end' && chunk.block.type === 'text' ? chunk.block.text : '').join('')
   assert.equal(text, 'ok')
   assert.ok(chunks.some(chunk => chunk.type === 'finish' && chunk.reason.kind === 'stop'))
+})
+
+test('x-session-id is one value per DSH session (the gateway cache affinity key); without a session each request gets a fresh one', async () => {
+  const { fs } = memoryStore()
+  await saveCredential(fs, 'C:/ws/.llm/credentials.json', credential)
+  const captured: { headers?: Record<string, string> } = {}
+  const adapter = new ZcodeAdapter({ home: 'C:/ws/.llm', fetchImpl: makeUpstream(captured), storeFs: fs, env: {} })
+  const sessionOf = async (sessionId: string | undefined): Promise<string> => {
+    for await (const chunk of adapter.stream({ ...request(), ...(sessionId === undefined ? {} : { sessionId }) })) void chunk
+    return captured.headers?.['x-session-id'] ?? ''
+  }
+  const uuid = '2770bbd7-1a5c-4734-b10f-c6c6284d63e8'
+  assert.equal(await sessionOf(`session-${uuid}`), uuid)
+  assert.equal(await sessionOf(`session-${uuid}`), uuid) // the next step of the same session
+  assert.equal(await sessionOf('session-0f0f0f0f-1111-4222-8333-444444444444'), '0f0f0f0f-1111-4222-8333-444444444444')
+  const fresh = [await sessionOf(undefined), await sessionOf(undefined)]
+  assert.ok(fresh.every(id => /^[0-9a-f-]{36}$/.test(id)) && fresh[0] !== fresh[1])
+})
+
+test('upstreamSessionId strips the DSH prefix, keeps other header-safe ids, and replaces unusable ones', () => {
+  assert.equal(upstreamSessionId('session-abc'), 'abc')
+  assert.equal(upstreamSessionId('custom_id:1'), 'custom_id:1')
+  assert.equal(upstreamSessionId('session-'), 'session-')
+  assert.match(upstreamSessionId('has space'), /^[0-9a-f-]{36}$/)
+  assert.match(upstreamSessionId(undefined), /^[0-9a-f-]{36}$/)
 })
 
 test('the DSH system prompt arrives as leading system messages and lands in the system field', async () => {

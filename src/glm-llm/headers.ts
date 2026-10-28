@@ -26,6 +26,24 @@ export interface TraceContext {
   readonly sessionType?: 'main' | 'subagent' | 'other'
 }
 
+/** Characters an upstream session id may carry (header-safe; DSH session ids are `session-<uuid>`). */
+const SESSION_ID_PATTERN = /^[A-Za-z0-9_.:-]{1,128}$/
+
+/**
+ * The upstream `x-session-id` for one request of a DSH session: the session
+ * id with DSH's `session-` prefix stripped, so every request of a
+ * conversation carries the same value, as ZCode does (3.16.3
+ * runner-attribution `createModelRequestAttributionHeaders`, which strips its
+ * own internal `sess_` prefix). The BigModel gateway routes by this header
+ * for prompt-cache affinity (docs/DESIGN.md §4.6, measured 2026-10-28).
+ * Without a usable session id the request gets a fresh one.
+ */
+export function upstreamSessionId(sessionId: string | undefined): string {
+  if (sessionId === undefined) return randomUUID()
+  const bare = sessionId.startsWith('session-') && sessionId.length > 'session-'.length ? sessionId.slice('session-'.length) : sessionId
+  return SESSION_ID_PATTERN.test(bare) ? bare : randomUUID()
+}
+
 /** Trace headers: exact context when provided, synthesized UUIDs otherwise (coding-plan gains x-query-id/x-session-id). */
 export function buildTraceHeaders(plan: PlanId, trace?: TraceContext): Record<string, string> {
   if (trace !== undefined) {
