@@ -120,7 +120,16 @@ export function statusText(node: GraphNode): string {
     if (OPEN_STATUSES.has(node.status) && node.status !== 'proposed') return deciderOf(node) === 'agent' ? 'agent 来定' : '等你拍板'
   }
   if (node.status === 'proposed') return '等你批准'
+  if (node.status === 'approved') return APPROVED_LABELS[node.type] ?? '未开始'
   return STATUS_LABELS[node.status]
+}
+
+/** What an approved node is, by type: approved work has not started, an approved decision or norm is in force. */
+const APPROVED_LABELS: Readonly<Partial<Record<GraphNode['type'], string>>> = {
+  decision: '已采纳',
+  norm: '生效中',
+  tool: '可用',
+  risk: '在盯着',
 }
 
 /** Who made a decision, as the agent-decided view groups it. */

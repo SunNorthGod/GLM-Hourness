@@ -2,7 +2,7 @@
   "id": "m2-7",
   "type": "task",
   "title": "2.7 DSH 原生右侧栏面板",
-  "status": "approved",
+  "status": "done",
   "parent": "m2",
   "kind": "implement",
   "tier": "hard",
@@ -18,6 +18,18 @@
       "to": "d-native-panel"
     }
   ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "25d1bae"
+    },
+    {
+      "kind": "check",
+      "ref": "npm run probe",
+      "exit": 0,
+      "note": "76/76，含场景 glm-graph-panel"
+    }
+  ],
   "history": [
     {
       "at": "2026-10-28T07:31:33.300Z",
@@ -25,6 +37,40 @@
       "op": "propose",
       "reason": "原生面板（d-native-panel）",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-28T08:25:13.296Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "开工",
+      "from": "approved",
+      "to": "doing"
+    },
+    {
+      "at": "2026-10-28T08:25:13.333Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "L4 2026-10-28：桌面版重启后经 DevTools 协议核对。右侧栏「开始」页出现「项目图」入口；四个视图读到本项目 75 个节点；在详情里批注一条，命令返回「已批注」，节点历史多一条 human 批注，面板 4 秒内经变更流显示；git 还原后面板跟着变回。注意：改了客户端半要重启桌面版，刷新页面会 404（DEVELOPMENT.md 事故表）。"
+    },
+    {
+      "at": "2026-10-28T08:25:13.395Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "面板上线：读、写、实时跟进都在 L3 与 L4 核对过",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "25d1bae"
+        },
+        {
+          "kind": "check",
+          "ref": "npm run probe",
+          "exit": 0,
+          "note": "76/76，含场景 glm-graph-panel"
+        }
+      ]
     }
   ]
 }

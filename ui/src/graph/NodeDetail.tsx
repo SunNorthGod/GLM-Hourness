@@ -7,7 +7,7 @@
  */
 import { Button, IconChevronLeftOutlineRegular, Tag } from '@deepseek-ai/dsh-client-ui-primitives'
 import { useState, type ReactElement } from 'react'
-import { ACTOR_LABELS, OP_LABELS, STATUS_LABELS, TYPE_LABELS, VERIFICATION_LABELS } from '../../../src/graph/labels.ts'
+import { ACTOR_LABELS, EVIDENCE_LABELS, KIND_LABELS, OP_LABELS, STAGE_LABELS, STATUS_LABELS, TIER_LABELS, TYPE_LABELS, VERIFICATION_LABELS } from '../../../src/graph/labels.ts'
 import type { LoadedGraph } from '../../../src/graph/parse.ts'
 import { ancestorsOf } from '../../../src/graph/projection.ts'
 import type { GraphNode, HistoryEntry } from '../../../src/graph/schema.ts'
@@ -17,7 +17,7 @@ import { needsHuman, statusText, timeAgo } from './model.ts'
 const HISTORY_SHOWN = 6
 
 function historyLine(entry: HistoryEntry): string {
-  const who = entry.relay !== undefined ? '你（经对话）' : entry.actor === 'human' ? '你' : ACTOR_LABELS[entry.actor]
+  const who = entry.relay !== undefined ? '你（经对话）' : entry.actor === 'human' ? '你' : entry.actor === 'llm' ? 'agent' : ACTOR_LABELS[entry.actor]
   const what = entry.op === 'comment' ? `批注：${entry.text ?? ''}` : `${OP_LABELS[entry.op]}${entry.option === undefined ? '' : ` ${entry.option}`}${entry.reason === undefined ? '' : `：${entry.reason}`}`
   return `${timeAgo(entry.at)} · ${who} · ${what}`
 }
@@ -76,6 +76,9 @@ export function NodeDetail({ graph, id, onClose }: { readonly graph: LoadedGraph
           <Tag tone="neutral">{TYPE_LABELS[node.type]}</Tag>
           <Tag tone={needsHuman(node) ? 'danger' : done ? 'success' : node.status === 'doing' ? 'warning' : 'neutral'}>{node.type === 'question' || node.status === 'proposed' ? statusText(node) : STATUS_LABELS[node.status]}</Tag>
           {node.verification === undefined ? null : <Tag tone={node.verification === 'unverified' ? 'warning' : 'info'}>{VERIFICATION_LABELS[node.verification]}</Tag>}
+          {node.stage === undefined ? null : <Tag tone="neutral">阶段：{STAGE_LABELS[node.stage]}</Tag>}
+          {node.kind === undefined ? null : <Tag tone="neutral">{KIND_LABELS[node.kind]}</Tag>}
+          {node.tier === undefined ? null : <Tag tone="neutral">{TIER_LABELS[node.tier]}</Tag>}
         </div>
         {node.body === undefined ? null : <Markdown text={node.body} className="glmg-text" />}
         {node.type === 'question' ? <><div className="glmg-section">{done ? '选项（再选一个就是推翻）' : '选项'}</div><Options graph={graph} node={node} /></> : null}
@@ -101,7 +104,7 @@ export function NodeDetail({ graph, id, onClose }: { readonly graph: LoadedGraph
             )}
         {(node.evidence ?? []).length === 0
           ? null
-          : <><div className="glmg-section">证据</div><ul className="glmg-list ok">{(node.evidence ?? []).map((entry, index) => <li key={index}>{entry.kind === 'commit' ? `提交 ${entry.ref}` : entry.kind === 'decision' ? `拍板 ${entry.ref}` : `${entry.ref}（退出码 ${entry.exit ?? '?'}）`}{entry.note === undefined ? '' : ` · ${entry.note}`}</li>)}</ul></>}
+          : <><div className="glmg-section">证据</div><ul className="glmg-list ok">{(node.evidence ?? []).map((entry, index) => <li key={index}>{EVIDENCE_LABELS[entry.kind]} {entry.ref}{entry.exit === undefined ? '' : `（退出码 ${entry.exit}）`}{entry.note === undefined ? '' : ` · ${entry.note}`}</li>)}</ul></>}
         <div className="glmg-section">最近发生的</div>
         <div className="glmg-history">{history.map((entry, index) => <div key={index}>{historyLine(entry)}{entry.relay === undefined ? null : <blockquote className="glmg-quote">{entry.relay}</blockquote>}</div>)}</div>
         <div className="glmg-section">批注</div>

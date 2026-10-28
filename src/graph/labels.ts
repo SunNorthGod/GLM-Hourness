@@ -1,8 +1,9 @@
 /**
  * Chinese display names of the schema enumerations (docs/ORCHESTRATION.md
- * §2.6 field table, §2.9 history), shared by the picture and the viewer.
+ * §2.6 field table, §2.9 history), shared by the picture, the graph panel
+ * (ui/src/graph) and the command outcomes.
  */
-import type { Actor, EdgeType, EvidenceKind, NodeType, Op, Slope, Stage, Status, TaskKind, Tier, Verification } from './schema.ts'
+import type { Actor, EvidenceKind, NodeType, Op, Stage, Status, TaskKind, Tier, Verification } from './schema.ts'
 
 export const TYPE_LABELS: Readonly<Record<NodeType, string>> = {
   goal: '目标',
@@ -45,11 +46,6 @@ export const STAGE_LABELS: Readonly<Record<Stage, string>> = {
   operate: '运维',
 }
 
-export const SLOPE_LABELS: Readonly<Record<Slope, string>> = {
-  uphill: '爬坡',
-  downhill: '下坡',
-}
-
 export const KIND_LABELS: Readonly<Record<TaskKind, string>> = {
   implement: '实现',
   test: '测试',
@@ -61,12 +57,6 @@ export const TIER_LABELS: Readonly<Record<Tier, string>> = {
   hard: '难题',
   standard: '常规',
   simple: '简单',
-}
-
-export const EDGE_LABELS: Readonly<Record<EdgeType, string>> = {
-  depends: '依赖',
-  source: '来源',
-  supersedes: '取代',
 }
 
 export const EVIDENCE_LABELS: Readonly<Record<EvidenceKind, string>> = {

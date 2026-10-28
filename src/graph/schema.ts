@@ -12,7 +12,7 @@ export const STATUSES = ['proposed', 'approved', 'doing', 'done', 'dropped', 'su
 export type Status = typeof STATUSES[number]
 
 export const SLOPES = ['uphill', 'downhill'] as const
-export type Slope = typeof SLOPES[number]
+type Slope = typeof SLOPES[number]
 
 /** Design-loop stages (§4.1); only goal and feature nodes carry one. */
 export const STAGES = ['wish', 'interview', 'design', 'release', 'decompose', 'execute', 'merge', 'operate'] as const

@@ -21,6 +21,8 @@ interface View {
 
 const MIN_ZOOM = 0.25
 const MAX_ZOOM = 2
+/** Below this zoom the 13 px titles stop being readable in the sidebar. */
+const READABLE_ZOOM = 0.8
 const PAD = 16
 
 function clamp(value: number, low: number, high: number): number {
@@ -136,17 +138,33 @@ export function GraphCanvas({ graph, selected, onPick }: GraphCanvasProps): Reac
     return () => { observer.disconnect() }
   }, [])
 
-  const fit = (): View | undefined => {
+  /**
+   * A readable zoom centred on what matters now: the first node that waits
+   * for the human, else the first task in progress, else the goal.
+   */
+  const home = (): View | undefined => {
     if (layout === undefined || size.width === 0) return undefined
-    const k = clamp((size.width - 2 * PAD) / Math.max(1, layout.width), 0.45, 1)
-    return { x: PAD, y: PAD + 8, k }
+    const k = clamp((size.width - 2 * PAD) / Math.max(1, layout.width), READABLE_ZOOM, 1)
+    const anchor = layout.nodes.find(box => box.tone === 'waiting' || box.tone === 'proposed')
+      ?? layout.nodes.find(box => box.node.type === 'task' && box.node.status === 'doing')
+      ?? layout.nodes.find(box => box.node.type === 'goal')
+      ?? layout.nodes[0]
+    if (anchor === undefined) return { x: PAD, y: PAD, k }
+    const x = Math.min(PAD, size.width * 0.45 - (anchor.x + anchor.width / 2) * k)
+    return { x, y: size.height / 2 - (anchor.y + anchor.height / 2) * k, k }
+  }
+  /** The whole drawn graph in the canvas. */
+  const overview = (): View | undefined => {
+    if (layout === undefined || size.width === 0) return undefined
+    const k = clamp(Math.min((size.width - 2 * PAD) / Math.max(1, layout.width), (size.height - 2 * PAD) / Math.max(1, layout.height)), MIN_ZOOM, 1)
+    return { x: (size.width - layout.width * k) / 2, y: (size.height - layout.height * k) / 2, k }
   }
 
-  // Fit once the canvas has a size; later reads keep the user's pan and zoom.
+  // Place the view once the canvas has a size; later reads keep the user's pan and zoom.
   useEffect(() => {
     if (view === undefined) {
-      const fitted = fit()
-      if (fitted !== undefined) setView(fitted)
+      const placed = home()
+      if (placed !== undefined) setView(placed)
     }
   })
 
@@ -226,7 +244,8 @@ export function GraphCanvas({ graph, selected, onPick }: GraphCanvasProps): Reac
         <span className="grow" />
         <Button variant="ghost" size="sm" aria-label="缩小" onClick={() => { zoomAt(1 / 1.25, ...centre()) }}>−</Button>
         <Button variant="ghost" size="sm" aria-label="放大" onClick={() => { zoomAt(1.25, ...centre()) }}>+</Button>
-        <Button variant="ghost" size="sm" onClick={() => { const fitted = fit(); if (fitted !== undefined) setView(fitted) }}>适应宽度</Button>
+        <Button variant="ghost" size="sm" onClick={() => { const placed = overview(); if (placed !== undefined) setView(placed) }}>全貌</Button>
+        <Button variant="ghost" size="sm" onClick={() => { const placed = home(); if (placed !== undefined) setView(placed) }}>回到重点</Button>
       </div>
       <div
         ref={canvas}

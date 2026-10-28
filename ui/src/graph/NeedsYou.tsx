@@ -11,7 +11,7 @@ import type { LoadedGraph } from '../../../src/graph/parse.ts'
 import type { OpenItems } from '../../../src/graph/projection.ts'
 import type { GraphNode } from '../../../src/graph/schema.ts'
 import { Markdown, Options, Outcome, revOf, useServices, useWriter } from './common.tsx'
-import { timeAgo } from './model.ts'
+import { decidedBy, timeAgo } from './model.ts'
 
 function Body({ text }: { readonly text: string | undefined }): ReactElement | null {
   const [open, setOpen] = useState(false)
@@ -96,13 +96,13 @@ export function NeedsYou({ graph, items, onShowDecisions }: { readonly graph: Lo
   const [leaving, setLeaving] = useState<ReadonlySet<string>>(new Set())
   const nodes = waiting(graph, items)
   if (nodes.length === 0) {
-    const recent = items.recentDecisions.filter(entry => entry.decidedBy !== 'human').length
+    const own = items.recentDecisions.filter(entry => decidedBy(entry) === 'agent').length
     return (
       <div className="glmg-empty glmg-view">
         <span className="glmg-empty-mark"><IconCheckCircleFillRegular size={26} /></span>
         <span className="glmg-empty-title">没有需要你的事</span>
         <span>agent 按决策分级自己定的事都留了痕，不同意随时可以推翻。</span>
-        {recent > 0 ? <Button variant="outline" size="sm" onClick={onShowDecisions}>看看 agent 最近定的 {recent} 件事</Button> : null}
+        <Button variant="outline" size="sm" onClick={onShowDecisions}>{own > 0 ? `看看 agent 自己定的 ${own} 件事` : '看看最近拍板的事'}</Button>
       </div>
     )
   }

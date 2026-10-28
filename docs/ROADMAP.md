@@ -102,10 +102,10 @@
 | 3 | bundle 插入的 preset：子行以包名子路径引用本包模块能否解析和激活，persona 与 `tool-fs` 的 `write: false` 是否生效，能否在设置与新会话中选到 | L3 / L4 | 无（不用角色 preset） | 不再需要 |
 | 4 | 本包的宿主插件经 `subagents.startActivation` 启动后台子 agent，带 prompt、cwd、agentOptions、outputSchema；父 agent 的步继续；完成通知带结构化结果回到父 agent | L3 | M7 后台派发 | L3 已核实（2026-10-28，探针 `glm-dispatch`）；桌面版组合随 L4 |
 | 4b | `tools/pre-execute` 看到子 agent 的工具调用，`exec.agent` 能映射回派发它的任务；范围外的写入被拒，拒绝以工具错误回到子 agent | L3 | M7 写入范围门禁 | L3 已核实（2026-10-28，探针 `glm-dispatch`） |
-| 5 | 第三方右侧栏标签页：`sidebarRightTabs.register`（带 `extension`）、正文槽与 guide 入口是否出现；`dsh.client.inject` 列出 sidebar-right 后加载顺序是否正确 | L4 | M2.7 | 待核实 |
+| 5 | 第三方右侧栏标签页：`sidebarRightTabs.register`（带 `extension`）、正文槽与 guide 入口是否出现；`dsh.client.inject` 列出 sidebar-right 后加载顺序是否正确 | L4 | M2.7 | L4 已核实（2026-10-28）：页面类型与「开始」页入口出现，正文槽的 inject 拿到会话 |
 | 6 | 第三方客户端调用 `ctx.sidebarRight.openTab('browser', …)` 打开本机查看器 | L4 | 无（不做网页形态） | 不再需要 |
 | 7 | 自己标签页里的 `<iframe>` 指向回环地址在 Desktop 是否被拦 | L4 | 无（不做网页形态） | 不再需要 |
-| 8 | 第三方客户端 inject `remote.workspaceFiles` 后 `read`、`list`、`changes` 是否可用 | L4 | M2.7、M2.8 | 待核实 |
+| 8 | 第三方客户端 inject `remote.workspaceFiles` 后 `read`、`list`、`changes` 是否可用 | L4 | M2.7、M2.8 | L4 已核实（2026-10-28）：`list`、`readBytes` 与目录 `changes` 都可用，写入后 4 秒内面板更新 |
 | 9 | 第三方宿主插件注册的会话投影能否经 `faceOf(key)` 到达客户端 | L3（宿主侧注册）/ L4 | M2.8、M8 | 待核实 |
 | 10 | 第三方以 `pwsh`、`write` 为键注册 `tool.call.toolview` 的行为（覆盖、优先级、报错） | L4 | M8 guard 卡片 | 待核实 |
 | 11 | 匹配 `tool/result` 的第三方聊天节点定义能否渲染在工具行之后 | L4 | M8 guard 卡片 | 待核实 |

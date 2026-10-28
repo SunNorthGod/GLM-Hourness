@@ -27,7 +27,7 @@ npm run preflight    # dist 产物、patch 行文件、client 半一包一源约
 npm test             # preflight + 逐字门禁 + 检查器门禁 + 全部 spec
 ```
 
-`npm test` 的前三道是 preflight、逐字门禁（`npm run check:verbatim`，规则见 `DESIGN.md` §5.9）与检查器门禁（`npm run lint`，§10），最后一道是项目图查看器的冒烟（`npm run graph:smoke`，§12）；`npm run preflight` 单独跑用于安装前快检。
+`npm test` 的前三道是 preflight、逐字门禁（`npm run check:verbatim`，规则见 `DESIGN.md` §5.9）与检查器门禁（`npm run lint`，§10），最后一道是项目图入口脚本的冒烟（`npm run graph:smoke`，§12）；`npm run preflight` 单独跑用于安装前快检。
 
 ## 3. 测试 profile 沙盒（L3）
 
@@ -129,6 +129,7 @@ DSH 官方类型已作为 devDependency 安装（`@deepseek-ai/dsh-llm`、`@deep
 | 2026-10-28 | 原生通道丢弃历史中的 reasoning；BigModel 要求 Coding Plan 端点上把 reasoning 原样传回 | 查缓存时读 BigModel 文档与 ZCode | 编码器注释断言「本通道没有可回放的签名」，没有实测过流里有没有签名 | 实测签名形态；解码把签名存进 DSH 回放信封，编码按 ZCode 回放（`DESIGN.md` §4.5c） |
 | 2026-10-28 | 移植丢了 ZCode 请求的四处细节：`x-request-id`、`x-zcode-trace-id`、`metadata.user_id`、末条消息的缓存断点 | 同上 | 移植时没有对照 zcode-api 的请求体变换（`body-transformer.ts`）与追踪头逐项核对 | 补齐（`DESIGN.md` §4.5b）；与缓存命中无关，实测确认 |
 | 2026-10-28 | guard 拦下 DeepSeek 会话的写入（§6.2 定案只管 GLM，未实现） | L4 | 定案写进文档但标着「尚未实现」，没有挂进待办；拦截处没有路由信号 | 按会话请求头判路由，只拦 GLM 调用（`ORCHESTRATION.md` §6.2）；非 GLM 会话的行健康写明不介入；L3 探针加非 GLM 会话的相对写入与 shell 写入都放行、无违规记录 |
+| 2026-10-28 | 重新构建 `ui/client.js` 后刷新桌面版页面，`web boot: 1 entry did not activate`，`dsh-glm-hourness-ui: import failed`；请求的 `dsh-app://app/plugins/??dsh-glm-hourness-ui/client.js&rev=…` 返回 404 | L4（DevTools 协议看网络请求） | 〔推断，未读宿主源码核实〕宿主给客户端半的地址带修订号，文件变了而宿主记的修订号没变，地址就对不上。同一次运行里第一次重建后刷新拿到了新文件，第二次没有，什么时候更新修订号没查清 | 改了客户端半就重启桌面版，不靠刷新页面（§3 装后验证）；重启后恢复。只影响客户端半，宿主各行不受影响 |
 
 ## 8. 变更检查清单
 
@@ -195,8 +196,7 @@ DSH 官方类型已作为 devDependency 安装（`@deepseek-ai/dsh-llm`、`@deep
 | `npm run -s graph -- [--dir 图目录] open` | 待办与决策队列，JSON 输出 |
 | `npm run -s graph -- [--dir 图目录] <op> --file <请求文件>` | 以 `llm` 身份执行一次写操作（`ORCHESTRATION.md` §2.9），请求文件存为 UTF-8；退出码 0 成功、1 引擎拒绝、2 用法或输入错误 |
 | `npm run graph:render -- [--dir 图目录] [--out 文件] [--root id] [--focus id] [--collapse id]…` | 出图，默认写 `<图目录>/graph.svg`；`--root`（子树）与 `--focus`（投影）只能给一个；图有校验错误照常出图，错误列在 stderr |
-| `npm run graph:serve -- [--dir 图目录] [--port 端口]` | 起本机查看器，打印带令牌的地址 `http://127.0.0.1:<端口>/#token=<令牌>`；端口默认取空闲端口；Ctrl+C 停止 |
-| `npm run graph:smoke` | 查看器服务的冒烟：在临时图上起服务，各经 HTTP 与命令行写一次，确认两次都实时通知；`npm test` 的最后一道 |
+| `npm run graph:smoke` | 入口脚本的冒烟：在临时图上以独立进程跑命令行（批注、`open`、`show`）与出图，核对修订号、批注与图片；`npm test` 的最后一道 |
 
 规则：
 
@@ -204,4 +204,4 @@ DSH 官方类型已作为 devDependency 安装（`@deepseek-ai/dsh-llm`、`@deep
 2. 改了 `docs/graph/nodes/` 就运行 `npm run graph:render`，`graph.svg` 与节点文件同批提交。`npm test` 检查节点文件没有校验问题、`graph.svg` 与渲染器的输出逐字节相同，没重新出图会失败。
 3. 读 JSON 输出用 `npm run -s`，否则 npm 先往 stdout 打两行命令回显。Windows PowerShell 5.1 下写请求一律用 `--file`：经管道送 stdin 时 `--` 被吞、中文变问号，参数里的 JSON 会丢引号（`ORCHESTRATION.md` §2.10）。
 4. 试写不要用 `docs/graph`：复制到临时目录，命令加 `--dir`。
-5. 引擎、命令行与查看器不碰 DSH，改它们只需过 `npm run build`、`npm run preflight`、`npm test`，不需要 `npm run probe`。接触 DSH 的只有图行（`src/graph/index.ts`、`tools.ts`、`reminder.ts`，以及它注册的门禁规则 `src/guard/graph-files.ts`，行 `glm-hourness/graph`，`ORCHESTRATION.md` §2.5、§2.7、§2.10）：L2 在假宿主 `tests/fake-rc3.ts` 上，行默认禁用，启用前按 §1 补 L3 探针与 L4 验收（L3 检查清单与启用前的跟进项见 `ROADMAP.md` M2 2.11；沙盒里的启用方法在提交 `d4cd7e2` 的 `ROADMAP.md` M2 进度）。
+5. 引擎与命令行不碰 DSH，改它们只需过 `npm run build`、`npm run preflight`、`npm test`，不需要 `npm run probe`。接触 DSH 的只有图行（`src/graph/index.ts`、`tools.ts`、`reminder.ts`，以及它注册的门禁规则 `src/guard/graph-files.ts`，行 `glm-hourness/graph`，`ORCHESTRATION.md` §2.5、§2.7、§2.10）：L2 在假宿主 `tests/fake-rc3.ts` 上，行默认禁用，启用前按 §1 补 L3 探针与 L4 验收（L3 检查清单与启用前的跟进项见 `ROADMAP.md` M2 2.11；沙盒里的启用方法在提交 `d4cd7e2` 的 `ROADMAP.md` M2 进度）。

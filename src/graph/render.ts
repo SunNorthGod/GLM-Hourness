@@ -5,9 +5,9 @@
  * picture. Shape encodes the node type and colour the status, after the
  * sketch the user accepted on 2026-10-28; the legend is part of the
  * picture. Node groups carry data-id, count badges data-badge, and edges
- * data-edge, data-node and data-to, so the interactive viewer attaches its
- * behaviour to this output instead of laying the graph out again. One
- * element per line keeps diffs of the committed picture readable.
+ * data-edge, data-node and data-to. The DSH panel (ui/src/graph) draws
+ * the same layout itself, with the theme's colours. One element per line
+ * keeps diffs of the committed picture readable.
  */
 import { STATUS_LABELS, TYPE_LABELS, VERIFICATION_LABELS } from './labels.ts'
 import {

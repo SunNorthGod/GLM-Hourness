@@ -4,8 +4,16 @@
   "title": "人的界面放进 DSH 原生右侧栏面板，不做网页",
   "status": "approved",
   "parent": "orch",
-  "verification": "unverified",
+  "verification": "sandbox",
   "body": "React 18 取自 DSH 客户端模块表，只打包本项目的 TSX（esbuild）；动画用 CSS 与 Web Animations，不加动画库。读图经 remote.workspaceFiles，写回经命令通道进宿主侧引擎。面板可用后删除本机查看器与服务（ORCHESTRATION.md §2.10、§13）。",
+  "evidence": [
+    {
+      "kind": "check",
+      "ref": "npm run probe",
+      "exit": 0,
+      "note": "76/76"
+    }
+  ],
   "history": [
     {
       "at": "2026-10-28T07:31:33.282Z",
@@ -14,6 +22,22 @@
       "reason": "用户：人的界面应与 IDE 深度耦合，不放网页",
       "relay": "我不是很想把这个东西放到网页，这个应该和IDE深度耦合对不对？",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-28T08:25:13.454Z",
+      "actor": "llm",
+      "op": "verify",
+      "reason": "L3 探针经真实处理函数写图；L4 在桌面版上读写与实时跟进也已核对",
+      "from": "unverified",
+      "to": "sandbox",
+      "evidence": [
+        {
+          "kind": "check",
+          "ref": "npm run probe",
+          "exit": 0,
+          "note": "76/76"
+        }
+      ]
     }
   ]
 }

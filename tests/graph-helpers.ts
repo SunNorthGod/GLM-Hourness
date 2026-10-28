@@ -1,8 +1,7 @@
 /**
  * Shared pieces of the project graph specs: seeding a graph as the human, a
  * test wrapper that removes the fixture directory afterwards, console.warn
- * capture, and the JSON answer of the command line, the viewer server and
- * the DSH graph tools.
+ * capture, and the JSON answer of the command line and the DSH graph tools.
  */
 import assert from 'node:assert/strict'
 import { rm } from 'node:fs/promises'
@@ -13,7 +12,7 @@ import type { OpenItems, Projection } from '../src/graph/projection.ts'
 import type { GraphNode } from '../src/graph/schema.ts'
 
 /**
- * A JSON answer of the command line, the viewer server or a graph tool: one
+ * A JSON answer of the command line or a graph tool: one
  * of their result shapes (a refusal, a projection, the open items, a write).
  * Each test reads the fields of the shape it expects; a field the answer
  * lacks fails that test's assertion.
