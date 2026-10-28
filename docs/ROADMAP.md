@@ -52,9 +52,9 @@
 | 2.10 | 删除本机查看器与服务 | 仓库里没有查看器与服务的代码；`npm test` 全绿 | `m2-10` |
 | 2.11 | 图行 L3、L4 验收后启用 | 见下 | `m2-11` |
 
-2.11 的验收（图行 `glm-hourness/graph` 现在默认禁用）：
+2.11 的验收（2026-10-28 全部通过，图行 `glm-hourness/graph` 改为默认启用；结果见 `ORCHESTRATION.md` §2.10「DSH 图工具」的验证一条）：
 
-- 跟进项先做完：行健康表加 `graph` 行，按会话报告工具已注册、图目录找到与否、图是否有校验错误、焦点是否设了（`DESIGN.md` §2.5）；`graph-files-only` 的拒绝写进违规流水（`ORCHESTRATION.md` §2.7）；guard 影子兜底把图工具写的节点文件算作已知来源；决定 `graph-files-only` 是否列进 `glm:guard` 一节。
+- 跟进项先做完：行健康表加 `graph` 行，按会话报告工具已注册、图目录找到与否、图是否有校验错误、焦点是否设了（`DESIGN.md` §2.5）；`graph-files-only` 的拒绝写进违规流水（`ORCHESTRATION.md` §2.7）；guard 影子兜底把图工具写的节点文件算作已知来源；决定 `graph-files-only` 是否列进 `glm:guard` 一节（agent 定：列进，`ORCHESTRATION.md` §2.7）。
 - L3 探针场景全过（图目录用运行目录里的副本，覆盖补丁启用该行并指向副本，路径写字面量）：注册无激活错误、rc.3 接受 13 个工具的输出 schema，GLM 与非 GLM 请求的工具面里都有，GLM 上常驻；`graph_show` 返回投影，`graph_status` 不带证据标完成拿到 `evidence_required`，`graph_comment` 在副本里留下 `llm` 的历史，仓库的 `docs/graph` 不变；`graph_focus` 之后的下一次请求以来源 `glm-graph-projection` 的 notice 结尾，没有变化的下一步不注入，改了焦点节点的标题后再注入（`reason` 为 `changed`）；压缩检查点之后的第一次请求带投影（`reason` 为 `compaction`），有 goal 时目标轮也带（`goal-round`）；`Write` 与 `Bash` 写副本的节点文件都被 `graph-files-only` 拦下，写别处照常。
 - L4：真机 GLM 会话里图工具可用、投影可见；启用后桌面版无新错误。
 

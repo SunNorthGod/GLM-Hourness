@@ -46,7 +46,8 @@ GLM-Hourness
 | `glm-hourness/memory` | `dist/memory/index.js` | 编排 | 见 `ORCHESTRATION.md` §8 |
 | `glm-hourness/workflow` | `dist/workflow/index.js` | 编排 | 仅记录派遣类工具调用 |
 | `glm-hourness/hourness` | `dist/ui/index.js` | 编排 | `/hourness` 命令：晨报与积分口径的用量面板（`ORCHESTRATION.md` §11.2、§11.3） |
-| `glm-hourness/graph` | `dist/graph/index.js` | 编排 | 项目图工具、每步投影与图文件门禁（`ORCHESTRATION.md` §2.5、§2.7、§2.10），默认禁用，只有 L2 |
+| `glm-hourness/graph` | `dist/graph/index.js` | 编排 | 项目图工具、每步投影与图文件门禁（`ORCHESTRATION.md` §2.5、§2.7、§2.10）；2026-10-28 经 L3 探针与 L4 桌面版验收后默认启用 |
+| `glm-hourness/graph-panel` | `dist/graph/panel-row.js` | 呈现 | 面板写入命令 `/graph-apply` 与现场投影 `graphLive`（`ORCHESTRATION.md` §2.10） |
 | `glm-hourness/ui` | `ui/`（独立包） | 呈现 | 设置页说明 + 输入框「GLM 通道」pill |
 
 ### 2.3 两个 bundle 与一包一源
@@ -192,7 +193,7 @@ GLM-Hourness
 - 会话以 agent id 为键（rc.3 的 agent 与会话共用 id）：组装与工具调用取调用方 agent，`llm/stream` 一侧取请求的 `sessionId`，命令取调用参数里的 `agent`（commands:379–385）。没有会话 id 的报告丢弃。
 - 报告只在主机进程内存里，不写文件，不进模型可见的对话；桌面版重启后清空。
 
-状态分生效、部分生效、未生效三种；表里另有「已加载，本会话未触发」与「未加载」。激活时就未生效的行（例如数据目录服务提供失败）不看会话报告，直接显示激活原因；`glm-login` 与 `data` 不按会话起作用，只显示激活状态。
+状态分生效、部分生效、未生效三种；表里另有「已加载，本会话未触发」与「未加载」。激活时就未生效的行（例如数据目录服务提供失败）不看会话报告，直接显示激活原因；`glm-login`、`data` 与 `graph-panel` 不按会话起作用，只显示激活状态（`graph-panel` 的激活状态在现场投影注册完成或失败时更新一次，`RowHealth.reactivate`）。`graph` 行在每次图工具调用与每次读图做投影之后报告本会话：图目录、节点数、校验错误、焦点是否设了〔2026-10-28，`src/graph/row-health.ts`〕。
 
 | 行 | 何时上报 | 生效 | 部分生效或未生效的原因 |
 | --- | --- | --- | --- |
@@ -584,7 +585,8 @@ L3 探针：沙盒里把压缩阈值调低，摘要请求末条是 ZCode 提示�
 | guard 影子兜底 | 组合里没有 workspace-changes：只少影子记录，门禁照常 | 行健康（guard 一行的说明） |
 | memory | 无记忆、无用量流水 | 行健康 |
 | workflow / hourness | 无记录、无报告 | 行健康 |
-| graph | 没有图工具、每步投影与图文件门禁；图目录缺失或图有校验错误时，工具照常注册并把问题报给模型，投影注入一条说明；读图抛错时本步不带投影；会话没有工作目录时门禁只判断绝对路径 | 告警、工具错误；行健康尚未接入（§2.5 的行表没有 graph，启用图行之前补，`ROADMAP.md` M2 2.11） |
+| graph | 没有图工具、每步投影与图文件门禁；图目录缺失或图有校验错误时，工具照常注册并把问题报给模型，投影注入一条说明；读图抛错时本步不带投影；会话没有工作目录时门禁只判断绝对路径 | 告警、工具错误、行健康（§2.5） |
+| graph-panel | 命令注册失败时面板写不进图；现场投影注册失败时面板没有现场，写入照常 | 告警、行健康 |
 
 激活期（`apply`）不抛错：配置缺失降级为 warn 与 no-op，因为激活失败会拖垮宿主启动（2026-10-27 事故）。降级必须上报，不得只打一行警告（`CHARTER.md` §7.1 条款 7）。
 

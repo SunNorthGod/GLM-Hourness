@@ -24,8 +24,8 @@ import { createUserNotice, type AgentLike, type DerivedMessage, type UserNotice 
 import { wrapSystemReminder } from '../toolsearch/zcode-text.ts'
 import { projectNode, type NodeRef, type Projection } from './projection.ts'
 import { FOCUS_TOOL } from './live.ts'
-import { loadGraph } from './store.ts'
-import { locateGraph, type FocusMemory } from './tools.ts'
+import { readGraph, type GraphRead } from './row-health.ts'
+import type { FocusMemory } from './tools.ts'
 
 /** Source kind of the persisted projection notice. */
 export const PROJECTION_SOURCE = 'glm-graph-projection'
@@ -160,13 +160,11 @@ function renderProjection(projection: Projection, errors: number): string {
 }
 
 /** The reminder body for the focus, or the problem that keeps it from being projected. */
-async function reminderBody(configured: string, cwd: string | undefined, focus: string): Promise<string> {
-  const located = await locateGraph(configured, cwd)
-  if (typeof located !== 'string') return `Project graph: your focus node ${focus} cannot be read: ${located.error.message} (${located.error.hint}).`
-  const graph = await loadGraph(located)
-  const result = projectNode(graph, focus)
-  if (!result.ok) return `Project graph: your focus node ${focus} is not in the graph at ${located}. graph_open lists the open nodes; ${FOCUS_TOOL} moves the focus.`
-  return renderProjection(result.projection, graph.issues.filter(issue => issue.severity === 'error').length)
+function reminderBody(read: GraphRead, focus: string): string {
+  if ('failure' in read) return `Project graph: your focus node ${focus} cannot be read: ${read.failure.error.message} (${read.failure.error.hint}).`
+  const result = projectNode(read.graph, focus)
+  if (!result.ok) return `Project graph: your focus node ${focus} is not in the graph at ${read.dir}. graph_open lists the open nodes; ${FOCUS_TOOL} moves the focus.`
+  return renderProjection(result.projection, read.graph.issues.filter(issue => issue.severity === 'error').length)
 }
 
 function isGoalRound(message: unknown): boolean {
@@ -184,6 +182,8 @@ interface ProjectionInput {
   /** The configured graph dir. */
   readonly dir: string
   readonly focuses: FocusMemory
+  /** Told what the read of the graph found, for the row health. */
+  readonly onRead: (read: GraphRead, focus: string) => void
 }
 
 /** The notice this step needs, or undefined; keeps the focus it used in `focuses`. */
@@ -192,7 +192,9 @@ async function projectionNotice(input: ProjectionInput): Promise<UserNotice | un
   const focus = state.focus ?? input.focuses.get(input.sessionId)
   if (focus === undefined) return undefined
   input.focuses.set(input.sessionId, focus)
-  const body = await reminderBody(input.dir, input.cwd, focus)
+  const read = await readGraph(input.dir, input.cwd)
+  input.onRead(read, focus)
+  const body = reminderBody(read, focus)
   const digest = createHash('sha256').update(body).digest('hex').slice(0, 12)
   const reason = projectionReason(state, focus, digest, input.admitted.some(isGoalRound))
   if (reason === undefined) return undefined
@@ -205,13 +207,14 @@ async function projectionNotice(input: ProjectionInput): Promise<UserNotice | un
  * Install the step projection on one agent through the shared step notice
  * seam (src/glm-prompt/step-notice.ts), on every route: a step that needs
  * the notice gets it after its admitted messages. A failure while reading
- * the graph warns and leaves the step as it was. Returns undefined,
- * installing nothing, when the agent has no session history.
+ * the graph warns and leaves the step as it was. `onRead` hears what each
+ * read of the graph found (the row health). Returns undefined, installing
+ * nothing, when the agent has no session history.
  */
-export function installProjection(agent: AgentLike, dir: string, focuses: FocusMemory): (() => void) | undefined {
+export function installProjection(agent: AgentLike, dir: string, focuses: FocusMemory, onRead: (sessionId: string, read: GraphRead, focus: string) => void = () => {}): (() => void) | undefined {
   return installStepNotice(agent, 'step projection', () => true, async (history, { admitted, session }) => {
     try {
-      return await projectionNotice({ history, admitted, sessionId: session.id, cwd: session.header.cwd, dir, focuses })
+      return await projectionNotice({ history, admitted, sessionId: session.id, cwd: session.header.cwd, dir, focuses, onRead: (read, focus) => { onRead(session.id, read, focus) } })
     }
     catch (error) {
       console.warn(`dsh-glm-hourness/graph: step projection skipped for agent ${agent.id}: ${error instanceof Error ? error.message : String(error)}`)

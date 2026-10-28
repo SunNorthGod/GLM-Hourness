@@ -11,12 +11,15 @@
  * The command's input is the mutation JSON. command/run does not record it
  * (recordInput false): the node history already keeps the change, and the
  * conversation shows the readable outcome line instead of raw JSON. The
- * row registers nothing model-facing. Activation never throws.
+ * row registers nothing model-facing. It also registers the session
+ * projection the panel's live view reads (live.ts) and provides its row
+ * health, fixed at activation. Activation never throws.
  */
-import type { CommandInvocationLike, CommandResultLike, CommandsHost, InjectHost } from '../shared/dsh-min.ts'
+import type { CommandInvocationLike, CommandResultLike, CommandsHost, InjectHost, ProvideHost } from '../shared/dsh-min.ts'
+import { provideRowHealth } from '../shared/health.ts'
 import { openEngine } from './engine.ts'
 import { STATUS_LABELS } from './labels.ts'
-import { liveProjection } from './live.ts'
+import { LIVE_KEY, liveProjection } from './live.ts'
 import type { EngineError, Mutation } from './mutation.ts'
 import type { GraphNode } from './schema.ts'
 import { DEFAULT_GRAPH_DIR, locateGraph } from './tools.ts'
@@ -80,44 +83,74 @@ export async function applyFromCommand(invocation: CommandInvocationLike, config
 /**
  * Register the live projection (live.ts) once the session projection
  * registry is present; without it the panel shows no live state and the
- * write path still works.
+ * write path still works. `settled` hears why the projection is off, or
+ * undefined once it registered; cordis may run the callback after
+ * activation, when the registry arrives.
  */
-function installLive(ctx: Partial<InjectHost>): void {
-  if (typeof ctx.inject !== 'function') return
+function installLive(ctx: Partial<InjectHost>, settled: (problem: string | undefined) => void): void {
+  if (typeof ctx.inject !== 'function') {
+    settled('宿主没有 inject，现场投影未注册')
+    return
+  }
+  const off = (error: unknown): void => {
+    console.warn(`${name}: the live projection is off: ${error instanceof Error ? error.message : String(error)}`)
+    settled(`现场投影未注册：${error instanceof Error ? error.message : String(error)}`)
+  }
   try {
     ctx.inject(['sessionProjections'], projectionCtx => {
       try {
         projectionCtx.sessionProjections.register(liveProjection)
+        settled(undefined)
       }
       catch (error) {
-        console.warn(`${name}: the live projection is off: ${error instanceof Error ? error.message : String(error)}`)
+        off(error)
       }
     })
   }
   catch (error) {
-    console.warn(`${name}: the live projection is off: ${error instanceof Error ? error.message : String(error)}`)
+    off(error)
   }
 }
 
-/** cordis plugin entry: register /graph-apply and the live projection. */
-export function apply(ctx: CommandsHost & Partial<InjectHost>, config: GraphPanelConfig = {}): () => void {
-  installLive(ctx)
+/** The command's activation problem, if any; the dir is the configured one or the default. */
+function registerCommand(ctx: CommandsHost, config: GraphPanelConfig): { readonly unregister: () => void, readonly problem?: string } {
   const dir: unknown = config.dir ?? DEFAULT_GRAPH_DIR
   if (typeof dir !== 'string' || dir.trim().length === 0) {
     console.warn(`${name}: config.dir must be a non-empty path; /${APPLY_COMMAND} stays off`)
-    return () => {}
+    return { unregister: () => {}, problem: `config.dir 不是非空路径，/${APPLY_COMMAND} 未注册` }
   }
   try {
-    return ctx.commands.register({
-      definitionId: name,
-      name: APPLY_COMMAND,
-      description: 'Apply one project graph change as the human (sent by the graph panel)',
-      recordInput: false,
-      handler: invocation => applyFromCommand(invocation, dir),
-    })
+    return {
+      unregister: ctx.commands.register({
+        definitionId: name,
+        name: APPLY_COMMAND,
+        description: 'Apply one project graph change as the human (sent by the graph panel)',
+        recordInput: false,
+        handler: invocation => applyFromCommand(invocation, dir),
+      }),
+    }
   }
   catch (error) {
     console.warn(`${name}: registering /${APPLY_COMMAND} failed, the row stays off: ${error instanceof Error ? error.message : String(error)}`)
-    return () => {}
+    return { unregister: () => {}, problem: `/${APPLY_COMMAND} 注册失败：${error instanceof Error ? error.message : String(error)}` }
+  }
+}
+
+/**
+ * cordis plugin entry: register /graph-apply and the live projection. The
+ * row health is an activation status (the command acts for the human, not
+ * for a session's agent); it changes once when the live projection settles.
+ */
+export function apply(ctx: CommandsHost & Partial<InjectHost> & Partial<ProvideHost>, config: GraphPanelConfig = {}): () => void {
+  const command = registerCommand(ctx, config)
+  const status = (live: string | undefined): ['active' | 'degraded' | 'inactive', string] => [
+    command.problem !== undefined ? 'inactive' : live === undefined ? 'active' : 'degraded',
+    [command.problem ?? `命令 /${APPLY_COMMAND} 已注册`, live ?? `现场投影 ${LIVE_KEY} 已注册`].join('；'),
+  ]
+  const health = provideRowHealth(ctx, 'graph-panel', ...status('现场投影等 sessionProjections 服务'))
+  installLive(ctx, live => { health.reactivate(...status(live)) })
+  return () => {
+    health.dispose()
+    command.unregister()
   }
 }

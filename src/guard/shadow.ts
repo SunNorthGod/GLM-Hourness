@@ -11,7 +11,11 @@
  * that turn targeted, one shadow record goes to the violation journal: the
  * shell probably wrote them in a way the quote-aware reader does not see
  * (a .NET call, `cmd /c`, an interpreter one-liner). The records measure
- * what the reader misses before any new detection is enforced.
+ * what the reader misses before any new detection is enforced. Files under
+ * the project graph count as known in a turn that ran a graph tool (the
+ * graph row's service, src/shared/graph-service.ts): the engine wrote them.
+ * The price is a blind spot: a shell write into the graph in that same
+ * turn is not recorded (graph-files-only still denies the ones it sees).
  *
  * Limits (dsh-workspace-changes README): only top-level sessions with a
  * working directory are summarized; outside a git repository, or without
@@ -23,6 +27,7 @@ import { resolve } from 'node:path'
 import { normalizePath, shellCommandOf, type ToolCall } from './rules.ts'
 import type { JsonValue } from '../glm-prompt/json.ts'
 import type { ServiceLookup, SessionEventLike, SessionLike, ToolExecutionPayload, WorkspaceChangesService } from '../shared/dsh-min.ts'
+import { graphService } from '../shared/graph-service.ts'
 
 /** One shadow record (JSONL line in the violation journal). */
 export interface ShadowRecord {
@@ -54,8 +59,15 @@ export interface ShadowFallback {
 /** What the guard noted in one turn. */
 interface TurnNotes {
   readonly targets: Set<string>
+  /** Directories a known writer changed: the project graph, when a graph tool ran. */
+  readonly known: Set<string>
   readonly calls: Array<{ tool: string, command: string }>
   agentId?: string
+}
+
+function under(path: string, dirs: ReadonlySet<string>): boolean {
+  for (const dir of dirs) if (path === dir || path.startsWith(`${dir}/`)) return true
+  return false
 }
 
 /** File tools and the argument naming their target (dsh-tool-fs `file_path`, dsh-tool-str-replace-editor `path`). */
@@ -90,7 +102,10 @@ export function shadowFallback(services: ServiceLookup, write: (record: ShadowRe
   const compare = (sessionId: string, seq: number, turn: number, noted: TurnNotes): void => {
     const summary = service()?.summary(sessionId, seq)
     if (summary === undefined) return
-    const paths = summary.files.filter(file => !noted.targets.has(normalizePath(resolve(summary.cwd, file.path)))).map(file => file.display)
+    const paths = summary.files.filter(file => {
+      const path = normalizePath(resolve(summary.cwd, file.path))
+      return !noted.targets.has(path) && !under(path, noted.known)
+    }).map(file => file.display)
     if (paths.length === 0) return
     const unlisted = summary.total - summary.files.length
     write({
@@ -113,9 +128,16 @@ export function shadowFallback(services: ServiceLookup, write: (record: ShadowRe
       if (session === undefined || turn === undefined) return
       const byTurn = notes.get(session.id) ?? new Map<number, TurnNotes>()
       notes.set(session.id, byTurn)
-      const noted = byTurn.get(turn) ?? { targets: new Set<string>(), calls: [] }
+      const noted = byTurn.get(turn) ?? { targets: new Set<string>(), known: new Set<string>(), calls: [] }
       byTurn.set(turn, noted)
       if (payload.agent !== undefined) noted.agentId = payload.agent.id
+      // A graph tool writes node files through the engine, which keeps the history: a known writer.
+      const graph = graphService(services)
+      if (graph?.isGraphTool(payload.name) === true) {
+        const dir = graph.dirFor(session.header.cwd)
+        if (dir !== undefined) noted.known.add(normalizePath(resolve(dir)))
+        return
+      }
       const call: ToolCall = { name: payload.name, arguments: (payload.arguments ?? {}) as JsonValue }
       const field = FILE_TOOLS.get(payload.name)
       const target = field === undefined ? undefined : record(payload.arguments)?.[field]

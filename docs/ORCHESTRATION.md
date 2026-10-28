@@ -96,7 +96,7 @@ L3 核实〔实测 2026-10-28，派发可行性验证 (c)，`ROADMAP.md` 借用�
 - todo 视图：TodoWrite 保留（GLM 的训练习惯），由 harness 同步为当前叶子的子任务；勾掉一项等于关闭一个节点，同样需要证据。
 - 重锚：压缩完成后立即重新注入投影、规范摘要与本会话违规计数。图存在文件里，压缩不会丢失它。
 
-每步投影〔已实现，`src/graph/reminder.ts`；行 `glm-hourness/graph` 默认禁用，只在 L2 验证过；`ROADMAP.md` 2.3〕：
+每步投影〔已实现，`src/graph/reminder.ts`；L2、L3 探针（设焦点后注入、不变不注入、改标题后再注入、压缩后重锚、目标轮）与 L4 桌面版验证，2026-10-28 随图行默认启用；`ROADMAP.md` 2.3〕：
 
 - 当前节点：agent 用图工具 `graph_focus {id}` 设定自己的焦点节点（一般是正在做的任务），每个会话一个，再调一次就移走。`graph_focus` 不写图，只确认节点存在，返回它的类型、标题与状态；投影从下一步起送到。
 - 注入：行在 `agent/created` 时给每个 agent 装一个 `agent/pre-step` 监听器，把投影追加在本步已接纳的消息之后；监听器用 todo 提醒与高峰提醒的同一个接缝（`src/glm-prompt/step-notice.ts`，`DESIGN.md` §5.5）。投影是 `createUserNotice` 生成的 notice（来源 `glm-graph-projection`），正文用 `<system-reminder>` 包装（与工具检索公告共用 `wrapSystemReminder`），不进系统提示词（`DESIGN.md` §6）。不会变成请求的空决策不加。
@@ -192,16 +192,17 @@ L3 核实〔实测 2026-10-28，派发可行性验证 (c)，`ROADMAP.md` 借用�
 
 这三种身份在引擎里是 `actor` 的三个取值：`human`、`llm`、`harness`。actor 由客户端入口决定，不从请求数据里读：面板的写入（命令 `/graph-apply`）一律记为 `human`，命令行与 DSH 图工具一律记为 `llm`，以后的 DSH 钩子记为 `harness`。每种操作对各身份的限制见 §2.9。
 
-guard 拦截〔已实现，规则 `graph-files-only`，`src/guard/graph-files.ts`；由行 `glm-hourness/graph` 注册，默认禁用，只在 L2 验证过〕：
+guard 拦截〔已实现，规则 `graph-files-only`，`src/guard/graph-files.ts`；由行 `glm-hourness/graph` 注册，2026-10-28 经 L3 探针与 L4 后默认启用〕：
 
 - 拦什么：目标在图目录里的文件工具调用，即 `Write`、`Edit`（GLM 别名）、`write`、`edit` 的 `file_path`，以及 `str_replace_editor` 除 `view` 以外各命令的 `path`；shell 命令（`Bash`、`bash`、`pwsh` 的 `command`，`terminal_send` 的 `text`）在规则 file-tools-only 判为写文件、且命令文本提到图目录时也拦。命令文本的取法与写文件的判断都照搬 file-tools-only（2026-10-28 起引号感知，§6.5.1），所以引号里提到图目录的箭头不算写入。图目录指整个目录，`graph.svg` 也在内（它由渲染器重新生成）。读不拦。
 - 路径：相对路径按调用方会话的工作目录解析，`..` 先规整再判断；大小写与 `/`、`\` 不区分。shell 命令里认绝对路径与相对工作目录的写法（可带 `./`），前后紧挨着路径字符的不算（`docs/graphs`、`docs/graph.svg`、`x/docs/graph`）。会话没有工作目录时，相对路径的图目录不判断，绝对路径的图目录只判断绝对路径的目标。
 - 纠偏：四段式（§6.1）。事实写出被拦的路径或命令；越界说明图文件只经图工具改，图工具留历史、查修订号、证据与权限；正路是先 `graph_show` 或 `graph_open` 读，再用对应的写工具；例外是要人权限的操作由人在面板里做，或人在对话里说、LLM 带原话转述（§2.9.1），节点文件坏了或没有对应工具时告诉人，由人手改或用 git 还原。
 - 注册：图行在 `tools/pre-execute` 上以 `prepend` 注册（排在最外层），先于 guard 行判断：shell 写图目录拿到的是图工具这条正路，而不是 file-tools-only 的「改用 Write 或 Edit」，否则模型照做后还要再被拦一次。guard 行的规则不变，图目录以外的调用照旧由它判断。与 guard 行一样，带 `parent` 令牌的传输层子调用直接放行（`DESIGN.md` §2.4a）。规则跟图行走：图行禁用时没有图工具，也就没有这道门禁，被拦的一方手边总有正路。
 - 图目录不存在时同样拦：手写节点文件也是绕过引擎。开始一张新图的正路是建一个空目录（图工具报 `not_found` 时的提示里写着）；`mkdir docs/graph` 不在 file-tools-only 的写文件模式里，本规则也就不拦。
-- 直接拦截，不先走影子模式（§6.5）：新规则先只记录的通用机制还没有（M4）；M1.8 的影子兜底只记 file-tools-only 看不见的 shell 写入（§6.5.2），不是这种机制。本规则只看图目录里的目标，误伤面小；行默认禁用，启用前还有 L3、L4。
-- 拒绝不进违规审计：本分支合入 main 的 `29211ed` 之后已有违规流水（M1.4）与影子兜底（M1.8），图行的拒绝还没有接进流水。接法是图行像 guard 行一样经数据目录服务取项目目录，写同一份 `audit/violations.jsonl`（启用图行之前的跟进项，`ROADMAP.md` M2 2.11）。规则声明同样没有进 GLM 系统提示词的 `glm:guard` 一节，那一节只列 guard 行自己的规则；图工具的描述就是这条规矩的告知。
-- 与 guard 影子兜底的交互〔推断，未在 L3 验证〕：图工具经引擎写节点文件，不经文件工具，`workspace-changes` 的回合摘要会列出这些文件。同一回合里只要还放行过一次 shell 调用，影子兜底就会把图节点文件记成「文件工具没碰过的改动」，是误报。合入后要让影子兜底把图工具写的文件算作已知来源（跟进项）。
+- 直接拦截，不先走影子模式（§6.5）：新规则先只记录的通用机制还没有（M4）；M1.8 的影子兜底只记 file-tools-only 看不见的 shell 写入（§6.5.2），不是这种机制。本规则只看图目录里的目标，误伤面小；2026-10-28 经 L3、L4 后随图行默认启用。
+- 拒绝进违规审计〔已实现 2026-10-28〕：图行像 guard 行一样经数据目录服务取项目目录（行配置 `home` 优先），每次拒绝写一条与 guard 同形的记录（`rule: "graph-files-only"`、工具名、调用方 agent 与会话、纠偏全文）到同一份 `audit/violations.jsonl`（`CHARTER.md` §7.1 条款 11）。写入失败不影响拦截，第一次失败在控制台报一次。
+- 声明〔已实现 2026-10-28，agent 定：列进 `glm:guard`〕：图行启用时它提供服务 `glmHournessGraph`（`src/shared/graph-service.ts`），guard 行在 GLM 系统提示词的 `glm:guard` 一节末尾加一行 `graph-files-only` 的声明，GLM 在一处读到全部规矩；图行卸载时这一行随之消失。理由：门禁对 GLM 生效时，提示词里应当有对应的告知（§6.1），图工具的描述只在模型想到用图工具时才读到。
+- 与 guard 影子兜底的交互〔已实现 2026-10-28〕：图工具经引擎写节点文件，不经文件工具，`workspace-changes` 的回合摘要会列出这些文件。影子兜底经同一个服务认出图工具调用：一个回合里只要调用过图工具，这个会话的图目录下的改动就算已知来源，不记影子。代价是同一回合里 shell 绕过门禁写进图目录的改动也不记（门禁看得见的写法照样拦下）。L3 探针（场景 `glm-graph`）在临时 git 仓库里核对过：同一回合有 shell 调用与图工具写入，影子记录为空。
 
 | 变更 | 分类 | 处理 |
 | --- | --- | --- |
@@ -310,7 +311,7 @@ guard 拦截〔已实现，规则 `graph-files-only`，`src/guard/graph-files.ts
 | --- | --- | --- |
 | 图片 | `npm run graph:render` 写出 `docs/graph/graph.svg`。SVG 不依赖任何渲染库，能显示 SVG 的地方都能看（2026-10-28 实测：Kiro 对话能显示 SVG，不渲染 Mermaid） | 晨报与汇报里附图 |
 | 人：DSH 面板 | 右侧栏「项目图」页（见下「DSH 原生面板」），读经 `remote.workspaceFiles`，写经命令 `/graph-apply`〔2026-10-28 取代本机查看器，用户：不想放到网页，应与 IDE 深度耦合〕 | M8 的其余界面沿用它的组件与样式 |
-| LLM：命令行与 DSH 图工具 | 命令行 `npm run -s graph -- <命令>`，JSON 进、JSON 出，actor 固定为 `llm`；DSH 图工具按命令行契约实现，行 `glm-hourness/graph` 默认禁用（见下） | 图工具经 L3、L4 验证后启用；命令行留给在 Kiro 里开发本仓库时用 |
+| LLM：命令行与 DSH 图工具 | 命令行 `npm run -s graph -- <命令>`，JSON 进、JSON 出，actor 固定为 `llm`；DSH 图工具按命令行契约实现，行 `glm-hourness/graph` 2026-10-28 经 L3、L4 后默认启用（见下） | 命令行留给在 Kiro 里开发本仓库时用 |
 
 本机查看器〔2026-10-28 删除，`m2-10`〕：原型阶段人用的是本机服务加单文件网页（`src/graph/server.ts`、`viewer.html`，入口 `npm run graph:serve`）：平移缩放、折叠、筛选、节点详情与各种人的操作，经带令牌的回环 HTTP 写入，经 SSE 实时刷新。用户不要网页形态，DSH 原生面板（见下）上线后整套删除，人的读写只经面板；代码、路由表与安全措施留在 git 历史里（提交 `25d1bae` 是最后一个含它们的版本）。原型的冒烟改为只跑入口脚本（`npm run graph:smoke`：命令行以独立进程批注、`open`、`show`，再出图）。
 
@@ -357,7 +358,7 @@ npm run -s graph -- [--dir 图目录] <op> [<JSON> | --file <文件>]
 - `npm run` 不带 `-s` 时 npm 会先往 stdout 打两行命令回显，读 JSON 的一方要用 `-s`，或直接运行 `node --experimental-strip-types --no-warnings scripts/graph/cli.ts`。
 - Windows PowerShell 5.1 下另有三个坑（2026-10-28 本机实测）：往 `npm` 管道送 stdin 时 `--` 被 npm 的 PowerShell 外壳吞掉，`--dir` 被 npm 当成自己的选项；管道文本按 `$OutputEncoding`（默认 ASCII）编码，中文到引擎时已是问号；命令行参数里 JSON 的双引号被剥掉，引擎收到的不是合法 JSON。在这个环境下用 `--file`，文件存为 UTF-8。
 
-DSH 图工具〔已实现，`src/graph/tools.ts`，行入口 `src/graph/index.ts`；行 `glm-hourness/graph` 默认 `disabled: true`，只在 L2 验证过；`ROADMAP.md` 2.2〕：命令行的每个命令注册为一个工具，身份固定为 `llm`；另有设定每步投影焦点的 `graph_focus`（§2.5）。
+DSH 图工具〔已实现，`src/graph/tools.ts`，行入口 `src/graph/index.ts`；2026-10-28 经 L3 探针与 L4 桌面版验收后默认启用；`ROADMAP.md` 2.2、2.11〕：命令行的每个命令注册为一个工具，身份固定为 `llm`；另有设定每步投影焦点的 `graph_focus`（§2.5）。
 
 | 工具 | 参数 | 引擎调用 | 成功时的值 |
 | --- | --- | --- | --- |
@@ -376,7 +377,7 @@ DSH 图工具〔已实现，`src/graph/tools.ts`，行入口 `src/graph/index.ts
 - schema：参数与输出 schema 都在 rc.3 `tools.register` 校验的子集内（`dsh-tools` 的 `assertSupportedJsonSchema`：`type`、`properties`、`required`、布尔 `additionalProperties`、`items`、`enum`、`const` 与注解），子集外的输出 schema 会让注册抛错。rc.3 不校验原样注册的工具参数，参数由引擎的请求解析逐字段校验；rc.3 按输出 schema 校验工具返回值，不符时变成错误结果。
 - 谁拿到工具：行在全局注册，所有 agent、所有路由都有这组工具，GLM 与非 GLM、主 Agent 与子 agent 都一样。理由：图是项目状态，不是方言；guard 拦直接改图文件（§2.7、§6.4）对哪条路由都生效，被拦的一方必须手边就有正路。GLM 请求里它们常驻，不进延迟目录（`src/toolsearch/exposure.ts`，主 Agent 每拍都用，§2.8）；非 GLM 请求里是普通工具。子 agent 该不该写图、能写什么，等派发（M7）知道谁是主 Agent 时再定，在那之前子 agent 写图也只有 `llm` 的权限。
 - 每个操作一个工具，不合成一个带 `op` 字段的写工具：每个工具的参数 schema 只列本操作的字段与必填项，模型不用记哪个操作要哪些字段，枚举值（例 `status` 的 `to`）直接写在 schema 里。代价是 GLM 请求多 13 个常驻工具的 schema（含 `graph_focus`）；它们每步不变，落在可命中提示词缓存的前缀里（推断，未实测命中率）。
-- 验证：`tests/graph-tools.spec.ts` 在假宿主 `tests/fake-rc3.ts` 上（L2）覆盖注册与 schema 子集、每个工具（含 `graph_focus` 不改图）、拒绝路径（无证据、过期修订号、无权、多余字段、坏图、缺目录、没有工作目录）、激活期降级、GLM 工具面常驻与行默认禁用。假宿主为此补了 rc.3 的三处行为：`tools.register` 拒收子集外的输出 schema（tools:323、2978），`tools.execute` 把调用方 agent 交给工具体（tools:3227–3260、3406）并按输出 schema 校验返回值（tools:3637–3640）；会话头可带 `cwd`（session:1820–1826）。图文件门禁（§2.7）由 `tests/graph-guard.spec.ts` 覆盖：各种写法的路径、`str_replace_editor`、shell 写法、图目录以外放行、图工具照常写、与 guard 行同时启用时的先后、子调用放行、没有工作目录、行卸载后规则撤掉；为此假宿主的 `tools.execute` 先走 `tools/pre-execute` 瀑布，拒绝时返回 `Error: ` 加理由的错误结果、不执行工具体（tools:3320–3321、3337–3353）。L3、L4 未做，按 `ROADMAP.md` M2 2.11 的检查清单执行。
+- 验证：`tests/graph-tools.spec.ts` 在假宿主 `tests/fake-rc3.ts` 上（L2）覆盖注册与 schema 子集、每个工具（含 `graph_focus` 不改图）、拒绝路径（无证据、过期修订号、无权、多余字段、坏图、缺目录、没有工作目录）、激活期降级、GLM 工具面常驻与行默认禁用。假宿主为此补了 rc.3 的三处行为：`tools.register` 拒收子集外的输出 schema（tools:323、2978），`tools.execute` 把调用方 agent 交给工具体（tools:3227–3260、3406）并按输出 schema 校验返回值（tools:3637–3640）；会话头可带 `cwd`（session:1820–1826）。图文件门禁（§2.7）由 `tests/graph-guard.spec.ts` 覆盖：各种写法的路径、`str_replace_editor`、shell 写法、图目录以外放行、图工具照常写、与 guard 行同时启用时的先后、子调用放行、没有工作目录、行卸载后规则撤掉；为此假宿主的 `tools.execute` 先走 `tools/pre-execute` 瀑布，拒绝时返回 `Error: ` 加理由的错误结果、不执行工具体（tools:3320–3321、3337–3353）。L3（2026-10-28，`npm run probe` 89/89，场景 `glm-graph`、`non-glm-graph`、`glm-graph-compact`、`glm-graph-goal`，图目录是本仓库图在临时 git 仓库里的副本，路径写字面量）：激活无告警，rc.3 收下 13 个工具，GLM 工具面里常驻不延迟，非 GLM 也有；`graph_show` 返回投影，`graph_status` 不带证据标完成拿到 `evidence_required`，`graph_comment` 在副本里留下 `llm` 的历史，仓库的 `docs/graph` 修订号不变；`graph_focus` 之后的下一次请求以投影结尾（`focus`），没变化的步不再注入，改了焦点节点标题后再注入一次（`changed`）；压缩检查点之后的请求带投影（`compaction`），目标轮也带（`goal-round`）；`Write` 与 `Bash` 写副本的节点文件被 `graph-files-only` 拦下并记进违规流水，写别处照常；影子兜底在场且没有把图工具写的节点文件记成影子；`glm:guard` 一节列出 `graph-files-only`；`/glm-status` 的 `graph` 行报出图、节点数与焦点。L4（同日，图行在 bundle 里启用后重启桌面版，GLM-5.3-Flash 会话，只读任务）：`graph_focus m2-9`、`graph_show m2-9` 成功；面板「图」视图里「主 Agent」徽标落在 m2-9 上沿，跑 `Bash` 时外圈呼吸；`/glm-status` 的 `graph` 行「生效，图 …\docs\graph，77 个节点；焦点 m2-9」，`graph-panel` 行「生效」；桌面版日志没有本包的新错误。
 
 ### 2.11 实时同步与并发〔已实现，2026-10-28 用户批准原型〕
 
@@ -673,7 +674,7 @@ L3 核实〔实测 2026-10-28，派发可行性验证 (a)(b)，`ROADMAP.md` 借�
 | 文件修改只用专用工具：shell 不写文件 | 已实现；2026-10-28 改为识别引号（`=>`、`>>>`、`->` 误判已发生 3 次）：只看命令位置与引号外的真实重定向，git 子命令放行；执行后以工作区变更记录兜底，只记录不拦截（§6.5） |
 | 设计阶段不写代码 | 规划；计划模式不拦工具，由 guard 实现（§4.5） |
 | 主 Agent 不写文件 | 规划 |
-| 图文件只经图工具修改 | 已实现（规则 `graph-files-only`，由行 `glm-hourness/graph` 注册，默认禁用，只有 L2；§2.7） |
+| 图文件只经图工具修改 | 已实现（规则 `graph-files-only`，由行 `glm-hourness/graph` 注册，拒绝记入违规流水，L3、L4 后默认启用；§2.7） |
 | 临时脚本只在草稿区 | 规划 |
 | 压制注释必须写理由并挂节点 | 规划 |
 | 放宽检查配置走决策卡 | 规划 |

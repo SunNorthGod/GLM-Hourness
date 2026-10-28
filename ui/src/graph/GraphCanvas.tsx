@@ -12,7 +12,7 @@ import { Button, Menu } from '@deepseek-ai/dsh-client-ui-primitives'
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactElement, type WheelEvent as ReactWheelEvent } from 'react'
 import { HEX_INSET, TEXT, isHexagon, layoutGraph, type CurvePath, type DrawnEdgeType, type NodeBox, type Tone } from '../../../src/graph/layout.ts'
 import type { LoadedGraph } from '../../../src/graph/parse.ts'
-import { doingText, placements, type AgentLive } from './agents.ts'
+import { doingText, placements, useNow, type AgentLive } from './agents.ts'
 import { FILTER_LABELS, statusText, visibleGraph, type GraphFilter } from './model.ts'
 
 interface View {
@@ -121,7 +121,7 @@ function badgeLabel(agent: AgentLive): string {
 }
 
 /** The agents standing on one node, as pills above its top edge; a running agent's dot breathes. */
-function AgentBadges({ box, agents }: { readonly box: NodeBox, readonly agents: readonly AgentLive[] }): ReactElement {
+function AgentBadges({ box, agents, now }: { readonly box: NodeBox, readonly agents: readonly AgentLive[], readonly now: number }): ReactElement {
   let x = box.x + 8
   return (
     <g className="glmg-badges">
@@ -133,7 +133,7 @@ function AgentBadges({ box, agents }: { readonly box: NodeBox, readonly agents: 
         const state = agent.running ? 'running' : 'idle'
         return (
           <g key={agent.id} className={`glmg-badge ${state}${agent.main ? ' main' : ''}`} style={{ transform: `translate(${left}px, ${box.y - 10}px)` }}>
-            <title>{[agent.name, agent.view?.model, doingText(agent, Date.now())].filter(part => part !== undefined && part !== null).join(' · ')}</title>
+            <title>{[agent.name, agent.view?.model, doingText(agent, now)].filter(part => part !== undefined && part !== null).join(' · ')}</title>
             <rect className="pill" width={width} height={18} rx={9} />
             <circle className="ring" cx={10} cy={9} r={5.5} />
             <circle className="dot" cx={10} cy={9} r={3} />
@@ -165,6 +165,7 @@ export function GraphCanvas({ graph, selected, onPick, agents }: GraphCanvasProp
   /** Agents without a node in the drawing: no focus yet, or a focus the filter hides. */
   const unplaced = [...placed].flatMap(([id, list]) => drawn.has(id) ? [] : list)
   const mainFocus = agents.find(agent => agent.main)?.view?.focus ?? null
+  const now = useNow(agents.some(agent => agent.running))
   const canvas = useRef<HTMLDivElement | null>(null)
   const [size, setSize] = useState({ width: 0, height: 0 })
   const [view, setView] = useState<View | undefined>(undefined)
@@ -317,7 +318,7 @@ export function GraphCanvas({ graph, selected, onPick, agents }: GraphCanvasProp
             {layout?.nodes.map(box => <NodeShape key={box.node.id} box={box} selected={box.node.id === selected} hiddenClosed={visible.hiddenClosed.get(box.node.id) ?? 0} onPick={pick} />)}
             {layout?.nodes.map(box => {
               const here = placed.get(box.node.id)
-              return here === undefined ? null : <AgentBadges key={`agents:${box.node.id}`} box={box} agents={here} />
+              return here === undefined ? null : <AgentBadges key={`agents:${box.node.id}`} box={box} agents={here} now={now} />
             })}
           </g>
         </svg>

@@ -11,8 +11,10 @@
  *
  * Declaration (告知, docs/ORCHESTRATION.md §6.1): on a GLM route the active
  * rules are declared in one system prompt section, appended after the
- * agent-scoped assembly (`glm:guard`). Rules only change with the session
- * directory, which is immutable, so the prompt stays stable step to step.
+ * agent-scoped assembly (`glm:guard`); with the graph row active the
+ * section also declares its graph-files-only. Rules only change with the
+ * session directory, which is immutable, and with the graph row loading,
+ * so the prompt stays stable step to step.
  *
  * Shadow fallback (§6.5): file-tools-only also compares each turn's
  * workspace-changes summary with the turn's file-tool targets and records,
@@ -34,6 +36,7 @@ import { evaluate, fileToolsOnly, renderCorrection, workspaceContainment, type G
 import { shadowFallback, type ShadowRecord } from './shadow.ts'
 import { rowJournal, type AuditFs } from '../memory/audit.ts'
 import { dataHomes } from '../shared/data-home.ts'
+import { GRAPH_FILES_DECLARATION, graphService } from '../shared/graph-service.ts'
 import { provideRowHealth, sessionIdOf, type HealthState } from '../shared/health.ts'
 import { assemblyRoute, isGlmModel, sessionRoute, type Route } from '../shared/route.ts'
 import type { JsonValue } from '../glm-prompt/json.ts'
@@ -109,14 +112,18 @@ export function outOfScopeHealth(route: Route | undefined): [HealthState, string
 /** The name of the system prompt section that declares the active rules. */
 export const DECLARATION_SECTION = 'glm:guard'
 
-/** The rule declaration section: one line per rule that declares itself. */
-export function declarationSection(rules: readonly GuardRule[]): AssembledSection {
+/**
+ * The rule declaration section: one line per rule that declares itself,
+ * then the lines of rules other rows enforce (graph-files-only, when the
+ * graph row is active).
+ */
+export function declarationSection(rules: readonly GuardRule[], others: readonly string[] = []): AssembledSection {
   return {
     name: DECLARATION_SECTION,
     text: [
       '# Workspace rules',
       'The harness checks every tool call against these rules before it runs; a call that breaks one is denied with the reason and the right way to proceed.',
-      ...rules.filter(rule => rule.declare.length > 0).map(rule => `- ${rule.declare}`),
+      ...[...rules.map(rule => rule.declare), ...others].filter(line => line.length > 0).map(line => `- ${line}`),
     ].join('\n'),
     // Declarations are literal text; a rule may mention `{{` without meaning a prompt variable.
     interpolate: false,
@@ -193,7 +200,9 @@ export function apply(ctx: GuardHost, config: GuardConfig = {}): () => void {
         const assembled = await next()
         if (!isGlmModel(assemblyRoute(assembled).model)) return assembled
         const rules = activeRules({ ...config, workspaceRoots: rootsFor(agent, config) })
-        return { ...assembled, sections: [...assembled.sections, declarationSection(rules)] }
+        // graph-files-only is the graph row's rule; declared here so GLM reads every rule in one place.
+        const others = graphService(ctx) === undefined ? [] : [GRAPH_FILES_DECLARATION]
+        return { ...assembled, sections: [...assembled.sections, declarationSection(rules, others)] }
       }, { prepend: true }))
     }
     catch (error) {

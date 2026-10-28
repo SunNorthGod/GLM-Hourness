@@ -4,6 +4,7 @@ import { apply, DECLARATION_SECTION, guardHealth, type GuardRecord, type Violati
 import { apply as glmPromptApply } from '../src/glm-prompt/index.ts'
 import type { ShadowRecord } from '../src/guard/shadow.ts'
 import type { AgentLike, PreExecuteDecision, SessionEventLike, SessionLike, ToolExecutionPayload, WorkspaceChangesSummary } from '../src/shared/dsh-min.ts'
+import { GRAPH_FILES_DECLARATION, GRAPH_SERVICE } from '../src/shared/graph-service.ts'
 import { fakeRuntime } from './fake-rc3.ts'
 
 /**
@@ -288,6 +289,23 @@ test('shadow: no record without an allowed shell call, when file tools cover eve
   assert.equal(guardHealth(['C:\\ws'], 'C:/ws/.llm', false)[1], '门禁生效（file-tools-only，圈禁根 C:\\ws）；违规记入 C:/ws/.llm；影子兜底未启用（组合里没有 workspace-changes）')
 })
 
+test('shadow: with the graph row active, graph tool writes are a known source; without a graph tool call the graph files count', async () => {
+  const h = harness(['C:\\ws'])
+  const announce = changes(h)
+  h.services.set(GRAPH_SERVICE, { dirFor: (cwd: string | undefined) => cwd === undefined ? undefined : `${cwd}\\docs\\graph`, isGraphTool: (name: string) => name.startsWith('graph_') })
+  const agent = agentAt('C:\\ws', 'a1', 's1')
+  h.event(agent.session!, { type: 'turn/start', seq: 0, data: { turn: 1 } })
+  await h.run({ name: 'Bash', arguments: { command: DOTNET_WRITE }, agent })
+  await h.run({ name: 'graph_comment', arguments: { id: 'goal-1', text: 'x' }, agent })
+  announce(agent.session!, 5, changed(1, 'gen.txt', 'docs\\graph\\nodes\\goal-1.json', 'docs\\graphs\\x.md'))
+  h.event(agent.session!, { type: 'turn/start', seq: 6, data: { turn: 2 } })
+  await h.run({ name: 'Bash', arguments: { command: DOTNET_WRITE }, agent }) // no graph tool in turn 2
+  announce(agent.session!, 9, changed(2, 'docs\\graph\\nodes\\goal-1.json'))
+  await settle()
+  assert.deepEqual(h.records().map(record => (record as ShadowRecord).paths), [['gen.txt', 'docs/graphs/x.md'], ['docs/graph/nodes/goal-1.json']])
+  assert.deepEqual((h.records()[0] as ShadowRecord).calls, [{ tool: 'Bash', command: DOTNET_WRITE }], 'the graph tool is not a shell call')
+})
+
 test('shadow: a call another listener denied is not counted; a summary after the next turn started still matches its turn', async () => {
   const denied = harness(['C:\\ws'], { home: 'C:/ws/.llm', inner: { kind: 'deny', reason: 'user declined' } })
   const announceDenied = changes(denied)
@@ -343,4 +361,18 @@ test('without a session directory the declaration lists file-tools-only alone, a
   assert.equal(section.name, DECLARATION_SECTION)
   assert.equal(section.text.split('\n').filter(line => line.startsWith('- ')).length, 1)
   assert.ok(!section.text.includes('inside the user\'s workspace'))
+})
+
+test('with the graph row active the GLM declaration also lists graph-files-only, last; it leaves with the row', async () => {
+  const rt = fakeRuntime()
+  apply(rt.ctx as never, { workspaceRoots: ['C:\\ws'], home: 'C:/ws/.llm', fs: memoryFs().fs })
+  await rt.create()
+  const before = (await rt.assemble({ provider: 'glm-zcode', model: 'glm-5.3' })).sections.at(-1)!
+  assert.ok(!before.text.includes(GRAPH_FILES_DECLARATION))
+  const withdraw = rt.ctx.provide(GRAPH_SERVICE, { dirFor: () => undefined, isGraphTool: () => false })
+  const rules = (await rt.assemble({ provider: 'glm-zcode', model: 'glm-5.3' })).sections.at(-1)!.text.split('\n').filter(line => line.startsWith('- '))
+  assert.deepEqual(rules.at(-1), `- ${GRAPH_FILES_DECLARATION}`)
+  assert.equal(rules.length, 3)
+  withdraw()
+  assert.ok(!(await rt.assemble({ provider: 'glm-zcode', model: 'glm-5.3' })).sections.at(-1)!.text.includes(GRAPH_FILES_DECLARATION))
 })

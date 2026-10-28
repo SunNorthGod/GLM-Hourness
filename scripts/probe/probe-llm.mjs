@@ -78,6 +78,8 @@ function summarizeMessage(message) {
     // rc.3 carries assistant tool calls as tool-call content blocks.
     ...(parts.some(part => part.type === 'tool-call') ? { toolCalls: parts.filter(part => part.type === 'tool-call').map(part => part.name) } : {}),
     ...(message.source === undefined ? {} : { source: message.source.kind }),
+    // The graph step projection records why it was added (src/graph/reminder.ts).
+    ...(typeof message.source?.graphProjection?.reason === 'string' ? { projection: message.source.graphProjection.reason } : {}),
   }
 }
 

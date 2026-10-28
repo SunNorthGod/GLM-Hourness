@@ -10,12 +10,13 @@
  * says so. The rule uses the guard framework (rules.ts) but is
  * registered by the glm-hourness/graph row (installGraphFileGuard): only
  * that row knows the graph directory, and only with it enabled does the
- * right path exist.
+ * right path exist. Denials are journaled like the guard row's.
  */
 import { isAbsolute, relative, resolve } from 'node:path'
 import type { JsonValue } from '../glm-prompt/json.ts'
 import type { PreExecuteHost, ServiceLookup } from '../shared/dsh-min.ts'
-import { baseFor } from './index.ts'
+import { GRAPH_FILES_DECLARATION } from '../shared/graph-service.ts'
+import { baseFor, type ViolationRecord } from './index.ts'
 import { evaluate, fileToolsOnly, renderCorrection, shellCommandOf, type Correction, type GuardRule, type RuleVerdict, type ToolCall } from './rules.ts'
 
 export const GRAPH_FILES_RULE = 'graph-files-only'
@@ -72,7 +73,7 @@ export function graphFilesOnly(graphDir: string, cwd: string | undefined): Guard
   const deny = (fact: string): RuleVerdict => ({ kind: 'deny', rule: GRAPH_FILES_RULE, correction: correction(fact, resolve(graphDir)) })
   return {
     id: GRAPH_FILES_RULE,
-    declare: 'Change the project graph only with the graph tools; never write its files directly.',
+    declare: GRAPH_FILES_DECLARATION,
     detect(call) {
       const target = writeTarget(call)
       if (target !== undefined) return inside(target) ? deny(`You tried to write "${target}".`) : ALLOW
@@ -98,10 +99,12 @@ function correction(fact: string, graphDir: string): Correction {
  * Install the rule on `tools/pre-execute`, outermost so that a shell write
  * into the graph gets this correction instead of file-tools-only's.
  * `graphDirFor` maps the calling session's working directory to the graph
- * directory, or undefined when there is none to protect. Nested transport
- * calls pass, as in the guard row.
+ * directory, or undefined when there is none to protect. Every denial goes
+ * to `journal` in the guard's record shape (the violation journal,
+ * CHARTER.md §7.1 clause 11); the journal never rejects into the call.
+ * Nested transport calls pass, as in the guard row.
  */
-export function installGraphFileGuard(ctx: PreExecuteHost & ServiceLookup, graphDirFor: (cwd: string | undefined) => string | undefined): () => void {
+export function installGraphFileGuard(ctx: PreExecuteHost & ServiceLookup, graphDirFor: (cwd: string | undefined) => string | undefined, journal: (record: ViolationRecord) => void): () => void {
   return ctx.on('tools/pre-execute', async (payload, next) => {
     if (payload.parent !== undefined) return next()
     const header = payload.agent?.session?.header.cwd
@@ -111,6 +114,9 @@ export function installGraphFileGuard(ctx: PreExecuteHost & ServiceLookup, graph
     // Every route: graph integrity is not a GLM discipline (unlike the guard row,
     // ORCHESTRATION.md §6.2). Relative targets resolve as the file tools resolve them.
     const verdict = evaluate([graphFilesOnly(dir, baseFor(ctx, payload.agent) ?? cwd)], { name: payload.name, arguments: (payload.arguments ?? {}) as JsonValue })
-    return verdict.kind === 'deny' ? { kind: 'deny', reason: renderCorrection(verdict.correction) } : next()
+    if (verdict.kind !== 'deny') return next()
+    const reason = renderCorrection(verdict.correction)
+    journal({ at: new Date().toISOString(), rule: verdict.rule, tool: payload.name, agentId: payload.agent?.id, sessionId: payload.agent?.session?.id, correction: reason })
+    return { kind: 'deny', reason }
   }, { prepend: true })
 }

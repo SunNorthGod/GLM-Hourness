@@ -23,7 +23,7 @@
  * (gitignored).
  */
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { crc32, deflateSync } from 'node:zlib'
 import { DISPATCH_TOOLS } from '../../dist/workflow/index.js'
@@ -409,7 +409,8 @@ const headlessGoal = runScenario('goal-headless', 'glm-5.3', [
 const headlessCreated = lastToolResult(headlessGoal.steps[1])
 
 // Graph panel write path (docs/ORCHESTRATION.md §2.10, §13): the overlay
-// enables glm-hourness/graph-panel, and the probe provider runs its
+// enables glm-hourness/graph-panel and disables the graph row, so the face
+// check sees what the panel row alone adds; the probe provider runs its
 // /graph-apply handler for the session the way the panel's
 // remote.commands.execute does: a comment, then a decide with the
 // question's rev, both into the graph under the session working directory.
@@ -429,11 +430,93 @@ const panelQuestionRev = (await loadGraph(panelGraph)).revisions.get('question-1
 const graphPanel = runScenario('glm-graph-panel', 'glm-5.3', [
   { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } }, command: { name: 'graph-apply', input: JSON.stringify({ op: 'comment', id: 'goal-1', text: 'probe comment' }) } },
   { text: 'done', live: true, command: { name: 'graph-apply', input: JSON.stringify({ op: 'decide', id: 'question-1', rev: panelQuestionRev, option: 'A', reason: 'probe decide' }) } },
-], 'Read package.json, then reply done.', PANEL_ROW, panelWs)
+], 'Read package.json, then reply done.', [...PANEL_ROW, '- id: glm-hourness/graph', '  disabled: true'], panelWs)
 const panelCommands = graphPanel.steps.flatMap(step => step.command === undefined ? [] : [step.command])
 const panelAfter = await loadGraph(panelGraph)
 const panelLast = id => panelAfter.nodes.get(id)?.history.at(-1)
 const panelStderr = existsSync(join(panelDir, 'stderr.txt')) ? readFileSync(join(panelDir, 'stderr.txt'), 'utf8') : ''
+
+// Graph row (ROADMAP M2 2.11, docs/ORCHESTRATION.md §2.5, §2.7, §2.10): the
+// overlay enables glm-hourness/graph on a copy of this repository's graph
+// inside a scratch git workspace, with the directory as a literal path. The
+// GLM session reads, is refused a done without evidence, comments, sets a
+// focus, edits the focus title, then tries to write node files with Write
+// and Bash; workspace-changes runs so the shadow fallback sees the turn.
+// Three more scenarios: a non-GLM route, a compaction, and a goal round.
+const repoGraph = join(repo, 'docs', 'graph')
+const repoGraphBefore = (await loadGraph(repoGraph)).revision
+const graphRowDir = join(runDir, 'glm-graph')
+const graphWs = join(graphRowDir, 'ws')
+const graphCopy = join(graphWs, 'docs', 'graph')
+cpSync(join(repoGraph, 'nodes'), join(graphCopy, 'nodes'), { recursive: true })
+writeFileSync(join(graphWs, 'README.md'), 'probe workspace\n')
+const graphGitReady = initRepo(graphWs)
+const graphRow = dir => ['- id: glm-hourness/graph', '  disabled: false', `  config: { dir: ${JSON.stringify(slash(dir))} }`]
+const copyBefore = await loadGraph(graphCopy)
+const parents = new Set([...copyBefore.nodes.values()].flatMap(node => node.parent === undefined ? [] : [node.parent]))
+const leafTask = status => [...copyBefore.nodes.values()].find(node => node.type === 'task' && node.status === status && !parents.has(node.id))
+const doingTask = leafTask('doing')
+const focusTask = leafTask('approved')
+const GRAPH_TOOL_NAMES = ['graph_show', 'graph_open', 'graph_focus', 'graph_propose', 'graph_status', 'graph_edit', 'graph_link', 'graph_unlink', 'graph_comment', 'graph_verify', 'graph_decide', 'graph_approve', 'graph_reject']
+const GRAPH_FILES_LINE = '- Change the project graph only with the graph tools; never write its files directly.'
+const graphNodeFile = join(graphCopy, 'nodes', 'probe-direct.json')
+const graphNotes = join(graphWs, 'notes.txt')
+const graphRun = runScenario('glm-graph', 'glm-5.3', [
+  { tool: { name: 'graph_show', arguments: { id: focusTask?.id } } },
+  { tool: { name: 'graph_status', arguments: { id: doingTask?.id, rev: copyBefore.revisions.get(doingTask?.id ?? ''), to: 'done', reason: 'probe: done without evidence' } } },
+  { tool: { name: 'graph_comment', arguments: { id: doingTask?.id, text: 'probe comment' } } },
+  { tool: { name: 'graph_focus', arguments: { id: focusTask?.id } } },
+  { tool: { name: 'Read', arguments: { file_path: join(graphWs, 'README.md') } } },
+  { tool: { name: 'Bash', arguments: { command: 'Write-Output probe-graph' } } },
+  { tool: { name: 'graph_edit', arguments: { id: focusTask?.id, rev: copyBefore.revisions.get(focusTask?.id ?? ''), set: { title: 'probe title' }, reason: 'probe: change the focus title' } } },
+  { tool: { name: 'Write', arguments: { file_path: graphNodeFile, content: '{}\n' } } },
+  { tool: { name: 'Bash', arguments: { command: `Set-Content -Path '${graphNodeFile}' -Value x` } } },
+  { tool: { name: 'Write', arguments: { file_path: graphNotes, content: 'notes\n' } } },
+  { text: 'done', status: true },
+], 'Work on the project graph, then reply done.', [...graphRow(graphCopy), ...workspaceChangesRow('glm-hourness-probe/workspace-changes')], graphWs)
+const graphSteps = graphRun.steps
+const graphResult = index => lastToolResult(graphSteps[index])
+const graphNotices = step => (step?.messages ?? []).filter(message => message.role === 'user' && message.source === 'glm-graph-projection')
+const copyAfter = await loadGraph(graphCopy)
+const graphViolations = jsonl(join(graphRowDir, 'home', 'audit', 'violations.jsonl'))
+const graphStderr = existsSync(join(graphRowDir, 'stderr.txt')) ? readFileSync(join(graphRowDir, 'stderr.txt'), 'utf8') : ''
+const graphFace = step => (step?.tools ?? []).filter(tool => GRAPH_TOOL_NAMES.includes(tool.name))
+
+const plainGraph = runScenario('non-glm-graph', 'deepseek-probe', [
+  { tool: { name: 'graph_open', arguments: {} } },
+  { text: 'done' },
+], 'List the open work, then reply done.', graphRow(graphCopy), graphWs)
+const plainGraphOpen = lastToolResult(plainGraph.steps[1])
+
+const compactGraph = runScenario('glm-graph-compact', 'glm-5.3', [
+  { tool: { name: 'graph_focus', arguments: { id: focusTask?.id } } },
+  { tool: { name: 'Read', arguments: { file_path: join(graphWs, 'README.md') } } },
+  { tool: { name: 'Read', arguments: { file_path: join(graphWs, 'README.md') } } },
+  { text: 'done' },
+], 'Set the focus, read the README twice, then reply done.', [...graphRow(graphCopy), '- id: compaction-basic', '  config: { thresholdRatio: 0.02, retainTokens: 0 }'], graphWs)
+/** Requests that carry a compaction checkpoint, and the projection reasons that follow it in each. */
+const reanchored = compactGraph.steps.flatMap((step) => {
+  const at = step.messages.findLastIndex(message => message.source === 'compact-checkpoint')
+  return at < 0 ? [] : [step.messages.slice(at + 1).filter(message => message.source === 'glm-graph-projection').map(message => message.projection)]
+})
+
+const graphGoalDir = join(runDir, 'glm-graph-goal')
+const graphGoalWs = join(graphGoalDir, 'ws')
+mkdirSync(graphGoalWs, { recursive: true })
+writeFileSync(join(graphGoalWs, 'evidence.txt'), 'evidence\n')
+const graphGoal = runScenario('glm-graph-goal', 'glm-5.3', [
+  { tool: { name: 'DeferredToolCall', arguments: { name: 'probe_goal_run', input: { objective: 'Set the graph focus, then mark the goal complete in the next round.', cwd: graphGoalWs, evidence: 'evidence.txt', maxGoalRounds: 2 } } } },
+  { text: 'done' },
+], 'Run the goal probe, then reply done.', [...dispatchRow(join(graphGoalDir, 'dispatch.jsonl')), ...graphRow(graphCopy)], repo, [[
+  { tool: { name: 'graph_focus', arguments: { id: focusTask?.id } } },
+  { text: 'Focus set; the goal stays active for the next round.' },
+  completeGoal,
+  { text: 'Goal complete.' },
+]])
+const graphGoalCreated = dispatchRecord('glm-graph-goal').find(entry => entry.kind === 'goal-created')
+const graphGoalSteps = bySession(graphGoal, graphGoalCreated?.agentId)
+const graphRoundTwo = graphGoalSteps.find(step => step.messages.some(message => message.source === 'goal' && message.text.includes('\nRound: 2/2\n')))
+const repoGraphAfter = (await loadGraph(repoGraph)).revision
 
 // Live view (docs/ORCHESTRATION.md §2.10, m2-8): the graphLive projection
 // the panel row registers, read mid-step from the session projection
@@ -503,6 +586,17 @@ const checks = [
   ['graph panel: /graph-apply decides with the question rev as the human', panelCommands[1]?.kind === 'success' && panelCommands[1].text === '已拍板「探针问题」：A 甲' && panelAfter.nodes.get('question-1')?.status === 'done' && panelLast('question-1')?.actor === 'human' && panelLast('question-1')?.op === 'decide', JSON.stringify(panelCommands[1] ?? null)],
   ['graph live: the session view has the model, the steps of the open turn and the finished Read, nothing running, no focus', panelLive?.model === 'glm-5.3' && panelLive.steps >= 2 && typeof panelLive.turnSince === 'number' && panelLive.tool === null && panelLive.focus === null && liveCalls(panelLive).includes('Read:ok'), JSON.stringify(panelLive)],
   ['graph live: the dispatch parent\'s subagentCatalog names the child; the child view has its own model, the scope-denied Write as an error, and token usage', parentCatalog?.some(entry => entry.id === started?.childId) === true && childLive?.model === 'glm-5.3-flash' && liveCalls(childLive).includes('Write:error') && liveCalls(childLive).includes('Write:ok') && childRead?.tokenUsage !== null, `catalog ${JSON.stringify(parentCatalog)}; child ${childLive?.model ?? 'none'} ${liveCalls(childLive).join(', ')}; tokens ${tokens(childRead?.tokenUsage)} ${JSON.stringify(childRead?.tokenUsage ?? null)}`],
+  ['graph row: the copy has a doing leaf task and an approved one; the workspace is a git repository', doingTask !== undefined && focusTask !== undefined && graphGitReady, `doing ${doingTask?.id ?? 'none'}, focus ${focusTask?.id ?? 'none'}, git ${graphGitReady}`],
+  ['graph row: activates without warnings; rc.3 takes all 13 graph tools, resident in the GLM face (not deferred)', graphSteps.length > 0 && !graphStderr.includes('dsh-glm-hourness/graph:') && graphFace(graphSteps[0]).length === GRAPH_TOOL_NAMES.length && graphFace(graphSteps[0]).every(tool => tool.deferLoading !== true), `${graphFace(graphSteps[0]).length} graph tool(s); stderr mentions the row: ${graphStderr.includes('dsh-glm-hourness/graph:')}`],
+  ['graph row: on a non-GLM route the graph tools are in the face and graph_open answers', GRAPH_TOOL_NAMES.every(name => names(plainGraph.steps[0]).has(name)) && plainGraphOpen?.isError !== true && plainGraphOpen?.text.includes('"items"') === true, `exit ${plainGraph.status}; ${plainGraphOpen?.text.slice(0, 80) ?? 'no result'}`],
+  ['graph row: graph_show returns the projection; graph_status done without evidence gets evidence_required', graphResult(1)?.isError !== true && graphResult(1)?.text.includes('"projection"') === true && graphResult(2)?.isError === true && graphResult(2)?.text.includes('evidence_required') === true, `${graphResult(1)?.text.slice(0, 60) ?? 'none'} | ${graphResult(2)?.text.slice(0, 120) ?? 'none'}`],
+  ['graph row: graph_comment leaves an llm history entry in the copy; the repository graph is unchanged', graphResult(3)?.isError !== true && copyAfter.nodes.get(doingTask?.id ?? '')?.history.at(-1)?.actor === 'llm' && copyAfter.nodes.get(doingTask?.id ?? '')?.history.at(-1)?.text === 'probe comment' && repoGraphBefore === repoGraphAfter, `repo graph ${repoGraphBefore} -> ${repoGraphAfter}`],
+  ['graph row: after graph_focus the next request ends with the projection notice (focus); unchanged steps add none; a title edit adds one (changed)', graphNotices(graphSteps[4]).length === 1 && graphSteps[4]?.messages.at(-1)?.source === 'glm-graph-projection' && graphNotices(graphSteps[4])[0]?.projection === 'focus' && graphNotices(graphSteps[5]).length === 1 && graphNotices(graphSteps[6]).length === 1 && graphNotices(graphSteps[7]).length === 2 && graphSteps[7]?.messages.at(-1)?.projection === 'changed' && graphSteps[7]?.messages.at(-1)?.text.includes('probe title') === true, `notices per request: ${graphSteps.map(step => graphNotices(step).map(notice => notice.projection).join('+') || '0').join(', ')}`],
+  ['graph row: after a compaction checkpoint the first request carries the projection again (compaction)', reanchored.some(reasons => reasons.includes('compaction')), `${compactGraph.compactions.length} compaction(s); after checkpoints: ${JSON.stringify(reanchored)}`],
+  ['graph row: a goal round carries the projection (goal-round)', graphNotices(graphRoundTwo).some(notice => notice.projection === 'goal-round'), graphRoundTwo === undefined ? `no round 2 request (${graphGoalSteps.length} goal-agent request(s), exit ${graphGoal.status})` : graphNotices(graphRoundTwo).map(notice => notice.projection).join(', ')],
+  ['graph row: Write and Bash into the copy\'s node files are denied by graph-files-only and journaled; a write elsewhere runs', [8, 9].every(index => graphResult(index)?.isError === true && graphResult(index)?.text.includes('inside the project graph') === true) && graphResult(10)?.isError !== true && !existsSync(graphNodeFile) && existsSync(graphNotes) && graphViolations.filter(record => record.rule === 'graph-files-only').map(record => record.tool).join(',') === 'Write,Bash', `records: ${graphViolations.map(record => `${record.rule}${record.mode === 'shadow' ? '(shadow)' : ''}:${record.tool ?? ''}`).join(', ')}`],
+  ['graph row: the shadow fallback runs and counts the graph tool writes as known (no shadow record names a node file)', healthOf(graphRun).guard?.reason.includes('影子兜底：工作区变更记录') === true && graphViolations.filter(record => record.mode === 'shadow').every(record => record.paths.every(path => !path.startsWith('docs/graph/'))), JSON.stringify(graphViolations.filter(record => record.mode === 'shadow').map(record => record.paths))],
+  ['graph row: the GLM rule section declares graph-files-only; /glm-status reports the graph row with the focus and the panel row in effect', graphSteps[0]?.system.includes(GRAPH_FILES_LINE) === true && healthOf(graphRun).graph?.status === ACTED && healthOf(graphRun).graph.reason.includes(`焦点 ${focusTask?.id}`) && healthOf(graphRun)['graph-panel']?.status === ACTED, `${healthLine(healthOf(graphRun), 'graph')} (${healthOf(graphRun).graph?.reason ?? ''}); ${healthLine(healthOf(graphRun), 'graph-panel')}`],
   ['graph panel: the row adds nothing to the model face and activates without warnings', graphPanel.steps.length > 0 && graphPanel.steps.every(step => step.tools.every(tool => !tool.name.startsWith('graph_'))) && !panelStderr.includes('graph-panel'), `exit ${graphPanel.status}, ${graphPanel.steps.length} step(s); stderr mentions graph-panel: ${panelStderr.includes('graph-panel')}`],
   ['glm prompt: ZCode CLI prefix in the system prompt', glmFirst?.system.includes('You are ZCode, an interactive coding agent') === true, glmFirst === undefined ? 'no request' : glmFirst.system.slice(0, 80).replace(/\n/g, ' ')],
   ['glm prompt: DSH identity replaced', glmFirst !== undefined && !glmFirst.system.includes('powered by DeepSeek Harness'), ''],

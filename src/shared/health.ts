@@ -17,12 +17,12 @@
 import type { ProvideHost, ServiceLookup } from './dsh-min.ts'
 
 /** The bundle's host rows (loader ids `glm-hourness/<row>`), in patch order. The UI bundle row runs in the client and is not listed. */
-export const HEALTH_ROWS = ['glm-llm', 'glm-login', 'glm-prompt', 'glm-compact', 'data', 'guard', 'memory', 'workflow', 'hourness'] as const
+export const HEALTH_ROWS = ['glm-llm', 'glm-login', 'glm-prompt', 'glm-compact', 'data', 'guard', 'memory', 'workflow', 'hourness', 'graph', 'graph-panel'] as const
 
 export type HealthRow = typeof HEALTH_ROWS[number]
 
-/** Rows whose status is fixed at activation: they do not act per session. */
-const ACTIVATION_ONLY: ReadonlySet<HealthRow> = new Set(['glm-login', 'data'])
+/** Rows whose status is fixed at activation: they do not act per session (graph-panel's command acts for the human, not a session's agent). */
+const ACTIVATION_ONLY: ReadonlySet<HealthRow> = new Set(['glm-login', 'data', 'graph-panel'])
 
 /** A row's status: in effect, partly in effect, or not in effect. */
 export type HealthState = 'active' | 'degraded' | 'inactive'
@@ -46,6 +46,8 @@ export interface RowHealthView {
 export interface RowHealth {
   /** Report the row's status in one session; stored when new or changed. A report without a session id is dropped. */
   report(sessionId: string | undefined, state: HealthState, reason: string): void
+  /** Replace the activation status: a service the row waits for arrived or failed after activation. */
+  reactivate(state: HealthState, reason: string): void
   /** Withdraw the health service. */
   dispose(): void
 }
@@ -70,7 +72,7 @@ export function sessionIdOf(agent: { readonly id: string, readonly session?: { r
  */
 export function provideRowHealth(ctx: Partial<ProvideHost>, row: HealthRow, state: HealthState, reason: string, now: () => Date = () => new Date()): RowHealth {
   const stamp = (state: HealthState, reason: string): HealthReport => Object.freeze({ state, reason, at: now().toISOString() })
-  const activation = stamp(state, reason)
+  let activation = stamp(state, reason)
   const sessions = new Map<string, HealthReport>()
   const view: RowHealthView = Object.freeze({ row, activation: () => activation, session: (sessionId: string) => sessions.get(sessionId) })
   let withdraw = (): void => {}
@@ -90,6 +92,9 @@ export function provideRowHealth(ctx: Partial<ProvideHost>, row: HealthRow, stat
       sessions.delete(sessionId)
       sessions.set(sessionId, stamp(state, reason))
       if (sessions.size > SESSION_LIMIT) sessions.delete(sessions.keys().next().value as string)
+    },
+    reactivate(state, reason) {
+      activation = stamp(state, reason)
     },
     dispose: () => withdraw(),
   }
