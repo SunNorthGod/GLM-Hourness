@@ -251,7 +251,7 @@ LLM 平面（bundle `g6n` 形态）：`HTTP-Referer`、`User-Agent: ZCode/<ver>`
 
 移植自 zcode-api 的 `client-signing`（对应 ZCode 3.15.1 `ClientRequestSigningV4Signer`）：握手 `POST /api/paas/c1f3a7e2/v2/client` → HKDF 派生 → Ed25519 业务签名 + PoW → 七个签名头。start-plan 与 off-peak 路径不签名。失败梯：握手失败无签发送；连续两次 401 VERIFY 拒绝后对该（origin, credential）永久旁路〔实读〕。
 
-现状：握手对当前凭证失败，按设计无签发送，请求成功〔实测〕。签名对 coding-plan 1.5 倍用量的影响未验证。要求：签名结果对系统可见，即状态里显示签名情况，每条用量记录标注是否签名（条款 7）〔规划〕。
+现状：握手对当前凭证失败，按设计无签发送，请求成功〔实测〕。2026-10-28 截包：握手经端点路由发往 `zcode.z.ai/api/paas/c1f3a7e2/v2/client`，每次返回 404；失败梯不缓存握手失败，每个模型请求之前都重试一次，约 90 毫秒（§4.5b）。签名对 coding-plan 1.5 倍用量的影响未验证。要求：签名结果对系统可见，即状态里显示签名情况，每条用量记录标注是否签名（条款 7）〔规划〕。
 
 ### 4.4 端点路由
 
@@ -280,6 +280,42 @@ LLM 平面（bundle `g6n` 形态）：`HTTP-Referer`、`User-Agent: ZCode/<ver>`
 - 请求级图片预算：本通道不发 `IMAGE_OFFLOAD_REQUIRED`。ZCode 没有请求级的图片总量上限，GLM 端点的上限未知（§9）。
 - 验证：编码器与适配器单测；L3 探针在 GLM-5.3-Flash 上读 PNG，探针 provider 用本通道的真实编码器与运行时附件服务编码同一请求，图片以 base64 PNG 出现在 `tool_result` 中；真网一次（coding-plan，`glm-5.3-flash`，32×32 纯红 PNG，问颜色），模型答「Red」，用量输入 41、输出 32 token〔实测 2026-10-28〕。只有一次请求，猜中的可能不能完全排除。
 
+### 4.5b 提示词缓存〔实测 2026-10-28〕
+
+缓存的形态〔实测，coding-plan，`glm-5.3` 与 `glm-5.3-flash`〕：
+
+- 隐式前缀缓存，按 64 token 一块对齐。命中只覆盖此前请求的提示词，不含输出：工具循环里第 N 步的命中最多是第 N−1 步提示词长度向下取整到 64 的倍数（下称「最新前缀」）。回放 thinking 不能把命中延伸到上一步的输出。
+- 网关按 `x-session-id` 做缓存亲和路由。同一会话的请求落到同一处，就命中最新前缀；落到别处，只能命中那里已有的前缀：同一会话更早的一步、其他会话共用的系统提示词与工具段（标定里是 8192、8256、8320、6784 这几个值），或者什么都没有。
+- 会话的请求是只追加的：在无头沙盒里截下每次请求的系统提示词、工具定义与每条消息的摘要，相邻两步只在末尾新增消息（2026-10-28，3 次运行、21 次请求）。所以没命中最新前缀的原因在服务端（路由或缓存是否可用），不在请求内容。
+- 端点在缓存字段上的口径：`cache_read_input_tokens` 是命中数，`input_tokens` 只算未命中部分，`cache_creation_input_tokens` 不出现（§4.6a）。
+
+原因与处置：
+
+1. 已修：原生通道每个请求随机生成 `x-session-id`（zcode-api 原本按会话固定，移植时丢了；ZCode 3.16.3 每个请求都带会话 id）。现在取 DSH 会话 id，去掉 `session-` 前缀（`upstreamSessionId`），同一会话的全部请求同值，压缩与会话标题请求也一样。辅助请求（压缩、会话标题）的 `x-zcode-session-type` 是 `other`，这是 ZCode 给非对话步的类型；实测会话类型不参与亲和（压缩形态的请求标 `other` 与 `main` 各 8 次，都命中最新前缀）。
+2. 未解决：GLM-5.3-Flash 在会话的第二步仍常常只命中其他会话共用的前缀（6784、8256、8320），从第三步起全部命中最新前缀；GLM-5.3 没有这个现象。每次损失约 4k token 的缓存。试过的假设：DSH 在第一步的同时发出会话标题请求，带同一个会话 id，Flash 起标题时也在思考，两者并发。单独实验里标题请求让第二步 11 次中 2 次整段未命中（没有标题请求 11 次全中），于是让标题请求另起会话 id（`0814234`）；随后的完整标定里，6 个 Flash 会话仍有 4 个在第二步没命中（改前是 5 个），假设不成立，已撤回（`8a08c1f`）。剩下的推测：新会话第一步写入的缓存在第二步到达时还没有就绪（BigModel 文档写缓存「异步生效」），Flash 的第一步从零写入整段约 12k token，GLM-5.3 的第一步已命中共用前缀，写入少；未验证。
+
+实测记录（统计后续请求是否命中最新前缀）：
+
+| 场景 | 变体 | 命中最新前缀 | 整段未命中 | 部分命中 |
+| --- | --- | --- | --- | --- |
+| 8 步工具循环，glm-5.3-flash，约 14k token，3 个会话 | 每请求随机 `x-session-id`（修复前） | 11/24 | 7 | 6 |
+| 同上 | 随机 `x-session-id`，请求体按 ZCode（`metadata.user_id`、thinking 回放、末条缓存断点） | 12/24 | 4 | 8 |
+| 同上 | 固定 `x-session-id`，请求体不变 | 24/24 | 0 | 0 |
+| 同上 | 固定 `x-session-id`，请求体按 ZCode | 24/24 | 0 | 0 |
+| 标题请求与第一步并发，glm-5.3-flash，只看第二步 | 标题用会话的 `x-session-id` | 9/11 | 2 | 0 |
+| 同上 | 没有标题请求 | 11/11 | 0 | 0 |
+| 标定（DSH 真实运行，每格 3 次），修复前（`4cb8799`） | glm-5.3 / glm-5.3-flash | 46/46、29/45 | 0、4 | 0、12 |
+| 标定，只固定会话 id（`8a212cd` 的代码） | glm-5.3 / glm-5.3-flash | 42/42、41/46 | 0、2 | 0、3 |
+| 标定，全部修改，标题另起会话 id（`0814234`） | glm-5.3 / glm-5.3-flash | 46/47、36/40 | 0、0 | 1、4 |
+
+Flash 没命中的位置：修复前第二步 4 次、之后各步 12 次；固定会话 id 后第二步 5 次、之后 0 次；`0814234` 第二步 4 次、之后 0 次。GLM-5.3 在 `0814234` 那 1 次比最新前缀少 64 token。修复前的桌面版 L4 会话（GLM-5.3，2026-10-28）17 次后续请求里有 2 次整段未命中、3 次只命中更早的一步。
+
+缓存断点 `cache_control`：BigModel 文档写的是隐式缓存，实测有无断点命中相同（上表第 1、2 行；另有 3 个两步对照）。为了与 ZCode 的请求形态一致，最后一条消息的最后一块带断点（zcode-api `applyAnthropicCacheControl`）。系统提示词没有按 ZCode 拆成 cli_prefix、stable、dynamic 三块（ZCode 后两块带断点）：coding-plan 下本通道只发一块，拆分要在方言里标出分界，命中不受影响，暂不做（§5.8 #14）。
+
+同批补上的请求细节（与缓存无关，按 ZCode）：每个请求都带 `x-request-id`、`x-zcode-session-type`、`x-zcode-trace-id`（3.16.3 `createModelRequestAttributionHeaders`）；请求体带 `metadata.user_id`，即 `{device_id, account_uuid: "", session_id}`，会话 id 与请求头相同（`createAnthropicRequestMetadataUserId`）。
+
+截包顺带看到：签名握手 `POST zcode.z.ai/api/paas/c1f3a7e2/v2/client` 每次都返回 404，适配器在每个请求前都重试一次握手（约 90 毫秒），随后无签发送；端点路由把请求改写到 `zcode.z.ai/api/v1/ultra/anthropic/v1/messages`（§4.3、§4.4）。
+
 ### 4.5c 保留式思考〔已实现 2026-10-28〕
 
 BigModel 的思考文档写明：保留式思考在 Coding Plan 端点默认开启，要把完整、未修改的 reasoning 原样传回，否则效果与缓存命中都会下降；交错思考加工具时，必须在返回工具结果时一并返回 reasoning（`.llm/docs/_bigmodel_md/cn__guide__capabilities__thinking-mode.md`）。ZCode 照此回放（3.16.3 `adapters/src/model/reasoning-history-normalization.ts`、`anthropic-reasoning-metadata.ts`）。本通道此前丢弃全部 reasoning。
@@ -292,7 +328,7 @@ BigModel 的思考文档写明：保留式思考在 Coding Plan 端点默认开�
   - 没有签名的 reasoning（本次改动之前的历史、信封对不上、其他适配器的历史）以空签名回放（ZCode 用空签名表示保留的未签名 thinking）。
   - 空正文且无签名的 reasoning 是流里的空壳，丢弃；只剩 reasoning、没有文本与工具调用的助手消息整条丢弃；请求以助手轮结尾时，去掉结尾的 thinking 块（ZCode `removeReasoningOnlyAssistants`、`removeTrailingReasoning`）。
 - 与 ZCode 的差异：ZCode 在端点以签名错误拒收时会删掉带签名的 reasoning 重试一次（`repairReasoningHistoryAfterSignatureRejection`）。端点实测不校验签名，本通道没有移植这一步；若出现点名 thinking 签名的 400，再移植。
-- 对缓存的影响：没有。缓存只存提示词，不存输出（§4.5b），回放 thinking 不能把命中延伸到上一步的输出。升级后已有会话的第一次请求，历史里多出 reasoning，前缀与上一次不同，会有一次未命中。
+- 对缓存与成本的影响：命中率不变，输入变多。缓存只存提示词，不存输出（§4.5b），所以上一步的 reasoning 在下一步是未命中的输入，再往后才进缓存。标定（每格 3 次）每次调用的平均值，只固定会话 id 时与加上回放后相比：GLM-5.3-Flash 未命中输入 2294 → 2582、命中输入 10218 → 12203、输出 567 → 702；GLM-5.3 未命中输入 987 → 937（它的 reasoning 很短）。Flash 的输出也变多了，积分的差别不能全算在回放上。BigModel 文档说保留式思考提高效果与命中率；命中率的说法与实测不符，效果在两个起步任务上看不出（两次都是 12/12 完成）。升级后已有会话的第一次请求，历史里多出 reasoning，前缀与上一次不同，会有一次未命中。
 - 验证：解码与编码单测，其中一条用 rc.3 真实的 `BlockAssembler` 组装解码结果，再编码下一次请求，确认签名回到同一路由、换模型时删除（`tests/glm-transport.spec.ts`）；真网一次完整往返（真实适配器加 `BlockAssembler`，glm-5.3）：第二步发出 `thinking`（64 字符，24 字符签名）、`text`、`tool_use`，端点接受。
 
 ### 4.6 模型目录与思考档位
@@ -467,8 +503,10 @@ L3 探针：沙盒里把压缩阈值调低，摘要请求末条是 ZCode 提示�
 | 11 | 身份头、签名、路由 | 通道 | glm-llm | 已实现，版本待统一 |
 | 12 | 模型目录、登录 | 通道 | glm-llm、glm-login | 已实现 |
 | 13 | 日期与输出风格提醒族 | 方言 | 低成本可选 | 未实现 |
-| 14 | 缓存断点参数 | 通道 | 低优先级 | 未实现 |
+| 14 | 缓存断点参数 | 通道 | 末条消息带断点；系统块按 ZCode 拆三块未做，实测不影响命中（§4.5b） | 部分实现 2026-10-28 |
 | 16 | thinking 与采样参数 | 通道 | effort 三档、thinking 时剥采样参数 | 已实现 effort |
+| 17 | 保留式思考：历史中的 reasoning 带签名回传 | 通道 | 签名只回同一路由；ZCode 的签名拒收重试未移植（端点不校验，§4.5c） | 已实现 2026-10-28 |
+| 18 | 请求归因：会话 id、会话类型、请求与追踪 id、`metadata.user_id` | 通道 | 会话 id 取 DSH 会话（§4.5b），辅助请求标 `other`；子 agent 仍标 `main`，DSH 请求不带父会话信息 | 已实现 2026-10-28 |
 
 第 1、2、4、6、8 项的文本对齐状态以 §5.9 为准。
 

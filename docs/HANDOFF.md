@@ -71,14 +71,14 @@ dist/          不入库：tsc 产物（profile 通过 pnpm link 使用）
 1. 路由判定已收口到 `src/shared/route.ts`，`glm-prompt`（含工具检索与 todo 提醒）已改用（`DESIGN.md` §3）。todo 提醒自 2026-10-28 起按 ZCode 的助手轮次口径计数（`DESIGN.md` §5.5）。
 2. 版本基线已统一为 3.16.3；`X-Title` 按用户定案（2026-10-27）保持 `cli`，桌面版 ZCode 的真实流量是 `electron`（`DESIGN.md` §4.2）。
 3. guard 闭环缺申报一段（记录、告知已于 2026-10-28 接通）。`=>`、`>>>`、`->` 误判已修（2026-10-28，引号感知，`ORCHESTRATION.md` §6.5.1）；读不到的 shell 写法（.NET 调用、`cmd /c`、PowerShell 别名如 `del`）只由工作区变更兜底记录，不拦截（§6.5.2）。L4 暴露的两处已修（2026-10-28）：拦截只对 GLM 调用生效，路由取会话请求头（§6.2）；相对路径按会话工作目录解析，`..` 折叠（§6.1）。
-4. 数据目录分裂：已修（2026-10-28，`DESIGN.md` §2.4）。用户级数据在 `~/.dsh/glm-hourness/`，项目数据在工作区 `.llm/`；凭证与 deviceMid 在 L4 验收后再搬（`ROADMAP.md` §3）。
-5. 签名握手对当前凭证失败，按设计无签发送；对 1.5 倍用量的影响未验证，签名状态不可见。
+4. 数据目录分裂：已修（2026-10-28，`DESIGN.md` §2.4）。用户级数据在 `~/.dsh/glm-hourness/`，项目数据在工作区 `.llm/`；凭证与 deviceMid 已于 2026-10-28 搬到用户级目录，仓库里的原件待删（`ROADMAP.md` §3）。
+5. 签名握手对当前凭证失败，按设计无签发送；对 1.5 倍用量的影响未验证，签名状态不可见。2026-10-28 截包：握手每次 404，且每个请求前都重试一次（`DESIGN.md` §4.3，`ROADMAP.md` §3）。
 6. start-plan 档只有单测，未做真机授权验证。
 7. 峰谷口径：已修（2026-10-28，`ORCHESTRATION.md` §11.2）。面板按积分计，高峰为工作日 14:00–18:00（UTC+8），其余时段按 50%；5 小时窗口、周额度、预估耗尽时间要等通道取数（`DESIGN.md` §4.7）。
 8. 记忆存储判据过严，路径或文件名样式的文字一律被拒（`ORCHESTRATION.md` §8.1）。
 9. 方言逐字文本：七个工具别名都已按 3.16.3 重建（2026-10-28），逐字门禁已知偏差为 0；Grep 与 Bash 是本地化组合，删改及与 ZCode 的剩余差异见 `DESIGN.md` §5.4。todo 提醒正文、compact 提示词、工具检索文本已按原文重建，deferred 声明段已删除（`DESIGN.md` §5.9）。工具检索在 ZCode 默认关闭，本项目按用户定案默认开启；与 ZCode 的剩余差异见 `DESIGN.md` §5.7。
 10. UI 视觉未被接受。
-11. cot-translation（DSH 官方实验行，非本项目组件）会把推理碎片显示到界面。
+11. cot-translation 与 Agent Team（DSH 官方实验包，非本项目组件）已按用户同意从桌面版 profile 的 bundle 列表移除（2026-10-28，备份 `package.json.bak-1793157445556`），重启后生效。
 12. 凭证加密密钥可由本机信息推导（`DESIGN.md` §4.1）。
 13. 修正前写入的用量流水，原生通道请求的输入 token 均为 0（解码器缺陷已修，`DESIGN.md` §4.6a）；面板按记录形态识别这类记录，不计入积分，只报条数（2026-10-28）。真实流水里目前没有这类记录。
 14. 2026-10-27 之前，`glm-prompt` 与 `toolsearch` 依赖桌面版运行时不存在的 `tools.executable()`，在桌面版上从未生效（L3 探针确认）。两者均已在 rc.3 接口上重写。桌面版重启后，GLM 会话将第一次真正看到 ZCode 方言与工具检索。
@@ -92,6 +92,7 @@ dist/          不入库：tsc 产物（profile 通过 pnpm link 使用）
 21. 权限预设 `workspace-write` 下，pwsh 经 Windows ACL 沙盒运行，`node --test` 派生测试子进程报 `spawn EPERM`，模型确认不了测试结果，会转而申请沙盒升级（`FACTS.md` §3）。用户桌面版的默认预设是 `danger-full-access`，目前不受影响；标定运行器按桌面版预设传 `DSH_PERMISSION_MODE`。
 22. 标定起步的两个任务对两档模型都没有区分度（基线 12/12 完成），只能比积分、耗时与返工；更难的任务随 M3、M7 扩充（`ORCHESTRATION.md` §10.5.2）。
 23. 派发可行性验证的发现，M7 实现时处理（`ORCHESTRATION.md` §2.1、§3.2）：子 agent 的会话头 `cwd` 是父 agent 的目录，guard 对子 agent 的包含根因而是父工作区，DSH 的文件沙盒根也是父工作区，独立工作树要建在父工作区之内；服务只按调用方传入的 `maxDepth` 限深，本包的派发工具要传；GLM 路由上 `structured_output`、`send_message`、`update_goal` 是延迟工具，要经 DeferredToolCall 调用；headless 运行器在第一次静止空闲时退出，不跑目标轮，用 goal 驱动的标定任务要另想办法撑住进程。
+24. 原生通道的提示词缓存：2026-10-28 修复主因（`DESIGN.md` §4.5b）。网关按 `x-session-id` 做缓存亲和，通道此前每请求随机生成；现在按 DSH 会话固定。GLM-5.3-Flash 在会话第二步仍常只命中共用前缀，原因未明。同批补上保留式思考（历史 reasoning 带签名回传，§4.5c，命中率不变、每步未命中输入变多）与四处 ZCode 请求细节。桌面版重启后生效。
 
 反向代理已从项目范围移除（`DESIGN.md` §1）；profile 中指向 8317 的 pi-ai `glm` 路由属于用户配置，本项目不改。
 

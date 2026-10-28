@@ -125,6 +125,9 @@ DSH 官方类型已作为 devDependency 安装（`@deepseek-ai/dsh-llm`、`@deep
 | 2026-10-28 | guard 对 `terminal_send` 读 `command` 参数，rc.3 的参数名是 `text`，终端里的 shell 写入从未被检查（桌面版 profile 装了终端包） | 读 rc.3 运行时包（M1.8） | M1.6 的接口对照只核了钩子、服务与载荷，没有逐个核对工具参数名；单测用的是同一个错误字段 | 改读 `text`，按 bash 与 pwsh 两种方言判；接口对照表加 shell 工具与文件工具的参数行（`DESIGN.md` §2.4a） |
 | 2026-10-28 | guard 违规记录的 `agentId` / `sessionId` 读自 `tools/pre-execute` 载荷上不存在的字段，永远为空；workflow 的派遣名单缺 base profile 的 `subagent_fork`，fork 派遣从未记录 | 读 rc.3 运行时包（M1.6 逐项对照） | 各行自带宿主结构类型，没有逐项对照 rc.3；探针没有覆盖审计流水 | 接口对照表（`DESIGN.md` §2.4a）；宿主类型收进薄适配层；探针加用量流水与派遣工具名检查 |
 | 2026-10-28 | guard 把工作区内的相对路径写入（`.llm/l4-dsh/calc.mjs`）判为工作区外并拒绝；同一判定对 `C:\ws\..\elsewhere` 这类写法放行 | L4 | 圈禁只做大小写与分隔符归一化，没有按文件工具的方式解析路径；单测与探针只用绝对路径 | 相对路径按会话工作目录解析，`path.resolve` 折叠 `..`（`ORCHESTRATION.md` §6.1）；L2 覆盖相对路径、`..`、同前缀兄弟目录、`cd` 后的工作目录；L3 探针加 GLM 相对写入放行与 `..` 越界拒绝 |
+| 2026-10-28 | 原生通道的提示词缓存常常没命中最新前缀：修复前的标定基线里 GLM-5.3-Flash 45 次后续请求有 16 次（4 次整段未命中），L4 桌面 GLM-5.3 会话 17 次有 5 次 | L4 与标定数据复查 | 从 zcode-api 移植到原生适配器时，按会话固定的 `x-session-id` 变成了每请求随机；「会话 id 是网关的缓存亲和键」没有记成接口事实；没有按步统计命中的检查 | 会话 id 按 DSH 会话固定（`DESIGN.md` §4.5b，实测表）；修复后 Flash 只剩会话第二步没命中，原因未明。另一次修复（标题请求另起会话 id）经完整标定证伪后撤回。修复前后的标定见 `ROADMAP.md` M1 |
+| 2026-10-28 | 原生通道丢弃历史中的 reasoning；BigModel 要求 Coding Plan 端点上把 reasoning 原样传回 | 查缓存时读 BigModel 文档与 ZCode | 编码器注释断言「本通道没有可回放的签名」，没有实测过流里有没有签名 | 实测签名形态；解码把签名存进 DSH 回放信封，编码按 ZCode 回放（`DESIGN.md` §4.5c） |
+| 2026-10-28 | 移植丢了 ZCode 请求的四处细节：`x-request-id`、`x-zcode-trace-id`、`metadata.user_id`、末条消息的缓存断点 | 同上 | 移植时没有对照 zcode-api 的请求体变换（`body-transformer.ts`）与追踪头逐项核对 | 补齐（`DESIGN.md` §4.5b）；与缓存命中无关，实测确认 |
 | 2026-10-28 | guard 拦下 DeepSeek 会话的写入（§6.2 定案只管 GLM，未实现） | L4 | 定案写进文档但标着「尚未实现」，没有挂进待办；拦截处没有路由信号 | 按会话请求头判路由，只拦 GLM 调用（`ORCHESTRATION.md` §6.2）；非 GLM 会话的行健康写明不介入；L3 探针加非 GLM 会话的相对写入与 shell 写入都放行、无违规记录 |
 
 ## 8. 变更检查清单
