@@ -24,7 +24,7 @@ const KNOWN_DEVIATIONS = new Set([])
  * between their interpolations. The scanner skips comments and does not
  * parse regex literals or division, which these files must not contain.
  */
-const MIRROR_FILES = ['src/toolsearch/zcode-text.ts', 'src/glm-prompt/zcode-tool-text.ts']
+const MIRROR_FILES = ['src/toolsearch/zcode-text.ts', 'src/glm-prompt/zcode-tool-text.ts', 'src/glm-llm/zcode-wire.ts']
 
 /** Minimum line length checked; shorter fragments are structural (headings, blank joints). */
 const MIN_LINE = 13

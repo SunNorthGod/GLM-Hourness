@@ -2,7 +2,6 @@
   "findings": [
     "exports src/glm-llm/anthropic.ts toTokenUsage",
     "exports src/glm-llm/headers.ts ANTHROPIC_VERSION",
-    "exports src/glm-llm/identity.ts normalizePrintableHeaderValue",
     "exports src/glm-llm/images.ts ZCODE_IMAGE_MAX_DIMENSION",
     "exports src/glm-prompt/persona.ts PERSONA_SECTION_NAME",
     "exports src/glm-prompt/todo-reminder.ts TODO_REMINDER_SOURCE",

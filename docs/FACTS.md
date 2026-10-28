@@ -23,6 +23,61 @@
 | 3.16.3 只对标记 `failOpenEligible` 的错误放行（握手的网络、超时、协议、服务端、业务错误）；凭证解析失败与请求缺 `X-Session-Id`（`invalid-config`）、PoW 或 Ed25519 签名失败（`cryptography`）、握手进行中 epoch 变化或签名器已 dispose（`disposed`）不放行，请求抛错 | 3.16.3 pristine 包 `getKeyOrSendUnsigned` @3827749、`ClientRequestSigningV4Error`〔实读 2026-10-28〕 |
 | 3.16.3 两次 VERIFY 拒绝后的旁路是签名器实例字段，只对当前签名器代有效；生产路径每次 `createFactory` 都换一个签名器，旁路因此只管一次请求 | 3.16.3 pristine 包 `bypassSigning` @3827229、`resolveSigner` @3825013〔实读 2026-10-28〕；`createFactory` 的调用频率按源码 `runner.ts` 251–285 行推断 |
 | 3.16.3 的 deviceMid：存在 `<base>/.zcode/v2/telemetry-state.json` 的 `deviceMid`，`<base>` 为去空白后非空的 `ZCODE_DATA_BASE_DIR`，否则为主目录（`~`、`~/` 展开，其余 `resolve`）。`metadata.user_id` 只对 anthropic 类 provider 生成，为 `JSON.stringify({device_id, account_uuid: "", session_id})`；deviceMid 缺失时生成 UUID，在 `telemetry-state.lock` 锁内重读后原子写回（临时文件加 `rename`，锁陈旧阈值 300 秒，重试 200 次、每次 10 毫秒），任何失败都用本进程生成的值；按状态文件路径缓存 promise。配置请求的 `X-Device-Mid` 另行只读：路径不展开 `~`，值去空白、须为可打印 ASCII，只缓存成功的读取 | 3.16.3 pristine 包 `ensureCliDeviceMid`（`Qro` @4062043）、`CWs` @4062252、`EWs` @4062442、`too` @4062778、`PWs` @4062889、`RWs` @4063231、`NWs` @4064238、常量 @4064600、`ZWs` @4073127、`Ydt` @4073238、`Juc` @14468783、`Kuc` @14468898〔实读 2026-10-28〕 |
+| 3.16.3 账号模式（`zhipu-account`）的模型请求凭证：每次尝试前向桌面壳取请求凭证；个人套餐为项目令牌（PAT）与其 `apiKeyId`。CLI 把它设为 provider 的 `apiKey`（AI SDK Anthropic provider 发 `x-api-key`），删掉配置头里的 `authorization`、`x-api-key`，再补 `Authorization: Bearer <PAT>`；签名器用同一个令牌 | 3.16.3 pristine 包 `refreshBeforeModelRequest` @14817299、`PQr` @3841940、`x5s` @3843063、`T5s` @3843231、AI SDK `getHeaders` @3570073、`protectTransport` @3833810；桌面 `app.asar` `out/host/index.js` `AccountProviderRequestAuthService.resolveCurrent`（+1200545）〔实读 2026-10-28〕 |
+| 3.16.3 账号模式拿不到请求凭证时请求失败，不退回别的凭证：CLI 抛 `ModelRequestAuthMissing`（`Account model request auth is unavailable: <provider>/<model>`），刷新失败包成不可重试的 `RuntimeHeadersRefreshError`；桌面壳的原因原文为 `Account request credential is unavailable: bigmodel`（无 OAuth 令牌）、`Account request credential is unavailable: <providerId>`（无账号身份）或 `project_token_*` 错误码；渲染层不翻译这些消息 | 3.16.3 pristine 包 @4193871 附近、`xpt` @4146619、`wie` @4147581；桌面 `out/host/index.js` +1200545、+441792、+443132、+510627；`IntlProvider-Bw7hoRlp.js`、`styles-CQuzX8si.js` 检索为 0〔实读 2026-10-28〕 |
+| 3.16.3 `ProjectAccessTokenClient`：OAuth 令牌原样调 `getCustomerInfo`；个人套餐滤掉 `projectType "2"` 的项目，取「默认机构」/「默认项目」否则第一个；按名 `zcode-api-key` 找 key，没有就 `POST {name, usageScene: 1}`；`POST …/access_tokens` 以 `Bearer <OAuth>` 铸造，体 `{clientType: "zcode", clientVersion}`；成功码 `200|0|"200"|"0"`；缺 `enable` 视为启用；有效期 `min(expiresAt·1000, 开始 + expiresIn·1000)`，到期前 120 秒减随机 0–60 秒刷新；暂态失败（429、5xx、网络、15 秒超时）且旧令牌未到期时继续用、5 秒后再试；被拒令牌的 SHA-256 等于缓存指纹时强制重铸；404 删定位；定位以 `project-key-location:v1:<编码的作用域>` 持久化；bigmodel 生产 origin 为 `https://bigmodel.cn`；桌面版个人套餐不传 `personalProjectSelection`，所以会过滤 `projectType "2"` | 3.16.3 pristine 包 `Urt` @1080367、`sge` @1083993；桌面 `out/host/chunk-5YNPFY3L.js` +849600–+856500（`wc`、`My`）、`K# 外部事实账
+
+版本：0.2（2026-10-27）
+状态：生效。取代外部事实账 v0.1（`.llm/docs/04-external-facts.md`，原文见 git 历史提交 `c518317`）。
+本文件只放结论与索引，细节查 `reference/` 下的原文。证据标注同 `DESIGN.md`。
+
+## 1. ZCode
+
+| 事实 | 来源 |
+| --- | --- |
+| 本机安装 ZCode 3.16.3 | 卸载注册表〔实读 2026-10-27〕 |
+| 方言基线为 3.16.3 协议采样；ZCode master 的演进只作机制参考 | 用户定案；`reference/zcode-verbatim.md` §4 |
+| 本机安装版 `C:\Program Files\ZCode\resources\glm\zcode.cjs`（MD5 `c7d641da7407083165533fb29fb29a9e`）被用户打过补丁，不得作为官方原文 | `reference/zcode-verbatim.md` 开头；用户确认 2026-10-27 |
+| ZCode 官方源码 `reference/ZCode`：`package.json` 版本 3.16.2，最近提交 2026-10-20「chore: sync ZCode source」；逐字文本以它为准 | 〔实读〕 |
+| 方言逐字文本复核：身份类与 context management 是原文；工具描述、deferred 声明段、ToolSearch 描述大部分不是原文；todo 提醒正文与 compact 提示词有小处偏差。后两者与工具检索文本已按原文重建，deferred 声明段已删除 | `DESIGN.md` §5.9 |
+| 3.16.3 的 `X-Title` 来源标题：agent 进程参数含 `app-server` / `agent-server` 时为 `electron`，否则为 `cli`；桌面版以 `app-server --stdio` 启动 agent 进程。端点路由配置请求的来源头另由桌面 agent 传 `sourceTitle: "electron"`，来源头构造的缺省值也是 `electron` | 3.16.3 pristine 包 `detectDefaultProviderSourceTitle`（`kuc` @14423244）、模型请求身份头 `Suc` @14422777、配置请求来源头 `Frn` @968479（缺省 `electron`）与 `_5e(...)` @15096557〔实读 2026-10-28〕 |
+| 3.16.3 的签名 `clientVersion` 与项目令牌 `clientVersion` 共用常量 `__ZCODE_VERSION__`（构建期注入，安装包文本中未替换）；`X-ZCode-App-Version` 取自环境变量 `ZCODE_APP_VERSION` | 安装包〔实读〕；实际取值未验证 |
+| 官方原文权威源：pristine 3.15.1 副本 `C:\Users\29596\Desktop\Project\Zcode\zcode-patch\pristine-3151\zcode.cjs`（MD5 `87225203a43f8009e403c57532922f4c`）；3.16.3 pristine 副本 `C:\Users\29596\Desktop\Project\Zcode\zcode-patch\pristine-3163\zcode.cjs.pristine`（15,242,397 字节，MD5 `51257C0D11DA7DC56C157D92E7048146`），与安装前备份 `C:\Program Files\ZCode\resources\glm\zcode.cjs.orig-3163.bak` 同 MD5；判断未经修改的依据只有文件名与这份备份，未与官方发布哈希比对。本表的「@数字」是这份 3.16.3 副本按 UTF-8 读入后的字符偏移，指向符号的声明处 | `zcode-patch` 目录〔实读 2026-10-28〕 |
+| 3.16.3 签名握手 URL 为 `new URL('/api/paas/c1f3a7e2/v2/client', <provider baseURL 的 origin>)`，baseURL 的路径丢弃；bigmodel coding-plan 为 `https://open.bigmodel.cn/api/paas/c1f3a7e2/v2/client`，z.ai 为 `https://api.z.ai/api/paas/c1f3a7e2/v2/client`（z.ai 的 baseURL 按源码路由表推断）。签名 fetch 包在端点路由 fetch 外面：签名器看到路由前的 URL，握手也经路由 fetch 发出 | 3.16.3 pristine 包 `resolveHandshakeUrl`（`ZUs` @3823123）、握手路径常量 `GUs` @3823630、`ClientRequestSigningV4Signer`（`Pgn` @3825391）、`protectTransport` @3833810、`createFactory` @3851919〔实读 2026-10-28〕；源码 `model-execution.ts` 283–301 行、`packages/desktop/wdio.conf.ts` 的握手夹具；`DESIGN.md` §4.3 |
+| `c1f3a7e2` 是字面常量：3.15.1、3.15.2、3.15.3、3.16.1、3.16.2、3.16.3 的 pristine 包里各出现一次，在签名模块常量区，没有拼接或哈希 | `zcode-patch/pristine-*/zcode.cjs.pristine`〔实读 2026-10-28〕 |
+| 3.16.3 握手：`Authorization` 是原样凭证（`{apiKeyId}.{secret}` 或 project_access JWT，都不加 `Bearer `），请求体 `{apiKey 或 accessToken, nonce, sig, ts}`，超时 10 秒；3.15.1 相同。业务拒绝（信封 `code` 不是 200）的 `msg` 只在匹配 `^HANDSHAKE_[A-Z_]+$` 时记为 reason；`handshake_failed` 观测只带 `errorKind`、`httpStatus`、`businessCode`、`reason`，不带错误消息 | 3.16.3 pristine 包 `performHandshake` @3829991、reason 过滤函数 `N1r` @1089432、`ensurePrivateKey` 的 `handshake_failed` 观测〔实读 2026-10-28〕；BigModel 握手端点接受原样 JWT 形式（HTTP 200，返回 `privateCipher`；`Bearer` 形式未试）〔实测 2026-10-28，沙盒真实网络运行 `net-1793188413414`，`DESIGN.md` §4.3〕 |
+| 3.16.3 不缓存握手失败：网络错误、超时、非 200、业务拒绝都放行为无签发送，不留负缓存、没有退避，下一个可签名请求立即再握手，只有并发请求共享进行中的握手。私钥按（apiKey, 握手 origin）进程级缓存，没有 TTL，401 VERIFY 拒绝才作废 | 3.16.3 pristine 包 `ensurePrivateKey` @3829024、`getKeyOrSendUnsigned` @3827749、`ClientRequestSigningV4KeyCache`（`Xut` @3824083）〔实读 2026-10-28〕 |
+| 3.16.3 只对标记 `failOpenEligible` 的错误放行（握手的网络、超时、协议、服务端、业务错误）；凭证解析失败与请求缺 `X-Session-Id`（`invalid-config`）、PoW 或 Ed25519 签名失败（`cryptography`）、握手进行中 epoch 变化或签名器已 dispose（`disposed`）不放行，请求抛错 | 3.16.3 pristine 包 `getKeyOrSendUnsigned` @3827749、`ClientRequestSigningV4Error`〔实读 2026-10-28〕 |
+| 3.16.3 两次 VERIFY 拒绝后的旁路是签名器实例字段，只对当前签名器代有效；生产路径每次 `createFactory` 都换一个签名器，旁路因此只管一次请求 | 3.16.3 pristine 包 `bypassSigning` @3827229、`resolveSigner` @3825013〔实读 2026-10-28〕；`createFactory` 的调用频率按源码 `runner.ts` 251–285 行推断 |
+| 3.16.3 的 deviceMid：存在 `<base>/.zcode/v2/telemetry-state.json` 的 `deviceMid`，`<base>` 为去空白后非空的 `ZCODE_DATA_BASE_DIR`，否则为主目录（`~`、`~/` 展开，其余 `resolve`）。`metadata.user_id` 只对 anthropic 类 provider 生成，为 `JSON.stringify({device_id, account_uuid: "", session_id})`；deviceMid 缺失时生成 UUID，在 `telemetry-state.lock` 锁内重读后原子写回（临时文件加 `rename`，锁陈旧阈值 300 秒，重试 200 次、每次 10 毫秒），任何失败都用本进程生成的值；按状态文件路径缓存 promise。配置请求的 `X-Device-Mid` 另行只读：路径不展开 `~`，值去空白、须为可打印 ASCII，只缓存成功的读取 | 3.16.3 pristine 包 `ensureCliDeviceMid`（`Qro` @4062043）、`CWs` @4062252、`EWs` @4062442、`too` @4062778、`PWs` @4062889、`RWs` @4063231、`NWs` @4064238、常量 @4064600、`ZWs` @4073127、`Ydt` @4073238、`Juc` @14468783、`Kuc` @14468898〔实读 2026-10-28〕 |
+ `resolveBigModelApiOrigin` 与 `D# 外部事实账
+
+版本：0.2（2026-10-27）
+状态：生效。取代外部事实账 v0.1（`.llm/docs/04-external-facts.md`，原文见 git 历史提交 `c518317`）。
+本文件只放结论与索引，细节查 `reference/` 下的原文。证据标注同 `DESIGN.md`。
+
+## 1. ZCode
+
+| 事实 | 来源 |
+| --- | --- |
+| 本机安装 ZCode 3.16.3 | 卸载注册表〔实读 2026-10-27〕 |
+| 方言基线为 3.16.3 协议采样；ZCode master 的演进只作机制参考 | 用户定案；`reference/zcode-verbatim.md` §4 |
+| 本机安装版 `C:\Program Files\ZCode\resources\glm\zcode.cjs`（MD5 `c7d641da7407083165533fb29fb29a9e`）被用户打过补丁，不得作为官方原文 | `reference/zcode-verbatim.md` 开头；用户确认 2026-10-27 |
+| ZCode 官方源码 `reference/ZCode`：`package.json` 版本 3.16.2，最近提交 2026-10-20「chore: sync ZCode source」；逐字文本以它为准 | 〔实读〕 |
+| 方言逐字文本复核：身份类与 context management 是原文；工具描述、deferred 声明段、ToolSearch 描述大部分不是原文；todo 提醒正文与 compact 提示词有小处偏差。后两者与工具检索文本已按原文重建，deferred 声明段已删除 | `DESIGN.md` §5.9 |
+| 3.16.3 的 `X-Title` 来源标题：agent 进程参数含 `app-server` / `agent-server` 时为 `electron`，否则为 `cli`；桌面版以 `app-server --stdio` 启动 agent 进程。端点路由配置请求的来源头另由桌面 agent 传 `sourceTitle: "electron"`，来源头构造的缺省值也是 `electron` | 3.16.3 pristine 包 `detectDefaultProviderSourceTitle`（`kuc` @14423244）、模型请求身份头 `Suc` @14422777、配置请求来源头 `Frn` @968479（缺省 `electron`）与 `_5e(...)` @15096557〔实读 2026-10-28〕 |
+| 3.16.3 的签名 `clientVersion` 与项目令牌 `clientVersion` 共用常量 `__ZCODE_VERSION__`（构建期注入，安装包文本中未替换）；`X-ZCode-App-Version` 取自环境变量 `ZCODE_APP_VERSION` | 安装包〔实读〕；实际取值未验证 |
+| 官方原文权威源：pristine 3.15.1 副本 `C:\Users\29596\Desktop\Project\Zcode\zcode-patch\pristine-3151\zcode.cjs`（MD5 `87225203a43f8009e403c57532922f4c`）；3.16.3 pristine 副本 `C:\Users\29596\Desktop\Project\Zcode\zcode-patch\pristine-3163\zcode.cjs.pristine`（15,242,397 字节，MD5 `51257C0D11DA7DC56C157D92E7048146`），与安装前备份 `C:\Program Files\ZCode\resources\glm\zcode.cjs.orig-3163.bak` 同 MD5；判断未经修改的依据只有文件名与这份备份，未与官方发布哈希比对。本表的「@数字」是这份 3.16.3 副本按 UTF-8 读入后的字符偏移，指向符号的声明处 | `zcode-patch` 目录〔实读 2026-10-28〕 |
+| 3.16.3 签名握手 URL 为 `new URL('/api/paas/c1f3a7e2/v2/client', <provider baseURL 的 origin>)`，baseURL 的路径丢弃；bigmodel coding-plan 为 `https://open.bigmodel.cn/api/paas/c1f3a7e2/v2/client`，z.ai 为 `https://api.z.ai/api/paas/c1f3a7e2/v2/client`（z.ai 的 baseURL 按源码路由表推断）。签名 fetch 包在端点路由 fetch 外面：签名器看到路由前的 URL，握手也经路由 fetch 发出 | 3.16.3 pristine 包 `resolveHandshakeUrl`（`ZUs` @3823123）、握手路径常量 `GUs` @3823630、`ClientRequestSigningV4Signer`（`Pgn` @3825391）、`protectTransport` @3833810、`createFactory` @3851919〔实读 2026-10-28〕；源码 `model-execution.ts` 283–301 行、`packages/desktop/wdio.conf.ts` 的握手夹具；`DESIGN.md` §4.3 |
+| `c1f3a7e2` 是字面常量：3.15.1、3.15.2、3.15.3、3.16.1、3.16.2、3.16.3 的 pristine 包里各出现一次，在签名模块常量区，没有拼接或哈希 | `zcode-patch/pristine-*/zcode.cjs.pristine`〔实读 2026-10-28〕 |
+| 3.16.3 握手：`Authorization` 是原样凭证（`{apiKeyId}.{secret}` 或 project_access JWT，都不加 `Bearer `），请求体 `{apiKey 或 accessToken, nonce, sig, ts}`，超时 10 秒；3.15.1 相同。业务拒绝（信封 `code` 不是 200）的 `msg` 只在匹配 `^HANDSHAKE_[A-Z_]+$` 时记为 reason；`handshake_failed` 观测只带 `errorKind`、`httpStatus`、`businessCode`、`reason`，不带错误消息 | 3.16.3 pristine 包 `performHandshake` @3829991、reason 过滤函数 `N1r` @1089432、`ensurePrivateKey` 的 `handshake_failed` 观测〔实读 2026-10-28〕；BigModel 握手端点接受原样 JWT 形式（HTTP 200，返回 `privateCipher`；`Bearer` 形式未试）〔实测 2026-10-28，沙盒真实网络运行 `net-1793188413414`，`DESIGN.md` §4.3〕 |
+| 3.16.3 不缓存握手失败：网络错误、超时、非 200、业务拒绝都放行为无签发送，不留负缓存、没有退避，下一个可签名请求立即再握手，只有并发请求共享进行中的握手。私钥按（apiKey, 握手 origin）进程级缓存，没有 TTL，401 VERIFY 拒绝才作废 | 3.16.3 pristine 包 `ensurePrivateKey` @3829024、`getKeyOrSendUnsigned` @3827749、`ClientRequestSigningV4KeyCache`（`Xut` @3824083）〔实读 2026-10-28〕 |
+| 3.16.3 只对标记 `failOpenEligible` 的错误放行（握手的网络、超时、协议、服务端、业务错误）；凭证解析失败与请求缺 `X-Session-Id`（`invalid-config`）、PoW 或 Ed25519 签名失败（`cryptography`）、握手进行中 epoch 变化或签名器已 dispose（`disposed`）不放行，请求抛错 | 3.16.3 pristine 包 `getKeyOrSendUnsigned` @3827749、`ClientRequestSigningV4Error`〔实读 2026-10-28〕 |
+| 3.16.3 两次 VERIFY 拒绝后的旁路是签名器实例字段，只对当前签名器代有效；生产路径每次 `createFactory` 都换一个签名器，旁路因此只管一次请求 | 3.16.3 pristine 包 `bypassSigning` @3827229、`resolveSigner` @3825013〔实读 2026-10-28〕；`createFactory` 的调用频率按源码 `runner.ts` 251–285 行推断 |
+| 3.16.3 的 deviceMid：存在 `<base>/.zcode/v2/telemetry-state.json` 的 `deviceMid`，`<base>` 为去空白后非空的 `ZCODE_DATA_BASE_DIR`，否则为主目录（`~`、`~/` 展开，其余 `resolve`）。`metadata.user_id` 只对 anthropic 类 provider 生成，为 `JSON.stringify({device_id, account_uuid: "", session_id})`；deviceMid 缺失时生成 UUID，在 `telemetry-state.lock` 锁内重读后原子写回（临时文件加 `rename`，锁陈旧阈值 300 秒，重试 200 次、每次 10 毫秒），任何失败都用本进程生成的值；按状态文件路径缓存 promise。配置请求的 `X-Device-Mid` 另行只读：路径不展开 `~`，值去空白、须为可打印 ASCII，只缓存成功的读取 | 3.16.3 pristine 包 `ensureCliDeviceMid`（`Qro` @4062043）、`CWs` @4062252、`EWs` @4062442、`too` @4062778、`PWs` @4062889、`RWs` @4063231、`NWs` @4064238、常量 @4064600、`ZWs` @4073127、`Ydt` @4073238、`Juc` @14468783、`Kuc` @14468898〔实读 2026-10-28〕 |
+ +582546；`out/host/index.js` `RM` +1203000、`_M` +1204641、`resolveProviderMaterial` +1729500〔实读 2026-10-28〕 |
+| 3.16.3 PAT 被拒刷新一次：最终响应 401 且不是请求安全类失败（`VERIFY_APIKEY_EXPIRED`、`VERIFY_SIGNATURE_INVALID`、`3007`）时，以被拒令牌的指纹重取一次 PAT，作为新尝试重发，只重试一次 | 3.16.3 pristine 包 `AccountRequestRetry`（`$ye` @4144946）、`$Hs` @4144643、`Vrt` @1090655、`$rt` @1089606〔实读 2026-10-28〕 |
+| 3.16.3 端点路由配置请求的头：`User-Agent`、`X-ZCode-App-Version`、按白名单规范名的来源头（`HTTP-Referer`、`X-Title`、`X-Platform`、`X-Release-Channel`、`X-Client-Language`、`X-Client-Timezone`、`X-Os-Category`、`X-Os-Version`、`X-Device-Mid`）、`x-api-key-id`（请求凭证的 `apiKeyId`）、`Accept`；不带任何 API Key。CLI 包与桌面 `index.js`、`chunk-5YNPFY3L.js` 里没有 `api_keys/copy` 与 `secretKey`：账号模式不取 API Key 的 secret | 3.16.3 pristine 包 `FGs` @4196232、`jGs` @4196407、`NGs` @4199110、`Frn` @968479、`Ngn` @3839971、`P5r` @2827718；检索〔实读 2026-10-28〕 |
 | 3.16.3 对 `zhipu-account` 的 start-plan、off-peak、highspeed 三种 mode 不签名 | 3.16.3 pristine 包 `requiresClientRequestSigning`（`QUs` @3832832）〔实读 2026-10-28〕 |
 | 官方开源仓库 zai-org/ZCode，Apache-2.0 | `README.md` |
 | 身份节组装、安全声明官方原文、Harness 节 | `reference/zcode-verbatim.md` |
@@ -46,6 +101,7 @@
 - 端点：按量 `/api/paas/v4`；套餐 `/api/coding/paas/v4`；Anthropic 兼容 `/api/anthropic`（`x-api-key`）；Responses `/api/v1`。
 - 2026-10-16 起新 Key 分三类，互不通用；历史兼容 Key 的额度由调用端点决定。
 - 模型 API 认证只有 Bearer API Key 与可选 JWT；ZCode 的「OAuth」是账号登录体系，不是模型 API 的标准 OAuth。
+- ZCode 账号模式的个人套餐模型请求以项目令牌（project_access JWT，由 OAuth 登录铸造）同时填 `Authorization: Bearer` 与 `x-api-key`（§1）。
 - 文档称曾订阅 Coding Plan 的账号暂只能用 Chat Completion 协议；本账号走 Anthropic 通道端到端成功〔实测 2026-10-27〕。
 
 ### 2.2 模型参数

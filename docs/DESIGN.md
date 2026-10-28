@@ -203,7 +203,7 @@ GLM-Hourness
 
 | 行 | 何时上报 | 生效 | 部分生效或未生效的原因 |
 | --- | --- | --- | --- |
-| glm-llm | 激活；每次请求 | 已注册路由，写明套餐与凭证目录；上游已应答（ZCode 状态文件没有 deviceMid 时注明设备 ID 用本包自己的，状态不降级） | 未登录（凭证为空）；凭证不可读；上游返回非 2xx 状态码 |
+| glm-llm | 激活；每次请求 | 已注册路由，写明套餐与凭证目录；上游已应答（ZCode 状态文件没有 deviceMid 时注明设备 ID 用本包自己的，状态不降级） | 未登录（凭证为空）；凭证不可读；未拿到项目令牌（写明 3.16.3 的原因，§4.1）；上游返回非 2xx 状态码 |
 | glm-login | 激活 | 三个命令已注册 | 无（凭证目录总能解析，§2.4） |
 | glm-prompt | 激活；每步组装 | GLM 路由，ZCode 提示词与工具面，工具检索 local 或关闭 | 非 GLM 路由；工具检索未安装（会话历史不可读，部分生效）；方言安装失败 |
 | glm-compact | 激活；每次压缩请求 | GLM 压缩请求改用 ZCode 指令与摘要格式 | 非 GLM 路由；未识别 compaction-basic 的指令（原样放行） |
@@ -237,11 +237,15 @@ UI 包的行运行在客户端，不在表内。
 
 ## 4. 通道
 
-请求流程（`ZcodeAdapter.stream`）〔实读〕：加载凭证 → deviceMid → 端点路由 → 组装身份头与鉴权头 → 签名 V4（失败放行）→ Anthropic Messages 传输。
+请求流程（`ZcodeAdapter.stream`）〔实读〕：加载凭证 → 项目令牌（coding-plan，拿不到即失败，§4.1）→ deviceMid → 端点路由 → 组装身份头与鉴权头 → 签名 V4（失败放行）→ Anthropic Messages 传输。
 
 ### 4.1 凭证与登录
 
-- 登录：ZCode 账号体系的 bigmodel 轮询登录（`/glm-login` 打开浏览器授权，5 分钟超时），解析出套餐 API Key，名称与 ZCode 客户端一致（`zcode-api-key`），两者共用同一把 Key〔实读〕。
+- 登录：ZCode 账号体系的 bigmodel 轮询登录（`/glm-login` 打开浏览器授权，5 分钟超时）〔实读〕。
+- 模型请求的凭证〔已实现 2026-10-28，m1-parity 第 1、2 项，`src/glm-llm/auth/project-token.ts`〕：coding-plan 的每个模型请求用项目令牌（PAT）同时填 `Authorization: Bearer <PAT>` 与 `x-api-key: <PAT>`，签名也用它，与 3.16.3 账号模式相同（CLI `x5s` @3843063 把请求凭证设为 provider 的 `apiKey`、删掉配置里的 `authorization`/`x-api-key`，`T5s` @3843231 补 `Authorization: Bearer`；桌面 `AccountProviderRequestAuthService.resolveCurrent` 对个人套餐返回 PAT 与它的 `apiKeyId`）。此前两个头放的是 `{apiKeyId}.{secret}`，PAT 只喂签名。
+- 项目令牌按 3.16.3 `ProjectAccessTokenClient`（CLI `sge` @1083993，缓存 `Urt` @1080367；桌面 `out/host/chunk-5YNPFY3L.js` 同一份代码）移植：用 OAuth 访问令牌原样调 `getCustomerInfo`，滤掉 `projectType` 为 `"2"` 的项目与因此没有项目的机构，取名含「默认机构」/「默认项目」者，否则取第一个；列出该项目的 API Key，取名为 `zcode-api-key` 的，没有就以 `usageScene: 1` 新建；`POST …/api_keys/{apiKeyId}/access_tokens`（`Authorization: Bearer <OAuth>`，体 `{clientType: "zcode", clientVersion}`）铸造。响应码 `200`、`0`、`"200"`、`"0"` 视为成功；缺 `enable` 视为启用，`enable: false` 报 `project_token_disabled`；有效期取 `min(expiresAt, 开始时间 + expiresIn)`，到期前 120 秒再减随机 0–60 秒刷新；429、5xx、网络错误、15 秒超时是暂态失败，旧令牌未到期时继续用并 5 秒后再试；铸造回 404 时删掉定位，下次重新定位；同一登录、同一账号的并发获取共用一次；铸造期间登录变了报 `project_token_scope_invalidated`。错误一律归为 3.16.3 的错误码（`project_token_login_required`、`project_token_disabled`、`project_token_project_unavailable`、`project_token_invalid_response`、`project_token_scope_invalidated`，其余 `project_token_request_failed`），不带服务端文本与令牌。
+- 令牌被拒：最终响应是 401 且不是请求安全类失败（信封里的消息、原因或错误码为 `VERIFY_APIKEY_EXPIRED`、`VERIFY_SIGNATURE_INVALID`、`3007`）时，以被拒令牌的 SHA-256 强制重铸一次，作为新的尝试重发一次（新 `x-request-id`），只重试一次（3.16.3 `AccountRequestRetry` `$ye` @4144946、`isProjectTokenRejection` `$Hs` @4144643、`isRequestSecurityFailure` `Vrt` @1090655）。`Vrt` 读的「provider 错误码」由 3.16.3 的错误解析器给出，本包按信封的 `code`、`error.code`、`error.message` 近似。
+- 拿不到 PAT〔定案 2026-10-28，用户选 B，项目图 `question-6`〕：按 3.16.3 账号模式失败即停（`ModelRequestAuthMissing`），不退回 API Key：模型请求、端点路由配置请求与签名握手一个都不发，流以 `glm-zcode: project access token unavailable (<原因>) — run /glm-login to sign in again` 失败，行健康为未生效「未拿到项目令牌（<原因>），按 3.16.3 不发送；运行 /glm-login」。原因是 3.16.3 的原文：凭证没有 OAuth 令牌时为 `Account request credential is unavailable: bigmodel`，没有账号 id 时为 `Account request credential is unavailable: account:bigmodel-individual-coding-plan`（桌面 `AccountRequestCredentialUnavailableError`，`out/host/index.js` +1200545），其余为上面的错误码。3.16.3 渲染层不翻译这些消息，原文直出。
 - 存储：`<home>/credentials.json`，AES-256-GCM，原子写入〔实读〕。`home` 默认是用户级目录 `$DSH_HOME/glm-hourness/`（§2.4）。
 - 风险：加密密钥由 `HOME`/`USERPROFILE`、平台与架构推导，看过源码即可算出；`GLM_HOURNESS_CREDENTIAL_SECRET` 可覆盖。凭证文件不入库，当前可接受。后续迁到系统钥匙串或 DSH 凭证服务〔规划〕。
 
@@ -261,20 +265,20 @@ LLM 平面（bundle `g6n` 形态）：`HTTP-Referer`、`User-Agent: ZCode/<ver>`
 
 移植自 zcode-api 的 `client-signing`，按 ZCode 3.16.3 安装包的 `ClientRequestSigningV4Signer` 核对（2026-10-28，符号与安装包偏移见 `FACTS.md`）〔实读〕：
 
-- 握手：`POST new URL('/api/paas/c1f3a7e2/v2/client', <provider baseURL 的 origin>)`，baseURL 的路径部分丢弃。coding-plan 的 baseURL 是 `https://open.bigmodel.cn/api/anthropic`，握手发往 `https://open.bigmodel.cn/api/paas/c1f3a7e2/v2/client`。`c1f3a7e2` 是字面常量，3.15.1 到 3.16.3 的六个包相同。请求头 `Authorization` 是原样凭证（`{apiKeyId}.{secret}` 或 project_access JWT，都不加 `Bearer `），请求体 `{apiKey 或 accessToken, nonce, sig, ts}`，超时 10 秒。响应里的 `privateCipher` 用 HKDF 派生的 AES-GCM 密钥解出 Ed25519 私钥；此后每个请求带 Ed25519 业务签名与 PoW，共七个签名头。
+- 握手：`POST new URL('/api/paas/c1f3a7e2/v2/client', <provider baseURL 的 origin>)`，baseURL 的路径部分丢弃。coding-plan 的 baseURL 是 `https://open.bigmodel.cn/api/anthropic`，握手发往 `https://open.bigmodel.cn/api/paas/c1f3a7e2/v2/client`。`c1f3a7e2` 是字面常量，3.15.1 到 3.16.3 的六个包相同。凭证是请求的项目令牌（§4.1；3.16.3 `protectTransport` @3833810 用请求凭证建签名 fetch），按 `parseSigningCredential`（`D1r` @1087575）的 JWT 形式解析：头 `{alg: HS256, typ: JWT, sign_type: SIGN}`，载荷 `token_use: project_access` 且 `api_key` 非空，整段令牌是 HKDF 的 secret。`D1r` 的 `{apiKeyId}.{secret}` 分支本包不再移植：本通道不再持有这种凭证。请求头 `Authorization` 是原样令牌（不加 `Bearer `），请求体 `{accessToken, nonce, sig, ts}`，超时 10 秒。响应里的 `privateCipher` 用 HKDF 派生的 AES-GCM 密钥解出 Ed25519 私钥；此后每个请求带 Ed25519 业务签名与 PoW，共七个签名头。
 - 组装：签名 fetch 包在端点路由 fetch 外面。签名器看到路由前的 provider URL，握手 origin 由它决定；签好的请求交给路由改写到 `zcode.z.ai/api/v1/ultra/...`，`X-ZCode-Authorization` 排在签名头之后。握手本身也经同一个路由 fetch；路由表按完整 URL 匹配，没有握手 URL 的映射时原样发出（§4.4）。
 - 档位门：start-plan 不挂签名器（3.16.3 `requiresClientRequestSigning` 对 start-plan、off-peak、highspeed 返回 false）。签名器只按这一档位门判断，不按请求路径豁免：它收到的 URL 总是 provider URL。
-- 失败梯：握手的网络错误、超时、非 200、业务拒绝、缺 `privateCipher` 都放行，本次无签发送。3.16.3 在四种情况下抛错、请求失败，本包四种都放行：凭证无法解析与请求缺 `x-session-id` 时跳过签名（沿用 zcode-api）；PoW 或 Ed25519 签名失败、握手进行中签名状态被作废（VERIFY 拒绝或新项目令牌）时本次无签发送。401 VERIFY 拒绝后作废私钥、立即重新握手再签一次；第二次仍被拒就进入旁路，无签重发。
+- 失败梯：握手的网络错误、超时、非 200、业务拒绝、缺 `privateCipher` 都放行，本次无签发送。3.16.3 在四种情况下抛错、请求失败，本包四种都放行：凭证无法解析与请求缺 `x-session-id` 时跳过签名（沿用 zcode-api）；PoW 或 Ed25519 签名失败、握手进行中签名状态被作废（VERIFY 拒绝）时本次无签发送。401 VERIFY 拒绝后作废私钥、立即重新握手再签一次；第二次仍被拒就进入旁路，无签重发。
 - 通知：经 `onEvent` 发出，每个（origin, 凭证）每种原因一条。通知只写本包自定的失败类别（如 `handshake_http_404`）与错误名（如 `TypeError`），不写错误消息：fetch 校验请求头时的错误消息会引用头的值，握手请求头的值就是凭证。业务拒绝的 `msg` 只在匹配 `^HANDSHAKE_[A-Z_]+$` 时作为原因保留，与 3.16.3 的日志规则相同。生产构造目前没有接 `onEvent`。
 
 缓存〔实读〕：3.16.3 按（apiKey, 握手 origin）在进程内缓存私钥，没有 TTL，只有 VERIFY 拒绝才作废；并发请求共享进行中的握手；握手失败什么都不缓存，下一个可签名请求立即再握手。本包同样按（origin, 凭证）缓存私钥并合并并发握手，另有两处偏离〔定案 2026-10-28〕：
 
-1. 握手失败后，该（origin, 凭证）60 秒内不再握手，期间的请求直接无签发送（`HANDSHAKE_FAILURE_COOLDOWN_MS`，与项目令牌铸造失败的冷却同值）。按 3.16.3 原样，持续失败时每个请求前都要握手一次；404 这类确定性失败重试没有意义，每次约 90 毫秒，串行排在模型请求之前。VERIFY 作废与新项目令牌铸造成功都结束冷却，立即重新握手。冷却只挡握手：凭证带 OAuth 令牌而项目令牌没有缓存时，铸造请求只受它自己的 60 秒失败冷却（`MINT_FAILURE_COOLDOWN_MS`）约束，握手冷却期内照常发出，铸造成功即结束握手冷却。
+1. 握手失败后，该（origin, 凭证）60 秒内不再握手，期间的请求直接无签发送（`HANDSHAKE_FAILURE_COOLDOWN_MS`）。按 3.16.3 原样，持续失败时每个请求前都要握手一次；404 这类确定性失败重试没有意义，每次约 90 毫秒，串行排在模型请求之前。VERIFY 作废结束冷却，立即重新握手；凭证是项目令牌，令牌刷新后是新的（origin, 凭证），也立即握手。项目令牌的获取与刷新不再由签名层负责，此前签名层里的铸造与它的 60 秒失败冷却已删除（§4.1）。
 2. 两次 VERIFY 拒绝后，该（origin, 凭证）永久旁路，直到进程重启。3.16.3 的旁路只对当前签名器代有效，它的运行时每个请求重建签名器，按源码推断只管一次请求。永久旁路避免每个请求都走三次发送的梯子。
 
 曾有缺陷（2026-10-28 修复，`b6367d3`）：适配器把路由改写后的 URL（`zcode.z.ai/api/v1/ultra/...`）交给签名层，握手 origin 成了 `zcode.z.ai`，每次 404；失败又不留状态，每个请求前都重试一次（§4.5b 截包）。这个错误从基线导入（`9266fb6`）起就在，原先「握手对当前凭证失败」的归因不成立。同批改动：start-plan 不再签名；JWT 形式握手的 `Authorization` 由 zcode-api 的 `Bearer <jwt>` 改为原样 JWT，按 3.16.3 逐字。
 
-实测〔2026-10-28，headless 沙盒真实网络运行 `net-1793188413414`，代码 `6af6c51`，coding-plan，`glm-5.3-flash`；记录在不入库的 `.agents/tasks/m1-signing/network-verify.md`〕：
+实测〔2026-10-28，headless 沙盒真实网络运行 `net-1793188413414`，代码 `6af6c51`，coding-plan，`glm-5.3-flash`；记录在不入库的 `.agents/tasks/m1-signing/network-verify.md`。这次运行在 m1-parity 之前，模型请求的两个鉴权头还是 API Key〕：
 
 - 握手 1 次：`POST open.bigmodel.cn/api/paas/c1f3a7e2/v2/client`，HTTP 200，信封 `code` 200，带 `privateCipher`。握手请求只有 `authorization`、`content-type` 两个头，没有路由头，即服务端映射表没有改写握手 URL。`Authorization` 是原样 JWT（项目令牌，不加 `Bearer `），被接受；`Bearer` 形式没有试，代码不改。
 - 项目令牌铸造的两步 `getCustomerInfo`、`access_tokens` 都是 200。
@@ -292,6 +296,8 @@ start-plan 只做了离线验证：3.16.3 对 start-plan 不签名（`FACTS.md`�
 ### 4.4 端点路由
 
 `GET https://zcode.z.ai/api/v1/agent/configs`，按 `data.proxyEndpoint.mapping` 改写请求 URL；成功缓存 300 秒，失败冷却 30 秒，超时 3 秒；任何失败保持原 URL。同一快照携带 3.16.3 的请求验证（captcha）开关〔实读〕。
+
+配置请求的头〔已实现 2026-10-28，m1-parity 第 3 项〕：按 3.16.3 `buildProviderEndpointRoutingHeaders`（`FGs` @4196232）依次是 `User-Agent`、`X-ZCode-App-Version`、来源头（`Frn` @968479，经 `NGs` @4199110 规范名：`HTTP-Referer`、`X-Title`、`X-Platform`、`X-Release-Channel`、`X-Client-Language`、`X-Client-Timezone`、`X-Os-Category`、`X-Os-Version`、`X-Device-Mid`）、`x-api-key-id`（请求项目令牌的 `apiKeyId`，3.16.3 路由端口从请求凭证取，`Ngn` @3839971）、`Accept`。不再发 `x-api-key`：此前这里发的是完整的 `{apiKeyId}.{secret}`。start-plan 的请求凭证没有 `apiKeyId`，配置请求不带 key 头。签名握手经同一个路由 fetch，带同一个 `apiKeyId`。
 
 ### 4.5 传输与档位
 
@@ -616,7 +622,7 @@ L3 探针：沙盒里把压缩阈值调低，摘要请求末条是 ZCode 提示�
 
 | 行 | 故障或禁用时 | 上报位置 |
 | --- | --- | --- |
-| glm-llm | GLM 通道不可用，其他 provider 不受影响 | 行健康（`/glm-status`） |
+| glm-llm | GLM 通道不可用，其他 provider 不受影响；coding-plan 拿不到项目令牌时同样不可用，不退回 API Key（§4.1） | 行健康（`/glm-status`） |
 | glm-llm 签名 | 无签发送 | 状态、用量记录的签名标注〔规划〕 |
 | glm-llm 路由 | 保持原 URL | 状态〔规划〕 |
 | glm-prompt | 退回 DSH 原生工具面与文案 | 行健康 |

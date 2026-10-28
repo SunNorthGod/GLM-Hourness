@@ -6,7 +6,8 @@
  * transport in the signing transport), so the handshake goes to
  * HANDSHAKE_PATH on the provider origin, e.g.
  * https://open.bigmodel.cn/api/paas/c1f3a7e2/v2/client. The adapter attaches
- * no signer for start-plan (3.16.3 `requiresClientRequestSigning`).
+ * no signer for start-plan (3.16.3 `requiresClientRequestSigning`). The
+ * signing credential is the request's project access token (account mode).
  * Notices name failures by code-owned kinds and error names only, never by
  * error messages: a fetch header-validation message quotes the header value,
  * which for the handshake is the credential. Everything fails open:
@@ -36,20 +37,17 @@ const HANDSHAKE_METHOD = 'get_sign_key'
 const HANDSHAKE_TIMEOUT_MS = 10_000
 /** No new handshake for a failed (origin, credential) pair within this window (deviation from 3.16.3, see the header). */
 const HANDSHAKE_FAILURE_COOLDOWN_MS = 60_000
-const MINT_FAILURE_COOLDOWN_MS = 60_000
 const VERIFY_SIGNATURE_INVALID = 'VERIFY_SIGNATURE_INVALID'
 const VERIFY_APIKEY_EXPIRED = 'VERIFY_APIKEY_EXPIRED'
-const BIGMODEL_HOST = 'https://bigmodel.cn'
 /** A business rejection's `msg` is kept as its reason only when it matches (3.16.3 `performHandshake`). */
 const HANDSHAKE_REJECTION_REASON = /^HANDSHAKE_[A-Z_]+$/u
 
 const SIGNING_HEADER_NAMES = new Set(['x-client-ts', 'x-client-version', 'x-client-sig', 'x-client-nonce', 'x-app-id', 'x-client-pow', 'x-client-sign-verified'])
 
 export interface SigningCredential {
+  /** The project access token the model request carries (3.16.3 `protectTransport` signs with the request credential). */
   readonly credential: string
   readonly appVersion: string
-  /** Raw provider OAuth access token (bigmodel OAuth logins) enabling the project-access JWT signing form. */
-  readonly oauthAccessToken?: string
 }
 
 export interface SignOutcome {
@@ -57,11 +55,10 @@ export interface SignOutcome {
   readonly signed: boolean
 }
 
-/** Dual-form signing credential (3.15.1 `FSr`): JWT or `{apiKeyId}.{secret}`. */
-export interface ParsedSigningCredential {
+/** A parsed project access token: its `api_key` claim and the token as the HKDF secret. */
+interface ParsedSigningCredential {
   readonly apiKeyId: string
   readonly secret: string
-  readonly handshakeField: 'apiKey' | 'accessToken'
 }
 
 /** A signer-raised failure whose message is a fixed, code-owned kind (no credential, no server text). */
@@ -153,28 +150,27 @@ export async function createProofOfWork(apiKeyId: string, sessionId: string, ts:
   throw new SigningFailure('Unable to solve client request proof of work')
 }
 
-/** Dual-form credential parse: project_access JWT (HS256+SIGN, api_key claim) or `{apiKeyId}.{secret}`. */
+/**
+ * The project-access-token form of 3.16.3 `parseSigningCredential` (`D1r`
+ * @1087575): header `{alg: HS256, typ: JWT, sign_type: SIGN}`, payload
+ * `token_use: project_access` with a non-empty `api_key`; the whole token is
+ * the HKDF secret. The `{apiKeyId}.{secret}` branch of `D1r` is not ported:
+ * the channel signs with the PAT only (account mode, docs/DESIGN.md §4.3).
+ */
 export function parseSigningCredentialForm(credential: string): ParsedSigningCredential | undefined {
   const segments = credential.split('.')
-  if (segments.length === 3 && segments[2] !== undefined && segments[2].length > 0) {
-    try {
-      const decode = (segment: string) => JSON.parse(Buffer.from(segment.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8')) as Record<string, unknown>
-      const header = decode(segments[0]!) as { alg?: string, sign_type?: string }
-      if (header.alg !== 'HS256' || header.sign_type !== 'SIGN') return undefined
-      const payload = decode(segments[1]!) as { token_use?: string, api_key?: string }
-      if (payload.token_use !== 'project_access' || typeof payload.api_key !== 'string' || payload.api_key.trim().length === 0) return undefined
-      return { apiKeyId: payload.api_key, secret: credential, handshakeField: 'accessToken' }
-    }
-    catch {
-      return undefined
-    }
+  if (segments.length !== 3 || segments[2] === undefined || segments[2].length === 0) return undefined
+  try {
+    const decode = (segment: string) => JSON.parse(Buffer.from(segment.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8')) as Record<string, unknown>
+    const header = decode(segments[0]!) as { alg?: string, typ?: string, sign_type?: string }
+    if (header.alg !== 'HS256' || header.typ !== 'JWT' || header.sign_type !== 'SIGN') return undefined
+    const payload = decode(segments[1]!) as { token_use?: string, api_key?: string }
+    if (payload.token_use !== 'project_access' || typeof payload.api_key !== 'string' || payload.api_key.trim().length === 0) return undefined
+    return { apiKeyId: payload.api_key, secret: credential }
   }
-  const dot = credential.indexOf('.')
-  if (dot <= 0 || dot !== credential.lastIndexOf('.')) return undefined
-  const apiKeyId = credential.slice(0, dot)
-  const secret = credential.slice(dot + 1)
-  if (apiKeyId.trim().length === 0 || secret.trim().length === 0) return undefined
-  return { apiKeyId, secret, handshakeField: 'apiKey' }
+  catch {
+    return undefined
+  }
 }
 
 function findHeader(pairs: ReadonlyArray<readonly [string, string]>, name: string): string | undefined {
@@ -196,25 +192,20 @@ interface SignerState {
 
 /**
  * Per-process signing manager: caches handshake keys and handshake failures
- * per (origin, credential), mints project-access JWTs for bigmodel OAuth
- * credentials, and never throws.
+ * per (origin, credential), and never throws. The credential is the project
+ * access token the adapter resolved for the request.
  */
 export class ClientSigningManager {
-  private readonly fetchImpl: typeof fetch
-  /** Transport for the handshake only (the adapter routes it like the model request); defaults to fetchImpl. */
+  /** Transport for the handshake (the adapter routes it like the model request). */
   private readonly handshakeFetch: typeof fetch
   private readonly now: () => number
   private readonly states = new Map<string, SignerState>()
   private readonly notedKeys = new Set<string>()
-  private projectJwt: { credentialKey: string, jwt: string, expMs: number } | null = null
-  private mintNegUntil = 0
-  private mintInFlight: Promise<ParsedSigningCredential | undefined> | null = null
   /** Optional sink for fail-open notices (each surfaced once per cause). */
   onEvent: ((message: string) => void) | undefined
 
-  constructor(opts: { fetchImpl?: typeof fetch, handshakeFetch?: typeof fetch, now?: () => number, onEvent?: (message: string) => void } = {}) {
-    this.fetchImpl = opts.fetchImpl ?? fetch
-    this.handshakeFetch = opts.handshakeFetch ?? this.fetchImpl
+  constructor(opts: { handshakeFetch?: typeof fetch, now?: () => number, onEvent?: (message: string) => void } = {}) {
+    this.handshakeFetch = opts.handshakeFetch ?? fetch
     this.now = opts.now ?? Date.now
     this.onEvent = opts.onEvent
   }
@@ -228,9 +219,9 @@ export class ClientSigningManager {
     const stateKey = `${parsed.origin}\n${cred.credential}`
     const state = this.stateFor(stateKey)
     if (state.bypass) return { pairs, signed: false }
-    const parsedCred = await this.resolveParsedCredential(cred, stateKey)
+    const parsedCred = parseSigningCredentialForm(cred.credential)
     if (parsedCred === undefined) {
-      this.noteOnce(`${stateKey}\ncredential`, 'credential has no {apiKeyId}.{apiKeySecret} separator — signing skipped')
+      this.noteOnce(`${stateKey}\ncredential`, 'credential is not a project access token — signing skipped')
       return { pairs, signed: false }
     }
     const sessionId = findHeader(pairs, 'x-session-id')?.trim()
@@ -238,10 +229,6 @@ export class ClientSigningManager {
       this.noteOnce(`${stateKey}\nsession`, 'upstream request has no x-session-id — signing skipped')
       return { pairs, signed: false }
     }
-    // Checked after the credential resolve: a newly minted project token
-    // invalidates the state, which ends the cooldown. The mint itself, gated
-    // by MINT_FAILURE_COOLDOWN_MS only, can therefore run during a handshake
-    // cooldown.
     if (state.failedUntil !== undefined && this.now() < state.failedUntil) return { pairs, signed: false }
     let privateKey: CryptoKey
     try {
@@ -332,89 +319,6 @@ export class ClientSigningManager {
     return state
   }
 
-  /** Resolve the signing form: bigmodel OAuth mints a project-access JWT (cached until 5 min before exp). */
-  private async resolveParsedCredential(cred: SigningCredential, stateKey: string): Promise<ParsedSigningCredential | undefined> {
-    const direct = parseSigningCredentialForm(cred.credential)
-    if (direct?.handshakeField === 'accessToken') return direct
-    if (cred.oauthAccessToken === undefined) return direct
-    const now = this.now()
-    if (this.projectJwt !== null && this.projectJwt.credentialKey === cred.credential && this.projectJwt.expMs - 5 * 60_000 > now) {
-      const cached = parseSigningCredentialForm(this.projectJwt.jwt)
-      if (cached !== undefined) return cached
-      this.projectJwt = null
-    }
-    if (now < this.mintNegUntil) return direct
-    if (this.mintInFlight !== null) return this.mintInFlight
-    const promise = this.mintProjectJwt(cred.oauthAccessToken, direct?.apiKeyId, cred.appVersion).then(minted => {
-      if (minted === null) {
-        this.mintNegUntil = this.now() + MINT_FAILURE_COOLDOWN_MS
-        return direct
-      }
-      const parsed = parseSigningCredentialForm(minted.jwt)
-      if (parsed === undefined) {
-        this.mintNegUntil = this.now() + MINT_FAILURE_COOLDOWN_MS
-        this.noteOnce('pt-parse', 'minted project token failed strict parse — falling back to apiKey form')
-        return direct
-      }
-      this.projectJwt = { credentialKey: cred.credential, jwt: minted.jwt, expMs: minted.expMs }
-      this.invalidateState(stateKey)
-      return parsed
-    }).finally(() => { if (this.mintInFlight === promise) this.mintInFlight = null })
-    this.mintInFlight = promise
-    return promise
-  }
-
-  /** Mint the project-access JWT (getCustomerInfo → api_keys/{id}/access_tokens); null on any failure. */
-  private async mintProjectJwt(oauthAccessToken: string, apiKeyId: string | undefined, clientVersion: string): Promise<{ jwt: string, expMs: number } | null> {
-    if (apiKeyId === undefined) {
-      this.noteOnce('pt-key', 'project token mint skipped: credential has no apiKeyId segment')
-      return null
-    }
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 15_000)
-    try {
-      const bare = oauthAccessToken.startsWith('Bearer ') ? oauthAccessToken.slice(7).trim() : oauthAccessToken
-      const infoResp = await this.fetchImpl(`${BIGMODEL_HOST}/api/biz/customer/getCustomerInfo`, { headers: { Authorization: bare, 'Content-Type': 'application/json' }, redirect: 'manual', signal: controller.signal })
-      const info = await infoResp.json() as { data?: { organizations?: Array<{ organizationId?: string, organizationName?: string, projects?: Array<{ projectId?: string, projectName?: string, projectType?: string | number }> }> } }
-      const orgs = (info.data?.organizations ?? [])
-        .map(org => ({ ...org, projects: (org.projects ?? []).filter(project => String(project.projectType ?? '').trim() !== '2') }))
-        .filter(org => org.organizationId !== undefined && org.projects.length > 0)
-      const org = orgs.find(entry => entry.organizationName?.includes('默认机构')) ?? orgs[0]
-      const project = org?.projects.find(entry => entry.projectName?.includes('默认项目')) ?? org?.projects[0]
-      if (org?.organizationId === undefined || project?.projectId === undefined) {
-        this.noteOnce('pt-project', 'project token mint failed: no usable org/project in getCustomerInfo (re-login may help)')
-        return null
-      }
-      const ptResp = await this.fetchImpl(`${BIGMODEL_HOST}/api/biz/v1/organization/${encodeURIComponent(org.organizationId)}/projects/${encodeURIComponent(project.projectId)}/api_keys/${encodeURIComponent(apiKeyId)}/access_tokens`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${bare}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clientType: 'zcode', clientVersion }),
-        redirect: 'manual',
-        signal: controller.signal,
-      })
-      const pt = await ptResp.json() as { code?: number, data?: { accessToken?: string } }
-      const jwt = pt.data?.accessToken
-      if (pt.code !== 200 || jwt === undefined) {
-        this.noteOnce('pt-mint', `project token mint rejected (code=${pt.code ?? ptResp.status})`)
-        return null
-      }
-      let expMs = this.now() + 60 * 60_000
-      try {
-        const payload = JSON.parse(Buffer.from(jwt.split('.')[1]!.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8')) as { exp?: number }
-        if (typeof payload.exp === 'number') expMs = payload.exp * 1000
-      }
-      catch { /* keep fallback expiry */ }
-      return { jwt, expMs }
-    }
-    catch {
-      this.noteOnce('pt-network', 'project token mint failed (network/timeout)')
-      return null
-    }
-    finally {
-      clearTimeout(timer)
-    }
-  }
-
   private async ensurePrivateKey(state: SignerState, parsedCred: ParsedSigningCredential, origin: string): Promise<CryptoKey> {
     if (state.privKey !== undefined) return state.privKey
     if (state.handshake !== undefined) return state.handshake
@@ -425,8 +329,8 @@ export class ClientSigningManager {
       state.failedUntil = undefined
       return key
     }, (error: unknown) => {
-      // A failure the state has already moved past (VERIFY invalidation,
-      // newly minted project token) starts no cooldown.
+      // A failure the state has already moved past (VERIFY invalidation)
+      // starts no cooldown.
       if (state.epoch === epoch) state.failedUntil = this.now() + HANDSHAKE_FAILURE_COOLDOWN_MS
       throw error
     })
@@ -440,16 +344,15 @@ export class ClientSigningManager {
     const ts = String(Date.now())
     const nonce = randomHex(NONCE_BYTES)
     const sig = await handshakeSignature(parsedCred.secret, `${HANDSHAKE_METHOD}\n${parsedCred.apiKeyId}\n${ts}\n${nonce}`)
-    const authValue = parsedCred.handshakeField === 'accessToken' ? parsedCred.secret : `${parsedCred.apiKeyId}.${parsedCred.secret}`
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), HANDSHAKE_TIMEOUT_MS)
     try {
-      // 3.16.3 `performHandshake`: Authorization carries the credential as-is
-      // in both forms (zcode-api sent `Bearer <jwt>` for the JWT form).
+      // 3.16.3 `performHandshake`: Authorization carries the project token
+      // as-is (no `Bearer `), and the body names it `accessToken`.
       const resp = await this.handshakeFetch(`${origin}${HANDSHAKE_PATH}`, {
         method: 'POST',
-        headers: { Authorization: authValue, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ [parsedCred.handshakeField]: authValue, nonce, sig, ts }),
+        headers: { Authorization: parsedCred.secret, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accessToken: parsedCred.secret, nonce, sig, ts }),
         redirect: 'manual',
         signal: controller.signal,
       })
@@ -489,12 +392,11 @@ export async function sendWithClientSigning(signer: ClientSigningManager | null,
   headerPairs: ReadonlyArray<readonly [string, string]>
   credential: string
   appVersion: string
-  oauthAccessToken?: string
   send: (headerPairs: ReadonlyArray<readonly [string, string]>) => Promise<Response>
 }): Promise<Response> {
-  const { url, headerPairs, credential, appVersion, oauthAccessToken, send } = params
+  const { url, headerPairs, credential, appVersion, send } = params
   if (signer === null) return send(headerPairs)
-  const signingCred: SigningCredential = { credential, appVersion, ...(oauthAccessToken === undefined ? {} : { oauthAccessToken }) }
+  const signingCred: SigningCredential = { credential, appVersion }
   const first = await signer.signWithStatus(url, headerPairs, signingCred)
   let resp = await send(first.pairs)
   if (!first.signed || !await signer.isVerifyFailure(resp)) return resp

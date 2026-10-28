@@ -7,7 +7,6 @@
  */
 import { randomUUID } from 'node:crypto'
 import { buildLlmIdentityHeaders, type ZcodeIdentity } from './identity.ts'
-import { credentialString, type Credential } from './auth/types.ts'
 
 /** anthropic-version the ZCode client pins. */
 export const ANTHROPIC_VERSION = '2023-06-01'
@@ -90,24 +89,20 @@ export function buildTraceHeaders(plan: PlanId, trace?: TraceContext): Record<st
 }
 
 /**
- * Full upstream header set for one LLM request. Coding-plan anthropic sends
- * the credential in BOTH `x-api-key` and `Authorization` (bundle `ebo`);
- * start-plan sends the plan JWT bearer only.
+ * Full upstream header set for one LLM request. `auth.apiKey` goes into
+ * `x-api-key` and `auth.bearer` into `Authorization: Bearer`. Coding-plan
+ * passes the project access token for both, as 3.16.3 account mode does
+ * (`applyProviderRequestAuth` `x5s` @3843063 sets the provider `apiKey`,
+ * `T5s` @3843231 adds the bearer); start-plan sends the plan JWT bearer only.
  */
-export function buildAuthHeaders(cred: Credential, identity: ZcodeIdentity, plan: PlanId = 'coding-plan', trace?: TraceContext, env: NodeJS.ProcessEnv = process.env): Record<string, string> {
+export function buildAuthHeaders(auth: { readonly bearer: string, readonly apiKey?: string }, identity: ZcodeIdentity, plan: PlanId = 'coding-plan', trace?: TraceContext, env: NodeJS.ProcessEnv = process.env): Record<string, string> {
   const headers: Record<string, string> = {
     ...buildLlmIdentityHeaders(identity, env),
     ...buildTraceHeaders(plan, trace),
   }
   headers['User-Agent'] = `${headers['User-Agent']} ${ANTHROPIC_SDK_UA}`
-  const credStr = plan === 'start-plan' && cred.jwt !== undefined ? cred.jwt : credentialString(cred)
-  if (plan === 'start-plan' && cred.jwt !== undefined) {
-    headers.authorization = `Bearer ${credStr}`
-  }
-  else {
-    headers['x-api-key'] = credStr
-    headers.authorization = `Bearer ${credStr}`
-  }
+  if (auth.apiKey !== undefined) headers['x-api-key'] = auth.apiKey
+  headers.authorization = `Bearer ${auth.bearer}`
   headers['anthropic-version'] = ANTHROPIC_VERSION
   return headers
 }

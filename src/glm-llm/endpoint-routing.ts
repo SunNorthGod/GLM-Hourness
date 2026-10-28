@@ -8,7 +8,8 @@
  * semantics are strictly fail-open: any error keeps the previous snapshot
  * (or none) and resolves the original URL after a cooldown.
  */
-import { buildContextIdentityHeaders, type ZcodeIdentity } from './identity.ts'
+import { buildContextIdentityHeaders, normalizePrintableHeaderValue, type ZcodeIdentity } from './identity.ts'
+import { API_KEY_ID_HEADER } from './zcode-wire.ts'
 
 const DEFAULT_ORIGIN = 'https://zcode.z.ai'
 const CONFIG_PATH = '/api/v1/agent/configs'
@@ -24,7 +25,6 @@ const ZCODE_AUTHORIZATION_PATHS = ['/api/v1/ultra', '/api/v1/ultra-zai']
 export interface EndpointRoutingOptions {
   readonly origin?: string
   readonly identity: ZcodeIdentity
-  readonly credential?: () => string | undefined
   readonly fetchImpl?: typeof fetch
   readonly now?: () => number
   readonly successTtlMs?: number
@@ -33,6 +33,14 @@ export interface EndpointRoutingOptions {
   readonly env?: NodeJS.ProcessEnv
   /** The `X-Device-Mid` source, read on every refresh as 3.16.3 `createProviderEndpointRoutingSourceHeaders` (`Aui`) reads it. */
   readonly deviceMid?: () => Promise<string | undefined>
+}
+
+/** What one resolve knows about the request credential (3.16.3 `routingPort.resolve(url, {apiKeyId})`, `Ngn` @3839971). */
+export interface RoutingCredential {
+  /** The API key id of the request's project access token; the config request names it in `x-api-key-id`. */
+  readonly apiKeyId?: string | undefined
+  /** The ZCode plan JWT for `X-ZCode-Authorization` on flagged targets. */
+  readonly zcodeJwt?: string | undefined
 }
 
 export interface RoutedUrl {
@@ -88,12 +96,6 @@ function isAllowedZCodeAuthorizationTarget(target: URL, endpointOrigin: string):
   return ZCODE_AUTHORIZATION_PATHS.some(prefix => path === prefix || path.startsWith(`${prefix}/`))
 }
 
-function normalizePrintableHeaderValue(value: string | undefined): string | undefined {
-  const trimmed = value?.trim()
-  if (trimmed === undefined || trimmed.length === 0 || !/^[\x20-\x7e]+$/u.test(trimmed)) return undefined
-  return trimmed
-}
-
 function buildZCodeAuthorizationHeaders(zcodeJwt: string | undefined): Record<string, string> | undefined {
   const value = normalizePrintableHeaderValue(zcodeJwt)
   if (value === undefined) return undefined
@@ -110,12 +112,29 @@ function parseRequestVerificationConfig(configs: unknown): RequestVerificationCo
   return out
 }
 
+/**
+ * The agent/configs request headers as 3.16.3 `buildProviderEndpointRoutingHeaders`
+ * (`FGs` @4196232) builds them: `User-Agent`, `X-ZCode-App-Version`, then the
+ * source headers (`Frn` @968479, canonical names `NGs`), `x-api-key-id` when
+ * the request credential has one, `Accept`. No API key or secret is sent.
+ */
+function configRequestHeaders(identity: ZcodeIdentity, env: NodeJS.ProcessEnv, apiKeyId: string | undefined): Record<string, string> {
+  const appVersion = normalizePrintableHeaderValue(identity.appVersion)
+  const keyId = normalizePrintableHeaderValue(apiKeyId)
+  return {
+    'User-Agent': `ZCode/${appVersion ?? 'unknown'}`,
+    ...(appVersion === undefined ? {} : { 'X-ZCode-App-Version': appVersion }),
+    ...buildContextIdentityHeaders(identity, env),
+    ...(keyId === undefined ? {} : { [API_KEY_ID_HEADER]: keyId }),
+    Accept: 'application/json',
+  }
+}
+
 /** Mapping-table resolver with a shared snapshot cache; every failure fails open. */
 export class EndpointRoutingService {
   private readonly configUrl: string
   private readonly endpointOrigin: string
   private readonly identity: ZcodeIdentity
-  private readonly credential: (() => string | undefined) | undefined
   private readonly fetchImpl: typeof fetch
   private readonly now: () => number
   private readonly successTtlMs: number
@@ -131,7 +150,6 @@ export class EndpointRoutingService {
     this.configUrl = `${(opts.origin?.trim() || DEFAULT_ORIGIN).replace(/\/+$/u, '')}${CONFIG_PATH}`
     this.endpointOrigin = new URL(this.configUrl).origin
     this.identity = opts.identity
-    this.credential = opts.credential
     this.fetchImpl = opts.fetchImpl ?? fetch
     this.now = opts.now ?? Date.now
     this.successTtlMs = opts.successTtlMs ?? SUCCESS_TTL_MS
@@ -147,13 +165,13 @@ export class EndpointRoutingService {
   }
 
   /** The request-verification switch from the latest snapshot (null while unshipped). */
-  async getRequestVerificationConfig(credential?: string): Promise<RequestVerificationConfig | null> {
+  async getRequestVerificationConfig(credential: RoutingCredential = {}): Promise<RequestVerificationConfig | null> {
     try { await this.ensureFresh(credential) } catch { /* fail-open: read whatever snapshot we have */ }
     return this.snapshot?.requestVerification ?? null
   }
 
   /** Resolve a request URL through the mapping table; never throws. */
-  async resolve(url: string, credential?: string, zcodeJwt?: string): Promise<RoutedUrl> {
+  async resolve(url: string, credential: RoutingCredential = {}): Promise<RoutedUrl> {
     let parsed: URL
     try { parsed = new URL(url) } catch { return { routed: false, url } }
     try { await this.ensureFresh(credential) } catch { /* fail-open: resolve without a snapshot */ }
@@ -161,31 +179,27 @@ export class EndpointRoutingService {
     if (target === undefined) return { routed: false, url }
     const rewritten = new URL(target.url)
     rewritten.search = parsed.search
-    const headers = target.includeZCodeAuthorization ? buildZCodeAuthorizationHeaders(zcodeJwt) : undefined
+    const headers = target.includeZCodeAuthorization ? buildZCodeAuthorizationHeaders(credential.zcodeJwt) : undefined
     return headers === undefined ? { routed: true, url: rewritten.href } : { routed: true, url: rewritten.href, headers }
   }
 
-  private async ensureFresh(credential?: string): Promise<void> {
+  private async ensureFresh(credential: RoutingCredential): Promise<void> {
     const now = this.now()
     if ((this.snapshot !== undefined && this.snapshot.expiresAt > now) || this.retryAfter > now) return
     const pending = this.refreshPromise ?? this.beginRefresh(credential)
     await pending
   }
 
-  private beginRefresh(credential?: string): Promise<void> {
+  private beginRefresh(credential: RoutingCredential): Promise<void> {
     const promise = this.refresh(credential).finally(() => { if (this.refreshPromise === promise) this.refreshPromise = undefined })
     this.refreshPromise = promise
     return promise
   }
 
-  private async refresh(credential?: string): Promise<void> {
-    // The config fetch uses the context identity plane (`TV`: no X-ZCode-Agent,
-    // optional X-Device-Mid) plus x-api-key and Accept.
+  private async refresh(credential: RoutingCredential): Promise<void> {
     const deviceMid = await this.deviceMid?.().catch(() => undefined)
     const identity = deviceMid === undefined ? this.identity : { ...this.identity, deviceMid }
-    const headers: Record<string, string> = { ...buildContextIdentityHeaders(identity, this.env), Accept: 'application/json' }
-    const key = credential ?? this.credential?.()
-    if (key !== undefined && key.length > 0) headers['x-api-key'] = key
+    const headers = configRequestHeaders(identity, this.env, credential.apiKeyId)
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), this.requestTimeoutMs)
     try {

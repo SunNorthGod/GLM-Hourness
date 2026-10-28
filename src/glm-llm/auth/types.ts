@@ -16,11 +16,6 @@ export interface Credential {
   readonly userId?: string
   /** ZCode plan JWT for start-plan; present when the login captured it. */
   readonly jwt?: string
-  /** Raw provider OAuth access token; required by the 3.15.1 project-access-token signing plane. */
+  /** Raw provider OAuth access token: the project access token is minted from it (auth/project-token.ts). */
   readonly oauthAccessToken?: string
-}
-
-/** The credential string sent upstream (`{apiKey}.{secret}` when a secret exists). */
-export function credentialString(cred: Credential): string {
-  return cred.apiKey
 }

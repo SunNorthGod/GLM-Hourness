@@ -8,7 +8,7 @@ import { apply as loginApply } from '../src/glm-llm/login-row.ts'
 import { saveCredential } from '../src/glm-llm/auth/store.ts'
 import type { Credential } from '../src/glm-llm/auth/types.ts'
 import type { GenerateOptionsLike, StreamChunk } from '../src/shared/lm-min.ts'
-import { memoryStore, zcodeDataDir } from './glm-fixtures.ts'
+import { fakeProjectToken, memoryStore, patPlane, PAT_KEY_ID, sealedSigningKey, zcodeDataDir } from './glm-fixtures.ts'
 
 /** An adapter environment whose ZCode data directory is a fresh temp directory without a state file. */
 const isolatedEnv = (): NodeJS.ProcessEnv => zcodeDataDir().env
@@ -96,14 +96,37 @@ function sseOk(): Response {
   ]), { status: 200, headers: { 'content-type': 'text/event-stream' } })
 }
 
+/** The header names and values of one request as sent (a plain object or a Headers instance). */
+function sentHeaders(init: RequestInit | undefined): Record<string, string> {
+  return init?.headers instanceof Headers ? Object.fromEntries(init.headers) : { ...(init?.headers as Record<string, string> | undefined) }
+}
+
+/** The PAT plane answers bigmodel.cn; every other request streams SSE and the model request (`…/v1/messages`) is captured. */
 function makeUpstream(captured: { url?: string, headers?: Record<string, string>, body?: Record<string, unknown> } = {}) {
-  return (async (url: string | URL | Request, init?: RequestInit): Promise<Response> => {
-    captured.url = String(url)
-    captured.headers = init?.headers as Record<string, string>
-    captured.body = JSON.parse(String(init?.body)) as Record<string, unknown>
-    return sseOk()
+  const pat = patPlane()
+  return ((url: string | URL | Request, init?: RequestInit): Promise<Response> => {
+    const target = urlOf(url)
+    const planeAnswer = pat.answer(target, init)
+    if (planeAnswer !== undefined) return Promise.resolve(planeAnswer)
+    if (target.endsWith('/v1/messages')) {
+      captured.url = target
+      captured.headers = sentHeaders(init)
+      captured.body = JSON.parse(typeof init?.body === 'string' ? init.body : '{}') as Record<string, unknown>
+    }
+    return Promise.resolve(sseOk())
   }) as typeof fetch
 }
+
+/** The URL of a fetch input. */
+function urlOf(input: string | URL | Request): string {
+  return typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+}
+
+/** One header of a captured request, by case-insensitive name. */
+const headerIn = (headers: Record<string, string> | undefined, name: string): string | undefined => Object.entries(headers ?? {}).find(([key]) => key.toLowerCase() === name.toLowerCase())?.[1]
+
+/** The first project token the PAT-plane double mints. */
+const FIRST_PAT = fakeProjectToken(PAT_KEY_ID, 1)
 
 function request(): GenerateOptionsLike {
   return {
@@ -113,7 +136,8 @@ function request(): GenerateOptionsLike {
   }
 }
 
-const credential: Credential = { apiKey: 'id.secret', provider: 'bigmodel', oauthAccessToken: 'oauth-tok' }
+// Obvious fakes only: no real token, key or secret appears in a spec.
+const credential: Credential = { apiKey: 'id.secret', provider: 'bigmodel', oauthAccessToken: 'oauth-tok', userId: 'user-1' }
 
 test('coding-plan stream walks the full chain: store → headers → unsigned signing ladder → SSE', async () => {
   const { fs } = memoryStore()
@@ -123,19 +147,20 @@ test('coding-plan stream walks the full chain: store → headers → unsigned si
   const chunks: StreamChunk[] = []
   for await (const chunk of adapter.stream(request())) chunks.push(chunk)
   assert.equal(captured.url, UPSTREAM)
-  assert.equal(captured.headers!.authorization, 'Bearer id.secret')
-  assert.equal(captured.headers!['x-api-key'], 'id.secret')
-  assert.equal(captured.headers!['User-Agent'], `ZCode/${ZCODE_APP_VERSION} ${ANTHROPIC_SDK_UA}`)
-  assert.ok(captured.headers!['x-session-id'] !== undefined)
+  // 3.16.3 account mode: the project access token in both auth headers.
+  assert.equal(headerIn(captured.headers, 'authorization'), `Bearer ${FIRST_PAT}`)
+  assert.equal(headerIn(captured.headers, 'x-api-key'), FIRST_PAT)
+  assert.equal(headerIn(captured.headers, 'User-Agent'), `ZCode/${ZCODE_APP_VERSION} ${ANTHROPIC_SDK_UA}`)
+  assert.ok(headerIn(captured.headers, 'x-session-id') !== undefined)
   // ZCode's attribution set: request, session type and trace ids on every request.
-  assert.deepEqual(['x-request-id', 'x-zcode-session-type', 'x-zcode-trace-id', 'x-session-id'].map(name => name in captured.headers!), [true, true, true, true])
-  assert.equal(captured.headers!['x-zcode-session-type'], 'main')
+  assert.deepEqual(['x-request-id', 'x-zcode-session-type', 'x-zcode-trace-id', 'x-session-id'].map(name => headerIn(captured.headers, name) !== undefined), [true, true, true, true])
+  assert.equal(headerIn(captured.headers, 'x-zcode-session-type'), 'main')
   assert.deepEqual((captured.body!.system as unknown[]), [{ type: 'text', text: 'be brief' }])
   // metadata.user_id names the deviceMid and the same session id as the header.
   const userId = JSON.parse((captured.body!.metadata as { user_id: string }).user_id) as Record<string, string>
   assert.deepEqual(Object.keys(userId), ['device_id', 'account_uuid', 'session_id'])
   assert.equal(userId.account_uuid, '')
-  assert.equal(userId.session_id, captured.headers!['x-session-id'])
+  assert.equal(userId.session_id, headerIn(captured.headers, 'x-session-id'))
   const text = chunks.filter(chunk => chunk.type === 'block-end').map(chunk => chunk.type === 'block-end' && chunk.block.type === 'text' ? chunk.block.text : '').join('')
   assert.equal(text, 'ok')
   assert.ok(chunks.some(chunk => chunk.type === 'finish' && chunk.reason.kind === 'stop'))
@@ -154,41 +179,38 @@ const isModelRequest = (wire: WireRequest): boolean => wire.url === ULTRA
 /**
  * The upstream as the adapter meets it: agent/configs maps the provider
  * messages URL to the ultra gateway (or `mapping`), the handshake returns
- * `privateCipher` (404 without one), the bigmodel project-token mint fails,
- * and everything else streams SSE. Every request is recorded in order.
+ * `privateCipher` (404 without one), the bigmodel PAT plane mints project
+ * tokens (`pat`), and model requests answer `model` (SSE by default).
+ * Every request is recorded in order.
  */
-function gatewayFetch(wire: WireRequest[], options: { privateCipher?: string, mapping?: ReadonlyArray<Record<string, string>> }): typeof fetch {
+function gatewayFetch(wire: WireRequest[], options: { privateCipher?: string, mapping?: ReadonlyArray<Record<string, string>>, pat?: ReturnType<typeof patPlane>, model?: (attempt: number) => Response }): typeof fetch {
   const mapping = options.mapping ?? [{ from: UPSTREAM, to: ULTRA }]
+  const pat = options.pat ?? patPlane()
+  let modelAttempts = 0
   const json = (status: number, body: unknown): Response => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
   return (input, init) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
-    wire.push({ url, headers: { ...(init?.headers as Record<string, string> | undefined) }, ...(typeof init?.body === 'string' ? { body: init.body } : {}) })
+    wire.push({ url, headers: sentHeaders(init), ...(typeof init?.body === 'string' ? { body: init.body } : {}) })
     if (url === 'https://zcode.z.ai/api/v1/agent/configs') return Promise.resolve(json(200, { code: 0, data: { proxyEndpoint: { mapping } } }))
     if (url.endsWith(HANDSHAKE_TAIL)) {
       return Promise.resolve(options.privateCipher === undefined ? new Response('not found', { status: 404 }) : json(200, { code: 200, data: { privateCipher: options.privateCipher } }))
     }
-    if (url.startsWith('https://bigmodel.cn/')) return Promise.resolve(json(500, {}))
+    const planeAnswer = pat.answer(url, init)
+    if (planeAnswer !== undefined) return Promise.resolve(planeAnswer)
+    if (url === ULTRA || url === UPSTREAM) {
+      modelAttempts += 1
+      if (options.model !== undefined) return Promise.resolve(options.model(modelAttempts))
+    }
     return Promise.resolve(sseOk())
   }
 }
 
-/** A handshake `privateCipher` for a fresh Ed25519 key, sealed as 3.16.3 opens it: AES-GCM under HKDF(secret, ed25519_priv), AAD apiKeyId. */
-async function sealedSigningKey(secret: string, apiKeyId: string): Promise<string> {
-  const utf8 = new TextEncoder()
-  const pair = await crypto.subtle.generateKey('Ed25519', true, ['sign', 'verify'])
-  const pkcs8 = Buffer.from(await crypto.subtle.exportKey('pkcs8', pair.privateKey)).toString('base64')
-  const hkdf = await crypto.subtle.importKey('raw', utf8.encode(secret), 'HKDF', false, ['deriveKey'])
-  const sealing = await crypto.subtle.deriveKey({ name: 'HKDF', hash: 'SHA-256', salt: utf8.encode('WD_CLIENT_SIGN_KDF_SALT'), info: utf8.encode('ed25519_priv') }, hkdf, { name: 'AES-GCM', length: 256 }, false, ['encrypt'])
-  const iv = crypto.getRandomValues(new Uint8Array(12))
-  const sealed = await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: utf8.encode(apiKeyId) }, sealing, utf8.encode(pkcs8))
-  return Buffer.concat([iv, new Uint8Array(sealed)]).toString('base64')
-}
 
 /**
  * Run `requests` streams through one fresh adapter on the gateway double and
  * return the wire log. `stored` replaces the default credential.
  */
-async function runOnGateway(gateway: { privateCipher?: string, mapping?: ReadonlyArray<Record<string, string>> }, options: { stored?: Credential, plan?: 'start-plan', requests?: number, env?: NodeJS.ProcessEnv, report?: (sessionId: string | undefined, state: string, reason: string) => void, files?: Map<string, string> } = {}): Promise<WireRequest[]> {
+async function runOnGateway(gateway: Parameters<typeof gatewayFetch>[1], options: { stored?: Credential, plan?: 'start-plan', requests?: number, env?: NodeJS.ProcessEnv, report?: (sessionId: string | undefined, state: string, reason: string) => void, files?: Map<string, string> } = {}): Promise<WireRequest[]> {
   const store = memoryStore()
   for (const [path, data] of options.files ?? []) store.files.set(path, data)
   await saveCredential(store.fs, 'C:/ws/.llm/credentials.json', options.stored ?? credential)
@@ -211,7 +233,7 @@ test('metadata.user_id and the routing config request carry the deviceMid of ZCo
   const reports: string[] = []
   const wire = await runOnGateway({}, { env: zcode.env, report: (_s, _state, reason) => { reports.push(reason) } })
   const [model] = wire.filter(isModelRequest)
-  assert.equal(deviceIdOf(model!), 'aaaaaaaa-1111-4222-8333-bbbbbbbbbbbb')
+  assert.equal(deviceIdOf(model), 'aaaaaaaa-1111-4222-8333-bbbbbbbbbbbb')
   assert.equal(headerOf(wire.find(isConfigRequest)!, 'X-Device-Mid'), 'aaaaaaaa-1111-4222-8333-bbbbbbbbbbbb')
   assert.deepEqual(reports, ['上游已应答（套餐 coding-plan）'])
 })
@@ -227,10 +249,97 @@ test('without a ZCode deviceMid the bundle\'s own one is sent on both planes, th
   assert.deepEqual(readdirSync(zcode.dir), [])
 })
 
+const isPatPlane = (wire: WireRequest): boolean => wire.url.startsWith('https://bigmodel.cn/')
+
+test('the project access token is minted from the OAuth login the way 3.16.3 mints it', async () => {
+  const wire = await runOnGateway({})
+  assert.deepEqual(wire.filter(isPatPlane).map(entry => new URL(entry.url).pathname), [
+    '/api/biz/customer/getCustomerInfo',
+    '/api/biz/v1/organization/org-1/projects/proj-1/api_keys',
+    `/api/biz/v1/organization/org-1/projects/proj-1/api_keys/${PAT_KEY_ID}/access_tokens`,
+  ])
+  const [info, , mint] = wire.filter(isPatPlane)
+  assert.equal(headerOf(info, 'Authorization'), 'oauth-tok') // getCustomerInfo: the raw OAuth token
+  assert.equal(headerOf(mint, 'Authorization'), 'Bearer oauth-tok')
+  assert.deepEqual(JSON.parse(mint.body ?? ''), { clientType: 'zcode', clientVersion: ZCODE_APP_VERSION })
+  // Every request after the mint carries the token, never the stored API key or its secret.
+  const after = wire.slice(wire.indexOf(mint) + 1)
+  assert.ok(after.every(entry => Object.values(entry.headers).every(value => !value.includes('id.secret') && !value.includes('secret'))))
+})
+
+test('a signed coding-plan request: both auth headers carry the project access token, the handshake signs with it', async () => {
+  const wire = await runOnGateway({ privateCipher: await sealedSigningKey(FIRST_PAT, PAT_KEY_ID) })
+  const [handshake] = wire.filter(isHandshake)
+  assert.equal(headerOf(handshake, 'Authorization'), FIRST_PAT)
+  assert.equal((JSON.parse(handshake.body ?? '') as { accessToken: string }).accessToken, FIRST_PAT)
+  const [model] = wire.filter(isModelRequest)
+  assert.equal(headerOf(model, 'authorization'), `Bearer ${FIRST_PAT}`)
+  assert.equal(headerOf(model, 'x-api-key'), FIRST_PAT)
+  assert.ok(headerOf(model, 'X-Client-Sig') !== undefined)
+})
+
+test('the routing config request names the project token\'s API key in x-api-key-id and sends no API key (3.16.3 FGs)', async () => {
+  const wire = await runOnGateway({})
+  const config = wire.find(isConfigRequest)!
+  assert.equal(headerOf(config, 'x-api-key-id'), PAT_KEY_ID)
+  assert.equal(headerOf(config, 'x-api-key'), undefined)
+  assert.ok(Object.values(config.headers).every(value => !value.includes('secret') && !value.includes(FIRST_PAT)))
+})
+
+test('a 401 that is not a request-security failure refreshes the project token once and retries as a new attempt', async () => {
+  const pat = patPlane()
+  const rejected = (): Response => new Response(JSON.stringify({ error: { type: 'authentication_error', message: 'token expired' } }), { status: 401 })
+  const wire = await runOnGateway({ pat, model: attempt => attempt === 1 ? rejected() : sseOk() })
+  const models = wire.filter(isModelRequest)
+  assert.equal(models.length, 2)
+  assert.equal(pat.mints(), 2)
+  assert.equal(headerOf(models[0], 'authorization'), `Bearer ${FIRST_PAT}`)
+  assert.equal(headerOf(models[1], 'authorization'), `Bearer ${fakeProjectToken(PAT_KEY_ID, 2)}`)
+  assert.equal(headerOf(models[1], 'x-api-key'), fakeProjectToken(PAT_KEY_ID, 2))
+  assert.notEqual(headerOf(models[0], 'x-request-id'), headerOf(models[1], 'x-request-id'))
+  // Only once: a second rejection fails the stream.
+  await assert.rejects(runOnGateway({ model: rejected }), /glm-zcode 401/)
+  // A request-security 401 (VERIFY_*) is not a token rejection: no refresh.
+  const verify = patPlane()
+  await assert.rejects(runOnGateway({ pat: verify, model: () => new Response(JSON.stringify({ error: { reason: 'VERIFY_SIGNATURE_INVALID' } }), { status: 401 }) }), /glm-zcode 401/)
+  assert.equal(verify.mints(), 1)
+})
+
+/** Stream one request on a fresh adapter; the rejection, the wire log and the health reports. */
+async function failingRun(stored: Credential, pat = patPlane()): Promise<{ error: Error, wire: WireRequest[], reports: Array<[string, string]> }> {
+  const store = memoryStore()
+  await saveCredential(store.fs, 'C:/ws/.llm/credentials.json', stored)
+  const wire: WireRequest[] = []
+  const reports: Array<[string, string]> = []
+  const adapter = new ZcodeAdapter({ home: 'C:/ws/.llm', fetchImpl: gatewayFetch(wire, { pat }), storeFs: store.fs, env: isolatedEnv(), report: (_s, state, reason) => { reports.push([state, reason]) } })
+  try {
+    for await (const chunk of adapter.stream({ ...request(), sessionId: 'session-s1' } as never)) void chunk
+  }
+  catch (error) {
+    return { error: error as Error, wire, reports }
+  }
+  throw new Error('the stream did not fail')
+}
+
+test('without a project access token the request fails closed as in 3.16.3: nothing is sent, the row health says why', async () => {
+  const minting = await failingRun(credential, patPlane({ mintStatus: 500 }))
+  assert.equal(minting.error.message, 'glm-zcode: project access token unavailable (project_token_request_failed) — run /glm-login to sign in again')
+  assert.deepEqual(minting.wire.filter(entry => !isPatPlane(entry)), []) // no routing config, no handshake, no model request
+  assert.deepEqual(minting.reports, [['inactive', '未拿到项目令牌（project_token_request_failed），按 3.16.3 不发送；运行 /glm-login']])
+  const { oauthAccessToken: _oauth, ...withoutOAuth } = credential
+  const noOAuth = await failingRun(withoutOAuth)
+  assert.equal(noOAuth.error.message, 'glm-zcode: project access token unavailable (Account request credential is unavailable: bigmodel) — run /glm-login to sign in again')
+  assert.deepEqual(noOAuth.wire, [])
+  const { userId: _user, ...withoutAccount } = credential
+  const noAccount = await failingRun(withoutAccount)
+  assert.equal(noAccount.error.message, 'glm-zcode: project access token unavailable (Account request credential is unavailable: account:bigmodel-individual-coding-plan) — run /glm-login to sign in again')
+  assert.deepEqual(noAccount.wire, [])
+})
+
 test('coding-plan handshakes on the provider origin, sends to the routed URL, and reuses the key', async () => {
   // The signer sees the provider URL before routing (3.16.3); handing it the
   // routed zcode.z.ai URL sent the handshake to zcode.z.ai, which answers 404.
-  const wire = await runOnGateway({ privateCipher: await sealedSigningKey('secret', 'id') }, { requests: 2 })
+  const wire = await runOnGateway({ privateCipher: await sealedSigningKey(FIRST_PAT, PAT_KEY_ID) }, { requests: 2 })
   assert.deepEqual(wire.filter(isHandshake).map(entry => entry.url), [PROVIDER_HANDSHAKE])
   const model = wire.filter(isModelRequest)
   assert.equal(model.length, 2)
@@ -247,7 +356,7 @@ test('a failing handshake is tried once across consecutive requests, which go ou
 
 test('start-plan is not signed: no handshake', async () => {
   // 3.16.3 `requiresClientRequestSigning` is false for the start-plan access mode.
-  const wire = await runOnGateway({ privateCipher: await sealedSigningKey('secret', 'id') }, { stored: { ...credential, jwt: 'a.b.c' }, plan: 'start-plan' })
+  const wire = await runOnGateway({ privateCipher: await sealedSigningKey(FIRST_PAT, PAT_KEY_ID) }, { stored: { ...credential, jwt: 'a.b.c' }, plan: 'start-plan' })
   assert.equal(wire.filter(isHandshake).length, 0)
   assert.equal(wire.filter(isModelRequest).length, 1)
 })
@@ -258,7 +367,7 @@ test('routing headers follow the signature block, and a mapped handshake URL is 
     { from: UPSTREAM, to: ULTRA, zcodeAuthorizationHeader: 'X-ZCode-Authorization' },
     { from: PROVIDER_HANDSHAKE, to: routedHandshake, zcodeAuthorizationHeader: 'X-ZCode-Authorization' },
   ]
-  const wire = await runOnGateway({ privateCipher: await sealedSigningKey('secret', 'id'), mapping }, { stored: { ...credential, jwt: 'zcode-jwt' } })
+  const wire = await runOnGateway({ privateCipher: await sealedSigningKey(FIRST_PAT, PAT_KEY_ID), mapping }, { stored: { ...credential, jwt: 'zcode-jwt' } })
   const [handshake] = wire.filter(isHandshake)
   assert.equal(handshake.url, routedHandshake)
   assert.equal(handshake.headers['X-ZCode-Authorization'], 'Bearer zcode-jwt')
@@ -395,7 +504,8 @@ test('each request reports its session to the row health: answered, refused upst
   const report = (sessionId: string | undefined, state: string, reason: string) => { reports.push([sessionId, state, reason]) }
   const ok = new ZcodeAdapter({ home: 'C:/ws/.llm', fetchImpl: makeUpstream(), storeFs: fs, env: zcodeDataDir({ deviceMid: 'fake-device-mid' }).env, report })
   for await (const _chunk of ok.stream({ ...request(), sessionId: 's1' } as never)) { void _chunk }
-  const refusing = (async () => new Response('quota', { status: 429 })) as unknown as typeof fetch
+  const plane = patPlane()
+  const refusing: typeof fetch = (url, init) => Promise.resolve(plane.answer(urlOf(url), init) ?? new Response('quota', { status: 429 }))
   const refused = new ZcodeAdapter({ home: 'C:/ws/.llm', fetchImpl: refusing, storeFs: fs, env: isolatedEnv(), report })
   await assert.rejects(async () => { for await (const chunk of refused.stream({ ...request(), sessionId: 's2' } as never)) void chunk }, /glm-zcode 429/)
   files.set('C:/ws/.llm/credentials.json', 'not json')

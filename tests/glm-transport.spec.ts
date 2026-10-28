@@ -6,7 +6,6 @@ import { BlockAssembler } from '@deepseek-ai/dsh-llm'
 import { encodeRequest, encodeMessage, decodeFrame, decodeSse, metadataUserId, replayBlocksOf, type AnthropicRequest } from '../src/glm-llm/anthropic.ts'
 import { glmImageRequestTarget, prepareRequestImages, offloadedImageText, ZCODE_IMAGE_TARGET_BYTES } from '../src/glm-llm/images.ts'
 import type { AttachmentsLike, ImageRefLike, ImageTarget, RequestMessageLike } from '../src/shared/lm-min.ts'
-import type { Credential } from '../src/glm-llm/auth/types.ts'
 
 const env = {
   ZCODE_IDENTITY_PLATFORM: 'win32',
@@ -54,12 +53,10 @@ test('deviceMid persists once and is reused across reads', async () => {
   assert.equal(Object.keys(files).filter(path => path.endsWith('.tmp')).length, 0)
 })
 
-const cred: Credential = { apiKey: 'sk-full', provider: 'bigmodel' }
-
-test('coding-plan anthropic auth carries the dual header pair plus SDK UA suffix', () => {
-  const headers = buildAuthHeaders(cred, DEFAULT_IDENTITY, 'coding-plan', undefined, env)
-  assert.equal(headers['x-api-key'], 'sk-full')
-  assert.equal(headers.authorization, 'Bearer sk-full')
+test('coding-plan anthropic auth carries the project token in both auth headers plus SDK UA suffix', () => {
+  const headers = buildAuthHeaders({ bearer: 'fake-pat', apiKey: 'fake-pat' }, DEFAULT_IDENTITY, 'coding-plan', undefined, env)
+  assert.equal(headers['x-api-key'], 'fake-pat')
+  assert.equal(headers.authorization, 'Bearer fake-pat')
   assert.equal(headers['anthropic-version'], '2023-06-01')
   assert.equal(headers['User-Agent'], `ZCode/${ZCODE_APP_VERSION} ${ANTHROPIC_SDK_UA}`)
   assert.ok(headers['x-session-id'] !== undefined) // coding-plan always carries one
@@ -68,7 +65,7 @@ test('coding-plan anthropic auth carries the dual header pair plus SDK UA suffix
 })
 
 test('start-plan auth uses the JWT bearer only and omits session ids', () => {
-  const headers = buildAuthHeaders({ ...cred, jwt: 'jwt-1' }, DEFAULT_IDENTITY, 'start-plan', undefined, env)
+  const headers = buildAuthHeaders({ bearer: 'jwt-1' }, DEFAULT_IDENTITY, 'start-plan', undefined, env)
   assert.equal(headers.authorization, 'Bearer jwt-1')
   assert.ok(!('x-api-key' in headers))
   assert.ok(!('x-session-id' in headers))

@@ -27,7 +27,7 @@
   },
   "src/glm-llm/signing.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 3
+      "count": 2
     }
   },
   "src/glm-llm/zcode.ts": {
@@ -153,13 +153,13 @@
   },
   "tests/glm-signing.spec.ts": {
     "@typescript-eslint/no-base-to-string": {
-      "count": 4
+      "count": 2
     },
     "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 11
+      "count": 9
     },
     "@typescript-eslint/require-await": {
-      "count": 7
+      "count": 6
     }
   },
   "tests/glm-startplan.spec.ts": {
@@ -180,13 +180,13 @@
   },
   "tests/glm-zcode.spec.ts": {
     "@typescript-eslint/no-base-to-string": {
-      "count": 3
+      "count": 1
     },
     "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 12
+      "count": 11
     },
     "@typescript-eslint/require-await": {
-      "count": 5
+      "count": 3
     }
   },
   "tests/guard-audit.spec.ts": {

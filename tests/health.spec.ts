@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { readFile, rename, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { saveCredential, type StoreFs } from '../src/glm-llm/auth/store.ts'
 import { collectHealth, healthServiceName, HEALTH_ROWS, provideRowHealth, renderHealthTable, sessionIdOf, type HealthRow, type RowHealthView } from '../src/shared/health.ts'
 import { apply as dataApply } from '../src/data/index.ts'
 import { apply as llmApply } from '../src/glm-llm/index.ts'
@@ -189,6 +192,24 @@ test('glm-llm: a request without a credential reports the session inactive with 
   llmApply({ registerAdapter: (_providers, adapter) => { adapters.push(adapter as never); return () => {} }, ...store }, { home: 'C:/definitely-missing-glm-hourness-health-home' })
   await assert.rejects(async () => { for await (const chunk of adapters[0]!.stream({ provider: 'glm-zcode', model: 'glm-5.3', sessionId: 's1', messages: [] })) void chunk }, /\/glm-login/)
   assert.deepEqual(inSession(store, 'glm-llm', 's1'), { state: 'inactive', reason: '未登录：凭证为空，运行 /glm-login' })
+})
+
+test('glm-llm: a coding-plan request without a project access token reports the 3.16.3 reason and sends nothing', async () => {
+  // A stored login without an OAuth token cannot mint the project token; 3.16.3 fails such a request closed.
+  const home = mkdtempSync(join(tmpdir(), 'glmh-health-'))
+  try {
+    const fs: StoreFs = { readFile: path => readFile(path, 'utf8'), writeFile: (path, data) => writeFile(path, data), rename }
+    await saveCredential(fs, join(home, 'credentials.json'), { apiKey: 'fake-key', provider: 'bigmodel' })
+    const store = serviceStore()
+    const adapters: Array<{ stream(options: unknown): AsyncIterable<unknown> }> = []
+    llmApply({ registerAdapter: (_providers, adapter) => { adapters.push(adapter); return () => {} }, ...store }, { home })
+    const [adapter] = adapters
+    await assert.rejects(async () => { for await (const chunk of adapter.stream({ provider: 'glm-zcode', model: 'glm-5.3', sessionId: 's1', messages: [] })) void chunk }, /project access token unavailable .*\/glm-login/)
+    assert.deepEqual(inSession(store, 'glm-llm', 's1'), { state: 'inactive', reason: '未拿到项目令牌（Account request credential is unavailable: bigmodel），按 3.16.3 不发送；运行 /glm-login' })
+  }
+  finally {
+    rmSync(home, { recursive: true, force: true })
+  }
 })
 
 type Command = Pick<CommandDefinitionLike, 'name' | 'handler'>

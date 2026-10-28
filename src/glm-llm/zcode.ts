@@ -18,8 +18,9 @@ import { inspectJwt } from './auth/jwt.ts'
 import { DEFAULT_IDENTITY, ensureDeviceMid, resolveEnvPromptInfo, type ZcodeIdentity } from './identity.ts'
 import { readCliDeviceMid, readRoutingDeviceMid } from './device-mid.ts'
 import { buildAuthHeaders, requestAttribution, type PlanId } from './headers.ts'
-import { EndpointRoutingService } from './endpoint-routing.ts'
+import { EndpointRoutingService, type RoutingCredential } from './endpoint-routing.ts'
 import { ClientSigningManager, sendWithClientSigning } from './signing.ts'
+import { ProjectAccessTokenClient, projectTokenFingerprint, projectTokenRequest, type ResolvedProjectToken } from './auth/project-token.ts'
 import { encodeRequest, decodeSse, metadataUserId, splitSystemPrompt } from './anthropic.ts'
 import { glmImageRequestTarget, prepareRequestImages } from './images.ts'
 import { buildStartPlanSystem, buildContextPrefixMessage } from './start-plan.ts'
@@ -39,6 +40,21 @@ import type { ImageAttachmentRef, ImageRequestTarget } from '@deepseek-ai/dsh-at
 
 /** Bigmodel coding-plan Anthropic endpoint (the provider baseURL, before server-side remapping; its origin hosts the signing handshake). */
 const BIGMODEL_ANTHROPIC_BASE = 'https://open.bigmodel.cn/api/anthropic'
+
+/** The bigmodel API origin the project access token is minted at (3.16.3 `resolveBigModelApiOrigin` in production). */
+const BIGMODEL_API_ORIGIN = 'https://bigmodel.cn'
+
+/**
+ * The failures 3.16.3 reports when an account model request has no request
+ * credential (desktop host `AccountRequestCredentialUnavailableError`,
+ * `out/host/index.js` +1200545): no OAuth access token names the family, no
+ * account identity names the provider of the individual coding plan.
+ */
+const CREDENTIAL_UNAVAILABLE_FAMILY = 'Account request credential is unavailable: bigmodel'
+const CREDENTIAL_UNAVAILABLE_PROVIDER = 'Account request credential is unavailable: account:bigmodel-individual-coding-plan'
+
+/** Values of a 401 body that mark a request-security failure, not a rejected project token (3.16.3 `isRequestSecurityFailure` `Vrt` @1090655). */
+const SECURITY_FAILURE_VALUES: ReadonlySet<unknown> = new Set(['VERIFY_APIKEY_EXPIRED', 'VERIFY_SIGNATURE_INVALID', '3007'])
 
 /** Row-health suffix when ZCode's state file has no deviceMid and the bundle's own one is sent (device-mid.ts). */
 const DEVICE_MID_FALLBACK_NOTE = '；ZCode 状态文件里没有 deviceMid，设备 ID 用本包自己的'
@@ -145,6 +161,11 @@ export class ZcodeAdapter {
   private readonly options: Required<Pick<ZcodeAdapterOptions, 'home'>> & ZcodeAdapterOptions
   private readonly routing: EndpointRoutingService
   private readonly signer: ClientSigningManager
+  private readonly projectTokens: ProjectAccessTokenClient
+  /** In-flight project token loads per (OAuth token, account, rejected fingerprint), as 3.16.3 `loadCodingPlanMaterial` shares them. */
+  private readonly projectTokenLoads = new Map<string, Promise<ResolvedProjectToken>>()
+  /** The credential the latest coding-plan request resolved, for the routed handshake. */
+  private routingCredential: RoutingCredential = {}
   private deviceMidPromise: Promise<{ value: string, source: 'zcode' | 'bundle' } | undefined> | undefined
 
   constructor(options: ZcodeAdapterOptions) {
@@ -156,10 +177,45 @@ export class ZcodeAdapter {
       deviceMid: () => this.routingDeviceMid(),
     })
     this.signer = new ClientSigningManager({
-      ...(options.fetchImpl === undefined ? {} : { fetchImpl: options.fetchImpl }),
       handshakeFetch: (input, init) => this.routedHandshake(input, init),
       ...(options.onEvent === undefined ? {} : { onEvent: options.onEvent }),
     })
+    this.projectTokens = new ProjectAccessTokenClient({ request: projectTokenRequest(options.fetchImpl ?? fetch) })
+  }
+
+  /**
+   * The project access token of a coding-plan request, as 3.16.3 account
+   * mode resolves its request credential (desktop
+   * `AccountProviderRequestAuthService.resolveCurrent` and
+   * `loadCodingPlanMaterial`, `out/host/index.js` +1200545, +1204641):
+   * without an OAuth token or account identity it fails with the 3.16.3
+   * message; a login that changed while the token was minted invalidates
+   * the result. Throws an Error whose message is the 3.16.3 code or text.
+   */
+  private projectToken(credential: Credential, rejectedFingerprint?: string): Promise<ResolvedProjectToken> {
+    const oauth = credential.oauthAccessToken?.trim() ?? ''
+    if (oauth.length === 0) return Promise.reject(new Error(CREDENTIAL_UNAVAILABLE_FAMILY))
+    if (credential.userId === undefined || credential.userId.trim().length === 0) return Promise.reject(new Error(CREDENTIAL_UNAVAILABLE_PROVIDER))
+    const accountId = credential.userId
+    const key = JSON.stringify([oauth, accountId, rejectedFingerprint ?? null])
+    const shared = this.projectTokenLoads.get(key)
+    if (shared !== undefined) return shared
+    const load = (async () => {
+      const resolved = await this.projectTokens.resolve({
+        origin: BIGMODEL_API_ORIGIN,
+        loginToken: oauth,
+        accountId,
+        clientVersion: { ...DEFAULT_IDENTITY, ...this.options.identity }.appVersion,
+        ...(rejectedFingerprint === undefined ? {} : { rejectedFingerprint }),
+      })
+      const current = await this.loadCredential().catch(() => undefined)
+      if (current?.oauthAccessToken?.trim() !== oauth) throw new Error('project_token_scope_invalidated')
+      return resolved
+    })()
+    this.projectTokenLoads.set(key, load)
+    const release = (): void => { if (this.projectTokenLoads.get(key) === load) this.projectTokenLoads.delete(key) }
+    load.then(release, release)
+    return load
   }
 
   /**
@@ -170,8 +226,7 @@ export class ZcodeAdapter {
    */
   private async routedHandshake(input: string | URL | Request, init?: RequestInit): Promise<Response> {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
-    const credential = await this.loadCredential().catch(() => undefined)
-    const routed = await this.routing.resolve(url, credential?.apiKey, credential?.jwt)
+    const routed = await this.routing.resolve(url, this.routingCredential)
     const fetchImpl = this.options.fetchImpl ?? fetch
     if (routed.headers === undefined) return fetchImpl(routed.url, init)
     return fetchImpl(routed.url, { ...init, headers: { ...(init?.headers as Record<string, string> | undefined), ...routed.headers } })
@@ -314,6 +369,10 @@ export class ZcodeAdapter {
       throw new Error('glm-zcode: not logged in — run /glm-login (the credential store is empty)')
     }
     const fetchImpl = this.options.fetchImpl ?? fetch
+    // coding-plan: the project access token is the request credential; 3.16.3
+    // account mode sends nothing without it (ModelRequestAuthMissing), so the
+    // stream fails before any request leaves.
+    let projectToken = plan === 'coding-plan' ? await this.projectToken(credential).catch((error: unknown) => failClosed(report, error)) : undefined
     const device = await this.deviceMid()
     const deviceMid = device?.value
     const identity = { ...DEFAULT_IDENTITY, ...this.options.identity, ...(deviceMid === undefined ? {} : { deviceMid }) }
@@ -334,29 +393,41 @@ export class ZcodeAdapter {
     // header, as ZCode's does.
     const attribution = requestAttribution(request.sessionId, request.purpose)
     const body = JSON.stringify(encodeRequest({ ...options, messages }, systemBlocks, images, metadataUserId(deviceMid, attribution.sessionId)))
-
     const upstreamBase = `${BIGMODEL_ANTHROPIC_BASE}/v1/messages`
-    const routed = await this.routing.resolve(upstreamBase, credential.apiKey, credential.jwt).catch((): { routed: boolean, url: string, headers?: Record<string, string> } => ({ routed: false, url: upstreamBase }))
-    const routingPairs = Object.entries(routed.headers ?? {})
-    const headers = buildAuthHeaders(credential, identity, plan, attribution, this.options.env)
 
-    // 3.16.3 wraps the routing fetch in the signing fetch: the signer sees
-    // the provider URL before routing (its origin hosts the handshake), and
-    // the routing headers land after the signature block. start-plan is not
-    // signed (3.16.3 `requiresClientRequestSigning`).
-    const response = await sendWithClientSigning(plan === 'start-plan' ? null : this.signer, {
-      url: upstreamBase,
-      headerPairs: Object.entries({ ...headers, 'content-type': 'application/json' }) as Array<[string, string]>,
-      credential: credential.apiKey,
-      appVersion: identity.appVersion,
-      ...(credential.oauthAccessToken === undefined ? {} : { oauthAccessToken: credential.oauthAccessToken }),
-      send: pairs => fetchImpl(routed.url, {
-        method: 'POST',
-        headers: Object.fromEntries([...pairs, ...routingPairs]) as Record<string, string>,
-        body,
-        ...(options.signal === undefined ? {} : { signal: options.signal }),
-      }),
-    })
+    // One attempt: route, assemble, sign, send. 3.16.3 wraps the routing
+    // fetch in the signing fetch: the signer sees the provider URL before
+    // routing (its origin hosts the handshake), and the routing headers land
+    // after the signature block. start-plan is not signed (3.16.3
+    // `requiresClientRequestSigning`).
+    const attempt = async (token: ResolvedProjectToken | undefined): Promise<Response> => {
+      const routingCredential: RoutingCredential = { apiKeyId: token?.apiKeyId, zcodeJwt: credential.jwt }
+      if (token !== undefined) this.routingCredential = routingCredential
+      const routed = await this.routing.resolve(upstreamBase, routingCredential).catch((): { routed: boolean, url: string, headers?: Record<string, string> } => ({ routed: false, url: upstreamBase }))
+      const routingPairs = Object.entries(routed.headers ?? {})
+      const auth = token !== undefined ? { bearer: token.token, apiKey: token.token } : credential.jwt !== undefined ? { bearer: credential.jwt } : { bearer: credential.apiKey, apiKey: credential.apiKey }
+      const headers = buildAuthHeaders(auth, identity, plan, attribution, this.options.env)
+      return sendWithClientSigning(token === undefined ? null : this.signer, {
+        url: upstreamBase,
+        headerPairs: Object.entries({ ...headers, 'content-type': 'application/json' }) as Array<[string, string]>,
+        credential: token?.token ?? '',
+        appVersion: identity.appVersion,
+        send: pairs => fetchImpl(routed.url, {
+          method: 'POST',
+          headers: Object.fromEntries([...pairs, ...routingPairs]) as Record<string, string>,
+          body,
+          ...(options.signal === undefined ? {} : { signal: options.signal }),
+        }),
+      })
+    }
+    let response = await attempt(projectToken)
+    // 3.16.3 `AccountRequestRetry`: a 401 that is not a request-security
+    // failure rejects the project token; refresh it once, forcing a new
+    // mint, and retry once as a new attempt.
+    if (projectToken !== undefined && await isProjectTokenRejection(response)) {
+      projectToken = await this.projectToken(credential, await projectTokenFingerprint(projectToken.token)).catch((error: unknown) => failClosed(report, error))
+      response = await attempt(projectToken)
+    }
     if (!response.ok) {
       report('inactive', `上游返回 ${response.status}`)
       const detail = await response.text()
@@ -369,6 +440,36 @@ export class ZcodeAdapter {
     // types differ, and brands exist only at the type level).
     yield* decodeSse(response.body, options.model) as AsyncIterable<LlmStreamChunk>
   }
+}
+
+/**
+ * Fail a coding-plan stream that has no project access token, as 3.16.3
+ * account mode fails the model request: nothing is sent, the row health
+ * goes inactive, and the error names the 3.16.3 code or message (never a
+ * token) with the re-login instruction.
+ */
+function failClosed(report: (state: HealthState, reason: string) => void, error: unknown): never {
+  const code = error instanceof Error ? error.message : String(error)
+  report('inactive', `未拿到项目令牌（${code}），按 3.16.3 不发送；运行 /glm-login`)
+  throw new Error(`glm-zcode: project access token unavailable (${code}) — run /glm-login to sign in again`)
+}
+
+/**
+ * Whether a response rejects the project token (3.16.3 `isProjectTokenRejection`
+ * `$Hs` @4144643): HTTP 401 whose error body is not a request-security
+ * failure (`VERIFY_APIKEY_EXPIRED`, `VERIFY_SIGNATURE_INVALID`, `3007` in the
+ * envelope's message, reason or provider error code). Reads a clone.
+ */
+async function isProjectTokenRejection(response: Response): Promise<boolean> {
+  if (response.status !== 401) return false
+  let body: unknown
+  try { body = await response.clone().json() } catch { return true }
+  const record = (value: unknown): Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : {}
+  const envelope = record(body)
+  const data = record(envelope.data)
+  const failure = record(envelope.error)
+  const values = [envelope.msg, envelope.reason, envelope.code, data.reason, failure.reason, failure.message, failure.code]
+  return !values.some(value => SECURITY_FAILURE_VALUES.has(typeof value === 'number' ? String(value) : value))
 }
 
 /** Whether the first user turn already carries the currentDate context prefix (start-plan pins it once). */
