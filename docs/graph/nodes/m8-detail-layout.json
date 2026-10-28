@@ -2,13 +2,29 @@
   "id": "m8-detail-layout",
   "type": "task",
   "title": "面板节点详情的排版",
-  "status": "doing",
+  "status": "done",
   "parent": "m8",
   "kind": "implement",
   "body": "用户 2026-10-28 看 m1-parity 的节点详情截图后反馈排版乱。截图里能看到的问题：\n\n- 正文是一整段密集文字，长代码名挤在一起，没有分段；长正文没有折叠\n- 「让 agent 干活」下面两句提示挤在同一行\n- 祖先路径末尾多一个「›」\n- 历史里转述的原话丢了换行，两句话连成一句\n- 历史条目写「编辑」不说改了哪个字段；理由开头的「用户：」与「你（经对话）」重复\n- 各节标题与内容的间距不一，节与节之间没有分隔\n- 状态是进行中，「让 agent 干活」却写「现在没有 agent 在这里干活」：面板只看得见 DSH 里的会话，措辞要说清楚",
   "acceptance": [
     "桌面版截图对比：上面每一条都已改好或说明不改的理由",
     "门禁全过"
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "5137bf7"
+    },
+    {
+      "kind": "test",
+      "ref": "npm test",
+      "exit": 0
+    },
+    {
+      "kind": "check",
+      "ref": ".agents/tasks/m8-detail-layout/after-*.png",
+      "exit": 0
+    }
   ],
   "history": [
     {
@@ -26,6 +42,30 @@
       "reason": "派出 coder-node-detail-layout，在主检出改 ui/src/graph，桌面版截图对比",
       "from": "approved",
       "to": "doing"
+    },
+    {
+      "at": "2026-10-28T15:35:58.480Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "八处排版问题都改了，桌面版截图前后对比确认：正文按 Markdown 分段、长正文可折叠、提示分行、路径末尾无多余符号、原话保留换行、编辑写出字段、转述不重复「用户：」、各节间距与分隔统一、没有 agent 时的措辞说明活可能在 DSH 之外",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "5137bf7"
+        },
+        {
+          "kind": "test",
+          "ref": "npm test",
+          "exit": 0
+        },
+        {
+          "kind": "check",
+          "ref": ".agents/tasks/m8-detail-layout/after-*.png",
+          "exit": 0
+        }
+      ]
     }
   ]
 }
