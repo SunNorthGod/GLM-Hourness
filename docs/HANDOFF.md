@@ -35,7 +35,7 @@ dist/          不入库：tsc 产物（profile 通过 pnpm link 使用）
 
 | 行 | 状态 |
 | --- | --- |
-| `glm-llm` | 真网冒烟通过（coding-plan，模型返回 `pong`；2026-10-28 GLM-5.3-Flash 读图一次，答对颜色）；按 rc.3 消息形状编码（工具调用块、图片块）；2026-10-28 在 `glmsandbox` 的 headless 会话里跑完标定基线（两档模型各 6 次多轮工具会话，全部完成，`ORCHESTRATION.md` §10.5.2），桌面版真实会话中尚未被使用 |
+| `glm-llm` | 真网冒烟通过（coding-plan，模型返回 `pong`；2026-10-28 GLM-5.3-Flash 读图一次，答对颜色）；按 rc.3 消息形状编码（工具调用块、图片块）；2026-10-28 在 `glmsandbox` 的 headless 会话里跑完标定基线（两档模型各 6 次多轮工具会话，全部完成，`ORCHESTRATION.md` §10.5.2）。m1-parity（分支 `m1-parity`，2026-10-28）把 coding-plan 请求改为与 ZCode 3.16.3 代码级一致：项目令牌鉴权且拿不到即失败、凭证记录版本 2（首次读取迁移并去掉 secret）、`X-Title` electron、3.16.3 的 User-Agent 与头序、归因头、请求体与 `max_tokens`（`DESIGN.md` §4.8）。离线门禁全绿；沙盒真实网络运行与桌面版重启（批次 L4）尚未做，重启前不要用新代码读真实凭证目录 |
 | `glm-login` | 可用；`/glm-status` 输出凭证状态与调用会话的行健康表（2026-10-28，L3 探针验证），没有 `home` 时也保留 |
 | `glm-prompt` | 在 rc.3 运行时上生效，含 ZCode 3.16.3 local 工具检索；七个别名的描述与 schema 均已按 3.16.3 重建；todo 提醒按助手轮次从会话历史计数（L3 探针 35/35，2026-10-28）；2026-10-28 起 GLM 会话进入高峰时段时收到一条提醒（`ORCHESTRATION.md` §11.4，L3 探针验证）；桌面版需重启才加载 |
 | `glm-compact` | 改为在 `llm/stream` 上替换压缩指令（2026-10-27），L3 探针实测压缩生效 |
