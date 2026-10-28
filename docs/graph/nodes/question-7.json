@@ -19,11 +19,15 @@
   ],
   "recommend": "A",
   "decider": "agent",
-  "decision": "A",
+  "decision": "B",
   "evidence": [
     {
       "kind": "decision",
       "ref": "A"
+    },
+    {
+      "kind": "decision",
+      "ref": "B"
     }
   ],
   "history": [
@@ -46,6 +50,22 @@
         {
           "kind": "decision",
           "ref": "A"
+        }
+      ]
+    },
+    {
+      "at": "2026-10-28T13:26:38.054Z",
+      "actor": "llm",
+      "op": "decide",
+      "reason": "用户要求代码级别彻底一样：max_tokens 照 3.16.3 裁剪",
+      "relay": "看量或者扣减看不出来的。你就代码级别一样就行\n\nB，彻底一样",
+      "from": "done",
+      "to": "done",
+      "option": "B",
+      "evidence": [
+        {
+          "kind": "decision",
+          "ref": "B"
         }
       ]
     }

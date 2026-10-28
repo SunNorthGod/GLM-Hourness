@@ -1,0 +1,54 @@
+{
+  "id": "question-8",
+  "type": "question",
+  "title": "X-Title 报 cli 还是 electron",
+  "status": "done",
+  "parent": "m1-parity",
+  "body": "ZCode 3.16.3 桌面版发 Z Code@electron，本包一直发 Z Code@cli（2026-10-27 定案）。",
+  "options": [
+    {
+      "key": "A",
+      "label": "保持 Z Code@cli",
+      "consequence": "如实报运行形态；与 ZCode 桌面版差一个头"
+    },
+    {
+      "key": "B",
+      "label": "改为 Z Code@electron",
+      "consequence": "与 ZCode 桌面版完全一致"
+    }
+  ],
+  "recommend": "A",
+  "decision": "B",
+  "evidence": [
+    {
+      "kind": "decision",
+      "ref": "B"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-28T13:26:37.725Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "用户拍板，取代 2026-10-27 保留 cli 的定案（DESIGN §4.2）",
+      "relay": "看量或者扣减看不出来的。你就代码级别一样就行\n\nB，彻底一样",
+      "to": "approved"
+    },
+    {
+      "at": "2026-10-28T13:26:37.839Z",
+      "actor": "llm",
+      "op": "decide",
+      "reason": "用户要求彻底一样",
+      "relay": "看量或者扣减看不出来的。你就代码级别一样就行\n\nB，彻底一样",
+      "from": "approved",
+      "to": "done",
+      "option": "B",
+      "evidence": [
+        {
+          "kind": "decision",
+          "ref": "B"
+        }
+      ]
+    }
+  ]
+}

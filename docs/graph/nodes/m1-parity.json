@@ -8,9 +8,9 @@
   "tier": "hard",
   "body": "调研（.agents/tasks/zcode-parity/report.md）：渠道载体已一致（上游地址、路由改写到 ultra、X-ZCode-Authorization、V4 签名、ZCode 身份头）。最可能决定加成的差异是模型请求的凭证：3.16.3 账号模式用项目令牌 PAT 填 Authorization 与 x-api-key，本包用裸 apiKey。其余差异：请求体不发 thinking 与 output_config（DSH 选的推理档位在线上丢失）、model 大小写、User-Agent 尾段、缺 x-query-id 与 x-zcode-query-source、trace id 每请求随机、agent/configs 发完整 key。150% 在客户端只是服务端下发的活动文案，判定机制读不出，要用额度接口（bigmodel.cn/api/monitor/usage/quota/limit 与 credit-usage/usage-detail）在改前改后实测。",
   "acceptance": [
-    "coding-plan 模型请求的 Authorization 与 x-api-key 用 PAT；agent/configs 只发 apiKeyId，不发 secret",
-    "请求体带 thinking 与按 DSH 档位的 output_config，model 与 User-Agent、x-query-id、x-zcode-trace-id、x-zcode-query-source 与 3.16.3 一致；关不掉的差异写进 DESIGN",
-    "沙盒真实请求全部 200、签名通过；额度接口在改前改后同时段各量一次，结论写在节点上"
+    "coding-plan 模型请求的 Authorization 与 x-api-key 用 PAT；agent/configs 只发 apiKeyId，不发 secret；PAT 拿不到时照 3.16.3 报错",
+    "头（含 X-Title Z Code@electron、User-Agent、x-query-id、x-zcode-trace-id、x-zcode-query-source、大小写与顺序）、请求体（键序、model、thinking、output_config、max_tokens）与 metadata.user_id 在代码级别与 3.16.3 一致；只有 DSH 控制的差异写进 DESIGN",
+    "沙盒真实请求全部 200、签名通过，截包的头名与形式与 3.16.3 一致"
   ],
   "history": [
     {
@@ -20,6 +20,27 @@
       "reason": "用户要求 coding-plan 请求与 ZCode 客户端一模一样，以拿到 150% 加成",
       "relay": "只要个人套餐做的和zcode客户端的方式一模一样肯定就能吃到150%加成的。现在是咋做的？",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-28T13:26:37.663Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "用户：额度扣减看不出来，按代码级别一致验收",
+      "relay": "看量或者扣减看不出来的。你就代码级别一样就行\n\nB，彻底一样",
+      "changes": {
+        "acceptance": {
+          "from": [
+            "coding-plan 模型请求的 Authorization 与 x-api-key 用 PAT；agent/configs 只发 apiKeyId，不发 secret",
+            "请求体带 thinking 与按 DSH 档位的 output_config，model 与 User-Agent、x-query-id、x-zcode-trace-id、x-zcode-query-source 与 3.16.3 一致；关不掉的差异写进 DESIGN",
+            "沙盒真实请求全部 200、签名通过；额度接口在改前改后同时段各量一次，结论写在节点上"
+          ],
+          "to": [
+            "coding-plan 模型请求的 Authorization 与 x-api-key 用 PAT；agent/configs 只发 apiKeyId，不发 secret；PAT 拿不到时照 3.16.3 报错",
+            "头（含 X-Title Z Code@electron、User-Agent、x-query-id、x-zcode-trace-id、x-zcode-query-source、大小写与顺序）、请求体（键序、model、thinking、output_config、max_tokens）与 metadata.user_id 在代码级别与 3.16.3 一致；只有 DSH 控制的差异写进 DESIGN",
+            "沙盒真实请求全部 200、签名通过，截包的头名与形式与 3.16.3 一致"
+          ]
+        }
+      }
     }
   ]
 }
