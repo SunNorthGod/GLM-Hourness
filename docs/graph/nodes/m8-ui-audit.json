@@ -1,0 +1,39 @@
+{
+  "id": "m8-ui-audit",
+  "type": "task",
+  "title": "全部 UI 的审查与优化，最后完整走一轮",
+  "status": "doing",
+  "parent": "m8",
+  "kind": "implement",
+  "body": "范围是本仓库给 DSH 桌面版提供的全部界面：ui/src 下的项目图面板（Panel、Doing、Live、NodeDetail、NeedsYou、Decisions、GraphCanvas 等）与 ui/src/client.tsx 里的其余界面，以及宿主侧会显示到界面上的文字（通知、健康行、宿主命令的输出）。\n\n做法：先盘点每个界面并在桌面版截图，按可读性、一致性、状态口径是否正确、空态与错误态、可访问性列出问题；有问题的改掉，没必要改的写明理由；全部改完后在桌面版上把每个界面完整走一轮，确认没有新错误。\n\n在 m8-doing-layout 之后做：两者改的是同一批文件，桌面版同一时间只给一个 worker 用（risk-shared-desktop）。",
+  "acceptance": [
+    "盘点与问题清单：每个界面都列到，每条问题都有「已改」或「不改的理由」",
+    "改动前后的桌面版截图对比",
+    "全部改完后的完整走查：每个界面截图，控制台与 DSH 日志无新错误",
+    "门禁全过"
+  ],
+  "edges": [
+    {
+      "type": "depends",
+      "to": "m8-doing-layout"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-28T16:06:15.088Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "用户追加的任务",
+      "relay": "再给你加一个任务就是审查和优化（如果有）全部的UI，最后再完整做一轮看看有没有问题",
+      "to": "approved"
+    },
+    {
+      "at": "2026-10-28T16:07:28.352Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "派出 ui-audit-all-surfaces（wf_4f796b871f55d1fd）：先只读盘点，用桌面版与改主检出前向编排者申请桌面时段，排在 m8-doing-layout 之后",
+      "from": "approved",
+      "to": "doing"
+    }
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "id": "question-12",
+  "type": "question",
+  "title": "清理类工作要不要逐项问人",
+  "status": "done",
+  "parent": "orch",
+  "body": "m1-cleanup 里有一部分在仓库外：~/.dsh 下的 profile 备份、桌面 profile 里 8317 的 pi-ai glm 路由。AGENTS.md 第 6 条要求改 profile 须用户明确要求且先备份。",
+  "options": [
+    {
+      "key": "A",
+      "label": "agent 自己定，含 ~/.dsh 下的条目",
+      "consequence": "改前备份，删前把清单批注在节点上，删后批注结果（条款 11）"
+    },
+    {
+      "key": "B",
+      "label": "涉及 ~/.dsh 的先问人",
+      "consequence": "仓库外的清理等人在场"
+    }
+  ],
+  "recommend": "A",
+  "decision": "A",
+  "evidence": [
+    {
+      "kind": "decision",
+      "ref": "A"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-28T16:06:14.949Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "用户睡前定下的默认做法",
+      "relay": "清理的活你自己决定就行，不用老找我批准",
+      "to": "approved"
+    },
+    {
+      "at": "2026-10-28T16:06:15.018Z",
+      "actor": "llm",
+      "op": "decide",
+      "reason": "用户把清理整体交给 agent，含仓库外条目；仍按改前备份、删前列清单执行",
+      "relay": "清理的活你自己决定就行，不用老找我批准",
+      "from": "approved",
+      "to": "done",
+      "option": "A",
+      "evidence": [
+        {
+          "kind": "decision",
+          "ref": "A"
+        }
+      ]
+    }
+  ]
+}

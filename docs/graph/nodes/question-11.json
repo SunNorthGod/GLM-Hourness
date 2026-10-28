@@ -1,0 +1,54 @@
+{
+  "id": "question-11",
+  "type": "question",
+  "title": "审查跑满两轮仍未通过时怎么办",
+  "status": "done",
+  "parent": "orch",
+  "body": "实现与审查循环默认两轮，用完会暂停等人。夜里人不在，暂停会让后面排着的活一起停住。",
+  "options": [
+    {
+      "key": "A",
+      "label": "自动再加一轮修复与审查，第三轮仍不过就停下等人",
+      "consequence": "多数剩余问题当晚能收掉；最多多花一轮的时间"
+    },
+    {
+      "key": "B",
+      "label": "直接停下等人",
+      "consequence": "人醒来前这条线不动"
+    }
+  ],
+  "recommend": "A",
+  "decision": "A",
+  "evidence": [
+    {
+      "kind": "decision",
+      "ref": "A"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-28T16:06:14.841Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "用户睡前定下的默认做法",
+      "relay": "可以加",
+      "to": "approved"
+    },
+    {
+      "at": "2026-10-28T16:06:14.913Z",
+      "actor": "llm",
+      "op": "decide",
+      "reason": "用户同意自动加一轮",
+      "relay": "可以加",
+      "from": "approved",
+      "to": "done",
+      "option": "A",
+      "evidence": [
+        {
+          "kind": "decision",
+          "ref": "A"
+        }
+      ]
+    }
+  ]
+}
