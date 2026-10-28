@@ -253,16 +253,17 @@ LLM 平面（bundle `g6n` 形态）：`HTTP-Referer`、`User-Agent: ZCode/<ver>`
 
 ### 4.3 签名 V4
 
-移植自 zcode-api 的 `client-signing`，按 ZCode 3.16.3 安装包的 `ClientRequestSigningV4Signer` 核对（2026-10-28，证据与偏移见 `.agents/tasks/m1-signing/report.md`）〔实读〕：
+移植自 zcode-api 的 `client-signing`，按 ZCode 3.16.3 安装包的 `ClientRequestSigningV4Signer` 核对（2026-10-28，符号与安装包偏移见 `FACTS.md`）〔实读〕：
 
 - 握手：`POST new URL('/api/paas/c1f3a7e2/v2/client', <provider baseURL 的 origin>)`，baseURL 的路径部分丢弃。coding-plan 的 baseURL 是 `https://open.bigmodel.cn/api/anthropic`，握手发往 `https://open.bigmodel.cn/api/paas/c1f3a7e2/v2/client`。`c1f3a7e2` 是字面常量，3.15.1 到 3.16.3 的六个包相同。请求头 `Authorization` 是原样凭证（`{apiKeyId}.{secret}` 或 project_access JWT，都不加 `Bearer `），请求体 `{apiKey 或 accessToken, nonce, sig, ts}`，超时 10 秒。响应里的 `privateCipher` 用 HKDF 派生的 AES-GCM 密钥解出 Ed25519 私钥；此后每个请求带 Ed25519 业务签名与 PoW，共七个签名头。
 - 组装：签名 fetch 包在端点路由 fetch 外面。签名器看到路由前的 provider URL，握手 origin 由它决定；签好的请求交给路由改写到 `zcode.z.ai/api/v1/ultra/...`，`X-ZCode-Authorization` 排在签名头之后。握手本身也经同一个路由 fetch；路由表按完整 URL 匹配，没有握手 URL 的映射时原样发出（§4.4）。
-- 档位门：start-plan 不挂签名器（3.16.3 `requiresClientRequestSigning` 对 start-plan、off-peak、highspeed 返回 false）；zcode-plan 与 off-peak 路径不签名。
-- 失败梯：握手的网络错误、超时、非 200、业务拒绝、缺 `privateCipher` 都放行，本次无签发送。凭证无法解析或请求缺 `x-session-id` 时跳过签名（3.16.3 在这两种情况下抛错，本包沿用 zcode-api 的放行）。401 VERIFY 拒绝后作废私钥、立即重新握手再签一次；第二次仍被拒就进入旁路，无签重发。
+- 档位门：start-plan 不挂签名器（3.16.3 `requiresClientRequestSigning` 对 start-plan、off-peak、highspeed 返回 false）。签名器只按这一档位门判断，不按请求路径豁免：它收到的 URL 总是 provider URL。
+- 失败梯：握手的网络错误、超时、非 200、业务拒绝、缺 `privateCipher` 都放行，本次无签发送。3.16.3 在四种情况下抛错、请求失败，本包四种都放行：凭证无法解析与请求缺 `x-session-id` 时跳过签名（沿用 zcode-api）；PoW 或 Ed25519 签名失败、握手进行中签名状态被作废（VERIFY 拒绝或新项目令牌）时本次无签发送。401 VERIFY 拒绝后作废私钥、立即重新握手再签一次；第二次仍被拒就进入旁路，无签重发。
+- 通知：经 `onEvent` 发出，每个（origin, 凭证）每种原因一条。通知只写本包自定的失败类别（如 `handshake_http_404`）与错误名（如 `TypeError`），不写错误消息：fetch 校验请求头时的错误消息会引用头的值，握手请求头的值就是凭证。业务拒绝的 `msg` 只在匹配 `^HANDSHAKE_[A-Z_]+$` 时作为原因保留，与 3.16.3 的日志规则相同。生产构造目前没有接 `onEvent`。
 
 缓存〔实读〕：3.16.3 按（apiKey, 握手 origin）在进程内缓存私钥，没有 TTL，只有 VERIFY 拒绝才作废；并发请求共享进行中的握手；握手失败什么都不缓存，下一个可签名请求立即再握手。本包同样按（origin, 凭证）缓存私钥并合并并发握手，另有两处偏离〔定案 2026-10-28〕：
 
-1. 握手失败后，该（origin, 凭证）60 秒内不再握手，期间的请求直接无签发送（`HANDSHAKE_FAILURE_COOLDOWN_MS`，与项目令牌铸造失败的冷却同值）。按 3.16.3 原样，持续失败时每个请求前都要握手一次；404 这类确定性失败重试没有意义，每次约 90 毫秒，串行排在模型请求之前。VERIFY 作废与新项目令牌铸造成功都结束冷却，立即重新握手。
+1. 握手失败后，该（origin, 凭证）60 秒内不再握手，期间的请求直接无签发送（`HANDSHAKE_FAILURE_COOLDOWN_MS`，与项目令牌铸造失败的冷却同值）。按 3.16.3 原样，持续失败时每个请求前都要握手一次；404 这类确定性失败重试没有意义，每次约 90 毫秒，串行排在模型请求之前。VERIFY 作废与新项目令牌铸造成功都结束冷却，立即重新握手。冷却只挡握手：凭证带 OAuth 令牌而项目令牌没有缓存时，铸造请求只受它自己的 60 秒失败冷却（`MINT_FAILURE_COOLDOWN_MS`）约束，握手冷却期内照常发出，铸造成功即结束握手冷却。
 2. 两次 VERIFY 拒绝后，该（origin, 凭证）永久旁路，直到进程重启。3.16.3 的旁路只对当前签名器代有效，它的运行时每个请求重建签名器，按源码推断只管一次请求。永久旁路避免每个请求都走三次发送的梯子。
 
 曾有缺陷（2026-10-28 修复）：适配器把路由改写后的 URL（`zcode.z.ai/api/v1/ultra/...`）交给签名层，握手 origin 成了 `zcode.z.ai`，每次 404；失败又不留状态，每个请求前都重试一次（§4.5b 截包）。这个错误从基线导入（`9266fb6`）起就在，原先「握手对当前凭证失败」的归因不成立。同批改动：start-plan 不再签名；JWT 形式握手的 `Authorization` 由 zcode-api 的 `Bearer <jwt>` 改为原样 JWT，按 3.16.3 逐字。

@@ -33,11 +33,10 @@ function jsonRespond(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
 }
 
-test('signing skips http, unsigned paths, already-signed pairs, and separator-less credentials', async () => {
+test('signing skips http, already-signed pairs, and separator-less credentials', async () => {
   const manager = new ClientSigningManager({ fetchImpl: async () => { throw new Error('should not fetch') } })
   const pairs: Array<readonly [string, string]> = [['content-type', 'application/json'], ['x-session-id', 's1']]
   assert.equal((await manager.signWithStatus('http://x/api/anthropic/v1/messages', pairs, { credential: 'id.secret', appVersion: '3.14.0' })).signed, false)
-  assert.equal((await manager.signWithStatus('https://x/api/v1/zcode-plan/anthropic/v1/messages', pairs, { credential: 'id.secret', appVersion: '3.14.0' })).signed, false)
   assert.equal((await manager.signWithStatus('https://x/api/anthropic/v1/messages', [['x-client-sig', 'present'], ['x-session-id', 's1']], { credential: 'id.secret', appVersion: '3.14.0' })).signed, false)
   assert.equal((await manager.signWithStatus('https://x/api/anthropic/v1/messages', pairs, { credential: 'noseparator', appVersion: '3.14.0' })).signed, false)
 })
@@ -170,6 +169,52 @@ test('the cooldown is per (origin, credential): another credential or origin han
   await sign(manager, API_KEY_CRED, 'https://api.z.ai/api/anthropic/v1/messages')
   assert.deepEqual(seen.map(request => request.url), [HANDSHAKE_URL, HANDSHAKE_URL, 'https://api.z.ai/api/paas/c1f3a7e2/v2/client'])
   assert.deepEqual(seen.map(request => bodyOf(request).apiKey), ['id.secret', 'other.secret', 'id.secret'])
+})
+
+test('a handshake overtaken by invalidation starts no cooldown when it fails', async () => {
+  let handshakes = 0
+  const first: { sent?: () => void, answer?: (response: Response) => void } = {}
+  const sent = new Promise<void>(resolve => { first.sent = resolve })
+  const manager = new ClientSigningManager({
+    fetchImpl: () => {
+      handshakes += 1
+      if (handshakes > 1) return Promise.resolve(notFound())
+      first.sent?.()
+      return new Promise<Response>(resolve => { first.answer = resolve })
+    },
+  })
+  const overtaken = sign(manager)
+  await sent
+  manager.invalidate(MODEL_URL, API_KEY_CRED.credential)
+  first.answer?.(notFound())
+  assert.equal((await overtaken).signed, false)
+  await sign(manager)
+  assert.equal(handshakes, 2)
+})
+
+/** The notices one failing handshake for `credential` produces. */
+async function handshakeNotices(credential: string, fetchImpl: typeof fetch): Promise<string[]> {
+  const events: string[] = []
+  const manager = new ClientSigningManager({ fetchImpl, onEvent: message => { events.push(message) } })
+  assert.equal((await sign(manager, { ...API_KEY_CRED, credential })).signed, false)
+  return events
+}
+
+const handshakeFailed = (reason: string): string => `client-signing: signing handshake failed (${reason}) — sending unsigned; no new handshake for 60 s`
+
+test('handshake notices carry failure kinds and error names, never the credential or server text', async () => {
+  // An embedded LF makes fetch's header validation quote the header value,
+  // here the credential (Node 22: `Headers.append: "<value>" is an invalid
+  // header value.`). The Headers constructor runs the same validation offline.
+  const credential = 'id.sec\nret'
+  const validating: typeof fetch = (_input, init) => Promise.resolve(init?.headers).then(headers => new Headers(headers)).then(() => notFound())
+  await assert.rejects(validating(HANDSHAKE_URL, { headers: { Authorization: credential } }), { name: 'TypeError', message: /id\.sec\nret/u })
+  assert.deepEqual(await handshakeNotices(credential, validating), [handshakeFailed('TypeError')])
+  // 3.16.3 keeps a rejection's msg only when it matches ^HANDSHAKE_[A-Z_]+$.
+  const rejecting = (msg: string): typeof fetch => recordingFetch([], () => jsonRespond(200, { code: 1001, msg }))
+  assert.deepEqual(await handshakeNotices('id.secret', rejecting('unknown apiKey id.secret')), [handshakeFailed('handshake_rejected')])
+  assert.deepEqual(await handshakeNotices('id.secret', rejecting('HANDSHAKE_SIGNATURE_INVALID')), [handshakeFailed('handshake_rejected: HANDSHAKE_SIGNATURE_INVALID')])
+  assert.deepEqual(await handshakeNotices('id.secret', recordingFetch([], notFound)), [handshakeFailed('handshake_http_404')])
 })
 
 test('handshakeFetch carries only the handshake; the project-token mint stays on fetchImpl', async () => {

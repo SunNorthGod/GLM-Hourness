@@ -6,8 +6,10 @@
  * transport in the signing transport), so the handshake goes to
  * HANDSHAKE_PATH on the provider origin, e.g.
  * https://open.bigmodel.cn/api/paas/c1f3a7e2/v2/client. The adapter attaches
- * no signer for start-plan (3.16.3 `requiresClientRequestSigning`); the
- * zcode-plan/off-peak paths are never signed. Everything fails open:
+ * no signer for start-plan (3.16.3 `requiresClientRequestSigning`).
+ * Notices name failures by code-owned kinds and error names only, never by
+ * error messages: a fetch header-validation message quotes the header value,
+ * which for the handshake is the credential. Everything fails open:
  *   - handshake failure → unsigned, and no new handshake for that
  *     (origin, credential) pair for HANDSHAKE_FAILURE_COOLDOWN_MS.
  *     Deviation: 3.16.3 caches no failure and handshakes again before every
@@ -38,13 +40,8 @@ const MINT_FAILURE_COOLDOWN_MS = 60_000
 const VERIFY_SIGNATURE_INVALID = 'VERIFY_SIGNATURE_INVALID'
 const VERIFY_APIKEY_EXPIRED = 'VERIFY_APIKEY_EXPIRED'
 const BIGMODEL_HOST = 'https://bigmodel.cn'
-
-/** Paths the client never signs (decoded, trailing-slash-stripped). */
-const UNSIGNED_PATHS = new Set([
-  '/api/v1/zcode-plan/anthropic/v1/messages',
-  '/api/v1/zcode-plan/chat/completions',
-  '/api/v1/off-peak/anthropic/v1/messages',
-])
+/** A business rejection's `msg` is kept as its reason only when it matches (3.16.3 `performHandshake`). */
+const HANDSHAKE_REJECTION_REASON = /^HANDSHAKE_[A-Z_]+$/u
 
 const SIGNING_HEADER_NAMES = new Set(['x-client-ts', 'x-client-version', 'x-client-sig', 'x-client-nonce', 'x-app-id', 'x-client-pow', 'x-client-sign-verified'])
 
@@ -65,6 +62,15 @@ export interface ParsedSigningCredential {
   readonly apiKeyId: string
   readonly secret: string
   readonly handshakeField: 'apiKey' | 'accessToken'
+}
+
+/** A signer-raised failure whose message is a fixed, code-owned kind (no credential, no server text). */
+class SigningFailure extends Error {}
+
+/** Notice-safe reason: a SigningFailure's kind, otherwise only the error's name. */
+function failureReason(error: unknown): string {
+  if (error instanceof SigningFailure) return error.message
+  return error instanceof Error ? error.name : typeof error
 }
 
 const encoder = new TextEncoder()
@@ -91,7 +97,7 @@ function randomHex(byteCount: number): string {
 }
 
 function base64ToBytes(value: string): Uint8Array<ArrayBuffer> {
-  if (value.length === 0 || value.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(value)) throw new Error('invalid base64')
+  if (value.length === 0 || value.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(value)) throw new SigningFailure('invalid base64')
   const binary = atob(value)
   const out = new Uint8Array(binary.length)
   for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i)
@@ -112,7 +118,7 @@ async function handshakeSignature(secret: string, message: string): Promise<stri
 
 async function decryptSigningPrivateKey(apiKeyId: string, secret: string, privateCipher: string): Promise<CryptoKey> {
   const cipher = base64ToBytes(privateCipher)
-  if (cipher.byteLength <= 12 + 16) throw new Error('privateCipher is too short')
+  if (cipher.byteLength <= 12 + 16) throw new SigningFailure('privateCipher is too short')
   const aesKey = await crypto.subtle.importKey('raw', await hkdfBytes(secret, KDF_INFO_ED25519), 'AES-GCM', false, ['decrypt'])
   const plain = new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: cipher.slice(0, 12), additionalData: encodeUtf8(apiKeyId), tagLength: 128 }, aesKey, cipher.slice(12)))
   const pkcs8 = base64ToBytes(new TextDecoder().decode(plain))
@@ -144,7 +150,7 @@ export async function createProofOfWork(apiKeyId: string, sessionId: string, ts:
     const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', encodeUtf8(`${seed}\n${candidate}`)))
     if (hasLeadingZeroBits(digest, POW_BITS)) return candidate
   }
-  throw new Error('Unable to solve client request proof of work')
+  throw new SigningFailure('Unable to solve client request proof of work')
 }
 
 /** Dual-form credential parse: project_access JWT (HS256+SIGN, api_key claim) or `{apiKeyId}.{secret}`. */
@@ -169,12 +175,6 @@ export function parseSigningCredentialForm(credential: string): ParsedSigningCre
   const secret = credential.slice(dot + 1)
   if (apiKeyId.trim().length === 0 || secret.trim().length === 0) return undefined
   return { apiKeyId, secret, handshakeField: 'apiKey' }
-}
-
-function isUnsignedPath(pathname: string): boolean {
-  let path = pathname
-  try { path = decodeURIComponent(pathname) } catch { /* keep raw path */ }
-  return UNSIGNED_PATHS.has(path.replace(/\/+$/u, ''))
 }
 
 function findHeader(pairs: ReadonlyArray<readonly [string, string]>, name: string): string | undefined {
@@ -224,7 +224,6 @@ export class ClientSigningManager {
     let parsed: URL
     try { parsed = new URL(url) } catch { return { pairs, signed: false } }
     if (parsed.protocol !== 'https:') return { pairs, signed: false }
-    if (isUnsignedPath(parsed.pathname)) return { pairs, signed: false }
     if (pairs.some(([key]) => key.toLowerCase() === 'x-client-sig')) return { pairs, signed: false }
     const stateKey = `${parsed.origin}\n${cred.credential}`
     const state = this.stateFor(stateKey)
@@ -240,15 +239,16 @@ export class ClientSigningManager {
       return { pairs, signed: false }
     }
     // Checked after the credential resolve: a newly minted project token
-    // invalidates the state, which ends the cooldown.
+    // invalidates the state, which ends the cooldown. The mint itself, gated
+    // by MINT_FAILURE_COOLDOWN_MS only, can therefore run during a handshake
+    // cooldown.
     if (state.failedUntil !== undefined && this.now() < state.failedUntil) return { pairs, signed: false }
     let privateKey: CryptoKey
     try {
       privateKey = await this.ensurePrivateKey(state, parsedCred, parsed.origin)
     }
     catch (error) {
-      const reason = error instanceof Error ? error.message : String(error)
-      this.noteOnce(`${stateKey}\nhandshake`, `signing handshake failed (${reason}) — sending unsigned; no new handshake for ${HANDSHAKE_FAILURE_COOLDOWN_MS / 1000} s`)
+      this.noteOnce(`${stateKey}\nhandshake`, `signing handshake failed (${failureReason(error)}) — sending unsigned; no new handshake for ${HANDSHAKE_FAILURE_COOLDOWN_MS / 1000} s`)
       return { pairs, signed: false }
     }
     const signedPairs = await this.buildSignedPairs(stateKey, pairs, privateKey, parsedCred, sessionId, cred.appVersion)
@@ -265,7 +265,7 @@ export class ClientSigningManager {
       sig = await signBusinessMessage(privateKey, `${parsedCred.apiKeyId}\n${ts}\n${appVersion}\n${sessionId}\n${nonce}`)
     }
     catch (error) {
-      this.noteOnce(`${stateKey}\nsign`, `signing failed (${error instanceof Error ? error.message : String(error)}) — sending unsigned`)
+      this.noteOnce(`${stateKey}\nsign`, `signing failed (${failureReason(error)}) — sending unsigned`)
       return null
     }
     const cleaned = pairs.filter(([key]) => {
@@ -420,7 +420,7 @@ export class ClientSigningManager {
     if (state.handshake !== undefined) return state.handshake
     const epoch = state.epoch
     const handshake = this.performHandshake(parsedCred, origin).then(key => {
-      if (state.epoch !== epoch) throw new Error('signing key changed during handshake')
+      if (state.epoch !== epoch) throw new SigningFailure('signing key changed during handshake')
       state.privKey = key
       state.failedUntil = undefined
       return key
@@ -453,12 +453,15 @@ export class ClientSigningManager {
         redirect: 'manual',
         signal: controller.signal,
       })
-      if (resp.status !== 200) throw new Error(`handshake_http_${resp.status}`)
+      if (resp.status !== 200) throw new SigningFailure(`handshake_http_${resp.status}`)
       const envelope = await resp.json() as { code?: unknown, msg?: unknown, data?: { privateCipher?: unknown } }
-      if (envelope.code === 500) throw new Error('handshake_server_500')
-      if (envelope.code !== 200) throw new Error(`handshake_rejected: ${String(envelope.msg)}`)
+      if (envelope.code === 500) throw new SigningFailure('handshake_server_500')
+      if (envelope.code !== 200) {
+        const reason = typeof envelope.msg === 'string' && HANDSHAKE_REJECTION_REASON.test(envelope.msg) ? `: ${envelope.msg}` : ''
+        throw new SigningFailure(`handshake_rejected${reason}`)
+      }
       const cipher = envelope.data?.privateCipher
-      if (typeof cipher !== 'string' || cipher.length === 0) throw new Error('handshake_omitted_privateCipher')
+      if (typeof cipher !== 'string' || cipher.length === 0) throw new SigningFailure('handshake_omitted_privateCipher')
       return await decryptSigningPrivateKey(parsedCred.apiKeyId, parsedCred.secret, cipher)
     }
     finally {
