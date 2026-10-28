@@ -18,6 +18,12 @@
       "op": "propose",
       "reason": "图行默认禁用，启用前要 L3、L4",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-28T08:56:48.707Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "按条款 11（norm-audit-trail），启用图行之前要补的两处留痕：graph-files-only 的拒绝写进 audit/violations.jsonl；行健康表加 graph 与 graph-panel 两行。"
     }
   ]
 }
