@@ -2,13 +2,29 @@
   "id": "m8-doing-layout",
   "type": "task",
   "title": "面板「正在做」视图的版面",
-  "status": "doing",
+  "status": "done",
   "parent": "m8",
   "kind": "implement",
   "body": "m8-detail-layout 只改了节点详情。用户 2026-10-28 看「正在做」的截图后指出现场的版面没改。截图里能看到的问题：\n\n- 现场列的是面板所在会话的 agent：两小时前停下的子 agent 和空闲的主 Agent 跟在跑的一样显眼；空闲的主 Agent 还写着「在「m2-9 L4 验证任务」」，那个节点早已完成\n- 在 DSH 之外做着的工作（Kiro 派出的 worker）在现场完全看不见，现场只说「2」，容易让人以为没人在干活\n- 进度条把已拍板的待决也算进去：m1-parity 底下只有 4 个已定的待决，进度条却是满的，任务其实还在做；底层 2/9、M1 25/28 也是同一个口径\n- 进行中的行是卡片样式，可以开工和待验证的行是列表样式，间距与分隔不统一；有的行没有路径",
   "acceptance": [
     "桌面版截图对比：上面每一条都已改好或说明不改的理由",
     "门禁全过"
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "afccf93"
+    },
+    {
+      "kind": "test",
+      "ref": "npm test",
+      "exit": 0
+    },
+    {
+      "kind": "check",
+      "ref": ".agents/tasks/m8-doing-layout/after-*.png",
+      "exit": 0
+    }
   ],
   "history": [
     {
@@ -26,6 +42,30 @@
       "reason": "派出 coder-doing-view-layout，在主检出改 ui/src/graph，桌面版截图对比",
       "from": "approved",
       "to": "doing"
+    },
+    {
+      "at": "2026-10-28T16:12:54.984Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "afccf93 已推送：现场先列在跑的 agent，空闲与已停下的变暗成一行，节点已完成时写「上次在」；没有 agent 在跑时说明活可能在别的会话或 DSH 之外；进度只数任务与特性，待决单列；三个列表同一行样式。build、preflight、npm test 全过；桌面版前后截图在 .agents/tasks/m8-doing-layout/（before-doing-1.png、after-doing-1.png 等）",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "afccf93"
+        },
+        {
+          "kind": "test",
+          "ref": "npm test",
+          "exit": 0
+        },
+        {
+          "kind": "check",
+          "ref": ".agents/tasks/m8-doing-layout/after-*.png",
+          "exit": 0
+        }
+      ]
     }
   ]
 }
