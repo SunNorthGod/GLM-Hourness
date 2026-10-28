@@ -38,7 +38,7 @@ export function apply(ctx: CommandsHost & ServiceLookup & Partial<ProvideHost>, 
   const credentialText = async (): Promise<string> => {
     const status = await adapter.status()
     if (!status.logged) {
-      return `glm-zcode：未登录（套餐 ${status.plan}）。运行 /glm-login 开始登录${login.state.error === undefined ? '' : `\n上次登录错误：${login.state.error}`}`
+      return `glm-zcode：未登录（套餐 ${status.plan}${status.incomplete === undefined ? '' : `，登录不完整：${status.incomplete}`}）。运行 /glm-login 开始登录${login.state.error === undefined ? '' : `\n上次登录错误：${login.state.error}`}`
     }
     return `glm-zcode：已登录（套餐 ${status.plan}，Key ${status.keyPreview}${status.userId === undefined ? '' : `，账号 ${status.userId}`}${status.jwtAgeHours === undefined ? '' : `，JWT 已用 ${status.jwtAgeHours} 小时`}）`
   }

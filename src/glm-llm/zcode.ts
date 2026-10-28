@@ -231,10 +231,10 @@ export class ZcodeAdapter {
    * the result. Throws an Error whose message is the 3.16.3 code or text.
    */
   private projectToken(credential: Credential, rejectedFingerprint?: string): Promise<ResolvedProjectToken> {
+    const missing = missingAccountCredential(credential)
+    if (missing !== undefined) return Promise.reject(new Error(missing))
     const oauth = credential.oauthAccessToken?.trim() ?? ''
-    if (oauth.length === 0) return Promise.reject(new Error(CREDENTIAL_UNAVAILABLE_FAMILY))
-    if (credential.userId === undefined || credential.userId.trim().length === 0) return Promise.reject(new Error(CREDENTIAL_UNAVAILABLE_PROVIDER))
-    const accountId = credential.userId
+    const accountId = credential.userId ?? ''
     const key = JSON.stringify([oauth, accountId, rejectedFingerprint ?? null])
     const shared = this.projectTokenLoads.get(key)
     if (shared !== undefined) return shared
@@ -367,11 +367,20 @@ export class ZcodeAdapter {
     return this.options.env ?? process.env
   }
 
-  /** Signed-in status for the /glm-status command. */
-  async status(): Promise<{ logged: boolean, plan: PlanId, keyPreview?: string, userId?: string, jwtAgeHours?: number }> {
+  /**
+   * Signed-in status for the /glm-status command. A stored login the plan
+   * cannot use (coding-plan without an OAuth token or account id, start-plan
+   * without its plan JWT) is not logged in: `incomplete` names the 3.16.3
+   * reason the request fails closed with.
+   */
+  async status(): Promise<{ logged: boolean, plan: PlanId, incomplete?: string, keyPreview?: string, userId?: string, jwtAgeHours?: number }> {
     const credential = await this.loadCredential().catch(() => undefined)
     const plan = this.options.plan ?? 'coding-plan'
     if (credential === undefined) return { logged: false, plan }
+    const incomplete = plan === 'start-plan'
+      ? (credential.jwt ?? '').length === 0 ? START_PLAN_CREDENTIAL_UNAVAILABLE : undefined
+      : missingAccountCredential(credential)
+    if (incomplete !== undefined) return { logged: false, plan, incomplete }
     const jwtInfo = plan === 'start-plan' && credential.jwt !== undefined ? inspectJwt(credential.jwt) : undefined
     return {
       logged: true,
@@ -525,6 +534,18 @@ function routedInit(init: RequestInit | undefined, routingHeaders: Readonly<Reco
   headers.delete('host')
   for (const [name, value] of Object.entries(routingHeaders ?? {})) headers.set(name, value)
   return { ...init, headers }
+}
+
+/**
+ * The 3.16.3 reason a stored login cannot mint a project access token
+ * (desktop `AccountRequestCredentialUnavailableError`): no OAuth access
+ * token names the family, no account id names the provider. Undefined when
+ * both are there.
+ */
+function missingAccountCredential(credential: Credential): string | undefined {
+  if ((credential.oauthAccessToken?.trim() ?? '').length === 0) return CREDENTIAL_UNAVAILABLE_FAMILY
+  if ((credential.userId?.trim() ?? '').length === 0) return CREDENTIAL_UNAVAILABLE_PROVIDER
+  return undefined
 }
 
 /**

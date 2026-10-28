@@ -717,6 +717,20 @@ test('status previews the located project key (unresolved before the first reque
   assert.equal((await adapter.status()).logged, false)
 })
 
+test('status calls a stored login the plan cannot use not logged in, naming the 3.16.3 reason its requests fail closed with', async () => {
+  const statusOf = async (stored: Credential, plan?: 'start-plan') => {
+    const { fs } = memoryStore()
+    await saveCredential(fs, STORE_PATH, stored)
+    return new ZcodeAdapter({ home: 'C:/ws/.llm', fetchImpl: makeUpstream(), storeFs: fs, ...(plan === undefined ? {} : { plan }) }).status()
+  }
+  const { oauthAccessToken: _oauth, ...withoutOAuth } = credential
+  assert.deepEqual(await statusOf(withoutOAuth), { logged: false, plan: 'coding-plan', incomplete: 'Account request credential is unavailable: bigmodel' })
+  const { userId: _user, ...withoutAccount } = credential
+  assert.deepEqual(await statusOf(withoutAccount), { logged: false, plan: 'coding-plan', incomplete: 'Account request credential is unavailable: account:bigmodel-individual-coding-plan' })
+  assert.deepEqual(await statusOf(credential, 'start-plan'), { logged: false, plan: 'start-plan', incomplete: 'Account request credential is unavailable: account:bigmodel-start-plan' })
+  assert.equal((await statusOf({ ...credential, jwt: 'a.b.c' }, 'start-plan')).logged, true)
+})
+
 test('login row registers the three commands and /glm-login returns the authorize URL', async () => {
   const registered: Array<{ definitionId: string, name: string, handler: (invocation: { rawInput: string }) => Promise<{ kind: string, text: string }> }> = []
   const dispose = loginApply({ commands: { register: definition => { registered.push(definition); return () => {} } } }, { home: 'C:/ws/.llm' })

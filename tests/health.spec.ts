@@ -239,6 +239,28 @@ test('/glm-status prints the credential line, then the health table of the invok
   assert.ok(other.text.includes('| guard | 已加载，本会话未触发 | 已加载 |')) // another session: the guard has not acted there
 })
 
+test('/glm-status reports a stored login coding-plan cannot use as not logged in, with the 3.16.3 reason', async () => {
+  // Every coding-plan request fails closed on such a login; the status line must not call it logged in.
+  const home = mkdtempSync(join(tmpdir(), 'glmh-status-'))
+  try {
+    const fs: StoreFs = { readFile: path => readFile(path, 'utf8'), writeFile: (path, data) => writeFile(path, data), rename }
+    const statusLine = async (): Promise<string> => {
+      const { run } = loginRow({ home })
+      const result = await run('glm-status', 's1')
+      return result.text.slice(0, result.text.indexOf('\n\n'))
+    }
+    await saveCredential(fs, join(home, 'credentials.json'), { version: 2, provider: 'bigmodel', userId: 'user-1' })
+    assert.equal(await statusLine(), 'glm-zcode：未登录（套餐 coding-plan，登录不完整：Account request credential is unavailable: bigmodel）。运行 /glm-login 开始登录')
+    await saveCredential(fs, join(home, 'credentials.json'), { version: 2, provider: 'bigmodel', oauthAccessToken: 'fake-oauth' })
+    assert.equal(await statusLine(), 'glm-zcode：未登录（套餐 coding-plan，登录不完整：Account request credential is unavailable: account:bigmodel-individual-coding-plan）。运行 /glm-login 开始登录')
+    await saveCredential(fs, join(home, 'credentials.json'), { version: 2, provider: 'bigmodel', oauthAccessToken: 'fake-oauth', userId: 'user-1' })
+    assert.equal(await statusLine(), 'glm-zcode：已登录（套餐 coding-plan，Key unresolved，账号 user-1）')
+  }
+  finally {
+    rmSync(home, { recursive: true, force: true })
+  }
+})
+
 test('without a home the login row uses the user-level directory: all three commands, status reads the store there', async () => {
   await withMissingDshHome(async () => {
     const { commands, run } = loginRow({})
