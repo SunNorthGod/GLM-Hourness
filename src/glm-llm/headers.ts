@@ -65,6 +65,8 @@ interface SessionTrace {
   readonly traceId: string
   turnKey?: string | undefined
   queryId?: string | undefined
+  /** The query id was opened by a session-title request and no turn has claimed it yet. */
+  titleOpened?: boolean | undefined
 }
 
 /** The turn of a request: the id of its latest message typed by the user (`source.kind: 'user'`). */
@@ -83,9 +85,14 @@ function turnKeyOf(messages: readonly RequestMessageLike[]): string | undefined 
  *   delegated child inherits its parent's trace;
  * - query id per turn: 3.16.3 takes the desktop input id (`O9`
  *   @14502646, `zzo` @13357726); the channel opens a turn at each new
- *   user-typed message and gives it a fresh UUID; a session-title request
- *   reuses the session's current query id, or opens one the next step adopts
- *   (DSH sends the title request alongside the first step);
+ *   user-typed message of a main step and gives it a fresh UUID;
+ * - auxiliary requests (session title, compaction) run inside the current
+ *   turn (3.16.3 `c3a` @13387356 derives the compaction context with `nS`,
+ *   which keeps the turn's `queryId`): they take no turn key and reuse the
+ *   session's current query id; without one they open it, and only a
+ *   title-opened id is adopted by the next step (DSH sends the title request
+ *   alongside the first step). A DSH compaction request holds only the
+ *   compacted span, whose last typed message is usually an earlier turn's;
  * - session type and query source: title `other` + `session_title`,
  *   compaction `other` + `compact`, a delegated child `subagent` +
  *   `subagent`, otherwise `main` + `main_turn` (`Y0n` @4065835, `mDn`).
@@ -108,12 +115,19 @@ export class RequestAttributionTracker {
         : subagent ? { sessionType: 'subagent' as const, querySource: QUERY_SOURCES.subagent } : { sessionType: 'main' as const, querySource: QUERY_SOURCES.mainTurn }
     if (request.sessionId === undefined) return { sessionId, traceId: randomUUID(), queryId: randomUUID(), ...kind }
     const state = this.stateOf(request.sessionId, 0)
-    const turnKey = request.purpose === 'session-title' ? undefined : turnKeyOf(request.messages)
+    if (request.purpose !== undefined) {
+      if (state.queryId === undefined) {
+        state.queryId = randomUUID()
+        state.titleOpened = request.purpose === 'session-title'
+      }
+      return { sessionId, traceId: state.traceId, queryId: state.queryId, ...kind }
+    }
+    const turnKey = turnKeyOf(request.messages)
     if (turnKey === undefined || state.turnKey === turnKey) state.queryId ??= randomUUID()
-    else if (state.turnKey === undefined && state.queryId !== undefined) state.turnKey = turnKey
     else {
+      if (state.turnKey !== undefined || state.titleOpened !== true) state.queryId = randomUUID()
       state.turnKey = turnKey
-      state.queryId = randomUUID()
+      state.titleOpened = false
     }
     return { sessionId, traceId: state.traceId, queryId: state.queryId, ...kind }
   }

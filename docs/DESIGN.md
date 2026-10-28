@@ -387,7 +387,7 @@ Flash 没命中的位置：修复前第二步 4 次、之后各步 12 次；固�
 
 - `x-request-id`：每次尝试新生成（`Gdt` @4067222），项目令牌被拒后的重发也换新；签名 VERIFY 梯子的重发在同一次尝试里，不换。
 - `x-zcode-trace-id`：会话级。3.16.3 每个会话运行时建一个根追踪上下文（`vT` @1421911），回合与辅助请求的上下文都从它派生（`nS` @12816000、`Lw`），`traceId` 不变；委派子会话的运行时继承父会话的追踪上下文。本包按 DSH 会话保存 trace id（进程内，最多 256 个会话，最久未用的先出；出去后再来的会话拿新的 trace id），委派子会话沿 `parentSession` 取父会话的 trace id。
-- `x-query-id`：回合级。3.16.3 用桌面输入的 id 当 query id（`O9` @14502646、`zzo` @13357726，`query_` 前缀在头里去掉）。本包以请求里最后一条用户输入消息（`role: 'user'`、`source.kind: 'user'`）的 id 为回合键，键变了就换新的 UUID；会话标题请求沿用会话当前的 query id，会话还没有时先建一个，留给随后的第一步认领（DSH 让标题请求与第一步并发）。
+- `x-query-id`：回合级。3.16.3 用桌面输入的 id 当 query id（`O9` @14502646、`zzo` @13357726，`query_` 前缀在头里去掉）。本包以主步请求里最后一条用户输入消息（`role: 'user'`、`source.kind: 'user'`）的 id 为回合键，键变了就换新的 UUID。辅助请求（会话标题与压缩）在当前回合里发出，不取回合键，沿用会话当前的 query id：3.16.3 的压缩上下文由回合上下文派生（`c3a` @13387356 用 `nS` 加 `querySource: "compact"`，`nS` 保留回合的 `queryId`）。DSH 的压缩请求只含系统头、被压缩的区段与它的指令，最近的尾段（默认预算的 16%）不在请求里（rc.3 compaction-basic `selectCompactableRange`、`buildSummarizationInput`），区段里最后一条用户输入通常属于更早的回合，所以不能拿它当回合键。会话还没有 query id 时辅助请求先建一个；只有会话标题建的 id 留给随后的第一步认领（DSH 让标题请求与第一步并发），压缩建的不认领（例如重启后的手动压缩），下一个用户输入另起新的 query id。
 - `x-zcode-session-type` 与 `x-zcode-query-source`：会话标题 `other` + `session_title`（`v2n` @13069774），压缩 `other` + `compact`（@13389086），委派子会话 `subagent` + `subagent`（`mDn` @13259914 把 `subagent_child` 映射为 `subagent`，`Y0n` @4065835），其余 `main` + `main_turn`。委派子会话由 `agents` 服务给出的会话头判定（`origin: 'subagent'`，§2.4a）；取不到会话头时按主会话处理。
 - start-plan 不变：每请求一个 trace id，不带 query id 与 query source。
 

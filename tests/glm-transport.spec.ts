@@ -137,6 +137,30 @@ test('attribution: the session title shares the turn\'s query id; compaction is 
   assert.deepEqual([compact.sessionType, compact.querySource, compact.queryId, compact.traceId], ['other', 'compact', first.queryId, first.traceId])
 })
 
+test('attribution: a compaction whose span ends before the current turn keeps the turn\'s query id (3.16.3 c3a derives it with nS)', () => {
+  const tracker = new RequestAttributionTracker()
+  const system: RequestMessageLike = { role: 'system', content: [{ type: 'text', text: 'system head' }] }
+  const instruction: RequestMessageLike = { role: 'user', content: [{ type: 'text', text: 'summarize the conversation' }] }
+  tracker.attribute({ sessionId: 'session-a', messages: [typed('p', 'earlier turn')] })
+  const history = [typed('p', 'earlier turn'), { role: 'assistant', content: [{ type: 'text', text: 'done' }] } satisfies RequestMessageLike, typed('c', 'current turn')]
+  const step = tracker.attribute({ sessionId: 'session-a', messages: history })
+  // DSH compaction-basic sends the system head, the compacted span and its instruction; the current turn's message stays in the retained tail.
+  const compact = tracker.attribute({ sessionId: 'session-a', purpose: 'compaction', messages: [system, typed('p', 'earlier turn'), instruction] })
+  const next = tracker.attribute({ sessionId: 'session-a', messages: [{ role: 'user', content: [{ type: 'text', text: 'checkpoint' }] }, typed('c', 'current turn')] })
+  assert.deepEqual([compact.queryId, next.queryId], [step.queryId, step.queryId])
+  assert.equal(compact.querySource, 'compact')
+})
+
+test('attribution: only a title-opened query id is adopted; a compaction on an unseen session does not hand its id to the next turn', () => {
+  const tracker = new RequestAttributionTracker()
+  const compact = tracker.attribute({ sessionId: 'session-r', purpose: 'compaction', messages: [typed('p', 'before restart'), { role: 'user', content: [{ type: 'text', text: 'summarize' }] }] })
+  const turn = tracker.attribute({ sessionId: 'session-r', messages: [typed('c', 'new input')] })
+  assert.notEqual(turn.queryId, compact.queryId)
+  assert.equal(turn.traceId, compact.traceId)
+  const title = tracker.attribute({ sessionId: 'session-t', purpose: 'session-title', messages: [{ role: 'user', content: [{ type: 'text', text: 'name it' }] }] })
+  assert.equal(tracker.attribute({ sessionId: 'session-t', messages: [typed('m', 'first input')] }).queryId, title.queryId)
+})
+
 test('attribution: a delegated child is subagent + subagent and shares its parent\'s trace; a user fork is a main session', () => {
   const headers: Record<string, SessionHeaderLike> = {
     'session-child': { parentSession: 'session-parent', origin: 'subagent' },

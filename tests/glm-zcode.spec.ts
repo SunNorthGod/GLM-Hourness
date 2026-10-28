@@ -568,6 +568,17 @@ test('auxiliary calls keep the conversation session: the title is session_title,
   assert.equal(title.trace, main.trace)
 })
 
+test('a DSH pressure compaction (system head, earlier span, instruction) and the rest of the turn share the turn\'s x-query-id', async () => {
+  const { send } = await attributionRecorder()
+  await send({ sessionId: 'session-conv-1', messages: [typed('p', 'earlier turn')] })
+  const history = [typed('p', 'earlier turn'), { role: 'assistant', content: [{ type: 'text', text: 'done' }] }, typed('c', 'current turn')]
+  const step = await send({ sessionId: 'session-conv-1', messages: history as never })
+  const compact = await send({ sessionId: 'session-conv-1', purpose: 'compaction', messages: [{ role: 'system', content: [{ type: 'text', text: 'system head' }] }, typed('p', 'earlier turn'), { role: 'user', content: [{ type: 'text', text: 'summarize the conversation' }] }] as never })
+  const next = await send({ sessionId: 'session-conv-1', messages: [{ role: 'user', content: [{ type: 'text', text: 'checkpoint' }] }, typed('c', 'current turn')] as never })
+  assert.equal(compact.source, 'compact')
+  assert.deepEqual([compact.query, next.query], [step.query, step.query])
+})
+
 test('a delegated child session (agents: origin subagent) is typed subagent with the subagent source and its parent\'s trace', async () => {
   const headers: Record<string, SessionHeaderLike> = { 'session-child': { parentSession: 'session-parent', origin: 'subagent' } }
   const { send } = await attributionRecorder(sessionId => headers[sessionId])
