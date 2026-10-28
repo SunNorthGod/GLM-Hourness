@@ -15,7 +15,13 @@
 | 方言逐字文本复核：身份类与 context management 是原文；工具描述、deferred 声明段、ToolSearch 描述大部分不是原文；todo 提醒正文与 compact 提示词有小处偏差。后两者与工具检索文本已按原文重建，deferred 声明段已删除 | `DESIGN.md` §5.9 |
 | 3.16.3 的 `X-Title` 来源标题：agent 进程参数含 `app-server` / `agent-server` 时为 `electron`，否则为 `cli`；桌面版以 `app-server --stdio` 启动 agent 进程 | 安装包 `detectDefaultProviderSourceTitle`、agent 运行时描述〔实读〕 |
 | 3.16.3 的签名 `clientVersion` 与项目令牌 `clientVersion` 共用常量 `__ZCODE_VERSION__`（构建期注入，安装包文本中未替换）；`X-ZCode-App-Version` 取自环境变量 `ZCODE_APP_VERSION` | 安装包〔实读〕；实际取值未验证 |
-| 官方原文权威源：pristine 3.15.1 副本 `C:\Users\29596\Desktop\Project\Zcode\zcode-patch\pristine-3151\zcode.cjs`（MD5 `87225203a43f8009e403c57532922f4c`）；3.16.3 pristine 副本本地没有 | 同上 |
+| 官方原文权威源：pristine 3.15.1 副本 `C:\Users\29596\Desktop\Project\Zcode\zcode-patch\pristine-3151\zcode.cjs`（MD5 `87225203a43f8009e403c57532922f4c`）；3.16.3 pristine 副本 `C:\Users\29596\Desktop\Project\Zcode\zcode-patch\pristine-3163\zcode.cjs.pristine`（15,242,397 字节，MD5 `51257C0D11DA7DC56C157D92E7048146`），与安装前备份 `C:\Program Files\ZCode\resources\glm\zcode.cjs.orig-3163.bak` 同 MD5；判断未经修改的依据只有文件名与这份备份，未与官方发布哈希比对 | `zcode-patch` 目录〔实读 2026-10-28〕；此前本行写作「3.16.3 pristine 副本本地没有」，有误 |
+| 3.16.3 签名握手 URL 为 `new URL('/api/paas/c1f3a7e2/v2/client', <provider baseURL 的 origin>)`，baseURL 的路径丢弃；bigmodel coding-plan 为 `https://open.bigmodel.cn/api/paas/c1f3a7e2/v2/client`，z.ai 为 `https://api.z.ai/api/paas/c1f3a7e2/v2/client`（z.ai 的 baseURL 按源码路由表推断）。签名 fetch 包在端点路由 fetch 外面：签名器看到路由前的 URL，握手也经路由 fetch 发出 | 3.16.3 pristine 包 `resolveHandshakeUrl`、`ClientRequestSigningV4Signer`、`createFactory`〔实读 2026-10-28〕；源码 `model-execution.ts` 283–301 行、`packages/desktop/wdio.conf.ts` 的握手夹具；`DESIGN.md` §4.3 |
+| `c1f3a7e2` 是字面常量：3.15.1、3.15.2、3.15.3、3.16.1、3.16.2、3.16.3 的 pristine 包里各出现一次，在签名模块常量区，没有拼接或哈希 | `zcode-patch/pristine-*/zcode.cjs.pristine`〔实读 2026-10-28〕 |
+| 3.16.3 握手：`Authorization` 是原样凭证（`{apiKeyId}.{secret}` 或 project_access JWT，都不加 `Bearer `），请求体 `{apiKey 或 accessToken, nonce, sig, ts}`，超时 10 秒；3.15.1 相同 | 3.16.3 pristine 包 `performHandshake`〔实读 2026-10-28〕；被服务端接受的形式待 L4 |
+| 3.16.3 不缓存握手失败：网络错误、超时、非 200、业务拒绝都放行为无签发送，不留负缓存、没有退避，下一个可签名请求立即再握手，只有并发请求共享进行中的握手。私钥按（apiKey, 握手 origin）进程级缓存，没有 TTL，401 VERIFY 拒绝才作废 | 3.16.3 pristine 包 `ensurePrivateKey`、`getKeyOrSendUnsigned`、`ClientRequestSigningV4KeyCache`〔实读 2026-10-28〕 |
+| 3.16.3 两次 VERIFY 拒绝后的旁路是签名器实例字段，只对当前签名器代有效；生产路径每次 `createFactory` 都换一个签名器，旁路因此只管一次请求 | 3.16.3 pristine 包 `bypassSigning`、`resolveSigner`〔实读 2026-10-28〕；`createFactory` 的调用频率按源码 `runner.ts` 251–285 行推断 |
+| 3.16.3 对 `zhipu-account` 的 start-plan、off-peak、highspeed 三种 mode 不签名 | 3.16.3 pristine 包 `requiresClientRequestSigning`〔实读 2026-10-28〕 |
 | 官方开源仓库 zai-org/ZCode，Apache-2.0 | `README.md` |
 | 身份节组装、安全声明官方原文、Harness 节 | `reference/zcode-verbatim.md` |
 | 八件套工具定义原文在源码 `apps/zcode-cli/packages/core/src/tool/handlers/`；`reference/zcode-tool-schemas.md` 中的工具描述与 deferred 声明段无法追溯出处，SessionGuidance、Skills 引导段待同样复核 | `DESIGN.md` §5.9 |
@@ -145,7 +151,7 @@
 | --- | --- | --- |
 | native ToolSearch 透传（K2） | 需活 token | 实测 |
 | 服务端 web 工具直连闸门（K4） | 需活 token | 实测 |
-| 签名握手失败根因 | 无 | 对照 zcode-api 与 3.16.3 机制 |
+| 签名握手在 provider origin 上的结果：是否返回 200 与 `privateCipher`，ultra 网关是否接受签名请求，原样 JWT 的 `Authorization` 是否被接受（根因已查明：握手地址错，`DESIGN.md` §4.3） | 需真请求 | L4 截包 |
 | OutputStyle 风格列表 | 服务端下发 | 抓取 |
 | 实跑 temperature / top_p 值 | 需实跑请求体 | 抓包 |
 | start-plan 与 coding-plan 渠道差异（K9） | 无 | zcode-api 源码 |

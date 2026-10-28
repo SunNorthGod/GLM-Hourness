@@ -36,7 +36,7 @@ import type {
 } from '@deepseek-ai/dsh-llm'
 import type { ImageAttachmentRef, ImageRequestTarget } from '@deepseek-ai/dsh-attachment'
 
-/** Bigmodel coding-plan Anthropic endpoint (before server-side remapping). */
+/** Bigmodel coding-plan Anthropic endpoint (the provider baseURL, before server-side remapping; its origin hosts the signing handshake). */
 const BIGMODEL_ANTHROPIC_BASE = 'https://open.bigmodel.cn/api/anthropic'
 
 export interface ZcodeAdapterOptions {
@@ -152,8 +152,24 @@ export class ZcodeAdapter {
     })
     this.signer = new ClientSigningManager({
       ...(options.fetchImpl === undefined ? {} : { fetchImpl: options.fetchImpl }),
+      handshakeFetch: (input, init) => this.routedHandshake(input, init),
       ...(options.onEvent === undefined ? {} : { onEvent: options.onEvent }),
     })
+  }
+
+  /**
+   * The signing handshake goes through endpoint routing like the model
+   * request: in 3.16.3 the signer's transport is the routing fetch. The
+   * routing table matches whole URLs, so the handshake is only rewritten
+   * when the server maps the handshake URL itself.
+   */
+  private async routedHandshake(input: string | URL | Request, init?: RequestInit): Promise<Response> {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+    const credential = await this.loadCredential().catch(() => undefined)
+    const routed = await this.routing.resolve(url, credential?.apiKey, credential?.jwt)
+    const fetchImpl = this.options.fetchImpl ?? fetch
+    if (routed.headers === undefined) return fetchImpl(routed.url, init)
+    return fetchImpl(routed.url, { ...init, headers: { ...(init?.headers as Record<string, string> | undefined), ...routed.headers } })
   }
 
   /** Provider route display metadata (LlmAdapter base contract). */
@@ -291,17 +307,22 @@ export class ZcodeAdapter {
 
     const upstreamBase = `${BIGMODEL_ANTHROPIC_BASE}/v1/messages`
     const routed = await this.routing.resolve(upstreamBase, credential.apiKey, credential.jwt).catch((): { routed: boolean, url: string, headers?: Record<string, string> } => ({ routed: false, url: upstreamBase }))
+    const routingPairs = Object.entries(routed.headers ?? {})
     const headers = buildAuthHeaders(credential, identity, plan, attribution, this.options.env)
 
-    const response = await sendWithClientSigning(this.signer, {
-      url: routed.url,
-      headerPairs: Object.entries({ ...headers, ...(routed.headers ?? {}), 'content-type': 'application/json' }) as Array<[string, string]>,
+    // 3.16.3 wraps the routing fetch in the signing fetch: the signer sees
+    // the provider URL before routing (its origin hosts the handshake), and
+    // the routing headers land after the signature block. start-plan is not
+    // signed (3.16.3 `requiresClientRequestSigning`).
+    const response = await sendWithClientSigning(plan === 'start-plan' ? null : this.signer, {
+      url: upstreamBase,
+      headerPairs: Object.entries({ ...headers, 'content-type': 'application/json' }) as Array<[string, string]>,
       credential: credential.apiKey,
       appVersion: identity.appVersion,
       ...(credential.oauthAccessToken === undefined ? {} : { oauthAccessToken: credential.oauthAccessToken }),
       send: pairs => fetchImpl(routed.url, {
         method: 'POST',
-        headers: Object.fromEntries(pairs) as Record<string, string>,
+        headers: Object.fromEntries([...pairs, ...routingPairs]) as Record<string, string>,
         body,
         ...(options.signal === undefined ? {} : { signal: options.signal }),
       }),

@@ -1,10 +1,20 @@
 /**
  * Client Request Signing V4 for the native ZCode client (ported from
- * reference/zcode-api src/proxy/client-signing.ts, mirroring ZCode 3.15.1
- * `ClientRequestSigningV4Signer`). Static rule: coding-plan credentials are
- * always signed; start-plan/off-peak paths never are. Everything fails open:
- * handshake failure → unsigned; two consecutive 401 VERIFY rejections →
- * permanent bypass for that (origin, credential) pair.
+ * reference/zcode-api src/proxy/client-signing.ts, checked against ZCode
+ * 3.16.3 `ClientRequestSigningV4Signer`, docs/DESIGN.md §4.3). The caller
+ * passes the provider URL before endpoint routing (3.16.3 wraps the routing
+ * transport in the signing transport), so the handshake goes to
+ * HANDSHAKE_PATH on the provider origin, e.g.
+ * https://open.bigmodel.cn/api/paas/c1f3a7e2/v2/client. The adapter attaches
+ * no signer for start-plan (3.16.3 `requiresClientRequestSigning`); the
+ * zcode-plan/off-peak paths are never signed. Everything fails open:
+ *   - handshake failure → unsigned, and no new handshake for that
+ *     (origin, credential) pair for HANDSHAKE_FAILURE_COOLDOWN_MS.
+ *     Deviation: 3.16.3 caches no failure and handshakes again before every
+ *     signable request.
+ *   - two consecutive 401 VERIFY rejections → permanent bypass for that
+ *     (origin, credential) pair. Deviation: the 3.16.3 bypass lasts one
+ *     signer generation, which its runtime rebuilds for every request.
  *
  * Wire templates join fields with literal NEWLINES (bundle-verified):
  *   handshake HMAC   "get_sign_key\n{apiKeyId}\n{ts}\n{nonce}"
@@ -22,6 +32,8 @@ const KDF_INFO_HMAC = 'getSignKey_hmac'
 const KDF_INFO_ED25519 = 'ed25519_priv'
 const HANDSHAKE_METHOD = 'get_sign_key'
 const HANDSHAKE_TIMEOUT_MS = 10_000
+/** No new handshake for a failed (origin, credential) pair within this window (deviation from 3.16.3, see the header). */
+const HANDSHAKE_FAILURE_COOLDOWN_MS = 60_000
 const MINT_FAILURE_COOLDOWN_MS = 60_000
 const VERIFY_SIGNATURE_INVALID = 'VERIFY_SIGNATURE_INVALID'
 const VERIFY_APIKEY_EXPIRED = 'VERIFY_APIKEY_EXPIRED'
@@ -176,16 +188,21 @@ function findHeader(pairs: ReadonlyArray<readonly [string, string]>, name: strin
 interface SignerState {
   privKey?: CryptoKey | undefined
   handshake?: Promise<CryptoKey> | undefined
+  /** Handshake failure cooldown end (epoch ms); cleared by invalidation and by a successful handshake. */
+  failedUntil?: number | undefined
   epoch: number
   bypass: boolean
 }
 
 /**
- * Per-process signing manager: caches handshake keys per (origin, credential),
- * mints project-access JWTs for bigmodel OAuth credentials, and never throws.
+ * Per-process signing manager: caches handshake keys and handshake failures
+ * per (origin, credential), mints project-access JWTs for bigmodel OAuth
+ * credentials, and never throws.
  */
 export class ClientSigningManager {
   private readonly fetchImpl: typeof fetch
+  /** Transport for the handshake only (the adapter routes it like the model request); defaults to fetchImpl. */
+  private readonly handshakeFetch: typeof fetch
   private readonly now: () => number
   private readonly states = new Map<string, SignerState>()
   private readonly notedKeys = new Set<string>()
@@ -195,8 +212,9 @@ export class ClientSigningManager {
   /** Optional sink for fail-open notices (each surfaced once per cause). */
   onEvent: ((message: string) => void) | undefined
 
-  constructor(opts: { fetchImpl?: typeof fetch, now?: () => number, onEvent?: (message: string) => void } = {}) {
+  constructor(opts: { fetchImpl?: typeof fetch, handshakeFetch?: typeof fetch, now?: () => number, onEvent?: (message: string) => void } = {}) {
     this.fetchImpl = opts.fetchImpl ?? fetch
+    this.handshakeFetch = opts.handshakeFetch ?? this.fetchImpl
     this.now = opts.now ?? Date.now
     this.onEvent = opts.onEvent
   }
@@ -213,21 +231,24 @@ export class ClientSigningManager {
     if (state.bypass) return { pairs, signed: false }
     const parsedCred = await this.resolveParsedCredential(cred, stateKey)
     if (parsedCred === undefined) {
-      this.noteOnce(stateKey, 'credential has no {apiKeyId}.{apiKeySecret} separator — signing skipped')
+      this.noteOnce(`${stateKey}\ncredential`, 'credential has no {apiKeyId}.{apiKeySecret} separator — signing skipped')
       return { pairs, signed: false }
     }
     const sessionId = findHeader(pairs, 'x-session-id')?.trim()
     if (sessionId === undefined || sessionId.length === 0) {
-      this.noteOnce(stateKey, 'upstream request has no x-session-id — signing skipped')
+      this.noteOnce(`${stateKey}\nsession`, 'upstream request has no x-session-id — signing skipped')
       return { pairs, signed: false }
     }
+    // Checked after the credential resolve: a newly minted project token
+    // invalidates the state, which ends the cooldown.
+    if (state.failedUntil !== undefined && this.now() < state.failedUntil) return { pairs, signed: false }
     let privateKey: CryptoKey
     try {
       privateKey = await this.ensurePrivateKey(state, parsedCred, parsed.origin)
     }
-    catch {
-      this.noteOnce(stateKey, 'signing handshake failed — sending unsigned')
-      this.invalidateState(stateKey)
+    catch (error) {
+      const reason = error instanceof Error ? error.message : String(error)
+      this.noteOnce(`${stateKey}\nhandshake`, `signing handshake failed (${reason}) — sending unsigned; no new handshake for ${HANDSHAKE_FAILURE_COOLDOWN_MS / 1000} s`)
       return { pairs, signed: false }
     }
     const signedPairs = await this.buildSignedPairs(stateKey, pairs, privateKey, parsedCred, sessionId, cred.appVersion)
@@ -244,7 +265,7 @@ export class ClientSigningManager {
       sig = await signBusinessMessage(privateKey, `${parsedCred.apiKeyId}\n${ts}\n${appVersion}\n${sessionId}\n${nonce}`)
     }
     catch (error) {
-      this.noteOnce(stateKey, `signing failed (${error instanceof Error ? error.message : String(error)}) — sending unsigned`)
+      this.noteOnce(`${stateKey}\nsign`, `signing failed (${error instanceof Error ? error.message : String(error)}) — sending unsigned`)
       return null
     }
     const cleaned = pairs.filter(([key]) => {
@@ -277,7 +298,7 @@ export class ClientSigningManager {
     }
   }
 
-  /** Drop the cached signing key for a (origin, credential) pair after a VERIFY rejection. */
+  /** Drop the cached signing key and any handshake cooldown for a (origin, credential) pair after a VERIFY rejection. */
   invalidate(url: string, credential: string): void {
     try { this.invalidateState(`${new URL(url).origin}\n${credential}`) } catch { /* unreachable URL */ }
   }
@@ -299,6 +320,7 @@ export class ClientSigningManager {
     state.epoch += 1
     state.privKey = undefined
     state.handshake = undefined
+    state.failedUntil = undefined
   }
 
   private stateFor(stateKey: string): SignerState {
@@ -400,7 +422,13 @@ export class ClientSigningManager {
     const handshake = this.performHandshake(parsedCred, origin).then(key => {
       if (state.epoch !== epoch) throw new Error('signing key changed during handshake')
       state.privKey = key
+      state.failedUntil = undefined
       return key
+    }, (error: unknown) => {
+      // A failure the state has already moved past (VERIFY invalidation,
+      // newly minted project token) starts no cooldown.
+      if (state.epoch === epoch) state.failedUntil = this.now() + HANDSHAKE_FAILURE_COOLDOWN_MS
+      throw error
     })
     const clear = () => { if (state.handshake === handshake) state.handshake = undefined }
     handshake.then(clear, clear)
@@ -412,15 +440,16 @@ export class ClientSigningManager {
     const ts = String(Date.now())
     const nonce = randomHex(NONCE_BYTES)
     const sig = await handshakeSignature(parsedCred.secret, `${HANDSHAKE_METHOD}\n${parsedCred.apiKeyId}\n${ts}\n${nonce}`)
-    const isJwt = parsedCred.handshakeField === 'accessToken'
-    const authValue = isJwt ? parsedCred.secret : `${parsedCred.apiKeyId}.${parsedCred.secret}`
+    const authValue = parsedCred.handshakeField === 'accessToken' ? parsedCred.secret : `${parsedCred.apiKeyId}.${parsedCred.secret}`
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), HANDSHAKE_TIMEOUT_MS)
     try {
-      const resp = await this.fetchImpl(`${origin}${HANDSHAKE_PATH}`, {
+      // 3.16.3 `performHandshake`: Authorization carries the credential as-is
+      // in both forms (zcode-api sent `Bearer <jwt>` for the JWT form).
+      const resp = await this.handshakeFetch(`${origin}${HANDSHAKE_PATH}`, {
         method: 'POST',
-        headers: { Authorization: isJwt ? `Bearer ${authValue}` : authValue, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ [isJwt ? 'accessToken' : 'apiKey']: authValue, nonce, sig, ts }),
+        headers: { Authorization: authValue, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [parsedCred.handshakeField]: authValue, nonce, sig, ts }),
         redirect: 'manual',
         signal: controller.signal,
       })
@@ -444,7 +473,14 @@ export class ClientSigningManager {
   }
 }
 
-/** Send with the client's full signing retry ladder: signed → re-handshake once → permanent bypass + unsigned. */
+/**
+ * Send with the client's full signing retry ladder: signed → re-handshake
+ * once → permanent bypass + unsigned. `url` is the provider URL before
+ * endpoint routing; it decides the handshake origin and keys the state.
+ * `send` delivers to the routed URL and appends the routing headers after
+ * the signature block (3.16.3 order). The bypass is permanent for the pair,
+ * stricter than 3.16.3 (one signer generation, in practice one request).
+ */
 export async function sendWithClientSigning(signer: ClientSigningManager | null, params: {
   url: string
   headerPairs: ReadonlyArray<readonly [string, string]>

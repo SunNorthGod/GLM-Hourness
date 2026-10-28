@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { ClientSigningManager, sendWithClientSigning, parseSigningCredentialForm, createProofOfWork, hasLeadingZeroBits } from '../src/glm-llm/signing.ts'
+import { ClientSigningManager, sendWithClientSigning, parseSigningCredentialForm, createProofOfWork, hasLeadingZeroBits, type SignOutcome, type SigningCredential } from '../src/glm-llm/signing.ts'
 
 const encoder = new TextEncoder()
 
@@ -54,17 +54,21 @@ test('a full handshake signs the pairs with the V4 header block', async () => {
   const cipher = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: encoder.encode('id'), tagLength: 128 }, aesKey, Buffer.from(Buffer.from(pkcs8).toString('base64'))))
   const privateCipher = Buffer.concat([iv, cipher]).toString('base64')
 
-  const seen: Array<{ url: string, body: Record<string, unknown> }> = []
+  const seen: Array<{ url: string, method: string | undefined, headers: Record<string, string>, body: Record<string, unknown> }> = []
   const manager = new ClientSigningManager({
     fetchImpl: (async (url: string | URL | Request, init?: RequestInit) => {
-      seen.push({ url: String(url), body: JSON.parse(String(init?.body)) as Record<string, unknown> })
+      seen.push({ url: String(url), method: init?.method, headers: init?.headers as Record<string, string>, body: JSON.parse(String(init?.body)) as Record<string, unknown> })
       return jsonRespond(200, { code: 200, data: { privateCipher } })
     }) as typeof fetch,
   })
   const pairs: Array<readonly [string, string]> = [['content-type', 'application/json'], ['x-session-id', 'session-1']]
   const outcome = await manager.signWithStatus('https://open.bigmodel.cn/api/anthropic/v1/messages', pairs, { credential: 'id.secret', appVersion: '3.14.0' })
   assert.equal(outcome.signed, true)
-  assert.ok(seen[0]!.url.endsWith('/api/paas/c1f3a7e2/v2/client'))
+  // 3.16.3: the provider baseURL's origin plus the constant path (the baseURL path is dropped).
+  const { url: handshakeUrl, method, headers: handshakeHeaders } = seen[0]!
+  assert.equal(handshakeUrl, 'https://open.bigmodel.cn/api/paas/c1f3a7e2/v2/client')
+  assert.equal(method, 'POST')
+  assert.deepEqual(handshakeHeaders, { Authorization: 'id.secret', 'Content-Type': 'application/json' })
   assert.equal(seen[0]!.body.apiKey, 'id.secret')
   assert.equal(seen[0]!.body.nonce !== undefined, true)
   assert.equal(seen[0]!.body.sig !== undefined, true)
@@ -83,6 +87,121 @@ test('handshake failure fails open to unsigned', async () => {
   const outcome = await manager.signWithStatus('https://x/api/anthropic/v1/messages', pairs, { credential: 'id.secret', appVersion: '3.14.0' })
   assert.equal(outcome.signed, false)
   assert.equal(outcome.pairs, pairs)
+})
+
+interface SeenRequest { url: string, init: RequestInit | undefined }
+
+/** Fetch double: records every request and answers by URL. */
+function recordingFetch(seen: SeenRequest[], answer: (url: string) => Response): typeof fetch {
+  return (input, init) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+    seen.push({ url, init })
+    return Promise.resolve(answer(url))
+  }
+}
+
+function bodyOf(request: SeenRequest): Record<string, unknown> {
+  const body = request.init?.body
+  return typeof body === 'string' ? JSON.parse(body) as Record<string, unknown> : {}
+}
+
+const MODEL_URL = 'https://open.bigmodel.cn/api/anthropic/v1/messages'
+const HANDSHAKE_URL = 'https://open.bigmodel.cn/api/paas/c1f3a7e2/v2/client'
+const SESSION_PAIRS: Array<readonly [string, string]> = [['x-session-id', 's1']]
+const API_KEY_CRED = { credential: 'id.secret', appVersion: '3.16.3' }
+const notFound = (): Response => new Response('not found', { status: 404 })
+const CUSTOMER_INFO = { data: { organizations: [{ organizationId: 'org', projects: [{ projectId: 'proj' }] }] } }
+
+/** Sign one request to MODEL_URL (or `url`) carrying the session pairs. */
+function sign(manager: ClientSigningManager, cred: SigningCredential = API_KEY_CRED, url = MODEL_URL): Promise<SignOutcome> {
+  return manager.signWithStatus(url, SESSION_PAIRS, cred)
+}
+
+/** A manager whose first handshake has just failed (one 404), leaving API_KEY_CRED on MODEL_URL in the cooldown. */
+async function managerInCooldown(seen: SeenRequest[]): Promise<ClientSigningManager> {
+  const manager = new ClientSigningManager({ fetchImpl: recordingFetch(seen, notFound) })
+  await sign(manager)
+  await sign(manager)
+  assert.equal(seen.length, 1)
+  return manager
+}
+
+test('a failed handshake is not retried for 60 s; the cooldown keeps the pairs unsigned', async () => {
+  // Deviation from 3.16.3 (which handshakes again before every request), DESIGN.md §4.3.
+  const seen: SeenRequest[] = []
+  let clock = 1_000_000
+  const manager = new ClientSigningManager({ fetchImpl: recordingFetch(seen, notFound), now: () => clock })
+  for (let i = 0; i < 3; i++) {
+    const outcome = await sign(manager)
+    assert.equal(outcome.signed, false)
+    assert.equal(outcome.pairs, SESSION_PAIRS)
+  }
+  assert.deepEqual(seen.map(request => request.url), [HANDSHAKE_URL])
+  clock += 59_999
+  await sign(manager)
+  assert.equal(seen.length, 1)
+  clock += 2
+  assert.equal((await sign(manager)).signed, false)
+  assert.equal(seen.length, 2)
+})
+
+test('concurrent requests share one failed handshake, and the cooldown covers the next request', async () => {
+  const seen: SeenRequest[] = []
+  const manager = new ClientSigningManager({ fetchImpl: recordingFetch(seen, notFound) })
+  const outcomes = await Promise.all([sign(manager), sign(manager)])
+  assert.deepEqual(outcomes.map(outcome => outcome.signed), [false, false])
+  assert.equal(seen.length, 1)
+  await sign(manager)
+  assert.equal(seen.length, 1)
+})
+
+test('a VERIFY invalidation ends the cooldown: the next request handshakes at once', async () => {
+  const seen: SeenRequest[] = []
+  const manager = await managerInCooldown(seen)
+  manager.invalidate(MODEL_URL, API_KEY_CRED.credential)
+  await sign(manager)
+  assert.equal(seen.length, 2)
+})
+
+test('the cooldown is per (origin, credential): another credential or origin handshakes at once', async () => {
+  const seen: SeenRequest[] = []
+  const manager = await managerInCooldown(seen)
+  await sign(manager, { ...API_KEY_CRED, credential: 'other.secret' })
+  await sign(manager, API_KEY_CRED, 'https://api.z.ai/api/anthropic/v1/messages')
+  assert.deepEqual(seen.map(request => request.url), [HANDSHAKE_URL, HANDSHAKE_URL, 'https://api.z.ai/api/paas/c1f3a7e2/v2/client'])
+  assert.deepEqual(seen.map(request => bodyOf(request).apiKey), ['id.secret', 'other.secret', 'id.secret'])
+})
+
+test('handshakeFetch carries only the handshake; the project-token mint stays on fetchImpl', async () => {
+  const direct: SeenRequest[] = []
+  const handshakes: SeenRequest[] = []
+  const manager = new ClientSigningManager({
+    fetchImpl: recordingFetch(direct, url => url.endsWith('/getCustomerInfo') ? jsonRespond(200, CUSTOMER_INFO) : jsonRespond(200, { code: 500 })),
+    handshakeFetch: recordingFetch(handshakes, notFound),
+  })
+  await sign(manager, { ...API_KEY_CRED, oauthAccessToken: 'oauth-tok' })
+  assert.deepEqual(direct.map(request => new URL(request.url).pathname), [
+    '/api/biz/customer/getCustomerInfo',
+    '/api/biz/v1/organization/org/projects/proj/api_keys/id/access_tokens',
+  ])
+  assert.deepEqual(handshakes.map(request => request.url), [HANDSHAKE_URL])
+})
+
+test('the JWT-form handshake sends the project token as-is in Authorization and under accessToken', async () => {
+  // 3.16.3 `performHandshake`: `Authorization: credential` for both forms, no `Bearer ` prefix.
+  const projectToken = b64url({ token_use: 'project_access', api_key: 'id', exp: Math.floor(Date.now() / 1000) + 3600 })
+  const handshakes: SeenRequest[] = []
+  const manager = new ClientSigningManager({
+    fetchImpl: recordingFetch([], url => url.endsWith('/getCustomerInfo') ? jsonRespond(200, CUSTOMER_INFO) : jsonRespond(200, { code: 200, data: { accessToken: projectToken } })),
+    handshakeFetch: recordingFetch(handshakes, notFound),
+  })
+  await sign(manager, { ...API_KEY_CRED, oauthAccessToken: 'oauth-tok' })
+  assert.equal(handshakes.length, 1)
+  const [handshake] = handshakes
+  assert.deepEqual(handshake.init?.headers, { Authorization: projectToken, 'Content-Type': 'application/json' })
+  const body = bodyOf(handshake)
+  assert.deepEqual(Object.keys(body), ['accessToken', 'nonce', 'sig', 'ts'])
+  assert.equal(body.accessToken, projectToken)
 })
 
 test('401 VERIFY ladder: retry once, then permanent bypass', async () => {

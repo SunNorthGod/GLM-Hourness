@@ -92,18 +92,22 @@ test('stream sends image blocks through the attachment service; without it an im
   await assert.rejects(async () => { for await (const chunk of bare.stream(options as never)) void chunk }, /attachment service/)
 })
 
+function sseOk(): Response {
+  return new Response(sseBody([
+    'data: {"type":"message_start","message":{"usage":{"input_tokens":5}}}',
+    'data: {"type":"content_block_start","index":0,"content_block":{"type":"text"}}',
+    'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"ok"}}',
+    'data: {"type":"content_block_stop","index":0}',
+    'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}',
+  ]), { status: 200, headers: { 'content-type': 'text/event-stream' } })
+}
+
 function makeUpstream(captured: { url?: string, headers?: Record<string, string>, body?: Record<string, unknown> } = {}) {
   return (async (url: string | URL | Request, init?: RequestInit): Promise<Response> => {
     captured.url = String(url)
     captured.headers = init?.headers as Record<string, string>
     captured.body = JSON.parse(String(init?.body)) as Record<string, unknown>
-    return new Response(sseBody([
-      'data: {"type":"message_start","message":{"usage":{"input_tokens":5}}}',
-      'data: {"type":"content_block_start","index":0,"content_block":{"type":"text"}}',
-      'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"ok"}}',
-      'data: {"type":"content_block_stop","index":0}',
-      'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}',
-    ]), { status: 200, headers: { 'content-type': 'text/event-stream' } })
+    return sseOk()
   }) as typeof fetch
 }
 
@@ -141,6 +145,107 @@ test('coding-plan stream walks the full chain: store → headers → unsigned si
   const text = chunks.filter(chunk => chunk.type === 'block-end').map(chunk => chunk.type === 'block-end' && chunk.block.type === 'text' ? chunk.block.text : '').join('')
   assert.equal(text, 'ok')
   assert.ok(chunks.some(chunk => chunk.type === 'finish' && chunk.reason.kind === 'stop'))
+})
+
+const ULTRA = 'https://zcode.z.ai/api/v1/ultra/anthropic/v1/messages'
+const PROVIDER_HANDSHAKE = 'https://open.bigmodel.cn/api/paas/c1f3a7e2/v2/client'
+
+interface WireRequest { url: string, headers: Record<string, string> }
+
+/** Handshake path tail, routed or not. */
+const HANDSHAKE_TAIL = '/c1f3a7e2/v2/client'
+const isHandshake = (wire: WireRequest): boolean => wire.url.endsWith(HANDSHAKE_TAIL)
+const isModelRequest = (wire: WireRequest): boolean => wire.url === ULTRA
+
+/**
+ * The upstream as the adapter meets it: agent/configs maps the provider
+ * messages URL to the ultra gateway (or `mapping`), the handshake returns
+ * `privateCipher` (404 without one), the bigmodel project-token mint fails,
+ * and everything else streams SSE. Every request is recorded in order.
+ */
+function gatewayFetch(wire: WireRequest[], options: { privateCipher?: string, mapping?: ReadonlyArray<Record<string, string>> }): typeof fetch {
+  const mapping = options.mapping ?? [{ from: UPSTREAM, to: ULTRA }]
+  const json = (status: number, body: unknown): Response => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
+  return (input, init) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+    wire.push({ url, headers: { ...(init?.headers as Record<string, string> | undefined) } })
+    if (url === 'https://zcode.z.ai/api/v1/agent/configs') return Promise.resolve(json(200, { code: 0, data: { proxyEndpoint: { mapping } } }))
+    if (url.endsWith(HANDSHAKE_TAIL)) {
+      return Promise.resolve(options.privateCipher === undefined ? new Response('not found', { status: 404 }) : json(200, { code: 200, data: { privateCipher: options.privateCipher } }))
+    }
+    if (url.startsWith('https://bigmodel.cn/')) return Promise.resolve(json(500, {}))
+    return Promise.resolve(sseOk())
+  }
+}
+
+/** A handshake `privateCipher` for a fresh Ed25519 key, sealed as 3.16.3 opens it: AES-GCM under HKDF(secret, ed25519_priv), AAD apiKeyId. */
+async function sealedSigningKey(secret: string, apiKeyId: string): Promise<string> {
+  const utf8 = new TextEncoder()
+  const pair = await crypto.subtle.generateKey('Ed25519', true, ['sign', 'verify'])
+  const pkcs8 = Buffer.from(await crypto.subtle.exportKey('pkcs8', pair.privateKey)).toString('base64')
+  const hkdf = await crypto.subtle.importKey('raw', utf8.encode(secret), 'HKDF', false, ['deriveKey'])
+  const sealing = await crypto.subtle.deriveKey({ name: 'HKDF', hash: 'SHA-256', salt: utf8.encode('WD_CLIENT_SIGN_KDF_SALT'), info: utf8.encode('ed25519_priv') }, hkdf, { name: 'AES-GCM', length: 256 }, false, ['encrypt'])
+  const iv = crypto.getRandomValues(new Uint8Array(12))
+  const sealed = await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: utf8.encode(apiKeyId) }, sealing, utf8.encode(pkcs8))
+  return Buffer.concat([iv, new Uint8Array(sealed)]).toString('base64')
+}
+
+/**
+ * Run `requests` streams through one fresh adapter on the gateway double and
+ * return the wire log. `stored` replaces the default credential.
+ */
+async function runOnGateway(gateway: { privateCipher?: string, mapping?: ReadonlyArray<Record<string, string>> }, options: { stored?: Credential, plan?: 'start-plan', requests?: number } = {}): Promise<WireRequest[]> {
+  const { fs } = memoryStore()
+  await saveCredential(fs, 'C:/ws/.llm/credentials.json', options.stored ?? credential)
+  const wire: WireRequest[] = []
+  const adapter = new ZcodeAdapter({ home: 'C:/ws/.llm', fetchImpl: gatewayFetch(wire, gateway), storeFs: fs, env: {}, ...(options.plan === undefined ? {} : { plan: options.plan }) })
+  for (let i = 0; i < (options.requests ?? 1); i++) {
+    for await (const chunk of adapter.stream(request() as never)) void chunk
+  }
+  return wire
+}
+
+test('coding-plan handshakes on the provider origin, sends to the routed URL, and reuses the key', async () => {
+  // The signer sees the provider URL before routing (3.16.3); handing it the
+  // routed zcode.z.ai URL sent the handshake to zcode.z.ai, which answers 404.
+  const wire = await runOnGateway({ privateCipher: await sealedSigningKey('secret', 'id') }, { requests: 2 })
+  assert.deepEqual(wire.filter(isHandshake).map(entry => entry.url), [PROVIDER_HANDSHAKE])
+  const model = wire.filter(isModelRequest)
+  assert.equal(model.length, 2)
+  assert.ok(model.every(entry => entry.headers['X-Client-Sig'] !== undefined))
+})
+
+test('a failing handshake is tried once across consecutive requests, which go out unsigned', async () => {
+  const wire = await runOnGateway({}, { requests: 2 })
+  assert.equal(wire.filter(isHandshake).length, 1)
+  const model = wire.filter(isModelRequest)
+  assert.equal(model.length, 2)
+  assert.ok(model.every(entry => entry.headers['X-Client-Sig'] === undefined))
+})
+
+test('start-plan is not signed: no handshake', async () => {
+  // 3.16.3 `requiresClientRequestSigning` is false for the start-plan access mode.
+  const wire = await runOnGateway({ privateCipher: await sealedSigningKey('secret', 'id') }, { stored: { ...credential, jwt: 'a.b.c' }, plan: 'start-plan' })
+  assert.equal(wire.filter(isHandshake).length, 0)
+  assert.equal(wire.filter(isModelRequest).length, 1)
+})
+
+test('routing headers follow the signature block, and a mapped handshake URL is routed like the model request', async () => {
+  const routedHandshake = 'https://zcode.z.ai/api/v1/ultra/paas/c1f3a7e2/v2/client'
+  const mapping = [
+    { from: UPSTREAM, to: ULTRA, zcodeAuthorizationHeader: 'X-ZCode-Authorization' },
+    { from: PROVIDER_HANDSHAKE, to: routedHandshake, zcodeAuthorizationHeader: 'X-ZCode-Authorization' },
+  ]
+  const wire = await runOnGateway({ privateCipher: await sealedSigningKey('secret', 'id'), mapping }, { stored: { ...credential, jwt: 'zcode-jwt' } })
+  const [handshake] = wire.filter(isHandshake)
+  assert.equal(handshake.url, routedHandshake)
+  assert.equal(handshake.headers['X-ZCode-Authorization'], 'Bearer zcode-jwt')
+  // `send` builds the headers with Object.fromEntries, so key order is wire order.
+  const [model] = wire.filter(isModelRequest)
+  const names = Object.keys(model.headers)
+  assert.equal(names.at(-1), 'X-ZCode-Authorization')
+  assert.ok(names.includes('X-Client-Sig') && names.indexOf('X-Client-Sig') < names.indexOf('X-ZCode-Authorization'))
+  assert.equal(model.headers['X-ZCode-Authorization'], 'Bearer zcode-jwt')
 })
 
 test('x-session-id is one value per DSH session (the gateway cache affinity key); without a session each request gets a fresh one', async () => {
