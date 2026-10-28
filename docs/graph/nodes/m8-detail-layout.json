@@ -1,0 +1,31 @@
+{
+  "id": "m8-detail-layout",
+  "type": "task",
+  "title": "面板节点详情的排版",
+  "status": "doing",
+  "parent": "m8",
+  "kind": "implement",
+  "body": "用户 2026-10-28 看 m1-parity 的节点详情截图后反馈排版乱。截图里能看到的问题：\n\n- 正文是一整段密集文字，长代码名挤在一起，没有分段；长正文没有折叠\n- 「让 agent 干活」下面两句提示挤在同一行\n- 祖先路径末尾多一个「›」\n- 历史里转述的原话丢了换行，两句话连成一句\n- 历史条目写「编辑」不说改了哪个字段；理由开头的「用户：」与「你（经对话）」重复\n- 各节标题与内容的间距不一，节与节之间没有分隔\n- 状态是进行中，「让 agent 干活」却写「现在没有 agent 在这里干活」：面板只看得见 DSH 里的会话，措辞要说清楚",
+  "acceptance": [
+    "桌面版截图对比：上面每一条都已改好或说明不改的理由",
+    "门禁全过"
+  ],
+  "history": [
+    {
+      "at": "2026-10-28T14:59:15.428Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "用户看了 m1-parity 的节点详情截图，说排版乱",
+      "relay": "似乎排版还是有点乱",
+      "to": "approved"
+    },
+    {
+      "at": "2026-10-28T15:00:24.085Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "派出 coder-node-detail-layout，在主检出改 ui/src/graph，桌面版截图对比",
+      "from": "approved",
+      "to": "doing"
+    }
+  ]
+}
