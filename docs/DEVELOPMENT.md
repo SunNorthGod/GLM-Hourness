@@ -143,7 +143,7 @@ DSH 官方类型已作为 devDependency 安装（`@deepseek-ai/dsh-llm`、`@deep
 | 2026-10-28 | 移植丢了 ZCode 请求的四处细节：`x-request-id`、`x-zcode-trace-id`、`metadata.user_id`、末条消息的缓存断点 | 同上 | 移植时没有对照 zcode-api 的请求体变换（`body-transformer.ts`）与追踪头逐项核对 | 补齐（`DESIGN.md` §4.5b）；与缓存命中无关，实测确认 |
 | 2026-10-28 | guard 拦下 DeepSeek 会话的写入（§6.2 定案只管 GLM，未实现） | L4 | 定案写进文档但标着「尚未实现」，没有挂进待办；拦截处没有路由信号 | 按会话请求头判路由，只拦 GLM 调用（`ORCHESTRATION.md` §6.2）；非 GLM 会话的行健康写明不介入；L3 探针加非 GLM 会话的相对写入与 shell 写入都放行、无违规记录 |
 | 2026-10-28 | 重新构建 `ui/client.js` 后刷新桌面版页面，`web boot: 1 entry did not activate`，`dsh-glm-hourness-ui: import failed`；请求的 `dsh-app://app/plugins/??dsh-glm-hourness-ui/client.js&rev=…` 返回 404 | L4（DevTools 协议看网络请求） | 〔推断，未读宿主源码核实〕宿主给客户端半的地址带修订号，文件变了而宿主记的修订号没变，地址就对不上。同一次运行里第一次重建后刷新拿到了新文件，第二次没有，什么时候更新修订号没查清 | 改了客户端半就重启桌面版，不靠刷新页面（§3 装后验证）；重启后恢复。只影响客户端半，宿主各行不受影响 |
-| 2026-10-28 | 原生通道的签名握手每次 404，且每个模型请求前都串行重试一次（约 90 毫秒）；此前归因为「握手对当前凭证失败」 | 截包（查缓存时） | 移植时把路由改写后的 URL 交给签名层（基线 `9266fb6` 起），握手 origin 成了 `zcode.z.ai`；zcode-api 用的是路由前的 URL，移植没有逐项对照；签名单测只断言握手路径 `endsWith`，没有路由加签名的适配器组装测试；失败放行不报错，问题只表现为每请求的延迟 | 签名用路由前的 provider URL，握手经端点路由，start-plan 不签名，握手失败冷却 60 秒（偏离 3.16.3，`DESIGN.md` §4.3）；单测断言完整握手 URL，`tests/glm-zcode.spec.ts` 加组装测试（握手地址、路由头顺序、失败冷却、start-plan）；握手能否成功待 L4 |
+| 2026-10-28 | 原生通道的签名握手每次 404，且每个模型请求前都串行重试一次（约 90 毫秒）；此前归因为「握手对当前凭证失败」 | 截包（查缓存时） | 移植时把路由改写后的 URL 交给签名层（基线 `9266fb6` 起），握手 origin 成了 `zcode.z.ai`；zcode-api 用的是路由前的 URL，移植没有逐项对照；签名单测只断言握手路径 `endsWith`，没有路由加签名的适配器组装测试；失败放行不报错，问题只表现为每请求的延迟 | 签名用路由前的 provider URL，握手经端点路由，start-plan 不签名，握手失败冷却 60 秒（偏离 3.16.3，`DESIGN.md` §4.3）；单测断言完整握手 URL，`tests/glm-zcode.spec.ts` 加组装测试（握手地址、路由头顺序、失败冷却、start-plan）；沙盒真实网络运行实测握手 200、签名请求被 ultra 网关接受（2026-10-28，`DESIGN.md` §4.3）；签名失败的通知仍没有接出（生产构造没有接 `onEvent`） |
 
 ## 8. 变更检查清单
 
