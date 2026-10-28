@@ -111,15 +111,17 @@ async function glmStatus(ctx, request) {
 }
 
 /**
- * The graph panel's live view of the request's session (src/graph/live.ts),
- * read from the session projection registry the way the client's
- * projection snapshot does; null when the unit or the agent is missing.
+ * The projections the graph panel's live view reads for the request's
+ * session (graphLive from src/graph/live.ts, DSH's subagentCatalog and
+ * tokenUsage), from the session projection registry the way the client's
+ * projection snapshot does; null when the registry or the agent is missing.
  */
 function liveOf(ctx, request) {
   const session = ctx.get('agents')?.get(request.sessionId)?.session
   const projections = ctx.get('sessionProjections')
   if (session === undefined || typeof projections?.snapshot !== 'function') return null
-  return projections.snapshot(session).values.graphLive ?? null
+  const { graphLive = null, subagentCatalog = null, tokenUsage = null } = projections.snapshot(session).values
+  return { graphLive, subagentCatalog, tokenUsage }
 }
 
 class ProbeAdapter {

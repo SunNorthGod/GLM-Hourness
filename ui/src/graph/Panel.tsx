@@ -2,12 +2,14 @@
  * The project graph panel of one session (docs/ORCHESTRATION.md §13): four
  * views over the same live graph. 需要你 holds only what waits for the
  * human, so it opens first when anything does; agent 定的 lists what the
- * agent decided on its own; 正在做 the work in progress; 图 the whole
- * picture. A node opens over the current view and closes back to it.
+ * agent decided on its own; 正在做 the agents at work and the work in
+ * progress; 图 the whole picture with the agents on their nodes. A node
+ * opens over the current view and closes back to it.
  */
 import { Button, SegmentedTabs, TextShimmer } from '@deepseek-ai/dsh-client-ui-primitives'
 import { useEffect, useId, useMemo, useState, useSyncExternalStore, type ReactElement } from 'react'
-import type { CommandsRemote } from '../dsh.ts'
+import type { CommandsRemote, SessionsClient } from '../dsh.ts'
+import { useAgents } from './agents.ts'
 import { ServicesContext, type PanelServices } from './common.tsx'
 import { Decisions } from './Decisions.tsx'
 import { Doing } from './Doing.tsx'
@@ -28,11 +30,13 @@ function Count({ value, quiet }: { readonly value: number, readonly quiet?: bool
 export interface GraphPanelProps {
   readonly source: GraphSource
   readonly commands: CommandsRemote
+  readonly sessions: SessionsClient
   readonly sessionId: string
 }
 
-export function GraphPanel({ source, commands, sessionId }: GraphPanelProps): ReactElement {
+export function GraphPanel({ source, commands, sessions, sessionId }: GraphPanelProps): ReactElement {
   const snapshot = useSyncExternalStore(source.subscribe, source.getSnapshot)
+  const agents = useAgents(sessions, sessionId)
   const [view, setView] = useState<ViewName | undefined>(undefined)
   const [selected, setSelected] = useState<string | undefined>(undefined)
   const tabsId = useId()
@@ -97,8 +101,8 @@ export function GraphPanel({ source, commands, sessionId }: GraphPanelProps): Re
         <div className="glmg-body" role="tabpanel" id={`${tabsId}-${shown}-panel`} aria-labelledby={`${tabsId}-${shown}`} style={shown === 'graph' ? { overflow: 'hidden', padding: 0 } : undefined}>
           {shown === 'you' ? <NeedsYou key="you" graph={graph} items={items} onShowDecisions={() => { setView('agent') }} /> : null}
           {shown === 'agent' ? <Decisions key="agent" graph={graph} items={items} /> : null}
-          {shown === 'doing' ? <Doing key="doing" graph={graph} items={items} /> : null}
-          {shown === 'graph' ? <GraphCanvas graph={graph} selected={selected} onPick={setSelected} /> : null}
+          {shown === 'doing' ? <Doing key="doing" graph={graph} items={items} agents={agents} /> : null}
+          {shown === 'graph' ? <GraphCanvas graph={graph} selected={selected} onPick={setSelected} agents={agents} /> : null}
           {selected === undefined ? null : <NodeDetail key={selected} graph={graph} id={selected} onClose={() => { setSelected(undefined) }} />}
         </div>
       </div>

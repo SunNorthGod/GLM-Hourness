@@ -1,13 +1,15 @@
 /**
- * 正在做: nodes in progress with how many of their children are closed,
- * then the tasks ready to start and the decisions not yet verified. The
- * live positions of the agents (M2.8) join this view later.
+ * 正在做: the agents at work (现场, Live.tsx), the nodes in progress with
+ * how many of their children are closed, then the tasks ready to start and
+ * the decisions not yet verified.
  */
 import type { ReactElement } from 'react'
 import { TYPE_LABELS } from '../../../src/graph/labels.ts'
 import type { LoadedGraph } from '../../../src/graph/parse.ts'
 import { ancestorsOf, type NodeRef, type OpenItems } from '../../../src/graph/projection.ts'
+import type { AgentLive } from './agents.ts'
 import { useServices } from './common.tsx'
+import { LiveSection } from './Live.tsx'
 import { progressOf } from './model.ts'
 
 function Row({ graph, entry, tone }: { readonly graph: LoadedGraph, readonly entry: NodeRef, readonly tone: 'doing' | 'todo' }): ReactElement | null {
@@ -32,10 +34,11 @@ function Row({ graph, entry, tone }: { readonly graph: LoadedGraph, readonly ent
   )
 }
 
-export function Doing({ graph, items }: { readonly graph: LoadedGraph, readonly items: OpenItems }): ReactElement {
+export function Doing({ graph, items, agents }: { readonly graph: LoadedGraph, readonly items: OpenItems, readonly agents: readonly AgentLive[] }): ReactElement {
   const doing = items.doing.filter(entry => entry.type !== 'goal')
   return (
     <div className="glmg-view">
+      <LiveSection graph={graph} agents={agents} />
       <div className="glmg-section">进行中 · {doing.length}</div>
       {doing.length === 0 ? <div className="glmg-notice">现在没有进行中的节点。</div> : doing.map(entry => <Row key={entry.id} graph={graph} entry={entry} tone="doing" />)}
       <div className="glmg-section">可以开工 · {items.ready.length}</div>

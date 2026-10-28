@@ -13,7 +13,7 @@ import { installGraphTab } from './graph/tab.tsx'
  * Client services the halves use; nested Remote namespaces are declared
  * with their root (docs/DEVELOPMENT.md §5.7).
  */
-export const inject = ['slots', 'sidebarRightTabs', 'remote', 'remote.commands', 'remote.workspaceFiles']
+export const inject = ['slots', 'sidebarRightTabs', 'remote', 'remote.commands', 'remote.workspaceFiles', 'sessions']
 
 export function apply(ctx: ClientContext): void {
   installChannel(ctx)

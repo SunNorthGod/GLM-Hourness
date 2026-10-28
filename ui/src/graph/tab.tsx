@@ -7,7 +7,7 @@
  */
 import { IconGoalOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 import { Component, useEffect, useState, type ErrorInfo, type ReactElement, type ReactNode } from 'react'
-import type { ClientContext, CommandsRemote, RemoteRoot } from '../dsh.ts'
+import type { ClientContext, CommandsRemote, RemoteRoot, SessionsClient } from '../dsh.ts'
 import { GraphPanel } from './Panel.tsx'
 import { holdSource, type GraphSource } from './source.ts'
 
@@ -39,7 +39,7 @@ class Boundary extends Component<{ readonly children: ReactNode }, { readonly er
   }
 }
 
-function makeBody(remote: RemoteRoot, commands: CommandsRemote): (props: BodyProps) => ReactElement | null {
+function makeBody(remote: RemoteRoot, commands: CommandsRemote, sessions: SessionsClient): (props: BodyProps) => ReactElement | null {
   return function GraphTabBody({ graphSessionId }: BodyProps): ReactElement | null {
     const [source, setSource] = useState<GraphSource | undefined>(undefined)
     useEffect(() => {
@@ -48,7 +48,7 @@ function makeBody(remote: RemoteRoot, commands: CommandsRemote): (props: BodyPro
       return () => { held.release() }
     }, [graphSessionId])
     if (source === undefined) return null
-    return <Boundary><GraphPanel source={source} commands={commands} sessionId={graphSessionId} /></Boundary>
+    return <Boundary><GraphPanel source={source} commands={commands} sessions={sessions} sessionId={graphSessionId} /></Boundary>
   }
 }
 
@@ -67,7 +67,7 @@ export function installGraphTab(ctx: ClientContext): void {
       icon: IconGoalOutlineRegular,
     }],
   }), 'glm-hourness-ui: graph tab type')
-  const Body = makeBody(ctx.remote, ctx.remote.commands)
+  const Body = makeBody(ctx.remote, ctx.remote.commands, ctx.sessions)
   ctx.effect(() => ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register<BodyProps>({
     name: 'sidebar.right.pane.tab',
     key: GRAPH_TAB_ID,

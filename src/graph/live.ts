@@ -4,17 +4,21 @@
  * (dsh-session-projection README) that folds the session's own committed
  * events into where the agent is on the graph and what it is doing. The
  * panel reads it through the client's session projections, for the panel's
- * session and for each direct child the subagent catalog names. Nothing is
+ * session and for each direct child its subagentCatalog names. Nothing is
  * written to disk: the session log is the record, this is a view of it.
  *
- * Events folded (rc.3 dsh-agent-loop and dsh-subagent appends):
- * turn/start {turn}, turn/end, step/start {turn, step}, tool/call {callId,
- * name, arguments (provider JSON text)}, tool/result {message: {isError,
- * source: {callId}}}, request/header {header: {config: {model}}},
- * subagent/catalog {childId, label}. Every event carries `time`
- * (Date.now() at append). Events of a fork's inherited prefix are skipped.
- * No Node built-ins: the panel imports the key and the view type.
+ * Events folded (rc.3 dsh-agent-loop appends): turn/start {turn},
+ * turn/end, step/start {turn, step}, tool/call {callId, name, arguments
+ * (provider JSON text)}, tool/result {message: {isError, source:
+ * {callId}}}, request/header {header: {config: {model}}}. Every event
+ * carries `time` (Date.now() at append). Events of a fork's inherited
+ * prefix are skipped. The children of a session, their activity and the
+ * token usage come from DSH's own projections (subagentCatalog,
+ * tokenUsage), which the panel reads next to this one. No Node built-ins:
+ * the panel imports the view type.
  */
+import { DEFERRED_TOOL_CALL_NAME } from '../toolsearch/zcode-text.ts'
+
 /** The tool that sets the focus node (tools.ts); the step projection (reminder.ts) and this fold find its calls in the history. */
 export const FOCUS_TOOL = 'graph_focus'
 
@@ -41,8 +45,6 @@ export interface LiveView {
   /** The tool call running now, if any. */
   readonly tool: { readonly name: string, readonly since: number } | null
   readonly recent: readonly LiveCall[]
-  /** Direct children from the subagent catalog. */
-  readonly children: readonly { readonly id: string, readonly label: string }[]
 }
 
 interface Pending {
@@ -67,7 +69,7 @@ export interface LiveEvent {
 }
 
 const EMPTY: Omit<LiveState, 'inherited'> = {
-  focus: null, model: null, turnSince: null, steps: 0, tool: null, recent: [], children: [], pending: {},
+  focus: null, model: null, turnSince: null, steps: 0, tool: null, recent: [], pending: {},
 }
 
 export function initialLive(inherited: number): LiveState {
@@ -82,19 +84,20 @@ function text(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined
 }
 
-/** The node id a graph_focus call names; arguments arrive as the provider's JSON text. */
-function focusOf(name: string, args: unknown): string | undefined {
-  if (name !== FOCUS_TOOL) return undefined
-  let parsed: unknown = args
-  if (typeof args === 'string') {
-    try {
-      parsed = JSON.parse(args)
-    }
-    catch {
-      return undefined
-    }
+/** Call arguments as an object; they arrive as the provider's JSON text. */
+function argumentsOf(args: unknown): Record<string, unknown> {
+  if (typeof args !== 'string') return record(args)
+  try {
+    return record(JSON.parse(args))
   }
-  return text(record(parsed).id)
+  catch {
+    return {}
+  }
+}
+
+/** The name the view shows: a DeferredToolCall wrapper shows the deferred tool it runs. */
+function shownName(name: string, args: Record<string, unknown>): string {
+  return name === DEFERRED_TOOL_CALL_NAME ? text(args.name) ?? name : name
 }
 
 /** The running call shown: the latest still pending. */
@@ -119,8 +122,10 @@ export function foldLive(state: LiveState, event: LiveEvent): LiveState {
       const callId = text(data.callId)
       const name = text(data.name)
       if (callId === undefined || name === undefined) return state
-      const focus = focusOf(name, data.arguments)
-      const pending = { ...state.pending, [callId]: { name, since: event.time, ...(focus === undefined ? {} : { focus }) } }
+      const args = argumentsOf(data.arguments)
+      // graph_focus is resident (toolsearch RESIDENT_TOOLS), so only a direct call moves the focus.
+      const focus = name === FOCUS_TOOL ? text(args.id) : undefined
+      const pending = { ...state.pending, [callId]: { name: shownName(name, args), since: event.time, ...(focus === undefined ? {} : { focus }) } }
       return { ...state, pending, tool: runningOf(pending) }
     }
     case 'tool/result': {
@@ -141,11 +146,6 @@ export function foldLive(state: LiveState, event: LiveEvent): LiveState {
     case 'request/header': {
       const model = text(record(record(data.header).config).model) ?? null
       return model === state.model ? state : { ...state, model }
-    }
-    case 'subagent/catalog': {
-      const id = text(data.childId)
-      if (id === undefined || state.children.some(child => child.id === id)) return state
-      return { ...state, children: [...state.children, { id, label: text(data.label) ?? id }] }
     }
     default:
       return state
@@ -174,7 +174,6 @@ function parseView(value: unknown): LiveView {
   const tool = view.tool
   if (!(tool === null || (typeof record(tool).name === 'string' && typeof record(tool).since === 'number'))) fail('tool must be {name, since} or null')
   if (!Array.isArray(view.recent) || !view.recent.every(call => typeof record(call).name === 'string' && typeof record(call).at === 'number' && typeof record(call).ok === 'boolean')) fail('recent must be a list of {name, at, ok}')
-  if (!Array.isArray(view.children) || !view.children.every(child => typeof record(child).id === 'string' && typeof record(child).label === 'string')) fail('children must be a list of {id, label}')
   return value as LiveView
 }
 
@@ -197,7 +196,7 @@ function parseState(value: unknown): LiveState {
  */
 export const liveProjection = {
   key: LIVE_KEY,
-  stateVersion: 1,
+  stateVersion: 2,
   stateSchema: { parse: parseState },
   init: (_header: unknown, inheritedEventCount: number): LiveState => initialLive(inheritedEventCount),
   apply: foldLive,

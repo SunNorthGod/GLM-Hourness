@@ -439,9 +439,13 @@ const panelStderr = existsSync(join(panelDir, 'stderr.txt')) ? readFileSync(join
 // the panel row registers, read mid-step from the session projection
 // registry: the panel scenario's second step, the dispatch parent's last
 // step and the child's last step.
-const panelLive = graphPanel.steps.find(step => step.live !== undefined)?.live ?? null
-const parentLive = dispatchMain.find(step => step.live !== undefined)?.live ?? null
-const childLive = dispatchChild.find(step => step.live !== undefined)?.live ?? null
+const liveRead = steps => steps.find(step => step.live !== undefined)?.live ?? null
+const panelRead = liveRead(graphPanel.steps)
+const panelLive = panelRead?.graphLive ?? null
+const parentCatalog = liveRead(dispatchMain)?.subagentCatalog ?? null
+const childRead = liveRead(dispatchChild)
+const childLive = childRead?.graphLive ?? null
+const tokens = usage => usage === null || usage === undefined ? 0 : usage.uncachedInputTokens + usage.outputTokens + usage.cacheReadTokens + usage.cacheWriteTokens
 const liveCalls = live => (live?.recent ?? []).map(call => `${call.name}:${call.ok ? 'ok' : 'error'}`)
 
 const compactRequest = compacted.compactions[0]
@@ -498,7 +502,7 @@ const checks = [
   ['graph panel: /graph-apply comments as the human in the graph under the session working directory', panelCommands[0]?.kind === 'success' && panelCommands[0].text === '已批注「探针目标」' && panelLast('goal-1')?.actor === 'human' && panelLast('goal-1')?.text === 'probe comment', JSON.stringify(panelCommands[0] ?? null)],
   ['graph panel: /graph-apply decides with the question rev as the human', panelCommands[1]?.kind === 'success' && panelCommands[1].text === '已拍板「探针问题」：A 甲' && panelAfter.nodes.get('question-1')?.status === 'done' && panelLast('question-1')?.actor === 'human' && panelLast('question-1')?.op === 'decide', JSON.stringify(panelCommands[1] ?? null)],
   ['graph live: the session view has the model, the steps of the open turn and the finished Read, nothing running, no focus', panelLive?.model === 'glm-5.3' && panelLive.steps >= 2 && typeof panelLive.turnSince === 'number' && panelLive.tool === null && panelLive.focus === null && liveCalls(panelLive).includes('Read:ok'), JSON.stringify(panelLive)],
-  ['graph live: the dispatch parent lists its child; the child view has its own model and the scope-denied Write as an error', parentLive?.children?.some(child => child.id === started?.childId) === true && childLive?.model === 'glm-5.3-flash' && liveCalls(childLive).includes('Write:error') && liveCalls(childLive).includes('Write:ok'), `parent ${JSON.stringify(parentLive?.children ?? null)}; child ${childLive?.model ?? 'none'} ${liveCalls(childLive).join(', ')}`],
+  ['graph live: the dispatch parent\'s subagentCatalog names the child; the child view has its own model, the scope-denied Write as an error, and token usage', parentCatalog?.some(entry => entry.id === started?.childId) === true && childLive?.model === 'glm-5.3-flash' && liveCalls(childLive).includes('Write:error') && liveCalls(childLive).includes('Write:ok') && childRead?.tokenUsage !== null, `catalog ${JSON.stringify(parentCatalog)}; child ${childLive?.model ?? 'none'} ${liveCalls(childLive).join(', ')}; tokens ${tokens(childRead?.tokenUsage)} ${JSON.stringify(childRead?.tokenUsage ?? null)}`],
   ['graph panel: the row adds nothing to the model face and activates without warnings', graphPanel.steps.length > 0 && graphPanel.steps.every(step => step.tools.every(tool => !tool.name.startsWith('graph_'))) && !panelStderr.includes('graph-panel'), `exit ${graphPanel.status}, ${graphPanel.steps.length} step(s); stderr mentions graph-panel: ${panelStderr.includes('graph-panel')}`],
   ['glm prompt: ZCode CLI prefix in the system prompt', glmFirst?.system.includes('You are ZCode, an interactive coding agent') === true, glmFirst === undefined ? 'no request' : glmFirst.system.slice(0, 80).replace(/\n/g, ' ')],
   ['glm prompt: DSH identity replaced', glmFirst !== undefined && !glmFirst.system.includes('powered by DeepSeek Harness'), ''],

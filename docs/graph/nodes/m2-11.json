@@ -24,6 +24,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "按条款 11（norm-audit-trail），启用图行之前要补的两处留痕：graph-files-only 的拒绝写进 audit/violations.jsonl；行健康表加 graph 与 graph-panel 两行。"
+    },
+    {
+      "at": "2026-10-28T09:46:23.542Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "启用图工具行后的 L4 要顺带核对 m2-8 的落点：主 Agent 调 graph_focus 后徽标出现在该节点上沿；子 agent 设了自己的焦点就站在自己的节点上，没设时站在主 Agent 的焦点上。"
     }
   ]
 }

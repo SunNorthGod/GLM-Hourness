@@ -49,15 +49,21 @@ test('parallel calls: the latest pending call shows; recent keeps the last six',
   assert.deepEqual(many.recent.map(entry => entry.name), ['T2', 'T3', 'T4', 'T5', 'T6', 'T7'])
 })
 
-test('the model comes from request/header and children from the subagent catalog, once each', () => {
+test('a DeferredToolCall shows the deferred tool it runs; a malformed wrapper keeps its own name', () => {
   seq = 0
-  const state = fold([
-    event('request/header', { header: { config: { provider: 'glm-zcode', model: 'glm-5.3' } }, reason: 'initial' }),
-    event('subagent/catalog', { version: 0, childId: 'child-1', childCreatedAt: 1, mode: 'spawn', label: '写测试' }),
-    event('subagent/catalog', { version: 0, childId: 'child-1', childCreatedAt: 1, mode: 'spawn', label: '写测试' }),
-  ])
+  const wrapped = fold([call('d1', 'DeferredToolCall', '{"name":"TodoWrite","input":{"todos":[]}}')])
+  assert.equal(wrapped.tool?.name, 'TodoWrite')
+  assert.deepEqual(foldLive(wrapped, result('d1')).recent.map(entry => entry.name), ['TodoWrite'])
+  assert.equal(fold([call('d2', 'DeferredToolCall', '{"input":{}}')]).tool?.name, 'DeferredToolCall')
+})
+
+test('the model comes from request/header; the same model again keeps the state', () => {
+  seq = 0
+  const header = (model: string): LiveEvent => event('request/header', { header: { config: { provider: 'glm-zcode', model } }, reason: 'initial' })
+  const state = fold([header('glm-5.3')])
   assert.equal(state.model, 'glm-5.3')
-  assert.deepEqual(state.children, [{ id: 'child-1', label: '写测试' }])
+  assert.equal(foldLive(state, header('glm-5.3')), state)
+  assert.equal(foldLive(state, header('glm-5.3-flash')).model, 'glm-5.3-flash')
 })
 
 test('events the view does not depend on, and inherited fork events, keep the same state', () => {
@@ -66,7 +72,7 @@ test('events the view does not depend on, and inherited fork events, keep the sa
   assert.equal(foldLive(state, event('turn/start', { turn: 1 })), state, 'seq 0 is inherited')
   seq = 5
   const own = initialLive(0)
-  for (const type of ['user/message', 'assistant/message', 'todo/write', 'step/end']) assert.equal(foldLive(own, event(type, {})), own, type)
+  for (const type of ['user/message', 'assistant/message', 'todo/write', 'step/end', 'subagent/catalog']) assert.equal(foldLive(own, event(type, {})), own, type)
   assert.equal(foldLive(own, result('unknown')), own, 'a result without its call')
   assert.equal(foldLive(own, event('request/header', { header: { config: {} } })), own, 'no model, no change')
   assert.equal(foldLive(own, event('tool/call', { callId: 'c' })), own, 'a call without a name')
@@ -74,7 +80,7 @@ test('events the view does not depend on, and inherited fork events, keep the sa
 
 test('the unit: schemas accept its own states and views and refuse others', () => {
   seq = 0
-  const state = fold([event('turn/start', { turn: 1 }), call('c1', 'Read'), result('c1'), event('subagent/catalog', { childId: 'k', label: 'k' })])
+  const state = fold([event('turn/start', { turn: 1 }), call('c1', 'Read'), result('c1')])
   assert.equal(liveProjection.key, LIVE_KEY)
   assert.equal(liveProjection.stateSchema.parse(JSON.parse(JSON.stringify(state))).steps, 0)
   const view = liveView(state)

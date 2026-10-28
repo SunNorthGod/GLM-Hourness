@@ -106,7 +106,7 @@
 | 6 | 第三方客户端调用 `ctx.sidebarRight.openTab('browser', …)` 打开本机查看器 | L4 | 无（不做网页形态） | 不再需要 |
 | 7 | 自己标签页里的 `<iframe>` 指向回环地址在 Desktop 是否被拦 | L4 | 无（不做网页形态） | 不再需要 |
 | 8 | 第三方客户端 inject `remote.workspaceFiles` 后 `read`、`list`、`changes` 是否可用 | L4 | M2.7、M2.8 | L4 已核实（2026-10-28）：`list`、`readBytes` 与目录 `changes` 都可用，写入后 4 秒内面板更新 |
-| 9 | 第三方宿主插件注册的会话投影能否经 `faceOf(key)` 到达客户端 | L3（宿主侧注册）/ L4 | M2.8、M8 | 待核实 |
+| 9 | 第三方宿主插件注册的会话投影能否到达客户端 | L3（宿主侧注册）/ L4 | M2.8、M8 | 已核实（2026-10-28）：L3 探针从注册表的 `snapshot` 读到 `graphLive`；L4 经客户端 `sessions.list` 的 `projectionsBySession` 到达，主会话与子会话都不用 `retain`，宿主事件到界面 7–35 毫秒；冷会话只带投影缓存里已有的单元（`ORCHESTRATION.md` §2.10 实时现场）。没有改用 `faceOf(key)` |
 | 10 | 第三方以 `pwsh`、`write` 为键注册 `tool.call.toolview` 的行为（覆盖、优先级、报错） | L4 | M8 guard 卡片 | 待核实 |
 | 11 | 匹配 `tool/result` 的第三方聊天节点定义能否渲染在工具行之后 | L4 | M8 guard 卡片 | 待核实 |
 | 12 | 在 `agent/pre-step` 给目标轮追加的 notice 是否破坏 `goal-round-driver` 的预约校验；`update_goal` 的 `complete` 能否在 `tools/pre-execute` 拦下 | L3 | M2.3 目标轮投影、M7 完成门禁 | L3 已核实（2026-10-28，探针 `glm-goal`）：不破坏，能拦下；桌面版组合随 L4 |

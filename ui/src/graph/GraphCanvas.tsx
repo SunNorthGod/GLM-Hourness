@@ -4,13 +4,15 @@
  * reads and move to their new place instead of jumping. Colour is the
  * status, shape the type, as in graph.svg (docs/ORCHESTRATION.md §2.12),
  * but in the theme's colours; the second line of a box says what the node
- * waits for instead of its id. Drag or scroll to pan, Ctrl+scroll or the
- * buttons to zoom; a click opens the node.
+ * waits for instead of its id. The agents of the session stand on their
+ * focus nodes as badges (agents.ts placements). Drag or scroll to pan,
+ * Ctrl+scroll or the buttons to zoom; a click opens the node.
  */
 import { Button, Menu } from '@deepseek-ai/dsh-client-ui-primitives'
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactElement, type WheelEvent as ReactWheelEvent } from 'react'
 import { HEX_INSET, TEXT, isHexagon, layoutGraph, type CurvePath, type DrawnEdgeType, type NodeBox, type Tone } from '../../../src/graph/layout.ts'
 import type { LoadedGraph } from '../../../src/graph/parse.ts'
+import { doingText, placements, type AgentLive } from './agents.ts'
 import { FILTER_LABELS, statusText, visibleGraph, type GraphFilter } from './model.ts'
 
 interface View {
@@ -105,13 +107,52 @@ function NodeShape({ box, selected, hiddenClosed, onPick }: { readonly box: Node
   )
 }
 
+/** Approximate text width at the badge font: CJK glyphs are square, Latin ones about 0.6 em. */
+function badgeWidth(label: string): number {
+  let width = 0
+  for (const char of label) width += char.charCodeAt(0) > 0x2e80 ? 10 : 6
+  return width + 20
+}
+
+function badgeLabel(agent: AgentLive): string {
+  if (agent.main) return '主 Agent'
+  const chars = [...agent.name]
+  return chars.length > 8 ? `${chars.slice(0, 7).join('')}…` : agent.name
+}
+
+/** The agents standing on one node, as pills above its top edge; a running agent's dot breathes. */
+function AgentBadges({ box, agents }: { readonly box: NodeBox, readonly agents: readonly AgentLive[] }): ReactElement {
+  let x = box.x + 8
+  return (
+    <g className="glmg-badges">
+      {agents.map(agent => {
+        const label = badgeLabel(agent)
+        const width = badgeWidth(label)
+        const left = x
+        x += width + 4
+        const state = agent.running ? 'running' : 'idle'
+        return (
+          <g key={agent.id} className={`glmg-badge ${state}${agent.main ? ' main' : ''}`} style={{ transform: `translate(${left}px, ${box.y - 10}px)` }}>
+            <title>{[agent.name, agent.view?.model, doingText(agent, Date.now())].filter(part => part !== undefined && part !== null).join(' · ')}</title>
+            <rect className="pill" width={width} height={18} rx={9} />
+            <circle className="ring" cx={10} cy={9} r={5.5} />
+            <circle className="dot" cx={10} cy={9} r={3} />
+            <text x={18} y={12.5} fontSize={10} fontWeight={600}>{label}</text>
+          </g>
+        )
+      })}
+    </g>
+  )
+}
+
 export interface GraphCanvasProps {
   readonly graph: LoadedGraph
   readonly selected: string | undefined
   readonly onPick: (id: string) => void
+  readonly agents: readonly AgentLive[]
 }
 
-export function GraphCanvas({ graph, selected, onPick }: GraphCanvasProps): ReactElement {
+export function GraphCanvas({ graph, selected, onPick, agents }: GraphCanvasProps): ReactElement {
   const [filter, setFilter] = useState<GraphFilter>('open')
   const [menuOpen, setMenuOpen] = useState(false)
   const visible = useMemo(() => visibleGraph(graph, filter), [graph, filter])
@@ -119,6 +160,11 @@ export function GraphCanvas({ graph, selected, onPick }: GraphCanvasProps): Reac
     const result = layoutGraph(visible.nodes)
     return result.ok ? result.layout : undefined
   }, [visible])
+  const placed = useMemo(() => placements(agents), [agents])
+  const drawn = useMemo(() => new Set(layout?.nodes.map(box => box.node.id) ?? []), [layout])
+  /** Agents without a node in the drawing: no focus yet, or a focus the filter hides. */
+  const unplaced = [...placed].flatMap(([id, list]) => drawn.has(id) ? [] : list)
+  const mainFocus = agents.find(agent => agent.main)?.view?.focus ?? null
   const canvas = useRef<HTMLDivElement | null>(null)
   const [size, setSize] = useState({ width: 0, height: 0 })
   const [view, setView] = useState<View | undefined>(undefined)
@@ -140,12 +186,14 @@ export function GraphCanvas({ graph, selected, onPick }: GraphCanvasProps): Reac
 
   /**
    * A readable zoom centred on what matters now: the first node that waits
-   * for the human, else the first task in progress, else the goal.
+   * for the human, else the main agent's focus, else the first task in
+   * progress, else the goal.
    */
   const home = (): View | undefined => {
     if (layout === undefined || size.width === 0) return undefined
     const k = clamp((size.width - 2 * PAD) / Math.max(1, layout.width), READABLE_ZOOM, 1)
     const anchor = layout.nodes.find(box => box.tone === 'waiting' || box.tone === 'proposed')
+      ?? layout.nodes.find(box => box.node.id === mainFocus)
       ?? layout.nodes.find(box => box.node.type === 'task' && box.node.status === 'doing')
       ?? layout.nodes.find(box => box.node.type === 'goal')
       ?? layout.nodes[0]
@@ -267,8 +315,19 @@ export function GraphCanvas({ graph, selected, onPick }: GraphCanvasProps): Reac
               return <path key={`${edge.type}:${edge.node}:${edge.to}`} className="glmg-edge" d={pathOf(edge.path)} style={style} {...(marker === undefined ? {} : { markerEnd: `url(#glmg-${marker})` })} />
             })}
             {layout?.nodes.map(box => <NodeShape key={box.node.id} box={box} selected={box.node.id === selected} hiddenClosed={visible.hiddenClosed.get(box.node.id) ?? 0} onPick={pick} />)}
+            {layout?.nodes.map(box => {
+              const here = placed.get(box.node.id)
+              return here === undefined ? null : <AgentBadges key={`agents:${box.node.id}`} box={box} agents={here} />
+            })}
           </g>
         </svg>
+        {unplaced.length === 0
+          ? null
+          : (
+              <div className="glmg-unplaced">
+                {unplaced.map(agent => <span key={agent.id} className={agent.running ? 'running' : undefined}><i />{agent.name}：{agent.view?.focus === null || agent.view?.focus === undefined ? '还没落到节点' : '焦点被筛选隐藏了'}</span>)}
+              </div>
+            )}
         <div className="glmg-legend">
           <span><i style={{ background: 'var(--g-wait)' }} />等你</span>
           <span><i style={{ background: 'var(--g-doing)' }} />进行中</span>

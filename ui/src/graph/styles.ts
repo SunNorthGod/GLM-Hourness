@@ -64,6 +64,18 @@ export const PANEL_CSS = `
 .glmg-dot.done{background:var(--g-done)}
 .glmg-dot.wait{background:var(--g-wait)}
 .glmg-dot.proposed{background:transparent;border:1.5px dashed var(--g-ink3)}
+/* live agents */
+.glmg-agent{display:flex;gap:10px;align-items:flex-start;padding:9px 6px}
+.glmg-agent+.glmg-agent{border-top:1px solid var(--g-line)}
+.glmg-agent-mark{flex:none;display:inline-flex;align-items:center;justify-content:center;width:10px;height:10px;margin-top:5px;border-radius:50%;background:var(--g-ink3);font-size:0}
+.glmg-agent-mark.running{background:var(--g-doing);animation:glmg-breathe 2.2s ease-in-out infinite}
+.glmg-agent-mark.done{width:16px;height:16px;margin-top:2px;background:color-mix(in srgb,var(--g-done) 18%,transparent);color:var(--g-done);font-size:10px;font-weight:700;animation:glmg-pop .45s cubic-bezier(.2,1.4,.4,1) both}
+.glmg-agent-head{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px}
+.glmg-agent-tokens{color:var(--g-ink3);font-size:11px;font-variant-numeric:tabular-nums}
+.glmg-chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px}
+.glmg-chip{padding:0 6px;border-radius:5px;background:var(--g-hover);color:var(--g-ink2);font-family:var(--dsw-font-mono,ui-monospace,monospace);font-size:11px;line-height:18px}
+.glmg-earlier{display:block;margin:4px 6px 0}
+.glmg-chip.bad{background:color-mix(in srgb,var(--g-wait) 14%,transparent);color:var(--g-wait)}
 /* graph view */
 .glmg-graph{position:absolute;inset:0;display:flex;flex-direction:column}
 .glmg-toolbar{display:flex;align-items:center;gap:4px;padding:0 12px 6px}
@@ -85,6 +97,18 @@ export const PANEL_CSS = `
 .glmg-node.closed{opacity:.5}
 .glmg-node text{pointer-events:none}
 .glmg-edge{fill:none;transition:opacity .3s}
+.glmg-badges{pointer-events:none}
+.glmg-badge{transition:transform .42s cubic-bezier(.2,.8,.2,1)}
+.glmg-badge .pill{fill:var(--dsw-alias-bg-base,#1d1d1f);stroke:var(--g-accent);stroke-width:1.2}
+.glmg-badge text{fill:var(--g-accent)}
+.glmg-badge .dot{fill:var(--g-ink3)}
+.glmg-badge .ring{fill:none;stroke:var(--g-doing);stroke-width:1.5;opacity:0;transform-box:fill-box;transform-origin:center}
+.glmg-badge.running .dot{fill:var(--g-doing)}
+.glmg-badge.running .ring{animation:glmg-ring 1.8s ease-out infinite}
+.glmg-unplaced{position:absolute;top:6px;left:10px;right:10px;display:flex;flex-wrap:wrap;gap:4px 10px;padding:3px 8px;border-radius:6px;background:color-mix(in srgb,var(--dsw-alias-bg-base,#1d1d1f) 82%,transparent);color:var(--g-ink3);font-size:11px;pointer-events:none}
+.glmg-unplaced span{display:inline-flex;align-items:center;gap:4px}
+.glmg-unplaced i{width:6px;height:6px;border-radius:50%;background:var(--g-ink3)}
+.glmg-unplaced .running i{background:var(--g-doing);animation:glmg-breathe 2.2s ease-in-out infinite}
 .glmg-legend{position:absolute;left:10px;bottom:8px;display:flex;flex-wrap:wrap;gap:4px 10px;padding:4px 8px;border-radius:6px;background:color-mix(in srgb,var(--dsw-alias-bg-base,#1d1d1f) 82%,transparent);color:var(--g-ink3);font-size:11px;pointer-events:none}
 .glmg-legend span{display:inline-flex;align-items:center;gap:4px}
 .glmg-legend i{width:9px;height:9px;border-radius:3px}
@@ -115,6 +139,7 @@ export const PANEL_CSS = `
 @keyframes glmg-leave{0%{opacity:1;transform:none;max-height:600px}60%{opacity:0;transform:translateX(24px);max-height:600px}100%{opacity:0;transform:translateX(24px);max-height:0;margin:0;padding-top:0;padding-bottom:0;border-width:0}}
 @keyframes glmg-breathe{0%,100%{opacity:.45;transform:scale(.85)}50%{opacity:1;transform:scale(1.15)}}
 @keyframes glmg-halo{0%,100%{opacity:0}50%{opacity:.75}}
+@keyframes glmg-ring{0%{opacity:.9;transform:scale(.6)}100%{opacity:0;transform:scale(1.7)}}
 @keyframes glmg-ping{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--g-done) 55%,transparent)}70%,100%{box-shadow:0 0 0 6px transparent}}
 @media (prefers-reduced-motion:reduce){.glmg *,.glmg *::before{animation:none!important;transition:none!important}}
 `

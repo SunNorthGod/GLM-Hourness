@@ -1,0 +1,53 @@
+{
+  "id": "question-1",
+  "type": "question",
+  "title": "M2 剩下的两项先做哪个",
+  "status": "done",
+  "parent": "m2",
+  "body": "m2-9（节点上的运行控制）和 m2-11（启用图工具行）都还没开工。m2-8 的最后一项核对（徽标落在焦点节点上）要 graph_focus，只有图工具行启用后才能在真机上做。",
+  "options": [
+    {
+      "key": "A",
+      "label": "先 m2-11 再 m2-9",
+      "consequence": "m2-8 能尽快收尾；m2-9 的「从这里开始做」能在真机上直接验证主 Agent 收到焦点"
+    },
+    {
+      "key": "B",
+      "label": "先 m2-9 再 m2-11",
+      "consequence": "按编号顺序；m2-8 与 m2-9 的真机核对都要等到最后"
+    }
+  ],
+  "recommend": "A",
+  "decider": "agent",
+  "decision": "A",
+  "evidence": [
+    {
+      "kind": "decision",
+      "ref": "A"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-28T09:46:23.573Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "排 M2 剩下两项的先后",
+      "to": "approved"
+    },
+    {
+      "at": "2026-10-28T09:46:23.631Z",
+      "actor": "llm",
+      "op": "decide",
+      "reason": "m2-11 解开 m2-8 的落点核对，也让 m2-9 能在真机上验证",
+      "from": "approved",
+      "to": "done",
+      "option": "A",
+      "evidence": [
+        {
+          "kind": "decision",
+          "ref": "A"
+        }
+      ]
+    }
+  ]
+}

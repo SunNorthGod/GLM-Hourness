@@ -4,9 +4,12 @@
  * reference/dsh-desktop-0.2.1-rc.3: dsh-client-ui-sidebar-files and
  * dsh-client-ui-sidebar-documentpreview (tab registration, slot inject,
  * remote.workspaceFiles list / readBytes / changes through remote.$stream),
- * and this bundle's own use of remote.commands.execute.
+ * dsh-api-session-controller and dsh-client-ui-subagent (the sessions
+ * service, its projection values), and this bundle's own use of
+ * remote.commands.execute.
  */
 import type { ComponentType } from 'react'
+import type { LiveView } from '../../src/graph/live.ts'
 
 /** A Remote call's settled value (Typert RemoteResult). */
 type RemoteResult<T> =
@@ -77,7 +80,45 @@ interface SlotRegistration<P> {
   inject?(sessionId: string, actions: unknown): P
 }
 
+/** One entry of DSH's subagentCatalog projection (dsh-subagent), as the host snapshot carries it. */
+interface CatalogEntry {
+  readonly id: string
+  readonly label?: string
+  readonly mode: string
+  readonly createdAt?: number
+}
+
+/** DSH's tokenUsage projection: four disjoint provider-usage buckets. */
+export interface TokenUsage {
+  readonly uncachedInputTokens: number
+  readonly outputTokens: number
+  readonly cacheReadTokens: number
+  readonly cacheWriteTokens: number
+}
+
+/** The projection values of one session the panel reads; graphLive is this bundle's own unit. */
+interface ProjectionValues {
+  readonly graphLive?: LiveView
+  readonly subagentCatalog?: readonly CatalogEntry[]
+  readonly tokenUsage?: TokenUsage
+}
+
+/**
+ * The client `sessions` service (dsh-api-session-controller ClientSessions):
+ * `list` is a snapshot store whose projectionsBySession follows the host's
+ * live control stream (every projection change of every live session);
+ * refreshProjections reads the values of a session that has none yet.
+ */
+export interface SessionsClient {
+  readonly list: {
+    getSnapshot(): { readonly projectionsBySession: Readonly<Record<string, { readonly values: ProjectionValues, readonly state?: string } | undefined>> }
+    subscribe(listener: () => void): () => void
+  }
+  refreshProjections(sessionId: string): Promise<void>
+}
+
 export interface ClientContext {
+  readonly sessions: SessionsClient
   readonly slots: {
     inject(name: string, register: () => () => void): () => void
     register<P>(registration: SlotRegistration<P>, component: ComponentType<never>): () => void

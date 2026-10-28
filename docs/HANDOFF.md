@@ -103,8 +103,10 @@ dist/          不入库：tsc 产物（profile 通过 pnpm link 使用）
 - 模型：`glm-zcode` 路由提供 GLM-5.3、GLM-5.3-Flash。
 - 沙盒：profile `glmsandbox`，命令见 `DEVELOPMENT.md` §3；探针（`npm run probe`，离线）与标定（`npm run calibrate`，真实请求、消耗积分）共用，不要同时运行。沙盒模板的权限模式由 `DSH_PERMISSION_MODE` 决定（缺省 `workspace-write`），桌面版 profile 的默认预设是 `danger-full-access`。
 - profile 目录中仍留有备份 `cordis.patch.yml.bak-1793101338423`（2026-10-27 启动崩溃后的恢复来源）。
+- 桌面版输入框的模型菜单换模型时，DSH 会把选中的模型写进 profile 的 `agent-default-model`，作为新会话的默认模型（2026-10-28 L4 实测）。用桌面版做验证时换过模型，结束后经同一菜单换回，并核对这一项。2026-10-28 `m2-8` 的 L4 验证把它从 `deepseek-account` / `deepseek-flash` / `high` 改成了 `glm-zcode` / `glm-5.3-flash` / `high`，验证后已换回，profile 其余内容未动。
+- Windows PowerShell 5.1 的 `Get-Content`、`Set-Content` 不带 `-Encoding` 时按系统 ANSI 代码页读写，UTF-8 文件往返一次，非 ASCII 字符就坏了（2026-10-28 损坏过 `src/shared/dsh-min.ts` 的 en dash，已修复）。改文件用编辑工具或 Node 脚本；经 CDP 往页面送含中文的表达式或文本，用 `.agents/tasks/m2-panel/cdp.mjs` 的 `evalfile`、`typefile`。
 - 旧工作名文件夹 `Desktop\Project\dsh-glm-dialect` 的文档已迁入本仓库，可由用户删除。
 
 ## 7. 下一步
 
-在项目图上（`npm run -s graph -- open`）：进行中的 `m1-11`（L4 第二轮）与 `m2`；可以开工的叶子里，M2 的原生面板 `m2-7` 排在实时现场 `m2-8`、运行控制 `m2-9` 与删除查看器 `m2-10` 之前；M1 剩缓存 `m1-cache-flash`、签名 `m1-signing`、跟进 `m1-followups` 与清理 `m1-cleanup`（依赖 `m1-11`）。人的决策队列为空。
+只看项目图（`npm run -s graph -- open`，或桌面版右侧栏的「项目图」）：进行中、可以开工与等人的事都在上面，节点批注里有接着做的要点。
