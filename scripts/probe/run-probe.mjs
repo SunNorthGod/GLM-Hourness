@@ -19,7 +19,8 @@
  *
  * Usage: node scripts/probe/run-probe.mjs
  * Requires the desktop install (DSH_DESKTOP_DIR overrides the location) and
- * the glmsandbox profile linked to this repository. Each run writes its
+ * the glmsandbox profile linked to this repository (DSH_SANDBOX_PROFILE names
+ * another profile, e.g. one linked to a git worktree). Each run writes its
  * overlays, request dumps and logs under .llm/probe-runs/<timestamp>/
  * (gitignored).
  */

@@ -17,6 +17,8 @@ export const repo = resolve(fileURLToPath(new URL('..', import.meta.url)))
 const desktop = process.env.DSH_DESKTOP_DIR ?? join(process.env.LOCALAPPDATA ?? '', 'Programs', 'DeepSeek Harness')
 const exe = join(desktop, 'DeepSeek Harness.exe')
 const bin = join(desktop, 'resources', 'app.asar', 'dsh', 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js')
+/** The sandbox profile; a git worktree needs its own profile linked to the worktree, because glmsandbox links the main checkout. */
+const profile = process.env.DSH_SANDBOX_PROFILE ?? 'glmsandbox'
 
 /** Exit with status 2 when the desktop install is missing. */
 export function requireDesktop(label) {
@@ -25,10 +27,10 @@ export function requireDesktop(label) {
   process.exit(2)
 }
 
-/** Executable, arguments and environment that boot the runtime on glmsandbox with an overlay patch (Electron node mode). */
+/** Executable, arguments and environment that boot the runtime on the sandbox profile with an overlay patch (Electron node mode). */
 export const sandboxCommand = (patch, args) => ({
   exe,
-  args: [bin, '--profile', 'glmsandbox', '--patch', patch, ...args],
+  args: [bin, '--profile', profile, '--patch', patch, ...args],
   env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
 })
 
