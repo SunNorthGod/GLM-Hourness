@@ -203,7 +203,8 @@ export class EndpointRoutingService {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), this.requestTimeoutMs)
     try {
-      const resp = await this.fetchImpl(this.configUrl, { method: 'GET', headers, redirect: 'manual', signal: controller.signal })
+      // A Headers copy, as the 3.16.3 HTTP client (`P5r` @2827718) passes it: insertion order and name case on the wire.
+      const resp = await this.fetchImpl(this.configUrl, { method: 'GET', headers: new Headers(headers), redirect: 'manual', signal: controller.signal })
       if (resp.status < 200 || resp.status >= 300) throw new Error(`agent_configs_http_${resp.status}`)
       const envelope = await resp.json() as { code?: unknown, data?: { proxyEndpoint?: { mapping?: unknown }, configs?: unknown } }
       if (typeof envelope !== 'object' || envelope.code !== 0) throw new Error('agent_configs_nonzero_code')

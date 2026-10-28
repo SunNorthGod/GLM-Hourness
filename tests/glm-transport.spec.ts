@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { buildLlmIdentityHeaders, buildContextIdentityHeaders, ensureDeviceMid, DEFAULT_IDENTITY, ZCODE_APP_VERSION } from '../src/glm-llm/identity.ts'
-import { buildAuthHeaders, buildTraceHeaders, ANTHROPIC_SDK_UA, RequestAttributionTracker, type SessionHeaderLike } from '../src/glm-llm/headers.ts'
+import { buildAuthHeaders, buildModelRequestHeaders, buildTraceHeaders, ANTHROPIC_SDK_UA, RequestAttributionTracker, runtimeUserAgent, withUserAgentSuffix, type SessionHeaderLike } from '../src/glm-llm/headers.ts'
 import { BlockAssembler } from '@deepseek-ai/dsh-llm'
 import { encodeRequest, encodeMessage, decodeFrame, decodeSse, metadataUserId, replayBlocksOf, type AnthropicRequest } from '../src/glm-llm/anthropic.ts'
 import { glmImageRequestTarget, prepareRequestImages, offloadedImageText, ZCODE_IMAGE_TARGET_BYTES } from '../src/glm-llm/images.ts'
@@ -54,6 +54,34 @@ test('deviceMid persists once and is reused across reads', async () => {
 })
 
 const TRACE = { sessionId: 's1', requestId: 'r1', traceId: 't1', queryId: 'q1', querySource: 'main_turn', sessionType: 'main' } as const
+
+test('withUserAgentSuffix follows 3.16.3 Y2: lower-cased names, later entries win, undefined drops, sorted output', () => {
+  const headers = withUserAgentSuffix({ 'X-B': '1', 'User-Agent': 'first', 'user-agent': 'ZCode/3.16.3', 'x-a': undefined }, 'ai/6.0.193', undefined, '')
+  assert.deepEqual(headers, { 'user-agent': 'ZCode/3.16.3 ai/6.0.193', 'x-b': '1' })
+  assert.deepEqual(withUserAgentSuffix({}, 'ai-sdk/anthropic/3.0.81'), { 'user-agent': 'ai-sdk/anthropic/3.0.81' })
+})
+
+test('the runtime segment follows 3.16.3 getRuntimeEnvironmentUserAgent: navigator first, then the Node version', () => {
+  assert.equal(runtimeUserAgent({ navigator: { userAgent: 'Node.js/22' }, process: { version: 'v22.20.0', versions: { node: '22.20.0' } } }), 'runtime/node.js/22')
+  assert.equal(runtimeUserAgent({ process: { version: 'v22.20.0', versions: { node: '22.20.0' } } }), 'runtime/node.js/v22.20.0')
+  assert.equal(runtimeUserAgent({ window: {}, navigator: { userAgent: 'x' } }), 'runtime/browser')
+  assert.equal(runtimeUserAgent({}), 'runtime/unknown')
+})
+
+test('coding-plan model request headers: the PAT in both auth headers, the call UA wins, sorted lower-case names', () => {
+  const step = buildModelRequestHeaders({ token: 'fake-pat', identity: DEFAULT_IDENTITY, trace: TRACE, generateText: false, env, runtime: 'runtime/node.js/22' })
+  assert.equal(step.authorization, 'Bearer fake-pat')
+  assert.equal(step['x-api-key'], 'fake-pat')
+  assert.equal(step['anthropic-version'], '2023-06-01')
+  assert.equal(step['content-type'], 'application/json')
+  assert.equal(step['user-agent'], 'ZCode/3.16.3 ai-sdk/provider-utils/4.0.27 runtime/node.js/22')
+  assert.equal(step['x-title'], 'Z Code@electron')
+  const names = Object.keys(step)
+  assert.deepEqual(names, [...names].sort())
+  assert.ok(names.every(name => name === name.toLowerCase()))
+  const title = buildModelRequestHeaders({ token: 'fake-pat', identity: DEFAULT_IDENTITY, trace: { ...TRACE, sessionType: 'other', querySource: 'session_title' }, generateText: true, env, runtime: 'runtime/node.js/22' })
+  assert.equal(title['user-agent'], 'ZCode/3.16.3 ai/6.0.193 ai-sdk/provider-utils/4.0.27 runtime/node.js/22')
+})
 
 test('coding-plan anthropic auth carries the project token in both auth headers plus SDK UA suffix', () => {
   const headers = buildAuthHeaders({ bearer: 'fake-pat', apiKey: 'fake-pat' }, DEFAULT_IDENTITY, TRACE, env)

@@ -3,12 +3,12 @@ import test from 'node:test'
 import { readdirSync } from 'node:fs'
 import { ZcodeAdapter, ZcodeLogin, logout } from '../src/glm-llm/zcode.ts'
 import { ZCODE_APP_VERSION } from '../src/glm-llm/identity.ts'
-import { ANTHROPIC_SDK_UA, upstreamSessionId, type SessionHeaderLike } from '../src/glm-llm/headers.ts'
+import { runtimeUserAgent, upstreamSessionId, type SessionHeaderLike } from '../src/glm-llm/headers.ts'
 import { apply as loginApply } from '../src/glm-llm/login-row.ts'
 import { saveCredential } from '../src/glm-llm/auth/store.ts'
 import type { Credential } from '../src/glm-llm/auth/types.ts'
 import type { GenerateOptionsLike, StreamChunk } from '../src/shared/lm-min.ts'
-import { fakeProjectToken, memoryStore, patPlane, PAT_KEY_ID, sealedSigningKey, zcodeDataDir } from './glm-fixtures.ts'
+import { fakeProjectToken, memoryStore, patPlane, PAT_KEY_ID, sealedSigningKey, TRANSPORT_HEADERS, wireRecorder, zcodeDataDir } from './glm-fixtures.ts'
 
 /** An adapter environment whose ZCode data directory is a fresh temp directory without a state file. */
 const isolatedEnv = (): NodeJS.ProcessEnv => zcodeDataDir().env
@@ -86,14 +86,17 @@ test('stream sends image blocks through the attachment service; without it an im
   await assert.rejects(async () => { for await (const chunk of bare.stream(options as never)) void chunk }, /attachment service/)
 })
 
-function sseOk(): Response {
-  return new Response(sseBody([
+const SSE_OK_FRAMES = [
     'data: {"type":"message_start","message":{"usage":{"input_tokens":5}}}',
     'data: {"type":"content_block_start","index":0,"content_block":{"type":"text"}}',
     'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"ok"}}',
     'data: {"type":"content_block_stop","index":0}',
     'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}',
-  ]), { status: 200, headers: { 'content-type': 'text/event-stream' } })
+]
+const SSE_OK_BODY = SSE_OK_FRAMES.map(frame => `${frame}\n`).join('')
+
+function sseOk(): Response {
+  return new Response(sseBody(SSE_OK_FRAMES), { status: 200, headers: { 'content-type': 'text/event-stream' } })
 }
 
 /** The header names and values of one request as sent (a plain object or a Headers instance). */
@@ -150,7 +153,8 @@ test('coding-plan stream walks the full chain: store → headers → unsigned si
   // 3.16.3 account mode: the project access token in both auth headers.
   assert.equal(headerIn(captured.headers, 'authorization'), `Bearer ${FIRST_PAT}`)
   assert.equal(headerIn(captured.headers, 'x-api-key'), FIRST_PAT)
-  assert.equal(headerIn(captured.headers, 'User-Agent'), `ZCode/${ZCODE_APP_VERSION} ${ANTHROPIC_SDK_UA}`)
+  // 3.16.3 AI SDK chain: the call's ZCode UA, then provider-utils and the runtime segment.
+  assert.equal(headerIn(captured.headers, 'User-Agent'), `ZCode/${ZCODE_APP_VERSION} ai-sdk/provider-utils/4.0.27 ${runtimeUserAgent()}`)
   assert.ok(headerIn(captured.headers, 'x-session-id') !== undefined)
   // ZCode's attribution set: request, session type and trace ids on every request.
   assert.deepEqual(['x-request-id', 'x-zcode-session-type', 'x-zcode-trace-id', 'x-session-id'].map(name => headerIn(captured.headers, name) !== undefined), [true, true, true, true])
@@ -250,6 +254,55 @@ test('without a ZCode deviceMid the bundle\'s own one is sent on both planes, th
 })
 
 const isPatPlane = (wire: WireRequest): boolean => wire.url.startsWith('https://bigmodel.cn/')
+
+/** The model request's header names as they arrive on a loopback server: the adapter's own fetch chain, undici included. */
+async function wireNames(gateway: Parameters<typeof gatewayFetch>[1], options: { stored?: Credential, purpose?: 'session-title' } = {}): Promise<string[]> {
+  const server = await wireRecorder(() => ({ status: 200, contentType: 'text/event-stream', body: SSE_OK_BODY }))
+  try {
+    const store = memoryStore()
+    await saveCredential(store.fs, 'C:/ws/.llm/credentials.json', options.stored ?? credential)
+    const doubles = gatewayFetch([], gateway)
+    const fetchImpl: typeof fetch = (input, init) => urlOf(input) === ULTRA ? fetch(`${server.url}/v1/messages`, init) : doubles(input, init)
+    const adapter = new ZcodeAdapter({ home: 'C:/ws/.llm', fetchImpl, storeFs: store.fs, env: isolatedEnv() })
+    for await (const chunk of adapter.stream({ ...request(), sessionId: 'session-s1', ...(options.purpose === undefined ? {} : { purpose: options.purpose }) } as never)) void chunk
+    return (server.requests[0]?.names ?? []).filter(name => !TRANSPORT_HEADERS.has(name))
+  }
+  finally {
+    await server.close()
+  }
+}
+
+/** The AI SDK part of the 3.16.3 chain: lower-case names in Headers order (`withUserAgentSuffix` returns `Object.fromEntries(headers.entries())`). */
+const SDK_HEADERS = ['anthropic-version', 'authorization', 'content-type', 'http-referer', 'user-agent', 'x-api-key', 'x-client-language', 'x-client-timezone', 'x-os-category', 'x-os-version', 'x-platform', 'x-query-id', 'x-release-channel', 'x-request-id']
+const SDK_HEADERS_AFTER_SESSION = ['x-title', 'x-zcode-agent', 'x-zcode-app-version', 'x-zcode-query-source', 'x-zcode-session-type', 'x-zcode-trace-id']
+const SIGNATURE_BLOCK = ['X-Client-Ts', 'X-Client-Version', 'X-Client-Sig', 'X-Client-Nonce', 'X-App-Id', 'X-Client-Pow']
+const FLAGGED_MAPPING = [{ from: UPSTREAM, to: ULTRA, zcodeAuthorizationHeader: 'X-ZCode-Authorization' }]
+
+test('the model request leaves with 3.16.3\'s header order: SDK headers sorted, the signature block, X-ZCode-Authorization last', async () => {
+  // 3.16.3: Y2 output → new Headers + zrt + seven set() (x-session-id renamed in place) → routing new Headers + set().
+  const signed = await wireNames({ privateCipher: await sealedSigningKey(FIRST_PAT, PAT_KEY_ID), mapping: FLAGGED_MAPPING }, { stored: { ...credential, jwt: 'zcode-jwt' } })
+  assert.deepEqual(signed, [...SDK_HEADERS, 'X-Session-Id', ...SDK_HEADERS_AFTER_SESSION, ...SIGNATURE_BLOCK, 'X-ZCode-Authorization', 'accept'])
+  // A failed handshake sends zrt(headers) unsigned: the session id keeps its lower-case name and place.
+  const unsigned = await wireNames({ mapping: FLAGGED_MAPPING }, { stored: { ...credential, jwt: 'zcode-jwt' } })
+  assert.deepEqual(unsigned, [...SDK_HEADERS, 'x-session-id', ...SDK_HEADERS_AFTER_SESSION, 'X-ZCode-Authorization', 'accept'])
+})
+
+test('User-Agent: a step sends the provider-utils chain, the session title (generateText) adds ai/6.0.193', async () => {
+  const uaOf = async (purpose?: 'session-title'): Promise<string | undefined> => {
+    const captured: { headers?: Record<string, string> } = {}
+    const { fs } = memoryStore()
+    await saveCredential(fs, 'C:/ws/.llm/credentials.json', credential)
+    const adapter = new ZcodeAdapter({ home: 'C:/ws/.llm', fetchImpl: makeUpstream(captured), storeFs: fs, env: isolatedEnv() })
+    for await (const chunk of adapter.stream({ ...request(), sessionId: 'session-s1', ...(purpose === undefined ? {} : { purpose }) } as never)) void chunk
+    return headerIn(captured.headers, 'user-agent')
+  }
+  const runtime = runtimeUserAgent()
+  assert.match(runtime, /^runtime\/node\.js\/\d+/)
+  assert.equal(await uaOf(), `ZCode/3.16.3 ai-sdk/provider-utils/4.0.27 ${runtime}`)
+  assert.equal(await uaOf('session-title'), `ZCode/3.16.3 ai/6.0.193 ai-sdk/provider-utils/4.0.27 ${runtime}`)
+})
+
+
 
 test('the project access token is minted from the OAuth login the way 3.16.3 mints it', async () => {
   const wire = await runOnGateway({})
@@ -362,7 +415,7 @@ test('coding-plan handshakes on the provider origin, sends to the routed URL, an
   assert.deepEqual(wire.filter(isHandshake).map(entry => entry.url), [PROVIDER_HANDSHAKE])
   const model = wire.filter(isModelRequest)
   assert.equal(model.length, 2)
-  assert.ok(model.every(entry => entry.headers['X-Client-Sig'] !== undefined))
+  assert.ok(model.every(entry => headerOf(entry, 'X-Client-Sig') !== undefined))
 })
 
 test('a failing handshake is tried once across consecutive requests, which go out unsigned', async () => {
@@ -370,7 +423,7 @@ test('a failing handshake is tried once across consecutive requests, which go ou
   assert.equal(wire.filter(isHandshake).length, 1)
   const model = wire.filter(isModelRequest)
   assert.equal(model.length, 2)
-  assert.ok(model.every(entry => entry.headers['X-Client-Sig'] === undefined))
+  assert.ok(model.every(entry => headerOf(entry, 'X-Client-Sig') === undefined))
 })
 
 test('start-plan is not signed: no handshake', async () => {
@@ -389,13 +442,10 @@ test('routing headers follow the signature block, and a mapped handshake URL is 
   const wire = await runOnGateway({ privateCipher: await sealedSigningKey(FIRST_PAT, PAT_KEY_ID), mapping }, { stored: { ...credential, jwt: 'zcode-jwt' } })
   const [handshake] = wire.filter(isHandshake)
   assert.equal(handshake.url, routedHandshake)
-  assert.equal(handshake.headers['X-ZCode-Authorization'], 'Bearer zcode-jwt')
-  // `send` builds the headers with Object.fromEntries, so key order is wire order.
+  assert.equal(headerOf(handshake, 'X-ZCode-Authorization'), 'Bearer zcode-jwt')
   const [model] = wire.filter(isModelRequest)
-  const names = Object.keys(model.headers)
-  assert.equal(names.at(-1), 'X-ZCode-Authorization')
-  assert.ok(names.includes('X-Client-Sig') && names.indexOf('X-Client-Sig') < names.indexOf('X-ZCode-Authorization'))
-  assert.equal(model.headers['X-ZCode-Authorization'], 'Bearer zcode-jwt')
+  assert.equal(headerOf(model, 'X-ZCode-Authorization'), 'Bearer zcode-jwt')
+  assert.ok(headerOf(model, 'X-Client-Sig') !== undefined) // the order on the wire: 'the model request leaves with 3.16.3's header order'
 })
 
 test('x-session-id is one value per DSH session (the gateway cache affinity key); without a session each request gets a fresh one', async () => {

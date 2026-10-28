@@ -42,7 +42,8 @@ const VERIFY_APIKEY_EXPIRED = 'VERIFY_APIKEY_EXPIRED'
 /** A business rejection's `msg` is kept as its reason only when it matches (3.16.3 `performHandshake`). */
 const HANDSHAKE_REJECTION_REASON = /^HANDSHAKE_[A-Z_]+$/u
 
-const SIGNING_HEADER_NAMES = new Set(['x-client-ts', 'x-client-version', 'x-client-sig', 'x-client-nonce', 'x-app-id', 'x-client-pow', 'x-client-sign-verified'])
+/** The signing headers a request is cleared of before (re)signing (3.16.3 `jfs` @1089964). */
+const SIGNING_HEADER_NAMES = ['X-Client-Ts', 'X-Client-Version', 'X-Client-Sig', 'X-Client-Nonce', 'X-Client-Pow', 'X-App-Id', 'X-Client-Sign-Verified'] as const
 
 export interface SigningCredential {
   /** The project access token the model request carries (3.16.3 `protectTransport` signs with the request credential). */
@@ -51,8 +52,20 @@ export interface SigningCredential {
 }
 
 export interface SignOutcome {
-  readonly pairs: ReadonlyArray<readonly [string, string]>
+  /** The headers to send: always a fresh `Headers` copy, cleared of signing headers, with the signature block when signed. */
+  readonly headers: Headers
   readonly signed: boolean
+}
+
+/**
+ * `stripSigningHeaders` (`zrt` @1089207): a `Headers` copy without the
+ * signing headers. A `Headers` copy keeps the insertion order and the
+ * original name case on the wire (undici), as 3.16.3 relies on.
+ */
+function stripSigningHeaders(headers: HeadersInit): Headers {
+  const copy = new Headers(headers)
+  for (const name of SIGNING_HEADER_NAMES) copy.delete(name)
+  return copy
 }
 
 /** A parsed project access token: its `api_key` claim and the token as the HKDF secret. */
@@ -173,14 +186,6 @@ export function parseSigningCredentialForm(credential: string): ParsedSigningCre
   }
 }
 
-function findHeader(pairs: ReadonlyArray<readonly [string, string]>, name: string): string | undefined {
-  const lower = name.toLowerCase()
-  for (const [key, value] of pairs) {
-    if (key.toLowerCase() === lower) return value
-  }
-  return undefined
-}
-
 interface SignerState {
   privKey?: CryptoKey | undefined
   handshake?: Promise<CryptoKey> | undefined
@@ -210,39 +215,44 @@ export class ClientSigningManager {
     this.onEvent = opts.onEvent
   }
 
-  /** Add V4 signing headers; the input pairs return unchanged whenever signing does not apply. */
-  async signWithStatus(url: string, pairs: ReadonlyArray<readonly [string, string]>, cred: SigningCredential): Promise<SignOutcome> {
+  /**
+   * Add V4 signing headers. Every outcome is a fresh `Headers` copy cleared of
+   * signing headers (3.16.3 `sendUnsigned` / `sendSigned` both start from
+   * `zrt`); a signed one then gets the seven `set` calls of `sendSigned`
+   * @3828487 in their order, which renames `x-session-id` in place.
+   */
+  async signWithStatus(url: string, headers: HeadersInit, cred: SigningCredential): Promise<SignOutcome> {
+    const unsigned = (): SignOutcome => ({ headers: stripSigningHeaders(headers), signed: false })
     let parsed: URL
-    try { parsed = new URL(url) } catch { return { pairs, signed: false } }
-    if (parsed.protocol !== 'https:') return { pairs, signed: false }
-    if (pairs.some(([key]) => key.toLowerCase() === 'x-client-sig')) return { pairs, signed: false }
+    try { parsed = new URL(url) } catch { return unsigned() }
+    if (parsed.protocol !== 'https:') return unsigned()
     const stateKey = `${parsed.origin}\n${cred.credential}`
     const state = this.stateFor(stateKey)
-    if (state.bypass) return { pairs, signed: false }
+    if (state.bypass) return unsigned()
     const parsedCred = parseSigningCredentialForm(cred.credential)
     if (parsedCred === undefined) {
       this.noteOnce(`${stateKey}\ncredential`, 'credential is not a project access token — signing skipped')
-      return { pairs, signed: false }
+      return unsigned()
     }
-    const sessionId = findHeader(pairs, 'x-session-id')?.trim()
+    const sessionId = new Headers(headers).get('x-session-id')?.trim()
     if (sessionId === undefined || sessionId.length === 0) {
       this.noteOnce(`${stateKey}\nsession`, 'upstream request has no x-session-id — signing skipped')
-      return { pairs, signed: false }
+      return unsigned()
     }
-    if (state.failedUntil !== undefined && this.now() < state.failedUntil) return { pairs, signed: false }
+    if (state.failedUntil !== undefined && this.now() < state.failedUntil) return unsigned()
     let privateKey: CryptoKey
     try {
       privateKey = await this.ensurePrivateKey(state, parsedCred, parsed.origin)
     }
     catch (error) {
       this.noteOnce(`${stateKey}\nhandshake`, `signing handshake failed (${failureReason(error)}) — sending unsigned; no new handshake for ${HANDSHAKE_FAILURE_COOLDOWN_MS / 1000} s`)
-      return { pairs, signed: false }
+      return unsigned()
     }
-    const signedPairs = await this.buildSignedPairs(stateKey, pairs, privateKey, parsedCred, sessionId, cred.appVersion)
-    return signedPairs === null ? { pairs, signed: false } : { pairs: signedPairs, signed: true }
+    const signed = await this.buildSignedHeaders(stateKey, headers, privateKey, parsedCred, sessionId, cred.appVersion)
+    return signed === null ? unsigned() : { headers: signed, signed: true }
   }
 
-  private async buildSignedPairs(stateKey: string, pairs: ReadonlyArray<readonly [string, string]>, privateKey: CryptoKey, parsedCred: ParsedSigningCredential, sessionId: string, appVersion: string): Promise<ReadonlyArray<readonly [string, string]> | null> {
+  private async buildSignedHeaders(stateKey: string, headers: HeadersInit, privateKey: CryptoKey, parsedCred: ParsedSigningCredential, sessionId: string, appVersion: string): Promise<Headers | null> {
     const ts = String(Date.now())
     const nonce = randomHex(NONCE_BYTES)
     let pow: string
@@ -255,20 +265,15 @@ export class ClientSigningManager {
       this.noteOnce(`${stateKey}\nsign`, `signing failed (${failureReason(error)}) — sending unsigned`)
       return null
     }
-    const cleaned = pairs.filter(([key]) => {
-      const lower = key.toLowerCase()
-      return !SIGNING_HEADER_NAMES.has(lower) && lower !== 'x-session-id'
-    })
-    return [
-      ...cleaned,
-      ['X-Client-Ts', ts],
-      ['X-Client-Version', appVersion],
-      ['X-Client-Sig', sig],
-      ['X-Session-Id', sessionId],
-      ['X-Client-Nonce', nonce],
-      ['X-App-Id', APP_ID],
-      ['X-Client-Pow', pow],
-    ]
+    const signed = stripSigningHeaders(headers)
+    signed.set('X-Client-Ts', ts)
+    signed.set('X-Client-Version', appVersion)
+    signed.set('X-Client-Sig', sig)
+    signed.set('X-Session-Id', sessionId)
+    signed.set('X-Client-Nonce', nonce)
+    signed.set('X-App-Id', APP_ID)
+    signed.set('X-Client-Pow', pow)
+    return signed
   }
 
   /** True when the response is a signing rejection the client retries on (401 + VERIFY_* in the envelope). */
@@ -383,27 +388,29 @@ export class ClientSigningManager {
  * Send with the client's full signing retry ladder: signed → re-handshake
  * once → permanent bypass + unsigned. `url` is the provider URL before
  * endpoint routing; it decides the handshake origin and keys the state.
- * `send` delivers to the routed URL and appends the routing headers after
- * the signature block (3.16.3 order). The bypass is permanent for the pair,
- * stricter than 3.16.3 (one signer generation, in practice one request).
+ * `send` gets the `Headers` to send and delivers them to the routed URL,
+ * where the routing headers are set after the signature block (3.16.3
+ * order). Without a signer the headers go out as a plain `Headers` copy.
+ * The bypass is permanent for the pair, stricter than 3.16.3 (one signer
+ * generation, in practice one request).
  */
 export async function sendWithClientSigning(signer: ClientSigningManager | null, params: {
   url: string
-  headerPairs: ReadonlyArray<readonly [string, string]>
+  headers: HeadersInit
   credential: string
   appVersion: string
-  send: (headerPairs: ReadonlyArray<readonly [string, string]>) => Promise<Response>
+  send: (headers: Headers) => Promise<Response>
 }): Promise<Response> {
-  const { url, headerPairs, credential, appVersion, send } = params
-  if (signer === null) return send(headerPairs)
+  const { url, headers, credential, appVersion, send } = params
+  if (signer === null) return send(new Headers(headers))
   const signingCred: SigningCredential = { credential, appVersion }
-  const first = await signer.signWithStatus(url, headerPairs, signingCred)
-  let resp = await send(first.pairs)
+  const first = await signer.signWithStatus(url, headers, signingCred)
+  let resp = await send(first.headers)
   if (!first.signed || !await signer.isVerifyFailure(resp)) return resp
   signer.invalidate(url, credential)
-  const second = await signer.signWithStatus(url, headerPairs, signingCred)
-  resp = await send(second.pairs)
+  const second = await signer.signWithStatus(url, headers, signingCred)
+  resp = await send(second.headers)
   if (!second.signed || !await signer.isVerifyFailure(resp)) return resp
   signer.setBypass(url, credential)
-  return send(headerPairs)
+  return send(stripSigningHeaders(headers))
 }

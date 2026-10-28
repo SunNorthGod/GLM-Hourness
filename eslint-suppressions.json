@@ -20,9 +20,6 @@
     }
   },
   "src/glm-llm/zcode.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    },
     "@typescript-eslint/unbound-method": {
       "count": 3
     }
@@ -145,10 +142,10 @@
       "count": 2
     },
     "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 9
+      "count": 7
     },
     "@typescript-eslint/require-await": {
-      "count": 6
+      "count": 5
     }
   },
   "tests/glm-startplan.spec.ts": {

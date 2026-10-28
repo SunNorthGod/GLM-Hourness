@@ -33,6 +33,24 @@ export const CUSTOMER_INFO_PATH = '/api/biz/customer/getCustomerInfo'
 /** The agent/configs request header naming the PAT's API key (`FGs` @4196232). */
 export const API_KEY_ID_HEADER = 'x-api-key-id'
 
+/**
+ * User-Agent segments of the AI SDK inside 3.16.3: provider-utils appends
+ * `ai-sdk/provider-utils/4.0.27` and the runtime segment to every request
+ * (`postToApi` `SZr`, `mZr` @3530239), the Anthropic provider appends
+ * `ai-sdk/anthropic/3.0.81` to its own headers (`getHeaders` @3570073,
+ * `gjs`), and `generateText` appends `ai/6.0.193` to the call headers
+ * (@3949945, `Xno` @3991593). The versions are kept apart from the prefixes:
+ * the bundle joins them in templates.
+ */
+export const PROVIDER_UTILS_UA_PREFIX = 'ai-sdk/provider-utils/'
+export const PROVIDER_UTILS_VERSION = '4.0.27'
+export const ANTHROPIC_SDK_UA_PREFIX = 'ai-sdk/anthropic/'
+export const ANTHROPIC_SDK_VERSION = '3.0.81'
+export const AI_UA_PREFIX = 'ai/'
+export const AI_VERSION = '6.0.193'
+/** The runtime segment of a Node process without `navigator.userAgent` (`getRuntimeEnvironmentUserAgent` `$ut` @3509781). */
+export const RUNTIME_NODE_UA_PREFIX = 'runtime/node.js/'
+
 /** Attribution header names (`createModelRequestAttributionHeaders` `Vdt` @4065502, constants @4066600). */
 export const SESSION_TYPE_HEADER = 'x-zcode-session-type'
 export const TRACE_ID_HEADER = 'x-zcode-trace-id'

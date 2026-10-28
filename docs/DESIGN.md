@@ -267,12 +267,20 @@ LLM 平面（bundle `g6n` 形态）：`HTTP-Referer`、`User-Agent: ZCode/<ver>`
 - `X-Title` 的来源标题：进程参数含 `app-server` 或 `agent-server` 时为 `electron`，否则为 `cli`（`kuc` @14423244）。桌面版以 `app-server` 方式启动 agent 进程，端点路由的配置请求也传 `sourceTitle: "electron"`（@15096557），所以桌面版的模型请求与配置请求都是 `Z Code@electron`。〔定案 2026-10-28，用户选 B，项目图 `question-8`〕本实现两处都发 `Z Code@electron`（`DEFAULT_IDENTITY.sourceTitle`），取代 2026-10-27 保持 `cli` 的定案；事实见 `FACTS.md` §1。
 - 签名与项目令牌共用一个版本常量（构建期 `__ZCODE_VERSION__`），`X-ZCode-App-Version` 取自环境变量 `ZCODE_APP_VERSION`。安装包文本中前者未被构建替换，实际取值未验证；本实现两处都用应用版本。
 
+User-Agent 与头的组装〔已实现 2026-10-28，m1-parity 第 7、8 项，`src/glm-llm/headers.ts` `buildModelRequestHeaders`〕：coding-plan 模型请求的头按 3.16.3 内 AI SDK 的两级合并生成：
+
+- provider 级：`withUserAgentSuffix({"anthropic-version", "x-api-key": PAT, Authorization: "Bearer " + PAT}, "ai-sdk/anthropic/3.0.81")`（`getHeaders` @3570073，请求凭证经 `x5s`、`T5s`）。`withUserAgentSuffix`（`Y2` @3510311）把键改成小写、后写覆盖先写，经 `Headers` 后以 `Object.fromEntries(headers.entries())` 返回，所以结果是小写、按字母排序的普通对象。
+- 调用级：身份头（含 `User-Agent: ZCode/3.16.3`）与归因头（§4.5b）；会话标题走 `generateText`，调用级先追加 `ai/6.0.193`（@3949945），主步与压缩走 `streamText`，不追加。
+- `postToApi`（`SZr`）：`withUserAgentSuffix({"Content-Type": "application/json", ...合并(provider 级, 调用级)}, "ai-sdk/provider-utils/4.0.27", 运行时段)`，合并（`Rh` @3505152）是浅合并，调用级的 `User-Agent` 覆盖 provider 级的。运行时段按 `getRuntimeEnvironmentUserAgent`（`$ut` @3509781）先取 `navigator.userAgent`：Node 22 是 `Node.js/22`，得 `runtime/node.js/22`；没有时取 `runtime/node.js/<process.version>`。
+- 结果：主步 `ZCode/3.16.3 ai-sdk/provider-utils/4.0.27 runtime/node.js/22`，会话标题 `ZCode/3.16.3 ai/6.0.193 ai-sdk/provider-utils/4.0.27 runtime/node.js/22`。此前本包发 `ZCode/3.16.3 ai-sdk/anthropic/3.0.81`。start-plan 不变。
+
 ### 4.3 签名 V4
 
 移植自 zcode-api 的 `client-signing`，按 ZCode 3.16.3 安装包的 `ClientRequestSigningV4Signer` 核对（2026-10-28，符号与安装包偏移见 `FACTS.md`）〔实读〕：
 
 - 握手：`POST new URL('/api/paas/c1f3a7e2/v2/client', <provider baseURL 的 origin>)`，baseURL 的路径部分丢弃。coding-plan 的 baseURL 是 `https://open.bigmodel.cn/api/anthropic`，握手发往 `https://open.bigmodel.cn/api/paas/c1f3a7e2/v2/client`。`c1f3a7e2` 是字面常量，3.15.1 到 3.16.3 的六个包相同。凭证是请求的项目令牌（§4.1；3.16.3 `protectTransport` @3833810 用请求凭证建签名 fetch），按 `parseSigningCredential`（`D1r` @1087575）的 JWT 形式解析：头 `{alg: HS256, typ: JWT, sign_type: SIGN}`，载荷 `token_use: project_access` 且 `api_key` 非空，整段令牌是 HKDF 的 secret。`D1r` 的 `{apiKeyId}.{secret}` 分支本包不再移植：本通道不再持有这种凭证。请求头 `Authorization` 是原样令牌（不加 `Bearer `），请求体 `{accessToken, nonce, sig, ts}`，超时 10 秒。响应里的 `privateCipher` 用 HKDF 派生的 AES-GCM 密钥解出 Ed25519 私钥；此后每个请求带 Ed25519 业务签名与 PoW，共七个签名头。
-- 组装：签名 fetch 包在端点路由 fetch 外面。签名器看到路由前的 provider URL，握手 origin 由它决定；签好的请求交给路由改写到 `zcode.z.ai/api/v1/ultra/...`，`X-ZCode-Authorization` 排在签名头之后。握手本身也经同一个路由 fetch；路由表按完整 URL 匹配，没有握手 URL 的映射时原样发出（§4.4）。
+- 组装：签名 fetch 包在端点路由 fetch 外面。签名器看到路由前的 provider URL，握手 origin 由它决定；签好的请求交给路由改写到 `zcode.z.ai/api/v1/ultra/...`。握手本身也经同一个路由 fetch；路由表按完整 URL 匹配，没有握手 URL 的映射时原样发出（§4.4）。
+- 头的线上顺序〔已实现 2026-10-28，m1-parity 第 8 项〕：照搬 3.16.3 的 `Headers` 链，不手排：AI SDK 产出的小写、按字母排序的对象 → 签名器 `new Headers(...)` 后删掉七个签名头（`zrt` @1089207），再依次 `set` `X-Client-Ts`、`X-Client-Version`、`X-Client-Sig`、`X-Session-Id`、`X-Client-Nonce`、`X-App-Id`、`X-Client-Pow`（`sendSigned` @3828487）→ 路由 `new Headers(prev)`、删 `host`、`set` `X-ZCode-Authorization`（`f5s`，`Ngn` @3839971）→ fetch。undici 复制 `Headers` 时保留插入顺序与 `set` 时的大小写（本机 Node 22.20 回环服务器实测 `rawHeaders`），所以线上是：前段小写字母序（`x-session-id` 在原位被改名为 `X-Session-Id`），随后 `X-Client-Ts, X-Client-Version, X-Client-Sig, X-Client-Nonce, X-App-Id, X-Client-Pow`，最后 `X-ZCode-Authorization`；握手失败时无签发送的是 `zrt` 的结果，`x-session-id` 保持小写。undici 自己补的 `host`、`connection`、`accept`、`accept-language`、`sec-fetch-mode`、`accept-encoding`、`content-length` 不属于这条链。3.16.3 在有代理或自定义 CA 时网络层改走 `node:https`，头会变成小写字母序（`rdt` @3837494）；本通道始终走 DSH 运行时的 fetch（§4.8）。
 - 档位门：start-plan 不挂签名器（3.16.3 `requiresClientRequestSigning` 对 start-plan、off-peak、highspeed 返回 false）。签名器只按这一档位门判断，不按请求路径豁免：它收到的 URL 总是 provider URL。
 - 失败梯：握手的网络错误、超时、非 200、业务拒绝、缺 `privateCipher` 都放行，本次无签发送。3.16.3 在四种情况下抛错、请求失败，本包四种都放行：凭证无法解析与请求缺 `x-session-id` 时跳过签名（沿用 zcode-api）；PoW 或 Ed25519 签名失败、握手进行中签名状态被作废（VERIFY 拒绝）时本次无签发送。401 VERIFY 拒绝后作废私钥、立即重新握手再签一次；第二次仍被拒就进入旁路，无签重发。
 - 通知：经 `onEvent` 发出，每个（origin, 凭证）每种原因一条。通知只写本包自定的失败类别（如 `handshake_http_404`）与错误名（如 `TypeError`），不写错误消息：fetch 校验请求头时的错误消息会引用头的值，握手请求头的值就是凭证。业务拒绝的 `msg` 只在匹配 `^HANDSHAKE_[A-Z_]+$` 时作为原因保留，与 3.16.3 的日志规则相同。生产构造目前没有接 `onEvent`。
@@ -289,7 +297,7 @@ LLM 平面（bundle `g6n` 形态）：`HTTP-Referer`、`User-Agent: ZCode/<ver>`
 - 握手 1 次：`POST open.bigmodel.cn/api/paas/c1f3a7e2/v2/client`，HTTP 200，信封 `code` 200，带 `privateCipher`。握手请求只有 `authorization`、`content-type` 两个头，没有路由头，即服务端映射表没有改写握手 URL。`Authorization` 是原样 JWT（项目令牌，不加 `Bearer `），被接受；`Bearer` 形式没有试，代码不改。
 - 项目令牌铸造的两步 `getCustomerInfo`、`access_tokens` 都是 200。
 - 模型请求 6 次（会话标题 1 次、主请求 5 次），都发往 `zcode.z.ai/api/v1/ultra/anthropic/v1/messages`，都带签名，都是 200，每次只发一次，没有出现 401 VERIFY 梯子：ultra 网关接受「`Authorization` 是 apiKey、签名用项目令牌派生的 apiKeyId」这一组合。会话约 80 秒，长于 60 秒冷却窗口，全程只握手一次（私钥按进程缓存）。
-- 头序：签名块排在 `content-type` 之后，依次是 `x-client-ts`、`x-client-version`、`x-client-sig`、`x-session-id`、`x-client-nonce`、`x-app-id`、`x-client-pow`。`x-session-id` 是从原请求头移进签名块的会话头，其余 6 个由签名器新增；`x-client-sign-verified` 没有出现。`x-zcode-authorization` 是最后一个头，在签名块之后，与 3.16.3 的组装顺序一致。
+- 头序（m1-parity 之前的代码）：签名块排在 `content-type` 之后，`x-session-id` 被移进签名块；`x-zcode-authorization` 是最后一个头。这与 3.16.3 不同，m1-parity 改为照搬 3.16.3 的 `Headers` 链（上面「头的线上顺序」）。
 - 用量：token 计量与同日 5 次无签运行同一形态（首个主请求缓存读 0，之后每步命中 97–100%，`cacheWrite` 恒为 0；整体命中率 80%，无签运行 80–87%）。coding-plan 的 1.5 倍套餐扣减不在用量流水里（流水只记服务端返回的 token 数），签名对它有无影响未知。
 - 延迟：主请求到响应头 6.3–8.0 秒（首个主请求 31.0 秒），无签运行 1.5–5.8 秒。只有一个样本，时段与提示词都不同；计时起点在签名完成之后，差值在网络或服务端，未归因。
 

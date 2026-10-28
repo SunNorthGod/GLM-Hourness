@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { EndpointRoutingService, requiresClaimCaptcha } from '../src/glm-llm/endpoint-routing.ts'
 import { DEFAULT_IDENTITY } from '../src/glm-llm/identity.ts'
+import { TRANSPORT_HEADERS, wireRecorder } from './glm-fixtures.ts'
 
 function jsonRespond(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
@@ -55,24 +56,31 @@ test('snapshot TTL and failure cooldown keep requests fail-open', async () => {
   assert.equal(fetches, 2)
 })
 
-test('the config request carries the 3.16.3 FGs header set: x-api-key-id of the project token, the device mid, no API key', async () => {
-  const seen: Array<Record<string, string>> = []
-  const fetchImpl: typeof fetch = (_url, init) => {
-    seen.push(init?.headers instanceof Headers ? Object.fromEntries(init.headers) : { ...(init?.headers as Record<string, string>) })
-    return Promise.resolve(jsonRespond(200, mappingBody))
+test('the config request carries the 3.16.3 FGs header set in its order: x-api-key-id of the project token, the device mid, no API key', async () => {
+  const seen: Headers[] = []
+  const wire = await wireRecorder(() => ({ status: 200, contentType: 'application/json', body: JSON.stringify(mappingBody) }))
+  try {
+    // The request leaves through this Node's real fetch to a loopback server, which records the names as sent.
+    const fetchImpl: typeof fetch = (_url, init) => {
+      seen.push(new Headers(init?.headers))
+      return fetch(`${wire.url}/api/v1/agent/configs`, init)
+    }
+    const env: NodeJS.ProcessEnv = { ZCODE_IDENTITY_PLATFORM: 'win32', ZCODE_IDENTITY_ARCH: 'x64', ZCODE_IDENTITY_RELEASE: '10.0.26100', ZCODE_IDENTITY_CLIENT_LANGUAGE: 'zh-CN', ZCODE_IDENTITY_CLIENT_TIMEZONE: 'Asia/Shanghai' }
+    const service = new EndpointRoutingService({ identity: DEFAULT_IDENTITY, fetchImpl, env, deviceMid: () => Promise.resolve('fake-device-mid') })
+    await service.resolve('https://open.bigmodel.cn/api/anthropic/v1/messages', { apiKeyId: 'key-1' })
+    assert.deepEqual(wire.requests[0]?.names.filter(name => !TRANSPORT_HEADERS.has(name)), [
+      'User-Agent', 'X-ZCode-App-Version', 'HTTP-Referer', 'X-Title', 'X-Platform', 'X-Release-Channel',
+      'X-Client-Language', 'X-Client-Timezone', 'X-Os-Category', 'X-Os-Version', 'X-Device-Mid', 'x-api-key-id', 'Accept',
+    ])
+    const [headers] = seen
+    assert.equal(headers?.get('x-api-key-id'), 'key-1')
+    assert.equal(headers?.get('x-device-mid'), 'fake-device-mid')
+    assert.equal(headers?.get('x-title'), 'Z Code@electron')
+    assert.equal(headers?.has('x-api-key'), false)
   }
-  const env: NodeJS.ProcessEnv = { ZCODE_IDENTITY_PLATFORM: 'win32', ZCODE_IDENTITY_ARCH: 'x64', ZCODE_IDENTITY_RELEASE: '10.0.26100', ZCODE_IDENTITY_CLIENT_LANGUAGE: 'zh-CN', ZCODE_IDENTITY_CLIENT_TIMEZONE: 'Asia/Shanghai' }
-  const service = new EndpointRoutingService({ identity: DEFAULT_IDENTITY, fetchImpl, env, deviceMid: () => Promise.resolve('fake-device-mid') })
-  await service.resolve('https://open.bigmodel.cn/api/anthropic/v1/messages', { apiKeyId: 'key-1' })
-  const lower = Object.fromEntries(Object.entries(seen[0] ?? {}).map(([name, value]) => [name.toLowerCase(), value]))
-  assert.deepEqual(Object.keys(lower), [
-    'user-agent', 'x-zcode-app-version', 'http-referer', 'x-title', 'x-platform', 'x-release-channel',
-    'x-client-language', 'x-client-timezone', 'x-os-category', 'x-os-version', 'x-device-mid', 'x-api-key-id', 'accept',
-  ])
-  assert.equal(lower['x-api-key-id'], 'key-1')
-  assert.equal(lower['x-device-mid'], 'fake-device-mid')
-  assert.equal(lower['x-title'], 'Z Code@electron')
-  assert.equal('x-api-key' in lower, false)
+  finally {
+    await wire.close()
+  }
 })
 
 test('request-verification switch parses from the same snapshot', async () => {

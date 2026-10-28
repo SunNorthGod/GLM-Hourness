@@ -38,12 +38,14 @@ function jsonRespond(status: number, body: unknown): Response {
 const PAT = fakeProjectToken('id')
 const PAT_CRED: SigningCredential = { credential: PAT, appVersion: '3.16.3' }
 
-test('signing skips http, already-signed pairs, and credentials that are not project access tokens', async () => {
-  const manager = new ClientSigningManager({ handshakeFetch: async () => { throw new Error('should not fetch') } })
-  const pairs: Array<readonly [string, string]> = [['content-type', 'application/json'], ['x-session-id', 's1']]
-  assert.equal((await manager.signWithStatus('http://x/api/anthropic/v1/messages', pairs, PAT_CRED)).signed, false)
-  assert.equal((await manager.signWithStatus('https://x/api/anthropic/v1/messages', [['x-client-sig', 'present'], ['x-session-id', 's1']], PAT_CRED)).signed, false)
-  assert.equal((await manager.signWithStatus('https://x/api/anthropic/v1/messages', pairs, { credential: 'id.secret', appVersion: '3.16.3' })).signed, false)
+test('signing skips http and credentials that are not project access tokens; unsigned headers lose any stale signing header', async () => {
+  const manager = new ClientSigningManager({ handshakeFetch: () => Promise.reject(new Error('should not fetch')) })
+  const headers = { 'content-type': 'application/json', 'x-session-id': 's1', 'X-Client-Sig': 'stale' }
+  const overHttp = await manager.signWithStatus('http://x/api/anthropic/v1/messages', headers, PAT_CRED)
+  assert.equal(overHttp.signed, false)
+  // 3.16.3 sendUnsigned sends zrt(headers): the signing headers are deleted, the rest stays.
+  assert.deepEqual([...overHttp.headers.entries()], [['content-type', 'application/json'], ['x-session-id', 's1']])
+  assert.equal((await manager.signWithStatus('https://x/api/anthropic/v1/messages', headers, { credential: 'id.secret', appVersion: '3.16.3' })).signed, false)
 })
 
 test('a full handshake with the project access token signs the pairs with the V4 header block', async () => {
@@ -55,8 +57,7 @@ test('a full handshake with the project access token signs the pairs with the V4
       return jsonRespond(200, { code: 200, data: { privateCipher } })
     }) as typeof fetch,
   })
-  const pairs: Array<readonly [string, string]> = [['content-type', 'application/json'], ['x-session-id', 'session-1']]
-  const outcome = await manager.signWithStatus('https://open.bigmodel.cn/api/anthropic/v1/messages', pairs, { credential: PAT, appVersion: '3.14.0' })
+  const outcome = await manager.signWithStatus('https://open.bigmodel.cn/api/anthropic/v1/messages', { 'content-type': 'application/json', 'x-session-id': 'session-1' }, { credential: PAT, appVersion: '3.14.0' })
   assert.equal(outcome.signed, true)
   // 3.16.3: the provider baseURL's origin plus the constant path; the token as-is, named accessToken.
   const { url: handshakeUrl, method, headers: handshakeHeaders } = seen[0]!
@@ -65,21 +66,20 @@ test('a full handshake with the project access token signs the pairs with the V4
   assert.deepEqual(handshakeHeaders, { Authorization: PAT, 'Content-Type': 'application/json' })
   assert.deepEqual(Object.keys(seen[0]!.body), ['accessToken', 'nonce', 'sig', 'ts'])
   assert.equal(seen[0]!.body.accessToken, PAT)
-  const headers = Object.fromEntries(outcome.pairs)
-  assert.equal(headers['X-App-Id'], 'zcode')
-  assert.equal(headers['X-Session-Id'], 'session-1') // canonical case replaces the trace copy
-  assert.equal(headers['X-Client-Version'], '3.14.0')
-  assert.match(headers['X-Client-Sig']!, /^[A-Za-z0-9+/=]+$/) // base64, never hex
-  assert.match(headers['X-Client-Pow']!, /^[0-9a-f]{32}$/)
-  assert.equal(outcome.pairs.some(([key]) => key.toLowerCase() === 'x-session-id' && key !== 'X-Session-Id'), false)
+  const { headers } = outcome
+  assert.equal(headers.get('X-App-Id'), 'zcode')
+  assert.equal(headers.get('X-Session-Id'), 'session-1')
+  assert.equal(headers.get('X-Client-Version'), '3.14.0')
+  assert.match(headers.get('X-Client-Sig') ?? '', /^[A-Za-z0-9+/=]+$/) // base64, never hex
+  assert.match(headers.get('X-Client-Pow') ?? '', /^[0-9a-f]{32}$/)
+  assert.ok(/^\d+$/.test(headers.get('X-Client-Ts') ?? '') && /^[0-9a-f]{32}$/.test(headers.get('X-Client-Nonce') ?? ''))
 })
 
 test('handshake failure fails open to unsigned', async () => {
   const manager = new ClientSigningManager({ handshakeFetch: (async () => jsonRespond(500, {})) as typeof fetch })
-  const pairs: Array<readonly [string, string]> = [['x-session-id', 's1']]
-  const outcome = await manager.signWithStatus('https://x/api/anthropic/v1/messages', pairs, PAT_CRED)
+  const outcome = await manager.signWithStatus('https://x/api/anthropic/v1/messages', { 'x-session-id': 's1' }, PAT_CRED)
   assert.equal(outcome.signed, false)
-  assert.equal(outcome.pairs, pairs)
+  assert.deepEqual([...outcome.headers.entries()], [['x-session-id', 's1']])
 })
 
 interface SeenRequest { url: string, init: RequestInit | undefined }
@@ -100,12 +100,12 @@ function bodyOf(request: SeenRequest): Record<string, unknown> {
 
 const MODEL_URL = 'https://open.bigmodel.cn/api/anthropic/v1/messages'
 const HANDSHAKE_URL = 'https://open.bigmodel.cn/api/paas/c1f3a7e2/v2/client'
-const SESSION_PAIRS: Array<readonly [string, string]> = [['x-session-id', 's1']]
+const SESSION_HEADERS = { 'x-session-id': 's1' }
 const notFound = (): Response => new Response('not found', { status: 404 })
 
 /** Sign one request to MODEL_URL (or `url`) carrying the session pairs. */
 function sign(manager: ClientSigningManager, cred: SigningCredential = PAT_CRED, url = MODEL_URL): Promise<SignOutcome> {
-  return manager.signWithStatus(url, SESSION_PAIRS, cred)
+  return manager.signWithStatus(url, SESSION_HEADERS, cred)
 }
 
 /** A manager whose first handshake has just failed (one 404), leaving PAT_CRED on MODEL_URL in the cooldown. */
@@ -125,7 +125,7 @@ test('a failed handshake is not retried for 60 s; the cooldown keeps the pairs u
   for (let i = 0; i < 3; i++) {
     const outcome = await sign(manager)
     assert.equal(outcome.signed, false)
-    assert.equal(outcome.pairs, SESSION_PAIRS)
+    assert.deepEqual([...outcome.headers.entries()], [['x-session-id', 's1']])
   }
   assert.deepEqual(seen.map(request => request.url), [HANDSHAKE_URL])
   clock += 59_999
@@ -217,7 +217,7 @@ test('401 VERIFY ladder: retry once, then permanent bypass', async () => {
   const sends: number[] = []
   const resp = await sendWithClientSigning(manager, {
     url,
-    headerPairs: [['x-session-id', 's1']],
+    headers: { 'x-session-id': 's1' },
     credential: 'no-sep', // never signable: the ladder sends as-is both times
     appVersion: '3.14.0',
     send: async () => { sends.push(1); return verifyFailure() },
@@ -234,6 +234,6 @@ test('setBypass permanently stops signing for the pair', async () => {
   const manager = new ClientSigningManager({ handshakeFetch: (async () => { throw new Error('no fetch expected') }) as typeof fetch })
   const url = 'https://x/api/anthropic/v1/messages'
   manager.setBypass(url, PAT)
-  const outcome = await manager.signWithStatus(url, [['x-session-id', 's1']], PAT_CRED)
+  const outcome = await manager.signWithStatus(url, { 'x-session-id': 's1' }, PAT_CRED)
   assert.equal(outcome.signed, false)
 })

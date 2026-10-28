@@ -17,7 +17,7 @@ import { PollOAuthClient, LOGIN_TIMEOUT_MS, buildPasteAuthorizeUrl } from './aut
 import { inspectJwt } from './auth/jwt.ts'
 import { DEFAULT_IDENTITY, ensureDeviceMid, resolveEnvPromptInfo, type ZcodeIdentity } from './identity.ts'
 import { readCliDeviceMid, readRoutingDeviceMid } from './device-mid.ts'
-import { buildAuthHeaders, RequestAttributionTracker, upstreamSessionId, type PlanId, type SessionHeaderLike, type TraceContext } from './headers.ts'
+import { buildAuthHeaders, buildModelRequestHeaders, RequestAttributionTracker, upstreamSessionId, type PlanId, type SessionHeaderLike, type TraceContext } from './headers.ts'
 import { EndpointRoutingService, type RoutingCredential } from './endpoint-routing.ts'
 import { ClientSigningManager, sendWithClientSigning } from './signing.ts'
 import { ProjectAccessTokenClient, projectTokenFingerprint, projectTokenRequest, type ProjectKeyLocationStore, type ResolvedProjectToken } from './auth/project-token.ts'
@@ -263,8 +263,7 @@ export class ZcodeAdapter {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
     const routed = await this.routing.resolve(url, this.routingCredential)
     const fetchImpl = this.options.fetchImpl ?? fetch
-    if (routed.headers === undefined) return fetchImpl(routed.url, init)
-    return fetchImpl(routed.url, { ...init, headers: { ...(init?.headers as Record<string, string> | undefined), ...routed.headers } })
+    return fetchImpl(routed.url, routed.routed ? routedInit(init, routed.headers) : init)
   }
 
   /** Provider route display metadata (LlmAdapter base contract). */
@@ -440,18 +439,19 @@ export class ZcodeAdapter {
       const routingCredential: RoutingCredential = { apiKeyId: token?.apiKeyId, zcodeJwt: credential.jwt }
       if (token !== undefined) this.routingCredential = routingCredential
       const routed = await this.routing.resolve(upstreamBase, routingCredential).catch((): { routed: boolean, url: string, headers?: Record<string, string> } => ({ routed: false, url: upstreamBase }))
-      const routingPairs = Object.entries(routed.headers ?? {})
-      const auth = token !== undefined ? { bearer: token.token, apiKey: token.token } : { bearer: startPlanJwt }
       // x-request-id is fresh per attempt (3.16.3 `Gdt` @4067222: `requestId ?? crypto.randomUUID()` per attempt).
-      const headers = buildAuthHeaders(auth, identity, { ...attribution, requestId: randomUUID() }, this.options.env)
+      const trace = { ...attribution, requestId: randomUUID() }
+      const headers = token !== undefined
+        ? buildModelRequestHeaders({ token: token.token, identity, trace, generateText: request.purpose === 'session-title', ...(this.options.env === undefined ? {} : { env: this.options.env }) })
+        : { ...buildAuthHeaders({ bearer: startPlanJwt }, identity, trace, this.options.env), 'content-type': 'application/json' }
       return sendWithClientSigning(token === undefined ? null : this.signer, {
         url: upstreamBase,
-        headerPairs: Object.entries({ ...headers, 'content-type': 'application/json' }) as Array<[string, string]>,
+        headers,
         credential: token?.token ?? '',
         appVersion: identity.appVersion,
-        send: pairs => fetchImpl(routed.url, {
+        send: signed => fetchImpl(routed.url, {
           method: 'POST',
-          headers: Object.fromEntries([...pairs, ...routingPairs]) as Record<string, string>,
+          ...(routed.routed ? routedInit({ headers: signed }, routed.headers) : { headers: signed }),
           body,
           ...(options.signal === undefined ? {} : { signal: options.signal }),
         }),
@@ -477,6 +477,20 @@ export class ZcodeAdapter {
     // types differ, and brands exist only at the type level).
     yield* decodeSse(response.body, options.model) as AsyncIterable<LlmStreamChunk>
   }
+}
+
+/**
+ * The init of a routed request (3.16.3 `createRoutingFetch` `Ngn` @3839971
+ * with `f5s`): a `Headers` copy of the request headers without `host`, then
+ * the routing headers `set` after everything already there, so
+ * `X-ZCode-Authorization` follows the signature block on the wire.
+ */
+function routedInit(init: RequestInit | undefined, routingHeaders: Readonly<Record<string, string>> | undefined): RequestInit | undefined {
+  if (init?.headers === undefined && routingHeaders === undefined) return init
+  const headers = new Headers(init?.headers)
+  headers.delete('host')
+  for (const [name, value] of Object.entries(routingHeaders ?? {})) headers.set(name, value)
+  return { ...init, headers }
 }
 
 /**

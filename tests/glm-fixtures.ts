@@ -4,6 +4,8 @@
  * DSH contract is never mocked (AGENTS.md).
  */
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { createServer } from 'node:http'
+import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { StoreFs } from '../src/glm-llm/auth/store.ts'
@@ -83,6 +85,31 @@ export function patPlane(options: { mintStatus?: number } = {}): { answer: (url:
     },
   }
 }
+
+/**
+ * A loopback HTTP server that records the header names of each request as
+ * they arrive on the wire (`rawHeaders`, so order and case are the sender's),
+ * and answers `answer()`. A network double: the request leaves through the
+ * real fetch of this Node, as the adapter's would.
+ */
+export async function wireRecorder(answer: () => { status: number, contentType: string, body: string }): Promise<{ url: string, requests: Array<{ path: string, names: string[] }>, close: () => Promise<void> }> {
+  const requests: Array<{ path: string, names: string[] }> = []
+  const server = createServer((req, res) => {
+    requests.push({ path: req.url ?? '', names: req.rawHeaders.filter((_, index) => index % 2 === 0) })
+    req.resume()
+    req.on('end', () => {
+      const { status, contentType, body } = answer()
+      res.writeHead(status, { 'content-type': contentType })
+      res.end(body)
+    })
+  })
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+  const { port } = server.address() as AddressInfo
+  return { url: `http://127.0.0.1:${port}`, requests, close: () => new Promise<void>(resolve => server.close(() => resolve())) }
+}
+
+/** Headers undici adds on its own around the caller's (not part of the 3.16.3 header chain). */
+export const TRANSPORT_HEADERS: ReadonlySet<string> = new Set(['host', 'connection', 'accept-language', 'sec-fetch-mode', 'accept-encoding', 'content-length'])
 
 const created: string[] = []
 process.on('exit', () => { for (const dir of created) rmSync(dir, { recursive: true, force: true }) })

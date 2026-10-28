@@ -1,19 +1,19 @@
 /**
- * Upstream header assembly for the native ZCode client (ported from
- * reference/zcode-api src/proxy/upstream.ts): identity headers (LLM plane,
- * `g6n`) + attribution/trace headers (`Bdt`-family) + the plan-dependent auth
- * scheme, with the `ai-sdk/anthropic/3.0.81` User-Agent suffix only on LLM
- * requests.
+ * Upstream header assembly for the native ZCode client: identity headers
+ * (LLM plane, `g6n`) + 3.16.3 attribution headers + the request credential.
+ * coding-plan model requests are built the way the AI SDK inside 3.16.3
+ * builds them (`buildModelRequestHeaders`); start-plan keeps the earlier
+ * zcode-api shape (`buildAuthHeaders`).
  */
 import { randomUUID } from 'node:crypto'
 import { buildLlmIdentityHeaders, type ZcodeIdentity } from './identity.ts'
-import { QUERY_SOURCE_HEADER, QUERY_SOURCES, SESSION_TYPE_HEADER, TRACE_ID_HEADER } from './zcode-wire.ts'
+import { AI_UA_PREFIX, AI_VERSION, ANTHROPIC_SDK_UA_PREFIX, ANTHROPIC_SDK_VERSION, PROVIDER_UTILS_UA_PREFIX, PROVIDER_UTILS_VERSION, QUERY_SOURCE_HEADER, QUERY_SOURCES, RUNTIME_NODE_UA_PREFIX, SESSION_TYPE_HEADER, TRACE_ID_HEADER } from './zcode-wire.ts'
 import type { RequestMessageLike } from '../shared/lm-min.ts'
 
 /** anthropic-version the ZCode client pins. */
 export const ANTHROPIC_VERSION = '2023-06-01'
-/** SDK UA suffix the real client appends on LLM requests (bundle `Cm`/`k0o`). */
-export const ANTHROPIC_SDK_UA = 'ai-sdk/anthropic/3.0.81'
+/** The Anthropic provider's User-Agent segment (`gjs`). */
+export const ANTHROPIC_SDK_UA = `${ANTHROPIC_SDK_UA_PREFIX}${ANTHROPIC_SDK_VERSION}`
 
 export type PlanId = 'coding-plan' | 'start-plan'
 
@@ -152,11 +152,10 @@ export function buildTraceHeaders(trace: TraceContext): Record<string, string> {
 }
 
 /**
- * Full upstream header set for one LLM request. `auth.apiKey` goes into
- * `x-api-key` and `auth.bearer` into `Authorization: Bearer`. Coding-plan
- * passes the project access token for both, as 3.16.3 account mode does
- * (`applyProviderRequestAuth` `x5s` @3843063 sets the provider `apiKey`,
- * `T5s` @3843231 adds the bearer); start-plan sends the plan JWT bearer only.
+ * The start-plan header set (the earlier zcode-api shape, unchanged by
+ * m1-parity): identity and trace headers, the `ai-sdk/anthropic/3.0.81`
+ * User-Agent suffix, `auth.apiKey` in `x-api-key` when given and
+ * `auth.bearer` in `Authorization: Bearer`.
  */
 export function buildAuthHeaders(auth: { readonly bearer: string, readonly apiKey?: string }, identity: ZcodeIdentity, trace: TraceContext, env: NodeJS.ProcessEnv = process.env): Record<string, string> {
   const headers: Record<string, string> = {
@@ -168,4 +167,80 @@ export function buildAuthHeaders(auth: { readonly bearer: string, readonly apiKe
   headers.authorization = `Bearer ${auth.bearer}`
   headers['anthropic-version'] = ANTHROPIC_VERSION
   return headers
+}
+
+/** A header bag as the AI SDK passes it around: a record (undefined values drop) or a Headers instance. */
+type HeaderBag = Readonly<Record<string, string | undefined>> | Headers
+
+/** `normalizeHeaders` (`y4s` @3510098): lower-case keys, later entries win, undefined values drop. */
+function normalizeHeaders(headers: HeaderBag | undefined): Record<string, string> {
+  const out: Record<string, string> = {}
+  if (headers === undefined) return out
+  if (headers instanceof Headers) {
+    headers.forEach((value, name) => { out[name.toLowerCase()] = value })
+    return out
+  }
+  for (const [name, value] of Object.entries(headers)) if (value !== undefined) out[name.toLowerCase()] = value
+  return out
+}
+
+/**
+ * `withUserAgentSuffix` (`Y2` @3510311): the normalized headers through a
+ * `Headers` object, `user-agent` extended by the suffixes, returned as a
+ * plain object, which iterates in Headers order (lower-case, sorted).
+ */
+export function withUserAgentSuffix(headers: HeaderBag | undefined, ...suffix: ReadonlyArray<string | undefined>): Record<string, string> {
+  const normalized = new Headers(normalizeHeaders(headers))
+  const current = normalized.get('user-agent') ?? ''
+  normalized.set('user-agent', [current, ...suffix].filter(part => part !== undefined && part.length > 0).join(' '))
+  return Object.fromEntries(normalized.entries())
+}
+
+/** The globals `getRuntimeEnvironmentUserAgent` reads. */
+export interface RuntimeScope {
+  readonly window?: unknown
+  readonly navigator?: { readonly userAgent?: string }
+  readonly process?: { readonly version: string, readonly versions?: { readonly node?: string } }
+  readonly EdgeRuntime?: unknown
+}
+
+/**
+ * `getRuntimeEnvironmentUserAgent` (`$ut` @3509781): `navigator.userAgent`
+ * when there is one (Node 22: `Node.js/22`, so `runtime/node.js/22`), else
+ * the Node version.
+ */
+export function runtimeUserAgent(scope: RuntimeScope = globalThis): string {
+  if (scope.window !== undefined && scope.window !== null) return 'runtime/browser'
+  const agent = scope.navigator?.userAgent
+  if (agent !== undefined && agent.length > 0) return `runtime/${agent.toLowerCase()}`
+  if (scope.process?.versions?.node !== undefined) return `${RUNTIME_NODE_UA_PREFIX}${scope.process.version}`
+  return scope.EdgeRuntime !== undefined ? 'runtime/vercel-edge' : 'runtime/unknown'
+}
+
+/** `combineHeaders` (`Rh` @3505152): shallow merge, later bags win key by key (case-sensitive). */
+function combineHeaders(...bags: ReadonlyArray<Readonly<Record<string, string>>>): Record<string, string> {
+  return bags.reduce<Record<string, string>>((merged, bag) => ({ ...merged, ...bag }), {})
+}
+
+/**
+ * The coding-plan model request headers, built the way the AI SDK inside
+ * 3.16.3 builds them (docs/DESIGN.md §4.2):
+ * - provider headers: `Y2({"anthropic-version", "x-api-key": PAT,
+ *   Authorization: "Bearer " + PAT}, "ai-sdk/anthropic/3.0.81")`
+ *   (`getHeaders` @3570073 with the account request auth of `x5s` @3843063
+ *   and `T5s` @3843231);
+ * - call headers: identity (`Suc` @14422777, including
+ *   `User-Agent: ZCode/<version>`) and attribution (`Vdt`); `generateText`
+ *   (the session title) first appends `ai/6.0.193` (@3949945);
+ * - `postToApi` (`SZr`): `Y2({"Content-Type": "application/json",
+ *   ...Rh(provider, call)}, "ai-sdk/provider-utils/4.0.27", runtime)`.
+ * The call's `User-Agent` replaces the provider's, so a step sends
+ * `ZCode/3.16.3 ai-sdk/provider-utils/4.0.27 runtime/node.js/22`. The result
+ * is a plain object in Headers order: lower-case names, sorted.
+ */
+export function buildModelRequestHeaders(input: { readonly token: string, readonly identity: ZcodeIdentity, readonly trace: TraceContext, readonly generateText: boolean, readonly env?: NodeJS.ProcessEnv, readonly runtime?: string }): Record<string, string> {
+  const provider = withUserAgentSuffix({ 'anthropic-version': ANTHROPIC_VERSION, 'x-api-key': input.token, Authorization: `Bearer ${input.token}` }, ANTHROPIC_SDK_UA)
+  const callHeaders = { ...buildLlmIdentityHeaders(input.identity, input.env ?? process.env), ...buildTraceHeaders(input.trace) }
+  const call = input.generateText ? withUserAgentSuffix(callHeaders, `${AI_UA_PREFIX}${AI_VERSION}`) : callHeaders
+  return withUserAgentSuffix({ 'Content-Type': 'application/json', ...combineHeaders(provider, call) }, `${PROVIDER_UTILS_UA_PREFIX}${PROVIDER_UTILS_VERSION}`, input.runtime ?? runtimeUserAgent())
 }
