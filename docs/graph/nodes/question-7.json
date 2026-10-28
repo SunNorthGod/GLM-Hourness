@@ -1,0 +1,53 @@
+{
+  "id": "question-7",
+  "type": "question",
+  "title": "max_tokens 要不要照 3.16.3 按上下文剩余裁剪",
+  "status": "done",
+  "parent": "m1-parity",
+  "body": "3.16.3 主步把 max_tokens 设为模型上限与上下文剩余的较小值；本包透传 DSH 给的值。裁剪要通道自己估算上下文用量。",
+  "options": [
+    {
+      "key": "A",
+      "label": "不改，记为已知差异",
+      "consequence": "与计费归属无关；省掉一处估算"
+    },
+    {
+      "key": "B",
+      "label": "照 3.16.3 裁剪",
+      "consequence": "更像；要在通道里估算 token，估错会截断输出"
+    }
+  ],
+  "recommend": "A",
+  "decider": "agent",
+  "decision": "A",
+  "evidence": [
+    {
+      "kind": "decision",
+      "ref": "A"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-28T13:21:47.238Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "agent 自己定的事，留痕",
+      "to": "approved"
+    },
+    {
+      "at": "2026-10-28T13:21:47.294Z",
+      "actor": "llm",
+      "op": "decide",
+      "reason": "不影响渠道与加成，风险大于收益",
+      "from": "approved",
+      "to": "done",
+      "option": "A",
+      "evidence": [
+        {
+          "kind": "decision",
+          "ref": "A"
+        }
+      ]
+    }
+  ]
+}

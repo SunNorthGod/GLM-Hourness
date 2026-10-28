@@ -1,0 +1,53 @@
+{
+  "id": "question-6",
+  "type": "question",
+  "title": "PAT 铸造失败时模型请求怎么办",
+  "status": "done",
+  "parent": "m1-parity",
+  "body": "3.16.3 账号模式拿不到 PAT 时报错，不发请求。本包可以照做，也可以退回 apiKey 继续用并在行健康里报出来。",
+  "options": [
+    {
+      "key": "A",
+      "label": "退回 apiKey，行健康报「未用项目令牌」",
+      "consequence": "不中断工作；这些请求可能拿不到加成，但看得见"
+    },
+    {
+      "key": "B",
+      "label": "照 3.16.3 报错",
+      "consequence": "与 ZCode 一致；铸造接口出问题时 GLM 完全不能用"
+    }
+  ],
+  "recommend": "A",
+  "decider": "agent",
+  "decision": "A",
+  "evidence": [
+    {
+      "kind": "decision",
+      "ref": "A"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-28T13:21:47.145Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "agent 自己定的事，留痕",
+      "to": "approved"
+    },
+    {
+      "at": "2026-10-28T13:21:47.208Z",
+      "actor": "llm",
+      "op": "decide",
+      "reason": "可用性优先，偏离可见、可推翻；写进 DESIGN 的偏离清单",
+      "from": "approved",
+      "to": "done",
+      "option": "A",
+      "evidence": [
+        {
+          "kind": "decision",
+          "ref": "A"
+        }
+      ]
+    }
+  ]
+}
