@@ -73,6 +73,12 @@
           "to": "调研：`.agents/tasks/zcode-parity/report.md`。\n\n已经一致：上游地址、路由改写到 ultra、X-ZCode-Authorization、V4 签名、ZCode 身份头。\n\n最可能决定加成的差异是模型请求的凭证：3.16.3 账号模式用项目令牌 PAT 填 Authorization 与 x-api-key，本包用裸 apiKey。\n\n其余差异：\n\n- 请求体不发 thinking 与 output_config（DSH 选的推理档位在线上丢失）\n- model 大小写；max_tokens 不裁剪\n- User-Agent 尾段、X-Title、头的大小写与顺序\n- 缺 x-query-id 与 x-zcode-query-source\n- agent/configs 发完整 key；设备 id 来源不同\n\n验收口径：150% 在客户端只是服务端下发的活动文案；用户说额度与扣减看不出加成，所以按代码级别与 3.16.3 一致验收，不做额度实测。只有 DSH 控制的差异（标题请求的时机与提示词）写进 DESIGN。"
         }
       }
+    },
+    {
+      "at": "2026-10-28T15:46:33.638Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "实现完成（分支 m1-parity，10 个提交 60d59aa..28a0604，十项全做）：build、preflight、npm test 全过，539 个测试，逐字门禁 443 段，检查器基线降到 ESLint 256 / knip 21 / jscpd 2，gitleaks 干净；旧代码必红的证据与缺口在 .agents/tasks/zcode-parity/verification.md。下一步：独立评审，再合入与沙盒真实请求核对。"
     }
   ]
 }
