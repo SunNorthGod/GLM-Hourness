@@ -1,0 +1,33 @@
+{
+  "id": "split",
+  "type": "feature",
+  "title": "解耦：GLM 通道包与编排层包",
+  "status": "approved",
+  "parent": "orch",
+  "body": "同一仓库拆成两个 bundle：GLM 通道与 ZCode 方言（glm-llm、glm-login、glm-prompt、glm-compact、工具检索、高峰与积分）一个包；编排层（项目图、面板、现场、运行控制、guard、记忆、派发记录、晨报的通用部分）一个包，对所有模型生效；两边共用一个小公共库（行健康、数据目录、DSH 接口类型）。项目目标拆成两个，目标文字由人确认。在 m1-parity 合入后先写设计、过设计评审再动代码，M3 在新的编排层包里做。",
+  "acceptance": [
+    "两个包各自装上、各自启用都不报错；只装编排层包时，非 GLM 会话里项目图、面板、guard 都生效",
+    "行 id 改名有迁移，用户 profile 里已有的配置不丢",
+    "门禁、探针全过；桌面版批次 L4 通过"
+  ],
+  "edges": [
+    {
+      "type": "depends",
+      "to": "m1-parity"
+    },
+    {
+      "type": "source",
+      "to": "question-10"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-28T14:29:47.161Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "question-10 选 A 的落地",
+      "relay": "那就A吧",
+      "to": "approved"
+    }
+  ]
+}

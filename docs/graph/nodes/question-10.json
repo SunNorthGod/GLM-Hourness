@@ -2,7 +2,7 @@
   "id": "question-10",
   "type": "question",
   "title": "编排层要不要和 GLM 解耦，怎么拆",
-  "status": "approved",
+  "status": "done",
   "parent": "orch",
   "body": "现在一个 bundle 里既有 GLM 通道与 ZCode 方言（glm-llm、glm-login、glm-prompt、glm-compact、工具检索、高峰与积分），也有编排层（项目图、面板、现场、运行控制、guard、记忆、派发记录、晨报）。项目图与面板已经对所有模型生效；guard 按设计只管 GLM 会话；晨报的积分口径、高峰提醒、派发的模型分档是 GLM 专属。项目目标本身也把两件事写在一句里。拆的话建议在 m1-parity 合入之后、M3 开工之前做，M3 起的工作都在编排层。",
   "options": [
@@ -29,6 +29,13 @@
   ],
   "recommend": "A",
   "decider": "human",
+  "decision": "A",
+  "evidence": [
+    {
+      "kind": "decision",
+      "ref": "A"
+    }
+  ],
   "history": [
     {
       "at": "2026-10-28T14:18:29.944Z",
@@ -36,6 +43,22 @@
       "op": "propose",
       "reason": "用户在对话里说想把编排层和 GLM 解耦；这是改目标、以后改起来贵的方向岔路，由人定",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-28T14:29:47.127Z",
+      "actor": "llm",
+      "op": "decide",
+      "reason": "用户选 A：同仓库拆成两个包",
+      "relay": "那就A吧",
+      "from": "approved",
+      "to": "done",
+      "option": "A",
+      "evidence": [
+        {
+          "kind": "decision",
+          "ref": "A"
+        }
+      ]
     }
   ]
 }
