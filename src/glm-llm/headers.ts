@@ -83,8 +83,9 @@ function turnKeyOf(messages: readonly RequestMessageLike[]): string | undefined 
 /**
  * The 3.16.3 attribution of coding-plan requests (docs/DESIGN.md §4.5b):
  * - trace id per session: 3.16.3 builds one root trace context per session
- *   runtime (`vT` @1421911) and derives every turn from it (`nS`, `Lw`); a
- *   delegated child inherits its parent's trace;
+ *   runtime (`vT` @1421911) and derives every turn from it (`nS`
+ *   @12816000, `Lw` @1422054); a delegated child inherits its parent's
+ *   trace;
  * - query id per turn: 3.16.3 takes the desktop input id (`O9`
  *   @14502646, `zzo` @13357726); the channel opens a turn at each new
  *   user-typed message of a main step and gives it a fresh UUID;

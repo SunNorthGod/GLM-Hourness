@@ -531,7 +531,7 @@ function codingPlanWire(options: GenerateOptionsLike, purpose: GenerateOptions['
 
 /**
  * The init of a routed request (3.16.3 `createRoutingFetch` `Ngn` @3839971
- * with `f5s`): a `Headers` copy of the request headers without `host`, then
+ * with `f5s` @3840311): a `Headers` copy of the request headers without `host`, then
  * the routing headers `set` after everything already there, so
  * `X-ZCode-Authorization` follows the signature block on the wire.
  */
