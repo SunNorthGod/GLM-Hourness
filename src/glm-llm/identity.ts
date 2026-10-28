@@ -29,9 +29,15 @@ export interface ZcodeIdentity {
  */
 export const ZCODE_APP_VERSION = '3.16.3'
 
+/**
+ * The desktop identity: 3.16.3 sends `X-Title: Z Code@electron` because the
+ * desktop starts its agent with `app-server` (`detectDefaultProviderSourceTitle`,
+ * `kuc` @14423244) and the routing config request passes
+ * `sourceTitle: "electron"` (@15096557); user decision 2026-10-28 (question-8).
+ */
 export const DEFAULT_IDENTITY: ZcodeIdentity = {
   appVersion: ZCODE_APP_VERSION,
-  sourceTitle: 'cli',
+  sourceTitle: 'electron',
   refererOrigin: 'https://zcode.z.ai',
 }
 

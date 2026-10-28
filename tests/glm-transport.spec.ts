@@ -24,7 +24,8 @@ test('LLM identity headers mirror the g6n shape (agent 8th, no device mid)', () 
     'X-Client-Language', 'X-Client-Timezone', 'X-ZCode-Agent', 'X-Platform', 'X-Os-Category', 'X-Os-Version',
   ])
   assert.equal(headers['User-Agent'], `ZCode/${ZCODE_APP_VERSION}`)
-  assert.equal(headers['X-Title'], 'Z Code@cli')
+  // 3.16.3 desktop: the agent runs as `app-server`, so the source title is electron (question-8).
+  assert.equal(headers['X-Title'], 'Z Code@electron')
   assert.equal(headers['X-Platform'], 'win32-x64')
   assert.equal(headers['X-Os-Category'], 'windows')
   assert.equal(headers['X-ZCode-Agent'], 'glm')
@@ -34,6 +35,7 @@ test('LLM identity headers mirror the g6n shape (agent 8th, no device mid)', () 
 test('context identity headers carry the device mid and drop the agent', () => {
   const headers = buildContextIdentityHeaders({ ...DEFAULT_IDENTITY, deviceMid: 'mid-1' }, env)
   assert.equal(headers['X-Device-Mid'], 'mid-1')
+  assert.equal(headers['X-Title'], 'Z Code@electron')
   assert.ok(!('X-ZCode-Agent' in headers))
   assert.equal(Object.keys(headers)[0], 'User-Agent') // wire order: UA first
 })

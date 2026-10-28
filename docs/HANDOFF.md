@@ -69,7 +69,7 @@ dist/          不入库：tsc 产物（profile 通过 pnpm link 使用）
 ## 5. 已知问题
 
 1. 路由判定已收口到 `src/shared/route.ts`，`glm-prompt`（含工具检索与 todo 提醒）已改用（`DESIGN.md` §3）。todo 提醒自 2026-10-28 起按 ZCode 的助手轮次口径计数（`DESIGN.md` §5.5）。
-2. 版本基线已统一为 3.16.3；`X-Title` 按用户定案（2026-10-27）保持 `cli`，桌面版 ZCode 的真实流量是 `electron`（`DESIGN.md` §4.2）。
+2. 版本基线已统一为 3.16.3；`X-Title` 按用户定案（2026-10-28，项目图 `question-8`）改为桌面版的 `Z Code@electron`，模型请求与配置请求相同（`DESIGN.md` §4.2）。
 3. guard 闭环缺申报一段（记录、告知已于 2026-10-28 接通）。`=>`、`>>>`、`->` 误判已修（2026-10-28，引号感知，`ORCHESTRATION.md` §6.5.1）；读不到的 shell 写法（.NET 调用、`cmd /c`、PowerShell 别名如 `del`）只由工作区变更兜底记录，不拦截（§6.5.2）。L4 暴露的两处已修（2026-10-28）：拦截只对 GLM 调用生效，路由取会话请求头（§6.2）；相对路径按会话工作目录解析，`..` 折叠（§6.1）。
 4. 数据目录分裂：已修（2026-10-28，`DESIGN.md` §2.4）。用户级数据在 `~/.dsh/glm-hourness/`，项目数据在工作区 `.llm/`；凭证与 deviceMid 已于 2026-10-28 搬到用户级目录，仓库里的原件待删（项目图 `m1-cleanup`）。
 5. 签名握手地址错：已修并实测（2026-10-28，`b6367d3`、`6af6c51`，`DESIGN.md` §4.3，项目图 `m1-signing`）。适配器曾把路由后的 `zcode.z.ai` URL 交给签名层，握手每次 404，且每个请求前都重试一次；原先「握手对当前凭证失败」的归因不成立。现在握手发往 provider origin `https://open.bigmodel.cn/api/paas/c1f3a7e2/v2/client`，失败后该（origin, 凭证）60 秒内不再握手，start-plan 不签名，JWT 形式握手的 `Authorization` 按 3.16.3 用原样凭证。60 秒冷却与 VERIFY 后的永久旁路是对 3.16.3 的两处偏离。沙盒真实网络运行（`net-1793188413414`，coding-plan，GLM-5.3-Flash）：握手 200 并返回 `privateCipher`，原样 JWT 被接受，6 个模型请求都签名、都 200，没有 VERIFY 拒绝。桌面版已以这份代码重启（M2 批次 L4），glm-llm 生效，GLM-5.3-Flash 会话正常应答。仍未决：签名对 1.5 倍套餐扣减的影响未知（用量流水不含套餐扣减）；签名运行的响应头延迟单样本偏高，未归因；桌面版上签名是否成功看不到，生产构造没有接 `onEvent`，签名状态不可见；start-plan 只做了离线验证（第 6 项）。
