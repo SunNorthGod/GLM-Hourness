@@ -98,7 +98,7 @@ dist/          不入库：tsc 产物（profile 通过 pnpm link 使用）
 
 ## 6. 环境事实
 
-- 凭证：`~/.dsh/glm-hourness/credentials.json` 与 `device-mid.txt`（AES-256-GCM；`GLM_HOURNESS_CREDENTIAL_SECRET` 可覆盖密钥）。请求发送的 deviceMid 取 ZCode 的 `~/.zcode/v2/telemetry-state.json`（只读），`device-mid.txt` 只在那里没有时作后备（`DESIGN.md` §4.5b）。`glm-llm`、`glm-login` 不配 `home` 时默认读这里（`DESIGN.md` §2.4）。仓库 `.llm/` 里的原件保留到桌面版重启验证之后再删（项目图 `m1-cleanup`）。
+- 凭证：`~/.dsh/glm-hourness/credentials.json` 与 `device-mid.txt`（AES-256-GCM；`GLM_HOURNESS_CREDENTIAL_SECRET` 可覆盖密钥）。自 m1-parity 起记录为版本 2，只存登录令牌与项目 key 定位；旧记录在新代码第一次读取时迁移并去掉 API Key 与 secret，桌面版重启前不要用新代码读这个目录（`DESIGN.md` §4.1）。请求发送的 deviceMid 取 ZCode 的 `~/.zcode/v2/telemetry-state.json`（只读），`device-mid.txt` 只在那里没有时作后备（`DESIGN.md` §4.5b）。`glm-llm`、`glm-login` 不配 `home` 时默认读这里（`DESIGN.md` §2.4）。仓库 `.llm/` 里的原件保留到桌面版重启验证之后再删（项目图 `m1-cleanup`）。
 - 数据目录：用户级 `~/.dsh/glm-hourness/`（`$DSH_HOME` 可改根目录），项目 `.llm/`；由 `data` 行的服务提供（`DESIGN.md` §2.4）。
 - 模型：`glm-zcode` 路由提供 GLM-5.3、GLM-5.3-Flash。
 - 沙盒：profile `glmsandbox`，命令见 `DEVELOPMENT.md` §3；探针（`npm run probe`，离线）与标定（`npm run calibrate`，真实请求、消耗积分）共用，不要同时运行。沙盒模板的权限模式由 `DSH_PERMISSION_MODE` 决定（缺省 `workspace-write`），桌面版 profile 的默认预设是 `danger-full-access`。

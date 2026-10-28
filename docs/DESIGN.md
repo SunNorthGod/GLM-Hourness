@@ -80,7 +80,7 @@ GLM-Hourness
 
 迁移〔2026-10-28〕：从 `~/.dsh/profiles/desktop/.llm/`（只读）与仓库 `.llm/audit/usage.jsonl` 复制，按整行去重。用户级用量流水共 1080 条：仓库 890 条加旧目录 190 条，两者没有重复，按时间排序，最晚一条 2026-10-27T12:29:08.993Z。旧目录的 1 条记忆（`glm-hourness-handoff`）并入仓库 `.llm/memory.json`；旧目录的 3 条决策在仓库决策流水里都已存在。源文件未改动，旧目录随清理删除（项目图 `m1-cleanup`）。桌面版重启加载新代码之前，运行中的旧代码仍会把用量追加到仓库 `.llm/audit/usage.jsonl`，重启后需补拷一次（同一节点）。
 
-凭证与 deviceMid〔定案 2026-10-28，用户选 A；已实现 2026-10-28，L4 验收之后〕：保留加密凭证文件，搬到 `$DSH_HOME/glm-hourness/`，本包的 deviceMid 随行。请求实际发送的 deviceMid 自 m1-parity 起取 ZCode 状态文件里的那个，本包的只在 ZCode 没有时作后备（§4.5b）。加密密钥由 `GLM_HOURNESS_CREDENTIAL_SECRET` 或 `HOME`/`USERPROFILE`、平台、架构推导（§4.1，`src/glm-llm/auth/store.ts`），与文件路径无关，搬家后同一台机器照样能解密。
+凭证与 deviceMid〔定案 2026-10-28，用户选 A；已实现 2026-10-28，L4 验收之后〕：保留加密凭证文件，搬到 `$DSH_HOME/glm-hourness/`，本包的 deviceMid 随行。凭证文件自 m1-parity 起只存登录令牌与项目 key 的定位，不再有 API Key 与 secret（§4.1）。请求实际发送的 deviceMid 自 m1-parity 起取 ZCode 状态文件里的那个，本包的只在 ZCode 没有时作后备（§4.5b）。加密密钥由 `GLM_HOURNESS_CREDENTIAL_SECRET` 或 `HOME`/`USERPROFILE`、平台、架构推导（§4.1，`src/glm-llm/auth/store.ts`），与文件路径无关，搬家后同一台机器照样能解密。
 
 - 解析：`glm-llm` 与 `glm-login` 的 `home` 改为可选，`credentialHome(home)`（`src/shared/data-home.ts`）取非空的行 `home`，否则取用户级目录。两行不读数据目录服务：通道行激活时数据行可能还没激活，而凭证目录在激活时就要定下来。bundle patch 删去两行的 `home`；探针与测试仍显式传 `home` 指向临时目录。
 - 文件：两份文件已复制到 `C:\Users\29596\.dsh\glm-hourness\`，与仓库 `.llm/` 里的原件逐字节相同。原件保留到桌面版重启、确认新代码从用户级目录读到凭证之后再删（项目图 `m1-cleanup`）：重启前运行中的旧代码仍读写仓库 `.llm/`，期间若重新登录，删之前要先把较新的一份补拷过去。
@@ -247,6 +247,11 @@ UI 包的行运行在客户端，不在表内。
 - 令牌被拒：最终响应是 401 且不是请求安全类失败（信封里的消息、原因或错误码为 `VERIFY_APIKEY_EXPIRED`、`VERIFY_SIGNATURE_INVALID`、`3007`）时，以被拒令牌的 SHA-256 强制重铸一次，作为新的尝试重发一次（新 `x-request-id`），只重试一次（3.16.3 `AccountRequestRetry` `$ye` @4144946、`isProjectTokenRejection` `$Hs` @4144643、`isRequestSecurityFailure` `Vrt` @1090655）。`Vrt` 读的「provider 错误码」由 3.16.3 的错误解析器给出，本包按信封的 `code`、`error.code`、`error.message` 近似。
 - 拿不到 PAT〔定案 2026-10-28，用户选 B，项目图 `question-6`〕：按 3.16.3 账号模式失败即停（`ModelRequestAuthMissing`），不退回 API Key：模型请求、端点路由配置请求与签名握手一个都不发，流以 `glm-zcode: project access token unavailable (<原因>) — run /glm-login to sign in again` 失败，行健康为未生效「未拿到项目令牌（<原因>），按 3.16.3 不发送；运行 /glm-login」。原因是 3.16.3 的原文：凭证没有 OAuth 令牌时为 `Account request credential is unavailable: bigmodel`，没有账号 id 时为 `Account request credential is unavailable: account:bigmodel-individual-coding-plan`（桌面 `AccountRequestCredentialUnavailableError`，`out/host/index.js` +1200545），其余为上面的错误码。3.16.3 渲染层不翻译这些消息，原文直出。
 - 存储：`<home>/credentials.json`，AES-256-GCM，原子写入〔实读〕。`home` 默认是用户级目录 `$DSH_HOME/glm-hourness/`（§2.4）。
+- 记录内容〔已实现 2026-10-28，m1-parity 第 3 项，`src/glm-llm/auth/store.ts` `loadStoredCredential`〕：版本 2 的记录是 `{version: 2, provider: 'bigmodel', oauthAccessToken?, userId?, jwt?, location?}`。与 3.16.3 桌面版一样只存登录令牌：`/glm-login` 完成后不再调 `getCustomerInfo`、`api_keys` 与 `api_keys/copy`，不存 API Key 与它的 secret（3.16.3 账号模式两处都不用，FACTS §1）；项目 key 在第一次需要项目令牌时定位，定位按 3.16.3 的键 `project-key-location:v1:…` 存进 `location`（`{key, value}`，`value` 是 `{organizationId, projectId, apiKeyId}` 的 JSON），铸造回 404 时删除。项目令牌本身不落盘，只在进程内缓存。`/glm-status` 的 Key 预览取已定位的 `apiKeyId` 前 6 位，没定位时显示 `unresolved`。
+- 迁移：读到旧的版本 1 记录（`{apiKey, provider, userId?, jwt?, oauthAccessToken?}`，`apiKey` 是 `{apiKeyId}.{secret}`）且它有 OAuth 令牌或 JWT 时，按版本 2 原子重写一次，丢掉 `apiKey`，OAuth 令牌、JWT 与 `userId` 原样带过；重写失败时原文件不动，本次用内存里的版本 2，下次读取再试。没有任何登录令牌的版本 1 记录不改写，读作没有令牌的记录，请求时提示 /glm-login。迁移从不清空、从不删除凭证文件。
+- 降级：迁移之后装回旧版 bundle，旧代码要求 `apiKey` 字段，会显示未登录，需要重新 /glm-login。
+- 旧副本：主检出 `.llm/credentials.json`（§2.4，待项目图 `m1-cleanup` 删除）不在迁移范围内，仍含 secret。
+- 重启前：桌面版重启加载新代码之前，运行中的旧代码读同一个 `~/.dsh/glm-hourness/credentials.json`。迁移在新代码第一次读取时发生，所以合入后到桌面版重启之前，不要用新代码读真实凭证目录（`scripts/smoke-zcode-authorized.mjs` 会读，沙盒运行用凭证副本）。
 - 风险：加密密钥由 `HOME`/`USERPROFILE`、平台与架构推导，看过源码即可算出；`GLM_HOURNESS_CREDENTIAL_SECRET` 可覆盖。凭证文件不入库，当前可接受。后续迁到系统钥匙串或 DSH 凭证服务〔规划〕。
 
 ### 4.2 身份头

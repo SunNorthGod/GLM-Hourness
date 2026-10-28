@@ -6,6 +6,7 @@
  * `GLM_HOURNESS_CREDENTIAL_SECRET` overrides it.
  */
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto'
+import type { Credential } from './types.ts'
 
 const ENV_SECRET = 'GLM_HOURNESS_CREDENTIAL_SECRET'
 
@@ -74,6 +75,39 @@ export async function loadCredential(fs: StoreFs, storePath: string): Promise<un
     throw new Error(`credential store cannot be decrypted (wrong secret?): ${storePath}`)
   }
   return JSON.parse(plaintext)
+}
+
+/**
+ * Load the stored login as a version-2 record (docs/DESIGN.md §4.1).
+ * A version-1 record (`{apiKey, provider, userId?, jwt?, oauthAccessToken?}`)
+ * that holds a login token is rewritten once as version 2 without the API
+ * key and its secret; the login tokens carry over unchanged. A failed
+ * rewrite keeps the file and serves the version-2 record from memory, so
+ * the next load tries again. A version-1 record without any login token is
+ * left as it is and reads as a record without tokens (the request then asks
+ * for /glm-login). Missing store: undefined; corruption throws.
+ */
+export async function loadStoredCredential(fs: StoreFs, storePath: string): Promise<Credential | undefined> {
+  const raw = await loadCredential(fs, storePath)
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return undefined
+  const record = raw as Record<string, unknown>
+  if (record.provider !== 'bigmodel') return undefined
+  const { oauthAccessToken, userId, jwt, location } = record
+  const stored = typeof location === 'object' && location !== null ? location as Record<string, unknown> : {}
+  const credential: Credential = {
+    version: 2,
+    provider: 'bigmodel',
+    ...(typeof oauthAccessToken === 'string' ? { oauthAccessToken } : {}),
+    ...(typeof userId === 'string' ? { userId } : {}),
+    ...(typeof jwt === 'string' ? { jwt } : {}),
+    ...(record.version === 2 && typeof stored.key === 'string' && typeof stored.value === 'string' ? { location: { key: stored.key, value: stored.value } } : {}),
+  }
+  if (record.version === 2) return credential
+  if (typeof record.apiKey !== 'string') return undefined
+  if (credential.oauthAccessToken !== undefined || credential.jwt !== undefined) {
+    await saveCredential(fs, storePath, credential).catch(() => { /* retried on the next load; the login stays in the old file */ })
+  }
+  return credential
 }
 
 /** Atomically persist one credential value (temp file + rename over the target). */

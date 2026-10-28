@@ -4,17 +4,6 @@
       "count": 1
     }
   },
-  "src/glm-llm/auth/resolver.ts": {
-    "@typescript-eslint/no-base-to-string": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unsafe-assignment": {
-      "count": 6
-    },
-    "@typescript-eslint/no-unsafe-member-access": {
-      "count": 6
-    }
-  },
   "src/glm-llm/endpoint-routing.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 2
@@ -126,13 +115,13 @@
   },
   "tests/glm-auth.spec.ts": {
     "@typescript-eslint/no-base-to-string": {
-      "count": 7
+      "count": 5
     },
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 2
     },
     "@typescript-eslint/require-await": {
-      "count": 10
+      "count": 8
     }
   },
   "tests/glm-channel.spec.ts": {

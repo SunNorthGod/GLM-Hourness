@@ -2,9 +2,8 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { ZCODE_APP_VERSION } from '../src/glm-llm/identity.ts'
 import { PollOAuthClient, buildDesktopOAuthRedirectParam, parsePastedCallbackUrl, exchangeCode, buildPasteAuthorizeUrl, freshPasteState } from '../src/glm-llm/auth/oauth.ts'
-import { loadCredential, saveCredential, clearCredential } from '../src/glm-llm/auth/store.ts'
+import { loadCredential, loadStoredCredential, saveCredential, clearCredential } from '../src/glm-llm/auth/store.ts'
 import { memoryStore } from './glm-fixtures.ts'
-import { resolveCodingPlanCredential } from '../src/glm-llm/auth/resolver.ts'
 import { inspectJwt } from '../src/glm-llm/auth/jwt.ts'
 
 /** Minimal Response stand-in the oauth client accepts. */
@@ -132,44 +131,53 @@ function b64url(payload: object): string {
   return Buffer.from(JSON.stringify(payload)).toString('base64url')
 }
 
-test('resolver resolves default org/project, reuses or creates zcode-api-key, appends secret', async () => {
-  const calls: string[] = []
-  const fetchImpl = (async (url: string | URL | Request, init?: RequestInit) => {
-    const u = String(url)
-    calls.push(`${(init?.method ?? 'GET')} ${u}`)
-    if (u.endsWith('getCustomerInfo')) {
-      return jsonRespond(200, { code: 0, data: { organizations: [{ organizationName: '默认机构', organizationId: 'org1', projects: [{ projectName: '默认项目', projectId: 'proj1' }] }] } })
-    }
-    if (u.endsWith('/api_keys') && init?.method === 'GET') {
-      return jsonRespond(200, { code: 0, data: [{ name: 'zcode-api-key', apiKey: 'existing-key' }] })
-    }
-    if (u.includes('/copy/')) {
-      return jsonRespond(200, { code: 0, data: { secretKey: 'sec' } })
-    }
-    throw new Error(`unexpected ${u}`)
-  }) as typeof fetch
-  const cred = await resolveCodingPlanCredential(fetchImpl, 'oauth-token', 'u1')
-  assert.equal(cred.apiKey, 'existing-key.sec')
-  assert.equal(cred.oauthAccessToken, 'oauth-token')
-  assert.equal(cred.userId, 'u1')
-  assert.ok(calls.some(entry => entry.includes('GET') && entry.includes('/copy/existing-key')))
+const STORE = 'C:/ws/.llm/credentials.json'
+// Obvious fakes; the v1 record is the shape stored before m1-parity.
+const V1 = { apiKey: 'fakeid.fakesecretvalue', provider: 'bigmodel', userId: 'user-1', jwt: 'fake.plan.jwt', oauthAccessToken: 'fake-oauth' }
+
+test('a version-1 record migrates once to version 2: the API key and its secret leave the store, the login stays', async () => {
+  const { fs, files } = memoryStore()
+  await saveCredential(fs, STORE, V1)
+  const loaded = await loadStoredCredential(fs, STORE)
+  assert.deepEqual(loaded, { version: 2, provider: 'bigmodel', oauthAccessToken: 'fake-oauth', userId: 'user-1', jwt: 'fake.plan.jwt' })
+  const rewritten = await loadCredential(fs, STORE) as Record<string, unknown>
+  assert.deepEqual(rewritten, { version: 2, provider: 'bigmodel', oauthAccessToken: 'fake-oauth', userId: 'user-1', jwt: 'fake.plan.jwt' })
+  assert.ok(!JSON.stringify(rewritten).includes('fakesecretvalue'))
+  assert.ok(!('apiKey' in rewritten))
+  // A second load reads version 2 as it is.
+  const atRest = files.get(STORE)
+  assert.deepEqual(await loadStoredCredential(fs, STORE), loaded)
+  assert.equal(files.get(STORE), atRest)
 })
 
-test('resolver creates the key when the list has no zcode-api-key and shape-guards the response', async () => {
-  let created = false
-  const create = (apiKey: unknown) => (async (url: string | URL | Request, init?: RequestInit) => {
-    const u = String(url)
-    if (u.endsWith('getCustomerInfo')) return jsonRespond(200, { code: 0, data: { organizations: [{ organizationId: 'org1', projects: [{ projectId: 'proj1' }] }] } })
-    if (u.endsWith('/api_keys') && init?.method === 'GET') return jsonRespond(200, { code: 0, data: [] })
-    if (u.endsWith('/api_keys') && init?.method === 'POST') { created = true; return jsonRespond(200, { code: 0, data: { apiKey } }) }
-    if (u.includes('/copy/')) return jsonRespond(500, {})
-    throw new Error(`unexpected ${u}`)
-  }) as typeof fetch
-  const cred = await resolveCodingPlanCredential(create('fresh-key'), 'oauth-token')
-  assert.ok(created)
-  assert.equal(cred.apiKey, 'fresh-key') // secret endpoint failed: apiKey-only form
-  await assert.rejects(resolveCodingPlanCredential(create(undefined), 'oauth-token'), /apiKey missing or empty/)
-  await assert.rejects(resolveCodingPlanCredential(create(''), ''), /access token/)
+test('a failed rewrite keeps the old file byte for byte and still serves the login', async () => {
+  const { fs, files } = memoryStore()
+  await saveCredential(fs, STORE, V1)
+  const before = files.get(STORE)
+  const failing = { ...fs, rename: () => Promise.reject(new Error('EPERM')) }
+  assert.deepEqual(await loadStoredCredential(failing, STORE), { version: 2, provider: 'bigmodel', oauthAccessToken: 'fake-oauth', userId: 'user-1', jwt: 'fake.plan.jwt' })
+  assert.equal(files.get(STORE), before)
+})
+
+test('a version-1 record without any login token is left untouched and reads as a record without tokens', async () => {
+  const { fs, files } = memoryStore()
+  await saveCredential(fs, STORE, { apiKey: 'fakeid.fakesecretvalue', provider: 'bigmodel' })
+  const before = files.get(STORE)
+  assert.deepEqual(await loadStoredCredential(fs, STORE), { version: 2, provider: 'bigmodel' })
+  assert.equal(files.get(STORE), before)
+})
+
+test('version 2 reads back with its location; other shapes, corruption and a missing store behave as before', async () => {
+  const { fs, files } = memoryStore()
+  const location = { key: 'project-key-location:v1:x', value: '{"organizationId":"o","projectId":"p","apiKeyId":"k"}' }
+  await saveCredential(fs, STORE, { version: 2, provider: 'bigmodel', oauthAccessToken: 'fake-oauth', location })
+  assert.deepEqual(await loadStoredCredential(fs, STORE), { version: 2, provider: 'bigmodel', oauthAccessToken: 'fake-oauth', location })
+  await saveCredential(fs, STORE, { provider: 'other', apiKey: 'x' })
+  assert.equal(await loadStoredCredential(fs, STORE), undefined)
+  files.set(STORE, 'not json')
+  await assert.rejects(loadStoredCredential(fs, STORE), /corrupted/)
+  files.delete(STORE)
+  assert.equal(await loadStoredCredential(fs, STORE), undefined)
 })
 
 test('jwt inspection reports age and rejects non-jwt shapes', () => {

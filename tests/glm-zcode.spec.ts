@@ -137,7 +137,7 @@ function request(): GenerateOptionsLike {
 }
 
 // Obvious fakes only: no real token, key or secret appears in a spec.
-const credential: Credential = { apiKey: 'id.secret', provider: 'bigmodel', oauthAccessToken: 'oauth-tok', userId: 'user-1' }
+const credential: Credential = { version: 2, provider: 'bigmodel', oauthAccessToken: 'oauth-tok', userId: 'user-1' }
 
 test('coding-plan stream walks the full chain: store → headers → unsigned signing ladder → SSE', async () => {
   const { fs } = memoryStore()
@@ -303,6 +303,25 @@ test('a 401 that is not a request-security failure refreshes the project token o
   const verify = patPlane()
   await assert.rejects(runOnGateway({ pat: verify, model: () => new Response(JSON.stringify({ error: { reason: 'VERIFY_SIGNATURE_INVALID' } }), { status: 401 }) }), /glm-zcode 401/)
   assert.equal(verify.mints(), 1)
+})
+
+test('a login stored before m1-parity keeps working: migrated on first read, the secret leaves the store, the location persists', async () => {
+  const store = memoryStore()
+  await saveCredential(store.fs, 'C:/ws/.llm/credentials.json', { apiKey: 'fakeid.fakesecretvalue', provider: 'bigmodel', oauthAccessToken: 'oauth-tok', userId: 'user-1' })
+  const wire: WireRequest[] = []
+  const adapter = new ZcodeAdapter({ home: 'C:/ws/.llm', fetchImpl: gatewayFetch(wire, {}), storeFs: store.fs, env: isolatedEnv() })
+  for await (const chunk of adapter.stream({ ...request(), sessionId: 'session-s1' } as never)) void chunk
+  assert.equal(headerOf(wire.filter(isModelRequest)[0]!, 'authorization'), `Bearer ${FIRST_PAT}`)
+  assert.ok(wire.every(entry => Object.values(entry.headers).every(value => !value.includes('fakesecretvalue'))))
+  const { loadCredential } = await import('../src/glm-llm/auth/store.ts')
+  const stored = await loadCredential(store.fs, 'C:/ws/.llm/credentials.json') as Record<string, unknown>
+  assert.ok(!JSON.stringify(stored).includes('fakesecretvalue') && !('apiKey' in stored))
+  assert.deepEqual(JSON.parse((stored.location as { value: string }).value), { organizationId: 'org-1', projectId: 'proj-1', apiKeyId: PAT_KEY_ID })
+  // The next process reads the stored location: no customer info or key list, only the mint.
+  const next: WireRequest[] = []
+  const restarted = new ZcodeAdapter({ home: 'C:/ws/.llm', fetchImpl: gatewayFetch(next, {}), storeFs: store.fs, env: isolatedEnv() })
+  for await (const chunk of restarted.stream({ ...request(), sessionId: 'session-s1' } as never)) void chunk
+  assert.deepEqual(next.filter(isPatPlane).map(entry => entry.url.split('/').at(-1)), ['access_tokens'])
 })
 
 /** Stream one request on a fresh adapter; the rejection, the wire log and the health reports. */
@@ -478,14 +497,15 @@ test('a missing credential fails the stream with the re-login instruction', asyn
   assert.equal(status.logged, false)
 })
 
-test('status reports the key preview and logout clears the store', async () => {
+test('status previews the located project key (unresolved before the first request) and logout clears the store', async () => {
   const { fs } = memoryStore()
   await saveCredential(fs, 'C:/ws/.llm/credentials.json', credential)
-  const adapter = new ZcodeAdapter({ home: 'C:/ws/.llm', fetchImpl: makeUpstream(), storeFs: fs })
+  const adapter = new ZcodeAdapter({ home: 'C:/ws/.llm', fetchImpl: makeUpstream(), storeFs: fs, env: isolatedEnv() })
   const status = await adapter.status()
   assert.equal(status.logged, true)
-  assert.equal(status.keyPreview, 'id.sec…'.slice(0, 7).replace('…', '…'))
-  assert.ok(status.keyPreview!.startsWith('id.sec'))
+  assert.equal(status.keyPreview, 'unresolved')
+  for await (const chunk of adapter.stream(request() as never)) void chunk
+  assert.equal((await adapter.status()).keyPreview, `${PAT_KEY_ID.slice(0, 6)}…`)
   await logout('C:/ws/.llm', fs)
   assert.equal((await adapter.status()).logged, false)
 })
@@ -519,7 +539,7 @@ test('each request reports its session to the row health: answered, refused upst
 
 test('ZcodeLogin.start surfaces the authorize URL and completes into the store', async () => {
   const { fs, files } = memoryStore()
-  const fetchImpl = (async (url: string | URL | Request, init?: RequestInit): Promise<Response> => {
+  const fetchImpl = (async (url: string | URL | Request): Promise<Response> => {
     const u = String(url)
     const respond = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } })
     if (u.endsWith('/oauth/cli/init')) {
@@ -528,15 +548,7 @@ test('ZcodeLogin.start surfaces the authorize URL and completes into the store',
     if (u.includes('/oauth/cli/poll/')) {
       return respond({ code: 0, data: { status: 'ready', token: 'jwt-x', user: { user_id: 'u1' }, bigmodel: { access_token: 'bm-tok' } } })
     }
-    if (u.endsWith('getCustomerInfo')) {
-      return respond({ code: 0, data: { organizations: [{ organizationId: 'org1', projects: [{ projectId: 'proj1' }] }] } })
-    }
-    if (u.endsWith('/api_keys') && init?.method === 'GET') {
-      return respond({ code: 0, data: [{ name: 'zcode-api-key', apiKey: 'kk' }] })
-    }
-    if (u.includes('/copy/')) {
-      return respond({ code: 0, data: { secretKey: 'ss' } })
-    }
+    // 3.16.3 stores the login tokens only: no customer info, key list or key secret at login.
     throw new Error(`unexpected ${u}`)
   }) as typeof fetch
   const login = new ZcodeLogin({ home: 'C:/ws/.llm', fetchImpl, storeFs: fs })
@@ -546,8 +558,10 @@ test('ZcodeLogin.start surfaces the authorize URL and completes into the store',
   const stored = files.get('C:/ws/.llm/credentials.json')
   assert.ok((stored ?? '').length > 0)
   assert.equal(login.state.error, undefined)
+  const { loadCredential } = await import('../src/glm-llm/auth/store.ts')
+  assert.deepEqual(await loadCredential(fs, 'C:/ws/.llm/credentials.json'), { version: 2, provider: 'bigmodel', oauthAccessToken: 'bm-tok', userId: 'u1', jwt: 'jwt-x' })
   const adapter = new ZcodeAdapter({ home: 'C:/ws/.llm', fetchImpl, storeFs: fs })
   const status = await adapter.status()
   assert.equal(status.logged, true)
-  assert.ok(status.keyPreview!.startsWith('kk.ss'))
+  assert.equal(status.keyPreview, 'unresolved')
 })

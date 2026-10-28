@@ -3,6 +3,8 @@
  * assembled chain (store → deviceMid → routing → headers → signing → SSE).
  * Prerequisite: /glm-login completed (`credentials.json` present in the
  * user-level directory `<DSH home>/glm-hourness`, docs/DESIGN.md §2.4).
+ * Reading the store migrates a version-1 record (docs/DESIGN.md §4.1): do
+ * not run this while the desktop still runs a pre-m1-parity build.
  * Run: node --experimental-strip-types scripts/smoke-zcode-authorized.mjs
  */
 import { ZcodeAdapter } from '../src/glm-llm/zcode.ts'

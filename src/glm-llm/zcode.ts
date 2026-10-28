@@ -11,8 +11,7 @@
  */
 import { readFile, writeFile, rename } from 'node:fs/promises'
 import type { Credential } from './auth/types.ts'
-import { loadCredential, saveCredential, clearCredential, type StoreFs } from './auth/store.ts'
-import { resolveCodingPlanCredential } from './auth/resolver.ts'
+import { loadStoredCredential, saveCredential, clearCredential, type StoreFs } from './auth/store.ts'
 import { PollOAuthClient, LOGIN_TIMEOUT_MS, buildPasteAuthorizeUrl } from './auth/oauth.ts'
 import { inspectJwt } from './auth/jwt.ts'
 import { DEFAULT_IDENTITY, ensureDeviceMid, resolveEnvPromptInfo, type ZcodeIdentity } from './identity.ts'
@@ -20,7 +19,7 @@ import { readCliDeviceMid, readRoutingDeviceMid } from './device-mid.ts'
 import { buildAuthHeaders, requestAttribution, type PlanId } from './headers.ts'
 import { EndpointRoutingService, type RoutingCredential } from './endpoint-routing.ts'
 import { ClientSigningManager, sendWithClientSigning } from './signing.ts'
-import { ProjectAccessTokenClient, projectTokenFingerprint, projectTokenRequest, type ResolvedProjectToken } from './auth/project-token.ts'
+import { ProjectAccessTokenClient, projectTokenFingerprint, projectTokenRequest, type ProjectKeyLocationStore, type ResolvedProjectToken } from './auth/project-token.ts'
 import { encodeRequest, decodeSse, metadataUserId, splitSystemPrompt } from './anthropic.ts'
 import { glmImageRequestTarget, prepareRequestImages } from './images.ts'
 import { buildStartPlanSystem, buildContextPrefixMessage } from './start-plan.ts'
@@ -52,6 +51,8 @@ const BIGMODEL_API_ORIGIN = 'https://bigmodel.cn'
  */
 const CREDENTIAL_UNAVAILABLE_FAMILY = 'Account request credential is unavailable: bigmodel'
 const CREDENTIAL_UNAVAILABLE_PROVIDER = 'Account request credential is unavailable: account:bigmodel-individual-coding-plan'
+/** start-plan without its plan JWT (the same 3.16.3 error, for the start-plan provider). */
+const START_PLAN_CREDENTIAL_UNAVAILABLE = 'Account request credential is unavailable: account:bigmodel-start-plan'
 
 /** Values of a 401 body that mark a request-security failure, not a rejected project token (3.16.3 `isRequestSecurityFailure` `Vrt` @1090655). */
 const SECURITY_FAILURE_VALUES: ReadonlySet<unknown> = new Set(['VERIFY_APIKEY_EXPIRED', 'VERIFY_SIGNATURE_INVALID', '3007'])
@@ -122,12 +123,21 @@ export class ZcodeLogin {
     return started.authorizeUrl
   }
 
-  /** Complete the started flow: resolve the coding-plan credential and persist it. */
+  /**
+   * Complete the started flow and persist the login tokens, as the 3.16.3
+   * desktop stores its OAuth token set: no API key is resolved here; the
+   * project key is located on the first request that needs a project token.
+   */
   private async settle(client: PollOAuthClient): Promise<void> {
     try {
       const tokens = await client.complete(LOGIN_TIMEOUT_MS)
-      const credential = await resolveCodingPlanCredential(this.fetchImpl, tokens.accessToken, tokens.userId)
-      const stored: Credential = tokens.jwt === undefined ? credential : { ...credential, jwt: tokens.jwt }
+      const stored: Credential = {
+        version: 2,
+        provider: 'bigmodel',
+        oauthAccessToken: tokens.accessToken,
+        ...(tokens.userId === undefined ? {} : { userId: tokens.userId }),
+        ...(tokens.jwt === undefined ? {} : { jwt: tokens.jwt }),
+      }
       await saveCredential(this.storeFs, this.credentialPath(), stored)
       delete this.state.error
     }
@@ -180,7 +190,27 @@ export class ZcodeAdapter {
       handshakeFetch: (input, init) => this.routedHandshake(input, init),
       ...(options.onEvent === undefined ? {} : { onEvent: options.onEvent }),
     })
-    this.projectTokens = new ProjectAccessTokenClient({ request: projectTokenRequest(options.fetchImpl ?? fetch) })
+    this.projectTokens = new ProjectAccessTokenClient({ request: projectTokenRequest(options.fetchImpl ?? fetch), locationStore: this.locationStore() })
+  }
+
+  /**
+   * The project-key location persisted in the credential record (3.16.3
+   * keeps it in its credential service under the same key): read, write and
+   * drop by read-modify-write of the stored login.
+   */
+  private locationStore(): ProjectKeyLocationStore {
+    const write = async (update: (credential: Credential) => Credential): Promise<void> => {
+      const current = await this.loadCredential()
+      if (current !== undefined) await saveCredential(this.options.storeFs ?? storeFsDefault, this.credentialPath(), update(current))
+    }
+    return {
+      load: async key => {
+        const location = (await this.loadCredential())?.location
+        return location?.key === key ? location.value : undefined
+      },
+      save: (key, value) => write(credential => ({ ...credential, location: { key, value } })),
+      delete: key => write(({ location, ...rest }) => location?.key === key ? rest : { ...rest, ...(location === undefined ? {} : { location }) }),
+    }
   }
 
   /**
@@ -289,18 +319,9 @@ export class ZcodeAdapter {
     return `${this.options.home.replace(/[\\/]+$/, '')}/credentials.json`
   }
 
-  private async loadCredential(): Promise<Credential | undefined> {
-    const raw = await loadCredential(this.options.storeFs ?? storeFsDefault, this.credentialPath())
-    if (raw === undefined || typeof raw !== 'object' || raw === null) return undefined
-    const record = raw as Record<string, unknown>
-    if (typeof record.apiKey !== 'string' || record.provider !== 'bigmodel') return undefined
-    return {
-      apiKey: record.apiKey,
-      provider: 'bigmodel',
-      ...(typeof record.userId === 'string' ? { userId: record.userId } : {}),
-      ...(typeof record.jwt === 'string' ? { jwt: record.jwt } : {}),
-      ...(typeof record.oauthAccessToken === 'string' ? { oauthAccessToken: record.oauthAccessToken } : {}),
-    }
+  /** The stored login, migrated to the version-2 record on first read (auth/store.ts `loadStoredCredential`). */
+  private loadCredential(): Promise<Credential | undefined> {
+    return loadStoredCredential(this.options.storeFs ?? storeFsDefault, this.credentialPath())
   }
 
   /**
@@ -348,7 +369,7 @@ export class ZcodeAdapter {
     return {
       logged: true,
       plan,
-      keyPreview: `${credential.apiKey.slice(0, 6)}…`,
+      keyPreview: keyPreviewOf(credential),
       ...(credential.userId === undefined ? {} : { userId: credential.userId }),
       ...(jwtInfo === null || jwtInfo === undefined ? {} : { jwtAgeHours: Math.round(jwtInfo.ageHours * 10) / 10 }),
     }
@@ -373,6 +394,12 @@ export class ZcodeAdapter {
     // account mode sends nothing without it (ModelRequestAuthMissing), so the
     // stream fails before any request leaves.
     let projectToken = plan === 'coding-plan' ? await this.projectToken(credential).catch((error: unknown) => failClosed(report, error)) : undefined
+    // start-plan: the plan JWT is the request credential (3.16.3 `resolveCurrent`, `requireApiKey(zcodeJwtToken)`).
+    const startPlanJwt = credential.jwt ?? ''
+    if (plan === 'start-plan' && startPlanJwt.length === 0) {
+      report('inactive', `未拿到套餐 JWT（${START_PLAN_CREDENTIAL_UNAVAILABLE}），运行 /glm-login`)
+      throw new Error(`glm-zcode: plan JWT unavailable (${START_PLAN_CREDENTIAL_UNAVAILABLE}) — run /glm-login to sign in again`)
+    }
     const device = await this.deviceMid()
     const deviceMid = device?.value
     const identity = { ...DEFAULT_IDENTITY, ...this.options.identity, ...(deviceMid === undefined ? {} : { deviceMid }) }
@@ -405,7 +432,7 @@ export class ZcodeAdapter {
       if (token !== undefined) this.routingCredential = routingCredential
       const routed = await this.routing.resolve(upstreamBase, routingCredential).catch((): { routed: boolean, url: string, headers?: Record<string, string> } => ({ routed: false, url: upstreamBase }))
       const routingPairs = Object.entries(routed.headers ?? {})
-      const auth = token !== undefined ? { bearer: token.token, apiKey: token.token } : credential.jwt !== undefined ? { bearer: credential.jwt } : { bearer: credential.apiKey, apiKey: credential.apiKey }
+      const auth = token !== undefined ? { bearer: token.token, apiKey: token.token } : { bearer: startPlanJwt }
       const headers = buildAuthHeaders(auth, identity, plan, attribution, this.options.env)
       return sendWithClientSigning(token === undefined ? null : this.signer, {
         url: upstreamBase,
@@ -470,6 +497,18 @@ async function isProjectTokenRejection(response: Response): Promise<boolean> {
   const failure = record(envelope.error)
   const values = [envelope.msg, envelope.reason, envelope.code, data.reason, failure.reason, failure.message, failure.code]
   return !values.some(value => SECURITY_FAILURE_VALUES.has(typeof value === 'number' ? String(value) : value))
+}
+
+/** The /glm-status key preview: the located API key id's first six characters, `unresolved` before the first project token. */
+function keyPreviewOf(credential: Credential): string {
+  if (credential.location === undefined) return 'unresolved'
+  try {
+    const { apiKeyId } = JSON.parse(credential.location.value) as { apiKeyId?: unknown }
+    return typeof apiKeyId === 'string' && apiKeyId.length > 0 ? `${apiKeyId.slice(0, 6)}…` : 'unresolved'
+  }
+  catch {
+    return 'unresolved'
+  }
 }
 
 /** Whether the first user turn already carries the currentDate context prefix (start-plan pins it once). */
