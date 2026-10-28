@@ -57,7 +57,12 @@ export interface ResolvedProjectToken extends ProjectKeyLocation {
 /** Persisted locations, keyed by the 3.16.3 `project-key-location:v1:` key. */
 export interface ProjectKeyLocationStore {
   load(key: string): Promise<string | undefined>
-  save(key: string, value: string): Promise<void>
+  /**
+   * `loginToken` is the OAuth token the location was resolved with, as the
+   * caller passed it in `resolve`; a store that also holds the login can
+   * refuse a location whose login has been replaced meanwhile.
+   */
+  save(key: string, value: string, loginToken: string): Promise<void>
   delete(key: string): Promise<void>
 }
 
@@ -296,7 +301,7 @@ export class ProjectAccessTokenClient {
           if (parsed !== undefined) return parsed
           const fresh = await this.locate(origin, loginToken, request)
           assertCurrent()
-          await this.locationStore?.save(storeKey, JSON.stringify(fresh))
+          await this.locationStore?.save(storeKey, JSON.stringify(fresh), input.loginToken)
           assertCurrent()
           return fresh
         })()

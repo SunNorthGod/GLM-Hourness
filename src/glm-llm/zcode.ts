@@ -10,9 +10,9 @@
  * currentDate context-prefix message ahead of the first user turn.
  */
 import { randomUUID } from 'node:crypto'
-import { readFile, writeFile, rename } from 'node:fs/promises'
+import { readFile, writeFile, rename, unlink } from 'node:fs/promises'
 import type { Credential } from './auth/types.ts'
-import { loadStoredCredential, saveCredential, clearCredential, type StoreFs } from './auth/store.ts'
+import { loadStoredCredential, saveCredential, clearCredential, updateStoredCredential, type StoreFs } from './auth/store.ts'
 import { PollOAuthClient, LOGIN_TIMEOUT_MS, buildPasteAuthorizeUrl } from './auth/oauth.ts'
 import { inspectJwt } from './auth/jwt.ts'
 import { DEFAULT_IDENTITY, ensureDeviceMid, resolveEnvPromptInfo, type ZcodeIdentity } from './identity.ts'
@@ -90,6 +90,7 @@ const storeFsDefault: StoreFs = {
   readFile: path => readFile(path, 'utf8'),
   writeFile: (path, data) => writeFile(path, data),
   rename,
+  unlink,
 }
 
 /** Interactive login state shared between the /glm-login and /glm-status commands. */
@@ -202,20 +203,21 @@ export class ZcodeAdapter {
   /**
    * The project-key location persisted in the credential record (3.16.3
    * keeps it in its credential service under the same key): read, write and
-   * drop by read-modify-write of the stored login.
+   * drop by read-modify-write of the stored login in the store's write
+   * queue, so a /glm-login that lands meanwhile is never overwritten. A
+   * location is kept only while the stored OAuth token is the one it was
+   * resolved with.
    */
   private locationStore(): ProjectKeyLocationStore {
-    const write = async (update: (credential: Credential) => Credential): Promise<void> => {
-      const current = await this.loadCredential()
-      if (current !== undefined) await saveCredential(this.options.storeFs ?? storeFsDefault, this.credentialPath(), update(current))
-    }
+    const write = (update: (credential: Credential) => Credential | undefined): Promise<void> =>
+      updateStoredCredential(this.options.storeFs ?? storeFsDefault, this.credentialPath(), update)
     return {
       load: async key => {
         const location = (await this.loadCredential())?.location
         return location?.key === key ? location.value : undefined
       },
-      save: (key, value) => write(credential => ({ ...credential, location: { key, value } })),
-      delete: key => write(({ location, ...rest }) => location?.key === key ? rest : { ...rest, ...(location === undefined ? {} : { location }) }),
+      save: (key, value, loginToken) => write(credential => credential.oauthAccessToken?.trim() === loginToken ? { ...credential, location: { key, value } } : undefined),
+      delete: key => write(({ location, ...rest }) => location?.key === key ? rest : undefined),
     }
   }
 

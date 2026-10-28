@@ -19,16 +19,21 @@ export function memoryStore(): { fs: StoreFs, files: Map<string, string> } {
       return value === undefined ? Promise.reject(new Error('ENOENT')) : Promise.resolve(value)
     },
     writeFile: (path, data) => {
-      files.set(`${path}.tmp`, data)
       files.set(path, data)
       return Promise.resolve()
     },
     rename: (from, to) => {
-      files.set(to, files.get(from) ?? '')
+      const data = files.get(from)
+      if (data === undefined) return Promise.reject(new Error(`ENOENT: ${from}`))
+      files.set(to, data)
       files.delete(from)
       return Promise.resolve()
     },
     exists: path => Promise.resolve(files.has(path)),
+    unlink: path => {
+      files.delete(path)
+      return Promise.resolve()
+    },
   }
   return { fs, files }
 }

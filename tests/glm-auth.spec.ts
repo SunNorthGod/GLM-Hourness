@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { ZCODE_APP_VERSION } from '../src/glm-llm/identity.ts'
 import { PollOAuthClient, buildDesktopOAuthRedirectParam, parsePastedCallbackUrl, exchangeCode, buildPasteAuthorizeUrl, freshPasteState } from '../src/glm-llm/auth/oauth.ts'
-import { loadCredential, loadStoredCredential, saveCredential, clearCredential } from '../src/glm-llm/auth/store.ts'
+import { loadCredential, loadStoredCredential, saveCredential, clearCredential, updateStoredCredential, type StoreFs } from '../src/glm-llm/auth/store.ts'
 import { memoryStore } from './glm-fixtures.ts'
 import { inspectJwt } from '../src/glm-llm/auth/jwt.ts'
 
@@ -157,6 +157,40 @@ test('a failed rewrite keeps the old file byte for byte and still serves the log
   const failing = { ...fs, rename: () => Promise.reject(new Error('EPERM')) }
   assert.deepEqual(await loadStoredCredential(failing, STORE), { version: 2, provider: 'bigmodel', oauthAccessToken: 'fake-oauth', userId: 'user-1', jwt: 'fake.plan.jwt' })
   assert.equal(files.get(STORE), before)
+  assert.deepEqual([...files.keys()], [STORE]) // the failed write removed its temp file
+})
+
+test('concurrent first reads migrate a version-1 record once, through a temp file of its own (3.16.3 PWs naming)', async () => {
+  // DSH sends the session title and the first step about together: both read v1.
+  const { fs, files } = memoryStore()
+  await saveCredential(fs, STORE, V1)
+  const writes: string[] = []
+  const counting: StoreFs = { ...fs, writeFile: (path, data) => { writes.push(path); return fs.writeFile(path, data) } }
+  const [first, second] = await Promise.all([loadStoredCredential(counting, STORE), loadStoredCredential(counting, STORE)])
+  assert.deepEqual(first, second)
+  assert.equal(writes.length, 1)
+  assert.match(writes[0], /[\\/]\.credentials\.json\.\d+\.\d+\.[0-9a-f]+\.tmp$/)
+  assert.deepEqual([...files.keys()], [STORE])
+  assert.deepEqual(await loadCredential(fs, STORE), first)
+})
+
+test('writes of one store run one after another: a login landing during a read-modify-write is kept', async () => {
+  const { fs } = memoryStore()
+  await saveCredential(fs, STORE, { version: 2, provider: 'bigmodel', oauthAccessToken: 'old-oauth' })
+  let landed: Promise<void> | undefined
+  await updateStoredCredential(fs, STORE, current => {
+    landed = saveCredential(fs, STORE, { version: 2, provider: 'bigmodel', oauthAccessToken: 'new-oauth' })
+    return { ...current, userId: 'user-1' }
+  })
+  await landed
+  assert.deepEqual(await loadCredential(fs, STORE), { version: 2, provider: 'bigmodel', oauthAccessToken: 'new-oauth' })
+  // An update that returns undefined leaves the file as it is; no stored login: nothing is written.
+  const before = await loadCredential(fs, STORE)
+  await updateStoredCredential(fs, STORE, () => undefined)
+  assert.deepEqual(await loadCredential(fs, STORE), before)
+  const empty = memoryStore()
+  await updateStoredCredential(empty.fs, STORE, current => current)
+  assert.equal(empty.files.size, 0)
 })
 
 test('a version-1 record without any login token is left untouched and reads as a record without tokens', async () => {

@@ -5,7 +5,7 @@ import { ZcodeAdapter, ZcodeLogin, logout } from '../src/glm-llm/zcode.ts'
 import { ZCODE_APP_VERSION } from '../src/glm-llm/identity.ts'
 import { runtimeUserAgent, upstreamSessionId, type SessionHeaderLike } from '../src/glm-llm/headers.ts'
 import { apply as loginApply } from '../src/glm-llm/login-row.ts'
-import { saveCredential } from '../src/glm-llm/auth/store.ts'
+import { saveCredential, type StoreFs } from '../src/glm-llm/auth/store.ts'
 import type { Credential } from '../src/glm-llm/auth/types.ts'
 import type { GenerateOptionsLike, StreamChunk } from '../src/shared/lm-min.ts'
 import { fakeProjectToken, memoryStore, patPlane, PAT_KEY_ID, sealedSigningKey, TRANSPORT_HEADERS, wireRecorder, zcodeDataDir } from './glm-fixtures.ts'
@@ -380,6 +380,54 @@ test('a login stored before m1-parity keeps working: migrated on first read, the
   const restarted = new ZcodeAdapter({ home: 'C:/ws/.llm', fetchImpl: gatewayFetch(next, {}), storeFs: store.fs, env: isolatedEnv() })
   for await (const chunk of restarted.stream({ ...request(), sessionId: 'session-s1' } as never)) void chunk
   assert.deepEqual(next.filter(isPatPlane).map(entry => entry.url.split('/').at(-1)), ['access_tokens'])
+})
+
+const STORE_PATH = 'C:/ws/.llm/credentials.json'
+
+test('a /glm-login that lands while the project key is located keeps its record: the older login\'s location is not attached to it', async () => {
+  const store = memoryStore()
+  await saveCredential(store.fs, STORE_PATH, credential)
+  const relogin: Credential = { version: 2, provider: 'bigmodel', oauthAccessToken: 'oauth-new', userId: 'user-2' }
+  const wire: WireRequest[] = []
+  const gateway = gatewayFetch(wire, {})
+  const fetchImpl: typeof fetch = async (input, init) => {
+    const answer = await gateway(input, init)
+    if (urlOf(input).endsWith('/api/biz/customer/getCustomerInfo')) await saveCredential(store.fs, STORE_PATH, relogin)
+    return answer
+  }
+  const adapter = new ZcodeAdapter({ home: 'C:/ws/.llm', fetchImpl, storeFs: store.fs, env: isolatedEnv() })
+  await assert.rejects(async () => { for await (const chunk of adapter.stream({ ...request(), sessionId: 'session-s1' } as never)) void chunk }, /project_token_scope_invalidated/)
+  const { loadCredential } = await import('../src/glm-llm/auth/store.ts')
+  assert.deepEqual(await loadCredential(store.fs, STORE_PATH), relogin)
+  assert.equal(wire.filter(isModelRequest).length, 0)
+})
+
+test('a /glm-login that lands while the location is written is not overwritten by the older login', async () => {
+  const store = memoryStore()
+  await saveCredential(store.fs, STORE_PATH, credential)
+  const relogin: Credential = { version: 2, provider: 'bigmodel', oauthAccessToken: 'oauth-new', userId: 'user-1' }
+  // The login lands on the first store read after the key list answered: the read of the location write.
+  let located = false
+  let landed: Promise<void> | undefined
+  const fs: StoreFs = {
+    ...store.fs,
+    readFile: path => {
+      if (located && landed === undefined && path === STORE_PATH) landed = saveCredential(store.fs, STORE_PATH, relogin)
+      return store.fs.readFile(path)
+    },
+  }
+  const gateway = gatewayFetch([], {})
+  const fetchImpl: typeof fetch = async (input, init) => {
+    const answer = await gateway(input, init)
+    if (urlOf(input).endsWith('/api_keys') && init?.method === 'GET') located = true
+    return answer
+  }
+  const adapter = new ZcodeAdapter({ home: 'C:/ws/.llm', fetchImpl, storeFs: fs, env: isolatedEnv() })
+  await (async () => { for await (const chunk of adapter.stream({ ...request(), sessionId: 'session-s1' } as never)) void chunk })().catch(() => undefined)
+  assert.ok(landed !== undefined)
+  await landed
+  const { loadCredential } = await import('../src/glm-llm/auth/store.ts')
+  assert.equal((await loadCredential(store.fs, STORE_PATH) as Credential).oauthAccessToken, 'oauth-new')
 })
 
 /** Stream one request on a fresh adapter; the rejection, the wire log and the health reports. */
