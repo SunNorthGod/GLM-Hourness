@@ -1,0 +1,116 @@
+{
+  "id": "m2-9-l4",
+  "type": "task",
+  "title": "m2-9 L4 验证任务",
+  "status": "done",
+  "parent": "m2-9",
+  "body": "L4 验证用的任务，只读。不要编辑、新建或删除任何文件；除 graph_focus 外不要写项目图（不要 graph_status、graph_comment、graph_edit 等）。先 graph_focus 本节点，再用 Bash 运行 Start-Sleep -Seconds 60，然后用一句话回复。",
+  "acceptance": [
+    "主 Agent 把焦点设到本节点，跑完 Start-Sleep -Seconds 60 后用一句话回复",
+    "暂停后点重做，主 Agent 能在本节点上重新开工"
+  ],
+  "nonGoals": [
+    "不改任何文件，不写项目图（graph_focus 除外）"
+  ],
+  "evidence": [
+    {
+      "kind": "test",
+      "ref": "Start-Sleep -Seconds 60",
+      "exit": 0,
+      "note": "重做后完整跑完 60 秒，退出码 0"
+    },
+    {
+      "kind": "check",
+      "ref": "暂停(12:27)→改验收→重做(12:43)→graph_focus m2-9-l4 重启开工",
+      "exit": 0,
+      "note": "第二条验收：主 Agent 在改验收条件后于本节点重新开工"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-28T12:15:56.023Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "m2-9 批次 L4：给运行控制的按钮一个无害的验证任务",
+      "to": "approved"
+    },
+    {
+      "at": "2026-10-28T12:16:04.980Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "L4 开始：先标进行中，桌面版里的 agent 只设焦点、不写图",
+      "from": "approved",
+      "to": "doing"
+    },
+    {
+      "at": "2026-10-28T12:26:00.099Z",
+      "actor": "human",
+      "op": "comment",
+      "text": "人在面板里点了「从这里开始做」"
+    },
+    {
+      "at": "2026-10-28T12:27:07.927Z",
+      "actor": "human",
+      "op": "comment",
+      "text": "人在面板里点了「暂停」：停下了主 Agent"
+    },
+    {
+      "at": "2026-10-28T12:33:31.888Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "L4：改验收条件，用来验证「改了验收条件后重做」",
+      "relay": "人在面板上暂停了任务 m2-9-l4 上的工作，并给出 /graph-apply {\"op\":\"edit\",\"id\":\"m2-9-l4\",\"rev\":\"6de6ceffe0d3\",\"reason\":\"L4：改验收条件，用来验证「改了验收条件后重做」\",\"set\":{\"acceptance\":[\"主 Agent 把焦点设到本节点，跑完 Start-Sleep -Seconds 60 后用一句话回复\",\"暂停后点重做，主 Agent 能在本节点上重新开工\"]}}",
+      "changes": {
+        "acceptance": {
+          "from": [
+            "主 Agent 把焦点设到本节点，跑完 Start-Sleep -Seconds 60 后用一句话回复"
+          ],
+          "to": [
+            "主 Agent 把焦点设到本节点，跑完 Start-Sleep -Seconds 60 后用一句话回复",
+            "暂停后点重做，主 Agent 能在本节点上重新开工"
+          ]
+        }
+      }
+    },
+    {
+      "at": "2026-10-28T12:43:43.435Z",
+      "actor": "human",
+      "op": "comment",
+      "text": "人在面板里点了「改了验收条件后重做」"
+    },
+    {
+      "at": "2026-10-28T12:45:51.914Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "L4 两条验收满足：焦点已设、Start-Sleep -Seconds 60 跑完（exit 0）后一句话回复；暂停改验收后点重做，主 Agent 已在本节点重新开工",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "test",
+          "ref": "Start-Sleep -Seconds 60",
+          "exit": 0,
+          "note": "重做后完整跑完 60 秒，退出码 0"
+        },
+        {
+          "kind": "check",
+          "ref": "暂停(12:27)→改验收→重做(12:43)→graph_focus m2-9-l4 重启开工",
+          "exit": 0,
+          "note": "第二条验收：主 Agent 在改验收条件后于本节点重新开工"
+        }
+      ]
+    },
+    {
+      "at": "2026-10-28T12:49:26.673Z",
+      "actor": "human",
+      "op": "comment",
+      "text": "人在面板里点了「暂停」：停下了子 agent L4 验证：焦点+睡眠120秒"
+    },
+    {
+      "at": "2026-10-28T12:56:36.447Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m2-9 批次 L4（2026-10-28，桌面版 rc.3 重启后经 CDP 驱动，GLM-5.3-Flash，会话 session-920b46b6）四项通过。(a) 从这里开始做：对话出现 graph-run 命令行「已让主 Agent 从「m2-9 L4 验证任务」开始做」与「收到执行请求」卡片；主 Agent 新开回合，先 graph_focus m2-9-l4，再跑 Bash Start-Sleep -Seconds 60；现场显示「在跑 Bash · 33 秒 在「m2-9 L4 验证任务」」，图上主 Agent 徽标在本节点；历史多一条人的批注。(b) 暂停：结果行「已暂停「m2-9 L4 验证任务」：停下了主 Agent」，回合 aborted（user），对话显示「已停止」，Bash 结果 ABORTED；现场「空闲，等你说话」；历史多一条批注；GLM 下一回合读到暂停说明，回复不接着做。(c) 验收条件改过后出现「改了验收条件后重做」，点后结果行「已让主 Agent 按新的验收条件重做「m2-9 L4 验证任务」」，消息带验收条件前后对比，GLM 重新 graph_focus 并跑完 60 秒睡眠，带证据标完成；历史有批注。(d) 子 agent：主 Agent 派一个子 agent，子 agent graph_focus 本节点后在跑 Bash；点暂停，结果行「已暂停「m2-9 L4 验证任务」：停下了子 agent L4 验证：焦点+睡眠120秒」，说明先于 DSH 的子 agent 结算通知送达主 Agent，两条在同一步读到，GLM 回复不重派、不接续，现场子 agent 打勾「已停下」。/glm-status：graph-panel 生效（能停子 agent），glm-llm 生效。截图与事件摘录在 .agents/tasks/m2-9-research/l4/。"
+    }
+  ]
+}
