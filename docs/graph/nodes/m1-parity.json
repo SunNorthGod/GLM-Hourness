@@ -6,7 +6,7 @@
   "parent": "m1",
   "kind": "implement",
   "tier": "hard",
-  "body": "调研（.agents/tasks/zcode-parity/report.md）：渠道载体已一致（上游地址、路由改写到 ultra、X-ZCode-Authorization、V4 签名、ZCode 身份头）。最可能决定加成的差异是模型请求的凭证：3.16.3 账号模式用项目令牌 PAT 填 Authorization 与 x-api-key，本包用裸 apiKey。其余差异：请求体不发 thinking 与 output_config（DSH 选的推理档位在线上丢失）、model 大小写、User-Agent 尾段、缺 x-query-id 与 x-zcode-query-source、trace id 每请求随机、agent/configs 发完整 key。150% 在客户端只是服务端下发的活动文案，判定机制读不出，要用额度接口（bigmodel.cn/api/monitor/usage/quota/limit 与 credit-usage/usage-detail）在改前改后实测。",
+  "body": "调研（.agents/tasks/zcode-parity/report.md）：渠道载体已一致（上游地址、路由改写到 ultra、X-ZCode-Authorization、V4 签名、ZCode 身份头）。最可能决定加成的差异是模型请求的凭证：3.16.3 账号模式用项目令牌 PAT 填 Authorization 与 x-api-key，本包用裸 apiKey。其余差异：请求体不发 thinking 与 output_config（DSH 选的推理档位在线上丢失）、model 大小写、User-Agent 尾段、X-Title、缺 x-query-id 与 x-zcode-query-source、trace id 每请求随机、头的大小写与顺序、max_tokens 不裁剪、agent/configs 发完整 key、设备 id 来源。150% 在客户端只是服务端下发的活动文案，用户说额度与扣减看不出加成，所以按代码级别与 3.16.3 一致验收，不做额度实测。只有 DSH 控制的差异（标题请求的时机与提示词）写进 DESIGN。",
   "acceptance": [
     "coding-plan 模型请求的 Authorization 与 x-api-key 用 PAT；agent/configs 只发 apiKeyId，不发 secret；PAT 拿不到时照 3.16.3 报错",
     "头（含 X-Title Z Code@electron、User-Agent、x-query-id、x-zcode-trace-id、x-zcode-query-source、大小写与顺序）、请求体（键序、model、thinking、output_config、max_tokens）与 metadata.user_id 在代码级别与 3.16.3 一致；只有 DSH 控制的差异写进 DESIGN",
@@ -49,6 +49,18 @@
       "reason": "实现流程在跑（worktree .worktrees/m1-parity），状态补记",
       "from": "approved",
       "to": "doing"
+    },
+    {
+      "at": "2026-10-28T14:18:29.911Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "正文还写着用额度接口实测，用户已改为代码级别一致",
+      "changes": {
+        "body": {
+          "from": "调研（.agents/tasks/zcode-parity/report.md）：渠道载体已一致（上游地址、路由改写到 ultra、X-ZCode-Authorization、V4 签名、ZCode 身份头）。最可能决定加成的差异是模型请求的凭证：3.16.3 账号模式用项目令牌 PAT 填 Authorization 与 x-api-key，本包用裸 apiKey。其余差异：请求体不发 thinking 与 output_config（DSH 选的推理档位在线上丢失）、model 大小写、User-Agent 尾段、缺 x-query-id 与 x-zcode-query-source、trace id 每请求随机、agent/configs 发完整 key。150% 在客户端只是服务端下发的活动文案，判定机制读不出，要用额度接口（bigmodel.cn/api/monitor/usage/quota/limit 与 credit-usage/usage-detail）在改前改后实测。",
+          "to": "调研（.agents/tasks/zcode-parity/report.md）：渠道载体已一致（上游地址、路由改写到 ultra、X-ZCode-Authorization、V4 签名、ZCode 身份头）。最可能决定加成的差异是模型请求的凭证：3.16.3 账号模式用项目令牌 PAT 填 Authorization 与 x-api-key，本包用裸 apiKey。其余差异：请求体不发 thinking 与 output_config（DSH 选的推理档位在线上丢失）、model 大小写、User-Agent 尾段、X-Title、缺 x-query-id 与 x-zcode-query-source、trace id 每请求随机、头的大小写与顺序、max_tokens 不裁剪、agent/configs 发完整 key、设备 id 来源。150% 在客户端只是服务端下发的活动文案，用户说额度与扣减看不出加成，所以按代码级别与 3.16.3 一致验收，不做额度实测。只有 DSH 控制的差异（标题请求的时机与提示词）写进 DESIGN。"
+        }
+      }
     }
   ]
 }
