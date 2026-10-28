@@ -284,8 +284,8 @@ export class ZcodeAdapter {
       : history
     const images = await prepareRequestImages(messages, this.options.resolveAttachments?.(), this.options.mapHostPath, options.signal)
     // One x-session-id per DSH session, the gateway's cache affinity key
-    // (DESIGN.md §4.5b); the session title gets its own. metadata.user_id
-    // carries the same id as the header, as ZCode's does.
+    // (DESIGN.md §4.5b); metadata.user_id carries the same id as the
+    // header, as ZCode's does.
     const attribution = requestAttribution(request.sessionId, request.purpose)
     const body = JSON.stringify(encodeRequest({ ...options, messages }, systemBlocks, images, metadataUserId(deviceMid, attribution.sessionId)))
 

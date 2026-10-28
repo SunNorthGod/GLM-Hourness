@@ -160,7 +160,7 @@ test('x-session-id is one value per DSH session (the gateway cache affinity key)
   assert.ok(fresh.every(id => /^[0-9a-f-]{36}$/.test(id)) && fresh[0] !== fresh[1])
 })
 
-test('the session title gets its own x-session-id; compaction keeps the conversation session; both are typed other', async () => {
+test('auxiliary calls (compaction, session title) keep the conversation session and are typed other', async () => {
   const { fs } = memoryStore()
   await saveCredential(fs, 'C:/ws/.llm/credentials.json', credential)
   const captured: { headers?: Record<string, string>, body?: Record<string, unknown> } = {}
@@ -172,9 +172,7 @@ test('the session title gets its own x-session-id; compaction keeps the conversa
   }
   assert.deepEqual(await attributionOf(undefined), ['conv-1', 'main', 'conv-1'])
   assert.deepEqual(await attributionOf('compaction'), ['conv-1', 'other', 'conv-1'])
-  const [titleSession, titleType, titleUserSession] = await attributionOf('session-title')
-  assert.match(titleSession, /^[0-9a-f-]{36}$/)
-  assert.deepEqual([titleType, titleUserSession], ['other', titleSession])
+  assert.deepEqual(await attributionOf('session-title'), ['conv-1', 'other', 'conv-1'])
   assert.deepEqual(requestAttribution(undefined, undefined).sessionType, 'main')
 })
 
