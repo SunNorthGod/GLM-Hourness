@@ -54,11 +54,6 @@
       "count": 1
     }
   },
-  "src/glm-llm/login-row.ts": {
-    "@typescript-eslint/require-await": {
-      "count": 1
-    }
-  },
   "src/glm-llm/signing.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 3

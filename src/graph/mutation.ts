@@ -31,7 +31,7 @@ export interface EngineError {
   readonly message: string
   /** Request field the error is about, for example set.acceptance. */
   readonly field?: string
-  /** The right way forward (CHARTER.md §5). */
+  /** The right way forward (CHARTER.md §6). */
   readonly hint: string
 }
 

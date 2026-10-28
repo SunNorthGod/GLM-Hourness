@@ -2,7 +2,8 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { buildLlmIdentityHeaders, buildContextIdentityHeaders, ensureDeviceMid, DEFAULT_IDENTITY, ZCODE_APP_VERSION } from '../src/glm-llm/identity.ts'
 import { buildAuthHeaders, buildTraceHeaders, ANTHROPIC_SDK_UA } from '../src/glm-llm/headers.ts'
-import { encodeRequest, encodeMessage, decodeFrame, decodeSse } from '../src/glm-llm/anthropic.ts'
+import { BlockAssembler } from '@deepseek-ai/dsh-llm'
+import { encodeRequest, encodeMessage, decodeFrame, decodeSse, metadataUserId, replayBlocksOf, type AnthropicRequest } from '../src/glm-llm/anthropic.ts'
 import { glmImageRequestTarget, prepareRequestImages, offloadedImageText, ZCODE_IMAGE_TARGET_BYTES } from '../src/glm-llm/images.ts'
 import type { AttachmentsLike, ImageRefLike, ImageTarget, RequestMessageLike } from '../src/shared/lm-min.ts'
 import type { Credential } from '../src/glm-llm/auth/types.ts'
@@ -95,7 +96,8 @@ test('encodeMessage folds seam roles into anthropic blocks', () => {
     encodeMessage({ role: 'tool', toolCallId: 'tu2', isError: true, content: [{ type: 'text', text: 'Error: boom' }] }),
     { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'tu2', content: 'Error: boom', is_error: true }] },
   )
-  // rc.3 carries tool calls as tool-call content blocks; reasoning is not sent back.
+  // rc.3 carries tool calls as tool-call content blocks; reasoning without
+  // replay metadata goes back unsigned (ZCode's empty signature).
   assert.deepEqual(
     encodeMessage({ role: 'assistant', content: [
       { type: 'reasoning', text: 'think' },
@@ -104,6 +106,7 @@ test('encodeMessage folds seam roles into anthropic blocks', () => {
       { type: 'tool-call', id: 'c2', name: 'Read', arguments: 'not json' },
     ] }),
     { role: 'assistant', content: [
+      { type: 'thinking', thinking: 'think', signature: '' },
       { type: 'text', text: 'hi' },
       { type: 'tool_use', id: 'c1', name: 'Grep', input: { q: 1 } },
       { type: 'tool_use', id: 'c2', name: 'Read', input: {} },
@@ -135,9 +138,21 @@ test('encodeRequest groups consecutive same-role turns the way the ZCode client 
     { role: 'user', content: [
       { type: 'tool_result', tool_use_id: 'c1', content: 'one' },
       { type: 'tool_result', tool_use_id: 'c2', content: 'two' },
-      { type: 'text', text: '<system-reminder>\nnotice\n</system-reminder>' },
+      { type: 'text', text: '<system-reminder>\nnotice\n</system-reminder>', cache_control: { type: 'ephemeral' } },
     ] },
   ])
+})
+
+test('the last block of the last message is the one cache breakpoint; metadata.user_id is the ZCode device/session blob', () => {
+  const history: RequestMessageLike[] = [{ role: 'user', content: [{ type: 'text', text: 'list the sources' }] }]
+  history.push({ role: 'assistant', content: [{ type: 'text', text: 'Listing.' }, { type: 'tool-call', id: 'k1', name: 'Glob', arguments: '{"pattern":"src/**"}' }] })
+  history.push({ role: 'tool', toolCallId: 'k1', content: [{ type: 'text', text: 'src/a.ts' }] })
+  const request = encodeRequest({ provider: 'glm-zcode', model: 'glm-5.3-flash', messages: history }, undefined, undefined, metadataUserId('mid-1', 'sess-1'))
+  const marked = request.messages.flatMap(message => message.content.filter(block => block.cache_control !== undefined))
+  assert.deepEqual(marked, [{ type: 'tool_result', tool_use_id: 'k1', content: 'src/a.ts', cache_control: { type: 'ephemeral' } }])
+  assert.deepEqual(request.metadata, { user_id: '{"device_id":"mid-1","account_uuid":"","session_id":"sess-1"}' })
+  assert.equal(metadataUserId(undefined, 's'), '{"account_uuid":"","session_id":"s"}') // an unknown deviceMid drops the key
+  assert.equal(encodeRequest({ provider: 'glm-zcode', model: 'glm-5.3', messages: [{ role: 'user', content: [{ type: 'text', text: 'x' }] }] }).metadata, undefined)
 })
 
 test('encodeRequest builds the streaming body with system blocks and tools', () => {
@@ -157,7 +172,7 @@ test('encodeRequest builds the streaming body with system blocks and tools', () 
   // The leading system message is the caller's system block; a later one rides
   // the user turn as a system reminder (consecutive user turns merge).
   assert.deepEqual(request.messages, [
-    { role: 'user', content: [{ type: 'text', text: 'hello' }, { type: 'text', text: '<system-reminder>\nlater\n</system-reminder>' }] },
+    { role: 'user', content: [{ type: 'text', text: 'hello' }, { type: 'text', text: '<system-reminder>\nlater\n</system-reminder>', cache_control: { type: 'ephemeral' } }] },
   ])
   assert.deepEqual(request.tools, [{ name: 'TodoWrite', description: 'd', input_schema: { type: 'object' } }])
 })
@@ -237,7 +252,7 @@ test('image blocks reach the request body as Anthropic base64 image blocks, insi
       { type: 'image', source: { type: 'base64', media_type: 'image/png', data: base64('bytes:sha256:aaaa') } },
     ] },
     { role: 'assistant', content: [{ type: 'tool_use', id: 'c1', name: 'Read', input: { file_path: 'C:/x.jpg' } }] },
-    { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'c1', content: [
+    { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'c1', cache_control: { type: 'ephemeral' }, content: [
       { type: 'text', text: '<path>C:/x.jpg</path>' },
       { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64('bytes:sha256:bbbb') } },
     ] }] },
@@ -316,4 +331,112 @@ test('decodeSse merges cache counters and emits usage once, right before finish'
   assert.deepEqual(kinds.slice(-2), ['usage', 'finish'])
   assert.equal(kinds.filter(kind => kind === 'usage').length, 1)
   assert.deepEqual((chunks.at(-2) as unknown as { usage: unknown }).usage, { inputTokens: 120, outputTokens: 3, cacheReadTokens: 3000, cacheWriteTokens: 40, totalTokens: 3163 })
+})
+
+// Preserved thinking (docs/DESIGN.md §4.5c): the decoder keeps each thinking
+// block's signature as replay metadata; the encoder sends the reasoning back.
+
+/** An SSE body from data lines. */
+function sse(frames: readonly string[]): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder()
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const frame of frames) controller.enqueue(encoder.encode(`data: ${frame}\n\n`))
+      controller.close()
+    },
+  })
+}
+
+/** A GLM response as the coding-plan endpoint streams it (2026-10-28): signed thinking, text, a tool call. */
+const SIGNED_RESPONSE = [
+  '{"type":"message_start","message":{"usage":{"input_tokens":50}}}',
+  '{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":"","signature":""}}',
+  '{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"quotes "}}',
+  '{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"are ignored"}}',
+  '{"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"c2lnLTEy"}}',
+  '{"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"MzQ="}}',
+  '{"type":"content_block_stop","index":0}',
+  '{"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}}',
+  '{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"Reading."}}',
+  '{"type":"content_block_stop","index":1}',
+  '{"type":"content_block_start","index":2,"content_block":{"type":"tool_use","id":"tu1","name":"Read","input":{}}}',
+  '{"type":"content_block_delta","index":2,"delta":{"type":"input_json_delta","partial_json":"{\\"file_path\\":\\"C:/a.ts\\"}"}}',
+  '{"type":"content_block_stop","index":2}',
+  '{"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":20}}',
+]
+
+const finishOf = async (stream: AsyncIterable<unknown>): Promise<Record<string, unknown> | undefined> => {
+  let finish: Record<string, unknown> | undefined
+  for await (const chunk of stream) if ((chunk as { type: string }).type === 'finish') finish = chunk as Record<string, unknown>
+  return finish
+}
+
+test('decodeSse carries the thinking signature in the finish replay envelope, one entry per emitted block', async () => {
+  assert.deepEqual(await finishOf(decodeSse(sse(SIGNED_RESPONSE), 'glm-5.3')), {
+    type: 'finish',
+    reason: { kind: 'tool-calls' },
+    replayState: { response: { kind: 'glm-zcode', version: 1, model: 'glm-5.3' }, blocks: [{ type: 'reasoning', signature: 'c2lnLTEyMzQ=' }, { type: 'text' }, { type: 'tool-call' }] },
+  })
+  // No model, no envelope; a response without reasoning has nothing to replay.
+  assert.deepEqual(await finishOf(decodeSse(sse(SIGNED_RESPONSE))), { type: 'finish', reason: { kind: 'tool-calls' } })
+  const plain = SIGNED_RESPONSE.filter(frame => !frame.includes('"index":0'))
+  assert.deepEqual(await finishOf(decodeSse(sse(plain), 'glm-5.3')), { type: 'finish', reason: { kind: 'tool-calls' } })
+  // A signature on the start event (some Anthropic-compatible servers) counts; a later delta replaces it.
+  const onStart = ['{"type":"content_block_start","index":0,"content_block":{"type":"thinking","signature":"start-sig"}}', '{"type":"content_block_stop","index":0}', '{"type":"message_delta","delta":{"stop_reason":"end_turn"}}']
+  assert.deepEqual((await finishOf(decodeSse(sse(onStart), 'glm-5.3')))?.replayState, { response: { kind: 'glm-zcode', version: 1, model: 'glm-5.3' }, blocks: [{ type: 'reasoning', signature: 'start-sig' }] })
+  const replaced = [onStart[0], '{"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"delta-sig"}}', ...onStart.slice(1)]
+  assert.deepEqual((await finishOf(decodeSse(sse(replaced), 'glm-5.3')))?.replayState, { response: { kind: 'glm-zcode', version: 1, model: 'glm-5.3' }, blocks: [{ type: 'reasoning', signature: 'delta-sig' }] })
+  // An unsigned thinking block keeps its entry without a signature.
+  const unsigned = SIGNED_RESPONSE.filter(frame => !frame.includes('signature_delta'))
+  assert.deepEqual(((await finishOf(decodeSse(sse(unsigned), 'glm-5.3')))?.replayState as { blocks: unknown[] }).blocks[0], { type: 'reasoning' })
+})
+
+/** Assemble one decoded response with the real rc.3 assembler, as the agent loop stores it. */
+async function assembled(frames: readonly string[], route: { provider: string, model: string }): Promise<RequestMessageLike> {
+  const assembler = new BlockAssembler()
+  for await (const chunk of decodeSse(sse(frames), route.model)) assembler.push(chunk as never)
+  const replayState = assembler.replayState
+  return assembler.message({ ...route, ...(replayState === undefined ? {} : { replayState }) }) as unknown as RequestMessageLike
+}
+
+const nextRequest = (assistant: RequestMessageLike, model: string): AnthropicRequest => encodeRequest({
+  provider: 'glm-zcode', model,
+  messages: [
+    { role: 'user', content: [{ type: 'text', text: 'fix the quotes' }] },
+    assistant,
+    { role: 'tool', toolCallId: 'tu1', content: [{ type: 'text', text: 'export {}' }] },
+  ],
+})
+
+test('a stored glm-zcode response replays its reasoning with the signature to the same route only', async () => {
+  const assistant = await assembled(SIGNED_RESPONSE, { provider: 'glm-zcode', model: 'glm-5.3' })
+  assert.deepEqual(nextRequest(assistant, 'glm-5.3').messages[1], { role: 'assistant', content: [
+    { type: 'thinking', thinking: 'quotes are ignored', signature: 'c2lnLTEyMzQ=' },
+    { type: 'text', text: 'Reading.' },
+    { type: 'tool_use', id: 'tu1', name: 'Read', input: { file_path: 'C:/a.ts' } },
+  ] })
+  // Another model: the signature is model-bound, so the signed reasoning is removed (ZCode removeCrossModelReasoning).
+  assert.deepEqual(nextRequest(assistant, 'glm-5.3-flash').messages[1]?.content.map(block => block.type), ['text', 'tool_use'])
+})
+
+test('reasoning without usable replay metadata goes back unsigned; empty shells and reasoning-only turns drop', () => {
+  const content: RequestMessageLike['content'] = [{ type: 'reasoning', text: 'plan' }, { type: 'text', text: 'ok' }, { type: 'tool-call', id: 'tu1', name: 'Read', arguments: '{}' }]
+  const thinkingOf = (assistant: RequestMessageLike): unknown => nextRequest(assistant, 'glm-5.3').messages[1]?.content[0]
+  // Another adapter's history (the runtime already stripped its replay state) and a misaligned envelope.
+  assert.deepEqual(thinkingOf({ role: 'assistant', content, source: { kind: 'model', provider: 'deepseek-account', model: 'deepseek-flash' } }), { type: 'thinking', thinking: 'plan', signature: '' })
+  const misaligned = { response: { kind: 'glm-zcode', version: 1, model: 'glm-5.3' }, blocks: [{ type: 'reasoning', signature: 'sig' }] }
+  assert.deepEqual(thinkingOf({ role: 'assistant', content, source: { kind: 'model', provider: 'glm-zcode', model: 'glm-5.3', replayState: misaligned } }), { type: 'thinking', thinking: 'plan', signature: '' })
+  const foreignKind = { response: { kind: 'pi-ai', version: 1, model: 'glm-5.3' }, blocks: [{ type: 'reasoning', signature: 'sig' }, { type: 'text' }, { type: 'tool-call' }] }
+  assert.equal(replayBlocksOf({ role: 'assistant', content, source: { kind: 'model', provider: 'glm-zcode', model: 'glm-5.3', replayState: foreignKind } }), undefined)
+  // An empty unsigned reasoning block is a stream shell; a turn left with reasoning only drops.
+  assert.deepEqual(encodeMessage({ role: 'assistant', content: [{ type: 'reasoning', text: '' }, { type: 'text', text: 'x' }] })?.content, [{ type: 'text', text: 'x' }])
+  assert.equal(encodeMessage({ role: 'assistant', content: [{ type: 'reasoning', text: 'only' }] }), undefined)
+})
+
+test('a request ending in an assistant turn does not end in thinking (ZCode removeTrailingReasoning)', () => {
+  const request = encodeRequest({ provider: 'glm-zcode', model: 'glm-5.3', messages: [
+    { role: 'user', content: [{ type: 'text', text: 'continue' }] },
+    { role: 'assistant', content: [{ type: 'text', text: 'partial' }, { type: 'reasoning', text: 'more' }] },
+  ] })
+  assert.deepEqual(request.messages.at(-1), { role: 'assistant', content: [{ type: 'text', text: 'partial', cache_control: { type: 'ephemeral' } }] })
 })

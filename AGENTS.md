@@ -29,6 +29,6 @@
 
 ## 文档
 
-- 总体架构与底层设计进 `docs/DESIGN.md`；编排层设计进 `docs/ORCHESTRATION.md`；外部事实进 `docs/FACTS.md`；流程与事故进 `docs/DEVELOPMENT.md`；当前状态进 `docs/HANDOFF.md`。文档地图见 `docs/CHARTER.md` §10。
+- 总体架构与底层设计进 `docs/DESIGN.md`；编排层设计进 `docs/ORCHESTRATION.md`；外部事实进 `docs/FACTS.md`；流程与事故进 `docs/DEVELOPMENT.md`；当前状态进 `docs/HANDOFF.md`。文档地图见 `docs/CHARTER.md` §11。
 - 文档与行为改动同一批提交；被取代的条款整条重写，旧文本留在 git 历史中。
 - 干净区：文件内不写人设、语气词。

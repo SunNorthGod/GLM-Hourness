@@ -14,7 +14,8 @@
  */
 import { isAbsolute, relative, resolve } from 'node:path'
 import type { JsonValue } from '../glm-prompt/json.ts'
-import type { PreExecuteHost } from '../shared/dsh-min.ts'
+import type { PreExecuteHost, ServiceLookup } from '../shared/dsh-min.ts'
+import { baseFor } from './index.ts'
 import { evaluate, fileToolsOnly, renderCorrection, shellCommandOf, type Correction, type GuardRule, type RuleVerdict, type ToolCall } from './rules.ts'
 
 export const GRAPH_FILES_RULE = 'graph-files-only'
@@ -100,14 +101,16 @@ function correction(fact: string, graphDir: string): Correction {
  * directory, or undefined when there is none to protect. Nested transport
  * calls pass, as in the guard row.
  */
-export function installGraphFileGuard(ctx: PreExecuteHost, graphDirFor: (cwd: string | undefined) => string | undefined): () => void {
+export function installGraphFileGuard(ctx: PreExecuteHost & ServiceLookup, graphDirFor: (cwd: string | undefined) => string | undefined): () => void {
   return ctx.on('tools/pre-execute', async (payload, next) => {
     if (payload.parent !== undefined) return next()
     const header = payload.agent?.session?.header.cwd
     const cwd = typeof header === 'string' && header.length > 0 ? header : undefined
     const dir = graphDirFor(cwd)
     if (dir === undefined) return next()
-    const verdict = evaluate([graphFilesOnly(dir, cwd)], { name: payload.name, arguments: (payload.arguments ?? {}) as JsonValue })
+    // Every route: graph integrity is not a GLM discipline (unlike the guard row,
+    // ORCHESTRATION.md §6.2). Relative targets resolve as the file tools resolve them.
+    const verdict = evaluate([graphFilesOnly(dir, baseFor(ctx, payload.agent) ?? cwd)], { name: payload.name, arguments: (payload.arguments ?? {}) as JsonValue })
     return verdict.kind === 'deny' ? { kind: 'deny', reason: renderCorrection(verdict.correction) } : next()
   }, { prepend: true })
 }

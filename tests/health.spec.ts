@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { collectHealth, healthServiceName, HEALTH_ROWS, provideRowHealth, renderHealthTable, sessionIdOf, type HealthRow, type RowHealthView } from '../src/shared/health.ts'
 import { apply as dataApply } from '../src/data/index.ts'
 import { apply as llmApply } from '../src/glm-llm/index.ts'
@@ -23,9 +25,9 @@ const inSession = (store: Store, row: HealthRow, sessionId: string) => {
   return report === undefined ? undefined : { state: report.state, reason: report.reason }
 }
 
-/** An rc.3 agent as tool executions and command invocations carry it: its id equals its session's id. */
-function agentIn(sessionId: string, cwd?: string): AgentLike {
-  return { id: sessionId, ctx: {} as AgentLike['ctx'], session: { id: sessionId, header: { id: sessionId, ...(cwd === undefined ? {} : { cwd }) }, deriveMessages: () => [] } }
+/** An rc.3 agent as tool executions and command invocations carry it: its id equals its session's id; its latest request ran `model` on `provider`. */
+function agentIn(sessionId: string, cwd?: string, provider = 'glm-zcode', model = 'glm-5.3'): AgentLike {
+  return { id: sessionId, ctx: {} as AgentLike['ctx'], session: { id: sessionId, header: { id: sessionId, ...(cwd === undefined ? {} : { cwd }) }, deriveMessages: () => [], requestHeader: () => ({ config: { provider, model } }) } }
 }
 
 /** Silence the warnings of rows configured without a home, until `run` (or the promise it returns) settles. */
@@ -157,13 +159,28 @@ test('data: active with both directories, degraded without the project directory
   assert.ok(activation(taken, 'data').reason.startsWith('数据目录服务未提供'))
 })
 
-test('glm-llm: the registered route at activation; inactive without a home', () => {
+/** Run with `$DSH_HOME` pointed at a directory that does not exist, so no test reads the real credential store. */
+async function withMissingDshHome<T>(run: (dshHome: string) => T | Promise<T>): Promise<T> {
+  const previous = process.env.DSH_HOME
+  const dshHome = join(tmpdir(), 'glm-hourness-health-missing-dsh-home')
+  process.env.DSH_HOME = dshHome
+  try {
+    return await run(dshHome)
+  } finally {
+    if (previous === undefined) delete process.env.DSH_HOME
+    else process.env.DSH_HOME = previous
+  }
+}
+
+test('glm-llm: the registered route and the credential directory at activation; without a home the user-level directory', async () => {
   const store = serviceStore()
   llmApply({ registerAdapter: () => () => {}, ...store }, { home: 'C:/ws/.llm' })
-  assert.deepEqual(activation(store, 'glm-llm'), { state: 'active', reason: '已注册路由 glm-zcode（套餐 coding-plan）' })
-  const bare = serviceStore()
-  quietly(() => llmApply({ registerAdapter: () => () => {}, ...bare }, {}))
-  assert.equal(activation(bare, 'glm-llm').state, 'inactive')
+  assert.deepEqual(activation(store, 'glm-llm'), { state: 'active', reason: '已注册路由 glm-zcode（套餐 coding-plan，凭证目录 C:/ws/.llm）' })
+  await withMissingDshHome(dshHome => {
+    const bare = serviceStore()
+    llmApply({ registerAdapter: () => () => {}, ...bare }, {})
+    assert.deepEqual(activation(bare, 'glm-llm'), { state: 'active', reason: `已注册路由 glm-zcode（套餐 coding-plan，凭证目录 ${join(dshHome, 'glm-hourness')}）` })
+  })
 })
 
 test('glm-llm: a request without a credential reports the session inactive with the login instruction', async () => {
@@ -201,12 +218,14 @@ test('/glm-status prints the credential line, then the health table of the invok
   assert.ok(other.text.includes('| guard | 已加载，本会话未触发 | 已加载 |')) // another session: the guard has not acted there
 })
 
-test('without a home /glm-status stays, says why and reports the row inactive; login and logout are off', async () => {
-  const { commands, run } = quietly(() => loginRow({}))
-  assert.deepEqual(commands.map(command => command.name), ['glm-status'])
-  const result = await run('glm-status', 's1')
-  assert.ok(result.text.startsWith('glm-zcode：未登录（glm-login 行未配置 home，凭证位置未知）\n\n## 行健康（会话 s1）'))
-  assert.ok(result.text.includes('| glm-login | 未生效 | home 未配置，/glm-login 与 /glm-logout 关闭 |'))
+test('without a home the login row uses the user-level directory: all three commands, status reads the store there', async () => {
+  await withMissingDshHome(async () => {
+    const { commands, run } = loginRow({})
+    assert.deepEqual(commands.map(command => command.name).sort(), ['glm-login', 'glm-logout', 'glm-status'])
+    const result = await run('glm-status', 's1')
+    assert.ok(result.text.startsWith('glm-zcode：未登录（套餐 coding-plan）。运行 /glm-login 开始登录\n\n## 行健康（会话 s1）'))
+    assert.ok(result.text.includes('| glm-login | 生效 | /glm-login、/glm-status、/glm-logout 已注册 |'))
+  })
 })
 
 test('glm-prompt: GLM steps report the dialect in effect, other routes report why not, a failed install says so', async () => {
@@ -272,6 +291,8 @@ test('guard: in effect with a session directory and a project directory, degrade
   assert.ok(inSession(store, 'guard', 's4')!.reason.endsWith('；影子兜底：工作区变更记录'))
   await call({ name: 'Read', arguments: {}, agent: agentIn('s3'), parent: 'token' })
   assert.equal(view(store, 'guard').session('s3'), undefined) // transport sub-calls are not the row acting
+  await call({ name: 'Read', arguments: {}, agent: agentIn('s5', 'C:\\ws', 'deepseek-account', 'deepseek-flash') })
+  assert.deepEqual(inSession(store, 'guard', 's5'), { state: 'inactive', reason: '非 GLM 路由 deepseek-account/deepseek-flash，门禁不介入' })
   const bare = preExecuteRow(guardApply as never, { fs: memoryFs })
   await bare.call({ name: 'Read', arguments: {}, agent: agentIn('s1', 'C:\\ws') })
   assert.ok(inSession(bare.store, 'guard', 's1')!.reason.includes('；无项目目录，违规不落盘；'))

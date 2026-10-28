@@ -1,6 +1,8 @@
 # GLM-Hourness bundle patch (DSH Loader dialect). Rows are independent:
 # disable any line and the session degrades gracefully (fail-open).
-# The channel rows and the data row default to this repository's `.llm`
+# The channel rows keep the credential in the user-level directory
+# $DSH_HOME/glm-hourness (default ~/.dsh; docs/DESIGN.md §2.4). The data row
+# defaults its project directory to this repository's `.llm`
 # (USERPROFILE-relative); the user's profile patch overrides per row (it sets
 # `home` for memory, workflow and hourness).
 - insert:
@@ -12,13 +14,11 @@
       name: ./dist/glm-llm/index.js
       disabled: true
       inject: [llm]
-      config:
-        home: !!js "process.env.USERPROFILE + '/Desktop/Project/GLM-Hourness/.llm'"
+      config: {}
     - id: glm-hourness/glm-login
       name: ./dist/glm-llm/login-row.js
       inject: [commands]
-      config:
-        home: !!js "process.env.USERPROFILE + '/Desktop/Project/GLM-Hourness/.llm'"
+      config: {}
     - id: glm-hourness/glm-prompt
       name: ./dist/glm-prompt/index.js
       config: {}

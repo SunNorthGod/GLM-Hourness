@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { ZcodeAdapter, ZcodeLogin, logout } from '../src/glm-llm/zcode.ts'
 import { ZCODE_APP_VERSION } from '../src/glm-llm/identity.ts'
-import { ANTHROPIC_SDK_UA } from '../src/glm-llm/headers.ts'
+import { ANTHROPIC_SDK_UA, requestAttribution, upstreamSessionId } from '../src/glm-llm/headers.ts'
 import { apply as loginApply } from '../src/glm-llm/login-row.ts'
 import { saveCredential, type StoreFs } from '../src/glm-llm/auth/store.ts'
 import type { Credential } from '../src/glm-llm/auth/types.ts'
@@ -87,7 +87,7 @@ test('stream sends image blocks through the attachment service; without it an im
   for await (const _chunk of adapter.stream(options as never)) { void _chunk }
   assert.deepEqual(reads, ['sha256:cccc'])
   const messages = captured.body!.messages as Array<{ content: unknown[] }>
-  assert.deepEqual(messages[0]!.content[1], { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'iVBORw==' } })
+  assert.deepEqual(messages[0]!.content[1], { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'iVBORw==' }, cache_control: { type: 'ephemeral' } })
   const bare = new ZcodeAdapter({ home: 'C:/ws/.llm', fetchImpl: makeUpstream(), storeFs: fs, env: {} as NodeJS.ProcessEnv })
   await assert.rejects(async () => { for await (const chunk of bare.stream(options as never)) void chunk }, /attachment service/)
 })
@@ -129,10 +129,59 @@ test('coding-plan stream walks the full chain: store → headers → unsigned si
   assert.equal(captured.headers!['x-api-key'], 'id.secret')
   assert.equal(captured.headers!['User-Agent'], `ZCode/${ZCODE_APP_VERSION} ${ANTHROPIC_SDK_UA}`)
   assert.ok(captured.headers!['x-session-id'] !== undefined)
+  // ZCode's attribution set: request, session type and trace ids on every request.
+  assert.deepEqual(['x-request-id', 'x-zcode-session-type', 'x-zcode-trace-id', 'x-session-id'].map(name => name in captured.headers!), [true, true, true, true])
+  assert.equal(captured.headers!['x-zcode-session-type'], 'main')
   assert.deepEqual((captured.body!.system as unknown[]), [{ type: 'text', text: 'be brief' }])
+  // metadata.user_id names the deviceMid and the same session id as the header.
+  const userId = JSON.parse((captured.body!.metadata as { user_id: string }).user_id) as Record<string, string>
+  assert.deepEqual(Object.keys(userId), ['device_id', 'account_uuid', 'session_id'])
+  assert.equal(userId.account_uuid, '')
+  assert.equal(userId.session_id, captured.headers!['x-session-id'])
   const text = chunks.filter(chunk => chunk.type === 'block-end').map(chunk => chunk.type === 'block-end' && chunk.block.type === 'text' ? chunk.block.text : '').join('')
   assert.equal(text, 'ok')
   assert.ok(chunks.some(chunk => chunk.type === 'finish' && chunk.reason.kind === 'stop'))
+})
+
+test('x-session-id is one value per DSH session (the gateway cache affinity key); without a session each request gets a fresh one', async () => {
+  const { fs } = memoryStore()
+  await saveCredential(fs, 'C:/ws/.llm/credentials.json', credential)
+  const captured: { headers?: Record<string, string> } = {}
+  const adapter = new ZcodeAdapter({ home: 'C:/ws/.llm', fetchImpl: makeUpstream(captured), storeFs: fs, env: {} })
+  const sessionOf = async (sessionId: string | undefined): Promise<string> => {
+    for await (const chunk of adapter.stream({ ...request(), ...(sessionId === undefined ? {} : { sessionId }) })) void chunk
+    return captured.headers?.['x-session-id'] ?? ''
+  }
+  const uuid = '2770bbd7-1a5c-4734-b10f-c6c6284d63e8'
+  assert.equal(await sessionOf(`session-${uuid}`), uuid)
+  assert.equal(await sessionOf(`session-${uuid}`), uuid) // the next step of the same session
+  assert.equal(await sessionOf('session-0f0f0f0f-1111-4222-8333-444444444444'), '0f0f0f0f-1111-4222-8333-444444444444')
+  const fresh = [await sessionOf(undefined), await sessionOf(undefined)]
+  assert.ok(fresh.every(id => /^[0-9a-f-]{36}$/.test(id)) && fresh[0] !== fresh[1])
+})
+
+test('auxiliary calls (compaction, session title) keep the conversation session and are typed other', async () => {
+  const { fs } = memoryStore()
+  await saveCredential(fs, 'C:/ws/.llm/credentials.json', credential)
+  const captured: { headers?: Record<string, string>, body?: Record<string, unknown> } = {}
+  const adapter = new ZcodeAdapter({ home: 'C:/ws/.llm', fetchImpl: makeUpstream(captured), storeFs: fs, env: {} })
+  const attributionOf = async (purpose: 'compaction' | 'session-title' | undefined): Promise<[string, string, string]> => {
+    for await (const chunk of adapter.stream({ ...request(), sessionId: 'session-conv-1', ...(purpose === undefined ? {} : { purpose }) })) void chunk
+    const userId = JSON.parse((captured.body?.metadata as { user_id: string }).user_id) as { session_id: string }
+    return [captured.headers?.['x-session-id'] ?? '', captured.headers?.['x-zcode-session-type'] ?? '', userId.session_id]
+  }
+  assert.deepEqual(await attributionOf(undefined), ['conv-1', 'main', 'conv-1'])
+  assert.deepEqual(await attributionOf('compaction'), ['conv-1', 'other', 'conv-1'])
+  assert.deepEqual(await attributionOf('session-title'), ['conv-1', 'other', 'conv-1'])
+  assert.deepEqual(requestAttribution(undefined, undefined).sessionType, 'main')
+})
+
+test('upstreamSessionId strips the DSH prefix, keeps other header-safe ids, and replaces unusable ones', () => {
+  assert.equal(upstreamSessionId('session-abc'), 'abc')
+  assert.equal(upstreamSessionId('custom_id:1'), 'custom_id:1')
+  assert.equal(upstreamSessionId('session-'), 'session-')
+  assert.match(upstreamSessionId('has space'), /^[0-9a-f-]{36}$/)
+  assert.match(upstreamSessionId(undefined), /^[0-9a-f-]{36}$/)
 })
 
 test('the DSH system prompt arrives as leading system messages and lands in the system field', async () => {
@@ -209,21 +258,6 @@ test('login row registers the three commands and /glm-login returns the authoriz
   const registered: Array<{ definitionId: string, name: string, handler: (invocation: { rawInput: string }) => Promise<{ kind: string, text: string }> }> = []
   const dispose = loginApply({ commands: { register: definition => { registered.push(definition); return () => {} } } }, { home: 'C:/ws/.llm' })
   assert.deepEqual(registered.map(row => row.name), ['glm-login', 'glm-status', 'glm-logout'])
-  dispose()
-})
-
-test('login row without a home keeps only /glm-status instead of failing activation', () => {
-  const registered: string[] = []
-  const warn = console.warn
-  console.warn = () => {}
-  let dispose: () => void
-  try {
-    dispose = loginApply({ commands: { register: definition => { registered.push(definition.name); return () => {} } } }, {})
-  }
-  finally {
-    console.warn = warn
-  }
-  assert.deepEqual(registered, ['glm-status'])
   dispose()
 })
 

@@ -37,7 +37,7 @@ GLM-Hourness
 
 | 行 id | 入口 | 层 | 现状 |
 | --- | --- | --- | --- |
-| `glm-hourness/glm-llm` | `dist/glm-llm/index.js` | 通道 | 真网冒烟通过〔实测〕；DSH 真实会话尚未使用过〔实读审计数据〕 |
+| `glm-hourness/glm-llm` | `dist/glm-llm/index.js` | 通道 | 真网冒烟通过〔实测〕；2026-10-28 桌面版 L4 真实会话通过（GLM-5.3 多轮工具调用、GLM-5.3-Flash 收图）〔实读会话记录〕；凭证目录见 §2.4 |
 | `glm-hourness/glm-login` | `dist/glm-llm/login-row.js` | 通道 | `/glm-login`、`/glm-status`（凭证状态与行健康表，§2.5）、`/glm-logout` |
 | `glm-hourness/glm-prompt` | `dist/glm-prompt/index.js` | 方言 | 见 §5；另带高峰提醒（本项目的 notice，`ORCHESTRATION.md` §11.4） |
 | `glm-hourness/glm-compact` | `dist/glm-prompt/compact-row.js` | 方言 | 见 §5.6 |
@@ -63,7 +63,7 @@ GLM-Hourness
 
 | 数据 | 位置 | 理由 |
 | --- | --- | --- |
-| 用量流水；以后还有凭证、deviceMid、偏好类记忆 | 用户级目录 `$DSH_HOME/glm-hourness/`，默认 `C:\Users\29596\.dsh\glm-hourness\` | 额度跟账号走，一台机器一份，按项目拆开反而看不全 |
+| 用量流水、加密凭证、deviceMid；以后还有偏好类记忆 | 用户级目录 `$DSH_HOME/glm-hourness/`，默认 `C:\Users\29596\.dsh\glm-hourness\` | 额度跟账号走，一台机器一份，按项目拆开反而看不全 |
 | 记忆（事实）、违规、决策 | 项目目录，即工作区 `.llm/` | 记录的是在这个项目里学到的东西与犯过的错，混在一起会互相污染 |
 | 项目图 | 仓库内 | 项目知识，随 git 版本化（`ORCHESTRATION.md` §2.6） |
 
@@ -79,7 +79,10 @@ GLM-Hourness
 
 迁移〔2026-10-28〕：从 `~/.dsh/profiles/desktop/.llm/`（只读）与仓库 `.llm/audit/usage.jsonl` 复制，按整行去重。用户级用量流水共 1080 条：仓库 890 条加旧目录 190 条，两者没有重复，按时间排序，最晚一条 2026-10-27T12:29:08.993Z。旧目录的 1 条记忆（`glm-hourness-handoff`）并入仓库 `.llm/memory.json`；旧目录的 3 条决策在仓库决策流水里都已存在。源文件未改动，旧目录的删除由用户决定（`ROADMAP.md` §3）。桌面版重启加载新代码之前，运行中的旧代码仍会把用量追加到仓库 `.llm/audit/usage.jsonl`，重启后需补拷一次（`ROADMAP.md` §3）。
 
-凭证与 deviceMid〔定案 2026-10-28，用户选 A〕：保留加密凭证文件，搬到 `$DSH_HOME/glm-hourness/`，deviceMid 随行；在原生通道的 L4 验收之后再搬，本条目不改 `glm-llm` / `glm-login` 的 `home`。加密密钥由 `GLM_HOURNESS_CREDENTIAL_SECRET` 或 `HOME`/`USERPROFILE`、平台、架构推导（§4.1，`src/glm-llm/auth/store.ts`），与文件路径无关，搬家后同一台机器照样能解密。
+凭证与 deviceMid〔定案 2026-10-28，用户选 A；已实现 2026-10-28，L4 验收之后〕：保留加密凭证文件，搬到 `$DSH_HOME/glm-hourness/`，deviceMid 随行。加密密钥由 `GLM_HOURNESS_CREDENTIAL_SECRET` 或 `HOME`/`USERPROFILE`、平台、架构推导（§4.1，`src/glm-llm/auth/store.ts`），与文件路径无关，搬家后同一台机器照样能解密。
+
+- 解析：`glm-llm` 与 `glm-login` 的 `home` 改为可选，`credentialHome(home)`（`src/shared/data-home.ts`）取非空的行 `home`，否则取用户级目录。两行不读数据目录服务：通道行激活时数据行可能还没激活，而凭证目录在激活时就要定下来。bundle patch 删去两行的 `home`；探针与测试仍显式传 `home` 指向临时目录。
+- 文件：两份文件已复制到 `C:\Users\29596\.dsh\glm-hourness\`，与仓库 `.llm/` 里的原件逐字节相同。原件保留到桌面版重启、确认新代码从用户级目录读到凭证之后再删（`ROADMAP.md` §3）：重启前运行中的旧代码仍读写仓库 `.llm/`，期间若重新登录，删之前要先把较新的一份补拷过去。
 
 ### 2.4a 运行时契约来源〔实读 2026-10-27〕
 
@@ -147,6 +150,8 @@ GLM-Hourness
 | --- | --- | --- | --- |
 | agent：`id`（与会话共用）、`ctx`（作用域上下文）、`session` | glm-prompt、guard、工具检索 | agent-loop:748–781 | 类型偏差已修：结构类型里的 `model` 成员在 rc.3 不存在，删除 |
 | session：`id`（取自 `header.id`）、`header{id, createdAt, cwd?, parentSession?, isSeeded}`、`deriveMessages()` | guard（`header.cwd` 作包含根）、工具检索、todo 提醒 | session:1344–1346、session:1820–1826、session:1672–1686 | 一致 |
+| session：`requestHeader()`，日志里 `request/header` 事件的折叠，`config` 为该步准备好的调用配置（含 `provider`、`model`）；第一次请求之前为 undefined | guard（工具调用的路由，`src/shared/route.ts` `sessionRoute`） | session:1612、session:637（`foldRequestHeader`）、`canonicalHeader`；agent 循环每步调用模型之前写入，变化时才写，agent-loop:1218–1240 | 一致（2026-10-28 核对；L3 探针的 GLM 拦截与非 GLM 放行经它判路由） |
+| `workingDirectory.get(session)`：会话的当前工作目录，无 I/O；没有记录时取部署默认目录 | guard（相对路径的解析基准，`ctx.get` 读） | working-directory:76–78；文件工具按 `ensure(agent)` 的结果解析相对路径，tool-fs:172、fs-local `localDisplayPath`（win32 上为 `resolve(cwd, path)`） | 一致 |
 | 派生消息：助手消息 `source{kind: 'model', provider, model}`，工具调用为 `tool-call` 块；工具结果带 `toolCallId`、`isError` | todo 提醒、工具检索 | llm:66–78（`createAssistantMessage`），session:862–868、session:1217–1218 | 一致 |
 | 合成 notice 与 `createUserMessage` 同形（`id`、`role: 'user'`、冻结） | 工具检索公告、todo 提醒、每步投影 | llm:37–66 | 一致 |
 | 压缩检查点：替换被摘要区间的用户消息，`source{kind: 'compact-checkpoint', compactionId, sourceCommandId?}` | 每步投影（重锚） | compaction:109、compaction:116–122；compaction-basic:595–598 | 一致 |
@@ -187,23 +192,23 @@ GLM-Hourness
 - 会话以 agent id 为键（rc.3 的 agent 与会话共用 id）：组装与工具调用取调用方 agent，`llm/stream` 一侧取请求的 `sessionId`，命令取调用参数里的 `agent`（commands:379–385）。没有会话 id 的报告丢弃。
 - 报告只在主机进程内存里，不写文件，不进模型可见的对话；桌面版重启后清空。
 
-状态分生效、部分生效、未生效三种；表里另有「已加载，本会话未触发」与「未加载」。激活时就未生效的行（例如缺 `home`）不看会话报告，直接显示激活原因；`glm-login` 与 `data` 不按会话起作用，只显示激活状态。
+状态分生效、部分生效、未生效三种；表里另有「已加载，本会话未触发」与「未加载」。激活时就未生效的行（例如数据目录服务提供失败）不看会话报告，直接显示激活原因；`glm-login` 与 `data` 不按会话起作用，只显示激活状态。
 
 | 行 | 何时上报 | 生效 | 部分生效或未生效的原因 |
 | --- | --- | --- | --- |
-| glm-llm | 激活；每次请求 | 已注册路由；上游已应答 | `home` 未配置；未登录（凭证为空）；凭证不可读；上游返回非 2xx 状态码 |
-| glm-login | 激活 | 三个命令已注册 | `home` 未配置：只保留 `/glm-status`，`/glm-login`、`/glm-logout` 关闭 |
+| glm-llm | 激活；每次请求 | 已注册路由，写明套餐与凭证目录；上游已应答 | 未登录（凭证为空）；凭证不可读；上游返回非 2xx 状态码 |
+| glm-login | 激活 | 三个命令已注册 | 无（凭证目录总能解析，§2.4） |
 | glm-prompt | 激活；每步组装 | GLM 路由，ZCode 提示词与工具面，工具检索 local 或关闭 | 非 GLM 路由；工具检索未安装（会话历史不可读，部分生效）；方言安装失败 |
 | glm-compact | 激活；每次压缩请求 | GLM 压缩请求改用 ZCode 指令与摘要格式 | 非 GLM 路由；未识别 compaction-basic 的指令（原样放行） |
 | data | 激活 | 用户级目录与项目目录都已解析 | 项目目录未配置（部分生效）；服务提供失败 |
-| guard | 激活；每次根调用 | 门禁生效，写明圈禁根、违规目录与影子兜底是否可用 | 会话没有工作目录（圈禁规则跳过）；无项目目录（违规不落盘）。组合里没有 workspace-changes 时说明写「影子兜底未启用」，状态不降级：影子兜底只记录，门禁本身不受影响 |
+| guard | 激活；每次根调用 | GLM 调用：门禁生效，写明圈禁根、违规目录与影子兜底是否可用 | 非 GLM 路由或路由未知（未生效，门禁不介入，`ORCHESTRATION.md` §6.2）；会话没有工作目录（圈禁规则跳过）；无项目目录（违规不落盘）。组合里没有 workspace-changes 时说明写「影子兜底未启用」，状态不降级：影子兜底只记录，门禁本身不受影响 |
 | memory | 激活；每次模型调用 | 用量记入用户级目录，记忆工具可用 | 数据目录行未启用（用量不记录）；`home` 未配置（记忆工具关闭） |
 | workflow | 激活；每次根调用 | 派遣决策记入项目目录 | 无项目目录 |
 | hourness | 激活；每次 `/hourness` | 两个目录都可读 | 缺项目目录或用户级目录 |
 
 UI 包的行运行在客户端，不在表内。
 
-`/glm-status` 的第一行仍是凭证状态（设置页按它解析登录状态），空一行后是 Markdown 表。`glm-login` 没有 `home` 时只注册 `/glm-status`，凭证行写明凭证位置未知。设置页目前把整段文本原样显示，表格的界面呈现属于 M8。
+`/glm-status` 的第一行仍是凭证状态（设置页按它解析登录状态），空一行后是 Markdown 表。设置页目前把整段文本原样显示，表格的界面呈现属于 M8。
 
 验证：L2 覆盖每行的上报与 `/glm-status` 的输出（`tests/health.spec.ts`；通道请求的三种结果在 `tests/glm-zcode.spec.ts`）。L3 探针在 GLM、非 GLM、压缩三个场景的最后一步调用本包真实的 `/glm-status` 处理函数，检查表列出全部 9 行、各行状态与原因符合路由，并确认表的内容没有进入任何模型请求。探针里 `glm-llm` 显示未加载：bundle 默认禁用该行，探针用的是脚本化 provider。
 
@@ -219,6 +224,8 @@ UI 包的行运行在客户端，不在表内。
 4. 只对准 rc.3 的可靠信号；兼容旧构建的分支删除。
 5. 单测里的假宿主必须给出与 rc.3 相同的信号，不得提供真宿主不提供的路由字段。
 
+第二个信号〔2026-10-28，L4 之后〕：没有组装结果的钩子（工具执行）读会话的请求头折叠 `session.requestHeader().config`（`sessionRoute`，§2.4a 接口对照表）。agent 循环在每步调用模型之前写请求头，所以工具执行时它就是发出这次调用的那一步的路由。guard 按它只拦 GLM 调用（`ORCHESTRATION.md` §6.2）。不另建按 agent 记录路由的跟踪器：两个信号都来自运行时自己的记录，跟踪器是第二份状态。
+
 实现：`src/shared/route.ts`（`isGlmModel`、`assemblyRoute`）；`glm-prompt` 在 `agent/created` 时于 agent 作用域注册别名，并注册一个 prepend 组装监听器，在 `next()` 之后按本次请求的路由改写提示词节与工具面，不再调用 `restrict()`，也不再挂载 / 卸载。同一步里的其他钩子读的是该监听器本步的判定（todo 提醒读「GLM 路由且工具面有 TodoWrite」，§5.5）；原先按 agent 记录路由的 `createRouteTracker` 随 todo 提醒改到 `agent/pre-step` 后不再有使用者，已删除（2026-10-28）。单测替身 `tests/fake-rc3.ts` 只提供 rc.3 的接口。L3 探针 9/9：GLM 路由得到 ZCode 身份与别名面、`Read` 别名真实执行；非 GLM 路由保持 DSH 原文与原生工具。工具检索在同一个组装监听器里、别名改写之后执行（§5.7），探针扩到 15 项，全部通过。
 
 ## 4. 通道
@@ -228,7 +235,7 @@ UI 包的行运行在客户端，不在表内。
 ### 4.1 凭证与登录
 
 - 登录：ZCode 账号体系的 bigmodel 轮询登录（`/glm-login` 打开浏览器授权，5 分钟超时），解析出套餐 API Key，名称与 ZCode 客户端一致（`zcode-api-key`），两者共用同一把 Key〔实读〕。
-- 存储：`<home>/credentials.json`，AES-256-GCM，原子写入〔实读〕。
+- 存储：`<home>/credentials.json`，AES-256-GCM，原子写入〔实读〕。`home` 默认是用户级目录 `$DSH_HOME/glm-hourness/`（§2.4）。
 - 风险：加密密钥由 `HOME`/`USERPROFILE`、平台与架构推导，看过源码即可算出；`GLM_HOURNESS_CREDENTIAL_SECRET` 可覆盖。凭证文件不入库，当前可接受。后续迁到系统钥匙串或 DSH 凭证服务〔规划〕。
 
 ### 4.2 身份头
@@ -247,7 +254,7 @@ LLM 平面（bundle `g6n` 形态）：`HTTP-Referer`、`User-Agent: ZCode/<ver>`
 
 移植自 zcode-api 的 `client-signing`（对应 ZCode 3.15.1 `ClientRequestSigningV4Signer`）：握手 `POST /api/paas/c1f3a7e2/v2/client` → HKDF 派生 → Ed25519 业务签名 + PoW → 七个签名头。start-plan 与 off-peak 路径不签名。失败梯：握手失败无签发送；连续两次 401 VERIFY 拒绝后对该（origin, credential）永久旁路〔实读〕。
 
-现状：握手对当前凭证失败，按设计无签发送，请求成功〔实测〕。签名对 coding-plan 1.5 倍用量的影响未验证。要求：签名结果对系统可见，即状态里显示签名情况，每条用量记录标注是否签名（条款 7）〔规划〕。
+现状：握手对当前凭证失败，按设计无签发送，请求成功〔实测〕。2026-10-28 截包：握手经端点路由发往 `zcode.z.ai/api/paas/c1f3a7e2/v2/client`，每次返回 404；失败梯不缓存握手失败，每个模型请求之前都重试一次，约 90 毫秒（§4.5b）。签名对 coding-plan 1.5 倍用量的影响未验证。要求：签名结果对系统可见，即状态里显示签名情况，每条用量记录标注是否签名（条款 7）〔规划〕。
 
 ### 4.4 端点路由
 
@@ -260,7 +267,7 @@ LLM 平面（bundle `g6n` 形态）：`HTTP-Referer`、`User-Agent: ZCode/<ver>`
 - 状态：coding-plan 端到端真网成功，模型返回 `pong`〔实测，`scripts/smoke-zcode-authorized.mjs`〕；start-plan 只有单测。
 - 系统提示词：DSH 把组装好的系统提示词作为历史开头的 `system` 消息下发，`GenerateOptions.system` 为空〔L3 探针实测〕。编码器把请求级文本与开头的全部 `system` 消息依次合并进 Anthropic 的 `system` 字段（与 DSH 自带 pi-ai 适配器同一规则）；之后出现的 `system` / `developer` 消息作为 `<system-reminder>` 包裹的用户轮发送。适配器不声明 `systemPromptUpdate: 'in-history'`，提示词变化时由 DSH 改写开头那条消息〔已实现 2026-10-27〕。此前编码器丢弃全部 `system` 消息而适配器又声明 in-history，原生通道在 DSH 会话里会发出没有系统提示词的请求；冒烟脚本直接传 `system` 参数，所以没有暴露。
 - 消息编码〔已实现 2026-10-28，`src/glm-llm/anthropic.ts`〕：按 rc.3 的消息形状（`dsh-llm` `ContentBlockMap`）逐块编码，块序不变，空文本块丢弃，与 ZCode 的 AI SDK 转换一致：
-  - 助手消息：`text` 块发文本，`tool-call` 块发 `tool_use`（参数解析失败时为 `{}`）；`reasoning` 块在本通道没有可回放的签名，不回传。
+  - 助手消息：`text` 块发文本，`tool-call` 块发 `tool_use`（参数解析失败时为 `{}`）；`reasoning` 块按 §4.5c 作为 thinking 块回传（2026-10-28 之前不回传）。
   - 工具结果：`tool_result`，纯文本结果为一个字符串，空结果为 `(no output)`；失败结果带 `is_error: true`（ZCode 的 error-text 输出）；带图片的结果见 §4.5a。
   - 用户消息：文本块各自成块；没有内容时发 ZCode 的占位 `(no content)`（3.16.3 安装包 `toAiSdkUserContent`），不再发空文本块。
   - 相邻同角色的消息合并为一轮，与 ZCode 经 AI SDK Anthropic provider 发出的形态一致：并行调用的多个工具结果与其后的提醒落在同一个用户轮里。
@@ -275,6 +282,57 @@ LLM 平面（bundle `g6n` 形态）：`HTTP-Referer`、`User-Agent: ZCode/<ver>`
 - 附件服务与 `fs` 服务按请求经 `ctx.get` 读取，不注入（与 pi-ai 相同）；请求带图片而附件服务不存在时，请求失败并说明原因。
 - 请求级图片预算：本通道不发 `IMAGE_OFFLOAD_REQUIRED`。ZCode 没有请求级的图片总量上限，GLM 端点的上限未知（§9）。
 - 验证：编码器与适配器单测；L3 探针在 GLM-5.3-Flash 上读 PNG，探针 provider 用本通道的真实编码器与运行时附件服务编码同一请求，图片以 base64 PNG 出现在 `tool_result` 中；真网一次（coding-plan，`glm-5.3-flash`，32×32 纯红 PNG，问颜色），模型答「Red」，用量输入 41、输出 32 token〔实测 2026-10-28〕。只有一次请求，猜中的可能不能完全排除。
+
+### 4.5b 提示词缓存〔实测 2026-10-28〕
+
+缓存的形态〔实测，coding-plan，`glm-5.3` 与 `glm-5.3-flash`〕：
+
+- 隐式前缀缓存，按 64 token 一块对齐。命中只覆盖此前请求的提示词，不含输出：工具循环里第 N 步的命中最多是第 N−1 步提示词长度向下取整到 64 的倍数（下称「最新前缀」）。回放 thinking 不能把命中延伸到上一步的输出。
+- 网关按 `x-session-id` 做缓存亲和路由。同一会话的请求落到同一处，就命中最新前缀；落到别处，只能命中那里已有的前缀：同一会话更早的一步、其他会话共用的系统提示词与工具段（标定里是 8192、8256、8320、6784 这几个值），或者什么都没有。
+- 会话的请求是只追加的：在无头沙盒里截下每次请求的系统提示词、工具定义与每条消息的摘要，相邻两步只在末尾新增消息（2026-10-28，3 次运行、21 次请求）。所以没命中最新前缀的原因在服务端（路由或缓存是否可用），不在请求内容。
+- 端点在缓存字段上的口径：`cache_read_input_tokens` 是命中数，`input_tokens` 只算未命中部分，`cache_creation_input_tokens` 不出现（§4.6a）。
+
+原因与处置：
+
+1. 已修：原生通道每个请求随机生成 `x-session-id`（zcode-api 原本按会话固定，移植时丢了；ZCode 3.16.3 每个请求都带会话 id）。现在取 DSH 会话 id，去掉 `session-` 前缀（`upstreamSessionId`），同一会话的全部请求同值，压缩与会话标题请求也一样。辅助请求（压缩、会话标题）的 `x-zcode-session-type` 是 `other`，这是 ZCode 给非对话步的类型；实测会话类型不参与亲和（压缩形态的请求标 `other` 与 `main` 各 8 次，都命中最新前缀）。
+2. 未解决：GLM-5.3-Flash 在会话的第二步仍常常只命中其他会话共用的前缀（6784、8256、8320），从第三步起全部命中最新前缀；GLM-5.3 没有这个现象。每次损失约 4k token 的缓存。试过的假设：DSH 在第一步的同时发出会话标题请求，带同一个会话 id，Flash 起标题时也在思考，两者并发。单独实验里标题请求让第二步 11 次中 2 次整段未命中（没有标题请求 11 次全中），于是让标题请求另起会话 id（`0814234`）；随后的完整标定里，6 个 Flash 会话仍有 4 个在第二步没命中（改前是 5 个），假设不成立，已撤回（`8a08c1f`）。剩下的推测：新会话第一步写入的缓存在第二步到达时还没有就绪（BigModel 文档写缓存「异步生效」），Flash 的第一步从零写入整段约 12k token，GLM-5.3 的第一步已命中共用前缀，写入少；未验证。
+
+实测记录（统计后续请求是否命中最新前缀）：
+
+| 场景 | 变体 | 命中最新前缀 | 整段未命中 | 部分命中 |
+| --- | --- | --- | --- | --- |
+| 8 步工具循环，glm-5.3-flash，约 14k token，3 个会话 | 每请求随机 `x-session-id`（修复前） | 11/24 | 7 | 6 |
+| 同上 | 随机 `x-session-id`，请求体按 ZCode（`metadata.user_id`、thinking 回放、末条缓存断点） | 12/24 | 4 | 8 |
+| 同上 | 固定 `x-session-id`，请求体不变 | 24/24 | 0 | 0 |
+| 同上 | 固定 `x-session-id`，请求体按 ZCode | 24/24 | 0 | 0 |
+| 标题请求与第一步并发，glm-5.3-flash，只看第二步 | 标题用会话的 `x-session-id` | 9/11 | 2 | 0 |
+| 同上 | 没有标题请求 | 11/11 | 0 | 0 |
+| 标定（DSH 真实运行，每格 3 次），修复前（`4cb8799`） | glm-5.3 / glm-5.3-flash | 46/46、29/45 | 0、4 | 0、12 |
+| 标定，只固定会话 id（`8a212cd` 的代码） | glm-5.3 / glm-5.3-flash | 42/42、41/46 | 0、2 | 0、3 |
+| 标定，全部修改，标题另起会话 id（`0814234`） | glm-5.3 / glm-5.3-flash | 46/47、36/40 | 0、0 | 1、4 |
+
+Flash 没命中的位置：修复前第二步 4 次、之后各步 12 次；固定会话 id 后第二步 5 次、之后 0 次；`0814234` 第二步 4 次、之后 0 次。GLM-5.3 在 `0814234` 那 1 次比最新前缀少 64 token。修复前的桌面版 L4 会话（GLM-5.3，2026-10-28）17 次后续请求里有 2 次整段未命中、3 次只命中更早的一步。
+
+缓存断点 `cache_control`：BigModel 文档写的是隐式缓存，实测有无断点命中相同（上表第 1、2 行；另有 3 个两步对照）。为了与 ZCode 的请求形态一致，最后一条消息的最后一块带断点（zcode-api `applyAnthropicCacheControl`）。系统提示词没有按 ZCode 拆成 cli_prefix、stable、dynamic 三块（ZCode 后两块带断点）：coding-plan 下本通道只发一块，拆分要在方言里标出分界，命中不受影响，暂不做（§5.8 #14）。
+
+同批补上的请求细节（与缓存无关，按 ZCode）：每个请求都带 `x-request-id`、`x-zcode-session-type`、`x-zcode-trace-id`（3.16.3 `createModelRequestAttributionHeaders`）；请求体带 `metadata.user_id`，即 `{device_id, account_uuid: "", session_id}`，会话 id 与请求头相同（`createAnthropicRequestMetadataUserId`）。
+
+截包顺带看到：签名握手 `POST zcode.z.ai/api/paas/c1f3a7e2/v2/client` 每次都返回 404，适配器在每个请求前都重试一次握手（约 90 毫秒），随后无签发送；端点路由把请求改写到 `zcode.z.ai/api/v1/ultra/anthropic/v1/messages`（§4.3、§4.4）。
+
+### 4.5c 保留式思考〔已实现 2026-10-28〕
+
+BigModel 的思考文档写明：保留式思考在 Coding Plan 端点默认开启，要把完整、未修改的 reasoning 原样传回，否则效果与缓存命中都会下降；交错思考加工具时，必须在返回工具结果时一并返回 reasoning（`.llm/docs/_bigmodel_md/cn__guide__capabilities__thinking-mode.md`）。ZCode 照此回放（3.16.3 `adapters/src/model/reasoning-history-normalization.ts`、`anthropic-reasoning-metadata.ts`）。本通道此前丢弃全部 reasoning。
+
+- 实测〔2026-10-28，coding-plan〕：GLM 只在需要时思考（简单的工具调用请求没有 thinking 块）；thinking 块在 `content_block_start` 带空的 `signature` 字段，签名经 `signature_delta` 送达，24 个字符。端点不校验签名：正确签名、空签名、无签名字段、乱码签名、改过正文的原签名、外来正文加空签名，六种回放全部 200。
+- 解码：每个 thinking 块的签名记进 DSH 的回放信封（`finish.replayState`，`{response: {kind: 'glm-zcode', version: 1, model}, blocks}`，每个发出的块一项，按首次出现的顺序；DSH 自带的 deepseek-messages 适配器用同一形状）。只有出现过 reasoning 块的响应才带信封。开始事件上已有签名时也认，随后的 `signature_delta` 替换它（ZCode `anthropic-stream-compat` 的兼容处理）。助手消息由运行时组装时，信封随消息存进 `source.replayState`；不归本适配器的历史路由，运行时会先剥掉信封（rc.3 `LlmRuntime.forAdapter`）。
+- 编码，按 ZCode 的历史归一化：
+  - 信封可用（kind、version、模型与消息来源一致，块数与类型逐项对齐）且消息来自同一路由（provider 与模型都相同）时，reasoning 带原签名回放。
+  - 带签名的 reasoning 只回给签发它的路由；换了模型就删掉（ZCode `removeCrossModelReasoning`：签名绑定模型）。
+  - 没有签名的 reasoning（本次改动之前的历史、信封对不上、其他适配器的历史）以空签名回放（ZCode 用空签名表示保留的未签名 thinking）。
+  - 空正文且无签名的 reasoning 是流里的空壳，丢弃；只剩 reasoning、没有文本与工具调用的助手消息整条丢弃；请求以助手轮结尾时，去掉结尾的 thinking 块（ZCode `removeReasoningOnlyAssistants`、`removeTrailingReasoning`）。
+- 与 ZCode 的差异：ZCode 在端点以签名错误拒收时会删掉带签名的 reasoning 重试一次（`repairReasoningHistoryAfterSignatureRejection`）。端点实测不校验签名，本通道没有移植这一步；若出现点名 thinking 签名的 400，再移植。
+- 对缓存与成本的影响：命中率不变，输入变多。缓存只存提示词，不存输出（§4.5b），所以上一步的 reasoning 在下一步是未命中的输入，再往后才进缓存。标定（每格 3 次）每次调用的平均值，只固定会话 id 时与加上回放后相比：GLM-5.3-Flash 未命中输入 2294 → 2582、命中输入 10218 → 12203、输出 567 → 702；GLM-5.3 未命中输入 987 → 937（它的 reasoning 很短）。Flash 的输出也变多了，积分的差别不能全算在回放上。BigModel 文档说保留式思考提高效果与命中率；命中率的说法与实测不符，效果在两个起步任务上看不出（两次都是 12/12 完成）。升级后已有会话的第一次请求，历史里多出 reasoning，前缀与上一次不同，会有一次未命中。
+- 验证：解码与编码单测，其中一条用 rc.3 真实的 `BlockAssembler` 组装解码结果，再编码下一次请求，确认签名回到同一路由、换模型时删除（`tests/glm-transport.spec.ts`）；真网一次完整往返（真实适配器加 `BlockAssembler`，glm-5.3）：第二步发出 `thinking`（64 字符，24 字符签名）、`text`、`tool_use`，端点接受。
 
 ### 4.6 模型目录与思考档位
 
@@ -448,8 +506,10 @@ L3 探针：沙盒里把压缩阈值调低，摘要请求末条是 ZCode 提示�
 | 11 | 身份头、签名、路由 | 通道 | glm-llm | 已实现，版本待统一 |
 | 12 | 模型目录、登录 | 通道 | glm-llm、glm-login | 已实现 |
 | 13 | 日期与输出风格提醒族 | 方言 | 低成本可选 | 未实现 |
-| 14 | 缓存断点参数 | 通道 | 低优先级 | 未实现 |
+| 14 | 缓存断点参数 | 通道 | 末条消息带断点；系统块按 ZCode 拆三块未做，实测不影响命中（§4.5b） | 部分实现 2026-10-28 |
 | 16 | thinking 与采样参数 | 通道 | effort 三档、thinking 时剥采样参数 | 已实现 effort |
+| 17 | 保留式思考：历史中的 reasoning 带签名回传 | 通道 | 签名只回同一路由；ZCode 的签名拒收重试未移植（端点不校验，§4.5c） | 已实现 2026-10-28 |
+| 18 | 请求归因：会话 id、会话类型、请求与追踪 id、`metadata.user_id` | 通道 | 会话 id 取 DSH 会话（§4.5b），辅助请求标 `other`；子 agent 仍标 `main`，DSH 请求不带父会话信息 | 已实现 2026-10-28 |
 
 第 1、2、4、6、8 项的文本对齐状态以 §5.9 为准。
 
@@ -526,7 +586,7 @@ L3 探针：沙盒里把压缩阈值调低，摘要请求末条是 ZCode 提示�
 | workflow / hourness | 无记录、无报告 | 行健康 |
 | graph | 没有图工具、每步投影与图文件门禁；图目录缺失或图有校验错误时，工具照常注册并把问题报给模型，投影注入一条说明；读图抛错时本步不带投影；会话没有工作目录时门禁只判断绝对路径 | 告警、工具错误；行健康尚未接入（§2.5 的行表没有 graph，合入 main 后补，`ROADMAP.md` M2 进度） |
 
-激活期（`apply`）不抛错：配置缺失降级为 warn 与 no-op，因为激活失败会拖垮宿主启动（2026-10-27 事故）。降级必须上报，不得只打一行警告（`CHARTER.md` §6.1 条款 7）。
+激活期（`apply`）不抛错：配置缺失降级为 warn 与 no-op，因为激活失败会拖垮宿主启动（2026-10-27 事故）。降级必须上报，不得只打一行警告（`CHARTER.md` §7.1 条款 7）。
 
 ## 8. 契约与适配层
 

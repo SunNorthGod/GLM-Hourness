@@ -31,7 +31,18 @@ export type StreamChunk =
   | { type: 'tool-call-delta'; index: number; id: string; name?: string; argumentsDelta: string }
   | { type: 'block-end'; index: number; block: { type: 'text', text: string } | { type: 'reasoning', text: string } | { type: 'tool-call', id: string, name: string, arguments: string } }
   | { type: 'usage'; usage: TokenUsage }
-  | { type: 'finish'; reason: FinishReason }
+  | { type: 'finish'; reason: FinishReason; replayState?: ReplayEnvelopeLike }
+
+/**
+ * Adapter-private replay metadata on a terminal `finish` chunk (dsh-llm
+ * `ReplayEnvelope`): `blocks` holds one entry per emitted block in
+ * first-seen order; the assembler stores the envelope on the assistant
+ * message's source and drops it when the entries do not align.
+ */
+interface ReplayEnvelopeLike {
+  response: unknown
+  blocks?: readonly unknown[]
+}
 
 export interface ToolSchemaLike {
   name: string
@@ -89,6 +100,13 @@ export type ContentBlockLike =
 export interface RequestMessageLike {
   role: 'system' | 'user' | 'assistant' | 'tool' | 'developer'
   content: readonly ContentBlockLike[]
+  /**
+   * Assistant messages: the route that produced them and its replay
+   * metadata (dsh-llm `ModelMessageSource`). The runtime strips `replayState`
+   * when another adapter owns the historical provider (rc.3 dsh-llm
+   * `LlmRuntime.forAdapter`).
+   */
+  source?: { kind: string, provider?: string, model?: string, replayState?: unknown }
   /** Tool-role messages: the provider-issued id of the call this result answers. */
   toolCallId?: string
   /** Tool-role messages: whether the invocation failed. */

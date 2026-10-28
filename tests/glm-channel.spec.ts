@@ -34,8 +34,10 @@ test('image services come from ctx.get lazily and are absent without the service
   assert.equal(imageServices({}).resolveAttachments(), undefined)
 })
 
-test('a missing home degrades to a no-op instead of failing activation', () => {
-  const dispose = apply({ registerAdapter: () => () => {} }, {})
+test('without a home the route still registers (the credential directory defaults to the user-level directory)', () => {
+  const registered: string[][] = []
+  const dispose = apply({ registerAdapter: providers => { registered.push([...providers]); return () => {} } }, {})
+  assert.deepEqual(registered, [['glm-zcode']])
   assert.equal(typeof dispose, 'function')
   dispose()
 })
@@ -46,5 +48,5 @@ test('Config schema exposes home/plan/provider with coding-plan default', () => 
   assert.ok(json.includes('glm-zcode'))
   assert.ok(json.includes('coding-plan'))
   assert.ok(json.includes('start-plan'))
-  assert.ok(json.includes('.llm'))
+  assert.ok(json.includes('<DSH home>/glm-hourness'))
 })

@@ -18,19 +18,26 @@
  * workspace-changes summary with the turn's file-tool targets and records,
  * never blocks, files a shell call changed unseen (src/guard/shadow.ts).
  *
+ * Scope (ORCHESTRATION.md §6.2): GLM calls only. The route of a tool call is
+ * the session's latest request header (src/shared/route.ts `sessionRoute`):
+ * the model that issued the call. Other models' calls, and calls without an
+ * agent, pass untouched.
+ *
  * Containment roots come from config, else the calling Agent's immutable
  * session directory (session.header.cwd), else the containment rule is
  * skipped for that call — never the plugin process cwd, which is the harness
  * install directory, not the workspace, and never a throw at activation.
+ * Relative targets resolve against the session's working directory, as the
+ * file tools resolve them.
  */
 import { evaluate, fileToolsOnly, renderCorrection, workspaceContainment, type GuardRule, type ToolCall } from './rules.ts'
 import { shadowFallback, type ShadowRecord } from './shadow.ts'
 import { rowJournal, type AuditFs } from '../memory/audit.ts'
 import { dataHomes } from '../shared/data-home.ts'
 import { provideRowHealth, sessionIdOf, type HealthState } from '../shared/health.ts'
-import { assemblyRoute, isGlmModel } from '../shared/route.ts'
+import { assemblyRoute, isGlmModel, sessionRoute, type Route } from '../shared/route.ts'
 import type { JsonValue } from '../glm-prompt/json.ts'
-import type { AgentLike, AssembledSection, PluginContext, PreExecuteHost, ProvideHost, ServiceLookup, SessionEventHost } from '../shared/dsh-min.ts'
+import type { AgentLike, AssembledSection, PluginContext, PreExecuteHost, ProvideHost, ServiceLookup, SessionEventHost, WorkingDirectoryService } from '../shared/dsh-min.ts'
 
 /** One audit record (JSONL line) for a denied call. */
 export interface ViolationRecord {
@@ -56,9 +63,9 @@ export interface GuardConfig {
   readonly fs?: AuditFs
 }
 
-/** All active rules (shipped two first so user rules cannot weaken them). */
-export function activeRules(config: GuardConfig & { workspaceRoots: readonly string[] | undefined }): readonly GuardRule[] {
-  return [...(config.workspaceRoots === undefined ? [] : [workspaceContainment(config.workspaceRoots)]), fileToolsOnly, ...(config.rules ?? [])]
+/** All active rules (shipped two first so user rules cannot weaken them); `base` is where relative write targets resolve. */
+export function activeRules(config: GuardConfig & { workspaceRoots: readonly string[] | undefined, base?: string | undefined }): readonly GuardRule[] {
+  return [...(config.workspaceRoots === undefined ? [] : [workspaceContainment(config.workspaceRoots, config.base)]), fileToolsOnly, ...(config.rules ?? [])]
 }
 
 /** Containment roots for one agent: config wins, else the agent's session directory. */
@@ -66,6 +73,37 @@ export function rootsFor(agent: AgentLike | undefined, config: GuardConfig): rea
   if (config.workspaceRoots !== undefined) return config.workspaceRoots
   const cwd = agent?.session?.header.cwd
   return typeof cwd === 'string' && cwd.length > 0 ? [cwd] : undefined
+}
+
+function workingDirectoryService(ctx: ServiceLookup): WorkingDirectoryService | undefined {
+  const value: unknown = typeof ctx.get === 'function' ? ctx.get('workingDirectory') : undefined
+  return typeof value === 'object' && value !== null && typeof (value as { get?: unknown }).get === 'function' ? value as WorkingDirectoryService : undefined
+}
+
+/**
+ * Where one agent's relative write targets resolve: the session's effective
+ * working directory (the file tools resolve against it, and `cd` moves it),
+ * else the recorded session directory; undefined leaves the default (the
+ * first containment root).
+ */
+export function baseFor(ctx: ServiceLookup, agent: AgentLike | undefined): string | undefined {
+  const session = agent?.session
+  if (session === undefined) return undefined
+  try {
+    const current = workingDirectoryService(ctx)?.get(session)
+    if (typeof current === 'string' && current.length > 0) return current
+  }
+  catch {
+    // An unreadable projection falls back to the recorded directory.
+  }
+  const cwd = session.header.cwd
+  return typeof cwd === 'string' && cwd.length > 0 ? cwd : undefined
+}
+
+/** The row health of a call the guard leaves alone: a non-GLM route, or no route to judge. */
+export function outOfScopeHealth(route: Route | undefined): [HealthState, string] {
+  if (route?.model === undefined) return ['inactive', '路由未知（调用没有 agent，或会话还没有请求头），门禁不介入']
+  return ['inactive', `非 GLM 路由 ${route.provider ?? '?'}/${route.model}，门禁不介入`]
 }
 
 /** The name of the system prompt section that declares the active rules. */
@@ -111,10 +149,18 @@ export function apply(ctx: GuardHost, config: GuardConfig = {}): () => void {
 
   disposers.push(ctx.on('tools/pre-execute', async (payload, next) => {
     if (payload.parent !== undefined) return next()
+    // GLM-only (ORCHESTRATION.md §6.2): the rules discipline GLM's habits;
+    // other models' calls, and calls with no route to judge, pass untouched
+    // and leave no shadow notes.
+    const route = sessionRoute(payload.agent?.session)
+    if (!isGlmModel(route?.model)) {
+      health.report(sessionIdOf(payload.agent), ...outOfScopeHealth(route))
+      return next()
+    }
     const call: ToolCall = { name: payload.name, arguments: (payload.arguments ?? {}) as JsonValue }
     const roots = rootsFor(payload.agent, config)
     health.report(sessionIdOf(payload.agent), ...guardHealth(roots, dataHomes(ctx, config.home).projectHome, shadow.available()))
-    const rules = activeRules({ ...config, workspaceRoots: roots })
+    const rules = activeRules({ ...config, workspaceRoots: roots, base: baseFor(ctx, payload.agent) })
     const verdict = evaluate(rules, call)
     if (verdict.kind === 'deny') {
       // rc.3 executions carry the calling agent, not its ids (dsh-tools createExecution).

@@ -3,10 +3,12 @@
  * its provider route on the DSH LLM seam. The adapter resolves the
  * credential from the encrypted store (filled by
  * /glm-login), signs like the desktop client, and speaks Anthropic Messages
- * to the ZCode backend. A missing home degrades to a no-op; a missing
+ * to the ZCode backend. The credential directory defaults to the user-level
+ * directory `<DSH home>/glm-hourness` (docs/DESIGN.md §2.4); a missing
  * credential fails the stream with the re-login instruction.
  */
 import { ZcodeAdapter } from './zcode.ts'
+import { credentialHome } from '../shared/data-home.ts'
 import { asAttachments } from './images.ts'
 import Schema from '../shared/schemastery.ts'
 import { provideRowHealth } from '../shared/health.ts'
@@ -27,7 +29,7 @@ export function registrarOf(ctx: LlmContextLike | { llm?: LlmContextLike }): Ada
 }
 
 export interface GlmConfig {
-  /** The agent home directory (`.llm`): credentials.json + device-mid.txt. */
+  /** The credential directory (credentials.json + device-mid.txt); default the user-level directory `<DSH home>/glm-hourness` (docs/DESIGN.md §2.4). */
   readonly home?: string
   /** Plan tier: coding-plan (default, 150% bonus) or start-plan (gateway prompt). */
   readonly plan?: 'coding-plan' | 'start-plan'
@@ -37,7 +39,7 @@ export interface GlmConfig {
 
 /** Runtime Config schema: the channel knobs as real switches in the DSH plugin manager. */
 export const Config = Schema.object({
-  home: Schema.string().required().description('Agent home directory (.llm): the encrypted credential store and deviceMid live here.'),
+  home: Schema.string().description('Credential directory: the encrypted credential store and deviceMid live here. Default: <DSH home>/glm-hourness.'),
   plan: Schema.union([Schema.const('coding-plan'), Schema.const('start-plan')]).default('coding-plan').description('Plan tier: coding-plan (default, usage bonus) or start-plan (gateway 3-block prompt, JWT auth).'),
   provider: Schema.string().default('glm-zcode').description('Provider route id registered on the LLM seam.'),
 })
@@ -47,16 +49,12 @@ export const name = 'dsh-glm-hourness/glm-llm'
 
 /** cordis plugin entry: register the adapter; activation never throws. */
 export function apply(ctx: (LlmContextLike | { llm?: LlmContextLike }) & ServiceLookup & Partial<ProvideHost>, config: GlmConfig = {}): (() => void) | void {
-  if (config.home === undefined || config.home.length === 0) {
-    console.warn('dsh-glm-hourness/glm-llm: home is not configured; the native channel stays off (set config.home, then run /glm-login)')
-    const health = provideRowHealth(ctx, 'glm-llm', 'inactive', 'home 未配置，原生通道关闭（配置 home 后运行 /glm-login）')
-    return () => health.dispose()
-  }
+  const home = credentialHome(config.home)
   const provider = config.provider ?? 'glm-zcode'
   const plan = config.plan ?? 'coding-plan'
-  const health = provideRowHealth(ctx, 'glm-llm', 'active', `已注册路由 ${provider}（套餐 ${plan}）`)
+  const health = provideRowHealth(ctx, 'glm-llm', 'active', `已注册路由 ${provider}（套餐 ${plan}，凭证目录 ${home}）`)
   const unregister = registrarOf(ctx)([provider], new ZcodeAdapter({
-    home: config.home,
+    home,
     ...(config.plan === undefined ? {} : { plan: config.plan }),
     ...imageServices(ctx),
     report: (sessionId, state, reason) => health.report(sessionId, state, reason),

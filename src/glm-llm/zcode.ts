@@ -9,7 +9,6 @@
  * replaces it with the gateway-fingerprinted 3-block assembly and pins the
  * currentDate context-prefix message ahead of the first user turn.
  */
-import { randomUUID } from 'node:crypto'
 import { readFile, writeFile, rename } from 'node:fs/promises'
 import type { Credential } from './auth/types.ts'
 import { loadCredential, saveCredential, clearCredential, type StoreFs } from './auth/store.ts'
@@ -17,10 +16,10 @@ import { resolveCodingPlanCredential } from './auth/resolver.ts'
 import { PollOAuthClient, LOGIN_TIMEOUT_MS, buildPasteAuthorizeUrl } from './auth/oauth.ts'
 import { inspectJwt } from './auth/jwt.ts'
 import { DEFAULT_IDENTITY, ensureDeviceMid, resolveEnvPromptInfo, type ZcodeIdentity } from './identity.ts'
-import { buildAuthHeaders, type PlanId } from './headers.ts'
+import { buildAuthHeaders, requestAttribution, type PlanId } from './headers.ts'
 import { EndpointRoutingService } from './endpoint-routing.ts'
 import { ClientSigningManager, sendWithClientSigning } from './signing.ts'
-import { encodeRequest, decodeSse, splitSystemPrompt } from './anthropic.ts'
+import { encodeRequest, decodeSse, metadataUserId, splitSystemPrompt } from './anthropic.ts'
 import { glmImageRequestTarget, prepareRequestImages } from './images.ts'
 import { buildStartPlanSystem, buildContextPrefixMessage } from './start-plan.ts'
 import { GLM_DEFAULT_MAX_TOKENS, GLM_MODELS, GLM_REASONING_EFFORTS, glmInputModalities } from './models.ts'
@@ -284,11 +283,15 @@ export class ZcodeAdapter {
       ? [buildContextPrefixMessage(), ...history]
       : history
     const images = await prepareRequestImages(messages, this.options.resolveAttachments?.(), this.options.mapHostPath, options.signal)
-    const body = JSON.stringify(encodeRequest({ ...options, messages }, systemBlocks, images))
+    // One x-session-id per DSH session, the gateway's cache affinity key
+    // (DESIGN.md §4.5b); metadata.user_id carries the same id as the
+    // header, as ZCode's does.
+    const attribution = requestAttribution(request.sessionId, request.purpose)
+    const body = JSON.stringify(encodeRequest({ ...options, messages }, systemBlocks, images, metadataUserId(deviceMid, attribution.sessionId)))
 
     const upstreamBase = `${BIGMODEL_ANTHROPIC_BASE}/v1/messages`
     const routed = await this.routing.resolve(upstreamBase, credential.apiKey, credential.jwt).catch((): { routed: boolean, url: string, headers?: Record<string, string> } => ({ routed: false, url: upstreamBase }))
-    const headers = buildAuthHeaders(credential, identity, plan, { sessionId: randomUUID(), sessionType: 'main' }, this.options.env)
+    const headers = buildAuthHeaders(credential, identity, plan, attribution, this.options.env)
 
     const response = await sendWithClientSigning(this.signer, {
       url: routed.url,
@@ -313,7 +316,7 @@ export class ZcodeAdapter {
     // decodeSse emits the internal structural chunk vocabulary; it is
     // field-compatible with the DSH StreamChunk protocol (only the branded id
     // types differ, and brands exist only at the type level).
-    yield* decodeSse(response.body) as AsyncIterable<LlmStreamChunk>
+    yield* decodeSse(response.body, options.model) as AsyncIterable<LlmStreamChunk>
   }
 }
 

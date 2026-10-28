@@ -288,7 +288,7 @@ window.__ModuleLoader__.load({
         h('p', { className: 'glmh-desc' }, '原生 ZCode 客户端通道（coding-plan 直连）。凭证加密保存在本机，登录一次长期有效。'),
         h('div', { className: 'glmh-card' },
           row('通道', 'glm-zcode（GLM-5.3 / GLM-5.3-Flash）'),
-          row('凭证存放', '%USERPROFILE%\\Desktop\\Project\\GLM-Hourness\\.llm\\credentials.json'),
+          row('凭证存放', '%USERPROFILE%\\.dsh\\glm-hourness\\credentials.json（设置 DSH_HOME 时在其下的 glm-hourness）'),
           row('登录有效期', 'coding-plan key 长期有效；start-plan 档位自动续期'),
         ),
         h('div', { className: 'glmh-card' },

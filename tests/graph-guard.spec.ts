@@ -43,7 +43,8 @@ function guardTest(name: string, body: (fixture: Fixture) => Promise<void>, opti
     const { workspace, graph } = await workspaceWithGraph()
     try {
       const calls: Fixture['calls'] = []
-      const runtime = fakeRuntime({ natives: NATIVES, calls, cwd: workspace })
+      // A GLM session: the guard row only judges GLM calls; the graph rule judges every route.
+      const runtime = fakeRuntime({ natives: NATIVES, calls, cwd: workspace, route: { provider: 'glm-zcode', model: 'glm-5.3' } })
       // The loader activates the guard row before the graph row (cordis.patch.yml order).
       if (options.guardRow === true) applyGuard(runtime.ctx, {})
       apply(runtime.ctx, {})
@@ -139,6 +140,24 @@ guardTest('next to the guard row, the graph rule decides first and the guard row
   passed(await call('Write', { file_path: join(workspace, 'src', 'a.ts'), content: 'x' }))
   assert.deepEqual(calls.map(entry => entry.name), ['Write'])
 }, { guardRow: true })
+
+test('the graph rule judges every route, not only GLM; relative targets follow the session working directory', async () => {
+  const { workspace } = await workspaceWithGraph()
+  try {
+    const runtime = fakeRuntime({ natives: NATIVES, cwd: workspace, route: { provider: 'deepseek-account', model: 'deepseek-flash' } })
+    applyGuard(runtime.ctx, {})
+    apply(runtime.ctx, {})
+    const call = caller(runtime)
+    deniedByGraphRule(await call('write', { file_path: 'docs/graph/nodes/goal-1.json', content: '{}' }))
+    passed(await call('pwsh', { command: 'Remove-Item build/out.txt' })) // the guard row leaves non-GLM calls alone
+    runtime.services.set('workingDirectory', { get: () => join(workspace, 'docs') })
+    deniedByGraphRule(await call('write', { file_path: 'graph/nodes/goal-1.json', content: '{}' })) // relative to <ws>/docs
+    passed(await call('write', { file_path: 'docs/graph/nodes/goal-1.json', content: '{}' })) // <ws>/docs/docs/graph: elsewhere
+  }
+  finally {
+    await rm(workspace, { recursive: true, force: true })
+  }
+})
 
 guardTest('nested transport calls pass, as in the guard row', async ({ call, calls }) => {
   passed(await call('write', { file_path: 'docs/graph/nodes/goal-1.json', content: '{}' }, { parent: { token: 'run_code' } }))

@@ -178,8 +178,14 @@ function valueViolations(schema: Record<string, unknown>, value: unknown, path =
   }
 }
 
-export function fakeRuntime(options: { natives?: readonly string[], calls?: Array<{ name: string, args: unknown }>, cwd?: string } = {}): FakeRuntime {
+/**
+ * `route` is the call config of the session's request header before any
+ * assembly (rc.3 logs the header of every step before the model call);
+ * each `assemble` then logs the route it was given, as the agent loop does.
+ */
+export function fakeRuntime(options: { natives?: readonly string[], calls?: Array<{ name: string, args: unknown }>, cwd?: string, route?: { provider?: string, model?: string } } = {}): FakeRuntime {
   const calls = options.calls ?? []
+  let headerRoute = options.route
   const natives = new Map((options.natives ?? NATIVE_NAMES).map(name => [name, native(name, calls)]))
   const scoped: ToolDefinitionLike[] = []
   const listeners: FakeRuntime['listeners'] = []
@@ -249,7 +255,8 @@ export function fakeRuntime(options: { natives?: readonly string[], calls?: Arra
   }
   // rc.3 session header: `cwd` is present when the store recorded a working directory (session:1820–1826).
   const header = options.cwd === undefined ? { id: 'agent-1' } : { id: 'agent-1', cwd: options.cwd }
-  const agent: AgentLike = { id: 'agent-1', ctx, session: { id: 'agent-1', header, deriveMessages: () => [...history] } }
+  // rc.3 Session.requestHeader(): the fold of the logged request headers (session:1612).
+  const agent: AgentLike = { id: 'agent-1', ctx, session: { id: 'agent-1', header, deriveMessages: () => [...history], requestHeader: () => headerRoute === undefined ? undefined : { config: headerRoute } } }
   return {
     ctx,
     services: store.services,
@@ -262,6 +269,7 @@ export function fakeRuntime(options: { natives?: readonly string[], calls?: Arra
     executed,
     async assemble(route, sections = [{ name: 'harness:identity', text: 'You are an AI agent powered by DeepSeek Harness.' }]) {
       const tools: AssembledTool[] = visible().map(tool => ({ name: tool.name, description: tool.description, parameters: tool.parameters }))
+      headerRoute = route
       // The model-selection listener (innermost) injects the route after its own next().
       const base = async (): Promise<AssemblePayload> => ({ sections, contexts: [], tools, variables: { ...route } })
       const chain = of('system-prompt/assemble').reduceRight<() => Promise<AssemblePayload>>(
