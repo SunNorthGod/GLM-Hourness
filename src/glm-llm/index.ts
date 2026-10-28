@@ -12,7 +12,8 @@ import { credentialHome } from '../shared/data-home.ts'
 import { asAttachments } from './images.ts'
 import Schema from '../shared/schemastery.ts'
 import { provideRowHealth } from '../shared/health.ts'
-import type { AdapterRegistry, FsPathService, ProvideHost, ServiceLookup } from '../shared/dsh-min.ts'
+import type { AdapterRegistry, AgentsService, FsPathService, ProvideHost, ServiceLookup } from '../shared/dsh-min.ts'
+import type { SessionHeaderLike } from './headers.ts'
 import type { AttachmentsLike } from '../shared/lm-min.ts'
 
 /** The `llm` service as this row uses it. */
@@ -57,11 +58,26 @@ export function apply(ctx: (LlmContextLike | { llm?: LlmContextLike }) & Service
     home,
     ...(config.plan === undefined ? {} : { plan: config.plan }),
     ...imageServices(ctx),
+    sessionHeader: sessionHeaders(ctx),
     report: (sessionId, state, reason) => health.report(sessionId, state, reason),
   }))
   return () => {
     unregister()
     health.dispose()
+  }
+}
+
+/**
+ * The header of a live session through the `agents` service (rc.3
+ * dsh-agent `get`, agent:596), read lazily per request like the image
+ * services: the request attribution tells a delegated child by its
+ * `origin` and follows `parentSession` to its parent's trace. Without the
+ * service every session reads as a main session.
+ */
+export function sessionHeaders(ctx: ServiceLookup): (sessionId: string) => SessionHeaderLike | undefined {
+  return sessionId => {
+    const agents = (typeof ctx.get === 'function' ? ctx.get('agents') : undefined) as Partial<AgentsService> | undefined
+    return typeof agents?.get === 'function' ? agents.get(sessionId)?.session.header : undefined
   }
 }
 

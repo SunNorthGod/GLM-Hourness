@@ -9,6 +9,7 @@
  * replaces it with the gateway-fingerprinted 3-block assembly and pins the
  * currentDate context-prefix message ahead of the first user turn.
  */
+import { randomUUID } from 'node:crypto'
 import { readFile, writeFile, rename } from 'node:fs/promises'
 import type { Credential } from './auth/types.ts'
 import { loadStoredCredential, saveCredential, clearCredential, type StoreFs } from './auth/store.ts'
@@ -16,7 +17,7 @@ import { PollOAuthClient, LOGIN_TIMEOUT_MS, buildPasteAuthorizeUrl } from './aut
 import { inspectJwt } from './auth/jwt.ts'
 import { DEFAULT_IDENTITY, ensureDeviceMid, resolveEnvPromptInfo, type ZcodeIdentity } from './identity.ts'
 import { readCliDeviceMid, readRoutingDeviceMid } from './device-mid.ts'
-import { buildAuthHeaders, requestAttribution, type PlanId } from './headers.ts'
+import { buildAuthHeaders, RequestAttributionTracker, upstreamSessionId, type PlanId, type SessionHeaderLike, type TraceContext } from './headers.ts'
 import { EndpointRoutingService, type RoutingCredential } from './endpoint-routing.ts'
 import { ClientSigningManager, sendWithClientSigning } from './signing.ts'
 import { ProjectAccessTokenClient, projectTokenFingerprint, projectTokenRequest, type ProjectKeyLocationStore, type ResolvedProjectToken } from './auth/project-token.ts'
@@ -80,6 +81,8 @@ export interface ZcodeAdapterOptions {
   readonly mapHostPath?: (hostPath: string) => string | undefined
   /** Row health sink (src/shared/health.ts): each request's outcome, keyed by its session. */
   readonly report?: (sessionId: string | undefined, state: HealthState, reason: string) => void
+  /** The header of a live DSH session (the `agents` service), read per request to tell a delegated child. */
+  readonly sessionHeader?: (sessionId: string) => SessionHeaderLike | undefined
 }
 
 const storeFsDefault: StoreFs = {
@@ -172,6 +175,7 @@ export class ZcodeAdapter {
   private readonly routing: EndpointRoutingService
   private readonly signer: ClientSigningManager
   private readonly projectTokens: ProjectAccessTokenClient
+  private readonly attribution: RequestAttributionTracker
   /** In-flight project token loads per (OAuth token, account, rejected fingerprint), as 3.16.3 `loadCodingPlanMaterial` shares them. */
   private readonly projectTokenLoads = new Map<string, Promise<ResolvedProjectToken>>()
   /** The credential the latest coding-plan request resolved, for the routed handshake. */
@@ -190,6 +194,7 @@ export class ZcodeAdapter {
       handshakeFetch: (input, init) => this.routedHandshake(input, init),
       ...(options.onEvent === undefined ? {} : { onEvent: options.onEvent }),
     })
+    this.attribution = new RequestAttributionTracker(sessionId => options.sessionHeader?.(sessionId))
     this.projectTokens = new ProjectAccessTokenClient({ request: projectTokenRequest(options.fetchImpl ?? fetch), locationStore: this.locationStore() })
   }
 
@@ -417,8 +422,12 @@ export class ZcodeAdapter {
     const images = await prepareRequestImages(messages, this.options.resolveAttachments?.(), this.options.mapHostPath, options.signal)
     // One x-session-id per DSH session, the gateway's cache affinity key
     // (DESIGN.md §4.5b); metadata.user_id carries the same id as the
-    // header, as ZCode's does.
-    const attribution = requestAttribution(request.sessionId, request.purpose)
+    // header, as ZCode's does. coding-plan follows the 3.16.3 attribution
+    // (session trace, turn query id, query source, subagent type);
+    // start-plan keeps its earlier shape.
+    const attribution: Omit<TraceContext, 'requestId'> = plan === 'coding-plan'
+      ? this.attribution.attribute({ sessionId: request.sessionId, purpose: request.purpose, messages: options.messages })
+      : { sessionId: upstreamSessionId(request.sessionId), sessionType: request.purpose === undefined ? 'main' : 'other', traceId: randomUUID() }
     const body = JSON.stringify(encodeRequest({ ...options, messages }, systemBlocks, images, metadataUserId(deviceMid, attribution.sessionId)))
     const upstreamBase = `${BIGMODEL_ANTHROPIC_BASE}/v1/messages`
 
@@ -433,7 +442,8 @@ export class ZcodeAdapter {
       const routed = await this.routing.resolve(upstreamBase, routingCredential).catch((): { routed: boolean, url: string, headers?: Record<string, string> } => ({ routed: false, url: upstreamBase }))
       const routingPairs = Object.entries(routed.headers ?? {})
       const auth = token !== undefined ? { bearer: token.token, apiKey: token.token } : { bearer: startPlanJwt }
-      const headers = buildAuthHeaders(auth, identity, plan, attribution, this.options.env)
+      // x-request-id is fresh per attempt (3.16.3 `Gdt` @4067222: `requestId ?? crypto.randomUUID()` per attempt).
+      const headers = buildAuthHeaders(auth, identity, { ...attribution, requestId: randomUUID() }, this.options.env)
       return sendWithClientSigning(token === undefined ? null : this.signer, {
         url: upstreamBase,
         headerPairs: Object.entries({ ...headers, 'content-type': 'application/json' }) as Array<[string, string]>,

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { buildLlmIdentityHeaders, buildContextIdentityHeaders, ensureDeviceMid, DEFAULT_IDENTITY, ZCODE_APP_VERSION } from '../src/glm-llm/identity.ts'
-import { buildAuthHeaders, buildTraceHeaders, ANTHROPIC_SDK_UA } from '../src/glm-llm/headers.ts'
+import { buildAuthHeaders, buildTraceHeaders, ANTHROPIC_SDK_UA, RequestAttributionTracker, type SessionHeaderLike } from '../src/glm-llm/headers.ts'
 import { BlockAssembler } from '@deepseek-ai/dsh-llm'
 import { encodeRequest, encodeMessage, decodeFrame, decodeSse, metadataUserId, replayBlocksOf, type AnthropicRequest } from '../src/glm-llm/anthropic.ts'
 import { glmImageRequestTarget, prepareRequestImages, offloadedImageText, ZCODE_IMAGE_TARGET_BYTES } from '../src/glm-llm/images.ts'
@@ -53,31 +53,92 @@ test('deviceMid persists once and is reused across reads', async () => {
   assert.equal(Object.keys(files).filter(path => path.endsWith('.tmp')).length, 0)
 })
 
+const TRACE = { sessionId: 's1', requestId: 'r1', traceId: 't1', queryId: 'q1', querySource: 'main_turn', sessionType: 'main' } as const
+
 test('coding-plan anthropic auth carries the project token in both auth headers plus SDK UA suffix', () => {
-  const headers = buildAuthHeaders({ bearer: 'fake-pat', apiKey: 'fake-pat' }, DEFAULT_IDENTITY, 'coding-plan', undefined, env)
+  const headers = buildAuthHeaders({ bearer: 'fake-pat', apiKey: 'fake-pat' }, DEFAULT_IDENTITY, TRACE, env)
   assert.equal(headers['x-api-key'], 'fake-pat')
   assert.equal(headers.authorization, 'Bearer fake-pat')
   assert.equal(headers['anthropic-version'], '2023-06-01')
   assert.equal(headers['User-Agent'], `ZCode/${ZCODE_APP_VERSION} ${ANTHROPIC_SDK_UA}`)
-  assert.ok(headers['x-session-id'] !== undefined) // coding-plan always carries one
-  assert.ok(headers['x-query-id'] !== undefined)
-  assert.equal(headers['x-zcode-session-type'], 'main')
 })
 
-test('start-plan auth uses the JWT bearer only and omits session ids', () => {
-  const headers = buildAuthHeaders({ bearer: 'jwt-1' }, DEFAULT_IDENTITY, 'start-plan', undefined, env)
+test('start-plan auth uses the JWT bearer only', () => {
+  const headers = buildAuthHeaders({ bearer: 'jwt-1' }, DEFAULT_IDENTITY, { sessionId: 's1', requestId: 'r1', traceId: 't1', sessionType: 'main' }, env)
   assert.equal(headers.authorization, 'Bearer jwt-1')
   assert.ok(!('x-api-key' in headers))
-  assert.ok(!('x-session-id' in headers))
   assert.ok(!('x-query-id' in headers))
+  assert.ok(!('x-zcode-query-source' in headers))
 })
 
-test('trace headers use the exact context when provided', () => {
-  const headers = buildTraceHeaders('coding-plan', { sessionId: 's1', requestId: 'r1', traceId: 't1', queryId: 'q1', sessionType: 'subagent' })
-  assert.deepEqual(headers, { 'x-request-id': 'r1', 'x-zcode-session-type': 'subagent', 'x-zcode-trace-id': 't1', 'x-query-id': 'q1', 'x-session-id': 's1' })
-  // coding-plan without a session id synthesizes one (signing requires it)
-  const synthesized = buildTraceHeaders('coding-plan', { requestId: 'r1' })
-  assert.match(synthesized['x-session-id']!, /^[0-9a-f-]{36}$/)
+test('trace headers follow 3.16.3 createModelRequestAttributionHeaders: query id and query source when known', () => {
+  assert.deepEqual(buildTraceHeaders({ ...TRACE, sessionType: 'subagent', querySource: 'subagent' }), {
+    'x-request-id': 'r1', 'x-zcode-session-type': 'subagent', 'x-zcode-trace-id': 't1', 'x-query-id': 'q1', 'x-zcode-query-source': 'subagent', 'x-session-id': 's1',
+  })
+  assert.deepEqual(Object.keys(buildTraceHeaders({ sessionId: 's1', requestId: 'r1', traceId: 't1', sessionType: 'other' })), ['x-request-id', 'x-zcode-session-type', 'x-zcode-trace-id', 'x-session-id'])
+})
+
+/** A durable user-typed message (`source.kind: 'user'`) with its id. */
+const typed = (id: string, text: string): RequestMessageLike => ({ id, role: 'user', content: [{ type: 'text', text }], source: { kind: 'user' } })
+
+test('attribution: one trace id per session, one query id per user turn, a fresh pair per new session', () => {
+  const tracker = new RequestAttributionTracker()
+  const turn1 = [typed('m1', 'fix it')]
+  const step1 = tracker.attribute({ sessionId: 'session-a', messages: turn1 })
+  const step2 = tracker.attribute({ sessionId: 'session-a', messages: [...turn1, { role: 'assistant', content: [{ type: 'text', text: 'ok' }] }] })
+  assert.equal(step2.traceId, step1.traceId)
+  assert.equal(step2.queryId, step1.queryId)
+  assert.deepEqual([step1.sessionType, step1.querySource, step1.sessionId], ['main', 'main_turn', 'a'])
+  // A notice is not a user turn; a new user-typed message is.
+  const noticed = tracker.attribute({ sessionId: 'session-a', messages: [...turn1, { id: 'n1', role: 'user', content: [{ type: 'text', text: 'notice' }], source: { kind: 'todo-reminder' } }] })
+  assert.equal(noticed.queryId, step1.queryId)
+  const turn2 = tracker.attribute({ sessionId: 'session-a', messages: [...turn1, typed('m2', 'and now')] })
+  assert.equal(turn2.traceId, step1.traceId)
+  assert.notEqual(turn2.queryId, step1.queryId)
+  const other = tracker.attribute({ sessionId: 'session-b', messages: [typed('m9', 'hi')] })
+  assert.notEqual(other.traceId, step1.traceId)
+  assert.match(step1.traceId, /^[0-9a-f-]{36}$/)
+  assert.match(step1.queryId ?? '', /^[0-9a-f-]{36}$/)
+})
+
+test('attribution: the session title shares the turn\'s query id; compaction is compact; both are typed other', () => {
+  const tracker = new RequestAttributionTracker()
+  // DSH sends the title request alongside the first step: whichever comes first opens the query id.
+  const title = tracker.attribute({ sessionId: 'session-a', purpose: 'session-title', messages: [{ role: 'user', content: [{ type: 'text', text: 'name it' }] }] })
+  const first = tracker.attribute({ sessionId: 'session-a', messages: [typed('m1', 'fix it')] })
+  assert.deepEqual([title.sessionType, title.querySource], ['other', 'session_title'])
+  assert.equal(first.queryId, title.queryId)
+  assert.equal(first.traceId, title.traceId)
+  const compact = tracker.attribute({ sessionId: 'session-a', purpose: 'compaction', messages: [typed('m1', 'fix it'), { role: 'user', content: [{ type: 'text', text: 'summarize' }] }] })
+  assert.deepEqual([compact.sessionType, compact.querySource, compact.queryId, compact.traceId], ['other', 'compact', first.queryId, first.traceId])
+})
+
+test('attribution: a delegated child is subagent + subagent and shares its parent\'s trace; a user fork is a main session', () => {
+  const headers: Record<string, SessionHeaderLike> = {
+    'session-child': { parentSession: 'session-parent', origin: 'subagent' },
+    'session-grandchild': { parentSession: 'session-child', origin: 'subagent' },
+    'session-fork': { parentSession: 'session-parent' },
+  }
+  const tracker = new RequestAttributionTracker(sessionId => headers[sessionId])
+  const parent = tracker.attribute({ sessionId: 'session-parent', messages: [typed('p1', 'delegate')] })
+  const child = tracker.attribute({ sessionId: 'session-child', messages: [typed('c1', 'task')] })
+  const grandchild = tracker.attribute({ sessionId: 'session-grandchild', messages: [typed('g1', 'subtask')] })
+  const fork = tracker.attribute({ sessionId: 'session-fork', messages: [typed('f1', 'branch')] })
+  assert.deepEqual([child.sessionType, child.querySource], ['subagent', 'subagent'])
+  assert.equal(child.traceId, parent.traceId)
+  assert.equal(grandchild.traceId, parent.traceId)
+  assert.notEqual(child.queryId, parent.queryId)
+  assert.deepEqual([fork.sessionType, fork.querySource], ['main', 'main_turn'])
+  assert.notEqual(fork.traceId, parent.traceId)
+})
+
+test('attribution keeps 256 sessions; an evicted session that returns gets a fresh trace id', () => {
+  const tracker = new RequestAttributionTracker()
+  const first = tracker.attribute({ sessionId: 'session-0', messages: [typed('m', 'x')] })
+  for (let index = 1; index <= 256; index++) tracker.attribute({ sessionId: `session-${index}`, messages: [typed('m', 'x')] })
+  assert.notEqual(tracker.attribute({ sessionId: 'session-0', messages: [typed('m', 'x')] }).traceId, first.traceId)
+  const kept = tracker.attribute({ sessionId: 'session-256', messages: [typed('m', 'x')] })
+  assert.equal(tracker.attribute({ sessionId: 'session-256', messages: [typed('m', 'x')] }).traceId, kept.traceId)
 })
 
 test('encodeMessage folds seam roles into anthropic blocks', () => {

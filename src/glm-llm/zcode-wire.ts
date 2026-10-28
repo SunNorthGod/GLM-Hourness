@@ -32,3 +32,20 @@ export const CUSTOMER_INFO_PATH = '/api/biz/customer/getCustomerInfo'
 
 /** The agent/configs request header naming the PAT's API key (`FGs` @4196232). */
 export const API_KEY_ID_HEADER = 'x-api-key-id'
+
+/** Attribution header names (`createModelRequestAttributionHeaders` `Vdt` @4065502, constants @4066600). */
+export const SESSION_TYPE_HEADER = 'x-zcode-session-type'
+export const TRACE_ID_HEADER = 'x-zcode-trace-id'
+export const QUERY_SOURCE_HEADER = 'x-zcode-query-source'
+
+/**
+ * Query sources: an agent step `main_turn` and a delegated child's step
+ * `subagent` (`mDn` @13259914), compaction `compact` (@13389086), the
+ * session title `session_title` (`v2n` @13069774).
+ */
+export const QUERY_SOURCES = {
+  mainTurn: 'main_turn',
+  subagent: 'subagent',
+  compact: 'compact',
+  sessionTitle: 'session_title',
+} as const

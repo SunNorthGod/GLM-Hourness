@@ -7,6 +7,8 @@
  */
 import { randomUUID } from 'node:crypto'
 import { buildLlmIdentityHeaders, type ZcodeIdentity } from './identity.ts'
+import { QUERY_SOURCE_HEADER, QUERY_SOURCES, SESSION_TYPE_HEADER, TRACE_ID_HEADER } from './zcode-wire.ts'
+import type { RequestMessageLike } from '../shared/lm-min.ts'
 
 /** anthropic-version the ZCode client pins. */
 export const ANTHROPIC_VERSION = '2023-06-01'
@@ -15,15 +17,20 @@ export const ANTHROPIC_SDK_UA = 'ai-sdk/anthropic/3.0.81'
 
 export type PlanId = 'coding-plan' | 'start-plan'
 
-/** Attribution/trace context for one request. */
+/** Attribution/trace context for one request (3.16.3 `createModelRequestAttributionHeaders` input). */
 export interface TraceContext {
-  /** Enforced conversation session id; coding-plan always carries one (signing requires it). */
-  readonly sessionId?: string
-  readonly requestId?: string
-  readonly traceId?: string
-  readonly queryId?: string
-  readonly sessionType?: 'main' | 'subagent' | 'other'
+  /** The upstream x-session-id; coding-plan always carries one (signing requires it). */
+  readonly sessionId: string
+  /** Fresh per attempt. */
+  readonly requestId: string
+  readonly traceId: string
+  readonly queryId?: string | undefined
+  readonly querySource?: QuerySource | undefined
+  readonly sessionType: 'main' | 'subagent' | 'other'
 }
+
+/** The query sources of the requests this channel sends (3.16.3 `mDn` @13259914, compaction @13389086, `v2n` @13069774). */
+type QuerySource = typeof QUERY_SOURCES[keyof typeof QUERY_SOURCES]
 
 /** Characters an upstream session id may carry (header-safe; DSH session ids are `session-<uuid>`). */
 const SESSION_ID_PATTERN = /^[A-Za-z0-9_.:-]{1,128}$/
@@ -43,49 +50,105 @@ export function upstreamSessionId(sessionId: string | undefined): string {
   return SESSION_ID_PATTERN.test(bare) ? bare : randomUUID()
 }
 
-/**
- * The attribution of one request from the two DSH request fields the
- * adapter contract offers for transport metadata (`GenerateOptions.sessionId`
- * and `.purpose`): every request carries the conversation session; agent
- * steps are typed `main`, auxiliary calls (compaction, session title) are
- * typed `other`, ZCode's type for every non-step operation (3.16.3
- * `resolveModelRequestSessionType`). The type does not take part in the
- * gateway's cache affinity (docs/DESIGN.md §4.5b).
- */
-export function requestAttribution(sessionId: string | undefined, purpose: string | undefined): { sessionId: string, sessionType: 'main' | 'other' } {
-  return { sessionId: upstreamSessionId(sessionId), sessionType: purpose === undefined ? 'main' : 'other' }
+/** The session-header fields that mark a delegated child (rc.3 dsh-session header, dsh-subagent `childSessionMeta`). */
+export interface SessionHeaderLike {
+  readonly parentSession?: string
+  readonly origin?: 'subagent'
+}
+
+/** Sessions whose trace state the tracker keeps; the least recently used leaves first. */
+const ATTRIBUTION_SESSION_LIMIT = 256
+/** Parent links followed to the root of a delegation chain. */
+const MAX_DELEGATION_DEPTH = 16
+
+interface SessionTrace {
+  readonly traceId: string
+  turnKey?: string | undefined
+  queryId?: string | undefined
+}
+
+/** The turn of a request: the id of its latest message typed by the user (`source.kind: 'user'`). */
+function turnKeyOf(messages: readonly RequestMessageLike[]): string | undefined {
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index]
+    if (message?.role === 'user' && message.source?.kind === 'user' && typeof message.id === 'string') return message.id
+  }
+  return undefined
 }
 
 /**
- * Trace headers: the given context, with the fields ZCode always sends
- * synthesized when absent. ZCode 3.16.3 runner-attribution
- * `createModelRequestAttributionHeaders` emits x-request-id,
- * x-zcode-session-type and x-zcode-trace-id on every model request, then
- * x-query-id and x-session-id when known; coding-plan always carries a
- * session id (signing requires it). Without a context the coding-plan set
- * also synthesizes x-query-id.
+ * The 3.16.3 attribution of coding-plan requests (docs/DESIGN.md §4.5b):
+ * - trace id per session: 3.16.3 builds one root trace context per session
+ *   runtime (`vT` @1421911) and derives every turn from it (`nS`, `Lw`); a
+ *   delegated child inherits its parent's trace;
+ * - query id per turn: 3.16.3 takes the desktop input id (`O9`
+ *   @14502646, `zzo` @13357726); the channel opens a turn at each new
+ *   user-typed message and gives it a fresh UUID; a session-title request
+ *   reuses the session's current query id, or opens one the next step adopts
+ *   (DSH sends the title request alongside the first step);
+ * - session type and query source: title `other` + `session_title`,
+ *   compaction `other` + `compact`, a delegated child `subagent` +
+ *   `subagent`, otherwise `main` + `main_turn` (`Y0n` @4065835, `mDn`).
  */
-export function buildTraceHeaders(plan: PlanId, trace?: TraceContext): Record<string, string> {
-  if (trace !== undefined) {
-    const sessionId = trace.sessionId ?? (plan === 'coding-plan' ? randomUUID() : undefined)
-    return {
-      'x-request-id': trace.requestId ?? randomUUID(),
-      'x-zcode-session-type': trace.sessionType ?? 'main',
-      'x-zcode-trace-id': trace.traceId ?? randomUUID(),
-      ...(trace.queryId === undefined ? {} : { 'x-query-id': trace.queryId }),
-      ...(sessionId === undefined ? {} : { 'x-session-id': sessionId }),
+export class RequestAttributionTracker {
+  private readonly sessions = new Map<string, SessionTrace>()
+  private readonly headerOf: (sessionId: string) => SessionHeaderLike | undefined
+
+  constructor(headerOf: (sessionId: string) => SessionHeaderLike | undefined = () => undefined) {
+    this.headerOf = headerOf
+  }
+
+  attribute(request: { readonly sessionId?: string | undefined, readonly purpose?: 'compaction' | 'session-title' | undefined, readonly messages: readonly RequestMessageLike[] }): Omit<TraceContext, 'requestId'> {
+    const sessionId = upstreamSessionId(request.sessionId)
+    const subagent = request.sessionId !== undefined && this.headerOf(request.sessionId)?.origin === 'subagent'
+    const kind = request.purpose === 'session-title'
+      ? { sessionType: 'other' as const, querySource: QUERY_SOURCES.sessionTitle }
+      : request.purpose === 'compaction'
+        ? { sessionType: 'other' as const, querySource: QUERY_SOURCES.compact }
+        : subagent ? { sessionType: 'subagent' as const, querySource: QUERY_SOURCES.subagent } : { sessionType: 'main' as const, querySource: QUERY_SOURCES.mainTurn }
+    if (request.sessionId === undefined) return { sessionId, traceId: randomUUID(), queryId: randomUUID(), ...kind }
+    const state = this.stateOf(request.sessionId, 0)
+    const turnKey = request.purpose === 'session-title' ? undefined : turnKeyOf(request.messages)
+    if (turnKey === undefined || state.turnKey === turnKey) state.queryId ??= randomUUID()
+    else if (state.turnKey === undefined && state.queryId !== undefined) state.turnKey = turnKey
+    else {
+      state.turnKey = turnKey
+      state.queryId = randomUUID()
     }
+    return { sessionId, traceId: state.traceId, queryId: state.queryId, ...kind }
   }
-  const headers: Record<string, string> = {
-    'x-request-id': randomUUID(),
-    'x-zcode-session-type': 'main',
-    'x-zcode-trace-id': randomUUID(),
+
+  private stateOf(sessionId: string, depth: number): SessionTrace {
+    const known = this.sessions.get(sessionId)
+    if (known !== undefined) {
+      this.sessions.delete(sessionId)
+      this.sessions.set(sessionId, known)
+      return known
+    }
+    const header = this.headerOf(sessionId)
+    const parent = header?.origin === 'subagent' && header.parentSession !== undefined && depth < MAX_DELEGATION_DEPTH ? header.parentSession : undefined
+    const state: SessionTrace = { traceId: parent === undefined ? randomUUID() : this.stateOf(parent, depth + 1).traceId }
+    this.sessions.set(sessionId, state)
+    if (this.sessions.size > ATTRIBUTION_SESSION_LIMIT) this.sessions.delete(this.sessions.keys().next().value as string)
+    return state
   }
-  if (plan !== 'start-plan') {
-    headers['x-query-id'] = randomUUID()
-    headers['x-session-id'] = randomUUID()
+}
+
+/**
+ * Trace headers as 3.16.3 `createModelRequestAttributionHeaders` (`Vdt`
+ * @4065502) emits them: x-request-id, x-zcode-session-type,
+ * x-zcode-trace-id, then x-query-id, x-zcode-query-source and x-session-id
+ * when known.
+ */
+export function buildTraceHeaders(trace: TraceContext): Record<string, string> {
+  return {
+    'x-request-id': trace.requestId,
+    [SESSION_TYPE_HEADER]: trace.sessionType,
+    [TRACE_ID_HEADER]: trace.traceId,
+    ...(trace.queryId === undefined ? {} : { 'x-query-id': trace.queryId }),
+    ...(trace.querySource === undefined ? {} : { [QUERY_SOURCE_HEADER]: trace.querySource }),
+    'x-session-id': trace.sessionId,
   }
-  return headers
 }
 
 /**
@@ -95,10 +158,10 @@ export function buildTraceHeaders(plan: PlanId, trace?: TraceContext): Record<st
  * (`applyProviderRequestAuth` `x5s` @3843063 sets the provider `apiKey`,
  * `T5s` @3843231 adds the bearer); start-plan sends the plan JWT bearer only.
  */
-export function buildAuthHeaders(auth: { readonly bearer: string, readonly apiKey?: string }, identity: ZcodeIdentity, plan: PlanId = 'coding-plan', trace?: TraceContext, env: NodeJS.ProcessEnv = process.env): Record<string, string> {
+export function buildAuthHeaders(auth: { readonly bearer: string, readonly apiKey?: string }, identity: ZcodeIdentity, trace: TraceContext, env: NodeJS.ProcessEnv = process.env): Record<string, string> {
   const headers: Record<string, string> = {
     ...buildLlmIdentityHeaders(identity, env),
-    ...buildTraceHeaders(plan, trace),
+    ...buildTraceHeaders(trace),
   }
   headers['User-Agent'] = `${headers['User-Agent']} ${ANTHROPIC_SDK_UA}`
   if (auth.apiKey !== undefined) headers['x-api-key'] = auth.apiKey

@@ -147,6 +147,7 @@ GLM-Hourness
 | `agents.get(id)`：会话 id 对应的活 agent，没有时为 undefined | graph-panel（`/graph-run` 取子 agent 的状态与会话） | agent:596 | 一致 |
 | `subagents.interrupt(targetSessionId, {kind: 'user', parentSessionId})`：取消一个活的直接子 agent 当前的回合，保留它的收件箱；不在驻留表里时是无操作；别的父会话的子 agent 抛 `UNAUTHORIZED` | graph-panel（暂停、重做） | subagent:3105、subagent:1258–1277 | 一致；L3 场景只停主 Agent，停子 agent 待 L4 |
 | `attachments.readImageRequest(ref, target, signal?)`、`attachments.imageHostPath(ref)` | glm-llm（读图） | attachment:290、attachment:338（抽象），attachment-local:1038、attachment-local:1053；编译期检查 `AttachmentsContractCheck` 对照官方 `AttachmentStore` | 一致 |
+| `agents.get(id).session.header` 的 `parentSession`、`origin` | glm-llm（请求归因：委派子会话标 `subagent`，沿父会话的 trace id，§4.5b） | agent:596；session:1051–1053（`parentSession` 为字符串、`origin` 只能是 `"subagent"`）；subagent:346–355（`childSessionMeta` 写 `parentSession: parentHeader.id`、`origin: "subagent"`） | 一致：用户分叉的会话只有 `parentSession`，按主会话处理 |
 | `fs.processPathFromHostPath(hostPath)` | glm-llm（卸载图片的占位路径） | fs:95、fs-local:792–795；pi-ai 同一用法 llm-pi-ai:2908–2909 | 一致 |
 | `workspaceChanges.summary(sessionId, seq)`：`{turn, cwd, files[{path, display, …}], total, …}`，`path` 在会话目录内为相对路径、目录外为绝对路径；只记录有工作目录的顶层会话 | guard（影子兜底，`ctx.get` 读，不需要 inject） | workspace-changes:1019–1022、workspace-changes:871–885、workspace-changes:958–961；包说明 README（非 git 目录只列文件工具的改动） | 一致；该包只在 `dsh-web-app` 的 patch 里（web-app `cordis.patch.yml`:357），桌面版组合有，沙盒模板没有，探针在影子场景经覆盖层挂载 |
 
@@ -367,7 +368,13 @@ Flash 没命中的位置：修复前第二步 4 次、之后各步 12 次；固�
 
 缓存断点 `cache_control`：BigModel 文档写的是隐式缓存，实测有无断点命中相同（上表第 1、2 行；另有 3 个两步对照）。为了与 ZCode 的请求形态一致，最后一条消息的最后一块带断点（zcode-api `applyAnthropicCacheControl`）。系统提示词没有按 ZCode 拆成 cli_prefix、stable、dynamic 三块（ZCode 后两块带断点）：coding-plan 下本通道只发一块，拆分要在方言里标出分界，命中不受影响，暂不做（§5.8 #14）。
 
-同批补上的请求细节（与缓存无关，按 ZCode）：每个请求都带 `x-request-id`、`x-zcode-session-type`、`x-zcode-trace-id`（3.16.3 `createModelRequestAttributionHeaders`）；请求体带 `metadata.user_id`，即 `{device_id, account_uuid: "", session_id}`，会话 id 与请求头相同（`createAnthropicRequestMetadataUserId`）。
+请求归因（与缓存无关，按 ZCode）：请求体带 `metadata.user_id`，即 `{device_id, account_uuid: "", session_id}`，会话 id 与请求头相同（`createAnthropicRequestMetadataUserId` `ZWs` @4073127）。coding-plan 的归因头〔已实现 2026-10-28，m1-parity 第 7 项，`src/glm-llm/headers.ts` `RequestAttributionTracker`〕按 3.16.3 `createModelRequestAttributionHeaders`（`Vdt` @4065502）是 `x-request-id`、`x-zcode-session-type`、`x-zcode-trace-id`、`x-query-id`、`x-zcode-query-source`、`x-session-id`：
+
+- `x-request-id`：每次尝试新生成（`Gdt` @4067222），项目令牌被拒后的重发也换新；签名 VERIFY 梯子的重发在同一次尝试里，不换。
+- `x-zcode-trace-id`：会话级。3.16.3 每个会话运行时建一个根追踪上下文（`vT` @1421911），回合与辅助请求的上下文都从它派生（`nS` @12816000、`Lw`），`traceId` 不变；委派子会话的运行时继承父会话的追踪上下文。本包按 DSH 会话保存 trace id（进程内，最多 256 个会话，最久未用的先出；出去后再来的会话拿新的 trace id），委派子会话沿 `parentSession` 取父会话的 trace id。
+- `x-query-id`：回合级。3.16.3 用桌面输入的 id 当 query id（`O9` @14502646、`zzo` @13357726，`query_` 前缀在头里去掉）。本包以请求里最后一条用户输入消息（`role: 'user'`、`source.kind: 'user'`）的 id 为回合键，键变了就换新的 UUID；会话标题请求沿用会话当前的 query id，会话还没有时先建一个，留给随后的第一步认领（DSH 让标题请求与第一步并发）。
+- `x-zcode-session-type` 与 `x-zcode-query-source`：会话标题 `other` + `session_title`（`v2n` @13069774），压缩 `other` + `compact`（@13389086），委派子会话 `subagent` + `subagent`（`mDn` @13259914 把 `subagent_child` 映射为 `subagent`，`Y0n` @4065835），其余 `main` + `main_turn`。委派子会话由 `agents` 服务给出的会话头判定（`origin: 'subagent'`，§2.4a）；取不到会话头时按主会话处理。
+- start-plan 不变：每请求一个 trace id，不带 query id 与 query source。
 
 设备 ID〔已实现 2026-10-28，m1-parity 第 9 项，`src/glm-llm/device-mid.ts`〕：`device_id` 取 ZCode 自己的 deviceMid，按 3.16.3 `ensureCliDeviceMid`（`Qro` @4062043）的读法：`<base>/.zcode/v2/telemetry-state.json` 的 `deviceMid` 字段，`<base>` 是去空白后非空的 `ZCODE_DATA_BASE_DIR`，否则是用户主目录（`CWs` @4062252）；文件读不出、不是 JSON 对象或字段不是非空字符串都算没有，结果按状态文件路径在进程内缓存。端点路由配置请求的 `X-Device-Mid` 按 3.16.3 `Kuc` @14468898 另读一次：去空白、只收可打印 ASCII、只缓存成功的读取，每次刷新配置都读（`Aui`）。与 3.16.3 的差异〔定案，m1-parity 简报第 9 项〕：3.16.3 在状态文件没有 deviceMid 时生成一个并在锁文件保护下原子写回；本包只读，不在 `~/.zcode` 下建任何文件，这时两处都用本包自己的 `<home>/device-mid.txt`，行健康的成功原因注明这一点。本机状态文件有 deviceMid，所以实际发送的是 ZCode 的值。
 
@@ -563,7 +570,7 @@ L3 探针：沙盒里把压缩阈值调低，摘要请求末条是 ZCode 提示�
 | 14 | 缓存断点参数 | 通道 | 末条消息带断点；系统块按 ZCode 拆三块未做，实测不影响命中（§4.5b） | 部分实现 2026-10-28 |
 | 16 | thinking 与采样参数 | 通道 | effort 三档、thinking 时剥采样参数 | 已实现 effort |
 | 17 | 保留式思考：历史中的 reasoning 带签名回传 | 通道 | 签名只回同一路由；ZCode 的签名拒收重试未移植（端点不校验，§4.5c） | 已实现 2026-10-28 |
-| 18 | 请求归因：会话 id、会话类型、请求与追踪 id、`metadata.user_id` | 通道 | 会话 id 取 DSH 会话（§4.5b），辅助请求标 `other`；子 agent 仍标 `main`，DSH 请求不带父会话信息 | 已实现 2026-10-28 |
+| 18 | 请求归因：会话 id、会话类型、请求与追踪 id、query id 与来源、`metadata.user_id` | 通道 | 按 3.16.3：会话级 trace id、回合级 query id、`main_turn` / `compact` / `session_title` / `subagent` 来源；委派子会话经 `agents` 服务的会话头判定（§4.5b） | 已实现 2026-10-28（m1-parity） |
 
 第 1、2、4、6、8 项的文本对齐状态以 §5.9 为准。
 

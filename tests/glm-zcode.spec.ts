@@ -3,7 +3,7 @@ import test from 'node:test'
 import { readdirSync } from 'node:fs'
 import { ZcodeAdapter, ZcodeLogin, logout } from '../src/glm-llm/zcode.ts'
 import { ZCODE_APP_VERSION } from '../src/glm-llm/identity.ts'
-import { ANTHROPIC_SDK_UA, requestAttribution, upstreamSessionId } from '../src/glm-llm/headers.ts'
+import { ANTHROPIC_SDK_UA, upstreamSessionId, type SessionHeaderLike } from '../src/glm-llm/headers.ts'
 import { apply as loginApply } from '../src/glm-llm/login-row.ts'
 import { saveCredential } from '../src/glm-llm/auth/store.ts'
 import type { Credential } from '../src/glm-llm/auth/types.ts'
@@ -415,20 +415,61 @@ test('x-session-id is one value per DSH session (the gateway cache affinity key)
   assert.ok(fresh.every(id => /^[0-9a-f-]{36}$/.test(id)) && fresh[0] !== fresh[1])
 })
 
-test('auxiliary calls (compaction, session title) keep the conversation session and are typed other', async () => {
+/** A durable user-typed message, as the DSH session controller records user input. */
+const typed = (id: string, text: string) => ({ id, role: 'user' as const, content: [{ type: 'text' as const, text }], source: { kind: 'user' } })
+
+/** One adapter that records the attribution headers of every model request it sends. */
+async function attributionRecorder(sessionHeader?: (sessionId: string) => SessionHeaderLike | undefined): Promise<{ send: (options: Partial<GenerateOptionsLike> & { sessionId: string, purpose?: 'compaction' | 'session-title' }) => Promise<Record<string, string | undefined>> }> {
   const { fs } = memoryStore()
   await saveCredential(fs, 'C:/ws/.llm/credentials.json', credential)
   const captured: { headers?: Record<string, string>, body?: Record<string, unknown> } = {}
-  const adapter = new ZcodeAdapter({ home: 'C:/ws/.llm', fetchImpl: makeUpstream(captured), storeFs: fs, env: isolatedEnv() })
-  const attributionOf = async (purpose: 'compaction' | 'session-title' | undefined): Promise<[string, string, string]> => {
-    for await (const chunk of adapter.stream({ ...request(), sessionId: 'session-conv-1', ...(purpose === undefined ? {} : { purpose }) })) void chunk
-    const userId = JSON.parse((captured.body?.metadata as { user_id: string }).user_id) as { session_id: string }
-    return [captured.headers?.['x-session-id'] ?? '', captured.headers?.['x-zcode-session-type'] ?? '', userId.session_id]
+  const adapter = new ZcodeAdapter({ home: 'C:/ws/.llm', fetchImpl: makeUpstream(captured), storeFs: fs, env: isolatedEnv(), ...(sessionHeader === undefined ? {} : { sessionHeader }) })
+  return {
+    send: async options => {
+      for await (const chunk of adapter.stream({ ...request(), ...options } as never)) void chunk
+      const userId = JSON.parse((captured.body?.metadata as { user_id: string }).user_id) as { session_id: string }
+      const pick = (name: string): string | undefined => headerIn(captured.headers, name)
+      return { session: pick('x-session-id'), type: pick('x-zcode-session-type'), source: pick('x-zcode-query-source'), query: pick('x-query-id'), trace: pick('x-zcode-trace-id'), request: pick('x-request-id'), metadataSession: userId.session_id }
+    },
   }
-  assert.deepEqual(await attributionOf(undefined), ['conv-1', 'main', 'conv-1'])
-  assert.deepEqual(await attributionOf('compaction'), ['conv-1', 'other', 'conv-1'])
-  assert.deepEqual(await attributionOf('session-title'), ['conv-1', 'other', 'conv-1'])
-  assert.deepEqual(requestAttribution(undefined, undefined).sessionType, 'main')
+}
+
+test('one trace id per session and one query id per user turn on the wire; x-request-id per request', async () => {
+  const { send } = await attributionRecorder()
+  const turn1 = [typed('m1', 'fix the quotes')]
+  const step1 = await send({ sessionId: 'session-conv-1', messages: turn1 })
+  const step2 = await send({ sessionId: 'session-conv-1', messages: [...turn1, { role: 'assistant', content: [{ type: 'text', text: 'Reading.' }] }] })
+  const turn2 = await send({ sessionId: 'session-conv-1', messages: [...turn1, typed('m2', 'now the tests')] })
+  const elsewhere = await send({ sessionId: 'session-conv-2', messages: [typed('m3', 'hi')] })
+  assert.deepEqual([step1.session, step1.type, step1.source, step1.metadataSession], ['conv-1', 'main', 'main_turn', 'conv-1'])
+  assert.equal(step2.trace, step1.trace)
+  assert.equal(step2.query, step1.query)
+  assert.notEqual(step2.request, step1.request)
+  assert.equal(turn2.trace, step1.trace)
+  assert.notEqual(turn2.query, step1.query)
+  assert.notEqual(elsewhere.trace, step1.trace)
+})
+
+test('auxiliary calls keep the conversation session: the title is session_title, compaction is compact, both typed other', async () => {
+  const { send } = await attributionRecorder()
+  const title = await send({ sessionId: 'session-conv-1', purpose: 'session-title', messages: [{ role: 'user', content: [{ type: 'text', text: 'Name this conversation' }] }] })
+  const main = await send({ sessionId: 'session-conv-1', messages: [typed('m1', 'fix it')] })
+  const compact = await send({ sessionId: 'session-conv-1', purpose: 'compaction', messages: [typed('m1', 'fix it'), { role: 'user', content: [{ type: 'text', text: 'summarize' }] }] })
+  assert.deepEqual([title.session, title.type, title.source, title.metadataSession], ['conv-1', 'other', 'session_title', 'conv-1'])
+  assert.deepEqual([compact.session, compact.type, compact.source], ['conv-1', 'other', 'compact'])
+  assert.equal(title.query, main.query)
+  assert.equal(compact.query, main.query)
+  assert.equal(title.trace, main.trace)
+})
+
+test('a delegated child session (agents: origin subagent) is typed subagent with the subagent source and its parent\'s trace', async () => {
+  const headers: Record<string, SessionHeaderLike> = { 'session-child': { parentSession: 'session-parent', origin: 'subagent' } }
+  const { send } = await attributionRecorder(sessionId => headers[sessionId])
+  const parent = await send({ sessionId: 'session-parent', messages: [typed('p1', 'delegate this')] })
+  const child = await send({ sessionId: 'session-child', messages: [typed('c1', 'the task')] })
+  assert.deepEqual([child.type, child.source, child.session], ['subagent', 'subagent', 'child'])
+  assert.equal(child.trace, parent.trace)
+  assert.notEqual(child.query, parent.query)
 })
 
 test('upstreamSessionId strips the DSH prefix, keeps other header-safe ids, and replaces unusable ones', () => {

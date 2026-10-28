@@ -161,7 +161,7 @@
   },
   "tests/glm-transport.spec.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 4
+      "count": 3
     },
     "@typescript-eslint/require-await": {
       "count": 4

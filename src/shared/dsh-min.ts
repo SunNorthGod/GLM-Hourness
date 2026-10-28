@@ -28,8 +28,14 @@ interface RequestHeaderLike {
 export interface SessionLike {
   /** The session identity (the header's `id`). */
   readonly id: string
-  /** Immutable creation metadata; `cwd` is the session working directory when the store recorded one. */
-  readonly header: { readonly id: string, readonly cwd?: string }
+  /**
+   * Immutable creation metadata; `cwd` is the session working directory when
+   * the store recorded one. A delegated child carries `parentSession` and
+   * `origin: 'subagent'` (dsh-subagent `childSessionMeta`, subagent:346–355;
+   * validated in dsh-session, session:1051–1053); a user fork carries
+   * `parentSession` only.
+   */
+  readonly header: { readonly id: string, readonly cwd?: string, readonly parentSession?: string, readonly origin?: 'subagent' }
   /** The request-visible history, after compaction projections. */
   deriveMessages(): readonly unknown[]
   /**

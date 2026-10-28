@@ -98,6 +98,8 @@ export type ContentBlockLike =
   | { type: 'tool-call', id: string, name: string, arguments: string }
 
 export interface RequestMessageLike {
+  /** The durable message identity (dsh-llm `MessageBase.id`); absent on one-request user inputs (`RequestUserInput`). */
+  id?: string
   role: 'system' | 'user' | 'assistant' | 'tool' | 'developer'
   content: readonly ContentBlockLike[]
   /**

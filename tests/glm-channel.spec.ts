@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { apply, Config, imageServices } from '../src/glm-llm/index.ts'
+import { apply, Config, imageServices, sessionHeaders } from '../src/glm-llm/index.ts'
 import { ZcodeAdapter } from '../src/glm-llm/zcode.ts'
 
 test('apply registers the native adapter under the configured provider route', () => {
@@ -32,6 +32,16 @@ test('image services come from ctx.get lazily and are absent without the service
   assert.equal(none.resolveAttachments(), undefined)
   assert.equal(none.mapHostPath('C:/host/a.png'), undefined)
   assert.equal(imageServices({}).resolveAttachments(), undefined)
+})
+
+test('session headers come from the agents service lazily; without it every session reads as main', () => {
+  const header = { id: 'session-child', parentSession: 'session-parent', origin: 'subagent' as const }
+  const agents = { get: (id: string) => id === 'session-child' ? { session: { header } } : undefined }
+  const lookup = sessionHeaders({ get: name => name === 'agents' ? agents : undefined })
+  assert.equal(lookup('session-child'), header)
+  assert.equal(lookup('session-other'), undefined)
+  assert.equal(sessionHeaders({}).call(undefined, 'session-child'), undefined)
+  assert.equal(sessionHeaders({ get: () => ({ unrelated: true }) })('session-child'), undefined)
 })
 
 test('without a home the route still registers (the credential directory defaults to the user-level directory)', () => {
