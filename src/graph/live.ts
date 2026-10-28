@@ -15,7 +15,7 @@
  * prefix are skipped. The children of a session, their activity and the
  * token usage come from DSH's own projections (subagentCatalog,
  * tokenUsage), which the panel reads next to this one. No Node built-ins:
- * the panel imports the view type.
+ * the panel imports the view type and the placement rule.
  */
 import { DEFERRED_TOOL_CALL_NAME } from '../toolsearch/zcode-text.ts'
 
@@ -150,6 +150,15 @@ export function foldLive(state: LiveState, event: LiveEvent): LiveState {
     default:
       return state
   }
+}
+
+/**
+ * The node an agent stands on: its own focus; a child without one stands
+ * on the main agent's focus. The panel places the agents with it, and the
+ * run controls (run-control.ts) find who works on a node with it.
+ */
+export function placeOf(focus: string | null, mainFocus: string | null, main: boolean): string | null {
+  return focus ?? (main ? null : mainFocus)
 }
 
 export function liveView(state: LiveState): LiveView {

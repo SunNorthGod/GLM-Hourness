@@ -9,9 +9,58 @@
  * through the assembly variables, exactly as installModelSelection injects
  * them.
  */
-import type { AgentLike, AssemblePayload, AssembledTool, PluginContext, PreExecuteDecision, PreExecuteListener, PreStepDecision, PreStepPayload, ProvideHost, ServiceLookup, ToolDefinitionLike, ToolExecuteInput, ToolExecutionPayload, ToolFinalResult } from '../src/shared/dsh-min.ts'
+import type { AgentLike, AssemblePayload, AssembledTool, InjectHost, InjectableServices, PluginContext, PreExecuteDecision, PreExecuteListener, PreStepDecision, PreStepPayload, ProvideHost, ServiceLookup, ToolDefinitionLike, ToolExecuteInput, ToolExecutionPayload, ToolFinalResult } from '../src/shared/dsh-min.ts'
 
 type Listener = (...args: never[]) => unknown
+
+type ServiceName = keyof InjectableServices
+
+/**
+ * cordis `ctx.inject` over a service table (cordis:1600; the callback's
+ * returned function is its fiber's disposer, cordis:1071, 1142–1143): a
+ * callback runs once every service it names is present, at the call or
+ * when `provide` adds the last one, and its disposer runs when `remove`
+ * takes one of them away.
+ */
+export function fakeInjector(initial: Partial<InjectableServices> = {}): {
+  /** A function property, so a test hands it on as the row's `ctx.inject`. */
+  readonly inject: InjectHost['inject']
+  provide<K extends ServiceName>(name: K, value: InjectableServices[K]): void
+  remove(name: ServiceName): void
+} {
+  const services: Partial<Record<ServiceName, unknown>> = { ...initial }
+  const fibers: Array<{ readonly names: readonly ServiceName[], readonly callback: (ctx: never) => (() => void) | void, dispose: (() => void) | undefined, running: boolean }> = []
+  const settle = (): void => {
+    for (const fiber of fibers) {
+      const ready = fiber.names.every(name => services[name] !== undefined)
+      if (ready && !fiber.running) {
+        fiber.running = true
+        const dispose = fiber.callback(services as never)
+        fiber.dispose = typeof dispose === 'function' ? dispose : undefined
+      }
+      else if (!ready && fiber.running) {
+        fiber.running = false
+        fiber.dispose?.()
+        fiber.dispose = undefined
+      }
+    }
+  }
+  return {
+    inject: (names, callback) => {
+      fibers.push({ names, callback, dispose: undefined, running: false })
+      settle()
+      return undefined
+    },
+    provide: (name, value) => {
+      services[name] = value
+      settle()
+    },
+    remove: (name) => {
+      delete services[name]
+      settle()
+    },
+  }
+}
 
 /**
  * A cordis service store as far as the rows use it (rc.3 cordis

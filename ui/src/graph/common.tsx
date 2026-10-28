@@ -1,14 +1,15 @@
 /**
  * Pieces every view of the graph panel shares: the services context, the
- * write hook, markdown with its copy labels, and the option picker that
- * decides (or overturns) a question.
+ * write hook (graph writes and run controls), markdown with its copy
+ * labels, and the option picker that decides (or overturns) a question.
  */
 import { Button, Input, MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
 import { createContext, useContext, useState, type ReactElement } from 'react'
 import type { LoadedGraph } from '../../../src/graph/parse.ts'
 import type { DecisionOption, GraphNode } from '../../../src/graph/schema.ts'
+import type { RunAction } from '../../../src/graph/run.ts'
 import type { CommandsRemote } from '../dsh.ts'
-import { applyMutation, type ApplyOutcome } from './apply.ts'
+import { applyMutation, runControl, type ApplyOutcome } from './apply.ts'
 
 export interface PanelServices {
   readonly commands: CommandsRemote
@@ -29,24 +30,28 @@ export interface Writer {
   readonly busy: boolean
   readonly outcome: ApplyOutcome | undefined
   run(mutation: Readonly<Record<string, unknown>>): Promise<ApplyOutcome>
+  /** A run control on a task (/graph-run). */
+  control(action: RunAction, id: string): Promise<ApplyOutcome>
 }
 
-/** One write at a time from one control, with its outcome kept for display. */
+/** One command at a time from one set of controls (no double sends: a command is not idempotent), with its outcome kept for display. */
 export function useWriter(): Writer {
   const { commands, sessionId } = useServices()
   const [busy, setBusy] = useState(false)
   const [outcome, setOutcome] = useState<ApplyOutcome | undefined>(undefined)
+  const send = async (task: () => Promise<ApplyOutcome>): Promise<ApplyOutcome> => {
+    setBusy(true)
+    setOutcome(undefined)
+    const result = await task()
+    setBusy(false)
+    setOutcome(result)
+    return result
+  }
   return {
     busy,
     outcome,
-    run: async mutation => {
-      setBusy(true)
-      setOutcome(undefined)
-      const result = await applyMutation(commands, sessionId, mutation)
-      setBusy(false)
-      setOutcome(result)
-      return result
-    },
+    run: mutation => send(() => applyMutation(commands, sessionId, mutation)),
+    control: (action, id) => send(() => runControl(commands, sessionId, action, id)),
   }
 }
 

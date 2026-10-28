@@ -2,15 +2,17 @@
  * One node, reading first: what it is, where it hangs, why it exists, what
  * done means, and what happened to it. Actions the human may take sit
  * where they belong: options on a question, approve or reject on a
- * proposal, a comment on anything. The id is at the bottom, for telling
- * the LLM which node is meant.
+ * proposal, run controls on a task, a comment on anything. The id is at
+ * the bottom, for telling the LLM which node is meant.
  */
 import { Button, IconChevronLeftOutlineRegular, Tag } from '@deepseek-ai/dsh-client-ui-primitives'
 import { useState, type ReactElement } from 'react'
 import { ACTOR_LABELS, EVIDENCE_LABELS, KIND_LABELS, OP_LABELS, STAGE_LABELS, STATUS_LABELS, TIER_LABELS, TYPE_LABELS, VERIFICATION_LABELS } from '../../../src/graph/labels.ts'
 import type { LoadedGraph } from '../../../src/graph/parse.ts'
 import { ancestorsOf } from '../../../src/graph/projection.ts'
+import { RUN_LABELS, nodeRefusal, offersRedo } from '../../../src/graph/run.ts'
 import type { GraphNode, HistoryEntry } from '../../../src/graph/schema.ts'
+import { placements, type AgentLive } from './agents.ts'
 import { Markdown, Options, Outcome, revOf, useServices, useWriter } from './common.tsx'
 import { needsHuman, statusText, timeAgo } from './model.ts'
 
@@ -47,7 +49,37 @@ function ProposalActions({ graph, node }: { readonly graph: LoadedGraph, readonl
   )
 }
 
-export function NodeDetail({ graph, id, onClose }: { readonly graph: LoadedGraph, readonly id: string, readonly onClose: () => void }): ReactElement {
+/**
+ * Run controls of a task (/graph-run, src/graph/run.ts): start while it is
+ * open, not done and nobody runs on it; pause while a running agent stands
+ * on it (the live view's placements); redo once it is done, or when its
+ * acceptance changed after it was last started. Each button's title says
+ * what happens; the outcome line is the one the conversation shows.
+ */
+function RunControls({ node, agents }: { readonly node: GraphNode, readonly agents: readonly AgentLive[] }): ReactElement | null {
+  const writer = useWriter()
+  const here = (placements(agents).get(node.id) ?? []).filter(agent => agent.running)
+  const start = nodeRefusal(node, 'start') === undefined && here.length === 0
+  const redo = offersRedo(node)
+  if (node.type !== 'task' || (!start && !redo && here.length === 0)) return null
+  return (
+    <>
+      <div className="glmg-section">让 agent 干活</div>
+      <div className="glmg-meta">
+        {here.length === 0 ? <span>现在没有 agent 在这里干活</span> : <span>在这里干活：{here.map(agent => agent.name).join('、')}</span>}
+        {redo ? <span>{node.status === 'done' ? '已完成，可以按现在的验收条件重做' : '验收条件在上次开始之后改过'}</span> : null}
+      </div>
+      <div className="glmg-actions">
+        {start ? <Button variant="primary" size="sm" disabled={writer.busy} title="主 Agent 收到这个任务，把焦点设到这里开始做" onClick={() => { void writer.control('start', node.id) }}>{RUN_LABELS.start}</Button> : null}
+        {here.length > 0 ? <Button variant="outline" size="sm" disabled={writer.busy} title="停下在这里干活的 agent，并告诉主 Agent 不要重新派发" onClick={() => { void writer.control('stop', node.id) }}>{RUN_LABELS.stop}</Button> : null}
+        {redo ? <Button variant="outline" size="sm" disabled={writer.busy} title="停下在这里干活的 agent，让主 Agent 按现在的验收条件重做" onClick={() => { void writer.control('redo', node.id) }}>{RUN_LABELS.redo}</Button> : null}
+      </div>
+      <Outcome outcome={writer.outcome} />
+    </>
+  )
+}
+
+export function NodeDetail({ graph, id, agents, onClose }: { readonly graph: LoadedGraph, readonly id: string, readonly agents: readonly AgentLive[], readonly onClose: () => void }): ReactElement {
   const { open } = useServices()
   const node = graph.nodes.get(id)
   if (node === undefined) {
@@ -83,6 +115,7 @@ export function NodeDetail({ graph, id, onClose }: { readonly graph: LoadedGraph
         {node.body === undefined ? null : <Markdown text={node.body} className="glmg-text" />}
         {node.type === 'question' ? <><div className="glmg-section">{done ? '选项（再选一个就是推翻）' : '选项'}</div><Options graph={graph} node={node} /></> : null}
         {node.status === 'proposed' ? <ProposalActions graph={graph} node={node} /> : null}
+        <RunControls node={node} agents={agents} />
         {(node.acceptance ?? []).length === 0
           ? null
           : <><div className="glmg-section">怎样算完成</div><ul className={`glmg-list${done ? ' ok' : ''}`}>{(node.acceptance ?? []).map(item => <li key={item}>{item}</li>)}</ul></>}

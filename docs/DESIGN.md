@@ -47,7 +47,7 @@ GLM-Hourness
 | `glm-hourness/workflow` | `dist/workflow/index.js` | 编排 | 仅记录派遣类工具调用 |
 | `glm-hourness/hourness` | `dist/ui/index.js` | 编排 | `/hourness` 命令：晨报与积分口径的用量面板（`ORCHESTRATION.md` §11.2、§11.3） |
 | `glm-hourness/graph` | `dist/graph/index.js` | 编排 | 项目图工具、每步投影与图文件门禁（`ORCHESTRATION.md` §2.5、§2.7、§2.10）；2026-10-28 经 L3 探针与 L4 桌面版验收后默认启用 |
-| `glm-hourness/graph-panel` | `dist/graph/panel-row.js` | 呈现 | 面板写入命令 `/graph-apply` 与现场投影 `graphLive`（`ORCHESTRATION.md` §2.10） |
+| `glm-hourness/graph-panel` | `dist/graph/panel-row.js` | 呈现 | 面板写入命令 `/graph-apply`、运行控制命令 `/graph-run` 与现场投影 `graphLive`（`ORCHESTRATION.md` §2.10） |
 | `glm-hourness/ui` | `ui/`（独立包） | 呈现 | 设置页说明 + 输入框「GLM 通道」pill |
 
 ### 2.3 两个 bundle 与一包一源
@@ -114,6 +114,7 @@ GLM-Hourness
 | `ctx.on(name, listener, options)`；`prepend` 排到最外层，`global` 跳过分发过滤 | 全部行 | cordis:372–381、cordis:263；服务的过滤只认同一 isolate，cordis:1785–1787 | 一致 |
 | `ctx.get(name)`：不需要 inject，提供方 fiber 未激活时为 `undefined` | glm-llm（`attachments`、`fs`）；guard、memory、workflow、hourness（`glmHournessData`，每次写入或命令调用时读）；glm-login（各行的 `glmHournessHealth/<行>`，`/glm-status` 调用时读） | cordis:763–766 | 一致；L3 探针实测 guard 与 memory 经它拿到数据行的目录，`/glm-status` 经它读到各行的健康视图 |
 | `ctx.provide(name, value)`：服务归调用方 fiber，同名第二个提供方抛错，返回的 disposer 撤销服务，fiber 卸载时自动撤销 | data（`glmHournessData`）；全部主机行（`glmHournessHealth/<行>`，§2.5） | cordis:800–830（经 `fiber.effect` 注册）；同一用法 cmdline:29–31 | 一致；激活期的抛错被捕获，降级为 warn |
+| `ctx.inject(names, callback)`：所列服务都在时在子 fiber 里调 callback，其中一个离开时卸载这个 fiber；callback 返回的函数是它的 disposer | graph-panel（`sessionProjections`；`agents` 与 `subagents` 一起，停子 agent 用） | cordis:1600、cordis:1071（返回 callback 的结果）、cordis:1142–1143（返回函数即收为 disposer） | 一致；L2 假宿主 `fakeInjector`（`tests/fake-rc3.ts`）按此建模 |
 
 事件：
 
@@ -140,7 +141,11 @@ GLM-Hourness
 | 工具体 `execute(args, exec)`，`exec` 就是 `createExecution` 的对象，带调用方 `agent`；返回值按输出 schema 校验；`render(exec.arguments, value)`、`presentationMeta` | 全部别名与自有工具；图工具从 `exec.agent.session.header.cwd` 解析图目录 | tools:3227–3260、tools:3406、tools:3637–3640、tools:3644、tools:3650–3653 | 一致 |
 | `llm.registerAdapter(providers, adapter)`，返回带 `replace` 的 disposer | glm-llm | llm:1842；adapter 本身由 `AdapterContractCheck` 对照官方 `LlmAdapter`（§8） | 一致 |
 | `llm.stream(options)` | glm-compact（重新派发） | llm:2393–2396 | 一致 |
-| `commands.register(definition)`：`name` 须匹配 `/^[a-z][a-z0-9_-]*$/u`，`description` 非空；调用参数 `{commandId, agent, rawInput, attachments, signal}`，本包读 `rawInput` 与 `agent`（行健康按 `agent` 取会话）；结果 `success`（`text` 可选）/ `error`（`text` 非空） | glm-login、hourness | commands:266–269、commands:78、commands:148–180、commands:379–385、commands:186–206 | 一致；hourness 上下文类型里多余的 `effect?: never` 删除 |
+| `commands.register(definition)`：`name` 须匹配 `/^[a-z][a-z0-9_-]*$/u`，`description` 非空；调用参数 `{commandId, agent, rawInput, attachments, signal}`，本包读 `rawInput` 与 `agent`（行健康按 `agent` 取会话），`/graph-run` 另读 `commandId`（记进消息的 `graphRun`）；`recordInput` 不为 false 时 `command/run` 记 `args`；结果 `success`（`text` 可选）/ `error`（`text` 非空） | glm-login、hourness、graph-panel | commands:266–269、commands:78、commands:148–180、commands:333–346、commands:379–385、commands:186–206 | 一致；hourness 上下文类型里多余的 `effect?: never` 删除 |
+| `sessionProjections.register(definition)`、`sessionProjections.snapshot(session, keys)`：前者是调用方 fiber 的 effect；后者读一个会话所选单元的一致切面，每个值过单元的 view schema，未注册的键不在 `values` 里 | graph-panel（注册 `graphLive`；`/graph-run` 读主会话的 `graphLive` 与 `subagentCatalog`、子会话的 `graphLive`） | session-projection:68、session-projection:141 | 一致；探针 `liveOf` 用同一个 `snapshot` 读现场（L3） |
+| `subagentCatalog` 投影的值：每个直接子 agent 一条 `{id, createdAt, mode, label?}`，`mode` 为 `one-shot`、`continuable`、`external`、`unknown` | 面板现场、`/graph-run`（只停非 external 的） | subagent:703–803（条目 schema 703–730，view schema 731，`subagentCatalogEntries` 774，单元 787） | 一致 |
+| `agents.get(id)`：会话 id 对应的活 agent，没有时为 undefined | graph-panel（`/graph-run` 取子 agent 的状态与会话） | agent:596 | 一致 |
+| `subagents.interrupt(targetSessionId, {kind: 'user', parentSessionId})`：取消一个活的直接子 agent 当前的回合，保留它的收件箱；不在驻留表里时是无操作；别的父会话的子 agent 抛 `UNAUTHORIZED` | graph-panel（暂停、重做） | subagent:3105、subagent:1258–1277 | 一致；L3 场景只停主 Agent，停子 agent 待 L4 |
 | `attachments.readImageRequest(ref, target, signal?)`、`attachments.imageHostPath(ref)` | glm-llm（读图） | attachment:290、attachment:338（抽象），attachment-local:1038、attachment-local:1053；编译期检查 `AttachmentsContractCheck` 对照官方 `AttachmentStore` | 一致 |
 | `fs.processPathFromHostPath(hostPath)` | glm-llm（卸载图片的占位路径） | fs:95、fs-local:792–795；pi-ai 同一用法 llm-pi-ai:2908–2909 | 一致 |
 | `workspaceChanges.summary(sessionId, seq)`：`{turn, cwd, files[{path, display, …}], total, …}`，`path` 在会话目录内为相对路径、目录外为绝对路径；只记录有工作目录的顶层会话 | guard（影子兜底，`ctx.get` 读，不需要 inject） | workspace-changes:1019–1022、workspace-changes:871–885、workspace-changes:958–961；包说明 README（非 git 目录只列文件工具的改动） | 一致；该包只在 `dsh-web-app` 的 patch 里（web-app `cordis.patch.yml`:357），桌面版组合有，沙盒模板没有，探针在影子场景经覆盖层挂载 |
@@ -150,11 +155,12 @@ GLM-Hourness
 | 接口 | 使用者 | rc.3 证据 | 结论 |
 | --- | --- | --- | --- |
 | agent：`id`（与会话共用）、`ctx`（作用域上下文）、`session` | glm-prompt、guard、工具检索 | agent-loop:748–781 | 类型偏差已修：结构类型里的 `model` 成员在 rc.3 不存在，删除 |
+| 活 agent（命令调用与 `agents.get` 给出的）：`status`（`idle` / `running`）；`followup` 排到下一回合并唤醒空闲的 agent，`inject` 排到下一步、不唤醒；取消之后到来的唤醒型投递改进下一回合并锁存唤醒；`cancel(cause, {keepInbox: true})` 中止正在跑的回合、保留收件箱，与停止按钮相同 | graph-panel（`/graph-run`） | agent-loop:790–791、agent-loop:800–821；api-session-controller:1065 | 一致；L3 场景 `glm-graph-run` 核对开始与暂停（未跑） |
 | session：`id`（取自 `header.id`）、`header{id, createdAt, cwd?, parentSession?, isSeeded}`、`deriveMessages()` | guard（`header.cwd` 作包含根）、工具检索、todo 提醒 | session:1344–1346、session:1820–1826、session:1672–1686 | 一致 |
 | session：`requestHeader()`，日志里 `request/header` 事件的折叠，`config` 为该步准备好的调用配置（含 `provider`、`model`）；第一次请求之前为 undefined | guard（工具调用的路由，`src/shared/route.ts` `sessionRoute`） | session:1612、session:637（`foldRequestHeader`）、`canonicalHeader`；agent 循环每步调用模型之前写入，变化时才写，agent-loop:1218–1240 | 一致（2026-10-28 核对；L3 探针的 GLM 拦截与非 GLM 放行经它判路由） |
 | `workingDirectory.get(session)`：会话的当前工作目录，无 I/O；没有记录时取部署默认目录 | guard（相对路径的解析基准，`ctx.get` 读） | working-directory:76–78；文件工具按 `ensure(agent)` 的结果解析相对路径，tool-fs:172、fs-local `localDisplayPath`（win32 上为 `resolve(cwd, path)`） | 一致 |
 | 派生消息：助手消息 `source{kind: 'model', provider, model}`，工具调用为 `tool-call` 块；工具结果带 `toolCallId`、`isError` | todo 提醒、工具检索 | llm:66–78（`createAssistantMessage`），session:862–868、session:1217–1218 | 一致 |
-| 合成 notice 与 `createUserMessage` 同形（`id`、`role: 'user'`、冻结） | 工具检索公告、todo 提醒、每步投影 | llm:37–66 | 一致 |
+| 合成 notice 与 `createUserMessage` 同形（`id`、`role: 'user'`、冻结） | 工具检索公告、todo 提醒、每步投影、运行控制的消息（经 `followup` / `inject` 进收件箱，来源 `glm-graph-run`） | llm:37–66 | 一致 |
 | 压缩检查点：替换被摘要区间的用户消息，`source{kind: 'compact-checkpoint', compactionId, sourceCommandId?}` | 每步投影（重锚） | compaction:109、compaction:116–122；compaction-basic:595–598 | 一致 |
 | 目标轮消息：`agent.followup` 投递的用户消息，`source{kind: 'goal', goalId, revision, round}`，下一步作为认领的消息进入 `agent/pre-step` | 每步投影（每拍） | goal-round-driver:144–151、164 | 一致 |
 

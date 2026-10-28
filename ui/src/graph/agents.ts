@@ -7,7 +7,7 @@
  * a session without values yet is read once through refreshProjections.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
-import type { LiveView } from '../../../src/graph/live.ts'
+import { placeOf, type LiveView } from '../../../src/graph/live.ts'
 import type { SessionsClient, TokenUsage } from '../dsh.ts'
 
 export interface AgentLive {
@@ -87,9 +87,10 @@ export function doingText(agent: AgentLive, now: number): string {
 }
 
 /**
- * Where each agent stands on the graph: the main agent at its focus, a
- * child at its own focus, else at the main agent's focus. Agents with a
- * view but no place are listed under the empty key.
+ * Where each agent stands on the graph (live.ts placeOf, the rule the run
+ * controls use too): the main agent at its focus, a child at its own
+ * focus, else at the main agent's focus. Agents with a view but no place
+ * are listed under the empty key.
  */
 export function placements(agents: readonly AgentLive[]): ReadonlyMap<string, readonly AgentLive[]> {
   const mainFocus = agents.find(agent => agent.main)?.view?.focus ?? null
@@ -97,7 +98,7 @@ export function placements(agents: readonly AgentLive[]): ReadonlyMap<string, re
   for (const agent of agents) {
     // A child without a live view ran before this start of the app; it stands nowhere.
     if (agent.view === undefined) continue
-    const at = agent.view.focus ?? (agent.main ? null : mainFocus) ?? ''
+    const at = placeOf(agent.view.focus, mainFocus, agent.main) ?? ''
     placed.set(at, [...placed.get(at) ?? [], agent])
   }
   return placed

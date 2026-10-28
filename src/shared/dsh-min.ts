@@ -294,21 +294,32 @@ export interface ServiceLookup {
 }
 
 /**
- * cordis `ctx.inject(names, callback)`: runs the callback in a child fiber
- * whose context carries the named services once they are present, and
- * disposes that fiber when they leave (rc.3 dsh-subagent and
- * dsh-user-questions register their projection units this way).
+ * cordis `ctx.inject(names, callback)` (cordis:1600): runs the callback in a
+ * child fiber whose context carries the named services once they are all
+ * present, and disposes that fiber when one leaves; a function the callback
+ * returns runs at that disposal (cordis:1071, 1142–1143). rc.3 dsh-subagent
+ * and dsh-user-questions register their projection units this way.
  */
 export interface InjectHost {
-  inject(names: readonly string[], callback: (ctx: { readonly sessionProjections: SessionProjectionsService }) => void): unknown
+  inject<K extends keyof InjectableServices>(names: readonly K[], callback: (ctx: Pick<InjectableServices, K>) => (() => void) | void): unknown
+}
+
+/** The services rows take optionally through `ctx.inject`. */
+export interface InjectableServices {
+  readonly sessionProjections: SessionProjectionsService
+  readonly agents: AgentsService
+  readonly subagents: SubagentsService
 }
 
 /**
- * The `sessionProjections` service member a unit registrar calls
- * (dsh-session-projection `register`): the registration is an effect of the
- * calling fiber and leaves with it.
+ * The `sessionProjections` service members the graph-panel row calls
+ * (rc.3 dsh-session-projection): `register` adds a unit as an effect of the
+ * calling fiber, which leaves with it (session-projection:68); `snapshot`
+ * reads one consistent cut of the selected client-visible units of one
+ * session, each value through its unit's view schema; a key that is not
+ * registered is absent from `values` (session-projection:141).
  */
-interface SessionProjectionsService {
+export interface SessionProjectionsService {
   register(definition: {
     readonly key: string
     readonly stateVersion: number
@@ -317,6 +328,44 @@ interface SessionProjectionsService {
     apply(state: never, event: never): unknown
     readonly wire?: { readonly viewSchema: { parse(value: unknown): unknown }, view(state: never): unknown }
   }): () => void
+  snapshot(session: SessionLike, keys: readonly string[]): { readonly values: Readonly<Record<string, unknown>> }
+}
+
+/**
+ * A live agent as a command invocation and the `agents` registry carry it
+ * (rc.3 dsh-agent-loop `ReactLoopAgent`): its id equals its session's id
+ * (agent-loop:771–775). `status` is idle between turns, running while a
+ * turn or maintenance runs (agent-loop:790–791). `followup` puts a message
+ * at the end of the next-turn queue and wakes an idle agent; `inject` puts
+ * it before the next step without waking (agent-loop:806, 812, both through
+ * `send`, agent-loop:800–805, which sends a waking message that arrives
+ * after a cancel to the next turn and latches the wake). `cancel` aborts
+ * the running turn; `keepInbox` keeps the pending messages, as the stop
+ * button does (agent-loop:815–821; api-session-controller:1065).
+ */
+export interface LiveAgentLike {
+  readonly id: string
+  readonly session: SessionLike
+  readonly status: 'idle' | 'running'
+  followup(message: UserNotice): void
+  inject(message: UserNotice): void
+  cancel(cause: { readonly kind: 'user' }, options: { readonly keepInbox: true }): void
+}
+
+/** The `agents` registry member the run controls read (rc.3 dsh-agent `get`, agent:596): the live agent of a session id, undefined when none is live. */
+export interface AgentsService {
+  get(id: string): LiveAgentLike | undefined
+}
+
+/**
+ * The `subagents` service member the run controls call (rc.3 dsh-subagent
+ * `interrupt`, subagent:3105; the manager, subagent:1258–1277): under a
+ * `user` authority it cancels the current turn of a live direct child of
+ * that parent session and keeps its inbox; an absent child is an accepted
+ * no-op; a child of another parent throws `UNAUTHORIZED`.
+ */
+export interface SubagentsService {
+  interrupt(targetSessionId: string, authority: { readonly kind: 'user', readonly parentSessionId: string }): void
 }
 
 /** cordis `ctx.provide(name, value)`: register a service owned by the calling fiber; the disposer unregisters it (also on unload). */
@@ -339,6 +388,17 @@ export interface CommandInvocationLike {
   readonly rawInput: string
 }
 
+/**
+ * The invocation as the host passes every handler, for a handler that
+ * drives the receiving agent: the lifecycle pairing id `commandId` (also
+ * on `command/run` and `command/done`, commands:333–346) and the live agent
+ * itself (commands:379–385).
+ */
+export interface AgentCommandInvocationLike extends CommandInvocationLike {
+  readonly commandId: string
+  readonly agent: LiveAgentLike
+}
+
 /** A command result; an error needs non-empty text (dsh-commands `normalizeResult`). */
 export interface CommandResultLike {
   readonly kind: 'success' | 'error'
@@ -346,7 +406,7 @@ export interface CommandResultLike {
 }
 
 /** A command definition (dsh-commands `normalizeDefinition`): `name` matches /^[a-z][a-z0-9_-]*$/, `description` is non-empty. */
-export interface CommandDefinitionLike {
+export interface CommandDefinitionLike<Invocation extends CommandInvocationLike = CommandInvocationLike> {
   readonly definitionId: string
   readonly name: string
   readonly description: string
@@ -355,12 +415,16 @@ export interface CommandDefinitionLike {
    * false when another record already carries the payload.
    */
   readonly recordInput?: boolean
-  handler(invocation: CommandInvocationLike): Promise<CommandResultLike>
+  handler(invocation: Invocation): Promise<CommandResultLike>
 }
 
-/** A context with the commands service injected. */
-export interface CommandsHost {
-  readonly commands: { register(definition: CommandDefinitionLike): () => void }
+/**
+ * A context with the commands service injected. The host passes every
+ * handler the full invocation (AgentCommandInvocationLike); `Invocation` is
+ * what the row's handlers read.
+ */
+export interface CommandsHost<Invocation extends CommandInvocationLike = CommandInvocationLike> {
+  readonly commands: { register(definition: CommandDefinitionLike<Invocation>): () => void }
 }
 
 /**

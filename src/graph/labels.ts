@@ -3,6 +3,7 @@
  * §2.6 field table, §2.9 history), shared by the picture, the graph panel
  * (ui/src/graph) and the command outcomes.
  */
+import type { EngineError } from './mutation.ts'
 import type { Actor, EvidenceKind, NodeType, Op, Stage, Status, TaskKind, Tier, Verification } from './schema.ts'
 
 export const TYPE_LABELS: Readonly<Record<NodeType, string>> = {
@@ -84,4 +85,9 @@ export const OP_LABELS: Readonly<Record<Op, string>> = {
   decide: '拍板',
   verify: '验证',
   supersede: '取代',
+}
+
+/** An engine refusal as one readable line of a command outcome: what failed and the way forward (CHARTER.md §6). */
+export function refusalText(error: Pick<EngineError, 'code' | 'message' | 'hint'>): string {
+  return `图没有写入（${error.code}）：${error.message}。${error.hint}`
 }

@@ -14,7 +14,8 @@
  * scenarios run the dispatch feasibility spike
  * (scripts/probe/probe-dispatch.mjs): a background child with a write
  * scope, a plugin-created goal driven through two rounds, and the headless
- * runner's exit with an armed goal.
+ * runner's exit with an armed goal. The graph panel scenarios run the
+ * bundle's /graph-apply and /graph-run handlers mid-step for the session.
  *
  * Usage: node scripts/probe/run-probe.mjs
  * Requires the desktop install (DSH_DESKTOP_DIR overrides the location) and
@@ -32,6 +33,7 @@ import { peakWindowAt } from '../../dist/shared/credits.js'
 import { userDataHome } from '../../dist/shared/data-home.js'
 import { HEALTH_ROWS } from '../../dist/shared/health.js'
 import { openEngine } from '../../dist/graph/engine.js'
+import { runNote } from '../../dist/graph/run.js'
 import { loadGraph } from '../../dist/graph/store.js'
 import { attachmentsIn, dataRows, initRepo, limitsRow, repo, requireDesktop, sandboxCommand, slash, workspaceChangesRow } from '../sandbox.mjs'
 import { GOAL_GATE_DENIAL, PROJECTION_SOURCE, SCOPE_DENIAL } from './probe-dispatch.mjs'
@@ -516,6 +518,39 @@ const graphGoal = runScenario('glm-graph-goal', 'glm-5.3', [
 const graphGoalCreated = dispatchRecord('glm-graph-goal').find(entry => entry.kind === 'goal-created')
 const graphGoalSteps = bySession(graphGoal, graphGoalCreated?.agentId)
 const graphRoundTwo = graphGoalSteps.find(step => step.messages.some(message => message.source === 'goal' && message.text.includes('\nRound: 2/2\n')))
+
+// Run controls (docs/ORCHESTRATION.md §2.10 运行控制, m2-9): the graph and
+// graph-panel rows on a seeded graph; the probe provider runs the real
+// /graph-run handler mid-step, as the panel's remote.commands.execute does.
+// Turn 1: start task-1 while the agent is busy (the followup waits for the
+// turn to end), reply done. Turn 2 opens on the start message: the agent
+// sets the focus; on the next step, while it runs on the node, stop task-1
+// cancels the turn (keepInbox) before the scripted Bash runs, so the
+// session asks nothing more. The pause notice is injected without a wake,
+// so no request shows it here (L4 does).
+const controlDir = join(runDir, 'glm-graph-run')
+const controlWs = join(controlDir, 'ws')
+const controlGraph = join(controlWs, 'docs', 'graph')
+mkdirSync(controlGraph, { recursive: true })
+const controlEngine = openEngine(controlGraph)
+for (const node of [
+  { type: 'goal', title: '探针目标' },
+  { type: 'task', title: '探针任务', parent: 'goal-1', acceptance: ['probe acceptance'] },
+]) {
+  const seeded = await controlEngine.apply('human', { op: 'propose', reason: 'probe seed', node })
+  if (!seeded.ok) throw new Error(`probe: seeding the run-control graph failed: ${JSON.stringify(seeded.error)}`)
+}
+const graphControl = runScenario('glm-graph-run', 'glm-5.3', [
+  { text: 'done', command: { name: 'graph-run', input: 'start task-1' } },
+  { tool: { name: 'graph_focus', arguments: { id: 'task-1' } }, status: true },
+  { tool: { name: 'Bash', arguments: { command: 'Write-Output probe-after-stop' } }, live: true, command: { name: 'graph-run', input: 'stop task-1' } },
+  { text: 'after stop' },
+], 'Reply done.', [...PANEL_ROW, ...graphRow(controlGraph)], controlWs)
+const controlSteps = bySession(graphControl, graphControl.steps[0]?.sessionId)
+const controlCommands = controlSteps.flatMap(step => step.command === undefined ? [] : [step.command])
+const controlHistory = ((await loadGraph(controlGraph)).nodes.get('task-1')?.history ?? []).filter(entry => entry.actor === 'human' && entry.op === 'comment').map(entry => entry.text)
+const controlStart = (controlSteps[1]?.messages ?? []).find(message => message.role === 'user' && message.source === 'glm-graph-run')
+const controlStderr = existsSync(join(controlDir, 'stderr.txt')) ? readFileSync(join(controlDir, 'stderr.txt'), 'utf8') : ''
 const repoGraphAfter = (await loadGraph(repoGraph)).revision
 
 // Live view (docs/ORCHESTRATION.md §2.10, m2-8): the graphLive projection
@@ -597,6 +632,11 @@ const checks = [
   ['graph row: Write and Bash into the copy\'s node files are denied by graph-files-only and journaled; a write elsewhere runs', [8, 9].every(index => graphResult(index)?.isError === true && graphResult(index)?.text.includes('inside the project graph') === true) && graphResult(10)?.isError !== true && !existsSync(graphNodeFile) && existsSync(graphNotes) && graphViolations.filter(record => record.rule === 'graph-files-only').map(record => record.tool).join(',') === 'Write,Bash', `records: ${graphViolations.map(record => `${record.rule}${record.mode === 'shadow' ? '(shadow)' : ''}:${record.tool ?? ''}`).join(', ')}`],
   ['graph row: the shadow fallback runs and counts the graph tool writes as known (no shadow record names a node file)', healthOf(graphRun).guard?.reason.includes('影子兜底：工作区变更记录') === true && graphViolations.filter(record => record.mode === 'shadow').every(record => record.paths.every(path => !path.startsWith('docs/graph/'))), JSON.stringify(graphViolations.filter(record => record.mode === 'shadow').map(record => record.paths))],
   ['graph row: the GLM rule section declares graph-files-only; /glm-status reports the graph row with the focus and the panel row in effect', graphSteps[0]?.system.includes(GRAPH_FILES_LINE) === true && healthOf(graphRun).graph?.status === ACTED && healthOf(graphRun).graph.reason.includes(`焦点 ${focusTask?.id}`) && healthOf(graphRun)['graph-panel']?.status === ACTED, `${healthLine(healthOf(graphRun), 'graph')} (${healthOf(graphRun).graph?.reason ?? ''}); ${healthLine(healthOf(graphRun), 'graph-panel')}`],
+  ['graph run: /graph-run start mid-turn answers that the busy agent takes it next; the node history keeps the click as the human', controlCommands[0]?.kind === 'success' && controlCommands[0].text === '已让主 Agent 从「探针任务」开始做（它正忙，这一轮做完就接着做）' && controlHistory.includes(runNote('start')), `${JSON.stringify(controlCommands[0] ?? null)}; human comments ${JSON.stringify(controlHistory)}`],
+  ['graph run: the start message opens the next turn as a glm-graph-run notice asking for graph_focus on the node', controlSteps[0]?.messages.every(message => message.source !== 'glm-graph-run') === true && controlStart?.text.includes('graph_focus {"id":"task-1"}') === true, controlStart === undefined ? `no notice in request 2 (${controlSteps.length} request(s), exit ${graphControl.status})` : controlStart.text.slice(0, 120).replace(/\n/g, ' ')],
+  ['graph run: after graph_focus the live view stands the main agent on the node, mid-turn', controlSteps[2]?.live?.graphLive?.focus === 'task-1' && typeof controlSteps[2].live.graphLive.turnSince === 'number', JSON.stringify(controlSteps[2]?.live?.graphLive ?? null)],
+  ['graph run: /graph-run stop on the running agent cancels its turn: the outcome line, the history entry, and no request after it (the scripted Bash never ran)', controlCommands[1]?.kind === 'success' && controlCommands[1].text === '已暂停「探针任务」：停下了主 Agent' && controlHistory.includes(`${runNote('stop')}：停下了主 Agent`) && controlSteps.length === 3, `${JSON.stringify(controlCommands[1] ?? null)}; ${controlSteps.length} request(s), exit ${graphControl.status}`],
+  ['graph run: /glm-status reports graph-panel in effect, able to stop subagents; no warning from the row', healthOf(graphControl)['graph-panel']?.status === ACTED && healthOf(graphControl)['graph-panel'].reason.includes('能停子 agent') && !controlStderr.includes('graph-panel'), `${healthLine(healthOf(graphControl), 'graph-panel')} (${healthOf(graphControl)['graph-panel']?.reason ?? ''}); stderr mentions graph-panel: ${controlStderr.includes('graph-panel')}`],
   ['graph panel: the row adds nothing to the model face and activates without warnings', graphPanel.steps.length > 0 && graphPanel.steps.every(step => step.tools.every(tool => !tool.name.startsWith('graph_'))) && !panelStderr.includes('graph-panel'), `exit ${graphPanel.status}, ${graphPanel.steps.length} step(s); stderr mentions graph-panel: ${panelStderr.includes('graph-panel')}`],
   ['glm prompt: ZCode CLI prefix in the system prompt', glmFirst?.system.includes('You are ZCode, an interactive coding agent') === true, glmFirst === undefined ? 'no request' : glmFirst.system.slice(0, 80).replace(/\n/g, ' ')],
   ['glm prompt: DSH identity replaced', glmFirst !== undefined && !glmFirst.system.includes('powered by DeepSeek Harness'), ''],

@@ -103,7 +103,7 @@ export function GraphPanel({ source, commands, sessions, sessionId }: GraphPanel
           {shown === 'agent' ? <Decisions key="agent" graph={graph} items={items} /> : null}
           {shown === 'doing' ? <Doing key="doing" graph={graph} items={items} agents={agents} /> : null}
           {shown === 'graph' ? <GraphCanvas graph={graph} selected={selected} onPick={setSelected} agents={agents} /> : null}
-          {selected === undefined ? null : <NodeDetail key={selected} graph={graph} id={selected} onClose={() => { setSelected(undefined) }} />}
+          {selected === undefined ? null : <NodeDetail key={selected} graph={graph} id={selected} agents={agents} onClose={() => { setSelected(undefined) }} />}
         </div>
       </div>
     </ServicesContext.Provider>

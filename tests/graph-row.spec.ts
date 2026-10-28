@@ -2,7 +2,8 @@
  * The graph row's wiring beyond its tools and rule (docs/ORCHESTRATION.md
  * §2.7, §6.4; docs/DESIGN.md §2.5): graph-files-only denials in the
  * violation journal, the service the guard row reads, and the row health
- * of glm-hourness/graph and glm-hourness/graph-panel.
+ * of glm-hourness/graph and glm-hourness/graph-panel (whose services come
+ * through the fake cordis inject).
  */
 import assert from 'node:assert/strict'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
@@ -15,7 +16,7 @@ import { apply as applyPanel } from '../src/graph/panel-row.ts'
 import type { ToolFinalResult } from '../src/shared/dsh-min.ts'
 import { GRAPH_SERVICE, graphService } from '../src/shared/graph-service.ts'
 import { collectHealth, healthServiceName, type HealthEntry, type RowHealthView } from '../src/shared/health.ts'
-import { fakeRuntime, serviceStore, type FakeRuntime } from './fake-rc3.ts'
+import { fakeInjector, fakeRuntime, serviceStore, type FakeRuntime } from './fake-rc3.ts'
 import { captureWarnings } from './graph-helpers.ts'
 
 interface Fixture {
@@ -134,24 +135,37 @@ test('row health: a bad config or a failed registration leaves the row inactive'
   assert.equal(store.services.has(GRAPH_SERVICE), false)
 })
 
-test('graph-panel health is fixed at activation: the command and the live projection', async () => {
+test('graph-panel health is an activation status: the commands, the live projection and stopping subagents', async () => {
   const commands = { register: () => () => {} }
-  const registry = { register: () => () => {} }
+  const services = {
+    sessionProjections: { register: () => () => {}, snapshot: () => ({ values: {} }) },
+    agents: { get: () => undefined },
+    subagents: { interrupt: () => {} },
+  }
   const full = fakeRuntime({ natives: [] })
-  applyPanel({ ...full.ctx, commands, inject: (_names, callback) => { callback({ sessionProjections: registry }) } })
-  assert.deepEqual(entry(full, 'graph-panel'), { row: 'graph-panel', status: 'active', reason: '命令 /graph-apply 已注册；现场投影 graphLive 已注册' })
-  const noLive = fakeRuntime({ natives: [] })
-  applyPanel({ ...noLive.ctx, commands })
-  assert.deepEqual(entry(noLive, 'graph-panel'), { row: 'graph-panel', status: 'degraded', reason: '命令 /graph-apply 已注册；宿主没有 inject，现场投影未注册' })
-  // The registry arrives after activation: degraded while waiting, active once the unit registered.
+  applyPanel({ ...full.ctx, commands, inject: fakeInjector(services).inject })
+  assert.deepEqual(entry(full, 'graph-panel'), { row: 'graph-panel', status: 'active', reason: '命令 /graph-apply、/graph-run 已注册；现场投影 graphLive 已注册；能停子 agent' })
+  const noInject = fakeRuntime({ natives: [] })
+  applyPanel({ ...noInject.ctx, commands })
+  assert.deepEqual(entry(noInject, 'graph-panel'), { row: 'graph-panel', status: 'degraded', reason: '命令 /graph-apply、/graph-run 已注册；宿主没有 inject，现场投影未注册；宿主没有 inject，停不了子 agent' })
+  // Services arrive after activation and leave again: degraded while one is missing, active once all are there.
   const late = fakeRuntime({ natives: [] })
-  let arrive: (() => void) | undefined
-  applyPanel({ ...late.ctx, commands, inject: (_names, callback) => { arrive = () => { callback({ sessionProjections: registry }) } } })
-  assert.deepEqual(entry(late, 'graph-panel'), { row: 'graph-panel', status: 'degraded', reason: '命令 /graph-apply 已注册；现场投影等 sessionProjections 服务' })
-  arrive?.()
+  const host = fakeInjector({ agents: services.agents })
+  applyPanel({ ...late.ctx, commands, inject: host.inject })
+  assert.deepEqual(entry(late, 'graph-panel'), { row: 'graph-panel', status: 'degraded', reason: '命令 /graph-apply、/graph-run 已注册；现场投影等 sessionProjections 服务；停子 agent 等 agents、subagents 服务' })
+  host.provide('sessionProjections', services.sessionProjections)
+  host.provide('subagents', services.subagents)
   assert.equal(entry(late, 'graph-panel').status, 'active')
+  host.remove('subagents')
+  assert.deepEqual(entry(late, 'graph-panel'), { row: 'graph-panel', status: 'degraded', reason: '命令 /graph-apply、/graph-run 已注册；现场投影 graphLive 已注册；停子 agent 等 agents、subagents 服务' })
   const noCommand = fakeRuntime({ natives: [] })
   await captureWarnings(() => { applyPanel({ ...noCommand.ctx, commands: { register: () => { throw new Error('taken') } } }) })
   assert.equal(entry(noCommand, 'graph-panel').status, 'inactive')
   assert.match(entry(noCommand, 'graph-panel').reason, /^\/graph-apply 注册失败：taken；/)
+  // The second registration fails: the first is withdrawn, the row stays off.
+  const withdrawn: string[] = []
+  const second = fakeRuntime({ natives: [] })
+  await captureWarnings(() => { applyPanel({ ...second.ctx, commands: { register: definition => { if (definition.name === 'graph-run') throw new Error('taken'); return () => { withdrawn.push(definition.name) } } } }) })
+  assert.deepEqual(withdrawn, ['graph-apply'])
+  assert.match(entry(second, 'graph-panel').reason, /^\/graph-run 注册失败：taken；/)
 })

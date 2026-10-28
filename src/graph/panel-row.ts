@@ -2,25 +2,36 @@
  * glm-hourness/graph-panel row entry (docs/ORCHESTRATION.md §2.10, §13):
  * the write path of the project graph panel in the DSH right sidebar. The
  * panel (ui/src) reads the node files through remote.workspaceFiles and
- * writes through this row's /graph-apply command, which applies one
- * mutation with actor human: a slash command only ever comes from the
- * human (the panel, or the composer), never from the model. The graph is
- * the configured dir (default docs/graph) under the invoking session's
- * working directory, resolved per call like the graph tools.
+ * writes through this row's commands; a slash command only ever comes from
+ * the human (the panel, or the composer), never from the model, so both act
+ * as the human. The graph is the configured dir (default docs/graph) under
+ * the invoking session's working directory, resolved per call like the
+ * graph tools.
  *
- * The command's input is the mutation JSON. command/run does not record it
- * (recordInput false): the node history already keeps the change, and the
- * conversation shows the readable outcome line instead of raw JSON. The
- * row registers nothing model-facing. It also registers the session
- * projection the panel's live view reads (live.ts) and provides its row
- * health, fixed at activation. Activation never throws.
+ * /graph-apply applies one mutation with actor human. Its input is the
+ * mutation JSON, which command/run does not record (recordInput false): the
+ * node history already keeps the change, and the conversation shows the
+ * readable outcome line instead of raw JSON.
+ *
+ * /graph-run starts, stops or redoes the work on a task node
+ * (run-control.ts). It sends the main agent a message, so unlike
+ * /graph-apply it reaches the model. Its input (`start task-3`) is short
+ * and is what the human clicked, so command/run records it.
+ *
+ * The row also registers the session projection the panel's live view
+ * reads (live.ts), and takes the services the run controls read
+ * optionally: sessionProjections (with the projection), agents and
+ * subagents (stopping a child). Its row health is an activation status
+ * that changes as those arrive or leave. Activation never throws.
  */
-import type { CommandInvocationLike, CommandResultLike, CommandsHost, InjectHost, ProvideHost } from '../shared/dsh-min.ts'
+import type { AgentCommandInvocationLike, CommandDefinitionLike, CommandInvocationLike, CommandResultLike, CommandsHost, InjectHost, ProvideHost } from '../shared/dsh-min.ts'
 import { provideRowHealth } from '../shared/health.ts'
 import { openEngine } from './engine.ts'
-import { STATUS_LABELS } from './labels.ts'
+import { STATUS_LABELS, refusalText } from './labels.ts'
 import { LIVE_KEY, liveProjection } from './live.ts'
-import type { EngineError, Mutation } from './mutation.ts'
+import type { Mutation } from './mutation.ts'
+import { runFromCommand, type RunServices } from './run-control.ts'
+import { RUN_COMMAND } from './run.ts'
 import type { GraphNode } from './schema.ts'
 import { DEFAULT_GRAPH_DIR, locateGraph } from './tools.ts'
 
@@ -35,6 +46,8 @@ export const inject = ['commands']
 
 /** The command the panel sends its writes through. */
 export const APPLY_COMMAND = 'graph-apply'
+
+const COMMANDS = `/${APPLY_COMMAND}、/${RUN_COMMAND}`
 
 /** One-line outcome of a write, shown as the command result in the conversation. */
 function outcomeText(mutation: Mutation, node: GraphNode): string {
@@ -59,11 +72,6 @@ function outcomeText(mutation: Mutation, node: GraphNode): string {
   }
 }
 
-/** A refusal as one readable line: what failed and the way forward (CHARTER.md §6). */
-export function refusalText(error: Pick<EngineError, 'code' | 'message' | 'hint'>): string {
-  return `图没有写入（${error.code}）：${error.message}。${error.hint}`
-}
-
 /** Apply one mutation from a command invocation as the human. */
 export async function applyFromCommand(invocation: CommandInvocationLike, configured: string): Promise<CommandResultLike> {
   let mutation: unknown
@@ -80,30 +88,44 @@ export async function applyFromCommand(invocation: CommandInvocationLike, config
   return { kind: 'success', text: outcomeText(mutation as Mutation, result.node) }
 }
 
+const WAITING_LIVE = '现场投影等 sessionProjections 服务'
+const WAITING_CHILDREN = '停子 agent 等 agents、subagents 服务'
+
+function message(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
 /**
  * Register the live projection (live.ts) once the session projection
- * registry is present; without it the panel shows no live state and the
- * write path still works. `settled` hears why the projection is off, or
- * undefined once it registered; cordis may run the callback after
- * activation, when the registry arrives.
+ * registry is present, and keep the registry for the run controls; without
+ * it the panel shows no live state, stop and redo refuse, and the rest
+ * works. `settled` hears why the projection is off, or undefined once it
+ * registered; cordis may run the callback after activation, when the
+ * registry arrives, and its disposer when the registry leaves.
  */
-function installLive(ctx: Partial<InjectHost>, settled: (problem: string | undefined) => void): void {
+function installLive(ctx: Partial<InjectHost>, services: RunServices, settled: (problem: string | undefined) => void): void {
   if (typeof ctx.inject !== 'function') {
     settled('宿主没有 inject，现场投影未注册')
     return
   }
   const off = (error: unknown): void => {
-    console.warn(`${name}: the live projection is off: ${error instanceof Error ? error.message : String(error)}`)
-    settled(`现场投影未注册：${error instanceof Error ? error.message : String(error)}`)
+    console.warn(`${name}: the live projection is off: ${message(error)}`)
+    settled(`现场投影未注册：${message(error)}`)
   }
   try {
     ctx.inject(['sessionProjections'], projectionCtx => {
       try {
         projectionCtx.sessionProjections.register(liveProjection)
-        settled(undefined)
       }
       catch (error) {
         off(error)
+        return undefined
+      }
+      services.projections = projectionCtx.sessionProjections
+      settled(undefined)
+      return () => {
+        services.projections = undefined
+        settled(WAITING_LIVE)
       }
     })
   }
@@ -112,45 +134,90 @@ function installLive(ctx: Partial<InjectHost>, settled: (problem: string | undef
   }
 }
 
-/** The command's activation problem, if any; the dir is the configured one or the default. */
-function registerCommand(ctx: CommandsHost, config: GraphPanelConfig): { readonly unregister: () => void, readonly problem?: string } {
-  const dir: unknown = config.dir ?? DEFAULT_GRAPH_DIR
-  if (typeof dir !== 'string' || dir.trim().length === 0) {
-    console.warn(`${name}: config.dir must be a non-empty path; /${APPLY_COMMAND} stays off`)
-    return { unregister: () => {}, problem: `config.dir 不是非空路径，/${APPLY_COMMAND} 未注册` }
+/** Keep agents and subagents for stopping a child once both are present; `settled` as in installLive. */
+function installChildren(ctx: Partial<InjectHost>, services: RunServices, settled: (problem: string | undefined) => void): void {
+  if (typeof ctx.inject !== 'function') {
+    settled('宿主没有 inject，停不了子 agent')
+    return
   }
   try {
-    return {
-      unregister: ctx.commands.register({
-        definitionId: name,
-        name: APPLY_COMMAND,
-        description: 'Apply one project graph change as the human (sent by the graph panel)',
-        recordInput: false,
-        handler: invocation => applyFromCommand(invocation, dir),
-      }),
-    }
+    ctx.inject(['agents', 'subagents'], childCtx => {
+      services.children = { agents: childCtx.agents, subagents: childCtx.subagents }
+      settled(undefined)
+      return () => {
+        services.children = undefined
+        settled(WAITING_CHILDREN)
+      }
+    })
   }
   catch (error) {
-    console.warn(`${name}: registering /${APPLY_COMMAND} failed, the row stays off: ${error instanceof Error ? error.message : String(error)}`)
-    return { unregister: () => {}, problem: `/${APPLY_COMMAND} 注册失败：${error instanceof Error ? error.message : String(error)}` }
+    console.warn(`${name}: stopping subagents is off: ${message(error)}`)
+    settled(`停不了子 agent：${message(error)}`)
   }
 }
 
-/**
- * cordis plugin entry: register /graph-apply and the live projection. The
- * row health is an activation status (the command acts for the human, not
- * for a session's agent); it changes once when the live projection settles.
- */
-export function apply(ctx: CommandsHost & Partial<InjectHost> & Partial<ProvideHost>, config: GraphPanelConfig = {}): () => void {
-  const command = registerCommand(ctx, config)
-  const status = (live: string | undefined): ['active' | 'degraded' | 'inactive', string] => [
-    command.problem !== undefined ? 'inactive' : live === undefined ? 'active' : 'degraded',
-    [command.problem ?? `命令 /${APPLY_COMMAND} 已注册`, live ?? `现场投影 ${LIVE_KEY} 已注册`].join('；'),
+/** Register both commands, or neither; the problem names what kept them off. The dir is the configured one or the default. */
+function registerCommands(ctx: CommandsHost<AgentCommandInvocationLike>, config: GraphPanelConfig, services: RunServices): { readonly unregister: () => void, readonly problem?: string } {
+  const dir: unknown = config.dir ?? DEFAULT_GRAPH_DIR
+  if (typeof dir !== 'string' || dir.trim().length === 0) {
+    console.warn(`${name}: config.dir must be a non-empty path; ${COMMANDS} stay off`)
+    return { unregister: () => {}, problem: `config.dir 不是非空路径，${COMMANDS} 未注册` }
+  }
+  const definitions: Array<CommandDefinitionLike<AgentCommandInvocationLike>> = [
+    {
+      definitionId: name,
+      name: APPLY_COMMAND,
+      description: 'Apply one project graph change as the human (sent by the graph panel)',
+      recordInput: false,
+      handler: invocation => applyFromCommand(invocation, dir),
+    },
+    {
+      definitionId: 'dsh-glm-hourness/graph-run',
+      name: RUN_COMMAND,
+      description: 'Start, stop or redo the work on a project graph task as the human (sent by the graph panel)',
+      handler: invocation => runFromCommand(invocation, dir, services),
+    },
   ]
-  const health = provideRowHealth(ctx, 'graph-panel', ...status('现场投影等 sessionProjections 服务'))
-  installLive(ctx, live => { health.reactivate(...status(live)) })
+  const disposers: Array<() => void> = []
+  const unregister = (): void => { for (const dispose of disposers.splice(0).reverse()) dispose() }
+  for (const definition of definitions) {
+    try {
+      disposers.push(ctx.commands.register(definition))
+    }
+    catch (error) {
+      unregister()
+      console.warn(`${name}: registering /${definition.name} failed, the row stays off: ${message(error)}`)
+      return { unregister: () => {}, problem: `/${definition.name} 注册失败：${message(error)}` }
+    }
+  }
+  return { unregister }
+}
+
+/**
+ * cordis plugin entry: register /graph-apply, /graph-run and the live
+ * projection. The row health is an activation status (the commands act for
+ * the human, not for a session's agent); it follows the optional services.
+ */
+export function apply(ctx: CommandsHost<AgentCommandInvocationLike> & Partial<InjectHost> & Partial<ProvideHost>, config: GraphPanelConfig = {}): () => void {
+  const services: RunServices = { projections: undefined, children: undefined }
+  const commands = registerCommands(ctx, config, services)
+  let live: string | undefined = WAITING_LIVE
+  let children: string | undefined = WAITING_CHILDREN
+  const status = (): ['active' | 'degraded' | 'inactive', string] => [
+    commands.problem !== undefined ? 'inactive' : live === undefined && children === undefined ? 'active' : 'degraded',
+    [commands.problem ?? `命令 ${COMMANDS} 已注册`, live ?? `现场投影 ${LIVE_KEY} 已注册`, children ?? '能停子 agent'].join('；'),
+  ]
+  const health = provideRowHealth(ctx, 'graph-panel', ...status())
+  installLive(ctx, services, problem => {
+    live = problem
+    health.reactivate(...status())
+  })
+  installChildren(ctx, services, problem => {
+    children = problem
+    health.reactivate(...status())
+  })
   return () => {
     health.dispose()
-    command.unregister()
+    commands.unregister()
   }
 }

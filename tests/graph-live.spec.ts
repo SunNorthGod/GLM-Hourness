@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { LIVE_KEY, foldLive, initialLive, liveProjection, liveView, type LiveEvent, type LiveState } from '../src/graph/live.ts'
 import { apply } from '../src/graph/panel-row.ts'
+import { fakeInjector } from './fake-rc3.ts'
 import { captureWarnings } from './graph-helpers.ts'
 
 let seq = 0
@@ -93,9 +94,10 @@ test('the unit: schemas accept its own states and views and refuse others', () =
 test('the panel row registers the unit when the registry arrives, and survives without it', async () => {
   const registered: string[] = []
   const commands = { register: () => () => {} }
-  apply({ commands, inject: (names, callback) => { assert.deepEqual(names, ['sessionProjections']); callback({ sessionProjections: { register: definition => { registered.push(definition.key); return () => {} } } }) } })
+  const snapshot = () => ({ values: {} })
+  apply({ commands, inject: fakeInjector({ sessionProjections: { register: definition => { registered.push(definition.key); return () => {} }, snapshot } }).inject })
   assert.deepEqual(registered, [LIVE_KEY])
-  const failing = await captureWarnings(() => apply({ commands, inject: (_names, callback) => { callback({ sessionProjections: { register: () => { throw new Error('incompatible stateVersion') } } }) } }))
+  const failing = await captureWarnings(() => apply({ commands, inject: fakeInjector({ sessionProjections: { register: () => { throw new Error('incompatible stateVersion') }, snapshot } }).inject }))
   assert.match(failing.warnings.join('\n'), /the live projection is off: incompatible stateVersion/)
   assert.equal(typeof apply({ commands }), 'function', 'no inject: the command still registers')
 })
