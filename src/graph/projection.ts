@@ -8,7 +8,7 @@
 import { compareText } from './format.ts'
 import { failure, type Failure } from './mutation.ts'
 import type { Actor, Decider, DecisionOption, GraphNode, HistoryEntry, NodeType, Stage, Status } from './schema.ts'
-import type { LoadedGraph } from './store.ts'
+import type { LoadedGraph } from './parse.ts'
 
 /** Statuses of nodes that are still open: not done, dropped or superseded. */
 export const OPEN_STATUSES: ReadonlySet<Status> = new Set(['proposed', 'approved', 'doing'])
@@ -94,7 +94,7 @@ interface QueueEntry extends NodeRef {
 }
 
 /** The latest decide of a question: what was chosen, by whom, and whether it relayed the human's words. */
-interface DecisionRecord extends NodeRef {
+export interface DecisionRecord extends NodeRef {
   readonly decision: string
   /** Label of the chosen option. */
   readonly label: string
@@ -161,7 +161,8 @@ function referrers(graph: LoadedGraph, id: string, type: 'depends' | 'source' | 
   return [...graph.nodes.values()].filter(node => (node.edges ?? []).some(edge => edge.type === type && edge.to === id))
 }
 
-function ancestorsOf(graph: LoadedGraph, node: GraphNode): GraphNode[] {
+/** Ancestors of a node, parent first, cut at a loop. */
+export function ancestorsOf(graph: LoadedGraph, node: GraphNode): GraphNode[] {
   const chain: GraphNode[] = []
   const seen = new Set([node.id])
   let parent = node.parent === undefined ? undefined : graph.nodes.get(node.parent)

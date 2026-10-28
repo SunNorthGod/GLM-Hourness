@@ -6,11 +6,11 @@
 import { createHash, randomBytes } from 'node:crypto'
 import { mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { checkNode, compareText, serializeNode, type GraphIssue } from './format.ts'
+import { serializeNode } from './format.ts'
+import { NODES_DIR, nodeFileNames, parseGraph, revisionInput, type LoadedGraph, type NodeFile } from './parse.ts'
 import { ID_PATTERN, type GraphNode } from './schema.ts'
-import { validateGraph } from './validate.ts'
 
-const NODES_DIR = 'nodes'
+export { hasErrors, type LoadedGraph } from './parse.ts'
 
 /** First 12 hex digits of the SHA-256 of a node file's bytes. */
 export function revisionOf(bytes: Uint8Array | string): string {
@@ -19,21 +19,7 @@ export function revisionOf(bytes: Uint8Array | string): string {
 
 /** Revision of the whole graph: SHA-256 over one "<id> <revision>\n" line per node file, in id order. */
 export function graphRevision(revisions: ReadonlyMap<string, string>): string {
-  const lines = [...revisions.keys()].sort(compareText).map(id => `${id} ${revisions.get(id)!}\n`)
-  return revisionOf(lines.join(''))
-}
-
-export interface LoadedGraph {
-  /** Nodes whose files parsed with every known field well-formed, in id order. */
-  readonly nodes: ReadonlyMap<string, GraphNode>
-  /** Revision of every node file, keyed by file name without .json. */
-  readonly revisions: ReadonlyMap<string, string>
-  readonly revision: string
-  readonly issues: readonly GraphIssue[]
-}
-
-export function hasErrors(graph: LoadedGraph): boolean {
-  return graph.issues.some(issue => issue.severity === 'error')
+  return revisionOf(revisionInput(revisions))
 }
 
 /** Load and validate <dir>/nodes/*.json. A missing nodes directory is an empty graph. */
@@ -42,46 +28,21 @@ export async function loadGraph(dir: string): Promise<LoadedGraph> {
   let names: string[]
   try {
     const entries = await readdir(nodesDir, { withFileTypes: true })
-    names = entries.filter(entry => entry.isFile() && entry.name.endsWith('.json')).map(entry => entry.name).sort(compareText)
+    names = nodeFileNames(entries.filter(entry => entry.isFile()).map(entry => entry.name))
   }
   catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
     names = []
   }
-  const nodes = new Map<string, GraphNode>()
+  const files: NodeFile[] = []
   const revisions = new Map<string, string>()
-  const issues: GraphIssue[] = []
   for (const name of names) {
-    const file = `${NODES_DIR}/${name}`
-    const stem = name.slice(0, -'.json'.length)
     const bytes = await readFile(join(nodesDir, name))
-    revisions.set(stem, revisionOf(bytes))
-    if (!ID_PATTERN.test(stem)) {
-      issues.push({ severity: 'error', file, message: 'file name is not a node id followed by .json' })
-      continue
-    }
-    const text = bytes.toString('utf8')
-    let raw: unknown
-    try {
-      raw = JSON.parse(text)
-    }
-    catch (error) {
-      issues.push({ severity: 'error', file, message: `not valid JSON: ${(error as Error).message}` })
-      continue
-    }
-    const node = checkNode(raw, file, issues)
-    if (node === undefined) continue
-    if (node.id !== stem) {
-      issues.push({ severity: 'error', file, field: 'id', message: `"${node.id}" does not match the file name` })
-      continue
-    }
-    nodes.set(stem, node)
-    if (serializeNode(node) !== text) {
-      issues.push({ severity: 'notice', file, message: 'not in canonical form; the engine rewrites it on the next write of this node' })
-    }
+    const revision = revisionOf(bytes)
+    files.push({ name, text: bytes.toString('utf8'), revision })
+    revisions.set(name.slice(0, -'.json'.length), revision)
   }
-  issues.push(...validateGraph(nodes))
-  return { nodes, revisions, revision: graphRevision(revisions), issues }
+  return parseGraph(files, graphRevision(revisions))
 }
 
 export interface NodeWrite {

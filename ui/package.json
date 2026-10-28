@@ -1,8 +1,8 @@
 {
   "name": "dsh-glm-hourness-ui",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "GLM Hourness settings panel: native ZCode channel status and login guidance rendered in the Harness Web UI.",
+  "description": "GLM Hourness client UI: the native ZCode channel pill and settings section, and the project graph panel in the right sidebar of the Harness Web UI.",
   "type": "module",
   "license": "MIT",
   "exports": {
@@ -16,7 +16,11 @@
     "client": {
       "platform": "web",
       "immediately": true,
-      "inject": []
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-sidebar-right",
+        "@deepseek-ai/dsh-api-workspace-files",
+        "@deepseek-ai/dsh-api-remotes"
+      ]
     }
   },
   "files": [

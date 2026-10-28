@@ -20,7 +20,7 @@ import { openEngine } from './engine.ts'
 import { failure, type Failure } from './mutation.ts'
 import { listOpenItems, projectNode } from './projection.ts'
 import { NODE_TYPES, SLOPES, STAGES, TASK_KINDS, TIERS } from './schema.ts'
-import type { LoadedGraph } from './store.ts'
+import type { LoadedGraph } from './parse.ts'
 
 /** Loader row id, named in hints so the model can point the human at the config. */
 const GRAPH_ROW_ID = 'glm-hourness/graph'

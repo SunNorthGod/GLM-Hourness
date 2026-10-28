@@ -91,17 +91,22 @@ function wireImages(body) {
 }
 
 /**
- * Run the bundle's real `/glm-status` handler for the request's session, the
- * way dsh-commands `execute` invokes it (the exact agent, the raw input),
- * without the command lifecycle events: the agent is mid-step.
+ * Run one of the bundle's real command handlers for the request's session,
+ * the way dsh-commands `execute` invokes it (the exact agent, the raw
+ * input), without the command lifecycle events: the agent is mid-step.
  */
-async function glmStatus(ctx, request) {
+async function runCommand(ctx, request, name, rawInput) {
   const agent = ctx.get('agents')?.get(request.sessionId)
-  if (agent === undefined) return `probe: no live agent for session ${request.sessionId}`
-  const definition = ctx.get('commands')?.find(agent, 'glm-status')
-  if (definition === undefined) return 'probe: /glm-status is not registered'
-  const result = await definition.handler(Object.freeze({ commandId: 'probe-glm-status', agent, rawInput: '', attachments: Object.freeze([]), signal: request.signal ?? new AbortController().signal }))
-  return result.text ?? ''
+  if (agent === undefined) return { kind: 'error', text: `probe: no live agent for session ${request.sessionId}` }
+  const definition = ctx.get('commands')?.find(agent, name)
+  if (definition === undefined) return { kind: 'error', text: `probe: /${name} is not registered` }
+  const result = await definition.handler(Object.freeze({ commandId: `probe-${name}`, agent, rawInput, attachments: Object.freeze([]), signal: request.signal ?? new AbortController().signal }))
+  return { kind: result.kind, text: result.text ?? '' }
+}
+
+/** The `/glm-status` text for the request's session. */
+async function glmStatus(ctx, request) {
+  return (await runCommand(ctx, request, 'glm-status', '')).text
 }
 
 class ProbeAdapter {
@@ -166,8 +171,12 @@ class ProbeAdapter {
       : cursor.script[Math.min(cursor.calls, cursor.script.length - 1)]
     if (cursor !== undefined) cursor.calls += 1
     this.requests += 1
-    // A step marked `status` records the /glm-status text before replying.
+    // A step marked `status` records the /glm-status text before replying;
+    // a step with `command: { name, input }` runs that command and records its result.
     const status = step.status === true ? await glmStatus(this.ctx, request).catch(error => `probe: /glm-status failed: ${error instanceof Error ? error.message : String(error)}`) : undefined
+    const command = step.command === undefined
+      ? undefined
+      : { name: step.command.name, ...await runCommand(this.ctx, request, step.command.name, step.command.input ?? '').catch(error => ({ kind: 'error', text: `probe: /${step.command.name} threw: ${error instanceof Error ? error.message : String(error)}` })) }
     if (this.dump !== undefined) {
       // The glm-zcode encoder over this exact request, with the runtime's
       // attachment and fs services (the channel row reads them the same way).
@@ -191,6 +200,7 @@ class ProbeAdapter {
         ...(request.purpose === undefined ? {} : { purpose: request.purpose }),
         ...(request.sessionId === undefined ? {} : { sessionId: request.sessionId }),
         ...(status === undefined ? {} : { status }),
+        ...(command === undefined ? {} : { command }),
         // The runtime delivers the prompt as leading system messages (the
         // channel lifts them the same way, src/glm-llm/anthropic.ts).
         system: [request.system ?? '', ...leadingSystem(request.messages ?? [])].filter(text => text.length > 0).join('\n\n'),

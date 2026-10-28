@@ -25,7 +25,6 @@
     "types src/glm-llm/images.ts WireImage",
     "types src/glm-llm/zcode.ts AdapterContractCheck",
     "types src/glm-prompt/todowrite.ts ZcodeTodo",
-    "types src/shared/dsh-min.ts CommandResultLike",
     "types src/shared/dsh-min.ts LlmStreamListener",
     "types src/shared/dsh-min.ts LlmStreamOptionsContractCheck",
     "types src/shared/dsh-min.ts WorkspaceChangedFile",

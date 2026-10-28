@@ -23,6 +23,8 @@ const nodeGlobals = Object.fromEntries(
 export default defineConfig([
   globalIgnores([
     'dist/',
+    // Built from ui/src by scripts/build-ui.mjs.
+    'ui/client.js',
     'reference/',
     '.llm/',
     '.agents/',
@@ -36,16 +38,16 @@ export default defineConfig([
     linterOptions: { reportUnusedDisableDirectives: 'error' },
   },
   {
-    files: ['**/*.{js,mjs,cjs,ts}'],
+    files: ['**/*.{js,mjs,cjs,ts,tsx}'],
     rules: coreRecommended,
   },
   {
-    files: ['**/*.ts'],
+    files: ['**/*.{ts,tsx}'],
     extends: [tseslint.configs.recommendedTypeChecked],
     languageOptions: {
       parserOptions: {
-        // src/ uses tsconfig.json, tests/ uses tests/tsconfig.json; TypeScript
-        // scripts have no project of their own.
+        // src/ uses tsconfig.json, tests/ uses tests/tsconfig.json, ui/src
+        // uses ui/tsconfig.json; TypeScript scripts have no project of their own.
         projectService: { allowDefaultProject: ['scripts/*.ts', 'scripts/*/*.ts'] },
         tsconfigRootDir: import.meta.dirname,
       },
@@ -68,7 +70,7 @@ export default defineConfig([
   },
   {
     // Client half: runs in the DSH web renderer.
-    files: ['ui/client.js'],
+    files: ['ui/src/**/*.js'],
     languageOptions: {
       globals: {
         window: 'readonly',

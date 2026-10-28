@@ -303,9 +303,13 @@ export interface FsPathService {
   processPathFromHostPath(hostPath: string): string | undefined
 }
 
-/** A human command invocation (dsh-commands `execute`): the exact receiving agent and the text after `/name`. */
+/**
+ * A human command invocation (dsh-commands `execute`, lib/index.js
+ * `Object.freeze({ commandId, agent, rawInput, attachments, signal })`): the
+ * exact receiving agent with its session, and the text after `/name`.
+ */
 export interface CommandInvocationLike {
-  readonly agent: { readonly id: string, readonly session?: { readonly id: string } }
+  readonly agent: { readonly id: string, readonly session?: Pick<SessionLike, 'id'> & Partial<Pick<SessionLike, 'header'>> }
   readonly rawInput: string
 }
 
@@ -320,6 +324,11 @@ export interface CommandDefinitionLike {
   readonly definitionId: string
   readonly name: string
   readonly description: string
+  /**
+   * Whether `command/run` records the raw input as `args` (default true);
+   * false when another record already carries the payload.
+   */
+  readonly recordInput?: boolean
   handler(invocation: CommandInvocationLike): Promise<CommandResultLike>
 }
 

@@ -26,7 +26,7 @@ import {
 } from './layout.ts'
 import type { Failure } from './mutation.ts'
 import type { NodeType } from './schema.ts'
-import type { LoadedGraph } from './store.ts'
+import type { LoadedGraph } from './parse.ts'
 
 const MARGIN = 20
 const LEGEND_GAP = 16

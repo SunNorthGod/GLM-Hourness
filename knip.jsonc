@@ -4,9 +4,10 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "entry": [
-    // UI bundle rows: DSH loads them through ui/package.json and ui/cordis.patch.yml.
+    // UI bundle rows: DSH loads them through ui/package.json and ui/cordis.patch.yml;
+    // the client half is ui/src/client.tsx, bundled into ui/client.js by scripts/build-ui.mjs.
     "ui/index.js",
-    "ui/client.js",
+    "ui/src/client.tsx",
     // Probe provider, probe clock and dispatch spike: run-probe.mjs passes their paths to the DSH Loader.
     "scripts/probe/probe-llm.mjs",
     "scripts/probe/probe-clock.mjs",
@@ -16,8 +17,9 @@
     // Calibration checkers: run-calibrate.mjs starts each task's check.mjs by path.
     "tests/calibration/*/check.mjs"
   ],
-  "project": ["src/**/*.ts", "tests/**/*.{ts,mjs}", "scripts/**/*.{mjs,cjs,ts}", "ui/**/*.js"],
-  // ui/client.js gets React from the DSH client module table (require('react')),
-  // not from node_modules.
-  "ignoreDependencies": ["react"]
+  "project": ["src/**/*.ts", "tests/**/*.{ts,mjs}", "scripts/**/*.{mjs,cjs,ts}", "ui/index.js", "ui/src/**/*.{js,ts,tsx}"],
+  "ignore": ["ui/client.js"],
+  // The client half gets React and ui-primitives from the DSH client module
+  // table (the factory's require), not from node_modules.
+  "ignoreDependencies": ["react", "@deepseek-ai/dsh-client-ui-primitives"]
 }

@@ -31,6 +31,8 @@ import { PEAK_REMINDER_SOURCE, PEAK_REMINDER_TEXT } from '../../dist/glm-prompt/
 import { peakWindowAt } from '../../dist/shared/credits.js'
 import { userDataHome } from '../../dist/shared/data-home.js'
 import { HEALTH_ROWS } from '../../dist/shared/health.js'
+import { openEngine } from '../../dist/graph/engine.js'
+import { loadGraph } from '../../dist/graph/store.js'
 import { attachmentsIn, dataRows, initRepo, limitsRow, repo, requireDesktop, sandboxCommand, slash, workspaceChangesRow } from '../sandbox.mjs'
 import { GOAL_GATE_DENIAL, PROJECTION_SOURCE, SCOPE_DENIAL } from './probe-dispatch.mjs'
 
@@ -403,6 +405,33 @@ const headlessGoal = runScenario('goal-headless', 'glm-5.3', [
 ], 'Create a goal for the probe objective.')
 const headlessCreated = lastToolResult(headlessGoal.steps[1])
 
+// Graph panel write path (docs/ORCHESTRATION.md §2.10, §13): the overlay
+// enables glm-hourness/graph-panel, and the probe provider runs its
+// /graph-apply handler for the session the way the panel's
+// remote.commands.execute does: a comment, then a decide with the
+// question's rev, both into the graph under the session working directory.
+const panelDir = join(runDir, 'glm-graph-panel')
+const panelWs = join(panelDir, 'ws')
+const panelGraph = join(panelWs, 'docs', 'graph')
+mkdirSync(panelGraph, { recursive: true })
+const panelEngine = openEngine(panelGraph)
+for (const node of [
+  { type: 'goal', title: '探针目标' },
+  { type: 'question', title: '探针问题', parent: 'goal-1', options: [{ key: 'A', label: '甲', consequence: '快' }, { key: 'B', label: '乙', consequence: '稳' }], recommend: 'A' },
+]) {
+  const seeded = await panelEngine.apply('human', { op: 'propose', reason: 'probe seed', node })
+  if (!seeded.ok) throw new Error(`probe: seeding the panel graph failed: ${JSON.stringify(seeded.error)}`)
+}
+const panelQuestionRev = (await loadGraph(panelGraph)).revisions.get('question-1')
+const graphPanel = runScenario('glm-graph-panel', 'glm-5.3', [
+  { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } }, command: { name: 'graph-apply', input: JSON.stringify({ op: 'comment', id: 'goal-1', text: 'probe comment' }) } },
+  { text: 'done', command: { name: 'graph-apply', input: JSON.stringify({ op: 'decide', id: 'question-1', rev: panelQuestionRev, option: 'A', reason: 'probe decide' }) } },
+], 'Read package.json, then reply done.', ['- id: glm-hourness/graph-panel', '  disabled: false'], panelWs)
+const panelCommands = graphPanel.steps.flatMap(step => step.command === undefined ? [] : [step.command])
+const panelAfter = await loadGraph(panelGraph)
+const panelLast = id => panelAfter.nodes.get(id)?.history.at(-1)
+const panelStderr = existsSync(join(panelDir, 'stderr.txt')) ? readFileSync(join(panelDir, 'stderr.txt'), 'utf8') : ''
+
 const compactRequest = compacted.compactions[0]
 const compactInstruction = compactRequest?.messages.at(-1)
 const checkpoint = compacted.steps.at(-1)?.messages.find(message => message.source === 'compact-checkpoint')
@@ -454,6 +483,9 @@ const conversationTexts = [glm, plain, compacted, shadow].flatMap(scenario => sc
 
 const checks = [
   ['glm boot: the runtime reached the probe provider', glmFirst !== undefined, `exit ${glm.status}, ${glm.steps.length} step(s)`],
+  ['graph panel: /graph-apply comments as the human in the graph under the session working directory', panelCommands[0]?.kind === 'success' && panelCommands[0].text === '已批注「探针目标」' && panelLast('goal-1')?.actor === 'human' && panelLast('goal-1')?.text === 'probe comment', JSON.stringify(panelCommands[0] ?? null)],
+  ['graph panel: /graph-apply decides with the question rev as the human', panelCommands[1]?.kind === 'success' && panelCommands[1].text === '已拍板「探针问题」：A 甲' && panelAfter.nodes.get('question-1')?.status === 'done' && panelLast('question-1')?.actor === 'human' && panelLast('question-1')?.op === 'decide', JSON.stringify(panelCommands[1] ?? null)],
+  ['graph panel: the row adds nothing to the model face and activates without warnings', graphPanel.steps.length > 0 && graphPanel.steps.every(step => step.tools.every(tool => !tool.name.startsWith('graph_'))) && !panelStderr.includes('graph-panel'), `exit ${graphPanel.status}, ${graphPanel.steps.length} step(s); stderr mentions graph-panel: ${panelStderr.includes('graph-panel')}`],
   ['glm prompt: ZCode CLI prefix in the system prompt', glmFirst?.system.includes('You are ZCode, an interactive coding agent') === true, glmFirst === undefined ? 'no request' : glmFirst.system.slice(0, 80).replace(/\n/g, ' ')],
   ['glm prompt: DSH identity replaced', glmFirst !== undefined && !glmFirst.system.includes('powered by DeepSeek Harness'), ''],
   ['glm tools: ZCode-facing aliases present', zcodeFace.every(name => glmTools.has(name)), zcodeFace.filter(name => !glmTools.has(name)).join(', ') || 'all present'],

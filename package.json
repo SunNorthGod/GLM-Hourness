@@ -16,6 +16,7 @@
     "./workflow": "./dist/workflow/index.js",
     "./hourness": "./dist/ui/index.js",
     "./graph": "./dist/graph/index.js",
+    "./graph-panel": "./dist/graph/panel-row.js",
     "./locale/*.json": "./locale/*.json",
     "./icon": "./icon.svg"
   },
@@ -31,7 +32,7 @@
     "icon.svg"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && tsc -p ui/tsconfig.json && node scripts/build-ui.mjs",
     "preflight": "node scripts/preflight-bundle.mjs",
     "check:verbatim": "node --experimental-strip-types --no-warnings scripts/check-verbatim.mjs",
     "lint": "node scripts/check-lint.mjs",
@@ -45,7 +46,7 @@
     "graph:render": "node --experimental-strip-types --no-warnings scripts/graph/render.ts",
     "graph:serve": "node --experimental-strip-types --no-warnings scripts/graph/serve.ts",
     "graph:smoke": "node --experimental-strip-types --no-warnings scripts/graph/smoke.ts",
-    "test": "node scripts/preflight-bundle.mjs && node --experimental-strip-types --no-warnings scripts/check-verbatim.mjs && node scripts/check-lint.mjs && node --experimental-strip-types tests/glm-prompt.spec.ts && node --experimental-strip-types tests/todowrite.spec.ts && node --experimental-strip-types tests/dialect-wiring.spec.ts && node --experimental-strip-types tests/aliases.spec.ts && node --experimental-strip-types tests/todo-reminder.spec.ts && node --experimental-strip-types tests/reminder-wiring.spec.ts && node --experimental-strip-types tests/guard-shell.spec.ts && node --experimental-strip-types tests/guard-audit.spec.ts && node --experimental-strip-types tests/glm-channel.spec.ts && node --experimental-strip-types tests/glm-auth.spec.ts && node --experimental-strip-types tests/glm-transport.spec.ts && node --experimental-strip-types tests/glm-signing.spec.ts && node --experimental-strip-types tests/glm-routing.spec.ts && node --experimental-strip-types tests/glm-startplan.spec.ts && node --experimental-strip-types tests/glm-zcode.spec.ts && node --experimental-strip-types tests/toolsearch.spec.ts && node --experimental-strip-types tests/compact.spec.ts && node --experimental-strip-types tests/data-home.spec.ts && node --experimental-strip-types tests/memory-audit.spec.ts && node --experimental-strip-types tests/workflow.spec.ts && node --experimental-strip-types tests/compact-row.spec.ts && node --experimental-strip-types tests/s5.spec.ts && node --experimental-strip-types tests/hourness.spec.ts && node --experimental-strip-types tests/credits.spec.ts && node --experimental-strip-types tests/health.spec.ts && node --experimental-strip-types tests/graph-store.spec.ts && node --experimental-strip-types tests/graph-engine.spec.ts && node --experimental-strip-types tests/graph-render.spec.ts && node --experimental-strip-types tests/graph-cli.spec.ts && node --experimental-strip-types tests/graph-server.spec.ts && node --experimental-strip-types tests/graph-tools.spec.ts && node --experimental-strip-types tests/graph-reminder.spec.ts && node --experimental-strip-types tests/graph-guard.spec.ts && node --experimental-strip-types --no-warnings scripts/graph/smoke.ts"
+    "test": "node scripts/preflight-bundle.mjs && node --experimental-strip-types --no-warnings scripts/check-verbatim.mjs && node scripts/check-lint.mjs && node --experimental-strip-types tests/glm-prompt.spec.ts && node --experimental-strip-types tests/todowrite.spec.ts && node --experimental-strip-types tests/dialect-wiring.spec.ts && node --experimental-strip-types tests/aliases.spec.ts && node --experimental-strip-types tests/todo-reminder.spec.ts && node --experimental-strip-types tests/reminder-wiring.spec.ts && node --experimental-strip-types tests/guard-shell.spec.ts && node --experimental-strip-types tests/guard-audit.spec.ts && node --experimental-strip-types tests/glm-channel.spec.ts && node --experimental-strip-types tests/glm-auth.spec.ts && node --experimental-strip-types tests/glm-transport.spec.ts && node --experimental-strip-types tests/glm-signing.spec.ts && node --experimental-strip-types tests/glm-routing.spec.ts && node --experimental-strip-types tests/glm-startplan.spec.ts && node --experimental-strip-types tests/glm-zcode.spec.ts && node --experimental-strip-types tests/toolsearch.spec.ts && node --experimental-strip-types tests/compact.spec.ts && node --experimental-strip-types tests/data-home.spec.ts && node --experimental-strip-types tests/memory-audit.spec.ts && node --experimental-strip-types tests/workflow.spec.ts && node --experimental-strip-types tests/compact-row.spec.ts && node --experimental-strip-types tests/s5.spec.ts && node --experimental-strip-types tests/hourness.spec.ts && node --experimental-strip-types tests/credits.spec.ts && node --experimental-strip-types tests/health.spec.ts && node --experimental-strip-types tests/graph-store.spec.ts && node --experimental-strip-types tests/graph-engine.spec.ts && node --experimental-strip-types tests/graph-render.spec.ts && node --experimental-strip-types tests/graph-cli.spec.ts && node --experimental-strip-types tests/graph-server.spec.ts && node --experimental-strip-types tests/graph-tools.spec.ts && node --experimental-strip-types tests/graph-reminder.spec.ts && node --experimental-strip-types tests/graph-guard.spec.ts && node --experimental-strip-types tests/graph-panel.spec.ts && node --experimental-strip-types tests/graph-panel-model.spec.ts && node --experimental-strip-types --no-warnings scripts/graph/smoke.ts"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "*",
@@ -56,6 +57,8 @@
     "@deepseek-ai/cordis": "4.0.5",
     "@deepseek-ai/dsh-attachment": "0.2.1-rc.3",
     "@deepseek-ai/dsh-llm": "0.2.1-rc.3",
+    "@types/react": "18.3.31",
+    "esbuild": "0.28.2",
     "eslint": "10.13.0",
     "jscpd": "5.4.2",
     "knip": "6.43.0",
