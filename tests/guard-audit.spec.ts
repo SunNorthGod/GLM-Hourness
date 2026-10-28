@@ -8,11 +8,15 @@ import { fakeRuntime } from './fake-rc3.ts'
 
 /**
  * The calling agent as an rc.3 execution carries it (dsh-tools createExecution:
- * no agentId or sessionId fields): its id, its session's id and working directory.
+ * no agentId or sessionId fields): its id, its session's id and working
+ * directory, and the session's request-header fold naming the model of the
+ * current step (dsh-session `requestHeader`; GLM unless a test says otherwise).
  */
-function agentAt(cwd: string | undefined, id = 'a1', sessionId = id): AgentLike {
-  return { id, ctx: {} as AgentLike['ctx'], session: { id: sessionId, header: { id: sessionId, ...(cwd === undefined ? {} : { cwd }) }, deriveMessages: () => [] } }
+function agentAt(cwd: string | undefined, id = 'a1', sessionId = id, route: { provider: string, model: string } = { provider: 'glm-zcode', model: 'glm-5.3' }): AgentLike {
+  return { id, ctx: {} as AgentLike['ctx'], session: { id: sessionId, header: { id: sessionId, ...(cwd === undefined ? {} : { cwd }) }, deriveMessages: () => [], requestHeader: () => ({ config: route }) } }
 }
+
+const DEEPSEEK = { provider: 'deepseek-account', model: 'deepseek-flash' }
 
 /** An in-memory filesystem for the journal appender (mkdir + appendFile). */
 function memoryFs() {
@@ -84,22 +88,22 @@ test('out-of-workspace write is denied and journaled under <home>/audit with rul
 
 test('shell write inside the workspace is still denied by file-tools-only', async () => {
   const h = harness(['C:\\ws'])
-  await h.run({ name: 'Bash', arguments: { command: 'echo hi > C:/ws/out.txt' } })
+  await h.run({ name: 'Bash', arguments: { command: 'echo hi > C:/ws/out.txt' }, agent: agentAt(undefined) })
   assert.equal(h.violations()[0]!.rule, 'file-tools-only')
   assert.ok(h.violations()[0]!.correction.includes('(redirection > C:/ws/out.txt)'))
 })
 
 test('allowed calls are neither denied nor audited', async () => {
   const h = harness(['C:\\ws'])
-  await h.run({ name: 'Read', arguments: { file_path: 'C:\\ws\\a.ts' } })
-  await h.run({ name: 'Bash', arguments: { command: 'git commit -m "map => reduce, a -> b, x >>> 1"' } })
+  await h.run({ name: 'Read', arguments: { file_path: 'C:\\ws\\a.ts' }, agent: agentAt(undefined) })
+  await h.run({ name: 'Bash', arguments: { command: 'git commit -m "map => reduce, a -> b, x >>> 1"' }, agent: agentAt(undefined) })
   assert.deepEqual(h.decisions.map(decision => decision.kind), ['allow', 'allow'])
   assert.equal(h.records().length, 0)
 })
 
 test('terminal_send text is read like shell text (dsh-tool-terminal names the field text)', async () => {
   const h = harness(['C:\\ws'])
-  await h.run({ name: 'terminal_send', arguments: { sessionId: 't1', text: 'Set-Content f.txt hi' } })
+  await h.run({ name: 'terminal_send', arguments: { sessionId: 't1', text: 'Set-Content f.txt hi' }, agent: agentAt(undefined) })
   assert.equal(h.violations()[0]!.rule, 'file-tools-only')
 })
 
@@ -113,7 +117,7 @@ test('without a row home the violation goes to the data service project director
 
 test('a row home wins over the data service project directory', async () => {
   const h = harness(['C:\\ws'], { home: 'C:/ws/.llm', service: { userHome: 'C:/u/glm-hourness', projectHome: 'C:/other/.llm' } })
-  await h.run({ name: 'Bash', arguments: { command: 'Set-Content f.txt hi' } })
+  await h.run({ name: 'Bash', arguments: { command: 'Set-Content f.txt hi' }, agent: agentAt(undefined) })
   assert.deepEqual([...h.files.keys()], [VIOLATIONS])
 })
 
@@ -123,8 +127,8 @@ test('without any directory the call is still denied and the lost record is repo
   console.warn = (message: string) => { warnings.push(message) }
   try {
     const h = harness(['C:\\ws'], {})
-    await h.run({ name: 'Bash', arguments: { command: 'Set-Content f.txt hi' } })
-    await h.run({ name: 'Bash', arguments: { command: 'Out-File f.txt' } })
+    await h.run({ name: 'Bash', arguments: { command: 'Set-Content f.txt hi' }, agent: agentAt(undefined) })
+    await h.run({ name: 'Bash', arguments: { command: 'Out-File f.txt' }, agent: agentAt(undefined) })
     assert.deepEqual(h.decisions.map(decision => decision.kind), ['deny', 'deny'])
     assert.equal(h.files.size, 0)
     assert.equal(warnings.length, 1)
@@ -145,10 +149,76 @@ test('roots default to the calling agent session directory', async () => {
 
 test('a call without config or agent directory keeps file-tools-only but skips containment', async () => {
   const h = harness(undefined)
-  await h.run({ name: 'Write', arguments: { file_path: 'C:\\anywhere\\a.ts' } })
+  await h.run({ name: 'Write', arguments: { file_path: 'C:\\anywhere\\a.ts' }, agent: agentAt(undefined) })
   assert.equal(h.decisions[0]!.kind, 'allow') // no provable root: containment cannot judge
-  await h.run({ name: 'Bash', arguments: { command: 'echo x > a.txt' } })
+  await h.run({ name: 'Bash', arguments: { command: 'echo x > a.txt' }, agent: agentAt(undefined) })
   assert.equal(h.decisions[1]!.kind, 'deny') // the shell-write rule does not need a root
+})
+
+// Relative targets (L4 2026-10-28: `.llm/l4-dsh/calc.mjs` was denied as
+// outside the workspace) and `..` segments resolve like the file tools do.
+
+test('a relative target resolves against the session directory; `..` cannot climb out of the root', async () => {
+  const h = harness(undefined)
+  const agent = agentAt('C:\\ws')
+  await h.run({ name: 'Write', arguments: { file_path: '.llm/l4-dsh/calc.mjs' }, agent })
+  await h.run({ name: 'Write', arguments: { file_path: 'src\\..\\docs\\a.md' }, agent })
+  await h.run({ name: 'Write', arguments: { file_path: '..\\elsewhere\\a.ts' }, agent })
+  await h.run({ name: 'Edit', arguments: { file_path: 'C:\\ws\\..\\elsewhere\\a.ts' }, agent }) // absolute, spelled through the root
+  await h.run({ name: 'Write', arguments: { file_path: 'C:\\wsx\\a.ts' }, agent }) // a sibling sharing the prefix
+  assert.deepEqual(h.decisions.map(decision => decision.kind), ['allow', 'allow', 'deny', 'deny', 'deny'])
+  const denied = h.violations().map(record => record.correction.split('\n')[0])
+  assert.equal(denied[0], 'You tried to write "..\\elsewhere\\a.ts" (resolves to "C:\\elsewhere\\a.ts").')
+  assert.equal(denied[2], 'You tried to write "C:\\wsx\\a.ts".')
+})
+
+test('a relative target follows the session working directory (rc.3 workingDirectory.get) when the service is there', async () => {
+  const h = harness(undefined)
+  h.services.set('workingDirectory', { get: () => 'C:\\ws\\pkg\\sub' })
+  const agent = agentAt('C:\\ws')
+  await h.run({ name: 'Write', arguments: { file_path: '..\\a.ts' }, agent }) // C:\ws\pkg\a.ts
+  await h.run({ name: 'Write', arguments: { file_path: '..\\..\\..\\a.ts' }, agent }) // C:\a.ts
+  assert.deepEqual(h.decisions.map(decision => decision.kind), ['allow', 'deny'])
+  h.services.set('workingDirectory', { get: () => { throw new Error('no projection') } })
+  await h.run({ name: 'Write', arguments: { file_path: 'a.ts' }, agent }) // falls back to the session directory
+  assert.equal(h.decisions[2]?.kind, 'allow')
+})
+
+// Scope (docs/ORCHESTRATION.md §6.2): GLM calls only.
+
+test('non-GLM calls and calls without a route pass untouched: no denial, no record', async () => {
+  const h = harness(['C:\\ws'])
+  const deepseek = agentAt('C:\\ws', 'd1', 'd1', DEEPSEEK)
+  await h.run({ name: 'Write', arguments: { file_path: 'C:\\Windows\\x.dll' }, agent: deepseek })
+  await h.run({ name: 'Bash', arguments: { command: 'Set-Content f.txt hi' }, agent: deepseek })
+  await h.run({ name: 'Bash', arguments: { command: 'Set-Content f.txt hi' } }) // no agent: no route to judge
+  const unlogged = agentAt('C:\\ws', 'u1')
+  ;(unlogged.session as { requestHeader?: unknown }).requestHeader = () => undefined // before the first request header
+  await h.run({ name: 'Bash', arguments: { command: 'Set-Content f.txt hi' }, agent: unlogged })
+  assert.deepEqual(h.decisions.map(decision => decision.kind), ['allow', 'allow', 'allow', 'allow'])
+  assert.equal(h.records().length, 0)
+})
+
+test('the route is read per call: a session switched to GLM mid-way is enforced from that step on', async () => {
+  const h = harness(['C:\\ws'])
+  let route = DEEPSEEK
+  const agent = agentAt('C:\\ws', 'm1')
+  ;(agent.session as { requestHeader?: unknown }).requestHeader = () => ({ config: route })
+  await h.run({ name: 'Bash', arguments: { command: 'Set-Content f.txt hi' }, agent })
+  route = { provider: 'glm-zcode', model: 'glm-5.3-flash' }
+  await h.run({ name: 'Bash', arguments: { command: 'Set-Content f.txt hi' }, agent })
+  assert.deepEqual(h.decisions.map(decision => decision.kind), ['allow', 'deny'])
+})
+
+test('shadow: a non-GLM turn leaves no shadow record', async () => {
+  const h = harness(['C:\\ws'])
+  const announce = changes(h)
+  const agent = agentAt('C:\\ws', 'd1', 'd1', DEEPSEEK)
+  h.event(agent.session!, { type: 'turn/start', seq: 0, data: { turn: 1 } })
+  await h.run({ name: 'Bash', arguments: { command: DOTNET_WRITE }, agent })
+  announce(agent.session!, 3, changed(1, 'gen.txt'))
+  await settle()
+  assert.equal(h.records().length, 0)
 })
 
 // Workspace-change fallback, shadow mode (docs/ORCHESTRATION.md §6.5): the

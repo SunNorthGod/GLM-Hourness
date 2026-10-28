@@ -40,7 +40,7 @@ dist/          不入库：tsc 产物（profile 通过 pnpm link 使用）
 | `glm-prompt` | 在 rc.3 运行时上生效，含 ZCode 3.16.3 local 工具检索；七个别名的描述与 schema 均已按 3.16.3 重建；todo 提醒按助手轮次从会话历史计数（L3 探针 35/35，2026-10-28）；2026-10-28 起 GLM 会话进入高峰时段时收到一条提醒（`ORCHESTRATION.md` §11.4，L3 探针验证）；桌面版需重启才加载 |
 | `glm-compact` | 改为在 `llm/stream` 上替换压缩指令（2026-10-27），L3 探针实测压缩生效 |
 | `data` | 2026-10-28 新增，默认启用：提供数据目录服务（用户级 `~/.dsh/glm-hourness/`、项目 `.llm/`）；L3 探针验证，桌面版重启后生效 |
-| `guard` | 拦截与纠偏可用；违规落盘（项目目录 `audit/violations.jsonl`）；2026-10-28 起 `file-tools-only` 引号感知，规则声明进 GLM 系统提示词，工作区变更兜底以影子模式记录（需要 `workspace-changes`，桌面版 profile 有）；均经 L3 探针验证，桌面版重启后生效；申报未接通 |
+| `guard` | 拦截与纠偏可用，只管 GLM 调用；违规落盘（项目目录 `audit/violations.jsonl`）；2026-10-28 起 `file-tools-only` 引号感知，规则声明进 GLM 系统提示词，工作区变更兜底以影子模式记录（需要 `workspace-changes`，桌面版 profile 有），L4 实测拦截与记录生效；同日 L4 之后改为只拦 GLM、相对路径按会话工作目录解析，经 L3 探针验证，桌面版重启后生效；申报未接通 |
 | `memory` | 工具与用量流水可用，用量改写用户级目录（2026-10-28）；记忆几乎未被使用 |
 | `workflow` | 只记录派遣类调用（2026-10-28 起含 `subagent_fork`） |
 | `hourness` | `/hourness` 可用；面板 2026-10-28 改为积分口径（`ORCHESTRATION.md` §11.2、§11.3），额度类数据未实现；桌面版重启后生效 |
@@ -70,7 +70,7 @@ dist/          不入库：tsc 产物（profile 通过 pnpm link 使用）
 
 1. 路由判定已收口到 `src/shared/route.ts`，`glm-prompt`（含工具检索与 todo 提醒）已改用（`DESIGN.md` §3）。todo 提醒自 2026-10-28 起按 ZCode 的助手轮次口径计数（`DESIGN.md` §5.5）。
 2. 版本基线已统一为 3.16.3；`X-Title` 按用户定案（2026-10-27）保持 `cli`，桌面版 ZCode 的真实流量是 `electron`（`DESIGN.md` §4.2）。
-3. guard 闭环缺申报一段（记录、告知已于 2026-10-28 接通）。`=>`、`>>>`、`->` 误判已修（2026-10-28，引号感知，`ORCHESTRATION.md` §6.5.1）；读不到的 shell 写法（.NET 调用、`cmd /c`、PowerShell 别名如 `del`）只由工作区变更兜底记录，不拦截（§6.5.2）。拦截仍对全部路由生效，§6.2 只作用于 GLM 的定案尚未实现。
+3. guard 闭环缺申报一段（记录、告知已于 2026-10-28 接通）。`=>`、`>>>`、`->` 误判已修（2026-10-28，引号感知，`ORCHESTRATION.md` §6.5.1）；读不到的 shell 写法（.NET 调用、`cmd /c`、PowerShell 别名如 `del`）只由工作区变更兜底记录，不拦截（§6.5.2）。L4 暴露的两处已修（2026-10-28）：拦截只对 GLM 调用生效，路由取会话请求头（§6.2）；相对路径按会话工作目录解析，`..` 折叠（§6.1）。
 4. 数据目录分裂：已修（2026-10-28，`DESIGN.md` §2.4）。用户级数据在 `~/.dsh/glm-hourness/`，项目数据在工作区 `.llm/`；凭证与 deviceMid 在 L4 验收后再搬（`ROADMAP.md` §3）。
 5. 签名握手对当前凭证失败，按设计无签发送；对 1.5 倍用量的影响未验证，签名状态不可见。
 6. start-plan 档只有单测，未做真机授权验证。

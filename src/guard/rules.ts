@@ -4,6 +4,7 @@
  * boundary with a four-part corrective message (fact / violation / right
  * path / exception). No soft-allow tier: a denied action never executes.
  */
+import { resolve } from 'node:path'
 import type { JsonValue } from '../glm-prompt/json.ts'
 import { describeWrite, shellWrites, type ShellDialect } from './shell.ts'
 
@@ -40,11 +41,17 @@ export function normalizePath(path: string): string {
   return path.replaceAll('/', '\\').replaceAll('\\\\', '\\').toLowerCase().replaceAll('\\', '/')
 }
 
-/** Rule 1: writes stay inside the workspace roots. */
-export function workspaceContainment(roots: readonly string[]): GuardRule {
-  const normalizedRoots = roots.map(normalizePath)
-  const inside = (target: string): boolean => {
-    const p = normalizePath(target)
+/**
+ * Rule 1: writes stay inside the workspace roots. A relative target resolves
+ * against `base` (the session's working directory; default the first root),
+ * as the rc.3 file tools resolve it (dsh-fs-local `localDisplayPath`:
+ * `resolve(cwd, path)` on win32); resolving also folds `..` segments, so a
+ * target cannot climb out of a root by spelling.
+ */
+export function workspaceContainment(roots: readonly string[], base: string | undefined = roots[0]): GuardRule {
+  const normalizedRoots = roots.map(root => normalizePath(resolve(root)).replace(/\/+$/, ''))
+  const inside = (absolute: string): boolean => {
+    const p = normalizePath(absolute)
     return normalizedRoots.some(root => p === root || p.startsWith(`${root}/`))
   }
   return {
@@ -57,12 +64,14 @@ export function workspaceContainment(roots: readonly string[]): GuardRule {
       const target = typeof call.arguments === 'object' && call.arguments !== null && !Array.isArray(call.arguments)
         ? (call.arguments as Record<string, JsonValue>).file_path
         : undefined
-      if (typeof target !== 'string' || inside(target)) return { kind: 'allow' }
+      if (typeof target !== 'string') return { kind: 'allow' }
+      const absolute = base === undefined ? resolve(target) : resolve(base, target)
+      if (inside(absolute)) return { kind: 'allow' }
       return {
         kind: 'deny',
         rule: 'workspace-containment',
         correction: {
-          fact: `You tried to write "${target}".`,
+          fact: normalizePath(absolute) === normalizePath(target) ? `You tried to write "${target}".` : `You tried to write "${target}" (resolves to "${absolute}").`,
           violation: 'That path is outside the workspace; writes are confined to the workspace.',
           rightPath: 'Recreate this change under the workspace root (project files in place, agent-private artifacts under .llm/).',
           exception: APPLICATION_PROTOCOL,

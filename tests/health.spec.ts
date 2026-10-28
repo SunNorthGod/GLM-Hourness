@@ -25,9 +25,9 @@ const inSession = (store: Store, row: HealthRow, sessionId: string) => {
   return report === undefined ? undefined : { state: report.state, reason: report.reason }
 }
 
-/** An rc.3 agent as tool executions and command invocations carry it: its id equals its session's id. */
-function agentIn(sessionId: string, cwd?: string): AgentLike {
-  return { id: sessionId, ctx: {} as AgentLike['ctx'], session: { id: sessionId, header: { id: sessionId, ...(cwd === undefined ? {} : { cwd }) }, deriveMessages: () => [] } }
+/** An rc.3 agent as tool executions and command invocations carry it: its id equals its session's id; its latest request ran `model` on `provider`. */
+function agentIn(sessionId: string, cwd?: string, provider = 'glm-zcode', model = 'glm-5.3'): AgentLike {
+  return { id: sessionId, ctx: {} as AgentLike['ctx'], session: { id: sessionId, header: { id: sessionId, ...(cwd === undefined ? {} : { cwd }) }, deriveMessages: () => [], requestHeader: () => ({ config: { provider, model } }) } }
 }
 
 /** Silence the warnings of rows configured without a home, until `run` (or the promise it returns) settles. */
@@ -291,6 +291,8 @@ test('guard: in effect with a session directory and a project directory, degrade
   assert.ok(inSession(store, 'guard', 's4')!.reason.endsWith('；影子兜底：工作区变更记录'))
   await call({ name: 'Read', arguments: {}, agent: agentIn('s3'), parent: 'token' })
   assert.equal(view(store, 'guard').session('s3'), undefined) // transport sub-calls are not the row acting
+  await call({ name: 'Read', arguments: {}, agent: agentIn('s5', 'C:\\ws', 'deepseek-account', 'deepseek-flash') })
+  assert.deepEqual(inSession(store, 'guard', 's5'), { state: 'inactive', reason: '非 GLM 路由 deepseek-account/deepseek-flash，门禁不介入' })
   const bare = preExecuteRow(guardApply as never, { fs: memoryFs })
   await bare.call({ name: 'Read', arguments: {}, agent: agentIn('s1', 'C:\\ws') })
   assert.ok(inSession(bare.store, 'guard', 's1')!.reason.includes('；无项目目录，违规不落盘；'))

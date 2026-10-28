@@ -149,6 +149,8 @@ GLM-Hourness
 | --- | --- | --- | --- |
 | agent：`id`（与会话共用）、`ctx`（作用域上下文）、`session` | glm-prompt、guard、工具检索 | agent-loop:748–781 | 类型偏差已修：结构类型里的 `model` 成员在 rc.3 不存在，删除 |
 | session：`id`（取自 `header.id`）、`header{id, createdAt, cwd?, parentSession?, isSeeded}`、`deriveMessages()` | guard（`header.cwd` 作包含根）、工具检索、todo 提醒 | session:1344–1346、session:1820–1826、session:1672–1686 | 一致 |
+| session：`requestHeader()`，日志里 `request/header` 事件的折叠，`config` 为该步准备好的调用配置（含 `provider`、`model`）；第一次请求之前为 undefined | guard（工具调用的路由，`src/shared/route.ts` `sessionRoute`） | session:1612、session:637（`foldRequestHeader`）、`canonicalHeader`；agent 循环每步调用模型之前写入，变化时才写，agent-loop:1218–1240 | 一致（2026-10-28 核对；L3 探针的 GLM 拦截与非 GLM 放行经它判路由） |
+| `workingDirectory.get(session)`：会话的当前工作目录，无 I/O；没有记录时取部署默认目录 | guard（相对路径的解析基准，`ctx.get` 读） | working-directory:76–78；文件工具按 `ensure(agent)` 的结果解析相对路径，tool-fs:172、fs-local `localDisplayPath`（win32 上为 `resolve(cwd, path)`） | 一致 |
 | 派生消息：助手消息 `source{kind: 'model', provider, model}`，工具调用为 `tool-call` 块；工具结果带 `toolCallId`、`isError` | todo 提醒、工具检索 | llm:66–78（`createAssistantMessage`），session:862–868、session:1217–1218 | 一致 |
 | 合成 notice 与 `createUserMessage` 同形（`id`、`role: 'user'`、冻结） | 工具检索公告、todo 提醒 | llm:37–66 | 一致 |
 
@@ -196,7 +198,7 @@ GLM-Hourness
 | glm-prompt | 激活；每步组装 | GLM 路由，ZCode 提示词与工具面，工具检索 local 或关闭 | 非 GLM 路由；工具检索未安装（会话历史不可读，部分生效）；方言安装失败 |
 | glm-compact | 激活；每次压缩请求 | GLM 压缩请求改用 ZCode 指令与摘要格式 | 非 GLM 路由；未识别 compaction-basic 的指令（原样放行） |
 | data | 激活 | 用户级目录与项目目录都已解析 | 项目目录未配置（部分生效）；服务提供失败 |
-| guard | 激活；每次根调用 | 门禁生效，写明圈禁根、违规目录与影子兜底是否可用 | 会话没有工作目录（圈禁规则跳过）；无项目目录（违规不落盘）。组合里没有 workspace-changes 时说明写「影子兜底未启用」，状态不降级：影子兜底只记录，门禁本身不受影响 |
+| guard | 激活；每次根调用 | GLM 调用：门禁生效，写明圈禁根、违规目录与影子兜底是否可用 | 非 GLM 路由或路由未知（未生效，门禁不介入，`ORCHESTRATION.md` §6.2）；会话没有工作目录（圈禁规则跳过）；无项目目录（违规不落盘）。组合里没有 workspace-changes 时说明写「影子兜底未启用」，状态不降级：影子兜底只记录，门禁本身不受影响 |
 | memory | 激活；每次模型调用 | 用量记入用户级目录，记忆工具可用 | 数据目录行未启用（用量不记录）；`home` 未配置（记忆工具关闭） |
 | workflow | 激活；每次根调用 | 派遣决策记入项目目录 | 无项目目录 |
 | hourness | 激活；每次 `/hourness` | 两个目录都可读 | 缺项目目录或用户级目录 |
@@ -218,6 +220,8 @@ UI 包的行运行在客户端，不在表内。
 3. 判定函数只有一处（`src/shared/`），所有行共用。
 4. 只对准 rc.3 的可靠信号；兼容旧构建的分支删除。
 5. 单测里的假宿主必须给出与 rc.3 相同的信号，不得提供真宿主不提供的路由字段。
+
+第二个信号〔2026-10-28，L4 之后〕：没有组装结果的钩子（工具执行）读会话的请求头折叠 `session.requestHeader().config`（`sessionRoute`，§2.4a 接口对照表）。agent 循环在每步调用模型之前写请求头，所以工具执行时它就是发出这次调用的那一步的路由。guard 按它只拦 GLM 调用（`ORCHESTRATION.md` §6.2）。不另建按 agent 记录路由的跟踪器：两个信号都来自运行时自己的记录，跟踪器是第二份状态。
 
 实现：`src/shared/route.ts`（`isGlmModel`、`assemblyRoute`）；`glm-prompt` 在 `agent/created` 时于 agent 作用域注册别名，并注册一个 prepend 组装监听器，在 `next()` 之后按本次请求的路由改写提示词节与工具面，不再调用 `restrict()`，也不再挂载 / 卸载。同一步里的其他钩子读的是该监听器本步的判定（todo 提醒读「GLM 路由且工具面有 TodoWrite」，§5.5）；原先按 agent 记录路由的 `createRouteTracker` 随 todo 提醒改到 `agent/pre-step` 后不再有使用者，已删除（2026-10-28）。单测替身 `tests/fake-rc3.ts` 只提供 rc.3 的接口。L3 探针 9/9：GLM 路由得到 ZCode 身份与别名面、`Read` 别名真实执行；非 GLM 路由保持 DSH 原文与原生工具。工具检索在同一个组装监听器里、别名改写之后执行（§5.7），探针扩到 15 项，全部通过。
 

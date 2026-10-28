@@ -237,6 +237,35 @@ const arrowsResult = lastToolResult(shadow.steps[1])
 const gitResult = lastToolResult(shadow.steps[2])
 const dotnetResult = lastToolResult(shadow.steps[3])
 
+// Guard scope and relative targets (L4 2026-10-28: a relative Write inside
+// the workspace was denied, and the guard acted on a DeepSeek session). On
+// GLM a relative Write resolves against the session directory and runs; a
+// relative target that climbs out with `..` is denied. On a non-GLM route
+// the guard stays out: a shell write GLM would be denied runs.
+const pathsDir = join(runDir, 'glm-guard-paths')
+const pathsWs = join(pathsDir, 'ws')
+mkdirSync(join(pathsWs, 'sub'), { recursive: true })
+const relativeFile = join(pathsWs, 'sub', 'rel.txt')
+const escapedFile = join(pathsDir, 'escaped.txt')
+const guardPaths = runScenario('glm-guard-paths', 'glm-5.3', [
+  { tool: { name: 'Write', arguments: { file_path: 'sub/rel.txt', content: 'relative\n' } } },
+  { tool: { name: 'Write', arguments: { file_path: '../escaped.txt', content: 'escaped\n' } } },
+  { text: 'done', status: true },
+], 'Write two files, then reply done.', [], pathsWs)
+const relativeResult = lastToolResult(guardPaths.steps[1])
+const escapeResult = lastToolResult(guardPaths.steps[2])
+const plainGuardDir = join(runDir, 'non-glm-guard')
+const plainGuardWs = join(plainGuardDir, 'ws')
+mkdirSync(plainGuardWs, { recursive: true })
+const plainShellFile = join(plainGuardWs, 'shell.txt')
+const plainGuard = runScenario('non-glm-guard', 'deepseek-probe', [
+  { tool: { name: 'write', arguments: { file_path: 'rel.txt', content: 'relative\n' } } },
+  { tool: { name: 'pwsh', arguments: { command: `Set-Content -Path '${plainShellFile}' -Value probe`, description: 'Write a file through the shell' } } },
+  { text: 'done', status: true },
+], 'Write a file, write one through the shell, then reply done.', [], plainGuardWs)
+const plainWriteResult = lastToolResult(plainGuard.steps[1])
+const plainShellResult = lastToolResult(plainGuard.steps[2])
+
 // Peak-hour reminder (docs/ORCHESTRATION.md §11.4). The probe clock row
 // (scripts/probe/probe-clock.mjs) starts the runtime's Date.now() at a
 // Wednesday 15:00 UTC+8: the first GLM request gets the notice, later
@@ -386,7 +415,7 @@ const checkpoint = compacted.steps.at(-1)?.messages.find(message => message.sour
 const usageOf = scenario => jsonl(join(runDir, scenario, 'dsh-home', 'glm-hourness', 'audit', 'usage.jsonl'))
 const glmUsage = usageOf('glm').filter(record => record.purpose === undefined)
 const compactUsage = usageOf('glm-compact').filter(record => record.purpose === 'compaction')
-const projectUsage = ['glm', 'glm-flash', 'glm-todo', 'glm-compact', 'glm-shadow', 'glm-peak', 'non-glm', 'limits-steps', 'limits-time', 'glm-dispatch', 'glm-goal', 'goal-headless'].filter(scenario => existsSync(join(runDir, scenario, 'home', 'audit', 'usage.jsonl')))
+const projectUsage = ['glm', 'glm-flash', 'glm-todo', 'glm-compact', 'glm-shadow', 'glm-guard-paths', 'non-glm', 'non-glm-guard', 'glm-peak', 'limits-steps', 'limits-time', 'glm-dispatch', 'glm-goal', 'goal-headless'].filter(scenario => existsSync(join(runDir, scenario, 'home', 'audit', 'usage.jsonl')))
 const glmViolations = jsonl(join(glmDir, 'home', 'audit', 'violations.jsonl'))
 const stepLimits = jsonl(limitsRecord('limits-steps'))
 const timeLimits = jsonl(limitsRecord('limits-time'))
@@ -412,6 +441,9 @@ const plainHealth = healthOf(plain)
 const compactHealth = healthOf(compacted)
 const shadowHealth = healthOf(shadow)
 const shadowRecords = jsonl(join(shadowDir, 'home', 'audit', 'violations.jsonl'))
+const pathsViolations = jsonl(join(pathsDir, 'home', 'audit', 'violations.jsonl'))
+const plainGuardViolations = jsonl(join(plainGuardDir, 'home', 'audit', 'violations.jsonl'))
+const plainGuardHealth = healthOf(plainGuard)
 const GUARD_SECTION = '# Workspace rules\nThe harness checks every tool call against these rules before it runs;'
 const glmStatusText = statusStep(glm)?.status ?? ''
 const healthLine = (health, row) => health[row] === undefined ? `${row}: missing` : `${row}: ${health[row].status}`
@@ -474,6 +506,10 @@ const checks = [
   ['guard: quoted =>, -> and >>> and a git subcommand with a quoted arrow run through Bash', arrowsResult !== undefined && arrowsResult.isError !== true && arrowsResult.text.includes('a => b -> c >>> d') && gitResult !== undefined && gitResult.isError !== true && gitResult.text.includes('init => '), `${(arrowsResult?.text ?? 'no tool result').slice(0, 60).replace(/\n/g, ' ')} | ${(gitResult?.text ?? 'no tool result').slice(0, 60).replace(/\n/g, ' ')}`],
   ['guard shadow: a .NET file write the reader cannot see runs, and Write creates its file (shadow mode never blocks)', gitReady && dotnetResult !== undefined && dotnetResult.isError !== true && existsSync(shadowFile) && existsSync(toolFile), `git repo: ${gitReady}; ${(dotnetResult?.text ?? 'no tool result').slice(0, 80).replace(/\n/g, ' ')}`],
   ['guard shadow: one shadow record names the shell-written file, not the Write target, with the turn, the session and the three shell calls', shadowRecords.length === 1 && shadowRecords[0].mode === 'shadow' && shadowRecords[0].rule === 'file-tools-only' && JSON.stringify(shadowRecords[0].paths) === '["shadow.txt"]' && typeof shadowRecords[0].turn === 'number' && shadowRecords[0].calls?.length === 3 && shadowRecords[0].calls.some(call => call.tool === 'Bash' && call.command === dotnetWrite) && shadowRecords[0].sessionId === statusStep(shadow)?.sessionId, `${shadowRecords.length} record(s); first: ${JSON.stringify(shadowRecords[0] ?? null).slice(0, 200)}`],
+  ['guard paths: on GLM a relative Write inside the workspace resolves against the session directory and runs', relativeResult !== undefined && relativeResult.isError !== true && existsSync(relativeFile), relativeResult === undefined ? `no tool result (exit ${guardPaths.status})` : relativeResult.text.slice(0, 100).replace(/\n/g, ' ')],
+  ['guard paths: on GLM a relative target climbing out with .. is denied by workspace-containment, journaled, and not written', escapeResult?.isError === true && escapeResult.text.includes('That path is outside the workspace') && escapeResult.text.includes(`(resolves to "${escapedFile}")`) && !existsSync(escapedFile) && pathsViolations.length === 1 && pathsViolations[0].rule === 'workspace-containment', `${(escapeResult?.text ?? 'no tool result').slice(0, 120).replace(/\n/g, ' ')}; ${pathsViolations.length} record(s)`],
+  ['guard scope: on a non-GLM route the guard stays out: a relative write and a shell write both run, nothing is journaled', plainWriteResult !== undefined && plainWriteResult.isError !== true && existsSync(join(plainGuardWs, 'rel.txt')) && plainShellResult !== undefined && plainShellResult.isError !== true && existsSync(plainShellFile) && plainGuardViolations.length === 0, `write: ${(plainWriteResult?.text ?? 'no tool result').slice(0, 60).replace(/\n/g, ' ')} | pwsh: ${(plainShellResult?.text ?? 'no tool result').slice(0, 60).replace(/\n/g, ' ')}; ${plainGuardViolations.length} record(s)`],
+  ['guard scope: the non-GLM session reports the guard out of scope with the route', plainGuardHealth.guard?.status === '未生效' && plainGuardHealth.guard.reason === '非 GLM 路由 glm-probe/deepseek-probe，门禁不介入', JSON.stringify(plainGuardHealth.guard ?? null)],
   ['health: the guard names the shadow fallback: on with workspace-changes mounted, off without it', shadowHealth.guard?.status === ACTED && shadowHealth.guard.reason.endsWith('影子兜底：工作区变更记录') && glmHealth.guard?.reason.endsWith('影子兜底未启用（组合里没有 workspace-changes）') === true, `${JSON.stringify(shadowHealth.guard ?? null)} | ${JSON.stringify(glmHealth.guard ?? null)}`],
   ['workflow: the runtime subagent tools are journaled dispatch names', plainSubagentTools.length === 2 && plainSubagentTools.every(name => DISPATCH_TOOLS.includes(name)), `runtime subagent tools: ${plainSubagentTools.join(', ') || 'none'}`],
   ['health: /glm-status prints the credential line and the health table of the session, one line per bundle row', glmStatusText.startsWith('glm-zcode：未登录（套餐 coding-plan）') && glmStatusText.includes(`## 行健康（会话 ${statusStep(glm)?.sessionId}）`) && HEALTH_ROWS.every(row => glmHealth[row] !== undefined) && Object.keys(glmHealth).length === HEALTH_ROWS.length, `${Object.keys(glmHealth).length} row(s); ${glmStatusText.split('\n')[0]}`],

@@ -16,7 +16,15 @@ import { randomUUID } from 'node:crypto'
 import type { GenerateOptions } from '@deepseek-ai/dsh-llm'
 import type { StreamChunk } from './lm-min.ts'
 
-/** The session members rows read (dsh-session `Session`: `id` getter, `header`, `deriveMessages`). */
+/**
+ * The canonical request header (dsh-session `canonicalHeader`): `config` is
+ * the call config the LLM service prepared for the step, carrying the route.
+ */
+interface RequestHeaderLike {
+  readonly config?: { readonly provider?: string, readonly model?: string }
+}
+
+/** The session members rows read (dsh-session `Session`: `id` getter, `header`, `deriveMessages`, `requestHeader`). */
 export interface SessionLike {
   /** The session identity (the header's `id`). */
   readonly id: string
@@ -24,6 +32,12 @@ export interface SessionLike {
   readonly header: { readonly id: string, readonly cwd?: string }
   /** The request-visible history, after compaction projections. */
   deriveMessages(): readonly unknown[]
+  /**
+   * The fold of the log's `request/header` events (rc.3 dsh-session
+   * lib/index.js:1612); undefined before the first request. Optional only so
+   * test sessions may leave it out; rc.3 sessions always have it.
+   */
+  requestHeader?(): RequestHeaderLike | undefined
 }
 
 /** A live agent (dsh-agent-loop `ReactLoopAgent`): its id (shared with its session), scoped context and session. */
@@ -138,6 +152,16 @@ export interface WorkspaceChangesSummary {
   /** At most the plugin's `maxFiles` entries; `total` counts every changed file. */
   readonly files: readonly WorkspaceChangedFile[]
   readonly total: number
+}
+
+/**
+ * The `workingDirectory` service member the guard reads (rc.3
+ * dsh-working-directory `WorkingDirectoryService.get`, lib/index.js:76): the
+ * session's effective directory without I/O, which the file tools resolve
+ * relative paths against (dsh-tool-fs `sessionResolveOptions`).
+ */
+export interface WorkingDirectoryService {
+  get(session: SessionLike): string
 }
 
 /** The `workspaceChanges` service member the guard reads (dsh-workspace-changes `apply`). */
