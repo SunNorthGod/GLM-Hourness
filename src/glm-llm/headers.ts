@@ -154,17 +154,15 @@ export function buildTraceHeaders(trace: TraceContext): Record<string, string> {
 /**
  * The start-plan header set (the earlier zcode-api shape, unchanged by
  * m1-parity): identity and trace headers, the `ai-sdk/anthropic/3.0.81`
- * User-Agent suffix, `auth.apiKey` in `x-api-key` when given and
- * `auth.bearer` in `Authorization: Bearer`.
+ * User-Agent suffix and the plan JWT in `Authorization: Bearer`.
  */
-export function buildAuthHeaders(auth: { readonly bearer: string, readonly apiKey?: string }, identity: ZcodeIdentity, trace: TraceContext, env: NodeJS.ProcessEnv = process.env): Record<string, string> {
+export function buildAuthHeaders(bearer: string, identity: ZcodeIdentity, trace: TraceContext, env: NodeJS.ProcessEnv = process.env): Record<string, string> {
   const headers: Record<string, string> = {
     ...buildLlmIdentityHeaders(identity, env),
     ...buildTraceHeaders(trace),
   }
   headers['User-Agent'] = `${headers['User-Agent']} ${ANTHROPIC_SDK_UA}`
-  if (auth.apiKey !== undefined) headers['x-api-key'] = auth.apiKey
-  headers.authorization = `Bearer ${auth.bearer}`
+  headers.authorization = `Bearer ${bearer}`
   headers['anthropic-version'] = ANTHROPIC_VERSION
   return headers
 }

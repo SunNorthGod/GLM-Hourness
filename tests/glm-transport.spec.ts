@@ -85,17 +85,11 @@ test('coding-plan model request headers: the PAT in both auth headers, the call 
   assert.equal(title['user-agent'], 'ZCode/3.16.3 ai/6.0.193 ai-sdk/provider-utils/4.0.27 runtime/node.js/22')
 })
 
-test('coding-plan anthropic auth carries the project token in both auth headers plus SDK UA suffix', () => {
-  const headers = buildAuthHeaders({ bearer: 'fake-pat', apiKey: 'fake-pat' }, DEFAULT_IDENTITY, TRACE, env)
-  assert.equal(headers['x-api-key'], 'fake-pat')
-  assert.equal(headers.authorization, 'Bearer fake-pat')
+test('start-plan auth uses the JWT bearer only, with the SDK UA suffix', () => {
+  const headers = buildAuthHeaders('jwt-1', DEFAULT_IDENTITY, { sessionId: 's1', requestId: 'r1', traceId: 't1', sessionType: 'main' }, env)
+  assert.equal(headers.authorization, 'Bearer jwt-1')
   assert.equal(headers['anthropic-version'], '2023-06-01')
   assert.equal(headers['User-Agent'], `ZCode/${ZCODE_APP_VERSION} ${ANTHROPIC_SDK_UA}`)
-})
-
-test('start-plan auth uses the JWT bearer only', () => {
-  const headers = buildAuthHeaders({ bearer: 'jwt-1' }, DEFAULT_IDENTITY, { sessionId: 's1', requestId: 'r1', traceId: 't1', sessionType: 'main' }, env)
-  assert.equal(headers.authorization, 'Bearer jwt-1')
   assert.ok(!('x-api-key' in headers))
   assert.ok(!('x-query-id' in headers))
   assert.ok(!('x-zcode-query-source' in headers))

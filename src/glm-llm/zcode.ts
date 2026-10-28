@@ -456,7 +456,7 @@ export class ZcodeAdapter {
       const trace = { ...attribution, requestId: randomUUID() }
       const headers = token !== undefined
         ? buildModelRequestHeaders({ token: token.token, identity, trace, generateText: request.purpose === 'session-title', ...(this.options.env === undefined ? {} : { env: this.options.env }) })
-        : { ...buildAuthHeaders({ bearer: startPlanJwt }, identity, trace, this.options.env), 'content-type': 'application/json' }
+        : { ...buildAuthHeaders(startPlanJwt, identity, trace, this.options.env), 'content-type': 'application/json' }
       return sendWithClientSigning(token === undefined ? null : this.signer, {
         url: upstreamBase,
         headers,
