@@ -3,7 +3,7 @@ import test from 'node:test'
 import { buildLlmIdentityHeaders, buildContextIdentityHeaders, ensureDeviceMid, DEFAULT_IDENTITY, ZCODE_APP_VERSION } from '../src/glm-llm/identity.ts'
 import { buildAuthHeaders, buildModelRequestHeaders, buildTraceHeaders, ANTHROPIC_SDK_UA, RequestAttributionTracker, runtimeUserAgent, withUserAgentSuffix, type SessionHeaderLike } from '../src/glm-llm/headers.ts'
 import { BlockAssembler } from '@deepseek-ai/dsh-llm'
-import { encodeRequest, encodeMessage, decodeFrame, decodeSse, metadataUserId, replayBlocksOf, type AnthropicRequest } from '../src/glm-llm/anthropic.ts'
+import { encodeRequest, encodeMessage, decodeFrame, decodeMessage, decodeSse, metadataUserId, replayBlocksOf, type AnthropicRequest } from '../src/glm-llm/anthropic.ts'
 import { glmImageRequestTarget, prepareRequestImages, offloadedImageText, ZCODE_IMAGE_TARGET_BYTES } from '../src/glm-llm/images.ts'
 import { zcodeModelRule, zcodeWireModelId } from '../src/glm-llm/models.ts'
 import { estimateCurrentUsage, estimateMessageTokens, maxOutputTokensFor, stepMaxOutputTokens } from '../src/glm-llm/token-budget.ts'
@@ -530,6 +530,24 @@ const nextRequest = (assistant: RequestMessageLike, model: string): AnthropicReq
     assistant,
     { role: 'tool', toolCallId: 'tu1', content: [{ type: 'text', text: 'export {}' }] },
   ],
+})
+
+test('decodeMessage turns a non-streaming answer into the chunks decodeSse emits for the same answer', async () => {
+  const streamed: unknown[] = []
+  for await (const chunk of decodeSse(sse(SIGNED_RESPONSE), 'glm-5.3')) streamed.push(chunk)
+  const message = {
+    content: [
+      { type: 'thinking', thinking: 'quotes are ignored', signature: 'c2lnLTEyMzQ=' },
+      { type: 'text', text: 'Reading.' },
+      { type: 'tool_use', id: 'tu1', name: 'Read', input: { file_path: 'C:/a.ts' } },
+    ],
+    stop_reason: 'tool_use',
+    usage: { input_tokens: 50, output_tokens: 20 },
+  }
+  const decoded = decodeMessage(message, 'glm-5.3')
+  const pick = (chunks: readonly unknown[], type: string): unknown[] => chunks.filter(chunk => (chunk as { type: string }).type === type)
+  for (const type of ['block-start', 'block-end', 'usage', 'finish']) assert.deepEqual(pick(decoded, type), pick(streamed, type), type)
+  assert.deepEqual(decoded.map(chunk => chunk.type).slice(-2), ['usage', 'finish'])
 })
 
 test('stepMaxOutputTokens follows 3.16.3 resolveModelStepMaxOutputTokens: baseline unless the window leaves less', () => {

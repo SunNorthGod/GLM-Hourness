@@ -95,6 +95,9 @@ const SSE_OK_FRAMES = [
 ]
 const SSE_OK_BODY = SSE_OK_FRAMES.map(frame => `${frame}\n`).join('')
 
+/** A non-streaming Anthropic answer, as the session title request gets it. */
+const TITLE_MESSAGE = { type: 'message', role: 'assistant', content: [{ type: 'thinking', thinking: 'short', signature: 'c2ln' }, { type: 'text', text: 'Fix quotes' }], stop_reason: 'end_turn', usage: { input_tokens: 40, output_tokens: 6 } }
+
 function sseOk(): Response {
   return new Response(sseBody(SSE_OK_FRAMES), { status: 200, headers: { 'content-type': 'text/event-stream' } })
 }
@@ -115,6 +118,8 @@ function makeUpstream(captured: { url?: string, headers?: Record<string, string>
       captured.url = target
       captured.headers = sentHeaders(init)
       captured.body = JSON.parse(typeof init?.body === 'string' ? init.body : '{}') as Record<string, unknown>
+      // A request without `stream` (the session title, 3.16.3 generateText) gets one JSON message.
+      if (captured.body.stream !== true) return Promise.resolve(Response.json(TITLE_MESSAGE))
     }
     return Promise.resolve(sseOk())
   }) as typeof fetch
@@ -552,6 +557,25 @@ test('coding-plan body: the official model casing, the 3.16.3 key order, thinkin
   assert.equal('thinking' in other, false)
 })
 
+/** A coding-plan adapter on the capturing upstream double, with the default login stored. */
+async function capturingAdapter(): Promise<{ adapter: ZcodeAdapter, captured: { body?: Record<string, unknown> } }> {
+  const { fs } = memoryStore()
+  await saveCredential(fs, 'C:/ws/.llm/credentials.json', credential)
+  const captured: { body?: Record<string, unknown> } = {}
+  return { adapter: new ZcodeAdapter({ home: 'C:/ws/.llm', fetchImpl: makeUpstream(captured), storeFs: fs, env: isolatedEnv() }), captured }
+}
+
+test('the session title goes out as 3.16.3 generateText sends it: no stream key, one JSON answer decoded into the usual chunks', async () => {
+  const { adapter, captured } = await capturingAdapter()
+  const chunks: StreamChunk[] = []
+  for await (const chunk of adapter.stream({ ...request(), sessionId: 'session-s1', purpose: 'session-title' } as never)) chunks.push(chunk)
+  assert.deepEqual(Object.keys(captured.body ?? {}), ['model', 'max_tokens', 'metadata', 'system', 'messages', 'thinking', 'output_config'])
+  assert.deepEqual(chunks.filter(chunk => chunk.type === 'block-end').map(chunk => chunk.type === 'block-end' ? chunk.block : undefined), [{ type: 'reasoning', text: 'short' }, { type: 'text', text: 'Fix quotes' }])
+  assert.deepEqual(chunks.find(chunk => chunk.type === 'usage'), { type: 'usage', usage: { inputTokens: 40, outputTokens: 6, totalTokens: 46 } })
+  const finish = chunks.at(-1)
+  assert.deepEqual(finish?.type === 'finish' ? finish.replayState?.blocks : undefined, [{ type: 'reasoning', signature: 'c2ln' }, { type: 'text' }])
+})
+
 test('start-plan keeps its earlier body: the DSH model id, no thinking, no output_config, the DSH max_tokens', async () => {
   const body = await bodyOf({ reasoningEffort: 'max', maxTokens: 4096 }, 'start-plan')
   assert.equal(body.model, 'glm-5.3')
@@ -580,10 +604,7 @@ test('upstreamSessionId strips the DSH prefix, keeps other header-safe ids, and 
 test('the DSH system prompt arrives as leading system messages and lands in the system field', async () => {
   // DSH runtimes deliver the assembled prompt in history, not GenerateOptions.system
   // (L3 probe 2026-10-27); dropping those messages would send GLM no system prompt.
-  const { fs } = memoryStore()
-  await saveCredential(fs, 'C:/ws/.llm/credentials.json', credential)
-  const captured: { body?: Record<string, unknown> } = {}
-  const adapter = new ZcodeAdapter({ home: 'C:/ws/.llm', fetchImpl: makeUpstream(captured), storeFs: fs, env: isolatedEnv() })
+  const { adapter, captured } = await capturingAdapter()
   const { system: _requestLevel, ...base } = request()
   const options = {
     ...base,

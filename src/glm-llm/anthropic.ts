@@ -518,6 +518,51 @@ export async function* decodeSse(body: ReadableStream<Uint8Array>, model?: strin
   }
 }
 
+/** A non-streaming Anthropic Messages response (the body `generateText` reads). */
+interface WireMessageResponse {
+  content?: Array<{ type?: string, text?: string, thinking?: string, signature?: string, id?: string, name?: string, input?: unknown }>
+  stop_reason?: string
+  usage?: WireUsage
+}
+
+/**
+ * Decode a non-streaming response (the session title, which 3.16.3 sends
+ * through `generateText`, docs/DESIGN.md §4.5) into the same chunk sequence
+ * `decodeSse` emits for the equivalent stream: per block a start, its text
+ * as one delta (a tool call's id and name), and the complete block; then the
+ * merged usage and the finish with its replay envelope.
+ */
+export function decodeMessage(body: unknown, model?: string): StreamChunk[] {
+  const message = (typeof body === 'object' && body !== null ? body : {}) as WireMessageResponse
+  const chunks: StreamChunk[] = []
+  const replay: ReplayBlock[] = []
+  for (const block of message.content ?? []) {
+    const index = replay.length
+    if (block.type === 'text') {
+      const text = block.text ?? ''
+      chunks.push({ type: 'block-start', index, blockType: 'text' }, ...(text.length === 0 ? [] : [{ type: 'text-delta' as const, index, text }]), { type: 'block-end', index, block: { type: 'text', text } })
+      replay.push({ type: 'text' })
+    }
+    else if (block.type === 'thinking') {
+      const text = block.thinking ?? ''
+      chunks.push({ type: 'block-start', index, blockType: 'reasoning' }, ...(text.length === 0 ? [] : [{ type: 'reasoning-delta' as const, index, text }]), { type: 'block-end', index, block: { type: 'reasoning', text } })
+      replay.push({ type: 'reasoning', signature: typeof block.signature === 'string' ? block.signature : '' })
+    }
+    else if (block.type === 'tool_use') {
+      const id = block.id ?? ''
+      const name = block.name ?? ''
+      const args = JSON.stringify(block.input ?? {})
+      chunks.push({ type: 'block-start', index, blockType: 'tool-call' }, { type: 'tool-call-delta', index, id, name, argumentsDelta: '' }, { type: 'block-end', index, block: { type: 'tool-call', id, name, arguments: args } })
+      replay.push({ type: 'tool-call' })
+    }
+  }
+  const usage = accumulateUsage({}, message.usage)
+  const merged = toTokenUsage(usage)
+  if (merged !== undefined) chunks.push({ type: 'usage', usage: merged })
+  chunks.push(finishChunk(message.stop_reason ?? 'end_turn', model, replay, usage))
+  return chunks
+}
+
 /** Fold one event's usage counters into the running totals (later non-empty values win). */
 function accumulateUsage(total: WireUsage, next: WireUsage | undefined): WireUsage {
   if (next === undefined) return total

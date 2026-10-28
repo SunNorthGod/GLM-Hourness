@@ -21,7 +21,7 @@ import { buildAuthHeaders, buildModelRequestHeaders, RequestAttributionTracker, 
 import { EndpointRoutingService, type RoutingCredential } from './endpoint-routing.ts'
 import { ClientSigningManager, sendWithClientSigning } from './signing.ts'
 import { ProjectAccessTokenClient, projectTokenFingerprint, projectTokenRequest, type ProjectKeyLocationStore, type ResolvedProjectToken } from './auth/project-token.ts'
-import { encodeRequest, decodeSse, metadataUserId, splitSystemPrompt, type WireShape } from './anthropic.ts'
+import { encodeRequest, decodeMessage, decodeSse, metadataUserId, splitSystemPrompt, type WireShape } from './anthropic.ts'
 import { glmImageRequestTarget, prepareRequestImages } from './images.ts'
 import { buildStartPlanSystem, buildContextPrefixMessage } from './start-plan.ts'
 import { GLM_DEFAULT_MAX_TOKENS, GLM_MODELS, GLM_REASONING_EFFORTS, glmInputModalities, zcodeModelRule, zcodeWireModelId } from './models.ts'
@@ -428,7 +428,8 @@ export class ZcodeAdapter {
     const attribution: Omit<TraceContext, 'requestId'> = plan === 'coding-plan'
       ? this.attribution.attribute({ sessionId: request.sessionId, purpose: request.purpose, messages: options.messages })
       : { sessionId: upstreamSessionId(request.sessionId), sessionType: request.purpose === undefined ? 'main' : 'other', traceId: randomUUID() }
-    const body = JSON.stringify(encodeRequest({ ...options, messages }, systemBlocks, images, metadataUserId(deviceMid, attribution.sessionId), plan === 'coding-plan' ? codingPlanWire(options, request.purpose) : undefined))
+    const wire = plan === 'coding-plan' ? codingPlanWire(options, request.purpose) : undefined
+    const body = JSON.stringify(encodeRequest({ ...options, messages }, systemBlocks, images, metadataUserId(deviceMid, attribution.sessionId), wire))
     const upstreamBase = `${BIGMODEL_ANTHROPIC_BASE}/v1/messages`
 
     // One attempt: route, assemble, sign, send. 3.16.3 wraps the routing
@@ -471,6 +472,13 @@ export class ZcodeAdapter {
       const detail = await response.text()
       throw new Error(`glm-zcode ${response.status}: ${detail.slice(0, 400)}`)
     }
+    if (wire?.stream === false) {
+      // The session title goes out as 3.16.3 `generateText` sends it: one JSON answer.
+      const message: unknown = await response.json()
+      report('active', `上游已应答（套餐 ${plan}）${device?.source === 'bundle' ? DEVICE_MID_FALLBACK_NOTE : ''}`)
+      yield* decodeMessage(message, options.model) as LlmStreamChunk[]
+      return
+    }
     if (response.body === null) throw new Error('glm-zcode: response has no stream body')
     report('active', `上游已应答（套餐 ${plan}）${device?.source === 'bundle' ? DEVICE_MID_FALLBACK_NOTE : ''}`)
     // decodeSse emits the internal structural chunk vocabulary; it is
@@ -497,7 +505,8 @@ function codingPlanWire(options: GenerateOptionsLike, purpose: GenerateOptions['
   return {
     model: zcodeWireModelId(options.model),
     maxTokens: rule === undefined ? options.maxTokens ?? GLM_DEFAULT_MAX_TOKENS : maxOutputTokensFor(kind, rule.maxOutputTokens, rule.contextWindow, options.messages),
-    stream: true,
+    // 3.16.3 sends the session title through `generateText` (`v4a` @13066475), every other request through `streamText`.
+    stream: purpose !== 'session-title',
     optionPatch: rule === undefined || level === undefined ? undefined : rule.optionPatch(level),
   }
 }
