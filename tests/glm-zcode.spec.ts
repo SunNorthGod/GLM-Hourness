@@ -522,6 +522,42 @@ test('a delegated child session (agents: origin subagent) is typed subagent with
   assert.notEqual(child.query, parent.query)
 })
 
+/** The body of one coding-plan request on a fresh adapter. */
+async function bodyOf(options: Partial<GenerateOptionsLike> & { purpose?: 'session-title' | 'compaction' }, plan?: 'start-plan'): Promise<Record<string, unknown>> {
+  const { fs } = memoryStore()
+  await saveCredential(fs, 'C:/ws/.llm/credentials.json', { ...credential, jwt: 'fake.plan.jwt' })
+  const captured: { body?: Record<string, unknown> } = {}
+  const adapter = new ZcodeAdapter({ home: 'C:/ws/.llm', fetchImpl: makeUpstream(captured), storeFs: fs, env: isolatedEnv(), ...(plan === undefined ? {} : { plan }) })
+  for await (const chunk of adapter.stream({ ...request(), sessionId: 'session-s1', ...options } as never)) void chunk
+  return captured.body ?? {}
+}
+
+test('coding-plan body: the official model casing, the 3.16.3 key order, thinking enabled and the DSH effort in output_config', async () => {
+  const tools = [{ name: 'Read', description: 'Read a file', parameters: { type: 'object' } }]
+  const step = await bodyOf({ tools, reasoningEffort: 'max' })
+  assert.deepEqual(Object.keys(step), ['model', 'max_tokens', 'metadata', 'system', 'messages', 'tools', 'tool_choice', 'stream', 'thinking', 'output_config'])
+  assert.equal(step.model, 'GLM-5.3')
+  assert.deepEqual(step.thinking, { type: 'enabled' })
+  assert.deepEqual(step.output_config, { effort: 'max' })
+  assert.deepEqual(step.tool_choice, { type: 'auto' })
+  assert.equal((await bodyOf({ model: 'glm-5.3-flash' })).model, 'GLM-5.3-Flash')
+  assert.deepEqual((await bodyOf({ reasoningEffort: 'low' })).output_config, { effort: 'low' })
+  assert.deepEqual((await bodyOf({})).output_config, { effort: 'high' }) // DSH default
+  assert.deepEqual((await bodyOf({ reasoningEffort: 'medium' })).output_config, { effort: 'high' }) // outside the catalog levels
+  // The session title uses the catalog's first level (3.16.3 auxiliaryModelOptions).
+  assert.deepEqual((await bodyOf({ purpose: 'session-title', reasoningEffort: 'max' })).output_config, { effort: 'low' })
+  // A model outside the catalog keeps the DSH values and gets no option map.
+  const other = await bodyOf({ model: 'glm-next' })
+  assert.equal(other.model, 'glm-next')
+  assert.equal('thinking' in other, false)
+})
+
+test('start-plan keeps its earlier body: the DSH model id, no thinking, no output_config', async () => {
+  const body = await bodyOf({ reasoningEffort: 'max' }, 'start-plan')
+  assert.equal(body.model, 'glm-5.3')
+  assert.equal('thinking' in body || 'output_config' in body, false)
+})
+
 test('upstreamSessionId strips the DSH prefix, keeps other header-safe ids, and replaces unusable ones', () => {
   assert.equal(upstreamSessionId('session-abc'), 'abc')
   assert.equal(upstreamSessionId('custom_id:1'), 'custom_id:1')

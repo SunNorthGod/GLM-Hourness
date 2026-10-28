@@ -2,10 +2,13 @@
  * Anthropic Messages wire codec for the native ZCode client: encodes DSH LLM
  * seam requests into the upstream Anthropic shape (the ZCode client's own
  * protocol since both plans moved to Anthropic upstreams) and decodes the
- * SSE event stream back into seam stream chunks. GLM decides when to think;
- * the real client sends no thinking field, so neither does this encoder.
- * Thinking blocks carry signatures; the decoder stores them as replay
- * metadata and the encoder sends the reasoning back (docs/DESIGN.md §4.5c).
+ * SSE event stream back into seam stream chunks. On coding-plan the body
+ * follows 3.16.3 (`WireShape`): the official model casing, its key order,
+ * and the catalog's option map, which for the GLM-5.3 family appends
+ * `thinking: {type: "enabled"}` and `output_config: {effort}`
+ * (docs/DESIGN.md §4.5). Thinking blocks carry signatures; the decoder
+ * stores them as replay metadata and the encoder sends the reasoning back
+ * (docs/DESIGN.md §4.5c).
  */
 import { messageText, type ContentBlockLike, type GenerateOptionsLike, type RequestMessageLike, type StreamChunk, type ToolSchemaLike, type TokenUsage, type FinishReason } from '../shared/lm-min.ts'
 import type { RequestImages } from './images.ts'
@@ -79,13 +82,44 @@ export interface WireMessage {
 export interface AnthropicRequest {
   readonly model: string
   readonly max_tokens: number
-  readonly stream: true
+  readonly stream?: true
   readonly system?: ReadonlyArray<{ type: 'text', text: string, cache_control?: { type: 'ephemeral' } }>
   readonly messages: readonly WireMessage[]
   readonly tools?: ReadonlyArray<{ name: string, description: string, input_schema: Record<string, unknown> }>
+  readonly tool_choice?: { readonly type: 'auto' }
   readonly temperature?: number
   /** The device/session blob ZCode attaches to every Anthropic request (see `metadataUserId`). */
   readonly metadata?: { readonly user_id: string }
+  readonly [option: string]: unknown
+}
+
+/**
+ * The 3.16.3 body of a coding-plan request: the wire model id, `max_tokens`,
+ * whether it streams (`streamText`; `generateText` sends no `stream`), and
+ * the catalog option map merged onto the body last.
+ */
+export interface WireShape {
+  readonly model: string
+  readonly maxTokens: number
+  readonly stream: boolean
+  readonly optionPatch?: Readonly<Record<string, unknown>> | undefined
+}
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value)
+
+/**
+ * `mergeObject` (`Zpr` @547735), the merge of 3.16.3 model option maps
+ * (`applyOrderedJsonMergePatches` `Jpr` @547136): key by key onto a copy,
+ * objects merge recursively, `null` deletes, new keys go last.
+ */
+function mergeOptionPatch(body: Record<string, unknown>, patch: Readonly<Record<string, unknown>>): Record<string, unknown> {
+  const merged: Record<string, unknown> = { ...body }
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === null) delete merged[key]
+    else if (isPlainObject(value)) merged[key] = mergeOptionPatch(isPlainObject(merged[key]) ? merged[key] : {}, value)
+    else merged[key] = value
+  }
+  return merged
 }
 
 /**
@@ -255,9 +289,16 @@ function groupTurns(messages: readonly WireMessage[]): WireMessage[] {
 /**
  * Encode the full seam request into the upstream Anthropic body; `images`
  * comes from prepareRequestImages, `metadataUserId` from `metadataUserId()`.
- * The last message's last block carries the cache breakpoint.
+ * The last message's last block carries the cache breakpoint. With `wire`
+ * (coding-plan) the body is the one the AI SDK inside 3.16.3 sends
+ * (`getArgs` @3603239): `model, max_tokens, [temperature], metadata,
+ * system, messages, tools, tool_choice, stream`, undefined fields left out,
+ * `tool_choice: {type: "auto"}` with any tools (`prepareToolsAndToolChoice`
+ * `nro` @3929119, `prepareTools` `Jjs` @3543299), then the option map
+ * (`createModelOptionMapFetch` `TQr` @3836714). Without it the earlier shape
+ * stays (start-plan, the probe provider).
  */
-export function encodeRequest(options: GenerateOptionsLike, systemBlocks?: ReadonlyArray<{ type: 'text', text: string, cache_control?: { type: 'ephemeral' } }>, images?: RequestImages, userId?: string): AnthropicRequest {
+export function encodeRequest(options: GenerateOptionsLike, systemBlocks?: ReadonlyArray<{ type: 'text', text: string, cache_control?: { type: 'ephemeral' } }>, images?: RequestImages, userId?: string, wire?: WireShape): AnthropicRequest {
   // Leading system messages belong to `systemBlocks` (see splitSystemPrompt).
   const route: TargetRoute = { provider: options.provider, model: options.model }
   const messages = groupTurns(splitSystemPrompt(options).messages
@@ -265,13 +306,28 @@ export function encodeRequest(options: GenerateOptionsLike, systemBlocks?: Reado
     .filter((message): message is WireMessage => message !== undefined))
   dropTrailingThinking(messages)
   markLastMessage(messages)
+  const system = systemBlocks === undefined || systemBlocks.length === 0 ? undefined : systemBlocks
+  const tools = options.tools === undefined || options.tools.length === 0 ? undefined : options.tools.map(encodeTool)
+  if (wire !== undefined) {
+    const body: Record<string, unknown> = {
+      model: wire.model,
+      max_tokens: wire.maxTokens,
+      ...(options.temperature === undefined ? {} : { temperature: options.temperature }),
+      ...(userId === undefined ? {} : { metadata: { user_id: userId } }),
+      ...(system === undefined ? {} : { system }),
+      messages,
+      ...(tools === undefined ? {} : { tools, tool_choice: { type: 'auto' } }),
+      ...(wire.stream ? { stream: true } : {}),
+    }
+    return (wire.optionPatch === undefined ? body : mergeOptionPatch(body, wire.optionPatch)) as AnthropicRequest
+  }
   const request: AnthropicRequest = {
     model: options.model,
     max_tokens: options.maxTokens ?? 32000,
     stream: true,
     messages,
-    ...(systemBlocks === undefined || systemBlocks.length === 0 ? {} : { system: systemBlocks }),
-    ...(options.tools === undefined || options.tools.length === 0 ? {} : { tools: options.tools.map(encodeTool) }),
+    ...(system === undefined ? {} : { system }),
+    ...(tools === undefined ? {} : { tools }),
     ...(options.temperature === undefined ? {} : { temperature: options.temperature }),
     ...(userId === undefined ? {} : { metadata: { user_id: userId } }),
   }

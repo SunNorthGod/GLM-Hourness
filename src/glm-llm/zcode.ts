@@ -21,10 +21,10 @@ import { buildAuthHeaders, buildModelRequestHeaders, RequestAttributionTracker, 
 import { EndpointRoutingService, type RoutingCredential } from './endpoint-routing.ts'
 import { ClientSigningManager, sendWithClientSigning } from './signing.ts'
 import { ProjectAccessTokenClient, projectTokenFingerprint, projectTokenRequest, type ProjectKeyLocationStore, type ResolvedProjectToken } from './auth/project-token.ts'
-import { encodeRequest, decodeSse, metadataUserId, splitSystemPrompt } from './anthropic.ts'
+import { encodeRequest, decodeSse, metadataUserId, splitSystemPrompt, type WireShape } from './anthropic.ts'
 import { glmImageRequestTarget, prepareRequestImages } from './images.ts'
 import { buildStartPlanSystem, buildContextPrefixMessage } from './start-plan.ts'
-import { GLM_DEFAULT_MAX_TOKENS, GLM_MODELS, GLM_REASONING_EFFORTS, glmInputModalities } from './models.ts'
+import { GLM_DEFAULT_MAX_TOKENS, GLM_MODELS, GLM_REASONING_EFFORTS, glmInputModalities, zcodeModelRule, zcodeWireModelId } from './models.ts'
 import { messageText, type AttachmentsLike, type GenerateOptionsLike } from '../shared/lm-min.ts'
 import type { HealthState } from '../shared/health.ts'
 import type {
@@ -427,7 +427,7 @@ export class ZcodeAdapter {
     const attribution: Omit<TraceContext, 'requestId'> = plan === 'coding-plan'
       ? this.attribution.attribute({ sessionId: request.sessionId, purpose: request.purpose, messages: options.messages })
       : { sessionId: upstreamSessionId(request.sessionId), sessionType: request.purpose === undefined ? 'main' : 'other', traceId: randomUUID() }
-    const body = JSON.stringify(encodeRequest({ ...options, messages }, systemBlocks, images, metadataUserId(deviceMid, attribution.sessionId)))
+    const body = JSON.stringify(encodeRequest({ ...options, messages }, systemBlocks, images, metadataUserId(deviceMid, attribution.sessionId), plan === 'coding-plan' ? codingPlanWire(options, request.purpose) : undefined))
     const upstreamBase = `${BIGMODEL_ANTHROPIC_BASE}/v1/messages`
 
     // One attempt: route, assemble, sign, send. 3.16.3 wraps the routing
@@ -476,6 +476,25 @@ export class ZcodeAdapter {
     // field-compatible with the DSH StreamChunk protocol (only the branded id
     // types differ, and brands exist only at the type level).
     yield* decodeSse(response.body, options.model) as AsyncIterable<LlmStreamChunk>
+  }
+}
+
+/**
+ * The 3.16.3 body shape of a coding-plan request (docs/DESIGN.md §4.5):
+ * the official model casing, and for a catalog model the option map of its
+ * reasoning level: the DSH effort when the catalog lists it, else `high`
+ * (the DSH default, §4.6); the session title uses the catalog's first level
+ * (3.16.3 `auxiliaryModelOptions` `PP` @7759001).
+ */
+function codingPlanWire(options: GenerateOptionsLike, purpose: GenerateOptions['purpose']): WireShape {
+  const rule = zcodeModelRule(options.model)
+  const requested = options.reasoningEffort
+  const level = rule === undefined ? undefined : purpose === 'session-title' ? rule.reasoningLevels[0] : requested !== undefined && rule.reasoningLevels.includes(requested) ? requested : 'high'
+  return {
+    model: zcodeWireModelId(options.model),
+    maxTokens: options.maxTokens ?? GLM_DEFAULT_MAX_TOKENS,
+    stream: true,
+    optionPatch: rule === undefined || level === undefined ? undefined : rule.optionPatch(level),
   }
 }
 

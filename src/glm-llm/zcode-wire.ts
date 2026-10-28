@@ -51,6 +51,17 @@ export const AI_VERSION = '6.0.193'
 /** The runtime segment of a Node process without `navigator.userAgent` (`getRuntimeEnvironmentUserAgent` `$ut` @3509781). */
 export const RUNTIME_NODE_UA_PREFIX = 'runtime/node.js/'
 
+/**
+ * The official GLM model ids (`Cpr` @526343): 3.16.3 sends an account
+ * provider's model in this casing (`normalizeOfficialGlmModelId` `GZt`
+ * @526265 through `hne`).
+ */
+export const OFFICIAL_GLM_MODEL_IDS = [
+  'GLM-5.3', 'GLM-5.3-Flash', 'GLM-5V-Turbo', 'GLM-5.2', 'GLM-5.1', 'GLM-5.1-Highspeed', 'GLM-5', 'GLM-5-Turbo',
+  'GLM-4.7', 'GLM-4.7-FlashX', 'GLM-4.7-Flash', 'GLM-4.6', 'GLM-4.5-Air', 'GLM-4.5', 'GLM-4.6V', 'GLM-4.6V-Flash',
+  'GLM-4.6V-FlashX', 'GLM-4.1V-Thinking-FlashX', 'GLM-4.1V-Thinking-Flash', 'GLM-4-FlashX-250414', 'GLM-4-Flash-250414', 'GLM-4V-Flash',
+] as const
+
 /** Attribution header names (`createModelRequestAttributionHeaders` `Vdt` @4065502, constants @4066600). */
 export const SESSION_TYPE_HEADER = 'x-zcode-session-type'
 export const TRACE_ID_HEADER = 'x-zcode-trace-id'

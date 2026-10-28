@@ -318,6 +318,12 @@ start-plan 只做了离线验证：3.16.3 对 start-plan 不签名（`FACTS.md`�
 - 上游：`https://open.bigmodel.cn/api/anthropic/v1/messages`（路由改写前），`anthropic-version: 2023-06-01`〔实读〕。
 - 档位：coding-plan（默认，签名，享 ZCode 渠道用量加成）与 start-plan（网关要求的三块系统提示、JWT 鉴权、currentDate 前缀）。start-plan 的三块系统提示属于底层：网关缺了就拒收（3012/405）。
 - 状态：coding-plan 端到端真网成功，模型返回 `pong`〔实测，`scripts/smoke-zcode-authorized.mjs`〕；start-plan 只有单测。
+- coding-plan 请求体〔已实现 2026-10-28，m1-parity 第 6 项，`src/glm-llm/anthropic.ts` `WireShape`〕：按 3.16.3 内 AI SDK 的 `getArgs`（@3603239）与选项映射 fetch（`TQr` @3836714）组体：
+  - 键序：`model, max_tokens, [temperature], metadata, system, messages, tools, tool_choice, stream`，未定义的字段不出现（`JSON.stringify` 丢掉 `undefined`），再由选项映射按 `mergeObject`（`Zpr` @547735：在副本上逐键赋值，对象递归合并，`null` 删除，新键排在最后）追加 `thinking`、`output_config`。
+  - `model`：官方大小写（`normalizeOfficialGlmModelId` `GZt` @526265，官方 id 表 `Cpr` @526343），`glm-5.3` 发 `GLM-5.3`、`glm-5.3-flash` 发 `GLM-5.3-Flash`。DSH 侧的模型 id 与回放信封里的 `model` 仍是小写。
+  - `thinking` 与 `output_config`：GLM-5.3 系的目录规则（§4.6）给出 `{"thinking": {"type": "enabled"}, "output_config": {"effort": <档位>}}`。档位取 DSH 请求的 `reasoningEffort`（`low` / `high` / `max`），缺省或不在目录档位里时取 `high`；会话标题取目录的第一档 `low`（`auxiliaryModelOptions` `PP` @7759001）。AI SDK 不知道这个 thinking（不是 providerOptions 给的），所以不剥采样参数、不加思考预算。
+  - `tool_choice`：有工具时 AI SDK 的 `prepareToolsAndToolChoice`（`nro` @3929119）给 `{type: "auto"}`，Anthropic provider 发 `tool_choice: {type: "auto"}`（`Jjs` @3543299）；没有工具时两者都不发。工具定义是 `{name, description, input_schema}`：3.16.3 对 anthropic 工具传 `eagerInputStreaming: false`（@4101481），不发 `eager_input_streaming`。
+  - 目录外的模型 id 不加选项映射，`max_tokens` 用 DSH 的值。start-plan 与探针 provider 不传 `WireShape`，保持原形态。
 - 系统提示词：DSH 把组装好的系统提示词作为历史开头的 `system` 消息下发，`GenerateOptions.system` 为空〔L3 探针实测〕。编码器把请求级文本与开头的全部 `system` 消息依次合并进 Anthropic 的 `system` 字段（与 DSH 自带 pi-ai 适配器同一规则）；之后出现的 `system` / `developer` 消息作为 `<system-reminder>` 包裹的用户轮发送。适配器不声明 `systemPromptUpdate: 'in-history'`，提示词变化时由 DSH 改写开头那条消息〔已实现 2026-10-27〕。此前编码器丢弃全部 `system` 消息而适配器又声明 in-history，原生通道在 DSH 会话里会发出没有系统提示词的请求；冒烟脚本直接传 `system` 参数，所以没有暴露。
 - 消息编码〔已实现 2026-10-28，`src/glm-llm/anthropic.ts`〕：按 rc.3 的消息形状（`dsh-llm` `ContentBlockMap`）逐块编码，块序不变，空文本块丢弃，与 ZCode 的 AI SDK 转换一致：
   - 助手消息：`text` 块发文本，`tool-call` 块发 `tool_use`（参数解析失败时为 `{}`）；`reasoning` 块按 §4.5c 作为 thinking 块回传（2026-10-28 之前不回传）。
@@ -405,7 +411,8 @@ BigModel 的思考文档写明：保留式思考在 Coding Plan 端点默认开�
 
 ### 4.6 模型目录与思考档位
 
-- 目录：`glm-5.3`（GLM-5.3）、`glm-5.3-flash`（GLM-5.3-Flash）；上下文窗口 512,000；默认 `max_tokens` 32000〔实读〕。
+- 目录：`glm-5.3`（GLM-5.3）、`glm-5.3-flash`（GLM-5.3-Flash）；向 DSH 声明的上下文窗口 512,000、默认 `max_tokens` 32000（DSH 用它们做自己的压缩与预算，属于 DSH 控制的行为，§4.8）。线上 `model` 用官方大小写（§4.5）。
+- ZCode 目录规则〔m1-parity，`src/glm-llm/models.ts` `zcodeModelRule`〕：取开源 3.16.2 树的内置目录（`reference/ZCode/config/provider/zcode-builtin.json`，revision 33）里 GLM-5.3 系的两条规则：模型规则 `.*glm-5\.3.*`（`contextWindow` 1,000,000，`maxOutputTokens.max` 128000，`reasoningLevel.values` `["low", "high", "max"]`）与 anthropic-messages 规则（选项映射 `thinking` enabled、`output_config.effort`）。3.16.3 按锚定、忽略大小写匹配（`wYt` @557708，调用 @563982），后命中的规则覆盖前面的 `.*glm-5.*`，`.*glm-5\.3-flash.*` 只改输入格式。3.16.3 实际运行的目录由桌面壳下发，pristine 副本里没有；若活动目录不同，这两条要跟着改（§4.8）。
 - 输入模态按模型如实声明（`src/glm-llm/models.ts` `GLM_MODELS`）：GLM-5.3 没有视觉塔，只声明文本；GLM-5.3-Flash 声明文本与图像〔用户提供的事实 2026-10-28〕。目录外的模型 id 只声明文本。此前两个模型都声明图像。只声明文本的路由上，DSH 在适配器之前把请求里的图片换成文字占位（`dsh-llm` `projectImagesForTextModel`：「[image omitted because this model accepts text only; attachment sha256:…]」），`read_image` 拒读（「… does not declare image input; switch to an image-capable model to read images」），会话控制器拒收用户附图。
 - 思考：GLM-5.3 系强制思考；effort 三档 `low` / `high` / `max`，默认 `high`〔定案 2026-10-27，五档词汇 API 接受但 GLM 不用〕。
 
@@ -576,7 +583,7 @@ L3 探针：沙盒里把压缩阈值调低，摘要请求末条是 ZCode 提示�
 | 12 | 模型目录、登录 | 通道 | glm-llm、glm-login | 已实现 |
 | 13 | 日期与输出风格提醒族 | 方言 | 低成本可选 | 未实现 |
 | 14 | 缓存断点参数 | 通道 | 末条消息带断点；系统块按 ZCode 拆三块未做，实测不影响命中（§4.5b） | 部分实现 2026-10-28 |
-| 16 | thinking 与采样参数 | 通道 | effort 三档、thinking 时剥采样参数 | 已实现 effort |
+| 16 | thinking 与采样参数 | 通道 | 按 3.16.3 目录的选项映射发 `thinking: {type: "enabled"}` 与 `output_config.effort`（DSH 档位，缺省 high；标题 low）；不剥采样参数（AI SDK 不知道这个 thinking），是否带 `temperature` 由 DSH 决定 | 已实现 2026-10-28（m1-parity） |
 | 17 | 保留式思考：历史中的 reasoning 带签名回传 | 通道 | 签名只回同一路由；ZCode 的签名拒收重试未移植（端点不校验，§4.5c） | 已实现 2026-10-28 |
 | 18 | 请求归因：会话 id、会话类型、请求与追踪 id、query id 与来源、`metadata.user_id` | 通道 | 按 3.16.3：会话级 trace id、回合级 query id、`main_turn` / `compact` / `session_title` / `subagent` 来源；委派子会话经 `agents` 服务的会话头判定（§4.5b） | 已实现 2026-10-28（m1-parity） |
 

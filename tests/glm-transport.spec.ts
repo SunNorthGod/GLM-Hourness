@@ -5,6 +5,7 @@ import { buildAuthHeaders, buildModelRequestHeaders, buildTraceHeaders, ANTHROPI
 import { BlockAssembler } from '@deepseek-ai/dsh-llm'
 import { encodeRequest, encodeMessage, decodeFrame, decodeSse, metadataUserId, replayBlocksOf, type AnthropicRequest } from '../src/glm-llm/anthropic.ts'
 import { glmImageRequestTarget, prepareRequestImages, offloadedImageText, ZCODE_IMAGE_TARGET_BYTES } from '../src/glm-llm/images.ts'
+import { zcodeModelRule, zcodeWireModelId } from '../src/glm-llm/models.ts'
 import type { AttachmentsLike, ImageRefLike, ImageTarget, RequestMessageLike } from '../src/shared/lm-min.ts'
 
 const env = {
@@ -207,6 +208,40 @@ test('encodeMessage folds seam roles into anthropic blocks', () => {
     { role: 'user', content: [{ type: 'text', text: 'a' }, { type: 'text', text: 'b' }] },
   )
   assert.deepEqual(encodeMessage({ role: 'user', content: [] }), { role: 'user', content: [{ type: 'text', text: '(no content)' }] })
+})
+
+test('the wire model id takes the official casing (3.16.3 GZt); the GLM-5.3 catalog rule matches anchored and case-insensitive', () => {
+  assert.equal(zcodeWireModelId('glm-5.3'), 'GLM-5.3')
+  assert.equal(zcodeWireModelId('glm-5.3-flash'), 'GLM-5.3-Flash')
+  assert.equal(zcodeWireModelId('GLM-4.1V-THINKING-FLASH'), 'GLM-4.1V-Thinking-Flash')
+  assert.equal(zcodeWireModelId('glm-next'), 'glm-next')
+  for (const model of ['glm-5.3', 'GLM-5.3-Flash', 'x-glm-5.3-y']) {
+    const rule = zcodeModelRule(model)
+    assert.deepEqual([rule?.contextWindow, rule?.maxOutputTokens, rule?.reasoningLevels], [1_000_000, 128_000, ['low', 'high', 'max']], model)
+    assert.deepEqual(rule?.optionPatch('max'), { thinking: { type: 'enabled' }, output_config: { effort: 'max' } })
+  }
+  assert.equal(zcodeModelRule('glm-5.2'), undefined)
+  assert.equal(zcodeModelRule('glm-5'), undefined)
+})
+
+test('with a wire shape the body follows 3.16.3 getArgs and the option map: key order, tool_choice auto, thinking and output_config last', () => {
+  const options = {
+    provider: 'glm-zcode', model: 'glm-5.3',
+    messages: [{ role: 'user' as const, content: [{ type: 'text' as const, text: 'go' }] }],
+    tools: [{ name: 'Read', description: 'd', parameters: { type: 'object' } }],
+  }
+  const patch = { thinking: { type: 'enabled' }, output_config: { effort: 'high' } }
+  const step = encodeRequest(options, [{ type: 'text', text: 'sys' }], undefined, 'uid', { model: 'GLM-5.3', maxTokens: 128_000, stream: true, optionPatch: patch })
+  assert.deepEqual(Object.keys(step), ['model', 'max_tokens', 'metadata', 'system', 'messages', 'tools', 'tool_choice', 'stream', 'thinking', 'output_config'])
+  assert.deepEqual([step.model, step.max_tokens, step.tool_choice, step.stream, step.thinking, step.output_config], ['GLM-5.3', 128_000, { type: 'auto' }, true, { type: 'enabled' }, { effort: 'high' }])
+  const warm = encodeRequest({ ...options, temperature: 0.2 }, [], undefined, 'uid', { model: 'GLM-5.3', maxTokens: 1, stream: true })
+  assert.deepEqual(Object.keys(warm), ['model', 'max_tokens', 'temperature', 'metadata', 'messages', 'tools', 'tool_choice', 'stream'])
+  const { tools: _tools, ...withoutTools } = options
+  const title = encodeRequest(withoutTools, [{ type: 'text', text: 'sys' }], undefined, 'uid', { model: 'GLM-5.3', maxTokens: 5000, stream: false, optionPatch: { ...patch, output_config: { effort: 'low' } } })
+  assert.deepEqual(Object.keys(title), ['model', 'max_tokens', 'metadata', 'system', 'messages', 'thinking', 'output_config'])
+  // Zpr semantics: nested objects merge, null deletes.
+  const merged = encodeRequest(withoutTools, [], undefined, undefined, { model: 'm', maxTokens: 1, stream: true, optionPatch: { metadata: null, output_config: { effort: 'max' } } })
+  assert.deepEqual(Object.keys(merged), ['model', 'max_tokens', 'messages', 'stream', 'output_config'])
 })
 
 test('encodeRequest groups consecutive same-role turns the way the ZCode client sends them', () => {
