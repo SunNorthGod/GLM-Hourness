@@ -761,7 +761,7 @@ LLM 爱造轮子，因为写脚本只花当前这一轮的力气，装工具却�
 
 配置取舍（都写在配置文件的注释里）：
 
-- 规则集：typescript-eslint 的 `recommendedTypeChecked`，加 ESLint 核心推荐规则。ESLint 10 不再自带 `@eslint/js`，批准的依赖里也没有它，配置从 ESLint 自身的规则元数据里取标为推荐的规则（`@eslint/js` 的推荐清单就是这样生成的）；用户 2026-10-28 同意改装 `@eslint/js`（项目图 `q-eslint-js`，执行在 `m1-followups`）。全部规则设为 error，批量压制只对 error 生效。
+- 规则集：typescript-eslint 的 `recommendedTypeChecked`，加 ESLint 核心推荐规则 `@eslint/js` 的 `configs.recommended`（ESLint 10 不再自带 `@eslint/js`，用户 2026-10-28 同意作为精确版本的开发依赖装上，项目图 `q-eslint-js`）。此前配置从 ESLint 自身的规则元数据里取标为推荐的规则，与 `@eslint/js` 10.0.1 的推荐清单是同样的 64 条，换装后规则集不变。全部规则设为 error，批量压制只对 error 生效。
 - 与 tsc 对齐：以下划线开头的参数不算未使用（同 tsc `noUnusedParameters`）；与剩余元素并列解构出来的属性不算未使用（省略字段的写法）。
 - `node:test` 的 `test()`、`describe()` 返回由测试运行器等待的 Promise，按 typescript-eslint 文档登记为已知安全调用，不算悬空 Promise。
 - 环境全局量：脚本取运行 ESLint 的 Node 的全局名；`ui/client.js` 在 DSH 网页端运行，只登记它用到的浏览器全局量。

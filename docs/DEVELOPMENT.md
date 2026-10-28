@@ -159,7 +159,7 @@ DSH 官方类型已作为 devDependency 安装（`@deepseek-ai/dsh-llm`、`@deep
 
 | 检查 | 工具 | 配置 | 基线 |
 | --- | --- | --- | --- |
-| 规范（类型感知） | ESLint 10.13.0、typescript-eslint 8.72.1 | `eslint.config.js`；`tests/tsconfig.json` 给测试文件提供类型信息 | `eslint-suppressions.json`（ESLint 自带的批量压制，按文件与规则计数） |
+| 规范（类型感知） | ESLint 10.13.0、`@eslint/js` 10.0.1（核心推荐规则）、typescript-eslint 8.72.1 | `eslint.config.js`；`tests/tsconfig.json` 给测试文件提供类型信息 | `eslint-suppressions.json`（ESLint 自带的批量压制，按文件与规则计数） |
 | 死代码（未用文件、导出、依赖） | knip 6.43.0 | `knip.jsonc` | `knip-baseline.json`（按类型、文件、名称，不含行号） |
 | 重复 | jscpd 5.4.2 | `.jscpd.json` | `.jscpd-baseline.json`（jscpd 自带的克隆指纹） |
 

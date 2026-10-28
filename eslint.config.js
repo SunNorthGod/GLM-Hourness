@@ -2,18 +2,9 @@
 // Every rule is an error so that ESLint's bulk suppressions
 // (eslint-suppressions.json) hold the existing violations as the baseline:
 // new violations fail, fixed ones must be pruned, so the baseline only shrinks.
+import js from '@eslint/js'
 import { defineConfig, globalIgnores } from 'eslint/config'
-import { builtinRules } from 'eslint/use-at-your-own-risk'
 import tseslint from 'typescript-eslint'
-
-// ESLint 10 no longer depends on @eslint/js, and the approved checker set
-// does not include it. Its recommended list is generated from the core rules
-// whose metadata marks them recommended; read the same metadata here.
-const coreRecommended = Object.fromEntries(
-  [...builtinRules]
-    .filter(([, rule]) => rule.meta?.docs?.recommended === true)
-    .map(([name]) => [name, 'error']),
-)
 
 // Scripts run under the Node that runs ESLint; its global names are theirs.
 const nodeGlobals = Object.fromEntries(
@@ -38,8 +29,9 @@ export default defineConfig([
     linterOptions: { reportUnusedDisableDirectives: 'error' },
   },
   {
+    // ESLint core recommended rules, all at error.
     files: ['**/*.{js,mjs,cjs,ts,tsx}'],
-    rules: coreRecommended,
+    extends: [js.configs.recommended],
   },
   {
     files: ['**/*.{ts,tsx}'],
