@@ -2,11 +2,22 @@
   "id": "m2",
   "type": "feature",
   "title": "M2 项目图行走骨架",
-  "status": "doing",
+  "status": "done",
   "parent": "orch",
   "slope": "uphill",
   "stage": "release",
   "body": "项目图取代 todo 成为项目的骨架（ORCHESTRATION.md §2）。M2 完成后，后续所有条目都作为任务节点挂在项目图上推进（ROADMAP.md §1）。原型在 graph-engine 分支：节点文件、引擎规则、SVG 渲染、命令行与本机查看器，本图就是经它的引擎 API 写出的，等用户审阅（ROADMAP.md §3）。",
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "25c9a1a"
+    },
+    {
+      "kind": "test",
+      "ref": "npm run probe (94/94)",
+      "exit": 0
+    }
+  ],
   "history": [
     {
       "at": "2026-10-27T20:04:04.699Z",
@@ -31,6 +42,25 @@
       "reason": "原型已合入 main，M2 继续做决策分级、原生面板、实时现场与运行控制",
       "from": "approved",
       "to": "doing"
+    },
+    {
+      "at": "2026-10-28T13:06:14.154Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "M2 的 11 个条目全部完成；批次 L4 在桌面版通过（m2-9-l4）",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "25c9a1a"
+        },
+        {
+          "kind": "test",
+          "ref": "npm run probe (94/94)",
+          "exit": 0
+        }
+      ]
     }
   ]
 }

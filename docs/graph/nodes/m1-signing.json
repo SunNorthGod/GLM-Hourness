@@ -2,7 +2,7 @@
   "id": "m1-signing",
   "type": "task",
   "title": "签名握手 404：找 3.16.3 的握手地址与失败缓存",
-  "status": "doing",
+  "status": "done",
   "parent": "m1",
   "kind": "test",
   "body": "握手 zcode.z.ai/api/paas/c1f3a7e2/v2/client 返回 404，且每次请求前都重试（约 90 ms）。查 ZCode 3.16.3 的真实握手地址，以及它失败后怎么缓存、多久重试。",
@@ -14,6 +14,26 @@
     {
       "type": "source",
       "to": "risk-signing"
+    }
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "b6367d3"
+    },
+    {
+      "kind": "commit",
+      "ref": "6af6c51"
+    },
+    {
+      "kind": "check",
+      "ref": "sandbox real-network run net-1793188413414",
+      "exit": 0
+    },
+    {
+      "kind": "test",
+      "ref": "npm run probe (89/89)",
+      "exit": 0
     }
   ],
   "history": [
@@ -37,6 +57,40 @@
       "actor": "llm",
       "op": "comment",
       "text": "根因（.agents/tasks/m1-signing/report.md）：本包把路由改写后的 URL（zcode.z.ai）交给签名层，握手 origin 因此是 zcode.z.ai，必然 404。3.16.3 在路由外层签名，按 provider baseURL 的 origin 握手：https://open.bigmodel.cn/api/paas/c1f3a7e2/v2/client；c1f3a7e2 是六个版本相同的字面常量；start-plan 不签名。HANDOFF §5 原先「握手对当前凭证失败」的归因不成立。修复在分支 m1-signing，合入后要 L4 看握手是否 200、签名请求是否被接受。"
+    },
+    {
+      "at": "2026-10-28T13:06:14.181Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "合入 main（b6367d3、6af6c51）。独立评审两轮：首轮 1 条阻塞（握手失败通知带原始错误文本，可能含凭证）已修，复审通过。沙盒真实网络验证（coding-plan，.agents/tasks/m1-signing/network-verify.md）：握手 1 次，open.bigmodel.cn 返回 200；原样 Authorization 被接受；6 个模型请求全部签名、全部 200，没有 401 VERIFY。start-plan 只做离线核对（没有额度，按用户要求不发请求）。桌面版重启后 glm-llm 生效。未决：签名是否影响 coding-plan 的 1.5 倍扣减（用量流水看不到套餐扣减）；签名会话的响应头延迟偏高，单样本，未归因。"
+    },
+    {
+      "at": "2026-10-28T13:06:14.231Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "握手在正确地址成功，失败时 60 秒冷却，不再每次请求重试",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "b6367d3"
+        },
+        {
+          "kind": "commit",
+          "ref": "6af6c51"
+        },
+        {
+          "kind": "check",
+          "ref": "sandbox real-network run net-1793188413414",
+          "exit": 0
+        },
+        {
+          "kind": "test",
+          "ref": "npm run probe (89/89)",
+          "exit": 0
+        }
+      ]
     }
   ]
 }

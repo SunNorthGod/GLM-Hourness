@@ -2,7 +2,7 @@
   "id": "m2-9",
   "type": "task",
   "title": "2.9 节点上的运行控制",
-  "status": "doing",
+  "status": "done",
   "parent": "m2",
   "kind": "implement",
   "body": "第一版三个动作：从这里开始做、暂停、改了验收条件后重做。要先查清 DSH 给会话发消息与中断 agent 的接口。",
@@ -14,6 +14,30 @@
     {
       "type": "depends",
       "to": "m2-7"
+    }
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "3d9a195"
+    },
+    {
+      "kind": "commit",
+      "ref": "a12d319"
+    },
+    {
+      "kind": "commit",
+      "ref": "25c9a1a"
+    },
+    {
+      "kind": "test",
+      "ref": "npm run probe (94/94)",
+      "exit": 0
+    },
+    {
+      "kind": "test",
+      "ref": "npm test (490/490)",
+      "exit": 0
     }
   ],
   "history": [
@@ -37,6 +61,44 @@
       "actor": "llm",
       "op": "comment",
       "text": "调研（.agents/tasks/m2-9-research/report.md）：开始 = invocation.agent.followup 一条带 graphRun 事实的 notice，请它 graph_focus 该节点；暂停主 Agent = agent.cancel({kind:user},{keepInbox:true})；暂停子 agent = 先 inject 一条「人暂停了，不要重派」给主 Agent，再 subagents.interrupt；重做 = 先 cancel 再 followup。风险：子 agent 被停后 DSH 会唤醒主 Agent，要 L4 看 GLM 是否照说明不重派。实现在分支 m2-9。"
+    },
+    {
+      "at": "2026-10-28T13:06:14.050Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M2 批次 L4 通过（.agents/tasks/m2-9-research/integration.md，测试节点 m2-9-l4）：从这里开始做，主 Agent 收到指令、graph_focus 到节点并开始跑；暂停，回合以 aborted/user 结束，对话显示已停止；改了验收条件后重做，先取消再接着做；子 agent 落在节点上时暂停，子 agent 停下，主 Agent 先收到「人暂停了、不要重派」的说明，GLM 没有重派。/glm-status 里 graph-panel 与 glm-llm 生效，桌面版日志没有本包的错误。L3 探针 94/94（新场景 glm-graph-run 五项）。"
+    },
+    {
+      "at": "2026-10-28T13:06:14.101Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "三个运行控制经 L2、L3、L4 验证，含子 agent 暂停",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "3d9a195"
+        },
+        {
+          "kind": "commit",
+          "ref": "a12d319"
+        },
+        {
+          "kind": "commit",
+          "ref": "25c9a1a"
+        },
+        {
+          "kind": "test",
+          "ref": "npm run probe (94/94)",
+          "exit": 0
+        },
+        {
+          "kind": "test",
+          "ref": "npm test (490/490)",
+          "exit": 0
+        }
+      ]
     }
   ]
 }

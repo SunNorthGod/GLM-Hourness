@@ -1,0 +1,53 @@
+{
+  "id": "question-5",
+  "type": "question",
+  "title": "缓存重放要不要再试 W 臂",
+  "status": "done",
+  "parent": "m1-cache-flash",
+  "body": "核心重放否定了异步写入假设，未命中更像服务端把同一会话的前两步放到不同节点。剩下的 W 臂（先发一个短请求绑定会话）要再花约 50 积分，最多省回每个 Flash 会话约 0.6 积分（4%）。",
+  "options": [
+    {
+      "key": "A",
+      "label": "不试，写进设计文档后关掉",
+      "consequence": "省下约 50 积分；Flash 第 2 步的偶发未命中留着"
+    },
+    {
+      "key": "B",
+      "label": "试 W 臂",
+      "consequence": "花约 50 积分；有效的话每会话多一个短请求"
+    }
+  ],
+  "recommend": "A",
+  "decider": "agent",
+  "decision": "A",
+  "evidence": [
+    {
+      "kind": "decision",
+      "ref": "A"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-28T13:06:14.282Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "agent 自己定的事，留痕",
+      "to": "approved"
+    },
+    {
+      "at": "2026-10-28T13:06:14.328Z",
+      "actor": "llm",
+      "op": "decide",
+      "reason": "收益上限 4%，低于验证成本；服务端行为客户端改不了",
+      "from": "approved",
+      "to": "done",
+      "option": "A",
+      "evidence": [
+        {
+          "kind": "decision",
+          "ref": "A"
+        }
+      ]
+    }
+  ]
+}
