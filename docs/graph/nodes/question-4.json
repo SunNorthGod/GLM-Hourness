@@ -1,0 +1,53 @@
+{
+  "id": "question-4",
+  "type": "question",
+  "title": "节点运行控制走哪条路",
+  "status": "done",
+  "parent": "m2-9",
+  "body": "客户端可以直接调 sessions 的 prompt/cancel，也可以像 /graph-apply 一样走宿主命令。宿主命令一次调用就能留下命令流水、节点历史（human）和带结构化事实的消息。",
+  "options": [
+    {
+      "key": "A",
+      "label": "宿主命令 /graph-run",
+      "consequence": "审计链完整，客户端 inject 不变；多一个命令"
+    },
+    {
+      "key": "B",
+      "label": "客户端直接发消息和取消",
+      "consequence": "少一层，但节点历史里没有记录，看不出来自面板"
+    }
+  ],
+  "recommend": "A",
+  "decider": "agent",
+  "decision": "A",
+  "evidence": [
+    {
+      "kind": "decision",
+      "ref": "A"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-28T10:53:29.456Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "agent 自己定的事，留痕",
+      "to": "approved"
+    },
+    {
+      "at": "2026-10-28T10:53:29.515Z",
+      "actor": "llm",
+      "op": "decide",
+      "reason": "处处留痕（CHARTER §7.1 条款 11）",
+      "from": "approved",
+      "to": "done",
+      "option": "A",
+      "evidence": [
+        {
+          "kind": "decision",
+          "ref": "A"
+        }
+      ]
+    }
+  ]
+}

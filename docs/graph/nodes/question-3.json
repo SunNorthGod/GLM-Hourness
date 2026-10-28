@@ -1,0 +1,53 @@
+{
+  "id": "question-3",
+  "type": "question",
+  "title": "签名握手失败后怎么处理",
+  "status": "done",
+  "parent": "m1-signing",
+  "body": "ZCode 3.16.3 握手失败时 fail-open 且不缓存失败，每个请求都重新握手。验收要求失败时不再每次重试，所以要偏离 3.16.3。JWT 形式握手的 Authorization：3.16.3 用原样凭证，本包沿用 zcode-api 加了 Bearer。",
+  "options": [
+    {
+      "key": "A",
+      "label": "失败冷却 60 秒，Authorization 改回原样",
+      "consequence": "一次失败每分钟最多多花一次约 90 ms；Authorization 与 3.16.3 逐字一致，L4 若被拒再回退"
+    },
+    {
+      "key": "B",
+      "label": "照 3.16.3 不缓存失败",
+      "consequence": "与 ZCode 一致，但不满足验收，地址错时每请求多 90 ms"
+    }
+  ],
+  "recommend": "A",
+  "decider": "agent",
+  "decision": "A",
+  "evidence": [
+    {
+      "kind": "decision",
+      "ref": "A"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-28T10:53:29.272Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "agent 自己定的事，留痕",
+      "to": "approved"
+    },
+    {
+      "at": "2026-10-28T10:53:29.332Z",
+      "actor": "llm",
+      "op": "decide",
+      "reason": "满足验收且偏离面最小；两处偏离都写进 DESIGN §4.3",
+      "from": "approved",
+      "to": "done",
+      "option": "A",
+      "evidence": [
+        {
+          "kind": "decision",
+          "ref": "A"
+        }
+      ]
+    }
+  ]
+}

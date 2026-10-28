@@ -2,7 +2,7 @@
   "id": "m1-signing",
   "type": "task",
   "title": "签名握手 404：找 3.16.3 的握手地址与失败缓存",
-  "status": "approved",
+  "status": "doing",
   "parent": "m1",
   "kind": "test",
   "body": "握手 zcode.z.ai/api/paas/c1f3a7e2/v2/client 返回 404，且每次请求前都重试（约 90 ms）。查 ZCode 3.16.3 的真实握手地址，以及它失败后怎么缓存、多久重试。",
@@ -23,6 +23,20 @@
       "op": "propose",
       "reason": "签名握手每次都失败",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-28T10:53:29.394Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "查清根因，修复派给 worker",
+      "from": "approved",
+      "to": "doing"
+    },
+    {
+      "at": "2026-10-28T10:53:29.424Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "根因（.agents/tasks/m1-signing/report.md）：本包把路由改写后的 URL（zcode.z.ai）交给签名层，握手 origin 因此是 zcode.z.ai，必然 404。3.16.3 在路由外层签名，按 provider baseURL 的 origin 握手：https://open.bigmodel.cn/api/paas/c1f3a7e2/v2/client；c1f3a7e2 是六个版本相同的字面常量；start-plan 不签名。HANDOFF §5 原先「握手对当前凭证失败」的归因不成立。修复在分支 m1-signing，合入后要 L4 看握手是否 200、签名请求是否被接受。"
     }
   ]
 }

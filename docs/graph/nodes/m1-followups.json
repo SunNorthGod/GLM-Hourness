@@ -2,7 +2,7 @@
   "id": "m1-followups",
   "type": "task",
   "title": "M1.9 跟进：gitleaks、@eslint/js、删 scripts/dev、TypeScript 5.9.3",
-  "status": "approved",
+  "status": "done",
   "parent": "m1",
   "kind": "implement",
   "body": "gitleaks 装到用户级工具目录并接进 npm test；@eslint/js 精确版本；删除 scripts/dev/；TypeScript 升到 5.9.3。",
@@ -29,6 +29,26 @@
       "to": "q-typescript"
     }
   ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "40eac34"
+    },
+    {
+      "kind": "commit",
+      "ref": "2a45bd1"
+    },
+    {
+      "kind": "test",
+      "ref": "npm test",
+      "exit": 0
+    },
+    {
+      "kind": "test",
+      "ref": "npm run probe (89/89)",
+      "exit": 0
+    }
+  ],
   "history": [
     {
       "at": "2026-10-28T07:31:33.645Z",
@@ -36,6 +56,42 @@
       "op": "propose",
       "reason": "用户同意的 M1.9 跟进",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-28T10:53:29.182Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "派给 worker 在 worktree 里做",
+      "from": "approved",
+      "to": "doing"
+    },
+    {
+      "at": "2026-10-28T10:53:29.241Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "scripts/dev 已删；@eslint/js 10.0.1；TypeScript 5.9.3；gitleaks 8.30.1 装在 %LOCALAPPDATA%\\Programs\\gitleaks 并接进 npm test，历史扫描干净。基线 ESLint 315→303、knip 31→22、jscpd 7→3",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "40eac34"
+        },
+        {
+          "kind": "commit",
+          "ref": "2a45bd1"
+        },
+        {
+          "kind": "test",
+          "ref": "npm test",
+          "exit": 0
+        },
+        {
+          "kind": "test",
+          "ref": "npm run probe (89/89)",
+          "exit": 0
+        }
+      ]
     }
   ]
 }

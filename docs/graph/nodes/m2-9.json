@@ -2,7 +2,7 @@
   "id": "m2-9",
   "type": "task",
   "title": "2.9 节点上的运行控制",
-  "status": "approved",
+  "status": "doing",
   "parent": "m2",
   "kind": "implement",
   "body": "第一版三个动作：从这里开始做、暂停、改了验收条件后重做。要先查清 DSH 给会话发消息与中断 agent 的接口。",
@@ -23,6 +23,20 @@
       "op": "propose",
       "reason": "在图上编程：人在节点上发起与停下工作",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-28T10:53:29.577Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "调研完成，实现派给 worker",
+      "from": "approved",
+      "to": "doing"
+    },
+    {
+      "at": "2026-10-28T10:53:29.607Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "调研（.agents/tasks/m2-9-research/report.md）：开始 = invocation.agent.followup 一条带 graphRun 事实的 notice，请它 graph_focus 该节点；暂停主 Agent = agent.cancel({kind:user},{keepInbox:true})；暂停子 agent = 先 inject 一条「人暂停了，不要重派」给主 Agent，再 subagents.interrupt；重做 = 先 cancel 再 followup。风险：子 agent 被停后 DSH 会唤醒主 Agent，要 L4 看 GLM 是否照说明不重派。实现在分支 m2-9。"
     }
   ]
 }

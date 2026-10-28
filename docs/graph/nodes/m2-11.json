@@ -2,7 +2,7 @@
   "id": "m2-11",
   "type": "task",
   "title": "2.11 图行 L3、L4 验收后启用",
-  "status": "approved",
+  "status": "done",
   "parent": "m2",
   "kind": "test",
   "body": "探针覆盖图工具、每步投影与压缩重锚（m2-3 的验收）；真机 GLM 会话里调用图工具、看到投影；通过后把 glm-hourness/graph 行改为启用。",
@@ -10,6 +10,22 @@
     "probe 覆盖图工具与投影并通过",
     "真机 GLM 会话里图工具可用、投影可见",
     "图行启用后无新错误"
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "e22d38e"
+    },
+    {
+      "kind": "test",
+      "ref": "npm run probe (89/89)",
+      "exit": 0
+    },
+    {
+      "kind": "test",
+      "ref": "npm test",
+      "exit": 0
+    }
   ],
   "history": [
     {
@@ -30,6 +46,38 @@
       "actor": "llm",
       "op": "comment",
       "text": "启用图工具行后的 L4 要顺带核对 m2-8 的落点：主 Agent 调 graph_focus 后徽标出现在该节点上沿；子 agent 设了自己的焦点就站在自己的节点上，没设时站在主 Agent 的焦点上。"
+    },
+    {
+      "at": "2026-10-28T10:53:29.071Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "开工：启用前的跟进项",
+      "from": "approved",
+      "to": "doing"
+    },
+    {
+      "at": "2026-10-28T10:53:29.124Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "跟进项（违规流水、两行健康、影子兜底已知来源、glm:guard 声明）完成；L3 89/89；L4 图工具可用、投影与徽标可见、无新错误；图行默认启用",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "e22d38e"
+        },
+        {
+          "kind": "test",
+          "ref": "npm run probe (89/89)",
+          "exit": 0
+        },
+        {
+          "kind": "test",
+          "ref": "npm test",
+          "exit": 0
+        }
+      ]
     }
   ]
 }

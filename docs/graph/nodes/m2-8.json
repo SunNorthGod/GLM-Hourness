@@ -2,7 +2,7 @@
   "id": "m2-8",
   "type": "task",
   "title": "2.8 实时现场：agent 与子 agent 在图上",
-  "status": "doing",
+  "status": "done",
   "parent": "m2",
   "kind": "implement",
   "tier": "hard",
@@ -15,6 +15,25 @@
     {
       "type": "depends",
       "to": "m2-7"
+    }
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "ce08a22"
+    },
+    {
+      "kind": "commit",
+      "ref": "f98afa4"
+    },
+    {
+      "kind": "commit",
+      "ref": "e22d38e"
+    },
+    {
+      "kind": "test",
+      "ref": "npm run probe (89/89)",
+      "exit": 0
     }
   ],
   "history": [
@@ -62,6 +81,39 @@
       "actor": "llm",
       "op": "comment",
       "text": "面板客户端完成：「正在做」顶上的现场一节与「图」上的徽标。子 agent 名单与 token 用量改读 DSH 自己的 subagentCatalog、tokenUsage，graphLive 去掉自折叠的子 agent 名单（stateVersion 2）。L4（桌面版重启后经 DevTools 协议驱动，GLM-5.3-Flash 新会话，只读任务）：主 Agent 与子 agent 的模型、步数、用时、最近工具与 token 随回合出现，子 agent 停下后打勾；第二轮依次显示在跑 Bash、在跑 Read，宿主事件到界面 7–35 毫秒，满足 2 秒验收。还差一项：徽标落在焦点节点上要 graph_focus，图工具行未启用，放到 m2-11 启用时核对。验证时换模型改写了 profile 的默认模型，已换回，记在 HANDOFF §6。"
+    },
+    {
+      "at": "2026-10-28T10:53:28.888Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "L4 最后一项通过：图行启用后，GLM 会话 graph_focus m2-9，面板「图」视图里「主 Agent」徽标落在 m2-9 上沿，跑 Bash 时外圈呼吸。顺手修了徽标提示里的用时不走（e22d38e）。"
+    },
+    {
+      "at": "2026-10-28T10:53:28.944Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "宿主投影、面板现场与图上徽标都经 L3、L4 验证",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "ce08a22"
+        },
+        {
+          "kind": "commit",
+          "ref": "f98afa4"
+        },
+        {
+          "kind": "commit",
+          "ref": "e22d38e"
+        },
+        {
+          "kind": "test",
+          "ref": "npm run probe (89/89)",
+          "exit": 0
+        }
+      ]
     }
   ]
 }

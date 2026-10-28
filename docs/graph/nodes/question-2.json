@@ -1,0 +1,53 @@
+{
+  "id": "question-2",
+  "type": "question",
+  "title": "graph-files-only 要不要列进 glm:guard 一节",
+  "status": "done",
+  "parent": "m2-11",
+  "body": "图行的门禁规则原来只靠图工具描述告知。列进 GLM 系统提示词的 glm:guard 一节，GLM 在一处读到全部规矩，代价是图行启用时系统提示词多一行。",
+  "options": [
+    {
+      "key": "A",
+      "label": "列进",
+      "consequence": "门禁与告知一致；提示词多一行，随图行出现与消失"
+    },
+    {
+      "key": "B",
+      "label": "不列",
+      "consequence": "只有图工具描述告知，模型不想用图工具时读不到"
+    }
+  ],
+  "recommend": "A",
+  "decider": "agent",
+  "decision": "A",
+  "evidence": [
+    {
+      "kind": "decision",
+      "ref": "A"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-28T10:53:28.972Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "agent 自己定的事，留痕",
+      "to": "approved"
+    },
+    {
+      "at": "2026-10-28T10:53:29.020Z",
+      "actor": "llm",
+      "op": "decide",
+      "reason": "门禁对 GLM 生效时提示词里要有对应的告知（ORCHESTRATION §6.1）",
+      "from": "approved",
+      "to": "done",
+      "option": "A",
+      "evidence": [
+        {
+          "kind": "decision",
+          "ref": "A"
+        }
+      ]
+    }
+  ]
+}

@@ -2,7 +2,7 @@
   "id": "m1-cache-flash",
   "type": "task",
   "title": "Flash 会话第二步缓存未命中",
-  "status": "approved",
+  "status": "doing",
   "parent": "m1",
   "kind": "test",
   "body": "Flash 的未命中只出现在会话第 1 步之后的那一步（6 个会话里 4 到 5 个，每次约 4k token），只命中跨会话共享的前缀（6784、8256、8320）。假设：第一步从冷启动写入约 12k token 的缓存，第二步到达时还没写完；未验证。抓到的完整请求体在 .agents/tasks/cache-2026-10-28/runs/。",
@@ -23,6 +23,20 @@
       "op": "propose",
       "reason": "缓存调查剩下的未命中",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-28T10:53:29.667Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "离线分析完成，开始重放",
+      "from": "approved",
+      "to": "doing"
+    },
+    {
+      "at": "2026-10-28T10:53:29.699Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "离线分析（.agents/tasks/m1-cache-flash/report.md）：请求体只追加，与未命中无关；只有 Flash 有这个现象（修复会话 id 后 GLM-5.3 第 2 步 12/12 命中，Flash 7/17）；Flash 第 2 步读到的恰好是跨会话共用前缀，而第 1 步 17/17 读 0，单纯的异步写入解释不了，更像路由层换了节点。损失约每会话 0.6 积分（Flash 会话的 4%）。正在跑核心重放：0 秒与 10 秒两臂各 8 个会话，约 82–118 积分，结果写在 .agents/tasks/m1-cache-flash/runs/。"
     }
   ]
 }
