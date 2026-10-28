@@ -64,7 +64,7 @@ GLM-Hourness
 
 | 数据 | 位置 | 理由 |
 | --- | --- | --- |
-| 用量流水、加密凭证、deviceMid；以后还有偏好类记忆 | 用户级目录 `$DSH_HOME/glm-hourness/`，默认 `C:\Users\29596\.dsh\glm-hourness\` | 额度跟账号走，一台机器一份，按项目拆开反而看不全 |
+| 用量流水、加密凭证、本包的后备 deviceMid（ZCode 状态文件没有 deviceMid 时才用，§4.5b）；以后还有偏好类记忆 | 用户级目录 `$DSH_HOME/glm-hourness/`，默认 `C:\Users\29596\.dsh\glm-hourness\` | 额度跟账号走，一台机器一份，按项目拆开反而看不全 |
 | 记忆（事实）、违规、决策 | 项目目录，即工作区 `.llm/` | 记录的是在这个项目里学到的东西与犯过的错，混在一起会互相污染 |
 | 项目图 | 仓库内 | 项目知识，随 git 版本化（`ORCHESTRATION.md` §2.6） |
 
@@ -80,7 +80,7 @@ GLM-Hourness
 
 迁移〔2026-10-28〕：从 `~/.dsh/profiles/desktop/.llm/`（只读）与仓库 `.llm/audit/usage.jsonl` 复制，按整行去重。用户级用量流水共 1080 条：仓库 890 条加旧目录 190 条，两者没有重复，按时间排序，最晚一条 2026-10-27T12:29:08.993Z。旧目录的 1 条记忆（`glm-hourness-handoff`）并入仓库 `.llm/memory.json`；旧目录的 3 条决策在仓库决策流水里都已存在。源文件未改动，旧目录随清理删除（项目图 `m1-cleanup`）。桌面版重启加载新代码之前，运行中的旧代码仍会把用量追加到仓库 `.llm/audit/usage.jsonl`，重启后需补拷一次（同一节点）。
 
-凭证与 deviceMid〔定案 2026-10-28，用户选 A；已实现 2026-10-28，L4 验收之后〕：保留加密凭证文件，搬到 `$DSH_HOME/glm-hourness/`，deviceMid 随行。加密密钥由 `GLM_HOURNESS_CREDENTIAL_SECRET` 或 `HOME`/`USERPROFILE`、平台、架构推导（§4.1，`src/glm-llm/auth/store.ts`），与文件路径无关，搬家后同一台机器照样能解密。
+凭证与 deviceMid〔定案 2026-10-28，用户选 A；已实现 2026-10-28，L4 验收之后〕：保留加密凭证文件，搬到 `$DSH_HOME/glm-hourness/`，本包的 deviceMid 随行。请求实际发送的 deviceMid 自 m1-parity 起取 ZCode 状态文件里的那个，本包的只在 ZCode 没有时作后备（§4.5b）。加密密钥由 `GLM_HOURNESS_CREDENTIAL_SECRET` 或 `HOME`/`USERPROFILE`、平台、架构推导（§4.1，`src/glm-llm/auth/store.ts`），与文件路径无关，搬家后同一台机器照样能解密。
 
 - 解析：`glm-llm` 与 `glm-login` 的 `home` 改为可选，`credentialHome(home)`（`src/shared/data-home.ts`）取非空的行 `home`，否则取用户级目录。两行不读数据目录服务：通道行激活时数据行可能还没激活，而凭证目录在激活时就要定下来。bundle patch 删去两行的 `home`；探针与测试仍显式传 `home` 指向临时目录。
 - 文件：两份文件已复制到 `C:\Users\29596\.dsh\glm-hourness\`，与仓库 `.llm/` 里的原件逐字节相同。原件保留到桌面版重启、确认新代码从用户级目录读到凭证之后再删（项目图 `m1-cleanup`）：重启前运行中的旧代码仍读写仓库 `.llm/`，期间若重新登录，删之前要先把较新的一份补拷过去。
@@ -203,7 +203,7 @@ GLM-Hourness
 
 | 行 | 何时上报 | 生效 | 部分生效或未生效的原因 |
 | --- | --- | --- | --- |
-| glm-llm | 激活；每次请求 | 已注册路由，写明套餐与凭证目录；上游已应答 | 未登录（凭证为空）；凭证不可读；上游返回非 2xx 状态码 |
+| glm-llm | 激活；每次请求 | 已注册路由，写明套餐与凭证目录；上游已应答（ZCode 状态文件没有 deviceMid 时注明设备 ID 用本包自己的，状态不降级） | 未登录（凭证为空）；凭证不可读；上游返回非 2xx 状态码 |
 | glm-login | 激活 | 三个命令已注册 | 无（凭证目录总能解析，§2.4） |
 | glm-prompt | 激活；每步组装 | GLM 路由，ZCode 提示词与工具面，工具检索 local 或关闭 | 非 GLM 路由；工具检索未安装（会话历史不可读，部分生效）；方言安装失败 |
 | glm-compact | 激活；每次压缩请求 | GLM 压缩请求改用 ZCode 指令与摘要格式 | 非 GLM 路由；未识别 compaction-basic 的指令（原样放行） |
@@ -357,6 +357,8 @@ Flash 没命中的位置：修复前第二步 4 次、之后各步 12 次；固�
 缓存断点 `cache_control`：BigModel 文档写的是隐式缓存，实测有无断点命中相同（上表第 1、2 行；另有 3 个两步对照）。为了与 ZCode 的请求形态一致，最后一条消息的最后一块带断点（zcode-api `applyAnthropicCacheControl`）。系统提示词没有按 ZCode 拆成 cli_prefix、stable、dynamic 三块（ZCode 后两块带断点）：coding-plan 下本通道只发一块，拆分要在方言里标出分界，命中不受影响，暂不做（§5.8 #14）。
 
 同批补上的请求细节（与缓存无关，按 ZCode）：每个请求都带 `x-request-id`、`x-zcode-session-type`、`x-zcode-trace-id`（3.16.3 `createModelRequestAttributionHeaders`）；请求体带 `metadata.user_id`，即 `{device_id, account_uuid: "", session_id}`，会话 id 与请求头相同（`createAnthropicRequestMetadataUserId`）。
+
+设备 ID〔已实现 2026-10-28，m1-parity 第 9 项，`src/glm-llm/device-mid.ts`〕：`device_id` 取 ZCode 自己的 deviceMid，按 3.16.3 `ensureCliDeviceMid`（`Qro` @4062043）的读法：`<base>/.zcode/v2/telemetry-state.json` 的 `deviceMid` 字段，`<base>` 是去空白后非空的 `ZCODE_DATA_BASE_DIR`，否则是用户主目录（`CWs` @4062252）；文件读不出、不是 JSON 对象或字段不是非空字符串都算没有，结果按状态文件路径在进程内缓存。端点路由配置请求的 `X-Device-Mid` 按 3.16.3 `Kuc` @14468898 另读一次：去空白、只收可打印 ASCII、只缓存成功的读取，每次刷新配置都读（`Aui`）。与 3.16.3 的差异〔定案，m1-parity 简报第 9 项〕：3.16.3 在状态文件没有 deviceMid 时生成一个并在锁文件保护下原子写回；本包只读，不在 `~/.zcode` 下建任何文件，这时两处都用本包自己的 `<home>/device-mid.txt`，行健康的成功原因注明这一点。本机状态文件有 deviceMid，所以实际发送的是 ZCode 的值。
 
 签名：修复签名之前的截包里，握手发往 `zcode.z.ai/api/paas/c1f3a7e2/v2/client`，每次 404，适配器在每个请求前都重试一次握手（约 90 毫秒），随后无签发送；端点路由把请求改写到 `zcode.z.ai/api/v1/ultra/anthropic/v1/messages`（§4.4）。握手地址错是因为适配器把路由后的 URL 交给了签名层，已修，修复后握手返回 200（§4.3）。本节的标定、截包与重放都在修复之前，请求都是无签的〔推断〕。修复后的签名沙盒运行（`net-1793188413414`，GLM-5.3-Flash）第 1 步读 0、第 2 步命中最新前缀，只有一个会话，看不出签名对缓存位置有无影响。
 

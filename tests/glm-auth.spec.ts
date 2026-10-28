@@ -2,7 +2,8 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { ZCODE_APP_VERSION } from '../src/glm-llm/identity.ts'
 import { PollOAuthClient, buildDesktopOAuthRedirectParam, parsePastedCallbackUrl, exchangeCode, buildPasteAuthorizeUrl, freshPasteState } from '../src/glm-llm/auth/oauth.ts'
-import { loadCredential, saveCredential, clearCredential, type StoreFs } from '../src/glm-llm/auth/store.ts'
+import { loadCredential, saveCredential, clearCredential } from '../src/glm-llm/auth/store.ts'
+import { memoryStore } from './glm-fixtures.ts'
 import { resolveCodingPlanCredential } from '../src/glm-llm/auth/resolver.ts'
 import { inspectJwt } from '../src/glm-llm/auth/jwt.ts'
 
@@ -103,17 +104,6 @@ test('token exchange unwraps the envelope and guards the provider token shape', 
   await assert.rejects(exchangeCode(async () => jsonRespond(200, { code: 0, data: { user: {} } }), 'c', 'r', 's'), /missing data.bigmodel.access_token/)
   await assert.rejects(exchangeCode(async () => jsonRespond(500, { code: 5, msg: 'bad' }), 'c', 'r', 's'), /msg=bad/)
 })
-
-function memoryStore(): { fs: StoreFs, files: Map<string, string> } {
-  const files = new Map<string, string>()
-  const fs: StoreFs = {
-    readFile: async path => { const value = files.get(path); if (value === undefined) throw new Error('ENOENT'); return value },
-    writeFile: async (path, data) => { files.set(`${path}.tmp`, data); files.set(path, data) },
-    rename: async (from, to) => { files.set(to, files.get(from) ?? ''); files.delete(from) },
-    exists: async path => files.has(path),
-  }
-  return { fs, files }
-}
 
 test('credential store round-trips and stays sealed at rest', async () => {
   const { fs, files } = memoryStore()

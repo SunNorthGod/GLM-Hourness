@@ -3,8 +3,8 @@
  * reference/zcode-api src/proxy/identity.ts, bundle `g6n` shape): the
  * fingerprint headers that make the channel indistinguishable from the
  * official desktop client. The LLM plane never carries X-Device-Mid; the
- * deviceMid persists once under the agent home and rides context-plane
- * headers (endpoint routing, signing) instead.
+ * context plane (endpoint routing) does. The deviceMid is ZCode's own
+ * (device-mid.ts); `ensureDeviceMid` keeps the bundle's fallback one.
  */
 import { randomUUID } from 'node:crypto'
 import { readFile, writeFile, rename } from 'node:fs/promises'
@@ -139,7 +139,7 @@ export function resolveEnvPromptInfo(env: NodeJS.ProcessEnv = process.env, cwd =
   return { cwd: workingDir, platform, shell, osVersion }
 }
 
-/** Load-or-create the persistent deviceMid (one UUIDv4, reused forever) from `<home>/device-mid.txt`. */
+/** Load-or-create the bundle's fallback deviceMid (one UUIDv4, reused forever) in `<home>/device-mid.txt`, used only when ZCode's state has none. */
 export async function ensureDeviceMid(home: string, fs: { readFile(path: string): Promise<string>, writeFile(path: string, data: string): Promise<void>, rename(from: string, to: string): Promise<void> } = { readFile: path => readFile(path, 'utf8'), writeFile: (path, data) => writeFile(path, data), rename }): Promise<string> {
   const path = `${home.replace(/[\\/]+$/, '')}/device-mid.txt`
   try {

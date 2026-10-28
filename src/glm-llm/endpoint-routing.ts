@@ -31,6 +31,8 @@ export interface EndpointRoutingOptions {
   readonly failureCooldownMs?: number
   readonly requestTimeoutMs?: number
   readonly env?: NodeJS.ProcessEnv
+  /** The `X-Device-Mid` source, read on every refresh as 3.16.3 `createProviderEndpointRoutingSourceHeaders` (`Aui`) reads it. */
+  readonly deviceMid?: () => Promise<string | undefined>
 }
 
 export interface RoutedUrl {
@@ -120,6 +122,7 @@ export class EndpointRoutingService {
   private readonly failureCooldownMs: number
   private readonly requestTimeoutMs: number
   private readonly env: NodeJS.ProcessEnv
+  private readonly deviceMid: (() => Promise<string | undefined>) | undefined
   private snapshot: RoutingSnapshot | undefined
   private retryAfter = 0
   private refreshPromise: Promise<void> | undefined
@@ -135,6 +138,7 @@ export class EndpointRoutingService {
     this.failureCooldownMs = opts.failureCooldownMs ?? FAILURE_COOLDOWN_MS
     this.requestTimeoutMs = opts.requestTimeoutMs ?? REQUEST_TIMEOUT_MS
     this.env = opts.env ?? process.env
+    this.deviceMid = opts.deviceMid
   }
 
   /** True when at least one successful snapshot has been fetched. */
@@ -177,7 +181,9 @@ export class EndpointRoutingService {
   private async refresh(credential?: string): Promise<void> {
     // The config fetch uses the context identity plane (`TV`: no X-ZCode-Agent,
     // optional X-Device-Mid) plus x-api-key and Accept.
-    const headers: Record<string, string> = { ...buildContextIdentityHeaders(this.identity, this.env), Accept: 'application/json' }
+    const deviceMid = await this.deviceMid?.().catch(() => undefined)
+    const identity = deviceMid === undefined ? this.identity : { ...this.identity, deviceMid }
+    const headers: Record<string, string> = { ...buildContextIdentityHeaders(identity, this.env), Accept: 'application/json' }
     const key = credential ?? this.credential?.()
     if (key !== undefined && key.length > 0) headers['x-api-key'] = key
     const controller = new AbortController()

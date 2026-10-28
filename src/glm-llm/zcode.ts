@@ -16,6 +16,7 @@ import { resolveCodingPlanCredential } from './auth/resolver.ts'
 import { PollOAuthClient, LOGIN_TIMEOUT_MS, buildPasteAuthorizeUrl } from './auth/oauth.ts'
 import { inspectJwt } from './auth/jwt.ts'
 import { DEFAULT_IDENTITY, ensureDeviceMid, resolveEnvPromptInfo, type ZcodeIdentity } from './identity.ts'
+import { readCliDeviceMid, readRoutingDeviceMid } from './device-mid.ts'
 import { buildAuthHeaders, requestAttribution, type PlanId } from './headers.ts'
 import { EndpointRoutingService } from './endpoint-routing.ts'
 import { ClientSigningManager, sendWithClientSigning } from './signing.ts'
@@ -38,6 +39,9 @@ import type { ImageAttachmentRef, ImageRequestTarget } from '@deepseek-ai/dsh-at
 
 /** Bigmodel coding-plan Anthropic endpoint (the provider baseURL, before server-side remapping; its origin hosts the signing handshake). */
 const BIGMODEL_ANTHROPIC_BASE = 'https://open.bigmodel.cn/api/anthropic'
+
+/** Row-health suffix when ZCode's state file has no deviceMid and the bundle's own one is sent (device-mid.ts). */
+const DEVICE_MID_FALLBACK_NOTE = '；ZCode 状态文件里没有 deviceMid，设备 ID 用本包自己的'
 
 export interface ZcodeAdapterOptions {
   /** Agent home directory: `<home>/credentials.json` and `<home>/device-mid.txt`. */
@@ -141,7 +145,7 @@ export class ZcodeAdapter {
   private readonly options: Required<Pick<ZcodeAdapterOptions, 'home'>> & ZcodeAdapterOptions
   private readonly routing: EndpointRoutingService
   private readonly signer: ClientSigningManager
-  private deviceMidPromise: Promise<string> | undefined
+  private deviceMidPromise: Promise<{ value: string, source: 'zcode' | 'bundle' } | undefined> | undefined
 
   constructor(options: ZcodeAdapterOptions) {
     this.options = options
@@ -149,6 +153,7 @@ export class ZcodeAdapter {
       identity: { ...DEFAULT_IDENTITY, ...options.identity },
       ...(options.fetchImpl === undefined ? {} : { fetchImpl: options.fetchImpl }),
       ...(options.env === undefined ? {} : { env: options.env }),
+      deviceMid: () => this.routingDeviceMid(),
     })
     this.signer = new ClientSigningManager({
       ...(options.fetchImpl === undefined ? {} : { fetchImpl: options.fetchImpl }),
@@ -243,16 +248,40 @@ export class ZcodeAdapter {
     }
   }
 
-  private deviceMid(): Promise<string> {
-    this.deviceMidPromise ??= ensureDeviceMid(this.options.home, this.options.storeFs === undefined ? undefined : {
-      readFile: this.options.storeFs.readFile,
-      writeFile: this.options.storeFs.writeFile,
-      rename: this.options.storeFs.rename,
-    }).catch(error => {
+  /**
+   * The deviceMid of `metadata.user_id`: ZCode's own (`telemetry-state.json`,
+   * read as 3.16.3 reads it, src/glm-llm/device-mid.ts), else the bundle's
+   * `<home>/device-mid.txt` with `source: 'bundle'`, which the row health
+   * reports.
+   */
+  private deviceMid(): Promise<{ value: string, source: 'zcode' | 'bundle' } | undefined> {
+    this.deviceMidPromise ??= readCliDeviceMid(this.env()).then(async zcode => {
+      if (zcode !== undefined) return { value: zcode, source: 'zcode' as const }
+      const bundle = await ensureDeviceMid(this.options.home, this.options.storeFs === undefined ? undefined : {
+        readFile: this.options.storeFs.readFile,
+        writeFile: this.options.storeFs.writeFile,
+        rename: this.options.storeFs.rename,
+      })
+      return { value: bundle, source: 'bundle' as const }
+    }).catch(() => {
       this.deviceMidPromise = undefined
-      throw error
+      return undefined
     })
     return this.deviceMidPromise
+  }
+
+  /**
+   * The routing config request's `X-Device-Mid`: ZCode's own as 3.16.3
+   * `Kuc` reads it; the bundle's when ZCode's state has none, so both planes
+   * name one device.
+   */
+  private async routingDeviceMid(): Promise<string | undefined> {
+    const resolved = await this.deviceMid()
+    return resolved?.source === 'bundle' ? resolved.value : readRoutingDeviceMid(this.env())
+  }
+
+  private env(): NodeJS.ProcessEnv {
+    return this.options.env ?? process.env
   }
 
   /** Signed-in status for the /glm-status command. */
@@ -285,7 +314,8 @@ export class ZcodeAdapter {
       throw new Error('glm-zcode: not logged in — run /glm-login (the credential store is empty)')
     }
     const fetchImpl = this.options.fetchImpl ?? fetch
-    const deviceMid = await this.deviceMid().catch(() => undefined)
+    const device = await this.deviceMid()
+    const deviceMid = device?.value
     const identity = { ...DEFAULT_IDENTITY, ...this.options.identity, ...(deviceMid === undefined ? {} : { deviceMid }) }
 
     // System blocks: DSH delivers the system prompt as leading system
@@ -333,7 +363,7 @@ export class ZcodeAdapter {
       throw new Error(`glm-zcode ${response.status}: ${detail.slice(0, 400)}`)
     }
     if (response.body === null) throw new Error('glm-zcode: response has no stream body')
-    report('active', `上游已应答（套餐 ${plan}）`)
+    report('active', `上游已应答（套餐 ${plan}）${device?.source === 'bundle' ? DEVICE_MID_FALLBACK_NOTE : ''}`)
     // decodeSse emits the internal structural chunk vocabulary; it is
     // field-compatible with the DSH StreamChunk protocol (only the branded id
     // types differ, and brands exist only at the type level).

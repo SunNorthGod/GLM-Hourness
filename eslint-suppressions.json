@@ -132,7 +132,7 @@
       "count": 2
     },
     "@typescript-eslint/require-await": {
-      "count": 14
+      "count": 10
     }
   },
   "tests/glm-channel.spec.ts": {
@@ -183,10 +183,10 @@
       "count": 3
     },
     "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 18
+      "count": 12
     },
     "@typescript-eslint/require-await": {
-      "count": 9
+      "count": 5
     }
   },
   "tests/guard-audit.spec.ts": {

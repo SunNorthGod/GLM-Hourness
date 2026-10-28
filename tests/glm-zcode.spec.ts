@@ -1,23 +1,17 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { readdirSync } from 'node:fs'
 import { ZcodeAdapter, ZcodeLogin, logout } from '../src/glm-llm/zcode.ts'
 import { ZCODE_APP_VERSION } from '../src/glm-llm/identity.ts'
 import { ANTHROPIC_SDK_UA, requestAttribution, upstreamSessionId } from '../src/glm-llm/headers.ts'
 import { apply as loginApply } from '../src/glm-llm/login-row.ts'
-import { saveCredential, type StoreFs } from '../src/glm-llm/auth/store.ts'
+import { saveCredential } from '../src/glm-llm/auth/store.ts'
 import type { Credential } from '../src/glm-llm/auth/types.ts'
 import type { GenerateOptionsLike, StreamChunk } from '../src/shared/lm-min.ts'
+import { memoryStore, zcodeDataDir } from './glm-fixtures.ts'
 
-function memoryStore(): { fs: StoreFs, files: Map<string, string> } {
-  const files = new Map<string, string>()
-  const fs: StoreFs = {
-    readFile: async path => { const value = files.get(path); if (value === undefined) throw new Error('ENOENT'); return value },
-    writeFile: async (path, data) => { files.set(`${path}.tmp`, data); files.set(path, data) },
-    rename: async (from, to) => { files.set(to, files.get(from) ?? ''); files.delete(from) },
-    exists: async path => files.has(path),
-  }
-  return { fs, files }
-}
+/** An adapter environment whose ZCode data directory is a fresh temp directory without a state file. */
+const isolatedEnv = (): NodeJS.ProcessEnv => zcodeDataDir().env
 
 function sseBody(frames: string[]): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder()
@@ -83,12 +77,12 @@ test('stream sends image blocks through the attachment service; without it an im
     provider: 'glm-zcode', model: 'glm-5.3-flash',
     messages: [{ role: 'user', content: [{ type: 'text', text: 'colour?' }, { type: 'image', attachment: image }] }],
   } as GenerateOptionsLike
-  const adapter = new ZcodeAdapter({ home: 'C:/ws/.llm', fetchImpl: makeUpstream(captured), storeFs: fs, env: {} as NodeJS.ProcessEnv, resolveAttachments: () => attachments })
+  const adapter = new ZcodeAdapter({ home: 'C:/ws/.llm', fetchImpl: makeUpstream(captured), storeFs: fs, env: isolatedEnv(), resolveAttachments: () => attachments })
   for await (const _chunk of adapter.stream(options as never)) { void _chunk }
   assert.deepEqual(reads, ['sha256:cccc'])
   const messages = captured.body!.messages as Array<{ content: unknown[] }>
   assert.deepEqual(messages[0]!.content[1], { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'iVBORw==' }, cache_control: { type: 'ephemeral' } })
-  const bare = new ZcodeAdapter({ home: 'C:/ws/.llm', fetchImpl: makeUpstream(), storeFs: fs, env: {} as NodeJS.ProcessEnv })
+  const bare = new ZcodeAdapter({ home: 'C:/ws/.llm', fetchImpl: makeUpstream(), storeFs: fs, env: isolatedEnv() })
   await assert.rejects(async () => { for await (const chunk of bare.stream(options as never)) void chunk }, /attachment service/)
 })
 
@@ -125,7 +119,7 @@ test('coding-plan stream walks the full chain: store → headers → unsigned si
   const { fs } = memoryStore()
   await saveCredential(fs, 'C:/ws/.llm/credentials.json', credential)
   const captured: { url?: string, headers?: Record<string, string>, body?: Record<string, unknown> } = {}
-  const adapter = new ZcodeAdapter({ home: 'C:/ws/.llm', fetchImpl: makeUpstream(captured), storeFs: fs, env: {} as NodeJS.ProcessEnv })
+  const adapter = new ZcodeAdapter({ home: 'C:/ws/.llm', fetchImpl: makeUpstream(captured), storeFs: fs, env: isolatedEnv() })
   const chunks: StreamChunk[] = []
   for await (const chunk of adapter.stream(request())) chunks.push(chunk)
   assert.equal(captured.url, UPSTREAM)
@@ -150,7 +144,7 @@ test('coding-plan stream walks the full chain: store → headers → unsigned si
 const ULTRA = 'https://zcode.z.ai/api/v1/ultra/anthropic/v1/messages'
 const PROVIDER_HANDSHAKE = 'https://open.bigmodel.cn/api/paas/c1f3a7e2/v2/client'
 
-interface WireRequest { url: string, headers: Record<string, string> }
+interface WireRequest { url: string, headers: Record<string, string>, body?: string }
 
 /** Handshake path tail, routed or not. */
 const HANDSHAKE_TAIL = '/c1f3a7e2/v2/client'
@@ -168,7 +162,7 @@ function gatewayFetch(wire: WireRequest[], options: { privateCipher?: string, ma
   const json = (status: number, body: unknown): Response => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
   return (input, init) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
-    wire.push({ url, headers: { ...(init?.headers as Record<string, string> | undefined) } })
+    wire.push({ url, headers: { ...(init?.headers as Record<string, string> | undefined) }, ...(typeof init?.body === 'string' ? { body: init.body } : {}) })
     if (url === 'https://zcode.z.ai/api/v1/agent/configs') return Promise.resolve(json(200, { code: 0, data: { proxyEndpoint: { mapping } } }))
     if (url.endsWith(HANDSHAKE_TAIL)) {
       return Promise.resolve(options.privateCipher === undefined ? new Response('not found', { status: 404 }) : json(200, { code: 200, data: { privateCipher: options.privateCipher } }))
@@ -194,16 +188,44 @@ async function sealedSigningKey(secret: string, apiKeyId: string): Promise<strin
  * Run `requests` streams through one fresh adapter on the gateway double and
  * return the wire log. `stored` replaces the default credential.
  */
-async function runOnGateway(gateway: { privateCipher?: string, mapping?: ReadonlyArray<Record<string, string>> }, options: { stored?: Credential, plan?: 'start-plan', requests?: number } = {}): Promise<WireRequest[]> {
-  const { fs } = memoryStore()
-  await saveCredential(fs, 'C:/ws/.llm/credentials.json', options.stored ?? credential)
+async function runOnGateway(gateway: { privateCipher?: string, mapping?: ReadonlyArray<Record<string, string>> }, options: { stored?: Credential, plan?: 'start-plan', requests?: number, env?: NodeJS.ProcessEnv, report?: (sessionId: string | undefined, state: string, reason: string) => void, files?: Map<string, string> } = {}): Promise<WireRequest[]> {
+  const store = memoryStore()
+  for (const [path, data] of options.files ?? []) store.files.set(path, data)
+  await saveCredential(store.fs, 'C:/ws/.llm/credentials.json', options.stored ?? credential)
   const wire: WireRequest[] = []
-  const adapter = new ZcodeAdapter({ home: 'C:/ws/.llm', fetchImpl: gatewayFetch(wire, gateway), storeFs: fs, env: {}, ...(options.plan === undefined ? {} : { plan: options.plan }) })
+  const adapter = new ZcodeAdapter({ home: 'C:/ws/.llm', fetchImpl: gatewayFetch(wire, gateway), storeFs: store.fs, env: options.env ?? isolatedEnv(), ...(options.plan === undefined ? {} : { plan: options.plan }), ...(options.report === undefined ? {} : { report: options.report }) })
   for (let i = 0; i < (options.requests ?? 1); i++) {
-    for await (const chunk of adapter.stream(request() as never)) void chunk
+    for await (const chunk of adapter.stream({ ...request(), sessionId: 'session-s1' } as never)) void chunk
   }
   return wire
 }
+
+const isConfigRequest = (wire: WireRequest): boolean => wire.url === 'https://zcode.z.ai/api/v1/agent/configs'
+/** The device_id of a model request's metadata.user_id. */
+const deviceIdOf = (wire: WireRequest): string | undefined => (JSON.parse((JSON.parse(wire.body ?? '{}') as { metadata: { user_id: string } }).metadata.user_id) as { device_id?: string }).device_id
+/** The header of one recorded request, by case-insensitive name. */
+const headerOf = (wire: WireRequest, name: string): string | undefined => Object.entries(wire.headers).find(([key]) => key.toLowerCase() === name.toLowerCase())?.[1]
+
+test('metadata.user_id and the routing config request carry the deviceMid of ZCode\'s telemetry state (3.16.3 ensureCliDeviceMid, Kuc)', async () => {
+  const zcode = zcodeDataDir({ deviceMid: 'aaaaaaaa-1111-4222-8333-bbbbbbbbbbbb' })
+  const reports: string[] = []
+  const wire = await runOnGateway({}, { env: zcode.env, report: (_s, _state, reason) => { reports.push(reason) } })
+  const [model] = wire.filter(isModelRequest)
+  assert.equal(deviceIdOf(model!), 'aaaaaaaa-1111-4222-8333-bbbbbbbbbbbb')
+  assert.equal(headerOf(wire.find(isConfigRequest)!, 'X-Device-Mid'), 'aaaaaaaa-1111-4222-8333-bbbbbbbbbbbb')
+  assert.deepEqual(reports, ['上游已应答（套餐 coding-plan）'])
+})
+
+test('without a ZCode deviceMid the bundle\'s own one is sent on both planes, the row health says so, and ~/.zcode stays untouched', async () => {
+  const zcode = zcodeDataDir()
+  const reports: string[] = []
+  const files = new Map([['C:/ws/.llm/device-mid.txt', 'cccccccc-1111-4222-8333-dddddddddddd']])
+  const wire = await runOnGateway({}, { env: zcode.env, report: (_s, _state, reason) => { reports.push(reason) }, files })
+  assert.equal(deviceIdOf(wire.find(isModelRequest)!), 'cccccccc-1111-4222-8333-dddddddddddd')
+  assert.equal(headerOf(wire.find(isConfigRequest)!, 'X-Device-Mid'), 'cccccccc-1111-4222-8333-dddddddddddd')
+  assert.deepEqual(reports, ['上游已应答（套餐 coding-plan）；ZCode 状态文件里没有 deviceMid，设备 ID 用本包自己的'])
+  assert.deepEqual(readdirSync(zcode.dir), [])
+})
 
 test('coding-plan handshakes on the provider origin, sends to the routed URL, and reuses the key', async () => {
   // The signer sees the provider URL before routing (3.16.3); handing it the
@@ -252,7 +274,7 @@ test('x-session-id is one value per DSH session (the gateway cache affinity key)
   const { fs } = memoryStore()
   await saveCredential(fs, 'C:/ws/.llm/credentials.json', credential)
   const captured: { headers?: Record<string, string> } = {}
-  const adapter = new ZcodeAdapter({ home: 'C:/ws/.llm', fetchImpl: makeUpstream(captured), storeFs: fs, env: {} })
+  const adapter = new ZcodeAdapter({ home: 'C:/ws/.llm', fetchImpl: makeUpstream(captured), storeFs: fs, env: isolatedEnv() })
   const sessionOf = async (sessionId: string | undefined): Promise<string> => {
     for await (const chunk of adapter.stream({ ...request(), ...(sessionId === undefined ? {} : { sessionId }) })) void chunk
     return captured.headers?.['x-session-id'] ?? ''
@@ -269,7 +291,7 @@ test('auxiliary calls (compaction, session title) keep the conversation session 
   const { fs } = memoryStore()
   await saveCredential(fs, 'C:/ws/.llm/credentials.json', credential)
   const captured: { headers?: Record<string, string>, body?: Record<string, unknown> } = {}
-  const adapter = new ZcodeAdapter({ home: 'C:/ws/.llm', fetchImpl: makeUpstream(captured), storeFs: fs, env: {} })
+  const adapter = new ZcodeAdapter({ home: 'C:/ws/.llm', fetchImpl: makeUpstream(captured), storeFs: fs, env: isolatedEnv() })
   const attributionOf = async (purpose: 'compaction' | 'session-title' | undefined): Promise<[string, string, string]> => {
     for await (const chunk of adapter.stream({ ...request(), sessionId: 'session-conv-1', ...(purpose === undefined ? {} : { purpose }) })) void chunk
     const userId = JSON.parse((captured.body?.metadata as { user_id: string }).user_id) as { session_id: string }
@@ -295,7 +317,7 @@ test('the DSH system prompt arrives as leading system messages and lands in the 
   const { fs } = memoryStore()
   await saveCredential(fs, 'C:/ws/.llm/credentials.json', credential)
   const captured: { body?: Record<string, unknown> } = {}
-  const adapter = new ZcodeAdapter({ home: 'C:/ws/.llm', fetchImpl: makeUpstream(captured), storeFs: fs, env: {} as NodeJS.ProcessEnv })
+  const adapter = new ZcodeAdapter({ home: 'C:/ws/.llm', fetchImpl: makeUpstream(captured), storeFs: fs, env: isolatedEnv() })
   const { system: _requestLevel, ...base } = request()
   const options = {
     ...base,
@@ -318,7 +340,7 @@ test('start-plan wraps the system in the 3-block assembly and pins the currentDa
   const { fs } = memoryStore()
   await saveCredential(fs, 'C:/ws/.llm/credentials.json', { ...credential, jwt: 'a.b.c' })
   const captured: { body?: Record<string, unknown> } = {}
-  const adapter = new ZcodeAdapter({ home: 'C:/ws/.llm', plan: 'start-plan', fetchImpl: makeUpstream(captured), storeFs: fs, env: {} as NodeJS.ProcessEnv })
+  const adapter = new ZcodeAdapter({ home: 'C:/ws/.llm', plan: 'start-plan', fetchImpl: makeUpstream(captured), storeFs: fs, env: isolatedEnv() })
   const options = request()
   for await (const _chunk of adapter.stream(options)) { void _chunk }
   const system = captured.body!.system as Array<{ type: string, text: string, cache_control?: unknown }>
@@ -371,10 +393,10 @@ test('each request reports its session to the row health: answered, refused upst
   await saveCredential(fs, 'C:/ws/.llm/credentials.json', credential)
   const reports: Array<[string | undefined, string, string]> = []
   const report = (sessionId: string | undefined, state: string, reason: string) => { reports.push([sessionId, state, reason]) }
-  const ok = new ZcodeAdapter({ home: 'C:/ws/.llm', fetchImpl: makeUpstream(), storeFs: fs, env: {} as NodeJS.ProcessEnv, report })
+  const ok = new ZcodeAdapter({ home: 'C:/ws/.llm', fetchImpl: makeUpstream(), storeFs: fs, env: zcodeDataDir({ deviceMid: 'fake-device-mid' }).env, report })
   for await (const _chunk of ok.stream({ ...request(), sessionId: 's1' } as never)) { void _chunk }
   const refusing = (async () => new Response('quota', { status: 429 })) as unknown as typeof fetch
-  const refused = new ZcodeAdapter({ home: 'C:/ws/.llm', fetchImpl: refusing, storeFs: fs, env: {} as NodeJS.ProcessEnv, report })
+  const refused = new ZcodeAdapter({ home: 'C:/ws/.llm', fetchImpl: refusing, storeFs: fs, env: isolatedEnv(), report })
   await assert.rejects(async () => { for await (const chunk of refused.stream({ ...request(), sessionId: 's2' } as never)) void chunk }, /glm-zcode 429/)
   files.set('C:/ws/.llm/credentials.json', 'not json')
   await assert.rejects(async () => { for await (const chunk of ok.stream({ ...request(), sessionId: 's3' } as never)) void chunk }, /corrupted/)
