@@ -2,7 +2,7 @@
   "id": "m2-10",
   "type": "task",
   "title": "2.10 删除本机查看器与服务",
-  "status": "approved",
+  "status": "done",
   "parent": "m2",
   "kind": "implement",
   "body": "删除 src/graph/viewer.html、src/graph/server.ts、scripts/graph/serve.ts 与对应测试、npm 脚本，冒烟改为不起服务。",
@@ -14,6 +14,17 @@
     {
       "type": "depends",
       "to": "m2-7"
+    }
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "2f0fb27"
+    },
+    {
+      "kind": "test",
+      "ref": "npm test",
+      "exit": 0
     }
   ],
   "history": [
@@ -29,6 +40,33 @@
       "actor": "llm",
       "op": "comment",
       "text": "面板已上线（m2-7），可以删本机查看器与服务了。"
+    },
+    {
+      "at": "2026-10-28T08:33:46.994Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "开工",
+      "from": "approved",
+      "to": "doing"
+    },
+    {
+      "at": "2026-10-28T08:33:47.061Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "查看器、服务、入口与测试已删，冒烟改为只跑入口脚本",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "2f0fb27"
+        },
+        {
+          "kind": "test",
+          "ref": "npm test",
+          "exit": 0
+        }
+      ]
     }
   ]
 }
