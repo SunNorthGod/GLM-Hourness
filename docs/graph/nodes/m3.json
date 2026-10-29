@@ -62,6 +62,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M3 设计第 2 轮评审 CHANGES_REQUESTED（.agents/tasks/m3/design-review.json）：第 1 轮 20 条意见全部关闭；新意见 MEDIUM 2、LOW 11。R2-M1：DSH 客户端的单选问题只交选项或文字之一，五键卡「拒绝（带理由）」做不出来，只写文字被记成「点了补充」，建议五键卡加一个无选项的附言问题。R2-M2：设计期只读只看一层父子，最大递归深度在设置页可改，建议沿 parentSession 找到派发链的根再判。两轮用完，按 question-11 自动加第三轮修订与评审，第三轮仍不过就停下等人。"
+    },
+    {
+      "at": "2026-10-29T06:29:46.994Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M3 设计第 3 轮评审 CHANGES_REQUESTED（.agents/tasks/m3/design-review.json）：第 2 轮 13 条全部关闭；新意见 MEDIUM 2、LOW 3。R3-M1：/graph-apply 的唤醒通知从全进程的 agents.roots() 取候选，只比焦点 id；节点 id 在不同图之间会重复，另一个工作区里焦点 id 相同的主 Agent 会被叫醒、被告知不在它图上的决定，m3-5 验收 2 不成立；修正是同时比对候选会话的图目录，并加两个工作区同 id 的 L2 用例。R3-M2：L3 场景要在会话中途经命令生命周期发 /wish、/wish off、/graph-apply，现有探针只能在 agent/created 发一次 /wish，命令步骤不经 command/run 与 command/done；修正是给探针步骤加经 commands.execute 执行的 line 字段，并把 glm-design-main 拆成空闲与运行中两个场景。LOW：dispatchRoot 片段在 strict 下不过类型检查；第 11 步的起点应在第 3 步之后；附录版本号引用过时。三轮用完仍未通过，按 question-11 停下等人决定是否再加一轮。"
     }
   ]
 }
