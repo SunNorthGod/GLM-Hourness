@@ -176,6 +176,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "附录 0.3 §9 第 1 条：随 d-chat-not-cards 与 d-one-main-agent，m3-1 第 3 条、m3-2 第 2、3 条、m3-3 第 1、3 条、m3-4 第 1–3 条、m3-5 第 1、2 条、m3-6 第 2 条的字句点名了卡片或多个主 Agent，附录写了建议的新字句。改验收要人的原话（norm-decision-tiers 第 1 类），未改；建议与一页放行稿 onepage.md 一起给人看。"
+    },
+    {
+      "at": "2026-10-29T18:37:27.126Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m3-addendum-v03（wf_57917c951081d8a9）的附录 0.3 写稿完成，第 3 轮评审步一启动就因 BAD_DECRYPT 失败。改派单步评审 m3-addendum-v03-review（wf_a71d594ad0566cd5），结论写进 reviews/addendum-r3.*；通过后另派一页人话放行稿。"
     }
   ]
 }
