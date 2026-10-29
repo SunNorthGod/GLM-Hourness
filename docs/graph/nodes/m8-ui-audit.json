@@ -40,6 +40,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "只读盘点完成：20 个界面，41 条问题（高 2、中 15、低 24），其中 8 条落在 m1-parity 分支尚未合入的 ui/src/channel.js 上，合入后复核；清单在 .agents/tasks/ui-audit/audit.md。桌面时段交给 desktop-survey 做截图走查（只读）。"
+    },
+    {
+      "at": "2026-10-29T00:38:08.375Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-10-29 02:09 本机蓝屏，桌面截图走查（desktop-survey）中断：改动前截图拍到 01:44（面板各视图、节点详情、窄窗、宿主命令与通知、斜杠菜单），findings.md 还没写。工作流 wf_4f796b871f55d1fd 处于暂停，可以续跑；桌面版目前没有运行。"
     }
   ]
 }

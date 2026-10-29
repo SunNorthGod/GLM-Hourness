@@ -103,6 +103,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "评审两轮用完仍有 1 条阻塞（压缩请求会把本轮的 x-query-id 换掉，3.16.3 里压缩沿用本轮的 query id），按 question-11 自动加第三轮修复与评审；第三轮仍不过就停下等人。非阻塞：压缩请求的 effort 应随会话、合并一个修补提交、FACTS.md 三处共用偏移补全。"
+    },
+    {
+      "at": "2026-10-29T00:38:03.669Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-10-29 02:09 本机蓝屏（BugCheck 0x3B；系统日志 Kernel-Power 41、EventLog 6008），夜间运行中断。修复第三轮在蓝屏前已完成：分支 m1-parity 新增 097bfda（压缩请求沿用本回合的 x-query-id）、529fe76（压缩请求的 effort 随会话最近一次主步）、798361f（FACTS 三处共用偏移补全），2bfbeef 与 bac18b4 合成 a598f4c；798361f 上 build、preflight、npm test 全过（39 个 spec、548 用例，逐字 443 段，ESLint 256 / knip 21 / jscpd 2，gitleaks 干净），记录在 .agents/tasks/zcode-parity/verification.md。评审第三轮没有开始。工作流 wf_d1ada0a4c5ac7157 的状态文件在蓝屏中被清零，不能续跑；分支与工作树完好（git fsck 无错，工作树干净，蓝屏前后写入的文件无清零），分支未推送。下一步：新开评审第三轮，通过后合入 main、沙盒真实请求核对、npm run probe。"
     }
   ]
 }
