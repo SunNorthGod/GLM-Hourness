@@ -47,6 +47,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "zcode-3171-implement（wf_980486f766d1d433）开工：工作树 zcode-3171 快进到 main 9904f71，干净，构建通过。"
+    },
+    {
+      "at": "2026-10-29T20:36:07.394Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "实现第 6 步（start-plan 文本）按 plan.md 把主检出里共用的 reference/zcode-api/src/proxy/zcode_system.json 换成 3.17.1（3.16.3 原件备份在 .agents/tasks/zcode-3171/zcode_system.3.16.3.json）。在 zcode-3171 合入之前，main 与 m3、m3-flow、prompt-fixes 工作树上的 tests/glm-startplan.spec.ts 比对会失败。编排方核对：这段时间里别的运行都只写设计，M3 的实现在等人放行，没有别的运行要在 main 上跑门禁或合入，影响可以接受；zcode-3171 合入之后恢复。"
     }
   ]
 }
