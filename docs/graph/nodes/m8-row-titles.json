@@ -36,6 +36,12 @@
       "reason": "派出 m8-row-titles（wf_893fb981054a32c3）：设置页内置插件行名，两个插件单装各验一次，过门禁、探针与桌面版 L4 截图后合入",
       "from": "approved",
       "to": "doing"
+    },
+    {
+      "at": "2026-10-29T16:37:30.040Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m8-row-titles (wf_893fb981054a32c3) code step: build, preflight and npm test green on branch row-titles (650 pass, 0 fail). Orchestrator granted the sandbox probe slot; no other run is probing (prompt-fixes and the ZCode follow-up are stopped, M3 is in design review)."
     }
   ]
 }
