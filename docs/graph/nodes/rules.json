@@ -171,6 +171,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "rules-design-v06-write（wf_2f149988fcc89bb1）把 design.md 写到 0.6（04:01，1811 行，F42–F54 的处理与人定对照都在）之后因 TLS 错误结束，一页人话放行稿 onepage.md 还没写。派出单步评审 rules-design-v06-review（wf_4c07584376a9a351），先查 0.6 是否完整，再核对 0.5 的各条、人的决定与 M6 那条编排方裁定；通过后另派放行稿。"
+    },
+    {
+      "at": "2026-10-29T20:34:47.158Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "规则板设计 0.6 评审（rules-design-v06-review，wf_4c07584376a9a351）：CHANGES_REQUESTED，HIGH 1、MEDIUM 7、LOW 12。F55：0.6 没写完（写稿步中途因 TLS 错误结束，缺附录 D、§20 的修订记录、§18 的新取舍），F42、F57 是没改到的旧文字；F43、F46、F56、F58、F59 是与 M7 0.3、M3 附录 0.3、M6 裁定之间的接缝。挡路条数 5 → 8，评审请编排方定这次截断算不算一轮。编排方定（agent 定，可推翻）：截断是运行环境故障，不算一轮设计；接缝按 .agents/tasks/design-context.md 新加的「Seam rulings between designs」一节裁定（规则板管档位与少做时的并发上限并经服务给出，M7 派发读上限；高峰提醒原文与 ORCHESTRATION.md §11.4 归 GLM 包；checkCall 写判定事件；propose_to_human 加可选 attach；少做高峰结束时唤醒主 Agent 是循环板条目）。派出单步 rules-design-v07-write（wf_811e1f7ef668815e）写 0.7 与一页人话，要求分节保存。"
     }
   ]
 }

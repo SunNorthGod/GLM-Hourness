@@ -113,6 +113,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "BAD_DECRYPT 查明（编排方读 Kiro 日志 ~/.kiro/logs/20261029T160103010/kiro.log 与会话记录）：它是 TLS 层的错误（errorType ERR_SSL_BAD_DECRYPT，BoringSSL e_aes.cc.inc:862），出在 Kiro 接收模型服务的流式回复时「Failed to stream response chunks」，attempts 1，没有重试，那一步就失败。所以它不是登录或本地凭据解密失败，也不是「步骤一启动就挂、什么都没写」：失败的步骤常常已经做了一段（会话记录到第 125、182 条才出错），中途写下的半成品稿也在（规则板 0.4.1 中间稿、M3 附录 0.3 中间稿），编排方之前的两处说法都不对。数字：本次 Kiro 进程（2026-10-30 00:01 起）2360 次模型请求里 13 次 BAD_DECRYPT（约 0.55%），时间分散在 00:14 到 02:36；之前 9 个日志目录里 0 次。同一进程里另有 92 次 USER_REQUEST_RATE_EXCEEDED（并行运行太多被限流，这是「模型服务 5xx 或限流」暂停的主要来源）与 1 次 ECONNRESET。推断（未验证）：BAD_DECRYPT 是收到的加密数据在路上被损坏；本机 FlClash（Clash Meta，TUN 网卡 Meta Tunnel）在 00:00:51 启动，比这次 Kiro 进程早 10 秒，错误只出现在这之后；两次 0x3B 蓝屏（内核访问冲突）也可能和网络驱动或内存有关。验证办法：让 Kiro 的流量绕开 FlClash 的 TUN（直连或规则放行）一段时间，看 BAD_DECRYPT 是否消失；蓝屏转储可另行分析。"
+    },
+    {
+      "at": "2026-10-29T20:34:47.324Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "编排方观察：今晚几份设计同时在改（M3、M4、M6、M7、规则板、循环板、面板、指标流水、接管项目、用户图），每份评审都查出一批「和兄弟设计接缝对不上」的发现，评审条数因此忽高忽低。对策：编排方把接缝裁定集中写进 .agents/tasks/design-context.md 的「Seam rulings between designs」一节，所有设计都读它；用户图的缺口一节会把剩下的接缝列全。"
     }
   ]
 }
