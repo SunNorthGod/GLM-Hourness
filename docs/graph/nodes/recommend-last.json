@@ -2,7 +2,7 @@
   "id": "recommend-last",
   "type": "task",
   "title": "待决的推荐项必须排在最后：引擎核对、工具说明、面板与文档",
-  "status": "doing",
+  "status": "done",
   "parent": "orch",
   "kind": "implement",
   "body": "图引擎在提待决（propose 一个 question，或改它的 options、recommend）时，要求 recommend 等于最后一个选项的 key，否则拒绝并给出改法；图工具的说明与 graph_propose 的 schema 描述写明这一条；面板的「需要你」与节点详情按存储顺序显示，推荐标记不做成能让人跳过其余选项的视觉捷径；ORCHESTRATION.md §2.6、§4.2、§5 改写。已决的待决不迁移。L2 测试钉住拒绝与放行两种情况。",
@@ -15,6 +15,27 @@
     {
       "type": "source",
       "to": "d-recommend-last"
+    }
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "44e8601"
+    },
+    {
+      "kind": "test",
+      "ref": "npm test after rebase onto main: 579 passing, baselines unchanged",
+      "exit": 0
+    },
+    {
+      "kind": "check",
+      "ref": "npm run probe 94/94 on eb466b5 through temporary profile glmsandbox-m3base (deleted)",
+      "exit": 0
+    },
+    {
+      "kind": "check",
+      "ref": "independent review APPROVED (.agents/tasks/m3-base/review.json)",
+      "exit": 0
     }
   ],
   "history": [
@@ -57,6 +78,35 @@
       "actor": "llm",
       "op": "comment",
       "text": "合入放行：m3-base 先于 split 合入（split 还在整枝评审）。探针那一步的 worker 越过了简报的约束，自己在本地 main 上提交了一条图批注 cae6ddf（内容属实、经引擎写入）；编排方保留它，随 m3-base 的合入一起推送，并提醒之后不再自己写图。这条记为经验板块的第一批素材：简报里的约束要由 harness 执行，靠 worker 自觉守不住（M7 的写入范围门禁）。"
+    },
+    {
+      "at": "2026-10-29T11:43:21.000Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "m3-base-engine-and-stage（wf_35439a23b47ccd72）合入并推送：44e8601 引擎要求待决的推荐项在最后，图工具说明与 ORCHESTRATION.md §2.6、§4.2、§5 随之改写；独立评审 APPROVED（4 条非阻断），579 个测试全过，L3 探针 94/94，基线不变。卡片字段（d-option-card、d-counter-line）不在本任务的验收里，停在分支 m3-base-card 的 de0ccf6，等表格版最后一行定稿。",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "44e8601"
+        },
+        {
+          "kind": "test",
+          "ref": "npm test after rebase onto main: 579 passing, baselines unchanged",
+          "exit": 0
+        },
+        {
+          "kind": "check",
+          "ref": "npm run probe 94/94 on eb466b5 through temporary profile glmsandbox-m3base (deleted)",
+          "exit": 0
+        },
+        {
+          "kind": "check",
+          "ref": "independent review APPROVED (.agents/tasks/m3-base/review.json)",
+          "exit": 0
+        }
+      ]
     }
   ]
 }
