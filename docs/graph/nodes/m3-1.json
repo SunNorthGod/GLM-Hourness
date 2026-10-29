@@ -6,6 +6,12 @@
   "parent": "m3",
   "kind": "implement",
   "body": "ROADMAP.md 原文：主 Agent 角色卡；主 Agent 工具面去掉写文件工具。2026-10-28 用户决定之后：主 Agent 的身份是本项目自己的提示词（三问四答、五键、架构师访谈），不用预设；主 Agent 不写代码由 guard 拦（见 d-dispatch）。",
+  "acceptance": [
+    "开启主 Agent 后每步的系统提示词带 hourness:main-agent 一节（/wish <一句话> 唤醒的第一步也带），GLM 路由上与方言改写叠加后仍在；未开启的会话没有",
+    "主 Agent 的文件工具写入（write、edit、str_replace_editor 除 view 外）与 file-tools-only 判为写文件的 shell 命令，在 GLM 与非 GLM 路由上都被拒，拒绝带正路并进违规流水；/wish off 之后同一会话照常写",
+    "主 Agent 的工具面等于同一组合下普通会话的工具面加 design_review、decision_card；写文件的工具都还在，写入在执行边界被拒；不用 preset",
+    "/wish 的入口放在醒目处：没有开启主 Agent 的会话里，桌面版界面上有显眼的提示说明可以用 /wish 开启主 Agent，人不用记命令；开启后看得到当前是主 Agent 以及怎样 /wish off 退出；位置与样式经设计评审，L4 截图核对"
+  ],
   "history": [
     {
       "at": "2026-10-27T20:04:04.789Z",
@@ -22,6 +28,24 @@
       "relay": "其余全部按你的来",
       "from": "proposed",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-29T09:12:01.367Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "question-22 A：按 M3 设计 §1.2 写入验收；question-19 的附加要求写成第 4 条",
+      "relay": "A，但是这个命令需要放在醒目的地方提醒人，要不然我这种的很容易忘记",
+      "changes": {
+        "acceptance": {
+          "from": null,
+          "to": [
+            "开启主 Agent 后每步的系统提示词带 hourness:main-agent 一节（/wish <一句话> 唤醒的第一步也带），GLM 路由上与方言改写叠加后仍在；未开启的会话没有",
+            "主 Agent 的文件工具写入（write、edit、str_replace_editor 除 view 外）与 file-tools-only 判为写文件的 shell 命令，在 GLM 与非 GLM 路由上都被拒，拒绝带正路并进违规流水；/wish off 之后同一会话照常写",
+            "主 Agent 的工具面等于同一组合下普通会话的工具面加 design_review、decision_card；写文件的工具都还在，写入在执行边界被拒；不用 preset",
+            "/wish 的入口放在醒目处：没有开启主 Agent 的会话里，桌面版界面上有显眼的提示说明可以用 /wish 开启主 Agent，人不用记命令；开启后看得到当前是主 Agent 以及怎样 /wish off 退出；位置与样式经设计评审，L4 截图核对"
+          ]
+        }
+      }
     }
   ]
 }

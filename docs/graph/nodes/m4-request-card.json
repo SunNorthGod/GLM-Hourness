@@ -1,0 +1,33 @@
+{
+  "id": "m4-request-card",
+  "type": "task",
+  "title": "guard 申报通道接决策卡",
+  "status": "approved",
+  "parent": "m4",
+  "kind": "implement",
+  "body": "工作区圈禁拒绝之后，agent 经决策卡申报：写明目标路径或命令、目的、可逆性与影响面、考虑过的替代；人批准只放行当次，再次调用仍被拒。复用 M3 的 decision_card 与以人的身份写图（M3 设计 src/design/cards.ts、human-writes.ts）；split 第 7 步（question-14 G3）之后 guard 对所有路由生效，按所有路由设计。对应 ORCHESTRATION.md §5 同步卡的出工作区场景与 §6.1 的申报通道；ROADMAP M4 同批加这一条。验收在设计时提给人。",
+  "edges": [
+    {
+      "type": "depends",
+      "to": "m3-5"
+    },
+    {
+      "type": "depends",
+      "to": "split"
+    },
+    {
+      "type": "source",
+      "to": "question-24"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-29T09:12:02.845Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "question-24 A 的落地：出工作区申报的同步卡场景归 M4",
+      "relay": "A",
+      "to": "approved"
+    }
+  ]
+}

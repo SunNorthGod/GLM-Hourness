@@ -5,7 +5,12 @@
   "status": "approved",
   "parent": "m3",
   "kind": "implement",
-  "body": "同步借用 user-approval；异步卡自建在项目图的待决节点上（见 d-async-cards）；取代 L1/L2/L3（ORCHESTRATION.md §5）。",
+  "body": "同步卡是本项目的 decision_card，经 userQuestions.ask 出卡，人关掉卡片即转为异步（question-20 B）；异步卡自建在项目图的待决节点上（见 d-async-cards）；取代 L1/L2/L3（ORCHESTRATION.md §5）。出工作区申报的同步卡场景归 M4（question-24 A，m4-request-card）。",
+  "acceptance": [
+    "decision_card 在图上留一张待决并在卡上问人，人选了由人拍板，关掉卡片则待决留在人的决策队列；卡片打开期间人已在面板上拍板时，卡片不改拍板结果",
+    "人在面板上拍板、批准或否决后，同一张图上、焦点在这个节点所属目标下的主 Agent 会话收到消息（不论面板开在哪个会话里），下一次投影带结果；焦点在别的目标下的、工作在别的图上（节点 id 相同也算别的图）的主 Agent 会话与普通会话不收到",
+    "代码与晨报里没有 L1/L2/L3，晨报的决策一节取自图"
+  ],
   "history": [
     {
       "at": "2026-10-27T20:04:04.843Z",
@@ -22,6 +27,27 @@
       "relay": "其余全部按你的来",
       "from": "proposed",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-29T09:12:02.212Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "question-22 A 写入验收；question-20 B 改写借用 user-approval 的句子；question-24 A 注明申报场景归 M4",
+      "relay": "B",
+      "changes": {
+        "body": {
+          "from": "同步借用 user-approval；异步卡自建在项目图的待决节点上（见 d-async-cards）；取代 L1/L2/L3（ORCHESTRATION.md §5）。",
+          "to": "同步卡是本项目的 decision_card，经 userQuestions.ask 出卡，人关掉卡片即转为异步（question-20 B）；异步卡自建在项目图的待决节点上（见 d-async-cards）；取代 L1/L2/L3（ORCHESTRATION.md §5）。出工作区申报的同步卡场景归 M4（question-24 A，m4-request-card）。"
+        },
+        "acceptance": {
+          "from": null,
+          "to": [
+            "decision_card 在图上留一张待决并在卡上问人，人选了由人拍板，关掉卡片则待决留在人的决策队列；卡片打开期间人已在面板上拍板时，卡片不改拍板结果",
+            "人在面板上拍板、批准或否决后，同一张图上、焦点在这个节点所属目标下的主 Agent 会话收到消息（不论面板开在哪个会话里），下一次投影带结果；焦点在别的目标下的、工作在别的图上（节点 id 相同也算别的图）的主 Agent 会话与普通会话不收到",
+            "代码与晨报里没有 L1/L2/L3，晨报的决策一节取自图"
+          ]
+        }
+      }
     }
   ]
 }

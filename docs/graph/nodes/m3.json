@@ -86,6 +86,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "m3-design 完成：设计 0.4（.agents/tasks/m3/design.md）评审第 4 轮 APPROVED，12 步实施顺序与验证层在 §8、§9；对 split 的依赖在 §7，M3 第 3 步（行登记）与第 11 步（流程条）要等 question-17 B 附录评审通过、split 合入。设计 §12 的 D1–D6 提为 question-19 到 question-24；§13 第 2 项「两条设计规则直接拦截、不走影子期」提为 agent 拍板的 question-25。实现等人定与 split 合入。"
+    },
+    {
+      "at": "2026-10-29T09:12:03.058Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "D1–D6 人定（question-19 A、20 B、21 A、22 A、23 A、24 A），m3-1 到 m3-6 的验收已按设计 §1.2 写入。question-19 的附加要求：/wish 的入口要醒目，没开启主 Agent 的会话里也要提示人可以用 /wish 开启（m3-1 验收第 4 条）；设计 0.4 没有这一项，实现开工时先补设计并过评审（候选位置：输入框上方与流程条同一处、开始页、项目图面板的「需要你」）。D2 B 的 ROADMAP 3.3、3.5 与 ORCHESTRATION §4.5、§5、§14 随代码改写。实现仍等 split 合入。"
     }
   ]
 }

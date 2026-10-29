@@ -156,6 +156,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "用户 2026-10-29 回复「A 顺手清掉没用的文件」：附录循环加第 5 轮修订与评审，处理 D01–D05。顺手清理：桌面 profile 的 node_modules/@local 下三个悬空 junction（dsh-engineering-notice、dsh-multitask-preset、mcp-servers，原始目标 C:/Users/29596/Desktop/Project/DeepSeek Harness/ 下的 eng-notice、multitask-preset、mcp-servers 都不存在）核对过不在 package.json 的 bundles 与 dependencies、pnpm-lock.yaml 与 cordis.patch.yml 里，是孤立链接，只删链接本身，@local 现在为空；已告知附录作者更新 G13，通用的悬空链接处理与演练用例照做。另删用户级用量流水的改前备份 usage.jsonl.bak-1793243554750（最终走查已核对积分面板），DESIGN §2.4 与 HANDOFF 同步。"
+    },
+    {
+      "at": "2026-10-29T09:12:03.276Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "question-17 B 设计附录修订为 0.5（.agents/tasks/split/design-addendum-q17b.md），按第 4 轮评审 D01–D05 逐条处理，记录在附录 §9.4，第 5 轮评审进行中。桌面 profile 的三个孤立 @local 链接已删，G13 按此改写；D01 改为不属于本项目的链接只记原始目标、按原始目标比较与重建，演练加一个悬空的 @local 链接（假设 U17）；NIT：每次 pnpm 运行新建输出文件；hash3 在改名前写入并带「写入中」标记；rollback 运行前检查要求旧清单声明 dsh.bundle.patch；pnpm 卡住的时限由脚本执行。自查补上 rollback 中途停下后的续跑与退出码 2 的定义。"
     }
   ]
 }

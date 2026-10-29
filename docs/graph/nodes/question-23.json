@@ -2,7 +2,7 @@
   "id": "question-23",
   "type": "question",
   "title": "引擎是否允许 LLM 改自己提议、还没批准的目标",
-  "status": "approved",
+  "status": "done",
   "parent": "m3",
   "body": "访谈第 2–5 步要把答案写进主 Agent 自己提议的目标，今天的引擎一律拒绝 LLM 改目标（ORCHESTRATION.md §2.9 edit 行，设计 §3.2.1）。",
   "options": [
@@ -24,6 +24,13 @@
   ],
   "recommend": "A",
   "decider": "human",
+  "decision": "A",
+  "evidence": [
+    {
+      "kind": "decision",
+      "ref": "A"
+    }
+  ],
   "history": [
     {
       "at": "2026-10-29T08:51:28.031Z",
@@ -31,6 +38,22 @@
       "op": "propose",
       "reason": "M3 设计 §12 D5：改 2026-10-28 用户批准的原型规则「LLM 不能改目标」，属于以后改起来很贵的方向岔路",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-29T09:12:00.976Z",
+      "actor": "llm",
+      "op": "decide",
+      "reason": "用户选 A：引擎放开 LLM 改自己提议且仍为提议的目标，已批准的目标与目标的连线照旧不能改；引擎改动独立评审",
+      "relay": "A",
+      "from": "approved",
+      "to": "done",
+      "option": "A",
+      "evidence": [
+        {
+          "kind": "decision",
+          "ref": "A"
+        }
+      ]
     }
   ]
 }

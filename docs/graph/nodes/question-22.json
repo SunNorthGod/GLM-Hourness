@@ -2,7 +2,7 @@
   "id": "question-22",
   "type": "question",
   "title": "M3 六个任务的验收与标定任务的通过标准",
-  "status": "approved",
+  "status": "done",
   "parent": "m3",
   "body": "建议验收逐条在设计 §1.2 的表里。标定任务 interview-expense-log 用模拟人走一遍许愿、访谈、设计、放行（设计 §9.2）。",
   "options": [
@@ -19,6 +19,13 @@
   ],
   "recommend": "A",
   "decider": "human",
+  "decision": "A",
+  "evidence": [
+    {
+      "kind": "decision",
+      "ref": "A"
+    }
+  ],
   "history": [
     {
       "at": "2026-10-29T08:51:27.864Z",
@@ -26,6 +33,22 @@
       "op": "propose",
       "reason": "M3 设计 §12 D4：改验收属于必须问人的一类（ORCHESTRATION.md §2.9.1）",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-29T09:12:00.771Z",
+      "actor": "llm",
+      "op": "decide",
+      "reason": "用户选 A：M3 设计 §1.2 的建议验收写进 m3-1 到 m3-6，标定任务按设计 §9.2 的模拟人做法与通过标准",
+      "relay": "A",
+      "from": "approved",
+      "to": "done",
+      "option": "A",
+      "evidence": [
+        {
+          "kind": "decision",
+          "ref": "A"
+        }
+      ]
     }
   ]
 }

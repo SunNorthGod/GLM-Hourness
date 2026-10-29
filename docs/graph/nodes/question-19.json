@@ -2,7 +2,7 @@
   "id": "question-19",
   "type": "question",
   "title": "主 Agent 由谁开启、作用在哪些会话",
-  "status": "approved",
+  "status": "done",
   "parent": "m3",
   "body": "主 Agent（项目经理）不写代码，写文件被拒，正路是图工具与派发（设计 §2.3、§3.1）。",
   "options": [
@@ -24,6 +24,13 @@
   ],
   "recommend": "A",
   "decider": "human",
+  "decision": "A",
+  "evidence": [
+    {
+      "kind": "decision",
+      "ref": "A"
+    }
+  ],
   "history": [
     {
       "at": "2026-10-29T08:51:27.380Z",
@@ -31,6 +38,22 @@
       "op": "propose",
       "reason": "M3 设计 §12 D1：主 Agent 的开启方式决定哪些会话不能写文件，由人定",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-29T09:12:00.140Z",
+      "actor": "llm",
+      "op": "decide",
+      "reason": "用户选 A：按会话用 /wish 开启、/wish off 退出；另加要求：/wish 的入口要放在醒目处提醒人，不能只靠人记命令（写进 m3-1 验收第 4 条）",
+      "relay": "A，但是这个命令需要放在醒目的地方提醒人，要不然我这种的很容易忘记",
+      "from": "approved",
+      "to": "done",
+      "option": "A",
+      "evidence": [
+        {
+          "kind": "decision",
+          "ref": "A"
+        }
+      ]
     }
   ]
 }

@@ -2,7 +2,7 @@
   "id": "question-24",
   "type": "question",
   "title": "「出工作区要申报」的同步卡场景放在哪",
-  "status": "approved",
+  "status": "done",
   "parent": "m3",
   "body": "ORCHESTRATION.md §5 把同步卡的场景定为出工作区操作、往工作区外装工具：阻断当次操作，等人批，批准只放行当次。M3 的 decision_card 用于访谈与设计中的岔路，不接 guard 的拒绝（设计 §3.5.1）。",
   "options": [
@@ -24,6 +24,13 @@
   ],
   "recommend": "A",
   "decider": "human",
+  "decision": "A",
+  "evidence": [
+    {
+      "kind": "decision",
+      "ref": "A"
+    }
+  ],
   "history": [
     {
       "at": "2026-10-29T08:51:28.194Z",
@@ -31,6 +38,22 @@
       "op": "propose",
       "reason": "M3 设计 §12 D6：ORCHESTRATION.md §5 写定的同步卡场景要换里程碑，由人定",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-29T09:12:01.174Z",
+      "actor": "llm",
+      "op": "decide",
+      "reason": "用户选 A：出工作区申报的同步卡场景归 M4，在 m4 下建任务 m4-request-card",
+      "relay": "A",
+      "from": "approved",
+      "to": "done",
+      "option": "A",
+      "evidence": [
+        {
+          "kind": "decision",
+          "ref": "A"
+        }
+      ]
     }
   ]
 }

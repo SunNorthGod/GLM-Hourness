@@ -2,7 +2,7 @@
   "id": "question-21",
   "type": "question",
   "title": "卡片上的回答以谁的身份写进图",
-  "status": "approved",
+  "status": "done",
   "parent": "m3",
   "body": "确认卡、五键卡、决策卡上人的回答要落到图上（设计 §3.4.2、§3.4.3）。",
   "options": [
@@ -24,6 +24,13 @@
   ],
   "recommend": "A",
   "decider": "human",
+  "decision": "A",
+  "evidence": [
+    {
+      "kind": "decision",
+      "ref": "A"
+    }
+  ],
   "history": [
     {
       "at": "2026-10-29T08:51:27.706Z",
@@ -31,6 +38,22 @@
       "op": "propose",
       "reason": "M3 设计 §12 D3：给 harness 一个以人的身份写图的入口，涉及图引擎的权限与审计，由人定",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-29T09:12:00.557Z",
+      "actor": "llm",
+      "op": "decide",
+      "reason": "用户选 A：卡片上的回答由 harness 以人的身份写图，原因里写明哪张卡、点了什么、调用 id",
+      "relay": "A",
+      "from": "approved",
+      "to": "done",
+      "option": "A",
+      "evidence": [
+        {
+          "kind": "decision",
+          "ref": "A"
+        }
+      ]
     }
   ]
 }
