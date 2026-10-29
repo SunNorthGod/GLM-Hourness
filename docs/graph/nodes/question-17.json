@@ -1,0 +1,31 @@
+{
+  "id": "question-17",
+  "type": "question",
+  "title": "桌面版 profile 要不要跟着拆包改",
+  "status": "approved",
+  "parent": "split",
+  "body": "伞包与占位包让桌面版 profile 的两项 bundle、两项依赖与五条覆盖项原样生效（设计 §3.4）。",
+  "options": [
+    {
+      "key": "A",
+      "label": "不改",
+      "consequence": "profile 一行不动"
+    },
+    {
+      "key": "B",
+      "label": "改成直接列两个子包",
+      "consequence": "改 package.json 的 bundles 与 dependencies，先备份；多一次人批的 profile 改动与一次 L4，收益只是少两个清单"
+    }
+  ],
+  "recommend": "A",
+  "decider": "human",
+  "history": [
+    {
+      "at": "2026-10-29T03:42:34.342Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "split 设计 §14.5：改用户 profile 需要人批（AGENTS.md 第 6 条）",
+      "to": "approved"
+    }
+  ]
+}

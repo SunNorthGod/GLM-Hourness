@@ -84,6 +84,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "设计第三稿写完（.agents/tasks/split/design.md 版本 0.3），第二轮评审的 R15–R27 逐条处理，见设计 §13.2。主要改动：guard 的工具名换算加公共库静态别名表 ZCODE_ALIAS_NATIVES 兜底，方言服务缺席时拦截不变；第 6 步保留覆盖陈旧根 ui/client.js 的忽略项，L4 第一轮通过后删掉陈旧产物再用一个提交去掉这些忽略项，合入时主检出跑三道门禁；依据改为 main 0f9f284（m1-parity 已在 a9f12e1 合入）。本稿另发现 m8-ui-audit 的 V-01（把行名改成包说明符）与伞包布局冲突，新增一条待人定事项，建议 V-01 推迟到 split 合入之后。桌面 profile 仍不用改。待人定：两个目标的文字与改挂、guard 在方言未接管路由上的方案（建议 G2）、split 验收的改写、包名、V-01 与 split 的先后。等第三轮设计评审。"
+    },
+    {
+      "at": "2026-10-29T03:42:33.461Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "设计评审第三轮：APPROVED（HIGH 0、MEDIUM 0、LOW 5：R28–R32），第二轮 R15–R27 全部关闭，桌面 profile 不用改的结论在伞包布局下成立；终稿 .agents/tasks/split/design.md 0.3，评审 design-review.md、design-review.json。设计 §14 的待人定事项提为 question-13 到 question-18；§14.6 两项是条件性的，合入前触发时再问；§14.8 要人配合的是合入与两轮 L4 的桌面时段。"
     }
   ]
 }

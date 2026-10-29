@@ -1,0 +1,41 @@
+{
+  "id": "question-14",
+  "type": "question",
+  "title": "guard 在方言没接管的路由上怎么做",
+  "status": "approved",
+  "parent": "split",
+  "body": "三类路由：C 方言接管的 GLM 路由，N 没有方言的 GLM 调用，O 非 GLM 路由（设计 §4.2.1）。今天 C、N 拦截，O 不判不记。误伤数据只来自 GLM 在 ZCode 工具面上的行为，N 与 O 用的是 DSH 原生工具面，没有测过；N 在桌面版上今天不会出现。G2 同时要认可放开判据：影子记录满 14 天、至少 20 条、误伤为 0 时提待决（设计 §4.2.4）。不定时 split 第 7 步不合入，行为与今天相同，split 不能关。",
+  "options": [
+    {
+      "key": "G1",
+      "label": "维持：C、N 拦截，O 不判",
+      "consequence": "今天的行为；编排层永久保留两处模型族判定；split 验收第一条要改成不含 guard"
+    },
+    {
+      "key": "G2",
+      "label": "影子先行：C 拦截，N、O 只记影子",
+      "consequence": "N 由拦截改为影子（改 §6.2 的一处）；晨报多两组影子记录；攒够数据后由人决定是否放开；编排层不再有模型族判定"
+    },
+    {
+      "key": "G3",
+      "label": "全拦：C、N、O 都拦截",
+      "consequence": "推翻 2026-10-28 的修复；其他模型上的误伤率未知"
+    },
+    {
+      "key": "G4",
+      "label": "分规则：圈禁拦截，file-tools-only 只记影子",
+      "consequence": "对其他模型收紧了用户选的 danger-full-access 权限"
+    }
+  ],
+  "recommend": "G2",
+  "decider": "human",
+  "history": [
+    {
+      "at": "2026-10-29T03:42:33.811Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "split 设计 §14.2：改 ORCHESTRATION.md §6.2 的定案，由人定",
+      "to": "approved"
+    }
+  ]
+}

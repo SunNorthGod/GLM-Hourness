@@ -1,0 +1,36 @@
+{
+  "id": "question-13",
+  "type": "question",
+  "title": "两个项目目标怎么拆",
+  "status": "approved",
+  "parent": "split",
+  "body": "question-10 选 A 时写下「目标拆成两个」。草案文字在 .agents/tasks/split/design.md §6.2、§6.3：GLM 目标「GLM 住进 DSH：以 ZCode 3.16.3 的训练分布工作，质量与官方 ZCode 一致」；编排层目标「开发体系由 harness 保证实施：任何模型在 DSH 里沿项目图干活，人在图上编程」。文字本身由人改，草案只是起点。不定时 split 第 0–7 步照做，第 8 步（改 CHARTER 与图上的挂法）不做，split 不能关。",
+  "options": [
+    {
+      "key": "A",
+      "label": "两个根目标，编排层沿用 hourness，GLM 新建 glm-house",
+      "consequence": "bottom、q-old-folder 改挂 glm-house；orch 子树不动；每个任务的祖先链只带自己那一半的验收；m6 留在 orch，正文注明哪部分在哪个包"
+    },
+    {
+      "key": "B",
+      "label": "两个根目标，GLM 沿用 hourness，编排层新建",
+      "consequence": "orch 子树（大多数节点）要改挂；历史里「目标 hourness」的含义从总目标变成 GLM 目标"
+    },
+    {
+      "key": "C",
+      "label": "保留一个根目标，只改写文字",
+      "consequence": "不改挂；与 question-10 写下的「目标拆成两个」不符，GLM 任务的祖先链仍带编排层的验收"
+    }
+  ],
+  "recommend": "A",
+  "decider": "human",
+  "history": [
+    {
+      "at": "2026-10-29T03:42:33.637Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "split 设计 §14.1：改目标属于必须问人的一类（ORCHESTRATION.md §2.9.1）",
+      "to": "approved"
+    }
+  ]
+}
