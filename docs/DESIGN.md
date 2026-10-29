@@ -531,7 +531,7 @@ DSH 的 `TokenUsage` 各计数互不重叠：`inputTokens` 只算未命中缓存
 | --- | --- | --- |
 | ① | Harness 块 | 「终端显示」改为「DSH Web GUI 显示」，其余逐字 |
 | ② | Session guidance | 技能规则改写为 DSH 技能接缝 |
-| ③ | Environment | ZCode 骨架，填 DSH 真实目录、git、平台、shell |
+| ③ | Environment | ZCode 骨架，填 DSH 真实目录、git、平台、shell。只在 `glm-prompt` 配了 `env` 时加。工作目录取会话头 `session.header.cwd`（guard 的圈禁根取的也是这个字段），会话没有记录工作目录时才用配置里的 `env.cwd`〔2026-10-29，项目图 `prompt-fixes`〕。此前一律用配置值：桌面版配的是本仓库目录，在别的项目里开会话也写本仓库。会话头不可变，rc.3 在 `agent/created` 之前就给 agent 设好会话，所以这一节在会话内不变。代价：不同项目的会话这一节的文字不同，跨会话共用的缓存前缀在这一节断开，每个新项目会话的第 1 步少命中约 1k–2k token，GLM-5.3 全价约 1 积分（估计，清点报告 `.agents/tasks/prompt-audit/report.md` §7 第 7 条）；同一项目的会话之间不变。git 仓库、平台、shell、系统版本仍取配置 |
 | ④ | Desktop context | DSH 无对应特性的部分裁掉 |
 | ⑤ | Skills 引导 | DSH 技能清单 |
 | ⑥ | 工具描述与 schema 中的行为断言 | 垫片必须兑现描述与 schema 的承诺，兑现不了就改写或删去该句；七个别名的处理见 §5.4。Grep 删去原生做不到的参数，Bash 改写 shell 与工作目录两行 |

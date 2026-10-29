@@ -96,6 +96,20 @@ test('environment section joins only when host facts are provided', () => {
   assert.equal(dialectSections().some(section => section.name === 'glm:environment'), false)
 })
 
+test('the environment section names the session\'s own working directory; the configured one only stands in for a session without one', async () => {
+  const env = { cwd: 'C:\\ws', platform: 'win32', shell: 'pwsh', osVersion: '10.0', isGitRepository: true }
+  const environment = async (cwd?: string) => {
+    const rt = fakeRuntime(cwd === undefined ? {} : { cwd })
+    installDialect(rt.agent, { env })
+    return (await rt.assemble({ model: 'glm-5.3' })).sections.find(section => section.name === 'glm:environment')!.text
+  }
+  const elsewhere = await environment('D:\\other\\project')
+  assert.ok(elsewhere.includes('- Primary working directory: D:\\other\\project'), elsewhere)
+  assert.ok(!elsewhere.includes('C:\\ws'), elsewhere)
+  assert.ok(elsewhere.includes('- Platform: win32')) // the other host facts stay as configured
+  assert.ok((await environment()).includes('- Primary working directory: C:\\ws'))
+})
+
 
 test('skills note appends to session guidance when skills exist', () => {
   const withSkills = dialectSections(false, 'balanced', { skills: true })

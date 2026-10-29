@@ -51,7 +51,7 @@ export interface GlmPromptConfig {
   readonly persona?: PersonaLevel
   /** Tier: coding-plan (localized, default) or start-plan (byte-identical official mirror). */
   readonly tier?: 'coding-plan' | 'start-plan'
-  /** Host facts for the Environment section (ledger ③); omitted skips the section. */
+  /** Host facts for the Environment section (ledger ③); omitted skips the section. `cwd` stands in only for a session that records no working directory (sessionEnv). */
   readonly env?: { cwd: string, platform: string, shell: string, osVersion: string, isGitRepository: boolean, additionalDirectories?: readonly string[], modelLine?: string }
   /** Whether user-invocable skills exist (ledger ⑤ adds the skills note). */
   readonly skills?: boolean
@@ -64,7 +64,7 @@ export const Config = Schema.object({
   persona: Schema.union(PERSONA_LEVELS.map(level => Schema.const(level.id))).default('balanced').description('Reporting-depth standing preference for the persona slider.'),
   tier: Schema.union(['coding-plan', 'start-plan'].map(value => Schema.const(value))).default('coding-plan').description('Tier: coding-plan (localized ledger) or start-plan (verbatim official mirror).'),
   env: (() => { const env = Schema.object({
-    cwd: Schema.string().required().description('Working directory shown in the Environment section.'),
+    cwd: Schema.string().required().description('Working directory shown in the Environment section when the session records none; a session\'s own directory wins.'),
     platform: Schema.string().required(),
     shell: Schema.string().required(),
     osVersion: Schema.string().required(),
@@ -116,6 +116,20 @@ export function dialectSections(outputStyleActive = false, persona: PersonaLevel
  */
 export function memorySectionApplies(assembled: AssemblePayload): boolean {
   return MEMORY_TOOL_NAMES.every(name => assembled.tools.some(tool => tool.name === name))
+}
+
+/**
+ * The Environment host facts for one agent: the configured ones, with the
+ * working directory of the agent's own session. The session header is
+ * immutable creation metadata (the guard takes its containment root from
+ * the same field), and rc.3 sets an agent's session at construction, before
+ * `agent/created`; so the section is fixed per session and the prompt stays
+ * stable step to step. The configured `cwd` stands in only when the session
+ * records no directory.
+ */
+function sessionEnv(env: GlmPromptConfig['env'], agent: AgentLike): GlmPromptConfig['env'] {
+  const cwd = agent.session?.header.cwd
+  return env === undefined || typeof cwd !== 'string' || cwd.length === 0 ? env : { ...env, cwd }
 }
 
 /** ZCode alias → the DSH native it delegates to: this dialect's own alias definitions (aliasSpecs, Read, TodoWrite). */
@@ -181,7 +195,8 @@ export function buildAgentAliases(agent: AgentLike): BuiltAlias[] {
  * reads the GLM route of the step and the wall clock `now`.
  */
 export function installDialect(agent: AgentLike, config: GlmPromptConfig = {}, health?: Pick<RowHealth, 'report'>, now: () => number = () => Date.now()): () => void {
-  const sections = dialectSections(false, config.persona ?? 'balanced', config)
+  const env = sessionEnv(config.env, agent)
+  const sections = dialectSections(false, config.persona ?? 'balanced', env === undefined ? config : { ...config, env })
   const withoutMemory = sections.filter(section => section.name !== MEMORY_SECTION)
   const aliases = buildAgentAliases(agent)
   const aliasNames = new Set(aliases.map(alias => alias.tool.name))
