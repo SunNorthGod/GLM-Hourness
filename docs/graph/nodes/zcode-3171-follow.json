@@ -89,6 +89,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "桌面版 L4 通过（junction 指向工作树构建）：GLM-5.3-Flash 会话正常回答，系统提示词是 3.17.1 的文本，/glm-status 显示 glm-llm 生效。模型默认值已改回 deepseek-account/deepseek-flash/high，junction 已指回主检出，profile-shape 比对无差异，桌面版已关。接下来变基、重跑门禁、合入主干。"
+    },
+    {
+      "at": "2026-10-29T21:51:21.198Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "已合入主干。分支 zcode-3171 变基到 main 098656c（main 在 L4 之后只新增了 3 个改 docs/graph 的提交，代码与桌面版 L4 验过的相同），无冲突，14 个提交 11b1282..46e1884。工作树与主检出各跑一遍 build、preflight、npm test，全部通过（check-verbatim 对 3.17.1：489 项，0 处偏差；eslint 计数与基线相同；graph:smoke ok）。main 快进到 46e1884 后，另一会话在其上提交了只改图的 37ec91e 并推送，origin/main = 37ec91e，46e1884 在其中，没有强推。"
     }
   ]
 }
