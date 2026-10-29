@@ -2,7 +2,7 @@
   "id": "zcode-3171-follow",
   "type": "task",
   "title": "GLM 通道跟到 ZCode 3.17.1",
-  "status": "approved",
+  "status": "doing",
   "parent": "glm-house",
   "kind": "implement",
   "body": "按 d-zcode-3171 把 dsh-glm-zcode 的对齐基线换到 ZCode 3.17.1：系统提示词各节、身份开头、CLI 前缀、Harness 节、上下文管理节、工具说明与 schema、工具检索与结果文本、请求头与各版本号字段、签名与路由配置请求、设备号，以 zcode-3171 的差异清单为准逐处跟进；SECURITY_NOTICE_USER 原样保留。逐字门禁改为只认 reference/zcode-3.17.1/zcode.cjs。文档与行为同批改。",
@@ -27,6 +27,14 @@
       "reason": "用户定彻底换到新版 ZCode",
       "relay": "你就彻底都换成新版zcode，工程环境声明那个照旧",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-29T16:16:16.953Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "派出 prompt-fixes-merge-then-zcode-3171（wf_920936995c163f50）：差异清单之后在新工作树里跟到 3.17.1，过门禁、沙盒探针与真实请求、桌面版 L4 后合入",
+      "from": "approved",
+      "to": "doing"
     }
   ]
 }

@@ -43,6 +43,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "实现完成，在分支 prompt-fixes（基于 4f6c06b）：939bf9a guard 例外文字改为让模型去找人；0059e63 glm:environment 的目录取自会话头的工作目录；7b71a78 逐字门禁覆盖 dynamicSections，DESIGN.md §5.3、§5.8、§5.9 记下动态行为；e278738 DESIGN.md §5.2 的表按渲染顺序。build、preflight、npm test 全过（652 个，0 失败，基线不变），新增 3 个 L2 测试在基线上失败。接下来独立评审、探针、合入。"
+    },
+    {
+      "at": "2026-10-29T16:16:17.174Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "运行 wf_c8477623711d96d8 的评审步因运行环境的解密错误（BAD_DECRYPT，蓝屏之后）失败，与代码无关；分支 prompt-fixes 上的四个提交保留。剩下的评审、探针与合入交给 prompt-fixes-merge-then-zcode-3171（wf_920936995c163f50），并要求去掉代码步为让 npm test 通过而做的两处本地变通。"
     }
   ]
 }
