@@ -20,10 +20,12 @@
  *   transient failure (429, 5xx, network, timeout) keeps a still-valid token
  *   and retries 5 s later; `rejectedFingerprint` equal to the cached token's
  *   SHA-256 forces a new mint (the 401 refresh).
- * - Every failure surfaces as one 3.16.3 code (zcode-wire.ts
+ * - Every failure surfaces as one ZCode code (zcode-wire.ts
  *   PROJECT_TOKEN_CODES); messages never carry a token or server text.
+ *   Request failures carry their kind as 3.17.1 names it (`KAr`): network,
+ *   timeout, or the HTTP status.
  */
-import { CUSTOMER_INFO_PATH, PROJECT_KEY_LOCATION_PREFIX, PROJECT_TOKEN_CODES, ZCODE_API_KEY_NAME } from '../zcode-wire.ts'
+import { CUSTOMER_INFO_PATH, PROJECT_KEY_LOCATION_PREFIX, PROJECT_TOKEN_CODES, PROJECT_TOKEN_HTTP_CODE_PREFIX, ZCODE_API_KEY_NAME } from '../zcode-wire.ts'
 
 /** `pi`, `eF`, `tF`, `nF` (desktop chunk +849741): refresh 120 s before expiry minus up to 60 s of jitter; retry a deferred refresh after 5 s. */
 const SECOND_MS = 1_000
@@ -76,41 +78,77 @@ class ProjectAccessTokenError extends Error {
   }
 }
 
+/** What a PAT-plane request failed on (3.17.1 `j2`/`WG` `failure`). */
+type RequestFailure = { readonly kind: 'network' } | { readonly kind: 'timeout' } | { readonly kind: 'http', readonly status: number }
+
 /** `ProjectAccessTokenTransientError`: 429, 5xx, a network failure or a timeout. */
 class ProjectAccessTokenTransientError extends Error {
-  constructor() {
+  readonly failure: RequestFailure
+  constructor(failure: RequestFailure) {
     super('project_token_transient_failure')
     this.name = 'ProjectAccessTokenTransientError'
+    this.failure = failure
   }
+}
+
+/** `ProjectAccessTokenHttpStatusError` (3.17.1): any other status outside 2xx. */
+class ProjectAccessTokenHttpStatusError extends Error {
+  readonly failure: RequestFailure
+  constructor(status: number) {
+    super('project_token_http_status')
+    this.name = 'ProjectAccessTokenHttpStatusError'
+    this.failure = { kind: 'http', status }
+  }
+}
+
+/** `projectAccessTokenRequestFailureCode` (3.17.1 `KAr`). */
+function requestFailureCode(failure: RequestFailure): string {
+  if (failure.kind === 'network') return PROJECT_TOKEN_CODES.networkError
+  if (failure.kind === 'timeout') return PROJECT_TOKEN_CODES.timeout
+  return Number.isInteger(failure.status) && failure.status >= 100 && failure.status <= 599 ? `${PROJECT_TOKEN_HTTP_CODE_PREFIX}${failure.status}` : PROJECT_TOKEN_CODES.requestFailed
 }
 
 /** One PAT-plane request: the parsed JSON body, `{code: 404}` for HTTP 404; throws on any other failure. */
 export type ProjectTokenRequest = (url: string, init: { method: 'GET' | 'POST', headers: Record<string, string>, body?: string }) => Promise<unknown>
 
 /**
- * The request wrapper of 3.16.3 `createAccountProjectTokenClient` (`RM`,
- * desktop host index.js +1203000): 15 s timeout; 404 → `{code: 404}`; 429,
- * 5xx, network failures and timeouts are transient; other statuses fail.
- * The desktop sends through its API client (`Wt`); whether that client adds
- * default headers was not traced (docs/DESIGN.md §4.8), this sends the
- * literal headers 3.16.3 passes.
+ * The request wrapper of ZCode `createAccountProjectTokenClient` (3.16.3
+ * `RM`, desktop host index.js +1203000; 3.17.1 `Zht`): 15 s timeout; 404 →
+ * `{code: 404}`; 429, 5xx, network failures and timeouts are transient;
+ * other statuses fail with their status; a body that is not JSON is an
+ * invalid response (3.17.1). The desktop sends through its API client
+ * (`Wt`); whether that client adds default headers was not traced
+ * (docs/DESIGN.md §4.8), this sends the literal headers ZCode passes.
  */
 export function projectTokenRequest(fetchImpl: typeof fetch): ProjectTokenRequest {
   return async (url, init) => {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+    const unreachable = (): ProjectAccessTokenTransientError => new ProjectAccessTokenTransientError(controller.signal.aborted ? { kind: 'timeout' } : { kind: 'network' })
     try {
       let response: Response
       try {
         response = await fetchImpl(url, { ...init, signal: controller.signal })
       }
       catch {
-        throw new ProjectAccessTokenTransientError()
+        throw unreachable()
       }
       if (response.status === 404) return { code: 404 }
-      if (response.status === 429 || (response.status >= 500 && response.status < 600)) throw new ProjectAccessTokenTransientError()
-      if (!response.ok) throw new Error(`http_${response.status}`)
-      return await response.json() as unknown
+      if (response.status === 429 || (response.status >= 500 && response.status < 600)) throw new ProjectAccessTokenTransientError({ kind: 'http', status: response.status })
+      if (!response.ok) throw new ProjectAccessTokenHttpStatusError(response.status)
+      let body: string
+      try {
+        body = await response.text()
+      }
+      catch {
+        throw unreachable()
+      }
+      try {
+        return JSON.parse(body) as unknown
+      }
+      catch {
+        throw new ProjectAccessTokenError(PROJECT_TOKEN_CODES.invalidResponse)
+      }
     }
     finally {
       clearTimeout(timer)
@@ -329,8 +367,12 @@ export class ProjectAccessTokenClient {
     }
     catch (error) {
       const known: readonly string[] = [PROJECT_TOKEN_CODES.disabled, PROJECT_TOKEN_CODES.projectUnavailable, PROJECT_TOKEN_CODES.invalidResponse]
-      const code = error instanceof ProjectAccessTokenError ? error.code : error instanceof Error && known.includes(error.message) ? error.message : PROJECT_TOKEN_CODES.requestFailed
-      // eslint-disable-next-line preserve-caught-error -- 3.16.3 rethrows the bare code; the cause may quote server text or a request URL.
+      const code = error instanceof ProjectAccessTokenError
+        ? error.code
+        : error instanceof ProjectAccessTokenTransientError || error instanceof ProjectAccessTokenHttpStatusError
+          ? requestFailureCode(error.failure)
+          : error instanceof Error && known.includes(error.message) ? error.message : PROJECT_TOKEN_CODES.requestFailed
+      // eslint-disable-next-line preserve-caught-error -- ZCode rethrows the bare code; the cause may quote server text or a request URL.
       throw new Error(code)
     }
   }

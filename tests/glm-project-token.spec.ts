@@ -124,7 +124,7 @@ test('a transient failure keeps the still-valid token and retries 5 s later', as
   assert.equal((await client.resolve(input)).token, first.token)
   assert.equal(mintCalls, 3)
   clock += 200_000 // past expiry a transient failure has nothing to fall back on
-  await assert.rejects(client.resolve(input), /^Error: project_token_request_failed$/)
+  await assert.rejects(client.resolve(input), /^Error: project_token_http_503$/)
 })
 
 test('a rejected fingerprint equal to the cached token forces a new mint; another fingerprint does not', async () => {
@@ -170,7 +170,7 @@ test('a 404 mint drops the location; the next resolve locates again', async () =
   assert.equal(calls.filter(call => call.url === INFO).length, 2)
 })
 
-test('errors map to the 3.16.3 codes: login required, invalid response, request failed', async () => {
+test('errors map to the ZCode codes: login required, invalid response, request failed', async () => {
   const client = new ProjectAccessTokenClient({ request: plane().request })
   await assert.rejects(client.resolve({ ...input, loginToken: '   ' }), /^Error: project_token_login_required$/)
   await assert.rejects(client.resolve({ ...input, accountId: ' ' }), /^Error: project_token_login_required$/)
@@ -182,7 +182,23 @@ test('errors map to the 3.16.3 codes: login required, invalid response, request 
 test('the request wrapper: 404 is {code: 404}, 429 / 5xx / network are transient, other statuses fail', async () => {
   const answer = (status: number): typeof fetch => () => Promise.resolve(new Response('{}', { status }))
   assert.deepEqual(await projectTokenRequest(answer(404))(INFO, { method: 'GET', headers: {} }), { code: 404 })
-  for (const status of [429, 500, 503]) await assert.rejects(projectTokenRequest(answer(status))(INFO, { method: 'GET', headers: {} }), { name: 'ProjectAccessTokenTransientError' })
-  await assert.rejects(projectTokenRequest(() => Promise.reject(new TypeError('fetch failed')))(INFO, { method: 'GET', headers: {} }), { name: 'ProjectAccessTokenTransientError' })
-  await assert.rejects(projectTokenRequest(answer(403))(INFO, { method: 'GET', headers: {} }), /^Error: http_403$/)
+  for (const status of [429, 500, 503]) await assert.rejects(projectTokenRequest(answer(status))(INFO, { method: 'GET', headers: {} }), { name: 'ProjectAccessTokenTransientError', failure: { kind: 'http', status } })
+  await assert.rejects(projectTokenRequest(() => Promise.reject(new TypeError('fetch failed')))(INFO, { method: 'GET', headers: {} }), { name: 'ProjectAccessTokenTransientError', failure: { kind: 'network' } })
+  await assert.rejects(projectTokenRequest(answer(403))(INFO, { method: 'GET', headers: {} }), { name: 'ProjectAccessTokenHttpStatusError', failure: { kind: 'http', status: 403 } })
+  const notJson: typeof fetch = () => Promise.resolve(new Response('<html>', { status: 200 }))
+  await assert.rejects(projectTokenRequest(notJson)(INFO, { method: 'GET', headers: {} }), /^ProjectAccessTokenError: project_token_invalid_response$/)
+})
+
+test('request failures map to the 3.17.1 codes: network, timeout, the HTTP status', async (t) => {
+  const resolveWith = (fetchImpl: typeof fetch): Promise<unknown> => new ProjectAccessTokenClient({ request: projectTokenRequest(fetchImpl) }).resolve(input)
+  await assert.rejects(resolveWith(() => Promise.reject(new TypeError('fetch failed'))), /^Error: project_token_network_error$/)
+  await assert.rejects(resolveWith(() => Promise.resolve(new Response('{}', { status: 503 }))), /^Error: project_token_http_503$/)
+  await assert.rejects(resolveWith(() => Promise.resolve(new Response('{}', { status: 403 }))), /^Error: project_token_http_403$/)
+  await assert.rejects(resolveWith(() => Promise.resolve(new Response('nope', { status: 200 }))), /^Error: project_token_invalid_response$/)
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const hanging: typeof fetch = (_url, init) => new Promise((_resolve, reject) => init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError'))))
+  const timedOut = resolveWith(hanging)
+  await new Promise(resolve => setImmediate(resolve))
+  t.mock.timers.tick(15_000)
+  await assert.rejects(timedOut, /^Error: project_token_timeout$/)
 })

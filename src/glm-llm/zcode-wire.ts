@@ -1,16 +1,21 @@
 /**
- * Verbatim wire literals of ZCode 3.16.3 that the native channel sends or
- * matches. Every string here is a verbatim claim: scripts/check-verbatim.mjs
- * (MIRROR_FILES) requires each one of 13 characters or more to occur in the
- * 3.16.3 bundle. Offsets are characters in the pristine 3.16.3 CLI bundle
- * (docs/FACTS.md §1). Keep this file to plain string constants: the scanner
- * does not parse regex literals or division.
+ * Verbatim wire literals of ZCode that the native channel sends or matches,
+ * as 3.17.1 has them. Every string here is a verbatim claim:
+ * scripts/check-verbatim.mjs (MIRROR_FILES) requires each one of 13
+ * characters or more to occur in the ZCode reference. Offsets are characters
+ * in the pristine 3.16.3 CLI bundle, whose literals 3.17.1 keeps unchanged
+ * (docs/FACTS.md §1); a literal new in 3.17.1 names its 3.17.1 symbol. Keep
+ * this file to plain string constants: the scanner does not parse regex
+ * literals or division.
  */
 
 /**
  * ProjectAccessTokenClient error codes (`sge` @1082916 and its cache `Urt`
  * @1080367; the desktop host carries the same client). The resolve path
- * rethrows every failure as one of these messages.
+ * rethrows every failure as one of these messages. 3.17.1 splits request
+ * failures by kind (projectAccessTokenRequestFailureCode `KAr`): a network
+ * failure, a timeout, or `project_token_http_<status>`; anything else stays
+ * `project_token_request_failed`.
  */
 export const PROJECT_TOKEN_CODES = {
   loginRequired: 'project_token_login_required',
@@ -19,7 +24,12 @@ export const PROJECT_TOKEN_CODES = {
   invalidResponse: 'project_token_invalid_response',
   scopeInvalidated: 'project_token_scope_invalidated',
   requestFailed: 'project_token_request_failed',
+  networkError: 'project_token_network_error',
+  timeout: 'project_token_timeout',
 } as const
+
+/** Prefix of the 3.17.1 code for an HTTP status failure (`project_token_http_` + status). */
+export const PROJECT_TOKEN_HTTP_CODE_PREFIX = 'project_token_http_'
 
 /** The personal coding-plan API key name the client finds or creates. */
 export const ZCODE_API_KEY_NAME = 'zcode-api-key'

@@ -468,9 +468,9 @@ async function failingRun(stored: Credential, pat = patPlane()): Promise<{ error
 
 test('without a project access token the request fails closed as in 3.16.3: nothing is sent, the row health says why', async () => {
   const minting = await failingRun(credential, patPlane({ mintStatus: 500 }))
-  assert.equal(minting.error.message, 'glm-zcode: project access token unavailable (project_token_request_failed) — run /glm-login to sign in again')
+  assert.equal(minting.error.message, 'glm-zcode: project access token unavailable (project_token_http_500) — run /glm-login to sign in again')
   assert.deepEqual(minting.wire.filter(entry => !isPatPlane(entry)), []) // no routing config, no handshake, no model request
-  assert.deepEqual(minting.reports, [['inactive', '未拿到项目令牌（project_token_request_failed），按 3.17.1 不发送；运行 /glm-login']])
+  assert.deepEqual(minting.reports, [['inactive', '未拿到项目令牌（project_token_http_500），按 3.17.1 不发送；运行 /glm-login']])
   const { oauthAccessToken: _oauth, ...withoutOAuth } = credential
   const noOAuth = await failingRun(withoutOAuth)
   assert.equal(noOAuth.error.message, 'glm-zcode: project access token unavailable (Account request credential is unavailable: bigmodel) — run /glm-login to sign in again')
