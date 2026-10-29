@@ -183,6 +183,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "循环板设计 0.2 §17 给规则板的请求：1. 加 peakStop(sessionId): {stopped, until?}，在一处按档位、是否高峰、会话走不走 GLM 与「这个会话本次高峰照常做」判，对冷会话按项目判；之前循环板用 heldForPeak，每段高峰每个会话至多多花一步。2. stateFor 对冷会话为 undefined，请加 stateForProject(cwd) 或让 peakStop 带回档位。3. DetectorTrigger 的文件一种改为 {kind: 'event', events: ['loops.file-changed'], params: {path}}。4. 代码规则目录里 loops:schedule-tools 也拒绝以 Loop board: 开头的 schedule_create。5. 两块板的「<插件名>带来的」共用 pluginLabel（src/shared/plugin-labels.ts，谁先实现谁建）。规则板对 M6-R5 的不采用照旧成立，叫醒由循环板做。"
+    },
+    {
+      "at": "2026-10-29T20:50:25.310Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "rules-design-v07-write（wf_811e1f7ef668815e）分节改到 0.7（04:49，附录 D 已在）之后又因 TLS 错误结束，一页人话没写。分节保存起了作用，这次没有丢稿。派出单步 rules-design-v07-finish（wf_484792a90019455b）：不重写已改好的部分，只逐条核对 0.6 评审的各条与接缝裁定、补齐缺的，再写 onepage.md；独立评审在它之后另派。"
     }
   ]
 }
