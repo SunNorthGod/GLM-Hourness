@@ -237,6 +237,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "rules-design-v08-review（wf_d7d74114a43a3cac）在写下结论之前因 TLS 错误结束（design-review.json 仍是 0.7 的结论）。改派 rules-design-v08-review-retry（wf_25123e779c6831b3），只审改动处，发现一条写一条。"
+    },
+    {
+      "at": "2026-10-29T22:32:01.114Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "规则板设计 0.8 评审 APPROVED（rules-design-v08-review-retry，wf_25123e779c6831b3；.agents/tasks/rules/design-review.md 的 0.8 一轮）：HIGH 0、MEDIUM 0、LOW 4（F78–F81，实现时顺手改）；F59 按编排方裁定关闭。各轮挡路：0.4 1、0.5 5、0.6 8（截断稿）、0.7 1、0.8 0。一页人话放行稿 .agents/tasks/rules/onepage.md 已在。按 d-design-onepage 等人看过放行稿再开工实现。"
     }
   ]
 }
