@@ -109,6 +109,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "2026-10-29 02:09 本机蓝屏（BugCheck 0x3B；系统日志 Kernel-Power 41、EventLog 6008），夜间运行中断。修复第三轮在蓝屏前已完成：分支 m1-parity 新增 097bfda（压缩请求沿用本回合的 x-query-id）、529fe76（压缩请求的 effort 随会话最近一次主步）、798361f（FACTS 三处共用偏移补全），2bfbeef 与 bac18b4 合成 a598f4c；798361f 上 build、preflight、npm test 全过（39 个 spec、548 用例，逐字 443 段，ESLint 256 / knip 21 / jscpd 2，gitleaks 干净），记录在 .agents/tasks/zcode-parity/verification.md。评审第三轮没有开始。工作流 wf_d1ada0a4c5ac7157 的状态文件在蓝屏中被清零，不能续跑；分支与工作树完好（git fsck 无错，工作树干净，蓝屏前后写入的文件无清零），分支未推送。下一步：新开评审第三轮，通过后合入 main、沙盒真实请求核对、npm run probe。"
+    },
+    {
+      "at": "2026-10-29T00:44:50.449Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "第 9 项与 question-9 的决定不符：用户选 A（没有 deviceMid 时照 3.16.3 生成并写回 ~/.zcode），前一次运行的步骤提示词写于决定之前，仍写着只读；plan.md 已按 A 写了完整移植，但 23292da 只移植了读取，提交与文档把它称为已决定的偏离，评审两轮都按「question-9 A 的只读方案」放过。本机有 deviceMid，线上请求不受影响，只在没有 ZCode 设备 id 的机器上不同。派出 m1-parity-review3-merge（wf_fa55803c4c0e35bc）：先按 plan.md 第 9 项补写回并改掉称其为偏离的文字，再做评审第三轮（question-11：最后一轮，不过就停下等人），通过后合入 main、离线探针、沙盒真实请求核对、集成报告。"
     }
   ]
 }
