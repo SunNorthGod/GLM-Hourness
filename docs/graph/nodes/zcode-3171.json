@@ -47,6 +47,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "prompt-fixes-merge-then-zcode-3171 (wf_920936995c163f50) failed at its first coding step on the agent-runtime BAD_DECRYPT error; nothing was written. Since the 23:38 crash this error has failed every newly started step session (5 so far, coder, designer and reviewer alike); only workflow-creator sessions start. New runs are held until Kiro is restarted or signed in again; zcode-3171, zcode-3171-follow and the rest of prompt-fixes wait for that."
+    },
+    {
+      "at": "2026-10-29T16:35:20.585Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "Correction to the previous comment: not every new step session fails. Since the crash 5 step sessions failed at start with BAD_DECRYPT (prompt-fixes review, rules write twice, m6 round-2 review, this run first coding step), while others started fine (M3 addendum round-2 review, plain-ui 0.4 author, M4 0.2 author, workflow-creator sessions). Cause unknown; new runs are still held until Kiro is restarted or signed in again."
     }
   ]
 }
