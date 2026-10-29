@@ -45,6 +45,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "m3-base 分支三个提交：9c3b2d5 推荐必须放在最后（引擎核对）、05e32ec 引擎放开自己提议的目标（M3 第 1 步）、eb466b5 阶段与主 Agent 的纯函数模块（M3 第 2 步）；三道门禁全过，579 个测试，检查器基线不变；独立评审第 1 轮 APPROVED，无阻断、4 条非阻断（.agents/tasks/m3-base/review.md）。卡片字段的改动 4 写好并过了门禁，停在 m3-base-card 分支的 de0ccf6，等表格版卡片的字段定稿（d-option-card）。L3 探针已放行，之后等合入的先后安排。"
+    },
+    {
+      "at": "2026-10-29T11:37:44.615Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m3-base 的 L3 探针（eb466b5，临时 profile glmsandbox-m3base 的两个 junction 指向工作树，跑完已删除）：94/94 通过，与 main 基线相同；运行目录 .llm/probe-runs/2026-10-29T11-36-06-091Z，日志 .agents/tasks/m3-base/probe.log。改动 1–3 按评审结果待合入；改动 4（m3-base-card 的 de0ccf6）继续停着，等字段表定稿。"
     }
   ]
 }
