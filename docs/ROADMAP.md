@@ -60,6 +60,8 @@
 
 ### M3 设计循环最小闭环
 
+M3 起编排层的新行与新文件都在编排层包 `dsh-hourness` 里做（源码目录登记在 `scripts/packages.mjs`，`DESIGN.md` §2.3）；它对任何模型生效，不得导入 GLM 包的目录。
+
 | # | 条目 | 节点 |
 | --- | --- | --- |
 | 3.1 | 主 Agent 身份文本（三问四答、五键、许愿访谈）；guard 拦主 Agent 的写入，不靠 preset（`ORCHESTRATION.md` §3.1） | `m3-1` |

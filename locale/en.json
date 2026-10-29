@@ -1,6 +1,0 @@
-{
-  "meta": {
-    "title": "GLM-Hourness",
-    "description": "Runs GLM on its ZCode training distribution inside DeepSeek Harness: prompt/tool-surface mirror, lazy tool loading, guard rails, audit journal, memory, the project graph, and the /hourness usage report."
-  }
-}

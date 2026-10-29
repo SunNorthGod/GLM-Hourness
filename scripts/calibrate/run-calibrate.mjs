@@ -10,7 +10,8 @@
  *
  * Usage: npm run calibrate -- [--tasks <id,...>] [--models glm-5.3,glm-5.3-flash]
  *        [--repeat 1] [--max-steps 40] [--minutes 15] [--permission danger-full-access]
- * Run `npm run build` first: the sandbox loads this repository's dist/.
+ * Run `npm run build` first: the sandbox loads the build output under
+ * packages/<package>/dist/ of the checkout its profile links.
  * Each invocation writes .llm/calibration-runs/<timestamp>/ (gitignored):
  * results.json for the whole invocation, and per run its overlay, the
  * headless --json event stream, stderr, the limits record, the checker
@@ -23,7 +24,7 @@ import { cpSync, createWriteStream, existsSync, mkdirSync, readdirSync, readFile
 import { join } from 'node:path'
 import { parseArgs } from 'node:util'
 // The GLM credit plan (docs/FACTS.md §2.4) the glm-login row serves to the usage panel.
-import { chargedCredits, CREDIT_RATES, fullCredits, peakWindowAt } from '../../dist/glm-llm/credits.js'
+import { chargedCredits, CREDIT_RATES, fullCredits, peakWindowAt } from '../../packages/glm/dist/glm-llm/credits.js'
 import { attachmentsIn, dataRows, initRepo, limitsRow, repo, requireDesktop, sandboxCommand, slash, workspaceChangesRow } from '../sandbox.mjs'
 
 requireDesktop('calibrate')

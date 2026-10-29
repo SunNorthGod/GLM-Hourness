@@ -1,7 +1,7 @@
 /**
  * hourness data plane: the usage panel and the dispatch panel read the audit
  * journal — no separate bookkeeping. Pure functions over JSONL text; the
- * `/hourness` command renders them (src/ui/index.ts).
+ * `/hourness` command renders them (src/report/index.ts).
  *
  * The usage panel prices calls through the pricing service
  * (src/shared/pricing.ts, docs/ORCHESTRATION.md §11.3), which the GLM

@@ -1,0 +1,33 @@
+// knip: unused files, exports and dependencies (docs/ROADMAP.md M1.9).
+// The root package.json is the development workspace and exports nothing,
+// so the entries are listed here, generated from the directory table
+// (scripts/packages.mjs): every host row's source module, which DSH loads
+// through a package's patch. scripts/check-lint.mjs passes
+// --tsConfig tsconfig.knip.json, whose references map packages/*/dist back
+// to src/ for the scripts that import build output.
+import { PACKAGES } from './scripts/packages.mjs'
+
+export default {
+  $schema: 'https://unpkg.com/knip@6/schema.json',
+  entry: [
+    ...PACKAGES.flatMap(pkg => pkg.rows.map(row => `src/${row.module}.ts`)),
+    // UI bundle rows: DSH loads them through ui/package.json and ui/cordis.patch.yml;
+    // the client half is ui/src/client.tsx, bundled into ui/client.js by scripts/build-ui.mjs.
+    'ui/index.js',
+    'ui/src/client.tsx',
+    // Probe provider, probe clock and dispatch spike: run-probe.mjs passes their paths to the DSH Loader.
+    'scripts/probe/probe-llm.mjs',
+    'scripts/probe/probe-clock.mjs',
+    'scripts/probe/probe-dispatch.mjs',
+    // Calibration bounds row: scripts/sandbox.mjs passes its path to the DSH Loader.
+    'scripts/calibrate/limits.mjs',
+    // Calibration checkers: run-calibrate.mjs starts each task's check.mjs by path.
+    'tests/calibration/*/check.mjs',
+  ],
+  project: ['src/**/*.ts', 'tests/**/*.{ts,mjs}', 'scripts/**/*.{mjs,cjs,ts}', 'ui/index.js', 'ui/src/**/*.{js,ts,tsx}'],
+  ignore: ['ui/client.js'],
+  // The client half gets React, react-dom (the pill dialog's portal) and
+  // ui-primitives from the DSH client module table (the factory's require,
+  // scripts/ui-modules.mjs), not from node_modules.
+  ignoreDependencies: ['react', 'react-dom', '@deepseek-ai/dsh-client-ui-primitives'],
+}

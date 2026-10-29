@@ -344,7 +344,7 @@ test('activation never throws: a bad config or a failed registration warns and s
 })
 
 test('the graph row ships enabled after its L3 probe (ROADMAP M2 2.11), injecting the tools service', async () => {
-  const patch = await readFile(new URL('../cordis.patch.yml', import.meta.url), 'utf8')
+  const patch = await readFile(new URL('../packages/hourness/cordis.patch.yml', import.meta.url), 'utf8')
   const lines = patch.split('\n')
   const start = lines.findIndex(line => line.trim() === '- id: glm-hourness/graph')
   assert.ok(start >= 0, 'the patch declares the graph row')

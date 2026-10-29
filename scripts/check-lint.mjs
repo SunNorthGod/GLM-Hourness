@@ -69,7 +69,10 @@ function eslint() {
 
 /** knip findings as stable keys: "<type> <file> <name>" ("files <file>" for unused files). */
 function knipFindings() {
-  const result = run(KNIP, ['--reporter', 'json', '--no-progress', '--no-exit-code'])
+  // tsconfig.knip.json references the package tsconfigs, so imports of
+  // packages/*/dist map back to src/ (only knip reads it: tsc refuses
+  // references to non-composite projects).
+  const result = run(KNIP, ['--reporter', 'json', '--no-progress', '--no-exit-code', '--tsConfig', 'tsconfig.knip.json'])
   if (result.status !== 0) throw new Error(`knip did not run (exit ${result.status}):\n${result.stderr}`)
   const findings = new Set()
   for (const issue of JSON.parse(result.stdout).issues) {

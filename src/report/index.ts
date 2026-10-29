@@ -3,7 +3,7 @@
  * morning report (exceptions → decision curve → usage) plus the usage panel
  * — from the project directory (decisions, violations) and the user-level
  * directory (usage, docs/DESIGN.md §2.4). Pure data plane from
- * src/ui/panel.ts and src/workflow/morning-report.ts; no separate
+ * src/report/panel.ts and src/workflow/morning-report.ts; no separate
  * bookkeeping. The panel prices calls through the pricing service the GLM
  * channel package's glm-login row provides (src/shared/pricing.ts), read per
  * invocation; without it the panel lists calls and tokens. Registers through

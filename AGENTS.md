@@ -1,6 +1,6 @@
 # GLM-Hourness 仓库规则
 
-本仓库是 DeepSeek Harness 的第三方 bundle（多行 cordis 插件），目标与原则见 [docs/CHARTER.md](docs/CHARTER.md)。开发与交付必须遵守 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)，实施顺序见 [docs/ROADMAP.md](docs/ROADMAP.md)。
+本仓库产出两个 DeepSeek Harness 第三方 bundle（dsh-glm-zcode、dsh-hourness，都是多行 cordis 插件，在 `packages/` 下；根目录只是开发工作区），目标与原则见 [docs/CHARTER.md](docs/CHARTER.md)。开发与交付必须遵守 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)，实施顺序见 [docs/ROADMAP.md](docs/ROADMAP.md)。
 
 ## 强制流程
 

@@ -21,49 +21,54 @@
  *
  * Usage: node scripts/probe/run-probe.mjs
  * Requires the desktop install (DSH_DESKTOP_DIR overrides the location).
- * The runtime boots the profile probe-full, generated per run under its own
- * DSH home in the run directory and linked to the checkout this script is in
- * (scripts/sandbox.mjs generateProfile), so the main checkout and a worktree
- * are tested the same way and ~/.dsh/profiles is never used. Each run writes
- * the DSH home, overlays, request dumps and logs under
+ * The runtime boots profiles generated per run under one DSH home in the run
+ * directory and linked to the checkout this script is in
+ * (scripts/sandbox.mjs generateProfile, PROBE_PROFILES): probe-full lists
+ * both packages and runs every scenario but two; glm-only runs on
+ * probe-glm (the GLM channel package alone) and hourness-only on
+ * probe-hourness (the orchestration package alone). The main checkout and a
+ * worktree are tested the same way and ~/.dsh/profiles is never used. Each
+ * run writes the DSH home, overlays, request dumps and logs under
  * .llm/probe-runs/<timestamp>/ (gitignored).
  *
- * Guard (exit 2, no conclusion): probe-full already exists under the real
- * profiles directory, the profile cannot be generated, or the project part
- * of the desktop or glmsandbox profile (bundles, dependencies, glm-hourness/
- * overrides; scripts/profile-shape.mjs) changed during the run; other
- * changes there are listed only. A probe-full appearing under the real
- * profiles directory (DSH_HOME not honored) or a change of the real usage
- * journal fails the run (exit 1).
+ * Guard (exit 2, no conclusion): a profile of that name already exists
+ * under the real profiles directory, a profile cannot be generated, or the
+ * project part of the desktop or glmsandbox profile (bundles, dependencies,
+ * glm-hourness/ overrides; scripts/profile-shape.mjs) changed during the
+ * run; other changes there are listed only. One of the generated names
+ * appearing under the real profiles directory (DSH_HOME not honored) or a
+ * change of the real usage journal fails the run (exit 1).
  */
 import { spawnSync } from 'node:child_process'
 import { cpSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { crc32, deflateSync } from 'node:zlib'
-import { DISPATCH_TOOLS } from '../../dist/workflow/index.js'
-import { PEAK_REMINDER_SOURCE, PEAK_REMINDER_TEXT } from '../../dist/glm-prompt/peak-reminder.js'
-import { peakWindowAt } from '../../dist/glm-llm/credits.js'
-import { userDataHome } from '../../dist/shared/data-home.js'
-import { HEALTH_PACKAGES, HEALTH_ROWS } from '../../dist/shared/health.js'
-import { GRAPH_TOOL_NAMES } from '../../dist/shared/tool-names.js'
-import { openEngine } from '../../dist/graph/engine.js'
-import { runNote } from '../../dist/graph/run.js'
-import { loadGraph } from '../../dist/graph/store.js'
+import { DISPATCH_TOOLS } from '../../packages/hourness/dist/workflow/index.js'
+import { PEAK_REMINDER_SOURCE, PEAK_REMINDER_TEXT } from '../../packages/glm/dist/glm-prompt/peak-reminder.js'
+import { peakWindowAt } from '../../packages/glm/dist/glm-llm/credits.js'
+import { userDataHome } from '../../packages/hourness/dist/shared/data-home.js'
+import { HEALTH_PACKAGES, HEALTH_ROWS } from '../../packages/hourness/dist/shared/health.js'
+import { GRAPH_TOOL_NAMES, MEMORY_TOOL_NAMES } from '../../packages/glm/dist/shared/tool-names.js'
+import { openEngine } from '../../packages/hourness/dist/graph/engine.js'
+import { runNote } from '../../packages/hourness/dist/graph/run.js'
+import { loadGraph } from '../../packages/hourness/dist/graph/store.js'
 import { compareShapes, describeDifference, isProjectDifference, profileShape } from '../profile-shape.mjs'
-import { attachmentsIn, dataRows, generateProfile, initRepo, limitsRow, repo, requireDesktop, sandboxCommand, slash, unlinkProfile, workspaceChangesRow } from '../sandbox.mjs'
+import { PACKAGES } from '../packages.mjs'
+import { attachmentsIn, dataRows, generateProfile, initRepo, limitsRow, PROBE_PROFILES, repo, requireDesktop, sandboxCommand, slash, unlinkProfile, workspaceChangesRow } from '../sandbox.mjs'
 import { GOAL_GATE_DENIAL, PROJECTION_SOURCE, SCOPE_DENIAL } from './probe-dispatch.mjs'
 
 requireDesktop('probe')
 
 const runDir = join(repo, '.llm', 'probe-runs', new Date().toISOString().replace(/[:.]/g, '-'))
 
-// The run boots a profile generated under its own DSH home; the user's
-// profiles directory must not gain it, and the profiles there must keep
+// The run boots profiles generated under its own DSH home; the user's
+// profiles directory must not gain them, and the profiles there must keep
 // their project part (scripts/profile-shape.mjs).
-const GENERATED_PROFILE = 'probe-full'
+const GENERATED_PROFILES = Object.keys(PROBE_PROFILES)
 const realProfiles = join(dirname(userDataHome()), 'profiles')
-if (existsSync(join(realProfiles, GENERATED_PROFILE))) {
-  console.error(`probe: ${join(realProfiles, GENERATED_PROFILE)} already exists; find out which run left it before deleting it`)
+const leftOver = GENERATED_PROFILES.filter(name => existsSync(join(realProfiles, name)))
+if (leftOver.length > 0) {
+  console.error(`probe: ${leftOver.map(name => join(realProfiles, name)).join(', ')} already exist(s); find out which run left them before deleting them`)
   process.exit(2)
 }
 const GUARDED_PROFILES = ['desktop', 'glmsandbox'].filter(name => existsSync(join(realProfiles, name, 'package.json')))
@@ -82,15 +87,19 @@ for (const [name, shape] of shapesBefore) {
     process.exit(2)
   }
 }
-let profile
-try {
-  profile = generateProfile(join(runDir, 'dsh-root'), GENERATED_PROFILE)
+/** The generated profiles by name; every one generated is unlinked on exit, a failed run included. */
+const profiles = {}
+process.on('exit', () => Object.values(profiles).forEach(unlinkProfile))
+for (const [name, packages] of Object.entries(PROBE_PROFILES)) {
+  try {
+    profiles[name] = generateProfile(join(runDir, 'dsh-root'), name, packages)
+  }
+  catch (error) {
+    console.error(`probe: cannot generate the ${name} profile under ${runDir}: ${error instanceof Error && 'code' in error ? error.code : String(error)}`)
+    process.exit(2)
+  }
 }
-catch (error) {
-  console.error(`probe: cannot generate the ${GENERATED_PROFILE} profile under ${runDir}: ${error instanceof Error && 'code' in error ? error.code : String(error)}`)
-  process.exit(2)
-}
-process.on('exit', () => unlinkProfile(profile))
+const PACKAGE_NAME = Object.fromEntries(PACKAGES.map(pkg => [pkg.key, pkg.name]))
 
 /** A solid red 8x8 RGB PNG, built byte by byte so the fixture needs no binary file. */
 function redPng(size = 8) {
@@ -126,23 +135,25 @@ const realUsageBefore = usageStamp()
  * directory (scripts/sandbox.mjs dataRows: project directory `<dir>/home`,
  * DSH home `<dir>/dsh-home`). `others` holds the scripts of later sessions
  * (subagents, extra root agents) in the order they first ask; their
- * requests are in `steps` too, under their own session id.
+ * requests are in `steps` too, under their own session id. `on` is the
+ * generated profile to boot; the overlay patches only rows of the packages
+ * it lists, so a single-package run has no override without a target.
  */
-function runScenario(name, model, script, task, overlay = [], cwd = repo, others = []) {
+function runScenario(name, model, script, task, overlay = [], cwd = repo, others = [], on = profiles['probe-full']) {
   const dir = join(runDir, name)
   const home = join(dir, 'home')
   mkdirSync(home, { recursive: true })
   const dump = join(dir, 'requests.jsonl')
   writeFileSync(dump, '')
   const patch = join(dir, 'probe.patch.yml')
+  const lists = key => on.packages.includes(PACKAGE_NAME[key])
   writeFileSync(patch, [
     '- id: agent-default-model',
     `  config: { provider: glm-probe, model: ${JSON.stringify(model)} }`,
-    ...dataRows(dir),
+    ...(lists('hourness') ? dataRows(dir) : []),
     // /glm-status reads the credential store under the glm-login home; the
     // scenario home has none, so the probe never reads the real store.
-    '- id: glm-hourness/glm-login',
-    `  config: { home: ${JSON.stringify(slash(home))} }`,
+    ...(lists('glm') ? ['- id: glm-hourness/glm-login', `  config: { home: ${JSON.stringify(slash(home))} }`] : []),
     '- insert:',
     '    - id: glm-hourness-probe/llm',
     `      name: ${JSON.stringify(slash(join(repo, 'scripts', 'probe', 'probe-llm.mjs')))}`,
@@ -151,7 +162,7 @@ function runScenario(name, model, script, task, overlay = [], cwd = repo, others
     ...overlay,
     '',
   ].join('\n'))
-  const { exe, args, env } = sandboxCommand(patch, [task], profile)
+  const { exe, args, env } = sandboxCommand(patch, [task], on)
   const started = Date.now()
   const result = spawnSync(exe, args, { cwd, encoding: 'utf8', timeout: 180_000, env })
   const elapsedMs = Date.now() - started
@@ -349,6 +360,55 @@ const PEAK_NOTICE = `<system-reminder>\n${PEAK_REMINDER_TEXT}\n</system-reminder
 const plain = runScenario('non-glm', 'deepseek-probe', [{ text: 'done', status: true, command: { name: 'hourness-status' } }], 'Reply done.', clockRow(PEAK_AT))
 const plainFirst = plain.steps[0]
 const plainTools = names(plainFirst)
+
+// One package at a time (split design §7.3): each package installed alone
+// activates without the other. glm-only boots probe-glm (the GLM channel
+// package alone) on GLM-5.3 at the peak clock: the dialect is whole, the
+// face has no graph or memory tools, the glm:memory section is gone, and
+// /glm-status shows the orchestration package as one line not loaded.
+const stderrOf = scenario => existsSync(join(runDir, scenario, 'stderr.txt')) ? readFileSync(join(runDir, scenario, 'stderr.txt'), 'utf8') : ''
+const MEMORY_SECTION_LINE = 'You have a persistent memory in this workspace'
+const glmOnlyDir = join(runDir, 'glm-only')
+const glmOnly = runScenario('glm-only', 'glm-5.3', [
+  { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } } },
+  { text: 'done', status: true },
+], 'Read package.json, then reply done.', clockRow(PEAK_AT), repo, [], profiles['probe-glm'])
+const glmOnlyFirst = glmOnly.steps[0]
+const glmOnlyTools = names(glmOnlyFirst)
+const glmOnlyRead = lastToolResult(glmOnly.steps[1])
+// hourness-only boots probe-hourness (the orchestration package alone) on
+// the non-GLM route, in a workspace with a seeded graph: graph_focus
+// projects on the next request, a native write into the graph is denied by
+// graph-files-only, a shell write runs (the guard row judges GLM calls
+// only), /hourness-status shows the GLM package as one line not loaded, and
+// /hourness lists calls and tokens without the pricing service.
+const hournessOnlyDir = join(runDir, 'hourness-only')
+const hournessOnlyWs = join(hournessOnlyDir, 'ws')
+const hournessOnlyGraph = join(hournessOnlyWs, 'docs', 'graph')
+mkdirSync(hournessOnlyGraph, { recursive: true })
+const hournessOnlyEngine = openEngine(hournessOnlyGraph)
+for (const node of [
+  { type: 'goal', title: '探针目标' },
+  { type: 'task', title: '探针任务', parent: 'goal-1', acceptance: ['probe acceptance'] },
+]) {
+  const seeded = await hournessOnlyEngine.apply('human', { op: 'propose', reason: 'probe seed', node })
+  if (!seeded.ok) throw new Error(`probe: seeding the hourness-only graph failed: ${JSON.stringify(seeded.error)}`)
+}
+const hournessOnlyNode = join(hournessOnlyGraph, 'nodes', 'probe-direct.json')
+const hournessOnlyShell = join(hournessOnlyWs, 'shell.txt')
+const hournessOnly = runScenario('hourness-only', 'deepseek-probe', [
+  { tool: { name: 'graph_focus', arguments: { id: 'task-1' } } },
+  { tool: { name: 'write', arguments: { file_path: hournessOnlyNode, content: '{}\n' } }, command: { name: 'hourness-status' } },
+  { tool: { name: 'pwsh', arguments: { command: `Set-Content -Path '${hournessOnlyShell}' -Value probe`, description: 'Write a file through the shell' } } },
+  { text: 'done', command: { name: 'hourness' } },
+], 'Set the graph focus, write two files, then reply done.', [], hournessOnlyWs, [], profiles['probe-hourness'])
+const hournessOnlyFirst = hournessOnly.steps[0]
+const hournessOnlyTools = names(hournessOnlyFirst)
+const hournessOnlyProjection = hournessOnly.steps[1]?.messages.at(-1)
+const hournessOnlyWrite = lastToolResult(hournessOnly.steps[2])
+const hournessOnlyPwsh = lastToolResult(hournessOnly.steps[3])
+const hournessOnlyStatus = hournessOnly.steps[1]?.command
+const hournessOnlyReport = hournessOnly.steps[3]?.command
 
 // Calibration run bounds (scripts/calibrate/limits.mjs, ROADMAP M1.7). The
 // step limit rejects the third step of a script that would read forever;
@@ -649,7 +709,7 @@ const checkpoint = compacted.steps.at(-1)?.messages.find(message => message.sour
 const usageOf = scenario => jsonl(join(runDir, scenario, 'dsh-home', 'glm-hourness', 'audit', 'usage.jsonl'))
 const glmUsage = usageOf('glm').filter(record => record.purpose === undefined)
 const compactUsage = usageOf('glm-compact').filter(record => record.purpose === 'compaction')
-const projectUsage = ['glm', 'glm-flash', 'glm-todo', 'glm-compact', 'glm-shadow', 'glm-guard-paths', 'non-glm', 'non-glm-guard', 'glm-no-dialect', 'glm-peak', 'limits-steps', 'limits-time', 'glm-dispatch', 'glm-goal', 'goal-headless'].filter(scenario => existsSync(join(runDir, scenario, 'home', 'audit', 'usage.jsonl')))
+const projectUsage = ['glm', 'glm-flash', 'glm-todo', 'glm-compact', 'glm-shadow', 'glm-guard-paths', 'non-glm', 'non-glm-guard', 'glm-no-dialect', 'glm-peak', 'limits-steps', 'limits-time', 'glm-dispatch', 'glm-goal', 'goal-headless', 'glm-only', 'hourness-only'].filter(scenario => existsSync(join(runDir, scenario, 'home', 'audit', 'usage.jsonl')))
 const glmViolations = jsonl(join(glmDir, 'home', 'audit', 'violations.jsonl'))
 const stepLimits = jsonl(limitsRecord('limits-steps'))
 const timeLimits = jsonl(limitsRecord('limits-time'))
@@ -664,14 +724,14 @@ const plainSubagentTools = [...plainTools].filter(name => name === 'subagent' ||
 // line whose row cell is 全部 (src/shared/health.ts).
 const statusStep = scenario => scenario.steps.findLast(step => step.status !== undefined)
 const TABLE_HEAD = '| 包 | 行 | 状态 | 说明 |'
-const healthOf = (scenario) => {
-  const step = statusStep(scenario)
-  const lines = (step?.status ?? '').split('\n').filter(line => line.startsWith('| ') && line !== TABLE_HEAD && !line.startsWith('| ---'))
+const tableOf = (text) => {
+  const lines = text.split('\n').filter(line => line.startsWith('| ') && line !== TABLE_HEAD && !line.startsWith('| ---'))
   return Object.fromEntries(lines.map((line) => {
     const [pkg, row, status, ...reason] = line.slice(2, -2).split(' | ')
     return [row, { package: pkg, status, reason: reason.join(' | ') }]
   }))
 }
+const healthOf = scenario => tableOf(statusStep(scenario)?.status ?? '')
 const packageOf = Object.fromEntries(HEALTH_PACKAGES.flatMap(entry => entry.rows.map(row => [row, entry.name])))
 const grouped = health => HEALTH_ROWS.every(row => health[row]?.package === packageOf[row])
 const glmHealth = healthOf(glm)
@@ -695,16 +755,39 @@ const ACTED = '生效'
 const IDLE = '已加载，本会话未触发'
 const conversationTexts = [glm, plain, compacted, shadow].flatMap(scenario => scenario.steps.flatMap(step => [step.system, ...step.messages.map(message => message.text)]))
 
+// The single-package runs: a package with no row loaded is one line whose
+// row cell is 全部 (src/shared/health.ts).
+const WHOLE = '全部'
+const rowsOf = key => HEALTH_PACKAGES.find(entry => entry.name === PACKAGE_NAME[key])?.rows ?? []
+const onlyOneLoaded = (health, own, other) => rowsOf(own).every(row => health[row]?.package === PACKAGE_NAME[own]) && health[WHOLE]?.package === PACKAGE_NAME[other] && health[WHOLE].status === '未加载' && health[WHOLE].reason === '包未安装，或它的行全部禁用' && Object.keys(health).length === rowsOf(own).length + 1
+const glmOnlyHealth = healthOf(glmOnly)
+const hournessOnlyHealth = tableOf(hournessOnlyStatus?.text ?? '')
+const hournessOnlyPanel = hournessOnlyReport?.text.split('## 面板\n')[1] ?? ''
+const hournessOnlyViolations = jsonl(join(hournessOnlyDir, 'home', 'audit', 'violations.jsonl'))
+const glmOnlyUsage = [join(glmOnlyDir, 'home', 'audit', 'usage.jsonl'), join(glmOnlyDir, 'dsh-home', 'glm-hourness', 'audit', 'usage.jsonl'), join(runDir, 'dsh-root', 'glm-hourness', 'audit', 'usage.jsonl')].filter(file => existsSync(file))
+const quiet = scenario => !stderrOf(scenario).includes('skipping profile bundle') && !stderrOf(scenario).includes('dsh-glm-hourness/')
+
 
 // The launcher rewrites the root config of the profile it boots
 // (cordis.yml, written here as a bare []): the runs used the generated
-// profile, found through DSH_HOME, and the real profiles directory did not
-// gain it.
-const generatedRoot = readFileSync(join(profile.dir, 'cordis.yml'), 'utf8')
-const leakedProfile = existsSync(join(realProfiles, GENERATED_PROFILE))
+// profiles, found through DSH_HOME, and the real profiles directory did not
+// gain them.
+const rewritten = Object.values(profiles).filter(item => readFileSync(join(item.dir, 'cordis.yml'), 'utf8').startsWith('# dsh profile root')).map(item => item.name)
+const leaked = GENERATED_PROFILES.filter(name => existsSync(join(realProfiles, name)))
 
 const checks = [
-  ['sandbox: the runtime booted the profile generated under the run directory (its cordis.yml rewritten by the launcher); the real profiles directory has no probe-full', generatedRoot.startsWith('# dsh profile root') && !leakedProfile, `cordis.yml ${generatedRoot.startsWith('# dsh profile root') ? 'rewritten' : 'untouched'}; ${join(realProfiles, GENERATED_PROFILE)} ${leakedProfile ? 'exists' : 'absent'}`],
+  ['sandbox: the runtime booted each profile generated under the run directory (its cordis.yml rewritten by the launcher); the real profiles directory has none of them', rewritten.length === GENERATED_PROFILES.length && leaked.length === 0, `rewritten: ${rewritten.join(', ') || 'none'}; under ${realProfiles}: ${leaked.join(', ') || 'none'}`],
+  ['glm-only: with only the GLM channel package the GLM request has the ZCode identity, the aliases and the search controls, and no graph or memory tool', glmOnlyFirst?.system.includes('You are ZCode, an interactive coding agent') === true && zcodeFace.every(name => glmOnlyTools.has(name)) && searchControls.every(name => glmOnlyTools.has(name)) && ![...glmOnlyTools].some(name => GRAPH_TOOL_NAMES.includes(name) || MEMORY_TOOL_NAMES.includes(name)) && glmOnlyRead?.isError !== true, glmOnlyFirst === undefined ? `no request (exit ${glmOnly.status})` : `${glmOnlyTools.size} tools; ${[...glmOnlyTools].filter(name => name.startsWith('graph_') || name.startsWith('memory_')).join(', ') || 'no graph or memory tool'}`],
+  ['glm-only: the glm:memory section follows the memory tools: absent here, present in the GLM scenario on probe-full', glmOnlyFirst !== undefined && !glmOnlyFirst.system.includes(MEMORY_SECTION_LINE) && glmFirst?.system.includes(MEMORY_SECTION_LINE) === true, `glm-only ${glmOnlyFirst?.system.includes(MEMORY_SECTION_LINE) ?? 'no request'}; glm ${glmFirst?.system.includes(MEMORY_SECTION_LINE) ?? 'no request'}`],
+  ['glm-only: at the peak clock the first request carries the wrapped peak reminder once', peakNotices(glmOnlyFirst).length === 1 && peakNotices(glmOnlyFirst)[0].text === PEAK_NOTICE, `${peakNotices(glmOnlyFirst).length} notice(s)`],
+  ['glm-only: /glm-status lists the GLM rows and the orchestration package as one line not loaded', onlyOneLoaded(glmOnlyHealth, 'glm', 'hourness'), JSON.stringify(glmOnlyHealth[WHOLE] ?? null)],
+  ['glm-only: no usage journal is written anywhere (the memory row is not installed); no skipped bundle and no row warning', glmOnlyUsage.length === 0 && quiet('glm-only'), `usage files: ${glmOnlyUsage.join(', ') || 'none'}; stderr ${stderrOf('glm-only').length} byte(s)`],
+  ['hourness-only: with only the orchestration package the face has the graph, memory and native tools, no ZCode alias and no tool search', hournessOnlyFirst !== undefined && [...GRAPH_TOOL_NAMES, ...MEMORY_TOOL_NAMES, 'write', 'pwsh'].every(name => hournessOnlyTools.has(name)) && !['Write', 'Bash', 'LocalToolSearch', 'DeferredToolCall'].some(name => hournessOnlyTools.has(name)), hournessOnlyFirst === undefined ? `no request (exit ${hournessOnly.status})` : `${hournessOnlyTools.size} tools`],
+  ['hourness-only: after graph_focus the next request ends with the projection notice (focus)', hournessOnlyProjection?.source === 'glm-graph-projection' && hournessOnlyProjection.projection === 'focus', JSON.stringify({ source: hournessOnlyProjection?.source, projection: hournessOnlyProjection?.projection })],
+  ['hourness-only: a native write into the graph is denied by graph-files-only and journaled; a shell write runs and leaves no record (the guard row judges GLM calls only until split step 7)', hournessOnlyWrite?.isError === true && hournessOnlyWrite.text.includes('inside the project graph') && !existsSync(hournessOnlyNode) && hournessOnlyPwsh?.isError !== true && existsSync(hournessOnlyShell) && hournessOnlyViolations.length === 1 && hournessOnlyViolations[0].rule === 'graph-files-only' && hournessOnlyViolations[0].tool === 'write', `records: ${hournessOnlyViolations.map(record => `${record.rule}:${record.tool ?? ''}`).join(', ') || 'none'}; shell file ${existsSync(hournessOnlyShell)}`],
+  ['hourness-only: the system prompt declares no workspace rules', hournessOnlyFirst !== undefined && !hournessOnlyFirst.system.includes('# Workspace rules'), ''],
+  ['hourness-only: /hourness-status lists the orchestration rows and the GLM package as one line not loaded', hournessOnlyStatus?.kind === 'success' && onlyOneLoaded(hournessOnlyHealth, 'hourness', 'glm'), `${hournessOnlyStatus?.kind ?? 'not run'}; ${JSON.stringify(hournessOnlyHealth[WHOLE] ?? null)}`],
+  ['hourness-only: /hourness lists calls and tokens without the pricing service; no skipped bundle and no row warning', hournessOnlyReport?.kind === 'success' && hournessOnlyPanel.startsWith('- 没有计价服务（GLM 通道包的 glm-login 行提供积分口径），只列调用与 token') && /^- deepseek-probe：\d+ 次 · 未命中输入 \d+/m.test(hournessOnlyPanel) && quiet('hourness-only'), `${hournessOnlyReport?.kind ?? 'not run'}; ${JSON.stringify(hournessOnlyPanel.split('\n').slice(0, 3))}`],
   ['glm boot: the runtime reached the probe provider', glmFirst !== undefined, `exit ${glm.status}, ${glm.steps.length} step(s)`],
   ['graph panel: /graph-apply comments as the human in the graph under the session working directory', panelCommands[0]?.kind === 'success' && panelCommands[0].text === '已批注「探针目标」' && panelLast('goal-1')?.actor === 'human' && panelLast('goal-1')?.text === 'probe comment', JSON.stringify(panelCommands[0] ?? null)],
   ['graph panel: /graph-apply decides with the question rev as the human', panelCommands[1]?.kind === 'success' && panelCommands[1].text === '已拍板「探针问题」：A 甲' && panelAfter.nodes.get('question-1')?.status === 'done' && panelLast('question-1')?.actor === 'human' && panelLast('question-1')?.op === 'decide', JSON.stringify(panelCommands[1] ?? null)],

@@ -1,0 +1,4 @@
+{
+  "extends": "./tsconfig.json",
+  "references": [{ "path": "./packages/glm" }, { "path": "./packages/hourness" }]
+}

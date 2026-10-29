@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "GLM ZCode channel",
+    "description": "Runs GLM in DeepSeek Harness on its ZCode 3.16.3 training distribution: the native channel and login, the prompt and tool-surface mirror, lazy tool loading, compaction, and the GLM button and settings page."
+  }
+}

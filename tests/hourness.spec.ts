@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { creditPricing } from '../src/glm-llm/credits.ts'
-import { apply, renderHourness } from '../src/ui/index.ts'
-import { cacheHitRate, usagePanel, usagePanelLines } from '../src/ui/panel.ts'
+import { apply, renderHourness } from '../src/report/index.ts'
+import { cacheHitRate, usagePanel, usagePanelLines } from '../src/report/panel.ts'
 
 // The usage panel with the pricing service the GLM channel package provides
 // (its credit plan, src/glm-llm/credits.ts), and without it. The provider

@@ -1,15 +1,15 @@
 # GLM-Hourness
 
-GLM + House + Harness：让 GLM 以 ZCode 训练分布住进 DeepSeek Harness（DSH），并在其上建一套编排层，把开发体系量化成由 harness 保证实施的标准。DSH 第三方 bundle，单包多行，按 `cordis.patch.yml` 独立启停；非 GLM 会话不受影响。
+GLM + House + Harness：让 GLM 以 ZCode 训练分布住进 DeepSeek Harness（DSH），并在其上建一套编排层，把开发体系量化成由 harness 保证实施的标准。同仓两个 DSH 第三方 bundle：GLM 通道包 `dsh-glm-zcode`（`packages/glm`）与编排层包 `dsh-hourness`（`packages/hourness`），各自多行，按各自的 `cordis.patch.yml` 独立启停，可以只装其中一个；GLM 方言不影响非 GLM 会话。
 
 ## 分层
 
-| 层 | 行 | 作用 |
-| --- | --- | --- |
-| 底层 · 通道 | `glm-llm`、`glm-login` | 原生 ZCode 客户端通道：账号登录与加密凭证、身份头、签名 V4、端点路由、Anthropic Messages 传输、coding-plan / start-plan 双档；`/glm-login`、`/glm-status`（凭证状态与各行健康）、`/glm-logout` |
-| 底层 · 方言 | `glm-prompt`、`glm-compact` | 提示词与工具面镜像 ZCode 3.16.3、local 工具检索（LocalToolSearch / DeferredToolCall）、todo 提醒 10/10、压缩镜像 |
-| 编排层 | `data`、`guard`、`memory`、`workflow`、`hourness` | 数据目录服务、执行边界、记忆与审计流水、决策日志与晨报、用量报告；`/hourness`、`/hourness-status`（两个包各行的健康） |
-| 呈现 | `dsh-glm-hourness-ui`（独立包） | 设置页与会话输入框 pill |
+| 包 | 层 | 行 | 作用 |
+| --- | --- | --- | --- |
+| `dsh-glm-zcode` | 底层 · 通道 | `glm-llm`、`glm-login` | 原生 ZCode 客户端通道：账号登录与加密凭证、身份头、签名 V4、端点路由、Anthropic Messages 传输、coding-plan / start-plan 双档；`/glm-login`、`/glm-status`（凭证状态与各行健康）、`/glm-logout` |
+| `dsh-glm-zcode` | 底层 · 方言 | `glm-prompt`、`glm-compact` | 提示词与工具面镜像 ZCode 3.16.3、local 工具检索（LocalToolSearch / DeferredToolCall）、todo 提醒 10/10、压缩镜像 |
+| `dsh-hourness` | 编排层 | `data`、`guard`、`memory`、`workflow`、`hourness`、`graph`、`graph-panel` | 数据目录服务、执行边界、记忆与审计流水、决策日志与晨报、用量报告、项目图；`/hourness`、`/hourness-status`（两个包各行的健康） |
+| `dsh-glm-hourness-ui`（`ui/`） | 呈现 | `ui` | 设置页与会话输入框 pill、右侧栏项目图面板 |
 
 编排层的完整设计（项目图即主 Agent、设计循环、决策卡、规范体系等）见 `docs/ORCHESTRATION.md`，目前大部分处于规划阶段。
 
@@ -28,8 +28,8 @@ GLM + House + Harness：让 GLM 以 ZCode 训练分布住进 DeepSeek Harness（
 ## 门禁
 
 ```
-npm run build      # tsc（含 adapter 契约检查），产物在 dist/
-npm run preflight  # 产物齐全、patch 行文件存在、client 半一包一源
+npm run build      # tsc（含 adapter 契约检查），产物在 packages/glm/dist/、packages/hourness/dist/
+npm run preflight  # 目录表、两包清单与 patch、产物齐全、client 半一包一源
 npm test           # preflight + 逐字门禁 + 检查器门禁 + 全部 spec
 npm run lint       # ESLint、knip、jscpd 对照基线（只减不增）；lint:update 缩小基线
 npm run deps:check # pnpm outdated 与 pnpm audit，标出处理方式（docs/DEVELOPMENT.md §11）
@@ -41,11 +41,13 @@ npm run smoke:authorized  # 需凭证：coding-plan 端到端请求
 
 ## 安装
 
-`package.json` 声明 `dsh.bundle.patch`，`cordis.patch.yml` 是 Loader 方言（`insert` 行）。对本地目录安装：
+两个包各自的 `package.json` 声明 `dsh.bundle.patch`，`cordis.patch.yml` 是 Loader 方言（`insert` 行）；根 `package.json` 只是开发工作区，不是 bundle。先 `npm run build`，再把两个包装进 profile（`docs/DEVELOPMENT.md` §3）：
 
 ```
-plugin_manager install_bundle <本仓库绝对路径>
+dsh plugin --profile <名字> add <本仓库绝对路径>/packages/glm <本仓库绝对路径>/packages/hourness -w
 ```
+
+只要其中一层就只装那一个包。客户端包 `ui/` 在 split 第 6 步之前另装一次（`add <本仓库绝对路径>/ui -w`）。桌面版自己的 profile `desktop` 只能在桌面版关闭时，经安装目录里的 `resources\runtime\cli\bin\dsh.cmd` 操作（`docs/FACTS.md` §3）。
 
 行配置：`glm-prompt` 的 persona / tier 等在插件管理器中可调（导出了 Schemastery `Config`）；`guard` 的圈禁根默认取调用方 agent 的会话目录，GLM 会话的系统提示词末尾列出生效的规则，组合里有 `workspace-changes` 时另以影子模式记录 shell 写入（`docs/ORCHESTRATION.md` §6）；用户级目录与项目目录由 `data` 行提供，`memory`、`workflow`、`hourness` 配了 `home` 时以行配置为准（`docs/DESIGN.md` §2.4）。首次使用在任意会话输入 `/glm-login` 完成浏览器授权，`/glm-status` 确认后在模型选择器中选 `glm-zcode` 路由；`/glm-status` 同时按包列出各行在本会话是否生效及原因，`/hourness-status` 只列这张表，不装 GLM 通道包时也能看（`docs/DESIGN.md` §2.5）。激活期任何行都不抛错。
 

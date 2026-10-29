@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- dsh-glm-zcode: a Z-shaped channel with a signal on its diagonal, on the project's tile and colours -->
+  <rect x="4" y="4" width="56" height="56" rx="14" fill="#101826"/>
+  <path d="M18 18h28L18 46h28" fill="none" stroke="#5eead4" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="32" cy="32" r="3.5" fill="#f59e0b"/>
+</svg>

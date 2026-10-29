@@ -14,6 +14,7 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, lstatSync, mkdirSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { LEGACY_CLIENT_BUNDLE, PACKAGES } from './packages.mjs'
 
 export const repo = resolve(fileURLToPath(new URL('..', import.meta.url)))
 const desktop = process.env.DSH_DESKTOP_DIR ?? join(process.env.LOCALAPPDATA ?? '', 'Programs', 'DeepSeek Harness')
@@ -40,19 +41,27 @@ export const sandboxCommand = (patch, args, profile) => ({
   env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', ...(profile === undefined ? {} : { DSH_HOME: profile.dshHome }) },
 })
 
+const byKey = key => PACKAGES.filter(pkg => pkg.key === key)
 /**
- * The packages of this checkout a generated profile lists, the way the
- * desktop profile lists them: the bundle at the repository root and the UI
- * bundle under ui/.
+ * The profiles the probe generates and the packages of this checkout each
+ * lists, in profile order (scripts/packages.mjs): probe-full lists the two
+ * packages where the desktop profile lists them, followed by the client
+ * package under ui/ until split step 6; probe-glm and probe-hourness list
+ * one package each, the way a user installs only one.
  */
-const CHECKOUT_PACKAGES = [{ name: 'dsh-glm-hourness', dir: '.' }, { name: 'dsh-glm-hourness-ui', dir: 'ui' }]
+export const PROBE_PROFILES = {
+  'probe-full': [...PACKAGES, LEGACY_CLIENT_BUNDLE],
+  'probe-glm': byKey('glm'),
+  'probe-hourness': byKey('hourness'),
+}
 /** The bundles of the shipped headless template (dsh-app-boot PROFILE_TEMPLATES.headless), listed first. */
 const BASE_BUNDLES = ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-headless']
 
 /**
- * Write the DSH home `dshHome` holding the profile `name`: package.json lists
- * the base bundles and this checkout's packages (dependencies as `link:`),
- * cordis.yml and cordis.patch.yml are empty lists, and
+ * Write the DSH home `dshHome` holding the profile `name`, listing the
+ * packages `packages` ({ name, dir } with `dir` relative to this checkout):
+ * package.json lists the base bundles and the packages (dependencies as
+ * `link:`), cordis.yml and cordis.patch.yml are empty lists, and
  * node_modules/<package> is a junction to the package directory in this
  * checkout. Booted with DSH_HOME and --profile (sandboxCommand), the run
  * neither reads nor writes ~/.dsh/profiles, and it loads whichever checkout
@@ -61,21 +70,21 @@ const BASE_BUNDLES = ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-headless']
  * profile was the one booted. Throws when a directory or junction cannot be
  * created.
  */
-export function generateProfile(dshHome, name) {
+export function generateProfile(dshHome, name, packages) {
   const dir = join(dshHome, 'profiles', name)
   const modules = join(dir, 'node_modules')
   mkdirSync(modules, { recursive: true })
   writeFileSync(join(dir, 'package.json'), `${JSON.stringify({
     name: `dsh-profile-${name}`,
     private: true,
-    dependencies: Object.fromEntries(CHECKOUT_PACKAGES.map(pkg => [pkg.name, `link:${slash(join(repo, pkg.dir))}`])),
-    dsh: { profile: { bundles: [...BASE_BUNDLES, ...CHECKOUT_PACKAGES.map(pkg => pkg.name)] } },
+    dependencies: Object.fromEntries(packages.map(pkg => [pkg.name, `link:${slash(join(repo, pkg.dir))}`])),
+    dsh: { profile: { bundles: [...BASE_BUNDLES, ...packages.map(pkg => pkg.name)] } },
   }, null, 2)}\n`)
   writeFileSync(join(dir, 'cordis.yml'), '[]\n')
   writeFileSync(join(dir, 'cordis.patch.yml'), '[]\n')
-  const profile = { name, dshHome, dir, links: CHECKOUT_PACKAGES.map(pkg => join(modules, pkg.name)) }
+  const profile = { name, dshHome, dir, packages: packages.map(pkg => pkg.name), links: packages.map(pkg => join(modules, pkg.name)) }
   try {
-    CHECKOUT_PACKAGES.forEach((pkg, index) => symlinkSync(join(repo, pkg.dir), profile.links[index], 'junction'))
+    packages.forEach((pkg, index) => symlinkSync(join(repo, pkg.dir), profile.links[index], 'junction'))
   }
   catch (error) {
     unlinkProfile(profile)

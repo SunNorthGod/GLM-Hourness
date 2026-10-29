@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Hourness orchestration",
+    "description": "Orchestration for any model in DeepSeek Harness: the project graph and its panel, guard rails, the audit journal, memory, and the /hourness report."
+  }
+}

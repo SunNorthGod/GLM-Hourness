@@ -6,7 +6,7 @@
  * (system prompt, tool face, message summary); the reply follows the script.
  *
  * The model catalog (ids and input modalities) and the image request target
- * come from the built glm-zcode channel (dist/), and each request is also
+ * come from the built glm-zcode channel (packages/glm/dist/), and each request is also
  * run through the channel's real encoder with the runtime's attachment
  * service, so the dump shows the image blocks glm-zcode would send. A
  * scripted step marked `status` also records what the bundle's `/glm-status`
@@ -25,9 +25,9 @@
  * scripts/probe/run-probe.mjs generates for each run.
  */
 import { appendFileSync } from 'node:fs'
-import { GLM_MODELS, glmInputModalities } from '../../dist/glm-llm/models.js'
-import { asAttachments, glmImageRequestTarget, prepareRequestImages } from '../../dist/glm-llm/images.js'
-import { encodeRequest, splitSystemPrompt } from '../../dist/glm-llm/anthropic.js'
+import { GLM_MODELS, glmInputModalities } from '../../packages/glm/dist/glm-llm/models.js'
+import { asAttachments, glmImageRequestTarget, prepareRequestImages } from '../../packages/glm/dist/glm-llm/images.js'
+import { encodeRequest, splitSystemPrompt } from '../../packages/glm/dist/glm-llm/anthropic.js'
 
 export const name = 'glm-hourness-probe/llm'
 export const inject = ['llm']

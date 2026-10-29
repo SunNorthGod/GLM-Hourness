@@ -33,7 +33,7 @@
 import { appendFileSync, existsSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { isAbsolute, join, relative, resolve } from 'node:path'
-import { createUserNotice } from '../../dist/shared/dsh-min.js'
+import { createUserNotice } from '../../packages/hourness/dist/shared/dsh-min.js'
 
 export const name = 'glm-hourness-probe/dispatch'
 export const inject = ['subagents', 'goals', 'agents', 'tools']

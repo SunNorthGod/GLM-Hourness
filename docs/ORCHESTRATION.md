@@ -513,6 +513,7 @@ L3 核实〔实测 2026-10-28，派发可行性验证 (a)(b)，`ROADMAP.md` 借�
 ### 3.5 模型档位与并发
 
 - 难度对应档位：难题用 GLM-5.3（effort high 或 max），常规用 GLM-5.3，简单用 GLM-5.3-Flash。主 Agent 对已配置的模型有调用权，使用情况在晨报中披露。
+- 档位与模型分属两个包〔split 第 5 步，2026-10-29〕：档位词汇 `hard`、`standard`、`simple` 在编排层（任务节点的 `tier` 字段）；档位到模型的映射归通道包，上一条就是 GLM 通道包对自己路由的映射，M7 时由它提供一个服务，只对自己的路由给答案，服务名与接口在 M7 定。没有映射的路由（GLM 包没装，或会话不在 GLM 路由上）：子 agent 继承父 agent 的路由，不给 `agentOptions.model`，`dsh-subagent` 在父路由之上合并（§3.2 的 L3 实测），不跨通道、不换套餐（`CHARTER.md` §6）。
 - 不自动切换套餐与渠道（`CHARTER.md` §6）。
 - 并行槽位上限可配置，实际派几路由 LLM 判断（包括冲突约束）；槽位空出时 harness 提醒主 Agent 补位。
 
@@ -828,7 +829,7 @@ LLM 爱造轮子，因为写脚本只花当前这一轮的力气，装工具却�
 - `node:test` 的 `test()`、`describe()` 返回由测试运行器等待的 Promise，按 typescript-eslint 文档登记为已知安全调用，不算悬空 Promise。
 - 环境全局量：脚本取运行 ESLint 的 Node 的全局名；`ui/client.js` 在 DSH 网页端运行，只登记它用到的浏览器全局量。
 - 排除：vendored 上游代码 `src/shared/schemastery.ts` 不进 ESLint 与 jscpd（它随重新 vendor 变化，不随 lint 修复变化）。
-- knip：`ui/` 的两个入口由 DSH 经 `ui/package.json` 加载，探针 provider 由探针运行器把路径交给 Loader，三者登记为入口；`ui/client.js` 的 `react` 来自 DSH 客户端模块表，不是 npm 依赖。
+- knip：配置是 `knip.js`，根 `package.json` 不再导出行模块，所以 11 个宿主行的源码入口按目录表 `scripts/packages.mjs` 生成；`ui/` 的两个入口由 DSH 经 `ui/package.json` 加载，探针 provider 由探针运行器把路径交给 Loader，都登记为入口；`ui/client.js` 的 `react` 来自 DSH 客户端模块表，不是 npm 依赖。`scripts/check-lint.mjs` 给 knip 传 `--tsConfig tsconfig.knip.json`，它引用两个包的 tsconfig，脚本对 `packages/*/dist/` 的导入由此对回 `src/`（tsc 拒绝引用非 composite 项目，所以这组映射不放进根 `tsconfig.json`）。
 - 现有告警没有成批修：175 条多余的类型断言可自动修复，但会和 `graph-engine` 分支改动的文件冲突，等该分支合并后再修；门禁上线时只修了 3 处明确安全的真问题（测试里一个从不读取的计数变量、一个未用导入、一个被 `unknown` 吞掉的联合类型）。
 
 密钥扫描〔已实现 2026-10-28〕：gitleaks 是工作区外的独立二进制，按用户 2026-10-28 的选择装在用户级工具目录（项目图 `q-gitleaks`）；`npm test` 在检查器门禁之后运行它，扫 HEAD 的历史与已跟踪文件的未提交改动，没有基线，范围与放行规则见 `DEVELOPMENT.md` §10。
@@ -992,7 +993,7 @@ LLM 不讲人话，多半是默认在向评审汇报，想显得周全。做法�
 
 ### 11.2 积分口径〔已实现 2026-10-28，`ROADMAP.md` M6.1〕
 
-原问题〔实读〕：`src/ui/panel.ts` 把谷时写死为每天 0–8 点，统计的是调用次数而非积分。
+原问题〔实读〕：`src/ui/panel.ts`（split 第 5 步起是 `src/report/panel.ts`）把谷时写死为每天 0–8 点，统计的是调用次数而非积分。
 
 现在积分规则只有一处：GLM 通道包的 `src/glm-llm/credits.ts`。高峰提醒（§11.4）、标定运行器（§10.5.1）与探针直接用它；编排层包的面板不导入它，也不内置任何套餐系数，经 `glm-login` 行提供的计价服务 `glmHournessPricing` 计积分（契约在 `src/shared/pricing.ts`，§11.3）〔2026-10-29，split 第 3 步〕。
 

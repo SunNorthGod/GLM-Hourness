@@ -18,13 +18,37 @@ import { healthServiceName, type HealthRow, type RowHealthView } from '../src/sh
 import { PRICING_SERVICE, pricingService, type UsagePricing } from '../src/shared/pricing.ts'
 import { GRAPH_TOOL_NAMES, MEMORY_TOOL_NAMES, ORCHESTRATION_RESIDENT_TOOLS } from '../src/shared/tool-names.ts'
 import { RESIDENT_TOOLS } from '../src/toolsearch/exposure.ts'
-import { apply as hournessApply } from '../src/ui/index.ts'
+import { apply as hournessApply } from '../src/report/index.ts'
+import { LEGACY_CLIENT_BUNDLE, PACKAGES } from '../scripts/packages.mjs'
 import { fakeRuntime, serviceStore, type FakeRuntime } from './fake-rc3.ts'
 
 // Contracts between the GLM channel package and the orchestration package
 // (docs/DESIGN.md §8): strings and service shapes no import rule sees.
 
 const GLM = { provider: 'glm-zcode', model: 'glm-5.3' }
+
+// Row ids are what profile overrides match (docs/DESIGN.md §2.3): written
+// out here, apart from the directory table, so a rename of a row in the
+// table and its patch together still fails here and shows in review. A new
+// row is added to this list in the same change.
+const ROW_IDS = [
+  'glm-hourness/glm-llm',
+  'glm-hourness/glm-login',
+  'glm-hourness/glm-prompt',
+  'glm-hourness/glm-compact',
+  'glm-hourness/data',
+  'glm-hourness/guard',
+  'glm-hourness/memory',
+  'glm-hourness/workflow',
+  'glm-hourness/hourness',
+  'glm-hourness/graph',
+  'glm-hourness/graph-panel',
+  'glm-hourness/ui',
+]
+
+test('row ids: the packages\' rows and the client row are the fixed list', () => {
+  assert.deepEqual([...PACKAGES.flatMap(pkg => pkg.rows.map(row => row.id)), LEGACY_CLIENT_BUNDLE.row], ROW_IDS)
+})
 
 test('tool names: the graph and memory rows register exactly the contract names', () => {
   assert.deepEqual(graphTools('docs/graph', new Map()).map(tool => tool.name), GRAPH_TOOL_NAMES)

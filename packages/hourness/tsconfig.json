@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "rootDir": "../../src",
+    "outDir": "./dist"
+  },
+  "include": ["../../src/data", "../../src/guard", "../../src/memory", "../../src/workflow", "../../src/report", "../../src/graph"]
+}

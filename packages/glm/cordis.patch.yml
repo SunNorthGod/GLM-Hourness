@@ -1,0 +1,26 @@
+# dsh-glm-zcode bundle patch (DSH Loader dialect): the GLM channel package.
+# Rows are independent: disable any line and the session degrades gracefully
+# (fail-open). The channel rows keep the credential in the user-level
+# directory $DSH_HOME/glm-hourness (default ~/.dsh; docs/DESIGN.md §2.4).
+# Row ids stay `glm-hourness/<row>` across the split: profile overrides
+# match by id (docs/DESIGN.md §2.3).
+- insert:
+    - id: glm-hourness/glm-llm
+      # Native ZCode channel: /glm-login fills the encrypted credential store;
+      # a missing credential fails the stream with the re-login instruction.
+      # Ships disabled until the sandbox (docs/DEVELOPMENT.md §3) passes: an
+      # unverified adapter row must never activate on the user's next restart.
+      name: ./dist/glm-llm/index.js
+      disabled: true
+      inject: [llm]
+      config: {}
+    - id: glm-hourness/glm-login
+      name: ./dist/glm-llm/login-row.js
+      inject: [commands]
+      config: {}
+    - id: glm-hourness/glm-prompt
+      name: ./dist/glm-prompt/index.js
+      config: {}
+    - id: glm-hourness/glm-compact
+      name: ./dist/glm-prompt/compact-row.js
+      config: {}

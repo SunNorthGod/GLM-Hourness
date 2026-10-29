@@ -39,6 +39,10 @@ const boundaries = [
 
 export default defineConfig([
   globalIgnores([
+    // tsc output of the two packages (npm run build).
+    'packages/*/dist/',
+    // Stale output of the single-bundle layout, kept ignored until the
+    // cleanup commit after the merge (other checkouts still have it).
     'dist/',
     // Built from ui/src by scripts/build-ui.mjs.
     'ui/client.js',

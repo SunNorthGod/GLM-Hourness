@@ -1,30 +1,11 @@
-# GLM-Hourness bundle patch (DSH Loader dialect). Rows are independent:
-# disable any line and the session degrades gracefully (fail-open).
-# The channel rows keep the credential in the user-level directory
-# $DSH_HOME/glm-hourness (default ~/.dsh; docs/DESIGN.md §2.4). The data row
-# defaults its project directory to this repository's `.llm`
-# (USERPROFILE-relative); the user's profile patch overrides per row (it sets
-# `home` for memory, workflow and hourness).
+# dsh-hourness bundle patch (DSH Loader dialect): the orchestration package,
+# for any model. Rows are independent: disable any line and the session
+# degrades gracefully (fail-open). The data row defaults its project
+# directory to this repository's `.llm` (USERPROFILE-relative); the user's
+# profile patch overrides per row (it sets `home` for memory, workflow and
+# hourness). Row ids stay `glm-hourness/<row>` across the split: profile
+# overrides match by id (docs/DESIGN.md §2.3).
 - insert:
-    - id: glm-hourness/glm-llm
-      # Native ZCode channel: /glm-login fills the encrypted credential store;
-      # a missing credential fails the stream with the re-login instruction.
-      # Ships disabled until the sandbox (docs/DEVELOPMENT.md §3) passes: an
-      # unverified adapter row must never activate on the user's next restart.
-      name: ./dist/glm-llm/index.js
-      disabled: true
-      inject: [llm]
-      config: {}
-    - id: glm-hourness/glm-login
-      name: ./dist/glm-llm/login-row.js
-      inject: [commands]
-      config: {}
-    - id: glm-hourness/glm-prompt
-      name: ./dist/glm-prompt/index.js
-      config: {}
-    - id: glm-hourness/glm-compact
-      name: ./dist/glm-prompt/compact-row.js
-      config: {}
     - id: glm-hourness/data
       # Data directory service (docs/DESIGN.md §2.4): the user-level
       # directory resolves to $DSH_HOME/glm-hourness (default ~/.dsh); the
@@ -44,7 +25,7 @@
       name: ./dist/workflow/index.js
       config: {}
     - id: glm-hourness/hourness
-      name: ./dist/ui/index.js
+      name: ./dist/report/index.js
       inject: [commands]
       config: {}
     - id: glm-hourness/graph

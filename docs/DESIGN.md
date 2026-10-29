@@ -23,38 +23,46 @@
 ### 2.1 分层
 
 ```
-GLM-Hourness
-├─ 底层
-│  ├─ 通道：glm-llm（adapter）、glm-login（命令）
+GLM-Hourness（同仓两包，§2.3）
+├─ GLM 通道包 dsh-glm-zcode（packages/glm）
+│  ├─ 通道：glm-llm（adapter）、glm-login（命令、计价服务）
 │  └─ 方言：glm-prompt（提示词、工具面与工具检索）、glm-compact（压缩镜像）
-└─ 编排层
-   ├─ data（数据目录服务，§2.4）
-   ├─ guard、memory、workflow、hourness（用量与报告）
-   └─ 呈现：独立 UI bundle
+├─ 编排层包 dsh-hourness（packages/hourness），对任何模型生效
+│  ├─ data（数据目录服务，§2.4）
+│  ├─ guard、memory、workflow、hourness（用量与报告）
+│  └─ graph、graph-panel（项目图与面板写入）
+├─ 呈现：客户端包 dsh-glm-hourness-ui（ui/，单行）
+└─ 公共库 src/shared/：编进导入它的每个包（§8）
 ```
 
 ### 2.2 插件行（现状）
 
-| 行 id | 入口 | 层 | 现状 |
-| --- | --- | --- | --- |
-| `glm-hourness/glm-llm` | `dist/glm-llm/index.js` | 通道 | 真网冒烟通过〔实测〕；2026-10-28 桌面版 L4 真实会话通过（GLM-5.3 多轮工具调用、GLM-5.3-Flash 收图）〔实读会话记录〕；凭证目录见 §2.4 |
-| `glm-hourness/glm-login` | `dist/glm-llm/login-row.js` | 通道 | `/glm-login`、`/glm-status`（凭证状态与行健康表，§2.5）、`/glm-logout`；提供计价服务 `glmHournessPricing`：GLM 积分套餐的公式与高峰时段（`src/glm-llm/credits.ts`），契约在 `src/shared/pricing.ts`，面板经它计积分（`ORCHESTRATION.md` §11.2、§11.3）。选这一行提供：它是账号与套餐的入口，默认启用，不依赖路由；通道行默认禁用，方言行禁用时面板不该丢掉积分 |
-| `glm-hourness/glm-prompt` | `dist/glm-prompt/index.js` | 方言 | 见 §5；另带高峰提醒（本项目的 notice，`ORCHESTRATION.md` §11.4） |
-| `glm-hourness/glm-compact` | `dist/glm-prompt/compact-row.js` | 方言 | 见 §5.6 |
-| `glm-hourness/data` | `dist/data/index.js` | 编排 | 数据目录服务 `glmHournessData`，见 §2.4 |
-| `glm-hourness/guard` | `dist/guard/index.js` | 编排 | 见 `ORCHESTRATION.md` §6 |
-| `glm-hourness/memory` | `dist/memory/index.js` | 编排 | 见 `ORCHESTRATION.md` §8 |
-| `glm-hourness/workflow` | `dist/workflow/index.js` | 编排 | 仅记录派遣类工具调用 |
-| `glm-hourness/hourness` | `dist/ui/index.js` | 编排 | `/hourness` 命令：晨报与用量面板；面板经计价服务按积分列，没有计价服务时按调用与 token 列（`ORCHESTRATION.md` §11.2、§11.3） |
-| `glm-hourness/graph` | `dist/graph/index.js` | 编排 | 项目图工具、每步投影与图文件门禁（`ORCHESTRATION.md` §2.5、§2.7、§2.10）；2026-10-28 经 L3 探针与 L4 桌面版验收后默认启用 |
-| `glm-hourness/graph-panel` | `dist/graph/panel-row.js` | 呈现 | 面板写入命令 `/graph-apply`、运行控制命令 `/graph-run` 与现场投影 `graphLive`（`ORCHESTRATION.md` §2.10） |
-| `glm-hourness/ui` | `ui/`（独立包） | 呈现 | 设置页、输入框下的 GLM 按钮（§2.5）、右侧栏「项目图」页签（需要你、agent 定的、正在做、图，`ORCHESTRATION.md` §2.10）；插件管理器里的标题、说明与图标来自 `ui/locale/*.json` 与 `ui/icon.svg`（包导出 `./locale/*.json`、`./icon`，与主包同形） |
+入口相对所在包的目录（`packages/glm/` 或 `packages/hourness/`）。
 
-### 2.3 两个 bundle 与一包一源
+| 行 id | 包 | 入口 | 层 | 现状 |
+| --- | --- | --- | --- | --- |
+| `glm-hourness/glm-llm` | `dsh-glm-zcode` | `dist/glm-llm/index.js` | 通道 | 真网冒烟通过〔实测〕；2026-10-28 桌面版 L4 真实会话通过（GLM-5.3 多轮工具调用、GLM-5.3-Flash 收图）〔实读会话记录〕；凭证目录见 §2.4 |
+| `glm-hourness/glm-login` | `dsh-glm-zcode` | `dist/glm-llm/login-row.js` | 通道 | `/glm-login`、`/glm-status`（凭证状态与行健康表，§2.5）、`/glm-logout`；提供计价服务 `glmHournessPricing`：GLM 积分套餐的公式与高峰时段（`src/glm-llm/credits.ts`），契约在 `src/shared/pricing.ts`，面板经它计积分（`ORCHESTRATION.md` §11.2、§11.3）。选这一行提供：它是账号与套餐的入口，默认启用，不依赖路由；通道行默认禁用，方言行禁用时面板不该丢掉积分 |
+| `glm-hourness/glm-prompt` | `dsh-glm-zcode` | `dist/glm-prompt/index.js` | 方言 | 见 §5；另带高峰提醒（本项目的 notice，`ORCHESTRATION.md` §11.4） |
+| `glm-hourness/glm-compact` | `dsh-glm-zcode` | `dist/glm-prompt/compact-row.js` | 方言 | 见 §5.6 |
+| `glm-hourness/data` | `dsh-hourness` | `dist/data/index.js` | 编排 | 数据目录服务 `glmHournessData`，见 §2.4 |
+| `glm-hourness/guard` | `dsh-hourness` | `dist/guard/index.js` | 编排 | 见 `ORCHESTRATION.md` §6 |
+| `glm-hourness/memory` | `dsh-hourness` | `dist/memory/index.js` | 编排 | 见 `ORCHESTRATION.md` §8 |
+| `glm-hourness/workflow` | `dsh-hourness` | `dist/workflow/index.js` | 编排 | 仅记录派遣类工具调用 |
+| `glm-hourness/hourness` | `dsh-hourness` | `dist/report/index.js` | 编排 | `/hourness` 命令：晨报与用量面板；面板经计价服务按积分列，没有计价服务时按调用与 token 列（`ORCHESTRATION.md` §11.2、§11.3）；`/hourness-status`：两个包各行的健康（§2.5） |
+| `glm-hourness/graph` | `dsh-hourness` | `dist/graph/index.js` | 编排 | 项目图工具、每步投影与图文件门禁（`ORCHESTRATION.md` §2.5、§2.7、§2.10）；2026-10-28 经 L3 探针与 L4 桌面版验收后默认启用 |
+| `glm-hourness/graph-panel` | `dsh-hourness` | `dist/graph/panel-row.js` | 呈现 | 面板写入命令 `/graph-apply`、运行控制命令 `/graph-run` 与现场投影 `graphLive`（`ORCHESTRATION.md` §2.10） |
+| `glm-hourness/ui` | `dsh-glm-hourness-ui`（`ui/`，独立包） | `index.js` | 呈现 | 设置页、输入框下的 GLM 按钮（§2.5）、右侧栏「项目图」页签（需要你、agent 定的、正在做、图，`ORCHESTRATION.md` §2.10）；插件管理器里的标题、说明与图标来自 `ui/locale/*.json` 与 `ui/icon.svg`（包导出 `./locale/*.json`、`./icon`，与两个宿主包同形） |
 
-主包 `dsh-glm-hourness` 是多行 cordis 插件包。DSH 的 client-modules 按包名组成 web 启动图，同一个包若被多个 active Loader 行解析且声明了 `dsh.client`，启动失败（`resolves from multiple active Loader sources`）〔实测，2026-10-27 事故〕。因此 client 半必须放在独立的单入口包 `dsh-glm-hourness-ui`，主包不得声明 `dsh.client`。preflight 固化了这条检查。
+### 2.3 同仓两包与一包一源
 
-仓库不拆分〔定案〕：两层都属于同一个项目，同仓维护。
+同仓两包〔定案：2026-10-28 question-10 选 A；2026-10-29 question-17 选 B，profile 直接列两包，不要伞包〕：GLM 通道包 `dsh-glm-zcode`（`packages/glm`）与编排层包 `dsh-hourness`（`packages/hourness`）同仓维护，各自是多行 cordis 插件包，带自己的 `cordis.patch.yml`、`tsconfig.json`、插件页的显示信息（`locale/{en,zh}.json`、`icon.svg`，导出 `./locale/*.json` 与 `./icon`）与构建产物 `dist/`。源码不搬家，仍在 `src/`；哪个目录属于哪个包、每个包插哪些行，只写在 `scripts/packages.mjs`。profile 直接列两个包，GLM 在前，放在原来单个 bundle 的位置，宿主行的组合顺序与拆分之前相同。根 `package.json` 只是开发工作区（脚本、开发依赖、`peerDependencies` 兜底），没有 `dsh`、`main`、`exports`，不是 bundle；根目录没有 `cordis.patch.yml`。两个包各自装上、单独启用都能工作，缺席的一方怎样降级见 §7。
+
+行 id 不随包改名，仍是 `glm-hourness/<行>`：profile 的覆盖项按 id 匹配，改名会让覆盖项静默失配。其余持久化标识也不改：cordis 服务名、notice 来源、提示词节名、命令名与 `definitionId`（`dsh-glm-hourness/*`）、cordis 插件名（`dsh-glm-hourness/<行>`）、用户级目录 `glm-hourness`、面板页面 id 与 kind、插槽 id。这些名字里的 `glm-hourness` 读作项目名，与哪个包无关。根包名 `dsh-glm-hourness` 也保留。
+
+一包一源：DSH 的 client-modules 按包名组成 web 启动图，同一个包若被多个 active Loader 行解析且声明了 `dsh.client`，启动失败（`resolves from multiple active Loader sources`）〔实测，2026-10-27 事故〕。因此 client 半放在独立的单入口包 `dsh-glm-hourness-ui`（`ui/`），两个宿主包都不声明 `dsh.client`。
+
+`npm run preflight` 固化这些约束（`scripts/preflight-bundle.mjs`，检查项写在文件头）：目录表自检；根不是 bundle；每个包的 patch 路径与行名以 `./` 开头、不含 `..`、落在包内（profile 里的包目录是 junction，`..` 会退回 profile 的 `node_modules`）；包的行与表一致，按 profile 顺序组合后每个行 id 恰好一次；产物顶层目录、包的 `tsconfig.json` 与表一致；产物 `dist/shared/health.js` 的 `HEALTH_PACKAGES` 与表一致；显示信息齐全；产物里运行时的裸导入都在该包的 `peerDependencies` 里（今天只有 GLM 包的 `@deepseek-ai/cosmokit`，来自 vendored `schemastery.ts`）；客户端包恰好一行、产物已构建并通过 `node --check`。行 id 的字面清单另写在 `tests/contracts.spec.ts`，表与 patch 一起改名时测试失败。
 
 ### 2.4 数据目录服务〔已实现 2026-10-28，`ROADMAP.md` M1.4〕
 
@@ -722,6 +730,8 @@ L3 探针：沙盒里把压缩阈值调低，摘要请求末条是 ZCode 提示�
 | workflow / hourness | 无记录、无报告 | 行健康 |
 | graph | 没有图工具、每步投影与图文件门禁；图目录缺失或图有校验错误时，工具照常注册并把问题报给模型，投影注入一条说明；读图抛错时本步不带投影；会话没有工作目录时门禁只判断绝对路径 | 告警、工具错误、行健康（§2.5） |
 | graph-panel | 命令注册失败时面板写不进图；现场投影注册失败时面板没有现场，写入照常 | 告警、行健康 |
+| 编排层包 `dsh-hourness` 缺席（只装 GLM 包） | GLM 会话照常：通道与登录、方言、工具检索、高峰提醒；没有图工具、记忆工具、guard 与用量流水，`/hourness` 不存在；`glm:memory` 节随记忆工具一起不出现（§5.2） | `/glm-status`：编排层包只占一行，行「全部」、状态「未加载」 |
+| GLM 包 `dsh-glm-zcode` 缺席（只装编排层包） | 编排层对所有路由照常：图工具与每步投影、图文件门禁、记忆与用量流水、`/hourness`（没有计价服务，面板按调用与 token 列）；guard 行今天只判 GLM 调用，这时不拦截；没有 `/glm-status` | `/hourness-status`：GLM 包只占一行，行「全部」、状态「未加载」 |
 
 激活期（`apply`）不抛错：配置缺失降级为 warn 与 no-op，因为激活失败会拖垮宿主启动（2026-10-27 事故）。降级必须上报，不得只打一行警告（`CHARTER.md` §7.1 条款 7）。
 
@@ -730,7 +740,7 @@ L3 探针：沙盒里把压缩阈值调低，摘要请求末条是 ZCode 提示�
 - adapter：`ZcodeAdapter` 底部有编译期检查 `AdapterContractCheck`，对照官方 `LlmAdapter` 类型〔实读〕。
 - 事件钩子与服务：结构类型逐项对照 rc.3 运行时包，证据见 §2.4a 接口对照表〔实读 2026-10-28〕。官方 `.d.ts` 只装了 `dsh-llm`、`dsh-attachment`、`cordis` 三个包（新增开发依赖须用户批准），装了的地方加编译期检查：`LlmStreamOptionsContractCheck`（`GenerateOptions` 覆盖 `llm/stream` 监听器读取的字段）、`AttachmentsContractCheck`（`AttachmentStore` 覆盖通道读图用的成员）。其余接口没有官方类型可对照，靠对照表与 L3 探针。
 - 适配层：薄适配层是 `src/shared/dsh-min.ts`（宿主钩子、服务、载荷、命令、会话）与 `src/shared/lm-min.ts`（LLM 消息与流的词汇、附件服务成员）。各行只从这两个文件取宿主类型；GLM 模型目录在 `src/glm-llm/models.ts`，不属于适配层〔已实现 2026-10-28〕。
-- 公共库：适配层所在的 `src/shared/` 是两包的公共库（目录归属见 `scripts/packages.mjs`）。除适配层外还有路由判定、数据目录、行健康、JSON 值类型 `json.ts`、每步 notice 接缝 `step-notice.ts`、两包都用的 ZCode 原文 `zcode-notice.ts`（镜像文件，§5.9），以及两包之间的契约：工具名 `tool-names.ts`、方言服务 `dialect.ts`（§5.4）、计价服务 `pricing.ts`（`ORCHESTRATION.md` §11.3；GLM 积分公式本身在 `src/glm-llm/credits.ts`，不在公共库）。它不导入任何包目录；GLM 目录（`glm-llm`、`glm-prompt`、`toolsearch`）与编排层目录（`data`、`guard`、`memory`、`workflow`、`ui`、`graph`）互不导入，类型导入也算，由 ESLint 按目录表检查（`DEVELOPMENT.md` §10）〔已实现 2026-10-29，split 第 1 步〕。图行与 guard 行之间的契约 `glmHournessGraph` 两头都在编排层，放在 `src/graph/service.ts`。
+- 公共库：适配层所在的 `src/shared/` 是两包的公共库（目录归属见 `scripts/packages.mjs`）。除适配层外还有路由判定、数据目录、行健康、JSON 值类型 `json.ts`、每步 notice 接缝 `step-notice.ts`、两包都用的 ZCode 原文 `zcode-notice.ts`（镜像文件，§5.9），以及两包之间的契约：工具名 `tool-names.ts`、方言服务 `dialect.ts`（§5.4）、计价服务 `pricing.ts`（`ORCHESTRATION.md` §11.3；GLM 积分公式本身在 `src/glm-llm/credits.ts`，不在公共库）。它不导入任何包目录；GLM 目录（`glm-llm`、`glm-prompt`、`toolsearch`）与编排层目录（`data`、`guard`、`memory`、`workflow`、`report`、`graph`）互不导入，类型导入也算，由 ESLint 按目录表检查（`DEVELOPMENT.md` §10）〔已实现 2026-10-29，split 第 1 步〕。tsc 顺着导入把用到的公共库文件编进每个包的 `dist/shared/`，两个包各有一份产物、各是一份模块实例；所以公共库只放常量、类型与纯函数，不持有跨行共享的模块级状态，跨包的状态只走 cordis 服务。vendored `schemastery.ts` 有上游原样的模块级状态，今天只被 GLM 包导入，编排层以后用它声明 `Config` 时要核对两份副本的影响并给编排层包加 `@deepseek-ai/cosmokit` peer〔split 第 5 步〕。图行与 guard 行之间的契约 `glmHournessGraph` 两头都在编排层，放在 `src/graph/service.ts`。
 - 回归：L3 沙盒真实启动加行为探针做成门禁；每次 DSH 升级先跑一遍（`DEVELOPMENT.md` §3、`ROADMAP.md` M1.7）。
 
 ## 9. 开放问题

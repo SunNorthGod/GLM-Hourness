@@ -1,38 +1,12 @@
 {
   "name": "dsh-glm-hourness",
-  "version": "0.2.0",
-  "description": "GLM-Hourness: run GLM in DeepSeek Harness on its ZCode training distribution, with a tuning layer (guard rails, orchestration, memory, usage panel) built as independent cordis plugin rows.",
+  "version": "0.3.0",
+  "private": true,
+  "description": "GLM-Hourness development workspace that builds and checks the two DSH bundles under packages/ (dsh-glm-zcode, dsh-hourness)",
   "type": "module",
   "license": "MIT",
-  "main": "./dist/glm-prompt/index.js",
-  "exports": {
-    "./glm-llm": "./dist/glm-llm/index.js",
-    "./glm-login": "./dist/glm-llm/login-row.js",
-    "./glm-prompt": "./dist/glm-prompt/index.js",
-    "./glm-compact": "./dist/glm-prompt/compact-row.js",
-    "./data": "./dist/data/index.js",
-    "./guard": "./dist/guard/index.js",
-    "./memory": "./dist/memory/index.js",
-    "./workflow": "./dist/workflow/index.js",
-    "./hourness": "./dist/ui/index.js",
-    "./graph": "./dist/graph/index.js",
-    "./graph-panel": "./dist/graph/panel-row.js",
-    "./locale/*.json": "./locale/*.json",
-    "./icon": "./icon.svg"
-  },
-  "dsh": {
-    "bundle": {
-      "patch": "./cordis.patch.yml"
-    }
-  },
-  "files": [
-    "dist",
-    "cordis.patch.yml",
-    "locale",
-    "icon.svg"
-  ],
   "scripts": {
-    "build": "tsc -p tsconfig.json && tsc -p ui/tsconfig.json && node scripts/build-ui.mjs",
+    "build": "node scripts/clean-dist.mjs && tsc -p tsconfig.json && tsc -p packages/glm/tsconfig.json && tsc -p packages/hourness/tsconfig.json && tsc -p ui/tsconfig.json && node scripts/build-ui.mjs",
     "preflight": "node scripts/preflight-bundle.mjs",
     "check:verbatim": "node --experimental-strip-types --no-warnings scripts/check-verbatim.mjs",
     "lint": "node scripts/check-lint.mjs",

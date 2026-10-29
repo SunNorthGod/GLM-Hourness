@@ -10,25 +10,29 @@
 - 仓库：`C:\Users\29596\Desktop\Project\GLM-Hourness`；git，远端 Gitee 私有仓库 `NorthGod_BFDG/GLM-Hourness`，主分支 `main`。
 - 目标：让 GLM 以 ZCode 训练分布住进 DeepSeek Harness（DSH），并在其上建一套编排层，把开发体系量化成由 harness 保证实施的标准（`CHARTER.md`）。
 - 运行时：DSH Desktop `0.2.1-rc.3`，profile `desktop`；ZCode 基线 3.16.3。
-- 安装形态：两个 bundle，均经 `plugin_manager install_bundle` 装入 profile；profile 里是指向主检出的链接，桌面版加载主检出构建出的 `dist` 与 `ui/client.js`：
-  - `dsh-glm-hourness@0.2.0`：主包，11 行（2026-10-27 起工具检索并入 `glm-prompt`，原 `toolsearch` 行删除；2026-10-28 新增数据目录行 `data`、项目图行 `graph` 与面板行 `graph-panel`）；
-  - `dsh-glm-hourness-ui@0.2.0`：独立单入口 UI 包，1 行。
+- 安装形态（split 第 5 步起，`DESIGN.md` §2.3）：仓库产出两个宿主 bundle 与一个客户端包，profile 里是指向检出的链接，加载 `packages/*/dist` 与 `ui/client.js`：
+  - `dsh-glm-zcode@0.3.0`（`packages/glm`）：GLM 通道包，4 行（`glm-llm`、`glm-login`、`glm-prompt`、`glm-compact`）；
+  - `dsh-hourness@0.3.0`（`packages/hourness`）：编排层包，7 行（`data`、`guard`、`memory`、`workflow`、`hourness`、`graph`、`graph-panel`）；
+  - `dsh-glm-hourness-ui@0.2.0`（`ui/`）：独立单入口 UI 包，1 行。
+  - 根 `package.json`（`dsh-glm-hourness`）只是开发工作区，不再是 bundle。桌面版与 `glmsandbox` 两个 profile 在 split 合入时段里改为直接列两个宿主包；在那之前它们仍列旧的 `dsh-glm-hourness` 与 `dsh-glm-hourness-ui`，主检出合入了新布局而 profile 没切换时，本项目的行全部缺席，只有 `skipping profile bundle` 告警。
+- 拉取改变包布局的提交之后（split 起每次都按这一条做）：先关桌面版，再 `npm run build`，再启动。运行中的桌面版在下一次 profile 写入时就按磁盘上的布局重组（`DEVELOPMENT.md` §1.1）。
 
 ## 2. 仓库结构
 
 ```
-src/           主包 TypeScript 源码
+src/           两个包的 TypeScript 源码（源码不搬家；哪个目录属于哪个包见 scripts/packages.mjs，src/shared/ 是公共库）
+packages/      两个宿主包：glm/（dsh-glm-zcode）与 hourness/（dsh-hourness），各有 package.json、cordis.patch.yml、tsconfig.json、locale/、icon.svg；构建产物 dist/ 不入库
 tests/         39 个 spec，556 用例（2026-10-29，`a9f12e1`）；tests/fake-rc3.ts 为 rc.3 运行时替身；tests/tsconfig.json 只给 ESLint 提供类型信息；tests/calibration/ 为标定测试集（两个任务，ORCHESTRATION.md §10.5）
 ui/            独立 UI bundle（源码 ui/src，构建出 ui/client.js，不入库）
-scripts/       packages.mjs（哪个 src/ 目录属于哪个包，DEVELOPMENT.md §10）、preflight-bundle.mjs、check-verbatim.mjs、check-lint.mjs（检查器门禁）、check-secrets.mjs（密钥扫描）、deps-check.mjs（依赖报告）、smoke-zcode*.mjs、sandbox.mjs（启动参数、探针生成的 profile 与覆盖行，探针与标定共用）、profile-shape.mjs（profile 结构的只读快照与比对）、probe/（L3 探针）、calibrate/（标定运行器与边界插件）、graph/（项目图命令行、出图与冒烟）
-eslint.config.js、knip.jsonc、.jscpd.json  检查器配置；eslint-suppressions.json、knip-baseline.json、.jscpd-baseline.json 为告警基线（DEVELOPMENT.md §10）
+scripts/       packages.mjs（目录表：两个包的名字、目录、源码目录与行，DEVELOPMENT.md §10）、clean-dist.mjs（构建前删各包的 dist/）、preflight-bundle.mjs、check-verbatim.mjs、check-lint.mjs（检查器门禁）、check-secrets.mjs（密钥扫描）、deps-check.mjs（依赖报告）、smoke-zcode*.mjs、sandbox.mjs（启动参数、探针生成的 profile 与覆盖行，探针与标定共用）、profile-shape.mjs（profile 结构的只读快照与比对）、probe/（L3 探针）、calibrate/（标定运行器与边界插件）、graph/（项目图命令行、出图与冒烟）
+eslint.config.js、knip.js（入口按目录表生成）、tsconfig.knip.json、.jscpd.json  检查器配置；eslint-suppressions.json、knip-baseline.json、.jscpd-baseline.json 为告警基线（DEVELOPMENT.md §10）
 docs/          宪章、设计、编排、路线、事实账、流程、交接；docs/graph/ 为本项目的项目图（进度的事实源）；docs/reference/ 为事实参考原文
 AGENTS.md      仓库规则
-cordis.patch.yml  主包 Loader patch
+package.json   开发工作区根（dsh-glm-hourness，private，不是 bundle）：脚本、开发依赖与 peerDependencies
 .llm/          不入库，项目目录：audit/（违规与决策；旧的用量副本与 dialect-init 流水已于 2026-10-29 删除）、memory.json、docs/（原始资料快照与抓取脚本）、probe-runs/、calibration-runs/；旧的 credentials.json 与 device-mid.txt 已于 2026-10-29 删除（m1-cleanup）
 ~/.dsh/glm-hourness/  仓库外，用户级目录：audit/usage.jsonl、credentials.json（2026-10-29 起为版本 2）、device-mid.txt（m1-parity 起不再使用，DESIGN.md §2.4）
 reference/     不入库：审计用参考源码（zcode-api、deepseek-harness、ZCode、zcode-plugins）与桌面版运行时包导出 dsh-desktop-0.2.1-rc.3/，约 2.5 GB
-dist/          不入库：tsc 产物
+dist/          不入库：单包布局留下的旧 tsc 产物，split 第 5 步起不再生成；packages/*/dist/ 才是产物。合入后的清理提交删掉它与只为它保留的忽略项
 .agents/       不入库：编排任务状态与一次性脚本（如 m1-parity 集成报告 zcode-parity/、批次 L4 记录 m1-l4/、借用审计报告 dsh-borrow-audit/report.md、缓存调查 cache-2026-10-28/）
 .worktrees/    不入库：并行线的 git 工作树。目前没有登记的工作树，目录为空（graph-engine 留下的空目录已于 2026-10-29 删除）
 ```
@@ -50,7 +54,7 @@ dist/          不入库：tsc 产物
 | `graph-panel` | 默认启用：`/graph-apply`、`/graph-run` 与现场投影 `graphLive`；2026-10-29 L4 现场区显示主 Agent 正在跑的工具，子 agent 完成后显示已停下 |
 | `glm-hourness/ui` | 功能可用：设置页、输入框「GLM 通道」按钮、右侧栏「项目图」页签（正在做、图）；2026-10-29 L4 挂载与渲染正常；视觉未被整体接受，全部 UI 的审查在项目图 `m8-ui-audit` |
 
-行健康（`DESIGN.md` §2.5）：主包 11 行都在激活时与会话中上报生效、部分生效或未生效及原因，`/glm-status` 显示。2026-10-29 L4 的第二次 `/glm-status`：11 行全部生效，glm-llm 的原因是「上游已应答（套餐 coding-plan）」，没有设备 ID 的附注；第一次（还没运行 `/hourness`、没调用图工具）hourness 与 graph 为「已加载，本会话未触发」，其余 9 行生效。
+行健康（`DESIGN.md` §2.5）：11 个宿主行都在激活时与会话中上报生效、部分生效或未生效及原因，`/glm-status` 显示。2026-10-29 L4 的第二次 `/glm-status`：11 行全部生效，glm-llm 的原因是「上游已应答（套餐 coding-plan）」，没有设备 ID 的附注；第一次（还没运行 `/hourness`、没调用图工具）hourness 与 graph 为「已加载，本会话未触发」，其余 9 行生效。
 
 装机：2026-10-29 10:02（UTC+8）agent 重启桌面版，加载主检出 `0f9f284`（代码与 `a9f12e1` 相同）。没有新的 crash log，宿主 stdout 与 stderr 里没有本包的输出；页面控制台只有已知的三类噪声，都不来自本包：inspector 插件连 `ws://127.0.0.1:9230/ingest` 失败、`dsh-app://app/plugins/events` 的 `ERR_FAILED`、旧会话的 `changes.summary` 404。10:48 清理之后再重启一次（`m1-cleanup`）：新实例没有 crash log，控制台只有 ingest 噪声，宿主输出里没有本包；重启时被强制结束的旧实例留下一份 renderer crash log（见 §6 桌面版自验）。
 

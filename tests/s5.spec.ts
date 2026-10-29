@@ -6,7 +6,7 @@ import {
 } from '../src/memory/store.ts'
 import { isPersonaLevel, PERSONA_LEVELS } from '../src/glm-prompt/persona.ts'
 import { dialectSections } from '../src/glm-prompt/index.ts'
-import { dispatchPanel, parseJsonl } from '../src/ui/panel.ts'
+import { dispatchPanel, parseJsonl } from '../src/report/panel.ts'
 import { defaultKnowableFromGit, memoryTools, storeIo } from '../src/memory/tools.ts'
 
 const NOW = '2026-10-27T12:00:00+08:00'
