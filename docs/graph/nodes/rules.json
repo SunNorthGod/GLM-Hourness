@@ -141,6 +141,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "更正上一条批注的运行编号：rules-design-v05-review 是 wf_67aac31bd9eebeb3（上一条误写为 wf_04ea6ba2a7e5f6d6）。"
+    },
+    {
+      "at": "2026-10-29T18:24:03.090Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "规则板设计 0.5 评审（rules-design-v05-review，wf_67aac31bd9eebeb3）：CHANGES_REQUESTED，HIGH 0、MEDIUM 5（F42–F46，挡路）、LOW 8；0.4 的 F33–F41 全部关闭。挡路的五条都是人的决定还没写进去：F42 默认档仍是无影响、§19 仍在问人；F43 少做缺了「减少并发数量」；F44 新手引导要讲高峰模式、默认少做与在哪里改；F45 GLM 包的高峰提醒原文叫模型不要暂停或推迟工作，与少做、不做相反；F46 规则提议仍用表格卡问人，要改成聊天（d-chat-not-cards）。派出单步 rules-design-v06-write（wf_2f149988fcc89bb1）写 0.6，并按 d-rules-visible 把合入前检查清单与必须全审清单放进规则板显示，再写一页人话放行稿；独立评审在它落地后另派。"
     }
   ]
 }
