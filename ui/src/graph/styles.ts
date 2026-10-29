@@ -72,7 +72,8 @@ export const PANEL_CSS = `
 .glmg-row-title{color:var(--g-ink);font-weight:500;overflow-wrap:anywhere}
 .glmg-row-toggle{display:block;width:100%;padding:0;border:0;background:none;font:inherit;font-weight:500;text-align:left;cursor:pointer}
 .glmg-who{flex:none;margin-top:1px;padding:0 6px;border-radius:5px;font-size:11px;line-height:18px;white-space:nowrap}
-.glmg-who.agent{background:color-mix(in srgb,var(--g-purple) 16%,transparent);color:var(--g-purple)}
+/* the fixed purple stays for fills and strokes; chip text mixes in the ink so it reads at 4.5:1 or more in both themes */
+.glmg-who.agent{background:color-mix(in srgb,var(--g-purple) 16%,transparent);color:color-mix(in srgb,var(--g-purple) 70%,var(--g-ink))}
 .glmg-who.relay{background:color-mix(in srgb,var(--g-accent) 14%,transparent);color:var(--g-accent)}
 .glmg-who.human{background:var(--g-hover);color:var(--g-ink2)}
 .glmg-quote{margin:8px 0 0;padding:6px 10px;border-left:2px solid var(--g-accent);color:var(--g-ink2);font-size:12.5px;white-space:pre-wrap;overflow-wrap:anywhere;background:color-mix(in srgb,var(--g-accent) 6%,transparent);border-radius:0 6px 6px 0}
@@ -132,13 +133,14 @@ export const PANEL_CSS = `
 .glmg-badge .ring{fill:none;stroke:var(--g-doing);stroke-width:1.5;opacity:0;transform-box:fill-box;transform-origin:center}
 .glmg-badge.running .dot{fill:var(--g-doing)}
 .glmg-badge.running .ring{animation:glmg-ring 1.8s ease-out infinite}
-.glmg-unplaced{position:absolute;top:6px;left:10px;right:10px;display:flex;flex-wrap:wrap;gap:4px 10px;padding:3px 8px;border-radius:6px;background:color-mix(in srgb,var(--dsw-alias-bg-base,#1d1d1f) 82%,transparent);color:var(--g-ink3);font-size:11px;pointer-events:none}
+/* running agents without a drawn node, and the legend: strips above and below the canvas, outside the pannable area */
+.glmg-unplaced{display:flex;flex-wrap:wrap;gap:4px 10px;padding:0 14px 6px;color:var(--g-ink3);font-size:11px}
 .glmg-unplaced span{display:inline-flex;align-items:center;gap:4px}
-.glmg-unplaced i{width:6px;height:6px;border-radius:50%;background:var(--g-ink3)}
-.glmg-unplaced .running i{background:var(--g-doing);animation:glmg-breathe 2.2s ease-in-out infinite}
-.glmg-legend{position:absolute;left:10px;bottom:8px;display:flex;flex-wrap:wrap;gap:4px 10px;padding:4px 8px;border-radius:6px;background:color-mix(in srgb,var(--dsw-alias-bg-base,#1d1d1f) 82%,transparent);color:var(--g-ink3);font-size:11px;pointer-events:none}
+.glmg-unplaced i{width:6px;height:6px;border-radius:50%;background:var(--g-doing);animation:glmg-breathe 2.2s ease-in-out infinite}
+.glmg-legend{display:flex;flex-wrap:wrap;gap:4px 10px;padding:6px 14px 8px;border-top:1px solid var(--g-line);color:var(--g-ink3);font-size:11px}
 .glmg-legend span{display:inline-flex;align-items:center;gap:4px}
-.glmg-legend i{width:9px;height:9px;border-radius:3px}
+.glmg-legend i{box-sizing:border-box;width:9px;height:9px;border-radius:3px}
+.glmg-canvas-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--g-ink3);font-size:12.5px;pointer-events:none}
 /* node detail */
 .glmg-detail{position:absolute;inset:0;z-index:2;display:flex;flex-direction:column;background:var(--dsw-alias-bg-base,var(--dsw-specific-sidebar-fill,#1d1d1f));animation:glmg-slide .24s cubic-bezier(.2,.8,.2,1)}
 .glmg-detail-head{display:flex;align-items:center;gap:6px;padding:8px 10px;border-bottom:1px solid var(--g-line)}

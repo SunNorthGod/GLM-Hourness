@@ -100,6 +100,7 @@ function NodeShape({ box, selected, hiddenClosed, onPick }: { readonly box: Node
       {hiddenClosed > 0
         ? (
             <g style={{ transform: `translate(${width - 14}px, -8px)` }}>
+              <title>{hiddenClosed} 个已关闭的子节点被筛掉了</title>
               <rect width={30} height={16} rx={8} style={{ fill: mix('var(--g-done)', 22), stroke: 'var(--g-done)', strokeWidth: 0.8 }} />
               <text x={15} y={11.5} textAnchor="middle" fontSize={10} fontWeight={600} style={{ fill: 'var(--g-done)' }}>✓{hiddenClosed}</text>
             </g>
@@ -164,13 +165,15 @@ export function GraphCanvas({ graph, selected, onPick, agents }: GraphCanvasProp
   }, [visible])
   const placed = useMemo(() => placements(agents), [agents])
   const drawn = useMemo(() => new Set(layout?.nodes.map(box => box.node.id) ?? []), [layout])
-  /** Agents without a node in the drawing: no focus yet, or a focus the filter hides. */
-  const unplaced = [...placed].flatMap(([id, list]) => drawn.has(id) ? [] : list)
+  /** Running agents without a node in the drawing: no focus yet, or a focus the filter hides. Idle ones are listed in 现场. */
+  const unplaced = [...placed].flatMap(([id, list]) => drawn.has(id) ? [] : list.filter(agent => agent.running))
   const mainFocus = agents.find(agent => agent.main)?.view?.focus ?? null
   const now = useContext(NowContext)
   const canvas = useRef<HTMLDivElement | null>(null)
   const [size, setSize] = useState({ width: 0, height: 0 })
   const [view, setView] = useState<View | undefined>(undefined)
+  /** Which placement the view follows as the canvas or the filter changes; none once the user pans or zooms. */
+  const [follow, setFollow] = useState<'home' | 'overview' | undefined>('home')
   const [interacting, setInteracting] = useState(false)
   const drag = useRef<{ readonly startX: number, readonly startY: number, readonly from: View, moved: boolean } | undefined>(undefined)
   /** The click that ends a pan lands on whatever is under the pointer; it must not open a node. */
@@ -211,17 +214,23 @@ export function GraphCanvas({ graph, selected, onPick, agents }: GraphCanvasProp
     return { x: (size.width - layout.width * k) / 2, y: (size.height - layout.height * k) / 2, k }
   }
 
-  // Place the view once the canvas has a size; later reads keep the user's pan and zoom.
+  // Until the user pans or zooms, the view follows its placement whenever the canvas size or the filter changes
+  // (the first size of a fresh mount is often not the final one); graph re-reads keep the current view.
   useEffect(() => {
-    if (view === undefined) {
-      const placed = home()
-      if (placed !== undefined) setView(placed)
-    }
-  })
+    if (follow === undefined) return
+    const placed = follow === 'home' ? home() : overview()
+    if (placed !== undefined) setView(placed)
+  }, [follow, size.width, size.height, filter])
 
   const current = view ?? { x: PAD, y: PAD, k: 1 }
+  const place = (target: 'home' | 'overview'): void => {
+    setFollow(target)
+    const placed = target === 'home' ? home() : overview()
+    if (placed !== undefined) setView(placed)
+  }
 
   const zoomAt = (factor: number, cx: number, cy: number): void => {
+    setFollow(undefined)
     const k = clamp(current.k * factor, MIN_ZOOM, MAX_ZOOM)
     const ratio = k / current.k
     setView({ k, x: cx - (cx - current.x) * ratio, y: cy - (cy - current.y) * ratio })
@@ -240,6 +249,7 @@ export function GraphCanvas({ graph, selected, onPick, agents }: GraphCanvasProp
       zoomAt(Math.exp(-event.deltaY * 0.0022), event.clientX - rect.left, event.clientY - rect.top)
       return
     }
+    setFollow(undefined)
     setView({ ...current, x: current.x - event.deltaX, y: current.y - event.deltaY })
   }
 
@@ -258,6 +268,7 @@ export function GraphCanvas({ graph, selected, onPick, agents }: GraphCanvasProp
       state.moved = true
       event.currentTarget.setPointerCapture(event.pointerId)
       setInteracting(true)
+      setFollow(undefined)
     }
     setView({ ...state.from, x: state.from.x + dx, y: state.from.y + dy })
   }
@@ -288,16 +299,24 @@ export function GraphCanvas({ graph, selected, onPick, agents }: GraphCanvasProp
           onClose={() => { setMenuOpen(false) }}
           items={(Object.keys(FILTER_LABELS) as GraphFilter[]).map(id => ({ id, label: FILTER_LABELS[id] }))}
           selectedId={filter}
-          onSelect={id => { setFilter(id); setMenuOpen(false) }}
+          onSelect={id => { setFilter(id); setFollow('home'); setMenuOpen(false) }}
           portal
           anchor={<button type="button" className="glmg-filter" aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => { setMenuOpen(!menuOpen) }}>{FILTER_LABELS[filter]} ▾</button>}
         />
         <span className="grow" />
         <Button variant="ghost" size="sm" aria-label="缩小" onClick={() => { zoomAt(1 / 1.25, ...centre()) }}>−</Button>
         <Button variant="ghost" size="sm" aria-label="放大" onClick={() => { zoomAt(1.25, ...centre()) }}>+</Button>
-        <Button variant="ghost" size="sm" onClick={() => { const placed = overview(); if (placed !== undefined) setView(placed) }}>全貌</Button>
-        <Button variant="ghost" size="sm" onClick={() => { const placed = home(); if (placed !== undefined) setView(placed) }}>回到重点</Button>
+        <Button variant="ghost" size="sm" onClick={() => { place('overview') }}>全貌</Button>
+        <Button variant="ghost" size="sm" onClick={() => { place('home') }}>回到重点</Button>
       </div>
+      {/* Strips above and below the canvas, so they never cover a node. */}
+      {unplaced.length === 0
+        ? null
+        : (
+            <div className="glmg-unplaced">
+              {unplaced.map(agent => <span key={agent.id}><i />{agent.name}：{agent.view?.focus === null || agent.view?.focus === undefined ? '还没落到节点' : '焦点被筛选隐藏了'}</span>)}
+            </div>
+          )}
       <div
         ref={canvas}
         className={`glmg-canvas${interacting ? ' dragging' : ''}`}
@@ -324,20 +343,16 @@ export function GraphCanvas({ graph, selected, onPick, agents }: GraphCanvasProp
             })}
           </g>
         </svg>
-        {unplaced.length === 0
-          ? null
-          : (
-              <div className="glmg-unplaced">
-                {unplaced.map(agent => <span key={agent.id} className={agent.running ? 'running' : undefined}><i />{agent.name}：{agent.view?.focus === null || agent.view?.focus === undefined ? '还没落到节点' : '焦点被筛选隐藏了'}</span>)}
-              </div>
-            )}
-        <div className="glmg-legend">
-          <span><i style={{ background: 'var(--g-wait)' }} />等你</span>
-          <span><i style={{ background: 'var(--g-doing)' }} />进行中</span>
-          <span><i style={{ background: 'var(--g-done)' }} />完成</span>
-          <span><i style={{ background: 'var(--g-ink3)' }} />未开始</span>
-          <span><i style={{ background: 'var(--g-purple)' }} />决策</span>
-        </div>
+        {visible.nodes.size === 0 ? <div className="glmg-canvas-empty">{filter === 'mine' ? '没有等你的事' : '这个筛选下没有节点'}</div> : null}
+      </div>
+      <div className="glmg-legend">
+        <span><i style={{ background: 'var(--g-wait)' }} />等你</span>
+        <span><i style={{ background: 'var(--g-doing)' }} />进行中</span>
+        <span><i style={{ background: 'var(--g-done)' }} />完成</span>
+        <span><i style={{ background: 'var(--g-ink3)' }} />未开始</span>
+        <span><i style={{ border: '1.5px dashed var(--g-ink3)' }} />提议</span>
+        <span><i style={{ background: 'var(--g-purple)' }} />决策</span>
+        <span><i style={{ border: '1.5px dashed var(--g-wait)' }} />风险</span>
       </div>
     </div>
   )
