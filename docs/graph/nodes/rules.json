@@ -219,6 +219,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "循环板设计 0.3 按规则板 0.7 §10.7 的答复改：撤回 peakStop，§6.9 照扩过的 heldForPeak 写（冷会话恢复之后再问一次）；页面档位与 loops.peak-end 判档位用 stateForProject(<项目根>)；少做的上限显示取 glmWorkerCap 或 PEAK_REDUCE_GLM_WORKERS，第 13 项的 does 写「规则板定档位与上限，项目编排派活时照上限数」。新的一条请求：规则板 0.7 第 29 行「GLM 一侧带到循环板上的一条默认条目」是修订之前的接缝裁定，请照修订改为「编排层（dsh-hourness 带来）的默认条目，GLM 包只给高峰变化事件与时刻计算」。高峰变化事件改名 channel.peak-changed，规则板没有引用它，检测器只用 loops.file-changed，不受影响。"
+    },
+    {
+      "at": "2026-10-29T22:07:33.185Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "Rules board design 0.8 written (.agents/tasks/rules/design.md; not yet reviewed): a small revision of 0.7 made as separate sentence-level edits, no rewrite; 0.7 text not kept separately (the file is outside git), every changed sentence is listed in section 20. Against the 0.7 review (MEDIUM F59 blocking, LOW F68-F77) and the orchestrator's F59 ruling (design-context.md, last seam ruling): rounds in which the main agent's only remaining work is held back by the peak mode do not count toward M7's idle-rounds rule; M7 parks the drive with its own reason (e.g. hourness-peak-wait) and offers resume-drive through glmHournessExecute.runAction; at peak end the orchestration-layer loops entry 14 (loops.peak-end) runs resume-drive and prompts the main agent. What the rules board exposes: a new member glmHournessPeakMode.peakHoldFor(sessionId): PeakHold | undefined, PeakHold = {level: 'reduce' | 'stop', until}; defined only when glm-peak is true, the peak end is known, the level is reduce or stop, and (stop) the session has no let-once for this peak; computed by the same function as stateFor; memory only, never throws. The rules board does not know which work remains; M7 infers 'only held work left' from an idle round while peakHoldFor is defined; a wrong inference delays idle detection to peak end (at most 4 hours). Edited: header, 0, 1.4 item 23, 1.5, 3.6, 7.2, 10.4, 10.5, 10.7 (M7 items 1 and 4, loops item 8, metrics sentence), 11.2, 13, 14, 15 R1, 16 R1, 17, 18 (two rows), section 20 entry 0.8, appendix E notes, new appendix F. LOW fixed: F68, F69, F70, F72, F73, F74, F76, F77, F71 point 2, F75 one sentence; deferred with reasons: F71 point 1 (inferred host-exit premise, verify in R4 L3 first), F75 CheckOptions.emit (waits for the metrics design). Left to M7 and the loops board: which idle round parks, the park text, whether to park when the loops board is absent (rules board suggests not), and resuming early when the person changes the level mid-peak. onepage.md: version, three sentences on parking and resuming the drive without asking, two hand-off lines, F77 wording. Independent review next."
+    },
+    {
+      "at": "2026-10-29T22:07:33.394Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "规则板设计 0.8 以几处小改写成（rules-design-v08-write，wf_53cfc666389b8537）：F59 按编排方裁定，规则板新增服务成员 glmHournessPeakMode.peakHoldFor(sessionId) → {level, until} | undefined；10 条 LOW 改了或部分改了，F71 第 1 点与 F75 的 CheckOptions.emit 推后，理由在附录 F；一页人话已更新。派出只审改动处的单步评审 rules-design-v08-review。"
     }
   ]
 }
