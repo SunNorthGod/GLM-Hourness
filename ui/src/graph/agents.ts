@@ -84,6 +84,11 @@ export function doingText(agent: AgentLive, now: number): string {
   return agent.main ? '空闲，等你说话' : '已停下'
 }
 
+/** The nodes a running agent stands on: the only ones whose progress marks move (breathing dot, pulsing halo). */
+export function runningOn(agents: readonly AgentLive[]): ReadonlySet<string> {
+  return new Set([...placements(agents)].flatMap(([id, list]) => id !== '' && list.some(agent => agent.running) ? [id] : []))
+}
+
 /**
  * Where each agent stands on the graph (live.ts placeOf, the rule the run
  * controls use too): the main agent at its focus, a child at its own

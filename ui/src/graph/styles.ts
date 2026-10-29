@@ -82,7 +82,9 @@ export const PANEL_CSS = `
 .glmg-progress{position:relative;display:inline-block;flex:none;width:56px;height:4px;border-radius:2px;background:var(--g-hover);overflow:hidden}
 .glmg-progress b{position:absolute;inset:0 auto 0 0;border-radius:2px;background:var(--g-done);transition:width .5s cubic-bezier(.2,.8,.2,1)}
 .glmg-dot{flex:none;width:8px;height:8px;margin-top:6px;border-radius:50%;background:var(--g-ink3)}
-.glmg-dot.doing{background:var(--g-doing);animation:glmg-breathe 2.2s ease-in-out infinite}
+/* in-progress marks move only where a running agent stands (agents.ts runningOn); a status alone is not activity */
+.glmg-dot.doing{background:var(--g-doing)}
+.glmg-dot.live{animation:glmg-breathe 2.2s ease-in-out infinite}
 .glmg-dot.done{background:var(--g-done)}
 .glmg-dot.wait{background:var(--g-wait)}
 .glmg-dot.proposed{background:transparent;border:1.5px dashed var(--g-ink3)}
@@ -120,7 +122,7 @@ export const PANEL_CSS = `
 .glmg-node:focus{outline:none}
 .glmg-node:focus-visible .shape{stroke:var(--g-accent);stroke-width:3}
 .glmg-node .halo{fill:none;stroke:var(--g-doing);stroke-width:2;opacity:0;pointer-events:none}
-.glmg-node.doing .halo{animation:glmg-halo 2.4s ease-in-out infinite}
+.glmg-node.doing.live .halo{animation:glmg-halo 2.4s ease-in-out infinite}
 .glmg-node.waiting .halo{stroke:var(--g-wait);animation:glmg-halo 1.8s ease-in-out infinite}
 .glmg-node.closed{opacity:.5}
 .glmg-node text{pointer-events:none}

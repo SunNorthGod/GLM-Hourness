@@ -12,7 +12,7 @@ import type { LoadedGraph } from '../../../src/graph/parse.ts'
 import { ancestorsOf } from '../../../src/graph/projection.ts'
 import { RUN_LABELS, nodeRefusal, offersRedo } from '../../../src/graph/run.ts'
 import type { GraphNode, Verification } from '../../../src/graph/schema.ts'
-import { placements, type AgentLive } from './agents.ts'
+import { placements, runningOn, type AgentLive } from './agents.ts'
 import { Folded, Markdown, NodeRow, Options, Outcome, Part, ProposalActions, When, useServices, useWriter } from './common.tsx'
 import { byCreation, dotTone, historyText, needsHuman, presenceText, progressOf, progressText, statusText } from './model.ts'
 
@@ -111,6 +111,7 @@ export function NodeDetail({ graph, id, agents, onBack, onClose }: DetailProps):
   }
   const ancestors = ancestorsOf(graph, node).reverse()
   const children = [...graph.nodes.values()].filter(child => child.parent === node.id).sort(byCreation(graph))
+  const live = runningOn(agents)
   const progress = progressText(progressOf(graph, node.id))
   const history = node.history.slice(-HISTORY_SHOWN).reverse()
   const done = node.status === 'done'
@@ -147,7 +148,7 @@ export function NodeDetail({ graph, id, agents, onBack, onClose }: DetailProps):
           ? null
           : (
               <Part title={['下面的节点', progress.work, progress.questions].filter(part => part !== undefined).join(' · ')}>
-                {children.map(child => <NodeRow key={child.id} graph={graph} node={child} tone={dotTone(child)} status />)}
+                {children.map(child => <NodeRow key={child.id} graph={graph} node={child} tone={live.has(child.id) ? `${dotTone(child)} live` : dotTone(child)} status />)}
               </Part>
             )}
         {(node.evidence ?? []).length === 0

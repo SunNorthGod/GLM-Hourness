@@ -9,19 +9,20 @@
 import type { ReactElement } from 'react'
 import type { LoadedGraph } from '../../../src/graph/parse.ts'
 import type { NodeRef, OpenItems } from '../../../src/graph/projection.ts'
-import type { AgentLive } from './agents.ts'
+import { runningOn, type AgentLive } from './agents.ts'
 import { NodeRow, Part } from './common.tsx'
 import { LiveSection } from './Live.tsx'
 import { byCreation } from './model.ts'
 
-function Row({ graph, entry, tone }: { readonly graph: LoadedGraph, readonly entry: NodeRef, readonly tone: 'doing' | 'todo' }): ReactElement | null {
+/** A row of a node list; `live` holds the nodes a running agent stands on, whose dots breathe. */
+function Row({ graph, entry, tone, live }: { readonly graph: LoadedGraph, readonly entry: NodeRef, readonly tone: 'doing' | 'todo', readonly live: ReadonlySet<string> }): ReactElement | null {
   const node = graph.nodes.get(entry.id)
-  return node === undefined ? null : <NodeRow graph={graph} node={node} tone={tone} path />
+  return node === undefined ? null : <NodeRow graph={graph} node={node} tone={live.has(node.id) ? `${tone} live` : tone} path />
 }
 
-function Rows({ graph, entries, tone, empty }: { readonly graph: LoadedGraph, readonly entries: readonly NodeRef[], readonly tone: 'doing' | 'todo', readonly empty: string }): ReactElement {
+function Rows({ graph, entries, tone, live, empty }: { readonly graph: LoadedGraph, readonly entries: readonly NodeRef[], readonly tone: 'doing' | 'todo', readonly live: ReadonlySet<string>, readonly empty: string }): ReactElement {
   if (entries.length === 0) return <div className="glmg-notice">{empty}</div>
-  return <>{entries.map(entry => <Row key={entry.id} graph={graph} entry={entry} tone={tone} />)}</>
+  return <>{entries.map(entry => <Row key={entry.id} graph={graph} entry={entry} tone={tone} live={live} />)}</>
 }
 
 export function Doing({ graph, items, agents }: { readonly graph: LoadedGraph, readonly items: OpenItems, readonly agents: readonly AgentLive[] }): ReactElement {
@@ -29,14 +30,15 @@ export function Doing({ graph, items, agents }: { readonly graph: LoadedGraph, r
   const doing = items.doing.filter(entry => entry.type !== 'goal').sort(order)
   const ready = [...items.ready].sort(order)
   const debt = [...items.verificationDebt].sort(order)
+  const live = runningOn(agents)
   return (
     <div className="glmg-view">
       <LiveSection graph={graph} agents={agents} tasks={doing.filter(entry => entry.type === 'task').length} />
-      <Part title={`进行中 · ${doing.length}`}><Rows graph={graph} entries={doing} tone="doing" empty="现在没有进行中的节点。" /></Part>
-      <Part title={`可以开工 · ${ready.length}`}><Rows graph={graph} entries={ready} tone="todo" empty="没有依赖都已完成、还没开工的任务。" /></Part>
+      <Part title={`进行中 · ${doing.length}`}><Rows graph={graph} entries={doing} tone="doing" live={live} empty="现在没有进行中的节点。" /></Part>
+      <Part title={`可以开工 · ${ready.length}`}><Rows graph={graph} entries={ready} tone="todo" live={live} empty="没有依赖都已完成、还没开工的任务。" /></Part>
       {debt.length === 0
         ? null
-        : <Part title={`采纳了还没验证的决策 · ${debt.length}`}>{debt.map(entry => <Row key={entry.id} graph={graph} entry={entry} tone="todo" />)}</Part>}
+        : <Part title={`采纳了还没验证的决策 · ${debt.length}`}>{debt.map(entry => <Row key={entry.id} graph={graph} entry={entry} tone="todo" live={live} />)}</Part>}
     </div>
   )
 }

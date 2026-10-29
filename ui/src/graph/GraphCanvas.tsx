@@ -13,7 +13,7 @@ import { Button, Menu } from '@deepseek-ai/dsh-client-ui-primitives'
 import { useContext, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactElement, type WheelEvent as ReactWheelEvent } from 'react'
 import { HEX_INSET, TEXT, isHexagon, layoutGraph, type CurvePath, type DrawnEdgeType, type NodeBox, type Tone } from '../../../src/graph/layout.ts'
 import type { LoadedGraph } from '../../../src/graph/parse.ts'
-import { doingText, placements, type AgentLive } from './agents.ts'
+import { doingText, placements, runningOn, type AgentLive } from './agents.ts'
 import { NowContext, asButton } from './common.tsx'
 import { FILTER_LABELS, statusText, visibleGraph, type GraphFilter } from './model.ts'
 
@@ -76,7 +76,8 @@ const EDGE_STYLE: Readonly<Record<DrawnEdgeType, CSSProperties & { readonly mark
   supersedes: { stroke: 'var(--g-purple)', strokeWidth: 1.6, marker: 'arrow-purple' },
 }
 
-function NodeShape({ box, selected, hiddenClosed, onPick }: { readonly box: NodeBox, readonly selected: boolean, readonly hiddenClosed: number, readonly onPick: (id: string) => void }): ReactElement {
+/** One node box; `live` when a running agent stands on it, so its in-progress halo pulses. */
+function NodeShape({ box, selected, live, hiddenClosed, onPick }: { readonly box: NodeBox, readonly selected: boolean, readonly live: boolean, readonly hiddenClosed: number, readonly onPick: (id: string) => void }): ReactElement {
   const { node, width, height } = box
   const font = node.type === 'goal' ? TEXT.goal : TEXT.title
   const x = width / 2
@@ -86,7 +87,7 @@ function NodeShape({ box, selected, hiddenClosed, onPick }: { readonly box: Node
     top += font.line
     return text
   })
-  const classes = ['glmg-node', box.tone, selected ? 'selected' : ''].filter(Boolean).join(' ')
+  const classes = ['glmg-node', box.tone, selected ? 'selected' : '', live ? 'live' : ''].filter(Boolean).join(' ')
   const hexagon = isHexagon(node.type)
   return (
     <g className={classes} style={{ transform: `translate(${box.x}px, ${box.y}px)` }} data-id={node.id} aria-label={`${node.title}，${statusText(node)}`} {...asButton<SVGGElement>(() => { onPick(node.id) })}>
@@ -164,6 +165,7 @@ export function GraphCanvas({ graph, selected, onPick, agents }: GraphCanvasProp
     return result.ok ? result.layout : undefined
   }, [visible])
   const placed = useMemo(() => placements(agents), [agents])
+  const live = useMemo(() => runningOn(agents), [agents])
   const drawn = useMemo(() => new Set(layout?.nodes.map(box => box.node.id) ?? []), [layout])
   /** Running agents without a node in the drawing: no focus yet, or a focus the filter hides. Idle ones are listed in 现场. */
   const unplaced = [...placed].flatMap(([id, list]) => drawn.has(id) ? [] : list.filter(agent => agent.running))
@@ -336,7 +338,7 @@ export function GraphCanvas({ graph, selected, onPick, agents }: GraphCanvasProp
               const { marker, ...style } = EDGE_STYLE[edge.type]
               return <path key={`${edge.type}:${edge.node}:${edge.to}`} className="glmg-edge" d={pathOf(edge.path)} style={style} {...(marker === undefined ? {} : { markerEnd: `url(#glmg-${marker})` })} />
             })}
-            {layout?.nodes.map(box => <NodeShape key={box.node.id} box={box} selected={box.node.id === selected} hiddenClosed={visible.hiddenClosed.get(box.node.id) ?? 0} onPick={pick} />)}
+            {layout?.nodes.map(box => <NodeShape key={box.node.id} box={box} selected={box.node.id === selected} live={live.has(box.node.id)} hiddenClosed={visible.hiddenClosed.get(box.node.id) ?? 0} onPick={pick} />)}
             {layout?.nodes.map(box => {
               const here = placed.get(box.node.id)
               return here === undefined ? null : <AgentBadges key={`agents:${box.node.id}`} box={box} agents={here} now={now} />
