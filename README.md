@@ -9,7 +9,7 @@ GLM + House + Harness，两个目标各由一个包实现（`docs/CHARTER.md` §
 | `dsh-glm-zcode` | 底层 · 通道 | `glm-llm`、`glm-login` | 原生 ZCode 客户端通道：账号登录与加密凭证、身份头、签名 V4、端点路由、Anthropic Messages 传输、coding-plan / start-plan 双档；`/glm-login`、`/glm-status`（凭证状态与各行健康）、`/glm-logout` |
 | `dsh-glm-zcode` | 底层 · 方言 | `glm-prompt`、`glm-compact` | 提示词与工具面镜像 ZCode 3.16.3、local 工具检索（LocalToolSearch / DeferredToolCall）、todo 提醒 10/10、压缩镜像 |
 | `dsh-hourness` | 编排层 | `data`、`guard`、`memory`、`workflow`、`hourness`、`graph`、`graph-panel` | 数据目录服务、执行边界、记忆与审计流水、决策日志与晨报、用量报告、项目图；`/hourness`、`/hourness-status`（两个包各行的健康） |
-| `dsh-glm-zcode`（客户端包 `dsh-glm-zcode-ui`） | 呈现 | `glm-ui` | 设置页与会话输入框 pill（默认禁用，桌面版验收后启用） |
+| `dsh-glm-zcode`（客户端包 `dsh-glm-zcode-ui`） | 呈现 | `glm-ui` | 设置页与会话输入框 pill（默认启用） |
 | `dsh-hourness`（客户端包 `dsh-hourness-ui`） | 呈现 | `ui` | 右侧栏项目图面板 |
 
 编排层的完整设计（项目图即主 Agent、设计循环、决策卡、规范体系等）见 `docs/ORCHESTRATION.md`，目前大部分处于规划阶段。
