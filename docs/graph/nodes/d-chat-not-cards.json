@@ -1,0 +1,19 @@
+{
+  "id": "d-chat-not-cards",
+  "type": "decision",
+  "title": "问人改成聊天：agent 提几点和方案，人同意或补充，不给选项、不出问答卡",
+  "status": "approved",
+  "parent": "orch",
+  "verification": "unverified",
+  "body": "适用于产品里主 Agent 与人的全部交流，也适用于编排方与人。agent 不出问答卡、不列 A/B/C，而是按设计循环的四答（理由、架构、目标、规划）加非目标提几点和一个方案，写明替人定了哪几处、最可能不对的是哪一处、没选的做法一句话；人同意、补充或否掉。人随口回答时 agent 复述一句「那我记成……」再记图，图上存人的原话。编排方的落地方案（待人补充）：一、问答卡与选项相关的决定改写或作废：d-option-card、d-recommend-last、d-interview-cards（访谈改为聊天，主 Agent 仍不带 ask_user_question）、d-inertia-breaker（改为要紧的事先问人怎么想再给方案）；二、项目图上要人定的事仍是待决节点，存方案原文、人的原话与结论，不再要求 options、recommend、crux、verdict、weight、gain、cost（e22282f 引擎字段改为不用于人定的题）；三、五键（批准、拒绝、补充、讲细点、说重点）变成人在聊天里会说的五种话，不做按钮；设计放行仍是图上的一次人的拍板，由主 Agent 带人的原话记下；四、面板只看不操作（d-ui-look-not-operate），「需要你」一节列出在等人回话的方案，点开跳到主 Agent 的对话；五、跟随率改为统计人原样同意与补充、否掉的比例，进指标流水。",
+  "history": [
+    {
+      "at": "2026-10-29T17:01:21.882Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "用户定：产品里也不用问答卡、不给选项，回到设计循环的聊天方式",
+      "relay": "我是要改产品的，而且聊天不仅是不给问答卡，是连选项都没有的那种，就彻底回归到我们的设计循环那里。你提几点和方案，我补充或者同意这种。",
+      "to": "approved"
+    }
+  ]
+}

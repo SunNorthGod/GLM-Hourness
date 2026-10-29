@@ -152,6 +152,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M3 设计附录 0.2 第 2 轮评审（.agents/tasks/m3/reviews/addendum.md）：CHANGES_REQUESTED，HIGH 1、MEDIUM 2、NIT 9；第 1 轮 16 条全部关闭。挡路三条：H1 按会话开主 Agent 与 d-one-main-agent 冲突；M1 主 Agent 的 git 命令能丢掉工作区里没提交的改动（不可逆损失）；M2 背景字段的形状与面板设计不一致。编排方裁定（agent 定，可推翻），已转给附录第 3 稿：H1 照 d-one-main-agent；M1 不拦 git，但会丢掉未提交改动或改写已推送历史的 git 命令执行前，由 harness 先存一份可恢复的快照并记下，主干前进仍由 harness 核对；M2 背景字段与上限以面板设计为准。附录过审后先写一页人话放行稿（d-design-onepage），人放行之后才进实现步骤。"
+    },
+    {
+      "at": "2026-10-29T17:01:22.063Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "d-chat-not-cards（用户定）影响 M3：访谈与决策都改为聊天，不出卡片、不给选项；decision_card、访谈卡片工具与五键卡要改写。已通知附录第 3 稿把与卡片相关的部分收在一处、不再细化卡片格式，等方案细则定了再改。"
     }
   ]
 }
