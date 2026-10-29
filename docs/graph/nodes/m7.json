@@ -155,6 +155,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M7 设计 0.3 第 1 轮评审（m7-design-v03 运行内）：CHANGES_REQUESTED，挡路 3 条、不挡路 10 条。F1 上游提交的豁免能绕过 norm-merge-gate，而且可以伪造；F2 必须全审清单（norm-review-floor）没有可判定的写法，判不出时直接放过；F3 与循环板 0.1 的接口对不上，开始推进、对账、主干检查这几件没人执行（循环板现已到 0.3）。运行内的循环继续改下一稿；编排方另提醒：接缝以 design-context 的「Seam rulings between designs」一节为准（含高峰等待不计空转、resume-drive、少做并发上限由规则板给出）。"
+    },
+    {
+      "at": "2026-10-29T23:19:01.701Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m7-design-v03（wf_311e8a71f700db6b）第 2 遍的写稿步一开始就因 TLS 错误失败，design.md 仍是 0.3。改派单步 m7-design-v04-write（wf_144851c0ee301606）写 0.4：修 F1–F3 与不挡路的各条，照接缝裁定接上循环板 0.3 与规则板 0.8，分节保存；最后写一页人话放行稿并附十件活的「怎样算做完」人话版。独立评审在它之后另派。"
     }
   ]
 }
