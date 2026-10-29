@@ -1,0 +1,19 @@
+{
+  "id": "d-plan-approval",
+  "type": "decision",
+  "title": "派发计划由主 Agent 批，人只在需求确认、设计放行与必须问人的岔路出场",
+  "status": "approved",
+  "parent": "m7",
+  "verification": "unverified",
+  "body": "来源是对 Kiro 工作流的观察：Kiro 先排步骤、由人批计划再开工。本项目的目标是减轻人的负担、让 LLM 自行开发大项目，所以这一步交给主 Agent：子 agent 或派发计划先写到图上（步骤、各步验收、验证层级、写入范围），主 Agent 按 harness 可查的条件审过才放行，harness 在执行边界核对（例如计划里每步都有验收与验证层级，写入不出范围）。人出场的地方只有 M3 的需求确认卡、设计放行的五键卡，以及决策分级里必须问人的几类（ORCHESTRATION.md §2.9.1）。M7 派发按此设计。",
+  "history": [
+    {
+      "at": "2026-10-29T09:27:22.990Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "用户定方向：派发前的计划审批由主 Agent 做，不交给人",
+      "relay": "先批计划，再开工要做也是让主Agent做吧，我们设计这套循环目标就是减轻人的负担，可以让LLM自行开发大项目",
+      "to": "approved"
+    }
+  ]
+}
