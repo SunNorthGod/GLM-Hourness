@@ -90,6 +90,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "m6-design-review-r2（wf_0ac5b3482d62d2f5）一启动又因 BAD_DECRYPT 失败；改派 m6-design-review-r2-retry（wf_e2e79991f88a445f），简报里带上高峰模式的默认档（少做）。"
+    },
+    {
+      "at": "2026-10-29T18:09:31.027Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M6 设计 0.2 第 2 轮评审（m6-design-review-r2-retry，wf_e2e79991f88a445f；.agents/tasks/m6/design-review.md）：CHANGES_REQUESTED，HIGH 1、MEDIUM 3、NIT 5，第 1 轮 13 条全部关闭。挡路：F4 没照 d-peak-mode 写（仍用选项表问 D1、仍写默认不推迟任何活）；F5 M6-R3 与规则板 0.5 §9.4 的 checkCall 接口不一致，gateOnRules 不带 glmSpend，少做与不做管不到练习题与消融；F6 没按 3.17.1 复核（额度代码在 app.asar 的宿主包里，偏移要换成 3.17.1 的）；F7 额度请求头还有 x-request-id。派出 m6-design-v03（wf_06ad97ec9882723f）写 0.3、再评审，至多三轮，通过后写一页人话放行稿。"
     }
   ]
 }
