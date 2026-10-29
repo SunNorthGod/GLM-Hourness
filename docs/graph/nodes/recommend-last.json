@@ -39,6 +39,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "范围扩大：m3-base 的第 4 个改动按 question-29 C 与 d-option-card 定稿：新提或改动的人定待决要求 weight（one-way 或 two-way）、why（推荐理由一行）、单向门要 counter、选项 label 不超过 20 字、consequence 一行；已转给 m3-base 的实现步骤。"
+    },
+    {
+      "at": "2026-10-29T11:33:59.629Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m3-base 分支三个提交：9c3b2d5 推荐必须放在最后（引擎核对）、05e32ec 引擎放开自己提议的目标（M3 第 1 步）、eb466b5 阶段与主 Agent 的纯函数模块（M3 第 2 步）；三道门禁全过，579 个测试，检查器基线不变；独立评审第 1 轮 APPROVED，无阻断、4 条非阻断（.agents/tasks/m3-base/review.md）。卡片字段的改动 4 写好并过了门禁，停在 m3-base-card 分支的 de0ccf6，等表格版卡片的字段定稿（d-option-card）。L3 探针已放行，之后等合入的先后安排。"
     }
   ]
 }

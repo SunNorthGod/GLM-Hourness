@@ -204,6 +204,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "第 7 步 662b9fd（guard 按 question-14 G3 对所有路由生效）已在分支上提交，未推送；build、preflight、npm test 624/0、生成 profile 上探针 115/115，基线不变。设计在 .agents/tasks/split/guard-g3-design.md，随整枝评审一起审。"
+    },
+    {
+      "at": "2026-10-29T11:33:59.843Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "第 8 步 54cec72：面板标题列出全部未关闭的目标，CHARTER 0.6 按两个目标分组，README 与 ORCHESTRATION §2.10 随之改写；npm test 625/0，基线不变；graph-step8.json 里 8 条引擎请求在 main 图的副本上空跑全部通过，合入后由编排方执行（含 question-27 B 的目标验收）。第 0–8 步全部完成，整枝独立评审进行中。"
     }
   ]
 }
