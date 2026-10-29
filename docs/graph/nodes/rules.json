@@ -105,6 +105,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "rules-design-cut（wf_8a20b0900a355853）在第 2 轮写稿开始时因运行环境的解密错误（BAD_DECRYPT）失败，与内容无关；0.4 与第 1 轮评审都在。改派 rules-design-v05（wf_4ae36fac743f83a2）：写 0.5 修 F33（脚本自查读不到当前是不是 GLM 高峰）与 8 条 LOW，再独立评审，至多再两轮；同时按 d-plain-questions 与 d-zcode-3171 复核。"
+    },
+    {
+      "at": "2026-10-29T16:34:17.705Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "rules-design-v05（wf_4ae36fac743f83a2）在写稿步一开始就因运行环境的解密错误（BAD_DECRYPT）失败，什么都没写。蓝屏之后同一错误已让 4 个步骤失败（prompt-fixes 评审、rules 两次写稿、m6 第 2 轮评审），都落在设计与评审类步骤的新会话上；先不再重派，等 Kiro 重启或重新登录之后再派。"
     }
   ]
 }

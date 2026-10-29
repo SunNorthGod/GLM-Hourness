@@ -140,6 +140,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M3 设计附录 0.2 写成（.agents/tasks/m3/design-addendum.md），待第 2 轮独立设计评审。回应第 1 轮的 MEDIUM 4、NIT 12（附录 §12）：ask_human 的带推荐单选题与决策卡同一张表（background、crux、verdict、每项 gain 与 cost 必填），规则从引擎挪进 src/graph/card-rules.ts 共用；glm-prompt 的 reportingDepth 与旧键 persona 都不带默认值；「如果失败：」进五栏的解析标签、不进门禁，写法与解析同在第 9 步；标定每次运行一个系统临时目录，整批之后整棵树拷回、核对一致才删，失败可 --collect。另吸收 question-39 B、d-plain-questions（身份节与 decision_card、ask_human 的说明带同一道例题与换词表，src/graph/plain-question.ts）、d-zcode-3171（人设一节按常量名写，m3-main-persona 与 wf_920936995c163f50 同文件串行）、d-option-card 正在重新商量（卡片的样子收在 cards.ts、plain-question.ts、ask-human.ts 三处）。"
+    },
+    {
+      "at": "2026-10-29T16:34:17.542Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "d-one-main-agent 与 d-main-agent-shell 影响 M3：/wish 从按会话开启改为一个项目一个主 Agent（另一个会话发 /wish 时指向已有的主 Agent，可移过来）；主 Agent 只拦写文件，不另拦 git。已转给正在跑的附录第 2 轮评审。"
     }
   ]
 }

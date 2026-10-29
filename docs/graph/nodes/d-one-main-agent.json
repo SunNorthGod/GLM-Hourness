@@ -1,0 +1,19 @@
+{
+  "id": "d-one-main-agent",
+  "type": "decision",
+  "title": "一个项目只有一个主 Agent，是人唯一的对话窗口；巡检与汇报由 harness 提醒它做",
+  "status": "approved",
+  "parent": "orch",
+  "verification": "unverified",
+  "body": "每个项目有且只有一个主 Agent 会话，人只在这里和项目对话。晨报、周报、夜间巡检不另开运维会话，也不要人发 /patrol：harness 到点提醒主 Agent，由主 Agent 做并在同一个窗口里汇报。与 question-19 A（/wish 按会话开启）冲突的部分作废：在已有主 Agent 的项目里另一个会话发 /wish，告诉人主 Agent 在哪个会话，并可以把它移到当前会话（原会话变回普通会话）；这一细节由编排方定，人可推翻。M3 的 /wish 实现、M7 设计 0.2 的 m7-7（/patrol on、运维会话）随之改写。",
+  "history": [
+    {
+      "at": "2026-10-29T16:34:16.851Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "用户定：一个项目只有一个主 Agent，巡检由 harness 提醒主 Agent",
+      "relay": "巡检应该由harness提醒主Agent发出。一个项目有且只有一个主Agent做为和人对话的窗口，开那么多会话没用",
+      "to": "approved"
+    }
+  ]
+}

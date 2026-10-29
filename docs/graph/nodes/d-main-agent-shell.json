@@ -1,0 +1,19 @@
+{
+  "id": "d-main-agent-shell",
+  "type": "decision",
+  "title": "主 Agent 可以用 git 与命令行，只是不能写文件",
+  "status": "approved",
+  "parent": "orch",
+  "verification": "unverified",
+  "body": "主 Agent 能跑命令行与 git，唯一的限制是不写文件（question-26 C：去掉写文件工具，shell 写入由 guard 兜底）。M7 设计 0.2 m7-5 第 3 条「主 Agent 的 git merge、commit、reset 一类命令被拒」作废，不再单列 git。编排方的理解（待人确认）：会改动工作区文件的命令（合并、回退、切分支、改写文件的脚本）本身就是写文件，照同一条规矩拦；只读的（log、status、diff、跑测试看结果）都可以；合入主干仍由 harness 的合入门禁做。",
+  "history": [
+    {
+      "at": "2026-10-29T16:34:16.680Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "用户澄清主 Agent 的权限边界",
+      "relay": "主Agent可以用git，命令行等，只是不能写文件而已",
+      "to": "approved"
+    }
+  ]
+}

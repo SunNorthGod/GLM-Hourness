@@ -1,0 +1,19 @@
+{
+  "id": "d-auto-drive",
+  "type": "decision",
+  "title": "设计放行之后由主 Agent 自己推进到底，不用人发 /drive",
+  "status": "approved",
+  "parent": "orch",
+  "verification": "unverified",
+  "body": "人在设计循环里放行之后，主 Agent 自动沿着计划推进：派活、审查、合入、完成门禁，直到目标完成或遇到必须问人的事。不再有人发 /drive 这一步；驱动循环（d-driver）的开启改由设计放行触发。M7 设计 0.2 的 m7-3 第 1 条（由人发 /drive、模型调不出这一步）作废，m7-3 与 M7 设计 §3.9 随之改写。",
+  "history": [
+    {
+      "at": "2026-10-29T16:34:16.340Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "用户纠正 M7 设计：设计放行之后应当全部由主 Agent 自己推进",
+      "relay": "自动推进不应该是经过设计循环之后，就全部让主Agent自己推进了吗，怎么需要我/drive",
+      "to": "approved"
+    }
+  ]
+}
