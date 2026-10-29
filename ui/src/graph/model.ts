@@ -313,6 +313,47 @@ export function presenceText(status: GraphNode['status'], names: readonly string
   return status === 'doing' ? `${none}；状态是进行中，活可能在别的会话或 DSH 之外` : none
 }
 
+/** A token count the way DSH's composer stats write it (dsh-client-ui-chat formatTokens): 517, 12.2K, 517K, 1.2M; the caller adds tok. */
+export function tokensText(value: number): string {
+  const scaled = (count: number): string => count >= 100 ? String(Math.round(count)) : String(Math.round(count * 10) / 10)
+  if (value < 1000) return String(value)
+  if (value < 1_000_000) return `${scaled(value / 1000)}K`
+  return `${scaled(value / 1_000_000)}M`
+}
+
+/** What 现场 lists, given the session's agents (main first). */
+export interface LiveGroups<T> {
+  readonly running: readonly T[]
+  /** One quiet line each: the idle main agent always, stopped children while nothing runs. */
+  readonly quiet: readonly T[]
+  /** Behind one toggle: stopped children while something runs, and children from before this app start. */
+  readonly folded: readonly T[]
+}
+
+/**
+ * Group 现场's agents. The idle main agent is never folded: with background
+ * dispatch it is the normal state while a child runs, and it is the agent
+ * waiting for the human. Children without a live view ran before this
+ * start of the app and carry no data.
+ */
+export function liveGroups<T extends { readonly main: boolean, readonly running: boolean, readonly view: unknown }>(agents: readonly T[]): LiveGroups<T> {
+  const running = agents.filter(agent => agent.running)
+  const idleMain = agents.filter(agent => agent.main && !agent.running && agent.view !== undefined)
+  const stopped = agents.filter(agent => !agent.main && !agent.running && agent.view !== undefined)
+  const earlier = agents.filter(agent => !agent.main && agent.view === undefined)
+  return running.length > 0
+    ? { running, quiet: idleMain, folded: [...stopped, ...earlier] }
+    : { running, quiet: [...idleMain, ...stopped], folded: earlier }
+}
+
+/** The local date and minute of an ISO timestamp, for the tooltip of a relative time. */
+export function absoluteTime(at: string): string {
+  const date = new Date(at)
+  if (Number.isNaN(date.getTime())) return at
+  const pad = (value: number): string => String(value).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
 /** "3 分钟前" style time for the lists; absolute date beyond a week. */
 export function timeAgo(at: string, now: number = Date.now()): string {
   const seconds = Math.max(0, Math.round((now - Date.parse(at)) / 1000))

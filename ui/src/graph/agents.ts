@@ -51,15 +51,19 @@ export function useAgents(sessions: SessionsClient, sessionId: string): readonly
   return agents
 }
 
-/** The current time, ticking every second while `active`, for the elapsed times of running work. */
-export function useNow(active: boolean): number {
+/**
+ * The panel's clock for every relative time it shows (common.tsx
+ * NowContext): it ticks every second while an agent runs, for the elapsed
+ * times of running work, and every minute otherwise, so 3 分钟前 keeps
+ * counting while the tab stays mounted.
+ */
+export function useNow(running: boolean): number {
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
-    if (!active) return undefined
     setNow(Date.now())
-    const timer = setInterval(() => { setNow(Date.now()) }, 1000)
+    const timer = setInterval(() => { setNow(Date.now()) }, running ? 1000 : 60_000)
     return () => { clearInterval(timer) }
-  }, [active])
+  }, [running])
   return now
 }
 
@@ -69,12 +73,6 @@ function elapsedText(ms: number): string {
   const minutes = Math.floor(seconds / 60)
   if (minutes < 60) return `${minutes} 分 ${seconds % 60} 秒`
   return `${Math.floor(minutes / 60)} 小时 ${minutes % 60} 分`
-}
-
-export function tokensText(value: number): string {
-  if (value < 1000) return `${value}`
-  if (value < 1_000_000) return `${(value / 1000).toFixed(value < 10_000 ? 1 : 0)}k`
-  return `${(value / 1_000_000).toFixed(1)}M`
 }
 
 /** One line of what the agent does now. */

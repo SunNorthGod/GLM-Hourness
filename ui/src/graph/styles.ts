@@ -87,10 +87,9 @@ export const PANEL_CSS = `
 .glmg-dot.proposed{background:transparent;border:1.5px dashed var(--g-ink3)}
 /* live agents */
 .glmg-agent{position:relative;display:flex;gap:10px;align-items:flex-start;padding:9px 6px}
-/* idle or stopped: one dimmed line, full strength on hover */
-.glmg-agent.quiet{padding:7px 6px;opacity:.6;transition:opacity .15s}
-.glmg-agent.quiet:hover{opacity:1}
-.glmg-agent.quiet .glmg-row-title{font-size:12.5px}
+/* idle or stopped: one quiet line, secondary through colour at full strength (no opacity, so the text keeps its contrast) */
+.glmg-agent.quiet{padding:7px 6px}
+.glmg-agent.quiet .glmg-row-title{font-size:12.5px;color:var(--g-ink2)}
 .glmg-agent.quiet .glmg-agent-mark{margin-top:4px}
 .glmg-agent.quiet .glmg-agent-mark.done{margin-top:1px}
 .glmg-agent-mark{flex:none;display:inline-flex;align-items:center;justify-content:center;width:10px;height:10px;margin-top:5px;border-radius:50%;background:var(--g-ink3);font-size:0}
@@ -173,7 +172,8 @@ export const PANEL_CSS = `
 .glmg-comment{display:flex;flex-direction:column;gap:6px;margin-top:6px}
 .glmg-comment textarea{min-height:56px;padding:6px 8px;border:1px solid var(--g-line);border-radius:var(--dsw-radius-md,8px);background:transparent;color:var(--g-ink);font:inherit;resize:vertical}
 .glmg-comment textarea:focus{outline:none;border-color:var(--g-accent)}
-.glmg-notice{padding:10px 12px;border-radius:var(--dsw-radius-md,8px);background:var(--g-layer);color:var(--g-ink2);font-size:12.5px}
+/* a border like the cards: the layer fill equals the panel base in the light theme */
+.glmg-notice{padding:10px 12px;border:1px solid var(--g-line);border-radius:var(--dsw-radius-md,8px);background:var(--g-layer);color:var(--g-ink2);font-size:12.5px}
 .glmg-notice-sub{margin-top:2px;color:var(--g-ink3);font-size:12px}
 @keyframes glmg-fade{from{opacity:0}to{opacity:1}}
 @keyframes glmg-rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}

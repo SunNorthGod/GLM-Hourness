@@ -10,8 +10,8 @@ import { TYPE_LABELS } from '../../../src/graph/labels.ts'
 import type { LoadedGraph } from '../../../src/graph/parse.ts'
 import type { OpenItems } from '../../../src/graph/projection.ts'
 import type { GraphNode } from '../../../src/graph/schema.ts'
-import { Folded, Markdown, Options, Outcome, revOf, useServices, useWriter } from './common.tsx'
-import { decidedBy, timeAgo } from './model.ts'
+import { Folded, Markdown, Options, Outcome, When, revOf, useServices, useWriter } from './common.tsx'
+import { decidedBy } from './model.ts'
 
 function Body({ text }: { readonly text: string | undefined }): ReactElement | null {
   if (text === undefined) return null
@@ -29,7 +29,7 @@ function CardHead({ node, graph }: { readonly node: GraphNode, readonly graph: L
         <span>{TYPE_LABELS[node.type]}</span>
         {/* The goal is in the panel header; a card right under it needs no place. */}
         {parent === undefined || parent.type === 'goal' ? null : <span>挂在「{parent.title}」下</span>}
-        {first === undefined ? null : <span>{first.actor === 'human' ? '你' : 'agent '}提的 · {timeAgo(first.at)}</span>}
+        {first === undefined ? null : <span>{first.actor === 'human' ? '你' : 'agent '}提的 · <When at={first.at} /></span>}
       </div>
     </>
   )

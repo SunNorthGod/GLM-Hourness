@@ -10,11 +10,11 @@
  * node, opens the node.
  */
 import { Button, Menu } from '@deepseek-ai/dsh-client-ui-primitives'
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactElement, type WheelEvent as ReactWheelEvent } from 'react'
+import { useContext, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactElement, type WheelEvent as ReactWheelEvent } from 'react'
 import { HEX_INSET, TEXT, isHexagon, layoutGraph, type CurvePath, type DrawnEdgeType, type NodeBox, type Tone } from '../../../src/graph/layout.ts'
 import type { LoadedGraph } from '../../../src/graph/parse.ts'
-import { doingText, placements, useNow, type AgentLive } from './agents.ts'
-import { asButton } from './common.tsx'
+import { doingText, placements, type AgentLive } from './agents.ts'
+import { NowContext, asButton } from './common.tsx'
 import { FILTER_LABELS, statusText, visibleGraph, type GraphFilter } from './model.ts'
 
 interface View {
@@ -167,7 +167,7 @@ export function GraphCanvas({ graph, selected, onPick, agents }: GraphCanvasProp
   /** Agents without a node in the drawing: no focus yet, or a focus the filter hides. */
   const unplaced = [...placed].flatMap(([id, list]) => drawn.has(id) ? [] : list)
   const mainFocus = agents.find(agent => agent.main)?.view?.focus ?? null
-  const now = useNow(agents.some(agent => agent.running))
+  const now = useContext(NowContext)
   const canvas = useRef<HTMLDivElement | null>(null)
   const [size, setSize] = useState({ width: 0, height: 0 })
   const [view, setView] = useState<View | undefined>(undefined)

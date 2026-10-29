@@ -12,8 +12,8 @@
 import { Button, SegmentedTabs, TextShimmer } from '@deepseek-ai/dsh-client-ui-primitives'
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactElement } from 'react'
 import type { CommandsRemote, SessionsClient } from '../dsh.ts'
-import { useAgents } from './agents.ts'
-import { ServicesContext, type PanelServices } from './common.tsx'
+import { useAgents, useNow } from './agents.ts'
+import { NowContext, ServicesContext, type PanelServices } from './common.tsx'
 import { Decisions } from './Decisions.tsx'
 import { Doing } from './Doing.tsx'
 import { GraphCanvas } from './GraphCanvas.tsx'
@@ -41,6 +41,7 @@ export interface GraphPanelProps {
 export function GraphPanel({ source, commands, sessions, sessionId }: GraphPanelProps): ReactElement {
   const snapshot = useSyncExternalStore(source.subscribe, source.getSnapshot)
   const agents = useAgents(sessions, sessionId)
+  const now = useNow(agents.some(agent => agent.running))
   const [view, setView] = useState<ViewName | undefined>(undefined)
   /** The opened nodes, the shown one last. */
   const [trail, setTrail] = useState<readonly string[]>([])
@@ -113,6 +114,7 @@ export function GraphPanel({ source, commands, sessions, sessionId }: GraphPanel
   const panelId = `${tabsId}-panel`
   return (
     <ServicesContext.Provider value={services}>
+      <NowContext.Provider value={now}>
       <div className="glmg">
         <style>{PANEL_CSS}</style>
         <div className="glmg-head">
@@ -142,6 +144,7 @@ export function GraphPanel({ source, commands, sessions, sessionId }: GraphPanel
             : <NodeDetail key={selected} graph={graph} id={selected} agents={agents} onBack={() => { setTrail(current => current.slice(0, -1)) }} onClose={() => { setTrail([]) }} />}
         </div>
       </div>
+      </NowContext.Provider>
     </ServicesContext.Provider>
   )
 }

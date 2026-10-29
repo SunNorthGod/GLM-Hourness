@@ -7,7 +7,7 @@ import { openEngine } from '../src/graph/engine.ts'
 import { graphRevision, loadGraph, revisionOf } from '../src/graph/store.ts'
 import type { GraphNode } from '../src/graph/schema.ts'
 import type { RemoteRoot, StreamItem, WatchFrame } from '../ui/src/dsh.ts'
-import { byCreation, decidedBy, dotTone, graphRevisionOf, historyText, nobodyRunningText, placeText, presenceText, progressOf, progressText, revisionOfBytes, statusText, visibleGraph } from '../ui/src/graph/model.ts'
+import { absoluteTime, byCreation, decidedBy, dotTone, graphRevisionOf, historyText, liveGroups, nobodyRunningText, placeText, presenceText, progressOf, progressText, revisionOfBytes, statusText, tokensText, visibleGraph } from '../ui/src/graph/model.ts'
 import { GraphSource, type GraphSnapshot } from '../ui/src/graph/source.ts'
 import { fixtureTest, seedAsHuman } from './graph-helpers.ts'
 
@@ -102,6 +102,29 @@ test('lists follow the graph view\'s sibling order: creation time, then id, not 
   const nodes = [node('m1-10', '2026-10-27T03:00:00Z'), node('m1-2', '2026-10-27T02:00:00Z'), node('m1-parity', '2026-10-28T01:00:00Z'), node('m1', '2026-10-27T01:00:00Z'), node('m1-3', '2026-10-27T02:00:00Z')]
   const graph = { nodes: new Map(nodes.map(entry => [entry.id, entry])), revisions: new Map(), revision: '', issues: [] }
   assert.deepEqual([...nodes].sort(byCreation(graph)).map(entry => entry.id), ['m1', 'm1-2', 'm1-3', 'm1-10', 'm1-parity'], 'm1-2 and m1-3 share a time and fall back to id order')
+})
+
+test('现场 keeps the idle main agent in view and folds only children', () => {
+  const agent = (id: string, main: boolean, running: boolean, view: unknown) => ({ id, main, running, view })
+  const main = agent('main', true, false, {})
+  const child = agent('child', false, true, {})
+  const stopped = agent('stopped', false, false, {})
+  const earlier = agent('earlier', false, false, undefined)
+  const ids = (list: readonly { readonly id: string }[]): string[] => list.map(entry => entry.id)
+  // A child runs (background dispatch): the idle main agent waits for the human and is not 已停下.
+  const busy = liveGroups([main, child, stopped, earlier])
+  assert.deepEqual([ids(busy.running), ids(busy.quiet), ids(busy.folded)], [['child'], ['main'], ['stopped', 'earlier']])
+  // Nothing runs: idle main and stopped children each get a line; only children from before this app start fold.
+  const idle = liveGroups([main, { ...child, running: false }, earlier])
+  assert.deepEqual([ids(idle.running), ids(idle.quiet), ids(idle.folded)], [[], ['main', 'child'], ['earlier']])
+  // A main agent without live data yet is not listed (the section says there is no data).
+  assert.deepEqual(liveGroups([agent('main', true, false, undefined)]).quiet, [])
+})
+
+test('token counts and times read like DSH\'s: 282K tok, tooltips with the local minute', () => {
+  assert.deepEqual([tokensText(517), tokensText(12_240), tokensText(282_400), tokensText(1_234_567)], ['517', '12.2K', '282K', '1.2M'])
+  assert.equal(absoluteTime(new Date(2026, 9, 28, 9, 5, 30).toISOString()), '2026-10-28 09:05')
+  assert.equal(absoluteTime('not a time'), 'not a time')
 })
 
 test('status lines say what a node waits for', () => {

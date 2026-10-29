@@ -9,8 +9,8 @@ import type { ReactElement } from 'react'
 import { useState } from 'react'
 import type { LoadedGraph } from '../../../src/graph/parse.ts'
 import type { OpenItems } from '../../../src/graph/projection.ts'
-import { Options, asButton, useServices } from './common.tsx'
-import { DECIDED_BY_LABELS, decidedBy, timeAgo } from './model.ts'
+import { Options, When, asButton, useServices } from './common.tsx'
+import { DECIDED_BY_LABELS, decidedBy } from './model.ts'
 
 export function Decisions({ graph, items }: { readonly graph: LoadedGraph, readonly items: OpenItems }): ReactElement {
   const { open } = useServices()
@@ -57,7 +57,7 @@ export function Decisions({ graph, items }: { readonly graph: LoadedGraph, reado
               <button type="button" className="glmg-row-title glmg-row-toggle" aria-expanded={isOpen}>{record.title}</button>
               <div className="glmg-meta">
                 <span>选了 {record.decision} {record.label}</span>
-                <span>{timeAgo(record.decidedAt)}</span>
+                <When at={record.decidedAt} />
                 {record.rounds > 1 ? <span>改过 {record.rounds - 1} 次</span> : null}
               </div>
               {isOpen && node !== undefined

@@ -13,8 +13,8 @@ import { ancestorsOf } from '../../../src/graph/projection.ts'
 import { RUN_LABELS, nodeRefusal, offersRedo } from '../../../src/graph/run.ts'
 import type { GraphNode, Verification } from '../../../src/graph/schema.ts'
 import { placements, type AgentLive } from './agents.ts'
-import { Folded, Markdown, NodeRow, Options, Outcome, Part, revOf, useServices, useWriter } from './common.tsx'
-import { byCreation, dotTone, historyText, needsHuman, presenceText, progressOf, progressText, statusText, timeAgo } from './model.ts'
+import { Folded, Markdown, NodeRow, Options, Outcome, Part, When, revOf, useServices, useWriter } from './common.tsx'
+import { byCreation, dotTone, historyText, needsHuman, presenceText, progressOf, progressText, statusText } from './model.ts'
 
 const HISTORY_SHOWN = 6
 
@@ -170,7 +170,7 @@ export function NodeDetail({ graph, id, agents, onBack, onClose }: DetailProps):
               const { who, what } = historyText(entry)
               return (
                 <div key={index}>
-                  <Folded lines={3}><span className="glmg-history-when">{timeAgo(entry.at)} · {who} · </span>{what}</Folded>
+                  <Folded lines={3}><span className="glmg-history-when"><When at={entry.at} /> · {who} · </span>{what}</Folded>
                   {entry.relay === undefined ? null : <blockquote className="glmg-quote">{entry.relay}</blockquote>}
                 </div>
               )

@@ -14,7 +14,7 @@ import type { DecisionOption, GraphNode } from '../../../src/graph/schema.ts'
 import type { RunAction } from '../../../src/graph/run.ts'
 import type { CommandsRemote } from '../dsh.ts'
 import { applyMutation, runControl, type ApplyOutcome } from './apply.ts'
-import { progressOf, progressText, statusText } from './model.ts'
+import { absoluteTime, progressOf, progressText, statusText, timeAgo } from './model.ts'
 
 export interface PanelServices {
   readonly commands: CommandsRemote
@@ -24,6 +24,15 @@ export interface PanelServices {
 }
 
 export const ServicesContext = createContext<PanelServices | null>(null)
+
+/** The panel's clock (agents.ts useNow), one for every relative time in the panel. */
+export const NowContext = createContext(0)
+
+/** A relative time (3 分钟前) that follows the panel's clock, with the local date and minute as its tooltip. */
+export function When({ at }: { readonly at: string }): ReactElement {
+  const now = useContext(NowContext)
+  return <span title={absoluteTime(at)}>{timeAgo(at, now)}</span>
+}
 
 export function useServices(): PanelServices {
   const services = useContext(ServicesContext)
