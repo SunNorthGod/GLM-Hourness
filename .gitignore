@@ -8,5 +8,3 @@ dist/
 .worktrees/
 # Built by scripts/build-ui.mjs from ui/src (npm run build).
 /packages/*/ui/client.js
-# Stale output of the single-bundle layout; removed with the cleanup commit after the merge.
-/ui/client.js

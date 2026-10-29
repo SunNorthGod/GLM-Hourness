@@ -51,10 +51,6 @@ export default defineConfig([
     'packages/*/dist/',
     // Client halves, built from ui/src by scripts/build-ui.mjs.
     'packages/*/ui/client.js',
-    // Stale output of the single-bundle layout, kept ignored until the
-    // cleanup commit after the merge (other checkouts still have it).
-    'dist/',
-    'ui/client.js',
     'reference/',
     '.llm/',
     '.agents/',

@@ -25,8 +25,8 @@ export default {
     'tests/calibration/*/check.mjs',
   ],
   project: ['src/**/*.ts', 'tests/**/*.{ts,mjs}', 'scripts/**/*.{mjs,cjs,ts}', 'packages/*/ui/index.js', 'ui/src/**/*.{js,ts,tsx}'],
-  // Built client halves; ui/client.js is the stale single-bundle one, kept until the cleanup commit.
-  ignore: ['packages/*/ui/client.js', 'ui/client.js'],
+  // Built client halves (scripts/build-ui.mjs).
+  ignore: ['packages/*/ui/client.js'],
   // The client half gets React, react-dom (the pill dialog's portal) and
   // ui-primitives from the DSH client module table (the factory's require,
   // scripts/ui-modules.mjs), not from node_modules.

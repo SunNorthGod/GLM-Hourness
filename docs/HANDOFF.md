@@ -13,7 +13,8 @@
 - 安装形态（split 第 5、6 步起，`DESIGN.md` §2.3）：仓库产出两个 bundle，各嵌一个客户端包，profile 里是指向检出的链接，加载 `packages/*/dist` 与 `packages/*/ui/client.js`：
   - `dsh-glm-zcode@0.3.0`（`packages/glm`）：GLM 通道包，4 个宿主行（`glm-llm`、`glm-login`、`glm-prompt`、`glm-compact`）加客户端行 `glm-ui`（客户端包 `dsh-glm-zcode-ui`，GLM 按钮与设置页，默认禁用，合入后的桌面版验收第二轮启用）；
   - `dsh-hourness@0.3.0`（`packages/hourness`）：编排层包，7 个宿主行（`data`、`guard`、`memory`、`workflow`、`hourness`、`graph`、`graph-panel`）加客户端行 `ui`（客户端包 `dsh-hourness-ui`，项目图面板）。
-  - 根 `package.json`（`dsh-glm-hourness`）只是开发工作区，不再是 bundle。桌面版与 `glmsandbox` 两个 profile 在 split 合入时段里改为直接列两个宿主包；在那之前它们仍列旧的 `dsh-glm-hourness` 与 `dsh-glm-hourness-ui`（检出根目录与 `ui/`，第 5、6 步之后两处都已不是包），主检出合入了新布局而 profile 没切换时，本项目的行全部缺席，只有 `skipping profile bundle` 告警。
+  - 根 `package.json`（`dsh-glm-hourness`）只是开发工作区，不再是 bundle。
+  - profile 切换（split 合入时段，2026-10-29）：`glmsandbox` 20:43:14、桌面版 20:43:33（UTC+8）各自只改了 `package.json` 的 `dsh.profile.bundles` 与 `dependencies`。桌面版的 bundles 第 3 项 `dsh-glm-hourness` 原位换成 `dsh-glm-zcode`、`dsh-hourness`，删去末项 `dsh-glm-hourness-ui`，共 13 项：`@deepseek-ai/dsh-base`、`@deepseek-ai/dsh-web-app`、`dsh-glm-zcode`、`dsh-hourness` 与 9 个 experimental bundle（次序不变）；`glmsandbox` 的 bundles 为 `@deepseek-ai/dsh-base`、`@deepseek-ai/dsh-headless`、`dsh-glm-zcode`、`dsh-hourness`。两边的 dependencies 都只有 `dsh-glm-zcode`、`dsh-hourness`，`link:` 指向主检出的 `packages/glm`、`packages/hourness`；`cordis.patch.yml` 没有改，本项目五条覆盖项按行 id 匹配。备份留在各自的 profile 目录：`desktop/package.json.bak-1793277813423`、`desktop/pnpm-lock.yaml.bak-1793277813423`、`glmsandbox/package.json.bak-1793277794809`、`glmsandbox/pnpm-lock.yaml.bak-1793277794809`，`split` 关闭之前不删，之后删不删由人定。
 - 拉取改变包布局的提交之后（split 起每次都按这一条做）：先关桌面版，再 `npm run build`，再启动。运行中的桌面版在下一次 profile 写入时就按磁盘上的布局重组（`DEVELOPMENT.md` §1.1）。
 
 ## 2. 仓库结构
@@ -31,7 +32,6 @@ package.json   开发工作区根（dsh-glm-hourness，private，不是 bundle�
 .llm/          不入库，项目目录：audit/（违规与决策；旧的用量副本与 dialect-init 流水已于 2026-10-29 删除）、memory.json、docs/（原始资料快照与抓取脚本）、probe-runs/、calibration-runs/；旧的 credentials.json 与 device-mid.txt 已于 2026-10-29 删除（m1-cleanup）
 ~/.dsh/glm-hourness/  仓库外，用户级目录：audit/usage.jsonl、credentials.json（2026-10-29 起为版本 2）、device-mid.txt（m1-parity 起不再使用，DESIGN.md §2.4）
 reference/     不入库：审计用参考源码（zcode-api、deepseek-harness、ZCode、zcode-plugins）与桌面版运行时包导出 dsh-desktop-0.2.1-rc.3/，约 2.5 GB
-dist/          不入库：单包布局留下的旧 tsc 产物，split 第 5 步起不再生成；packages/*/dist/ 才是产物。合入后的清理提交删掉它与只为它保留的忽略项
 .agents/       不入库：编排任务状态与一次性脚本（如 m1-parity 集成报告 zcode-parity/、批次 L4 记录 m1-l4/、借用审计报告 dsh-borrow-audit/report.md、缓存调查 cache-2026-10-28/）
 .worktrees/    不入库：并行线的 git 工作树。目前没有登记的工作树，目录为空（graph-engine 留下的空目录已于 2026-10-29 删除）
 ```

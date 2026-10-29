@@ -1,7 +1,7 @@
 {
   "path": ["src", "tests", "scripts", "ui"],
   "format": ["typescript", "javascript", "tsx"],
-  "ignore": ["**/src/shared/schemastery.ts", "**/ui/client.js"],
+  "ignore": ["**/src/shared/schemastery.ts"],
   "baseline": ".jscpd-baseline.json",
   "noTips": true
 }
