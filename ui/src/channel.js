@@ -14,6 +14,7 @@
  * a command card, so the pill runs one only on a click, except once per app
  * run: the first open while no status is known reads it. The last status
  * read is shared by every pill (one per composer) with the time it was read.
+ * The replies are read by ui/src/channel-model.ts.
  *
  * The static bundle's Client half receives only `require` (the module table),
  * not the dynamic-package `styles`/`host` builtins; styles render as a React
@@ -22,6 +23,7 @@
 import * as React from 'react'
 import { createPortal } from 'react-dom'
 import { Button, useAnchoredPosition, useDismissOnOutsidePointer, writeClipboard } from '@deepseek-ai/dsh-client-ui-primitives'
+import { parseHealth, restOf, statusOf } from './channel-model.ts'
 
 /** Register the settings section and the composer pill; `ctx` carries slots and remote.commands. */
 export function installChannel(ctx) {
@@ -96,6 +98,7 @@ export function installChannel(ctx) {
     '.glmh-details{display:grid;grid-template-columns:minmax(76px,auto) minmax(0,1fr);gap:6px 16px;margin:0;color:var(--dsw-alias-label-tertiary,#8a8a8a)}',
     '.glmh-details dt,.glmh-details dd{min-width:0;margin:0}',
     '.glmh-details dd{color:var(--dsw-alias-label-secondary,#b5b5b5);font-variant-numeric:tabular-nums;text-align:right;overflow-wrap:anywhere}',
+    '.glmh-details dd.glmh-err{color:var(--dsw-alias-state-error-primary,#f85149)}',
     '.glmh-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:0.5px solid var(--dsw-alias-border-l2,rgba(255,255,255,.08))}',
     '.glmh-btn{height:24px;padding:0 8px;border-radius:var(--dsw-radius-sm,6px);border:none;background:transparent;color:var(--dsw-alias-label-secondary,#b5b5b5);font:inherit;font-size:12px;line-height:1;cursor:pointer}',
     '.glmh-btn:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(255,255,255,.06));color:var(--dsw-alias-label-primary,#e8e8e8)}',
@@ -151,34 +154,7 @@ export function installChannel(ctx) {
       h('circle', { cx: 8, cy: 8, r: 1.6, fill: 'currentColor' }))
   }
 
-  /** Parse the credential line of `/glm-status` (src/glm-llm/login-row.ts) into display fields, or null when it does not read. */
-  function parseStatus(text) {
-    const logged = /已登录（套餐 ([\w-]+)，Key ([\w…]+)(?:，账号 ([\w-]+))?(?:，JWT 已用 ([\d.]+) 小时)?）/.exec(text)
-    if (logged !== null) return { logged: true, plan: logged[1], key: logged[2], userId: logged[3], jwt: logged[4] }
-    const out = /未登录（套餐 ([\w-]+)(?:，登录不完整：([^）]+))?）/.exec(text)
-    if (out !== null) return { logged: false, plan: out[1], incomplete: out[2] }
-    return null
-  }
-
-  /** What a /glm-status reply says about the credential; `unknown` names why it cannot be told. */
-  function statusOf(reply) {
-    if (reply.missing) return { unknown: 'glm-login 行没有加载' }
-    if (!reply.ok) return { unknown: '查询失败，见下方输出' }
-    return parseStatus(reply.text) ?? { unknown: '返回内容读不懂' }
-  }
-
   const STATE_TONES = { 生效: 'ok', 部分生效: 'part', 未生效: 'off' }
-
-  /** The row health table of `/glm-status` (src/shared/health.ts renderHealthTable), or null when the text has none. */
-  function parseHealth(text) {
-    const rows = []
-    for (const line of String(text).split('\n')) {
-      if (!line.startsWith('| ') || line.startsWith('| ---') || line.startsWith('| 行 |')) continue
-      const cells = line.slice(1, -1).split(/(?<!\\)\|/).map(cell => cell.trim().replaceAll('\\|', '|'))
-      if (cells.length === 3) rows.push({ row: cells[0], state: cells[1], reason: cells[2] })
-    }
-    return rows.length === 0 ? null : rows
-  }
 
   /** The health rows as a list: name and state on a line, the reason under it. */
   function HealthList(props) {
@@ -262,14 +238,16 @@ export function installChannel(ctx) {
     }, [open])
 
     const toggle = () => { setOpen(!open) }
-    const detail = (label, value) => [
+    const detail = (label, value, className) => [
       h('dt', { key: `d${label}` }, label),
-      h('dd', { key: `v${label}` }, value),
+      h('dd', { key: `v${label}`, className }, value),
     ]
     const status = read === null ? null : read.status
     const stateText = status === null ? (busy ? '检查中…' : '未知') : status.unknown !== undefined ? '未知' : status.logged ? '已登录' : '未登录'
     const reason = status === null ? undefined : status.unknown ?? (status.incomplete === undefined ? undefined : `登录不完整：${status.incomplete}`)
+    // A status reply shows as the health list; its lines that are neither a field nor a health row stay above it.
     const health = output === null || output.failed ? null : parseHealth(output.text)
+    const rest = health === null ? [] : restOf(output.text)
 
     const dialog = h('div', {
       ref: panelRef, className: 'glmh-dialog', role: 'dialog', 'aria-label': 'GLM 通道', tabIndex: -1,
@@ -283,6 +261,7 @@ export function installChannel(ctx) {
     h('dl', { className: 'glmh-details' },
       ...detail('状态', stateText),
       ...(reason === undefined ? [] : detail('原因', reason)),
+      ...(status !== null && status.loginError ? detail('上次登录错误', status.loginError, 'glmh-err') : []),
       ...detail('套餐', status !== null && status.plan ? status.plan : '—'),
       ...detail('Key', status !== null && status.key ? status.key : '—'),
       ...(status !== null && status.userId ? detail('账号', status.userId) : []),
@@ -291,7 +270,11 @@ export function installChannel(ctx) {
       ...detail('模型', 'GLM-5.3 · GLM-5.3-Flash'),
       ...detail('凭证', '本机加密存储'),
     ),
-    output === null ? null : health !== null ? h(HealthList, { rows: health }) : h(OutputLines, { text: output.text, failed: output.failed }),
+    output === null ? null : health === null
+      ? h(OutputLines, { text: output.text, failed: output.failed })
+      : h(React.Fragment, null,
+          rest.length === 0 ? null : h(OutputLines, { text: rest.join('\n'), failed: false }),
+          h(HealthList, { rows: health })),
     note === null ? null : h('div', { className: 'glmh-note' }, note),
     h('div', { className: 'glmh-actions' },
       h('button', { type: 'button', className: 'glmh-btn glmh-btn-primary', disabled: busy, onClick: () => run('/glm-login') }, '登录'),

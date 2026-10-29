@@ -8,7 +8,8 @@ import { saveCredential, type StoreFs } from '../src/glm-llm/auth/store.ts'
 import { collectHealth, healthServiceName, HEALTH_ROWS, provideRowHealth, renderHealthTable, sessionIdOf, type HealthRow, type RowHealthView } from '../src/shared/health.ts'
 import { apply as dataApply } from '../src/data/index.ts'
 import { apply as llmApply } from '../src/glm-llm/index.ts'
-import { apply as loginApply } from '../src/glm-llm/login-row.ts'
+import { apply as loginApply, type LoginConfig } from '../src/glm-llm/login-row.ts'
+import { parseHealth, restOf, statusOf } from '../ui/src/channel-model.ts'
 import { apply as promptApply, dialectHealth } from '../src/glm-prompt/index.ts'
 import { apply as compactApply } from '../src/glm-prompt/compact-row.ts'
 import { apply as guardApply } from '../src/guard/index.ts'
@@ -214,7 +215,7 @@ test('glm-llm: a coding-plan request without a project access token reports the 
 
 type Command = Pick<CommandDefinitionLike, 'name' | 'handler'>
 
-function loginRow(config: { home?: string }) {
+function loginRow(config: LoginConfig) {
   const store = serviceStore()
   const commands: Command[] = []
   const dispose = loginApply({ commands: { register: definition => { commands.push(definition); return () => {} } }, ...store }, config)
@@ -269,6 +270,64 @@ test('without a home the login row uses the user-level directory: all three comm
     assert.ok(result.text.startsWith('glm-zcode：未登录（套餐 coding-plan）。运行 /glm-login 开始登录\n\n## 行健康（会话 s1）'))
     assert.ok(result.text.includes('| glm-login | 生效 | /glm-login、/glm-status、/glm-logout 已注册 |'))
   })
+})
+
+test('the GLM pill reads the real /glm-status text: credential fields, the last login error, the health rows, no line lost', async () => {
+  // The pill (ui/src/channel.js) shows these fields and rows instead of the text, so a line it does not read must stay in restOf.
+  const home = mkdtempSync(join(tmpdir(), 'glmh-pill-'))
+  try {
+    const fs: StoreFs = { readFile: path => readFile(path, 'utf8'), writeFile: (path, data) => writeFile(path, data), rename }
+    const reply = (text: string) => ({ ok: true, missing: false, text })
+    const statusText = async (row: ReturnType<typeof loginRow>): Promise<string> => (await row.run('glm-status', 's1')).text
+
+    // Not logged in: plan only; every health row in patch order, an escaped | in a reason kept.
+    const fresh = loginRow({ home })
+    provideRowHealth(fresh.store, 'guard', 'active', '已加载').report('s1', 'degraded', '门禁 | 部分生效')
+    const empty = await statusText(fresh)
+    assert.deepEqual(statusOf(reply(empty)), { logged: false, plan: 'coding-plan' })
+    const rows = parseHealth(empty)
+    assert.deepEqual(rows?.map(entry => entry.row), [...HEALTH_ROWS])
+    assert.deepEqual(rows?.find(entry => entry.row === 'guard'), { row: 'guard', state: '部分生效', reason: '门禁 | 部分生效' })
+    assert.deepEqual(rows?.find(entry => entry.row === 'glm-login'), { row: 'glm-login', state: '生效', reason: '/glm-login、/glm-status、/glm-logout 已注册' })
+    assert.deepEqual(restOf(empty), [])
+
+    // A stored login coding-plan cannot use: its reason is a field.
+    await saveCredential(fs, join(home, 'credentials.json'), { version: 2, provider: 'bigmodel', userId: 'user-1' })
+    const incomplete = await statusText(loginRow({ home }))
+    assert.deepEqual(statusOf(reply(incomplete)), { logged: false, plan: 'coding-plan', incomplete: 'Account request credential is unavailable: bigmodel' })
+    assert.deepEqual(restOf(incomplete), [])
+
+    // Logged in with a located project key: plan, key preview and account.
+    const location = { key: 'project-key-location:v1:p', value: JSON.stringify({ apiKeyId: '5acebe0123' }) }
+    await saveCredential(fs, join(home, 'credentials.json'), { version: 2, provider: 'bigmodel', oauthAccessToken: 'fake-oauth', userId: 'user-1', location })
+    const logged = await statusText(loginRow({ home }))
+    assert.deepEqual(statusOf(reply(logged)), { logged: true, plan: 'coding-plan', key: '5acebe…', userId: 'user-1' })
+    assert.deepEqual(restOf(logged), [])
+
+    // The authorize link is issued, then the background poll fails (a 404 is fatal, auth/oauth.ts): the next read names the error.
+    const failedPoll = ((url: string | URL) => Promise.resolve(String(url).endsWith('/oauth/cli/init')
+      ? Response.json({ code: 0, data: { flow_id: 'f1', poll_token: 'pt', authorize_url: 'https://bigmodel.cn/oauth', expires_at: Math.floor(Date.now() / 1000) + 600, poll_interval_sec: 1 } })
+      : new Response('{}', { status: 404 }))) as typeof fetch
+    const failing = loginRow({ home: join(home, 'failed'), fetchImpl: failedPoll })
+    assert.equal((await failing.run('glm-login', 's1')).kind, 'success')
+    let failed = await statusText(failing)
+    for (let attempt = 0; attempt < 50 && !failed.includes('上次登录错误'); attempt++) {
+      await new Promise(resolve => setTimeout(resolve, 10))
+      failed = await statusText(failing)
+    }
+    assert.deepEqual(statusOf(reply(failed)), { logged: false, plan: 'coding-plan', loginError: 'bigmodel login poll failed: status=404' })
+    assert.deepEqual(restOf(failed), [])
+
+    // Replies the pill cannot read: the reason is named, and an unread credential line stays above the health list.
+    assert.deepEqual(statusOf({ ok: false, missing: true, text: '' }), { unknown: 'glm-login 行没有加载' })
+    assert.deepEqual(statusOf({ ok: false, missing: false, text: '执行失败。' }), { unknown: '查询失败，见下方输出' })
+    const odd = `glm-zcode：状态未知\n\n${empty.slice(empty.indexOf('## '))}`
+    assert.deepEqual(statusOf(reply(odd)), { unknown: '返回内容读不懂' })
+    assert.deepEqual(restOf(odd), ['glm-zcode：状态未知'])
+  }
+  finally {
+    rmSync(home, { recursive: true, force: true })
+  }
 })
 
 test('glm-prompt: GLM steps report the dialect in effect, other routes report why not, a failed install says so', async () => {
