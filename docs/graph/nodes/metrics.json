@@ -59,6 +59,24 @@
       "actor": "llm",
       "op": "comment",
       "text": "循环板设计 0.3 §6.10 加三类记录：loop-duplicate {at, project, event, key, from, firstSeen}（去重键 7 天内见过、这次没跑）；loop-holder {at, project, session?, state: ok|none|archived|not-found|elsewhere|unknown, reason?}（主 Agent 的会话能不能投的状态变了）；loop-handover {at, project, op: release|take, pid, session}（运行锁交给主 Agent 所在的进程）。合计十类，仍只记 id、时刻、结局与计数，指标流水合入时只改 src/loops/metrics.ts。"
+    },
+    {
+      "at": "2026-10-29T23:40:23.990Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "设计 0.1 写成（.agents/tasks/metrics/design.md），待独立设计评审。要点：每个项目一份只追加的事件流水 <项目的 git 根>/.llm/metrics/events-<UTC 日期>.jsonl，按会话头 cwd 找根（同规则板 §7.3），目录自带只写 * 的 .gitignore，不用钉在本仓库的 projectHome；新行 glm-hourness/metrics（编排层包，出厂 disabled: true）是唯一写入者，自己挂 llm/stream、agent/pre-step、session/event（tool/call、tool/result、turn、approval、command）、user-questions/request，别的行经服务 glmHournessMetrics 交 rule、graph、task、upstream、report 事件；模型说的数不收；闭合字段表，字符串只许 id 形状，路径记散列、命令只记第一个词；写失败不挡工作，有上限的队列按序重试，溢出写 gap；每行带写入者 id、序号与链式摘要，verify 查缺行、改行、没有正常退出；报告是纯函数，依据行写文件前缀与计算版本；用量流水、违规流水、图历史、额度流水照旧，只有 decisions.jsonl 被取代，workflow 行在第 9 步退役（先 L3 预检 profile 覆盖）。待人定：D1 这 10 步怎样算做完。"
+    },
+    {
+      "at": "2026-10-29T23:40:25.860Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m8-plain-language 设计 0.6 更正计数单位（第 5 轮 P5-10）：人原样同意、补充、否掉的次数按 record_human_answer 的调用数，一次调用记一条，种类取它的 answer 参数（agree、add、reject），带 kind 与目标 id，由 harness 在调用成功返回时记进流水；不从图的历史条目数（一次放行会写下放行集合每个节点一条 approve 加一条 edit，全带「同意」记号）。answerKindOf 只给面板的变化一节认历史用。"
+    },
+    {
+      "at": "2026-10-29T23:40:26.242Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "指标流水设计 0.1 写完（.agents/tasks/metrics/design.md，18 节，rc.3 接缝带文件行号，12 个未核实项，一道待人定 D1 关于验收）。运行 metrics-design（wf_69e6b58317041053）在之后的步骤失败；改派单步第 1 轮评审 metrics-design-review-r1，并核对 D1 是否必须问人、是否按 d-chat-not-cards 写成聊天式。草稿里的 D1 提问没有照原样写进图（它可能是选项式），等评审之后再定。"
     }
   ]
 }

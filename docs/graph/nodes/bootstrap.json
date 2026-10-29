@@ -82,6 +82,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "接管项目设计 0.2 评审第 2 轮（.agents/tasks/bootstrap/design-review.md）：CHANGES_REQUESTED，挡路 2 条（上一轮 4 条，F1–F4 都已关闭），非阻断 6 条。挡路的两条：F23 给人看的文字仍是被人 2026-10-29T17:27Z 定稿取代的格式（应为题目加背景、推荐、疑问、不做四行，每行重点几个字加粗），且与 M3 附录 0.3 的 propose_to_human、record_human_answer 并行另起了一套问人与原话核对；F24 规则板 0.8 下 rules_propose 不再在图上出待决，接管的一次同意不会让「不许碰」的规则生效，也没有地方报出来。设计循环继续（第 3 轮是最后一轮）。另请编排方同步 design-context.md 里落后于图上定稿的「Layout of a proposal」一条。"
+    },
+    {
+      "at": "2026-10-29T23:40:26.053Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m8-plain-language 设计 0.6（design.md §5.3、§11 接管项目）：bootstrap_review 与 bootstrap_apply 写下的人定待决与提议是写法检查第二阶段前提 (c) 列出的一处；引擎对人定的待决改为提议式之后（M3 第 6 步），接管项目按提议式写、带一行 background（至多 60 个码点），并有一条在第二阶段常量下通过的契约测试。bootstrap_apply 以带原话的 llm 写图，不挡面板的上手页自动出现。"
     }
   ]
 }

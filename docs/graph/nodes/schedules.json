@@ -137,6 +137,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "用户同意 M3、M6、循环板三份设计在三轮上限之后各再给一轮（原话「行，改吧」）。派出 schedules-design-v04（wf_3bcc167a47642ce2）：写 0.4 修 F34（照最新的高峰等待与 resume-drive 裁定）、F35（对账绝不删除持有者在别处或不明的定时任务）与 4 条 NIT，评审一轮；只这一轮。"
+    },
+    {
+      "at": "2026-10-29T23:40:25.663Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m8-plain-language 设计 0.6 对循环板设计 0.1 的四条要求（design.md §11 循环板，第 5 轮评审 P5-04；0.1 依据 plain-ui 0.4 写成，请编排者裁定后转给循环板下一稿与正在进行的评审）：1. 页面没有写入控件（d-chat-not-cards 第四点「面板只看」）：0.1 §6.1 的新建表单、§6.3 的改与删除、§7.2 的恢复都不在页面上，每处改成一句「要加/要改/要删/要恢复：跟主 Agent 说「……」」，都经 loop_propose；/loops-apply 的输入是 JSON、没有调用方，删去，只读的 /loops 留下；表单上的两句提醒（命令在你的电脑上按时跑、每天大约叫醒主 Agent N 次）由 loopProposalQuestion 写进四行。2. label 为「循环板」，页脚「规则板 › 循环板 › 经验 › 整张图 › 上手说明 ›」。3. 上手页第 5 块的字归 plain-ui（0.1 §7.3 那句的内容已并进），循环板经登记表只给 guideLine 与 homeLine；登记表接口是 subscribe 加 snapshot，view.json 读到新内容时调 listener。4. loop_propose 改为提议式四行，background 一行、去掉 ** 后至多 60 个码点（读 PLAIN_LIMITS.background，0.1 的「两三句」「150」改掉）；不要「不加/加上」的选项式过渡，S5 的依赖改为 M3 第 6 步合入；acceptProposal 只由 graph_decide 调（/graph-apply 删去）；loop_propose 是写法检查第二阶段前提 (c) 的一处，要一条契约测试。"
     }
   ]
 }

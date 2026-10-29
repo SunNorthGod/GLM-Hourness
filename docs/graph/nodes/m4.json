@@ -89,6 +89,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M4 设计 0.3 写完（m4-design-v03-write，wf_341bc28a0dde1fa5；.agents/tasks/m4/design.md，一页人话 onepage.md）：F9、F10 已改，13 条不挡路 11 条采纳、2 条不再适用，人在 0.2 之后的决定全部并入，逐条见 §19.2。派出单步第 3 轮评审 m4-design-v03-review。"
+    },
+    {
+      "at": "2026-10-29T23:40:24.350Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "metrics 设计 0.1 §14 对 M4 的影响，下一次修订时处理：installRuleGate 交 rule 事件（跟进的 outcome 一起）；压制注释数改为每天一条 count 事件，不建 suppressions.jsonl；recordKey 若 metrics 第 3 步先做，M4 沿用 src/guard/records.ts 里的那个；新规则 metrics-files-only 进规则目录，影子模式。"
     }
   ]
 }

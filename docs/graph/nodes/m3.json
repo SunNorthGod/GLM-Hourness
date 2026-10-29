@@ -218,6 +218,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "用户同意 M3、M6、循环板三份设计在三轮上限之后各再给一轮（原话「行，改吧」）。派出 m3-addendum-v04（wf_d98c2216b51e14a7）：写附录 0.4 修第 3 轮 8 条挡路（含三处安全问题：git 快照漏掉未跟踪文件与本地化输出、快照存下被忽略的 .env 一类文件、子 agent 能伪造人的原话推进放行）与 12 条 NIT，评审一轮，通过后写一页人话放行稿；只这一轮，不再循环。"
+    },
+    {
+      "at": "2026-10-29T23:40:24.534Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "metrics 设计 0.1 §14 对 M3 的影响，下一次修订时处理：卡片构造在 userQuestions.ask 之前调 glmHournessMetrics 的 tagQuestion（ref、form、pres、rpos）；/wish 开关主 Agent 模式时交 session 事件（main）。"
+    },
+    {
+      "at": "2026-10-29T23:40:25.287Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m8-plain-language 设计 0.6 对 M3 附录 0.3 的更正（design.md §11 M3）：1. 撤回 0.5 的「personMessages 改调 src/shared/person-message.ts」：面板的现场投影不再看人的消息，改为看 record_human_answer 的成功结果。2. src/shared/tool-names.ts 另导出 RECORD_HUMAN_ANSWER = 'record_human_answer'（与 PROPOSE_TO_HUMAN 一起，DESIGN_TOOL_NAMES 由这两个组成）。3. record_human_answer 每条写入的 reason 或批注里带「（record_human_answer <callId>）」（附录 §3.5 已这样写），面板的 answerCallOf 靠它把一次放行的 N+1 条历史合成一行；指标流水一次调用记一次。4. 宿主命令 /graph-apply 删去：附录第 7 步「面板拍板的回写」没有触发的地方，整步删去；m3-5 验收第 2 条（人在面板上拍板后通知主 Agent）说的事不再存在，请编排者把「删去这一条」并进附录 §9 第 1 条那批待人改的验收一起交人。5. 例题背景去掉 ** 后是 20 个码点（不是 18），合 60 的上限。6. mockup-wish.svg ② 的脚注改为「order 170 空着（规则设计 0.5 去掉了在场按钮）」。7. 写法检查切到第二阶段之前，propose_to_human 要有一条契约测试：组出的提议式待决交给真实引擎提一次，在第二阶段的常量下通过。"
     }
   ]
 }

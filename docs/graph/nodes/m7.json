@@ -161,6 +161,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "m7-design-v03（wf_311e8a71f700db6b）第 2 遍的写稿步一开始就因 TLS 错误失败，design.md 仍是 0.3。改派单步 m7-design-v04-write（wf_144851c0ee301606）写 0.4：修 F1–F3 与不挡路的各条，照接缝裁定接上循环板 0.3 与规则板 0.8，分节保存；最后写一页人话放行稿并附十件活的「怎样算做完」人话版。独立评审在它之后另派。"
+    },
+    {
+      "at": "2026-10-29T23:40:24.172Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "metrics 设计 0.1 §14 对 M7 的影响，下一次修订时处理：§3.4.4 问答计数、§3.10 四答晨报、§3.12.3 人的负担与质量对照、§3.13 DORA 的来源改为 metrics §7.2 的指标目录；派发工具加必填的理由类别（difficulty、cost、independence、escalation、person、other），理由文字照旧写在调用里；派发、计划、交回、审查、门禁、合入、失败、重试、过期各处交 task 事件；写入门禁交 rule（by: execute）；workflow 行由 metrics 第 9 步退役，M7 不接手。"
     }
   ]
 }
