@@ -66,6 +66,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "m8-row-titles-retry（wf_afef02a167d6ce1e）：独立评审第 1 轮 APPROVED、0 挡路。编排方批准桌面版 L4：先备份桌面 profile，只把 dsh-glm-zcode、dsh-hourness 两个 junction 临时指向 .worktrees/row-titles，截设置页 13 行并核对模型默认值，之后关掉桌面版、改回 junction、用 profile-shape 确认复原；不改 package.json 与 cordis.patch.yml。桌面版此时没有别的运行在用。"
+    },
+    {
+      "at": "2026-10-29T17:12:47.670Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "桌面版 L4 通过（2026-10-30 01:06–01:10，wf_afef02a167d6ce1e）：desktop profile 的两个 junction 临时指向 .worktrees/row-titles（0ec0b58 的构建），设置页「内置插件」本项目 13 行都显示 locale 标题，对话框全文与卡片属性里 file: 与用户目录路径各 0 处；展开的卡片「完整名称」为 dsh-glm-zcode/glm-llm、dsh-glm-zcode、dsh-hourness。单装两种情况以探针为证（glm-only 5 行、hourness-only 8 行的标题检查 PASS，118/118）。模型菜单默认值仍是 deepseek-account/deepseek-flash/high；关闭后 junction 改回主检出，profile-shape compare 无差异。客户端行标题与包标题相同（评审备注 2），能否接受待人看截图。记录与截图在 .agents/tasks/row-titles/l4.md。剩合入，合入时桌面版保持关闭。"
     }
   ]
 }
