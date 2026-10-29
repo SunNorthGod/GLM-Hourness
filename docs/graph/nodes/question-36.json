@@ -2,7 +2,7 @@
   "id": "question-36",
   "type": "question",
   "title": "已有规则收进规则板多少",
-  "status": "approved",
+  "status": "done",
   "parent": "rules",
   "body": "取决于：出事的是代码里的规则，还是靠人记的约定？\n约定 → C；代码规则 → A。\n设计 §19 D5。",
   "options": [
@@ -24,6 +24,13 @@
   ],
   "recommend": "C",
   "decider": "agent",
+  "decision": "C",
+  "evidence": [
+    {
+      "kind": "decision",
+      "ref": "C"
+    }
+  ],
   "history": [
     {
       "at": "2026-10-29T13:00:38.730Z",
@@ -31,6 +38,21 @@
       "op": "propose",
       "reason": "规则板设计 D5 是双向门、可逆，由 agent 定，人可推翻",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-29T13:03:01.263Z",
+      "actor": "llm",
+      "op": "decide",
+      "reason": "双向门、可逆：出事的是靠人记的约定（探针一次一个、桌面版在用、换了模型要换回），代码规则已经评审与真机验证，搬过来只多回归风险；人可推翻",
+      "from": "approved",
+      "to": "done",
+      "option": "C",
+      "evidence": [
+        {
+          "kind": "decision",
+          "ref": "C"
+        }
+      ]
     }
   ]
 }
