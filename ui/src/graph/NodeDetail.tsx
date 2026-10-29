@@ -6,7 +6,7 @@
  * the bottom, for telling the LLM which node is meant.
  */
 import { Button, IconChevronLeftOutlineRegular, Tag } from '@deepseek-ai/dsh-client-ui-primitives'
-import { useState, type ReactElement } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactElement, type ReactNode } from 'react'
 import { EVIDENCE_LABELS, KIND_LABELS, STAGE_LABELS, STATUS_LABELS, TIER_LABELS, TYPE_LABELS, VERIFICATION_LABELS } from '../../../src/graph/labels.ts'
 import type { LoadedGraph } from '../../../src/graph/parse.ts'
 import { ancestorsOf } from '../../../src/graph/projection.ts'
@@ -74,16 +74,42 @@ function RunControls({ node, agents }: { readonly node: GraphNode, readonly agen
   )
 }
 
-export function NodeDetail({ graph, id, agents, onClose }: { readonly graph: LoadedGraph, readonly id: string, readonly agents: readonly AgentLive[], readonly onClose: () => void }): ReactElement {
+interface DetailProps {
+  readonly graph: LoadedGraph
+  readonly id: string
+  readonly agents: readonly AgentLive[]
+  /** 返回: the node opened before this one, or the list. */
+  readonly onBack: () => void
+  /** Escape: back to the list. */
+  readonly onClose: () => void
+}
+
+/**
+ * The detail's frame: 返回 on top, Escape closes, and focus moves to 返回
+ * when a node opens (the frame mounts once per node), so the keyboard
+ * starts inside the detail.
+ */
+function Frame({ onBack, onClose, children }: Pick<DetailProps, 'onBack' | 'onClose'> & { readonly children: ReactNode }): ReactElement {
+  const root = useRef<HTMLDivElement>(null)
+  useEffect(() => { root.current?.querySelector<HTMLButtonElement>('.glmg-detail-head button')?.focus() }, [])
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
+    if (event.key !== 'Escape' || event.nativeEvent.isComposing) return
+    event.stopPropagation()
+    onClose()
+  }
+  return (
+    <div ref={root} className="glmg-detail" onKeyDown={onKeyDown}>
+      <div className="glmg-detail-head"><Button variant="ghost" size="sm" onClick={onBack}><IconChevronLeftOutlineRegular size={14} />返回</Button></div>
+      <div className="glmg-detail-body">{children}</div>
+    </div>
+  )
+}
+
+export function NodeDetail({ graph, id, agents, onBack, onClose }: DetailProps): ReactElement {
   const { open } = useServices()
   const node = graph.nodes.get(id)
   if (node === undefined) {
-    return (
-      <div className="glmg-detail">
-        <div className="glmg-detail-head"><Button variant="ghost" size="sm" onClick={onClose}><IconChevronLeftOutlineRegular size={14} />返回</Button></div>
-        <div className="glmg-detail-body"><div className="glmg-notice">这个节点已经不在图里了。</div></div>
-      </div>
-    )
+    return <Frame onBack={onBack} onClose={onClose}><div className="glmg-notice">这个节点已经不在图里了。</div></Frame>
   }
   const ancestors = ancestorsOf(graph, node).reverse()
   const children = [...graph.nodes.values()].filter(child => child.parent === node.id)
@@ -91,11 +117,7 @@ export function NodeDetail({ graph, id, agents, onClose }: { readonly graph: Loa
   const history = node.history.slice(-HISTORY_SHOWN).reverse()
   const done = node.status === 'done'
   return (
-    <div className="glmg-detail">
-      <div className="glmg-detail-head">
-        <Button variant="ghost" size="sm" onClick={onClose}><IconChevronLeftOutlineRegular size={14} />返回</Button>
-      </div>
-      <div className="glmg-detail-body">
+    <Frame onBack={onBack} onClose={onClose}>
         {ancestors.length === 0
           ? null
           : <div className="glmg-crumbs">{ancestors.map((ancestor, index) => <span key={ancestor.id}><button type="button" onClick={() => { open(ancestor.id) }}>{ancestor.title}</button>{index < ancestors.length - 1 ? ' ›' : null}</span>)}</div>}
@@ -148,7 +170,6 @@ export function NodeDetail({ graph, id, agents, onClose }: { readonly graph: Loa
         </Part>
         <Part title="批注"><Comment node={node} /></Part>
         <div className="glmg-id">跟 agent 说起它时可以用 id：<code>{node.id}</code></div>
-      </div>
-    </div>
+    </Frame>
   )
 }

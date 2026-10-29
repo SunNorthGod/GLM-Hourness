@@ -17,6 +17,8 @@ export const PANEL_CSS = `
 .glmg-tabs{padding:0 12px 8px}
 .glmg-count{display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;margin-left:5px;padding:0 4px;border-radius:8px;background:var(--g-wait);color:#fff;font-size:10px;font-weight:600;line-height:1;font-variant-numeric:tabular-nums}
 .glmg-count.quiet{background:var(--g-hover);color:var(--g-ink2)}
+/* the stage does not scroll: the list scrolls inside it, the node detail covers it */
+.glmg-stage{position:relative;flex:1;min-height:0;display:flex;flex-direction:column}
 .glmg-body{position:relative;flex:1;min-height:0;overflow:auto;padding:4px 12px 16px;scrollbar-gutter:stable}
 .glmg-view{animation:glmg-fade .18s ease-out}
 .glmg-section{margin:14px 2px 6px;color:var(--g-ink3);font-size:11px;font-weight:600;letter-spacing:.02em}
@@ -135,7 +137,7 @@ export const PANEL_CSS = `
 /* node detail */
 .glmg-detail{position:absolute;inset:0;z-index:2;display:flex;flex-direction:column;background:var(--dsw-alias-bg-base,var(--dsw-specific-sidebar-fill,#1d1d1f));animation:glmg-slide .24s cubic-bezier(.2,.8,.2,1)}
 .glmg-detail-head{display:flex;align-items:center;gap:6px;padding:8px 10px;border-bottom:1px solid var(--g-line)}
-.glmg-detail-body{flex:1;min-height:0;overflow:auto;padding:12px 14px 20px}
+.glmg-detail-body{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:12px 14px 20px}
 .glmg-detail-body>h2{margin:6px 0 6px;font-size:16px;line-height:1.4;font-weight:600}
 .glmg-detail-body>.glmg-fold>.glmg-text{margin-top:12px;font-size:13px}
 .glmg-crumbs{display:flex;flex-wrap:wrap;gap:2px 4px;color:var(--g-ink3);font-size:11.5px}

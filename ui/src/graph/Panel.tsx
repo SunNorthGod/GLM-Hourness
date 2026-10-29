@@ -4,10 +4,13 @@
  * human, so it opens first when anything does; agent 定的 lists what the
  * agent decided on its own; 正在做 the agents at work and the work in
  * progress; 图 the whole picture with the agents on their nodes. A node
- * opens over the current view and closes back to it.
+ * opens over the current view, on a stage that does not scroll with the
+ * list, so it shows wherever the list was scrolled to. Nodes opened from
+ * the detail stack up: 返回 goes back one, Escape closes the detail, and
+ * focus returns to what opened it. Each view opens at its top.
  */
 import { Button, SegmentedTabs, TextShimmer } from '@deepseek-ai/dsh-client-ui-primitives'
-import { useEffect, useId, useMemo, useState, useSyncExternalStore, type ReactElement } from 'react'
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactElement } from 'react'
 import type { CommandsRemote, SessionsClient } from '../dsh.ts'
 import { useAgents } from './agents.ts'
 import { ServicesContext, type PanelServices } from './common.tsx'
@@ -38,9 +41,20 @@ export function GraphPanel({ source, commands, sessions, sessionId }: GraphPanel
   const snapshot = useSyncExternalStore(source.subscribe, source.getSnapshot)
   const agents = useAgents(sessions, sessionId)
   const [view, setView] = useState<ViewName | undefined>(undefined)
-  const [selected, setSelected] = useState<string | undefined>(undefined)
+  /** The opened nodes, the shown one last. */
+  const [trail, setTrail] = useState<readonly string[]>([])
+  const selected = trail.at(-1)
+  const depth = useRef(0)
+  depth.current = trail.length
+  /** What had focus when the detail opened; it gets focus back when the detail closes. */
+  const opener = useRef<HTMLElement | null>(null)
+  const body = useRef<HTMLDivElement | null>(null)
   const tabsId = useId()
-  const services = useMemo<PanelServices>(() => ({ commands, sessionId, open: setSelected }), [commands, sessionId])
+  const open = useCallback((id: string) => {
+    if (depth.current === 0) opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    setTrail(current => current.at(-1) === id ? current : [...current, id])
+  }, [])
+  const services = useMemo<PanelServices>(() => ({ commands, sessionId, open }), [commands, sessionId, open])
 
   const waiting = snapshot.status === 'ready' ? snapshot.items.questions.length + snapshot.items.proposals.length : 0
   // The first view: 需要你 when anything waits, else 正在做. It stays put afterwards, so settling the last card shows the empty state.
@@ -48,7 +62,21 @@ export function GraphPanel({ source, commands, sessions, sessionId }: GraphPanel
   useEffect(() => {
     if (view === undefined && snapshot.status === 'ready') setView(shown)
   }, [view, snapshot.status, shown])
-  useEffect(() => { setSelected(undefined) }, [shown])
+  // A new view starts at its top with no detail open.
+  useLayoutEffect(() => {
+    setTrail(current => current.length === 0 ? current : [])
+    if (body.current !== null) body.current.scrollTop = 0
+  }, [shown])
+  // While the detail is open the list behind it takes no focus; on close the opener gets it back.
+  const detailOpen = selected !== undefined
+  useEffect(() => {
+    const element = body.current
+    if (element !== null) element.inert = detailOpen
+    if (detailOpen) return
+    const target = opener.current
+    opener.current = null
+    if (target?.isConnected === true) target.focus()
+  }, [detailOpen])
 
   if (snapshot.status !== 'ready') {
     return (
@@ -98,12 +126,16 @@ export function GraphPanel({ source, commands, sessions, sessionId }: GraphPanel
           />
         </div>
         {errors > 0 ? <div className="glmg-tabs"><div className="glmg-notice">图里有 {errors} 处校验错误，写入会被拒绝。让 agent 看一下，或用 git 还原节点文件。</div></div> : null}
-        <div className="glmg-body" role="tabpanel" id={`${tabsId}-${shown}-panel`} aria-labelledby={`${tabsId}-${shown}`} style={shown === 'graph' ? { overflow: 'hidden', padding: 0 } : undefined}>
-          {shown === 'you' ? <NeedsYou key="you" graph={graph} items={items} onShowDecisions={() => { setView('agent') }} /> : null}
-          {shown === 'agent' ? <Decisions key="agent" graph={graph} items={items} /> : null}
-          {shown === 'doing' ? <Doing key="doing" graph={graph} items={items} agents={agents} /> : null}
-          {shown === 'graph' ? <GraphCanvas graph={graph} selected={selected} onPick={setSelected} agents={agents} /> : null}
-          {selected === undefined ? null : <NodeDetail key={selected} graph={graph} id={selected} agents={agents} onClose={() => { setSelected(undefined) }} />}
+        <div className="glmg-stage">
+          <div ref={body} className="glmg-body" role="tabpanel" id={`${tabsId}-${shown}-panel`} aria-labelledby={`${tabsId}-${shown}`} style={shown === 'graph' ? { overflow: 'hidden', padding: 0 } : undefined}>
+            {shown === 'you' ? <NeedsYou key="you" graph={graph} items={items} onShowDecisions={() => { setView('agent') }} /> : null}
+            {shown === 'agent' ? <Decisions key="agent" graph={graph} items={items} /> : null}
+            {shown === 'doing' ? <Doing key="doing" graph={graph} items={items} agents={agents} /> : null}
+            {shown === 'graph' ? <GraphCanvas graph={graph} selected={selected} onPick={open} agents={agents} /> : null}
+          </div>
+          {selected === undefined
+            ? null
+            : <NodeDetail key={selected} graph={graph} id={selected} agents={agents} onBack={() => { setTrail(current => current.slice(0, -1)) }} onClose={() => { setTrail([]) }} />}
         </div>
       </div>
     </ServicesContext.Provider>
