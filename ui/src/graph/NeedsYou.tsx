@@ -4,13 +4,13 @@
  * §2.9.1). Each card can be settled in place; a settled card slides out
  * before the re-read graph drops it.
  */
-import { Button, IconCheckCircleFillRegular, Input } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, IconCheckCircleFillRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 import { useState, type ReactElement } from 'react'
 import { TYPE_LABELS } from '../../../src/graph/labels.ts'
 import type { LoadedGraph } from '../../../src/graph/parse.ts'
 import type { OpenItems } from '../../../src/graph/projection.ts'
 import type { GraphNode } from '../../../src/graph/schema.ts'
-import { Folded, Markdown, Options, Outcome, When, revOf, useServices, useWriter } from './common.tsx'
+import { Folded, Markdown, Options, ProposalActions, When, useServices } from './common.tsx'
 import { decidedBy } from './model.ts'
 
 function Body({ text }: { readonly text: string | undefined }): ReactElement | null {
@@ -35,44 +35,15 @@ function CardHead({ node, graph }: { readonly node: GraphNode, readonly graph: L
   )
 }
 
-function QuestionCard({ graph, node, onSettled }: { readonly graph: LoadedGraph, readonly node: GraphNode, readonly onSettled: () => void }): ReactElement {
+/** One card: a proposal gets approve or reject, a question its options; settling it starts the slide-out. */
+function Card({ graph, node, onSettled }: { readonly graph: LoadedGraph, readonly node: GraphNode, readonly onSettled: () => void }): ReactElement {
   return (
     <div className="glmg-card wait">
       <CardHead node={node} graph={graph} />
       <Body text={node.body} />
-      <Options graph={graph} node={node} onDecided={onSettled} />
-    </div>
-  )
-}
-
-function ProposalCard({ graph, node, onSettled }: { readonly graph: LoadedGraph, readonly node: GraphNode, readonly onSettled: () => void }): ReactElement {
-  const writer = useWriter()
-  const [rejecting, setRejecting] = useState(false)
-  const [reason, setReason] = useState('')
-  const settle = async (op: 'approve' | 'reject'): Promise<void> => {
-    const fallback = op === 'approve' ? '在面板里批准' : '在面板里否决'
-    const result = await writer.run({ op, id: node.id, rev: revOf(graph, node.id), reason: reason.trim().length > 0 ? reason.trim() : fallback })
-    if (result.ok) onSettled()
-  }
-  return (
-    <div className="glmg-card wait">
-      <CardHead node={node} graph={graph} />
-      <Body text={node.body} />
-      {rejecting
-        ? (
-            <div className="glmg-confirm">
-              <Input value={reason} placeholder="为什么不要（可不填）" aria-label="否决理由" onChange={event => { setReason(event.target.value) }} />
-              <Button variant="outline" size="sm" disabled={writer.busy} onClick={() => { void settle('reject') }}>否决</Button>
-              <Button variant="ghost" size="sm" onClick={() => { setRejecting(false) }}>取消</Button>
-            </div>
-          )
-        : (
-            <div className="glmg-actions">
-              <Button variant="primary" size="sm" disabled={writer.busy} onClick={() => { void settle('approve') }}>批准</Button>
-              <Button variant="ghost" size="sm" disabled={writer.busy} onClick={() => { setRejecting(true) }}>不要</Button>
-            </div>
-          )}
-      <Outcome outcome={writer.outcome} />
+      {node.status === 'proposed'
+        ? <ProposalActions graph={graph} node={node} onSettled={onSettled} />
+        : <Options graph={graph} node={node} onDecided={onSettled} />}
     </div>
   )
 }
@@ -105,9 +76,7 @@ export function NeedsYou({ graph, items, onShowDecisions }: { readonly graph: Lo
     <div className="glmg-view">
       {nodes.map(node => (
         <div key={node.id} className={leaving.has(node.id) ? 'glmg-leaving' : undefined}>
-          {node.status === 'proposed'
-            ? <ProposalCard graph={graph} node={node} onSettled={settled(node.id)} />
-            : <QuestionCard graph={graph} node={node} onSettled={settled(node.id)} />}
+          <Card graph={graph} node={node} onSettled={settled(node.id)} />
         </div>
       ))}
     </div>

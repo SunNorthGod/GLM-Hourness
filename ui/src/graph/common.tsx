@@ -176,13 +176,48 @@ export function Part({ title, children }: { readonly title: ReactNode, readonly 
 }
 
 /** The revision a write to this node must carry. */
-export function revOf(graph: LoadedGraph, id: string): string {
+function revOf(graph: LoadedGraph, id: string): string {
   return graph.revisions.get(id) ?? ''
 }
 
 export function Outcome({ outcome }: { readonly outcome: ApplyOutcome | undefined }): ReactElement | null {
   if (outcome === undefined) return null
   return <div className={outcome.ok ? 'glmg-result' : 'glmg-result bad'} role="status">{outcome.text}</div>
+}
+
+/**
+ * Approve or reject a proposal, the same control on a 需要你 card and in
+ * the detail: 批准 approves at once; 不要 asks for an optional reason and
+ * a second click on 否决 before it rejects (a rejected node is dropped).
+ */
+export function ProposalActions({ graph, node, onSettled }: { readonly graph: LoadedGraph, readonly node: GraphNode, readonly onSettled?: () => void }): ReactElement {
+  const writer = useWriter()
+  const [rejecting, setRejecting] = useState(false)
+  const [reason, setReason] = useState('')
+  const settle = async (op: 'approve' | 'reject'): Promise<void> => {
+    const fallback = op === 'approve' ? '在面板里批准' : '在面板里否决'
+    const result = await writer.run({ op, id: node.id, rev: revOf(graph, node.id), reason: reason.trim().length > 0 ? reason.trim() : fallback })
+    if (result.ok) onSettled?.()
+  }
+  return (
+    <>
+      {rejecting
+        ? (
+            <div className="glmg-confirm">
+              <Input value={reason} placeholder="为什么不要（可不填）" aria-label="否决理由" onChange={event => { setReason(event.target.value) }} />
+              <Button variant="outline" size="sm" disabled={writer.busy} onClick={() => { void settle('reject') }}>否决</Button>
+              <Button variant="ghost" size="sm" onClick={() => { setRejecting(false) }}>取消</Button>
+            </div>
+          )
+        : (
+            <div className="glmg-actions">
+              <Button variant="primary" size="sm" disabled={writer.busy} onClick={() => { void settle('approve') }}>批准</Button>
+              <Button variant="ghost" size="sm" disabled={writer.busy} onClick={() => { setRejecting(true) }}>不要</Button>
+            </div>
+          )}
+      <Outcome outcome={writer.outcome} />
+    </>
+  )
 }
 
 interface OptionsProps {
@@ -240,7 +275,17 @@ export function Options({ graph, node, onDecided }: OptionsProps): ReactElement 
             {isPicked
               ? (
                   <div className="glmg-confirm">
-                    <Input value={reason} placeholder="一句理由（可不填）" aria-label="理由" onChange={event => { setReason(event.target.value) }} onKeyDown={event => { if (event.key === 'Enter') void decide(option) }} />
+                    <Input
+                      value={reason}
+                      placeholder="一句理由（可不填）"
+                      aria-label="理由"
+                      onChange={event => { setReason(event.target.value) }}
+                      onKeyDown={event => {
+                        // The Enter that commits an IME composition is not a submit (DSH's own editors check the same), and a busy writer is not sent twice.
+                        if (event.key !== 'Enter' || event.nativeEvent.isComposing || event.keyCode === 229 || writer.busy) return
+                        void decide(option)
+                      }}
+                    />
                     <Button variant="primary" size="sm" disabled={writer.busy} onClick={() => { void decide(option) }}>{node.status === 'done' ? '改成这个' : '就这个'}</Button>
                   </div>
                 )

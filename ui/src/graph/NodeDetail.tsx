@@ -13,7 +13,7 @@ import { ancestorsOf } from '../../../src/graph/projection.ts'
 import { RUN_LABELS, nodeRefusal, offersRedo } from '../../../src/graph/run.ts'
 import type { GraphNode, Verification } from '../../../src/graph/schema.ts'
 import { placements, type AgentLive } from './agents.ts'
-import { Folded, Markdown, NodeRow, Options, Outcome, Part, When, revOf, useServices, useWriter } from './common.tsx'
+import { Folded, Markdown, NodeRow, Options, Outcome, Part, ProposalActions, When, useServices, useWriter } from './common.tsx'
 import { byCreation, dotTone, historyText, needsHuman, presenceText, progressOf, progressText, statusText } from './model.ts'
 
 const HISTORY_SHOWN = 6
@@ -36,17 +36,6 @@ function Comment({ node }: { readonly node: GraphNode }): ReactElement {
       <div>
         <Button variant="outline" size="sm" disabled={writer.busy || text.trim().length === 0} onClick={() => { void writer.run({ op: 'comment', id: node.id, text: text.trim() }).then(result => { if (result.ok) setText('') }) }}>批注</Button>
       </div>
-      <Outcome outcome={writer.outcome} />
-    </div>
-  )
-}
-
-function ProposalActions({ graph, node }: { readonly graph: LoadedGraph, readonly node: GraphNode }): ReactElement {
-  const writer = useWriter()
-  return (
-    <div className="glmg-actions">
-      <Button variant="primary" size="sm" disabled={writer.busy} onClick={() => { void writer.run({ op: 'approve', id: node.id, rev: revOf(graph, node.id), reason: '在面板里批准' }) }}>批准</Button>
-      <Button variant="ghost" size="sm" disabled={writer.busy} onClick={() => { void writer.run({ op: 'reject', id: node.id, rev: revOf(graph, node.id), reason: '在面板里否决' }) }}>不要</Button>
       <Outcome outcome={writer.outcome} />
     </div>
   )
@@ -146,7 +135,7 @@ export function NodeDetail({ graph, id, agents, onBack, onClose }: DetailProps):
         </div>
         {node.body === undefined ? null : <Folded lines={10} className="glmg-text"><Markdown text={node.body} /></Folded>}
         {node.type === 'question' ? <Part title={done ? '选项（再选一个就是推翻）' : '选项'}><Options graph={graph} node={node} /></Part> : null}
-        {node.status === 'proposed' ? <ProposalActions graph={graph} node={node} /> : null}
+        {node.status === 'proposed' ? <Part title="批准或否决"><ProposalActions graph={graph} node={node} /></Part> : null}
         <RunControls node={node} agents={agents} />
         {(node.acceptance ?? []).length === 0
           ? null
