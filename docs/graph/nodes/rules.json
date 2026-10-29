@@ -231,6 +231,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "规则板设计 0.8 以几处小改写成（rules-design-v08-write，wf_53cfc666389b8537）：F59 按编排方裁定，规则板新增服务成员 glmHournessPeakMode.peakHoldFor(sessionId) → {level, until} | undefined；10 条 LOW 改了或部分改了，F71 第 1 点与 F75 的 CheckOptions.emit 推后，理由在附录 F；一页人话已更新。派出只审改动处的单步评审 rules-design-v08-review。"
+    },
+    {
+      "at": "2026-10-29T22:20:20.465Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "rules-design-v08-review（wf_d7d74114a43a3cac）在写下结论之前因 TLS 错误结束（design-review.json 仍是 0.7 的结论）。改派 rules-design-v08-review-retry（wf_25123e779c6831b3），只审改动处，发现一条写一条。"
     }
   ]
 }
