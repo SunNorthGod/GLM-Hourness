@@ -137,7 +137,7 @@ function nodeRef(graph: LoadedGraph, node: GraphNode): NodeRef {
   }
 }
 
-function childrenIndex(graph: LoadedGraph): ReadonlyMap<string, readonly GraphNode[]> {
+export function childrenIndex(graph: LoadedGraph): ReadonlyMap<string, readonly GraphNode[]> {
   const index = new Map<string, GraphNode[]>()
   for (const node of graph.nodes.values()) {
     if (node.parent === undefined) continue
@@ -174,8 +174,8 @@ export function ancestorsOf(graph: LoadedGraph, node: GraphNode): GraphNode[] {
   return chain
 }
 
-/** The node and all its descendants. */
-function subtreeOf(index: ReadonlyMap<string, readonly GraphNode[]>, node: GraphNode): GraphNode[] {
+/** The node and all its descendants, the node first, then breadth first. */
+export function subtreeOf(index: ReadonlyMap<string, readonly GraphNode[]>, node: GraphNode): GraphNode[] {
   const out: GraphNode[] = []
   const seen = new Set<string>()
   const queue = [node]
