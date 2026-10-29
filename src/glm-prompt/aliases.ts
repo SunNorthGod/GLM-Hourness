@@ -11,7 +11,7 @@
  * verbatim pieces live in the mirror file, and the parts the natives cannot
  * honor are dropped or rewritten here and in search-alias.ts.
  */
-import type { JsonRecord, JsonValue } from './json.ts'
+import type { JsonRecord, JsonValue } from '../shared/json.ts'
 import type { ToolDefinitionLike } from '../shared/dsh-min.ts'
 import { buildReadAlias, READ_IMAGE_NATIVE, READ_NATIVE } from './read-alias.ts'
 import { globResultText, GREP_DESCRIPTION, GREP_SCHEMA, grepNativeCalls, grepResultText, runGrep } from './search-alias.ts'

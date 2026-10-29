@@ -99,7 +99,7 @@ L3 核实〔实测 2026-10-28，派发可行性验证 (c)，`ROADMAP.md` 借用�
 每步投影〔已实现，`src/graph/reminder.ts`；L2、L3 探针（设焦点后注入、不变不注入、改标题后再注入、压缩后重锚、目标轮）与 L4 桌面版验证，2026-10-28 随图行默认启用；`ROADMAP.md` 2.3〕：
 
 - 当前节点：agent 用图工具 `graph_focus {id}` 设定自己的焦点节点（一般是正在做的任务），每个会话一个，再调一次就移走。`graph_focus` 不写图，只确认节点存在，返回它的类型、标题与状态；投影从下一步起送到。
-- 注入：行在 `agent/created` 时给每个 agent 装一个 `agent/pre-step` 监听器，把投影追加在本步已接纳的消息之后；监听器用 todo 提醒与高峰提醒的同一个接缝（`src/glm-prompt/step-notice.ts`，`DESIGN.md` §5.5）。投影是 `createUserNotice` 生成的 notice（来源 `glm-graph-projection`），正文用 `<system-reminder>` 包装（与工具检索公告共用 `wrapSystemReminder`），不进系统提示词（`DESIGN.md` §6）。不会变成请求的空决策不加。
+- 注入：行在 `agent/created` 时给每个 agent 装一个 `agent/pre-step` 监听器，把投影追加在本步已接纳的消息之后；监听器用 todo 提醒与高峰提醒的同一个接缝（公共库的 `src/shared/step-notice.ts`，`DESIGN.md` §5.5）。投影是 `createUserNotice` 生成的 notice（来源 `glm-graph-projection`），正文用 `<system-reminder>` 包装（与工具检索公告共用 `wrapSystemReminder`，在公共库的镜像文件 `src/shared/zcode-notice.ts`），不进系统提示词（`DESIGN.md` §6）。不会变成请求的空决策不加。
 - 内容：焦点节点与它的验收条件；到目标的祖先链（父节点在前）；阶段；子节点；来源（它因哪些节点而存在）；它依赖的节点与依赖它的节点；未通过的门禁；图有校验错误时另加一行「写入一律被拒，告诉人」。每个节点一行：类型、id、状态（决策另带验证状态，拍过板的待决带 `decided <选项>`）、标题。不带修订号、历史、正文，也不带目标的验收条件与非目标：修订号与历史每次写入都变，带上就要每次重注；正文与目标的条件太长。这些用 `graph_show` 读。
 - 何时注入：每步从 `session.deriveMessages()`（请求可见的历史）重新推出，按下面的顺序取第一条成立的规则，规则名记在 notice 来源的 `graphProjection.reason`：
   1. `compaction`：历史里最近的压缩检查点（来源 `compact-checkpoint`，带 `compactionId`）在最近一条投影之后，或最近一条投影记下的 `anchor`（注入时可见的最近检查点的 `compactionId`）不是这个检查点。旧投影留在压缩的保留区间里也算没锚过，所以每次压缩之后都重注一次。
@@ -203,7 +203,7 @@ guard 拦截〔已实现，规则 `graph-files-only`，`src/guard/graph-files.ts
 - 图目录不存在时同样拦：手写节点文件也是绕过引擎。开始一张新图的正路是建一个空目录（图工具报 `not_found` 时的提示里写着）；`mkdir docs/graph` 不在 file-tools-only 的写文件模式里，本规则也就不拦。
 - 直接拦截，不先走影子模式（§6.5）：新规则先只记录的通用机制还没有（M4）；M1.8 的影子兜底只记 file-tools-only 看不见的 shell 写入（§6.5.2），不是这种机制。本规则只看图目录里的目标，误伤面小；2026-10-28 经 L3、L4 后随图行默认启用。
 - 拒绝进违规审计〔已实现 2026-10-28〕：图行像 guard 行一样经数据目录服务取项目目录（行配置 `home` 优先），每次拒绝写一条与 guard 同形的记录（`rule: "graph-files-only"`、工具名、调用方 agent 与会话、纠偏全文）到同一份 `audit/violations.jsonl`（`CHARTER.md` §7.1 条款 11）。写入失败不影响拦截，第一次失败在控制台报一次。
-- 声明〔已实现 2026-10-28，agent 定：列进 `glm:guard`〕：图行启用时它提供服务 `glmHournessGraph`（`src/shared/graph-service.ts`），guard 行在 GLM 系统提示词的 `glm:guard` 一节末尾加一行 `graph-files-only` 的声明，GLM 在一处读到全部规矩；图行卸载时这一行随之消失。理由：门禁对 GLM 生效时，提示词里应当有对应的告知（§6.1），图工具的描述只在模型想到用图工具时才读到。
+- 声明〔已实现 2026-10-28，agent 定：列进 `glm:guard`〕：图行启用时它提供服务 `glmHournessGraph`（`src/graph/service.ts`），guard 行在 GLM 系统提示词的 `glm:guard` 一节末尾加一行 `graph-files-only` 的声明，GLM 在一处读到全部规矩；图行卸载时这一行随之消失。理由：门禁对 GLM 生效时，提示词里应当有对应的告知（§6.1），图工具的描述只在模型想到用图工具时才读到。
 - 与 guard 影子兜底的交互〔已实现 2026-10-28〕：图工具经引擎写节点文件，不经文件工具，`workspace-changes` 的回合摘要会列出这些文件。影子兜底经同一个服务认出图工具调用：一个回合里只要调用过图工具，这个会话的图目录下的改动就算已知来源，不记影子。代价是同一回合里 shell 绕过门禁写进图目录的改动也不记（门禁看得见的写法照样拦下）。L3 探针（场景 `glm-graph`）在临时 git 仓库里核对过：同一回合有 shell 调用与图工具写入，影子记录为空。
 
 | 变更 | 分类 | 处理 |

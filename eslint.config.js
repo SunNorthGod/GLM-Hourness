@@ -5,11 +5,37 @@
 import js from '@eslint/js'
 import { defineConfig, globalIgnores } from 'eslint/config'
 import tseslint from 'typescript-eslint'
+import { PACKAGES, SHARED_DIR } from './scripts/packages.mjs'
 
 // Scripts run under the Node that runs ESLint; its global names are theirs.
 const nodeGlobals = Object.fromEntries(
   Object.getOwnPropertyNames(globalThis).map((name) => [name, 'readonly']),
 )
+
+// Package boundaries (docs/DEVELOPMENT.md §10), generated from the
+// directory table: a package's source files import nothing from the other
+// package's directories, and src/shared/ imports no package directory;
+// type imports included (tsc would compile a crossing file into the other
+// package's output without a word). The pattern climbs out of the file's
+// directory by any number of `../`, with or without `src/`, so it does not
+// depend on the file's depth; the table self-check in
+// scripts/preflight-bundle.mjs rules out same-named directories it would
+// misread.
+const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+const into = (dirs) => `^(?:\\.\\./)+(?:src/)?(?:${dirs.map(escapeRegex).join('|')})(?:/|$)`
+const boundary = (files, dirs) => ({
+  files,
+  rules: {
+    'no-restricted-imports': ['error', { patterns: [{
+      regex: into(dirs),
+      message: 'Packages do not import each other and src/shared/ imports no package (scripts/packages.mjs); share through src/shared/.',
+    }] }],
+  },
+})
+const boundaries = [
+  ...PACKAGES.map((pkg) => boundary(pkg.src.map((dir) => `src/${dir}/**`), PACKAGES.filter((other) => other !== pkg).flatMap((other) => other.src))),
+  boundary([`src/${SHARED_DIR}/**`], PACKAGES.flatMap((pkg) => pkg.src)),
+]
 
 export default defineConfig([
   globalIgnores([
@@ -79,4 +105,5 @@ export default defineConfig([
     files: ['**/*.cjs'],
     languageOptions: { sourceType: 'commonjs' },
   },
+  ...boundaries,
 ])

@@ -11,12 +11,14 @@
  * the "Regular expressions are not supported" paragraph and a new select
  * example, the no-match text is longer, and the loaded reminder names
  * LocalToolSearch. Keep this file free of regex literals and division: the
- * gate's scanner does not parse them.
+ * gate's scanner does not parse them. The DeferredToolCall name and the
+ * <system-reminder> wrapping are shared with the orchestration rows and live
+ * in the shared mirror file src/shared/zcode-notice.ts.
  */
+import { DEFERRED_TOOL_CALL_NAME, wrapSystemReminder } from '../shared/zcode-notice.ts'
 
 export const TOOL_SEARCH_NAME = 'ToolSearch'
 export const LOCAL_TOOL_SEARCH_NAME = 'LocalToolSearch'
-export const DEFERRED_TOOL_CALL_NAME = 'DeferredToolCall'
 export const TOOL_SEARCH_DEFAULT_RESULTS = 5
 
 /** Shared description template (bundle `Ngo`). */
@@ -154,15 +156,6 @@ ${removedNames.join(`
   }
   return paragraphs.join(`
 
-`)
-}
-
-const NESTED_SYSTEM_REMINDER_TAG = new RegExp('<\\/?system-reminder\\b', 'gi')
-
-/** Neutralize nested tags, then wrap (bundle `kP` for a provider-visible source without trailing newline). */
-export function wrapSystemReminder(body: string): string {
-  const content = body.replace(NESTED_SYSTEM_REMINDER_TAG, tag => `&lt;${tag.slice(1)}`)
-  return ['<system-reminder>', content, '</system-reminder>'].join(`
 `)
 }
 

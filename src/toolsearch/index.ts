@@ -28,10 +28,10 @@ import {
   projectSearchResult,
   type ToolSearchExposure,
 } from './exposure.ts'
+import { DEFERRED_TOOL_CALL_NAME, wrapSystemReminder } from '../shared/zcode-notice.ts'
 import {
   DEFERRED_TOOL_CALL_DESCRIPTION,
   DEFERRED_TOOL_CALL_INVALID,
-  DEFERRED_TOOL_CALL_NAME,
   DEFERRED_TOOL_CALL_PARAMETERS,
   DEFERRED_TOOL_CALL_UNAVAILABLE,
   LOCAL_TOOL_SEARCH_DESCRIPTION,
@@ -43,7 +43,6 @@ import {
   deferredToolNotAvailable,
   deferredToolResident,
   renderToolSearchAnnouncement,
-  wrapSystemReminder,
 } from './zcode-text.ts'
 
 /** The dialect's handle on one agent's tool search. */

@@ -18,9 +18,9 @@
  * after a DSH compaction, loaded tools are announced and searched again.
  */
 import type { AssembledTool, DerivedMessage } from '../shared/dsh-min.ts'
+import { DEFERRED_TOOL_CALL_NAME } from '../shared/zcode-notice.ts'
 import { mcpPresentation, type ToolSearchCandidate } from './search.ts'
 import {
-  DEFERRED_TOOL_CALL_NAME,
   LOCAL_TOOL_SEARCH_NAME,
   NO_MATCHING_DEFERRED_TOOLS,
   TOOL_REFERENCES_REMOVED,

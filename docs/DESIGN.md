@@ -103,7 +103,7 @@ GLM-Hourness
 
 #### 接口对照表〔实读 2026-10-28，`ROADMAP.md` M1.6〕
 
-本包用到的每个 DSH 钩子、服务成员与载荷字段，逐项对照 `reference/dsh-desktop-0.2.1-rc.3/<包>/lib/index.js`。证据写作「包:行」，包名省略 `dsh-` 前缀；`官方` 指已安装的官方 `.d.ts`（`@deepseek-ai/dsh-llm`、`@deepseek-ai/dsh-attachment`）。结构类型集中在薄适配层：`src/shared/dsh-min.ts`（宿主钩子、服务、载荷）与 `src/shared/lm-min.ts`（LLM 消息与流的词汇、附件服务成员）；各行不再自带宿主类型。宿主升级时，先重新导出运行时包，再按本表逐项复核这两个文件。
+本包用到的每个 DSH 钩子、服务成员与载荷字段，逐项对照 `reference/dsh-desktop-0.2.1-rc.3/<包>/lib/index.js`。证据写作「包:行」，包名省略 `dsh-` 前缀；`官方` 指已安装的官方 `.d.ts`（`@deepseek-ai/dsh-llm`、`@deepseek-ai/dsh-attachment`）。结构类型集中在薄适配层：`src/shared/dsh-min.ts`（宿主钩子、服务、载荷）与 `src/shared/lm-min.ts`（LLM 消息与流的词汇、附件服务成员）；各行不再自带宿主类型。用 `agent/pre-step` 追加 notice 的各行共用公共库里的接缝 `src/shared/step-notice.ts`（§5.5）。宿主升级时，先重新导出运行时包，再按本表逐项复核这两个文件。
 
 插件与 Loader：
 
@@ -569,11 +569,11 @@ ZCode 双阈值 10/10：距上次 TodoWrite 与距上次提醒都达到 10 轮�
 
 ZCode 的做法〔实读，3.16.3 安装包 `XNa`、`U4o`、`z4o` 与回合循环的附件收集；源码 `runtime/helpers/runtime-reminders.ts`、`runtime/methods/turn-loop.ts`〕：每次模型请求之前，若本回合的工具里有 TodoWrite（工具检索延迟之前的全量工具），从历史末尾往前数助手消息，一条助手消息算一轮，不论它带几个工具调用；距最后一条调用 TodoWrite 的助手消息与距最后一条 `todo_reminder` 都不少于 10 轮时，生成提醒正文（逐字提醒加会话 todo 存储的回显），作为 `todo_reminder` 附件以 `<system-reminder>` 包裹递送，并持久化为合成用户消息，之后的请求从它起算。找不到标记时按整段历史的轮数计。经 `DeferredToolCall` 调用的 TodoWrite 在 ZCode 历史里记为目标名（包装只留标记），同样算 TodoWrite。3.16.3 安装包比源码多一个条件：模型 id 含 `claude` 时不提醒，与 GLM 无关。
 
-实现〔已实现 2026-10-28，L3 实测〕：`src/glm-prompt/todo-reminder.ts`，由 `installDialect` 安装在每个 agent 上。`agent/pre-step` 监听器（判定、空首步保护、追加 notice）在 `src/glm-prompt/step-notice.ts`，与高峰提醒（`ORCHESTRATION.md` §11.4）、项目图的每步投影（`ORCHESTRATION.md` §2.5）共用；读历史的两个函数（工具调用的参数、有结果与失败的调用）也在这个文件里，todo 提醒与每步投影共用。
+实现〔已实现 2026-10-28，L3 实测〕：`src/glm-prompt/todo-reminder.ts`，由 `installDialect` 安装在每个 agent 上。`agent/pre-step` 监听器（判定、空首步保护、追加 notice）在公共库的 `src/shared/step-notice.ts`，与高峰提醒（`ORCHESTRATION.md` §11.4）、项目图的每步投影（`ORCHESTRATION.md` §2.5）共用；读历史的两个函数（工具调用的参数、有结果与失败的调用）也在这个文件里，todo 提醒与每步投影共用。`installStepNotice` 的最后一个参数是告警里写的行名，必填：公共库不替哪个包的行起默认名。
 
 - 时机：`agent/pre-step`，即本步组装之后、请求之前，对应 ZCode 的附件收集。只在组装监听器判定本步为 GLM 路由、且别名改写后的工具面（工具检索延迟之前）有 TodoWrite 时检查；非 GLM 路由永远不提醒。
 - 计数：每步从 `session.deriveMessages()`（请求可见历史，跟随压缩与续跑）重新推出，不在内存里累加。只有 GLM 模型产生的助手消息算轮次（rc.3 助手消息的 `source.model`）。todo 写入包括 TodoWrite、点名 TodoWrite 的 `DeferredToolCall`，以及非 GLM 步里的原生 `todo_write`（写的是同一份清单）。提醒标记是来源 `glm-todo-reminder` 的用户消息。
-- 递送：`createUserNotice` 生成的 notice（来源 `glm-todo-reminder`），正文按 ZCode 的 `<system-reminder>` 包装（与工具检索公告共用 `wrapSystemReminder`），追加在本步已接纳的消息之后；同一步还有 deferred 名单公告时，提醒排在公告之前，与 ZCode 收集附件的先后一致。notice 写入会话，下一步的计数据此起算。
+- 递送：`createUserNotice` 生成的 notice（来源 `glm-todo-reminder`），正文按 ZCode 的 `<system-reminder>` 包装（与工具检索公告共用 `wrapSystemReminder`，在公共库的镜像文件 `src/shared/zcode-notice.ts`），追加在本步已接纳的消息之后；同一步还有 deferred 名单公告时，提醒排在公告之前，与 ZCode 收集附件的先后一致。notice 写入会话，下一步的计数据此起算。
 - 回显：取请求可见历史中最近一次成功的 todo 写入的清单。ZCode 读会话 todo 存储；DSH 没有对应的持久存储（`dsh-tool-todo` 的 `todos` 投影在每个回合开始时清空），所以从历史推出。
 - 验证：L2 覆盖多调用轮、TodoWrite 重置、经 `DeferredToolCall` 的 TodoWrite、提醒标记、非 GLM 路由与非 GLM 轮次、工具面无 TodoWrite、空首步、与公告的先后；L3 探针：先记一条 todo，再连续 10 轮每轮两个并行 Read，提醒恰好出现在第 12 次请求、只出现一次，正文为包装后的原文加回显，位于最后一批工具结果之后。
 
@@ -610,7 +610,7 @@ L3 探针：沙盒里把压缩阈值调低，摘要请求末条是 ZCode 提示�
 - 公告：每步在 `agent/pre-step` 计算新增、恢复、移除的 deferred 名单，追加一条 `<system-reminder>` notice（来源 `glm-tool-search`）；增量事实存在 notice 的 `source.toolSearchAnnouncement`，与 ZCode 公告元数据一致。已公告状态每步从 `session.deriveMessages()` 重新推出，所以续跑、重启和压缩后都按模型实际看得到的历史计算。
 - 检索结果：执行 `LocalToolSearch` 时按 ZCode 投影生成内容，即 `<functions>` 定义块、「Loaded: …」提醒、「Tool definitions already available …」提醒。「已加载」只认最近一条助手消息之前的成功检索结果（ZCode 同批不互相去重的语义）。
 - `DeferredToolCall`：校验与拒绝文案按 ZCode `resolveDeferredToolCall`；通过后经 `tools.execute` 执行目标，不带 `parent` 令牌。ZCode 在派发前就把包装还原成目标调用，所以 guard、审计流水、会话检查点看到的都应该是目标本身。todo 提醒从会话历史计数，历史里记的是模型发出的 `DeferredToolCall`，所以按其参数里的目标名识别 TodoWrite（§5.5）。
-- 文本：逐字镜像在 `src/toolsearch/zcode-text.ts`，逐字门禁按字面量片段检查整份文件（§5.9）。
+- 文本：逐字镜像在 `src/toolsearch/zcode-text.ts`；`DeferredToolCall` 这个名字与 `<system-reminder>` 包装编排层也用（现场视图认包装调用、每步投影的格式），放在公共库的镜像文件 `src/shared/zcode-notice.ts`，`zcode-text.ts` 从那里导入。逐字门禁按字面量片段检查这两份文件（§5.9）。
 
 与 ZCode 的差异：
 
@@ -670,7 +670,8 @@ L3 探针：沙盒里把压缩阈值调低，摘要请求末条是 ZCode 提示�
 
 - 来源优先级：3.16.3 安装包为准（用户补丁的安全声明除外，该段以源码与 pristine 为准）；源码作为可读参考。源码（3.16.2）与安装包的已知差异：compact 结尾 `REMINDER` 行；工具检索的 local 模式（§5.10）；Read 部分视图提醒与正文之间，安装包用一个换行，源码用两个；Grep 结果的分页行与计数汇总行之前，安装包用一个换行，源码用两个。
 - 逐字门禁 `scripts/check-verbatim.mjs`（`npm test` 的一道）：每段号称逐字的文本逐行必须出现在安装包或源码中；尚未重建的条目列为已知偏差，只许减少，某条一旦对上而未从名单删除也会失败，名单里的条目不再被检查时同样失败；机器上没有参考源时跳过〔已实现〕。
-- 镜像文件：整份文件都是逐字声明的源文件（`src/toolsearch/zcode-text.ts`、`src/glm-prompt/zcode-tool-text.ts`），门禁抽出其中每个字符串与模板字面量片段逐行比对，模板按插值点切开。这样带插值的模板也能逐片检查。镜像文件里不能出现正则字面量和除法，扫描器不解析它们。本地化的组合（删去哪几行、改写哪几行、删去或追加哪些字段）写在镜像文件之外；标 `localized` 的别名规格（Grep、Bash）不再整段比对描述，由镜像文件的逐片检查覆盖其原文部分。
+- 镜像文件：整份文件都是逐字声明的源文件（`src/toolsearch/zcode-text.ts`、`src/glm-prompt/zcode-tool-text.ts`、`src/glm-llm/zcode-wire.ts`、`src/shared/zcode-notice.ts`），门禁抽出其中每个字符串与模板字面量片段逐行比对，模板按插值点切开。这样带插值的模板也能逐片检查。镜像文件里不能出现正则字面量和除法，扫描器不解析它们。
+- 镜像文件的导入〔已实现 2026-10-29，split 第 1 步〕：文件开头（头注释之后）可以有一段单行导入语句（`import …`、`export … from …`），即导入块。切字面量之前只去掉导入块里的语句行，模块路径不算逐字声明，导入块之后的内容一个字符都不去，所以模板里以 `import ` 开头的原文行、`zcode-tool-text.ts` 里 `"… from the user's profile."` 这种句子照常受检。值导入只许来自其他镜像文件，`import type` 只许来自 `src/shared/`，导入带不进没有检查过的文本。导入块之后再出现导入或再导出语句就失败（写成多行的导入让导入块在它的第一行结束，同样失败）；这一条在去掉注释、字面量内容换成空白的代码文本上判定，字面量里的文字不会被当成语句。门禁通过时报告受检行数（不短于 13 个字符的行）。上线时（2026-10-29）条目从 443 变为 442：少的是 `zcode-tool-text.ts` 里从未受检的模块路径 `'./json.ts'`；受检行数前后都是 269，没有放宽任何文本的检查。用例在 `tests/check-verbatim.spec.ts`。本地化的组合（删去哪几行、改写哪几行、删去或追加哪些字段）写在镜像文件之外；标 `localized` 的别名规格（Grep、Bash）不再整段比对描述，由镜像文件的逐片检查覆盖其原文部分。
 - 已知偏差：无（2026-10-28 起名单为空）。名单机制保留，以后出现新的待重建文本时仍按只减不增处理。
 
 ### 5.10 ZCode 的工具检索机制（3.16.3）
@@ -694,7 +695,7 @@ L3 探针：沙盒里把压缩阈值调低，摘要请求末条是 ZCode 提示�
 
 1. 格式：用 GLM 熟悉的 `<system-reminder>` 形态，写短，位置固定。ZCode 自身以这种形态递送 deferred 名单与提醒（§5.10）。
 2. 位置：动态内容放在对话末尾，不放进系统提示词。系统提示词保持稳定，以免每一步都让提示词缓存失效。按积分公式，GLM-5.3 缓存命中系数 1.7、普通输入 6.9，命中部分约省四分之三（`FACTS.md` §2.4）。
-3. 通道：沿用 `tools/post-execute` 的 `additionalContexts`（带来源标签的合成 notice，与 DSH repeat-tool-reminder 同一机制），或 `agent/pre-step` 的消息修正（工具检索公告、todo 提醒、高峰提醒与项目图的每步投影用这一条）。notice 必须带 `id` 与 `role`（`src/shared/dsh-min.ts` `createUserNotice`，§2.4a）。
+3. 通道：沿用 `tools/post-execute` 的 `additionalContexts`（带来源标签的合成 notice，与 DSH repeat-tool-reminder 同一机制），或 `agent/pre-step` 的消息修正（工具检索公告、todo 提醒、高峰提醒与项目图的每步投影用这一条）。notice 必须带 `id` 与 `role`（`src/shared/dsh-min.ts` `createUserNotice`，§2.4a）。方言与编排层用的是公共库里同一套工具：每步 notice 接缝 `src/shared/step-notice.ts`，包装 `wrapSystemReminder`（`src/shared/zcode-notice.ts`）。
 4. 来源标签唯一，便于审计与用量归因。
 
 ## 7. 降级与上报
@@ -724,6 +725,7 @@ L3 探针：沙盒里把压缩阈值调低，摘要请求末条是 ZCode 提示�
 - adapter：`ZcodeAdapter` 底部有编译期检查 `AdapterContractCheck`，对照官方 `LlmAdapter` 类型〔实读〕。
 - 事件钩子与服务：结构类型逐项对照 rc.3 运行时包，证据见 §2.4a 接口对照表〔实读 2026-10-28〕。官方 `.d.ts` 只装了 `dsh-llm`、`dsh-attachment`、`cordis` 三个包（新增开发依赖须用户批准），装了的地方加编译期检查：`LlmStreamOptionsContractCheck`（`GenerateOptions` 覆盖 `llm/stream` 监听器读取的字段）、`AttachmentsContractCheck`（`AttachmentStore` 覆盖通道读图用的成员）。其余接口没有官方类型可对照，靠对照表与 L3 探针。
 - 适配层：薄适配层是 `src/shared/dsh-min.ts`（宿主钩子、服务、载荷、命令、会话）与 `src/shared/lm-min.ts`（LLM 消息与流的词汇、附件服务成员）。各行只从这两个文件取宿主类型；GLM 模型目录在 `src/glm-llm/models.ts`，不属于适配层〔已实现 2026-10-28〕。
+- 公共库：适配层所在的 `src/shared/` 是两包的公共库（目录归属见 `scripts/packages.mjs`）。除适配层外还有路由判定、数据目录、行健康、JSON 值类型 `json.ts`、每步 notice 接缝 `step-notice.ts`、两包都用的 ZCode 原文 `zcode-notice.ts`（镜像文件，§5.9）。它不导入任何包目录；GLM 目录（`glm-llm`、`glm-prompt`、`toolsearch`）与编排层目录（`data`、`guard`、`memory`、`workflow`、`ui`、`graph`）互不导入，类型导入也算，由 ESLint 按目录表检查（`DEVELOPMENT.md` §10）〔已实现 2026-10-29，split 第 1 步〕。图行与 guard 行之间的契约 `glmHournessGraph` 两头都在编排层，放在 `src/graph/service.ts`。
 - 回归：L3 沙盒真实启动加行为探针做成门禁；每次 DSH 升级先跑一遍（`DEVELOPMENT.md` §3、`ROADMAP.md` M1.7）。
 
 ## 9. 开放问题

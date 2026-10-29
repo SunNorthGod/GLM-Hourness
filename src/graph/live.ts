@@ -17,7 +17,7 @@
  * tokenUsage), which the panel reads next to this one. No Node built-ins:
  * the panel imports the view type and the placement rule.
  */
-import { DEFERRED_TOOL_CALL_NAME } from '../toolsearch/zcode-text.ts'
+import { DEFERRED_TOOL_CALL_NAME } from '../shared/zcode-notice.ts'
 
 /** The tool that sets the focus node (tools.ts); the step projection (reminder.ts) and this fold find its calls in the history. */
 export const FOCUS_TOOL = 'graph_focus'

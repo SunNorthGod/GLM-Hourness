@@ -18,7 +18,7 @@
  * - `offset` 0 reads from the first line as in ZCode (the native counts from
  *   1); a `limit` above the native 2000-line window is clamped to it.
  */
-import type { JsonRecord } from './json.ts'
+import type { JsonRecord } from '../shared/json.ts'
 import type { ToolDefinitionLike } from '../shared/dsh-min.ts'
 import {
   READ_BINARY_EXTENSIONS,

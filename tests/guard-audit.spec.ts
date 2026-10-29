@@ -4,7 +4,7 @@ import { apply, DECLARATION_SECTION, guardHealth, type GuardRecord, type Violati
 import { apply as glmPromptApply } from '../src/glm-prompt/index.ts'
 import type { ShadowRecord } from '../src/guard/shadow.ts'
 import type { AgentLike, PreExecuteDecision, SessionEventLike, SessionLike, ToolExecutionPayload, WorkspaceChangesSummary } from '../src/shared/dsh-min.ts'
-import { GRAPH_FILES_DECLARATION, GRAPH_SERVICE } from '../src/shared/graph-service.ts'
+import { GRAPH_FILES_DECLARATION, GRAPH_SERVICE } from '../src/graph/service.ts'
 import { fakeRuntime } from './fake-rc3.ts'
 
 /**

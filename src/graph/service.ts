@@ -7,7 +7,7 @@
  * order and no shared module instance are needed, and the service leaves
  * with the graph row's fiber.
  */
-import type { ServiceLookup } from './dsh-min.ts'
+import type { ServiceLookup } from '../shared/dsh-min.ts'
 
 export const GRAPH_SERVICE = 'glmHournessGraph'
 

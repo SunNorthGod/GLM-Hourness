@@ -8,7 +8,7 @@
  * at agent creation installs the step projection (reminder.ts) for the
  * focus node an agent sets with graph_focus. It provides its row health
  * (row-health.ts, reported after every graph tool call and projection
- * read) and the service other rows read (src/shared/graph-service.ts: the
+ * read) and the service other rows read (src/graph/service.ts: the
  * guard's shadow fallback and rule declaration). Activation never throws:
  * a bad config or a failed registration warns and leaves the row a no-op
  * (no tools, no guard rule, no projection) with its health inactive; a
@@ -21,7 +21,7 @@ import { installGraphFileGuard } from '../guard/graph-files.ts'
 import { rowJournal, type AuditFs } from '../memory/audit.ts'
 import { dataHomes } from '../shared/data-home.ts'
 import type { AgentLike, PreExecuteListener, ProvideHost, ServiceLookup, ToolDefinitionLike, ToolExecutionContext, ToolsLike } from '../shared/dsh-min.ts'
-import { GRAPH_SERVICE, type GraphService } from '../shared/graph-service.ts'
+import { GRAPH_SERVICE, type GraphService } from './service.ts'
 import { provideRowHealth, sessionIdOf, type RowHealth } from '../shared/health.ts'
 import { installProjection } from './reminder.ts'
 import { graphHealth, readGraph } from './row-health.ts'

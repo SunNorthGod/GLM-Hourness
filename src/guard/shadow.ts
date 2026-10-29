@@ -13,7 +13,7 @@
  * (a .NET call, `cmd /c`, an interpreter one-liner). The records measure
  * what the reader misses before any new detection is enforced. Files under
  * the project graph count as known in a turn that ran a graph tool (the
- * graph row's service, src/shared/graph-service.ts): the engine wrote them.
+ * graph row's service, src/graph/service.ts): the engine wrote them.
  * The price is a blind spot: a shell write into the graph in that same
  * turn is not recorded (graph-files-only still denies the ones it sees).
  *
@@ -25,9 +25,9 @@
  */
 import { resolve } from 'node:path'
 import { normalizePath, shellCommandOf, type ToolCall } from './rules.ts'
-import type { JsonValue } from '../glm-prompt/json.ts'
+import type { JsonValue } from '../shared/json.ts'
 import type { ServiceLookup, SessionEventLike, SessionLike, ToolExecutionPayload, WorkspaceChangesService } from '../shared/dsh-min.ts'
-import { graphService } from '../shared/graph-service.ts'
+import { graphService } from '../graph/service.ts'
 
 /** One shadow record (JSONL line in the violation journal). */
 export interface ShadowRecord {

@@ -13,9 +13,9 @@
  * right path exist. Denials are journaled like the guard row's.
  */
 import { isAbsolute, relative, resolve } from 'node:path'
-import type { JsonValue } from '../glm-prompt/json.ts'
+import type { JsonValue } from '../shared/json.ts'
 import type { PreExecuteHost, ServiceLookup } from '../shared/dsh-min.ts'
-import { GRAPH_FILES_DECLARATION } from '../shared/graph-service.ts'
+import { GRAPH_FILES_DECLARATION } from '../graph/service.ts'
 import { baseFor, type ViolationRecord } from './index.ts'
 import { evaluate, fileToolsOnly, renderCorrection, shellCommandOf, type Correction, type GuardRule, type RuleVerdict, type ToolCall } from './rules.ts'
 

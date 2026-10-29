@@ -10,10 +10,26 @@
  * Known deviations form a ratchet: they are reported, never fail the gate,
  * and may only shrink. A known deviation that starts matching fails until it
  * is removed from KNOWN_DEVIATIONS, so the list cannot go stale. Without any
- * reference present the gate skips (machines without the audit sources).
+ * reference present the text check skips (machines without the audit
+ * sources); the import rules below run anyway.
+ *
+ * Imports of a mirror file: a mirror file may open (after its header
+ * comment) with single-line import statements, its import block. Only those
+ * lines are removed before the literals are cut, so module paths are not
+ * verbatim claims and no text after the block is ever dropped. Value imports
+ * may come only from other mirror files and `import type` only from
+ * src/shared/, so an import brings no unchecked text into a mirror file. An
+ * import or re-export statement after the block fails (a multi-line import
+ * ends the block at its first line, so it fails too); it is found in the
+ * file's code with comments removed and literal contents blanked, so text
+ * inside a literal is never taken for a statement.
+ *
+ * The functions are exported for tests/check-verbatim.spec.ts; importing
+ * this file runs nothing.
  */
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, posix, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 /** Items still awaiting a source rebuild. Shrink only; empty since the M1.1 tool rebuild. */
 const KNOWN_DEVIATIONS = new Set([])
@@ -24,13 +40,19 @@ const KNOWN_DEVIATIONS = new Set([])
  * between their interpolations. The scanner skips comments and does not
  * parse regex literals or division, which these files must not contain.
  */
-const MIRROR_FILES = ['src/toolsearch/zcode-text.ts', 'src/glm-prompt/zcode-tool-text.ts', 'src/glm-llm/zcode-wire.ts']
+export const MIRROR_FILES = ['src/toolsearch/zcode-text.ts', 'src/glm-prompt/zcode-tool-text.ts', 'src/glm-llm/zcode-wire.ts', 'src/shared/zcode-notice.ts']
 
 /** Minimum line length checked; shorter fragments are structural (headings, blank joints). */
 const MIN_LINE = 13
 
 const BACKSLASH = String.fromCharCode(92)
 const UNICODE_ESCAPE = new RegExp(`${BACKSLASH}${BACKSLASH}u([0-9a-fA-F]{4})`, 'g')
+
+/** One single-line import statement: `import … from '…'`, `import '…'`, or `export … from '…'`. */
+const IMPORT_LINE = /^\s*(?:import\s+(?:type\s+)?[^'"]*?\s*from\s*|import\s*|export\s+(?:type\s+)?(?:\*|\{[^}]*\})(?:\s+as\s+\w+)?\s*from\s*)(['"])([^'"]+)\1\s*;?\s*$/
+const TYPE_ONLY = /^\s*(?:import|export)\s+type\s/
+/** A statement-start import (not `import(` or `import.meta`) or a re-export, in code text. */
+const LATE_IMPORT = /(?:^|[\n;])[ \t]*(?:import\b(?![ \t]*[(.])|export\s+(?:type\s+)?(?:\*|\{[^}]*\})(?:\s+as\s+\w+)?\s*from\b)/
 
 /** Undo JS string escaping so source and bundle text compare as rendered text. */
 function unescapeJs(text) {
@@ -58,13 +80,60 @@ function collectSource(root) {
 }
 
 /**
- * Raw (still escaped) text of every string literal and template-literal
- * chunk in a TypeScript source, including literals nested in `${}`.
+ * The import block of a source: the single-line import statements before
+ * its first line that is neither one of them, a comment nor blank.
+ * @param {string} source
+ * @returns {{ line: number, specifier: string, typeOnly: boolean }[]} zero-based line numbers
  */
-function literalChunks(source) {
+export function importBlock(source) {
+  const statements = []
+  let inComment = false
+  const lines = source.split('\n')
+  for (let line = 0; line < lines.length; line += 1) {
+    const text = lines[line]
+    const trimmed = text.trim()
+    if (inComment) {
+      inComment = !trimmed.includes('*/')
+      continue
+    }
+    if (trimmed === '' || trimmed.startsWith('//')) continue
+    if (trimmed.startsWith('/*')) {
+      const end = trimmed.indexOf('*/', 2)
+      if (end < 0) {
+        inComment = true
+        continue
+      }
+      if (trimmed.slice(end + 2).trim() === '') continue
+      break
+    }
+    const match = IMPORT_LINE.exec(text)
+    if (match === null) break
+    statements.push({ line, specifier: match[2], typeOnly: TYPE_ONLY.test(text) })
+  }
+  return statements
+}
+
+/** The source with its import block's statement lines emptied (line numbers kept). @param {string} source */
+function withoutImportBlock(source) {
+  const lines = source.split('\n')
+  for (const { line } of importBlock(source)) lines[line] = ''
+  return lines.join('\n')
+}
+
+/**
+ * Raw (still escaped) text of every string literal and template-literal
+ * chunk in a TypeScript source, including literals nested in `${}`; and the
+ * source's code with comments and literal contents blanked (newlines kept).
+ * @param {string} source
+ * @returns {{ chunks: string[], code: string }}
+ */
+function scanSource(source) {
   const chunks = []
+  let code = ''
   let i = 0
+  const blank = text => text.replace(/[^\n]/g, ' ')
   const quoted = (quote) => {
+    const start = i
     let text = ''
     for (i += 1; i < source.length && source[i] !== quote; i += 1) {
       if (source[i] === BACKSLASH) { text += source.slice(i, i + 2); i += 1 }
@@ -72,29 +141,39 @@ function literalChunks(source) {
     }
     i += 1
     chunks.push(text)
+    code += `${quote}${blank(source.slice(start + 1, i - 1))}${quote}`
   }
   const template = () => {
     let text = ''
+    code += '`'
     for (i += 1; i < source.length && source[i] !== '`'; i += 1) {
-      if (source[i] === BACKSLASH) { text += source.slice(i, i + 2); i += 1 }
+      if (source[i] === BACKSLASH) { text += source.slice(i, i + 2); code += blank(source.slice(i, i + 2)); i += 1 }
       else if (source[i] === '$' && source[i + 1] === '{') {
         chunks.push(text)
         text = ''
+        code += '${'
         i += 2
-        code('}')
+        scanCode('}')
+        code += '}'
       }
-      else text += source[i]
+      else { text += source[i]; code += blank(source[i]) }
     }
     i += 1
     chunks.push(text)
+    code += '`'
   }
   // Scan code until the closing brace of an interpolation (or end of file).
-  const code = (until) => {
+  const scanCode = (until) => {
     let depth = 0
     while (i < source.length) {
       const char = source[i]
-      if (char === '/' && source[i + 1] === '/') { i = source.indexOf('\n', i); if (i < 0) i = source.length; continue }
-      if (char === '/' && source[i + 1] === '*') { i = source.indexOf('*/', i + 2) + 2; if (i < 2) i = source.length; continue }
+      if (char === '/' && (source[i + 1] === '/' || source[i + 1] === '*')) {
+        const end = source[i + 1] === '/' ? source.indexOf('\n', i) : source.indexOf('*/', i + 2)
+        const stop = end < 0 ? source.length : source[i + 1] === '/' ? end : end + 2
+        code += blank(source.slice(i, stop))
+        i = stop
+        continue
+      }
       if (char === '\'' || char === '"') { quoted(char); continue }
       if (char === '`') { template(); continue }
       if (char === '{') depth += 1
@@ -102,11 +181,41 @@ function literalChunks(source) {
         if (depth === 0 && until === '}') return
         depth -= 1
       }
+      code += char
       i += 1
     }
   }
-  code(undefined)
-  return chunks
+  scanCode(undefined)
+  return { chunks, code }
+}
+
+/** The verbatim chunks of a mirror file: its literals, the import block excluded. @param {string} source */
+export function mirrorChunks(source) {
+  return scanSource(withoutImportBlock(source)).chunks
+}
+
+/**
+ * Import rule violations of the mirror file `file` (repository-relative,
+ * forward slashes) with text `source`.
+ * @param {string} file
+ * @param {string} source
+ * @param {readonly string[]} [mirrorFiles]
+ * @returns {string[]}
+ */
+export function importProblems(file, source, mirrorFiles = MIRROR_FILES) {
+  const problems = []
+  for (const { line, specifier, typeOnly } of importBlock(source)) {
+    const target = posix.normalize(posix.join(posix.dirname(file), specifier))
+    if (typeOnly && !target.startsWith('src/shared/')) problems.push(`${file}:${line + 1}: import type ${specifier}: type imports only from src/shared/`)
+    if (!typeOnly && !mirrorFiles.includes(target)) problems.push(`${file}:${line + 1}: import ${specifier}: value imports only from mirror files`)
+  }
+  const { code } = scanSource(withoutImportBlock(source))
+  const late = LATE_IMPORT.exec(code)
+  if (late !== null) {
+    const at = late.index + late[0].search(/\S/)
+    problems.push(`${file}:${code.slice(0, at).split('\n').length}: import statement after the import block (imports open the file, one statement per line)`)
+  }
+  return problems
 }
 
 function loadReferences() {
@@ -144,34 +253,42 @@ async function loadItems() {
   // mirror check below covers every verbatim piece.
   for (const spec of aliases.aliasSpecs) if (spec.localized !== true) items[`${spec.zcodeName} description`] = spec.description
   for (const file of MIRROR_FILES) {
-    literalChunks(readFileSync(file, 'utf8')).forEach((chunk, index) => { items[`${file} literal ${index + 1}`] = unescapeJs(chunk) })
+    mirrorChunks(readFileSync(file, 'utf8')).forEach((chunk, index) => { items[`${file} literal ${index + 1}`] = unescapeJs(chunk) })
   }
   return items
 }
 
-const references = loadReferences()
-if (references.length === 0) {
-  console.log('check-verbatim: skipped (no ZCode bundle or reference/ZCode source on this machine)')
-  process.exit(0)
+async function main() {
+  const importFailures = MIRROR_FILES.flatMap(file => importProblems(file, readFileSync(file, 'utf8')))
+  for (const line of importFailures) console.error(`check-verbatim: FAIL — ${line}`)
+  const references = loadReferences()
+  if (references.length === 0) {
+    console.log('check-verbatim: text check skipped (no ZCode bundle or reference/ZCode source on this machine)')
+    process.exit(importFailures.length === 0 ? 0 : 1)
+  }
+  const items = await loadItems()
+  const failures = []
+  const deviations = []
+  let checkedLines = 0
+  for (const name of KNOWN_DEVIATIONS) {
+    if (!(name in items)) failures.push(`${name}: listed in KNOWN_DEVIATIONS but no longer checked; remove it`)
+  }
+  for (const [name, text] of Object.entries(items)) {
+    const lines = String(text).split('\n').map(line => line.trim()).filter(line => line.length >= MIN_LINE)
+    checkedLines += lines.length
+    const missing = lines.filter(line => !references.some(ref => ref.text.includes(line)))
+    const known = KNOWN_DEVIATIONS.has(name)
+    if (missing.length > 0 && known) deviations.push(`${name}: ${missing.length}/${lines.length} lines unmatched`)
+    else if (missing.length > 0) failures.push(`${name}: ${missing.length}/${lines.length} lines unmatched, first: ${missing[0].slice(0, 100)}`)
+    else if (known) failures.push(`${name}: now matches the reference; remove it from KNOWN_DEVIATIONS`)
+  }
+  const label = references.map(ref => ref.name).join(' + ')
+  for (const line of deviations) console.log(`check-verbatim: known deviation — ${line}`)
+  if (failures.length > 0 || importFailures.length > 0) {
+    for (const line of failures) console.error(`check-verbatim: FAIL — ${line}`)
+    process.exit(1)
+  }
+  console.log(`check-verbatim: OK against ${label} (${Object.keys(items).length - deviations.length} verbatim, ${deviations.length} known deviations, ${checkedLines} lines checked)`)
 }
-const items = await loadItems()
-const failures = []
-const deviations = []
-for (const name of KNOWN_DEVIATIONS) {
-  if (!(name in items)) failures.push(`${name}: listed in KNOWN_DEVIATIONS but no longer checked; remove it`)
-}
-for (const [name, text] of Object.entries(items)) {
-  const lines = String(text).split('\n').map(line => line.trim()).filter(line => line.length >= MIN_LINE)
-  const missing = lines.filter(line => !references.some(ref => ref.text.includes(line)))
-  const known = KNOWN_DEVIATIONS.has(name)
-  if (missing.length > 0 && known) deviations.push(`${name}: ${missing.length}/${lines.length} lines unmatched`)
-  else if (missing.length > 0) failures.push(`${name}: ${missing.length}/${lines.length} lines unmatched, first: ${missing[0].slice(0, 100)}`)
-  else if (known) failures.push(`${name}: now matches the reference; remove it from KNOWN_DEVIATIONS`)
-}
-const label = references.map(ref => ref.name).join(' + ')
-for (const line of deviations) console.log(`check-verbatim: known deviation — ${line}`)
-if (failures.length > 0) {
-  for (const line of failures) console.error(`check-verbatim: FAIL — ${line}`)
-  process.exit(1)
-}
-console.log(`check-verbatim: OK against ${label} (${Object.keys(items).length - deviations.length} verbatim, ${deviations.length} known deviations)`)
+
+if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main()

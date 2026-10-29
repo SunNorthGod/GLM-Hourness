@@ -19,7 +19,7 @@
  *   `output_mode` description drops its context clause.
  */
 import { isAbsolute, sep } from 'node:path'
-import type { JsonRecord } from './json.ts'
+import type { JsonRecord } from '../shared/json.ts'
 import type { ToolDefinitionLike } from '../shared/dsh-min.ts'
 import {
   GLOB_MAX_RESULTS,

@@ -5,7 +5,7 @@
  * path / exception). No soft-allow tier: a denied action never executes.
  */
 import { resolve } from 'node:path'
-import type { JsonValue } from '../glm-prompt/json.ts'
+import type { JsonValue } from '../shared/json.ts'
 import { describeWrite, shellWrites, type ShellDialect } from './shell.ts'
 
 /** Four-part corrective message parts. */

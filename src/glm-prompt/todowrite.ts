@@ -7,7 +7,7 @@
  * replaces the whole list per call and the DSH UI renders it as the todo
  * panel, as the description says (dsh-tool-todo, dsh-client-ui-conversation).
  */
-import type { JsonRecord, JsonValue } from './json.ts'
+import type { JsonRecord, JsonValue } from '../shared/json.ts'
 
 const TODO_STATUSES = new Set(['pending', 'in_progress', 'completed'])
 const TODO_PRIORITIES = new Set(['high', 'medium', 'low'])

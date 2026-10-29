@@ -8,8 +8,8 @@ import {
   TOOL_REFERENCES_REMOVED,
   renderToolSearchAnnouncement,
   summarizeToolNames,
-  wrapSystemReminder,
 } from '../src/toolsearch/zcode-text.ts'
+import { wrapSystemReminder } from '../src/shared/zcode-notice.ts'
 import { apply as glmPromptApply } from '../src/glm-prompt/index.ts'
 import type { AssembledTool, DerivedMessage, PreStepDecision, UserNotice } from '../src/shared/dsh-min.ts'
 import { fakeRuntime } from './fake-rc3.ts'

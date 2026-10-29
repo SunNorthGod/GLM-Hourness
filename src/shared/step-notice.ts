@@ -8,7 +8,7 @@
  * steps derive their state from it. The history readers below are shared
  * by those derivations.
  */
-import type { AgentLike, DerivedMessage, SessionLike, UserNotice } from '../shared/dsh-min.ts'
+import type { AgentLike, DerivedMessage, SessionLike, UserNotice } from './dsh-min.ts'
 
 /** What a builder may read besides the history: the messages this step admits and the agent's session. */
 interface StepInput {
@@ -22,9 +22,10 @@ type StepNoticeBuilder = (history: readonly DerivedMessage[], step: StepInput) =
  * Install one step notice on an agent. `eligible()` reads what this step's
  * assembly decided. Returns undefined, installing nothing, when the agent has
  * no session history to derive state from.
- * @param row - the row named in the warning, after `dsh-glm-hourness/`.
+ * @param row - the row named in the warning, after `dsh-glm-hourness/`; the
+ *   shared library names no row of either package by default.
  */
-export function installStepNotice(agent: AgentLike, what: string, eligible: () => boolean, build: StepNoticeBuilder, row = 'glm-prompt'): (() => void) | undefined {
+export function installStepNotice(agent: AgentLike, what: string, eligible: () => boolean, build: StepNoticeBuilder, row: string): (() => void) | undefined {
   const session = agent.session
   if (typeof session?.deriveMessages !== 'function') {
     console.warn(`dsh-glm-hourness/${row}: ${what} not installed for agent ${agent.id}: no session history`)

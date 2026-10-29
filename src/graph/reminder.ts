@@ -19,9 +19,9 @@
  * loses it until graph_focus is called again.
  */
 import { createHash } from 'node:crypto'
-import { installStepNotice, toolCallArguments, toolCallOutcomes } from '../glm-prompt/step-notice.ts'
 import { createUserNotice, type AgentLike, type DerivedMessage, type UserNotice } from '../shared/dsh-min.ts'
-import { wrapSystemReminder } from '../toolsearch/zcode-text.ts'
+import { installStepNotice, toolCallArguments, toolCallOutcomes } from '../shared/step-notice.ts'
+import { wrapSystemReminder } from '../shared/zcode-notice.ts'
 import { projectNode, type NodeRef, type Projection } from './projection.ts'
 import { FOCUS_TOOL } from './live.ts'
 import { readGraph, type GraphRead } from './row-health.ts'
@@ -205,7 +205,7 @@ async function projectionNotice(input: ProjectionInput): Promise<UserNotice | un
 
 /**
  * Install the step projection on one agent through the shared step notice
- * seam (src/glm-prompt/step-notice.ts), on every route: a step that needs
+ * seam (src/shared/step-notice.ts), on every route: a step that needs
  * the notice gets it after its admitted messages. A failure while reading
  * the graph warns and leaves the step as it was. `onRead` hears what each
  * read of the graph found (the row health). Returns undefined, installing

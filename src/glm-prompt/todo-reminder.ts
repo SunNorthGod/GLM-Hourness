@@ -25,9 +25,9 @@
  */
 import { isGlmModel } from '../shared/route.ts'
 import { createUserNotice, type AgentLike, type DerivedMessage } from '../shared/dsh-min.ts'
-import { DEFERRED_TOOL_CALL_NAME, wrapSystemReminder } from '../toolsearch/zcode-text.ts'
+import { installStepNotice, toolCallArguments, toolCallOutcomes } from '../shared/step-notice.ts'
+import { DEFERRED_TOOL_CALL_NAME, wrapSystemReminder } from '../shared/zcode-notice.ts'
 import { TODO_REMINDER_BODY, TODO_REMINDER_ECHO_HEADER, TODO_REMINDER_THRESHOLDS } from './verbatim.ts'
-import { installStepNotice, toolCallArguments, toolCallOutcomes } from './step-notice.ts'
 
 /** Source kind of the persisted reminder notice (ZCode `todo_reminder`). */
 export const TODO_REMINDER_SOURCE = 'glm-todo-reminder'
@@ -125,7 +125,7 @@ export function latestTodos(history: readonly DerivedMessage[]): TodoItem[] {
 }
 
 /**
- * Install the reminder on one agent (src/glm-prompt/step-notice.ts): when
+ * Install the reminder on one agent (src/shared/step-notice.ts): when
  * `eligible()` says the assembled request is GLM-routed with TodoWrite on
  * its face, the reminder is appended as a `<system-reminder>` notice after
  * the step's admitted messages. The notice persists in the session, so the
@@ -135,5 +135,5 @@ export function latestTodos(history: readonly DerivedMessage[]): TodoItem[] {
 export function installTodoReminder(agent: AgentLike, eligible: () => boolean): (() => void) | undefined {
   return installStepNotice(agent, 'todo reminder', eligible, history => shouldBuildTodoReminder(history)
     ? createUserNotice(TODO_REMINDER_SOURCE, 'todo reminder', wrapSystemReminder(buildTodoReminderBody(latestTodos(history))))
-    : undefined)
+    : undefined, 'glm-prompt')
 }

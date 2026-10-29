@@ -22,7 +22,7 @@
  * 2020-12. Key order follows that output: type, constraints, default,
  * description; `$schema` last.
  */
-import type { JsonRecord } from './json.ts'
+import type { JsonRecord } from '../shared/json.ts'
 
 /** Read's default line window (contracts READ_DEFAULT_MAX_LINES, bundle `TG`). */
 export const READ_DEFAULT_MAX_LINES = 2000

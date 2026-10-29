@@ -18,8 +18,8 @@
  */
 import { createUserNotice, type AgentLike, type DerivedMessage } from '../shared/dsh-min.ts'
 import { peakWindowAt } from '../shared/credits.ts'
-import { wrapSystemReminder } from '../toolsearch/zcode-text.ts'
-import { installStepNotice } from './step-notice.ts'
+import { installStepNotice } from '../shared/step-notice.ts'
+import { wrapSystemReminder } from '../shared/zcode-notice.ts'
 
 /** Source kind of the persisted reminder notice. */
 export const PEAK_REMINDER_SOURCE = 'glm-peak-reminder'
@@ -36,8 +36,8 @@ export function peakWindowToAnnounce(history: readonly DerivedMessage[], now: nu
 }
 
 /**
- * Install the reminder on one agent (src/glm-prompt/step-notice.ts, the seam
- * of the todo reminder and the tool-search announcement): when `eligible()`
+ * Install the reminder on one agent (src/shared/step-notice.ts, the seam
+ * of the todo reminder and the graph's step projection): when `eligible()`
  * says this step is GLM-routed, the notice is appended after the step's
  * admitted messages. `now` reads the wall clock (injectable for tests).
  * Returns undefined, installing nothing, when the agent has no session
@@ -47,5 +47,5 @@ export function installPeakReminder(agent: AgentLike, eligible: () => boolean, n
   return installStepNotice(agent, 'peak reminder', eligible, (history) => {
     const window = peakWindowToAnnounce(history, now())
     return window === undefined ? undefined : createUserNotice(PEAK_REMINDER_SOURCE, `peak hours ${window}`, wrapSystemReminder(PEAK_REMINDER_TEXT), { peakWindow: window })
-  })
+  }, 'glm-prompt')
 }

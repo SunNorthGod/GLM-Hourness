@@ -35,7 +35,7 @@ import { provideRowHealth, sessionIdOf, type HealthState, type RowHealth } from 
 import { assemblyRoute, type Route } from '../shared/route.ts'
 import type { AgentLike, AssemblePayload, PluginContext, ProvideHost, ToolDefinitionLike } from '../shared/dsh-min.ts'
 import Schema from '../shared/schemastery.ts'
-import type { JsonValue } from './json.ts'
+import type { JsonValue } from '../shared/json.ts'
 
 /** Row config. */
 export interface GlmPromptConfig {

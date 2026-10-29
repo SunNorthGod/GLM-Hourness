@@ -36,10 +36,10 @@ import { evaluate, fileToolsOnly, renderCorrection, workspaceContainment, type G
 import { shadowFallback, type ShadowRecord } from './shadow.ts'
 import { rowJournal, type AuditFs } from '../memory/audit.ts'
 import { dataHomes } from '../shared/data-home.ts'
-import { GRAPH_FILES_DECLARATION, graphService } from '../shared/graph-service.ts'
+import { GRAPH_FILES_DECLARATION, graphService } from '../graph/service.ts'
 import { provideRowHealth, sessionIdOf, type HealthState } from '../shared/health.ts'
 import { assemblyRoute, isGlmModel, sessionRoute, type Route } from '../shared/route.ts'
-import type { JsonValue } from '../glm-prompt/json.ts'
+import type { JsonValue } from '../shared/json.ts'
 import type { AgentLike, AssembledSection, PluginContext, PreExecuteHost, ProvideHost, ServiceLookup, SessionEventHost, WorkingDirectoryService } from '../shared/dsh-min.ts'
 
 /** One audit record (JSONL line) for a denied call. */
