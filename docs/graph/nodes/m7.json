@@ -125,6 +125,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "循环板设计 0.1 §16 给 M7 下一稿的请求：m7-6、m7-7、m7-8 的三条定时提醒由循环板默认第 1–3 项代替，删去 times 配置与 /patrol；巡检提醒原文里「options and the recommendation last」随 d-chat-not-cards 改；§3.7.1 的 harness 直接派审查改为循环板第 6 项提醒主 Agent 派（d-main-agent-models）；交回处理与停下标记写完之后调 emitLoopEvent（task-handed-back、work-stopped）；glmHournessExecute.withGateLock 给循环板第 4 项（合进主干后的完整检查）用；四答晨报的花费一节用 M6 的 quotaLines（每天读一次额度）。"
+    },
+    {
+      "at": "2026-10-29T19:14:30.402Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M7 设计 0.3 写完（.agents/tasks/m7/design.md；0.2 原文留在 design-0.2.md）：按 d-auto-drive、d-main-agent-models、d-main-agent-shell（含快照细则）、d-one-main-agent、d-chat-not-cards、d-design-onepage、d-defaults-readonly、d-rules-visible、question-38 C 与 norm-review-floor、metrics 改写，方向清单的逐条对照在 §1.1。主要变化：没有 /drive，harness 在主 Agent 的一步里看到放行就建 goal，重启后自动恢复，人暂停或清掉的不恢复；dispatch_task 的 model 与 why 必填，没有档位与默认模型；没有 merge_task，主 Agent 用 git 合，harness 用 check_commit 在一个确定的提交上跑 norm-merge-gate，并在主干前进的那一刻核对（认得出的写法执行前拦，认不出的执行后发现、记违规、不给证据），任务与提交按尾注 Hourness-Task 对应；底线清单在主干前进时按内容核对；没有运维会话与 /patrol，晨报、周报、夜间巡检是循环板上的默认条目；harness 不再写给人的待决，只把事实与四行草稿交给主 Agent 在对话里问；十条联动是循环板上只读的默认条目，没有循环板时 M7 按同一张表执行事件条目；指标事件表在 §3.16。0.2 第 2 轮评审的 11 条不挡路意见都已处理（§16）。待人定两件（§13：norm-review-floor 四条加判定写法；norm-merge-gate 加 only docs/graph/）。十件活的「怎样算做完」按 question-37 A 由人逐条看（§1.2）；改写的变更草稿在 .agents/tasks/m7/graph-ops-v03-pending.json，不带人的原话，要人回话之后补上才能提交。设计评审待开始。"
     }
   ]
 }

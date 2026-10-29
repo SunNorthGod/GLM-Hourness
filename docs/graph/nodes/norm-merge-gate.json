@@ -59,6 +59,12 @@
       "relay": "B",
       "from": "proposed",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-29T19:14:32.179Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M7 设计 0.3：检查由 harness 用 check_commit 在要进主干的那个提交上跑，主干前进的那一刻核对（§3.8.4）；`push` 一条现在由主 Agent 做（d-main-agent-shell），harness 在核对通过的提醒里写「不强推」，巡检报出没推上去的主干。新写法 `only <路径>` 让只改这些路径的提交不跑命令；本仓库是否加 `only docs/graph/` 等人定（M7 §13 ②）。"
     }
   ]
 }

@@ -194,6 +194,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M3 附录 0.3 第 3 轮评审（m3-addendum-v03-review，wf_a71d594ad0566cd5；.agents/tasks/m3/reviews/addendum-r3.md）：CHANGES_REQUESTED，挡路 8 条（MEDIUM）、不挡路 12 条；第 2 轮全部关闭。挡路条数 3 → 8 没有减少，按 question-11 与 DEVELOPMENT.md §1.1 停下交人。八条里五条是附录写完之后才到的决定与兄弟设计没对上：M1 新加的几条拦截没进规则板（d-rules-visible）；M2 改主 Agent 工具面与写用户目录的两步没安排审查（norm-review-floor）；M6 3.17.1 里输出风格不再是系统提示词的一节；M7 例题里写的「不再提醒模型」与 d-peak-mode 相反；M8 背景字段上限应为 60（面板 0.5）。三条是真的安全问题：M3 几种 git 命令会删掉没进快照的未跟踪文件，git clean 的文件列表在中文环境下解析不出来；M4 快照把 .env、.llm/ 这类被忽略的文件存进 git 对象且永不清理，推送时可能带出去，依赖装满的工作树清理会被拒；M5 派出去的子 agent 或普通会话能带编造的「人的原话」把目标推到放行，绕过门禁且没有警报。运行本身在写完评审后因 BAD_DECRYPT 结束。"
+    },
+    {
+      "at": "2026-10-29T19:14:30.594Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M7 设计 0.3 对 M3 的改动（M7 在 M3 合入之后开工）：一、design-before-release 的放行一行改问执行服务（同 0.2）；二、执行行在时，身份节的边界一句与 main-agent-no-write 的正路改为「writing work goes to workers you dispatch with dispatch_task; subagents started with the subagent tool only read」（0.2 评审 F18）；三、阶段提醒：release 一句改为「The design is released and the harness has started the drive: decompose into tasks with dispatch attributes and dispatch them; do not wait for the person.」，补 decompose、execute、merge 三段（merge 一段写合入的做法），图上没有 norm-merge-gate 时设计阶段加一句提议它；四、src/guard/git-snapshot.ts 只加导出 gitInvocations（M3 内部已有的 git 调用读法，行为不变），M7 的 worker-git 与主干前进的核对都用它与 takeSnapshot、gitRisk。M7 不再改 src/graph/panel-row.ts：等人后的恢复在主 Agent 的下一步里做，面板拍板由 M3 的回写通知叫醒主 Agent。M7 依赖 M3 的 propose_to_human、record_human_answer、renderProposal、proposalLineRefusal、plainWordsIn、isMainAgent 与持有者记录、mainAgentOf。"
     }
   ]
 }

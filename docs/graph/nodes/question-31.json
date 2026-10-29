@@ -53,6 +53,12 @@
           "ref": "C"
         }
       ]
+    },
+    {
+      "at": "2026-10-29T19:14:31.631Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M7 设计 0.3 §2.3.2 定了子 agent 拿哪些图工具（0.2 评审 F19）：主 Agent 派发链里的子 agent（worker、审查者、只读子 agent）的工具面去掉 graph_propose、graph_status、graph_edit、graph_link、graph_unlink、graph_verify、graph_decide、graph_approve、graph_reject，留 graph_show、graph_open、graph_focus、graph_comment；worker-graph-readonly 照旧是按名直接调用时的兜底。prompt-audit 的整理可以按此去掉这部分。"
     }
   ]
 }

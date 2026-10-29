@@ -159,6 +159,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "循环板设计 0.1 §16 给规则板下一稿的请求：「写在代码里的规则」一组加四行（合入前的检查读 norm-merge-gate、必须全审读 norm-review-floor、M7 的停下标记、loops:schedule-tools）；检测器的触发改用 src/loops/trigger.ts 的 Trigger 子集（every、daily、weekly 与 file-changed 事件），两块板一套时间写法；命令执行与 §5.3 共用 src/loops/command.ts（谁先合入谁建）；循环板跑命令前调 checkCall（tool 为 pwsh，带 glmSpend），§9.4 不用改。高峰的执行仍全在规则板，循环板第 12 项只记录与显示。"
+    },
+    {
+      "at": "2026-10-29T19:14:30.764Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M7 设计 0.3 按规则板 0.5 改：不再用 glmHournessRules.admit 与 dsh-desktop、dsh-profile 租约；dispatch_task 的原生名加进 DISPATCH_TOOL_NAMES，排队由规则板自己的门做。代码规则目录（§10.1）要登记的 M7 的门：execute:worker-scope、execute:dispatch-chain-readonly、execute:worker-graph-readonly、execute:worker-git、execute:worker-message-live-only、execute:trunk-advance-checked、execute:completion-gate、execute:stopped（M7 设计 0.3 §2.5）；先合入的一方登记，规则板晚于 M7 时由 R1 一次加齐。到点提醒前读 heldForPeak 的是循环板（或没有循环板时 M7 的退路执行者）。晨报的规则板一节（R7）排在 M7 P2 的四答晨报之后。"
     }
   ]
 }

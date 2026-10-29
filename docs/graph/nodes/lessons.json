@@ -70,6 +70,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "m5-lessons-design（wf_f690c481cb302c2e）结束：评审结论停在 CHANGES_REQUESTED（各轮挡路 2、2、1）。R3-01 由编排方 2026-10-30 改写 §12 部分解决，未再评审；§13 第 1 条、§3.2 里 D2 的段落与 D1 的卡片字段还要随改写同步；R3-02 到 R3-05 四条 NIT 未改。这些在 M5 实现开工前由编排方补齐，D1 与 M7 的清单一起交人看。"
+    },
+    {
+      "at": "2026-10-29T19:14:31.266Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M7 设计 0.3 已采纳 M5 设计 0.3 §8.1 请改的五处（§3.5.5、§3.6.1）：relevant 与 propose 带 session；交回的 lessons 每项可带 errors 与 scope；退路批注末尾带候选的 JSON；LESSONS_TOOL_NAMES = ['lessons_query', 'lessons_merge']，只有 lessons_query 常驻；按 candidate/merged/dropped、rejected、error 三路处理，退路批注先过 looksSecret。门禁锁改用 src/data/lock.ts 的规则（开机时刻差 120 秒、持锁上限 6 小时），先开工的一方建这个模块。"
     }
   ]
 }

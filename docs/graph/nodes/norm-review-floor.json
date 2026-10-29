@@ -19,6 +19,12 @@
       "reason": "question-38 C 的底线清单，编排方拟、用户批准",
       "relay": "没问题，我暂时也想不到什么加审不审的",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-29T19:14:31.991Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M7 设计 0.3 §3.8.5：harness 只认每条验收行末反引号里的判定写法（files、deletes、commands、outside）。这四条现在都还没有，harness 判不了，强制全审对本仓库还不起作用；M7 §13 ① 给了四条各自要加的写法，等人同意之后带人的原话写进验收（.agents/tasks/m7/graph-ops-v03-pending.json）。"
     }
   ]
 }
