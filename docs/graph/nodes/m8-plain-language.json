@@ -44,6 +44,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "设计 v0.1 写完（.agents/tasks/plain-ui/design.md，草图 home、plan、drilldown、onboarding、wish 五张 SVG），已纳入推荐放最后、规则只由人设、三问四答五键的版式、失败预案、主 Agent 用强一档模型的提醒与人设设置位。设计评审进行中。"
+    },
+    {
+      "at": "2026-10-29T10:58:50.583Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "设计评审第 1 轮：CHANGES_REQUESTED，HIGH 1、MEDIUM 5、LOW 13（.agents/tasks/plain-ui/design-review.md）。HIGH P1-01：/wish 的开场卡片放在 conversation.hero.options，rc.3 把这个槽位画成工作区标签行里靠右的一小排，卡片做不出来，m3-1 验收第 4 条「醒目」按现设计达不到，要换到输入框的停靠位。MEDIUM：P1-02 开场屏不渲染 composer.dock，只装 GLM 插件时首屏没有引导；P1-03 定期任务回到 approved 后会马上被当成可开工、提前派发花积分；P1-04 到 P1-06 是编排方转来的三条新要求（反方、事前验尸样卡、经验板块的位置）。第 2 轮修订进行中。"
     }
   ]
 }

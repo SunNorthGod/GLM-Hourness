@@ -35,6 +35,12 @@
       "reason": "派出 m7-design（wf_ab2363c175f5a71d）：只写设计并过设计评审，含给 dogfood 用的最薄端到端骨架；稿在 .agents/tasks/m7/design.md",
       "from": "approved",
       "to": "doing"
+    },
+    {
+      "at": "2026-10-29T10:58:49.884Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "用户问主 Agent 与子 agent 能不能即时互相通信。事实（DESIGN.md、ORCHESTRATION.md §3.2 的实读与 L3）：DSH 的 subagents 服务有 sendMessage、interrupt、listChildren，工具面有 send_message、list_agents、interrupt_agent；子 agent 结束前用 send_message 把结果交回父 agent 已在 L3 走通；父 agent 给子 agent 续发消息的接口在源码里有，没有实测。消息在步与步之间投递（运行中插进下一步，空闲时开新回合），不是逐字的实时聊天；GLM 路由上 send_message 是延迟工具，要不要列为子 agent 常驻在 M7 定。子 agent 之间不直接对话，经主 Agent 中转（Anthropic 2026-08-13：agent 当工具调用时协作好，当同伴时差）。已转给 m7-design。经验板块要有给子 agent 主动查询的工具，也已转给 m7-design。"
     }
   ]
 }
