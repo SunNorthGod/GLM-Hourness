@@ -2,11 +2,22 @@
   "id": "m1",
   "type": "feature",
   "title": "M1 底层收口",
-  "status": "doing",
+  "status": "done",
   "parent": "bottom",
   "slope": "downhill",
   "stage": "execute",
   "body": "原生通道还没在 DSH 真实会话里跑过，所以底层收口排在最前（ROADMAP.md §1 行走骨架）。每个条目单独提交、单独验证；L1–L3 在 Kiro 会话内执行，L4 要用户重启桌面版验收。",
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "593a6be"
+    },
+    {
+      "kind": "check",
+      "ref": "desktop batch L4 on a9f12e1: .agents/tasks/m1-l4/l4.md, L4 RESULT: PASS",
+      "exit": 0
+    }
+  ],
   "history": [
     {
       "at": "2026-10-27T20:04:04.375Z",
@@ -22,6 +33,25 @@
       "reason": "已完成 1.1、1.2、1.3、1.10 与三项顺带修复（ROADMAP.md M1 进度）",
       "from": "approved",
       "to": "doing"
+    },
+    {
+      "at": "2026-10-29T02:58:22.205Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "M1 的子项全部关闭：m1-parity 合入（a9f12e1），批次 L4 m1-11 通过，清理 m1-cleanup 完成（593a6be）",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "593a6be"
+        },
+        {
+          "kind": "check",
+          "ref": "desktop batch L4 on a9f12e1: .agents/tasks/m1-l4/l4.md, L4 RESULT: PASS",
+          "exit": 0
+        }
+      ]
     }
   ]
 }

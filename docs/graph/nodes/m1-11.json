@@ -2,7 +2,7 @@
   "id": "m1-11",
   "type": "task",
   "title": "1.11 L4 真机验收",
-  "status": "doing",
+  "status": "done",
   "parent": "m1",
   "kind": "test",
   "body": "用户重启桌面版，选 glm-zcode 发消息（ROADMAP.md M1 1.11）。",
@@ -23,6 +23,22 @@
     {
       "type": "depends",
       "to": "q-l4"
+    }
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "e4de013"
+    },
+    {
+      "kind": "test",
+      "ref": "npm run build, npm run preflight, npm test on a9f12e1 in the main checkout: 556 passing, ESLint 250 / knip 21 / jscpd 2",
+      "exit": 0
+    },
+    {
+      "kind": "check",
+      "ref": "desktop batch L4 on a9f12e1: .agents/tasks/m1-l4/l4.md, L4 RESULT: PASS",
+      "exit": 0
     }
   ],
   "history": [
@@ -62,6 +78,30 @@
       "actor": "llm",
       "op": "comment",
       "text": "派出 m1-l4-and-cleanup（wf_10cbbc919767c467）：在主检出构建 a9f12e1、重启桌面版，按 .agents/tasks/zcode-parity/integration.md §6 的八项与本节点三条验收在真实会话里验证；子会话的 session type 头值与失败即停的界面接受 L2 覆盖；随后提交 HANDOFF、DESIGN、FACTS 的收尾，再做 m1-cleanup。运行期间独占桌面时段。"
+    },
+    {
+      "at": "2026-10-29T02:58:21.815Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "m1-l4-and-cleanup（wf_10cbbc919767c467）：桌面版以 a9f12e1 重启，L4 RESULT: PASS（.agents/tasks/m1-l4/l4.md）。三条验收：/glm-status 11 行全部生效；会话文件的系统提示词含 ZCode 方言；用量记录 provider 为 glm-zcode。integration.md §6 八项全过：重启后本包无新错误；真实凭证在第一个请求时迁移为 v2 一次，登录保持，定位到原有 key 未新建；会话标题、委派子会话、压缩正常；telemetry-state.json 前后不变；第 4 项头值与第 5 项失败即停界面按编排方决定接受 L2 覆盖。模型菜单已换回 deepseek-account / deepseek-flash / high。文档收尾 b43aafb、e4de013。",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "e4de013"
+        },
+        {
+          "kind": "test",
+          "ref": "npm run build, npm run preflight, npm test on a9f12e1 in the main checkout: 556 passing, ESLint 250 / knip 21 / jscpd 2",
+          "exit": 0
+        },
+        {
+          "kind": "check",
+          "ref": "desktop batch L4 on a9f12e1: .agents/tasks/m1-l4/l4.md, L4 RESULT: PASS",
+          "exit": 0
+        }
+      ]
     }
   ]
 }
