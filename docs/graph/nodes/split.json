@@ -168,6 +168,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "split-implement（wf_86dffdb4b51f45af）在附录第 5 轮评审中被 Kiro 重启打断、暂停；编排方已续跑，第 5 轮评审重新进行。附录 0.5 与分支上的第 0–2 步提交（ab031b7、00d1bd5、0fe76a5）完好，工作树干净。"
+    },
+    {
+      "at": "2026-10-29T09:24:42.628Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "question-17 B 设计附录 0.5 第 5 轮评审：APPROVED，HIGH 0、MEDIUM 0、NIT 3（.agents/tasks/split/addendum-review.md）。第 4 轮 D01–D05 全部关闭：不属于本项目的链接按 readlinkSync 的原始目标记录、比较与重建，演练带一个悬空的 @local 链接；每次 pnpm 运行新建输出文件；hash3 在改名之前写进记录；rollback 运行前检查与 reconcile 的条件一致；pnpm 卡住的时限由脚本执行。desktop 与 glmsandbox 的只读核对与附录一致：desktop 的 @local/ 已是空目录，两个 profile 都没有不属于本项目的链接。NIT：readlinkSync 返回 path.resolve 之后的形式，演练的比较基准应取建链之后读到的值；rollback 第 1 小步的完成标记应在恢复之前写成「恢复中」；--dump-default-config 也要时限，并写明前台工具调用超时之后怎样做。第 5 步的开始条件「附录评审 APPROVED」已满足。"
+    },
+    {
+      "at": "2026-10-29T09:24:42.837Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "UI-MERGE CHECK 放行：m8-ui-audit 已完成，界面改动都在 main 上（最后一个界面提交 20ed994），行名仍是路径形式（question-18 A）；split-implement 的第 3–4 步 rebase 到 main 后开工。"
     }
   ]
 }
