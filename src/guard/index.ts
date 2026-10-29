@@ -9,22 +9,24 @@
  * row's own home, else the data service's, docs/DESIGN.md §2.4). Each
  * root call reports the row health of its session (src/shared/health.ts).
  *
- * Declaration (告知, docs/ORCHESTRATION.md §6.1): on a GLM route the active
+ * Declaration (告知, docs/ORCHESTRATION.md §6.1): on every route the active
  * rules are declared in one system prompt section, appended after the
- * agent-scoped assembly (`glm:guard`); with the graph row active the
- * section also declares its graph-files-only. Rules only change with the
- * session directory, which is immutable, and with the graph row loading,
- * so the prompt stays stable step to step.
+ * agent-scoped assembly (`glm:guard`; the runtime renders section text, not
+ * names); with the graph row active the section also declares its
+ * graph-files-only. Rules only change with the session directory, which is
+ * immutable, and with the graph row loading, so the prompt stays stable
+ * step to step.
  *
  * Shadow fallback (§6.5): file-tools-only also compares each turn's
  * workspace-changes summary with the turn's file-tool targets and records,
  * never blocks, files a shell call changed unseen (src/guard/shadow.ts).
  *
- * Scope (ORCHESTRATION.md §6.2): GLM calls only. The route of a tool call is
- * the session's latest request header (src/shared/route.ts `sessionRoute`):
- * the model that issued the call. Other models' calls, and calls without an
- * agent, pass untouched. The two model-family checks (the call scope here
- * and the declaration scope below) are the orchestration rows' only ones.
+ * Scope (ORCHESTRATION.md §6.2): every root call, on every route and model,
+ * while this row is loaded. The route of a tool call is the session's
+ * latest request header (src/shared/route.ts `sessionRoute`): the model that
+ * issued the call. It decides nothing about enforcement: it names the tools
+ * in corrections (below) and tags each journal record with its origin
+ * (src/guard/origin.ts). Nested transport calls (`parent`) pass.
  *
  * Tool names (ORCHESTRATION.md §6.1): the rules know DSH native names only.
  * A call name maps to its native through the dialect service, else the
@@ -43,12 +45,13 @@
  */
 import { declarationOf, evaluate, fileToolsOnly, NATIVE_FACE, renderCorrection, workspaceContainment, type GuardRule, type ToolCall, type ToolFace } from './rules.ts'
 import { shadowFallback, type ShadowRecord } from './shadow.ts'
+import { originOf, type RouteScope } from './origin.ts'
 import { rowJournal, type AuditFs } from '../memory/audit.ts'
 import { dataHomes } from '../shared/data-home.ts'
 import { dialectNames, dialectService, dialectWarner, toNativeTool, type DialectProblem } from '../shared/dialect.ts'
 import { GRAPH_FILES_DECLARATION, graphService } from '../graph/service.ts'
 import { provideRowHealth, sessionIdOf, type HealthState } from '../shared/health.ts'
-import { assemblyRoute, isGlmModel, sessionRoute, type Route } from '../shared/route.ts'
+import { assemblyRoute, sessionRoute, type Route } from '../shared/route.ts'
 import type { JsonValue } from '../shared/json.ts'
 import type { AgentLike, AssembledSection, PluginContext, PreExecuteHost, ProvideHost, ServiceLookup, SessionEventHost, WorkingDirectoryService } from '../shared/dsh-min.ts'
 
@@ -59,6 +62,9 @@ export interface ViolationRecord {
   readonly tool: string
   readonly agentId?: string | undefined
   readonly sessionId?: string | undefined
+  /** Where the call ran (src/guard/origin.ts); absent on records written before split step 7. */
+  readonly scope?: RouteScope | undefined
+  readonly route?: Route | undefined
   readonly correction: string
 }
 
@@ -111,12 +117,6 @@ export function baseFor(ctx: ServiceLookup, agent: AgentLike | undefined): strin
   }
   const cwd = session.header.cwd
   return typeof cwd === 'string' && cwd.length > 0 ? cwd : undefined
-}
-
-/** The row health of a call the guard leaves alone: a non-GLM route, or no route to judge. */
-export function outOfScopeHealth(route: Route | undefined): [HealthState, string] {
-  if (route?.model === undefined) return ['inactive', '路由未知（调用没有 agent，或会话还没有请求头），门禁不介入']
-  return ['inactive', `非 GLM 路由 ${route.provider ?? '?'}/${route.model}，门禁不介入`]
 }
 
 /** The name of the system prompt section that declares the active rules. */
@@ -172,14 +172,9 @@ export function apply(ctx: GuardHost, config: GuardConfig = {}): () => void {
 
   disposers.push(ctx.on('tools/pre-execute', async (payload, next) => {
     if (payload.parent !== undefined) return next()
-    // GLM-only (ORCHESTRATION.md §6.2): the rules discipline GLM's habits;
-    // other models' calls, and calls with no route to judge, pass untouched
-    // and leave no shadow notes.
+    // Every route and model (ORCHESTRATION.md §6.2): the route only picks the
+    // tool names of the correction and tags the record.
     const route = sessionRoute(payload.agent?.session)
-    if (!isGlmModel(route?.model)) {
-      health.report(sessionIdOf(payload.agent), ...outOfScopeHealth(route))
-      return next()
-    }
     let dialectUnusable = false
     const problem: DialectProblem = (message) => {
       dialectUnusable = true
@@ -187,7 +182,9 @@ export function apply(ctx: GuardHost, config: GuardConfig = {}): () => void {
     }
     const dialect = dialectService(ctx, problem)
     const call: ToolCall = { name: toNativeTool(dialect, payload.name, problem), arguments: (payload.arguments ?? {}) as JsonValue }
-    const face = dialectNames(dialect, payload.agent, route, problem) ?? NATIVE_FACE
+    const names = dialectNames(dialect, payload.agent, route, problem)
+    const face = names ?? NATIVE_FACE
+    const origin = originOf(names !== undefined, route)
     const roots = rootsFor(payload.agent, config)
     const rules = activeRules({ ...config, workspaceRoots: roots, base: baseFor(ctx, payload.agent) })
     const verdict = evaluate(rules, call, face)
@@ -200,12 +197,13 @@ export function apply(ctx: GuardHost, config: GuardConfig = {}): () => void {
         tool: payload.name,
         agentId: payload.agent?.id,
         sessionId: payload.agent?.session?.id,
+        ...origin,
         correction: renderCorrection(verdict.correction),
       })
       return { kind: 'deny', reason: renderCorrection(verdict.correction) }
     }
     const decision = await next()
-    if (decision.kind === 'allow') shadow.observe(payload)
+    if (decision.kind === 'allow') shadow.observe(payload, origin)
     return decision
   }))
 
@@ -217,14 +215,14 @@ export function apply(ctx: GuardHost, config: GuardConfig = {}): () => void {
     installed.add(agent)
     try {
       // Prepend, like the dialect row: post-`next()` sees the route the
-      // model selection injected. Appended last either way, whichever of
-      // the two listeners is outermost.
+      // model selection injected, which picks the tool names. Every route
+      // gets the section, appended last either way, whichever of the two
+      // listeners is outermost.
       disposers.push(agent.ctx.on('system-prompt/assemble', async (_assembly, _context, next) => {
         const assembled = await next()
         const route = assemblyRoute(assembled)
-        if (!isGlmModel(route.model)) return assembled
         const rules = activeRules({ ...config, workspaceRoots: rootsFor(agent, config) })
-        // graph-files-only is the graph row's rule; declared here so GLM reads every rule in one place.
+        // graph-files-only is the graph row's rule; declared here so the model reads every rule in one place.
         const others = graphService(ctx) === undefined ? [] : [GRAPH_FILES_DECLARATION]
         const face = dialectNames(dialectService(ctx, warn), agent, route, warn) ?? NATIVE_FACE
         return { ...assembled, sections: [...assembled.sections, declarationSection(rules, others, face)] }

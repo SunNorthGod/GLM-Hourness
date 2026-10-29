@@ -16,6 +16,10 @@
  * graph row's service, src/graph/service.ts): the engine wrote them.
  * The price is a blind spot: a shell write into the graph in that same
  * turn is not recorded (graph-files-only still denies the ones it sees).
+ * Every route is noted, like the guard judges every route (ORCHESTRATION.md
+ * §6.2); a record carries the origin of its turn's shell calls
+ * (src/guard/origin.ts): `dialect` when any of them ran where the GLM
+ * dialect claimed the agent, else `other`, with the last one's route.
  *
  * Limits (dsh-workspace-changes README): only top-level sessions with a
  * working directory are summarized; outside a git repository, or without
@@ -25,8 +29,10 @@
  */
 import { resolve } from 'node:path'
 import { normalizePath, shellCommandOf, type ToolCall } from './rules.ts'
+import { originOf, type CallOrigin, type RouteScope } from './origin.ts'
 import { dialectService, dialectWarner, toNativeTool } from '../shared/dialect.ts'
 import type { JsonValue } from '../shared/json.ts'
+import type { Route } from '../shared/route.ts'
 import type { ServiceLookup, SessionEventLike, SessionLike, ToolExecutionPayload, WorkspaceChangesService } from '../shared/dsh-min.ts'
 import { graphService } from '../graph/service.ts'
 
@@ -37,6 +43,9 @@ export interface ShadowRecord {
   readonly mode: 'shadow'
   readonly sessionId: string
   readonly agentId?: string | undefined
+  /** The origin of the turn's shell calls (src/guard/origin.ts); absent on records written before split step 7. */
+  readonly scope?: RouteScope | undefined
+  readonly route?: Route | undefined
   readonly turn: number
   /** Changed files no file tool of the turn targeted, as workspace-changes displays them. */
   readonly paths: readonly string[]
@@ -47,8 +56,8 @@ export interface ShadowRecord {
 }
 
 export interface ShadowFallback {
-  /** A root tool call that is about to run. */
-  observe(payload: ToolExecutionPayload): void
+  /** A root tool call that is about to run, and where it runs. */
+  observe(payload: ToolExecutionPayload, origin: CallOrigin): void
   /** A session log event. */
   event(session: SessionLike, event: SessionEventLike): void
   /** A disposed session: forget it. */
@@ -64,6 +73,8 @@ interface TurnNotes {
   readonly known: Set<string>
   readonly calls: Array<{ tool: string, command: string }>
   agentId?: string
+  /** The origin of the shell calls so far: dialect once any ran on a claimed route; the last one's route. */
+  origin?: CallOrigin
 }
 
 function under(path: string, dirs: ReadonlySet<string>): boolean {
@@ -118,6 +129,7 @@ export function shadowFallback(services: ServiceLookup, write: (record: ShadowRe
       mode: 'shadow',
       sessionId,
       ...(noted.agentId === undefined ? {} : { agentId: noted.agentId }),
+      ...noted.origin,
       turn,
       paths,
       ...(unlisted > 0 ? { unlisted } : {}),
@@ -126,7 +138,7 @@ export function shadowFallback(services: ServiceLookup, write: (record: ShadowRe
   }
 
   return {
-    observe(payload) {
+    observe(payload, origin) {
       const session = payload.agent?.session
       const turn = session === undefined ? undefined : turns.get(session.id)
       if (session === undefined || turn === undefined) return
@@ -151,7 +163,9 @@ export function shadowFallback(services: ServiceLookup, write: (record: ShadowRe
         return
       }
       const shell = shellCommandOf(call)
-      if (shell !== undefined) noted.calls.push({ tool: payload.name, command: shell.command })
+      if (shell === undefined) return
+      noted.calls.push({ tool: payload.name, command: shell.command })
+      noted.origin = originOf(noted.origin?.scope === 'dialect' || origin.scope === 'dialect', origin.route)
     },
     event(session, event) {
       const data = record(event.data)

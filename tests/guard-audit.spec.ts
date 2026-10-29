@@ -186,41 +186,73 @@ test('a relative target follows the session working directory (rc.3 workingDirec
   assert.equal(h.decisions[2]?.kind, 'allow')
 })
 
-// Scope (docs/ORCHESTRATION.md §6.2): GLM calls only.
+// Scope (docs/ORCHESTRATION.md §6.2, question-14 G3): every route and model;
+// the route only names the tools in corrections and tags the record.
 
-test('non-GLM calls and calls without a route pass untouched: no denial, no record', async () => {
+test('non-GLM calls are judged like GLM ones: denied, corrected in native names, journaled as other with the route', async () => {
   const h = harness(['C:\\ws'])
   const deepseek = agentAt('C:\\ws', 'd1', 'd1', DEEPSEEK)
-  await h.run({ name: 'Write', arguments: { file_path: 'C:\\Windows\\x.dll' }, agent: deepseek })
-  await h.run({ name: 'Bash', arguments: { command: 'Set-Content f.txt hi' }, agent: deepseek })
-  await h.run({ name: 'Bash', arguments: { command: 'Set-Content f.txt hi' } }) // no agent: no route to judge
-  const unlogged = agentAt('C:\\ws', 'u1')
-  ;(unlogged.session as { requestHeader?: unknown }).requestHeader = () => undefined // before the first request header
-  await h.run({ name: 'Bash', arguments: { command: 'Set-Content f.txt hi' }, agent: unlogged })
-  assert.deepEqual(h.decisions.map(decision => decision.kind), ['allow', 'allow', 'allow', 'allow'])
-  assert.equal(h.records().length, 0)
+  await h.run({ name: 'write', arguments: { file_path: 'C:\\Windows\\x.dll' }, agent: deepseek })
+  await h.run({ name: 'pwsh', arguments: { command: 'Set-Content f.txt hi' }, agent: deepseek })
+  await h.run({ name: 'write', arguments: { file_path: 'C:\\ws\\a.ts' }, agent: deepseek })
+  assert.deepEqual(h.decisions.map(decision => decision.kind), ['deny', 'deny', 'allow'])
+  assert.deepEqual(h.violations().map(record => [record.rule, record.tool, record.scope, record.route]), [
+    ['workspace-containment', 'write', 'other', DEEPSEEK],
+    ['file-tools-only', 'pwsh', 'other', DEEPSEEK],
+  ])
+  assert.ok(h.violations()[1].correction.includes('Right path: Read the target with read, then apply the change with write or edit.'))
 })
 
-test('the route is read per call: a session switched to GLM mid-way is enforced from that step on', async () => {
+test('calls without an agent, or before the session logged a request header, are judged too; their records carry no route', async () => {
+  const h = harness(['C:\\ws'])
+  await h.run({ name: 'pwsh', arguments: { command: 'Set-Content f.txt hi' } })
+  const unlogged = agentAt('C:\\ws', 'u1')
+  ;(unlogged.session as { requestHeader?: unknown }).requestHeader = () => undefined // before the first request header
+  await h.run({ name: 'pwsh', arguments: { command: 'Set-Content f.txt hi' }, agent: unlogged })
+  assert.deepEqual(h.decisions.map(decision => decision.kind), ['deny', 'deny'])
+  assert.deepEqual(h.violations().map(record => [record.scope, 'route' in record]), [['other', false], ['other', false]])
+})
+
+test('the route is read per call: a session switched from DeepSeek to GLM is tagged per step, in the dialect\'s names once it claims the agent', async () => {
   const h = harness(['C:\\ws'])
   let route = DEEPSEEK
   const agent = agentAt('C:\\ws', 'm1')
   ;(agent.session as { requestHeader?: unknown }).requestHeader = () => ({ config: route })
-  await h.run({ name: 'Bash', arguments: { command: 'Set-Content f.txt hi' }, agent })
+  h.services.set(DIALECT_SERVICE, dialectServiceFor(new WeakSet([agent])))
+  await h.run({ name: 'pwsh', arguments: { command: 'Set-Content f.txt hi' }, agent })
   route = { provider: 'glm-zcode', model: 'glm-5.3-flash' }
   await h.run({ name: 'Bash', arguments: { command: 'Set-Content f.txt hi' }, agent })
-  assert.deepEqual(h.decisions.map(decision => decision.kind), ['allow', 'deny'])
+  assert.deepEqual(h.decisions.map(decision => decision.kind), ['deny', 'deny'])
+  assert.deepEqual(h.violations().map(record => [record.scope, record.route?.model]), [['other', 'deepseek-flash'], ['dialect', 'glm-5.3-flash']])
+  assert.ok(h.violations()[0].correction.includes('apply the change with write or edit'))
+  assert.ok(h.violations()[1].correction.includes('apply the change with Write or Edit'))
 })
 
-test('shadow: a non-GLM turn leaves no shadow record', async () => {
+test('shadow: a non-GLM turn is noted too; its record is tagged other with the route', async () => {
   const h = harness(['C:\\ws'])
   const announce = changes(h)
   const agent = agentAt('C:\\ws', 'd1', 'd1', DEEPSEEK)
   h.event(agent.session!, { type: 'turn/start', seq: 0, data: { turn: 1 } })
-  await h.run({ name: 'Bash', arguments: { command: DOTNET_WRITE }, agent })
+  await h.run({ name: 'pwsh', arguments: { command: DOTNET_WRITE }, agent })
   announce(agent.session!, 3, changed(1, 'gen.txt'))
   await settle()
-  assert.equal(h.records().length, 0)
+  assert.deepEqual(h.records().map(record => ['mode' in record ? record.mode : 'denial', record.scope, record.route]), [['shadow', 'other', DEEPSEEK]])
+})
+
+test('shadow: one shell call where the dialect claims the agent makes the turn dialect; the route is the last shell call\'s', async () => {
+  const h = harness(['C:\\ws'])
+  const announce = changes(h)
+  let route: { provider: string, model: string } = { provider: 'glm-zcode', model: 'glm-5.3' }
+  const agent = agentAt('C:\\ws', 'a1', 's1')
+  ;(agent.session as { requestHeader?: unknown }).requestHeader = () => ({ config: route })
+  h.services.set(DIALECT_SERVICE, dialectServiceFor(new WeakSet([agent])))
+  h.event(agent.session!, { type: 'turn/start', seq: 0, data: { turn: 1 } })
+  await h.run({ name: 'Bash', arguments: { command: DOTNET_WRITE }, agent })
+  route = DEEPSEEK
+  await h.run({ name: 'pwsh', arguments: { command: 'npm test' }, agent })
+  announce(agent.session!, 4, changed(1, 'gen.txt'))
+  await settle()
+  assert.deepEqual(h.records().map(record => [record.scope, record.route]), [['dialect', DEEPSEEK]])
 })
 
 // Workspace-change fallback, shadow mode (docs/ORCHESTRATION.md §6.5): the
@@ -240,7 +272,8 @@ const changed = (turn: number, ...paths: string[]): WorkspaceChangesSummary => (
 const DOTNET_WRITE = '[IO.File]::WriteAllText(\'C:/ws/gen.txt\', \'x\')' // a shell write the reader does not see
 
 test('shadow: a turn whose shell calls changed files no file tool targeted leaves one record and blocks nothing', async () => {
-  // No dialect service here: Write and Edit count as file tools through the static alias table.
+  // No dialect service here: Write and Edit count as file tools through the
+  // static alias table, and the GLM route is not claimed (scope other).
   const h = harness(['C:\\ws'])
   const announce = changes(h)
   const agent = agentAt('C:\\ws', 'a1', 's1')
@@ -257,6 +290,8 @@ test('shadow: a turn whose shell calls changed files no file tool targeted leave
     mode: 'shadow',
     sessionId: 's1',
     agentId: 'a1',
+    scope: 'other',
+    route: { provider: 'glm-zcode', model: 'glm-5.3' },
     turn: 1,
     paths: ['gen.txt'],
     calls: [{ tool: 'Bash', command: DOTNET_WRITE }],
@@ -348,7 +383,7 @@ test('a GLM call the dialect claims is corrected in its names, word for word as 
   h.services.set(DIALECT_SERVICE, dialectServiceFor(new WeakSet([agent])))
   await h.run({ name: 'Bash', arguments: { command: 'Set-Content f.txt hi' }, agent })
   await h.run({ name: 'Write', arguments: { file_path: 'C:\\elsewhere\\a.ts' }, agent })
-  assert.deepEqual(h.violations().map(record => [record.rule, record.tool]), [['file-tools-only', 'Bash'], ['workspace-containment', 'Write']])
+  assert.deepEqual(h.violations().map(record => [record.rule, record.tool, record.scope]), [['file-tools-only', 'Bash', 'dialect'], ['workspace-containment', 'Write', 'dialect']])
   assert.equal(h.violations()[0].correction.split('\n')[2], RIGHT_PATH_ZCODE)
 })
 
@@ -387,9 +422,9 @@ test('a malformed dialect service counts as absent: still denied, warned once, a
   assert.deepEqual(guardHealth(['C:\\ws'], 'C:/ws/.llm', false, true), ['degraded', '门禁生效（file-tools-only，圈禁根 C:\\ws）；方言服务不可用：工具名按静态别名表换算，纠偏用原生名；影子兜底未启用（组合里没有 workspace-changes）'])
 })
 
-// Declaration (docs/ORCHESTRATION.md §6.1): GLM system prompts carry the active rules.
+// Declaration (docs/ORCHESTRATION.md §6.1): every route's system prompt carries the active rules.
 
-test('a GLM request carries the rule declarations as the last system prompt section; other routes do not', async () => {
+test('every request carries the rule declarations as the last system prompt section: the dialect\'s names on GLM, native names elsewhere', async () => {
   const rt = fakeRuntime()
   glmPromptApply(rt.ctx)
   apply(rt.ctx as never, { workspaceRoots: ['C:\\ws'], home: 'C:/ws/.llm', fs: memoryFs().fs })
@@ -406,7 +441,13 @@ test('a GLM request carries the rule declarations as the last system prompt sect
   assert.equal(glm.sections.filter(entry => entry.name === DECLARATION_SECTION).length, 1)
   assert.equal(glm.sections[0]!.name, 'glm:cli-prefix') // the dialect rewrite still leads
   const plain = await rt.assemble({ provider: 'deepseek', model: 'deepseek-flash' })
-  assert.ok(!plain.sections.some(entry => entry.name === DECLARATION_SECTION))
+  const plainSection = plain.sections.at(-1)!
+  assert.equal(plainSection.name, DECLARATION_SECTION)
+  assert.equal(plainSection.interpolate, false)
+  assert.equal(plain.sections.filter(entry => entry.name === DECLARATION_SECTION).length, 1)
+  // The same rules; only the file tools are named as the DeepSeek face has them.
+  assert.equal(plainSection.text, section.text.replace('the dedicated Write/Edit tools', 'the dedicated write/edit tools'))
+  assert.notEqual(plainSection.text, section.text)
 })
 
 test('without a session directory the declaration lists file-tools-only alone, as the gate enforces', async () => {

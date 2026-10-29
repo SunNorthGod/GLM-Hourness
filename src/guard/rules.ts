@@ -33,7 +33,7 @@ export const NATIVE_FACE: ToolFace = native => native
 
 export interface GuardRule {
   readonly id: string
-  /** The rule as the model is told it: one line of the guard section in GLM system prompts (src/guard/index.ts); the function form names tools through the face. */
+  /** The rule as the model is told it: one line of the guard section in every route's system prompt (src/guard/index.ts); the function form names tools through the face. */
   readonly declare: string | ((face: ToolFace) => string)
   /**
    * Decide for one tool call. `call.name` is already the DSH native the

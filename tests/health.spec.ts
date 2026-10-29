@@ -433,7 +433,8 @@ test('guard: in effect with a session directory and a project directory, degrade
   await call({ name: 'Read', arguments: {}, agent: agentIn('s3'), parent: 'token' })
   assert.equal(view(store, 'guard').session('s3'), undefined) // transport sub-calls are not the row acting
   await call({ name: 'Read', arguments: {}, agent: agentIn('s5', 'C:\\ws', 'deepseek-account', 'deepseek-flash') })
-  assert.deepEqual(inSession(store, 'guard', 's5'), { state: 'inactive', reason: '非 GLM 路由 deepseek-account/deepseek-flash，门禁不介入' })
+  // Every route (docs/ORCHESTRATION.md §6.2): a DeepSeek session reports the guard in effect too.
+  assert.deepEqual(inSession(store, 'guard', 's5'), { state: 'active', reason: '门禁生效（file-tools-only，圈禁根 C:\\ws）；违规记入 C:/ws/.llm；影子兜底：工作区变更记录' })
   const bare = preExecuteRow(guardApply as never, { fs: memoryFs })
   await bare.call({ name: 'Read', arguments: {}, agent: agentIn('s1', 'C:\\ws') })
   assert.ok(inSession(bare.store, 'guard', 's1')!.reason.includes('；无项目目录，违规不落盘；'))

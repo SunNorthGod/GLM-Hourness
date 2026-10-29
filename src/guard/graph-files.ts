@@ -10,14 +10,17 @@
  * says so. The rule uses the guard framework (rules.ts) but is
  * registered by the glm-hourness/graph row (installGraphFileGuard): only
  * that row knows the graph directory, and only with it enabled does the
- * right path exist. Denials are journaled like the guard row's.
+ * right path exist. Denials are journaled like the guard row's, with the
+ * call's origin (src/guard/origin.ts).
  */
 import { isAbsolute, relative, resolve } from 'node:path'
 import type { JsonValue } from '../shared/json.ts'
 import type { PreExecuteHost, ServiceLookup } from '../shared/dsh-min.ts'
 import { GRAPH_FILES_DECLARATION } from '../graph/service.ts'
-import { dialectService, dialectWarner, toNativeTool } from '../shared/dialect.ts'
+import { dialectNames, dialectService, dialectWarner, toNativeTool } from '../shared/dialect.ts'
+import { sessionRoute } from '../shared/route.ts'
 import { baseFor, type ViolationRecord } from './index.ts'
+import { originOf } from './origin.ts'
 import { evaluate, fileToolsOnly, NATIVE_FACE, renderCorrection, shellCommandOf, type Correction, type GuardRule, type RuleVerdict, type ToolCall } from './rules.ts'
 
 export const GRAPH_FILES_RULE = 'graph-files-only'
@@ -113,14 +116,17 @@ export function installGraphFileGuard(ctx: PreExecuteHost & ServiceLookup, graph
     const cwd = typeof header === 'string' && header.length > 0 ? header : undefined
     const dir = graphDirFor(cwd)
     if (dir === undefined) return next()
-    // Every route: graph integrity is not a GLM discipline (unlike the guard row,
-    // ORCHESTRATION.md §6.2). Relative targets resolve as the file tools resolve them;
-    // the rule judges the DSH native the call runs (a GLM Write is a write).
-    const call: ToolCall = { name: toNativeTool(dialectService(ctx, warn), payload.name, warn), arguments: (payload.arguments ?? {}) as JsonValue }
+    // Every route, like the guard row (ORCHESTRATION.md §6.2). Relative targets
+    // resolve as the file tools resolve them; the rule judges the DSH native the
+    // call runs (a GLM Write is a write).
+    const dialect = dialectService(ctx, warn)
+    const call: ToolCall = { name: toNativeTool(dialect, payload.name, warn), arguments: (payload.arguments ?? {}) as JsonValue }
     const verdict = evaluate([graphFilesOnly(dir, baseFor(ctx, payload.agent) ?? cwd)], call)
     if (verdict.kind !== 'deny') return next()
     const reason = renderCorrection(verdict.correction)
-    journal({ at: new Date().toISOString(), rule: verdict.rule, tool: payload.name, agentId: payload.agent?.id, sessionId: payload.agent?.session?.id, correction: reason })
+    const route = sessionRoute(payload.agent?.session)
+    const origin = originOf(dialectNames(dialect, payload.agent, route, warn) !== undefined, route)
+    journal({ at: new Date().toISOString(), rule: verdict.rule, tool: payload.name, agentId: payload.agent?.id, sessionId: payload.agent?.session?.id, ...origin, correction: reason })
     return { kind: 'deny', reason }
   }, { prepend: true })
 }

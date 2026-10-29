@@ -37,9 +37,15 @@ export function morningReport(input: ReportInput): string {
   const l3 = input.decisions.filter(decision => decision.level === 'L3')
   const denials = input.violations.filter(violation => !('mode' in violation))
   const shadows = input.violations.filter(violation => 'mode' in violation && violation.mode === 'shadow')
+  // Records from routes the GLM dialect did not claim count apart (src/guard/origin.ts):
+  // the rules were tuned on GLM, so their misfires elsewhere stay visible.
+  // Records without a scope predate split step 7 and were all GLM.
   const countByRule = (records: readonly GuardRecord[]): Map<string, number> => {
     const byRule = new Map<string, number>()
-    for (const record of records) byRule.set(record.rule, (byRule.get(record.rule) ?? 0) + 1)
+    for (const record of records) {
+      const label = record.scope === 'other' ? `${record.rule}（其他路由）` : record.rule
+      byRule.set(label, (byRule.get(label) ?? 0) + 1)
+    }
     return byRule
   }
   lines.push('')

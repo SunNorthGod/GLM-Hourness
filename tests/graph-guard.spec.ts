@@ -7,8 +7,8 @@ import { openEngine } from '../src/graph/engine.ts'
 import { apply } from '../src/graph/index.ts'
 import { loadGraph } from '../src/graph/store.ts'
 import { dialectServiceFor } from '../src/glm-prompt/index.ts'
-import { GRAPH_FILES_RULE, graphFilesOnly } from '../src/guard/graph-files.ts'
-import { apply as applyGuard } from '../src/guard/index.ts'
+import { GRAPH_FILES_RULE, graphFilesOnly, installGraphFileGuard } from '../src/guard/graph-files.ts'
+import { apply as applyGuard, type ViolationRecord } from '../src/guard/index.ts'
 import { declarationOf, NATIVE_FACE } from '../src/guard/rules.ts'
 import { DIALECT_SERVICE } from '../src/shared/dialect.ts'
 import type { ToolFinalResult } from '../src/shared/dsh-min.ts'
@@ -46,7 +46,7 @@ function guardTest(name: string, body: (fixture: Fixture) => Promise<void>, opti
     const { workspace, graph } = await workspaceWithGraph()
     try {
       const calls: Fixture['calls'] = []
-      // A GLM session: the guard row only judges GLM calls; the graph rule judges every route.
+      // A GLM session; the guard row and the graph rule both judge every route.
       const runtime = fakeRuntime({ natives: NATIVES, calls, cwd: workspace, route: { provider: 'glm-zcode', model: 'glm-5.3' } })
       // The loader activates the guard row before the graph row (cordis.patch.yml order).
       if (options.guardRow === true) applyGuard(runtime.ctx, {})
@@ -168,10 +168,32 @@ test('the graph rule judges every route, not only GLM; relative targets follow t
     apply(runtime.ctx, {})
     const call = caller(runtime)
     deniedByGraphRule(await call('write', { file_path: 'docs/graph/nodes/goal-1.json', content: '{}' }))
-    passed(await call('pwsh', { command: 'Remove-Item build/out.txt' })) // the guard row leaves non-GLM calls alone
+    // The guard row judges every route too (question-14 G3): file-tools-only, in native names.
+    assert.ok(denied(await call('pwsh', { command: 'Remove-Item build/out.txt' })).includes('apply the change with write or edit'))
     runtime.services.set('workingDirectory', { get: () => join(workspace, 'docs') })
     deniedByGraphRule(await call('write', { file_path: 'graph/nodes/goal-1.json', content: '{}' })) // relative to <ws>/docs
     passed(await call('write', { file_path: 'docs/graph/nodes/goal-1.json', content: '{}' })) // <ws>/docs/docs/graph: elsewhere
+  }
+  finally {
+    await rm(workspace, { recursive: true, force: true })
+  }
+})
+
+test('a graph-files-only denial is journaled with the call origin: other until the dialect claims the agent, then dialect', async () => {
+  const { workspace, graph } = await workspaceWithGraph()
+  try {
+    const route = { provider: 'glm-zcode', model: 'glm-5.3' }
+    const runtime = fakeRuntime({ natives: NATIVES, cwd: workspace, route })
+    const records: ViolationRecord[] = []
+    installGraphFileGuard(runtime.ctx, () => graph, (record) => { records.push(record) })
+    const call = caller(runtime)
+    deniedByGraphRule(await call('Write', { file_path: 'docs/graph/nodes/goal-1.json', content: '{}' }))
+    runtime.ctx.provide(DIALECT_SERVICE, dialectServiceFor(new WeakSet([runtime.agent])))
+    deniedByGraphRule(await call('Write', { file_path: 'docs/graph/nodes/goal-1.json', content: '{}' }))
+    assert.deepEqual(records.map(record => [record.rule, record.tool, record.scope, record.route]), [
+      [GRAPH_FILES_RULE, 'Write', 'other', route],
+      [GRAPH_FILES_RULE, 'Write', 'dialect', route],
+    ])
   }
   finally {
     await rm(workspace, { recursive: true, force: true })

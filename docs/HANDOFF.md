@@ -45,7 +45,7 @@ dist/          不入库：单包布局留下的旧 tsc 产物，split 第 5 步
 | `glm-prompt` | 在 rc.3 运行时上生效，含 ZCode 3.16.3 local 工具检索；七个别名的描述与 schema 均已按 3.16.3 重建；todo 提醒按助手轮次从会话历史计数；GLM 会话进入高峰时段时收到一条提醒（`ORCHESTRATION.md` §11.4）。2026-10-29 L4：主会话与子会话的系统提示含 `You are ZCode, an interactive coding agent`，不含 `powered by DeepSeek Harness` |
 | `glm-compact` | 在 `llm/stream` 上替换压缩指令（2026-10-27），L3 探针实测压缩生效；2026-10-29 桌面版对空闲会话手动 `/compact` 一次，92.6 秒完成（26 条历史），压缩后的回合正常 |
 | `data` | 默认启用：数据目录服务（用户级 `~/.dsh/glm-hourness/`、项目 `.llm/`）；L3 探针验证，桌面版上生效 |
-| `guard` | 拦截与纠偏可用，只管 GLM 调用；违规落盘（项目目录 `audit/violations.jsonl`）；`file-tools-only` 引号感知，规则声明进 GLM 系统提示词，工作区变更兜底以影子模式记录（需要 `workspace-changes`，桌面版 profile 有），2026-10-28 L4 实测拦截与记录生效；只拦 GLM、相对路径按会话工作目录解析（2026-10-28，L3 探针验证）。2026-10-29 `/glm-status` 显示生效，L4 是只读任务，没有触发拦截；申报未接通 |
+| `guard` | 拦截与纠偏可用，所有路由、所有模型都拦（2026-10-29 split 第 7 步按 `question-14` G3 改，此前只管 GLM 调用；`ORCHESTRATION.md` §6.2）；违规落盘（项目目录 `audit/violations.jsonl`，记录带来源 `scope` 与 `route`）；`file-tools-only` 引号感知，规则声明进每条路由的系统提示词，工作区变更兜底以影子模式记录（需要 `workspace-changes`，桌面版 profile 有），2026-10-28 L4 实测拦截与记录生效；相对路径按会话工作目录解析（2026-10-28，L3 探针验证）。非 GLM 路由上的拦截只经 L2 与 L3 探针验证，L4 在 split 合入时做。2026-10-29 `/glm-status` 显示生效，L4 是只读任务，没有触发拦截；申报未接通 |
 | `memory` | 工具与用量流水可用，用量写用户级目录；记忆几乎未被使用 |
 | `workflow` | 只记录派遣类调用（含 `subagent_fork`）；2026-10-29 L4 记下 `subagent` 与 `send_message` 两条 |
 | `hourness` | `/hourness` 可用：晨报与积分口径的面板（`ORCHESTRATION.md` §11.2、§11.3），2026-10-29 L4 输出正常；额度类数据未实现 |
@@ -77,7 +77,7 @@ dist/          不入库：单包布局留下的旧 tsc 产物，split 第 5 步
 
 1. 路由判定已收口到 `src/shared/route.ts`，`glm-prompt`（含工具检索与 todo 提醒）已改用（`DESIGN.md` §3）。todo 提醒自 2026-10-28 起按 ZCode 的助手轮次口径计数（`DESIGN.md` §5.5）。
 2. 版本基线已统一为 3.16.3；`X-Title` 按用户定案（2026-10-28，项目图 `question-8`）改为桌面版的 `Z Code@electron`，模型请求与配置请求相同（`DESIGN.md` §4.2）。
-3. guard 闭环缺申报一段（记录、告知已于 2026-10-28 接通）。`=>`、`>>>`、`->` 误判已修（2026-10-28，引号感知，`ORCHESTRATION.md` §6.5.1）；读不到的 shell 写法（.NET 调用、`cmd /c`、PowerShell 别名如 `del`）只由工作区变更兜底记录，不拦截（§6.5.2）。L4 暴露的两处已修（2026-10-28）：拦截只对 GLM 调用生效，路由取会话请求头（§6.2）；相对路径按会话工作目录解析，`..` 折叠（§6.1）。
+3. guard 闭环缺申报一段（记录、告知已于 2026-10-28 接通）。`=>`、`>>>`、`->` 误判已修（2026-10-28，引号感知，`ORCHESTRATION.md` §6.5.1）；读不到的 shell 写法（.NET 调用、`cmd /c`、PowerShell 别名如 `del`）只由工作区变更兜底记录，不拦截（§6.5.2）。L4 暴露的相对路径问题已修（2026-10-28）：相对路径按会话工作目录解析，`..` 折叠（§6.1）。拦截范围 2026-10-29 改为所有路由（`question-14` G3，§6.2）；file-tools-only 在其他模型上的误伤率还没有数据，晨报把其他路由的记录另行计数。
 4. 数据目录分裂：已修（2026-10-28，`DESIGN.md` §2.4）。用户级数据在 `~/.dsh/glm-hourness/`，项目数据在工作区 `.llm/`；凭证与 deviceMid 已于 2026-10-28 搬到用户级目录。仓库里的原件（`.llm/credentials.json` 是仍含 API Key secret 的版本 1 记录，另有 `.llm/device-mid.txt`）已于 2026-10-29 删除（项目图 `m1-cleanup`）。
 5. 签名握手地址错：已修并实测（2026-10-28，`b6367d3`、`6af6c51`，`DESIGN.md` §4.3，项目图 `m1-signing`）。适配器曾把路由后的 `zcode.z.ai` URL 交给签名层，握手每次 404，且每个请求前都重试一次；原先「握手对当前凭证失败」的归因不成立。现在握手发往 provider origin `https://open.bigmodel.cn/api/paas/c1f3a7e2/v2/client`，失败后该（origin, 凭证）60 秒内不再握手，start-plan 不签名。60 秒冷却、两次 VERIFY 后的永久旁路、凭证不可解析等情况下放行，是对 3.16.3 的三处偏离（`DESIGN.md` §4.8）。m1-parity 之后的沙盒真实网络运行（2026-10-29，`a9f12e1`）：握手 200，5 个模型请求都签名、都 200，两个鉴权头与签名都用项目令牌，没有 VERIFY 拒绝。桌面版两次以签名代码重启（2026-10-28、2026-10-29），glm-llm 都生效。仍未决：签名对 1.5 倍套餐扣减的影响未知（用量流水不含套餐扣减）；签名运行的响应头延迟偏高（单样本，未归因）；桌面版上签名是否成功看不到，生产构造没有接 `onEvent`，签名状态不可见；start-plan 只做了离线验证（第 6 项）。
 6. start-plan 档只有单测，未做真机授权验证。
