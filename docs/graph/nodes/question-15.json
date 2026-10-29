@@ -2,7 +2,7 @@
   "id": "question-15",
   "type": "question",
   "title": "split 的验收怎么改写",
-  "status": "approved",
+  "status": "done",
   "parent": "split",
   "body": "今天的验收写着「行 id 改名有迁移」，而设计里行 id 不变、桌面 profile 不改，这一条没有可验证的对象；「各自装上」也要定以什么为准。",
   "options": [
@@ -19,6 +19,13 @@
   ],
   "recommend": "A",
   "decider": "human",
+  "decision": "A",
+  "evidence": [
+    {
+      "kind": "decision",
+      "ref": "A"
+    }
+  ],
   "history": [
     {
       "at": "2026-10-29T03:42:33.985Z",
@@ -26,6 +33,22 @@
       "op": "propose",
       "reason": "split 设计 §14.3：改验收属于必须问人的一类（ORCHESTRATION.md §2.9.1）",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-29T03:50:18.754Z",
+      "actor": "llm",
+      "op": "decide",
+      "reason": "用户选 A：验收按设计的验证手段改写",
+      "relay": "A",
+      "from": "approved",
+      "to": "done",
+      "option": "A",
+      "evidence": [
+        {
+          "kind": "decision",
+          "ref": "A"
+        }
+      ]
     }
   ]
 }

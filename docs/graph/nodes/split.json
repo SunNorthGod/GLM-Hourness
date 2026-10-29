@@ -90,6 +90,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "设计评审第三轮：APPROVED（HIGH 0、MEDIUM 0、LOW 5：R28–R32），第二轮 R15–R27 全部关闭，桌面 profile 不用改的结论在伞包布局下成立；终稿 .agents/tasks/split/design.md 0.3，评审 design-review.md、design-review.json。设计 §14 的待人定事项提为 question-13 到 question-18；§14.6 两项是条件性的，合入前触发时再问；§14.8 要人配合的是合入与两轮 L4 的桌面时段。"
+    },
+    {
+      "at": "2026-10-29T03:51:12.703Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人定：question-13 A、question-14 G3（guard 跟着编排层包，对所有路由与模型生效）、question-15 A、question-16 A、question-18 A；question-17（桌面 profile）待确认，用户想最终是两个插件，倾向 B，只影响合入。派出 split-implement（wf_86dffdb4b51f45af）：在 .worktrees/split 实现设计第 0–8 步，第 0–2 步现在开工，第 3、8 步等 m8-ui-audit 的界面改动合入后放行；第 8 步要的图改动写进 .agents/tasks/split/graph-step8.json，合入后由编排方经引擎执行；合入前向编排方申请桌面时段并确认 question-17。"
     }
   ]
 }

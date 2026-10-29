@@ -2,7 +2,7 @@
   "id": "question-14",
   "type": "question",
   "title": "guard 在方言没接管的路由上怎么做",
-  "status": "approved",
+  "status": "done",
   "parent": "split",
   "body": "三类路由：C 方言接管的 GLM 路由，N 没有方言的 GLM 调用，O 非 GLM 路由（设计 §4.2.1）。今天 C、N 拦截，O 不判不记。误伤数据只来自 GLM 在 ZCode 工具面上的行为，N 与 O 用的是 DSH 原生工具面，没有测过；N 在桌面版上今天不会出现。G2 同时要认可放开判据：影子记录满 14 天、至少 20 条、误伤为 0 时提待决（设计 §4.2.4）。不定时 split 第 7 步不合入，行为与今天相同，split 不能关。",
   "options": [
@@ -29,6 +29,13 @@
   ],
   "recommend": "G2",
   "decider": "human",
+  "decision": "G3",
+  "evidence": [
+    {
+      "kind": "decision",
+      "ref": "G3"
+    }
+  ],
   "history": [
     {
       "at": "2026-10-29T03:42:33.811Z",
@@ -36,6 +43,22 @@
       "op": "propose",
       "reason": "split 设计 §14.2：改 ORCHESTRATION.md §6.2 的定案，由人定",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-29T03:50:18.592Z",
+      "actor": "llm",
+      "op": "decide",
+      "reason": "用户选全拦：guard 跟着编排层包走，装上编排层包就对所有路由生效（含非 GLM 模型），不装就都不生效；推翻 2026-10-28「只拦 GLM」的定案，split 第 7 步按此实现",
+      "relay": "围栏到时候跟着编排层走吧，拦全部的。开编排层就全生效，不开就全不生效。能理解吗",
+      "from": "approved",
+      "to": "done",
+      "option": "G3",
+      "evidence": [
+        {
+          "kind": "decision",
+          "ref": "G3"
+        }
+      ]
     }
   ]
 }

@@ -26,6 +26,12 @@
       "op": "propose",
       "reason": "split 设计 §14.5：改用户 profile 需要人批（AGENTS.md 第 6 条）",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-29T03:50:19.076Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "用户 2026-10-29 回复：「profile 指的是？我到时候想做了两个插件的」。用户的目标是最终成为两个插件，倾向 B（桌面版 profile 直接列两个子包）；已向用户解释 profile 的含义，等确认。不影响 split 第 0–6 步，只影响合入那一步。"
     }
   ]
 }

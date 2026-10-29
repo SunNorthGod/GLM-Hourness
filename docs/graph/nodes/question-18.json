@@ -2,7 +2,7 @@
   "id": "question-18",
   "type": "question",
   "title": "V-01（设置页行名）和拆包谁先",
-  "status": "approved",
+  "status": "done",
   "parent": "split",
   "body": "设置页「内置插件」给本项目各行显示 file URL 标题。V-01 的修法是把行名改成包说明符，改的正是 split 第 5、6 步要改的文件；包说明符经 profile 的包映射解析，子包单独装上时解析不到伞包的说明符（设计 §14.7）。m8-ui-audit 修复本轮已暂缓 V-01。",
   "options": [
@@ -24,6 +24,13 @@
   ],
   "recommend": "A",
   "decider": "human",
+  "decision": "A",
+  "evidence": [
+    {
+      "kind": "decision",
+      "ref": "A"
+    }
+  ],
   "history": [
     {
       "at": "2026-10-29T03:42:34.518Z",
@@ -31,6 +38,22 @@
       "op": "propose",
       "reason": "split 设计 §14.7：m8-ui-audit 的 V-01 与 split 第 5 步改同一批文件，两个任务的先后由人定",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-29T03:50:19.238Z",
+      "actor": "llm",
+      "op": "decide",
+      "reason": "用户选 A：V-01 推迟到 split 合入之后，在新布局上单独设计",
+      "relay": "A",
+      "from": "approved",
+      "to": "done",
+      "option": "A",
+      "evidence": [
+        {
+          "kind": "decision",
+          "ref": "A"
+        }
+      ]
     }
   ]
 }

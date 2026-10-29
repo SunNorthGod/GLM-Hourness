@@ -2,7 +2,7 @@
   "id": "question-13",
   "type": "question",
   "title": "两个项目目标怎么拆",
-  "status": "approved",
+  "status": "done",
   "parent": "split",
   "body": "question-10 选 A 时写下「目标拆成两个」。草案文字在 .agents/tasks/split/design.md §6.2、§6.3：GLM 目标「GLM 住进 DSH：以 ZCode 3.16.3 的训练分布工作，质量与官方 ZCode 一致」；编排层目标「开发体系由 harness 保证实施：任何模型在 DSH 里沿项目图干活，人在图上编程」。文字本身由人改，草案只是起点。不定时 split 第 0–7 步照做，第 8 步（改 CHARTER 与图上的挂法）不做，split 不能关。",
   "options": [
@@ -24,6 +24,13 @@
   ],
   "recommend": "A",
   "decider": "human",
+  "decision": "A",
+  "evidence": [
+    {
+      "kind": "decision",
+      "ref": "A"
+    }
+  ],
   "history": [
     {
       "at": "2026-10-29T03:42:33.637Z",
@@ -31,6 +38,22 @@
       "op": "propose",
       "reason": "split 设计 §14.1：改目标属于必须问人的一类（ORCHESTRATION.md §2.9.1）",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-29T03:50:18.426Z",
+      "actor": "llm",
+      "op": "decide",
+      "reason": "用户选 A：两个根目标，编排层沿用 hourness，GLM 新建 glm-house；文字按设计 §6.2、§6.3 草案",
+      "relay": "A",
+      "from": "approved",
+      "to": "done",
+      "option": "A",
+      "evidence": [
+        {
+          "kind": "decision",
+          "ref": "A"
+        }
+      ]
     }
   ]
 }

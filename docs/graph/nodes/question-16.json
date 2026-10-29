@@ -2,7 +2,7 @@
   "id": "question-16",
   "type": "question",
   "title": "两个包叫什么",
-  "status": "approved",
+  "status": "done",
   "parent": "split",
   "body": "名字出现在插件管理器、/glm-status 与 /hourness-status 的「包」列、子包清单、文档，以及 DeepSeek 官方请求的 dsh_plugin_packages 字段（拆包后 DeepSeek 会话列出的是子包名）。伞包 dsh-glm-hourness、占位包 dsh-glm-hourness-ui、行 id 与插件名不随包名改；以后改名是一个提交。不定时第 5 步按 A 写。",
   "options": [
@@ -24,6 +24,13 @@
   ],
   "recommend": "A",
   "decider": "human",
+  "decision": "A",
+  "evidence": [
+    {
+      "kind": "decision",
+      "ref": "A"
+    }
+  ],
   "history": [
     {
       "at": "2026-10-29T03:42:34.167Z",
@@ -31,6 +38,22 @@
       "op": "propose",
       "reason": "split 设计 §14.4：包名出现在插件管理器与 DeepSeek 请求的 dsh_plugin_packages 字段里，由人定",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-29T03:50:18.915Z",
+      "actor": "llm",
+      "op": "decide",
+      "reason": "用户选 A：dsh-glm-zcode、dsh-hourness，客户端包加 -ui",
+      "relay": "A",
+      "from": "approved",
+      "to": "done",
+      "option": "A",
+      "evidence": [
+        {
+          "kind": "decision",
+          "ref": "A"
+        }
+      ]
     }
   ]
 }
