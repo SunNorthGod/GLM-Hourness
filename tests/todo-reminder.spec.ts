@@ -69,6 +69,15 @@ test('only GLM assistant messages count as turns; a native todo_write from anoth
   assert.equal(todoReminderTurnCounts([...turns(12), ...native, ...turns(2)]).turnsSinceLastTodoWrite, 2)
 })
 
+test('an assistant message of reasoning only is no turn (3.17.1 nUa); reasoning with text is one', () => {
+  const thinking: DerivedMessage = { role: 'assistant', content: [{ type: 'reasoning', text: 'hmm' }], source: { kind: 'model', provider: 'glm-zcode', model: 'glm-5.3' } }
+  const history = [...turns(9), thinking]
+  assert.deepEqual(todoReminderTurnCounts(history), { turnsSinceLastTodoWrite: 9, turnsSinceLastReminder: 9 })
+  assert.equal(shouldBuildTodoReminder(history), false)
+  const answered: DerivedMessage = { ...thinking, content: [{ type: 'reasoning', text: 'hmm' }, { type: 'text', text: 'ok' }] }
+  assert.equal(shouldBuildTodoReminder([...turns(9), answered]), true)
+})
+
 test('the echo is the list of the latest successful todo write, whichever name wrote it', () => {
   assert.deepEqual(latestTodos(turns(3)), [])
   assert.deepEqual(latestTodos([...turn([todoWrite()]), ...turns(2)]), todos)

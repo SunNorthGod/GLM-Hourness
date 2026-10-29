@@ -2,10 +2,11 @@
  * Todo reminder, ported from ZCode 3.16.3 (bundle `XNa`, `U4o`, `z4o` and
  * the turn loop's attachment collection; source
  * apps/zcode-cli/packages/core/src/runtime/helpers/runtime-reminders.ts and
- * runtime/methods/turn-loop.ts).
+ * runtime/methods/turn-loop.ts) and followed to 3.17.1 (`nUa`).
  *
  * ZCode, before every model request whose turn tools include TodoWrite:
- * walk the history backwards counting assistant messages; the gate opens
+ * walk the history backwards counting assistant messages, skipping those
+ * that hold only reasoning blocks and no tool call (3.17.1); the gate opens
  * when at least 10 of them follow the last assistant message that called
  * TodoWrite and at least 10 follow the last `todo_reminder` entry (absent
  * marks count the whole history). The body is the verbatim nudge plus the
@@ -76,12 +77,16 @@ function todoWriteArguments(block: Block): Record<string, unknown> | undefined {
 const writesTodos = (message: DerivedMessage): boolean =>
   (message.content ?? []).some(block => todoWriteArguments(block) !== undefined)
 
+/** An assistant message of reasoning blocks only (tool calls are blocks too, so it has none): 3.17.1 `nUa` does not count it as a turn. */
+const reasoningOnly = (message: DerivedMessage): boolean =>
+  message.content !== undefined && message.content.every(block => block.type === 'reasoning')
+
 export interface TodoReminderTurnCounts {
   readonly turnsSinceLastTodoWrite: number
   readonly turnsSinceLastReminder: number
 }
 
-/** ZCode `getTodoReminderTurnCounts` over the DSH derived history (GLM assistant messages are the turns). */
+/** ZCode `getTodoReminderTurnCounts` over the DSH derived history (GLM assistant messages with more than reasoning are the turns). */
 export function todoReminderTurnCounts(history: readonly DerivedMessage[]): TodoReminderTurnCounts {
   let turns = 0
   let sinceWrite: number | undefined
@@ -90,7 +95,7 @@ export function todoReminderTurnCounts(history: readonly DerivedMessage[]): Todo
     const message = history[index]!
     if (sinceReminder === undefined && message.role === 'user' && message.source?.kind === TODO_REMINDER_SOURCE) sinceReminder = turns
     if (sinceWrite !== undefined && sinceReminder !== undefined) break
-    if (message.role !== 'assistant') continue
+    if (message.role !== 'assistant' || reasoningOnly(message)) continue
     if (sinceWrite === undefined && writesTodos(message)) sinceWrite = turns
     if (isGlmModel(message.source?.model)) turns++
     if (sinceWrite !== undefined && sinceReminder !== undefined) break
