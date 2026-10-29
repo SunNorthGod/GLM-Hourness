@@ -1,0 +1,19 @@
+{
+  "id": "d-rules-human-only",
+  "type": "decision",
+  "title": "规则只有人能加、改、撤；agent 只能提议",
+  "status": "approved",
+  "parent": "rules",
+  "verification": "unverified",
+  "body": "目前只有人能新增、修改、撤销或删除规则。主 Agent、子 agent 与自动检测都不能自己建规则或收紧规则；自动检测只更新信号（例如「人在用电脑」这类事实），人写的规则可以引用这些信号；agent 觉得该有一条规则时，只能经图上的待决提给人，人设了才生效。规则的每次写入由 harness 核对写入者身份。以后要放宽这一条，由人另行决定。",
+  "history": [
+    {
+      "at": "2026-10-29T09:51:25.025Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "用户收回编排方「agent 可以自己收紧规则」的提议",
+      "relay": "先不允许自己加规则吧，只有人能动",
+      "to": "approved"
+    }
+  ]
+}

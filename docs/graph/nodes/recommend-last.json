@@ -1,0 +1,30 @@
+{
+  "id": "recommend-last",
+  "type": "task",
+  "title": "待决的推荐项必须排在最后：引擎核对、工具说明、面板与文档",
+  "status": "approved",
+  "parent": "orch",
+  "kind": "implement",
+  "body": "图引擎在提待决（propose 一个 question，或改它的 options、recommend）时，要求 recommend 等于最后一个选项的 key，否则拒绝并给出改法；图工具的说明与 graph_propose 的 schema 描述写明这一条；面板的「需要你」与节点详情按存储顺序显示，推荐标记不做成能让人跳过其余选项的视觉捷径；ORCHESTRATION.md §2.6、§4.2、§5 改写。已决的待决不迁移。L2 测试钉住拒绝与放行两种情况。",
+  "acceptance": [
+    "提一个推荐不在最后的待决被引擎拒绝，错误信息写明改法；推荐在最后的照常通过",
+    "图工具说明与 ORCHESTRATION.md 写明推荐放最后",
+    "门禁全过；面板上现有的已决待决显示不变"
+  ],
+  "edges": [
+    {
+      "type": "source",
+      "to": "d-recommend-last"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-29T09:51:25.583Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "d-recommend-last 的落地：引擎核对、工具说明、面板显示与文档",
+      "relay": "以后每个选项依旧推荐一个但是推荐的放到最后一个选项，靠这种方式强制人读完吧",
+      "to": "approved"
+    }
+  ]
+}
