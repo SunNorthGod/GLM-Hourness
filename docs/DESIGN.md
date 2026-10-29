@@ -48,7 +48,7 @@ GLM-Hourness
 | `glm-hourness/hourness` | `dist/ui/index.js` | 编排 | `/hourness` 命令：晨报与积分口径的用量面板（`ORCHESTRATION.md` §11.2、§11.3） |
 | `glm-hourness/graph` | `dist/graph/index.js` | 编排 | 项目图工具、每步投影与图文件门禁（`ORCHESTRATION.md` §2.5、§2.7、§2.10）；2026-10-28 经 L3 探针与 L4 桌面版验收后默认启用 |
 | `glm-hourness/graph-panel` | `dist/graph/panel-row.js` | 呈现 | 面板写入命令 `/graph-apply`、运行控制命令 `/graph-run` 与现场投影 `graphLive`（`ORCHESTRATION.md` §2.10） |
-| `glm-hourness/ui` | `ui/`（独立包） | 呈现 | 设置页说明 + 输入框「GLM 通道」pill |
+| `glm-hourness/ui` | `ui/`（独立包） | 呈现 | 设置页、输入框下的 GLM 按钮（§2.5）、右侧栏「项目图」页签（需要你、agent 定的、正在做、图，`ORCHESTRATION.md` §2.10）；插件管理器里的标题、说明与图标来自 `ui/locale/*.json` 与 `ui/icon.svg`（包导出 `./locale/*.json`、`./icon`，与主包同形） |
 
 ### 2.3 两个 bundle 与一包一源
 

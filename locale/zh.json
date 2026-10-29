@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "GLM-Hourness",
-    "description": "在 DeepSeek Harness 中按 ZCode 训练分布运行 GLM：提示词与工具面镜像、工具懒加载、执行边界、审计流水、记忆库与 /hourness 用量报告。"
+    "description": "在 DeepSeek Harness 中按 ZCode 训练分布运行 GLM：提示词与工具面镜像、工具懒加载、执行边界、审计流水、记忆库、项目图与 /hourness 用量报告。"
   }
 }
