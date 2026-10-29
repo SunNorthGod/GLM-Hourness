@@ -1,0 +1,55 @@
+{
+  "id": "norm-merge-gate",
+  "type": "norm",
+  "title": "合入主干前必须全部通过的命令",
+  "status": "proposed",
+  "parent": "hourness",
+  "body": "M7 的汇合门禁在压缩后的提交上逐条运行这些命令，全部退出 0 才合入；写法见 .agents/tasks/m7/design.md §3.8.1（`$` 总是跑，`when` 只在改动碰到这些路径时跑，`setup` 在新建工作树后跑，`patrol` 只在夜间巡检跑，`push` 合入后推送、不强推）。每条上限 30 分钟，日志写项目目录。改松这份清单要人同意（ORCHESTRATION.md §7.6）。探针要用沙盒，由规则板的沙盒租约排队。",
+  "acceptance": [
+    "`setup $ pnpm install --store-dir ../../.pnpm-store`",
+    "`$ npm run build`",
+    "`$ npm run preflight`",
+    "`$ npm test`",
+    "`$ npm run probe` when src/, ui/, packages/, scripts/probe/, scripts/sandbox.mjs",
+    "`patrol $ npm run deps:check`",
+    "`push`"
+  ],
+  "history": [
+    {
+      "at": "2026-10-29T13:03:50.098Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "M7 设计 §3.8.1：汇合门禁的命令写在规范节点 norm-merge-gate 的验收里，规范由 LLM 提、人批；本项目自举（dogfood）要用，命令取自 AGENTS.md 强制流程第 2 条与 docs/DEVELOPMENT.md §2",
+      "to": "proposed"
+    },
+    {
+      "at": "2026-10-29T13:04:18.626Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按 M7 设计 §3.8.1 认的五种写法与给本仓库的建议改写：准备命令的 store 路径相对任务工作树；探针只在碰运行时的路径时跑；夜间巡检跑依赖检查；合入后推送",
+      "changes": {
+        "body": {
+          "from": "M7 的汇合门禁在压缩后的提交上逐条运行这些命令，全部退出 0 才合入并推送（不强推）；每条上限 30 分钟，日志写项目目录。新建工作树先跑准备命令。改松这份清单要人同意（ORCHESTRATION.md §7.6）。探针（npm run probe）要用沙盒，按 DEVELOPMENT.md §1.1 只在碰 DSH 运行时的改动与分支合入前跑，不放进每次门禁；以后由规则板的沙盒租约排队后再考虑加进来。",
+          "to": "M7 的汇合门禁在压缩后的提交上逐条运行这些命令，全部退出 0 才合入；写法见 .agents/tasks/m7/design.md §3.8.1（`$` 总是跑，`when` 只在改动碰到这些路径时跑，`setup` 在新建工作树后跑，`patrol` 只在夜间巡检跑，`push` 合入后推送、不强推）。每条上限 30 分钟，日志写项目目录。改松这份清单要人同意（ORCHESTRATION.md §7.6）。探针要用沙盒，由规则板的沙盒租约排队。"
+        },
+        "acceptance": {
+          "from": [
+            "setup: $ pnpm install --store-dir .pnpm-store",
+            "$ npm run build",
+            "$ npm run preflight",
+            "$ npm test"
+          ],
+          "to": [
+            "`setup $ pnpm install --store-dir ../../.pnpm-store`",
+            "`$ npm run build`",
+            "`$ npm run preflight`",
+            "`$ npm test`",
+            "`$ npm run probe` when src/, ui/, packages/, scripts/probe/, scripts/sandbox.mjs",
+            "`patrol $ npm run deps:check`",
+            "`push`"
+          ]
+        }
+      }
+    }
+  ]
+}
