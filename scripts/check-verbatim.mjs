@@ -5,7 +5,9 @@
  * References, any of which may satisfy a line:
  * - the 3.16.3 release bundle: $ZCODE_BUNDLE, else the installed desktop copy
  *   (user-patched only in the security notice, which the source satisfies);
- * - the ZCode source tree under reference/ZCode (apps/ and packages/).
+ * - the ZCode source tree under reference/ZCode (apps/ and packages/); a git
+ *   worktree has no reference/ and reads the main checkout's
+ *   (scripts/reference-dir.mjs).
  *
  * Known deviations form a ratchet: they are reported, never fail the gate,
  * and may only shrink. A known deviation that starts matching fails until it
@@ -30,6 +32,7 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, posix, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { referenceDir } from './reference-dir.mjs'
 
 /** Items still awaiting a source rebuild. Shrink only; empty since the M1.1 tool rebuild. */
 const KNOWN_DEVIATIONS = new Set([])
@@ -222,7 +225,9 @@ function loadReferences() {
   const refs = []
   const bundle = process.env.ZCODE_BUNDLE ?? 'C:/Program Files/ZCode/resources/glm/zcode.cjs'
   if (existsSync(bundle)) refs.push({ name: 'bundle', text: unescapeJs(readFileSync(bundle, 'utf8')) })
-  if (existsSync('reference/ZCode')) refs.push({ name: 'source', text: collectSource('reference/ZCode') })
+  const references = referenceDir()
+  const source = join(references, 'ZCode')
+  if (existsSync(source)) refs.push({ name: references === resolve('reference') ? 'source' : 'source (main checkout)', text: collectSource(source) })
   return refs
 }
 

@@ -171,7 +171,7 @@ DSH 官方类型已作为 devDependency 安装（`@deepseek-ai/dsh-llm`、`@deep
 - 仓库：git，远端为 Gitee 私有仓库 `NorthGod_BFDG/GLM-Hourness`（`origin`），主分支 `main`。仓库由 Kiro 管理。
 - 一件事一个提交；提交信息用技术话术写清改了什么、为什么、怎么验证的（干净区）。项目图上线后，提交信息带节点 id。
 - 不强推，不改写已推送的历史，不跳过钩子。
-- 不入库：`.llm/`（凭证、记忆、审计、原始资料）、`/reference/`（审计用参考源码）、`dist/`、`node_modules/`、`.pnpm-store/`。提交前扫描密钥（`npm test` 含密钥扫描，§10）。
+- 不入库：`.llm/`（凭证、记忆、审计、原始资料）、`/reference/`（审计用参考源码）、`dist/`、`node_modules/`、`.pnpm-store/`。提交前扫描密钥（`npm test` 含密钥扫描，§10）。git worktree 里因此没有 `reference/`：读参考源的门禁经 `scripts/reference-dir.mjs` 读主检出的 `reference/`，worktree 里不复制、不链接，也不设环境变量。
 - 换行：`.gitattributes` 固定 LF。
 - 被取代的文档直接删除，原文留在 git 历史中。
 
