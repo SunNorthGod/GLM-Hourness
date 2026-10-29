@@ -1,16 +1,20 @@
 /**
  * Pieces every view of the graph panel shares: the services context, the
  * write hook (graph writes and run controls), markdown with its copy
- * labels, folding of long content, the titled parts views are made of,
- * and the option picker that decides (or overturns) a question.
+ * labels, folding of long content, keyboard-reachable rows and the node
+ * row, the titled parts views are made of, and the option picker that
+ * decides (or overturns) a question.
  */
 import { Button, Input, MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
-import { createContext, useContext, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode } from 'react'
+import { createContext, useContext, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactElement, type ReactNode } from 'react'
+import { TYPE_LABELS } from '../../../src/graph/labels.ts'
 import type { LoadedGraph } from '../../../src/graph/parse.ts'
+import { ancestorsOf } from '../../../src/graph/projection.ts'
 import type { DecisionOption, GraphNode } from '../../../src/graph/schema.ts'
 import type { RunAction } from '../../../src/graph/run.ts'
 import type { CommandsRemote } from '../dsh.ts'
 import { applyMutation, runControl, type ApplyOutcome } from './apply.ts'
+import { progressOf, progressText, statusText } from './model.ts'
 
 export interface PanelServices {
   readonly commands: CommandsRemote
@@ -99,6 +103,55 @@ export function Folded({ lines, className, children }: { readonly lines: number,
         <div ref={inner}>{children}</div>
       </div>
       {open || overflows ? <button type="button" className="glmg-more" aria-expanded={open} onClick={() => { setOpen(!open) }}>{open ? '收起' : '展开'}</button> : null}
+    </div>
+  )
+}
+
+/**
+ * Props that let an element that is not a button open something the way a
+ * button does: in the tab order, named as a button, Enter or Space on the
+ * element itself (not on a control inside it) acts like a click.
+ */
+export function asButton<T extends Element>(onActivate: () => void): { readonly role: 'button', readonly tabIndex: 0, readonly onClick: () => void, readonly onKeyDown: (event: KeyboardEvent<T>) => void } {
+  return {
+    role: 'button',
+    tabIndex: 0,
+    onClick: onActivate,
+    onKeyDown: event => {
+      if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return
+      event.preventDefault()
+      onActivate()
+    },
+  }
+}
+
+/**
+ * One node as a list row (正在做's lists, the detail's children): the
+ * dot, the title, then on one meta line the type, optionally the status
+ * and the path below the goal, and the progress of its work children. The
+ * row opens the node.
+ */
+export function NodeRow({ graph, node, tone, path, status }: { readonly graph: LoadedGraph, readonly node: GraphNode, readonly tone: string, readonly path?: boolean, readonly status?: boolean }): ReactElement {
+  const { open } = useServices()
+  const progress = progressOf(graph, node.id)
+  const text = progressText(progress)
+  // The goal is in the panel header; a node right under it has no path of its own.
+  const trail = path === true ? ancestorsOf(graph, node).filter(ancestor => ancestor.type !== 'goal').map(ancestor => ancestor.title).reverse() : []
+  return (
+    <div className="glmg-row" {...asButton<HTMLDivElement>(() => { open(node.id) })}>
+      <span className={`glmg-dot ${tone}`} aria-hidden="true" />
+      <div className="glmg-row-main">
+        <div className="glmg-row-title">{node.title}</div>
+        <div className="glmg-meta">
+          <span>{TYPE_LABELS[node.type]}</span>
+          {status === true ? <span>{statusText(node)}</span> : null}
+          {trail.length === 0 ? null : <span>{trail.join(' › ')}</span>}
+          {text.work === undefined
+            ? null
+            : <span className="glmg-meter"><span className="glmg-progress" aria-hidden="true"><b style={{ width: `${Math.round(progress.done / progress.total * 100)}%` }} /></span>{text.work}</span>}
+          {text.questions === undefined ? null : <span>{text.questions}</span>}
+        </div>
+      </div>
     </div>
   )
 }

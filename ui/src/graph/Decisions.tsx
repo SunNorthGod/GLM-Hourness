@@ -9,7 +9,7 @@ import type { ReactElement } from 'react'
 import { useState } from 'react'
 import type { LoadedGraph } from '../../../src/graph/parse.ts'
 import type { OpenItems } from '../../../src/graph/projection.ts'
-import { Options, useServices } from './common.tsx'
+import { Options, asButton, useServices } from './common.tsx'
 import { DECIDED_BY_LABELS, decidedBy, timeAgo } from './model.ts'
 
 export function Decisions({ graph, items }: { readonly graph: LoadedGraph, readonly items: OpenItems }): ReactElement {
@@ -25,15 +25,22 @@ export function Decisions({ graph, items }: { readonly graph: LoadedGraph, reado
         ? (
             <>
               <div className="glmg-section">agent 正要定的</div>
-              {pendingAgent.map(entry => (
-                <div key={entry.id} className="glmg-row" onClick={() => { open(entry.id) }}>
-                  <span className="glmg-who agent">待定</span>
-                  <div className="glmg-row-main">
-                    <div className="glmg-row-title">{entry.title}</div>
-                    <div className="glmg-meta">{entry.recommend === undefined ? null : <span>倾向 {entry.recommend}</span>}{entry.raisedBy === null ? null : <span>挂在「{entry.raisedBy.title}」下</span>}</div>
+              {pendingAgent.map(entry => {
+                const leaning = entry.recommend === undefined ? undefined : graph.nodes.get(entry.id)?.options?.find(option => option.key === entry.recommend)
+                return (
+                  <div key={entry.id} className="glmg-row" {...asButton<HTMLDivElement>(() => { open(entry.id) })}>
+                    <span className="glmg-who agent">待定</span>
+                    <div className="glmg-row-main">
+                      <div className="glmg-row-title">{entry.title}</div>
+                      <div className="glmg-meta">
+                        {entry.recommend === undefined ? null : <span>倾向 {entry.recommend}{leaning === undefined ? '' : ` ${leaning.label}`}</span>}
+                        {/* A question right under the goal needs no place: the goal is in the panel header. */}
+                        {entry.raisedBy === null || entry.raisedBy.type === 'goal' ? null : <span>挂在「{entry.raisedBy.title}」下</span>}
+                      </div>
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </>
           )
         : null}
@@ -46,7 +53,8 @@ export function Decisions({ graph, items }: { readonly graph: LoadedGraph, reado
           <div key={record.id} className="glmg-row" onClick={() => { setExpanded(isOpen ? undefined : record.id) }}>
             <span className={`glmg-who ${who}`}>{DECIDED_BY_LABELS[who]}</span>
             <div className="glmg-row-main">
-              <div className="glmg-row-title">{record.title}</div>
+              {/* The title is the row's keyboard handle: its click bubbles to the row, which toggles. */}
+              <button type="button" className="glmg-row-title glmg-row-toggle" aria-expanded={isOpen}>{record.title}</button>
               <div className="glmg-meta">
                 <span>选了 {record.decision} {record.label}</span>
                 <span>{timeAgo(record.decidedAt)}</span>

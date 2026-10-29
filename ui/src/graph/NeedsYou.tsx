@@ -24,11 +24,12 @@ function CardHead({ node, graph }: { readonly node: GraphNode, readonly graph: L
   const first = node.history[0]
   return (
     <>
-      <h3 className="glmg-card-title" onClick={() => { open(node.id) }}>{node.title}</h3>
+      <h3 className="glmg-card-title"><button type="button" className="glmg-card-link" onClick={() => { open(node.id) }}>{node.title}</button></h3>
       <div className="glmg-meta">
         <span>{TYPE_LABELS[node.type]}</span>
-        {parent === undefined ? null : <span>挂在「{parent.title}」下</span>}
-        {first === undefined ? null : <span>{first.actor === 'human' ? '你' : 'agent'}提的 · {timeAgo(first.at)}</span>}
+        {/* The goal is in the panel header; a card right under it needs no place. */}
+        {parent === undefined || parent.type === 'goal' ? null : <span>挂在「{parent.title}」下</span>}
+        {first === undefined ? null : <span>{first.actor === 'human' ? '你' : 'agent '}提的 · {timeAgo(first.at)}</span>}
       </div>
     </>
   )

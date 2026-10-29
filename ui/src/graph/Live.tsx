@@ -44,7 +44,7 @@ function RunningRow({ graph, agent, now }: { readonly graph: LoadedGraph, readon
           ? null
           : (
               <div className="glmg-chips">
-                {view.recent.map(call => <span key={`${call.at}:${call.name}`} className={call.ok ? 'glmg-chip' : 'glmg-chip bad'} title={call.ok ? '成功' : '出错'}>{call.name}</span>)}
+                {view.recent.map(call => <span key={`${call.at}:${call.name}`} className={call.ok ? 'glmg-chip' : 'glmg-chip bad'} title={call.ok ? '成功' : '出错'}>{call.name}{call.ok ? null : <span className="glmg-sr">，出错</span>}</span>)}
               </div>
             )}
       </div>

@@ -7,38 +7,16 @@
  * height and separator whether it has progress or not.
  */
 import type { ReactElement } from 'react'
-import { TYPE_LABELS } from '../../../src/graph/labels.ts'
 import type { LoadedGraph } from '../../../src/graph/parse.ts'
-import { ancestorsOf, type NodeRef, type OpenItems } from '../../../src/graph/projection.ts'
+import type { NodeRef, OpenItems } from '../../../src/graph/projection.ts'
 import type { AgentLive } from './agents.ts'
-import { Part, useServices } from './common.tsx'
+import { NodeRow, Part } from './common.tsx'
 import { LiveSection } from './Live.tsx'
-import { byCreation, progressOf, progressText } from './model.ts'
+import { byCreation } from './model.ts'
 
 function Row({ graph, entry, tone }: { readonly graph: LoadedGraph, readonly entry: NodeRef, readonly tone: 'doing' | 'todo' }): ReactElement | null {
-  const { open } = useServices()
   const node = graph.nodes.get(entry.id)
-  if (node === undefined) return null
-  const progress = progressOf(graph, node.id)
-  const text = progressText(progress)
-  // The goal is in the panel header; a node right under it has no path of its own.
-  const path = ancestorsOf(graph, node).filter(ancestor => ancestor.type !== 'goal').map(ancestor => ancestor.title).reverse()
-  return (
-    <div className="glmg-row" onClick={() => { open(node.id) }}>
-      <span className={`glmg-dot ${tone}`} />
-      <div className="glmg-row-main">
-        <div className="glmg-row-title">{node.title}</div>
-        <div className="glmg-meta">
-          <span>{TYPE_LABELS[node.type]}</span>
-          {path.length === 0 ? null : <span>{path.join(' › ')}</span>}
-          {text.work === undefined
-            ? null
-            : <span className="glmg-meter"><span className="glmg-progress"><b style={{ width: `${Math.round(progress.done / progress.total * 100)}%` }} /></span>{text.work}</span>}
-          {text.questions === undefined ? null : <span>{text.questions}</span>}
-        </div>
-      </div>
-    </div>
-  )
+  return node === undefined ? null : <NodeRow graph={graph} node={node} tone={tone} path />
 }
 
 function Rows({ graph, entries, tone, empty }: { readonly graph: LoadedGraph, readonly entries: readonly NodeRef[], readonly tone: 'doing' | 'todo', readonly empty: string }): ReactElement {

@@ -7,7 +7,7 @@ import { openEngine } from '../src/graph/engine.ts'
 import { graphRevision, loadGraph, revisionOf } from '../src/graph/store.ts'
 import type { GraphNode } from '../src/graph/schema.ts'
 import type { RemoteRoot, StreamItem, WatchFrame } from '../ui/src/dsh.ts'
-import { byCreation, decidedBy, graphRevisionOf, historyText, nobodyRunningText, placeText, presenceText, progressOf, progressText, revisionOfBytes, statusText, visibleGraph } from '../ui/src/graph/model.ts'
+import { byCreation, decidedBy, dotTone, graphRevisionOf, historyText, nobodyRunningText, placeText, presenceText, progressOf, progressText, revisionOfBytes, statusText, visibleGraph } from '../ui/src/graph/model.ts'
 import { GraphSource, type GraphSnapshot } from '../ui/src/graph/source.ts'
 import { fixtureTest, seedAsHuman } from './graph-helpers.ts'
 
@@ -112,6 +112,11 @@ test('status lines say what a node waits for', () => {
   assert.equal(statusText(question({ status: 'done', decision: 'B' })), '选了 B 乙案')
   assert.equal(statusText(question({ status: 'proposed' })), '等你批准')
   assert.equal(statusText({ id: 't', type: 'task', title: 't', status: 'doing', parent: 'g', history: [] }), '进行中')
+  // Child-row dots: a proposal is dashed even though the human has to act on it; the red dot is for questions the human decides.
+  assert.equal(dotTone(question({ status: 'proposed' })), 'proposed')
+  assert.equal(dotTone(question({})), 'wait')
+  assert.equal(dotTone(question({ decider: 'agent' })), 'approved')
+  assert.equal(dotTone({ id: 't', type: 'task', title: 't', status: 'done', parent: 'g', history: [] }), 'done')
   assert.equal(decidedBy({ decidedBy: 'llm' }), 'agent')
   assert.equal(decidedBy({ decidedBy: 'llm', relay: '选 A' }), 'relay')
   assert.equal(decidedBy({ decidedBy: 'human' }), 'human')

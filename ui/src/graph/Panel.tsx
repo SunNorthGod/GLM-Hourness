@@ -25,9 +25,10 @@ import { PANEL_CSS } from './styles.ts'
 
 type ViewName = 'you' | 'agent' | 'doing' | 'graph'
 
-function Count({ value, quiet }: { readonly value: number, readonly quiet?: boolean }): ReactElement | null {
+/** A count badge on a view tab; screen readers hear `label` after the tab name instead of a bare number. */
+function Count({ value, label, quiet }: { readonly value: number, readonly label: string, readonly quiet?: boolean }): ReactElement | null {
   if (value === 0) return null
-  return <span className={quiet === true ? 'glmg-count quiet' : 'glmg-count'}>{value}</span>
+  return <><span className={quiet === true ? 'glmg-count quiet' : 'glmg-count'} aria-hidden="true">{value}</span><span className="glmg-sr">，{label}</span></>
 }
 
 export interface GraphPanelProps {
@@ -101,12 +102,15 @@ export function GraphPanel({ source, commands, sessions, sessionId }: GraphPanel
   const goal = headlineGoal(graph)
   const agentPending = items.agentQueue.length
   const errors = graph.issues.filter(issue => issue.severity === 'error').length
+  const doingCount = items.doing.filter(entry => entry.type !== 'goal').length
   const tabs: { readonly value: ViewName, readonly label: ReactElement }[] = [
-    { value: 'you', label: <>需要你<Count value={waiting} /></> },
-    { value: 'agent', label: <>agent 定的<Count value={agentPending} quiet /></> },
-    { value: 'doing', label: <>正在做<Count value={items.doing.filter(entry => entry.type !== 'goal').length} quiet /></> },
+    { value: 'you', label: <>需要你<Count value={waiting} label={`${waiting} 项`} /></> },
+    { value: 'agent', label: <>agent 定的<Count value={agentPending} label={`待定 ${agentPending} 项`} quiet /></> },
+    { value: 'doing', label: <>正在做<Count value={doingCount} label={`${doingCount} 项`} quiet /></> },
     { value: 'graph', label: <>图</> },
   ]
+  // One tab panel: the body shows whichever view is selected.
+  const panelId = `${tabsId}-panel`
   return (
     <ServicesContext.Provider value={services}>
       <div className="glmg">
@@ -122,12 +126,12 @@ export function GraphPanel({ source, commands, sessions, sessionId }: GraphPanel
             label="项目图视图"
             value={shown}
             onChange={next => { setView(next) }}
-            items={tabs.map(tab => ({ ...tab, id: `${tabsId}-${tab.value}`, panelId: `${tabsId}-${tab.value}-panel` }))}
+            items={tabs.map(tab => ({ ...tab, id: `${tabsId}-${tab.value}`, panelId }))}
           />
         </div>
         {errors > 0 ? <div className="glmg-tabs"><div className="glmg-notice">图里有 {errors} 处校验错误，写入会被拒绝。让 agent 看一下，或用 git 还原节点文件。</div></div> : null}
         <div className="glmg-stage">
-          <div ref={body} className="glmg-body" role="tabpanel" id={`${tabsId}-${shown}-panel`} aria-labelledby={`${tabsId}-${shown}`} style={shown === 'graph' ? { overflow: 'hidden', padding: 0 } : undefined}>
+          <div ref={body} className="glmg-body" role="tabpanel" id={panelId} aria-labelledby={`${tabsId}-${shown}`} style={shown === 'graph' ? { overflow: 'hidden', padding: 0 } : undefined}>
             {shown === 'you' ? <NeedsYou key="you" graph={graph} items={items} onShowDecisions={() => { setView('agent') }} /> : null}
             {shown === 'agent' ? <Decisions key="agent" graph={graph} items={items} /> : null}
             {shown === 'doing' ? <Doing key="doing" graph={graph} items={items} agents={agents} /> : null}

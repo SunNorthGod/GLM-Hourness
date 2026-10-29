@@ -56,6 +56,12 @@ export function needsHuman(node: GraphNode): boolean {
   return node.status === 'proposed' || waitsForHuman(node)
 }
 
+/** The dot of a child row: a proposal (dashed) before what waits for the human (red), else the status colour. */
+export function dotTone(node: GraphNode): string {
+  if (node.status === 'proposed') return 'proposed'
+  return waitsForHuman(node) ? 'wait' : node.status
+}
+
 export interface VisibleGraph {
   readonly nodes: ReadonlyMap<string, GraphNode>
   /** Per drawn node, how many of its direct children the filter hid because they are closed. */

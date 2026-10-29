@@ -25,8 +25,11 @@ export const PANEL_CSS = `
 .glmg-section:first-child{margin-top:4px}
 .glmg-card{position:relative;margin:0 0 10px;padding:12px 12px 10px;border:1px solid var(--g-line);border-radius:var(--dsw-radius-lg,12px);background:var(--g-layer);animation:glmg-rise .22s cubic-bezier(.2,.8,.2,1) both}
 .glmg-card.wait{border-color:color-mix(in srgb,var(--g-wait) 45%,var(--g-line));box-shadow:inset 3px 0 0 var(--g-wait)}
-.glmg-card-title{margin:0 0 2px;font-size:14px;font-weight:600;line-height:1.4;color:var(--g-ink);cursor:pointer}
-.glmg-card-title:hover{text-decoration:underline;text-decoration-color:var(--g-line-strong)}
+.glmg-card-title{margin:0 0 2px;font-size:14px;font-weight:600;line-height:1.4;color:var(--g-ink)}
+.glmg-card-link{padding:0;border:0;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.glmg-card-link:hover{text-decoration:underline;text-decoration-color:var(--g-line-strong)}
+/* text for screen readers only (counts, failed chips) */
+.glmg-sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
 .glmg-meta{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center;color:var(--g-ink3);font-size:11.5px}
 .glmg-text{margin:8px 0 0;color:var(--g-ink2);font-size:12.5px;line-height:1.65;overflow-wrap:anywhere}
 .glmg-more{margin-top:2px;padding:0;border:0;background:none;color:var(--g-accent);font:inherit;font-size:12px;cursor:pointer}
@@ -67,6 +70,7 @@ export const PANEL_CSS = `
 .glmg-row-main{flex:1;min-width:0}
 .glmg :is(.glmg-row,.glmg-agent) .glmg-meta{column-gap:12px}
 .glmg-row-title{color:var(--g-ink);font-weight:500;overflow-wrap:anywhere}
+.glmg-row-toggle{display:block;width:100%;padding:0;border:0;background:none;font:inherit;font-weight:500;text-align:left;cursor:pointer}
 .glmg-who{flex:none;margin-top:1px;padding:0 6px;border-radius:5px;font-size:11px;line-height:18px;white-space:nowrap}
 .glmg-who.agent{background:color-mix(in srgb,var(--g-purple) 16%,transparent);color:var(--g-purple)}
 .glmg-who.relay{background:color-mix(in srgb,var(--g-accent) 14%,transparent);color:var(--g-accent)}
@@ -113,6 +117,8 @@ export const PANEL_CSS = `
 .glmg-node .shape{transition:fill .25s,stroke .25s,stroke-width .15s}
 .glmg-node:hover .shape{stroke-width:2.4}
 .glmg-node.selected .shape{stroke:var(--g-accent);stroke-width:2.6}
+.glmg-node:focus{outline:none}
+.glmg-node:focus-visible .shape{stroke:var(--g-accent);stroke-width:3}
 .glmg-node .halo{fill:none;stroke:var(--g-doing);stroke-width:2;opacity:0;pointer-events:none}
 .glmg-node.doing .halo{animation:glmg-halo 2.4s ease-in-out infinite}
 .glmg-node.waiting .halo{stroke:var(--g-wait);animation:glmg-halo 1.8s ease-in-out infinite}

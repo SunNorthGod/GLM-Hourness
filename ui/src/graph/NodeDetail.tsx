@@ -11,12 +11,21 @@ import { EVIDENCE_LABELS, KIND_LABELS, STAGE_LABELS, STATUS_LABELS, TIER_LABELS,
 import type { LoadedGraph } from '../../../src/graph/parse.ts'
 import { ancestorsOf } from '../../../src/graph/projection.ts'
 import { RUN_LABELS, nodeRefusal, offersRedo } from '../../../src/graph/run.ts'
-import type { GraphNode } from '../../../src/graph/schema.ts'
+import type { GraphNode, Verification } from '../../../src/graph/schema.ts'
 import { placements, type AgentLive } from './agents.ts'
-import { Folded, Markdown, Options, Outcome, Part, revOf, useServices, useWriter } from './common.tsx'
-import { byCreation, historyText, needsHuman, presenceText, progressOf, progressText, statusText, timeAgo } from './model.ts'
+import { Folded, Markdown, NodeRow, Options, Outcome, Part, revOf, useServices, useWriter } from './common.tsx'
+import { byCreation, dotTone, historyText, needsHuman, presenceText, progressOf, progressText, statusText, timeAgo } from './model.ts'
 
 const HISTORY_SHOWN = 6
+
+/** A verified decision reads as success, an overturned one as danger, a superseded one as plain history. */
+const VERIFICATION_TONES: Readonly<Record<Verification, 'warning' | 'success' | 'danger' | 'neutral'>> = {
+  unverified: 'warning',
+  sandbox: 'success',
+  device: 'success',
+  overturned: 'danger',
+  superseded: 'neutral',
+}
 
 function Comment({ node }: { readonly node: GraphNode }): ReactElement {
   const writer = useWriter()
@@ -120,12 +129,17 @@ export function NodeDetail({ graph, id, agents, onBack, onClose }: DetailProps):
     <Frame onBack={onBack} onClose={onClose}>
         {ancestors.length === 0
           ? null
-          : <div className="glmg-crumbs">{ancestors.map((ancestor, index) => <span key={ancestor.id}><button type="button" onClick={() => { open(ancestor.id) }}>{ancestor.title}</button>{index < ancestors.length - 1 ? ' ›' : null}</span>)}</div>}
+          : (
+              <div className="glmg-crumbs">
+                {/* The goal's title is in the panel header; its crumb says 目标 and still opens it. */}
+                {ancestors.map((ancestor, index) => <span key={ancestor.id}><button type="button" title={ancestor.title} onClick={() => { open(ancestor.id) }}>{ancestor.type === 'goal' ? TYPE_LABELS.goal : ancestor.title}</button>{index < ancestors.length - 1 ? ' ›' : null}</span>)}
+              </div>
+            )}
         <h2>{node.title}</h2>
         <div className="glmg-meta">
           <Tag tone="neutral">{TYPE_LABELS[node.type]}</Tag>
           <Tag tone={needsHuman(node) ? 'danger' : done ? 'success' : node.status === 'doing' ? 'warning' : 'neutral'}>{node.type === 'question' && done ? STATUS_LABELS[node.status] : statusText(node)}</Tag>
-          {node.verification === undefined ? null : <Tag tone={node.verification === 'unverified' ? 'warning' : 'info'}>{VERIFICATION_LABELS[node.verification]}</Tag>}
+          {node.verification === undefined ? null : <Tag tone={VERIFICATION_TONES[node.verification]}>{VERIFICATION_LABELS[node.verification]}</Tag>}
           {node.stage === undefined ? null : <Tag tone="neutral">阶段：{STAGE_LABELS[node.stage]}</Tag>}
           {node.kind === undefined ? null : <Tag tone="neutral">{KIND_LABELS[node.kind]}</Tag>}
           {node.tier === undefined ? null : <Tag tone="neutral">{TIER_LABELS[node.tier]}</Tag>}
@@ -144,12 +158,7 @@ export function NodeDetail({ graph, id, agents, onBack, onClose }: DetailProps):
           ? null
           : (
               <Part title={['下面的节点', progress.work, progress.questions].filter(part => part !== undefined).join(' · ')}>
-                {children.map(child => (
-                  <div key={child.id} className="glmg-row" onClick={() => { open(child.id) }}>
-                    <span className={`glmg-dot ${needsHuman(child) ? 'wait' : child.status === 'proposed' ? 'proposed' : child.status}`} />
-                    <div className="glmg-row-main"><div className="glmg-row-title">{child.title}</div><div className="glmg-meta">{statusText(child)}</div></div>
-                  </div>
-                ))}
+                {children.map(child => <NodeRow key={child.id} graph={graph} node={child} tone={dotTone(child)} status />)}
               </Part>
             )}
         {(node.evidence ?? []).length === 0

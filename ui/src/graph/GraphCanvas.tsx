@@ -6,13 +6,15 @@
  * but in the theme's colours; the second line of a box says what the node
  * waits for instead of its id. The agents of the session stand on their
  * focus nodes as badges (agents.ts placements). Drag or scroll to pan,
- * Ctrl+scroll or the buttons to zoom; a click opens the node.
+ * Ctrl+scroll or the buttons to zoom; a click, or Enter on a focused
+ * node, opens the node.
  */
 import { Button, Menu } from '@deepseek-ai/dsh-client-ui-primitives'
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactElement, type WheelEvent as ReactWheelEvent } from 'react'
 import { HEX_INSET, TEXT, isHexagon, layoutGraph, type CurvePath, type DrawnEdgeType, type NodeBox, type Tone } from '../../../src/graph/layout.ts'
 import type { LoadedGraph } from '../../../src/graph/parse.ts'
 import { doingText, placements, useNow, type AgentLive } from './agents.ts'
+import { asButton } from './common.tsx'
 import { FILTER_LABELS, statusText, visibleGraph, type GraphFilter } from './model.ts'
 
 interface View {
@@ -87,7 +89,7 @@ function NodeShape({ box, selected, hiddenClosed, onPick }: { readonly box: Node
   const classes = ['glmg-node', box.tone, selected ? 'selected' : ''].filter(Boolean).join(' ')
   const hexagon = isHexagon(node.type)
   return (
-    <g className={classes} style={{ transform: `translate(${box.x}px, ${box.y}px)` }} data-id={node.id} onClick={() => { onPick(node.id) }}>
+    <g className={classes} style={{ transform: `translate(${box.x}px, ${box.y}px)` }} data-id={node.id} aria-label={`${node.title}，${statusText(node)}`} {...asButton<SVGGElement>(() => { onPick(node.id) })}>
       <title>{node.title}</title>
       <rect className="halo" x={-4} y={-4} width={width + 8} height={height + 8} rx={10} />
       {hexagon
@@ -305,7 +307,7 @@ export function GraphCanvas({ graph, selected, onPick, agents }: GraphCanvasProp
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
       >
-        <svg role="img" aria-label="项目图">
+        <svg role="group" aria-label="项目图">
           <defs>
             <marker id="glmg-arrow" viewBox="0 0 10 10" refX={9} refY={5} markerWidth={7} markerHeight={7} orient="auto"><path d="M0 0L10 5L0 10z" style={{ fill: 'var(--g-ink3)' }} /></marker>
             <marker id="glmg-arrow-purple" viewBox="0 0 10 10" refX={9} refY={5} markerWidth={7} markerHeight={7} orient="auto"><path d="M0 0L10 5L0 10z" style={{ fill: 'var(--g-purple)' }} /></marker>
