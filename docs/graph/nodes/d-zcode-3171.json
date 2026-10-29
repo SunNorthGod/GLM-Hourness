@@ -14,6 +14,12 @@
       "reason": "用户定：彻底换到新版 ZCode，工程环境声明照旧",
       "relay": "你就彻底都换成新版zcode，工程环境声明那个照旧",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-29T21:58:03.071Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "已落地：zcode-3171-follow 合入 main（40b05d3），逐字门禁只对 reference/zcode-3.17.1 比对通过（489 项、292 行、0 个已知差异），沙盒真实请求签名被接受、UA 为 ZCode/3.17.1，桌面版 L4 通过；工作树 zcode-3171、prompt-fixes 与两个分支已清理。"
     }
   ]
 }
