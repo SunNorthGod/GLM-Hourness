@@ -1,0 +1,36 @@
+{
+  "id": "question-28",
+  "type": "question",
+  "title": "split 合入后同时实现几个特性",
+  "status": "approved",
+  "parent": "orch",
+  "body": "现在在做的：split 实现（9 步做完 5 步），规则板块、人话面板加新手引导两份设计；排队的有 M3（12 步）、M3 人设、推荐放最后、V-01 行名、自举。M3、规则、人话面板、引导、人设、推荐放最后都改编排层包，大多碰同一批文件（ui/src/graph、src/graph、src/guard），每个要 L4 的都排队等同一个桌面版（risk-shared-desktop），每份设计回来都带 4–6 道题。",
+  "options": [
+    {
+      "key": "A",
+      "label": "合入后全部并行实现",
+      "consequence": "改同一批文件的分支互相冲突、反复 rebase；L4 排长队；「需要你」里一次堆十几道题；自举要等所有东西都做完"
+    },
+    {
+      "key": "B",
+      "label": "设计也停，一次只做一件",
+      "consequence": "冲突最少，但设计这种不碰代码的活也白白排队，整体变慢"
+    },
+    {
+      "key": "C",
+      "label": "设计照常并行；合入后同时最多实现两条：M3 骨架优先，另一条按顺序做（推荐放最后 → 人话面板加引导 → 规则板块）",
+      "consequence": "冲突与 L4 排队都可控；先有能跑的主 Agent 骨架，自举能早开始；其余特性晚几天落地；问人的题分批来"
+    }
+  ],
+  "recommend": "C",
+  "decider": "human",
+  "history": [
+    {
+      "at": "2026-10-29T10:29:02.844Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "编排方提议 split 合入后限制同时实现的特性数，用户要求按项目规则解释",
+      "to": "approved"
+    }
+  ]
+}
