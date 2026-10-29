@@ -77,6 +77,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "循环板设计 0.2 §17 给 M4 的请求：env 行交一项 env.checks-after-edit，带 ownRules（一步至多等 20 秒、每个检查 60 秒超时、连续失败 3 次后这个会话不再跑、没有检查器覆盖的语言每个会话提醒一次）与 details（每个批过的检查器一行），声明 env.files-edited（listedOnly），每跑完一次检查调 recordRun；图行 R1 那一部分交 graph.third-rework、声明 graph.third-reopen，每提一次第三次返工的待决调 recordRun。0.1 请 M4 改报 work-stopped 作废。"
+    },
+    {
+      "at": "2026-10-29T23:21:20.951Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M4 设计 0.3 写完（m4-design-v03-write，wf_341bc28a0dde1fa5；.agents/tasks/m4/design.md，一页放行稿 .agents/tasks/m4/onepage.md）。第 2 轮两条挡路：F9 跟进记录拆开 DeferredToolCall 再结算，并按 tool/call 事件的步号跳过同一步的调用；F10 给人的文字全部改为四行的方案（题目，背景、推荐、疑问、不做，问话最后），由 renderPlan 一处生成并查换词表，第三次修复的认法改读 propose 历史的 reason。13 条不挡路：11 条采纳，N17、N19 因卡片与面板批准取消而不再适用，见 §19.2。并入评审之后的人定：D2 B（「不介意」，回放只读命令文本与路径）；d-chat-not-cards 让申报改为 agent 把 harness 写的申报文字放在回复末尾、人的下一句话决定，只认 DSH 客户端送来（带 rpcId）、紧跟申报文字、整句同意的话，申报不上图、不经面板；d-main-agent-shell 的 git 快照归 M3 第 4 步，M4 只共用跟进记录器；norm-review-floor 定 G1–G4 与 C1 全审；d-auto-drive 下只在 D1、转生效、第三次修复三处停下问人。D1 写成四行，与放行稿合成一问。接下来派第 3 轮独立评审。"
+    },
+    {
+      "at": "2026-10-29T23:21:21.146Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M4 设计 0.3 写完（m4-design-v03-write，wf_341bc28a0dde1fa5；.agents/tasks/m4/design.md，一页人话 onepage.md）：F9、F10 已改，13 条不挡路 11 条采纳、2 条不再适用，人在 0.2 之后的决定全部并入，逐条见 §19.2。派出单步第 3 轮评审 m4-design-v03-review。"
     }
   ]
 }
