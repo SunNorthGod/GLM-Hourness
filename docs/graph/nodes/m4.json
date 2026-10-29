@@ -53,6 +53,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M4 设计 0.2 评审第 2 轮（.agents/tasks/m4/design-review.md）：CHANGES_REQUESTED，挡路 2 条、不挡路 13 条；第 1 轮 21 条全部关闭。挡路：F9 GLM 路由上延迟调用之后的跟进记录；F10 问人的题缺前因后果、用了术语（d-plain-questions）。设计循环继续。"
+    },
+    {
+      "at": "2026-10-29T17:33:16.958Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "用户回答 D2（原话「不介意」）：回放本机 DSH 历史会话取样本（B），只读工具调用的命令文本与路径，不读对话正文；结果留在 .llm/，脱敏的个别样本进 tests/guard-corpus/。已转给 M4 第 3 稿。"
     }
   ]
 }

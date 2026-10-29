@@ -72,6 +72,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "m6-design（wf_cebb575e1e4810d2）在第 2 轮评审步因运行环境的解密错误（BAD_DECRYPT）失败，与内容无关；设计 0.2 在。改派 m6-design-round2：先审 0.2，必要时再改再审，至多两轮；按 d-zcode-3171 把引用的 3.16.3 包内事实对 3.17.1 复核，问人的题按 d-plain-questions 写。"
+    },
+    {
+      "at": "2026-10-29T17:33:16.789Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "用户回答 D1：高峰继续提醒模型（B），另加高峰模式三档（d-peak-mode）。已转给 M6 第 2 轮评审与规则板 0.5 的写稿步。"
     }
   ]
 }
