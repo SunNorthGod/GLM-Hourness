@@ -123,6 +123,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "rules-design-v05-retry (wf_f0cf45ba63f84c4a) failed at the start of its first design step on BAD_DECRYPT, the third rules design step in a row to fail that way. Relaunched as a single-step run rules-design-v05-write (wf_446dbc21ff9cefde) to write v0.5 only; the independent review is launched after it lands. The brief adds the background field contract from the plain-ui round-4 ruling (rules_propose writes the node field background)."
+    },
+    {
+      "at": "2026-10-29T18:00:52.880Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "Rules board design 0.5 written (.agents/tasks/rules/design.md; not yet reviewed). Round-1 review of 0.4: F33 fixed by checkCall (src/rules/check.ts) shared by the command line and M6's gateOnRules: glm-peak from the caller (--signal glm-peak=...), else the newest live host heartbeat within 45 s, else unknown with the reason; output lists signals and subjects with source; check writes nothing. F34-F41 all taken (catalog ids <row>:<code id>, catalog RowState from activation(), RulesService typed with per-code result lines, F37 wording, R4 heartbeats runner:false, basis ed073d5, wildcard split at the first slash, heartbeat rename retry and wake on host-gone). Human decision of 2026-10-30 designed as section 3.6: peak mode per project, human-only, levels inform/reduce/stop; reduce queues self-declared optional GLM scripts and tells the main agent to defer optional heavy work; stop queues GLM sessions' tool calls on one ticket per session, pauses their goals and resumes them after peak; the main agent's per-step notice always carries peak status and level; unknown peak never blocks. rules_propose now writes the node field background and carries PLAIN_QUESTION_GUIDE; page strings use plain words; metrics events listed in section 10.5. One question for the person (section 19): default peak level, provisional inform. Independent review next."
+    },
+    {
+      "at": "2026-10-29T18:00:53.172Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "派出独立评审 rules-design-v05-review（wf_04ea6ba2a7e5f6d6）。简报写明：默认档位已由人定为少做（d-peak-mode），0.5 §19 的暂定无影响按未满足的要求处理；插件带来的默认条目暂时只能看、档位例外（d-defaults-readonly）；合入前检查清单与必须全审清单可能放进规则板显示（与人讨论中，不挡路）。"
     }
   ]
 }
