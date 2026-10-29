@@ -2,7 +2,7 @@
   "id": "zcode-3171",
   "type": "task",
   "title": "查清 ZCode 3.17.1 相对 3.16.3 改了什么，给出跟进方案",
-  "status": "doing",
+  "status": "done",
   "parent": "glm-house",
   "kind": "review",
   "body": "只读调查，不改代码。对照 reference/zcode-3.16.3/zcode.cjs 与 reference/zcode-3.17.1/zcode.cjs：系统提示词各节（CLI 前缀、身份、安全声明、Harness、上下文管理、输出风格、环境、todo 提醒、压缩指令）、工具清单与说明、schema、工具检索、请求头与各版本号字段、签名、路由配置请求、设备号；每一处写明旧文、新文、本仓库哪个文件镜像了它、跟进要改什么。同时写明逐字门禁默认读安装目录带来的基线漂移，以及门禁怎样钉住基线。结论交人定：基线留在 3.16.3，还是换到 3.17.1。",
@@ -10,6 +10,13 @@
     "差异清单逐处给出旧文与新文（或代码位置），并标出本仓库对应的镜像文件与常量",
     "跟进方案列出要改的文件、要重跑的门禁与探针、要不要桌面版 L4，以及大致工作量",
     "写明逐字门禁怎样钉住所选基线，不再随安装目录漂移"
+  ],
+  "evidence": [
+    {
+      "kind": "check",
+      "ref": "diff list .agents/tasks/zcode-3171/diff.md (old and new text or code location per item, mirror file and constant, verbatim gate pinning in §2) and follow-up plan .agents/tasks/zcode-3171/plan.md",
+      "exit": 0
+    }
   ],
   "history": [
     {
@@ -71,6 +78,21 @@
       "actor": "llm",
       "op": "comment",
       "text": "差异清单与实施计划写好：.agents/tasks/zcode-3171/diff.md（逐处旧文/新文/镜像常量/改什么）与 plan.md（按概念排的提交 + 验证命令 + L4）。核对方法：把本仓库 342 处 @偏移 从 3.16.3 包映射到 3.17.1 包逐函数比对，并从两版 app.asar 的 out/host 导出比对桌面 host。结论：通道侧唯一值改动是 ZCODE_APP_VERSION 3.16.3→3.17.1；身份头、签名、路由配置请求、设备号、AI SDK 段、请求体键序、max_tokens、模型目录 GLM-5.3 规则、保留式思考、图片编码、Write/Edit/Glob/Grep/TodoWrite 描述与 schema 全部逐字节一致，不改。要改的逐字文本：CLI 前缀、身份两句、Harness 节（改模板 + 系统轮第二分支 + bullet 行首空格）、Context management 节（删 4 段）、工具检索增删公告、Read 描述一行与部分视图提醒、start-plan 的 cliPrefix/身份/Dynamic Behavior/Context management。更正早先 probe 的漏报：vs-3171.json 的 20 行/16 项是用只喂 stableSections 的一次性脚本算的，漏了 start-plan 的 dynamicSections 两节；真门禁 check-verbatim.mjs loadItems 两节都查，也会失败，已纳入清单与计划。门禁钉定：check-verbatim.mjs loadReferences 改为只读 reference/zcode-3.17.1/zcode.cjs，去掉安装目录默认与 reference/ZCode（3.16.2）源码兜底，放在所有文本更新之后的最后一步做以保持每个提交绿。Harness 节因新版由模板三段拼成（分支文本后面是三元分隔符，整条 bullet 不是包里连续子串），现门禁按行整条比对会失败，跟进办法是把 Harness 文本移进新镜像文件按插值点分片检查。交编排方的决策：x-zcode-session-features 新归因头、coding-plan 是否加 Dynamic Behavior、compact/Bash/todo/项目令牌错误码等保真补齐，默认不实现/不加，均可逆。start-plan 无额度不可测，只对齐文本保结构（env 移 meta_user 的结构变化记为已知局限）。实现在 worktree .worktrees/zcode-3171，经 reference-dir.mjs 读主检出的 reference/。"
+    },
+    {
+      "at": "2026-10-29T21:55:40.543Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "差异清单与跟进方案已交付，并据此实施完：.agents/tasks/zcode-3171/diff.md 逐处给出 3.16.3 旧文与 3.17.1 新文（或代码位置）及本仓库对应的镜像文件与常量（本仓库 342 处 @偏移映射到 3.17.1 包逐函数比对）；plan.md 列出要改的文件、要重跑的门禁与探针、桌面版 L4 与步骤；diff §2 写明逐字门禁改为只读 reference/zcode-3.17.1/zcode.cjs，去掉安装目录默认与 reference/ZCode（3.16.2）源码兜底。用户定换到 3.17.1（d-zcode-3171）；跟进 zcode-3171-follow 已合入 main（11b1282..46e1884）。",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "check",
+          "ref": "diff list .agents/tasks/zcode-3171/diff.md (old and new text or code location per item, mirror file and constant, verbatim gate pinning in §2) and follow-up plan .agents/tasks/zcode-3171/plan.md",
+          "exit": 0
+        }
+      ]
     }
   ]
 }

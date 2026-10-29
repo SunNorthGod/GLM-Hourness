@@ -2,7 +2,7 @@
   "id": "zcode-3171-follow",
   "type": "task",
   "title": "GLM 通道跟到 ZCode 3.17.1",
-  "status": "doing",
+  "status": "done",
   "parent": "glm-house",
   "kind": "implement",
   "body": "按 d-zcode-3171 把 dsh-glm-zcode 的对齐基线换到 ZCode 3.17.1：系统提示词各节、身份开头、CLI 前缀、Harness 节、上下文管理节、工具说明与 schema、工具检索与结果文本、请求头与各版本号字段、签名与路由配置请求、设备号，以 zcode-3171 的差异清单为准逐处跟进；SECURITY_NOTICE_USER 原样保留。逐字门禁改为只认 reference/zcode-3.17.1/zcode.cjs。文档与行为同批改。",
@@ -17,6 +17,38 @@
     {
       "type": "depends",
       "to": "zcode-3171"
+    }
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "46e1884",
+      "note": "head of the 14 zcode-3171-follow commits 11b1282..46e1884 on main, pushed to origin/main"
+    },
+    {
+      "kind": "test",
+      "ref": "npm run build, npm run preflight, npm test on 46e1884 in the worktree and the main checkout: ESLint 250 / knip 21 / jscpd 2, gitleaks clean, graph:smoke ok; 661 specs passing at b5d9fcb (same code)",
+      "exit": 0
+    },
+    {
+      "kind": "check",
+      "ref": "npm run check:verbatim against reference/zcode-3.17.1/zcode.cjs only (ee172e3): 489 verbatim items, 0 known deviations, 292 lines",
+      "exit": 0
+    },
+    {
+      "kind": "check",
+      "ref": "npm run probe on eaed98d: 118/118 passed, glm scenario system prompt carries the 3.17.1 texts",
+      "exit": 0
+    },
+    {
+      "kind": "check",
+      "ref": "sandbox real requests glm-zcode coding-plan glm-5.3-flash: 9 requests 200, 6 model requests signed and accepted, no 401, User-Agent ZCode/3.17.1, header order matches 3.17.1 (.agents/tasks/zcode-3171/verify.md §2)",
+      "exit": 0
+    },
+    {
+      "kind": "check",
+      "ref": "desktop L4 on b5d9fcb via junctions: GLM-5.3-Flash session answered, session system prompt is the 3.17.1 text, /glm-status rows in effect, profile-shape compare no differences (.agents/tasks/zcode-3171/verify.md §4)",
+      "exit": 0
     }
   ],
   "history": [
@@ -95,6 +127,46 @@
       "actor": "llm",
       "op": "comment",
       "text": "已合入主干。分支 zcode-3171 变基到 main 098656c（main 在 L4 之后只新增了 3 个改 docs/graph 的提交，代码与桌面版 L4 验过的相同），无冲突，14 个提交 11b1282..46e1884。工作树与主检出各跑一遍 build、preflight、npm test，全部通过（check-verbatim 对 3.17.1：489 项，0 处偏差；eslint 计数与基线相同；graph:smoke ok）。main 快进到 46e1884 后，另一会话在其上提交了只改图的 37ec91e 并推送，origin/main = 37ec91e，46e1884 在其中，没有强推。"
+    },
+    {
+      "at": "2026-10-29T21:55:40.691Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "验收逐条满足。① diff.md 各处已跟进：14 个提交 11b1282..46e1884，含编排方定的 D-1（x-zcode-session-features 照 3.17.1 计算并发送）、D-2（coding-plan 加 Dynamic Behavior）、D-3（保真补齐）；不跟的写明理由并经编排方同意：Bash 的「Command output … not reliably to the user」在 DSH 上不成立（D-3），Read 部分视图不写无法兑现的 token 子句，start-plan 的 env 移到 meta_user 的结构变化不可测、只对齐文本（plan.md，DESIGN.md §4.8、§5.4）。② check-verbatim 只读 reference/zcode-3.17.1/zcode.cjs，安装目录与 reference/ZCode 源码都不再读（ee172e3），489 项 0 偏差。③ 版本号 3.17.1（User-Agent ZCode/3.17.1、x-zcode-app-version 3.17.1），身份头与签名与 3.17.1 一致，6 个模型请求都签名且被接受；SECURITY_NOTICE_USER 与 823795a 逐字节相同。④ build、preflight、npm test 全过（661 个用例）；沙盒探针 118/118；沙盒真实请求 9 个全部 200、没有 401。⑤ 桌面版 L4：GLM-5.3-Flash 会话正常，系统提示词是 3.17.1 的文本；AGENTS.md 基线条款与 docs/reference/zcode-verbatim.md 在 46e1884 改写。已推送 origin/main。运行记录 .agents/tasks/zcode-3171/verify.md。",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "46e1884",
+          "note": "head of the 14 zcode-3171-follow commits 11b1282..46e1884 on main, pushed to origin/main"
+        },
+        {
+          "kind": "test",
+          "ref": "npm run build, npm run preflight, npm test on 46e1884 in the worktree and the main checkout: ESLint 250 / knip 21 / jscpd 2, gitleaks clean, graph:smoke ok; 661 specs passing at b5d9fcb (same code)",
+          "exit": 0
+        },
+        {
+          "kind": "check",
+          "ref": "npm run check:verbatim against reference/zcode-3.17.1/zcode.cjs only (ee172e3): 489 verbatim items, 0 known deviations, 292 lines",
+          "exit": 0
+        },
+        {
+          "kind": "check",
+          "ref": "npm run probe on eaed98d: 118/118 passed, glm scenario system prompt carries the 3.17.1 texts",
+          "exit": 0
+        },
+        {
+          "kind": "check",
+          "ref": "sandbox real requests glm-zcode coding-plan glm-5.3-flash: 9 requests 200, 6 model requests signed and accepted, no 401, User-Agent ZCode/3.17.1, header order matches 3.17.1 (.agents/tasks/zcode-3171/verify.md §2)",
+          "exit": 0
+        },
+        {
+          "kind": "check",
+          "ref": "desktop L4 on b5d9fcb via junctions: GLM-5.3-Flash session answered, session system prompt is the 3.17.1 text, /glm-status rows in effect, profile-shape compare no differences (.agents/tasks/zcode-3171/verify.md §4)",
+          "exit": 0
+        }
+      ]
     }
   ]
 }
