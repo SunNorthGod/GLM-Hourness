@@ -1,0 +1,32 @@
+{
+  "id": "reading-digest",
+  "type": "task",
+  "title": "每周读 Anthropic 与 OpenAI 的 agent 工程文章，对照本项目",
+  "status": "doing",
+  "parent": "orch",
+  "kind": "docs",
+  "body": "来源：Anthropic Engineering（https://www.anthropic.com/engineering）与 Anthropic Research 中的 agent 文章；OpenAI Cookbook 的 agents 专题（https://cookbook.openai.com/topic/agents）与 OpenAI 的 agent 指南。每周一次：读上次之后的新文章（第一次读核心文章与两边最近的十来篇），每篇写转述摘要与链接（引用不超过 30 个词），对照 harness、guard、项目图、压缩、记忆、派发、评测与标定，写出能用的结论与和本项目定案冲突的地方；值得改的提成待决或提议交给人，不直接改代码。摘要在 .agents/tasks/reading-<日期>/digest.md，每次的结论与提议批注在本节点上，最近一次的日期也写在批注里；会话开始时由 Kiro 钩子提醒是否到期。",
+  "acceptance": [
+    "每次运行产出一页摘要：每篇文章有链接、转述摘要与对本项目的适用点，引用不超过 30 个词",
+    "能用的结论逐条对应到本项目的组件或里程碑，与已有定案冲突的单独列出",
+    "值得改的都变成图上的待决或提议，由人定；本节点批注写明这次读到哪天"
+  ],
+  "history": [
+    {
+      "at": "2026-10-29T09:19:23.530Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "用户要求定期读 Anthropic 与 OpenAI 的工程文章并对照本项目学习",
+      "relay": "可以加，而且你现在就去读一遍",
+      "to": "approved"
+    },
+    {
+      "at": "2026-10-29T09:20:01.618Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "派出 investigate-reading-digest-2026-10-29（wf_7f22be44701cffff）：第一次通读两边的核心文章与最近各约十篇，对照本项目的设计与 Kiro 工作流的七条观察，结果写到 .agents/tasks/reading-2026-10-29/digest.md",
+      "from": "approved",
+      "to": "doing"
+    }
+  ]
+}
