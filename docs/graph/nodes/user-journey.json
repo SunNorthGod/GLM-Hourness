@@ -35,6 +35,12 @@
       "reason": "派出 user-journey-design（wf_bfca60e8c88d64a8）：只写用户图与一页人话，不动代码",
       "from": "approved",
       "to": "doing"
+    },
+    {
+      "at": "2026-10-29T23:30:11.690Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "user-journey-design（wf_bfca60e8c88d64a8）写稿步在写下 journey.md 大部分内容（第 0–7 节，55 KB）之后因 TLS 错误结束。改派 user-journey-finish：不重写已写好的，查完整、刷新各设计的版本、补上编排方的接缝裁定与总览图，再评审至多两轮，通过后写一页人话。"
     }
   ]
 }

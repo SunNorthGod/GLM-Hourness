@@ -76,6 +76,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M7 设计 0.3：norm-review-floor 的每一条要在行末的反引号里写判定写法 harness 才判得了（`files <路径>…`、`deletes`、`commands <词>…`、`outside`，§3.8.5）；接管起草底线清单时把扫描到的路径写成这种写法。gate-norm.ts 导出 GATE_LINE_FORMS，新增 `only <路径>` 一种写法（只改这些路径的主干前进不跑命令）；接管的 changed 写法加在 M7 E1b 之后。只改项目图的提交怎样过主干前进的核对：按 only 写法，内容要人定（M7 §13 ②）。"
+    },
+    {
+      "at": "2026-10-29T23:30:11.519Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "接管项目设计 0.2 评审第 2 轮（.agents/tasks/bootstrap/design-review.md）：CHANGES_REQUESTED，挡路 2 条（上一轮 4 条，F1–F4 都已关闭），非阻断 6 条。挡路的两条：F23 给人看的文字仍是被人 2026-10-29T17:27Z 定稿取代的格式（应为题目加背景、推荐、疑问、不做四行，每行重点几个字加粗），且与 M3 附录 0.3 的 propose_to_human、record_human_answer 并行另起了一套问人与原话核对；F24 规则板 0.8 下 rules_propose 不再在图上出待决，接管的一次同意不会让「不许碰」的规则生效，也没有地方报出来。设计循环继续（第 3 轮是最后一轮）。另请编排方同步 design-context.md 里落后于图上定稿的「Layout of a proposal」一条。"
     }
   ]
 }
