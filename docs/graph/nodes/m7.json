@@ -143,6 +143,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "接缝裁定（编排方，2026-10-30，见 .agents/tasks/design-context.md）：高峰模式少做或不做时，主 Agent 因高峰而等着的拍不计入空转规则，不在高峰中途问人；M7 以 hourness-peak-wait 一类的原因停住驱动，并经 glmHournessExecute.runAction 提供 resume-drive；高峰结束时循环板的编排层条目执行它。另一条：少做时的并发上限由规则板给出，M7 派发时读它。M7 下一稿照此写。"
+    },
+    {
+      "at": "2026-10-29T21:49:09.285Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "循环板设计 0.3 §17 给 M7 的新请求：1a. entries.ts 每项补 why（1–150 个码点、人话、过 plainWordsIn），M7 0.3 的形状没有它，照原样十项都会被丢掉（评审 F28）。1b. runAction 的结局口径：动作跑完就返回 done，要主 Agent 做事时带 tell；failed 只给没能跑完；execute.trunk-check 发现主干红了返回 done 加 tell，不返回 failed（评审 F27）。3. emit 的 key 照循环板 §4.2 的键一栏写，说的是这一次发生：design-released:<goal>:<release>、handback:<task>:<childId>、review-passed:<task>:<审查者 childId>、review-skipped:<task>:<交回的 childId>、stopped:<node>:<kind>-<停下批注 at>、tasks-closed:<goal>:<最后关上的状态历史 at>、trunk-advanced:<to>:<advances.jsonl 行 at>、outside-advance 同、host-started:<持有者会话>:<performance.timeOrigin>；退路执行者的进程内去重改用同一个键（评审 F22）。hourness.outside-advance 的人话为「有人不经系统直接改了主干」。"
     }
   ]
 }

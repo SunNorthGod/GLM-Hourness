@@ -206,6 +206,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "循环板设计 0.2 §17 给 M3 附录的请求：propose_to_human 的 attach 按前缀分派，rules: 走规则板，loops: 走循环板服务的 attachable 与 loopProposalLine（正文末行「循环板提议 `lp-<id>`」）；record_human_answer 在 decide 成功之后用 proposalIdOf 与 loopProposalIdOf 各认一次，调对应服务的 acceptProposal 并把那一行放进结果，挂在 src/design/record.ts。0.1 请 M3 报 design-released 作废（M7 0.3 自己交 hourness.design-released）。"
+    },
+    {
+      "at": "2026-10-29T21:49:09.128Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "循环板设计 0.3 §17 给 M3 附录的新请求（评审 F21）：5. attachable 的结果多了可选的 detail: {markdown, mustShow}；带它时 propose_to_human 把 detail.markdown 原样作为一段接在四行之后放进 text 与待决正文（提议 id 那一行之前），这一段不受四行的行长与加粗检查，renderProposal 加一个可选参数。6. record_human_answer（question、agree）正文末行是循环板提议时，拍板之前再调一次 attachable；带回 detail 时在会话日志里取最近一次 propose_to_human 结果之后、人那句原话之前主 Agent 发给人的文字，按 personSaid 的规整核对 mustShow 每一片都在，不全在返回 not_shown、不拍；都在时拍板，reason 末尾加「· 已给人看原文 <attachDigest(detail)>」。7. 建议：持有者会话已归档时 /wish 的回话与流程条也提醒人。原有的 attach 分派与 acceptProposal 两条不变。"
     }
   ]
 }

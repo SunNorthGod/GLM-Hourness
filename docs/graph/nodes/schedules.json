@@ -113,6 +113,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "循环板设计 0.2 第 2 轮评审（schedules-design-review-r2，wf_82f208d4f186cc14）：CHANGES_REQUESTED，挡路 4 条（MEDIUM F19–F22）、NIT 11；第 1 轮 8 条挡路全部关闭（8 → 4）。F19 是编排方的接缝裁定说错了：高峰结束唤醒主 Agent 的条目依赖规则板的档位和主 Agent，GLM 包两样都没有，所以改判为编排层的默认条目（dsh-hourness 带来），GLM 包只给高峰变化事件与时段计算，已改 design-context 的裁定。F20 提醒建在已归档或到不了的会话上时没人发现；F21 人加的命令执行前，人其实看不到完整命令；F22 事件去重会悄悄丢掉反复发生的事件。派出单步 schedules-design-v03-write（wf_beedd4c1089a996f）写 0.3。"
+    },
+    {
+      "at": "2026-10-29T21:49:08.969Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "循环板设计 0.3 写成（.agents/tasks/schedules/design.md；0.2 原文、草图与放行稿留作 design-0.2.md、mockup-loops-0.2.svg、onepage-0.2.md；onepage.md 与 mockup-loops.svg 跟着改），逐条回应第 2 轮评审 15 条（§19.2）。挡路四条：F19 照编排方修订后的接缝裁定，高峰结束叫醒主 Agent 的 loops.peak-end 仍是编排层的条目（项目编排带来的），理由改为「看的是规则板的档位与主 Agent，GLM 包没有主 Agent」，高峰变化事件改名 channel.peak-changed、由 GLM 通道报，来源一行「项目编排带来的 · 依据 GLM 通道的高峰时刻与规则板的高峰模式 · 只能看」，M6 不加第五项，件数不变（编排层 16、GLM 4）；F20 新函数 holderState，对账、每次投递之前与每一拍重读 mainAgentOf 并查 workspaceRegistry.archivedSessionIds 与 resolveAgent 的错误码，主 Agent 的会话归档或找不到时删掉绑在上面的提醒、不建新的、消息进 held、不记已投，页头与首页「主 Agent 的会话已归档：在一个会话里打 /wish here」，loop-holder 留痕，V14–V16；F21 跑命令的提议由 harness 附命令原文（commandText，与实际跑的同一串）与注意事项，M3 原样接在四行之后，record_human_answer 拍板之前核对主 Agent 的回话里原样有它，没有就 not_shown，拍板带「已给人看原文 <摘要>」，acceptProposal 只认带摘要的 llm 拍板，没有图时 /loops accept 打两次，命令原文至多 400 个码点；F22 去重键按一次发生定（<事件名>:<主体>:<这一次>，emit 校验结构），§4 每张表加键一栏（host-started 带进程启动毫秒、tasks-closed 带最后关上的历史 at、stopped 带停下批注 at、审查带 childId），重复写 loop-duplicate、同一键 24 小时第 4 次时 degraded，验收加两次重启两次 execute.restart。NIT：规则板 0.7 的 heldForPeak 与 stateForProject、撤回 peakStop；main-step.json；5 分钟从开始跑项目算起；emit 内存重试三次；结局口径（跑完就 done）；M7 条目补 why；少做上限照规则板显示；页面不说「行」；onepage 三处用词；运行锁交给主 Agent 所在的进程（handover.json）；F32 复核后只订正 tools.register 到 2983，另两处评审的行号早了一行，不改。替人定的方向 §18 共 14 条，没有要问人的。下一步：第 3 轮独立评审，通过后人读 onepage.md 放行。"
+    },
+    {
+      "at": "2026-10-29T21:49:10.105Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "循环板设计 0.3 写完（schedules-design-v03-write，wf_beedd4c1089a996f；0.2 留作 design-0.2.md）：F19–F22 与 11 条 NIT 在 §19.2 逐条处理，一页人话与草图已更新。派出单步第 3 轮评审 schedules-design-review-r3（question-11 的第三轮）。"
     }
   ]
 }

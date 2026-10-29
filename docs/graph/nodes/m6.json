@@ -126,6 +126,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "循环板设计 0.2 照 M6 0.3 的 loopDefaults 读，契约不用改；M6-L1 到 L5 逐条落在循环板 §3.4。两处请 M6 知道：没有计价服务时循环板不写「GLM 通道包未装，或它的 glm-login 行未启用」那一行（plain-ui 定了只装编排层包时面板上不出现模型名），M6-L1 的这半句下一稿删去；M6-R5 由循环板的 loops.peak-end 做。nextPeakChange 由 M6 Q1 或规则板 R4 先合入的一方加，是循环板 S3 的依赖。0.1 对 M6 的推送请求（glmHournessChannelLoop）作废。"
+    },
+    {
+      "at": "2026-10-29T21:49:09.443Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "循环板设计 0.3：编排方修订了高峰结束叫醒的接缝裁定（归编排层，GLM 包只给高峰变化事件与时刻计算），所以第 2 轮评审 F19 要的第五项 glm:peak-end 与 ChannelTrigger 的 peak-end 不要了，GLM 的条目仍是四项，channel-loop.ts、loop-defaults.ts 不用改。请 M6 下一稿把 §8.3 留在 GLM 包外的理由「GLM 包不知道档位」改为修订后的说法（要的是规则板的档位与主 Agent，GLM 包没有主 Agent）。循环板照计价服务的 peak 与 nextPeakChange 推出 channel.peak-changed（0.2 叫 loops.peak-changed），M6 的 peak-start 条目在循环板上听它。M6-L1 那半句不显示、M6-R5 由循环板做，同 0.2。"
     }
   ]
 }
