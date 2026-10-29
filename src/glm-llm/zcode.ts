@@ -418,7 +418,7 @@ export class ZcodeAdapter {
     // (session trace, turn query id, query source, subagent type);
     // start-plan keeps its earlier shape.
     const attribution: Omit<TraceContext, 'requestId'> = plan === 'coding-plan'
-      ? this.attribution.attribute({ sessionId: request.sessionId, purpose: request.purpose, reasoningEffort: options.reasoningEffort, messages: options.messages })
+      ? this.attribution.attribute({ sessionId: request.sessionId, purpose: request.purpose, reasoningEffort: options.reasoningEffort, tools: options.tools, messages: options.messages })
       : { sessionId: upstreamSessionId(request.sessionId), sessionType: request.purpose === undefined ? 'main' : 'other', traceId: randomUUID() }
     const wire = plan === 'coding-plan' ? codingPlanWire(options, request.purpose, this.attribution.stepEffortOf(request.sessionId)) : undefined
     const body = JSON.stringify(encodeRequest({ ...options, messages }, systemBlocks, images, metadataUserId(device.value, attribution.sessionId), wire))

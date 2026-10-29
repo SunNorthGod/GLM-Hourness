@@ -76,6 +76,19 @@ export const OFFICIAL_GLM_MODEL_IDS = [
 export const SESSION_TYPE_HEADER = 'x-zcode-session-type'
 export const TRACE_ID_HEADER = 'x-zcode-trace-id'
 export const QUERY_SOURCE_HEADER = 'x-zcode-query-source'
+/** New in 3.17.1 (`$yn`): the session's features, between the query source and x-session-id. */
+export const SESSION_FEATURES_HEADER = 'x-zcode-session-features'
+
+/**
+ * The session features this channel can show (3.17.1 `pP`): local tool
+ * search exposed on a step, and a successful LocalToolSearch call. The
+ * others (`tool_search_native`, `workflow_auto`, `workflow_cmd`,
+ * `browser_use`, `computer_use`) have no trigger here.
+ */
+export const SESSION_FEATURES = {
+  toolSearchLocal: 'tool_search_local',
+  toolSearchCalled: 'tool_search_called',
+} as const
 
 /**
  * Query sources: an agent step `main_turn` and a delegated child's step

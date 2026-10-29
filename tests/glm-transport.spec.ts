@@ -88,6 +88,15 @@ test('trace headers follow 3.16.3 createModelRequestAttributionHeaders: query id
   assert.deepEqual(Object.keys(buildTraceHeaders({ sessionId: 's1', requestId: 'r1', traceId: 't1', sessionType: 'other' })), ['x-request-id', 'x-zcode-session-type', 'x-zcode-trace-id', 'x-session-id'])
 })
 
+test('3.17.1 session features: sorted unique values between the query source and x-session-id; none when empty, malformed or over 256 characters', () => {
+  const withFeatures = buildTraceHeaders({ ...TRACE, querySource: 'main_turn', sessionFeatures: ['tool_search_local', 'tool_search_called', 'tool_search_local'] })
+  assert.deepEqual(Object.keys(withFeatures), ['x-request-id', 'x-zcode-session-type', 'x-zcode-trace-id', 'x-query-id', 'x-zcode-query-source', 'x-zcode-session-features', 'x-session-id'])
+  assert.equal(withFeatures['x-zcode-session-features'], 'tool_search_called,tool_search_local')
+  for (const sessionFeatures of [[], ['Tool-Search'], Array.from({ length: 20 }, (_, index) => `feature_number_${index}`)]) {
+    assert.equal(buildTraceHeaders({ ...TRACE, sessionFeatures })['x-zcode-session-features'], undefined)
+  }
+})
+
 /** A durable user-typed message (`source.kind: 'user'`) with its id. */
 const typed = (id: string, text: string): RequestMessageLike => ({ id, role: 'user', content: [{ type: 'text', text }], source: { kind: 'user' } })
 
@@ -164,6 +173,27 @@ test('attribution: a delegated child is subagent + subagent and shares its paren
   assert.notEqual(child.queryId, parent.queryId)
   assert.deepEqual([fork.sessionType, fork.querySource], ['main', 'main_turn'])
   assert.notEqual(fork.traceId, parent.traceId)
+})
+
+test('attribution: session features join the session and ride every later request of it, auxiliary ones included', () => {
+  const tracker = new RequestAttributionTracker()
+  const searchTools = [{ name: 'Read' }, { name: 'LocalToolSearch' }, { name: 'DeferredToolCall' }]
+  // Without local tool search exposed and without a search call, a session has no features.
+  assert.equal(tracker.attribute({ sessionId: 'session-plain', tools: [{ name: 'Read' }], messages: [typed('m', 'x')] }).sessionFeatures, undefined)
+  // The title can precede the first step (DSH sends them together): nothing recorded yet.
+  assert.equal(tracker.attribute({ sessionId: 'session-a', purpose: 'session-title', messages: [typed('m1', 'fix it')] }).sessionFeatures, undefined)
+  assert.deepEqual(tracker.attribute({ sessionId: 'session-a', tools: searchTools, messages: [typed('m1', 'fix it')] }).sessionFeatures, ['tool_search_local'])
+  // A compaction carries no tools but the session's set.
+  assert.deepEqual(tracker.attribute({ sessionId: 'session-a', purpose: 'compaction', messages: [typed('m1', 'fix it')] }).sessionFeatures, ['tool_search_local'])
+  const call: RequestMessageLike = { role: 'assistant', content: [{ type: 'tool-call', id: 'c1', name: 'LocalToolSearch', arguments: '{"query":"select:web_fetch"}' }] }
+  const failed: RequestMessageLike = { role: 'tool', toolCallId: 'c1', isError: true, content: [{ type: 'text', text: 'no' }] }
+  assert.deepEqual(tracker.attribute({ sessionId: 'session-a', tools: searchTools, messages: [typed('m1', 'fix it'), call, failed] }).sessionFeatures, ['tool_search_local'])
+  const answered: RequestMessageLike = { role: 'tool', toolCallId: 'c1', content: [{ type: 'text', text: '<functions>' }] }
+  assert.deepEqual(tracker.attribute({ sessionId: 'session-a', tools: searchTools, messages: [typed('m1', 'fix it'), call, answered] }).sessionFeatures, ['tool_search_called', 'tool_search_local'])
+  // The set outlives the call leaving the history (compaction), within this process.
+  assert.deepEqual(tracker.attribute({ sessionId: 'session-a', messages: [typed('m2', 'next')] }).sessionFeatures, ['tool_search_called', 'tool_search_local'])
+  // An auxiliary request with the search tools does not count as an exposed step.
+  assert.equal(tracker.attribute({ sessionId: 'session-b', purpose: 'compaction', tools: searchTools, messages: [typed('m', 'x')] }).sessionFeatures, undefined)
 })
 
 test('attribution keeps 256 sessions; an evicted session that returns gets a fresh trace id', () => {

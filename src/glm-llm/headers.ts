@@ -1,13 +1,16 @@
 /**
  * Upstream header assembly for the native ZCode client: identity headers
- * (LLM plane, `g6n`) + 3.16.3 attribution headers + the request credential.
+ * (LLM plane, `g6n`) + ZCode attribution headers (3.16.3, plus the 3.17.1
+ * session features) + the request credential.
  * coding-plan model requests are built the way the AI SDK inside 3.16.3
  * builds them (`buildModelRequestHeaders`); start-plan keeps the earlier
  * zcode-api shape (`buildAuthHeaders`).
  */
 import { randomUUID } from 'node:crypto'
 import { buildLlmIdentityHeaders, type ZcodeIdentity } from './identity.ts'
-import { AI_UA_PREFIX, AI_VERSION, ANTHROPIC_SDK_UA_PREFIX, ANTHROPIC_SDK_VERSION, PROVIDER_UTILS_UA_PREFIX, PROVIDER_UTILS_VERSION, QUERY_SOURCE_HEADER, QUERY_SOURCES, RUNTIME_NODE_UA_PREFIX, SESSION_TYPE_HEADER, TRACE_ID_HEADER } from './zcode-wire.ts'
+import { AI_UA_PREFIX, AI_VERSION, ANTHROPIC_SDK_UA_PREFIX, ANTHROPIC_SDK_VERSION, PROVIDER_UTILS_UA_PREFIX, PROVIDER_UTILS_VERSION, QUERY_SOURCE_HEADER, QUERY_SOURCES, RUNTIME_NODE_UA_PREFIX, SESSION_FEATURES, SESSION_FEATURES_HEADER, SESSION_TYPE_HEADER, TRACE_ID_HEADER } from './zcode-wire.ts'
+import { LOCAL_TOOL_SEARCH_NAME } from '../toolsearch/zcode-text.ts'
+import { DEFERRED_TOOL_CALL_NAME } from '../shared/zcode-notice.ts'
 import type { RequestMessageLike } from '../shared/lm-min.ts'
 
 /** anthropic-version the ZCode client pins. */
@@ -27,6 +30,8 @@ export interface TraceContext {
   readonly queryId?: string | undefined
   readonly querySource?: QuerySource | undefined
   readonly sessionType: 'main' | 'subagent' | 'other'
+  /** The session's features so far (3.17.1 `modelRequestSessionFeatures`); absent while there are none. */
+  readonly sessionFeatures?: readonly string[] | undefined
 }
 
 /** The query sources of the requests this channel sends (3.16.3 `mDn` @13259914, compaction @13389086, `v2n` @13069774). */
@@ -69,6 +74,44 @@ interface SessionTrace {
   titleOpened?: boolean | undefined
   /** The reasoning effort of the session's latest main step. */
   stepEffort?: string | undefined
+  /** The session features seen so far (3.17.1 runtime `sessionFeatures`). */
+  readonly features: Set<string>
+}
+
+/** Whether the messages hold a LocalToolSearch call with a successful result. */
+function calledLocalToolSearch(messages: readonly RequestMessageLike[]): boolean {
+  const calls = new Set<string>()
+  for (const message of messages) {
+    if (message.role === 'assistant') {
+      for (const block of message.content) if (block.type === 'tool-call' && block.name === LOCAL_TOOL_SEARCH_NAME) calls.add(block.id)
+    }
+    else if (message.role === 'tool' && message.isError !== true && message.toolCallId !== undefined && calls.has(message.toolCallId)) return true
+  }
+  return false
+}
+
+/**
+ * The session features one request shows (3.17.1 runtime session features,
+ * docs/DESIGN.md §4.5b):
+ * - `tool_search_local`: an agent step whose tools carry LocalToolSearch and
+ *   DeferredToolCall, i.e. local tool search is exposed (3.17.1 records it
+ *   from each step's tool-search exposure, `U1n`/`yTo`);
+ * - `tool_search_called`: a LocalToolSearch call with a successful result
+ *   in the history (`vTo` over tool results, `bTo` over a resumed
+ *   history).
+ */
+function requestSessionFeatures(request: { readonly purpose?: string | undefined, readonly tools?: ReadonlyArray<{ readonly name: string }> | undefined, readonly messages: readonly RequestMessageLike[] }): string[] {
+  const names = new Set((request.tools ?? []).map(tool => tool.name))
+  return [
+    ...(request.purpose === undefined && names.has(LOCAL_TOOL_SEARCH_NAME) && names.has(DEFERRED_TOOL_CALL_NAME) ? [SESSION_FEATURES.toolSearchLocal] : []),
+    ...(calledLocalToolSearch(request.messages) ? [SESSION_FEATURES.toolSearchCalled] : []),
+  ]
+}
+
+/** The features as `readSessionFeatures` (`z1n`) hands them to a request: sorted, absent when none. */
+function featuresField(features: Iterable<string>): { sessionFeatures?: readonly string[] } {
+  const sorted = [...features].sort()
+  return sorted.length === 0 ? {} : { sessionFeatures: sorted }
 }
 
 /** The turn of a request: the id of its latest message typed by the user (`source.kind: 'user'`). */
@@ -103,6 +146,12 @@ function turnKeyOf(messages: readonly RequestMessageLike[]): string | undefined 
  * It also keeps the reasoning effort of each session's latest main step:
  * 3.16.3 compacts with the session's model selection (`c3a` @13387356,
  * `jT` @12830530), and a DSH compaction request carries no effort of its own.
+ *
+ * And each session's features (3.17.1): a feature a request shows joins the
+ * session's set, and every later request of the session, auxiliary ones
+ * included, carries the set (3.17.1 `withRuntimeInvocationLayer` `LSa`
+ * reads the runtime's set at each model call). The set lives in this
+ * process; 3.17.1 also persists it with the session.
  */
 export class RequestAttributionTracker {
   private readonly sessions = new Map<string, SessionTrace>()
@@ -112,7 +161,7 @@ export class RequestAttributionTracker {
     this.headerOf = headerOf
   }
 
-  attribute(request: { readonly sessionId?: string | undefined, readonly purpose?: 'compaction' | 'session-title' | undefined, readonly reasoningEffort?: string | undefined, readonly messages: readonly RequestMessageLike[] }): Omit<TraceContext, 'requestId'> {
+  attribute(request: { readonly sessionId?: string | undefined, readonly purpose?: 'compaction' | 'session-title' | undefined, readonly reasoningEffort?: string | undefined, readonly tools?: ReadonlyArray<{ readonly name: string }> | undefined, readonly messages: readonly RequestMessageLike[] }): Omit<TraceContext, 'requestId'> {
     const sessionId = upstreamSessionId(request.sessionId)
     const subagent = request.sessionId !== undefined && this.headerOf(request.sessionId)?.origin === 'subagent'
     const kind = request.purpose === 'session-title'
@@ -120,14 +169,15 @@ export class RequestAttributionTracker {
       : request.purpose === 'compaction'
         ? { sessionType: 'other' as const, querySource: QUERY_SOURCES.compact }
         : subagent ? { sessionType: 'subagent' as const, querySource: QUERY_SOURCES.subagent } : { sessionType: 'main' as const, querySource: QUERY_SOURCES.mainTurn }
-    if (request.sessionId === undefined) return { sessionId, traceId: randomUUID(), queryId: randomUUID(), ...kind }
+    if (request.sessionId === undefined) return { sessionId, traceId: randomUUID(), queryId: randomUUID(), ...kind, ...featuresField(requestSessionFeatures(request)) }
     const state = this.stateOf(request.sessionId, 0)
+    for (const feature of requestSessionFeatures(request)) state.features.add(feature)
     if (request.purpose !== undefined) {
       if (state.queryId === undefined) {
         state.queryId = randomUUID()
         state.titleOpened = request.purpose === 'session-title'
       }
-      return { sessionId, traceId: state.traceId, queryId: state.queryId, ...kind }
+      return { sessionId, traceId: state.traceId, queryId: state.queryId, ...kind, ...featuresField(state.features) }
     }
     if (request.reasoningEffort !== undefined) state.stepEffort = request.reasoningEffort
     const turnKey = turnKeyOf(request.messages)
@@ -137,7 +187,7 @@ export class RequestAttributionTracker {
       state.turnKey = turnKey
       state.titleOpened = false
     }
-    return { sessionId, traceId: state.traceId, queryId: state.queryId, ...kind }
+    return { sessionId, traceId: state.traceId, queryId: state.queryId, ...kind, ...featuresField(state.features) }
   }
 
   /** The reasoning effort of the session's latest main step; undefined before its first one. */
@@ -154,26 +204,40 @@ export class RequestAttributionTracker {
     }
     const header = this.headerOf(sessionId)
     const parent = header?.origin === 'subagent' && header.parentSession !== undefined && depth < MAX_DELEGATION_DEPTH ? header.parentSession : undefined
-    const state: SessionTrace = { traceId: parent === undefined ? randomUUID() : this.stateOf(parent, depth + 1).traceId }
+    const state: SessionTrace = { traceId: parent === undefined ? randomUUID() : this.stateOf(parent, depth + 1).traceId, features: new Set() }
     this.sessions.set(sessionId, state)
     if (this.sessions.size > ATTRIBUTION_SESSION_LIMIT) this.sessions.delete(this.sessions.keys().next().value as string)
     return state
   }
 }
 
+/** One feature value and the header's length cap (3.17.1 `WXs`, `VXs`). */
+const SESSION_FEATURE_PATTERN = /^[a-z0-9_]{1,64}$/u
+const SESSION_FEATURES_MAX_LENGTH = 256
+
+/** `sessionFeaturesHeaderValueOf` (3.17.1 `GXs`): the unique values sorted and comma-joined; none when empty, malformed or too long. */
+function sessionFeaturesHeaderValue(features: readonly string[] | undefined): string | undefined {
+  if (features === undefined || features.length === 0 || !features.every(feature => SESSION_FEATURE_PATTERN.test(feature))) return undefined
+  const value = [...new Set(features)].sort().join(',')
+  return value.length <= SESSION_FEATURES_MAX_LENGTH ? value : undefined
+}
+
 /**
- * Trace headers as 3.16.3 `createModelRequestAttributionHeaders` (`Vdt`
- * @4065502) emits them: x-request-id, x-zcode-session-type,
- * x-zcode-trace-id, then x-query-id, x-zcode-query-source and x-session-id
+ * Trace headers as ZCode `createModelRequestAttributionHeaders` (3.16.3
+ * `Vdt` @4065502, 3.17.1 `Uft`) emits them: x-request-id,
+ * x-zcode-session-type, x-zcode-trace-id, then x-query-id,
+ * x-zcode-query-source, x-zcode-session-features (3.17.1) and x-session-id
  * when known.
  */
 export function buildTraceHeaders(trace: TraceContext): Record<string, string> {
+  const features = sessionFeaturesHeaderValue(trace.sessionFeatures)
   return {
     'x-request-id': trace.requestId,
     [SESSION_TYPE_HEADER]: trace.sessionType,
     [TRACE_ID_HEADER]: trace.traceId,
     ...(trace.queryId === undefined ? {} : { 'x-query-id': trace.queryId }),
     ...(trace.querySource === undefined ? {} : { [QUERY_SOURCE_HEADER]: trace.querySource }),
+    ...(features === undefined ? {} : { [SESSION_FEATURES_HEADER]: features }),
     'x-session-id': trace.sessionId,
   }
 }

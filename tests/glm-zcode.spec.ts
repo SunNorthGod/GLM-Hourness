@@ -278,7 +278,7 @@ test('when the state file cannot be written the generated id is still sent and k
 const isPatPlane = (wire: WireRequest): boolean => wire.url.startsWith('https://bigmodel.cn/')
 
 /** The model request's header names as they arrive on a loopback server: the adapter's own fetch chain, undici included. */
-async function wireNames(gateway: Parameters<typeof gatewayFetch>[1], options: { stored?: Credential, purpose?: 'session-title' } = {}): Promise<string[]> {
+async function wireNames(gateway: Parameters<typeof gatewayFetch>[1], options: { stored?: Credential, purpose?: 'session-title', tools?: ReadonlyArray<{ name: string, description: string, parameters: object }> } = {}): Promise<string[]> {
   const server = await wireRecorder(() => ({ status: 200, contentType: 'text/event-stream', body: SSE_OK_BODY }))
   try {
     const store = memoryStore()
@@ -286,7 +286,7 @@ async function wireNames(gateway: Parameters<typeof gatewayFetch>[1], options: {
     const doubles = gatewayFetch([], gateway)
     const fetchImpl: typeof fetch = (input, init) => urlOf(input) === ULTRA ? fetch(`${server.url}/v1/messages`, init) : doubles(input, init)
     const adapter = new ZcodeAdapter({ home: 'C:/ws/.llm', fetchImpl, storeFs: store.fs, env: isolatedEnv() })
-    for await (const chunk of adapter.stream({ ...request(), sessionId: 'session-s1', ...(options.purpose === undefined ? {} : { purpose: options.purpose }) } as never)) void chunk
+    for await (const chunk of adapter.stream({ ...request(), sessionId: 'session-s1', ...(options.purpose === undefined ? {} : { purpose: options.purpose }), ...(options.tools === undefined ? {} : { tools: options.tools }) } as never)) void chunk
     return (server.requests[0]?.names ?? []).filter(name => !TRANSPORT_HEADERS.has(name))
   }
   finally {
@@ -307,6 +307,13 @@ test('the model request leaves with 3.16.3\'s header order: SDK headers sorted, 
   // A failed handshake sends zrt(headers) unsigned: the session id keeps its lower-case name and place.
   const unsigned = await wireNames({ mapping: FLAGGED_MAPPING }, { stored: { ...credential, jwt: 'zcode-jwt' } })
   assert.deepEqual(unsigned, [...SDK_HEADERS, 'x-session-id', ...SDK_HEADERS_AFTER_SESSION, 'X-ZCode-Authorization', 'accept'])
+})
+
+test('a step that exposes local tool search sends x-zcode-session-features in its sorted place (3.17.1)', async () => {
+  const tools = ['Read', 'LocalToolSearch', 'DeferredToolCall'].map(name => ({ name, description: name, parameters: { type: 'object' } }))
+  const names = await wireNames({ privateCipher: await sealedSigningKey(FIRST_PAT, PAT_KEY_ID), mapping: FLAGGED_MAPPING }, { stored: { ...credential, jwt: 'zcode-jwt' }, tools })
+  const after = ['x-title', 'x-zcode-agent', 'x-zcode-app-version', 'x-zcode-query-source', 'x-zcode-session-features', 'x-zcode-session-type', 'x-zcode-trace-id']
+  assert.deepEqual(names, [...SDK_HEADERS, 'X-Session-Id', ...after, ...SIGNATURE_BLOCK, 'X-ZCode-Authorization', 'accept'])
 })
 
 test('User-Agent: a step sends the provider-utils chain, the session title (generateText) adds ai/6.0.193', async () => {
