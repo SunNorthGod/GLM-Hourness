@@ -78,6 +78,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "用户回答 D1：高峰继续提醒模型（B），另加高峰模式三档（d-peak-mode）。已转给 M6 第 2 轮评审与规则板 0.5 的写稿步。"
+    },
+    {
+      "at": "2026-10-29T17:36:34.675Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m6-design-round2（wf_46689dd71bda1970）的第 2 轮评审步因 BAD_DECRYPT 失败。改派单步评审 m6-design-review-r2（wf_0ac5b3482d62d2f5），D1 的决定（d-peak-mode）直接写进简报。"
     }
   ]
 }
