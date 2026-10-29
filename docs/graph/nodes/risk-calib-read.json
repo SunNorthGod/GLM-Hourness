@@ -1,0 +1,17 @@
+{
+  "id": "risk-calib-read",
+  "type": "risk",
+  "title": "标定时被测模型读得到验收脚本与前几次的解",
+  "status": "approved",
+  "parent": "m7",
+  "body": "scripts/calibrate/run-calibrate.mjs 把运行目录建在仓库的 .llm/calibration-runs/ 下，权限默认 danger-full-access，guard 只拦写不拦读，被测模型能读到 tests/calibration/<任务>/check.mjs 与同批前几次运行的解。编排方 2026-10-29 复核了已有的 5 批运行（38 个会话、368 次工具调用）：没有一次调用的路径在自己的 ws 目录之外（脚本 .agents/tasks/reading-2026-10-29/calib-leak-check.mjs），所以已有基线没有被污染；风险本身还在，M3 起标定任务变多变难，被测模型越强越可能去翻。处理方向见阅读摘要 §7 第 1 条：运行目录移到仓库外的临时目录、验收脚本不进被测模型可达的路径，标定会话的读取加圈禁。",
+  "history": [
+    {
+      "at": "2026-10-29T09:42:04.567Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "阅读摘要候选改动第 1 条：标定运行目录在仓库内、权限 danger-full-access、guard 不拦读",
+      "to": "approved"
+    }
+  ]
+}
