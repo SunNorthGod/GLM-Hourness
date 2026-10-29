@@ -20,7 +20,7 @@ interface CommandReply {
   readonly text: string
 }
 
-/** One row of the health table: its name, state label and reason. */
+/** One line of the health table: the row's name (the package's for a package's single line), state label and reason. */
 interface HealthLine {
   readonly row: string
   readonly state: string
@@ -57,13 +57,19 @@ function isTableLine(line: string): boolean {
   return line.startsWith('|') || line.startsWith('## 行健康')
 }
 
-/** The row health table of `/glm-status`, or null when the text has none. */
+/** The 行 cell of a package's single line when none of its rows is loaded (src/shared/health.ts). */
+const WHOLE_PACKAGE = '全部'
+
+/**
+ * The row health table of `/glm-status` (columns 包, 行, 状态, 说明), or null
+ * when the text has none. A package's single line is named by the package.
+ */
 export function parseHealth(text: string): HealthLine[] | null {
   const rows: HealthLine[] = []
   for (const line of text.split('\n')) {
-    if (!line.startsWith('| ') || line.startsWith('| ---') || line.startsWith('| 行 |')) continue
+    if (!line.startsWith('| ') || line.startsWith('| ---') || line.startsWith('| 包 |')) continue
     const cells = line.slice(1, -1).split(/(?<!\\)\|/).map(cell => cell.trim().replaceAll('\\|', '|'))
-    if (cells.length === 3) rows.push({ row: cells[0], state: cells[1], reason: cells[2] })
+    if (cells.length === 4) rows.push({ row: cells[1] === WHOLE_PACKAGE ? cells[0] : cells[1], state: cells[2], reason: cells[3] })
   }
   return rows.length === 0 ? null : rows
 }

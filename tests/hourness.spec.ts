@@ -153,9 +153,9 @@ function register(config: { home?: string }, data: unknown): { registered: Regis
   return { registered, dispose }
 }
 
-test('apply registers the /hourness command and reports from the real directories', async () => {
+test('apply registers /hourness and /hourness-status; /hourness reports from the real directories', async () => {
   const { registered, dispose } = register({ home: 'C:/definitely-empty-hourness-home' }, { userHome: 'C:/definitely-empty-hourness-user' })
-  assert.equal(registered.length, 1)
+  assert.deepEqual(registered.map(definition => definition.name), ['hourness', 'hourness-status'])
   assert.equal(registered[0]!.name, 'hourness')
   const withArgs = await registered[0]!.handler({ rawInput: 'x' })
   assert.equal(withArgs.kind, 'error')

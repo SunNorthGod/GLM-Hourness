@@ -5,7 +5,7 @@ import { readFile, rename, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { saveCredential, type StoreFs } from '../src/glm-llm/auth/store.ts'
-import { collectHealth, healthServiceName, HEALTH_ROWS, provideRowHealth, renderHealthTable, sessionIdOf, type HealthRow, type RowHealthView } from '../src/shared/health.ts'
+import { collectHealth, GLM_ROWS, healthServiceName, HEALTH_PACKAGES, HEALTH_ROWS, HOURNESS_ROWS, provideRowHealth, renderHealthTable, sessionIdOf, type HealthRow, type RowHealthView } from '../src/shared/health.ts'
 import { apply as dataApply } from '../src/data/index.ts'
 import { apply as llmApply } from '../src/glm-llm/index.ts'
 import { apply as loginApply, type LoginConfig } from '../src/glm-llm/login-row.ts'
@@ -135,16 +135,48 @@ test('the rendered table names the session, labels each status and escapes cells
   assert.equal(text, [
     '## 行健康（会话 session-1）',
     '',
-    '| 行 | 状态 | 说明 |',
-    '| --- | --- | --- |',
-    '| glm-prompt | 生效 | GLM 路由 a\\|b |',
-    '| glm-compact | 已加载，本会话未触发 | 已加载 只作用于压缩请求 |',
-    '| glm-llm | 未加载 | 行未启用，或激活未完成 |',
+    '| 包 | 行 | 状态 | 说明 |',
+    '| --- | --- | --- | --- |',
+    '| dsh-glm-zcode | glm-prompt | 生效 | GLM 路由 a\\|b |',
+    '| dsh-glm-zcode | glm-compact | 已加载，本会话未触发 | 已加载 只作用于压缩请求 |',
+    '| dsh-glm-zcode | glm-llm | 未加载 | 行未启用，或激活未完成 |',
   ].join('\n'))
   assert.ok(renderHealthTable([], undefined).startsWith('## 行健康\n'))
   assert.equal(sessionIdOf(agentIn('s9')), 's9')
   assert.equal(sessionIdOf({ id: 'a1' }), 'a1')
   assert.equal(sessionIdOf(undefined), undefined)
+})
+
+test('the table groups rows by package; a package with no row loaded takes one line', () => {
+  assert.deepEqual(HEALTH_PACKAGES.map(entry => [entry.name, [...entry.rows]]), [
+    ['dsh-glm-zcode', ['glm-llm', 'glm-login', 'glm-prompt', 'glm-compact']],
+    ['dsh-hourness', ['data', 'guard', 'memory', 'workflow', 'hourness', 'graph', 'graph-panel']],
+  ])
+  assert.deepEqual([...HEALTH_ROWS], HEALTH_PACKAGES.flatMap(entry => [...entry.rows]))
+  const lines = (text: string): string[] => text.split('\n').slice(4)
+  // Only the GLM package's rows are loaded: the orchestration package is one line.
+  const glmOnly = serviceStore()
+  for (const row of GLM_ROWS) provideRowHealth(glmOnly, row, 'active', '已加载').report('s1', 'active', `${row} 生效`)
+  const glmTable = renderHealthTable(collectHealth(glmOnly, 's1'), 's1')
+  assert.deepEqual(lines(glmTable), [
+    ...GLM_ROWS.map(row => `| dsh-glm-zcode | ${row} | 生效 | ${row === 'glm-login' ? '已加载' : `${row} 生效`} |`),
+    '| dsh-hourness | 全部 | 未加载 | 包未安装，或它的行全部禁用 |',
+  ])
+  // Only the orchestration package's rows: the GLM package is one line; one loaded row keeps the others listed.
+  const hournessOnly = serviceStore()
+  provideRowHealth(hournessOnly, 'guard', 'active', '已加载')
+  const hournessTable = renderHealthTable(collectHealth(hournessOnly, 's1'), 's1')
+  assert.deepEqual(lines(hournessTable), [
+    '| dsh-glm-zcode | 全部 | 未加载 | 包未安装，或它的行全部禁用 |',
+    ...HOURNESS_ROWS.map(row => row === 'guard' ? '| dsh-hourness | guard | 已加载，本会话未触发 | 已加载 |' : `| dsh-hourness | ${row} | 未加载 | 行未启用，或激活未完成 |`),
+  ])
+  const nothing = renderHealthTable(collectHealth(serviceStore(), undefined), undefined)
+  assert.deepEqual(lines(nothing), HEALTH_PACKAGES.map(entry => `| ${entry.name} | 全部 | 未加载 | 包未安装，或它的行全部禁用 |`))
+  // The pill tells logged in from not by these words anywhere in the reply (ui/src/channel-model.ts):
+  // the table never says 已登录（套餐, and none of its own words say 未登录.
+  for (const table of [glmTable, hournessTable, nothing]) assert.ok(!table.includes('已登录（套餐'))
+  const ownWords = [...HEALTH_PACKAGES.map(entry => entry.name), '全部', '包未安装，或它的行全部禁用', '| 包 | 行 | 状态 | 说明 |']
+  assert.ok(ownWords.every(word => !word.includes('未登录')))
 })
 
 test('data: active with both directories, degraded without the project directory, inactive when the service cannot be provided', () => {
@@ -231,13 +263,13 @@ test('/glm-status prints the credential line, then the health table of the invok
   const credential = result.text.slice(0, result.text.indexOf('\n\n'))
   const table = result.text.slice(credential.length + 2)
   assert.equal(credential, 'glm-zcode：未登录（套餐 coding-plan）。运行 /glm-login 开始登录')
-  assert.ok(table!.startsWith('## 行健康（会话 s1）\n\n| 行 | 状态 | 说明 |'))
-  assert.deepEqual(table!.split('\n').slice(4).map(line => line.split(' | ')[0]), HEALTH_ROWS.map(row => `| ${row}`)) // one line per row, in patch order
-  assert.ok(table!.includes('| glm-login | 生效 | /glm-login、/glm-status、/glm-logout 已注册 |'))
-  assert.ok(table!.includes('| guard | 生效 | 门禁生效 |'))
-  assert.ok(table!.includes('| glm-prompt | 未加载 | 行未启用，或激活未完成 |'))
+  assert.ok(table!.startsWith('## 行健康（会话 s1）\n\n| 包 | 行 | 状态 | 说明 |'))
+  assert.deepEqual(table!.split('\n').slice(4).map(line => line.split(' | ')[1]), [...HEALTH_ROWS]) // one line per row, in patch order
+  assert.ok(table!.includes('| dsh-glm-zcode | glm-login | 生效 | /glm-login、/glm-status、/glm-logout 已注册 |'))
+  assert.ok(table!.includes('| dsh-hourness | guard | 生效 | 门禁生效 |'))
+  assert.ok(table!.includes('| dsh-glm-zcode | glm-prompt | 未加载 | 行未启用，或激活未完成 |'))
   const other = await run('glm-status', 's2')
-  assert.ok(other.text.includes('| guard | 已加载，本会话未触发 | 已加载 |')) // another session: the guard has not acted there
+  assert.ok(other.text.includes('| dsh-hourness | guard | 已加载，本会话未触发 | 已加载 |')) // another session: the guard has not acted there
 })
 
 test('/glm-status reports a stored login coding-plan cannot use as not logged in, with the 3.16.3 reason', async () => {
@@ -268,7 +300,7 @@ test('without a home the login row uses the user-level directory: all three comm
     assert.deepEqual(commands.map(command => command.name).sort(), ['glm-login', 'glm-logout', 'glm-status'])
     const result = await run('glm-status', 's1')
     assert.ok(result.text.startsWith('glm-zcode：未登录（套餐 coding-plan）。运行 /glm-login 开始登录\n\n## 行健康（会话 s1）'))
-    assert.ok(result.text.includes('| glm-login | 生效 | /glm-login、/glm-status、/glm-logout 已注册 |'))
+    assert.ok(result.text.includes('| dsh-glm-zcode | glm-login | 生效 | /glm-login、/glm-status、/glm-logout 已注册 |'))
   })
 })
 
@@ -290,6 +322,13 @@ test('the GLM pill reads the real /glm-status text: credential fields, the last 
     assert.deepEqual(rows?.find(entry => entry.row === 'guard'), { row: 'guard', state: '部分生效', reason: '门禁 | 部分生效' })
     assert.deepEqual(rows?.find(entry => entry.row === 'glm-login'), { row: 'glm-login', state: '生效', reason: '/glm-login、/glm-status、/glm-logout 已注册' })
     assert.deepEqual(restOf(empty), [])
+
+    // Without the orchestration package its rows are one line, named by the package.
+    const alone = await statusText(loginRow({ home }))
+    assert.deepEqual(parseHealth(alone)?.map(entry => entry.row), [...GLM_ROWS, 'dsh-hourness'])
+    assert.deepEqual(parseHealth(alone)?.at(-1), { row: 'dsh-hourness', state: '未加载', reason: '包未安装，或它的行全部禁用' })
+    assert.deepEqual(statusOf(reply(alone)), { logged: false, plan: 'coding-plan' })
+    assert.deepEqual(restOf(alone), [])
 
     // A stored login coding-plan cannot use: its reason is a field.
     await saveCredential(fs, join(home, 'credentials.json'), { version: 2, provider: 'bigmodel', userId: 'user-1' })
@@ -444,4 +483,32 @@ test('hourness: an invocation reports which journals the report can read and tha
   assert.deepEqual(await run({ home: 'C:/definitely-empty-hourness-home' }, { userHome: 'C:/definitely-empty-hourness-user' }), { state: 'active', reason: '报告读取项目目录与用户级目录；积分口径：未提供，按 token 列' })
   assert.deepEqual(await run({ home: 'C:/definitely-empty-hourness-home' }, undefined), { state: 'degraded', reason: '用户级目录不可用，用量读不到；积分口径：未提供，按 token 列' })
   assert.equal((await run({}, undefined))!.state, 'inactive')
+})
+
+/** The hourness row on `store`: its /hourness-status command. */
+function hournessStatus(store: Store): Command {
+  const commands: Command[] = []
+  hournessApply({ commands: { register: (definition) => { commands.push(definition); return () => {} } }, ...store }, { home: 'C:/definitely-empty-hourness-home' })
+  const status = commands.find(command => command.name === 'hourness-status')
+  assert.ok(status !== undefined)
+  return status
+}
+
+test('/hourness-status prints the health table of the invoking session, the one /glm-status prints after its credential line', async () => {
+  const { store, run } = loginRow({ home: 'C:/definitely-missing-glm-hourness-health-home' })
+  const status = hournessStatus(store)
+  provideRowHealth(store, 'guard', 'active', '已加载').report('s1', 'active', '门禁生效')
+  const table = await status.handler({ agent: agentIn('s1'), rawInput: ' ' })
+  const glm = await run('glm-status', 's1')
+  assert.equal(table.kind, 'success')
+  assert.equal(table.text, glm.text.slice(glm.text.indexOf('\n\n') + 2))
+  assert.ok(table.text.startsWith('## 行健康（会话 s1）\n\n| 包 | 行 | 状态 | 说明 |'))
+  // Reading the table is not the row acting in the session.
+  assert.ok(table.text.includes('| dsh-hourness | hourness | 已加载，本会话未触发 | /hourness、/hourness-status 已注册 |'))
+  assert.deepEqual(await status.handler({ agent: agentIn('s1'), rawInput: 'x' }), { kind: 'error', text: '用法：/hourness-status（无需参数）' })
+
+  // Without the GLM channel package its rows are one line.
+  const alone = serviceStore()
+  const text = (await hournessStatus(alone).handler({ agent: agentIn('s1'), rawInput: '' })).text
+  assert.ok(text.includes('| --- | --- | --- | --- |\n| dsh-glm-zcode | 全部 | 未加载 | 包未安装，或它的行全部禁用 |\n| dsh-hourness | data | 未加载 |'), text)
 })

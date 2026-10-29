@@ -8,7 +8,7 @@ GLM + House + Harness：让 GLM 以 ZCode 训练分布住进 DeepSeek Harness（
 | --- | --- | --- |
 | 底层 · 通道 | `glm-llm`、`glm-login` | 原生 ZCode 客户端通道：账号登录与加密凭证、身份头、签名 V4、端点路由、Anthropic Messages 传输、coding-plan / start-plan 双档；`/glm-login`、`/glm-status`（凭证状态与各行健康）、`/glm-logout` |
 | 底层 · 方言 | `glm-prompt`、`glm-compact` | 提示词与工具面镜像 ZCode 3.16.3、local 工具检索（LocalToolSearch / DeferredToolCall）、todo 提醒 10/10、压缩镜像 |
-| 编排层 | `data`、`guard`、`memory`、`workflow`、`hourness` | 数据目录服务、执行边界、记忆与审计流水、决策日志与晨报、用量报告 |
+| 编排层 | `data`、`guard`、`memory`、`workflow`、`hourness` | 数据目录服务、执行边界、记忆与审计流水、决策日志与晨报、用量报告；`/hourness`、`/hourness-status`（两个包各行的健康） |
 | 呈现 | `dsh-glm-hourness-ui`（独立包） | 设置页与会话输入框 pill |
 
 编排层的完整设计（项目图即主 Agent、设计循环、决策卡、规范体系等）见 `docs/ORCHESTRATION.md`，目前大部分处于规划阶段。
@@ -47,7 +47,7 @@ npm run smoke:authorized  # 需凭证：coding-plan 端到端请求
 plugin_manager install_bundle <本仓库绝对路径>
 ```
 
-行配置：`glm-prompt` 的 persona / tier 等在插件管理器中可调（导出了 Schemastery `Config`）；`guard` 的圈禁根默认取调用方 agent 的会话目录，GLM 会话的系统提示词末尾列出生效的规则，组合里有 `workspace-changes` 时另以影子模式记录 shell 写入（`docs/ORCHESTRATION.md` §6）；用户级目录与项目目录由 `data` 行提供，`memory`、`workflow`、`hourness` 配了 `home` 时以行配置为准（`docs/DESIGN.md` §2.4）。首次使用在任意会话输入 `/glm-login` 完成浏览器授权，`/glm-status` 确认后在模型选择器中选 `glm-zcode` 路由；`/glm-status` 同时列出各行在本会话是否生效及原因（`docs/DESIGN.md` §2.5）。激活期任何行都不抛错。
+行配置：`glm-prompt` 的 persona / tier 等在插件管理器中可调（导出了 Schemastery `Config`）；`guard` 的圈禁根默认取调用方 agent 的会话目录，GLM 会话的系统提示词末尾列出生效的规则，组合里有 `workspace-changes` 时另以影子模式记录 shell 写入（`docs/ORCHESTRATION.md` §6）；用户级目录与项目目录由 `data` 行提供，`memory`、`workflow`、`hourness` 配了 `home` 时以行配置为准（`docs/DESIGN.md` §2.4）。首次使用在任意会话输入 `/glm-login` 完成浏览器授权，`/glm-status` 确认后在模型选择器中选 `glm-zcode` 路由；`/glm-status` 同时按包列出各行在本会话是否生效及原因，`/hourness-status` 只列这张表，不装 GLM 通道包时也能看（`docs/DESIGN.md` §2.5）。激活期任何行都不抛错。
 
 ## 许可
 

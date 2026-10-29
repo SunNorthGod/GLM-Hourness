@@ -15,7 +15,9 @@
  * (scripts/probe/probe-dispatch.mjs): a background child with a write
  * scope, a plugin-created goal driven through two rounds, and the headless
  * runner's exit with an armed goal. The graph panel scenarios run the
- * bundle's /graph-apply and /graph-run handlers mid-step for the session.
+ * bundle's /graph-apply and /graph-run handlers mid-step for the session;
+ * the GLM and non-GLM scenarios run /hourness and /hourness-status at their
+ * last step, after /glm-status is recorded.
  *
  * Usage: node scripts/probe/run-probe.mjs
  * Requires the desktop install (DSH_DESKTOP_DIR overrides the location).
@@ -42,7 +44,7 @@ import { DISPATCH_TOOLS } from '../../dist/workflow/index.js'
 import { PEAK_REMINDER_SOURCE, PEAK_REMINDER_TEXT } from '../../dist/glm-prompt/peak-reminder.js'
 import { peakWindowAt } from '../../dist/glm-llm/credits.js'
 import { userDataHome } from '../../dist/shared/data-home.js'
-import { HEALTH_ROWS } from '../../dist/shared/health.js'
+import { HEALTH_PACKAGES, HEALTH_ROWS } from '../../dist/shared/health.js'
 import { GRAPH_TOOL_NAMES } from '../../dist/shared/tool-names.js'
 import { openEngine } from '../../dist/graph/engine.js'
 import { runNote } from '../../dist/graph/run.js'
@@ -343,7 +345,8 @@ const peakCountsMatch = scenario => scenario.steps.length > 0 && expectedPeakCou
 const peakFirst = peakNotices(peak.steps[0])
 const PEAK_NOTICE = `<system-reminder>\n${PEAK_REMINDER_TEXT}\n</system-reminder>`
 
-const plain = runScenario('non-glm', 'deepseek-probe', [{ text: 'done', status: true }], 'Reply done.', clockRow(PEAK_AT))
+// /hourness-status runs at the same step, after /glm-status is recorded.
+const plain = runScenario('non-glm', 'deepseek-probe', [{ text: 'done', status: true, command: { name: 'hourness-status' } }], 'Reply done.', clockRow(PEAK_AT))
 const plainFirst = plain.steps[0]
 const plainTools = names(plainFirst)
 
@@ -657,16 +660,20 @@ const plainSubagentTools = [...plainTools].filter(name => name === 'subagent' ||
 
 // Row health: the probe provider ran the bundle's /glm-status handler for
 // the session at the last scripted step of a scenario. Each table line is
-// `| row | status | reason |`.
+// `| package | row | status | reason |`; a package with no row loaded is one
+// line whose row cell is 全部 (src/shared/health.ts).
 const statusStep = scenario => scenario.steps.findLast(step => step.status !== undefined)
+const TABLE_HEAD = '| 包 | 行 | 状态 | 说明 |'
 const healthOf = (scenario) => {
   const step = statusStep(scenario)
-  const lines = (step?.status ?? '').split('\n').filter(line => HEALTH_ROWS.some(row => line.startsWith(`| ${row} | `)))
+  const lines = (step?.status ?? '').split('\n').filter(line => line.startsWith('| ') && line !== TABLE_HEAD && !line.startsWith('| ---'))
   return Object.fromEntries(lines.map((line) => {
-    const [row, status, ...reason] = line.slice(2, -2).split(' | ')
-    return [row, { status, reason: reason.join(' | ') }]
+    const [pkg, row, status, ...reason] = line.slice(2, -2).split(' | ')
+    return [row, { package: pkg, status, reason: reason.join(' | ') }]
   }))
 }
+const packageOf = Object.fromEntries(HEALTH_PACKAGES.flatMap(entry => entry.rows.map(row => [row, entry.name])))
+const grouped = health => HEALTH_ROWS.every(row => health[row]?.package === packageOf[row])
 const glmHealth = healthOf(glm)
 const plainHealth = healthOf(plain)
 const compactHealth = healthOf(compacted)
@@ -679,6 +686,8 @@ const GUARD_SECTION = '# Workspace rules\nThe harness checks every tool call aga
 const glmStatusText = statusStep(glm)?.status ?? ''
 // /hourness at the same step: the panel prices the scenario's usage journal
 // through the pricing service the glm-login row provides (src/shared/pricing.ts).
+const plainStatusText = statusStep(plain)?.status ?? ''
+const plainHourness = statusStep(plain)?.command
 const glmHourness = statusStep(glm)?.command
 const glmPanel = glmHourness?.text.split('## 面板\n')[1] ?? ''
 const healthLine = (health, row) => health[row] === undefined ? `${row}: missing` : `${row}: ${health[row].status}`
@@ -779,7 +788,8 @@ const checks = [
   ['glm-no-dialect: the GLM rule declaration names the native file tools', noDialectFirst?.system.includes(GUARD_SECTION) === true && noDialectFirst.system.includes('\n- Modify files and code only with the dedicated write/edit tools.'), noDialectFirst === undefined ? 'no request' : `section at ${noDialectFirst.system.indexOf(GUARD_SECTION)}`],
   ['health: the guard names the shadow fallback: on with workspace-changes mounted, off without it', shadowHealth.guard?.status === ACTED && shadowHealth.guard.reason.endsWith('影子兜底：工作区变更记录') && glmHealth.guard?.reason.endsWith('影子兜底未启用（组合里没有 workspace-changes）') === true, `${JSON.stringify(shadowHealth.guard ?? null)} | ${JSON.stringify(glmHealth.guard ?? null)}`],
   ['workflow: the runtime subagent tools are journaled dispatch names', plainSubagentTools.length === 2 && plainSubagentTools.every(name => DISPATCH_TOOLS.includes(name)), `runtime subagent tools: ${plainSubagentTools.join(', ') || 'none'}`],
-  ['health: /glm-status prints the credential line and the health table of the session, one line per bundle row', glmStatusText.startsWith('glm-zcode：未登录（套餐 coding-plan）') && glmStatusText.includes(`## 行健康（会话 ${statusStep(glm)?.sessionId}）`) && HEALTH_ROWS.every(row => glmHealth[row] !== undefined) && Object.keys(glmHealth).length === HEALTH_ROWS.length, `${Object.keys(glmHealth).length} row(s); ${glmStatusText.split('\n')[0]}`],
+  ['health: /glm-status prints the credential line and the health table of the session, one line per bundle row with its package', glmStatusText.startsWith('glm-zcode：未登录（套餐 coding-plan）') && glmStatusText.includes(`## 行健康（会话 ${statusStep(glm)?.sessionId}）\n\n${TABLE_HEAD}`) && HEALTH_ROWS.every(row => glmHealth[row] !== undefined) && Object.keys(glmHealth).length === HEALTH_ROWS.length && grouped(glmHealth), `${Object.keys(glmHealth).length} row(s), grouped ${grouped(glmHealth)}; ${glmStatusText.split('\n')[0]}`],
+  ['health: /hourness-status prints the same table as /glm-status for the session, without the credential line', plainHourness?.kind === 'success' && plainHourness.text.startsWith(`## 行健康（会话 ${statusStep(plain)?.sessionId}）\n\n${TABLE_HEAD}`) && plainHourness.text === plainStatusText.slice(plainStatusText.indexOf('\n\n') + 2) && grouped(plainHealth), `${plainHourness?.kind ?? 'not run'}; ${(plainHourness?.text ?? '').split('\n').length} line(s); same as /glm-status: ${plainHourness?.text === plainStatusText.slice(plainStatusText.indexOf('\n\n') + 2)}`],
   ['health: on the GLM route glm-prompt, guard, memory, workflow, data and glm-login report in effect; glm-compact and hourness have not acted', glmHealth['glm-prompt']?.status === ACTED && glmHealth['glm-prompt'].reason.startsWith('GLM 路由 glm-probe/glm-5.3：') && ['guard', 'memory', 'workflow', 'data', 'glm-login'].every(row => glmHealth[row]?.status === ACTED) && ['glm-compact', 'hourness'].every(row => glmHealth[row]?.status === IDLE), HEALTH_ROWS.map(row => healthLine(glmHealth, row)).join('; ')],
   ['pricing: /hourness on the GLM route prices the usage journal through the pricing service glm-login provides', glmHourness?.kind === 'success' && glmPanel.startsWith('- 全部用量记录；高峰为工作日 14:00–18:00（UTC+8）') && /^- glm-5\.3：\d+ 次 · 积分 \d+\.\d\d/m.test(glmPanel), `${glmHourness?.kind ?? 'not run'}; ${JSON.stringify(glmPanel.split('\n').slice(0, 3))}`],
   ['health: on the non-GLM route glm-prompt reports why it is not in effect', plainHealth['glm-prompt']?.status === '未生效' && plainHealth['glm-prompt'].reason.startsWith('非 GLM 路由 glm-probe/deepseek-probe'), JSON.stringify(plainHealth['glm-prompt'] ?? null)],

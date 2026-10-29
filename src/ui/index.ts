@@ -9,16 +9,17 @@
  * invocation; without it the panel lists calls and tokens. Registers through
  * the DSH commands seam (command-compact is the reference shape); the
  * directories are resolved per invocation, and a missing one is named in the
- * output.
+ * output. The row also registers `/hourness-status`, the row health table of
+ * both packages, so it can be read without the GLM channel package.
  */
 import { readFile } from 'node:fs/promises'
 import { auditPaths } from '../memory/audit.ts'
 import { reportFromFiles } from '../workflow/morning-report.ts'
 import { usagePanel, usagePanelLines } from './panel.ts'
 import { dataHomes, type DataHomes } from '../shared/data-home.ts'
-import { provideRowHealth, sessionIdOf, type HealthState } from '../shared/health.ts'
+import { collectHealth, provideRowHealth, renderHealthTable, sessionIdOf, type HealthState } from '../shared/health.ts'
 import { pricingService, type UsagePricing } from '../shared/pricing.ts'
-import type { CommandsHost, ProvideHost, ServiceLookup } from '../shared/dsh-min.ts'
+import type { CommandDefinitionLike, CommandsHost, ProvideHost, ServiceLookup } from '../shared/dsh-min.ts'
 
 export interface HournessConfig {
   /** The project directory (workspace `.llm`); decisions and violations live under `<home>/audit`. Defaults to the data service's. */
@@ -74,9 +75,28 @@ export function hournessHealth(homes: DataHomes, priced: boolean): [HealthState,
   return [missing.length === 2 ? 'inactive' : 'degraded', [...missing, pricing].join('；')]
 }
 
-/** cordis plugin entry: register `/hourness`. */
+/**
+ * `/hourness-status`: the row health table of both packages for the
+ * invoking session, the one `/glm-status` prints after its credential line
+ * (src/shared/health.ts). It reads the views only; the hourness row does not
+ * report for it.
+ */
+function statusCommand(ctx: ServiceLookup): CommandDefinitionLike {
+  return {
+    definitionId: 'dsh-glm-hourness/hourness-status',
+    name: 'hourness-status',
+    description: '查看两个包各行的健康',
+    handler: (invocation) => {
+      if (invocation.rawInput.trim().length > 0) return Promise.resolve({ kind: 'error', text: '用法：/hourness-status（无需参数）' })
+      const sessionId = sessionIdOf(invocation.agent)
+      return Promise.resolve({ kind: 'success', text: renderHealthTable(collectHealth(ctx, sessionId), sessionId) })
+    },
+  }
+}
+
+/** cordis plugin entry: register `/hourness` and `/hourness-status`. */
 export function apply(ctx: CommandsHost & ServiceLookup & Partial<ProvideHost>, config: HournessConfig = {}): () => void {
-  const health = provideRowHealth(ctx, 'hourness', 'active', '/hourness 已注册')
+  const health = provideRowHealth(ctx, 'hourness', 'active', '/hourness、/hourness-status 已注册')
   // A malformed or throwing pricing service is warned about once per row.
   let warned = false
   const problem = (message: string): void => {
@@ -102,7 +122,9 @@ export function apply(ctx: CommandsHost & ServiceLookup & Partial<ProvideHost>, 
       }
     },
   })
+  const unregisterStatus = ctx.commands.register(statusCommand(ctx))
   return () => {
+    unregisterStatus()
     unregister()
     health.dispose()
   }

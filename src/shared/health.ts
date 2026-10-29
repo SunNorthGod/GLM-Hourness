@@ -7,17 +7,37 @@
  * (loaded and configured, or degraded and the reason). Whenever the row acts
  * in a session (an assembled step, a tool call, a model call, a command) it
  * reports that session's status; a report is stored the first time and
- * whenever the status changes. The `/glm-status` command reads every view
- * through `ctx.get` and renders the table for the invoking session: a row
- * whose service is absent is not loaded (disabled, or its activation never
- * completed). Provider and reader need no load order and no shared module
- * instance, and a row unloads its view with its fiber. Reports stay in the
- * host process; nothing reaches the model-visible conversation.
+ * whenever the status changes. Two commands read every view through
+ * `ctx.get` and render the same table for the invoking session: `/glm-status`
+ * of the GLM channel package (after its credential line) and
+ * `/hourness-status` of the orchestration package. A row whose service is
+ * absent is not loaded (disabled, or its activation never completed); a
+ * package none of whose rows is loaded takes one line. Provider and reader
+ * need no load order and no shared module instance, and a row unloads its
+ * view with its fiber. Reports stay in the host process; nothing reaches the
+ * model-visible conversation.
  */
 import type { ProvideHost, ServiceLookup } from './dsh-min.ts'
 
-/** The bundle's host rows (loader ids `glm-hourness/<row>`), in patch order. The UI bundle row runs in the client and is not listed. */
-export const HEALTH_ROWS = ['glm-llm', 'glm-login', 'glm-prompt', 'glm-compact', 'data', 'guard', 'memory', 'workflow', 'hourness', 'graph', 'graph-panel'] as const
+/** The GLM channel package's host rows (loader ids `glm-hourness/<row>`), in patch order. */
+export const GLM_ROWS = ['glm-llm', 'glm-login', 'glm-prompt', 'glm-compact'] as const
+
+/** The orchestration package's host rows, in patch order. */
+export const HOURNESS_ROWS = ['data', 'guard', 'memory', 'workflow', 'hourness', 'graph', 'graph-panel'] as const
+
+/**
+ * Each package with its host rows: the runtime copy of the directory table
+ * (scripts/packages.mjs), which src/ does not import; preflight checks the
+ * two agree once the table lists package names and rows (split step 5). The
+ * client rows run in the client and are not listed.
+ */
+export const HEALTH_PACKAGES = [
+  { name: 'dsh-glm-zcode', rows: GLM_ROWS },
+  { name: 'dsh-hourness', rows: HOURNESS_ROWS },
+] as const
+
+/** Every host row, package by package, in patch order. */
+export const HEALTH_ROWS = [...GLM_ROWS, ...HOURNESS_ROWS] as const
 
 export type HealthRow = typeof HEALTH_ROWS[number]
 
@@ -138,14 +158,29 @@ const STATUS_LABELS: Readonly<Record<HealthEntry['status'], string>> = {
   absent: '未加载',
 }
 
-/** The health table as the `/glm-status` text shows it (Markdown). */
+/** The 行 cell of a package's single line when none of its rows is loaded (ui/src/channel-model.ts reads it). */
+const WHOLE_PACKAGE = '全部'
+
+/**
+ * The health table as `/glm-status` and `/hourness-status` show it
+ * (Markdown), package by package: one line per row, in the order of
+ * `entries`, or one line for a package whose rows are all present in
+ * `entries` and all not loaded.
+ */
 export function renderHealthTable(entries: readonly HealthEntry[], sessionId: string | undefined): string {
   const cell = (text: string): string => text.replace(/\s*\n\s*/g, ' ').replaceAll('|', '\\|')
+  const lines = HEALTH_PACKAGES.flatMap(({ name, rows }) => {
+    const members: ReadonlySet<string> = new Set(rows)
+    const own = entries.filter(entry => members.has(entry.row))
+    const whole = rows.every(row => own.some(entry => entry.row === row && entry.status === 'absent'))
+    if (whole) return [`| ${name} | ${WHOLE_PACKAGE} | ${STATUS_LABELS.absent} | 包未安装，或它的行全部禁用 |`]
+    return own.map(entry => `| ${name} | ${entry.row} | ${STATUS_LABELS[entry.status]} | ${cell(entry.reason)} |`)
+  })
   return [
     sessionId === undefined ? '## 行健康' : `## 行健康（会话 ${sessionId}）`,
     '',
-    '| 行 | 状态 | 说明 |',
-    '| --- | --- | --- |',
-    ...entries.map(entry => `| ${entry.row} | ${STATUS_LABELS[entry.status]} | ${cell(entry.reason)} |`),
+    '| 包 | 行 | 状态 | 说明 |',
+    '| --- | --- | --- | --- |',
+    ...lines,
   ].join('\n')
 }
