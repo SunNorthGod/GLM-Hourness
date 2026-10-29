@@ -58,6 +58,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "接管项目设计 0.1 写完（.agents/tasks/bootstrap/design.md，§0.1 是一页人话摘要；草图 mockup-takeover.svg；graph-ops.json 的 19 条操作在图的临时副本上演练全部通过）。接下来独立评审第 1 轮。"
+    },
+    {
+      "at": "2026-10-29T17:19:56.430Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "接管项目设计 0.1 评审第 1 轮（.agents/tasks/bootstrap/design-review.md）：CHANGES_REQUESTED，挡路 4 条（F1–F4）、不挡路 18 条。设计循环继续。按 d-chat-not-cards，下一稿里给人的问题改为方案写法（推荐、疑问、不做），并补一页人话放行稿（d-design-onepage）。"
     }
   ]
 }
