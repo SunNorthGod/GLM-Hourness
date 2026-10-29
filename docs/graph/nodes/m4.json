@@ -47,6 +47,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M4 设计 0.2 写完（.agents/tasks/m4/design.md）：第 1 轮 8 条挡路与 13 条不挡路全部处理，逐条见 §19.1；D3 删掉，剩 D1、D2 两道待人定。接下来第 2 轮评审。"
+    },
+    {
+      "at": "2026-10-29T16:45:46.456Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M4 设计 0.2 评审第 2 轮（.agents/tasks/m4/design-review.md）：CHANGES_REQUESTED，挡路 2 条、不挡路 13 条；第 1 轮 21 条全部关闭。挡路：F9 GLM 路由上延迟调用之后的跟进记录；F10 问人的题缺前因后果、用了术语（d-plain-questions）。设计循环继续。"
     }
   ]
 }
