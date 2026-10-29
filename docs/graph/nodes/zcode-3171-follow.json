@@ -71,6 +71,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "独立评审第 1 轮 APPROVED、0 挡路、3 条不挡路（.agents/tasks/zcode-3171/review-impl-pass-1.md）。编排方批准沙盒：先在工作树里跑 npm run probe，再用工作树的构建无界面真实请求一次（glm-zcode coding-plan、glm-5.3-flash），凭证按字节拷进运行目录、用完删除、不进 git，线路记录只记头名与形状。"
+    },
+    {
+      "at": "2026-10-29T21:35:38.007Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "沙盒探针 118/118 通过。工作树构建的无界面真实请求（glm-zcode coding-plan）：9 个请求全部 200，6 个模型请求签名被接受（没有 401），UA 为 ZCode/3.17.1，x-zcode-session-features 出现在 x-zcode-query-source 之后、x-zcode-session-type 之前。凭证副本已删，主检出 git 状态不变，沙盒已释放。编排方要求在 L4 之前把实测的整串归因头顺序与 3.17.1 包里的顺序并排记下并确认一致。"
     }
   ]
 }
