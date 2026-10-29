@@ -1,0 +1,38 @@
+{
+  "id": "ablation",
+  "type": "task",
+  "title": "注入文字的消融对比",
+  "status": "approved",
+  "parent": "orch",
+  "kind": "test",
+  "body": "按 .agents/tasks/prompt-audit/report.md §8：先修 risk-calib-read（运行目录移到仓库外的临时目录，验收脚本放在被测模型够不着的地方），在 scripts/calibrate/ 加只在标定时加载的消融开关，每一臂先用 L3 探针核对请求里恰好少了或多了那一段；A0 现状重新测基线（旧基线 4cb8799 早于图工具）。臂 A1–A5 见报告 §8.2，两档模型，每格一开始 5 次（question-30 B），变化不明确的臂再加次数。积分不受限（norm-decision-tiers 的常设授权）；尽量补一道完成率会失败的较难任务，取自真实踩过的坑。结论回到 question-31 的整理与 Dynamic Behavior 的去留。改 scripts/calibrate 与 scripts/probe，split 第 5 步也改过它们，所以排在 split 合入之后。",
+  "acceptance": [
+    "标定运行目录在仓库外，被测模型的读取够不到验收脚本与别的试次（事后扫事件流核对）",
+    "每一臂经 L3 探针核对开关生效；每臂每档模型至少 5 次，结果表写明完成、步数、积分、返工与违规",
+    "每段文字的去留都有一行结论与依据，写进 DESIGN.md"
+  ],
+  "edges": [
+    {
+      "type": "depends",
+      "to": "split"
+    },
+    {
+      "type": "source",
+      "to": "question-30"
+    },
+    {
+      "type": "source",
+      "to": "risk-calib-read"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-29T11:24:09.107Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "question-30 B 的落地",
+      "relay": "积分你随便用，我积分多没事",
+      "to": "approved"
+    }
+  ]
+}

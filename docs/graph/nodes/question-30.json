@@ -2,7 +2,7 @@
   "id": "question-30",
   "type": "question",
   "title": "要不要花积分做注入文字的消融对比",
-  "status": "approved",
+  "status": "done",
   "parent": "orch",
   "body": "每臂只改一处（去掉汇报细度节、guard 缩成一句、图与记忆工具改为延迟、加 ZCode Dynamic Behavior 原文、GLM 上去掉被别名遮住的 DSH 工具节），两档模型各跑，看完成、步数、积分、返工与违规。先修 risk-calib-read（运行目录移出仓库）并加消融开关。样本只看得出 30%–40% 以上的变化，现有两道题已饱和，看不出质量上的小差别。为什么推荐 C：先用 3 次筛掉没变化的臂，只给有变化的补次数，钱花在有信号的地方。反方：如果主人的套餐是 Lite（每周 1 万积分），第一期就占一成多，可能挤掉这周的开发；而且样本小，小于三成的差别本来就量不出来。",
   "options": [
@@ -24,6 +24,13 @@
   ],
   "recommend": "C",
   "decider": "human",
+  "decision": "B",
+  "evidence": [
+    {
+      "kind": "decision",
+      "ref": "B"
+    }
+  ],
   "history": [
     {
       "at": "2026-10-29T11:19:34.312Z",
@@ -31,6 +38,22 @@
       "op": "propose",
       "reason": "清点报告 Q1 与 Q6：消融要花积分，属于必须问人的第 3 类",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-29T11:24:08.374Z",
+      "actor": "llm",
+      "op": "decide",
+      "reason": "用户说积分随便用：选把握更大的 B，每臂一开始就跑 5 次，变化不明确的臂再加次数；先修 risk-calib-read 并加消融开关，排在 split 合入之后（任务 ablation）",
+      "relay": "积分你随便用，我积分多没事",
+      "from": "approved",
+      "to": "done",
+      "option": "B",
+      "evidence": [
+        {
+          "kind": "decision",
+          "ref": "B"
+        }
+      ]
     }
   ]
 }
