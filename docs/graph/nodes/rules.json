@@ -135,6 +135,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "派出独立评审 rules-design-v05-review（wf_04ea6ba2a7e5f6d6）。简报写明：默认档位已由人定为少做（d-peak-mode），0.5 §19 的暂定无影响按未满足的要求处理；插件带来的默认条目暂时只能看、档位例外（d-defaults-readonly）；合入前检查清单与必须全审清单可能放进规则板显示（与人讨论中，不挡路）。"
+    },
+    {
+      "at": "2026-10-29T18:01:16.022Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "更正上一条批注的运行编号：rules-design-v05-review 是 wf_67aac31bd9eebeb3（上一条误写为 wf_04ea6ba2a7e5f6d6）。"
     }
   ]
 }
