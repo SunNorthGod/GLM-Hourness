@@ -54,6 +54,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "m8-row-titles（wf_893fb981054a32c3）的评审步在用户重新登录 Kiro 之后仍因 BAD_DECRYPT 一启动就失败，代码 0ec0b58 不受影响。改派 m8-row-titles-retry（wf_afef02a167d6ce1e）：独立评审、桌面版 L4 截图（先向编排方申请桌面版）、变基合入、记图、清理工作树。"
+    },
+    {
+      "at": "2026-10-29T17:00:02.724Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "Code review pass 1 of 0ec0b58: APPROVED, no blocking findings. Client-row call C upheld. Non-blocking notes (FACTS F9 row still reads as if every row counts by module location; client rows share the package title; close the desktop before merging) in .agents/tasks/row-titles/review.md. Desktop L4 screenshot check still pending."
     }
   ]
 }
