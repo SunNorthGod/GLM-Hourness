@@ -1,0 +1,36 @@
+{
+  "id": "question-26",
+  "type": "question",
+  "title": "主 Agent 的工具里还留不留写文件的工具",
+  "status": "approved",
+  "parent": "m3",
+  "body": "用户：「直接不给主Agent的提示词里加那些写啊改啊之类的工具呗那就，然后再用提示词提醒他的身份之类的咋样？」现状（2026-10-28 改定、M3 设计 §3.1.3、m3-1 验收第 3 条）：主 Agent 的工具面与普通会话相同，写文件的调用由 guard 在执行边界拒绝，拒绝信息给出正路（派发）。去掉工具不需要 DSH 的 preset：编排层插件在组装时从工具面去掉即可（设计里已用同一办法对普通会话去掉两个设计工具）。shell 也能写文件，只去掉 Write、Edit 这类工具关不住写入。",
+  "options": [
+    {
+      "key": "A",
+      "label": "保持现状：工具都在，写入由 guard 拦，拦截信息教它派发",
+      "consequence": "工具面与 ZCode 一致；模型可能先试着写、被拦一次才改走正路，多一步；不改设计与验收"
+    },
+    {
+      "key": "B",
+      "label": "只去掉写文件的工具，不留 guard 兜底",
+      "consequence": "shell 照样能写文件，关不住；工具不在时模型更可能想办法绕（Anthropic 记录过 agent 为完成任务绕开限制）"
+    },
+    {
+      "key": "C",
+      "label": "去掉 Write、Edit 这类写文件的工具，身份提示词讲清角色，guard 继续拦 shell 写入并兜底",
+      "consequence": "模型看不到写工具就不会去试，省步数与 token；限制能做什么比事后拦更可靠；改 m3-1 验收第 3 条与 M3 设计 §3.1.3；与 ZCode 的工具面不同，要在 GLM 上用标定确认没有副作用"
+    }
+  ],
+  "recommend": "C",
+  "decider": "human",
+  "history": [
+    {
+      "at": "2026-10-29T10:04:39.154Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "用户提议主 Agent 不拿写文件的工具；改的是 m3-1 验收第 3 条与 2026-10-28 的机制定案，属于必须问人的第 1 类",
+      "to": "approved"
+    }
+  ]
+}
