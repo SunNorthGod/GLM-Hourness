@@ -63,23 +63,31 @@ panelTest('a mutation from the panel is applied as the human, with a readable ou
   assert.deepEqual(await run({ op: 'status', id: 'feature-1', rev: await rev('feature-1'), to: 'doing', reason: '开工' }), { kind: 'success', text: '「面板」改为进行中' })
 })
 
-panelTest('refusals come back as one line with the code and the way forward', async ({ run }) => {
+panelTest('refusals come back as one Chinese line for the human who clicked, with the code; the LLM wording stays out', async ({ run, rev }) => {
   const stale = await run({ op: 'decide', id: 'question-1', rev: 'stale', option: 'A', reason: '旧版本' })
-  assert.equal(stale.kind, 'error')
-  assert.match(stale.text, /^图没有写入（stale_revision）：.+。read the projection again/)
+  assert.deepEqual(stale, { kind: 'error', text: '图没有写入（stale_revision）：这个节点刚被改过，面板已读到新内容，看一眼再点一次' })
+  // A proposal the human already settled elsewhere: the line names the node's status now.
+  assert.equal((await run({ op: 'approve', id: 'feature-1', rev: await rev('feature-1'), reason: '再批一次' })).text, '图没有写入（bad_transition）：节点已经不在可以这样改的状态（现在：已批准）')
+  assert.equal((await run({ op: 'comment', id: 'feature-9', text: 'x' })).text, '图没有写入（not_found）：图里没有这个节点了')
+  // Codes the panel does not cause keep the engine's message, after a Chinese lead.
   const relayed = await run({ op: 'comment', id: 'feature-1', text: 'x', relay: '人说的' })
-  assert.match(relayed.text, /^图没有写入（invalid）：relay/)
+  assert.match(relayed.text, /^图没有写入（invalid）：请求不合法（relay/)
   const garbled = await run('{ "op": ')
-  assert.equal(garbled.kind, 'error')
-  assert.match(garbled.text, /^图没有写入（invalid）：the input is not JSON/)
+  assert.deepEqual(garbled, { kind: 'error', text: '图没有写入（invalid）：/graph-apply 后面要跟一个 JSON 写入请求' })
+  for (const result of [stale, relayed, garbled]) assert.doesNotMatch(result.text, /read the projection|send one mutation/)
 })
 
 panelTest('the graph is found under the invoking session\'s working directory, or reported missing', async ({ command, dir }) => {
   const missing = await command.handler(invocation(join(dir, 'elsewhere'), JSON.stringify({ op: 'comment', id: 'goal-1', text: 'x' })))
-  assert.equal(missing.kind, 'error')
-  assert.match(missing.text, /^图没有写入（not_found）：no project graph at/)
+  assert.deepEqual(missing, { kind: 'error', text: '图没有写入（not_found）：这个会话的工作目录下没有项目图（docs/graph）' })
   const noCwd = await command.handler(invocation(undefined, JSON.stringify({ op: 'comment', id: 'goal-1', text: 'x' })))
-  assert.match(noCwd.text, /^图没有写入（not_found）：this session has no working directory/)
+  assert.deepEqual(noCwd, { kind: 'error', text: '图没有写入（not_found）：这个会话没有工作目录，找不到项目图' })
+})
+
+panelTest('both panel commands are described in Chinese; /graph-run advertises its input', () => {
+  const [applyCommand, runCommand] = register()
+  assert.deepEqual([applyCommand?.description, runCommand?.description, runCommand?.input], ['项目图面板用：以人的身份改一次图', '项目图面板用：开始、暂停或重做一个任务', { hint: 'start|stop|redo <节点 id>' }])
+  return Promise.resolve()
 })
 
 panelTest('an absolute config.dir is used as is', async ({ graph }) => {

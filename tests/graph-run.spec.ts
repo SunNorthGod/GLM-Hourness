@@ -12,10 +12,12 @@ import assert from 'node:assert/strict'
 import { mkdir, mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import test from 'node:test'
 import { openEngine } from '../src/graph/engine.ts'
 import { apply } from '../src/graph/panel-row.ts'
 import { RUN_SOURCE } from '../src/graph/run-control.ts'
 import { RUN_COMMAND, acceptanceChange, nodeRefusal, offersRedo, runNote } from '../src/graph/run.ts'
+import type { GraphNode } from '../src/graph/schema.ts'
 import { loadGraph } from '../src/graph/store.ts'
 import type { AgentCommandInvocationLike, CommandDefinitionLike, CommandResultLike, InjectableServices, LiveAgentLike, UserNotice } from '../src/shared/dsh-min.ts'
 import { fakeInjector } from './fake-rc3.ts'
@@ -187,10 +189,10 @@ runTest('redo: a done task reopens as the human, the agent on it is cancelled, t
     { op: 'edit', id: 'task-1', set: { acceptance: ['主 Agent 收到指令', '焦点落在节点上'] }, reason: '验收条件加一条' },
   ]) assert.ok((await engine.apply('human', { ...mutation, rev: await rev() })).ok)
   const done = await nodeOf(graph, 'task-1')
-  assert.deepEqual([offersRedo(done), nodeRefusal(done, 'start')], [true, '「开始按钮」已经完成；要按现在的验收条件再做一遍，用「改了验收条件后重做」'])
+  assert.deepEqual([offersRedo(done), nodeRefusal(done, 'start')], [true, '「开始按钮」已经完成；要再做一遍，用「按现在的验收条件重做」'])
   main.status = 'running'
   focus(MAIN, 'task-1')
-  assert.deepEqual(await send('redo task-1'), { kind: 'success', text: '已让主 Agent 按新的验收条件重做「开始按钮」（先停下了主 Agent）' })
+  assert.deepEqual(await send('redo task-1'), { kind: 'success', text: '已让主 Agent 按现在的验收条件重做「开始按钮」（先停下了主 Agent）' })
   assert.deepEqual(sequence(calls), [`${MAIN}.cancel`, `${MAIN}.followup`])
   const message = only(calls, 'followup')
   assert.deepEqual(message.source.graphRun, { action: 'redo', node: 'task-1', commandId: 'command-1', stopped: [MAIN] })
@@ -213,9 +215,23 @@ runTest('the panel offers a redo on a task in progress once its acceptance chang
   const changed = await nodeOf(graph, 'task-1')
   assert.deepEqual(acceptanceChange(changed), { from: ['主 Agent 收到指令'], to: ['改过的条件'] })
   assert.equal(offersRedo(changed), true)
-  assert.deepEqual(await send('redo task-1'), { kind: 'success', text: '已让主 Agent 按新的验收条件重做「开始按钮」' })
+  assert.deepEqual(await send('redo task-1'), { kind: 'success', text: '已让主 Agent 按现在的验收条件重做「开始按钮」' })
   assert.equal((await nodeOf(graph, 'task-1')).status, 'doing', 'a task in progress stays in progress; the redo is a comment')
   assert.equal(offersRedo(await nodeOf(graph, 'task-1')), false)
+})
+
+test('a redo written under the earlier label still marks where the last run began', () => {
+  // m2-9-l4 in the real graph: the redo note of the label used until 2026-10-29, then no acceptance edit.
+  const at = '2026-10-28T10:00:00Z'
+  const node: GraphNode = {
+    id: 'task-1', type: 'task', title: 't', status: 'doing', parent: 'feature-1', acceptance: ['新'],
+    history: [
+      { at, actor: 'human', op: 'propose' },
+      { at, actor: 'human', op: 'edit', reason: '改条件', changes: { acceptance: { from: ['旧'], to: ['新'] } } },
+      { at, actor: 'human', op: 'status', from: 'done', to: 'doing', reason: '人在面板里点了「改了验收条件后重做」：先停下了主 Agent' },
+    ],
+  }
+  assert.deepEqual([acceptanceChange(node), offersRedo(node)], [undefined, false])
 })
 
 runTest('refusals give one readable line and change nothing: bad input, unknown node, not a task, nobody on the node, no subagents service', async ({ graph, calls, main, focus, child, host, send }) => {
@@ -236,7 +252,7 @@ runTest('refusals give one readable line and change nothing: bad input, unknown 
   assert.deepEqual(await send('stop task-1'), { kind: 'error', text: '「暂停」没有执行：宿主没有 agents、subagents 服务，看不出也停不了子 agent' })
   assert.deepEqual(await send('stop task-2'), { kind: 'error', text: '「暂停」没有执行：宿主没有 agents、subagents 服务，看不出也停不了子 agent' }, 'not even the main agent: a child may stand there too')
   host.remove('sessionProjections')
-  assert.deepEqual(await send('redo task-1'), { kind: 'error', text: '「改了验收条件后重做」没有执行：现场投影 graphLive 不在，看不出谁在这个节点上' })
+  assert.deepEqual(await send('redo task-1'), { kind: 'error', text: '「按现在的验收条件重做」没有执行：现场投影 graphLive 不在，看不出谁在这个节点上' })
   assert.deepEqual(calls, [])
   assert.equal((await loadGraph(graph)).revision, before)
 })

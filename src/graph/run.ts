@@ -21,13 +21,17 @@ export function isRunAction(value: string): value is RunAction {
 export const RUN_LABELS: Readonly<Record<RunAction, string>> = {
   start: '从这里开始做',
   stop: '暂停',
-  redo: '改了验收条件后重做',
+  // True for both cases the button shows in: a done task, and one whose acceptance changed since it was started.
+  redo: '按现在的验收条件重做',
 }
 
 /** The start of the history entry a control writes on its node as the human. */
 export function runNote(action: RunAction): string {
   return `人在面板里点了「${RUN_LABELS[action]}」`
 }
+
+/** The redo note under the label used until 2026-10-29; history in existing graphs (m2-9, m2-9-l4) still carries it. */
+const EARLIER_REDO_NOTE = '人在面板里点了「改了验收条件后重做」'
 
 /**
  * Why the action cannot run on this node, or undefined. Only tasks have run
@@ -40,7 +44,7 @@ export function nodeRefusal(node: GraphNode, action: RunAction): string | undefi
   if (action === 'stop') return undefined
   if (node.status === 'proposed') return `「${node.title}」还是提议，先批准`
   if (node.status === 'dropped' || node.status === 'superseded') return `「${node.title}」已${STATUS_LABELS[node.status]}`
-  if (action === 'start' && node.status === 'done') return `「${node.title}」已经完成；要按现在的验收条件再做一遍，用「${RUN_LABELS.redo}」`
+  if (action === 'start' && node.status === 'done') return `「${node.title}」已经完成；要再做一遍，用「${RUN_LABELS.redo}」`
   return undefined
 }
 
@@ -48,7 +52,7 @@ export function nodeRefusal(node: GraphNode, action: RunAction): string | undefi
 function isRunEntry(entry: HistoryEntry): boolean {
   if (entry.actor !== 'human') return false
   const text = entry.op === 'comment' ? entry.text : entry.op === 'status' ? entry.reason : undefined
-  return text !== undefined && (text.startsWith(runNote('start')) || text.startsWith(runNote('redo')))
+  return text !== undefined && [runNote('start'), runNote('redo'), EARLIER_REDO_NOTE].some(note => text.startsWith(note))
 }
 
 /** The acceptance change since the latest start or redo from the panel: the old value of the first edit, the new value of the last. */

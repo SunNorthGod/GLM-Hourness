@@ -421,6 +421,8 @@ export interface CommandDefinitionLike<Invocation extends CommandInvocationLike 
    * false when another record already carries the payload.
    */
   readonly recordInput?: boolean
+  /** Free-form input the command takes: `hint` is the placeholder clients show (dsh-commands `normalizeDefinition`, commands:157-161: a non-empty string). */
+  readonly input?: { readonly hint: string }
   handler(invocation: Invocation): Promise<CommandResultLike>
 }
 

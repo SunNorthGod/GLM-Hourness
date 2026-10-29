@@ -27,7 +27,7 @@
 import type { AgentCommandInvocationLike, CommandDefinitionLike, CommandInvocationLike, CommandResultLike, CommandsHost, InjectHost, ProvideHost } from '../shared/dsh-min.ts'
 import { provideRowHealth } from '../shared/health.ts'
 import { openEngine } from './engine.ts'
-import { STATUS_LABELS, refusalText } from './labels.ts'
+import { STATUS_LABELS, noGraphText, refusalForHuman } from './labels.ts'
 import { LIVE_KEY, liveProjection } from './live.ts'
 import type { Mutation } from './mutation.ts'
 import { runFromCommand, type RunServices } from './run-control.ts'
@@ -72,19 +72,25 @@ function outcomeText(mutation: Mutation, node: GraphNode): string {
   }
 }
 
-/** Apply one mutation from a command invocation as the human. */
+/** Apply one mutation from a command invocation as the human; refusals read as labels.ts refusalForHuman. */
 export async function applyFromCommand(invocation: CommandInvocationLike, configured: string): Promise<CommandResultLike> {
   let mutation: unknown
   try {
     mutation = JSON.parse(invocation.rawInput)
   }
-  catch (error) {
-    return { kind: 'error', text: refusalText({ code: 'invalid', message: `the input is not JSON: ${(error as Error).message}`, hint: `send one mutation object after /${APPLY_COMMAND}` }) }
+  catch {
+    return { kind: 'error', text: `图没有写入（invalid）：/${APPLY_COMMAND} 后面要跟一个 JSON 写入请求` }
   }
-  const dir = await locateGraph(configured, invocation.agent.session?.header?.cwd)
-  if (typeof dir !== 'string') return { kind: 'error', text: refusalText(dir.error) }
-  const result = await openEngine(dir).apply('human', mutation)
-  if (!result.ok) return { kind: 'error', text: refusalText(result.error) }
+  const cwd = invocation.agent.session?.header?.cwd
+  const dir = await locateGraph(configured, cwd)
+  if (typeof dir !== 'string') return { kind: 'error', text: `图没有写入（not_found）：${noGraphText(cwd, configured)}` }
+  const engine = openEngine(dir)
+  const result = await engine.apply('human', mutation)
+  if (!result.ok) {
+    const id = (mutation as { readonly id?: unknown } | null)?.id
+    const status = result.error.code === 'bad_transition' && typeof id === 'string' ? (await engine.load()).nodes.get(id)?.status : undefined
+    return { kind: 'error', text: refusalForHuman(result.error, status) }
+  }
   return { kind: 'success', text: outcomeText(mutation as Mutation, result.node) }
 }
 
@@ -167,14 +173,15 @@ function registerCommands(ctx: CommandsHost<AgentCommandInvocationLike>, config:
     {
       definitionId: name,
       name: APPLY_COMMAND,
-      description: 'Apply one project graph change as the human (sent by the graph panel)',
+      description: '项目图面板用：以人的身份改一次图',
       recordInput: false,
       handler: invocation => applyFromCommand(invocation, dir),
     },
     {
       definitionId: 'dsh-glm-hourness/graph-run',
       name: RUN_COMMAND,
-      description: 'Start, stop or redo the work on a project graph task as the human (sent by the graph panel)',
+      description: '项目图面板用：开始、暂停或重做一个任务',
+      input: { hint: 'start|stop|redo <节点 id>' },
       handler: invocation => runFromCommand(invocation, dir, services),
     },
   ]

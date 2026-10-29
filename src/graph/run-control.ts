@@ -33,7 +33,7 @@
  */
 import { createUserNotice, type AgentCommandInvocationLike, type AgentsService, type CommandResultLike, type LiveAgentLike, type SessionProjectionsService, type SubagentsService, type UserNotice } from '../shared/dsh-min.ts'
 import { openEngine, type GraphEngine } from './engine.ts'
-import { STATUS_LABELS, refusalText } from './labels.ts'
+import { STATUS_LABELS, noGraphText, refusalForHuman } from './labels.ts'
 import { FOCUS_TOOL, LIVE_KEY, placeOf } from './live.ts'
 import type { LoadedGraph } from './parse.ts'
 import { RUN_COMMAND, RUN_LABELS, acceptanceChange, isRunAction, nodeRefusal, runNote, type RunAction } from './run.ts'
@@ -133,7 +133,7 @@ async function record(engine: GraphEngine, graph: LoadedGraph, node: GraphNode, 
   const result = reopen
     ? await engine.apply('human', { op: 'status', id: node.id, rev: graph.revisions.get(node.id), to: 'doing', reason: note })
     : await engine.apply('human', { op: 'comment', id: node.id, text: note })
-  return result.ok ? undefined : refusalText(result.error)
+  return result.ok ? undefined : refusalForHuman(result.error, node.status)
 }
 
 function message(invocation: AgentCommandInvocationLike, action: RunAction, node: GraphNode, summary: string, lines: readonly string[], stopped?: readonly string[]): UserNotice {
@@ -178,7 +178,7 @@ export async function runFromCommand(invocation: AgentCommandInvocationLike, con
   const { action, id } = input
   const agent = invocation.agent
   const dir = await locateGraph(configured, agent.session.header.cwd)
-  if (typeof dir !== 'string') return refused(action, refusalText(dir.error))
+  if (typeof dir !== 'string') return refused(action, noGraphText(agent.session.header.cwd, configured))
   const engine = openEngine(dir)
   const graph = await engine.load()
   const node = graph.nodes.get(id)
@@ -218,7 +218,7 @@ export async function runFromCommand(invocation: AgentCommandInvocationLike, con
   if (problem !== undefined) return refused(action, problem)
   if (standing.main) agent.cancel({ kind: 'user' }, { keepInbox: true })
   const failures = stopChildren(standing.children)
-  agent.followup(message(invocation, action, node, `按新的验收条件重做「${node.title}」`, redoLines(node, change, reopen, standing.children), stopped.length === 0 ? undefined : stopped))
-  const outcome = `已让主 Agent 按新的验收条件重做「${node.title}」${stopped.length === 0 ? busy : `（先停下了${who}）`}`
+  agent.followup(message(invocation, action, node, `按现在的验收条件重做「${node.title}」`, redoLines(node, change, reopen, standing.children), stopped.length === 0 ? undefined : stopped))
+  const outcome = `已让主 Agent 按现在的验收条件重做「${node.title}」${stopped.length === 0 ? busy : `（先停下了${who}）`}`
   return { kind: failures.length === 0 ? 'success' : 'error', text: [outcome, ...failures].join('；') }
 }

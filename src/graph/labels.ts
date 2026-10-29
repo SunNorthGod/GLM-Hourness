@@ -3,7 +3,7 @@
  * §2.6 field table, §2.9 history), shared by the picture, the graph panel
  * (ui/src/graph) and the command outcomes.
  */
-import type { EngineError } from './mutation.ts'
+import type { EngineError, ErrorCode } from './mutation.ts'
 import type { Actor, EvidenceKind, NodeType, Op, Stage, Status, TaskKind, Tier, Verification } from './schema.ts'
 
 export const TYPE_LABELS: Readonly<Record<NodeType, string>> = {
@@ -87,7 +87,30 @@ export const OP_LABELS: Readonly<Record<Op, string>> = {
   supersede: '取代',
 }
 
-/** An engine refusal as one readable line of a command outcome: what failed and the way forward (CHARTER.md §6). */
-export function refusalText(error: Pick<EngineError, 'code' | 'message' | 'hint'>): string {
-  return `图没有写入（${error.code}）：${error.message}。${error.hint}`
+/**
+ * An engine refusal as the human who clicked in the panel reads it
+ * (/graph-apply and /graph-run outcomes): what happened and what to do, in
+ * Chinese, with the engine's code in parentheses. The engine's message and
+ * hint are written for the LLM, which gets them as the structured error of
+ * a graph tool (tools.ts); here only the codes the panel cannot cause
+ * quote the engine's message. `status` is the node's status now, for a
+ * bad_transition.
+ */
+export function refusalForHuman(error: Pick<EngineError, 'code' | 'message'>, status?: Status): string {
+  const reason: Readonly<Record<ErrorCode, string>> = {
+    stale_revision: '这个节点刚被改过，面板已读到新内容，看一眼再点一次',
+    bad_transition: `节点已经不在可以这样改的状态${status === undefined ? '' : `（现在：${STATUS_LABELS[status]}）`}`,
+    graph_invalid: '图里有校验错误，写入一律被拒；让 agent 修，或用 git 还原节点文件',
+    not_found: '图里没有这个节点了',
+    invalid: `请求不合法（${error.message}）`,
+    forbidden: `没有这样改的权限（${error.message}）`,
+    conflict: `与图里已有的内容冲突（${error.message}）`,
+    evidence_required: `缺少证据（${error.message}）`,
+  }
+  return `图没有写入（${error.code}）：${reason[error.code]}`
+}
+
+/** Why a human command found no graph: the session has no working directory, or no graph under it. */
+export function noGraphText(cwd: string | undefined, configured: string): string {
+  return cwd === undefined ? '这个会话没有工作目录，找不到项目图' : `这个会话的工作目录下没有项目图（${configured}）`
 }

@@ -59,10 +59,10 @@ export function apply(ctx: CommandsHost & ServiceLookup & Partial<ProvideHost>, 
   const unregister = ctx.commands.register({
     definitionId: 'dsh-glm-hourness/hourness',
     name: 'hourness',
-    description: 'Morning report and usage panel from the audit journal',
+    description: '晨报与积分用量（读审计流水）',
     handler: async invocation => {
       if (invocation.rawInput.trim().length > 0) {
-        return { kind: 'error', text: 'Usage: /hourness (no arguments)' }
+        return { kind: 'error', text: '用法：/hourness（无需参数）' }
       }
       const homes = dataHomes(ctx, config.home)
       health.report(sessionIdOf(invocation.agent), ...hournessHealth(homes))
@@ -70,7 +70,7 @@ export function apply(ctx: CommandsHost & ServiceLookup & Partial<ProvideHost>, 
         return { kind: 'success', text: await renderHourness(homes) }
       }
       catch (error) {
-        return { kind: 'error', text: `hourness report failed: ${(error as Error).message}` }
+        return { kind: 'error', text: `晨报生成失败：${(error as Error).message}` }
       }
     },
   })
