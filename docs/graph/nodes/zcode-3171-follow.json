@@ -83,6 +83,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "归因头顺序已核对（.agents/tasks/zcode-3171/verify.md）：3.17.1 的 Uft 依次发 x-zcode-query-source、x-zcode-session-features、x-session-id，它的 AI SDK 在 withUserAgentSuffix（Cyn）里经 Headers 重新排序，所以 3.17.1 自己在线路上也把 session-features 放在 x-zcode-session-type 之前，与实测一致，不用改。分支已变基到 main ecdee9d，661 个用例全过。编排方批准桌面版 L4，但不先把主检出快进（避免 L4 期间主干领先于远端）：照 m8-row-titles 的做法，备份桌面 profile，两个 junction 临时指向 .worktrees/zcode-3171 的包，验完改回并用 profile-shape 比对确认复原。"
+    },
+    {
+      "at": "2026-10-29T21:47:44.251Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "桌面版 L4 通过（junction 指向工作树构建）：GLM-5.3-Flash 会话正常回答，系统提示词是 3.17.1 的文本，/glm-status 显示 glm-llm 生效。模型默认值已改回 deepseek-account/deepseek-flash/high，junction 已指回主检出，profile-shape 比对无差异，桌面版已关。接下来变基、重跑门禁、合入主干。"
     }
   ]
 }
