@@ -66,6 +66,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "旧运行 wf_1bf73c760441c68f 属于已经不在的会话，不能续跑。派出 split-design-round2（wf_dafe2943d6d25f53）：沿用旧的作者与评审提示词，从第二轮开始改 design.md 并重新评审，最多两轮；设计要同时适用于 main 与合入后的 m1-parity；结尾列出待人定的事项（两个目标的文字、guard 在非方言路由上的行为、包名）。"
+    },
+    {
+      "at": "2026-10-29T01:59:03.494Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "设计第二轮写完（.agents/tasks/split/design.md 版本 0.2），第一轮评审的 R01–R14 逐条处理，见设计 §13。主要改动：guard 在第 2 步只换算工具名、拦截范围仍按 GLM 模型族，范围随人定的方案在第 7 步落地；两包共用的 ZCode 原文放进公共库镜像文件 src/shared/zcode-notice.ts，逐字门禁不放宽；L4 与探针守卫改为结构比对，不再比 SHA-256；合入时先关桌面版，因为 dsh-hmr 会在下一次 profile 写入时按磁盘上的新布局重组；目录归属只写在 scripts/packages.mjs。桌面版 profile 仍然不用改。待人定：两个目标的文字与改挂（含 m6）、guard 在方言未接管路由上的方案（建议 G2）、split 验收的改写、包名、profile 不改。等第二轮设计评审。"
     }
   ]
 }

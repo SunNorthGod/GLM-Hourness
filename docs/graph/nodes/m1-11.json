@@ -56,6 +56,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "状态说明：第一轮 L4 已做，第二轮是 M1 的批次 L4，等 m1-parity 合入后做，现在没人在做它。要在桌面版上看的：签名请求（m1-signing，沙盒已验过）、与 ZCode 一致后的请求（m1-parity）、GLM 通道与面板在一次重启后都正常。"
+    },
+    {
+      "at": "2026-10-29T01:59:02.691Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "派出 m1-l4-and-cleanup（wf_10cbbc919767c467）：在主检出构建 a9f12e1、重启桌面版，按 .agents/tasks/zcode-parity/integration.md §6 的八项与本节点三条验收在真实会话里验证；子会话的 session type 头值与失败即停的界面接受 L2 覆盖；随后提交 HANDOFF、DESIGN、FACTS 的收尾，再做 m1-cleanup。运行期间独占桌面时段。"
     }
   ]
 }

@@ -2,7 +2,7 @@
   "id": "m1-parity",
   "type": "task",
   "title": "coding-plan 请求与 ZCode 3.16.3 一致（150% 加成）",
-  "status": "doing",
+  "status": "done",
   "parent": "m1",
   "kind": "implement",
   "tier": "hard",
@@ -11,6 +11,27 @@
     "coding-plan 模型请求的 Authorization 与 x-api-key 用 PAT；agent/configs 只发 apiKeyId，不发 secret；PAT 拿不到时照 3.16.3 报错",
     "头（含 X-Title Z Code@electron、User-Agent、x-query-id、x-zcode-trace-id、x-zcode-query-source、大小写与顺序）、请求体（键序、model、thinking、output_config、max_tokens）与 metadata.user_id 在代码级别与 3.16.3 一致；只有 DSH 控制的差异写进 DESIGN",
     "沙盒真实请求全部 200、签名通过，截包的头名与形式与 3.16.3 一致"
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "a9f12e1"
+    },
+    {
+      "kind": "test",
+      "ref": "npm test on a9f12e1: 556 passing, ESLint 250 / knip 21 / jscpd 2, gitleaks clean, verbatim 443/0",
+      "exit": 0
+    },
+    {
+      "kind": "check",
+      "ref": "npm run probe 94/94 (temporary sandbox profile, deleted)",
+      "exit": 0
+    },
+    {
+      "kind": "check",
+      "ref": "sandbox wire check on a9f12e1: 5 model requests 200 and signed, PAT in Authorization and x-api-key, agent/configs x-api-key-id only (.agents/tasks/zcode-parity/wire-evidence.md)",
+      "exit": 0
+    }
   ],
   "history": [
     {
@@ -115,6 +136,41 @@
       "actor": "llm",
       "op": "comment",
       "text": "第 9 项与 question-9 的决定不符：用户选 A（没有 deviceMid 时照 3.16.3 生成并写回 ~/.zcode），前一次运行的步骤提示词写于决定之前，仍写着只读；plan.md 已按 A 写了完整移植，但 23292da 只移植了读取，提交与文档把它称为已决定的偏离，评审两轮都按「question-9 A 的只读方案」放过。本机有 deviceMid，线上请求不受影响，只在没有 ZCode 设备 id 的机器上不同。派出 m1-parity-review3-merge（wf_fa55803c4c0e35bc）：先按 plan.md 第 9 项补写回并改掉称其为偏离的文字，再做评审第三轮（question-11：最后一轮，不过就停下等人），通过后合入 main、离线探针、沙盒真实请求核对、集成报告。"
+    },
+    {
+      "at": "2026-10-29T01:59:01.794Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "m1-parity-review3-merge（wf_fa55803c4c0e35bc）：第 9 项补上写回（de6c171），评审第三轮 APPROVED（0 阻断、1 非阻断），合入并推送 origin/main a9f12e1；离线探针 94/94，沙盒真实请求 5 个全部 200 且签名，头名与形式与 3.16.3 一致（.agents/tasks/zcode-parity/wire-evidence.md、integration.md）",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "a9f12e1"
+        },
+        {
+          "kind": "test",
+          "ref": "npm test on a9f12e1: 556 passing, ESLint 250 / knip 21 / jscpd 2, gitleaks clean, verbatim 443/0",
+          "exit": 0
+        },
+        {
+          "kind": "check",
+          "ref": "npm run probe 94/94 (temporary sandbox profile, deleted)",
+          "exit": 0
+        },
+        {
+          "kind": "check",
+          "ref": "sandbox wire check on a9f12e1: 5 model requests 200 and signed, PAT in Authorization and x-api-key, agent/configs x-api-key-id only (.agents/tasks/zcode-parity/wire-evidence.md)",
+          "exit": 0
+        }
+      ]
+    },
+    {
+      "at": "2026-10-29T01:59:02.014Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "评审第三轮的非阻断项与文档收尾（手动压缩空闲会话的 query id 差异写进 DESIGN §4.5b、§4.8；DESIGN §4.2、§4.3 与 FACTS 的 User-Agent 行按本次实测改写）交给 m1-11 的运行一并提交。工作树 .worktrees/m1-parity 与分支 m1-parity 已删除。"
     }
   ]
 }
