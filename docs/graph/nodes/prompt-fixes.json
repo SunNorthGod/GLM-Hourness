@@ -67,6 +67,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "独立评审第 1 轮 APPROVED、0 挡路（.agents/tasks/prompt-fixes/final-review.md）。编排方批准沙盒探针：分支 prompt-fixes 的 14820e0，其余在跑的运行都只写设计，没有别的运行在用沙盒。"
+    },
+    {
+      "at": "2026-10-29T18:31:16.011Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "沙盒探针在分支 prompt-fixes（14820e0）上 115/115 通过，退出码 0；沙盒已释放。接下来变基、重跑门禁、合入主干。"
     }
   ]
 }
