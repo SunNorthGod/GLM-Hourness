@@ -270,7 +270,7 @@ export function Options({ graph, node, onDecided }: OptionsProps): ReactElement 
                 {node.recommend === option.key && node.status !== 'done' ? <span className="glmg-who relay">推荐</span> : null}
                 {current ? <span className="glmg-who human">当前</span> : null}
               </span>
-              <span className="glmg-option-text">{option.consequence}</span>
+              <span className="glmg-option-text">{option.consequence ?? `得到 ${option.gain ?? ''}；代价 ${option.cost ?? ''}`}</span>
             </button>
             {isPicked
               ? (

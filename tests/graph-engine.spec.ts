@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { openEngine, type ApplyResult, type GraphEngine } from '../src/graph/engine.ts'
 import { serializeNode } from '../src/graph/format.ts'
+import { renderGraph } from '../src/graph/render.ts'
 import type { Actor, GraphNode } from '../src/graph/schema.ts'
 import { loadGraph } from '../src/graph/store.ts'
 import { fixtureTest } from './graph-helpers.ts'
@@ -57,13 +58,16 @@ async function fixture(): Promise<Fixture> {
 
 const graphTest = fixtureTest(fixture)
 
+/** A table card (ORCHESTRATION.md §2.6): rows of label, gain and cost, the recommended option last, crux, verdict and weight. */
 const QUESTION = {
   type: 'question',
   title: '存储格式',
   parent: 'feature-1',
-  // The recommended option comes last (ORCHESTRATION.md §2.6).
-  options: [{ key: 'B', label: 'Markdown', consequence: '正文更好读' }, { key: 'A', label: 'JSON', consequence: '不新增解析器' }],
+  options: [{ key: 'B', label: 'Markdown', gain: '正文更好读', cost: '要自写 frontmatter 解析器' }, { key: 'A', label: 'JSON', gain: '不新增解析器', cost: '长正文是一行字符串' }],
   recommend: 'A',
+  crux: '长段正文主要在 Gitee 网页上读吗？',
+  verdict: '是 → B；否 → A',
+  weight: 'two-way',
 }
 
 // propose
@@ -136,6 +140,76 @@ graphTest('propose refuses a question whose recommended option is not the last o
   refused(await g.engine.apply('llm', { op: 'propose', reason: '自己定也一样', node: { ...first, decider: 'agent' } }), 'invalid', 'node.options')
   assert.equal((await loadGraph(g.dir)).nodes.size, 4, 'refused proposals write nothing')
   assert.equal((await g.run('llm', { op: 'propose', reason: '推荐在后', node: QUESTION })).node.recommend, 'A')
+})
+
+// the table card (§2.6, decision d-option-card)
+
+/** QUESTION with fields replaced; undefined leaves a field out. */
+function card(fields: Record<string, unknown>): Record<string, unknown> {
+  return { ...QUESTION, ...fields }
+}
+
+/** QUESTION's options with fields of the row at `index` replaced. */
+function rows(index: number, fields: Record<string, unknown>): Record<string, unknown>[] {
+  return QUESTION.options.map((option, at) => at === index ? { ...option, ...fields } : option)
+}
+
+/** The refusal of a write, which must name `field` and match `pattern` in its message or hint. */
+function refusedWith(result: ApplyResult, field: string, pattern: RegExp): void {
+  refused(result, 'invalid', field)
+  const { error } = result as Extract<ApplyResult, { ok: false }>
+  assert.match(`${error.message} | ${error.hint}`, pattern, field)
+}
+
+graphTest('propose holds a question the human decides to the table card, naming the field to fix with a hint', async g => {
+  const cases: ReadonlyArray<readonly [node: Record<string, unknown>, field: string, pattern: RegExp]> = [
+    [card({ crux: undefined }), 'node.crux', /has no crux .*取决于/],
+    [card({ crux: '要不要\n分两步' }), 'node.crux', /not one line of at most 60/],
+    [card({ crux: '问'.repeat(61) }), 'node.crux', /at most 60/],
+    [card({ verdict: undefined }), 'node.verdict', /has no verdict .*是 → <key>；否 → <key>/],
+    [card({ verdict: `是 → B；否 → A${'。'.repeat(110)}` }), 'node.verdict', /at most 120/],
+    [card({ verdict: '是 → C；否 → A' }), 'node.verdict', /names "C", which is not one of its option keys \(B, A\)/],
+    [card({ verdict: '是 → B；否 → 再想想' }), 'node.verdict', /does not name the recommended option "A"/],
+    [card({ weight: undefined }), 'node.weight', /has no weight .*one-way .*§2\.9\.1 categories 1 and 5/],
+    [card({ options: rows(0, { label: '一'.repeat(21) }) }), 'node.options[0].label', /longer than 20 characters .*怎么做/],
+    [card({ options: rows(1, { gain: undefined }) }), 'node.options[1].gain', /has no gain .*得到/],
+    [card({ options: rows(0, { cost: '要写解析器\n还要测' }) }), 'node.options[0].cost', /not one line .*代价/],
+    [card({ options: rows(1, { gain: '快'.repeat(61) }) }), 'node.options[1].gain', /at most 60/],
+    [card({ options: rows(0, { gain: undefined, cost: undefined, consequence: '正文更好读' }) }), 'node.options[0].consequence', /has a consequence .*gain .*cost/],
+    [card({ dimension: { name: '维'.repeat(13), values: { A: '0 个', B: '1 个' } } }), 'node.dimension.name', /at most 12/],
+    [card({ dimension: { name: '新增依赖', values: { A: '0 个' } } }), 'node.dimension.values', /no cell for option "B"/],
+    [card({ dimension: { name: '新增依赖', values: { A: '0 个', B: '1 个', C: '2 个' } } }), 'node.dimension.values.C', /cell for "C", which is not one of its option keys/],
+    [card({ dimension: { name: '新增依赖', values: { A: '0 个', B: '个'.repeat(21) } } }), 'node.dimension.values.B', /at most 20/],
+    [card({ dimension: { name: '工期', values: { A: '1 天', B: '1 天' } } }), 'node.dimension.values', /same 工期 .*leave dimension out/],
+    [card({ dimension: [{ name: '工期', values: { A: '1 天', B: '2 天' } }, { name: '依赖', values: { A: '0 个', B: '1 个' } }] }), 'node.dimension', /must be a JSON object/],
+    [card({ why: '不新增解析器' }), 'node.why', /cannot be set by propose/],
+    [card({ counter: '正文更好读' }), 'node.counter', /cannot be set by propose/],
+  ]
+  for (const [node, field, pattern] of cases) {
+    for (const actor of ['human', 'llm'] as const) refusedWith(await g.engine.apply(actor, { op: 'propose', reason: field, node }), field, pattern)
+  }
+  assert.equal((await loadGraph(g.dir)).nodes.size, 4, 'refused proposals write nothing')
+  // Limits count code points: 19 characters and one outside the BMP make 20.
+  const label = `${'一'.repeat(19)}😀`
+  const written = await g.run('llm', {
+    op: 'propose',
+    reason: '整张卡',
+    node: card({ options: rows(1, { label }), dimension: { name: '新增依赖', values: { B: '1 个', A: '0 个' } }, crux: '问'.repeat(60), weight: 'one-way' }),
+  })
+  assert.equal(written.node.options?.[1].label, label)
+  const graph = await loadGraph(g.dir)
+  assert.deepEqual(graph.issues, [], 'the card is written canonically')
+  assert.deepEqual(Object.keys(graph.nodes.get(written.id)?.dimension?.values ?? {}), ['A', 'B'], 'cells are written in key order')
+  assert.deepEqual([written.node.crux, written.node.verdict, written.node.weight], ['问'.repeat(60), '是 → B；否 → A', 'one-way'])
+})
+
+graphTest('an agent question may leave out crux, verdict and weight; its rows and any card line it has follow the card rules', async g => {
+  const own = card({ decider: 'agent', crux: undefined, verdict: undefined, weight: undefined })
+  assert.equal((await g.run('llm', { op: 'propose', reason: '自己定的细节', node: own })).node.decider, 'agent')
+  refusedWith(await g.engine.apply('llm', { op: 'propose', reason: '旧写法', node: { ...own, options: rows(0, { gain: undefined, cost: undefined, consequence: '好读' }) } }), 'node.options[0].consequence', /has a consequence/)
+  refusedWith(await g.engine.apply('llm', { op: 'propose', reason: '长标签', node: { ...own, options: rows(1, { label: '一'.repeat(21) }) } }), 'node.options[1].label', /longer than 20/)
+  refusedWith(await g.engine.apply('llm', { op: 'propose', reason: '名不存在', node: { ...own, verdict: '是 → D；否 → A' } }), 'node.verdict', /names "D"/)
+  refusedWith(await g.engine.apply('llm', { op: 'propose', reason: '同值列', node: { ...own, dimension: { name: '工期', values: { A: '1 天', B: '1 天' } } } }), 'node.dimension.values', /same 工期/)
 })
 
 // approve and reject
@@ -319,7 +393,7 @@ graphTest('edit of options or recommend keeps the recommended option last; a que
   // A question from before the rule: its recommended option comes first.
   const old: GraphNode = {
     id: 'question-old', type: 'question', title: '旧待决', status: 'approved', parent: 'feature-1',
-    options: [...QUESTION.options].reverse(), recommend: 'A',
+    options: [{ key: 'A', label: 'JSON', consequence: '不新增解析器' }, { key: 'B', label: 'Markdown', consequence: '正文更好读' }], recommend: 'A',
     history: [{ at: '2026-10-28T07:00:00.000Z', actor: 'llm', op: 'propose', reason: '规则之前', to: 'approved' }],
   }
   await writeFile(join(g.dir, 'nodes', 'question-old.json'), serializeNode(old))
@@ -328,6 +402,54 @@ graphTest('edit of options or recommend keeps the recommended option last; a que
   must(await g.act('llm', { op: 'edit', id: 'question-old', reason: '交给人', set: { decider: 'human' } }))
   refused(await g.act('human', { op: 'edit', id: 'question-old', reason: '改说法', set: { options: [{ ...old.options![0], label: 'MD' }, old.options![1]] } }), 'invalid', 'set.options')
   assert.equal(must(await g.act('human', { op: 'decide', id: 'question-old', option: 'A', reason: '定了' })).node.decision, 'A')
+})
+
+graphTest('edits of card fields keep the table card whole; a question from before the card still loads, renders, is decided and takes other edits', async g => {
+  const asked = await g.run('human', { op: 'propose', reason: '问人', node: QUESTION })
+  const edit = (set: Record<string, unknown>): Promise<ApplyResult> => g.act('human', { op: 'edit', id: asked.id, reason: '改卡', set })
+  refusedWith(await edit({ crux: null }), 'set.crux', /has no crux/)
+  refusedWith(await edit({ verdict: null }), 'set.verdict', /has no verdict/)
+  refusedWith(await edit({ weight: null }), 'set.weight', /has no weight/)
+  refusedWith(await edit({ verdict: '是 → B' }), 'set.verdict', /does not name the recommended option "A"/)
+  refusedWith(await edit({ crux: '长段正文\n主要在哪读' }), 'set.crux', /not one line/)
+  refusedWith(await edit({ dimension: { name: '新增依赖', values: { A: '0 个' } } }), 'set.dimension.values', /no cell for option "B"/)
+  const dimension = { name: '新增依赖', values: { A: '0 个', B: '1 个' } }
+  must(await edit({ dimension }))
+  // Replacing option B with C leaves the column and the verdict naming a key that is gone.
+  const replaced = [{ key: 'C', label: 'YAML', gain: '能写注释', cost: '要加 YAML 解析依赖' }, QUESTION.options[1]]
+  refusedWith(await edit({ options: replaced }), 'set.dimension.values', /no cell for option "C"/)
+  refusedWith(await edit({ options: replaced, dimension: { name: '新增依赖', values: { A: '0 个', C: '1 个' } } }), 'set.verdict', /names "B"/)
+  refusedWith(await edit({ options: [{ ...QUESTION.options[0], consequence: '正文更好读' }, QUESTION.options[1]] }), 'set.options[0].consequence', /has a consequence/)
+  const changed = must(await edit({ options: replaced, dimension: { name: '新增依赖', values: { A: '0 个', C: '1 个' } }, verdict: '是 → C；否 → A', weight: 'one-way' }))
+  assert.deepEqual(changed.node.history.at(-1)?.changes, {
+    options: { from: QUESTION.options, to: replaced },
+    dimension: { from: dimension, to: { name: '新增依赖', values: { A: '0 个', C: '1 个' } } },
+    verdict: { from: '是 → B；否 → A', to: '是 → C；否 → A' },
+    weight: { from: 'two-way', to: 'one-way' },
+  })
+  must(await edit({ dimension: null }))
+
+  // Questions from before the table card: option text in consequence, labels over 20 characters, no crux, verdict or weight.
+  const options = [{ key: 'A', label: '把正文写成多行字符串放进 JSON 文件里', consequence: '不新增解析器' }, { key: 'B', label: 'Markdown', consequence: '正文更好读' }]
+  const history: GraphNode['history'] = [{ at: '2026-10-28T07:00:00.000Z', actor: 'llm', op: 'propose', reason: '表格卡之前', to: 'approved' }]
+  const open: GraphNode = { id: 'question-open', type: 'question', title: '旧待决', status: 'approved', parent: 'feature-1', options, recommend: 'B', history }
+  const done: GraphNode = {
+    ...open, id: 'question-done', title: '已决的旧待决', status: 'done', decision: 'A', evidence: [{ kind: 'decision', ref: 'A' }],
+    history: [...history, { at: '2026-10-28T07:30:00.000Z', actor: 'human', op: 'decide', reason: '定了', from: 'approved', to: 'done', option: 'A', evidence: [{ kind: 'decision', ref: 'A' }] }],
+  }
+  for (const node of [open, done]) await writeFile(join(g.dir, 'nodes', `${node.id}.json`), serializeNode(node))
+  const graph = await loadGraph(g.dir)
+  assert.deepEqual(graph.issues, [], 'the card rules are not file rules')
+  const rendered = renderGraph(graph)
+  assert.ok(rendered.ok && rendered.svg.includes('拍板：A 把正文写成多行字符串放进 JSON 文件里'), 'a decided question from before the card renders with its choice')
+  assert.equal(must(await g.act('human', { op: 'decide', id: 'question-done', option: 'B', reason: '推翻' })).node.decision, 'B')
+  must(await g.act('human', { op: 'edit', id: 'question-open', reason: '改标题', set: { title: '旧待决（改名）' } }))
+  must(await g.act('llm', { op: 'edit', id: 'question-open', reason: '交给人', set: { decider: 'human' } }))
+  refusedWith(await g.act('human', { op: 'edit', id: 'question-open', reason: '改说法', set: { options: [{ ...options[0], consequence: '不加解析器' }, options[1]] } }), 'set.options[0].consequence', /has a consequence/)
+  const table = [{ key: 'A', label: 'JSON 多行字符串', gain: '不新增解析器', cost: '长正文是一行字符串' }, { key: 'B', label: 'Markdown', gain: '正文更好读', cost: '要自写解析器' }]
+  refusedWith(await g.act('human', { op: 'edit', id: 'question-open', reason: '改成表格', set: { options: table } }), 'set.crux', /has no crux/)
+  must(await g.act('human', { op: 'edit', id: 'question-open', reason: '改成表格', set: { options: table, crux: '正文主要在网页上读吗？', verdict: '是 → B；否 → A', weight: 'two-way' } }))
+  assert.equal(must(await g.act('human', { op: 'decide', id: 'question-open', option: 'B', reason: '定了' })).node.decision, 'B')
 })
 
 graphTest('edit by a human can move a node to another parent', async g => {

@@ -262,7 +262,11 @@ const FIELD_LABELS: Readonly<Record<EditableField, string>> = {
   nonGoals: '非目标',
   writeScope: '写入范围',
   options: '选项',
+  dimension: '对比列',
   recommend: '推荐项',
+  crux: '取决于',
+  verdict: '结论行',
+  weight: '可逆性',
   decider: '决定者',
 }
 

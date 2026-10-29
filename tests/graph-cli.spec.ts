@@ -79,7 +79,7 @@ cliTest('show prints the projection of a node; an unknown node is a structured n
 })
 
 cliTest('open lists the open items with the decision queue', async g => {
-  await g.cli(['propose', JSON.stringify({ reason: '问人', node: { type: 'question', title: '输出格式', parent: 'feature-1', options: [{ key: 'A', label: '缩进 JSON', consequence: '好读' }, { key: 'B', label: '单行 JSON', consequence: '省字' }], recommend: 'B' } })])
+  await g.cli(['propose', JSON.stringify({ reason: '问人', node: { type: 'question', title: '输出格式', parent: 'feature-1', options: [{ key: 'A', label: '缩进 JSON', gain: '好读', cost: '输出长一倍' }, { key: 'B', label: '单行 JSON', gain: '省字', cost: '人难读' }], recommend: 'B', crux: '输出主要给人读吗？', verdict: '是 → A；否 → B', weight: 'two-way' } })])
   const open = await g.cli(['open'])
   assert.equal(open.exitCode, 0)
   assert.deepEqual(open.out.items.ready.map((entry: { id: string }) => entry.id), ['task-1'])

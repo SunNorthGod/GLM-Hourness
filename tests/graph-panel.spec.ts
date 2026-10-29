@@ -34,7 +34,7 @@ const panelTest = fixtureTest(async (): Promise<Fixture> => {
   await seedAsHuman(graph, [
     { type: 'goal', title: '项目图' },
     { type: 'feature', title: '面板', parent: 'goal-1' },
-    { type: 'question', title: '面板放哪', parent: 'feature-1', options: [{ key: 'A', label: '右侧栏', consequence: '与会话并排' }, { key: 'B', label: '网页', consequence: '离开 IDE' }], recommend: 'B' },
+    { type: 'question', title: '面板放哪', parent: 'feature-1', options: [{ key: 'A', label: '右侧栏', gain: '与会话并排', cost: '窄，表格要竖排' }, { key: 'B', label: '网页', gain: '宽，表格放得下', cost: '离开 IDE' }], recommend: 'B', crux: '你常在 IDE 里看图吗？', verdict: '是 → A；否 → B', weight: 'two-way' },
   ])
   const [command] = register()
   assert.ok(command !== undefined)

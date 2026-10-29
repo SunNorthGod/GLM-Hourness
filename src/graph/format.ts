@@ -6,6 +6,7 @@
  */
 import {
   ACTORS,
+  CARD_FIELDS,
   COMMIT_PATTERN,
   DECIDERS,
   EDGE_TYPES,
@@ -25,7 +26,9 @@ import {
   TIERS,
   TIMESTAMP_PATTERN,
   VERIFICATIONS,
+  WEIGHTS,
   isPassingEvidence,
+  type CardDimension,
   type DecisionOption,
   type Evidence,
   type FieldChange,
@@ -211,10 +214,31 @@ function nullable(check: Checker): Checker {
   return (value, path, report) => value === null ? null : check(value, path, report)
 }
 
+/** Shape only: the table card rules (gain and cost, lengths, one line) are write rules in engine.ts, so questions written before them still load. */
 const option: Checker = (value, path, report) => record(value, path, [
   ['key', optionKey, true],
   ['label', line, true],
-  ['consequence', text, true],
+  ['gain', text, false],
+  ['cost', text, false],
+  ['consequence', text, false],
+], report)
+
+/** Option key to cell text, at least one entry. */
+const cells: Checker = (value, path, report) => {
+  if (!isRecord(value) || Object.keys(value).length === 0) {
+    report(path, 'must be a JSON object of option key to cell text')
+    return INVALID
+  }
+  let ok = true
+  for (const [key, cell] of Object.entries(value)) {
+    if (optionKey(key, `${path}.${key}`, report) === INVALID || text(cell, `${path}.${key}`, report) === INVALID) ok = false
+  }
+  return ok ? value : INVALID
+}
+
+const dimension: Checker = (value, path, report) => record(value, path, [
+  ['name', text, true],
+  ['values', cells, true],
 ], report)
 
 const edge: Checker = (value, path, report) => record(value, path, [
@@ -255,7 +279,11 @@ const FIELD_CHECKERS: Record<typeof NODE_FIELDS[number], Checker> = {
   nonGoals: list(text),
   writeScope: list(scopePath),
   options: list(option),
+  dimension,
   recommend: optionKey,
+  crux: text,
+  verdict: text,
+  weight: oneOf(WEIGHTS),
   decider: oneOf(DECIDERS),
   decision: optionKey,
   edges: list(edge),
@@ -377,8 +405,8 @@ function nodeRuleIssues(node: GraphNode, file: string): GraphIssue[] {
     if (node.decision !== undefined && !keys.has(node.decision)) report('decision', `"${node.decision}" is not an option key`)
   }
   else {
-    for (const field of ['options', 'recommend', 'decider', 'decision'] as const) {
-      if (node[field] !== undefined) report(field, 'only question nodes carry options, recommend, decider and decision')
+    for (const field of [...CARD_FIELDS, 'decider', 'decision'] as const) {
+      if (node[field] !== undefined) report(field, `only question nodes carry ${[...CARD_FIELDS, 'decider', 'decision'].join(', ')}`)
     }
   }
   node.edges?.forEach((entry, index) => {
@@ -411,10 +439,26 @@ function canonicalEvidence(entry: Evidence): Record<string, unknown> {
   return out
 }
 
+function canonicalOption(entry: DecisionOption): Record<string, unknown> {
+  const out: Record<string, unknown> = { key: entry.key, label: entry.label }
+  if (entry.gain !== undefined) out.gain = entry.gain
+  if (entry.cost !== undefined) out.cost = entry.cost
+  if (entry.consequence !== undefined) out.consequence = entry.consequence
+  return out
+}
+
+/** Cells in code-unit order of their keys (JSON writes integer-like keys first either way, so the order stays stable). */
+function canonicalDimension(entry: CardDimension): Record<string, unknown> {
+  const keys = Object.keys(entry.values).sort(compareText)
+  return { name: entry.name, values: Object.fromEntries(keys.map(key => [key, entry.values[key]])) }
+}
+
 function canonicalValue(field: string, value: unknown): unknown {
   switch (field) {
     case 'options':
-      return (value as readonly DecisionOption[]).map(entry => ({ key: entry.key, label: entry.label, consequence: entry.consequence }))
+      return (value as readonly DecisionOption[]).map(canonicalOption)
+    case 'dimension':
+      return canonicalDimension(value as CardDimension)
     case 'edges':
       return [...(value as readonly GraphEdge[])].sort(compareEdges).map(canonicalEdge)
     case 'evidence':

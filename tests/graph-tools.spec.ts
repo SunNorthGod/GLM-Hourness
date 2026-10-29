@@ -44,7 +44,7 @@ async function seed(graph: string): Promise<void> {
     { type: 'goal', title: '项目图', acceptance: ['人能看，LLM 能读写'] },
     { type: 'feature', title: '图工具', parent: 'goal-1' },
     { type: 'task', title: '读投影', parent: 'feature-1', acceptance: ['单测通过'] },
-    { type: 'question', title: '工具给谁', parent: 'feature-1', options: [{ key: 'A', label: '全部 agent', consequence: '都有正路' }, { key: 'B', label: '只给主 Agent', consequence: '要识别主 Agent' }], recommend: 'B' },
+    { type: 'question', title: '工具给谁', parent: 'feature-1', options: [{ key: 'A', label: '全部 agent', gain: '子 agent 也有正路', cost: '每个子 agent 多 9 个工具' }, { key: 'B', label: '只给主 Agent', gain: '子 agent 工具面不变', cost: '要识别主 Agent' }], recommend: 'B', crux: '子 agent 要自己改图吗？', verdict: '是 → A；否 → B', weight: 'two-way' },
     { type: 'decision', title: '每个操作一个工具', parent: 'goal-1' },
   ])
 }
@@ -113,10 +113,34 @@ toolTest('graph_propose says the recommended option goes last, and a question th
   assert.match(node.recommend.description, /must be the last option/)
   assert.match(node.options.description, /recommended one last/)
   assert.match(runtime.scoped.find(tool => tool.name === 'graph_edit')!.description, /recommended option last/)
-  const first = { type: 'question', title: '放哪', parent: 'feature-1', options: [{ key: 'A', label: '侧栏', consequence: '并排' }, { key: 'B', label: '网页', consequence: '离开 IDE' }], recommend: 'A' }
+  const first = { type: 'question', title: '放哪', parent: 'feature-1', options: [{ key: 'A', label: '侧栏', gain: '与会话并排', cost: '窄，表格要竖排' }, { key: 'B', label: '网页', gain: '宽，表格放得下', cost: '离开 IDE' }], recommend: 'A', crux: '你常在 IDE 里看图吗？', verdict: '是 → A；否 → B', weight: 'two-way' }
   const error = refused(await call('graph_propose', { node: first, reason: '问人' }), 'invalid', 'node.options')
   assert.match(error.hint, /recommended option last/)
   assert.equal(ok(await call('graph_propose', { node: { ...first, recommend: 'B' }, reason: '问人' })).node.recommend, 'B')
+})
+
+toolTest('graph_propose explains the table card next to recommend-last; a question without it is refused with the field to add', async ({ runtime, call }) => {
+  const propose = runtime.scoped.find(tool => tool.name === 'graph_propose')!
+  type Described = { description: string, properties?: Record<string, Described>, items?: Described, enum?: string[] }
+  const node = (propose.parameters.properties as Record<string, Described>).node.properties!
+  assert.match(propose.description, /table card: rows of label, gain, cost, recommended option last; the human's also crux, verdict, weight/)
+  const row = node.options.items!.properties!
+  assert.deepEqual(Object.keys(row), ['key', 'label', 'gain', 'cost'], 'new rows have no consequence')
+  assert.match(row.label.description, /怎么做: .* at most 20 characters/)
+  assert.match(row.gain.description, /得到: one line, at most 60 characters/)
+  assert.match(row.cost.description, /代价: one line, at most 60 characters/)
+  assert.match(node.dimension.description, /one extra column where the options really differ.*same value in every row is refused/)
+  assert.match(node.dimension.properties!.name.description, /at most 12 characters/)
+  assert.match(node.crux.description, /required when the human decides\. 取决于: one line, at most 60 characters/)
+  assert.match(node.verdict.description, /是 → <key>；否 → <key>; every key after → must exist and the recommended key must appear/)
+  assert.deepEqual(node.weight.enum, ['one-way', 'two-way'])
+  assert.equal(node.why, undefined)
+  assert.equal(node.counter, undefined)
+  const bare = { type: 'question', title: '缓存放哪', parent: 'feature-1', options: [{ key: 'A', label: '.cache', gain: '工具都认', cost: '要加进 .gitignore' }, { key: 'B', label: 'tmp', gain: '系统会清', cost: '重启后要重建' }], recommend: 'B' }
+  const error = refused(await call('graph_propose', { node: bare, reason: '问人' }), 'invalid', 'node.crux')
+  assert.match(error.hint, /取决于/)
+  const asked = ok(await call('graph_propose', { node: { ...bare, crux: '缓存要跨重启留着吗？', verdict: '是 → A；否 → B', weight: 'two-way' }, reason: '问人' }))
+  assert.deepEqual([asked.node.crux, asked.node.verdict, asked.node.weight], ['缓存要跨重启留着吗？', '是 → A；否 → B', 'two-way'])
 })
 
 test('every graph tool stays resident on GLM requests', () => {
@@ -231,7 +255,7 @@ toolTest('graph_decide: agent questions are the llm\'s, the human\'s need their 
   const relayed = ok(await call('graph_decide', { id: 'question-1', rev: await rev('question-1'), option: 'A', reason: '人选了 A', relay: '工具给全部 agent' }))
   assert.equal(relayed.node.decision, 'A')
   assert.equal((await loadGraph(graph)).nodes.get('question-1')!.history.at(-1)!.relay, '工具给全部 agent')
-  const own = ok(await call('graph_propose', { node: { type: 'question', title: '缓存目录名', parent: 'feature-1', decider: 'agent', options: [{ key: 'A', label: '.cache', consequence: '常见' }, { key: 'B', label: 'tmp', consequence: '易混' }], recommend: 'B' }, reason: '自己定的细节' }))
+  const own = ok(await call('graph_propose', { node: { type: 'question', title: '缓存目录名', parent: 'feature-1', decider: 'agent', options: [{ key: 'A', label: '.cache', gain: '工具都认', cost: '要加进 .gitignore' }, { key: 'B', label: 'tmp', gain: '系统会清', cost: '与系统临时目录易混' }], recommend: 'B' }, reason: '自己定的细节' }))
   assert.equal(ok(await call('graph_decide', { id: own.id, rev: await rev(own.id), option: 'A', reason: '常见写法' })).node.status, 'done')
   const items = ok(await call('graph_open')).items
   assert.deepEqual(items.recentDecisions.map(entry => [entry.id, entry.decidedBy, entry.relay ?? null]), [[own.id, 'llm', null], ['question-1', 'llm', '工具给全部 agent']])

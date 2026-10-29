@@ -20,7 +20,7 @@ import { openEngine } from './engine.ts'
 import { FOCUS_TOOL } from './live.ts'
 import { failure, type Failure } from './mutation.ts'
 import { listOpenItems, projectNode } from './projection.ts'
-import { NODE_TYPES, SLOPES, STAGES, TASK_KINDS, TIERS } from './schema.ts'
+import { NODE_TYPES, SLOPES, STAGES, TASK_KINDS, TIERS, WEIGHTS } from './schema.ts'
 import type { LoadedGraph } from './parse.ts'
 
 /** Loader row id, named in hints so the model can point the human at the config. */
@@ -159,15 +159,37 @@ const NODE: JsonSchema = {
     writeScope: { ...STRINGS, description: 'Task only: repository paths the subagent may write; empty for review.' },
     options: {
       type: 'array',
-      description: 'Question only: 2-4 options, the recommended one last.',
+      description: 'Question only: 2-4 rows of the table card, the recommended one last. Each row gets something no other row gets; no filler rows.',
       items: {
         type: 'object',
-        properties: { key: { type: 'string', description: 'For example A.' }, label: { type: 'string' }, consequence: { type: 'string' } },
-        required: ['key', 'label', 'consequence'],
+        properties: {
+          key: { type: 'string', description: 'For example A.' },
+          label: { type: 'string', description: '怎么做: what the option does, the bold at-a-glance phrase; at most 20 characters.' },
+          gain: { type: 'string', description: '得到: one line, at most 60 characters; numbers and concrete examples, no evaluative words.' },
+          cost: { type: 'string', description: '代价: one line, at most 60 characters; numbers and concrete examples.' },
+        },
+        required: ['key', 'label', 'gain', 'cost'],
         additionalProperties: false,
       },
     },
+    dimension: {
+      type: 'object',
+      description: 'Question only, optional: the one extra column where the options really differ. A column with the same value in every row is refused.',
+      properties: {
+        name: { type: 'string', description: 'Column name, at most 12 characters.' },
+        values: { type: 'object', description: 'One cell per option key, at most 20 characters each, for example {"A": "1 天", "B": "3 天"}.' },
+      },
+      required: ['name', 'values'],
+      additionalProperties: false,
+    },
     recommend: { type: 'string', description: 'Question only: key of the recommended option, which must be the last option so the human reads the others first; anything else is refused.' },
+    crux: { type: 'string', description: 'Question only, required when the human decides. 取决于: one line, at most 60 characters, the question only the human can answer that decides between the options.' },
+    verdict: { type: 'string', description: 'Question only, required when the human decides: one line, at most 120 characters, 是 → <key>；否 → <key>; every key after → must exist and the recommended key must appear.' },
+    weight: {
+      type: 'string',
+      enum: [...WEIGHTS],
+      description: 'Question only, required when the human decides: one-way when the choice changes goals, acceptance criteria or non-goals, or is expensive to change later; two-way otherwise.',
+    },
     decider: { type: 'string', enum: ['human', 'agent'], description: 'Question only: who decides it; leave out for the human. Agent questions are yours to decide with graph_decide.' },
     edges: {
       type: 'array',
@@ -230,7 +252,7 @@ const WRITE_OUTPUT: JsonSchema = {
 const WRITES: ReadonlyArray<{ readonly op: LlmOp, readonly description: string, readonly parameters: JsonSchema }> = [
   {
     op: 'propose',
-    description: 'Add a node to the graph. Planned work starts approved: a task under an approved or in-progress feature or task; a risk, question or retro under an open node. Else (new branch, decision, norm, tool, goal, supersedes edge) it waits for the human unless relayed. A question lists its recommended option last. Own choice: a question with decider agent, then graph_decide.',
+    description: 'Add a node. Planned work starts approved: a task under an approved or in-progress feature or task; a risk, question or retro under an open node. Else (new branch, decision, norm, tool, goal, supersedes edge) it waits for the human unless relayed. A question is a table card: rows of label, gain, cost, recommended option last; the human\'s also crux, verdict, weight. Own choice: decider agent.',
     parameters: object({ node: NODE, reason: REASON, relay: RELAY }, ['node', 'reason']),
   },
   {
@@ -240,7 +262,7 @@ const WRITES: ReadonlyArray<{ readonly op: LlmOp, readonly description: string, 
   },
   {
     op: 'edit',
-    description: 'Change a node\'s title, body, slope, a question\'s decider, a task\'s dispatch attributes (kind, tier, worktree, outputSchema, writeScope); any field of your own open proposal, goals included. Decider human is always allowed; decider agent, an adopted goal, acceptance criteria and non-goals need the human\'s words as relay. Questions keep the graph_propose rules (recommended option last).',
+    description: 'Change a node\'s title, body, slope, a question\'s decider, a task\'s dispatch attributes (kind, tier, worktree, outputSchema, writeScope); any field of your own open proposal, goals included. Decider human is always allowed; decider agent, an adopted goal, acceptance criteria and non-goals need the human\'s words as relay. Questions keep the table card rules (recommended option last).',
     parameters: object({
       id: ID,
       rev: REV,

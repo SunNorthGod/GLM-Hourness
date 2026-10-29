@@ -9,12 +9,16 @@
 import { resolve } from 'node:path'
 import { checkNode, nodeFile, type GraphIssue } from './format.ts'
 import { PROPOSE_FIELDS, failure, parseMutation, type Failure, type Mutation, type ProposedNode } from './mutation.ts'
-import { OPEN_STATUSES, listOpenItems, projectNode, type OpenItems, type Projection } from './projection.ts'
+import { OPEN_STATUSES, deciderOf, listOpenItems, projectNode, type OpenItems, type Projection } from './projection.ts'
 import {
+  CARD_FIELDS,
+  CARD_LIMITS,
   DISPATCH_FIELDS,
   EDITABLE_FIELDS,
   isPassingEvidence,
   type Actor,
+  type CardDimension,
+  type DecisionOption,
   type EditableField,
   type Evidence,
   type FieldChange,
@@ -277,19 +281,91 @@ function supersedeTargets(context: Context, by: string, edges: readonly GraphEdg
   })
 }
 
+/** Length in code points, so a character outside the BMP counts once. */
+function codePoints(text: string): number {
+  return [...text].length
+}
+
+/** One line of at most `limit` code points. */
+function shortLine(text: string, limit: number): boolean {
+  return !/[\r\n]/.test(text) && codePoints(text) <= limit
+}
+
+/** Option keys a verdict names: the key written after each arrow, as in 是 → A；否 → B. */
+function verdictKeys(verdict: string): string[] {
+  return [...verdict.matchAll(/→\s*([A-Za-z0-9][A-Za-z0-9-]{0,31})/gu)].map(match => match[1])
+}
+
+const LABEL_HINT = `label is the bold at-a-glance phrase of what the option does (怎么做), at most ${CARD_LIMITS.label} characters; put the detail into gain and cost`
+const OPTION_TEXT_HINTS = {
+  gain: `gain is what this option gets (得到) that the others do not: one line, at most ${CARD_LIMITS.gain} characters, with numbers or a concrete example; put the argument in body`,
+  cost: `cost is what this option costs (代价): one line, at most ${CARD_LIMITS.cost} characters, with numbers or a concrete example; put the argument in body`,
+} as const
+const DIMENSION_HINT = `dimension is the one extra column where the options really differ: name is one line of at most ${CARD_LIMITS.dimensionName} characters, values has one cell per option key, each one line of at most ${CARD_LIMITS.cell} characters; leave dimension out (null) when no column differs`
+const CRUX_HINT = `set crux (取决于): one line, at most ${CARD_LIMITS.crux} characters, the question only the human can answer that decides between the options`
+const VERDICT_HINT = `set verdict: one line, at most ${CARD_LIMITS.verdict} characters, in the form 是 → <key>；否 → <key>, with an option key after each →, the recommended key among them`
+const WEIGHT_HINT = 'set weight: one-way when the choice changes goals, acceptance criteria or non-goals, or is a direction that is expensive to change later (docs/ORCHESTRATION.md §2.9.1 categories 1 and 5); two-way otherwise'
+
+function optionRefusal(node: GraphNode, option: DecisionOption, at: string): Failure | undefined {
+  if (option.consequence !== undefined) {
+    return failure('invalid', `option "${option.key}" of "${node.id}" has a consequence`, 'consequence is kept only on questions written before the table card; write what the option gets as gain and what it costs as cost, one line each', `${at}.consequence`)
+  }
+  if (codePoints(option.label) > CARD_LIMITS.label) {
+    return failure('invalid', `the label of option "${option.key}" of "${node.id}" is longer than ${CARD_LIMITS.label} characters`, LABEL_HINT, `${at}.label`)
+  }
+  for (const field of ['gain', 'cost'] as const) {
+    const value = option[field]
+    if (value === undefined) return failure('invalid', `option "${option.key}" of "${node.id}" has no ${field}`, OPTION_TEXT_HINTS[field], `${at}.${field}`)
+    if (!shortLine(value, CARD_LIMITS[field])) {
+      return failure('invalid', `the ${field} of option "${option.key}" of "${node.id}" is not one line of at most ${CARD_LIMITS[field]} characters`, OPTION_TEXT_HINTS[field], `${at}.${field}`)
+    }
+  }
+  return undefined
+}
+
+function dimensionRefusal(node: GraphNode, dimension: CardDimension, keys: readonly string[], at: string): Failure | undefined {
+  if (!shortLine(dimension.name, CARD_LIMITS.dimensionName)) {
+    return failure('invalid', `the dimension name of "${node.id}" is not one line of at most ${CARD_LIMITS.dimensionName} characters`, DIMENSION_HINT, `${at}.name`)
+  }
+  const missing = keys.find(key => !Object.hasOwn(dimension.values, key))
+  if (missing !== undefined) return failure('invalid', `the dimension of "${node.id}" has no cell for option "${missing}"`, DIMENSION_HINT, `${at}.values`)
+  const extra = Object.keys(dimension.values).find(key => !keys.includes(key))
+  if (extra !== undefined) return failure('invalid', `the dimension of "${node.id}" has a cell for "${extra}", which is not one of its option keys`, DIMENSION_HINT, `${at}.values.${extra}`)
+  const long = keys.find(key => !shortLine(dimension.values[key], CARD_LIMITS.cell))
+  if (long !== undefined) return failure('invalid', `the dimension cell of option "${long}" of "${node.id}" is not one line of at most ${CARD_LIMITS.cell} characters`, DIMENSION_HINT, `${at}.values.${long}`)
+  if (new Set(keys.map(key => dimension.values[key].trim())).size === 1) {
+    return failure(
+      'invalid',
+      `every option of "${node.id}" has the same ${dimension.name}`,
+      'a column where every option has the same value tells the human nothing: leave dimension out (null), or name the one dimension where the options really differ',
+      `${at}.values`,
+    )
+  }
+  return undefined
+}
+
 /**
  * Write rules of question nodes (§2.6) on top of the file format: they
  * hold for every question the engine writes, but a question written before
  * a rule existed still loads, is decided and takes edits of other fields.
  * `touched` names the fields the write sets; `base` is the request field
- * that holds them (node for propose, set for edit). The recommended option
- * is the last one, so the human reads every alternative before reaching it
- * (decision d-recommend-last).
+ * that holds them (node for propose, set for edit).
+ *
+ * The recommended option is the last one, so the human reads every
+ * alternative before reaching it (decision d-recommend-last). The card is
+ * a table (decision d-option-card): each option has a bold label of what
+ * it does and one line each of what it gets and what it costs, plus at
+ * most one extra column where the options differ. A question the human
+ * decides also has the crux only the human can answer, the 是 → X；否 → Y
+ * verdict that names the recommended key, and how hard it is to undo;
+ * agent questions may leave these three out.
  */
 function questionRefusal(node: GraphNode, touched: (field: string) => boolean, base: 'node' | 'set'): Failure | undefined {
   if (node.type !== 'question') return undefined
+  const options = node.options ?? []
+  const keys = options.map(entry => entry.key)
   if (touched('options') || touched('recommend')) {
-    const last = node.options?.at(-1)?.key
+    const last = keys.at(-1)
     if (node.recommend !== undefined && last !== undefined && node.recommend !== last) {
       return failure(
         'invalid',
@@ -299,6 +375,41 @@ function questionRefusal(node: GraphNode, touched: (field: string) => boolean, b
       )
     }
   }
+  if (touched('options')) {
+    for (const [index, option] of options.entries()) {
+      const refusal = optionRefusal(node, option, `${base}.options[${index}]`)
+      if (refusal !== undefined) return refusal
+    }
+  }
+  if (node.dimension !== undefined && (touched('options') || touched('dimension'))) {
+    const refusal = dimensionRefusal(node, node.dimension, keys, `${base}.dimension`)
+    if (refusal !== undefined) return refusal
+  }
+  if (!CARD_FIELDS.some(touched)) return undefined
+  const human = deciderOf(node) === 'human'
+  if (node.crux === undefined) {
+    if (human) return failure('invalid', `"${node.id}" is decided by the human and has no crux`, CRUX_HINT, `${base}.crux`)
+  }
+  else if (!shortLine(node.crux, CARD_LIMITS.crux)) {
+    return failure('invalid', `the crux of "${node.id}" is not one line of at most ${CARD_LIMITS.crux} characters`, CRUX_HINT, `${base}.crux`)
+  }
+  if (node.verdict === undefined) {
+    if (human) return failure('invalid', `"${node.id}" is decided by the human and has no verdict`, VERDICT_HINT, `${base}.verdict`)
+  }
+  else {
+    if (!shortLine(node.verdict, CARD_LIMITS.verdict)) {
+      return failure('invalid', `the verdict of "${node.id}" is not one line of at most ${CARD_LIMITS.verdict} characters`, VERDICT_HINT, `${base}.verdict`)
+    }
+    const named = verdictKeys(node.verdict)
+    const unknown = named.find(key => !keys.includes(key))
+    if (unknown !== undefined) {
+      return failure('invalid', `the verdict of "${node.id}" names "${unknown}", which is not one of its option keys (${keys.join(', ')})`, VERDICT_HINT, `${base}.verdict`)
+    }
+    if (node.recommend !== undefined && !named.includes(node.recommend)) {
+      return failure('invalid', `the verdict of "${node.id}" does not name the recommended option "${node.recommend}" after an arrow`, VERDICT_HINT, `${base}.verdict`)
+    }
+  }
+  if (human && node.weight === undefined) return failure('invalid', `"${node.id}" is decided by the human and has no weight`, WEIGHT_HINT, `${base}.weight`)
   return undefined
 }
 

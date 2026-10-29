@@ -43,14 +43,38 @@ export type Actor = typeof ACTORS[number]
 export const DECIDERS = ['human', 'agent'] as const
 export type Decider = typeof DECIDERS[number]
 
+/**
+ * How hard a question's choice is to undo (§2.6 table card): one-way when
+ * it changes goals, acceptance criteria or non-goals, or is a direction
+ * that is expensive to change later (§2.9.1 categories 1 and 5).
+ */
+export const WEIGHTS = ['one-way', 'two-way'] as const
+type Weight = typeof WEIGHTS[number]
+
+/** Longest texts of a question's table card, in code points (§2.6 table card). */
+export const CARD_LIMITS = { label: 20, gain: 60, cost: 60, dimensionName: 12, cell: 20, crux: 60, verdict: 120 } as const
+
 /** Mutation operations (§2.9); every history entry names one. */
 export const OPS = ['propose', 'approve', 'reject', 'status', 'edit', 'link', 'unlink', 'comment', 'decide', 'verify', 'supersede'] as const
 export type Op = typeof OPS[number]
 
+/** One row of a question's table card. */
 export interface DecisionOption {
   readonly key: string
+  /** What the option does (怎么做), the bold at-a-glance phrase. */
   readonly label: string
-  readonly consequence: string
+  /** What the option gets (得到), one line. */
+  readonly gain?: string
+  /** What the option costs (代价), one line. */
+  readonly cost?: string
+  /** Gain and cost in one text, on questions written before the table card. */
+  readonly consequence?: string
+}
+
+/** The one extra column of a table card: a dimension the options really differ in, one cell per option key. */
+export interface CardDimension {
+  readonly name: string
+  readonly values: Readonly<Record<string, string>>
 }
 
 export interface GraphEdge {
@@ -70,11 +94,11 @@ export interface Evidence {
 /** Fields an `edit` mutation may change, in write order; status, links, evidence and decisions have their own operations. */
 export const EDITABLE_FIELDS = [
   'title', 'parent', 'slope', 'stage', 'kind', 'tier', 'worktree', 'outputSchema', 'body',
-  'acceptance', 'nonGoals', 'writeScope', 'options', 'recommend', 'decider',
+  'acceptance', 'nonGoals', 'writeScope', 'options', 'dimension', 'recommend', 'crux', 'verdict', 'weight', 'decider',
 ] as const
 export type EditableField = typeof EDITABLE_FIELDS[number]
 
-export type FieldValue = string | boolean | readonly string[] | readonly DecisionOption[]
+export type FieldValue = string | boolean | readonly string[] | readonly DecisionOption[] | CardDimension
 
 /** Old and new value of one edited field; null means the field was absent. */
 export interface FieldChange {
@@ -132,7 +156,15 @@ export interface GraphNode {
   /** Repository-relative files and directories the subagent may write; none for a review. */
   readonly writeScope?: readonly string[]
   readonly options?: readonly DecisionOption[]
+  /** Question only: the one column where the options really differ. */
+  readonly dimension?: CardDimension
   readonly recommend?: string
+  /** Question only: the crux question only the human can answer (取决于), one line. */
+  readonly crux?: string
+  /** Question only: the 是 → X；否 → Y line naming option keys, one line. */
+  readonly verdict?: string
+  /** Question only: how hard the choice is to undo. */
+  readonly weight?: Weight
   /** Question only: who decides it; absent means the human. */
   readonly decider?: Decider
   readonly decision?: string
@@ -145,8 +177,11 @@ export interface GraphNode {
 export const NODE_FIELDS = [
   'id', 'type', 'title', 'status', 'parent', 'slope', 'stage', 'verification',
   'kind', 'tier', 'worktree', 'outputSchema', 'body', 'acceptance', 'nonGoals', 'writeScope',
-  'options', 'recommend', 'decider', 'decision', 'edges', 'evidence', 'history',
+  'options', 'dimension', 'recommend', 'crux', 'verdict', 'weight', 'decider', 'decision', 'edges', 'evidence', 'history',
 ] as const satisfies readonly (keyof GraphNode)[]
+
+/** Question fields that make up the table card a question shows (§2.6); a write that sets any of them meets the card rules. */
+export const CARD_FIELDS = ['options', 'dimension', 'recommend', 'crux', 'verdict', 'weight'] as const satisfies readonly EditableField[]
 
 /** Fields only task nodes carry. */
 export const DISPATCH_FIELDS = ['kind', 'tier', 'worktree', 'outputSchema', 'writeScope'] as const satisfies readonly EditableField[]

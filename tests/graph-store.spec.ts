@@ -187,11 +187,24 @@ test('canonical serialization: schema field order, sorted edges, empty arrays om
 })
 
 test('a canonical graph round-trips byte-identical through load and write', async () => {
-  const dir = await graphWith({ 'task-0': task('task-0'), 'task-1': FULL_TASK, 'question-1': question() })
+  // question-2 is a table card (ORCHESTRATION.md §2.6); its cells are given out of key order.
+  const table = question({
+    id: 'question-2',
+    options: [{ key: 'B', label: 'Markdown', gain: '正文更好读', cost: '要自写解析器' }, { key: 'A', label: 'JSON', gain: '不新增解析器', cost: '长正文是一行字符串' }],
+    dimension: { name: '新增依赖', values: { B: '1 个', A: '0 个' } },
+    crux: '长段正文主要在网页上读吗？',
+    verdict: '是 → B；否 → A',
+    weight: 'two-way',
+  })
+  const dir = await graphWith({ 'task-0': task('task-0'), 'task-1': FULL_TASK, 'question-1': question(), 'question-2': table })
   try {
     const graph = await loadGraph(dir)
     assert.deepEqual(graph.issues, [])
-    assert.deepEqual([...graph.nodes.keys()], ['feature-1', 'goal-1', 'question-1', 'task-0', 'task-1'])
+    assert.deepEqual([...graph.nodes.keys()], ['feature-1', 'goal-1', 'question-1', 'question-2', 'task-0', 'task-1'])
+    const written = JSON.parse(await readFile(join(dir, 'nodes', 'question-2.json'), 'utf8')) as { options: object[], dimension: { values: object } }
+    assert.deepEqual(Object.keys(written).slice(5, 11), ['options', 'dimension', 'recommend', 'crux', 'verdict', 'weight'])
+    assert.deepEqual(Object.keys(written.options[0]), ['key', 'label', 'gain', 'cost'])
+    assert.deepEqual(Object.keys(written.dimension.values), ['A', 'B'], 'cells in key order')
     for (const [id, node] of graph.nodes) {
       const bytes = await readFile(join(dir, 'nodes', `${id}.json`), 'utf8')
       assert.equal(serializeNode(node), bytes, id)
@@ -273,6 +286,11 @@ const ERROR_CASES: readonly ErrorCase[] = [
   { name: 'recommend is not an option', files: { 'question-1': question({ recommend: 'C' }) }, file: 'nodes/question-1.json', field: 'recommend', message: /not an option key/ },
   { name: 'decision is not an option', files: { 'question-1': question({ decision: 'C' }) }, file: 'nodes/question-1.json', field: 'decision', message: /not an option key/ },
   { name: 'options on a task', files: { 'task-1': task('task-1', { recommend: 'A' }) }, file: 'nodes/task-1.json', field: 'recommend', message: /only question nodes/ },
+  { name: 'card line on a task', files: { 'task-1': task('task-1', { crux: '要不要分两步？' }) }, file: 'nodes/task-1.json', field: 'crux', message: /only question nodes carry options, dimension, recommend, crux, verdict, weight/ },
+  { name: 'unknown weight', files: { 'question-1': question({ weight: 'one-time' }) }, file: 'nodes/question-1.json', field: 'weight', message: /must be one of one-way, two-way/ },
+  { name: 'blank verdict', files: { 'question-1': question({ verdict: ' ' }) }, file: 'nodes/question-1.json', field: 'verdict', message: /non-empty string/ },
+  { name: 'dimension cell under a key that is not an option key', files: { 'question-1': question({ dimension: { name: '工期', values: { 'A B': '1 天' } } }) }, file: 'nodes/question-1.json', field: 'dimension.values.A B', message: /option key/ },
+  { name: 'dimension without values', files: { 'question-1': question({ dimension: { name: '工期', values: {} } }) }, file: 'nodes/question-1.json', field: 'dimension.values', message: /option key to cell text/ },
   { name: 'unknown edge type', files: { 'task-1': task('task-1', { edges: [{ type: 'blocks', to: 'goal-1' }] }) }, file: 'nodes/task-1.json', field: 'edges[0].type', message: /must be one of depends/ },
   { name: 'duplicate edge', files: { 'task-1': task('task-1', { edges: [{ type: 'source', to: 'goal-1' }, { type: 'source', to: 'goal-1' }] }) }, file: 'nodes/task-1.json', field: 'edges[1]', message: /duplicate source edge/ },
   { name: 'unknown edge target', files: { 'task-1': task('task-1', { edges: [{ type: 'depends', to: 'task-9' }] }) }, file: 'nodes/task-1.json', field: 'edges[0].to', message: /unknown node "task-9"/ },

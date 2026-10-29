@@ -11,6 +11,15 @@ import { absoluteTime, byCreation, decidedBy, dotTone, graphRevisionOf, headline
 import { GraphSource, type GraphSnapshot } from '../ui/src/graph/source.ts'
 import { fixtureTest, seedAsHuman } from './graph-helpers.ts'
 
+/** The table card of the seeded questions (ORCHESTRATION.md §2.6). */
+const CARD = {
+  options: [{ key: 'A', label: '甲案', gain: '快', cost: '要返工一次' }, { key: 'B', label: '乙案', gain: '稳', cost: '多两天' }],
+  recommend: 'B',
+  crux: '这周要交付吗？',
+  verdict: '是 → A；否 → B',
+  weight: 'two-way',
+}
+
 /**
  * goal-1
  *   feature-1 doing
@@ -29,7 +38,7 @@ async function seed(dir: string): Promise<void> {
     { type: 'task', title: '甲', parent: 'feature-1' },
     { type: 'task', title: '乙', parent: 'feature-1' },
     { type: 'task', title: '丙', parent: 'feature-1' },
-    { type: 'question', title: '问人', parent: 'feature-1', options: [{ key: 'A', label: '甲案', consequence: '快' }, { key: 'B', label: '乙案', consequence: '稳' }], recommend: 'B' },
+    { type: 'question', title: '问人', parent: 'feature-1', ...CARD },
     { type: 'feature', title: '做完', parent: 'goal-1' },
     { type: 'task', title: '丁', parent: 'feature-2' },
   ])
@@ -73,7 +82,7 @@ graphTest('progress counts work children only; decided questions are counted apa
   // A risk under feature-1, and a question under task-3 that the human decides: m1-parity's shape, a task whose only children are decided questions.
   await seedAsHuman(dir, [
     { type: 'risk', title: '风险', parent: 'feature-1' },
-    { type: 'question', title: '再问', parent: 'task-3', options: [{ key: 'A', label: '甲案', consequence: '快' }, { key: 'B', label: '乙案', consequence: '稳' }], recommend: 'B' },
+    { type: 'question', title: '再问', parent: 'task-3', ...CARD },
   ])
   const decided = await openEngine(dir).apply('human', { op: 'decide', id: 'question-2', rev: (await loadGraph(dir)).revisions.get('question-2')!, option: 'A', reason: '快' })
   assert.ok(decided.ok, JSON.stringify(decided))
