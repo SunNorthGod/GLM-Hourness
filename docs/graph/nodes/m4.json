@@ -29,6 +29,12 @@
       "reason": "派出 m4-design（wf_a153be7b05cd52d1）：只写设计并过设计评审，含 m4-request-card、通用影子机制、检查器当轮回传、凭证读取的影子规则；稿在 .agents/tasks/m4/design.md",
       "from": "approved",
       "to": "doing"
+    },
+    {
+      "at": "2026-10-29T13:51:58.222Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "设计 v0.1 写完（.agents/tasks/m4/design.md）：影子机制（标注、统计、重放、语料）、四条影子规则与第三次重开卡、m4-request-card 的申报通道（一次性放行、改前备份）、检查器当轮回传、环境分支与草稿区、抓取脚本清理；四条并行通道；待人定 D1 验收、D2 会话重放、D3 卡片默认。评审进行中。"
     }
   ]
 }

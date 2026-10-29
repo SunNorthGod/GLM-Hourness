@@ -110,6 +110,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M3 第 1、2 步已合入 main：bf4d127（m3-2，引擎允许 llm 与 harness 改自己提议、仍为提议的目标，已批准的与连线照旧不能改）、7aa8fe5（m3-6，阶段模型 src/graph/stage.ts 与主 Agent 投影视图 src/graph/main-agent.ts 两个纯函数模块）。工作树 .worktrees/m3-base 与分支 m3-base 已删除；分支 m3-base-card（de0ccf6，卡片字段）保留，等 d-option-card 定稿。M3 其余步骤等 split 合入后在编排层包里做。"
+    },
+    {
+      "at": "2026-10-29T13:51:58.040Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "split 已合入并通过 L4，M3 的其余步骤可以在两个插件的布局上开工。开工前 M3 设计要补一份附录，吸收 0.4 之后的人定事项：question-26 C（主 Agent 去掉写文件的工具）、m3-1 验收第 4 条（/wish 的入口醒目，参照 plain-ui 设计 0.3 的 wish 草图）、question-31 C（身份节只留角色与边界，访谈步骤随阶段提醒下发）、m3-main-persona（人设放进 ZCode 的 Output Style 槽位、只给主 Agent）、d-option-card 表格版卡片字段、d-recommend-last。"
     }
   ]
 }

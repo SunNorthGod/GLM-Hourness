@@ -2,7 +2,7 @@
   "id": "split",
   "type": "feature",
   "title": "解耦：GLM 通道包与编排层包",
-  "status": "doing",
+  "status": "done",
   "parent": "orch",
   "body": "同一仓库拆成两个 bundle：GLM 通道与 ZCode 方言（glm-llm、glm-login、glm-prompt、glm-compact、工具检索、高峰与积分）一个包；编排层（项目图、面板、现场、运行控制、guard、记忆、派发记录、晨报的通用部分）一个包，对所有模型生效；两边共用一个小公共库（行健康、数据目录、DSH 接口类型）。项目目标拆成两个，目标文字由人确认。在 m1-parity 合入后先写设计、过设计评审再动代码，M3 在新的编排层包里做。",
   "acceptance": [
@@ -18,6 +18,27 @@
     {
       "type": "source",
       "to": "question-10"
+    }
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "e1a82e2"
+    },
+    {
+      "kind": "test",
+      "ref": "npm test on 3a75472 and e1a82e2: 640 passing, ESLint 250 / knip 21 / jscpd 2, gitleaks clean",
+      "exit": 0
+    },
+    {
+      "kind": "check",
+      "ref": "npm run probe 115/115 on de14525 (probe-full, probe-glm, probe-hourness)",
+      "exit": 0
+    },
+    {
+      "kind": "check",
+      "ref": "desktop batch L4 rounds 1 and 2 PASS (.agents/tasks/split/acceptance.md)",
+      "exit": 0
     }
   ],
   "history": [
@@ -255,6 +276,35 @@
       "actor": "llm",
       "op": "comment",
       "text": "偏离（编排方记录）：profile 切换没有走附录 0.5 要求的 A3 独立评审与 A4 演练，改用一个简化脚本 .agents/tasks/split/switch-profile.mjs（备份、写锁、只写两个键、pnpm 之前先拆两个旧 junction、CI=false、时限、诊断行判定、条目与锁文件核对）。结果看来正常（install 退出码 0、覆盖项全部按 id 匹配），备份在，回滚路径仍是附录的整体回滚。按 d-failure-plans 判断：可发现（L4 两轮）、可恢复（备份），所以不回退重做；L4 两轮里要专门核对两个插件都加载、行健康全绿、覆盖项生效。记为经验板块素材：评审过的步骤被 worker 简化，简报里的必做项要由 harness 核对（M7 简报门禁）。"
+    },
+    {
+      "at": "2026-10-29T13:51:57.876Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "split-implement（wf_86dffdb4b51f45af）完成：第 0–8 步合入 de14525，清理 3a75472，启用 glm-ui e1a82e2，均已推送。验收 1：探针 115/115（probe-glm、probe-hourness、probe-full 三种组合）；DeepSeek 会话里项目图、面板与 guard（G3）都生效，Set-Content 写入被拒并进违规流水。验收 2：行 id 不变；desktop 与 glmsandbox 只改 package.json 的 bundles 与 dependencies，改前备份；五条覆盖项按 id 匹配，结构比对 no differences。验收 3：门禁全过（640 通过、基线不变），批次 L4 两轮 PASS（.agents/tasks/split/acceptance.md）：插件页两个插件「GLM ZCode 通道」「Hourness 编排层」，/glm-status 与 /hourness-status 分包显示 11 行，GLM-5.3-Flash 会话带方言与工具检索，第二轮 GLM 按钮与设置页出现。模型默认值已换回，DSH 以 CDP 9333 运行。附录要求的切换脚本评审与演练被跳过（已记），L4 未见问题。",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "e1a82e2"
+        },
+        {
+          "kind": "test",
+          "ref": "npm test on 3a75472 and e1a82e2: 640 passing, ESLint 250 / knip 21 / jscpd 2, gitleaks clean",
+          "exit": 0
+        },
+        {
+          "kind": "check",
+          "ref": "npm run probe 115/115 on de14525 (probe-full, probe-glm, probe-hourness)",
+          "exit": 0
+        },
+        {
+          "kind": "check",
+          "ref": "desktop batch L4 rounds 1 and 2 PASS (.agents/tasks/split/acceptance.md)",
+          "exit": 0
+        }
+      ]
     }
   ]
 }

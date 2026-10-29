@@ -29,6 +29,12 @@
       "reason": "派出 m5-lessons-design（wf_f690c481cb302c2e）：M5 记忆与学习连同经验板块一起只写设计并过设计评审；稿在 .agents/tasks/m5/design.md",
       "from": "approved",
       "to": "doing"
+    },
+    {
+      "at": "2026-10-29T13:51:58.400Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "设计 v0.1 写完（.agents/tasks/m5/design.md）：记忆与经验板块共用 src/data/ 里一层只追加的流水，但是两个集合、两行；待人定 D1 九个节点的验收、D2 记忆是否存项目事实（推荐：只存带出处的）。评审进行中。"
     }
   ]
 }
