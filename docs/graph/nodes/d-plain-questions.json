@@ -14,6 +14,18 @@
       "reason": "用户在「听不懂的词怎么办」一题选 B",
       "relay": "B",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-29T16:31:53.244Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M3 附录 0.2 §8 第 5 条：M3 做主 Agent 身份文本、decision_card 与 ask_human 的说明和 harness 自己写给人的字串；图工具说明（graph_propose 提待决时）带例题、问题字段的写法检查两件不在 M3。例题、换词表与查词函数 plainWordsIn 在 src/graph/plain-question.ts（M3 第 3 步建），可直接用；写法检查落地后 ask_human 的工具体也要调用它（ask_human 不经引擎写图）。建议提任务。"
+    },
+    {
+      "at": "2026-10-29T16:31:53.883Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m8-plain-language 设计 0.4 的落法（agent 定，人可推翻，design.md §2.2、§4.2、§4.3、§13 第 26、27 条）：待决新字段 background（两三句、不超过 150 个码点、不含换行，人定的题必须带，分两阶段：先警告后拒绝）；换词表进 §2.2；写法检查新规则 jargon 只查待决的人话字段（title、background、crux、verdict、label、gain、cost、维度），与 term 同词时只报 jargon；graph_propose 的说明带一道完整的例题（question-38 改写）与换词表，M3 卡片工具、主 Agent 身份文本与 M7 的 ask_human 说明同样带；上手页只解释主 Agent、子 agent、取决于、底账四个词。"
     }
   ]
 }

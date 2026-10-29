@@ -14,6 +14,12 @@
       "reason": "用户在编排方的选项卡「访谈里的选择题由谁来出」里选 B：由 harness 出卡，拿掉自带的提问工具（卡上的 A 是在身份提示里叮嘱模型）",
       "relay": "B",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-29T16:31:53.695Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m8-plain-language 设计 0.4 §3.8.4 与 §12 M3 第 1 条的落法：decision_card 与访谈选择题都经 src/design/cards.ts 与 userQuestions.ask 出卡，detail 依次是背景、单向门提示、取决于与结论行，按钮「A · label」，说明「得到：…；代价：…」，推荐在最后、不加 (Recommended)、不预选；访谈卡片工具推荐不在最后时 invalid（与引擎 recommend-last 同一句提示），不替模型重排；主 Agent 的工具面在组装时去掉 ask_user_question（M3 设计第 226 行那个监听器）；访谈题不进图、不算跟随率、没有先想后看；模拟人在待决卡上按 recommend 选、访谈卡片选最后一项，收到带 (Recommended) 的卡记一次违反。DSH 问题卡的两处宿主限制记下：按钮 aria-label 只是说法（client-ui-user-questions client.js:1096），说法字重 500。"
     }
   ]
 }
