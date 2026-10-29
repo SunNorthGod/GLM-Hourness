@@ -10,7 +10,7 @@ import { useEffect, useRef, useState, type KeyboardEvent, type ReactElement, typ
 import { EVIDENCE_LABELS, KIND_LABELS, STAGE_LABELS, STATUS_LABELS, TIER_LABELS, TYPE_LABELS, VERIFICATION_LABELS } from '../../../src/graph/labels.ts'
 import type { LoadedGraph } from '../../../src/graph/parse.ts'
 import { ancestorsOf } from '../../../src/graph/projection.ts'
-import { RUN_LABELS, nodeRefusal, offersRedo } from '../../../src/graph/run.ts'
+import { RUN_LABELS, acceptanceChange, nodeRefusal, offersRedo } from '../../../src/graph/run.ts'
 import type { GraphNode, Verification } from '../../../src/graph/schema.ts'
 import { placements, runningOn, type AgentLive } from './agents.ts'
 import { Folded, Markdown, NodeRow, Options, Outcome, Part, ProposalActions, When, useServices, useWriter } from './common.tsx'
@@ -55,9 +55,11 @@ function RunControls({ node, agents }: { readonly node: GraphNode, readonly agen
   const start = nodeRefusal(node, 'start') === undefined && here.length === 0
   const redo = offersRedo(node)
   if (node.type !== 'task' || (!start && !redo && here.length === 0)) return null
+  // The redo button says what it does; the note says only whether the acceptance changed since the task was last started.
+  const changed = acceptanceChange(node) === undefined ? undefined : '验收条件在上次开始之后改过'
   const notes = [
     presenceText(node.status, here.map(agent => agent.name)),
-    redo ? node.status === 'done' ? '已完成，可以按现在的验收条件重做' : '验收条件在上次开始之后改过' : undefined,
+    redo ? node.status === 'done' ? `已完成${changed === undefined ? '' : `；${changed}`}` : changed : undefined,
   ].filter(note => note !== undefined)
   return (
     <Part title="让 agent 干活">
