@@ -180,6 +180,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "UI-MERGE CHECK 放行：m8-ui-audit 已完成，界面改动都在 main 上（最后一个界面提交 20ed994），行名仍是路径形式（question-18 A）；split-implement 的第 3–4 步 rebase 到 main 后开工。"
+    },
+    {
+      "at": "2026-10-29T09:53:13.258Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "分支 split 已无冲突 rebase 到 main b5eb2c9（第 0–2 步现为 02de37d、51eba65、77583d7）；第 3 步 ff4fe8c（计价服务）、第 4 步 877b1aa（行健康分组与 /hourness-status）。第 4 步上 build、preflight、npm test 全过（603 通过、0 失败，检查器基线不变），生成 profile 上探针 100/100。未推送；接下来第 5–6 步（两个插件的布局与 UI 拆分，按附录 0.5）。"
     }
   ]
 }
