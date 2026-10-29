@@ -76,8 +76,8 @@ const EDGE_STYLE: Readonly<Record<DrawnEdgeType, CSSProperties & { readonly mark
   supersedes: { stroke: 'var(--g-purple)', strokeWidth: 1.6, marker: 'arrow-purple' },
 }
 
-/** One node box; `live` when a running agent stands on it, so its in-progress halo pulses. */
-function NodeShape({ box, selected, live, hiddenClosed, onPick }: { readonly box: NodeBox, readonly selected: boolean, readonly live: boolean, readonly hiddenClosed: number, readonly onPick: (id: string) => void }): ReactElement {
+/** One node box; `live` when a running agent stands on it, so its in-progress halo pulses. Keyboard focus asks to be revealed. */
+function NodeShape({ box, selected, live, hiddenClosed, onPick, onReveal }: { readonly box: NodeBox, readonly selected: boolean, readonly live: boolean, readonly hiddenClosed: number, readonly onPick: (id: string) => void, readonly onReveal: (box: NodeBox) => void }): ReactElement {
   const { node, width, height } = box
   const font = node.type === 'goal' ? TEXT.goal : TEXT.title
   const x = width / 2
@@ -90,7 +90,7 @@ function NodeShape({ box, selected, live, hiddenClosed, onPick }: { readonly box
   const classes = ['glmg-node', box.tone, selected ? 'selected' : '', live ? 'live' : ''].filter(Boolean).join(' ')
   const hexagon = isHexagon(node.type)
   return (
-    <g className={classes} style={{ transform: `translate(${box.x}px, ${box.y}px)` }} data-id={node.id} aria-label={`${node.title}，${statusText(node)}`} {...asButton<SVGGElement>(() => { onPick(node.id) })}>
+    <g className={classes} style={{ transform: `translate(${box.x}px, ${box.y}px)` }} data-id={node.id} aria-label={`${node.title}，${statusText(node)}`} {...asButton<SVGGElement>(() => { onPick(node.id) })} onFocus={event => { if (event.currentTarget.matches(':focus-visible')) onReveal(box) }}>
       <title>{node.title}</title>
       <rect className="halo" x={-4} y={-4} width={width + 8} height={height + 8} rx={10} />
       {hexagon
@@ -293,6 +293,15 @@ export function GraphCanvas({ graph, selected, onPick, agents }: GraphCanvasProp
 
   const centre = (): [number, number] => [size.width / 2, size.height / 2]
 
+  /** A node reached by Tab outside the canvas is panned to the centre, so the keyboard focus is in view. */
+  const reveal = (box: NodeBox): void => {
+    const left = current.x + box.x * current.k
+    const top = current.y + box.y * current.k
+    if (left >= 0 && top >= 0 && left + box.width * current.k <= size.width && top + box.height * current.k <= size.height) return
+    setFollow(undefined)
+    setView({ ...current, x: size.width / 2 - (box.x + box.width / 2) * current.k, y: size.height / 2 - (box.y + box.height / 2) * current.k })
+  }
+
   return (
     <div className="glmg-graph glmg-view">
       <div className="glmg-toolbar">
@@ -338,7 +347,7 @@ export function GraphCanvas({ graph, selected, onPick, agents }: GraphCanvasProp
               const { marker, ...style } = EDGE_STYLE[edge.type]
               return <path key={`${edge.type}:${edge.node}:${edge.to}`} className="glmg-edge" d={pathOf(edge.path)} style={style} {...(marker === undefined ? {} : { markerEnd: `url(#glmg-${marker})` })} />
             })}
-            {layout?.nodes.map(box => <NodeShape key={box.node.id} box={box} selected={box.node.id === selected} live={live.has(box.node.id)} hiddenClosed={visible.hiddenClosed.get(box.node.id) ?? 0} onPick={pick} />)}
+            {layout?.nodes.map(box => <NodeShape key={box.node.id} box={box} selected={box.node.id === selected} live={live.has(box.node.id)} hiddenClosed={visible.hiddenClosed.get(box.node.id) ?? 0} onPick={pick} onReveal={reveal} />)}
             {layout?.nodes.map(box => {
               const here = placed.get(box.node.id)
               return here === undefined ? null : <AgentBadges key={`agents:${box.node.id}`} box={box} agents={here} now={now} />
