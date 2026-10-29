@@ -20,7 +20,11 @@ export const SHARED_DIR = 'shared'
  * single bundle used to be): the host rows compose in the same order as
  * before the split. `src`: source directories under src/; `rows`: the
  * loader rows the package's patch inserts, each built to
- * `<dir>/dist/<module>.js` and exported as `./<id without glm-hourness/>`.
+ * `<dir>/dist/<module>.js` and exported as `./<id without glm-hourness/>`;
+ * `client`: the client package nested at `<dir>/ui/` (its package name, the
+ * row the host patch inserts for it as `./ui/index.js`, the entry
+ * scripts/build-ui.mjs bundles into its client.js, and the files and
+ * directories under ui/src/ that belong to it).
  */
 export const PACKAGES = [
   {
@@ -34,6 +38,12 @@ export const PACKAGES = [
       { id: 'glm-hourness/glm-prompt', module: 'glm-prompt/index' },
       { id: 'glm-hourness/glm-compact', module: 'glm-prompt/compact-row' },
     ],
+    client: {
+      name: 'dsh-glm-zcode-ui',
+      row: 'glm-hourness/glm-ui',
+      entry: 'ui/src/glm-client.js',
+      sources: ['ui/src/channel.js', 'ui/src/channel-model.ts', 'ui/src/glm-client.js'],
+    },
   },
   {
     key: 'hourness',
@@ -49,12 +59,11 @@ export const PACKAGES = [
       { id: 'glm-hourness/graph', module: 'graph/index' },
       { id: 'glm-hourness/graph-panel', module: 'graph/panel-row' },
     ],
+    client: {
+      name: 'dsh-hourness-ui',
+      row: 'glm-hourness/ui',
+      entry: 'ui/src/hourness-client.tsx',
+      sources: ['ui/src/hourness-client.tsx', 'ui/src/dsh.ts', 'ui/src/primitives.d.ts', 'ui/src/graph/'],
+    },
   },
 ]
-
-/**
- * Added in split step 5, removed in step 6: until step 6 the client row
- * still comes from the old single client package under ui/, which a
- * profile lists after the two host packages.
- */
-export const LEGACY_CLIENT_BUNDLE = { name: 'dsh-glm-hourness-ui', dir: 'ui', row: 'glm-hourness/ui' }

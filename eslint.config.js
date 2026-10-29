@@ -21,30 +21,39 @@ const nodeGlobals = Object.fromEntries(
 // depend on the file's depth; the table self-check in
 // scripts/preflight-bundle.mjs rules out same-named directories it would
 // misread.
+// Client sources (ui/src/, split step 6) follow the same rule: a package's
+// client half imports neither the other package's host directories nor the
+// other half's files and directories, which a second pattern reads as
+// `./<name>` or `../<name>` with or without an extension.
 const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-const into = (dirs) => `^(?:\\.\\./)+(?:src/)?(?:${dirs.map(escapeRegex).join('|')})(?:/|$)`
-const boundary = (files, dirs) => ({
+const alt = (names) => names.map(escapeRegex).join('|')
+const into = (dirs) => `^(?:\\.\\./)+(?:src/)?(?:${alt(dirs)})(?:/|$)`
+const intoClient = (names) => `^(?:\\./|(?:\\.\\./)+)(?:${alt(names)})(?:/|\\.[a-z.]+$|$)`
+const MESSAGE = 'Packages do not import each other and src/shared/ imports no package (scripts/packages.mjs); share through src/shared/.'
+const boundary = (files, regexes) => ({
   files,
-  rules: {
-    'no-restricted-imports': ['error', { patterns: [{
-      regex: into(dirs),
-      message: 'Packages do not import each other and src/shared/ imports no package (scripts/packages.mjs); share through src/shared/.',
-    }] }],
-  },
+  rules: { 'no-restricted-imports': ['error', { patterns: regexes.map((regex) => ({ regex, message: MESSAGE })) }] },
 })
+const othersOf = (pkg) => PACKAGES.filter((other) => other !== pkg)
+const clientNames = (pkg) => pkg.client.sources.map((source) => source.slice('ui/src/'.length).replace(/\/$/, '').replace(/\..*$/, ''))
 const boundaries = [
-  ...PACKAGES.map((pkg) => boundary(pkg.src.map((dir) => `src/${dir}/**`), PACKAGES.filter((other) => other !== pkg).flatMap((other) => other.src))),
-  boundary([`src/${SHARED_DIR}/**`], PACKAGES.flatMap((pkg) => pkg.src)),
+  ...PACKAGES.map((pkg) => boundary(pkg.src.map((dir) => `src/${dir}/**`), [into(othersOf(pkg).flatMap((other) => other.src))])),
+  boundary([`src/${SHARED_DIR}/**`], [into(PACKAGES.flatMap((pkg) => pkg.src))]),
+  ...PACKAGES.map((pkg) => boundary(
+    pkg.client.sources.map((source) => (source.endsWith('/') ? `${source}**` : source)),
+    [into(othersOf(pkg).flatMap((other) => other.src)), intoClient(othersOf(pkg).flatMap(clientNames))],
+  )),
 ]
 
 export default defineConfig([
   globalIgnores([
     // tsc output of the two packages (npm run build).
     'packages/*/dist/',
+    // Client halves, built from ui/src by scripts/build-ui.mjs.
+    'packages/*/ui/client.js',
     // Stale output of the single-bundle layout, kept ignored until the
     // cleanup commit after the merge (other checkouts still have it).
     'dist/',
-    // Built from ui/src by scripts/build-ui.mjs.
     'ui/client.js',
     'reference/',
     '.llm/',
@@ -87,7 +96,7 @@ export default defineConfig([
   },
   {
     // Calibration checkers and fixtures (tests/calibration/) run under Node too.
-    files: ['scripts/**/*.{js,mjs,cjs}', 'tests/**/*.{js,mjs,cjs}', 'ui/index.js', '*.js'],
+    files: ['scripts/**/*.{js,mjs,cjs}', 'tests/**/*.{js,mjs,cjs}', 'packages/*/ui/index.js', '*.js'],
     languageOptions: { globals: nodeGlobals },
   },
   {

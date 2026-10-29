@@ -24,3 +24,12 @@
     - id: glm-hourness/glm-compact
       name: ./dist/glm-prompt/compact-row.js
       config: {}
+    - id: glm-hourness/glm-ui
+      # The client package nested at ./ui (dsh-glm-zcode-ui): the GLM pill
+      # under the composer and the settings section. Exactly one row:
+      # client-modules composes client halves per package and rejects a
+      # package resolved from multiple active Loader sources. Ships disabled
+      # until the desktop check of the split (AGENTS.md rule 4).
+      name: ./ui/index.js
+      disabled: true
+      config: {}

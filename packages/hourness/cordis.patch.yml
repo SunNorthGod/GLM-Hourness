@@ -51,3 +51,11 @@
       name: ./dist/graph/panel-row.js
       inject: [commands]
       config: {}
+    - id: glm-hourness/ui
+      # The client package nested at ./ui (dsh-hourness-ui): the project graph
+      # tab of the right sidebar. Exactly one row: client-modules composes
+      # client halves per package and rejects a package resolved from
+      # multiple active Loader sources. Keeps the id of the single-bundle UI
+      # row, which was enabled.
+      name: ./ui/index.js
+      config: {}

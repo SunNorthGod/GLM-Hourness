@@ -11,10 +11,10 @@ export default {
   $schema: 'https://unpkg.com/knip@6/schema.json',
   entry: [
     ...PACKAGES.flatMap(pkg => pkg.rows.map(row => `src/${row.module}.ts`)),
-    // UI bundle rows: DSH loads them through ui/package.json and ui/cordis.patch.yml;
-    // the client half is ui/src/client.tsx, bundled into ui/client.js by scripts/build-ui.mjs.
-    'ui/index.js',
-    'ui/src/client.tsx',
+    // Client packages: DSH loads each host half packages/<pkg>/ui/index.js
+    // through its package's patch; the client entry under ui/src/ is
+    // bundled into packages/<pkg>/ui/client.js by scripts/build-ui.mjs.
+    ...PACKAGES.flatMap(pkg => [`${pkg.dir}/ui/index.js`, pkg.client.entry]),
     // Probe provider, probe clock and dispatch spike: run-probe.mjs passes their paths to the DSH Loader.
     'scripts/probe/probe-llm.mjs',
     'scripts/probe/probe-clock.mjs',
@@ -24,8 +24,9 @@ export default {
     // Calibration checkers: run-calibrate.mjs starts each task's check.mjs by path.
     'tests/calibration/*/check.mjs',
   ],
-  project: ['src/**/*.ts', 'tests/**/*.{ts,mjs}', 'scripts/**/*.{mjs,cjs,ts}', 'ui/index.js', 'ui/src/**/*.{js,ts,tsx}'],
-  ignore: ['ui/client.js'],
+  project: ['src/**/*.ts', 'tests/**/*.{ts,mjs}', 'scripts/**/*.{mjs,cjs,ts}', 'packages/*/ui/index.js', 'ui/src/**/*.{js,ts,tsx}'],
+  // Built client halves; ui/client.js is the stale single-bundle one, kept until the cleanup commit.
+  ignore: ['packages/*/ui/client.js', 'ui/client.js'],
   // The client half gets React, react-dom (the pill dialog's portal) and
   // ui-primitives from the DSH client module table (the factory's require,
   // scripts/ui-modules.mjs), not from node_modules.

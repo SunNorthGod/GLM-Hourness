@@ -10,11 +10,10 @@
 - 仓库：`C:\Users\29596\Desktop\Project\GLM-Hourness`；git，远端 Gitee 私有仓库 `NorthGod_BFDG/GLM-Hourness`，主分支 `main`。
 - 目标：让 GLM 以 ZCode 训练分布住进 DeepSeek Harness（DSH），并在其上建一套编排层，把开发体系量化成由 harness 保证实施的标准（`CHARTER.md`）。
 - 运行时：DSH Desktop `0.2.1-rc.3`，profile `desktop`；ZCode 基线 3.16.3。
-- 安装形态（split 第 5 步起，`DESIGN.md` §2.3）：仓库产出两个宿主 bundle 与一个客户端包，profile 里是指向检出的链接，加载 `packages/*/dist` 与 `ui/client.js`：
-  - `dsh-glm-zcode@0.3.0`（`packages/glm`）：GLM 通道包，4 行（`glm-llm`、`glm-login`、`glm-prompt`、`glm-compact`）；
-  - `dsh-hourness@0.3.0`（`packages/hourness`）：编排层包，7 行（`data`、`guard`、`memory`、`workflow`、`hourness`、`graph`、`graph-panel`）；
-  - `dsh-glm-hourness-ui@0.2.0`（`ui/`）：独立单入口 UI 包，1 行。
-  - 根 `package.json`（`dsh-glm-hourness`）只是开发工作区，不再是 bundle。桌面版与 `glmsandbox` 两个 profile 在 split 合入时段里改为直接列两个宿主包；在那之前它们仍列旧的 `dsh-glm-hourness` 与 `dsh-glm-hourness-ui`，主检出合入了新布局而 profile 没切换时，本项目的行全部缺席，只有 `skipping profile bundle` 告警。
+- 安装形态（split 第 5、6 步起，`DESIGN.md` §2.3）：仓库产出两个 bundle，各嵌一个客户端包，profile 里是指向检出的链接，加载 `packages/*/dist` 与 `packages/*/ui/client.js`：
+  - `dsh-glm-zcode@0.3.0`（`packages/glm`）：GLM 通道包，4 个宿主行（`glm-llm`、`glm-login`、`glm-prompt`、`glm-compact`）加客户端行 `glm-ui`（客户端包 `dsh-glm-zcode-ui`，GLM 按钮与设置页，默认禁用，合入后的桌面版验收第二轮启用）；
+  - `dsh-hourness@0.3.0`（`packages/hourness`）：编排层包，7 个宿主行（`data`、`guard`、`memory`、`workflow`、`hourness`、`graph`、`graph-panel`）加客户端行 `ui`（客户端包 `dsh-hourness-ui`，项目图面板）。
+  - 根 `package.json`（`dsh-glm-hourness`）只是开发工作区，不再是 bundle。桌面版与 `glmsandbox` 两个 profile 在 split 合入时段里改为直接列两个宿主包；在那之前它们仍列旧的 `dsh-glm-hourness` 与 `dsh-glm-hourness-ui`（检出根目录与 `ui/`，第 5、6 步之后两处都已不是包），主检出合入了新布局而 profile 没切换时，本项目的行全部缺席，只有 `skipping profile bundle` 告警。
 - 拉取改变包布局的提交之后（split 起每次都按这一条做）：先关桌面版，再 `npm run build`，再启动。运行中的桌面版在下一次 profile 写入时就按磁盘上的布局重组（`DEVELOPMENT.md` §1.1）。
 
 ## 2. 仓库结构
@@ -23,7 +22,7 @@
 src/           两个包的 TypeScript 源码（源码不搬家；哪个目录属于哪个包见 scripts/packages.mjs，src/shared/ 是公共库）
 packages/      两个宿主包：glm/（dsh-glm-zcode）与 hourness/（dsh-hourness），各有 package.json、cordis.patch.yml、tsconfig.json、locale/、icon.svg；构建产物 dist/ 不入库
 tests/         39 个 spec，556 用例（2026-10-29，`a9f12e1`）；tests/fake-rc3.ts 为 rc.3 运行时替身；tests/tsconfig.json 只给 ESLint 提供类型信息；tests/calibration/ 为标定测试集（两个任务，ORCHESTRATION.md §10.5）
-ui/            独立 UI bundle（源码 ui/src，构建出 ui/client.js，不入库）
+ui/            客户端源码 ui/src 与它的 tsconfig.json，不是包；两个客户端包在 packages/*/ui/（package.json、宿主半 index.js、构建出的 client.js 不入库），哪个源码文件属于哪个客户端包见 scripts/packages.mjs
 scripts/       packages.mjs（目录表：两个包的名字、目录、源码目录与行，DEVELOPMENT.md §10）、clean-dist.mjs（构建前删各包的 dist/）、preflight-bundle.mjs、check-verbatim.mjs、check-lint.mjs（检查器门禁）、check-secrets.mjs（密钥扫描）、deps-check.mjs（依赖报告）、smoke-zcode*.mjs、sandbox.mjs（启动参数、探针生成的 profile 与覆盖行，探针与标定共用）、profile-shape.mjs（profile 结构的只读快照与比对）、probe/（L3 探针）、calibrate/（标定运行器与边界插件）、graph/（项目图命令行、出图与冒烟）
 eslint.config.js、knip.js（入口按目录表生成）、tsconfig.knip.json、.jscpd.json  检查器配置；eslint-suppressions.json、knip-baseline.json、.jscpd-baseline.json 为告警基线（DEVELOPMENT.md §10）
 docs/          宪章、设计、编排、路线、事实账、流程、交接；docs/graph/ 为本项目的项目图（进度的事实源）；docs/reference/ 为事实参考原文

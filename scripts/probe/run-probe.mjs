@@ -26,7 +26,9 @@
  * (scripts/sandbox.mjs generateProfile, PROBE_PROFILES): probe-full lists
  * both packages and runs every scenario but two; glm-only runs on
  * probe-glm (the GLM channel package alone) and hourness-only on
- * probe-hourness (the orchestration package alone). The main checkout and a
+ * probe-hourness (the orchestration package alone); client-modules mounts
+ * the client composition service on probe-full and checks that it composes
+ * both client packages. The main checkout and a
  * worktree are tested the same way and ~/.dsh/profiles is never used. Each
  * run writes the DSH home, overlays, request dumps and logs under
  * .llm/probe-runs/<timestamp>/ (gitignored).
@@ -410,6 +412,21 @@ const hournessOnlyPwsh = lastToolResult(hournessOnly.steps[3])
 const hournessOnlyStatus = hournessOnly.steps[1]?.command
 const hournessOnlyReport = hournessOnly.steps[3]?.command
 
+// Client composition (split design §5.6, U3): the headless template has no
+// client-modules row, so the overlay mounts @deepseek-ai/dsh-client-modules
+// on probe-full and enables glm-hourness/glm-ui. Its construction scans
+// every loaded row and throws on a composition error; the probe provider
+// reads the composed graph mid-step.
+const CLIENT_PACKAGES = PACKAGES.map(pkg => pkg.client.name)
+const clientModules = runScenario('client-modules', 'deepseek-probe', [{ text: 'done', modules: true }], 'Reply done.', [
+  '- insert:',
+  '    - id: glm-hourness-probe/client-modules',
+  '      name: \'@deepseek-ai/dsh-client-modules\'',
+  '- id: glm-hourness/glm-ui',
+  '  disabled: false',
+])
+const clientGraph = clientModules.steps[0]?.modules
+
 // Calibration run bounds (scripts/calibrate/limits.mjs, ROADMAP M1.7). The
 // step limit rejects the third step of a script that would read forever;
 // the time limit cancels the agent five seconds after its creation, in the
@@ -709,7 +726,7 @@ const checkpoint = compacted.steps.at(-1)?.messages.find(message => message.sour
 const usageOf = scenario => jsonl(join(runDir, scenario, 'dsh-home', 'glm-hourness', 'audit', 'usage.jsonl'))
 const glmUsage = usageOf('glm').filter(record => record.purpose === undefined)
 const compactUsage = usageOf('glm-compact').filter(record => record.purpose === 'compaction')
-const projectUsage = ['glm', 'glm-flash', 'glm-todo', 'glm-compact', 'glm-shadow', 'glm-guard-paths', 'non-glm', 'non-glm-guard', 'glm-no-dialect', 'glm-peak', 'limits-steps', 'limits-time', 'glm-dispatch', 'glm-goal', 'goal-headless', 'glm-only', 'hourness-only'].filter(scenario => existsSync(join(runDir, scenario, 'home', 'audit', 'usage.jsonl')))
+const projectUsage = ['glm', 'glm-flash', 'glm-todo', 'glm-compact', 'glm-shadow', 'glm-guard-paths', 'non-glm', 'non-glm-guard', 'glm-no-dialect', 'glm-peak', 'limits-steps', 'limits-time', 'glm-dispatch', 'glm-goal', 'goal-headless', 'glm-only', 'hourness-only', 'client-modules'].filter(scenario => existsSync(join(runDir, scenario, 'home', 'audit', 'usage.jsonl')))
 const glmViolations = jsonl(join(glmDir, 'home', 'audit', 'violations.jsonl'))
 const stepLimits = jsonl(limitsRecord('limits-steps'))
 const timeLimits = jsonl(limitsRecord('limits-time'))
@@ -787,6 +804,7 @@ const checks = [
   ['hourness-only: a native write into the graph is denied by graph-files-only and journaled; a shell write runs and leaves no record (the guard row judges GLM calls only until split step 7)', hournessOnlyWrite?.isError === true && hournessOnlyWrite.text.includes('inside the project graph') && !existsSync(hournessOnlyNode) && hournessOnlyPwsh?.isError !== true && existsSync(hournessOnlyShell) && hournessOnlyViolations.length === 1 && hournessOnlyViolations[0].rule === 'graph-files-only' && hournessOnlyViolations[0].tool === 'write', `records: ${hournessOnlyViolations.map(record => `${record.rule}:${record.tool ?? ''}`).join(', ') || 'none'}; shell file ${existsSync(hournessOnlyShell)}`],
   ['hourness-only: the system prompt declares no workspace rules', hournessOnlyFirst !== undefined && !hournessOnlyFirst.system.includes('# Workspace rules'), ''],
   ['hourness-only: /hourness-status lists the orchestration rows and the GLM package as one line not loaded', hournessOnlyStatus?.kind === 'success' && onlyOneLoaded(hournessOnlyHealth, 'hourness', 'glm'), `${hournessOnlyStatus?.kind ?? 'not run'}; ${JSON.stringify(hournessOnlyHealth[WHOLE] ?? null)}`],
+  ['client-modules: mounted on probe-full with glm-ui enabled, the service composes both client packages, each once, without an error', Array.isArray(clientGraph?.entries) && CLIENT_PACKAGES.every(name => clientGraph.entries.filter(id => id === name).length === 1) && !stderrOf('client-modules').includes('client-modules') && quiet('client-modules'), `${JSON.stringify(clientGraph ?? null)}; stderr ${stderrOf('client-modules').length} byte(s)`],
   ['hourness-only: /hourness lists calls and tokens without the pricing service; no skipped bundle and no row warning', hournessOnlyReport?.kind === 'success' && hournessOnlyPanel.startsWith('- 没有计价服务（GLM 通道包的 glm-login 行提供积分口径），只列调用与 token') && /^- deepseek-probe：\d+ 次 · 未命中输入 \d+/m.test(hournessOnlyPanel) && quiet('hourness-only'), `${hournessOnlyReport?.kind ?? 'not run'}; ${JSON.stringify(hournessOnlyPanel.split('\n').slice(0, 3))}`],
   ['glm boot: the runtime reached the probe provider', glmFirst !== undefined, `exit ${glm.status}, ${glm.steps.length} step(s)`],
   ['graph panel: /graph-apply comments as the human in the graph under the session working directory', panelCommands[0]?.kind === 'success' && panelCommands[0].text === '已批注「探针目标」' && panelLast('goal-1')?.actor === 'human' && panelLast('goal-1')?.text === 'probe comment', JSON.stringify(panelCommands[0] ?? null)],

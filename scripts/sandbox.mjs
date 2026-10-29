@@ -14,7 +14,7 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, lstatSync, mkdirSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { LEGACY_CLIENT_BUNDLE, PACKAGES } from './packages.mjs'
+import { PACKAGES } from './packages.mjs'
 
 export const repo = resolve(fileURLToPath(new URL('..', import.meta.url)))
 const desktop = process.env.DSH_DESKTOP_DIR ?? join(process.env.LOCALAPPDATA ?? '', 'Programs', 'DeepSeek Harness')
@@ -45,12 +45,12 @@ const byKey = key => PACKAGES.filter(pkg => pkg.key === key)
 /**
  * The profiles the probe generates and the packages of this checkout each
  * lists, in profile order (scripts/packages.mjs): probe-full lists the two
- * packages where the desktop profile lists them, followed by the client
- * package under ui/ until split step 6; probe-glm and probe-hourness list
- * one package each, the way a user installs only one.
+ * packages the way the desktop profile lists them after the split (each
+ * brings its nested client package through its own patch); probe-glm and
+ * probe-hourness list one package each, the way a user installs only one.
  */
 export const PROBE_PROFILES = {
-  'probe-full': [...PACKAGES, LEGACY_CLIENT_BUNDLE],
+  'probe-full': PACKAGES,
   'probe-glm': byKey('glm'),
   'probe-hourness': byKey('hourness'),
 }

@@ -1,7 +1,0 @@
-# GLM-Hourness UI bundle: exactly ONE row, because client-modules composes
-# client halves per package and rejects a package resolved from multiple
-# active Loader sources (see ../docs/DESIGN.md §2.3).
-- insert:
-    - id: glm-hourness/ui
-      name: ./index.js
-      config: {}

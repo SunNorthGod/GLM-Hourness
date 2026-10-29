@@ -12,7 +12,8 @@
  * scripted step marked `status` also records what the bundle's `/glm-status`
  * command prints for the session at that point (credential line and row
  * health table); a step marked `live` records the graph panel's live view
- * of the session (the graphLive projection, src/graph/live.ts).
+ * of the session (the graphLive projection, src/graph/live.ts); a step
+ * marked `modules` records the package ids of the client-modules graph.
  *
  * Each session follows its own script: the first session that sends a
  * scripted request follows `script`; each later one (a subagent, or a
@@ -204,6 +205,18 @@ class ProbeAdapter {
     const command = step.command === undefined
       ? undefined
       : { name: step.command.name, ...await runCommand(this.ctx, request, step.command.name, step.command.input ?? '').catch(error => ({ kind: 'error', text: `probe: /${step.command.name} threw: ${error instanceof Error ? error.message : String(error)}` })) }
+    // A step marked `modules` records the client packages the client-modules
+    // service composed (when the overlay mounts it).
+    let modules
+    if (step.modules === true) {
+      try {
+        const graph = this.ctx.get('clientModules')?.graph()
+        modules = graph === undefined ? null : { entries: graph.entries.map(entry => entry.id) }
+      }
+      catch (error) {
+        modules = { error: error instanceof Error ? error.message : String(error) }
+      }
+    }
     if (this.dump !== undefined) {
       // The glm-zcode encoder over this exact request, with the runtime's
       // attachment and fs services (the channel row reads them the same way).
@@ -229,6 +242,7 @@ class ProbeAdapter {
         ...(status === undefined ? {} : { status }),
         ...(command === undefined ? {} : { command }),
         ...(live === undefined ? {} : { live }),
+        ...(modules === undefined ? {} : { modules }),
         // The runtime delivers the prompt as leading system messages (the
         // channel lifts them the same way, src/glm-llm/anthropic.ts).
         system: [request.system ?? '', ...leadingSystem(request.messages ?? [])].filter(text => text.length > 0).join('\n\n'),

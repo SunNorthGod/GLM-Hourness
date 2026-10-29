@@ -19,7 +19,7 @@ import { PRICING_SERVICE, pricingService, type UsagePricing } from '../src/share
 import { GRAPH_TOOL_NAMES, MEMORY_TOOL_NAMES, ORCHESTRATION_RESIDENT_TOOLS } from '../src/shared/tool-names.ts'
 import { RESIDENT_TOOLS } from '../src/toolsearch/exposure.ts'
 import { apply as hournessApply } from '../src/report/index.ts'
-import { LEGACY_CLIENT_BUNDLE, PACKAGES } from '../scripts/packages.mjs'
+import { PACKAGES } from '../scripts/packages.mjs'
 import { fakeRuntime, serviceStore, type FakeRuntime } from './fake-rc3.ts'
 
 // Contracts between the GLM channel package and the orchestration package
@@ -36,6 +36,7 @@ const ROW_IDS = [
   'glm-hourness/glm-login',
   'glm-hourness/glm-prompt',
   'glm-hourness/glm-compact',
+  'glm-hourness/glm-ui',
   'glm-hourness/data',
   'glm-hourness/guard',
   'glm-hourness/memory',
@@ -46,8 +47,8 @@ const ROW_IDS = [
   'glm-hourness/ui',
 ]
 
-test('row ids: the packages\' rows and the client row are the fixed list', () => {
-  assert.deepEqual([...PACKAGES.flatMap(pkg => pkg.rows.map(row => row.id)), LEGACY_CLIENT_BUNDLE.row], ROW_IDS)
+test('row ids: each package\'s host rows and its client row are the fixed list', () => {
+  assert.deepEqual(PACKAGES.flatMap(pkg => [...pkg.rows.map(row => row.id), pkg.client.row]), ROW_IDS)
 })
 
 test('tool names: the graph and memory rows register exactly the contract names', () => {
