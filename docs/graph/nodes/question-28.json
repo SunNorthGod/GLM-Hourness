@@ -2,7 +2,7 @@
   "id": "question-28",
   "type": "question",
   "title": "split 合入后同时实现几个特性",
-  "status": "approved",
+  "status": "done",
   "parent": "orch",
   "body": "现在在做的：split 实现（9 步做完 5 步），规则板块、人话面板加新手引导两份设计；排队的有 M3（12 步）、M3 人设、推荐放最后、V-01 行名、自举。M3、规则、人话面板、引导、人设、推荐放最后都改编排层包，大多碰同一批文件（ui/src/graph、src/graph、src/guard），每个要 L4 的都排队等同一个桌面版（risk-shared-desktop），每份设计回来都带 4–6 道题。",
   "options": [
@@ -24,6 +24,13 @@
   ],
   "recommend": "C",
   "decider": "human",
+  "decision": "C",
+  "evidence": [
+    {
+      "kind": "decision",
+      "ref": "C"
+    }
+  ],
   "history": [
     {
       "at": "2026-10-29T10:29:02.844Z",
@@ -31,6 +38,22 @@
       "op": "propose",
       "reason": "编排方提议 split 合入后限制同时实现的特性数，用户要求按项目规则解释",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-29T10:38:31.800Z",
+      "actor": "llm",
+      "op": "decide",
+      "reason": "用户选 C 并补充：没有副作用的前提下尽可能多并行。执行：设计、调研这类不碰代码的现在就并行；改代码的按文件与资源判断，不碰同一批文件、不抢桌面版与沙盒的可以并行（例如 M3 第 1、2 步只改 src/graph 的引擎与新的纯函数模块，与 split 的包布局不冲突）；同一批文件或要桌面版的排队；M3 骨架优先",
+      "relay": "C 我补充一点，你在没有副作用的情况下尽可能开更多的并行，要不然我们现在的开发节奏太慢了",
+      "from": "approved",
+      "to": "done",
+      "option": "C",
+      "evidence": [
+        {
+          "kind": "decision",
+          "ref": "C"
+        }
+      ]
     }
   ]
 }

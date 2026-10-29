@@ -98,6 +98,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "用户 2026-10-29：「GLM我试过了，当主Agent完全没问题。你得相信现在大模型的能力，而且当时不是也说了吗，需要强提醒人类用贵一些的模型当主Agent，便宜的去干活都行」。编排方据此撤回「GLM 当主 Agent 未验证」的担心。主 Agent 用强一档的模型、子 agent 用便宜的模型，要在开启主 Agent 时强提醒人（/wish 的入口、新手引导与流程条），已转给 plain-ui 设计；ORCHESTRATION.md §3.5 只写了子任务的档位，主 Agent 的档位提醒随 M3 实现补上。question-26 定为 C，新任务 m3-main-persona。"
+    },
+    {
+      "at": "2026-10-29T10:39:45.633Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M3 第 1、2 步与 recommend-last 一起由 m3-base-engine-and-stage（wf_35439a23b47ccd72）在 .worktrees/m3-base 先做：两步只改 src/graph 的引擎与新的纯函数模块，不依赖 split 的包布局（question-28 C：没有副作用就并行）。合入 main 的先后与 split 由编排方排。"
     }
   ]
 }

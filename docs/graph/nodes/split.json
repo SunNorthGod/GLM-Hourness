@@ -186,6 +186,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "分支 split 已无冲突 rebase 到 main b5eb2c9（第 0–2 步现为 02de37d、51eba65、77583d7）；第 3 步 ff4fe8c（计价服务）、第 4 步 877b1aa（行健康分组与 /hourness-status）。第 4 步上 build、preflight、npm test 全过（603 通过、0 失败，检查器基线不变），生成 profile 上探针 100/100。未推送；接下来第 5–6 步（两个插件的布局与 UI 拆分，按附录 0.5）。"
+    },
+    {
+      "at": "2026-10-29T10:38:32.221Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "第 5 步 f28ca70（两个宿主包 dsh-glm-zcode、dsh-hourness，根只作开发工作区）、第 6 步 40190cf（两个嵌套的客户端包，ui/ 不再是包）已在分支上提交。第 8 步改写 hourness 目标时加上 question-27 B：正文写明目标是在质量不降的前提下尽量减轻人的工作，验收加一条「人的负担可量化地下降而质量不降」（度量只取系统里看得到的数，方案由 agent 提、人批）。编排方执行 graph-step8.json 时一并处理。"
+    },
+    {
+      "at": "2026-10-29T10:39:45.870Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "第 5 步 f28ca70：探针 111/111、npm test 616/0；第 6 步 40190cf：探针 112/112、npm test 620/0；基线不变；附录 NIT E01–E03 的处理在 low-decisions.md。事故：第 5–6 步的 worker 误改了主检出的 README，随即还原到 HEAD；编排方复核主检出 git status 干净、README 与 HEAD 无差异。"
     }
   ]
 }

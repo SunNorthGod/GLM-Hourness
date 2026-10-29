@@ -2,7 +2,7 @@
   "id": "question-27",
   "type": "question",
   "title": "「减轻人的负担而质量不降」要不要写进编排层目标并量化",
-  "status": "approved",
+  "status": "done",
   "parent": "hourness",
   "body": "用户：「所以我的最终目标可能是，如何利用LLM的能力和harness工程的限制，在不影响甚至提高项目工程质量的前提下，尽可能减轻人的工作以解放生产力。」外部依据：HBR 2026-03 对 1,488 名美国全职员工的研究把过度使用或监督 AI 带来的精神疲劳称为 AI brain fry，最耗神的是盯着多个 AI 工具或 agent，而把重复性工作交给 AI 能减轻倦怠（https://hbr.org/2026/03/when-using-ai-leads-to-brain-fry）；arXiv 2505.10742 在 1,178 个观察里发现外在认知负荷与质量的负相关约是内在负荷的三倍（https://arxiv.org/html/2505.10742v3）。今天的目标（hourness）写的是开发体系由 harness 保证实施，没有写人的负担。",
   "options": [
@@ -19,6 +19,13 @@
   ],
   "recommend": "B",
   "decider": "human",
+  "decision": "B",
+  "evidence": [
+    {
+      "kind": "decision",
+      "ref": "B"
+    }
+  ],
   "history": [
     {
       "at": "2026-10-29T10:29:02.606Z",
@@ -26,6 +33,22 @@
       "op": "propose",
       "reason": "用户提出的最终目标；写进目标属于必须问人的第 1 类",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-29T10:38:32.005Z",
+      "actor": "llm",
+      "op": "decide",
+      "reason": "用户选 B，同时担心这属于心理学。范围：本项目不做心理学测量（不做问卷、不测生理信号），只量系统里看得到的数：每周被问几次、每次要读多少字、拍板等多久、因人的决定返工几次，对照测试、评审发现与返工率，晨报每周报；度量方案由 agent 提、人批。目标文字随 split 第 8 步改写 hourness 时一并写入",
+      "relay": "B 但是这属于心理学的内容了，归我们管吗？虽然我也很想做但是。。。",
+      "from": "approved",
+      "to": "done",
+      "option": "B",
+      "evidence": [
+        {
+          "kind": "decision",
+          "ref": "B"
+        }
+      ]
     }
   ]
 }

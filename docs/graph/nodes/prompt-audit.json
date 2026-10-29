@@ -1,0 +1,27 @@
+{
+  "id": "prompt-audit",
+  "type": "task",
+  "title": "清点所有注入给模型的文字：放在哪、多长、贴不贴训练分布、有没有用",
+  "status": "doing",
+  "parent": "orch",
+  "kind": "review",
+  "body": "清点两个插件往模型里放的全部文字：方言各节、工具检索、todo 提醒、压缩指令、guard 声明、项目图每步投影、高峰提醒，以及已设计未实现的主 Agent 身份、人设、阶段提醒、规则提醒。每段写明：落在哪（系统提示词的节、对话末尾的 <system-reminder>、工具说明）、多长、对提示词缓存的影响、ZCode 里有没有对应的位置与原文、它是在要求模型还是在声明 harness 会执行的规矩、哪些路由与会话会看到。按 orch 批注里的四条原则（逐字镜像、静态进系统提示词固定位置而动态走末尾 system-reminder、能执行的少说、每段要证明有用）给出整理建议，以及逐段开关对比的标定方案与积分估算；跑标定要花积分，先提给人。第一步只读，不改代码。",
+  "history": [
+    {
+      "at": "2026-10-29T10:38:32.860Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "编排方提议清点全部注入文字，用户回复同意",
+      "relay": "没问题",
+      "to": "approved"
+    },
+    {
+      "at": "2026-10-29T10:39:45.187Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "派出 investigate-prompt-audit（wf_842dcd90d8bb4666）：只读清点全部注入文字并给出整理建议与消融方案，不跑标定；报告 .agents/tasks/prompt-audit/report.md",
+      "from": "approved",
+      "to": "doing"
+    }
+  ]
+}
