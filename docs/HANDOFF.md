@@ -100,7 +100,7 @@ dist/          不入库：tsc 产物
 26. 批次 L4 没有在桌面版上看到、只由 L2 覆盖的 m1-parity 路径：委派子会话的 `subagent` 头值与父会话的 trace id（没有截包）；拿不到项目令牌时失败即停的界面呈现（不破坏真实登录）；deviceMid 缺失时的写回（本机状态文件已有 deviceMid）；项目令牌被拒后的刷新重发。没有测过：两个进程同时写同一个凭证文件（`DESIGN.md` §4.1）。
 27. User-Agent 的运行时段随宿主：DSH 桌面运行时上是 `runtime/node.js/24`，ZCode 桌面版自己的 agent 进程取什么值没有核（`DESIGN.md` §4.2）。
 
-反向代理已从项目范围移除（`DESIGN.md` §1）；profile 中指向 8317 的 pi-ai `glm` 路由属于用户配置，用户 2026-10-28 把清理交给 agent。批次 L4 于 2026-10-29 通过后，这条路由已于同日从 profile 删除（项目图 `m1-cleanup`），含这条路由的改前备份也按用户要求删除；重启后模型菜单只有「DeepSeek 账号」与「GLM (ZCode native)」两组。
+反向代理已从项目范围移除（`DESIGN.md` §1）；profile 中指向 8317 的 pi-ai `glm` 路由属于用户配置，用户 2026-10-28 把清理交给 agent。批次 L4 于 2026-10-29 通过后，这条路由已于同日从 profile 删除（项目图 `m1-cleanup`），含这条路由的改前备份也按用户要求删除；重启后模型菜单只有「DeepSeek 账号」与「GLM (ZCode native)」两组（本包这一组随后改名为「GLM（ZCode 原生通道）」，`m8-ui-audit` V-02）。
 
 ## 6. 环境事实
 

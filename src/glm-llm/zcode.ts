@@ -66,6 +66,9 @@ const SECURITY_FAILURE_VALUES: ReadonlySet<unknown> = new Set(['VERIFY_APIKEY_EX
  */
 const DEVICE_MID_TEMPORARY_NOTE = '；设备 ID 未能写入 ZCode 状态文件，本进程用临时 ID'
 
+/** The provider group name in DSH's model picker; Chinese like the picker's own groups (DeepSeek 账号). */
+const PROVIDER_DISPLAY_NAME = 'GLM（ZCode 原生通道）'
+
 export interface ZcodeAdapterOptions {
   /** Agent home directory: `<home>/credentials.json`. */
   readonly home: string
@@ -273,9 +276,13 @@ export class ZcodeAdapter {
     return fetchImpl(routed.url, routed.routed ? routedInit(init, routed.headers) : init)
   }
 
-  /** Provider route display metadata (LlmAdapter base contract). */
+  /**
+   * Provider route display metadata (LlmAdapter base contract): the group
+   * name the composer's model picker shows. The settings page
+   * (ui/src/channel.js) quotes the same name.
+   */
   providerInfo(provider: string): { id: string, name: string } {
-    return { id: provider, name: 'GLM (ZCode native)' }
+    return { id: provider, name: PROVIDER_DISPLAY_NAME }
   }
 
   /** No route-owned retry policy (LlmAdapter base contract: undefined = defaults). */
