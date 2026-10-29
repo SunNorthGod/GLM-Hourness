@@ -24,11 +24,15 @@
   ],
   "recommend": "C",
   "decider": "agent",
-  "decision": "C",
+  "decision": "B",
   "evidence": [
     {
       "kind": "decision",
       "ref": "C"
+    },
+    {
+      "kind": "decision",
+      "ref": "B"
     }
   ],
   "history": [
@@ -51,6 +55,21 @@
         {
           "kind": "decision",
           "ref": "C"
+        }
+      ]
+    },
+    {
+      "at": "2026-10-29T13:25:23.921Z",
+      "actor": "llm",
+      "op": "decide",
+      "reason": "再拍：用户说唯一要加的默认规则是峰谷定价，「探针一次一个、桌面版在用、换了模型要换回」这三条约定是编排方自己加的，不做成产品规则；面板仍可只读列出代码里已有的规则（guard、图文件门禁、M3 的两条），那不是新加规则",
+      "from": "done",
+      "to": "done",
+      "option": "B",
+      "evidence": [
+        {
+          "kind": "decision",
+          "ref": "B"
         }
       ]
     }

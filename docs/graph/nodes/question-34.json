@@ -2,7 +2,7 @@
   "id": "question-34",
   "type": "question",
   "title": "你在电脑前时，LLM 的活限速还是排队",
-  "status": "approved",
+  "status": "dropped",
   "parent": "rules",
   "body": "取决于：你另一个项目的构建主要吃内存还是吃 CPU？\n两样都吃 → C；只吃 CPU → A；只吃内存 → B。\n设计 §6、§7、§19 D3。双向门：数字随时能在面板上改。",
   "options": [
@@ -31,6 +31,15 @@
       "op": "propose",
       "reason": "规则板设计 D3，限速还是排队由人定",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-29T13:25:23.438Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "用户纠正：限速与排队只是举例，不做进项目",
+      "relay": "其余用电脑啊，llm限速啊默认额度啥的都只是我给你举的例子，没让你真加进我们项目里。唯一一个加进去的默认规则是峰谷定价的事情",
+      "from": "approved",
+      "to": "dropped"
     }
   ]
 }

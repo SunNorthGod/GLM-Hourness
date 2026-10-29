@@ -2,7 +2,7 @@
   "id": "question-32",
   "type": "question",
   "title": "规则板管多大范围",
-  "status": "approved",
+  "status": "done",
   "parent": "rules",
   "body": "取决于：你会同时开两个以上项目让 LLM 干活吗？\n会 → C；不会 → B。\n设计 .agents/tasks/rules/design.md §3、§19 D1。双向门：改范围要迁移一次状态文件，规则内容不丢。",
   "options": [
@@ -24,6 +24,13 @@
   ],
   "recommend": "C",
   "decider": "human",
+  "decision": "C",
+  "evidence": [
+    {
+      "kind": "decision",
+      "ref": "C"
+    }
+  ],
   "history": [
     {
       "at": "2026-10-29T13:00:37.789Z",
@@ -31,6 +38,22 @@
       "op": "propose",
       "reason": "规则板设计 D1，范围由人定",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-29T13:25:22.906Z",
+      "actor": "llm",
+      "op": "decide",
+      "reason": "用户选 C：规则按项目，只有物理上独一份的东西全机共享",
+      "relay": "规则C",
+      "from": "approved",
+      "to": "done",
+      "option": "C",
+      "evidence": [
+        {
+          "kind": "decision",
+          "ref": "C"
+        }
+      ]
     }
   ]
 }

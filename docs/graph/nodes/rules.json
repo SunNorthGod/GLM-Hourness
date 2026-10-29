@@ -81,6 +81,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "设计评审第 3 轮 APPROVED：HIGH 0、MEDIUM 0、LOW 5（F28–F32，非阻断）；三轮问题数 1/5/13 → 0/1/7 → 0/0/5。终稿 .agents/tasks/rules/design.md 0.3。待人定的 D1–D4 按表格版提为 question-32 到 question-35；D5（已有规则收进多少）是双向门，由 agent 定为 C（代码规则只列出，约定收进来），question-36，人可推翻。实现在 split 合入后排队。"
+    },
+    {
+      "at": "2026-10-29T13:25:24.180Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "编排方理解错了范围（记录）：用户的「人在用电脑、限速、默认额度」只是举例，设计 0.3 把它们做成了要实现的默认能力，并据此问了 4 道题。用户纠正：「其余用电脑啊，llm限速啊默认额度啥的都只是我给你举的例子，没让你真加进我们项目里。唯一一个加进去的默认规则是峰谷定价的事情」。处理：question-32 定 C；question-33 到 35 废弃；question-36 再拍为 B（不把三条约定做成规则）；派出 rules-design-cut（wf_8a20b0900a355853）把设计删到概念与机制加一条默认规则（GLM 峰谷定价），其余移进「人以后可以加的规则」附录，重新评审；.agents/tasks/design-context.md 加了这条更正，M6 设计已收到。"
     }
   ]
 }

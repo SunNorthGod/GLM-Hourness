@@ -2,7 +2,7 @@
   "id": "question-33",
   "type": "question",
   "title": "「你在用电脑」怎么判断",
-  "status": "approved",
+  "status": "dropped",
   "parent": "rules",
   "body": "取决于：自动检测判错时（看视频不碰键盘 10 分钟被当成走开），你能接受 LLM 全速跑吗？\n能 → A；不能 → C。\n设计 §5、§19 D2。双向门。",
   "options": [
@@ -31,6 +31,15 @@
       "op": "propose",
       "reason": "规则板设计 D2，在场判断由人定",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-29T13:25:23.157Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "用户纠正：在场判断只是举例，不做进项目；规则板只带一条默认规则（峰谷定价）",
+      "relay": "其余用电脑啊，llm限速啊默认额度啥的都只是我给你举的例子，没让你真加进我们项目里。唯一一个加进去的默认规则是峰谷定价的事情",
+      "from": "approved",
+      "to": "dropped"
     }
   ]
 }

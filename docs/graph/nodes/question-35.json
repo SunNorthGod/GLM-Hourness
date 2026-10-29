@@ -2,7 +2,7 @@
   "id": "question-35",
   "type": "question",
   "title": "你在电脑前时的默认预算",
-  "status": "approved",
+  "status": "dropped",
   "parent": "rules",
   "body": "取决于：LLM 跑构建时，你的电脑是真卡还是只是风扇响？\n卡到不能用 → A；卡但能忍 → C；只是风扇响 → B。\n以后改起来很贵：A 与 C 让 DSH 每次启动就进 Windows 系统作业，限制随时能放开，但「在作业里」到 DSH 重启才撤回。「不在」一档都是正常优先级、不限 CPU、派发 4 路。设计 §7、§11.2、§19 D4。",
   "options": [
@@ -31,6 +31,15 @@
       "op": "propose",
       "reason": "规则板设计 D4，默认预算由人定；带 CPU 上限的档让 DSH 进系统作业，到重启才出来",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-29T13:25:23.684Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "用户纠正：默认额度只是举例，不做进项目",
+      "relay": "其余用电脑啊，llm限速啊默认额度啥的都只是我给你举的例子，没让你真加进我们项目里。唯一一个加进去的默认规则是峰谷定价的事情",
+      "from": "approved",
+      "to": "dropped"
     }
   ]
 }
