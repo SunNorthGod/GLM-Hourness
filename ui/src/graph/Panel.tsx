@@ -80,12 +80,12 @@ export function GraphPanel({ source, commands, sessions, sessionId }: GraphPanel
   const selected = trail.at(-1)
   const depth = useRef(0)
   depth.current = trail.length
-  /** What had focus when the detail opened; it gets focus back when the detail closes. */
-  const opener = useRef<HTMLElement | null>(null)
+  /** What had focus when the detail opened (a row, a link, or a graph node, which is an SVG element); it gets focus back when the detail closes. */
+  const opener = useRef<HTMLElement | SVGElement | null>(null)
   const body = useRef<HTMLDivElement | null>(null)
   const tabsId = useId()
   const open = useCallback((id: string) => {
-    if (depth.current === 0) opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    if (depth.current === 0) opener.current = document.activeElement instanceof HTMLElement || document.activeElement instanceof SVGElement ? document.activeElement : null
     setTrail(current => current.at(-1) === id ? current : [...current, id])
   }, [])
   const services = useMemo<PanelServices>(() => ({ commands, sessionId, open }), [commands, sessionId, open])
