@@ -114,6 +114,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "question-17 B 的设计附录第一稿写完（.agents/tasks/split/design-addendum-q17b.md 0.1），取代 0.3 的 §3.1–§3.7、第 5、6 步、合入顺序与 §7.6 中依赖伞包的条目；评审进行中。要转给人的两处：合入时门禁排在 profile 切换之前（AGENTS.md 第 2 条）；question-15 A 的验收文字在 B 下要改写（附录 §7.4），评审后提给人。"
+    },
+    {
+      "at": "2026-10-29T05:34:35.509Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "第 0–2 步已在分支 split 上提交：ab031b7（探针生成 DSH home 与 profile、结构比对守卫）、00d1bd5（公共库接缝、目录表、导入边界）、0fe76a5（guard 规则经方言契约按 DSH 原生工具判定）；每步 build、preflight、npm test 与生成 profile 上的探针都通过（95/95、95/95、98/98）。评审第三轮的 5 条 LOW 的处理在 .agents/tasks/split/low-decisions.md。第 3 步等 UI-MERGE CHECK。"
+    },
+    {
+      "at": "2026-10-29T05:34:35.676Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "question-17 B 设计附录（.agents/tasks/split/design-addendum-q17b.md 0.1）第 1 轮评审：CHANGES_REQUESTED，HIGH 1、MEDIUM 4、NIT 12（.agents/tasks/split/addendum-review.md）。HIGH A01：演练在主检出 .llm/ 下建出指向主检出与 worktree 的 junction，附录没有规定先拆链再删除，失败的演练可能让主检出与 worktree 的内容丢失。MEDIUM：A02 新依赖应沿用与 dsh plugin add 相同的绝对 link: 写法；A03 apply 在 S2 上要重做核对；A04 整体回滚要删新布局残留并在 rollback 的 install 前跑门禁；A05 切换脚本不在分支里，要单独过代码评审。附录已修订为 0.2，17 条全部处理（附录 §9），第 2 轮评审待开始；第 5 步要等附录评审通过。"
     }
   ]
 }
