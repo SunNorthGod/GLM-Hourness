@@ -87,6 +87,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "编排方理解错了范围（记录）：用户的「人在用电脑、限速、默认额度」只是举例，设计 0.3 把它们做成了要实现的默认能力，并据此问了 4 道题。用户纠正：「其余用电脑啊，llm限速啊默认额度啥的都只是我给你举的例子，没让你真加进我们项目里。唯一一个加进去的默认规则是峰谷定价的事情」。处理：question-32 定 C；question-33 到 35 废弃；question-36 再拍为 B（不把三条约定做成规则）；派出 rules-design-cut（wf_8a20b0900a355853）把设计删到概念与机制加一条默认规则（GLM 峰谷定价），其余移进「人以后可以加的规则」附录，重新评审；.agents/tasks/design-context.md 加了这条更正，M6 设计已收到。"
+    },
+    {
+      "at": "2026-10-29T14:12:10.165Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "rules-design-cut（wf_8a20b0900a355853）写完 0.4（.agents/tasks/rules/design.md，约 189 KB，0.3 为 241 KB）：只发机制加一条默认规则 builtin:glm-peak-pricing（只提醒），状态全部按项目存，机器级在出厂时为空；没有待人定的题。0.3 与它的评审原样备份为 design-v0.3.md 与 design-review-v0.3.*。接下来是评审。"
     }
   ]
 }

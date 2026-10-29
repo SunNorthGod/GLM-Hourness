@@ -1,0 +1,19 @@
+{
+  "id": "d-interview-cards",
+  "type": "decision",
+  "title": "访谈里的选择题由 harness 出卡，主 Agent 不带 ask_user_question",
+  "status": "approved",
+  "parent": "m3",
+  "verification": "unverified",
+  "body": "主 Agent 访谈里给人的选择题不再走 DSH 原生 ask_user_question：DSH 的工具说明要模型把推荐放第一并加 (Recommended)（tool-ask-user lib/index.js:94、250），客户端认出后缀会预选第一项（client-ui-user-questions client.js:672–687、788–791），与 d-recommend-last 相反。改为 harness 出卡：主 Agent 调卡片工具（decision_card 的一种模式或新工具 interview_choice），参数是选项与 recommend，由 src/design/cards.ts 经 userQuestions.ask 按表格版规则写出（推荐在最后、不加后缀、不预选）；主 Agent 的工具面在组装时按角色去掉 ask_user_question，做法同 question-26 C；不带选项的追问也经 userQuestions.ask。M3 标定的模拟人改为：待决卡按图上的 recommend 选，访谈题选最后一项。M3 设计第 86、241、752、972、1050 行随之改写（plain-ui 设计评审 P3-02，评审里记作 A）。没选的做法：保留 ask_user_question，靠身份文本约束并统计违反次数。",
+  "history": [
+    {
+      "at": "2026-10-29T14:12:09.667Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "用户在编排方的选项卡「访谈里的选择题由谁来出」里选 B：由 harness 出卡，拿掉自带的提问工具（卡上的 A 是在身份提示里叮嘱模型）",
+      "relay": "B",
+      "to": "approved"
+    }
+  ]
+}

@@ -54,6 +54,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "设计 0.1 写完（.agents/tasks/m6/design.md），已按更正改写：峰谷定价是唯一的默认规则，M6 不假定任何错峰排队；待人定 D1 默认规则要不要告诉模型、D2 历史缺口的记录文件。评审进行中。"
+    },
+    {
+      "at": "2026-10-29T14:12:10.506Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M6 设计评审第 1 轮（.agents/tasks/m6/design-review.md）：13 条，挡路 3 条：F1 与规则设计 0.4 对不上；F2 glm-login 分不出 start-plan；F3 额度接口 401 后重新取凭证的做法与 3.16.3 不同。设计循环继续。"
     }
   ]
 }

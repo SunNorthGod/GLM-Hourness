@@ -116,6 +116,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "split 已合入并通过 L4，M3 的其余步骤可以在两个插件的布局上开工。开工前 M3 设计要补一份附录，吸收 0.4 之后的人定事项：question-26 C（主 Agent 去掉写文件的工具）、m3-1 验收第 4 条（/wish 的入口醒目，参照 plain-ui 设计 0.3 的 wish 草图）、question-31 C（身份节只留角色与边界，访谈步骤随阶段提醒下发）、m3-main-persona（人设放进 ZCode 的 Output Style 槽位、只给主 Agent）、d-option-card 表格版卡片字段、d-recommend-last。"
+    },
+    {
+      "at": "2026-10-29T14:12:09.991Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "d-interview-cards 已转给 m3-implement（wf_947be4d28012cb22）正在写的设计补遗（addendum-write）；计划里访谈选项单独排在 interview-choices 一步，模拟人的选法一并改。"
     }
   ]
 }
