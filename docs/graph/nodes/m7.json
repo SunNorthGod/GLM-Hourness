@@ -149,6 +149,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "循环板设计 0.3 §17 给 M7 的新请求：1a. entries.ts 每项补 why（1–150 个码点、人话、过 plainWordsIn），M7 0.3 的形状没有它，照原样十项都会被丢掉（评审 F28）。1b. runAction 的结局口径：动作跑完就返回 done，要主 Agent 做事时带 tell；failed 只给没能跑完；execute.trunk-check 发现主干红了返回 done 加 tell，不返回 failed（评审 F27）。3. emit 的 key 照循环板 §4.2 的键一栏写，说的是这一次发生：design-released:<goal>:<release>、handback:<task>:<childId>、review-passed:<task>:<审查者 childId>、review-skipped:<task>:<交回的 childId>、stopped:<node>:<kind>-<停下批注 at>、tasks-closed:<goal>:<最后关上的状态历史 at>、trunk-advanced:<to>:<advances.jsonl 行 at>、outside-advance 同、host-started:<持有者会话>:<performance.timeOrigin>；退路执行者的进程内去重改用同一个键（评审 F22）。hourness.outside-advance 的人话为「有人不经系统直接改了主干」。"
+    },
+    {
+      "at": "2026-10-29T23:17:35.865Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M7 设计 0.3 第 1 轮评审（m7-design-v03 运行内）：CHANGES_REQUESTED，挡路 3 条、不挡路 10 条。F1 上游提交的豁免能绕过 norm-merge-gate，而且可以伪造；F2 必须全审清单（norm-review-floor）没有可判定的写法，判不出时直接放过；F3 与循环板 0.1 的接口对不上，开始推进、对账、主干检查这几件没人执行（循环板现已到 0.3）。运行内的循环继续改下一稿；编排方另提醒：接缝以 design-context 的「Seam rulings between designs」一节为准（含高峰等待不计空转、resume-drive、少做并发上限由规则板给出）。"
     }
   ]
 }
