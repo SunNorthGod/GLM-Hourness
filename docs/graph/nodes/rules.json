@@ -63,6 +63,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "设计 v0.2 写完：第 1 轮 F1–F19 全部处理，作业对象的第二轮实验在一次性进程上做（exp/exp-round2*.ps1、exp-bootstrap.ps1）。第 2 轮评审进行中。"
+    },
+    {
+      "at": "2026-10-29T11:49:48.234Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "设计评审第 2 轮（v0.2）：CHANGES_REQUESTED，HIGH 0、MEDIUM 1、LOW 7；第 1 轮（HIGH 1、MEDIUM 5、LOW 13）19 条全部关闭。唯一挡路的 F20：从流水重放时还原不了修剪与 recovered/base 记录，快照被清零之后重建达不到验收 1.4 第 5 条（属于失败后无法恢复）。第 3 轮修订进行中。"
     }
   ]
 }
