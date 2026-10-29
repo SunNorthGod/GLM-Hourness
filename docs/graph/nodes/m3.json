@@ -92,6 +92,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "D1–D6 人定（question-19 A、20 B、21 A、22 A、23 A、24 A），m3-1 到 m3-6 的验收已按设计 §1.2 写入。question-19 的附加要求：/wish 的入口要醒目，没开启主 Agent 的会话里也要提示人可以用 /wish 开启（m3-1 验收第 4 条）；设计 0.4 没有这一项，实现开工时先补设计并过评审（候选位置：输入框上方与流程条同一处、开始页、项目图面板的「需要你」）。D2 B 的 ROADMAP 3.3、3.5 与 ORCHESTRATION §4.5、§5、§14 随代码改写。实现仍等 split 合入。"
+    },
+    {
+      "at": "2026-10-29T10:16:01.094Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "用户 2026-10-29：「GLM我试过了，当主Agent完全没问题。你得相信现在大模型的能力，而且当时不是也说了吗，需要强提醒人类用贵一些的模型当主Agent，便宜的去干活都行」。编排方据此撤回「GLM 当主 Agent 未验证」的担心。主 Agent 用强一档的模型、子 agent 用便宜的模型，要在开启主 Agent 时强提醒人（/wish 的入口、新手引导与流程条），已转给 plain-ui 设计；ORCHESTRATION.md §3.5 只写了子任务的档位，主 Agent 的档位提醒随 M3 实现补上。question-26 定为 C，新任务 m3-main-persona。"
     }
   ]
 }

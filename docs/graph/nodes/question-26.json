@@ -2,7 +2,7 @@
   "id": "question-26",
   "type": "question",
   "title": "主 Agent 的工具里还留不留写文件的工具",
-  "status": "approved",
+  "status": "done",
   "parent": "m3",
   "body": "用户：「直接不给主Agent的提示词里加那些写啊改啊之类的工具呗那就，然后再用提示词提醒他的身份之类的咋样？」现状（2026-10-28 改定、M3 设计 §3.1.3、m3-1 验收第 3 条）：主 Agent 的工具面与普通会话相同，写文件的调用由 guard 在执行边界拒绝，拒绝信息给出正路（派发）。去掉工具不需要 DSH 的 preset：编排层插件在组装时从工具面去掉即可（设计里已用同一办法对普通会话去掉两个设计工具）。shell 也能写文件，只去掉 Write、Edit 这类工具关不住写入。",
   "options": [
@@ -24,6 +24,13 @@
   ],
   "recommend": "C",
   "decider": "human",
+  "decision": "C",
+  "evidence": [
+    {
+      "kind": "decision",
+      "ref": "C"
+    }
+  ],
   "history": [
     {
       "at": "2026-10-29T10:04:39.154Z",
@@ -31,6 +38,22 @@
       "op": "propose",
       "reason": "用户提议主 Agent 不拿写文件的工具；改的是 m3-1 验收第 3 条与 2026-10-28 的机制定案，属于必须问人的第 1 类",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-29T10:16:00.418Z",
+      "actor": "llm",
+      "op": "decide",
+      "reason": "用户选 C：主 Agent 的工具面去掉 Write、Edit 这类写文件的工具，由编排层插件在组装时去掉；身份提示词讲清角色；guard 继续拦 shell 写入兜底。m3-1 验收第 3 条与 M3 设计 §3.1.3 随实现改写",
+      "relay": "C 就删个写工具，把主Agent变成聊天模型就行了呗",
+      "from": "approved",
+      "to": "done",
+      "option": "C",
+      "evidence": [
+        {
+          "kind": "decision",
+          "ref": "C"
+        }
+      ]
     }
   ]
 }

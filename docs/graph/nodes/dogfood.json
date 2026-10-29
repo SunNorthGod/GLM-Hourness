@@ -1,0 +1,28 @@
+{
+  "id": "dogfood",
+  "type": "feature",
+  "title": "用本项目自己的编排层开发本项目",
+  "status": "approved",
+  "parent": "orch",
+  "body": "等 M3 的主 Agent 与 M7 的派发、审查、汇合有了最薄的一条能跑通的骨架之后，本项目的开发改由它自己的编排层在 DSH 里做（GLM 主 Agent 用强一档模型，子 agent 用便宜模型），替换现在由 Kiro 工作流顶着的角色。这是对编排层最硬的验收：卡住、返工、要人救场的地方就是要改的地方，记成节点。",
+  "edges": [
+    {
+      "type": "depends",
+      "to": "m3"
+    },
+    {
+      "type": "depends",
+      "to": "m7"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-29T10:16:01.744Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "用户认同编排方的第五条建议",
+      "relay": "第五点认同",
+      "to": "approved"
+    }
+  ]
+}
