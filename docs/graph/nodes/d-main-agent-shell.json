@@ -46,6 +46,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "落地细则（编排方定，可推翻）：git 不当写文件拦；会丢掉未提交改动或改写已推送历史的命令（reset --hard、按路径 checkout 或 restore、clean -f、stash drop 或 clear、branch -D、push --force 等）执行前，harness 先存一份可恢复的快照（git stash create 加 refs/hourness/snapshots/ 下的引用；改写历史时打标签）并记下，再放行；人或主 Agent 都能从快照恢复。依据 d-failure-plans：不拦，但失败要能恢复、能追溯。"
+    },
+    {
+      "at": "2026-10-29T18:17:29.371Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M3 附录 0.3 §2.5 的落地：只对主 Agent 自己的 shell 调用；按子命令与参数分两类（丢未提交改动、改写历史），存一个快照提交（父提交是 HEAD、stash create 的结果与所有旧的引用），引用 refs/hourness/snapshots/<id>，改写历史时另打轻量标签 hourness-snapshot/<id>，流水在 <git-common-dir>/hourness/snapshots.jsonl，执行前 inject 恢复命令；clean 超过 200 MB 或 20,000 个文件、push 取不回远端、cd 到认不出的路径时拒绝，这是对 git 唯一的拒绝。"
     }
   ]
 }

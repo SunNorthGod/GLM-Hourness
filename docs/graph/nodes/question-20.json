@@ -54,6 +54,12 @@
           "ref": "B"
         }
       ]
+    },
+    {
+      "at": "2026-10-29T18:17:28.545Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M3 附录 0.3：D2 选 B 的「两个借用组件改为本项目的卡片工具」，随 d-chat-not-cards 改为两个对话工具 propose_to_human、record_human_answer；不借用 exit_plan_mode 与 user-approval 照旧。"
     }
   ]
 }

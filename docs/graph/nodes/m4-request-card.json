@@ -28,6 +28,12 @@
       "reason": "question-24 A 的落地：出工作区申报的同步卡场景归 M4",
       "relay": "A",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-29T18:17:28.938Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M3 附录 0.3 §9 第 6 条：原定复用的 src/design/cards.ts 与 human-writes.ts 不再有。按 d-chat-not-cards，出工作区的申报也该是主 Agent 在对话里提、人回话、harness 核对原话（src/design/talk.ts 的 personSaid 可直接用）；「批准只放行当次」的执行另设计。"
     }
   ]
 }

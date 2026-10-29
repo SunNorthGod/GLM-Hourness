@@ -113,6 +113,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "派出 m7-design-v03（wf_311e8a71f700db6b）：按 d-auto-drive、d-main-agent-models、d-main-agent-shell（含快照细则）、d-one-main-agent、d-chat-not-cards、question-38 C、norm-review-floor、d-rules-visible 与循环板把 M7 设计改到 0.3，评审对照这些决定，最后写一页人话放行稿并附十件活的「怎样算做完」人话版，供人按 question-37 A 逐条看。"
+    },
+    {
+      "at": "2026-10-29T18:17:29.151Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M3 附录 0.3 §9 第 7 条：d-auto-drive 的触发点是 record_human_answer（release、agree）以 llm 身份带 relay 把目标 stage 改为 release、reason 以「人在对话里同意（record_human_answer <callId>）」开头的那条历史，release 阶段提醒那一句由 M7 改写；M3 合入到 M7 合入之间主 Agent 移动主干不受 norm-merge-gate 核对，留痕在 reflog、会话日志与快照流水，子 agent 的 git 快照或工作树隔离归 M7；子 agent 的模型今天沿用父 agent（subagent:305–316），派发时由主 Agent 选在 M7；晨报、周报、巡检由 harness 提醒持有者会话，用 mainAgentOf 找它，m7-7 的运维会话作废。"
     }
   ]
 }

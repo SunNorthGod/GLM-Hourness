@@ -140,6 +140,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "派出 plain-ui-design-v05（wf_2c8ad9b8a0912d7e）：按 d-chat-not-cards（去掉选项卡与表格）、d-one-main-agent、d-defaults-readonly、d-peak-mode（默认少做，新手引导要讲）、d-rules-visible（面板第二层两块板：规则板含合入前检查与必须全审，循环板含检查器、晨报、周报、巡检）与第 4 轮两条裁定改到 0.5；P4 由循环板回答；评审之后写一页人话放行稿。"
+    },
+    {
+      "at": "2026-10-29T18:17:28.158Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M3 附录 0.3 §9 第 5 条（给 plain-ui 下一稿的契约）：提议式待决的字段与规则在 src/graph/proposal.ts 与附录 §3.3（background 照 PLAIN_LIMITS.background；proposal、doubt、notTaken、conclusion；四行都恰有一处加粗，面板用 splitBold 显示）；M3 第 6 步只给面板加最小显示（四行与「在主 Agent 的对话里回话」，没有按钮），「需要你」改版与点开跳到主 Agent 的对话归 plain-ui，主 Agent 是哪个会话用 mainAgentOf(userHome, dir)；PLAIN_WORDS 在 src/graph/plain-question.ts，jargon 规则从它读；例题换成人给的四行题；黄字删去「子 agent 用便宜的就行」。M3 若先于 plain-ui 第 1 步合入，由 M3 第 6 步按 plain-ui §4.2 建 background 与 PLAIN_LIMITS。"
     }
   ]
 }

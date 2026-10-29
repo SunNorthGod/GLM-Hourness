@@ -164,6 +164,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "m3-implement（wf_947be4d28012cb22）在附录第 3 稿的写稿步一启动就因 BAD_DECRYPT 失败，什么都没写；整个运行停止。按 d-design-onepage 改派 m3-addendum-v03（wf_57917c951081d8a9）：只写附录 0.3（第 2 轮三条挡路按编排方裁定、并入 d-chat-not-cards、d-main-agent-models、d-auto-drive）、独立评审至多两轮、再写一页人话放行稿 onepage.md；人放行之后另派实现。工作树 .worktrees/m3、.worktrees/m3-flow 保留。"
+    },
+    {
+      "at": "2026-10-29T18:17:27.557Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M3 设计附录 0.3 写成（.agents/tasks/m3/design-addendum.md），待第 3 轮独立设计评审。回应第 2 轮的 HIGH 1、MEDIUM 2、NIT 9（附录 §14），三条挡路按编排方的裁定改：H1 一个项目一个主 Agent（§2.4：项目就是图目录，持有者记录在用户级数据目录，别的会话 /wish 指路，/wish here 移过来，原会话由 harness 执行 /wish off，面板回写只发给持有者）；M1 git 交给主 Agent（§2.5：git 不当写文件拦，会丢未提交改动或改写历史的命令先存快照，git stash create 等存下改动、引用 refs/hourness/snapshots/<id>、改写历史时另打标签 hourness-snapshot/<id>、记流水、告诉主 Agent 怎么恢复，存不了才拒绝；主干前进按 norm-merge-gate 核对属于 M7 m7-5）；M2 背景字段照 plain-ui（§2.9）。按 d-chat-not-cards 把问人改成聊天（§3）：去掉 decision_card、确认卡、五键卡、ask_human 与卡片模块，换成 propose_to_human（四行：背景、推荐、疑问、不做，每行重点几个字加粗，由 harness 拼）与 record_human_answer（带人的原话记进图，harness 核对原话确实是人在提议之后发来的）；图引擎多认一种提议式待决（没有选项，存四行与结论）；访谈是对话；五键变成人说的五种话；主 Agent 仍不带 ask_user_question。d-main-agent-models、d-auto-drive 见 §2.6、§9 第 7 条；方向清单自查 §12。依据 main 4d2edb7：6134c83（m8-row-titles）改了行命名与探针脚本，实施前两个工作树先快进到 main。"
+    },
+    {
+      "at": "2026-10-29T18:17:27.757Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "附录 0.3 §9 第 1 条：随 d-chat-not-cards 与 d-one-main-agent，m3-1 第 3 条、m3-2 第 2、3 条、m3-3 第 1、3 条、m3-4 第 1–3 条、m3-5 第 1、2 条、m3-6 第 2 条的字句点名了卡片或多个主 Agent，附录写了建议的新字句。改验收要人的原话（norm-decision-tiers 第 1 类），未改；建议与一页放行稿 onepage.md 一起给人看。"
     }
   ]
 }

@@ -54,6 +54,12 @@
           "ref": "A"
         }
       ]
+    },
+    {
+      "at": "2026-10-29T18:17:28.748Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M3 附录 0.3 §3.5 末段：D3 选 A 的「卡片上的回答以人的身份写进图」前提已不在（d-chat-not-cards 不出卡片）。确认与放行改由主 Agent 以 llm 身份带人的原话（relay）写，harness 先从会话日志核对原话；src/design/human-writes.ts 不再实现。"
     }
   ]
 }

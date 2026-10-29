@@ -14,6 +14,12 @@
       "reason": "用户定：一个项目只有一个主 Agent，巡检由 harness 提醒主 Agent",
       "relay": "巡检应该由harness提醒主Agent发出。一个项目有且只有一个主Agent做为和人对话的窗口，开那么多会话没用",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-29T18:17:29.580Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M3 附录 0.3 §2.4 的落地（编排方定，人可推翻）：项目就是图目录（realpath 规整）；持有者记录在用户级数据目录 main-agent/<哈希>.json；别的会话 /wish 得到「主 Agent 在会话「<标题>」…输入 /wish here 移过来」；/wish here 改记录，harness 对原会话执行一次 /wish off（不活时在它下次打开时对齐）；fork 出的会话创建时变回普通会话；面板回写只发给持有者；M3 导出 mainAgentOf 给 M5、M7 的到点提醒与面板跳转。"
     }
   ]
 }
