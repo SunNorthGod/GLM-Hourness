@@ -114,6 +114,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "循环板设计 0.1 §16 给 M6 下一稿的请求：额度读取每次写流水时经 glmHournessChannelLoop 推 quota-read；上游限额错误推一条 usedPercent 100、cause upstream-limit 的读数；nextPeakChange 给循环板的 peak-changed 用。循环板不加后台定时读额度，查清 ZCode 桌面版自己读不读之前不加（循环板 §9.2 V9）。"
+    },
+    {
+      "at": "2026-10-29T19:27:21.149Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M6 设计 0.3 第 3 轮评审（m6-design-v03-review，wf_fb36232a446502c6）：CHANGES_REQUESTED，HIGH 0、MEDIUM 2、NIT 6；第 2 轮 9 条全部关闭。各轮挡路条数 3、4、2。挡路：F8 M6 与规则板设计在谁改写高峰提醒原文与 ORCHESTRATION.md §11.4 上说法不一；F9 脚本自查的判定没有写进指标流水的一方。编排方裁定（agent 定，可推翻）：F8 发给模型的高峰提醒原文与各档的措辞归 GLM 包（M6），M6 改写 §11.4；规则板只管档位设置，并经服务把当前档位交给 GLM 包；只装 GLM 包时提醒照今天的原文。F9 脚本自查的判定由规则板的 checkCall 写进指标流水，M6 的 gateOnRules 不另写。已转给正在写的规则板 0.6。三轮已到上限，M6 剩下两条改动很小，是否再给一轮与 M3 一起交人。"
     }
   ]
 }
