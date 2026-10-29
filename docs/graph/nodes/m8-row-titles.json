@@ -60,6 +60,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "Code review pass 1 of 0ec0b58: APPROVED, no blocking findings. Client-row call C upheld. Non-blocking notes (FACTS F9 row still reads as if every row counts by module location; client rows share the package title; close the desktop before merging) in .agents/tasks/row-titles/review.md. Desktop L4 screenshot check still pending."
+    },
+    {
+      "at": "2026-10-29T17:05:03.267Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m8-row-titles-retry（wf_afef02a167d6ce1e）：独立评审第 1 轮 APPROVED、0 挡路。编排方批准桌面版 L4：先备份桌面 profile，只把 dsh-glm-zcode、dsh-hourness 两个 junction 临时指向 .worktrees/row-titles，截设置页 13 行并核对模型默认值，之后关掉桌面版、改回 junction、用 profile-shape 确认复原；不改 package.json 与 cordis.patch.yml。桌面版此时没有别的运行在用。"
     }
   ]
 }
