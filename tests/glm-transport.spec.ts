@@ -44,8 +44,8 @@ test('context identity headers carry the device mid and drop the agent', () => {
 const TRACE = { sessionId: 's1', requestId: 'r1', traceId: 't1', queryId: 'q1', querySource: 'main_turn', sessionType: 'main' } as const
 
 test('withUserAgentSuffix follows 3.16.3 Y2: lower-cased names, later entries win, undefined drops, sorted output', () => {
-  const headers = withUserAgentSuffix({ 'X-B': '1', 'User-Agent': 'first', 'user-agent': 'ZCode/3.16.3', 'x-a': undefined }, 'ai/6.0.193', undefined, '')
-  assert.deepEqual(headers, { 'user-agent': 'ZCode/3.16.3 ai/6.0.193', 'x-b': '1' })
+  const headers = withUserAgentSuffix({ 'X-B': '1', 'User-Agent': 'first', 'user-agent': 'ZCode/3.17.1', 'x-a': undefined }, 'ai/6.0.193', undefined, '')
+  assert.deepEqual(headers, { 'user-agent': 'ZCode/3.17.1 ai/6.0.193', 'x-b': '1' })
   assert.deepEqual(withUserAgentSuffix({}, 'ai-sdk/anthropic/3.0.81'), { 'user-agent': 'ai-sdk/anthropic/3.0.81' })
 })
 
@@ -62,13 +62,13 @@ test('coding-plan model request headers: the PAT in both auth headers, the call 
   assert.equal(step['x-api-key'], 'fake-pat')
   assert.equal(step['anthropic-version'], '2023-06-01')
   assert.equal(step['content-type'], 'application/json')
-  assert.equal(step['user-agent'], 'ZCode/3.16.3 ai-sdk/provider-utils/4.0.27 runtime/node.js/22')
+  assert.equal(step['user-agent'], 'ZCode/3.17.1 ai-sdk/provider-utils/4.0.27 runtime/node.js/22')
   assert.equal(step['x-title'], 'Z Code@electron')
   const names = Object.keys(step)
   assert.deepEqual(names, [...names].sort())
   assert.ok(names.every(name => name === name.toLowerCase()))
   const title = buildModelRequestHeaders({ token: 'fake-pat', identity: DEFAULT_IDENTITY, trace: { ...TRACE, sessionType: 'other', querySource: 'session_title' }, generateText: true, env, runtime: 'runtime/node.js/22' })
-  assert.equal(title['user-agent'], 'ZCode/3.16.3 ai/6.0.193 ai-sdk/provider-utils/4.0.27 runtime/node.js/22')
+  assert.equal(title['user-agent'], 'ZCode/3.17.1 ai/6.0.193 ai-sdk/provider-utils/4.0.27 runtime/node.js/22')
 })
 
 test('start-plan auth uses the JWT bearer only, with the SDK UA suffix', () => {

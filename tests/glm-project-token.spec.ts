@@ -34,7 +34,7 @@ function minted(serial: number, nowMs = Date.now(), extra: Record<string, unknow
   return { code: 200, data: { accessToken: fakeProjectToken('key-1', serial), tokenType: 'Bearer', expiresIn: 3600, expiresAt: Math.floor(nowMs / 1000) + 3600, ...extra } }
 }
 
-const input = { origin: ORIGIN, loginToken: 'oauth-tok', accountId: 'user-1', clientVersion: '3.16.3' }
+const input = { origin: ORIGIN, loginToken: 'oauth-tok', accountId: 'user-1', clientVersion: '3.17.1' }
 
 test('locate then mint: raw OAuth token for customer info and keys, Bearer for the mint, 3.16.3 body', async () => {
   const { request, calls } = plane()
@@ -43,7 +43,7 @@ test('locate then mint: raw OAuth token for customer info and keys, Bearer for t
   assert.deepEqual(calls.map(call => `${call.method} ${call.url}`), [`GET ${INFO}`, `GET ${keysOf('org-1', 'proj-1')}`, `POST ${keysOf('org-1', 'proj-1')}/key-1/access_tokens`])
   assert.deepEqual(calls[0]?.headers, { Authorization: 'oauth-tok', 'Content-Type': 'application/json' })
   assert.deepEqual(calls[2]?.headers, { Authorization: 'Bearer oauth-tok', 'Content-Type': 'application/json' })
-  assert.deepEqual(JSON.parse(calls[2]?.body ?? ''), { clientType: 'zcode', clientVersion: '3.16.3' })
+  assert.deepEqual(JSON.parse(calls[2]?.body ?? ''), { clientType: 'zcode', clientVersion: '3.17.1' })
 })
 
 test('project selection: type "2" projects drop, then the default organization and project markers win, else the first', async () => {

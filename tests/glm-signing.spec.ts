@@ -36,7 +36,7 @@ function jsonRespond(status: number, body: unknown): Response {
 }
 
 const PAT = fakeProjectToken('id')
-const PAT_CRED: SigningCredential = { credential: PAT, appVersion: '3.16.3' }
+const PAT_CRED: SigningCredential = { credential: PAT, appVersion: '3.17.1' }
 
 test('signing skips http and credentials that are not project access tokens; unsigned headers lose any stale signing header', async () => {
   const manager = new ClientSigningManager({ handshakeFetch: () => Promise.reject(new Error('should not fetch')) })
@@ -45,7 +45,7 @@ test('signing skips http and credentials that are not project access tokens; uns
   assert.equal(overHttp.signed, false)
   // 3.16.3 sendUnsigned sends zrt(headers): the signing headers are deleted, the rest stays.
   assert.deepEqual([...overHttp.headers.entries()], [['content-type', 'application/json'], ['x-session-id', 's1']])
-  assert.equal((await manager.signWithStatus('https://x/api/anthropic/v1/messages', headers, { credential: 'id.secret', appVersion: '3.16.3' })).signed, false)
+  assert.equal((await manager.signWithStatus('https://x/api/anthropic/v1/messages', headers, { credential: 'id.secret', appVersion: '3.17.1' })).signed, false)
 })
 
 test('a full handshake with the project access token signs the pairs with the V4 header block', async () => {

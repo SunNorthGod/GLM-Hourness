@@ -260,7 +260,7 @@ function combineHeaders(...bags: ReadonlyArray<Readonly<Record<string, string>>>
  * - `postToApi` (`SZr`): `Y2({"Content-Type": "application/json",
  *   ...Rh(provider, call)}, "ai-sdk/provider-utils/4.0.27", runtime)`.
  * The call's `User-Agent` replaces the provider's, so a step sends
- * `ZCode/3.16.3 ai-sdk/provider-utils/4.0.27 runtime/node.js/22`. The result
+ * `ZCode/3.17.1 ai-sdk/provider-utils/4.0.27 runtime/node.js/22`. The result
  * is a plain object in Headers order: lower-case names, sorted.
  */
 export function buildModelRequestHeaders(input: { readonly token: string, readonly identity: ZcodeIdentity, readonly trace: TraceContext, readonly generateText: boolean, readonly env?: NodeJS.ProcessEnv, readonly runtime?: string }): Record<string, string> {

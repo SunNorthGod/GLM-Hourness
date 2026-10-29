@@ -238,7 +238,7 @@ test('glm-llm: a coding-plan request without a project access token reports the 
     llmApply({ registerAdapter: (_providers, adapter) => { adapters.push(adapter); return () => {} }, ...store }, { home })
     const [adapter] = adapters
     await assert.rejects(async () => { for await (const chunk of adapter.stream({ provider: 'glm-zcode', model: 'glm-5.3', sessionId: 's1', messages: [] })) void chunk }, /project access token unavailable .*\/glm-login/)
-    assert.deepEqual(inSession(store, 'glm-llm', 's1'), { state: 'inactive', reason: '未拿到项目令牌（Account request credential is unavailable: bigmodel），按 3.16.3 不发送；运行 /glm-login' })
+    assert.deepEqual(inSession(store, 'glm-llm', 's1'), { state: 'inactive', reason: '未拿到项目令牌（Account request credential is unavailable: bigmodel），按 3.17.1 不发送；运行 /glm-login' })
   }
   finally {
     rmSync(home, { recursive: true, force: true })

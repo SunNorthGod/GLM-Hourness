@@ -537,14 +537,14 @@ function missingAccountCredential(credential: Credential): string | undefined {
 }
 
 /**
- * Fail a coding-plan stream that has no project access token, as 3.16.3
- * account mode fails the model request: nothing is sent, the row health
- * goes inactive, and the error names the 3.16.3 code or message (never a
- * token) with the re-login instruction.
+ * Fail a coding-plan stream that has no project access token, as ZCode
+ * account mode fails the model request (3.16.3 and 3.17.1 alike): nothing
+ * is sent, the row health goes inactive, and the error names the ZCode code
+ * or message (never a token) with the re-login instruction.
  */
 function failClosed(report: (state: HealthState, reason: string) => void, error: unknown): never {
   const code = error instanceof Error ? error.message : String(error)
-  report('inactive', `未拿到项目令牌（${code}），按 3.16.3 不发送；运行 /glm-login`)
+  report('inactive', `未拿到项目令牌（${code}），按 3.17.1 不发送；运行 /glm-login`)
   throw new Error(`glm-zcode: project access token unavailable (${code}) — run /glm-login to sign in again`)
 }
 

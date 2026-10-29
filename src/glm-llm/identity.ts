@@ -23,9 +23,10 @@ export interface ZcodeIdentity {
  * ZCode release this channel presents as (docs/DESIGN.md §1). One value
  * feeds every version-bearing field: `User-Agent` / `X-ZCode-App-Version`,
  * the OAuth redirect `app_version`, the signing `X-Client-Version`, and the
- * project-token `clientVersion` (3.16.3 uses one constant for the last two).
+ * project-token `clientVersion` (3.17.1 uses one constant for the last two,
+ * as 3.16.3 did).
  */
-export const ZCODE_APP_VERSION = '3.16.3'
+export const ZCODE_APP_VERSION = '3.17.1'
 
 /**
  * The desktop identity: 3.16.3 sends `X-Title: Z Code@electron` because the

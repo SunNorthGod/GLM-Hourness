@@ -320,8 +320,8 @@ test('User-Agent: a step sends the provider-utils chain, the session title (gene
   }
   const runtime = runtimeUserAgent()
   assert.match(runtime, /^runtime\/node\.js\/\d+/)
-  assert.equal(await uaOf(), `ZCode/3.16.3 ai-sdk/provider-utils/4.0.27 ${runtime}`)
-  assert.equal(await uaOf('session-title'), `ZCode/3.16.3 ai/6.0.193 ai-sdk/provider-utils/4.0.27 ${runtime}`)
+  assert.equal(await uaOf(), `ZCode/3.17.1 ai-sdk/provider-utils/4.0.27 ${runtime}`)
+  assert.equal(await uaOf('session-title'), `ZCode/3.17.1 ai/6.0.193 ai-sdk/provider-utils/4.0.27 ${runtime}`)
 })
 
 
@@ -470,7 +470,7 @@ test('without a project access token the request fails closed as in 3.16.3: noth
   const minting = await failingRun(credential, patPlane({ mintStatus: 500 }))
   assert.equal(minting.error.message, 'glm-zcode: project access token unavailable (project_token_request_failed) — run /glm-login to sign in again')
   assert.deepEqual(minting.wire.filter(entry => !isPatPlane(entry)), []) // no routing config, no handshake, no model request
-  assert.deepEqual(minting.reports, [['inactive', '未拿到项目令牌（project_token_request_failed），按 3.16.3 不发送；运行 /glm-login']])
+  assert.deepEqual(minting.reports, [['inactive', '未拿到项目令牌（project_token_request_failed），按 3.17.1 不发送；运行 /glm-login']])
   const { oauthAccessToken: _oauth, ...withoutOAuth } = credential
   const noOAuth = await failingRun(withoutOAuth)
   assert.equal(noOAuth.error.message, 'glm-zcode: project access token unavailable (Account request credential is unavailable: bigmodel) — run /glm-login to sign in again')
