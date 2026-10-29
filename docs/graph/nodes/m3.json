@@ -212,6 +212,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "循环板设计 0.3 §17 给 M3 附录的新请求（评审 F21）：5. attachable 的结果多了可选的 detail: {markdown, mustShow}；带它时 propose_to_human 把 detail.markdown 原样作为一段接在四行之后放进 text 与待决正文（提议 id 那一行之前），这一段不受四行的行长与加粗检查，renderProposal 加一个可选参数。6. record_human_answer（question、agree）正文末行是循环板提议时，拍板之前再调一次 attachable；带回 detail 时在会话日志里取最近一次 propose_to_human 结果之后、人那句原话之前主 Agent 发给人的文字，按 personSaid 的规整核对 mustShow 每一片都在，不全在返回 not_shown、不拍；都在时拍板，reason 末尾加「· 已给人看原文 <attachDigest(detail)>」。7. 建议：持有者会话已归档时 /wish 的回话与流程条也提醒人。原有的 attach 分派与 acceptProposal 两条不变。"
+    },
+    {
+      "at": "2026-10-29T23:20:42.818Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "用户同意 M3、M6、循环板三份设计在三轮上限之后各再给一轮（原话「行，改吧」）。派出 m3-addendum-v04（wf_d98c2216b51e14a7）：写附录 0.4 修第 3 轮 8 条挡路（含三处安全问题：git 快照漏掉未跟踪文件与本地化输出、快照存下被忽略的 .env 一类文件、子 agent 能伪造人的原话推进放行）与 12 条 NIT，评审一轮，通过后写一页人话放行稿；只这一轮，不再循环。"
     }
   ]
 }

@@ -132,6 +132,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "循环板设计 0.3：编排方修订了高峰结束叫醒的接缝裁定（归编排层，GLM 包只给高峰变化事件与时刻计算），所以第 2 轮评审 F19 要的第五项 glm:peak-end 与 ChannelTrigger 的 peak-end 不要了，GLM 的条目仍是四项，channel-loop.ts、loop-defaults.ts 不用改。请 M6 下一稿把 §8.3 留在 GLM 包外的理由「GLM 包不知道档位」改为修订后的说法（要的是规则板的档位与主 Agent，GLM 包没有主 Agent）。循环板照计价服务的 peak 与 nextPeakChange 推出 channel.peak-changed（0.2 叫 loops.peak-changed），M6 的 peak-start 条目在循环板上听它。M6-L1 那半句不显示、M6-R5 由循环板做，同 0.2。"
+    },
+    {
+      "at": "2026-10-29T23:20:43.021Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "用户同意 M3、M6、循环板三份设计在三轮上限之后各再给一轮（原话「行，改吧」）。派出 m6-design-v04（wf_0feddab79abcb558）：写 0.4 修 F8、F9（照编排方裁定）与 6 条 NIT，评审一轮；只这一轮。"
     }
   ]
 }

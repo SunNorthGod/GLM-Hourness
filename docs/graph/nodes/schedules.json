@@ -131,6 +131,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "循环板设计 0.3 第 3 轮评审（schedules-design-review-r3，wf_fd696ffdf89a0ff4）：CHANGES_REQUESTED，挡路 2 条（MEDIUM）、NIT 4；第 2 轮 F19–F33 全部关闭。各轮挡路条数 8、4、2。F34 是 0.3 开写之后才下的接缝裁定（高峰等待与 resume-drive）没跟上；F35 是真问题：对账第 0 步会删掉持有者状态为「在别处」或「不明」的定时任务，属于不可逆损失。这是 question-11 的第三轮，按规矩停下交人；与 M3、M6 一起在早上问人是否各再给一轮。"
+    },
+    {
+      "at": "2026-10-29T23:20:43.213Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "用户同意 M3、M6、循环板三份设计在三轮上限之后各再给一轮（原话「行，改吧」）。派出 schedules-design-v04（wf_3bcc167a47642ce2）：写 0.4 修 F34（照最新的高峰等待与 resume-drive 裁定）、F35（对账绝不删除持有者在别处或不明的定时任务）与 4 条 NIT，评审一轮；只这一轮。"
     }
   ]
 }
