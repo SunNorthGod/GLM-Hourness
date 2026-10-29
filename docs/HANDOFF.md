@@ -25,7 +25,7 @@ eslint.config.js、knip.jsonc、.jscpd.json  检查器配置；eslint-suppressio
 docs/          宪章、设计、编排、路线、事实账、流程、交接；docs/graph/ 为本项目的项目图（进度的事实源）；docs/reference/ 为事实参考原文
 AGENTS.md      仓库规则
 cordis.patch.yml  主包 Loader patch
-.llm/          不入库，项目目录：audit/（违规与决策；2026-10-28 之前的用量）、memory.json、docs/（原始资料快照与抓取脚本）、probe-runs/、calibration-runs/；旧的 credentials.json 与 device-mid.txt 已于 2026-10-29 删除（m1-cleanup）
+.llm/          不入库，项目目录：audit/（违规与决策；旧的用量副本与 dialect-init 流水已于 2026-10-29 删除）、memory.json、docs/（原始资料快照与抓取脚本）、probe-runs/、calibration-runs/；旧的 credentials.json 与 device-mid.txt 已于 2026-10-29 删除（m1-cleanup）
 ~/.dsh/glm-hourness/  仓库外，用户级目录：audit/usage.jsonl、credentials.json（2026-10-29 起为版本 2）、device-mid.txt（m1-parity 起不再使用，DESIGN.md §2.4）
 reference/     不入库：审计用参考源码（zcode-api、deepseek-harness、ZCode、zcode-plugins）与桌面版运行时包导出 dsh-desktop-0.2.1-rc.3/，约 2.5 GB
 dist/          不入库：tsc 产物
@@ -64,8 +64,8 @@ dist/          不入库：tsc 产物
 
 ## 4. 审计数据快照（2026-10-29，批次 L4 之后）
 
-- 用户级 `~/.dsh/glm-hourness/audit/usage.jsonl` 1177 条，最晚一条 2026-10-29T02:21:07Z：旧的 pi-ai `glm` 路由 `glm/glm-5.3` 796、`glm/glm-5.3-flash` 10（最晚 2026-10-27T11:17Z）；原生通道 `glm-zcode/glm-5.3` 19、`glm-zcode/glm-5.3-flash` 62；`deepseek-account/deepseek-flash` 290。其中 1080 条是 2026-10-28 从两处旧位置迁移所得（`DESIGN.md` §2.4）。
-- 迁移来源：仓库 `.llm/audit/usage.jsonl` 890 条，最晚一条恰为迁移截止点 2026-10-27T12:29:08.993Z，2026-10-29 清理时补拷 0 条，文件保留；旧目录 `~/.dsh/profiles/desktop/.llm/` 的 190 条用量、3 条决策与记忆文件核对都已在新位置后，已于 2026-10-29 删除（`m1-cleanup`）。
+- 用户级 `~/.dsh/glm-hourness/audit/usage.jsonl` 371 条，最晚一条 2026-10-29T02:21:07Z：原生通道 `glm-zcode/glm-5.3` 19、`glm-zcode/glm-5.3-flash` 62；`deepseek-account/deepseek-flash` 290。旧的 pi-ai `glm` 路由（8317 反代）留下的 806 条已于 2026-10-29 按用户要求删除，改前备份 `usage.jsonl.bak-1793243554750` 在同目录（`DESIGN.md` §2.4）。
+- 迁移来源：仓库 `.llm/audit/usage.jsonl` 890 条在 2026-10-29 清理时补拷 0 条，随后与 `.llm/audit/dialect-init.jsonl` 一起删除；旧目录 `~/.dsh/profiles/desktop/.llm/` 的 190 条用量、3 条决策与记忆文件核对都已在新位置后，已于 2026-10-29 删除（`m1-cleanup`）。
 - 违规流水：仓库 `.llm/audit/violations.jsonl` 2 条，最晚 2026-10-28T02:52Z；2026-10-29 L4 没有新增。
 - 决策流水：仓库 `.llm/audit/decisions.jsonl` 15 条，最晚两条是 2026-10-29 L4 的 `dispatch:subagent` 与 `dispatch:send_message`。
 - 记忆：仓库 `.llm/memory.json` 1 条（从旧目录复制，之后没有写入）。
