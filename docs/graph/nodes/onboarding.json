@@ -31,6 +31,12 @@
       "reason": "派出 plain-ui-and-onboarding-design（wf_9bc1a39879766ff6）：与 m8-plain-language 一起只写设计、出界面草图并过设计评审，不动代码；稿在 .agents/tasks/plain-ui/",
       "from": "approved",
       "to": "doing"
+    },
+    {
+      "at": "2026-10-29T18:06:56.546Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "随 plain-ui-design-v05（wf_2c8ad9b8a0912d7e）一起改：新手引导要讲高峰模式（默认少做、在哪里改）、两块板在哪里看、问题改成聊天的样子。"
     }
   ]
 }

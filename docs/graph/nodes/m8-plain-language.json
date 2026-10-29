@@ -134,6 +134,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "plain-ui-and-onboarding-design（wf_9bc1a39879766ff6）结束：各轮 HIGH/MEDIUM/LOW 为 1/5/13、0/2/9、0/2/9、0/2/7，按用户选的 B 停在 0.4；五张草图在；三道待人定 P2（面板上的话从哪来）、P4（反复做的事怎么显示）、P6（这两件怎样算做完），设计推荐 D、D、B。下一轮带上 d-one-main-agent、问法讨论的结果与第 4 轮两条裁定，再写一页人话放行稿。"
+    },
+    {
+      "at": "2026-10-29T18:06:56.380Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "派出 plain-ui-design-v05（wf_2c8ad9b8a0912d7e）：按 d-chat-not-cards（去掉选项卡与表格）、d-one-main-agent、d-defaults-readonly、d-peak-mode（默认少做，新手引导要讲）、d-rules-visible（面板第二层两块板：规则板含合入前检查与必须全审，循环板含检查器、晨报、周报、巡检）与第 4 轮两条裁定改到 0.5；P4 由循环板回答；评审之后写一页人话放行稿。"
     }
   ]
 }

@@ -1,0 +1,19 @@
+{
+  "id": "d-rules-visible",
+  "type": "decision",
+  "title": "项目里的每条规矩都在规则板或循环板上看得到",
+  "status": "approved",
+  "parent": "orch",
+  "verification": "unverified",
+  "body": "项目里所有生效的规矩都要在两块板之一上明面可见：会拦住动作的门（合入前的检查清单 norm-merge-gate、必须全审清单 norm-review-floor、规则板的规则与默认规则）放在规则板；到点或碰到某件事就去做的（改完文件就跑的检查器、晨报、周报、夜间巡检、合入后的完整检查等）放在循环板。清单的内容仍可存在项目图的规范与工具节点里，两块板负责显示。插件带来的默认条目暂时只能看（d-defaults-readonly）。规则板、循环板、M4、M7 与面板设计照此写。",
+  "history": [
+    {
+      "at": "2026-10-29T18:06:33.230Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "用户同意把三张清单归进两块板",
+      "relay": "没问题，项目所有规则确实应该都在明面上",
+      "to": "approved"
+    }
+  ]
+}
