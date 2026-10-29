@@ -41,6 +41,12 @@
       "reason": "派出 prompt-fixes-merge-then-zcode-3171（wf_920936995c163f50）：先合入 prompt-fixes，再写 3.17.1 差异清单并跟进",
       "from": "approved",
       "to": "doing"
+    },
+    {
+      "at": "2026-10-29T16:34:55.284Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "prompt-fixes-merge-then-zcode-3171 (wf_920936995c163f50) failed at its first coding step on the agent-runtime BAD_DECRYPT error; nothing was written. Since the 23:38 crash this error has failed every newly started step session (5 so far, coder, designer and reviewer alike); only workflow-creator sessions start. New runs are held until Kiro is restarted or signed in again; zcode-3171, zcode-3171-follow and the rest of prompt-fixes wait for that."
     }
   ]
 }
