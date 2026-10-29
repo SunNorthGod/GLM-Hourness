@@ -126,6 +126,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "question-17 B 设计附录（.agents/tasks/split/design-addendum-q17b.md 0.1）第 1 轮评审：CHANGES_REQUESTED，HIGH 1、MEDIUM 4、NIT 12（.agents/tasks/split/addendum-review.md）。HIGH A01：演练在主检出 .llm/ 下建出指向主检出与 worktree 的 junction，附录没有规定先拆链再删除，失败的演练可能让主检出与 worktree 的内容丢失。MEDIUM：A02 新依赖应沿用与 dsh plugin add 相同的绝对 link: 写法；A03 apply 在 S2 上要重做核对；A04 整体回滚要删新布局残留并在 rollback 的 install 前跑门禁；A05 切换脚本不在分支里，要单独过代码评审。附录已修订为 0.2，17 条全部处理（附录 §9），第 2 轮评审待开始；第 5 步要等附录评审通过。"
+    },
+    {
+      "at": "2026-10-29T05:47:28.717Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "question-17 B 设计附录 0.2 第 2 轮评审：CHANGES_REQUESTED，MEDIUM 1、NIT 6（.agents/tasks/split/addendum-review.md）。第 1 轮 A01–A17 全部关闭。MEDIUM B01：切换与演练仍由 pnpm 删除两个指回主检出的旧 junction（dsh-glm-hourness、dsh-glm-hourness-ui），附录没有给出依据，演练 R3 第一次运行这条路径就落在真实主检出上；修正是 apply 在 install 之前自己 unlinkSync 两个旧链接，与 rollback 的 U15 对称，并加假设 U16 在演练里核实。NIT：整体回滚补先关桌面版；apply 核对多出与消失的条目；dump 输出取行 id 的规则；演练期间主检出不得有别的运行；L4 用 restart.ps1 拷贝要在 MERGE-SLOT REQUEST 里写明；同仓判断用 --path-format=absolute。两轮用完，按 question-11 自动加第三轮修订与评审，第三轮仍不过就停下等人；第 5 步仍要等附录评审通过。"
     }
   ]
 }
