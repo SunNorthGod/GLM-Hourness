@@ -144,6 +144,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "用户 2026-10-29 回复「行，那就再加，继续吧」：附录循环加第 4 轮修订与评审，处理 C01 与 7 条 NIT。m8-ui-audit 已完成，界面改动都在 main 上，第 3 步的 UI-MERGE CHECK 届时直接放行。"
+    },
+    {
+      "at": "2026-10-29T08:41:01.456Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "question-17 B 设计附录 0.4 第 4 轮评审：CHANGES_REQUESTED，MEDIUM 1、NIT 4（.agents/tasks/split/addendum-review.md）。第 3 轮 C01–C08 全部关闭；G25–G27 与 rc.3 和两种 pnpm 的源码逐处相符，续跑一支能认出 DSH 拒绝之后的状态，诊断行判定堵住了重跑绕过拒绝。MEDIUM D01：真实桌面 profile 的三个 @local junction（dsh-engineering-notice、dsh-multitask-preset、mcp-servers）现在是悬空的，目标 C:/Users/29596/Desktop/Project/DeepSeek Harness/ 下的 eng-notice、multitask-preset、mcp-servers 都不存在（编排方复核）；DSH 启动时跳过它们，pnpm 11 不隔离它们，但附录按 realpath 处理链接、按「目标」重建，演练里没有悬空链接，桌面版的 apply 可能在时段里第 1 小步就失败；修正是不属于本项目的链接记原始目标、按原始目标比较与重建，演练加一个悬空的 @local 链接。NIT：每次 pnpm 运行用新的输出文件；hash3 在改名之前记下；rollback 运行前检查第 6 条要求旧清单声明 dsh.bundle.patch；pnpm 卡住的 10 分钟上限由脚本自己执行。四轮用完仍未通过，停下等人；第 5 步仍要等附录评审通过。"
     }
   ]
 }
