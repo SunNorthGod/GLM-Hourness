@@ -2,7 +2,7 @@
   "id": "onboarding",
   "type": "feature",
   "title": "新手引导：装上插件之后人怎样上手",
-  "status": "approved",
+  "status": "doing",
   "parent": "m8",
   "body": "两个插件（dsh-glm-zcode、dsh-hourness）装上之后的第一次体验：GLM 通道怎样登录、项目图面板是什么、怎样用 /wish 让主 Agent 接手一个项目（m3-1 验收第 4 条要求入口醒目）、规则板块怎样开关、哪里看进度。按 d-ui-look-not-operate 用人话、少操作。先做设计并给出界面草图，待人定的事项提给人；实现在 split 合入之后。",
   "edges": [
@@ -23,6 +23,14 @@
       "reason": "用户提出的新特性",
       "relay": "还有我想做一个插件的新手引导部分",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-29T09:43:46.424Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "派出 plain-ui-and-onboarding-design（wf_9bc1a39879766ff6）：与 m8-plain-language 一起只写设计、出界面草图并过设计评审，不动代码；稿在 .agents/tasks/plain-ui/",
+      "from": "approved",
+      "to": "doing"
     }
   ]
 }

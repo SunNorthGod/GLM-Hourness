@@ -1,0 +1,37 @@
+{
+  "id": "m8-plain-language",
+  "type": "task",
+  "title": "面板说人话：一眼看懂在做什么、接下来做什么、要我做什么",
+  "status": "doing",
+  "parent": "m8",
+  "kind": "implement",
+  "body": "面板首页先用人话给出：现在在做什么、上次看之后变了什么、主 Agent 接下来打算做什么、离目标还差多少、要人做的事；里程碑编号、节点类型与内部术语收进下钻，人追问「凭什么」时才展开。图上写给人看的文字（标题、摘要）要有人话的一层，写法规则进图工具的说明。先设计并给界面草图，实现在 split 合入之后。",
+  "edges": [
+    {
+      "type": "depends",
+      "to": "split"
+    },
+    {
+      "type": "source",
+      "to": "d-ui-look-not-operate"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-29T09:43:01.629Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "d-ui-look-not-operate 的落地：面板与图上写给人看的文字说人话，细节下沉",
+      "relay": "现在我第一眼看见项目图那部分的时候，除了需要你这个板块以外，其他的还是认知负担有点重，让人感觉不想看了。虽然UI、交互都挺不错，但是上面写的东西似乎都不是人话，比如“M3 设计循环最小闭环”这啥玩意啊，我怎么知道主Agent的规划是什么？这些底层的细节确实应该再下沉",
+      "to": "approved"
+    },
+    {
+      "at": "2026-10-29T09:43:46.216Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "派出 plain-ui-and-onboarding-design（wf_9bc1a39879766ff6）：与 onboarding 一起只写设计、出界面草图并过设计评审，不动代码；稿在 .agents/tasks/plain-ui/",
+      "from": "approved",
+      "to": "doing"
+    }
+  ]
+}
