@@ -84,6 +84,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "m6-design-round2（wf_46689dd71bda1970）的第 2 轮评审步因 BAD_DECRYPT 失败。改派单步评审 m6-design-review-r2（wf_0ac5b3482d62d2f5），D1 的决定（d-peak-mode）直接写进简报。"
+    },
+    {
+      "at": "2026-10-29T17:45:14.683Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m6-design-review-r2（wf_0ac5b3482d62d2f5）一启动又因 BAD_DECRYPT 失败；改派 m6-design-review-r2-retry（wf_e2e79991f88a445f），简报里带上高峰模式的默认档（少做）。"
     }
   ]
 }
