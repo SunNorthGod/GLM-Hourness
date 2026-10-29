@@ -1,0 +1,36 @@
+{
+  "id": "question-19",
+  "type": "question",
+  "title": "主 Agent 由谁开启、作用在哪些会话",
+  "status": "approved",
+  "parent": "m3",
+  "body": "主 Agent（项目经理）不写代码，写文件被拒，正路是图工具与派发（设计 §2.3、§3.1）。",
+  "options": [
+    {
+      "key": "A",
+      "label": "按会话，人用 /wish 开启、/wish off 退出",
+      "consequence": "没开启的会话完全不受影响；状态在会话日志里，续跑、压缩、重启不丢；换新会话接着做同一个项目要再输一次 /wish"
+    },
+    {
+      "key": "B",
+      "label": "工作区有项目图时，每个根 agent 都是主 Agent",
+      "consequence": "不用命令；但这个工作区里每个 DSH 会话都不能写文件，人要直接改代码只能禁用设计行"
+    },
+    {
+      "key": "C",
+      "label": "设计行启用时，所有工作区的根 agent 都是主 Agent",
+      "consequence": "启用期间 DSH 不能用来直接写代码"
+    }
+  ],
+  "recommend": "A",
+  "decider": "human",
+  "history": [
+    {
+      "at": "2026-10-29T08:51:27.380Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "M3 设计 §12 D1：主 Agent 的开启方式决定哪些会话不能写文件，由人定",
+      "to": "approved"
+    }
+  ]
+}

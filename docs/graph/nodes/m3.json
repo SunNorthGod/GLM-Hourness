@@ -80,6 +80,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M3 设计第 4 轮评审 APPROVED（.agents/tasks/m3/design-review.json，设计 0.4）：第 3 轮 R3-M1、R3-M2 与 3 条 LOW 全部关闭。R3-M1：/graph-apply 的通知候选另按图行服务 dirFor 的目录与被写目录 realpath 相等过滤，别的工作区里焦点 id 相同的主 Agent 不再被唤醒。R3-M2：探针 provider 加经 commands.execute 发命令的 line 步，glm-design-main 拆成空闲路径与运行路径两个场景，/wish 处理函数自己安装每 agent 的监听器。新意见只有 LOW 4 条，不阻塞：LiveAgentLike 缺 ctx 类型、glm-design-stage 的回写核对要等第 7 步、non-glm-design-main 应读 /hourness-status、激活前已开着的普通会话会看到两个设计工具。实现仍等 split 合入与附录评审通过；D1–D6 待人定，等总结步骤出稿后提给人。"
+    },
+    {
+      "at": "2026-10-29T08:51:27.220Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m3-design 完成：设计 0.4（.agents/tasks/m3/design.md）评审第 4 轮 APPROVED，12 步实施顺序与验证层在 §8、§9；对 split 的依赖在 §7，M3 第 3 步（行登记）与第 11 步（流程条）要等 question-17 B 附录评审通过、split 合入。设计 §12 的 D1–D6 提为 question-19 到 question-24；§13 第 2 项「两条设计规则直接拦截、不走影子期」提为 agent 拍板的 question-25。实现等人定与 split 合入。"
     }
   ]
 }

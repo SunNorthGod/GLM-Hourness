@@ -1,0 +1,36 @@
+{
+  "id": "question-24",
+  "type": "question",
+  "title": "「出工作区要申报」的同步卡场景放在哪",
+  "status": "approved",
+  "parent": "m3",
+  "body": "ORCHESTRATION.md §5 把同步卡的场景定为出工作区操作、往工作区外装工具：阻断当次操作，等人批，批准只放行当次。M3 的 decision_card 用于访谈与设计中的岔路，不接 guard 的拒绝（设计 §3.5.1）。",
+  "options": [
+    {
+      "key": "A",
+      "label": "归 M4：在 m4 下建任务「guard 申报通道接决策卡」",
+      "consequence": "M3 不碰 guard 的圈禁规则；M4 之前被圈禁拒绝时只能停下来在对话里问人；M4 做的时候 G3 已生效，可以一次按所有路由设计"
+    },
+    {
+      "key": "B",
+      "label": "M3 里做最小申报：圈禁拒绝后经决策卡申报，批准发一次性令牌",
+      "consequence": "M3 多一处 guard 规则改动与一套令牌，独立评审两次；要排在 split 第 7 步之后；这会是人第一次被问「能不能写工作区外」"
+    },
+    {
+      "key": "C",
+      "label": "从 ORCHESTRATION §5 删去这个场景，申报只在对话里做",
+      "consequence": "「申报走决策卡」不再成立，§6.1 要同批改写"
+    }
+  ],
+  "recommend": "A",
+  "decider": "human",
+  "history": [
+    {
+      "at": "2026-10-29T08:51:28.194Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "M3 设计 §12 D6：ORCHESTRATION.md §5 写定的同步卡场景要换里程碑，由人定",
+      "to": "approved"
+    }
+  ]
+}

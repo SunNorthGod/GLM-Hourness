@@ -1,0 +1,36 @@
+{
+  "id": "question-20",
+  "type": "question",
+  "title": "五栏放行与同步卡改用本项目的卡片工具吗",
+  "status": "approved",
+  "parent": "m3",
+  "body": "ROADMAP 3.3 写五栏门禁挂在 exit_plan_mode，3.5 写同步卡借用 user-approval 与 user-questions。exit_plan_mode 要先进计划模式，审阅卡只有两个选项；用户的审批策略是 never，approval.request 直接拒绝、卡片不出现（设计 §3.3.4、§3.5.1）。",
+  "options": [
+    {
+      "key": "B",
+      "label": "改用本项目的 design_review 五键卡与 decision_card，都经 userQuestions.ask",
+      "consequence": "计划模式与 user-approval 在 M3 不用；ROADMAP 3.3、3.5 与 ORCHESTRATION §4.5、§5、§14 随代码改写；d-async-cards 与 m3-5 正文借用 user-approval 的句子带人的原话改写"
+    },
+    {
+      "key": "A",
+      "label": "照 ROADMAP 原文借用",
+      "consequence": "每轮方案人要在五键卡与计划审阅卡上各点一次；同步卡在当前设置下永远被拒，除非把审批策略改为 ask（DSH 对其他操作也会弹审批）"
+    },
+    {
+      "key": "C",
+      "label": "B 加兼容：人自己开了 /plan 时，exit_plan_mode 的批准也算放行",
+      "consequence": "两条放行路径，门禁与写入要维护两份"
+    }
+  ],
+  "recommend": "B",
+  "decider": "human",
+  "history": [
+    {
+      "at": "2026-10-29T08:51:27.544Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "M3 设计 §12 D2：改 ROADMAP 3.3、3.5 写定的借用组件，由人定",
+      "to": "approved"
+    }
+  ]
+}

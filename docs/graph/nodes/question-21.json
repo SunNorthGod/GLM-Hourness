@@ -1,0 +1,36 @@
+{
+  "id": "question-21",
+  "type": "question",
+  "title": "卡片上的回答以谁的身份写进图",
+  "status": "approved",
+  "parent": "m3",
+  "body": "确认卡、五键卡、决策卡上人的回答要落到图上（设计 §3.4.2、§3.4.3）。",
+  "options": [
+    {
+      "key": "A",
+      "label": "harness 以人的身份写图，原因里写明哪张卡、点了什么、调用 id",
+      "consequence": "面板里显示为「你」，与面板操作同一身份；多一个人的身份入口，按图引擎的权限与审计独立评审"
+    },
+    {
+      "key": "B",
+      "label": "卡片只把回答交给模型，由模型带转述写图",
+      "consequence": "历史显示「你在对话里说」，与实际点了卡片不符；写不写、怎么引用取决于模型"
+    },
+    {
+      "key": "C",
+      "label": "卡片只提示，人到面板里再批准一次",
+      "consequence": "每次放行人要操作两处；headless 标定还要模拟面板"
+    }
+  ],
+  "recommend": "A",
+  "decider": "human",
+  "history": [
+    {
+      "at": "2026-10-29T08:51:27.706Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "M3 设计 §12 D3：给 harness 一个以人的身份写图的入口，涉及图引擎的权限与审计，由人定",
+      "to": "approved"
+    }
+  ]
+}

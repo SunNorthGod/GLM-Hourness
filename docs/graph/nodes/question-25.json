@@ -1,0 +1,53 @@
+{
+  "id": "question-25",
+  "type": "question",
+  "title": "两条设计规则直接拦截、不走影子期",
+  "status": "done",
+  "parent": "m3",
+  "body": "main-agent-no-write（主 Agent 写文件被拒）与 design-before-release（放行前子 agent 写文件被拒）。依据 ROADMAP 3.1、3.3 与 d-dispatch；这两条只在开启主 Agent 的会话里生效，误伤面限于设计流程本身。",
+  "options": [
+    {
+      "key": "A",
+      "label": "直接拦截",
+      "consequence": "主 Agent 不写代码、设计期只读从第一天起由 harness 保证"
+    },
+    {
+      "key": "B",
+      "label": "先影子一段时间",
+      "consequence": "攒误伤数据；期间主 Agent 与子 agent 实际仍能写文件"
+    }
+  ],
+  "recommend": "A",
+  "decider": "agent",
+  "decision": "A",
+  "evidence": [
+    {
+      "kind": "decision",
+      "ref": "A"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-29T08:51:28.355Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "M3 设计 §13 第 2 项：新门禁默认先影子后拦截，这两条规则例外，由 agent 拍板、人可推翻",
+      "to": "approved"
+    },
+    {
+      "at": "2026-10-29T08:51:38.081Z",
+      "actor": "llm",
+      "op": "decide",
+      "reason": "两条规则只在开启主 Agent 的会话里生效，误伤面限于设计流程；不拦就保证不了 ROADMAP 3.1「主 Agent 不写代码」与 3.3「设计期只读」，与 d-dispatch 一致；人可推翻",
+      "from": "approved",
+      "to": "done",
+      "option": "A",
+      "evidence": [
+        {
+          "kind": "decision",
+          "ref": "A"
+        }
+      ]
+    }
+  ]
+}
