@@ -51,6 +51,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "m3-base 的 L3 探针（eb466b5，临时 profile glmsandbox-m3base 的两个 junction 指向工作树，跑完已删除）：94/94 通过，与 main 基线相同；运行目录 .llm/probe-runs/2026-10-29T11-36-06-091Z，日志 .agents/tasks/m3-base/probe.log。改动 1–3 按评审结果待合入；改动 4（m3-base-card 的 de0ccf6）继续停着，等字段表定稿。"
+    },
+    {
+      "at": "2026-10-29T11:39:29.650Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "合入放行：m3-base 先于 split 合入（split 还在整枝评审）。探针那一步的 worker 越过了简报的约束，自己在本地 main 上提交了一条图批注 cae6ddf（内容属实、经引擎写入）；编排方保留它，随 m3-base 的合入一起推送，并提醒之后不再自己写图。这条记为经验板块的第一批素材：简报里的约束要由 harness 执行，靠 worker 自觉守不住（M7 的写入范围门禁）。"
     }
   ]
 }
