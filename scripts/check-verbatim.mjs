@@ -1,19 +1,19 @@
 /**
  * Verbatim gate (docs/DESIGN.md §5.9): every dialect text that claims to
- * mirror ZCode must occur line for line in a ZCode reference.
+ * mirror ZCode must occur line for line in the ZCode baseline release.
  *
- * References, any of which may satisfy a line:
- * - the 3.16.3 release bundle: $ZCODE_BUNDLE, else the installed desktop copy
- *   (user-patched only in the security notice, which the source satisfies);
- * - the ZCode source tree under reference/ZCode (apps/ and packages/); a git
- *   worktree has no reference/ and reads the main checkout's
- *   (scripts/reference-dir.mjs).
+ * The one reference is the pristine 3.17.1 release bundle copied under
+ * reference/ (reference/zcode-3.17.1/zcode.cjs; a git worktree has no
+ * reference/ and reads the main checkout's, scripts/reference-dir.mjs).
+ * Neither the installed desktop bundle (it follows auto-updates and user
+ * patches) nor the 3.16.2 source tree under reference/ZCode is read: either
+ * would let a line pass that the baseline no longer has.
  *
  * Known deviations form a ratchet: they are reported, never fail the gate,
  * and may only shrink. A known deviation that starts matching fails until it
- * is removed from KNOWN_DEVIATIONS, so the list cannot go stale. Without any
- * reference present the text check skips (machines without the audit
- * sources); the import rules below run anyway.
+ * is removed from KNOWN_DEVIATIONS, so the list cannot go stale. Without the
+ * reference copy the text check skips (machines without the audit sources);
+ * the import rules below run anyway.
  *
  * Imports of a mirror file: a mirror file may open (after its header
  * comment) with single-line import statements, its import block. Only those
@@ -29,10 +29,13 @@
  * The functions are exported for tests/check-verbatim.spec.ts; importing
  * this file runs nothing.
  */
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join, posix, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { referenceDir } from './reference-dir.mjs'
+
+/** The baseline release bundle, under the reference directory. */
+const REFERENCE_BUNDLE = ['zcode-3.17.1', 'zcode.cjs']
 
 /** Items still awaiting a source rebuild. Shrink only; empty since the M1.1 tool rebuild. */
 const KNOWN_DEVIATIONS = new Set([])
@@ -82,21 +85,6 @@ function unescapeJs(text) {
     .split(`${BACKSLASH}"`).join('"')
     .split(`${BACKSLASH}'`).join("'")
     .split(`${BACKSLASH}${BACKSLASH}`).join(BACKSLASH)
-}
-
-function collectSource(root) {
-  const out = []
-  const walk = (dir) => {
-    for (const name of readdirSync(dir)) {
-      if (name === 'node_modules' || name === 'dist' || name.startsWith('.')) continue
-      const path = join(dir, name)
-      const stat = statSync(path)
-      if (stat.isDirectory()) walk(path)
-      else if (/\.(ts|tsx|json)$/.test(name) && !/\.(test|spec)\./.test(name) && stat.size < 2_000_000) out.push(unescapeJs(readFileSync(path, 'utf8')))
-    }
-  }
-  for (const sub of ['apps', 'packages']) if (existsSync(join(root, sub))) walk(join(root, sub))
-  return out.join('\n')
 }
 
 /**
@@ -238,14 +226,10 @@ export function importProblems(file, source, mirrorFiles = MIRROR_FILES) {
   return problems
 }
 
+/** The reference the text check reads: the baseline bundle copy, when this machine has it. */
 function loadReferences() {
-  const refs = []
-  const bundle = process.env.ZCODE_BUNDLE ?? 'C:/Program Files/ZCode/resources/glm/zcode.cjs'
-  if (existsSync(bundle)) refs.push({ name: 'bundle', text: unescapeJs(readFileSync(bundle, 'utf8')) })
-  const references = referenceDir()
-  const source = join(references, 'ZCode')
-  if (existsSync(source)) refs.push({ name: references === resolve('reference') ? 'source' : 'source (main checkout)', text: collectSource(source) })
-  return refs
+  const bundle = join(referenceDir(), ...REFERENCE_BUNDLE)
+  return existsSync(bundle) ? [{ name: 'reference 3.17.1', text: unescapeJs(readFileSync(bundle, 'utf8')) }] : []
 }
 
 /** Every verbatim claim the text check compares, by item name. @returns {Promise<Record<string, string>>} */
@@ -288,7 +272,7 @@ async function main() {
   for (const line of importFailures) console.error(`check-verbatim: FAIL — ${line}`)
   const references = loadReferences()
   if (references.length === 0) {
-    console.log('check-verbatim: text check skipped (no ZCode bundle or reference/ZCode source on this machine)')
+    console.log('check-verbatim: text check skipped (no reference/zcode-3.17.1/zcode.cjs on this machine)')
     process.exit(importFailures.length === 0 ? 0 : 1)
   }
   const items = await loadItems()
