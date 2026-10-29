@@ -99,6 +99,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "规则板设计 0.4 评审第 1 轮（.agents/tasks/rules/design-review.md）：CHANGES_REQUESTED，HIGH 0、MEDIUM 1（F33）、LOW 8（F34–F41）；0.3 留下的 F28–F32 全部关闭。设计循环继续。"
+    },
+    {
+      "at": "2026-10-29T16:22:20.230Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "rules-design-cut（wf_8a20b0900a355853）在第 2 轮写稿开始时因运行环境的解密错误（BAD_DECRYPT）失败，与内容无关；0.4 与第 1 轮评审都在。改派 rules-design-v05（wf_4ae36fac743f83a2）：写 0.5 修 F33（脚本自查读不到当前是不是 GLM 高峰）与 8 条 LOW，再独立评审，至多再两轮；同时按 d-plain-questions 与 d-zcode-3171 复核。"
     }
   ]
 }
