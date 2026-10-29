@@ -34,6 +34,12 @@
       "reason": "GLM 一半在进行中：bottom（通道与方言）为进行中，改挂到本目标之下",
       "from": "approved",
       "to": "doing"
+    },
+    {
+      "at": "2026-10-29T15:54:20.772Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-10-29 21:04 本机 ZCode 自动更新到 3.17.1（ZCode.exe 3.17.1.9553，resources/glm/zcode.cjs 15,405,921 B，MD5 331AB13D0CB2E9504EA25420FF9AE663）；安全声明是官方原文，看起来没有打用户补丁〔推断〕。原安装目录里留有 zcode.cjs.orig-3163.bak（15,242,397 B）。两份都复制到 reference/zcode-3.16.3/ 与 reference/zcode-3.17.1/（gitignored），免得下次更新被删。把本仓库全部逐字镜像文本（442 项、269 行）只对单一包比对：对 3.16.3 备份 0 行对不上；对 3.17.1 有 20 行、16 项对不上。变了的：CLI 前缀「You are ZCode, an interactive coding agent」→「You are ZCode, an interactive agent」；身份开头两句都重写（不带输出风格：「You are an agent working with the user toward their goals, using your own judgment along the way.」；带输出风格：「You are an interactive agent that helps users according to your \"Output Style\", which describes how you should respond to user queries.」）；Harness 节的条目改为「 - 」开头，系统轮次那一句多了一个分支（另一支是「`<system-reminder>` tags in messages and tool results are injected by the harness, not the user.」）；上下文管理节 4 行、工具检索的「不再可用」提示 5 段、Read 工具说明与分段读取提示 4 段。逐字门禁 npm run preflight 仍然通过，因为 reference/ZCode（3.16.2 源码）兜住了这些行；门禁默认读安装目录，现在比对的实际是 3.17.1 加 3.16.2，已不是 AGENTS.md 写的 3.16.3 基线。还没查：请求头与版本号（identity.ts 的 ZCODE_APP_VERSION 仍是 3.16.3）、签名、工具清单与 schema、3.17.1 新增而本仓库没镜像的节。是否把基线换到 3.17.1 由人定（AGENTS.md 基线条款）。比对脚本在 .agents/tasks/zcode-3171/。"
     }
   ]
 }

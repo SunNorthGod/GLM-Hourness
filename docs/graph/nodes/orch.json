@@ -65,6 +65,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "用户 2026-10-29 要求再多并行：新开 m4-design、m5-lessons-design、m6-design 三条设计（只写 .agents/tasks/ 下的文件，不碰代码、桌面版与沙盒）。各设计共用的人定事项写在 .agents/tasks/design-context.md，每条设计先读它，图上节点更新时以节点为准，免得简报过时（阅读摘要 K5）。bootstrap 的设计等 M3 与新手引导的设计定下来再开。"
+    },
+    {
+      "at": "2026-10-29T15:54:20.568Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-10-29 23:38 本机第二次蓝屏（BugCheck 0x3B，参数 0xc0000005，转储 C:\\WINDOWS\\Minidump\\102926-28562-0；同日 02:09 那次同一错误码），23:40 重启。重启后核对：主检出 b90a127 与 origin/main 一致，git fsck 无错；工作树 m3、m3-flow、row-titles 干净，prompt-fixes 有进行中的未提交改动（scripts/check-verbatim.mjs、tests/check-verbatim.spec.ts，属于它的 code 步）。八个运行（m3-implement、prompt-fixes、m8-row-titles、plain-ui、rules-design-cut、m4-design、m6-design、bootstrap-design）因重启或模型服务 5xx 暂停，已逐个恢复；m5-lessons-design 停在三轮上限，等人重新回答。"
     }
   ]
 }
