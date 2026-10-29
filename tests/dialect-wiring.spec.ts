@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { evaluate, fileToolsOnly, renderCorrection, workspaceContainment } from '../src/guard/rules.ts'
 import { apply as glmPromptApply, dialectSections, installDialect } from '../src/glm-prompt/index.ts'
+import { DYNAMIC_BEHAVIOR } from '../src/glm-prompt/verbatim.ts'
 import { isGlmModel } from '../src/shared/route.ts'
 import { fakeRuntime } from './fake-rc3.ts'
 
@@ -69,6 +70,7 @@ test('dialect sections mirror order anchors and carry verbatim content', () => {
   assert.deepEqual(sections.map(section => section.name), [
     'glm:cli-prefix',
     'harness:identity',
+    'glm:dynamic-behavior', // 3.17.1 Dynamic Behavior, verbatim
     'glm:persona',
     'glm:session-guidance', // ledger ②⑤: coding-plan guidance
     'glm:memory', // ledger ⑧: memory home is .llm
@@ -77,6 +79,8 @@ test('dialect sections mirror order anchors and carry verbatim content', () => {
   assert.equal(sections[1]!.order, -1000)
   assert.ok(sections[1]!.text.includes('reverse-engineering')) // coding-plan default carries the user notice
   assert.ok(sections[1]!.text.includes('DeepSeek Harness Web GUI')) // ledger ①: host-fact rewrite
+  assert.equal(sections[2]?.text, DYNAMIC_BEHAVIOR)
+  assert.equal(DYNAMIC_BEHAVIOR.split('\n').length, 3)
   // ZCode announces deferred names in <system-reminder> notices; its system prompt has no deferred section.
   assert.ok(!sections.some(section => section.text.includes('deferred')))
 })

@@ -28,7 +28,7 @@
 import { buildIdentitySection } from './identity.ts'
 import { aliasSpecs, buildAliases, type BuiltAlias } from './aliases.ts'
 import { READ_IMAGE_NATIVE, READ_NAME, READ_NATIVE } from './read-alias.ts'
-import { CLI_PREFIX } from './verbatim.ts'
+import { CLI_PREFIX, DYNAMIC_BEHAVIOR } from './verbatim.ts'
 import { personaSection, PERSONA_LEVELS, type PersonaLevel } from './persona.ts'
 import { buildEnvInfoSection, CONTEXT_MANAGEMENT_DSH, MEMORY_SECTION_DSH, SESSION_GUIDANCE_DSH, SKILLS_NOTE_DSH } from './localize.ts'
 import { isGlmAssembly, rewriteDialectSections, rewriteToolFace } from './assembly.ts'
@@ -89,6 +89,9 @@ export function dialectSections(outputStyleActive = false, persona: PersonaLevel
     { name: 'glm:cli-prefix', order: -1001, text: CLI_PREFIX },
     // Same name as the DSH identity section, so the rewrite replaces it in place.
     { name: 'harness:identity', order: HARNESS_IDENTITY_ORDER, text: buildIdentitySection(outputStyleActive, codingTier ? 'user' : 'official', codingTier ? 'dsh' : 'verbatim') },
+    // 3.17.1 places Dynamic Behavior right after the identity (and the desktop
+    // context, which DSH has no counterpart for), ahead of session guidance.
+    ...(codingTier ? [{ name: 'glm:dynamic-behavior', order: -950, text: DYNAMIC_BEHAVIOR }] : []),
     ...(codingTier && config.env !== undefined
       ? [{ name: 'glm:environment', order: -900, text: buildEnvInfoSection(config.env) }]
       : []),
