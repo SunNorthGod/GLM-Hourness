@@ -201,6 +201,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "rules-design-v07-finish（wf_484792a90019455b）补完 0.7：附录 D、E 与 §20 的 0.6、0.7 两条，§9.4–§19 按 0.6 评审与接缝裁定修完，一页人话 onepage.md 已写。派出单步评审 rules-design-v07-review（wf_9822f2f73e03e718）。"
+    },
+    {
+      "at": "2026-10-29T21:20:07.144Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "rules-design-v07-review（wf_9822f2f73e03e718）在写下任何结论之前因 TLS 错误结束，design-review.json 仍是 0.6 的结论。改派 rules-design-v07-review-retry（wf_4d70e4880f5a0f34），要求边审边写，中途失败也能留下已写的发现。"
     }
   ]
 }
