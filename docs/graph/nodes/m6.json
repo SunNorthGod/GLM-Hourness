@@ -102,6 +102,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "m6-design-v03（wf_06ad97ec9882723f）的写稿步一启动就因 BAD_DECRYPT 失败，什么都没写（这个会话没收到过编排方的消息，所以「发过消息才失败」的猜测不成立）。改派单步 m6-design-v03-write（wf_4c01cda4cce69b64）写 0.3 与一页人话放行稿，独立评审在它落地后另派。"
+    },
+    {
+      "at": "2026-10-29T18:55:56.890Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M6 设计 0.3 写完（m6-design-v03-write，wf_4c01cda4cce69b64；.agents/tasks/m6/design.md，0.2 留作 design-v0.2.md；一页人话 onepage.md；图操作草稿 graph-ops-v03.json）：第 2 轮 9 条全部处理，补上循环板、登录状态与指标流水几部分，没有要问人的题。派出单步评审 m6-design-v03-review（wf_fb36232a446502c6），另核对 M6 与规则板 0.6 谁负责高峰提醒原文。"
     }
   ]
 }
