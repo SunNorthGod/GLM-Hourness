@@ -1,7 +1,7 @@
 /**
  * ZCode Read over the rc.3 natives `read` and `read_image`
  * (reference/dsh-desktop-0.2.1-rc.3/dsh-tool-fs). Texts and schema come from
- * the 3.16.3 mirror (zcode-tool-text.ts); this module keeps the description
+ * the 3.17.1 mirror (zcode-tool-text.ts); this module keeps the description
  * true on DSH (docs/DESIGN.md §5.3 ⑥, §5.4):
  * - DSH has no video input, so the video line is dropped and video paths are
  *   refused with ZCode's binary-file message; without `read_image` the image
@@ -14,7 +14,8 @@
  *   empty file answers with ZCode's empty-file reminder;
  * - when the native line or byte cap ends the window before the file ends
  *   and the model's own `limit` does not explain it, the result opens with
- *   ZCode's partial-view sentences saying where to continue;
+ *   ZCode's partial-view notice saying where the next page starts, without
+ *   its token clause: the native window counts lines and bytes, not tokens;
  * - `offset` 0 reads from the first line as in ZCode (the native counts from
  *   1); a `limit` above the native 2000-line window is clamped to it.
  */
@@ -31,8 +32,7 @@ import {
   READ_VIDEO_EXTENSIONS,
   READ_VIDEO_LINE,
   readBinaryFileMessage,
-  readPartialViewContinue,
-  readPartialViewRange,
+  readPartialViewNotice,
   readToolResultWarning,
 } from './zcode-tool-text.ts'
 
@@ -47,7 +47,7 @@ export const READ_IMAGE_NATIVE = 'read_image'
  */
 const NATIVE_LINE_CAP = READ_DEFAULT_MAX_LINES
 
-/** The Read description GLM sees: the 3.16.3 lines minus those this composition cannot honor. */
+/** The Read description GLM sees: the 3.17.1 lines minus those this composition cannot honor. */
 export function readDescription(images: boolean): string {
   return READ_DESCRIPTION_LINES.filter(line => line !== READ_VIDEO_LINE && (images || line !== READ_IMAGE_LINE)).join('\n')
 }
@@ -89,7 +89,7 @@ export function renderReadWindow(args: JsonRecord, window: ReadWindow): string {
   const cut = endLine < window.totalLines && (requested === undefined || window.lines.length < requested)
   const body = window.lines.map(line => `${line.number}\t${line.text}`).join('\n')
   if (!cut) return body
-  const notice = [readPartialViewRange(window.offset, endLine, window.totalLines), readPartialViewContinue(endLine + 1)].join(' ')
+  const notice = readPartialViewNotice(window.path, window.offset, endLine, window.totalLines, window.lines.length, '')
   return `${readToolResultWarning(notice)}\n${body}`
 }
 

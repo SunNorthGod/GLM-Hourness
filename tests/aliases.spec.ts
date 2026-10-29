@@ -4,7 +4,7 @@ import test from 'node:test'
 import { aliasSpecs, bashDescription, bashSchema, buildAlias, buildAliases, semanticBoolean, semanticNumber } from '../src/glm-prompt/aliases.ts'
 import { buildReadAlias, fileExtension, mapReadArgs, readDescription, renderReadWindow } from '../src/glm-prompt/read-alias.ts'
 import { globResultText, GREP_DESCRIPTION, GREP_SCHEMA, grepNativeCalls, grepResultText, splitGlobPatterns, typeGlobPattern, zcodeDisplayPath } from '../src/glm-prompt/search-alias.ts'
-import { READ_IMAGE_LINE, READ_INPUT_SCHEMA, READ_VIDEO_LINE, TODO_WRITE_DESCRIPTION, TODO_WRITE_INPUT_SCHEMA } from '../src/glm-prompt/zcode-tool-text.ts'
+import { READ_IMAGE_LINE, READ_INPUT_SCHEMA, READ_VIDEO_LINE, readPartialViewNotice, TODO_WRITE_DESCRIPTION, TODO_WRITE_INPUT_SCHEMA } from '../src/glm-prompt/zcode-tool-text.ts'
 import { installDialect } from '../src/glm-prompt/index.ts'
 import type { ToolDefinitionLike } from '../src/shared/dsh-min.ts'
 import { fakeRuntime, NATIVE_NAMES } from './fake-rc3.ts'
@@ -47,13 +47,13 @@ test('Write, Edit, Glob, Grep and Bash are single-native aliases; Read is built 
 // ZCode 3.16.3 provider forms: the descriptions from the tool entries and the
 // toToolJsonSchema output of the contract input objects (zod-to-json-schema 3.25.2).
 
-test('Read, Write and Edit carry the 3.16.3 descriptions and schemas', () => {
+test('Read, Write and Edit carry the 3.17.1 descriptions and schemas', () => {
   assert.equal(readDescription(true), [
     'Reads a file from the local filesystem.',
     '',
     '- `file_path` must be an absolute path.',
     '- Reads up to 2000 lines by default.',
-    "- You can optionally specify a line offset and limit (especially handy for long files), but it's recommended to read the whole file by not providing these parameters",
+    '- When you already know which part of the file you need, only read that part. This can be important for larger files.',
     '- Results are returned using cat -n format, with line numbers starting at 1',
     '- Reads images (PNG, JPG, \u2026) and presents them visually.',
     '- Reading a directory, a missing file, or an empty file returns an error or system reminder rather than content.',
@@ -264,10 +264,12 @@ test('Read renders ZCode\'s cat -n form and its empty-file reminder', () => {
   assert.equal(renderReadWindow({ file_path: 'f' }, { path: 'f', offset: 1, lines: [], totalLines: 0 }), '<system-reminder>Warning: the file exists but the contents are empty.</system-reminder>')
 })
 
-test('Read opens with ZCode\'s partial-view sentences only when the native window, not the model\'s limit, cut the file', () => {
+test('Read opens with ZCode\'s partial-view notice, minus its token clause, only when the native window, not the model\'s limit, cut the file', () => {
   const lines = [{ number: 1, text: 'x' }, { number: 2, text: 'y' }]
-  assert.equal(renderReadWindow({ file_path: 'f' }, { path: 'f', offset: 1, lines, totalLines: 9000 }), '<system-reminder>Showing a partial view of lines 1-2 of 9000. Use Read with offset 3 and limit 2000 to continue, or use a search tool to find a specific section.</system-reminder>\n1\tx\n2\ty')
-  assert.equal(renderReadWindow({ file_path: 'f', limit: 5000 }, { path: 'f', offset: 1, lines, totalLines: 9000 }).startsWith('<system-reminder>Showing a partial view of lines 1-2 of 9000.'), true)
+  assert.equal(renderReadWindow({ file_path: 'f' }, { path: 'C:/ws/f.ts', offset: 1, lines, totalLines: 9000 }), '<system-reminder>[Truncated: PARTIAL view \u2014 C:/ws/f.ts: showing lines 1-2 of 9000 total. Call Read with offset=3 limit=2 for the next page, or Grep to find a specific section. Do NOT answer from this page alone if the answer may be further in the file.]</system-reminder>\n1\tx\n2\ty')
+  assert.equal(renderReadWindow({ file_path: 'f', limit: 5000 }, { path: 'f', offset: 1, lines, totalLines: 9000 }).startsWith('<system-reminder>[Truncated: PARTIAL view \u2014 f: showing lines 1-2 of 9000 total. Call Read with offset=3 limit=2 '), true)
+  // With ZCode's clause the notice is the 3.17.1 text (createTokenCapPartialView).
+  assert.equal(readPartialViewNotice('f', 1, 2, 9000, 2, ' (30000 tokens, cap 25000)'), '[Truncated: PARTIAL view \u2014 f: showing lines 1-2 of 9000 total (30000 tokens, cap 25000). Call Read with offset=3 limit=2 for the next page, or Grep to find a specific section. Do NOT answer from this page alone if the answer may be further in the file.]')
   assert.equal(renderReadWindow({ file_path: 'f', limit: 2 }, { path: 'f', offset: 1, lines, totalLines: 9000 }), '1\tx\n2\ty')
 })
 

@@ -1,9 +1,11 @@
 /**
- * ZCode 3.16.3 tool texts (Read, Write, Edit, Glob, Grep, TodoWrite, Bash),
+ * ZCode 3.17.1 tool texts (Read, Write, Edit, Glob, Grep, TodoWrite, Bash),
  * input schemas and result texts, mirrored from the release bundle
- * (resources/glm/zcode.cjs). Verbatim mirror file: every string and
- * template-literal chunk below must occur in a ZCode reference, which
- * scripts/check-verbatim.mjs enforces chunk by chunk. Keep this file free of
+ * (reference/zcode-3.17.1/zcode.cjs). Bundle names in the comments are the
+ * 3.16.3 ones where the text did not change between the two releases.
+ * Verbatim mirror file: every string and template-literal chunk below must
+ * occur in the reference, which scripts/check-verbatim.mjs enforces chunk by
+ * chunk. Keep this file free of
  * regex literals and division: the gate's scanner does not parse them. Logic
  * and localized compositions live in read-alias.ts, search-alias.ts and
  * aliases.ts (docs/DESIGN.md §5.4).
@@ -36,13 +38,13 @@ export const READ_IMAGE_LINE = '- Reads images (PNG, JPG, \u2026) and presents t
 /** Read description line about videos. */
 export const READ_VIDEO_LINE = "- Reads videos (MP4, MOV, WEBM, \u2026) and presents them as video input (subject to ZCode's video input limit)."
 
-/** Read description lines; the handler joins them with newlines (bundle `Hbo`). */
+/** Read description lines; the handler joins them with newlines (3.17.1 bundle `kIo`). */
 export const READ_DESCRIPTION_LINES: readonly string[] = [
   'Reads a file from the local filesystem.',
   '',
   '- `file_path` must be an absolute path.',
   `- Reads up to ${READ_DEFAULT_MAX_LINES} lines by default.`,
-  "- You can optionally specify a line offset and limit (especially handy for long files), but it's recommended to read the whole file by not providing these parameters",
+  '- When you already know which part of the file you need, only read that part. This can be important for larger files.',
   '- Results are returned using cat -n format, with line numbers starting at 1',
   READ_IMAGE_LINE,
   READ_VIDEO_LINE,
@@ -144,14 +146,26 @@ export function readToolResultWarning(body: string): string {
 /** Read warning for an empty file (bundle `ila`). */
 export const READ_EMPTY_FILE_WARNING = 'Warning: the file exists but the contents are empty.'
 
-/** Partial-view notice, window sentence (bundle `ula`, createTokenCapPartialView). */
-export function readPartialViewRange(startLine: number, endLine: number, totalLines: number): string {
-  return `Showing a partial view of lines ${startLine}-${endLine} of ${totalLines}.`
-}
+/** Opening of the partial-view notice (3.17.1 bundle `sSo`). */
+const READ_PARTIAL_VIEW_PREFIX = '[Truncated: PARTIAL view \u2014 '
 
-/** Partial-view notice, continuation sentence (bundle `ula`). */
-export function readPartialViewContinue(nextOffset: number): string {
-  return `Use Read with offset ${nextOffset} and limit ${READ_DEFAULT_MAX_LINES} to continue, or use a search tool to find a specific section.`
+/** The tools the partial-view notice names (bundle `aSo`, `cSo`). */
+const READ_TOOL_NAME = 'Read'
+const GREP_TOOL_NAME = 'Grep'
+
+/**
+ * Line-paged partial-view notice (3.17.1 createTokenCapPartialView `E0a`):
+ * `lineCount` lines from `startLine` to `endLine` of `totalLines` are
+ * shown, the next page starts after `endLine`. ZCode puts its token count
+ * and cap, ` (<N> tokens, cap 25000)`, between `total` and `. Call`; the
+ * caller supplies that clause or none (`tokenClause`).
+ */
+export function readPartialViewNotice(filePath: string, startLine: number, endLine: number, totalLines: number, lineCount: number, tokenClause: string): string {
+  return [
+    `${READ_PARTIAL_VIEW_PREFIX}${filePath}: showing lines ${startLine}-${endLine} of ${totalLines} total`,
+    tokenClause,
+    `. Call ${READ_TOOL_NAME} with offset=${endLine + 1} limit=${lineCount} for the next page, or ${GREP_TOOL_NAME} to find a specific section. Do NOT answer from this page alone if the answer may be further in the file.]`,
+  ].join('')
 }
 
 /** Suffix of a successful Write or Edit result (bundle `oba` / `Uba`). */
