@@ -156,6 +156,12 @@
           "exit": 0
         }
       ]
+    },
+    {
+      "at": "2026-10-29T17:19:00.161Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "清理完成（wf_afef02a167d6ce1e）：工作树 .worktrees/row-titles 已移除（git worktree remove 注销后，因路径过长残留的被忽略目录 node_modules 等用 rmdir 删净，删前确认没有 profile 的链接指向它）；分支 row-titles 已完全合入 main（6134c83），用 git branch -d 删除。"
     }
   ]
 }
