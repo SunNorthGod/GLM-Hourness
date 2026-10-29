@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "数据目录",
+    "description": "告诉其余各行把记录写在哪里：用户级目录 ~/.dsh/glm-hourness 与项目的 .llm 目录。"
+  }
+}

@@ -1,6 +1,7 @@
 /**
- * Client half of the orchestration package (dsh-hourness-ui, docs/DESIGN.md
- * §2.3): the project graph tab of the right sidebar (./graph/tab.tsx).
+ * Client half of the orchestration package (the client face of
+ * dsh-hourness, docs/DESIGN.md §2.3): the project graph tab of the right
+ * sidebar (./graph/tab.tsx).
  * scripts/build-ui.mjs bundles this entry into packages/hourness/ui/client.js
  * for window.__ModuleLoader__; React and ui-primitives come from the DSH
  * client module table (docs/DEVELOPMENT.md §5.6).

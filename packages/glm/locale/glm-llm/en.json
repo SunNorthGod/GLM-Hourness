@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "GLM native channel",
+    "description": "The model channel that calls GLM the way ZCode 3.16.3 does: request signing, the credential stored by /glm-login, and streamed decoding."
+  }
+}

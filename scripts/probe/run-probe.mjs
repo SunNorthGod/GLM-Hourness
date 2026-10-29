@@ -29,7 +29,8 @@
  * probe-glm (the GLM channel package alone) and hourness-only on
  * probe-hourness (the orchestration package alone); client-modules mounts
  * the client composition service on probe-full and checks that it composes
- * both client packages. The main checkout and a
+ * both packages' client faces. These three also read each project row's
+ * settings-page title in their profile. The main checkout and a
  * worktree are tested the same way and ~/.dsh/profiles is never used. Each
  * run writes the DSH home, overlays, request dumps and logs under
  * .llm/probe-runs/<timestamp>/ (gitignored).
@@ -375,7 +376,7 @@ const MEMORY_SECTION_LINE = 'You have a persistent memory in this workspace'
 const glmOnlyDir = join(runDir, 'glm-only')
 const glmOnly = runScenario('glm-only', 'glm-5.3', [
   { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } } },
-  { text: 'done', status: true },
+  { text: 'done', status: true, meta: true },
 ], 'Read package.json, then reply done.', clockRow(PEAK_AT), repo, [], profiles['probe-glm'])
 const glmOnlyFirst = glmOnly.steps[0]
 const glmOnlyTools = names(glmOnlyFirst)
@@ -405,7 +406,7 @@ const hournessOnly = runScenario('hourness-only', 'deepseek-probe', [
   { tool: { name: 'graph_focus', arguments: { id: 'task-1' } } },
   { tool: { name: 'write', arguments: { file_path: hournessOnlyNode, content: '{}\n' } }, command: { name: 'hourness-status' } },
   { tool: { name: 'pwsh', arguments: { command: `Set-Content -Path '${hournessOnlyShell}' -Value probe`, description: 'Write a file through the shell' } } },
-  { text: 'done', command: { name: 'hourness' } },
+  { text: 'done', command: { name: 'hourness' }, meta: true },
 ], 'Set the graph focus, write two files, then reply done.', [], hournessOnlyWs, [], profiles['probe-hourness'])
 const hournessOnlyFirst = hournessOnly.steps[0]
 const hournessOnlyTools = names(hournessOnlyFirst)
@@ -419,9 +420,10 @@ const hournessOnlyReport = hournessOnly.steps[3]?.command
 // client-modules row, so the overlay mounts @deepseek-ai/dsh-client-modules
 // on probe-full and enables glm-hourness/glm-ui. Its construction scans
 // every loaded row and throws on a composition error; the probe provider
-// reads the composed graph mid-step.
-const CLIENT_PACKAGES = PACKAGES.map(pkg => pkg.client.name)
-const clientModules = runScenario('client-modules', 'deepseek-probe', [{ text: 'done', modules: true }], 'Reply done.', [
+// reads the composed graph mid-step. Each package is its own client face
+// (dsh.client in its manifest, one row named by the exact package name).
+const CLIENT_PACKAGES = PACKAGES.map(pkg => pkg.name)
+const clientModules = runScenario('client-modules', 'deepseek-probe', [{ text: 'done', modules: true, meta: true }], 'Reply done.', [
   '- insert:',
   '    - id: glm-hourness-probe/client-modules',
   '      name: \'@deepseek-ai/dsh-client-modules\'',
@@ -429,6 +431,29 @@ const clientModules = runScenario('client-modules', 'deepseek-probe', [{ text: '
   '  disabled: false',
 ])
 const clientGraph = clientModules.steps[0]?.modules
+
+// Settings page row titles (docs/DESIGN.md §2.3): in each profile, every
+// project row of the listed packages shows the title of its locale files
+// (a host row's locale/<row>/, the client row's package locale/), read the
+// way the settings page's plugin inventory reads it, and no other project
+// row is loaded.
+const localeTitle = (pkg, sub) => Object.fromEntries(['en', 'zh'].map(language => [language, JSON.parse(readFileSync(join(repo, pkg.dir, 'locale', ...sub, `${language}.json`), 'utf8')).meta.title]))
+const expectedTitles = keys => PACKAGES.filter(pkg => keys.includes(pkg.key)).flatMap(pkg => [...pkg.rows.map(row => [row.id, localeTitle(pkg, [row.id.replace(/^glm-hourness\//, '')])]), [pkg.client.row, localeTitle(pkg, [])]])
+const titleProblems = (recorded, keys) => {
+  if (!Array.isArray(recorded)) return [`no row metadata: ${JSON.stringify(recorded ?? null)}`]
+  const expected = expectedTitles(keys)
+  const wrong = expected.flatMap(([id, title]) => {
+    const found = recorded.filter(entry => entry.id === id)
+    if (found.length !== 1) return [`${id}: ${found.length} row(s)`]
+    const meta = found[0].meta
+    return meta?.error === undefined && meta?.title?.en === title.en && meta?.title?.zh === title.zh ? [] : [`${id} (${found[0].name}): ${JSON.stringify(meta ?? null)}`]
+  })
+  return [...wrong, ...recorded.filter(entry => !expected.some(([id]) => id === entry.id)).map(entry => `${entry.id}: not expected`)]
+}
+const titleCheck = (scenario, recorded, keys) => {
+  const problems = titleProblems(recorded, keys)
+  return [`${scenario}: each project row (${expectedTitles(keys).length}) shows its locale title in the settings inventory, through a package specifier`, problems.length === 0, problems.join('; ') || (Array.isArray(recorded) ? recorded.map(entry => `${entry.id} ${entry.name}`).join(', ') : '')]
+}
 
 // Calibration run bounds (scripts/calibrate/limits.mjs, ROADMAP M1.7). The
 // step limit rejects the third step of a script that would read forever;
@@ -809,7 +834,10 @@ const checks = [
   ['hourness-only: a native write into the graph is denied by graph-files-only, a shell write by file-tools-only in native names; neither file is written and both records are tagged other', hournessOnlyWrite?.isError === true && hournessOnlyWrite.text.includes('inside the project graph') && !existsSync(hournessOnlyNode) && hournessOnlyPwsh?.isError === true && hournessOnlyPwsh.text.includes(RIGHT_PATH_NATIVE) && !existsSync(hournessOnlyShell) && hournessOnlyViolations.map(record => `${record.rule}:${record.tool}:${record.scope}`).join(',') === 'graph-files-only:write:other,file-tools-only:pwsh:other', `records: ${hournessOnlyViolations.map(record => `${record.rule}:${record.tool ?? ''}:${record.scope ?? ''}`).join(', ') || 'none'}; shell file ${existsSync(hournessOnlyShell)}`],
   ['hourness-only: the system prompt declares the workspace rules in native names, graph-files-only included', hournessOnlyFirst?.system.includes(GUARD_SECTION) === true && hournessOnlyFirst.system.includes('\n- Modify files and code only with the dedicated write/edit tools.') && hournessOnlyFirst.system.includes(GRAPH_FILES_LINE), hournessOnlyFirst === undefined ? 'no request' : `section at ${hournessOnlyFirst.system.indexOf(GUARD_SECTION)}`],
   ['hourness-only: /hourness-status lists the orchestration rows and the GLM package as one line not loaded', hournessOnlyStatus?.kind === 'success' && onlyOneLoaded(hournessOnlyHealth, 'hourness', 'glm'), `${hournessOnlyStatus?.kind ?? 'not run'}; ${JSON.stringify(hournessOnlyHealth[WHOLE] ?? null)}`],
-  ['client-modules: mounted on probe-full with glm-ui enabled, the service composes both client packages, each once, without an error', Array.isArray(clientGraph?.entries) && CLIENT_PACKAGES.every(name => clientGraph.entries.filter(id => id === name).length === 1) && !stderrOf('client-modules').includes('client-modules') && quiet('client-modules'), `${JSON.stringify(clientGraph ?? null)}; stderr ${stderrOf('client-modules').length} byte(s)`],
+  titleCheck('client-modules (probe-full)', clientModules.steps[0]?.meta, ['glm', 'hourness']),
+  titleCheck('glm-only', glmOnly.steps[1]?.meta, ['glm']),
+  titleCheck('hourness-only', hournessOnly.steps[3]?.meta, ['hourness']),
+  ['client-modules: mounted on probe-full with glm-ui enabled, the service composes both packages\' client faces, each once, without an error', Array.isArray(clientGraph?.entries) && CLIENT_PACKAGES.every(name => clientGraph.entries.filter(id => id === name).length === 1) && !stderrOf('client-modules').includes('client-modules') && quiet('client-modules'), `${JSON.stringify(clientGraph ?? null)}; stderr ${stderrOf('client-modules').length} byte(s)`],
   ['hourness-only: /hourness lists calls and tokens without the pricing service; no skipped bundle and no row warning', hournessOnlyReport?.kind === 'success' && hournessOnlyPanel.startsWith('- 没有计价服务（GLM 通道包的 glm-login 行提供积分口径），只列调用与 token') && /^- deepseek-probe：\d+ 次 · 未命中输入 \d+/m.test(hournessOnlyPanel) && quiet('hourness-only'), `${hournessOnlyReport?.kind ?? 'not run'}; ${JSON.stringify(hournessOnlyPanel.split('\n').slice(0, 3))}`],
   ['glm boot: the runtime reached the probe provider', glmFirst !== undefined, `exit ${glm.status}, ${glm.steps.length} step(s)`],
   ['graph panel: /graph-apply comments as the human in the graph under the session working directory', panelCommands[0]?.kind === 'success' && panelCommands[0].text === '已批注「探针目标」' && panelLast('goal-1')?.actor === 'human' && panelLast('goal-1')?.text === 'probe comment', JSON.stringify(panelCommands[0] ?? null)],

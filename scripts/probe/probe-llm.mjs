@@ -13,7 +13,9 @@
  * command prints for the session at that point (credential line and row
  * health table); a step marked `live` records the graph panel's live view
  * of the session (the graphLive projection, src/graph/live.ts); a step
- * marked `modules` records the package ids of the client-modules graph.
+ * marked `modules` records the package ids of the client-modules graph; a
+ * step marked `meta` records, for each project row of the Loader, the
+ * display information the settings page's plugin inventory shows for it.
  *
  * Each session follows its own script: the first session that sends a
  * scripted request follows `script`; each later one (a subagent, or a
@@ -127,6 +129,28 @@ function liveOf(ctx, request) {
   return { graphLive, subagentCatalog, tokenUsage }
 }
 
+/**
+ * The display information of each project row (id `glm-hourness/<row>`) the
+ * way the settings page's plugin inventory reads it (rc.3
+ * dsh-host-plugin-inventory readPluginInventory: pluginPackages.metaOf of the
+ * entry's name against its tree's base URL); icons only as present or not.
+ * Null when the runtime has no Loader or no package service.
+ */
+function rowMeta(ctx) {
+  const loader = ctx.get('loader')
+  const packages = ctx.get('pluginPackages')
+  if (loader === undefined || typeof packages?.metaOf !== 'function') return null
+  return [...loader.entries()].filter(entry => !entry.options.group && String(entry.options.id).startsWith('glm-hourness/')).map((entry) => {
+    const base = entry.parent.tree.ctx.baseUrl
+    const meta = base === undefined ? undefined : packages.metaOf(entry.options.name, base)
+    return {
+      id: entry.options.id,
+      name: entry.options.name,
+      ...(meta === undefined ? {} : { meta: { ...meta, ...(meta.icon === undefined ? {} : { icon: true }) } }),
+    }
+  })
+}
+
 class ProbeAdapter {
   constructor(ctx, config) {
     this.ctx = ctx
@@ -217,6 +241,15 @@ class ProbeAdapter {
         modules = { error: error instanceof Error ? error.message : String(error) }
       }
     }
+    let meta
+    if (step.meta === true) {
+      try {
+        meta = rowMeta(this.ctx)
+      }
+      catch (error) {
+        meta = { error: error instanceof Error ? error.message : String(error) }
+      }
+    }
     if (this.dump !== undefined) {
       // The glm-zcode encoder over this exact request, with the runtime's
       // attachment and fs services (the channel row reads them the same way).
@@ -243,6 +276,7 @@ class ProbeAdapter {
         ...(command === undefined ? {} : { command }),
         ...(live === undefined ? {} : { live }),
         ...(modules === undefined ? {} : { modules }),
+        ...(meta === undefined ? {} : { meta }),
         // The runtime delivers the prompt as leading system messages (the
         // channel lifts them the same way, src/glm-llm/anthropic.ts).
         system: [request.system ?? '', ...leadingSystem(request.messages ?? [])].filter(text => text.length > 0).join('\n\n'),

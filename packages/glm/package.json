@@ -6,16 +6,29 @@
   "type": "module",
   "license": "MIT",
   "exports": {
+    ".": "./ui/index.js",
+    "./client": "./ui/client.js",
     "./glm-llm": "./dist/glm-llm/index.js",
     "./glm-login": "./dist/glm-llm/login-row.js",
     "./glm-prompt": "./dist/glm-prompt/index.js",
     "./glm-compact": "./dist/glm-prompt/compact-row.js",
+    "./glm-llm/locale/*.json": "./locale/glm-llm/*.json",
+    "./glm-login/locale/*.json": "./locale/glm-login/*.json",
+    "./glm-prompt/locale/*.json": "./locale/glm-prompt/*.json",
+    "./glm-compact/locale/*.json": "./locale/glm-compact/*.json",
     "./locale/*.json": "./locale/*.json",
     "./icon": "./icon.svg"
   },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-api-remotes"
+      ]
     }
   },
   "peerDependencies": {

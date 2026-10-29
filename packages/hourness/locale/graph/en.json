@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Project graph tools",
+    "description": "Tools for agents to read and change the project graph (docs/graph), the per-step projection of the focus node, and the rule that blocks direct writes to graph files."
+  }
+}

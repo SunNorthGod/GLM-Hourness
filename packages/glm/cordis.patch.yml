@@ -4,31 +4,38 @@
 # directory $DSH_HOME/glm-hourness (default ~/.dsh; docs/DESIGN.md §2.4).
 # Row ids stay `glm-hourness/<row>` across the split: profile overrides
 # match by id (docs/DESIGN.md §2.3).
+# Rows are named through this package (docs/DESIGN.md §2.3): a host row by
+# its export `dsh-glm-zcode/<row>`, whose settings-page title is
+# locale/<row>/; the client row by the exact package name. A path name
+# would show as its file URL in Settings and would count as a second source
+# of the package's client face.
 - insert:
     - id: glm-hourness/glm-llm
       # Native ZCode channel: /glm-login fills the encrypted credential store;
       # a missing credential fails the stream with the re-login instruction.
       # Ships disabled until the sandbox (docs/DEVELOPMENT.md §3) passes: an
       # unverified adapter row must never activate on the user's next restart.
-      name: ./dist/glm-llm/index.js
+      name: dsh-glm-zcode/glm-llm
       disabled: true
       inject: [llm]
       config: {}
     - id: glm-hourness/glm-login
-      name: ./dist/glm-llm/login-row.js
+      name: dsh-glm-zcode/glm-login
       inject: [commands]
       config: {}
     - id: glm-hourness/glm-prompt
-      name: ./dist/glm-prompt/index.js
+      name: dsh-glm-zcode/glm-prompt
       config: {}
     - id: glm-hourness/glm-compact
-      name: ./dist/glm-prompt/compact-row.js
+      name: dsh-glm-zcode/glm-compact
       config: {}
     - id: glm-hourness/glm-ui
-      # The client package nested at ./ui (dsh-glm-zcode-ui): the GLM pill
-      # under the composer and the settings section. Exactly one row:
-      # client-modules composes client halves per package and rejects a
-      # package resolved from multiple active Loader sources. Enabled after
-      # round 1 of the split desktop check passed (AGENTS.md rule 4).
-      name: ./ui/index.js
+      # The package's client face (dsh.client in package.json, host half
+      # ./ui/index.js, bundle ./ui/client.js): the GLM pill under the
+      # composer and the settings section. Exactly one row: client-modules
+      # counts a row named by the exact package name as a source of its
+      # client face and rejects a package resolved from multiple active
+      # Loader sources. Enabled after round 1 of the split desktop check
+      # passed (AGENTS.md rule 4).
+      name: dsh-glm-zcode
       config: {}

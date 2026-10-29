@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Project graph panel commands",
+    "description": "The /graph-apply and /graph-run commands behind the panel, and the live view it reads."
+  }
+}

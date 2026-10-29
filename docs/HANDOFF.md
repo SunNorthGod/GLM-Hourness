@@ -10,9 +10,9 @@
 - 仓库：`C:\Users\29596\Desktop\Project\GLM-Hourness`；git，远端 Gitee 私有仓库 `NorthGod_BFDG/GLM-Hourness`，主分支 `main`。
 - 目标：让 GLM 以 ZCode 训练分布住进 DeepSeek Harness（DSH），并在其上建一套编排层，把开发体系量化成由 harness 保证实施的标准（`CHARTER.md`）。
 - 运行时：DSH Desktop `0.2.1-rc.3`，profile `desktop`；ZCode 基线 3.16.3。
-- 安装形态（split 第 5、6 步起，`DESIGN.md` §2.3）：仓库产出两个 bundle，各嵌一个客户端包，profile 里是指向检出的链接，加载 `packages/*/dist` 与 `packages/*/ui/client.js`：
-  - `dsh-glm-zcode@0.3.0`（`packages/glm`）：GLM 通道包，4 个宿主行（`glm-llm`、`glm-login`、`glm-prompt`、`glm-compact`）加客户端行 `glm-ui`（客户端包 `dsh-glm-zcode-ui`，GLM 按钮与设置页，默认启用：split 合入后的桌面版验收第一轮通过后启用，2026-10-29）；
-  - `dsh-hourness@0.3.0`（`packages/hourness`）：编排层包，7 个宿主行（`data`、`guard`、`memory`、`workflow`、`hourness`、`graph`、`graph-panel`）加客户端行 `ui`（客户端包 `dsh-hourness-ui`，项目图面板）。
+- 安装形态（split 第 5、6 步起，`DESIGN.md` §2.3）：仓库产出两个 bundle，各带自己的客户端面，profile 里是指向检出的链接，加载 `packages/*/dist` 与 `packages/*/ui/client.js`。行名都经包命名（宿主行 `<包名>/<行>`，客户端行是精确包名），设置页「内置插件」给每行显示 `locale/` 里的标题（m8-row-titles，桌面版截图核对随批次 L4）：
+  - `dsh-glm-zcode@0.3.0`（`packages/glm`）：GLM 通道包，4 个宿主行（`glm-llm`、`glm-login`、`glm-prompt`、`glm-compact`）加客户端行 `glm-ui`（包自己的客户端面，GLM 按钮与设置页，默认启用：split 合入后的桌面版验收第一轮通过后启用，2026-10-29）；
+  - `dsh-hourness@0.3.0`（`packages/hourness`）：编排层包，7 个宿主行（`data`、`guard`、`memory`、`workflow`、`hourness`、`graph`、`graph-panel`）加客户端行 `ui`（包自己的客户端面，项目图面板）。
   - 根 `package.json`（`dsh-glm-hourness`）只是开发工作区，不再是 bundle。
   - profile 切换（split 合入时段，2026-10-29）：`glmsandbox` 20:43:14、桌面版 20:43:33（UTC+8）各自只改了 `package.json` 的 `dsh.profile.bundles` 与 `dependencies`。桌面版的 bundles 第 3 项 `dsh-glm-hourness` 原位换成 `dsh-glm-zcode`、`dsh-hourness`，删去末项 `dsh-glm-hourness-ui`，共 13 项：`@deepseek-ai/dsh-base`、`@deepseek-ai/dsh-web-app`、`dsh-glm-zcode`、`dsh-hourness` 与 9 个 experimental bundle（次序不变）；`glmsandbox` 的 bundles 为 `@deepseek-ai/dsh-base`、`@deepseek-ai/dsh-headless`、`dsh-glm-zcode`、`dsh-hourness`。两边的 dependencies 都只有 `dsh-glm-zcode`、`dsh-hourness`，`link:` 指向主检出的 `packages/glm`、`packages/hourness`；`cordis.patch.yml` 没有改，本项目五条覆盖项按行 id 匹配。备份留在各自的 profile 目录：`desktop/package.json.bak-1793277813423`、`desktop/pnpm-lock.yaml.bak-1793277813423`、`glmsandbox/package.json.bak-1793277794809`、`glmsandbox/pnpm-lock.yaml.bak-1793277794809`，`split` 关闭之前不删，之后删不删由人定。
 - 拉取改变包布局的提交之后（split 起每次都按这一条做）：先关桌面版，再 `npm run build`，再启动。运行中的桌面版在下一次 profile 写入时就按磁盘上的布局重组（`DEVELOPMENT.md` §1.1）。
@@ -23,7 +23,7 @@
 src/           两个包的 TypeScript 源码（源码不搬家；哪个目录属于哪个包见 scripts/packages.mjs，src/shared/ 是公共库）
 packages/      两个宿主包：glm/（dsh-glm-zcode）与 hourness/（dsh-hourness），各有 package.json、cordis.patch.yml、tsconfig.json、locale/、icon.svg；构建产物 dist/ 不入库
 tests/         39 个 spec，556 用例（2026-10-29，`a9f12e1`）；tests/fake-rc3.ts 为 rc.3 运行时替身；tests/tsconfig.json 只给 ESLint 提供类型信息；tests/calibration/ 为标定测试集（两个任务，ORCHESTRATION.md §10.5）
-ui/            客户端源码 ui/src 与它的 tsconfig.json，不是包；两个客户端包在 packages/*/ui/（package.json、宿主半 index.js、构建出的 client.js 不入库），哪个源码文件属于哪个客户端包见 scripts/packages.mjs
+ui/            客户端源码 ui/src 与它的 tsconfig.json，不是包；两个包的客户端面在 packages/*/ui/（宿主半 index.js、构建出的 client.js 不入库），哪个源码文件属于哪个包见 scripts/packages.mjs
 scripts/       packages.mjs（目录表：两个包的名字、目录、源码目录与行，DEVELOPMENT.md §10）、clean-dist.mjs（构建前删各包的 dist/）、preflight-bundle.mjs、check-verbatim.mjs、check-lint.mjs（检查器门禁）、check-secrets.mjs（密钥扫描）、deps-check.mjs（依赖报告）、smoke-zcode*.mjs、sandbox.mjs（启动参数、探针生成的 profile 与覆盖行，探针与标定共用）、profile-shape.mjs（profile 结构的只读快照与比对）、probe/（L3 探针）、calibrate/（标定运行器与边界插件）、graph/（项目图命令行、出图与冒烟）
 eslint.config.js、knip.js（入口按目录表生成）、tsconfig.knip.json、.jscpd.json  检查器配置；eslint-suppressions.json、knip-baseline.json、.jscpd-baseline.json 为告警基线（DEVELOPMENT.md §10）
 docs/          宪章、设计、编排、路线、事实账、流程、交接；docs/graph/ 为本项目的项目图（进度的事实源）；docs/reference/ 为事实参考原文

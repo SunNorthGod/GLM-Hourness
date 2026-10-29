@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "GLM 登录与积分",
+    "description": "/glm-login、/glm-status、/glm-logout 命令，以及 GLM 积分套餐的计价服务，用量面板按它计积分。"
+  }
+}

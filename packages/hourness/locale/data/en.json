@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Data directories",
+    "description": "Tells the other rows where to keep their records: the user-level directory ~/.dsh/glm-hourness and the project's .llm directory."
+  }
+}

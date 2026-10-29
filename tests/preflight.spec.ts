@@ -10,12 +10,12 @@ const REPO = join(import.meta.dirname, '..')
 const GLM = {
   key: 'glm', name: 'pkg-glm', dir: 'packages/glm', src: ['glm-llm', 'glm-prompt'],
   rows: [{ id: 'glm-hourness/glm-llm', module: 'glm-llm/index' }],
-  client: { name: 'pkg-glm-ui', row: 'glm-hourness/glm-ui', entry: 'ui/src/glm-client.js', sources: ['ui/src/channel.js', 'ui/src/glm-client.js'] },
+  client: { row: 'glm-hourness/glm-ui', entry: 'ui/src/glm-client.js', sources: ['ui/src/channel.js', 'ui/src/glm-client.js'] },
 }
 const HOURNESS = {
   key: 'hourness', name: 'pkg-hourness', dir: 'packages/hourness', src: ['graph', 'guard'],
   rows: [{ id: 'glm-hourness/graph', module: 'graph/index' }, { id: 'glm-hourness/guard', module: 'guard/index' }],
-  client: { name: 'pkg-hourness-ui', row: 'glm-hourness/ui', entry: 'ui/src/hourness-client.tsx', sources: ['ui/src/hourness-client.tsx', 'ui/src/panel/'] },
+  client: { row: 'glm-hourness/ui', entry: 'ui/src/hourness-client.tsx', sources: ['ui/src/hourness-client.tsx', 'ui/src/panel/'] },
 }
 const TABLE = { SHARED_DIR: 'shared', PACKAGES: [GLM, HOURNESS] }
 const CLIENT_FILES = ['ui/src/channel.js', 'ui/src/glm-client.js', 'ui/src/hourness-client.tsx', 'ui/src/panel/view.tsx']
@@ -52,8 +52,8 @@ test('a source directory in two packages, a repeated key, name, directory or row
   withSrc(LAYOUT, (root) => {
     const twice = { ...TABLE, PACKAGES: [GLM, { ...HOURNESS, src: ['graph', 'guard', 'glm-prompt'] }] }
     assert.deepEqual(tableProblems(root, twice), ['source directory src/glm-prompt belongs to both glm and hourness'])
-    const repeated = { ...TABLE, PACKAGES: [GLM, { ...HOURNESS, key: 'glm', name: 'pkg-glm', dir: 'packages/glm', rows: [...HOURNESS.rows, { id: 'glm-hourness/glm-llm', module: 'graph/x' }], client: { ...HOURNESS.client, name: 'pkg-glm-ui', row: 'glm-hourness/glm-ui' } }] }
-    assert.deepEqual(tableProblems(root, repeated), ['package key glm is registered twice', 'package name pkg-glm is registered twice', 'package directory packages/glm is registered twice', 'row id glm-hourness/glm-llm is registered twice', 'package name pkg-glm-ui is registered twice', 'row id glm-hourness/glm-ui is registered twice'])
+    const repeated = { ...TABLE, PACKAGES: [GLM, { ...HOURNESS, key: 'glm', name: 'pkg-glm', dir: 'packages/glm', rows: [...HOURNESS.rows, { id: 'glm-hourness/glm-llm', module: 'graph/x' }], client: { ...HOURNESS.client, row: 'glm-hourness/glm-ui' } }] }
+    assert.deepEqual(tableProblems(root, repeated), ['package key glm is registered twice', 'package name pkg-glm is registered twice', 'package directory packages/glm is registered twice', 'row id glm-hourness/glm-llm is registered twice', 'row id glm-hourness/glm-ui is registered twice'])
     const shared = { ...TABLE, PACKAGES: [GLM, { ...HOURNESS, src: ['graph', 'guard', 'shared'] }] }
     assert.deepEqual(tableProblems(root, shared), ['package hourness lists the shared library shared as its own source directory'])
   })
@@ -143,7 +143,7 @@ const json = (value: unknown): string => `${JSON.stringify(value, null, 2)}\n`
 const rowSuffix = (id: string): string => id.replace(/^glm-hourness\//, '')
 const wrapped = (name: string, body = ''): string => `window.__ModuleLoader__.load({ id: ${JSON.stringify(name)}, factory: (require) => { var module = { exports: {} }; require("react");${body} return module.exports; } });\n`
 
-/** A valid repository: the root workspace, ui/src client sources, and the two packages built with their nested client packages. */
+/** A valid repository: the root workspace, ui/src client sources, and the two packages built with their client faces. */
 function writeLayout(root: string): void {
   write(join(root, 'package.json'), json({ name: 'root', private: true, type: 'module' }))
   for (const dir of ['shared', ...TABLE.PACKAGES.flatMap(pkg => pkg.src)]) mkdirSync(join(root, 'src', dir), { recursive: true })
@@ -154,20 +154,27 @@ function writeLayout(root: string): void {
     write(join(dir, 'package.json'), json({
       name: pkg.name,
       type: 'module',
-      exports: { ...Object.fromEntries(pkg.rows.map(row => [`./${rowSuffix(row.id)}`, `./dist/${row.module}.js`])), './locale/*.json': './locale/*.json', './icon': './icon.svg' },
-      dsh: { bundle: { patch: './cordis.patch.yml' } },
+      exports: {
+        '.': './ui/index.js',
+        './client': './ui/client.js',
+        ...Object.fromEntries(pkg.rows.flatMap(row => [[`./${rowSuffix(row.id)}`, `./dist/${row.module}.js`], [`./${rowSuffix(row.id)}/locale/*.json`, `./locale/${rowSuffix(row.id)}/*.json`]])),
+        './locale/*.json': './locale/*.json',
+        './icon': './icon.svg',
+      },
+      dsh: { bundle: { patch: './cordis.patch.yml' }, client: { platform: 'web', immediately: true, inject: [] } },
       peerDependencies: { '@scope/peer': '*' },
     }))
-    write(join(dir, 'cordis.patch.yml'), ['- insert:', ...pkg.rows.flatMap(row => [`    - id: ${row.id}`, `      name: ./dist/${row.module}.js`, '      config: {}']), `    - id: ${pkg.client.row}`, '      name: ./ui/index.js', ''].join('\n'))
+    write(join(dir, 'cordis.patch.yml'), ['- insert:', ...pkg.rows.flatMap(row => [`    - id: ${row.id}`, `      name: ${pkg.name}/${rowSuffix(row.id)}`, '      config: {}']), `    - id: ${pkg.client.row}`, `      name: ${pkg.name}`, ''].join('\n'))
     write(join(dir, 'tsconfig.json'), json({ include: pkg.src.map(src => `../../src/${src}`) }))
-    for (const language of ['en', 'zh']) write(join(dir, 'locale', `${language}.json`), json({ meta: { title: 'title', description: 'description' } }))
+    for (const locale of ['locale', ...pkg.rows.map(row => `locale/${rowSuffix(row.id)}`)]) {
+      for (const language of ['en', 'zh']) write(join(dir, locale, `${language}.json`), json({ meta: { title: 'title', description: 'description' } }))
+    }
     write(join(dir, 'icon.svg'), '<svg xmlns="http://www.w3.org/2000/svg"/>\n')
     for (const row of pkg.rows) write(join(dir, 'dist', `${row.module}.js`), 'import { peer } from \'@scope/peer\'\nexport const value = peer\n')
     write(join(dir, 'dist', 'shared', 'health.js'), `export const HEALTH_PACKAGES = ${JSON.stringify(health)}\n`)
     write(join(dir, 'dist', 'shared', 'types.d.ts'), 'import type { X } from \'@scope/types-only\'\nexport type Y = X\n')
-    write(join(dir, 'ui', 'package.json'), json({ name: pkg.client.name, type: 'module', exports: { '.': './index.js', './client': './client.js' }, dsh: { client: { platform: 'web', immediately: true, inject: [] } } }))
     write(join(dir, 'ui', 'index.js'), 'export function apply() {}\n')
-    write(join(dir, 'ui', 'client.js'), wrapped(pkg.client.name))
+    write(join(dir, 'ui', 'client.js'), wrapped(pkg.name))
   }
 }
 
@@ -194,7 +201,7 @@ test('the repository passes the bundle checks', async () => {
   assert.deepEqual((await bundleProblems(REPO, { SHARED_DIR, PACKAGES })).problems, [])
 })
 
-test('two packages with their client packages pass; .d.ts type imports are not runtime imports', async () => {
+test('two packages with their client faces pass; .d.ts type imports are not runtime imports', async () => {
   assert.deepEqual(await problemsAfter(() => {}), [])
 })
 
@@ -207,36 +214,41 @@ test('the root is no bundle: dsh (a client half included), exports, main, a miss
 })
 
 test('ui/ is no package: a ui/package.json or a ui/cordis.patch.yml fails', async () => {
-  assert.deepEqual(await problemsAfter(root => write(join(root, 'ui/package.json'), json({ name: 'old-ui' }))), ['ui/package.json exists: ui/ holds client sources only; the client packages are under packages/*/ui'])
-  assert.deepEqual(await problemsAfter(root => write(join(root, 'ui/cordis.patch.yml'), '[]\n')), ['ui/cordis.patch.yml exists: ui/ holds client sources only; the client packages are under packages/*/ui'])
+  assert.deepEqual(await problemsAfter(root => write(join(root, 'ui/package.json'), json({ name: 'old-ui' }))), ['ui/package.json exists: ui/ holds client sources only; the client faces belong to the packages under packages/'])
+  assert.deepEqual(await problemsAfter(root => write(join(root, 'ui/cordis.patch.yml'), '[]\n')), ['ui/cordis.patch.yml exists: ui/ holds client sources only; the client faces belong to the packages under packages/'])
 })
 
-test('a patch path or a row name with .., a missing row module, or a row the table does not have fails', async () => {
-  const climbing = await problemsAfter(root => edit(root, 'packages/glm/package.json', (value) => { value.dsh = { bundle: { patch: ['./cordis.patch.yml', '../hourness/cordis.patch.yml'] } } }))
+test('a patch path with .., a row named by a path or by another package, a missing row module, or a row the table does not have fails', async () => {
+  const climbing = await problemsAfter(root => edit(root, 'packages/glm/package.json', (value) => { value.dsh = { ...(value.dsh as object), bundle: { patch: ['./cordis.patch.yml', '../hourness/cordis.patch.yml'] } } }))
   assert.deepEqual(climbing, ['pkg-glm: patch ../hourness/cordis.patch.yml is not ./-relative inside the package (no ..)'])
-  const rowClimbing = await problemsAfter(root => write(join(root, 'packages/glm/cordis.patch.yml'), '- insert:\n    - id: glm-hourness/glm-llm\n      name: ./../glm/dist/glm-llm/index.js\n    - id: glm-hourness/glm-ui\n      name: ./ui/index.js\n'))
-  assert.equal(rowClimbing[0], 'pkg-glm: row glm-hourness/glm-llm name ./../glm/dist/glm-llm/index.js is not ./-relative inside the package (no ..)')
+  const path = await problemsAfter(root => write(join(root, 'packages/glm/cordis.patch.yml'), '- insert:\n    - id: glm-hourness/glm-llm\n      name: ./dist/glm-llm/index.js\n    - id: glm-hourness/glm-ui\n      name: pkg-glm\n'))
+  assert.equal(path[0], 'pkg-glm: row glm-hourness/glm-llm name ./dist/glm-llm/index.js is a path: the settings page titles it with its file URL and client-modules counts it as a source of the package\'s client face; name it through the package (pkg-glm/<row>)')
+  const url = await problemsAfter(root => write(join(root, 'packages/glm/cordis.patch.yml'), '- insert:\n    - id: glm-hourness/glm-llm\n      name: pkg-glm/glm-llm\n    - id: glm-hourness/glm-ui\n      name: file:///C:/x/ui/index.js\n'))
+  assert.ok(url[0]?.startsWith('pkg-glm: row glm-hourness/glm-ui name file:///C:/x/ui/index.js is a path'), url.join('\n'))
+  const other = await problemsAfter(root => write(join(root, 'packages/glm/cordis.patch.yml'), '- insert:\n    - id: glm-hourness/glm-llm\n      name: pkg-hourness/graph\n    - id: glm-hourness/glm-ui\n      name: pkg-glm\n'))
+  assert.equal(other[0], 'pkg-glm: row glm-hourness/glm-llm name pkg-hourness/graph is not a specifier of pkg-glm; a profile that lists this package alone cannot resolve it')
+  const unexported = await problemsAfter(root => write(join(root, 'packages/glm/cordis.patch.yml'), '- insert:\n    - id: glm-hourness/glm-llm\n      name: pkg-glm/glm-llm/index\n    - id: glm-hourness/glm-ui\n      name: pkg-glm\n'))
+  assert.equal(unexported[0], 'pkg-glm: row glm-hourness/glm-llm name pkg-glm/glm-llm/index resolves through exports["./glm-llm/index"], which is missing')
   const missing = await problemsAfter(root => rmSync(join(root, 'packages/hourness/dist/guard/index.js')))
   assert.ok(missing.includes('pkg-hourness: row glm-hourness/guard module ./dist/guard/index.js does not exist: run npm run build'), missing.join('\n'))
-  const extra = await problemsAfter(root => write(join(root, 'packages/hourness/cordis.patch.yml'), '- insert:\n    - id: glm-hourness/graph\n      name: ./dist/graph/index.js\n    - id: glm-hourness/guard\n      name: ./dist/guard/index.js\n    - id: glm-hourness/other\n      name: ./dist/graph/index.js\n    - id: glm-hourness/ui\n      name: ./ui/index.js\n'))
+  const extra = await problemsAfter(root => write(join(root, 'packages/hourness/cordis.patch.yml'), '- insert:\n    - id: glm-hourness/graph\n      name: pkg-hourness/graph\n    - id: glm-hourness/guard\n      name: pkg-hourness/guard\n    - id: glm-hourness/other\n      name: pkg-hourness/graph\n    - id: glm-hourness/ui\n      name: pkg-hourness\n'))
   assert.deepEqual(extra, [
-    'pkg-hourness: patch rows are [glm-hourness/graph ./dist/graph/index.js, glm-hourness/guard ./dist/guard/index.js, glm-hourness/other ./dist/graph/index.js, glm-hourness/ui ./ui/index.js], the table says [glm-hourness/graph ./dist/graph/index.js, glm-hourness/guard ./dist/guard/index.js, glm-hourness/ui ./ui/index.js]',
+    'pkg-hourness: patch rows are [glm-hourness/graph pkg-hourness/graph, glm-hourness/guard pkg-hourness/guard, glm-hourness/other pkg-hourness/graph, glm-hourness/ui pkg-hourness], the table says [glm-hourness/graph pkg-hourness/graph, glm-hourness/guard pkg-hourness/guard, glm-hourness/ui pkg-hourness]',
     'composition: rows are [glm-hourness/glm-llm, glm-hourness/glm-ui, glm-hourness/graph, glm-hourness/guard, glm-hourness/other, glm-hourness/ui], the table says [glm-hourness/glm-llm, glm-hourness/glm-ui, glm-hourness/graph, glm-hourness/guard, glm-hourness/ui]',
   ])
 })
 
-test('a client package resolved by two rows fails; a row inserted by two packages fails the composition', async () => {
-  const twoRows = await problemsAfter(root => write(join(root, 'packages/hourness/cordis.patch.yml'), '- insert:\n    - id: glm-hourness/graph\n      name: ./dist/graph/index.js\n    - id: glm-hourness/guard\n      name: ./dist/guard/index.js\n    - id: glm-hourness/ui\n      name: ./ui/index.js\n    - id: glm-hourness/ui-2\n      name: ./ui/index.js\n'))
-  assert.ok(twoRows.includes('pkg-hourness-ui: rows resolving into packages/hourness/ui are [glm-hourness/ui, glm-hourness/ui-2]; client-modules needs exactly its one row glm-hourness/ui'), twoRows.join('\n'))
-  const twice = await problemsAfter(root => write(join(root, 'packages/glm/cordis.patch.yml'), '- insert:\n    - id: glm-hourness/glm-llm\n      name: ./dist/glm-llm/index.js\n    - id: glm-hourness/glm-ui\n      name: ./ui/index.js\n    - id: glm-hourness/graph\n      name: ./dist/glm-llm/index.js\n'))
+test('a client face named by two rows fails; a row inserted by two packages fails the composition', async () => {
+  const twoRows = await problemsAfter(root => write(join(root, 'packages/hourness/cordis.patch.yml'), '- insert:\n    - id: glm-hourness/graph\n      name: pkg-hourness/graph\n    - id: glm-hourness/guard\n      name: pkg-hourness/guard\n    - id: glm-hourness/ui\n      name: pkg-hourness\n    - id: glm-hourness/ui-2\n      name: pkg-hourness\n'))
+  assert.ok(twoRows.includes('pkg-hourness: rows named pkg-hourness are [glm-hourness/ui, glm-hourness/ui-2]; client-modules needs exactly its one row glm-hourness/ui'), twoRows.join('\n'))
+  const twice = await problemsAfter(root => write(join(root, 'packages/glm/cordis.patch.yml'), '- insert:\n    - id: glm-hourness/glm-llm\n      name: pkg-glm/glm-llm\n    - id: glm-hourness/glm-ui\n      name: pkg-glm\n    - id: glm-hourness/graph\n      name: pkg-glm/glm-llm\n'))
   assert.ok(twice.includes('composition: row glm-hourness/graph is inserted more than once'), twice.join('\n'))
 })
 
-test('a runtime bare import outside peerDependencies, or a missing type: module on a package, a client package or the root, fails', async () => {
+test('a runtime bare import outside peerDependencies, or a missing type: module on a package or the root, fails', async () => {
   const unlisted = await problemsAfter(root => write(join(root, 'packages/glm/dist/glm-llm/extra.js'), 'export { x } from \'@scope/other\'\n'))
   assert.deepEqual(unlisted, ['pkg-glm: dist/glm-llm/extra.js imports @scope/other at run time, which is not in peerDependencies'])
   assert.deepEqual(await problemsAfter(root => edit(root, 'packages/hourness/package.json', (value) => { delete value.type })), ['pkg-hourness: package.json is not type: module (its row modules are ESM)'])
-  assert.deepEqual(await problemsAfter(root => edit(root, 'packages/glm/ui/package.json', (value) => { delete value.type })), ['pkg-glm-ui: package.json is not type: module (its host half index.js is ESM)'])
   assert.deepEqual(await problemsAfter(root => edit(root, 'package.json', (value) => { delete value.type })), ['root package.json is not type: module (its .js configuration files are ESM)'])
 })
 
@@ -250,6 +262,7 @@ test('a dist/ directory outside the table, a tsconfig include that differs, or H
 
 test('a row not exported under its name fails; a package without locale/en.json or with a missing icon fails', async () => {
   assert.deepEqual(await problemsAfter(root => edit(root, 'packages/glm/package.json', (value) => { value.exports = { ...(value.exports as object), './glm-llm': './dist/glm-llm/other.js' } })), [
+    'pkg-glm: row glm-hourness/glm-llm module ./dist/glm-llm/other.js does not exist: run npm run build',
     'pkg-glm: exports["./glm-llm"] is "./dist/glm-llm/other.js", the table says ./dist/glm-llm/index.js',
     'pkg-glm: exports["./glm-llm"] -> ./dist/glm-llm/other.js is missing',
   ])
@@ -258,13 +271,24 @@ test('a row not exported under its name fails; a package without locale/en.json 
   assert.deepEqual(await problemsAfter(root => rmSync(join(root, 'packages/glm/icon.svg'))), ['pkg-glm: exports["./icon"] -> ./icon.svg is missing'])
 })
 
-test('a host package declaring dsh.client, or a client package declaring dsh.bundle or lacking dsh.client, fails', async () => {
-  assert.deepEqual(await problemsAfter(root => edit(root, 'packages/hourness/package.json', (value) => { value.dsh = { bundle: { patch: './cordis.patch.yml' }, client: { platform: 'web', inject: [] } } })), ['pkg-hourness: declares dsh.client; a host package has no client half'])
-  assert.deepEqual(await problemsAfter(root => edit(root, 'packages/glm/ui/package.json', (value) => { value.dsh = { bundle: { patch: './cordis.patch.yml' } } })), ['pkg-glm-ui: declares dsh.bundle; its row comes from pkg-glm\'s patch', 'pkg-glm-ui: dsh.client needs platform and inject[]'])
+test('a host row without its locale export or files, or a locale file not named by a language id, fails', async () => {
+  assert.deepEqual(await problemsAfter(root => rmSync(join(root, 'packages/glm/locale/glm-llm/zh.json'))), ['pkg-glm: locale/glm-llm/zh.json is missing'])
+  assert.deepEqual(await problemsAfter(root => write(join(root, 'packages/hourness/locale/guard/en.json'), json({ meta: { title: 'guard', description: ' ' } }))), ['pkg-hourness: locale/guard/en.json needs meta.title and meta.description'])
+  assert.deepEqual(await problemsAfter(root => edit(root, 'packages/hourness/package.json', (value) => { value.exports = { ...(value.exports as object), './graph/locale/*.json': './locale/*.json' } })), ['pkg-hourness: exports["./graph/locale/*.json"] is "./locale/*.json", the table says ./locale/graph/*.json (the settings page reads the row\'s title from it)'])
+  assert.deepEqual(await problemsAfter(root => write(join(root, 'packages/hourness/locale/guard/en.old.json'), json({}))), ['pkg-hourness: locale/guard/en.old.json is not named by a language id; the settings page would show an error instead of the titles'])
+  assert.deepEqual(await problemsAfter(root => write(join(root, 'packages/glm/locale/zh_CN.json'), json({}))), ['pkg-glm: locale/zh_CN.json is not named by a language id; the settings page would show an error instead of the titles'])
+  // rc.3 takes any 2-8 letter name as a language id, so a stray notes.json is a (useless) language, not an error.
+  assert.deepEqual(await problemsAfter(root => write(join(root, 'packages/hourness/locale/guard/notes.json'), json({}))), [])
+})
+
+test('a package without its client face declaration, exporting another host half, or with a nested ui/package.json fails', async () => {
+  assert.deepEqual(await problemsAfter(root => edit(root, 'packages/hourness/package.json', (value) => { value.dsh = { bundle: { patch: './cordis.patch.yml' } } })), ['pkg-hourness: dsh.client needs platform web and inject[] (the package\'s client face)'])
+  assert.deepEqual(await problemsAfter(root => edit(root, 'packages/glm/package.json', (value) => { value.exports = { ...(value.exports as object), '.': './dist/glm-llm/index.js' } })), ['pkg-glm: exports["."] is "./dist/glm-llm/index.js", the table\'s host half of the client face is ./ui/index.js'])
+  assert.deepEqual(await problemsAfter(root => write(join(root, 'packages/glm/ui/package.json'), json({ name: 'pkg-glm-ui' }))), ['pkg-glm: packages/glm/ui/package.json exists: the package declares its client face itself, a nested manifest is left over from the client-package layout'])
 })
 
 test('a client half unbuilt, wrapped under another id, or requiring outside the module table fails', async () => {
-  assert.deepEqual(await problemsAfter(root => rmSync(join(root, 'packages/hourness/ui/client.js'))), ['pkg-hourness-ui: client half ./client.js is missing: run npm run build'])
-  assert.deepEqual(await problemsAfter(root => write(join(root, 'packages/glm/ui/client.js'), wrapped('pkg-hourness-ui'))), ['pkg-glm-ui: client half is not wrapped in window.__ModuleLoader__.load with id pkg-glm-ui'])
-  assert.deepEqual(await problemsAfter(root => write(join(root, 'packages/glm/ui/client.js'), wrapped('pkg-glm-ui', ' require("left-pad");'))), ['pkg-glm-ui: client half requires modules outside the DSH client module table: left-pad'])
+  assert.deepEqual(await problemsAfter(root => rmSync(join(root, 'packages/hourness/ui/client.js'))), ['pkg-hourness: exports["./client"] -> ./ui/client.js is missing', 'pkg-hourness: client half ./ui/client.js is missing: run npm run build'])
+  assert.deepEqual(await problemsAfter(root => write(join(root, 'packages/glm/ui/client.js'), wrapped('pkg-hourness'))), ['pkg-glm: client half is not wrapped in window.__ModuleLoader__.load with id pkg-glm'])
+  assert.deepEqual(await problemsAfter(root => write(join(root, 'packages/glm/ui/client.js'), wrapped('pkg-glm', ' require("left-pad");'))), ['pkg-glm: client half requires modules outside the DSH client module table: left-pad'])
 })

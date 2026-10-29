@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Usage report",
+    "description": "/hourness shows the morning report and the usage panel; /hourness-status lists the health of each row of both packages."
+  }
+}

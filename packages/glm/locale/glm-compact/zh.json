@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "ZCode 上下文压缩",
+    "description": "GLM 会话的上下文快满时，按 ZCode 的做法压缩之前的对话。"
+  }
+}

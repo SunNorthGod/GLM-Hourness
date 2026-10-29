@@ -27,18 +27,18 @@ GLM-Hourness（同仓两包，§2.3）
 ├─ GLM 通道包 dsh-glm-zcode（packages/glm）
 │  ├─ 通道：glm-llm（adapter）、glm-login（命令、计价服务）
 │  ├─ 方言：glm-prompt（提示词、工具面与工具检索）、glm-compact（压缩镜像）
-│  └─ 呈现：客户端包 dsh-glm-zcode-ui（packages/glm/ui，行 glm-ui）
+│  └─ 呈现：包自己的客户端面（packages/glm/ui，行 glm-ui）
 ├─ 编排层包 dsh-hourness（packages/hourness），对任何模型生效
 │  ├─ data（数据目录服务，§2.4）
 │  ├─ guard、memory、workflow、hourness（用量与报告）
 │  ├─ graph、graph-panel（项目图与面板写入）
-│  └─ 呈现：客户端包 dsh-hourness-ui（packages/hourness/ui，行 ui）
+│  └─ 呈现：包自己的客户端面（packages/hourness/ui，行 ui）
 └─ 公共库 src/shared/：编进导入它的每个包（§8）；客户端源码都在 ui/src/
 ```
 
 ### 2.2 插件行（现状）
 
-入口相对所在包的目录（`packages/glm/` 或 `packages/hourness/`）。
+入口相对所在包的目录（`packages/glm/` 或 `packages/hourness/`）。patch 里的行名是包的说明符（§2.3）：宿主行写 `<包名>/<行>`，经包的导出 `./<行>` 指向下表的入口；客户端行写精确包名，经导出 `.` 指向 `ui/index.js`。设置页「内置插件」里每行的标题与一句说明取自 `locale/<行>/{en,zh}.json`，客户端行取包的 `locale/{en,zh}.json`。
 
 | 行 id | 包 | 入口 | 层 | 现状 |
 | --- | --- | --- | --- | --- |
@@ -53,20 +53,20 @@ GLM-Hourness（同仓两包，§2.3）
 | `glm-hourness/hourness` | `dsh-hourness` | `dist/report/index.js` | 编排 | `/hourness` 命令：晨报与用量面板；面板经计价服务按积分列，没有计价服务时按调用与 token 列（`ORCHESTRATION.md` §11.2、§11.3）；`/hourness-status`：两个包各行的健康（§2.5） |
 | `glm-hourness/graph` | `dsh-hourness` | `dist/graph/index.js` | 编排 | 项目图工具、每步投影与图文件门禁（`ORCHESTRATION.md` §2.5、§2.7、§2.10）；2026-10-28 经 L3 探针与 L4 桌面版验收后默认启用 |
 | `glm-hourness/graph-panel` | `dsh-hourness` | `dist/graph/panel-row.js` | 呈现 | 面板写入命令 `/graph-apply`、运行控制命令 `/graph-run` 与现场投影 `graphLive`（`ORCHESTRATION.md` §2.10） |
-| `glm-hourness/glm-ui` | `dsh-glm-zcode`（客户端包 `dsh-glm-zcode-ui`） | `ui/index.js` | 呈现 | 设置页与输入框下的 GLM 按钮（§2.5），客户端入口 `ui/src/glm-client.js`；默认启用：2026-10-29 split 合入后的桌面版验收第一轮通过后启用，第二轮在桌面版上核对 |
-| `glm-hourness/ui` | `dsh-hourness`（客户端包 `dsh-hourness-ui`） | `ui/index.js` | 呈现 | 右侧栏「项目图」页签（需要你、agent 定的、正在做、图，`ORCHESTRATION.md` §2.10），客户端入口 `ui/src/hourness-client.tsx`；沿用单包布局时已启用的行 id。插件页列的是宿主包，客户端包没有自己的显示信息 |
+| `glm-hourness/glm-ui` | `dsh-glm-zcode`（客户端面） | `ui/index.js` | 呈现 | 设置页与输入框下的 GLM 按钮（§2.5），客户端入口 `ui/src/glm-client.js`；默认启用：2026-10-29 split 合入后的桌面版验收第一轮通过后启用，第二轮在桌面版上核对 |
+| `glm-hourness/ui` | `dsh-hourness`（客户端面） | `ui/index.js` | 呈现 | 右侧栏「项目图」页签（需要你、agent 定的、正在做、图，`ORCHESTRATION.md` §2.10），客户端入口 `ui/src/hourness-client.tsx`；沿用单包布局时已启用的行 id |
 
 ### 2.3 同仓两包与一包一源
 
-同仓两包〔定案：2026-10-28 question-10 选 A；2026-10-29 question-17 选 B，profile 直接列两包，不要伞包〕：GLM 通道包 `dsh-glm-zcode`（`packages/glm`）与编排层包 `dsh-hourness`（`packages/hourness`）同仓维护，各自是多行 cordis 插件包，带自己的 `cordis.patch.yml`、`tsconfig.json`、插件页的显示信息（`locale/{en,zh}.json`、`icon.svg`，导出 `./locale/*.json` 与 `./icon`）与构建产物 `dist/`。源码不搬家，仍在 `src/`；哪个目录属于哪个包、每个包插哪些行，只写在 `scripts/packages.mjs`。profile 直接列两个包，GLM 在前，放在原来单个 bundle 的位置，宿主行的组合顺序与拆分之前相同。根 `package.json` 只是开发工作区（脚本、开发依赖、`peerDependencies` 兜底），没有 `dsh`、`main`、`exports`，不是 bundle；根目录没有 `cordis.patch.yml`。两个包各自装上、单独启用都能工作，缺席的一方怎样降级见 §7。
+同仓两包〔定案：2026-10-28 question-10 选 A；2026-10-29 question-17 选 B，profile 直接列两包，不要伞包〕：GLM 通道包 `dsh-glm-zcode`（`packages/glm`）与编排层包 `dsh-hourness`（`packages/hourness`）同仓维护，各自是多行 cordis 插件包，带自己的 `cordis.patch.yml`、`tsconfig.json`、显示信息（插件页与客户端行用的 `locale/{en,zh}.json` 与 `icon.svg`，导出 `./locale/*.json` 与 `./icon`；每个宿主行在设置页的标题 `locale/<行>/{en,zh}.json`，导出 `./<行>/locale/*.json`）、客户端面与构建产物 `dist/`。源码不搬家，仍在 `src/`；哪个目录属于哪个包、每个包插哪些行，只写在 `scripts/packages.mjs`。profile 直接列两个包，GLM 在前，放在原来单个 bundle 的位置，宿主行的组合顺序与拆分之前相同。根 `package.json` 只是开发工作区（脚本、开发依赖、`peerDependencies` 兜底），没有 `dsh`、`main`、`exports`，不是 bundle；根目录没有 `cordis.patch.yml`。两个包各自装上、单独启用都能工作，缺席的一方怎样降级见 §7。
 
 行 id 不随包改名，仍是 `glm-hourness/<行>`：profile 的覆盖项按 id 匹配，改名会让覆盖项静默失配。其余持久化标识也不改：cordis 服务名、notice 来源、提示词节名、命令名与 `definitionId`（`dsh-glm-hourness/*`）、cordis 插件名（`dsh-glm-hourness/<行>`）、用户级目录 `glm-hourness`、面板页面 id 与 kind、插槽 id。这些名字里的 `glm-hourness` 读作项目名，与哪个包无关。根包名 `dsh-glm-hourness` 也保留。
 
-一包一源：DSH 的 client-modules 按包名组成 web 启动图，同一个包若被多个 active Loader 行解析且声明了 `dsh.client`，启动失败（`resolves from multiple active Loader sources`）〔实测，2026-10-27 事故〕。因此 client 半放在独立的单入口客户端包里，两个宿主包都不声明 `dsh.client`。split 第 6 步起每个宿主包带一个客户端包，嵌在它的 `ui/` 下：`dsh-glm-zcode-ui`（GLM 按钮与设置页）与 `dsh-hourness-ui`（项目图面板）。客户端包没有 `dsh.bundle`，它唯一的行由所在宿主包的 patch 以 `./ui/index.js` 插入；client-modules 从行模块的位置向上找最近的 `package.json`，认出这一行属于哪个客户端包（`FACTS.md` §3）。所以每个宿主包单独装上就带着自己的界面，只装一个包时另一半界面不会出现，也不会报错。客户端源码都在 `ui/src/`，哪个文件属于哪个客户端包写在 `scripts/packages.mjs`；`ui/` 只剩 `tsconfig.json` 与 `src/`，不再是包。两个客户端包的产物各是一份 `client.js`（`scripts/build-ui.mjs`），编排层客户端经 `src/graph/live.ts` 带进的是公共库的 `zcode-notice.ts`，不带 GLM 的文件。
+行名与一包一源〔2026-10-29，m8-row-titles〕：设置页「内置插件」只给包说明符形式的行名读显示信息；bundle patch 里以 `./` 写的行名被锚定成 file URL，没有显示信息，标题就是含用户目录的整条 URL（m8-ui-audit V-01）。DSH 的 client-modules 按包名组成 web 启动图，同一个包若被多个 active Loader 行解析且声明了 `dsh.client`，启动失败（`resolves from multiple active Loader sources`）〔实测，2026-10-27 事故〕；它只把路径形式的行和精确包名的行算作来源，子路径说明符的行不算任何包的来源（`FACTS.md` §3）。所以两个包的行都经包命名：11 个宿主行写子路径说明符 `<包名>/<行>`；每个包自己声明 `dsh.client`，它的客户端面（宿主半 `ui/index.js`、产物 `ui/client.js`，导出 `.` 与 `./client`）由唯一一行以精确包名插入，`dsh-glm-zcode` 的是 GLM 按钮与设置页，`dsh-hourness` 的是项目图面板。说明符以 profile 目录为基准解析，profile 列了哪个包，它的 `node_modules` 下就有这个包，所以每个包单独装上，行与界面照样解析；只装一个包时另一半界面不会出现，也不会报错。覆盖项按 id 匹配，与行名无关；设置表单以后新写的覆盖项带的 `name` 是说明符，不含本机路径。客户端源码都在 `ui/src/`，哪个文件属于哪个包写在 `scripts/packages.mjs`；`ui/` 只剩 `tsconfig.json` 与 `src/`，不再是包。两个包的客户端产物各是一份 `client.js`（`scripts/build-ui.mjs`），编排层客户端经 `src/graph/live.ts` 带进的是公共库的 `zcode-notice.ts`，不带 GLM 的文件。
 
 行的组合顺序：profile 里两个宿主包相邻、GLM 在前、放在原来单个 bundle 的位置，11 个宿主行的相对次序与拆分之前相同。客户端行不同：单包布局下 `glm-hourness/ui` 由桌面版 profile 末尾的 `dsh-glm-hourness-ui` 插入，排在 9 个 experimental bundle 之后；拆分后它与新的 `glm-hourness/glm-ui` 由宿主包的 patch 插入，提前到 experimental bundle 之前。设置页与 pill 的插槽带显式 `order`，不受影响；按注册次序排列的界面（右侧栏「开始」页的页面类型列表）可能变，桌面版验收时记录「项目图」入口的位置。
 
-`npm run preflight` 固化这些约束（`scripts/preflight-bundle.mjs`，检查项写在文件头）：目录表自检；根不是 bundle；每个包的 patch 路径与行名以 `./` 开头、不含 `..`、落在包内（profile 里的包目录是 junction，`..` 会退回 profile 的 `node_modules`）；包的行与表一致，按 profile 顺序组合后每个行 id 恰好一次；产物顶层目录、包的 `tsconfig.json` 与表一致；产物 `dist/shared/health.js` 的 `HEALTH_PACKAGES` 与表一致；显示信息齐全；产物里运行时的裸导入都在该包的 `peerDependencies` 里（今天只有 GLM 包的 `@deepseek-ai/cosmokit`，来自 vendored `schemastery.ts`）；`ui/` 下没有 `package.json` 与 `cordis.patch.yml`；每个客户端包恰好有一行解析进它的目录、产物已构建、外包的 id 是包名、通过 `node --check`、只 `require` 模块表里的包；`ui/src/` 下每个文件恰好属于一个客户端包。行 id 的字面清单另写在 `tests/contracts.spec.ts`，表与 patch 一起改名时测试失败。
+`npm run preflight` 固化这些约束（`scripts/preflight-bundle.mjs`，检查项写在文件头）：目录表自检；根不是 bundle；每个包的 patch 路径以 `./` 开头、不含 `..`、落在包内（profile 里的包目录是 junction，`..` 会退回 profile 的 `node_modules`）；行名都是本包的说明符、不是路径，宿主行按表的顺序写 `<包名>/<行>`、客户端行写精确包名，经包的导出解析到存在的文件；按 profile 顺序组合后每个行 id 恰好一次；产物顶层目录、包的 `tsconfig.json` 与表一致；产物 `dist/shared/health.js` 的 `HEALTH_PACKAGES` 与表一致；显示信息齐全（包的与每个宿主行的 `locale/{en,zh}.json` 带 `meta.title`、`meta.description`，导出写对，这些目录里的 `.json` 文件名都是语言 id，否则设置页整条显示信息变成错误）；产物里运行时的裸导入都在该包的 `peerDependencies` 里（今天只有 GLM 包的 `@deepseek-ai/cosmokit`，来自 vendored `schemastery.ts`）；`ui/` 下没有 `package.json` 与 `cordis.patch.yml`；每个包声明 `dsh.client`、导出 `.` 为 `./ui/index.js`、没有嵌套的 `ui/package.json`，全部 patch 里恰好一行以它的精确包名命名，客户端产物已构建、外包的 id 是包名、通过 `node --check`、只 `require` 模块表里的包；`ui/src/` 下每个文件恰好属于一个包。行 id 的字面清单另写在 `tests/contracts.spec.ts`，表与 patch 一起改名时测试失败。
 
 ### 2.4 数据目录服务〔已实现 2026-10-28，`ROADMAP.md` M1.4〕
 

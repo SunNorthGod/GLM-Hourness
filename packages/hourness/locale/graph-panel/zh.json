@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "项目图面板命令",
+    "description": "面板背后的 /graph-apply 与 /graph-run 命令，以及面板读取的现场视图。"
+  }
+}

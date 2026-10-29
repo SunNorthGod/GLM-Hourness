@@ -18,30 +18,35 @@
  *     junction). The root is the development workspace and no bundle: no
  *     `dsh`, `main` or `exports`, `private` true, no cordis.patch.yml; ui/
  *     holds client sources only, no package.json and no cordis.patch.yml.
- *  3. Insert rows: every item of a patch starts with `- id:`; its `name` is
- *     `./`-relative, without `..`, and exists from the patch's directory; a
- *     package's rows are the table's host rows in order
- *     (`./dist/<module>.js`), then its client row (`./ui/index.js`).
+ *  3. Insert rows (docs/DESIGN.md §2.3): every item of a patch starts with
+ *     `- id:`; its `name` is a specifier of the package, never a path (the
+ *     settings page titles a path row with its file URL, and client-modules
+ *     would count it as a source of the package's client face); a package's
+ *     rows are the table's host rows in order, named `<package>/<row>`, then
+ *     its client row, named by the exact package name; each name resolves
+ *     through the package's exports to a file that exists.
  *  4. Composition: the patches in profile order insert every row id once,
  *     and the ids are the table's host and client rows.
  *  5. Build output and configuration: export targets exist and each host row
- *     is exported as `./<id without glm-hourness/>`; a package's dist/ holds
- *     only its source directories and shared/; its tsconfig includes exactly
- *     its source directories; HEALTH_PACKAGES in dist/shared/health.js is
- *     the table; the packages, their client packages and the root are
- *     `type: module`; each package carries the plugin page's display
- *     information (locale/en.json and zh.json with meta.title and
- *     meta.description, exported as ./locale/*.json, and an ./icon export to
- *     an SVG, PNG, JPEG or WebP file of at most 256 KiB).
+ *     is exported as `./<row>` (the id without glm-hourness/); a package's
+ *     dist/ holds only its source directories and shared/; its tsconfig
+ *     includes exactly its source directories; HEALTH_PACKAGES in
+ *     dist/shared/health.js is the table; the packages and the root are
+ *     `type: module`; each package carries the display information: the
+ *     plugin page's and its client row's in locale/en.json and zh.json
+ *     (exported as ./locale/*.json), each host row's in
+ *     locale/<row>/en.json and zh.json (exported as ./<row>/locale/*.json),
+ *     all with meta.title and meta.description and every .json there named
+ *     by a language id, and an ./icon export to an SVG, PNG, JPEG or WebP
+ *     file of at most 256 KiB.
  *  6. Runtime bare imports of a package's dist/**\/*.js (static imports,
  *     re-exports and import()) are in its peerDependencies; Node builtins
  *     are exempt and .d.ts files are not read (their imports are types).
- *  7. Client halves (split design §5.5): the host packages declare no
- *     dsh.client (the root has no `dsh` at all, check 2). Each client
- *     package at <dir>/ui/ is named as the table says, declares no
- *     dsh.bundle, declares dsh.client with platform and inject, exports
- *     ./client; exactly one row of all patches resolves into its directory,
- *     the table's row; its client half is built, wrapped in
+ *  7. Client faces: each package declares dsh.client with platform web and
+ *     inject, exports `.` as its host half ./ui/index.js and ./client, and
+ *     has no nested <dir>/ui/package.json; exactly one row of all patches is
+ *     named by the exact package name, the table's client row (the root has
+ *     no `dsh` at all, check 2); its client half is built, wrapped in
  *     window.__ModuleLoader__.load with the package name as id, passes
  *     node --check, and requires only the DSH client module table.
  *
@@ -88,8 +93,7 @@ const clientName = source => source.slice(CLIENT_ROOT.length).replace(/\/$/, '')
 
 /**
  * The directory table's self-check (docs/DEVELOPMENT.md §10): keys, package
- * and client names, package directories, source directories and row ids
- * unique, `shared` in no package, every row module inside its package's
+ * names, package directories, source directories and row ids unique, `shared` in no package, every row module inside its package's
  * source directories; every top-level directory under src/ is the shared
  * library or belongs to exactly one package, and every registered directory
  * exists; every file under ui/src/ belongs to exactly one client package,
@@ -101,7 +105,7 @@ const clientName = source => source.slice(CLIENT_ROOT.length).replace(/\/$/, '')
  * The boundary patterns read `../<name>/` and `./<name>` without knowing the
  * depth, so a same-named directory would be misread.
  * @param {string} root - repository root
- * @param {{ SHARED_DIR: string, PACKAGES: readonly { key: string, name: string, dir: string, src: readonly string[], rows: readonly { id: string, module: string }[], client: { name: string, row: string, entry: string, sources: readonly string[] } }[] }} table
+ * @param {{ SHARED_DIR: string, PACKAGES: readonly { key: string, name: string, dir: string, src: readonly string[], rows: readonly { id: string, module: string }[], client: { row: string, entry: string, sources: readonly string[] } }[] }} table
  * @returns {string[]} problems, empty when the table holds
  */
 export function tableProblems(root, table) {
@@ -125,7 +129,6 @@ export function tableProblems(root, table) {
       once('row', row.id, 'row id')
       if (!pkg.src.includes(row.module.split('/')[0])) problems.push(`row ${row.id} of ${pkg.key} has its module ${row.module} outside the package's source directories`)
     }
-    once('name', pkg.client.name, 'package name')
     once('row', pkg.client.row, 'row id')
     if (!pkg.client.sources.includes(pkg.client.entry)) problems.push(`client entry ${pkg.client.entry} of ${pkg.key} is not one of its sources`)
   }
@@ -233,31 +236,57 @@ const ICON_MAX_BYTES = 256 * 1024
 let healthImports = 0
 
 /**
- * The client checks of one package's client package at <dir>/ui/ (check 7):
- * its manifest and built client half; `rows` are all composed rows, with
- * the file each resolves to.
+ * Whether a row name is a path or a URL rather than a package specifier:
+ * rc.3 reads no display information for these (barePackageName,
+ * dsh-app-boot 1276), and a bundle patch anchors the `./` ones to a file URL.
+ */
+const pathName = name => /^[./\\#]/.test(name) || name.includes(':') || isAbsolute(name)
+
+/** The locale file names the rc.3 metadata reader accepts (dictionariesOf): a language id, then .json. */
+const LOCALE_FILE = /^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*\.json$/
+
+/**
+ * The display information under `<dir>/<rel>` (check 5): en.json and zh.json
+ * with meta.title and meta.description, and no .json file whose name is not
+ * a language id (the reader would turn the whole entry's metadata into an
+ * error).
  * @returns {string[]}
  */
-function clientProblems(root, pkg, rows) {
+function localeProblems(label, dir, rel) {
   const problems = []
-  const dir = join(root, pkg.dir, 'ui')
-  const label = pkg.client.name
-  const read = readJson(join(dir, 'package.json'))
-  if (read.error !== undefined) return [`${label}: ${pkg.dir}/ui/package.json ${read.error}`]
-  const manifest = read.value
-  if (manifest.name !== pkg.client.name) problems.push(`${pkg.dir}/ui/package.json is named ${manifest.name}, the table says ${pkg.client.name}`)
-  if (manifest.type !== 'module') problems.push(`${label}: package.json is not type: module (its host half index.js is ESM)`)
-  if (manifest.dsh?.bundle !== undefined) problems.push(`${label}: declares dsh.bundle; its row comes from ${pkg.name}'s patch`)
-  if (!Array.isArray(manifest.dsh?.client?.inject) || !manifest.dsh?.client?.platform) problems.push(`${label}: dsh.client needs platform and inject[]`)
-  const resolving = rows.filter(row => row.file !== undefined && !relative(dir, row.file).startsWith('..') && !isAbsolute(relative(dir, row.file)))
-  if (resolving.length !== 1 || resolving[0].id !== pkg.client.row) problems.push(`${label}: rows resolving into ${pkg.dir}/ui are [${resolving.map(row => row.id).join(', ')}]; client-modules needs exactly its one row ${pkg.client.row}`)
+  for (const language of ['en', 'zh']) {
+    const locale = readJson(join(dir, rel, `${language}.json`))
+    const meta = locale.value?.meta
+    if (locale.error !== undefined) problems.push(`${label}: ${rel}/${language}.json ${locale.error}`)
+    else if (typeof meta?.title !== 'string' || meta.title.trim().length === 0 || typeof meta.description !== 'string' || meta.description.trim().length === 0) problems.push(`${label}: ${rel}/${language}.json needs meta.title and meta.description`)
+  }
+  const files = existsSync(join(dir, rel)) ? readdirSync(join(dir, rel)).filter(name => name.endsWith('.json')) : []
+  for (const file of files.filter(name => !LOCALE_FILE.test(name))) problems.push(`${label}: ${rel}/${file} is not named by a language id; the settings page would show an error instead of the titles`)
+  return problems
+}
+
+/**
+ * The client checks of one package's client face (check 7): its
+ * declaration, its host half and built client half; `rows` are all
+ * composed rows.
+ * @returns {string[]}
+ */
+function clientProblems(root, pkg, manifest, rows) {
+  const problems = []
+  const dir = join(root, pkg.dir)
+  const label = pkg.name
+  if (manifest.dsh?.client?.platform !== 'web' || !Array.isArray(manifest.dsh?.client?.inject)) problems.push(`${label}: dsh.client needs platform web and inject[] (the package's client face)`)
+  if (manifest.exports?.['.'] !== './ui/index.js') problems.push(`${label}: exports["."] is ${JSON.stringify(manifest.exports?.['.'])}, the table's host half of the client face is ./ui/index.js`)
+  if (existsSync(join(dir, 'ui', 'package.json'))) problems.push(`${label}: ${pkg.dir}/ui/package.json exists: the package declares its client face itself, a nested manifest is left over from the client-package layout`)
+  const sources = rows.filter(row => row.name === pkg.name).map(row => row.id)
+  if (sources.length !== 1 || sources[0] !== pkg.client.row) problems.push(`${label}: rows named ${pkg.name} are [${sources.join(', ')}]; client-modules needs exactly its one row ${pkg.client.row}`)
   const clientExport = manifest.exports?.['./client']
   const client = typeof clientExport === 'string' ? join(dir, clientExport) : undefined
   if (client === undefined) problems.push(`${label}: exports["./client"] is missing`)
   else if (!existsSync(client)) problems.push(`${label}: client half ${clientExport} is missing: run npm run build`)
   else {
     const text = readFileSync(client, 'utf8')
-    if (!text.startsWith(`window.__ModuleLoader__.load({ id: ${JSON.stringify(manifest.name)},`)) problems.push(`${label}: client half is not wrapped in window.__ModuleLoader__.load with id ${manifest.name}`)
+    if (!text.startsWith(`window.__ModuleLoader__.load({ id: ${JSON.stringify(pkg.name)},`)) problems.push(`${label}: client half is not wrapped in window.__ModuleLoader__.load with id ${pkg.name}`)
     const outside = [...new Set([...text.matchAll(/\brequire\("([^"]+)"\)/g)].map(match => match[1]))].filter(id => !MODULE_TABLE.includes(id))
     if (outside.length > 0) problems.push(`${label}: client half requires modules outside the DSH client module table: ${outside.join(', ')}`)
     try {
@@ -289,11 +318,12 @@ export async function bundleProblems(root, table) {
   }
   if (existsSync(join(root, 'cordis.patch.yml'))) problems.push('cordis.patch.yml exists at the root: the rows live in the packages\' patches')
   for (const file of ['package.json', 'cordis.patch.yml']) {
-    if (existsSync(join(root, 'ui', file))) problems.push(`ui/${file} exists: ui/ holds client sources only; the client packages are under packages/*/ui`)
+    if (existsSync(join(root, 'ui', file))) problems.push(`ui/${file} exists: ui/ holds client sources only; the client faces belong to the packages under packages/`)
   }
 
   const composed = []
   const counts = []
+  const manifests = new Map()
   for (const pkg of table.PACKAGES) {
     const dir = join(root, pkg.dir)
     const label = pkg.name
@@ -303,8 +333,10 @@ export async function bundleProblems(root, table) {
       continue
     }
     const manifest = read.value
+    manifests.set(pkg.key, manifest)
     if (manifest.name !== pkg.name) problems.push(`${pkg.dir}/package.json is named ${manifest.name}, the table says ${pkg.name}`)
     if (manifest.type !== 'module') problems.push(`${label}: package.json is not type: module (its row modules are ESM)`)
+    const exports = manifest.exports ?? {}
 
     // 2: the patch list.
     const declared = manifest.dsh?.bundle?.patch
@@ -329,22 +361,30 @@ export async function bundleProblems(root, table) {
       for (const problem of parsed.problems) problems.push(`${label}: ${patch} ${problem}`)
       for (const row of parsed.rows) {
         if (row.name === undefined) problems.push(`${label}: row ${row.id} has no name`)
-        else if (!contained(row.name)) problems.push(`${label}: row ${row.id} name ${row.name} is not ./-relative inside the package (no ..)`)
-        else if (!existsSync(join(dirname(file), row.name))) problems.push(`${label}: row ${row.id} module ${row.name} does not exist: run npm run build`)
-        rows.push({ ...row, file: contained(row.name) ? join(dirname(file), row.name) : undefined })
+        else if (pathName(row.name)) problems.push(`${label}: row ${row.id} name ${row.name} is a path: the settings page titles it with its file URL and client-modules counts it as a source of the package's client face; name it through the package (${pkg.name}/<row>)`)
+        else if (row.name !== pkg.name && !row.name.startsWith(`${pkg.name}/`)) problems.push(`${label}: row ${row.id} name ${row.name} is not a specifier of ${pkg.name}; a profile that lists this package alone cannot resolve it`)
+        else {
+          const key = row.name === pkg.name ? '.' : `./${row.name.slice(pkg.name.length + 1)}`
+          const target = exports[key]
+          if (typeof target !== 'string') problems.push(`${label}: row ${row.id} name ${row.name} resolves through exports["${key}"], which is missing`)
+          else if (!existsSync(join(dir, target))) problems.push(`${label}: row ${row.id} module ${target} does not exist: run npm run build`)
+        }
+        rows.push(row)
       }
     }
     counts.push(`${label} ${rows.length} rows`)
     composed.push(...rows)
     const found = rows.map(row => `${row.id} ${row.name}`).join(', ')
-    const expected = [...pkg.rows.map(row => `${row.id} ./dist/${row.module}.js`), `${pkg.client.row} ./ui/index.js`].join(', ')
+    const expected = [...pkg.rows.map(row => `${row.id} ${pkg.name}/${rowName(row.id)}`), `${pkg.client.row} ${pkg.name}`].join(', ')
     if (found !== expected) problems.push(`${label}: patch rows are [${found}], the table says [${expected}]`)
 
     // 5: exports, dist/, tsconfig, display information.
-    const exports = manifest.exports ?? {}
     for (const row of pkg.rows) {
       const key = `./${rowName(row.id)}`
       if (exports[key] !== `./dist/${row.module}.js`) problems.push(`${label}: exports["${key}"] is ${JSON.stringify(exports[key])}, the table says ./dist/${row.module}.js`)
+      const locale = `locale/${rowName(row.id)}`
+      if (exports[`${key}/locale/*.json`] !== `./${locale}/*.json`) problems.push(`${label}: exports["${key}/locale/*.json"] is ${JSON.stringify(exports[`${key}/locale/*.json`])}, the table says ./${locale}/*.json (the settings page reads the row's title from it)`)
+      problems.push(...localeProblems(label, dir, locale))
     }
     for (const [key, target] of Object.entries(exports)) {
       if (typeof target !== 'string' || target.includes('*')) continue
@@ -357,13 +397,8 @@ export async function bundleProblems(root, table) {
     const include = pkg.src.map(src => slash(relative(dir, join(root, 'src', src))))
     if (tsconfig.error !== undefined) problems.push(`${label}: tsconfig.json ${tsconfig.error}`)
     else if (JSON.stringify(tsconfig.value.include) !== JSON.stringify(include)) problems.push(`${label}: tsconfig.json include is ${JSON.stringify(tsconfig.value.include)}, the table says ${JSON.stringify(include)}`)
-    if (exports['./locale/*.json'] !== './locale/*.json') problems.push(`${label}: exports["./locale/*.json"] is not ./locale/*.json (the plugin page reads the title from it)`)
-    for (const language of ['en', 'zh']) {
-      const locale = readJson(join(dir, 'locale', `${language}.json`))
-      const meta = locale.value?.meta
-      if (locale.error !== undefined) problems.push(`${label}: locale/${language}.json ${locale.error}`)
-      else if (typeof meta?.title !== 'string' || meta.title.length === 0 || typeof meta.description !== 'string' || meta.description.length === 0) problems.push(`${label}: locale/${language}.json needs meta.title and meta.description`)
-    }
+    if (exports['./locale/*.json'] !== './locale/*.json') problems.push(`${label}: exports["./locale/*.json"] is not ./locale/*.json (the plugin page and the client row read the title from it)`)
+    problems.push(...localeProblems(label, dir, 'locale'))
     const icon = exports['./icon']
     if (typeof icon !== 'string') problems.push(`${label}: exports["./icon"] is missing`)
     else if (!ICON_TYPES.includes(extname(icon).toLowerCase())) problems.push(`${label}: icon ${icon} is not ${ICON_TYPES.join(', ')}`)
@@ -376,13 +411,12 @@ export async function bundleProblems(root, table) {
         problems.push(`${label}: ${slash(relative(dir, file))} imports ${name} at run time, which is not in peerDependencies`)
       }
     }
-
-    // 7: a host package declares no client half.
-    if (manifest.dsh?.client !== undefined) problems.push(`${label}: declares dsh.client; a host package has no client half`)
   }
 
-  // 7: each client package, against every composed row.
-  for (const pkg of table.PACKAGES) problems.push(...clientProblems(root, pkg, composed))
+  // 7: each package's client face, against every composed row.
+  for (const pkg of table.PACKAGES) {
+    if (manifests.has(pkg.key)) problems.push(...clientProblems(root, pkg, manifests.get(pkg.key), composed))
+  }
 
   // 4: the composition, in profile order.
   const ids = composed.map(row => row.id)
@@ -401,7 +435,7 @@ export async function bundleProblems(root, table) {
     if (built !== healthTable) problems.push(`${slash(relative(root, file))}: HEALTH_PACKAGES is ${built}, the table says ${healthTable}`)
   }
 
-  return { problems, summary: `${counts.join(', ')}; ${expectedIds.length} rows composed; client halves ${table.PACKAGES.map(pkg => pkg.client.name).join(', ')} built` }
+  return { problems, summary: `${counts.join(', ')}; ${expectedIds.length} rows composed; client halves of ${table.PACKAGES.map(pkg => pkg.name).join(', ')} built` }
 }
 
 async function main() {

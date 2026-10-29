@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "用量报告",
+    "description": "/hourness 显示晨报与用量面板，/hourness-status 列出两个包各行的状态。"
+  }
+}

@@ -5,27 +5,32 @@
 # profile patch overrides per row (it sets `home` for memory, workflow and
 # hourness). Row ids stay `glm-hourness/<row>` across the split: profile
 # overrides match by id (docs/DESIGN.md §2.3).
+# Rows are named through this package (docs/DESIGN.md §2.3): a host row by
+# its export `dsh-hourness/<row>`, whose settings-page title is
+# locale/<row>/; the client row by the exact package name. A path name
+# would show as its file URL in Settings and would count as a second source
+# of the package's client face.
 - insert:
     - id: glm-hourness/data
       # Data directory service (docs/DESIGN.md §2.4): the user-level
       # directory resolves to $DSH_HOME/glm-hourness (default ~/.dsh); the
       # project directory is the workspace `.llm`. Guard, memory, workflow
       # and hourness read it lazily and keep working without it.
-      name: ./dist/data/index.js
+      name: dsh-hourness/data
       config:
         projectHome: !!js "process.env.USERPROFILE + '/Desktop/Project/GLM-Hourness/.llm'"
     - id: glm-hourness/guard
-      name: ./dist/guard/index.js
+      name: dsh-hourness/guard
       config: {}
     - id: glm-hourness/memory
-      name: ./dist/memory/index.js
+      name: dsh-hourness/memory
       inject: [tools]
       config: {}
     - id: glm-hourness/workflow
-      name: ./dist/workflow/index.js
+      name: dsh-hourness/workflow
       config: {}
     - id: glm-hourness/hourness
-      name: ./dist/report/index.js
+      name: dsh-hourness/hourness
       inject: [commands]
       config: {}
     - id: glm-hourness/graph
@@ -39,7 +44,7 @@
       # that directory). Enabled after the L3 probe (scenarios glm-graph,
       # non-glm-graph, glm-graph-compact, glm-graph-goal) passed on
       # 2026-10-28.
-      name: ./dist/graph/index.js
+      name: dsh-hourness/graph
       inject: [tools]
       config: {}
     - id: glm-hourness/graph-panel
@@ -48,14 +53,15 @@
       # docs/graph under the invoking session's working directory (or
       # config.dir). Registers nothing model-facing. Enabled after the L3
       # probe (scenario glm-graph-panel) passed on 2026-10-28.
-      name: ./dist/graph/panel-row.js
+      name: dsh-hourness/graph-panel
       inject: [commands]
       config: {}
     - id: glm-hourness/ui
-      # The client package nested at ./ui (dsh-hourness-ui): the project graph
-      # tab of the right sidebar. Exactly one row: client-modules composes
-      # client halves per package and rejects a package resolved from
-      # multiple active Loader sources. Keeps the id of the single-bundle UI
-      # row, which was enabled.
-      name: ./ui/index.js
+      # The package's client face (dsh.client in package.json, host half
+      # ./ui/index.js, bundle ./ui/client.js): the project graph tab of the
+      # right sidebar. Exactly one row: client-modules counts a row named by
+      # the exact package name as a source of its client face and rejects a
+      # package resolved from multiple active Loader sources. Keeps the id of
+      # the single-bundle UI row, which was enabled.
+      name: dsh-hourness
       config: {}

@@ -374,7 +374,7 @@ test('the graph row ships enabled after its L3 probe (ROADMAP M2 2.11), injectin
   assert.ok(start >= 0, 'the patch declares the graph row')
   const end = lines.findIndex((line, index) => index > start && line.trim().startsWith('- '))
   const row = lines.slice(start + 1, end < 0 ? undefined : end).map(line => line.trim())
-  assert.ok(row.includes('name: ./dist/graph/index.js'))
+  assert.ok(row.includes('name: dsh-hourness/graph'))
   assert.ok(!row.some(line => line.startsWith('disabled:')))
   assert.ok(row.includes('inject: [tools]'))
 })

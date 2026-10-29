@@ -6,6 +6,8 @@
   "type": "module",
   "license": "MIT",
   "exports": {
+    ".": "./ui/index.js",
+    "./client": "./ui/client.js",
     "./data": "./dist/data/index.js",
     "./guard": "./dist/guard/index.js",
     "./memory": "./dist/memory/index.js",
@@ -13,12 +15,28 @@
     "./hourness": "./dist/report/index.js",
     "./graph": "./dist/graph/index.js",
     "./graph-panel": "./dist/graph/panel-row.js",
+    "./data/locale/*.json": "./locale/data/*.json",
+    "./guard/locale/*.json": "./locale/guard/*.json",
+    "./memory/locale/*.json": "./locale/memory/*.json",
+    "./workflow/locale/*.json": "./locale/workflow/*.json",
+    "./hourness/locale/*.json": "./locale/hourness/*.json",
+    "./graph/locale/*.json": "./locale/graph/*.json",
+    "./graph-panel/locale/*.json": "./locale/graph-panel/*.json",
     "./locale/*.json": "./locale/*.json",
     "./icon": "./icon.svg"
   },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-sidebar-right",
+        "@deepseek-ai/dsh-api-workspace-files",
+        "@deepseek-ai/dsh-api-remotes"
+      ]
     }
   }
 }

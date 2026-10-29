@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "ZCode compaction",
+    "description": "Compacts the earlier conversation of a GLM session the way ZCode does when the context fills up."
+  }
+}

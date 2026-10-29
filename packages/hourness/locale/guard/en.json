@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Guard rails",
+    "description": "Checks file writes and shell commands against the workspace rules and records each blocked write in the violation journal."
+  }
+}

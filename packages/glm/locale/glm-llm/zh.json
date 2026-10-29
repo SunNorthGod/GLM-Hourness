@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "GLM 原生通道",
+    "description": "按 ZCode 3.16.3 的请求格式直连 GLM 的模型通道：请求签名、读取 /glm-login 存下的凭证、流式解码。"
+  }
+}

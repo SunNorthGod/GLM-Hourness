@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "项目图工具",
+    "description": "agent 读写项目图（docs/graph）的工具、每一步的焦点投影，以及禁止直接改图文件的规则。"
+  }
+}

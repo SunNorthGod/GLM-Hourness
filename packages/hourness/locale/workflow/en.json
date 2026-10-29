@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Dispatch journal",
+    "description": "Records every tool call that dispatches a subagent."
+  }
+}
