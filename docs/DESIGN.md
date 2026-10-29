@@ -510,16 +510,21 @@ DSH 的 `TokenUsage` 各计数互不重叠：`inputTokens` 只算未命中缓存
 
 `system-prompt/assemble` 瀑布上以 `prepend` 注册的监听器在 `next()` 之后读取路由变量并改写节列表（rc.3 唯一可行的接缝）〔实读〕。
 
-| 节 | order | 档位 |
+表按 GLM 请求里的实际渲染次序列出〔实读 `src/glm-prompt/assembly.ts` `rewriteDialectSections`；L3 探针 2026-10-29 `glm` 场景的标题次序 `# Harness` → `# Reporting Depth` → `# Session-specific guidance` → `# Memory` → `# Context management` → DSH 的节 → `# Workspace rules`，该场景没有配 `env`〕。改写把 CLI 前缀放在最前，在 DSH 身份节原来的位置换上 ZCode 身份节（rc.3 的 `HARNESS_IDENTITY` 是 -1000，DSH 各节里最小，所以它本来就是第一节），其余方言节按 `dialectSections()` 数组的先后插在身份节之后，DSH 的其余节保持原有次序排在后面。`dialectSections()` 给每节写的 `order`（-1001、-1000、-900、2360、2300、2350、2400）改写时不读，不决定次序；按 ZCode 次序重排、用上或删掉 `order` 归清点报告 §7 第 2 条（项目图 `question-31`）。
+
+| 次序 | 节 | 档位与条件 |
 | --- | --- | --- |
-| `glm:cli-prefix` | -1001 | 两档 |
-| `harness:identity`（同名替换 DSH 身份节） | -1000 | 两档；安全声明按档位二选一 |
-| `glm:environment` | -900 | coding-plan，需配置 `env` |
-| `glm:session-guidance` | 2300 | coding-plan |
-| `glm:memory` | 2350 | coding-plan；只在本次组装 `next()` 返回的工具里有全部三个记忆工具时出现（§5.3 ⑧） |
-| `glm:persona`（汇报细度） | 2360 | 两档 |
-| `glm:context-management` | 2400 | coding-plan |
-| `glm:guard`（guard 行添加） | 最后一节 | 两档；列出生效的规则，`interpolate: false`（`ORCHESTRATION.md` §6.1） |
+| 1 | `glm:cli-prefix` | 两档 |
+| 2 | `harness:identity`（同名替换 DSH 身份节） | 两档；安全声明按档位二选一 |
+| 3 | `glm:environment` | coding-plan，需配置 `env`；工作目录取会话头（§5.3 ③） |
+| 4 | `glm:persona`（汇报细度，标题 `# Reporting Depth`） | 两档 |
+| 5 | `glm:session-guidance` | coding-plan |
+| 6 | `glm:memory` | coding-plan；只在本次组装 `next()` 返回的工具里有全部三个记忆工具时出现（§5.3 ⑧） |
+| 7 | `glm:context-management` | coding-plan |
+| 8 | DSH 的其余节（`tool:pwsh`、`tool:read` 等） | 次序不变 |
+| 最后 | `glm:guard`（guard 行添加） | 所有路由；列出生效的规则，`interpolate: false`（`ORCHESTRATION.md` §6.1） |
+
+start-plan 档只有第 1、2、4 节，后接 DSH 的节与 `glm:guard`。ZCode 3.16.3 的 Dynamic Behavior 节不在表里，见 §5.3。
 
 `glm:guard` 不属于方言：由 guard 行在自己的组装监听器里追加，2026-10-29 起在所有路由上出现（`ORCHESTRATION.md` §6.2），文本是本项目的（不在镜像文件里，不属于逐字声明）。两个 prepend 监听器谁在外层都一样，这一节总在最后：guard 在外层时追加在方言改写之后；guard 在内层时方言改写保留其余节的顺序，只把方言节插到身份节之后。规则只随会话目录变化，会话目录不可变，所以每步的系统提示词不变，不影响提示词缓存。声明里的工具名按模型看到的写：方言接管这个 agent 时是 `Write`/`Edit`，与之前逐字相同；方言没有接管（`glm-prompt` 禁用或没装上，或者不是 GLM 路由）时是原生的 `write`/`edit`（`ORCHESTRATION.md` §6.1）。
 
