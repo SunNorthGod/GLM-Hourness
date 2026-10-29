@@ -31,6 +31,21 @@ function Count({ value, label, quiet }: { readonly value: number, readonly label
   return <><span className={quiet === true ? 'glmg-count quiet' : 'glmg-count'} aria-hidden="true">{value}</span><span className="glmg-sr">，{label}</span></>
 }
 
+/** A problem banner under the tabs: what it means, the first case by file, the others behind a toggle. */
+function Problems({ summary, lines }: { readonly summary: string, readonly lines: readonly string[] }): ReactElement {
+  const [open, setOpen] = useState(false)
+  const shown = open ? lines : lines.slice(0, 1)
+  return (
+    <div className="glmg-tabs">
+      <div className="glmg-notice" role="status">
+        {summary}
+        {shown.map(line => <div key={line} className="glmg-notice-sub">{line}</div>)}
+        {lines.length > 1 ? <button type="button" className="glmg-more" aria-expanded={open} onClick={() => { setOpen(!open) }}>{open ? '收起' : `还有 ${lines.length - 1} 处`}</button> : null}
+      </div>
+    </div>
+  )
+}
+
 export interface GraphPanelProps {
   readonly source: GraphSource
   readonly commands: CommandsRemote
@@ -99,10 +114,10 @@ export function GraphPanel({ source, commands, sessions, sessionId }: GraphPanel
     )
   }
 
-  const { graph, items, live } = snapshot
+  const { graph, items, live, unreadable } = snapshot
   const goal = headlineGoal(graph)
   const agentPending = items.agentQueue.length
-  const errors = graph.issues.filter(issue => issue.severity === 'error').length
+  const errors = graph.issues.filter(issue => issue.severity === 'error')
   const doingCount = items.doing.filter(entry => entry.type !== 'goal').length
   const tabs: { readonly value: ViewName, readonly label: ReactElement }[] = [
     { value: 'you', label: <>需要你<Count value={waiting} label={`${waiting} 项`} /></> },
@@ -131,7 +146,8 @@ export function GraphPanel({ source, commands, sessions, sessionId }: GraphPanel
             items={tabs.map(tab => ({ ...tab, id: `${tabsId}-${tab.value}`, panelId }))}
           />
         </div>
-        {errors > 0 ? <div className="glmg-tabs"><div className="glmg-notice">图里有 {errors} 处校验错误，写入会被拒绝。让 agent 看一下，或用 git 还原节点文件。</div></div> : null}
+        {errors.length === 0 ? null : <Problems summary={`图里有 ${errors.length} 处校验错误，写入会被拒绝。让 agent 看一下，或用 git 还原节点文件。`} lines={errors.map(issue => `${issue.file}${issue.field === undefined ? '' : ` ${issue.field}`}：${issue.message}`)} />}
+        {unreadable.length === 0 ? null : <Problems summary={`面板读不出 ${unreadable.length} 个节点文件，这些节点没有显示。点头部的重新读取再试一次。`} lines={unreadable.map(entry => `${entry.file}：${entry.message}`)} />}
         <div className="glmg-stage">
           <div ref={body} className="glmg-body" role="tabpanel" id={panelId} aria-labelledby={`${tabsId}-${shown}`} style={shown === 'graph' ? { overflow: 'hidden', padding: 0 } : undefined}>
             {shown === 'you' ? <NeedsYou key="you" graph={graph} items={items} onShowDecisions={() => { setView('agent') }} /> : null}

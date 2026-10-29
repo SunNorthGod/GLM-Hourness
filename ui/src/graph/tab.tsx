@@ -5,7 +5,7 @@
  * the type's id. The slot's inject hands the body its session; the body
  * holds that session's shared graph source while it is mounted.
  */
-import { IconGoalOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, IconGoalOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 import { Component, useEffect, useState, type ErrorInfo, type ReactElement, type ReactNode } from 'react'
 import type { ClientContext, CommandsRemote, RemoteRoot, SessionsClient } from '../dsh.ts'
 import { GraphPanel } from './Panel.tsx'
@@ -35,7 +35,13 @@ class Boundary extends Component<{ readonly children: ReactNode }, { readonly er
     if (this.state.error === undefined) return this.props.children
     const { error } = this.state
     const message = error instanceof Error ? error.message : typeof error === 'string' ? error : 'unknown error'
-    return <div style={{ padding: 16, color: 'var(--dsw-alias-state-error-primary)' }}>项目图面板出错了：{message}</div>
+    // 重新加载 renders the panel again; the graph source is held by the body, so the panel comes back with the current graph.
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 8, padding: 16 }}>
+        <span style={{ color: 'var(--dsw-alias-state-error-primary)' }}>项目图面板出错了：{message}</span>
+        <Button variant="outline" size="sm" onClick={() => { this.setState({ error: undefined }) }}>重新加载</Button>
+      </div>
+    )
   }
 }
 

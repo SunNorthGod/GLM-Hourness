@@ -268,6 +268,44 @@ test('the source reads the graph, goes live on ready, and follows a write throug
   }
 })
 
+test('a node file the panel cannot read is reported, not dropped silently, and clears on a good read', async () => {
+  const workspace = await mkdtemp(join(tmpdir(), 'graph-panel-unreadable-'))
+  const graphDir = join(workspace, 'docs', 'graph')
+  try {
+    await mkdir(graphDir, { recursive: true })
+    await seed(graphDir)
+    const { remote, push } = fakeRemote(workspace)
+    let locked = true
+    const files = remote.workspaceFiles
+    const flaky: RemoteRoot = {
+      ...remote,
+      workspaceFiles: {
+        ...files,
+        readBytes: (session, path, options, signal) => locked && path.endsWith('/task-3.json')
+          ? Promise.resolve({ ok: false, error: { code: 'workspace-file/io', message: 'file is locked' } })
+          : files.readBytes(session, path, options, signal),
+      },
+    }
+    const source = new GraphSource(flaky, 'session-a')
+    source.start()
+    const first = await until(source, snapshot => snapshot.status === 'ready')
+    assert.ok(first.status === 'ready')
+    assert.deepEqual(first.unreadable, [{ file: 'nodes/task-3.json', message: 'file is locked' }])
+    assert.equal(first.graph.nodes.has('task-3'), false)
+    // The next change frame for the file reads it again; a good read clears the report.
+    push({ kind: 'ready' })
+    await until(source, snapshot => snapshot.status === 'ready' && snapshot.live)
+    locked = false
+    push({ kind: 'change', change: { absolutePath: join(graphDir, 'nodes', 'task-3.json') } })
+    const after = await until(source, snapshot => snapshot.status === 'ready' && snapshot.unreadable.length === 0)
+    assert.equal(after.status === 'ready' && after.graph.nodes.has('task-3'), true)
+    source.dispose()
+  }
+  finally {
+    await rm(workspace, { recursive: true, force: true })
+  }
+})
+
 test('a workspace without a graph is reported missing, and retry finds one created later', async () => {
   const workspace = await mkdtemp(join(tmpdir(), 'graph-panel-missing-'))
   try {

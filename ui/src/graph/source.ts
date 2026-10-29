@@ -16,11 +16,24 @@ import { baseName, graphRevisionOf, revisionOfBytes } from './model.ts'
 /** The graph directory relative to the session workspace (the graph tools' default, src/graph/tools.ts). */
 export const GRAPH_DIR = 'docs/graph'
 
+/** A node file the panel could not read; its node is missing from the panel's graph (the engine reads the files itself). */
+interface UnreadableFile {
+  /** Path relative to the graph directory, as GraphIssue writes it. */
+  readonly file: string
+  readonly message: string
+}
+
 export type GraphSnapshot =
   | { readonly status: 'loading' }
   | { readonly status: 'missing' }
   | { readonly status: 'failed', readonly message: string }
-  | { readonly status: 'ready', readonly graph: LoadedGraph, readonly items: OpenItems, readonly live: boolean }
+  | { readonly status: 'ready', readonly graph: LoadedGraph, readonly items: OpenItems, readonly live: boolean, readonly unreadable: readonly UnreadableFile[] }
+
+/** One node file read: its content, gone (deleted since the listing or the change), or a read that failed. */
+type FileRead =
+  | { readonly kind: 'file', readonly file: NodeFile }
+  | { readonly kind: 'gone' }
+  | { readonly kind: 'failed', readonly message: string }
 
 /** Wait this long after a change frame, so a write of several files is read once. */
 const SETTLE_MS = 120
@@ -29,6 +42,8 @@ export class GraphSource {
   private snapshot: GraphSnapshot = { status: 'loading' }
   private readonly listeners = new Set<() => void>()
   private readonly files = new Map<string, NodeFile>()
+  /** Node files whose last read failed, with the reason, by file name. */
+  private readonly unreadable = new Map<string, string>()
   private readonly abort = new AbortController()
   private pending = new Set<string>()
   private timer: ReturnType<typeof setTimeout> | undefined
@@ -78,11 +93,19 @@ export class GraphSource {
     for (const listener of this.listeners) listener()
   }
 
-  private async readFile(name: string): Promise<NodeFile | undefined> {
+  private async readFile(name: string): Promise<FileRead> {
     const result = await this.remote.workspaceFiles.readBytes(this.sessionId, `${this.nodesPath}/${name}`, {}, this.abort.signal)
-    if (!result.ok) return undefined
+    if (!result.ok) return result.error.code === 'workspace-file/not-found' ? { kind: 'gone' } : { kind: 'failed', message: result.error.message }
     const { data } = result.value
-    return { name, text: new TextDecoder('utf-8', { ignoreBOM: true }).decode(data), revision: await revisionOfBytes(data) }
+    return { kind: 'file', file: { name, text: new TextDecoder('utf-8', { ignoreBOM: true }).decode(data), revision: await revisionOfBytes(data) } }
+  }
+
+  /** Keep one read: the file, or its absence and why. A failed read is kept apart instead of dropping the node silently. */
+  private take(name: string, read: FileRead): void {
+    if (read.kind === 'file') this.files.set(name, read.file)
+    else this.files.delete(name)
+    if (read.kind === 'failed') this.unreadable.set(name, read.message)
+    else this.unreadable.delete(name)
   }
 
   /** Read every node file again. */
@@ -99,7 +122,8 @@ export class GraphSource {
     const read = await Promise.all(names.map(name => this.readFile(name)))
     if (this.abort.signal.aborted || generation !== this.generation) return
     this.files.clear()
-    for (const file of read) if (file !== undefined) this.files.set(file.name, file)
+    this.unreadable.clear()
+    for (const [index, name] of names.entries()) this.take(name, read[index])
     await this.rebuild()
   }
 
@@ -108,7 +132,8 @@ export class GraphSource {
     const revisions = new Map(files.map(file => [file.name.slice(0, -'.json'.length), file.revision]))
     const graph = parseGraph(files, await graphRevisionOf(revisions))
     if (this.abort.signal.aborted) return
-    this.publish({ status: 'ready', graph, items: listOpenItems(graph), live: this.live })
+    const unreadable = [...this.unreadable].map(([name, message]) => ({ file: `${NODES_DIR}/${name}`, message }))
+    this.publish({ status: 'ready', graph, items: listOpenItems(graph), live: this.live, unreadable })
   }
 
   /** Follow the nodes directory; a feed that cannot start leaves the graph readable and not live. */
@@ -166,10 +191,7 @@ export class GraphSource {
     const generation = this.generation
     const read = await Promise.all([...names].map(async name => [name, await this.readFile(name)] as const))
     if (this.abort.signal.aborted || generation !== this.generation) return
-    for (const [name, file] of read) {
-      if (file === undefined) this.files.delete(name)
-      else this.files.set(name, file)
-    }
+    for (const [name, file] of read) this.take(name, file)
     await this.rebuild()
   }
 }
