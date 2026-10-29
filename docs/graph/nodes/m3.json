@@ -158,6 +158,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "d-chat-not-cards（用户定）影响 M3：访谈与决策都改为聊天，不出卡片、不给选项；decision_card、访谈卡片工具与五键卡要改写。已通知附录第 3 稿把与卡片相关的部分收在一处、不再细化卡片格式，等方案细则定了再改。"
+    },
+    {
+      "at": "2026-10-29T17:27:49.361Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m3-implement（wf_947be4d28012cb22）在附录第 3 稿的写稿步一启动就因 BAD_DECRYPT 失败，什么都没写；整个运行停止。按 d-design-onepage 改派 m3-addendum-v03（wf_57917c951081d8a9）：只写附录 0.3（第 2 轮三条挡路按编排方裁定、并入 d-chat-not-cards、d-main-agent-models、d-auto-drive）、独立评审至多两轮、再写一页人话放行稿 onepage.md；人放行之后另派实现。工作树 .worktrees/m3、.worktrees/m3-flow 保留。"
     }
   ]
 }
