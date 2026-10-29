@@ -2,7 +2,7 @@
   "id": "norm-merge-gate",
   "type": "norm",
   "title": "合入主干前必须全部通过的命令",
-  "status": "proposed",
+  "status": "approved",
   "parent": "hourness",
   "body": "M7 的汇合门禁在压缩后的提交上逐条运行这些命令，全部退出 0 才合入；写法见 .agents/tasks/m7/design.md §3.8.1（`$` 总是跑，`when` 只在改动碰到这些路径时跑，`setup` 在新建工作树后跑，`patrol` 只在夜间巡检跑，`push` 合入后推送、不强推）。每条上限 30 分钟，日志写项目目录。改松这份清单要人同意（ORCHESTRATION.md §7.6）。探针要用沙盒，由规则板的沙盒租约排队。",
   "acceptance": [
@@ -50,6 +50,15 @@
           ]
         }
       }
+    },
+    {
+      "at": "2026-10-29T16:14:14.019Z",
+      "actor": "llm",
+      "op": "approve",
+      "reason": "用户选 B：照现在这份批准（装依赖、build、preflight、test，碰运行时代码时跑探针，夜间巡检查依赖，合入后推送不强推）",
+      "relay": "B",
+      "from": "proposed",
+      "to": "approved"
     }
   ]
 }

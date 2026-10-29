@@ -19,11 +19,15 @@
   ],
   "recommend": "B",
   "decider": "human",
-  "decision": "B",
+  "decision": "A",
   "evidence": [
     {
       "kind": "decision",
       "ref": "B"
+    },
+    {
+      "kind": "decision",
+      "ref": "A"
     }
   ],
   "history": [
@@ -47,6 +51,22 @@
         {
           "kind": "decision",
           "ref": "B"
+        }
+      ]
+    },
+    {
+      "at": "2026-10-29T16:14:13.147Z",
+      "actor": "llm",
+      "op": "decide",
+      "reason": "用户重答为 A：M7 的 10 件活的「怎样算做完」清单由人逐条看过再定；m7-1 到 m7-10 现有的验收是设计 §1.2 的草稿，人看过之前不开工 M7 实现",
+      "relay": "A",
+      "from": "done",
+      "to": "done",
+      "option": "A",
+      "evidence": [
+        {
+          "kind": "decision",
+          "ref": "A"
         }
       ]
     }

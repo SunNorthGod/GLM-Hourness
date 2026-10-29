@@ -2,7 +2,7 @@
   "id": "zcode-3171",
   "type": "task",
   "title": "查清 ZCode 3.17.1 相对 3.16.3 改了什么，给出跟进方案",
-  "status": "proposed",
+  "status": "approved",
   "parent": "glm-house",
   "kind": "review",
   "body": "只读调查，不改代码。对照 reference/zcode-3.16.3/zcode.cjs 与 reference/zcode-3.17.1/zcode.cjs：系统提示词各节（CLI 前缀、身份、安全声明、Harness、上下文管理、输出风格、环境、todo 提醒、压缩指令）、工具清单与说明、schema、工具检索、请求头与各版本号字段、签名、路由配置请求、设备号；每一处写明旧文、新文、本仓库哪个文件镜像了它、跟进要改什么。同时写明逐字门禁默认读安装目录带来的基线漂移，以及门禁怎样钉住基线。结论交人定：基线留在 3.16.3，还是换到 3.17.1。",
@@ -18,6 +18,21 @@
       "op": "propose",
       "reason": "ZCode 3.17.1 改了身份、Harness、上下文管理、工具检索与 Read 的文本；先查清全部差异与跟进代价，人才能定基线",
       "to": "proposed"
+    },
+    {
+      "at": "2026-10-29T16:14:14.720Z",
+      "actor": "llm",
+      "op": "approve",
+      "reason": "用户要直接跟到 3.17.1；差异清单是跟进的第一步",
+      "relay": "zcode我上面说了，直接跟",
+      "from": "proposed",
+      "to": "approved"
+    },
+    {
+      "at": "2026-10-29T16:14:14.965Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人已定换到 3.17.1（d-zcode-3171），本任务正文最后一句「结论交人定」不再适用：差异清单直接作为 zcode-3171-follow 的输入，两者在同一次运行里做。"
     }
   ]
 }

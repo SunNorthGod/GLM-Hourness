@@ -1,0 +1,19 @@
+{
+  "id": "d-zcode-3171",
+  "type": "decision",
+  "title": "ZCode 基线从 3.16.3 换到 3.17.1，用户的工程环境声明照旧",
+  "status": "approved",
+  "parent": "glm-house",
+  "verification": "unverified",
+  "body": "对齐基线改为 ZCode 3.17.1（本机 2026-10-29 21:04 自动更新，参照副本 reference/zcode-3.17.1/zcode.cjs，15,405,921 B，MD5 331AB13D0CB2E9504EA25420FF9AE663；旧基线副本 reference/zcode-3.16.3/zcode.cjs）：身份头、版本号、签名、系统提示词各节、工具清单与说明、工具检索与结果文本都跟 3.17.1。例外：coding-plan 档替换的用户工程环境声明（src/glm-prompt/verbatim.ts SECURITY_NOTICE_USER）原样保留。逐字门禁钉住 3.17.1，不再随安装目录漂移，也不让旧源码兜住新版里已经没有的行。AGENTS.md 基线条款、docs/reference/zcode-verbatim.md 与相关文档同批改写。实现见 zcode-3171-follow。",
+  "history": [
+    {
+      "at": "2026-10-29T16:14:14.479Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "用户定：彻底换到新版 ZCode，工程环境声明照旧",
+      "relay": "你就彻底都换成新版zcode，工程环境声明那个照旧",
+      "to": "approved"
+    }
+  ]
+}

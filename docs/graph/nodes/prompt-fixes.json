@@ -37,6 +37,12 @@
       "reason": "派出 prompt-fixes（wf_c8477623711d96d8）：按提示词审计报告修 glm:environment 工作区目录、guard 拒绝信息与 DESIGN.md §5.2/§5.3/§5.8，过门禁与探针后合入",
       "from": "approved",
       "to": "doing"
+    },
+    {
+      "at": "2026-10-29T16:14:15.887Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "实现完成，在分支 prompt-fixes（基于 4f6c06b）：939bf9a guard 例外文字改为让模型去找人；0059e63 glm:environment 的目录取自会话头的工作目录；7b71a78 逐字门禁覆盖 dynamicSections，DESIGN.md §5.3、§5.8、§5.9 记下动态行为；e278738 DESIGN.md §5.2 的表按渲染顺序。build、preflight、npm test 全过（652 个，0 失败，基线不变），新增 3 个 L2 测试在基线上失败。接下来独立评审、探针、合入。"
     }
   ]
 }

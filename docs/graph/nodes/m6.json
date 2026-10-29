@@ -60,6 +60,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M6 设计评审第 1 轮（.agents/tasks/m6/design-review.md）：13 条，挡路 3 条：F1 与规则设计 0.4 对不上；F2 glm-login 分不出 start-plan；F3 额度接口 401 后重新取凭证的做法与 3.16.3 不同。设计循环继续。"
+    },
+    {
+      "at": "2026-10-29T16:14:16.109Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M6 设计 0.2 写完（.agents/tasks/m6/design.md）：第 1 轮 13 条全部处理（F1 改按规则板 0.4，F2 glm-login 有自己的套餐配置，F3 额度接口 401 照 3.16.3 不重新取凭证，N1–N10）；D2 改为 agent 决策，只剩 D1 一道待人定。基线已改为 3.17.1（d-zcode-3171），额度接口要按 3.17.1 复核，已转给设计。接下来第 2 轮评审。"
     }
   ]
 }

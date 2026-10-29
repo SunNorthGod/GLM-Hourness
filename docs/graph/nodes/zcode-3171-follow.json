@@ -1,0 +1,32 @@
+{
+  "id": "zcode-3171-follow",
+  "type": "task",
+  "title": "GLM 通道跟到 ZCode 3.17.1",
+  "status": "approved",
+  "parent": "glm-house",
+  "kind": "implement",
+  "body": "按 d-zcode-3171 把 dsh-glm-zcode 的对齐基线换到 ZCode 3.17.1：系统提示词各节、身份开头、CLI 前缀、Harness 节、上下文管理节、工具说明与 schema、工具检索与结果文本、请求头与各版本号字段、签名与路由配置请求、设备号，以 zcode-3171 的差异清单为准逐处跟进；SECURITY_NOTICE_USER 原样保留。逐字门禁改为只认 reference/zcode-3.17.1/zcode.cjs。文档与行为同批改。",
+  "acceptance": [
+    "zcode-3171 差异清单里的每一处都已跟进，或写明不跟的理由并经编排方同意",
+    "逐字门禁只对 3.17.1 参照包比对且通过；旧源码与安装目录都不能让新版里没有的行通过",
+    "GLM 请求的版本号、身份头与签名与 3.17.1 一致；用户的工程环境声明原样保留",
+    "build、preflight、npm test 全过；沙盒探针全过；沙盒真实请求返回 200 且签名被接受",
+    "桌面版重启后 GLM 会话正常，系统提示词是 3.17.1 的文本；AGENTS.md 基线条款与 docs/reference/zcode-verbatim.md 已改"
+  ],
+  "edges": [
+    {
+      "type": "depends",
+      "to": "zcode-3171"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-29T16:14:15.217Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "用户定彻底换到新版 ZCode",
+      "relay": "你就彻底都换成新版zcode，工程环境声明那个照旧",
+      "to": "approved"
+    }
+  ]
+}
