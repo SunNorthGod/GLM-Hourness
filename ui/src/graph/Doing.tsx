@@ -1,7 +1,8 @@
 /**
  * 正在做: the agents at work (现场, Live.tsx), the nodes in progress with
  * how far their work children are, then the tasks ready to start and the
- * decisions not yet verified. The three node lists share one row: title,
+ * decisions not yet verified, each list in the graph view's sibling order
+ * (model.ts byCreation). The three node lists share one row: title,
  * then type, path and progress on one meta line, so every row has the same
  * height and separator whether it has progress or not.
  */
@@ -12,7 +13,7 @@ import { ancestorsOf, type NodeRef, type OpenItems } from '../../../src/graph/pr
 import type { AgentLive } from './agents.ts'
 import { Part, useServices } from './common.tsx'
 import { LiveSection } from './Live.tsx'
-import { progressOf, progressText } from './model.ts'
+import { byCreation, progressOf, progressText } from './model.ts'
 
 function Row({ graph, entry, tone }: { readonly graph: LoadedGraph, readonly entry: NodeRef, readonly tone: 'doing' | 'todo' }): ReactElement | null {
   const { open } = useServices()
@@ -46,15 +47,18 @@ function Rows({ graph, entries, tone, empty }: { readonly graph: LoadedGraph, re
 }
 
 export function Doing({ graph, items, agents }: { readonly graph: LoadedGraph, readonly items: OpenItems, readonly agents: readonly AgentLive[] }): ReactElement {
-  const doing = items.doing.filter(entry => entry.type !== 'goal')
+  const order = byCreation(graph)
+  const doing = items.doing.filter(entry => entry.type !== 'goal').sort(order)
+  const ready = [...items.ready].sort(order)
+  const debt = [...items.verificationDebt].sort(order)
   return (
     <div className="glmg-view">
-      <LiveSection graph={graph} agents={agents} doing={doing.length} />
+      <LiveSection graph={graph} agents={agents} tasks={doing.filter(entry => entry.type === 'task').length} />
       <Part title={`进行中 · ${doing.length}`}><Rows graph={graph} entries={doing} tone="doing" empty="现在没有进行中的节点。" /></Part>
-      <Part title={`可以开工 · ${items.ready.length}`}><Rows graph={graph} entries={items.ready} tone="todo" empty="没有依赖都已完成、还没开工的任务。" /></Part>
-      {items.verificationDebt.length === 0
+      <Part title={`可以开工 · ${ready.length}`}><Rows graph={graph} entries={ready} tone="todo" empty="没有依赖都已完成、还没开工的任务。" /></Part>
+      {debt.length === 0
         ? null
-        : <Part title={`采纳了还没验证的决策 · ${items.verificationDebt.length}`}>{items.verificationDebt.map(entry => <Row key={entry.id} graph={graph} entry={entry} tone="todo" />)}</Part>}
+        : <Part title={`采纳了还没验证的决策 · ${debt.length}`}>{debt.map(entry => <Row key={entry.id} graph={graph} entry={entry} tone="todo" />)}</Part>}
     </div>
   )
 }

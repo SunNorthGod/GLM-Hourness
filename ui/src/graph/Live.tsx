@@ -11,7 +11,7 @@ import { useState, type ReactElement } from 'react'
 import type { LoadedGraph } from '../../../src/graph/parse.ts'
 import { doingText, tokensText, useNow, type AgentLive } from './agents.ts'
 import { Part, useServices } from './common.tsx'
-import { nobodyRunningText, placeText, timeAgo } from './model.ts'
+import { LIVE_SCOPE_TEXT, nobodyRunningText, placeText, timeAgo } from './model.ts'
 
 /** Where the agent stands: its focus node as a link, or why there is none. */
 function Place({ graph, agent }: { readonly graph: LoadedGraph, readonly agent: AgentLive }): ReactElement | null {
@@ -78,7 +78,7 @@ function StoppedRow({ graph, agent, now }: { readonly graph: LoadedGraph, readon
  * session carries only its cached projections); with nothing running they
  * fold into a line of their own, since they carry no data.
  */
-export function LiveSection({ graph, agents, doing }: { readonly graph: LoadedGraph, readonly agents: readonly AgentLive[], readonly doing: number }): ReactElement {
+export function LiveSection({ graph, agents, tasks }: { readonly graph: LoadedGraph, readonly agents: readonly AgentLive[], readonly tasks: number }): ReactElement {
   const running = agents.filter(agent => agent.running)
   const now = useNow(running.length > 0)
   const [unfolded, setUnfolded] = useState(false)
@@ -93,7 +93,7 @@ export function LiveSection({ graph, agents, doing }: { readonly graph: LoadedGr
     <Part title={`现场 · ${running.length} 个在跑`}>
       {main?.view === undefined
         ? <div className="glmg-notice">还没有现场数据：会话开始干活后这里会出现；如果一直没有，看一下 graph-panel 行是不是关了。</div>
-        : running.length === 0 ? <div className="glmg-notice">{nobodyRunningText(doing)}</div> : null}
+        : running.length === 0 ? <div className="glmg-notice">{nobodyRunningText(tasks)}<div className="glmg-notice-sub">{LIVE_SCOPE_TEXT}</div></div> : null}
       {running.map(agent => <RunningRow key={agent.id} graph={graph} agent={agent} now={now} />)}
       {running.length > 0 ? null : stopped.map(agent => <StoppedRow key={agent.id} graph={graph} agent={agent} now={now} />)}
       {folded.length === 0 ? null : <button type="button" className="glmg-more glmg-toggle" aria-expanded={unfolded} onClick={() => { setUnfolded(!unfolded) }}>{toggle}</button>}

@@ -14,7 +14,7 @@ import { RUN_LABELS, nodeRefusal, offersRedo } from '../../../src/graph/run.ts'
 import type { GraphNode } from '../../../src/graph/schema.ts'
 import { placements, type AgentLive } from './agents.ts'
 import { Folded, Markdown, Options, Outcome, Part, revOf, useServices, useWriter } from './common.tsx'
-import { historyText, needsHuman, presenceText, progressOf, progressText, statusText, timeAgo } from './model.ts'
+import { byCreation, historyText, needsHuman, presenceText, progressOf, progressText, statusText, timeAgo } from './model.ts'
 
 const HISTORY_SHOWN = 6
 
@@ -112,7 +112,7 @@ export function NodeDetail({ graph, id, agents, onBack, onClose }: DetailProps):
     return <Frame onBack={onBack} onClose={onClose}><div className="glmg-notice">这个节点已经不在图里了。</div></Frame>
   }
   const ancestors = ancestorsOf(graph, node).reverse()
-  const children = [...graph.nodes.values()].filter(child => child.parent === node.id)
+  const children = [...graph.nodes.values()].filter(child => child.parent === node.id).sort(byCreation(graph))
   const progress = progressText(progressOf(graph, node.id))
   const history = node.history.slice(-HISTORY_SHOWN).reverse()
   const done = node.status === 'done'

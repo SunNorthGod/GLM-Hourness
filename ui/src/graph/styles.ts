@@ -168,6 +168,7 @@ export const PANEL_CSS = `
 .glmg-comment textarea{min-height:56px;padding:6px 8px;border:1px solid var(--g-line);border-radius:var(--dsw-radius-md,8px);background:transparent;color:var(--g-ink);font:inherit;resize:vertical}
 .glmg-comment textarea:focus{outline:none;border-color:var(--g-accent)}
 .glmg-notice{padding:10px 12px;border-radius:var(--dsw-radius-md,8px);background:var(--g-layer);color:var(--g-ink2);font-size:12.5px}
+.glmg-notice-sub{margin-top:2px;color:var(--g-ink3);font-size:12px}
 @keyframes glmg-fade{from{opacity:0}to{opacity:1}}
 @keyframes glmg-rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 @keyframes glmg-slide{from{opacity:0;transform:translateX(18px)}to{opacity:1;transform:none}}

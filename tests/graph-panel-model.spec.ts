@@ -7,7 +7,7 @@ import { openEngine } from '../src/graph/engine.ts'
 import { graphRevision, loadGraph, revisionOf } from '../src/graph/store.ts'
 import type { GraphNode } from '../src/graph/schema.ts'
 import type { RemoteRoot, StreamItem, WatchFrame } from '../ui/src/dsh.ts'
-import { decidedBy, graphRevisionOf, historyText, nobodyRunningText, placeText, presenceText, progressOf, progressText, revisionOfBytes, statusText, visibleGraph } from '../ui/src/graph/model.ts'
+import { byCreation, decidedBy, graphRevisionOf, historyText, nobodyRunningText, placeText, presenceText, progressOf, progressText, revisionOfBytes, statusText, visibleGraph } from '../ui/src/graph/model.ts'
 import { GraphSource, type GraphSnapshot } from '../ui/src/graph/source.ts'
 import { fixtureTest, seedAsHuman } from './graph-helpers.ts'
 
@@ -91,8 +91,17 @@ test('现场 says where an idle agent was, and what it cannot see when nothing r
   assert.equal(placeText('甲', 'doing', false), '停在「甲」')
   assert.equal(placeText('甲', 'done', false), '上次在「甲」')
   assert.equal(placeText('甲', 'dropped', false), '上次在「甲」')
-  assert.equal(nobodyRunningText(0), '这个 DSH 会话里现在没有 agent 在跑。现场只看得见这个会话的主 Agent 和它派出的子 agent。')
-  assert.equal(nobodyRunningText(5), '这个 DSH 会话里现在没有 agent 在跑。现场只看得见这个会话的主 Agent 和它派出的子 agent；标着进行中的 5 个节点，活可能在别的会话或 DSH 之外。')
+  // The count is of tasks: Doing passes the tasks in progress, not the features that contain them.
+  assert.equal(nobodyRunningText(0), '这个会话里没有 agent 在跑。')
+  assert.equal(nobodyRunningText(3), '这个会话里没有 agent 在跑。进行中的 3 个任务可能在别的会话或 DSH 之外推进。')
+})
+
+test('lists follow the graph view\'s sibling order: creation time, then id, not file-name order', () => {
+  const node = (id: string, at: string): GraphNode => ({ id, type: 'task', title: id, status: 'doing', parent: 'g', history: [{ at, actor: 'llm', op: 'propose' }] })
+  // File-name order of the real graph: m1-10 before m1-2, m1-parity and m1-2 before m1.
+  const nodes = [node('m1-10', '2026-10-27T03:00:00Z'), node('m1-2', '2026-10-27T02:00:00Z'), node('m1-parity', '2026-10-28T01:00:00Z'), node('m1', '2026-10-27T01:00:00Z'), node('m1-3', '2026-10-27T02:00:00Z')]
+  const graph = { nodes: new Map(nodes.map(entry => [entry.id, entry])), revisions: new Map(), revision: '', issues: [] }
+  assert.deepEqual([...nodes].sort(byCreation(graph)).map(entry => entry.id), ['m1', 'm1-2', 'm1-3', 'm1-10', 'm1-parity'], 'm1-2 and m1-3 share a time and fall back to id order')
 })
 
 test('status lines say what a node waits for', () => {
@@ -118,7 +127,17 @@ test('history lines name the edited fields and do not repeat the relay label', (
   assert.deepEqual(historyText({ at, actor: 'llm', op: 'edit', reason: '用户：原话', changes: { acceptance: { from: null, to: ['x'] }, body: { from: null, to: 'y' } } }), { who: 'agent', what: '编辑正文、验收条件：用户：原话' })
   assert.deepEqual(historyText({ at, actor: 'human', op: 'decide', reason: '稳', option: 'B' }), { who: '你', what: '拍板 B：稳' })
   assert.deepEqual(historyText({ at, actor: 'human', op: 'comment', text: '看一下' }), { who: '你', what: '批注：看一下' })
-  assert.deepEqual(historyText({ at, actor: 'harness', op: 'status', reason: '派发', from: 'approved', to: 'doing' }), { who: 'harness', what: '改状态：派发' })
+})
+
+test('history lines say the result: the new status or verification, the edge, the other node of a supersede', () => {
+  const at = '2026-10-28T13:26:37.663Z'
+  assert.deepEqual(historyText({ at, actor: 'harness', op: 'status', reason: '派发', from: 'approved', to: 'doing' }), { who: 'harness', what: '改为「进行中」：派发' })
+  assert.deepEqual(historyText({ at, actor: 'llm', op: 'status', reason: 'L4 两条验收满足', from: 'doing', to: 'done' }), { who: 'agent', what: '改为「完成」：L4 两条验收满足' })
+  assert.deepEqual(historyText({ at, actor: 'llm', op: 'verify', reason: '探针通过', from: 'unverified', to: 'sandbox' }), { who: 'agent', what: '验证为「沙盒验证」：探针通过' })
+  assert.deepEqual(historyText({ at, actor: 'llm', op: 'link', reason: '先做读', edge: { type: 'depends', to: 'task-2' } }), { who: 'agent', what: '加连线 依赖 → task-2：先做读' })
+  assert.deepEqual(historyText({ at, actor: 'human', op: 'unlink', edge: { type: 'source', to: 'q-1' } }), { who: '你', what: '删连线 来源 → q-1' })
+  assert.deepEqual(historyText({ at, actor: 'human', op: 'supersede', reason: '换方案', by: 'decision-2' }), { who: '你', what: '被 decision-2 取代：换方案' })
+  assert.deepEqual(historyText({ at, actor: 'human', op: 'supersede', reason: '换方案', edge: { type: 'supersedes', to: 'decision-1' } }), { who: '你', what: '取代 decision-1：换方案' })
 })
 
 test('run-control presence lines say the panel sees only its own DSH session', () => {

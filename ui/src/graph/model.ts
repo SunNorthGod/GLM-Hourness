@@ -4,10 +4,10 @@
  * and no DSH service, so the specs run them under Node.
  */
 import { compareText } from '../../../src/graph/format.ts'
-import { ACTOR_LABELS, OP_LABELS, STATUS_LABELS } from '../../../src/graph/labels.ts'
+import { ACTOR_LABELS, OP_LABELS, STATUS_LABELS, VERIFICATION_LABELS } from '../../../src/graph/labels.ts'
 import { revisionInput, type LoadedGraph } from '../../../src/graph/parse.ts'
 import { OPEN_STATUSES, deciderOf, waitsForHuman, type DecisionRecord } from '../../../src/graph/projection.ts'
-import { EDITABLE_FIELDS, type EditableField, type GraphNode, type HistoryEntry } from '../../../src/graph/schema.ts'
+import { EDITABLE_FIELDS, type EdgeType, type EditableField, type GraphNode, type HistoryEntry } from '../../../src/graph/schema.ts'
 
 /**
  * First 12 hex digits of the SHA-256 of some bytes: the revision store.ts
@@ -29,6 +29,17 @@ export async function graphRevisionOf(revisions: ReadonlyMap<string, string>): P
 /** Last path segment of a host path with either separator. */
 export function baseName(path: string): string {
   return path.split(/[\\/]/).filter(segment => segment.length > 0).at(-1) ?? ''
+}
+
+/**
+ * The order the lists show nodes in: the order the graph view draws
+ * siblings in (layout.ts buildTree), creation time (the first history
+ * entry), then id. The projection lists come in file-name order, which
+ * puts m1-10 before m1-2 and m1-parity before m1.
+ */
+export function byCreation(graph: LoadedGraph): (a: { readonly id: string }, b: { readonly id: string }) => number {
+  const created = (id: string): string => graph.nodes.get(id)?.history[0]?.at ?? ''
+  return (a, b) => compareText(created(a.id), created(b.id)) || compareText(a.id, b.id)
 }
 
 /** Which nodes the graph view draws. */
@@ -207,14 +218,17 @@ export function placeText(title: string, status: GraphNode['status'], running: b
 }
 
 /**
- * The note of 现场 when no agent of the session runs. The panel sees only
- * the main agent of its session and the subagents it started, so nodes in
- * progress may be worked on where it cannot see.
+ * The note of 现场 when no agent of the session runs. Tasks in progress
+ * may be worked on where the panel cannot see; features in progress only
+ * contain work, so they are not counted.
  */
-export function nobodyRunningText(doing: number): string {
-  const seen = '这个 DSH 会话里现在没有 agent 在跑。现场只看得见这个会话的主 Agent 和它派出的子 agent'
-  return doing === 0 ? `${seen}。` : `${seen}；标着进行中的 ${doing} 个节点，活可能在别的会话或 DSH 之外。`
+export function nobodyRunningText(tasks: number): string {
+  const none = '这个会话里没有 agent 在跑。'
+  return tasks === 0 ? none : `${none}进行中的 ${tasks} 个任务可能在别的会话或 DSH 之外推进。`
 }
+
+/** The second line of that note: what 现场 can see. */
+export const LIVE_SCOPE_TEXT = '现场只看得见本会话的主 Agent 和它派出的子 agent。'
 
 /** The goal the panel names in its header: the first goal by id that is not closed, else the first goal. */
 export function headlineGoal(graph: LoadedGraph): GraphNode | undefined {
@@ -244,17 +258,38 @@ const FIELD_LABELS: Readonly<Record<EditableField, string>> = {
 /** A relayed reason that opens by naming the human repeats the 你（经对话） label; the display drops it, the stored entry keeps it. */
 const RELAY_PREFIX = /^用户说?\s*[：:]\s*/
 
+const EDGE_LABELS: Readonly<Record<EdgeType, string>> = {
+  depends: '依赖',
+  source: '来源',
+  supersedes: '取代',
+}
+
+/** What one history entry did, with its result where the entry carries one. */
+function actionText(entry: HistoryEntry): string {
+  const label = (labels: Readonly<Record<string, string>>, key: string | undefined): string | undefined => key === undefined ? undefined : labels[key]
+  const status = label(STATUS_LABELS, entry.to)
+  if (entry.op === 'status' && status !== undefined) return `改为「${status}」`
+  const verification = label(VERIFICATION_LABELS, entry.to)
+  if (entry.op === 'verify' && verification !== undefined) return `验证为「${verification}」`
+  if ((entry.op === 'link' || entry.op === 'unlink') && entry.edge !== undefined) return `${OP_LABELS[entry.op]} ${EDGE_LABELS[entry.edge.type]} → ${entry.edge.to}`
+  if (entry.op === 'supersede' && entry.by !== undefined) return `被 ${entry.by} 取代`
+  if (entry.op === 'supersede' && entry.edge !== undefined) return `取代 ${entry.edge.to}`
+  const { changes } = entry
+  const fields = changes === undefined ? '' : EDITABLE_FIELDS.filter(field => changes[field] !== undefined).map(field => FIELD_LABELS[field]).join('、')
+  return `${OP_LABELS[entry.op]}${fields}${entry.option === undefined ? '' : ` ${entry.option}`}`
+}
+
 /**
  * One history entry as the detail view says it: who wrote it, and what
- * happened with the reason. An edit names the fields it changed, in
- * write order. The relay itself is shown apart, as a quote.
+ * happened with the reason. A status change and a verify say the new
+ * state, a link names the edge, a supersede the other node; an edit names
+ * the fields it changed, in write order. The relay itself is shown apart,
+ * as a quote.
  */
 export function historyText(entry: HistoryEntry): { readonly who: string, readonly what: string } {
   const who = entry.relay !== undefined ? '你（经对话）' : entry.actor === 'human' ? '你' : entry.actor === 'llm' ? 'agent' : ACTOR_LABELS[entry.actor]
   if (entry.op === 'comment') return { who, what: `批注：${entry.text ?? ''}` }
-  const { changes } = entry
-  const fields = changes === undefined ? '' : EDITABLE_FIELDS.filter(field => changes[field] !== undefined).map(field => FIELD_LABELS[field]).join('、')
-  const action = `${OP_LABELS[entry.op]}${fields}${entry.option === undefined ? '' : ` ${entry.option}`}`
+  const action = actionText(entry)
   const reason = entry.relay === undefined ? entry.reason : entry.reason?.replace(RELAY_PREFIX, '')
   return { who, what: reason === undefined || reason.length === 0 ? action : `${action}：${reason}` }
 }
