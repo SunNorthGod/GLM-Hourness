@@ -77,6 +77,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M7 设计 0.3 交给循环板的东西（§2.5、§3.11.1）：八个事件 hourness.design-released、hourness.handback、hourness.review-passed、hourness.review-skipped、hourness.stopped、hourness.tasks-closed、hourness.trunk-advanced、hourness.host-started（载荷见 §2.5）；十条只读的默认条目：设计放行之后开始推进、一件活交回之后派审查、审查过了之后合入、停下之后在对话里问人、目标下的活都关了之后派整体审查、合进主干之后跑完整检查、重启之后接上停了的活、每天 08:30 晨报、每周一 09:00 周报、每天 02:30 夜间巡检。条目的动作是给主 Agent 的提醒或 M7 的 harness 动作（glmHournessExecute.runAction(id, event)）。M7 需要的接口：glmHournessLoops.contribute(source, entries) 与 emit(event)；送达 M3 持有者记录里的会话；高峰停着时推迟。名字以循环板设计为准，M7 只改 entries.ts。循环板不在时 M7 自己执行事件条目，时间条目不跑。"
+    },
+    {
+      "at": "2026-10-29T19:24:57.194Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "schedules-design（wf_48afb65e2757b48f）写完 0.1 之后，评审步因 BAD_DECRYPT 失败。改派单步评审 schedules-design-review-r1（wf_34728b75c6a10867），对照人的决定与今晚改过的 M4、M7 0.3、规则板、面板 0.5、M6 0.3；通过后另派一页人话放行稿。"
     }
   ]
 }
