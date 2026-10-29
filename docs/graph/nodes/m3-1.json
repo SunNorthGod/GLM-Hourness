@@ -77,6 +77,12 @@
       "reason": "派出 m3-implement（wf_947be4d28012cb22）：按 M3 设计 0.4 实现 m3-1 到 m3-6 与 m3-main-persona，在工作树里做，过门禁、探针与桌面版 L4 后合入",
       "from": "approved",
       "to": "doing"
+    },
+    {
+      "at": "2026-10-29T15:07:10.587Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "附录 §8 第 1 条：验收第 3 条的工具列表要随 d-interview-cards 改。建议文字：「主 Agent 的工具面等于同一组合下普通会话的工具面去掉写文件的工具（Write、Edit 及其别名、str_replace_editor 的写操作）与 ask_user_question，加上 design_review、decision_card、ask_human；由编排层插件在组装时去掉，不用 preset；shell 写入由 guard 兜底」。改验收要人的原话（norm-decision-tiers 第 1 类），已转给人，未改。"
     }
   ]
 }

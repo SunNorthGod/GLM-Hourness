@@ -122,6 +122,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "d-interview-cards 已转给 m3-implement（wf_947be4d28012cb22）正在写的设计补遗（addendum-write）；计划里访谈选项单独排在 interview-choices 一步，模拟人的选法一并改。"
+    },
+    {
+      "at": "2026-10-29T15:07:10.385Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M3 设计附录 0.1 写成（.agents/tasks/m3/design-addendum.md），待独立设计评审。吸收 question-26 C、m3-1 验收第 4 条、question-31 C、m3-main-persona、d-option-card、主 Agent 用强一档模型的提醒、d-interview-cards。顺序：第 3–10 步，然后「访谈选择题」（d-interview-cards，接缝 src/design/interview.ts），然后 m3-main-persona，都在 .worktrees/m3；第 11 步（流程条加 /wish 入口）在 .worktrees/m3-flow 并行，合入 m3 后跑第 12 步（a）标定、（b）合入与批次 L4。独立代码评审：第 4、5、6、8、9 步与「访谈选择题」。"
     }
   ]
 }

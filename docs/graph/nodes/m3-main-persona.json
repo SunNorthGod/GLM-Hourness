@@ -39,6 +39,12 @@
       "reason": "派出 m3-implement（wf_947be4d28012cb22），与 m3-1 同一次运行；依赖 m3-1 在同一分支上先做",
       "from": "approved",
       "to": "doing"
+    },
+    {
+      "at": "2026-10-29T15:07:11.123Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "附录 §2.6：人设设置位在设计行配置 persona {name, text}（默认空），只进主 Agent 的系统提示词；GLM 路由上方言识别契约节 hourness:output-style（src/shared/output-style.ts），开头句换成 IDENTITY_OPENING_WITH_STYLE、节移到 glm:context-management 之前；其他路由是普通的节。glm-prompt 的 persona（汇报细度）改名 reportingDepth，旧键照读并告警，模型看到的文字不变。批次 L4 要在桌面版 profile 上设一个标记人设，到时先问人（AGENTS.md 第 6 条）。"
     }
   ]
 }

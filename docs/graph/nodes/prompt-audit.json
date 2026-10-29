@@ -44,6 +44,12 @@
           "exit": 0
         }
       ]
+    },
+    {
+      "at": "2026-10-29T15:07:11.470Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M3 附录 §8 第 3 条（发现）：question-31 C 里汇报细度并进 Output Style（清点报告 Q2 C 后半）与子 agent 只拿它需要的（Q5 B）没有落到任何节点上；m3-main-persona 只做人设与改名。这两件改所有 GLM 会话的提示词，建议提一个任务，等 question-30 的消融。"
     }
   ]
 }
