@@ -48,6 +48,8 @@ declare module '@deepseek-ai/dsh-client-ui-primitives' {
 
   /** Viewport-clamped placement of a panel measured against its anchor (ui-chat useStatDialog); null until measured. ui/src/channel.js uses it. */
   export function useAnchoredPosition(options: { readonly open: boolean, readonly anchorRef: RefObject<Element | null>, readonly panelRef: RefObject<HTMLElement | null>, readonly side?: 'top' | 'bottom', readonly align?: 'start' | 'end', readonly gap: number, readonly margin: number }): { readonly left: number, readonly top: number } | null
+  /** Copy text: the Clipboard API, else a hidden textarea and execCommand; false when neither worked. ui/src/channel.js uses it. */
+  export function writeClipboard(text: string): Promise<boolean>
   /** Close on a pointerdown outside the root and the panel (ui-chat useStatDialog). ui/src/channel.js uses it. */
   export function useDismissOnOutsidePointer(rootRef: RefObject<Element | null>, open: boolean, setOpen: (open: boolean) => void, panelRef?: RefObject<Element | null>): void
 

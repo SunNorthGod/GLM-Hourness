@@ -21,13 +21,15 @@
  */
 import * as React from 'react'
 import { createPortal } from 'react-dom'
-import { useAnchoredPosition, useDismissOnOutsidePointer } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, useAnchoredPosition, useDismissOnOutsidePointer, writeClipboard } from '@deepseek-ai/dsh-client-ui-primitives'
 
 /** Register the settings section and the composer pill; `ctx` carries slots and remote.commands. */
 export function installChannel(ctx) {
   const h = React.createElement
 
   const CLIPBOARD_COMMAND = '/glm-login'
+  /** The model picker's group name of this channel (src/glm-llm/zcode.ts PROVIDER_DISPLAY_NAME). */
+  const PROVIDER_NAME = 'GLM（ZCode 原生通道）'
 
   // Bound in apply(); components read through this closure.
   let runCommand = null
@@ -114,19 +116,17 @@ export function installChannel(ctx) {
     '.glmh-health-state.part{color:var(--dsw-alias-state-warn-primary,#d29922)}',
     '.glmh-health-state.off{color:var(--dsw-alias-state-error-primary,#f85149)}',
     '.glmh-health-reason{color:var(--dsw-alias-label-tertiary,#8a8a8a);overflow-wrap:anywhere}',
-    /* Settings page */
+    /* Settings page: DSH's settings scale (内置插件 heading 18px/600; row titles 14/20, descriptions 12/18), values left-aligned under their labels */
     '.glmh-panel{display:flex;flex-direction:column;gap:12px;max-width:560px}',
-    '.glmh-title{font-size:var(--dsw-alias-font-size-title-md,18px);margin:0}',
-    '.glmh-desc{color:var(--dsw-alias-label-tertiary,#8a8a8a);margin:0;font-size:13px;line-height:1.5}',
-    '.glmh-card{display:flex;flex-direction:column;gap:8px;padding:14px;border:1px solid var(--dsw-alias-border-l1,rgba(255,255,255,.1));border-radius:var(--dsw-radius-lg,12px)}',
-    '.glmh-row{display:flex;justify-content:space-between;gap:16px;font-size:13px}',
-    '.glmh-label{color:var(--dsw-alias-label-tertiary,#8a8a8a);flex:0 0 auto}',
-    '.glmh-value{font-family:var(--dsw-font-mono,ui-monospace,monospace);word-break:break-all;text-align:right}',
-    '.glmh-strong{font-weight:500;font-size:14px}',
-    '.glmh-button{padding:6px 14px;border-radius:var(--dsw-radius-sm,6px);border:1px solid var(--dsw-alias-border-l1,rgba(255,255,255,.12));background:transparent;color:var(--dsw-alias-label-primary,#e8e8e8);cursor:pointer;align-self:flex-start;font:inherit;font-size:13px}',
-    '.glmh-button:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(255,255,255,.06))}',
-    '.glmh-primary{background:var(--dsw-alias-accent,var(--dsw-alias-color-primary,#247bbf));border-color:transparent;color:#fff}',
-    '.glmh-list{margin:0;padding-left:18px;font-size:13px;line-height:1.7}',
+    '.glmh-title{margin:0;color:var(--dsw-alias-label-primary,#e8e8e8);font-size:18px;font-weight:600}',
+    '.glmh-desc{margin:0;color:var(--dsw-alias-label-secondary,#b5b5b5);font-size:13px;line-height:20px}',
+    '.glmh-card{display:flex;flex-direction:column;align-items:flex-start;gap:10px;padding:14px;border:1px solid var(--dsw-alias-border-l1,rgba(255,255,255,.1));border-radius:var(--dsw-radius-lg,12px)}',
+    '.glmh-row{display:flex;flex-direction:column;gap:2px}',
+    '.glmh-label{color:var(--dsw-alias-label-primary,#e8e8e8);font-size:14px;line-height:20px}',
+    '.glmh-value{color:var(--dsw-alias-label-secondary,#b5b5b5);font-size:12px;line-height:18px;overflow-wrap:anywhere}',
+    '.glmh-mono{font-family:var(--dsw-font-mono,ui-monospace,monospace)}',
+    '.glmh-strong{color:var(--dsw-alias-label-primary,#e8e8e8);font-weight:500;font-size:14px;line-height:20px}',
+    '.glmh-list{margin:0;padding-left:18px;color:var(--dsw-alias-label-secondary,#b5b5b5);font-size:13px;line-height:1.7}',
   ].join('\n')
 
   /** Render command output lines, turning http(s) URLs into links. */
@@ -312,38 +312,43 @@ export function installChannel(ctx) {
     )
   }
 
+  /**
+   * Settings section: static facts and where to act. It has no session, and
+   * commands run in one, so live status stays in the composer's GLM pill.
+   */
   function Panel() {
-    const [copied, setCopied] = React.useState(false)
-    const copy = () => {
-      Promise.resolve(navigator.clipboard.writeText(CLIPBOARD_COMMAND)).then(
-        () => { setCopied(true); setTimeout(() => setCopied(false), 1500) },
-        () => setCopied(false),
-      )
-    }
-    const row = (label, value) => h('div', { className: 'glmh-row' },
+    const [copy, setCopy] = React.useState('idle')
+    React.useEffect(() => {
+      if (copy !== 'copied') return undefined
+      const timer = window.setTimeout(() => { setCopy('idle') }, 1500)
+      return () => { window.clearTimeout(timer) }
+    }, [copy])
+    const copyCommand = () => { void writeClipboard(CLIPBOARD_COMMAND).then(ok => { setCopy(ok ? 'copied' : 'failed') }) }
+    // A fact: its label, then its value lines under it; only a path is monospace.
+    const row = (label, ...lines) => h('div', { className: 'glmh-row' },
       h('span', { className: 'glmh-label' }, label),
-      h('span', { className: 'glmh-value' }, value))
+      ...lines.map(([text, mono], index) => h('span', { key: index, className: mono ? 'glmh-value glmh-mono' : 'glmh-value' }, text)))
     return h('div', { className: 'glmh-panel' },
       h('style', null, CSS),
-      h('h2', { className: 'glmh-title' }, 'GLM Hourness 通道'),
+      h('h2', { className: 'glmh-title' }, 'GLM-Hourness 通道'),
       h('p', { className: 'glmh-desc' }, '原生 ZCode 客户端通道（coding-plan 直连）。登录令牌加密保存在本机，请求用 ZCode 同款的项目令牌。'),
       h('div', { className: 'glmh-card' },
-        row('通道', 'glm-zcode（GLM-5.3 / GLM-5.3-Flash）'),
-        row('凭证存放', '%USERPROFILE%\\.dsh\\glm-hourness\\credentials.json（设置 DSH_HOME 时在其下的 glm-hourness）'),
-        row('登录有效期', 'coding-plan 的项目令牌按 ZCode 的方式自动续期，OAuth 登录失效后需重新 /glm-login；start-plan 档位自动续期'),
+        row('通道', ['glm-zcode（GLM-5.3 / GLM-5.3-Flash）']),
+        row('凭证存放', ['%USERPROFILE%\\.dsh\\glm-hourness\\credentials.json', true], ['设置了 DSH_HOME 时在它下面的 glm-hourness 目录里。']),
+        row('登录有效期', ['coding-plan 的项目令牌按 ZCode 的方式自动续期，OAuth 登录失效后需重新 /glm-login；start-plan 档位自动续期。']),
       ),
       h('div', { className: 'glmh-card' },
-        h('div', { className: 'glmh-strong' }, '登录 / 状态管理'),
-        h('p', { className: 'glmh-desc' }, '在会话输入框执行以下命令：'),
-        h('button', { className: 'glmh-button glmh-primary', onClick: copy },
-          copied ? '已复制 /glm-login' : '复制 /glm-login'),
+        h('div', { className: 'glmh-strong' }, '登录与状态'),
+        h('p', { className: 'glmh-desc' }, '在会话输入框下方的 GLM 按钮里登录、查看状态。也可以在会话输入框里执行命令：'),
         h('ul', { className: 'glmh-list' },
           h('li', null, '/glm-login — 打开浏览器授权，完成登录'),
           h('li', null, '/glm-status — 查看登录状态、项目 key 预览与各行健康'),
           h('li', null, '/glm-logout — 清除本机凭证'),
         ),
+        h(Button, { variant: 'primary', size: 'sm', onClick: copyCommand }, copy === 'copied' ? '已复制 /glm-login' : '复制 /glm-login'),
+        copy === 'failed' ? h('p', { className: 'glmh-desc glmh-err', role: 'status' }, '复制失败，请在会话输入框里手动输入 /glm-login。') : null,
       ),
-      h('p', { className: 'glmh-desc' }, '模型选择：在会话的模型选择器里选 glm-zcode 路由的 GLM-5.3。'),
+      h('p', { className: 'glmh-desc' }, `模型选择：在会话的模型选择器里选「${PROVIDER_NAME}」下的 GLM-5.3 或 GLM-5.3-Flash。`),
     )
   }
 
@@ -354,8 +359,10 @@ export function installChannel(ctx) {
     const outcome = result.value.result
     return { ok: outcome.kind === 'success', missing: false, text: outcome.text ?? (outcome.kind === 'success' ? '完成。' : '执行失败。') }
   })
+  // The section label is the bundle's name as the plugin manager shows it. The settings shell picks nav icons by
+  // section id (dsh-client-ui-settings-general navIcon), so a third-party section cannot bring its own.
   ctx.slots.inject('settings.section', () => ctx.slots.register({
-    name: 'settings.section', id: 'glm-hourness-ui', order: 60, label: 'GLM Hourness',
+    name: 'settings.section', id: 'glm-hourness-ui', order: 60, label: 'GLM-Hourness',
   }, Panel))
   ctx.slots.inject('conversation.composer.dock', () => ctx.slots.register({
     name: 'conversation.composer.dock', id: 'glm-channel', order: 150, label: 'GLM 通道',
