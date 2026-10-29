@@ -424,7 +424,7 @@ mkdirSync(panelGraph, { recursive: true })
 const panelEngine = openEngine(panelGraph)
 for (const node of [
   { type: 'goal', title: '探针目标' },
-  { type: 'question', title: '探针问题', parent: 'goal-1', options: [{ key: 'A', label: '甲', consequence: '快' }, { key: 'B', label: '乙', consequence: '稳' }], recommend: 'A' },
+  { type: 'question', title: '探针问题', parent: 'goal-1', options: [{ key: 'A', label: '甲', consequence: '快' }, { key: 'B', label: '乙', consequence: '稳' }], recommend: 'B' },
 ]) {
   const seeded = await panelEngine.apply('human', { op: 'propose', reason: 'probe seed', node })
   if (!seeded.ok) throw new Error(`probe: seeding the panel graph failed: ${JSON.stringify(seeded.error)}`)

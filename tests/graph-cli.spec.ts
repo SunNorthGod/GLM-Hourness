@@ -79,13 +79,13 @@ cliTest('show prints the projection of a node; an unknown node is a structured n
 })
 
 cliTest('open lists the open items with the decision queue', async g => {
-  await g.cli(['propose', JSON.stringify({ reason: '问人', node: { type: 'question', title: '输出格式', parent: 'feature-1', options: [{ key: 'A', label: '缩进 JSON', consequence: '好读' }, { key: 'B', label: '单行 JSON', consequence: '省字' }], recommend: 'A' } })])
+  await g.cli(['propose', JSON.stringify({ reason: '问人', node: { type: 'question', title: '输出格式', parent: 'feature-1', options: [{ key: 'A', label: '缩进 JSON', consequence: '好读' }, { key: 'B', label: '单行 JSON', consequence: '省字' }], recommend: 'B' } })])
   const open = await g.cli(['open'])
   assert.equal(open.exitCode, 0)
   assert.deepEqual(open.out.items.ready.map((entry: { id: string }) => entry.id), ['task-1'])
   assert.equal(open.out.items.questions.length, 1)
   const card = open.out.items.questions[0]
-  assert.deepEqual([card.id, card.recommend, card.raisedBy?.id, card.askedBy, card.options.length], ['question-1', 'A', 'feature-1', 'llm', 2])
+  assert.deepEqual([card.id, card.recommend, card.raisedBy?.id, card.askedBy, card.options.length], ['question-1', 'B', 'feature-1', 'llm', 2])
 })
 
 cliTest('propose from a JSON argument writes as the llm: plan-internal approved, plan-external proposed', async g => {

@@ -37,7 +37,7 @@ async function seed(graph: string): Promise<void> {
     { type: 'feature', title: '图工具', parent: 'goal-1', stage: 'execute' },
     { id: 'task-2', type: 'task', title: '写引擎', parent: 'feature-1', acceptance: ['单测通过'] },
     { id: 'task-1', type: 'task', title: '读投影', parent: 'feature-1', acceptance: ['每步可见'], edges: [{ type: 'depends', to: 'task-2' }] },
-    { type: 'question', title: '投影放多少', parent: 'feature-1', options: [{ key: 'A', label: '短', consequence: '省 token' }, { key: 'B', label: '全', consequence: '少读一次' }], recommend: 'A' },
+    { type: 'question', title: '投影放多少', parent: 'feature-1', options: [{ key: 'A', label: '短', consequence: '省 token' }, { key: 'B', label: '全', consequence: '少读一次' }], recommend: 'B' },
   ])
 }
 

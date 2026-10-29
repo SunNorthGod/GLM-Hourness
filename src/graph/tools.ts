@@ -159,7 +159,7 @@ const NODE: JsonSchema = {
     writeScope: { ...STRINGS, description: 'Task only: repository paths the subagent may write; empty for review.' },
     options: {
       type: 'array',
-      description: 'Question only: 2-4 options.',
+      description: 'Question only: 2-4 options, the recommended one last.',
       items: {
         type: 'object',
         properties: { key: { type: 'string', description: 'For example A.' }, label: { type: 'string' }, consequence: { type: 'string' } },
@@ -167,7 +167,7 @@ const NODE: JsonSchema = {
         additionalProperties: false,
       },
     },
-    recommend: { type: 'string', description: 'Question only: key of the recommended option.' },
+    recommend: { type: 'string', description: 'Question only: key of the recommended option, which must be the last option so the human reads the others first; anything else is refused.' },
     decider: { type: 'string', enum: ['human', 'agent'], description: 'Question only: who decides it; leave out for the human. Agent questions are yours to decide with graph_decide.' },
     edges: {
       type: 'array',
@@ -230,7 +230,7 @@ const WRITE_OUTPUT: JsonSchema = {
 const WRITES: ReadonlyArray<{ readonly op: LlmOp, readonly description: string, readonly parameters: JsonSchema }> = [
   {
     op: 'propose',
-    description: 'Add a node to the project graph. Planned work starts approved: a task under an approved or in-progress feature or task; a risk, question or retro under an open node. Anything else (new branch, decision, norm, tool, goal, supersedes edge) waits for the human unless relayed. Record a choice of your own as a question with decider agent, then graph_decide it.',
+    description: 'Add a node to the graph. Planned work starts approved: a task under an approved or in-progress feature or task; a risk, question or retro under an open node. Else (new branch, decision, norm, tool, goal, supersedes edge) it waits for the human unless relayed. A question lists its recommended option last. Own choice: a question with decider agent, then graph_decide.',
     parameters: object({ node: NODE, reason: REASON, relay: RELAY }, ['node', 'reason']),
   },
   {
@@ -240,7 +240,7 @@ const WRITES: ReadonlyArray<{ readonly op: LlmOp, readonly description: string, 
   },
   {
     op: 'edit',
-    description: 'Change fields of a node: title, body, slope, a question\'s decider, and on a task its dispatch attributes (kind, tier, worktree, outputSchema, writeScope); any field of your own proposal while it waits. Decider human is always allowed; decider agent, the goal, acceptance criteria and non-goals need the human\'s words as relay.',
+    description: 'Change a node\'s title, body, slope, a question\'s decider, a task\'s dispatch attributes (kind, tier, worktree, outputSchema, writeScope); any field of your own open proposal. Decider human is always allowed; decider agent, the goal, acceptance criteria and non-goals need the human\'s words as relay. Questions keep the graph_propose rules (recommended option last).',
     parameters: object({
       id: ID,
       rev: REV,

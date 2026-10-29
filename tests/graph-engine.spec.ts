@@ -61,7 +61,8 @@ const QUESTION = {
   type: 'question',
   title: '存储格式',
   parent: 'feature-1',
-  options: [{ key: 'A', label: 'JSON', consequence: '不新增解析器' }, { key: 'B', label: 'Markdown', consequence: '正文更好读' }],
+  // The recommended option comes last (ORCHESTRATION.md §2.6).
+  options: [{ key: 'B', label: 'Markdown', consequence: '正文更好读' }, { key: 'A', label: 'JSON', consequence: '不新增解析器' }],
   recommend: 'A',
 }
 
@@ -121,6 +122,20 @@ graphTest('propose refuses malformed nodes with the request field', async g => {
   refused(await g.engine.apply('human', { op: 'propose', reason: '未知类型', node: { type: 'epic', title: 'x', parent: 'feature-1' } }), 'invalid', 'node.type')
   refused(await g.engine.apply('human', { op: 'propose', reason: '依赖不存在', node: { type: 'task', title: 'x', parent: 'feature-1', edges: [{ type: 'depends', to: 'task-9' }] } }), 'invalid', 'node.edges[0].to')
   assert.equal((await loadGraph(g.dir)).nodes.size, 4, 'refused proposals write nothing')
+})
+
+graphTest('propose refuses a question whose recommended option is not the last one, for every actor', async g => {
+  const first = { ...QUESTION, options: [...QUESTION.options].reverse() }
+  for (const actor of ['human', 'llm', 'harness'] as const) {
+    const result = await g.engine.apply(actor, { op: 'propose', reason: '推荐在前', node: first })
+    refused(result, 'invalid', 'node.options')
+    const { error } = result as Extract<ApplyResult, { ok: false }>
+    assert.match(error.message, /recommended option "A" .* is not its last option \("B"\)/)
+    assert.match(error.hint, /recommended option last in options/)
+  }
+  refused(await g.engine.apply('llm', { op: 'propose', reason: '自己定也一样', node: { ...first, decider: 'agent' } }), 'invalid', 'node.options')
+  assert.equal((await loadGraph(g.dir)).nodes.size, 4, 'refused proposals write nothing')
+  assert.equal((await g.run('llm', { op: 'propose', reason: '推荐在后', node: QUESTION })).node.recommend, 'A')
 })
 
 // approve and reject
@@ -274,6 +289,26 @@ graphTest('edit refuses no-op, non-editable and rule-breaking changes', async g 
   refused(cycle, 'invalid')
   assert.match((cycle as Extract<ApplyResult, { ok: false }>).error.message, /decomposition cycle/)
   assert.equal((await g.node('task-1')).parent, 'feature-1')
+})
+
+graphTest('edit of options or recommend keeps the recommended option last; a question written before the rule still loads and takes other edits', async g => {
+  const asked = await g.run('human', { op: 'propose', reason: '问人', node: QUESTION })
+  refused(await g.act('human', { op: 'edit', id: asked.id, reason: '换推荐', set: { recommend: 'B' } }), 'invalid', 'set.recommend')
+  refused(await g.act('human', { op: 'edit', id: asked.id, reason: '换顺序', set: { options: [...QUESTION.options].reverse() } }), 'invalid', 'set.options')
+  const both = must(await g.act('human', { op: 'edit', id: asked.id, reason: '换推荐并放到最后', set: { options: [...QUESTION.options].reverse(), recommend: 'B' } }))
+  assert.deepEqual([both.node.options!.at(-1)!.key, both.node.recommend], ['B', 'B'])
+  // A question from before the rule: its recommended option comes first.
+  const old: GraphNode = {
+    id: 'question-old', type: 'question', title: '旧待决', status: 'approved', parent: 'feature-1',
+    options: [...QUESTION.options].reverse(), recommend: 'A',
+    history: [{ at: '2026-10-28T07:00:00.000Z', actor: 'llm', op: 'propose', reason: '规则之前', to: 'approved' }],
+  }
+  await writeFile(join(g.dir, 'nodes', 'question-old.json'), serializeNode(old))
+  assert.deepEqual((await loadGraph(g.dir)).issues, [], 'the rule is not a file rule')
+  must(await g.act('human', { op: 'edit', id: 'question-old', reason: '改标题', set: { title: '旧待决（改名）' } }))
+  must(await g.act('llm', { op: 'edit', id: 'question-old', reason: '交给人', set: { decider: 'human' } }))
+  refused(await g.act('human', { op: 'edit', id: 'question-old', reason: '改说法', set: { options: [{ ...old.options![0], label: 'MD' }, old.options![1]] } }), 'invalid', 'set.options')
+  assert.equal(must(await g.act('human', { op: 'decide', id: 'question-old', option: 'A', reason: '定了' })).node.decision, 'A')
 })
 
 graphTest('edit by a human can move a node to another parent', async g => {

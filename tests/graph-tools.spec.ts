@@ -47,7 +47,7 @@ async function seed(graph: string): Promise<void> {
     { type: 'goal', title: '项目图', acceptance: ['人能看，LLM 能读写'] },
     { type: 'feature', title: '图工具', parent: 'goal-1' },
     { type: 'task', title: '读投影', parent: 'feature-1', acceptance: ['单测通过'] },
-    { type: 'question', title: '工具给谁', parent: 'feature-1', options: [{ key: 'A', label: '全部 agent', consequence: '都有正路' }, { key: 'B', label: '只给主 Agent', consequence: '要识别主 Agent' }], recommend: 'A' },
+    { type: 'question', title: '工具给谁', parent: 'feature-1', options: [{ key: 'A', label: '全部 agent', consequence: '都有正路' }, { key: 'B', label: '只给主 Agent', consequence: '要识别主 Agent' }], recommend: 'B' },
     { type: 'decision', title: '每个操作一个工具', parent: 'goal-1' },
   ])
 }
@@ -107,6 +107,19 @@ test('the row registers one tool per llm operation with schemas inside the rc.3 
   assert.equal(runtime.ctx.tools.get('graph_supersede'), undefined)
   dispose()
   assert.deepEqual(runtime.scoped, [])
+})
+
+toolTest('graph_propose says the recommended option goes last, and a question that puts it first is refused', async ({ runtime, call }) => {
+  const propose = runtime.scoped.find(tool => tool.name === 'graph_propose')!
+  const node = (propose.parameters.properties as Record<string, { properties: Record<string, { description: string }> }>).node.properties
+  assert.match(propose.description, /recommended option last/)
+  assert.match(node.recommend.description, /must be the last option/)
+  assert.match(node.options.description, /recommended one last/)
+  assert.match(runtime.scoped.find(tool => tool.name === 'graph_edit')!.description, /recommended option last/)
+  const first = { type: 'question', title: '放哪', parent: 'feature-1', options: [{ key: 'A', label: '侧栏', consequence: '并排' }, { key: 'B', label: '网页', consequence: '离开 IDE' }], recommend: 'A' }
+  const error = refused(await call('graph_propose', { node: first, reason: '问人' }), 'invalid', 'node.options')
+  assert.match(error.hint, /recommended option last/)
+  assert.equal(ok(await call('graph_propose', { node: { ...first, recommend: 'B' }, reason: '问人' })).node.recommend, 'B')
 })
 
 test('every graph tool stays resident on GLM requests', () => {
@@ -221,7 +234,7 @@ toolTest('graph_decide: agent questions are the llm\'s, the human\'s need their 
   const relayed = ok(await call('graph_decide', { id: 'question-1', rev: await rev('question-1'), option: 'A', reason: '人选了 A', relay: '工具给全部 agent' }))
   assert.equal(relayed.node.decision, 'A')
   assert.equal((await loadGraph(graph)).nodes.get('question-1')!.history.at(-1)!.relay, '工具给全部 agent')
-  const own = ok(await call('graph_propose', { node: { type: 'question', title: '缓存目录名', parent: 'feature-1', decider: 'agent', options: [{ key: 'A', label: '.cache', consequence: '常见' }, { key: 'B', label: 'tmp', consequence: '易混' }], recommend: 'A' }, reason: '自己定的细节' }))
+  const own = ok(await call('graph_propose', { node: { type: 'question', title: '缓存目录名', parent: 'feature-1', decider: 'agent', options: [{ key: 'A', label: '.cache', consequence: '常见' }, { key: 'B', label: 'tmp', consequence: '易混' }], recommend: 'B' }, reason: '自己定的细节' }))
   assert.equal(ok(await call('graph_decide', { id: own.id, rev: await rev(own.id), option: 'A', reason: '常见写法' })).node.status, 'done')
   const items = ok(await call('graph_open')).items
   assert.deepEqual(items.recentDecisions.map(entry => [entry.id, entry.decidedBy, entry.relay ?? null]), [[own.id, 'llm', null], ['question-1', 'llm', '工具给全部 agent']])

@@ -277,6 +277,31 @@ function supersedeTargets(context: Context, by: string, edges: readonly GraphEdg
   })
 }
 
+/**
+ * Write rules of question nodes (§2.6) on top of the file format: they
+ * hold for every question the engine writes, but a question written before
+ * a rule existed still loads, is decided and takes edits of other fields.
+ * `touched` names the fields the write sets; `base` is the request field
+ * that holds them (node for propose, set for edit). The recommended option
+ * is the last one, so the human reads every alternative before reaching it
+ * (decision d-recommend-last).
+ */
+function questionRefusal(node: GraphNode, touched: (field: string) => boolean, base: 'node' | 'set'): Failure | undefined {
+  if (node.type !== 'question') return undefined
+  if (touched('options') || touched('recommend')) {
+    const last = node.options?.at(-1)?.key
+    if (node.recommend !== undefined && last !== undefined && node.recommend !== last) {
+      return failure(
+        'invalid',
+        `the recommended option "${node.recommend}" of "${node.id}" is not its last option ("${last}")`,
+        'list the recommended option last in options, after the alternatives, so the human reads every option before reaching the recommendation; recommend stays its key',
+        `${base}.${touched('options') ? 'options' : 'recommend'}`,
+      )
+    }
+  }
+  return undefined
+}
+
 /** Initial status of a proposal (§2.9 propose row). */
 function initialStatus(context: Context, node: ProposedNode): Status {
   if (context.privileged) return 'approved'
@@ -312,6 +337,15 @@ function planPropose(context: Context, node: ProposedNode, reason: string): Plan
     status,
     ...(node.type === 'decision' ? { verification: 'unverified' } : {}),
     history: [relayed(context, { at: context.at, actor: context.actor, op: 'propose', reason, to: status })],
+  }
+  if (node.type === 'question') {
+    // A malformed node is refused by commit with its format issue; the question rules read a well-formed one.
+    const issues: GraphIssue[] = []
+    const checked = checkNode(raw, nodeFile(id), issues)
+    if (checked !== undefined && !issues.some(issue => issue.severity === 'error')) {
+      const refusal = questionRefusal(checked, () => true, 'node')
+      if (refusal !== undefined) return refusal
+    }
   }
   const drafts: Draft[] = [{ id, raw, expected: null }]
   if (status === 'approved') drafts.push(...supersedeTargets(context, id, node.edges, reason))
@@ -465,6 +499,8 @@ function planEdit(context: Context, node: GraphNode, set: Readonly<Partial<Recor
     if (JSON.stringify(before) !== JSON.stringify(after)) changes[field] = { from: before, to: after }
   }
   if (Object.keys(changes).length === 0) return failure('invalid', 'set changes nothing', 'send only fields whose value differs', 'set')
+  const refusal = questionRefusal(checked!, field => (fields as readonly string[]).includes(field), 'set')
+  if (refusal !== undefined) return refusal
   const patch = Object.fromEntries(fields.map(field => [field, set[field]]))
   return plan(node.id, [change(context, node, patch, { at, actor, op: 'edit', reason, changes })], fieldOf)
 }
