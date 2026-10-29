@@ -17,6 +17,7 @@ import { buildReadAlias, READ_IMAGE_NATIVE, READ_NATIVE } from './read-alias.ts'
 import { globResultText, GREP_DESCRIPTION, GREP_SCHEMA, grepNativeCalls, grepResultText, runGrep } from './search-alias.ts'
 import {
   BASH_BACKGROUND_LINE,
+  BASH_COMMAND_OUTPUT_LINE,
   BASH_DESCRIPTION_LINES,
   BASH_INPUT_SCHEMA,
   BASH_SHELL_LINE,
@@ -127,10 +128,15 @@ const BASH_LOCALIZED_LINES: ReadonlyMap<string, string> = new Map([
   [BASH_WORKDIR_LINE, "- Working directory does not persist between calls: each call starts a fresh process in the session working directory, so prefer absolute paths. Shell state (env vars, functions) does not persist; the shell starts without the user's profile."],
 ])
 
-/** The Bash description GLM sees over pwsh; the background line only when the native offers background runs. */
+/**
+ * The Bash description GLM sees over pwsh; the background line only when
+ * the native offers background runs. The 3.17.1 line saying command output
+ * reaches the model, not reliably the user, is left out: the DSH Web GUI
+ * shows every tool result to the user (docs/DESIGN.md §5.4).
+ */
 export function bashDescription(background: boolean): string {
   return BASH_DESCRIPTION_LINES
-    .filter(line => background || line !== BASH_BACKGROUND_LINE)
+    .filter(line => line !== BASH_COMMAND_OUTPUT_LINE && (background || line !== BASH_BACKGROUND_LINE))
     .map(line => BASH_LOCALIZED_LINES.get(line) ?? line)
     .join('\n')
 }

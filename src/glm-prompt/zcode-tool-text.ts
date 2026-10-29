@@ -356,13 +356,17 @@ export const BASH_WORKDIR_LINE = "- Working directory persists between calls, bu
 /** Bash description line about background commands. */
 export const BASH_BACKGROUND_LINE = '- `run_in_background` runs the command detached: it keeps running across turns and re-invokes you when it exits. No `&` needed.'
 
-/** Bash description lines (createBashProviderDescription, bundle `NIn`, with the default timeout policy and embedded search off). */
+/** Bash description line about where command output shows. */
+export const BASH_COMMAND_OUTPUT_LINE = '- Command output is displayed to you, not reliably to the user.'
+
+/** Bash description lines (createBashProviderDescription, 3.17.1 bundle `EAn`, with the default timeout policy and embedded search off). */
 export const BASH_DESCRIPTION_LINES: readonly string[] = [
   BASH_SHELL_LINE,
   '',
   BASH_WORKDIR_LINE,
   `- IMPORTANT: Avoid using this tool to run ${BASH_AVOID_COMMANDS} commands, unless explicitly instructed or after you have verified that a dedicated tool cannot accomplish your task. Instead, use the appropriate dedicated tool as this will provide a much better experience for the user.`,
-  `- \`timeout\` is in milliseconds: default ${BASH_DEFAULT_TIMEOUT_MS}, max ${BASH_MAX_TIMEOUT_MS}.`,
+  BASH_COMMAND_OUTPUT_LINE,
+  `- \`timeout\` is in milliseconds: default ${BASH_DEFAULT_TIMEOUT_MS}, max ${BASH_MAX_TIMEOUT_MS} for a foreground command.`,
   BASH_BACKGROUND_LINE,
   '',
   '# Git',
@@ -371,9 +375,11 @@ export const BASH_DESCRIPTION_LINES: readonly string[] = [
   '- Commit or push only when the user asks. If on the default branch, branch first.',
 ]
 
-/** Bash `description` field prompt (contracts bash.ts BASH_DESCRIPTION_FIELD_PROMPT, bundle `nys`). */
+/** Bash `description` field prompt (contracts bash.ts BASH_DESCRIPTION_FIELD_PROMPT, 3.17.1 bundle `CTs`). */
 const BASH_DESCRIPTION_FIELD_PROMPT = [
   'Clear, concise description of what this command does in active voice. Never use words like "complex" or "risk" in the description - just describe what it does.',
+  '',
+  'Say what the command does in plain words: do not echo the command\'s text, its flags, or file paths - the user reads this description, often without seeing the command.',
   '',
   'For simple commands (git, npm, standard CLI tools), keep it brief (5-10 words):',
   '- ls \u2192 "List files in current directory"',
@@ -386,12 +392,12 @@ const BASH_DESCRIPTION_FIELD_PROMPT = [
   "- curl -s url | jq '.data[]' \u2192 \"Fetch JSON from URL and extract data array elements\"",
 ].join('\n')
 
-/** Bash input schema (toToolJsonSchema of bundle `lMe`, BashInputJsonSchema; the semantic number and booleans convert as their input types). */
+/** Bash input schema (toToolJsonSchema of 3.17.1 bundle `SNe` as `iPa` stamps the timeout policy, BashInputJsonSchema; the semantic number and booleans convert as their input types). */
 export const BASH_INPUT_SCHEMA: JsonRecord = {
   type: 'object',
   properties: {
     command: { type: 'string', description: 'The command to execute' },
-    timeout: { type: 'number', description: `Optional timeout in milliseconds (max ${BASH_MAX_TIMEOUT_MS})` },
+    timeout: { type: 'number', description: `Optional timeout in milliseconds (max ${BASH_MAX_TIMEOUT_MS} for a foreground command)` },
     description: { type: 'string', description: BASH_DESCRIPTION_FIELD_PROMPT },
     run_in_background: { type: 'boolean', description: 'Set to true to run this command in the background.' },
     dangerouslyDisableSandbox: { type: 'boolean', description: 'Set this to true to dangerously override sandbox mode and run commands without sandboxing.' },
