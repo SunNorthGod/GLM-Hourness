@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
+import { join } from 'node:path'
 import test from 'node:test'
+import { referenceDir } from '../scripts/reference-dir.mjs'
 import { buildStartPlanSystem, buildContextPrefixMessage, buildEnvironmentSection, buildDesktopContextSection, customSystemText, providerLabel } from '../src/glm-llm/start-plan.ts'
 import { ZCODE_SYSTEM } from '../src/glm-llm/zcode-system.ts'
 
@@ -15,7 +17,7 @@ test('vendored texts parse with every expected section', () => {
 
 test('vendored texts stay byte-identical to the reference sidecar', async () => {
   const { readFile } = await import('node:fs/promises')
-  const reference = JSON.parse(await readFile('reference/zcode-api/src/proxy/zcode_system.json', 'utf8')) as Record<string, unknown>
+  const reference = JSON.parse(await readFile(join(referenceDir(), 'zcode-api/src/proxy/zcode_system.json'), 'utf8')) as Record<string, unknown>
   const { ZCODE_SYSTEM_TEXT } = await import('../src/glm-llm/zcode-system.ts')
   for (const key of Object.keys(reference)) {
     assert.deepEqual(JSON.parse(ZCODE_SYSTEM_TEXT)[key], reference[key], `section ${key} diverged from the reference sidecar`)
