@@ -107,6 +107,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "循环板设计 0.2 写完（schedules-design-v02-write-retry，wf_0010f316077e9ab8；0.1 留作 design-0.1.md）：第 1 轮 18 条在 §19 逐条处理，草图改成只看，补了一页人话 onepage.md。派出单步第 2 轮评审 schedules-design-review-r2。"
+    },
+    {
+      "at": "2026-10-29T21:10:32.213Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "循环板设计 0.2 第 2 轮评审（schedules-design-review-r2，wf_82f208d4f186cc14）：CHANGES_REQUESTED，挡路 4 条（MEDIUM F19–F22）、NIT 11；第 1 轮 8 条挡路全部关闭（8 → 4）。F19 是编排方的接缝裁定说错了：高峰结束唤醒主 Agent 的条目依赖规则板的档位和主 Agent，GLM 包两样都没有，所以改判为编排层的默认条目（dsh-hourness 带来），GLM 包只给高峰变化事件与时段计算，已改 design-context 的裁定。F20 提醒建在已归档或到不了的会话上时没人发现；F21 人加的命令执行前，人其实看不到完整命令；F22 事件去重会悄悄丢掉反复发生的事件。派出单步 schedules-design-v03-write（wf_beedd4c1089a996f）写 0.3。"
     }
   ]
 }
