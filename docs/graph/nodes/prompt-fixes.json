@@ -49,6 +49,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "运行 wf_c8477623711d96d8 的评审步因运行环境的解密错误（BAD_DECRYPT，蓝屏之后）失败，与代码无关；分支 prompt-fixes 上的四个提交保留。剩下的评审、探针与合入交给 prompt-fixes-merge-then-zcode-3171（wf_920936995c163f50），并要求去掉代码步为让 npm test 通过而做的两处本地变通。"
+    },
+    {
+      "at": "2026-10-29T16:49:49.632Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "prompt-fixes-and-zcode-3171-retry（wf_e48380fb20a69493）第 1 遍：两处本地变通改成正式代码。0c7a7a5 逐字门禁经 scripts/reference-dir.mjs 读主检出的 reference/；14820e0 glm-startplan 旁路测试经 referenceDir 读取。在 14820e0 上不设 ZCODE_BUNDLE、工作树里没有 reference/ 时，build、preflight、npm test 全过（652 过、0 失败）。接下来独立评审。"
     }
   ]
 }
