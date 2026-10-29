@@ -64,7 +64,7 @@ dist/          不入库：tsc 产物
 
 ## 4. 审计数据快照（2026-10-29，批次 L4 之后）
 
-- 用户级 `~/.dsh/glm-hourness/audit/usage.jsonl` 371 条，最晚一条 2026-10-29T02:21:07Z：原生通道 `glm-zcode/glm-5.3` 19、`glm-zcode/glm-5.3-flash` 62；`deepseek-account/deepseek-flash` 290。旧的 pi-ai `glm` 路由（8317 反代）留下的 806 条已于 2026-10-29 按用户要求删除，改前备份 `usage.jsonl.bak-1793243554750` 在同目录（`DESIGN.md` §2.4）。
+- 用户级 `~/.dsh/glm-hourness/audit/usage.jsonl` 371 条，最晚一条 2026-10-29T02:21:07Z：原生通道 `glm-zcode/glm-5.3` 19、`glm-zcode/glm-5.3-flash` 62；`deepseek-account/deepseek-flash` 290。旧的 pi-ai `glm` 路由（8317 反代）留下的 806 条已于 2026-10-29 按用户要求删除；改前备份在积分面板经最终走查核对之后同日删除（`DESIGN.md` §2.4）。
 - 迁移来源：仓库 `.llm/audit/usage.jsonl` 890 条在 2026-10-29 清理时补拷 0 条，随后与 `.llm/audit/dialect-init.jsonl` 一起删除；旧目录 `~/.dsh/profiles/desktop/.llm/` 的 190 条用量、3 条决策与记忆文件核对都已在新位置后，已于 2026-10-29 删除（`m1-cleanup`）。
 - 违规流水：仓库 `.llm/audit/violations.jsonl` 2 条，最晚 2026-10-28T02:52Z；2026-10-29 L4 没有新增。
 - 决策流水：仓库 `.llm/audit/decisions.jsonl` 15 条，最晚两条是 2026-10-29 L4 的 `dispatch:subagent` 与 `dispatch:send_message`。
