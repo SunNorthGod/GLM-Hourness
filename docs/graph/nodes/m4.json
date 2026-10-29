@@ -59,6 +59,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "用户回答 D2（原话「不介意」）：回放本机 DSH 历史会话取样本（B），只读工具调用的命令文本与路径，不读对话正文；结果留在 .llm/，脱敏的个别样本进 tests/guard-corpus/。已转给 M4 第 3 稿。"
+    },
+    {
+      "at": "2026-10-29T17:48:39.095Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m4-design（wf_a153be7b05cd52d1）第 3 稿的写稿步一启动就因 BAD_DECRYPT 失败（编排方之前给这个会话发过 D2 的答案，符合已记下的规律）。改派单步 m4-design-v03-write（wf_341bc28a0dde1fa5）写 0.3：修 F9、F10 与 13 条不挡路，并入 D2 B（「不介意」）、d-chat-not-cards、d-main-agent-shell 的快照细则、d-one-main-agent、d-main-agent-models、d-auto-drive、d-zcode-3171、norm-review-floor，再写一页人话放行稿 onepage.md；独立评审在它落地后另派。"
     }
   ]
 }
