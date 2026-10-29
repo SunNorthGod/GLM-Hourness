@@ -7,7 +7,7 @@ import { openEngine } from '../src/graph/engine.ts'
 import { graphRevision, loadGraph, revisionOf } from '../src/graph/store.ts'
 import type { GraphNode } from '../src/graph/schema.ts'
 import type { RemoteRoot, StreamItem, WatchFrame } from '../ui/src/dsh.ts'
-import { absoluteTime, byCreation, decidedBy, dotTone, graphRevisionOf, historyText, liveGroups, nobodyRunningText, placeText, presenceText, progressOf, progressText, revisionOfBytes, statusText, tokensText, visibleGraph } from '../ui/src/graph/model.ts'
+import { absoluteTime, byCreation, decidedBy, dotTone, graphRevisionOf, headlineGoals, historyText, liveGroups, nobodyRunningText, placeText, presenceText, progressOf, progressText, revisionOfBytes, statusText, tokensText, visibleGraph } from '../ui/src/graph/model.ts'
 import { GraphSource, type GraphSnapshot } from '../ui/src/graph/source.ts'
 import { fixtureTest, seedAsHuman } from './graph-helpers.ts'
 
@@ -102,6 +102,18 @@ test('lists follow the graph view\'s sibling order: creation time, then id, not 
   const nodes = [node('m1-10', '2026-10-27T03:00:00Z'), node('m1-2', '2026-10-27T02:00:00Z'), node('m1-parity', '2026-10-28T01:00:00Z'), node('m1', '2026-10-27T01:00:00Z'), node('m1-3', '2026-10-27T02:00:00Z')]
   const graph = { nodes: new Map(nodes.map(entry => [entry.id, entry])), revisions: new Map(), revision: '', issues: [] }
   assert.deepEqual([...nodes].sort(byCreation(graph)).map(entry => entry.id), ['m1', 'm1-2', 'm1-3', 'm1-10', 'm1-parity'], 'm1-2 and m1-3 share a time and fall back to id order')
+})
+
+test('the header names every goal that is not closed, in id order, and the first goal when all are closed', () => {
+  const goal = (id: string, status: GraphNode['status']): GraphNode => ({ id, type: 'goal', title: id, status, history: [] })
+  const feature: GraphNode = { id: 'feature-1', type: 'feature', title: 'feature-1', status: 'doing', parent: 'hourness', history: [] }
+  const graph = (...nodes: GraphNode[]) => ({ nodes: new Map(nodes.map(entry => [entry.id, entry])), revisions: new Map(), revision: '', issues: [] })
+  const ids = (list: readonly GraphNode[]): string[] => list.map(entry => entry.id)
+  assert.deepEqual(ids(headlineGoals(graph(goal('hourness', 'doing'), feature))), ['hourness'])
+  // This repository's two root goals after split: glm-house sorts before hourness, and both are named; a closed goal is left out.
+  assert.deepEqual(ids(headlineGoals(graph(goal('hourness', 'doing'), feature, goal('glm-house', 'approved'), goal('a-old', 'done')))), ['glm-house', 'hourness'])
+  assert.deepEqual(ids(headlineGoals(graph(goal('hourness', 'done'), goal('glm-house', 'dropped')))), ['glm-house'])
+  assert.deepEqual(headlineGoals(graph(feature)), [])
 })
 
 test('现场 keeps the idle main agent in view and folds only children', () => {

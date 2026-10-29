@@ -1,6 +1,6 @@
 # GLM-Hourness
 
-GLM + House + Harness：让 GLM 以 ZCode 训练分布住进 DeepSeek Harness（DSH），并在其上建一套编排层，把开发体系量化成由 harness 保证实施的标准。同仓两个 DSH 第三方 bundle：GLM 通道包 `dsh-glm-zcode`（`packages/glm`）与编排层包 `dsh-hourness`（`packages/hourness`），各自多行，按各自的 `cordis.patch.yml` 独立启停，可以只装其中一个；GLM 方言不影响非 GLM 会话。
+GLM + House + Harness，两个目标各由一个包实现（`docs/CHARTER.md` §3）。House：GLM 以 ZCode 3.16.3 的训练分布住进 DeepSeek Harness（DSH），质量与官方 ZCode 一致，由 GLM 通道包 `dsh-glm-zcode`（`packages/glm`）实现。Harness：任何模型在 DSH 里沿项目图干活，开发体系由 harness 保证实施，由编排层包 `dsh-hourness`（`packages/hourness`）实现。两个包同仓，都是 DSH 第三方 bundle，各自多行，按各自的 `cordis.patch.yml` 独立启停，可以只装其中一个；GLM 方言不影响非 GLM 会话。
 
 ## 分层
 

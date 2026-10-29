@@ -17,7 +17,7 @@ import { NowContext, ServicesContext, type PanelServices } from './common.tsx'
 import { Decisions } from './Decisions.tsx'
 import { Doing } from './Doing.tsx'
 import { GraphCanvas } from './GraphCanvas.tsx'
-import { headlineGoal } from './model.ts'
+import { headlineGoals } from './model.ts'
 import { NeedsYou } from './NeedsYou.tsx'
 import { NodeDetail } from './NodeDetail.tsx'
 import { GRAPH_DIR, type GraphSource } from './source.ts'
@@ -132,7 +132,7 @@ export function GraphPanel({ source, commands, sessions, sessionId }: GraphPanel
   }
 
   const { graph, items, live, unreadable } = snapshot
-  const goal = headlineGoal(graph)
+  const goalTitles = headlineGoals(graph).map(goal => goal.title)
   const agentPending = items.agentQueue.length
   const errors = graph.issues.filter(issue => issue.severity === 'error')
   const doingCount = items.doing.filter(entry => entry.type !== 'goal').length
@@ -150,7 +150,7 @@ export function GraphPanel({ source, commands, sessions, sessionId }: GraphPanel
       <div className="glmg">
         <style>{PANEL_CSS}</style>
         <div className="glmg-head">
-          <span className="glmg-goal" title={goal?.title}>{goal?.title ?? '项目图'}</span>
+          <span className="glmg-goal" title={goalTitles.length === 0 ? undefined : goalTitles.join('\n')}>{goalTitles.length === 0 ? '项目图' : goalTitles.join(' · ')}</span>
           <span className={live ? 'glmg-live' : 'glmg-live off'} title={live ? '图文件一变，这里就跟着变' : '没在跟踪文件变化，点重新读取'}>
             <i />{live ? '实时' : <button type="button" className="glmg-more" onClick={() => { void source.retry() }}>重新读取</button>}
           </span>

@@ -236,10 +236,15 @@ export function nobodyRunningText(tasks: number): string {
 /** The second line of that note: what 现场 can see. */
 export const LIVE_SCOPE_TEXT = '现场只看得见本会话的主 Agent 和它派出的子 agent。'
 
-/** The goal the panel names in its header: the first goal by id that is not closed, else the first goal. */
-export function headlineGoal(graph: LoadedGraph): GraphNode | undefined {
+/**
+ * The goals the panel names in its header: every goal that is not closed,
+ * in id order; when all are closed, the first goal; none when the graph has
+ * no goal. Which goal comes first never decides which one is shown.
+ */
+export function headlineGoals(graph: LoadedGraph): readonly GraphNode[] {
   const goals = [...graph.nodes.values()].filter(node => node.type === 'goal').sort((a, b) => compareText(a.id, b.id))
-  return goals.find(node => OPEN_STATUSES.has(node.status)) ?? goals[0]
+  const open = goals.filter(node => OPEN_STATUSES.has(node.status))
+  return open.length > 0 ? open : goals.slice(0, 1)
 }
 
 /** Display names of the fields an edit changes (docs/ORCHESTRATION.md §2.6 field table). */
