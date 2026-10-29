@@ -72,6 +72,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "桌面版 L4 通过（2026-10-30 01:06–01:10，wf_afef02a167d6ce1e）：desktop profile 的两个 junction 临时指向 .worktrees/row-titles（0ec0b58 的构建），设置页「内置插件」本项目 13 行都显示 locale 标题，对话框全文与卡片属性里 file: 与用户目录路径各 0 处；展开的卡片「完整名称」为 dsh-glm-zcode/glm-llm、dsh-glm-zcode、dsh-hourness。单装两种情况以探针为证（glm-only 5 行、hourness-only 8 行的标题检查 PASS，118/118）。模型菜单默认值仍是 deepseek-account/deepseek-flash/high；关闭后 junction 改回主检出，profile-shape compare 无差异。客户端行标题与包标题相同（评审备注 2），能否接受待人看截图。记录与截图在 .agents/tasks/row-titles/l4.md。剩合入，合入时桌面版保持关闭。"
+    },
+    {
+      "at": "2026-10-29T17:16:13.650Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "已合入 main（wf_afef02a167d6ce1e）：row-titles 变基到 122ef59 后为 6134c83，fast-forward 合入并推送 Gitee origin/main（3181ba6..6134c83，未强推）。工作树内复跑：build 0、preflight 0（13 行）、npm test 0（45 个测试文件 650 过 0 失败，check-verbatim 442 条 OK、eslint ok、check-secrets ok、graph:smoke ok）。工作树缺被 .gitignore 忽略的 reference/，check-verbatim 与 glm-startplan 的参考文件比对因此失败；测试时把工作树的 reference 临时 junction 到主检出的 reference/，跑完已删除。未改 status：客户端行标题与包标题相同待人看截图确认，工作树待清理。"
     }
   ]
 }
