@@ -1,0 +1,22 @@
+{
+  "id": "m7-9",
+  "type": "task",
+  "title": "DORA 指标",
+  "status": "approved",
+  "parent": "m7",
+  "kind": "implement",
+  "body": "M7 设计 0.2（.agents/tasks/m7/design.md）§1.2 的 m7-9：DORA 指标。验证层：L2。实现顺序与接口见设计 §8 与 §3。",
+  "acceptance": [
+    "四项按 §3.13 的口径从门禁证据、图的历史与夜间检查算出"
+  ],
+  "history": [
+    {
+      "at": "2026-10-29T15:33:21.690Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "question-37 B：按 M7 设计 0.2 §1.2 建 m7-9，验收照设计原样写入",
+      "relay": "B",
+      "to": "approved"
+    }
+  ]
+}

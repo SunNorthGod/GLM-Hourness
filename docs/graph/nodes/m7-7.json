@@ -1,0 +1,25 @@
+{
+  "id": "m7-7",
+  "type": "task",
+  "title": "巡检",
+  "status": "approved",
+  "parent": "m7",
+  "kind": "implement",
+  "body": "M7 设计 0.2（.agents/tasks/m7/design.md）§1.2 的 m7-7：巡检。验证层：L2、L3；冷会话投递随 L4（核实清单第 17 项）。实现顺序与接口见设计 §8 与 §3。",
+  "acceptance": [
+    "`/patrol on` 在调用它的主 Agent 会话里建三条定时提醒并建（或复用）`运维` 特性节点；`/patrol off` 删掉它们",
+    "定时提醒到达时运维会话产出巡检结果，可做的整理成任务，必须问人的成待决",
+    "夜间对主干跑一遍门禁命令，结果进 DORA",
+    "漏跑的一次在下一次运行时报出"
+  ],
+  "history": [
+    {
+      "at": "2026-10-29T15:33:21.267Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "question-37 B：按 M7 设计 0.2 §1.2 建 m7-7，验收照设计原样写入",
+      "relay": "B",
+      "to": "approved"
+    }
+  ]
+}

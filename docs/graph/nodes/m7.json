@@ -5,6 +5,9 @@
   "status": "doing",
   "parent": "orch",
   "body": "ROADMAP.md M7 原文：队友角色卡、简报门禁、并发补位提醒；独立审查；汇合门禁；四答晨报；巡检；规范阶梯与周报；DORA 指标；标定测试集扩充。其中队友角色卡已被 d-dispatch 取代：任务节点带派发属性，主 Agent 派给后台子 agent。",
+  "acceptance": [
+    "最薄骨架（§10）在桌面版上对一个临时项目从 /wish 走到目标完成；之后本项目的开发改由它在 DSH 里做（dogfood）"
+  ],
   "history": [
     {
       "at": "2026-10-27T20:04:04.915Z",
@@ -71,6 +74,21 @@
       "actor": "llm",
       "op": "comment",
       "text": "m7-design（wf_ab2363c175f5a71d）完成。按设计 §3.8.1 与 §14 提议规范 norm-merge-gate（本仓库合入主干前的命令：准备、build、preflight、test，碰运行时路径时加 probe，巡检跑依赖检查，合入后推送），等人批准；M7 实施按 §8，等 question-37 定验收。"
+    },
+    {
+      "at": "2026-10-29T15:33:23.994Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "question-37 B：m7 本身的验收照 M7 设计 0.2 §1.2 写入",
+      "relay": "B",
+      "changes": {
+        "acceptance": {
+          "from": null,
+          "to": [
+            "最薄骨架（§10）在桌面版上对一个临时项目从 /wish 走到目标完成；之后本项目的开发改由它在 DSH 里做（dogfood）"
+          ]
+        }
+      }
     }
   ]
 }

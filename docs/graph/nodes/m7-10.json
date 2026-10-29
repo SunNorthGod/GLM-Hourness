@@ -1,0 +1,35 @@
+{
+  "id": "m7-10",
+  "type": "task",
+  "title": "标定集改作回归与消融守门",
+  "status": "approved",
+  "parent": "m7",
+  "kind": "implement",
+  "body": "M7 设计 0.2（.agents/tasks/m7/design.md）§1.2 的 m7-10：标定集改作回归与消融守门。验证层：L2、L3；标定运行按 §12 的时机。实现顺序与接口见设计 §8 与 §3。",
+  "acceptance": [
+    "标定运行里读本次 `ws/` 以外的文件被拒并记下；运行后扫事件流，有越界读取的运行判无效、不进汇总",
+    "`task.json` 带 `set`（回归或能力）与 `origin`，结果记下环境配置，分开报基础设施失败，汇总报 pass@1 与 pass^k",
+    "现有两题归回归集；`docs/ORCHESTRATION.md` §10.5 写明标定集的角色是回归与消融守门",
+    "复盘节点的候选标定题有一条收题流程（§3.14.5）。运行目录在仓库外与事后扫描是 `ablation` 的验收，本条目只用它们的结果"
+  ],
+  "edges": [
+    {
+      "type": "depends",
+      "to": "ablation"
+    },
+    {
+      "type": "source",
+      "to": "risk-calib-read"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-29T15:33:21.890Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "question-37 B：按 M7 设计 0.2 §1.2 建 m7-10，验收照设计原样写入",
+      "relay": "B",
+      "to": "approved"
+    }
+  ]
+}

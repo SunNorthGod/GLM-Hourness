@@ -1,0 +1,26 @@
+{
+  "id": "m7-3",
+  "type": "task",
+  "title": "驱动循环与完成门禁",
+  "status": "approved",
+  "parent": "m7",
+  "kind": "implement",
+  "body": "M7 设计 0.2（.agents/tasks/m7/design.md）§1.2 的 m7-3：驱动循环与完成门禁。验证层：L2、L3；L4。实现顺序与接口见设计 §8 与 §3。",
+  "acceptance": [
+    "`/drive` 由人发出，从焦点所在的目标建立或恢复 goal，目标原文含标题、验收条件与非目标；模型调不出这一步",
+    "完成门禁不过时 `update_goal complete` 被拒、goal 保持 active，拒绝列出差什么；目标的验收审查由 harness 自动起、不建图节点、不要人批准；通过后图上的目标转为完成，带 harness 的证据；不经门禁的 `complete`（例如 `/wish off` 之后）不写完成证据，只留批注与复盘",
+    "`await_human` 让 goal 以 `hourness-waiting-human` 阻塞；人在面板上拍完列出的待决后 goal 自动恢复",
+    "连续 3 拍没有进展时 goal 以 `hourness-idle-rounds` 阻塞并留复盘节点",
+    "宿主重启之后，丢失的派发在主 Agent 下一步的提醒里列出，不会重复派发"
+  ],
+  "history": [
+    {
+      "at": "2026-10-29T15:33:20.424Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "question-37 B：按 M7 设计 0.2 §1.2 建 m7-3，验收照设计原样写入",
+      "relay": "B",
+      "to": "approved"
+    }
+  ]
+}

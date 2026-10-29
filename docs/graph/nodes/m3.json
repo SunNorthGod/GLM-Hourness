@@ -128,6 +128,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M3 设计附录 0.1 写成（.agents/tasks/m3/design-addendum.md），待独立设计评审。吸收 question-26 C、m3-1 验收第 4 条、question-31 C、m3-main-persona、d-option-card、主 Agent 用强一档模型的提醒、d-interview-cards。顺序：第 3–10 步，然后「访谈选择题」（d-interview-cards，接缝 src/design/interview.ts），然后 m3-main-persona，都在 .worktrees/m3；第 11 步（流程条加 /wish 入口）在 .worktrees/m3-flow 并行，合入 m3 后跑第 12 步（a）标定、（b）合入与批次 L4。独立代码评审：第 4、5、6、8、9 步与「访谈选择题」。"
+    },
+    {
+      "at": "2026-10-29T15:33:25.099Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M3 设计附录 0.1 第 1 轮独立评审 CHANGES_REQUESTED（.agents/tasks/m3/reviews/addendum.json、addendum.md）：MEDIUM 4、NIT 12。挡路的四条：ask_human 的选择题没有取决于与结论行（d-option-card、plain-ui §3.8.4）；glm-prompt 改名后 reportingDepth 带 Schema 默认值，cordis 规整配置后旧键 persona 读不到；新标签「如果失败：」不在五栏的解析标签表里，空的「查过的现成方案：」会被它填上、五栏门禁误放行；标定运行目录拷回清单不全（stderr、check 输出、截停记录、工作区内容随临时目录删掉）。d-interview-cards 已是人定，附录按 A 实现并保留接缝与 B 的对照，评审认可。question-39 B 与「问题说人话、给 agent 一个完整示例」已转给附录第 2 稿。"
     }
   ]
 }

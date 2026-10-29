@@ -1,0 +1,24 @@
+{
+  "id": "m7-5",
+  "type": "task",
+  "title": "汇合门禁",
+  "status": "approved",
+  "parent": "m7",
+  "kind": "implement",
+  "body": "M7 设计 0.2（.agents/tasks/m7/design.md）§1.2 的 m7-5：汇合门禁。验证层：L2（临时 git 仓库）、L3；L4。实现顺序与接口见设计 §8 与 §3。",
+  "acceptance": [
+    "只有在审查通过且对应同一份改动、简报没过期、改动不出写入范围、`norm-merge-gate` 的命令在压缩后的提交上全部退出 0 时，主干才前进恰好一个带 `Hourness-Task` 尾注的提交；任务节点转为完成，带 harness 写的提交与测试证据",
+    "冲突、命令失败、主干在门禁期间前进时主干不变，结果写明原因；可重试的有次数上限；已合入但图没写上的情况被发现并补写",
+    "主 Agent 的 `git merge`、`commit`、`reset` 一类命令被拒"
+  ],
+  "history": [
+    {
+      "at": "2026-10-29T15:33:20.835Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "question-37 B：按 M7 设计 0.2 §1.2 建 m7-5，验收照设计原样写入",
+      "relay": "B",
+      "to": "approved"
+    }
+  ]
+}

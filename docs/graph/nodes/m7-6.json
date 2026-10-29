@@ -1,0 +1,22 @@
+{
+  "id": "m7-6",
+  "type": "task",
+  "title": "四答晨报",
+  "status": "approved",
+  "parent": "m7",
+  "kind": "implement",
+  "body": "M7 设计 0.2（.agents/tasks/m7/design.md）§1.2 的 m7-6：四答晨报。验证层：L2。实现顺序与接口见设计 §8 与 §3。",
+  "acceptance": [
+    "晨报按目标、规划、理由、架构四节加等你拍板、花费、门禁与审查、例外、模型使用；每个数字有固定来源（§3.10）；同样的输入得到同样的文字"
+  ],
+  "history": [
+    {
+      "at": "2026-10-29T15:33:21.042Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "question-37 B：按 M7 设计 0.2 §1.2 建 m7-6，验收照设计原样写入",
+      "relay": "B",
+      "to": "approved"
+    }
+  ]
+}

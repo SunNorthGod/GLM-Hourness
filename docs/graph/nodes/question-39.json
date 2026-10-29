@@ -2,7 +2,7 @@
   "id": "question-39",
   "type": "question",
   "title": "m3-1、m3-2 的两条验收按访谈出卡的决定改写吗",
-  "status": "approved",
+  "status": "done",
   "parent": "m3",
   "body": "背景：M3 是主 Agent（/wish 唤醒、需求访谈、设计放行卡）。M3 设计批准之后，人又定了几件事（主 Agent 不带写文件工具、表格版选项卡、访谈选择题由 harness 出卡、人设只给主 Agent）；M3 的实现运行写了一份补充说明（.agents/tasks/m3/design-addendum.md）把它们收进设计。其中 d-interview-cards（访谈选择题由 harness 出卡，主 Agent 不带 DSH 自带的 ask_user_question）让两条验收的字句对不上。建议改法：m3-1 第 3 条改为「主 Agent 的工具面等于同一组合下普通会话的工具面去掉写文件的工具（Write、Edit 及其别名、str_replace_editor 的写操作）与 ask_user_question，加上 design_review、decision_card、ask_human；由编排层插件在组装时去掉，不用 preset；shell 写入由 guard 兜底」。m3-2 第 3 条改为「标定任务 interview-expense-log 在 GLM-5.3 上三次里至少一次完整通过验收脚本；模拟人在待决卡上选图上的推荐项、访谈的选择题选最后一项（有推荐时推荐就在最后）、确认卡点确认、五键卡先补充一次再批准；两档模型的结果都记作基线」。",
   "options": [
@@ -24,6 +24,13 @@
   "verdict": "有 → A；没有 → B",
   "weight": "two-way",
   "decider": "human",
+  "decision": "B",
+  "evidence": [
+    {
+      "kind": "decision",
+      "ref": "B"
+    }
+  ],
   "history": [
     {
       "at": "2026-10-29T15:11:31.496Z",
@@ -31,6 +38,22 @@
       "op": "propose",
       "reason": "M3 设计附录 §8 第 1、2 条：d-interview-cards 让 m3-1、m3-2 各有一条验收的字句对不上；改验收要人的原话（norm-decision-tiers 第 1 类）",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-29T15:33:24.477Z",
+      "actor": "llm",
+      "op": "decide",
+      "reason": "用户在编排方用人话重讲的待决里回 B：m3-1、m3-2 的两条照建议文字改",
+      "relay": "B",
+      "from": "approved",
+      "to": "done",
+      "option": "B",
+      "evidence": [
+        {
+          "kind": "decision",
+          "ref": "B"
+        }
+      ]
     }
   ]
 }

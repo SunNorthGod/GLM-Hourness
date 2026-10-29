@@ -2,7 +2,7 @@
   "id": "question-37",
   "type": "question",
   "title": "M7 的十个任务用什么验收",
-  "status": "approved",
+  "status": "done",
   "parent": "m7",
   "body": "取决于：你对 m7-5「合入后按规范自动推送」与 m7-10「标定集只做回归守门」这两条有保留吗？\n有 → A；没有 → B。\n以后改起来很贵：写进节点之后再改要你出手。建议验收逐条在 .agents/tasks/m7/design.md §1.2，每条挂在一个探针场景或 L2 测试上；m7 本身的验收是最薄骨架在桌面版上对一个临时项目从 /wish 走到目标完成，之后本项目改由它在 DSH 里开发（dogfood）。",
   "options": [
@@ -19,6 +19,13 @@
   ],
   "recommend": "B",
   "decider": "human",
+  "decision": "B",
+  "evidence": [
+    {
+      "kind": "decision",
+      "ref": "B"
+    }
+  ],
   "history": [
     {
       "at": "2026-10-29T13:03:01.907Z",
@@ -26,6 +33,22 @@
       "op": "propose",
       "reason": "M7 设计 D1：写验收属于必须问人的第 1 类",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-29T15:33:19.771Z",
+      "actor": "llm",
+      "op": "decide",
+      "reason": "用户在编排方用人话重讲的待决里回 B：照 M7 设计拟好的「怎样算做完」清单写入 m7-1 到 m7-10，马上开工；后续会把编排层的细节整体过一遍",
+      "relay": "B",
+      "from": "approved",
+      "to": "done",
+      "option": "B",
+      "evidence": [
+        {
+          "kind": "decision",
+          "ref": "B"
+        }
+      ]
     }
   ]
 }

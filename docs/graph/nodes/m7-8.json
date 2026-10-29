@@ -1,0 +1,22 @@
+{
+  "id": "m7-8",
+  "type": "task",
+  "title": "规范阶梯与周报",
+  "status": "approved",
+  "parent": "m7",
+  "kind": "implement",
+  "body": "M7 设计 0.2（.agents/tasks/m7/design.md）§1.2 的 m7-8：规范阶梯与周报。验证层：L2。实现顺序与接口见设计 §8 与 §3。",
+  "acceptance": [
+    "周报按 §3.12 的阈值提议规范升降级，至多 3 张，推荐项在最后；周报含人的负担四项与三项对照"
+  ],
+  "history": [
+    {
+      "at": "2026-10-29T15:33:21.470Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "question-37 B：按 M7 设计 0.2 §1.2 建 m7-8，验收照设计原样写入",
+      "relay": "B",
+      "to": "approved"
+    }
+  ]
+}
