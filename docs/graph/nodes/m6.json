@@ -120,6 +120,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M6 设计 0.3 第 3 轮评审（m6-design-v03-review，wf_fb36232a446502c6）：CHANGES_REQUESTED，HIGH 0、MEDIUM 2、NIT 6；第 2 轮 9 条全部关闭。各轮挡路条数 3、4、2。挡路：F8 M6 与规则板设计在谁改写高峰提醒原文与 ORCHESTRATION.md §11.4 上说法不一；F9 脚本自查的判定没有写进指标流水的一方。编排方裁定（agent 定，可推翻）：F8 发给模型的高峰提醒原文与各档的措辞归 GLM 包（M6），M6 改写 §11.4；规则板只管档位设置，并经服务把当前档位交给 GLM 包；只装 GLM 包时提醒照今天的原文。F9 脚本自查的判定由规则板的 checkCall 写进指标流水，M6 的 gateOnRules 不另写。已转给正在写的规则板 0.6。三轮已到上限，M6 剩下两条改动很小，是否再给一轮与 M3 一起交人。"
+    },
+    {
+      "at": "2026-10-29T20:40:07.391Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "循环板设计 0.2 照 M6 0.3 的 loopDefaults 读，契约不用改；M6-L1 到 L5 逐条落在循环板 §3.4。两处请 M6 知道：没有计价服务时循环板不写「GLM 通道包未装，或它的 glm-login 行未启用」那一行（plain-ui 定了只装编排层包时面板上不出现模型名），M6-L1 的这半句下一稿删去；M6-R5 由循环板的 loops.peak-end 做。nextPeakChange 由 M6 Q1 或规则板 R4 先合入的一方加，是循环板 S3 的依赖。0.1 对 M6 的推送请求（glmHournessChannelLoop）作废。"
     }
   ]
 }

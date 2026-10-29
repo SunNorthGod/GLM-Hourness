@@ -71,6 +71,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "循环板设计 0.1 §16 给 M4 下一稿的请求：§4.6 第三次修复之前改为报 work-stopped（why third-rework），给人的话由循环板第 7 项经主 Agent 在对话里说，不出卡；env 行每次跑完检查调循环板的 recordRun（第 11 项，结局 delegated），循环板页列出批过的 env 工具节点。检查器的机制（§6）不变。"
+    },
+    {
+      "at": "2026-10-29T20:40:07.842Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "循环板设计 0.2 §17 给 M4 的请求：env 行交一项 env.checks-after-edit，带 ownRules（一步至多等 20 秒、每个检查 60 秒超时、连续失败 3 次后这个会话不再跑、没有检查器覆盖的语言每个会话提醒一次）与 details（每个批过的检查器一行），声明 env.files-edited（listedOnly），每跑完一次检查调 recordRun；图行 R1 那一部分交 graph.third-rework、声明 graph.third-reopen，每提一次第三次返工的待决调 recordRun。0.1 请 M4 改报 work-stopped 作废。"
     }
   ]
 }

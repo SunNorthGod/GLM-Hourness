@@ -177,6 +177,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "规则板设计 0.6 评审（rules-design-v06-review，wf_4c07584376a9a351）：CHANGES_REQUESTED，HIGH 1、MEDIUM 7、LOW 12。F55：0.6 没写完（写稿步中途因 TLS 错误结束，缺附录 D、§20 的修订记录、§18 的新取舍），F42、F57 是没改到的旧文字；F43、F46、F56、F58、F59 是与 M7 0.3、M3 附录 0.3、M6 裁定之间的接缝。挡路条数 5 → 8，评审请编排方定这次截断算不算一轮。编排方定（agent 定，可推翻）：截断是运行环境故障，不算一轮设计；接缝按 .agents/tasks/design-context.md 新加的「Seam rulings between designs」一节裁定（规则板管档位与少做时的并发上限并经服务给出，M7 派发读上限；高峰提醒原文与 ORCHESTRATION.md §11.4 归 GLM 包；checkCall 写判定事件；propose_to_human 加可选 attach；少做高峰结束时唤醒主 Agent 是循环板条目）。派出单步 rules-design-v07-write（wf_811e1f7ef668815e）写 0.7 与一页人话，要求分节保存。"
+    },
+    {
+      "at": "2026-10-29T20:40:07.540Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "循环板设计 0.2 §17 给规则板的请求：1. 加 peakStop(sessionId): {stopped, until?}，在一处按档位、是否高峰、会话走不走 GLM 与「这个会话本次高峰照常做」判，对冷会话按项目判；之前循环板用 heldForPeak，每段高峰每个会话至多多花一步。2. stateFor 对冷会话为 undefined，请加 stateForProject(cwd) 或让 peakStop 带回档位。3. DetectorTrigger 的文件一种改为 {kind: 'event', events: ['loops.file-changed'], params: {path}}。4. 代码规则目录里 loops:schedule-tools 也拒绝以 Loop board: 开头的 schedule_create。5. 两块板的「<插件名>带来的」共用 pluginLabel（src/shared/plugin-labels.ts，谁先实现谁建）。规则板对 M6-R5 的不采用照旧成立，叫醒由循环板做。"
     }
   ]
 }

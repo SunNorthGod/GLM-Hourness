@@ -47,6 +47,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M7 设计 0.3 交给指标流水的事件表在 §3.16：execute.dispatch（含模型、理由的引用、sameAsMain、sameAsWorker）、dispatch-refused、plan、ask、handback、review-depth、review、stop、check、advance、advance-refused、unchecked-advance、goal、completion-gate、acceptance-review、reconcile、loop-entry，operate.report、operate.patrol。出口 emitMetric 在 src/execute/metrics.ts，接口到位之前什么都不做；报告在那之前从图、会话与 <git>/hourness/ 的记录算同样的数。token 与积分按会话 id 从用量流水连过来。"
+    },
+    {
+      "at": "2026-10-29T20:40:08.168Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "循环板设计 0.2 §6.10：循环板这边的事件是 loop-fired、loop-done、loop-entry、loop-drift、loop-note、loop-read（机器一级为通道条目读额度，M6-L5）、loop-contribution（一份交来的条目被接受、替换或撤回），只记 id、时刻、结局、退出码、用时与字节数。指标流水合入之前写用户级目录的 loops/projects/<键>/runs.jsonl 与 loops/machine/runs.jsonl，合入时只改 src/loops/metrics.ts。"
     }
   ]
 }

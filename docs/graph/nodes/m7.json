@@ -131,6 +131,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M7 设计 0.3 写完（.agents/tasks/m7/design.md；0.2 原文留在 design-0.2.md）：按 d-auto-drive、d-main-agent-models、d-main-agent-shell（含快照细则）、d-one-main-agent、d-chat-not-cards、d-design-onepage、d-defaults-readonly、d-rules-visible、question-38 C 与 norm-review-floor、metrics 改写，方向清单的逐条对照在 §1.1。主要变化：没有 /drive，harness 在主 Agent 的一步里看到放行就建 goal，重启后自动恢复，人暂停或清掉的不恢复；dispatch_task 的 model 与 why 必填，没有档位与默认模型；没有 merge_task，主 Agent 用 git 合，harness 用 check_commit 在一个确定的提交上跑 norm-merge-gate，并在主干前进的那一刻核对（认得出的写法执行前拦，认不出的执行后发现、记违规、不给证据），任务与提交按尾注 Hourness-Task 对应；底线清单在主干前进时按内容核对；没有运维会话与 /patrol，晨报、周报、夜间巡检是循环板上的默认条目；harness 不再写给人的待决，只把事实与四行草稿交给主 Agent 在对话里问；十条联动是循环板上只读的默认条目，没有循环板时 M7 按同一张表执行事件条目；指标事件表在 §3.16。0.2 第 2 轮评审的 11 条不挡路意见都已处理（§16）。待人定两件（§13：norm-review-floor 四条加判定写法；norm-merge-gate 加 only docs/graph/）。十件活的「怎样算做完」按 question-37 A 由人逐条看（§1.2）；改写的变更草稿在 .agents/tasks/m7/graph-ops-v03-pending.json，不带人的原话，要人回话之后补上才能提交。设计评审待开始。"
+    },
+    {
+      "at": "2026-10-29T20:40:07.243Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "循环板设计 0.2 §17 给 M7 的请求：1. entries.ts 照 LoopEntryDefinition 写，执行行与运维行各经 ctx.inject([glmHournessLoops]) 调 contribute({plugin, row}, {events, entries, actions, run})，run 即 runAction、返回 HarnessResult，limits 照循环板 §5.1 的表（交回、审查过了、停下、活都关了、放行去抖 5 秒每小时 30 次；主干全量检查 30 秒；重启对账每小时 6 次）。2. 事件照循环板 §4.2 声明字段，提醒文字占位改成 {名字}；hourness.handback 载荷加 commits、floorHit，hourness.trunk-advanced 加 files、truncated。3. 事件经 emit({event, cwd, session, key, payload}) 交，key 用退路执行者已有的去重键。4. 新事件 hourness.outside-advance（记 {by: 'outside'} 时交），execute.trunk 同时听它。5. 建议 execute.trunk-check 只跑这个主干提交的树还没覆盖到的命令，全覆盖时跳过。6. 新 harness 动作 execute.resume-after-peak：恢复在这一段高峰里因 hourness-idle-rounds 阻塞的 goal（模型自己 resume 不了，tool-goal:348–349）。0.1 的 withGateLock、emitLoopEvent 请求作废。"
     }
   ]
 }

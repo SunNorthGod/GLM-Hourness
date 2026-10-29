@@ -200,6 +200,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M7 设计 0.3 对 M3 的改动（M7 在 M3 合入之后开工）：一、design-before-release 的放行一行改问执行服务（同 0.2）；二、执行行在时，身份节的边界一句与 main-agent-no-write 的正路改为「writing work goes to workers you dispatch with dispatch_task; subagents started with the subagent tool only read」（0.2 评审 F18）；三、阶段提醒：release 一句改为「The design is released and the harness has started the drive: decompose into tasks with dispatch attributes and dispatch them; do not wait for the person.」，补 decompose、execute、merge 三段（merge 一段写合入的做法），图上没有 norm-merge-gate 时设计阶段加一句提议它；四、src/guard/git-snapshot.ts 只加导出 gitInvocations（M3 内部已有的 git 调用读法，行为不变），M7 的 worker-git 与主干前进的核对都用它与 takeSnapshot、gitRisk。M7 不再改 src/graph/panel-row.ts：等人后的恢复在主 Agent 的下一步里做，面板拍板由 M3 的回写通知叫醒主 Agent。M7 依赖 M3 的 propose_to_human、record_human_answer、renderProposal、proposalLineRefusal、plainWordsIn、isMainAgent 与持有者记录、mainAgentOf。"
+    },
+    {
+      "at": "2026-10-29T20:40:07.690Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "循环板设计 0.2 §17 给 M3 附录的请求：propose_to_human 的 attach 按前缀分派，rules: 走规则板，loops: 走循环板服务的 attachable 与 loopProposalLine（正文末行「循环板提议 `lp-<id>`」）；record_human_answer 在 decide 成功之后用 proposalIdOf 与 loopProposalIdOf 各认一次，调对应服务的 acceptProposal 并把那一行放进结果，挂在 src/design/record.ts。0.1 请 M3 报 design-released 作废（M7 0.3 自己交 hourness.design-released）。"
     }
   ]
 }
