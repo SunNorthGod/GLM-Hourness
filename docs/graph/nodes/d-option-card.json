@@ -45,6 +45,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "派出 card-fields-table（wf_f7c6084d93c04498）：在 .worktrees/card 按表格版重做引擎字段（分支 m3-base-card 的 de0ccf6 只作参考，合入后删掉），独立评审，等 split 合入后再合入 main。"
+    },
+    {
+      "at": "2026-10-29T12:41:08.895Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "card-fields-table 的工作树 .worktrees/card 已建好（分支 card，基于 main c49478f），实现与评审进行中。"
     }
   ]
 }

@@ -59,6 +59,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "用户同意把多学科融进工作流（「其余没问题」）：ORCHESTRATION.md §4.3 架构一栏加上所依据的学科与标准，DEVELOPMENT.md §1.1 加一行「设计依据的学科」，评审按设计稿列出的学科去审，不加新的人工步骤。"
+    },
+    {
+      "at": "2026-10-29T12:41:08.582Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "用户 2026-10-29 要求再多并行：新开 m4-design、m5-lessons-design、m6-design 三条设计（只写 .agents/tasks/ 下的文件，不碰代码、桌面版与沙盒）。各设计共用的人定事项写在 .agents/tasks/design-context.md，每条设计先读它，图上节点更新时以节点为准，免得简报过时（阅读摘要 K5）。bootstrap 的设计等 M3 与新手引导的设计定下来再开。"
     }
   ]
 }
