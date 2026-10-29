@@ -1,0 +1,58 @@
+{
+  "id": "question-31",
+  "type": "question",
+  "title": "注入文字怎么整理（清点报告 Q2–Q5、Q7）",
+  "status": "done",
+  "parent": "orch",
+  "body": "依据 .agents/tasks/prompt-audit/report.md §7、§9。C 的内容：人设与汇报细度放进 ZCode 的 Output Style 槽位，只给主 Agent，删独立的 glm:persona 节（与 m3-main-persona 合成一件事）；M3 主 Agent 身份节只留角色与边界（约 1k–1.5k 字符），访谈步骤随阶段提醒与设计工具结果下发；harness 会执行的规矩每处只留一句总声明，细节只在拒绝信息里（glm:guard 约 732 字符降到约 250）；子 agent 只拿 ZCode 原文、guard 一句与它要用的工具，汇报细度与人设不给，图写工具按 M7 裁；高峰提醒先查已有 GLM 会话里模型有没有向人复述过，再定去留。",
+  "options": [
+    {
+      "key": "A",
+      "label": "维持现状",
+      "consequence": "不改；子 agent 每请求多带 3k–4k token，规矩声明继续重复"
+    },
+    {
+      "key": "B",
+      "label": "只修三处宿主事实缺陷",
+      "consequence": "环境目录、DSH 工具节、拒绝信息的例外段改对；重复与子 agent 的负担照旧"
+    },
+    {
+      "key": "C",
+      "label": "按报告推荐整理",
+      "consequence": "按正文所列整理；改方言组装、M3 设计 §3.1.3 与 §3.6.2，随 split 合入后实现"
+    }
+  ],
+  "recommend": "C",
+  "decider": "agent",
+  "decision": "C",
+  "evidence": [
+    {
+      "kind": "decision",
+      "ref": "C"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-29T11:19:34.089Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "清点报告 §9 的 Q2–Q5、Q7 属于可逆的设计整理，由 agent 定、人可推翻；Q1 与 Q6 要花积分，另提给人（question-30）",
+      "to": "approved"
+    },
+    {
+      "at": "2026-10-29T11:19:52.374Z",
+      "actor": "llm",
+      "op": "decide",
+      "reason": "与人已定的方向一致：人设只给主 Agent（m3-main-persona）、主 Agent 不拿写工具（question-26 C）、子 agent 只拿它需要的；整理可逆，随 split 合入后实现，人可推翻。Dynamic Behavior 与 guard 缩写这类会改模型行为的改动，等 question-30 的消融结果再定",
+      "from": "approved",
+      "to": "done",
+      "option": "C",
+      "evidence": [
+        {
+          "kind": "decision",
+          "ref": "C"
+        }
+      ]
+    }
+  ]
+}

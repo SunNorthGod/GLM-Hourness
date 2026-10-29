@@ -2,10 +2,17 @@
   "id": "prompt-audit",
   "type": "task",
   "title": "清点所有注入给模型的文字：放在哪、多长、贴不贴训练分布、有没有用",
-  "status": "doing",
+  "status": "done",
   "parent": "orch",
   "kind": "review",
   "body": "清点两个插件往模型里放的全部文字：方言各节、工具检索、todo 提醒、压缩指令、guard 声明、项目图每步投影、高峰提醒，以及已设计未实现的主 Agent 身份、人设、阶段提醒、规则提醒。每段写明：落在哪（系统提示词的节、对话末尾的 <system-reminder>、工具说明）、多长、对提示词缓存的影响、ZCode 里有没有对应的位置与原文、它是在要求模型还是在声明 harness 会执行的规矩、哪些路由与会话会看到。按 orch 批注里的四条原则（逐字镜像、静态进系统提示词固定位置而动态走末尾 system-reminder、能执行的少说、每段要证明有用）给出整理建议，以及逐段开关对比的标定方案与积分估算；跑标定要花积分，先提给人。第一步只读，不改代码。",
+  "evidence": [
+    {
+      "kind": "check",
+      "ref": "inventory report .agents/tasks/prompt-audit/report.md (lengths computed by loading src/, placements checked against the 2026-10-29 L3 probe requests)",
+      "exit": 0
+    }
+  ],
   "history": [
     {
       "at": "2026-10-29T10:38:32.860Z",
@@ -22,6 +29,21 @@
       "reason": "派出 investigate-prompt-audit（wf_842dcd90d8bb4666）：只读清点全部注入文字并给出整理建议与消融方案，不跑标定；报告 .agents/tasks/prompt-audit/report.md",
       "from": "approved",
       "to": "doing"
+    },
+    {
+      "at": "2026-10-29T11:19:33.867Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "investigate-prompt-audit（wf_842dcd90d8bb4666）完成，报告 .agents/tasks/prompt-audit/report.md：GLM 主 Agent 首个请求里两个插件放进约 34.5k 字符（约 9.9k token，占首个请求输入的一半多），13 个图工具占 13,802 字符；会话内系统提示词逐字节不变、动态内容都在末尾（原则二已守住）；coding-plan 方言缺 ZCode 3.16.3 的 Dynamic Behavior 一节（3,065 字符）；汇报细度、记忆节与全部图工具也进了子 agent；规矩声明有重复（「别用 shell 写」4 处、「图只经图工具改」3 处）；三处宿主事实缺陷。没有任何非 ZCode 文字经过标定检验；消融方案两期约 1,100–2,000 积分，待人批（question-30）。",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "check",
+          "ref": "inventory report .agents/tasks/prompt-audit/report.md (lengths computed by loading src/, placements checked against the 2026-10-29 L3 probe requests)",
+          "exit": 0
+        }
+      ]
     }
   ]
 }

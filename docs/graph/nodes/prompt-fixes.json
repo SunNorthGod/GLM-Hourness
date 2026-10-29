@@ -1,0 +1,34 @@
+{
+  "id": "prompt-fixes",
+  "type": "task",
+  "title": "修注入文字里的事实错误与文档不一致",
+  "status": "approved",
+  "parent": "orch",
+  "kind": "implement",
+  "body": "依据 .agents/tasks/prompt-audit/report.md §0、§7 第 6、7 条、§10：glm:environment 的工作目录改从会话头 session.header.cwd 取（现在钉在 profile 配置里，在别的项目开会话也写本仓库）；guard 拒绝信息的例外段不再让模型「file a request」，在 M4 的申报卡做出来之前改为告诉人需要什么、在哪、为什么；DESIGN.md §5.2 节表按实际渲染次序改写，§5.3、§5.8 补上 Dynamic Behavior 的现状；逐字门禁加上 ZCODE_SYSTEM.dynamicSections 的检查。M3 设计 §3.1.3 第 5 项与 §3.5.1 第 4 步的推荐项排序按 d-recommend-last 改写。改的是 src/glm-prompt 与 src/guard，split 也改过这两处，所以排在 split 合入之后。",
+  "acceptance": [
+    "在别的工作区开会话时 glm:environment 写的是那个工作区的目录",
+    "guard 的拒绝信息里没有指向不存在通道的说法",
+    "DESIGN.md §5.2、§5.3、§5.8 与实际一致，逐字门禁覆盖 dynamicSections",
+    "门禁、探针全过"
+  ],
+  "edges": [
+    {
+      "type": "depends",
+      "to": "split"
+    },
+    {
+      "type": "source",
+      "to": "prompt-audit"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-29T11:19:34.786Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "清点报告 §7、§10 列出的缺陷与文档不一致，修起来不需要标定",
+      "to": "approved"
+    }
+  ]
+}
