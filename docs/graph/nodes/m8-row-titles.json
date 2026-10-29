@@ -1,0 +1,33 @@
+{
+  "id": "m8-row-titles",
+  "type": "task",
+  "title": "设置页插件清单的行名不再显示文件路径（V-01）",
+  "status": "approved",
+  "parent": "m8",
+  "kind": "implement",
+  "body": "设置页「内置插件」给本项目各行显示 file URL 标题（含用户目录路径），因为 DSH 的 readPluginMeta 只处理包说明符（split 设计 F22）。原修法是把行名改成包说明符，但与拆包后的布局冲突（split 设计 §14.7），用户选择推迟到 split 合入之后（question-18 A）。在两个插件的新布局上重新设计：子包 patch 用各自包的说明符，桌面版 profile 已直接列两个子包（question-17 B），所以说明符能解析。问题记录见 .agents/tasks/ui-audit/findings.md V-01。",
+  "acceptance": [
+    "设置页「内置插件」里本项目的每一行都显示行名，不出现 file URL 或用户目录路径",
+    "两个插件分别单独装上时，各自的行名照样正确",
+    "门禁、探针全过；桌面版 L4 截图核对"
+  ],
+  "edges": [
+    {
+      "type": "depends",
+      "to": "split"
+    },
+    {
+      "type": "source",
+      "to": "question-18"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-29T06:39:21.895Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "m8-ui-audit 里按 question-18 A 暂缓的 V-01，单独留一个任务，免得 split 合入后被忘掉",
+      "to": "approved"
+    }
+  ]
+}

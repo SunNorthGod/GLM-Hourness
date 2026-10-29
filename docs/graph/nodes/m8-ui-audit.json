@@ -2,7 +2,7 @@
   "id": "m8-ui-audit",
   "type": "task",
   "title": "全部 UI 的审查与优化，最后完整走一轮",
-  "status": "doing",
+  "status": "done",
   "parent": "m8",
   "kind": "implement",
   "body": "范围是本仓库给 DSH 桌面版提供的全部界面：ui/src 下的项目图面板（Panel、Doing、Live、NodeDetail、NeedsYou、Decisions、GraphCanvas 等）与 ui/src/client.tsx 里的其余界面，以及宿主侧会显示到界面上的文字（通知、健康行、宿主命令的输出）。\n\n做法：先盘点每个界面并在桌面版截图，按可读性、一致性、状态口径是否正确、空态与错误态、可访问性列出问题；有问题的改掉，没必要改的写明理由；全部改完后在桌面版上把每个界面完整走一轮，确认没有新错误。\n\n在 m8-doing-layout 之后做：两者改的是同一批文件，桌面版同一时间只给一个 worker 用（risk-shared-desktop）。",
@@ -16,6 +16,27 @@
     {
       "type": "depends",
       "to": "m8-doing-layout"
+    }
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "20ed994"
+    },
+    {
+      "kind": "test",
+      "ref": "npm run build, npm run preflight, npm test on 20ed994: 564 passing, verbatim 443/0, ESLint 250 / knip 21 / jscpd 2, gitleaks clean",
+      "exit": 0
+    },
+    {
+      "kind": "check",
+      "ref": "code review pass 2 APPROVED (.agents/tasks/ui-audit/review.json)",
+      "exit": 0
+    },
+    {
+      "kind": "check",
+      "ref": "final desktop walkthrough of 20 surfaces, 71 screenshots, no new console or DSH log entries from the bundle (.agents/tasks/ui-audit/report.md)",
+      "exit": 0
     }
   ],
   "history": [
@@ -88,6 +109,35 @@
       "actor": "llm",
       "op": "comment",
       "text": "修复第二轮：R-01–R-04 在 2240b70（通道对话框保留上次登录错误与未解析的回复行；解析函数移到 ui/src/channel-model.ts，L2 测试用真实 /glm-status 输出）与 ef536a3（文件读不了的横幅自带「重新读取」；测试改用 rc.3 的 too-large 错误码）修掉，补了 R-04 的改后截图；两次提交门禁全过（564 用例），基线 250/21/2。评审第 2 轮 APPROVED，无阻断。非阻断 N-01：knip.jsonc 的 ignoreDependencies 加了 react-dom（模块表包，与 react 同规则），按 DEVELOPMENT.md §10 告知用户。最终走查已拿到桌面时段。"
+    },
+    {
+      "at": "2026-10-29T06:39:21.706Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "m8-ui-audit-resume（wf_72dc4e25196127e4）完成，报告 .agents/tasks/ui-audit/report.md。盘点 20 个界面、47 条问题，每条都有结果（findings.md）：39 条已改，F-18 部分改，7 条不改各有理由，V-01 按 question-18 A 暂缓到 split 之后；改前改后截图齐全；修复两轮、评审两轮，评审第 2 轮 APPROVED；最终走查 20 个界面、71 张截图，发现并修掉一处回归 W-01（20ed994，关闭详情后焦点回到图上节点）；控制台与 DSH 日志没有本包的新条目，模型默认值未变。",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "20ed994"
+        },
+        {
+          "kind": "test",
+          "ref": "npm run build, npm run preflight, npm test on 20ed994: 564 passing, verbatim 443/0, ESLint 250 / knip 21 / jscpd 2, gitleaks clean",
+          "exit": 0
+        },
+        {
+          "kind": "check",
+          "ref": "code review pass 2 APPROVED (.agents/tasks/ui-audit/review.json)",
+          "exit": 0
+        },
+        {
+          "kind": "check",
+          "ref": "final desktop walkthrough of 20 surfaces, 71 screenshots, no new console or DSH log entries from the bundle (.agents/tasks/ui-audit/report.md)",
+          "exit": 0
+        }
+      ]
     }
   ]
 }
