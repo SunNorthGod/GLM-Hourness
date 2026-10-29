@@ -210,6 +210,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "第 8 步 54cec72：面板标题列出全部未关闭的目标，CHARTER 0.6 按两个目标分组，README 与 ORCHESTRATION §2.10 随之改写；npm test 625/0，基线不变；graph-step8.json 里 8 条引擎请求在 main 图的副本上空跑全部通过，合入后由编排方执行（含 question-27 B 的目标验收）。第 0–8 步全部完成，整枝独立评审进行中。"
+    },
+    {
+      "at": "2026-10-29T11:49:28.123Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "整枝独立评审第 1 轮 APPROVED：HIGH 0、MEDIUM 0、LOW 3（.agents/tasks/split/branch-review.md）；graph-step8.json 空跑仍能全部应用（split 节点的 rev 已变，执行时按当前 rev）。分支落后 main 30 个提交（含 m3-base 的引擎改动），rebase 时 6 个文件有重叠。合入步骤申请桌面时段约 60 分钟：关桌面版、合入、主检出跑门禁、把 desktop 与 glmsandbox 两个 profile 切成 dsh-glm-zcode 与 dsh-hourness、构建、两轮 L4 重启。按 risk-shared-desktop 先问用户。"
     }
   ]
 }
