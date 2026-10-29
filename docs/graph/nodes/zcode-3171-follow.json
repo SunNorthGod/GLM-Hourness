@@ -41,6 +41,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "差异清单与实施计划已写（.agents/tasks/zcode-3171/diff.md、plan.md）：通道侧唯一的值改动是 ZCODE_APP_VERSION 3.16.3→3.17.1，签名、路由配置、设备号、请求体与工具 schema 逐字节一致；要改的是一组逐字提示词文本与门禁来源。diff §8 的三处由编排方按人的原话「你就彻底都换成新版zcode，工程环境声明那个照旧」定（agent 定，可推翻）：D-1 新归因头 x-zcode-session-features 照 3.17.1 计算并发送（规划者原建议不发）；D-2 coding-plan 照 3.17.1 加 Dynamic Behavior 一节（规划者原建议不加，留给消融；改为消融以 ZCode 原样为基线）；D-3 保真的几处都跟，「Command output … not reliably to the user」一句在 DSH 上不成立，不加并记为已知差异。实现步在 wf_e48380fb20a69493 中途因 ERR_SSL_BAD_DECRYPT 失败，工作树干净、没有提交；改派 zcode-3171-implement（wf_980486f766d1d433）按 plan.md 做完、评审、探针、真实请求、桌面版 L4、合入。"
+    },
+    {
+      "at": "2026-10-29T20:00:25.906Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "zcode-3171-implement（wf_980486f766d1d433）开工：工作树 zcode-3171 快进到 main 9904f71，干净，构建通过。"
     }
   ]
 }

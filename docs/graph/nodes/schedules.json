@@ -89,6 +89,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "循环板设计 0.1 第 1 轮评审（schedules-design-review-r1，wf_34728b75c6a10867）：CHANGES_REQUESTED，HIGH 4、MEDIUM 4、不挡路 10。HIGH 四条都是和今晚改过的兄弟设计接缝没对上：F1 M7 0.3 自带默认条目经 contribute 交给循环板，不能写死；F2 M6 0.3 的四项默认条目同理；F3 循环板页面有新建、改、删按钮，违反面板只看（d-ui-look-not-operate）；F4 聊天里加条目仍用选项式待决，要改成 propose_to_human。MEDIUM：高峰结束时没唤醒闲着的主 Agent、不做档没读规则服务的会话例外、dsh-schedule 的 update 解码、事件去抖时长与验收不符。派出单步 schedules-design-v02-write（wf_85cf5bf9976bb23e）写 0.2 与一页人话。"
+    },
+    {
+      "at": "2026-10-29T20:00:25.724Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "schedules-design-v02-write（wf_85cf5bf9976bb23e）在改稿之前因 TLS 错误失败，design.md 仍是 0.1。改派 schedules-design-v02-write-retry（wf_0010f316077e9ab8），并要求分节保存，免得中途失败丢掉整稿。"
     }
   ]
 }
