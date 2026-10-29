@@ -40,6 +40,12 @@
       "reason": "派出 m5-lessons-design（wf_f690c481cb302c2e）：与 M5 一起设计",
       "from": "approved",
       "to": "doing"
+    },
+    {
+      "at": "2026-10-29T14:19:38.584Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M5 经验板设计评审第 1 轮（.agents/tasks/m5/design-review.md）：CHANGES_REQUESTED，挡路 2 条（MEDIUM），不挡路 11 条。R1-01：looksSecret 把 32 位以上的 hex 或 base64 串都当密钥，普通的斜杠路径也会被拦；R1-02：propose 对「被拒」与「服务故障」返回同一种 error，M7 的退路会把被拒的候选（可能含密钥）原样写进图上的批注。设计循环继续。"
     }
   ]
 }
