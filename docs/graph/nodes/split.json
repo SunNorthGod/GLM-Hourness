@@ -216,6 +216,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "整枝独立评审第 1 轮 APPROVED：HIGH 0、MEDIUM 0、LOW 3（.agents/tasks/split/branch-review.md）；graph-step8.json 空跑仍能全部应用（split 节点的 rev 已变，执行时按当前 rev）。分支落后 main 30 个提交（含 m3-base 的引擎改动），rebase 时 6 个文件有重叠。合入步骤申请桌面时段约 60 分钟：关桌面版、合入、主检出跑门禁、把 desktop 与 glmsandbox 两个 profile 切成 dsh-glm-zcode 与 dsh-hourness、构建、两轮 L4 重启。按 risk-shared-desktop 先问用户。"
+    },
+    {
+      "at": "2026-10-29T12:36:00.395Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "合入时段放行（用户：「dsh我现在不用，你以后直接用就行了」）。Kiro 在 2026-10-29 晚间崩溃，用户重装后重开；运行没有丢：split-implement 的合入步骤停在等放行，rules-design、plain-ui-and-onboarding-design、m7-design 三条被重启打断，编排方已续跑。合入后编排方按当前修订号执行 graph-step8.json。"
     }
   ]
 }
