@@ -90,7 +90,7 @@ dist/          不入库：tsc 产物
 16. 2026-10-27 之前创建的合成 notice 没有 `id` 与 `role`；同一步里有两条这样的 notice 待处理时，DSH inbox 会抛「already pending」。已修（`createUserNotice`）。
 17. 原生通道的图片：已修（2026-10-28，`DESIGN.md` §4.5a）。GLM-5.3-Flash 收到 Anthropic base64 图片块（用户消息与 `tool_result` 内）；GLM-5.3 改为只声明文本，DSH 在适配器之前把图片换成文字占位，`read_image` 拒读。L3 探针与一次真网请求验证。GLM 端点的请求级图片上限未知，本通道不发卸载信号（`DESIGN.md` §9）。
 18. 2026-10-28 之前原生通道的编码器按 `toolCalls` 字段读助手的工具调用，rc.3 用 `tool-call` 内容块，工具调用会被全部丢弃，任何多轮工具会话都会被上游拒绝。已修（`DESIGN.md` §4.5）；`glmsandbox` headless 的标定经原生通道跑通 14 次多轮工具会话（`ORCHESTRATION.md` §10.5）；桌面版真实会话：2026-10-28 L4（GLM-5.3 多轮工具调用）与 2026-10-29 批次 L4（GLM-5.3-Flash，并行 Glob 与 Read、Grep、委派子会话）都正常。
-19. 行健康只保存在主机进程内存里，桌面版重启后清空，历史状态查不到；设置页把 `/glm-status` 的整段文本（含 Markdown 表）原样显示，表格的界面呈现随 M8（`DESIGN.md` §2.5）。
+19. 行健康只保存在主机进程内存里，桌面版重启后清空，历史状态查不到；输入框下的 GLM 按钮把 `/glm-status` 的表按行列出，对话里的命令卡片仍原样显示 Markdown，卡片视图随 M8（`DESIGN.md` §2.5）。
 20. 依赖安装：`pnpm add`、`pnpm update` 要带 `--store-dir .pnpm-store`（`node_modules` 链接自仓库内的 store）；`pnpm install --frozen-lockfile` 失败，根 `package.json` 的 `peerDependencies` 不在锁文件里，M1.9 之前即如此（`DEVELOPMENT.md` §11）。检查器基线里的存量告警（多为测试里多余的类型断言与无 `await` 的 async 回调）尚未清理，2026-10-29 为 ESLint 250 条压制、knip 21 条、jscpd 2 处，按棘轮只减不增（`DEVELOPMENT.md` §10，`ORCHESTRATION.md` §7.7）。
 21. 权限预设 `workspace-write` 下，pwsh 经 Windows ACL 沙盒运行，`node --test` 派生测试子进程报 `spawn EPERM`，模型确认不了测试结果，会转而申请沙盒升级（`FACTS.md` §3）。用户桌面版的默认预设是 `danger-full-access`，目前不受影响；标定运行器按桌面版预设传 `DSH_PERMISSION_MODE`。
 22. 标定起步的两个任务对两档模型都没有区分度（基线 12/12 完成），只能比积分、耗时与返工；更难的任务随 M3、M7 扩充（`ORCHESTRATION.md` §10.5.2）。

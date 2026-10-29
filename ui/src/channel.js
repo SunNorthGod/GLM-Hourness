@@ -10,11 +10,18 @@
  *    (`/glm-status`, `/glm-login`, `/glm-logout`); this reuses the Host
  *    command handlers instead of declaring a custom Remote service.
  *
+ * Every command run is recorded in the receiving session's log and shown as
+ * a command card, so the pill runs one only on a click, except once per app
+ * run: the first open while no status is known reads it. The last status
+ * read is shared by every pill (one per composer) with the time it was read.
+ *
  * The static bundle's Client half receives only `require` (the module table),
  * not the dynamic-package `styles`/`host` builtins; styles render as a React
  * element (docs/DEVELOPMENT.md §5).
  */
 import * as React from 'react'
+import { createPortal } from 'react-dom'
+import { useAnchoredPosition, useDismissOnOutsidePointer } from '@deepseek-ai/dsh-client-ui-primitives'
 
 /** Register the settings section and the composer pill; `ctx` carries slots and remote.commands. */
 export function installChannel(ctx) {
@@ -24,6 +31,19 @@ export function installChannel(ctx) {
 
   // Bound in apply(); components read through this closure.
   let runCommand = null
+
+  // The last /glm-status read in this app run, shared by every pill: { status, at } or null.
+  let statusRead = null
+  const statusListeners = new Set()
+  const subscribeStatus = listener => {
+    statusListeners.add(listener)
+    return () => { statusListeners.delete(listener) }
+  }
+  const readStatus = () => statusRead
+  const keepStatus = status => {
+    statusRead = { status, at: Date.now() }
+    for (const listener of statusListeners) listener()
+  }
 
   /**
    * Render guard: a slot entry that throws during render is retired from its
@@ -55,14 +75,17 @@ export function installChannel(ctx) {
   // Client half gets only `require`, not the dynamic-package `styles`
   // builtin, and React removes the <style> on unmount. Pill and dialog
   // skins mirror ui-chat's StatsPills / stat-dialog modules (same tokens).
+  // Accent and danger use the theme's state tokens, like the graph panel.
   const CSS = [
-    '.glmh-anchor{display:inline-flex;min-width:0;font-size:calc(var(--dsh-content-font-size-secondary,13px) - 1px);line-height:calc(20px + var(--dsh-content-font-delta-secondary,0px))}',
+    // The anchor is the dock's flex item; it keeps the three letters whole while DSH's stats shrink beside it.
+    '.glmh-anchor{display:inline-flex;flex:none;font-size:calc(var(--dsh-content-font-size-secondary,13px) - 1px);line-height:calc(20px + var(--dsh-content-font-delta-secondary,0px))}',
     '.glmh-pill{display:inline-flex;align-items:center;gap:6px;box-sizing:border-box;max-width:100%;padding:1px 8px;border:none;border-radius:var(--dsw-radius-sm,6px);background:transparent;color:var(--dsw-alias-label-tertiary,#8a8a8a);font:inherit;line-height:inherit;white-space:nowrap;cursor:pointer}',
     '.glmh-pill:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(255,255,255,.06));color:var(--dsw-alias-label-secondary,#b5b5b5)}',
     '.glmh-pill[aria-expanded="true"]{background:var(--dsw-alias-interactive-bg-hover,rgba(255,255,255,.06));color:var(--dsw-alias-label-secondary,#b5b5b5)}',
     '.glmh-pill svg{width:14px;height:14px;flex:none}',
-    '.glmh-pill-label{min-width:0;overflow:hidden;text-overflow:ellipsis}',
+    '.glmh-pill-label{flex:none;overflow:visible}',
     '.glmh-dialog{position:fixed;z-index:1100;box-sizing:border-box;width:max-content;min-width:min(340px,calc(100vw - 24px));max-width:min(460px,calc(100vw - 24px));padding:16px;border:0;border-radius:var(--dsw-radius-lg,12px);background:var(--dsw-specific-menu,#232325);backdrop-filter:var(--dsw-menu-backdrop-filter,blur(24px));box-shadow:var(--dsw-elevation-prominent,0 12px 32px rgba(0,0,0,.45));font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary,#b5b5b5);cursor:default}',
+    '.glmh-dialog:focus{outline:none}',
     '.glmh-dialog-title{display:flex;justify-content:space-between;gap:16px;margin-bottom:8px;color:var(--dsw-alias-label-primary,#e8e8e8);font-weight:500}',
     '.glmh-dialog-titlelabel{display:inline-flex;align-items:center;gap:6px;min-width:0}',
     '.glmh-dialog-titlelabel svg{width:14px;height:14px;flex:none}',
@@ -75,13 +98,22 @@ export function installChannel(ctx) {
     '.glmh-btn{height:24px;padding:0 8px;border-radius:var(--dsw-radius-sm,6px);border:none;background:transparent;color:var(--dsw-alias-label-secondary,#b5b5b5);font:inherit;font-size:12px;line-height:1;cursor:pointer}',
     '.glmh-btn:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(255,255,255,.06));color:var(--dsw-alias-label-primary,#e8e8e8)}',
     '.glmh-btn:disabled{opacity:.45;cursor:default}',
-    '.glmh-btn-primary{color:var(--dsw-alias-accent,var(--dsw-alias-color-primary,#2d8fd6))}',
-    '.glmh-btn-primary:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(255,255,255,.06));color:var(--dsw-alias-accent,var(--dsw-alias-color-primary,#2d8fd6))}',
-    '.glmh-btn-danger{color:var(--dsw-alias-danger,#e05a5a)}',
-    '.glmh-btn-danger:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(255,255,255,.06));color:var(--dsw-alias-danger,#e05a5a)}',
-    '.glmh-out{max-height:180px;overflow:auto;margin:0;padding-top:8px;border-top:0.5px solid var(--dsw-alias-border-l2,rgba(255,255,255,.08));font-family:var(--dsw-font-mono,ui-monospace,monospace);font-size:11px;line-height:1.6;white-space:pre-wrap;word-break:break-all;color:var(--dsw-alias-label-tertiary,#8a8a8a)}',
-    '.glmh-err{color:var(--dsw-alias-danger,#e05a5a)}',
-    '.glmh-link{color:var(--dsw-alias-accent,var(--dsw-alias-color-primary,#2d8fd6));text-decoration:underline}',
+    '.glmh-btn-primary,.glmh-btn-primary:hover{color:var(--dsw-alias-state-business-primary,#2f81f7)}',
+    '.glmh-btn-danger,.glmh-btn-danger:hover{color:var(--dsw-alias-state-error-primary,#f85149)}',
+    '.glmh-note{margin-top:8px;color:var(--dsw-alias-label-secondary,#b5b5b5)}',
+    '.glmh-out{max-height:180px;overflow:auto;margin:10px 0 0;padding-top:8px;border-top:0.5px solid var(--dsw-alias-border-l2,rgba(255,255,255,.08));white-space:pre-wrap;overflow-wrap:anywhere;color:var(--dsw-alias-label-tertiary,#8a8a8a)}',
+    '.glmh-err{color:var(--dsw-alias-state-error-primary,#f85149)}',
+    '.glmh-link{color:var(--dsw-alias-state-business-primary,#2f81f7);text-decoration:underline;word-break:break-all}',
+    /* Row health of /glm-status: one line per row, its reason under it */
+    '.glmh-health{max-height:220px;overflow:auto;margin-top:10px;padding-top:8px;border-top:0.5px solid var(--dsw-alias-border-l2,rgba(255,255,255,.08))}',
+    '.glmh-health-title{margin-bottom:6px;color:var(--dsw-alias-label-primary,#e8e8e8);font-weight:500}',
+    '.glmh-health-row{display:flex;justify-content:space-between;gap:16px;padding-top:4px}',
+    '.glmh-health-name{color:var(--dsw-alias-label-secondary,#b5b5b5)}',
+    '.glmh-health-state{flex:none;color:var(--dsw-alias-label-tertiary,#8a8a8a)}',
+    '.glmh-health-state.ok{color:var(--dsw-alias-state-success-primary,#3fb950)}',
+    '.glmh-health-state.part{color:var(--dsw-alias-state-warn-primary,#d29922)}',
+    '.glmh-health-state.off{color:var(--dsw-alias-state-error-primary,#f85149)}',
+    '.glmh-health-reason{color:var(--dsw-alias-label-tertiary,#8a8a8a);overflow-wrap:anywhere}',
     /* Settings page */
     '.glmh-panel{display:flex;flex-direction:column;gap:12px;max-width:560px}',
     '.glmh-title{font-size:var(--dsw-alias-font-size-title-md,18px);margin:0}',
@@ -119,156 +151,164 @@ export function installChannel(ctx) {
       h('circle', { cx: 8, cy: 8, r: 1.6, fill: 'currentColor' }))
   }
 
-  /** Parse the `/glm-status` handler text (Chinese) into display fields. */
+  /** Parse the credential line of `/glm-status` (src/glm-llm/login-row.ts) into display fields, or null when it does not read. */
   function parseStatus(text) {
     const logged = /已登录（套餐 ([\w-]+)，Key ([\w…]+)(?:，账号 ([\w-]+))?(?:，JWT 已用 ([\d.]+) 小时)?）/.exec(text)
     if (logged !== null) return { logged: true, plan: logged[1], key: logged[2], userId: logged[3], jwt: logged[4] }
-    if (/未登录/.test(text)) return { logged: false, plan: null }
+    const out = /未登录（套餐 ([\w-]+)(?:，登录不完整：([^）]+))?）/.exec(text)
+    if (out !== null) return { logged: false, plan: out[1], incomplete: out[2] }
     return null
   }
 
-  /** Composer-dock pill: a trigger opening the portaled channel dialog. */
+  /** What a /glm-status reply says about the credential; `unknown` names why it cannot be told. */
+  function statusOf(reply) {
+    if (reply.missing) return { unknown: 'glm-login 行没有加载' }
+    if (!reply.ok) return { unknown: '查询失败，见下方输出' }
+    return parseStatus(reply.text) ?? { unknown: '返回内容读不懂' }
+  }
+
+  const STATE_TONES = { 生效: 'ok', 部分生效: 'part', 未生效: 'off' }
+
+  /** The row health table of `/glm-status` (src/shared/health.ts renderHealthTable), or null when the text has none. */
+  function parseHealth(text) {
+    const rows = []
+    for (const line of String(text).split('\n')) {
+      if (!line.startsWith('| ') || line.startsWith('| ---') || line.startsWith('| 行 |')) continue
+      const cells = line.slice(1, -1).split(/(?<!\\)\|/).map(cell => cell.trim().replaceAll('\\|', '|'))
+      if (cells.length === 3) rows.push({ row: cells[0], state: cells[1], reason: cells[2] })
+    }
+    return rows.length === 0 ? null : rows
+  }
+
+  /** The health rows as a list: name and state on a line, the reason under it. */
+  function HealthList(props) {
+    return h('div', { className: 'glmh-health' },
+      h('div', { className: 'glmh-health-title' }, '各行健康（本会话）'),
+      props.rows.map(entry => h(React.Fragment, { key: entry.row },
+        h('div', { className: 'glmh-health-row' },
+          h('span', { className: 'glmh-health-name' }, entry.row),
+          h('span', { className: `glmh-health-state ${STATE_TONES[entry.state] ?? ''}` }, entry.state)),
+        h('div', { className: 'glmh-health-reason' }, entry.reason))))
+  }
+
+  /** HH:MM of a time in milliseconds. */
+  function clockText(at) {
+    const date = new Date(at)
+    return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+  }
+
+  /** Composer-dock pill: a trigger opening the channel dialog, portaled to the document body and placed above the trigger. */
   function ChannelPill(props) {
     const [open, setOpen] = React.useState(false)
-    const [pos, setPos] = React.useState(null)
     const [busy, setBusy] = React.useState(false)
     const [output, setOutput] = React.useState(null)
-    const [failed, setFailed] = React.useState(false)
-    const [status, setStatus] = React.useState(null)
-    const queried = React.useRef(false)
+    const [note, setNote] = React.useState(null)
+    const [confirmLogout, setConfirmLogout] = React.useState(false)
+    const read = React.useSyncExternalStore(subscribeStatus, readStatus)
     const anchorRef = React.useRef(null)
+    const triggerRef = React.useRef(null)
     const panelRef = React.useRef(null)
     const sessionId = props.sessionId
+    // The measured dialog is clamped into the viewport (the shipped stat dialogs' placement and outside-close).
+    const pos = useAnchoredPosition({ open, anchorRef, panelRef, side: 'top', gap: 8, margin: 12 })
+    useDismissOnOutsidePointer(anchorRef, open, setOpen, panelRef)
 
-    const place = () => {
-      const anchor = anchorRef.current
-      if (anchor === null) return
-      const rect = anchor.getBoundingClientRect()
-      const width = 320
-      const left = Math.min(Math.max(12, rect.left), Math.max(12, window.innerWidth - width - 12))
-      // The dialog grows upward from just above the trigger.
-      const bottom = Math.min(Math.max(12, window.innerHeight - rect.top + 8), window.innerHeight - 12)
-      setPos({ left, bottom })
-    }
-
-    const toggle = () => {
-      if (open) { setOpen(false); return }
-      place()
-      setOpen(true)
-    }
-
-    // Outside pointerdown / Escape closes, matching the shipped stat dialogs.
+    // Escape closes and gives focus back to the trigger.
     React.useEffect(() => {
       if (!open) return undefined
-      const onKeyDown = (event) => { if (event.key === 'Escape') setOpen(false) }
-      const onPointerDown = (event) => {
-        if (event.target instanceof Node
-          && (anchorRef.current === null || !anchorRef.current.contains(event.target))
-          && (panelRef.current === null || !panelRef.current.contains(event.target))) {
-          setOpen(false)
-        }
+      const onKeyDown = event => {
+        if (event.key !== 'Escape') return
+        setOpen(false)
+        if (triggerRef.current !== null) triggerRef.current.focus()
       }
       document.addEventListener('keydown', onKeyDown)
-      document.addEventListener('pointerdown', onPointerDown, true)
-      return () => {
-        document.removeEventListener('keydown', onKeyDown)
-        document.removeEventListener('pointerdown', onPointerDown, true)
-      }
+      return () => { document.removeEventListener('keydown', onKeyDown) }
     }, [open])
 
-    // Poll the credential state after a login attempt so the panel updates
-    // itself once the browser authorization completes.
-    const pollRef = React.useRef(null)
-    const stopPoll = () => {
-      if (pollRef.current !== null) { clearInterval(pollRef.current); pollRef.current = null }
-    }
-    React.useEffect(() => () => stopPoll(), [])
-    const pollStatus = () => {
-      stopPoll()
-      let attempts = 0
-      pollRef.current = setInterval(() => {
-        attempts += 1
-        if (runCommand === null) { stopPoll(); return }
-        runCommand(sessionId, '/glm-status').then(
-          text => {
-            const parsed = parseStatus(text)
-            if (parsed !== null) setStatus(parsed)
-            if ((parsed !== null && parsed.logged) || attempts >= 12) stopPoll()
-          },
-          () => { if (attempts >= 12) stopPoll() },
-        )
-      }, 5000)
-    }
+    // Focus moves into the dialog once it is placed (it is hidden while measured).
+    const placed = pos !== null && pos !== undefined
+    React.useEffect(() => {
+      if (open && placed && panelRef.current !== null) panelRef.current.focus()
+    }, [open, placed])
+
+    // 登出 asks once: the first click arms it for a few seconds.
+    React.useEffect(() => {
+      if (!confirmLogout) return undefined
+      const timer = window.setTimeout(() => { setConfirmLogout(false) }, 4000)
+      return () => { window.clearTimeout(timer) }
+    }, [confirmLogout])
 
     const run = line => {
-      if (runCommand === null) { setOutput('命令通道不可用'); setFailed(true); return }
+      if (runCommand === null) { setOutput({ text: '命令通道不可用', failed: true }); return }
       setBusy(true)
       setOutput(null)
-      setFailed(false)
+      setNote(null)
       runCommand(sessionId, line).then(
-        text => {
+        reply => {
           setBusy(false)
-          setOutput(text)
-          const parsed = parseStatus(text)
-          if (parsed !== null) setStatus(parsed)
-          // A login reply carries the authorize URL, not a status line.
-          if (line === '/glm-login' && parsed === null) pollStatus()
+          setOutput({ text: reply.text, failed: !reply.ok })
+          if (line === '/glm-status') keepStatus(statusOf(reply))
+          // A login reply carries the authorize URL; the status is read when the human says the browser is done.
+          if (line === '/glm-login' && reply.ok) setNote('授权完成后点「刷新状态」')
+          if (line === '/glm-logout' && reply.ok) keepStatus({ logged: false, plan: read !== null && read.status.plan ? read.status.plan : null })
         },
-        error => { setBusy(false); setFailed(true); setOutput(String(error && error.message ? error.message : error).slice(0, 240)) },
+        error => { setBusy(false); setOutput({ text: String(error && error.message ? error.message : error).slice(0, 240), failed: true }) },
       )
     }
 
-    // First open reports the credential state once, so the dialog is not empty.
+    // The only automatic run: the first open of this app run, while no pill has read the status yet.
     React.useEffect(() => {
-      if (open && !queried.current) {
-        queried.current = true
-        if (runCommand !== null) {
-          runCommand(sessionId, '/glm-status').then(
-            text => { const parsed = parseStatus(text); if (parsed !== null) setStatus(parsed); setOutput(text) },
-            error => { setFailed(true); setOutput(String(error && error.message ? error.message : error).slice(0, 240)) },
-          )
-        }
-      }
-    }, [open, sessionId])
+      if (open && readStatus() === null) run('/glm-status')
+    }, [open])
 
+    const toggle = () => { setOpen(!open) }
     const detail = (label, value) => [
       h('dt', { key: `d${label}` }, label),
       h('dd', { key: `v${label}` }, value),
     ]
-    const statusText = status === null ? '检查中…' : status.logged ? '已登录' : '未登录'
+    const status = read === null ? null : read.status
+    const stateText = status === null ? (busy ? '检查中…' : '未知') : status.unknown !== undefined ? '未知' : status.logged ? '已登录' : '未登录'
+    const reason = status === null ? undefined : status.unknown ?? (status.incomplete === undefined ? undefined : `登录不完整：${status.incomplete}`)
+    const health = output === null || output.failed ? null : parseHealth(output.text)
 
     const dialog = h('div', {
-      ref: panelRef, className: 'glmh-dialog', role: 'dialog', 'aria-label': 'GLM 通道',
-      style: pos === null ? { visibility: 'hidden' } : { left: pos.left, bottom: pos.bottom },
+      ref: panelRef, className: 'glmh-dialog', role: 'dialog', 'aria-label': 'GLM 通道', tabIndex: -1,
+      style: placed ? pos : { visibility: 'hidden', left: 0, top: 0 },
     },
     h('div', { className: 'glmh-dialog-title' },
       h('span', { className: 'glmh-dialog-titlelabel' }, h(ChannelIcon), 'GLM 通道'),
-      h('span', { className: 'glmh-dialog-titlevalue' }, statusText),
+      h('span', { className: 'glmh-dialog-titlevalue' }, stateText),
     ),
     h('div', { className: 'glmh-rule' }),
     h('dl', { className: 'glmh-details' },
-      ...detail('状态', statusText),
-      ...detail('套餐', status !== null && status.plan ? status.plan : 'coding-plan'),
+      ...detail('状态', stateText),
+      ...(reason === undefined ? [] : detail('原因', reason)),
+      ...detail('套餐', status !== null && status.plan ? status.plan : '—'),
       ...detail('Key', status !== null && status.key ? status.key : '—'),
       ...(status !== null && status.userId ? detail('账号', status.userId) : []),
       ...(status !== null && status.jwt ? detail('JWT', `已用 ${status.jwt} 小时`) : []),
+      ...(read === null ? [] : detail('读取于', clockText(read.at))),
       ...detail('模型', 'GLM-5.3 · GLM-5.3-Flash'),
       ...detail('凭证', '本机加密存储'),
     ),
-    output === null ? null : h(OutputLines, { text: output, failed }),
+    output === null ? null : health !== null ? h(HealthList, { rows: health }) : h(OutputLines, { text: output.text, failed: output.failed }),
+    note === null ? null : h('div', { className: 'glmh-note' }, note),
     h('div', { className: 'glmh-actions' },
       h('button', { type: 'button', className: 'glmh-btn glmh-btn-primary', disabled: busy, onClick: () => run('/glm-login') }, '登录'),
-      h('button', { type: 'button', className: 'glmh-btn', disabled: busy, onClick: () => { queried.current = true; run('/glm-status') } }, '刷新状态'),
-      h('button', { type: 'button', className: 'glmh-btn glmh-btn-danger', disabled: busy, onClick: () => run('/glm-logout') }, '登出'),
+      h('button', { type: 'button', className: 'glmh-btn', disabled: busy, onClick: () => run('/glm-status') }, '刷新状态'),
+      h('button', {
+        type: 'button', className: 'glmh-btn glmh-btn-danger', disabled: busy,
+        onClick: () => { if (confirmLogout) { setConfirmLogout(false); run('/glm-logout') } else setConfirmLogout(true) },
+      }, confirmLogout ? '再点一次确认登出' : '登出'),
     ))
 
     return h('span', { className: 'glmh-anchor', ref: anchorRef },
       h('style', null, CSS),
       h('button', {
-        type: 'button', className: 'glmh-pill', 'aria-haspopup': 'dialog', 'aria-expanded': open ? 'true' : 'false',
+        ref: triggerRef, type: 'button', className: 'glmh-pill', 'aria-haspopup': 'dialog', 'aria-expanded': open ? 'true' : 'false',
         onClick: toggle,
       }, h(ChannelIcon), h('span', { className: 'glmh-pill-label' }, 'GLM')),
-      open ? dialog : null,
+      open ? createPortal(dialog, document.body) : null,
     )
   }
 
@@ -307,11 +347,12 @@ export function installChannel(ctx) {
     )
   }
 
+  /** Run one command line for a session: its text, whether it succeeded, and `missing` when no row registers the command. */
   runCommand = (sessionId, line) => ctx.remote.commands.execute(sessionId, line, []).then(result => {
-    if (!result.ok) throw new Error(`command failed: ${result.error.code}: ${result.error.message}`)
-    if (result.value === undefined) return `未知或无法解析的命令：${line}`
+    if (!result.ok) throw new Error(`命令没有执行：${result.error.message}`)
+    if (result.value === undefined) return { ok: false, missing: true, text: `${line} 不可用：glm-login 行没有加载` }
     const outcome = result.value.result
-    return outcome.text ?? (outcome.kind === 'success' ? '完成。' : '执行失败。')
+    return { ok: outcome.kind === 'success', missing: false, text: outcome.text ?? (outcome.kind === 'success' ? '完成。' : '执行失败。') }
   })
   ctx.slots.inject('settings.section', () => ctx.slots.register({
     name: 'settings.section', id: 'glm-hourness-ui', order: 60, label: 'GLM Hourness',

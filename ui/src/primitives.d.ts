@@ -6,7 +6,7 @@
  * what this bundle passes.
  */
 declare module '@deepseek-ai/dsh-client-ui-primitives' {
-  import type { ButtonHTMLAttributes, ComponentType, InputHTMLAttributes, ReactElement, ReactNode, RefAttributes } from 'react'
+  import type { ButtonHTMLAttributes, ComponentType, InputHTMLAttributes, ReactElement, ReactNode, RefAttributes, RefObject } from 'react'
 
   export interface IconProps {
     readonly size?: number
@@ -45,6 +45,11 @@ declare module '@deepseek-ai/dsh-client-ui-primitives' {
     readonly portal?: boolean
     readonly anchor: ReactElement
   }): ReactElement
+
+  /** Viewport-clamped placement of a panel measured against its anchor (ui-chat useStatDialog); null until measured. ui/src/channel.js uses it. */
+  export function useAnchoredPosition(options: { readonly open: boolean, readonly anchorRef: RefObject<Element | null>, readonly panelRef: RefObject<HTMLElement | null>, readonly side?: 'top' | 'bottom', readonly align?: 'start' | 'end', readonly gap: number, readonly margin: number }): { readonly left: number, readonly top: number } | null
+  /** Close on a pointerdown outside the root and the panel (ui-chat useStatDialog). ui/src/channel.js uses it. */
+  export function useDismissOnOutsidePointer(rootRef: RefObject<Element | null>, open: boolean, setOpen: (open: boolean) => void, panelRef?: RefObject<Element | null>): void
 
   export const IconGoalOutlineRegular: Icon
   export const IconCheckCircleFillRegular: Icon

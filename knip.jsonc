@@ -19,7 +19,8 @@
   ],
   "project": ["src/**/*.ts", "tests/**/*.{ts,mjs}", "scripts/**/*.{mjs,cjs,ts}", "ui/index.js", "ui/src/**/*.{js,ts,tsx}"],
   "ignore": ["ui/client.js"],
-  // The client half gets React and ui-primitives from the DSH client module
-  // table (the factory's require), not from node_modules.
-  "ignoreDependencies": ["react", "@deepseek-ai/dsh-client-ui-primitives"]
+  // The client half gets React, react-dom (the pill dialog's portal) and
+  // ui-primitives from the DSH client module table (the factory's require,
+  // scripts/ui-modules.mjs), not from node_modules.
+  "ignoreDependencies": ["react", "react-dom", "@deepseek-ai/dsh-client-ui-primitives"]
 }
