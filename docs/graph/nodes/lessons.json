@@ -52,6 +52,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M5 设计 0.2 写完，第 1 轮 13 条全部关闭。评审第 2 轮（.agents/tasks/m5/design-review.md）：CHANGES_REQUESTED，挡路 2 条（MEDIUM），不挡路 3 条。R2-01：harness 给每条候选加的证据「commit:<sha>」不是纯 hex，被 looksSecret 当密钥拦下；R2-02：按 §3.5 拼出的注入节约 2,220 字符，超过上限。挡路条数 2 → 2 没降，按 question-11 自动加第 3 轮。"
+    },
+    {
+      "at": "2026-10-29T15:27:00.010Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M5 经验板设计 0.3 评审第 3 轮（.agents/tasks/m5/design-review.md）：CHANGES_REQUESTED，挡路 1 条（MEDIUM），不挡路 4 条；第 2 轮 5 条全部关闭。各轮挡路条数 2、2、1。剩下的 R3-01：§12 两道待人定（D1、D2）没按用户同日新加的两条规矩写（先交代前因后果、不用验收这类没解释的词），D2 的取决于 76 个码点、A 的代价 80 个码点，超过引擎的选项卡上限（取决于与得到、代价各 60）。0.3 存盘在两条规矩之间，其余部分已过。设计循环到 question-11 的三轮上限暂停，等人定再给一轮还是结束后由编排方重写这两道题。"
     }
   ]
 }
