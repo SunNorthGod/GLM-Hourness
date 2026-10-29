@@ -1,7 +1,8 @@
 /**
- * ZCode 3.16.3 local tool-search texts, mirrored from the release bundle
- * (resources/glm/zcode.cjs). Verbatim mirror file: every string and
- * template-literal chunk below must occur in a ZCode reference, which
+ * ZCode 3.17.1 local tool-search texts, mirrored from the release bundle
+ * (reference/zcode-3.17.1/zcode.cjs); bundle names in the comments are the
+ * 3.16.3 ones where the text did not change. Verbatim mirror file: every
+ * string and template-literal chunk below must occur in the reference, which
  * scripts/check-verbatim.mjs enforces chunk by chunk. Templates keep the
  * bundle's interpolation points and joins.
  *
@@ -114,6 +115,16 @@ const LOCAL_ADDED_TOOLS_NOTICE = `The following deferred tools are available via
 const MAX_REMOVED_NAME_LINES = 30
 const AMBIENT_CONTEXT_NOTICE
   = 'This is ambient context \u2014 do not narrate it to the user unless they ask or it is directly relevant to their request.'
+/** Where re-added names come from (3.17.1 bundle `__a` for MCP names, `y_a` for the session's own). */
+const MCP_RECONNECTED = '(MCP server reconnected \u2014 names announced earlier in this conversation)'
+const SESSION_ANNOUNCED_EARLIER = 'in this session (announced earlier in this conversation)'
+/** The clause every removal paragraph ends with (3.17.1 `G_t` local `c`). */
+const DO_NOT_SEARCH = `Do not search for them \u2014 ${LOCAL_TOOL_SEARCH_NAME} will return no match`
+
+/** An MCP tool name (bundle `eZ`). */
+function isMcpName(name: string): boolean {
+  return name.startsWith('mcp__')
+}
 
 /** Announcement delta persisted with the notice (bundle `toolSearchAnnouncement` metadata). */
 export interface ToolSearchAnnouncement {
@@ -122,11 +133,11 @@ export interface ToolSearchAnnouncement {
   readonly readdedNames: readonly string[]
 }
 
-/** Group MCP names per server for the model-visible text (bundle `Mgo`). */
+/** Group MCP names per server for the model-visible text (bundle `oIn`). */
 export function summarizeToolNames(names: readonly string[]): string {
   const counts = new Map<string, number>()
   for (const name of names) {
-    const group = name.startsWith('mcp__') ? `${name.split('__', 2).join('__')}__*` : name
+    const group = isMcpName(name) ? `${name.split('__', 2).join('__')}__*` : name
     counts.set(group, (counts.get(group) ?? 0) + 1)
   }
   return [...counts.entries()]
@@ -135,27 +146,54 @@ export function summarizeToolNames(names: readonly string[]): string {
     .join(', ')
 }
 
-/** Local-mode announcement body (bundle `Ggt` with mode "local"). */
-export function renderToolSearchAnnouncement({ addedNames, removedNames, readdedNames }: ToolSearchAnnouncement): string {
+/**
+ * Local-mode announcement body (3.17.1 `G_t` with mode "local"). Re-added
+ * names split into MCP names (their server reconnected) and the session's
+ * own; removed names into those still registered but hidden from this
+ * request (`hiddenNames`, 3.17.1 `toolSearchHiddenNames`), MCP names whose
+ * server disconnected, and the session's own. Paragraphs join with one
+ * newline.
+ */
+export function renderToolSearchAnnouncement({ addedNames, removedNames, readdedNames }: ToolSearchAnnouncement, hiddenNames: readonly string[] = []): string {
   const readded = new Set(readdedNames)
   const listedNames = addedNames.filter(name => !readded.has(name))
   const paragraphs: string[] = []
   if (listedNames.length) paragraphs.push(`${LOCAL_ADDED_TOOLS_NOTICE}
 ${listedNames.join(`
 `)}`)
-  if (readdedNames.length) paragraphs.push(`${readdedNames.length} deferred tool${readdedNames.length === 1 ? ' is' : 's are'} available again (names announced earlier in this conversation): ${summarizeToolNames(readdedNames)}. Load via ${LOCAL_TOOL_SEARCH_NAME} as before.`)
+  const availableAgain = (count: number, origin: string, names: string): string => `${count} deferred tool${count === 1 ? ' is' : 's are'} available again ${origin}: ${names}. Load via ${LOCAL_TOOL_SEARCH_NAME} as before.`
+  const mcpReadded = readdedNames.filter(isMcpName)
+  const sessionReadded = readdedNames.filter(name => !isMcpName(name))
+  if (mcpReadded.length) paragraphs.push(availableAgain(mcpReadded.length, MCP_RECONNECTED, summarizeToolNames(mcpReadded)))
+  if (sessionReadded.length) paragraphs.push(availableAgain(sessionReadded.length, SESSION_ANNOUNCED_EARLIER, sessionReadded.join(', ')))
   if (removedNames.length) {
-    paragraphs.push(
-      removedNames.length > MAX_REMOVED_NAME_LINES
-        ? `${removedNames.length} deferred tools are no longer available: ${summarizeToolNames(removedNames)}. Do not search for them \u2014 ${LOCAL_TOOL_SEARCH_NAME} will return no match.`
-        : `The following deferred tools are no longer available. Do not search for them \u2014 ${LOCAL_TOOL_SEARCH_NAME} will return no match:
-${removedNames.join(`
-`)}`,
-      AMBIENT_CONTEXT_NOTICE,
-    )
+    const hidden = new Set(hiddenNames)
+    const hiddenRemoved = removedNames.filter(name => hidden.has(name))
+    const gone = removedNames.filter(name => !hidden.has(name))
+    const mcpGone = gone.filter(isMcpName)
+    const sessionGone = gone.filter(name => !isMcpName(name))
+    if (mcpGone.length) {
+      paragraphs.push(mcpGone.length > MAX_REMOVED_NAME_LINES
+        ? `${mcpGone.length} deferred tools are no longer available (MCP server disconnected): ${summarizeToolNames(mcpGone)}. ${DO_NOT_SEARCH}.`
+        : `The following deferred tools are no longer available (their MCP server disconnected). ${DO_NOT_SEARCH}:
+${mcpGone.join(`
+`)}`)
+    }
+    if (sessionGone.length) {
+      paragraphs.push(`The following deferred tools are no longer available in this session. ${DO_NOT_SEARCH}:
+${sessionGone.join(`
+`)}`)
+    }
+    if (hiddenRemoved.length) {
+      paragraphs.push(hiddenRemoved.length > MAX_REMOVED_NAME_LINES
+        ? `${hiddenRemoved.length} deferred tools are no longer available: ${summarizeToolNames(hiddenRemoved)}. ${DO_NOT_SEARCH}.`
+        : `The following deferred tools are no longer available. ${DO_NOT_SEARCH}:
+${hiddenRemoved.join(`
+`)}`)
+    }
+    paragraphs.push(AMBIENT_CONTEXT_NOTICE)
   }
   return paragraphs.join(`
-
 `)
 }
 

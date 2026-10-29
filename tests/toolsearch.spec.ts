@@ -98,22 +98,24 @@ test('removed and re-added names follow the persisted deltas', () => {
   const shrunk = buildToolExposure([tool('Read'), tool('web_fetch'), ...CONTROLS])
   const removal = announcementDelta([first], shrunk)!
   assert.deepEqual(removal, { addedNames: [], removedNames: ['web_search'], readdedNames: [] })
+  // 3.17.1: a name the registry no longer holds left the session; paragraphs join with one newline.
   assert.equal(renderToolSearchAnnouncement(removal), [
-    'The following deferred tools are no longer available. Do not search for them \u2014 LocalToolSearch will return no match:',
+    'The following deferred tools are no longer available in this session. Do not search for them \u2014 LocalToolSearch will return no match:',
     'web_search',
-    '',
     'This is ambient context \u2014 do not narrate it to the user unless they ask or it is directly relevant to their request.',
   ].join('\n'))
   const back = announcementDelta([first, removal], full)!
   assert.deepEqual(back, { addedNames: ['web_search'], removedNames: [], readdedNames: ['web_search'] })
-  assert.equal(renderToolSearchAnnouncement(back), '1 deferred tool is available again (names announced earlier in this conversation): web_search. Load via LocalToolSearch as before.')
+  assert.equal(renderToolSearchAnnouncement(back), '1 deferred tool is available again in this session (announced earlier in this conversation): web_search. Load via LocalToolSearch as before.')
 })
 
 test('large removals summarize MCP names per server', () => {
   const names = Array.from({ length: 31 }, (_, index) => `mcp__srv__t${index}`)
   assert.equal(summarizeToolNames([...names, 'web_fetch']), 'mcp__srv__* (31), web_fetch')
   const text = renderToolSearchAnnouncement({ addedNames: [], removedNames: names, readdedNames: [] })
-  assert.ok(text.startsWith('31 deferred tools are no longer available: mcp__srv__* (31). Do not search for them'))
+  assert.ok(text.startsWith('31 deferred tools are no longer available (MCP server disconnected): mcp__srv__* (31). Do not search for them \u2014 LocalToolSearch will return no match.\n'))
+  const hidden = renderToolSearchAnnouncement({ addedNames: [], removedNames: names, readdedNames: [] }, names)
+  assert.ok(hidden.startsWith('31 deferred tools are no longer available: mcp__srv__* (31). Do not search for them \u2014 LocalToolSearch will return no match.\n'))
 })
 
 test('announcement facts are read back only from this row\'s notices', () => {
@@ -159,7 +161,26 @@ test('loaded definitions count only search results before the latest assistant m
   assert.deepEqual([...loadedDefinitions([searchCall('c1'), { ...result('c1'), isError: true }, { role: 'assistant' }])], [])
 })
 
-test('the LocalToolSearch description is the 3.16.3 local text', () => {
+test('3.17.1 splits re-added and removed names by origin: MCP server, this session, hidden from this request', () => {
+  const ambient = 'This is ambient context \u2014 do not narrate it to the user unless they ask or it is directly relevant to their request.'
+  const readded = renderToolSearchAnnouncement({ addedNames: ['mcp__srv__a', 'mcp__srv__b', 'web_fetch'], removedNames: [], readdedNames: ['mcp__srv__a', 'mcp__srv__b', 'web_fetch'] })
+  assert.equal(readded, [
+    '2 deferred tools are available again (MCP server reconnected \u2014 names announced earlier in this conversation): mcp__srv__* (2). Load via LocalToolSearch as before.',
+    '1 deferred tool is available again in this session (announced earlier in this conversation): web_fetch. Load via LocalToolSearch as before.',
+  ].join('\n'))
+  const removed = renderToolSearchAnnouncement({ addedNames: [], removedNames: ['mcp__srv__a', 'todo_write', 'web_search'], readdedNames: [] }, ['todo_write'])
+  assert.equal(removed, [
+    'The following deferred tools are no longer available (their MCP server disconnected). Do not search for them \u2014 LocalToolSearch will return no match:',
+    'mcp__srv__a',
+    'The following deferred tools are no longer available in this session. Do not search for them \u2014 LocalToolSearch will return no match:',
+    'web_search',
+    'The following deferred tools are no longer available. Do not search for them \u2014 LocalToolSearch will return no match:',
+    'todo_write',
+    ambient,
+  ].join('\n'))
+})
+
+test('the LocalToolSearch description is the 3.17.1 local text', () => {
   assert.ok(LOCAL_TOOL_SEARCH_DESCRIPTION.startsWith('Fetches full schema definitions for deferred tools so they can be called using DeferredToolCall.\n\nDeferred tools appear by name'))
   assert.ok(LOCAL_TOOL_SEARCH_DESCRIPTION.includes('Query forms:\nRegular expressions are not supported.'))
   assert.ok(LOCAL_TOOL_SEARCH_DESCRIPTION.endsWith('"status":"in_progress","priority":"high"}]}})\n</example>'))
@@ -191,6 +212,18 @@ test('a GLM step gets one announcement notice whose delta persists in its source
   rt.history.push(userInput, notice)
   await rt.assemble({ model: 'glm-5.3' })
   assert.deepEqual(noticesOf(await rt.preStep({ step: 2 })), [])
+})
+
+test('a removed name the agent can still resolve is announced as hidden and recorded in toolSearchHiddenNames', async () => {
+  const { rt } = await glmAgent()
+  // todo_write is registered but faced by TodoWrite, so it is off the GLM face; gone_tool is registered nowhere.
+  const earlier = { id: 'n0', role: 'user', content: [{ type: 'text', text: 'earlier' }], source: { kind: 'glm-tool-search', toolSearchAnnouncement: { addedNames: ['TodoWrite', 'gone_tool', 'todo_write', 'web_fetch'], removedNames: [], readdedNames: [] } } }
+  rt.history.push(userInput, earlier)
+  const [notice] = noticesOf(await rt.preStep({ step: 2 }))
+  assert.ok(notice !== undefined)
+  assert.deepEqual(notice.source.toolSearchAnnouncement, { addedNames: [], removedNames: ['gone_tool', 'todo_write'], readdedNames: [] })
+  assert.deepEqual(notice.source.toolSearchHiddenNames, ['todo_write'])
+  assert.ok(notice.content[0]?.text.includes('no longer available in this session. Do not search for them \u2014 LocalToolSearch will return no match:\ngone_tool\nThe following deferred tools are no longer available. Do not search'))
 })
 
 test('no announcement for an empty first step or a non-GLM request', async () => {

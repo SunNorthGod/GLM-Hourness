@@ -193,8 +193,14 @@ export function installToolSearch(agent: AgentLike): ToolSearchHandle | undefine
     if (exposure === undefined) return decision
     const delta = announcementDelta(announcementHistory(history()), exposure)
     if (delta === undefined) return decision
+    // 3.17.1 `toolSearchHiddenNames`: removed names the registry still holds,
+    // hidden from this request rather than gone from the session.
+    const hiddenNames = delta.removedNames.filter(name => agent.ctx.tools.get(name, agent) !== undefined)
     const summary = `deferred tools: ${delta.addedNames.length} added, ${delta.removedNames.length} removed`
-    const notice = createUserNotice(ANNOUNCEMENT_SOURCE, summary, wrapSystemReminder(renderToolSearchAnnouncement(delta)), { toolSearchAnnouncement: delta })
+    const notice = createUserNotice(ANNOUNCEMENT_SOURCE, summary, wrapSystemReminder(renderToolSearchAnnouncement(delta, hiddenNames)), {
+      toolSearchAnnouncement: delta,
+      ...(hiddenNames.length > 0 ? { toolSearchHiddenNames: hiddenNames } : {}),
+    })
     return { ...decision, messages: [...decision.messages, notice] }
   }))
 
