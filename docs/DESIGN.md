@@ -16,7 +16,7 @@
 
 本机 ZCode 安装版被用户打过补丁（用户确认 2026-10-27），只能作为机制参考，不能作为逐字文本来源。逐字文本以 ZCode 官方源码为准：`reference/ZCode`（`package.json` 版本 3.16.2，2026-10-20 同步）；在已比对的文本上，源码、本机 3.16.3 安装包与 pristine 3.15.1 三者一致（用户补丁的安全声明除外）。复核结果见 §5.9。
 
-反向代理（`zcode-proxy.exe`，8317 端口）不在本项目范围内〔定案 2026-10-27〕。任何插件行都不识别、不依赖反代路由。代码、脚本输出、界面文字与文档中把反代说成在链路上或等待退役的描述已删除（2026-10-28，`ROADMAP.md` M1.3）。仍会出现的相关字样有三类，均不表示链路上有反代：移植模块的出处注释（`reference/zcode-api` 的 `src/proxy/...`；zcode-api 本身是一个反代工程，本项目只移植它的通道模块）；ZCode 服务端配置的 `proxyEndpoint` 字段，那是 ZCode 自己的端点路由（§4.4）；用户 profile 中指向 8317 端口的 pi-ai `glm` 路由属于用户配置；用户 2026-10-28 把清理交给 agent，L4 第二轮通过后删除（项目图 `m1-cleanup`）。`ORCHESTRATION.md` §4.2 的需求卡示例保留用户最初的一句话原话。
+反向代理（`zcode-proxy.exe`，8317 端口）不在本项目范围内〔定案 2026-10-27〕。任何插件行都不识别、不依赖反代路由。代码、脚本输出、界面文字与文档中把反代说成在链路上或等待退役的描述已删除（2026-10-28，`ROADMAP.md` M1.3）。仍会出现的相关字样有两类，均不表示链路上有反代：移植模块的出处注释（`reference/zcode-api` 的 `src/proxy/...`；zcode-api 本身是一个反代工程，本项目只移植它的通道模块）；ZCode 服务端配置的 `proxyEndpoint` 字段，那是 ZCode 自己的端点路由（§4.4）。用户 profile 中原有一条指向 8317 端口的 pi-ai `glm` 路由（用户配置）；用户 2026-10-28 把清理交给 agent，2026-10-29 批次 L4 通过后已从 profile 删除（项目图 `m1-cleanup`，改前备份为 `~/.dsh/profiles/desktop/cordis.patch.yml.bak-1793241992974`）。用户级用量流水里 2026-10-27 及之前的 `glm/glm-5.3`、`glm/glm-5.3-flash` 记录来自这条路由。`ORCHESTRATION.md` §4.2 的需求卡示例保留用户最初的一句话原话。
 
 ## 2. 架构总览
 
@@ -78,12 +78,12 @@ GLM-Hourness
 - 各行：guard 每次拦截都写违规流水，`onViolation` 回调删除；memory 的用量只经服务写用户级目录，记忆工具仍用行的 `home`，没有 `home` 时只关记忆工具；workflow 的决策与 hourness 的报告按上面的顺序取目录；`/hourness` 从用户级目录读用量，缺哪个目录就在输出里写明。
 - 验证：L2 覆盖三步解析、服务提供与撤回、取值顺序、有无服务两种情况；L3 探针确认数据行在真运行时上提供服务，用量只落在场景的用户级目录、真实的 `~/.dsh/glm-hourness` 不变，guard 拦下的 shell 写入在场景项目目录留下违规记录（带规则、工具、agent 与会话 id）。数据行经探针证明后默认启用。
 
-迁移〔2026-10-28〕：从 `~/.dsh/profiles/desktop/.llm/`（只读）与仓库 `.llm/audit/usage.jsonl` 复制，按整行去重。用户级用量流水共 1080 条：仓库 890 条加旧目录 190 条，两者没有重复，按时间排序，最晚一条 2026-10-27T12:29:08.993Z。旧目录的 1 条记忆（`glm-hourness-handoff`）并入仓库 `.llm/memory.json`；旧目录的 3 条决策在仓库决策流水里都已存在。源文件未改动，旧目录随清理删除（项目图 `m1-cleanup`）。桌面版重启加载新代码之前，运行中的旧代码仍会把用量追加到仓库 `.llm/audit/usage.jsonl`，重启后需补拷一次（同一节点）。
+迁移〔2026-10-28〕：从 `~/.dsh/profiles/desktop/.llm/`（只读）与仓库 `.llm/audit/usage.jsonl` 复制，按整行去重。用户级用量流水共 1080 条：仓库 890 条加旧目录 190 条，两者没有重复，按时间排序，最晚一条 2026-10-27T12:29:08.993Z。旧目录的 1 条记忆（`glm-hourness-handoff`）并入仓库 `.llm/memory.json`；旧目录的 3 条决策在仓库决策流水里都已存在。清理〔2026-10-29，项目图 `m1-cleanup`〕：重新核对旧目录的 190 条用量、3 条决策与记忆文件都已在新位置后，删除旧目录；仓库 `.llm/audit/usage.jsonl` 的最晚一条恰为截止点 2026-10-27T12:29:08.993Z，桌面版重启加载新代码之前没有再追加，补拷 0 条，该文件保留。
 
 凭证与 deviceMid〔定案 2026-10-28，用户选 A；已实现 2026-10-28，L4 验收之后〕：保留加密凭证文件，搬到 `$DSH_HOME/glm-hourness/`，本包当时的 deviceMid（`device-mid.txt`）随行。凭证文件自 m1-parity 起只存登录令牌与项目 key 的定位，不再有 API Key 与 secret（§4.1）。自 m1-parity 起本包不再读写 `device-mid.txt`：请求发送的 deviceMid 是 ZCode 状态文件里的那个，状态文件没有时按 3.16.3 生成并写回（§4.5b）；已有的 `device-mid.txt` 是用户数据，不删除，也不再使用。加密密钥由 `GLM_HOURNESS_CREDENTIAL_SECRET` 或 `HOME`/`USERPROFILE`、平台、架构推导（§4.1，`src/glm-llm/auth/store.ts`），与文件路径无关，搬家后同一台机器照样能解密。
 
 - 解析：`glm-llm` 与 `glm-login` 的 `home` 改为可选，`credentialHome(home)`（`src/shared/data-home.ts`）取非空的行 `home`，否则取用户级目录。两行不读数据目录服务：通道行激活时数据行可能还没激活，而凭证目录在激活时就要定下来。bundle patch 删去两行的 `home`；探针与测试仍显式传 `home` 指向临时目录。
-- 文件：两份文件已复制到 `C:\Users\29596\.dsh\glm-hourness\`，与仓库 `.llm/` 里的原件逐字节相同。原件保留到桌面版重启、确认新代码从用户级目录读到凭证之后再删（项目图 `m1-cleanup`）：重启前运行中的旧代码仍读写仓库 `.llm/`，期间若重新登录，删之前要先把较新的一份补拷过去。
+- 文件：两份文件于 2026-10-28 复制到 `C:\Users\29596\.dsh\glm-hourness\`。2026-10-29 批次 L4 确认新代码从用户级目录读到凭证并迁移为版本 2（§4.1）之后，仓库 `.llm/credentials.json` 与 `.llm/device-mid.txt` 已删除（项目图 `m1-cleanup`）；删除前核对用户级目录两份文件都在，`device-mid.txt` 与仓库原件摘要相同。
 
 ### 2.4a 运行时契约来源〔实读 2026-10-27〕
 
@@ -251,7 +251,7 @@ UI 包的行运行在客户端，不在表内。
 - 记录内容〔已实现 2026-10-28，m1-parity 第 3 项，`src/glm-llm/auth/store.ts` `loadStoredCredential`〕：版本 2 的记录是 `{version: 2, provider: 'bigmodel', oauthAccessToken?, userId?, jwt?, location?}`。与 3.16.3 桌面版一样只存登录令牌：`/glm-login` 完成后不再调 `getCustomerInfo`、`api_keys` 与 `api_keys/copy`，不存 API Key 与它的 secret（3.16.3 账号模式两处都不用，FACTS §1）；项目 key 在第一次需要项目令牌时定位，定位按 3.16.3 的键 `project-key-location:v1:…` 存进 `location`（`{key, value}`，`value` 是 `{organizationId, projectId, apiKeyId}` 的 JSON），铸造回 404 时删除。定位只在凭证里的 OAuth 令牌仍是解析它时用的那个时写入：解析期间换了登录，就不把旧登录的定位挂到新登录上。项目令牌本身不落盘，只在进程内缓存。`/glm-status` 的 Key 预览取已定位的 `apiKeyId` 前 6 位，没定位时显示 `unresolved`。
 - 迁移：读到旧的版本 1 记录（`{apiKey, provider, userId?, jwt?, oauthAccessToken?}`，`apiKey` 是 `{apiKeyId}.{secret}`）且它有 OAuth 令牌或 JWT 时，按版本 2 原子重写一次，丢掉 `apiKey`，OAuth 令牌、JWT 与 `userId` 原样带过；重写在写入队列里重读文件，仍是版本 1 才写，所以并发的首次读取（会话标题与第一步几乎同时发出）只迁移一次；重写失败时原文件不动，本次用内存里的版本 2，下次读取再试。没有任何登录令牌的版本 1 记录不改写，读作没有令牌的记录，请求时提示 /glm-login。迁移从不清空、从不删除凭证文件。
 - 降级：迁移之后装回旧版 bundle，旧代码要求 `apiKey` 字段，会显示未登录，需要重新 /glm-login。
-- 旧副本：主检出 `.llm/credentials.json`（§2.4，待项目图 `m1-cleanup` 删除）不在迁移范围内，仍含 secret。
+- 旧副本：主检出 `.llm/credentials.json` 不在迁移范围内，仍含 secret，已于 2026-10-29 删除（§2.4，项目图 `m1-cleanup`）。
 - 真实凭证的迁移〔实测 2026-10-29，批次 L4，项目图 `m1-11`〕：桌面版以 m1-parity 的代码（`a9f12e1`）重启后，第一个 GLM 回合开始 0.52 秒时 `~/.dsh/glm-hourness/credentials.json` 被重写（998 → 1374 字节），此后到运行结束没有再变。`/glm-status` 在第一个请求前显示已登录、Key `unresolved`，之后显示已定位 key 的前缀，与重启前旧代码显示的前缀相同：定位到的是已有的 `zcode-api-key`，没有新建。只看得到修改时间，写入次数本身看不到。重启前「不要用新代码读真实凭证目录」的约束随之解除。没有测过的情况：桌面版运行时另起一个进程（如 `scripts/smoke-zcode-authorized.mjs`）写同一个凭证文件，写入队列只在进程内串行。
 - 风险：加密密钥由 `HOME`/`USERPROFILE`、平台与架构推导，看过源码即可算出；`GLM_HOURNESS_CREDENTIAL_SECRET` 可覆盖。凭证文件不入库，当前可接受。后续迁到系统钥匙串或 DSH 凭证服务〔规划〕。
 
