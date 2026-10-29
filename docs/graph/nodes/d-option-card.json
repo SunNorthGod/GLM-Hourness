@@ -51,6 +51,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "card-fields-table 的工作树 .worktrees/card 已建好（分支 card，基于 main c49478f），实现与评审进行中。"
+    },
+    {
+      "at": "2026-10-29T13:21:09.181Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "card-fields-table：分支 card 的 799fab1 把表格版字段做进引擎、格式校验、图工具 schema 与文档（选项 label、gain、cost，可选 dimension，crux、verdict、weight；agent 拍板的题豁免；已决的不迁移）；build、preflight、npm test 全过（588 个，新增 9 个，在 main 上会失败）；独立评审 APPROVED，无阻断。非阻断：分支基线落后 main，合入前要 rebase 并重跑门禁；main 的探针种子仍用 consequence。合入等 split 的批次 L4 结束（L4 从主检出加载代码，期间合入会混进验收证据）。"
     }
   ]
 }
