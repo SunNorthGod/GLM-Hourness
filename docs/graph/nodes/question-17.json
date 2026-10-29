@@ -2,7 +2,7 @@
   "id": "question-17",
   "type": "question",
   "title": "桌面版 profile 要不要跟着拆包改",
-  "status": "approved",
+  "status": "done",
   "parent": "split",
   "body": "伞包与占位包让桌面版 profile 的两项 bundle、两项依赖与五条覆盖项原样生效（设计 §3.4）。",
   "options": [
@@ -19,6 +19,13 @@
   ],
   "recommend": "A",
   "decider": "human",
+  "decision": "B",
+  "evidence": [
+    {
+      "kind": "decision",
+      "ref": "B"
+    }
+  ],
   "history": [
     {
       "at": "2026-10-29T03:42:34.342Z",
@@ -32,6 +39,22 @@
       "actor": "llm",
       "op": "comment",
       "text": "用户 2026-10-29 回复：「profile 指的是？我到时候想做了两个插件的」。用户的目标是最终成为两个插件，倾向 B（桌面版 profile 直接列两个子包）；已向用户解释 profile 的含义，等确认。不影响 split 第 0–6 步，只影响合入那一步。"
+    },
+    {
+      "at": "2026-10-29T03:56:57.158Z",
+      "actor": "llm",
+      "op": "decide",
+      "reason": "用户选 B 并要求彻底：桌面版与 glmsandbox 的 profile 都直接列 dsh-glm-zcode 与 dsh-hourness，不留伞包与占位包；根 package.json 只作开发工作区根，ui/ 不再是包；行 id 不变，覆盖项照常按 id 匹配；改 profile 前备份",
+      "relay": "分，彻底改成两个插件",
+      "from": "approved",
+      "to": "done",
+      "option": "B",
+      "evidence": [
+        {
+          "kind": "decision",
+          "ref": "B"
+        }
+      ]
     }
   ]
 }
