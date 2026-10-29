@@ -40,6 +40,12 @@
           "to": "主 Agent 能任意使用命令行与 git（git 交给主 Agent：什么时候合、先合哪个、冲突怎么处理、要不要回退都由它定），唯一的限制是没有写文件的工具（question-26 C；shell 里的写文件命令由 guard 兜底，git 命令不在此列）。harness 只守一处：主干前进的那一刻核对这个提交确实跑过合入前的检查（norm-merge-gate），没跑过就拒绝，并由 harness 记下提交号与检查结果作证据；模型自报的结果不算证据。M7 设计 0.2 的 m7-5 第 3 条作废，m7-5 改为「主 Agent 合入，harness 核对与记证据」。"
         }
       }
+    },
+    {
+      "at": "2026-10-29T16:57:45.420Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "落地细则（编排方定，可推翻）：git 不当写文件拦；会丢掉未提交改动或改写已推送历史的命令（reset --hard、按路径 checkout 或 restore、clean -f、stash drop 或 clear、branch -D、push --force 等）执行前，harness 先存一份可恢复的快照（git stash create 加 refs/hourness/snapshots/ 下的引用；改写历史时打标签）并记下，再放行；人或主 Agent 都能从快照恢复。依据 d-failure-plans：不拦，但失败要能恢复、能追溯。"
     }
   ]
 }
