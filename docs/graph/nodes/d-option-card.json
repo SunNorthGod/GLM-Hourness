@@ -2,10 +2,21 @@
   "id": "d-option-card",
   "type": "decision",
   "title": "选项卡的统一格式：加粗一眼看懂，按三问四答五键组织",
-  "status": "approved",
+  "status": "done",
   "parent": "orch",
   "verification": "unverified",
   "body": "人看到的每张选项卡是一张表：表头「选项 / 怎么做（加粗）/ 得到 / 代价」，至多再加一列几个选项真正不同的维度，所有行都一样的列删掉；格子里用数字与具体例子，不用评价词；每个选项都要有别的选项给不了的「得到」，不放凑数的选项。题目下面一行「取决于」：只有人知道答案的那个关键问题；表格下面一行「是 → X；否 → Y」。这两行替换原来的「为什么」与「反方」。推荐项放最后（d-recommend-last）。单向门的题只多一句「以后改起来很贵」的提示，并优先进入先想后看。人能做的是五键：选一个（批准）、都不要并写理由（拒绝）、补充条件（补充）、讲细点（展开完整表格与依据）、说重点（只留加粗短语）。窄面板竖排。对话里用 DSH 的问答卡（放不下表格）：按钮写字母加加粗短语，说明写得到与代价，题目说明写「取决于」一行。四答加非目标是设计放行卡的版式，事前验尸只放在那里。引擎字段：选项 label（不超过 20 字）、gain、cost，可选 dimension，crux、verdict、weight；agent 自己拍板的题免 crux、verdict、weight；已决的不迁移（card-fields-table 实现）。面板显示交给 m8-plain-language。编排方在对话里给人的选项也照这个格式写。",
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "e22282f"
+    },
+    {
+      "kind": "check",
+      "ref": "npm run build && npm run preflight && npm test after rebase onto 3cb0873 (649 tests)",
+      "exit": 0
+    }
+  ],
   "history": [
     {
       "at": "2026-10-29T11:06:22.640Z",
@@ -57,6 +68,31 @@
       "actor": "llm",
       "op": "comment",
       "text": "card-fields-table：分支 card 的 799fab1 把表格版字段做进引擎、格式校验、图工具 schema 与文档（选项 label、gain、cost，可选 dimension，crux、verdict、weight；agent 拍板的题豁免；已决的不迁移）；build、preflight、npm test 全过（588 个，新增 9 个，在 main 上会失败）；独立评审 APPROVED，无阻断。非阻断：分支基线落后 main，合入前要 rebase 并重跑门禁；main 的探针种子仍用 consequence。合入等 split 的批次 L4 结束（L4 从主检出加载代码，期间合入会混进验收证据）。"
+    },
+    {
+      "at": "2026-10-29T13:59:27.125Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "card-fields-table（wf_f7c6084d93c04498）合入并推送 e22282f（父提交 3cb0873，split 的 L4 已结束）：引擎、格式校验、图工具 schema 与文档按表格版落地，选项 label、gain、cost，可选 dimension，crux、verdict、weight；agent 拍板的题豁免；已决的不迁移。独立评审 APPROVED、无阻断；rebase 后 build、preflight、npm test 全过（649 个）。分支 card、m3-base-card 与工作树 .worktrees/card 已删。面板显示仍归 m8-plain-language。",
+      "from": "approved",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "e22282f"
+        },
+        {
+          "kind": "check",
+          "ref": "npm run build && npm run preflight && npm test after rebase onto 3cb0873 (649 tests)",
+          "exit": 0
+        }
+      ]
+    },
+    {
+      "at": "2026-10-29T13:59:27.290Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "流程偏差：合入步骤在编排方转达「go」之前就完成了 rebase、快进与推送。当时 main 已是 3cb0873（split 完成、L4 通过），桌面版没有在跑 L4，所以 L4 证据没有混进本次改动，无需返工。后续合入步骤的说明要写明先等编排方放行再推送。"
     }
   ]
 }

@@ -2,7 +2,7 @@
   "id": "d-counter-line",
   "type": "decision",
   "title": "每个推荐配一行反方：为什么可能选另一个",
-  "status": "approved",
+  "status": "dropped",
   "parent": "orch",
   "verification": "unverified",
   "body": "已被 d-option-card 的表格版取代（2026-10-29 用户定）：反方一行与为什么一行都去掉，改为题目下面一行「取决于」（只有人知道答案的关键问题）加表格下面一行「是 → X；否 → Y」。原意保留：让人先想清楚关键条件，再看推荐，抵消跟随 agent 倾向的效应（Anthropic 2026-10-27）。counter 字段不进引擎。",
@@ -46,6 +46,15 @@
           "to": "已被 d-option-card 的表格版取代（2026-10-29 用户定）：反方一行与为什么一行都去掉，改为题目下面一行「取决于」（只有人知道答案的关键问题）加表格下面一行「是 → X；否 → Y」。原意保留：让人先想清楚关键条件，再看推荐，抵消跟随 agent 倾向的效应（Anthropic 2026-10-27）。counter 字段不进引擎。"
         }
       }
+    },
+    {
+      "at": "2026-10-29T13:59:27.451Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "用户定表格版时用「取决于」加结论行替换反方一行，counter 字段没有进引擎（e22282f 只实现 crux、verdict）；原意由 d-option-card 承接。",
+      "relay": "就改成表格，用「取决于」加一行条件，替换掉「为什么」和「反方」两行",
+      "from": "approved",
+      "to": "dropped"
     }
   ]
 }
