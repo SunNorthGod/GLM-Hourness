@@ -226,7 +226,8 @@ function loadReferences() {
   return refs
 }
 
-async function loadItems() {
+/** Every verbatim claim the text check compares, by item name. @returns {Promise<Record<string, string>>} */
+export async function loadItems() {
   const verbatim = await import('../src/glm-prompt/verbatim.ts')
   const compact = await import('../src/glm-prompt/compact.ts')
   const localize = await import('../src/glm-prompt/localize.ts')
@@ -244,6 +245,8 @@ async function loadItems() {
     CONTEXT_MANAGEMENT_DSH: localize.CONTEXT_MANAGEMENT_DSH,
     'start-plan cliPrefix': system.ZCODE_SYSTEM.cliPrefix,
     ...Object.fromEntries(system.ZCODE_SYSTEM.stableSections.map((text, index) => [`start-plan stable section ${index + 1}`, text])),
+    // Dynamic Behavior (before the environment) and Context management (after it).
+    ...Object.fromEntries(Object.entries(system.ZCODE_SYSTEM.dynamicSections).map(([key, text]) => [`start-plan dynamic section ${key}`, text])),
   }
   // Localized aliases (Grep, Bash; DESIGN.md §5.3 ⑥, §5.4) compose their
   // descriptions from mirror-file lines minus or rewriting what DSH cannot

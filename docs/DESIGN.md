@@ -538,6 +538,7 @@ DSH 的 `TokenUsage` 各计数互不重叠：`inputTokens` 只算未命中缓存
 | ⑦ | Context management | 逐字，承诺与 DSH 压缩一致 |
 | ⑧ | Memory | 写入纪律改为 memory 工具族与工作区 `.llm`。这一节只在本次组装 `next()` 返回的工具里有 `memory_store`、`memory_query`、`memory_forget` 三个时才加〔2026-10-29，split 第 2 步〕：编排层包没装、memory 行禁用或没配 `home`（这时它不注册记忆工具）时，GLM 不会被教去用不存在的工具。判定用 `next()` 的返回值本身（`memorySectionApplies`，在别名改写与工具检索之前），以后记忆工具被工具检索延迟加载也不会误删这一节；ZCode 原版的 Memory 段讲的是 ZCode 自己的记忆文件，DSH 里不存在，所以不回退到原版，直接不加。记忆工具的名字取自公共库的 `src/shared/tool-names.ts`，契约测试钉住它与 memory 行的注册一致 |
 | ⑨ | Deferred 声明 | 不设；名单公告与工具检索按 ZCode 原文（§5.7） |
+| — | Dynamic Behavior（`# Communicating with the user`，3,065 字符） | 现在没有：coding-plan 方言不加这一节〔实读 2026-10-29〕。ZCode 3.16.3 把它发给每个非工作流 agent，放在 [Desktop Context] 之后、Session-specific guidance 之前；内容有首个工具调用前用一句话说要做什么、途中简短更新、「Lead with the outcome」「Report outcomes faithfully」、注释卫生、难撤销的操作先确认。原文在 `src/glm-llm/zcode-system.ts` 的 `ZCODE_SYSTEM.dynamicSections.beforeEnvironment`，与本机 3.16.3 安装包、源码一致，只有 start-plan 通道发（`buildStartPlanSystem`），逐字门禁检查它（§5.9）。要不要在 coding-plan 加，等消融臂 A4 的结果（项目图 `question-30`、`question-31`；清点报告 `.agents/tasks/prompt-audit/report.md` §4.1 第 1 条、§8.2）：它要求说开场白，与 OpenAI Codex 提示词指南「去掉开场白与途中汇报」的建议相反，没有数据 |
 
 ### 5.4 工具面
 
@@ -657,6 +658,7 @@ L3 探针：沙盒里把压缩阈值调低，摘要请求末条是 ZCode 提示�
 | 16 | thinking 与采样参数 | 通道 | 按 3.16.3 目录的选项映射发 `thinking: {type: "enabled"}` 与 `output_config.effort`（DSH 档位，缺省 high；标题 low；压缩取会话最近主步的档位）；不剥采样参数（AI SDK 不知道这个 thinking），是否带 `temperature` 由 DSH 决定 | 已实现 2026-10-28（m1-parity） |
 | 17 | 保留式思考：历史中的 reasoning 带签名回传 | 通道 | 签名只回同一路由；ZCode 的签名拒收重试未移植（端点不校验，§4.5c） | 已实现 2026-10-28 |
 | 18 | 请求归因：会话 id、会话类型、请求与追踪 id、query id 与来源、`metadata.user_id` | 通道 | 按 3.16.3：会话级 trace id、回合级 query id、`main_turn` / `compact` / `session_title` / `subagent` 来源；委派子会话经 `agents` 服务的会话头判定（§4.5b） | 已实现 2026-10-28（m1-parity） |
+| 19 | Dynamic Behavior 节（`# Communicating with the user`） | 方言 | coding-plan 方言没有这一节，start-plan 发原文（§5.3）；加不加等消融 A4（`question-30`、`question-31`） | 未实现 |
 
 第 1、2、4、6、8 项的文本对齐状态以 §5.9 为准。
 
@@ -686,7 +688,7 @@ L3 探针：沙盒里把压缩阈值调低，摘要请求末条是 ZCode 提示�
 处置：
 
 - 来源优先级：3.16.3 安装包为准（用户补丁的安全声明除外，该段以源码与 pristine 为准）；源码作为可读参考。源码（3.16.2）与安装包的已知差异：compact 结尾 `REMINDER` 行；工具检索的 local 模式（§5.10）；Read 部分视图提醒与正文之间，安装包用一个换行，源码用两个；Grep 结果的分页行与计数汇总行之前，安装包用一个换行，源码用两个。
-- 逐字门禁 `scripts/check-verbatim.mjs`（`npm test` 的一道）：每段号称逐字的文本逐行必须出现在安装包或源码中；尚未重建的条目列为已知偏差，只许减少，某条一旦对上而未从名单删除也会失败，名单里的条目不再被检查时同样失败；机器上没有参考源时跳过〔已实现〕。
+- 逐字门禁 `scripts/check-verbatim.mjs`（`npm test` 的一道）：每段号称逐字的文本逐行必须出现在安装包或源码中；尚未重建的条目列为已知偏差，只许减少，某条一旦对上而未从名单删除也会失败，名单里的条目不再被检查时同样失败；机器上没有参考源时跳过〔已实现〕。start-plan 的系统提示文本全部受检：`ZCODE_SYSTEM` 的 `cliPrefix`、`stableSections` 与 `dynamicSections`（Dynamic Behavior 与 Context management 两节，2026-10-29 补上，项目图 `prompt-fixes`；此前只查前两项）。补上后条目 442 → 444，受检行 269 → 285，两节都与 3.16.3 安装包一致；`tests/check-verbatim.spec.ts` 断言这三项的每段文本都在受检条目里。门禁默认读的安装包路径是本机桌面版的 `zcode.cjs`：本机 ZCode 2026-10-29 21:04 换成了新版本（同目录的备份 `zcode.cjs.orig-3171.bak` 与它字节数相同，3.16.3 原件在 `zcode.cjs.orig-3163.bak`），新版本里没有 3.16.3 的身份文本，所以在没有 `reference/ZCode` 的检出（git worktree）里，门禁要以 `ZCODE_BUNDLE` 指向 3.16.3 的原件才能通过。
 - 镜像文件：整份文件都是逐字声明的源文件（`src/toolsearch/zcode-text.ts`、`src/glm-prompt/zcode-tool-text.ts`、`src/glm-llm/zcode-wire.ts`、`src/shared/zcode-notice.ts`），门禁抽出其中每个字符串与模板字面量片段逐行比对，模板按插值点切开。这样带插值的模板也能逐片检查。镜像文件里不能出现正则字面量和除法，扫描器不解析它们。
 - 镜像文件的导入〔已实现 2026-10-29，split 第 1 步〕：文件开头（头注释之后）可以有一段单行导入语句（`import …`、`export … from …`），即导入块。切字面量之前只去掉导入块里的语句行，模块路径不算逐字声明，导入块之后的内容一个字符都不去，所以模板里以 `import ` 开头的原文行、`zcode-tool-text.ts` 里 `"… from the user's profile."` 这种句子照常受检。值导入只许来自其他镜像文件，`import type` 只许来自 `src/shared/`，导入带不进没有检查过的文本。导入块之后再出现导入或再导出语句就失败（写成多行的导入让导入块在它的第一行结束，同样失败）；这一条在去掉注释、字面量内容换成空白的代码文本上判定，字面量里的文字不会被当成语句。门禁通过时报告受检行数（不短于 13 个字符的行）。上线时（2026-10-29）条目从 443 变为 442：少的是 `zcode-tool-text.ts` 里从未受检的模块路径 `'./json.ts'`；受检行数前后都是 269，没有放宽任何文本的检查。用例在 `tests/check-verbatim.spec.ts`。本地化的组合（删去哪几行、改写哪几行、删去或追加哪些字段）写在镜像文件之外；标 `localized` 的别名规格（Grep、Bash）不再整段比对描述，由镜像文件的逐片检查覆盖其原文部分。
 - 已知偏差：无（2026-10-28 起名单为空）。名单机制保留，以后出现新的待重建文本时仍按只减不增处理。

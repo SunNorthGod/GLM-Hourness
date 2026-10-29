@@ -2,7 +2,8 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import test from 'node:test'
-import { importBlock, importProblems, MIRROR_FILES, mirrorChunks } from '../scripts/check-verbatim.mjs'
+import { importBlock, importProblems, loadItems, MIRROR_FILES, mirrorChunks } from '../scripts/check-verbatim.mjs'
+import { ZCODE_SYSTEM } from '../src/glm-llm/zcode-system.ts'
 
 const REPO = join(import.meta.dirname, '..')
 const FILE = 'src/toolsearch/zcode-text.ts'
@@ -10,6 +11,13 @@ const HEADER = '/**\n * Mirror file header.\n */\n'
 
 test('every mirror file keeps the import rules', () => {
   for (const file of MIRROR_FILES) assert.deepEqual(importProblems(file, readFileSync(join(REPO, file), 'utf8')), [], file)
+})
+
+test('the text check covers every start-plan system text: the prefix, the stable and the dynamic sections', async () => {
+  const texts = Object.values(await loadItems())
+  const startPlan = [ZCODE_SYSTEM.cliPrefix, ...ZCODE_SYSTEM.stableSections, ...Object.values(ZCODE_SYSTEM.dynamicSections)]
+  assert.ok(Object.keys(ZCODE_SYSTEM.dynamicSections).length >= 2) // Dynamic Behavior and Context management
+  for (const text of startPlan) assert.ok(texts.includes(text), text.slice(0, 60))
 })
 
 test('value imports in the block may come only from mirror files', () => {
