@@ -72,6 +72,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "设计第二轮写完（.agents/tasks/split/design.md 版本 0.2），第一轮评审的 R01–R14 逐条处理，见设计 §13。主要改动：guard 在第 2 步只换算工具名、拦截范围仍按 GLM 模型族，范围随人定的方案在第 7 步落地；两包共用的 ZCode 原文放进公共库镜像文件 src/shared/zcode-notice.ts，逐字门禁不放宽；L4 与探针守卫改为结构比对，不再比 SHA-256；合入时先关桌面版，因为 dsh-hmr 会在下一次 profile 写入时按磁盘上的新布局重组；目录归属只写在 scripts/packages.mjs。桌面版 profile 仍然不用改。待人定：两个目标的文字与改挂（含 m6）、guard 在方言未接管路由上的方案（建议 G2）、split 验收的改写、包名、profile 不改。等第二轮设计评审。"
+    },
+    {
+      "at": "2026-10-29T02:28:25.327Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "设计评审第二轮：CHANGES_REQUESTED，HIGH 0、MEDIUM 2（R15、R16）、LOW 11（R17–R27），第一轮 R01–R14 全部关闭；核对基线 main a9f12e1。R15：第 2 步让 guard 规则表只认原生名、ZCode 别名靠方言服务换算，方言服务缺席时 Write、Edit、Bash 不再被识别，工作区圈禁、file-tools-only、graph-files-only 在方言接管的 GLM 路由上失效，§8.1、§7.7 的失败分析写轻了；建议公共库契约里放静态别名表兜底并补「没有方言服务」的测试。R16：第 6 步换掉了 jscpd 与 .gitignore 里覆盖根目录 ui/client.js 的条目，而这个旧产物按设计要留到 L4 第一轮之后。设计第三轮（本运行的第二次迭代，也是最后一次）进行中；评审稿 .agents/tasks/split/design-review.md。"
     }
   ]
 }
