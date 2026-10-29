@@ -78,6 +78,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "设计评审第二轮：CHANGES_REQUESTED，HIGH 0、MEDIUM 2（R15、R16）、LOW 11（R17–R27），第一轮 R01–R14 全部关闭；核对基线 main a9f12e1。R15：第 2 步让 guard 规则表只认原生名、ZCode 别名靠方言服务换算，方言服务缺席时 Write、Edit、Bash 不再被识别，工作区圈禁、file-tools-only、graph-files-only 在方言接管的 GLM 路由上失效，§8.1、§7.7 的失败分析写轻了；建议公共库契约里放静态别名表兜底并补「没有方言服务」的测试。R16：第 6 步换掉了 jscpd 与 .gitignore 里覆盖根目录 ui/client.js 的条目，而这个旧产物按设计要留到 L4 第一轮之后。设计第三轮（本运行的第二次迭代，也是最后一次）进行中；评审稿 .agents/tasks/split/design-review.md。"
+    },
+    {
+      "at": "2026-10-29T03:13:30.050Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "设计第三稿写完（.agents/tasks/split/design.md 版本 0.3），第二轮评审的 R15–R27 逐条处理，见设计 §13.2。主要改动：guard 的工具名换算加公共库静态别名表 ZCODE_ALIAS_NATIVES 兜底，方言服务缺席时拦截不变；第 6 步保留覆盖陈旧根 ui/client.js 的忽略项，L4 第一轮通过后删掉陈旧产物再用一个提交去掉这些忽略项，合入时主检出跑三道门禁；依据改为 main 0f9f284（m1-parity 已在 a9f12e1 合入）。本稿另发现 m8-ui-audit 的 V-01（把行名改成包说明符）与伞包布局冲突，新增一条待人定事项，建议 V-01 推迟到 split 合入之后。桌面 profile 仍不用改。待人定：两个目标的文字与改挂、guard 在方言未接管路由上的方案（建议 G2）、split 验收的改写、包名、V-01 与 split 的先后。等第三轮设计评审。"
     }
   ]
 }

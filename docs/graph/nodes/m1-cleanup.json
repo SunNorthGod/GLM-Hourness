@@ -103,6 +103,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "用户 2026-10-29 要求「彻底把glm反代那些清掉就行」。复查 DSH 侧：三个 profile（desktop、glmsandbox、headless）的配置文件与 ~/.dsh 顶层文件里已没有 8317、llm-pi-ai 的配置；唯一剩下的是删路由前的备份 ~/.dsh/profiles/desktop/cordis.patch.yml.bak-1793241992974（3021 字节，SHA-256 19A32657…，只比现行 patch 多这条路由），已删除，DESIGN §1 与 HANDOFF 同步改写。仓库外还有反代程序本身：C:/Users/29596/Desktop/Project/工具目录/zcode-api/zcode-proxy.exe 正在运行并监听 0.0.0.0:8317（由资源管理器启动，目录里有 tunnel.bat），当前没有客户端连接；它是用户自己的工具，停掉与删除要等用户确认。用户级用量流水里 806 条旧路由记录（glm/glm-5.3 796、glm/glm-5.3-flash 10）是真实消耗的历史，保留。"
+    },
+    {
+      "at": "2026-10-29T03:13:29.498Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "用户 2026-10-29 回复：「反代程序不删」「用量之类的我们仓库的东西最好删掉」。执行：zcode-proxy.exe 与 工具目录/zcode-api 保留不动。用户级 ~/.dsh/glm-hourness/audit/usage.jsonl 删去旧 pi-ai glm 路由（8317 反代）的 806 条（glm/glm-5.3 796、glm/glm-5.3-flash 10），1177 条余 371 条（deepseek-account/deepseek-flash 290、glm-zcode/glm-5.3 19、glm-zcode/glm-5.3-flash 62），其余行逐行不变，期间没有新追加；改前备份 ~/.dsh/glm-hourness/audit/usage.jsonl.bak-1793243554750（272169 字节）。仓库 .llm/audit/usage.jsonl（890 条，非旧路由的 274 条逐行核对都在用户级流水里）与没有代码再写的 .llm/audit/dialect-init.jsonl 删除。积分面板与 /hourness 不再计入反代时期的消耗。DESIGN §1、§2.4 与 HANDOFF 同步改写。"
     }
   ]
 }
