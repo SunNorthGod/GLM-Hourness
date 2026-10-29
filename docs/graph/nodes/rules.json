@@ -75,6 +75,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "设计 v0.3 写完：F20 用一个纯函数 applyRecord 统一写入与重放，流水记录带完整的 changes（含修剪），锚点与普通记录一样核对，加性质测试；F21–F27 一并处理。第 3 轮评审被 Kiro 重启打断，已续跑。"
+    },
+    {
+      "at": "2026-10-29T13:00:37.547Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "设计评审第 3 轮 APPROVED：HIGH 0、MEDIUM 0、LOW 5（F28–F32，非阻断）；三轮问题数 1/5/13 → 0/1/7 → 0/0/5。终稿 .agents/tasks/rules/design.md 0.3。待人定的 D1–D4 按表格版提为 question-32 到 question-35；D5（已有规则收进多少）是双向门，由 agent 定为 C（代码规则只列出，约定收进来），question-36，人可推翻。实现在 split 合入后排队。"
     }
   ]
 }

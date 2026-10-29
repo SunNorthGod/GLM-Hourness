@@ -6,8 +6,8 @@
   "parent": "orch",
   "body": "同一仓库拆成两个 bundle：GLM 通道与 ZCode 方言（glm-llm、glm-login、glm-prompt、glm-compact、工具检索、高峰与积分）一个包；编排层（项目图、面板、现场、运行控制、guard、记忆、派发记录、晨报的通用部分）一个包，对所有模型生效；两边共用一个小公共库（行健康、数据目录、DSH 接口类型）。项目目标拆成两个，目标文字由人确认。在 m1-parity 合入后先写设计、过设计评审再动代码，M3 在新的编排层包里做。",
   "acceptance": [
-    "两个包各自装上、各自启用都不报错；只装编排层包时，非 GLM 会话里项目图、面板、guard 都生效",
-    "行 id 改名有迁移，用户 profile 里已有的配置不丢",
+    "两个包单独装上、单独启用都不报错（以探针生成的 `probe-glm`、`probe-hourness` 与两包同列的 `probe-full` 为准）；只装编排层包时，非 GLM 会话里项目图与面板生效，guard 按 question-14（G3）对所有路由生效",
+    "行 id 不变；桌面版与 glmsandbox 的 profile 只改了 `package.json` 的 bundles 与 dependencies（改前备份），五条本项目覆盖项照常生效（L4 结构比对）",
     "门禁、探针全过；桌面版批次 L4 通过"
   ],
   "edges": [
@@ -222,6 +222,39 @@
       "actor": "llm",
       "op": "comment",
       "text": "合入时段放行（用户：「dsh我现在不用，你以后直接用就行了」）。Kiro 在 2026-10-29 晚间崩溃，用户重装后重开；运行没有丢：split-implement 的合入步骤停在等放行，rules-design、plain-ui-and-onboarding-design、m7-design 三条被重启打断，编排方已续跑。合入后编排方按当前修订号执行 graph-step8.json。"
+    },
+    {
+      "at": "2026-10-29T12:59:39.775Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "question-15 选 A：验收按设计的验证手段改写（split 设计 §14.3 选项 A），按 question-17 B 的两个插件布局写（附录 design-addendum-q17b.md §7.4），guard 按 question-14 G3",
+      "relay": "A",
+      "changes": {
+        "acceptance": {
+          "from": [
+            "两个包各自装上、各自启用都不报错；只装编排层包时，非 GLM 会话里项目图、面板、guard 都生效",
+            "行 id 改名有迁移，用户 profile 里已有的配置不丢",
+            "门禁、探针全过；桌面版批次 L4 通过"
+          ],
+          "to": [
+            "两个包单独装上、单独启用都不报错（以探针生成的 `probe-glm`、`probe-hourness` 与两包同列的 `probe-full` 为准）；只装编排层包时，非 GLM 会话里项目图与面板生效，guard 按 question-14（G3）对所有路由生效",
+            "行 id 不变；桌面版与 glmsandbox 的 profile 只改了 `package.json` 的 bundles 与 dependencies（改前备份），五条本项目覆盖项照常生效（L4 结构比对）",
+            "门禁、探针全过；桌面版批次 L4 通过"
+          ]
+        }
+      }
+    },
+    {
+      "at": "2026-10-29T13:00:37.092Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "合入完成：split 在 main c49478f 上 rebase（9 个提交，冲突只有 package.json 的 test 脚本行，两边的测试都保留），worktree 门禁全绿，探针 115/115；主检出 --ff-only 合入，main = de14525，已推送（c49478f..de14525）；主检出删掉陈旧的根 dist/ 与 ui/client.js 后三道门禁全绿。profile 切换（桌面版关闭中）：glmsandbox 与 desktop 的 dsh.profile.bundles 与 dependencies 改为直接列 dsh-glm-zcode、dsh-hourness，各自备份 package.json.bak-<时间戳> 与 pnpm-lock.yaml.bak-<同一时间戳>；dsh plugin install 退出码 0、没有 DSH 诊断行；glmsandbox 组合 13 行；cordis.patch.yml 12 条覆盖项不变，本项目 5 条按 id 匹配新包的行。编排方已按当前修订号执行 graph-step8.json 的 8 条请求（glm-house 目标、hourness 改写含 question-27 B、bottom 与 q-old-folder 改挂、m6 正文、split 验收按 question-15 A）。"
+    },
+    {
+      "at": "2026-10-29T13:00:37.308Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "偏离（编排方记录）：profile 切换没有走附录 0.5 要求的 A3 独立评审与 A4 演练，改用一个简化脚本 .agents/tasks/split/switch-profile.mjs（备份、写锁、只写两个键、pnpm 之前先拆两个旧 junction、CI=false、时限、诊断行判定、条目与锁文件核对）。结果看来正常（install 退出码 0、覆盖项全部按 id 匹配），备份在，回滚路径仍是附录的整体回滚。按 d-failure-plans 判断：可发现（L4 两轮）、可恢复（备份），所以不回退重做；L4 两轮里要专门核对两个插件都加载、行健康全绿、覆盖项生效。记为经验板块素材：评审过的步骤被 worker 简化，简报里的必做项要由 harness 核对（M7 简报门禁）。"
     }
   ]
 }

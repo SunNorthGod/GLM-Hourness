@@ -3,7 +3,7 @@
   "type": "question",
   "title": "删除旧文件夹 dsh-glm-dialect",
   "status": "done",
-  "parent": "hourness",
+  "parent": "glm-house",
   "body": "Desktop\\Project\\dsh-glm-dialect 是旧工作名时期的文件夹，文档已在 M0 迁入本仓库（提交 c518317）。它在工作区外，只有用户能删（ROADMAP.md §3）。推荐 A：迁入的原文留在 git 历史中，留着旧文件夹只会让人读到过时的副本。",
   "options": [
     {
@@ -54,6 +54,19 @@
           "ref": "A"
         }
       ]
+    },
+    {
+      "at": "2026-10-29T12:59:38.894Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "question-13 选 A：旧工作名 dsh-glm-dialect 的文件夹属于 GLM 一半，改挂 glm-house（split 设计 §6.1）",
+      "relay": "A",
+      "changes": {
+        "parent": {
+          "from": "hourness",
+          "to": "glm-house"
+        }
+      }
     }
   ]
 }

@@ -1,0 +1,36 @@
+{
+  "id": "question-34",
+  "type": "question",
+  "title": "你在电脑前时，LLM 的活限速还是排队",
+  "status": "approved",
+  "parent": "rules",
+  "body": "取决于：你另一个项目的构建主要吃内存还是吃 CPU？\n两样都吃 → C；只吃 CPU → A；只吃内存 → B。\n设计 §6、§7、§19 D3。双向门：数字随时能在面板上改。",
+  "options": [
+    {
+      "key": "A",
+      "label": "只限速",
+      "consequence": "得到：所有活照跑，低优先级、CPU 有上限。代价：内存管不住"
+    },
+    {
+      "key": "B",
+      "label": "只排队",
+      "consequence": "得到：重活和多出的派发等你走开再跑，不要辅助进程。代价：没标成重活的命令照样全速"
+    },
+    {
+      "key": "C",
+      "label": "重活排队，其余限速",
+      "consequence": "得到：内存和 CPU 都管住。代价：CPU 上限要到 M7 有了辅助进程才生效，之前只降优先级"
+    }
+  ],
+  "recommend": "C",
+  "decider": "human",
+  "history": [
+    {
+      "at": "2026-10-29T13:00:38.260Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "规则板设计 D3，限速还是排队由人定",
+      "to": "approved"
+    }
+  ]
+}

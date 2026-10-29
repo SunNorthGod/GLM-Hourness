@@ -1,0 +1,36 @@
+{
+  "id": "question-32",
+  "type": "question",
+  "title": "规则板管多大范围",
+  "status": "approved",
+  "parent": "rules",
+  "body": "取决于：你会同时开两个以上项目让 LLM 干活吗？\n会 → C；不会 → B。\n设计 .agents/tasks/rules/design.md §3、§19 D1。双向门：改范围要迁移一次状态文件，规则内容不丢。",
+  "options": [
+    {
+      "key": "A",
+      "label": "全机一个规则库",
+      "consequence": "得到：跨项目的规则只写一次。代价：给一个项目写的规则可能误伤另一个项目"
+    },
+    {
+      "key": "B",
+      "label": "全部按项目",
+      "consequence": "得到：最小，和项目图一样按工作区分。代价：两个项目会同时去动桌面版，在场每个项目各点一次"
+    },
+    {
+      "key": "C",
+      "label": "机器管资源，项目管规则",
+      "consequence": "得到：规则只管本项目，桌面版、沙盒、你在不在、CPU 预算全机共享。代价：机器上多一份跨项目状态"
+    }
+  ],
+  "recommend": "C",
+  "decider": "human",
+  "history": [
+    {
+      "at": "2026-10-29T13:00:37.789Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "规则板设计 D1，范围由人定",
+      "to": "approved"
+    }
+  ]
+}

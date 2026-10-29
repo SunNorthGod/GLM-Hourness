@@ -1,0 +1,36 @@
+{
+  "id": "question-35",
+  "type": "question",
+  "title": "你在电脑前时的默认预算",
+  "status": "approved",
+  "parent": "rules",
+  "body": "取决于：LLM 跑构建时，你的电脑是真卡还是只是风扇响？\n卡到不能用 → A；卡但能忍 → C；只是风扇响 → B。\n以后改起来很贵：A 与 C 让 DSH 每次启动就进 Windows 系统作业，限制随时能放开，但「在作业里」到 DSH 重启才撤回。「不在」一档都是正常优先级、不限 CPU、派发 4 路。设计 §7、§11.2、§19 D4。",
+  "options": [
+    {
+      "key": "A",
+      "label": "严档",
+      "consequence": "得到：LLM 几乎不占资源，CPU 只用 32 个逻辑处理器里的 4 个。代价：LLM 几乎停工，测试很慢"
+    },
+    {
+      "key": "B",
+      "label": "宽档",
+      "consequence": "得到：不进系统作业，低于正常优先级，派发 2 路。代价：重活照样能把内存和风扇拉满"
+    },
+    {
+      "key": "C",
+      "label": "中档",
+      "consequence": "得到：LLM 的进程只用 8 个逻辑处理器，重活排队，派发 1 路。代价：DSH 进系统作业，待到重启"
+    }
+  ],
+  "recommend": "C",
+  "decider": "human",
+  "history": [
+    {
+      "at": "2026-10-29T13:00:38.500Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "规则板设计 D4，默认预算由人定；带 CPU 上限的档让 DSH 进系统作业，到重启才出来",
+      "to": "approved"
+    }
+  ]
+}

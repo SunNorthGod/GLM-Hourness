@@ -1,0 +1,39 @@
+{
+  "id": "glm-house",
+  "type": "goal",
+  "title": "GLM 住进 DSH：以 ZCode 3.16.3 的训练分布工作，质量与官方 ZCode 一致",
+  "status": "doing",
+  "stage": "execute",
+  "body": "GLM-Hourness 里「House」的一半，由 GLM 通道包 `dsh-glm-zcode` 实现。模型权重不可改，能改的是模型所处的环境：通道让服务端把请求当作 ZCode 3.16.3 的请求接受与计费，方言让模型看到 ZCode 的提示词、工具面与提醒（CHARTER.md §1、§3.1）。",
+  "acceptance": [
+    "无损：coding-plan 请求在代码级别与 ZCode 3.16.3 一致（身份头、签名、端点路由、请求体）；提示词与工具文本逐字镜像，或按本地化清单改写（DESIGN.md §5.3、§5.9），不为照顾宿主裁剪",
+    "治顽疾（方言部分）：工具 schema 负担由工具检索解决，压缩按 ZCode 的提示词与格式进行",
+    "只管 GLM：非 GLM 会话与其他 provider 不受影响；每行可单独禁用，故障时降级，在 /glm-status 上报",
+    "自成一体：不装编排层包时，通道、方言、高峰提醒与积分口径照常工作",
+    "工程美学：CHARTER.md §7 的条款是设计约束"
+  ],
+  "nonGoals": [
+    "不依赖反向代理：任何行都不识别、不依赖反代路由（AGENTS.md，DESIGN.md §1；仓库级规则，两个目标都适用）",
+    "不替用户在模型、套餐、渠道上做主，不做自动切换（CHARTER.md §6）",
+    "不承担编排：项目图、guard、记忆、派发与报告不在本包",
+    "人设与个人习惯不进插件（CHARTER.md §9）"
+  ],
+  "history": [
+    {
+      "at": "2026-10-29T12:59:36.745Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "question-13 选 A：两个根目标，GLM 目标新建 glm-house，文字按 split 设计 §6.2（CHARTER.md §3.1 同一批改写，split 第 8 步）",
+      "relay": "A",
+      "to": "approved"
+    },
+    {
+      "at": "2026-10-29T12:59:37.170Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "GLM 一半在进行中：bottom（通道与方言）为进行中，改挂到本目标之下",
+      "from": "approved",
+      "to": "doing"
+    }
+  ]
+}

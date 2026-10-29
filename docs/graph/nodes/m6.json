@@ -4,7 +4,7 @@
   "title": "M6 用量与峰谷",
   "status": "doing",
   "parent": "orch",
-  "body": "积分口径与峰谷修正（ORCHESTRATION.md §11.2）；通道额度取数（DESIGN.md §4.7）；高峰提醒；排期功能（ROADMAP.md M6）。",
+  "body": "积分口径与峰谷修正（ORCHESTRATION.md §11.2）；通道额度取数（DESIGN.md §4.7）；高峰提醒；排期功能（ROADMAP.md M6）。\n分属两个包：积分公式、额度取数与高峰提醒在 GLM 通道包 `dsh-glm-zcode`；编排层包 `dsh-hourness` 经计价服务（glm-login 提供）读积分与高峰时段，额度的展示与排期在编排层包。",
   "history": [
     {
       "at": "2026-10-27T20:04:04.900Z",
@@ -35,6 +35,19 @@
       "reason": "派出 m6-design（wf_cebb575e1e4810d2）：只写设计并过设计评审，额度取数、高峰提醒的去留、错峰排期经规则板块；稿在 .agents/tasks/m6/design.md",
       "from": "approved",
       "to": "doing"
+    },
+    {
+      "at": "2026-10-29T12:59:39.349Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "question-13 选 A：m6 留在 orch，正文注明各部分在哪个包（split 设计 §6.1）",
+      "relay": "A",
+      "changes": {
+        "body": {
+          "from": "积分口径与峰谷修正（ORCHESTRATION.md §11.2）；通道额度取数（DESIGN.md §4.7）；高峰提醒；排期功能（ROADMAP.md M6）。",
+          "to": "积分口径与峰谷修正（ORCHESTRATION.md §11.2）；通道额度取数（DESIGN.md §4.7）；高峰提醒；排期功能（ROADMAP.md M6）。\n分属两个包：积分公式、额度取数与高峰提醒在 GLM 通道包 `dsh-glm-zcode`；编排层包 `dsh-hourness` 经计价服务（glm-login 提供）读积分与高峰时段，额度的展示与排期在编排层包。"
+        }
+      }
     }
   ]
 }

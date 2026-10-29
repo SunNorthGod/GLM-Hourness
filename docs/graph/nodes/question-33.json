@@ -1,0 +1,36 @@
+{
+  "id": "question-33",
+  "type": "question",
+  "title": "「你在用电脑」怎么判断",
+  "status": "approved",
+  "parent": "rules",
+  "body": "取决于：自动检测判错时（看视频不碰键盘 10 分钟被当成走开），你能接受 LLM 全速跑吗？\n能 → A；不能 → C。\n设计 §5、§19 D2。双向门。",
+  "options": [
+    {
+      "key": "A",
+      "label": "只靠自动检测",
+      "consequence": "得到：不用点按钮。代价：看视频时会被判为走开，LLM 全速跑"
+    },
+    {
+      "key": "B",
+      "label": "只靠手动按钮",
+      "consequence": "得到：不会判错。代价：忘了点就和今天一样不受限制"
+    },
+    {
+      "key": "C",
+      "label": "手动为主，自动先只记录",
+      "consequence": "得到：你点的总算数，检测器满 7 天、对得上 95%、你改过 20 次后提示可放开。代价：放开前没点过按「不在」处理"
+    }
+  ],
+  "recommend": "C",
+  "decider": "human",
+  "history": [
+    {
+      "at": "2026-10-29T13:00:38.020Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "规则板设计 D2，在场判断由人定",
+      "to": "approved"
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "id": "question-36",
+  "type": "question",
+  "title": "已有规则收进规则板多少",
+  "status": "approved",
+  "parent": "rules",
+  "body": "取决于：出事的是代码里的规则，还是靠人记的约定？\n约定 → C；代码规则 → A。\n设计 §19 D5。",
+  "options": [
+    {
+      "key": "A",
+      "label": "全部搬进来",
+      "consequence": "得到：面板上能统一关掉或改任何一条。代价：要重写已真机验证的 guard 与门禁，有回归风险"
+    },
+    {
+      "key": "B",
+      "label": "一条都不收",
+      "consequence": "得到：改动最小。代价：探针一次一个、桌面版在用照旧靠约定"
+    },
+    {
+      "key": "C",
+      "label": "代码规则只列出，约定收进来",
+      "consequence": "得到：面板列出全部在生效的规则，三条约定真正执行。代价：代码规则不能在面板上解除"
+    }
+  ],
+  "recommend": "C",
+  "decider": "agent",
+  "history": [
+    {
+      "at": "2026-10-29T13:00:38.730Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "规则板设计 D5 是双向门、可逆，由 agent 定，人可推翻",
+      "to": "approved"
+    }
+  ]
+}

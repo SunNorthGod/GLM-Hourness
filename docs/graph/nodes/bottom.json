@@ -3,7 +3,7 @@
   "type": "feature",
   "title": "底层：通道与方言",
   "status": "doing",
-  "parent": "hourness",
+  "parent": "glm-house",
   "slope": "downhill",
   "stage": "execute",
   "body": "通道：凭证与登录、身份头、签名、端点路由、传输、模型目录、思考档位、额度数据。方言：提示词镜像、工具别名、todo 提醒、压缩镜像、工具检索（CHARTER.md §4，设计见 DESIGN.md）。",
@@ -26,6 +26,19 @@
       "reason": "M1 底层收口进行中（ROADMAP.md M1）",
       "from": "approved",
       "to": "doing"
+    },
+    {
+      "at": "2026-10-29T12:59:38.467Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "question-13 选 A：底层（通道与方言）改挂 GLM 目标 glm-house（split 设计 §6.1）",
+      "relay": "A",
+      "changes": {
+        "parent": {
+          "from": "hourness",
+          "to": "glm-house"
+        }
+      }
     }
   ]
 }
