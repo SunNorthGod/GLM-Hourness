@@ -120,7 +120,8 @@ export const PANEL_CSS = `
 .glmg-node:hover .shape{stroke-width:2.4}
 .glmg-node.selected .shape{stroke:var(--g-accent);stroke-width:2.6}
 .glmg-node:focus{outline:none}
-.glmg-node:focus-visible .shape{stroke:var(--g-accent);stroke-width:3}
+/* the shape's stroke is an inline style (GraphCanvas shapeStyle), so the focus stroke has to outrank it */
+.glmg-node:focus-visible .shape{stroke:var(--g-accent)!important;stroke-width:3!important}
 .glmg-node .halo{fill:none;stroke:var(--g-doing);stroke-width:2;opacity:0;pointer-events:none}
 .glmg-node.doing.live .halo{animation:glmg-halo 2.4s ease-in-out infinite}
 .glmg-node.waiting .halo{stroke:var(--g-wait);animation:glmg-halo 1.8s ease-in-out infinite}
