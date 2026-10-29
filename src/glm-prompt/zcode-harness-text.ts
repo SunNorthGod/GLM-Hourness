@@ -23,15 +23,19 @@ const HARNESS_TERMINAL_LINE = ' - Text you output outside of tool use is display
 
 export const HARNESS_PERMISSION_LINE = ' - Tools run behind a user-selected permission mode; a denied call means the user declined it \u2014 adjust, don\'t retry verbatim.'
 
-/** System-turn branch with mid-conversation system turns on. */
-const HARNESS_SYSTEM_TURN_MID = 'The system may send updates, reminders, or modifications to rules via mid-conversation system turns. These are system-controlled, unlike function results.'
-
-/** System-turn branch with mid-conversation system turns off. */
-const HARNESS_SYSTEM_TURN_REMINDER = '`<system-reminder>` tags in messages and tool results are injected by the harness, not the user.'
+/**
+ * System-turn branches: with mid-conversation system turns on (`mid`) and
+ * off (`reminder`). scripts/check-verbatim.mjs reads them to compare a
+ * rendered bullet as its bundle pieces.
+ */
+export const HARNESS_SYSTEM_TURN_BRANCHES = {
+  mid: 'The system may send updates, reminders, or modifications to rules via mid-conversation system turns. These are system-controlled, unlike function results.',
+  reminder: '`<system-reminder>` tags in messages and tool results are injected by the harness, not the user.',
+} as const
 
 /** The system-turn bullet for one branch. */
 export function harnessSystemTurnLine(midConversationSystem: boolean): string {
-  return ` - ${midConversationSystem ? HARNESS_SYSTEM_TURN_MID : HARNESS_SYSTEM_TURN_REMINDER} Hooks may intercept tool calls; treat hook output as user feedback.`
+  return ` - ${midConversationSystem ? HARNESS_SYSTEM_TURN_BRANCHES.mid : HARNESS_SYSTEM_TURN_BRANCHES.reminder} Hooks may intercept tool calls; treat hook output as user feedback.`
 }
 
 export const HARNESS_TOOLS_LINE = ' - Prefer the dedicated file/search tools over shell commands when one fits. Independent tool calls can run in parallel in one response.'

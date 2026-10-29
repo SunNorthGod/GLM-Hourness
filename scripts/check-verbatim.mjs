@@ -57,6 +57,23 @@ const TYPE_ONLY = /^\s*(?:import|export)\s+type\s/
 /** A statement-start import (not `import(` or `import.meta`) or a re-export, in code text. */
 const LATE_IMPORT = /(?:^|[\n;])[ \t]*(?:import\b(?![ \t]*[(.])|export\s+(?:type\s+)?(?:\*|\{[^}]*\})(?:\s+as\s+\w+)?\s*from\b)/
 
+/**
+ * A rendered Harness system-turn bullet → the pieces the bundle holds.
+ * 3.17.1 builds that bullet from a ternary branch and a tail around the
+ * template's interpolation point (src/glm-prompt/zcode-harness-text.ts), so
+ * the rendered line (in the start-plan stable section) is no bundle
+ * substring; the text check compares its two pieces instead.
+ * @returns {Promise<Map<string, string[]>>}
+ */
+async function systemTurnPieces() {
+  const { HARNESS_SYSTEM_TURN_BRANCHES, harnessSystemTurnLine } = await import('../src/glm-prompt/zcode-harness-text.ts')
+  return new Map([true, false].map((mid) => {
+    const branch = mid ? HARNESS_SYSTEM_TURN_BRANCHES.mid : HARNESS_SYSTEM_TURN_BRANCHES.reminder
+    const line = harnessSystemTurnLine(mid)
+    return [line, [branch, line.slice(line.indexOf(branch) + branch.length)]]
+  }))
+}
+
 /** Undo JS string escaping so source and bundle text compare as rendered text. */
 function unescapeJs(text) {
   return text
@@ -275,6 +292,7 @@ async function main() {
     process.exit(importFailures.length === 0 ? 0 : 1)
   }
   const items = await loadItems()
+  const pieces = await systemTurnPieces()
   const failures = []
   const deviations = []
   let checkedLines = 0
@@ -282,7 +300,7 @@ async function main() {
     if (!(name in items)) failures.push(`${name}: listed in KNOWN_DEVIATIONS but no longer checked; remove it`)
   }
   for (const [name, text] of Object.entries(items)) {
-    const lines = String(text).split('\n').map(line => line.trim()).filter(line => line.length >= MIN_LINE)
+    const lines = String(text).split('\n').flatMap(line => pieces.get(line) ?? [line]).map(line => line.trim()).filter(line => line.length >= MIN_LINE)
     checkedLines += lines.length
     const missing = lines.filter(line => !references.some(ref => ref.text.includes(line)))
     const known = KNOWN_DEVIATIONS.has(name)

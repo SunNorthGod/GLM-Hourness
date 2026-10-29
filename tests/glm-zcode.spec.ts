@@ -728,7 +728,7 @@ test('start-plan wraps the system in the 3-block assembly and pins the currentDa
   for await (const _chunk of adapter.stream(options)) { void _chunk }
   const system = captured.body!.system as Array<{ type: string, text: string, cache_control?: unknown }>
   assert.equal(system.length, 3)
-  assert.equal(system[0]!.text, 'You are ZCode, an interactive coding agent')
+  assert.equal(system[0]!.text, 'You are ZCode, an interactive agent')
   assert.ok(system[1]!.text.includes('be brief'))
   assert.ok(system[2]!.text.includes('# Environment'))
   const messages = captured.body!.messages as Array<{ role: string, content: Array<{ type: string, text?: string }> }>

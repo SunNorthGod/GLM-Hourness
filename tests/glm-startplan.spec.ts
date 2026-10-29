@@ -8,9 +8,10 @@ import { ZCODE_SYSTEM } from '../src/glm-llm/zcode-system.ts'
 const env = { cwd: 'C:/ws/proj', platform: 'win32', shell: 'pwsh', osVersion: 'win32 10.0.26100 x64', isGitRepository: true }
 
 test('vendored texts parse with every expected section', () => {
-  assert.equal(ZCODE_SYSTEM.cliPrefix, 'You are ZCode, an interactive coding agent')
+  assert.equal(ZCODE_SYSTEM.cliPrefix, 'You are ZCode, an interactive agent')
   assert.ok(ZCODE_SYSTEM.stableSections[0]!.includes('# Harness'))
-  assert.ok(ZCODE_SYSTEM.dynamicSections.beforeEnvironment.includes('# Communicating with the user'))
+  assert.ok(ZCODE_SYSTEM.stableSections[0]?.includes(' - The system may send updates')) // the desktop default branch
+  assert.ok(ZCODE_SYSTEM.dynamicSections.beforeEnvironment.startsWith('Write code that reads like the surrounding code')) // 3.17.1 Dynamic Behavior, no heading
   assert.ok(ZCODE_SYSTEM.dynamicSections.afterEnvironment.includes('# Context management'))
   assert.ok(ZCODE_SYSTEM.contextPrefix.currentDateLine.includes('{date}'))
 })
