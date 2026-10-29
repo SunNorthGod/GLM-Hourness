@@ -2,7 +2,7 @@
   "id": "m8-row-titles",
   "type": "task",
   "title": "设置页插件清单的行名不再显示文件路径（V-01）",
-  "status": "doing",
+  "status": "done",
   "parent": "m8",
   "kind": "implement",
   "body": "设置页「内置插件」给本项目各行显示 file URL 标题（含用户目录路径），因为 DSH 的 readPluginMeta 只处理包说明符（split 设计 F22）。原修法是把行名改成包说明符，但与拆包后的布局冲突（split 设计 §14.7），用户选择推迟到 split 合入之后（question-18 A）。在两个插件的新布局上重新设计：子包 patch 用各自包的说明符，桌面版 profile 已直接列两个子包（question-17 B），所以说明符能解析。问题记录见 .agents/tasks/ui-audit/findings.md V-01。",
@@ -19,6 +19,41 @@
     {
       "type": "source",
       "to": "question-18"
+    }
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "6134c83"
+    },
+    {
+      "kind": "commit",
+      "ref": "74e2482"
+    },
+    {
+      "kind": "check",
+      "ref": "npm run build on 6134c83 (worktree)",
+      "exit": 0
+    },
+    {
+      "kind": "check",
+      "ref": "npm run preflight on 6134c83: 2 packages, 9 source dirs, 13 rows (dsh-glm-zcode 5, dsh-hourness 8)",
+      "exit": 0
+    },
+    {
+      "kind": "test",
+      "ref": "npm test on 6134c83: 45 files, 650 passing, 0 failing; check-verbatim 442/0 (269 rows), eslint ok, check-secrets ok, graph:smoke ok (reference/ temporarily junctioned to the main checkout, removed afterwards)",
+      "exit": 0
+    },
+    {
+      "kind": "check",
+      "ref": "npm run probe 118/118 on 0ec0b58 (same tree as 6134c83 before rebase): title checks PASS on probe-full (13 rows), probe-glm (5 rows), probe-hourness (8 rows); .agents/tasks/row-titles/probe.log",
+      "exit": 0
+    },
+    {
+      "kind": "check",
+      "ref": "desktop L4 PASS 2026-10-30 01:06-01:10: Settings > built-in plugins shows 13 row titles, 0 file: and 0 user-directory paths; expanded cards show full names dsh-glm-zcode/glm-llm, dsh-glm-zcode, dsh-hourness; model default deepseek-account/deepseek-flash/high; profile-shape compare no differences. Record .agents/tasks/row-titles/l4.md, screenshots l4-01-rows-1-10.png, l4-02-rows-7-13.png, l4-03-glm-llm-expanded.png, l4-04-glm-ui-expanded.png, l4-05-model-picker.png",
+      "exit": 0
     }
   ],
   "history": [
@@ -78,6 +113,49 @@
       "actor": "llm",
       "op": "comment",
       "text": "已合入 main（wf_afef02a167d6ce1e）：row-titles 变基到 122ef59 后为 6134c83，fast-forward 合入并推送 Gitee origin/main（3181ba6..6134c83，未强推）。工作树内复跑：build 0、preflight 0（13 行）、npm test 0（45 个测试文件 650 过 0 失败，check-verbatim 442 条 OK、eslint ok、check-secrets ok、graph:smoke ok）。工作树缺被 .gitignore 忽略的 reference/，check-verbatim 与 glm-startplan 的参考文件比对因此失败；测试时把工作树的 reference 临时 junction 到主检出的 reference/，跑完已删除。未改 status：客户端行标题与包标题相同待人看截图确认，工作树待清理。"
+    },
+    {
+      "at": "2026-10-29T17:17:22.699Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "m8-row-titles-retry（wf_afef02a167d6ce1e）：独立评审第 1 轮 APPROVED、0 挡路；桌面版 L4 PASS（设置页「内置插件」本项目 13 行都显示 locale 标题，file: 与用户目录路径 0 处）；单装两种情况由探针标题检查确认；row-titles 变基为 6134c83，fast-forward 合入并推送 origin/main。评审非阻断备注 2（客户端行 glm-ui、ui 的标题与包标题相同）留给人看截图 l4-02-rows-7-13.png，不挡本节点验收。",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "6134c83"
+        },
+        {
+          "kind": "commit",
+          "ref": "74e2482"
+        },
+        {
+          "kind": "check",
+          "ref": "npm run build on 6134c83 (worktree)",
+          "exit": 0
+        },
+        {
+          "kind": "check",
+          "ref": "npm run preflight on 6134c83: 2 packages, 9 source dirs, 13 rows (dsh-glm-zcode 5, dsh-hourness 8)",
+          "exit": 0
+        },
+        {
+          "kind": "test",
+          "ref": "npm test on 6134c83: 45 files, 650 passing, 0 failing; check-verbatim 442/0 (269 rows), eslint ok, check-secrets ok, graph:smoke ok (reference/ temporarily junctioned to the main checkout, removed afterwards)",
+          "exit": 0
+        },
+        {
+          "kind": "check",
+          "ref": "npm run probe 118/118 on 0ec0b58 (same tree as 6134c83 before rebase): title checks PASS on probe-full (13 rows), probe-glm (5 rows), probe-hourness (8 rows); .agents/tasks/row-titles/probe.log",
+          "exit": 0
+        },
+        {
+          "kind": "check",
+          "ref": "desktop L4 PASS 2026-10-30 01:06-01:10: Settings > built-in plugins shows 13 row titles, 0 file: and 0 user-directory paths; expanded cards show full names dsh-glm-zcode/glm-llm, dsh-glm-zcode, dsh-hourness; model default deepseek-account/deepseek-flash/high; profile-shape compare no differences. Record .agents/tasks/row-titles/l4.md, screenshots l4-01-rows-1-10.png, l4-02-rows-7-13.png, l4-03-glm-llm-expanded.png, l4-04-glm-ui-expanded.png, l4-05-model-picker.png",
+          "exit": 0
+        }
+      ]
     }
   ]
 }
