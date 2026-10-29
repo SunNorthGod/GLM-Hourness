@@ -1,6 +1,6 @@
 /**
  * Native ZCode client adapter for the DSH LLM seam: assembles the full
- * upstream chain — encrypted credential store → persistent deviceMid →
+ * upstream chain — encrypted credential store → ZCode deviceMid →
  * endpoint routing → identity/auth headers → V4 signing ladder → Anthropic
  * Messages transport. The channel speaks to the ZCode backend exactly the
  * way the desktop client does.
@@ -15,8 +15,8 @@ import type { Credential } from './auth/types.ts'
 import { loadStoredCredential, saveCredential, clearCredential, updateStoredCredential, type StoreFs } from './auth/store.ts'
 import { PollOAuthClient, LOGIN_TIMEOUT_MS, buildPasteAuthorizeUrl } from './auth/oauth.ts'
 import { inspectJwt } from './auth/jwt.ts'
-import { DEFAULT_IDENTITY, ensureDeviceMid, resolveEnvPromptInfo, type ZcodeIdentity } from './identity.ts'
-import { readCliDeviceMid, readRoutingDeviceMid } from './device-mid.ts'
+import { DEFAULT_IDENTITY, resolveEnvPromptInfo, type ZcodeIdentity } from './identity.ts'
+import { ensureCliDeviceMid, readRoutingDeviceMid } from './device-mid.ts'
 import { buildAuthHeaders, buildModelRequestHeaders, RequestAttributionTracker, upstreamSessionId, type PlanId, type SessionHeaderLike, type TraceContext } from './headers.ts'
 import { EndpointRoutingService, type RoutingCredential } from './endpoint-routing.ts'
 import { ClientSigningManager, sendWithClientSigning } from './signing.ts'
@@ -59,11 +59,15 @@ const START_PLAN_CREDENTIAL_UNAVAILABLE = 'Account request credential is unavail
 /** Values of a 401 body that mark a request-security failure, not a rejected project token (3.16.3 `isRequestSecurityFailure` `Vrt` @1090655). */
 const SECURITY_FAILURE_VALUES: ReadonlySet<unknown> = new Set(['VERIFY_APIKEY_EXPIRED', 'VERIFY_SIGNATURE_INVALID', '3007'])
 
-/** Row-health suffix when ZCode's state file has no deviceMid and the bundle's own one is sent (device-mid.ts). */
-const DEVICE_MID_FALLBACK_NOTE = '；ZCode 状态文件里没有 deviceMid，设备 ID 用本包自己的'
+/**
+ * Row-health suffix when the deviceMid could not be written to ZCode's
+ * state file and the id generated in this process is sent (device-mid.ts;
+ * 3.16.3 `ensureCliDeviceMid` falls back to it silently).
+ */
+const DEVICE_MID_TEMPORARY_NOTE = '；设备 ID 未能写入 ZCode 状态文件，本进程用临时 ID'
 
 export interface ZcodeAdapterOptions {
-  /** Agent home directory: `<home>/credentials.json` and `<home>/device-mid.txt`. */
+  /** Agent home directory: `<home>/credentials.json`. */
   readonly home: string
   /** Plan tier: coding-plan (default) or start-plan (gateway 3-block prompt). */
   readonly plan?: PlanId
@@ -182,7 +186,6 @@ export class ZcodeAdapter {
   private readonly projectTokenLoads = new Map<string, Promise<ResolvedProjectToken>>()
   /** The credential the latest coding-plan request resolved, for the routed handshake. */
   private routingCredential: RoutingCredential = {}
-  private deviceMidPromise: Promise<{ value: string, source: 'zcode' | 'bundle' } | undefined> | undefined
 
   constructor(options: ZcodeAdapterOptions) {
     this.options = options
@@ -190,7 +193,8 @@ export class ZcodeAdapter {
       identity: { ...DEFAULT_IDENTITY, ...options.identity },
       ...(options.fetchImpl === undefined ? {} : { fetchImpl: options.fetchImpl }),
       ...(options.env === undefined ? {} : { env: options.env }),
-      deviceMid: () => this.routingDeviceMid(),
+      // The config request's X-Device-Mid is read as 3.16.3 `Kuc` reads it: never generated.
+      deviceMid: () => readRoutingDeviceMid(this.env()),
     })
     this.signer = new ClientSigningManager({
       handshakeFetch: (input, init) => this.routedHandshake(input, init),
@@ -331,38 +335,6 @@ export class ZcodeAdapter {
     return loadStoredCredential(this.options.storeFs ?? storeFsDefault, this.credentialPath())
   }
 
-  /**
-   * The deviceMid of `metadata.user_id`: ZCode's own (`telemetry-state.json`,
-   * read as 3.16.3 reads it, src/glm-llm/device-mid.ts), else the bundle's
-   * `<home>/device-mid.txt` with `source: 'bundle'`, which the row health
-   * reports.
-   */
-  private deviceMid(): Promise<{ value: string, source: 'zcode' | 'bundle' } | undefined> {
-    this.deviceMidPromise ??= readCliDeviceMid(this.env()).then(async zcode => {
-      if (zcode !== undefined) return { value: zcode, source: 'zcode' as const }
-      const bundle = await ensureDeviceMid(this.options.home, this.options.storeFs === undefined ? undefined : {
-        readFile: this.options.storeFs.readFile,
-        writeFile: this.options.storeFs.writeFile,
-        rename: this.options.storeFs.rename,
-      })
-      return { value: bundle, source: 'bundle' as const }
-    }).catch(() => {
-      this.deviceMidPromise = undefined
-      return undefined
-    })
-    return this.deviceMidPromise
-  }
-
-  /**
-   * The routing config request's `X-Device-Mid`: ZCode's own as 3.16.3
-   * `Kuc` reads it; the bundle's when ZCode's state has none, so both planes
-   * name one device.
-   */
-  private async routingDeviceMid(): Promise<string | undefined> {
-    const resolved = await this.deviceMid()
-    return resolved?.source === 'bundle' ? resolved.value : readRoutingDeviceMid(this.env())
-  }
-
   private env(): NodeJS.ProcessEnv {
     return this.options.env ?? process.env
   }
@@ -416,9 +388,11 @@ export class ZcodeAdapter {
       report('inactive', `未拿到套餐 JWT（${START_PLAN_CREDENTIAL_UNAVAILABLE}），运行 /glm-login`)
       throw new Error(`glm-zcode: plan JWT unavailable (${START_PLAN_CREDENTIAL_UNAVAILABLE}) — run /glm-login to sign in again`)
     }
-    const device = await this.deviceMid()
-    const deviceMid = device?.value
-    const identity = { ...DEFAULT_IDENTITY, ...this.options.identity, ...(deviceMid === undefined ? {} : { deviceMid }) }
+    // metadata.user_id names ZCode's deviceMid; when the state file has
+    // none, one is generated and written back (3.16.3 `ensureCliDeviceMid`,
+    // device-mid.ts). It never fails: a failed write yields a temporary id.
+    const device = await ensureCliDeviceMid({ env: this.env() })
+    const identity = { ...DEFAULT_IDENTITY, ...this.options.identity }
 
     // System blocks: DSH delivers the system prompt as leading system
     // messages; coding-plan sends it as one block, start-plan wraps it in the
@@ -440,7 +414,7 @@ export class ZcodeAdapter {
       ? this.attribution.attribute({ sessionId: request.sessionId, purpose: request.purpose, reasoningEffort: options.reasoningEffort, messages: options.messages })
       : { sessionId: upstreamSessionId(request.sessionId), sessionType: request.purpose === undefined ? 'main' : 'other', traceId: randomUUID() }
     const wire = plan === 'coding-plan' ? codingPlanWire(options, request.purpose, this.attribution.stepEffortOf(request.sessionId)) : undefined
-    const body = JSON.stringify(encodeRequest({ ...options, messages }, systemBlocks, images, metadataUserId(deviceMid, attribution.sessionId), wire))
+    const body = JSON.stringify(encodeRequest({ ...options, messages }, systemBlocks, images, metadataUserId(device.value, attribution.sessionId), wire))
     const upstreamBase = `${BIGMODEL_ANTHROPIC_BASE}/v1/messages`
 
     // One attempt: route, assemble, sign, send. 3.16.3 wraps the routing
@@ -490,12 +464,12 @@ export class ZcodeAdapter {
     if (wire?.stream === false) {
       // The session title goes out as 3.16.3 `generateText` sends it: one JSON answer.
       const message: unknown = await response.json()
-      report('active', `上游已应答（套餐 ${plan}）${device?.source === 'bundle' ? DEVICE_MID_FALLBACK_NOTE : ''}`)
+      report('active', `上游已应答（套餐 ${plan}）${device.temporary ? DEVICE_MID_TEMPORARY_NOTE : ''}`)
       yield* decodeMessage(message, options.model) as LlmStreamChunk[]
       return
     }
     if (response.body === null) throw new Error('glm-zcode: response has no stream body')
-    report('active', `上游已应答（套餐 ${plan}）${device?.source === 'bundle' ? DEVICE_MID_FALLBACK_NOTE : ''}`)
+    report('active', `上游已应答（套餐 ${plan}）${device.temporary ? DEVICE_MID_TEMPORARY_NOTE : ''}`)
     // decodeSse emits the internal structural chunk vocabulary; it is
     // field-compatible with the DSH StreamChunk protocol (only the branded id
     // types differ, and brands exist only at the type level).

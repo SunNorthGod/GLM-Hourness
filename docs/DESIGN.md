@@ -64,7 +64,7 @@ GLM-Hourness
 
 | 数据 | 位置 | 理由 |
 | --- | --- | --- |
-| 用量流水、加密凭证、本包的后备 deviceMid（ZCode 状态文件没有 deviceMid 时才用，§4.5b）；以后还有偏好类记忆 | 用户级目录 `$DSH_HOME/glm-hourness/`，默认 `C:\Users\29596\.dsh\glm-hourness\` | 额度跟账号走，一台机器一份，按项目拆开反而看不全 |
+| 用量流水、加密凭证；以后还有偏好类记忆 | 用户级目录 `$DSH_HOME/glm-hourness/`，默认 `C:\Users\29596\.dsh\glm-hourness\` | 额度跟账号走，一台机器一份，按项目拆开反而看不全 |
 | 记忆（事实）、违规、决策 | 项目目录，即工作区 `.llm/` | 记录的是在这个项目里学到的东西与犯过的错，混在一起会互相污染 |
 | 项目图 | 仓库内 | 项目知识，随 git 版本化（`ORCHESTRATION.md` §2.6） |
 
@@ -80,7 +80,7 @@ GLM-Hourness
 
 迁移〔2026-10-28〕：从 `~/.dsh/profiles/desktop/.llm/`（只读）与仓库 `.llm/audit/usage.jsonl` 复制，按整行去重。用户级用量流水共 1080 条：仓库 890 条加旧目录 190 条，两者没有重复，按时间排序，最晚一条 2026-10-27T12:29:08.993Z。旧目录的 1 条记忆（`glm-hourness-handoff`）并入仓库 `.llm/memory.json`；旧目录的 3 条决策在仓库决策流水里都已存在。源文件未改动，旧目录随清理删除（项目图 `m1-cleanup`）。桌面版重启加载新代码之前，运行中的旧代码仍会把用量追加到仓库 `.llm/audit/usage.jsonl`，重启后需补拷一次（同一节点）。
 
-凭证与 deviceMid〔定案 2026-10-28，用户选 A；已实现 2026-10-28，L4 验收之后〕：保留加密凭证文件，搬到 `$DSH_HOME/glm-hourness/`，本包的 deviceMid 随行。凭证文件自 m1-parity 起只存登录令牌与项目 key 的定位，不再有 API Key 与 secret（§4.1）。请求实际发送的 deviceMid 自 m1-parity 起取 ZCode 状态文件里的那个，本包的只在 ZCode 没有时作后备（§4.5b）。加密密钥由 `GLM_HOURNESS_CREDENTIAL_SECRET` 或 `HOME`/`USERPROFILE`、平台、架构推导（§4.1，`src/glm-llm/auth/store.ts`），与文件路径无关，搬家后同一台机器照样能解密。
+凭证与 deviceMid〔定案 2026-10-28，用户选 A；已实现 2026-10-28，L4 验收之后〕：保留加密凭证文件，搬到 `$DSH_HOME/glm-hourness/`，本包当时的 deviceMid（`device-mid.txt`）随行。凭证文件自 m1-parity 起只存登录令牌与项目 key 的定位，不再有 API Key 与 secret（§4.1）。自 m1-parity 起本包不再读写 `device-mid.txt`：请求发送的 deviceMid 是 ZCode 状态文件里的那个，状态文件没有时按 3.16.3 生成并写回（§4.5b）；已有的 `device-mid.txt` 是用户数据，不删除，也不再使用。加密密钥由 `GLM_HOURNESS_CREDENTIAL_SECRET` 或 `HOME`/`USERPROFILE`、平台、架构推导（§4.1，`src/glm-llm/auth/store.ts`），与文件路径无关，搬家后同一台机器照样能解密。
 
 - 解析：`glm-llm` 与 `glm-login` 的 `home` 改为可选，`credentialHome(home)`（`src/shared/data-home.ts`）取非空的行 `home`，否则取用户级目录。两行不读数据目录服务：通道行激活时数据行可能还没激活，而凭证目录在激活时就要定下来。bundle patch 删去两行的 `home`；探针与测试仍显式传 `home` 指向临时目录。
 - 文件：两份文件已复制到 `C:\Users\29596\.dsh\glm-hourness\`，与仓库 `.llm/` 里的原件逐字节相同。原件保留到桌面版重启、确认新代码从用户级目录读到凭证之后再删（项目图 `m1-cleanup`）：重启前运行中的旧代码仍读写仓库 `.llm/`，期间若重新登录，删之前要先把较新的一份补拷过去。
@@ -204,7 +204,7 @@ GLM-Hourness
 
 | 行 | 何时上报 | 生效 | 部分生效或未生效的原因 |
 | --- | --- | --- | --- |
-| glm-llm | 激活；每次请求 | 已注册路由，写明套餐与凭证目录；上游已应答（ZCode 状态文件没有 deviceMid 时注明设备 ID 用本包自己的，状态不降级） | 未登录（凭证为空）；凭证不可读；未拿到项目令牌（写明 3.16.3 的原因，§4.1）；上游返回非 2xx 状态码 |
+| glm-llm | 激活；每次请求 | 已注册路由，写明套餐与凭证目录；上游已应答（设备 ID 未能写入 ZCode 状态文件时注明本进程用临时 ID，状态不降级） | 未登录（凭证为空）；凭证不可读；未拿到项目令牌（写明 3.16.3 的原因，§4.1）；上游返回非 2xx 状态码 |
 | glm-login | 激活 | 三个命令已注册 | 无（凭证目录总能解析，§2.4） |
 | glm-prompt | 激活；每步组装 | GLM 路由，ZCode 提示词与工具面，工具检索 local 或关闭 | 非 GLM 路由；工具检索未安装（会话历史不可读，部分生效）；方言安装失败 |
 | glm-compact | 激活；每次压缩请求 | GLM 压缩请求改用 ZCode 指令与摘要格式 | 非 GLM 路由；未识别 compaction-basic 的指令（原样放行） |
@@ -391,7 +391,14 @@ Flash 没命中的位置：修复前第二步 4 次、之后各步 12 次；固�
 - `x-zcode-session-type` 与 `x-zcode-query-source`：会话标题 `other` + `session_title`（`v2n` @13069774），压缩 `other` + `compact`（@13389086），委派子会话 `subagent` + `subagent`（`mDn` @13259914 把 `subagent_child` 映射为 `subagent`，`Y0n` @4065835），其余 `main` + `main_turn`。委派子会话由 `agents` 服务给出的会话头判定（`origin: 'subagent'`，§2.4a）；取不到会话头时按主会话处理。
 - start-plan 不变：每请求一个 trace id，不带 query id 与 query source。
 
-设备 ID〔已实现 2026-10-28，m1-parity 第 9 项，`src/glm-llm/device-mid.ts`〕：`device_id` 取 ZCode 自己的 deviceMid，按 3.16.3 `ensureCliDeviceMid`（`Qro` @4062043）的读法：`<base>/.zcode/v2/telemetry-state.json` 的 `deviceMid` 字段，`<base>` 是去空白后非空的 `ZCODE_DATA_BASE_DIR`，否则是用户主目录（`CWs` @4062252）；文件读不出、不是 JSON 对象或字段不是非空字符串都算没有，结果按状态文件路径在进程内缓存。端点路由配置请求的 `X-Device-Mid` 按 3.16.3 `Kuc` @14468898 另读一次：去空白、只收可打印 ASCII、只缓存成功的读取，每次刷新配置都读（`Aui`）。与 3.16.3 的差异〔定案，m1-parity 简报第 9 项〕：3.16.3 在状态文件没有 deviceMid 时生成一个并在锁文件保护下原子写回；本包只读，不在 `~/.zcode` 下建任何文件，这时两处都用本包自己的 `<home>/device-mid.txt`，行健康的成功原因注明这一点。本机状态文件有 deviceMid，所以实际发送的是 ZCode 的值。
+设备 ID〔已实现 2026-10-29，m1-parity 第 9 项；定案 2026-10-28，用户选 A「照 ZCode 做：生成并写回 ~/.zcode」，项目图 `question-9`；`src/glm-llm/device-mid.ts`〕：`device_id` 是 ZCode 自己的 deviceMid，按 3.16.3 `ensureCliDeviceMid`（`Qro` @4062043）取得与保存：
+
+- 状态文件是 `<base>/.zcode/v2/telemetry-state.json`，`<base>` 是去空白后非空的 `ZCODE_DATA_BASE_DIR`，否则是用户主目录（`CWs` @4062252；`~`、`~/` 展开，`NWs` @4064238）。
+- 先不加锁读（`EWs` @4062442）：文件读不出、不是 JSON 对象（数组也不算）或 `deviceMid` 不是非空字符串，都算没有。
+- 没有时在同目录的锁文件 `telemetry-state.lock` 里重读一次，仍没有就用 `crypto.randomUUID()` 生成，保留其他键写回（`RWs` @4063231、`PWs` @4062889）。锁用 `open(…, "wx")` 建，内容是 `{createdAt, pid}`；写回先 `mkdir -p`，把两空格缩进的 JSON 写进同目录的临时文件再 `rename`，失败时删掉临时文件。锁已存在时，不足 300 秒且属主记录读不出或属主进程还在（`process.kill(pid, 0)` 成功或报 `EPERM`），等 10 毫秒再试；否则删锁立即重试（`DWs` @4063741）。200 次后放弃。
+- 任何一步失败都照用本进程生成的 id，3.16.3 不报错；结果按状态文件路径在进程内缓存，一个进程只生成一次。本包这时照样发送，在行健康的成功原因后注明「设备 ID 未能写入 ZCode 状态文件，本进程用临时 ID」（§2.5），状态不降级。
+- 端点路由配置请求的 `X-Device-Mid` 按 3.16.3 `Kuc` @14468898 另读一次，只读不生成：去空白、只收可打印 ASCII、只缓存成功的读取，每次刷新配置都读（`Aui`）。模型请求先取 deviceMid 再走端点路由，刚写回的 id 在同一请求的配置请求里就能读到；写回失败时配置请求不带 `X-Device-Mid`，与 3.16.3 相同。
+- 本机状态文件已有 deviceMid，正常运行不会写它。测试经 `ZCODE_DATA_BASE_DIR` 指向临时目录，不碰真实的 `~/.zcode`。
 
 签名：修复签名之前的截包里，握手发往 `zcode.z.ai/api/paas/c1f3a7e2/v2/client`，每次 404，适配器在每个请求前都重试一次握手（约 90 毫秒），随后无签发送；端点路由把请求改写到 `zcode.z.ai/api/v1/ultra/anthropic/v1/messages`（§4.4）。握手地址错是因为适配器把路由后的 URL 交给了签名层，已修，修复后握手返回 200（§4.3）。本节的标定、截包与重放都在修复之前，请求都是无签的〔推断〕。修复后的签名沙盒运行（`net-1793188413414`，GLM-5.3-Flash）第 1 步读 0、第 2 步命中最新前缀，只有一个会话，看不出签名对缓存位置有无影响。
 
@@ -438,7 +445,7 @@ DSH 的 `TokenUsage` 各计数互不重叠：`inputTokens` 只算未命中缓存
 
 验收口径〔定案 2026-10-28，用户：「看量或者扣减看不出来的。你就代码级别一样就行」〕：coding-plan 请求中本包能控制的部分与 3.16.3 代码级一致，不做额度或扣减测量。
 
-已一致（细节与偏移见各节）：模型请求凭证是项目令牌，拿不到即失败（§4.1）；配置请求只带 `x-api-key-id`，凭证不再含 secret（§4.1、§4.4）；`X-Title` 与 User-Agent（§4.2）；头的组装链与线上顺序（§4.3）；归因头（§4.5b）；`metadata.user_id` 的 deviceMid 来源（§4.5b）；请求体键序、`model` 大小写、`thinking` 与 `output_config`、会话标题非流式（§4.5）；`max_tokens` 规则（§4.6）。
+已一致（细节与偏移见各节）：模型请求凭证是项目令牌，拿不到即失败（§4.1）；配置请求只带 `x-api-key-id`，凭证不再含 secret（§4.1、§4.4）；`X-Title` 与 User-Agent（§4.2）；头的组装链与线上顺序（§4.3）；归因头（§4.5b）；`metadata.user_id` 的 deviceMid：读取，缺失时生成并在锁内写回 ZCode 状态文件（§4.5b）；请求体键序、`model` 大小写、`thinking` 与 `output_config`、会话标题非流式（§4.5）；`max_tokens` 规则（§4.6）。
 
 只由 DSH 控制、本包改不了的差异：
 
@@ -453,7 +460,6 @@ DSH 的 `TokenUsage` 各计数互不重叠：`inputTokens` 只算未命中缓存
 
 - `max_tokens` 的用量基线来自本适配器写在回放信封里的用量；别的路由、m1-parity 之前的历史只能整段估算；ZCode 消息模型与 DSH 块的对应是近似（§4.6）。
 - 项目令牌被拒的判断里，3.16.3 错误解析器给出的「provider 错误码」按信封的 `code`、`error.code`、`error.message` 近似（§4.1）。
-- 设备 ID：3.16.3 在状态文件没有 deviceMid 时生成并写回，本包只读，这时用本包自己的 deviceMid，行健康注明（§4.5b）。本机状态文件有 deviceMid。
 - 压缩的档位：3.16.3 取会话的模型选择，DSH 的压缩请求不带档位，本包取会话最近一个主步的档位；会话在本进程里还没有主步时取压缩请求自己的档位，缺省 `high`（§4.5）。
 
 十项之外、仍与 3.16.3 不同的地方（不在 m1-parity 范围，留给用户决定）：

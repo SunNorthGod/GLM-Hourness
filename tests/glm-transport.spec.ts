@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { buildLlmIdentityHeaders, buildContextIdentityHeaders, ensureDeviceMid, DEFAULT_IDENTITY, ZCODE_APP_VERSION } from '../src/glm-llm/identity.ts'
+import { buildLlmIdentityHeaders, buildContextIdentityHeaders, DEFAULT_IDENTITY, ZCODE_APP_VERSION } from '../src/glm-llm/identity.ts'
 import { buildAuthHeaders, buildModelRequestHeaders, buildTraceHeaders, ANTHROPIC_SDK_UA, RequestAttributionTracker, runtimeUserAgent, withUserAgentSuffix, type SessionHeaderLike } from '../src/glm-llm/headers.ts'
 import { BlockAssembler } from '@deepseek-ai/dsh-llm'
 import { encodeRequest, encodeMessage, decodeFrame, decodeMessage, decodeSse, metadataUserId, replayBlocksOf, type AnthropicRequest } from '../src/glm-llm/anthropic.ts'
@@ -39,20 +39,6 @@ test('context identity headers carry the device mid and drop the agent', () => {
   assert.equal(headers['X-Title'], 'Z Code@electron')
   assert.ok(!('X-ZCode-Agent' in headers))
   assert.equal(Object.keys(headers)[0], 'User-Agent') // wire order: UA first
-})
-
-test('deviceMid persists once and is reused across reads', async () => {
-  const files = new Map<string, string>()
-  const fs = {
-    readFile: async (path: string) => { const value = files.get(path); if (value === undefined) throw new Error('ENOENT'); return value },
-    writeFile: async (path: string, data: string) => { files.set(`${path}.tmp`, data); files.set(path, data) },
-    rename: async (from: string, to: string) => { files.set(to, files.get(from) ?? ''); files.delete(from) },
-  }
-  const first = await ensureDeviceMid('C:/ws/.llm', fs)
-  const second = await ensureDeviceMid('C:/ws/.llm', fs)
-  assert.match(first, /^[0-9a-f-]{36}$/)
-  assert.equal(second, first)
-  assert.equal(Object.keys(files).filter(path => path.endsWith('.tmp')).length, 0)
 })
 
 const TRACE = { sessionId: 's1', requestId: 'r1', traceId: 't1', queryId: 'q1', querySource: 'main_turn', sessionType: 'main' } as const
@@ -293,7 +279,6 @@ test('the last block of the last message is the one cache breakpoint; metadata.u
   const marked = request.messages.flatMap(message => message.content.filter(block => block.cache_control !== undefined))
   assert.deepEqual(marked, [{ type: 'tool_result', tool_use_id: 'k1', content: 'src/a.ts', cache_control: { type: 'ephemeral' } }])
   assert.deepEqual(request.metadata, { user_id: '{"device_id":"mid-1","account_uuid":"","session_id":"sess-1"}' })
-  assert.equal(metadataUserId(undefined, 's'), '{"account_uuid":"","session_id":"s"}') // an unknown deviceMid drops the key
   assert.equal(encodeRequest({ provider: 'glm-zcode', model: 'glm-5.3', messages: [{ role: 'user', content: [{ type: 'text', text: 'x' }] }] }).metadata, undefined)
 })
 

@@ -1,8 +1,8 @@
 /**
  * The bundle's data directories (docs/DESIGN.md §2.4).
  *
- * User-level data (the usage journal, the encrypted credential file and
- * deviceMid; later preference memory) lives in one directory per machine, named after this
+ * User-level data (the usage journal and the encrypted credential file;
+ * later preference memory) lives in one directory per machine, named after this
  * project under the DSH home: DSH keeps all user data under one root and a
  * plugin owns a directory named after itself there (dsh-llm-deepseek writes
  * `$DSH_HOME/llm-deepseek/files-v3.json`, rc.3 dsh-llm-deepseek

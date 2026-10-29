@@ -4,10 +4,8 @@
  * fingerprint headers that make the channel indistinguishable from the
  * official desktop client. The LLM plane never carries X-Device-Mid; the
  * context plane (endpoint routing) does. The deviceMid is ZCode's own
- * (device-mid.ts); `ensureDeviceMid` keeps the bundle's fallback one.
+ * (device-mid.ts).
  */
-import { randomUUID } from 'node:crypto'
-import { readFile, writeFile, rename } from 'node:fs/promises'
 import os from 'node:os'
 import { basename } from 'node:path'
 
@@ -137,18 +135,4 @@ export function resolveEnvPromptInfo(env: NodeJS.ProcessEnv = process.env, cwd =
   const shell = shellRaw.length > 0 ? basename(shellRaw) : 'unknown'
   const workingDir = env.ZCODE_IDENTITY_ENV_CWD?.trim() || cwd
   return { cwd: workingDir, platform, shell, osVersion }
-}
-
-/** Load-or-create the bundle's fallback deviceMid (one UUIDv4, reused forever) in `<home>/device-mid.txt`, used only when ZCode's state has none. */
-export async function ensureDeviceMid(home: string, fs: { readFile(path: string): Promise<string>, writeFile(path: string, data: string): Promise<void>, rename(from: string, to: string): Promise<void> } = { readFile: path => readFile(path, 'utf8'), writeFile: (path, data) => writeFile(path, data), rename }): Promise<string> {
-  const path = `${home.replace(/[\\/]+$/, '')}/device-mid.txt`
-  try {
-    const existing = (await fs.readFile(path)).trim()
-    if (existing.length > 0) return existing
-  }
-  catch { /* not created yet */ }
-  const generated = randomUUID()
-  await fs.writeFile(`${path}.tmp`, generated)
-  await fs.rename(`${path}.tmp`, path)
-  return generated
 }

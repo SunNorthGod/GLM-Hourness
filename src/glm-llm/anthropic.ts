@@ -125,11 +125,11 @@ function mergeOptionPatch(body: Record<string, unknown>, patch: Readonly<Record<
 /**
  * `metadata.user_id` as ZCode 3.16.3 builds it for every Anthropic-kind
  * request on both plans (adapters anthropic-request-metadata
- * `createAnthropicRequestMetadataUserId`): the deviceMid, an always-empty
- * account uuid, and the upstream session id. An unknown deviceMid leaves
- * the key out, as JSON.stringify does there.
+ * `createAnthropicRequestMetadataUserId` `ZWs` @4073127): the deviceMid
+ * (`ensureCliDeviceMid`, always a string), an always-empty account uuid,
+ * and the upstream session id.
  */
-export function metadataUserId(deviceMid: string | undefined, sessionId: string): string {
+export function metadataUserId(deviceMid: string, sessionId: string): string {
   return JSON.stringify({ device_id: deviceMid, account_uuid: '', session_id: sessionId })
 }
 

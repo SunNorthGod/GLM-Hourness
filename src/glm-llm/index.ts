@@ -30,7 +30,7 @@ export function registrarOf(ctx: LlmContextLike | { llm?: LlmContextLike }): Ada
 }
 
 export interface GlmConfig {
-  /** The credential directory (credentials.json + device-mid.txt); default the user-level directory `<DSH home>/glm-hourness` (docs/DESIGN.md §2.4). */
+  /** The credential directory (credentials.json); default the user-level directory `<DSH home>/glm-hourness` (docs/DESIGN.md §2.4). */
   readonly home?: string
   /** Plan tier: coding-plan (default, 150% bonus) or start-plan (gateway prompt). */
   readonly plan?: 'coding-plan' | 'start-plan'
@@ -40,7 +40,7 @@ export interface GlmConfig {
 
 /** Runtime Config schema: the channel knobs as real switches in the DSH plugin manager. */
 export const Config = Schema.object({
-  home: Schema.string().description('Credential directory: the encrypted credential store and deviceMid live here. Default: <DSH home>/glm-hourness.'),
+  home: Schema.string().description('Credential directory: the encrypted credential store lives here. Default: <DSH home>/glm-hourness.'),
   plan: Schema.union([Schema.const('coding-plan'), Schema.const('start-plan')]).default('coding-plan').description('Plan tier: coding-plan (default, usage bonus) or start-plan (gateway 3-block prompt, JWT auth).'),
   provider: Schema.string().default('glm-zcode').description('Provider route id registered on the LLM seam.'),
 })

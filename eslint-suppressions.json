@@ -19,11 +19,6 @@
       "count": 2
     }
   },
-  "src/glm-llm/zcode.ts": {
-    "@typescript-eslint/unbound-method": {
-      "count": 3
-    }
-  },
   "src/glm-prompt/aliases.ts": {
     "@typescript-eslint/unbound-method": {
       "count": 1
@@ -161,7 +156,7 @@
       "count": 3
     },
     "@typescript-eslint/require-await": {
-      "count": 4
+      "count": 1
     }
   },
   "tests/glm-zcode.spec.ts": {

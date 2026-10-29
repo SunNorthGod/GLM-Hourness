@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { readdirSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { ZcodeAdapter, ZcodeLogin, logout } from '../src/glm-llm/zcode.ts'
 import { ZCODE_APP_VERSION } from '../src/glm-llm/identity.ts'
 import { runtimeUserAgent, upstreamSessionId, type SessionHeaderLike } from '../src/glm-llm/headers.ts'
@@ -219,9 +220,8 @@ function gatewayFetch(wire: WireRequest[], options: { privateCipher?: string, ma
  * Run `requests` streams through one fresh adapter on the gateway double and
  * return the wire log. `stored` replaces the default credential.
  */
-async function runOnGateway(gateway: Parameters<typeof gatewayFetch>[1], options: { stored?: Credential, plan?: 'start-plan', requests?: number, env?: NodeJS.ProcessEnv, report?: (sessionId: string | undefined, state: string, reason: string) => void, files?: Map<string, string> } = {}): Promise<WireRequest[]> {
+async function runOnGateway(gateway: Parameters<typeof gatewayFetch>[1], options: { stored?: Credential, plan?: 'start-plan', requests?: number, env?: NodeJS.ProcessEnv, report?: (sessionId: string | undefined, state: string, reason: string) => void } = {}): Promise<WireRequest[]> {
   const store = memoryStore()
-  for (const [path, data] of options.files ?? []) store.files.set(path, data)
   await saveCredential(store.fs, 'C:/ws/.llm/credentials.json', options.stored ?? credential)
   const wire: WireRequest[] = []
   const adapter = new ZcodeAdapter({ home: 'C:/ws/.llm', fetchImpl: gatewayFetch(wire, gateway), storeFs: store.fs, env: options.env ?? isolatedEnv(), ...(options.plan === undefined ? {} : { plan: options.plan }), ...(options.report === undefined ? {} : { report: options.report }) })
@@ -247,15 +247,32 @@ test('metadata.user_id and the routing config request carry the deviceMid of ZCo
   assert.deepEqual(reports, ['上游已应答（套餐 coding-plan）'])
 })
 
-test('without a ZCode deviceMid the bundle\'s own one is sent on both planes, the row health says so, and ~/.zcode stays untouched', async () => {
-  const zcode = zcodeDataDir()
+test('without a ZCode deviceMid one is generated and written to the state file, and both planes carry it (3.16.3 ensureCliDeviceMid, Kuc)', async () => {
+  const zcode = zcodeDataDir({ lastDailyActiveDate: '2026-10-28' })
   const reports: string[] = []
-  const files = new Map([['C:/ws/.llm/device-mid.txt', 'cccccccc-1111-4222-8333-dddddddddddd']])
-  const wire = await runOnGateway({}, { env: zcode.env, report: (_s, _state, reason) => { reports.push(reason) }, files })
-  assert.equal(deviceIdOf(wire.find(isModelRequest)!), 'cccccccc-1111-4222-8333-dddddddddddd')
-  assert.equal(headerOf(wire.find(isConfigRequest)!, 'X-Device-Mid'), 'cccccccc-1111-4222-8333-dddddddddddd')
-  assert.deepEqual(reports, ['上游已应答（套餐 coding-plan）；ZCode 状态文件里没有 deviceMid，设备 ID 用本包自己的'])
-  assert.deepEqual(readdirSync(zcode.dir), [])
+  const wire = await runOnGateway({}, { env: zcode.env, report: (_s, _state, reason) => { reports.push(reason) } })
+  const state = JSON.parse(readFileSync(zcode.stateFile, 'utf-8')) as { deviceMid?: string, lastDailyActiveDate?: string }
+  assert.match(state.deviceMid ?? '', /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u)
+  assert.equal(state.lastDailyActiveDate, '2026-10-28')
+  assert.equal(deviceIdOf(wire.find(isModelRequest)!), state.deviceMid)
+  assert.equal(headerOf(wire.find(isConfigRequest)!, 'X-Device-Mid'), state.deviceMid)
+  assert.deepEqual(reports, ['上游已应答（套餐 coding-plan）'])
+})
+
+test('when the state file cannot be written the generated id is still sent and kept, the config request has no X-Device-Mid, and the row health says the id is temporary', async () => {
+  // .zcode/v2 is a file: 3.16.3 ensureCliDeviceMid falls back to the id it generated; Kuc reads nothing.
+  const zcode = zcodeDataDir()
+  mkdirSync(join(zcode.dir, '.zcode'), { recursive: true })
+  writeFileSync(join(zcode.dir, '.zcode', 'v2'), 'not a directory')
+  const reports: string[] = []
+  const wire = await runOnGateway({}, { env: zcode.env, report: (_s, _state, reason) => { reports.push(reason) }, requests: 2 })
+  const [first, second] = wire.filter(isModelRequest)
+  assert.match(deviceIdOf(first) ?? '', /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u)
+  assert.equal(deviceIdOf(second), deviceIdOf(first))
+  assert.equal(headerOf(wire.find(isConfigRequest)!, 'X-Device-Mid'), undefined)
+  const answered = '上游已应答（套餐 coding-plan）；设备 ID 未能写入 ZCode 状态文件，本进程用临时 ID'
+  assert.deepEqual(reports, [answered, answered])
+  assert.equal(readFileSync(join(zcode.dir, '.zcode', 'v2'), 'utf-8'), 'not a directory')
 })
 
 const isPatPlane = (wire: WireRequest): boolean => wire.url.startsWith('https://bigmodel.cn/')

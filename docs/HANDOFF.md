@@ -24,7 +24,7 @@ docs/          宪章、设计、编排、路线、事实账、流程、交接�
 AGENTS.md      仓库规则
 cordis.patch.yml  主包 Loader patch
 .llm/          不入库，项目目录：credentials.json 与 device-mid.txt（已搬到用户级目录，原件待删）、audit/（违规与决策；2026-10-28 之前的用量）、memory.json、docs/（原始资料快照与抓取脚本）、probe-runs/、calibration-runs/
-~/.dsh/glm-hourness/  仓库外，用户级目录：audit/usage.jsonl、credentials.json、device-mid.txt（DESIGN.md §2.4）
+~/.dsh/glm-hourness/  仓库外，用户级目录：audit/usage.jsonl、credentials.json、device-mid.txt（m1-parity 起不再使用，DESIGN.md §2.4）
 reference/     不入库：审计用参考源码（zcode-api、deepseek-harness、ZCode、zcode-plugins）与桌面版运行时包导出 dsh-desktop-0.2.1-rc.3/，约 2.5 GB
 dist/          不入库：tsc 产物（profile 通过 pnpm link 使用）
 .agents/       不入库：编排任务状态与一次性脚本（夜间运行清单、借用审计报告 dsh-borrow-audit/report.md、缓存调查 cache-2026-10-28/、补图脚本 m2-graph/）
@@ -35,7 +35,7 @@ dist/          不入库：tsc 产物（profile 通过 pnpm link 使用）
 
 | 行 | 状态 |
 | --- | --- |
-| `glm-llm` | 真网冒烟通过（coding-plan，模型返回 `pong`；2026-10-28 GLM-5.3-Flash 读图一次，答对颜色）；按 rc.3 消息形状编码（工具调用块、图片块）；2026-10-28 在 `glmsandbox` 的 headless 会话里跑完标定基线（两档模型各 6 次多轮工具会话，全部完成，`ORCHESTRATION.md` §10.5.2）。m1-parity（分支 `m1-parity`，2026-10-28）把 coding-plan 请求改为与 ZCode 3.16.3 代码级一致：项目令牌鉴权且拿不到即失败、凭证记录版本 2（首次读取迁移并去掉 secret）、`X-Title` electron、3.16.3 的 User-Agent 与头序、归因头、请求体与 `max_tokens`（`DESIGN.md` §4.8）。离线门禁全绿；沙盒真实网络运行与桌面版重启（批次 L4）尚未做，重启前不要用新代码读真实凭证目录 |
+| `glm-llm` | 真网冒烟通过（coding-plan，模型返回 `pong`；2026-10-28 GLM-5.3-Flash 读图一次，答对颜色）；按 rc.3 消息形状编码（工具调用块、图片块）；2026-10-28 在 `glmsandbox` 的 headless 会话里跑完标定基线（两档模型各 6 次多轮工具会话，全部完成，`ORCHESTRATION.md` §10.5.2）。m1-parity（分支 `m1-parity`，2026-10-28）把 coding-plan 请求改为与 ZCode 3.16.3 代码级一致：项目令牌鉴权且拿不到即失败、凭证记录版本 2（首次读取迁移并去掉 secret）、`X-Title` electron、3.16.3 的 User-Agent 与头序、归因头、ZCode 的设备 ID（缺失时按 3.16.3 写回 `~/.zcode`）、请求体与 `max_tokens`（`DESIGN.md` §4.8）。离线门禁全绿；沙盒真实网络运行与桌面版重启（批次 L4）尚未做，重启前不要用新代码读真实凭证目录 |
 | `glm-login` | 可用；`/glm-status` 输出凭证状态与调用会话的行健康表（2026-10-28，L3 探针验证），没有 `home` 时也保留 |
 | `glm-prompt` | 在 rc.3 运行时上生效，含 ZCode 3.16.3 local 工具检索；七个别名的描述与 schema 均已按 3.16.3 重建；todo 提醒按助手轮次从会话历史计数（L3 探针 35/35，2026-10-28）；2026-10-28 起 GLM 会话进入高峰时段时收到一条提醒（`ORCHESTRATION.md` §11.4，L3 探针验证）；桌面版需重启才加载 |
 | `glm-compact` | 改为在 `llm/stream` 上替换压缩指令（2026-10-27），L3 探针实测压缩生效 |
@@ -98,7 +98,7 @@ dist/          不入库：tsc 产物（profile 通过 pnpm link 使用）
 
 ## 6. 环境事实
 
-- 凭证：`~/.dsh/glm-hourness/credentials.json` 与 `device-mid.txt`（AES-256-GCM；`GLM_HOURNESS_CREDENTIAL_SECRET` 可覆盖密钥）。自 m1-parity 起记录为版本 2，只存登录令牌与项目 key 定位；旧记录在新代码第一次读取时迁移并去掉 API Key 与 secret，桌面版重启前不要用新代码读这个目录（`DESIGN.md` §4.1）。请求发送的 deviceMid 取 ZCode 的 `~/.zcode/v2/telemetry-state.json`（只读），`device-mid.txt` 只在那里没有时作后备（`DESIGN.md` §4.5b）。`glm-llm`、`glm-login` 不配 `home` 时默认读这里（`DESIGN.md` §2.4）。仓库 `.llm/` 里的原件保留到桌面版重启验证之后再删（项目图 `m1-cleanup`）。
+- 凭证：`~/.dsh/glm-hourness/credentials.json`（AES-256-GCM；`GLM_HOURNESS_CREDENTIAL_SECRET` 可覆盖密钥）。自 m1-parity 起记录为版本 2，只存登录令牌与项目 key 定位；旧记录在新代码第一次读取时迁移并去掉 API Key 与 secret，桌面版重启前不要用新代码读这个目录（`DESIGN.md` §4.1）。请求发送的 deviceMid 取 ZCode 的 `~/.zcode/v2/telemetry-state.json`，那里没有时按 3.16.3 生成并在锁内写回（`DESIGN.md` §4.5b；本机状态文件已有 deviceMid，不会写）；同目录的 `device-mid.txt` 自 m1-parity 起不再使用，作为用户数据保留。`glm-llm`、`glm-login` 不配 `home` 时默认读这里（`DESIGN.md` §2.4）。仓库 `.llm/` 里的原件保留到桌面版重启验证之后再删（项目图 `m1-cleanup`）。
 - 数据目录：用户级 `~/.dsh/glm-hourness/`（`$DSH_HOME` 可改根目录），项目 `.llm/`；由 `data` 行的服务提供（`DESIGN.md` §2.4）。
 - 模型：`glm-zcode` 路由提供 GLM-5.3、GLM-5.3-Flash。
 - 沙盒：profile `glmsandbox`，命令见 `DEVELOPMENT.md` §3；探针（`npm run probe`，离线）与标定（`npm run calibrate`，真实请求、消耗积分）共用，不要同时运行。沙盒模板的权限模式由 `DSH_PERMISSION_MODE` 决定（缺省 `workspace-write`），桌面版 profile 的默认预设是 `danger-full-access`。

@@ -13,7 +13,7 @@ import { collectHealth, provideRowHealth, renderHealthTable, sessionIdOf } from 
 import type { CommandDefinitionLike, CommandInvocationLike, CommandsHost, ProvideHost, ServiceLookup } from '../shared/dsh-min.ts'
 
 export interface LoginConfig {
-  /** The credential directory (credentials.json + device-mid.txt); default `<DSH home>/glm-hourness`, as the channel row. */
+  /** The credential directory (credentials.json); default `<DSH home>/glm-hourness`, as the channel row. */
   readonly home?: string
   /** Injected transport for tests. */
   readonly fetchImpl?: typeof fetch
