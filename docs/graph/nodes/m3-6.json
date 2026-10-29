@@ -2,7 +2,7 @@
   "id": "m3-6",
   "type": "task",
   "title": "3.6 阶段状态机",
-  "status": "approved",
+  "status": "doing",
   "parent": "m3",
   "kind": "implement",
   "body": "阶段提醒、门禁、最小流程条（ORCHESTRATION.md §4.8）。",
@@ -44,6 +44,14 @@
           ]
         }
       }
+    },
+    {
+      "at": "2026-10-29T13:56:16.147Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "派出 m3-implement（wf_947be4d28012cb22），同 m3-1",
+      "from": "approved",
+      "to": "doing"
     }
   ]
 }

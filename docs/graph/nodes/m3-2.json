@@ -2,7 +2,7 @@
   "id": "m3-2",
   "type": "task",
   "title": "3.2 许愿访谈八步与需求卡",
-  "status": "approved",
+  "status": "doing",
   "parent": "m3",
   "kind": "implement",
   "body": "访谈过程中图实时生长（ORCHESTRATION.md §4.2）。",
@@ -44,6 +44,14 @@
           ]
         }
       }
+    },
+    {
+      "at": "2026-10-29T13:56:15.445Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "派出 m3-implement（wf_947be4d28012cb22），同 m3-1",
+      "from": "approved",
+      "to": "doing"
     }
   ]
 }

@@ -2,7 +2,7 @@
   "id": "m3-3",
   "type": "task",
   "title": "3.3 方案五栏与设计门禁",
-  "status": "approved",
+  "status": "doing",
   "parent": "m3",
   "kind": "implement",
   "body": "ORCHESTRATION.md §4.3。",
@@ -44,6 +44,14 @@
           ]
         }
       }
+    },
+    {
+      "at": "2026-10-29T13:56:15.620Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "派出 m3-implement（wf_947be4d28012cb22），同 m3-1",
+      "from": "approved",
+      "to": "doing"
     }
   ]
 }

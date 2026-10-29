@@ -2,7 +2,7 @@
   "id": "m3-1",
   "type": "task",
   "title": "3.1 主 Agent 身份与不写代码",
-  "status": "approved",
+  "status": "doing",
   "parent": "m3",
   "kind": "implement",
   "body": "ROADMAP.md 原文：主 Agent 角色卡；主 Agent 工具面去掉写文件工具。2026-10-28 用户决定之后：主 Agent 的身份是本项目自己的提示词（三问四答、五键、架构师访谈），不用预设；主 Agent 不写代码由 guard 拦（见 d-dispatch）。",
@@ -69,6 +69,14 @@
           ]
         }
       }
+    },
+    {
+      "at": "2026-10-29T13:56:15.271Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "派出 m3-implement（wf_947be4d28012cb22）：按 M3 设计 0.4 实现 m3-1 到 m3-6 与 m3-main-persona，在工作树里做，过门禁、探针与桌面版 L4 后合入",
+      "from": "approved",
+      "to": "doing"
     }
   ]
 }

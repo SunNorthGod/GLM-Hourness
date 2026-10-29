@@ -2,7 +2,7 @@
   "id": "m3-4",
   "type": "task",
   "title": "3.4 五键",
-  "status": "approved",
+  "status": "doing",
   "parent": "m3",
   "kind": "implement",
   "body": "借用 user-questions（ORCHESTRATION.md §4.4）。",
@@ -44,6 +44,14 @@
           ]
         }
       }
+    },
+    {
+      "at": "2026-10-29T13:56:15.791Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "派出 m3-implement（wf_947be4d28012cb22），同 m3-1",
+      "from": "approved",
+      "to": "doing"
     }
   ]
 }

@@ -2,7 +2,7 @@
   "id": "m3-main-persona",
   "type": "task",
   "title": "人设只作用于主 Agent，子 agent 一律不带人设",
-  "status": "approved",
+  "status": "doing",
   "parent": "m3",
   "kind": "implement",
   "body": "编排层提供一处设置，人在里面写主 Agent 跟人说话的人设（语气、称呼、自称等）；它只注入主 Agent 会话的系统提示词，并且只管主 Agent 回给人的话；派出去的子 agent、审查者以及它们写进文件的东西（代码、注释、提交信息、文档）一律不带人设。插件只提供这个设置位，不带任何人设内容，人设文字是用户自己的配置（CHARTER.md 非目标「人设与个人习惯不进插件」照旧成立）。现有 glm-prompt 的 persona 只是汇报细度（简洁、适中、详细），与人设不是一回事，命名上区分开。比把人设放进全局 AGENTS.md 好：全局的会被每个 agent 读到，写进代码注释就闹笑话。",
@@ -31,6 +31,14 @@
       "actor": "llm",
       "op": "comment",
       "text": "用户 2026-10-29：「kiro这里人设先不动，反正最后都要去用dsh开发自己」。起因：Kiro 的 worker 也加载了全局人设规则，回报时带了人设用语（写进文件的东西靠规则保持干净）。Kiro 侧不改，等 dogfood 用本项目的编排层开发自己时由本任务解决。"
+    },
+    {
+      "at": "2026-10-29T13:56:16.337Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "派出 m3-implement（wf_947be4d28012cb22），与 m3-1 同一次运行；依赖 m3-1 在同一分支上先做",
+      "from": "approved",
+      "to": "doing"
     }
   ]
 }

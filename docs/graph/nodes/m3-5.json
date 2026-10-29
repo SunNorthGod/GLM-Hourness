@@ -2,7 +2,7 @@
   "id": "m3-5",
   "type": "task",
   "title": "3.5 决策卡（同步 / 异步）",
-  "status": "approved",
+  "status": "doing",
   "parent": "m3",
   "kind": "implement",
   "body": "同步卡是本项目的 decision_card，经 userQuestions.ask 出卡，人关掉卡片即转为异步（question-20 B）；异步卡自建在项目图的待决节点上（见 d-async-cards）；取代 L1/L2/L3（ORCHESTRATION.md §5）。出工作区申报的同步卡场景归 M4（question-24 A，m4-request-card）。",
@@ -48,6 +48,14 @@
           ]
         }
       }
+    },
+    {
+      "at": "2026-10-29T13:56:15.962Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "派出 m3-implement（wf_947be4d28012cb22），同 m3-1",
+      "from": "approved",
+      "to": "doing"
     }
   ]
 }

@@ -74,6 +74,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "设计 0.3 写完：第 2 轮 11 条全部处理，选项卡改为表格版加「取决于」与条件行，草图 cards、home、plan、drilldown、onboarding 更新。第 3 轮评审待开始。"
+    },
+    {
+      "at": "2026-10-29T13:56:16.850Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "设计评审第 3 轮（design.md 0.3，.agents/tasks/plain-ui/design-review.md）：CHANGES_REQUESTED，HIGH 0、MEDIUM 2、LOW 9；第 2 轮的 11 条全部解决。各轮挡路条数：第 1 轮 6，第 2 轮 2，第 3 轮 2；没有减少，按 question-11 与 DEVELOPMENT.md §1 停下交人。挡路的两条：P3-01 card 分支（799fab1，已评审）把 verdict 存成一行文字，本稿要的是回答到键的对，退路让先想后看的结论行用字母而表格用数字，验收第 8 条做不到；改法是请 card-fields-table 导出结论行的解析函数，面板按键的位置换成显示标号。P3-02 访谈里的选择题走 DSH 的 ask_user_question，由模型自己写，DSH 的工具说明要它把推荐放第一并加 (Recommended)，客户端会预选；推荐放最后保证不了，M3 标定的模拟人也会改选第一项而不报错；要在 A（访谈题改由 harness 出卡，主 Agent 不再有 ask_user_question）与 B（身份文本约束并统计违反次数）之间选一种，并改 M3 设计的五处。循环暂停，等人定是否再给一轮。"
     }
   ]
 }
