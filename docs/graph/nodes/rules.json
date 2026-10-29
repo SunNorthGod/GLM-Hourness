@@ -207,6 +207,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "rules-design-v07-review（wf_9822f2f73e03e718）在写下任何结论之前因 TLS 错误结束，design-review.json 仍是 0.6 的结论。改派 rules-design-v07-review-retry（wf_4d70e4880f5a0f34），要求边审边写，中途失败也能留下已写的发现。"
+    },
+    {
+      "at": "2026-10-29T21:47:05.413Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "规则板设计 0.7 评审（rules-design-v07-review-retry，wf_4d70e4880f5a0f34）：CHANGES_REQUESTED，HIGH 0、MEDIUM 1、LOW 10；挡路从 8 降到 1。唯一挡路的 F59 是 M7、循环板与规则板之间的接缝：默认少做时主 Agent 在高峰里等着，M7 的「连续 3 拍没进展」会在高峰中途去问人，高峰结束后接着做又要靠一个没人认领的 M7 动作。编排方裁定（agent 定，可推翻，已写进 design-context 的接缝裁定）：因高峰模式而等着的拍不计入 M7 的空转规则；M7 以自己的原因（如 hourness-peak-wait）停住驱动，并提供 harness 动作 resume-drive；高峰结束时由编排层的循环板条目执行 resume-drive 并提醒主 Agent；规则板只给档位与「是不是因高峰被压着」。派出单步小改 rules-design-v08-write（wf_53cfc666389b8537）。"
     }
   ]
 }

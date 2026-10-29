@@ -137,6 +137,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "循环板设计 0.2 §17 给 M7 的请求：1. entries.ts 照 LoopEntryDefinition 写，执行行与运维行各经 ctx.inject([glmHournessLoops]) 调 contribute({plugin, row}, {events, entries, actions, run})，run 即 runAction、返回 HarnessResult，limits 照循环板 §5.1 的表（交回、审查过了、停下、活都关了、放行去抖 5 秒每小时 30 次；主干全量检查 30 秒；重启对账每小时 6 次）。2. 事件照循环板 §4.2 声明字段，提醒文字占位改成 {名字}；hourness.handback 载荷加 commits、floorHit，hourness.trunk-advanced 加 files、truncated。3. 事件经 emit({event, cwd, session, key, payload}) 交，key 用退路执行者已有的去重键。4. 新事件 hourness.outside-advance（记 {by: 'outside'} 时交），execute.trunk 同时听它。5. 建议 execute.trunk-check 只跑这个主干提交的树还没覆盖到的命令，全覆盖时跳过。6. 新 harness 动作 execute.resume-after-peak：恢复在这一段高峰里因 hourness-idle-rounds 阻塞的 goal（模型自己 resume 不了，tool-goal:348–349）。0.1 的 withGateLock、emitLoopEvent 请求作废。"
+    },
+    {
+      "at": "2026-10-29T21:47:05.585Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "接缝裁定（编排方，2026-10-30，见 .agents/tasks/design-context.md）：高峰模式少做或不做时，主 Agent 因高峰而等着的拍不计入空转规则，不在高峰中途问人；M7 以 hourness-peak-wait 一类的原因停住驱动，并经 glmHournessExecute.runAction 提供 resume-drive；高峰结束时循环板的编排层条目执行它。另一条：少做时的并发上限由规则板给出，M7 派发时读它。M7 下一稿照此写。"
     }
   ]
 }
