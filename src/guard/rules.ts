@@ -48,8 +48,12 @@ export function declarationOf(rule: GuardRule, face: ToolFace): string {
   return typeof rule.declare === 'string' ? rule.declare : rule.declare(face)
 }
 
-const APPLICATION_PROTOCOL
-  = 'To operate outside the workspace, file a request stating: target path or command, purpose, reversibility and blast-radius self-check, and alternatives you considered. A human approves each request individually; no grant outlives the call it approved.'
+/**
+ * The exception part of both corrections. No tool or channel takes a filed
+ * request until the M4 decision card exists, so the model is sent to the
+ * human, the only one who can allow the action.
+ */
+const ASK_THE_HUMAN = 'tell the human what you need, where and why; only the human can allow it.'
 
 /** Normalize a path for containment checks and path comparison (case-insensitive Windows file systems). */
 export function normalizePath(path: string): string {
@@ -87,7 +91,7 @@ export function workspaceContainment(roots: readonly string[], base: string | un
           fact: normalizePath(absolute) === normalizePath(target) ? `You tried to write "${target}".` : `You tried to write "${target}" (resolves to "${absolute}").`,
           violation: 'That path is outside the workspace; writes are confined to the workspace.',
           rightPath: 'Recreate this change under the workspace root (project files in place, agent-private artifacts under .llm/).',
-          exception: APPLICATION_PROTOCOL,
+          exception: `If the task really needs to write outside the workspace, ${ASK_THE_HUMAN}`,
         },
       }
     },
@@ -137,7 +141,7 @@ export const fileToolsOnly: GuardRule = {
         fact: `You tried to modify files through the shell: "${shell.command}" (${describeWrite(write)}).`,
         violation: 'Shell file writes are not permitted; file changes go through the dedicated tools.',
         rightPath: `Read the target with ${face('read')}, then apply the change with ${face('write')} or ${face('edit')}.`,
-        exception: 'If a task genuinely requires shell-side file generation (e.g. a build tool), follow the application protocol. ' + APPLICATION_PROTOCOL,
+        exception: `If the task really needs shell-side file generation (e.g. a build tool), ${ASK_THE_HUMAN}`,
       },
     }
   },

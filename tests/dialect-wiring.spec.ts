@@ -20,12 +20,23 @@ test('containment denies writes outside the workspace with a four-part correctio
   if (verdict.kind === 'deny') {
     assert.ok(verdict.correction.fact.includes('evil.dll'))
     assert.ok(verdict.correction.rightPath.includes('.llm'))
-    assert.ok(verdict.correction.exception.includes('reversibility'))
+    assert.ok(verdict.correction.exception.includes('tell the human'))
     const text = renderCorrection(verdict.correction)
     assert.ok(text.startsWith('You tried to write'))
     assert.match(text, /Boundary: /)
     assert.match(text, /Right path: /)
     assert.match(text, /Exception: /)
+  }
+})
+
+test('both exceptions send the model to the human, not to a request channel that does not exist', () => {
+  const verdicts = [evaluate([rule], write('C:\\Windows\\system32\\evil.dll')), evaluate([fileToolsOnly], { name: 'pwsh', arguments: { command: 'echo x > out.txt' } })]
+  for (const verdict of verdicts) {
+    assert.equal(verdict.kind, 'deny')
+    if (verdict.kind !== 'deny') continue
+    // No tool or channel takes a filed request until the M4 decision card exists.
+    assert.doesNotMatch(verdict.correction.exception, /file a request|application protocol|approves each request/i)
+    assert.match(verdict.correction.exception, /tell the human what you need, where and why; only the human can allow it\.$/)
   }
 })
 
@@ -84,6 +95,7 @@ test('environment section joins only when host facts are provided', () => {
   assert.ok(env!.text.includes('- Is a git repository: yes'))
   assert.equal(dialectSections().some(section => section.name === 'glm:environment'), false)
 })
+
 
 test('skills note appends to session guidance when skills exist', () => {
   const withSkills = dialectSections(false, 'balanced', { skills: true })
