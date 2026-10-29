@@ -77,6 +77,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "蓝屏恢复之后编排方又重启了一次，八个运行再次停在「Interrupted by agent restart」，已逐个恢复并确认在跑（prompt-fixes 的 code 步、bootstrap-design 的 design 步等）。用户在 Kiro 里撤回了上一轮的三处本地文件改动：共用设计说明里「问题说人话、给 agent 一个完整示例」一节，以及生成 question-37 操作的一次性脚本与 question-39 的操作文件。图上 question-37 B（m7-1 到 m7-10 已建）与 question-39 B（m3-1、m3-2 已改）的记录仍在；用户要求把那批问题全部重问，按重答的结果保留或改回。「说人话」一节等用户重答后再决定写不写回共用说明（该内容已经直接发给 plain-ui 第 4 稿与 M3 附录第 2 稿）。"
+    },
+    {
+      "at": "2026-10-29T16:42:37.950Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "用户 2026-10-30 已重新登录 Kiro。编排方重新派出因 BAD_DECRYPT 失败的运行：prompt-fixes 收尾加 ZCode 3.17.1 跟进、规则板设计 0.5；另派指标流水的设计（metrics，先写设计与一页人话放行稿，人确认后再写代码）。"
     }
   ]
 }

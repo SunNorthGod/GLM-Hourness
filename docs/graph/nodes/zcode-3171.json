@@ -53,6 +53,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "Correction to the previous comment: not every new step session fails. Since the crash 5 step sessions failed at start with BAD_DECRYPT (prompt-fixes review, rules write twice, m6 round-2 review, this run first coding step), while others started fine (M3 addendum round-2 review, plain-ui 0.4 author, M4 0.2 author, workflow-creator sessions). Cause unknown; new runs are still held until Kiro is restarted or signed in again."
+    },
+    {
+      "at": "2026-10-29T16:43:49.100Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "重新派出 prompt-fixes-and-zcode-3171-retry（wf_e48380fb20a69493），内容同 wf_920936995c163f50；沙盒与桌面版改为先向编排方申请再用。"
     }
   ]
 }

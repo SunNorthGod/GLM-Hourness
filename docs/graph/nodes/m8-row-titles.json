@@ -42,6 +42,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "m8-row-titles (wf_893fb981054a32c3) code step: build, preflight and npm test green on branch row-titles (650 pass, 0 fail). Orchestrator granted the sandbox probe slot; no other run is probing (prompt-fixes and the ZCode follow-up are stopped, M3 is in design review)."
+    },
+    {
+      "at": "2026-10-29T16:43:49.482Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "代码步完成：分支 row-titles 的 0ec0b58（基于 4f6c06b，main 之后只多了 docs/graph 的提交，不用变基）。build、preflight（13 行）、npm test（650 过、0 失败）全部退出 0；探针 118/118，含 probe-full、probe-glm、probe-hourness 上新加的行名检查。还差独立评审与桌面版 L4 截图，之后合入。"
     }
   ]
 }

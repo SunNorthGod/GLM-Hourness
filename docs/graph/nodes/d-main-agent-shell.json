@@ -5,7 +5,7 @@
   "status": "approved",
   "parent": "orch",
   "verification": "unverified",
-  "body": "主 Agent 能跑命令行与 git，唯一的限制是不写文件（question-26 C：去掉写文件工具，shell 写入由 guard 兜底）。M7 设计 0.2 m7-5 第 3 条「主 Agent 的 git merge、commit、reset 一类命令被拒」作废，不再单列 git。编排方的理解（待人确认）：会改动工作区文件的命令（合并、回退、切分支、改写文件的脚本）本身就是写文件，照同一条规矩拦；只读的（log、status、diff、跑测试看结果）都可以；合入主干仍由 harness 的合入门禁做。",
+  "body": "主 Agent 能任意使用命令行与 git（git 交给主 Agent），唯一的限制是没有写文件的工具（question-26 C；shell 里的写文件命令由 guard 兜底，git 命令不在此列）。M7 设计 0.2 m7-5 第 3 条「主 Agent 的 git merge、commit、reset 一类命令被拒」作废。待和人商量的一处：主干前进时 harness 是否仍要核对「这个提交跑过合入前的检查」（编排方建议：主 Agent 做 git，harness 只在主干前进的那一刻核对并记证据）。",
   "history": [
     {
       "at": "2026-10-29T16:34:16.680Z",
@@ -14,6 +14,19 @@
       "reason": "用户澄清主 Agent 的权限边界",
       "relay": "主Agent可以用git，命令行等，只是不能写文件而已",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-29T16:42:37.431Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "用户澄清：git 可以任意操作，git 交给主 Agent 最好；去掉编排方「改动工作区的 git 命令也算写文件」的理解",
+      "relay": "主Agent只是不能动文件，但是可以任意操作git，或者说git交由主Agent是最好的。",
+      "changes": {
+        "body": {
+          "from": "主 Agent 能跑命令行与 git，唯一的限制是不写文件（question-26 C：去掉写文件工具，shell 写入由 guard 兜底）。M7 设计 0.2 m7-5 第 3 条「主 Agent 的 git merge、commit、reset 一类命令被拒」作废，不再单列 git。编排方的理解（待人确认）：会改动工作区文件的命令（合并、回退、切分支、改写文件的脚本）本身就是写文件，照同一条规矩拦；只读的（log、status、diff、跑测试看结果）都可以；合入主干仍由 harness 的合入门禁做。",
+          "to": "主 Agent 能任意使用命令行与 git（git 交给主 Agent），唯一的限制是没有写文件的工具（question-26 C；shell 里的写文件命令由 guard 兜底，git 命令不在此列）。M7 设计 0.2 m7-5 第 3 条「主 Agent 的 git merge、commit、reset 一类命令被拒」作废。待和人商量的一处：主干前进时 harness 是否仍要核对「这个提交跑过合入前的检查」（编排方建议：主 Agent 做 git，harness 只在主干前进的那一刻核对并记证据）。"
+        }
+      }
     }
   ]
 }

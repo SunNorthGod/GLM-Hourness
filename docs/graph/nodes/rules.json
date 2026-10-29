@@ -111,6 +111,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "rules-design-v05（wf_4ae36fac743f83a2）在写稿步一开始就因运行环境的解密错误（BAD_DECRYPT）失败，什么都没写。蓝屏之后同一错误已让 4 个步骤失败（prompt-fixes 评审、rules 两次写稿、m6 第 2 轮评审），都落在设计与评审类步骤的新会话上；先不再重派，等 Kiro 重启或重新登录之后再派。"
+    },
+    {
+      "at": "2026-10-29T16:43:49.286Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "重新派出 rules-design-v05-retry（wf_f0cf45ba63f84c4a），内容同 wf_4ae36fac743f83a2，另按 2026-10-30 主 Agent 的四条方向决定与指标流水复核。"
     }
   ]
 }
