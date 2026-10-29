@@ -97,6 +97,12 @@
           "exit": 0
         }
       ]
+    },
+    {
+      "at": "2026-10-29T03:06:10.351Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "用户 2026-10-29 要求「彻底把glm反代那些清掉就行」。复查 DSH 侧：三个 profile（desktop、glmsandbox、headless）的配置文件与 ~/.dsh 顶层文件里已没有 8317、llm-pi-ai 的配置；唯一剩下的是删路由前的备份 ~/.dsh/profiles/desktop/cordis.patch.yml.bak-1793241992974（3021 字节，SHA-256 19A32657…，只比现行 patch 多这条路由），已删除，DESIGN §1 与 HANDOFF 同步改写。仓库外还有反代程序本身：C:/Users/29596/Desktop/Project/工具目录/zcode-api/zcode-proxy.exe 正在运行并监听 0.0.0.0:8317（由资源管理器启动，目录里有 tunnel.bat），当前没有客户端连接；它是用户自己的工具，停掉与删除要等用户确认。用户级用量流水里 806 条旧路由记录（glm/glm-5.3 796、glm/glm-5.3-flash 10）是真实消耗的历史，保留。"
     }
   ]
 }
