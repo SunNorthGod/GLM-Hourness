@@ -68,6 +68,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M3 设计第 3 轮评审 CHANGES_REQUESTED（.agents/tasks/m3/design-review.json）：第 2 轮 13 条全部关闭；新意见 MEDIUM 2、LOW 3。R3-M1：/graph-apply 的唤醒通知从全进程的 agents.roots() 取候选，只比焦点 id；节点 id 在不同图之间会重复，另一个工作区里焦点 id 相同的主 Agent 会被叫醒、被告知不在它图上的决定，m3-5 验收 2 不成立；修正是同时比对候选会话的图目录，并加两个工作区同 id 的 L2 用例。R3-M2：L3 场景要在会话中途经命令生命周期发 /wish、/wish off、/graph-apply，现有探针只能在 agent/created 发一次 /wish，命令步骤不经 command/run 与 command/done；修正是给探针步骤加经 commands.execute 执行的 line 字段，并把 glm-design-main 拆成空闲与运行中两个场景。LOW：dispatchRoot 片段在 strict 下不过类型检查；第 11 步的起点应在第 3 步之后；附录版本号引用过时。三轮用完仍未通过，按 question-11 停下等人决定是否再加一轮。"
+    },
+    {
+      "at": "2026-10-29T08:07:30.823Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "用户 2026-10-29 回复「行，那就再加，继续吧」：设计循环加第 4 轮修订与评审，处理 R3-M1、R3-M2 与 3 条 LOW。"
     }
   ]
 }

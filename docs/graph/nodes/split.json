@@ -138,6 +138,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "question-17 B 设计附录 0.3 第 3 轮评审：CHANGES_REQUESTED，MEDIUM 1、NIT 7（.agents/tasks/split/addendum-review.md）。第 2 轮 B01–B07 全部关闭；两种 pnpm 的删除与隔离路径、组合输出格式、git 输出、restart.ps1 与附录相符，desktop 与 glmsandbox 的当前形状与附录一致。MEDIUM C01：install 失败或被 DSH 兼容性拒绝之后，profile 停在看上去像 S2 的状态（新 junction 已建、锁文件未更新），apply 的 S2 分支只重做核对、不重跑 install，profile 单独回滚又被运行前检查第 6 条挡住，流程上只能撤销已推送的整段合入；修正是 S2 且锁文件未更新时按从 S1 继续处理，演练 R3 加一次模拟。NIT：子进程设 CI=false；--run 必须是 l4-split 下直接一级的 rehearsal-<数字>；正向合入在根锁文件变化时先安装；rollback 成功后记录改名；切换方式写进 MERGE-SLOT REQUEST；FACTS.md 的范围改为 G1–G23；「不删 node_modules 里的文件」限定到 apply 与 rollback。三轮用完仍未通过，按 question-11 停下等人；split-implement 在第 0–2 步之后等这个循环结束，第 3 步起暂停。"
+    },
+    {
+      "at": "2026-10-29T08:07:30.643Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "用户 2026-10-29 回复「行，那就再加，继续吧」：附录循环加第 4 轮修订与评审，处理 C01 与 7 条 NIT。m8-ui-audit 已完成，界面改动都在 main 上，第 3 步的 UI-MERGE CHECK 届时直接放行。"
     }
   ]
 }
