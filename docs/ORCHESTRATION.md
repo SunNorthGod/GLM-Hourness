@@ -267,8 +267,8 @@ guard 拦截〔已实现，规则 `graph-files-only`，`src/guard/graph-files.ts
 | `approve` | `id`、`rev` | 提议 → 已批准；带 `supersedes` 连线的节点被批准时，被取代节点同时转为 `superseded` | 可以 | 拒绝，正路是等人在决策队列里处理，或带人的原话转述 |
 | `reject` | `id`、`rev` | 提议 → 废弃 | 可以 | 拒绝，同上 |
 | `status` | `id`、`rev`、`to`、`evidence?` | 已批准 → 进行中 / 完成 / 废弃；进行中 → 完成 / 废弃；完成 → 进行中（重开，记一次返工）；废弃 → 已批准（恢复）。提议节点不经 `status` | 可以 | 不能废弃或恢复目标与特性（计划外，正路是提议一个待决）；不能废弃待决 |
-| `edit` | `id`、`rev`、`set`（字段 → 新值，`null` 表示删除） | 改字段 | 可以 | 只能改 `title`、`body`、`slope`、待决的 `decider` 与任务的派发属性（`kind`、`tier`、`worktree`、`outputSchema`、`writeScope`）；`decider` 只能改为 `human` 或删掉，改为 `agent` 拒绝；不能改目标节点；自己提议（首条历史是同一身份的 `propose`）且仍为 `proposed` 的节点可以改全部字段，`decider` 改为 `agent` 除外 |
-| `link` / `unlink` | `id`、`rev`、`type`、`to` | 加 / 删 `depends` 或 `source` 连线 | 可以 | 可以，目标节点除外 |
+| `edit` | `id`、`rev`、`set`（字段 → 新值，`null` 表示删除） | 改字段 | 可以 | 只能改 `title`、`body`、`slope`、待决的 `decider` 与任务的派发属性（`kind`、`tier`、`worktree`、`outputSchema`、`writeScope`）；`decider` 只能改为 `human` 或删掉，改为 `agent` 拒绝；不能改目标节点，自己提议且仍为 `proposed` 的目标除外。自己提议（首条历史是同一身份的 `propose`）且仍为 `proposed` 的节点可以改全部字段，`decider` 改为 `agent` 除外；对这样的目标，`acceptance`、`nonGoals`、`stage` 都在内（2026-10-29 用户选定，`question-23` A：没被人批准的目标是 LLM 的草稿，人批准时看到全部内容）。人批准之后的目标照旧不能改；`harness` 不能改 `llm` 提议的目标（首条历史的身份要相同） |
+| `link` / `unlink` | `id`、`rev`、`type`、`to` | 加 / 删 `depends` 或 `source` 连线 | 可以 | 可以，目标节点除外（自己提议的目标也一样） |
 | `comment` | `id`、`text` | 批注 | 可以 | 可以 |
 | `decide` | `id`、`rev`、`option` | 已批准、进行中或完成的待决拍板：写入 `decision`，追加 `decision` 证据，状态转为（或保持）完成；完成的待决再拍即推翻 | 可以 | 决定者为 `agent`、且人没有拍过的待决可以；其余拒绝，正路同 `approve`。这条拒绝排在修订号检查之前 |
 | `verify` | `id`、`rev`、`to`、`evidence?` | 改决策的验证状态 | 可以 | 可以 |
@@ -1036,7 +1036,7 @@ LLM 不讲人话，多半是默认在向评审汇报，想显得周全。做法�
 | --- | --- |
 | 项目图存储格式与位置（`ROADMAP.md` 2.1） | agent 定（按原型）：`docs/graph/nodes/<id>.json`，规范化 JSON（§2.6）。备选是每节点一个 Markdown 文件、自写 frontmatter 子集解析器，正文更好读，代价是多一个解析器与一套嵌套语法 |
 | 批准、否决、拍板、取代的权限 | 定案 2026-10-28（§2.9.1）：人，或带人原话转述的 LLM；决定者为 agent 的待决由 LLM 自己拍，人可推翻。取代原型的「只认 `human`」：人在对话里说过的也算数（用户：「一般情况下是人去图里点或者问 LLM 都行」） |
-| LLM 不能改任何节点的验收条件与非目标 | agent 定（按原型）（§2.9）；LLM 自己提议、仍在提议状态的节点除外；带转述时可以（§2.9.1） |
+| LLM 不能改任何节点的验收条件与非目标 | agent 定（按原型）（§2.9）；LLM 自己提议、仍在提议状态的节点除外，包括自己提议的目标（2026-10-29 用户选定，`question-23` A）；带转述时可以（§2.9.1） |
 | 图片与查看器的渲染 | agent 定（按原型）：自建分层布局，取代 §13 原来的「渲染用开源库」（比较见 §2.12） |
 | 跨进程并发写入 | agent 定（按原型）：只靠修订号检查，不加锁文件（§2.11） |
 | 图有校验错误时的写入 | agent 定（按原型）：一律拒绝，人改回文件或用 git 还原后再写（§2.9） |

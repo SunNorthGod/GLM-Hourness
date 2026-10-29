@@ -256,6 +256,25 @@ graphTest('edit by the llm: the goal, acceptance criteria and non-goals are refu
   assert.deepEqual((await g.node('task-1')).acceptance, ['往返逐字节一致'])
 })
 
+graphTest('edit by the llm: every field of a goal it proposed while the goal waits; adopted goals, other actors and goal edges stay refused', async g => {
+  const goal = await g.run('llm', { op: 'propose', reason: '许愿', node: { type: 'goal', title: '记账小工具', stage: 'wish', body: '需求：每天记一下花了多少钱' } })
+  assert.equal(goal.node.status, 'proposed')
+  const edited = must(await g.act('llm', { op: 'edit', id: goal.id, reason: '访谈', set: { acceptance: ['月底能看出钱花在哪'], nonGoals: ['不做多人共享'], stage: 'interview' } }))
+  assert.deepEqual([edited.node.acceptance, edited.node.nonGoals, edited.node.stage], [['月底能看出钱花在哪'], ['不做多人共享'], 'interview'])
+  assert.deepEqual(edited.node.history.at(-1), {
+    at: edited.node.history.at(-1)!.at, actor: 'llm', op: 'edit', reason: '访谈',
+    changes: { stage: { from: 'wish', to: 'interview' }, acceptance: { from: null, to: ['月底能看出钱花在哪'] }, nonGoals: { from: null, to: ['不做多人共享'] } },
+  })
+  // Another actor's proposal is not its draft.
+  refused(await g.act('harness', { op: 'edit', id: goal.id, reason: '改', set: { title: '别的' } }), 'forbidden')
+  // Edges of a goal stay the human's, even on the llm's own proposal.
+  refused(await g.act('llm', { op: 'link', id: goal.id, type: 'source', to: 'goal-1', reason: '连' }), 'forbidden')
+  must(await g.act('human', { op: 'approve', id: goal.id, reason: '确认' }))
+  refused(await g.act('llm', { op: 'edit', id: goal.id, reason: '再改', set: { acceptance: ['更宽松'] } }), 'forbidden')
+  refused(await g.act('llm', { op: 'edit', id: goal.id, reason: '再改', set: { title: '新名字' } }), 'forbidden')
+  assert.deepEqual((await g.node(goal.id)).acceptance, ['月底能看出钱花在哪'])
+})
+
 graphTest('edit by the llm: title, body, slope and dispatch attributes; every field of its own open proposal', async g => {
   const edited = must(await g.act('llm', { op: 'edit', id: 'task-1', reason: '补正文', set: { title: '图存储', body: '读写节点文件', slope: 'downhill' } }))
   assert.equal(edited.node.title, '图存储')

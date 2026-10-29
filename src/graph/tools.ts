@@ -240,7 +240,7 @@ const WRITES: ReadonlyArray<{ readonly op: LlmOp, readonly description: string, 
   },
   {
     op: 'edit',
-    description: 'Change a node\'s title, body, slope, a question\'s decider, a task\'s dispatch attributes (kind, tier, worktree, outputSchema, writeScope); any field of your own open proposal. Decider human is always allowed; decider agent, the goal, acceptance criteria and non-goals need the human\'s words as relay. Questions keep the graph_propose rules (recommended option last).',
+    description: 'Change a node\'s title, body, slope, a question\'s decider, a task\'s dispatch attributes (kind, tier, worktree, outputSchema, writeScope); any field of your own open proposal, goals included. Decider human is always allowed; decider agent, an adopted goal, acceptance criteria and non-goals need the human\'s words as relay. Questions keep the graph_propose rules (recommended option last).',
     parameters: object({
       id: ID,
       rev: REV,

@@ -469,9 +469,10 @@ function planEdit(context: Context, node: GraphNode, set: Readonly<Partial<Recor
   const fields = Object.keys(set) as EditableField[]
   if (!context.privileged) {
     const relayHint = 'if the human asked for it in the chat, send their words verbatim as relay'
-    if (node.type === 'goal') return failure('forbidden', `${actor} cannot edit the goal`, `goals, acceptance criteria and non-goals are the human's: propose a question node under the goal; ${relayHint}`)
     const first = node.history[0]
     const ownProposal = node.status === 'proposed' && first?.op === 'propose' && first.actor === actor
+    // A goal the actor proposed itself is its draft until the human approves it (decision question-23 A); an adopted goal is the human's.
+    if (node.type === 'goal' && !ownProposal) return failure('forbidden', `${actor} cannot edit the goal`, `goals, acceptance criteria and non-goals are the human's: propose a question node under the goal; ${relayHint}`)
     const denied = ownProposal ? undefined : fields.find(field => !LLM_EDITABLE.has(field))
     if (denied !== undefined) {
       return failure('forbidden', `${actor} cannot edit ${denied} of "${node.id}"`, `${actor} edits ${[...LLM_EDITABLE].join(', ')}, or any field of its own open proposal; propose a question node to change the rest; ${relayHint}`, `set.${denied}`)
