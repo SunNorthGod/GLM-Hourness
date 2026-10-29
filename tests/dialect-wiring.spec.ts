@@ -157,8 +157,10 @@ test('a GLM request gets the ZCode identity and resident face; deferred tools an
   installDialect(rt.agent)
   const assembled = await rt.assemble({ provider: 'glm-zcode', model: 'glm-5.3' })
   assert.equal(assembled.sections[0]!.name, 'glm:cli-prefix')
+  assert.equal(assembled.sections[0]?.text, 'You are ZCode, an interactive agent')
   assert.equal(assembled.sections[1]!.name, 'harness:identity')
-  assert.ok(assembled.sections[1]!.text.includes('ZCode'))
+  // The 3.17.1 identity names no product; ZCode is in the CLI prefix only.
+  assert.ok(assembled.sections[1]!.text.startsWith('You are an agent working with the user toward their goals'))
   assert.ok(!assembled.sections.some(section => section.text.includes('powered by DeepSeek Harness')))
   const names = assembled.tools.map(tool => tool.name)
   assert.deepEqual(names, [...RESIDENT_FACE, ...CONTROLS])

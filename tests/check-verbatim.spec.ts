@@ -13,6 +13,11 @@ test('every mirror file keeps the import rules', () => {
   for (const file of MIRROR_FILES) assert.deepEqual(importProblems(file, readFileSync(join(REPO, file), 'utf8')), [], file)
 })
 
+test('the Harness block is checked through its mirror file, piece by piece', async () => {
+  assert.ok(MIRROR_FILES.includes('src/glm-prompt/zcode-harness-text.ts'))
+  assert.ok(!('HARNESS_BLOCK' in await loadItems()))
+})
+
 test('the text check covers every start-plan system text: the prefix, the stable and the dynamic sections', async () => {
   const texts = Object.values(await loadItems())
   const startPlan = [ZCODE_SYSTEM.cliPrefix, ...ZCODE_SYSTEM.stableSections, ...Object.values(ZCODE_SYSTEM.dynamicSections)]

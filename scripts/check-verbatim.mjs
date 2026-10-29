@@ -43,7 +43,7 @@ const KNOWN_DEVIATIONS = new Set([])
  * between their interpolations. The scanner skips comments and does not
  * parse regex literals or division, which these files must not contain.
  */
-export const MIRROR_FILES = ['src/toolsearch/zcode-text.ts', 'src/glm-prompt/zcode-tool-text.ts', 'src/glm-llm/zcode-wire.ts', 'src/shared/zcode-notice.ts']
+export const MIRROR_FILES = ['src/toolsearch/zcode-text.ts', 'src/glm-prompt/zcode-tool-text.ts', 'src/glm-prompt/zcode-harness-text.ts', 'src/glm-llm/zcode-wire.ts', 'src/shared/zcode-notice.ts']
 
 /** Minimum line length checked; shorter fragments are structural (headings, blank joints). */
 const MIN_LINE = 13
@@ -243,7 +243,6 @@ export async function loadItems() {
     IDENTITY_OPENING_WITH_STYLE: verbatim.IDENTITY_OPENING_WITH_STYLE,
     IDENTITY_OPENING_PLAIN: verbatim.IDENTITY_OPENING_PLAIN,
     SECURITY_NOTICE_OFFICIAL: verbatim.SECURITY_NOTICE_OFFICIAL,
-    HARNESS_BLOCK: verbatim.HARNESS_BLOCK,
     TODO_REMINDER_BODY: verbatim.TODO_REMINDER_BODY,
     TODO_REMINDER_ECHO_HEADER: verbatim.TODO_REMINDER_ECHO_HEADER,
     'compact prompt': compact.buildCompactPrompt(undefined),

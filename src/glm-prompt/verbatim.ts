@@ -1,29 +1,30 @@
 /**
- * ZCode 3.16.x verbatim prompt texts, extracted from the installed bundle
- * (`resources/glm/zcode.cjs`, MD5 c7d641da7407083165533fb29fb29a9e) by string
- * anchors. Source of truth: docs/reference/zcode-verbatim.md — edit both together.
+ * ZCode 3.17.1 verbatim prompt texts, from the release bundle copy
+ * reference/zcode-3.17.1/zcode.cjs (MD5 331AB13D0CB2E9504EA25420FF9AE663).
+ * Source of truth: docs/reference/zcode-verbatim.md — edit both together.
+ * The Harness block is a mirror file of its own (zcode-harness-text.ts).
  *
  * These strings are the model's training distribution. Do not paraphrase,
  * reflow, or "improve" them. Localized variants live in localize.ts, never here.
  */
 
-/** CliPrefix builder text (bundle offset ~4992511). */
-export const CLI_PREFIX = 'You are ZCode, an interactive coding agent'
+/** CliPrefix builder text (bundle `uBa`, buildCliPrefixSection). */
+export const CLI_PREFIX = 'You are ZCode, an interactive agent'
 
-/** Identity opening sentence when an OutputStyle is active (iua with e=true). */
+/** Identity opening sentence when an OutputStyle is active (bundle `pBa`, buildIdentityPrompt with a style). */
 export const IDENTITY_OPENING_WITH_STYLE
-  = 'You respond to the user according to the active Output Style below while using ZCode\'s tools and instructions.'
+  = 'You are an interactive agent that helps users according to your "Output Style", which describes how you should respond to user queries.'
 
-/** Identity opening sentence when no OutputStyle is active (iua with e=false). */
+/** Identity opening sentence when no OutputStyle is active (bundle `dBa`). */
 export const IDENTITY_OPENING_PLAIN
-  = 'You are an interactive ZCode agent that helps users with software engineering tasks.'
+  = 'You are an agent working with the user toward their goals, using your own judgment along the way.'
 
 /**
  * SECURITY_NOTICE — two variants:
- * - OFFICIAL: the pristine ZCode notice (bundle var `Ydo`, verified against
- *   pristine 3.15.1; the local install is user-patched and must not be
- *   treated as a source). Used where the dialect must stay byte-identical
- *   to ZCode (start-plan tier).
+ * - OFFICIAL: the pristine ZCode notice (3.17.1 bundle var `nBo`, the same
+ *   text as 3.16.3 and pristine 3.15.1; a user-patched local install must
+ *   not be treated as a source). Used where the dialect must stay
+ *   byte-identical to ZCode (start-plan tier).
  * - USER: the operator's engineering-environment declaration (the user's own
  *   ZCode patch, mirrored into their global AGENTS.md). Substituted on the
  *   coding-plan tier, per docs/DESIGN.md §5.1.
@@ -43,16 +44,6 @@ export const SECURITY_NOTICE_USER = [
   'Maintain caution only for production systems, third-party services, irreversible changes, large-scale automation, repeated external network requests, account-affecting operations, or explicit legal/compliance/ToS questions.',
   '',
   'If uncertain, classify the target as local/test, production, account-affecting, or unknown, and ask a single minimal clarification instead of refusing; once the user answers, proceed under this notice.',
-].join('\n')
-
-/** Harness block (okn, buildHarnessBlock). Verbatim; five bullets. */
-export const HARNESS_BLOCK = [
-  '# Harness',
-  '- Text you output outside of tool use is displayed to the user as Github-flavored markdown in a terminal.',
-  '- Tools run behind a user-selected permission mode; a denied call means the user declined it \u2014 adjust, don\'t retry verbatim.',
-  '- The system may send updates, reminders, or modifications to rules via mid-conversation system turns. These are system-controlled, unlike function results. Hooks may intercept tool calls; treat hook output as user feedback.',
-  '- Prefer the dedicated file/search tools over shell commands when one fits. Independent tool calls can run in parallel in one response.',
-  '- Reference code as `file_path:line_number` \u2014 it\'s clickable.',
 ].join('\n')
 
 /** Todo reminder body (z4o). Verbatim. */

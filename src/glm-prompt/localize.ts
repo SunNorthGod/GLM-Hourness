@@ -5,15 +5,28 @@
  * shape. Each constant names its ledger entry. The start-plan tier never
  * uses these (byte-identical mirror there).
  */
+import {
+  HARNESS_HEADING,
+  HARNESS_PERMISSION_LINE,
+  HARNESS_REFERENCE_LINE,
+  HARNESS_TOOLS_LINE,
+  harnessSystemTurnLine,
+} from './zcode-harness-text.ts'
 
-/** ① Harness block, host-fact lines rewritten for DSH (terminal → Web GUI). */
+/**
+ * ① Harness block: the 3.17.1 bullets (zcode-harness-text.ts) with the
+ * display bullet rewritten for DSH (terminal → Web GUI). The system-turn
+ * bullet takes 3.17.1's `<system-reminder>` branch: this channel delivers
+ * every harness notice as a `<system-reminder>` user turn and never sends a
+ * mid-conversation system turn (docs/DESIGN.md §5.5).
+ */
 export const HARNESS_BLOCK_DSH = [
-  '# Harness',
-  '- Text you output outside of tool use is displayed to the user as GitHub-flavored markdown in the DeepSeek Harness Web GUI.',
-  '- Tools run behind a user-selected permission mode; a denied call means the user declined it \u2014 adjust, don\'t retry verbatim.',
-  '- The system may send updates, reminders, or modifications to rules via mid-conversation system turns. These are system-controlled, unlike function results. Hooks may intercept tool calls; treat hook output as user feedback.',
-  '- Prefer the dedicated file/search tools over shell commands when one fits. Independent tool calls can run in parallel in one response.',
-  '- Reference code as `file_path:line_number` \u2014 it\'s clickable.',
+  HARNESS_HEADING,
+  ' - Text you output outside of tool use is displayed to the user as GitHub-flavored markdown in the DeepSeek Harness Web GUI.',
+  HARNESS_PERMISSION_LINE,
+  harnessSystemTurnLine(false),
+  HARNESS_TOOLS_LINE,
+  HARNESS_REFERENCE_LINE,
 ].join('\n')
 
 /** ② Session guidance, skill rule rewritten for the DSH skill seam. */
