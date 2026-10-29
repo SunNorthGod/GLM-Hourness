@@ -77,6 +77,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "沙盒探针 118/118 通过。工作树构建的无界面真实请求（glm-zcode coding-plan）：9 个请求全部 200，6 个模型请求签名被接受（没有 401），UA 为 ZCode/3.17.1，x-zcode-session-features 出现在 x-zcode-query-source 之后、x-zcode-session-type 之前。凭证副本已删，主检出 git 状态不变，沙盒已释放。编排方要求在 L4 之前把实测的整串归因头顺序与 3.17.1 包里的顺序并排记下并确认一致。"
+    },
+    {
+      "at": "2026-10-29T21:38:46.531Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "归因头顺序已核对（.agents/tasks/zcode-3171/verify.md）：3.17.1 的 Uft 依次发 x-zcode-query-source、x-zcode-session-features、x-session-id，它的 AI SDK 在 withUserAgentSuffix（Cyn）里经 Headers 重新排序，所以 3.17.1 自己在线路上也把 session-features 放在 x-zcode-session-type 之前，与实测一致，不用改。分支已变基到 main ecdee9d，661 个用例全过。编排方批准桌面版 L4，但不先把主检出快进（避免 L4 期间主干领先于远端）：照 m8-row-titles 的做法，备份桌面 profile，两个 junction 临时指向 .worktrees/zcode-3171 的包，验完改回并用 profile-shape 比对确认复原。"
     }
   ]
 }
