@@ -5,7 +5,7 @@
   "status": "approved",
   "parent": "orch",
   "verification": "unverified",
-  "body": "主 Agent 能任意使用命令行与 git（git 交给主 Agent），唯一的限制是没有写文件的工具（question-26 C；shell 里的写文件命令由 guard 兜底，git 命令不在此列）。M7 设计 0.2 m7-5 第 3 条「主 Agent 的 git merge、commit、reset 一类命令被拒」作废。待和人商量的一处：主干前进时 harness 是否仍要核对「这个提交跑过合入前的检查」（编排方建议：主 Agent 做 git，harness 只在主干前进的那一刻核对并记证据）。",
+  "body": "主 Agent 能任意使用命令行与 git（git 交给主 Agent：什么时候合、先合哪个、冲突怎么处理、要不要回退都由它定），唯一的限制是没有写文件的工具（question-26 C；shell 里的写文件命令由 guard 兜底，git 命令不在此列）。harness 只守一处：主干前进的那一刻核对这个提交确实跑过合入前的检查（norm-merge-gate），没跑过就拒绝，并由 harness 记下提交号与检查结果作证据；模型自报的结果不算证据。M7 设计 0.2 的 m7-5 第 3 条作废，m7-5 改为「主 Agent 合入，harness 核对与记证据」。",
   "history": [
     {
       "at": "2026-10-29T16:34:16.680Z",
@@ -25,6 +25,19 @@
         "body": {
           "from": "主 Agent 能跑命令行与 git，唯一的限制是不写文件（question-26 C：去掉写文件工具，shell 写入由 guard 兜底）。M7 设计 0.2 m7-5 第 3 条「主 Agent 的 git merge、commit、reset 一类命令被拒」作废，不再单列 git。编排方的理解（待人确认）：会改动工作区文件的命令（合并、回退、切分支、改写文件的脚本）本身就是写文件，照同一条规矩拦；只读的（log、status、diff、跑测试看结果）都可以；合入主干仍由 harness 的合入门禁做。",
           "to": "主 Agent 能任意使用命令行与 git（git 交给主 Agent），唯一的限制是没有写文件的工具（question-26 C；shell 里的写文件命令由 guard 兜底，git 命令不在此列）。M7 设计 0.2 m7-5 第 3 条「主 Agent 的 git merge、commit、reset 一类命令被拒」作废。待和人商量的一处：主干前进时 harness 是否仍要核对「这个提交跑过合入前的检查」（编排方建议：主 Agent 做 git，harness 只在主干前进的那一刻核对并记证据）。"
+        }
+      }
+    },
+    {
+      "at": "2026-10-29T16:53:01.491Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "用户选编排方推荐的 C：主 Agent 做 git，harness 只在主干前进时核对并记证据",
+      "relay": "按你上面推荐的来",
+      "changes": {
+        "body": {
+          "from": "主 Agent 能任意使用命令行与 git（git 交给主 Agent），唯一的限制是没有写文件的工具（question-26 C；shell 里的写文件命令由 guard 兜底，git 命令不在此列）。M7 设计 0.2 m7-5 第 3 条「主 Agent 的 git merge、commit、reset 一类命令被拒」作废。待和人商量的一处：主干前进时 harness 是否仍要核对「这个提交跑过合入前的检查」（编排方建议：主 Agent 做 git，harness 只在主干前进的那一刻核对并记证据）。",
+          "to": "主 Agent 能任意使用命令行与 git（git 交给主 Agent：什么时候合、先合哪个、冲突怎么处理、要不要回退都由它定），唯一的限制是没有写文件的工具（question-26 C；shell 里的写文件命令由 guard 兜底，git 命令不在此列）。harness 只守一处：主干前进的那一刻核对这个提交确实跑过合入前的检查（norm-merge-gate），没跑过就拒绝，并由 harness 记下提交号与检查结果作证据；模型自报的结果不算证据。M7 设计 0.2 的 m7-5 第 3 条作废，m7-5 改为「主 Agent 合入，harness 核对与记证据」。"
         }
       }
     }
