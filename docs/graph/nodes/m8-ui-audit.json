@@ -70,6 +70,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "修复第一轮进行中（已推送 e6fd0f2、5454d2e）。split 设计第三稿发现 V-01（设置页插件清单的行名改成包说明符）与伞包布局冲突，列为待人定事项并建议 V-01 放到 split 合入之后；已通知修复步骤本轮不做 V-01，在 findings.md 标为暂缓、待人定。"
+    },
+    {
+      "at": "2026-10-29T04:44:21.591Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "修复第一轮完成：提交 e6fd0f2…fe550ff 已推送，门禁全过，探针 94/94，除 GLM 通道对话框外每个界面都已走查；编排方同意在 scratch 会话里打开一次对话框截图（只读，会在该会话留一张 glm-status 命令卡）。knip.jsonc 的 ignoreDependencies 加了 react-dom（模块表包，与 react 同规则），交给评审。"
     }
   ]
 }

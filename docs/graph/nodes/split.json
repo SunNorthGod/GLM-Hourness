@@ -108,6 +108,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "split-implement 的步骤经用户批准：建工作树；第 0–2 步实现与「彻底两个插件」的设计附录及其评审并行；第 3–4、5–6、7、8 步依次实现；整枝评审最多三轮；合入；L4。工作树 .worktrees/split（分支 split，基于 main 53750c8）已建，基线 build 通过。"
+    },
+    {
+      "at": "2026-10-29T04:44:21.754Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "question-17 B 的设计附录第一稿写完（.agents/tasks/split/design-addendum-q17b.md 0.1），取代 0.3 的 §3.1–§3.7、第 5、6 步、合入顺序与 §7.6 中依赖伞包的条目；评审进行中。要转给人的两处：合入时门禁排在 profile 切换之前（AGENTS.md 第 2 条）；question-15 A 的验收文字在 B 下要改写（附录 §7.4），评审后提给人。"
     }
   ]
 }
