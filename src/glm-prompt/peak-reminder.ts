@@ -1,6 +1,6 @@
 /**
  * Peak-hour reminder (docs/ORCHESTRATION.md §11.4): on a GLM route, the first
- * step of a session inside a peak window (src/shared/credits.ts,
+ * step of a session inside a peak window (src/glm-llm/credits.ts,
  * docs/FACTS.md §2.4) gets one short `<system-reminder>` notice that peak
  * hours have started. Information only: the harness never switches models
  * or plans and never blocks or postpones work; scheduling is the user's
@@ -17,7 +17,7 @@
  * §1), so it lives outside the mirror files.
  */
 import { createUserNotice, type AgentLike, type DerivedMessage } from '../shared/dsh-min.ts'
-import { peakWindowAt } from '../shared/credits.ts'
+import { peakWindowAt } from '../glm-llm/credits.ts'
 import { installStepNotice } from '../shared/step-notice.ts'
 import { wrapSystemReminder } from '../shared/zcode-notice.ts'
 

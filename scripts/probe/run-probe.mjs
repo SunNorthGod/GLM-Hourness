@@ -40,7 +40,7 @@ import { dirname, join } from 'node:path'
 import { crc32, deflateSync } from 'node:zlib'
 import { DISPATCH_TOOLS } from '../../dist/workflow/index.js'
 import { PEAK_REMINDER_SOURCE, PEAK_REMINDER_TEXT } from '../../dist/glm-prompt/peak-reminder.js'
-import { peakWindowAt } from '../../dist/shared/credits.js'
+import { peakWindowAt } from '../../dist/glm-llm/credits.js'
 import { userDataHome } from '../../dist/shared/data-home.js'
 import { HEALTH_ROWS } from '../../dist/shared/health.js'
 import { GRAPH_TOOL_NAMES } from '../../dist/shared/tool-names.js'
@@ -203,7 +203,8 @@ const glm = runScenario('glm', 'glm-5.3', [
   { tool: { name: 'Bash', arguments: { command: 'Write-Output probe-bash', timeout: 30000 } } },
   { tool: { name: 'Read', arguments: { file_path: png } } },
   { tool: { name: 'Bash', arguments: { command: `Set-Content -Path '${blocked}' -Value probe` } } },
-  { text: 'done', status: true },
+  // The health table is recorded before /hourness runs, so the hourness row is still idle in it.
+  { text: 'done', status: true, command: { name: 'hourness' } },
 ], 'Load TodoWrite, record one todo, read package.json, write, edit and re-read a scratch file, list, search, run a command, read an image, write a file through the shell, then reply done.', attachmentsIn(glmDir))
 const glmFirst = glm.steps[0]
 const glmTools = names(glmFirst)
@@ -676,6 +677,10 @@ const plainGuardViolations = jsonl(join(plainGuardDir, 'home', 'audit', 'violati
 const plainGuardHealth = healthOf(plainGuard)
 const GUARD_SECTION = '# Workspace rules\nThe harness checks every tool call against these rules before it runs;'
 const glmStatusText = statusStep(glm)?.status ?? ''
+// /hourness at the same step: the panel prices the scenario's usage journal
+// through the pricing service the glm-login row provides (src/shared/pricing.ts).
+const glmHourness = statusStep(glm)?.command
+const glmPanel = glmHourness?.text.split('## 面板\n')[1] ?? ''
 const healthLine = (health, row) => health[row] === undefined ? `${row}: missing` : `${row}: ${health[row].status}`
 const ACTED = '生效'
 const IDLE = '已加载，本会话未触发'
@@ -776,6 +781,7 @@ const checks = [
   ['workflow: the runtime subagent tools are journaled dispatch names', plainSubagentTools.length === 2 && plainSubagentTools.every(name => DISPATCH_TOOLS.includes(name)), `runtime subagent tools: ${plainSubagentTools.join(', ') || 'none'}`],
   ['health: /glm-status prints the credential line and the health table of the session, one line per bundle row', glmStatusText.startsWith('glm-zcode：未登录（套餐 coding-plan）') && glmStatusText.includes(`## 行健康（会话 ${statusStep(glm)?.sessionId}）`) && HEALTH_ROWS.every(row => glmHealth[row] !== undefined) && Object.keys(glmHealth).length === HEALTH_ROWS.length, `${Object.keys(glmHealth).length} row(s); ${glmStatusText.split('\n')[0]}`],
   ['health: on the GLM route glm-prompt, guard, memory, workflow, data and glm-login report in effect; glm-compact and hourness have not acted', glmHealth['glm-prompt']?.status === ACTED && glmHealth['glm-prompt'].reason.startsWith('GLM 路由 glm-probe/glm-5.3：') && ['guard', 'memory', 'workflow', 'data', 'glm-login'].every(row => glmHealth[row]?.status === ACTED) && ['glm-compact', 'hourness'].every(row => glmHealth[row]?.status === IDLE), HEALTH_ROWS.map(row => healthLine(glmHealth, row)).join('; ')],
+  ['pricing: /hourness on the GLM route prices the usage journal through the pricing service glm-login provides', glmHourness?.kind === 'success' && glmPanel.startsWith('- 全部用量记录；高峰为工作日 14:00–18:00（UTC+8）') && /^- glm-5\.3：\d+ 次 · 积分 \d+\.\d\d/m.test(glmPanel), `${glmHourness?.kind ?? 'not run'}; ${JSON.stringify(glmPanel.split('\n').slice(0, 3))}`],
   ['health: on the non-GLM route glm-prompt reports why it is not in effect', plainHealth['glm-prompt']?.status === '未生效' && plainHealth['glm-prompt'].reason.startsWith('非 GLM 路由 glm-probe/deepseek-probe'), JSON.stringify(plainHealth['glm-prompt'] ?? null)],
   ['health: after a GLM compaction glm-compact reports the mirror in effect', compactHealth['glm-compact']?.status === ACTED && compactHealth['glm-compact'].reason.startsWith('GLM 压缩请求改用 ZCode 指令'), JSON.stringify(compactHealth['glm-compact'] ?? null)],
   ['health: the reports stay out of the model-visible conversation', conversationTexts.length > 0 && conversationTexts.every(text => !text.includes('行健康') && !text.includes('glmHournessHealth')), `${conversationTexts.length} text(s) checked`],

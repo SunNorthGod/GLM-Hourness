@@ -3,17 +3,19 @@
  * journal — no separate bookkeeping. Pure functions over JSONL text; the
  * `/hourness` command renders them (src/ui/index.ts).
  *
- * The usage panel is on the credit basis (src/shared/credits.ts,
- * docs/FACTS.md §2.4, docs/ORCHESTRATION.md §11.3): credits per model with
- * the off-peak discount, cache hit rate, and the peak share weighted by the
- * credits charged. Models outside the credit plan are counted, not priced.
- * Native-channel records written before the usage-chunk fix
- * (docs/DESIGN.md §4.6a) counted every input as 0; that decoder emitted no
- * `totalTokens`, which identifies them, and they enter no number but their
- * own count.
+ * The usage panel prices calls through the pricing service
+ * (src/shared/pricing.ts, docs/ORCHESTRATION.md §11.3), which the GLM
+ * channel package provides with its credit plan: credits per model, cache
+ * hit rate, and the peak share weighted by the credits charged. Models
+ * outside the plan are counted, not priced; a call the service fails to
+ * price is counted as such. Without the service the panel lists calls and
+ * token counts per model. Native-channel records written before the
+ * usage-chunk fix (docs/DESIGN.md §4.6a) counted every input as 0; that
+ * decoder emitted no `totalTokens`, which identifies them, and they enter
+ * no number but their own count.
  */
-import { chargedCredits, creditRate, peakWindowAt } from '../shared/credits.ts'
 import type { DecisionRecord, UsageRecord } from '../memory/audit.ts'
+import { PRICING_SERVICE, type UsagePricing } from '../shared/pricing.ts'
 
 /** The native channel's provider id at the time of the usage-chunk defect (src/glm-llm/index.ts default). */
 const NATIVE_PROVIDER = 'glm-zcode'
@@ -49,10 +51,14 @@ interface ModelUsage extends TokenCounts {
 }
 
 export interface UsagePanelData {
-  /** Models of the credit plan, most credits first. */
+  /** The pricing the credits follow; absent when the panel lists calls and tokens only. */
+  readonly pricing?: Pick<UsagePricing, 'basis' | 'plan'>
+  /** With pricing, the models of the plan, most credits first; without, every model (credits 0), most calls first. */
   readonly models: readonly ModelUsage[]
-  /** Models outside the credit plan, most calls first: counted, not priced. */
+  /** Models outside the plan, most calls first: counted, not priced. Empty without pricing. */
   readonly unpriced: ReadonlyArray<{ readonly model: string, readonly calls: number }>
+  /** Calls the pricing service failed to price (it threw), left out of every number. */
+  readonly unpriceable: number
   /** Native-channel records from before the usage-chunk fix, left out of every number. */
   readonly preFix: number
   /** Lines without a parseable record, time or token counts, left out of every number. */
@@ -74,9 +80,27 @@ function preFixRecord(record: UsageRecord): boolean {
   return record.provider === NATIVE_PROVIDER && record.usage.inputTokens === 0 && record.usage.totalTokens === undefined
 }
 
-export function usagePanel(usageRaw: string): UsagePanelData {
-  const priced = new Map<string, { -readonly [K in keyof ModelUsage]: ModelUsage[K] }>()
+/** What one call is charged under `pricing`: credits and whether in peak hours, `outside` the plan, or `failed` (the service threw). */
+function priceOf(pricing: UsagePricing, record: UsageRecord, at: number, problem: ((message: string) => void) | undefined): { readonly credits: number, readonly peak: boolean } | 'outside' | 'failed' {
+  try {
+    const credits = pricing.charged(record.model, record.usage, at)
+    return credits === undefined ? 'outside' : { credits, peak: pricing.peak(at) }
+  }
+  catch (error) {
+    problem?.(`${PRICING_SERVICE} threw while pricing a call (${error instanceof Error ? error.message : String(error)}); the call is counted as not priceable`)
+    return 'failed'
+  }
+}
+
+/**
+ * The usage panel of a journal. With `pricing`, calls are priced through it;
+ * without, every model lists calls and tokens. `problem` hears about a
+ * pricing service that throws.
+ */
+export function usagePanel(usageRaw: string, pricing?: UsagePricing, problem?: (message: string) => void): UsagePanelData {
+  const models = new Map<string, { -readonly [K in keyof ModelUsage]: ModelUsage[K] }>()
   const unpriced = new Map<string, number>()
+  let unpriceable = 0
   let preFix = 0
   let unreadable = 0
   for (const line of usageRaw.split('\n')) {
@@ -97,27 +121,32 @@ export function usagePanel(usageRaw: string): UsagePanelData {
       preFix += 1
       continue
     }
-    const rate = creditRate(value.model)
-    if (rate === undefined) {
+    const at = Date.parse(value.at)
+    const price = pricing === undefined ? { credits: 0, peak: false } : priceOf(pricing, value, at, problem)
+    if (price === 'failed') {
+      unpriceable += 1
+      continue
+    }
+    if (price === 'outside') {
       unpriced.set(value.model, (unpriced.get(value.model) ?? 0) + 1)
       continue
     }
     const model = value.model.toLowerCase()
-    const entry = priced.get(model) ?? { model, calls: 0, inputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, outputTokens: 0, credits: 0, peakCredits: 0 }
-    const at = Date.parse(value.at)
-    const credits = chargedCredits(rate, value.usage, at)
+    const entry = models.get(model) ?? { model, calls: 0, inputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, outputTokens: 0, credits: 0, peakCredits: 0 }
     entry.calls += 1
     entry.inputTokens += value.usage.inputTokens
     entry.cacheReadTokens += value.usage.cacheReadTokens ?? 0
     entry.cacheWriteTokens += value.usage.cacheWriteTokens ?? 0
     entry.outputTokens += value.usage.outputTokens
-    entry.credits += credits
-    if (peakWindowAt(at) !== undefined) entry.peakCredits += credits
-    priced.set(model, entry)
+    entry.credits += price.credits
+    if (price.peak) entry.peakCredits += price.credits
+    models.set(model, entry)
   }
   return {
-    models: [...priced.values()].sort((a, b) => b.credits - a.credits),
+    ...(pricing === undefined ? {} : { pricing: { basis: pricing.basis, plan: pricing.plan } }),
+    models: [...models.values()].sort(pricing === undefined ? (a, b) => b.calls - a.calls : (a, b) => b.credits - a.credits),
     unpriced: [...unpriced].map(([model, calls]) => ({ model, calls })).sort((a, b) => b.calls - a.calls),
+    unpriceable,
     preFix,
     unreadable,
   }
@@ -141,15 +170,38 @@ function creditFacts(usage: TokenCounts & Pick<ModelUsage, 'credits' | 'peakCred
   ].join(' · ')
 }
 
+/** Token counts and cache hit rate of one line, for the panel without pricing. */
+function tokenFacts(usage: TokenCounts): string {
+  const hit = cacheHitRate(usage)
+  return [
+    `未命中输入 ${usage.inputTokens}`,
+    `缓存读 ${usage.cacheReadTokens}`,
+    `缓存写 ${usage.cacheWriteTokens}`,
+    `输出 ${usage.outputTokens}`,
+    ...(hit === undefined ? [] : [`缓存命中 ${percent(hit)}`]),
+  ].join(' · ')
+}
+
 /** The panel as Markdown list lines (the `/hourness` 面板 section). */
 export function usagePanelLines(panel: UsagePanelData): string[] {
-  const sum = (key: keyof TokenCounts | 'credits' | 'peakCredits'): number => panel.models.reduce((total, model) => total + model[key], 0)
+  const sum = (key: keyof TokenCounts | 'calls' | 'credits' | 'peakCredits'): number => panel.models.reduce((total, model) => total + model[key], 0)
   const total = { inputTokens: sum('inputTokens'), cacheReadTokens: sum('cacheReadTokens'), cacheWriteTokens: sum('cacheWriteTokens'), outputTokens: sum('outputTokens'), credits: sum('credits'), peakCredits: sum('peakCredits') }
+  const pricing = panel.pricing
+  const head = pricing === undefined
+    ? [
+        '- 没有计价服务（GLM 通道包的 glm-login 行提供积分口径），只列调用与 token',
+        `- 合计：${sum('calls')} 次 · ${tokenFacts(total)}`,
+        ...panel.models.map(model => `- ${model.model}：${model.calls} 次 · ${tokenFacts(model)}`),
+      ]
+    : [
+        `- ${pricing.basis}`,
+        `- 合计：${creditFacts(total)}`,
+        ...panel.models.map(model => `- ${model.model}：${model.calls} 次 · ${creditFacts(model)}`),
+        ...(panel.unpriced.length === 0 ? [] : [`- 不计积分（不在 ${pricing.plan}内）：${panel.unpriced.map(entry => `${entry.model} ${entry.calls} 次`).join('，')}`]),
+      ]
   return [
-    '- 全部用量记录；高峰为工作日 14:00–18:00（UTC+8），其余时段按 50% 计积分；高峰占比按积分计',
-    `- 合计：${creditFacts(total)}`,
-    ...panel.models.map(model => `- ${model.model}：${model.calls} 次 · ${creditFacts(model)}`),
-    ...(panel.unpriced.length === 0 ? [] : [`- 不计积分（不在 GLM 积分套餐内）：${panel.unpriced.map(entry => `${entry.model} ${entry.calls} 次`).join('，')}`]),
+    ...head,
+    ...(panel.unpriceable === 0 ? [] : [`- 无法计价的记录 ${panel.unpriceable} 条（计价服务出错），未计入`]),
     ...(panel.preFix === 0 ? [] : [`- 修正前的原生通道记录 ${panel.preFix} 条：输入计为 0，未计入`]),
     ...(panel.unreadable === 0 ? [] : [`- 无法读取的记录 ${panel.unreadable} 条，未计入`]),
   ]

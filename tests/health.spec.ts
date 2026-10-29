@@ -433,7 +433,7 @@ test('memory: each model call reports the usage journal and the memory tools of 
   assert.equal(run({}, undefined).session!.state, 'inactive')
 })
 
-test('hourness: an invocation reports which journals the report can read', async () => {
+test('hourness: an invocation reports which journals the report can read and that the panel has no pricing service', async () => {
   const run = async (config: { home?: string }, data: unknown) => {
     const store = serviceStore()
     const commands: Command[] = []
@@ -441,7 +441,7 @@ test('hourness: an invocation reports which journals the report can read', async
     await commands[0]!.handler({ agent: agentIn('s1'), rawInput: '' })
     return inSession(store, 'hourness', 's1')
   }
-  assert.deepEqual(await run({ home: 'C:/definitely-empty-hourness-home' }, { userHome: 'C:/definitely-empty-hourness-user' }), { state: 'active', reason: '报告读取项目目录与用户级目录' })
-  assert.deepEqual(await run({ home: 'C:/definitely-empty-hourness-home' }, undefined), { state: 'degraded', reason: '用户级目录不可用，用量读不到' })
+  assert.deepEqual(await run({ home: 'C:/definitely-empty-hourness-home' }, { userHome: 'C:/definitely-empty-hourness-user' }), { state: 'active', reason: '报告读取项目目录与用户级目录；积分口径：未提供，按 token 列' })
+  assert.deepEqual(await run({ home: 'C:/definitely-empty-hourness-home' }, undefined), { state: 'degraded', reason: '用户级目录不可用，用量读不到；积分口径：未提供，按 token 列' })
   assert.equal((await run({}, undefined))!.state, 'inactive')
 })

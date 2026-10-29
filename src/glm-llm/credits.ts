@@ -1,7 +1,9 @@
 /**
- * The GLM credit plan of the user's coding plan (docs/FACTS.md §2.4), shared
- * by the usage panel (src/ui/panel.ts), the peak-hour reminder
- * (src/glm-prompt/peak-reminder.ts) and the calibration runner.
+ * The GLM credit plan of the user's coding plan (docs/FACTS.md §2.4), used
+ * by the peak-hour reminder (src/glm-prompt/peak-reminder.ts), the
+ * calibration runner and the probe, and served to the orchestration
+ * package's usage panel as the pricing service (src/shared/pricing.ts) by
+ * the glm-login row.
  *
  * credits = (input × Input + cache reads × Cached + output × Output) / 10000,
  * charged at the full rate in peak hours (Monday to Friday 14:00-18:00,
@@ -10,7 +12,8 @@
  * MCP tool calls (1.2 credits per call) do not reach the usage journal and
  * are not priced here.
  */
-import type { TokenUsage } from './lm-min.ts'
+import type { TokenUsage } from '../shared/lm-min.ts'
+import type { UsagePricing } from '../shared/pricing.ts'
 
 /** Coefficients per 10,000 tokens. */
 interface CreditRate {
@@ -62,3 +65,14 @@ export function chargedCredits(rate: CreditRate, usage: TokenUsage, ms: number):
   const full = fullCredits(rate, usage)
   return peakWindowAt(ms) === undefined ? full * OFF_PEAK_RATE : full
 }
+
+/** The pricing service value of the credit plan (src/shared/pricing.ts). */
+export const creditPricing: UsagePricing = Object.freeze({
+  basis: '全部用量记录；高峰为工作日 14:00–18:00（UTC+8），其余时段按 50% 计积分；高峰占比按积分计',
+  plan: 'GLM 积分套餐',
+  charged: (model: string, usage: TokenUsage, atMs: number): number | undefined => {
+    const rate = creditRate(model)
+    return rate === undefined ? undefined : chargedCredits(rate, usage, atMs)
+  },
+  peak: (atMs: number): boolean => peakWindowAt(atMs) !== undefined,
+})

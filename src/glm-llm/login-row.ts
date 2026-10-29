@@ -6,10 +6,17 @@
  * present (key preview, JWT age on start-plan), followed by the row health
  * table of the invoking session (src/shared/health.ts). The credential
  * directory is the channel row's: `home`, else `<DSH home>/glm-hourness`.
+ *
+ * The row also provides the pricing service (src/shared/pricing.ts): the
+ * GLM credit plan the orchestration package's usage panel prices calls
+ * with. It is the plan's human entry and enabled by default, and it does
+ * not depend on the route, the channel row or the dialect.
  */
 import { ZcodeLogin, ZcodeAdapter, logout } from './zcode.ts'
+import { creditPricing } from './credits.ts'
 import { credentialHome } from '../shared/data-home.ts'
 import { collectHealth, provideRowHealth, renderHealthTable, sessionIdOf } from '../shared/health.ts'
+import { PRICING_SERVICE } from '../shared/pricing.ts'
 import type { CommandDefinitionLike, CommandInvocationLike, CommandsHost, ProvideHost, ServiceLookup } from '../shared/dsh-min.ts'
 
 export interface LoginConfig {
@@ -29,12 +36,29 @@ function healthText(ctx: ServiceLookup, invocation: CommandInvocationLike): stri
   return renderHealthTable(collectHealth(ctx, sessionId), sessionId)
 }
 
-/** cordis plugin entry: registers /glm-login, /glm-status, and /glm-logout. */
+/** Provide the pricing service: its disposer, or (warned) why the context could not take it. */
+function providePricing(ctx: Partial<ProvideHost>): { readonly withdraw?: () => void, readonly failure?: string } {
+  try {
+    if (typeof ctx.provide !== 'function') throw new Error('the context has no provide')
+    return { withdraw: ctx.provide(PRICING_SERVICE, creditPricing) }
+  }
+  catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.warn(`dsh-glm-hourness/glm-login: ${PRICING_SERVICE} not provided; the usage panel lists calls and tokens only: ${message}`)
+    return { failure: message }
+  }
+}
+
+/** cordis plugin entry: registers /glm-login, /glm-status, and /glm-logout; provides the pricing service. */
 export function apply(ctx: CommandsHost & ServiceLookup & Partial<ProvideHost>, config: LoginConfig = {}): () => void {
   const home = credentialHome(config.home)
   const login = new ZcodeLogin({ home, ...(config.fetchImpl === undefined ? {} : { fetchImpl: config.fetchImpl }) })
   const adapter = new ZcodeAdapter({ home, ...(config.fetchImpl === undefined ? {} : { fetchImpl: config.fetchImpl }) })
-  const health = provideRowHealth(ctx, 'glm-login', 'active', '/glm-login、/glm-status、/glm-logout 已注册')
+  const commands = '/glm-login、/glm-status、/glm-logout 已注册'
+  const pricing = providePricing(ctx)
+  const health = pricing.withdraw !== undefined
+    ? provideRowHealth(ctx, 'glm-login', 'active', commands)
+    : provideRowHealth(ctx, 'glm-login', 'degraded', `${commands}；积分口径未提供：${pricing.failure ?? ''}`)
   const credentialText = async (): Promise<string> => {
     const status = await adapter.status()
     if (!status.logged) {
@@ -69,6 +93,7 @@ export function apply(ctx: CommandsHost & ServiceLookup & Partial<ProvideHost>, 
       },
     }),
     () => health.dispose(),
+    ...(pricing.withdraw === undefined ? [] : [pricing.withdraw]),
   ]
   return () => { for (const dispose of disposers) dispose() }
 }
