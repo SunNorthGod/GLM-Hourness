@@ -165,6 +165,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M7 设计 0.3 按规则板 0.5 改：不再用 glmHournessRules.admit 与 dsh-desktop、dsh-profile 租约；dispatch_task 的原生名加进 DISPATCH_TOOL_NAMES，排队由规则板自己的门做。代码规则目录（§10.1）要登记的 M7 的门：execute:worker-scope、execute:dispatch-chain-readonly、execute:worker-graph-readonly、execute:worker-git、execute:worker-message-live-only、execute:trunk-advance-checked、execute:completion-gate、execute:stopped（M7 设计 0.3 §2.5）；先合入的一方登记，规则板晚于 M7 时由 R1 一次加齐。到点提醒前读 heldForPeak 的是循环板（或没有循环板时 M7 的退路执行者）。晨报的规则板一节（R7）排在 M7 P2 的四答晨报之后。"
+    },
+    {
+      "at": "2026-10-29T20:02:48.277Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "rules-design-v06-write（wf_2f149988fcc89bb1）把 design.md 写到 0.6（04:01，1811 行，F42–F54 的处理与人定对照都在）之后因 TLS 错误结束，一页人话放行稿 onepage.md 还没写。派出单步评审 rules-design-v06-review（wf_4c07584376a9a351），先查 0.6 是否完整，再核对 0.5 的各条、人的决定与 M6 那条编排方裁定；通过后另派放行稿。"
     }
   ]
 }
