@@ -33,6 +33,12 @@
       "reason": "派出 m3-base-engine-and-stage（wf_35439a23b47ccd72）：在 .worktrees/m3-base 一并实现推荐放最后的引擎核对、M3 第 1 步（引擎放开自己提议的目标）与第 2 步（阶段与主 Agent 的纯函数模块），独立评审后合入 main",
       "from": "approved",
       "to": "doing"
+    },
+    {
+      "at": "2026-10-29T11:06:23.249Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "范围扩大：m3-base 的第 4 个改动按 question-29 C 与 d-option-card 定稿：新提或改动的人定待决要求 weight（one-way 或 two-way）、why（推荐理由一行）、单向门要 counter、选项 label 不超过 20 字、consequence 一行；已转给 m3-base 的实现步骤。"
     }
   ]
 }
