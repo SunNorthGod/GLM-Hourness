@@ -252,7 +252,7 @@ UI 包的行运行在客户端，不在表内。
 - 迁移：读到旧的版本 1 记录（`{apiKey, provider, userId?, jwt?, oauthAccessToken?}`，`apiKey` 是 `{apiKeyId}.{secret}`）且它有 OAuth 令牌或 JWT 时，按版本 2 原子重写一次，丢掉 `apiKey`，OAuth 令牌、JWT 与 `userId` 原样带过；重写在写入队列里重读文件，仍是版本 1 才写，所以并发的首次读取（会话标题与第一步几乎同时发出）只迁移一次；重写失败时原文件不动，本次用内存里的版本 2，下次读取再试。没有任何登录令牌的版本 1 记录不改写，读作没有令牌的记录，请求时提示 /glm-login。迁移从不清空、从不删除凭证文件。
 - 降级：迁移之后装回旧版 bundle，旧代码要求 `apiKey` 字段，会显示未登录，需要重新 /glm-login。
 - 旧副本：主检出 `.llm/credentials.json`（§2.4，待项目图 `m1-cleanup` 删除）不在迁移范围内，仍含 secret。
-- 重启前：桌面版重启加载新代码之前，运行中的旧代码读同一个 `~/.dsh/glm-hourness/credentials.json`。迁移在新代码第一次读取时发生，所以合入后到桌面版重启之前，不要用新代码读真实凭证目录（`scripts/smoke-zcode-authorized.mjs` 会读，沙盒运行用凭证副本）。
+- 真实凭证的迁移〔实测 2026-10-29，批次 L4，项目图 `m1-11`〕：桌面版以 m1-parity 的代码（`a9f12e1`）重启后，第一个 GLM 回合开始 0.52 秒时 `~/.dsh/glm-hourness/credentials.json` 被重写（998 → 1374 字节），此后到运行结束没有再变。`/glm-status` 在第一个请求前显示已登录、Key `unresolved`，之后显示已定位 key 的前缀，与重启前旧代码显示的前缀相同：定位到的是已有的 `zcode-api-key`，没有新建。只看得到修改时间，写入次数本身看不到。重启前「不要用新代码读真实凭证目录」的约束随之解除。没有测过的情况：桌面版运行时另起一个进程（如 `scripts/smoke-zcode-authorized.mjs`）写同一个凭证文件，写入队列只在进程内串行。
 - 风险：加密密钥由 `HOME`/`USERPROFILE`、平台与架构推导，看过源码即可算出；`GLM_HOURNESS_CREDENTIAL_SECRET` 可覆盖。凭证文件不入库，当前可接受。后续迁到系统钥匙串或 DSH 凭证服务〔规划〕。
 
 ### 4.2 身份头
@@ -271,8 +271,8 @@ User-Agent 与头的组装〔已实现 2026-10-28，m1-parity 第 7、8 项，`s
 
 - provider 级：`withUserAgentSuffix({"anthropic-version", "x-api-key": PAT, Authorization: "Bearer " + PAT}, "ai-sdk/anthropic/3.0.81")`（`createAnthropic` `sgn` @3569529 的 `getHeaders`，使用处 @3570073，请求凭证经 `x5s`、`T5s`）。`withUserAgentSuffix`（`Y2` @3510311）把键改成小写、后写覆盖先写，经 `Headers` 后以 `Object.fromEntries(headers.entries())` 返回，所以结果是小写、按字母排序的普通对象。
 - 调用级：身份头（含 `User-Agent: ZCode/3.16.3`）与归因头（§4.5b）；会话标题走 `generateText`，调用级先追加 `ai/6.0.193`（@3949945），主步与压缩走 `streamText`，不追加。
-- `postToApi`（`SZr`）：`withUserAgentSuffix({"Content-Type": "application/json", ...合并(provider 级, 调用级)}, "ai-sdk/provider-utils/4.0.27", 运行时段)`，合并（`Rh` @3505152）是浅合并，调用级的 `User-Agent` 覆盖 provider 级的。运行时段按 `getRuntimeEnvironmentUserAgent`（`$ut` @3509781）先取 `navigator.userAgent`：Node 22 是 `Node.js/22`，得 `runtime/node.js/22`；没有时取 `runtime/node.js/<process.version>`。
-- 结果：主步 `ZCode/3.16.3 ai-sdk/provider-utils/4.0.27 runtime/node.js/22`，会话标题 `ZCode/3.16.3 ai/6.0.193 ai-sdk/provider-utils/4.0.27 runtime/node.js/22`。此前本包发 `ZCode/3.16.3 ai-sdk/anthropic/3.0.81`。start-plan 不变。
+- `postToApi`（`SZr`）：`withUserAgentSuffix({"Content-Type": "application/json", ...合并(provider 级, 调用级)}, "ai-sdk/provider-utils/4.0.27", 运行时段)`，合并（`Rh` @3505152）是浅合并，调用级的 `User-Agent` 覆盖 provider 级的。运行时段按 `getRuntimeEnvironmentUserAgent`（`$ut` @3509781）先取 `navigator.userAgent`，转小写后得 `runtime/<userAgent>`；没有时取 `runtime/node.js/<process.version>`（`runtimeUserAgent`）。构造规则与 3.16.3 相同，取值随宿主。
+- 结果〔实测 2026-10-29〕：DSH 桌面运行时（0.2.1-rc.3，`DeepSeek Harness.exe` 的 Electron node 模式，`process.version` `v24.21.0`，`navigator.userAgent` `Node.js/24`）上，主步 `ZCode/3.16.3 ai-sdk/provider-utils/4.0.27 runtime/node.js/24`，会话标题 `ZCode/3.16.3 ai/6.0.193 ai-sdk/provider-utils/4.0.27 runtime/node.js/24`，端点路由配置请求 `ZCode/3.16.3`。依据：m1-parity 的沙盒真实网络运行截包（§4.3 实测）；批次 L4（项目图 `m1-11`）以同一个 exe 的 node 模式加载 `dist/glm-llm/headers.js`，`runtimeUserAgent()` 为 `runtime/node.js/24`，桌面版的宿主进程就以这个模式运行，桌面版流量没有截。以本机 `node`（v22.20.0）运行时（单测等）是 `runtime/node.js/22`。ZCode 桌面版自己的 agent 进程取什么值取决于它所带 Electron 的 Node 版本，ZCode 自身的流量没有截，未确定。此前本包发 `ZCode/3.16.3 ai-sdk/anthropic/3.0.81`。start-plan 不变。
 
 ### 4.3 签名 V4
 
@@ -292,18 +292,20 @@ User-Agent 与头的组装〔已实现 2026-10-28，m1-parity 第 7、8 项，`s
 
 曾有缺陷（2026-10-28 修复，`b6367d3`）：适配器把路由改写后的 URL（`zcode.z.ai/api/v1/ultra/...`）交给签名层，握手 origin 成了 `zcode.z.ai`，每次 404；失败又不留状态，每个请求前都重试一次（§4.5b 截包）。这个错误从基线导入（`9266fb6`）起就在，原先「握手对当前凭证失败」的归因不成立。同批改动：start-plan 不再签名；JWT 形式握手的 `Authorization` 由 zcode-api 的 `Bearer <jwt>` 改为原样 JWT，按 3.16.3 逐字。
 
-实测〔2026-10-28，headless 沙盒真实网络运行 `net-1793188413414`，代码 `6af6c51`，coding-plan，`glm-5.3-flash`；记录在不入库的 `.agents/tasks/m1-signing/network-verify.md`。这次运行在 m1-parity 之前，模型请求的两个鉴权头还是 API Key〕：
+实测〔2026-10-29，m1-parity 的 headless 沙盒真实网络运行，代码 `a9f12e1`，临时 profile `glmsandbox-wire`，coding-plan，`glm-5.3-flash`，DSH 桌面运行时的 node 模式（Node v24.21.0）；记录在不入库的 `.agents/tasks/zcode-parity/wire-evidence.md`，只记头名、形式与形状，不记值〕：
 
-- 握手 1 次：`POST open.bigmodel.cn/api/paas/c1f3a7e2/v2/client`，HTTP 200，信封 `code` 200，带 `privateCipher`。握手请求只有 `authorization`、`content-type` 两个头，没有路由头，即服务端映射表没有改写握手 URL。`Authorization` 是原样 JWT（项目令牌，不加 `Bearer `），被接受；`Bearer` 形式没有试，代码不改。
-- 项目令牌铸造的两步 `getCustomerInfo`、`access_tokens` 都是 200。
-- 模型请求 6 次（会话标题 1 次、主请求 5 次），都发往 `zcode.z.ai/api/v1/ultra/anthropic/v1/messages`，都带签名，都是 200，每次只发一次，没有出现 401 VERIFY 梯子：ultra 网关接受「`Authorization` 是 apiKey、签名用项目令牌派生的 apiKeyId」这一组合。会话约 80 秒，长于 60 秒冷却窗口，全程只握手一次（私钥按进程缓存）。
-- 头序（m1-parity 之前的代码）：签名块排在 `content-type` 之后，`x-session-id` 被移进签名块；`x-zcode-authorization` 是最后一个头。这与 3.16.3 不同，m1-parity 改为照搬 3.16.3 的 `Headers` 链（上面「头的线上顺序」）。
-- 用量：token 计量与同日 5 次无签运行同一形态（首个主请求缓存读 0，之后每步命中 97–100%，`cacheWrite` 恒为 0；整体命中率 80%，无签运行 80–87%）。coding-plan 的 1.5 倍套餐扣减不在用量流水里（流水只记服务端返回的 token 数），签名对它有无影响未知。
-- 延迟：主请求到响应头 6.3–8.0 秒（首个主请求 31.0 秒），无签运行 1.5–5.8 秒。只有一个样本，时段与提示词都不同；计时起点在签名完成之后，差值在网络或服务端，未归因。
+- 请求 10 个，全部 HTTP 200，每个只发一次：项目令牌三步（`getCustomerInfo`、列 API Key、`access_tokens` 铸造。凭证副本是版本 1 记录，迁移后还没有项目 key 定位，所以多一次列 key；找到 `zcode-api-key`，没有新建），端点路由配置 1 个，签名握手 1 个，模型请求 5 个（会话标题 1、主步 4）。运行 47.6 秒。
+- 握手：`POST open.bigmodel.cn/api/paas/c1f3a7e2/v2/client`，`Authorization` 是原样项目令牌（JWT，`token_use: project_access`），被接受。调用方头只有 `Authorization`、`Content-Type`，没有路由头：服务端映射表没有改写握手 URL，与 m1-signing 那次运行（下面）相同。
+- 模型请求：都发往 `zcode.z.ai/api/v1/ultra/anthropic/v1/messages`；`Authorization` 是 `Bearer` 加项目令牌，`x-api-key` 是同一个令牌原样（§4.1）；都带完整的签名块，没有 401，没有 VERIFY 梯子。ultra 网关接受 3.16.3 账号模式的这一组合：两个鉴权头与签名都用项目令牌。
+- 头名顺序与大小写：5/5 与 3.16.3 逐个相同（上面「头的线上顺序」）。undici 的 `host, connection` 之后是小写字母序 `anthropic-version` … `x-zcode-trace-id`（`X-Session-Id` 在原位），再 `X-Client-Ts, X-Client-Version, X-Client-Sig, X-Client-Nonce, X-App-Id, X-Client-Pow`，最后 `X-ZCode-Authorization`；端点路由配置请求的头名序列同样与 3.16.3 相同（§4.4）。
+- 延迟：主步到响应头 4.2–7.7 秒，会话标题 1.8 秒。单样本，未归因。
+- 用量：coding-plan 的 1.5 倍套餐扣减不在用量流水里（流水只记服务端返回的 token 数），签名对它有无影响未知。
+
+更早的签名运行〔实测 2026-10-28，`net-1793188413414`，代码 `6af6c51`，m1-parity 之前，模型请求的两个鉴权头还是 API Key；记录在不入库的 `.agents/tasks/m1-signing/network-verify.md`〕：握手 200 并带 `privateCipher`，6 个模型请求都签名、都 200，会话约 80 秒，长于 60 秒冷却窗口，全程只握手一次（私钥按进程缓存）；缓存命中形态与同日 5 次无签运行相同（整体 80%，无签 80–87%）；主请求到响应头 6.3–8.0 秒（首个 31.0 秒），无签运行 1.5–5.8 秒，时段与提示词都不同。
 
 start-plan 只做了离线验证：3.16.3 对 start-plan 不签名（`FACTS.md`），本包对 start-plan 不建签名器，组装测试钉住这一点。start-plan 没有额度，没有发过真实请求。
 
-桌面版：2026-10-28 以这份代码重启（M2 批次 L4，记录在不入库的 `.agents/tasks/m2-9-research/integration.md`），`/glm-status` 中 glm-llm 生效，GLM-5.3-Flash 会话正常应答，日志里没有本包的错误。桌面运行时下签名是否成功看不到：生产构造没有接 `onEvent`，那次也没有截包。
+桌面版：2026-10-28 以 m1-signing 的代码重启（M2 批次 L4，`.agents/tasks/m2-9-research/integration.md`），2026-10-29 以 m1-parity 的代码（`a9f12e1`）重启（批次 L4，`.agents/tasks/m1-l4/l4.md`；两份记录都不入库）。两次 `/glm-status` 中 glm-llm 都生效，GLM-5.3-Flash 会话正常应答，日志里没有本包的错误；2026-10-29 的主会话 6 个回合、委派子会话、会话标题与一次手动压缩都正常完成。桌面运行时下签名是否成功看不到：生产构造没有接 `onEvent`，两次都没有截包。
 
 未决：签名对 1.5 倍套餐扣减的影响（需要套餐额度数据）；签名运行的响应头延迟偏高（需要同时段的签名与无签对照）；签名结果对系统可见，即状态里显示签名情况，每条用量记录标注是否签名（条款 7）〔规划〕。
 
@@ -387,7 +389,8 @@ Flash 没命中的位置：修复前第二步 4 次、之后各步 12 次；固�
 
 - `x-request-id`：每次尝试新生成（`Gdt` @4067222），项目令牌被拒后的重发也换新；签名 VERIFY 梯子的重发在同一次尝试里，不换。
 - `x-zcode-trace-id`：会话级。3.16.3 每个会话运行时建一个根追踪上下文（`vT` @1421911），回合与辅助请求的上下文都从它派生（`nS` @12816000、`Lw` @1422054），`traceId` 不变；委派子会话的运行时继承父会话的追踪上下文。本包按 DSH 会话保存 trace id（进程内，最多 256 个会话，最久未用的先出；出去后再来的会话拿新的 trace id），委派子会话沿 `parentSession` 取父会话的 trace id。
-- `x-query-id`：回合级。3.16.3 用桌面输入的 id 当 query id（`O9` @14502646、`zzo` @13357726，`query_` 前缀在头里去掉）。本包以主步请求里最后一条用户输入消息（`role: 'user'`、`source.kind: 'user'`）的 id 为回合键，键变了就换新的 UUID。辅助请求（会话标题与压缩）在当前回合里发出，不取回合键，沿用会话当前的 query id：3.16.3 的压缩上下文由回合上下文派生（`c3a` @13387356 用 `nS` 加 `querySource: "compact"`，`nS` 保留回合的 `queryId`）。DSH 的压缩请求只含系统头、被压缩的区段与它的指令，最近的尾段（默认预算的 16%）不在请求里（rc.3 compaction-basic `selectCompactableRange`、`buildSummarizationInput`），区段里最后一条用户输入通常属于更早的回合，所以不能拿它当回合键。会话还没有 query id 时辅助请求先建一个；只有会话标题建的 id 留给随后的第一步认领（DSH 让标题请求与第一步并发），压缩建的不认领（例如重启后的手动压缩），下一个用户输入另起新的 query id。
+- `x-query-id`：回合级。3.16.3 用桌面输入的 id 当 query id（`O9` @14502646、`zzo` @13357726，`query_` 前缀在头里去掉）。本包以主步请求里最后一条用户输入消息（`role: 'user'`、`source.kind: 'user'`）的 id 为回合键，键变了就换新的 UUID。辅助请求（会话标题与压缩）不取回合键，沿用会话当前的 query id：3.16.3 的压缩上下文由回合上下文派生（`c3a` @13387356 用 `nS` 加 `querySource: "compact"`，`nS` 保留回合的 `queryId`）。DSH 的压缩请求只含系统头、被压缩的区段与它的指令，最近的尾段（默认预算的 16%）不在请求里（rc.3 compaction-basic `selectCompactableRange`、`buildSummarizationInput`），区段里最后一条用户输入通常属于更早的回合，所以不能拿它当回合键。会话还没有 query id 时辅助请求先建一个；只有会话标题建的 id 留给随后的第一步认领（DSH 让标题请求与第一步并发），压缩建的不认领（例如重启后的手动压缩），下一个用户输入另起新的 query id。
+  - 空闲会话的手动压缩〔实读，m1-parity 评审第 3 轮〕：DSH 对空闲会话的手动压缩（`/compact`，rc.3 compaction-basic `compactNow`，compaction-basic:985）与压力压缩发出同样形状的请求，本包分不出两者，同样沿用上一回合的 query id。3.16.3 的 `/compact` 是一次独立输入：`zzo` @13357726 为它派生自己的 query id 交给 `executeManualCompact`（@13361998），`czo` @13308966 开一个回合再压缩。只有这一个压缩请求不同，下一个用户输入两边都开新的 query id；`48fed7e` 之前的实现结果相同。本包能否看出 DSH 当前没有回合在跑没有追查，能看出就可以给这种压缩开新的 query id。2026-10-29 桌面版对空闲会话手动 `/compact` 一次，正常完成（批次 L4），没有截包，头值没有看到。
 - `x-zcode-session-type` 与 `x-zcode-query-source`：会话标题 `other` + `session_title`（`v2n` @13069774），压缩 `other` + `compact`（@13389086），委派子会话 `subagent` + `subagent`（`mDn` @13259914 把 `subagent_child` 映射为 `subagent`，`Y0n` @4065835），其余 `main` + `main_turn`。委派子会话由 `agents` 服务给出的会话头判定（`origin: 'subagent'`，§2.4a）；取不到会话头时按主会话处理。
 - start-plan 不变：每请求一个 trace id，不带 query id 与 query source。
 
@@ -454,7 +457,7 @@ DSH 的 `TokenUsage` 各计数互不重叠：`inputTokens` 只算未命中缓存
 - 向 DSH 声明的上下文窗口 512,000 与默认 `max_tokens` 32000：DSH 用它们做自己的预算与压缩，线上 `max_tokens` 不受影响（§4.6）。
 - `temperature`：DSH 给就按 AI SDK 的位置发，3.16.3 的这类请求不设温度。
 - 工具集与系统提示内容：由 DSH 与方言决定（§5）。
-- 回合边界：DSH 不给回合 id，goal 轮次或不以用户输入消息开头的跟进沿用上一回合的 query id（3.16.3 每个输入换新）；3.16.3 的 query id 是桌面命令 id，本包是 UUID，结构相同、值域不同；3.16.3 的 `workflow_child` 来源在 DSH 里没有对应的会话标记，不映射；`agents` 服务取不到会话头时按主会话处理（§4.5b）。
+- 回合边界：DSH 不给回合 id，goal 轮次或不以用户输入消息开头的跟进沿用上一回合的 query id（3.16.3 每个输入换新）；DSH 对空闲会话的手动压缩也沿用上一回合的 query id，3.16.3 的 `/compact` 是独立输入，有自己的 query id；3.16.3 的 query id 是桌面命令 id，本包是 UUID，结构相同、值域不同；3.16.3 的 `workflow_child` 来源在 DSH 里没有对应的会话标记，不映射；`agents` 服务取不到会话头时按主会话处理（§4.5b）。
 
 本包的近似（输入不全时取最接近的做法）：
 
