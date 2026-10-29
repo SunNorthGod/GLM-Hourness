@@ -20,7 +20,7 @@
 src/           主包 TypeScript 源码
 tests/         39 个 spec，556 用例（2026-10-29，`a9f12e1`）；tests/fake-rc3.ts 为 rc.3 运行时替身；tests/tsconfig.json 只给 ESLint 提供类型信息；tests/calibration/ 为标定测试集（两个任务，ORCHESTRATION.md §10.5）
 ui/            独立 UI bundle（源码 ui/src，构建出 ui/client.js，不入库）
-scripts/       preflight-bundle.mjs、check-verbatim.mjs、check-lint.mjs（检查器门禁）、check-secrets.mjs（密钥扫描）、deps-check.mjs（依赖报告）、smoke-zcode*.mjs、sandbox.mjs（glmsandbox 启动与覆盖行，探针与标定共用）、probe/（L3 探针）、calibrate/（标定运行器与边界插件）、graph/（项目图命令行、出图与冒烟）
+scripts/       preflight-bundle.mjs、check-verbatim.mjs、check-lint.mjs（检查器门禁）、check-secrets.mjs（密钥扫描）、deps-check.mjs（依赖报告）、smoke-zcode*.mjs、sandbox.mjs（启动参数、探针生成的 profile 与覆盖行，探针与标定共用）、profile-shape.mjs（profile 结构的只读快照与比对）、probe/（L3 探针）、calibrate/（标定运行器与边界插件）、graph/（项目图命令行、出图与冒烟）
 eslint.config.js、knip.jsonc、.jscpd.json  检查器配置；eslint-suppressions.json、knip-baseline.json、.jscpd-baseline.json 为告警基线（DEVELOPMENT.md §10）
 docs/          宪章、设计、编排、路线、事实账、流程、交接；docs/graph/ 为本项目的项目图（进度的事实源）；docs/reference/ 为事实参考原文
 AGENTS.md      仓库规则
@@ -109,7 +109,7 @@ dist/          不入库：tsc 产物
 - 数据目录：用户级 `~/.dsh/glm-hourness/`（`$DSH_HOME` 可改根目录），项目 `.llm/`；由 `data` 行的服务提供（`DESIGN.md` §2.4）。
 - 模型：`glm-zcode` 路由提供 GLM-5.3、GLM-5.3-Flash。
 - 运行时：桌面版的宿主进程是 `DeepSeek Harness.exe` 的 Electron node 模式（Node v24.21.0，`navigator.userAgent` `Node.js/24`），沙盒、探针与标定也经它运行（`DEVELOPMENT.md` §3）；本机 `node` 是 v22.20.0，单测与 `--experimental-strip-types` 的脚本跑在它上面。两者的 User-Agent 运行时段分别是 `runtime/node.js/24` 与 `runtime/node.js/22`（`DESIGN.md` §4.2）。
-- 沙盒：profile `glmsandbox`，命令见 `DEVELOPMENT.md` §3；探针（`npm run probe`，离线）与标定（`npm run calibrate`，真实请求、消耗积分）共用，不要同时运行。沙盒模板的权限模式由 `DSH_PERMISSION_MODE` 决定（缺省 `workspace-write`），桌面版 profile 的默认预设是 `danger-full-access`。
+- 沙盒：命令见 `DEVELOPMENT.md` §3。探针（`npm run probe`，离线）每次在运行目录下生成 DSH home 与 profile `probe-full`，测探针脚本所在的检出（主检出或 worktree）；标定（`npm run calibrate`，真实请求、消耗积分）用 profile `glmsandbox`（链接主检出）。两者不要同时运行。沙盒模板的权限模式由 `DSH_PERMISSION_MODE` 决定（缺省 `workspace-write`），桌面版 profile 的默认预设是 `danger-full-access`。
 - profile 目录：旧备份（`cordis.patch.yml.bak-1793093243213`、`cordis.patch.yml.bak-1793101338423`、`package.json.bak-1793157445556`）与旧数据目录 `.llm/` 已于 2026-10-29 删除（`m1-cleanup`）。删除 8317 路由之前的备份 `cordis.patch.yml.bak-1793241992974` 只比现行 patch 多这条路由，同日按用户要求删除；profile 目录里不再有备份。
 - 桌面版输入框的模型菜单换模型时，DSH 会把选中的模型写进 profile 的 `agent-default-model`，作为新会话的默认模型（2026-10-28 L4 实测）。用桌面版做验证时换过模型，结束后经同一菜单换回，并核对这一项。最近一次：2026-10-29 批次 L4 把它从 `deepseek-account` / `deepseek-flash` / `high` 换成 `glm-zcode` / `glm-5.3-flash` / `high`，验证后已换回，profile 其余内容未动。
 - 桌面版自验（L4）：以 `.agents/tasks/m1-l4/restart.ps1`（与 `m8-doing-layout/restart.ps1` 同步骤）带 `--remote-debugging-port=9333` 重启，经 DevTools 协议输入提示词、截图、读控制台；会话日志在 `~/.dsh/sessions/<工作区>/` 下只读读取，输出前遮盖凭证类字段。宿主 stdout 含本机 web 地址的令牌，不外传。2026-10-29 运行结束时页面报告 `document.visibilityState` 为 `hidden`，原因未查，截图仍可取；同日清理后的重启里页面仍是 `hidden`。重启时 `CloseMainWindow` 没能让旧实例正常退出的话，脚本的 `Stop-Process -Force` 会让旧实例留下一份 `Desktop renderer exited: crashed` 的 renderer crash log（2026-10-29T02:48:08Z 那份写于新主进程创建前 1 秒，`shell pid` 不在新进程树里；`CloseMainWindow` 未生效的原因是推断）。判断重启后有没有新错误，以新主进程的创建时间为界。

@@ -1,15 +1,17 @@
 /**
- * Headless runs of the desktop DSH runtime on the glmsandbox profile
- * (docs/DEVELOPMENT.md §3), shared by the L3 probe
- * (scripts/probe/run-probe.mjs) and the calibration runner
- * (scripts/calibrate/run-calibrate.mjs).
+ * Headless runs of the desktop DSH runtime (docs/DEVELOPMENT.md §3), shared
+ * by the L3 probe (scripts/probe/run-probe.mjs) and the calibration runner
+ * (scripts/calibrate/run-calibrate.mjs). The probe boots a profile it
+ * generates under its run directory (generateProfile), linked to this
+ * checkout; calibration boots the glmsandbox profile, which links the main
+ * checkout (DSH_SANDBOX_PROFILE names another one).
  *
  * Overlay patches are generated per run with literal values: the loader
  * validates a row's `name` before `!!js` expressions evaluate, so paths
  * cannot be computed inside the patch. JSON values are valid YAML.
  */
 import { spawnSync } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -17,8 +19,8 @@ export const repo = resolve(fileURLToPath(new URL('..', import.meta.url)))
 const desktop = process.env.DSH_DESKTOP_DIR ?? join(process.env.LOCALAPPDATA ?? '', 'Programs', 'DeepSeek Harness')
 const exe = join(desktop, 'DeepSeek Harness.exe')
 const bin = join(desktop, 'resources', 'app.asar', 'dsh', 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js')
-/** The sandbox profile; a git worktree needs its own profile linked to the worktree, because glmsandbox links the main checkout. */
-const profile = process.env.DSH_SANDBOX_PROFILE ?? 'glmsandbox'
+/** The calibration profile under the user's DSH home. */
+const sandboxProfile = process.env.DSH_SANDBOX_PROFILE ?? 'glmsandbox'
 
 /** Exit with status 2 when the desktop install is missing. */
 export function requireDesktop(label) {
@@ -27,12 +29,76 @@ export function requireDesktop(label) {
   process.exit(2)
 }
 
-/** Executable, arguments and environment that boot the runtime on the sandbox profile with an overlay patch (Electron node mode). */
-export const sandboxCommand = (patch, args) => ({
+/**
+ * Executable, arguments and environment that boot the runtime with an
+ * overlay patch (Electron node mode): on the sandbox profile, or on
+ * `profile`, one generateProfile wrote under its own DSH home.
+ */
+export const sandboxCommand = (patch, args, profile) => ({
   exe,
-  args: [bin, '--profile', profile, '--patch', patch, ...args],
-  env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+  args: [bin, '--profile', profile?.name ?? sandboxProfile, '--patch', patch, ...args],
+  env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', ...(profile === undefined ? {} : { DSH_HOME: profile.dshHome }) },
 })
+
+/**
+ * The packages of this checkout a generated profile lists, the way the
+ * desktop profile lists them: the bundle at the repository root and the UI
+ * bundle under ui/.
+ */
+const CHECKOUT_PACKAGES = [{ name: 'dsh-glm-hourness', dir: '.' }, { name: 'dsh-glm-hourness-ui', dir: 'ui' }]
+/** The bundles of the shipped headless template (dsh-app-boot PROFILE_TEMPLATES.headless), listed first. */
+const BASE_BUNDLES = ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-headless']
+
+/**
+ * Write the DSH home `dshHome` holding the profile `name`: package.json lists
+ * the base bundles and this checkout's packages (dependencies as `link:`),
+ * cordis.yml and cordis.patch.yml are empty lists, and
+ * node_modules/<package> is a junction to the package directory in this
+ * checkout. Booted with DSH_HOME and --profile (sandboxCommand), the run
+ * neither reads nor writes ~/.dsh/profiles, and it loads whichever checkout
+ * this script is in (the main checkout or a worktree). The runtime rewrites
+ * cordis.yml on every boot (dsh profile-boot prepareProfile), which shows the
+ * profile was the one booted. Throws when a directory or junction cannot be
+ * created.
+ */
+export function generateProfile(dshHome, name) {
+  const dir = join(dshHome, 'profiles', name)
+  const modules = join(dir, 'node_modules')
+  mkdirSync(modules, { recursive: true })
+  writeFileSync(join(dir, 'package.json'), `${JSON.stringify({
+    name: `dsh-profile-${name}`,
+    private: true,
+    dependencies: Object.fromEntries(CHECKOUT_PACKAGES.map(pkg => [pkg.name, `link:${slash(join(repo, pkg.dir))}`])),
+    dsh: { profile: { bundles: [...BASE_BUNDLES, ...CHECKOUT_PACKAGES.map(pkg => pkg.name)] } },
+  }, null, 2)}\n`)
+  writeFileSync(join(dir, 'cordis.yml'), '[]\n')
+  writeFileSync(join(dir, 'cordis.patch.yml'), '[]\n')
+  const profile = { name, dshHome, dir, links: CHECKOUT_PACKAGES.map(pkg => join(modules, pkg.name)) }
+  try {
+    CHECKOUT_PACKAGES.forEach((pkg, index) => symlinkSync(join(repo, pkg.dir), profile.links[index], 'junction'))
+  }
+  catch (error) {
+    unlinkProfile(profile)
+    throw error
+  }
+  return profile
+}
+
+/**
+ * Remove the junctions of a generated profile; the rest stays as a run
+ * artifact. A run directory then holds no link back into the checkout, so
+ * deleting it or walking it cannot reach the checkout.
+ */
+export function unlinkProfile(profile) {
+  for (const link of profile.links) {
+    try {
+      if (lstatSync(link).isSymbolicLink()) unlinkSync(link)
+    }
+    catch {
+      // Never created (generation failed part way) or already gone.
+    }
+  }
+}
 
 export const slash = path => path.replaceAll('\\', '/')
 

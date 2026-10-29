@@ -1,6 +1,6 @@
 /**
  * L3 behavior probe (docs/DEVELOPMENT.md §3, ROADMAP M1.7): boots the real
- * desktop DSH runtime headless on the glmsandbox profile with the probe
+ * desktop DSH runtime headless on a generated profile with the probe
  * provider (scripts/probe/probe-llm.mjs), runs scripted tasks, and checks
  * what the GLM-Hourness rows actually did to the model-visible request.
  *
@@ -18,15 +18,25 @@
  * bundle's /graph-apply and /graph-run handlers mid-step for the session.
  *
  * Usage: node scripts/probe/run-probe.mjs
- * Requires the desktop install (DSH_DESKTOP_DIR overrides the location) and
- * the glmsandbox profile linked to this repository (DSH_SANDBOX_PROFILE names
- * another profile, e.g. one linked to a git worktree). Each run writes its
- * overlays, request dumps and logs under .llm/probe-runs/<timestamp>/
- * (gitignored).
+ * Requires the desktop install (DSH_DESKTOP_DIR overrides the location).
+ * The runtime boots the profile probe-full, generated per run under its own
+ * DSH home in the run directory and linked to the checkout this script is in
+ * (scripts/sandbox.mjs generateProfile), so the main checkout and a worktree
+ * are tested the same way and ~/.dsh/profiles is never used. Each run writes
+ * the DSH home, overlays, request dumps and logs under
+ * .llm/probe-runs/<timestamp>/ (gitignored).
+ *
+ * Guard (exit 2, no conclusion): probe-full already exists under the real
+ * profiles directory, the profile cannot be generated, or the project part
+ * of the desktop or glmsandbox profile (bundles, dependencies, glm-hourness/
+ * overrides; scripts/profile-shape.mjs) changed during the run; other
+ * changes there are listed only. A probe-full appearing under the real
+ * profiles directory (DSH_HOME not honored) or a change of the real usage
+ * journal fails the run (exit 1).
  */
 import { spawnSync } from 'node:child_process'
 import { cpSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { crc32, deflateSync } from 'node:zlib'
 import { DISPATCH_TOOLS } from '../../dist/workflow/index.js'
 import { PEAK_REMINDER_SOURCE, PEAK_REMINDER_TEXT } from '../../dist/glm-prompt/peak-reminder.js'
@@ -36,12 +46,48 @@ import { HEALTH_ROWS } from '../../dist/shared/health.js'
 import { openEngine } from '../../dist/graph/engine.js'
 import { runNote } from '../../dist/graph/run.js'
 import { loadGraph } from '../../dist/graph/store.js'
-import { attachmentsIn, dataRows, initRepo, limitsRow, repo, requireDesktop, sandboxCommand, slash, workspaceChangesRow } from '../sandbox.mjs'
+import { compareShapes, describeDifference, isProjectDifference, profileShape } from '../profile-shape.mjs'
+import { attachmentsIn, dataRows, generateProfile, initRepo, limitsRow, repo, requireDesktop, sandboxCommand, slash, unlinkProfile, workspaceChangesRow } from '../sandbox.mjs'
 import { GOAL_GATE_DENIAL, PROJECTION_SOURCE, SCOPE_DENIAL } from './probe-dispatch.mjs'
 
 requireDesktop('probe')
 
 const runDir = join(repo, '.llm', 'probe-runs', new Date().toISOString().replace(/[:.]/g, '-'))
+
+// The run boots a profile generated under its own DSH home; the user's
+// profiles directory must not gain it, and the profiles there must keep
+// their project part (scripts/profile-shape.mjs).
+const GENERATED_PROFILE = 'probe-full'
+const realProfiles = join(dirname(userDataHome()), 'profiles')
+if (existsSync(join(realProfiles, GENERATED_PROFILE))) {
+  console.error(`probe: ${join(realProfiles, GENERATED_PROFILE)} already exists; find out which run left it before deleting it`)
+  process.exit(2)
+}
+const GUARDED_PROFILES = ['desktop', 'glmsandbox'].filter(name => existsSync(join(realProfiles, name, 'package.json')))
+const readShape = (name) => {
+  try {
+    return profileShape(join(realProfiles, name))
+  }
+  catch (error) {
+    return error instanceof Error && 'code' in error ? String(error.code) : 'unreadable'
+  }
+}
+const shapesBefore = new Map(GUARDED_PROFILES.map(name => [name, readShape(name)]))
+for (const [name, shape] of shapesBefore) {
+  if (typeof shape === 'string') {
+    console.error(`probe: cannot read the ${name} profile under ${realProfiles} (${shape})`)
+    process.exit(2)
+  }
+}
+let profile
+try {
+  profile = generateProfile(join(runDir, 'dsh-root'), GENERATED_PROFILE)
+}
+catch (error) {
+  console.error(`probe: cannot generate the ${GENERATED_PROFILE} profile under ${runDir}: ${error instanceof Error && 'code' in error ? error.code : String(error)}`)
+  process.exit(2)
+}
+process.on('exit', () => unlinkProfile(profile))
 
 /** A solid red 8x8 RGB PNG, built byte by byte so the fixture needs no binary file. */
 function redPng(size = 8) {
@@ -102,7 +148,7 @@ function runScenario(name, model, script, task, overlay = [], cwd = repo, others
     ...overlay,
     '',
   ].join('\n'))
-  const { exe, args, env } = sandboxCommand(patch, [task])
+  const { exe, args, env } = sandboxCommand(patch, [task], profile)
   const started = Date.now()
   const result = spawnSync(exe, args, { cwd, encoding: 'utf8', timeout: 180_000, env })
   const elapsedMs = Date.now() - started
@@ -616,7 +662,15 @@ const IDLE = '已加载，本会话未触发'
 const conversationTexts = [glm, plain, compacted, shadow].flatMap(scenario => scenario.steps.flatMap(step => [step.system, ...step.messages.map(message => message.text)]))
 
 
+// The launcher rewrites the root config of the profile it boots
+// (cordis.yml, written here as a bare []): the runs used the generated
+// profile, found through DSH_HOME, and the real profiles directory did not
+// gain it.
+const generatedRoot = readFileSync(join(profile.dir, 'cordis.yml'), 'utf8')
+const leakedProfile = existsSync(join(realProfiles, GENERATED_PROFILE))
+
 const checks = [
+  ['sandbox: the runtime booted the profile generated under the run directory (its cordis.yml rewritten by the launcher); the real profiles directory has no probe-full', generatedRoot.startsWith('# dsh profile root') && !leakedProfile, `cordis.yml ${generatedRoot.startsWith('# dsh profile root') ? 'rewritten' : 'untouched'}; ${join(realProfiles, GENERATED_PROFILE)} ${leakedProfile ? 'exists' : 'absent'}`],
   ['glm boot: the runtime reached the probe provider', glmFirst !== undefined, `exit ${glm.status}, ${glm.steps.length} step(s)`],
   ['graph panel: /graph-apply comments as the human in the graph under the session working directory', panelCommands[0]?.kind === 'success' && panelCommands[0].text === '已批注「探针目标」' && panelLast('goal-1')?.actor === 'human' && panelLast('goal-1')?.text === 'probe comment', JSON.stringify(panelCommands[0] ?? null)],
   ['graph panel: /graph-apply decides with the question rev as the human', panelCommands[1]?.kind === 'success' && panelCommands[1].text === '已拍板「探针问题」：A 甲' && panelAfter.nodes.get('question-1')?.status === 'done' && panelLast('question-1')?.actor === 'human' && panelLast('question-1')?.op === 'decide', JSON.stringify(panelCommands[1] ?? null)],
@@ -728,4 +782,20 @@ for (const [label, ok, detail] of checks) {
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${label}${detail ? `  (${detail})` : ''}`)
 }
 console.log(`probe: ${checks.length - failed}/${checks.length} passed; run artifacts in ${runDir}`)
+
+// Profile guard: a change to the project part of a user profile voids the
+// run (the probe may have written there, or someone changed this project's
+// rows meanwhile); other changes, usually the desktop's own writes, are listed.
+const profileChanges = GUARDED_PROFILES.flatMap((name) => {
+  const after = readShape(name)
+  if (typeof after === 'string') return [{ name, text: `unreadable after the run (${after})`, project: true }]
+  return compareShapes(shapesBefore.get(name), after).map(difference => ({ name, text: describeDifference(difference), project: isProjectDifference(difference) }))
+})
+for (const change of profileChanges.filter(item => !item.project)) console.log(`probe guard: ${change.name} profile: ${change.text} (not this project's part; not counted)`)
+const voiding = profileChanges.filter(item => item.project)
+if (voiding.length > 0) {
+  for (const change of voiding) console.error(`probe guard: ${change.name} profile: ${change.text}`)
+  console.error('probe: the project part of a user profile changed during the run; the result is void, rerun (a second occurrence is a probe defect)')
+  process.exit(2)
+}
 process.exit(failed === 0 ? 0 : 1)
