@@ -92,7 +92,7 @@ test('environment section joins only when host facts are provided', () => {
   const withEnv = dialectSections(false, 'balanced', { env: { cwd: 'C:\\ws', platform: 'win32', shell: 'pwsh', osVersion: '10.0', isGitRepository: true } })
   const env = withEnv.find(section => section.name === 'glm:environment')
   assert.ok(env!.text.includes('- Primary working directory: C:\\ws'))
-  assert.ok(env!.text.includes('- Is a git repository: yes'))
+  assert.ok(env!.text.includes('\n - Is a git repository: true\n'))
   assert.equal(dialectSections().some(section => section.name === 'glm:environment'), false)
 })
 

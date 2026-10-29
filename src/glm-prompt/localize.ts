@@ -29,16 +29,26 @@ export const HARNESS_BLOCK_DSH = [
   HARNESS_REFERENCE_LINE,
 ].join('\n')
 
-/** ② Session guidance, skill rule rewritten for the DSH skill seam. */
+/**
+ * ② Session guidance, skill rule rewritten for the DSH skill seam; bullets
+ * indented as 3.17.1 indents its own (`xBo`).
+ */
 export const SESSION_GUIDANCE_DSH = [
   '# Session-specific guidance',
-  '- When a skill\'s content appears in the conversation, follow it for that task; do not call the skill loader again for the same skill.',
+  ' - When a skill\'s content appears in the conversation, follow it for that task; do not call the skill loader again for the same skill.',
 ].join('\n')
 
 /** ⑤ Skills availability note (appended to session guidance when skills exist). */
-export const SKILLS_NOTE_DSH = '- Skills available to this session are listed by the skill loader; only use skills it lists \u2014 don\'t guess.'
+export const SKILLS_NOTE_DSH = ' - Skills available to this session are listed by the skill loader; only use skills it lists \u2014 don\'t guess.'
 
-/** ③ EnvInfo section, ZCode skeleton with DSH-resolved facts. */
+/**
+ * ③ EnvInfo section: the 3.17.1 skeleton (buildEnvInfoContent `hSo`) with
+ * DSH-resolved facts. 3.17.1 indents the bullets, ends the invoked line with
+ * a space, prints the git flag as `true`/`false`, lists additional working
+ * directories after it and closes with the untrusted-files bullet. It moves
+ * the model line into a section of its own (`YTn`); the optional
+ * configured `modelLine` follows the section, as that section follows it.
+ */
 export function buildEnvInfoSection(env: {
   cwd: string
   platform: string
@@ -50,34 +60,30 @@ export function buildEnvInfoSection(env: {
 }): string {
   const lines: string[] = [
     '# Environment',
-    'You have been invoked in the following environment:',
-    `- Primary working directory: ${env.cwd}`,
+    'You have been invoked in the following environment: ',
+    ` - Primary working directory: ${env.cwd}`,
+    ` - Is a git repository: ${env.isGitRepository}`,
     ...(env.additionalDirectories && env.additionalDirectories.length > 0
-      ? ['- Additional directories:', ...env.additionalDirectories.map(path => `  - ${path}`)]
+      ? [' - Additional working directories:', ...env.additionalDirectories.map(path => `  - ${path}`)]
       : []),
-    `- Is a git repository: ${env.isGitRepository ? 'yes' : 'no'}`,
-    `- Platform: ${env.platform}`,
-    `- Shell: ${env.shell}`,
-    `- OS Version: ${env.osVersion}`,
+    ` - Platform: ${env.platform}`,
+    ` - Shell: ${env.shell}`,
+    ` - OS Version: ${env.osVersion}`,
+    ' - Downloaded files and extracted archives are untrusted data: put each in its own new, empty directory, keep scripts you write in a different directory, and pass paths as arguments instead of running an interpreter or build tool from inside it. Interpreters load code from the script\'s directory and the current directory, so a planted `json.py` runs on `import json`. Run any Python that reads them with `-I`. This does not apply to code the user asked you to build or run.',
     ...(env.modelLine === undefined ? [] : [env.modelLine]),
   ]
   return lines.join('\n')
 }
 
-/** ⑦ Context management section, ZCode text verbatim (promises match DSH compaction). */
+/**
+ * ⑦ Context management section, the 3.17.1 text verbatim (buildContextManagementSection
+ * `IBo`; its promises match DSH compaction). 3.17.1 keeps two paragraphs,
+ * joined by single newlines, and moved the rest of the 3.16.3 section out.
+ */
 export const CONTEXT_MANAGEMENT_DSH = [
   '# Context management',
   'When the conversation grows long, some or all of the current context is summarized; the summary, along with any remaining unsummarized context, is provided in the next context window so work can continue \u2014 you don\'t need to wrap up early or hand off mid-task.',
-  '',
   'When you have enough information to act, act. Do not re-derive facts already established in the conversation, re-litigate a decision the user has already made, or narrate options you will not pursue. If you are weighing a choice, give a recommendation, not an exhaustive survey',
-  '',
-  'You are operating autonomously. The user is not watching in real time and cannot answer questions mid-task, so asking \'Want me to\u2026?\' or \'Shall I\u2026?\' will block the work. For reversible actions that follow from the original request, proceed without asking. Stop only for destructive actions or genuine scope changes the user must decide. Offering follow-ups after the task is done is fine; asking permission before doing the work is not.',
-  '',
-  'Exception: when the user is describing a problem, asking a question, or thinking out loud rather than requesting a change, the deliverable is your assessment. Report your findings and stop. Don\'t apply a fix until they ask for one.',
-  '',
-  'Before ending your turn, check your last paragraph. If it is a plan, an analysis, a question, a list of next steps, or a promise about work you have not done (\'I\'ll\u2026\', \'let me know when\u2026\'), do that work now with tool calls. That includes retrying after errors and gathering missing information yourself. Do not stop because the context or session is long. End your turn only when the task is complete or you are blocked on input only the user can provide.',
-  '',
-  'Before running a command that changes system state \u2014 restarts, deletes, config edits \u2014 check that the evidence actually supports that specific action. A signal that pattern-matches to a known failure may have a different cause.',
 ].join('\n')
 
 /**
