@@ -31,16 +31,33 @@ function Count({ value, label, quiet }: { readonly value: number, readonly label
   return <><span className={quiet === true ? 'glmg-count quiet' : 'glmg-count'} aria-hidden="true">{value}</span><span className="glmg-sr">，{label}</span></>
 }
 
-/** A problem banner under the tabs: what it means, the first case by file, the others behind a toggle. */
-function Problems({ summary, lines }: { readonly summary: string, readonly lines: readonly string[] }): ReactElement {
+/**
+ * A problem banner under the tabs: what it means, the first case by file,
+ * the others behind a toggle, and its own 重新读取 when reading again can
+ * help (the header offers one only while the change feed is down).
+ */
+function Problems({ summary, lines, retry }: { readonly summary: string, readonly lines: readonly string[], readonly retry?: () => Promise<void> }): ReactElement {
   const [open, setOpen] = useState(false)
+  const [reading, setReading] = useState(false)
   const shown = open ? lines : lines.slice(0, 1)
+  const reread = (): void => {
+    if (retry === undefined) return
+    setReading(true)
+    void retry().finally(() => { setReading(false) })
+  }
   return (
     <div className="glmg-tabs">
       <div className="glmg-notice" role="status">
         {summary}
         {shown.map(line => <div key={line} className="glmg-notice-sub">{line}</div>)}
-        {lines.length > 1 ? <button type="button" className="glmg-more" aria-expanded={open} onClick={() => { setOpen(!open) }}>{open ? '收起' : `还有 ${lines.length - 1} 处`}</button> : null}
+        {lines.length > 1 || retry !== undefined
+          ? (
+              <div className="glmg-notice-actions">
+                {lines.length > 1 ? <button type="button" className="glmg-more" aria-expanded={open} onClick={() => { setOpen(!open) }}>{open ? '收起' : `还有 ${lines.length - 1} 处`}</button> : null}
+                {retry === undefined ? null : <button type="button" className="glmg-more" disabled={reading} onClick={reread}>{reading ? '正在读…' : '重新读取'}</button>}
+              </div>
+            )
+          : null}
       </div>
     </div>
   )
@@ -147,7 +164,7 @@ export function GraphPanel({ source, commands, sessions, sessionId }: GraphPanel
           />
         </div>
         {errors.length === 0 ? null : <Problems summary={`图里有 ${errors.length} 处校验错误，写入会被拒绝。让 agent 看一下，或用 git 还原节点文件。`} lines={errors.map(issue => `${issue.file}${issue.field === undefined ? '' : ` ${issue.field}`}：${issue.message}`)} />}
-        {unreadable.length === 0 ? null : <Problems summary={`面板读不出 ${unreadable.length} 个节点文件，这些节点没有显示。点头部的重新读取再试一次。`} lines={unreadable.map(entry => `${entry.file}：${entry.message}`)} />}
+        {unreadable.length === 0 ? null : <Problems summary={`面板读不出 ${unreadable.length} 个节点文件，这些节点没有显示。`} lines={unreadable.map(entry => `${entry.file}：${entry.message}`)} retry={() => source.retry()} />}
         <div className="glmg-stage">
           <div ref={body} className="glmg-body" role="tabpanel" id={panelId} aria-labelledby={`${tabsId}-${shown}`} style={shown === 'graph' ? { overflow: 'hidden', padding: 0 } : undefined}>
             {shown === 'you' ? <NeedsYou key="you" graph={graph} items={items} onShowDecisions={() => { setView('agent') }} /> : null}

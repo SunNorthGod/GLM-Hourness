@@ -275,30 +275,40 @@ test('a node file the panel cannot read is reported, not dropped silently, and c
     await mkdir(graphDir, { recursive: true })
     await seed(graphDir)
     const { remote, push } = fakeRemote(workspace)
-    let locked = true
+    // rc.3 refuses a file over the full-file cap with workspace-file/too-large (dsh-api-workspace-files readBytes).
+    let tooLarge = true
+    const refusal = (path: string): string => `"${path}" exceeds the 4096 byte full-file cap`
     const files = remote.workspaceFiles
-    const flaky: RemoteRoot = {
+    const capped: RemoteRoot = {
       ...remote,
       workspaceFiles: {
         ...files,
-        readBytes: (session, path, options, signal) => locked && path.endsWith('/task-3.json')
-          ? Promise.resolve({ ok: false, error: { code: 'workspace-file/io', message: 'file is locked' } })
+        readBytes: (session, path, options, signal) => tooLarge && path.endsWith('/task-3.json')
+          ? Promise.resolve({ ok: false, error: { code: 'workspace-file/too-large', message: refusal(path) } })
           : files.readBytes(session, path, options, signal),
       },
     }
-    const source = new GraphSource(flaky, 'session-a')
+    const source = new GraphSource(capped, 'session-a')
     source.start()
     const first = await until(source, snapshot => snapshot.status === 'ready')
     assert.ok(first.status === 'ready')
-    assert.deepEqual(first.unreadable, [{ file: 'nodes/task-3.json', message: 'file is locked' }])
+    assert.deepEqual(first.unreadable, [{ file: 'nodes/task-3.json', message: refusal('docs/graph/nodes/task-3.json') }])
     assert.equal(first.graph.nodes.has('task-3'), false)
     // The next change frame for the file reads it again; a good read clears the report.
     push({ kind: 'ready' })
     await until(source, snapshot => snapshot.status === 'ready' && snapshot.live)
-    locked = false
+    tooLarge = false
     push({ kind: 'change', change: { absolutePath: join(graphDir, 'nodes', 'task-3.json') } })
     const after = await until(source, snapshot => snapshot.status === 'ready' && snapshot.unreadable.length === 0)
     assert.equal(after.status === 'ready' && after.graph.nodes.has('task-3'), true)
+    // While live, the banner's 重新读取 (retry) reads every file again without waiting for a change frame.
+    tooLarge = true
+    push({ kind: 'change', change: { absolutePath: join(graphDir, 'nodes', 'task-3.json') } })
+    await until(source, snapshot => snapshot.status === 'ready' && snapshot.unreadable.length === 1)
+    tooLarge = false
+    await source.retry()
+    const retried = source.getSnapshot()
+    assert.equal(retried.status === 'ready' && retried.live && retried.unreadable.length === 0 && retried.graph.nodes.has('task-3'), true)
     source.dispose()
   }
   finally {

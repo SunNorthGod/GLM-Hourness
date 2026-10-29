@@ -180,6 +180,10 @@ export const PANEL_CSS = `
 /* a border like the cards: the layer fill equals the panel base in the light theme */
 .glmg-notice{padding:10px 12px;border:1px solid var(--g-line);border-radius:var(--dsw-radius-md,8px);background:var(--g-layer);color:var(--g-ink2);font-size:12.5px}
 .glmg-notice-sub{margin-top:2px;color:var(--g-ink3);font-size:12px}
+/* a problem banner's controls (Panel.tsx Problems): the toggle and the banner's own retry on one line */
+.glmg-notice-actions{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:4px}
+.glmg-notice-actions .glmg-more{margin-top:0}
+.glmg-notice-actions .glmg-more:disabled{color:var(--g-ink3);cursor:default}
 @keyframes glmg-fade{from{opacity:0}to{opacity:1}}
 @keyframes glmg-rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 @keyframes glmg-slide{from{opacity:0;transform:translateX(18px)}to{opacity:1;transform:none}}
