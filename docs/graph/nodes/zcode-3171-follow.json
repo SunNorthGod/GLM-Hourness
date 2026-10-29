@@ -53,6 +53,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "实现第 6 步（start-plan 文本）按 plan.md 把主检出里共用的 reference/zcode-api/src/proxy/zcode_system.json 换成 3.17.1（3.16.3 原件备份在 .agents/tasks/zcode-3171/zcode_system.3.16.3.json）。在 zcode-3171 合入之前，main 与 m3、m3-flow、prompt-fixes 工作树上的 tests/glm-startplan.spec.ts 比对会失败。编排方核对：这段时间里别的运行都只写设计，M3 的实现在等人放行，没有别的运行要在 main 上跑门禁或合入，影响可以接受；zcode-3171 合入之后恢复。"
+    },
+    {
+      "at": "2026-10-29T21:18:21.610Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "实现完成（zcode-3171-implement 的 code 步）：分支 zcode-3171 上 14 个提交（plan 第 1–9 步加 D-1、D-2、D-3）。门禁：build、preflight、npm test 全过，661 个用例 0 失败；check-verbatim 只对 3.17.1 参照包比对通过（489 项、292 行、0 个已知差异）。接下来独立评审、沙盒探针与真实请求、桌面版 L4、合入。"
     }
   ]
 }

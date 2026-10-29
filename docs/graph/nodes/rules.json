@@ -189,6 +189,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "rules-design-v07-write（wf_811e1f7ef668815e）分节改到 0.7（04:49，附录 D 已在）之后又因 TLS 错误结束，一页人话没写。分节保存起了作用，这次没有丢稿。派出单步 rules-design-v07-finish（wf_484792a90019455b）：不重写已改好的部分，只逐条核对 0.6 评审的各条与接缝裁定、补齐缺的，再写 onepage.md；独立评审在它之后另派。"
+    },
+    {
+      "at": "2026-10-29T21:18:21.308Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "Rules board design 0.7 written (.agents/tasks/rules/design.md; not yet reviewed), in two steps: rules-design-v07-write revised the header and most of sections 0-9, then ended on an agent-runtime TLS error; the finishing step completed sections 9.4 to 20 and the appendices without rewriting the finished sections. Against the 0.6 review (HIGH F55, MEDIUM F42 F43 F46 F56-F59, LOW F48 F49 F52 F53 F60-F67) and the orchestrator's seam rulings of 2026-10-30: appendix D (0.5 review F42-F54 and the 2026-10-30 decisions), appendix E (0.6 review and seam rulings) and the 0.6 and 0.7 entries of section 20 added (F55); section 19 asks the person nothing, default level reduce is the person's decision d-peak-mode (F42); the reduce cap is the rules board constant PEAK_REDUCE_GLM_WORKERS = 1, exposed only during a reduce peak as glmHournessPeakMode.stateFor().glmWorkerCap, read once by M7 dispatch_task, pinned by an M7 L2 case (F43); M3 step 6 gets propose_to_human attach, proposalLine and the acceptProposal call after record_human_answer, and R4 waits for it (F46); checkCall writes one rules.check per judgment, with waitedMs, peakUntil and caller, two writers inside and outside DSH, and writes no rules board file (F56); sections 15 and 16 rewritten for /rules, propose_to_human, peak-mode.ts, locale, HOURNESS_ROWS (F57, F48, F52, F53); the GLM package owns the reminder wording and ORCHESTRATION.md 11.4, R4 does not touch it (F58); waking the main agent after a reduce peak is the loops board entry loops.peak-end, the rules board wakes no agent, section 10.4 d-auto-drive rewritten (F59); section 10.4 adds six direction checks (F55). LOW: F60 partly (plain-ui and loops done; the M7 wording item deferred because the seam ruling limits M7 to the cap read), F61-F67 fixed. Section 18 adds eleven agent decisions. One-page release note for the person: .agents/tasks/rules/onepage.md. Open for the orchestrator: loops 0.2 asks M7 for execute.resume-after-peak, which reads peak timing inside M7 and sits uneasily with 'M7 adds only the cap read'; the rules board does not depend on it. Independent review next."
+    },
+    {
+      "at": "2026-10-29T21:18:21.461Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "rules-design-v07-finish（wf_484792a90019455b）补完 0.7：附录 D、E 与 §20 的 0.6、0.7 两条，§9.4–§19 按 0.6 评审与接缝裁定修完，一页人话 onepage.md 已写。派出单步评审 rules-design-v07-review（wf_9822f2f73e03e718）。"
     }
   ]
 }
