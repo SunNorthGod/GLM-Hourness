@@ -117,6 +117,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "重新派出 rules-design-v05-retry（wf_f0cf45ba63f84c4a），内容同 wf_4ae36fac743f83a2，另按 2026-10-30 主 Agent 的四条方向决定与指标流水复核。"
+    },
+    {
+      "at": "2026-10-29T16:50:47.139Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "rules-design-v05-retry (wf_f0cf45ba63f84c4a) failed at the start of its first design step on BAD_DECRYPT, the third rules design step in a row to fail that way. Relaunched as a single-step run rules-design-v05-write (wf_446dbc21ff9cefde) to write v0.5 only; the independent review is launched after it lands. The brief adds the background field contract from the plain-ui round-4 ruling (rules_propose writes the node field background)."
     }
   ]
 }
