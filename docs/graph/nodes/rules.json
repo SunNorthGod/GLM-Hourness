@@ -147,6 +147,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "规则板设计 0.5 评审（rules-design-v05-review，wf_67aac31bd9eebeb3）：CHANGES_REQUESTED，HIGH 0、MEDIUM 5（F42–F46，挡路）、LOW 8；0.4 的 F33–F41 全部关闭。挡路的五条都是人的决定还没写进去：F42 默认档仍是无影响、§19 仍在问人；F43 少做缺了「减少并发数量」；F44 新手引导要讲高峰模式、默认少做与在哪里改；F45 GLM 包的高峰提醒原文叫模型不要暂停或推迟工作，与少做、不做相反；F46 规则提议仍用表格卡问人，要改成聊天（d-chat-not-cards）。派出单步 rules-design-v06-write（wf_2f149988fcc89bb1）写 0.6，并按 d-rules-visible 把合入前检查清单与必须全审清单放进规则板显示，再写一页人话放行稿；独立评审在它落地后另派。"
+    },
+    {
+      "at": "2026-10-29T19:13:56.273Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m8-plain-language 设计 0.5 对规则设计下一稿的要求（design.md §4.7、§11 规则）：1. 规则页在面板里只看：单选、开关、解除、改、删除、放行、取消、恢复处理、提议接受与驳回、新规则表单都不在面板上，每处改成一行「要改：跟主 Agent 说……，或在输入框打 /rules ……」；/rules 缺的写入由规则设计补成子命令或走对话。2. 高峰模式出厂默认是少做（d-peak-mode）。3. 新增「会挡住动作的门」一组：从项目图读 norm-merge-gate 与 norm-review-floor 的 acceptance 逐条原文显示（d-rules-visible）。4. rules_propose 按 d-chat-not-cards 改为提议式的四行，背景一行合 60 个码点，0.5 的三句例子要缩短。5. 板块登记表 id rules、label 规则板；homeLine 高峰时「GLM 高峰中，到 <时刻> · 高峰模式：<档名>」或「N 件事在等规则放行」；guideLine「现在是：<档名>（<谁选的或出厂默认>）」，读不到是不是高峰时为 null。"
+    },
+    {
+      "at": "2026-10-29T19:13:57.671Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "循环板设计 0.1 §16 给规则板下一稿的请求：「写在代码里的规则」一组加四行（合入前的检查读 norm-merge-gate、必须全审读 norm-review-floor、M7 的停下标记、loops:schedule-tools）；检测器的触发改用 src/loops/trigger.ts 的 Trigger 子集（every、daily、weekly 与 file-changed 事件），两块板一套时间写法；命令执行与 §5.3 共用 src/loops/command.ts（谁先合入谁建）；循环板跑命令前调 checkCall（tool 为 pwsh，带 glmSpend），§9.4 不用改。高峰的执行仍全在规则板，循环板第 12 项只记录与显示。"
     }
   ]
 }

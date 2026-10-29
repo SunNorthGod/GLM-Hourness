@@ -182,6 +182,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "m3-addendum-v03（wf_57917c951081d8a9）的附录 0.3 写稿完成，第 3 轮评审步一启动就因 BAD_DECRYPT 失败。改派单步评审 m3-addendum-v03-review（wf_a71d594ad0566cd5），结论写进 reviews/addendum-r3.*；通过后另派一页人话放行稿。"
+    },
+    {
+      "at": "2026-10-29T19:13:56.069Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m8-plain-language 设计 0.5 对 M3 附录 0.3 的接缝（design.md §11 M3）：1. PLAIN_LIMITS.background 定为 60 个码点（去掉 ** 之后），一行；proposalLineRefusal 已只读这个常量，M3 先建时写 { title: 40, why: 80, background: 60 }。2. record_human_answer 的三种说法从 src/shared/answer-marks.ts 的 ANSWER_MARKS 取（文字与附录 §3.5 相同），谁先合入谁建。3. personMessages 改为逐条调 src/shared/person-message.ts 的 isPersonMessage，现场投影的 awaiting 用同一个判法。4. main-agent-holder.ts 另导出 holderFileOf(userHome, dir) 与取 userHome 的函数，图面板行的 hournessProject 投影调它们。5. tool-names.ts 另导出 PROPOSE_TO_HUMAN 常量。6. WishCard 的完整卡片底部放本稿导出的 FirstVisitLine（ui/src/guide/FirstVisitLine.tsx）；没图的卡片由本稿单独登记。7. 第 6 步给面板加的最小显示由本稿面板改版整体替换，后合入的一方 rebase。"
+    },
+    {
+      "at": "2026-10-29T19:13:58.943Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M3 附录 0.3 第 3 轮评审（m3-addendum-v03-review，wf_a71d594ad0566cd5；.agents/tasks/m3/reviews/addendum-r3.md）：CHANGES_REQUESTED，挡路 8 条（MEDIUM）、不挡路 12 条；第 2 轮全部关闭。挡路条数 3 → 8 没有减少，按 question-11 与 DEVELOPMENT.md §1.1 停下交人。八条里五条是附录写完之后才到的决定与兄弟设计没对上：M1 新加的几条拦截没进规则板（d-rules-visible）；M2 改主 Agent 工具面与写用户目录的两步没安排审查（norm-review-floor）；M6 3.17.1 里输出风格不再是系统提示词的一节；M7 例题里写的「不再提醒模型」与 d-peak-mode 相反；M8 背景字段上限应为 60（面板 0.5）。三条是真的安全问题：M3 几种 git 命令会删掉没进快照的未跟踪文件，git clean 的文件列表在中文环境下解析不出来；M4 快照把 .env、.llm/ 这类被忽略的文件存进 git 对象且永不清理，推送时可能带出去，依赖装满的工作树清理会被拒；M5 派出去的子 agent 或普通会话能带编造的「人的原话」把目标推到放行，绕过门禁且没有警报。运行本身在写完评审后因 BAD_DECRYPT 结束。"
     }
   ]
 }

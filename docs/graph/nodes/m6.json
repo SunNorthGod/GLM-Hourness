@@ -108,6 +108,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M6 设计 0.3 写完（m6-design-v03-write，wf_4c01cda4cce69b64；.agents/tasks/m6/design.md，0.2 留作 design-v0.2.md；一页人话 onepage.md；图操作草稿 graph-ops-v03.json）：第 2 轮 9 条全部处理，补上循环板、登录状态与指标流水几部分，没有要问人的题。派出单步评审 m6-design-v03-review（wf_fb36232a446502c6），另核对 M6 与规则板 0.6 谁负责高峰提醒原文。"
+    },
+    {
+      "at": "2026-10-29T19:13:58.250Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "循环板设计 0.1 §16 给 M6 下一稿的请求：额度读取每次写流水时经 glmHournessChannelLoop 推 quota-read；上游限额错误推一条 usedPercent 100、cause upstream-limit 的读数；nextPeakChange 给循环板的 peak-changed 用。循环板不加后台定时读额度，查清 ZCode 桌面版自己读不读之前不加（循环板 §9.2 V9）。"
     }
   ]
 }

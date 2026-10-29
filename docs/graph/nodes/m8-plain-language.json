@@ -146,6 +146,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "M3 附录 0.3 §9 第 5 条（给 plain-ui 下一稿的契约）：提议式待决的字段与规则在 src/graph/proposal.ts 与附录 §3.3（background 照 PLAIN_LIMITS.background；proposal、doubt、notTaken、conclusion；四行都恰有一处加粗，面板用 splitBold 显示）；M3 第 6 步只给面板加最小显示（四行与「在主 Agent 的对话里回话」，没有按钮），「需要你」改版与点开跳到主 Agent 的对话归 plain-ui，主 Agent 是哪个会话用 mainAgentOf(userHome, dir)；PLAIN_WORDS 在 src/graph/plain-question.ts，jargon 规则从它读；例题换成人给的四行题；黄字删去「子 agent 用便宜的就行」。M3 若先于 plain-ui 第 1 步合入，由 M3 第 6 步按 plain-ui §4.2 建 background 与 PLAIN_LIMITS。"
+    },
+    {
+      "at": "2026-10-29T19:13:55.684Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "设计 0.5 写完（.agents/tasks/plain-ui/design.md；0.4 全文与草图移到 v0.4/）：按 d-chat-not-cards、d-one-main-agent、d-defaults-readonly、d-rules-visible、d-peak-mode、d-design-onepage、d-main-agent-models、d-auto-drive、metrics、schedules 与第 4 轮两条裁定重写。面板只看不操作：去掉选项卡、表格、先想后看、跟随率、运行控制按钮与全部写入（ui/src/graph/apply.ts 删去，L2 静态检查 ui/src/graph/ 不调用 commands.execute）。首页五节：效果是、需要你、现在、怎么做、上次看之后。「需要你」列三种：开着的人定待决（提议式照四行显示，旧选项式只显示题目与背景）、主 Agent 对话里交给人还没回话的确认与放行（graphLive 投影新增 awaiting，从会话日志折叠，人发消息即清空）、等人批准的提议（访谈与设计中的目标子树不列）；每件一个链接，按 M3 的持有者记录（新投影 hournessProject 给路径，客户端 readBytes 读）用 uiWorkspace.openSession 打开主 Agent 的对话。第 2 层规则板与循环板经板块登记表 ui/src/graph/boards.ts 进入，定版面约定：每条写从哪来，插件带来的只能看，人能改的写一句改法（对主 Agent 说或 /rules 命令），页面没有控件。P4-01：背景字段 background 一行，去掉加粗记号后至多 60 个码点（PLAIN_LIMITS.background），三处共用；写法检查 9 条（evaluative 删去），第二阶段要等现有节点改完、M3 第 6 步与 rules_propose 在第二阶段的常量下通过。P4-02：/wish 入口归 M3 附录 §2.6，本稿只留 FirstVisitLine 组件、没图卡片 hourness-nograph（order 41）、首页一句与上手页。人回话的三种记号进 src/shared/answer-marks.ts，面板与指标流水共用。repeat 删去，反复做的事归循环板。P2 由本节点正文回答（D），P4 由循环板回答；要人定的只剩一件：两件事的「怎样算做完」放进一页放行稿一起看（§13，按四行写）。第 5 轮评审待开始。"
+    },
+    {
+      "at": "2026-10-29T19:13:57.473Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "循环板设计 0.1 §16：plain-ui 0.4 §6 的 P4（任务字段 repeat、进行中回到已批准、recurring 一组、验收第 9 条）由循环板代替，下一稿删去；板块登记表 Board.id 加 'loops'，首页页脚改为「规则 › 循环 › 经验 › 整张图 › 上手说明 ›」；上手页第 4 块之后加循环板的一句（循环板设计 §7.3 给字句）。"
     }
   ]
 }

@@ -29,6 +29,18 @@
       "reason": "派出 metrics-design（wf_69e6b58317041053）：只写设计、过独立评审，再写一页人话放行稿；人确认之后另派实现",
       "from": "approved",
       "to": "doing"
+    },
+    {
+      "at": "2026-10-29T19:13:56.639Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m8-plain-language 设计 0.5：跟随率与先想后看（历史字段 asked、shown、shownOrder、peeked）不做。人原样同意、补充、否掉的次数按 src/shared/answer-marks.ts 的 answerKindOf 认，由 harness 在 record_human_answer 写图时记进指标流水；面板不写流水、不显示这个比例。"
+    },
+    {
+      "at": "2026-10-29T19:13:58.433Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "循环板设计 0.1 §5.9：循环板这边的事件清单是 loop-fired、loop-done（结局 delivered、ran、reported、delegated、skipped、suppressed、deferred、blocked、held、failed、expired）、loop-entry、loop-drift、loop-note，只记 id、时刻、结局、退出码、用时与字节数。指标流水合入之前写用户级目录的 loops/projects/<键>/runs.jsonl，合入时只改 src/loops/metrics.ts。"
     }
   ]
 }

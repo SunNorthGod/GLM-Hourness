@@ -26,6 +26,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "m8-plain-language 设计 0.4 的落法（agent 定，人可推翻，design.md §2.2、§4.2、§4.3、§13 第 26、27 条）：待决新字段 background（两三句、不超过 150 个码点、不含换行，人定的题必须带，分两阶段：先警告后拒绝）；换词表进 §2.2；写法检查新规则 jargon 只查待决的人话字段（title、background、crux、verdict、label、gain、cost、维度），与 term 同词时只报 jargon；graph_propose 的说明带一道完整的例题（question-38 改写）与换词表，M3 卡片工具、主 Agent 身份文本与 M7 的 ask_human 说明同样带；上手页只解释主 Agent、子 agent、取决于、底账四个词。"
+    },
+    {
+      "at": "2026-10-29T19:13:56.821Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m8-plain-language 设计 0.5 的改动：问题的背景改为一行，去掉加粗记号后至多 60 个码点（PLAIN_LIMITS.background，原为两三句、150 个码点），因为 d-chat-not-cards 定稿后背景是四行里的一句短话；M3 的 propose_to_human、规则板的 rules_propose 与面板的写法检查读同一个常量。换词表只在 M3 的 src/graph/plain-question.ts（PLAIN_WORDS），面板的 jargon 检查调 plainWordsIn，并查状态为提议的节点的标题与 why；例题只用 M3 的 PLAIN_QUESTION_GUIDE（人给的高峰那道四行题），0.4 的 question-38 改写例题作废。"
     }
   ]
 }

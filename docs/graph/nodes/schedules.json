@@ -59,6 +59,18 @@
       "reason": "派出 schedules-design（wf_48afb65e2757b48f）：只写循环板设计、过独立评审，再写一页人话放行稿；人放行后另派实现",
       "from": "approved",
       "to": "doing"
+    },
+    {
+      "at": "2026-10-29T19:13:56.454Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m8-plain-language 设计 0.5 对循环板设计的接缝（design.md §4.7、§11 循环板）：在面板的板块登记表 ui/src/graph/boards.ts 登记 id loops、label 循环板、available、Page，homeLine 与 guideLine 可选；页面照面板的版面约定：每条写从哪来，插件带来的只能看，人加的条目改法写成对主 Agent 说的话，页面没有控件；分组次序为碰到某件事就做、到点做、本项目加的。plain-ui 0.4 的 P4（反复做的事怎么显示）由循环板回答，面板不再给任务加 repeat；reading-digest 怎样不再挂在「在做」由循环板设计定。"
+    },
+    {
+      "at": "2026-10-29T19:13:57.285Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "循环板设计 0.1 写成（.agents/tasks/schedules/design.md，未评审；草图 mockup-loops.svg）。一项 = 什么时候（一次、每隔、每天、每周、cron，或代码里固定的 11 个事件之一）+ 做什么（告诉主 Agent；跑命令、结果交给主 Agent；跑检查、结果交给改文件的 agent，由 env 行执行；按高峰档位收放，由规则板执行）+ 谁带来的。默认 14 项：编排层 11（晨报、周报、夜间巡检、合进主干后的完整检查、放行后推进、交回后派审查、停下来报告、重启后接上、依赖变了查依赖、等人太久提醒、改完文件跑检查），GLM 插件 3（高峰收放、额度预警、登录过期），只能看；GLM 的三项经公共库契约 glmHournessChannelLoop 由 GLM 包提供。告诉主 Agent 的到点条目用 dsh-schedule、任务绑在主 Agent 会话上并随 /wish here 搬家；跑命令的到点条目用循环板自己的钟（DSH 投递每次都叫醒主 Agent），不支持 cron。事件经项目收件箱 events.jsonl（编排层各行 emitLoopEvent）、循环行自己从 git 主干、宿主启动记录、项目图、文件、计价服务推出，停机期间的各补一次。去抖 30 秒、每项每小时至多 6 次、10 分钟内自己触发自己不跑。命令先经规则板 checkCall；高峰不做档下不叫醒走 GLM 的主 Agent，攒到高峰后投。人的条目只由人写：页上经 /loops-apply，对话里经 loop_propose 提图上待决、人同意后带原话拍板。§2.4 列出今天每条规矩去哪块板。没有必须问人的事；替人定的 8 条在 §17。下一步：独立评审。"
     }
   ]
 }
