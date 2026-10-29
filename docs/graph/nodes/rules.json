@@ -51,6 +51,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "规则板块设计 v0.1 写完（.agents/tasks/rules/design.md）：信号、资源与只由人写的规则；像 hook 的检测器；Windows 上的控制手段有本机 Job Object 实验作依据；失败预案；待人定 D1–D5（推荐放最后）。设计评审进行中，评审按 DEVELOPMENT.md §1.1 的新挡路标准。"
+    },
+    {
+      "at": "2026-10-29T10:50:08.069Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "设计评审第 1 轮：CHANGES_REQUESTED，HIGH 1、MEDIUM 5、LOW 13（.agents/tasks/rules/design-review.md）。评审在一次性进程上实测了 Windows 作业对象。HIGH F1：预算作业在第一次需要限速时才建，Windows 不会把已有子进程移进作业，人坐下之前 agent 起的命令不受 CPU 上限与优先级限制，验收 1.4 第 1 条在用户自己的场景里不成立。MEDIUM：F2 助手进程崩溃后作业名消失，宿主困在一个找不回的作业里，没有发现与恢复；F3 清掉优先级限制标志后进程仍停在低优先级，要先设回正常再清；F4 流水是事实源，引擎之外追加一行就能伪造人的规则写入，绕过 d-rules-human-only；F5 子 agent 会话结束时排队单被取消，没人被唤醒，无人值守的运行会卡住；F6 L3 的限速检查在 32 线程机器上量不出上限是否生效。都属于 DEVELOPMENT.md §1.1 挡路的几类（失败无从发现或无法恢复、人才能写的规则被绕过）。第 2 轮修订进行中。"
     }
   ]
 }
