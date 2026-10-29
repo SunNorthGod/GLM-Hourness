@@ -500,12 +500,12 @@ DSH 的 `TokenUsage` 各计数互不重叠：`inputTokens` 只算未命中缓存
 | `harness:identity`（同名替换 DSH 身份节） | -1000 | 两档；安全声明按档位二选一 |
 | `glm:environment` | -900 | coding-plan，需配置 `env` |
 | `glm:session-guidance` | 2300 | coding-plan |
-| `glm:memory` | 2350 | coding-plan |
+| `glm:memory` | 2350 | coding-plan；只在本次组装 `next()` 返回的工具里有全部三个记忆工具时出现（§5.3 ⑧） |
 | `glm:persona`（汇报细度） | 2360 | 两档 |
 | `glm:context-management` | 2400 | coding-plan |
 | `glm:guard`（guard 行添加） | 最后一节 | 两档；列出生效的规则，`interpolate: false`（`ORCHESTRATION.md` §6.1） |
 
-`glm:guard` 不属于方言：由 guard 行在自己的组装监听器里追加，只在 GLM 路由上出现，文本是本项目的（不在镜像文件里，不属于逐字声明）。两个 prepend 监听器谁在外层都一样，这一节总在最后：guard 在外层时追加在方言改写之后；guard 在内层时方言改写保留其余节的顺序，只把方言节插到身份节之后。规则只随会话目录变化，会话目录不可变，所以每步的系统提示词不变，不影响提示词缓存。
+`glm:guard` 不属于方言：由 guard 行在自己的组装监听器里追加，只在 GLM 路由上出现，文本是本项目的（不在镜像文件里，不属于逐字声明）。两个 prepend 监听器谁在外层都一样，这一节总在最后：guard 在外层时追加在方言改写之后；guard 在内层时方言改写保留其余节的顺序，只把方言节插到身份节之后。规则只随会话目录变化，会话目录不可变，所以每步的系统提示词不变，不影响提示词缓存。声明里的工具名按模型看到的写：方言接管这个 agent 时是 `Write`/`Edit`，与之前逐字相同；方言没有接管（`glm-prompt` 禁用或没装上）时是原生的 `write`/`edit`（`ORCHESTRATION.md` §6.1）。
 
 原先的 `glm:deferred-tools` 节（order 2500）已删除：ZCode 的系统提示词里没有 deferred 声明段，deferred 名单以 `<system-reminder>` 公告递送（§5.7）。
 
@@ -520,12 +520,13 @@ DSH 的 `TokenUsage` 各计数互不重叠：`inputTokens` 只算未命中缓存
 | ⑤ | Skills 引导 | DSH 技能清单 |
 | ⑥ | 工具描述与 schema 中的行为断言 | 垫片必须兑现描述与 schema 的承诺，兑现不了就改写或删去该句；七个别名的处理见 §5.4。Grep 删去原生做不到的参数，Bash 改写 shell 与工作目录两行 |
 | ⑦ | Context management | 逐字，承诺与 DSH 压缩一致 |
-| ⑧ | Memory | 写入纪律改为 memory 工具族与工作区 `.llm` |
+| ⑧ | Memory | 写入纪律改为 memory 工具族与工作区 `.llm`。这一节只在本次组装 `next()` 返回的工具里有 `memory_store`、`memory_query`、`memory_forget` 三个时才加〔2026-10-29，split 第 2 步〕：编排层包没装、memory 行禁用或没配 `home`（这时它不注册记忆工具）时，GLM 不会被教去用不存在的工具。判定用 `next()` 的返回值本身（`memorySectionApplies`，在别名改写与工具检索之前），以后记忆工具被工具检索延迟加载也不会误删这一节；ZCode 原版的 Memory 段讲的是 ZCode 自己的记忆文件，DSH 里不存在，所以不回退到原版，直接不加。记忆工具的名字取自公共库的 `src/shared/tool-names.ts`，契约测试钉住它与 memory 行的注册一致 |
 | ⑨ | Deferred 声明 | 不设；名单公告与工具检索按 ZCode 原文（§5.7） |
 
 ### 5.4 工具面
 
 - 别名：`Read`、`Write`、`Edit`、`Glob`、`Grep`、`Bash`、`TodoWrite`，执行时委托捕获的原生定义〔实读〕。七个别名的描述与 schema 都按 3.16.3 安装包重建，原文放在镜像文件 `src/glm-prompt/zcode-tool-text.ts`：第一批 `Read`、`Write`、`Edit`（含结果文本），第二批 `Glob`、`Grep`、`TodoWrite`、`Bash`（2026-10-28，含 Glob 与 Grep 的结果文本）。`Grep` 与 `Bash` 是本地化组合：镜像文件里是原文，删改在 `search-alias.ts` 与 `aliases.ts` 中完成，不属于逐字声明（别名规格标 `localized`）。
+- 别名表的静态副本与方言服务〔2026-10-29，split 第 2 步〕：编排层的 guard 规则只认 DSH 原生名，要知道 `Write`、`Bash` 这些别名执行的是哪个原生工具。公共库 `src/shared/dialect.ts` 有一份静态表 `ZCODE_ALIAS_NATIVES`（七个别名 → 原生名），与 `DEFERRED_TOOL_CALL_NAME` 同类，是两包都带的 ZCode 事实；`glm-prompt` 行另外提供方言服务 `glmHournessDialect`：`nativeOf` 由本方言自己的别名定义组成（`aliasSpecs` 加 `Read`、`TodoWrite`，不抄静态表），`faceName` 是它的反查（`read_image` 也对应 `Read`），`claims(agent, route)` 在方言已经装好在这个 agent 上、且路由属于 GLM 模型族时为真（装失败的 agent 不算）。`tests/contracts.spec.ts` 断言静态表、`aliasSpecs`、`nativeOf`、`faceName` 四者一致，加了别名忘了登记就失败。服务提供失败时方言照常改写，`glm-prompt` 的行健康为 `degraded`，guard 按静态表换算、纠偏用原生名（`ORCHESTRATION.md` §6.1）。
 - 工具面：别名只遮住它实际包住的原生工具。`Read` 包住 `read`，组合里有 `read_image` 时也包住它；其余别名各包一个（`write`、`edit`、`glob`、`grep`、`pwsh`、`todo_write`）。被包住的原生工具从 GLM 请求的工具面中滤掉，非 GLM 请求则滤掉别名；两组都保持注册，逐请求在组装监听器里决定（§3）。L3 探针（2026-10-28）：GLM 首个请求 16 个工具（14 个常驻加两个检索控制工具），13 个延迟；非 GLM 请求 28 个原生工具。
 - schema：七个工具都是 ZCode 发给模型的形态，即合同中的 zod 对象经 `toToolJsonSchema`（zod-to-json-schema 3.25.2，jsonSchema7，`effectStrategy: input`）转换后再加 `$schema`（2020-12）。所以有 `integer`、`minimum`、`exclusiveMinimum`、`minLength`、`additionalProperties: false`、`default`；Bash 的语义数字与语义布尔按输入类型转换为 `number`、`boolean`。rc.3 不校验原样注册的工具参数，这些关键字原样到达模型（L3 探针实测）。`Read` 用不带 PDF 的形态：ZCode 只对声明 PDF 输入的模型加 `pages` 参数与 PDF 说明行，GLM 不声明。
 - 映射与兑现（Read，`src/glm-prompt/read-alias.ts`）：
@@ -606,7 +607,7 @@ L3 探针：沙盒里把压缩阈值调低，摘要请求末条是 ZCode 提示�
 - 开关：`glm-prompt` 配置 `toolSearchMode`，`local`（默认）或 `off`。
 - 安装：`agent/created` 时在 agent 作用域注册 `LocalToolSearch` 与 `DeferredToolCall`，并注册一个 `agent/pre-step` 监听器。
 - 工具面：GLM 请求先做别名改写，再交给 `buildToolExposure`：延迟工具离开工具面，两个控制工具留下；没有延迟工具时控制工具也离开。非 GLM 请求只去掉控制工具。
-- 分类：ZCode 常驻名单保持常驻；有 ZCode 对应物的 DSH 工具跟随对应物（`read_image`、`subagent`、`subagent_fork`、`skill`、`workflow`、`get_goal`、`ask_user_question`、`bash`、`str_replace_editor`）；记忆工具与项目图工具常驻（`ORCHESTRATION.md` §8、§2.10）；其余 DSH 工具按 MCP 规则延迟。L3 探针中的 GLM 工具面（2026-10-27 为 28 个；2026-10-28 起 `read_image` 由 Read 别名包住，为 27 个），13 个延迟：TodoWrite、create_goal、exit_plan_mode、interrupt_agent、job_kill、job_list、job_output、list_agents、send_message、update_goal、web_fetch、web_search、working_directory。
+- 分类：ZCode 常驻名单保持常驻；有 ZCode 对应物的 DSH 工具跟随对应物（`read_image`、`subagent`、`subagent_fork`、`skill`、`workflow`、`get_goal`、`ask_user_question`、`bash`、`str_replace_editor`）；记忆工具与项目图工具常驻（`ORCHESTRATION.md` §8、§2.10；名单是公共库 `src/shared/tool-names.ts` 的 `ORCHESTRATION_RESIDENT_TOOLS`，逐个列名，编排层以后加的工具默认按 DSH 独有工具延迟，要常驻须在那里加名字）；其余 DSH 工具按 MCP 规则延迟。L3 探针中的 GLM 工具面（2026-10-27 为 28 个；2026-10-28 起 `read_image` 由 Read 别名包住，为 27 个），13 个延迟：TodoWrite、create_goal、exit_plan_mode、interrupt_agent、job_kill、job_list、job_output、list_agents、send_message、update_goal、web_fetch、web_search、working_directory。
 - 公告：每步在 `agent/pre-step` 计算新增、恢复、移除的 deferred 名单，追加一条 `<system-reminder>` notice（来源 `glm-tool-search`）；增量事实存在 notice 的 `source.toolSearchAnnouncement`，与 ZCode 公告元数据一致。已公告状态每步从 `session.deriveMessages()` 重新推出，所以续跑、重启和压缩后都按模型实际看得到的历史计算。
 - 检索结果：执行 `LocalToolSearch` 时按 ZCode 投影生成内容，即 `<functions>` 定义块、「Loaded: …」提醒、「Tool definitions already available …」提醒。「已加载」只认最近一条助手消息之前的成功检索结果（ZCode 同批不互相去重的语义）。
 - `DeferredToolCall`：校验与拒绝文案按 ZCode `resolveDeferredToolCall`；通过后经 `tools.execute` 执行目标，不带 `parent` 令牌。ZCode 在派发前就把包装还原成目标调用，所以 guard、审计流水、会话检查点看到的都应该是目标本身。todo 提醒从会话历史计数，历史里记的是模型发出的 `DeferredToolCall`，所以按其参数里的目标名识别 TodoWrite（§5.5）。

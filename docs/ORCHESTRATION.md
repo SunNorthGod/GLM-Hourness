@@ -708,13 +708,15 @@ L3 核实〔实测 2026-10-28，派发可行性验证 (a)(b)，`ROADMAP.md` 借�
 
 现状〔已实现〕：探测与纠偏已接通；记录已接通（2026-10-28）：每次拦截写进项目目录的违规流水 `<项目目录>/audit/violations.jsonl`，项目目录取 guard 行的 `home`，没有就取数据目录服务的（`DESIGN.md` §2.4），L3 探针实测；告知已接通（2026-10-28，`ROADMAP.md` M1.8）：GLM 路由的系统提示词最后一节 `glm:guard`（标题「Workspace rules」）逐条列出生效的规则，每条一行，取自规则的声明文本；会话没有工作目录时圈禁规则不生效，也不声明。规则是常驻的，所以放在系统提示词（§9.2 的提示词一级），不随每步变化，不影响提示词缓存（`DESIGN.md` §5.2、§6）；随阶段变化的规矩以后走阶段提醒。申报没有通道（纠偏文案要求「提交申报」，系统中无处提交）。2026-10-28 之前已知至少 3 次拦截没有留下记录，因为该行没有数据目录，回调也无法从配置传入。
 
+工具名〔已实现 2026-10-29，split 第 2 步〕：规则只认 DSH 原生工具名（`write`、`edit`、`str_replace_editor`、`pwsh`、`bash`、`terminal_send`），判定之前把调用名换成它实际执行的原生工具：先问 GLM 方言提供的方言服务（`glmHournessDialect`，`src/shared/dialect.ts`，由 `glm-prompt` 行提供），服务不在、或它不认识这个名字时，查公共库里的静态别名表 `ZCODE_ALIAS_NATIVES`（`Write` → `write`、`Edit` → `edit`、`Bash` → `pwsh` 等，与 DSH 原生工具名都不重名），都没有就用原名。所以服务缺席时拦截不变，GLM 的 `Bash` 照样按 `pwsh` 判。换算在 guard 行的 `tools/pre-execute`、图文件门禁与影子兜底三处做；图工具不换算（没有别名）。违规与影子记录里的 `tool` 仍写模型调用时用的名字。纠偏与 `glm:guard` 声明里的工具名按模型看到的写：方言服务说它接管了这个 agent 在这条路由上的请求（`claims`）时用方言的名字（`write` → `Write`、`read` → `Read`），文案与之前逐字相同，提示词缓存不受影响；否则用原生名。规则接口为 `detect(call, face)`，`declare` 是字符串或按 `face` 取名的函数；`file-tools-only` 的声明与正路用函数形式，圈禁与 `graph-files-only` 不含文件工具名，仍是字符串。配置追加的规则（guard 行 `config.rules`）按旧接口写照样成立，从这一步起收到的 `call.name` 是原生名。服务的值形状不对、或某个方法抛错时，这次调用按服务缺席处理（拦截照常、文案用原生名），控制台报一次，guard 的会话健康写「方言服务不可用」。静态表不看路由：别的插件若注册了与 ZCode 别名同名的工具，也按对应的原生工具判；今天的组合里只有方言注册这些名字。验证：L2 在 `tests/guard-audit.spec.ts`（有、无服务，服务形状不对，没装上方言的 agent）、`tests/graph-guard.spec.ts`（有、无服务时 `Write` 与 `Bash` 写图文件都被拒）与 `tests/contracts.spec.ts`（静态表与方言自己的别名定义一致）；L3 探针 `glm-no-dialect`（覆盖层禁用 `glm-prompt` 的 GLM 会话：工具面是原生工具，`pwsh` 写文件被拒，纠偏与声明写 `read`、`write`、`edit`），`glm` 场景的纠偏仍写 `Read`、`Write`、`Edit`。
+
 圈禁的路径判定〔已实现 2026-10-28〕：相对路径按会话的当前工作目录解析（rc.3 `workingDirectory.get(session)`，文件工具也按它解析，`cd` 会移动它），没有这个服务时取会话目录，再没有取第一个圈禁根；解析用 `path.resolve`，与 rc.3 `dsh-fs-local` 在 Windows 上的 `localDisplayPath` 相同，`..` 一并折叠。圈禁根仍是会话目录本身，不随 `cd` 移动。此前只做大小写与分隔符的归一化：相对路径一律判为工作区外（L4 中 GLM 写 `.llm/l4-dsh/calc.mjs` 被拒），`C:\ws\..\elsewhere` 这类写法反而能通过。拒绝文案在相对路径时附上解析后的绝对路径。
 
 ### 6.2 作用范围
 
 先只作用于 GLM 会话，误伤清零后再考虑放开〔定案〕。子 agent 的出界请求默认拒绝，由主 Agent 汇总后统一向人申报。DSH 在宿主层已是这样：委派出去的子 agent 审批策略固定为 `never`，`userQuestions.ask` 拒绝子 agent 调用（§3.2）。
 
-实现〔2026-10-28〕：拦截与影子兜底只处理 GLM 模型发出的调用。一次工具调用的路由取调用方会话最新的请求头：agent 循环在每步调用模型之前把请求头写进会话日志（rc.3 `dsh-agent-loop` lib/index.js:1226，变化时才写），`Session.requestHeader()` 折叠这些事件（`dsh-session` lib/index.js:1612），工具执行时它就是发出这次调用的那一步的配置（`src/shared/route.ts` `sessionRoute`）。非 GLM 模型的调用、没有 agent 的调用、会话还没有请求头的调用都直接放行，不记违规，也不记影子笔记；行健康对这些会话报「未生效」并写明路由。中途切换模型的会话从切换那一步起按新路由判断。此前拦截对全部路由生效：L4 中 DeepSeek 会话的写入也被 guard 拦下。
+实现〔2026-10-28〕：拦截与影子兜底只处理 GLM 模型发出的调用。一次工具调用的路由取调用方会话最新的请求头：agent 循环在每步调用模型之前把请求头写进会话日志（rc.3 `dsh-agent-loop` lib/index.js:1226，变化时才写），`Session.requestHeader()` 折叠这些事件（`dsh-session` lib/index.js:1612），工具执行时它就是发出这次调用的那一步的配置（`src/shared/route.ts` `sessionRoute`）。非 GLM 模型的调用、没有 agent 的调用、会话还没有请求头的调用都直接放行，不记违规，也不记影子笔记；行健康对这些会话报「未生效」并写明路由。中途切换模型的会话从切换那一步起按新路由判断。此前拦截对全部路由生效：L4 中 DeepSeek 会话的写入也被 guard 拦下。范围按模型族判定，与方言装没装上无关：`glm-prompt` 禁用或在某个 agent 上装失败时，GLM 调用照样拦截，纠偏与声明改用原生工具名（§6.1）。编排层只剩两处模型族判定，都在 `src/guard/index.ts`：`tools/pre-execute` 监听器里按 `sessionRoute` 判调用，组装监听器里按 `assemblyRoute` 判要不要加 `glm:guard` 一节（2026-10-29，split 第 2 步只换算工具名，不改范围）。
 
 ### 6.3 正路
 
@@ -754,13 +756,13 @@ L3 核实〔实测 2026-10-28，派发可行性验证 (a)(b)，`ROADMAP.md` 借�
 - 引号外指向文件的重定向：`>`、`>>`、`N>`、`*>`、`&>`、`>|`、`<>`。流合并（`2>&1`、`>&2`）、空设备（`$null`、`/dev/null`、`NUL`）与输入重定向不算。
 - 命令位置上的写文件命令，命令集与改造前相同：`Set-Content`、`Add-Content`、`Clear-Content`、`Out-File`、`Tee-Object`、`New-Item`、`Copy-Item`、`Move-Item`、`Remove-Item`、`rm`、`mv`、`cp`、`rmdir`、`dd`、`touch`、`truncate`、`tee`、`sed -i`。参数位置的词不算命令，所以 `git rm`、`echo rm`、`rg "=>"` 都放行。
 
-命令位置包括：每个管道段与命令列表的开头、赋值与关键字之后（`FOO=1 rm`、`then rm`、`$null = New-Item`）、包装命令之后（`sudo`、`env`、`xargs` 等）、`find -exec` 之后，以及子表达式、命令替换、进程替换的内部；`bash -c` 与 `pwsh -Command` 的脚本参数按对应方言再读一遍。工具与方言：`Bash` 别名与 `pwsh` 按 PowerShell，`bash` 按 POSIX，`terminal_send`（参数是 `text`，此前误读 `command`，终端输入从未被检查）两种都判，因为终端后端可以是 bash 或 pwsh。拦截文案的「事实」一句写明命中的是哪个重定向或命令，违规流水里随纠偏文本记下。
+命令位置包括：每个管道段与命令列表的开头、赋值与关键字之后（`FOO=1 rm`、`then rm`、`$null = New-Item`）、包装命令之后（`sudo`、`env`、`xargs` 等）、`find -exec` 之后，以及子表达式、命令替换、进程替换的内部；`bash -c` 与 `pwsh -Command` 的脚本参数按对应方言再读一遍。工具与方言：`pwsh`（`Bash` 别名换算后就是它，§6.1）按 PowerShell，`bash` 按 POSIX，`terminal_send`（参数是 `text`，此前误读 `command`，终端输入从未被检查）两种都判，因为终端后端可以是 bash 或 pwsh。拦截文案的「事实」一句写明命中的是哪个重定向或命令，违规流水里随纠偏文本记下。
 
 与改造前相比：引号里的箭头与运算符、`> $null` 不再误拦；`echo hi>out.txt`、`2> err.txt` 这类贴着写或带流编号的真实重定向改为拦截（原正则漏掉）；参数位置上的 `rm` 等（`git rm`、`echo rm`）不再拦截，`find -exec` 后面的命令照样拦。命令集没有扩充：PowerShell 别名（`del`、`ri`、`ni` 等）、`Rename-Item`、.NET 写文件调用、`cmd /c`、解释器一行脚本都看不见，交给下面的兜底记录，等影子数据再决定要不要加进拦截。
 
 #### 6.5.2 工作区变更兜底〔已实现 2026-10-28，影子模式〕
 
-`src/guard/shadow.ts`。DSH 的 `workspace-changes` 在每个顶层回合结束时，用回合首尾的 git 工作树快照加文件工具改动前后的整文件副本，算出本回合改了哪些文件，并在会话日志里追加一条 `workspace/changes` 事件（`DESIGN.md` §2.4a）。guard 按会话与回合记下文件工具（`Write`、`Edit`、`write`、`edit`、`str_replace_editor`）的目标，以及放行的 shell 调用；收到该回合的事件后读摘要，本回合跑过 shell、且有文件不是任何文件工具的目标时，写一条影子记录：会话、agent、回合、这些文件的显示路径、本回合放行的 shell 调用，摘要截断时另记未列出的文件数。从不拦截。
+`src/guard/shadow.ts`。DSH 的 `workspace-changes` 在每个顶层回合结束时，用回合首尾的 git 工作树快照加文件工具改动前后的整文件副本，算出本回合改了哪些文件，并在会话日志里追加一条 `workspace/changes` 事件（`DESIGN.md` §2.4a）。guard 按会话与回合记下文件工具的目标与放行的 shell 调用：调用名先按 §6.1 换成原生名，`write`、`edit`、`str_replace_editor` 算文件工具（GLM 的 `Write`、`Edit` 换算后在其中，方言服务缺席时同样），影子记录里的 `calls` 仍写模型调用时的名字；收到该回合的事件后读摘要，本回合跑过 shell、且有文件不是任何文件工具的目标时，写一条影子记录：会话、agent、回合、这些文件的显示路径、本回合放行的 shell 调用，摘要截断时另记未列出的文件数。从不拦截。
 
 已知边界：只覆盖有工作目录的顶层会话；工作目录不在 git 仓库里、或主机没有 git 时，摘要只列文件工具的改动，shell 写入看不见；被 `.gitignore` 忽略的文件只有文件工具碰过才看得见；同一回合里用户自己改的文件也会算进来；构建、测试、`git checkout` 这类放行的命令产生的改动同样会被记下，这是影子数据要量的误报来源。`workspace-changes` 只在 `dsh-web-app` 的组合里，桌面版 profile 有，沙盒模板没有；缺这个服务时只少影子记录，guard 的行健康写明「影子兜底未启用」。
 

@@ -23,7 +23,16 @@
  * Scope (ORCHESTRATION.md §6.2): GLM calls only. The route of a tool call is
  * the session's latest request header (src/shared/route.ts `sessionRoute`):
  * the model that issued the call. Other models' calls, and calls without an
- * agent, pass untouched.
+ * agent, pass untouched. The two model-family checks (the call scope here
+ * and the declaration scope below) are the orchestration rows' only ones.
+ *
+ * Tool names (ORCHESTRATION.md §6.1): the rules know DSH native names only.
+ * A call name maps to its native through the dialect service, else the
+ * static ZCode alias table (src/shared/dialect.ts toNativeTool), so a GLM
+ * `Bash` is judged as `pwsh` with or without the service. Corrections and
+ * the declaration name tools as the model sees them: the dialect's names
+ * where it claims the agent and route, the natives' own elsewhere. Journal
+ * records keep the name the model called.
  *
  * Containment roots come from config, else the calling Agent's immutable
  * session directory (session.header.cwd), else the containment rule is
@@ -32,10 +41,11 @@
  * Relative targets resolve against the session's working directory, as the
  * file tools resolve them.
  */
-import { evaluate, fileToolsOnly, renderCorrection, workspaceContainment, type GuardRule, type ToolCall } from './rules.ts'
+import { declarationOf, evaluate, fileToolsOnly, NATIVE_FACE, renderCorrection, workspaceContainment, type GuardRule, type ToolCall, type ToolFace } from './rules.ts'
 import { shadowFallback, type ShadowRecord } from './shadow.ts'
 import { rowJournal, type AuditFs } from '../memory/audit.ts'
 import { dataHomes } from '../shared/data-home.ts'
+import { dialectNames, dialectService, dialectWarner, toNativeTool, type DialectProblem } from '../shared/dialect.ts'
 import { GRAPH_FILES_DECLARATION, graphService } from '../graph/service.ts'
 import { provideRowHealth, sessionIdOf, type HealthState } from '../shared/health.ts'
 import { assemblyRoute, isGlmModel, sessionRoute, type Route } from '../shared/route.ts'
@@ -115,15 +125,15 @@ export const DECLARATION_SECTION = 'glm:guard'
 /**
  * The rule declaration section: one line per rule that declares itself,
  * then the lines of rules other rows enforce (graph-files-only, when the
- * graph row is active).
+ * graph row is active). Tool names in the lines come from `face`.
  */
-export function declarationSection(rules: readonly GuardRule[], others: readonly string[] = []): AssembledSection {
+export function declarationSection(rules: readonly GuardRule[], others: readonly string[] = [], face: ToolFace = NATIVE_FACE): AssembledSection {
   return {
     name: DECLARATION_SECTION,
     text: [
       '# Workspace rules',
       'The harness checks every tool call against these rules before it runs; a call that breaks one is denied with the reason and the right way to proceed.',
-      ...[...rules.map(rule => rule.declare), ...others].filter(line => line.length > 0).map(line => `- ${line}`),
+      ...[...rules.map(rule => declarationOf(rule, face)), ...others].filter(line => line.length > 0).map(line => `- ${line}`),
     ].join('\n'),
     // Declarations are literal text; a rule may mention `{{` without meaning a prompt variable.
     interpolate: false,
@@ -133,12 +143,17 @@ export function declarationSection(rules: readonly GuardRule[], others: readonly
 /** cordis plugin identity. */
 export const name = 'dsh-glm-hourness/guard'
 
-/** The guard's status for one call's session (row health): which rules can judge, where denials go, and the shadow fallback. */
-export function guardHealth(roots: readonly string[] | undefined, projectHome: string | undefined, shadow = false): [HealthState, string] {
+/**
+ * The guard's status for one call's session (row health): which rules can
+ * judge, where denials go, the shadow fallback, and whether the dialect
+ * service was unusable for the call (malformed, or a method threw).
+ */
+export function guardHealth(roots: readonly string[] | undefined, projectHome: string | undefined, shadow = false, dialectUnusable = false): [HealthState, string] {
   const scope = roots === undefined ? '门禁生效（file-tools-only）' : `门禁生效（file-tools-only，圈禁根 ${roots.join('、')}）`
   const gaps = [
     ...(roots === undefined ? ['会话没有工作目录，圈禁规则跳过'] : []),
     ...(projectHome === undefined ? ['无项目目录，违规不落盘'] : []),
+    ...(dialectUnusable ? ['方言服务不可用：工具名按静态别名表换算，纠偏用原生名'] : []),
   ]
   const fallback = shadow ? '影子兜底：工作区变更记录' : '影子兜底未启用（组合里没有 workspace-changes）'
   return gaps.length === 0 ? ['active', `${scope}；违规记入 ${projectHome}；${fallback}`] : ['degraded', `${scope}；${gaps.join('；')}；${fallback}`]
@@ -151,6 +166,7 @@ export function apply(ctx: GuardHost, config: GuardConfig = {}): () => void {
   const health = provideRowHealth(ctx, 'guard', 'active', config.workspaceRoots === undefined ? '已加载，圈禁根取会话目录' : '已加载，圈禁根取配置')
   const journal = rowJournal(name, () => dataHomes(ctx, config.home), config.fs)
   const shadow = shadowFallback(ctx, record => void journal.violation(record))
+  const warn = dialectWarner('guard')
   const installed = new WeakSet<AgentLike>()
   const disposers: Array<() => void> = [() => health.dispose()]
 
@@ -164,11 +180,18 @@ export function apply(ctx: GuardHost, config: GuardConfig = {}): () => void {
       health.report(sessionIdOf(payload.agent), ...outOfScopeHealth(route))
       return next()
     }
-    const call: ToolCall = { name: payload.name, arguments: (payload.arguments ?? {}) as JsonValue }
+    let dialectUnusable = false
+    const problem: DialectProblem = (message) => {
+      dialectUnusable = true
+      warn(message)
+    }
+    const dialect = dialectService(ctx, problem)
+    const call: ToolCall = { name: toNativeTool(dialect, payload.name, problem), arguments: (payload.arguments ?? {}) as JsonValue }
+    const face = dialectNames(dialect, payload.agent, route, problem) ?? NATIVE_FACE
     const roots = rootsFor(payload.agent, config)
-    health.report(sessionIdOf(payload.agent), ...guardHealth(roots, dataHomes(ctx, config.home).projectHome, shadow.available()))
     const rules = activeRules({ ...config, workspaceRoots: roots, base: baseFor(ctx, payload.agent) })
-    const verdict = evaluate(rules, call)
+    const verdict = evaluate(rules, call, face)
+    health.report(sessionIdOf(payload.agent), ...guardHealth(roots, dataHomes(ctx, config.home).projectHome, shadow.available(), dialectUnusable))
     if (verdict.kind === 'deny') {
       // rc.3 executions carry the calling agent, not its ids (dsh-tools createExecution).
       void journal.violation({
@@ -198,11 +221,13 @@ export function apply(ctx: GuardHost, config: GuardConfig = {}): () => void {
       // the two listeners is outermost.
       disposers.push(agent.ctx.on('system-prompt/assemble', async (_assembly, _context, next) => {
         const assembled = await next()
-        if (!isGlmModel(assemblyRoute(assembled).model)) return assembled
+        const route = assemblyRoute(assembled)
+        if (!isGlmModel(route.model)) return assembled
         const rules = activeRules({ ...config, workspaceRoots: rootsFor(agent, config) })
         // graph-files-only is the graph row's rule; declared here so GLM reads every rule in one place.
         const others = graphService(ctx) === undefined ? [] : [GRAPH_FILES_DECLARATION]
-        return { ...assembled, sections: [...assembled.sections, declarationSection(rules, others)] }
+        const face = dialectNames(dialectService(ctx, warn), agent, route, warn) ?? NATIVE_FACE
+        return { ...assembled, sections: [...assembled.sections, declarationSection(rules, others, face)] }
       }, { prepend: true }))
     }
     catch (error) {

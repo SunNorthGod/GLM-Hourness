@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { describeWrite, shellWrites, type ShellDialect } from '../src/guard/shell.ts'
-import { evaluate, fileToolsOnly, renderCorrection, shellCommandOf } from '../src/guard/rules.ts'
+import { declarationOf, evaluate, fileToolsOnly, NATIVE_FACE, renderCorrection, shellCommandOf } from '../src/guard/rules.ts'
 
 // file-tools-only reads shell text quote-aware (docs/ORCHESTRATION.md §6.4):
 // only command positions and real redirections count. The three recorded
@@ -123,10 +123,12 @@ test('the script of an inner shell is read as commands', () => {
 })
 
 test('file-tools-only: the denial names the write; the shell tools and their argument follow rc.3', () => {
-  const verdict = evaluate([fileToolsOnly], { name: 'Bash', arguments: { command: 'echo x > out.txt' } })
+  // Rules see DSH native names (the rows map the ZCode Bash alias to pwsh first, src/shared/dialect.ts).
+  const verdict = evaluate([fileToolsOnly], { name: 'pwsh', arguments: { command: 'echo x > out.txt' } })
   assert.equal(verdict.kind, 'deny')
   if (verdict.kind === 'deny') assert.ok(renderCorrection(verdict.correction).startsWith('You tried to modify files through the shell: "echo x > out.txt" (redirection > out.txt).\nBoundary: Shell file writes are not permitted'))
-  assert.equal(evaluate([fileToolsOnly], { name: 'Bash', arguments: { command: 'git commit -m "a -> b"' } }).kind, 'allow')
+  assert.equal(evaluate([fileToolsOnly], { name: 'pwsh', arguments: { command: 'git commit -m "a -> b"' } }).kind, 'allow')
+  assert.equal(evaluate([fileToolsOnly], { name: 'Bash', arguments: { command: 'Set-Content f x' } }).kind, 'allow') // an alias name unmapped is no shell tool
   assert.equal(evaluate([fileToolsOnly], { name: 'pwsh', arguments: { command: 'Set-Content f x' } }).kind, 'deny')
   assert.equal(evaluate([fileToolsOnly], { name: 'bash', arguments: { command: 'touch f' } }).kind, 'deny')
   // dsh-tool-terminal: terminal_send carries `text`; the backend may run bash or pwsh, so both readings apply.
@@ -136,8 +138,14 @@ test('file-tools-only: the denial names the write; the shell tools and their arg
   assert.equal(evaluate([fileToolsOnly], { name: 'Read', arguments: { command: 'rm x' } }).kind, 'allow')
 })
 
-test('file-tools-only declares the boundary it enforces', () => {
+test('file-tools-only declares the boundary it enforces, naming the file tools as the model sees them', () => {
+  const faces = new Map([['read', 'Read'], ['write', 'Write'], ['edit', 'Edit']])
+  const zcode = (native: string) => faces.get(native) ?? native
+  const declared = declarationOf(fileToolsOnly, zcode)
   for (const term of ['Write/Edit', '`>`', '`>>`', 'Set-Content', 'Out-File', 'Add-Content', 'Remove-Item', 'rm', 'rmdir', 'sed -i']) {
-    assert.ok(fileToolsOnly.declare.includes(term), term)
+    assert.ok(declared.includes(term), term)
   }
+  assert.ok(declarationOf(fileToolsOnly, NATIVE_FACE).startsWith('Modify files and code only with the dedicated write/edit tools.'))
+  const verdict = evaluate([fileToolsOnly], { name: 'pwsh', arguments: { command: 'Set-Content f x' } }, zcode)
+  assert.equal(verdict.kind === 'deny' ? verdict.correction.rightPath : undefined, 'Read the target with Read, then apply the change with Write or Edit.')
 })

@@ -19,9 +19,15 @@
  * harness notice of this project, not a ZCode text. Each assembled request
  * reports the row health of its session (src/shared/health.ts). Activation
  * never throws; one agent's failure leaves the others.
+ *
+ * The row provides the dialect service (src/shared/dialect.ts,
+ * `glmHournessDialect`): which agents and routes it rewrites, and how its
+ * aliases map to natives. The guard rows read it per call to name tools in
+ * corrections as the model sees them; they judge calls with or without it.
  */
 import { buildIdentitySection } from './identity.ts'
-import { buildAliases, type BuiltAlias } from './aliases.ts'
+import { aliasSpecs, buildAliases, type BuiltAlias } from './aliases.ts'
+import { READ_IMAGE_NATIVE, READ_NAME, READ_NATIVE } from './read-alias.ts'
 import { CLI_PREFIX } from './verbatim.ts'
 import { personaSection, PERSONA_LEVELS, type PersonaLevel } from './persona.ts'
 import { buildEnvInfoSection, CONTEXT_MANAGEMENT_DSH, MEMORY_SECTION_DSH, SESSION_GUIDANCE_DSH, SKILLS_NOTE_DSH } from './localize.ts'
@@ -31,8 +37,10 @@ import { TODO_WRITE_DESCRIPTION, TODO_WRITE_INPUT_SCHEMA } from './zcode-tool-te
 import { installTodoReminder, TODO_NATIVE, TODO_WRITE_NAME } from './todo-reminder.ts'
 import { installPeakReminder } from './peak-reminder.ts'
 import { installToolSearch } from '../toolsearch/index.ts'
+import { DIALECT_SERVICE, type DialectService } from '../shared/dialect.ts'
 import { provideRowHealth, sessionIdOf, type HealthState, type RowHealth } from '../shared/health.ts'
-import { assemblyRoute, type Route } from '../shared/route.ts'
+import { assemblyRoute, isGlmModel, type Route } from '../shared/route.ts'
+import { MEMORY_TOOL_NAMES } from '../shared/tool-names.ts'
 import type { AgentLike, AssemblePayload, PluginContext, ProvideHost, ToolDefinitionLike } from '../shared/dsh-min.ts'
 import Schema from '../shared/schemastery.ts'
 import type { JsonValue } from '../shared/json.ts'
@@ -71,6 +79,9 @@ export const Config = Schema.object({
 /** Order of the harness identity section this row shadows (SECTION_ORDERS.HARNESS_IDENTITY). */
 const HARNESS_IDENTITY_ORDER = -1000
 
+/** The section that teaches the memory tools; only in requests that have them (memorySectionApplies). */
+const MEMORY_SECTION = 'glm:memory'
+
 /** Sections the dialect adds beyond the shadowed identity. Tier selects the localization ledger (DESIGN.md §5.3). */
 export function dialectSections(outputStyleActive = false, persona: PersonaLevel = 'balanced', config: GlmPromptConfig = {}): Array<{ name: string, order: number, text: string }> {
   const codingTier = (config.tier ?? 'coding-plan') === 'coding-plan'
@@ -85,11 +96,50 @@ export function dialectSections(outputStyleActive = false, persona: PersonaLevel
     ...(codingTier
       ? [
           { name: 'glm:session-guidance', order: 2300, text: config.skills === true ? [SESSION_GUIDANCE_DSH, SKILLS_NOTE_DSH].join('\n') : SESSION_GUIDANCE_DSH },
-          { name: 'glm:memory', order: 2350, text: MEMORY_SECTION_DSH },
+          { name: MEMORY_SECTION, order: 2350, text: MEMORY_SECTION_DSH },
           { name: 'glm:context-management', order: 2400, text: CONTEXT_MANAGEMENT_DSH },
         ]
       : []),
   ]
+}
+
+/**
+ * Whether the glm:memory section belongs in this request: every memory
+ * tool is in the tools the assembly's `next()` returned. Without the
+ * orchestration package, or with the memory row disabled or without a home
+ * (it then registers no tools), GLM is not taught tools that are not there.
+ * The argument is `next()`'s result itself, read before the alias rewrite
+ * and before tool search, so a memory tool that tool search would defer
+ * still counts (it stays loadable). Memory tools are resident today
+ * (src/shared/tool-names.ts); the change that defers them adds an
+ * end-to-end case through tool search.
+ */
+export function memorySectionApplies(assembled: AssemblePayload): boolean {
+  return MEMORY_TOOL_NAMES.every(name => assembled.tools.some(tool => tool.name === name))
+}
+
+/** ZCode alias → the DSH native it delegates to: this dialect's own alias definitions (aliasSpecs, Read, TodoWrite). */
+const DIALECT_NATIVES: ReadonlyMap<string, string> = new Map([
+  ...aliasSpecs.map(spec => [spec.zcodeName, spec.nativeName] as const),
+  [READ_NAME, READ_NATIVE],
+  [TODO_WRITE_NAME, TODO_NATIVE],
+])
+
+/** Native → the alias that faces it; read_image is faced by Read too. */
+const DIALECT_FACES: ReadonlyMap<string, string> = new Map([...[...DIALECT_NATIVES].map(([alias, native]) => [native, alias] as const), [READ_IMAGE_NATIVE, READ_NAME]])
+
+/**
+ * The dialect service (src/shared/dialect.ts) over the agents in `active`:
+ * those the dialect was installed on without error. It claims an agent's
+ * route when the agent is one of them and the route serves the GLM model
+ * family, the judgment the dialect's own rewrite makes per assembly.
+ */
+export function dialectServiceFor(active: WeakSet<AgentLike>): DialectService {
+  return Object.freeze({
+    claims: (agent: AgentLike, route: Route | undefined) => active.has(agent) && isGlmModel(route?.model),
+    nativeOf: (tool: string) => DIALECT_NATIVES.get(tool),
+    faceName: (native: string) => DIALECT_FACES.get(native) ?? native,
+  })
 }
 
 /** ZCode TodoWrite alias delegating to the DSH todo_write executor. */
@@ -132,6 +182,7 @@ export function buildAgentAliases(agent: AgentLike): BuiltAlias[] {
  */
 export function installDialect(agent: AgentLike, config: GlmPromptConfig = {}, health?: Pick<RowHealth, 'report'>, now: () => number = () => Date.now()): () => void {
   const sections = dialectSections(false, config.persona ?? 'balanced', config)
+  const withoutMemory = sections.filter(section => section.name !== MEMORY_SECTION)
   const aliases = buildAgentAliases(agent)
   const aliasNames = new Set(aliases.map(alias => alias.tool.name))
   const coveredNatives = new Set(aliases.flatMap(alias => alias.covers))
@@ -146,7 +197,8 @@ export function installDialect(agent: AgentLike, config: GlmPromptConfig = {}, h
     const glm = isGlmAssembly(assembled)
     glmStep = glm
     health?.report(sessionIdOf(agent), ...dialectHealth(assemblyRoute(assembled), glm, searchMode === 'off' ? 'off' : toolSearch === undefined ? 'missing' : 'local'))
-    const withSections = glm ? rewriteDialectSections(assembled, sections) : assembled
+    // Judged on next()'s tools, before the face rewrite and tool search (memorySectionApplies).
+    const withSections = glm ? rewriteDialectSections(assembled, memorySectionApplies(assembled) ? sections : withoutMemory) : assembled
     const face = rewriteToolFace(withSections.tools, glm, aliasNames, coveredNatives)
     todoReminderEligible = glm && face.some(tool => tool.name === TODO_WRITE_NAME)
     const tools = toolSearch === undefined ? face : glm ? toolSearch.expose(face) : toolSearch.hide(face)
@@ -175,17 +227,43 @@ export function dialectHealth(route: Route, glm: boolean, search: 'local' | 'off
 /** cordis plugin identity. */
 export const name = 'dsh-glm-hourness/glm-prompt'
 
+/** The row health note while the dialect service is not provided: the guard reads tool names from its static table and corrects in native names. */
+const DIALECT_SERVICE_MISSING = '方言服务未提供：guard 的纠偏与规则声明用原生工具名'
+
+/** Provide the dialect service: its disposer, or (warned) why the context could not take it. */
+function provideDialect(ctx: Partial<ProvideHost>, active: WeakSet<AgentLike>): { readonly withdraw?: () => void, readonly failure?: string } {
+  try {
+    if (typeof ctx.provide !== 'function') throw new Error('the context has no provide')
+    return { withdraw: ctx.provide(DIALECT_SERVICE, dialectServiceFor(active)) }
+  }
+  catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.warn(`dsh-glm-hourness/glm-prompt: ${DIALECT_SERVICE} not provided; the guard maps tool names through its static alias table and corrects in native names: ${message}`)
+    return { failure: message }
+  }
+}
+
 /** cordis plugin entry (cordis passes `ctx` and `config`; `now` is the wall clock, injectable for tests). */
 export function apply(ctx: PluginContext & Partial<ProvideHost>, config: GlmPromptConfig = {}, now: () => number = () => Date.now()): () => void {
   const installed = new WeakSet<AgentLike>()
+  // Agents whose dialect installed without error: the ones the service claims.
+  const active = new WeakSet<AgentLike>()
   const health = provideRowHealth(ctx, 'glm-prompt', 'active', `已加载（工具检索 ${config.toolSearchMode ?? 'local'}）`)
   const disposers: Array<() => void> = [() => health.dispose()]
+  const dialect = provideDialect(ctx, active)
+  if (dialect.withdraw !== undefined) disposers.push(dialect.withdraw)
+  else health.reactivate('degraded', `${DIALECT_SERVICE_MISSING}（${dialect.failure ?? ''}）`)
+  // While the service is missing, a GLM step the dialect rewrote reports degraded, saying why.
+  const reporter: Pick<RowHealth, 'report'> = dialect.withdraw !== undefined ? health : {
+    report: (sessionId, state, reason) => state === 'inactive' ? health.report(sessionId, state, reason) : health.report(sessionId, 'degraded', `${reason}；${DIALECT_SERVICE_MISSING}`),
+  }
 
   disposers.push(ctx.on('agent/created', ({ agent }) => {
     if (installed.has(agent)) return
     installed.add(agent)
     try {
-      disposers.push(installDialect(agent, config, health, now))
+      disposers.push(installDialect(agent, config, reporter, now))
+      active.add(agent)
     }
     catch (error) {
       // One agent's dialect must never break agent creation (activation-time

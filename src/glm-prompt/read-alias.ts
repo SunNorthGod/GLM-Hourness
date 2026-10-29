@@ -36,7 +36,8 @@ import {
   readToolResultWarning,
 } from './zcode-tool-text.ts'
 
-/** Native names the Read alias stands in for. */
+/** The ZCode-facing name, and the native names it stands in for. */
+export const READ_NAME = 'Read'
 export const READ_NATIVE = 'read'
 export const READ_IMAGE_NATIVE = 'read_image'
 
@@ -105,7 +106,7 @@ export function buildReadAlias(read: ToolDefinitionLike, readImage: ToolDefiniti
   const imageMeta = readImage?.output.presentationMeta
   const refused = new Set([...READ_BINARY_EXTENSIONS, ...READ_VIDEO_EXTENSIONS, ...(readImage === undefined ? READ_IMAGE_EXTENSIONS : [])])
   return {
-    name: 'Read',
+    name: READ_NAME,
     description: readDescription(readImage !== undefined),
     parameters: READ_INPUT_SCHEMA,
     output: {

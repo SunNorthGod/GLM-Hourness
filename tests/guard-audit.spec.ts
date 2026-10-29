@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { apply, DECLARATION_SECTION, guardHealth, type GuardRecord, type ViolationRecord } from '../src/guard/index.ts'
-import { apply as glmPromptApply } from '../src/glm-prompt/index.ts'
+import { apply as glmPromptApply, dialectServiceFor } from '../src/glm-prompt/index.ts'
 import type { ShadowRecord } from '../src/guard/shadow.ts'
 import type { AgentLike, PreExecuteDecision, SessionEventLike, SessionLike, ToolExecutionPayload, WorkspaceChangesSummary } from '../src/shared/dsh-min.ts'
 import { GRAPH_FILES_DECLARATION, GRAPH_SERVICE } from '../src/graph/service.ts'
+import { DIALECT_SERVICE } from '../src/shared/dialect.ts'
 import { fakeRuntime } from './fake-rc3.ts'
 
 /**
@@ -239,6 +240,7 @@ const changed = (turn: number, ...paths: string[]): WorkspaceChangesSummary => (
 const DOTNET_WRITE = '[IO.File]::WriteAllText(\'C:/ws/gen.txt\', \'x\')' // a shell write the reader does not see
 
 test('shadow: a turn whose shell calls changed files no file tool targeted leaves one record and blocks nothing', async () => {
+  // No dialect service here: Write and Edit count as file tools through the static alias table.
   const h = harness(['C:\\ws'])
   const announce = changes(h)
   const agent = agentAt('C:\\ws', 'a1', 's1')
@@ -331,6 +333,60 @@ test('shadow: a call another listener denied is not counted; a summary after the
   assert.equal(h.records().length, 1)
 })
 
+// Tool names (docs/ORCHESTRATION.md §6.1): rules judge DSH natives; a call
+// name maps through the dialect service, else the static alias table, and
+// corrections name tools as the model sees them.
+
+/** The file-tools-only declaration line and right path as GLM read them before split step 2, word for word. */
+const FILE_TOOLS_LINE_ZCODE = 'Modify files and code only with the dedicated Write/Edit tools. The shell is for execution (tests, builds, git), not for writing files: a redirection into a file (`>`, `>>`) or a file-changing command (Set-Content, Add-Content, Clear-Content, Out-File, Tee-Object, New-Item, Copy-Item, Move-Item, Remove-Item, rm, rmdir, mv, cp, dd, touch, truncate, tee, sed -i) is denied.'
+const RIGHT_PATH_ZCODE = 'Right path: Read the target with Read, then apply the change with Write or Edit.'
+const RIGHT_PATH_NATIVE = 'Right path: Read the target with read, then apply the change with write or edit.'
+
+test('a GLM call the dialect claims is corrected in its names, word for word as before; the record keeps the called name', async () => {
+  const h = harness(['C:\\ws'])
+  const agent = agentAt('C:\\ws', 'a1', 's1')
+  h.services.set(DIALECT_SERVICE, dialectServiceFor(new WeakSet([agent])))
+  await h.run({ name: 'Bash', arguments: { command: 'Set-Content f.txt hi' }, agent })
+  await h.run({ name: 'Write', arguments: { file_path: 'C:\\elsewhere\\a.ts' }, agent })
+  assert.deepEqual(h.violations().map(record => [record.rule, record.tool]), [['file-tools-only', 'Bash'], ['workspace-containment', 'Write']])
+  assert.equal(h.violations()[0].correction.split('\n')[2], RIGHT_PATH_ZCODE)
+})
+
+test('without a dialect service a GLM Write and Bash are judged the same (static alias table), corrected in native names', async () => {
+  const h = harness(['C:\\ws'])
+  const agent = agentAt('C:\\ws', 'a1', 's1')
+  await h.run({ name: 'Write', arguments: { file_path: 'C:\\elsewhere\\a.ts' }, agent })
+  await h.run({ name: 'Bash', arguments: { command: 'Set-Content f.txt hi' }, agent })
+  await h.run({ name: 'Edit', arguments: { file_path: 'C:\\ws\\a.ts' }, agent })
+  assert.deepEqual(h.decisions.map(decision => decision.kind), ['deny', 'deny', 'allow'])
+  assert.deepEqual(h.violations().map(record => [record.rule, record.tool]), [['workspace-containment', 'Write'], ['file-tools-only', 'Bash']])
+  assert.equal(h.violations()[1].correction.split('\n')[2], RIGHT_PATH_NATIVE)
+  // An agent the dialect did not install on is not claimed either: native names.
+  h.services.set(DIALECT_SERVICE, dialectServiceFor(new WeakSet()))
+  await h.run({ name: 'Bash', arguments: { command: 'Out-File f.txt' }, agent })
+  assert.equal(h.violations()[2].correction.split('\n')[2], RIGHT_PATH_NATIVE)
+})
+
+test('a malformed dialect service counts as absent: still denied, warned once, and the guard health says so', async () => {
+  const warnings: string[] = []
+  const warn = console.warn
+  console.warn = (message: string) => { warnings.push(message) }
+  try {
+    const h = harness(['C:\\ws'])
+    h.services.set(DIALECT_SERVICE, { claims: () => true })
+    const agent = agentAt('C:\\ws', 'a1', 's1')
+    await h.run({ name: 'Bash', arguments: { command: 'Set-Content f.txt hi' }, agent })
+    await h.run({ name: 'Bash', arguments: { command: 'Out-File f.txt' }, agent })
+    assert.deepEqual(h.decisions.map(decision => decision.kind), ['deny', 'deny'])
+    assert.equal(h.violations()[0].correction.split('\n')[2], RIGHT_PATH_NATIVE)
+    assert.equal(warnings.filter(message => message.includes(DIALECT_SERVICE)).length, 1)
+  }
+  finally {
+    console.warn = warn
+  }
+  assert.deepEqual(guardHealth(['C:\\ws'], 'C:/ws/.llm', false, true), ['degraded', '门禁生效（file-tools-only，圈禁根 C:\\ws）；方言服务不可用：工具名按静态别名表换算，纠偏用原生名；影子兜底未启用（组合里没有 workspace-changes）'])
+})
+
 // Declaration (docs/ORCHESTRATION.md §6.1): GLM system prompts carry the active rules.
 
 test('a GLM request carries the rule declarations as the last system prompt section; other routes do not', async () => {
@@ -346,7 +402,7 @@ test('a GLM request carries the rule declarations as the last system prompt sect
   assert.equal(section.interpolate, false)
   assert.ok(section.text.startsWith('# Workspace rules\n'))
   assert.ok(section.text.includes('\n- You may only create and modify files inside the user\'s workspace.'))
-  assert.ok(section.text.includes('\n- Modify files and code only with the dedicated Write/Edit tools.'))
+  assert.ok(section.text.split('\n').includes(`- ${FILE_TOOLS_LINE_ZCODE}`), 'the dialect claims the agent: the line is word for word as before')
   assert.equal(glm.sections.filter(entry => entry.name === DECLARATION_SECTION).length, 1)
   assert.equal(glm.sections[0]!.name, 'glm:cli-prefix') // the dialect rewrite still leads
   const plain = await rt.assemble({ provider: 'deepseek', model: 'deepseek-flash' })
@@ -361,6 +417,8 @@ test('without a session directory the declaration lists file-tools-only alone, a
   assert.equal(section.name, DECLARATION_SECTION)
   assert.equal(section.text.split('\n').filter(line => line.startsWith('- ')).length, 1)
   assert.ok(!section.text.includes('inside the user\'s workspace'))
+  // No dialect row: the GLM request sees the native tools, and the declaration names them.
+  assert.ok(section.text.includes('\n- Modify files and code only with the dedicated write/edit tools.'))
 })
 
 test('with the graph row active the GLM declaration also lists graph-files-only, last; it leaves with the row', async () => {

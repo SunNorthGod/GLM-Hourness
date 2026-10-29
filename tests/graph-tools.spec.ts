@@ -10,15 +10,11 @@ import { graphTools } from '../src/graph/tools.ts'
 import { loadGraph } from '../src/graph/store.ts'
 import type { ToolDefinitionLike, ToolFinalResult } from '../src/shared/dsh-min.ts'
 import { RESIDENT_TOOLS, buildToolExposure } from '../src/toolsearch/exposure.ts'
+import { GRAPH_TOOL_NAMES } from '../src/shared/tool-names.ts'
 import { DEFERRED_TOOL_CALL_NAME } from '../src/shared/zcode-notice.ts'
 import { LOCAL_TOOL_SEARCH_NAME } from '../src/toolsearch/zcode-text.ts'
 import { fakeRuntime, schemaViolations, type FakeRuntime } from './fake-rc3.ts'
 import { captureWarnings, seedAsHuman, type GraphAnswer } from './graph-helpers.ts'
-
-const TOOL_NAMES = [
-  'graph_show', 'graph_open', 'graph_focus', 'graph_propose', 'graph_status', 'graph_edit', 'graph_link', 'graph_unlink', 'graph_comment', 'graph_verify',
-  'graph_decide', 'graph_approve', 'graph_reject',
-]
 
 interface Fixture {
   /** The session working directory; the graph is docs/graph under it. */
@@ -99,7 +95,7 @@ test('the row registers one tool per llm operation with schemas inside the rc.3 
   // The fake register rejects output schemas outside the subset, as rc.3 does at activation.
   const runtime = fakeRuntime({ natives: [] })
   const dispose = apply(runtime.ctx, {})
-  assert.deepEqual(runtime.scoped.map(tool => tool.name), TOOL_NAMES)
+  assert.deepEqual(runtime.scoped.map(tool => tool.name), GRAPH_TOOL_NAMES)
   for (const tool of runtime.scoped) {
     assert.deepEqual(schemaViolations(tool.parameters, `${tool.name}.parameters`), [])
     assert.ok(tool.description.length > 0 && tool.description.length < 400, tool.name)
@@ -131,11 +127,11 @@ test('every graph tool stays resident on GLM requests', () => {
     { name: LOCAL_TOOL_SEARCH_NAME, description: 'search', parameters: { type: 'object' } },
     { name: DEFERRED_TOOL_CALL_NAME, description: 'call', parameters: { type: 'object' } },
   ]
-  for (const name of TOOL_NAMES) assert.ok(RESIDENT_TOOLS.has(name), name)
+  for (const name of GRAPH_TOOL_NAMES) assert.ok(RESIDENT_TOOLS.has(name), name)
   const exposure = buildToolExposure(face)
   assert.ok(exposure.enabled)
   assert.deepEqual([...exposure.deferred], ['web_fetch'])
-  assert.deepEqual(exposure.tools.map(tool => tool.name).filter(name => name.startsWith('graph_')), TOOL_NAMES)
+  assert.deepEqual(exposure.tools.map(tool => tool.name).filter(name => name.startsWith('graph_')), GRAPH_TOOL_NAMES)
 })
 
 toolTest('graph_show returns the projection with the revs a change needs', async ({ call, rev }) => {
@@ -326,7 +322,7 @@ test('activation never throws: a bad config or a failed registration warns and s
   const missing = fakeRuntime({ natives: [] })
   const absent = join(tmpdir(), 'graph-tools-absent', 'graph')
   const warned = await captureWarnings(() => apply(missing.ctx, { dir: absent }))
-  assert.equal(missing.scoped.length, TOOL_NAMES.length, 'the tools still register and report the directory')
+  assert.equal(missing.scoped.length, GRAPH_TOOL_NAMES.length, 'the tools still register and report the directory')
   assert.match(warned.warnings.join('\n'), /does not exist/)
 
   const disposed: string[] = []

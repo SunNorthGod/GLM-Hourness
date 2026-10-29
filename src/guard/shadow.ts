@@ -25,6 +25,7 @@
  */
 import { resolve } from 'node:path'
 import { normalizePath, shellCommandOf, type ToolCall } from './rules.ts'
+import { dialectService, dialectWarner, toNativeTool } from '../shared/dialect.ts'
 import type { JsonValue } from '../shared/json.ts'
 import type { ServiceLookup, SessionEventLike, SessionLike, ToolExecutionPayload, WorkspaceChangesService } from '../shared/dsh-min.ts'
 import { graphService } from '../graph/service.ts'
@@ -70,10 +71,12 @@ function under(path: string, dirs: ReadonlySet<string>): boolean {
   return false
 }
 
-/** File tools and the argument naming their target (dsh-tool-fs `file_path`, dsh-tool-str-replace-editor `path`). */
+/**
+ * File tools by DSH native name and the argument naming their target
+ * (dsh-tool-fs `file_path`, dsh-tool-str-replace-editor `path`); the ZCode
+ * Write and Edit aliases map to write and edit before the lookup.
+ */
 const FILE_TOOLS: ReadonlyMap<string, string> = new Map([
-  ['Write', 'file_path'],
-  ['Edit', 'file_path'],
   ['write', 'file_path'],
   ['edit', 'file_path'],
   ['str_replace_editor', 'path'],
@@ -94,6 +97,7 @@ const record = (value: unknown): Record<string, unknown> | undefined =>
 export function shadowFallback(services: ServiceLookup, write: (record: ShadowRecord) => void, now: () => Date = () => new Date()): ShadowFallback {
   const turns = new Map<string, number>()
   const notes = new Map<string, Map<number, TurnNotes>>()
+  const warn = dialectWarner('guard')
   const service = (): WorkspaceChangesService | undefined => {
     const value = record(typeof services.get === 'function' ? services.get('workspaceChanges') : undefined)
     return typeof value?.summary === 'function' ? value as unknown as WorkspaceChangesService : undefined
@@ -138,8 +142,9 @@ export function shadowFallback(services: ServiceLookup, write: (record: ShadowRe
         if (dir !== undefined) noted.known.add(normalizePath(resolve(dir)))
         return
       }
-      const call: ToolCall = { name: payload.name, arguments: (payload.arguments ?? {}) as JsonValue }
-      const field = FILE_TOOLS.get(payload.name)
+      // Judged by the DSH native the call runs; the record keeps the name the model called.
+      const call: ToolCall = { name: toNativeTool(dialectService(services, warn), payload.name, warn), arguments: (payload.arguments ?? {}) as JsonValue }
+      const field = FILE_TOOLS.get(call.name)
       const target = field === undefined ? undefined : record(payload.arguments)?.[field]
       if (typeof target === 'string' && target.length > 0) {
         noted.targets.add(normalizePath(resolve(session.header.cwd ?? '', target)))

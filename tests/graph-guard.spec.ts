@@ -6,8 +6,11 @@ import test from 'node:test'
 import { openEngine } from '../src/graph/engine.ts'
 import { apply } from '../src/graph/index.ts'
 import { loadGraph } from '../src/graph/store.ts'
+import { dialectServiceFor } from '../src/glm-prompt/index.ts'
 import { GRAPH_FILES_RULE, graphFilesOnly } from '../src/guard/graph-files.ts'
 import { apply as applyGuard } from '../src/guard/index.ts'
+import { declarationOf, NATIVE_FACE } from '../src/guard/rules.ts'
+import { DIALECT_SERVICE } from '../src/shared/dialect.ts'
 import type { ToolFinalResult } from '../src/shared/dsh-min.ts'
 import { fakeRuntime, type FakeRuntime } from './fake-rc3.ts'
 
@@ -132,14 +135,30 @@ guardTest('the graph tools still write the graph', async ({ graph, call }) => {
 })
 
 guardTest('next to the guard row, the graph rule decides first and the guard row keeps the rest', async ({ graph, workspace, call, calls }) => {
-  // Registered outermost: a shell write into the graph gets the graph tools as its right path, not Write or Edit.
+  // Registered outermost: a shell write into the graph gets the graph tools as its right path, not the file tools.
   deniedByGraphRule(await call('pwsh', { command: 'Remove-Item docs/graph/nodes/goal-1.json' }))
   deniedByGraphRule(await call('Write', { file_path: join(graph, 'nodes', 'goal-1.json'), content: '{}' }))
   const shell = denied(await call('pwsh', { command: 'Remove-Item build/out.txt' }))
-  assert.ok(shell.includes('apply the change with Write or Edit'), 'file-tools-only still owns shell writes elsewhere')
+  // No dialect claims this agent (no glm-prompt row): the correction names the natives.
+  assert.ok(shell.includes('apply the change with write or edit'), 'file-tools-only still owns shell writes elsewhere')
   passed(await call('Write', { file_path: join(workspace, 'src', 'a.ts'), content: 'x' }))
   assert.deepEqual(calls.map(entry => entry.name), ['Write'])
 }, { guardRow: true })
+
+guardTest('with the dialect service the aliases map the same way, and the guard row names the dialect\'s tools', async ({ graph, runtime, call, calls }) => {
+  runtime.ctx.provide(DIALECT_SERVICE, dialectServiceFor(new WeakSet([runtime.agent])))
+  deniedByGraphRule(await call('Write', { file_path: join(graph, 'nodes', 'goal-1.json'), content: '{}' }))
+  deniedByGraphRule(await call('Bash', { command: 'Set-Content docs/graph/nodes/goal-1.json x' }))
+  const shell = denied(await call('Bash', { command: 'Remove-Item build/out.txt' }))
+  assert.ok(shell.includes('Right path: Read the target with Read, then apply the change with Write or Edit.'), shell)
+  assert.deepEqual(calls, [])
+}, { guardRow: true })
+
+guardTest('without the dialect service a GLM Write and Bash into the graph are still denied (static alias table)', async ({ call, calls }) => {
+  deniedByGraphRule(await call('Write', { file_path: 'docs/graph/nodes/goal-1.json', content: '{}' }))
+  deniedByGraphRule(await call('Bash', { command: 'Set-Content docs/graph/nodes/goal-1.json x' }))
+  assert.deepEqual(calls, [])
+})
 
 test('the graph rule judges every route, not only GLM; relative targets follow the session working directory', async () => {
   const { workspace } = await workspaceWithGraph()
@@ -199,9 +218,11 @@ test('disposing the row removes the rule', async () => {
 test('the rule is guard data: its id and declaration, and arguments it cannot read pass', () => {
   const rule = graphFilesOnly(join(tmpdir(), 'ws', 'docs', 'graph'), join(tmpdir(), 'ws'))
   assert.equal(rule.id, GRAPH_FILES_RULE)
-  assert.match(rule.declare, /graph tools/)
-  assert.deepEqual(rule.detect({ name: 'Write', arguments: 'docs/graph/x.json' }), { kind: 'allow' })
-  assert.deepEqual(rule.detect({ name: 'Write', arguments: { file_path: 7 } }), { kind: 'allow' })
-  const verdict = rule.detect({ name: 'Write', arguments: { file_path: 'docs/graph/x.json' } })
+  assert.match(declarationOf(rule, NATIVE_FACE), /graph tools/)
+  // The rule judges DSH native names; installGraphFileGuard maps the aliases first.
+  assert.deepEqual(rule.detect({ name: 'write', arguments: 'docs/graph/x.json' }, NATIVE_FACE), { kind: 'allow' })
+  assert.deepEqual(rule.detect({ name: 'write', arguments: { file_path: 7 } }, NATIVE_FACE), { kind: 'allow' })
+  const verdict = rule.detect({ name: 'write', arguments: { file_path: 'docs/graph/x.json' } }, NATIVE_FACE)
   assert.equal(verdict.kind === 'deny' ? verdict.rule : undefined, GRAPH_FILES_RULE)
+  assert.deepEqual(rule.detect({ name: 'Write', arguments: { file_path: 'docs/graph/x.json' } }, NATIVE_FACE), { kind: 'allow' })
 })

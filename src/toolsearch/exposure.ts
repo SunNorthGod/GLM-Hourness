@@ -18,6 +18,7 @@
  * after a DSH compaction, loaded tools are announced and searched again.
  */
 import type { AssembledTool, DerivedMessage } from '../shared/dsh-min.ts'
+import { ORCHESTRATION_RESIDENT_TOOLS } from '../shared/tool-names.ts'
 import { DEFERRED_TOOL_CALL_NAME } from '../shared/zcode-notice.ts'
 import { mcpPresentation, type ToolSearchCandidate } from './search.ts'
 import {
@@ -42,11 +43,9 @@ export const RESIDENT_TOOLS: ReadonlySet<string> = new Set([
   'str_replace_editor', // Edit
   'subagent', 'subagent_fork', // Agent
   'skill', 'workflow', 'get_goal', 'ask_user_question',
-  // Project decision: memory stays at hand (ORCHESTRATION.md §8).
-  'memory_store', 'memory_query', 'memory_forget',
-  // Project decision: the main agent reads and writes the project graph every beat (ORCHESTRATION.md §2.8, §2.10; src/graph/tools.ts).
-  'graph_show', 'graph_open', 'graph_focus', 'graph_propose', 'graph_status', 'graph_edit', 'graph_link', 'graph_unlink', 'graph_comment', 'graph_verify',
-  'graph_decide', 'graph_approve', 'graph_reject',
+  // Project decisions: memory and the project graph stay at hand (ORCHESTRATION.md §8, §2.8, §2.10),
+  // named in the shared contract so this package needs no orchestration code.
+  ...ORCHESTRATION_RESIDENT_TOOLS,
 ])
 
 /** Whether a face tool is deferred by configuration (ZCode `isDeferredTool`). */

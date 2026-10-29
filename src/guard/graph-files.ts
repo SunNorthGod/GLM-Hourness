@@ -16,8 +16,9 @@ import { isAbsolute, relative, resolve } from 'node:path'
 import type { JsonValue } from '../shared/json.ts'
 import type { PreExecuteHost, ServiceLookup } from '../shared/dsh-min.ts'
 import { GRAPH_FILES_DECLARATION } from '../graph/service.ts'
+import { dialectService, dialectWarner, toNativeTool } from '../shared/dialect.ts'
 import { baseFor, type ViolationRecord } from './index.ts'
-import { evaluate, fileToolsOnly, renderCorrection, shellCommandOf, type Correction, type GuardRule, type RuleVerdict, type ToolCall } from './rules.ts'
+import { evaluate, fileToolsOnly, NATIVE_FACE, renderCorrection, shellCommandOf, type Correction, type GuardRule, type RuleVerdict, type ToolCall } from './rules.ts'
 
 export const GRAPH_FILES_RULE = 'graph-files-only'
 
@@ -27,11 +28,11 @@ function argsOf(call: ToolCall): Record<string, JsonValue> | undefined {
   return typeof call.arguments === 'object' && call.arguments !== null && !Array.isArray(call.arguments) ? call.arguments : undefined
 }
 
-/** The path a file tool writes: Write/Edit and their natives take file_path; str_replace_editor writes on every command but view. */
+/** The path a file tool writes (`call.name` is the DSH native): write and edit take file_path; str_replace_editor writes on every command but view. */
 function writeTarget(call: ToolCall): string | undefined {
   const args = argsOf(call)
   switch (call.name) {
-    case 'Write': case 'Edit': case 'write': case 'edit':
+    case 'write': case 'edit':
       return typeof args?.file_path === 'string' ? args.file_path : undefined
     case 'str_replace_editor':
       return args?.command !== 'view' && typeof args?.path === 'string' ? args.path : undefined
@@ -79,7 +80,7 @@ export function graphFilesOnly(graphDir: string, cwd: string | undefined): Guard
       if (target !== undefined) return inside(target) ? deny(`You tried to write "${target}".`) : ALLOW
       // The shell text as file-tools-only reads it (terminal_send carries it in `text`).
       const shell = shellCommandOf(call)
-      if (shell === undefined || fileToolsOnly.detect(call).kind !== 'deny') return ALLOW
+      if (shell === undefined || fileToolsOnly.detect(call, NATIVE_FACE).kind !== 'deny') return ALLOW
       const normalized = pathKey(shell.command)
       return mentions.some(pattern => pattern.test(normalized)) ? deny(`You tried to change project graph files through the shell: "${shell.command}".`) : ALLOW
     },
@@ -105,6 +106,7 @@ function correction(fact: string, graphDir: string): Correction {
  * Nested transport calls pass, as in the guard row.
  */
 export function installGraphFileGuard(ctx: PreExecuteHost & ServiceLookup, graphDirFor: (cwd: string | undefined) => string | undefined, journal: (record: ViolationRecord) => void): () => void {
+  const warn = dialectWarner('graph')
   return ctx.on('tools/pre-execute', async (payload, next) => {
     if (payload.parent !== undefined) return next()
     const header = payload.agent?.session?.header.cwd
@@ -112,8 +114,10 @@ export function installGraphFileGuard(ctx: PreExecuteHost & ServiceLookup, graph
     const dir = graphDirFor(cwd)
     if (dir === undefined) return next()
     // Every route: graph integrity is not a GLM discipline (unlike the guard row,
-    // ORCHESTRATION.md §6.2). Relative targets resolve as the file tools resolve them.
-    const verdict = evaluate([graphFilesOnly(dir, baseFor(ctx, payload.agent) ?? cwd)], { name: payload.name, arguments: (payload.arguments ?? {}) as JsonValue })
+    // ORCHESTRATION.md §6.2). Relative targets resolve as the file tools resolve them;
+    // the rule judges the DSH native the call runs (a GLM Write is a write).
+    const call: ToolCall = { name: toNativeTool(dialectService(ctx, warn), payload.name, warn), arguments: (payload.arguments ?? {}) as JsonValue }
+    const verdict = evaluate([graphFilesOnly(dir, baseFor(ctx, payload.agent) ?? cwd)], call)
     if (verdict.kind !== 'deny') return next()
     const reason = renderCorrection(verdict.correction)
     journal({ at: new Date().toISOString(), rule: verdict.rule, tool: payload.name, agentId: payload.agent?.id, sessionId: payload.agent?.session?.id, correction: reason })

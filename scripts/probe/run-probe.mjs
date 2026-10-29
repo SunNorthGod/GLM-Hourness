@@ -43,6 +43,7 @@ import { PEAK_REMINDER_SOURCE, PEAK_REMINDER_TEXT } from '../../dist/glm-prompt/
 import { peakWindowAt } from '../../dist/shared/credits.js'
 import { userDataHome } from '../../dist/shared/data-home.js'
 import { HEALTH_ROWS } from '../../dist/shared/health.js'
+import { GRAPH_TOOL_NAMES } from '../../dist/shared/tool-names.js'
 import { openEngine } from '../../dist/graph/engine.js'
 import { runNote } from '../../dist/graph/run.js'
 import { loadGraph } from '../../dist/graph/store.js'
@@ -360,6 +361,26 @@ const timeLimited = runScenario('limits-time', 'glm-5.3', [
 
 const jsonl = file => existsSync(file) ? readFileSync(file, 'utf8').split('\n').filter(line => line.length > 0).map(line => JSON.parse(line)) : []
 
+// GLM without the dialect (docs/ORCHESTRATION.md §6.1): the overlay
+// disables glm-prompt, so the GLM request carries the native tools and no
+// dialect service is provided. The guard's scope is unchanged (GLM calls):
+// a pwsh shell write is denied, and the correction and the rule declaration
+// name the native tools the model sees. With the dialect (scenario glm) they
+// name Read, Write and Edit, word for word as before the names were mapped.
+const RIGHT_PATH_ZCODE = 'Right path: Read the target with Read, then apply the change with Write or Edit.'
+const RIGHT_PATH_NATIVE = 'Right path: Read the target with read, then apply the change with write or edit.'
+const noDialectDir = join(runDir, 'glm-no-dialect')
+const noDialectWs = join(noDialectDir, 'ws')
+mkdirSync(noDialectWs, { recursive: true })
+const noDialectFile = join(noDialectWs, 'shell.txt')
+const noDialect = runScenario('glm-no-dialect', 'glm-5.3', [
+  { tool: { name: 'pwsh', arguments: { command: `Set-Content -Path '${noDialectFile}' -Value probe`, description: 'Write a file through the shell' } } },
+  { text: 'done' },
+], 'Write a file through the shell, then reply done.', ['- id: glm-hourness/glm-prompt', '  disabled: true'], noDialectWs)
+const noDialectFirst = noDialect.steps[0]
+const noDialectResult = lastToolResult(noDialect.steps[1])
+const noDialectViolations = jsonl(join(noDialectDir, 'home', 'audit', 'violations.jsonl'))
+
 // Dispatch feasibility spike (docs/ORCHESTRATION.md §2.1, §3.2; DESIGN.md
 // §2.4a). The overlay-only row scripts/probe/probe-dispatch.mjs records what
 // it observes in <scenario>/dispatch.jsonl.
@@ -506,7 +527,6 @@ const parents = new Set([...copyBefore.nodes.values()].flatMap(node => node.pare
 const leafTask = status => [...copyBefore.nodes.values()].find(node => node.type === 'task' && node.status === status && !parents.has(node.id))
 const doingTask = leafTask('doing')
 const focusTask = leafTask('approved')
-const GRAPH_TOOL_NAMES = ['graph_show', 'graph_open', 'graph_focus', 'graph_propose', 'graph_status', 'graph_edit', 'graph_link', 'graph_unlink', 'graph_comment', 'graph_verify', 'graph_decide', 'graph_approve', 'graph_reject']
 const GRAPH_FILES_LINE = '- Change the project graph only with the graph tools; never write its files directly.'
 const graphNodeFile = join(graphCopy, 'nodes', 'probe-direct.json')
 const graphNotes = join(graphWs, 'notes.txt')
@@ -625,7 +645,7 @@ const checkpoint = compacted.steps.at(-1)?.messages.find(message => message.sour
 const usageOf = scenario => jsonl(join(runDir, scenario, 'dsh-home', 'glm-hourness', 'audit', 'usage.jsonl'))
 const glmUsage = usageOf('glm').filter(record => record.purpose === undefined)
 const compactUsage = usageOf('glm-compact').filter(record => record.purpose === 'compaction')
-const projectUsage = ['glm', 'glm-flash', 'glm-todo', 'glm-compact', 'glm-shadow', 'glm-guard-paths', 'non-glm', 'non-glm-guard', 'glm-peak', 'limits-steps', 'limits-time', 'glm-dispatch', 'glm-goal', 'goal-headless'].filter(scenario => existsSync(join(runDir, scenario, 'home', 'audit', 'usage.jsonl')))
+const projectUsage = ['glm', 'glm-flash', 'glm-todo', 'glm-compact', 'glm-shadow', 'glm-guard-paths', 'non-glm', 'non-glm-guard', 'glm-no-dialect', 'glm-peak', 'limits-steps', 'limits-time', 'glm-dispatch', 'glm-goal', 'goal-headless'].filter(scenario => existsSync(join(runDir, scenario, 'home', 'audit', 'usage.jsonl')))
 const glmViolations = jsonl(join(glmDir, 'home', 'audit', 'violations.jsonl'))
 const stepLimits = jsonl(limitsRecord('limits-steps'))
 const timeLimits = jsonl(limitsRecord('limits-time'))
@@ -739,7 +759,7 @@ const checks = [
   ['memory usage: one record per GLM step with the request provider, model and session id', glmUsage.length === glm.steps.length && glmUsage.every(record => record.provider === 'glm-probe' && record.model === 'glm-5.3' && typeof record.sessionId === 'string' && record.sessionId.length > 0), `${glmUsage.length} record(s) for ${glm.steps.length} step(s); first: ${JSON.stringify(glmUsage[0] ?? null).slice(0, 120)}`],
   ['memory usage: the compaction call is recorded with purpose compaction', compactUsage.length === compacted.compactions.length && compactUsage.length > 0, `${compactUsage.length} compaction record(s) for ${compacted.compactions.length} request(s)`],
   ['data: usage lands only in the user-level directory, never in a project directory or the real one', projectUsage.length === 0 && realUsageBefore === realUsageAfter, `project usage files: ${projectUsage.join(', ') || 'none'}; real ${realUsage}: ${realUsageBefore} -> ${realUsageAfter}`],
-  ['guard: a shell write is denied with the four-part correction and the file is not created', blockedResult?.isError === true && blockedResult.text.includes('Shell file writes are not permitted') && !existsSync(blocked), blockedResult === undefined ? 'no tool result' : blockedResult.text.slice(0, 100).replace(/\n/g, ' ')],
+  ['guard: a shell write is denied with the four-part correction naming the ZCode tools, and the file is not created', blockedResult?.isError === true && blockedResult.text.includes('Shell file writes are not permitted') && blockedResult.text.includes(RIGHT_PATH_ZCODE) && !existsSync(blocked), blockedResult === undefined ? 'no tool result' : blockedResult.text.slice(0, 100).replace(/\n/g, ' ')],
   ['guard: the denial is journaled in the scenario project directory with rule, tool and the calling agent ids', glmViolations.length === 1 && glmViolations[0].rule === 'file-tools-only' && glmViolations[0].tool === 'Bash' && typeof glmViolations[0].agentId === 'string' && glmViolations[0].agentId.length > 0 && glmViolations[0].sessionId === glmUsage[0]?.sessionId, `${glmViolations.length} record(s); first: ${JSON.stringify(glmViolations[0] ?? null).slice(0, 140)}`],
   ['guard: the GLM system prompt declares the active rules (containment and file-tools-only) after the dialect sections; the non-GLM prompt does not', glmFirst?.system.includes(GUARD_SECTION) === true && glmFirst.system.includes('\n- You may only create and modify files inside the user\'s workspace.') && glmFirst.system.includes('\n- Modify files and code only with the dedicated Write/Edit tools.') && glmFirst.system.indexOf(GUARD_SECTION) > glmFirst.system.indexOf('# Context management') && plainFirst !== undefined && !plainFirst.system.includes('# Workspace rules'), glmFirst === undefined ? 'no request' : `section at ${glmFirst.system.indexOf(GUARD_SECTION)} of ${glmFirst.system.length}`],
   ['guard: quoted =>, -> and >>> and a git subcommand with a quoted arrow run through Bash', arrowsResult !== undefined && arrowsResult.isError !== true && arrowsResult.text.includes('a => b -> c >>> d') && gitResult !== undefined && gitResult.isError !== true && gitResult.text.includes('init => '), `${(arrowsResult?.text ?? 'no tool result').slice(0, 60).replace(/\n/g, ' ')} | ${(gitResult?.text ?? 'no tool result').slice(0, 60).replace(/\n/g, ' ')}`],
@@ -749,6 +769,9 @@ const checks = [
   ['guard paths: on GLM a relative target climbing out with .. is denied by workspace-containment, journaled, and not written', escapeResult?.isError === true && escapeResult.text.includes('That path is outside the workspace') && escapeResult.text.includes(`(resolves to "${escapedFile}")`) && !existsSync(escapedFile) && pathsViolations.length === 1 && pathsViolations[0].rule === 'workspace-containment', `${(escapeResult?.text ?? 'no tool result').slice(0, 120).replace(/\n/g, ' ')}; ${pathsViolations.length} record(s)`],
   ['guard scope: on a non-GLM route the guard stays out: a relative write and a shell write both run, nothing is journaled', plainWriteResult !== undefined && plainWriteResult.isError !== true && existsSync(join(plainGuardWs, 'rel.txt')) && plainShellResult !== undefined && plainShellResult.isError !== true && existsSync(plainShellFile) && plainGuardViolations.length === 0, `write: ${(plainWriteResult?.text ?? 'no tool result').slice(0, 60).replace(/\n/g, ' ')} | pwsh: ${(plainShellResult?.text ?? 'no tool result').slice(0, 60).replace(/\n/g, ' ')}; ${plainGuardViolations.length} record(s)`],
   ['guard scope: the non-GLM session reports the guard out of scope with the route', plainGuardHealth.guard?.status === '未生效' && plainGuardHealth.guard.reason === '非 GLM 路由 glm-probe/deepseek-probe，门禁不介入', JSON.stringify(plainGuardHealth.guard ?? null)],
+  ['glm-no-dialect: with glm-prompt disabled the GLM face is the natives (pwsh, no Bash)', noDialectFirst !== undefined && names(noDialectFirst).has('pwsh') && !names(noDialectFirst).has('Bash') && !names(noDialectFirst).has('Write'), noDialectFirst === undefined ? `no request (exit ${noDialect.status})` : [...names(noDialectFirst)].filter(name => ['pwsh', 'Bash', 'write', 'Write'].includes(name)).join(', ')],
+  ['glm-no-dialect: the guard still denies a pwsh shell write on GLM, journals it under the called name, and corrects in native names', noDialectResult?.isError === true && noDialectResult.text.includes('Shell file writes are not permitted') && noDialectResult.text.includes(RIGHT_PATH_NATIVE) && !existsSync(noDialectFile) && noDialectViolations.length === 1 && noDialectViolations[0].rule === 'file-tools-only' && noDialectViolations[0].tool === 'pwsh', `${(noDialectResult?.text ?? 'no tool result').split('\n')[2] ?? ''}; ${noDialectViolations.length} record(s)`],
+  ['glm-no-dialect: the GLM rule declaration names the native file tools', noDialectFirst?.system.includes(GUARD_SECTION) === true && noDialectFirst.system.includes('\n- Modify files and code only with the dedicated write/edit tools.'), noDialectFirst === undefined ? 'no request' : `section at ${noDialectFirst.system.indexOf(GUARD_SECTION)}`],
   ['health: the guard names the shadow fallback: on with workspace-changes mounted, off without it', shadowHealth.guard?.status === ACTED && shadowHealth.guard.reason.endsWith('影子兜底：工作区变更记录') && glmHealth.guard?.reason.endsWith('影子兜底未启用（组合里没有 workspace-changes）') === true, `${JSON.stringify(shadowHealth.guard ?? null)} | ${JSON.stringify(glmHealth.guard ?? null)}`],
   ['workflow: the runtime subagent tools are journaled dispatch names', plainSubagentTools.length === 2 && plainSubagentTools.every(name => DISPATCH_TOOLS.includes(name)), `runtime subagent tools: ${plainSubagentTools.join(', ') || 'none'}`],
   ['health: /glm-status prints the credential line and the health table of the session, one line per bundle row', glmStatusText.startsWith('glm-zcode：未登录（套餐 coding-plan）') && glmStatusText.includes(`## 行健康（会话 ${statusStep(glm)?.sessionId}）`) && HEALTH_ROWS.every(row => glmHealth[row] !== undefined) && Object.keys(glmHealth).length === HEALTH_ROWS.length, `${Object.keys(glmHealth).length} row(s); ${glmStatusText.split('\n')[0]}`],

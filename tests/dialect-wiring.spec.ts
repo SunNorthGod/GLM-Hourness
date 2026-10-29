@@ -6,7 +6,8 @@ import { isGlmModel } from '../src/shared/route.ts'
 import { fakeRuntime } from './fake-rc3.ts'
 
 const rule = workspaceContainment(['C:\\ws\\proj'])
-const write = (path: string) => ({ name: 'Write', arguments: { file_path: path } })
+// Rules judge DSH native names; the guard rows map ZCode aliases (Write, Bash) first (src/shared/dialect.ts).
+const write = (path: string) => ({ name: 'write', arguments: { file_path: path } })
 
 test('containment allows writes inside the workspace (case and separator insensitive)', () => {
   assert.equal(evaluate([rule], write('C:\\WS\\PROJ\\src\\a.ts')).kind, 'allow')
@@ -32,7 +33,7 @@ test('containment ignores sibling prefixes like proj-evil', () => {
   assert.equal(evaluate([rule], write('C:\\ws\\proj-evil\\a.ts')).kind, 'deny')
 })
 
-const bash = (command: string) => ({ name: 'Bash', arguments: { command } })
+const bash = (command: string) => ({ name: 'pwsh', arguments: { command } })
 
 test('file-tools-only denies shell write patterns inside the workspace too', () => {
   for (const command of ['sed -i s/a/b/ f.txt', 'Set-Content f.txt hi', 'echo x > out.txt', 'ls >> log.txt']) {
