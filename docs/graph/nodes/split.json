@@ -198,6 +198,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "第 5 步 f28ca70：探针 111/111、npm test 616/0；第 6 步 40190cf：探针 112/112、npm test 620/0；基线不变；附录 NIT E01–E03 的处理在 low-decisions.md。事故：第 5–6 步的 worker 误改了主检出的 README，随即还原到 HEAD；编排方复核主检出 git status 干净、README 与 HEAD 无差异。"
+    },
+    {
+      "at": "2026-10-29T11:15:39.717Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "第 7 步 662b9fd（guard 按 question-14 G3 对所有路由生效）已在分支上提交，未推送；build、preflight、npm test 624/0、生成 profile 上探针 115/115，基线不变。设计在 .agents/tasks/split/guard-g3-design.md，随整枝评审一起审。"
     }
   ]
 }
