@@ -23,7 +23,7 @@
 
 | # | 条目 | 验收 | 节点 |
 | --- | --- | --- | --- |
-| 1.1 | 版本基线统一到 3.16.3：身份头 `appVersion`、OAuth、签名平面 `clientVersion` 共用一个常量；按 3.16.3 复核三处协议变化。方言文本按 ZCode 源码重建（`DESIGN.md` §5.9：工具描述与参数 schema、deferred 声明段、ToolSearch 描述、todo 提醒正文、compact 三处），并加逐字比对检查 | L2 单测；逐字检查对照 `reference/ZCode` 全部通过；`smoke:authorized` 真网通过 | `m1-1` |
+| 1.1 | 版本基线统一为一个常量：身份头 `appVersion`、OAuth、签名平面 `clientVersion` 共用；按基线复核协议变化。方言文本按 ZCode 原文重建（`DESIGN.md` §5.9：工具描述与参数 schema、deferred 声明段、ToolSearch 描述、todo 提醒正文、compact 三处），并加逐字比对检查。基线 2026-10-27 为 3.16.3，2026-10-30 起为 3.17.1（`zcode-3171-follow`） | L2 单测；逐字检查全部通过（3.16.3 时对照 `reference/ZCode` 与安装包，3.17.1 起只对照 `reference/zcode-3.17.1/zcode.cjs`）；`smoke:authorized` 真网通过 | `m1-1`、`zcode-3171-follow` |
 | 1.2 | 路由判定收口（`DESIGN.md` §3）：共享判定函数，方言按模型族、通道按 provider；删除旧构建分支；单测假宿主只提供 rc.3 的信号 | L2：只有组装变量携带路由时，方言、工具检索、todo 提醒均生效 | `m1-2` |
 | 1.3 | 删除与反代有关的判断与文案 | 代码与文档中无反代依赖 | `m1-3` |
 | 1.4 | 共享数据目录与审计服务（`DESIGN.md` §2.4）；guard 违规落盘；迁移 profile 目录下的 190 条用量记录与 1 条记忆 | L2；L3 中 guard 拦截后违规流水有记录 | `m1-4` |

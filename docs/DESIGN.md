@@ -10,11 +10,11 @@
 
 | 项 | 基线 | 依据 |
 | --- | --- | --- |
-| ZCode | 3.16.3 | 用户定案 2026-10-27；本机安装版为 3.16.3（卸载注册表）〔实读〕 |
+| ZCode | 3.17.1 | 用户定案 2026-10-30（项目图 `d-zcode-3171`：「你就彻底都换成新版zcode，工程环境声明那个照旧」；此前为 3.16.3，定案 2026-10-27）；本机安装版 2026-10-29 自动更新到 3.17.1（卸载注册表）〔实读〕 |
 | DSH | Desktop 0.2.1-rc.3，profile `desktop` | 官方类型 `@deepseek-ai/dsh-llm@0.2.1-rc.3` 等作为 devDependency |
 | 模型 | GLM-5.3、GLM-5.3-Flash | 通道目录 |
 
-本机 ZCode 安装版被用户打过补丁（用户确认 2026-10-27），只能作为机制参考，不能作为逐字文本来源。逐字文本以 ZCode 官方源码为准：`reference/ZCode`（`package.json` 版本 3.16.2，2026-10-20 同步）；在已比对的文本上，源码、本机 3.16.3 安装包与 pristine 3.15.1 三者一致（用户补丁的安全声明除外）。复核结果见 §5.9。
+逐字文本只认 3.17.1 pristine 副本 `reference/zcode-3.17.1/zcode.cjs`（MD5 `331AB13D0CB2E9504EA25420FF9AE663`），逐字门禁只读它（§5.9）。本机 ZCode 安装版随自动更新变化，用户也打过补丁（用户确认 2026-10-27），只能作为机制参考；ZCode 官方源码 `reference/ZCode`（`package.json` 版本 3.16.2，2026-10-20 同步）只作可读参考，它仍含 3.17.1 已删掉的 3.16.3 文本；3.16.3 pristine 副本 `reference/zcode-3.16.3/zcode.cjs` 只作对照。基线从 3.16.3 换到 3.17.1 时逐段比对过（不入库的 `.agents/tasks/zcode-3171/diff.md`，项目图 `zcode-3171-follow`）：身份头、签名、端点路由、设备号、AI SDK 段、请求体与 `max_tokens` 的代码两版逐字节一致；变了的是版本号、系统提示词各节、Read 与 Bash 的几段文本、工具检索增删公告、todo 提醒的计轮、compact 提示词一句，以及归因头新增的会话特征与项目令牌的失败码，逐项见 §4、§5。
 
 反向代理（`zcode-proxy.exe`，8317 端口）不在本项目范围内〔定案 2026-10-27〕。任何插件行都不识别、不依赖反代路由。代码、脚本输出、界面文字与文档中把反代说成在链路上或等待退役的描述已删除（2026-10-28，`ROADMAP.md` M1.3）。仍会出现的相关字样有两类，均不表示链路上有反代：移植模块的出处注释（`reference/zcode-api` 的 `src/proxy/...`；zcode-api 本身是一个反代工程，本项目只移植它的通道模块）；ZCode 服务端配置的 `proxyEndpoint` 字段，那是 ZCode 自己的端点路由（§4.4）。用户 profile 中原有一条指向 8317 端口的 pi-ai `glm` 路由（用户配置）；用户 2026-10-28 把清理交给 agent，2026-10-29 批次 L4 通过后已从 profile 删除（项目图 `m1-cleanup`）；改前备份 `cordis.patch.yml.bak-1793241992974` 只比现行 patch 多这一条，按用户要求「彻底把glm反代那些清掉」于同日删除，profile 里不再有任何指向 8317 的配置。这条路由留下的用量记录也已删除（§2.4）。反代程序本身是用户的工具，按用户决定保留。`ORCHESTRATION.md` §4.2 的需求卡示例保留用户最初的一句话原话。
 
@@ -264,9 +264,9 @@ GLM 按钮〔2026-10-29，`m8-ui-audit` F-02、F-03、F-18、F-34〕：每次执
 
 - 登录：ZCode 账号体系的 bigmodel 轮询登录（`/glm-login` 打开浏览器授权，5 分钟超时）〔实读〕。
 - 模型请求的凭证〔已实现 2026-10-28，m1-parity 第 1、2 项，`src/glm-llm/auth/project-token.ts`〕：coding-plan 的每个模型请求用项目令牌（PAT）同时填 `Authorization: Bearer <PAT>` 与 `x-api-key: <PAT>`，签名也用它，与 3.16.3 账号模式相同（CLI `x5s` @3843063 把请求凭证设为 provider 的 `apiKey`、删掉配置里的 `authorization`/`x-api-key`，`T5s` @3843231 补 `Authorization: Bearer`；桌面 `AccountProviderRequestAuthService.resolveCurrent` 对个人套餐返回 PAT 与它的 `apiKeyId`）。此前两个头放的是 `{apiKeyId}.{secret}`，PAT 只喂签名。
-- 项目令牌按 3.16.3 `ProjectAccessTokenClient`（CLI `sge` @1082916，缓存 `Urt` @1080367；桌面 `out/host/chunk-5YNPFY3L.js` 同一份代码）移植：用 OAuth 访问令牌原样调 `getCustomerInfo`，滤掉 `projectType` 为 `"2"` 的项目与因此没有项目的机构，取名含「默认机构」/「默认项目」者，否则取第一个；列出该项目的 API Key，取名为 `zcode-api-key` 的，没有就以 `usageScene: 1` 新建；`POST …/api_keys/{apiKeyId}/access_tokens`（`Authorization: Bearer <OAuth>`，体 `{clientType: "zcode", clientVersion}`）铸造。响应码 `200`、`0`、`"200"`、`"0"` 视为成功；缺 `enable` 视为启用，`enable: false` 报 `project_token_disabled`；有效期取 `min(expiresAt, 开始时间 + expiresIn)`，到期前 120 秒再减随机 0–60 秒刷新；429、5xx、网络错误、15 秒超时是暂态失败，旧令牌未到期时继续用并 5 秒后再试；铸造回 404 时删掉定位，下次重新定位；同一登录、同一账号的并发获取共用一次；铸造期间登录变了报 `project_token_scope_invalidated`。错误一律归为 3.16.3 的错误码（`project_token_login_required`、`project_token_disabled`、`project_token_project_unavailable`、`project_token_invalid_response`、`project_token_scope_invalidated`，其余 `project_token_request_failed`），不带服务端文本与令牌。
+- 项目令牌按 3.16.3 `ProjectAccessTokenClient`（CLI `sge` @1082916，缓存 `Urt` @1080367；桌面 `out/host/chunk-5YNPFY3L.js` 同一份代码）移植：用 OAuth 访问令牌原样调 `getCustomerInfo`，滤掉 `projectType` 为 `"2"` 的项目与因此没有项目的机构，取名含「默认机构」/「默认项目」者，否则取第一个；列出该项目的 API Key，取名为 `zcode-api-key` 的，没有就以 `usageScene: 1` 新建；`POST …/api_keys/{apiKeyId}/access_tokens`（`Authorization: Bearer <OAuth>`，体 `{clientType: "zcode", clientVersion}`）铸造。响应码 `200`、`0`、`"200"`、`"0"` 视为成功；缺 `enable` 视为启用，`enable: false` 报 `project_token_disabled`；有效期取 `min(expiresAt, 开始时间 + expiresIn)`，到期前 120 秒再减随机 0–60 秒刷新；429、5xx、网络错误、15 秒超时是暂态失败，旧令牌未到期时继续用并 5 秒后再试；铸造回 404 时删掉定位，下次重新定位；同一登录、同一账号的并发获取共用一次；铸造期间登录变了报 `project_token_scope_invalidated`。错误一律归为 ZCode 的错误码（`project_token_login_required`、`project_token_disabled`、`project_token_project_unavailable`、`project_token_invalid_response`、`project_token_scope_invalidated`；请求失败按 3.17.1 `KAr` 的类别为 `project_token_network_error`、`project_token_timeout` 或 `project_token_http_<状态码>`，其余 `project_token_request_failed`；响应体不是 JSON 为 `project_token_invalid_response`），不带服务端文本与令牌〔请求失败的细分 2026-10-30 起，项目图 `zcode-3171-follow`；此前一律为 `project_token_request_failed`〕。
 - 令牌被拒：最终响应是 401 且不是请求安全类失败（信封里的消息、原因或错误码为 `VERIFY_APIKEY_EXPIRED`、`VERIFY_SIGNATURE_INVALID`、`3007`）时，以被拒令牌的 SHA-256 强制重铸一次，作为新的尝试重发一次（新 `x-request-id`），只重试一次（3.16.3 `AccountRequestRetry` `$ye` @4144946、`isProjectTokenRejection` `$Hs` @4144643、`isRequestSecurityFailure` `Vrt` @1090655）。`Vrt` 读的「provider 错误码」由 3.16.3 的错误解析器给出，本包按信封的 `code`、`error.code`、`error.message` 近似。判断读的是响应的副本；重发前取消被拒响应本身的 body，不留缓冲（3.16.3 丢弃的响应体经 `DQr` @3843990 读空）。
-- 拿不到 PAT〔定案 2026-10-28，用户选 B，项目图 `question-6`〕：按 3.16.3 账号模式失败即停（`ModelRequestAuthMissing`），不退回 API Key：模型请求、端点路由配置请求与签名握手一个都不发，流以 `glm-zcode: project access token unavailable (<原因>) — run /glm-login to sign in again` 失败，行健康为未生效「未拿到项目令牌（<原因>），按 3.16.3 不发送；运行 /glm-login」。原因是 3.16.3 的原文：凭证没有 OAuth 令牌时为 `Account request credential is unavailable: bigmodel`，没有账号 id 时为 `Account request credential is unavailable: account:bigmodel-individual-coding-plan`（桌面 `AccountRequestCredentialUnavailableError`，`out/host/index.js` +1200545），其余为上面的错误码。3.16.3 渲染层不翻译这些消息，原文直出。凭证里缺 OAuth 令牌或账号 id 的登录（start-plan 为缺套餐 JWT）`/glm-status` 显示为未登录并带同一原因：`glm-zcode：未登录（套餐 <档位>，登录不完整：<原因>）。运行 /glm-login 开始登录`，设置页按「未登录」解析〔已实现 2026-10-29，m1-parity 评审第 1 轮〕。
+- 拿不到 PAT〔定案 2026-10-28，用户选 B，项目图 `question-6`〕：按 3.16.3 账号模式失败即停（`ModelRequestAuthMissing`），不退回 API Key：模型请求、端点路由配置请求与签名握手一个都不发，流以 `glm-zcode: project access token unavailable (<原因>) — run /glm-login to sign in again` 失败，行健康为未生效「未拿到项目令牌（<原因>），按 3.17.1 不发送；运行 /glm-login」。原因是 ZCode 的原文（3.16.3 与 3.17.1 相同）：凭证没有 OAuth 令牌时为 `Account request credential is unavailable: bigmodel`，没有账号 id 时为 `Account request credential is unavailable: account:bigmodel-individual-coding-plan`（桌面 `AccountRequestCredentialUnavailableError`，`out/host/index.js` +1200545），其余为上面的错误码。3.16.3 渲染层不翻译这些消息，原文直出。凭证里缺 OAuth 令牌或账号 id 的登录（start-plan 为缺套餐 JWT）`/glm-status` 显示为未登录并带同一原因：`glm-zcode：未登录（套餐 <档位>，登录不完整：<原因>）。运行 /glm-login 开始登录`，设置页按「未登录」解析〔已实现 2026-10-29，m1-parity 评审第 1 轮〕。
 - 存储：`<home>/credentials.json`，AES-256-GCM，原子写入〔实读〕。`home` 默认是用户级目录 `$DSH_HOME/glm-hourness/`（§2.4）。每次写入经同目录下自己的临时文件（命名同 3.16.3 `PWs` @4062889：`.<文件名>.<pid>.<毫秒>.<随机十六进制>.tmp`）再 `rename`，失败时删掉临时文件；同一凭证文件的写入（登录、登出、迁移、项目 key 定位的写入与删除）在进程内排成一个队列依次执行，读改写在队列里读文件，所以不会覆盖期间落地的写入〔已实现 2026-10-29，m1-parity 评审第 1 轮〕。
 - 记录内容〔已实现 2026-10-28，m1-parity 第 3 项，`src/glm-llm/auth/store.ts` `loadStoredCredential`〕：版本 2 的记录是 `{version: 2, provider: 'bigmodel', oauthAccessToken?, userId?, jwt?, location?}`。与 3.16.3 桌面版一样只存登录令牌：`/glm-login` 完成后不再调 `getCustomerInfo`、`api_keys` 与 `api_keys/copy`，不存 API Key 与它的 secret（3.16.3 账号模式两处都不用，FACTS §1）；项目 key 在第一次需要项目令牌时定位，定位按 3.16.3 的键 `project-key-location:v1:…` 存进 `location`（`{key, value}`，`value` 是 `{organizationId, projectId, apiKeyId}` 的 JSON），铸造回 404 时删除。定位只在凭证里的 OAuth 令牌仍是解析它时用的那个时写入：解析期间换了登录，就不把旧登录的定位挂到新登录上。项目令牌本身不落盘，只在进程内缓存。`/glm-status` 的 Key 预览取已定位的 `apiKeyId` 前 6 位，没定位时显示 `unresolved`。
 - 迁移：读到旧的版本 1 记录（`{apiKey, provider, userId?, jwt?, oauthAccessToken?}`，`apiKey` 是 `{apiKeyId}.{secret}`）且它有 OAuth 令牌或 JWT 时，按版本 2 原子重写一次，丢掉 `apiKey`，OAuth 令牌、JWT 与 `userId` 原样带过；重写在写入队列里重读文件，仍是版本 1 才写，所以并发的首次读取（会话标题与第一步几乎同时发出）只迁移一次；重写失败时原文件不动，本次用内存里的版本 2，下次读取再试。没有任何登录令牌的版本 1 记录不改写，读作没有令牌的记录，请求时提示 /glm-login。迁移从不清空、从不删除凭证文件。
@@ -279,9 +279,9 @@ GLM 按钮〔2026-10-29，`m8-ui-audit` F-02、F-03、F-18、F-34〕：每次执
 
 LLM 平面（bundle `g6n` 形态）：`HTTP-Referer`、`User-Agent: ZCode/<ver>`、`X-ZCode-App-Version`、`X-Title: Z Code@electron`、`X-Release-Channel`、`X-Client-Language`、`X-Client-Timezone`、`X-ZCode-Agent: glm`、`X-Platform`、`X-Os-Category`、`X-Os-Version`；不带 `X-Device-Mid`。上下文平面（bundle `TV`，用于端点路由与签名）带 `X-Device-Mid`，不带 `X-ZCode-Agent`。值经可打印 ASCII 规范化〔实读〕。
 
-版本：统一为常量 `ZCODE_APP_VERSION = '3.16.3'`（`src/glm-llm/identity.ts`），供 `User-Agent`、`X-ZCode-App-Version`、OAuth 跳转参数 `app_version`、签名头 `X-Client-Version` 与项目令牌请求的 `clientVersion` 共用〔已实现 2026-10-27，此前分别为 3.14.0 与 3.15.1〕。
+版本：统一为常量 `ZCODE_APP_VERSION = '3.17.1'`（`src/glm-llm/identity.ts`），供 `User-Agent`、`X-ZCode-App-Version`、OAuth 跳转参数 `app_version`、签名头 `X-Client-Version` 与项目令牌请求的 `clientVersion` 共用〔2026-10-27 统一为 3.16.3，此前分别为 3.14.0 与 3.15.1；2026-10-30 改为 3.17.1，项目图 `zcode-3171-follow`〕。3.17.1 的包里同样没有版本字面量，版本来自构建期常量与环境变量。
 
-对照本机 3.16.3 安装包〔实读〕：
+对照 3.16.3 安装包〔实读〕（这几处代码在 3.17.1 中逐字节一致）：
 
 - LLM 平面身份头的组装函数（`buildCliZCodeSourceHeaders`）字段与顺序和本实现一致。
 - `X-Title` 的来源标题：进程参数含 `app-server` 或 `agent-server` 时为 `electron`，否则为 `cli`（`kuc` @14423244）。桌面版以 `app-server` 方式启动 agent 进程，端点路由的配置请求也传 `sourceTitle: "electron"`（@15096557），所以桌面版的模型请求与配置请求都是 `Z Code@electron`。〔定案 2026-10-28，用户选 B，项目图 `question-8`〕本实现两处都发 `Z Code@electron`（`DEFAULT_IDENTITY.sourceTitle`），取代 2026-10-27 保持 `cli` 的定案；事实见 `FACTS.md` §1。
@@ -292,7 +292,7 @@ User-Agent 与头的组装〔已实现 2026-10-28，m1-parity 第 7、8 项，`s
 - provider 级：`withUserAgentSuffix({"anthropic-version", "x-api-key": PAT, Authorization: "Bearer " + PAT}, "ai-sdk/anthropic/3.0.81")`（`createAnthropic` `sgn` @3569529 的 `getHeaders`，使用处 @3570073，请求凭证经 `x5s`、`T5s`）。`withUserAgentSuffix`（`Y2` @3510311）把键改成小写、后写覆盖先写，经 `Headers` 后以 `Object.fromEntries(headers.entries())` 返回，所以结果是小写、按字母排序的普通对象。
 - 调用级：身份头（含 `User-Agent: ZCode/3.16.3`）与归因头（§4.5b）；会话标题走 `generateText`，调用级先追加 `ai/6.0.193`（@3949945），主步与压缩走 `streamText`，不追加。
 - `postToApi`（`SZr`）：`withUserAgentSuffix({"Content-Type": "application/json", ...合并(provider 级, 调用级)}, "ai-sdk/provider-utils/4.0.27", 运行时段)`，合并（`Rh` @3505152）是浅合并，调用级的 `User-Agent` 覆盖 provider 级的。运行时段按 `getRuntimeEnvironmentUserAgent`（`$ut` @3509781）先取 `navigator.userAgent`，转小写后得 `runtime/<userAgent>`；没有时取 `runtime/node.js/<process.version>`（`runtimeUserAgent`）。构造规则与 3.16.3 相同，取值随宿主。
-- 结果〔实测 2026-10-29〕：DSH 桌面运行时（0.2.1-rc.3，`DeepSeek Harness.exe` 的 Electron node 模式，`process.version` `v24.21.0`，`navigator.userAgent` `Node.js/24`）上，主步 `ZCode/3.16.3 ai-sdk/provider-utils/4.0.27 runtime/node.js/24`，会话标题 `ZCode/3.16.3 ai/6.0.193 ai-sdk/provider-utils/4.0.27 runtime/node.js/24`，端点路由配置请求 `ZCode/3.16.3`。依据：m1-parity 的沙盒真实网络运行截包（§4.3 实测）；批次 L4（项目图 `m1-11`）以同一个 exe 的 node 模式加载 `dist/glm-llm/headers.js`，`runtimeUserAgent()` 为 `runtime/node.js/24`，桌面版的宿主进程就以这个模式运行，桌面版流量没有截。以本机 `node`（v22.20.0）运行时（单测等）是 `runtime/node.js/22`。ZCode 桌面版自己的 agent 进程取什么值取决于它所带 Electron 的 Node 版本，ZCode 自身的流量没有截，未确定。此前本包发 `ZCode/3.16.3 ai-sdk/anthropic/3.0.81`。start-plan 不变。
+- 结果〔实测 2026-10-29〕：DSH 桌面运行时（0.2.1-rc.3，`DeepSeek Harness.exe` 的 Electron node 模式，`process.version` `v24.21.0`，`navigator.userAgent` `Node.js/24`）上，主步 `ZCode/3.16.3 ai-sdk/provider-utils/4.0.27 runtime/node.js/24`，会话标题 `ZCode/3.16.3 ai/6.0.193 ai-sdk/provider-utils/4.0.27 runtime/node.js/24`，端点路由配置请求 `ZCode/3.16.3`。依据：m1-parity 的沙盒真实网络运行截包（§4.3 实测）；批次 L4（项目图 `m1-11`）以同一个 exe 的 node 模式加载 `dist/glm-llm/headers.js`，`runtimeUserAgent()` 为 `runtime/node.js/24`，桌面版的宿主进程就以这个模式运行，桌面版流量没有截。以本机 `node`（v22.20.0）运行时（单测等）是 `runtime/node.js/22`。ZCode 桌面版自己的 agent 进程取什么值取决于它所带 Electron 的 Node 版本，ZCode 自身的流量没有截，未确定。此前本包发 `ZCode/3.16.3 ai-sdk/anthropic/3.0.81`。start-plan 不变。2026-10-30 起版本段为 `ZCode/3.17.1`，构造不变。
 
 ### 4.3 签名 V4
 
@@ -405,14 +405,15 @@ Flash 没命中的位置：修复前第二步 4 次、之后各步 12 次；固�
 
 缓存断点 `cache_control`：BigModel 文档写的是隐式缓存，实测有无断点命中相同（上表第 1、2 行；另有 3 个两步对照）。为了与 ZCode 的请求形态一致，最后一条消息的最后一块带断点（zcode-api `applyAnthropicCacheControl`）。系统提示词没有按 ZCode 拆成 cli_prefix、stable、dynamic 三块（ZCode 后两块带断点）：coding-plan 下本通道只发一块，拆分要在方言里标出分界，命中不受影响，暂不做（§5.8 #14）。
 
-请求归因（与缓存无关，按 ZCode）：请求体带 `metadata.user_id`，即 `{device_id, account_uuid: "", session_id}`，会话 id 与请求头相同（`createAnthropicRequestMetadataUserId` `ZWs` @4073127）。coding-plan 的归因头〔已实现 2026-10-28，m1-parity 第 7 项，`src/glm-llm/headers.ts` `RequestAttributionTracker`〕按 3.16.3 `createModelRequestAttributionHeaders`（`Vdt` @4065502）是 `x-request-id`、`x-zcode-session-type`、`x-zcode-trace-id`、`x-query-id`、`x-zcode-query-source`、`x-session-id`：
+请求归因（与缓存无关，按 ZCode）：请求体带 `metadata.user_id`，即 `{device_id, account_uuid: "", session_id}`，会话 id 与请求头相同（`createAnthropicRequestMetadataUserId` `ZWs` @4073127）。coding-plan 的归因头〔已实现 2026-10-28，m1-parity 第 7 项，`src/glm-llm/headers.ts` `RequestAttributionTracker`〕按 ZCode `createModelRequestAttributionHeaders`（3.16.3 `Vdt` @4065502，3.17.1 `Uft`）是 `x-request-id`、`x-zcode-session-type`、`x-zcode-trace-id`、`x-query-id`、`x-zcode-query-source`、`x-zcode-session-features`（3.17.1）、`x-session-id`：
 
 - `x-request-id`：每次尝试新生成（`Gdt` @4067222），项目令牌被拒后的重发也换新；签名 VERIFY 梯子的重发在同一次尝试里，不换。
 - `x-zcode-trace-id`：会话级。3.16.3 每个会话运行时建一个根追踪上下文（`vT` @1421911），回合与辅助请求的上下文都从它派生（`nS` @12816000、`Lw` @1422054），`traceId` 不变；委派子会话的运行时继承父会话的追踪上下文。本包按 DSH 会话保存 trace id（进程内，最多 256 个会话，最久未用的先出；出去后再来的会话拿新的 trace id），委派子会话沿 `parentSession` 取父会话的 trace id。
 - `x-query-id`：回合级。3.16.3 用桌面输入的 id 当 query id（`O9` @14502646、`zzo` @13357726，`query_` 前缀在头里去掉）。本包以主步请求里最后一条用户输入消息（`role: 'user'`、`source.kind: 'user'`）的 id 为回合键，键变了就换新的 UUID。辅助请求（会话标题与压缩）不取回合键，沿用会话当前的 query id：3.16.3 的压缩上下文由回合上下文派生（`c3a` @13387356 用 `nS` 加 `querySource: "compact"`，`nS` 保留回合的 `queryId`）。DSH 的压缩请求只含系统头、被压缩的区段与它的指令，最近的尾段（默认预算的 16%）不在请求里（rc.3 compaction-basic `selectCompactableRange`、`buildSummarizationInput`），区段里最后一条用户输入通常属于更早的回合，所以不能拿它当回合键。会话还没有 query id 时辅助请求先建一个；只有会话标题建的 id 留给随后的第一步认领（DSH 让标题请求与第一步并发），压缩建的不认领（例如重启后的手动压缩），下一个用户输入另起新的 query id。
   - 空闲会话的手动压缩〔实读，m1-parity 评审第 3 轮〕：DSH 对空闲会话的手动压缩（`/compact`，rc.3 compaction-basic `compactNow`，compaction-basic:985）与压力压缩发出同样形状的请求，本包分不出两者，同样沿用上一回合的 query id。3.16.3 的 `/compact` 是一次独立输入：`zzo` @13357726 为它派生自己的 query id 交给 `executeManualCompact`（@13361998），`czo` @13308966 开一个回合再压缩。只有这一个压缩请求不同，下一个用户输入两边都开新的 query id；`48fed7e` 之前的实现结果相同。本包能否看出 DSH 当前没有回合在跑没有追查，能看出就可以给这种压缩开新的 query id。2026-10-29 桌面版对空闲会话手动 `/compact` 一次，正常完成（批次 L4），没有截包，头值没有看到。
 - `x-zcode-session-type` 与 `x-zcode-query-source`：会话标题 `other` + `session_title`（`v2n` @13069774），压缩 `other` + `compact`（@13389086），委派子会话 `subagent` + `subagent`（`mDn` @13259914 把 `subagent_child` 映射为 `subagent`，`Y0n` @4065835），其余 `main` + `main_turn`。委派子会话由 `agents` 服务给出的会话头判定（`origin: 'subagent'`，§2.4a）；取不到会话头时按主会话处理。
-- start-plan 不变：每请求一个 trace id，不带 query id 与 query source。
+- `x-zcode-session-features`〔已实现 2026-10-30，项目图 `zcode-3171-follow`，3.17.1 新增〕：会话特征，排在 `x-zcode-query-source` 与 `x-session-id` 之间（coding-plan 的头经 AI SDK 排序，线上落在 `x-zcode-query-source` 与 `x-zcode-session-type` 之间），只在有特征时发；值为去重排序后逗号连接的特征名，每项须匹配 `^[a-z0-9_]{1,64}$`，总长不超过 256（3.17.1 `GXs`）。3.17.1 的特征是会话级集合，每次模型调用读当时的集合（`LSa`），压缩与会话标题也带。本通道能出现两项：`tool_search_local`（某个 agent 步的工具里有 LocalToolSearch 与 DeferredToolCall，即这一步开启了 local 工具检索，3.17.1 `U1n`）与 `tool_search_called`（历史里有一次成功返回的 LocalToolSearch 调用，3.17.1 `vTo`、`bTo`）。`tool_search_native`、`workflow_auto`、`workflow_cmd`、`browser_use`、`computer_use` 在本通道没有触发条件，不会出现。集合按 DSH 会话存在 `RequestAttributionTracker` 里，与 trace id 同一份会话状态；与 3.17.1 的差异见 §4.8。
+- start-plan 不变：每请求一个 trace id，不带 query id、query source 与会话特征。
 
 设备 ID〔已实现 2026-10-29，m1-parity 第 9 项；定案 2026-10-28，用户选 A「照 ZCode 做：生成并写回 ~/.zcode」，项目图 `question-9`；`src/glm-llm/device-mid.ts`〕：`device_id` 是 ZCode 自己的 deviceMid，按 3.16.3 `ensureCliDeviceMid`（`Qro` @4062043）取得与保存：
 
@@ -464,11 +465,17 @@ DSH 的 `TokenUsage` 各计数互不重叠：`inputTokens` 只算未命中缓存
 
 通道负责取数，编排层负责展示：5 小时窗口剩余、周额度、积分余额、MCP 余额，以及错误码 1308/1310/1316–1321 携带的 `next_flush_time`。计算口径见 `ORCHESTRATION.md` §11 与 `FACTS.md` §2.4。
 
-### 4.8 与 ZCode 3.16.3 的一致性与已知差异〔m1-parity，2026-10-28〕
+### 4.8 与 ZCode 的一致性与已知差异〔m1-parity 2026-10-28 按 3.16.3；2026-10-30 跟到 3.17.1〕
 
-验收口径〔定案 2026-10-28，用户：「看量或者扣减看不出来的。你就代码级别一样就行」〕：coding-plan 请求中本包能控制的部分与 3.16.3 代码级一致，不做额度或扣减测量。
+验收口径〔定案 2026-10-28，用户：「看量或者扣减看不出来的。你就代码级别一样就行」〕：coding-plan 请求中本包能控制的部分与基线代码级一致（2026-10-30 起为 3.17.1），不做额度或扣减测量。
 
-已一致（细节与偏移见各节）：模型请求凭证是项目令牌，拿不到即失败（§4.1）；配置请求只带 `x-api-key-id`，凭证不再含 secret（§4.1、§4.4）；`X-Title` 与 User-Agent（§4.2）；头的组装链与线上顺序（§4.3）；归因头（§4.5b）；`metadata.user_id` 的 deviceMid：读取，缺失时生成并在锁内写回 ZCode 状态文件（§4.5b）；请求体键序、`model` 大小写、`thinking` 与 `output_config`、会话标题非流式（§4.5）；`max_tokens` 规则（§4.6）。
+已一致（细节与偏移见各节）：模型请求凭证是项目令牌，拿不到即失败（§4.1）；配置请求只带 `x-api-key-id`，凭证不再含 secret（§4.1、§4.4）；`X-Title` 与 User-Agent（§4.2）；头的组装链与线上顺序（§4.3）；归因头（§4.5b）；`metadata.user_id` 的 deviceMid：读取，缺失时生成并在锁内写回 ZCode 状态文件（§4.5b）；请求体键序、`model` 大小写、`thinking` 与 `output_config`、会话标题非流式（§4.5）；`max_tokens` 规则（§4.6）。3.17.1 跟进补上的：版本号（§4.2）、`x-zcode-session-features`（§4.5b）、项目令牌请求失败的细分错误码（§4.1）。
+
+3.17.1 跟进的已知差异〔2026-10-30，项目图 `zcode-3171-follow`〕：
+
+- 会话特征只存在本进程：3.17.1 还把集合随会话持久化。桌面版重启或会话被挤出 256 个会话的缓存之后，这个会话下一个 agent 步之前的辅助请求（标题、压缩）不带 `tool_search_local`；`tool_search_called` 只在那次调用还在可见历史里时才能重新推出（§4.5b）。DSH 的标题请求与第一步并发，可能早于第一步记下特征；3.17.1 账号模式在回合完成后才发标题。
+- start-plan 不发 `x-zcode-session-features`，归因保持原样。
+- start-plan 的系统提示：文本已跟到 3.17.1（`cliPrefix`、身份节、Dynamic Behavior、Context management，`src/glm-llm/zcode-system.ts` 与 `reference/zcode-api` 的 sidecar 同步改）；结构没跟。3.17.1 把环境、模型行与当前日期移到 meta_user 附件，环境节的措辞也改了（§5.3 ③），当前日期前缀换了写法；本包的 start-plan 重构仍是三块 system，环境与模型行留在第 3 块，桌面上下文、环境与当前日期前缀保持 3.16.3 的文本。start-plan 没有额度，不能实测。
 
 只由 DSH 控制、本包改不了的差异：
 
@@ -500,7 +507,7 @@ DSH 的 `TokenUsage` 各计数互不重叠：`inputTokens` 只算未命中缓存
 
 ### 5.1 原则〔定案〕
 
-- 行为习惯类内容逐字镜像 ZCode 3.16.3（训练分布）。
+- 行为习惯类内容逐字镜像 ZCode 3.17.1（训练分布；2026-10-30 起，此前为 3.16.3）。
 - 宿主事实类断言（界面呈现、权限语义、shell、路径、记忆位置）必须与 DSH 实际行为一致；对不上就按 DSH 实况改写，措辞贴原句形态。
 - start-plan 档：除 agentsMd 节外，系统提示词与 ZCode 逐字节一致。
 - coding-plan 档：安全声明段替换为用户的工程环境声明，其余按 §5.3 本地化。
@@ -510,21 +517,22 @@ DSH 的 `TokenUsage` 各计数互不重叠：`inputTokens` 只算未命中缓存
 
 `system-prompt/assemble` 瀑布上以 `prepend` 注册的监听器在 `next()` 之后读取路由变量并改写节列表（rc.3 唯一可行的接缝）〔实读〕。
 
-表按 GLM 请求里的实际渲染次序列出〔实读 `src/glm-prompt/assembly.ts` `rewriteDialectSections`；L3 探针 2026-10-29 `glm` 场景的标题次序 `# Harness` → `# Reporting Depth` → `# Session-specific guidance` → `# Memory` → `# Context management` → DSH 的节 → `# Workspace rules`，该场景没有配 `env`〕。改写把 CLI 前缀放在最前，在 DSH 身份节原来的位置换上 ZCode 身份节（rc.3 的 `HARNESS_IDENTITY` 是 -1000，DSH 各节里最小，所以它本来就是第一节），其余方言节按 `dialectSections()` 数组的先后插在身份节之后，DSH 的其余节保持原有次序排在后面。`dialectSections()` 给每节写的 `order`（-1001、-1000、-900、2360、2300、2350、2400）改写时不读，不决定次序；按 ZCode 次序重排、用上或删掉 `order` 归清点报告 §7 第 2 条（项目图 `question-31`）。
+表按 GLM 请求里的实际渲染次序列出〔实读 `src/glm-prompt/assembly.ts` `rewriteDialectSections`；L3 探针 2026-10-29 `glm` 场景的标题次序 `# Harness` → `# Reporting Depth` → `# Session-specific guidance` → `# Memory` → `# Context management` → DSH 的节 → `# Workspace rules`，该场景没有配 `env`；这是 3.16.3 文本时的实测，2026-10-30 起 `# Harness` 之后先是没有标题的 Dynamic Behavior，3.17.1 文本的探针由 `zcode-3171-follow` 跑〕。改写把 CLI 前缀放在最前，在 DSH 身份节原来的位置换上 ZCode 身份节（rc.3 的 `HARNESS_IDENTITY` 是 -1000，DSH 各节里最小，所以它本来就是第一节），其余方言节按 `dialectSections()` 数组的先后插在身份节之后，DSH 的其余节保持原有次序排在后面。`dialectSections()` 给每节写的 `order`（-1001、-1000、-950、-900、2360、2300、2350、2400）改写时不读，不决定次序；按 ZCode 次序重排、用上或删掉 `order` 归清点报告 §7 第 2 条（项目图 `question-31`）。
 
 | 次序 | 节 | 档位与条件 |
 | --- | --- | --- |
 | 1 | `glm:cli-prefix` | 两档 |
 | 2 | `harness:identity`（同名替换 DSH 身份节） | 两档；安全声明按档位二选一 |
-| 3 | `glm:environment` | coding-plan，需配置 `env`；工作目录取会话头（§5.3 ③） |
-| 4 | `glm:persona`（汇报细度，标题 `# Reporting Depth`） | 两档 |
-| 5 | `glm:session-guidance` | coding-plan |
-| 6 | `glm:memory` | coding-plan；只在本次组装 `next()` 返回的工具里有全部三个记忆工具时出现（§5.3 ⑧） |
-| 7 | `glm:context-management` | coding-plan |
-| 8 | DSH 的其余节（`tool:pwsh`、`tool:read` 等） | 次序不变 |
+| 3 | `glm:dynamic-behavior` | coding-plan；3.17.1 原文，没有标题（§5.3） |
+| 4 | `glm:environment` | coding-plan，需配置 `env`；工作目录取会话头（§5.3 ③） |
+| 5 | `glm:persona`（汇报细度，标题 `# Reporting Depth`） | 两档 |
+| 6 | `glm:session-guidance` | coding-plan |
+| 7 | `glm:memory` | coding-plan；只在本次组装 `next()` 返回的工具里有全部三个记忆工具时出现（§5.3 ⑧） |
+| 8 | `glm:context-management` | coding-plan |
+| 9 | DSH 的其余节（`tool:pwsh`、`tool:read` 等） | 次序不变 |
 | 最后 | `glm:guard`（guard 行添加） | 所有路由；列出生效的规则，`interpolate: false`（`ORCHESTRATION.md` §6.1） |
 
-start-plan 档只有第 1、2、4 节，后接 DSH 的节与 `glm:guard`。ZCode 3.16.3 的 Dynamic Behavior 节不在表里，见 §5.3。
+start-plan 档只有第 1、2、5 节，后接 DSH 的节与 `glm:guard`。
 
 `glm:guard` 不属于方言：由 guard 行在自己的组装监听器里追加，2026-10-29 起在所有路由上出现（`ORCHESTRATION.md` §6.2），文本是本项目的（不在镜像文件里，不属于逐字声明）。两个 prepend 监听器谁在外层都一样，这一节总在最后：guard 在外层时追加在方言改写之后；guard 在内层时方言改写保留其余节的顺序，只把方言节插到身份节之后。规则只随会话目录变化，会话目录不可变，所以每步的系统提示词不变，不影响提示词缓存。声明里的工具名按模型看到的写：方言接管这个 agent 时是 `Write`/`Edit`，与之前逐字相同；方言没有接管（`glm-prompt` 禁用或没装上，或者不是 GLM 路由）时是原生的 `write`/`edit`（`ORCHESTRATION.md` §6.1）。
 
@@ -534,27 +542,27 @@ start-plan 档只有第 1、2、4 节，后接 DSH 的节与 `glm:guard`。ZCode
 
 | # | 节 | 处理 |
 | --- | --- | --- |
-| ① | Harness 块 | 「终端显示」改为「DSH Web GUI 显示」，其余逐字 |
-| ② | Session guidance | 技能规则改写为 DSH 技能接缝 |
-| ③ | Environment | ZCode 骨架，填 DSH 真实目录、git、平台、shell。只在 `glm-prompt` 配了 `env` 时加。工作目录取会话头 `session.header.cwd`（guard 的圈禁根取的也是这个字段），会话没有记录工作目录时才用配置里的 `env.cwd`〔2026-10-29，项目图 `prompt-fixes`〕。此前一律用配置值：桌面版配的是本仓库目录，在别的项目里开会话也写本仓库。会话头不可变，rc.3 在 `agent/created` 之前就给 agent 设好会话，所以这一节在会话内不变。代价：不同项目的会话这一节的文字不同，跨会话共用的缓存前缀在这一节断开，每个新项目会话的第 1 步少命中约 1k–2k token，GLM-5.3 全价约 1 积分（估计，清点报告 `.agents/tasks/prompt-audit/report.md` §7 第 7 条）；同一项目的会话之间不变。git 仓库、平台、shell、系统版本仍取配置 |
+| ① | Harness 块 | 3.17.1 原文（每条 bullet 行首一个空格），「终端显示」改为「DSH Web GUI 显示」；系统轮那条取 3.17.1 的 `<system-reminder>` 分支：本通道把 harness 提醒都作为 `<system-reminder>` 用户轮递送，不发对话中段的 system 轮（§5.5）。start-plan 档用终端原文，系统轮取桌面缺省的 mid-conversation system turns 分支 |
+| ② | Session guidance | 技能规则改写为 DSH 技能接缝；bullet 行首一个空格，同 3.17.1 |
+| ③ | Environment | 3.17.1 骨架（`hSo`，2026-10-30）：bullet 行首一个空格，调用行末尾带空格，git 标志打印为 `true`/`false`，`Additional working directories` 在 git 行之后，最后一条是下载文件与解压内容按不可信数据处理；配置了 `modelLine` 时接在节末，3.17.1 把模型行移到紧随环境的独立节。填 DSH 真实目录、git、平台、shell。只在 `glm-prompt` 配了 `env` 时加。工作目录取会话头 `session.header.cwd`（guard 的圈禁根取的也是这个字段），会话没有记录工作目录时才用配置里的 `env.cwd`〔2026-10-29，项目图 `prompt-fixes`〕。此前一律用配置值：桌面版配的是本仓库目录，在别的项目里开会话也写本仓库。会话头不可变，rc.3 在 `agent/created` 之前就给 agent 设好会话，所以这一节在会话内不变。代价：不同项目的会话这一节的文字不同，跨会话共用的缓存前缀在这一节断开，每个新项目会话的第 1 步少命中约 1k–2k token，GLM-5.3 全价约 1 积分（估计，清点报告 `.agents/tasks/prompt-audit/report.md` §7 第 7 条）；同一项目的会话之间不变。git 仓库、平台、shell、系统版本仍取配置 |
 | ④ | Desktop context | DSH 无对应特性的部分裁掉 |
 | ⑤ | Skills 引导 | DSH 技能清单 |
 | ⑥ | 工具描述与 schema 中的行为断言 | 垫片必须兑现描述与 schema 的承诺，兑现不了就改写或删去该句；七个别名的处理见 §5.4。Grep 删去原生做不到的参数，Bash 改写 shell 与工作目录两行 |
-| ⑦ | Context management | 逐字，承诺与 DSH 压缩一致 |
+| ⑦ | Context management | 3.17.1 原文（`IBo`）：标题加两段，单换行连接；3.16.3 后面的四段 3.17.1 已删除（2026-10-30）。承诺与 DSH 压缩一致 |
 | ⑧ | Memory | 写入纪律改为 memory 工具族与工作区 `.llm`。这一节只在本次组装 `next()` 返回的工具里有 `memory_store`、`memory_query`、`memory_forget` 三个时才加〔2026-10-29，split 第 2 步〕：编排层包没装、memory 行禁用或没配 `home`（这时它不注册记忆工具）时，GLM 不会被教去用不存在的工具。判定用 `next()` 的返回值本身（`memorySectionApplies`，在别名改写与工具检索之前），以后记忆工具被工具检索延迟加载也不会误删这一节；ZCode 原版的 Memory 段讲的是 ZCode 自己的记忆文件，DSH 里不存在，所以不回退到原版，直接不加。记忆工具的名字取自公共库的 `src/shared/tool-names.ts`，契约测试钉住它与 memory 行的注册一致 |
 | ⑨ | Deferred 声明 | 不设；名单公告与工具检索按 ZCode 原文（§5.7） |
-| — | Dynamic Behavior（`# Communicating with the user`，3,065 字符） | 现在没有：coding-plan 方言不加这一节〔实读 2026-10-29〕。ZCode 3.16.3 把它发给每个非工作流 agent，放在 [Desktop Context] 之后、Session-specific guidance 之前；内容有首个工具调用前用一句话说要做什么、途中简短更新、「Lead with the outcome」「Report outcomes faithfully」、注释卫生、难撤销的操作先确认。原文在 `src/glm-llm/zcode-system.ts` 的 `ZCODE_SYSTEM.dynamicSections.beforeEnvironment`，与本机 3.16.3 安装包、源码一致，只有 start-plan 通道发（`buildStartPlanSystem`），逐字门禁检查它（§5.9）。要不要在 coding-plan 加，等消融臂 A4 的结果（项目图 `question-30`、`question-31`；清点报告 `.agents/tasks/prompt-audit/report.md` §4.1 第 1 条、§8.2）：它要求说开场白，与 OpenAI Codex 提示词指南「去掉开场白与途中汇报」的建议相反，没有数据 |
+| — | Dynamic Behavior | 3.17.1 原文（`TBo`），三段、没有标题：写代码与周边一致；对方的代词没说过时用 they/them；难撤销或对外的操作先确认，如实报告结果。按 3.17.1 的位置放在身份节之后〔2026-10-30，编排方定案 D-2，项目图 `zcode-3171-follow`〕。3.16.3 的这一节（`# Communicating with the user`，3,065 字符）coding-plan 一直没有发，3.17.1 把它整节重写了。逐字门禁检查它（`DYNAMIC_BEHAVIOR`）；start-plan 通道发同一段（`ZCODE_SYSTEM.dynamicSections.beforeEnvironment`）。以后的消融臂 A4 按 ZCode 自己的布局衡量这一节（项目图 `question-30`、`question-31`） |
 
 ### 5.4 工具面
 
-- 别名：`Read`、`Write`、`Edit`、`Glob`、`Grep`、`Bash`、`TodoWrite`，执行时委托捕获的原生定义〔实读〕。七个别名的描述与 schema 都按 3.16.3 安装包重建，原文放在镜像文件 `src/glm-prompt/zcode-tool-text.ts`：第一批 `Read`、`Write`、`Edit`（含结果文本），第二批 `Glob`、`Grep`、`TodoWrite`、`Bash`（2026-10-28，含 Glob 与 Grep 的结果文本）。`Grep` 与 `Bash` 是本地化组合：镜像文件里是原文，删改在 `search-alias.ts` 与 `aliases.ts` 中完成，不属于逐字声明（别名规格标 `localized`）。
+- 别名：`Read`、`Write`、`Edit`、`Glob`、`Grep`、`Bash`、`TodoWrite`，执行时委托捕获的原生定义〔实读〕。七个别名的描述与 schema 都按 ZCode 安装包重建（2026-10-28 按 3.16.3；2026-10-30 跟到 3.17.1：Read 描述一行与部分视图提醒、Bash 三处，其余别名两版相同），原文放在镜像文件 `src/glm-prompt/zcode-tool-text.ts`：第一批 `Read`、`Write`、`Edit`（含结果文本），第二批 `Glob`、`Grep`、`TodoWrite`、`Bash`（2026-10-28，含 Glob 与 Grep 的结果文本）。`Grep` 与 `Bash` 是本地化组合：镜像文件里是原文，删改在 `search-alias.ts` 与 `aliases.ts` 中完成，不属于逐字声明（别名规格标 `localized`）。
 - 别名表的静态副本与方言服务〔2026-10-29，split 第 2 步〕：编排层的 guard 规则只认 DSH 原生名，要知道 `Write`、`Bash` 这些别名执行的是哪个原生工具。公共库 `src/shared/dialect.ts` 有一份静态表 `ZCODE_ALIAS_NATIVES`（七个别名 → 原生名），与 `DEFERRED_TOOL_CALL_NAME` 同类，是两包都带的 ZCode 事实；`glm-prompt` 行另外提供方言服务 `glmHournessDialect`：`nativeOf` 由本方言自己的别名定义组成（`aliasSpecs` 加 `Read`、`TodoWrite`，不抄静态表），`faceName` 是它的反查（`read_image` 也对应 `Read`），`claims(agent, route)` 在方言已经装好在这个 agent 上、且路由属于 GLM 模型族时为真（装失败的 agent 不算）。`tests/contracts.spec.ts` 断言静态表、`aliasSpecs`、`nativeOf`、`faceName` 四者一致，加了别名忘了登记就失败。服务提供失败时方言照常改写，`glm-prompt` 的行健康为 `degraded`，guard 按静态表换算、纠偏用原生名（`ORCHESTRATION.md` §6.1）。
 - 工具面：别名只遮住它实际包住的原生工具。`Read` 包住 `read`，组合里有 `read_image` 时也包住它；其余别名各包一个（`write`、`edit`、`glob`、`grep`、`pwsh`、`todo_write`）。被包住的原生工具从 GLM 请求的工具面中滤掉，非 GLM 请求则滤掉别名；两组都保持注册，逐请求在组装监听器里决定（§3）。L3 探针（2026-10-28）：GLM 首个请求 16 个工具（14 个常驻加两个检索控制工具），13 个延迟；非 GLM 请求 28 个原生工具。
 - schema：七个工具都是 ZCode 发给模型的形态，即合同中的 zod 对象经 `toToolJsonSchema`（zod-to-json-schema 3.25.2，jsonSchema7，`effectStrategy: input`）转换后再加 `$schema`（2020-12）。所以有 `integer`、`minimum`、`exclusiveMinimum`、`minLength`、`additionalProperties: false`、`default`；Bash 的语义数字与语义布尔按输入类型转换为 `number`、`boolean`。rc.3 不校验原样注册的工具参数，这些关键字原样到达模型（L3 探针实测）。`Read` 用不带 PDF 的形态：ZCode 只对声明 PDF 输入的模型加 `pages` 参数与 PDF 说明行，GLM 不声明。
 - 映射与兑现（Read，`src/glm-prompt/read-alias.ts`）：
   - 描述删去视频一行：DSH 没有视频输入。组合里没有 `read_image` 时再删去图片一行。其余各行逐字。
   - 结果按 ZCode 的 cat -n 形态渲染（`行号\t内容`），不用原生的 `行号: 内容` 外框。Edit 描述要求模型「去掉 Read 的行号前缀（行号加 tab）」，依赖这个形态。空文件回 ZCode 的空文件提醒。
-  - 原生窗口受 2000 行与 50 KB 两个上限。窗口没读到文件末尾、且不是模型自己给的 `limit` 截住的，结果前加 ZCode 部分视图提醒的后两句（「Showing a partial view of lines …」「Use Read with offset … to continue …」）。第一句讲的是 ZCode 的 token 预算，与原生上限不符，不用。
+  - 原生窗口受 2000 行与 50 KB 两个上限。窗口没读到文件末尾、且不是模型自己给的 `limit` 截住的，结果前加 3.17.1 的部分视图提醒（`createTokenCapPartialView`）：「[Truncated: PARTIAL view — <路径>: showing lines a-b of n total. Call Read with offset=<b+1> limit=<本页行数> for the next page, or Grep to find a specific section. Do NOT answer from this page alone if the answer may be further in the file.]」，与正文之间一个换行。ZCode 在 `total` 之后还有 ` (<N> tokens, cap 25000)`，讲的是它的 token 预算；原生窗口按行与字节计，没有 token 数，这一子句不写〔2026-10-30；此前用 3.16.3 部分视图三句里的后两句〕。
   - `offset` 为 0 时按 ZCode 从第 1 行读（原生从 1 计）；`limit` 超过原生窗口 2000 行时截到 2000，结果用上面的提醒说明续读位置。垫片按原生默认配置写死 2000。
   - 图片扩展名（ZCode 的集合，与 `read_image` 相同）转给 `read_image`，`offset`、`limit` 对图片不适用，与 ZCode 一致；图片结果用 `read_image` 自己的渲染。
   - 图片一行不按模型取舍：ZCode 3.16.3 的 Read 描述只对声明 PDF 输入的模型加 PDF 一行（`resolveReadProviderDescription`），图片一行对纯文本模型也保留。所以 GLM-5.3 与 GLM-5.3-Flash 看到同一份描述（L3 探针实测）。两者在纯文本模型上的实际所得不同：ZCode 读图成功，请求里图片换成它的文字占位，后接一行「[Media omitted from provider request because the selected model does not support image input.]」（`createUnsupportedModelInputMediaText`）；DSH 的 `read_image` 在只声明文本的路由上直接报错，GLM-5.3 收到的是拒读错误（L3 探针实测）。两种结果都告诉模型看不到图片，本项目不改写这条错误。
@@ -573,7 +581,7 @@ start-plan 档只有第 1、2、4 节，后接 DSH 的节与 `glm:guard`。ZCode
   - 原生不向 ripgrep 传上下文、仅匹配与多行参数，所以 `-A`、`-B`、`-C`、`context`、`-o`、`multiline` 从 schema 删去，描述删去 multiline 一行，`output_mode` 的说明删去「-A/-B/-C context」。
 - 映射与兑现（TodoWrite，`src/glm-prompt/todowrite.ts`，别名在 `index.ts`）：描述与 schema 逐字。原生 `todo_write` 每次整表替换，DSH 界面以 todo 面板显示（`dsh-client-ui-conversation`），与描述一致。`priority`（`high`/`medium`/`low`）校验后在执行边界剥离，原生只存 `content`、`status`。
 - 映射与兑现（Bash，`src/glm-prompt/aliases.ts`）：本地化组合。
-  - 描述按 ZCode 原文（默认超时策略 120000/600000、未启用 embedded search 的版本），只改两行：首行的 bash 改为 PowerShell；工作目录一行改为「每次调用在会话工作目录新起进程，`cd` 不保留，不加载用户 profile」。依据：原生每次以 `pwsh -NoLogo -NoProfile -NonInteractive -Command` 新起进程（`dsh-pwsh-local`），默认目录是会话工作目录（`dsh-tool-pwsh`）。其余行在 DSH 上成立：默认超时 120000、上限 600000 与原生执行器默认配置相同；后台命令结束时 `dsh-tool-jobs` 默认以 `wakeup` 方式唤醒空闲 agent。
+  - 描述按 ZCode 原文（3.17.1，默认超时策略 120000/600000、未启用 embedded search 的版本），改两行、去掉一行：首行的 bash 改为 PowerShell；工作目录一行改为「每次调用在会话工作目录新起进程，`cd` 不保留，不加载用户 profile」；3.17.1 在 IMPORTANT 行之后新增的「- Command output is displayed to you, not reliably to the user.」不发，DSH Web GUI 把每个工具结果都显示给用户，这句在 DSH 上不成立（已知差异，编排方定案 D-3，2026-10-30；原文仍在镜像文件里受检）。依据：原生每次以 `pwsh -NoLogo -NoProfile -NonInteractive -Command` 新起进程（`dsh-pwsh-local`），默认目录是会话工作目录（`dsh-tool-pwsh`）。其余行在 DSH 上成立：默认超时 120000、上限 600000 与原生执行器默认配置相同（3.17.1 的「for a foreground command」与 schema 的同一说明照发，description 字段提示首句后的「Say what the command does in plain words …」一段也照发）；后台命令结束时 `dsh-tool-jobs` 默认以 `wakeup` 方式唤醒空闲 agent。
   - schema 按 ZCode 原文，去掉 `dangerouslyDisableSandbox`：DSH 只能经原生带审批的 `sandbox_permissions`、`justification` 放宽沙盒，原生声明这两个字段时追加并转发（同 Write、Edit）。原生没有后台运行（组合里没有 job 注册表）时，同时去掉 `run_in_background` 字段与描述中的后台一行。
   - 映射：`timeout` 是毫秒，按 ZCode 的语义数字（数字字符串转数字）转 `timeoutMs`；ZCode 把 0 当作默认值，原生拒绝 0，所以 0 不转发；超过上限由原生截到上限，与 ZCode 一致。`run_in_background` 按 ZCode 语义布尔转换。`description` 在 ZCode 可选而原生要求非空，缺省时取命令首行（最长 80 字符）。原生的 `workdir` 不对模型暴露，ZCode 没有这个参数。默认值与上限按原生默认配置写死。
   - 结果文本用原生渲染（`[stderr]`、`[exit code: N]` 等标记，与 DSH 的 pwsh 提示节一致）。
@@ -590,12 +598,12 @@ start-plan 档只有第 1、2、4 节，后接 DSH 的节与 `glm:guard`。ZCode
 
 ZCode 双阈值 10/10：距上次 TodoWrite 与距上次提醒都达到 10 轮时，注入逐字提醒并回显当前 todo。
 
-ZCode 的做法〔实读，3.16.3 安装包 `XNa`、`U4o`、`z4o` 与回合循环的附件收集；源码 `runtime/helpers/runtime-reminders.ts`、`runtime/methods/turn-loop.ts`〕：每次模型请求之前，若本回合的工具里有 TodoWrite（工具检索延迟之前的全量工具），从历史末尾往前数助手消息，一条助手消息算一轮，不论它带几个工具调用；距最后一条调用 TodoWrite 的助手消息与距最后一条 `todo_reminder` 都不少于 10 轮时，生成提醒正文（逐字提醒加会话 todo 存储的回显），作为 `todo_reminder` 附件以 `<system-reminder>` 包裹递送，并持久化为合成用户消息，之后的请求从它起算。找不到标记时按整段历史的轮数计。经 `DeferredToolCall` 调用的 TodoWrite 在 ZCode 历史里记为目标名（包装只留标记），同样算 TodoWrite。3.16.3 安装包比源码多一个条件：模型 id 含 `claude` 时不提醒，与 GLM 无关。
+ZCode 的做法〔实读，3.16.3 安装包 `XNa`、`U4o`、`z4o` 与回合循环的附件收集；源码 `runtime/helpers/runtime-reminders.ts`、`runtime/methods/turn-loop.ts`〕：每次模型请求之前，若本回合的工具里有 TodoWrite（工具检索延迟之前的全量工具），从历史末尾往前数助手消息，一条助手消息算一轮，不论它带几个工具调用（3.17.1 `nUa` 起，只有 reasoning 块、没有工具调用的助手消息不算）；距最后一条调用 TodoWrite 的助手消息与距最后一条 `todo_reminder` 都不少于 10 轮时，生成提醒正文（逐字提醒加会话 todo 存储的回显），作为 `todo_reminder` 附件以 `<system-reminder>` 包裹递送，并持久化为合成用户消息，之后的请求从它起算。找不到标记时按整段历史的轮数计。经 `DeferredToolCall` 调用的 TodoWrite 在 ZCode 历史里记为目标名（包装只留标记），同样算 TodoWrite。3.16.3 安装包比源码多一个条件：模型 id 含 `claude` 时不提醒，与 GLM 无关。
 
 实现〔已实现 2026-10-28，L3 实测〕：`src/glm-prompt/todo-reminder.ts`，由 `installDialect` 安装在每个 agent 上。`agent/pre-step` 监听器（判定、空首步保护、追加 notice）在公共库的 `src/shared/step-notice.ts`，与高峰提醒（`ORCHESTRATION.md` §11.4）、项目图的每步投影（`ORCHESTRATION.md` §2.5）共用；读历史的两个函数（工具调用的参数、有结果与失败的调用）也在这个文件里，todo 提醒与每步投影共用。`installStepNotice` 的最后一个参数是告警里写的行名，必填：公共库不替哪个包的行起默认名。
 
 - 时机：`agent/pre-step`，即本步组装之后、请求之前，对应 ZCode 的附件收集。只在组装监听器判定本步为 GLM 路由、且别名改写后的工具面（工具检索延迟之前）有 TodoWrite 时检查；非 GLM 路由永远不提醒。
-- 计数：每步从 `session.deriveMessages()`（请求可见历史，跟随压缩与续跑）重新推出，不在内存里累加。只有 GLM 模型产生的助手消息算轮次（rc.3 助手消息的 `source.model`）。todo 写入包括 TodoWrite、点名 TodoWrite 的 `DeferredToolCall`，以及非 GLM 步里的原生 `todo_write`（写的是同一份清单）。提醒标记是来源 `glm-todo-reminder` 的用户消息。
+- 计数：每步从 `session.deriveMessages()`（请求可见历史，跟随压缩与续跑）重新推出，不在内存里累加。只有 GLM 模型产生的助手消息算轮次（rc.3 助手消息的 `source.model`），只有 reasoning 块的不算（3.17.1，2026-10-30）。todo 写入包括 TodoWrite、点名 TodoWrite 的 `DeferredToolCall`，以及非 GLM 步里的原生 `todo_write`（写的是同一份清单）。提醒标记是来源 `glm-todo-reminder` 的用户消息。
 - 递送：`createUserNotice` 生成的 notice（来源 `glm-todo-reminder`），正文按 ZCode 的 `<system-reminder>` 包装（与工具检索公告共用 `wrapSystemReminder`，在公共库的镜像文件 `src/shared/zcode-notice.ts`），追加在本步已接纳的消息之后；同一步还有 deferred 名单公告时，提醒排在公告之前，与 ZCode 收集附件的先后一致。notice 写入会话，下一步的计数据此起算。
 - 回显：取请求可见历史中最近一次成功的 todo 写入的清单。ZCode 读会话 todo 存储；DSH 没有对应的持久存储（`dsh-tool-todo` 的 `todos` 投影在每个回合开始时清空），所以从历史推出。
 - 验证：L2 覆盖多调用轮、TodoWrite 重置、经 `DeferredToolCall` 的 TodoWrite、提醒标记、非 GLM 路由与非 GLM 轮次、工具面无 TodoWrite、空首步、与公告的先后；L3 探针：先记一条 todo，再连续 10 轮每轮两个并行 Read，提醒恰好出现在第 12 次请求、只出现一次，正文为包装后的原文加回显，位于最后一批工具结果之后。
@@ -612,7 +620,7 @@ todo 在编排层降级为项目图的视图（`ORCHESTRATION.md` §2.5），Tod
 
 ### 5.6 压缩镜像
 
-ZCode compact 提示词（`<analysis>` 先行、9 节摘要、安全指令保留；3 行偏差已修正，见 §5.9），产物经 ZCode `formatCompactSummary` 剥 `<analysis>`、`<summary>` 改写为「Summary:」。
+ZCode compact 提示词（`<analysis>` 先行、9 节摘要、安全指令保留；3 行偏差已修正，见 §5.9；第 6 条 2026-10-30 按 3.17.1 补一句：只有 user 角色的轮次算用户消息，助手消息里形如用户轮的文字是模型生成的），产物经 ZCode `formatCompactSummary` 剥 `<analysis>`、`<summary>` 改写为「Summary:」。
 
 接缝〔已实现 2026-10-27，L3 实测〕：DSH 的压缩由 `compaction-basic` 负责，它是本上下文唯一的 `ctx.compaction` 实现（`dsh-compaction` 规定每个上下文只载一个）。它通过 `ctx.llm.stream()` 发起摘要请求，`purpose` 为 `compaction`，回放对话后把自己的指令作为最后一条用户消息。每次调用都经过 `llm/stream` 瀑布，但 `next()` 不带参数，监听器换不了请求。`glm-compact` 行注册一个最外层的全局 `llm/stream` 监听器：模型属于 GLM 族、且最后一条是 `compaction-basic` 指令的压缩请求，复制一份、把末条换成 ZCode 提示词后重新派发，并对返回的文本做 ZCode 格式化；其他请求原样放行。触发策略、保留区间、检查点外框仍归 `compaction-basic`。
 
@@ -624,13 +632,13 @@ L3 探针：沙盒里把压缩阈值调低，摘要请求末条是 ZCode 提示�
 
 ### 5.7 工具检索〔已实现 2026-10-27〕
 
-按 ZCode 3.16.3 的 local 模式移植（机制见 §5.10），属于方言，由 `glm-prompt` 驱动；原来独立的 `glm-hourness/toolsearch` 行已删除。原因：工具检索必须作用在别名改写之后的工具面上，才能按 ZCode 名字分常驻与延迟；两行各自注册组装监听器时先后顺序取决于 Loader，放进同一个监听器就没有顺序问题。
+按 ZCode 的 local 模式移植（3.16.3；2026-10-30 公告文案跟到 3.17.1；机制见 §5.10），属于方言，由 `glm-prompt` 驱动；原来独立的 `glm-hourness/toolsearch` 行已删除。原因：工具检索必须作用在别名改写之后的工具面上，才能按 ZCode 名字分常驻与延迟；两行各自注册组装监听器时先后顺序取决于 Loader，放进同一个监听器就没有顺序问题。
 
 - 开关：`glm-prompt` 配置 `toolSearchMode`，`local`（默认）或 `off`。
 - 安装：`agent/created` 时在 agent 作用域注册 `LocalToolSearch` 与 `DeferredToolCall`，并注册一个 `agent/pre-step` 监听器。
 - 工具面：GLM 请求先做别名改写，再交给 `buildToolExposure`：延迟工具离开工具面，两个控制工具留下；没有延迟工具时控制工具也离开。非 GLM 请求只去掉控制工具。
 - 分类：ZCode 常驻名单保持常驻；有 ZCode 对应物的 DSH 工具跟随对应物（`read_image`、`subagent`、`subagent_fork`、`skill`、`workflow`、`get_goal`、`ask_user_question`、`bash`、`str_replace_editor`）；记忆工具与项目图工具常驻（`ORCHESTRATION.md` §8、§2.10；名单是公共库 `src/shared/tool-names.ts` 的 `ORCHESTRATION_RESIDENT_TOOLS`，逐个列名，编排层以后加的工具默认按 DSH 独有工具延迟，要常驻须在那里加名字）；其余 DSH 工具按 MCP 规则延迟。L3 探针中的 GLM 工具面（2026-10-27 为 28 个；2026-10-28 起 `read_image` 由 Read 别名包住，为 27 个），13 个延迟：TodoWrite、create_goal、exit_plan_mode、interrupt_agent、job_kill、job_list、job_output、list_agents、send_message、update_goal、web_fetch、web_search、working_directory。
-- 公告：每步在 `agent/pre-step` 计算新增、恢复、移除的 deferred 名单，追加一条 `<system-reminder>` notice（来源 `glm-tool-search`）；增量事实存在 notice 的 `source.toolSearchAnnouncement`，与 ZCode 公告元数据一致。已公告状态每步从 `session.deriveMessages()` 重新推出，所以续跑、重启和压缩后都按模型实际看得到的历史计算。
+- 公告：每步在 `agent/pre-step` 计算新增、恢复、移除的 deferred 名单，追加一条 `<system-reminder>` notice（来源 `glm-tool-search`）；增量事实存在 notice 的 `source.toolSearchAnnouncement`，与 ZCode 公告元数据一致。文案按 3.17.1：恢复的名字分 MCP（服务重连）与本会话两段；移除的名字分 MCP 服务断开、本会话不再有、仍在注册表里但本次请求隐藏三段，隐藏的名字另记在 `source.toolSearchHiddenNames`（3.17.1 `toolSearchHiddenNames`，判定用 agent 的 `tools.get`）；段落以单换行连接，此前按 3.16.2 源码用空行〔2026-10-30〕。已公告状态每步从 `session.deriveMessages()` 重新推出，所以续跑、重启和压缩后都按模型实际看得到的历史计算。
 - 检索结果：执行 `LocalToolSearch` 时按 ZCode 投影生成内容，即 `<functions>` 定义块、「Loaded: …」提醒、「Tool definitions already available …」提醒。「已加载」只认最近一条助手消息之前的成功检索结果（ZCode 同批不互相去重的语义）。
 - `DeferredToolCall`：校验与拒绝文案按 ZCode `resolveDeferredToolCall`；通过后经 `tools.execute` 执行目标，不带 `parent` 令牌。ZCode 在派发前就把包装还原成目标调用，所以 guard、审计流水、会话检查点看到的都应该是目标本身。todo 提醒从会话历史计数，历史里记的是模型发出的 `DeferredToolCall`，所以按其参数里的目标名识别 TodoWrite（§5.5）。
 - 文本：逐字镜像在 `src/toolsearch/zcode-text.ts`；`DeferredToolCall` 这个名字与 `<system-reminder>` 包装编排层也用（现场视图认包装调用、每步投影的格式），放在公共库的镜像文件 `src/shared/zcode-notice.ts`，`zcode-text.ts` 从那里导入。逐字门禁按字面量片段检查这两份文件（§5.9）。
@@ -646,7 +654,7 @@ L3 探针：沙盒里把压缩阈值调低，摘要请求末条是 ZCode 提示�
 
 | # | 能力 | 类 | 处置 | 状态 |
 | --- | --- | --- | --- | --- |
-| 1 | 工具命名与 schema | 方言 | 别名投影；七个别名按 3.16.3 重建并兑现，Grep、Bash 为本地化组合（§5.4） | 已实现，L3 探针通过，真机未验收 |
+| 1 | 工具命名与 schema | 方言 | 别名投影；七个别名按 ZCode 原文重建并兑现（2026-10-30 起为 3.17.1），Grep、Bash 为本地化组合（§5.4） | 已实现，L3 探针通过，真机未验收 |
 | 2 | TodoWrite 三字段 | 方言 | 垫片剥离 priority | 已实现 |
 | 3 | 身份节 | 方言 | 同名替换 | 已实现 |
 | 4 | todo 提醒 10/10 | 方言 | 逐字文案与阈值；按助手轮次从会话历史计数，`agent/pre-step` 递送（§5.5） | 已实现，L3 探针通过，真机未验收 |
@@ -662,50 +670,51 @@ L3 探针：沙盒里把压缩阈值调低，摘要请求末条是 ZCode 提示�
 | 14 | 缓存断点参数 | 通道 | 末条消息带断点；系统块按 ZCode 拆三块未做，实测不影响命中（§4.5b） | 部分实现 2026-10-28 |
 | 16 | thinking 与采样参数 | 通道 | 按 3.16.3 目录的选项映射发 `thinking: {type: "enabled"}` 与 `output_config.effort`（DSH 档位，缺省 high；标题 low；压缩取会话最近主步的档位）；不剥采样参数（AI SDK 不知道这个 thinking），是否带 `temperature` 由 DSH 决定 | 已实现 2026-10-28（m1-parity） |
 | 17 | 保留式思考：历史中的 reasoning 带签名回传 | 通道 | 签名只回同一路由；ZCode 的签名拒收重试未移植（端点不校验，§4.5c） | 已实现 2026-10-28 |
-| 18 | 请求归因：会话 id、会话类型、请求与追踪 id、query id 与来源、`metadata.user_id` | 通道 | 按 3.16.3：会话级 trace id、回合级 query id、`main_turn` / `compact` / `session_title` / `subagent` 来源；委派子会话经 `agents` 服务的会话头判定（§4.5b） | 已实现 2026-10-28（m1-parity） |
-| 19 | Dynamic Behavior 节（`# Communicating with the user`） | 方言 | coding-plan 方言没有这一节，start-plan 发原文（§5.3）；加不加等消融 A4（`question-30`、`question-31`） | 未实现 |
+| 18 | 请求归因：会话 id、会话类型、请求与追踪 id、query id 与来源、`metadata.user_id` | 通道 | 按 3.16.3：会话级 trace id、回合级 query id、`main_turn` / `compact` / `session_title` / `subagent` 来源；委派子会话经 `agents` 服务的会话头判定；3.17.1 的 `x-zcode-session-features`（§4.5b） | 已实现 2026-10-28（m1-parity）；会话特征 2026-10-30 |
+| 19 | Dynamic Behavior 节 | 方言 | 3.17.1 原文，coding-plan 与 start-plan 都发（§5.3） | 已实现 2026-10-30 |
 
 第 1、2、4、6、8 项的文本对齐状态以 §5.9 为准。
 
-### 5.9 逐字复核（2026-10-27）
+### 5.9 逐字复核（2026-10-27；2026-10-30 换到 3.17.1）
 
-方法：把方言里每段号称逐字的文本按行比对 ZCode 源码（`reference/ZCode/apps` 与 `packages`）、本机 3.16.3 安装包、pristine 3.15.1，以及 `reference/zcode-api`〔实读〕。源码路径相对 `apps/zcode-cli/packages/core/src/`。
+方法：把方言里每段号称逐字的文本按行比对 ZCode 源码（`reference/ZCode/apps` 与 `packages`）、本机 3.16.3 安装包、pristine 3.15.1，以及 `reference/zcode-api`〔实读〕。源码路径相对 `apps/zcode-cli/packages/core/src/`。2026-10-30 基线换到 3.17.1：表中每一项都按 3.17.1 pristine 副本复核，变了的已改写，门禁从此只对照这份副本（项目图 `zcode-3171-follow`）。
 
 | 文本 | 代码位置 | 结果 | 原文位置 |
 | --- | --- | --- | --- |
-| CLI 前缀 | `verbatim.ts` `CLI_PREFIX` | 一致 | `context/sections/cli-prefix.ts` |
-| 身份开头两句 | `verbatim.ts` `IDENTITY_OPENING_*` | 一致 | `context/sections/identity.ts` |
+| CLI 前缀 | `verbatim.ts` `CLI_PREFIX` | 与 3.17.1 一致（2026-10-30 跟进，删去 coding） | `context/sections/cli-prefix.ts` |
+| 身份开头两句 | `verbatim.ts` `IDENTITY_OPENING_*` | 与 3.17.1 一致（2026-10-30 跟进，两句都换了） | `context/sections/identity.ts` |
 | 官方安全声明 | `verbatim.ts` `SECURITY_NOTICE_OFFICIAL` | 与源码、pristine 一致；本机安装包此处为用户补丁 | `context/sections/identity.ts` |
-| Harness 块 | `verbatim.ts` `HARNESS_BLOCK` | 一致 | `context/sections/identity.ts` |
+| Harness 块 | 镜像文件 `zcode-harness-text.ts` | 与 3.17.1 一致（2026-10-30 跟进：bullet 行首空格、系统轮分支） | 3.17.1 包 `SDn` |
 | todo 提醒回显标题 | `verbatim.ts` `TODO_REMINDER_ECHO_HEADER` | 一致 | `runtime/helpers/runtime-reminders.ts` |
 | todo 提醒正文 | `verbatim.ts` `TODO_REMINDER_BODY` | 曾有两处不一致（`to track progress`、`if has become stale`，原文语法如此），已按原文修正 | `runtime/helpers/runtime-reminders.ts` |
-| Context management | `localize.ts` `CONTEXT_MANAGEMENT_DSH` | 一致 | 源码与安装包 |
-| compact 提示词 | `compact.ts` | 曾有 3 行不一致（第 4、8、9 节漏词），已按原文修正。结尾的 `REMINDER` 行与 3.16.3 安装包、pristine 一致，与源码不同，按安装包保留 | `compact/prompt.ts` |
+| Context management | `localize.ts` `CONTEXT_MANAGEMENT_DSH` | 与 3.17.1 一致（2026-10-30：两段，删去 3.16.3 的后四段） | 3.17.1 包 `IBo` |
+| Dynamic Behavior | `verbatim.ts` `DYNAMIC_BEHAVIOR` | 3.17.1 原文（2026-10-30 新增） | 3.17.1 包 `TBo` |
+| compact 提示词 | `compact.ts` | 曾有 3 行不一致（第 4、8、9 节漏词），已按原文修正。结尾的 `REMINDER` 行与 3.16.3 安装包、pristine 一致，与源码不同，按安装包保留；第 6 条 2026-10-30 按 3.17.1 补一句 | `compact/prompt.ts` |
 | ToolSearch 描述 | 旧 `toolsearch/index.ts` | 首句一致，之后不一致。已按 3.16.3 安装包重建为 `LocalToolSearch` 描述（2026-10-27） | 安装包；源码 `tool/search/description.ts` 是 3.16.2 版本 |
 | Deferred 声明段 | 旧 `verbatim.ts` `DEFERRED_DECLARATION` | 任何来源中都找不到；ZCode 系统提示词没有这一段，已删除（2026-10-27） | — |
-| 工具检索全部文本 | `toolsearch/zcode-text.ts` | 一致（门禁按字面量片段检查） | 安装包 |
-| Read、Write、Edit 描述、schema 与结果文本 | `zcode-tool-text.ts`（镜像文件） | 旧文本任何来源中都找不到，已按 3.16.3 安装包重建（2026-10-28）；Read 描述按 §5.4 删去不能兑现的行。schema 用 ZCode 锁定的 zod-to-json-schema 3.25.2 复算，与安装包中的 zod 定义一致 | 安装包；源码 `tool/handlers/read.ts`、`write.ts`、`edit.ts`、`contracts/src/tools/` |
+| 工具检索全部文本 | `toolsearch/zcode-text.ts` | 与 3.17.1 一致（门禁按字面量片段检查；2026-10-30 增删公告跟进） | 安装包 |
+| Read、Write、Edit 描述、schema 与结果文本 | `zcode-tool-text.ts`（镜像文件） | 旧文本任何来源中都找不到，已按 3.16.3 安装包重建（2026-10-28），2026-10-30 跟到 3.17.1（Read 描述一行、部分视图提醒）；Read 描述按 §5.4 删去不能兑现的行。schema 用 ZCode 锁定的 zod-to-json-schema 3.25.2 复算，与安装包中的 zod 定义一致 | 安装包；源码 `tool/handlers/read.ts`、`write.ts`、`edit.ts`、`contracts/src/tools/` |
 | Glob、Grep、TodoWrite 描述、schema 与 Glob、Grep 结果文本 | `zcode-tool-text.ts`（镜像文件） | 旧文本任何来源中都找不到，已按 3.16.3 安装包重建（2026-10-28）；Grep 按 §5.4 删去原生做不到的参数与 multiline 一行，删改在镜像文件之外。schema 用 zod-to-json-schema 3.25.2 复算 | 安装包；源码 `tool/handlers/glob.ts`、`grep.ts`、`todo.ts`，`adapters/src/fs/index.ts`（分页、类型表、glob 拆分） |
-| Bash 描述与 schema | `zcode-tool-text.ts`（原文）、`aliases.ts`（本地化） | 旧文本是无法追溯的改写，已按 3.16.3 安装包原文重建（2026-10-28），只按 §5.4 改写 shell 与工作目录两行、去掉 `dangerouslyDisableSandbox`；不属于逐字声明 | 安装包；源码 `tool/handlers/bash-prompt.ts`、`contracts/src/tools/bash.ts` |
+| Bash 描述与 schema | `zcode-tool-text.ts`（原文）、`aliases.ts`（本地化） | 旧文本是无法追溯的改写，已按 3.16.3 安装包原文重建（2026-10-28），2026-10-30 跟到 3.17.1；只按 §5.4 改写 shell 与工作目录两行、去掉「Command output …」一行与 `dangerouslyDisableSandbox`；不属于逐字声明 | 安装包；源码 `tool/handlers/bash-prompt.ts`、`contracts/src/tools/bash.ts` |
 
 结论：身份类文本与 context management 是原文；todo 提醒正文、compact 提示词的小处偏差已修正；start-plan 三块系统提示中的静态文本与原文一致。工具描述、deferred 声明段与 ToolSearch 描述原先大部分不是 ZCode 3.16.x 的原文，只存在于 `reference/zcode-tool-schemas.md`，其「协议采样」的出处无法追溯；现已全部按安装包重建或删除，七个别名的参数 schema 都与安装包中的 zod 定义一致。
 
 处置：
 
-- 来源优先级：3.16.3 安装包为准（用户补丁的安全声明除外，该段以源码与 pristine 为准）；源码作为可读参考。源码（3.16.2）与安装包的已知差异：compact 结尾 `REMINDER` 行；工具检索的 local 模式（§5.10）；Read 部分视图提醒与正文之间，安装包用一个换行，源码用两个；Grep 结果的分页行与计数汇总行之前，安装包用一个换行，源码用两个。
-- 逐字门禁 `scripts/check-verbatim.mjs`（`npm test` 的一道）：每段号称逐字的文本逐行必须出现在安装包或源码中；尚未重建的条目列为已知偏差，只许减少，某条一旦对上而未从名单删除也会失败，名单里的条目不再被检查时同样失败；机器上没有参考源时跳过〔已实现〕。start-plan 的系统提示文本全部受检：`ZCODE_SYSTEM` 的 `cliPrefix`、`stableSections` 与 `dynamicSections`（Dynamic Behavior 与 Context management 两节，2026-10-29 补上，项目图 `prompt-fixes`；此前只查前两项）。补上后条目 442 → 444，受检行 269 → 285，两节都与 3.16.3 安装包一致；`tests/check-verbatim.spec.ts` 断言这三项的每段文本都在受检条目里。门禁默认读的安装包路径是本机桌面版的 `zcode.cjs`。本机 ZCode 2026-10-29 21:04 自动更新到 3.17.1（两版的副本在 `reference/zcode-3.16.3/` 与 `reference/zcode-3.17.1/`，项目图 `d-zcode-3171`），新版里没有 3.16.3 的身份文本、工具检索与 Read 的几段文本，这些行现在靠 `reference/ZCode`（3.16.2 源码）通过；门禁改为只认参照副本由项目图 `zcode-3171-follow` 做。`reference/` 不入库，git worktree 里没有：门禁经 `scripts/reference-dir.mjs` 先找检出自己的 `reference/`，没有就读主检出的（仓库公共 git 目录的上一级），报告里记作 `source (main checkout)`，所以 worktree 与主检出比对同一批参考源，不需要 `ZCODE_BUNDLE`、复制或链接。
-- 镜像文件：整份文件都是逐字声明的源文件（`src/toolsearch/zcode-text.ts`、`src/glm-prompt/zcode-tool-text.ts`、`src/glm-llm/zcode-wire.ts`、`src/shared/zcode-notice.ts`），门禁抽出其中每个字符串与模板字面量片段逐行比对，模板按插值点切开。这样带插值的模板也能逐片检查。镜像文件里不能出现正则字面量和除法，扫描器不解析它们。
+- 来源：3.17.1 pristine 副本为准（2026-10-30 起；此前以 3.16.3 安装包为准，用户补丁的安全声明以源码与 pristine 为准）。源码（3.16.2）只作可读参考；它与发布包的已知差异都按包：compact 结尾 `REMINDER` 行；工具检索的 local 模式（§5.10）；Read 部分视图提醒与正文之间、Grep 结果的分页行与计数汇总行之前，包用一个换行，源码用两个；工具检索增删公告的段落之间，包用一个换行，源码用空行（本项目此前按源码，2026-10-30 改正）。
+- 逐字门禁 `scripts/check-verbatim.mjs`（`npm test` 的一道）：每段号称逐字的文本逐行必须出现在 3.17.1 pristine 副本 `reference/zcode-3.17.1/zcode.cjs` 中〔2026-10-30 起，项目图 `zcode-3171-follow`〕；尚未重建的条目列为已知偏差，只许减少，某条一旦对上而未从名单删除也会失败，名单里的条目不再被检查时同样失败；机器上没有这份副本时跳过文本检查〔已实现〕。门禁不读本机桌面版的安装包（随自动更新变化，用户打过补丁），也不读 `reference/ZCode` 源码：此前两者命中其一即算通过，3.16.2 源码仍含 3.16.3 的身份、Harness、Context management、工具检索与 Read 文本，会让 3.17.1 已删的行继续通过。start-plan 的系统提示文本全部受检：`ZCODE_SYSTEM` 的 `cliPrefix`、`stableSections` 与 `dynamicSections`（Dynamic Behavior 与 Context management 两节，2026-10-29 补上，项目图 `prompt-fixes`；此前只查前两项，补上时条目 442 → 444、受检行 269 → 285）；`tests/check-verbatim.spec.ts` 断言这三项的每段文本都在受检条目里。3.17.1 的 Harness 系统轮 bullet 由三元分支与尾句在模板插值点拼成，渲染后的整行不是包里的连续子串；门禁把 start-plan 身份节里渲染出的这一行拆成分支句与尾句分别比对（`systemTurnPieces`，两个分支取自镜像文件 `zcode-harness-text.ts`），只对这两种渲染行生效。2026-10-30 门禁对照 3.17.1 副本：489 段、292 行受检，已知偏差 0。`reference/` 不入库，git worktree 里没有：门禁经 `scripts/reference-dir.mjs` 先找检出自己的 `reference/`，没有就读主检出的（仓库公共 git 目录的上一级），所以 worktree 与主检出比对同一份副本，不需要复制、链接或环境变量。
+- 镜像文件：整份文件都是逐字声明的源文件（`src/toolsearch/zcode-text.ts`、`src/glm-prompt/zcode-tool-text.ts`、`src/glm-prompt/zcode-harness-text.ts`、`src/glm-llm/zcode-wire.ts`、`src/shared/zcode-notice.ts`），门禁抽出其中每个字符串与模板字面量片段逐行比对，模板按插值点切开。这样带插值的模板也能逐片检查。镜像文件里不能出现正则字面量和除法，扫描器不解析它们。
 - 镜像文件的导入〔已实现 2026-10-29，split 第 1 步〕：文件开头（头注释之后）可以有一段单行导入语句（`import …`、`export … from …`），即导入块。切字面量之前只去掉导入块里的语句行，模块路径不算逐字声明，导入块之后的内容一个字符都不去，所以模板里以 `import ` 开头的原文行、`zcode-tool-text.ts` 里 `"… from the user's profile."` 这种句子照常受检。值导入只许来自其他镜像文件，`import type` 只许来自 `src/shared/`，导入带不进没有检查过的文本。导入块之后再出现导入或再导出语句就失败（写成多行的导入让导入块在它的第一行结束，同样失败）；这一条在去掉注释、字面量内容换成空白的代码文本上判定，字面量里的文字不会被当成语句。门禁通过时报告受检行数（不短于 13 个字符的行）。上线时（2026-10-29）条目从 443 变为 442：少的是 `zcode-tool-text.ts` 里从未受检的模块路径 `'./json.ts'`；受检行数前后都是 269，没有放宽任何文本的检查。用例在 `tests/check-verbatim.spec.ts`。本地化的组合（删去哪几行、改写哪几行、删去或追加哪些字段）写在镜像文件之外；标 `localized` 的别名规格（Grep、Bash）不再整段比对描述，由镜像文件的逐片检查覆盖其原文部分。
 - 已知偏差：无（2026-10-28 起名单为空）。名单机制保留，以后出现新的待重建文本时仍按只减不增处理。
 
-### 5.10 ZCode 的工具检索机制（3.16.3）
+### 5.10 ZCode 的工具检索机制（3.16.3；3.17.1 只改了增删公告）
 
 〔实读，3.16.3 安装包 `zcode.cjs` 与源码 `tool/search/`（3.16.2）〕
 
 - 模式：`off` / `local` / `native` / `auto`。桌面版设置 `toolSearchMode` 默认 `off`，CLI 参数 `--toolsearch-mode` 默认也是 `off`。默认配置下所有工具直接加载，没有 ToolSearch，也没有 deferred。
 - `native`：模型侧支持服务端工具检索时使用；工具名 `ToolSearch`，检索返回的 schema 加载后可直接调用。
 - `local`：客户端检索。3.16.3 把检索工具改名为 `LocalToolSearch`（`toolSearchNameForMode`，注册名仍是 `ToolSearch`，`LocalToolSearch` 是别名），描述换成 local 版本；deferred 工具经 `DeferredToolCall({name, input})` 包装调用。3.16.2 源码里 local 模式仍叫 `ToolSearch`。
-- 名单公告：deferred 工具名不写进系统提示词，而是作为附件以 `<system-reminder>` 包裹的用户消息递送。local 模式的开头是「The following deferred tools are available via LocalToolSearch. Use query … then call them through DeferredToolCall with {name, input}. Call resident tools directly:」，native 模式是「…are now available via ToolSearch…」。名单变化时补发新增、恢复、移除的公告；增量事实随公告落盘。系统提示词里没有 deferred 声明段。
+- 名单公告：deferred 工具名不写进系统提示词，而是作为附件以 `<system-reminder>` 包裹的用户消息递送。local 模式的开头是「The following deferred tools are available via LocalToolSearch. Use query … then call them through DeferredToolCall with {name, input}. Call resident tools directly:」，native 模式是「…are now available via ToolSearch…」。名单变化时补发新增、恢复、移除的公告；增量事实随公告落盘。3.17.1 把恢复与移除的文案按来源拆开，并记下仍注册但被隐藏的名字（§5.7）。系统提示词里没有 deferred 声明段。
 - 哪些工具延迟：只有声明了 `shouldDefer` 的工具与 MCP 工具。常驻：Read、Write、Edit、Glob、Grep、Bash、ApplyPatch、Agent、Skill、Workflow、GoalRead、AskUserQuestion、ToolSearch、DeferredToolCall。延迟：TodoWrite、TodoRead、WebFetch、WebSearch、Cron 族、计划模式进出、SendMessage、TaskOutput、TaskStop、工作流管理族、`js` 等。
 - 检索：`select:a,b` 精确选择（含别名，常驻工具也可选），否则按名称分词、描述与 searchHint 打分，`+词` 表示必须命中，默认返回 5 个；3.16.3 的描述与 `query` 参数说明都写明不支持正则。
 - local 模式的结果：匹配到的定义以 `<functions>` 块内一行一个 `<function>{description,name,parameters}</function>` 回到工具结果里，后跟 `<system-reminder>` 包裹的「Loaded: … Call it now with DeferredToolCall … No additional LocalToolSearch is needed …」提示；最近一条助手消息之前已经交付过的定义再搜，回「Tool definitions already available …」提示；没有匹配时回「No matching deferred tools found. Loaded tools are not searchable here …」。

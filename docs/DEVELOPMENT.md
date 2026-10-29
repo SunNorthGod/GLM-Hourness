@@ -95,6 +95,7 @@ DSH 官方类型已作为 devDependency 安装（`@deepseek-ai/dsh-llm`、`@deep
 - 新增 adapter / 服务实现时，同样用「官方类型 + 类型级断言」把契约钉死在 tsc 里，禁止只靠运行时手测。
 - 契约来源优先级：桌面版运行时的包（`reference/dsh-desktop-0.2.1-rc.3/`，从 `app.asar` 导出）> 官方 `.d.ts` > `reference/deepseek-harness` 源码 > 运行时行为观察。`reference/deepseek-harness` 是更新的主干，版本号相同但接口不同，只用来理解设计意图（`DESIGN.md` §2.4a）。
 - 重新导出运行时包（桌面版升级后）：用 Electron node 模式读 `resources/app.asar/dsh/node_modules/@deepseek-ai/` 并整目录复制到 `reference/dsh-desktop-<版本>/`（跳过嵌套 `node_modules`）。然后按 `DESIGN.md` §2.4a 接口对照表逐项复核，改动只落在薄适配层，再跑 `npm run probe`。
+- 换 ZCode 基线（ZCode 自动更新之后）：安装目录的包随更新变化，门禁不读它。把新版的 pristine 包复制到 `reference/zcode-<版本>/zcode.cjs` 并记下大小与 MD5，旧版副本留作对照；按旧版到新版逐段比对本仓库引用的每段文本与代码（3.16.3 → 3.17.1 用压缩名归一后的偏移映射，差异清单在不入库的 `.agents/tasks/zcode-3171/diff.md`）。文本全部更新之后，最后一个提交把 `scripts/check-verbatim.mjs` 的 `REFERENCE_BUNDLE` 改指新副本，`AGENTS.md` 与各文档的基线条款同批改（`DESIGN.md` §5.9）。
 
 ## 5. 纪律
 
@@ -171,7 +172,7 @@ DSH 官方类型已作为 devDependency 安装（`@deepseek-ai/dsh-llm`、`@deep
 - 仓库：git，远端为 Gitee 私有仓库 `NorthGod_BFDG/GLM-Hourness`（`origin`），主分支 `main`。仓库由 Kiro 管理。
 - 一件事一个提交；提交信息用技术话术写清改了什么、为什么、怎么验证的（干净区）。项目图上线后，提交信息带节点 id。
 - 不强推，不改写已推送的历史，不跳过钩子。
-- 不入库：`.llm/`（凭证、记忆、审计、原始资料）、`/reference/`（审计用参考源码）、`dist/`、`node_modules/`、`.pnpm-store/`。提交前扫描密钥（`npm test` 含密钥扫描，§10）。git worktree 里因此没有 `reference/`：读参考源的门禁与测试（逐字门禁 `scripts/check-verbatim.mjs`；`tests/glm-startplan.spec.ts` 拿 start-plan 文本比对 `reference/zcode-api` 的 `zcode_system.json`）经 `scripts/reference-dir.mjs` 读主检出的 `reference/`，worktree 里不复制、不链接，也不设环境变量。
+- 不入库：`.llm/`（凭证、记忆、审计、原始资料）、`/reference/`（审计用参考源码）、`dist/`、`node_modules/`、`.pnpm-store/`。提交前扫描密钥（`npm test` 含密钥扫描，§10）。git worktree 里因此没有 `reference/`：读参考源的门禁与测试（逐字门禁 `scripts/check-verbatim.mjs` 读 `reference/zcode-3.17.1/zcode.cjs`；`tests/glm-startplan.spec.ts` 拿 start-plan 文本比对 `reference/zcode-api` 的 `zcode_system.json`）经 `scripts/reference-dir.mjs` 读主检出的 `reference/`，worktree 里不复制、不链接，也不设环境变量。
 - 换行：`.gitattributes` 固定 LF。
 - 被取代的文档直接删除，原文留在 git 历史中。
 

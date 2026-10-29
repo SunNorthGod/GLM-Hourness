@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "GLM ZCode 通道",
-    "description": "在 DeepSeek Harness 中按 ZCode 3.16.3 的训练分布运行 GLM：原生通道与登录、提示词与工具面镜像、工具懒加载、压缩，以及 GLM 按钮与设置页。"
+    "description": "在 DeepSeek Harness 中按 ZCode 3.17.1 的训练分布运行 GLM：原生通道与登录、提示词与工具面镜像、工具懒加载、压缩，以及 GLM 按钮与设置页。"
   }
 }

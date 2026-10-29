@@ -14,7 +14,7 @@
 
 ## 基线
 
-- ZCode 基线 3.16.3：身份头、签名、提示词与工具面以同一版本为准。本机安装版被用户打过补丁，只作机制参考，逐字文本以 `docs/reference/zcode-verbatim.md` 记录的来源为准。
+- ZCode 基线 3.17.1：身份头、签名、提示词与工具面以同一版本为准。逐字文本只认 pristine 副本 `reference/zcode-3.17.1/zcode.cjs`，逐字门禁只读它（来源分级见 `docs/reference/zcode-verbatim.md`）。本机安装版随自动更新变化、被用户打过补丁，`reference/ZCode`（3.16.2 源码）仍含旧版文本，两者都只作机制参考。
 - 不依赖反向代理：任何行都不识别或依赖反代路由。
 
 ## 代码

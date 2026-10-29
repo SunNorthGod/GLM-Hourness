@@ -2,7 +2,7 @@
   "name": "dsh-glm-zcode",
   "version": "0.3.0",
   "private": true,
-  "description": "GLM ZCode channel for DeepSeek Harness: runs GLM on its ZCode 3.16.3 training distribution with the native channel and login, the prompt and tool-surface mirror, lazy tool loading and compaction.",
+  "description": "GLM ZCode channel for DeepSeek Harness: runs GLM on its ZCode 3.17.1 training distribution with the native channel and login, the prompt and tool-surface mirror, lazy tool loading and compaction.",
   "type": "module",
   "license": "MIT",
   "exports": {

@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "ZCode prompt and tools",
-    "description": "In GLM sessions, mirrors the ZCode 3.16.3 system prompt and tool surface, loads tools on demand, and adds the peak-hour reminder."
+    "description": "In GLM sessions, mirrors the ZCode 3.17.1 system prompt and tool surface, loads tools on demand, and adds the peak-hour reminder."
   }
 }

@@ -9,7 +9,7 @@
 
 - 仓库：`C:\Users\29596\Desktop\Project\GLM-Hourness`；git，远端 Gitee 私有仓库 `NorthGod_BFDG/GLM-Hourness`，主分支 `main`。
 - 目标：让 GLM 以 ZCode 训练分布住进 DeepSeek Harness（DSH），并在其上建一套编排层，把开发体系量化成由 harness 保证实施的标准（`CHARTER.md`）。
-- 运行时：DSH Desktop `0.2.1-rc.3`，profile `desktop`；ZCode 基线 3.16.3。
+- 运行时：DSH Desktop `0.2.1-rc.3`，profile `desktop`；ZCode 基线 3.17.1（2026-10-30 起，此前为 3.16.3；跟进见项目图 `zcode-3171-follow`）。
 - 安装形态（split 第 5、6 步起，`DESIGN.md` §2.3）：仓库产出两个 bundle，各带自己的客户端面，profile 里是指向检出的链接，加载 `packages/*/dist` 与 `packages/*/ui/client.js`。行名都经包命名（宿主行 `<包名>/<行>`，客户端行是精确包名），设置页「内置插件」给每行显示 `locale/` 里的标题（m8-row-titles，桌面版截图核对随批次 L4）：
   - `dsh-glm-zcode@0.3.0`（`packages/glm`）：GLM 通道包，4 个宿主行（`glm-llm`、`glm-login`、`glm-prompt`、`glm-compact`）加客户端行 `glm-ui`（包自己的客户端面，GLM 按钮与设置页，默认启用：split 合入后的桌面版验收第一轮通过后启用，2026-10-29）；
   - `dsh-hourness@0.3.0`（`packages/hourness`）：编排层包，7 个宿主行（`data`、`guard`、`memory`、`workflow`、`hourness`、`graph`、`graph-panel`）加客户端行 `ui`（包自己的客户端面，项目图面板）。
@@ -31,7 +31,7 @@ AGENTS.md      仓库规则
 package.json   开发工作区根（dsh-glm-hourness，private，不是 bundle）：脚本、开发依赖与 peerDependencies
 .llm/          不入库，项目目录：audit/（违规与决策；旧的用量副本与 dialect-init 流水已于 2026-10-29 删除）、memory.json、docs/（原始资料快照与抓取脚本）、probe-runs/、calibration-runs/；旧的 credentials.json 与 device-mid.txt 已于 2026-10-29 删除（m1-cleanup）
 ~/.dsh/glm-hourness/  仓库外，用户级目录：audit/usage.jsonl、credentials.json（2026-10-29 起为版本 2）、device-mid.txt（m1-parity 起不再使用，DESIGN.md §2.4）
-reference/     不入库：审计用参考源码（zcode-api、deepseek-harness、ZCode、zcode-plugins）与桌面版运行时包导出 dsh-desktop-0.2.1-rc.3/，约 2.5 GB
+reference/     不入库：审计用参考源码（zcode-api、deepseek-harness、ZCode、zcode-plugins）、ZCode 发布包副本 zcode-3.16.3/ 与 zcode-3.17.1/（逐字门禁只读后者）与桌面版运行时包导出 dsh-desktop-0.2.1-rc.3/，约 2.5 GB
 .agents/       不入库：编排任务状态与一次性脚本（如 m1-parity 集成报告 zcode-parity/、批次 L4 记录 m1-l4/、借用审计报告 dsh-borrow-audit/report.md、缓存调查 cache-2026-10-28/）
 .worktrees/    不入库：并行线的 git 工作树。目前没有登记的工作树，目录为空（graph-engine 留下的空目录已于 2026-10-29 删除）
 ```
@@ -40,9 +40,9 @@ reference/     不入库：审计用参考源码（zcode-api、deepseek-harness�
 
 | 行 | 状态 |
 | --- | --- |
-| `glm-llm` | m1-parity（2026-10-29 合入，`a9f12e1`）之后，coding-plan 请求中本包能控制的部分与 ZCode 3.16.3 代码级一致：项目令牌鉴权、拿不到即失败，凭证记录版本 2（首次读取迁移并去掉 secret），`X-Title` electron，3.16.3 的 User-Agent、头序与归因头，ZCode 的设备 ID（缺失时按 3.16.3 写回 `~/.zcode`），请求体与 `max_tokens`；DSH 控制的差异与本包的近似见 `DESIGN.md` §4.8。沙盒真实网络运行（2026-10-29）10 个请求全部 200，5 个模型请求都签名，鉴权形式、头名顺序与大小写、请求体与 3.16.3 一致（`DESIGN.md` §4.3）。桌面版批次 L4（2026-10-29）通过：GLM-5.3-Flash 主会话 6 个回合、委派子会话、会话标题与一次手动压缩都正常完成，真实凭证迁移一次。此前：真网冒烟、GLM-5.3-Flash 读图（2026-10-28）、`glmsandbox` 标定基线（两档模型各 6 次多轮工具会话，`ORCHESTRATION.md` §10.5.2） |
-| `glm-login` | 可用；`/glm-status` 输出凭证状态与调用会话的行健康表；缺 OAuth 令牌或账号 id 的登录显示为未登录并带 3.16.3 的原因（m1-parity） |
-| `glm-prompt` | 在 rc.3 运行时上生效，含 ZCode 3.16.3 local 工具检索；七个别名的描述与 schema 均已按 3.16.3 重建；todo 提醒按助手轮次从会话历史计数；GLM 会话进入高峰时段时收到一条提醒（`ORCHESTRATION.md` §11.4）。2026-10-29 L4：主会话与子会话的系统提示含 `You are ZCode, an interactive coding agent`，不含 `powered by DeepSeek Harness` |
+| `glm-llm` | coding-plan 请求中本包能控制的部分与 ZCode 3.17.1 代码级一致：m1-parity（2026-10-29 合入，`a9f12e1`）按 3.16.3 对齐，2026-10-30 跟到 3.17.1（版本号、归因头 `x-zcode-session-features`、项目令牌请求失败的细分错误码；其余代码两版逐字节一致，项目图 `zcode-3171-follow`，3.17.1 的沙盒真实请求与 L4 由这个节点跑）。对齐的内容：项目令牌鉴权、拿不到即失败，凭证记录版本 2（首次读取迁移并去掉 secret），`X-Title` electron，ZCode 的 User-Agent、头序与归因头，ZCode 的设备 ID（缺失时按 ZCode 的做法写回 `~/.zcode`），请求体与 `max_tokens`；DSH 控制的差异与本包的近似见 `DESIGN.md` §4.8。沙盒真实网络运行（2026-10-29）10 个请求全部 200，5 个模型请求都签名，鉴权形式、头名顺序与大小写、请求体与 3.16.3 一致（`DESIGN.md` §4.3）。桌面版批次 L4（2026-10-29）通过：GLM-5.3-Flash 主会话 6 个回合、委派子会话、会话标题与一次手动压缩都正常完成，真实凭证迁移一次。此前：真网冒烟、GLM-5.3-Flash 读图（2026-10-28）、`glmsandbox` 标定基线（两档模型各 6 次多轮工具会话，`ORCHESTRATION.md` §10.5.2） |
+| `glm-login` | 可用；`/glm-status` 输出凭证状态与调用会话的行健康表；缺 OAuth 令牌或账号 id 的登录显示为未登录并带 ZCode 的原因（m1-parity） |
+| `glm-prompt` | 在 rc.3 运行时上生效，含 ZCode local 工具检索；系统提示词各节与七个别名的描述、schema 按 3.17.1（2026-10-30 跟进，coding-plan 新增 Dynamic Behavior 节，项目图 `zcode-3171-follow`；此前按 3.16.3 重建）；todo 提醒按助手轮次从会话历史计数；GLM 会话进入高峰时段时收到一条提醒（`ORCHESTRATION.md` §11.4）。2026-10-29 L4（3.16.3 文本）：主会话与子会话的系统提示含 `You are ZCode, an interactive coding agent`，不含 `powered by DeepSeek Harness`；3.17.1 文本（CLI 前缀 `You are ZCode, an interactive agent`）的 L3 探针与 L4 由 `zcode-3171-follow` 跑 |
 | `glm-compact` | 在 `llm/stream` 上替换压缩指令（2026-10-27），L3 探针实测压缩生效；2026-10-29 桌面版对空闲会话手动 `/compact` 一次，92.6 秒完成（26 条历史），压缩后的回合正常 |
 | `data` | 默认启用：数据目录服务（用户级 `~/.dsh/glm-hourness/`、项目 `.llm/`）；L3 探针验证，桌面版上生效 |
 | `guard` | 拦截与纠偏可用，所有路由、所有模型都拦（2026-10-29 split 第 7 步按 `question-14` G3 改，此前只管 GLM 调用；`ORCHESTRATION.md` §6.2）；违规落盘（项目目录 `audit/violations.jsonl`，记录带来源 `scope` 与 `route`）；`file-tools-only` 引号感知，规则声明进每条路由的系统提示词，工作区变更兜底以影子模式记录（需要 `workspace-changes`，桌面版 profile 有），2026-10-28 L4 实测拦截与记录生效；相对路径按会话工作目录解析（2026-10-28，L3 探针验证）。非 GLM 路由上的拦截只经 L2 与 L3 探针验证，L4 在 split 合入时做。2026-10-29 `/glm-status` 显示生效，L4 是只读任务，没有触发拦截；申报未接通 |
@@ -57,7 +57,7 @@ reference/     不入库：审计用参考源码（zcode-api、deepseek-harness�
 
 装机：2026-10-29 10:02（UTC+8）agent 重启桌面版，加载主检出 `0f9f284`（代码与 `a9f12e1` 相同）。没有新的 crash log，宿主 stdout 与 stderr 里没有本包的输出；页面控制台只有已知的三类噪声，都不来自本包：inspector 插件连 `ws://127.0.0.1:9230/ingest` 失败、`dsh-app://app/plugins/events` 的 `ERR_FAILED`、旧会话的 `changes.summary` 404。10:48 清理之后再重启一次（`m1-cleanup`）：新实例没有 crash log，控制台只有 ingest 噪声，宿主输出里没有本包；重启时被强制结束的旧实例留下一份 renderer crash log（见 §6 桌面版自验）。
 
-门禁（2026-10-29，主检出 `0f9f284`，代码与 `a9f12e1` 相同）：`npm run build`、`npm run preflight` 通过；`npm test` 39 个 spec 文件、556 用例通过、0 失败，逐字门禁 443 段、已知偏差 0 条，检查器门禁对照基线 ESLint 250 条压制、knip 21 条、jscpd 2 处克隆（16 行），gitleaks 无发现。`npm run probe` 94/94（`a9f12e1`，worktree 上用临时 profile 运行，探针期望没有改动）。标定基线（`npm run calibrate`，提交 `4cb8799`）：两个起步任务、两档模型各 3 次，12/12 完成（`ORCHESTRATION.md` §10.5.2）。
+门禁（2026-10-29，主检出 `0f9f284`，代码与 `a9f12e1` 相同）：`npm run build`、`npm run preflight` 通过；`npm test` 39 个 spec 文件、556 用例通过、0 失败，逐字门禁 443 段、已知偏差 0 条，检查器门禁对照基线 ESLint 250 条压制、knip 21 条、jscpd 2 处克隆（16 行），gitleaks 无发现。`npm run probe` 94/94（`a9f12e1`，worktree 上用临时 profile 运行，探针期望没有改动）。zcode-3171 分支（2026-10-30）：逐字门禁只对照 `reference/zcode-3.17.1/zcode.cjs`，489 段、292 行受检、已知偏差 0；`npm test` 661 用例通过。标定基线（`npm run calibrate`，提交 `4cb8799`）：两个起步任务、两档模型各 3 次，12/12 完成（`ORCHESTRATION.md` §10.5.2）。
 
 项目图（M2）：引擎经用户批准（M2.1 选 A），`graph-engine` 于 2026-10-28 合入 main（`5463662`）；同日加上决策分级与转述（`d4cd7e2`，`ORCHESTRATION.md` §2.9.1）。图行 `glm-hourness/graph` 与面板行 `graph-panel` 经 L3、L4 后默认启用。远端分支 `origin/graph-engine`（`5463662`，是 `main` 的祖先）已于 2026-10-29 删除（项目图 `m1-cleanup`）。
 
@@ -76,14 +76,14 @@ reference/     不入库：审计用参考源码（zcode-api、deepseek-harness�
 ## 5. 已知问题
 
 1. 路由判定已收口到 `src/shared/route.ts`，`glm-prompt`（含工具检索与 todo 提醒）已改用（`DESIGN.md` §3）。todo 提醒自 2026-10-28 起按 ZCode 的助手轮次口径计数（`DESIGN.md` §5.5）。
-2. 版本基线已统一为 3.16.3；`X-Title` 按用户定案（2026-10-28，项目图 `question-8`）改为桌面版的 `Z Code@electron`，模型请求与配置请求相同（`DESIGN.md` §4.2）。
+2. 版本基线已统一为 3.17.1（2026-10-30，此前为 3.16.3）；`X-Title` 按用户定案（2026-10-28，项目图 `question-8`）改为桌面版的 `Z Code@electron`，模型请求与配置请求相同（`DESIGN.md` §4.2）。
 3. guard 闭环缺申报一段（记录、告知已于 2026-10-28 接通）。`=>`、`>>>`、`->` 误判已修（2026-10-28，引号感知，`ORCHESTRATION.md` §6.5.1）；读不到的 shell 写法（.NET 调用、`cmd /c`、PowerShell 别名如 `del`）只由工作区变更兜底记录，不拦截（§6.5.2）。L4 暴露的相对路径问题已修（2026-10-28）：相对路径按会话工作目录解析，`..` 折叠（§6.1）。拦截范围 2026-10-29 改为所有路由（`question-14` G3，§6.2）；file-tools-only 在其他模型上的误伤率还没有数据，晨报把其他路由的记录另行计数。
 4. 数据目录分裂：已修（2026-10-28，`DESIGN.md` §2.4）。用户级数据在 `~/.dsh/glm-hourness/`，项目数据在工作区 `.llm/`；凭证与 deviceMid 已于 2026-10-28 搬到用户级目录。仓库里的原件（`.llm/credentials.json` 是仍含 API Key secret 的版本 1 记录，另有 `.llm/device-mid.txt`）已于 2026-10-29 删除（项目图 `m1-cleanup`）。
 5. 签名握手地址错：已修并实测（2026-10-28，`b6367d3`、`6af6c51`，`DESIGN.md` §4.3，项目图 `m1-signing`）。适配器曾把路由后的 `zcode.z.ai` URL 交给签名层，握手每次 404，且每个请求前都重试一次；原先「握手对当前凭证失败」的归因不成立。现在握手发往 provider origin `https://open.bigmodel.cn/api/paas/c1f3a7e2/v2/client`，失败后该（origin, 凭证）60 秒内不再握手，start-plan 不签名。60 秒冷却、两次 VERIFY 后的永久旁路、凭证不可解析等情况下放行，是对 3.16.3 的三处偏离（`DESIGN.md` §4.8）。m1-parity 之后的沙盒真实网络运行（2026-10-29，`a9f12e1`）：握手 200，5 个模型请求都签名、都 200，两个鉴权头与签名都用项目令牌，没有 VERIFY 拒绝。桌面版两次以签名代码重启（2026-10-28、2026-10-29），glm-llm 都生效。仍未决：签名对 1.5 倍套餐扣减的影响未知（用量流水不含套餐扣减）；签名运行的响应头延迟偏高（单样本，未归因）；桌面版上签名是否成功看不到，生产构造没有接 `onEvent`，签名状态不可见；start-plan 只做了离线验证（第 6 项）。
 6. start-plan 档只有单测，未做真机授权验证。
 7. 峰谷口径：已修（2026-10-28，`ORCHESTRATION.md` §11.2）。面板按积分计，高峰为工作日 14:00–18:00（UTC+8），其余时段按 50%；5 小时窗口、周额度、预估耗尽时间要等通道取数（`DESIGN.md` §4.7）。
 8. 记忆存储判据过严，路径或文件名样式的文字一律被拒（`ORCHESTRATION.md` §8.1）。
-9. 方言逐字文本：七个工具别名都已按 3.16.3 重建（2026-10-28），逐字门禁已知偏差为 0；Grep 与 Bash 是本地化组合，删改及与 ZCode 的剩余差异见 `DESIGN.md` §5.4。todo 提醒正文、compact 提示词、工具检索文本已按原文重建，deferred 声明段已删除（`DESIGN.md` §5.9）。工具检索在 ZCode 默认关闭，本项目按用户定案默认开启；与 ZCode 的剩余差异见 `DESIGN.md` §5.7。
+9. 方言逐字文本：七个工具别名都已按 ZCode 原文重建（2026-10-28 按 3.16.3，2026-10-30 跟到 3.17.1），逐字门禁只对照 `reference/zcode-3.17.1/zcode.cjs`，已知偏差为 0；Grep 与 Bash 是本地化组合，删改及与 ZCode 的剩余差异见 `DESIGN.md` §5.4（Bash 不发 3.17.1 的「Command output … not reliably to the user」一行，DSH 上不成立）。todo 提醒正文、compact 提示词、工具检索文本已按原文重建，deferred 声明段已删除（`DESIGN.md` §5.9）。工具检索在 ZCode 默认关闭，本项目按用户定案默认开启；与 ZCode 的剩余差异见 `DESIGN.md` §5.7。
 10. UI 视觉未被整体接受；全部 UI 的审查在项目图 `m8-ui-audit`。
 11. cot-translation 与 Agent Team（DSH 官方实验包，非本项目组件）已按用户同意从桌面版 profile 的 bundle 列表移除（2026-10-28；当时的备份 `package.json.bak-1793157445556` 已于 2026-10-29 随 `m1-cleanup` 删除）；2026-10-29 profile 的 bundle 列表里已没有这两个包。
 12. 凭证加密密钥可由本机信息推导（`DESIGN.md` §4.1）。
