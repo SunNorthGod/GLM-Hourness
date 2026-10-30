@@ -360,6 +360,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "E3 独立评审（run m7-e3-review-and-merge，wf_42932ee3429d71f7，claude-sonnet-5.5）：APPROVED，挡路 0、不挡路 11（8 条在 E3 自己的代码或取舍里，3 条排到 E1b、E7）。评审逐条给了证据：执行器没有任何一个操作会挪动主干或远端跟踪引用；--no-replace-objects 走同一个入口、每次调用都带；会丢工作的命令先存快照，存不了就拒绝执行；共用锁加了 LockOptions 之后，默认选项下的 9 个场景与原来行为一致。两条要在 E7 调用之前修掉、不能拖：一、门禁工作树守卫放过了被重定向的 .git 文件与一个被遗弃的游离 HEAD 提交（评审用探针确认过）；二、设计 §3.8.4 执行前判定表漏了五条能让主干前进的路，排给 E1b 与 E7 补。评审稿 .agents/tasks/m7/review-e3.md 与 review-e3.json。接下来同一运行跑四道门禁并合入主干。"
+    },
+    {
+      "at": "2026-10-30T17:31:25.094Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "E3（m7-5：git 执行器、门禁锁、共用锁的 LockOptions）已合入主干。独立评审（run m7-e3-review-and-merge，wf_42932ee3429d71f7，claude-sonnet-5.5）结论 APPROVED，挡路 0 条，不挡路 11 条（E3-1 到 E3-11），评审稿 .agents/tasks/m7/review-e3.md 与 review-e3.json。评审没有重跑门禁，用临时仓库跑模块取证。评审查到成立的：执行器没有任何一个操作会挪动本地主干或远端跟踪引用；除只收远端名的 ls-remote 外不启动联网命令；每个 git 进程经同一个入口带 --no-replace-objects；门禁工作树里 checkout --detach --force、reset --hard、clean -fd 三条会丢工作的命令先存快照，快照存不了或抛错就一条都不跑；改名按祖先关系判；共用锁在默认选项下的 9 个场景与改动前一致。11 条不挡路意见：E3-1 门禁工作树的 .git 文件被改写成指向主检出的 git 目录时守卫放行，探针里三条破坏性命令跑在主检出的仓库上，主检出的 HEAD 变成游离；E3-2 在门禁工作树的游离 HEAD 上做的提交，被下一次 checkout --detach --force 丢出所有引用，没有快照；E3-3 执行器导出了不受限的 run，没有调用方；E3-4 仓库里有与主干同名的标签时 symbolic-ref --short 返回 heads/main，ensureWorktree 建完工作树后拒绝，此后每次都拒绝；E3-5 LockEnvironment.bootTime 必填，缺它的环境对象会让每次 acquireLock 抛 TypeError，lock.ts 的头注释还写着旧的四个字段；E3-6 harness 的 git 调用会执行仓库的钩子（core.hooksPath 的 post-checkout 探针确认），要人决定是否加 -c core.hooksPath= 与 -c core.fsmonitor=false，不加就把残余写进设计 §6.5；E3-7 主干没配上游、唯一的远端又不叫 origin 时，trunkUpstream 回退到并不存在的 refs/remotes/origin/<主干>；E3-8 锁的接手不是原子的，排给 E7（写检查记录前调 held()，并比对门禁工作树的 HEAD）；E3-9 设计 §3.8.4 执行前判定表漏了五条能让本地主干前进的路（push . <rev>:<主干>、branch -M <x> <主干>、worktree add -B <主干>、pull . <src>:<主干>、symbolic-ref refs/heads/<主干>）和推到 refs/remotes 目标的 push，排给 E1b 与 E7；E3-10 默认分支查找与 git remote get-url 要 E7 补，reflog 读不到或读成 unknown 要按推送处理；E3-11 门禁快照要落在 refs/hourness/snapshots/ 下，takeSnapshot 失败时要拒绝，E7 的独立评审核对。修了什么：评审之后没有改任何代码，没有修复提交，11 条全部还开着。合入的就是被评审的那一份：d8c1541 在 rebase 之后是 af75fe8，两者在 src、tests、package.json、scripts 与 docs（图以外）上没有差异。评审写明的期限：E3-1、E3-2 在 E7 调用 prepareGateWorktree 之前改，E3-3 在 E4 或 E7 开始用这个模块之前改；E3-4、E3-5、E3-7 也在 E3 自己的文件里。提交：af75fe8 feat(execute): git executor, gate lock and lock options (E3, m7-5)，rebase 到 5425092 之后快进合入 main（rebase 只带进图文档提交 0f8f635 与 5425092）。之后 main 前进到 119141b，它只改了 docs/graph 下的 graph.svg、nodes/field-trial.json、nodes/m7.json，不是合入这一步做的，没有为它重跑门禁。门禁：build、preflight、test、probe 在两处各跑一遍，退出码全是 0，失败 0。m7 工作树（rebase 之前的 d8c1541）：test 890 条通过、0 条 not ok，probe 128/128。主检出（合入后的 af75fe8）：test 890 条通过、0 条 not ok，probe 128/128。npm test 内含 lint 检查，通过；eslint、knip、jscpd 没有单独复跑，编码者在提交信息里记的基线 250、21、2 未变。分支上的门禁没有在 rebase 之后重跑，因为 rebase 只带进了图文档提交。"
+    },
+    {
+      "at": "2026-10-30T17:31:25.545Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "编排方独立复核 E3 合入（af75fe8，已在主干并推送，origin/main = bf20273）：在主检出上自己重跑四道门禁，build 0、preflight OK（2 个包、11 个源目录、14 行）、npm test 退出 0 且 fail 0、npm run probe 128/128，不是只采信子 agent 的回报。M7 骨架至此合入 E0、E1a、E3 三步。工作树 .worktrees/m7 留着给后面的 E1b、E2、E4 复用（分支 m7 落后主干 2 个提交、无自己的提交，开工时先快进）。评审里排到 E7 之前必须修的两条（门禁工作树守卫放过被重定向的 .git 文件与被遗弃的游离 HEAD 提交；§3.8.4 执行前判定表漏了五条能让主干前进的路）照旧挂在 E1b 与 E7 上。"
     }
   ]
 }
