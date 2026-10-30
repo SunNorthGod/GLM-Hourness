@@ -350,6 +350,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M3 附录 0.5 第 5 轮独立评审（run m3-addendum-v05-sonnet，wf_99e8b45c9d6f6b3f，claude-sonnet-5.5）：APPROVED，HIGH 0、MEDIUM 0、NIT 2。第 4 轮四条（M1 例题与 d-main-agent-peak-exempt 相反、M2 每模块一次放行没设计、N1 第 7 步与 /graph-apply、N2 契约测试）与第 5 轮六条（R5-M1 快照流水与临时索引还在 git 目录下、R5-M2 大循环放行做了一半时重放会落回单层放行并批准所有模块子树，加四条 NIT）全部关闭。评审稿 reviews/addendum-r5b.md，addendum-r5.json 已覆盖。M3 的设计到此定稿。下一步：写一页人话放行稿交人放行（d-design-onepage），人放行之后开工实现（约 12 步，工作树 .worktrees/m3 与 .worktrees/m3-flow 已快进到 main）。两条 NIT 留在实现那一批顺手改：R5b-N1 见本仓库图的待办批注；R5b-N2 PLAIN_QUESTION_GUIDE 里的例题打印时段间没有空行，长度差 4 个字符。"
+    },
+    {
+      "at": "2026-10-30T12:20:43.503Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M3 的一页人话放行稿写好（.agents/tasks/m3/onepage.md，79 行，run m3-onepage-release，wf_f895bb6ac3caf605，claude-sonnet-5.5）：讲 /wish 入口与空白会话的卡片、一个项目一个主 Agent、访谈是聊天不出选项、要人定的事写成四行方案、放行分两次（项目放行定框架与模块清单与方向清单，之后每个模块各放行一次）、流程条、面板的「需要你」；自己会做的事（放行后自己往下走、自己选模型并记理由、git 归它而丢工作的命令先存档、没有写文件的工具、原话由 harness 核对、不受高峰影响）；什么时候问人（访谈、确认需求、两次放行、开发中三档、一次至多三件）；存放（图进 docs/graph/、存档记录进项目 .llm/）；替人定的 9 条方向各带没采用的那一个；交给别的块的 8 条。末尾「放行」一节一项四行加一句问话，疑问选的是「哪些短话要复述」。编排方已把这一页交给人，等人放行；人放行之后开工实现（约 12 步）。两条 NIT 写在稿末、不挡开工。"
     }
   ]
 }
