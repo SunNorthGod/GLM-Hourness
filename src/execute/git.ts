@@ -333,9 +333,15 @@ export function createGit(runner: GitRunner = realGitRunner) {
     return top === undefined ? undefined : resolve(top)
   }
 
-  /** The branch HEAD is on; `undefined` for a detached head or outside a repository. */
+  /**
+   * The branch HEAD is on; `undefined` for a detached head or outside a
+   * repository. Read as the full reference and cut at `refs/heads/`:
+   * `--short` prints `heads/main` when a tag `main` exists, and every later
+   * use of the name must say `refs/heads/<name>` for the same reason.
+   */
   async function currentBranch(cwd: string): Promise<string | undefined> {
-    return firstLine(cwd, ['symbolic-ref', '--quiet', '--short', 'HEAD'])
+    const ref = await firstLine(cwd, ['symbolic-ref', '--quiet', 'HEAD'])
+    return ref?.startsWith('refs/heads/') === true ? ref.slice('refs/heads/'.length) : undefined
   }
 
   /** The full id of the commit a revision names; `undefined` when it names none. */
@@ -497,7 +503,7 @@ export function createGit(runner: GitRunner = realGitRunner) {
     let renamedFrom: string | undefined
 
     if (tip !== undefined) {
-      const merged = await lastTaskCommit(top, base, task)
+      const merged = await lastTaskCommit(top, `refs/heads/${base}`, task)
       if (!merged.ok) return refuse('worktree_failed', merged.reason)
       const ancestry = merged.value === undefined ? undefined : await isAncestor(top, merged.value, `refs/heads/${branch}`)
       if (ancestry !== undefined && !ancestry.ok) return refuse('worktree_failed', ancestry.reason)
@@ -523,7 +529,7 @@ export function createGit(runner: GitRunner = realGitRunner) {
       if (here.branch !== branch) return refuse('worktree_failed', `the worktree at ${path} is on ${here.branch ?? 'a detached head'}, not on ${branch}`)
     }
     else {
-      const added = await read(top, tip === undefined ? ['worktree', 'add', '--quiet', '-b', branch, '--', path, base] : ['worktree', 'add', '--quiet', '--', path, branch], WRITE_TIMEOUT_MS)
+      const added = await read(top, tip === undefined ? ['worktree', 'add', '--quiet', '-b', branch, '--', path, `refs/heads/${base}`] : ['worktree', 'add', '--quiet', '--', path, branch], WRITE_TIMEOUT_MS)
       if (!added.ok) return refuse('worktree_failed', added.reason)
       created = true
     }

@@ -434,6 +434,26 @@ withRepo('a rework after a squash merge moves the merged branch aside, a rework 
   assert.deepEqual([kept.created, kept.renamedFrom], [false, undefined])
 })
 
+withRepo('a tag named like the trunk does not hide the branch: the base is read from the full reference everywhere (E3 review, E3-4)', async (repo, git) => {
+  const c1 = repo.commit({ 'a.txt': '1\n' }, 'first')
+  repo.git('tag', 'main', c1)
+  const c2 = repo.commit({ 'a.txt': '2\n' }, 'second\n\nHourness-Task: task-1')
+  assert.equal(repo.git('rev-parse', 'main'), c1, 'the bare name now resolves to the tag')
+  assert.equal(await git.currentBranch(repo.dir), 'main', '--short would print heads/main')
+
+  // The old branch of task-1 is not an ancestor of the trailer commit on the trunk, so this is a rework: it is moved aside
+  // and the new branch starts from the trunk branch. A walk from the bare name "main" would start at the tag and find no trailer.
+  repo.git('branch', 'hz/task-1', c1)
+  const rework = succeeded(await git.ensureWorktree(repo.dir, 'task-1'))
+  assert.deepEqual([rework.base, rework.baseSha, rework.created, rework.renamedFrom], ['main', c2, true, 'hz/task-1@1'])
+  assert.equal(sh(rework.path, 'rev-parse', 'HEAD'), c2, 'the worktree starts from the branch, not from the tag')
+
+  const fresh = succeeded(await git.ensureWorktree(repo.dir, 'task-2'))
+  assert.deepEqual([fresh.baseSha, fresh.created], [c2, true])
+  assert.equal(sh(fresh.path, 'rev-parse', 'HEAD'), c2)
+  assert.equal(succeeded(await git.ensureWorktree(repo.dir, 'task-2')).created, false, 'and again on the next call')
+})
+
 withRepo('a rework with an unclean old worktree refuses and changes nothing', async (repo, git) => {
   repo.commit({ 'a.txt': '1' }, 'first')
   const made = succeeded(await git.ensureWorktree(repo.dir, 'task-1'))
