@@ -1,0 +1,19 @@
+{
+  "id": "d-rules-peak-slice",
+  "type": "decision",
+  "title": "规则板先做最小的一片（高峰档位与少做的并发上限），与 M3、M7 骨架一起搬进 DSH",
+  "status": "approved",
+  "parent": "dogfood",
+  "verification": "unverified",
+  "body": "自举之前，规则板只实现高峰档位（无影响、少做、不做，默认少做，人可在对话里改）与少做的并发上限两项，经规则板的服务（design-context 接缝裁定的 glmHournessPeakMode 与 peakHoldFor 一类读法）交出；没有规则板页面、没有人加的规则、没有脚本条目。M7 骨架 E4 的少做上限读法照原设计生效，M7 不加临时的高峰逻辑。这一片按规则板 0.9 的定稿写，0.9 评审通过之后才开工；写法要是后面整块规则板的子集，不留要删的代码。没有采用 Kiro 定时巡查：Kiro 在 DSH 外面只能事后读记录，要一直跑的工作流且费额度。",
+  "history": [
+    {
+      "at": "2026-10-30T06:36:47.515Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "用户同意编排方「规则板先做最小的一片」的推荐",
+      "relay": "行。现在已经有的流程是什么啊，够自举吗",
+      "to": "approved"
+    }
+  ]
+}
