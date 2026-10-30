@@ -13,7 +13,8 @@
     "@remotion/media": "4.0.539",
     "react": "19.2.3",
     "react-dom": "19.2.3",
-    "remotion": "4.0.539"
+    "remotion": "4.0.539",
+    "spessasynth_core": "^4.4.3"
   },
   "devDependencies": {
     "@remotion/eslint-config-flat": "4.0.539",
@@ -25,6 +26,7 @@
   },
   "scripts": {
     "music": "node scripts/make-music.mjs",
+    "score": "node scripts/get-soundbank.mjs && node scripts/make-score.mjs",
     "dev": "node scripts/make-music.mjs && remotion studio",
     "render": "node scripts/render.mjs",
     "build": "remotion bundle",
