@@ -82,6 +82,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "m8-plain-language 设计 0.7（第 6 轮 P6-03）：经验板页面照 plain-ui §4.7 的板块约定没有写入控件，人删除、恢复条目在主 Agent 的对话里说；M5 设计 0.3 第 574 行的面板按钮（经 remote.commands.execute 以人的身份写，「同 /graph-apply 的通道」）与它冲突，/graph-apply 也已删去，下一稿改。"
+    },
+    {
+      "at": "2026-10-30T06:25:50.726Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人定 d-memory-scope（「全都没问题」）：关于人本人的记忆留全局，项目经验（含通用的踩坑经验）进项目。M5 经验设计停在 0.3，下一稿照此改存放一节，并接 plain-ui 0.7 对经验板按钮的批注；随 d-alignment-rounds 的对齐轮一起做。"
     }
   ]
 }

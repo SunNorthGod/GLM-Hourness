@@ -1,0 +1,19 @@
+{
+  "id": "d-alignment-rounds",
+  "type": "decision",
+  "title": "规则板与循环板这轮出来后，一次开几轮小的对齐，各带一轮评审",
+  "status": "approved",
+  "parent": "orch",
+  "verification": "unverified",
+  "body": "M3 附录、M6、M7、指标流水、接管项目、用户图与面板的设计都写在 d-boards-as-hooks、d-rules-in-repo、d-main-agent-peak-exempt 之前。等规则板 0.9 与循环板 0.5 这轮出来，编排方一次开几个小的对齐轮，每个只改与这三条决定（及 d-memory-scope）冲突的地方，各带一轮独立评审；碰到要大改的先停下问人。没有采用每个模块单独问人。人已同意开这些 run，不必再逐个问。",
+  "history": [
+    {
+      "at": "2026-10-30T06:25:35.304Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "用户同意编排方「后面的对齐轮」的推荐",
+      "relay": "全都没问题",
+      "to": "approved"
+    }
+  ]
+}
