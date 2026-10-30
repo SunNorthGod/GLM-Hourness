@@ -78,6 +78,13 @@ test('the words: all three levels have a name and a consequence, and the intro n
   }
 })
 
+test('the number of GLM subagents the text of 少做 promises is the constant that is enforced', () => {
+  // A literal in the sentence would leave it wrong the day the constant changes; the sentence has to carry the constant's number.
+  assert.equal(/至多 (\d+) 个 GLM 子 agent/.exec(PEAK_LEVEL_WORDS.reduce.half)?.[1], String(PEAK_REDUCE_GLM_WORKERS))
+  assert.ok(peakModeIntro().includes(`${PEAK_LEVEL_WORDS.reduce.name}：高峰里同时至多 ${PEAK_REDUCE_GLM_WORKERS} 个 GLM 子 agent`), peakModeIntro())
+  for (const level of ['inform', 'stop'] as const) assert.equal(/\d/.test(PEAK_LEVEL_WORDS[level].half), false, `${level}: no number in the sentence`)
+})
+
 test('nextPeakChange names the first whole minute the GLM plan changes between peak and off-peak', () => {
   const at = (iso: string): number => Date.parse(iso)
   const iso = (ms: number | undefined): string | undefined => ms === undefined ? undefined : new Date(ms).toISOString()

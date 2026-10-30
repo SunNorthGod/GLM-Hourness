@@ -12,7 +12,7 @@ import test from 'node:test'
 import { creditPricing } from '../src/glm-llm/credits.ts'
 import type { AgentCommandInvocationLike, CommandDefinitionLike, CommandResultLike } from '../src/shared/dsh-min.ts'
 import { collectHealth, healthServiceName } from '../src/shared/health.ts'
-import { PEAK_MODE_SERVICE, peakModeService, type PeakModeService } from '../src/shared/peak-mode.ts'
+import { PEAK_MODE_SERVICE, PEAK_REDUCE_GLM_WORKERS, peakModeService, type PeakModeService } from '../src/shared/peak-mode.ts'
 import { PRICING_SERVICE } from '../src/shared/pricing.ts'
 import { apply, clockText, inject, name, type RulesConfig, type RulesContext } from '../src/rules/index.ts'
 import { repoJson } from '../src/rules/model.ts'
@@ -142,14 +142,15 @@ rowTest('/rules peak 不做 stores the choice in the repository and the project,
   assert.ok(again.text?.startsWith('高峰模式：不做（你在 '), again.text)
 })
 
-rowTest('the three levels in a peak: the cap only for reduce, the hold for reduce and stop', async ({ service, run }) => {
+rowTest('the three levels in a peak: the cap only for reduce, the hold for reduce and stop, and the reply for reduce names the cap that the service hands out', async ({ service, run }) => {
   const seen: Array<[string, boolean | undefined, number | undefined, string | undefined]> = []
   for (const level of ['无影响', '少做', '不做']) {
-    await run(`peak ${level}`)
+    const reply = await run(`peak ${level}`)
     const state = service.stateFor('agent-1')
     seen.push([level, state?.peak, state?.glmWorkerCap, service.peakHoldFor('agent-1')?.level])
+    if (level === '少做') assert.ok(reply.text?.startsWith(`高峰模式改成了「少做」（高峰里同时至多 ${PEAK_REDUCE_GLM_WORKERS} 个 GLM 子 agent，`), reply.text)
   }
-  assert.deepEqual(seen, [['无影响', true, undefined, undefined], ['少做', true, 1, 'reduce'], ['不做', true, undefined, 'stop']])
+  assert.deepEqual(seen, [['无影响', true, undefined, undefined], ['少做', true, PEAK_REDUCE_GLM_WORKERS, 'reduce'], ['不做', true, undefined, 'stop']])
 })
 
 rowTest('out of a peak the state names when the next one starts, and there is no cap and no hold on any level', async ({ service, run }) => {

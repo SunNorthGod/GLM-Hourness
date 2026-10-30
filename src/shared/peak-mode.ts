@@ -109,10 +109,10 @@ export function peakHoldOf(state: PeakModeState): PeakHold | undefined {
   return { level: state.level, until: state.until }
 }
 
-/** The names and the consequence of each level, for the replies of /rules peak; the onboarding page takes the names. */
+/** The names and the consequence of each level, for the replies of /rules peak; the onboarding page takes the names. The cap in the text of `reduce` is `PEAK_REDUCE_GLM_WORKERS`, so the sentence and the enforced number cannot differ. */
 export const PEAK_LEVEL_WORDS: Readonly<Record<PeakLevel, { readonly name: string, readonly half: string }>> = {
   inform: { name: '无影响', half: '照常做，只提醒' },
-  reduce: { name: '少做', half: '高峰里同时至多 1 个 GLM 子 agent，重活挪到高峰之后，必要的活照做' },
+  reduce: { name: '少做', half: `高峰里同时至多 ${PEAK_REDUCE_GLM_WORKERS} 个 GLM 子 agent，重活挪到高峰之后，必要的活照做` },
   stop: { name: '不做', half: '高峰里 GLM 的活停下排队，高峰结束后接着做' },
 }
 

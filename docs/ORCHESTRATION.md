@@ -1168,7 +1168,7 @@ LLM 不讲人话，多半是默认在向评审汇报，想显得周全。做法�
 ### 16.1 档位与上限
 
 - 三档：无影响（`inform`，只提醒）、少做（`reduce`，出厂默认，`d-peak-mode`）、不做（`stop`）。档位按项目存，只有人能改（§16.4）。三档只在 GLM 高峰时段里起作用：此刻是不是高峰读 GLM 包的计价服务（`glmHournessPricing.peak`，`src/shared/pricing.ts`），规则板不带时段表。读不出（没有计价服务、`peak` 抛错或返回的不是布尔值）时三档都不起作用，`PeakModeState.peak` 为 `undefined`，不带上限与挡住的标记；同一条警告每个宿主进程只出一次。
-- 少做的并发上限：同一时间在跑的、经 `dispatch_task` 派出且模型为 GLM 的子 agent 至多 1 个（写任务、审查、检查都算），常量 `PEAK_REDUCE_GLM_WORKERS`。数归规则板，执行归派活（M7）：派活在派模型为 GLM 的子 agent 之前读一次 `stateFor(<主 Agent 的会话>)?.glmWorkerCap`，有值就照它数在跑的 GLM 子 agent，没有就照自己的槽位；派活不加别的高峰逻辑。这一片不含派活，所以上限现在只是服务里的一个数。
+- 少做的并发上限：同一时间在跑的、经 `dispatch_task` 派出且模型为 GLM 的子 agent 至多 1 个（写任务、审查、检查都算），常量 `PEAK_REDUCE_GLM_WORKERS`（现在是 1；少做的说明文字 `PEAK_LEVEL_WORDS.reduce.half` 和 `/rules peak 少做` 的回话里的数字由它算出，不另写，`tests/peak-mode.spec.ts` 钉住文字里的数与常量相同）。数归规则板，执行归派活（M7）：派活在派模型为 GLM 的子 agent 之前读一次 `stateFor(<主 Agent 的会话>)?.glmWorkerCap`，有值就照它数在跑的 GLM 子 agent，没有就照自己的槽位；派活不加别的高峰逻辑。这一片不含派活，所以上限现在只是服务里的一个数。
 - `glmWorkerCap` 只在 `peak === true` 且档位为少做时有；`peakHoldFor` 只在高峰里、结束时刻读得出、档位为少做或不做时有值（`{level, until}`，与同一时刻 `stateFor` 的档位和结束时刻一致）。两者由 `src/shared/peak-mode.ts` 的 `peakModeState` 与 `peakHoldOf` 一处算出。这一片没有等待单，不做档的 `peakHoldFor` 对所有会话一视同仁（整块规则板的「本次高峰照常做」只改 GLM 子 agent 的单）。
 - 主 Agent 不受高峰模式影响（`d-main-agent-peak-exempt`）：行只监听 `agent/created` 与 `session/disposed`，不注册工具调用门，不在 `agent/pre-step` 里动消息，不暂停 goal；`peakHoldFor` 有值说的是它派 GLM 子 agent 与跑重活脚本的那部分活被挡着，规则板自己什么都不拦。这一片不排队、不暂停，三档下没有任何调用被拦。
 
