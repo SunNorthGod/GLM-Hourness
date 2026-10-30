@@ -108,6 +108,27 @@ function recording(inner: GitRunner = realGitRunner): { readonly runner: GitRunn
 const lines = (text: string): string[] => text.split(/\r?\n/).map(line => line.trim()).filter(line => line !== '')
 const okSaver: SnapshotSaver = () => Promise.resolve({ ok: true })
 
+/** The subcommand of a recorded git call: the first word after the global options the executor puts in front of it. */
+function subcommandOf(args: readonly string[]): string | undefined {
+  for (let index = 0; index < args.length; index++) {
+    if (args[index] === '-c') index++
+    else if (args[index] !== '--no-replace-objects' && args[index] !== '--literal-pathspecs') return args[index]
+  }
+  return undefined
+}
+
+/** A runner that runs git, except that a call `fails` picks comes back as git's exit 128; every call is recorded. */
+function failing(fails: (cwd: string, args: readonly string[]) => boolean): { readonly runner: GitRunner, readonly calls: string[][] } {
+  const calls: string[][] = []
+  return {
+    calls,
+    runner: (cwd, args, timeoutMs) => {
+      calls.push([...args])
+      return fails(cwd, args) ? Promise.resolve({ code: 128, stdout: '', stderr: 'fatal: injected failure' }) : realGitRunner(cwd, args, timeoutMs)
+    },
+  }
+}
+
 // ---------------------------------------------------------------------------
 // The process wrapper and what a failing git looks like
 
@@ -762,6 +783,58 @@ withRepo('the commit the harness left the gate worktree on is held by a referenc
 
   // The record is the only reference the executor writes, and only that one.
   assert.equal(lines(repo.git('for-each-ref', '--format=%(refname)', 'refs/hourness')).join(), 'refs/hourness/gate-head')
+})
+
+interface InjectedFailure {
+  readonly label: string
+  readonly fails: (cwd: string, args: readonly string[]) => boolean
+}
+
+withRepo('a git failure while the gate guard reads or records state refuses the move, and neither reset nor clean starts (E3 follow-up review, FU-3)', async (repo, git) => {
+  const c1 = repo.commit({ 'a.txt': '1\n' }, 'c1')
+  const c2 = repo.commit({ 'a.txt': '2\n' }, 'c2')
+  const gate = succeeded(await git.prepareGateWorktree({ root: repo.dir, commit: c1, saveSnapshot: okSaver }))
+  const inGate = (cwd: string): boolean => sameFile(cwd, gate.path)
+  const beforeMove: readonly InjectedFailure[] = [
+    { label: 'the gate worktree\'s git directory', fails: (cwd, args) => inGate(cwd) && args.includes('--absolute-git-dir') },
+    { label: 'the gate worktree\'s common git directory', fails: (cwd, args) => inGate(cwd) && args.includes('--git-common-dir') },
+    { label: 'the main checkout\'s common git directory', fails: (cwd, args) => !inGate(cwd) && args.includes('--git-common-dir') },
+    { label: 'the references that hold the commit it is on', fails: (_cwd, args) => subcommandOf(args) === 'for-each-ref' && args.includes('--contains') },
+  ]
+  for (const { label, fails } of beforeMove) {
+    writeFileSync(join(gate.path, 'a.txt'), 'precious\n')
+    const saved: SnapshotCall[] = []
+    const { runner, calls } = failing(fails)
+    const result = refused(await createGit(runner).prepareGateWorktree({ root: repo.dir, commit: c2, saveSnapshot: snapshotSaver(saved) }))
+    assert.equal(result.code, 'gate_worktree_invalid', label)
+    assert.deepEqual(calls.map(subcommandOf).filter(sub => ['checkout', 'reset', 'clean'].includes(sub ?? '')), [], `${label}: nothing that moves or discards was started`)
+    assert.equal(saved.length, 0, `${label}: no snapshot was asked for`)
+    assert.equal(sh(gate.path, 'rev-parse', 'HEAD'), c1, `${label}: the gate worktree did not move`)
+    assert.equal(readFileSync(join(gate.path, 'a.txt'), 'utf8'), 'precious\n', `${label}: the edit is still there`)
+    // The refusal is for that call only: with git answering again the same worktree is usable.
+    succeeded(await git.prepareGateWorktree({ root: repo.dir, commit: c1, saveSnapshot: okSaver }))
+    assert.equal(readFileSync(join(gate.path, 'a.txt'), 'utf8'), '1\n', `${label}: and the next call moves and cleans it`)
+  }
+
+  // Recording the commit it is left on fails after the checkout: the snapshot is already saved, reset and clean do not start.
+  writeFileSync(join(gate.path, 'a.txt'), 'precious\n')
+  const saved: SnapshotCall[] = []
+  const { runner, calls } = failing((_cwd, args) => subcommandOf(args) === 'update-ref')
+  const recorded = refused(await createGit(runner).prepareGateWorktree({ root: repo.dir, commit: c2, saveSnapshot: snapshotSaver(saved) }))
+  assert.equal(recorded.code, 'gate_worktree_invalid')
+  assert.deepEqual(saved.map(call => call.sub), ['reset'], 'what the checkout discards was saved first')
+  assert.deepEqual(calls.map(subcommandOf).filter(sub => ['reset', 'clean'].includes(sub ?? '')), [], 'neither reset nor clean was started')
+  succeeded(await git.prepareGateWorktree({ root: repo.dir, commit: c1, saveSnapshot: okSaver }))
+  assert.equal(sh(gate.path, 'rev-parse', 'HEAD'), c1)
+})
+
+withRepo('a git failure while the new gate worktree\'s commit is recorded is a refusal, and the next call finds a usable worktree (E3 follow-up review, FU-3)', async (repo, git) => {
+  const c1 = repo.commit({ 'a.txt': '1\n' }, 'c1')
+  const { runner, calls } = failing((_cwd, args) => subcommandOf(args) === 'update-ref')
+  const result = refused(await createGit(runner).prepareGateWorktree({ root: repo.dir, commit: c1, saveSnapshot: okSaver }))
+  assert.equal(result.code, 'gate_worktree_invalid')
+  assert.deepEqual(calls.map(subcommandOf).filter(sub => ['reset', 'clean'].includes(sub ?? '')), [])
+  assert.equal(succeeded(await git.prepareGateWorktree({ root: repo.dir, commit: c1, saveSnapshot: okSaver })).created, false)
 })
 
 // ---------------------------------------------------------------------------
