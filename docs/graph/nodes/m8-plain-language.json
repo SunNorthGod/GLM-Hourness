@@ -254,6 +254,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M7 设计 0.5 按面板设计 0.7 §11「两层循环」第 6 条写了 derivedStage(graph, node)（m7 design.md §2.4）：node 是目标或模块；模块的有效阶段在 release 之前时原样返回（设计中的模块返回 design）；之后按任务推出 execute、merge、decompose，模块完成为 operate。补一条面板要注意的：分了模块的目标、一个模块都没放行时，目标的推出阶段是 release（不是 decompose），因为此刻该做的是各模块的设计；目标推出阶段的任务不含还没放行的模块下的任务，所以模块退回设计后目标不会显得「在开发」。三档在面板上的显示契约不变（第 7–9 条）：M7 不写面板数据，退回设计就是模块或目标的 stage 改回 design，面板按 modulesView 读到即可；M7 另在模块或目标上批注「退回设计 · 时刻 · 受影响的在跑的活」，面板可以不用。M7 的 derivedStage 还没合入时，面板两层循环的显示不出现（面板 §4.11 已写）。"
+    },
+    {
+      "at": "2026-10-30T21:02:32.700Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "接管设计 0.5（.agents/tasks/bootstrap/design.md §3.1 末段、§3.2、§4.2、§15.1）给 plain-ui 0.7 的一条请求，请对齐轮（G 支）一并处理：一、没有项目图一节与验收第 14 条今天写『在输入框打 /hourness-init』，开场卡片的按钮也执行 /hourness-init；接管行在时请改为指向 /wish：面板说『在对话里发 /wish：主 Agent 先看一遍这个项目再接手』，卡片按钮执行 /wish 或把它写进输入框。0.7 改之前，/hourness-init 在没有图、不是主 Agent 的会话里返回成功的回复并写明发 /wish，按钮不会显示成失败。二、『建一个空目录就是一张空图』在接管行在时不再成立：判有没有项目图的是 nodes/ 下有没有 .json 文件，空的 nodes/ 照样走接管。三、第二阶段写法检查的前提（c）里，接管不再以 llm 或 harness 写人定的待决（两件事和清单都经 M3 的 propose_to_human），剩下要契约测试的只有接管提的三个规范模板的 title 与 why 一处（接管 §4.2、§15.1）。接管的 notice 与提醒里没有高峰、等待、停下一类的话，主 Agent 在任何档位都照常回答（d-main-agent-peak-exempt）。对话里的样子见 .agents/tasks/bootstrap/mockup-takeover.svg。"
     }
   ]
 }

@@ -83,6 +83,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "更正上一条批注的运行编号：design-alignment-m4-m5-resume 的编号是 wf_151375592348ab59，上一条写的 wf_4ab43c8aa3dc25b0 不存在（编排方在运行返回编号之前就写了批注，写错了）。"
+    },
+    {
+      "at": "2026-10-30T21:02:33.246Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "接管设计 0.5（.agents/tasks/bootstrap/design.md §2.4、§3.3）收到 M5 0.4 的通知并照办：src/data/project-root.ts（projectOf、ensureIgnored，M5 另加 projectDirOf 与 ensureProjectDir）与 src/data/lock.ts 已在仓库，接管直接用，不另建。接管需要 src/data/secret-shape.ts 的 looksSecret（扫描结果写出前遮盖像密钥的文字）；src/data/journal.ts 与 secret-shape.ts 仍是 M5 的 A1，谁先合入谁按 M5 §5 的规格建。边界不变：接管不写经验，也不读别的项目的经验（d-memory-scope），试跑失败只出现在接管清单、试跑日志与节点批注里。"
     }
   ]
 }

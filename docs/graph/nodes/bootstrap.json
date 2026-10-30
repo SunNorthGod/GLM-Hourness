@@ -100,6 +100,24 @@
       "actor": "llm",
       "op": "comment",
       "text": "design-alignment-5-resume（wf_3794f89cc38873d4）E 支：接管项目 0.4 对齐轮第 4 轮独立评审 CHANGES_REQUESTED，HIGH 0、MEDIUM 1、NIT 8（F35–F43）。F35：从 /wish 进入接管的接缝与 holds 的接缝并不在 M3 0.5 里，0.4 的 §23.4 却说在，§19 给 m3 的批注又把它们漏了；M3 已放行，照规则二只能写成自举之后再办的请求，并把 §23.4 改对。该支还有一轮改稿加评审。"
+    },
+    {
+      "at": "2026-10-30T21:02:31.648Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "对齐轮（design-alignment-5-resume，wf_3794f89cc38873d4）E 支收尾：接管项目设计 0.5（.agents/tasks/bootstrap/design.md）。对齐依据：d-boards-as-hooks、d-script-timeout、d-rules-in-repo、d-main-agent-peak-exempt、d-memory-scope、d-agent-examples，以及已放行的 M3 附录 0.5、规则板 0.10、循环板 0.6、M7 0.6；新增 §2.5（存放、高峰、两块板、两层循环）、§5.9（bootstrap_review 的示范，领域是气象站数据工具）、§23 对齐记录和待人定的 D3。独立评审：第 4 轮对 0.4 为 CHANGES_REQUESTED（HIGH 0、MEDIUM 1 即 F35、NIT 8），第 5 轮对 0.5 为 CHANGES_REQUESTED（HIGH 0、MEDIUM 1 即 F44、NIT 5 即 F45–F49）。阻断条数走势 4、2、0、1、1（前三轮按 DEVELOPMENT.md §1.1，后两轮按高加中）。按对齐轮规则只追加一遍，本分支停在 0.5，没有写 onepage.md。F44：M3 接受两处接缝之前的过渡路靠一句『这个项目在接管，目标不走访谈』的提醒，§3.1 与 §13 写了这句，§5.1 的提醒模板里没有，§1.4 也没有断言钉住它；改法是模板加一句话、§13 一行改写、bootstrap-paths 与 bootstrap-row 加断言，纯文字，不动方向。F45–F49 与沿用的 F34 是 NIT，逐条改法在 .agents/tasks/bootstrap/align-stop-report.md。待编排方或人定：是否同意再追加一遍纯文字修改加只核这六条的复核（建议同意）。D1（接管 7 件活怎样算做完，41 条草稿）、D2（读别人的项目时先停掉主 Agent 的命令行吗）、D3（接管来的待做活要先看一页放行稿吗）已按 §18 的格式备好，合成一条消息问，设计通过前不提给人。另请编排方同步 design-context.md 里落后于图上定稿的『Layout of a proposal』一条（评审第 2 轮 F29 的末句）。"
+    },
+    {
+      "at": "2026-10-30T21:02:31.822Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "对齐轮接手一份被账号用量上限截断的 0.4 稿，核对与处理（design.md §23.1）：稿头写好了新的版本说明，列了八处改动，但头里引的 §2.5、§5.9、§23 和 D3 在稿里都不存在，0.3 的头原样叠在新头后面；依赖表里 M4 一行把检查行读成搬出了工具节点（那是 M4 0.4 的写法，M4 0.5 已改回），循环板一行沿用了同一读法；§0、§0.1 改了一半；§1.1 只改了三行；§1.2–§17 一处都没改，仍是 0.3（规则板 0.8 的行号、lines 参数、npx 检查行、M3 附录 0.4 的放行、示例用练习题的领域）；§18 只有 D1、D2，§19–§22 没有 0.4 的内容；同目录里没有 design-review-pass-3.json，design-review.json 只到第 2 轮，没有 onepage.md 与 graph-ops-align.json。处理：截断稿原样保留为 design-0.4-cutoff-draft.md，0.3 保留为 design-0.3.md，评审第 4 轮审的 0.4 保留为 design-0.4.md，草图各版本留作 mockup-takeover-0.2.svg、-0.3.svg、-0.4.svg；稿头重写，§1.1 补齐，§1.2–§17 逐节对齐，补 D3 与 §19，加 §20–§24；最后一版 design.md 没有写到一半的节（末节 §24.3 完整，围栏成对，没有占位文字）。第 3 轮评审的 JSON 从来没有写出，design-review.json 的 rounds 数组用评审文档重建了第 3 轮一项，不用补 design-review-pass-3.json。"
+    },
+    {
+      "at": "2026-10-30T21:02:33.514Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "编排方裁定（2026-10-29，可逆）：接管设计停在 0.5，不追加第二遍修改。理由：接管不在自举关键路径上（d-dogfood-scope 只要 M3 与 M7 骨架），没有实现在等它；F44 与 F45–F49 都是纯文字与断言的改动，不动方向，按 d-freeze-until-dogfood 记下、自举之后与 M3 的两处接缝一起处理。待办：自举之后做一遍只改 F44–F49 的文字修改加只核这六条的复核，通过后写 onepage.md，再把 D1、D2、D3 合成一条消息问人。代价：在此之前若有人按 §5.1 的模板实现，过渡路上的提醒少『目标不走访谈』这句，实现者要按 align-stop-report.md 的 F44 改法自己补。设计上下文 design-context.md 的『Layout of a proposal』一条同步也在自举之后做。"
     }
   ]
 }

@@ -384,6 +384,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "人 2026-10-31 定了 E3-6（原话「那两件事都没问题，按你的决定就行」，同意编排方的推荐）：harness 自己的 git 调用一律不跑仓库的钩子，也不启用 fsmonitor；主 Agent 与子 agent 自己在 shell 里敲的 git 命令照常跑钩子，不受影响。理由：合入前检查的那一刻若照跑钩子，仓库里谁都能借钩子塞进一段任意代码；代价是某个项目的检查若必须靠钩子才能跑，就得把它写成合入前检查清单里的一步。编排方把这条转给了正在评审的 m7-e3-followup-resume（wf_4e66318831de098d），评审已按此给出 CHANGES_REQUESTED：唯一挡路的是 E3-6 还没写代码（git.ts 的全局选项只有 --no-replace-objects）；下一轮要经执行器的唯一入口加上关钩子与关 fsmonitor 的参数，用评审探针里那个 post-checkout 脚本做 L2，在 Windows 上实测选的值真能关掉钩子（空值未必有效），修 spec 第 173、176 行对 args[1] 的断言，并在设计 §6.5 记下。另两条不挡路：六个提交信息末尾留着字面的 @@GATES@@（rebase 时改写）；新守卫的 git 读取没有注入失败的测试。E3-1 至 E3-5、E3-7、E3-8 都已修且测试在修复前会失败，§3.8.4 的五条路与修订记录都在，没有越界做 E1b、E2 或 E4 以后的东西。"
+    },
+    {
+      "at": "2026-10-30T21:02:32.519Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "接管设计 0.5（.agents/tasks/bootstrap/design.md §5.5–§5.7、§7.6、§15.4 U13）对已放行的 M7 0.6 没有新请求，下面是通知与一个沿用的问题。一、合入前检查清单 norm-merge-gate 的 changed 写法由接管的 bootstrap-ratchet 加进 GATE_LINE_FORMS（M7 §3.8.1 已这样写）；接管只提 GATE_LINE_FORMS 认的写法，门禁草稿带 only <图目录>/，docs/rules/ 不放进 only 行（记为 agent 决定）。二、接管写的底线清单草稿 floor.md 每一行交给 M7 的 parseFloor 读，每个生态的 norm-merge-gate 草稿交给 parseGateNorm 读，条数必须对得上；这两个函数在 M7 的 src/execute/floor.ts、gate-norm.ts，今天不在 main，E1b 合入之前接管的这两例 L2 对着 §3.8.1、§3.8.5 的写法表写好，合入后换成真实函数。三、接管清单的注意事项要写『每条合入前的检查最多跑几分钟』；M7 §3.8.1 写每条 30 分钟，没有给常量命名，并把它列在可改的默认设置里。评审第 5 轮 F49 要接管读生效值而不是写死 30；M7 若有读取生效值的形状，自举之后请告诉接管。四、沿用自 0.3 的问题，仍归 M7：新项目没有 HEAD 时，第一个只改图的初始提交怎样过主干前进的核对（§3.8.4）。"
     }
   ]
 }

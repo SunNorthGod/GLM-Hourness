@@ -179,6 +179,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "更正上一条批注的运行编号：design-alignment-m4-m5-resume 的编号是 wf_151375592348ab59，上一条写的 wf_4ab43c8aa3dc25b0 不存在（编排方在运行返回编号之前就写了批注，写错了）。"
+    },
+    {
+      "at": "2026-10-30T21:02:32.343Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "接管设计 0.5（.agents/tasks/bootstrap/design.md §2.4、§5.2、§5.5、§8.2）依据 M4 0.5 与设计上下文『Check entries seam』写。M4 0.5 尚未评审，格式变了只动接管 defaults.ts 里 toolNodeDraft 一处，请 M4 定稿时核对一次。一、env 的工具节点：验收里的检查行与 config 行照 M4 §6.1.1 的写法（名字、格式、不经 shell 就能起的命令、*.ts 式适用范围，带 when 的是 M4 自带的检查器），正文标签用途、用法、选择理由、安装位置（§7.1）；默认表里 Node 一行用 node node_modules/…，不用 npx。二、接管不向循环板提检查条目；要把某条检查做成异步、结果交主 Agent，由人事后在对话里说（M4 §6.1.2）。三、接管清单的注意事项要写『改完文件就跑的检查每项最多跑几秒』，数取 M4 的 CHECK_COMMAND_MS（60 秒，src/env/runner.ts 导出）；runner.ts 不导出时接管用同值常量并注明出处。四、仅当人对接管的 D2 答『停』时：请把 bootstrap-read-no-shell 登记进 M4 的代码规则目录 GUARD_RULES（src/guard/catalog.ts，规则板 0.10 §10.7 对 M4 的第 1 条）；这道门由接管在 src/guard/bootstrap-read.ts 写，只在接管读项目的阶段、只对主 Agent 的派发链，首日直接拦截（对宪章 0.7『写在代码里的新门禁先试运行』的例外，理由与误伤后的办法见接管设计 §8.2）；M4 的 installRuleGate 落地后接管经它安装，误拦由 classifyRecord 数。五、违规流水等搬进项目 .llm/ 之前，接管的命令结果与行健康会写明记录现在写到哪里（§4.5），M4 的按会话找项目合入后这一段连同检查一起删。"
     }
   ]
 }

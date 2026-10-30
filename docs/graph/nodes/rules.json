@@ -429,6 +429,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "规则板设计 .agents/tasks/rules/design.md 并入了 .agents/tasks/rules/design-amendments-followup.md 的六条修订（最小一片的跟进；版本仍是 0.10，版本行已注明加了这六条修订并写出修订文件名）：(1) §7.2 的 ProjectState 去掉 root，其余集合字段与 RepoRules 的 rules、detectors、signals、scripts 改为可选；(2) §7.2 加「集合为空时不存」一段，摘要改为去掉空集合之后的 canonicalJson 取 SHA-256 前 16 位；(3) §7.1 项目根的函数写作 src/data/project-root.ts 的 projectOf，排除条目是同文件的 ensureIgnored(root, '.llm')，最小一片在第一次建 .llm/rules/ 之前经 ensureRuntimeDir 调它；(4) §7.5 快照有效的条件 version 由 1 改为 2；(5) §16.1 的清单去掉 builtin.ts 的默认规则 GLM_PEAK_PRICING 与附属条目，「不在这一片里」加上默认规则与 openRulesBoard 的 projectDir 参数，末段加存下来的形状也是子集和 src/data/ 下两个共用模块；(6) §7.4 写锁在 src/data/lock.ts 并为各板共用，开头加最小一片的 openRulesBoard 只收 projectRoot、rulesDir、io、lock。这六条涉及的文字现与已合入的最小一片代码和 design-context.md「Rules thin slice: orchestrator rulings after its review」一致，没有新的设计决定。修订没有覆盖、仍留旧写法的地方：§7.1 同段后半句的 projectRootOf；§7.3 末句、§10.7 的 M5 一条、§16 的 R2 说明里「谁先实现谁建」，其中 §10.7 那一条还写着 projectRootOf；§16 的 R2 实施表写着 src/rules 下的 lock.ts 与 project-key.ts，已搬到 src/data/。是否另扫一遍，等编排方定。"
+    },
+    {
+      "at": "2026-10-30T21:02:32.159Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "接管设计 0.5（.agents/tasks/bootstrap/design.md §5.4、§7.7、§8.2、§15.4 U11、§23.4）对已放行的规则板 0.10 的一条请求，自举之后再办：请在 R4 的 L2 里钉住『提议被接受之后 attachable 对它答 not ok』。接管靠这一点读一条规则『已生效』；但 attachable 对 rejected、superseded、expired 也答 not ok，少数情形会把没写上的说成已生效，规则板自己的恢复一节与 24 小时行健康会报出，不挡路。R4 钉住之前的退路是请规则板加一个只读成员。其余是通知，不是请求：接管只用 0.10 的流程，『不许碰』里仓库内的路径由 harness 写 rules_propose 的参数草稿（Rule 输入形状：when 为 gate.tool-call，filter.writes.paths，action 为 block，lifetime 为 until-lifted），主 Agent 调 rules_propose，再 propose_to_human 带 attach rules:<id>，拍板后走 acceptProposal；规则板整块没装（最小一片没有 rules_propose）时接管降级为只写进规范，清单写明系统不会拦；默认规则 builtin:glm-peak-pricing 接管不写不改；docs/rules/ 不放进合入前检查的 only 清单（规则被同意后写进 docs/rules/ 的文件由主 Agent 另提交一次）。D2 答『停』时接管新增的代码规则 bootstrap-read-no-shell 请列进规则页『写在代码里的规则』（d-rules-visible）。"
     }
   ]
 }
