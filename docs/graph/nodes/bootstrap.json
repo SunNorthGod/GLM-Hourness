@@ -94,6 +94,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "省额度并集中在自举关键路径上（人：「省额度，你在跑的也立刻换」、「尽快自举吧」；d-dogfood-scope、d-subagent-sonnet）：bootstrap-design（wf_3ed5efc7a51801d7）在第 3 轮评审中途停住、不重开，本节点挂着不动（引擎不让从 doing 退回 approved，所以状态仍是 doing，实际没有运行在跑）。盘上留的是设计 0.3（.agents/tasks/bootstrap/design.md，按第 2 轮 F23、F24 改完：给人看的文字全改成四行格式、两件事与清单改走 M3 的 propose_to_human / record_human_answer、不许碰的规则改走规则板的提议流程；草图 mockup-takeover.svg 已重画；记图草稿 graph-ops.json 21 条在图的临时副本上演练通过），第 3 轮独立评审没有做。复工时机：自举之后，先过一轮评审、按 d-alignment-rounds 对齐三条新决定（d-boards-as-hooks、d-rules-in-repo、d-main-agent-peak-exempt）与 d-memory-scope、d-agent-examples，再写一页人话交人放行。"
+    },
+    {
+      "at": "2026-10-30T20:21:04.870Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "design-alignment-5-resume（wf_3794f89cc38873d4）E 支：接管项目 0.4 对齐轮第 4 轮独立评审 CHANGES_REQUESTED，HIGH 0、MEDIUM 1、NIT 8（F35–F43）。F35：从 /wish 进入接管的接缝与 holds 的接缝并不在 M3 0.5 里，0.4 的 §23.4 却说在，§19 给 m3 的批注又把它们漏了；M3 已放行，照规则二只能写成自举之后再办的请求，并把 §23.4 改对。该支还有一轮改稿加评审。"
     }
   ]
 }

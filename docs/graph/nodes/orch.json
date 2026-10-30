@@ -179,6 +179,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "人 2026-10-31：「你直接继续就行，我已经切过去了」（换到新账号）。编排方按上一条盘查的状态把超限停下的三条线重开，各自的任务说明里写明了被截断时留下的半成品，要求当成「作者已不在的草稿」先核对再用：一、m3-implementation-resume-step4（wf_92ad3963b261025d）：从第 4 步接着做到合入主干，.worktrees/m3 里第 4 步写到一半的五个文件先核对，m3-flow 的第 11 步补上欠的那条 L2；二、m7-e3-followup-resume（wf_4e66318831de098d）：核对分支 m7 上已提交的六个修复与四个未提交文件、补设计 §3.8.4 的五条路、独立评审、四道门禁、合入；三、design-alignment-5-resume（wf_3794f89cc38873d4）：照原对齐说明 .agents/tasks/align-rounds-2026-10-30/brief.md 只做 C–G 五支（M6、指标流水、接管项目、用户旅程、面板），各自目录下写到一半的稿子先核对。原运行 design-alignment-7-modules（wf_7c912a9ce7fb220e）里的 M4（0.5 已写完）与 M5（0.4 在评审）两支没停，照旧在跑。用力档位按难度：写设计、评审、写代码 xhigh，建工作树、合入这类机械步 low 或 medium。"
+    },
+    {
+      "at": "2026-10-30T20:21:04.668Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-10-31 事故：编排方提交时 git 报「Author identity unknown」。查明是共用的 PowerShell 进程里留着两个环境变量：GIT_CONFIG_GLOBAL 指向一个已经不存在的临时文件 C:\\Users\\29596\\AppData\\Local\\Temp\\hookprobe-904039318\\gc，GIT_CONFIG_NOSYSTEM=1；从文件名看，是某个运行在探钩子行为（E3-6）时用 $env: 设在了 shell 里而没有撤。人的全局 git 配置（~/.gitconfig，身份 北方帝国@NorthGod）没有被改。编排方只从自己的 shell 里删掉这两个变量，没有动任何 git 配置，然后重做了两次提交（616ca99、649db9b，已推送）。已把做法转告正在跑的 m7-e3-followup-resume 的改代码一步：探钩子只给子进程设这些变量，提交前先确认身份读得到；同类问题也可能波及共用 shell 的其他运行（m3-implementation-resume-step4），它们若遇到同样的报错，按同样办法处理，不许去改 git 配置。"
     }
   ]
 }
