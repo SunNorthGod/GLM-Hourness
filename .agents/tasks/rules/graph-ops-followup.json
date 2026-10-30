@@ -1,0 +1,22 @@
+[
+  {
+    "op": "comment",
+    "id": "rules",
+    "text": "最小一片的跟进完成，在分支 rules-followup（从 main 053945c 起，下面的提交号是 rebase 之前的），等独立评审与快进 main。关掉最小一片评审的六条不挡路发现，编排方已裁定的四条照办没有重新决定。一、存盘形状：为空的集合不进存下来的状态、流水记录的摘要和 rules.json（src/rules/model.ts 的 withoutEmptyCollections，stateDigest、applyRecord、repoJson 都先去掉空集合；ProjectState.unresolved 改为可缺省）。整块规则板以后添 rules、tickets、scripts 等集合不用迁移，重放不用知道形状在哪条记录变过；L2 用例：带着空集合的状态摘要与最小一片的相同，最小一片写下的流水在扩过的形状上逐条核对得上。代价要知道：提交 c7e7fa4、ed80a99 那一版写下的记录把空的 unresolved 算进了摘要，在现在这版核对不过；那一版默认禁用，本机主检出和各工作树里都没有它写的 .llm/rules/，若别处有，删掉项目的 .llm/rules/ 让它照 rules.json 重新开始。二、src/rules/project-key.ts 搬到 src/data/project-root.ts，导出名不变（d33c8d6）。三、src/rules/lock.ts 搬到 src/data/lock.ts，ORCHESTRATION.md §16 写明 M7 的 E3 与 M5 复用（e94ba56）。四、第一次建 .llm/rules/ 之前把 .llm/ 追加进 .git/info/exclude（src/data/project-root.ts 的 ensureIgnored，入口 ensureRuntimeDir）：任何项目一样，已有 .llm、.llm/、/.llm、/.llm/ 之一不重复，不在 git 仓库里不加，写不进就拒绝这次写入并且不建目录；只读状态不建目录也不动这个文件（e896104）。五、恢复之后行健康永远降级没有出路：选了小的那个改法，snapshot-modified、journal-shorter 两条消息结尾加上与 unresolved 一样的出路（删掉 .llm/rules/，规则板照 rules.json 重新开始），没选「状态一致就清掉原因」，那个要新增一种清除记录和触发条件，而整块的 /rules recovery 会取代两者（1ca36f8）。六、少做那句里的数由 PEAK_REDUCE_GLM_WORKERS 算出，/rules peak 少做 的回话也跟着，测试钉住文字里的数与常量相同（5641d01）。没加的两样：openRulesBoard 的 projectDir 参数不是一行（BoardOptions、rulesPaths 和 .llm/ 的忽略条目都要跟着改，而且数据目录服务还没有 projectDirOf，没有调用方能给它值，加了就是死代码），等 M5 的 projectDirOf 合入一起加；builtin.ts 仍不在这一片。设计 §7.2、§7.4、§7.5（有效快照 version 改 2）、§16.1（清单去掉 builtin.ts）的改文写在 .agents/tasks/rules/design-amendments-followup.md，设计文件在主检出里不入库，需要编排方套用到 design.md。文档同批提交（e9028bf 补 HANDOFF、DESIGN 与 §16.6）。门禁在每个提交的树上都跑过：npm run build 退出码 0，npm run preflight 退出码 0，npm test 退出码 0（745 个用例 0 失败；eslint 250 条压制、knip 21 条、jscpd 2 处克隆，基线都没变），npm run probe 退出码 0（128/128）。"
+  },
+  {
+    "op": "comment",
+    "id": "m7",
+    "text": "E3 要用的两个模块已经有了：src/data/lock.ts（写锁，acquireLock(file, environment?) 返回 WriteLock 或 'busy'，锁文件所在目录要先存在；等 2 秒，超过 10 秒或持有者不在的锁被接手；持有者在追加前调 held() 确认锁还是自己的）和 src/data/project-root.ts（projectOf、gitDirOf，以及往 .git/info/exclude 追加忽略条目的 ensureIgnored(root, 目录名)，已有同义条目不重复，不在 git 仓库里不加）。它们由规则板最小一片的跟进建成（分支 rules-followup，合入 main 之后在 main），E3 直接复用，不要再写第二个近似的文件锁（jscpd 会报）；design-context 里「E3 创建 src/data/lock.ts」按 2026-10-30 的裁定读作「E3 复用，没人先建时才由 E3 建」，现在是有人先建了。M7 的 .worktrees/ 忽略条目可以走同一个 ensureIgnored。提交：e94ba56 搬 lock，d33c8d6 搬 project-root，e896104 加 ensureIgnored。"
+  },
+  {
+    "op": "comment",
+    "id": "m5",
+    "text": "src/data/project-root.ts 和 src/data/lock.ts 已经存在（规则板最小一片的跟进建成，分支 rules-followup），M5 的数据目录服务与 projectDirOf 复用，不再建这两份。projectDirOf 里「追加进 .git/info/exclude」那一步就是 project-root.ts 的 ensureIgnored(root, '.llm')（规则行现在在第一次建 .llm/rules/ 前自己调它）。规则行的 openRulesBoard 现在没有设计 §7.4 的 projectDir 参数，等 projectDirOf 合入时与忽略条目一起加。"
+  },
+  {
+    "op": "comment",
+    "id": "d-rules-in-repo",
+    "text": "「运行时的东西进项目的 .llm/、不进 git」现在在任何项目里成立，不再只靠本仓库的 .gitignore：规则行第一次建 .llm/rules/ 之前把 .llm/ 追加进 .git/info/exclude（分支 rules-followup，提交 e896104，L2 用例覆盖没有 info 目录、空文件、已有条目的几种写法、.git 是文件、不在 git 仓库里、写不进时拒绝）。"
+  }
+]
