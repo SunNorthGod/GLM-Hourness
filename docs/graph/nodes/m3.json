@@ -344,6 +344,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M3 设计附录 0.5 第 5 轮独立评审（评 0.5 第一稿，reviews/addendum-r5.md）：CHANGES_REQUESTED，挡路 2（R5-M1、R5-M2，都是 MEDIUM）、NIT 4（R5-N1 至 N4）；第 4 轮的 M1、N1、N2 关闭，M2 回应成立。同版 0.5 已修（附录 §17），待复评，没有驳回的 NIT。R5-M1：快照流水与临时暂存区原放在 git 目录，与编排方对 M3 运行时文件路径的裁定相反（design-context「Dogfood implementation order and runtime paths」，本节点 2026-10-30T10:56Z 的批注要求并进 0.5）；现改为 <项目根>/.llm/snapshots.jsonl（项目根用 projectRootOf 取会话的工作目录，主检出与各工作树共用一份；.llm/ 自带 .gitignore，防止 git clean -fd 把流水当未跟踪文件删掉），临时暂存区放系统临时目录、用完即删；refs/hourness/snapshots 与标签是 git 引用，不动。持有者记录搬进 .llm/ 是另一件，仍按 d-alignment-rounds 留给 M3 对齐轮。R5-M2：大循环放行原先先批准、后写模块 stage，所有候选批准而一个 stage 都没写时进程停下，isSplit 为假，重放会落进单层放行、一次批准所有模块子树；现改为先给候选写 stage design（候选仍是提议）、再批准、最后写目标 release，任何停下点 isSplit 都为真；第 9 步 L2 加四个停下点的重放用例。R5-N1：设计期只读在焦点停在目标一级时仍放行，写进残余，身份节措辞改为目标或它的模块，阶段提醒加一句 graph_focus；R5-N2：取消第 7 步后的三处残留引用已改；R5-N3：兄弟设计读 M7 0.5，isReleased 含完成；R5-N4：见 d-design-onepage 与 m7 的批注。"
+    },
+    {
+      "at": "2026-10-30T12:10:43.751Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M3 附录 0.5 第 5 轮独立评审（run m3-addendum-v05-sonnet，wf_99e8b45c9d6f6b3f，claude-sonnet-5.5）：APPROVED，HIGH 0、MEDIUM 0、NIT 2。第 4 轮四条（M1 例题与 d-main-agent-peak-exempt 相反、M2 每模块一次放行没设计、N1 第 7 步与 /graph-apply、N2 契约测试）与第 5 轮六条（R5-M1 快照流水与临时索引还在 git 目录下、R5-M2 大循环放行做了一半时重放会落回单层放行并批准所有模块子树，加四条 NIT）全部关闭。评审稿 reviews/addendum-r5b.md，addendum-r5.json 已覆盖。M3 的设计到此定稿。下一步：写一页人话放行稿交人放行（d-design-onepage），人放行之后开工实现（约 12 步，工作树 .worktrees/m3 与 .worktrees/m3-flow 已快进到 main）。两条 NIT 留在实现那一批顺手改：R5b-N1 见本仓库图的待办批注；R5b-N2 PLAIN_QUESTION_GUIDE 里的例题打印时段间没有空行，长度差 4 个字符。"
     }
   ]
 }
