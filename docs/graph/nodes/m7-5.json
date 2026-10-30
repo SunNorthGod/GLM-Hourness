@@ -2,7 +2,7 @@
   "id": "m7-5",
   "type": "task",
   "title": "主 Agent 合入，harness 核对与记证据",
-  "status": "approved",
+  "status": "doing",
   "parent": "m7",
   "kind": "implement",
   "body": "M7 设计 0.4（.agents/tasks/m7/design.md）§1.2 的 m7-5。验证层：L2（临时 git 仓库，带一个裸仓库当远端）、L3；L4。实现顺序与接口见设计 §8 与 §3.8。",
@@ -50,6 +50,14 @@
           ]
         }
       }
+    },
+    {
+      "at": "2026-10-30T17:37:22.722Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "派出 m7-e3-followup（wf_d460721638c10240）：修 E3 评审留下的、属于 E3 自己的不挡路发现，其中两条（门禁工作树守卫放过被重定向的 .git 文件与被遗弃的游离 HEAD 提交）必须在 E7 调用之前修；并补设计 §3.8.4 执行前判定表漏掉的五条能让主干前进的路（只改设计文字，代码在 E1b、E7）。",
+      "from": "approved",
+      "to": "doing"
     }
   ]
 }

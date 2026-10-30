@@ -31,6 +31,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "人 2026-10-30 追问：「你就不能不实际录屏啊？纯自己用代码实现视频？我记得有一个很火的skill来着」。编排方核实：人说的是 Remotion 官方为 coding agent 发布的 Agent Skills（2026-01-20 发布，发布演示在 X 上数日内数百万次播放，几周内装机十余万次）；Remotion 用 React 组件写视频、按帧渲染出 MP4，许可对个人与小团队免费（含商用），大公司才要买许可。本机条件够：Node v22.20.0、npx、ffmpeg 8.1.1 都在；这个 skill 还没装（~/.kiro/skills 下只有 arkcli 系列与 humanizer-zh）。这样做的好处：不录屏也能讲清楚，并且能把还没做完的部分如实画成「设计中」，现成素材有项目图 docs/graph/graph.svg（真实的图）与各设计的草图（规则板、循环板、面板首页、框架与模块、用户旅程总览）。编排方的建议交人定：现在就用代码做一支一到一分半钟的讲解片，只讲已经定了的东西、没做完的明写；放在仓库外的单独目录，不进本仓库的构建与检查；对外发布仍等前一条批注里的许可与条款复核。等人回答。"
+    },
+    {
+      "at": "2026-10-30T17:37:23.408Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-10-30 对宣传视频的两条答复：一、「你就当我们现在已经做完了，我就是给做完了的时候准备的视频」：视频按产品做完的样子讲，现在就准备，不等自举；编排方据此把前一条批注里「自举跑通再拍」的建议撤回。二、「先装skill吧」：编排方已把 Remotion 官方的 Agent Skills（remotion-dev/skills，提交 30d4553，2026-10-26，skill 版本 4.0.539）里的路由 skill remotion-best-practices 整个装进用户级 ~/.kiro/skills/remotion-best-practices（144 个文件，含它路由到的 create、markup、captions、render、studio 等十一个子参考）；装法是从官方仓库浅克隆后原样复制，没有用 npx skills add（那个命令按 Claude Code 等客户端的目录装，不认 Kiro）。没有改别的 skill，没有动本仓库。编排方接着把视频的做法交人看，人点头之前不开工。对外发布前复核许可与条款的那一条照旧有效。"
     }
   ]
 }
