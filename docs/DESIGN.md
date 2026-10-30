@@ -57,7 +57,7 @@ GLM-Hourness（同仓两包，§2.3）
 | `glm-hourness/rules` | `dsh-hourness` | `dist/rules/index.js` | 编排 | 规则板最小一片（`ORCHESTRATION.md` §16）：每个项目的高峰模式档位（无影响、少做、不做，默认少做）、改档位的命令 `/rules peak`，提供服务 `glmHournessPeakMode`（契约在 `src/shared/peak-mode.ts`）；不挡任何 agent、不排队。默认禁用，L3 场景 `rules-peak` 与 `rules-peak-hourness` 通过后、桌面版首轮验收前保持禁用 |
 | `glm-hourness/design` | `dsh-hourness` | `dist/design/index.js` | 编排 | 主 Agent 模式（`ORCHESTRATION.md` §3.1、§3.5；M3 第 3 步）：命令 `/wish`（开启；`here` 把主 Agent 从别的会话移过来；`off` 退出）、会话投影 `hournessMainAgent`、每个项目的持有者记录（用户级目录的 `main-agent/` 下，一个项目一个主 Agent，`src/graph/main-agent-holder.ts`）、身份节 `hourness:main-agent`（§5.2）、主 Agent 的工具面（去掉写文件的工具与 `ask_user_question`）。默认禁用：L3 场景 `glm-design-wish-idle`、`non-glm-design-wish-idle`、`glm-design-main`、`non-glm-design-main`、`glm-design-one-main` 通过后、桌面版首轮验收前保持禁用 |
 | `glm-hourness/glm-ui` | `dsh-glm-zcode`（客户端面） | `ui/index.js` | 呈现 | 设置页与输入框下的 GLM 按钮（§2.5），客户端入口 `ui/src/glm-client.js`；默认启用：2026-10-29 split 合入后的桌面版验收第一轮通过后启用，第二轮在桌面版上核对 |
-| `glm-hourness/ui` | `dsh-hourness`（客户端面） | `ui/index.js` | 呈现 | 右侧栏「项目图」页签（需要你、agent 定的、正在做、图，`ORCHESTRATION.md` §2.10），客户端入口 `ui/src/hourness-client.tsx`；沿用单包布局时已启用的行 id |
+| `glm-hourness/ui` | `dsh-hourness`（客户端面） | `ui/index.js` | 呈现 | 右侧栏「项目图」页签（需要你、agent 定的、正在做、图，`ORCHESTRATION.md` §2.10），客户端入口 `ui/src/hourness-client.tsx`；主 Agent 会话的流程条、新会话的 `/wish` 开场卡片与输入框下方的「交给主 Agent」按钮（`ORCHESTRATION.md` §4.8；读设计行的会话投影 `hournessMainAgent`，投影不在时三者都不显示）；沿用单包布局时已启用的行 id |
 
 ### 2.3 同仓两包与一包一源
 

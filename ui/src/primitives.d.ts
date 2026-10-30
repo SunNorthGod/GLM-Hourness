@@ -1,4 +1,15 @@
 /**
+ * react-dom comes from the DSH client module table like React (scripts/
+ * ui-modules.mjs) and has no type package here; the one call the bundle
+ * makes, the popover's portal, is declared.
+ */
+declare module 'react-dom' {
+  import type { ReactNode, ReactPortal } from 'react'
+
+  export function createPortal(children: ReactNode, container: Element): ReactPortal
+}
+
+/**
  * The ui-primitives components the UI bundle uses. The package is not on
  * npm for third parties; DSH hands it over through the client module table
  * (docs/DEVELOPMENT.md §5.6). Props follow the calls in the rc.3 client
