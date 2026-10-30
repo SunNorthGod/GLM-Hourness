@@ -14,6 +14,12 @@
       "reason": "用户要求把编排方派出的子 agent 全换成 Sonnet 5.5",
       "relay": "要不把你子代理全换成Sonnet5.5吧",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-30T10:29:23.404Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-10-30 回「省额度，你在跑的也立刻换」：目的是省额度，正在跑的运行也立刻换档。编排方照办：停掉五个在跑的运行（rules-peak-slice-impl wf_f9666270bdddbabd、m3-addendum-v05 wf_35da55069f8147be、m7-design-v04-review wf_526025270d4dab69、bootstrap-design wf_3ed5efc7a51801d7、metrics-design-v02 wf_90f11a942744818d），五个都没有提交、没有写图，盘上的稿子都在（M3 附录仍是 0.4、M7 仍是 0.4 待第 4 轮评审、接管项目 0.3、指标流水 0.2、工作树 .worktrees/rules-slice 干净无提交）。自举关键路径上的三件换 claude-sonnet-5.5 重开：m7-design-v04-review-sonnet（wf_6aca396bcaaa93cc，单步评审）、rules-peak-slice-impl-sonnet（wf_585bd2776e10960d，复用原工作树、先 rebase 到 main）、m3-addendum-v05-sonnet（wf_99e8b45c9d6f6b3f）。编排方另按省额度与 d-dogfood-scope 把不在关键路径上的两件（接管项目、指标流水）就地停住、不重开，等自举之后由 DSH 里的主 Agent 做；这一步是编排方定的，人可推翻。省额度的另外两个可用杠杆（调低每步的用力档位、减少并行评审）编排方没有自己动，等人要再说。"
     }
   ]
 }
