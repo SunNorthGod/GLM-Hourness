@@ -12,6 +12,7 @@
     "`$ npm test`",
     "`$ npm run probe` when src/, ui/, packages/, scripts/probe/, scripts/sandbox.mjs",
     "`patrol $ npm run deps:check`",
+    "`only docs/graph/`",
     "`push`"
   ],
   "history": [
@@ -71,6 +72,36 @@
       "actor": "llm",
       "op": "comment",
       "text": "M7 设计 0.4 §3.8.4（评审 F1）：主干前进没有「已在上游」的例外。拉来的提交也要先由 harness check_commit，主干上的 git pull 被拒，正路是 git fetch、check_commit <上游>/<主干>、git merge --ff-only；推送只能推到本地主干核对过的状态（pushOk）；改远端跟踪引用的命令被拒。only 写法有两层意思（只改这些路径的前进不跑命令；只差这些路径的两个提交共用一次检查），都写进 M7 §13 ② 给人看（评审 N1）。"
+    },
+    {
+      "at": "2026-10-30T12:56:17.482Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "用户看过十件活「怎样算做完」的十条摘要与 M7 放行稿之后放行（question-37 A：由人逐条看过再定），原话「没问题的」",
+      "relay": "没问题的",
+      "changes": {
+        "acceptance": {
+          "from": [
+            "`setup $ pnpm install --store-dir ../../.pnpm-store`",
+            "`$ npm run build`",
+            "`$ npm run preflight`",
+            "`$ npm test`",
+            "`$ npm run probe` when src/, ui/, packages/, scripts/probe/, scripts/sandbox.mjs",
+            "`patrol $ npm run deps:check`",
+            "`push`"
+          ],
+          "to": [
+            "`setup $ pnpm install --store-dir ../../.pnpm-store`",
+            "`$ npm run build`",
+            "`$ npm run preflight`",
+            "`$ npm test`",
+            "`$ npm run probe` when src/, ui/, packages/, scripts/probe/, scripts/sandbox.mjs",
+            "`patrol $ npm run deps:check`",
+            "`only docs/graph/`",
+            "`push`"
+          ]
+        }
+      }
     }
   ]
 }

@@ -6,10 +6,10 @@
   "parent": "hourness",
   "body": "question-38 C：审查深浅由主 Agent 定（全审：更强的模型对照验收逐条看；轻审：只扫改动；不审：只改文档、错字一类），但改动落在下列任一类时由 harness 强制全审，按改动的文件与执行的命令判断，主 Agent 绕不过去。例外：清理已合进主干的分支与工作树不算「删东西」，因为每件活收尾都要做，删除前 harness 先存快照（d-main-agent-shell 的细则）。周报统计降档或不审的活后来返工的次数，哪一类返工多就提议加进清单，人点头才改；放松清单要人同意。",
   "acceptance": [
-    "改到拦截与权限：guard 规则、写入范围、主 Agent 与子 agent 的工具面",
-    "改到项目图引擎或数据格式：src/graph 的引擎、校验与 docs/graph 的文件格式",
-    "删东西、推送这类收不回的操作：删文件或分支（清理已合入的除外）、推送、改写提交历史",
-    "改用户配置目录（~/.dsh、~/.zcode 等）或写到项目目录之外"
+    "改到拦截与权限：guard 规则、写入范围、主 Agent 与子 agent 的工具面 `files src/guard/, src/execute/scope.ts, src/execute/faces.ts, src/execute/advance.ts, src/execute/floor.ts, src/execute/gate-norm.ts, src/rules/, src/design/index.ts, src/shared/tool-names.ts, src/shared/dialect.ts`",
+    "改到项目图引擎或数据格式：src/graph 的引擎、校验与 docs/graph 的文件格式 `files src/graph/engine.ts, src/graph/format.ts, src/graph/schema.ts, src/graph/parse.ts, src/graph/mutation.ts, src/graph/store.ts`",
+    "删东西、推送这类收不回的操作：删文件或分支（清理已合入的除外）、推送、改写提交历史 `deletes` `commands git push, git branch -d, git branch -D, git update-ref -d, git filter-branch, git filter-repo`",
+    "改用户配置目录（~/.dsh、~/.zcode 等）或写到项目目录之外 `outside`"
   ],
   "history": [
     {
@@ -31,6 +31,29 @@
       "actor": "llm",
       "op": "comment",
       "text": "M7 设计 0.4 §3.8.5（评审 F2）更正 0.3 的批注：判不了就从严。这一节点在图上、有一条 harness 认不出判定写法时，每件写任务的有效深浅都是全审，派审查低于全审被拒（floor_unparsed），主干前进时项目图目录与 only 路径以外改到的每个文件都要有全审看过同样的内容。本仓库四条现在都没有写法，所以在人回答 M7 §13 ① 之前每件都全审。判定写法是每条末尾连着的反引号段（files、deletes、commands、outside），写错的整条算判不了；节点被 LLM 废弃或取代不算数。§13 ① 的第 1 条路径比 0.3 多四项（src/execute/advance.ts、floor.ts、gate-norm.ts 与 src/rules/）。"
+    },
+    {
+      "at": "2026-10-30T12:56:17.240Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "用户看过十件活「怎样算做完」的十条摘要与 M7 放行稿之后放行（question-37 A：由人逐条看过再定），原话「没问题的」",
+      "relay": "没问题的",
+      "changes": {
+        "acceptance": {
+          "from": [
+            "改到拦截与权限：guard 规则、写入范围、主 Agent 与子 agent 的工具面",
+            "改到项目图引擎或数据格式：src/graph 的引擎、校验与 docs/graph 的文件格式",
+            "删东西、推送这类收不回的操作：删文件或分支（清理已合入的除外）、推送、改写提交历史",
+            "改用户配置目录（~/.dsh、~/.zcode 等）或写到项目目录之外"
+          ],
+          "to": [
+            "改到拦截与权限：guard 规则、写入范围、主 Agent 与子 agent 的工具面 `files src/guard/, src/execute/scope.ts, src/execute/faces.ts, src/execute/advance.ts, src/execute/floor.ts, src/execute/gate-norm.ts, src/rules/, src/design/index.ts, src/shared/tool-names.ts, src/shared/dialect.ts`",
+            "改到项目图引擎或数据格式：src/graph 的引擎、校验与 docs/graph 的文件格式 `files src/graph/engine.ts, src/graph/format.ts, src/graph/schema.ts, src/graph/parse.ts, src/graph/mutation.ts, src/graph/store.ts`",
+            "删东西、推送这类收不回的操作：删文件或分支（清理已合入的除外）、推送、改写提交历史 `deletes` `commands git push, git branch -d, git branch -D, git update-ref -d, git filter-branch, git filter-repo`",
+            "改用户配置目录（~/.dsh、~/.zcode 等）或写到项目目录之外 `outside`"
+          ]
+        }
+      }
     }
   ]
 }
