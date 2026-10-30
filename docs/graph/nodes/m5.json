@@ -59,6 +59,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "src/data/project-root.ts 和 src/data/lock.ts 已经存在（规则板最小一片的跟进建成，分支 rules-followup），M5 的数据目录服务与 projectDirOf 复用，不再建这两份。projectDirOf 里「追加进 .git/info/exclude」那一步就是 project-root.ts 的 ensureIgnored(root, '.llm')（规则行现在在第一次建 .llm/rules/ 前自己调它）。规则行的 openRulesBoard 现在没有设计 §7.4 的 projectDir 参数，等 projectDirOf 合入时与忽略条目一起加。"
+    },
+    {
+      "at": "2026-10-30T13:12:49.205Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "编排方裁定（可推翻），起因：改设计措辞那一活（run rules-design-amendments）把 M3 附录里 9 处 projectRootOf 改成已合入代码的 projectOf，但没有动 M5 §5.5，理由是那一节描述的是一对异步/同步、文件系统可注入的函数，与已合入的 projectOf 不是同一个东西，这个判断是对的、不算漏改。裁定：仓库里仍然只留一份项目根模块（src/data/project-root.ts，已合入，导出 projectOf、gitDirOf、ensureIgnored）。M5 复工时若确实需要可注入文件系统或异步的读法，由 M5 给这一份加选项（照 src/data/lock.ts 用 LockEnvironment 注入的同一种做法），不另写第二份；M5 §5.5 的措辞那时一并改。排在自举之后，与 M5 其余对齐一起做。"
     }
   ]
 }

@@ -374,6 +374,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M7 设计 0.6 §3.7.5（R5-F4，编排方定改法 A）向 M3 提的请求：模块设计的独立评审在产品里由 M7 的派发做，M3 的 moduleReleaseGate（附录 0.5 §3.14.3，现七项）请加第 8 项，M3 第 9 步做；记录形状要在 M7 的 E4 合入之前定下，现给出。一、记录：M7 在模块节点上以 harness 身份批注一行，每一轮审查一条，格式固定：设计审查 · <childId> · <APPROVED|CHANGES_REQUESTED> · 方向清单 <digest> · 挡路 <n> · 派出 <at>。正则 ^设计审查 · (\\S+) · (APPROVED|CHANGES_REQUESTED) · 方向清单 ([0-9a-f]{12}) · 挡路 (\\d+) · 派出 (\\S+)$，分隔符是空格、U+00B7、空格。二、字段：childId 是这一轮审查的派发号；裁决是规整之后的，APPROVED 当且仅当 n 为 0；digest 是 norm-directions（DIRECTIONS_ID）此刻每一条验收各自去掉首尾空白、以换行符连接后的 UTF-8 文本的 SHA-256 的前 12 位小写十六进制；n 是规整之后挡路发现的条数；at 是这一轮派出的时刻，ISO 8601，与节点历史里的 at 同格式，不是写记录的时刻（用写记录的时刻，审查期间改了设计的情形会被当成评审之后没改）。三、M7 请 M3 数的条件（措辞归 M3）：模块上按批注的 at 取最新一条这样的记录，裁决是 APPROVED、n 为 0、digest 等于此刻按上面算法得出的值，并且模块、模块放行集合（moduleSet）里的节点、norm-directions 在记录的派出时刻之后没有 comment 以外的历史条目；没有这样的记录时检查不通过，hint 建议用 dispatch_task 以模块 id 派设计评审。四、相关的两点：附录 0.5 §3.14.7 让挂在没放行的模块下的任务出生为 proposed，M7 对设计评审任务这一种形状（kind review、写入范围为空、source 指向模块下的设计决策）收 proposed，由 M7 的 isDesignReview 认，不需要 M3 做什么；M7 读 src/graph/modules.ts 的五个导出，读不出时分了模块的目标一件活也派不出去（R5-F3），请保持导出名与形状稳定。五、待 M3 定的一点：本仓库自举不受影响（本仓库的模块设计评审由 Kiro 工作流做、不走产品里的派发），第 8 项若对本仓库自己的图上的模块放行也生效，要写成本仓库能满足的形式，M7 不替 M3 定。详见 M7 设计 0.6 §3.7.5、§2.4、§7 的 M3 一行。"
+    },
+    {
+      "at": "2026-10-30T13:12:48.805Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M3 附录 .agents/tasks/m3/design-addendum.md（0.5）里项目根函数的名字由 projectRootOf 改为合入代码的 projectOf（src/data/project-root.ts；编排方裁定先建模块的一方的名字为准），共 9 处，没有改别的标识符。projectOf 在没有项目时返回 undefined，所以 §2.5 第 6 步里两处随之写明：返回 {root, git}，没有项目时返回 undefined；会话的工作目录没有项目的条件写作「返回 undefined，或返回的 git 为假」，其后改取被快照仓库的 toplevel 不变。M3 主设计 design.md 里没有这个名字，未动。附录里「谁先实现谁建」「M3 先到时按 M5 设计 §5.5 的解析规则写」这类在模块合入后已过时的句子没有改，留给对齐轮。"
     }
   ]
 }
