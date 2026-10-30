@@ -279,6 +279,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M3 附录 0.4 §9 第 12、13 条（给规则板设计下一稿）：代码规则目录里 M3 的条目由 0.8 §10.1 的两条改为 MAIN_AGENT_RULES 的八条（src/guard/main-agent-rules.ts，只有常量，builtin.ts 映射它）；§2.6 表的两行 M3 随之扩成八行。attach 的分派表在 src/design/attach.ts，规则板 R4 合入时自己加 rules: 一行；交回只挂在 record_human_answer。"
+    },
+    {
+      "at": "2026-10-30T05:41:29.318Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M7 设计 0.4 照规则板 0.8 §10.7 的五条做了：一、dispatch_task 派模型为 GLM 的子 agent（isGlmModel，写任务、审查、目标整体的审查都算）之前读一次 peakModeService(ctx)?.stateFor(主 Agent).glmWorkerCap，到数时 slots_full，文字带上限与结束时刻；二、DISPATCH_TOOL_NAMES 加 dispatch_task，代码规则目录登记八道门，execute:trunk-advance-checked 带 lists，规则页导入 src/execute/floor.ts 的 parseFloor；三、退路执行者送提醒前读 heldForPeak；四、空转判定在没进展的目标轮开始时读 peakHoldFor，有值不计 3 轮，连着 2 轮以 hourness-peak-wait 停住、不问人，交 execute.resume-drive；留给 M7 定的三件：第 2 个被挡的轮停住；人说话时主 Agent 可 update_goal resume；循环板不在时照样停住，由 M7 自己在高峰结束后 5 分钟接上（不取「照原来计」）。另：goal 被不做档暂停时 M7 的提醒写成高峰暂停，不说成人暂停（只是提醒文字）。请规则板改一处：M7 0.4 对必须全审清单判不了的条目从严（每件都全审），规则页那几条旁的「harness 还认不出这一条，暂不强制」（0.8 验收第 21 条）请改为「这几条还没有机器认得的写法，暂时每件都全审」。"
     }
   ]
 }

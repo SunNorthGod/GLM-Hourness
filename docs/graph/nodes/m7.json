@@ -185,6 +185,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "M3 附录 0.4 §9 第 7 条补充：DSH 委派在请求不覆盖时沿用父 agent 的模型，subagent 工具的 modelSelectionSettings 打开时可以按调用选 provider、model、reasoning_effort（限于允许清单），M7 设计派发选模型时先评估；git-snapshot.ts 的 gitInvocations、takeSnapshot、gitRisk 由 M7 加 export，被忽略文件不进快照与快照不出本机两条同样适用于 worker。"
+    },
+    {
+      "at": "2026-10-30T05:41:28.870Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M7 设计 0.4 写完（.agents/tasks/m7/design.md；0.3 原文留在 design-0.3.md；一页放行稿 onepage.md）。按 0.3 第 1 轮评审（CHANGES_REQUESTED，挡路 3、不挡路 10）与 design-context 的接缝裁定改，处理表在 §17。F1：删去「已在上游」的豁免，拉来的提交也要先由 harness check_commit，主干上的 git pull 改为 fetch、check_commit、快进三步；远端跟踪引用当主干看，改它的命令执行前拒绝，推送按 pushOk 核对，脚本里的推送在命令之后发现；巡检用 ls-remote 对照真正的远端，列出主干上没有检查记录覆盖的提交。F2：必须全审清单判不了就从严，有一条判不了时每件写任务都全审（floor_unparsed），§3.8.5 写全了每种写法怎样从改动路径与命令记录判。F3：照循环板 0.3 对齐，执行行与运维行经 glmHournessLoops.contribute 交十条默认条目（带 why 与 limits）、九个事件声明与五个 harness 动作，循环板经 Contribution.run（即 glmHournessExecute.runAction）执行；退路按「这一项被收下没有」判，另加看门：5 分钟内 actions.jsonl 没有认领记录就由 M7 自己执行并报行健康。接缝裁定：派 GLM 子 agent 之前读规则板的 glmWorkerCap；没进展的目标轮读 peakHoldFor，被高峰挡着的不计空转，连着 2 轮以 hourness-peak-wait 停住、不问人，交 execute.resume-drive，高峰结束时循环板的 loops.peak-end 调它，M7 另在结束后 5 分钟兜底。不挡路十条都采纳（N3 为未核实假设 U25，L4 第一批第 7 步核）。待人定仍是两件（§13），都不挡开工；十件活的「怎样算做完」草稿在 §1.2 与 onepage.md，改写的变更草稿在 graph-ops-v04-pending.json，要人的原话。设计评审待开始。"
+    },
+    {
+      "at": "2026-10-30T05:41:30.872Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M7 设计 0.4 写完（m7-design-v04-write，wf_144851c0ee301606；0.3 留作 design-0.3.md）：F1–F3 与 N1–N10 已处理，接缝裁定已用上，逐条见 §17；一页人话 onepage.md 与十件活的「怎样算做完」草稿已写，改验收的图操作草稿在 graph-ops-v04-pending.json，等人看过一页再定。派出单步评审 m7-design-v04-review，对照最新的人定（含两层循环用进产品、主 Agent 不受高峰影响）。"
     }
   ]
 }

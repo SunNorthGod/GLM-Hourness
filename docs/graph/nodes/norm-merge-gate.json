@@ -65,6 +65,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M7 设计 0.3：检查由 harness 用 check_commit 在要进主干的那个提交上跑，主干前进的那一刻核对（§3.8.4）；`push` 一条现在由主 Agent 做（d-main-agent-shell），harness 在核对通过的提醒里写「不强推」，巡检报出没推上去的主干。新写法 `only <路径>` 让只改这些路径的提交不跑命令；本仓库是否加 `only docs/graph/` 等人定（M7 §13 ②）。"
+    },
+    {
+      "at": "2026-10-30T05:41:29.773Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M7 设计 0.4 §3.8.4（评审 F1）：主干前进没有「已在上游」的例外。拉来的提交也要先由 harness check_commit，主干上的 git pull 被拒，正路是 git fetch、check_commit <上游>/<主干>、git merge --ff-only；推送只能推到本地主干核对过的状态（pushOk）；改远端跟踪引用的命令被拒。only 写法有两层意思（只改这些路径的前进不跑命令；只差这些路径的两个提交共用一次检查），都写进 M7 §13 ② 给人看（评审 N1）。"
     }
   ]
 }

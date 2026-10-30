@@ -173,6 +173,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M3 附录 0.4 §3.13（回应循环板 0.3 §17 M3 各条）：第 1、2 条（attach 按前缀分派、拍板之后 acceptProposal）、第 5 条（detail 原样接在四行之后，renderProposal 加第三个参数）、第 6 条（拍板前再问 attachable、核对 mustShow 都在主 Agent 的回话里，不全在 not_shown，都在时 reason 末尾加摘要）照做，分派表的 loops: 一行由循环板合入时加；第 7 条（持有者会话归档时 /wish 提醒人）本版不做，记在附录 §10。"
+    },
+    {
+      "at": "2026-10-30T05:41:29.098Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M7 设计 0.4（§2.5、§3.11.1）照循环板 0.3 的接口写：两行各经 contribute({plugin: 'dsh-hourness', row}, {events, entries, actions, run}) 交，run 即 glmHournessExecute.runAction；条目照 LoopEntryDefinition，每项带 why，limits 照循环板 §5.1；事件照循环板 §4.2 声明（加 hourness.outside-advance，handback 带 commits 与 floorHit，trunk-advanced 带 files 与 truncated），去重键照 §4.2 的键一栏；execute.trunk 采纳覆盖规则。与循环板 0.3 不同、请循环板下一稿照改的几处（评审 F3 要的跨设计记录）：一、execute.resume-after-peak 改为 execute.resume-drive，只恢复以 hourness-peak-wait 阻塞的 goal（规则板 0.8 §10.7 循环板第 8 点），§5.2、§6.9 第 4 条判断表与 §17 M7 第 6 条随之改；以 hourness-idle-rounds 阻塞的 goal 不再由 loops.peak-end 恢复。二、执行行的动作是五个：start-drive、trunk-check、reconcile、resume-drive，另加只读的 execute.stop-draft（条目 execute.stopped 改为 harness 条目，因为四行草稿超过占位每值 200 个码点的上限）。三、hourness.handback 的 floorHit 多一个值 unparsed（必须全审清单判不了时）。四、M7 的看门：循环板 5 分钟内没调 runAction 时 M7 自己执行，之后循环板晚到的调用返回 skipped（already done）；runAction 在 <git>/hourness/execute/actions.jsonl 写 start 与 end，宿主在动作执行中退出时由 M7 的对账重做（循环板 §6.8 不重跑）。五、M7 的事件条目只在 M7 的两张表里定义，循环行不另带；hourness.design-released 只由 M7 交。"
     }
   ]
 }

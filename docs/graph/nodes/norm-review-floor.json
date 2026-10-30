@@ -25,6 +25,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M7 设计 0.3 §3.8.5：harness 只认每条验收行末反引号里的判定写法（files、deletes、commands、outside）。这四条现在都还没有，harness 判不了，强制全审对本仓库还不起作用；M7 §13 ① 给了四条各自要加的写法，等人同意之后带人的原话写进验收（.agents/tasks/m7/graph-ops-v03-pending.json）。"
+    },
+    {
+      "at": "2026-10-30T05:41:29.545Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M7 设计 0.4 §3.8.5（评审 F2）更正 0.3 的批注：判不了就从严。这一节点在图上、有一条 harness 认不出判定写法时，每件写任务的有效深浅都是全审，派审查低于全审被拒（floor_unparsed），主干前进时项目图目录与 only 路径以外改到的每个文件都要有全审看过同样的内容。本仓库四条现在都没有写法，所以在人回答 M7 §13 ① 之前每件都全审。判定写法是每条末尾连着的反引号段（files、deletes、commands、outside），写错的整条算判不了；节点被 LLM 废弃或取代不算数。§13 ① 的第 1 条路径比 0.3 多四项（src/execute/advance.ts、floor.ts、gate-norm.ts 与 src/rules/）。"
     }
   ]
 }

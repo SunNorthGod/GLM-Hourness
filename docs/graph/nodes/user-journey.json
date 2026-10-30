@@ -77,6 +77,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "用户图 0.3 第 2 轮评审：CHANGES_REQUESTED，挡路 3 → 2。F10（HIGH）S6、S7、S8、§7 与 G4 还没跟上人刚定的「两层循环也用进产品」；F11 §1 引用的提交与 design-context 版本落后。两条都是跟着已有决定的机械改动。按 question-11（挡路条数下降时自动加第三轮），编排方给循环加 1 轮。"
+    },
+    {
+      "at": "2026-10-30T05:41:30.649Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "用户图 0.4（user-journey-finish 按第 2 轮评审改；.agents/tasks/user-journey/journey.md 与 journey-overview.svg），未评审。挡路两条：F10 照 d-design-onepage 2026-10-30T05:19:50Z（两层循环也用进用户的项目）改 S6（§2 表与 §3：设计放行之后先定框架、模块清单与方向清单，每个模块一次四行加一页放行稿，人同意才派这个模块的开发）、S7（开发中的问题分三档，成批至多三件）、S8（面板显示框架、模块清单、方向清单与放行状态），G4 改为人已定、M3 附录 0.4 §12、M7 0.4 §1.1、面板 0.6 与一页稿还没跟上，建议 M3、M7、面板各改，§7 那一行改为本项目与用户的项目都照此走；F11 截止时刻挪到 13:23 盘面（main e9e2296），§1 写明 dcbf2b6..102f2a1 有 d-design-onepage 一处人定、design-context.md 读的是 13:19:46 版到末节 Two-level loop in the product、面板一页稿写在这条决定之前，并列出截止之后改过没重读的设计（接管项目 0.3、M6、M7、指标流水评审）。不挡路两条：F12 总览图 S9 加缺口 G7 G11；F13 G3 改按节引，13:33 的 M3 附录 §11 已只读 PLAIN_LIMITS.background，G3 改为已对上。下一步：第 3 轮独立评审。"
+    },
+    {
+      "at": "2026-10-30T05:41:31.092Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "用户图 0.4 写完（user-journey-finish 运行内）：第 2 轮 F10、F11 两条挡路与 F12、F13 已处理，S6、S7、S8、G4、§7 跟上了「两层循环也用进用户的项目」，截止时刻改为 13:23（main e9e2296），总览图已更新。接着第 3 轮评审。"
     }
   ]
 }

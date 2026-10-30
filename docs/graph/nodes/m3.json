@@ -254,6 +254,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M3 附录 0.4 写完（m3-addendum-v04 运行内；0.3 留作 design-addendum-0.3.md）：第 3 轮 20 条（M1–M8、N1–N12）全部处理，逐条见 §15，接缝裁定已用上（§3.13 attach、§2.9 背景上限、§2.6 /wish）。同一运行接着评审一轮（人给的那一轮），通过后写一页人话。0.4 开写在「两层循环也用进产品」与「主 Agent 不受高峰影响」之前，评审要对照这两条；没赶上的在实现开工前补。"
+    },
+    {
+      "at": "2026-10-30T05:41:30.217Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M7 设计 0.4 对 M3 多三处：一、worker 的计划与问题请求、harness 的通知每次送之前重取 mainAgentOf，当前持有者能 answer_worker 前任派出的 worker（评审 N7），自动推进跟着持有者移到新会话，旧会话的 goal 由 M7 清掉；二、阶段提醒（stage-notice.ts）在图上没有 norm-review-floor 时加一句，请主 Agent 在放行之前提议一张带判定写法的清单；三、门禁工作树有改动时用 takeSnapshot 先存快照（评审 N5）。0.3 批注里的其余各处不变。"
     }
   ]
 }
