@@ -167,6 +167,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M7 设计 0.5 与 M4 0.4 的接缝（m7 design.md §7、§12.1、§18.2）：M4 0.4 写给 M7 的四件（G1 的 installRuleGate 取代 evaluate、PROMOTION 是影子转生效的唯一判据、peekGrant/outsideDenial/openRequests、汇合门禁的 scratchLeftovers）M7 0.5 不处置，何时处置已写明（评审 R4-F10）：PROMOTION 一条在 P2 开工之前，其余在实现中，M4 的 G1 合入时「谁后合入谁改」；M4 不在自举路径上。0.5 已按 M4 的东西写了一处：八道代码里的门的转生效只认 M4 §3.5 的 PROMOTION（带标注的会拦样本至少 20 条含回放、实时影子至少 14 天、误伤 0，人拍板），影子的语义取 M4 §3.1 的 RuleMode；M7 的 E4 照 main 上现有的 guard 框架写，首日八道门全部 enforce，没有影子分支；人若要求首日先影子，E4 自己写十几行影子包装，M4 的 G1 合入时换成 installRuleGate。M7 导出 EXECUTE_RULES（id、标题、模式、lists）供规则板整块映射，M4 的 GUARD_RULES 不需要列它。"
+    },
+    {
+      "at": "2026-10-30T19:17:01.752Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "design-alignment-7-modules（wf_7c912a9ce7fb220e）整体以失败收场：五支在账号超限时失败，带停了还在跑的 M4 与 M5 两支。M4 一支已写成 0.5（.agents/tasks/m4/design.md，02:53；0.4 原文在 design-0.4.md）：F17 人加的检查改成循环板上的普通条目、走同一条同意的路、由循环板执行，M4 给循环板 checkCommandOf、fillCheckArgv、formatCheckOutput 三样；F18–F20 与 N35–N42 及对齐轮要求的三件都已处理；独立评审没跑。重开为 design-alignment-m4-m5-resume（wf_4ab43c8aa3dc25b0），M4 从评审接着做。"
     }
   ]
 }
