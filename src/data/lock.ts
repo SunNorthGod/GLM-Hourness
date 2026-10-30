@@ -90,6 +90,14 @@ export interface LockOptions {
   readonly holder?: string
   /** Rename a lock that is taken over to `<file>.stale-<ms>` instead of deleting it. Default: delete. */
   readonly keepStale?: boolean
+  /**
+   * A file whose content tells nothing (empty, not JSON, no pid and no stamp)
+   * may belong to a creator that has made the file and not yet written it.
+   * It is taken over only once this waiter has seen the same content for this
+   * long. A lock held for minutes cannot afford to be taken from a live
+   * creator in that window. Default 0: at once, as the rules board always did.
+   */
+  readonly unreadableGraceMs?: number
 }
 
 interface LockContent {
@@ -150,6 +158,8 @@ export async function acquireLock(file: string, environment: LockEnvironment = r
   const token = randomUUID()
   const startedAt = environment.now()
   const deadline = startedAt + (options.waitMs ?? LOCK_WAIT_MS)
+  /** The content without information this waiter last saw, and when it first saw it. */
+  let unreadable: { readonly text: string, readonly since: number } | undefined
   for (;;) {
     const boot = environment.bootTime?.()
     const written: LockContent = { pid: environment.pid, startedAt, at: environment.now(), token, ...(boot === undefined ? {} : { boot }), ...(options.holder === undefined ? {} : { holder: options.holder }) }
@@ -166,13 +176,22 @@ export async function acquireLock(file: string, environment: LockEnvironment = r
     const holder = await readContent(file)
     if (holder === undefined) {
       // The holder released between the attempt and the read: try again at once.
+      unreadable = undefined
       if (environment.now() >= deadline) return 'busy'
       continue
     }
+    let abandoned = isAbandoned(holder.content, environment, options)
+    // Seen "continuously": any content that tells something, or none at all, ends the run of looks.
+    if (typeof holder.content.pid === 'number' || typeof holder.content.at === 'number' || (options.unreadableGraceMs ?? 0) <= 0) unreadable = undefined
+    else if (unreadable?.text !== holder.text) unreadable = { text: holder.text, since: environment.now() }
+    if (unreadable !== undefined) abandoned = environment.now() - unreadable.since >= (options.unreadableGraceMs ?? 0)
     // Remove only the lock that was read: a writer that took over in between keeps its fresh one.
-    const removed = isAbandoned(holder.content, environment, options) && (await readContent(file))?.text === holder.text
+    const removed = abandoned && (await readContent(file))?.text === holder.text
       && await (options.keepStale === true ? rename(file, `${file}.stale-${environment.now()}`) : unlink(file)).then(() => true, () => false)
-    if (removed) continue
+    if (removed) {
+      unreadable = undefined
+      continue
+    }
     if (environment.now() >= deadline) return 'busy'
     await environment.sleep(options.retryMs ?? RETRY_MS)
   }

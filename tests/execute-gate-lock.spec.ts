@@ -13,7 +13,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { acquireLock, LOCK_WAIT_MS, realLockEnvironment, STALE_LOCK_MS, type LockEnvironment, type LockOptions, type WriteLock } from '../src/data/lock.ts'
-import { acquireGateLock, GATE_BOOT_TOLERANCE_MS, GATE_RETRY_MS, GATE_STALE_MS, GATE_WAIT_MS } from '../src/execute/gate-lock.ts'
+import { acquireGateLock, GATE_BOOT_TOLERANCE_MS, GATE_RETRY_MS, GATE_STALE_MS, GATE_UNREADABLE_GRACE_MS, GATE_WAIT_MS } from '../src/execute/gate-lock.ts'
 
 const root = mkdtempSync(join(tmpdir(), 'execute-gate-lock-'))
 process.on('exit', () => rmSync(root, { recursive: true, force: true, maxRetries: 3 }))
@@ -277,6 +277,75 @@ test('an environment without bootTime still locks: the boot time is optional and
   // The other direction: a lock written without a boot time is not judged by boot either.
   writeFileSync(file, JSON.stringify({ pid: process.pid, startedAt: full.now(), at: full.now(), token: 'someone-else' }))
   assert.equal(await acquireLock(file, full, { bootToleranceMs: 120_000, retryMs: 1, waitMs: 1 }), 'busy')
+})
+
+test('lock options: a file without readable content is taken over at once by default, and only after unreadableGraceMs when that is set (E3 review, E3-8)', async () => {
+  const file = lockOf(execDir())
+  const environment = fakeEnvironment()
+  const quick = { retryMs: 1_000, waitMs: 10_000 }
+
+  // Default: the rules board's behaviour, no waiting.
+  writeFileSync(file, '')
+  const started = environment.now()
+  await held(await acquireLock(file, environment, quick)).release()
+  assert.equal(environment.now(), started)
+
+  // With a grace: the creator may be between creating the file and writing it, so the waiter gives it time.
+  writeFileSync(file, '')
+  const lock = held(await acquireLock(file, environment, { ...quick, unreadableGraceMs: 2_500 }))
+  const waited = environment.now() - started
+  assert.ok(waited >= 2_500 && waited < 3_500, `waited ${waited} ms for a grace of 2500`)
+  await lock.release()
+
+  // Not-JSON, and JSON without a stamp, count as unreadable too; each waiter measures the grace from when it first saw that content.
+  for (const content of ['{"pid"', '{}']) {
+    writeFileSync(file, content)
+    const before = environment.now()
+    await held(await acquireLock(file, environment, { ...quick, unreadableGraceMs: 2_500 })).release()
+    assert.ok(environment.now() - before >= 2_500, `${content} waited out the grace`)
+  }
+  // A holder that is gone is still taken over at once: the grace is for content that tells nothing.
+  const dead = fakeEnvironment({ isAlive: () => false })
+  foreignLock(file, dead)
+  const deadStart = dead.now()
+  await held(await acquireLock(file, dead, { ...quick, unreadableGraceMs: 2_500 })).release()
+  assert.equal(dead.now(), deadStart)
+})
+
+test('lock options: a creator that finishes writing within the grace keeps its lock', async () => {
+  const file = lockOf(execDir())
+  const clock = fakeEnvironment()
+  let sleeps = 0
+  // The creator's writeFile lands during the waiter's first pause.
+  const environment: LockEnvironment = { ...clock, sleep: (ms) => { if (sleeps++ === 0) foreignLock(file, clock); return clock.sleep(ms) } }
+  writeFileSync(file, '')
+  assert.equal(await acquireLock(file, environment, { retryMs: 1_000, waitMs: 4_000, unreadableGraceMs: 2_500 }), 'busy')
+  assert.equal((JSON.parse(readFileSync(file, 'utf8')) as { token: string }).token, 'someone-else', 'the creator\'s lock was not taken over')
+})
+
+test('lock options: the grace runs from when the waiter first saw this stretch of empty content; a lock that came and went in between starts it over', async () => {
+  const file = lockOf(execDir())
+  const clock = fakeEnvironment()
+  // The waiter sees an empty file, then a creator's finished lock, then another creator's empty file with the same (empty) text.
+  const steps: readonly (() => void)[] = [() => foreignLock(file, clock), () => writeFileSync(file, '')]
+  let sleeps = 0
+  const environment: LockEnvironment = { ...clock, sleep: (ms) => { steps[sleeps++]?.(); return clock.sleep(ms) } }
+  writeFileSync(file, '')
+  const first = environment.now()
+  await held(await acquireLock(file, environment, { retryMs: 1_000, waitMs: 20_000, unreadableGraceMs: 1_500 })).release()
+  // Looks at 0 (empty), 1000 (a lock), 2000 (empty again: the grace starts here), 3000, 4000 (2000 ms later: taken over).
+  assert.equal(environment.now() - first, 4_000, 'the first empty look, 2 seconds back, did not count towards the second file')
+})
+
+test('the gate lock waits out a grace before it takes over a file without content, and keeps what it took', async () => {
+  const dir = execDir()
+  const environment = fakeEnvironment()
+  writeFileSync(lockOf(dir), '')
+  const lock = held(await acquireGateLock(dir, 'check', { environment }))
+  assert.deepEqual(environment.sleeps, [GATE_RETRY_MS], 'seen once, taken over at the next poll')
+  assert.equal(staleFiles(dir).length, 1)
+  await lock.release()
+  assert.equal(GATE_UNREADABLE_GRACE_MS < GATE_RETRY_MS, true, 'shorter than one poll, so a crashed creator costs one poll')
 })
 
 test('lock options: keepStale renames the lock that is taken over, holder names the holder', async () => {

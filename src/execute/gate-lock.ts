@@ -12,6 +12,9 @@
  * - a lock written before the machine last booted is stale: its boot time
  *   differs from the current one by more than 120 seconds, which absorbs
  *   rounding and small clock corrections;
+ * - a lock file without readable content is abandoned only after a waiter
+ *   has seen it that way for 2 seconds (its creator may be between creating
+ *   the file and writing it);
  * - a lock taken over is renamed to `gate.lock.stale-<ms>` and kept;
  * - the file names its holder; releasing deletes the file only while it
  *   still carries this holder's token, so a holder that was wrongly judged
@@ -37,6 +40,8 @@ export const GATE_RETRY_MS = 5_000
 export const GATE_WAIT_MS = 60 * 60_000
 export const GATE_STALE_MS = 6 * 60 * 60_000
 export const GATE_BOOT_TOLERANCE_MS = 120_000
+/** Time a creator gets between making the lock file and writing its content; a file that stays empty longer is abandoned. Under one poll. */
+export const GATE_UNREADABLE_GRACE_MS = 2_000
 
 /** The values of the design; tests pass shorter ones. */
 const GATE_OPTIONS: LockOptions = {
@@ -44,6 +49,7 @@ const GATE_OPTIONS: LockOptions = {
   waitMs: GATE_WAIT_MS,
   staleMs: GATE_STALE_MS,
   bootToleranceMs: GATE_BOOT_TOLERANCE_MS,
+  unreadableGraceMs: GATE_UNREADABLE_GRACE_MS,
   keepStale: true,
 }
 
