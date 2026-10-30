@@ -77,6 +77,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "指标流水设计 0.1 写完（.agents/tasks/metrics/design.md，18 节，rc.3 接缝带文件行号，12 个未核实项，一道待人定 D1 关于验收）。运行 metrics-design（wf_69e6b58317041053）在之后的步骤失败；改派单步第 1 轮评审 metrics-design-review-r1，并核对 D1 是否必须问人、是否按 d-chat-not-cards 写成聊天式。草稿里的 D1 提问没有照原样写进图（它可能是选项式），等评审之后再定。"
+    },
+    {
+      "at": "2026-10-30T05:23:08.463Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "循环板设计 0.4 §6.10 加一类记录 loop-task-delete {at, project, entry?, scheduleId, why: moved|entry-gone|duplicate|no-holder|holder-archived|holder-not-found|repair|not-delivered, deleted}（被删任务的全文另存在循环板自己的 removed-tasks.jsonl，不进指标流水）；loop-holder 的 reason 写明 unknown 的两种（archive-unreadable、holder-unreadable）与 elsewhere 的两种（handover、writer-held）。合计十一类，仍只记 id、时刻、结局与计数。"
     }
   ]
 }

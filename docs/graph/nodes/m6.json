@@ -138,6 +138,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "用户同意 M3、M6、循环板三份设计在三轮上限之后各再给一轮（原话「行，改吧」）。派出 m6-design-v04（wf_0feddab79abcb558）：写 0.4 修 F8、F9（照编排方裁定）与 6 条 NIT，评审一轮；只这一轮。"
+    },
+    {
+      "at": "2026-10-30T05:23:08.029Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "循环板设计 0.4：照 M6 0.3 与 0.4 盘上稿核对，契约（LoginView、ChannelTrigger、ChannelLoopDefault、loopDefaultsOf）与四项条目不变，不请 M6 改契约。新的一处（评审 F38）：LoginView.since 可选，循环板在它没有时用第一次看到被拒的那一拍当这一次，键与已说记录不会空段。仍开着的两处说法是 0.3 起就请的：§8.3 的「GLM 包不知道档位」改为修订后的理由（GLM 包没有主 Agent），M6-L1 的「GLM 通道包未装」那一行不显示。"
     }
   ]
 }

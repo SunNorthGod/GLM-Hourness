@@ -255,6 +255,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "m8-plain-language 设计 0.6 对规则设计下一稿的补充（design.md §11 规则第 5、6 条）：板块登记表改为 subscribe(sessionId, listener) 加 snapshot(sessionId) → {available, homeLine, guideLine}；guideLine 读不到 GLM 高峰时为 null，上手页第 4 块的高峰模式几句随之整段不显示。宿主命令 /graph-apply 删去，§9.3 与 R4 的 acceptProposal 只由 graph_decide（带转述时）调，结果表里 /graph-apply 那一列删去；/rules-apply 的输入是 JSON、只有面板一个调用方，按同一个理由删去，人的写入经 /rules 子命令或对话。rules_propose 是写法检查第二阶段前提 (c) 列出的一处，需要一条在第二阶段常量下通过的契约测试。"
+    },
+    {
+      "at": "2026-10-30T05:23:07.819Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "循环板设计 0.4 照规则板 0.8 §10.7 循环板一条第 8 点改了 §6.9 第 4 条：第 14 项先恰好调一次 M7 的 resume-drive，再提醒主 Agent，少做与不做两档都这样，execute.resume-after-peak 的两行删去，以 hourness-idle-rounds 阻塞的 goal 不再由第 14 项恢复。与第 8 点字面不同的一处：循环板不先读 goal 的原因码，直接调、由 M7 的动作自己判（原因码与恢复都只在 M7，冷会话也成立）；对规则板没有影响，循环板仍不读 peakHoldFor。0.3 请规则板改的第 29 行 0.8 已改，不再请规则板改东西。"
     }
   ]
 }

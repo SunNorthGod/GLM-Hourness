@@ -143,6 +143,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "m8-plain-language 设计 0.6 对循环板设计 0.1 的四条要求（design.md §11 循环板，第 5 轮评审 P5-04；0.1 依据 plain-ui 0.4 写成，请编排者裁定后转给循环板下一稿与正在进行的评审）：1. 页面没有写入控件（d-chat-not-cards 第四点「面板只看」）：0.1 §6.1 的新建表单、§6.3 的改与删除、§7.2 的恢复都不在页面上，每处改成一句「要加/要改/要删/要恢复：跟主 Agent 说「……」」，都经 loop_propose；/loops-apply 的输入是 JSON、没有调用方，删去，只读的 /loops 留下；表单上的两句提醒（命令在你的电脑上按时跑、每天大约叫醒主 Agent N 次）由 loopProposalQuestion 写进四行。2. label 为「循环板」，页脚「规则板 › 循环板 › 经验 › 整张图 › 上手说明 ›」。3. 上手页第 5 块的字归 plain-ui（0.1 §7.3 那句的内容已并进），循环板经登记表只给 guideLine 与 homeLine；登记表接口是 subscribe 加 snapshot，view.json 读到新内容时调 listener。4. loop_propose 改为提议式四行，background 一行、去掉 ** 后至多 60 个码点（读 PLAIN_LIMITS.background，0.1 的「两三句」「150」改掉）；不要「不加/加上」的选项式过渡，S5 的依赖改为 M3 第 6 步合入；acceptProposal 只由 graph_decide 调（/graph-apply 删去）；loop_propose 是写法检查第二阶段前提 (c) 的一处，要一条契约测试。"
+    },
+    {
+      "at": "2026-10-30T05:23:07.398Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "循环板设计 0.4 写成（人在第 3 轮评审停下之后准了再改一稿：「行，改吧」；.agents/tasks/schedules/design.md；0.3 原文、草图与放行稿留作 design-0.3.md、mockup-loops-0.3.svg、onepage-0.3.md；onepage.md 与 mockup-loops.svg 跟着改），逐条回应第 3 轮评审 6 条（§19.3）。挡路两条：F34 照编排方最新的接缝裁定（高峰里等高峰结束），§6.9 第 4 条的判断表重写为十行，持有者状态两行之后、档位之前恰好调一次 M7 的 execute.resume-drive（经执行行那一份的 run，即 glmHournessExecute.runAction），少做与不做两档都调，done 就提醒主 Agent 接着做挪开的活；持有者会话是冷的、这段高峰里走过步时先 resolveAgent 恢复到本进程（M7 0.4 的动作要活 agent 在调用它的进程里）；elsewhere 时存一条「再判一次」、交接之后由主 Agent 所在的进程判，两边合起来至多调一次；以 hourness-idle-rounds 阻塞的 goal 不再恢复（真空转，该问人）；撤回 0.3 请 M7 加的 execute.resume-after-peak；循环板不读 peakHoldFor。F35 对账只在 holderState 为 none（连着两次）、archived、not-found 时删到点任务；elsewhere 与 unknown（读不到归档状态；持有者记录读不出，0.3 算作 none）时绑在持有者会话上的一条都不删；删 DSH 任务只经 removeTask，要同时能证明是循环板建的、说得出八种原因之一，删之前全文写进 removed-tasks.jsonl（保留 30 天），写不进就不删，每次删除记 loop-task-delete、页面列出。NIT：F36 writer-held 的标记 5 分钟作废、对这个会话的 resolveAgent 每 5 分钟至多一次，超过 5 分钟页面写「这块板交不过去」；F37 提议的 detail 与摘要只在 loop_propose 时算一次、存在变更记录里，「跑的是项目里的文件」那句只看 argv 的写法；F38 login-rejected 的 since 没有时用第一次看到被拒的那一拍；F39 放行稿两句与草图一行。接缝：M7 0.4 与 M6 0.4 的盘上稿（写到一半）已核对，见 §19.3 末段。替人定的方向 §18 共 16 条，没有要问人的。下一步：独立评审（question-11 下第 4 轮由人另准）。"
+    },
+    {
+      "at": "2026-10-30T05:23:08.696Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "循环板设计 0.4 写完（schedules-design-v04 运行内；0.3 留作 design-0.3.md 等）：F34、F35 两条挡路与 F36–F39 四条 NIT 已处理，照盘上的 M7 0.4、M6 0.4 核对过接缝；一页人话与草图已更新。同一运行接着做第 4 轮评审（人给的那一轮）。"
     }
   ]
 }
