@@ -11,11 +11,11 @@
  * peak under `reduce`, and the dispatch tool counts against it.
  */
 import { statSync } from 'node:fs'
+import { projectOf } from '../data/project-root.ts'
 import type { ServiceLookup } from '../shared/dsh-min.ts'
 import { peakHoldOf, peakModeState, type PeakModeService, type PeakModeState } from '../shared/peak-mode.ts'
 import { nextPeakChange, pricingService } from '../shared/pricing.ts'
 import { effectivePeakMode } from './model.ts'
-import { projectOf } from './project-key.ts'
 import { readProject, type ProjectRead } from './repo.ts'
 import { rulesPaths, type RulesPaths } from './store.ts'
 

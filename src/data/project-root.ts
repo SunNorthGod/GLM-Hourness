@@ -1,14 +1,18 @@
 /**
- * Which project a working directory belongs to (docs/ORCHESTRATION.md §16;
- * design §7.3): the repository root found by reading files only, no git
- * process. A git work tree has a `.git` file that names its git directory;
- * that directory's `commondir` leads to the main checkout's `.git`, so the
- * main checkout and every work tree of it are one project and read the same
- * rules file and runtime state.
+ * Which project a working directory belongs to (docs/ORCHESTRATION.md §16.3;
+ * rules design §7.3): the repository root found by reading files only, no
+ * git process. A git work tree has a `.git` file that names its git
+ * directory; that directory's `commondir` leads to the main checkout's
+ * `.git`, so the main checkout and every work tree of it are one project and
+ * read the same rules file and runtime state.
  *
  * Outside a git repository only a directory that already has a `.llm`
  * counts as a project, and the user's home directory and a drive root never
  * do, so nothing is written into folders that are not projects.
+ *
+ * Not rules-specific: this is the one project-root module of the
+ * repository. The rules row uses it today; the data directory service (M5)
+ * and the other boards reuse it instead of writing a second one.
  */
 import { readFileSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'

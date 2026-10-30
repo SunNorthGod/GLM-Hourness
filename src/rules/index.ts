@@ -19,13 +19,13 @@
  * session (row-health.ts). It ships disabled (packages/hourness/cordis.patch.yml).
  */
 import { basename } from 'node:path'
+import { projectOf } from '../data/project-root.ts'
 import type { AgentCommandInvocationLike, AgentLike, AgentsService, CommandDefinitionLike, CommandResultLike, CommandsHost, ProvideHost, ServiceLookup, SessionLike } from '../shared/dsh-min.ts'
 import { provideRowHealth, sessionIdOf, type HealthState, type RowHealth } from '../shared/health.ts'
 import { PEAK_LEVEL_WORDS, PEAK_MODE_SERVICE, peakModeIntro, type PeakModeState } from '../shared/peak-mode.ts'
 import { openRulesBoard, type ApplyError } from './engine.ts'
 import { parsePeakLevel } from './model.ts'
 import { peakModeServiceFor, peakReader, projectReader, stateOf, type ProjectView } from './peak.ts'
-import { projectOf } from './project-key.ts'
 import { gitOperationIn, readProject } from './repo.ts'
 import { projectHealth } from './row-health.ts'
 import { DEFAULT_RULES_DIR, type StoreIo } from './store.ts'

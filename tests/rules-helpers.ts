@@ -1,6 +1,6 @@
 /**
  * Shared pieces of the rules board specs: a project in a temporary
- * directory (a git repository by its `.git` directory, as src/rules/project-key.ts
+ * directory (a git repository by its `.git` directory, as src/data/project-root.ts
  * reads it), the board's files by name, and a store whose file operations
  * the test can bend.
  */
