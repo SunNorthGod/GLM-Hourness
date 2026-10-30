@@ -1225,8 +1225,8 @@ LLM 不讲人话，多半是默认在向评审汇报，想显得周全。做法�
 
 L2：`tests/peak-mode.spec.ts`（共用契约：上限与挡住的标记、读取函数、文字与少做那句里的数、`nextPeakChange`）、`tests/rules-model.spec.ts`（`effectivePeakMode`、序列化、规则文件、状态校验）、`tests/rules-store.spec.ts`（设计 §7.5 表里每一种情形、性质测试、锁、两个进程同时写、规则文件的各种情形与 git 操作、为空的集合不存、第一次写之前 `.git/info/exclude` 里的 `.llm/`）、`tests/rules-engine.spec.ts`（权限、请求校验、修订号、写入的产物、`busy` 与 `io`、项目根）、`tests/rules-row.spec.ts`（假宿主上的行：命令、服务、健康、恢复之后降级的出路、不挡任何调用、激活期降级、补丁里默认禁用）。L3：`npm run probe` 的场景 `rules-peak`（GLM 与编排层两个包，平移到周三 15:00 UTC+8 的探针时钟，临时 git 工作区：出厂档位、`/rules peak 不做`、`/rules peak 无影响`，每步经真实的 `/rules` 处理函数与服务读回状态）与 `rules-peak-hourness`（只装编排层包：没有计价服务，没有上限与挡住的标记）。L4（桌面版重启后核对）未做，行保持禁用。
 
-## 17. 执行层（M7）〔骨架进行中：E0 已实现，只有纯函数和测试，没有行〕
-M7 的设计是 `.agents/tasks/m7/design.md`（不入库，版本 0.6，评审通过、人放行）。执行层的源码在编排层包的 `src/execute/`，目录登记在 `scripts/packages.mjs` 的 `hourness.src`，`packages/hourness/tsconfig.json` 的 `include` 同步加一项（preflight 比对二者）。骨架按设计 §8.1 的步骤实现：E0 之后没有行、没有监听器，`cordis.patch.yml` 不变；`glm-hourness/execute` 行从 E4 起出现，默认禁用，E9 验证通过后才启用。
+## 17. 执行层（M7）〔骨架进行中：E0、E1a 已实现，只有纯函数和测试，没有行〕
+M7 的设计是 `.agents/tasks/m7/design.md`（不入库，版本 0.6，评审通过、人放行）。执行层的源码在编排层包的 `src/execute/`，目录登记在 `scripts/packages.mjs` 的 `hourness.src`，`packages/hourness/tsconfig.json` 的 `include` 同步加一项（preflight 比对二者）。骨架按设计 §8.1 的步骤实现：E0、E1a 之后没有行、没有监听器，`cordis.patch.yml` 不变；`glm-hourness/execute` 行从 E4 起出现，默认禁用，E9 验证通过后才启用。
 ### 17.1 写入范围（E0，`src/execute/scope.ts`）
 写入范围是任务节点的 `writeScope`：仓库相对路径，`/` 分隔，目录以 `/` 结尾（格式由图的读入检查保证，§2.6）。`scope.ts` 的函数都是纯函数，按整段比较路径：
 - `within(scope, path)`：范围里有一项包含这个路径。目录项包含它下面的一切和它自己，文件项只包含它自己；`src/` 不包含 `src2/a.ts`。路径本身可以是目录（计划的 `paths` 写法）：这时只有目录项包含它。比较区分大小写：只会少放行，不会多放行。空范围什么也不包含。不是路径的文本（空段、`.`、`..`、反斜杠、冒号、通配符、控制字符）永远不在任何范围里，所以 `src/../etc` 不会因为前缀相同而放行。
@@ -1234,3 +1234,18 @@ M7 的设计是 `.agents/tasks/m7/design.md`（不入库，版本 0.6，评审�
 - `repoRelative(root, cwd, target, api)`：工具调用的目标按调用方的工作目录解析，相对工作树根写成 `within` 认的写法；在根之外、在根下的 `.git` 里（不分大小写，忽略末尾的点和空格）时返回 `undefined`，根本身是空串。`api` 可换成 `path.posix` 或 `path.win32`，测试两种都跑。
 - `isScopePath(text)`：文本是不是范围写法。`tests/execute-scope.spec.ts` 用一张候选表钉住它与图读入检查的结论一致。
 调用方（E4 的 `worker-scope` 与派发门禁、E1a 的 `checkPlan`）按设计 §3.2.1、§3.3.2、§3.5.1 使用这几个函数；E0 本身不接任何调用方。
+### 17.2 模块读法与放行状态（E1a，`src/graph/execute-stage.ts`）
+M7 判一个任务此刻能不能派、能不能写，要读目标的模块结构。读法的正式出处是 M3 的 `src/graph/modules.ts`（附录 0.5 §3.14.1），它还没合入，所以 `execute-stage.ts` 里有一段标明「STAND-IN」的替身，按附录的签名实现 `modulesOf`、`moduleCandidatesOf`、`moduleOf`、`isReleased`、`isSplit`、`directionsOf`。M3 的文件合入时删掉这一段，改为从 `./modules.ts` 导入，`ModuleReaders` 留作注入类型。
+- `releaseOf(graph, task, readers?)`：先查任务最近的模块（任务不在模块下时跳过），再查目标；`task` 是目标时只查目标层。结果三种：`{ok: true, goal, module?}`（各带放行时刻 `at`）、`{ok: false, level, node, stage}`、`{ok: false, level: 'module', reason: 'unreadable'}`。第三种在读模块的函数抛错、而目标有带 `stage` 的直接特性（按原始图数，不经读法）时返回，派发与写入都拒绝；没有这种特性的目标不受影响。
+- `releaseAtOf(node)`：节点最近一次由 `release` 之前（或没有阶段）改到 `release` 或之后的那条历史的时刻；节点现在不在放行状态时为 `null`。模块被退回设计再放行，时刻不同，pins 因此让退回之前派出的活过期。`sentBack(node)` 认出「由 release 之后改回 design」。
+- `scopedTasks(graph, node, readers?)`：目标或模块子树里的任务，去掉模块设计的审查任务；对目标另外去掉设计中的模块下的任务。
+- `isDesignReview(graph, task, readers?)`：`kind` 为 `review`、写入范围为空、`source` 连线都指向某个模块下的决策，并且第一条历史是 `harness` 的提议。最后一项比设计多一条：普通审查任务也引用决策，没有它，挂在没放行的模块下的普通审查任务会被当成设计评审而跳过放行检查和「只收已批准」的检查。读法抛错时结果为 `false`。
+### 17.3 pins（E1a，`src/graph/pins.ts`）
+`pinsOf(graph, task, sha256)` 对任务、它到目标的每个祖先、它的 `source` 连线指向的每个节点各算 12 位十六进制摘要，只含改变意图的字段，按节点类型：任务是验收、非目标、`kind`、是否废弃或被取代；目标、特性等祖先是验收、非目标、是否废弃或被取代，目标和读法认出的模块另带 `releaseAt`；决策是 `verification` 是否为 `overturned` 或 `superseded`、状态；待决是拍板结果或提议式的结论、状态。标题、正文、历史、写入范围不进摘要。`staleness(graph, line, sha256)` 返回变了或不在图里的节点；读不出的 pins 行返回一条 `(pins)`，不会被当成没变。哈希函数是参数，文件不导入 Node 内置模块，客户端也能导入。待决的 `conclusion` 字段在 M3 的图格式改动合入前不在 `GraphNode` 的类型里，读时按未知字段处理。
+### 17.4 派发的纯函数（E1a，`src/execute/`）
+- `brief.ts`：`parseDispatchArgs`（§6.4 的形状检查）；`briefGate(graph, node, ctx)` 按设计 §3.5.1 的次序返回第一条拒绝：`invalid`、`bad_task`、`not_released`、`bad_attributes`、`no_acceptance`、`deps_open`、`waiting_human`、`busy`、`scope_busy`、`slots_full`（槽位与高峰少做上限两处）、`bad_schema`、`nothing_to_review`、`no_directions`；读不出模块结构时在这之前就以 `not_released` 拒绝。门禁读 `ctx.release`，不读阶段；模块设计的审查任务跳过模块层、目标层照查。要审查任务的交回状态、`outputSchema` 是否可解析这类要别的步骤才有的事实，门禁从 `ctx` 取，不自己造。`renderBrief` 按 §3.5.2 从图生成给 worker 的简报：英文、至多 9000 字符，超出时依次把经验、上一次的发现细节、主 Agent 的补充换成「truncated」；页脚带正文的摘要与图修订号。审查任务和模块设计评审的简报在 E6 与 E4。
+- `plan.ts`：`checkPlan` 对 worker 交来的计划做 §3.3.2 的检查（入参按 `unknown` 处理，每条问题一行）；计划一节在任务正文里的渲染、读回、替换与批准标记；批准批注；`carriedPlan` 判已批的计划能不能带到下一次派发。设计里 `checkPlan(task, plan, norm)` 有第三个参数 `norm`，文中没有任何一条检查用到它，没有实现。
+- `attempts.ts`：`childId` 的生成与解析（`hz-<id>-a<次>-<6 位>`；目标整体的审查是 `hz-<id>-acc-a<轮>-<6 位>`）、一次在跑的派发的记录 `Attempt` 与对它们的查询、派发批注的渲染与读回、下一次派发的序号。登记表本身（模块级的 Map）是 E4 的事。
+- `models.ts`：`parseModelArgs`、`checkModelChoice`（目录核对与档位核对，目录读不到或为空时放行并带注）、`agentOptionsOf`、`catalogHint`。读目录与读档位是调用方的事。
+- `digest.ts`：简报、计划与批注用的 12 位摘要。
+这些函数没有调用方：`dispatch_task` 与执行行从 E4 起接上它们。
