@@ -209,6 +209,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "m8-plain-language 设计 0.7 对 M7 的要求（design.md §11「两层循环」第 6–9 条）：derivedStage(graph, node) 接受模块（目标下带 stage 的特性），规则同目标，面板用它分「放行了」（decompose）与「在开发」（execute、merge）；第一档（只影响本模块、可逆）记成挂在模块下、决定者为 agent 的待决，用 graph_decide 拍板，面板的「agent 自己定的事」照常显示；第二档把模块的 stage 改回 design，不带同意记号；第三档把目标的 stage 改回 design，带人的原话，受影响的活停下由 M7 管，面板不逐个标；一次至多三件由 M3 的一条回复至多三件守，攒批由主 Agent 定（M7 §3.7.4），面板不另加规则。"
+    },
+    {
+      "at": "2026-10-30T07:12:52.081Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M4 设计 0.4 给 M7 的接缝请求（M4 §5.6、§5.9、§3.5、§7.3、§18 第 5 条）：五条写入规则经 installRuleGate 安装（0.4 §3.2 仍写 evaluate）；「影子转生效」引用 PROMOTION 并采用 M4 的含义（带标注的会拦样本至少 20 条含回放、实时影子至少 14 天、误伤 0；0.4 §3.12.2 仍写「近 14 天影子记录不少于 20 条」）；ladderProposals 读流水用 classifyRecord；汇合门禁加「草稿区为空」一步（scratchLeftovers）。申报（F13）：worker-scope 在目标出了工作树时先调 requestsService(ctx)?.peekGrant（为真就让这一次往里走，guard 行核对并用掉放行），拒绝时调 outsideDenial，返回值不为空就用它的 exception 换掉纠偏的例外一句、RuleDeny.ref 写编号；worker-scope 的 rightPath 认带这个编号的 ask_main；worker 的简报写明工作区外的写入经主 Agent 问人、等回答、再原样调一次。停等（F14）：推进监听器读 openRequests(持有者会话)，非空时以 hourness-waiting-human 停住 goal，申报都关了、列出的待决也都定了时恢复（§3.9.5 的恢复规则加一句）。谁后合入谁加；M7 合入之后 M4 跑 L3 guard-request-worker。"
     }
   ]
 }

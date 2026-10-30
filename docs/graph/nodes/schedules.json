@@ -185,6 +185,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "循环板设计 0.4 第 4 轮独立评审（run schedules-design-v04，wf_3bcc167a47642ce2）：APPROVED，HIGH 0、MEDIUM 0、NIT 4（F40–F43）；第 3 轮的 F34–F39 全部关闭（design-review.md Round 4，design-review.json 已更新）。0.4 是在人的最新三项决定（d-boards-as-hooks、d-rules-in-repo、d-main-agent-peak-exempt）之前写的，所以接着改 0.5：条目改成与规则板同一个形状（什么时候 + 可选筛选 + 动作，动作是内置或人看过原文同意的脚本，同意即生效）、人加的条目与脚本进仓库、运行时状态进项目 .llm/、主 Agent 不受高峰影响、周报提议删掉 4 周没结果的人加条目，并关掉 F40–F43。与规则板 0.9 同一个 run：boards-hook-rules09-loops05（wf_d2a9085875b43c88）。接缝的归属写进 design-context「Main agent and peak; stale entries; hook seam」：条目形状、事件表与脚本执行器归循环板，哪些事件拦路、脚本结果怎样进 checkCall 归规则板。"
+    },
+    {
+      "at": "2026-10-30T07:12:51.402Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M4 设计 0.4 给循环板 0.5 的接缝请求（M4 §6.1、§6.8、§18 第 5 条；按 d-boards-as-hooks，M4 的检查改成循环板上的条目，形状、存放、同意的路与执行器归循环板）：① env.files-edited 改为人能选、由声明它的 env 行执行的事件（不进收件箱），挂在它上面的人的条目只能用 env 行认的两种动作：自带的 check {format, argv, timeoutSeconds?} 与带 format 的脚本；提议时的内容校验调 env 行给的 checkActionRefusal（例如 Contribution 加一个可选的 validateEntry，名字由循环板定）；② 按项目读挂在一个事件上的生效条目的同步读取函数，脚本摘要对不上的标出；③ paths 筛选加扩展名一种（以 *. 开头，任何一层目录都算）；④ recordRun 也认挂在这种事件上的人的条目；⑤ 共用执行器每次运行可给 cwd（项目之内，含 M7 的工作树）、超时与输出上限（至少 1 MiB），argv 不经 shell；⑥ loops:schedule-tools 经 installRuleGate 安装、登进 GUARD_RULES，读违规流水用 classifyRecord（G1 删掉 evaluate）；⑦ 0.4 §5.2 第 12 项「引擎接受字段不变的 edit」不成立：src/graph/engine.ts:613 对什么都没改的 edit 返回 invalid（set changes nothing），再给人看一张已有的提议式待决请用 M4 一并请 M3 加的不带四行的 propose_to_human。M4 已按 0.4 §17 的三条交 env.checks-after-edit 与 graph.third-rework 并 recordRun。"
     }
   ]
 }

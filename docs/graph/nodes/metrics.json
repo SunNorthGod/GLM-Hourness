@@ -119,6 +119,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "m8-plain-language 设计 0.7（第 6 轮 P6-03）：宿主命令 /graph-apply 删去之后，指标流水设计 0.1 第 57 行的引擎写入方改为图工具、命令行与人的 /graph-run。"
+    },
+    {
+      "at": "2026-10-30T07:12:52.989Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M4 设计 0.4 对指标设计 0.1 §14 的请求（m4 2026-10-29T23:40Z 的批注）的答复（M4 §3.11）：installRuleGate、跟进记录器与申报通道在指标服务在时交事件（拦截、影子、跟进的结局、申报、放行、作废，只带规则 id、种类、结局、来源与会话 id，不带命令与路径），服务不在时什么都不做；E4 每天另交一条压制计数事件；recordKey 谁先建谁建；metrics-files-only 经 installRuleGate 安装、登进规则目录、影子。没有照办的一条：suppressions.jsonl 这一稿留着，因为指标设计 0.1 第 1 轮没通过、它的行出厂禁用，晨报的压制一行要在没有它时也写得出；指标流水定稿并默认启用之后，由它的实施那一步去掉（改 src/env/suppressions.ts 与晨报读它的一处）。违规流水不并进指标流水：d-rules-in-repo 把两者列为项目 .llm/ 里的两样运行时记录。"
     }
   ]
 }

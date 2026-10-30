@@ -224,6 +224,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "编排方核对设计 0.7（run plain-ui-design-v07-modules，wf_e706e927a40a48de，单步写稿，没有跑独立评审）：§4.11 与 d-design-onepage 的两层循环一致，面板只看不操作，形状归 M3、三档归 M7，退路写全。0.7 开写早于人的三项新决定，有三处要跟：1. §4.9 主 Agent 持有者记录仍在用户级目录（<userHome>/main-agent/…，照 M3 附录 0.4 §2.4）；照 d-rules-in-repo 应进项目的 .llm/，随 M3 下一稿改，面板只改取路径那一处。2. §4.7 换词表里「影子」写「试运行」一条随 d-boards-as-hooks 作废（人同意的条目即刻生效，不再有影子阶段）；板上条目要多显示脚本原文、原文改过等人重新同意、超时或崩溃时怎样，具体字句归规则板 0.9 与循环板 0.5。3. 高峰模式几句要说明主 Agent 任何档位都照常回话（d-main-agent-peak-exempt）。安排：等规则板 0.9、循环板 0.5 与 M3 这轮出来，再给面板做一轮对齐加独立评审；开新 run 前问人（当前启动设置为人要求时才开）。"
+    },
+    {
+      "at": "2026-10-30T07:12:52.698Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M4 设计 0.4 给面板的请求（M4 §5.8，评审第 3 轮 F15）：「需要你」的 (b) 一类加上开着的申报。现场投影 graphLive 认 request_exception 的 ask 结果（ref、lines {title, background, proposal, doubt, notTaken}、时刻、会话）就加一项；见到同一 ref 带 request {ref, outcome} 的 hourness-request 提醒（approved、declined、closed、expired、lapsed）、或过了 2 小时就去掉；显示题目与四行，下面一行「去主 Agent 的对话回话 ›」指向申报所在的会话（有主 Agent 时就是主 Agent 的会话）。面板仍不批。另：第三次修复的待决在 0.4 是提议式的（不带选项字段），按 (a) 一类照常显示四行；0.3 那句「暂时还带选项字段」作废。"
     }
   ]
 }

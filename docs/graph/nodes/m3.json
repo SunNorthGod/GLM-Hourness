@@ -266,6 +266,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "m8-plain-language 设计 0.7 对 M3 附录的要求（design.md §11「两层循环」第 1–5 条与 M3 第 6、6a 条末句）：1. 大循环放行时放行集合里有框架（目标下的设计决策）、模块（目标下的特性）与方向清单（规范节点，id 固定 norm-directions，整张图一份，每条方向是 acceptance 的一项）；record_human_answer 同意时给每个模块写 stage: design。2. 模块自己的设计决策挂在模块下。3. 一个模块的放行：propose_to_human 与 record_human_answer 的 kind release 多一个可选参数 module，propose_to_human 的结果正文带上它；同意时批准模块子树里的提议，模块 stage 由 design 改为 release，reason 带 ANSWER_MARKS.agree 与（record_human_answer <callId>）。4. 模块与目标 stage 的写权限（大循环放行、模块放行、退回模块设计、退回大循环要人的原话）由 M3 在引擎里定，ORCHESTRATION.md §4.8「特性上的阶段只读」随之改写。5. 纯函数模块 src/graph/modules.ts（DIRECTIONS_ID、directionsOf、frameworkOf、modulesOf），谁先合入谁建。另：src/shared/tool-names.ts 加 shownProposalOf(isError, text)，talkApply 与面板的 foldLive 共用一个认法（第 6 轮 P6-05）；附录 0.4 第 6 步对 /graph-apply 结果说法的改动（第 485 行）不做，§2.4 的面板拍板回写（第 200 行）与第 7 步一起删（P6-03）。附录 0.4 §9 第 5 条已接住面板 0.6 的第 1–6、7、8 条；第 6a（删第 7 步与 m3-5 验收第 2 条交人）、6b（mockup-wish.svg 脚注）、6c（propose_to_human 在第二阶段常量下的契约测试）还开着。"
+    },
+    {
+      "at": "2026-10-30T07:12:52.398Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M4 设计 0.4 给 M3 的接缝请求（M4 §4.6、§5.3、§18 第 5 条）：第 6 步加不带题目与四行的 propose_to_human {kind: 'question', question}：原样渲染一张已有的、未关闭的提议式待决给人看，记进这一条回复的件数，不写图（M4 的第三次修复要它；循环板 0.4 §5.2 第 12 项也要，因为引擎对什么都没改的 edit 返回 invalid，src/graph/engine.ts:613）；本会话有开着的申报（requestsService(ctx)?.openRequests）时 propose_to_human 返回 busy，M4 的 request_exception 反过来在本会话已出示过提议时返回 busy；installMainAgentRules 经 installRuleGate 安装；git 快照门第一件事调 observe、存不了快照而拒绝时调 noteDenial（规则 id git-snapshot），拒绝记录不带 mode；src/graph/proposal.ts 与 src/graph/plain-question.ts 若 G4 先合入则由 G4 照附录 0.4 §3.3、§2.8 原样建，M3 改成导入。M4 的 R1 排在第 6 步之后，不做选项式的过渡。"
     }
   ]
 }

@@ -303,6 +303,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "m8-plain-language 设计 0.7（design.md §11 规则第 7 条，第 6 轮 P6-02）：0.5、0.6 对规则设计的六条要求规则设计 0.8 已全部落实，不再转。新加一条：板块登记表的 BoardState 多一个布尔 peakApplies，规则板有 GLM 包的计价服务时为真，此刻读不读得到是不是高峰都算；读不到时 guideLine 不再为 null，写「现在读不到是不是高峰（<原因>），档位是<档名>」（至多 60 个码点）。规则 0.8 §9.1 已分得开这两种情形，改动只在登记那一处。上手页第 4 块的高峰模式几句改按 peakApplies 显示。"
+    },
+    {
+      "at": "2026-10-30T07:12:51.739Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M4 设计 0.4 给规则板 0.9 的接缝请求（M4 §2.3、§3.2、§3.3、§3.8、§18 第 5 条）：代码规则目录改为导入 src/guard/catalog.ts（含 M4 的四条影子规则 credential-read、suppression-reason、checker-config、scratch-only）；工具调用门的监听器第一件事调 observe、拒绝时调 noteDenial（规则 id rules:<id>）；读违规流水用 classifyRecord，排队（effect: 'queue'）的记录分类为 deferral，不算违规，由规则板的晨报一节去数；规则页「人标过的误判数」取 ruleStats 对 labels.jsonl 的结果，hits.json 只是命中计数；0.8 第 196 行一带仍引 evaluate，改为 installRuleGate 或 judge。同批改写 CHARTER §6 时请写明分界：代码里的新门先影子，人看过原文同意的板上条目即刻生效（d-boards-as-hooks 写明代码里的规则原地不动）。违规流水按会话找项目写进项目的 .llm/audit/，项目根与规则板 §7.3 同一个函数。"
     }
   ]
 }
