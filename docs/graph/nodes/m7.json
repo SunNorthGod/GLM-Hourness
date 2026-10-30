@@ -342,6 +342,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "蓝屏之后重开 M7 骨架前三步：m7-skeleton-resume（wf_c4429b9fcf1ebf86，claude-sonnet-5.5）。节点已是 doing，不改状态。蓝屏前没有任何提交，工作树 .worktrees/m7 停在 0ff7d7c（落后主干）、只有一个未跟踪文件，任务说明要求复用它、先 rebase 到 main、那个文件用不用都要说明。范围仍是 E0、E1a、E3，E1b、E2、E4–E9、H1 一律不做。E3 的门禁锁复用已合入的 src/data/lock.ts（R5-N6 要的那四个参数该模块已经用 LockEnvironment 注入，先读现成的再说），不许写第二份锁；项目根函数用 projectOf。git 执行器照 norm-review-floor 过独立评审，重点看会丢工作或改写历史的命令是不是一定先存了能恢复的快照、快照会不会离开本机、执行器能不能绕过 harness 的核对让主干前进。"
+    },
+    {
+      "at": "2026-10-30T14:53:38.187Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "第四次中断后的实际状态：E0（a8dfc70，scripts/packages.mjs 的目录表加 src/execute 与写入范围的纯函数）与 E1a（c3d66e0，简报门禁与渲染、计划、childId 与登记表的纯部分、checkModelChoice、releaseOf 的第三种结果形状）已合入主干并推送，编排方自己重跑四道门禁全绿（842 条测试时的回报与编排方复跑一致）。E3 已在分支 m7 提交（d8c1541，git 执行器、门禁锁、给共用锁加 LockOptions，满足 R5-N6 而没有另写第二份锁），但独立评审还没跑、没合入主干：git 执行器跑破坏性命令又守主干前进那一刻，按 norm-review-floor 必须先过评审。重开运行只做这一段：评审 E3、按评审意见改、合入主干。"
     }
   ]
 }
