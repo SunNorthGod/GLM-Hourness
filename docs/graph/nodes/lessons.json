@@ -76,6 +76,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M7 设计 0.3 已采纳 M5 设计 0.3 §8.1 请改的五处（§3.5.5、§3.6.1）：relevant 与 propose 带 session；交回的 lessons 每项可带 errors 与 scope；退路批注末尾带候选的 JSON；LESSONS_TOOL_NAMES = ['lessons_query', 'lessons_merge']，只有 lessons_query 常驻；按 candidate/merged/dropped、rejected、error 三路处理，退路批注先过 looksSecret。门禁锁改用 src/data/lock.ts 的规则（开机时刻差 120 秒、持锁上限 6 小时），先开工的一方建这个模块。"
+    },
+    {
+      "at": "2026-10-30T06:11:38.496Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m8-plain-language 设计 0.7（第 6 轮 P6-03）：经验板页面照 plain-ui §4.7 的板块约定没有写入控件，人删除、恢复条目在主 Agent 的对话里说；M5 设计 0.3 第 574 行的面板按钮（经 remote.commands.execute 以人的身份写，「同 /graph-apply 的通道」）与它冲突，/graph-apply 也已删去，下一稿改。"
     }
   ]
 }

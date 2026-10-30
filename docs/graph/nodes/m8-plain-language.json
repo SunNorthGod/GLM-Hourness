@@ -212,6 +212,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "M3 附录 0.4 §9 第 5 条（面板设计 0.6 §11 的 M3 各条）：ANSWER_MARKS 在 src/shared/answer-marks.ts；PROPOSE_TO_HUMAN、RECORD_HUMAN_ANSWER 在 src/shared/tool-names.ts；main-agent-holder.ts 另导出 holderFileOf 与 holderHome；WishCard 完整卡片底部放 FirstVisitLine；PLAIN_LIMITS.background 只读常量（0.6 为 60）。isPersonMessage 不抽到 src/shared/person-message.ts，留在 src/design/talk.ts：面板 0.6 §4.9 已删去这个文件并交 M3 定（§11 M3 第 4 条与 §4.9 不一致，M3 按 §4.9）。"
+    },
+    {
+      "at": "2026-10-30T06:11:37.467Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "设计 0.7 写完（.agents/tasks/plain-ui/design.md；0.6 原文、一页说明与改过的三张草图在 v0.6/），对 0.6 的小修，逐处改。按 d-design-onepage 2026-10-30T05:19Z 的改写（用户的项目也按两层循环走），新加 §4.11：首页「效果是」每个分了模块的目标一行模块状态（设计中、等你放行、放行了、在开发、做完了各几个），第 2 层新页「框架与模块」（框架、按建立先后的模块与状态、方向清单原文，只能看，草图 mockup-modules.svg）；一个模块的设计交给人放行、还没记下回话时进「需要你」并链到主 Agent 的对话（graphLive.awaiting 键改为 {kind, goal, module}）。面板读的形状写成给 M3 与 M7 的契约（§11「两层循环」）：方向清单是规范节点 norm-directions（整张图一份，acceptance 每项一条），没有它两层循环的显示整个不出现；模块是目标下带 stage 的特性；框架是目标下的设计决策；propose_to_human 与 record_human_answer 的 kind release 多一个 module 参数；读法在 src/graph/modules.ts；M7 的 derivedStage 接受模块。验收加第 17 条（§13 的条数改为 17），实施加第 5a 步（M3 的模块放行与 M7 的 derivedStage 合入之后）。第 6 轮六条 LOW 都改了：P6-01 依据与 §11、§14 按规则 0.8、循环板 0.4、M3 附录 0.4、M7 0.4 改，规则与循环板两节写成已落实；P6-02 BoardState 加 peakApplies，读不到高峰时上手页照样讲高峰模式；P6-03 /graph-apply 的波及面补全（插件描述、cordis.patch.yml、graph-run 用例标题、run-control 原文、DESIGN 与 HANDOFF 的 ui 一行、M3 第 6 步与 §2.4、M5 经验板按钮、指标流水第 57 行），§12 第 30 条补人的退路；P6-04 规则板与循环板草图两行来源改为项目编排带来的；P6-05 awaiting 与 hournessTalk 共用 src/shared/tool-names.ts 的 shownProposalOf；P6-06 L4 第 7 项改用没有 human 历史的临时图，§4.10 补 gate_unmet 时再提会换掉这一件。要人定的仍只有 §13 一件。"
+    },
+    {
+      "at": "2026-10-30T06:11:38.993Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "编排方核对设计 0.7（run plain-ui-design-v07-modules，wf_e706e927a40a48de，单步写稿，没有跑独立评审）：§4.11 与 d-design-onepage 的两层循环一致，面板只看不操作，形状归 M3、三档归 M7，退路写全。0.7 开写早于人的三项新决定，有三处要跟：1. §4.9 主 Agent 持有者记录仍在用户级目录（<userHome>/main-agent/…，照 M3 附录 0.4 §2.4）；照 d-rules-in-repo 应进项目的 .llm/，随 M3 下一稿改，面板只改取路径那一处。2. §4.7 换词表里「影子」写「试运行」一条随 d-boards-as-hooks 作废（人同意的条目即刻生效，不再有影子阶段）；板上条目要多显示脚本原文、原文改过等人重新同意、超时或崩溃时怎样，具体字句归规则板 0.9 与循环板 0.5。3. 高峰模式几句要说明主 Agent 任何档位都照常回话（d-main-agent-peak-exempt）。安排：等规则板 0.9、循环板 0.5 与 M3 这轮出来，再给面板做一轮对齐加独立评审；开新 run 前问人（当前启动设置为人要求时才开）。"
     }
   ]
 }

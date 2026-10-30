@@ -260,6 +260,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M7 设计 0.4 对 M3 多三处：一、worker 的计划与问题请求、harness 的通知每次送之前重取 mainAgentOf，当前持有者能 answer_worker 前任派出的 worker（评审 N7），自动推进跟着持有者移到新会话，旧会话的 goal 由 M7 清掉；二、阶段提醒（stage-notice.ts）在图上没有 norm-review-floor 时加一句，请主 Agent 在放行之前提议一张带判定写法的清单；三、门禁工作树有改动时用 takeSnapshot 先存快照（评审 N5）。0.3 批注里的其余各处不变。"
+    },
+    {
+      "at": "2026-10-30T06:11:37.881Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m8-plain-language 设计 0.7 对 M3 附录的要求（design.md §11「两层循环」第 1–5 条与 M3 第 6、6a 条末句）：1. 大循环放行时放行集合里有框架（目标下的设计决策）、模块（目标下的特性）与方向清单（规范节点，id 固定 norm-directions，整张图一份，每条方向是 acceptance 的一项）；record_human_answer 同意时给每个模块写 stage: design。2. 模块自己的设计决策挂在模块下。3. 一个模块的放行：propose_to_human 与 record_human_answer 的 kind release 多一个可选参数 module，propose_to_human 的结果正文带上它；同意时批准模块子树里的提议，模块 stage 由 design 改为 release，reason 带 ANSWER_MARKS.agree 与（record_human_answer <callId>）。4. 模块与目标 stage 的写权限（大循环放行、模块放行、退回模块设计、退回大循环要人的原话）由 M3 在引擎里定，ORCHESTRATION.md §4.8「特性上的阶段只读」随之改写。5. 纯函数模块 src/graph/modules.ts（DIRECTIONS_ID、directionsOf、frameworkOf、modulesOf），谁先合入谁建。另：src/shared/tool-names.ts 加 shownProposalOf(isError, text)，talkApply 与面板的 foldLive 共用一个认法（第 6 轮 P6-05）；附录 0.4 第 6 步对 /graph-apply 结果说法的改动（第 485 行）不做，§2.4 的面板拍板回写（第 200 行）与第 7 步一起删（P6-03）。附录 0.4 §9 第 5 条已接住面板 0.6 的第 1–6、7、8 条；第 6a（删第 7 步与 m3-5 验收第 2 条交人）、6b（mockup-wish.svg 脚注）、6c（propose_to_human 在第二阶段常量下的契约测试）还开着。"
     }
   ]
 }

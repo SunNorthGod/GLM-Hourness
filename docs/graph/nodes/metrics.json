@@ -113,6 +113,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M7 设计 0.4 §3.16 的事件表加四个：execute.loop-fallback（看门或兜底接手，原因 unclaimed、emit-failed、interrupted、peak-end-missed）、execute.loop-contribute、execute.peak-cap；execute.advance 加 ref（local、remote）、方式（advance、push、fetch、outside）、reviewPending、incomingFloor；execute.goal 加 move 与 hourness-peak-wait；execute.review-depth 加 unparsed。写不进流水时（评审 N2）行健康 degraded 并记丢了几条与时段（<git>/hourness/execute/metrics-gaps.jsonl），晨报与周报在那段注明数不全；指标流水自己带缓冲与重放时只改 src/execute/metrics.ts。"
+    },
+    {
+      "at": "2026-10-30T06:11:38.705Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m8-plain-language 设计 0.7（第 6 轮 P6-03）：宿主命令 /graph-apply 删去之后，指标流水设计 0.1 第 57 行的引擎写入方改为图工具、命令行与人的 /graph-run。"
     }
   ]
 }

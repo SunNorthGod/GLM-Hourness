@@ -203,6 +203,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "m7-design-v04-review 的运行编号是 wf_526025270d4dab69。节点已是进行中，不用改状态。"
+    },
+    {
+      "at": "2026-10-30T06:11:38.087Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m8-plain-language 设计 0.7 对 M7 的要求（design.md §11「两层循环」第 6–9 条）：derivedStage(graph, node) 接受模块（目标下带 stage 的特性），规则同目标，面板用它分「放行了」（decompose）与「在开发」（execute、merge）；第一档（只影响本模块、可逆）记成挂在模块下、决定者为 agent 的待决，用 graph_decide 拍板，面板的「agent 自己定的事」照常显示；第二档把模块的 stage 改回 design，不带同意记号；第三档把目标的 stage 改回 design，带人的原话，受影响的活停下由 M7 管，面板不逐个标；一次至多三件由 M3 的一条回复至多三件守，攒批由主 Agent 定（M7 §3.7.4），面板不另加规则。"
     }
   ]
 }
