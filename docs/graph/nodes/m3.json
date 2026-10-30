@@ -398,6 +398,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "第四次中断后重开 M3 的后续：m3-implementation-continue（wf_e62452cf55a077a6，claude-sonnet-5.5）。从已提交的第 3 步（e854399）接着做，顺序是：先补第 3 步欠的独立评审并合入，再做第 4、5、6、8、9、10 步与人设一步，然后汇合 m3-flow（第 11 步 b4c23dd 已提交）、补第 11 步因 src/graph/plain-question.ts 只在 m3 上而写不了的那条 L2、标定、合入主干。任务说明里交代了三件保命的事：一步绿了立刻提交（两次崩溃已经证明只有这条救回了四步活）、门禁失败先查依赖是不是被中断清空（这次主检出的 node_modules 就被清空、重装后全绿）、与 M7 的 E2 同改 src/shared/tool-names.ts 时后合入的一方机械并入。本运行 22:55 起因网络错误卡在创建步骤、随后被 agent 重启打断，编排方已恢复。"
+    },
+    {
+      "at": "2026-10-30T18:23:50.688Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M3 第 3 步（m3-1，主 Agent 模式、持有者记录与身份节）已由 m3-implementation-continue 合入本地主干（9c346fb），独立评审 APPROVED（0 挡路、7 不挡路，.agents/tasks/m3/impl/review-step3.md）。编排方在主检出上自己跑了门禁：build 0、preflight OK（2 个包、12 个源目录、15 行）、npm test 退出 0 且无失败、npm run probe 149/149，随宣传视频那个提交一起推送。评审附的条件照旧有效：第 4、6 步落到 m3 之前 design 行保持禁用；M5、M7 或循环板读 mainAgentOf 之前先修过时的持有者记录（S3-1）。"
     }
   ]
 }

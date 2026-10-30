@@ -37,6 +37,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "人 2026-10-30 对宣传视频的两条答复：一、「你就当我们现在已经做完了，我就是给做完了的时候准备的视频」：视频按产品做完的样子讲，现在就准备，不等自举；编排方据此把前一条批注里「自举跑通再拍」的建议撤回。二、「先装skill吧」：编排方已把 Remotion 官方的 Agent Skills（remotion-dev/skills，提交 30d4553，2026-10-26，skill 版本 4.0.539）里的路由 skill remotion-best-practices 整个装进用户级 ~/.kiro/skills/remotion-best-practices（144 个文件，含它路由到的 create、markup、captions、render、studio 等十一个子参考）；装法是从官方仓库浅克隆后原样复制，没有用 npx skills add（那个命令按 Claude Code 等客户端的目录装，不认 Kiro）。没有改别的 skill，没有动本仓库。编排方接着把视频的做法交人看，人点头之前不开工。对外发布前复核许可与条款的那一条照旧有效。"
+    },
+    {
+      "at": "2026-10-30T18:23:50.523Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-10-30 对宣传视频的五条答复：一、「视频放仓库里就行，反正到时候宣传也要用」；二、「配乐你不能自己配吗？纯原创音乐不行吗？」；三、「主要就讲编排层，glm带一笔就行了，项目大部分与它无关」；四、「你就先给我做一个示例，我要先品一品你的能力和视频效果再看做不做」；五、档位交编排方定（见 d-subagent-sonnet）。编排方照此做了一支样片，人看过再定做不做整片：仓库里新加 video/，是独立的 Remotion 4.0.539 项目（自带 package.json、ESLint 与 tsc），不进两个包的构建与检查，根目录 eslint.config.js 把它加进忽略。样片 Sample：24 秒、1920×1080、30 帧、H.264 加 AAC，四段：标题（GLM-Hourness = GLM + House + Harness，「让大模型按工程规矩，开发大项目」）、① 一句话许愿（/wish 一句、主 Agent 回一个四行方案、人回「行」、主 Agent 复述「那我记成：……」）、② 放行以后它自己往下做（目标、三个模块里两个已放行一个设计中、三个子 agent 各上一件活、审查通过、每个提交先过合入前的检查才进主干）、片尾（「人在图上编程，图下的活交给 harness」，GLM 通道只在最后一行带一句）。画面里的每一句都取自已放行的设计；示例项目是会议室预约，与练习题（记账小工具）不相干。配乐由 video/scripts/make-music.mjs 从零合成（铺底和弦、琶音、贝斯、轻鼓，100 BPM 十小节，四段时长按小节切），不用任何采样或第三方录音，生成的 wav 不入库。成片在 video/out/sample.mp4，不入库。验证：视频项目的 eslint 与 tsc 通过；渲染前抽了四帧检查排版；渲染后 ffprobe 核对时长、分辨率、两条流；本仓库 build、preflight、npm test（退出 0、无失败）与 npm run probe（149/149）全绿。踩到的坑：本机无头 Chrome 在系统临时目录里建不了缓存，渲染到第 111 帧以 write EOF 退出；video/scripts/render.mjs 只给它自己的子进程把临时目录指到 video/.tmp。等人看样片。对外发布前复核许可与条款的那一条照旧有效。"
     }
   ]
 }
