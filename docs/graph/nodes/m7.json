@@ -372,6 +372,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "编排方独立复核 E3 合入（af75fe8，已在主干并推送，origin/main = bf20273）：在主检出上自己重跑四道门禁，build 0、preflight OK（2 个包、11 个源目录、14 行）、npm test 退出 0 且 fail 0、npm run probe 128/128，不是只采信子 agent 的回报。M7 骨架至此合入 E0、E1a、E3 三步。工作树 .worktrees/m7 留着给后面的 E1b、E2、E4 复用（分支 m7 落后主干 2 个提交、无自己的提交，开工时先快进）。评审里排到 E7 之前必须修的两条（门禁工作树守卫放过被重定向的 .git 文件与被遗弃的游离 HEAD 提交；§3.8.4 执行前判定表漏了五条能让主干前进的路）照旧挂在 E1b 与 E7 上。"
+    },
+    {
+      "at": "2026-10-30T19:11:48.365Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m7-e3-followup-resume（wf_4e66318831de098d）第 1 轮写完，等独立评审：分支 m7 头 43662c6，领先主干 8 个提交。E3 评审里属于 E3 自己的八条：E3-1、E3-2、E3-3、E3-4、E3-5、E3-7 都已修，每条的测试在修复前的父提交上会失败；上次截断时没提交的那份草稿核对后作为 E3-8 单独提交（43662c6，门禁锁对读不出内容的锁文件等一个宽限期再接管，默认 0、规则板行为不变），并修了草稿里一处计时不复位的错，另一个微秒级的窗口在文件层面关不掉、写明理由留下；设计 §3.8.4 的五条能让主干前进的路已补进 .agents/tasks/m7/design.md（每条在临时仓库里实测确实能挪动主干，代码在 E1b 与 E7）。分支门禁：build、preflight、npm test 901/901、probe 128/128 全绿。E3-6 留给人定：harness 自己的 git 调用会跑仓库里的钩子（评审用探针确认 post-checkout 在门禁工作树的 worktree add 与 checkout --detach 时各跑了一次），要不要给这些调用加 -c core.hooksPath= 与 -c core.fsmonitor=false。编排方建议关掉，理由与代价见向人提的四行；只影响 harness 内部的 git 调用，主 Agent 与子 agent 自己的 git 命令照旧跑钩子。等人回答，回答后在 E3 里改或在设计 §6.5 记下残余风险。"
     }
   ]
 }
