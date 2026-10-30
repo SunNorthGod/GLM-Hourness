@@ -1,0 +1,19 @@
+{
+  "id": "d-main-agent-peak-exempt",
+  "type": "decision",
+  "title": "主 Agent 不受高峰模式影响，任何一档都随时回话",
+  "status": "approved",
+  "parent": "rules",
+  "verification": "unverified",
+  "body": "高峰模式（d-peak-mode）的三档都不管主 Agent 自己：它照常回话、照常用工具、照常和人在对话里商量，包括不做档的高峰里。高峰模式只管它派出去的子 agent（少做时的并发上限、不做时排队）与自报的重活脚本（练习题、消融、大的审查）。规则板设计 0.8 里「不做档的高峰里主 Agent 的工具调用也排队、对话要等高峰过去、换档只能打 /rules peak」作废；§3.6、§6.4、验收第 15 条与一页放行稿随之改写；M7 的少做上限只数子 agent 不变。",
+  "history": [
+    {
+      "at": "2026-10-30T05:36:55.307Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "用户看规则板放行稿后定：主 Agent 不受高峰模式影响",
+      "relay": "主Agent应该不受高峰影响，随时回复的",
+      "to": "approved"
+    }
+  ]
+}
