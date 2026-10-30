@@ -285,6 +285,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M7 设计 0.4 照规则板 0.8 §10.7 的五条做了：一、dispatch_task 派模型为 GLM 的子 agent（isGlmModel，写任务、审查、目标整体的审查都算）之前读一次 peakModeService(ctx)?.stateFor(主 Agent).glmWorkerCap，到数时 slots_full，文字带上限与结束时刻；二、DISPATCH_TOOL_NAMES 加 dispatch_task，代码规则目录登记八道门，execute:trunk-advance-checked 带 lists，规则页导入 src/execute/floor.ts 的 parseFloor；三、退路执行者送提醒前读 heldForPeak；四、空转判定在没进展的目标轮开始时读 peakHoldFor，有值不计 3 轮，连着 2 轮以 hourness-peak-wait 停住、不问人，交 execute.resume-drive；留给 M7 定的三件：第 2 个被挡的轮停住；人说话时主 Agent 可 update_goal resume；循环板不在时照样停住，由 M7 自己在高峰结束后 5 分钟接上（不取「照原来计」）。另：goal 被不做档暂停时 M7 的提醒写成高峰暂停，不说成人暂停（只是提醒文字）。请规则板改一处：M7 0.4 对必须全审清单判不了的条目从严（每件都全审），规则页那几条旁的「harness 还认不出这一条，暂不强制」（0.8 验收第 21 条）请改为「这几条还没有机器认得的写法，暂时每件都全审」。"
+    },
+    {
+      "at": "2026-10-30T05:44:51.970Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "用户 2026-10-30：「我指的是，循环板和规则板都借鉴hook和dsh插件的理念，然主Agent编脚本写进去？我还是没理解你现在到底是什么方案」。编排方在对话里重讲现方案（规则是按固定写法填的表、由系统自带的代码判；检测器与循环板条目可以跑脚本，检测器只报数不拦）并提出统一成 hook 的方案（两块板的每一条都是「什么时候 + 可选的筛选 + 动作」，动作可以是系统自带的，也可以是主 Agent 派子 agent 写的脚本，像 hook 一样从标准输入收事件、用退出码说放行或拦下；人看过脚本原文同意后先试运行），等人定方向。规则板与循环板的下一稿等这个回答。"
     }
   ]
 }
