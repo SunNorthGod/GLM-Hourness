@@ -45,6 +45,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "循环板设计 0.1 §4.3：自举开始、循环板上线之后，每周的阅读改为本仓库循环板上人加的一项（每周四 09:00，下一次 2026-11-05），本节点那时以带证据的完成关闭，以后每次的结论记在条目的批注里；在那之前照旧由 Kiro 钩子提醒。"
+    },
+    {
+      "at": "2026-10-30T17:20:29.036Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "编排方 2026-10-30 按人的提问（「你知道harness enginering这类的论文吗」）检索了 harness engineering 的文献，结果提前记在这里，下一次阅读（2026-11-05）从这份清单起。要点：这个名字已经是正式学科名，多篇论文写明「于 2026 年初被命名」，定义与本项目宪章 §1 一致（agent = 模型 + harness；模型权重不可改，能改的是模型所处的环境）。与本项目直接相关的六篇：一、arXiv 2608.23953《The Empire, Long Divided, Must Unite: Architectural Convergence in Three LLM Agent Harnesses》（2026-08-25），源码级多案例研究，三个被研究的 harness 之一就是本项目的宿主 DeepSeek dsh（论文称其哲学为 everything-is-a-plugin），另两个是 LangChain deepagents 与 Earendil pi；结论是三者收敛到五个共同要素：通用化的循环、只追加可重放的会话记录、把模型怪癖当数据存、上下文渐进披露、显式的扩展接缝。二、arXiv 2609.00006《Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents》，十一个系统的源码研究，把 harness 拆成循环、工具、上下文管理、安全控制、编排、扩展面六块。三、arXiv 2609.20804《An Empirical Study of Harness Design for Coding Agents》，固定执行循环、只变规划、动作空间、上下文管理三个部件做消融，176 组对照（SWE-Bench Verified 与 Terminal-Bench 2.1，四种上下文预算）：上下文管理防的是上下文溢出型失败，规划对强模型省钱，预置工具主要帮不擅长 bash 的弱模型。四、arXiv 2609.32459《Demystifying Harness Effects in Software Engineering Agents》：harness 的收益同时取决于模型能力与任务类型，模型变强时复杂 harness 在 SWE 式单点修复上边际收益递减，但在更复杂、开放式的仓库级任务上仍能让强模型受益。五、arXiv 2604.25850《Agentic Harness Engineering》与 arXiv 2608.25593《Scaling Harness Intelligence via Just-in-Time Harness Evolution》：harness 自身被自动演化，前者十轮迭代把 Terminal-Bench 2 的 pass@1 从 69.7% 提到 77.0%，超过人工设计的 Codex-CLI（71.9%）。六、arXiv 2607.08028《From Prompts to Contracts: Harness Engineering for Auditable Enterprise LLM Agents》：把确定性行为移进代码、清单、schema 与校验产物，可审计方向与本项目同路。内容依授权要求改写，未逐字摘录。"
     }
   ]
 }
