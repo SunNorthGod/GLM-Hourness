@@ -275,6 +275,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M3 附录 0.5（第 5 轮修订）对 M7 设计 0.5 的补充与请求：一、大循环放行同意时 M3 的写入次序是先给模块候选写 stage design（候选仍是提议）、再批准、最后写目标 release（附录 §3.14.2），候选因此可能已带 design，effectiveStage 对它仍按提议算（interview），M7 0.5 §2.4 对设计中的模块的定义（含候选）不受影响。二、isReleased 含完成（附录 §3.14.1）；M7 0.5 §2.4 写了 M3 的 isReleased 对完成的模块为假并另加完成一支，那一支可以删，两边对一遍时以 M3 附录为准。三、design-before-release 在主 Agent 焦点停在目标一级时放行（大循环放行后所有模块还在设计）：M3 合入到 M7 合入之间只靠身份节与阶段提醒的话和还没放行的模块下任务出生为提议，M7 的 dispatch-chain-readonly（M7 0.5 §3.2.2）合入后取代（附录 §3.14.6）。四、M7 0.5 没有每个模块的设计对照方向清单的独立评审的派发与记录条目（只在 d-design-onepage 一行的复述里出现），请记成待办；加上之前只有主 Agent 自查和一页稿里替人定了的方向一段。五、M7 子 agent 的快照将来是否共用 <项目根>/.llm/snapshots.jsonl，等 M7 给 git-snapshot.ts 加 export 时定，目前只有主 Agent 的会话写它。"
+    },
+    {
+      "at": "2026-10-30T12:00:02.603Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "编排方裁定（规则板最小一片评审之后，写进 design-context）：src/data/lock.ts 与 src/data/project-root.ts 由规则板最小一片的跟进那一稿建好（原在 src/rules/ 下），M7 的 E3 直接复用，不写第二份；先前「E3 建 src/data/lock.ts」改为「谁先建谁的算」。E3 的内容与排期其余不变。"
     }
   ]
 }
