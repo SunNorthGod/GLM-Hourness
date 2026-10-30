@@ -335,6 +335,12 @@ export interface SessionProjectionsService {
     readonly wire?: { readonly viewSchema: { parse(value: unknown): unknown }, view(state: never): unknown }
   }): () => void
   snapshot(session: SessionLike, keys: readonly string[]): { readonly values: Readonly<Record<string, unknown>> }
+  /**
+   * One unit's current host state after every registered unit is folded up
+   * to the session cursor (session-projection:126–131); synchronous, live
+   * (do not mutate), undefined when the key is not registered.
+   */
+  stateOf(session: SessionLike, key: string): unknown
 }
 
 /**
@@ -361,6 +367,33 @@ export interface LiveAgentLike {
 /** The `agents` registry member the run controls read (rc.3 dsh-agent `get`, agent:596): the live agent of a session id, undefined when none is live. */
 export interface AgentsService {
   get(id: string): LiveAgentLike | undefined
+}
+
+/**
+ * A live agent as the design row drives it: the scoped context its hooks
+ * install on (agent-loop:748–781), `steer` (a waking message that reaches
+ * the running turn's next step, agent-loop:806–814) and `whenIdle` (resolves
+ * when the agent's current activity ends, agent-loop:870–875).
+ */
+export interface DesignAgentLike extends LiveAgentLike {
+  readonly ctx: PluginContext
+  steer(message: UserNotice): void
+  whenIdle(): Promise<void>
+}
+
+/** The `agents` registry as the design row reads it: `get`, and `roots()`, the live top-level agents in registration order (rc.3 dsh-agent, agent:622–624). */
+export interface DesignAgentsService {
+  get(id: string): DesignAgentLike | undefined
+  roots(): readonly DesignAgentLike[]
+}
+
+/**
+ * The `sessionPersistence` service member the design row reads (rc.3
+ * dsh-session-persistence-jsonl, :2398, `list` :2603): the header of every
+ * stored session, open or not.
+ */
+export interface SessionPersistenceLike {
+  list(options?: unknown): Promise<ReadonlyArray<{ readonly header: { readonly id: string } }>>
 }
 
 /**
@@ -424,6 +457,31 @@ export interface CommandDefinitionLike<Invocation extends CommandInvocationLike 
   /** Free-form input the command takes: `hint` is the placeholder clients show (dsh-commands `normalizeDefinition`, commands:157-161: a non-empty string). */
   readonly input?: { readonly hint: string }
   handler(invocation: Invocation): Promise<CommandResultLike>
+}
+
+/** The invocation of a command that drives the receiving agent and installs hooks on it (the design row's /wish). */
+export interface DesignInvocationLike extends AgentCommandInvocationLike {
+  readonly agent: DesignAgentLike
+}
+
+/**
+ * What `commands.execute` settles to (rc.3 dsh-commands `execute`,
+ * commands:318–333): the lifecycle pairing id and the normalized result;
+ * undefined instead when the line's syntax or command name does not resolve.
+ */
+export interface CommandExecutionLike {
+  readonly commandId: string
+  readonly result: CommandResultLike
+}
+
+/**
+ * The `commands` service member that runs a command line as if the person
+ * typed it (rc.3 dsh-commands `execute`, commands:327): `command/run` and
+ * `command/done` are appended to the session log around the handler, the
+ * source is always the person. `signal` is read unconditionally.
+ */
+export interface CommandsExecutor {
+  execute(agent: DesignAgentLike, line: string, attachments: readonly unknown[], signal: AbortSignal): Promise<CommandExecutionLike | undefined>
 }
 
 /**

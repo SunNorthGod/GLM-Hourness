@@ -141,6 +141,26 @@ export const limitsRow = config => [
   `      config: ${JSON.stringify(config)}`,
 ]
 
+/**
+ * Overlay lines for a run that exercises the design row: the row is enabled
+ * (it ships disabled), the question tool of the standard presets is mounted
+ * (the headless template has none, and the main agent's face has to be seen
+ * against a face that does), and the simulated human
+ * (scripts/calibrate/simulated-human.mjs) stands in for the person with
+ * `config` ({ record, wish }).
+ */
+export const designRows = config => [
+  '- id: glm-hourness/design',
+  '  disabled: false',
+  '- insert:',
+  '    - id: glm-hourness-probe/tool-ask-user',
+  '      name: \'@deepseek-ai/dsh-tool-ask-user\'',
+  '    - id: glm-hourness-calibrate/simulated-human',
+  `      name: ${JSON.stringify(slash(join(repo, 'scripts', 'calibrate', 'simulated-human.mjs')))}`,
+  '      inject: [commands]',
+  `      config: ${JSON.stringify(config)}`,
+]
+
 /** Make `dir` a git repository with one commit of its current files; whether every git step succeeded. */
 export function initRepo(dir) {
   const git = args => spawnSync('git', ['-c', 'user.name=glm-hourness', '-c', 'user.email=glm-hourness@localhost', '-c', 'commit.gpgsign=false', ...args], { cwd: dir, encoding: 'utf8' })

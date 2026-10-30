@@ -19,8 +19,9 @@ export default {
     'scripts/probe/probe-llm.mjs',
     'scripts/probe/probe-clock.mjs',
     'scripts/probe/probe-dispatch.mjs',
-    // Calibration bounds row: scripts/sandbox.mjs passes its path to the DSH Loader.
+    // Calibration bounds row and simulated human: scripts/sandbox.mjs passes their paths to the DSH Loader.
     'scripts/calibrate/limits.mjs',
+    'scripts/calibrate/simulated-human.mjs',
     // Calibration checkers: run-calibrate.mjs starts each task's check.mjs by path.
     'tests/calibration/*/check.mjs',
   ],

@@ -44,6 +44,7 @@
  * file tools resolve them.
  */
 import { declarationOf, evaluate, fileToolsOnly, NATIVE_FACE, renderCorrection, workspaceContainment, type GuardRule, type ToolCall, type ToolFace } from './rules.ts'
+import { DECLARATION_SECTION } from './sections.ts'
 import { shadowFallback, type ShadowRecord } from './shadow.ts'
 import { originOf, type RouteScope } from './origin.ts'
 import { rowJournal, type AuditFs } from '../memory/audit.ts'
@@ -118,9 +119,6 @@ export function baseFor(ctx: ServiceLookup, agent: AgentLike | undefined): strin
   const cwd = session.header.cwd
   return typeof cwd === 'string' && cwd.length > 0 ? cwd : undefined
 }
-
-/** The name of the system prompt section that declares the active rules. */
-export const DECLARATION_SECTION = 'glm:guard'
 
 /**
  * The rule declaration section: one line per rule that declares itself,

@@ -56,11 +56,12 @@ import { userDataHome } from '../../packages/hourness/dist/shared/data-home.js'
 import { HEALTH_PACKAGES, HEALTH_ROWS } from '../../packages/hourness/dist/shared/health.js'
 import { GRAPH_TOOL_NAMES, MEMORY_TOOL_NAMES } from '../../packages/glm/dist/shared/tool-names.js'
 import { openEngine } from '../../packages/hourness/dist/graph/engine.js'
+import { holderFileOf, readHolder } from '../../packages/hourness/dist/graph/main-agent-holder.js'
 import { runNote } from '../../packages/hourness/dist/graph/run.js'
 import { loadGraph } from '../../packages/hourness/dist/graph/store.js'
 import { compareShapes, describeDifference, isProjectDifference, profileShape } from '../profile-shape.mjs'
 import { PACKAGES } from '../packages.mjs'
-import { attachmentsIn, dataRows, generateProfile, initRepo, limitsRow, PROBE_PROFILES, repo, requireDesktop, sandboxCommand, slash, unlinkProfile, workspaceChangesRow } from '../sandbox.mjs'
+import { attachmentsIn, dataRows, designRows, generateProfile, initRepo, limitsRow, PROBE_PROFILES, repo, requireDesktop, sandboxCommand, slash, unlinkProfile, workspaceChangesRow } from '../sandbox.mjs'
 import { GOAL_GATE_DENIAL, PROJECTION_SOURCE, SCOPE_DENIAL } from './probe-dispatch.mjs'
 
 requireDesktop('probe')
@@ -760,6 +761,71 @@ const controlStart = (controlSteps[1]?.messages ?? []).find(message => message.r
 const controlStderr = existsSync(join(controlDir, 'stderr.txt')) ? readFileSync(join(controlDir, 'stderr.txt'), 'utf8') : ''
 const repoGraphAfter = (await loadGraph(repoGraph)).revision
 
+// Main agent mode (docs/ORCHESTRATION.md §3.1, ROADMAP M3 step 3): the design
+// row ships disabled; the overlay (scripts/sandbox.mjs designRows) enables it,
+// mounts ask_user_question, which the headless template lacks, and mounts the
+// simulated human (scripts/calibrate/simulated-human.mjs), which types
+// /wish for the first root session and refuses any question card, recording
+// both in human.jsonl. Each scenario works in its own workspace with an empty
+// docs/graph. The idle scenarios start with /wish <wish>, typed in
+// agent/created: the first request is the turn that wish wakes, the second
+// the headless task. The main scenarios type /wish, /wish <wish> and /wish
+// off themselves, mid-step, through the commands service (the probe
+// provider's `line` step), so command/run and command/done are in the log.
+const DESIGN_WISH = '记一下每天花了多少钱'
+const designScenario = (name, model, script, { wish, on, others } = {}) => {
+  const dir = join(runDir, name)
+  const ws = join(dir, 'ws')
+  mkdirSync(join(ws, 'docs', 'graph'), { recursive: true })
+  mkdirSync(join(ws, '.llm'), { recursive: true })
+  writeFileSync(join(ws, 'README.md'), 'probe workspace\n')
+  const record = join(dir, 'human.jsonl')
+  const run = runScenario(name, model, script(ws), 'Reply done.', designRows({ record: slash(record), ...wish === undefined ? {} : { wish } }), ws, others ?? [], on)
+  return { ...run, name, dir, ws, human: jsonl(record) }
+}
+const designMainScript = ({ read, write, status }) => (ws) => {
+  const readme = { name: read, arguments: { file_path: join(ws, 'README.md') } }
+  return [
+    { tool: { name: write, arguments: { file_path: join(ws, '.llm', 'before.txt'), content: 'before\n' } } },
+    { tool: readme, line: '/wish' },
+    { tool: readme, ...status },
+    { tool: readme, line: `/wish ${DESIGN_WISH}` },
+    { tool: readme, line: '/wish off' },
+    { tool: { name: write, arguments: { file_path: join(ws, '.llm', 'after.txt'), content: 'after\n' } }, ...status },
+    { text: 'done' },
+  ]
+}
+const designIdle = (status) => () => [{ text: 'ok' }, { text: 'done', ...status }]
+const designGlmIdle = designScenario('glm-design-wish-idle', 'glm-5.3', designIdle({ status: true }), { wish: DESIGN_WISH })
+const designPlainIdle = designScenario('non-glm-design-wish-idle', 'deepseek-probe', designIdle({ command: { name: 'hourness-status' } }), { wish: DESIGN_WISH, on: profiles['probe-hourness'] })
+const designGlmMain = designScenario('glm-design-main', 'glm-5.3', designMainScript({ read: 'Read', write: 'Write', status: { status: true } }))
+const designPlainMain = designScenario('non-glm-design-main', 'deepseek-probe', designMainScript({ read: 'read', write: 'write', status: { command: { name: 'hourness-status' } } }), { on: profiles['probe-hourness'] })
+// One main agent per project: the main agent session (the simulated human's
+// /wish) types a second root session of the same workspace into existence
+// and has it type /wish, which only says where the main agent is, then
+// /wish here, which moves the role: the first session gets /wish off from
+// the row, its section and its tool face come back, and the record names the
+// second session. Then a fork of the first session at its first finished
+// command, which was /wish, so it is forked as a main agent: it is an
+// ordinary session from its first request on, its projection is off once the
+// row has run /wish off for it, and the record still names the second session.
+const designOne = designScenario('glm-design-one-main', 'glm-5.3', ws => [
+  { tool: { name: 'Read', arguments: { file_path: join(ws, 'README.md') } }, other: { line: '/wish' } },
+  { tool: { name: 'Read', arguments: { file_path: join(ws, 'README.md') } }, other: { line: '/wish here' } },
+  { tool: { name: 'Read', arguments: { file_path: join(ws, 'README.md') } }, fork: true },
+  { tool: { name: 'Write', arguments: { file_path: join(ws, '.llm', 'x.txt'), content: 'x\n' } }, status: true },
+  { text: 'done' },
+], { wish: true })
+const designRecord = (scenario) => readHolder(holderFileOf(join(scenario.dir, 'dsh-home', 'glm-hourness'), join(scenario.ws, 'docs', 'graph')))
+const MAIN_HEAD = '# Main agent\nYou are the main agent of this project'
+const sectionAt = step => step?.system.indexOf(MAIN_HEAD) ?? -1
+const faceOf = step => (step?.tools ?? []).map(tool => tool.name).sort()
+/** The tools the main agent's face loses: the ones that write files and the question card tool. */
+const GLM_CUT = ['Write', 'Edit', 'ask_user_question']
+const PLAIN_CUT = ['write', 'edit', 'ask_user_question']
+const faceWithout = (step, cut) => faceOf(step).filter(name => !cut.includes(name))
+const hasCut = (step, cut) => cut.every(name => faceOf(step).includes(name))
+
 // Live view (docs/ORCHESTRATION.md §2.10, m2-8): the graphLive projection
 // the panel row registers, read mid-step from the session projection
 // registry: the panel scenario's second step, the dispatch parent's last
@@ -860,6 +926,61 @@ const quiet = scenario => !stderrOf(scenario).includes('skipping profile bundle'
 // gain them.
 const rewritten = Object.values(profiles).filter(item => readFileSync(join(item.dir, 'cordis.yml'), 'utf8').startsWith('# dsh profile root')).map(item => item.name)
 const leaked = GENERATED_PROFILES.filter(name => existsSync(join(realProfiles, name)))
+
+/**
+ * Main agent mode (docs/ORCHESTRATION.md §3.1; scenarios glm-design-wish-idle,
+ * non-glm-design-wish-idle, glm-design-main, non-glm-design-main,
+ * glm-design-one-main): what the real runtime did with the identity section,
+ * the tool face, the notices and the holder record.
+ */
+function designChecks() {
+  const zcode = (step) => step?.system.indexOf('You are ZCode, an interactive agent') ?? -1
+  const ascending = (...marks) => marks.every(mark => mark >= 0) && marks.every((mark, index) => index === 0 || marks[index - 1] < mark)
+  const placed = (step, glmRoute) => glmRoute ? ascending(zcode(step), sectionAt(step), step.system.indexOf(GUARD_SECTION)) : ascending(sectionAt(step), step.system.indexOf(GUARD_SECTION)) && zcode(step) < 0
+  const wishNotices = step => messagesOf(step, 'glm-design-wish')
+  const wished = step => wishNotices(step).some(message => message.text.includes(`"${DESIGN_WISH}"`) && message.text.includes('需求：'))
+  const left = step => wishNotices(step).some(message => message.text.includes('left main-agent mode with /wish off'))
+  const entered = step => wishNotices(step).some(message => message.text.startsWith('The human made this session\'s agent the main agent of this project with /wish'))
+  const humanQuiet = scenario => scenario.human.every(entry => entry.kind !== 'unexpected-question')
+  const rowQuiet = scenario => !stderrOf(scenario.name).includes('dsh-glm-hourness/design')
+  const lineOk = (step, text) => step?.line?.text === text && step.line.kind === 'success' && step.line.types[0] === 'command/run' && step.line.types.at(-1) === 'command/done' && step.line.events >= 2
+  const inEffect = row => row?.status === ACTED && row.reason.startsWith('主 Agent：身份节已加上')
+  const notInEffect = row => row?.status === '未生效' && row.reason === '这个会话现在不是主 Agent：用 /wish 开启'
+  const rowAt = (scenario, index) => tableOf(scenario.steps[index]?.status ?? scenario.steps[index]?.command?.text ?? '').design
+  const wishOk = scenario => scenario.human[0]?.kind === 'wish' && scenario.human[0].result === 'success' && scenario.human[0].text.endsWith('主 Agent 建议用强一点的模型')
+  const files = (scenario, ...names) => names.map(name => existsSync(join(scenario.ws, '.llm', name)))
+  const one = designOne
+  const mainId = one.steps[0]?.sessionId
+  const mainSteps = one.steps.filter(step => step.sessionId === mainId)
+  const forkSteps = one.steps.filter(step => step.sessionId !== mainId)
+  const forkNote = mainSteps[2]?.fork
+  const holder = designRecord(one)
+  const lacks = (step, names) => names.every(name => !faceOf(step).includes(name))
+  const route = [[designGlmMain, true, GLM_CUT, 'GLM'], [designPlainMain, false, PLAIN_CUT, 'non-GLM']]
+  return [
+    ['design: the row ships disabled: without the overlay /glm-status and /hourness-status list it as not loaded', glmHealth.design?.status === '未加载' && plainHealth.design?.status === '未加载', `${healthLine(glmHealth, 'design')}; ${healthLine(plainHealth, 'design')}`],
+    ['design idle: /wish <wish>, typed in agent/created as the person, succeeds and says to use a stronger model; the GLM and the non-GLM run both', wishOk(designGlmIdle) && wishOk(designPlainIdle), JSON.stringify([designGlmIdle.human[0]?.result, designPlainIdle.human[0]?.result])],
+    ['design idle (GLM): the first request, the turn the wish woke, already has the identity section, no Write, Edit or ask_user_question, and the notice with the wish in the person\'s words', sectionAt(designGlmIdle.steps[0]) >= 0 && !GLM_CUT.some(name => faceOf(designGlmIdle.steps[0]).includes(name)) && wished(designGlmIdle.steps[0]), `section at ${sectionAt(designGlmIdle.steps[0])}; ${faceOf(designGlmIdle.steps[0]).filter(name => GLM_CUT.includes(name)).join(', ') || 'no cut tool'}; wish notice ${wished(designGlmIdle.steps[0])}`],
+    ['design idle (GLM): the headless task turn has the section after the ZCode identity and before the workspace rules; /glm-status says the design row is in effect', placed(designGlmIdle.steps[1], true) && inEffect(rowAt(designGlmIdle, 1)), `${zcode(designGlmIdle.steps[1])} < ${sectionAt(designGlmIdle.steps[1])} < ${designGlmIdle.steps[1]?.system.indexOf(GUARD_SECTION)}; ${JSON.stringify(rowAt(designGlmIdle, 1) ?? null)}`],
+    ['design idle (non-GLM): the first request has the section before the workspace rules, no ZCode identity, the cut tools gone, the wish notice; the task turn is in effect in /hourness-status', placed(designPlainIdle.steps[0], false) && !PLAIN_CUT.some(name => faceOf(designPlainIdle.steps[0]).includes(name)) && wished(designPlainIdle.steps[0]) && inEffect(rowAt(designPlainIdle, 1)), `${sectionAt(designPlainIdle.steps[0])} < ${designPlainIdle.steps[0]?.system.indexOf(GUARD_SECTION)}; ${JSON.stringify(rowAt(designPlainIdle, 1) ?? null)}`],
+    ...route.flatMap(([scenario, glmRoute, cut, label]) => {
+      const steps = scenario.steps
+      const hasSection = index => sectionAt(steps[index]) >= 0
+      return [
+        [`design main (${label}): before /wish the first two requests have the ordinary face, with ${cut.join(', ')}, and no identity section`, [0, 1].every(index => !hasSection(index) && hasCut(steps[index], cut)), steps.slice(0, 2).map(step => `${sectionAt(step)}/${hasCut(step, cut)}`).join(' ')],
+        [`design main (${label}): /wish, /wish <wish> and /wish off typed mid-step through the commands service succeed, and command/run and command/done are in the session log`, lineOk(steps[1], '/wish') && lineOk(steps[3], `/wish ${DESIGN_WISH}`) && lineOk(steps[4], '/wish off'), [1, 3, 4].map(index => `${steps[index]?.line?.kind}:${steps[index]?.line?.types?.join('>')}`).join(' | ')],
+        [`design main (${label}): the request after /wish has the section${glmRoute ? ' between the ZCode identity and the workspace rules' : ' before the workspace rules'}, the first request's face without ${cut.join(', ')}, the enter notice, and the row in effect`, hasSection(2) && placed(steps[2], glmRoute) && isDeepStrictEqual(faceOf(steps[2]), faceWithout(steps[0], cut)) && entered(steps[2]) && inEffect(rowAt(scenario, 2)), `section ${sectionAt(steps[2])}; face ${faceOf(steps[2]).length} of ${faceOf(steps[0]).length}; ${JSON.stringify(rowAt(scenario, 2) ?? null)}`],
+        [`design main (${label}): /wish <wish> typed while the agent runs arrives at its next step with the words and the original marker`, !wished(steps[3]) && wished(steps[4]) && hasSection(3) && hasSection(4), `${steps.map(step => wished(step) ? 1 : 0).join('')}`],
+        [`design main (${label}): after /wish off the request has no section, the first request's face and the leave notice; the row is not in effect; the Write after it ran, so did the one before`, !hasSection(5) && isDeepStrictEqual(faceOf(steps[5]), faceOf(steps[0])) && left(steps[5]) && !left(steps[4]) && notInEffect(rowAt(scenario, 5)) && files(scenario, 'before.txt', 'after.txt').every(Boolean), `${sectionAt(steps[5])}; ${JSON.stringify(rowAt(scenario, 5) ?? null)}; files ${files(scenario, 'before.txt', 'after.txt').join(',')}`],
+        [`design main (${label}): the row activated quietly, the record is gone after /wish off, and no question card was raised`, scenario.status === 0 && rowQuiet(scenario) && humanQuiet(scenario) && designRecord(scenario).kind === 'none', `exit ${scenario.status}; record ${designRecord(scenario).kind}`],
+      ]
+    }),
+    ['design one main: a second root session in the same workspace, typing /wish, is told where the main agent is and how to move it; its tool face and the first session\'s are not changed by it', mainSteps[0]?.other?.kind === 'success' && mainSteps[0].other.resultText.includes('这个项目的主 Agent 在另一个会话里') && mainSteps[0].other.resultText.includes('/wish here') && sectionAt(mainSteps[1]) >= 0 && lacks(mainSteps[1], ['Write', 'Edit']), JSON.stringify(mainSteps[0]?.other ?? null).slice(0, 160)],
+    ['design one main: /wish here moves the role; the first session\'s next request has no section, its tool face back (Write, Edit, ask_user_question), the notice that the main agent moved; the Write runs', mainSteps[1]?.other?.kind === 'success' && mainSteps[1].other.resultText.startsWith('主 Agent 已从另一个会话移到这里；') && mainSteps[2] !== undefined && sectionAt(mainSteps[2]) < 0 && hasCut(mainSteps[2], GLM_CUT) && wishNotices(mainSteps[2]).some(message => message.text.includes('moved to another session')) && files(one, 'x.txt')[0], `${mainSteps[1]?.other?.kind}; section ${sectionAt(mainSteps[2])}; x.txt ${files(one, 'x.txt')[0]}`],
+    ['design one main: the record names the second session, not the first and not the fork; the second session logged its own two commands', holder.kind === 'held' && holder.record.sessionId.startsWith('probe-other-') && holder.record.sessionId !== mainId && holder.record.sessionId !== forkNote?.sessionId && mainSteps[0]?.other?.types.join('>') === 'command/run>command/done', `${holder.kind === 'held' ? holder.record.sessionId : holder.kind}`],
+    ['design one main: a fork of the first session at its /wish is an ordinary session from its first request on: no section, the ordinary face; the row ran /wish off for it, so its projection is off; the record is unchanged; the row warned of nothing', forkNote?.kind === 'forked' && forkSteps.length === 1 && forkSteps[0].sessionId === forkNote.sessionId && sectionAt(forkSteps[0]) < 0 && hasCut(forkSteps[0], GLM_CUT) && forkNote.types.includes('command/run') && forkNote.types.includes('command/done') && isDeepStrictEqual(forkNote.hournessMainAgent, { active: false }) && rowQuiet(one) && humanQuiet(one) && one.status === 0, JSON.stringify(forkNote ?? null).slice(0, 220)],
+  ]
+}
 
 const checks = [
   ['sandbox: the runtime booted each profile generated under the run directory (its cordis.yml rewritten by the launcher); the real profiles directory has none of them', rewritten.length === GENERATED_PROFILES.length && leaked.length === 0, `rewritten: ${rewritten.join(', ') || 'none'}; under ${realProfiles}: ${leaked.join(', ') || 'none'}`],
@@ -995,6 +1116,7 @@ const checks = [
   ['rules-peak: /glm-status lists the rules row in effect with the level in force at that step and the clock', rulesHealth.rules?.status === ACTED && rulesHealth.rules.package === 'dsh-hourness' && rulesHealth.rules.reason.includes('高峰模式 不做（你选的）；现在是高峰') && grouped(rulesHealth), healthLine(rulesHealth, 'rules') + ` (${rulesHealth.rules?.reason ?? ''})`],
   ['rules-peak-hourness: with only the orchestration package there is no pricing service: the person\'s choice is kept, no peak is known, there is no cap and no hold, and the command says why', rulesPeakAlone.status === 0 && aloneState !== undefined && aloneState !== null && aloneState.level === 'stop' && aloneState.origin === 'human' && !('peak' in aloneState) && !('glmWorkerCap' in aloneState) && !('until' in aloneState) && rulesPeakAlone.steps[0].peakMode.hold === null && rulesPeakAlone.steps[0].command?.text.includes('读不到是不是高峰（没有计价服务（GLM 通道包未装，或它的 glm-login 行未启用））') === true, JSON.stringify(rulesPeakAlone.steps[0]?.peakMode ?? null)],
   ['rules-peak-hourness: the row is in effect without the pricing service (a supported combination) and the main agent\'s tool call ran', aloneHealth.rules?.status === ACTED && aloneHealth.rules.reason.includes('读不出是不是高峰') && lastToolResult(rulesPeakAlone.steps[1])?.isError !== true && !stderrOf('rules-peak-hourness').includes('dsh-glm-hourness/rules'), `${healthLine(aloneHealth, 'rules')} (${aloneHealth.rules?.reason ?? ''})`],
+  ...designChecks(),
   ['non-glm boot: the runtime reached the probe provider', plainFirst !== undefined, `exit ${plain.status}, ${plain.steps.length} step(s)`],
   ['non-glm prompt: DSH identity untouched', plainFirst?.system.includes('powered by DeepSeek Harness') === true && !plainFirst.system.includes('You are ZCode'), ''],
   ['non-glm tools: natives present, no aliases', plainFirst !== undefined && nativeFace.every(name => plainTools.has(name)) && zcodeFace.every(name => !plainTools.has(name)), zcodeFace.filter(name => plainTools.has(name)).join(', ') || ''],

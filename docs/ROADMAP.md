@@ -115,7 +115,7 @@ M3 起编排层的新行与新文件都在编排层包 `dsh-hourness` 里做（�
 | 13 | guard 在 `tools/pre-execute` 里调用 `userQuestions.ask` 与 `approval.request` 时卡片是否出现、取消时信号是否正确；`conversation.approval.detail` 子槽能否由第三方占用 | L4 | M3.5 | 待核实 |
 | 14 | `tool-ask-user` 改为 `mode: timed` 后，pending 与晚到答复的完整路径 | L4 | M3.4、M3.5（若用 timed 卡） | 待核实 |
 | 15 | 用命令通道做 UI 写回时会话日志的增长量，以及确认命令运行不进模型请求 | L3（不进模型）/ L4（UI 写回） | M2.7、M3.5 | 待核实 |
-| 16 | 主 Agent 身份文本与 `glm-prompt` 方言改写的叠加结果 | L3 | M3.1 | 待核实 |
+| 16 | 主 Agent 身份文本与 `glm-prompt` 方言改写的叠加结果 | L3 | M3.1 | L3 已核实（2026-10-30，M3 第 3 步，场景 `glm-design-wish-idle`、`glm-design-main` 及其非 GLM 版）：GLM 路由上身份节在 ZCode 身份节之后、`glm:guard` 之前，非 GLM 路由上在 `glm:guard` 之前，主 Agent 的工具面在方言之后也没有 `Write`、`Edit`、`ask_user_question` |
 | 17 | schedule 投递到冷会话时，恢复出的 agent 的工具面与本包各行是否齐全 | L4 | M7 巡检、M6 排期 | 待核实 |
 
 ## 3. 需要用户的事项

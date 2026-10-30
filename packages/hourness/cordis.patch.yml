@@ -69,6 +69,21 @@
       disabled: true
       inject: [commands]
       config: {}
+    - id: glm-hourness/design
+      # Main agent mode (docs/ORCHESTRATION.md §3.1, §3.5): /wish makes one
+      # session per project the main agent, the person's one conversation with
+      # the project. From the next step on that session's system prompt carries
+      # the identity section, its tool face has no file-writing tool and no
+      # ask_user_question, and its role is kept in a session projection and in
+      # a holder record under the DSH user directory (one main agent per
+      # project). Ships disabled until the L3 probe scenarios
+      # (glm-design-wish-idle, non-glm-design-wish-idle, glm-design-main,
+      # non-glm-design-main, glm-design-one-main) and the batch desktop pass
+      # (docs/DEVELOPMENT.md §3, AGENTS.md).
+      name: dsh-hourness/design
+      disabled: true
+      inject: [commands]
+      config: {}
     - id: glm-hourness/ui
       # The package's client face (dsh.client in package.json, host half
       # ./ui/index.js, bundle ./ui/client.js): the project graph tab of the

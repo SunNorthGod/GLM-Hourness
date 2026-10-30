@@ -17,7 +17,16 @@
  * hold for the session; a step
  * marked `modules` records the package ids of the client-modules graph; a
  * step marked `meta` records, for each project row of the Loader, the
- * display information the settings page's plugin inventory shows for it.
+ * display information the settings page's plugin inventory shows for it. A
+ * step with `line: "/wish"` types that command line for the session the way
+ * the person does, through the commands service, so command/run and
+ * command/done reach the session log (the `command` step calls the handler
+ * directly and leaves no events); `other: { line }` types it in a second
+ * root session of the run, created at the first use in the working directory
+ * of the calling session. Both record the result and the events the session
+ * logged meanwhile; a step marked `fork` forks the session at its first
+ * finished command into a new root session and records it. A step has `line`
+ * or `command`, not both.
  *
  * Each session follows its own script: the first session that sends a
  * scripted request follows `script`; each later one (a subagent, or a
@@ -29,6 +38,7 @@
  * Not part of the bundle: loaded only through the overlay that
  * scripts/probe/run-probe.mjs generates for each run.
  */
+import { randomUUID } from 'node:crypto'
 import { appendFileSync } from 'node:fs'
 import { GLM_MODELS, glmInputModalities } from '../../packages/glm/dist/glm-llm/models.js'
 import { asAttachments, glmImageRequestTarget, prepareRequestImages } from '../../packages/glm/dist/glm-llm/images.js'
@@ -40,16 +50,24 @@ export const inject = ['llm']
 /** Reply to compaction summaries, in the shape the ZCode compact prompt asks for. */
 const COMPACTION_REPLY = '<analysis>probe analysis</analysis>\n\n<summary>probe summary</summary>'
 
+/** A script as given: a step types a command line (`line`) or calls a handler directly (`command`), not both. */
+function checkedScript(script) {
+  script.forEach((step, index) => {
+    if (step.line !== undefined && step.command !== undefined) throw new Error(`probe script: step ${index + 1} has both line and command`)
+  })
+  return script
+}
+
 /** One scripted reply per request, in order; the last entry repeats. Entries: `{ tool }`, `{ tools: [...] }` or `{ text }`, optionally with `status: true` or `goal: true`. */
 function parseScript(raw) {
   if (typeof raw !== 'string' || raw.length === 0) return [{ text: 'ok' }]
-  return JSON.parse(raw)
+  return checkedScript(JSON.parse(raw))
 }
 
 /** The scripts of later sessions: a JSON array of scripts. */
 function parseOthers(raw) {
   if (typeof raw !== 'string' || raw.length === 0) return []
-  return JSON.parse(raw)
+  return JSON.parse(raw).map(checkedScript)
 }
 
 /** `call` with `goal_id` and `revision` of `goal` filled into its update_goal arguments. */
@@ -112,6 +130,35 @@ async function runCommand(ctx, request, name, rawInput) {
   return { kind: result.kind, text: result.text ?? '' }
 }
 
+/**
+ * Type `line` to `agent` as the person does (a step marked `line` or `other`):
+ * through the commands service, outside any agent's turn, so command/run and
+ * command/done reach the session log. Records the command's kind (`success`,
+ * `error`, `unresolved` when no command of that name is registered, `threw`),
+ * its id and text, and the events the session logged meanwhile: how many,
+ * their types, and their size in bytes, to show what could reach a request.
+ */
+async function typeLine(ctx, agent, line) {
+  const events = []
+  const stop = ctx.on('session/event', (session, event) => {
+    if (session === agent.session) events.push(event)
+  })
+  const agents = ctx.get('agents')
+  const execute = () => ctx.get('commands').execute(agent, line, [], new AbortController().signal)
+  let outcome
+  try {
+    const run = await (typeof agents?.withoutInitiator === 'function' ? agents.withoutInitiator(execute) : execute())
+    outcome = run === undefined ? { kind: 'unresolved' } : { kind: run.result.kind, commandId: run.commandId, resultText: run.result.text }
+  }
+  catch (error) {
+    outcome = { kind: 'threw', resultText: error instanceof Error ? error.message : String(error) }
+  }
+  finally {
+    stop()
+  }
+  return { text: line, ...outcome, events: events.length, types: events.map(event => event.type), bytes: events.reduce((sum, event) => sum + Buffer.byteLength(JSON.stringify(event)), 0) }
+}
+
 /** The `/glm-status` text for the request's session. */
 async function glmStatus(ctx, request) {
   return (await runCommand(ctx, request, 'glm-status', '')).text
@@ -163,6 +210,65 @@ class ProbeAdapter {
     this.cursors = new Map()
     /** All requests answered so far, side requests included. */
     this.requests = 0
+    /** The second root session a step marked `other` types into, created at its first use. */
+    this.second = undefined
+  }
+
+  /**
+   * Fork the request's session as the person does at an earlier point (a
+   * step marked `fork`): a new root session, as the session controller's
+   * fork makes it, that inherits the events up to and including the first
+   * command the session finished, so a main agent session is forked while
+   * it was one. Waits until the new session has finished a command of its
+   * own (the design row aligns a forked main agent session by running
+   * /wish off for it), records what its projection says then, and sends it
+   * a message so that its first request reaches the provider.
+   */
+  async forkFrom(request) {
+    const agents = this.ctx.get('agents')
+    const own = agents?.get(request.sessionId)
+    if (own === undefined) return { kind: 'no-agent' }
+    try {
+      const events = own.session.snapshotEvents()
+      const cut = events.findIndex(event => event.type === 'command/done')
+      if (cut < 0) return { kind: 'no-boundary' }
+      const seed = events.slice(0, cut + 1)
+      const { agent } = await agents.withoutInitiator(() => agents.create({
+        sessionId: `probe-fork-${randomUUID()}`,
+        seed,
+        inheritedEventCount: seed.length,
+        meta: { cwd: own.session.header.cwd, parentSession: own.id, isSeeded: true },
+        agentOptions: { provider: own.options.provider, model: own.options.model },
+      }))
+      const later = () => agent.session.snapshotEvents().slice(seed.length)
+      for (const deadline = Date.now() + 5000; Date.now() < deadline && !later().some(event => event.type === 'command/done');) await new Promise(resolve => setTimeout(resolve, 20))
+      const projection = this.ctx.get('sessionProjections')?.snapshot(agent.session).values.hournessMainAgent ?? null
+      agent.followup({ id: randomUUID(), role: 'user', content: [{ type: 'text', text: 'Hello from the fork.' }], source: { kind: 'user' } })
+      await agent.whenIdle()
+      return { kind: 'forked', sessionId: agent.id, inherited: seed.length, types: later().map(event => event.type), hournessMainAgent: projection }
+    }
+    catch (error) {
+      return { kind: 'threw', resultText: error instanceof Error ? error.message : String(error) }
+    }
+  }
+
+  /** Type a step's `line` into the request's own session, or its `other.line` into the second root session. */
+  async typeFor(request, line, other) {
+    const agents = this.ctx.get('agents')
+    const own = agents?.get(request.sessionId)
+    if (own === undefined) return { text: line, kind: 'no-agent', events: 0, types: [], bytes: 0 }
+    if (!other) return typeLine(this.ctx, own, line)
+    try {
+      this.second ??= (await agents.withoutInitiator(() => agents.create({
+        sessionId: `probe-other-${randomUUID()}`,
+        meta: { cwd: own.session.header.cwd },
+        agentOptions: { provider: own.options.provider, model: own.options.model },
+      }))).agent
+    }
+    catch (error) {
+      return { text: line, kind: 'threw', resultText: `probe: creating the second session failed: ${error instanceof Error ? error.message : String(error)}`, events: 0, types: [], bytes: 0 }
+    }
+    return typeLine(this.ctx, this.second, line)
   }
 
   /** The cursor of a session, claiming the next unassigned script on its first scripted request. */
@@ -231,6 +337,12 @@ class ProbeAdapter {
     const command = step.command === undefined
       ? undefined
       : { name: step.command.name, ...await runCommand(this.ctx, request, step.command.name, step.command.input ?? '').catch(error => ({ kind: 'error', text: `probe: /${step.command.name} threw: ${error instanceof Error ? error.message : String(error)}` })) }
+    // A step with `line` types that command line for the session as the
+    // person does, one with `other: { line }` into a second root session; the
+    // results and the events they logged are recorded.
+    const line = step.line === undefined ? undefined : await this.typeFor(request, step.line, false)
+    const other = step.other?.line === undefined ? undefined : await this.typeFor(request, step.other.line, true)
+    const fork = step.fork === true ? await this.forkFrom(request) : undefined
     // A step marked `peakMode` records what the rules row's service
     // glmHournessPeakMode says about the request's session once the step's
     // command ran: its state and its hold, null when the service is absent.
@@ -289,6 +401,9 @@ class ProbeAdapter {
         ...(request.sessionId === undefined ? {} : { sessionId: request.sessionId }),
         ...(status === undefined ? {} : { status }),
         ...(command === undefined ? {} : { command }),
+        ...(line === undefined ? {} : { line }),
+        ...(other === undefined ? {} : { other }),
+        ...(fork === undefined ? {} : { fork }),
         ...(peakMode === undefined ? {} : { peakMode }),
         ...(live === undefined ? {} : { live }),
         ...(modules === undefined ? {} : { modules }),

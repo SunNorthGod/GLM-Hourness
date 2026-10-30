@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { apply, DECLARATION_SECTION, guardHealth, type GuardRecord, type ViolationRecord } from '../src/guard/index.ts'
+import { apply, guardHealth, type GuardRecord, type ViolationRecord } from '../src/guard/index.ts'
+import { DECLARATION_SECTION } from '../src/guard/sections.ts'
 import { apply as glmPromptApply, dialectServiceFor } from '../src/glm-prompt/index.ts'
 import type { ShadowRecord } from '../src/guard/shadow.ts'
 import type { AgentLike, PreExecuteDecision, SessionEventLike, SessionLike, ToolExecutionPayload, WorkspaceChangesSummary } from '../src/shared/dsh-min.ts'

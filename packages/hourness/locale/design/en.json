@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Main agent and design loop",
+    "description": "/wish makes one session the main agent of the project: it asks in plain chat, puts plans to you for approval and writes no files itself. Off by default."
+  }
+}

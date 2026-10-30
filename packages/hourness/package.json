@@ -16,6 +16,7 @@
     "./graph": "./dist/graph/index.js",
     "./graph-panel": "./dist/graph/panel-row.js",
     "./rules": "./dist/rules/index.js",
+    "./design": "./dist/design/index.js",
     "./data/locale/*.json": "./locale/data/*.json",
     "./guard/locale/*.json": "./locale/guard/*.json",
     "./memory/locale/*.json": "./locale/memory/*.json",
@@ -24,6 +25,7 @@
     "./graph/locale/*.json": "./locale/graph/*.json",
     "./graph-panel/locale/*.json": "./locale/graph-panel/*.json",
     "./rules/locale/*.json": "./locale/rules/*.json",
+    "./design/locale/*.json": "./locale/design/*.json",
     "./locale/*.json": "./locale/*.json",
     "./icon": "./icon.svg"
   },
