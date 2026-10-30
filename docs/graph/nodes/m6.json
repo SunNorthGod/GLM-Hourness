@@ -162,6 +162,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "规则板设计 0.9（d-main-agent-peak-exempt）：不做档的高峰里主 Agent 照常干活、随时回话，只停 GLM 子 agent 与自报的重活脚本。GLM 包的高峰提醒在 stop 档下的措辞（归 M6）请不要对主 Agent 说「停下」；规则板经 glmHournessPeakMode.stateFor 交的值不变。checkCall 0.9 起也会跑人同意过的要拦的脚本，超时按条目的做法判、不在后台接着跑，gateOnRules 的接法不变。"
+    },
+    {
+      "at": "2026-10-30T11:58:08.116Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "规则板最小一片对 M6 的影响（分支 rules-slice 93964929）：一、nextPeakChange(peak, fromMs, horizonMs?) 已在 src/shared/pricing.ts 里加好（取下一个整分钟起第一个与此刻不同的时刻，默认看 8 天，返回毫秒或 undefined），M6 不必再加第二份，直接用，规则页、/glm-status、/hourness 与规则板的「到几点」就是同一个函数；二、GLM 包按档位选高峰提醒措辞时读 peakModeService(ctx)?.stateFor(sessionId)，字段 level、origin、peak、until，读到 undefined 就照今天的原文；规则板的任何一步都没有改 ORCHESTRATION.md §11.4 的内容，只在新的 §16 里指向它；三、计价服务的 peakHours（时段说明）这一片没有用，peakModeIntro(peakHoursZh?) 留了参数，M6 加了 peakHours 之后规则页再传。"
     }
   ]
 }

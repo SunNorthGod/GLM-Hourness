@@ -95,6 +95,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "人定 d-freeze-until-dogfood（「行」）：自举开始前新定的事先记上图、不塞进在跑的稿子，打在骨架上的例外由编排方当场判断并报人。这一条直接护住自举关键路径上的三件：规则板最小一片的实现、M3 附录 0.5、M7 0.5。"
+    },
+    {
+      "at": "2026-10-30T11:58:07.361Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "关键路径三件里的第一件（规则板最小一片，d-rules-peak-slice）实现完成，在分支 rules-slice（93964929），等独立评审与合入 main。合入后还差：一、M3 附录 0.5 过评审并实现（约 12 步）；二、M7 最薄骨架（E0、E1a、E1b、E2–E9 加 H1）：派活工具在派模型为 GLM 的子 agent 之前读一次 peakModeService(ctx)?.stateFor(<主 Agent 的会话>)?.glmWorkerCap，空转判定读一次 peakHoldFor，读到 undefined 就照原来的槽位和空转规则（规则行没启用、没有计价服务、不在高峰时都是这样）；三、规则行默认禁用，自举时要在桌面版 profile 的补丁里启用它，所以要先过一次桌面版首轮验收（L4：重启后 /rules peak、/hourness-status 里 rules 行、docs/rules/ 与 .llm/rules/ 的文件、GLM 会话里 stateFor 的值），AGENTS.md 强制流程第 4、5 条。M7 §10.3 开始条件里「规则板最小一片已合入」这一条在合入 main 之后成立。这一片的上限现在只是服务里的一个数，没有东西执行它，要等 M7 的派活读它才起作用（design-context 的接缝裁定：M7 只加这一次读）。"
+    },
+    {
+      "at": "2026-10-30T11:58:10.136Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M7 设计 0.5 对自举开始条件与顺序的改动（m7 design.md §7、§8.3、§10.1、§10.3）：一、开始条件多一条（§10.3 第 5 条，评审 R4-F6，d-rules-peak-slice 把规则板最小一片列为自举的子条件）：最小一片已合入，M7 对它的两处读（派活处的 glmWorkerCap、空转判定处的 peakHoldFor）在它的真实 PeakModeService 类型上验过：L2 用真实类型的固定实现过高峰用例；片子带可注入的计价与时钟接缝时再过 L3 glm-exec-peak；没有接缝时接受 L2 加类型契约测试，真实高峰留到第二批 L4 第 9 步。二、骨架场景点名八个（评审 R4-N8）：glm-exec-dispatch、non-glm-exec-dispatch、glm-exec-plan、glm-exec-review、glm-exec-merge、glm-exec-drive、glm-exec-modules（新加，两个模块一放行一未放行、第二档第三档的后果）、glm-exec-skeleton。三、实现顺序照编排方对 R4-F9 的裁定写进 §7、§8.3：E0、E1a、E3 现在就开，E1b 的测试等 M3 第 3、6 步，E2 等 M3 第 6 步，E4 等 M3 第 3–5 步与规则板最小一片的行登记；整块规则板排在 E9 之后；共享登记文件后合入的一方机械并入；src/data/lock.ts 由 E3 建。四、已知代价：自举期间不做档对子 agent 派活的排队不生效，少做的上限生效，主 Agent 本来就不受高峰影响。五、八道代码里的门首日 enforce 是对宪章 0.7 的例外（M7 §12.1），放行稿让人看到，人不同意就按表里的办法改成先影子。"
     }
   ]
 }

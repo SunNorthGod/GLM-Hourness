@@ -248,6 +248,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M3 附录 0.5 对面板设计 0.7 §11 的接住（附录 §3.14.9 逐条对照）：「两层循环」M3 第 1–5 条全部接住——大循环放行时给这次新批准的模块写 stage design、目标进 release；模块的设计决策挂在模块下；release 多 module 参数、结果正文带 module、同意时批准模块子树并把模块 stage 由 design 改为 release；写 stage 的权限见附录 §3.14.7（引擎加两处：主 Agent 不带原话把模块退回 design，reason 不得以同意记号开头；任务挂在还没放行的模块下出生为 proposed，不再因为模块已批准就直接批准）；src/graph/modules.ts 除 DIRECTIONS_ID、directionsOf、frameworkOf、modulesOf 外多 moduleCandidatesOf、moduleOf、isReleased、isSplit，面板可以不读。第 6 条 shownProposalOf 在 src/shared/tool-names.ts，返回整个结果对象。第 6a 条第 7 步取消、m3-5 第 2 条建议删去。第 6c 条契约测试在第 6 步 L2（plain.ts 未合入时留显式跳过项，面板合入 plain.ts 的提交补第二阶段断言）。补充三处面板可以忽略：propose_to_human 的 release 带一页放行稿 page；目标在大循环放行时进 release，模块各自在 design（与 §4.11 的读法一致）；退回大循环之后整个目标下的子 agent 一律只读（比受影响的活粗，M7 可以缩小）。"
+    },
+    {
+      "at": "2026-10-30T11:58:10.376Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M7 设计 0.5 按面板设计 0.7 §11「两层循环」第 6 条写了 derivedStage(graph, node)（m7 design.md §2.4）：node 是目标或模块；模块的有效阶段在 release 之前时原样返回（设计中的模块返回 design）；之后按任务推出 execute、merge、decompose，模块完成为 operate。补一条面板要注意的：分了模块的目标、一个模块都没放行时，目标的推出阶段是 release（不是 decompose），因为此刻该做的是各模块的设计；目标推出阶段的任务不含还没放行的模块下的任务，所以模块退回设计后目标不会显得「在开发」。三档在面板上的显示契约不变（第 7–9 条）：M7 不写面板数据，退回设计就是模块或目标的 stage 改回 design，面板按 modulesView 读到即可；M7 另在模块或目标上批注「退回设计 · 时刻 · 受影响的在跑的活」，面板可以不用。M7 的 derivedStage 还没合入时，面板两层循环的显示不出现（面板 §4.11 已写）。"
     }
   ]
 }

@@ -41,6 +41,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "规则板设计 0.10 对 M5（规则板 §10.7 M5 一条）：规则板的项目根与项目目录用 src/data/project-root.ts 的 projectRootOf、projectDirOf（运行时状态在 <项目根>/.llm/rules/），R2 改用 src/data/lock.ts（M5 §8.3 的请求，同意，谁先实现谁建）。0.9 另请 M5 下一稿改第一批经验第 7 条『start a new gate in shadow mode and count false denials before enforcing it』的那一句，0.10 撤回（F82）：docs/CHARTER.md 0.7（提交 f2faa6f）把『先影子』限定为写在代码里的门禁之后，那一条说的正是一道写在代码里的 guard 规则，在限定之后的宪章下是对的、照旧成立（ORCHESTRATION.md §6.5）。规则板对 M5 不再有改第 7 条经验这一条请求。"
+    },
+    {
+      "at": "2026-10-30T11:58:08.589Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "规则板最小一片先于 M5 实现了两样 M5 设计 §5.5 也定义的存储件，放在规则板自己的目录里：src/rules/project-key.ts（项目根：从会话头 cwd 往上找 .git，工作树经 commondir 回主检出，只读文件不起 git 进程；用户主目录与盘符根不算项目；不在 git 仓库里时只认已有 .llm/ 的目录；只有同步版本，找到 .git 的结果按 cwd 缓存）与 src/rules/lock.ts（独占创建的写锁，持有者不在或超过 10 秒接手，等 2 秒报 busy，提供 held() 让持有者在追加之前确认锁还是自己的）。两份设计都写「先合入的一方建，后到的一方改为导入」：规则板先合入的话，M5 的 src/data/project-root.ts 与 lock.ts 可以改为导入或把这两个文件搬到 src/data/ 再让规则板导入；两边的行为要对齐的地方是 projectOf 的三条排除规则。M5 的 ensureIgnored（.llm/ 没被忽略时追加进 .git/info/exclude）这一片没有做：本仓库的 .gitignore 有 .llm/，别的项目里规则行会写 .llm/rules/，等 M5 的项目目录接上。"
+    },
+    {
+      "at": "2026-10-30T11:58:12.256Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M3 附录 0.5（第 5 轮修订）第 4 步依赖 src/data/project-root.ts 的 projectRootOf（M5 设计 §5.5），谁先合入谁建；M5 不在自举关键路径上，先到的是规则板薄片、M7 或 M3 时按 §5.5 的解析规则写。形状：M5 设计写 root 加 git，指标流水设计写 root 加 kind，M3 只读 root 与是否找到 .git，形状不同时 M3 加一行适配。"
     }
   ]
 }

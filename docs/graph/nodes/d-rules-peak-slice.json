@@ -14,6 +14,12 @@
       "reason": "用户同意编排方「规则板先做最小的一片」的推荐",
       "relay": "行。现在已经有的流程是什么啊，够自举吗",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-30T11:58:07.624Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "已实现于分支 rules-slice 93964929，范围与设计 0.10 §16.1 一致：档位、默认少做、少做的并发上限 1、经 glmHournessPeakMode 交出（stateFor、stateForProject、peakHoldFor），存档位的流水与快照（只用到 peakMode 的那一支）、仓库里的 docs/rules/rules.json、/rules peak、行健康与行登记（默认禁用）。不在这一片里的，按 §16.1 一条没做；§16.1 在 builtin.ts 一项里列了 GLM_PEAK_PRICING 与按档位启用的附属条目，这一片没有写：它们只在判定门和规则页上有读者，两者都在范围之外，写了就是没有调用方的代码。待验证：独立评审，桌面版首轮验收；验证状态保持 unverified，直到评审通过且合入。"
     }
   ]
 }

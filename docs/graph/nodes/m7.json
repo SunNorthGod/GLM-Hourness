@@ -257,6 +257,24 @@
       "actor": "llm",
       "op": "comment",
       "text": "M3 附录 0.5 §9 第 7 条与 §3.14 对 M7（面板设计 0.7 §11 第 6–9 条）：一、d-auto-drive 的接手点：没分模块的目标是目标 stage 写 release 那条历史；分了模块的目标是各模块自己的 stage 写 release 那条历史（带 module 的 record_human_answer，reason 以人在对话里同意开头、末尾可有一页稿摘要）；目标一级的 release 只表示框架、模块清单与方向清单定了，不表示任何模块开工。二、derivedStage 接受模块。三、第二档（改到本模块的设计方向）主 Agent 用 graph_edit 把模块 stage 改回 design，不带原话，引擎对这一处开了例外，子 agent 与别的会话做不了；第三档主 Agent 带人的原话把目标 stage 改回 design，目标下子 agent 一律只读，比受影响的活粗，M7 要缩小时改 design-before-release 目标一级那一行。四、模块设计对照方向清单的独立评审由 M7 的派发做并留记录，M3 不核对；给出记录形状后 M3 的 moduleReleaseGate 加一项。五、一次至多三件由 M3 的一条回复至多三件守，攒哪一批归 M7。"
+    },
+    {
+      "at": "2026-10-30T11:58:07.880Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "规则板最小一片给 M7 的接口已定型（分支 rules-slice 93964929，合入后在 main）：契约在 src/shared/peak-mode.ts，两个包都编进去。派活工具读法：peakModeService(ctx)?.stateFor(<主 Agent 的会话 id>)?.glmWorkerCap，只在 peak === true 且档位为少做时有值，值是 PEAK_REDUCE_GLM_WORKERS（1）；有值就用它数经 dispatch_task 派出、模型为 GLM 的在跑子 agent（写任务、审查、检查都算），非 GLM 不数，没有值就照原来的 slots。空转判定读 peakHoldFor(<会话 id>)：返回 {level: 'reduce' | 'stop', until}（until 是 ISO 8601），只在高峰里、结束时刻读得出、档位为少做或不做时有值，否则 undefined；与同一时刻 stateFor 的档位和 until 一致。没有 heldForPeak（0.9 已删，这一片也没有）。这一片没有等待单，所以不做档的 peakHoldFor 对任何会话都一样，整块规则板的「本次高峰照常做」之后才区分。服务不在（规则行禁用、没有会话工作目录、会话不在本宿主上）读到 undefined，M7 按读不出处理，不抛错。请 M7 的 L2 用例钉住：slots 3、少做、高峰、已有 1 个 GLM 子 agent 在跑时第二个 GLM 派发得 slots_full 且文字写明到几点，同时非 GLM 的派发照常，没有 glmWorkerCap 时照常（设计 §16）。规则行默认禁用：M7 的 L3 场景要在覆盖层里把 glm-hourness/rules 打开，并用 scripts/probe/probe-llm.mjs 新加的 peakMode 步骤标记读服务，/rules peak 经真实处理函数改档位的写法可照 run-probe.mjs 的 rules-peak 场景。"
+    },
+    {
+      "at": "2026-10-30T11:58:09.175Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M7 设计 0.5 写完（.agents/tasks/m7/design.md，0.4 原文留在 design-0.4.md）。答第 4 轮评审（design-review.md 末一轮、design-review.json，CHANGES_REQUESTED，挡路 10、不挡路 10），只改会挡住开工或 E4 的几条，不等对齐轮（人「尽快自举吧」，10:56Z 编排方的派发批注）。已改，§18.1 逐条对应：R4-F1 删去对规则板已删去的 heldForPeak 的全部读，不做档里规则板暂停主 Agent 的前提作废，M7 对规则板只读 peak-mode.ts 的档位、glmWorkerCap、peakHoldFor；R4-F2 两层循环设计进 M7：派发门禁取最近的模块祖先，derivedStage 收模块并另有 releaseOf，放行事件带 module 且一个目标只建一次 goal，pins 带放行时刻使退回设计后在跑的活过期，worker-scope 拒绝被退回设计的活继续写，第三档以 hourness-design-wait 停住 goal，三档与成批写成 §3.9.7，完成门禁加设计中的模块一条；R4-F8 验收改成系统自己记、指标流水做好之前不写、做好后再核；R4-F9 实现顺序照编排方裁定写进 §7 与 §8.3，src/data/lock.ts 由 E3 建；R4-F3 dispatch_task 说明里带静态博客订阅输出的示范，L2 钉住；R4-F6 规则板最小一片进开始条件（§10.3 第 5 条）与验证；R4-F7 八道代码里的门首日全部 enforce，是对宪章 0.7 先影子的例外，§12.1 逐道写理由与改影子的办法，放行稿让人看到；R4-N1 运行时文件进项目 .llm/；R4-N2 tell 加 wake；顺带做了 R4-N5(a)（补 gitRisk 导出）与 R4-N8（点名骨架场景）。留到后面，一条不丢（§18.2）：R4-F4 在 E7 合入之前；R4-F5 在 P2 开工之前；R4-F10 的 PROMOTION 一条在 P2 之前，其余在实现中；R4-N4 与 R4-N5(b) 在 E4 开工之前（M3 0.5 定稿后）；R4-N6 记在给 rules 的批注里；R4-N7 在整块规则板的门合入之前；R4-N9 由编排方在 E7 之后、E8 开工之前定拆不拆；R4-N10 等指标流水定稿；R4-N3 版本号已顺带换新，其余下次改到时改。接下来：一、独立评审第 5 轮；二、M3 0.5 定稿后对一遍 M7 要读的 modules.ts 与三条写入规则（design.md §15 U28）；三、一页放行稿 onepage.md 按 0.5 重写，加模块一级与宪章例外两处；四、graph-ops-v04-pending.json 里 m7-2、m7-3、m7 的验收字句按 0.5 的 §1.2 重新写出，等人的原话再记。本稿未写 docs/graph、未提交、未碰任何工作树。"
+    },
+    {
+      "at": "2026-10-30T11:58:11.445Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M3 附录 0.5（第 5 轮修订）对 M7 设计 0.5 的补充与请求：一、大循环放行同意时 M3 的写入次序是先给模块候选写 stage design（候选仍是提议）、再批准、最后写目标 release（附录 §3.14.2），候选因此可能已带 design，effectiveStage 对它仍按提议算（interview），M7 0.5 §2.4 对设计中的模块的定义（含候选）不受影响。二、isReleased 含完成（附录 §3.14.1）；M7 0.5 §2.4 写了 M3 的 isReleased 对完成的模块为假并另加完成一支，那一支可以删，两边对一遍时以 M3 附录为准。三、design-before-release 在主 Agent 焦点停在目标一级时放行（大循环放行后所有模块还在设计）：M3 合入到 M7 合入之间只靠身份节与阶段提醒的话和还没放行的模块下任务出生为提议，M7 的 dispatch-chain-readonly（M7 0.5 §3.2.2）合入后取代（附录 §3.14.6）。四、M7 0.5 没有每个模块的设计对照方向清单的独立评审的派发与记录条目（只在 d-design-onepage 一行的复述里出现），请记成待办；加上之前只有主 Agent 自查和一页稿里替人定了的方向一段。五、M7 子 agent 的快照将来是否共用 <项目根>/.llm/snapshots.jsonl，等 M7 给 git-snapshot.ts 加 export 时定，目前只有主 Agent 的会话写它。"
     }
   ]
 }

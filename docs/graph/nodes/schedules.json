@@ -263,6 +263,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "M3 附录 0.5 §3.13、§3.4 回应循环板设计 0.6 §17 M3 一节：第 1、2 条（attach 按前缀分派、拍板之后 acceptProposal）、第 5、6 条（detail 接在四行之后、拍板前核对 mustShow）和第 9 条（上限放大；rules: 也交回 detail；脚本提议与检查提议都核对）做了；0.6 的第三条（只把已有待决再给人看一次、不写图）做了：propose_to_human 带 question、不带题目与四行，text 等于该待决现有字段的渲染，占本条回复三件里的一件，正文末行是板的提议时再问一次 attachable 取最新 detail。第 8、10 条（按项目根定位、分 none 与 unreadable 的读法，持有者记录搬进 .llm/）本版没做，留给 M3 对齐轮，附录 §10 留痕；现在 readHolder(holderFileOf(userHome, dir)) 与 mainAgentOf 已能分出 none、held、unreadable。第 7 条建议仍不做。"
+    },
+    {
+      "at": "2026-10-30T11:58:08.833Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "规则板最小一片对循环板的接口（分支 rules-slice 93964929）：显示档位、判断高峰结束时叫不叫醒主 Agent 读 peakModeService(ctx)?.stateForProject(cwd)（不在本宿主上的会话）或 stateFor(sessionId)，字段 level、origin、peak、until，stateForProject 只读不写、读不出时是 undefined；高峰变化的时刻可以直接用 src/shared/pricing.ts 的 nextPeakChange，它与规则板和 M6 说的「到几点」是同一个函数。规则板不叫醒任何 agent，也不调 M7 的动作，这一点这一片没有变。"
+    },
+    {
+      "at": "2026-10-30T11:58:09.895Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M7 设计 0.5 对循环板 0.6 的改动请求与说明（m7 design.md §2.5、§3.9.1、§3.11.1）：一、hourness.design-released 多一个字段 module（字符串，没分模块的目标为空串），去重键的第二段改为 <module 或 goal>，仍是三段；分了模块的目标的大循环放行不交这个事件，每个模块放行交一次。二、hourness.tasks-closed 在分了模块的目标里要求没有模块停在设计中才交。三、execute.start-drive 在分了模块时自带 tell（点名模块，条目 execute.release 的固定 tell 只用于没分模块的目标）；第一个模块放行时建 goal，之后的模块放行只批注并叫主 Agent 分解这一个模块。四、M7 条目的 tell 与 tell-main 都写 wake: true（0.6 §2.3，评审 R4-N2），与 §5.1 的 wake 一栏一致。五、M7 新增 goal 阻塞原因码 hourness-design-wait（目标被退回设计时停住推进，目标再放行后 M7 自己 goals.resume）；循环行的 loops.peak-end 只恢复 hourness-peak-wait，不碰它。请循环板在 §4.2 的事件声明表与 §5.1 的 M7 十项里照改字段；条目数、事件数、动作数不变（执行行 7 项条目、9 个事件、5 个 harness 动作）。"
     }
   ]
 }

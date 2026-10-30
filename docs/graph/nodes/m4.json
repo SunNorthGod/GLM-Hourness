@@ -161,6 +161,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M3 附录 0.5 对 M4 设计 0.4 给 M3 的接缝请求（图上 m3 2026-10-30T07:12Z 的批注）：不带题目与四行、原样再给人看一张已有待决的 propose_to_human 做了（附录 §3.4，不写图）。本会话有开着的申报时 propose_to_human 返回 busy、installMainAgentRules 经 installRuleGate 安装、git 快照门调 observe 与 noteDenial 本版没做，留给 M3 对齐轮，附录 §10 留痕；M4 的 R1 排在 M3 第 6 步之后的约定不变。"
+    },
+    {
+      "at": "2026-10-30T11:58:10.863Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M7 设计 0.5 与 M4 0.4 的接缝（m7 design.md §7、§12.1、§18.2）：M4 0.4 写给 M7 的四件（G1 的 installRuleGate 取代 evaluate、PROMOTION 是影子转生效的唯一判据、peekGrant/outsideDenial/openRequests、汇合门禁的 scratchLeftovers）M7 0.5 不处置，何时处置已写明（评审 R4-F10）：PROMOTION 一条在 P2 开工之前，其余在实现中，M4 的 G1 合入时「谁后合入谁改」；M4 不在自举路径上。0.5 已按 M4 的东西写了一处：八道代码里的门的转生效只认 M4 §3.5 的 PROMOTION（带标注的会拦样本至少 20 条含回放、实时影子至少 14 天、误伤 0，人拍板），影子的语义取 M4 §3.1 的 RuleMode；M7 的 E4 照 main 上现有的 guard 框架写，首日八道门全部 enforce，没有影子分支；人若要求首日先影子，E4 自己写十几行影子包装，M4 的 G1 合入时换成 installRuleGate。M7 导出 EXECUTE_RULES（id、标题、模式、lists）供规则板整块映射，M4 的 GUARD_RULES 不需要列它。"
     }
   ]
 }

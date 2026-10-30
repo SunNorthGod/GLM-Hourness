@@ -326,6 +326,24 @@
       "actor": "llm",
       "op": "comment",
       "text": "M3 设计附录 0.5 写成（.agents/tasks/m3/design-addendum.md；0.4 原文另存 design-addendum-0.4.md），回应第 4 轮评审 MEDIUM 2、NIT 2（附录 §16），待评审。M1 例题改成「高峰时段派出去的活怎么排」：说的是主 Agent 派出去的活，不做一行写明主 Agent 照常回话，不再教主 Agent 在高峰里自己少做（d-main-agent-peak-exempt）；格式、长度上限与要过的检查不变，§2.8 写明题材为什么安全，L2 钉住题目不含主 Agent、不做一行含「主 Agent 照常回你话」。M2 新增 §3.14 两层循环里的放行：目标下有直接的特性子节点就是分了模块的目标；大循环（release 不带 module）一次放行框架、模块清单与方向清单（norm-directions 必写，至少一条），同意时给这次批准的模块写 stage design、目标进 release；每个模块再放行一次（release 带 module 与一页放行稿 page，批准模块子树里的提议，模块 stage 由 design 改为 release）；子 agent 的设计期只读按模块判；阶段写权限表：模块退回设计只有主 Agent、不要人的原话、引擎加一处例外，目标退回大循环要人的原话；契约按面板设计 0.7 §11「两层循环」，不同与补充写在 §3.14.9。N1 第 7 步与 /graph-apply 的回写取消，编号保留。N2 第 6 步 L2 加面板 0.7 §11 第 6c 条的契约测试。同批接住循环板 0.6 与规则板 0.10 对 attach 分派与同意路径的请求：rules: 与 loops: 都交回 detail，上限 markdown 1–6000、mustShow 1–8 片每片 4000，两块板的脚本提议与循环板的检查提议都核对「给人看过原文」；不带题目与四行、只把已有待决再给人看一次的 propose_to_human。留给对齐轮、本版没做的三件记在附录 §10：持有者记录搬进项目 .llm/（及按项目根定位的读法）、M4 设计 0.4 的其余请求（busy、observe、noteDenial、installRuleGate）、确认需求与一页放行稿的示范。依据 main fe0bace。"
+    },
+    {
+      "at": "2026-10-30T11:58:08.354Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "规则板最小一片没有做人在对话里改档位的那一路（rules_propose kind 'peak-mode' → propose_to_human 带 attach → record_human_answer 交回 acceptProposal），它依赖 M3 第 6 步的 attach，仍按设计 §16 的 R3 等 M3。现在改档位只有 /rules peak。接上时要改的地方都很小：src/rules/permissions.ts 的 peak-mode-set 加「带转述的 llm 只经拍板」，src/rules/engine.ts 的写入记录里 origin 带 relay 与 question（状态里的 peakMode.origin 形状已经留好 actor、relay、question）。主 Agent 的 rules_propose 例子与 peakModeIntro 的「跟主 Agent 说」那一句，等这一路接上再加。"
+    },
+    {
+      "at": "2026-10-30T11:58:09.650Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M7 设计 0.5 要读的 M3 东西，请 M3 附录 0.5 定稿后对一遍（m7 design.md §2.4、§3.9.7、§7、§15 U28）：一、src/graph/modules.ts 的 modulesOf、moduleCandidatesOf、moduleOf、isReleased、isSplit（附录 0.5 §3.14.1）；M7 的 derivedStage(graph, node)、releaseOf、pins 里的放行时刻、派发门禁的 not_released 都读它，文件还不在时 M7 写本地类型。二、三条写入规则（§3.14.7、§3.14.8）：模块放行只改模块的 stage；主 Agent 不带原话把模块 stage 由 release 或之后退回 design（引擎的窄例外，reason 非空、不以同意记号开头）；目标退回 design 带原话。M7 不判档，只对这些写入作出反应（模块或目标退回后其下在跑的活过期、新派发 not_released、worker 写不了）。三、附录 §9 第 7 条的 d-auto-drive 接手点还写着「目标的 stage 改为 release」，与 §3.14.2「目标放行不等于任何模块开工」不一致：M7 的做法是没分模块的目标认目标放行，分了模块的目标认每个模块的放行，大循环放行不开始推进，请 §9 第 7 条同改。四、shownProposalOf(isError, text) 要继续导出（批次标记认 propose_to_human 成功用它，不改它的结果正文）。五、M7 补 src/design/stage-notice.ts 的两句：模块被退回设计时的提醒，以及 decompose、execute、merge 三段按焦点所在模块的推出阶段写；release 一句用 M3 的模块版。六、mainAgentOf 的参数以 M3 0.5 为准（评审 R4-N4）；M3 的运行时文件同样搬进项目 .llm/（编排方 2026-10-30 裁定），M7 只经 takeSnapshot 用快照，不读它的路径；git-snapshot.ts 请导出 gitInvocations、gitRisk、takeSnapshot 三个。"
+    },
+    {
+      "at": "2026-10-30T11:58:11.201Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M3 设计附录 0.5 第 5 轮独立评审（评 0.5 第一稿，reviews/addendum-r5.md）：CHANGES_REQUESTED，挡路 2（R5-M1、R5-M2，都是 MEDIUM）、NIT 4（R5-N1 至 N4）；第 4 轮的 M1、N1、N2 关闭，M2 回应成立。同版 0.5 已修（附录 §17），待复评，没有驳回的 NIT。R5-M1：快照流水与临时暂存区原放在 git 目录，与编排方对 M3 运行时文件路径的裁定相反（design-context「Dogfood implementation order and runtime paths」，本节点 2026-10-30T10:56Z 的批注要求并进 0.5）；现改为 <项目根>/.llm/snapshots.jsonl（项目根用 projectRootOf 取会话的工作目录，主检出与各工作树共用一份；.llm/ 自带 .gitignore，防止 git clean -fd 把流水当未跟踪文件删掉），临时暂存区放系统临时目录、用完即删；refs/hourness/snapshots 与标签是 git 引用，不动。持有者记录搬进 .llm/ 是另一件，仍按 d-alignment-rounds 留给 M3 对齐轮。R5-M2：大循环放行原先先批准、后写模块 stage，所有候选批准而一个 stage 都没写时进程停下，isSplit 为假，重放会落进单层放行、一次批准所有模块子树；现改为先给候选写 stage design（候选仍是提议）、再批准、最后写目标 release，任何停下点 isSplit 都为真；第 9 步 L2 加四个停下点的重放用例。R5-N1：设计期只读在焦点停在目标一级时仍放行，写进残余，身份节措辞改为目标或它的模块，阶段提醒加一句 graph_focus；R5-N2：取消第 7 步后的三处残留引用已改；R5-N3：兄弟设计读 M7 0.5，isReleased 含完成；R5-N4：见 d-design-onepage 与 m7 的批注。"
     }
   ]
 }
