@@ -250,6 +250,14 @@ const MAX_LISTED_FILES = 20
 const WORKTREES_DIR = '.worktrees'
 /** The gate worktree is `hz-gate`; a task of that id would share its directory. */
 const GATE_NAME = 'gate'
+/**
+ * The commit the harness last left the gate worktree on. The one reference
+ * the executor writes: it keeps that commit reachable after the branch it
+ * came from was rebased or deleted, and it is how a commit made in the gate
+ * worktree afterwards (which no reference holds) is told from the one the
+ * harness put there.
+ */
+const GATE_HEAD_REF = 'refs/hourness/gate-head'
 
 export type WorktreeCode = 'not_git' | 'no_base_branch' | 'bad_task' | 'worktree_dirty' | 'worktree_failed'
 
@@ -550,6 +558,18 @@ export function createGit(runner: GitRunner = realGitRunner) {
     return undefined
   }
 
+  /** Whether some reference (a branch, a tag, the stash, the gate's own record) holds the commit, so that moving a work tree off it abandons nothing. */
+  async function isHeld(cwd: string, commit: string): Promise<Outcome<boolean>> {
+    const result = await read(cwd, ['for-each-ref', '--count=1', '--format=%(refname)', '--contains', commit])
+    return result.ok ? succeeded(result.value.trim() !== '') : result
+  }
+
+  /** Record `commit` as the one the harness left the gate worktree on, in the one reference the executor writes. */
+  async function holdGateHead(root: string, commit: string): Promise<Outcome<undefined>> {
+    const result = await read(root, ['update-ref', '-m', 'the harness left the gate worktree here', GATE_HEAD_REF, commit])
+    return result.ok ? succeeded(undefined) : result
+  }
+
   /**
    * Put the gate worktree `.worktrees/hz-gate` on `commit`, clean (§3.8.3
    * step 5). The destructive commands (`checkout --detach --force`, `reset
@@ -560,8 +580,12 @@ export function createGit(runner: GitRunner = realGitRunner) {
    * lost its `.git` file would resolve to the main checkout above it, and a
    * `.git` file that names another git directory (`foreignGitDir`) would
    * send the commands there; either way the reset would land on work that
-   * is not the gate's. Anything else (the main agent put a branch on it,
-   * deleted it, replaced it) is refused and nothing is reset.
+   * is not the gate's. A commit made in the directory since the harness
+   * left it (no reference holds it, and the move would abandon it) is
+   * refused too: the harness records the commit it leaves the worktree on
+   * in `GATE_HEAD_REF`, so the commit it put there always has a holder and
+   * only work done there since does not. Anything else (the main agent put
+   * a branch on it, deleted it, replaced it) is refused and nothing is reset.
    *
    * Changes in it are saved before they are discarded, with the saver
    * standing for M3's `takeSnapshot`: once for `reset --hard` when tracked
@@ -589,7 +613,9 @@ export function createGit(runner: GitRunner = realGitRunner) {
       const excluded = await ensureExcluded(root)
       if (excluded !== undefined) return invalid(excluded)
       const added = await read(root, ['worktree', 'add', '--quiet', '--detach', '--', path, target], WRITE_TIMEOUT_MS)
-      return added.ok ? { ok: true, path, created: true, snapshots: 0 } : invalid(added.reason)
+      if (!added.ok) return invalid(added.reason)
+      const recorded = await holdGateHead(root, target)
+      return recorded.ok ? { ok: true, path, created: true, snapshots: 0 } : invalid(recorded.reason)
     }
     if (!onDisk) return invalid(`${path} is listed as a worktree but is gone; git worktree prune clears the record`)
     if (!entry.detached) return invalid(`${path} is on ${entry.branch ?? 'a branch'}; the gate worktree must stay on a detached head`)
@@ -598,6 +624,14 @@ export function createGit(runner: GitRunner = realGitRunner) {
     if (top === undefined || !samePath(top, path)) return invalid(`git does not treat ${path} as a work tree of its own (it resolves to ${top ?? 'nothing'}); nothing was reset`)
     const foreign = await foreignGitDir(root, path)
     if (foreign !== undefined) return invalid(`${path} is not the work tree git registered for it: ${foreign}; nothing was reset`)
+    const left = await resolveCommit(path, 'HEAD')
+    if (left === undefined) return invalid(`${path} has no commit checked out; nothing was reset`)
+    const kept = await isHeld(path, left)
+    if (!kept.ok) return invalid(kept.reason)
+    if (!kept.value) {
+      const short = left.slice(0, 12)
+      return invalid(`${path} is on ${short}, which no branch, tag or other reference holds (a commit made there after the harness left it, or the harness's record ${GATE_HEAD_REF} is gone); moving it would abandon that commit, so nothing was reset. Keep it with git branch <name> ${short}, or remove the worktree`)
+    }
 
     const unclean = await uncleanFiles(path)
     if (!unclean.ok) return invalid(unclean.reason)
@@ -609,7 +643,12 @@ export function createGit(runner: GitRunner = realGitRunner) {
       const saved = await Promise.resolve().then(() => saveSnapshot(path, invocation, 'discard')).catch((error: unknown) => ({ ok: false as const, reason: (error as Error).message }))
       if (!saved.ok) return refuse('gate_snapshot_failed', `the snapshot before git ${invocation.sub} ${invocation.args.join(' ')} could not be saved: ${saved.reason}`)
     }
-    for (const args of [['checkout', '--detach', '--force', target], ['reset', '--hard'], ['clean', '-fd']]) {
+    const moved = await read(path, ['checkout', '--detach', '--force', target], WRITE_TIMEOUT_MS)
+    if (!moved.ok) return invalid(moved.reason)
+    // Recorded before the slow commands, so a crash after this point leaves a commit that has a holder.
+    const recorded = await holdGateHead(root, target)
+    if (!recorded.ok) return invalid(recorded.reason)
+    for (const args of [['reset', '--hard'], ['clean', '-fd']]) {
       const result = await read(path, args, WRITE_TIMEOUT_MS)
       if (!result.ok) return invalid(result.reason)
     }

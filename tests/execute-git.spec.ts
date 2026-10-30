@@ -162,6 +162,11 @@ withRepo('every git process the executor starts begins with --no-replace-objects
   await git.lsRemote(repo.dir, 'origin', 'main')
   assert.ok(calls.length >= 25, `the cases ran ${calls.length} git processes`)
   assert.deepEqual(calls.filter(args => args[0] !== '--no-replace-objects'), [])
+  // update-ref is the executor's only way to write a reference; it writes the gate worktree's record, never a branch, a tag or a tracking reference.
+  const refWrites = calls.filter(args => args[1] === 'update-ref')
+  assert.ok(refWrites.length > 0)
+  assert.ok(refWrites.every(args => args.includes('refs/hourness/gate-head')), JSON.stringify(refWrites))
+  assert.deepEqual(calls.filter(args => ['push', 'fetch', 'pull', 'merge', 'tag'].includes(args[1] ?? '')), [])
 })
 
 withRepo('git replace cannot change what the executor sees', async (repo, git) => {
@@ -676,6 +681,60 @@ withRepo('a gate worktree whose .git file names another git directory is refused
   rewriteGitFile(gate.path, gitFile)
   assert.equal(succeeded(await git.prepareGateWorktree({ root: repo.dir, commit: c2, saveSnapshot: okSaver })).created, false, 'with its own .git file back the gate worktree is usable')
   assert.equal(sh(gate.path, 'rev-parse', 'HEAD'), c2)
+})
+
+withRepo('a commit made in the gate worktree is not abandoned: the move is refused until a reference holds it (E3 review, E3-2)', async (repo, git) => {
+  const c1 = repo.commit({ 'a.txt': '1\n' }, 'c1')
+  const c2 = repo.commit({ 'a.txt': '2\n' }, 'c2')
+  const calls: SnapshotCall[] = []
+  const gate = succeeded(await git.prepareGateWorktree({ root: repo.dir, commit: c1, saveSnapshot: snapshotSaver(calls) }))
+  writeFileSync(join(gate.path, 'made.txt'), 'made in the gate worktree\n')
+  sh(gate.path, 'add', 'made.txt')
+  sh(gate.path, 'commit', '--quiet', '-m', 'made in the gate worktree')
+  const made = sh(gate.path, 'rev-parse', 'HEAD')
+  assert.equal(repo.git('for-each-ref', '--contains', made), '', 'no reference holds the commit, only the gate worktree\'s HEAD')
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const result = refused(await git.prepareGateWorktree({ root: repo.dir, commit: c2, saveSnapshot: snapshotSaver(calls) }))
+    assert.equal(result.code, 'gate_worktree_invalid')
+    assert.match(result.reason, /no branch, tag or other reference holds/)
+    assert.equal(sh(gate.path, 'rev-parse', 'HEAD'), made, 'the gate worktree did not move')
+    assert.equal(readFileSync(join(gate.path, 'made.txt'), 'utf8'), 'made in the gate worktree\n')
+    assert.equal(calls.length, 0, 'nothing was snapshotted or discarded')
+  }
+
+  // Once a branch holds the commit, moving away loses nothing.
+  repo.git('branch', 'keep', made)
+  succeeded(await git.prepareGateWorktree({ root: repo.dir, commit: c2, saveSnapshot: snapshotSaver(calls) }))
+  assert.equal(sh(gate.path, 'rev-parse', 'HEAD'), c2)
+  assert.equal(repo.git('rev-parse', 'keep'), made)
+})
+
+withRepo('the commit the harness left the gate worktree on is held by a reference of its own, so it stays movable after its branch is gone', async (repo, git) => {
+  const c1 = repo.commit({ 'a.txt': '1\n' }, 'c1')
+  repo.git('checkout', '--quiet', '-b', 'topic')
+  const t1 = repo.commit({ 'a.txt': '1\n', 't.txt': 't\n' }, 't1')
+  repo.git('checkout', '--quiet', 'main')
+  const calls: SnapshotCall[] = []
+  const gate = succeeded(await git.prepareGateWorktree({ root: repo.dir, commit: t1, saveSnapshot: snapshotSaver(calls) }))
+  assert.equal(repo.git('rev-parse', 'refs/hourness/gate-head'), t1, 'the record is made when the worktree is created')
+
+  // The branch is rebased or amended away: nothing but the record holds t1 now. The next check must still be able to start.
+  repo.git('branch', '-D', 'topic')
+  assert.equal(repo.git('for-each-ref', '--format=%(refname)', '--contains', t1), 'refs/hourness/gate-head')
+  succeeded(await git.prepareGateWorktree({ root: repo.dir, commit: c1, saveSnapshot: snapshotSaver(calls) }))
+  assert.equal(sh(gate.path, 'rev-parse', 'HEAD'), c1)
+  assert.equal(repo.git('rev-parse', 'refs/hourness/gate-head'), c1, 'the record follows the gate worktree')
+
+  // A commit made on top of the left one is still caught: the record names the left commit, not the new one.
+  succeeded(await git.prepareGateWorktree({ root: repo.dir, commit: t1, saveSnapshot: snapshotSaver(calls) }))
+  sh(gate.path, 'commit', '--quiet', '--allow-empty', '-m', 'made after the harness left')
+  const refusal = refused(await git.prepareGateWorktree({ root: repo.dir, commit: c1, saveSnapshot: snapshotSaver(calls) }))
+  assert.equal(refusal.code, 'gate_worktree_invalid')
+  assert.equal(calls.length, 0)
+
+  // The record is the only reference the executor writes, and only that one.
+  assert.equal(lines(repo.git('for-each-ref', '--format=%(refname)', 'refs/hourness')).join(), 'refs/hourness/gate-head')
 })
 
 // ---------------------------------------------------------------------------
