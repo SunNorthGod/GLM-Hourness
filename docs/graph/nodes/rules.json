@@ -411,6 +411,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "编排方独立复核了规则板最小一片（已快进到 main，提交 c7e7fa4 与 ed80a99）：自己重跑四道门禁，build 通过、preflight 通过（2 个包、14 行）、npm test 退出 0、fail 0、npm run probe 128/128，不是只采信子 agent 的回报。工作树 .worktrees/rules-slice 与分支 rules-slice 已删除。语义评审 APPROVED、7 条不挡路。编排方对其中四条拍板（写进 design-context「Rules thin slice: orchestrator rulings after its review」，可推翻）：一、存盘形状改为「集合为空时就不写这个键」，这样整块规则板加上 rules、tickets 等集合之后，这一片写下的每条摘要照旧对得上、重放不用知道形状在哪里变过；没有采用升版本加迁移记录（与 0.10「没有版本 1 的存档要迁移」相抵）。§7.5「有效快照的 version 是 1」改成 2。二、仓库里只留一份锁与一份项目根：src/rules/project-key.ts 挪成 src/data/project-root.ts，src/rules/lock.ts 挪成 src/data/lock.ts，M7 的 E3 复用它、不再写第二份（先前「E3 建 src/data/lock.ts」的裁定改为「谁先建谁的算」，这一片先建了），M5 也复用。三、运行时状态在任何项目里都不进 git：第一次往 <项目根>/.llm/rules/ 写之前，把 .llm/ 追加进 .git/info/exclude（d-rules-in-repo）；本仓库的 .gitignore 已经盖住，只影响别的项目。四、§16.1 的最小一片清单去掉 builtin.ts（没有 judge、规则页或门时它没有调用方，不留没有调用方的壳子）。另两条小的（恢复原因一旦记下行健康永远 degraded 没有出路；「至多 1 个」的字串没有从常量算出来）一并在跟进那一稿改。"
+    },
+    {
+      "at": "2026-10-30T12:01:20.264Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "派出 rules-slice-followup（wf_49f2bfcea19a8e80，claude-sonnet-5.5）：把最小一片评审的六条不挡路发现就地改掉，工作树 .worktrees/rules-followup、分支 rules-followup，从 main（2b78fa2）起。现在改而不是留到整块规则板的理由：其中两条每多跑一天越贵（存盘摘要的形状、.git/info/exclude 的忽略项），一条与 M7 的 E3 撞车（E3 马上开工）。六条：存盘时空集合不写这个键（保住已写摘要的有效性）；src/rules/project-key.ts 挪成 src/data/project-root.ts；src/rules/lock.ts 挪成 src/data/lock.ts 供 E3 与 M5 复用；第一次写 .llm/rules/ 前把 .llm/ 追加进 .git/info/exclude；行健康在恢复原因记下之后要有出路、不再永远 degraded；「至多 1 个」的字串从常量算出来并钉测试。另改设计 §7.2、§7.5（有效快照 version 改 2）、§16.1（最小一片清单去掉 builtin.ts）。整块规则板的东西一律不加。照 AGENTS.md 四道门禁全绿，再过一轮独立评审，然后快进 main。"
     }
   ]
 }
