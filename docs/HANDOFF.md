@@ -27,6 +27,7 @@ ui/            客户端源码 ui/src 与它的 tsconfig.json，不是包；两�
 scripts/       packages.mjs（目录表：两个包的名字、目录、源码目录与行，DEVELOPMENT.md §10）、clean-dist.mjs（构建前删各包的 dist/）、preflight-bundle.mjs、check-verbatim.mjs、check-lint.mjs（检查器门禁）、check-secrets.mjs（密钥扫描）、deps-check.mjs（依赖报告）、smoke-zcode*.mjs、sandbox.mjs（启动参数、探针生成的 profile 与覆盖行，探针与标定共用）、profile-shape.mjs（profile 结构的只读快照与比对）、probe/（L3 探针）、calibrate/（标定运行器与边界插件）、graph/（项目图命令行、出图与冒烟）
 eslint.config.js、knip.js（入口按目录表生成）、tsconfig.knip.json、.jscpd.json  检查器配置；eslint-suppressions.json、knip-baseline.json、.jscpd-baseline.json 为告警基线（DEVELOPMENT.md §10）
 docs/          宪章、设计、编排、路线、事实账、流程、交接；docs/graph/ 为本项目的项目图（进度的事实源）；docs/reference/ 为事实参考原文；docs/rules/ 为规则板导出的人定部分（`rules` 行启用、人选过高峰模式档位之后才出现）
+video/         宣传视频：独立的 Remotion 项目（自带 package.json 与检查），全部用代码渲染、配乐从零合成；不进两个包的构建与检查，根目录 ESLint 忽略它；现有 24 秒样片 Sample（video/README.md）
 AGENTS.md      仓库规则
 package.json   开发工作区根（dsh-glm-hourness，private，不是 bundle）：脚本、开发依赖与 peerDependencies
 .llm/          不入库，项目目录：rules/（规则板的流水与快照，`rules` 行启用后才有）、audit/（违规与决策；旧的用量副本与 dialect-init 流水已于 2026-10-29 删除）、memory.json、docs/（原始资料快照与抓取脚本）、probe-runs/、calibration-runs/；旧的 credentials.json 与 device-mid.txt 已于 2026-10-29 删除（m1-cleanup）

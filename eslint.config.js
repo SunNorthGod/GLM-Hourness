@@ -56,6 +56,9 @@ export default defineConfig([
     '.agents/',
     '.worktrees/',
     '.pnpm-store/',
+    // Promo video: its own Node project with its own ESLint config and
+    // dependencies (video/README.md), not part of either package.
+    'video/',
     // Vendored upstream code (DSH vendor/schemastery, see its header); it
     // changes by re-vendoring, not by lint fixes.
     'src/shared/schemastery.ts',
