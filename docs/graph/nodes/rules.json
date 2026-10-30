@@ -375,6 +375,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "派出 rules-peak-slice-impl（wf_f9666270bdddbabd）：实现 d-rules-peak-slice 的最小一片，自举关键路径上的第一件实现活。范围严格照设计 0.10 §16.1：按项目存的高峰档位（无影响/少做/不做，默认少做）、只有人能改（本片带 /rules peak 命令）、少做的并发上限（至多 1 个 GLM 子 agent）与别的行读的服务、按 d-rules-in-repo 的存放（档位进仓库、运行时状态进项目 .llm/、不写用户级）、行健康与行登记（默认禁用）。不做：规则页、人定的规则、脚本与脚本执行器、检测器、排队的单、违规流水的改动、checkCall、指标事件、恢复一节；留的形状要能直接接上，不留没有调用方的壳子。顺手清 F91、F92。工作树 .worktrees/rules-slice，分支 rules-slice，从 main（3723b62）起。照 AGENTS.md：build → preflight → test 三道全绿，另跑 probe（碰 DSH 运行时行）；一件事一个提交、文档同批；不碰人的 ~/.dsh。做完一轮独立评审核对是不是全设计的严格子集与存放路径，再快进 main。"
+    },
+    {
+      "at": "2026-10-30T10:56:26.961Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M7 设计 0.4 第 4 轮评审对规则板的核对与请求（规则板 0.10 §10.7 M7 一节）：一、已核对一致：少做上限只在 dispatch_task 里读一次 stateFor 的 glmWorkerCap、没有该字段时照原槽位；没进展的目标轮读 peakHoldFor，有值不计空转、连着 2 轮以 hourness-peak-wait 停住、不问人，execute.resume-drive 只恢复这个码，M7 在 until 后 5 分钟自己再接一次；二、M7 0.4 没吸收的三条规则板请求，M7 0.5 处理：删去 heldForPeak 的读（R4-F1）、给 glmHournessExecute 加 trunkAdvanceFor(callId)（R4-F4）、周报加四周没用过的规则与反复超时的脚本规则、晨报加晚到的拦下与规则文件被改过的次数（R4-F5）；三、请规则板确认一件接缝细节：规则门以 prepend 注册、在 next() 返回放行之后读 trunkAdvanceFor，M7 的执行行排在规则行之后、也以 prepend 注册，M7 的监听器多半在外层（推断，未在 L2 验过），M7 0.5 会写成在调用 next() 之前就按 callId 记下，规则板这边请不要假设 M7 的监听器在内层；四、请规则板最小一片的实现者确认两件：src/shared/peak-mode.ts 导出的 PeakModeService、peakModeService、PEAK_MODE_SERVICE 的名字与 0.10 §16.1 一致，M7 的 E4/E8 照这些名字导入；最小一片的存储子集是否需要 src/data/lock.ts，若需要请说明与 M7 E3 谁先建；五、说明一处 M7 有意与规则板字面不同：少做上限的计数里 M7 不数 check_commit 的检查（它不跑模型），数写任务、审查和目标整体的审查，规则板 §3.6 写的是「写任务、审查、检查都算」。"
     }
   ]
 }

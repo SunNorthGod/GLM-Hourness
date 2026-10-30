@@ -233,6 +233,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "M3 附录 0.4 §9 第 7 条补充：DSH 委派在请求不覆盖时沿用父 agent 的模型，subagent 工具的 modelSelectionSettings 打开时可以按调用选 provider、model、reasoning_effort（限于允许清单），M7 设计派发选模型时先评估；git-snapshot.ts 的 gitInvocations、takeSnapshot、gitRisk 由 M7 加 export，被忽略文件不进快照与快照不出本机两条同样适用于 worker。"
+    },
+    {
+      "at": "2026-10-30T10:56:26.384Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M7 设计 0.4 第 4 轮独立评审（总第 4 轮，单步 m7-design-v04-review-sonnet，wf_6aca396bcaaa93cc）：CHANGES_REQUESTED，挡路 10 条（HIGH 2、MEDIUM 8），不挡路 10 条 NIT。详情 .agents/tasks/m7/design-review.md 末尾「0.4 第 4 轮」与 design-review.json。趋势（挡路条数）：总第 1 轮 3，第 2 轮 0，第 3 轮 3，第 4 轮 10。条数回升不是 0.4 退步：第 3 轮的 13 条（F1–F3、N1–N10）在 0.4 里全部关闭，证据在评审文档的关闭表；新增 10 条全部来自 0.4 落盘（05:40Z）之后才出现的人定案和邻居设计定稿（主 Agent 不受高峰影响、两层循环用进产品、示范、脚本超时、自举范围与规则板最小一片、规则板 0.10、循环板 0.6、plain-ui 0.7、M4 0.4、M3 附录 0.4）。上一次对 0.4 的评审（wf_526025270d4dab69）在写完表里一行「0 条挡路、APPROVED」之后被停掉，正文和 json 从未写出，该行无证据，已在表里改标为不采信、不计入趋势。两条 HIGH：R4-F1 还在读规则板已删去的 heldForPeak，并把不做档里规则板暂停主 Agent 的 goal 当成立（违背 d-main-agent-peak-exempt，规则板 0.10 的 RulesService 已无此成员）；R4-F2 两层循环没进 M7（简报门禁、derivedStage、放行事件、pins 都只认目标一级，三档没有机制，违背 d-design-onepage 扩到产品）。八条 MEDIUM：F3 派活简报没有示范（d-agent-examples 点名 M7）；F4 缺 glmHournessExecute.trunkAdvanceFor（规则板 0.10 §10.7 M7 第 1 条）；F5 周报晨报没加规则板与循环板要的几节、每周至多三件没排序；F6 规则板最小一片没进开始条件与验证；F7 八道代码里的门没写模式（宪章 0.7 要求新门禁先影子）；F8 m7 验收要求每个数写进指标流水而指标流水不在自举路径上；F9 §8.3 把 M7 排在 M3 全部合入与整块规则板 R4 之后，与自举并行计划冲突；F10 M4 0.4 写给 M7 的几条没有处置（含 PROMOTION 与 M7 §3.12.2 含义不同）。开工前必须改：F1、F2、F8；排期前由编排方裁定：F9；E4 之前：F3、F7、F6 的文字（F6 的验证在自举开始前完成）；实现中改：F4（E7 之前）、F5（P2 之前）、F10（PROMOTION 一条在 P2 之前）。除这些外，骨架链路、E 步、验收、验证计划和开始条件之间没有发现会让自举开不了的矛盾。下一步：M7 出 0.5，逐条处理 R4-F1 到 F10 和 NIT；F1、F2、F8 改完后再开独立评审第 5 轮；评审通过后重写一页放行稿（onepage.md 要加模块一级与宪章 0.7 例外两处），人放行后才开工。要找人的事由编排方在对话里按四行问：R4-F7（M7 的门首日直接生效，是对宪章 0.7 的例外，人可推翻）；R4-F2 若决定自举阶段先只按目标一级放行，要人点头并记成带日期的延后；R4-N10（周报带比率与 metrics 的分界）等指标流水定稿时一并问。本评审未写 docs/graph、未改设计文本、未碰 .worktrees。"
+    },
+    {
+      "at": "2026-10-30T10:56:27.220Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "编排方对第 4 轮两条请裁定的发现拍板（可推翻，已写进 design-context「Dogfood implementation order and runtime paths」）：F9 照评审的建议改——M7 骨架不整个等 M3，依赖按步写：E0、E1a、E3 现在就能从 main 开分支做；E1b 的测试等 M3 第 3、6 步；E2 等 M3 第 6 步（同改 src/shared/tool-names.ts）；E4 等 M3 第 3–5 步与规则板最小一片的行登记；设计里凡写「等整块规则板 R4」的改成「等规则板最小一片（d-rules-peak-slice）」，整块 R4 排在 E9 之后；共享的登记文件（scripts/packages.mjs、cordis.patch.yml、health.ts）后合入的一方把冲突的几行机械并进去、不重审；src/data/lock.ts 由 M7 的 E3 建，M5 不在路径上、不参与。N1 照 d-rules-in-repo 改：M7 与 M3 的运行时文件进项目的 .llm/，不进 git 目录，两份设计各在下一稿改这一处。依据：d-dogfood-scope、question-28 C（没有副作用的尽量并行）、人「尽快自举吧」。"
     }
   ]
 }

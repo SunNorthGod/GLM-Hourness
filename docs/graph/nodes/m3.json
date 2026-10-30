@@ -308,6 +308,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "派出 m3-addendum-v05（wf_35da55069f8147be）：M3 在自举关键路径上，照人「尽快自举吧」立刻改第 4 轮剩的四条，不等对齐轮。M1 例题改掉与 d-main-agent-peak-exempt 相反的内容（照 d-agent-examples 选与练习题不相干的领域，并写明为什么安全）；M2 设计每个模块一次放行（propose_to_human 与 record_human_answer 的 module 参数、模块子树里批什么、模块与目标 stage 的写权限、退回模块设计循环与退回大循环带人的原话），照 plain-ui 0.7 §11「两层循环」的契约，并接住循环板 0.6 与规则板 0.10 对 M3 的 attach 分派与同意路径的请求；N1 删掉第 7 步与 /graph-apply；N2 补第 6 步的契约测试。0.4 原文存为 design-addendum-0.4.md。一稿一评，还挡路再给一稿，仍挡路就停下报人。两个工作树 .worktrees/m3 与 .worktrees/m3-flow 已快进到 main（e1a4d25），实现开工前不再需要处理。"
+    },
+    {
+      "at": "2026-10-30T10:56:26.570Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M7 设计 0.4 第 4 轮评审（R4-F2）对 M3 附录 0.5 的要求：M7 要按模块一级放行来门禁派发，需要 M3 在 0.5 里写明三样读法。一、模块的 stage 怎么写、谁有权写：大循环放行时给每个模块写 stage: design，模块放行把它改为 release（plain-ui 0.7 §11 M3 第 3 条），退回模块的设计循环不带「同意」记号，目标退回大循环要带人的原话；二、目标本身何时到 release（M3 第 4 轮评审给的方案 A 是最后一个模块放行时才到）：若如此，M7 的简报门禁改读最近的模块祖先的有效阶段，目标只作没有模块时的退路，请 M3 确认；三、放行那一次写入怎么认：M7 现在从目标历史里 reason 以「人在对话里同意（record_human_answer <callId>）」开头、把 stage 改为 release 的最近一条认放行，模块放行要有同样可认的记号，并说明 record_human_answer / propose_to_human 的 module 参数在历史里留下什么，M7 的 hourness.design-released 事件才能带上 module。另外两条小的：mainAgentOf 的参数在持有者记录搬进项目 .llm/ 之后会变，M7 只按名字引用，参数以 0.5 为准；git-snapshot.ts 的导出 M7 要 gitInvocations、takeSnapshot、gitRisk 三个，附录 §9 第 7 条已列。"
+    },
+    {
+      "at": "2026-10-30T10:56:27.415Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "编排方裁定（M7 第 4 轮 N1，写进 design-context）：M3 的运行时文件（快照流水等）照 d-rules-in-repo 进项目的 .llm/，不进 git 目录；M3 第 4 轮评审没有挑这一处，并进 0.5 这一稿顺手改。另：M7 0.5 一侧会写明它要的模块一级放行读法（record_human_answer 的 module 参数、stage 的写权限、目标何时到 release），M3 0.5 定稿后两边对一遍。"
     }
   ]
 }
