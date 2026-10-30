@@ -362,6 +362,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "人 2026-10-30 放行 M3 的设计（原话「可以复述，没问题」，看的是 .agents/tasks/m3/onepage.md）。放行稿末尾那一题人答「可以复述」：你随口回「嗯」「行吧」这类短话时，主 Agent 先说一遍「那我记成：……」等你点头再记，照设计保留，不改成短话直接记。M3 的设计阶段到此结束，可以开工实现。实现范围照附录 0.5 的步骤表：第 3 到第 12 步加人设一步，约 12 步；第 11 步在 .worktrees/m3-flow，其余在 .worktrees/m3。两条 NIT 与图上 orch、bottom 的待办在相应步里一并处理（R5b-N1 排在放行前只读那一步，R5b-N2 示范题的分段排在例题落地那一步）。"
+    },
+    {
+      "at": "2026-10-30T12:36:20.882Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "派出 m3-implementation（wf_678c62fefd426ba9，claude-sonnet-5.5，照 d-subagent-sonnet）：人放行之后开工实现，照附录 0.5 的步骤表做第 3 到第 12 步加人设一步，第 11 步在 .worktrees/m3-flow、其余在 .worktrees/m3（两个工作树已快进到 main）。照 AGENTS.md：一步一个提交、提交信息带节点 id、文档与代码同批，每步后 build → preflight → test，合入主干前另跑 probe；碰主 Agent 工具面、用户级数据与决策流水的步骤按 norm-review-floor 过独立评审。评审重点：人的原话是真核对过而不是采信模型的转述、主 Agent 确实没有写文件的路子、高峰里没有任何东西拦住主 Agent。两条 NIT 在各自那一步处理（R5b-N1 连同图上 orch、bottom 的待办在定 stage 写权限那一步定，要核对阶段继承与门禁的影响；R5b-N2 例题分段）。桌面版的人设核对要改人的配置，本轮不做、记成待办交人。src/data/project-root.ts 与 src/data/lock.ts 复用规则板跟进那一稿建好的，不另写。"
     }
   ]
 }
