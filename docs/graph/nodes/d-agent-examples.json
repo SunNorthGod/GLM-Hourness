@@ -2,7 +2,7 @@
   "id": "d-agent-examples",
   "type": "decision",
   "title": "主 Agent 要写的每种东西各配一道示范，放在写它的工具说明里",
-  "status": "proposed",
+  "status": "approved",
   "parent": "orch",
   "verification": "unverified",
   "body": "现状（编排方核对各设计）：只有「问人一件事」有一道示范（M3 附录 §2.8 的 PLAIN_QUESTION_EXAMPLE，高峰模式那道四行题，进主 Agent 身份节与 propose_to_human 的说明）；规则板 0.8 的 rules_propose 说明有一对规则提议的例子，但还是 hook 化之前的写法；循环板 0.4 的 loop_propose 明写不带例题；需求确认（confirm）、一页放行稿（release）、两块板的脚本条目、派活简报都没有示范。提议：每种主 Agent 要写给人或交给 harness 的东西配一道示范，放在写它的那个工具的说明里（不全塞进身份节，免得每一步都背着）；示范本身过与真实输入同样的检查（L2 钉住，规则改了示范跟着失败）；示范用与练习题（记账小工具）不相干的领域、只讲已经定了的事，防止照抄内容；以后用练习题对比有无示范的效果。归属：问人、确认、放行的示范归 M3（随 d-alignment-rounds 的 M3 对齐轮）；两块板条目与脚本的示范归规则板 0.9 与循环板 0.5（已告诉在写的两步）；派活简报的示范归 M7（M7 对齐轮）。",
@@ -13,6 +13,15 @@
       "op": "propose",
       "reason": "用户问：「我们有没有给Agent示例的？比如问答给示范，写那两个面板给示范啥的」；编排方核对现状后提议，等人确认",
       "to": "proposed"
+    },
+    {
+      "at": "2026-10-30T06:41:02.790Z",
+      "actor": "llm",
+      "op": "approve",
+      "reason": "用户同意编排方「给 Agent 的示范补齐」的推荐（「彳亍」即「行」）",
+      "relay": "彳亍",
+      "from": "proposed",
+      "to": "approved"
     }
   ]
 }
