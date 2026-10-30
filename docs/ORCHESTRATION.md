@@ -1224,3 +1224,13 @@ LLM 不讲人话，多半是默认在向评审汇报，想显得周全。做法�
 ### 16.7 验证
 
 L2：`tests/peak-mode.spec.ts`（共用契约：上限与挡住的标记、读取函数、文字与少做那句里的数、`nextPeakChange`）、`tests/rules-model.spec.ts`（`effectivePeakMode`、序列化、规则文件、状态校验）、`tests/rules-store.spec.ts`（设计 §7.5 表里每一种情形、性质测试、锁、两个进程同时写、规则文件的各种情形与 git 操作、为空的集合不存、第一次写之前 `.git/info/exclude` 里的 `.llm/`）、`tests/rules-engine.spec.ts`（权限、请求校验、修订号、写入的产物、`busy` 与 `io`、项目根）、`tests/rules-row.spec.ts`（假宿主上的行：命令、服务、健康、恢复之后降级的出路、不挡任何调用、激活期降级、补丁里默认禁用）。L3：`npm run probe` 的场景 `rules-peak`（GLM 与编排层两个包，平移到周三 15:00 UTC+8 的探针时钟，临时 git 工作区：出厂档位、`/rules peak 不做`、`/rules peak 无影响`，每步经真实的 `/rules` 处理函数与服务读回状态）与 `rules-peak-hourness`（只装编排层包：没有计价服务，没有上限与挡住的标记）。L4（桌面版重启后核对）未做，行保持禁用。
+
+## 17. 执行层（M7）〔骨架进行中：E0 已实现，只有纯函数和测试，没有行〕
+M7 的设计是 `.agents/tasks/m7/design.md`（不入库，版本 0.6，评审通过、人放行）。执行层的源码在编排层包的 `src/execute/`，目录登记在 `scripts/packages.mjs` 的 `hourness.src`，`packages/hourness/tsconfig.json` 的 `include` 同步加一项（preflight 比对二者）。骨架按设计 §8.1 的步骤实现：E0 之后没有行、没有监听器，`cordis.patch.yml` 不变；`glm-hourness/execute` 行从 E4 起出现，默认禁用，E9 验证通过后才启用。
+### 17.1 写入范围（E0，`src/execute/scope.ts`）
+写入范围是任务节点的 `writeScope`：仓库相对路径，`/` 分隔，目录以 `/` 结尾（格式由图的读入检查保证，§2.6）。`scope.ts` 的函数都是纯函数，按整段比较路径：
+- `within(scope, path)`：范围里有一项包含这个路径。目录项包含它下面的一切和它自己，文件项只包含它自己；`src/` 不包含 `src2/a.ts`。路径本身可以是目录（计划的 `paths` 写法）：这时只有目录项包含它。比较区分大小写：只会少放行，不会多放行。空范围什么也不包含。不是路径的文本（空段、`.`、`..`、反斜杠、冒号、通配符、控制字符）永远不在任何范围里，所以 `src/../etc` 不会因为前缀相同而放行。
+- `overlaps(a, b)`：两个范围里有一对项，一方包含另一方。这一条忽略大小写，因为 Windows 和 macOS 的文件系统会把两种写法当成同一个文件，宁可串行。空范围（审查）不与任何范围相交；不是路径的项按相交处理。
+- `repoRelative(root, cwd, target, api)`：工具调用的目标按调用方的工作目录解析，相对工作树根写成 `within` 认的写法；在根之外、在根下的 `.git` 里（不分大小写，忽略末尾的点和空格）时返回 `undefined`，根本身是空串。`api` 可换成 `path.posix` 或 `path.win32`，测试两种都跑。
+- `isScopePath(text)`：文本是不是范围写法。`tests/execute-scope.spec.ts` 用一张候选表钉住它与图读入检查的结论一致。
+调用方（E4 的 `worker-scope` 与派发门禁、E1a 的 `checkPlan`）按设计 §3.2.1、§3.3.2、§3.5.1 使用这几个函数；E0 本身不接任何调用方。
