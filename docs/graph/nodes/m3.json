@@ -230,6 +230,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "m8-plain-language 设计 0.6 对 M3 附录 0.3 的更正（design.md §11 M3）：1. 撤回 0.5 的「personMessages 改调 src/shared/person-message.ts」：面板的现场投影不再看人的消息，改为看 record_human_answer 的成功结果。2. src/shared/tool-names.ts 另导出 RECORD_HUMAN_ANSWER = 'record_human_answer'（与 PROPOSE_TO_HUMAN 一起，DESIGN_TOOL_NAMES 由这两个组成）。3. record_human_answer 每条写入的 reason 或批注里带「（record_human_answer <callId>）」（附录 §3.5 已这样写），面板的 answerCallOf 靠它把一次放行的 N+1 条历史合成一行；指标流水一次调用记一次。4. 宿主命令 /graph-apply 删去：附录第 7 步「面板拍板的回写」没有触发的地方，整步删去；m3-5 验收第 2 条（人在面板上拍板后通知主 Agent）说的事不再存在，请编排者把「删去这一条」并进附录 §9 第 1 条那批待人改的验收一起交人。5. 例题背景去掉 ** 后是 20 个码点（不是 18），合 60 的上限。6. mockup-wish.svg ② 的脚注改为「order 170 空着（规则设计 0.5 去掉了在场按钮）」。7. 写法检查切到第二阶段之前，propose_to_human 要有一条契约测试：组出的提议式待决交给真实引擎提一次，在第二阶段的常量下通过。"
+    },
+    {
+      "at": "2026-10-30T05:19:50.680Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "d-design-onepage 扩到产品（用户 2026-10-30「两层循环加，我正想说这个事情呢」）：用户的项目也走两层循环。M3 下一稿要写：访谈之后先定框架、模块清单与方向清单；设计放行从「一个目标一次」改为「每个模块一次」，每次一个四行方案加一页放行稿；方向清单存在图上、供评审对照。当前在写的附录 0.4 若没赶上，在实现开工前补上。"
     }
   ]
 }

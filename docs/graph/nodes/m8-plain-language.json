@@ -182,6 +182,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "设计 0.6 写完（.agents/tasks/plain-ui/design.md；0.5 原文与草图在 v0.5/），回应第 5 轮评审 P5-01 到 P5-13，13 条全部采纳。取代 0.5 批注里的一句：「需要你」里的确认与放行不再按人发消息清空（P5-01）。现在 graphLive.awaiting 以 {kind, goal} 为键：propose_to_human 成功时加上（同键换成新的一版），同键的 record_human_answer 成功时去掉（三种 answer 都算，出错时不去掉），不看 user/message 与 turn/end；needsOf 再按目标的有效阶段过滤（confirm 要 wish/interview，release 要 design），目标关闭也不列。人说讲细点、说重点或别的话时它仍在；代价是主 Agent 漏调 record_human_answer 时多列一件，直到阶段变了。src/shared/person-message.ts 不再需要；工具名常量加 RECORD_HUMAN_ANSWER。其余：上手页只被身份 human 的历史挡住，带原话的历史不挡（P5-02，今天的图 human 21 条、带原话 155 条）；高峰模式几句只在规则板读得到 GLM 高峰时显示（P5-03）；第二阶段前提 (c) 改为通则，列出 propose_to_human、rules_propose、loop_propose、接管项目的两个工具与编排方命令行（P5-05）；节点页去掉选项字母（P5-06）；板块登记表改为 subscribe 加 snapshot（P5-07）；「第一次用？」在开场画面上打不开右侧栏时换成灰字（P5-08）；§9.2 第 1、8 步标独立代码评审（P5-09）；指标流水一次 record_human_answer 调用记一次，变化一节用 answerCallOf 合行（P5-10）；删去宿主命令 /graph-apply（P5-11，面板不写图之后没有调用方）；非主 Agent 的对话里「现在」写「这个对话的 agent」（P5-12）。要人定的仍只有 §13 一件（两件事的「怎样算做完」放进放行稿一起看）。第 6 轮评审待开始。"
+    },
+    {
+      "at": "2026-10-30T05:19:51.356Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "面板设计 0.6 第 6 轮评审 APPROVED（plain-ui-design-v05 运行内）：HIGH 0、MEDIUM 0、LOW 6；第 5 轮 13 条全部关闭，挡路 2 → 0。接下来同一运行写一页人话放行稿。两层循环用进产品之后（d-design-onepage），面板还要显示方向清单与模块清单、每个模块的放行状态，放行之前补上。"
     }
   ]
 }
