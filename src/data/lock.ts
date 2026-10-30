@@ -1,7 +1,9 @@
 /**
  * The write lock of one project's rules state (design §7.4 step 2): an
  * exclusive file, created with `wx`, that holds `{pid, startedAt, at,
- * token}`. A lock whose holder is gone, or that is older than the critical
+ * token}` and, for whoever finds it, `boot` (when the machine booted, if the
+ * environment can tell) and `holder` (who asked, if the caller named
+ * itself). A lock whose holder is gone, or that is older than the critical
  * section can last, is taken over; otherwise a writer retries every 25 ms
  * and gives up after 2 s with `busy`. Written after DSH's `withFileLock`
  * (rc.3 atomic-write:189–219) because the runtime's packages cannot be
@@ -39,8 +41,12 @@ export interface LockEnvironment {
   readonly pid: number
   /** Whether a process with this id is alive. */
   readonly isAlive: (pid: number) => boolean
-  /** When the machine booted, in epoch milliseconds: now minus uptime. */
-  readonly bootTime: () => number
+  /**
+   * When the machine booted, in epoch milliseconds: now minus uptime. Optional:
+   * an environment without it writes no `boot` and never compares one, so an
+   * environment written for the interface before this member existed still works.
+   */
+  readonly bootTime?: () => number
 }
 
 export const realLockEnvironment: LockEnvironment = {
@@ -91,7 +97,7 @@ interface LockContent {
   readonly startedAt: number
   readonly at: number
   readonly token: string
-  readonly boot: number
+  readonly boot?: number
   readonly holder?: string
 }
 
@@ -134,7 +140,9 @@ function isAbandoned(content: Partial<LockContent>, environment: LockEnvironment
   const { pid, at, boot } = content
   if (typeof pid === 'number' && !environment.isAlive(pid)) return true
   if (typeof at !== 'number' || environment.now() - at > (options.staleMs ?? STALE_LOCK_MS)) return true
-  return options.bootToleranceMs !== undefined && typeof boot === 'number' && Math.abs(boot - environment.bootTime()) > options.bootToleranceMs
+  if (options.bootToleranceMs === undefined || typeof boot !== 'number') return false
+  const current = environment.bootTime?.()
+  return current !== undefined && Math.abs(boot - current) > options.bootToleranceMs
 }
 
 /** Take the lock, or `busy` when someone else holds it for the whole wait. The directory of `file` must exist. */
@@ -143,7 +151,8 @@ export async function acquireLock(file: string, environment: LockEnvironment = r
   const startedAt = environment.now()
   const deadline = startedAt + (options.waitMs ?? LOCK_WAIT_MS)
   for (;;) {
-    const written: LockContent = { pid: environment.pid, startedAt, at: environment.now(), token, boot: environment.bootTime(), ...(options.holder === undefined ? {} : { holder: options.holder }) }
+    const boot = environment.bootTime?.()
+    const written: LockContent = { pid: environment.pid, startedAt, at: environment.now(), token, ...(boot === undefined ? {} : { boot }), ...(options.holder === undefined ? {} : { holder: options.holder }) }
     if (await tryCreate(file, written)) {
       return {
         async held() {

@@ -258,6 +258,27 @@ test('lock options: without them the lock behaves as the rules board always had 
   assert.deepEqual(readdirSync(dir), [], 'no .stale file and no lock')
 })
 
+test('an environment without bootTime still locks: the boot time is optional and only compared when both sides have one (E3 review, E3-5)', async () => {
+  const dir = execDir()
+  const file = lockOf(dir)
+  const full = fakeEnvironment()
+  // The shape LockEnvironment had before bootTime existed.
+  const older: LockEnvironment = { now: full.now, sleep: full.sleep, pid: full.pid, isAlive: full.isAlive }
+
+  const lock = held(await acquireLock(file, older))
+  assert.equal('boot' in (JSON.parse(readFileSync(file, 'utf8')) as object), false, 'no boot time is written when the environment cannot tell')
+  await lock.release()
+
+  // A dead holder is still taken over, and a boot tolerance without a boot time to compare changes nothing.
+  foreignLock(file, full, { age: STALE_LOCK_MS + 1_000 })
+  await held(await acquireLock(file, older, { bootToleranceMs: 120_000 })).release()
+  foreignLock(file, full, { bootOffset: 7 * 24 * HOUR })
+  assert.equal(await acquireLock(file, older, { bootToleranceMs: 120_000, retryMs: 1, waitMs: 1 }), 'busy', 'a lock from another boot cannot be recognised without a boot time of our own')
+  // The other direction: a lock written without a boot time is not judged by boot either.
+  writeFileSync(file, JSON.stringify({ pid: process.pid, startedAt: full.now(), at: full.now(), token: 'someone-else' }))
+  assert.equal(await acquireLock(file, full, { bootToleranceMs: 120_000, retryMs: 1, waitMs: 1 }), 'busy')
+})
+
 test('lock options: keepStale renames the lock that is taken over, holder names the holder', async () => {
   const dir = execDir()
   const file = lockOf(dir)
