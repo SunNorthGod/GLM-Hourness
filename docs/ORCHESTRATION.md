@@ -697,7 +697,7 @@ L3 核实〔实测 2026-10-28，派发可行性验证 (a)(b)，`ROADMAP.md` 借�
 
 - 告知：每一步注入阶段提醒，写明当前阶段、本阶段能做什么、离开本阶段还差哪几项。
 - 门禁：在阶段切换与工具调用处检查证据，不看 LLM 自述。例：设计阶段拦下写代码的工具；五栏缺项不能离开设计阶段；「测试通过」必须有运行记录与退出码。
-- 呈现：输入框上方一条流程条，标出当前阶段与未通过的门禁（例：「设计 · 五栏 3/5 · 等待批准」）；点开是右侧边栏的流程页，含当前方案、决策队列与决策日志。
+- 呈现：主 Agent 会话里输入框上方一条流程条（普通会话没有），标出当前阶段、缺项和主 Agent 是否在等人（例：「主 Agent · 设计 · 五栏 3/5 · 等你批准」，细则见本节末）；点开是右侧边栏的流程页，含当前方案、决策队列与决策日志（随 M8，流程条本身只显示，不响应点击）。
 
 阶段的存储与转换〔2026-10-29 定，M3 设计 §2.4、§3.3.2；阶段模型已实现：`src/graph/stage.ts`，纯函数，宿主与客户端共用；转换由 `propose_to_human` 与 `record_human_answer` 的 `confirm`（第 8 步已实现）和 `release`（第 9 步已实现）承担，下表里的 `design_review` 与「卡」是 0.4 的写法，现在换成对话里的同意〕：
 
@@ -737,6 +737,40 @@ L3 核实〔实测 2026-10-28，派发可行性验证 (a)(b)，`ROADMAP.md` 借�
 - 每个阶段的提醒末尾，图上的 `norm-delegations`（§3.1）有项时多一行：`The human told you to decide these kinds yourself and only report them, while the matter can still be undone: <各类用「；」连接，至多 20 项>.` 加收回的办法（`record_human_answer` 的 `delegation`，`undo: true`）；节点不在、没有项、已关闭时不写；节点不是规范节点时不写并让行健康说明一句。M5 的偏好合入后这一行与它的测试删掉。
 - 访谈阶段的提醒说明访谈的问题在聊天里问、先猜一个写成「我猜你……，对吗？」让人改，不走 `propose_to_human`。
 - 所有阶段的正文不含 `ask_user_question`、`decision_card`、`design_review`、`ask_human` 与「（推荐）」类字样，测试钉住；`stage.ts` 里两条原来点名 `decision_card` 的 `hint`（岔路一项，放行门禁里人定的待决未拍板）已改写为 `propose_to_human` 与 `record_human_answer` 的说法。
+
+流程条与 `/wish` 入口〔M3 第 11 步，已实现 2026-10-30，L2：`tests/flow-bar.spec.ts`、`tests/wish-entry.spec.ts`；桌面版上的显示核对（L4）随 M3 第 12 步（b）〕：
+
+客户端源码在 `ui/src/flow/`（流程条）与 `ui/src/wish/`（入口），属编排层客户端包 `dsh-hourness`，由 `ui/src/hourness-client.tsx` 注册三个槽项。所有给人看的字串集中在 `ui/src/flow/model.ts` 与 `ui/src/wish/model.ts`，组件里没有字面文字，改字句或位置只动这两个文件和 order 常量。`tests/wish-entry.spec.ts` 对两个文件导出的全部字串（带参数的字串用示例参数调用）和流程条用的阶段名跑 `plainWordsIn`（`src/graph/plain-question.ts`，换词表 `PLAIN_WORDS`），换词表里的词出现一个就失败；新字串放进这两个表里，自动被查。
+
+| 槽项 | 槽与 id | order | 显示条件 |
+| --- | --- | --- | --- |
+| 流程条 | `conversation.input.dock`，`hourness-flow` | 30（DSH 排队条 20） | 本会话是主 Agent |
+| 开场卡片 | `conversation.input.dock`，`hourness-wish` | 40 | 会话空白且工作区有项目图。本会话不是主 Agent 且 `/wish` 已注册时是完整卡片；本会话已是主 Agent 时是一行「这个会话的 agent 是主 Agent」和退出按钮（裸 `/wish` 不开回合，会话可能仍停在开场画面）；其余不显示 |
+| 输入框下方的按钮 | `conversation.composer.dock`，`hourness-wish` | 160（DSH 统计 0、1，GLM 按钮 150） | 本会话是主 Agent；或工作区有项目图且 `/wish` 已注册 |
+
+三者读本会话的投影值 `hournessMainAgent`（经 `mainAgentActive`）与 `graphLive`；项目图经 `holdSource` 与面板共用一份数据源；`/wish` 是否注册读 `remote.commands.list`，每个会话读一次，失败后在会话快照变化时再读一次。`hournessMainAgent` 由设计行 `glm-hourness/design` 注册；投影不在时 `mainAgentActive` 为假，流程条不出现，卡片与按钮因为 `/wish` 不在命令表里也不出现。客户端不读持有者记录。
+
+流程条的文字由纯函数 `flowBarText` 算，格式 `主 Agent · <阶段> · <进度> · <等待>`。目标取焦点自身或最近的目标祖先（`goalOf`），焦点取自 `graphLive`，阶段取 `effectiveStage`：
+
+| 情形 | 文字 |
+| --- | --- |
+| 没有 `graphLive`（graph-panel 行没启用） | 读不到阶段（项目图面板 glm-hourness/graph-panel 没有启用） |
+| 图读取中、工作区没有项目图、读取失败 | 读取项目图中；这个工作区还没有项目图；读不到项目图 |
+| 没有焦点，或焦点链上没有目标 | 还没有目标 |
+| 许愿、访谈 | `许愿 · 需求卡 5/8`、`访谈 · 需求卡 5/8` |
+| 设计 | `设计 · 五栏 3/5`，取放行集合里五栏最少的那个决策；还没有设计决策时写「还没有设计决策」 |
+| 放行 | 已放行 |
+| 目标已批准、没有阶段 | 目标标题 |
+| 目标已关闭 | `<目标标题>（已关闭）` |
+| 分解、执行、汇合、运维 | 阶段名 |
+
+等待：聊天式设计里主 Agent 用 `propose_to_human` 把事交给人，没有卡片可看，流程条用现场投影判断。回合已结束（`turnSince` 为空）且最近一次工具结果是成功的 `propose_to_human`，就是主 Agent 在对话里等人回话。后缀按阶段写：许愿与访谈「等你确认」，设计「等你批准」，目标子树里有等人拍板的待决时「等你拍板」（优先于前两种）。主 Agent 没在等、而子树里有等人拍板的待决时写「待你拍板 N」。`graphLive` 的 `recent` 只留工具名与成败，不留提议的种类，所以后缀是由阶段和待决数推出的，不是读出来的；放行阶段与不走设计循环的目标没有「等你确认」「等你批准」。
+
+便宜档提醒：主 Agent 最近一步的模型 id 转小写、按 `[-_./:\s]` 切词，有一个整词是 `flash`、`mini`、`lite`、`haiku`、`small`、`nano` 之一时（`gemini-2.5-pro` 不算），流程条另起一行黄字「现在是 <模型>；主 Agent 建议换强一点的模型」和按钮「这次就用它」；按钮按会话记在页面内存里，到重载为止。认不出的模型不提醒。入口上的黄字固定为「主 Agent 用强一点的模型」，不带模型名。插件不替人换模型（`CHARTER.md` §6）。
+
+入口的按钮：「写一句你想做的」在输入框为空时经标准 prop `inputActions.setDraft` 写入 `/wish ` 并把光标放到末尾；输入框有字时不改，提示「输入框里还有没发出的字」；拿不到 `inputActions` 或 `useInput` 时不执行任何命令，换成一行做法和「复制 /wish」。「接着推进现有项目」（图上有未关闭的目标时才有）和「退出主 Agent（/wish off）」经 `remote.commands.execute` 执行 `/wish`、`/wish off`，都是人的点击。输入框下方那一排窄于 520 px（`data-composer-dock` 的宽度）时，「交给主 Agent」写「/wish」。面板设计的 `FirstVisitLine` 还不在这个包里，完整卡片没有这一行；它合入后把 `ui/src/wish/WishCard.tsx` 里的 `FIRST_VISIT_LINE` 改为 `true` 并渲染它，它是完整卡片的最后一块。
+
+限制：输入框下方的按钮要判断「有项目图」，所以对每个可见会话持有图数据源（与面板共用）；有图的工作区读全部节点文件并订阅目录变化，没有图的工作区只列一次目录。数据源遇到「没有图」不会自己重试：会话进行中才建出项目图时，按钮与卡片要等到面板的「重新读取」（数据源是共用的，面板重读它们一起跟上）或重新打开会话才出现。组件的渲染、标准 prop（`useSession`、`useInput`、`inputActions`）在第三方槽项里是否送到、弹层的定位没有单测，由 L4 在桌面版上核对。
 
 ### 4.9 两层循环：模块的读法〔M3 第 5 步一半，设计行默认禁用〕
 
