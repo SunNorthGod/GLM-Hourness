@@ -260,6 +260,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "接管设计 0.5（.agents/tasks/bootstrap/design.md §3.1 末段、§3.2、§4.2、§15.1）给 plain-ui 0.7 的一条请求，请对齐轮（G 支）一并处理：一、没有项目图一节与验收第 14 条今天写『在输入框打 /hourness-init』，开场卡片的按钮也执行 /hourness-init；接管行在时请改为指向 /wish：面板说『在对话里发 /wish：主 Agent 先看一遍这个项目再接手』，卡片按钮执行 /wish 或把它写进输入框。0.7 改之前，/hourness-init 在没有图、不是主 Agent 的会话里返回成功的回复并写明发 /wish，按钮不会显示成失败。二、『建一个空目录就是一张空图』在接管行在时不再成立：判有没有项目图的是 nodes/ 下有没有 .json 文件，空的 nodes/ 照样走接管。三、第二阶段写法检查的前提（c）里，接管不再以 llm 或 harness 写人定的待决（两件事和清单都经 M3 的 propose_to_human），剩下要契约测试的只有接管提的三个规范模板的 title 与 why 一处（接管 §4.2、§15.1）。接管的 notice 与提醒里没有高峰、等待、停下一类的话，主 Agent 在任何档位都照常回答（d-main-agent-peak-exempt）。对话里的样子见 .agents/tasks/bootstrap/mockup-takeover.svg。"
+    },
+    {
+      "at": "2026-10-30T21:23:04.533Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M4 设计 0.5 对面板的请求（未变，等 dogfood 之后处理）：「需要你」的 (b) 一类加上开着的申报：现场投影 graphLive 认 request_exception 的 ask 结果（ref、lines、时刻、会话）就加一项，见到同一 ref 带 request: {ref, outcome} 的 hourness-request 提醒、或过了 2 小时就去掉；显示题目与四行，下面一行「去主 Agent 的对话回话 ›」指向申报所在的会话。M4 0.5 起 2 小时一到由 guard 行的定时器写 expired 并送关闭提醒（N38），面板收到提醒就去掉，不必只靠自己的 2 小时计时。第三次修复的待决是提议式的，按 (a) 一类显示四行；它的题目里的节点标题带换词表里的词、编号或文件名时，M4 改写成「这件活要修第 3 次了」并把标题放进「附」，所以在 plain-ui 第二阶段的写法检查下不会被拒。"
     }
   ]
 }

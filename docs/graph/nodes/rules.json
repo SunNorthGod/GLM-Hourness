@@ -435,6 +435,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "接管设计 0.5（.agents/tasks/bootstrap/design.md §5.4、§7.7、§8.2、§15.4 U11、§23.4）对已放行的规则板 0.10 的一条请求，自举之后再办：请在 R4 的 L2 里钉住『提议被接受之后 attachable 对它答 not ok』。接管靠这一点读一条规则『已生效』；但 attachable 对 rejected、superseded、expired 也答 not ok，少数情形会把没写上的说成已生效，规则板自己的恢复一节与 24 小时行健康会报出，不挡路。R4 钉住之前的退路是请规则板加一个只读成员。其余是通知，不是请求：接管只用 0.10 的流程，『不许碰』里仓库内的路径由 harness 写 rules_propose 的参数草稿（Rule 输入形状：when 为 gate.tool-call，filter.writes.paths，action 为 block，lifetime 为 until-lifted），主 Agent 调 rules_propose，再 propose_to_human 带 attach rules:<id>，拍板后走 acceptProposal；规则板整块没装（最小一片没有 rules_propose）时接管降级为只写进规范，清单写明系统不会拦；默认规则 builtin:glm-peak-pricing 接管不写不改；docs/rules/ 不放进合入前检查的 only 清单（规则被同意后写进 docs/rules/ 的文件由主 Agent 另提交一次）。D2 答『停』时接管新增的代码规则 bootstrap-read-no-shell 请列进规则页『写在代码里的规则』（d-rules-visible）。"
+    },
+    {
+      "at": "2026-10-30T21:23:04.349Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M4 设计 0.5 已按规则板 0.10 §10.7「M4 设计 0.4」一节对齐，M4 对规则板没有新的功能请求，只有最后一句的一处字句请在 dogfood 之后对齐：一、GUARD_RULES（src/guard/catalog.ts）列 guard 框架装规则的行的规则——guard 行六条（workspace-containment、file-tools-only 与 credential-read、suppression-reason、checker-config、scratch-only 四条影子规则）、图行 graph-files-only、循环板 loops:schedule-tools 与 loops:files-only、指标流水 metrics-files-only；id 是规则对象自己的 id，row 是装它的行，mode 取规则对象的字段；builtin.ts 映射成 <行>:<id> 的 CatalogEntry。M3 的 MAIN_AGENT_RULES 与 M7 的 EXECUTE_RULES 不在 GUARD_RULES 里，仍是各自的表，由规则板的 builtin.ts 映射；M4 的契约测试对三张表合起来核对。二、违规流水：classifyRecord 认 rules: 开头的 mode record（rule-record，不进违规、单列计数）与 mode late（late-denial，进违规、另列一行）、mode enforce 加 effect queue（deferral，不进违规）；rules: 之外的 record、late 算读不懂；rules: 开头的 mode shadow 当规则影子读。keyOf(record) = recordKey(JSON.stringify(record))，规则板写流水后用它取 noteDenial 的 key。三、规则板的门第一件事调 observe(agent, call, callId)、拦下与开单拒绝时调 noteDenial(agent, callId, {rule: 'rules:<id>', call, key, origin})（没有 rightPath；晚到的拦下不调）；M4 的 gate.ts 不在时规则板不调。规则板 R7 在 M4 的 classifyRecord 合入之后可以改用它，数字不会分叉。四、字句（M4 评审第 5 轮 N47）：规则板 0.10 的 §10.7 第 1 条读起来像是 GUARD_RULES 也列 M3 与 M7 的门，而它自己的 §10.1 把 MAIN_AGENT_RULES 单列、M7 自行登记；M4 按 §10.1 做（与 M3 附录 0.5 §3.11、M7 0.6 §12.1 一致）。请规则板在 dogfood 之后把 §10.7 第 1 条的字句与 §10.1 对齐，M4 的代码与规则板的映射都不受影响。"
     }
   ]
 }

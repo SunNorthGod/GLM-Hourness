@@ -275,6 +275,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M7 设计 0.5 对循环板 0.6 的改动请求与说明（m7 design.md §2.5、§3.9.1、§3.11.1）：一、hourness.design-released 多一个字段 module（字符串，没分模块的目标为空串），去重键的第二段改为 <module 或 goal>，仍是三段；分了模块的目标的大循环放行不交这个事件，每个模块放行交一次。二、hourness.tasks-closed 在分了模块的目标里要求没有模块停在设计中才交。三、execute.start-drive 在分了模块时自带 tell（点名模块，条目 execute.release 的固定 tell 只用于没分模块的目标）；第一个模块放行时建 goal，之后的模块放行只批注并叫主 Agent 分解这一个模块。四、M7 条目的 tell 与 tell-main 都写 wake: true（0.6 §2.3，评审 R4-N2），与 §5.1 的 wake 一栏一致。五、M7 新增 goal 阻塞原因码 hourness-design-wait（目标被退回设计时停住推进，目标再放行后 M7 自己 goals.resume）；循环行的 loops.peak-end 只恢复 hourness-peak-wait，不碰它。请循环板在 §4.2 的事件声明表与 §5.1 的 M7 十项里照改字段；条目数、事件数、动作数不变（执行行 7 项条目、9 个事件、5 个 harness 动作）。"
+    },
+    {
+      "at": "2026-10-30T21:23:03.836Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M4 设计 0.5 对循环板 0.6 的接缝（等 dogfood 之后处理，d-freeze-until-dogfood；M4 不要求循环板现在改任何东西）：一、M4 0.4 请循环板改的五处，第 ①②④ 点撤回（人加的检查由循环板的执行器跑，M4 不执行人加的条目，不需要读条目的函数，也不需要 recordRun 认人的条目），第 ③ 点由 0.6 的 glob 接住，第 ⑤ 点由 runCommand 的 queue 接住；M4 自带的检查器用 queue: 'direct'，不自己 spawn。二、M4 给循环板的三样在 0.5 §6.1.2：checkCommandOf(cwd, tool, check?)（服务 glmHournessEnv 的成员，读项目图，返回 {tool, check, title, argv, format, own} 或 undefined）、fillCheckArgv(argv, files)（{files} 每个文件一项，以 - 开头的名字前加 ./，带换行或 NUL 的路径跳过，命令行超过 28,000 个字符时丢文件并计数）、formatCheckOutput(format, run)（整理成发现数与至多 20 行，读不懂返回 undefined）。工具节点上的检查行格式：`check <名字> <格式> $ <命令>`，when 可有可无，条件用循环板的 paths 写法，命令按空格切、双引号成组、什么都不解释、第一项不能是 .cmd 或 .bat。三、仍请循环板在 dogfood 之后做的三件小事：⑥ loops:schedule-tools 与 loops:files-only 改经 M4 的 installRuleGate 安装（G1 删掉 evaluate）、登进 GUARD_RULES，读违规流水用 classifyRecord；⑧ 页面在人加的 check 条目下写「M4 自带的检查器也跑这一条」时，取 checkCommandOf 结果里的 own（带 when 的检查行 own 为真，不带的为假，M4 自己不跑）；⑨ 周报的「反复超时」一节是否也数 self 条目（M4 的超时报 recordRun outcome failed、reason 写成「<检查名>: timeout」，即以「: timeout」结尾），由循环板定；顺带 §5.3 第 15 项明细例子里的 `npx eslint {files}` 在 Windows 上起不来（.cmd），可改成 node 加脚本路径。四、M4 按 0.6 §17 的四条交了 env.checks-after-edit（ownRules 四行、details）、env.files-edited（emit，先问 listens；键 files-edited:<会话>:<turn>-<step>，一步改了几个检出里的文件就各发一个，键后加序号）并 recordRun。"
     }
   ]
 }

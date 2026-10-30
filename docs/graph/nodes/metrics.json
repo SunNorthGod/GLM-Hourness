@@ -167,6 +167,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "接管设计 0.5（.agents/tasks/bootstrap/design.md §2.4、§4.5）对指标流水的依赖：接管写图的每一步由引擎的 observe 记（metrics §6.3），问人与人的回话由 M3 的两个工具记；接管自己只在试跑的每条命令之后经 emitMetric 交一条（命令 id、结果、耗时、envKey），事件种类与字段请指标设计（0.2 对齐轮）定，定之前接管不交。指标流水在项目的 .llm/（d-rules-in-repo），接管按会话头的 cwd 找项目根，不管它的位置。接管读的是指标 0.1 的 §6.2、§6.3，节号请按 0.2 核对。"
+    },
+    {
+      "at": "2026-10-30T21:23:04.708Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M4 设计 0.5 对指标流水的接缝（未变）：M4 交拦截、影子、跟进、申报与放行的事件（只带规则 id、种类、结局、来源与会话 id，不带命令与路径），与每天一条压制计数事件；suppressions.jsonl 这一稿照旧写，等指标流水定稿、它的行默认启用之后由它的实施那一步去掉（改 src/env/suppressions.ts 与晨报一处）；recordKey 与 metrics-files-only 照它的请求，metrics-files-only 经 installRuleGate 安装、登进 GUARD_RULES、影子。违规流水不并进指标流水。"
     }
   ]
 }

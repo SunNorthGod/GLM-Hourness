@@ -410,6 +410,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "接管设计 0.5（.agents/tasks/bootstrap/design.md §3.1、§16、§19 第 4 条、§23.4）对已放行的 M3 的请求，自举之后再办（d-freeze-until-dogfood）。M3 附录 0.5 与 m3/design.md 里目前都没有写这两处：一、/wish 的处理函数（src/design/mode.ts）在『图行服务不在』之后、『图目录不存在』之前，先按 M3 的规则拒绝过长的话；服务 glmHournessBootstrap 在且 wants(cwd) 为真时，先按持有者记录判这个会话会不会成为主 Agent（图目录还不在时按 none），会才 await prepare(invocation, {trigger: 'wish', wish})；记录指向别的活会话时照 M3 的表指路、不调 prepare；prepare 返回 ok 时照常开启主 Agent；holdWish 为真时不发许愿 notice，改发 prepare 交回的接管开始 notice，运行中 steer、空闲 followup，时机同许愿 notice；服务不在时行为不变。二、阶段提醒在焦点目标的 holds(cwd, goalId) 为真时不注入访谈提醒：已有项目的接管提的目标是提议、不带阶段，effectiveStage 给 wish，不让位的话主 Agent 会同时被要求访谈和读项目。M3 接受之前接管走过渡路，不依赖这两处：人建空的图目录、发不带话的 /wish、再在同一会话发 /hourness-init。接管实现里 B3 一步要等 M3 接受这两处之后才开工；接受的凭据请以其一为准：M3 之后的设计版本写入这两处，或编排方在本节点批注记人同意自举之后办（评审第 5 轮 F48 的建议，接管设计里还没有写明）。仅当人对接管的 D3 答『要』（接管来的待做活先看一页放行稿）时另需一条：请让模块放行页的核对（附录 §3.14.3 第 1 条今天要求目标的有效阶段在 release 或之后）接受『已批准、没有阶段』的目标，或允许接管把读出的里程碑作为模块候选批准。不是请求：bootstrap: 一行由接管合入时自己加进 attach 分派表（附录 §3.13：各提议方自己加行）；持有者记录搬进项目 .llm/ 时接管只经 mainAgentOf 用它，参数变了请告诉接管；0.3 请的 lines 参数与放行处的 releaseNote 已撤回。"
+    },
+    {
+      "at": "2026-10-30T21:23:04.009Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M4 设计 0.5 对 M3 附录 0.5 的接缝（等 dogfood 之后处理，d-freeze-until-dogfood）：一、附录 §3.4 已含不带题目与四行、原样再给人看一张已有待决的 propose_to_human，M4 的第三次修复用它，这一条不再是请求。二、仍请 M3 的对齐轮做三件（附录 §10 已记）：installMainAgentRules 经 M4 的 installRuleGate 安装（G1 删掉 evaluate；谁后合入谁改）；git 快照门第一件事调 observe(agent, call, callId)、存不了快照而拒绝时调 noteDenial(agent, callId, {rule: 'git-snapshot', call, key, origin, rightPath})，拒绝记录不带 mode；本会话有开着的申报（requestsService(ctx)?.openRequests）时 propose_to_human 返回 busy。M3 没加之前 M4 的做法已写明：影子判定与跟进只覆盖经 installRuleGate 的规则；申报文字之后又出示了提议时 tail 对不上，记 not-shown、不放行（fail-closed）。三、MAIN_AGENT_RULES 留在 M3 的 src/guard/main-agent-rules.ts，M4 的 GUARD_RULES 不列它，规则板的 builtin.ts 映射；M4 的契约测试把它当三张表之一核对 id 不重复。四、src/graph/proposal.ts 里的 PROPOSAL_LABELS、proposalLineRefusal、splitBold 随 M3 第 6 步；M4 的 G4 若先开工，照附录 §3.3 原样建，M3 改成导入。"
     }
   ]
 }
