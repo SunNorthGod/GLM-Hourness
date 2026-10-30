@@ -93,8 +93,10 @@ rowTest('the row is a cordis plugin that needs the commands service, registers /
   assert.deepEqual([command?.definitionId, command?.name, command?.input?.hint], ['dsh-glm-hourness/rules', 'rules', 'peak [无影响|少做|不做]'])
   assert.ok(runtime.services.has(PEAK_MODE_SERVICE))
   assert.deepEqual(health(runtime), { row: 'rules', status: 'idle', reason: `命令 /rules 与高峰模式服务 ${PEAK_MODE_SERVICE} 已就绪` })
+  assert.ok(peakModeService(runtime.ctx) !== undefined)
   dispose()
   assert.equal(commands.size, 0)
+  assert.equal(peakModeService(runtime.ctx), undefined, 'the readers see the service leave with the row')
   assert.equal(runtime.services.has(PEAK_MODE_SERVICE), false)
   assert.equal(runtime.services.has(healthServiceName('rules')), false)
   assert.deepEqual(runtime.listeners.map(entry => entry.event), [])
@@ -247,6 +249,16 @@ rowTest('a failed write is a reply, not a throw, and reading the project afterwa
   const result = await run('peak 不做')
   assert.deepEqual([result.kind, result.text?.startsWith('没写成：')], ['error', true])
   assert.doesNotThrow(() => service.stateForProject(root))
+})
+
+rowTest('stateForProject on a project with a damaged snapshot replays the journal in memory and leaves every file byte for byte as it was', async ({ root, service, run }) => {
+  await run('peak 不做')
+  const dir = join(root, '.llm', 'rules')
+  await writeFile(join(dir, 'state.json'), '')
+  const bytes = async (): Promise<Record<string, string>> => Object.fromEntries(await Promise.all((await readdir(dir)).sort().map(async file => [file, (await readFile(join(dir, file))).toString('base64')] as const)))
+  const before = await bytes()
+  assert.deepEqual([service.stateForProject(root)?.level, service.stateForProject(root)?.origin], ['stop', 'human'])
+  assert.deepEqual(await bytes(), before)
 })
 
 rowTest('a state the service cannot read is unknown, not the factory level, and nothing throws', async ({ runtime, root, service }) => {
