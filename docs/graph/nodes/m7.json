@@ -197,6 +197,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M7 设计 0.4 写完（m7-design-v04-write，wf_144851c0ee301606；0.3 留作 design-0.3.md）：F1–F3 与 N1–N10 已处理，接缝裁定已用上，逐条见 §17；一页人话 onepage.md 与十件活的「怎样算做完」草稿已写，改验收的图操作草稿在 graph-ops-v04-pending.json，等人看过一页再定。派出单步评审 m7-design-v04-review，对照最新的人定（含两层循环用进产品、主 Agent 不受高峰影响）。"
+    },
+    {
+      "at": "2026-10-30T05:41:52.379Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m7-design-v04-review 的运行编号是 wf_526025270d4dab69。节点已是进行中，不用改状态。"
     }
   ]
 }
