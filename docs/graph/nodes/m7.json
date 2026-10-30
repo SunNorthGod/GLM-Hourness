@@ -390,6 +390,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "接管设计 0.5（.agents/tasks/bootstrap/design.md §5.5–§5.7、§7.6、§15.4 U13）对已放行的 M7 0.6 没有新请求，下面是通知与一个沿用的问题。一、合入前检查清单 norm-merge-gate 的 changed 写法由接管的 bootstrap-ratchet 加进 GATE_LINE_FORMS（M7 §3.8.1 已这样写）；接管只提 GATE_LINE_FORMS 认的写法，门禁草稿带 only <图目录>/，docs/rules/ 不放进 only 行（记为 agent 决定）。二、接管写的底线清单草稿 floor.md 每一行交给 M7 的 parseFloor 读，每个生态的 norm-merge-gate 草稿交给 parseGateNorm 读，条数必须对得上；这两个函数在 M7 的 src/execute/floor.ts、gate-norm.ts，今天不在 main，E1b 合入之前接管的这两例 L2 对着 §3.8.1、§3.8.5 的写法表写好，合入后换成真实函数。三、接管清单的注意事项要写『每条合入前的检查最多跑几分钟』；M7 §3.8.1 写每条 30 分钟，没有给常量命名，并把它列在可改的默认设置里。评审第 5 轮 F49 要接管读生效值而不是写死 30；M7 若有读取生效值的形状，自举之后请告诉接管。四、沿用自 0.3 的问题，仍归 M7：新项目没有 HEAD 时，第一个只改图的初始提交怎样过主干前进的核对（§3.8.4）。"
+    },
+    {
+      "at": "2026-10-30T21:20:52.302Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M7 步骤 E3 跟进已合入 main（快进，head e57e744，未推送）。独立评审第三轮 APPROVED，另有两条非阻塞项：FU-2、FU-6。\nE3 自有的八条发现：\nE3-1 已修（94592d7）：门控 worktree 的 .git 文件被改指向别处时，守卫拒绝，且不再对主检出做 reset。先写失败测试。\nE3-2 已修（6c2fdaa）：在分离 HEAD 上提交的 commit 不再被丢弃；无引用持有则以 gate_worktree_invalid 拒绝，并写 refs/hourness/gate-head。先写失败测试。\nE3-3 已修（58fa5cd）：git 执行器不再导出不受限的 run，改为 19 个具名操作。\nE3-4 已修（02f4182）：基线分支按完整引用读取，同名 tag 不再遮蔽主干。\nE3-5 已修（adc2628）：LockEnvironment.bootTime 改为可选。\nE3-6 已修（3bdb947、e57e744）：执行器的 git 调用关闭 hooks 目录、fsmonitor，以及配置里定义的 hook（FU-4 的三个事件开关）。受限于 git 2.54.x，见 FU-6。\nE3-7 已修（503dc5b）：trunkUpstream 在只有一个远端时用该远端，不再编造 origin。\nE3-8 部分修复（405cd87）：无内容的锁文件经 unreadableGraceMs 宽限后才接管（默认 0，规则板行为不变）。第二个窗口（微秒级）文件层面无法关闭，留给 E7：写检查记录前调用 held() 并比较门控 worktree 的 HEAD（设计 6.3，ORCHESTRATION 17.6 已写明）。\nE3-9、E3-10、E3-11 不属 E3，归 E1b 与 E7。\n评审后续项：\nFU-2 已处理：变基时去掉六条提交信息末尾未替换的 @@GATES@@ 标记，git log main..m7 --grep='@@GATES@@' 无输出。\nFU-3 已关闭（791dc30）：守卫读写中任何 git 失败都拒绝移动，有注入测试。\nFU-4 已修（e57e744）：配置型 hook 现被 -c hook.<event>.enabled=false 关闭；17 个配置 hook 的用例，失败先行（旧代码 40 例中 2 例失败）。\nFU-5 已修（e57e744）：措辞改为 update-ref 写入的唯一引用。\nFU-6 编排者裁定：按文档接受。在 git 2.54.x 上配置型 hook 可能仍在执行器的 git 调用内运行；限制写在 git.ts 头部、ORCHESTRATION 17.5 和设计 6.5，用例在该版本上带原因跳过；不加每次调用的 config --get-regexp 查找。失败方向保守：hook 移动主干会被归为外部推进（设计 3.8.4）。裁定已写入 e57e744 的提交信息。\n设计 3.8.4 修正：五条路线各给判定，补 origin 段落与 E1b/E7 指针，19.4 记录回答 E3-9。另有一处未改：3.8.4 仍写作 otherwise origin，E3-7 改了代码，偏离记录在 ORCHESTRATION 17.5。设计 6.5 新增执行器自身 git 调用与 hooks 的行，门控 worktree 行补 E3-1、E3-2 守卫。设计文件在被忽略的 .agents/ 下，无提交。\n未提交草稿的处理：不丢弃，作为独立提交 405cd87（E3-8）落地；它实现评审对 E3-8 的可选建议，默认 0，测试在无该改动时失败，复用 src/data/lock.ts；两处修改：宽限计时器在内容有变化、文件消失或被接管时重置，并修正了文档行里过期的测试数（fa98df7）。\n合入的提交（变基到 cf94163 之后，共 11 个，由旧到新）：94592d7 E3-1，6c2fdaa E3-2，58fa5cd E3-3，02f4182 E3-4，503dc5b E3-7，adc2628 E3-5，fa98df7 文档，405cd87 E3-8，791dc30 FU-3，3bdb947 E3-6，e57e744 FU-4/FU-5。变基前旧 sha 为 10f7132 至 2020868。\n门禁，分支 m7 与 main 上相同：build 退出码 0，preflight 0，test 0（978 个测试，0 失败），probe 0（149/149 通过）。无新增编译器或检查器告警，eslint、knip、jscpd 基线未变。"
+    },
+    {
+      "at": "2026-10-30T21:20:52.560Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "编排方独立复核 E3 跟进合入后的 main（e57e744）：build 退出码 0，preflight 0，test 0（无 not ok），probe 0（149/149）。已推送到 origin/main（e57e744）。分支 m7 已全部合入，.worktrees/m7 的内容与 git 的工作目录记录已删，本地分支 m7 已删（空文件夹被其他进程占用，稍后再删）；E1b（等 M3 第 3、6 步）、E2（等 M3 第 6 步）、E4（等 M3 第 3–5 步与规则板最小一片）开工时各自新建工作目录。"
     }
   ]
 }
