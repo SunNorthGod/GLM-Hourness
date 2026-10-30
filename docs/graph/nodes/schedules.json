@@ -239,6 +239,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "循环板 0.6 第 6 轮独立评审 APPROVED（run boards-rules010-loops06）：HIGH 0、MEDIUM 0、NIT 3（F57–F59，不挡路）。第 5 轮的 F44–F56 全部关闭，F42 留到放行稿。接缝与规则板 0.10 一致（seam-check-v010-v06.md，六点）。循环板设计定稿在 0.6。下一步：写一页人话放行稿交人放行。三条 NIT：repo-written.json 丢了没有 §9.3 的恢复行；§2.2 的 L2 指到验收 36 没真正练到 matchesFilter；§9.2 第 5 步「已经生效」与脚本条目在 git 操作中途被接受时文件门控的跑法有冲突。随放行稿或下一次顺手清。"
+    },
+    {
+      "at": "2026-10-30T10:16:42.918Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "循环板 0.6 的一页人话放行稿写好（onepage.md，run boards-rules010-loops06 收尾步；0.4 版留作 onepage-0.5.md，草图 mockup-loops.svg 版本号升到 0.6）：命令改脚本带 4000 字/100 行上限、仓库 docs/loops/ 加项目 .llm/loops/ 与 git 操作中途先不写、没看过原文记录的条目不跑、人加的改完文件就跑检查。F42 在放行稿的疑问一行处理（高峰后叫醒闲着的主 Agent，嫌打扰可改不叫）。放行稿末尾留一题给人。等人放行。"
     }
   ]
 }

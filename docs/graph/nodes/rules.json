@@ -351,6 +351,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "规则板 0.10 第 2 轮独立评审 APPROVED（run boards-rules010-loops06，wf_536c919266ffcda5）：HIGH 0、MEDIUM 0、NIT 2（F91、F92，都是 0.8 的用户级旧说法没清干净，实际存放与 d-rules-in-repo 一致，不挡路）。0.9 的 F82–F90 九条全部关闭，已对照 CHARTER 0.7（f2faa6f）、M4 0.4、循环板 0.6 的接缝核实。接缝核对六点一致、两处在规则板这边改好（队列口径、git 标记集加 BISECT_LOG）。自举前的最小一片在 §16.1 写明、是全设计的严格子集、无弃置代码。规则板设计定稿在 0.10。下一步：写一页人话放行稿交人放行；放行后自举要用的最小一片可开写（d-rules-peak-slice）。两条 NIT 随放行稿一步或下一次顺手清。"
+    },
+    {
+      "at": "2026-10-30T10:16:42.745Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "规则板 0.10 的一页人话放行稿写好（onepage.md，run boards-rules010-loops06 收尾步；0.8 版留作 onepage-0.9.md）：存放改为仓库 docs/rules/ 加项目 .llm/rules/、不写用户级；换机器没有看过原文记录的带脚本规则列「没有你看过原文的记录」不跑；不做档里主 Agent 照常回话；§16.1 的最小一片。放行稿末尾留一题给人（少做时同时至多 1 个 GLM 子 agent，嫌慢可改 2）。等人放行。"
     }
   ]
 }
