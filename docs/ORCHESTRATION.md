@@ -871,7 +871,7 @@ LLM 爱造轮子，因为写脚本只花当前这一轮的力气，装工具却�
 - `node:test` 的 `test()`、`describe()` 返回由测试运行器等待的 Promise，按 typescript-eslint 文档登记为已知安全调用，不算悬空 Promise。
 - 环境全局量：脚本与两个包客户端面的宿主半 `packages/*/ui/index.js` 取运行 ESLint 的 Node 的全局名；客户端源码 `ui/src/` 在 DSH 网页端运行，只登记它用到的浏览器全局量。
 - 排除：vendored 上游代码 `src/shared/schemastery.ts` 不进 ESLint 与 jscpd（它随重新 vendor 变化，不随 lint 修复变化）。
-- knip：配置是 `knip.js`，根 `package.json` 不再导出行模块，所以 11 个宿主行的源码入口、两个包客户端面的宿主半 `packages/*/ui/index.js` 与两个客户端入口都按目录表 `scripts/packages.mjs` 生成，探针 provider 由探针运行器把路径交给 Loader，也登记为入口；客户端半的 `react` 来自 DSH 客户端模块表，不是 npm 依赖。`scripts/check-lint.mjs` 给 knip 传 `--tsConfig tsconfig.knip.json`，它引用两个包的 tsconfig，脚本对 `packages/*/dist/` 的导入由此对回 `src/`（tsc 拒绝引用非 composite 项目，所以这组映射不放进根 `tsconfig.json`）。
+- knip：配置是 `knip.js`，根 `package.json` 不再导出行模块，所以 12 个宿主行的源码入口、两个包客户端面的宿主半 `packages/*/ui/index.js` 与两个客户端入口都按目录表 `scripts/packages.mjs` 生成，探针 provider 由探针运行器把路径交给 Loader，也登记为入口；客户端半的 `react` 来自 DSH 客户端模块表，不是 npm 依赖。`scripts/check-lint.mjs` 给 knip 传 `--tsConfig tsconfig.knip.json`，它引用两个包的 tsconfig，脚本对 `packages/*/dist/` 的导入由此对回 `src/`（tsc 拒绝引用非 composite 项目，所以这组映射不放进根 `tsconfig.json`）。
 - 现有告警没有成批修：175 条多余的类型断言可自动修复，但会和 `graph-engine` 分支改动的文件冲突，等该分支合并后再修；门禁上线时只修了 3 处明确安全的真问题（测试里一个从不读取的计数变量、一个未用导入、一个被 `unknown` 吞掉的联合类型）。
 
 密钥扫描〔已实现 2026-10-28〕：gitleaks 是工作区外的独立二进制，按用户 2026-10-28 的选择装在用户级工具目录（项目图 `q-gitleaks`）；`npm test` 在检查器门禁之后运行它，扫 HEAD 的历史与已跟踪文件的未提交改动，没有基线，范围与放行规则见 `DEVELOPMENT.md` §10。
@@ -1160,3 +1160,63 @@ LLM 不讲人话，多半是默认在向评审汇报，想显得周全。做法�
 | 草稿区位置 | 工作区内通用目录，汇合门禁检查 |
 | 小改动简报的简化形态 | M7 设计 |
 | 审查 agent 的模型档位 | M7 设计 |
+
+## 16. 规则板（最小一片）〔已实现 2026-10-30，L2、L3；行默认禁用，桌面版首轮验收未做〕
+
+完整设计是 `.agents/tasks/rules/design.md`（不入库，版本 0.10，评审通过、人放行）。自举之前只做其中的一片（项目图 `d-rules-peak-slice`，设计 §16.1）：每个项目一个由人选的高峰模式档位，加少做档的并发上限，经一个服务交出。这一片是整块设计的子集：整块规则板以后往同一批文件里添加，不改写、不删除这一片写下的任何东西。发给模型的高峰提醒与它在各档下的措辞见 §11.4（GLM 通道包），规则板不碰。
+
+### 16.1 档位与上限
+
+- 三档：无影响（`inform`，只提醒）、少做（`reduce`，出厂默认，`d-peak-mode`）、不做（`stop`）。档位按项目存，只有人能改（§16.4）。三档只在 GLM 高峰时段里起作用：此刻是不是高峰读 GLM 包的计价服务（`glmHournessPricing.peak`，`src/shared/pricing.ts`），规则板不带时段表。读不出（没有计价服务、`peak` 抛错或返回的不是布尔值）时三档都不起作用，`PeakModeState.peak` 为 `undefined`，不带上限与挡住的标记；同一条警告每个宿主进程只出一次。
+- 少做的并发上限：同一时间在跑的、经 `dispatch_task` 派出且模型为 GLM 的子 agent 至多 1 个（写任务、审查、检查都算），常量 `PEAK_REDUCE_GLM_WORKERS`。数归规则板，执行归派活（M7）：派活在派模型为 GLM 的子 agent 之前读一次 `stateFor(<主 Agent 的会话>)?.glmWorkerCap`，有值就照它数在跑的 GLM 子 agent，没有就照自己的槽位；派活不加别的高峰逻辑。这一片不含派活，所以上限现在只是服务里的一个数。
+- `glmWorkerCap` 只在 `peak === true` 且档位为少做时有；`peakHoldFor` 只在高峰里、结束时刻读得出、档位为少做或不做时有值（`{level, until}`，与同一时刻 `stateFor` 的档位和结束时刻一致）。两者由 `src/shared/peak-mode.ts` 的 `peakModeState` 与 `peakHoldOf` 一处算出。这一片没有等待单，不做档的 `peakHoldFor` 对所有会话一视同仁（整块规则板的「本次高峰照常做」只改 GLM 子 agent 的单）。
+- 主 Agent 不受高峰模式影响（`d-main-agent-peak-exempt`）：行只监听 `agent/created` 与 `session/disposed`，不注册工具调用门，不在 `agent/pre-step` 里动消息，不暂停 goal；`peakHoldFor` 有值说的是它派 GLM 子 agent 与跑重活脚本的那部分活被挡着，规则板自己什么都不拦。这一片不排队、不暂停，三档下没有任何调用被拦。
+
+### 16.2 服务
+
+规则行提供 cordis 服务 `glmHournessPeakMode`，契约在公共库 `src/shared/peak-mode.ts`（GLM 包不能导入 `src/rules/`，所以契约放在两个包都编进去的地方；方向与计价服务相反：编排层提供，别的行读）。`peakModeService(ctx, problem)` 是读取函数：服务不在时为 `undefined`，成员类型不对时为 `undefined` 并回调 `problem`。
+
+| 成员 | 给什么 |
+| --- | --- |
+| `stateFor(sessionId)` | 会话所属项目此刻的 `PeakModeState`：`level`、`origin`（`default` 或 `human`）、`at`、`peak`、`until`、`glmWorkerCap`。只读内存与计价服务，不抛错；会话不在本宿主上、没有工作目录或不在项目里时为 `undefined` |
+| `stateForProject(cwd)` | 同上，按目录，给不在本宿主上的会话用；不写文件；项目状态读不出（读文件抛错）时为 `undefined`，不冒充出厂默认 |
+| `peakHoldFor(sessionId)` | 见 §16.1 |
+
+会话的工作目录来自 `agent/created` 与 `/rules` 的调用参数，会话结束（`session/disposed`）时忘掉；登记里没有的会话再问宿主的 `agents` 服务（行在运行中途启用时仍然答得出）。读它的各方在用的那一刻读一次，不缓存：档位改了，下一次派活和下一条提醒就按新的走。行卸载时服务随 `ctx` 撤回，读的一方按读不出处理。
+
+### 16.3 存放
+
+按项目，规则板不写任何用户级的文件（`d-rules-in-repo`）。项目根按会话头的 `cwd` 往上找 `.git`，git 工作树经 `commondir` 回到主检出，所以主检出与它的工作树是同一个项目（`src/rules/project-key.ts`，只读文件，不起 git 进程）；不在 git 仓库里时只认已有 `.llm/` 的目录，用户主目录与盘符根永远不是项目。
+
+| 位置 | 内容 | 进 git |
+| --- | --- | --- |
+| `<项目根>/docs/rules/rules.json`（行配置 `dir` 可改，相对项目根或绝对） | 人定的部分：目前只有 `peakMode`（`{level, at, origin}`）。键按码点排序、两个空格缩进、换行结尾；人选过档位之后才有这个文件 | 是 |
+| `<项目根>/.llm/rules/journal.jsonl` | 流水，事实源，只追加；每条记录带它写出的状态的摘要 | 否 |
+| `<项目根>/.llm/rules/state.json` | 状态快照，流水推出的缓存 | 否 |
+| `<项目根>/.llm/rules/repo-written.json` | 规则板最近一次写成的 `rules.json` 的摘要，用来分清「规则板欠一次写」与「别处改了它」 | 否 |
+| `<项目根>/.llm/rules/rules.lock` | 写锁 | 否 |
+| `.state.json.pending`、`.state.json.replaced-<时刻>`、`.journal.corrupt-<时刻>`、`.rules.json.outside-<时刻>` | 改名失败留下的新快照；恢复时被替换的旧快照；有读不出的行时整份复制的流水或截掉的末行；被规则板以外改过的 `rules.json` 的原样副本 | 否 |
+
+`.llm/` 要在项目的忽略文件里：本仓库的 `.gitignore` 有它；别的项目里把它加进 `.git/info/exclude` 是 M5 的项目目录（`ensureIgnored`）做的事，这一片没有做。
+
+- 写：`openRulesBoard({projectRoot, rulesDir}).apply(actor, request)`（`src/rules/engine.ts`）是唯一的写入口。顺序：核对身份（`src/rules/permissions.ts`，`peak-mode-set` 只给 `human`，其他身份得 `forbidden` 和怎么做）与请求形状，取写锁（`wx` 创建，持有者不在或超过 10 秒的锁被接手，等 2 秒仍取不到得 `busy`），先把读到的待办落实（恢复、从规则文件开始、欠的写），核对修订号 `rev`，规划（时钟与文件系统相关的决定都在这里做完、写进记录的 `changes`），再确认锁还是自己的，追加流水并 `fsync`，原子替换快照（改名遇 `EPERM`、`EBUSY` 按 20、40、80、160、320 毫秒重试，仍失败留下 `.state.json.pending`），最后导出 `rules.json`。同一档位的重复选择不写任何东西。
+- 状态只经 `applyRecord(state, record)`（`src/rules/store.ts`，纯函数，不读时钟、文件与进程表）改变，写入与重放走同一个函数。重放逐条核对摘要：缺字段或摘要对不上的行（引擎以外追加或改过的）不生效、列入 `unresolved`；读不出的行把链断开，之后的记录不生效，直到一条带完整状态的 `base` 或 `recovered` 记录作锚点。快照清零、截断、被改，流水被截短或最后一行没写完，都按流水重建，旧快照原样另存；重建的结果与出事之前的状态摘要相同（`tests/rules-store.spec.ts` 的性质测试，5 个种子）。
+- 读不取锁、不写文件（`loadState`、`readProject`）；落实待办的是持锁的 `settleLocked`，在会话创建与每次 `/rules` 时由行调用。读者碰上写入者在追加与改名之间时，在内存里重放得到新状态，持锁重读后发现已一致就什么都不写。
+- 仓库里的规则文件（`src/rules/repo.ts`）：判定按流水，不按文件，因为 git 的切换、合并、回退和脚本都能换掉它。规则板写成之后文件被别处改了（摘要与 `repo-written.json` 的一致、与状态的不同），改动不生效，原样副本另存，差别记进状态（`repo.outside`），行健康写明；文件又改回规则板写的那一份时自己清掉。项目还没有自己的流水与快照（新克隆、换电脑、删了 `.llm/`）而文件里有决定时，状态从文件开始，写一条 `base` 记录。git 正在合并、变基、拣选、二分或持有索引时（`MERGE_HEAD`、`REBASE_HEAD`、`CHERRY_PICK_HEAD`、`rebase-merge`、`rebase-apply`、`BISECT_LOG`、`index.lock`）不写仓库里的文件，档位照流水生效，文件在 git 做完之后的下一次落实时写。规则板不提交、不暂存、不切分支。
+- 状态里没有设计里的 `root` 字段：摘要要是覆盖项目路径，文件夹改名或搬家之后所有记录都对不上。整块规则板往状态里添字段时，读到旧快照要在核对摘要之后再补默认值，否则这一片写下的记录重放不过。
+
+### 16.4 命令
+
+`/rules peak [无影响|少做|不做]`（也认 `inform`、`reduce`、`stop`），由 `glm-hourness/rules` 行注册；斜杠命令只有人能发，所以身份固定为 `human`。不带档位回现在的档位、来源（出厂默认，或「你在 HH:MM 选的」）、此刻是不是高峰与到几点，后面接三档的说明（`peakModeIntro`）；带档位就改，回一行并说明这一版只记档位、没有排队和暂停。其他子命令回用法。回话里的时刻按本机时区。人在对话里让主 Agent 改档位的路（`rules_propose` 与 M3 的 `propose_to_human`、`record_human_answer`）依赖 M3 第 6 步，不在这一片里；命令是现在唯一的改法，所以 `peakModeIntro` 只写命令。
+
+### 16.5 行健康与降级
+
+行 `rules` 在 `HOURNESS_ROWS` 里，按会话上报（`src/rules/row-health.ts`）：项目名、档位与来源、此刻是不是高峰（读不出时写原因，不降级：只装编排层包是支持的组合）。部分生效的情形：`/rules` 没注册上、服务没提供上、会话事件没注册上、会话不在项目里、存档与流水对不上或有没生效的记录、仓库里的规则文件读不出或被改过、读状态失败。`config.dir` 不是路径时未生效。激活期不抛错。读状态失败只让这一次读不出，不影响别的会话。
+
+### 16.6 这一片没有做的
+
+整块规则板的其余部分，写下的代码按它们能直接加进来的形状留着，没有留空桩：规则页与面板、人加的规则与检测器、脚本与脚本执行器、工具调用门里的拦截、等待单与排队、违规流水的新记录、`checkCall` 与命令行、指标事件、`rules_show` 与 `rules_propose`、默认规则 `GLM_PEAK_PRICING` 与按档位启用的附属条目（没有判定它们的门，没有调用方）、`/rules recovery`（没有生效的记录与被改过的规则文件只能列出：要清掉，删 `.llm/rules/` 让规则板照仓库里的文件重新开始，或再选一次档位让它按流水重写文件）、流水轮换、宿主心跳与 `hits.json`、`RulesService`（`glmHournessRules`）、对话里改档位的提议一路、高峰结束时叫醒主 Agent（循环板）与高峰里停住自动推进（M7）。
+
+### 16.7 验证
+
+L2：`tests/peak-mode.spec.ts`（共用契约：上限与挡住的标记、读取函数、文字、`nextPeakChange`）、`tests/rules-model.spec.ts`（`effectivePeakMode`、序列化、规则文件、状态校验）、`tests/rules-store.spec.ts`（设计 §7.5 表里每一种情形、性质测试、锁、两个进程同时写、规则文件的各种情形与 git 操作）、`tests/rules-engine.spec.ts`（权限、请求校验、修订号、写入的产物、`busy` 与 `io`、项目根）、`tests/rules-row.spec.ts`（假宿主上的行：命令、服务、健康、不挡任何调用、激活期降级、补丁里默认禁用）。L3：`npm run probe` 的场景 `rules-peak`（GLM 与编排层两个包，平移到周三 15:00 UTC+8 的探针时钟，临时 git 工作区：出厂档位、`/rules peak 不做`、`/rules peak 无影响`，每步经真实的 `/rules` 处理函数与服务读回状态）与 `rules-peak-hourness`（只装编排层包：没有计价服务，没有上限与挡住的标记）。L4（桌面版重启后核对）未做，行保持禁用。

@@ -46,8 +46,10 @@
 import { spawnSync } from 'node:child_process'
 import { cpSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { isDeepStrictEqual } from 'node:util'
 import { crc32, deflateSync } from 'node:zlib'
 import { DISPATCH_TOOLS } from '../../packages/hourness/dist/workflow/index.js'
+import { clockText } from '../../packages/hourness/dist/rules/index.js'
 import { PEAK_REMINDER_SOURCE, PEAK_REMINDER_TEXT } from '../../packages/glm/dist/glm-prompt/peak-reminder.js'
 import { peakWindowAt } from '../../packages/glm/dist/glm-llm/credits.js'
 import { userDataHome } from '../../packages/hourness/dist/shared/data-home.js'
@@ -372,6 +374,34 @@ const plainTools = names(plainFirst)
 // face has no graph or memory tools, the glm:memory section is gone, and
 // /glm-status shows the orchestration package as one line not loaded.
 const stderrOf = scenario => existsSync(join(runDir, scenario, 'stderr.txt')) ? readFileSync(join(runDir, scenario, 'stderr.txt'), 'utf8') : ''
+// Rules board, first slice (docs/ORCHESTRATION.md §16). The row ships
+// disabled; the overlay enables it in a scratch git workspace on the peak
+// clock, so the project is the workspace: the rules file in the repository
+// and the project's .llm/rules/ land in it. The probe provider types
+// /rules peak the way the person does and reads the glmHournessPeakMode
+// service after each command: the factory level, then 不做, then 无影响.
+// The GLM route runs both packages, so the pricing service says it is peak
+// (until 18:00 UTC+8); the orchestration package alone has no pricing
+// service and so no peak to read. The main agent's own tool calls run in
+// every state.
+const RULES_ROW = ['- id: glm-hourness/rules', '  disabled: false']
+const rulesProject = (name) => {
+  const ws = join(runDir, name, 'ws')
+  mkdirSync(ws, { recursive: true })
+  writeFileSync(join(ws, 'README.md'), 'probe workspace\n')
+  return { ws, ready: initRepo(ws) }
+}
+const rulesGlm = rulesProject('rules-peak')
+const rulesPeak = runScenario('rules-peak', 'glm-5.3', [
+  { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } }, command: { name: 'rules', input: 'peak' }, peakMode: true },
+  { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } }, command: { name: 'rules', input: 'peak 不做' }, peakMode: true },
+  { text: 'done', status: true, command: { name: 'rules', input: 'peak 无影响' }, peakMode: true },
+], 'Read package.json twice, then reply done.', [...RULES_ROW, ...clockRow(PEAK_AT)], rulesGlm.ws)
+const rulesAlone = rulesProject('rules-peak-hourness')
+const rulesPeakAlone = runScenario('rules-peak-hourness', 'deepseek-probe', [
+  { tool: { name: 'pwsh', arguments: { command: 'Write-Output probe-rules', description: 'Print a word' } }, command: { name: 'rules', input: 'peak 不做' }, peakMode: true },
+  { text: 'done', command: { name: 'hourness-status' }, peakMode: true },
+], 'Print a word, then reply done.', [...RULES_ROW, ...clockRow(PEAK_AT)], rulesAlone.ws, [], profiles['probe-hourness'])
 const MEMORY_SECTION_LINE = 'You have a persistent memory in this workspace'
 const glmOnlyDir = join(runDir, 'glm-only')
 const glmOnly = runScenario('glm-only', 'glm-5.3', [
@@ -799,6 +829,16 @@ const glmPanel = glmHourness?.text.split('## 面板\n')[1] ?? ''
 const healthLine = (health, row) => health[row] === undefined ? `${row}: missing` : `${row}: ${health[row].status}`
 const ACTED = '生效'
 const IDLE = '已加载，本会话未触发'
+// Rules board scenarios: the peak of the probe clock's Wednesday ends at 18:00 UTC+8.
+const PEAK_END = '2026-10-28T10:00:00.000Z'
+const rulesStderr = stderrOf('rules-peak')
+const rulesRecords = jsonl(join(rulesGlm.ws, '.llm', 'rules', 'journal.jsonl'))
+const rulesFilePath = join(rulesGlm.ws, 'docs', 'rules', 'rules.json')
+const rulesFile = existsSync(rulesFilePath) ? JSON.parse(readFileSync(rulesFilePath, 'utf8')) : undefined
+const rulesHealth = healthOf(rulesPeak)
+// The orchestration package alone has no /glm-status; its table is /hourness-status.
+const aloneHealth = tableOf(rulesPeakAlone.steps[1]?.command?.text ?? '')
+const aloneState = rulesPeakAlone.steps[0]?.peakMode?.state
 const conversationTexts = [glm, plain, compacted, shadow].flatMap(scenario => scenario.steps.flatMap(step => [step.system, ...step.messages.map(message => message.text)]))
 
 // The single-package runs: a package with no row loaded is one line whose
@@ -945,6 +985,16 @@ const checks = [
   ['goal (c): the driver starts round 2 after the round that carried the notice; each round carries one notice; no round 3', goalSteps.length === 5 && roundOf(goalSteps[3], 2) && projections(goalSteps[3]).length === 2 && goalSteps.every(step => !roundOf(step, 3)), `${goalSteps.length} goal-agent request(s); notices per request: ${goalSteps.map(step => projections(step).length).join(', ')}`],
   ['goal (c): with the evidence present the gate allows complete in round 2; the goal ends complete and disarmed after 2 rounds', goalGates.length === 2 && goalGates[1].decision === 'allow' && goalCompleted?.isError !== true && goalCompleted?.text.includes('"phase":"complete"') === true && goalFinal?.goal?.phase === 'complete' && goalFinal.goal.roundsStarted === 2 && goalFinal.goal.activation === 'disarmed' && goalRunResult?.text.includes('"phase":"complete"') === true, JSON.stringify(goalFinal ?? null).slice(0, 160)],
   ['goal (headless): the one-shot runner exits at its agent\'s first quiescent idle, so an armed goal created in the task turn gets no round', headlessCreated?.isError !== true && headlessCreated?.text.includes('"activation":"armed"') === true && headlessGoal.steps.length === 2 && headlessGoal.steps.every(step => roundMessages(step).length === 0), `exit ${headlessGoal.status}, ${headlessGoal.steps.length} step(s); ${(headlessCreated?.text ?? 'no tool result').slice(0, 80)}`],
+  ['rules: the row ships disabled: without the overlay /glm-status lists it as not loaded', glmHealth.rules?.status === '未加载' && plainHealth.rules?.status === '未加载', `${healthLine(glmHealth, 'rules')}; ${healthLine(plainHealth, 'rules')}`],
+  ['rules-peak: the row, enabled by the overlay in a scratch git workspace, boots on the GLM route, runs the three scripted steps and exits clean with nothing from it on stderr', rulesGlm.ready && rulesPeak.status === 0 && rulesPeak.steps.length === 3 && !rulesStderr.includes('dsh-glm-hourness/rules'), `exit ${rulesPeak.status}, ${rulesPeak.steps.length} step(s), git ${rulesGlm.ready}; ${rulesStderr.split('\n').find(line => line.includes('rules')) ?? 'no stderr line mentions rules'}`],
+  ['rules-peak: without a choice the project is at the factory level reduce: the command says so, and in the peak the service gives the cap of one GLM subagent and the hold until 18:00', rulesPeak.steps[0]?.command?.kind === 'success' && rulesPeak.steps[0].command.text.startsWith(`高峰模式：少做（出厂默认）。现在是高峰，到 ${clockText(PEAK_END, rulesPeak.steps[0].clock)}。`) && isDeepStrictEqual(rulesPeak.steps[0].peakMode, { state: { level: 'reduce', origin: 'default', peak: true, until: PEAK_END, glmWorkerCap: 1 }, hold: { level: 'reduce', until: PEAK_END } }), JSON.stringify(rulesPeak.steps[0]?.peakMode ?? null)],
+  ['rules-peak: /rules peak 不做 as the person: the reply names the level, the service gives the person\'s choice with no cap and the hold of the stop level', rulesPeak.steps[1]?.command?.kind === 'success' && rulesPeak.steps[1].command.text.startsWith('高峰模式改成了「不做」') && rulesPeak.steps[1].peakMode?.state?.level === 'stop' && rulesPeak.steps[1].peakMode.state.origin === 'human' && rulesPeak.steps[1].peakMode.state.peak === true && rulesPeak.steps[1].peakMode.state.glmWorkerCap === undefined && isDeepStrictEqual(rulesPeak.steps[1].peakMode.hold, { level: 'stop', until: PEAK_END }), JSON.stringify(rulesPeak.steps[1]?.peakMode ?? null)],
+  ['rules-peak: /rules peak 无影响 leaves no cap and no hold', rulesPeak.steps[2]?.command?.kind === 'success' && rulesPeak.steps[2].peakMode?.state?.level === 'inform' && rulesPeak.steps[2].peakMode.state.peak === true && rulesPeak.steps[2].peakMode.state.glmWorkerCap === undefined && rulesPeak.steps[2].peakMode.hold === null, JSON.stringify(rulesPeak.steps[2]?.peakMode ?? null)],
+  ['rules-peak: the main agent is held on no level: its Read ran under the factory level and again under 不做 in the peak', [1, 2].every(index => { const result = lastToolResult(rulesPeak.steps[index]); return result !== undefined && result.isError !== true }), [1, 2].map(index => lastToolResult(rulesPeak.steps[index])?.text?.slice(0, 40) ?? 'no result').join(' | ')],
+  ['rules-peak: the choice is in the repository file and in the project\'s journal (two person\'s writes), and nothing is written in the scenario\'s user-level directory', rulesFile?.peakMode?.level === 'inform' && isDeepStrictEqual(rulesRecords.map(record => [record.op, record.actor, record.from, record.to]), [['peak-mode-set', 'human', 'reduce', 'stop'], ['peak-mode-set', 'human', 'stop', 'inform']]) && !existsSync(join(runDir, 'rules-peak', 'dsh-home', 'glm-hourness', 'rules')), `${JSON.stringify(rulesFile ?? null)}; ${rulesRecords.length} record(s)`],
+  ['rules-peak: /glm-status lists the rules row in effect with the level in force at that step and the clock', rulesHealth.rules?.status === ACTED && rulesHealth.rules.package === 'dsh-hourness' && rulesHealth.rules.reason.includes('高峰模式 不做（你选的）；现在是高峰') && grouped(rulesHealth), healthLine(rulesHealth, 'rules') + ` (${rulesHealth.rules?.reason ?? ''})`],
+  ['rules-peak-hourness: with only the orchestration package there is no pricing service: the person\'s choice is kept, no peak is known, there is no cap and no hold, and the command says why', rulesPeakAlone.status === 0 && aloneState !== undefined && aloneState !== null && aloneState.level === 'stop' && aloneState.origin === 'human' && !('peak' in aloneState) && !('glmWorkerCap' in aloneState) && !('until' in aloneState) && rulesPeakAlone.steps[0].peakMode.hold === null && rulesPeakAlone.steps[0].command?.text.includes('读不到是不是高峰（没有计价服务（GLM 通道包未装，或它的 glm-login 行未启用））') === true, JSON.stringify(rulesPeakAlone.steps[0]?.peakMode ?? null)],
+  ['rules-peak-hourness: the row is in effect without the pricing service (a supported combination) and the main agent\'s tool call ran', aloneHealth.rules?.status === ACTED && aloneHealth.rules.reason.includes('读不出是不是高峰') && lastToolResult(rulesPeakAlone.steps[1])?.isError !== true && !stderrOf('rules-peak-hourness').includes('dsh-glm-hourness/rules'), `${healthLine(aloneHealth, 'rules')} (${aloneHealth.rules?.reason ?? ''})`],
   ['non-glm boot: the runtime reached the probe provider', plainFirst !== undefined, `exit ${plain.status}, ${plain.steps.length} step(s)`],
   ['non-glm prompt: DSH identity untouched', plainFirst?.system.includes('powered by DeepSeek Harness') === true && !plainFirst.system.includes('You are ZCode'), ''],
   ['non-glm tools: natives present, no aliases', plainFirst !== undefined && nativeFace.every(name => plainTools.has(name)) && zcodeFace.every(name => !plainTools.has(name)), zcodeFace.filter(name => plainTools.has(name)).join(', ') || ''],

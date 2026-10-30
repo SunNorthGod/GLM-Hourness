@@ -5,5 +5,5 @@
     "rootDir": "../../src",
     "outDir": "./dist"
   },
-  "include": ["../../src/data", "../../src/guard", "../../src/memory", "../../src/workflow", "../../src/report", "../../src/graph"]
+  "include": ["../../src/data", "../../src/guard", "../../src/memory", "../../src/workflow", "../../src/report", "../../src/graph", "../../src/rules"]
 }

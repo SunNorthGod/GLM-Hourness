@@ -13,6 +13,8 @@
  * command prints for the session at that point (credential line and row
  * health table); a step marked `live` records the graph panel's live view
  * of the session (the graphLive projection, src/graph/live.ts); a step
+ * marked `peakMode` records the rules row's glmHournessPeakMode state and
+ * hold for the session; a step
  * marked `modules` records the package ids of the client-modules graph; a
  * step marked `meta` records, for each project row of the Loader, the
  * display information the settings page's plugin inventory shows for it.
@@ -229,6 +231,19 @@ class ProbeAdapter {
     const command = step.command === undefined
       ? undefined
       : { name: step.command.name, ...await runCommand(this.ctx, request, step.command.name, step.command.input ?? '').catch(error => ({ kind: 'error', text: `probe: /${step.command.name} threw: ${error instanceof Error ? error.message : String(error)}` })) }
+    // A step marked `peakMode` records what the rules row's service
+    // glmHournessPeakMode says about the request's session once the step's
+    // command ran: its state and its hold, null when the service is absent.
+    let peakMode
+    if (step.peakMode === true) {
+      try {
+        const service = this.ctx.get('glmHournessPeakMode')
+        peakMode = service === undefined ? null : { state: service.stateFor(request.sessionId) ?? null, hold: service.peakHoldFor(request.sessionId) ?? null }
+      }
+      catch (error) {
+        peakMode = { error: error instanceof Error ? error.message : String(error) }
+      }
+    }
     // A step marked `modules` records the client packages the client-modules
     // service composed (when the overlay mounts it).
     let modules
@@ -274,6 +289,7 @@ class ProbeAdapter {
         ...(request.sessionId === undefined ? {} : { sessionId: request.sessionId }),
         ...(status === undefined ? {} : { status }),
         ...(command === undefined ? {} : { command }),
+        ...(peakMode === undefined ? {} : { peakMode }),
         ...(live === undefined ? {} : { live }),
         ...(modules === undefined ? {} : { modules }),
         ...(meta === undefined ? {} : { meta }),

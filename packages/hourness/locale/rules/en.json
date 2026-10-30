@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Rules board (peak mode)",
+    "description": "The peak mode of each project (no effect, do less, do none), the /rules peak command to change it, and the service that dispatch and reminders read. Off by default."
+  }
+}

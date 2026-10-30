@@ -56,6 +56,19 @@
       name: dsh-hourness/graph-panel
       inject: [commands]
       config: {}
+    - id: glm-hourness/rules
+      # Rules board, first slice (docs/ORCHESTRATION.md §16): the peak mode of
+      # each project (no effect, do less, do none; the factory default is do
+      # less), changed only by the person with /rules peak, and handed to the
+      # rows that read it through the glmHournessPeakMode service. The level
+      # is kept in the repository (docs/rules/rules.json) and in the project's
+      # .llm/rules/. Holds and delays no agent. Ships disabled until the L3
+      # probe (scenario rules-peak) and the first desktop pass
+      # (docs/DEVELOPMENT.md §3, AGENTS.md).
+      name: dsh-hourness/rules
+      disabled: true
+      inject: [commands]
+      config: {}
     - id: glm-hourness/ui
       # The package's client face (dsh.client in package.json, host half
       # ./ui/index.js, bundle ./ui/client.js): the project graph tab of the

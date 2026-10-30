@@ -32,6 +32,7 @@ GLM-Hourness（同仓两包，§2.3）
 │  ├─ data（数据目录服务，§2.4）
 │  ├─ guard、memory、workflow、hourness（用量与报告）
 │  ├─ graph、graph-panel（项目图与面板写入）
+│  ├─ rules（规则板最小一片：高峰模式的档位与服务，默认禁用）
 │  └─ 呈现：包自己的客户端面（packages/hourness/ui，行 ui）
 └─ 公共库 src/shared/：编进导入它的每个包（§8）；客户端源码都在 ui/src/
 ```
@@ -53,6 +54,7 @@ GLM-Hourness（同仓两包，§2.3）
 | `glm-hourness/hourness` | `dsh-hourness` | `dist/report/index.js` | 编排 | `/hourness` 命令：晨报与用量面板；面板经计价服务按积分列，没有计价服务时按调用与 token 列（`ORCHESTRATION.md` §11.2、§11.3）；`/hourness-status`：两个包各行的健康（§2.5） |
 | `glm-hourness/graph` | `dsh-hourness` | `dist/graph/index.js` | 编排 | 项目图工具、每步投影与图文件门禁（`ORCHESTRATION.md` §2.5、§2.7、§2.10）；2026-10-28 经 L3 探针与 L4 桌面版验收后默认启用 |
 | `glm-hourness/graph-panel` | `dsh-hourness` | `dist/graph/panel-row.js` | 呈现 | 面板写入命令 `/graph-apply`、运行控制命令 `/graph-run` 与现场投影 `graphLive`（`ORCHESTRATION.md` §2.10） |
+| `glm-hourness/rules` | `dsh-hourness` | `dist/rules/index.js` | 编排 | 规则板最小一片（`ORCHESTRATION.md` §16）：每个项目的高峰模式档位（无影响、少做、不做，默认少做）、改档位的命令 `/rules peak`，提供服务 `glmHournessPeakMode`（契约在 `src/shared/peak-mode.ts`）；不挡任何 agent、不排队。默认禁用，L3 场景 `rules-peak` 与 `rules-peak-hourness` 通过后、桌面版首轮验收前保持禁用 |
 | `glm-hourness/glm-ui` | `dsh-glm-zcode`（客户端面） | `ui/index.js` | 呈现 | 设置页与输入框下的 GLM 按钮（§2.5），客户端入口 `ui/src/glm-client.js`；默认启用：2026-10-29 split 合入后的桌面版验收第一轮通过后启用，第二轮在桌面版上核对 |
 | `glm-hourness/ui` | `dsh-hourness`（客户端面） | `ui/index.js` | 呈现 | 右侧栏「项目图」页签（需要你、agent 定的、正在做、图，`ORCHESTRATION.md` §2.10），客户端入口 `ui/src/hourness-client.tsx`；沿用单包布局时已启用的行 id |
 
@@ -62,7 +64,7 @@ GLM-Hourness（同仓两包，§2.3）
 
 行 id 不随包改名，仍是 `glm-hourness/<行>`：profile 的覆盖项按 id 匹配，改名会让覆盖项静默失配。其余持久化标识也不改：cordis 服务名、notice 来源、提示词节名、命令名与 `definitionId`（`dsh-glm-hourness/*`）、cordis 插件名（`dsh-glm-hourness/<行>`）、用户级目录 `glm-hourness`、面板页面 id 与 kind、插槽 id。这些名字里的 `glm-hourness` 读作项目名，与哪个包无关。根包名 `dsh-glm-hourness` 也保留。
 
-行名与一包一源〔2026-10-29，m8-row-titles〕：设置页「内置插件」只给包说明符形式的行名读显示信息；bundle patch 里以 `./` 写的行名被锚定成 file URL，没有显示信息，标题就是含用户目录的整条 URL（m8-ui-audit V-01）。DSH 的 client-modules 按包名组成 web 启动图，同一个包若被多个 active Loader 行解析且声明了 `dsh.client`，启动失败（`resolves from multiple active Loader sources`）〔实测，2026-10-27 事故〕；它只把路径形式的行和精确包名的行算作来源，子路径说明符的行不算任何包的来源（`FACTS.md` §3）。所以两个包的行都经包命名：11 个宿主行写子路径说明符 `<包名>/<行>`；每个包自己声明 `dsh.client`，它的客户端面（宿主半 `ui/index.js`、产物 `ui/client.js`，导出 `.` 与 `./client`）由唯一一行以精确包名插入，`dsh-glm-zcode` 的是 GLM 按钮与设置页，`dsh-hourness` 的是项目图面板。说明符以 profile 目录为基准解析，profile 列了哪个包，它的 `node_modules` 下就有这个包，所以每个包单独装上，行与界面照样解析；只装一个包时另一半界面不会出现，也不会报错。覆盖项按 id 匹配，与行名无关；设置表单以后新写的覆盖项带的 `name` 是说明符，不含本机路径。客户端源码都在 `ui/src/`，哪个文件属于哪个包写在 `scripts/packages.mjs`；`ui/` 只剩 `tsconfig.json` 与 `src/`，不再是包。两个包的客户端产物各是一份 `client.js`（`scripts/build-ui.mjs`），编排层客户端经 `src/graph/live.ts` 带进的是公共库的 `zcode-notice.ts`，不带 GLM 的文件。
+行名与一包一源〔2026-10-29，m8-row-titles〕：设置页「内置插件」只给包说明符形式的行名读显示信息；bundle patch 里以 `./` 写的行名被锚定成 file URL，没有显示信息，标题就是含用户目录的整条 URL（m8-ui-audit V-01）。DSH 的 client-modules 按包名组成 web 启动图，同一个包若被多个 active Loader 行解析且声明了 `dsh.client`，启动失败（`resolves from multiple active Loader sources`）〔实测，2026-10-27 事故〕；它只把路径形式的行和精确包名的行算作来源，子路径说明符的行不算任何包的来源（`FACTS.md` §3）。所以两个包的行都经包命名：12 个宿主行写子路径说明符 `<包名>/<行>`；每个包自己声明 `dsh.client`，它的客户端面（宿主半 `ui/index.js`、产物 `ui/client.js`，导出 `.` 与 `./client`）由唯一一行以精确包名插入，`dsh-glm-zcode` 的是 GLM 按钮与设置页，`dsh-hourness` 的是项目图面板。说明符以 profile 目录为基准解析，profile 列了哪个包，它的 `node_modules` 下就有这个包，所以每个包单独装上，行与界面照样解析；只装一个包时另一半界面不会出现，也不会报错。覆盖项按 id 匹配，与行名无关；设置表单以后新写的覆盖项带的 `name` 是说明符，不含本机路径。客户端源码都在 `ui/src/`，哪个文件属于哪个包写在 `scripts/packages.mjs`；`ui/` 只剩 `tsconfig.json` 与 `src/`，不再是包。两个包的客户端产物各是一份 `client.js`（`scripts/build-ui.mjs`），编排层客户端经 `src/graph/live.ts` 带进的是公共库的 `zcode-notice.ts`，不带 GLM 的文件。
 
 行的组合顺序：profile 里两个宿主包相邻、GLM 在前、放在原来单个 bundle 的位置，11 个宿主行的相对次序与拆分之前相同。客户端行不同：单包布局下 `glm-hourness/ui` 由桌面版 profile 末尾的 `dsh-glm-hourness-ui` 插入，排在 9 个 experimental bundle 之后；拆分后它与新的 `glm-hourness/glm-ui` 由宿主包的 patch 插入，提前到 experimental bundle 之前。设置页与 pill 的插槽带显式 `order`，不受影响；按注册次序排列的界面（右侧栏「开始」页的页面类型列表）可能变，桌面版验收时记录「项目图」入口的位置。
 
@@ -124,19 +126,19 @@ GLM-Hourness（同仓两包，§2.3）
 | 模块导出 `name`、`inject`、`Config`、`apply(ctx, config)` | 全部行 | cordis:1625–1635（读 `plugin.name`、`plugin.Config`、`plugin.inject`），cordis:1536（`plugin.apply`），cordis:956–961（`Config` 经 `~standard` 校验） | 一致 |
 | Loader 行的 `inject` 与模块的 `inject` 合并 | glm-llm、glm-login、memory、hourness | cordis-plugin-loader:631 | 一致 |
 | `ctx.on(name, listener, options)`；`prepend` 排到最外层，`global` 跳过分发过滤 | 全部行 | cordis:372–381、cordis:263；服务的过滤只认同一 isolate，cordis:1785–1787 | 一致 |
-| `ctx.get(name)`：不需要 inject，提供方 fiber 未激活时为 `undefined` | glm-llm（`attachments`、`fs`）；guard、memory、workflow、hourness（`glmHournessData`，每次写入或命令调用时读）；glm-login（各行的 `glmHournessHealth/<行>`，`/glm-status` 调用时读） | cordis:763–766 | 一致；L3 探针实测 guard 与 memory 经它拿到数据行的目录，`/glm-status` 经它读到各行的健康视图 |
-| `ctx.provide(name, value)`：服务归调用方 fiber，同名第二个提供方抛错，返回的 disposer 撤销服务，fiber 卸载时自动撤销 | data（`glmHournessData`）；全部主机行（`glmHournessHealth/<行>`，§2.5） | cordis:800–830（经 `fiber.effect` 注册）；同一用法 cmdline:29–31 | 一致；激活期的抛错被捕获，降级为 warn |
+| `ctx.get(name)`：不需要 inject，提供方 fiber 未激活时为 `undefined` | glm-llm（`attachments`、`fs`）；guard、memory、workflow、hourness（`glmHournessData`，每次写入或命令调用时读）；glm-login（各行的 `glmHournessHealth/<行>`，`/glm-status` 调用时读）；rules（`glmHournessPricing`，每次读高峰时读；`agents`，会话登记里没有的会话才读） | cordis:763–766 | 一致；L3 探针实测 guard 与 memory 经它拿到数据行的目录，`/glm-status` 经它读到各行的健康视图 |
+| `ctx.provide(name, value)`：服务归调用方 fiber，同名第二个提供方抛错，返回的 disposer 撤销服务，fiber 卸载时自动撤销 | data（`glmHournessData`）；全部主机行（`glmHournessHealth/<行>`，§2.5）；rules（`glmHournessPeakMode`，契约在 `src/shared/peak-mode.ts`，派活、GLM 包与循环板读它） | cordis:800–830（经 `fiber.effect` 注册）；同一用法 cmdline:29–31 | 一致；激活期的抛错被捕获，降级为 warn |
 | `ctx.inject(names, callback)`：所列服务都在时在子 fiber 里调 callback，其中一个离开时卸载这个 fiber；callback 返回的函数是它的 disposer | graph-panel（`sessionProjections`；`agents` 与 `subagents` 一起，停子 agent 用） | cordis:1600、cordis:1071（返回 callback 的结果）、cordis:1142–1143（返回函数即收为 disposer） | 一致；L2 假宿主 `fakeInjector`（`tests/fake-rc3.ts`）按此建模 |
 
 事件：
 
 | 接口 | 使用者 | rc.3 证据 | 结论 |
 | --- | --- | --- | --- |
-| `agent/created`（serial，`{agent, source, signal?}`） | glm-prompt、guard、graph | agent:581–585 | 一致 |
+| `agent/created`（serial，`{agent, source, signal?}`） | glm-prompt、guard、graph、rules（记下会话的工作目录，读项目状态并上报） | agent:581–585 | 一致 |
 | `system-prompt/assemble`（waterfall，`(assembly, context, next)`，按 agent 作用域分发） | glm-prompt、guard（规则声明节） | system-prompt:398；`assembly` 的 `sections{name, text, interpolate?}`、`contexts`、`tools{name, description, parameters, deferLoading?}`、`variables` 见 system-prompt:365–393；完整节在瀑布之后恢复，system-prompt:399–405；`interpolate: false` 的节原样渲染，system-prompt:109–118 | 一致 |
 | 组装变量 `variables.provider` / `variables.model` | glm-prompt、guard（`src/shared/route.ts`） | agent:167–181（`installModelSelection` 在 `next()` 之后写入） | 一致 |
 | `session/event`（只观察，`(session, event)`，在 `append` 内同步调用）；事件冻结为 `{type, seq, time, data}` | guard（影子兜底） | session:1517–1536（`append`）、session:1579–1598（`commit` 同步通知观察者）；`turn/start` 的 `data.turn` 见 agent-loop:945；`workspace/changes` 的 `data.turn` 见 workspace-changes:871 | 一致；观察者运行时摘要还没存进去（workspace-changes:871 先追加事件，873 才存摘要），所以晚一个微任务再读 |
-| `session/disposed`（只观察，`(session)`） | guard（影子兜底） | session:1925–1936 | 一致 |
+| `session/disposed`（只观察，`(session)`） | guard（影子兜底）、rules（忘掉会话登记里的工作目录） | session:1925–1936 | 一致 |
 | `agent/pre-step`（waterfall，`{agent, messages, turn, step, signal}`；默认决策 `enter` 带本步认领的消息） | glm-prompt（工具检索公告、todo 提醒、高峰提醒）、graph（每步投影） | agent-loop:901–925；`agent` 由 agent:241–245 并入；空决策守卫照抄 agent:193–197 | 一致；本节上文原写载荷无 `turn`，已更正 |
 | `tools/pre-execute`（waterfall，`(exec, next)`，默认 `allow`） | guard、workflow、graph（图文件门禁，`prepend` 注册） | tools:3320–3321；决策 `allow` / `deny{reason, info?}` / `ask` / `cancel`，tools:3322–3345；拒绝时结果为 `Error: ` 加理由，工具体不执行，tools:3337–3353 | 一致；guard 的决策类型补上 `ask`、`cancel` 透传 |
 | `exec` 字段：`callId`、`rootCallId`、`name`、`arguments`、`signal`、`agent?`、`parent?`、`schema?`、`deferContext`、`concludeTurn` | guard、workflow | tools:3229–3260 | **偏差已修**：guard 从 `exec.agentId` / `exec.sessionId` 取违规记录的 id，rc.3 没有这两个字段，记录里永远为空；改为 `exec.agent.id` 与 `exec.agent.session.id` |
@@ -153,10 +155,10 @@ GLM-Hourness（同仓两包，§2.3）
 | 工具体 `execute(args, exec)`，`exec` 就是 `createExecution` 的对象，带调用方 `agent`；返回值按输出 schema 校验；`render(exec.arguments, value)`、`presentationMeta` | 全部别名与自有工具；图工具从 `exec.agent.session.header.cwd` 解析图目录 | tools:3227–3260、tools:3406、tools:3637–3640、tools:3644、tools:3650–3653 | 一致 |
 | `llm.registerAdapter(providers, adapter)`，返回带 `replace` 的 disposer | glm-llm | llm:1842；adapter 本身由 `AdapterContractCheck` 对照官方 `LlmAdapter`（§8） | 一致 |
 | `llm.stream(options)` | glm-compact（重新派发） | llm:2393–2396 | 一致 |
-| `commands.register(definition)`：`name` 须匹配 `/^[a-z][a-z0-9_-]*$/u`，`description` 非空；调用参数 `{commandId, agent, rawInput, attachments, signal}`，本包读 `rawInput` 与 `agent`（行健康按 `agent` 取会话），`/graph-run` 另读 `commandId`（记进消息的 `graphRun`）；`recordInput` 不为 false 时 `command/run` 记 `args`；可选的 `input.hint` 是非空字符串，客户端拿它当输入占位（`/graph-run` 用）；结果 `success`（`text` 可选）/ `error`（`text` 非空） | glm-login、hourness、graph-panel | commands:266–269、commands:78、commands:148–180（`input.hint` 157–161）、commands:333–346、commands:379–385、commands:186–206 | 一致；hourness 上下文类型里多余的 `effect?: never` 删除 |
+| `commands.register(definition)`：`name` 须匹配 `/^[a-z][a-z0-9_-]*$/u`，`description` 非空；调用参数 `{commandId, agent, rawInput, attachments, signal}`，本包读 `rawInput` 与 `agent`（行健康按 `agent` 取会话），`/graph-run` 另读 `commandId`（记进消息的 `graphRun`）；`recordInput` 不为 false 时 `command/run` 记 `args`；可选的 `input.hint` 是非空字符串，客户端拿它当输入占位（`/graph-run` 用）；结果 `success`（`text` 可选）/ `error`（`text` 非空） | glm-login、hourness、graph-panel、rules（`/rules`，读 `rawInput` 与 `agent.session.header.cwd`） | commands:266–269、commands:78、commands:148–180（`input.hint` 157–161）、commands:333–346、commands:379–385、commands:186–206 | 一致；hourness 上下文类型里多余的 `effect?: never` 删除 |
 | `sessionProjections.register(definition)`、`sessionProjections.snapshot(session, keys)`：前者是调用方 fiber 的 effect；后者读一个会话所选单元的一致切面，每个值过单元的 view schema，未注册的键不在 `values` 里 | graph-panel（注册 `graphLive`；`/graph-run` 读主会话的 `graphLive` 与 `subagentCatalog`、子会话的 `graphLive`） | session-projection:68、session-projection:141 | 一致；探针 `liveOf` 用同一个 `snapshot` 读现场（L3） |
 | `subagentCatalog` 投影的值：每个直接子 agent 一条 `{id, createdAt, mode, label?}`，`mode` 为 `one-shot`、`continuable`、`external`、`unknown` | 面板现场、`/graph-run`（只停非 external 的） | subagent:703–803（条目 schema 703–730，view schema 731，`subagentCatalogEntries` 774，单元 787） | 一致 |
-| `agents.get(id)`：会话 id 对应的活 agent，没有时为 undefined | graph-panel（`/graph-run` 取子 agent 的状态与会话） | agent:596 | 一致 |
+| `agents.get(id)`：会话 id 对应的活 agent，没有时为 undefined | graph-panel（`/graph-run` 取子 agent 的状态与会话）；rules（会话登记里没有的会话，取它的工作目录） | agent:596 | 一致 |
 | `subagents.interrupt(targetSessionId, {kind: 'user', parentSessionId})`：取消一个活的直接子 agent 当前的回合，保留它的收件箱；不在驻留表里时是无操作；别的父会话的子 agent 抛 `UNAUTHORIZED` | graph-panel（暂停、重做） | subagent:3105、subagent:1258–1277 | 一致；L3 场景只停主 Agent，停子 agent 待 L4 |
 | `attachments.readImageRequest(ref, target, signal?)`、`attachments.imageHostPath(ref)` | glm-llm（读图） | attachment:290、attachment:338（抽象），attachment-local:1038、attachment-local:1053；编译期检查 `AttachmentsContractCheck` 对照官方 `AttachmentStore` | 一致 |
 | `agents.get(id).session.header` 的 `parentSession`、`origin` | glm-llm（请求归因：委派子会话标 `subagent`，沿父会话的 trace id，§4.5b） | agent:596；session:1051–1053（`parentSession` 为字符串、`origin` 只能是 `"subagent"`）；subagent:346–355（`childSessionMeta` 写 `parentSession: parentHeader.id`、`origin: "subagent"`） | 一致：用户分叉的会话只有 `parentSession`，按主会话处理 |
@@ -225,10 +227,11 @@ GLM-Hourness（同仓两包，§2.3）
 | memory | 激活；每次模型调用 | 用量记入用户级目录，记忆工具可用 | 数据目录行未启用（用量不记录）；`home` 未配置（记忆工具关闭） |
 | workflow | 激活；每次根调用 | 派遣决策记入项目目录 | 无项目目录 |
 | hourness | 激活；每次 `/hourness` | 两个目录都可读；说明另写「积分口径：已提供」或「积分口径：未提供，按 token 列」，状态不因计价服务缺席降级 | 缺项目目录或用户级目录 |
+| rules | 激活；每个会话创建时；每次 `/rules` | 命令与服务就绪；本会话所在项目的档位与来源、此刻是不是高峰；读不出是不是高峰（没有计价服务，或 `peak` 出错）时写原因，状态不降级 | `/rules` 没注册上、`glmHournessPeakMode` 没提供上、会话事件没注册上；会话没有工作目录或不在项目里；存档与变更记录对不上或有没生效的记录；仓库里的规则文件读不出或被规则板以外改过；读状态失败。`config.dir` 不是路径时未生效 |
 
 UI 包的行运行在客户端，不在表内。
 
-按包分组〔2026-10-29，split 第 4 步〕：`src/shared/health.ts` 的 `GLM_ROWS`（`glm-llm`、`glm-login`、`glm-prompt`、`glm-compact`）与 `HOURNESS_ROWS`（`data`、`guard`、`memory`、`workflow`、`hourness`、`graph`、`graph-panel`）由 `HEALTH_PACKAGES` 配上包名 `dsh-glm-zcode`、`dsh-hourness`；`HEALTH_ROWS` 是两组相接，顺序同 patch。`HEALTH_PACKAGES` 是 `scripts/packages.mjs` 在运行时的一份拷贝（`src/` 不导入脚本）；包名与行在 split 第 5 步写进目录表，从那时起由 preflight 核对两者一致。表的列是「包 | 行 | 状态 | 说明」；一个包的行全部「未加载」时，这个包只占一行：行写「全部」，说明写「包未安装，或它的行全部禁用」。
+按包分组〔2026-10-29，split 第 4 步〕：`src/shared/health.ts` 的 `GLM_ROWS`（`glm-llm`、`glm-login`、`glm-prompt`、`glm-compact`）与 `HOURNESS_ROWS`（`data`、`guard`、`memory`、`workflow`、`hourness`、`graph`、`graph-panel`、`rules`）由 `HEALTH_PACKAGES` 配上包名 `dsh-glm-zcode`、`dsh-hourness`；`HEALTH_ROWS` 是两组相接，顺序同 patch。`HEALTH_PACKAGES` 是 `scripts/packages.mjs` 在运行时的一份拷贝（`src/` 不导入脚本）；包名与行在 split 第 5 步写进目录表，从那时起由 preflight 核对两者一致。表的列是「包 | 行 | 状态 | 说明」；一个包的行全部「未加载」时，这个包只占一行：行写「全部」，说明写「包未安装，或它的行全部禁用」。
 
 `/hourness-status`〔2026-10-29，split 第 4 步〕：由 `glm-hourness/hourness` 行注册（`definitionId` 为 `dsh-glm-hourness/hourness-status`，描述「查看两个包各行的健康」），输出与 `/glm-status` 凭证行之后完全相同的表，没有凭证行，所以只装编排层包时也能看行健康。输入去掉首尾空白后必须为空，否则返回「用法：/hourness-status（无需参数）」，写法同 `/hourness`。读表不算该行在会话里起作用，`hourness` 行不为它上报。`hourness` 行的激活说明是「/hourness、/hourness-status 已注册」。
 
@@ -238,7 +241,7 @@ GLM 按钮〔2026-10-29，`m8-ui-audit` F-02、F-03、F-18、F-34〕：每次执
 
 设置页〔2026-10-29，`m8-ui-audit` F-33、V-03、F-05〕：导航与标题用插件管理器里的名字 GLM-Hourness；字号随 DSH 的设置页（标题 18px/600，条目名 14/20，说明 12/18），值在条目名下方左对齐，只有路径用等宽字体；登录与状态指向输入框下方的 GLM 按钮，命令列在后面；复制按钮用 ui-primitives 的 `Button` 与 `writeClipboard`，复制失败时写出来；模型选择按选择器里的叫法写「GLM（ZCode 原生通道）」下的 GLM-5.3 或 GLM-5.3-Flash（与 `zcode.ts` 的组名同一个字符串）。设置页没有会话，命令要在会话里执行，所以设置页不显示实时状态。设置导航的图标由设置壳按分区 id 选（`dsh-client-ui-settings-general` 的 `navIcon`），第三方分区带不了自己的图标。
 
-验证：L2 覆盖每行的上报与 `/glm-status` 的输出（`tests/health.spec.ts`；通道请求的三种结果在 `tests/glm-zcode.spec.ts`）；同一文件把真实处理函数的输出（未登录、登录不完整、已登录、后台轮询失败后的上次登录错误）交给 GLM 按钮的解析函数，断言字段、各行与剩下的行。L3 探针在 GLM、非 GLM、压缩三个场景的最后一步调用本包真实的 `/glm-status` 处理函数，检查表列出全部 11 行（`HEALTH_ROWS`；2026-10-29 的探针输出「11 row(s)」）、各行状态与原因符合路由，并确认表的内容没有进入任何模型请求。探针里 `glm-llm` 显示未加载：bundle 默认禁用该行，探针用的是脚本化 provider。
+验证：L2 覆盖每行的上报与 `/glm-status` 的输出（`tests/health.spec.ts`；通道请求的三种结果在 `tests/glm-zcode.spec.ts`）；同一文件把真实处理函数的输出（未登录、登录不完整、已登录、后台轮询失败后的上次登录错误）交给 GLM 按钮的解析函数，断言字段、各行与剩下的行。L3 探针在 GLM、非 GLM、压缩三个场景的最后一步调用本包真实的 `/glm-status` 处理函数，检查表列出全部 12 行（`HEALTH_ROWS`；2026-10-29 的探针输出「11 row(s)」，规则板行加入后为 12）、各行状态与原因符合路由，并确认表的内容没有进入任何模型请求。探针里 `glm-llm` 显示未加载：bundle 默认禁用该行，探针用的是脚本化 provider。
 
 ## 3. 路由判定〔已实现 2026-10-27〕
 
@@ -750,6 +753,7 @@ L3 探针：沙盒里把压缩阈值调低，摘要请求末条是 ZCode 提示�
 | workflow / hourness | 无记录、无报告 | 行健康 |
 | graph | 没有图工具、每步投影与图文件门禁；图目录缺失或图有校验错误时，工具照常注册并把问题报给模型，投影注入一条说明；读图抛错时本步不带投影；会话没有工作目录时门禁只判断绝对路径 | 告警、工具错误、行健康（§2.5） |
 | graph-panel | 命令注册失败时面板写不进图；现场投影注册失败时面板没有现场，写入照常 | 告警、行健康 |
+| rules | 行禁用或没提供服务：没有档位可读，派活照原来的槽位，GLM 提醒照原文；`/rules` 注册失败：档位改不了，已存的照常交出；没有计价服务或 `peak` 出错：读不出是不是高峰，三档都不起作用；存档坏了按变更记录重建，仓库里的规则文件被规则板以外改过时不生效；任何一种都不挡 agent（`ORCHESTRATION.md` §16） | 告警、行健康 |
 | 编排层包 `dsh-hourness` 缺席（只装 GLM 包） | GLM 会话照常：通道与登录、方言、工具检索、高峰提醒；没有图工具、记忆工具、guard 与用量流水，`/hourness` 不存在；`glm:memory` 节随记忆工具一起不出现（§5.2） | `/glm-status`：编排层包只占一行，行「全部」、状态「未加载」 |
 | GLM 包 `dsh-glm-zcode` 缺席（只装编排层包） | 编排层对所有路由照常：图工具与每步投影、图文件门禁、记忆与用量流水、`/hourness`（没有计价服务，面板按调用与 token 列）；guard 行照样拦截并声明规则（所有路由，`ORCHESTRATION.md` §6.2），纠偏与声明用原生工具名；没有 `/glm-status` | `/hourness-status`：GLM 包只占一行，行「全部」、状态「未加载」 |
 

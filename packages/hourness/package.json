@@ -15,6 +15,7 @@
     "./hourness": "./dist/report/index.js",
     "./graph": "./dist/graph/index.js",
     "./graph-panel": "./dist/graph/panel-row.js",
+    "./rules": "./dist/rules/index.js",
     "./data/locale/*.json": "./locale/data/*.json",
     "./guard/locale/*.json": "./locale/guard/*.json",
     "./memory/locale/*.json": "./locale/memory/*.json",
@@ -22,6 +23,7 @@
     "./hourness/locale/*.json": "./locale/hourness/*.json",
     "./graph/locale/*.json": "./locale/graph/*.json",
     "./graph-panel/locale/*.json": "./locale/graph-panel/*.json",
+    "./rules/locale/*.json": "./locale/rules/*.json",
     "./locale/*.json": "./locale/*.json",
     "./icon": "./icon.svg"
   },

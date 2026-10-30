@@ -12,7 +12,7 @@
 - 运行时：DSH Desktop `0.2.1-rc.3`，profile `desktop`；ZCode 基线 3.17.1（2026-10-30 起，此前为 3.16.3；跟进见项目图 `zcode-3171-follow`）。
 - 安装形态（split 第 5、6 步起，`DESIGN.md` §2.3）：仓库产出两个 bundle，各带自己的客户端面，profile 里是指向检出的链接，加载 `packages/*/dist` 与 `packages/*/ui/client.js`。行名都经包命名（宿主行 `<包名>/<行>`，客户端行是精确包名），设置页「内置插件」给每行显示 `locale/` 里的标题（m8-row-titles，桌面版截图核对随批次 L4）：
   - `dsh-glm-zcode@0.3.0`（`packages/glm`）：GLM 通道包，4 个宿主行（`glm-llm`、`glm-login`、`glm-prompt`、`glm-compact`）加客户端行 `glm-ui`（包自己的客户端面，GLM 按钮与设置页，默认启用：split 合入后的桌面版验收第一轮通过后启用，2026-10-29）；
-  - `dsh-hourness@0.3.0`（`packages/hourness`）：编排层包，7 个宿主行（`data`、`guard`、`memory`、`workflow`、`hourness`、`graph`、`graph-panel`）加客户端行 `ui`（包自己的客户端面，项目图面板）。
+  - `dsh-hourness@0.3.0`（`packages/hourness`）：编排层包，8 个宿主行（`data`、`guard`、`memory`、`workflow`、`hourness`、`graph`、`graph-panel`、`rules`）加客户端行 `ui`（包自己的客户端面，项目图面板）。
   - 根 `package.json`（`dsh-glm-hourness`）只是开发工作区，不再是 bundle。
   - profile 切换（split 合入时段，2026-10-29）：`glmsandbox` 20:43:14、桌面版 20:43:33（UTC+8）各自只改了 `package.json` 的 `dsh.profile.bundles` 与 `dependencies`。桌面版的 bundles 第 3 项 `dsh-glm-hourness` 原位换成 `dsh-glm-zcode`、`dsh-hourness`，删去末项 `dsh-glm-hourness-ui`，共 13 项：`@deepseek-ai/dsh-base`、`@deepseek-ai/dsh-web-app`、`dsh-glm-zcode`、`dsh-hourness` 与 9 个 experimental bundle（次序不变）；`glmsandbox` 的 bundles 为 `@deepseek-ai/dsh-base`、`@deepseek-ai/dsh-headless`、`dsh-glm-zcode`、`dsh-hourness`。两边的 dependencies 都只有 `dsh-glm-zcode`、`dsh-hourness`，`link:` 指向主检出的 `packages/glm`、`packages/hourness`；`cordis.patch.yml` 没有改，本项目五条覆盖项按行 id 匹配。备份留在各自的 profile 目录：`desktop/package.json.bak-1793277813423`、`desktop/pnpm-lock.yaml.bak-1793277813423`、`glmsandbox/package.json.bak-1793277794809`、`glmsandbox/pnpm-lock.yaml.bak-1793277794809`，`split` 关闭之前不删，之后删不删由人定。
 - 拉取改变包布局的提交之后（split 起每次都按这一条做）：先关桌面版，再 `npm run build`，再启动。运行中的桌面版在下一次 profile 写入时就按磁盘上的布局重组（`DEVELOPMENT.md` §1.1）。
@@ -26,10 +26,10 @@ tests/         39 个 spec，556 用例（2026-10-29，`a9f12e1`）；tests/fake
 ui/            客户端源码 ui/src 与它的 tsconfig.json，不是包；两个包的客户端面在 packages/*/ui/（宿主半 index.js、构建出的 client.js 不入库），哪个源码文件属于哪个包见 scripts/packages.mjs
 scripts/       packages.mjs（目录表：两个包的名字、目录、源码目录与行，DEVELOPMENT.md §10）、clean-dist.mjs（构建前删各包的 dist/）、preflight-bundle.mjs、check-verbatim.mjs、check-lint.mjs（检查器门禁）、check-secrets.mjs（密钥扫描）、deps-check.mjs（依赖报告）、smoke-zcode*.mjs、sandbox.mjs（启动参数、探针生成的 profile 与覆盖行，探针与标定共用）、profile-shape.mjs（profile 结构的只读快照与比对）、probe/（L3 探针）、calibrate/（标定运行器与边界插件）、graph/（项目图命令行、出图与冒烟）
 eslint.config.js、knip.js（入口按目录表生成）、tsconfig.knip.json、.jscpd.json  检查器配置；eslint-suppressions.json、knip-baseline.json、.jscpd-baseline.json 为告警基线（DEVELOPMENT.md §10）
-docs/          宪章、设计、编排、路线、事实账、流程、交接；docs/graph/ 为本项目的项目图（进度的事实源）；docs/reference/ 为事实参考原文
+docs/          宪章、设计、编排、路线、事实账、流程、交接；docs/graph/ 为本项目的项目图（进度的事实源）；docs/reference/ 为事实参考原文；docs/rules/ 为规则板导出的人定部分（`rules` 行启用、人选过高峰模式档位之后才出现）
 AGENTS.md      仓库规则
 package.json   开发工作区根（dsh-glm-hourness，private，不是 bundle）：脚本、开发依赖与 peerDependencies
-.llm/          不入库，项目目录：audit/（违规与决策；旧的用量副本与 dialect-init 流水已于 2026-10-29 删除）、memory.json、docs/（原始资料快照与抓取脚本）、probe-runs/、calibration-runs/；旧的 credentials.json 与 device-mid.txt 已于 2026-10-29 删除（m1-cleanup）
+.llm/          不入库，项目目录：rules/（规则板的流水与快照，`rules` 行启用后才有）、audit/（违规与决策；旧的用量副本与 dialect-init 流水已于 2026-10-29 删除）、memory.json、docs/（原始资料快照与抓取脚本）、probe-runs/、calibration-runs/；旧的 credentials.json 与 device-mid.txt 已于 2026-10-29 删除（m1-cleanup）
 ~/.dsh/glm-hourness/  仓库外，用户级目录：audit/usage.jsonl、credentials.json（2026-10-29 起为版本 2）、device-mid.txt（m1-parity 起不再使用，DESIGN.md §2.4）
 reference/     不入库：审计用参考源码（zcode-api、deepseek-harness、ZCode、zcode-plugins）、ZCode 发布包副本 zcode-3.16.3/ 与 zcode-3.17.1/（逐字门禁只读后者）与桌面版运行时包导出 dsh-desktop-0.2.1-rc.3/，约 2.5 GB
 .agents/       不入库：编排任务状态与一次性脚本（如 m1-parity 集成报告 zcode-parity/、批次 L4 记录 m1-l4/、借用审计报告 dsh-borrow-audit/report.md、缓存调查 cache-2026-10-28/）
@@ -51,9 +51,10 @@ reference/     不入库：审计用参考源码（zcode-api、deepseek-harness�
 | `hourness` | `/hourness` 可用：晨报与积分口径的面板（`ORCHESTRATION.md` §11.2、§11.3），2026-10-29 L4 输出正常；额度类数据未实现 |
 | `graph` | 默认启用（2026-10-28 经 L3、L4，`DEVELOPMENT.md` §12）：项目图工具、每步投影、图文件门禁；2026-10-29 L4 只读调用 `graph_show` 正常 |
 | `graph-panel` | 默认启用：`/graph-apply`、`/graph-run` 与现场投影 `graphLive`；2026-10-29 L4 现场区显示主 Agent 正在跑的工具，子 agent 完成后显示已停下 |
+| `rules` | 规则板最小一片（`ORCHESTRATION.md` §16，2026-10-30，自举前先做的一片，项目图 `rules`、`d-rules-peak-slice`）：每个项目的高峰模式档位（无影响、少做、不做，默认少做），人用 `/rules peak` 改；服务 `glmHournessPeakMode`（`stateFor`、`stateForProject`、`peakHoldFor`，少做档的高峰里带 `glmWorkerCap: 1`）。档位存在仓库 `docs/rules/rules.json`，流水与快照在项目 `.llm/rules/`，不写用户级目录。**默认禁用**；L2 与 L3 探针（场景 `rules-peak`、`rules-peak-hourness`）通过，桌面版没有跑过。现在不拦任何调用、没有排队与暂停；派活（M7）还没有读 `glmWorkerCap`，所以上限只是服务里的一个数。没做的部分与整块规则板的接法见 `ORCHESTRATION.md` §16.6 |
 | `glm-hourness/ui` | 功能可用：设置页、输入框「GLM 通道」按钮、右侧栏「项目图」页签（正在做、图）；2026-10-29 L4 挂载与渲染正常；视觉未被整体接受，全部 UI 的审查在项目图 `m8-ui-audit` |
 
-行健康（`DESIGN.md` §2.5）：11 个宿主行都在激活时与会话中上报生效、部分生效或未生效及原因，`/glm-status` 显示。2026-10-29 L4 的第二次 `/glm-status`：11 行全部生效，glm-llm 的原因是「上游已应答（套餐 coding-plan）」，没有设备 ID 的附注；第一次（还没运行 `/hourness`、没调用图工具）hourness 与 graph 为「已加载，本会话未触发」，其余 9 行生效。
+行健康（`DESIGN.md` §2.5）：12 个宿主行（下面 2026-10-29 L4 的数字是规则板行加入之前的 11 个）都在激活时与会话中上报生效、部分生效或未生效及原因，`/glm-status` 显示。2026-10-29 L4 的第二次 `/glm-status`：11 行全部生效，glm-llm 的原因是「上游已应答（套餐 coding-plan）」，没有设备 ID 的附注；第一次（还没运行 `/hourness`、没调用图工具）hourness 与 graph 为「已加载，本会话未触发」，其余 9 行生效。
 
 装机：2026-10-29 10:02（UTC+8）agent 重启桌面版，加载主检出 `0f9f284`（代码与 `a9f12e1` 相同）。没有新的 crash log，宿主 stdout 与 stderr 里没有本包的输出；页面控制台只有已知的三类噪声，都不来自本包：inspector 插件连 `ws://127.0.0.1:9230/ingest` 失败、`dsh-app://app/plugins/events` 的 `ERR_FAILED`、旧会话的 `changes.summary` 404。10:48 清理之后再重启一次（`m1-cleanup`）：新实例没有 crash log，控制台只有 ingest 噪声，宿主输出里没有本包；重启时被强制结束的旧实例留下一份 renderer crash log（见 §6 桌面版自验）。
 

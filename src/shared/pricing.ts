@@ -27,6 +27,25 @@ export interface UsagePricing {
   peak(atMs: number): boolean
 }
 
+const MINUTE_MS = 60_000
+
+/** How far `nextPeakChange` looks by default: a peak window recurs within a week. */
+const DEFAULT_HORIZON_MS = 8 * 24 * 60 * MINUTE_MS
+
+/**
+ * The first whole minute after `fromMs` at which `peak` differs from
+ * `peak(fromMs)`; undefined when it does not change within `horizonMs`.
+ * One function for every reader that words the end of a peak, so they name
+ * the same minute.
+ */
+export function nextPeakChange(peak: (atMs: number) => boolean, fromMs: number, horizonMs: number = DEFAULT_HORIZON_MS): number | undefined {
+  const current = peak(fromMs)
+  for (let at = (Math.floor(fromMs / MINUTE_MS) + 1) * MINUTE_MS; at <= fromMs + horizonMs; at += MINUTE_MS) {
+    if (peak(at) !== current) return at
+  }
+  return undefined
+}
+
 /** Read the service; undefined while the glm-login row is not active, or when a member the panel uses has the wrong type. */
 export function pricingService(ctx: ServiceLookup, problem?: (message: string) => void): UsagePricing | undefined {
   const value: unknown = typeof ctx.get === 'function' ? ctx.get(PRICING_SERVICE) : undefined
