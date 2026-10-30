@@ -131,6 +131,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M4 设计 0.4 第 4 轮独立评审（run m4-design-v04，wf_ee11673f557b2d56）：CHANGES_REQUESTED，HIGH 0、MEDIUM 4（F17–F20）、NIT 8（N35–N42）；第 3 轮 14 条关了 13 条，N33 部分关。挡路数四轮 8 → 2 → 6 → 4。这是人准的最后一稿，按约定停下，onepage.md 没改。四条：F17 人加的检查条目与循环板 0.5 草稿对不上，而且会跑命令的条目不都要求人看过原文（编排方已裁定，见 design-context「Check entries seam」）；F18 harness 写给人的话里嵌了节点标题和路径，过人话检查时会整句报错，申请与第三次修的提问发不出去；F19 子 agent 写自己工作树外、但仍在项目里的文件时，也被引去问人，人同意后它能绕过工作树、评审与合入检查直接写主检出，应按「出了项目才问人」判；F20 request_exception 的说明缺示范（d-agent-examples，在本稿开写之后定）；评审建议的示范用了记账软件，与练习题同一个领域，下一稿要换。编排方建议：下一稿并进 d-alignment-rounds 的对齐轮，等循环板 0.5 定稿后照它改 F17。等人回答。"
+    },
+    {
+      "at": "2026-10-30T07:42:45.737Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-10-30 回「行」：同意编排方的建议，M4 再给一稿，并进 d-alignment-rounds 的对齐轮，等循环板 0.5 定稿后照它与 design-context「Check entries seam」改 F17，同时改 F18–F20 与 N35–N42；示范换成与练习题不相干的领域。这一稿带一轮独立评审，还挡路就停下问人。"
     }
   ]
 }
