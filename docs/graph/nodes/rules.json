@@ -327,6 +327,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "规则板 0.9 接缝核对与第 1 轮独立评审（run boards-hook-rules09-loops05，wf_d2a9085875b43c88）：接缝核对比了 19 个点，两份设计按归属改好（报告 .agents/tasks/rules/seam-check-v09-v05.md）。评审 CHANGES_REQUESTED，HIGH 0、MEDIUM 4（F82–F85）、NIT 5（F86–F90），按约定停下，onepage.md 没改。F82 宪章改写越界：人定的是「人看过原文同意的板上条目即生效」，写在代码里的门禁照旧先影子（d-boards-as-hooks 正文「code rules stay as they are」，ORCHESTRATION.md §6.5，M4 的四条影子规则与 M7 的升级阶梯）；编排方已直接改 docs/CHARTER.md 0.7 的 §3.2 第 3 条、§6 与状态行把范围收回，并顺手更正 §9 用户级目录一行（ZCode 设备号用的是 ~/.zcode 状态文件里的，不在 $DSH_HOME/glm-hourness/）；草稿里请 M5 删第 7 条经验与请人整条替换 hourness 验收第 3 条的两条批注没有写进图。F83 与 M4 0.4 的接缝没接（M4 的 GUARD_RULES 目录、违规流水的 mode 取值 record/late 与 M4 的 classifyRecord 对不上、observe 与 noteDenial 没表态）。F84 新克隆、换机器或删了 .llm/ 后，规则板照文件里的哈希直接跑脚本，没人核对是谁写的，与「人看过原文才跑」不合，循环板 0.5 已有的做法（只认图上带人原话的提议）要照搬。F85 验证计划里六处还是 0.8 的说法（含不做档主 Agent 排队，与 d-main-agent-peak-exempt 相反）。规则板最小一片（d-rules-peak-slice）要等 0.9 评审通过，在自举的路上。等人定要不要再给一稿。"
+    },
+    {
+      "at": "2026-10-30T08:47:29.642Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-10-30 回「可以」：两块板再给一稿。派出 boards-rules010-loops06（wf_536c919266ffcda5）：规则板 0.9 → 0.10，改 F82–F90（设计正文照已更正的宪章 0.7：代码里的门禁照旧先影子；与 M4 0.4 的规则目录和违规流水接上，违规流水的格式归 M4；没在本机见过人同意的条目与脚本，只认图上带人原话的提议，否则列为未采用、不跑；验证计划里 0.8 的旧说法改掉；写明自举前先做的最小一片是全设计的子集）；接着与循环板对照接缝，各评一轮，过了的写放行稿。只此一稿，还挡路就停下报人。"
     }
   ]
 }
