@@ -71,6 +71,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "人 2026-10-30：「尽快自举吧」。两块板的设计已放行，自举的关键路径只剩三件实现：一、d-rules-peak-slice 的最小一片（规则板 0.10 §16.1，设计已放行，可立即开工）；二、M3（附录 0.4 第 4 轮评审 CHANGES_REQUESTED，挡路 2 条、都机械，改完一轮评审就能开工；实现约 12 步，工作树 .worktrees/m3 与 .worktrees/m3-flow 停在 eb614ab，开工前先快进）；三、M7 最薄骨架（0.4 评审在跑；实现 E0、E1a、E1b、E2–E9 加 H1，共 12 步）。编排方按人的要求把这三件并行推到底，其余模块（M4、M5、M6 0.4、指标流水、接管项目、用户图、面板）的对齐轮让位，自举之后交给 DSH 里的主 Agent。开始条件不放松（M7 0.4 §10.3）：L3 骨架场景全过、真实模型从放行跑到目标完成一次、第一批 L4、norm-merge-gate 已批准且 H1 已合入。"
+    },
+    {
+      "at": "2026-10-30T10:25:34.103Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "编排方按人的要求（d-subagent-sonnet）把今后派出的子 agent 换成 claude-sonnet-5.5。正在跑的两件自举关键路径活（rules-peak-slice-impl wf_f9666270bdddbabd，工作树 .worktrees/rules-slice，分支 rules-slice，基点 e232041，已过 setup、在写代码；m3-addendum-v05 wf_35da55069f8147be，在改 0.5）都是在 claude-opus-5 上开的，换档对它们不生效。编排方建议这两件让它跑完 Opus 这一轮（已经起步，重启要从头来；它们恰是最难的两件），从下一件起换 Sonnet 5.5，等人回话。"
     }
   ]
 }
