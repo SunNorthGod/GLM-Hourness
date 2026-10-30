@@ -417,6 +417,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "派出 rules-slice-followup（wf_49f2bfcea19a8e80，claude-sonnet-5.5）：把最小一片评审的六条不挡路发现就地改掉，工作树 .worktrees/rules-followup、分支 rules-followup，从 main（2b78fa2）起。现在改而不是留到整块规则板的理由：其中两条每多跑一天越贵（存盘摘要的形状、.git/info/exclude 的忽略项），一条与 M7 的 E3 撞车（E3 马上开工）。六条：存盘时空集合不写这个键（保住已写摘要的有效性）；src/rules/project-key.ts 挪成 src/data/project-root.ts；src/rules/lock.ts 挪成 src/data/lock.ts 供 E3 与 M5 复用；第一次写 .llm/rules/ 前把 .llm/ 追加进 .git/info/exclude；行健康在恢复原因记下之后要有出路、不再永远 degraded；「至多 1 个」的字串从常量算出来并钉测试。另改设计 §7.2、§7.5（有效快照 version 改 2）、§16.1（最小一片清单去掉 builtin.ts）。整块规则板的东西一律不加。照 AGENTS.md 四道门禁全绿，再过一轮独立评审，然后快进 main。"
+    },
+    {
+      "at": "2026-10-30T13:04:03.657Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "最小一片的跟进完成，在分支 rules-followup（从 main 053945c 起，下面的提交号是 rebase 之前的），等独立评审与快进 main。关掉最小一片评审的六条不挡路发现，编排方已裁定的四条照办没有重新决定。一、存盘形状：为空的集合不进存下来的状态、流水记录的摘要和 rules.json（src/rules/model.ts 的 withoutEmptyCollections，stateDigest、applyRecord、repoJson 都先去掉空集合；ProjectState.unresolved 改为可缺省）。整块规则板以后添 rules、tickets、scripts 等集合不用迁移，重放不用知道形状在哪条记录变过；L2 用例：带着空集合的状态摘要与最小一片的相同，最小一片写下的流水在扩过的形状上逐条核对得上。代价要知道：提交 c7e7fa4、ed80a99 那一版写下的记录把空的 unresolved 算进了摘要，在现在这版核对不过；那一版默认禁用，本机主检出和各工作树里都没有它写的 .llm/rules/，若别处有，删掉项目的 .llm/rules/ 让它照 rules.json 重新开始。二、src/rules/project-key.ts 搬到 src/data/project-root.ts，导出名不变（0fa2e1c）。三、src/rules/lock.ts 搬到 src/data/lock.ts，ORCHESTRATION.md §16 写明 M7 的 E3 与 M5 复用（81311db）。四、第一次建 .llm/rules/ 之前把 .llm/ 追加进 .git/info/exclude（src/data/project-root.ts 的 ensureIgnored，入口 ensureRuntimeDir）：任何项目一样，已有 .llm、.llm/、/.llm、/.llm/ 之一不重复，不在 git 仓库里不加，写不进就拒绝这次写入并且不建目录；只读状态不建目录也不动这个文件（6bdffac）。五、恢复之后行健康永远降级没有出路：选了小的那个改法，snapshot-modified、journal-shorter 两条消息结尾加上与 unresolved 一样的出路（删掉 .llm/rules/，规则板照 rules.json 重新开始），没选「状态一致就清掉原因」，那个要新增一种清除记录和触发条件，而整块的 /rules recovery 会取代两者（1b08241）。六、少做那句里的数由 PEAK_REDUCE_GLM_WORKERS 算出，/rules peak 少做 的回话也跟着，测试钉住文字里的数与常量相同（d308cc3）。没加的两样：openRulesBoard 的 projectDir 参数不是一行（BoardOptions、rulesPaths 和 .llm/ 的忽略条目都要跟着改，而且数据目录服务还没有 projectDirOf，没有调用方能给它值，加了就是死代码），等 M5 的 projectDirOf 合入一起加；builtin.ts 仍不在这一片。设计 §7.2、§7.4、§7.5（有效快照 version 改 2）、§16.1（清单去掉 builtin.ts）的改文写在 .agents/tasks/rules/design-amendments-followup.md，设计文件在主检出里不入库，需要编排方套用到 design.md。文档同批提交（5b43e7f 补 HANDOFF、DESIGN 与 §16.6）。门禁在每个提交的树上都跑过：npm run build 退出码 0，npm run preflight 退出码 0，npm test 退出码 0（745 个用例 0 失败；eslint 250 条压制、knip 21 条、jscpd 2 处克隆，基线都没变），npm run probe 退出码 0（128/128）。"
     }
   ]
 }

@@ -53,6 +53,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M3 附录 0.5（第 5 轮修订）第 4 步依赖 src/data/project-root.ts 的 projectRootOf（M5 设计 §5.5），谁先合入谁建；M5 不在自举关键路径上，先到的是规则板薄片、M7 或 M3 时按 §5.5 的解析规则写。形状：M5 设计写 root 加 git，指标流水设计写 root 加 kind，M3 只读 root 与是否找到 .git，形状不同时 M3 加一行适配。"
+    },
+    {
+      "at": "2026-10-30T13:04:04.410Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "src/data/project-root.ts 和 src/data/lock.ts 已经存在（规则板最小一片的跟进建成，分支 rules-followup），M5 的数据目录服务与 projectDirOf 复用，不再建这两份。projectDirOf 里「追加进 .git/info/exclude」那一步就是 project-root.ts 的 ensureIgnored(root, '.llm')（规则行现在在第一次建 .llm/rules/ 前自己调它）。规则行的 openRulesBoard 现在没有设计 §7.4 的 projectDir 参数，等 projectDirOf 合入时与忽略条目一起加。"
     }
   ]
 }

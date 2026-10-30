@@ -330,6 +330,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "派出 m7-skeleton-e0-e1a-e3（wf_65170e76b2e6fd60，claude-sonnet-5.5）：人放行之后开工，只做依赖已满足的三步，照编排方裁定的实现顺序。E0（scripts/packages.mjs 的目录表加 execute，写入范围的纯函数；共享登记文件改动尽量小，后合入的一方机械并入）、E1a（简报门禁与渲染、计划、childId 与登记表的纯部分、checkModelChoice；releaseOf 的第三种结果形状即第 5 轮定的读不出就不派，调用方在 E4 才来）、E3（git 执行器：每次调用带 --no-replace-objects、工作树、改动清单、按内容比对、尾注、门禁工作树守卫先存快照、按祖先关系改名、监视文件摘要、远端跟踪引用与 reflog 说明、ls-remote；门禁锁复用规则板跟进建好的 src/data/lock.ts，不写第二份，并照 R5-N6 把重试间隔、最长等待、按 mtime 判过期、开机容差变成选项）。E1b、E2、E4–E9、H1 一律不做：E1b 等 M3 第 3、6 步，E2 与 M3 第 6 步同改工具名模块，E4 等 M3 第 3–5 步。git 执行器跑破坏性命令、守主干前进那一刻，按 norm-review-floor 过独立评审，重点看会丢工作或改写历史的命令是不是一定先存了能恢复的快照、快照会不会离开本机、执行器能不能绕过 harness 的核对让主干前进。四道门禁全绿才合入。工作树 .worktrees/m7、分支 m7。"
+    },
+    {
+      "at": "2026-10-30T13:04:04.024Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "E3 要用的两个模块已经有了：src/data/lock.ts（写锁，acquireLock(file, environment?) 返回 WriteLock 或 'busy'，锁文件所在目录要先存在；等 2 秒，超过 10 秒或持有者不在的锁被接手；持有者在追加前调 held() 确认锁还是自己的）和 src/data/project-root.ts（projectOf、gitDirOf，以及往 .git/info/exclude 追加忽略条目的 ensureIgnored(root, 目录名)，已有同义条目不重复，不在 git 仓库里不加）。它们由规则板最小一片的跟进建成（分支 rules-followup，合入 main 之后在 main），E3 直接复用，不要再写第二个近似的文件锁（jscpd 会报）；design-context 里「E3 创建 src/data/lock.ts」按 2026-10-30 的裁定读作「E3 复用，没人先建时才由 E3 建」，现在是有人先建了。M7 的 .worktrees/ 忽略条目可以走同一个 ensureIgnored。提交：81311db 搬 lock，0fa2e1c 搬 project-root，6bdffac 加 ensureIgnored。"
     }
   ]
 }
