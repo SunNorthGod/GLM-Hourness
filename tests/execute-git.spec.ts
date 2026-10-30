@@ -820,6 +820,23 @@ withRepo('the trunk\'s remote is its configured upstream, else origin, and none 
   assert.equal((await git.trunkUpstream(repo.dir, 'bad*')).ok, false)
 })
 
+withRepo('a repository whose only remote has another name publishes the trunk there, not to a remote that does not exist (E3 review, E3-7)', async (repo, git) => {
+  repo.commit({ 'a.txt': '1' }, 'first')
+  const remote = repo.withRemote()
+  repo.git('remote', 'rename', 'origin', 'upstream')
+  repo.git('config', '--unset', 'branch.main.remote')
+  repo.git('config', '--unset', 'branch.main.merge')
+  assert.equal(repo.git('for-each-ref', '--format=%(upstream:remotename)', 'refs/heads/main'), '', 'no upstream is configured for the trunk')
+  const upstream = good(await git.trunkUpstream(repo.dir, 'main'))
+  assert.deepEqual(upstream, { remote: 'upstream', tracking: 'refs/remotes/upstream/main' })
+  const refs = good(await git.trunkRefs(repo.dir, 'main', upstream?.remote))
+  assert.notEqual(refs.remote, undefined, 'the tracking reference exists, so a push to it can be seen')
+
+  // Several remotes and nothing configured: the design's origin stays the answer.
+  repo.git('remote', 'add', 'mirror', remote)
+  assert.equal(good(await git.trunkUpstream(repo.dir, 'main'))?.remote, 'origin')
+})
+
 withRepo('the local trunk and its remote-tracking reference are read together', async (repo, git) => {
   const first = repo.commit({ 'a.txt': '1' }, 'first')
   assert.deepEqual(good(await git.trunkRefs(repo.dir, 'main', undefined)), { local: first, remote: undefined })

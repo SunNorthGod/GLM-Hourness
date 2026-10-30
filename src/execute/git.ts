@@ -667,8 +667,11 @@ export function createGit(runner: GitRunner = realGitRunner) {
 
   /**
    * The remote the trunk is published to and the reference that tracks it
-   * (§3.8.4): the remote of the trunk's configured upstream, else `origin`;
-   * `undefined` when the repository has no remote at all.
+   * (§3.8.4): the remote of the trunk's configured upstream, else the only
+   * remote when there is exactly one, else `origin`; `undefined` when the
+   * repository has no remote at all. The design says "otherwise `origin`";
+   * with `upstream` as the only remote that names a reference which never
+   * exists, so a push to the real remote would go unwatched (E3 review, E3-7).
    */
   async function trunkUpstream(cwd: string, trunk: string): Promise<Outcome<TrunkUpstream | undefined>> {
     if (!isRefPart(trunk)) return failed('not a branch name')
@@ -677,7 +680,7 @@ export function createGit(runner: GitRunner = realGitRunner) {
     const names = remotes.value.split(/\r?\n/).map(name => name.trim()).filter(name => name !== '')
     if (names.length === 0) return succeeded(undefined)
     const configured = await firstLine(cwd, ['for-each-ref', '--format=%(upstream:remotename)', `refs/heads/${trunk}`])
-    const remote = configured !== undefined && names.includes(configured) ? configured : 'origin'
+    const remote = configured !== undefined && names.includes(configured) ? configured : names.length === 1 ? names[0] : 'origin'
     return succeeded({ remote, tracking: `refs/remotes/${remote}/${trunk}` })
   }
 
