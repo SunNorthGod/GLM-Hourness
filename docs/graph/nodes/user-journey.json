@@ -41,6 +41,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "user-journey-design（wf_bfca60e8c88d64a8）写稿步在写下 journey.md 大部分内容（第 0–7 节，55 KB）之后因 TLS 错误结束。改派 user-journey-finish：不重写已写好的，查完整、刷新各设计的版本、补上编排方的接缝裁定与总览图，再评审至多两轮，通过后写一页人话。"
+    },
+    {
+      "at": "2026-10-30T05:07:48.599Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "用户图 0.2 写完（user-journey-finish；.agents/tasks/user-journey/journey.md，总览图 journey-overview.svg），未评审。没有重写 0.1 已写的格子，只做四件事：§1 按 07:32 盘上的版本刷新依据（规则板 0.8 已批准；循环板 0.4；M7 0.4 在写，§3.1.2、§3.9.5 正文还是 0.3；M4 0.3 07:18 完稿；面板 0.6 完稿；接管项目 0.2 加第 2 轮评审 F23–F30；指标流水 0.1 初稿；M3 附录与 M6 的 0.4 还不在盘上）；逐阶段与失败各格按新版本改了说法（上手页只被 human 历史挡、高峰结束由 loops.peak-end 调 execute.resume-drive、对账不再删「在别处」「不明」的任务）；新增 §6.2，把 design-context.md「Seam rulings between designs」八条逐条对到格子与缺口；缺口表 G17 按循环板 0.4 已对上，G5–G7 按 M7 0.4 文首已对上、正文待核，G9 改为规则页「暂不强制」与 M7 0.4 从严相反，G11 按指标流水 0.1 重写（问人一类仍按已取消的卡片写），新增 G22（接管的「不许碰」规则在规则板 0.8 下不生效，评审 F24）。下一步派独立评审。"
+    },
+    {
+      "at": "2026-10-30T05:07:48.825Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "用户图 journey.md 收尾到 0.2（user-journey-finish 的 finish 步）：依据的设计版本按 07:32 刷新；编排方的八条接缝裁定写进新的 §6.2；缺口表补上 G22，改了 G5–G7、G9、G11、G17；加了总览图 journey-overview.svg。接下来独立评审，至多两轮，通过后写一页人话。"
     }
   ]
 }
