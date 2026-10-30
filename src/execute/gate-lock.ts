@@ -97,11 +97,11 @@ export async function acquireGateLock(execDir: string, holder: string, setup: Ga
   const options: LockOptions = { ...GATE_OPTIONS, holder, ...setup.options }
   const waitMs = options.waitMs ?? GATE_WAIT_MS
   const startedAt = environment.now()
-  await ensureExecDir(execDir)
   const file = join(execDir, GATE_LOCK_FILE)
   const key = queueKey(file)
 
   // The queue is a chain: the tail settles when everyone ahead is done and this caller is done (released the lock, or gave up).
+  // The caller joins it before its first await, so the order is the order of the calls, not the order in which their directory checks finish.
   let leave: () => void = () => {}
   const mine = new Promise<void>((resolveMine) => { leave = resolveMine })
   const ahead = queues.get(key)
@@ -115,6 +115,7 @@ export async function acquireGateLock(execDir: string, holder: string, setup: Ga
   }
 
   try {
+    await ensureExecDir(execDir)
     if (ahead !== undefined && !await settledWithin(ahead, waitMs)) {
       finish()
       return 'busy'
