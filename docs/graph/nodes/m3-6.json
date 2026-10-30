@@ -70,6 +70,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M3 附录 0.5 §9 第 1 条：第 2 条验收的建议新字句改为「阶段前进只经主 Agent 带人的原话记下的确认与放行（目标一级与每个模块各一次），门禁同 m3-2、m3-3；任何会话（主 Agent、子 agent、普通会话）用图工具或在会话里用图的命令行向前改目标或模块的阶段、在放行之前批准放行集合里的节点，都被拒绝，子 agent 与普通会话的尝试会告诉人」。改验收要人的原话，未改。"
+    },
+    {
+      "at": "2026-10-30T19:39:11.403Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m3-implementation-resume-step4（wf_92ad3963b261025d）的 flowtest 一步：第 11 步（流程条与 /wish 入口）在分支 m3-flow 上补上了原先欠的那条 L2（用 plainWordsIn 检查所有给人看的字串，src/graph/plain-question.ts 随第 3 步进了主干之后才写得了），一个字串都没被标出来；提交改写为 49f5d3e，仍是一个带 m3-6 的提交。分支门禁：build、preflight、npm test 全绿（1004 条，0 失败）。还没合入主干，汇合在本运行后面的 fold 一步。"
     }
   ]
 }
