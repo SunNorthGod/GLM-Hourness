@@ -179,6 +179,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "循环板设计 0.4 §17 M7 第 6 条（评审 F34，照编排方「高峰里等高峰结束」的裁定）：0.3 请的 execute.resume-after-peak 撤回（它恢复以 hourness-idle-rounds 阻塞的 goal，会跳过该问人的地方，也是裁定第 3 条不让 M7 加的高峰逻辑）。改请：没进展的目标轮开始时 peakHoldFor 有值则不计空转、以 M7 自己的原因码停住（M7 0.4 盘上稿用 hourness-peak-wait，连着两轮）；执行行那一份的 actions 里交 execute.resume-drive，只恢复以这个码停住的 goal，done（可带 tell）、skipped（带原因）、failed（带原因与 tell），幂等，60 秒内给结果。循环板在高峰结束时每段高峰恰好调一次，少做与不做两档；持有者会话冷着、这段高峰里走过步时，循环板先 resolveAgent 把它恢复到本进程，所以 M7 0.4 写的「活 agent 不在本进程时返回 skipped」照旧成立。M7 0.4 的高峰结束 5 分钟后自己复查与循环板并存，先到的接上、后到的说 skipped。"
+    },
+    {
+      "at": "2026-10-30T05:38:06.270Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M3 附录 0.4 §9 第 7 条补充：DSH 委派在请求不覆盖时沿用父 agent 的模型，subagent 工具的 modelSelectionSettings 打开时可以按调用选 provider、model、reasoning_effort（限于允许清单），M7 设计派发选模型时先评估；git-snapshot.ts 的 gitInvocations、takeSnapshot、gitRisk 由 M7 加 export，被忽略文件不进快照与快照不出本机两条同样适用于 worker。"
     }
   ]
 }

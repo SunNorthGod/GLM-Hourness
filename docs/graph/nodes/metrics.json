@@ -101,6 +101,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "metrics-design-v02 的运行编号是 wf_90f11a942744818d。节点已是进行中，不用改状态。"
+    },
+    {
+      "at": "2026-10-30T05:38:06.021Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M3 附录 0.4 §3.12：M3 交给指标流水的事件 design.proposal-shown、design.answer-recorded（一次 record_human_answer 一条）、design.answer-refused、design.holder-moved、design.rule-denied、design.bypass-refused、git.snapshot、git.snapshot-refused；只记数与 id，不记对话正文。出口 src/design/metrics.ts 的 emitMetric，接口到位之前不做事。"
     }
   ]
 }
