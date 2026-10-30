@@ -101,6 +101,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "编排方：用户图 0.4 第 3 轮评审 CHANGES_REQUESTED，挡路 2 条（F14 HIGH、F15 MEDIUM），与第 2 轮持平、没降，评审循环按规则停下交人。两条都机械、都源自 0.4 截止（13:23）之后人新定的 d-main-agent-peak-exempt：§5.3、G20、§7、§1 还写着不做档高峰里主 Agent 排队，与「主 Agent 不受高峰影响」相反。不另开评审循环：这两处并进 d-alignment-rounds 的用户图对齐轮一起改（那一轮本来就要照三条新决定对齐），改完再过一轮评审。用户图不在自举关键路径上。journey-loop 到达迭代上限，编排方结束这个循环，verdict 维持 CHANGES_REQUESTED，放行稿那一步不在未通过的稿子上跑。"
+    },
+    {
+      "at": "2026-10-30T10:18:20.461Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "编排方：user-journey-finish 运行结束。收尾步照旧写了一页人话草稿（onepage.md，按十步走完整旅程，末尾列剩余发现），但 journey.md 的 verdict 维持 CHANGES_REQUESTED（第 3 轮，stopForOrchestrator）。两条挡路（F14 高峰不做档主 Agent 受不受影响、F15 §7/§1 缺 d-main-agent-peak-exempt）与两条非挡路（F16 S7 未写逐模块放行、F17 S9 删久不用条目未进设计）、未覆盖缺口 G15/G16/G18/G23 都并进 d-alignment-rounds 的用户图对齐轮，到时照三条新决定改完再过一轮评审再放行。放行稿在设计定稿后随对齐轮一起重写，现稿不拿去放行。"
     }
   ]
 }
