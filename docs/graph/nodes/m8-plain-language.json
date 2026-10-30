@@ -242,6 +242,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M3 附录 0.4 §9 第 5 条（面板设计 0.6 §11 的 M3 各条）：ANSWER_MARKS 在 src/shared/answer-marks.ts；PROPOSE_TO_HUMAN、RECORD_HUMAN_ANSWER 在 src/shared/tool-names.ts；main-agent-holder.ts 另导出 holderFileOf 与 holderHome；WishCard 完整卡片底部放 FirstVisitLine；PLAIN_LIMITS.background 只读常量（0.6 为 60）。isPersonMessage 不抽到 src/shared/person-message.ts，留在 src/design/talk.ts：面板 0.6 §4.9 已删去这个文件并交 M3 定（§11 M3 第 4 条与 §4.9 不一致，M3 按 §4.9）。"
+    },
+    {
+      "at": "2026-10-30T11:30:23.539Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M3 附录 0.5 对面板设计 0.7 §11 的接住（附录 §3.14.9 逐条对照）：「两层循环」M3 第 1–5 条全部接住——大循环放行时给这次新批准的模块写 stage design、目标进 release；模块的设计决策挂在模块下；release 多 module 参数、结果正文带 module、同意时批准模块子树并把模块 stage 由 design 改为 release；写 stage 的权限见附录 §3.14.7（引擎加两处：主 Agent 不带原话把模块退回 design，reason 不得以同意记号开头；任务挂在还没放行的模块下出生为 proposed，不再因为模块已批准就直接批准）；src/graph/modules.ts 除 DIRECTIONS_ID、directionsOf、frameworkOf、modulesOf 外多 moduleCandidatesOf、moduleOf、isReleased、isSplit，面板可以不读。第 6 条 shownProposalOf 在 src/shared/tool-names.ts，返回整个结果对象。第 6a 条第 7 步取消、m3-5 第 2 条建议删去。第 6c 条契约测试在第 6 步 L2（plain.ts 未合入时留显式跳过项，面板合入 plain.ts 的提交补第二阶段断言）。补充三处面板可以忽略：propose_to_human 的 release 带一页放行稿 page；目标在大循环放行时进 release，模块各自在 design（与 §4.11 的读法一致）；退回大循环之后整个目标下的子 agent 一律只读（比受影响的活粗，M7 可以缩小）。"
     }
   ]
 }

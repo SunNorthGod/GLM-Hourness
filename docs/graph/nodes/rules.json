@@ -381,6 +381,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M7 设计 0.4 第 4 轮评审对规则板的核对与请求（规则板 0.10 §10.7 M7 一节）：一、已核对一致：少做上限只在 dispatch_task 里读一次 stateFor 的 glmWorkerCap、没有该字段时照原槽位；没进展的目标轮读 peakHoldFor，有值不计空转、连着 2 轮以 hourness-peak-wait 停住、不问人，execute.resume-drive 只恢复这个码，M7 在 until 后 5 分钟自己再接一次；二、M7 0.4 没吸收的三条规则板请求，M7 0.5 处理：删去 heldForPeak 的读（R4-F1）、给 glmHournessExecute 加 trunkAdvanceFor(callId)（R4-F4）、周报加四周没用过的规则与反复超时的脚本规则、晨报加晚到的拦下与规则文件被改过的次数（R4-F5）；三、请规则板确认一件接缝细节：规则门以 prepend 注册、在 next() 返回放行之后读 trunkAdvanceFor，M7 的执行行排在规则行之后、也以 prepend 注册，M7 的监听器多半在外层（推断，未在 L2 验过），M7 0.5 会写成在调用 next() 之前就按 callId 记下，规则板这边请不要假设 M7 的监听器在内层；四、请规则板最小一片的实现者确认两件：src/shared/peak-mode.ts 导出的 PeakModeService、peakModeService、PEAK_MODE_SERVICE 的名字与 0.10 §16.1 一致，M7 的 E4/E8 照这些名字导入；最小一片的存储子集是否需要 src/data/lock.ts，若需要请说明与 M7 E3 谁先建；五、说明一处 M7 有意与规则板字面不同：少做上限的计数里 M7 不数 check_commit 的检查（它不跑模型），数写任务、审查和目标整体的审查，规则板 §3.6 写的是「写任务、审查、检查都算」。"
+    },
+    {
+      "at": "2026-10-30T11:30:23.873Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M3 附录 0.5 §3.13 回应规则板设计 0.10 §10.7 M3 一节：第 1 条（rules: 与 loops: 一样交回 detail，拍板前的第 5a 步对 rules: 的提议同样核对原文）做了；第 2 条（AttachDetail 上限 markdown 1–6000、mustShow 1–8 片每片至多 4000）做了；第 4 条（MAIN_AGENT_RULES 八条）不变。第 3 条（持有者记录搬进项目 .llm/）本版没做，按 d-alignment-rounds 留给 M3 对齐轮，附录 §10 留痕；规则板现在经 mainAgentOf 读持有者，不受推迟影响。"
     }
   ]
 }

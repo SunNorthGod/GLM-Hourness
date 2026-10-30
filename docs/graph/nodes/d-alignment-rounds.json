@@ -20,6 +20,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "人 2026-10-30 回「行」：M4 的下一稿（第 4 轮剩的 F17–F20）也并进这批对齐轮，排在循环板 0.5 定稿之后。"
+    },
+    {
+      "at": "2026-10-30T11:30:24.366Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M3 附录 0.5 §10 记下 M3 对齐轮要做的三件（M3 在自举关键路径上，先走了第 4 轮的四条，其余没等对齐轮的见附录 §16）：一、持有者记录搬进项目 .llm/（d-rules-in-repo），导出按项目根定位、分 none、held、unreadable 的读法，换掉附录 §2.4 里不放项目目录的理由，改第 3 步 norm-review-floor 的理由（不再写用户级目录）；二、M4 设计 0.4 的 busy、observe、noteDenial、installRuleGate 四项；三、确认需求与一页放行稿的示范（d-agent-examples）。"
     }
   ]
 }

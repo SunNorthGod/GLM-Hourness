@@ -155,6 +155,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "规则板设计 0.10 接住 M4 设计 0.4 给规则板的接缝（本节点 2026-10-30T07:12Z 的批注；规则板 §10.7 新增『M4 设计 0.4』一节，F83）：一、代码规则目录：规则板 src/rules/builtin.ts 的目录对 guard 框架的条目导入 M4 的 src/guard/catalog.ts 的 GUARD_RULES（含 guard 行六条——两条生效加四条影子规则 credential-read、suppression-reason、checker-config、scratch-only——与图行、M3、M7、循环板、指标流水的门），builtin.ts 只把它映射成 CatalogEntry、mode 取 GUARD_RULES 里那一条的，自己只另加规则板的 rules:files-only、默认规则 builtin:glm-peak-pricing 与四条附属条目；两边不各写一份（否则 M4 的四条在规则页上看不到，违 d-rules-visible 与 CHARTER §7.1 条款 6），先合入的一方建 catalog.ts、另一方导入。二、共用违规流水（请 M4 定）：规则板写进那一份违规流水的记录（rule 以 rules: 开头）用 mode enforce（拦下、进违规数）、record（只记录、人选的动作、不进违规数、单列计数）、late（晚到的拦下、进违规数、另列一行）与 effect queue（排队、deferral、不进违规数）。违规流水的格式与读它的唯一分类函数 classifyRecord 归 M4（M4 0.4 §3.2）：请 M4 的 classifyRecord 认 rules: 开头且 mode record 的为『只记录』、mode late 的为『晚到的拦下』；在 M4 加上之前规则板的晨报一节 R7 自己数这两种、不经 classifyRecord。规则板只说它需要的取值、不自己另造 mode（0.9 把 shadow 改名 record、又加 late，与 M4 0.4 的 classifyRecord 只认 enforce、shadow、effect queue 对不上，这是 0.10 补的接缝）。三、observe 与 noteDenial（M4 0.4 §3.3）：M4 的 src/guard/gate.ts 在时，规则板的工具调用门第一件事调 observe(agent, call, callId)、拦下与开单拒绝时调 noteDenial(agent, callId, {rule: rules:<id>, …})（没有 rightPath），这样 guard 规则拦截之后下一次被规则板拦下的调用也进『拦截后下一步走对』的跟进；M4 不在时不调。0.10 采纳这两项，不采纳别的。四、evaluate 删除：规则板 §2.3 不再引 src/guard/rules.ts 的 evaluate（M4 0.4 G1 删掉它），判定出错即放行对到 src/guard/gate.ts 的 installRuleGate；规则板自己不经 installRuleGate（它的判定、排队与等待单是另一套，M4 0.4 §2.3 分工表已写）。五、违规流水 audit/violations.jsonl 按 d-rules-in-repo 进会话所属项目的 .llm/（M4 0.4 §2.4 已这样做，项目根与规则板 §7.3 同一个函数）；规则板写的是 guard 写的那一份、跟着搬。"
+    },
+    {
+      "at": "2026-10-30T11:30:24.198Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M3 附录 0.5 对 M4 设计 0.4 给 M3 的接缝请求（图上 m3 2026-10-30T07:12Z 的批注）：不带题目与四行、原样再给人看一张已有待决的 propose_to_human 做了（附录 §3.4，不写图）。本会话有开着的申报时 propose_to_human 返回 busy、installMainAgentRules 经 installRuleGate 安装、git 快照门调 observe 与 noteDenial 本版没做，留给 M3 对齐轮，附录 §10 留痕；M4 的 R1 排在 M3 第 6 步之后的约定不变。"
     }
   ]
 }

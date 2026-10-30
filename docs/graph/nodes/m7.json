@@ -251,6 +251,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "派出 m7-design-v05-sonnet（wf_0b25a6b5abb8eaaa，claude-sonnet-5.5，照 d-subagent-sonnet）：照第 4 轮评审给的排期只改会挡住开工的那几条，不等对齐轮（人「尽快自举吧」）。本稿改八项：R4-F1 删掉对已不存在的 heldForPeak 的读、去掉「不做档里规则板暂停主 Agent 的 goal」这个前提（d-main-agent-peak-exempt）；R4-F2 把两层循环设计进 M7（模块带 stage、derivedStage 收模块、按模块放行、三档各有机制），照 plain-ui 0.7 §11 的契约；R4-F8 验收改成不依赖指标流水也成立；R4-F9 照编排方已拍的实现顺序写进依赖与排期；R4-F3 补派活简报的示范（d-agent-examples）；R4-F6 把规则板最小一片写进开始条件与验证；R4-F7 给八道代码里的门写模式（CHARTER 0.7 代码门禁照旧先影子）；N1 运行时文件进项目 .llm/、N2 harness 条目的 tell 加 wake。R4-F4、R4-F5、R4-F10 与其余 NIT 在本稿里写明何时改、不在本稿改。一稿一评，评审要照旧分清哪些挡开工、哪些能在实现中改；还挡路再给一稿，仍挡路就停下报人。"
+    },
+    {
+      "at": "2026-10-30T11:30:23.709Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M3 附录 0.5 §9 第 7 条与 §3.14 对 M7（面板设计 0.7 §11 第 6–9 条）：一、d-auto-drive 的接手点：没分模块的目标是目标 stage 写 release 那条历史；分了模块的目标是各模块自己的 stage 写 release 那条历史（带 module 的 record_human_answer，reason 以人在对话里同意开头、末尾可有一页稿摘要）；目标一级的 release 只表示框架、模块清单与方向清单定了，不表示任何模块开工。二、derivedStage 接受模块。三、第二档（改到本模块的设计方向）主 Agent 用 graph_edit 把模块 stage 改回 design，不带原话，引擎对这一处开了例外，子 agent 与别的会话做不了；第三档主 Agent 带人的原话把目标 stage 改回 design，目标下子 agent 一律只读，比受影响的活粗，M7 要缩小时改 design-before-release 目标一级那一行。四、模块设计对照方向清单的独立评审由 M7 的派发做并留记录，M3 不核对；给出记录形状后 M3 的 moduleReleaseGate 加一项。五、一次至多三件由 M3 的一条回复至多三件守，攒哪一批归 M7。"
     }
   ]
 }

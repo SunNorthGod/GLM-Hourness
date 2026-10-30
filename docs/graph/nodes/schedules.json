@@ -257,6 +257,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M3 附录 0.4 §3.13（回应循环板 0.3 §17 M3 各条）：第 1、2 条（attach 按前缀分派、拍板之后 acceptProposal）、第 5 条（detail 原样接在四行之后，renderProposal 加第三个参数）、第 6 条（拍板前再问 attachable、核对 mustShow 都在主 Agent 的回话里，不全在 not_shown，都在时 reason 末尾加摘要）照做，分派表的 loops: 一行由循环板合入时加；第 7 条（持有者会话归档时 /wish 提醒人）本版不做，记在附录 §10。"
+    },
+    {
+      "at": "2026-10-30T11:30:24.034Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M3 附录 0.5 §3.13、§3.4 回应循环板设计 0.6 §17 M3 一节：第 1、2 条（attach 按前缀分派、拍板之后 acceptProposal）、第 5、6 条（detail 接在四行之后、拍板前核对 mustShow）和第 9 条（上限放大；rules: 也交回 detail；脚本提议与检查提议都核对）做了；0.6 的第三条（只把已有待决再给人看一次、不写图）做了：propose_to_human 带 question、不带题目与四行，text 等于该待决现有字段的渲染，占本条回复三件里的一件，正文末行是板的提议时再问一次 attachable 取最新 detail。第 8、10 条（按项目根定位、分 none 与 unreadable 的读法，持有者记录搬进 .llm/）本版没做，留给 M3 对齐轮，附录 §10 留痕；现在 readHolder(holderFileOf(userHome, dir)) 与 mainAgentOf 已能分出 none、held、unreadable。第 7 条建议仍不做。"
     }
   ]
 }
