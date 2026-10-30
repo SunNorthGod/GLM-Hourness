@@ -490,7 +490,7 @@ SVG 只用表现属性，不含脚本、样式表、网络字体与外部引用�
 - 谁是主 Agent：会话级的状态，由人用 `/wish` 开启，模型发不出斜杠命令，所以不能自己进出这个角色。`/wish` 让当前会话当这个项目的主 Agent，后面跟一句话就从许愿开始（空闲的 agent 被唤醒，运行中的 agent 在下一步收到），`/wish off` 退出。状态从命令的 `command/run`、`command/done` 折叠成会话投影 `hournessMainAgent`，处理函数返回到 `command/done` 落盘之间由内存里的待生效状态补上，所以角色从命令之后的第一步就变（身份节、工具面各变一次）。委派出去的子会话从来不是主 Agent。
 - 一个项目一个主 Agent：项目就是图目录（同一仓库的两个工作树各有自己的 `docs/graph/`，算两个项目）。持有者记录是用户级目录里 `main-agent/<项目键的哈希前 16 位>.json`，内容是会话 id、图目录、开始时间与命令 id；写入靠独占新建（两个会话同时抢，只有一个成功）和临时文件加改名，读按文件的修改时间与大小缓存。投影为真还不够，记录要指向本会话；记录读不到时只按投影判，行健康提醒再发一次 `/wish`。已有主 Agent 时在别的会话发 `/wish`，回复说它在哪个会话、从什么时候开始、会话标题，并提示 `/wish here`（带一句话时提示「/wish here 加这句话」）；记录指向的会话已经不存在（打开着的会话里没有，存着的会话里也没有）时直接接管。`/wish here`（后面可以跟一句话）把主 Agent 从别的会话移到当前会话：记录换人，原会话如果还开着，由本行以人的身份对它执行 `/wish off`（原会话变回普通会话，收到一条说明）；原会话没开着的，下次打开时对齐，人 fork 出来的会话也一样，在它第一次空闲之后对齐，不在 `agent/created` 监听器里等。同一时刻至多一个会话是主 Agent；`mainAgentOf(userHome, dir)` 给晨报、周报与巡检找人用。
 - 身份〔定案 2026-10-28，2026-10-30 收窄〕：本项目自己的提示词文本，是系统提示词里的一节 `hourness:main-agent`，分两部分。第一部分只写角色与边界：这个项目的主 Agent、项目经理，没有写文件的工具；harness 执行的规矩只点名一句（写文件的 shell 命令被拒、放行之前子 agent 只读、图只经图工具改、转述人的话要在人发来的消息里）；git 与 shell 归主 Agent，会丢工作的 git 命令之前 harness 先存快照；设计循环的四个阶段；`/plan` 打开时 `exit_plan_mode` 只离开计划模式、不放行任何节点。第二部分写怎样跟人说话：一次至多三件事、没有选项和字母、一两个开放的问题、要人答的事用 `propose_to_human` 交四行方案、含糊的回答先复述「那我记成：……」等人点头再记，以及换词表与一道完整的好题（题材是高峰时段派出去的活怎么排，已经定了的事，只示范版式）。访谈怎么问、图上怎么写由阶段提醒与工具结果随时下发，不放在身份节里。长度上限由测试钉住：第一部分 1,500 字符，第二部分 1,400，整节 2,700。不用 DSH 的 agent preset 或 persona 行承载。
-- 工具面〔定案 2026-10-30，`question-26` C，取代 2026-10-28 的「主 Agent 的工具面不变」〕：设计行的第二个组装监听器（不带 `prepend`，所以在方言与工具检索的 `prepend` 监听器里层，它们 `next()` 之后看到的已是去掉之后的工具）按原生名去掉 `write`、`edit`（`Write`、`Edit` 经方言服务或静态别名表换算）与 `ask_user_question`（问人改成聊天，主 Agent 不出问答卡），并把装着的 `str_replace_editor` 的 `command` 收窄成只剩 `view`。这只是不让模型看见用不了的工具，不是边界：rc.3 按名执行，按名直接调用 `Write`、`write` 或 `ask_user_question` 仍会执行，拦截是 guard 的规则 `main-agent-no-write` 与 `main-agent-ask`（§6.4，M3 第 4 步，还没有）。
+- 工具面〔定案 2026-10-30，`question-26` C，取代 2026-10-28 的「主 Agent 的工具面不变」〕：设计行的第二个组装监听器（不带 `prepend`，所以在方言与工具检索的 `prepend` 监听器里层，它们 `next()` 之后看到的已是去掉之后的工具）按原生名去掉 `write`、`edit`（`Write`、`Edit` 经方言服务或静态别名表换算）与 `ask_user_question`（问人改成聊天，主 Agent 不出问答卡），并把装着的 `str_replace_editor` 的 `command` 收窄成只剩 `view`。这只是不让模型看见用不了的工具，不是边界：rc.3 按名执行，按名直接调用 `Write`、`write` 或 `ask_user_question` 仍会执行，拦截是 guard 的规则 `main-agent-no-write` 与 `main-agent-ask`（§6.7，M3 第 4 步）。
 - 不写代码〔定案；机制于 2026-10-28 改定，工具面一半于 2026-10-30 提前〕：写文件的 shell 命令由 guard 在主 Agent 的 `tools/pre-execute` 拦下，正路是派发任务；文件工具不在主 Agent 的工具面里。
 - 说话方式〔定案 2026-10-29 `d-chat-not-cards`，取代每个问题带选项与推荐的卡片〕：聊天，不给选项和字母，少术语，给人的话先过换词表（`src/graph/plain-question.ts`）。
 - 人设分层：用户的人设管「怎么说」，主 Agent 的身份文本管「做什么」，两层叠加互不干扰。身份节与 `glm-prompt` 的方言改写的叠加已在 L3 实测（场景 `glm-design-wish-idle`、`glm-design-main` 等，`ROADMAP.md` 借用组件核实清单第 16 项）：GLM 路由上这一节在方言节之后、`glm:guard` 之前，非 GLM 路由上在 `glm:guard` 之前。
@@ -783,7 +783,7 @@ guard 跟着编排层包 `dsh-hourness` 走：包启用时，所有路由、所�
 | 工作区圈禁：写操作只在工作区内 | 已实现 |
 | 文件修改只用专用工具：shell 不写文件 | 已实现；2026-10-28 改为识别引号（`=>`、`>>>`、`->` 误判已发生 3 次）：只看命令位置与引号外的真实重定向，git 子命令放行；执行后以工作区变更记录兜底，只记录不拦截（§6.5） |
 | 设计阶段不写代码 | 规划；计划模式不拦工具，由 guard 实现（§4.5） |
-| 主 Agent 不写文件 | 一半已实现（M3 第 3 步，设计行默认禁用）：主 Agent 的工具面里没有写文件的工具，也没有 `ask_user_question`（§3.1）；按名直接调用与 shell 写入的拦截（规则 `main-agent-no-write`、`main-agent-ask`）是第 4 步，还没有，所以现在这还不是边界 |
+| 主 Agent 不写文件 | 已实现（M3 第 3、4 步，设计行默认禁用）：主 Agent 的工具面里没有写文件的工具，也没有 `ask_user_question`（§3.1）；按名直接调用与 shell 写入由规则 `main-agent-no-write`、`main-agent-ask` 拒绝（§6.7），拒绝进违规流水；git 不算写文件，会丢工作的 git 命令先存快照（规则 `git-snapshot`，§6.7） |
 | 图文件只经图工具修改 | 已实现（规则 `graph-files-only`，由行 `glm-hourness/graph` 注册，拒绝记入违规流水，L3、L4 后默认启用；§2.7） |
 | 临时脚本只在草稿区 | 规划 |
 | 压制注释必须写理由并挂节点 | 规划 |
@@ -819,6 +819,24 @@ guard 跟着编排层包 `dsh-hourness` 走：包启用时，所有路由、所�
 ### 6.6 惯犯升级
 
 同一会话同一规矩违规达到 N 次，发强提醒（四段式加违规史回显）。反复出现的模式进入规范阶梯（§9）。
+
+### 6.7 主 Agent 的执行边界与 git 快照〔M3 第 4 步，设计行默认禁用〕
+
+主 Agent 在 `tools/pre-execute` 上被三条规矩管着，由设计行装一个监听器（`installMainAgentRules`，`src/guard/main-agent.ts`，`prepend`，不导入 `src/design/`，设计行把「是不是主 Agent」「违规流水」「行健康」「给主 Agent 发 notice」传进来）。监听器先看调用本身（工具名、shell 文本里有没有写文件、有没有 `git`），不相干的调用不查会话角色；相干的才问 `isMainAgent`。读角色抛错时放行并报行健康（fail-open）；git 快照是唯一 fail-closed 的一条。带 `parent` 的传输层子调用、没有会话的调用、不是主 Agent 的会话一律不判。三条规矩的 id、标题与步号是常量表 `MAIN_AGENT_RULES`（`src/guard/main-agent-rules.ts`，只有常量，规则板的代码规则目录读它；规则板 R1 还没在 main，目录映射随 R1 加）。
+
+- `main-agent-no-write`：写文件的工具（`write`、`edit`、`str_replace_editor` 除 `view`，按原生名判，所以 `Write`、`Edit` 也算）和写文件的 shell 命令（`shellWriteOf`，与 `file-tools-only` 同一个引号感知的判断）被拒；git 子命令不算写文件。`DeferredToolCall` 绕不过去：`Write` 在 GLM 上是常驻工具，`DeferredToolCall` 只收延迟工具。
+- `main-agent-ask`：按名调用 `ask_user_question`（`HIDDEN_FROM_MAIN_AGENT`）被拒，纠偏四段：事实、越界（聊天里问，不出选项卡）、正路（回复里问，或用 `propose_to_human`）、例外 `none`。
+- `git-snapshot`：主 Agent 可以用任意 git 命令；会丢掉未提交改动或改写历史的命令，执行前由 harness 存一份可恢复的快照（`src/guard/git-snapshot.ts`）。
+
+识别：`simpleCommands`（`src/guard/shell.ts`）取出每个简单命令的词（跳过变量赋值与 `sudo`、`env` 一类包装，进入 `bash -c`、`pwsh -Command`、`find -exec` 与子表达式；引号里的文字不是命令）；`gitInvocations` 跳过 git 的全局选项、跟随字面的 `cd`、`-C`；`gitRisk` 给出 `discard`（工作区或暂存区的改动会丢）、`history`（只靠被移动或删除的引用可达的提交会丢）、`both`，表在 `git-snapshot.ts`。子命令不在已知表里时读一次 `git config --get alias.<名>`：`!` 开头的别名当 `both`，普通别名按展开后的文字再判一层。参数里有变量或命令替换时，按该子命令能做的最坏情形判（`git log --format=%H` 这样的无损命令不因 `%` 存快照）；子命令本身看不出时当 `both`；`cd` 的目标不是字面路径、又有会丢工作的 git 调用时拒绝。
+
+快照全部用 `execFile('git', …)`，不经 shell，环境带 `LC_ALL=C`，列表一律用 `-z`，整个快照 30 秒期限：已跟踪文件的改动用 `git stash create`（合并冲突没解决时改用系统临时目录里的临时暂存区建一个工作区提交）；会被写出类命令（`reset --hard`、`checkout -f`、`checkout <树> -- <路径>`、`switch --discard-changes`、`restore --source`、`read-tree -u`）盖掉的、会被 `git clean` 删掉的、被 `worktree remove` 带走的未跟踪文件存进一棵树（上限 200 MB 与 20,000 个文件，超过就拒绝）；被忽略的文件（`.env`、`node_modules/`）不存，挡路的被忽略文件让命令被拒，`worktree remove` 只记它们的路径、项数与字节数；被移动或删除的引用的原值挂成一个提交的父提交，引用是 `refs/hourness/snapshots/<id>`；改写历史会让提交只靠 reflog 可达时，另打轻量标签 `hourness-snapshot/<id>`，指向一个树为空、不含改动与文件的提交；`push` 强推或删除前把远端当前的状态取到 `refs/hourness/snapshots/<id>/remote/<分支>`。git 不能让同一个名字既是引用又是引用目录，所以有远端副本的快照，快照提交的引用是 `refs/hourness/snapshots/<id>/commit`（附录写的是 `<id>`，与 `<id>/remote/` 同时存在时无法建）。流水追加到 `<项目根>/.llm/snapshots.jsonl`：项目根取 `projectOf(会话的工作目录)`，会话不在任何仓库里时取被快照的仓库的（行里 `rootFrom` 为 `repo`），两处都没有 `.git` 时不建 `.llm/`；第一次写前 `ensureIgnored`（`src/data/project-root.ts`）并补 `.llm/.gitignore`（`*`）。写流水失败时命令照常执行，行健康 degraded「快照 <id> 已存，记录没写上：<原因>」，找回靠 `git for-each-ref refs/hourness/snapshots`。快照不自动清理。快照之后 `inject` 一条 notice（来源 `glm-git-snapshot`）给主 Agent，写明恢复命令。
+
+不存快照就拒绝（规则 `git-snapshot`，纠偏四段）：快照的任何一步失败或超时、要存的文件超限、远端取不回来、`cd` 的目标认不出、挡路的有被忽略的文件、`clean -n` 的结果与 harness 自己算的列表对不上；找不到 git 是唯一放行的失败（行健康 degraded「找不到 git，快照跳过」）。快照可能存着没提交的改动，所以另有对外检查先于快照：`push --mirror`、有快照标签时的 `push --tags`、refspec 的源是快照引用、快照标签、快照里的提交或通配能匹配到它们、`remote.<名>.mirror` 为真或 `remote.<名>.push` 带这样的 refspec，都被拒（`refs/hourness/snapshots/<id>/remote/*` 是远端原来的提交，恢复远端时要推它，放行）；`git clean` 带 `-x`、`-X`（删被忽略的文件）或 `-f` 两次（删嵌套仓库）被拒；`push` 的远端或 refspec 藏在变量后面时看不出推什么，也拒绝。
+
+没做、仍是残余：脚本里调用 git、git 钩子、`git` 以外的程序改仓库认不出；合并冲突的三方版本不存；被忽略的文件不存，`worktree remove` 之后不恢复；子 agent 的 git 属于 M7；主干前进时的核对与证据属于 M7（`m7-5`）。
+
+验证：L2 `tests/design-guard.spec.ts`（拒绝、放行、角色、待生效状态、违规流水、fail-open、快照的 notice）、`tests/git-snapshot.spec.ts`、`tests/git-snapshot-files.spec.ts`、`tests/git-snapshot-history.spec.ts`（真实 git 的临时仓库：识别、各类命令的快照与恢复、拒绝、对外检查、流水位置、临时暂存区）、`tests/contracts.spec.ts`（规则表）、`tests/guard-shell.spec.ts`（`simpleCommands`）、`tests/toolsearch.spec.ts`（`DeferredToolCall` 到不了 `Write`）；L3 探针 `glm-design-main`、`non-glm-design-main` 的后半段（再次 `/wish` 之后按名调用 `Write`、shell 写入、`ask_user_question` 被拒，`git status` 不存快照，`git checkout -- README.md` 存快照并在下一步带 notice）。
 
 ## 7. 环境与检查器
 

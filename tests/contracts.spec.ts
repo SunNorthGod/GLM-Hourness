@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { chargedCredits, creditPricing, creditRate } from '../src/glm-llm/credits.ts'
@@ -10,7 +10,10 @@ import { apply as glmPromptApply, dialectServiceFor } from '../src/glm-prompt/in
 import { READ_IMAGE_NATIVE, READ_NAME, READ_NATIVE } from '../src/glm-prompt/read-alias.ts'
 import { TODO_NATIVE, TODO_WRITE_NAME } from '../src/glm-prompt/todo-reminder.ts'
 import { graphTools } from '../src/graph/tools.ts'
+import { apply as designApply } from '../src/design/index.ts'
+import { plainWordsIn } from '../src/graph/plain-question.ts'
 import { apply as guardApply } from '../src/guard/index.ts'
+import { MAIN_AGENT_RULES } from '../src/guard/main-agent-rules.ts'
 import { memoryTools, storeIo } from '../src/memory/tools.ts'
 import { DIALECT_SERVICE, dialectNames, dialectService, toNativeTool, ZCODE_ALIAS_NATIVES, type DialectService } from '../src/shared/dialect.ts'
 import type { AgentLike, CommandDefinitionLike, ToolFinalResult } from '../src/shared/dsh-min.ts'
@@ -20,6 +23,7 @@ import { GRAPH_TOOL_NAMES, MEMORY_TOOL_NAMES, ORCHESTRATION_RESIDENT_TOOLS } fro
 import { RESIDENT_TOOLS } from '../src/toolsearch/exposure.ts'
 import { apply as hournessApply } from '../src/report/index.ts'
 import { PACKAGES } from '../scripts/packages.mjs'
+import { designHost } from './design-host.ts'
 import { fakeRuntime, serviceStore, type FakeRuntime } from './fake-rc3.ts'
 
 // Contracts between the GLM channel package and the orchestration package
@@ -295,4 +299,43 @@ test('pricing through the report row: a malformed service lists tokens; a throwi
     rmSync(malformed.home, { recursive: true, force: true })
     rmSync(throwingStore.home, { recursive: true, force: true })
   }
+})
+
+// The interceptions M3 puts on the main agent are a table the rules board reads (decisions d-rules-visible, d-defaults-readonly; addendum 3.11).
+// Each step adds its rows and its triggers here; the step of a row is the last step merged that may hold it.
+const MERGED_STEP = 4
+const TRIGGERS: Readonly<Record<string, (host: ReturnType<typeof designHost>, agent: AgentLike) => Promise<void>>> = {
+  'main-agent-no-write': async (host, agent) => { await host.preExecute(agent, 'write', { file_path: 'a.txt', content: 'x' }) },
+  'main-agent-ask': async (host, agent) => { await host.preExecute(agent, 'ask_user_question', {}) },
+  'git-snapshot': async (host, agent) => { await host.preExecute(agent, 'pwsh', { command: 'git clean -fdx' }) },
+}
+
+test('main agent rules: ids are unique, titles are one short plain line, every rule steps no later than the merged step', () => {
+  const ids = MAIN_AGENT_RULES.map(rule => rule.id)
+  assert.equal(new Set(ids).size, ids.length)
+  for (const rule of MAIN_AGENT_RULES) {
+    assert.equal(rule.title, rule.title.trim())
+    assert.notEqual(rule.title, '')
+    assert.equal(rule.title.includes('\n'), false, rule.id)
+    assert.ok([...rule.title].length <= 40, rule.id)
+    assert.deepEqual(plainWordsIn(rule.title), [], rule.id)
+    assert.ok(rule.step <= MERGED_STEP, `${rule.id} is a step ${rule.step} rule`)
+  }
+  assert.deepEqual(ids, Object.keys(TRIGGERS), 'the table lists exactly the rules that have a trigger here')
+})
+
+test('main agent rules: every rule of the table denies once on the fake host, and every denial names a rule of the table', async () => {
+  const host = designHost()
+  designApply(host.ctx)
+  const agent = host.addAgent('s1')
+  await host.execute(agent, '/wish')
+  for (const rule of MAIN_AGENT_RULES) {
+    const trigger = TRIGGERS[rule.id]
+    assert.ok(trigger !== undefined, rule.id)
+    await trigger(host, agent)
+  }
+  const file = join(host.projectHome, 'audit', 'violations.jsonl')
+  for (let attempt = 0; attempt < 200 && (!existsSync(file) || readFileSync(file, 'utf8').split('\n').filter(line => line !== '').length < MAIN_AGENT_RULES.length); attempt++) await new Promise(resolve => setTimeout(resolve, 10))
+  const rules = readFileSync(file, 'utf8').split('\n').filter(line => line !== '').map(line => (JSON.parse(line) as { rule: string }).rule)
+  assert.deepEqual([...new Set(rules)].sort(), MAIN_AGENT_RULES.map(rule => rule.id).sort())
 })

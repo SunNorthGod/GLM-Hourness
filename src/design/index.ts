@@ -24,13 +24,17 @@
 import { statSync } from 'node:fs'
 import { holderFile, holderHome, projectKey, readHolder } from '../graph/main-agent-holder.ts'
 import { graphService } from '../graph/service.ts'
+import { installMainAgentRules } from '../guard/main-agent.ts'
 import { insertHournessSection } from '../guard/sections.ts'
+import { rowJournal } from '../memory/audit.ts'
+import { dataHomes } from '../shared/data-home.ts'
 import { dialectService, dialectWarner, toNativeTool } from '../shared/dialect.ts'
-import type { AgentLike, CommandDefinitionLike, CommandsExecutor, DesignAgentLike, DesignAgentsService, DesignInvocationLike, InjectHost, ProvideHost, ServiceLookup, SessionLike, SessionPersistenceLike, SessionProjectionsService } from '../shared/dsh-min.ts'
+import { createUserNotice, type AgentLike, type CommandDefinitionLike, type CommandsExecutor, type DesignAgentLike, type DesignAgentsService, type DesignInvocationLike, type InjectHost, type PreExecuteListener, type ProvideHost, type ServiceLookup, type SessionLike, type SessionPersistenceLike, type SessionProjectionsService } from '../shared/dsh-min.ts'
 import { provideRowHealth, sessionIdOf, type HealthState } from '../shared/health.ts'
 import { MAIN_AGENT_IDENTITY, MAIN_AGENT_SECTION } from './identity.ts'
 import { mainAgentProjection, modeOf, roleOf, wishHandler, type RoleDeps, type RoleReading, type WishDeps } from './mode.ts'
 import { mainAgentFace } from './role-face.ts'
+import { HIDDEN_FROM_MAIN_AGENT } from './talk.ts'
 
 /** cordis plugin identity: needs the commands service. */
 export const name = 'dsh-glm-hourness/design'
@@ -39,9 +43,10 @@ export const inject = ['commands']
 /** The command name; its definition id is `dsh-glm-hourness/wish`. */
 export const WISH_COMMAND = 'wish'
 
-/** The row's context: the commands service (register and run), the agent lifecycle event, optional lookup, injection and provision. */
+/** The row's context: the commands service (register and run), the agent lifecycle event, the tool gate, optional lookup, injection and provision. */
 export interface DesignContext extends ServiceLookup, Partial<InjectHost>, Partial<ProvideHost> {
   readonly commands: CommandsExecutor & { register(definition: CommandDefinitionLike<DesignInvocationLike>): () => void }
+  on(event: 'tools/pre-execute', listener: PreExecuteListener, options?: { prepend?: boolean }): () => void
   on(event: 'agent/created', listener: (payload: { agent: AgentLike }) => Promise<void> | void): () => void
 }
 
@@ -84,10 +89,12 @@ export function apply(ctx: DesignContext): () => void {
   let projections: SessionProjectionsService | undefined
   let waiting: string | undefined = WAITING_STATE
   let registration: string | undefined
+  // Why the execution-boundary rules of the main agent are not installed (docs/ORCHESTRATION.md §6.1).
+  let boundary: string | undefined
 
   const status = (): [HealthState, string] => [
-    registration !== undefined ? 'inactive' : waiting === undefined ? 'active' : 'degraded',
-    [registration ?? `命令 /${WISH_COMMAND} 已注册`, waiting ?? '会话状态服务已就绪'].join('；'),
+    registration !== undefined ? 'inactive' : waiting === undefined && boundary === undefined ? 'active' : 'degraded',
+    [registration ?? `命令 /${WISH_COMMAND} 已注册`, waiting ?? '会话状态服务已就绪', ...boundary === undefined ? [] : [boundary]].join('；'),
   ]
   const health = provideRowHealth(ctx, 'design', ...status())
   disposers.push(() => { health.dispose() })
@@ -310,6 +317,31 @@ export function apply(ctx: DesignContext): () => void {
     }
   }
   else waiting = '宿主没有 inject，会话状态服务拿不到，/wish 用不了'
+
+  // The main agent has no tool that writes files, but the runtime executes by name: the rules deny a write, a question card and a git command that cannot be saved first (src/guard/main-agent.ts).
+  try {
+    const journal = rowJournal(name, () => dataHomes(ctx, undefined))
+    disposers.push(installMainAgentRules(ctx, {
+      isMainAgent: (agent) => {
+        const reading = roleOf(role, agent)
+        if (reading.problems.length > 0 && agent.session !== undefined) health.report(agent.session.id, 'degraded', reading.problems.join('；'))
+        return reading.main
+      },
+      hiddenTools: HIDDEN_FROM_MAIN_AGENT,
+      journal: (record) => { void journal.violation(record) },
+      report: (agent, state, reason) => { health.report(sessionIdOf(agent), state, reason) },
+      tell: (agent, notice) => {
+        const live = agents()?.get(agent.id)
+        if (live === undefined) return false
+        live.inject(createUserNotice(notice.kind, notice.summary, notice.text))
+        return true
+      },
+    }))
+  }
+  catch (error) {
+    console.warn(`${name}: the main agent's execution rules are not installed, so a write by name is not stopped: ${message(error)}`)
+    boundary = `主 Agent 的执行边界规则没装上：${message(error)}`
+  }
   health.reactivate(...status())
 
   try {

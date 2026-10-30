@@ -773,17 +773,23 @@ const repoGraphAfter = (await loadGraph(repoGraph)).revision
 // off themselves, mid-step, through the commands service (the probe
 // provider's `line` step), so command/run and command/done are in the log.
 const DESIGN_WISH = '记一下每天花了多少钱'
-const designScenario = (name, model, script, { wish, on, others } = {}) => {
+const designScenario = (name, model, script, { wish, on, others, git } = {}) => {
   const dir = join(runDir, name)
   const ws = join(dir, 'ws')
   mkdirSync(join(ws, 'docs', 'graph'), { recursive: true })
   mkdirSync(join(ws, '.llm'), { recursive: true })
   writeFileSync(join(ws, 'README.md'), 'probe workspace\n')
+  // A scenario that runs git commands has a repository with README.md committed and then edited by a line, the work a checkout would lose.
+  if (git === true) {
+    const inWs = (...args) => spawnSync('git', ['-c', 'user.name=probe', '-c', 'user.email=probe@example.invalid', '-c', 'commit.gpgsign=false', ...args], { cwd: ws, encoding: 'utf8' })
+    for (const args of [['init', '-q', '-b', 'main'], ['add', 'README.md'], ['commit', '-q', '-m', 'probe workspace']]) if (inWs(...args).status !== 0) throw new Error(`probe: git ${args[0]} failed in ${ws}`)
+    writeFileSync(join(ws, 'README.md'), 'probe workspace\nedited by the person\n')
+  }
   const record = join(dir, 'human.jsonl')
   const run = runScenario(name, model, script(ws), 'Reply done.', designRows({ record: slash(record), ...wish === undefined ? {} : { wish } }), ws, others ?? [], on)
   return { ...run, name, dir, ws, human: jsonl(record) }
 }
-const designMainScript = ({ read, write, status }) => (ws) => {
+const designMainScript = ({ read, write, shell, ask, status }) => (ws) => {
   const readme = { name: read, arguments: { file_path: join(ws, 'README.md') } }
   return [
     { tool: { name: write, arguments: { file_path: join(ws, '.llm', 'before.txt'), content: 'before\n' } } },
@@ -792,14 +798,21 @@ const designMainScript = ({ read, write, status }) => (ws) => {
     { tool: readme, line: `/wish ${DESIGN_WISH}` },
     { tool: readme, line: '/wish off' },
     { tool: { name: write, arguments: { file_path: join(ws, '.llm', 'after.txt'), content: 'after\n' } }, ...status },
-    { text: 'done' },
+    // The main agent again: the tools it has lost and the question card are refused by name (the runtime executes by name), a shell write too; git runs, and the checkout that would lose the person's edit leaves a snapshot and a notice.
+    { tool: readme, line: '/wish' },
+    { tool: { name: write, arguments: { file_path: join(ws, '.llm', 'denied.txt'), content: 'no\n' } } },
+    { tool: { name: shell, arguments: { command: `Set-Content -Path '${join(ws, '.llm', 'denied2.txt')}' -Value no`, description: 'probe: write a file through the shell' } } },
+    { tool: { name: shell, arguments: { command: 'git status', description: 'probe: git status' } } },
+    { tool: { name: shell, arguments: { command: 'git checkout -- README.md', description: 'probe: git checkout' } } },
+    { tool: { name: ask, arguments: { questions: [] } } },
+    { text: 'done', line: '/wish off' },
   ]
 }
 const designIdle = (status) => () => [{ text: 'ok' }, { text: 'done', ...status }]
 const designGlmIdle = designScenario('glm-design-wish-idle', 'glm-5.3', designIdle({ status: true }), { wish: DESIGN_WISH })
 const designPlainIdle = designScenario('non-glm-design-wish-idle', 'deepseek-probe', designIdle({ command: { name: 'hourness-status' } }), { wish: DESIGN_WISH, on: profiles['probe-hourness'] })
-const designGlmMain = designScenario('glm-design-main', 'glm-5.3', designMainScript({ read: 'Read', write: 'Write', status: { status: true } }))
-const designPlainMain = designScenario('non-glm-design-main', 'deepseek-probe', designMainScript({ read: 'read', write: 'write', status: { command: { name: 'hourness-status' } } }), { on: profiles['probe-hourness'] })
+const designGlmMain = designScenario('glm-design-main', 'glm-5.3', designMainScript({ read: 'Read', write: 'Write', shell: 'Bash', ask: 'ask_user_question', status: { status: true } }), { git: true })
+const designPlainMain = designScenario('non-glm-design-main', 'deepseek-probe', designMainScript({ read: 'read', write: 'write', shell: 'pwsh', ask: 'ask_user_question', status: { command: { name: 'hourness-status' } } }), { on: profiles['probe-hourness'], git: true })
 // One main agent per project: the main agent session (the simulated human's
 // /wish) types a second root session of the same workspace into existence
 // and has it type /wish, which only says where the main agent is, then
@@ -933,6 +946,16 @@ const leaked = GENERATED_PROFILES.filter(name => existsSync(join(realProfiles, n
  * glm-design-one-main): what the real runtime did with the identity section,
  * the tool face, the notices and the holder record.
  */
+/** The refs under refs/hourness/snapshots/ of a scenario's workspace, and the README.md the first of them holds in its stash. */
+function snapshotsOf(scenario) {
+  const listed = spawnSync('git', ['for-each-ref', '--format=%(refname)', 'refs/hourness/snapshots'], { cwd: scenario.ws, encoding: 'utf8' })
+  return listed.stdout.split('\n').filter(line => line !== '')
+}
+const lfOf = text => (text ?? '').replaceAll('\r\n', '\n')
+function snapshotEditOf(scenario) {
+  const line = jsonl(join(scenario.ws, '.llm', 'snapshots.jsonl')).at(0)
+  return line?.stash === undefined ? undefined : spawnSync('git', ['show', `${line.stash}:README.md`], { cwd: scenario.ws, encoding: 'utf8' }).stdout
+}
 function designChecks() {
   const zcode = (step) => step?.system.indexOf('You are ZCode, an interactive agent') ?? -1
   const ascending = (...marks) => marks.every(mark => mark >= 0) && marks.every((mark, index) => index === 0 || marks[index - 1] < mark)
@@ -972,6 +995,9 @@ function designChecks() {
         [`design main (${label}): the request after /wish has the section${glmRoute ? ' between the ZCode identity and the workspace rules' : ' before the workspace rules'}, the first request's face without ${cut.join(', ')}, the enter notice, and the row in effect`, hasSection(2) && placed(steps[2], glmRoute) && isDeepStrictEqual(faceOf(steps[2]), faceWithout(steps[0], cut)) && entered(steps[2]) && inEffect(rowAt(scenario, 2)), `section ${sectionAt(steps[2])}; face ${faceOf(steps[2]).length} of ${faceOf(steps[0]).length}; ${JSON.stringify(rowAt(scenario, 2) ?? null)}`],
         [`design main (${label}): /wish <wish> typed while the agent runs arrives at its next step with the words and the original marker`, !wished(steps[3]) && wished(steps[4]) && hasSection(3) && hasSection(4), `${steps.map(step => wished(step) ? 1 : 0).join('')}`],
         [`design main (${label}): after /wish off the request has no section, the first request's face and the leave notice; the row is not in effect; the Write after it ran, so did the one before`, !hasSection(5) && isDeepStrictEqual(faceOf(steps[5]), faceOf(steps[0])) && left(steps[5]) && !left(steps[4]) && notInEffect(rowAt(scenario, 5)) && files(scenario, 'before.txt', 'after.txt').every(Boolean), `${sectionAt(steps[5])}; ${JSON.stringify(rowAt(scenario, 5) ?? null)}; files ${files(scenario, 'before.txt', 'after.txt').join(',')}`],
+        [`design main (${label}): the main agent again: a Write and a shell write are refused by name with the main agent's correction, and neither file exists`, [8, 9].every(index => lastToolResult(steps[index])?.isError === true) && lastToolResult(steps[8]).text.includes('Boundary: You are the main agent of this session (/wish)') && lastToolResult(steps[8]).text.includes('You tried to write') && lastToolResult(steps[9]).text.includes('You tried to change files through the shell') && files(scenario, 'denied.txt', 'denied2.txt').every(present => !present), `${[8, 9].map(index => `${lastToolResult(steps[index])?.isError}:${(lastToolResult(steps[index])?.text ?? '').slice(0, 50)}`).join(' | ')}; files ${files(scenario, 'denied.txt', 'denied2.txt').join(',')}`],
+        [`design main (${label}): git status runs without a snapshot or a notice; git checkout -- README.md runs, the next request has the git snapshot notice with the way back, one ref is under refs/hourness/snapshots/, and the edit is in the snapshot`, lastToolResult(steps[10])?.isError !== true && messagesOf(steps[10], 'glm-git-snapshot').length === 0 && lastToolResult(steps[11])?.isError !== true && messagesOf(steps[11], 'glm-git-snapshot').length === 1 && messagesOf(steps[11], 'glm-git-snapshot')[0].text.startsWith('[git 快照] 执行「git checkout -- README.md」之前存了快照 ') && snapshotsOf(scenario).length === 1 && lfOf(readFileSync(join(scenario.ws, 'README.md'), 'utf8')) === 'probe workspace\n' && lfOf(snapshotEditOf(scenario)) === 'probe workspace\nedited by the person\n', `${lastToolResult(steps[10])?.isError}/${messagesOf(steps[10], 'glm-git-snapshot').length}; ${lastToolResult(steps[11])?.isError}/${messagesOf(steps[11], 'glm-git-snapshot').length}; refs ${snapshotsOf(scenario).length}`],
+        [`design main (${label}): ask_user_question called by name is refused with the main agent's ask correction, and both refusals and the shell write are in the violation journal`, lastToolResult(steps[12])?.isError === true && lastToolResult(steps[12]).text.includes('You called ask_user_question.') && lastToolResult(steps[12]).text.includes('Exception: none') && jsonl(join(scenario.dir, 'home', 'audit', 'violations.jsonl')).map(record => record.rule).join(',') === 'main-agent-no-write,main-agent-no-write,main-agent-ask', jsonl(join(scenario.dir, 'home', 'audit', 'violations.jsonl')).map(record => record.rule).join(',')],
         [`design main (${label}): the row activated quietly, the record is gone after /wish off, and no question card was raised`, scenario.status === 0 && rowQuiet(scenario) && humanQuiet(scenario) && designRecord(scenario).kind === 'none', `exit ${scenario.status}; record ${designRecord(scenario).kind}`],
       ]
     }),

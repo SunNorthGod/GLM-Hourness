@@ -14,7 +14,7 @@ import { mkdirSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import type { DesignContext } from '../src/design/index.ts'
-import type { AgentLike, AssemblePayload, AssembledSection, AssembledTool, CommandDefinitionLike, CommandExecutionLike, CommandResultLike, DesignAgentLike, DesignAgentsService, DesignInvocationLike, SessionEventLike, SessionLike, SessionProjectionsService, UserNotice } from '../src/shared/dsh-min.ts'
+import type { AgentLike, AssemblePayload, AssembledSection, AssembledTool, CommandDefinitionLike, CommandExecutionLike, CommandResultLike, DesignAgentLike, DesignAgentsService, DesignInvocationLike, PreExecuteDecision, PreExecuteListener, SessionEventLike, SessionLike, SessionProjectionsService, ToolExecutionPayload, UserNotice } from '../src/shared/dsh-min.ts'
 import { fakeInjector, serviceStore } from './fake-rc3.ts'
 
 interface LoggedEvent extends SessionEventLike {
@@ -55,6 +55,8 @@ export interface DesignHost {
   readonly services: Map<string, unknown>
   /** The user directory the holder records live in (the data service's). */
   readonly userHome: string
+  /** The project directory the violation journal is written under (the data service's). */
+  readonly projectHome: string
   readonly workspace: (name: string) => string
   /** Registered commands by name. */
   readonly commands: Map<string, CommandDefinitionLike<DesignInvocationLike>>
@@ -68,6 +70,8 @@ export interface DesignHost {
   addAgent(id: string, options?: { readonly workspace?: string, readonly origin?: 'subagent', readonly parentSession?: string, readonly inheritFrom?: FakeAgent, readonly status?: 'idle' | 'running' }): FakeAgent
   /** Announce the agent to the row's `agent/created` listeners, awaiting them serially. */
   created(agent: AgentLike): Promise<void>
+  /** Run a tool call through the row's `tools/pre-execute` listeners (outermost first) down to an allow, as the runtime does before it executes a call. */
+  preExecute(agent: AgentLike, toolName: string, args: unknown, parent?: unknown): Promise<PreExecuteDecision>
   /** Run a command line as the person: `command/run`, the handler, `command/done` (held back until `holdDone` resolves). */
   execute(agent: FakeAgent, line: string, holdDone?: Promise<void>): Promise<CommandExecutionLike | undefined>
   /** Make `commands.execute` of the named command's line refuse, to model a failing /wish off. */
@@ -97,6 +101,7 @@ export function designHost(options: { readonly graph?: boolean, readonly project
   const executed: DesignHost['executed'] = []
   const agents = new Map<string, FakeAgent>()
   const createdListeners: Array<(payload: { agent: AgentLike }) => Promise<void> | void> = []
+  const gates: PreExecuteListener[] = []
   const stored: string[] = []
   const failures = new Map<string, 'undefined' | 'throw'>()
   let commandCounter = 0
@@ -131,7 +136,8 @@ export function designHost(options: { readonly graph?: boolean, readonly project
   const injector = fakeInjector(options.projections === false ? {} : { sessionProjections: projections })
 
   if (options.graph !== false) store.provide('glmHournessGraph', { dirFor: (cwd: string | undefined) => cwd === undefined ? undefined : resolve(cwd, 'docs/graph'), isGraphTool: () => false })
-  store.provide('glmHournessData', { userHome })
+  const projectHome = join(root, 'project')
+  store.provide('glmHournessData', { userHome, projectHome })
   const registry: DesignAgentsService = { get: id => agents.get(id), roots: () => [...agents.values()].filter(agent => agent.session.header.origin !== 'subagent') }
   store.provide('agents', registry)
   if (options.persistence === true) store.provide('sessionPersistence', { list: () => Promise.resolve(stored.map(id => ({ header: { id } }))) })
@@ -155,10 +161,16 @@ export function designHost(options: { readonly graph?: boolean, readonly project
         return run(agent as FakeAgent, line, signal, undefined)
       },
     },
-    on: (_event, listener) => {
+    on: ((event: string, listener: never, listenerOptions?: { readonly prepend?: boolean }) => {
+      if (event === 'tools/pre-execute') {
+        // Like cordis: a prepended listener is the outermost.
+        if (listenerOptions?.prepend === true) gates.unshift(listener)
+        else gates.push(listener)
+        return () => { gates.splice(gates.indexOf(listener), 1) }
+      }
       createdListeners.push(listener)
       return () => { createdListeners.splice(createdListeners.indexOf(listener), 1) }
-    },
+    }),
   }
 
   async function run(agent: FakeAgent, line: string, signal: AbortSignal, holdDone: Promise<void> | undefined): Promise<CommandExecutionLike | undefined> {
@@ -186,6 +198,7 @@ export function designHost(options: { readonly graph?: boolean, readonly project
     ctx,
     services: store.services,
     userHome,
+    projectHome,
     workspace,
     commands,
     executed,
@@ -250,6 +263,11 @@ export function designHost(options: { readonly graph?: boolean, readonly project
     },
     async created(agent) {
       for (const listener of createdListeners) await listener({ agent })
+    },
+    preExecute(agent, toolName, args, parent) {
+      const payload: ToolExecutionPayload = { name: toolName, arguments: args, agent, ...parent === undefined ? {} : { parent } }
+      const chain = gates.reduceRight<() => Promise<PreExecuteDecision>>((next, listener) => () => listener(payload, next), () => Promise.resolve({ kind: 'allow' }))
+      return chain()
     },
     execute: (agent, line, holdDone) => {
       return run(agent, line, new AbortController().signal, holdDone)

@@ -21,28 +21,11 @@ import { dialectNames, dialectService, dialectWarner, toNativeTool } from '../sh
 import { sessionRoute } from '../shared/route.ts'
 import { baseFor, type ViolationRecord } from './index.ts'
 import { originOf } from './origin.ts'
-import { evaluate, fileToolsOnly, NATIVE_FACE, renderCorrection, shellCommandOf, type Correction, type GuardRule, type RuleVerdict, type ToolCall } from './rules.ts'
+import { evaluate, fileToolsOnly, fileWriteTarget, NATIVE_FACE, renderCorrection, shellCommandOf, type Correction, type GuardRule, type RuleVerdict, type ToolCall } from './rules.ts'
 
 export const GRAPH_FILES_RULE = 'graph-files-only'
 
 const ALLOW: RuleVerdict = { kind: 'allow' }
-
-function argsOf(call: ToolCall): Record<string, JsonValue> | undefined {
-  return typeof call.arguments === 'object' && call.arguments !== null && !Array.isArray(call.arguments) ? call.arguments : undefined
-}
-
-/** The path a file tool writes (`call.name` is the DSH native): write and edit take file_path; str_replace_editor writes on every command but view. */
-function writeTarget(call: ToolCall): string | undefined {
-  const args = argsOf(call)
-  switch (call.name) {
-    case 'write': case 'edit':
-      return typeof args?.file_path === 'string' ? args.file_path : undefined
-    case 'str_replace_editor':
-      return args?.command !== 'view' && typeof args?.path === 'string' ? args.path : undefined
-    default:
-      return undefined
-  }
-}
 
 /** Comparable form of a path: forward slashes, no trailing slash, lower case (Windows file systems ignore case). */
 function pathKey(path: string): string {
@@ -79,7 +62,7 @@ export function graphFilesOnly(graphDir: string, cwd: string | undefined): Guard
     id: GRAPH_FILES_RULE,
     declare: GRAPH_FILES_DECLARATION,
     detect(call) {
-      const target = writeTarget(call)
+      const target = fileWriteTarget(call)
       if (target !== undefined) return inside(target) ? deny(`You tried to write "${target}".`) : ALLOW
       // The shell text as file-tools-only reads it (terminal_send carries it in `text`).
       const shell = shellCommandOf(call)

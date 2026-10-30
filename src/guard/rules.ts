@@ -6,7 +6,7 @@
  */
 import { resolve } from 'node:path'
 import type { JsonValue } from '../shared/json.ts'
-import { describeWrite, shellWrites, type ShellDialect } from './shell.ts'
+import { describeWrite, shellWrites, type ShellDialect, type ShellWrite } from './shell.ts'
 
 /** Four-part corrective message parts. */
 export interface Correction {
@@ -119,6 +119,35 @@ export function shellCommandOf(call: ToolCall): { readonly command: string, read
   return typeof command === 'string' ? { command, dialects: tool.dialects } : undefined
 }
 
+/** The first file write the shell text of a call performs, with that text; undefined when the call is not a shell call or writes nothing (`call.name` is the DSH native). */
+export function shellWriteOf(call: ToolCall): { readonly command: string, readonly write: ShellWrite } | undefined {
+  const shell = shellCommandOf(call)
+  const write = shell?.dialects.flatMap(dialect => shellWrites(shell.command, dialect))[0]
+  return shell === undefined || write === undefined ? undefined : { command: shell.command, write }
+}
+
+function argsOf(call: ToolCall): Record<string, JsonValue> | undefined {
+  return typeof call.arguments === 'object' && call.arguments !== null && !Array.isArray(call.arguments) ? call.arguments : undefined
+}
+
+/** Whether a call is one of the file tools that write (`call.name` is the DSH native): write and edit always; str_replace_editor on every command but view. */
+export function isFileWrite(call: ToolCall): boolean {
+  return call.name === 'write' || call.name === 'edit' || (call.name === 'str_replace_editor' && argsOf(call)?.command !== 'view')
+}
+
+/** The path a file tool writes (`call.name` is the DSH native): write and edit take file_path; str_replace_editor writes on every command but view. */
+export function fileWriteTarget(call: ToolCall): string | undefined {
+  const args = argsOf(call)
+  switch (call.name) {
+    case 'write': case 'edit':
+      return typeof args?.file_path === 'string' ? args.file_path : undefined
+    case 'str_replace_editor':
+      return args?.command !== 'view' && typeof args?.path === 'string' ? args.path : undefined
+    default:
+      return undefined
+  }
+}
+
 /**
  * Rule 2: file modification goes through the dedicated tools. Shell commands
  * that write files are denied even inside the workspace — a successful
@@ -131,9 +160,9 @@ export const fileToolsOnly: GuardRule = {
   id: 'file-tools-only',
   declare: face => `Modify files and code only with the dedicated ${face('write')}/${face('edit')} tools. The shell is for execution (tests, builds, git), not for writing files: a redirection into a file (\`>\`, \`>>\`) or a file-changing command (Set-Content, Add-Content, Clear-Content, Out-File, Tee-Object, New-Item, Copy-Item, Move-Item, Remove-Item, rm, rmdir, mv, cp, dd, touch, truncate, tee, sed -i) is denied.`,
   detect(call, face) {
-    const shell = shellCommandOf(call)
-    const write = shell?.dialects.flatMap(dialect => shellWrites(shell.command, dialect))[0]
-    if (shell === undefined || write === undefined) return { kind: 'allow' }
+    const shell = shellWriteOf(call)
+    if (shell === undefined) return { kind: 'allow' }
+    const write = shell.write
     return {
       kind: 'deny',
       rule: 'file-tools-only',
