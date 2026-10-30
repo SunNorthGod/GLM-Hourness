@@ -5,15 +5,59 @@ import {
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
-import { CLAMP, COLORS, EASE, FONT } from "./theme";
+import { ACCENT, CLAMP, COLORS, EASE, FONT } from "./theme";
 
-/** Background shared by every scene: a dark field with one soft glow. */
+/** A soft colour glow that drifts slowly across the whole video. */
+const Glow: React.FC<{
+  size: number;
+  color: string;
+  from: string;
+  to: string;
+}> = ({ size, color, from, to }) => {
+  const frame = useCurrentFrame();
+  const { durationInFrames } = useVideoConfig();
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left: 0,
+        top: 0,
+        width: size,
+        height: size,
+        borderRadius: "50%",
+        background: `radial-gradient(circle, ${color} 0%, rgba(0,0,0,0) 62%)`,
+        translate: interpolate(frame, [0, durationInFrames], [from, to], CLAMP),
+      }}
+    />
+  );
+};
+
+/** Background shared by every scene: dark ground, two drifting glows, a faint grid, grain and a vignette. */
 export const Backdrop: React.FC = () => (
-  <AbsoluteFill
-    style={{
-      background: `radial-gradient(circle at 30% 20%, #1A2445 0%, ${COLORS.bg} 55%)`,
-    }}
-  />
+  <AbsoluteFill style={{ background: COLORS.bg, overflow: "hidden" }}>
+    <Glow size={1500} color="rgba(110, 126, 255, 0.20)" from="-520px -760px" to="-300px -640px" />
+    <Glow size={1300} color="rgba(186, 140, 255, 0.13)" from="1050px 360px" to="880px 300px" />
+    <Glow size={900} color="rgba(110, 210, 240, 0.07)" from="300px 620px" to="420px 560px" />
+    <AbsoluteFill
+      style={{
+        backgroundImage:
+          "linear-gradient(rgba(255,255,255,0.028) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.028) 1px, transparent 1px)",
+        backgroundSize: "80px 80px",
+        maskImage: "radial-gradient(ellipse at 50% 45%, black 0%, transparent 72%)",
+      }}
+    />
+    <svg width={1920} height={1080} style={{ position: "absolute", opacity: 0.06 }}>
+      <filter id="grain">
+        <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves={2} stitchTiles="stitch" />
+      </filter>
+      <rect width="100%" height="100%" filter="url(#grain)" />
+    </svg>
+    <AbsoluteFill
+      style={{
+        background: "radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,0.6) 100%)",
+      }}
+    />
+  </AbsoluteFill>
 );
 
 /** Fades a whole scene in at its start and out at its end. */
@@ -29,7 +73,7 @@ export const SceneFade: React.FC<{ children: React.ReactNode }> = ({
         color: COLORS.text,
         opacity: interpolate(
           frame,
-          [0, 12, durationInFrames - 12, durationInFrames],
+          [0, 10, durationInFrames - 12, durationInFrames],
           [0, 1, 1, 0],
           CLAMP,
         ),
@@ -52,7 +96,7 @@ export const Reveal: React.FC<{
       style={{
         ...style,
         opacity: interpolate(frame, [at, at + 14], [0, 1], { ...CLAMP, easing: EASE }),
-        translate: interpolate(frame, [at, at + 18], ["0px 28px", "0px 0px"], {
+        translate: interpolate(frame, [at, at + 20], ["0px 24px", "0px 0px"], {
           ...CLAMP,
           easing: EASE,
         }),
@@ -63,24 +107,77 @@ export const Reveal: React.FC<{
   );
 };
 
-/** Small label in the top-left corner naming the scene. */
-export const SceneLabel: React.FC<{ text: string }> = ({ text }) => (
-  <Reveal at={4} style={{ position: "absolute", left: 110, top: 90 }}>
-    <div style={{ fontSize: 40, color: COLORS.teal, letterSpacing: 4 }}>{text}</div>
+/** Text painted with a gradient. */
+export const GradientText: React.FC<{
+  children: React.ReactNode;
+  gradient?: string;
+  style?: React.CSSProperties;
+}> = ({ children, gradient = ACCENT, style }) => (
+  <span
+    style={{
+      backgroundImage: gradient,
+      WebkitBackgroundClip: "text",
+      backgroundClip: "text",
+      color: "transparent",
+      ...style,
+    }}
+  >
+    {children}
+  </span>
+);
+
+/** Scene number and name in the top-left corner. */
+export const SceneLabel: React.FC<{ index: string; text: string }> = ({ index, text }) => (
+  <Reveal
+    at={4}
+    style={{ position: "absolute", left: 110, top: 84, display: "flex", alignItems: "center", gap: 22 }}
+  >
+    <GradientText style={{ fontSize: 34, fontWeight: 700, letterSpacing: 2 }}>{index}</GradientText>
+    <div style={{ width: 56, height: 2, background: "rgba(255,255,255,0.16)" }} />
+    <div style={{ fontSize: 38, letterSpacing: 2, color: COLORS.text }}>{text}</div>
   </Reveal>
 );
 
-/** Renders text where **phrase** is drawn in the accent colour, as in the four-line proposals. */
-export const Bold: React.FC<{ text: string; color?: string }> = ({
-  text,
-  color = COLORS.amber,
-}) => {
+/** Translucent card with a hairline border and a soft shadow. */
+export const GLASS: React.CSSProperties = {
+  background: "linear-gradient(180deg, rgba(255,255,255,0.065), rgba(255,255,255,0.025))",
+  border: "1.5px solid rgba(255,255,255,0.10)",
+  borderRadius: 24,
+  boxShadow: "0 24px 70px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.07)",
+};
+
+/** Small outlined label tinted with one colour (a six-digit hex). */
+export const Pill: React.FC<{
+  color: string;
+  children: React.ReactNode;
+  style?: React.CSSProperties;
+}> = ({ color, children, style }) => (
+  <div
+    style={{
+      background: `${color}1F`,
+      border: `1.5px solid ${color}70`,
+      color,
+      borderRadius: 999,
+      padding: "4px 16px",
+      fontSize: 24,
+      fontWeight: 600,
+      letterSpacing: 1,
+      whiteSpace: "nowrap",
+      ...style,
+    }}
+  >
+    {children}
+  </div>
+);
+
+/** Renders text where **phrase** is drawn in the emphasis colour, as in the four-line proposals. */
+export const Bold: React.FC<{ text: string }> = ({ text }) => {
   const parts = text.split("**");
   return (
     <>
       {parts.map((part, i) =>
         i % 2 === 1 ? (
-          <span key={i} style={{ color, fontWeight: 700 }}>
+          <span key={i} style={{ color: COLORS.apricot, fontWeight: 600 }}>
             {part}
           </span>
         ) : (

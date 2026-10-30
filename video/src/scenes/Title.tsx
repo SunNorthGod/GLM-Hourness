@@ -1,19 +1,26 @@
 import React from "react";
 import { AbsoluteFill, interpolate, useCurrentFrame } from "remotion";
-import { Reveal, SceneFade } from "../parts";
-import { CLAMP, COLORS, EASE } from "../theme";
+import { GradientText, Reveal, SceneFade } from "../parts";
+import { CLAMP, COLORS, EASE, SILVER } from "../theme";
 
-const Word: React.FC<{ at: number; text: string; lit: boolean }> = ({ at, text, lit }) => {
+const Word: React.FC<{ at: number; children: React.ReactNode }> = ({ at, children }) => {
   const frame = useCurrentFrame();
   return (
-    <span
+    <span style={{ opacity: interpolate(frame, [at, at + 12], [0, 1], CLAMP) }}>{children}</span>
+  );
+};
+
+const Divider: React.FC<{ at: number }> = ({ at }) => {
+  const frame = useCurrentFrame();
+  return (
+    <div
       style={{
-        color: lit ? COLORS.teal : COLORS.dim,
-        opacity: interpolate(frame, [at, at + 12], [0, 1], CLAMP),
+        marginTop: 44,
+        height: 2,
+        width: interpolate(frame, [at, at + 24], [0, 560], { ...CLAMP, easing: EASE }),
+        background: "linear-gradient(90deg, rgba(142,162,255,0), rgba(195,166,255,0.8), rgba(142,162,255,0))",
       }}
-    >
-      {text}
-    </span>
+    />
   );
 };
 
@@ -24,32 +31,37 @@ export const Title: React.FC = () => {
       <AbsoluteFill style={{ justifyContent: "center", alignItems: "center" }}>
         <div
           style={{
-            fontSize: 190,
-            fontWeight: 800,
-            letterSpacing: interpolate(frame, [0, 40], [30, 4], { ...CLAMP, easing: EASE }),
-            opacity: interpolate(frame, [0, 22], [0, 1], CLAMP),
-            scale: interpolate(frame, [0, 40], [0.94, 1], {
+            fontSize: 184,
+            fontWeight: 700,
+            letterSpacing: interpolate(frame, [0, 36], [24, 2], { ...CLAMP, easing: EASE }),
+            opacity: interpolate(frame, [0, 18], [0, 1], CLAMP),
+            scale: interpolate(frame, [0, 36], [0.95, 1], {
               ...CLAMP,
               easing: EASE,
               output: "perceptual-scale",
             }),
           }}
         >
-          GLM-Hourness
+          <GradientText gradient={SILVER}>GLM-Hourness</GradientText>
         </div>
-        <div style={{ fontSize: 56, marginTop: 10, display: "flex", gap: 28 }}>
-          <Word at={30} text="GLM" lit={false} />
-          <Word at={36} text="+" lit={false} />
-          <Word at={42} text="House" lit />
-          <Word at={48} text="+" lit={false} />
-          <Word at={54} text="Harness" lit />
+        <div style={{ fontSize: 52, marginTop: 6, display: "flex", gap: 26, color: COLORS.faint }}>
+          <Word at={22}>GLM</Word>
+          <Word at={26}>+</Word>
+          <Word at={30}>
+            <GradientText>House</GradientText>
+          </Word>
+          <Word at={34}>+</Word>
+          <Word at={38}>
+            <GradientText>Harness</GradientText>
+          </Word>
         </div>
-        <Reveal at={74} style={{ marginTop: 70 }}>
-          <div style={{ fontSize: 80, fontWeight: 600 }}>让大模型按工程规矩，开发大项目</div>
+        <Divider at={42} />
+        <Reveal at={50} style={{ marginTop: 44 }}>
+          <div style={{ fontSize: 76, fontWeight: 600 }}>让大模型按工程规矩，开发大项目</div>
         </Reveal>
-        <Reveal at={96} style={{ marginTop: 34 }}>
-          <div style={{ fontSize: 40, color: COLORS.dim }}>
-            DeepSeek Harness 的编排层插件 · dsh-hourness
+        <Reveal at={64} style={{ marginTop: 28 }}>
+          <div style={{ fontSize: 36, color: COLORS.dim, letterSpacing: 1 }}>
+            DeepSeek Harness 的编排层插件 · <span style={{ color: COLORS.indigo }}>dsh-hourness</span>
           </div>
         </Reveal>
       </AbsoluteFill>
