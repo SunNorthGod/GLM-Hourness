@@ -302,6 +302,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M3 设计附录 0.4 写成（.agents/tasks/m3/design-addendum.md；0.3 原文另存 design-addendum-0.3.md），回应第 3 轮评审 MEDIUM 8、NIT 12（附录 §15），待评审。挡路 8 条：M1 M3 的八条拦截导出成 src/guard/main-agent-rules.ts 的 MAIN_AGENT_RULES，规则板代码规则目录以 design:<id> 列出（§3.11）；M2 第 3、10 步加独立评审，§0 写明每步按 norm-review-floor 哪一条；M3 git 快照存挡在写出路上的未跟踪文件，文件列表只读 git ls-files -z，git 在 LC_ALL=C 下跑，clean -n 只做核对；M4 被忽略的文件不进快照，clean -x/-X/-ff 拒绝，worktree remove 只记被忽略文件的路径、个数与大小、例行清理不再被拒，标签只打在只含旧引用值的提交上，push --mirror、push --tags 与推快照引用或对象拒绝；M5 阶段前进对所有会话只经 record_human_answer，子 agent 的图工具调用不能带 relay，放行之前批准放行集合或带原话新提节点被拒，会话里不用图的命令行写图，子 agent 与普通会话的尝试告警（违规流水、设计行行健康、通知主 Agent）；M6 人设一节按 3.17.1 重核，留在系统提示词、glm:context-management 之前、标题后单换行，不跟 3.17.1 的三处写进 docs/reference/zcode-verbatim.md 待编排方同意；M7 例题保留人给的格式，内容换成 d-peak-mode；M8 背景上限只读 PLAIN_LIMITS.background（面板设计 0.6 为 60）。接缝裁定的 attach 与交回按规则板 0.8、循环板 0.3 的请求落地（§3.13）。依据 main fe0bace。"
+    },
+    {
+      "at": "2026-10-30T10:22:33.161Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "派出 m3-addendum-v05（wf_35da55069f8147be）：M3 在自举关键路径上，照人「尽快自举吧」立刻改第 4 轮剩的四条，不等对齐轮。M1 例题改掉与 d-main-agent-peak-exempt 相反的内容（照 d-agent-examples 选与练习题不相干的领域，并写明为什么安全）；M2 设计每个模块一次放行（propose_to_human 与 record_human_answer 的 module 参数、模块子树里批什么、模块与目标 stage 的写权限、退回模块设计循环与退回大循环带人的原话），照 plain-ui 0.7 §11「两层循环」的契约，并接住循环板 0.6 与规则板 0.10 对 M3 的 attach 分派与同意路径的请求；N1 删掉第 7 步与 /graph-apply；N2 补第 6 步的契约测试。0.4 原文存为 design-addendum-0.4.md。一稿一评，还挡路再给一稿，仍挡路就停下报人。两个工作树 .worktrees/m3 与 .worktrees/m3-flow 已快进到 main（e1a4d25），实现开工前不再需要处理。"
     }
   ]
 }

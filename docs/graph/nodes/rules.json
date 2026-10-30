@@ -369,6 +369,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M3 附录 0.4 §9 第 12、13 条（给规则板设计下一稿）：代码规则目录里 M3 的条目由 0.8 §10.1 的两条改为 MAIN_AGENT_RULES 的八条（src/guard/main-agent-rules.ts，只有常量，builtin.ts 映射它）；§2.6 表的两行 M3 随之扩成八行。attach 的分派表在 src/design/attach.ts，规则板 R4 合入时自己加 rules: 一行；交回只挂在 record_human_answer。"
+    },
+    {
+      "at": "2026-10-30T10:22:32.963Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "派出 rules-peak-slice-impl（wf_f9666270bdddbabd）：实现 d-rules-peak-slice 的最小一片，自举关键路径上的第一件实现活。范围严格照设计 0.10 §16.1：按项目存的高峰档位（无影响/少做/不做，默认少做）、只有人能改（本片带 /rules peak 命令）、少做的并发上限（至多 1 个 GLM 子 agent）与别的行读的服务、按 d-rules-in-repo 的存放（档位进仓库、运行时状态进项目 .llm/、不写用户级）、行健康与行登记（默认禁用）。不做：规则页、人定的规则、脚本与脚本执行器、检测器、排队的单、违规流水的改动、checkCall、指标事件、恢复一节；留的形状要能直接接上，不留没有调用方的壳子。顺手清 F91、F92。工作树 .worktrees/rules-slice，分支 rules-slice，从 main（3723b62）起。照 AGENTS.md：build → preflight → test 三道全绿，另跑 probe（碰 DSH 运行时行）；一件事一个提交、文档同批；不碰人的 ~/.dsh。做完一轮独立评审核对是不是全设计的严格子集与存放路径，再快进 main。"
     }
   ]
 }
