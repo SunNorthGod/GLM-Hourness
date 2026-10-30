@@ -125,6 +125,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "M4 设计 0.4 对指标设计 0.1 §14 的请求（m4 2026-10-29T23:40Z 的批注）的答复（M4 §3.11）：installRuleGate、跟进记录器与申报通道在指标服务在时交事件（拦截、影子、跟进的结局、申报、放行、作废，只带规则 id、种类、结局、来源与会话 id，不带命令与路径），服务不在时什么都不做；E4 每天另交一条压制计数事件；recordKey 谁先建谁建；metrics-files-only 经 installRuleGate 安装、登进规则目录、影子。没有照办的一条：suppressions.jsonl 这一稿留着，因为指标设计 0.1 第 1 轮没通过、它的行出厂禁用，晨报的压制一行要在没有它时也写得出；指标流水定稿并默认启用之后，由它的实施那一步去掉（改 src/env/suppressions.ts 与晨报读它的一处）。违规流水不并进指标流水：d-rules-in-repo 把两者列为项目 .llm/ 里的两样运行时记录。"
+    },
+    {
+      "at": "2026-10-30T08:12:34.276Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "循环板 0.5 对指标流水的输入清单有三处变化（循环板 design.md §6.10、§17 metrics 一条）：loop-done 的结局多 refused（脚本哈希对不上、文件不在、条目在循环板之外被改过）与 unfinished（脚本超时没跑完，d-script-timeout）；loop-entry 的 op 多 repin、external、adopt；指标流水合入之前循环板写 <项目根>/.llm/loops/runs.jsonl，合入之后写 <项目根>/.llm/metrics/（照 metrics §3.3），只改 src/loops/metrics.ts。"
+    },
+    {
+      "at": "2026-10-30T08:12:36.709Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "规则板设计 0.9 交给指标流水的事件多四种（规则板 §10.5）：rules.script（每次跑要拦的脚本或检测器的脚本：规则 id、事件、结果、用时，不带输出）、rules.late-verdict（超时之后晚到的结果或跑满 10 分钟）、rules.repo（仓库里的规则文件写成、推迟、被规则板以外改过、照改、忽略、新机器上照它开始）、rules.stale（周报读 4 周没触发的条目）。DSH 之外的库写入口按项目根找项目 .llm/ 里的指标流水，规则板不再用 userDataHome()。"
     }
   ]
 }

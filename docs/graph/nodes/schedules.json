@@ -191,6 +191,24 @@
       "actor": "llm",
       "op": "comment",
       "text": "M4 设计 0.4 给循环板 0.5 的接缝请求（M4 §6.1、§6.8、§18 第 5 条；按 d-boards-as-hooks，M4 的检查改成循环板上的条目，形状、存放、同意的路与执行器归循环板）：① env.files-edited 改为人能选、由声明它的 env 行执行的事件（不进收件箱），挂在它上面的人的条目只能用 env 行认的两种动作：自带的 check {format, argv, timeoutSeconds?} 与带 format 的脚本；提议时的内容校验调 env 行给的 checkActionRefusal（例如 Contribution 加一个可选的 validateEntry，名字由循环板定）；② 按项目读挂在一个事件上的生效条目的同步读取函数，脚本摘要对不上的标出；③ paths 筛选加扩展名一种（以 *. 开头，任何一层目录都算）；④ recordRun 也认挂在这种事件上的人的条目；⑤ 共用执行器每次运行可给 cwd（项目之内，含 M7 的工作树）、超时与输出上限（至少 1 MiB），argv 不经 shell；⑥ loops:schedule-tools 经 installRuleGate 安装、登进 GUARD_RULES，读违规流水用 classifyRecord（G1 删掉 evaluate）；⑦ 0.4 §5.2 第 12 项「引擎接受字段不变的 edit」不成立：src/graph/engine.ts:613 对什么都没改的 edit 返回 invalid（set changes nothing），再给人看一张已有的提议式待决请用 M4 一并请 M3 加的不带四行的 propose_to_human。M4 已按 0.4 §17 的三条交 env.checks-after-edit 与 graph.third-rework 并 recordRun。"
+    },
+    {
+      "at": "2026-10-30T08:12:32.714Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "循环板设计 0.5 写完（.agents/tasks/schedules/design.md，0.4 原文留作 design-0.4.md、onepage-0.4.md、mockup-loops-0.4.svg；onepage.md 与 mockup-loops.svg 由评审之后的一步重写）。照 d-boards-as-hooks、d-rules-in-repo、d-main-agent-peak-exempt、d-script-timeout、d-memory-scope、d-agent-examples 与编排方的接缝裁定改写，并关掉第 4 轮的 NIT F40–F43（§19.4 两张表写明每处改动答哪一条）。要点：条目是「when + 可选 filter + 动作」，共用形状与 validateWhen、matchesFilter 在 src/loops/trigger.ts；0.4 的跑命令（run、argv）换成脚本（script），人在四行之后看脚本原文、同意即生效，按内容哈希钉住、执行核对过的私有副本，改过就不跑；两块板共用的脚本执行器 src/loops/script.ts 的 runScript（标准输入一个 JSON 信封、项目根为工作目录、只给名单内的环境变量、拦路一路缺省 10 秒、超时后后台跑到 10 分钟并以 late 交回结论、事件声明的 gateOnErrorDefault 给主干前进之前缺省挡住；不拦路的脚本超时记 unfinished、交主 Agent、事件留到下一次）；名字空间 gate. 留给规则板的拦路事件，循环板的条目用不了；人加的条目与脚本进仓库 docs/loops/，运行时进 .llm/loops/（自带 .gitignore），用户级只留 loops/machine/（账号一级的额度与登录提醒）；loops:files-only 挡住别的写入，条目在循环板之外被改过就不跑、照图上的拍板认回别处带来的；行激活时从 DSH 工作区登记表列项目；不再读 heldForPeak，高峰结束那一项少做与不做两档同一张表；周报两张单子（4 周没结果的提议删、7 天超时 3 次以上的提议修）；loop_propose 说明带两个过真校验的例子。F40：本行恢复冷会话后 run 得 skipped、读到 goal 已 active 就记 done；F41：entry-gone 分确知没了与暂时不在，后者等开始跑项目满 5 分钟且两次相隔 60 秒的对账；F42：放行稿疑问一句交给重写那一步，句子在 §18 末段；F43：三处旧文字改掉。与规则板 0.9 的接缝已对照核对（.agents/tasks/rules/seam-check-v09-v05.md）：拦路事件以规则板 §2.3 的 gate.tool-call、gate.dispatch、gate.trunk-advance 为准；gate. 事件可以有 session 字段；matches 写入时在长输入上试跑；§12 的 AttachDetail 上限与 §3.1 对齐；拦路结果的含义只引规则板 §6.7。同版照编排方的裁定「Check entries seam」加人的「跑检查」（动作 check）：命令原文取自环境工具节点（节点与格式归 M4，循环板经 M4 导出的读法取），由共用执行器的 runCommand 跑（可在工作树里跑，不经 shell），走与脚本同一条同意的路（commandDetail 给人看命令行，拍板要「已给人看原文」的记号）；会跑东西的条目 contribute 一律不收；env.files-edited 进收件箱、人能选，载荷加 root；M4 自带的检查器仍是 self、只列出。"
+    },
+    {
+      "at": "2026-10-30T08:12:35.052Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "规则板设计 0.9 对循环板 0.5 的接缝（规则板 §10.7 循环板一节，§2.2、§2.3、§6.7）：一、规则板导入 src/loops/trigger.ts 的 Trigger、EventFilter、FilterTest、HookShape、ScriptRef、ScriptAction、validateWhen（规则板传 allowGate: true）、matchesFilter，与 src/loops/script.ts 的 runScript、HookEnvelope、scriptSha256、scriptDetail，自己不起进程；规则板的条目要能赋给 HookShape<RuleAction>。二、FilterTest 的 matches 给规则板的 command、model、targetModel 用，规则板不另要 glob（*/glm* 写成正则 ^[^/]*/glm）。三、规则行登记 gate.tool-call、gate.dispatch、gate.trunk-advance 三个事件，gate.trunk-advance 的声明带 gateOnErrorDefault: 'block'；rules.step 不登记。四、要拦的运行走 purpose 'gate'，超时之后用 timeout 的 late；checkCall 用 ScriptRequest.signal 中止超时的运行；规则板的脚本里再调 checkCall 时按 HOURNESS_BOARD 为 rules 不再跑脚本。五、规则板的脚本在 docs/rules/scripts/，规则文件门禁只守 docs/rules/ 与 .llm/rules/。六、「再钉」的提议两边都叫 repin，规则板的 attachable 用 scriptDetail 组 detail。七、heldForPeak 删去，循环板不再攒给主 Agent 的消息；高峰结束那一项照旧读 stateFor、stateForProject，不读 peakHoldFor；不做档里派 GLM 子 agent 的单开在主 Agent 身上，解除时由规则板叫它「可以再派」。八、周报里 4 周没用过的条目两块板各提各的（一条提议只能带一块板的 attach），各至多 3 件、各算周报的一件。九、接缝核对（rules/seam-check-v09-v05.md）之后：两块板的 acceptProposal 都只认带「已给人看原文 <摘要>」的拍板（摘要用循环板的 attachDigest），没有图时带原文的提议都打两次 accept；规则板的 mustShow 以 scriptDetail 的输出为准；代码规则目录加 loops:files-only；检测器的文件触发用循环板 §4.1 的 watchPaths；gate. 事件的 session 字段由循环板 §3.2 放开。"
+    },
+    {
+      "at": "2026-10-30T08:12:37.487Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "循环板 0.5 第 5 轮独立评审（run boards-hook-rules09-loops05）：CHANGES_REQUESTED，HIGH 0、MEDIUM 3（F44–F46）、NIT 10（F47–F56）；F40、F41、F43 关闭，F42 留到放行稿重写。按约定停下，onepage.md 与草图没改。F44 仓库里的条目文件与 git 打架：切到没有这个条目的分支、git stash、git revert 或在合并与变基中途，循环板会把文件写回去，等于撤销主 Agent 的回退；要记下自己写过的版本，只在那时补写，合并、变基进行中先不写。F45 改完文件事件的去重键用了「这一步的序号」，DSH 每个回合从 0 数，不同回合的同一步撞键，第二次改动的检查不跑；键要带回合号。F46 人加的检查按条目去抖与限次，两个工作树里并行的子 agent 30 秒内各改一次只跑一次，用的是 A 的目录与文件，B 的改动没被检查也没人告诉它；要按「条目 + 会话 + 工作树」分组。Check entries seam 的裁定已在接缝核对时落进 0.5。等人定要不要再给一稿。"
     }
   ]
 }

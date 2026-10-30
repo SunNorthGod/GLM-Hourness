@@ -215,6 +215,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "M4 设计 0.4 给 M7 的接缝请求（M4 §5.6、§5.9、§3.5、§7.3、§18 第 5 条）：五条写入规则经 installRuleGate 安装（0.4 §3.2 仍写 evaluate）；「影子转生效」引用 PROMOTION 并采用 M4 的含义（带标注的会拦样本至少 20 条含回放、实时影子至少 14 天、误伤 0；0.4 §3.12.2 仍写「近 14 天影子记录不少于 20 条」）；ladderProposals 读流水用 classifyRecord；汇合门禁加「草稿区为空」一步（scratchLeftovers）。申报（F13）：worker-scope 在目标出了工作树时先调 requestsService(ctx)?.peekGrant（为真就让这一次往里走，guard 行核对并用掉放行），拒绝时调 outsideDenial，返回值不为空就用它的 exception 换掉纠偏的例外一句、RuleDeny.ref 写编号；worker-scope 的 rightPath 认带这个编号的 ask_main；worker 的简报写明工作区外的写入经主 Agent 问人、等回答、再原样调一次。停等（F14）：推进监听器读 openRequests(持有者会话)，非空时以 hourness-waiting-human 停住 goal，申报都关了、列出的待决也都定了时恢复（§3.9.5 的恢复规则加一句）。谁后合入谁加；M7 合入之后 M4 跑 L3 guard-request-worker。"
+    },
+    {
+      "at": "2026-10-30T08:12:33.953Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "循环板 0.5 给 M7 的（循环板 design.md §17 M7 第 8、9 条）：一、周报（hourness_report 的 weekly）加两节，读 loopsService(ctx)?.staleEntries(<项目根>, now) 与 timeoutEntries(...)：4 周没跑出过结果的人加条目（附一句叫主 Agent 用 loop_propose {kind: \"delete\", entries: [...]} 再 propose_to_human 提议删），最近 7 天超时 3 次以上的条目（附一句提议修；插件的只写请作者修）；两件算在周报每周至多 3 件里；服务不在时那一节写「循环板此刻不在这个 DSH 进程里，这一节下次再看」。二、评审 F40 由循环板这边关掉（本行恢复冷会话后 run 得 skipped、读到 goal 已 active 就记 done），execute.resume-drive 不用改。三、主 Agent 不受高峰影响之后，退路执行者送提醒前读 heldForPeak 的那一步对主 Agent 永远为假，可以删，由规则板 0.9 与 M7 的对齐轮定，循环板不依赖它。"
+    },
+    {
+      "at": "2026-10-30T08:12:35.706Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "规则板设计 0.9 请 M7 下一稿改四处（规则板 §10.7 M7 一节）：一、glmHournessExecute 加成员 trunkAdvanceFor(callId): {branch, from, to} | undefined：执行行在 tools/pre-execute 里认出会让主干前进、advanceOk 成立而放行时按 exec.callId 记下（只在内存里，post-execute 或 60 秒后删），规则行在 next() 放行之后读它推出 gate.trunk-advance；执行后才发现的前进不推出。二、heldForPeak 删去（d-main-agent-peak-exempt：主 Agent 不再因不做档停着），M7 0.4 §2.5 退路执行者「heldForPeak 为真时留着」一句与 §3.9.1 对账表里「goal 为 paused、heldForPeak 为真」一行一起删。三、不做档里派 GLM 子 agent 的 dispatch_task 由规则板的门排队（builtin:glm-peak-stop-dispatch），M7 不另加判断；少做上限与 peakHoldFor 的空转判定照 0.8 的请求，不变。四、周报（operate.weekly）加「4 周没用过的规则」：读 rulesService(ctx)?.staleEntries(cwd)，取至多 3 件交主 Agent 用一个四行方案提议删；循环板的同类列表是另一节、另一条提议，两条各算周报的一件；再列 7 天里超时 3 次以上的脚本规则、提议修它；晨报的规则板一节加晚到的拦下与仓库里的规则文件被改过的次数。"
     }
   ]
 }

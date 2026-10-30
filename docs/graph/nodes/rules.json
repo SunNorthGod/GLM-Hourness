@@ -309,6 +309,24 @@
       "actor": "llm",
       "op": "comment",
       "text": "M4 设计 0.4 给规则板 0.9 的接缝请求（M4 §2.3、§3.2、§3.3、§3.8、§18 第 5 条）：代码规则目录改为导入 src/guard/catalog.ts（含 M4 的四条影子规则 credential-read、suppression-reason、checker-config、scratch-only）；工具调用门的监听器第一件事调 observe、拒绝时调 noteDenial（规则 id rules:<id>）；读违规流水用 classifyRecord，排队（effect: 'queue'）的记录分类为 deferral，不算违规，由规则板的晨报一节去数；规则页「人标过的误判数」取 ruleStats 对 labels.jsonl 的结果，hits.json 只是命中计数；0.8 第 196 行一带仍引 evaluate，改为 installRuleGate 或 judge。同批改写 CHARTER §6 时请写明分界：代码里的新门先影子，人看过原文同意的板上条目即刻生效（d-boards-as-hooks 写明代码里的规则原地不动）。违规流水按会话找项目写进项目的 .llm/audit/，项目根与规则板 §7.3 同一个函数。"
+    },
+    {
+      "at": "2026-10-30T08:12:33.011Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "循环板 0.5 对规则板 0.9 的接缝（循环板 design.md §17 规则板一条第 1–10 点，§2.2、§4.6、§6.6）：一、条目形状照用 src/loops/trigger.ts 的 HookShape、Trigger、EventFilter（加了 matches，paths 收 glob）、ScriptRef、ScriptAction（onError）与事件声明类型，validateWhen 传 allowGate: true，不另写一份；0.8 §5.2 的 DetectorTrigger 子集照旧可用（params 仍在 Trigger 里，filter 提到条目上）。二、名字空间 gate. 只给规则行，拦路事件的 id、载荷、哪个是难以退回的一步由规则板定，规则板 0.9 §2.3 已定 gate.tool-call、gate.dispatch、gate.trunk-advance（后者声明 gateOnErrorDefault: 'block'，rules.step 不登记）；循环板 §3.2 对 gate. 事件放开了 session 这个字段名，§2.2 的 matches 补了长输入试跑。三、脚本只经 src/loops/script.ts 的 runScript 起进程（拦路用 purpose: 'gate'，检测器用 'work'，信封 board 写 rules），src/rules/ 不出现 node:child_process；0.8 §5.3 引的 src/loops/command.ts 改指 script.ts；退出码、标准错误、onError 的含义、晚到结论怎样记与怎样马上告诉主 Agent，由规则板写。四、规则板的脚本提议用共用的 scriptDetail 生成 detail，走同一条 propose_to_human 与 record_human_answer。五、规则板的条目与脚本放在哪由规则板定，循环板用 docs/loops/，并列的 docs/rules/ 供参考；私有副本由执行器写在 .llm/loops/run/。六、代码规则目录加 loops:files-only 一行。七、循环板仍以 {tool: 'pwsh', args: {command: commandText(...)}} 加 glmSpend 调 checkCall，跑脚本与人加的检查之前各一次；规则板 0.9 没改入参。八、循环板不再读 heldForPeak，只读 stateFor、stateForProject。九、4 周没触发的规则与拦路脚本的超时、晚到拦截由规则板交给周报；两块板的删除提议各提各的。十、CHARTER §3.2 第 3 条、§6、§9 的改写在规则板 0.9，循环板只引用。"
+    },
+    {
+      "at": "2026-10-30T08:12:34.742Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "规则板设计 0.9 写完（.agents/tasks/rules/design.md，run boards-hook-rules09-loops05，wf_d2a9085875b43c88；0.8 原文另存为 design-v0.8.md、onepage-v0.8.md），等接缝核对与一轮独立评审。照的人定与裁定：d-boards-as-hooks（每一条都是「什么时候 + 筛选 + 动作」，形状、Trigger、EventFilter、ScriptAction 与执行器 runScript 用循环板 0.5 的 src/loops/trigger.ts、src/loops/script.ts；规则板的事件 gate.tool-call、gate.dispatch、gate.trunk-advance 要拦，rules.step 只给只告知；要拦的脚本退出 0 放行、2 拦下、3 排队，其余与超时按条目的 onError；同意即生效，检测器的影子期与 /rules detector … 生效 删去）；d-script-timeout（超时按 onError 判、默认放行，gate.trunk-advance 默认拦下，脚本在后台至多跑 10 分钟，晚到的拦下当场告诉主 Agent，跑满记为没跑完）；d-rules-in-repo（人定的部分在仓库 docs/rules/rules.json 与 docs/rules/scripts/，运行时在 .llm/rules/，判定按 .llm/rules/ 的流水，仓库里的文件被规则板以外改过不生效、/rules recovery 文件 照改|忽略，新机器上照文件开始；不写用户级）；d-main-agent-peak-exempt（主 Agent 三档都不受管，不做档拆成 builtin:glm-peak-stop（GLM 子 agent）、-stop-dispatch（派 GLM 子 agent 排队）、-stop-scripts；RulesService.heldForPeak 删去）；不再触发的条目（staleEntries、rules_propose kind remove，一批至多 3 件）；d-agent-examples（RULES_PROPOSE_EXAMPLES 两个例子，小网站领域）。另接住图上三条批注：MAIN_AGENT_RULES 八条进代码规则目录、必须全审清单判不了时写「这几条还没有机器认得的写法，暂时每件都全审」、plain-ui 0.7 的 peakApplies；0.8 评审 F78–F81 同批处理（附录 G）。docs/CHARTER.md 0.7 同批改写 §3.2 第 3 条、§6 影子一句与 §9 存放表。§19 没有要问人的。没有专门节点、交编排方分派的一条：违规流水 audit/violations.jsonl 按 d-rules-in-repo 进会话所属项目的 .llm/，是数据目录服务与 guard 的改动，规则板跟着 guard 写的那一份。"
+    },
+    {
+      "at": "2026-10-30T08:12:37.159Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "规则板 0.9 接缝核对与第 1 轮独立评审（run boards-hook-rules09-loops05，wf_d2a9085875b43c88）：接缝核对比了 19 个点，两份设计按归属改好（报告 .agents/tasks/rules/seam-check-v09-v05.md）。评审 CHANGES_REQUESTED，HIGH 0、MEDIUM 4（F82–F85）、NIT 5（F86–F90），按约定停下，onepage.md 没改。F82 宪章改写越界：人定的是「人看过原文同意的板上条目即生效」，写在代码里的门禁照旧先影子（d-boards-as-hooks 正文「code rules stay as they are」，ORCHESTRATION.md §6.5，M4 的四条影子规则与 M7 的升级阶梯）；编排方已直接改 docs/CHARTER.md 0.7 的 §3.2 第 3 条、§6 与状态行把范围收回，并顺手更正 §9 用户级目录一行（ZCode 设备号用的是 ~/.zcode 状态文件里的，不在 $DSH_HOME/glm-hourness/）；草稿里请 M5 删第 7 条经验与请人整条替换 hourness 验收第 3 条的两条批注没有写进图。F83 与 M4 0.4 的接缝没接（M4 的 GUARD_RULES 目录、违规流水的 mode 取值 record/late 与 M4 的 classifyRecord 对不上、observe 与 noteDenial 没表态）。F84 新克隆、换机器或删了 .llm/ 后，规则板照文件里的哈希直接跑脚本，没人核对是谁写的，与「人看过原文才跑」不合，循环板 0.5 已有的做法（只认图上带人原话的提议）要照搬。F85 验证计划里六处还是 0.8 的说法（含不做档主 Agent 排队，与 d-main-agent-peak-exempt 相反）。规则板最小一片（d-rules-peak-slice）要等 0.9 评审通过，在自举的路上。等人定要不要再给一稿。"
     }
   ]
 }

@@ -137,6 +137,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "人 2026-10-30 回「行」：同意编排方的建议，M4 再给一稿，并进 d-alignment-rounds 的对齐轮，等循环板 0.5 定稿后照它与 design-context「Check entries seam」改 F17，同时改 F18–F20 与 N35–N42；示范换成与练习题不相干的领域。这一稿带一轮独立评审，还挡路就停下问人。"
+    },
+    {
+      "at": "2026-10-30T08:12:33.646Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "循环板 0.5 给 M4 的（循环板 design.md §4.4、§5.3、§17 M4 第 1、4 条；照编排方 2026-10-30 的裁定「Check entries seam」，M4 第 4 轮评审 F17 之后，接缝核对时改写）：一、M4 自带的检查器仍是插件交来的数据、由 env 行执行、在板上只能看：when 为 env.files-edited，filter 为改到的文件（paths，按扩展名写 *.ts），动作 self（by: 'glm-hourness/env'）；交一项 env.checks-after-edit 带明细与 ownRules，或每个批过的检查器一项，循环板都收。二、人自己加的检查是循环板上人的普通条目（动作 check），由循环板的执行器 runCommand 跑、走与脚本同一条同意的路，M4 不执行它们；M4 0.4 §18 第 5 条的 ①②④ 随裁定不要了，③ 由 0.5 的 glob 接住，⑤ 由 runCommand 接住。三、请 M4 下一稿给三样（名字由 M4 定）：按工具节点 id 读出一条检查命令 argv 的读法；按事件载荷填好命令里占位（例 {files}）的纯函数；可选的按输出格式整理结果的纯函数；节点上的命令要能不经 shell 直接起（npx 这类 .cmd 起不了）。四、env.files-edited 改为经 emit 交进收件箱、人能选（不再 listedOnly），载荷 files（filter: 'paths'，相对 root）、root（改动所在的检出的根）、truncated，键 files-edited:<会话>:<这一步的序号>；M4 自带的那一项照旧在那一步之前当场跑。五、graph.third-rework 不变；循环板不读 M4 的违规流水。"
     }
   ]
 }

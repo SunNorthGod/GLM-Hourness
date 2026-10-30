@@ -230,6 +230,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M4 设计 0.4 给面板的请求（M4 §5.8，评审第 3 轮 F15）：「需要你」的 (b) 一类加上开着的申报。现场投影 graphLive 认 request_exception 的 ask 结果（ref、lines {title, background, proposal, doubt, notTaken}、时刻、会话）就加一项；见到同一 ref 带 request {ref, outcome} 的 hourness-request 提醒（approved、declined、closed、expired、lapsed）、或过了 2 小时就去掉；显示题目与四行，下面一行「去主 Agent 的对话回话 ›」指向申报所在的会话（有主 Agent 时就是主 Agent 的会话）。面板仍不批。另：第三次修复的待决在 0.4 是提议式的（不带选项字段），按 (a) 一类照常显示四行；0.3 那句「暂时还带选项字段」作废。"
+    },
+    {
+      "at": "2026-10-30T08:12:36.379Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "规则板设计 0.9 已照 plain-ui 0.7 §11 规则第 7 条加 BoardState.peakApplies（读不到是不是高峰时 guideLine 写原因与档位，没有计价服务时为 null）。规则页 0.9 的变化：检测器一组不再有「试运行」与「转为生效」；带脚本的规则写脚本的路径、和你同意的那一版一样还是不一样、超时与超时或出错时怎样；4 周没用过的标出来；仓库里的规则文件被改过时列出差别与 /rules recovery 文件 照改|忽略。上手页第 4 块讲到规则板时请不要用「试运行」。"
     }
   ]
 }

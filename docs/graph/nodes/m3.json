@@ -272,6 +272,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "M4 设计 0.4 给 M3 的接缝请求（M4 §4.6、§5.3、§18 第 5 条）：第 6 步加不带题目与四行的 propose_to_human {kind: 'question', question}：原样渲染一张已有的、未关闭的提议式待决给人看，记进这一条回复的件数，不写图（M4 的第三次修复要它；循环板 0.4 §5.2 第 12 项也要，因为引擎对什么都没改的 edit 返回 invalid，src/graph/engine.ts:613）；本会话有开着的申报（requestsService(ctx)?.openRequests）时 propose_to_human 返回 busy，M4 的 request_exception 反过来在本会话已出示过提议时返回 busy；installMainAgentRules 经 installRuleGate 安装；git 快照门第一件事调 observe、存不了快照而拒绝时调 noteDenial（规则 id git-snapshot），拒绝记录不带 mode；src/graph/proposal.ts 与 src/graph/plain-question.ts 若 G4 先合入则由 G4 照附录 0.4 §3.3、§2.8 原样建，M3 改成导入。M4 的 R1 排在第 6 步之后，不做选项式的过渡。"
+    },
+    {
+      "at": "2026-10-30T08:12:33.308Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "循环板 0.5 请 M3 下一稿改两处（循环板 design.md §17 M3 第 9、10 条）：一、AttachDetail 的上限由 markdown 1–800、mustShow 1–13 片每片 400 改为 markdown 1–6000、mustShow 1–8 片每片至多 4000 个码点（人在四行之后看的是整段脚本，脚本至多 4000 个码点、100 行；附录 0.4 §6 那一行）；hournessTalk 的 after 至多 16,000 个码点放得下，不用改。第 5a 步的「规则板的提议没有 detail，跳过这一步」改为两块板的脚本提议都带 detail（共用的 scriptDetail 生成）、循环板人加的检查提议也带（commandDetail，编排方的裁定「Check entries seam」），都核对。二、照 d-rules-in-repo 把持有者记录从 <userHome>/main-agent/ 搬进项目的 .llm/ 时，请导出按项目根定位的读法（例 holderFileOf(<项目根>) 或 readHolderFor(<项目根>)），readHolder 的 none、held、unreadable 三种结果不变；循环板只换定位函数，行激活时改从 DSH 工作区登记表列项目。"
+    },
+    {
+      "at": "2026-10-30T08:12:35.392Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "规则板设计 0.9 请 M3 附录下一稿改三处（规则板 §10.7 M3 一节，都在第 6 步）：一、attach 分派表里 rules: 一行与 loops: 一样，attachable 可以交回 detail（AttachDetail，规则板用循环板的 scriptDetail 组），拍板之前第 5a 步「给人看过原文」的核对对 rules: 的提议同样做（d-boards-as-hooks：人在四行方案里看到脚本原文并同意）。二、AttachDetail 的上限照循环板设计 0.5 §3.1（markdown 1–6000 个码点，mustShow 1–8 片、每片至多 4000；两块板的脚本原文至多 4,000 个码点、100 行），与循环板同一个数（接缝核对时定，原先估的 4,200 作废）。三、主 Agent 持有者记录按 d-rules-in-repo 进项目的 .llm/，不再在用户级 <DSH home>/glm-hourness/main-agent/；规则板只经 mainAgentOf 读它（晚到的拦下发给谁）。MAIN_AGENT_RULES 八条进代码规则目录照附录 0.4 §3.11，不变。"
     }
   ]
 }
