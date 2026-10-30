@@ -11,6 +11,10 @@
  * a writer that stalled no longer carries that writer's token, and the stalled
  * writer must abandon. The millisecond window that is left is closed by the
  * revision check of the write.
+ *
+ * Not rules-specific: this is the one file-lock module of the repository.
+ * The rules board uses it today; M7's step E3 and M5 reuse it instead of
+ * writing a second one (docs/ORCHESTRATION.md §16.3).
  */
 import { randomUUID } from 'node:crypto'
 import { open, readFile, unlink } from 'node:fs/promises'

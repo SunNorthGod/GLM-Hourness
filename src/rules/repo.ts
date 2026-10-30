@@ -21,8 +21,8 @@
 import { existsSync } from 'node:fs'
 import { copyFile, mkdir, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
+import { acquireLock, type LockEnvironment, realLockEnvironment } from '../data/lock.ts'
 import { gitDirOf } from '../data/project-root.ts'
-import { acquireLock, type LockEnvironment, realLockEnvironment } from './lock.ts'
 import { diffRepo, parseRepoRules, repoJson, repoPart, stateFromRepo, type Change, type JournalRecord, type ProjectState, type RepoDiffLine, type RepoRules } from './model.ts'
 import { appendRecord, applyRecord, loadState, persistLoad, readText, realStoreIo, stamp, stateDigest, textDigest, writeAtomic, writeSnapshot, type LoadResult, type RulesPaths, type StoreIo } from './store.ts'
 

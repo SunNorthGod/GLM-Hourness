@@ -20,7 +20,7 @@
  */
 import { copyFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
-import { acquireLock, type LockEnvironment, realLockEnvironment, type WriteLock } from './lock.ts'
+import { acquireLock, type LockEnvironment, realLockEnvironment, type WriteLock } from '../data/lock.ts'
 import { effectivePeakMode, parsePeakLevel, repoJson, repoPart, stateProblem, type Change, type JournalRecord, type PeakLevel, type PeakModeSetting, type ProjectState, type RulesActor } from './model.ts'
 import { refusalFor } from './permissions.ts'
 import { exportRepo, settleLocked, settleProject, type ProjectRead } from './repo.ts'

@@ -8,8 +8,8 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import { realLockEnvironment, type LockEnvironment } from '../src/data/lock.ts'
 import { openRulesBoard, type RulesBoard } from '../src/rules/engine.ts'
-import { realLockEnvironment, type LockEnvironment } from '../src/rules/lock.ts'
 import { realStoreIo, type StoreIo } from '../src/rules/store.ts'
 
 export interface Project {
