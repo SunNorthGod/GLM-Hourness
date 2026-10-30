@@ -287,6 +287,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M7 0.5 第 5 轮独立评审（run m7-design-v05-sonnet，wf_0b25a6b5abb8eaaa，claude-sonnet-5.5）：APPROVED，没有一条挡住开工；HIGH 0、MEDIUM 4、NIT 7。第 4 轮十条挡路（R4-F1 到 R4-F10）与两条 NIT 的处置照 0.5 的排期全部落地。四条 MEDIUM 各挡具体一步、不挡整体：R5-F1（§6.6「0.5 加的 L2 用例」那一段被截断，§9.1 缺 glm-exec-modules 与 glm-exec-peak 两行）挡 E1b 与 E8；R5-F2（§3.1.5 第 5 条的断言与 §3.7.1、§6.4 相反）与 R5-F3（模块读法读不出时放行，与「判不了就从严」和人定的「模块没放行不派开发」相反，要改成读不出就不派）挡 E4；R5-F4（模块设计的独立评审归 M7 的派发，0.5 没有处置）在 E4 合入之前决定。E0、E1a、E3 现在就能开工（编排方已裁定的实现顺序）。另一个开工前提不在 design.md 里：onepage.md 与三条验收草稿还是 0.4 的版本，要先改成 0.5 再请人放行。评审稿 design-review.md 第 5 轮一节、design-review.json 第 5 轮、design-review-gate.json。"
+    },
+    {
+      "at": "2026-10-30T12:40:10.760Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M7 设计 0.6（2026-10-30，.agents/tasks/m7/design.md，0.5 留在 design-0.5.md）：第 5 轮评审 APPROVED（没有一条挡开工）之后，趁没有东西在建，按评审给的改法改完四条 MEDIUM 与三条到期的 NIT，只改文字，不再评审。R5-F1：§6.6 拆回两条，补回两模块、三档、成批、示范、指标出口的 L2 清单（a）至（h），接回 0.4 的「其余」一条；§9.1 补 glm-exec-modules 与 glm-exec-peak 两行。R5-F2：§3.1.5 检查第 5 条改成对有效深浅断言，示范里不加审查派发。R5-F3：读不出模块的结构时拒绝，releaseOf 多第三种结果 {ok:false, level:'module', reason:'unreadable'}，派发写 not_released 并带固定 hint，worker-scope 拒绝写入，没有带 stage 的特性的目标照常派；§2.4、§3.2.1、§3.5.1、§3.9.7、§6.1、§6.7 同改，L2 加一例。不同于评审字面的一处：抛错的捕获放在 releaseOf 里（读模块的函数作参数），两个调用方不各写一份。R5-F4：编排方定改法 A，产品里做每个模块的设计评审（§3.7.5）：kind review、写入范围为空、source 指向模块设计决策的任务，由 harness 在 dispatch_task {id: 模块 id} 时建，模块没放行也派得出去（目标层照查，proposed 状态对这一种形状放行），scopedTasks 与完成门禁不数它，结论在模块上留一条固定格式的记录，记录形状已交给 M3（见 m3 的批注）；本仓库自举不受影响，本仓库的模块设计评审由 Kiro 工作流做。R5-N1 两项、R5-N2、R5-N7 已改。留到何时（§18.2）：R5-N4 在 U28 对着 M3 0.5 定稿核对的时候；R5-N5 在自举开始之前加一句，或整块规则板的门合入时；R5-N6 在 E3。R5-N3 由编排方同批做完：onepage.md 已按 0.6 重写，graph-ops-v04-pending.json 里 m7-2（5 条）、m7-3（8 条）、m7（5 条）的验收字句已按 0.6 §1.2 重写，仍是草稿、没有应用。另把 §1.2 里四处依赖自举范围之外的字句收紧，含义不变：m7-3 第 4 条不再写记复盘（复盘节点的自动生成是 P5），第 5 条只写少做，m7-2 第 4 条写成没有经验板块时这一节不出现，m7 第 3 条去掉晨报。下一步：请人放行，并按 question-37 A 逐条看三份验收字句；放行后 E0、E1a、E3 立刻开工，E1b 的纯函数立刻写。"
     }
   ]
 }

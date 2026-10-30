@@ -368,6 +368,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "派出 m3-implementation（wf_678c62fefd426ba9，claude-sonnet-5.5，照 d-subagent-sonnet）：人放行之后开工实现，照附录 0.5 的步骤表做第 3 到第 12 步加人设一步，第 11 步在 .worktrees/m3-flow、其余在 .worktrees/m3（两个工作树已快进到 main）。照 AGENTS.md：一步一个提交、提交信息带节点 id、文档与代码同批，每步后 build → preflight → test，合入主干前另跑 probe；碰主 Agent 工具面、用户级数据与决策流水的步骤按 norm-review-floor 过独立评审。评审重点：人的原话是真核对过而不是采信模型的转述、主 Agent 确实没有写文件的路子、高峰里没有任何东西拦住主 Agent。两条 NIT 在各自那一步处理（R5b-N1 连同图上 orch、bottom 的待办在定 stage 写权限那一步定，要核对阶段继承与门禁的影响；R5b-N2 例题分段）。桌面版的人设核对要改人的配置，本轮不做、记成待办交人。src/data/project-root.ts 与 src/data/lock.ts 复用规则板跟进那一稿建好的，不另写。"
+    },
+    {
+      "at": "2026-10-30T12:40:11.011Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M7 设计 0.6 §3.7.5（R5-F4，编排方定改法 A）向 M3 提的请求：模块设计的独立评审在产品里由 M7 的派发做，M3 的 moduleReleaseGate（附录 0.5 §3.14.3，现七项）请加第 8 项，M3 第 9 步做；记录形状要在 M7 的 E4 合入之前定下，现给出。一、记录：M7 在模块节点上以 harness 身份批注一行，每一轮审查一条，格式固定：设计审查 · <childId> · <APPROVED|CHANGES_REQUESTED> · 方向清单 <digest> · 挡路 <n> · 派出 <at>。正则 ^设计审查 · (\\S+) · (APPROVED|CHANGES_REQUESTED) · 方向清单 ([0-9a-f]{12}) · 挡路 (\\d+) · 派出 (\\S+)$，分隔符是空格、U+00B7、空格。二、字段：childId 是这一轮审查的派发号；裁决是规整之后的，APPROVED 当且仅当 n 为 0；digest 是 norm-directions（DIRECTIONS_ID）此刻每一条验收各自去掉首尾空白、以换行符连接后的 UTF-8 文本的 SHA-256 的前 12 位小写十六进制；n 是规整之后挡路发现的条数；at 是这一轮派出的时刻，ISO 8601，与节点历史里的 at 同格式，不是写记录的时刻（用写记录的时刻，审查期间改了设计的情形会被当成评审之后没改）。三、M7 请 M3 数的条件（措辞归 M3）：模块上按批注的 at 取最新一条这样的记录，裁决是 APPROVED、n 为 0、digest 等于此刻按上面算法得出的值，并且模块、模块放行集合（moduleSet）里的节点、norm-directions 在记录的派出时刻之后没有 comment 以外的历史条目；没有这样的记录时检查不通过，hint 建议用 dispatch_task 以模块 id 派设计评审。四、相关的两点：附录 0.5 §3.14.7 让挂在没放行的模块下的任务出生为 proposed，M7 对设计评审任务这一种形状（kind review、写入范围为空、source 指向模块下的设计决策）收 proposed，由 M7 的 isDesignReview 认，不需要 M3 做什么；M7 读 src/graph/modules.ts 的五个导出，读不出时分了模块的目标一件活也派不出去（R5-F3），请保持导出名与形状稳定。五、待 M3 定的一点：本仓库自举不受影响（本仓库的模块设计评审由 Kiro 工作流做、不走产品里的派发），第 8 项若对本仓库自己的图上的模块放行也生效，要写成本仓库能满足的形式，M7 不替 M3 定。详见 M7 设计 0.6 §3.7.5、§2.4、§7 的 M3 一行。"
     }
   ]
 }
