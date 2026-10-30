@@ -168,6 +168,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "规则板最小一片对 M6 的影响（分支 rules-slice 93964929）：一、nextPeakChange(peak, fromMs, horizonMs?) 已在 src/shared/pricing.ts 里加好（取下一个整分钟起第一个与此刻不同的时刻，默认看 8 天，返回毫秒或 undefined），M6 不必再加第二份，直接用，规则页、/glm-status、/hourness 与规则板的「到几点」就是同一个函数；二、GLM 包按档位选高峰提醒措辞时读 peakModeService(ctx)?.stateFor(sessionId)，字段 level、origin、peak、until，读到 undefined 就照今天的原文；规则板的任何一步都没有改 ORCHESTRATION.md §11.4 的内容，只在新的 §16 里指向它；三、计价服务的 peakHours（时段说明）这一片没有用，peakModeIntro(peakHoursZh?) 留了参数，M6 加了 peakHours 之后规则页再传。"
+    },
+    {
+      "at": "2026-10-30T21:57:59.118Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M6 设计 0.5 完成并通过评审（对齐轮 align-rounds-2026-10-30 的 C 支）：独立评审第 5 轮 APPROVED，HIGH 0、MEDIUM 0、NIT 8，挡路数按轮次 3、4、2、（第 4 轮无记录）、0。一、盘上稿：对齐轮开始时 design.md 是一份被额度上限截断的 0.5，与 0.4 逐行比较只差版本行和一条依据，没有半截的章节；0.4 原文在 design-v0.4.md 完好；处理记录在 §21「0.5：盘上稿的处理」。那条依据写的基线提交 06219c6 不对（9c346fb 不是它的祖先），已改为 419b6ea。二、0.5 对齐了：d-main-agent-peak-exempt（不做档的提醒只对 GLM 子 agent 与花积分的脚本说话，不叫主 Agent 停下；验收第 13 条加禁用片段，第 25 条用探针场景 rules-peak-stop 钉住主 Agent 没被拦）、规则板最小一片在主干实际交出的 src/shared/peak-mode.ts（读 level、origin、peak、glmWorkerCap；nextPeakChange 已在主干）、d-zcode-3171（重核，安装包仍是 3.17.1）、d-rules-in-repo、d-memory-scope、d-boards-as-hooks、d-script-timeout、d-dogfood-scope、d-agent-examples（不适用，M6 没有主 Agent 要写的东西）；依据改到规则板 0.10、循环板 0.6、M3 附录 0.5、M7 0.6、宪章 0.7。三、第 4 轮：轮次表里有一行 0.4 的 0/0/5，没有正文和 json，按没评审过处理；第 5 轮自己重核了第 3 轮的全部发现，F8、F9、N16 至 N21 都已关闭。四、一页放行稿 onepage.md 已按 0.5 重写（旧稿留作 onepage-v0.4.md），等人放行；没有待人定的事项。五、8 条 NIT 不挡开工：N27（放行稿）与 N28（本批注草稿）这一步已处理；N22 至 N26、N29 留到 M6 R1 开工前顺手改：删掉 §17 里「今天的第 N 行」的行号只留引文，探针导入行是 53 不是 53-54（N22）；R1 与规则板 R4 的先后只留一条，R1 先于规则行去掉 disabled: true，R1 与 R4 先后不限（N23）；PeakModeNote 为 peak 是 undefined 的情形加 peak-unknown，写成「四种记号、五种情形」（N24）；§7.2 末尾改档位那句加上跟主 Agent 说这条路（N25，放行稿一侧已改）；「读一次」改为「每发一次提醒读一次」并加压缩后补发提醒的 L2 例（N26）；§21 补一句断掉的旧稿没留副本（N29）。以后对齐轮遇到断掉的旧稿，先存成 design-v<旧版本>-cutoff.md 再动。六、对已放行设计的请求写在 rules 和 schedules 两个节点上（自举之后办），对 metrics 的说明写在 metrics 上；对 M3、M7 没有请求。下一步：等人放行 onepage.md；放行后 R1（高峰提醒按档位）是自举之后 M6 第一个该做的步。"
+    },
+    {
+      "at": "2026-10-30T21:58:00.989Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "用户图 0.5（user-journey）对 M6 的几条说明（M6 0.5 对齐轮评审第 5 轮 APPROVED，下一稿或实现时顺手处理，不挡路）：一、G13 只装 GLM 通道时，额度快用完与登录失效只在 /glm-status 与行健康里，没有主 Agent 也没有循环板，人不打命令就不知道，请 M6 定是否让输入框下方的 GLM 按钮显示这两件；二、G14 登录过期（401）时请求失败的报错是不是人话没有设计写（面板只给没登录的报错加了中文一句），请 M6 补；三、G15 额度用完时自动推进怎么办，M6 记上游限额错误但不管推进，M6 的上游限额记录是否能供 M7 读，请两边下一次修订时一起定，m7 节点同批批注写了推荐。四、用户图 §5.3 与 G20 按 M6 0.5 §3.4 的不做档提醒写（含 The main agent is not held on any level），M6 一页稿 0.5 也已有这一句，用户图下一稿把「M6 还没有评审」改掉。"
     }
   ]
 }

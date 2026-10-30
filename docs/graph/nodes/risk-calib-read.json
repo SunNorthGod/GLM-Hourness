@@ -12,6 +12,12 @@
       "op": "propose",
       "reason": "阅读摘要候选改动第 1 条：标定运行目录在仓库内、权限 danger-full-access、guard 不拦读",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-30T21:57:58.260Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M5 设计 0.5 §8.7：标定与消融运行不读真实的经验与记忆。M5 的 A1 给 scripts/sandbox.mjs 的 dataRows 加 projectOverride，标定会话的项目目录与用户级目录都指向运行目录；否则同一道练习题会随经验的积累得到不同的上下文，回归对比失去意义。读标定的人注意：记忆行同时写用量流水，消融不能靠禁用记忆行来关索引。"
     }
   ]
 }

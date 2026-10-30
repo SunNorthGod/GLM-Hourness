@@ -441,6 +441,24 @@
       "actor": "llm",
       "op": "comment",
       "text": "M4 设计 0.5 已按规则板 0.10 §10.7「M4 设计 0.4」一节对齐，M4 对规则板没有新的功能请求，只有最后一句的一处字句请在 dogfood 之后对齐：一、GUARD_RULES（src/guard/catalog.ts）列 guard 框架装规则的行的规则——guard 行六条（workspace-containment、file-tools-only 与 credential-read、suppression-reason、checker-config、scratch-only 四条影子规则）、图行 graph-files-only、循环板 loops:schedule-tools 与 loops:files-only、指标流水 metrics-files-only；id 是规则对象自己的 id，row 是装它的行，mode 取规则对象的字段；builtin.ts 映射成 <行>:<id> 的 CatalogEntry。M3 的 MAIN_AGENT_RULES 与 M7 的 EXECUTE_RULES 不在 GUARD_RULES 里，仍是各自的表，由规则板的 builtin.ts 映射；M4 的契约测试对三张表合起来核对。二、违规流水：classifyRecord 认 rules: 开头的 mode record（rule-record，不进违规、单列计数）与 mode late（late-denial，进违规、另列一行）、mode enforce 加 effect queue（deferral，不进违规）；rules: 之外的 record、late 算读不懂；rules: 开头的 mode shadow 当规则影子读。keyOf(record) = recordKey(JSON.stringify(record))，规则板写流水后用它取 noteDenial 的 key。三、规则板的门第一件事调 observe(agent, call, callId)、拦下与开单拒绝时调 noteDenial(agent, callId, {rule: 'rules:<id>', call, key, origin})（没有 rightPath；晚到的拦下不调）；M4 的 gate.ts 不在时规则板不调。规则板 R7 在 M4 的 classifyRecord 合入之后可以改用它，数字不会分叉。四、字句（M4 评审第 5 轮 N47）：规则板 0.10 的 §10.7 第 1 条读起来像是 GUARD_RULES 也列 M3 与 M7 的门，而它自己的 §10.1 把 MAIN_AGENT_RULES 单列、M7 自行登记；M4 按 §10.1 做（与 M3 附录 0.5 §3.11、M7 0.6 §12.1 一致）。请规则板在 dogfood 之后把 §10.7 第 1 条的字句与 §10.1 对齐，M4 的代码与规则板的映射都不受影响。"
+    },
+    {
+      "at": "2026-10-30T21:57:57.582Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M5 设计 0.5 给规则板 0.10 的请求（自举之后再办，现在不要求改代码）：§7.1 的括号把数据目录服务的 projectDirOf(cwd) 描述成「git 仓库根下的 .llm/，没被忽略时追加进 .git/info/exclude」。M5 的 projectDirOf 只返回路径，不写任何东西；追加忽略条目的是 src/data/project-root.ts 里的 ensureIgnored（M5 另加的 ensureProjectDir 在建目录前调它）。规则行合入 projectDirOf 时要继续在建 .llm/rules/ 之前调 ensureIgnored 或 ensureProjectDir，不能因为有了 projectDirOf 就去掉 ensureRuntimeDir 里那一步，否则别的项目里 .llm/rules/ 会没有忽略条目。请把 §7.1 的括号改成同样的话；§7.4 里 openRulesBoard 的 projectDir 参数随 projectDirOf 一起加。M5 设计 §5.5、§8.3 的引文已改为 §7.1 与 §7.4。"
+    },
+    {
+      "at": "2026-10-30T21:57:59.319Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M6 设计 0.5（对齐轮 C 支，评审第 5 轮 APPROVED）对已放行的规则板 0.10 的请求，按 d-freeze-until-dogfood 自举之后再办，不要求现在改任何契约：一、请在 §16 记一句先后：M6 R1（高峰提醒按档位的新说法，连同 ORCHESTRATION.md §11.4 的改写）先于规则行去掉补丁里的 disabled: true；R1 与整块规则板 R4 的先后不限，因为规则行禁用期间 R4 的每步提醒进不了安装（packages/hourness/cordis.patch.yml 里规则行现在是禁用的）。0.10 §16 只写了 M6 的 R1「规则板 R1 合入之后就能做」，没有写它与规则行默认启用、与规则板 R4 的先后；原因是规则行一启用，人就能选不做、少做，而提醒若还是今天的「不要暂停或推迟工作」，同一步里会有相反的两句话。M6 0.5 的个别句子把先后写得更严（R1 先于 R4），按这一条为准，M6 会在 R1 开工前改齐。二、0.10 §10.7 里「nextPeakChange 由 M6 Q1 或规则板 R4 先合入的一方加」一句已不准：它已在 src/shared/pricing.ts，M6 只用不加，Q1 只补测试里缺的时刻。三、M6 0.5 读 stateFor 的 level、origin、peak、glmWorkerCap 四项，按 d-main-agent-peak-exempt 与 0.9 在 m6 节点上的批注，不做档的提醒不叫主 Agent 停下；规则板的任何一步仍不改提醒原文、peak-reminder.ts 的注释与 ORCHESTRATION.md §11.4。M6-R2（人设规则的排队、每步提醒、唤醒文字写出高峰结束时刻）与 M6-R3（脚本自查的选项、退出码）照旧，不是新请求。"
+    },
+    {
+      "at": "2026-10-30T21:58:00.814Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "用户图 0.5（user-journey）对规则板一页稿（rules/onepage.md，2026-10-30 18:12）的两处指摘，设计 0.10 已放行，一页稿是人批过的，改不改、怎么改由编排方在自举之后定：一、「系统还认不出的那几条，旁边写「暂不强制」」，设计 0.10 §9.1 已改为「这几条还没有机器认得的写法，暂时每件都全审」；二、「你加的检测器先试运行：只记下它会挡哪些事，不真挡。你说转为生效才生效」，设计 0.9 起人同意的条目即刻生效，检测器没有试运行期（宪章 0.7 §6：只有写在代码里的新规则仍先试运行）。另记一条核对结果：不做档的排队单有两种，一种开在 GLM 子 agent 的会话上（builtin:glm-peak-stop），一种开在主 Agent 自己的会话上，管它派 GLM 子 agent 的那一次调用（builtin:glm-peak-stop-dispatch，设计 §3.6、§9.1），/rules let 对两种都有效。规则板这边没有要改的，是用户图 0.5 §5.3 与 G20 把 /rules let 写成只对子 agent 会话的单有效，由用户图下一稿改。"
     }
   ]
 }

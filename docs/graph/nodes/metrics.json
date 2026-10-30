@@ -173,6 +173,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M4 设计 0.5 对指标流水的接缝（未变）：M4 交拦截、影子、跟进、申报与放行的事件（只带规则 id、种类、结局、来源与会话 id，不带命令与路径），与每天一条压制计数事件；suppressions.jsonl 这一稿照旧写，等指标流水定稿、它的行默认启用之后由它的实施那一步去掉（改 src/env/suppressions.ts 与晨报一处）；recordKey 与 metrics-files-only 照它的请求，metrics-files-only 经 installRuleGate 安装、登进 GUARD_RULES、影子。违规流水不并进指标流水。"
+    },
+    {
+      "at": "2026-10-30T21:57:59.691Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M6 设计 0.5（对齐轮 C 支，评审第 5 轮 APPROVED）对指标流水设计的说明，请指标设计下一次修订时定：一、GLM 通道包在指标服务存在时交四类事件：glm.quota-read、glm.upstream-limit、glm.login-rejected、glm.peak-reminder（后者带 peakMode 与 peakWorkerCap），字段见 M6 §14.2，不含令牌、请求头与正文；指标服务不在时什么都不交、不告警。二、指标流水按 d-rules-in-repo 放在项目的 .llm/，而额度读取、上游限额、登录被拒是整个 GLM 账号的事，循环板发起的额度读取没有会话也就没有项目；这类事件归哪份流水（最近走过步的项目，或没有项目时不写）请指标设计定，M6 不替它定。三、脚本自查（npm run calibrate、smoke:authorized）的每一次判定由规则板的 checkCall 写一条 rules.check，M6 的 gateOnRules 不写判定事件；这要求指标流水给 checkCall 一个 DSH 之外可用的库写入口，按项目根找项目 .llm/ 里的流水，写入口不在时什么都不做。四、M6 0.4 草稿 graph-ops-v04.json 给 metrics 的那条批注里「按 userDataHome() 与项目键追加」一句作废，以 d-rules-in-repo 为准。"
     }
   ]
 }

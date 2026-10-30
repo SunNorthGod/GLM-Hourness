@@ -59,6 +59,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M7 设计 0.3 §2.3.2 定了子 agent 拿哪些图工具（0.2 评审 F19）：主 Agent 派发链里的子 agent（worker、审查者、只读子 agent）的工具面去掉 graph_propose、graph_status、graph_edit、graph_link、graph_unlink、graph_verify、graph_decide、graph_approve、graph_reject，留 graph_show、graph_open、graph_focus、graph_comment；worker-graph-readonly 照旧是按名直接调用时的兜底。prompt-audit 的整理可以按此去掉这部分。"
+    },
+    {
+      "at": "2026-10-30T21:57:58.447Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M5 设计 0.5 §8.5：M5 的 D1、R1 两步改 src/glm-prompt/（Memory 一节的原句与本地化、新镜像文件 zcode-memory-text.ts、汇报细度一节读 glmHournessMemory.depth 的读法），与 question-31 C 的整理（方言节按 ZCode 次序、Output Style 承载人设与细度、子 agent 只拿需要的）排队，谁先合入谁先改，后到的在它之上改。Output Style 做出来时，常设汇报细度的读法搬过去，读的仍是同一个服务。"
     }
   ]
 }

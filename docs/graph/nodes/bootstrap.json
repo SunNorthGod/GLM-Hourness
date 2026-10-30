@@ -118,6 +118,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "编排方裁定（2026-10-29，可逆）：接管设计停在 0.5，不追加第二遍修改。理由：接管不在自举关键路径上（d-dogfood-scope 只要 M3 与 M7 骨架），没有实现在等它；F44 与 F45–F49 都是纯文字与断言的改动，不动方向，按 d-freeze-until-dogfood 记下、自举之后与 M3 的两处接缝一起处理。待办：自举之后做一遍只改 F44–F49 的文字修改加只核这六条的复核，通过后写 onepage.md，再把 D1、D2、D3 合成一条消息问人。代价：在此之前若有人按 §5.1 的模板实现，过渡路上的提醒少『目标不走访谈』这句，实现者要按 align-stop-report.md 的 F44 改法自己补。设计上下文 design-context.md 的『Layout of a proposal』一条同步也在自举之后做。"
+    },
+    {
+      "at": "2026-10-30T21:57:57.920Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M5 设计 0.5 的通知，不是请求：src/data/project-root.ts（projectOf、gitDirOf、ensureIgnored，M5 另加 projectDirOf 与 ensureProjectDir）与 src/data/lock.ts 已经在仓库里，M5 不再新建这两个文件，接管不必按 M5 §5 的规格另建它们。src/data/journal.ts 与 src/data/secret-shape.ts 仍是 M5 的 A1，规格不变（谁先合入谁建）。journal.append 在项目目录被删后的下一次写入会重新准备目录（M5 §5.3 第 2 步）。"
     }
   ]
 }

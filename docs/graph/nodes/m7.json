@@ -408,6 +408,24 @@
       "actor": "llm",
       "op": "comment",
       "text": "M4 设计 0.5 对 M7 0.6 的接缝（等 dogfood 之后处理，d-freeze-until-dogfood；M7 0.6 §18.2 已写明 PROMOTION 一条在 P2 之前、其余在实现中谁后合入谁改，M4 不要求现在改）：一、worker-scope 等门改经 installRuleGate 安装（0.6 §3.2 仍写 evaluate）。二、周报阶梯的「影子转生效」引用 M4 的 PROMOTION 并采用它的含义（带标注的会拦样本至少 20 条含回放、实时影子至少 14 天、误伤 0），ladderProposals 读违规流水用 classifyRecord；PROMOTION 与阶梯只管代码里 mode 为 shadow 的规则，规则板条目的 record 与 enforce 由人选。三、汇合门禁加「草稿区为空」一步（scratchLeftovers）。四、worker 写工作区外：worker-scope 在目标出了工作树时先调 peekGrant（为真就放行这一次往里走），拒绝时调 outsideDenial；M4 0.5 改了 outsideDenial 的判法（F19）：按项目判，目标在项目里（主检出、别的工作树）返回 undefined，worker-scope 照 M7 原样纠偏（ask_main 请放宽写入范围），不发编号、不问人；目标出了项目才返回编号与给 worker 的例外一句，RuleDeny.ref 写编号。worker-scope 的 rightPath 认带这个编号的 ask_main。五、推进监听器读 openRequests(持有者会话)，非空时以 hourness-waiting-human 停住 goal，申报都关了、列出的待决也都定了时恢复；人一直不回时 M4 的 2 小时定时器会写 expired 并经 agent.followup 送一条 hourness-request 关闭提醒叫醒持有者（N38），M7 在那一步恢复。六、worker 的简报或 ask_main 的说明里写明「项目外的写入经主 Agent 问人，等回答，再原样调一次」。EXECUTE_RULES 留在 M7，M4 的 GUARD_RULES 不列它。"
+    },
+    {
+      "at": "2026-10-30T21:57:57.246Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M5 设计 0.5 对 M7 0.6 的请求之一（d-freeze-until-dogfood：放行的设计与进行中的实现现在不收新请求，等自举之后）：d-memory-scope 之后经验不分范围，请把交回结构 lessons 每项的 scope 字段，和退路批注 JSON 里的 \"scope\":\"project\" 去掉。不去也不坏：M5 收到 scope 照收并存进本项目，只在 notes 里提一句。M7 0.6 §3.5.5 其余各处（relevant 与 propose 带 session、errors、三路结果、退路批注先过 looksSecret）M5 照常提供。"
+    },
+    {
+      "at": "2026-10-30T21:57:57.414Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M5 设计 0.5 对 M7 0.6 的请求之二，可选，不是前提（自举之后再办）：M7 0.6 的周报（§3.12.4）只带 M5 的 stats，没有「纠正与学习」一节；规范阶梯 ladderProposals（§3.12.2）的输入是规范节点与违规记录，M5 的纠正组进不了它。M5 因此不把学习流水线挂在周报上：记忆行自带只读工具 learning_signals 和每七天至多一次的摘要提醒，把「人改了 LLM 写的字段、否决提议、对话里否掉与补充、重开」这些信号按组送到主 Agent（M5 设计 §3.6 第 2 步）。如果 M7 日后愿意在周报里也列这些数，可以在 weeklyReport 里加一节「纠正与学习」，数据取记忆行服务 glmHournessMemory 的 learningDigest(session, {since, until, minCount})（返回与 learning_signals 同一份结构，M5 设计 §8.6）；加了以后 M5 的提醒不用改，周报那一节只列数，详查仍用 learning_signals。不加也不坏。"
+    },
+    {
+      "at": "2026-10-30T21:58:00.640Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "用户图 0.5（user-journey）对 M7 0.6 的三条请求，d-freeze-until-dogfood 下等自举之后再办：一、G15 额度用完时自动推进怎么办。规则板 0.10、循环板 0.6、M3 附录 0.5、M7 0.6 逐份查过，都没有写：循环板只有「额度快用完时告诉你」一项通知，M7 的阻塞原因码只有 hourness-waiting-human、hourness-idle-rounds、hourness-peak-wait、hourness-design-wait 与 round-limit。推进中的 GLM 请求被上游一再拒绝时，是 3 轮空转后让主 Agent 问人，还是停住等额度重置，没写；本项目自举里已碰到一次（2026-10-31 凌晨用量超限，后台运行大多失败）。推荐：新增一个阻塞原因，推进停住并在对话里告诉人，额度重置后再接上，不自动换模型或套餐（宪章 §6）。这一条与 M6 一起办，M6 记上游限额错误但不管推进。二、G18 目标做完时怎样告诉人。§3.9.3 只写完成检查与 harness 把目标标为完成并带证据，§3.10 晨报「目标」一节只列未关闭的目标，循环板出厂 20 项里没有「目标做完了」的提醒，M3 没写。推荐：主 Agent 在对话里用一句话说做完了，带上整体审查的结论；提醒走 M7 标完成时给主 Agent 的提示，还是加一项循环板条目，由 M7 下一次修订时定。三、G11 周报里的比率。§3.12.3 让周报把一次通过率、返工率、人怎么回的各占几成经主 Agent 的对话给人；指标流水 0.3 §7.3 按宪章 §8 把比率归「打分」，只给命令行与面板；指标流水 §16 ② 已把这个岔路写成待人定的四行，人答了以后再改 §3.12.3。另：用户图 S9 按 M7 0.6 §18.2 写周报里提议删久不用的规则与条目，该节排在 P2 开工之前补。"
     }
   ]
 }

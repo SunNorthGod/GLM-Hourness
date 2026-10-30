@@ -191,6 +191,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "对齐轮（d-alignment-rounds）：M4 设计 0.5（design.md；0.4 原文留在 design-0.4.md）。处理第 4 轮评审的 F17–F20 与 N35–N42，并照循环板 0.6、规则板 0.10、M3 附录 0.5、M7 0.6 与 design-context「Check entries seam」对齐。四条挡路：F17 检查分两种——人加的检查是循环板上人的普通条目（动作 check，命令原文取自环境工具节点），由循环板的执行器跑，走与脚本同一条同意的路、同意时给人看命令原文，M4 不执行它们，只给读法 checkCommandOf（服务 glmHournessEnv 的成员）与两个纯函数 fillCheckArgv、formatCheckOutput；M4 自带的检查器是环境工具节点上带 when 的检查行，板上是 env 行交来的只读 self 项 env.checks-after-edit，由 M4 在下一步之前执行（进程经 runCommand 的 queue: direct）；0.4 请循环板改的 ①②④ 点撤回，③ 由 glob 接住，⑤ 由 queue 接住。F18 harness 写给人的字串里的图上标题与路径是数据：personTitle 不合格就省去或改写（第三次修复的题目退路写法「这件活要修第 3 次了」），displayPath 转义路径，renderPlan 只查常量，request_exception 遇任何抛错返回 unavailable 不登记。F19 outsideDenial 按项目判，worker 写项目里但出了工作树的文件由 M7 的 worker-scope 纠偏，不发编号、不问人，只有出了项目才发编号。F20 request_exception 的说明带一道示范（音乐播放器歌单文件，领域与练习题无关），L2 让它过参数检查与 renderPlan。非阻断：N35 验收与 §5.5 对齐；N36 引 d-memory-scope；N37 对照 d-script-timeout（超时不计入连续失败次数，recordRun 记 failed 并写 reason timeout）；N38 申报登记时设 2 小时定时器，到点写 expired 并叫醒持有者；N39 回放只读归本项目的会话；N40 files 相对改动所在的检出的根；N41 worker 的 ask_main 结算改用 worker-scope 的 rightPath；N42 TRANSITIONS 行号改 :110–117。规则板 0.10 的三件：GUARD_RULES 只列 guard 框架装规则的行（guard 六条、图行一条、循环板两条、指标流水一条），M3 的 MAIN_AGENT_RULES 与 M7 的 EXECUTE_RULES 各管各的表，规则板映射三张；classifyRecord 认 rules: 开头的 mode record（只记录，不进违规）与 late（晚到的拦下，进违规、另列一行），keyOf(record) 给规则板取 noteDenial 的键；observe 与 noteDenial 的调用形状写进 §3.3。另：已进 main 的 src/data/project-root.ts 的 projectOf、gitDirOf、ensureIgnored 取代 M4 自建的项目根与追加两行。D1（七个任务怎样算做完）仍待人定，建议验收一列现为 34 条、约 5,800 字。独立评审第 5 轮（design-review.md、design-review.json，评审的是 0.5）判 APPROVED，挡路 0 条，各轮挡路 8、2、6、4、0；不挡路的 NIT 九条（N43–N51）没有改进设计，留到实现时顺手处理，其中 N45 指出超时的 reason 在 6.3 与 6.8 两种写法，实现时统一为「<检查名>: timeout」。给人看的一页 onepage.md 已按 0.5 重写（0.3 原文留在 onepage-0.3.md），末尾的放行事项把 D1 与放行合成一问：一个标题、背景推荐疑问不做四行、一句问话，等人回话；人回话后在 m4 下记 D1 的待决并按设计 18 第 2 条建六个任务节点。对已放行设计的请求见本批给 schedules、m3、m7、m8-plain-language、metrics、rules 的批注，按 d-freeze-until-dogfood 等 dogfood 之后处理。"
+    },
+    {
+      "at": "2026-10-30T21:58:01.156Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "用户图 0.5（user-journey）对 M4 0.5 的一条说明（M4 对齐轮评审 05:13 APPROVED，不挡路）：G21 写项目之外的文件时，申报的四行已与 M3 的提议式待决共用 src/graph/proposal.ts 的排版与检查，但「人说可以」仍由 M4 自己认（人的下一条消息、一次性放行、30 分钟），不经 record_human_answer，认同意的办法有两套，用户图读时没有找到逐条写明为什么。请 M4 在下一稿或评审里写明为什么不走 M3 的路，或改走。"
     }
   ]
 }

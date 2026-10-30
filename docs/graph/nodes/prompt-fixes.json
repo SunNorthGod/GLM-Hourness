@@ -155,6 +155,12 @@
           "exit": 0
         }
       ]
+    },
+    {
+      "at": "2026-10-30T21:57:58.645Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M5 设计 0.5 §8.5：M5 的 D1、R1 两步也改 src/glm-prompt/（Memory 节与汇报细度一节的读法），与 prompt-fixes、question-31 C、M3 的 m3-main-persona（persona.ts 改名 reporting-depth.ts、节名 glm:persona 改 glm:reporting-depth）排队，谁先合入谁先改；Output Style 做出来时常设汇报细度改读 glmHournessMemory.depth。"
     }
   ]
 }

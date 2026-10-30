@@ -416,6 +416,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "M4 设计 0.5 对 M3 附录 0.5 的接缝（等 dogfood 之后处理，d-freeze-until-dogfood）：一、附录 §3.4 已含不带题目与四行、原样再给人看一张已有待决的 propose_to_human，M4 的第三次修复用它，这一条不再是请求。二、仍请 M3 的对齐轮做三件（附录 §10 已记）：installMainAgentRules 经 M4 的 installRuleGate 安装（G1 删掉 evaluate；谁后合入谁改）；git 快照门第一件事调 observe(agent, call, callId)、存不了快照而拒绝时调 noteDenial(agent, callId, {rule: 'git-snapshot', call, key, origin, rightPath})，拒绝记录不带 mode；本会话有开着的申报（requestsService(ctx)?.openRequests）时 propose_to_human 返回 busy。M3 没加之前 M4 的做法已写明：影子判定与跟进只覆盖经 installRuleGate 的规则；申报文字之后又出示了提议时 tail 对不上，记 not-shown、不放行（fail-closed）。三、MAIN_AGENT_RULES 留在 M3 的 src/guard/main-agent-rules.ts，M4 的 GUARD_RULES 不列它，规则板的 builtin.ts 映射；M4 的契约测试把它当三张表之一核对 id 不重复。四、src/graph/proposal.ts 里的 PROPOSAL_LABELS、proposalLineRefusal、splitBold 随 M3 第 6 步；M4 的 G4 若先开工，照附录 §3.3 原样建，M3 改成导入。"
+    },
+    {
+      "at": "2026-10-30T21:57:57.753Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M5 设计 0.5 对 M3 附录 0.5 的可选请求（自举之后再办，不是前提）：M5 的候选提醒、复发提醒与学习摘要提醒只给主 Agent。M3 附录 §2.4 写明 mainAgentOf(userHome, dir) 导出给 M5、M7 找主 Agent，M5 经薄访问器 isMainAgentFor(ctx, agent)调它（设计 0.5 写在 src/shared/main-agent.ts；第 5 轮评审 R5-01 指出共享目录不能导入包目录，实现时放进 src/data/main-agent.ts），拿到持有者会话就比会话 id；取不到（导出名或形状不符、设计行不在、记录读不到）时按设计行不在处理，任何根 agent 都算，行健康写原因。M3 的 isMainAgent(deps, agent)（src/design/mode.ts 第 174 行）今天不导出，且依赖设计行内部的 deps。如果 M3 日后在设计行的服务上直接给 isMainAgent(agent)（M5、M7 都用得上），M5 的访问器改调它，别处不动。M3 的导出形状变了，M5 只改访问器这一处。"
+    },
+    {
+      "at": "2026-10-30T21:58:00.466Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "用户图 0.5（user-journey）对 M3 附录 0.5 的三条请求，d-freeze-until-dogfood 下等自举之后再办，不要求现在改任何契约，这里只记用户图的格子依赖哪几条请求：一、G1：/wish 在没有项目图时先调接管的 prepare，接管 0.5 已在本节点 2026-10-30T21:02Z 记了请求，过渡办法写在接管 0.5 §3.1；在它做完之前，新用户的第一步在三处说法不同（M3 报「还没有项目图」，接管说 /wish，面板卡片写 /hourness-init）。二、G25：moduleReleaseGate 加第 8 项，数 M7 写的模块设计审查记录，记录形状见本节点 2026-10-30T12:40Z 的批注；加上之前，模块放行页能在没有独立审查的情况下提出来，用户图 S6 靠主 Agent 自己对照并在放行稿「替你定了的方向」一段写出来。三、G24：持有者记录从用户级目录搬进项目的 .llm/（宪章 0.7 §9、d-rules-in-repo），循环板、规则板、M5 已各记请求，请 M3 对齐轮合并处理；面板与循环板只经 mainAgentOf 读，搬家前后用户图的格子都成立。"
     }
   ]
 }

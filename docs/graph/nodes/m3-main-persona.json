@@ -45,6 +45,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "附录 §2.6：人设设置位在设计行配置 persona {name, text}（默认空），只进主 Agent 的系统提示词；GLM 路由上方言识别契约节 hourness:output-style（src/shared/output-style.ts），开头句换成 IDENTITY_OPENING_WITH_STYLE、节移到 glm:context-management 之前；其他路由是普通的节。glm-prompt 的 persona（汇报细度）改名 reportingDepth，旧键照读并告警，模型看到的文字不变。批次 L4 要在桌面版 profile 上设一个标记人设，到时先问人（AGENTS.md 第 6 条）。"
+    },
+    {
+      "at": "2026-10-30T21:57:58.862Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M5 设计 0.5 §3.7、§8.5：汇报细度的常设值来自用户级记忆里的 reporting-depth 偏好（主 Agent 判断人的话是「以后都这样」后带原话调 memory_store 写入），GLM 包的汇报细度一节读记忆行服务 glmHournessMemory.depth(sessionId)，没有偏好时用配置 reportingDepth（旧键 persona 照读），再退到 balanced。本步把 persona.ts 改名 reporting-depth.ts、节名 glm:persona 改 glm:reporting-depth 时，M5 的读法跟着节名改（取 main 上当时的名字），不需要 M3 改任何函数。"
     }
   ]
 }

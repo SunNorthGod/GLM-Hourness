@@ -39,6 +39,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M7 设计 0.3 §3.14.3（0.2 评审 F26）：练习题每次运行之后的事件流扫描若在 ablation 里只是对照运行时核对一次、没有做成每次运行的一步，由 M7 的 P4 在 run-calibrate.mjs 里加，并把结论写进 result.json 的 valid。P4 排在 ablation 合入之后。"
+    },
+    {
+      "at": "2026-10-30T21:57:58.092Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M5 设计 0.5 §8.7 记一条要求：标定运行的 dataRows 要带 projectOverride（M5 的 A1 做），这样标定会话读不到真实的记忆与经验；记忆索引、经验的三种提醒、学习摘要提醒和改写后的 Memory 节在 M5 的 L4 批次各做一次消融，不能用禁用记忆行代替关掉索引（记忆行还写用量流水）。"
     }
   ]
 }

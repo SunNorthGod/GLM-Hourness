@@ -281,6 +281,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M4 设计 0.5 对循环板 0.6 的接缝（等 dogfood 之后处理，d-freeze-until-dogfood；M4 不要求循环板现在改任何东西）：一、M4 0.4 请循环板改的五处，第 ①②④ 点撤回（人加的检查由循环板的执行器跑，M4 不执行人加的条目，不需要读条目的函数，也不需要 recordRun 认人的条目），第 ③ 点由 0.6 的 glob 接住，第 ⑤ 点由 runCommand 的 queue 接住；M4 自带的检查器用 queue: 'direct'，不自己 spawn。二、M4 给循环板的三样在 0.5 §6.1.2：checkCommandOf(cwd, tool, check?)（服务 glmHournessEnv 的成员，读项目图，返回 {tool, check, title, argv, format, own} 或 undefined）、fillCheckArgv(argv, files)（{files} 每个文件一项，以 - 开头的名字前加 ./，带换行或 NUL 的路径跳过，命令行超过 28,000 个字符时丢文件并计数）、formatCheckOutput(format, run)（整理成发现数与至多 20 行，读不懂返回 undefined）。工具节点上的检查行格式：`check <名字> <格式> $ <命令>`，when 可有可无，条件用循环板的 paths 写法，命令按空格切、双引号成组、什么都不解释、第一项不能是 .cmd 或 .bat。三、仍请循环板在 dogfood 之后做的三件小事：⑥ loops:schedule-tools 与 loops:files-only 改经 M4 的 installRuleGate 安装（G1 删掉 evaluate）、登进 GUARD_RULES，读违规流水用 classifyRecord；⑧ 页面在人加的 check 条目下写「M4 自带的检查器也跑这一条」时，取 checkCommandOf 结果里的 own（带 when 的检查行 own 为真，不带的为假，M4 自己不跑）；⑨ 周报的「反复超时」一节是否也数 self 条目（M4 的超时报 recordRun outcome failed、reason 写成「<检查名>: timeout」，即以「: timeout」结尾），由循环板定；顺带 §5.3 第 15 项明细例子里的 `npx eslint {files}` 在 Windows 上起不来（.cmd），可改成 node 加脚本路径。四、M4 按 0.6 §17 的四条交了 env.checks-after-edit（ownRules 四行、details）、env.files-edited（emit，先问 listens；键 files-edited:<会话>:<turn>-<step>，一步改了几个检出里的文件就各发一个，键后加序号）并 recordRun。"
+    },
+    {
+      "at": "2026-10-30T21:57:59.514Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M6 设计 0.5（对齐轮 C 支，评审第 5 轮 APPROVED）对已放行的循环板 0.6 的说明，自举之后再办，不要求改契约：一、nextPeakChange 已在主干的 src/shared/pricing.ts（规则板最小一片，tests/peak-mode.spec.ts 有用例），循环板里依赖 M6 Q1 加 nextPeakChange 的那一步（S3）的前提已满足，channel.peak-changed 可以直接用它；M6 Q1 只补缺的时刻用例。二、GLM 四条默认条目（glm:peak-reminder、glm:quota-on-command、glm:quota-low、glm:login-rejected）的 id、title、why、when、runBy、tell 与循环板 0.6 读到的形状一致（loopDefaultsOf），四条都是数据，没有一条在循环板上跑命令，不走人加条目的批准路径。三、高峰结束时少做、不做两档都叫醒闲着的主 Agent，M6 0.5 §8.3 已按循环板 0.6 §3.4、§6.9 写；GLM 包只交高峰的计算，不加 glm:peak-end，ChannelTrigger 不加 peak-end。"
     }
   ]
 }
