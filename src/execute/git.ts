@@ -32,7 +32,7 @@
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { readFile, stat } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { ensureIgnored, projectOf } from '../data/project-root.ts'
 import { ID_PATTERN } from '../graph/schema.ts'
 import { digest12 } from './digest.ts'
@@ -525,15 +525,43 @@ export function createGit(runner: GitRunner = realGitRunner) {
   }
 
   /**
+   * Why git does not run in `path` as the linked work tree the repository
+   * registered for that directory; `undefined` when it does. A work tree's
+   * `.git` file names its git directory, `<common>/worktrees/<name>`, and
+   * that directory's `gitdir` file names the `.git` file back. A `.git` file
+   * rewritten to name the repository's own git directory, another work
+   * tree's record or another repository still makes `rev-parse
+   * --show-toplevel` answer with `path`, and every command run there then
+   * lands on the checkout or the work tree the file names.
+   */
+  async function foreignGitDir(root: string, path: string): Promise<string | undefined> {
+    const [own, shared, expected] = await Promise.all([
+      firstLine(path, ['rev-parse', '--absolute-git-dir']),
+      firstLine(path, ['rev-parse', '--git-common-dir']),
+      firstLine(root, ['rev-parse', '--git-common-dir']),
+    ])
+    if (own === undefined || shared === undefined || expected === undefined) return 'git does not report its git directory'
+    const gitDir = resolve(own)
+    const common = resolve(path, shared)
+    if (!samePath(common, resolve(root, expected))) return `its .git file names a git directory of another repository (${gitDir})`
+    if (!samePath(dirname(gitDir), join(common, 'worktrees'))) return `its .git file names ${gitDir}, which is not a work tree record of this repository`
+    const back = await readFile(join(gitDir, 'gitdir'), 'utf8').then(text => text.trim(), () => undefined)
+    if (back === undefined || !samePath(resolve(gitDir, back), join(path, '.git'))) return `its .git file names the work tree record ${gitDir}, which belongs to ${back === undefined ? 'no work tree' : back}`
+    return undefined
+  }
+
+  /**
    * Put the gate worktree `.worktrees/hz-gate` on `commit`, clean (§3.8.3
    * step 5). The destructive commands (`checkout --detach --force`, `reset
    * --hard`, `clean -fd`) run only here, in a directory the harness made
    * and nobody else is meant to use, so first the guard checks that it is
    * what the harness made: listed by `git worktree list`, present on disk,
-   * on a detached head, and a work tree of its own for git (a directory
-   * that lost its `.git` file would resolve to the main checkout above it,
-   * and the reset would land there). Anything else (the main agent put a
-   * branch on it, deleted it, replaced it) is refused and nothing is reset.
+   * on a detached head, and a work tree of its own for git. A directory that
+   * lost its `.git` file would resolve to the main checkout above it, and a
+   * `.git` file that names another git directory (`foreignGitDir`) would
+   * send the commands there; either way the reset would land on work that
+   * is not the gate's. Anything else (the main agent put a branch on it,
+   * deleted it, replaced it) is refused and nothing is reset.
    *
    * Changes in it are saved before they are discarded, with the saver
    * standing for M3's `takeSnapshot`: once for `reset --hard` when tracked
@@ -568,6 +596,8 @@ export function createGit(runner: GitRunner = realGitRunner) {
     // Without its own `.git` file the directory belongs, for git, to the repository above it: the main checkout.
     const top = await toplevel(path)
     if (top === undefined || !samePath(top, path)) return invalid(`git does not treat ${path} as a work tree of its own (it resolves to ${top ?? 'nothing'}); nothing was reset`)
+    const foreign = await foreignGitDir(root, path)
+    if (foreign !== undefined) return invalid(`${path} is not the work tree git registered for it: ${foreign}; nothing was reset`)
 
     const unclean = await uncleanFiles(path)
     if (!unclean.ok) return invalid(unclean.reason)

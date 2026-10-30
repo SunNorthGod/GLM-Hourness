@@ -507,6 +507,12 @@ function snapshotSaver(calls: SnapshotCall[], answer: 'ok' | 'fail' | 'throw' = 
   }
 }
 
+/** Replace a worktree's `.git` file; on Windows git marks it hidden, which refuses a plain overwrite, so it is deleted first. */
+function rewriteGitFile(worktree: string, text: string): void {
+  rmSync(join(worktree, '.git'), { force: true })
+  writeFileSync(join(worktree, '.git'), text)
+}
+
 withRepo('the gate worktree is made detached on the commit and moved from commit to commit', async (repo, git) => {
   const c1 = repo.commit({ 'a.txt': '1\n' }, 'c1')
   const c2 = repo.commit({ 'a.txt': '2\n', 'b.txt': 'b\n' }, 'c2')
@@ -632,6 +638,44 @@ withRepo('a gate worktree the harness did not leave as it made it is refused and
 
   assert.equal(refused(await git.prepareGateWorktree({ root: repo.dir, commit: 'no-such-commit', saveSnapshot: okSaver })).code, 'gate_worktree_invalid')
   assert.equal(succeeded(await git.prepareGateWorktree({ root: repo.dir, commit: c2, saveSnapshot: okSaver })).created, true, 'once the leftovers are gone the harness makes a new one')
+})
+
+withRepo('a gate worktree whose .git file names another git directory is refused, whichever one it names, and nothing is reset (E3 review, E3-1)', async (repo, git) => {
+  const c1 = repo.commit({ 'a.txt': '1\n' }, 'c1')
+  const c2 = repo.commit({ 'a.txt': '2\n' }, 'c2')
+  const calls: SnapshotCall[] = []
+  const gate = succeeded(await git.prepareGateWorktree({ root: repo.dir, commit: c1, saveSnapshot: snapshotSaver(calls) }))
+  const task = succeeded(await git.ensureWorktree(repo.dir, 'task-1'))
+  const foreign = join(dirname(repo.dir), 'foreign')
+  mkdirSync(foreign)
+  sh(foreign, 'init', '--quiet', '-b', 'main')
+  sh(foreign, 'commit', '--quiet', '--allow-empty', '-m', 'other repository')
+  const gitFile = readFileSync(join(gate.path, '.git'), 'utf8')
+  // Work the person has not saved, in the checkout a redirected reset would land on.
+  writeFileSync(join(repo.dir, 'a.txt'), 'unsaved work in the main checkout\n')
+  writeFileSync(join(repo.dir, 'unsaved.txt'), 'u\n')
+  const taskHead = sh(task.path, 'rev-parse', 'HEAD')
+
+  const redirects: readonly (readonly [string, string])[] = [
+    ['the main checkout\'s git directory', join(repo.dir, '.git')],
+    ['the record of a task worktree', join(repo.dir, '.git', 'worktrees', 'hz-task-1')],
+    ['another repository', join(foreign, '.git')],
+  ]
+  for (const [label, target] of redirects) {
+    rewriteGitFile(gate.path, `gitdir: ${target.replaceAll('\\', '/')}\n`)
+    const result = refused(await git.prepareGateWorktree({ root: repo.dir, commit: c2, saveSnapshot: snapshotSaver(calls) }))
+    assert.equal(result.code, 'gate_worktree_invalid', label)
+    assert.equal(calls.length, 0, `${label}: no snapshot was asked for`)
+    assert.equal(repo.git('symbolic-ref', 'HEAD'), 'refs/heads/main', `${label}: the main checkout stays on its branch`)
+    assert.equal(readFileSync(join(repo.dir, 'a.txt'), 'utf8'), 'unsaved work in the main checkout\n', `${label}: the main checkout's edit is still there`)
+    assert.ok(existsSync(join(repo.dir, 'unsaved.txt')), `${label}: the main checkout's new file is still there`)
+    assert.equal(sh(task.path, 'symbolic-ref', '--short', 'HEAD'), 'hz/task-1', `${label}: the task worktree stays on its branch`)
+    assert.equal(sh(task.path, 'rev-parse', 'HEAD'), taskHead)
+  }
+
+  rewriteGitFile(gate.path, gitFile)
+  assert.equal(succeeded(await git.prepareGateWorktree({ root: repo.dir, commit: c2, saveSnapshot: okSaver })).created, false, 'with its own .git file back the gate worktree is usable')
+  assert.equal(sh(gate.path, 'rev-parse', 'HEAD'), c2)
 })
 
 // ---------------------------------------------------------------------------
