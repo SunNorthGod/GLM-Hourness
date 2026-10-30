@@ -1,0 +1,19 @@
+{
+  "id": "d-script-timeout",
+  "type": "decision",
+  "title": "拦路脚本超时先放行，但接着跑完，晚到的「不行」马上告诉主 Agent；合入主干前的超时就挡住",
+  "status": "approved",
+  "parent": "orch",
+  "verification": "unverified",
+  "body": "拦路脚本超过超时（默认 10 秒）时照条目写的办法处理（默认放行），活不卡住；脚本不杀，后台接着跑，上限 10 分钟。晚到的结论记下，说不行就马上把原因告诉主 Agent，由它去补或回退；跑到上限记「没跑完」并告诉主 Agent。挡在不好撤的步骤前的（主干前进之前），超时默认挡住。不拦路的条目各有自己的超时，超时结果写「没跑完」交主 Agent，事件留在收件箱，下一次触发照常再跑。超时与晚到的拦截计进周报，反复超时的条目提议修。没有采用超时一律挡住：脚本一卡住活就全停。机制归循环板的脚本执行器，拦路的含义归规则板（design-context「Main agent and peak; stale entries; hook seam」）。补全 d-boards-as-hooks。",
+  "history": [
+    {
+      "at": "2026-10-30T06:27:10.853Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "用户同意编排方「拦路脚本超时了怎么办」的推荐",
+      "relay": "没问题",
+      "to": "approved"
+    }
+  ]
+}
