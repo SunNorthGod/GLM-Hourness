@@ -107,6 +107,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "编排方用中文把第 3 轮停下的六条挡路与「要不要再给一轮」重讲给人。M4 的检查器与拦截规则是否改成 hook 式条目取决于规则板与循环板的方向（规则板批注同日），建议 M4 这一轮等那个方向定了再开。"
+    },
+    {
+      "at": "2026-10-30T05:50:53.295Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "用户同意 M4 在三轮上限之后再给一轮（原话「M4那就再改吧」）。这一轮同时并入 d-boards-as-hooks（检查器改成循环板上 hook 式的条目）、d-rules-in-repo 与存放范围（违规流水按项目放进项目的 .llm/）、d-main-agent-peak-exempt、d-design-onepage 扩到产品。派出 m4-design-v04。"
     }
   ]
 }
