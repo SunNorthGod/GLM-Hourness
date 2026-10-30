@@ -113,6 +113,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "用户同意 M4 在三轮上限之后再给一轮（原话「M4那就再改吧」）。这一轮同时并入 d-boards-as-hooks（检查器改成循环板上 hook 式的条目）、d-rules-in-repo 与存放范围（违规流水按项目放进项目的 .llm/）、d-main-agent-peak-exempt、d-design-onepage 扩到产品。派出 m4-design-v04。"
+    },
+    {
+      "at": "2026-10-30T05:55:48.410Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M4 0.4 开改（run m4-design-v04，wf_ee11673f557b2d56，人准的最后一稿：「M4那就再改吧」）：改第 3 轮的 F11–F16 与其余未关的发现；检查器改成交给循环板的条目；违规流水进项目 .llm/；主 Agent 不受高峰影响；写明两层循环里 M4 的问题各归哪一层。一稿一评，评审还挡路就停下报人；过了再改放行稿 onepage.md。"
     }
   ]
 }

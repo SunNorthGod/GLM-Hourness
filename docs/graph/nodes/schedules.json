@@ -179,6 +179,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M7 设计 0.4（§2.5、§3.11.1）照循环板 0.3 的接口写：两行各经 contribute({plugin: 'dsh-hourness', row}, {events, entries, actions, run}) 交，run 即 glmHournessExecute.runAction；条目照 LoopEntryDefinition，每项带 why，limits 照循环板 §5.1；事件照循环板 §4.2 声明（加 hourness.outside-advance，handback 带 commits 与 floorHit，trunk-advanced 带 files 与 truncated），去重键照 §4.2 的键一栏；execute.trunk 采纳覆盖规则。与循环板 0.3 不同、请循环板下一稿照改的几处（评审 F3 要的跨设计记录）：一、execute.resume-after-peak 改为 execute.resume-drive，只恢复以 hourness-peak-wait 阻塞的 goal（规则板 0.8 §10.7 循环板第 8 点），§5.2、§6.9 第 4 条判断表与 §17 M7 第 6 条随之改；以 hourness-idle-rounds 阻塞的 goal 不再由 loops.peak-end 恢复。二、执行行的动作是五个：start-drive、trunk-check、reconcile、resume-drive，另加只读的 execute.stop-draft（条目 execute.stopped 改为 harness 条目，因为四行草稿超过占位每值 200 个码点的上限）。三、hourness.handback 的 floorHit 多一个值 unparsed（必须全审清单判不了时）。四、M7 的看门：循环板 5 分钟内没调 runAction 时 M7 自己执行，之后循环板晚到的调用返回 skipped（already done）；runAction 在 <git>/hourness/execute/actions.jsonl 写 start 与 end，宿主在动作执行中退出时由 M7 的对账重做（循环板 §6.8 不重跑）。五、M7 的事件条目只在 M7 的两张表里定义，循环行不另带；hourness.design-released 只由 M7 交。"
+    },
+    {
+      "at": "2026-10-30T05:55:47.952Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "循环板设计 0.4 第 4 轮独立评审（run schedules-design-v04，wf_3bcc167a47642ce2）：APPROVED，HIGH 0、MEDIUM 0、NIT 4（F40–F43）；第 3 轮的 F34–F39 全部关闭（design-review.md Round 4，design-review.json 已更新）。0.4 是在人的最新三项决定（d-boards-as-hooks、d-rules-in-repo、d-main-agent-peak-exempt）之前写的，所以接着改 0.5：条目改成与规则板同一个形状（什么时候 + 可选筛选 + 动作，动作是内置或人看过原文同意的脚本，同意即生效）、人加的条目与脚本进仓库、运行时状态进项目 .llm/、主 Agent 不受高峰影响、周报提议删掉 4 周没结果的人加条目，并关掉 F40–F43。与规则板 0.9 同一个 run：boards-hook-rules09-loops05（wf_d2a9085875b43c88）。接缝的归属写进 design-context「Main agent and peak; stale entries; hook seam」：条目形状、事件表与脚本执行器归循环板，哪些事件拦路、脚本结果怎样进 checkCall 归规则板。"
     }
   ]
 }
