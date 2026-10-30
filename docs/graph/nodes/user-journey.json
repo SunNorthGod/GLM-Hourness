@@ -59,6 +59,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "用户图 0.2 第 1 轮评审（user-journey-finish 运行内）：CHANGES_REQUESTED，挡路 3 条（MEDIUM）、NIT 6；没有格子与人的决定相反。F1 方向清单漏了已批准的人定；F2 版本刷新落后于盘上的设计（G19、G5 已有答案）；F3 §7 与 G4 对两层循环的说法不一。F3 与 G4 已由人定：两层循环也用进产品（d-design-onepage 已改写），下一稿把 S6、S7 改成「先定框架与模块，每个模块放行一次」。"
+    },
+    {
+      "at": "2026-10-30T05:29:18.865Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "用户图 0.3 写完（user-journey-finish 运行内）：第 1 轮 F1–F9 全部处理，方向清单补齐，版本按 13:20 盘面刷新，G5、G6、G12、G19 改为已对上，总览图已修。等第 2 轮评审。"
     }
   ]
 }

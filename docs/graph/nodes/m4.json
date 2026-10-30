@@ -95,6 +95,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "metrics 设计 0.1 §14 对 M4 的影响，下一次修订时处理：installRuleGate 交 rule 事件（跟进的 outcome 一起）；压制注释数改为每天一条 count 事件，不建 suppressions.jsonl；recordKey 若 metrics 第 3 步先做，M4 沿用 src/guard/records.ts 里的那个；新规则 metrics-files-only 进规则目录，影子模式。"
+    },
+    {
+      "at": "2026-10-30T05:29:18.650Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M4 设计 0.3 第 3 轮评审（m4-design-v03-review，wf_425aaae10f426d8e）：CHANGES_REQUESTED，挡路 6 条（F11–F16，MEDIUM）、不挡路 8 条；第 2 轮 15 条全部关闭。各轮挡路 8、2、6，按 question-11 停下交人。F11 检查器没有按循环板 0.4 的条目格式交出；F12 第三次修复前的问话把「不做」变成了可回的选项，仍存选项字段（违反 d-chat-not-cards）；F13 装了 M3 与 M7 之后申报通道走不通（worker 写入范围先拒了）；F14 自动推进下人的回话常落在下一拍之后，认不出是对申报的回答；F15 开着的申报不在面板的「需要你」里；F16 回放还读了失败工具结果的前 120 字，与人说的「只看命令和路径」不符。前五条是 0.3 写作时兄弟设计与人定还在变，第六条是隐私承诺对不上。"
     }
   ]
 }
