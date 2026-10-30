@@ -13,6 +13,7 @@ export const COLORS = {
   cyan: "#7DD8F0",
   mint: "#86E3C0",
   apricot: "#FFD08A",
+  rose: "#FF9DB3",
 };
 
 export const ACCENT = `linear-gradient(90deg, ${COLORS.indigo}, ${COLORS.lilac})`;

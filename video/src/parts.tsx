@@ -32,33 +32,44 @@ const Glow: React.FC<{
   );
 };
 
-/** Background shared by every scene: dark ground, two drifting glows, a faint grid, grain and a vignette. */
-export const Backdrop: React.FC = () => (
-  <AbsoluteFill style={{ background: COLORS.bg, overflow: "hidden" }}>
-    <Glow size={1500} color="rgba(110, 126, 255, 0.20)" from="-520px -760px" to="-300px -640px" />
-    <Glow size={1300} color="rgba(186, 140, 255, 0.13)" from="1050px 360px" to="880px 300px" />
-    <Glow size={900} color="rgba(110, 210, 240, 0.07)" from="300px 620px" to="420px 560px" />
-    <AbsoluteFill
-      style={{
-        backgroundImage:
-          "linear-gradient(rgba(255,255,255,0.028) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.028) 1px, transparent 1px)",
-        backgroundSize: "80px 80px",
-        maskImage: "radial-gradient(ellipse at 50% 45%, black 0%, transparent 72%)",
-      }}
-    />
-    <svg width={1920} height={1080} style={{ position: "absolute", opacity: 0.06 }}>
-      <filter id="grain">
-        <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves={2} stitchTiles="stitch" />
-      </filter>
-      <rect width="100%" height="100%" filter="url(#grain)" />
-    </svg>
-    <AbsoluteFill
-      style={{
-        background: "radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,0.6) 100%)",
-      }}
-    />
-  </AbsoluteFill>
-);
+/**
+ * Background shared by every scene: dark ground, three drifting glows, a faint
+ * grid, grain and a vignette. Positions are laid out for 1920x1080 and scaled
+ * to the composition, so the vertical video gets the same look.
+ */
+export const Backdrop: React.FC = () => {
+  const { width, height } = useVideoConfig();
+  const sx = width / 1920;
+  const sy = height / 1080;
+  const s = Math.max(sx, sy);
+  const at = (x: number, y: number) => `${x * sx}px ${y * sy}px`;
+  return (
+    <AbsoluteFill style={{ background: COLORS.bg, overflow: "hidden" }}>
+      <Glow size={1500 * s} color="rgba(110, 126, 255, 0.20)" from={at(-520, -760)} to={at(-300, -640)} />
+      <Glow size={1300 * s} color="rgba(186, 140, 255, 0.13)" from={at(1050, 360)} to={at(880, 300)} />
+      <Glow size={900 * s} color="rgba(110, 210, 240, 0.07)" from={at(300, 620)} to={at(420, 560)} />
+      <AbsoluteFill
+        style={{
+          backgroundImage:
+            "linear-gradient(rgba(255,255,255,0.028) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.028) 1px, transparent 1px)",
+          backgroundSize: "80px 80px",
+          maskImage: "radial-gradient(ellipse at 50% 45%, black 0%, transparent 72%)",
+        }}
+      />
+      <svg width={width} height={height} style={{ position: "absolute", opacity: 0.06 }}>
+        <filter id="grain">
+          <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves={2} stitchTiles="stitch" />
+        </filter>
+        <rect width="100%" height="100%" filter="url(#grain)" />
+      </svg>
+      <AbsoluteFill
+        style={{
+          background: "radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,0.6) 100%)",
+        }}
+      />
+    </AbsoluteFill>
+  );
+};
 
 /** Fades a whole scene in at its start and out at its end. */
 export const SceneFade: React.FC<{ children: React.ReactNode }> = ({

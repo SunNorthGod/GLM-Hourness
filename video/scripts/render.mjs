@@ -1,6 +1,11 @@
-// Renders a composition to out/<id>[-<preset>].mp4 after regenerating the music.
-// The scenes are laid out at 1920x1080; a preset only scales the output, so
-// text and shapes stay sharp and the code does not change.
+// Renders a composition to out/<id>[-<preset>].mp4 after regenerating its music.
+// Scenes are laid out at their base size (Sample 1920x1080, Short 1080x1920);
+// a preset only scales the output, so text and shapes stay sharp and the code
+// does not change.
+//
+// Each composition has its own music pipeline: Sample uses the oscillator
+// score from make-music.mjs; Short uses the sampled score from make-score.mjs,
+// which needs the GeneralUser GS sound bank fetched by get-soundbank.mjs.
 //
 // Chrome is pointed at a project-local temp directory: on this machine the
 // headless browser could not create its cache under the system %TEMP%, and
@@ -14,9 +19,14 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const PRESETS = {
-  '1080p': { scale: '1', suffix: '' }, // 1920x1080
-  '2k': { scale: String(4 / 3), suffix: '-2k' }, // 2560x1440
-  '4k': { scale: '2', suffix: '-4k' }, // 3840x2160
+  '1080p': { scale: '1', suffix: '' }, // Sample 1920x1080, Short 1080x1920
+  '2k': { scale: String(4 / 3), suffix: '-2k' }, // Sample 2560x1440, Short 1440x2560
+  '4k': { scale: '2', suffix: '-4k' }, // Sample 3840x2160, Short 2160x3840
+}
+
+const MUSIC = {
+  Sample: ['make-music.mjs'],
+  Short: ['get-soundbank.mjs', 'make-score.mjs'],
 }
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -25,6 +35,11 @@ const presetName = process.argv[3] ?? '1080p'
 const preset = PRESETS[presetName]
 if (!preset) {
   console.error(`render: unknown preset ${presetName}; use one of ${Object.keys(PRESETS).join(', ')}`)
+  process.exit(2)
+}
+const music = MUSIC[id]
+if (!music) {
+  console.error(`render: no music pipeline for ${id}; known: ${Object.keys(MUSIC).join(', ')}`)
   process.exit(2)
 }
 
@@ -38,7 +53,7 @@ const output = join('out', `${id}${preset.suffix}.mp4`)
 // would be split at the space.
 const windows = process.platform === 'win32'
 const steps = [
-  { cmd: process.execPath, args: [join(root, 'scripts', 'make-music.mjs')], shell: false },
+  ...music.map((script) => ({ cmd: process.execPath, args: [join(root, 'scripts', script)], shell: false })),
   { cmd: windows ? 'npx.cmd' : 'npx', args: ['remotion', 'render', id, output, `--scale=${preset.scale}`], shell: windows },
 ]
 for (const { cmd, args, shell } of steps) {
