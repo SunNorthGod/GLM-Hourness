@@ -281,6 +281,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "编排方裁定（规则板最小一片评审之后，写进 design-context）：src/data/lock.ts 与 src/data/project-root.ts 由规则板最小一片的跟进那一稿建好（原在 src/rules/ 下），M7 的 E3 直接复用，不写第二份；先前「E3 建 src/data/lock.ts」改为「谁先建谁的算」。E3 的内容与排期其余不变。"
+    },
+    {
+      "at": "2026-10-30T12:14:38.587Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M7 0.5 第 5 轮独立评审（run m7-design-v05-sonnet，wf_0b25a6b5abb8eaaa，claude-sonnet-5.5）：APPROVED，没有一条挡住开工；HIGH 0、MEDIUM 4、NIT 7。第 4 轮十条挡路（R4-F1 到 R4-F10）与两条 NIT 的处置照 0.5 的排期全部落地。四条 MEDIUM 各挡具体一步、不挡整体：R5-F1（§6.6「0.5 加的 L2 用例」那一段被截断，§9.1 缺 glm-exec-modules 与 glm-exec-peak 两行）挡 E1b 与 E8；R5-F2（§3.1.5 第 5 条的断言与 §3.7.1、§6.4 相反）与 R5-F3（模块读法读不出时放行，与「判不了就从严」和人定的「模块没放行不派开发」相反，要改成读不出就不派）挡 E4；R5-F4（模块设计的独立评审归 M7 的派发，0.5 没有处置）在 E4 合入之前决定。E0、E1a、E3 现在就能开工（编排方已裁定的实现顺序）。另一个开工前提不在 design.md 里：onepage.md 与三条验收草稿还是 0.4 的版本，要先改成 0.5 再请人放行。评审稿 design-review.md 第 5 轮一节、design-review.json 第 5 轮、design-review-gate.json。"
     }
   ]
 }
