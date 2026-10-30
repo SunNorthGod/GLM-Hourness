@@ -261,6 +261,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "循环板设计 0.4 照规则板 0.8 §10.7 循环板一条第 8 点改了 §6.9 第 4 条：第 14 项先恰好调一次 M7 的 resume-drive，再提醒主 Agent，少做与不做两档都这样，execute.resume-after-peak 的两行删去，以 hourness-idle-rounds 阻塞的 goal 不再由第 14 项恢复。与第 8 点字面不同的一处：循环板不先读 goal 的原因码，直接调、由 M7 的动作自己判（原因码与恢复都只在 M7，冷会话也成立）；对规则板没有影响，循环板仍不读 peakHoldFor。0.3 请规则板改的第 29 行 0.8 已改，不再请规则板改东西。"
+    },
+    {
+      "at": "2026-10-30T05:32:31.882Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M6 设计 0.4 §18 对规则板（0.8 已照做的不再请）：高峰提醒原文、各档措辞、peak-reminder.ts 的注释与 ORCHESTRATION.md §11.4 只由 M6 R1 改，规则板那一行不引用提醒，与 0.8 一致。新请一件：在 §16 记下先后，M6 R1 依赖规则板 R1 的 src/shared/peak-mode.ts，并要在规则板 R4 之前合入，至少在规则行默认启用之前，否则 GLM 会话会同时读到「不要推迟工作」与「把可挪的活挪到 18 点以后」。M6 读 stateFor(sessionId) 的 level、origin 与 peak 三项，peak 不是 true 时按今天的原文提醒。M6-R2（人设规则的排队、每步提醒与唤醒文字写出高峰结束时刻）仍由 M6 S1 做；M6-R5、M6-R6 关闭；M6-R7 照 0.8 推后。"
     }
   ]
 }

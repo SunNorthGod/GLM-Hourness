@@ -155,6 +155,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "循环板设计 0.4 写完（schedules-design-v04 运行内；0.3 留作 design-0.3.md 等）：F34、F35 两条挡路与 F36–F39 四条 NIT 已处理，照盘上的 M7 0.4、M6 0.4 核对过接缝；一页人话与草图已更新。同一运行接着做第 4 轮评审（人给的那一轮）。"
+    },
+    {
+      "at": "2026-10-30T05:32:32.101Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M6 设计 0.4 照循环板 0.3 §17 对 M6 的三条改了：M6-L1 那一行「GLM 通道包未装」删去（没有计价服务时这一组不显示）；§8.3 的理由改为「高峰结束叫醒主 Agent 要规则板的档位与主 Agent，GLM 包没有主 Agent」，M6-R5 记为循环板的 loops.peak-end 接了，GLM_LOOP_DEFAULTS 仍是四条，ChannelTrigger 不加 peak-end；GLM 包只交计价服务的 peak 与 nextPeakChange，循环行推出 channel.peak-changed，M6 保证 peak 是时刻的纯函数、边界在整分钟。glm:peak-reminder 的 why 多半句「说法跟着你选的高峰档位走」（M6 §8.2），循环板照 loopDefaultsOf 读，不用改代码。高峰里等待的轮次与 resume-drive 按最新裁定归 M7 与循环板，M6 不做。"
     }
   ]
 }

@@ -65,6 +65,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "用户图 0.3 写完（user-journey-finish 运行内）：第 1 轮 F1–F9 全部处理，方向清单补齐，版本按 13:20 盘面刷新，G5、G6、G12、G19 改为已对上，总览图已修。等第 2 轮评审。"
+    },
+    {
+      "at": "2026-10-30T05:32:32.537Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "用户图 0.3 第 2 轮评审（user-journey-finish 运行内）：CHANGES_REQUESTED，挡路 2 条（第 1 轮 3 条，条数下降），NIT 2。第 1 轮 F1–F9 里八条已关，F5 剩总览图 S9 缺口一行。F10（HIGH）：0.3 漏读人在 2026-10-30T05:19:50Z 对 d-design-onepage 的改写（两层循环也用进产品），S6 仍是一个目标一次放行，§7 与 G4 仍写还没定，与人的决定相反；改法是 S6 改成先定框架、模块清单与方向清单再每个模块放行一次，S7 加三档，S8 加框架与模块的显示，G4 改为人已定、M3、M7、面板的设计还没跟上。F11（MEDIUM）：§1 写读的是 dcbf2b6 与 design-context 05:46 版，13:20 截止之前实际已到 102f2a1 与 13:19:46 版。评审记录：.agents/tasks/user-journey/design-review.md 第 2 轮、design-review.json。"
+    },
+    {
+      "at": "2026-10-30T05:32:32.969Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "用户图 0.3 第 2 轮评审：CHANGES_REQUESTED，挡路 3 → 2。F10（HIGH）S6、S7、S8、§7 与 G4 还没跟上人刚定的「两层循环也用进产品」；F11 §1 引用的提交与 design-context 版本落后。两条都是跟着已有决定的机械改动。按 question-11（挡路条数下降时自动加第三轮），编排方给循环加 1 轮。"
     }
   ]
 }

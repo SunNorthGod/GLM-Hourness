@@ -144,6 +144,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "循环板设计 0.4：照 M6 0.3 与 0.4 盘上稿核对，契约（LoginView、ChannelTrigger、ChannelLoopDefault、loopDefaultsOf）与四项条目不变，不请 M6 改契约。新的一处（评审 F38）：LoginView.since 可选，循环板在它没有时用第一次看到被拒的那一拍当这一次，键与已说记录不会空段。仍开着的两处说法是 0.3 起就请的：§8.3 的「GLM 包不知道档位」改为修订后的理由（GLM 包没有主 Agent），M6-L1 的「GLM 通道包未装」那一行不显示。"
+    },
+    {
+      "at": "2026-10-30T05:32:31.657Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M6 设计 0.4 写完（m6-design-v04，wf_0feddab79abcb558；.agents/tasks/m6/design.md，0.3 原文留在 design-v0.3.md；一页人话 onepage.md 已更新）。第 3 轮评审 8 条逐条处理（§21 末尾）：F8 照编排方裁定，高峰提醒原文与各档措辞、ORCHESTRATION.md §11.4 整节归 M6 R1，提醒读规则板的 glmHournessPeakMode 选正文，读不到档位与无影响时与今天逐字相同，少做与不做两档去掉「只是告知、不要推迟」；先后写死为规则板 R1 → M6 R1 → 规则板 R4（至少在规则行默认启用之前）；验收第 13 条的 L3 在同一个请求里两段一起看。F9 照裁定，判定事件由 checkCall 写，gateOnRules 只交 peakUntil、waitedMs，不写事件，验收第 22 条钉住 --wait 下恰好 3 次判定。N16 登录被拒记录带登录令牌指纹，空凭证文件算未登录；8b12baf 之后铸造一路直接认 project_token_http_401/403，onRejected 删去。N17 由规则板 0.8 的脚本文字关闭；N18 由按档位的措辞关闭；N19、N20、N21 改了。按最新裁定对齐：高峰结束叫醒主 Agent 是循环板上编排层的条目，高峰里等待的轮次与 resume-drive 归 M7 与循环板，GLM 包只交 peak 与 nextPeakChange（循环行推出 channel.peak-changed），GLM_LOOP_DEFAULTS 仍是四条。没有待人定的事项。下一步：第 4 轮评审（人许的最后一轮）。"
+    },
+    {
+      "at": "2026-10-30T05:32:32.753Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M6 设计 0.4 写完（m6-design-v04 运行内；0.3 留作 design-v0.3.md）：F8、F9 照编排方的接缝裁定处理，N16–N21 逐条回应在 §21，一页人话已更新。同一运行接着做人给的那一轮评审。"
     }
   ]
 }

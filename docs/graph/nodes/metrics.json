@@ -83,6 +83,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "循环板设计 0.4 §6.10 加一类记录 loop-task-delete {at, project, entry?, scheduleId, why: moved|entry-gone|duplicate|no-holder|holder-archived|holder-not-found|repair|not-delivered, deleted}（被删任务的全文另存在循环板自己的 removed-tasks.jsonl，不进指标流水）；loop-holder 的 reason 写明 unknown 的两种（archive-unreadable、holder-unreadable）与 elsewhere 的两种（handover、writer-held）。合计十一类，仍只记 id、时刻、结局与计数。"
+    },
+    {
+      "at": "2026-10-30T05:32:32.325Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M6 设计 0.4 §14.2、§18 对指标流水：GLM 通道包在指标服务存在时交四类事件：glm.quota-read（成功与否、原因码、耗时、发起方、各窗口已用比例）、glm.upstream-limit（错误码）、glm.login-rejected（路径与状态码）、glm.peak-reminder（高峰时段日期、发的是哪一档 peakMode、会话 id）；不含令牌、请求头与正文。另按编排方裁定，仓库脚本自查（npm run calibrate、smoke:authorized）的每一次判定由规则板的 checkCall 写一条 rules.check，脚本进程里没有 DSH 服务，所以要指标流水给一个 DSH 之外可用的库写入口（按 userDataHome() 与项目键追加，写入口不在时什么都不做），规则板 0.8 §10.7 也请了这一条。服务名、信封与不带会话的事件归哪个项目由指标设计定。"
     }
   ]
 }
