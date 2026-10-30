@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 import { acquireLock, LOCK_WAIT_MS, STALE_LOCK_MS } from '../src/data/lock.ts'
 import { openRulesBoard, type RulesBoard } from '../src/rules/engine.ts'
-import { effectivePeakMode, repoJson, type JournalRecord, type PeakLevel, type PeakModeSetting } from '../src/rules/model.ts'
+import { effectivePeakMode, emptyState, repoJson, type JournalRecord, type PeakLevel, type PeakModeSetting, type ProjectState } from '../src/rules/model.ts'
 import { gitOperationIn, readProject, settleProject } from '../src/rules/repo.ts'
 import { applyRecord, loadState, rulesPaths, stateDigest, textDigest, type RulesPaths, type StoreIo } from '../src/rules/store.ts'
 import { impatientLock, projectTest, quickIo } from './rules-helpers.ts'
@@ -82,7 +82,7 @@ projectTest('a write is in the journal, the snapshot and the repository file, an
   assert.equal(rest.length, 0)
   assert.deepEqual([record?.seq, record?.actor, record?.op, record?.target, record?.from, record?.to], [1, 'human', 'peak-mode-set', 'peakMode', 'reduce', 'stop'])
   assert.equal(record?.snapshot, stateDigest(load.state))
-  assert.equal(stateDigest(applyRecord({ version: 2, seq: 0, repo: { digest: null }, unresolved: {} }, record)), record?.snapshot, 'the record alone makes the state')
+  assert.equal(stateDigest(applyRecord({ version: 2, seq: 0, repo: { digest: null } }, record)), record?.snapshot, 'the record alone makes the state')
   const file = await readFile(paths.rulesFile, 'utf8')
   assert.equal(file, repoJson({ version: 2, peakMode: load.state.peakMode }))
   assert.equal(load.state.repo.digest, textDigest(file))
@@ -131,7 +131,7 @@ projectTest('a snapshot that was zeroed, cut, garbled or deleted is rebuilt from
     const after = loadState(paths)
     assert.deepEqual([after.source, after.plan, after.state.recovered?.reason, after.state.seq], ['snapshot', undefined, 'snapshot-corrupt', expected.seq + 1], name)
     assert.equal((await lines(paths)).length, seq + 1, `${name}: one recovered record`)
-    assert.deepEqual(after.state.unresolved, {}, name)
+    assert.equal('unresolved' in after.state, false, `${name}: nothing unresolved, so the collection is absent`)
   }
 })
 
@@ -148,7 +148,7 @@ for (const [name, line, finalSeq] of [['with a made-up digest', forged(50, '0123
     await settled(paths)
     const after = loadState(paths)
     assert.equal(after.state.recovered?.reason, 'journal-not-engine')
-    const [entry, ...others] = Object.values(after.state.unresolved)
+    const [entry, ...others] = Object.values(after.state.unresolved ?? {})
     assert.equal(others.length, 0)
     assert.equal(entry?.label, `${after.state.seq}-1`)
     assert.equal(after.state.peakMode?.level, 'stop', 'the forged inform never applied')
@@ -230,7 +230,7 @@ projectTest('a line nothing can read breaks the chain; records after it do not t
   assert.deepEqual([load.plan?.recovered?.lost, load.plan?.recovered?.copyJournal, load.reasons.at(-1)], [true, true, 'journal-unreadable'])
   await settled(paths)
   const after = loadState(paths)
-  assert.deepEqual(Object.values(after.state.unresolved).map(entry => entry.why).sort(), ['after-unreadable', 'unreadable'])
+  assert.deepEqual(Object.values(after.state.unresolved ?? {}).map(entry => entry.why).sort(), ['after-unreadable', 'unreadable'])
   assert.deepEqual([after.state.recovered?.lost, after.state.peakMode?.level], [true, 'stop'])
   assert.ok((await names(paths.runtimeDir)).some(name => name.startsWith('.journal.corrupt-')), 'the journal is copied whole, not rewritten')
 })
@@ -298,7 +298,7 @@ projectTest('a reader between the append and the rename sees the new state, and 
 })
 
 test('applyRecord is a pure function of the state and the record: it reads no clock, and a path outside the state throws', () => {
-  const state = { version: 2 as const, seq: 4, repo: { digest: null }, unresolved: {} }
+  const state = { version: 2 as const, seq: 4, repo: { digest: null } }
   const record = { seq: 5, changes: [{ path: ['peakMode'] as const, value: CHOSEN }] }
   const now = Date.now
   Date.now = () => { throw new Error('the clock was read') }
@@ -311,10 +311,38 @@ test('applyRecord is a pure function of the state and the record: it reads no cl
     Date.now = now
   }
   assert.equal(state.seq, 4, 'the input is not changed')
+  const entry = { key: 'aaaaaaaaaaaa', label: '5-1', afterSeq: 4, why: 'unreadable' as const }
+  const listed = applyRecord(state, { seq: 5, changes: [{ path: ['unresolved', entry.key], value: entry }] })
+  assert.deepEqual(listed.unresolved, { [entry.key]: entry })
+  assert.equal('unresolved' in applyRecord(listed, { seq: 6, changes: [{ path: ['unresolved', entry.key] }] }), false, 'deleting the last entry leaves no empty collection behind')
   assert.throws(() => applyRecord(state, { seq: 5, changes: [{ path: ['rules', 'r-x'], value: {} }] }), /not a path of the state/)
   assert.throws(() => applyRecord(state, { seq: 5, changes: [{ path: ['root'], value: 'C:/x' }] }), /not a path/)
   assert.throws(() => applyRecord(state, { seq: 5, changes: [{ path: ['repo'] }] }), /cannot be deleted/)
   assert.throws(() => applyRecord(state, { seq: 5, changes: [null as never] }), /needs a path/)
+})
+
+// The collections the full board adds to the state (rules design §7.2), empty: what a state of the full board has before anyone uses them.
+const FULL_BOARD_COLLECTIONS = { rules: {}, proposals: {}, signals: {}, detectors: {}, tickets: {}, scripts: {}, notices: {}, unresolved: {} }
+
+projectTest('a collection that is empty is absent from what is stored, so a state extended with empty collections digests like the slice state and a journal the slice wrote replays under it', async ({ board }) => {
+  const { paths } = board
+  await set(board, 'stop')
+  await set(board, 'inform')
+  await set(board, 'reduce')
+  assert.deepEqual(Object.keys(JSON.parse(await readFile(paths.state, 'utf8')) as object).sort(), ['peakMode', 'repo', 'seq', 'version'], 'the snapshot has no empty collection')
+  assert.deepEqual(Object.keys(JSON.parse(await readFile(paths.rulesFile, 'utf8')) as object).sort(), ['peakMode', 'version'], 'nor has the rules file')
+  const records = await lines(paths)
+  assert.equal(records.length, 3)
+  const extend = (state: ProjectState): ProjectState => ({ ...state, ...FULL_BOARD_COLLECTIONS })
+  const slice = loadState(paths).state
+  assert.equal(stateDigest(extend(slice)), stateDigest(slice), 'the same digest')
+  assert.notEqual(stateDigest({ ...slice, rules: { 'r-1': {} } } as unknown as ProjectState), stateDigest(slice), 'a collection with an entry is part of the digest')
+  let extended = extend(emptyState())
+  for (const record of records) {
+    extended = extend(applyRecord(extended, record))
+    assert.equal(stateDigest(extended), record.snapshot, `record ${record.seq} verifies under the extended shape`)
+  }
+  assert.equal(stateDigest(extended), stateDigest(slice))
 })
 
 test('the write lock: a dead holder and an old lock are taken over, a live fresh one is waited for and then reported busy, and a lock taken over is no longer held', async () => {

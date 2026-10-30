@@ -37,7 +37,7 @@ export function projectHealth(name: string, read: ProjectRead, reading: PeakRead
   const told: string[] = []
   const problems: string[] = []
   const { state, load, repo } = read
-  const unresolved = Object.values(state.unresolved)
+  const unresolved = Object.values(state.unresolved ?? {})
   if (state.recovered !== undefined) told.push(RECOVERED_TEXT[state.recovered.reason])
   if (load.plan !== undefined) told.push('状态要重建，已在内存里按变更记录重放；下一次写入时留痕')
   if (state.recovered?.reason === 'snapshot-modified' || state.recovered?.reason === 'journal-shorter') problems.push(RECOVERED_TEXT[state.recovered.reason])

@@ -5,7 +5,7 @@
  */
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { canonicalJson, DEFAULT_PEAK_LEVEL, diffRepo, effectivePeakMode, emptyState, parsePeakLevel, parseRepoRules, repoJson, repoPart, stateFromRepo, stateProblem, type PeakModeSetting, type ProjectState } from '../src/rules/model.ts'
+import { canonicalJson, DEFAULT_PEAK_LEVEL, diffRepo, effectivePeakMode, emptyState, parsePeakLevel, parseRepoRules, repoJson, repoPart, stateFromRepo, stateProblem, withoutEmptyCollections, type PeakModeSetting, type ProjectState, type RepoRules } from '../src/rules/model.ts'
 
 const CHOSEN: PeakModeSetting = { level: 'stop', at: '2026-10-30T01:00:00.000Z', origin: { actor: 'human' } }
 
@@ -25,8 +25,17 @@ test('a level is named by its Chinese name or its stored value, nothing else', (
 test('one content has one serialization: keys in code point order, no whitespace, absent fields dropped', () => {
   assert.equal(canonicalJson({ b: 1, a: { d: [3, { y: 1, x: 2 }], c: undefined } }), '{"a":{"d":[3,{"x":2,"y":1}]},"b":1}')
   assert.equal(canonicalJson({ '𝒜': 1, 'z': 2, 'a': 3 }), '{"a":3,"z":2,"𝒜":1}', 'a code point beyond the BMP sorts after z')
-  const shuffled = { unresolved: {}, repo: { digest: null }, seq: 0, version: 2 }
+  const shuffled = { repo: { digest: null }, seq: 0, version: 2 }
   assert.equal(canonicalJson(shuffled), canonicalJson(emptyState()))
+})
+
+test('a collection that is empty is absent from what is stored: the state, and the rules file', () => {
+  assert.deepEqual(emptyState(), { version: 2, seq: 0, repo: { digest: null } }, 'the state of a project nobody wrote to has no unresolved collection')
+  assert.deepEqual(withoutEmptyCollections({ version: 2, rules: {}, tickets: { 'q-1': { id: 'q-1' } }, peakMode: CHOSEN, list: [], repo: { digest: null } }), { version: 2, tickets: { 'q-1': { id: 'q-1' } }, peakMode: CHOSEN, list: [], repo: { digest: null } }, 'only an empty object goes: not a filled one, an array or a value')
+  const extra = { rules: {}, detectors: {}, signals: {}, scripts: {} }
+  const decided = { version: 2 as const, peakMode: CHOSEN }
+  assert.equal(repoJson({ ...decided, ...extra }), repoJson(decided), 'the full board\'s empty collections change neither the file nor its digest')
+  assert.notEqual(repoJson({ ...decided, rules: { 'r-1': {} } } as unknown as RepoRules), repoJson(decided), 'a collection with an entry is part of the file')
 })
 
 test('the rules file reads in git: sorted keys, two spaces, a final newline, the same text for the same content', () => {
@@ -80,6 +89,8 @@ test('a state is checked field by field, and an unknown field is not a state', (
   assert.match(stateProblem({ ...emptyState(), root: 'C:/x' }) ?? '', /state\.root is not a field/)
   assert.match(stateProblem({ ...emptyState(), repo: { digest: 'short' } }) ?? '', /repo\.digest/)
   assert.match(stateProblem({ ...emptyState(), unresolved: { 'not-hex': {} } }) ?? '', /unresolved/)
+  assert.match(stateProblem({ ...emptyState(), unresolved: 'none' }) ?? '', /state\.unresolved must be an object/)
+  assert.equal(stateProblem({ ...emptyState(), unresolved: {} }), undefined, 'an empty collection is not an error: it digests as absent')
   assert.match(stateProblem({ ...emptyState(), recovered: { at: '2026-10-30T01:00:00.000Z', reason: 'boredom', lost: false } }) ?? '', /reason/)
   assert.match(stateProblem('state') ?? '', /object/)
 })
@@ -94,6 +105,6 @@ test('the difference between the file and the state is named per decided item', 
 
 test('a project that starts from the rules file has the decision, a first sequence number and nothing unresolved', () => {
   const state = stateFromRepo({ version: 2, peakMode: CHOSEN }, '0123456789abcdef')
-  assert.deepEqual(state, { version: 2, seq: 1, peakMode: CHOSEN, repo: { digest: '0123456789abcdef' }, unresolved: {} })
+  assert.deepEqual(state, { version: 2, seq: 1, peakMode: CHOSEN, repo: { digest: '0123456789abcdef' } })
   assert.equal(stateProblem(state), undefined)
 })

@@ -8,10 +8,16 @@
  *
  * The state holds what the peak level needs and no more; the rules,
  * proposals, signals, detectors and tickets of the full board join as
- * further top-level fields. Two fields of the full design are left out on
+ * further top-level fields. Two things of the full design are left out on
  * purpose: `root` (a digest that covers the project path would fail every
  * verification once the folder is renamed or moved) and the collections no
  * code reads yet.
+ *
+ * A collection that is empty is absent from what is stored and digested: in
+ * the state, in the digest of every journal record and in the rules file
+ * (`withoutEmptyCollections`). That is what lets the full board add its
+ * collections without a migration: a state that has them empty digests like
+ * one that does not have them, so what this slice wrote still replays.
  */
 import { PEAK_LEVEL_WORDS, type PeakLevel } from '../shared/peak-mode.ts'
 
@@ -84,12 +90,13 @@ export interface ProjectState {
     readonly outside?: { readonly digest: string, readonly at: string, readonly copy: string, readonly diff: readonly RepoDiffLine[] }
   }
   readonly recovered?: { readonly at: string, readonly reason: RecoveryReason, readonly lost: boolean, readonly replaced?: string }
-  readonly unresolved: Readonly<Record<string, SkippedRecord>>
+  /** Absent while there is nothing unresolved; readers treat absent as empty. */
+  readonly unresolved?: Readonly<Record<string, SkippedRecord>>
 }
 
 /** The state of a project the board has not written to yet. */
 export function emptyState(): ProjectState {
-  return { version: 2, seq: 0, repo: { digest: null }, unresolved: {} }
+  return { version: 2, seq: 0, repo: { digest: null } }
 }
 
 /** One change of a state: replace or delete a top-level field, or one entry of `unresolved`. */
@@ -150,9 +157,21 @@ export function canonicalJson(value: unknown): string {
   return JSON.stringify(sorted(value))
 }
 
-/** How the repository file is written: keys in code point order, two spaces of indent, a final newline; a git diff of it reads at a glance. */
+/**
+ * The value with every top-level field that is an empty object left out: a
+ * collection with nothing in it is absent from what is stored and digested
+ * (rules design §7.2). Applied to the state before a digest or a snapshot
+ * and to the rules file before it is written, so a collection the full board
+ * adds changes no digest while it is empty.
+ */
+export function withoutEmptyCollections<T extends object>(value: T): T {
+  const isEmptyCollection = (field: unknown): boolean => typeof field === 'object' && field !== null && !Array.isArray(field) && Object.keys(field).length === 0
+  return Object.fromEntries(Object.entries(value as Record<string, unknown>).filter(([, field]) => !isEmptyCollection(field))) as T
+}
+
+/** How the repository file is written: keys in code point order, two spaces of indent, a final newline, empty collections absent; a git diff of it reads at a glance. */
 export function repoJson(repo: RepoRules): string {
-  return `${JSON.stringify(sorted(repo), null, 2)}\n`
+  return `${JSON.stringify(sorted(withoutEmptyCollections(repo)), null, 2)}\n`
 }
 
 type Problem = string | undefined
@@ -251,6 +270,7 @@ export function stateProblem(value: unknown): Problem {
     const problem = recoveredProblem(value.recovered)
     if (problem !== undefined) return problem
   }
+  if (value.unresolved === undefined) return undefined
   if (!isRecord(value.unresolved)) return 'state.unresolved must be an object'
   return Object.entries(value.unresolved).map(([key, entry]) => skippedProblem(key, entry)).find(problem => problem !== undefined)
 }
@@ -274,7 +294,7 @@ export function parseRepoRules(text: string): { readonly ok: true, readonly repo
 
 /** The state a project starts from when it has the file and no record of its own: the decided part, nothing else. */
 export function stateFromRepo(repo: RepoRules, digest: string): ProjectState {
-  return { version: 2, seq: 1, ...(repo.peakMode === undefined ? {} : { peakMode: repo.peakMode }), repo: { digest }, unresolved: {} }
+  return { version: 2, seq: 1, ...(repo.peakMode === undefined ? {} : { peakMode: repo.peakMode }), repo: { digest } }
 }
 
 /** How the file in the repository differs from the part the state would export. */

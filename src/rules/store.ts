@@ -21,7 +21,7 @@ import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { copyFile, open, rename as renameFile, truncate, unlink, writeFile } from 'node:fs/promises'
 import { isAbsolute, join } from 'node:path'
-import { canonicalJson, emptyState, stateProblem, type Change, type JournalRecord, type ProjectState, type RecoveryReason, type SkippedRecord } from './model.ts'
+import { canonicalJson, emptyState, stateProblem, withoutEmptyCollections, type Change, type JournalRecord, type ProjectState, type RecoveryReason, type SkippedRecord } from './model.ts'
 
 /** The rules directory in the repository, relative to the project root. */
 export const DEFAULT_RULES_DIR = 'docs/rules'
@@ -60,9 +60,16 @@ export function rulesPaths(projectRoot: string, rulesDir: string = DEFAULT_RULES
 
 const digestOf = (text: string, length: number): string => createHash('sha256').update(text).digest('hex').slice(0, length)
 
-/** The first 16 hex digits of the SHA-256 of the state's canonical serialization. */
+/** The state as it is stored and digested: canonical serialization, a collection that is empty left out (rules design §7.2). */
+const storedText = (state: ProjectState): string => canonicalJson(withoutEmptyCollections(state))
+
+/**
+ * The first 16 hex digits of the SHA-256 of the state as it is stored. A
+ * collection that is empty counts as absent, so a state the full board has
+ * extended with empty collections digests like the one this slice wrote.
+ */
 export function stateDigest(state: ProjectState): string {
-  return digestOf(canonicalJson(state), 16)
+  return digestOf(storedText(state), 16)
 }
 
 /** The first 16 hex digits of the SHA-256 of a text's UTF-8 bytes: the digest of the rules file. */
@@ -75,7 +82,9 @@ const FIELDS: readonly string[] = ['peakMode', 'repo', 'recovered']
 /**
  * The state after a record. Pure: it reads no clock, file or process table.
  * A path outside the list the state has, or a missing `repo`, throws; a
- * replay reads that as a record that does not take effect.
+ * replay reads that as a record that does not take effect. A collection the
+ * record leaves empty is absent from the result (deleting the last entry of
+ * `unresolved` removes `unresolved`).
  */
 export function applyRecord(state: ProjectState, record: { readonly seq: number, readonly changes: readonly Change[] }): ProjectState {
   const next: Record<string, unknown> = { ...state }
@@ -88,7 +97,7 @@ export function applyRecord(state: ProjectState, record: { readonly seq: number,
       else delete next[head]
     }
     else if (change.path.length === 2 && head === 'unresolved' && entry !== undefined) {
-      const unresolved = { ...state.unresolved, ...(next.unresolved as Record<string, SkippedRecord>) }
+      const unresolved = { ...(next.unresolved as Record<string, SkippedRecord> | undefined) }
       if (change.value === undefined) delete unresolved[entry]
       else unresolved[entry] = change.value as SkippedRecord
       next.unresolved = unresolved
@@ -96,7 +105,7 @@ export function applyRecord(state: ProjectState, record: { readonly seq: number,
     else throw new Error(`${JSON.stringify(change.path)} is not a path of the state`)
   }
   next.seq = record.seq
-  return next as unknown as ProjectState
+  return withoutEmptyCollections(next) as unknown as ProjectState
 }
 
 type Line = { readonly text: string } & (
@@ -425,7 +434,7 @@ export async function appendRecord(paths: RulesPaths, record: JournalRecord): Pr
  * already has the record, so nothing is lost either way.
  */
 export async function writeSnapshot(paths: RulesPaths, state: ProjectState, io: StoreIo): Promise<'replaced' | 'pending' | 'failed'> {
-  const written = await writeAtomic(paths.state, canonicalJson(state), io)
+  const written = await writeAtomic(paths.state, storedText(state), io)
   if (written.ok) {
     await unlink(paths.pending).catch(() => {})
     return 'replaced'
