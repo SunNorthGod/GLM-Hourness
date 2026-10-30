@@ -89,6 +89,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M6 设计 0.4 §14.2、§18 对指标流水：GLM 通道包在指标服务存在时交四类事件：glm.quota-read（成功与否、原因码、耗时、发起方、各窗口已用比例）、glm.upstream-limit（错误码）、glm.login-rejected（路径与状态码）、glm.peak-reminder（高峰时段日期、发的是哪一档 peakMode、会话 id）；不含令牌、请求头与正文。另按编排方裁定，仓库脚本自查（npm run calibrate、smoke:authorized）的每一次判定由规则板的 checkCall 写一条 rules.check，脚本进程里没有 DSH 服务，所以要指标流水给一个 DSH 之外可用的库写入口（按 userDataHome() 与项目键追加，写入口不在时什么都不做），规则板 0.8 §10.7 也请了这一条。服务名、信封与不带会话的事件归哪个项目由指标设计定。"
+    },
+    {
+      "at": "2026-10-30T05:33:40.526Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "指标流水设计 0.1 第 1 轮评审（metrics-design-review-r1，wf_89d767a454888b03）：CHANGES_REQUESTED，挡路 11 条（HIGH 2、MEDIUM 9）、不挡路 11 条。HIGH：F1 封闭的字段表装不下兄弟设计已定的 56 种事件；F2 问人的统计还走已取消的卡片路径，要改成聊天路径（同意、补充、否掉的次数）。MEDIUM 有 D1 仍是选项式、与规则板的项目根不一致、没有会话的事件被丢、校验只在有人跑命令时才做、整天的文件可被悄悄删掉、真实流水上算不出同样的数、报告数字经模型转述、人的消息没计数、删除旧决策流水那一步没安排审查等。派出 metrics-design-v02 写 0.2 并接着评审，连第 1 轮共至多三轮，通过后写一页人话（D1 用四行写）。"
     }
   ]
 }
