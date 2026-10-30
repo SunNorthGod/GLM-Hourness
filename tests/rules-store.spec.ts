@@ -108,6 +108,72 @@ projectTest('a repeated choice writes nothing', async ({ board }) => {
   assert.equal((await set(board, 'inform')).changed, true)
 })
 
+// Runtime state stays out of git in every project (d-rules-in-repo): before the first write under .llm/rules/ the board appends `.llm/` to .git/info/exclude.
+for (const [name, before, after] of [
+  ['the clone has no info directory', undefined, '.llm/\n'],
+  ['the exclude file is empty', '', '.llm/\n'],
+  ['the exclude file is git\'s comment and ends with a newline', '# comment\n', '# comment\n.llm/\n'],
+  ['the exclude file has a pattern and no final newline', '*.log', '*.log\n.llm/\n'],
+  ['.llm/ is there already', '*.log\n.llm/\n', '*.log\n.llm/\n'],
+  ['/.llm/ is there already', '/.llm/\n', '/.llm/\n'],
+  ['.llm is there already, with spaces and a CRLF line end', '*.log\r\n  .llm  \r\n', '*.log\r\n  .llm  \r\n'],
+] as const) {
+  projectTest(`the first write puts .llm/ in .git/info/exclude once when ${name}`, async ({ root, board }) => {
+    const exclude = join(root, '.git', 'info', 'exclude')
+    const current = (): Promise<string | undefined> => readFile(exclude, 'utf8').catch(() => undefined)
+    if (before !== undefined) {
+      await mkdir(join(root, '.git', 'info'))
+      await writeFile(exclude, before)
+    }
+    // Looking at the project, and settling when there is nothing to settle, create nothing and touch no ignore file.
+    readProject(board.paths)
+    await settled(board.paths)
+    assert.equal(await current(), before)
+    await set(board, 'stop')
+    assert.equal(await current(), after)
+    await set(board, 'inform')
+    await set(board, 'reduce')
+    assert.equal(await current(), after, 'later writes leave the file as it is')
+  })
+}
+
+projectTest('a clone that starts from the rules file puts .llm/ in .git/info/exclude before its first record', async ({ root, board }) => {
+  const { paths } = board
+  await mkdir(paths.rulesDir, { recursive: true })
+  await writeFile(paths.rulesFile, repoJson({ version: 2, peakMode: CHOSEN }))
+  assert.equal(await readFile(join(root, '.git', 'info', 'exclude'), 'utf8').catch(() => undefined), undefined)
+  assert.notEqual(await board.settle(), 'busy')
+  assert.equal(await readFile(join(root, '.git', 'info', 'exclude'), 'utf8'), '.llm/\n')
+  assert.equal((await lines(paths)).length, 1)
+})
+
+projectTest('when .llm/ cannot be ignored the write is refused and no runtime directory is made', async ({ root, board }) => {
+  await writeFile(join(root, '.git', 'info'), 'a file where the directory should be')
+  const result = await board.apply('human', { op: 'peak-mode-set', level: 'stop' })
+  assert.equal(result.ok, false)
+  assert.equal(result.ok ? undefined : result.error.code, 'io')
+  assert.deepEqual(await names(root), ['.git'])
+})
+
+test('outside a git repository there is nothing to ignore, and a .git file names the git directory whose exclude file is used', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'rules-ignore-'))
+  try {
+    const plain = join(dir, 'plain')
+    await mkdir(join(plain, '.llm'), { recursive: true })
+    await set(openRulesBoard({ projectRoot: plain }), 'stop')
+    assert.deepEqual((await names(plain)).sort(), ['.llm', 'docs'], 'no .git, no exclude file made')
+    const linked = join(dir, 'linked')
+    await mkdir(join(dir, 'real-git'), { recursive: true })
+    await mkdir(linked)
+    await writeFile(join(linked, '.git'), 'gitdir: ../real-git\n')
+    await set(openRulesBoard({ projectRoot: linked }), 'stop')
+    assert.equal(await readFile(join(dir, 'real-git', 'info', 'exclude'), 'utf8'), '.llm/\n')
+  }
+  finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
 projectTest('a snapshot that was zeroed, cut, garbled or deleted is rebuilt from the journal to the same state, and the rebuild is recorded', async ({ board }) => {
   const { paths } = board
   await set(board, 'stop')

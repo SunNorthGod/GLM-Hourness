@@ -1197,7 +1197,7 @@ LLM 不讲人话，多半是默认在向评审汇报，想显得周全。做法�
 | `<项目根>/.llm/rules/rules.lock` | 写锁 | 否 |
 | `.state.json.pending`、`.state.json.replaced-<时刻>`、`.journal.corrupt-<时刻>`、`.rules.json.outside-<时刻>` | 改名失败留下的新快照；恢复时被替换的旧快照；有读不出的行时整份复制的流水或截掉的末行；被规则板以外改过的 `rules.json` 的原样副本 | 否 |
 
-`.llm/` 要在项目的忽略文件里：本仓库的 `.gitignore` 有它；别的项目里把它加进 `.git/info/exclude` 是 M5 的项目目录（`ensureIgnored`）做的事，这一片没有做。
+`.llm/` 要在项目的忽略文件里，任何项目都一样（`d-rules-in-repo`）：第一次写 `.llm/rules/` 之前，规则板把 `.llm/` 追加进项目 git 目录的 `info/exclude`（`ensureIgnored`，在 `src/data/project-root.ts`，M5 的项目目录服务复用它；入口 `ensureRuntimeDir`，`src/rules/store.ts`，写入口和 `settleProject` 建目录前都经它）。`info/exclude` 属于这份克隆、不入库；`info/` 不在就建；文件里已有 `.llm`、`.llm/`、`/.llm`、`/.llm/` 之一（两侧空白不计）就不再加；不在 git 仓库里时不加（`.git` 是文件时用它指向的 git 目录）。只读状态（`loadState`、`readProject`、没有待办的 `settleProject`）不建目录也不动这个文件。写不进 `info/exclude` 时这一次写入得 `io` 错误，不在没被忽略的情况下建 `.llm/rules/`。本仓库的 `.gitignore` 本来就有 `.llm/`，这里只是多一条本地的。
 
 - 写：`openRulesBoard({projectRoot, rulesDir}).apply(actor, request)`（`src/rules/engine.ts`）是唯一的写入口。顺序：核对身份（`src/rules/permissions.ts`，`peak-mode-set` 只给 `human`，其他身份得 `forbidden` 和怎么做）与请求形状，取写锁（`wx` 创建，持有者不在或超过 10 秒的锁被接手，等 2 秒仍取不到得 `busy`；实现在 `src/data/lock.ts`，不是规则板专用的：仓库里只有这一份文件锁，M7 的 E3 与 M5 复用它，不再写第二份），先把读到的待办落实（恢复、从规则文件开始、欠的写），核对修订号 `rev`，规划（时钟与文件系统相关的决定都在这里做完、写进记录的 `changes`），再确认锁还是自己的，追加流水并 `fsync`，原子替换快照（改名遇 `EPERM`、`EBUSY` 按 20、40、80、160、320 毫秒重试，仍失败留下 `.state.json.pending`），最后导出 `rules.json`。同一档位的重复选择不写任何东西。
 - 状态只经 `applyRecord(state, record)`（`src/rules/store.ts`，纯函数，不读时钟、文件与进程表）改变，写入与重放走同一个函数。重放逐条核对摘要：缺字段或摘要对不上的行（引擎以外追加或改过的）不生效、列入 `unresolved`；读不出的行把链断开，之后的记录不生效，直到一条带完整状态的 `base` 或 `recovered` 记录作锚点。快照清零、截断、被改，流水被截短或最后一行没写完，都按流水重建，旧快照原样另存；重建的结果与出事之前的状态摘要相同（`tests/rules-store.spec.ts` 的性质测试，5 个种子）。

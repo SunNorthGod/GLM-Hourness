@@ -18,13 +18,13 @@
  * (git is merging) or fail; the write has happened either way, and the state
  * says the file is owed.
  */
-import { copyFile, mkdir } from 'node:fs/promises'
+import { copyFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { acquireLock, type LockEnvironment, realLockEnvironment, type WriteLock } from '../data/lock.ts'
 import { effectivePeakMode, parsePeakLevel, repoJson, repoPart, stateProblem, type Change, type JournalRecord, type PeakLevel, type PeakModeSetting, type ProjectState, type RulesActor } from './model.ts'
 import { refusalFor } from './permissions.ts'
 import { exportRepo, settleLocked, settleProject, type ProjectRead } from './repo.ts'
-import { appendRecord, applyRecord, realStoreIo, rulesPaths, stamp, stateDigest, textDigest, writeSnapshot, type RulesPaths, type StoreIo } from './store.ts'
+import { appendRecord, applyRecord, ensureRuntimeDir, realStoreIo, rulesPaths, stamp, stateDigest, textDigest, writeSnapshot, type RulesPaths, type StoreIo } from './store.ts'
 import { PEAK_LEVEL_WORDS } from '../shared/peak-mode.ts'
 
 /** The request for the one write there is. `rev` is the sequence number the caller read; a newer state refuses the write. */
@@ -91,7 +91,7 @@ export function openRulesBoard(options: BoardOptions): RulesBoard {
   async function write(actor: RulesActor, request: PeakModeSet): Promise<ApplyResult> {
     let lock: WriteLock | 'busy'
     try {
-      await mkdir(paths.runtimeDir, { recursive: true })
+      await ensureRuntimeDir(paths)
       lock = await acquireLock(paths.lock, environment)
     }
     catch (error) {

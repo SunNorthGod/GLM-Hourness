@@ -19,8 +19,9 @@
  */
 import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
-import { copyFile, open, rename as renameFile, truncate, unlink, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, open, rename as renameFile, truncate, unlink, writeFile } from 'node:fs/promises'
 import { isAbsolute, join } from 'node:path'
+import { ensureIgnored } from '../data/project-root.ts'
 import { canonicalJson, emptyState, stateProblem, withoutEmptyCollections, type Change, type JournalRecord, type ProjectState, type RecoveryReason, type SkippedRecord } from './model.ts'
 
 /** The rules directory in the repository, relative to the project root. */
@@ -56,6 +57,18 @@ export function rulesPaths(projectRoot: string, rulesDir: string = DEFAULT_RULES
     repoWritten: join(runtimeDir, 'repo-written.json'),
     rulesFile: join(rules, 'rules.json'),
   }
+}
+
+/**
+ * Create `<root>/.llm/rules/` for a first write, after git has been told to
+ * ignore `.llm/` (`d-rules-in-repo`): the journal, snapshot and lock are
+ * runtime state and must not show up as untracked files, or be committed by
+ * `git add -A`, in a project whose own ignore files know nothing about them.
+ * Throws when the ignore entry cannot be made; the directory is then not created.
+ */
+export async function ensureRuntimeDir(paths: RulesPaths): Promise<void> {
+  await ensureIgnored(paths.projectRoot, '.llm')
+  await mkdir(paths.runtimeDir, { recursive: true })
 }
 
 const digestOf = (text: string, length: number): string => createHash('sha256').update(text).digest('hex').slice(0, length)

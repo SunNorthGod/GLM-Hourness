@@ -12,9 +12,12 @@
  *
  * Not rules-specific: this is the one project-root module of the
  * repository. The rules row uses it today; the data directory service (M5)
- * and the other boards reuse it instead of writing a second one.
+ * and the other boards reuse it instead of writing a second one. Finding the
+ * project writes nothing; `ensureIgnored` is the one function here that
+ * does, and only when a board is about to create its runtime directory.
  */
 import { readFileSync, statSync } from 'node:fs'
+import { appendFile, mkdir, readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join, parse, resolve } from 'node:path'
 
@@ -100,4 +103,30 @@ export function gitDirOf(root: string): string | undefined {
   const entry = gitEntry(root)
   if (entry === undefined) return undefined
   return entry.kind === 'dir' ? join(root, '.git') : namedGitDir(root, entry.text)
+}
+
+/**
+ * Make git ignore a top-level directory of the project (`directory` is its
+ * name, `.llm`) without touching a tracked file: the line `<directory>/` is
+ * appended to the repository's `info/exclude`, which belongs to the clone and
+ * is never committed. Nothing happens outside a git repository, and a line
+ * that already ignores the directory (`.llm`, `.llm/`, `/.llm`, `/.llm/`) is
+ * not repeated. Throws when the file cannot be written; the caller then does
+ * not create the directory.
+ */
+export async function ensureIgnored(root: string, directory: string): Promise<void> {
+  const gitDir = gitDirOf(root)
+  if (gitDir === undefined || !isDirectory(gitDir)) return
+  const file = join(gitDir, 'info', 'exclude')
+  let text = ''
+  try {
+    text = await readFile(file, 'utf8')
+  }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+  }
+  const present = [directory, `${directory}/`, `/${directory}`, `/${directory}/`]
+  if (text.split(/\r?\n/).some(line => present.includes(line.trim()))) return
+  await mkdir(dirname(file), { recursive: true })
+  await appendFile(file, `${text === '' || text.endsWith('\n') ? '' : '\n'}${directory}/\n`)
 }

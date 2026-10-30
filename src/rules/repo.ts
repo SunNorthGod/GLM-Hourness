@@ -24,7 +24,7 @@ import { join } from 'node:path'
 import { acquireLock, type LockEnvironment, realLockEnvironment } from '../data/lock.ts'
 import { gitDirOf } from '../data/project-root.ts'
 import { diffRepo, parseRepoRules, repoJson, repoPart, stateFromRepo, type Change, type JournalRecord, type ProjectState, type RepoDiffLine, type RepoRules } from './model.ts'
-import { appendRecord, applyRecord, loadState, persistLoad, readText, realStoreIo, stamp, stateDigest, textDigest, writeAtomic, writeSnapshot, type LoadResult, type RulesPaths, type StoreIo } from './store.ts'
+import { appendRecord, applyRecord, ensureRuntimeDir, loadState, persistLoad, readText, realStoreIo, stamp, stateDigest, textDigest, writeAtomic, writeSnapshot, type LoadResult, type RulesPaths, type StoreIo } from './store.ts'
 
 /** Files and directories in a git directory that say git is in the middle of something. */
 const GIT_MARKERS = ['MERGE_HEAD', 'REBASE_HEAD', 'CHERRY_PICK_HEAD', 'rebase-merge', 'rebase-apply', 'BISECT_LOG', 'index.lock']
@@ -176,7 +176,7 @@ export async function settleLocked(paths: RulesPaths, io: StoreIo = realStoreIo)
 export async function settleProject(paths: RulesPaths, io: StoreIo = realStoreIo, environment: LockEnvironment = realLockEnvironment): Promise<ProjectRead | 'busy'> {
   const read = readProject(paths)
   if (!needsSettling(read)) return read
-  await mkdir(paths.runtimeDir, { recursive: true })
+  await ensureRuntimeDir(paths)
   const lock = await acquireLock(paths.lock, environment)
   if (lock === 'busy') return 'busy'
   try {
