@@ -215,6 +215,30 @@
       "actor": "llm",
       "op": "comment",
       "text": "人 2026-10-30 回「可以」：循环板 0.5 → 0.6，与规则板 0.10 同一个 run（boards-rules010-loops06，wf_536c919266ffcda5）。改 F44（记下自己写过的条目版本，切分支、stash、revert 不被写回；合并、变基、cherry-pick 进行中或 index.lock 在时先不写仓库）、F45（改完文件事件的键带回合号）、F46（人加的检查按条目 + 会话 + 工作树分组去抖与限次）与 F47–F56；F42 在放行稿里处理。只此一稿。"
+    },
+    {
+      "at": "2026-10-30T10:13:11.406Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "循环板设计 0.5 → 0.6 写完（.agents/tasks/schedules/design.md，run boards-rules010-loops06，wf_536c919266ffcda5；0.5 原文留作 design-0.5.md；onepage.md 与 mockup-loops.svg 不动，由评审之后的一步重写）。人 2026-10-30 回「可以」准的一稿，逐条处理第 5 轮评审的 F44–F56，F42 仍留给重写放行稿的那一步；处理表在 §19.5。三条挡路：F44 仓库里的条目文件与 git 不再打架——新文件 .llm/loops/repo-written.json 记循环板最近写成的每一项的字节哈希，只在变更记录比文件新且 repo-written 也对不上（确实欠着写）时补写，文件被 git revert 或手改成别的样子当「在它之外被改」不写回，切到没有它的分支或 git stash 当「当前检出里没有」不写回、页面写明、切回来照常跑，写仓库文件时 MERGE_HEAD、REBASE_HEAD、CHERRY_PICK_HEAD、rebase-merge/、rebase-apply/、BISECT_LOG 或 index.lock 在就先不写、每拍看一次都不在了再写（照规则板 0.9 对 docs/rules/ 的同一套；§9.1、§9.2 第 5 步、§9.3，验收第 33 条加 (d)(e)(f) 真走 git 的 L2）。F45 env.files-edited 的去重键改成 files-edited:<会话>:<turn>-<step>，两个数都取自 agent/pre-step 的载荷，turn 由会话投影 turnBoundary 接续、宿主重启也不从头数（DSH 每回合 step 从 0 数，0.5 的「这一步的序号」在不同回合的同一步撞键，第二次改动的检查不跑；§4.4、验收第 37(e)）。F46 人加的检查与 to: 'event-session' 的脚本按「条目 + 会话 + 工作树的根」分组去抖、限次、不重叠与待跑，每组在自己的检出里跑、结果交给自己的会话，两个工作树并行的改动各跑各的（§6.6、§6.7，验收第 37(f)）。十条不挡路：F47 七处旧文字改正；F48 高峰中途改档时热会话任何一档都调一次恢复；F49 拦路一路的在跑位置、后台与排队数写全（GATE_CONCURRENT 4、GATE_LATE_MAX 8、GATE_QUEUE_MAX 16）；F50 runCommand 加 queue（check/direct），分开人加的检查与 M4 自带检查器；F51 新克隆上认回要内容对上、不只认一张图决定；F52 loop-read 挪进项目、用户级 machine/ 只留提醒状态；F53 resolveProgram 把程序解析成 PATH 里项目之外的绝对路径再起、跳过工作树里同名程序；F54 没人听的 env.files-edited 不写、去重键按事件名字空间分开记上限；F55 ** 匹配零个目录写明；F56 V13 已答（引擎拒绝不变的 set），loops.remind-waiting 用退路写法。本稿不动 .agents/tasks/rules/（规则板 0.10 与本稿同一批写、接缝由后面的一步核对）。给 M4、M3、metrics 的接缝改动见对应节点的批注与草稿 graph-ops-v06.json。"
+    },
+    {
+      "at": "2026-10-30T10:13:12.083Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "循环板 0.6 ↔ 规则板 0.10 接缝核对完成（run boards-rules010-loops06，报告 .agents/tasks/rules/seam-check-v010-v06.md）。两处修正都落在规则板、循环板 0.6 不改：一、规则板 §6.7 原写『执行器的两队』，改为引循环板 §6.6 的 gate/work/check/direct 几队（本稿 F49、F50 加的）；二、规则板推迟写仓库的 git 标记集补上 BISECT_LOG，与本稿 §9.2 第 5 步对齐——本稿 §19.5 写的『两块板的 git 处理从此一致』现在成立。其余接缝点（条目形状与 Trigger、gate 事件与 session 字段、runScript 与结果词汇、attachDigest 与同意的路、docs/loops 与 docs/rules 的存放、违规流水循环板不读）两稿一致。没在本机见过的条目的采用：规则板 §7.5（F84）与循环板 §9.3 核心规则一致（图上 done 的提议式待决、人或带 relay 的 llm 拍板，否则不跑），核脚本内容的机制两板各用各的（规则板核 attachDigest 记号、循环板核脚本字节一致），归各板自己的存储、未强行统一，评审若要统一再定。没有提交、没有写图、没有碰源码与 onepage/mockup。"
+    },
+    {
+      "at": "2026-10-30T10:13:12.876Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "规则板设计 0.10 与循环板的接缝（0.9→0.10 改动里与接缝相关的两处）：F84——规则板把『仓库带来的、带脚本的条目只在图上有一张带「已给人看原文」记号的 done 提议式待决时才跑，否则读入但不跑、按 onError（gate.trunk-advance 上拦下）、等 repin』写成与循环板 0.5 §9.3 前四行同一条做法（规则板 §7.5），两块板在『同一条同意的路』上现在一致（0.9 规则板照 rules.json 的哈希直接跑，与循环板不一致，0.10 改齐）。F83——共用违规流水的 mode 分类（record、late）归 M4 的 classifyRecord，与循环板无关。其余接缝点（条目形状与 Trigger、事件表、脚本执行器 runScript、attachDigest 与『已给人看原文』的拍板、docs/loops 与 docs/rules 的门、heldForPeak 删去、gate. 事件的 session 字段）与 0.9 相同、不变。0.10 的接缝由接缝核对的后一步再对一次；本稿只改规则板、未动循环板的文件。"
+    },
+    {
+      "at": "2026-10-30T10:13:13.528Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "循环板 0.6 第 6 轮独立评审 APPROVED（run boards-rules010-loops06）：HIGH 0、MEDIUM 0、NIT 3（F57–F59，不挡路）。第 5 轮的 F44–F56 全部关闭，F42 留到放行稿。接缝与规则板 0.10 一致（seam-check-v010-v06.md，六点）。循环板设计定稿在 0.6。下一步：写一页人话放行稿交人放行。三条 NIT：repo-written.json 丢了没有 §9.3 的恢复行；§2.2 的 L2 指到验收 36 没真正练到 matchesFilter；§9.2 第 5 步「已经生效」与脚本条目在 git 操作中途被接受时文件门控的跑法有冲突。随放行稿或下一次顺手清。"
     }
   ]
 }

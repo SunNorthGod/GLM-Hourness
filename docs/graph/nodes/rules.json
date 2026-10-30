@@ -333,6 +333,24 @@
       "actor": "llm",
       "op": "comment",
       "text": "人 2026-10-30 回「可以」：两块板再给一稿。派出 boards-rules010-loops06（wf_536c919266ffcda5）：规则板 0.9 → 0.10，改 F82–F90（设计正文照已更正的宪章 0.7：代码里的门禁照旧先影子；与 M4 0.4 的规则目录和违规流水接上，违规流水的格式归 M4；没在本机见过人同意的条目与脚本，只认图上带人原话的提议，否则列为未采用、不跑；验证计划里 0.8 的旧说法改掉；写明自举前先做的最小一片是全设计的子集）；接着与循环板对照接缝，各评一轮，过了的写放行稿。只此一稿，还挡路就停下报人。"
+    },
+    {
+      "at": "2026-10-30T10:13:12.332Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "规则板设计 0.10 写完（.agents/tasks/rules/design.md，run boards-rules010-loops06，wf_536c919266ffcda5；0.9 原文另存为 design-v0.9.md），等接缝核对与一轮独立评审。0.9 接缝核对与设计评审第 1 轮 CHANGES_REQUESTED（MEDIUM F82–F85，NIT F86–F90），人回「可以」再给一稿。逐条改：F82 代码里的门禁照旧先影子后拦截（含 M4 的四条影子规则 credential-read、suppression-reason、checker-config、scratch-only 与 M7 的升级阶梯，ORCHESTRATION.md §6.5），人同意即生效只对规则板与循环板上人看过原文同意的条目；docs/CHARTER.md 0.7 已由编排方在 f2faa6f 改好，本稿不动宪章、只让正文与它一致（§5.5、§10.1、§10.7 M5）；撤回『请 M5 改第 7 条经验』、不再请人整条替换根目标 hourness 验收第 3 条（『新门禁先影子后拦截』说的是代码里的门禁，照旧成立）。F83 接住 M4 0.4 的接缝：代码规则目录导入 GUARD_RULES（含四条影子规则与 metrics-files-only）、违规流水写 mode record 与 late 请 M4 的 classifyRecord 认、采纳 observe 与 noteDenial、§2.3 不再引 evaluate 改引 installRuleGate、违规流水进项目引 M4 0.4 §2.4（给 M4 的批注另发）。F84 仓库带来的带脚本的条目只在图上有带『已给人看原文』记号的拍板时才跑、否则不跑等 repin，与循环板 0.5 §9.3 一致（§7.5、§1.4 第 28 条、§15 R2）。F85 §15、§16 六格就地改（不做档只排 GLM 子 agent 与派活、mustShow 是 scriptDetail 的输出、后台满 GATE_LATE_MAX、从严那一句、§16 R4 删 heldForPeak、V4 项目根下）。加 §16.1 写明自举前先做的最小一片（高峰档位、默认少做、少做并发上限与经服务交出的读法）是全设计的严格子集、不留要删的代码（d-rules-peak-slice）。NIT F86（派活那一次的例外）、F87（script-capped、心跳路径、§12 condition、删『没有用户级目录』）、F88（remove 提议的 detail 按存下的算）、F89（不带筛选的拦路脚本的频率注意事项）全改；F90 两处是宪章措辞，本稿不动宪章、记在附录 H 交编排方。每处答哪一条见附录 H 与 §20 的 0.10 一条。0.9 给 m3、m6、m7、m8-plain-language、metrics 的请求本稿未改、不再重发。"
+    },
+    {
+      "at": "2026-10-30T10:13:13.070Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "规则板 0.10 ↔ 循环板 0.6 接缝核对完成（run boards-rules010-loops06，报告 .agents/tasks/rules/seam-check-v010-v06.md）。核了六面：条目形状、事件名、执行器接口、同意的路（含没在本机见过的条目的不采用规则）、存放、记录种类。两处不符都落在规则板、已改：一、§6.7 两处『执行器的两队』改为引循环板 0.6 §6.6 的『几队』——循环板 0.6 把人加的检查、派发另分了 check、direct 两队，拦路的 gate 仍单独一队（评审 F49、F50）；二、§7.1、§1.4 第 28 条推迟写仓库的 git 标记集加 BISECT_LOG（二分），与循环板 0.6 §9.2 第 5 步对齐，两块板推迟写仓库的条件从此一致。§10.7 循环板一节注明循环板已到 0.6、引用的节号不变、内容以 0.6 为准；§20 的 0.10 一条记这两处修正。其余接缝点一致、未改：条目形状与 Trigger、gate 事件名与 session 字段、runScript 与结果词汇（capped）、attachDigest 与『已给人看原文』的拍板、docs/rules 与 docs/loops 的存放、违规流水 mode 的取值（record/late 的 classifyRecord 请求归 M4、已在本草稿 m4 批注里）。没在本机见过的条目的采用：规则板 §7.5（F84）与循环板 §9.3 核心一致，核脚本内容的机制两板各用各的（规则板核 attachDigest 记号、循环板核脚本字节），归各板自己的存储、未强行统一。没有新的邻居请求；没有提交、没有写图、没有碰源码与 onepage/mockup。"
+    },
+    {
+      "at": "2026-10-30T10:13:13.322Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "规则板 0.10 第 2 轮独立评审 APPROVED（run boards-rules010-loops06，wf_536c919266ffcda5）：HIGH 0、MEDIUM 0、NIT 2（F91、F92，都是 0.8 的用户级旧说法没清干净，实际存放与 d-rules-in-repo 一致，不挡路）。0.9 的 F82–F90 九条全部关闭，已对照 CHARTER 0.7（f2faa6f）、M4 0.4、循环板 0.6 的接缝核实。接缝核对六点一致、两处在规则板这边改好（队列口径、git 标记集加 BISECT_LOG）。自举前的最小一片在 §16.1 写明、是全设计的严格子集、无弃置代码。规则板设计定稿在 0.10。下一步：写一页人话放行稿交人放行；放行后自举要用的最小一片可开写（d-rules-peak-slice）。两条 NIT 随放行稿一步或下一次顺手清。"
     }
   ]
 }

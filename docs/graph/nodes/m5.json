@@ -35,6 +35,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "设计 v0.1 写完（.agents/tasks/m5/design.md）：记忆与经验板块共用 src/data/ 里一层只追加的流水，但是两个集合、两行；待人定 D1 九个节点的验收、D2 记忆是否存项目事实（推荐：只存带出处的）。评审进行中。"
+    },
+    {
+      "at": "2026-10-30T10:13:12.701Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "规则板设计 0.10 对 M5（规则板 §10.7 M5 一条）：规则板的项目根与项目目录用 src/data/project-root.ts 的 projectRootOf、projectDirOf（运行时状态在 <项目根>/.llm/rules/），R2 改用 src/data/lock.ts（M5 §8.3 的请求，同意，谁先实现谁建）。0.9 另请 M5 下一稿改第一批经验第 7 条『start a new gate in shadow mode and count false denials before enforcing it』的那一句，0.10 撤回（F82）：docs/CHARTER.md 0.7（提交 f2faa6f）把『先影子』限定为写在代码里的门禁之后，那一条说的正是一道写在代码里的 guard 规则，在限定之后的宪章下是对的、照旧成立（ORCHESTRATION.md §6.5）。规则板对 M5 不再有改第 7 条经验这一条请求。"
     }
   ]
 }

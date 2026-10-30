@@ -143,6 +143,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "循环板 0.5 给 M4 的（循环板 design.md §4.4、§5.3、§17 M4 第 1、4 条；照编排方 2026-10-30 的裁定「Check entries seam」，M4 第 4 轮评审 F17 之后，接缝核对时改写）：一、M4 自带的检查器仍是插件交来的数据、由 env 行执行、在板上只能看：when 为 env.files-edited，filter 为改到的文件（paths，按扩展名写 *.ts），动作 self（by: 'glm-hourness/env'）；交一项 env.checks-after-edit 带明细与 ownRules，或每个批过的检查器一项，循环板都收。二、人自己加的检查是循环板上人的普通条目（动作 check），由循环板的执行器 runCommand 跑、走与脚本同一条同意的路，M4 不执行它们；M4 0.4 §18 第 5 条的 ①②④ 随裁定不要了，③ 由 0.5 的 glob 接住，⑤ 由 runCommand 接住。三、请 M4 下一稿给三样（名字由 M4 定）：按工具节点 id 读出一条检查命令 argv 的读法；按事件载荷填好命令里占位（例 {files}）的纯函数；可选的按输出格式整理结果的纯函数；节点上的命令要能不经 shell 直接起（npx 这类 .cmd 起不了）。四、env.files-edited 改为经 emit 交进收件箱、人能选（不再 listedOnly），载荷 files（filter: 'paths'，相对 root）、root（改动所在的检出的根）、truncated，键 files-edited:<会话>:<这一步的序号>；M4 自带的那一项照旧在那一步之前当场跑。五、graph.third-rework 不变；循环板不读 M4 的违规流水。"
+    },
+    {
+      "at": "2026-10-30T10:13:11.576Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "循环板 0.6 给 M4 的接缝更新（更正 0.5 graph-ops-v05 的 m4 批注第二点；循环板 design.md §4.4、§6.6、§17 M4 第 4 条）：一、0.5 写「第 ⑤ 点由 runCommand 接住」只说了人加的检查这一半，不准。runCommand 0.6 加 queue 字段：'check'（人加的检查，一个项目同时至多 2 个、单独一队、不排在循环板的 work 脚本后面、工作目录可以是工作树、超时 5–1800 秒、输出各留至少 1 MiB、argv 不经 shell）；'direct'（M4 自带的检查器要用共用执行器时走它：不排队、并发由 M4 自己管、信封可空）。M4 自带的检查器也可以仍留在 src/env/runner.ts 自己起进程，两者都行，由 M4 定——它有自己的两个并发与一步 20 秒等待，不该排在循环板的脚本后面。二、env.files-edited 的键改成 files-edited:<会话>:<turn>-<step>（评审 F45），turn 与 step 都取自 agent/pre-step 的载荷。三、循环板把一次运行里几个事件的 files 并集填给 {files}（按会话与工作树分组，评审 F46），请 M4 的填占位纯函数把以 '-' 开头的文件名前面加 './'，免得被当成 ESLint 一类的选项（评审 F53）。四、节点上的命令要能不经 shell 直接起（node、git 或 .exe）；循环板用 resolveProgram 把 argv[0] 解析成 PATH 里项目之外的绝对路径，解析到 .cmd、.bat（如 npx）的在起进程前判出、记 crashed（评审 F53）。五、M4 可以先调循环板服务的 listens('env.files-edited', <cwd>) 再决定要不要算这一步的载荷（没人听时 emit 不写收件箱、不记键，评审 F54）。M4 第 4 轮评审 F17 之后裁定的 ①②④ 仍不要、③ 由 glob 接住，不变。"
+    },
+    {
+      "at": "2026-10-30T10:13:12.519Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "规则板设计 0.10 接住 M4 设计 0.4 给规则板的接缝（本节点 2026-10-30T07:12Z 的批注；规则板 §10.7 新增『M4 设计 0.4』一节，F83）：一、代码规则目录：规则板 src/rules/builtin.ts 的目录对 guard 框架的条目导入 M4 的 src/guard/catalog.ts 的 GUARD_RULES（含 guard 行六条——两条生效加四条影子规则 credential-read、suppression-reason、checker-config、scratch-only——与图行、M3、M7、循环板、指标流水的门），builtin.ts 只把它映射成 CatalogEntry、mode 取 GUARD_RULES 里那一条的，自己只另加规则板的 rules:files-only、默认规则 builtin:glm-peak-pricing 与四条附属条目；两边不各写一份（否则 M4 的四条在规则页上看不到，违 d-rules-visible 与 CHARTER §7.1 条款 6），先合入的一方建 catalog.ts、另一方导入。二、共用违规流水（请 M4 定）：规则板写进那一份违规流水的记录（rule 以 rules: 开头）用 mode enforce（拦下、进违规数）、record（只记录、人选的动作、不进违规数、单列计数）、late（晚到的拦下、进违规数、另列一行）与 effect queue（排队、deferral、不进违规数）。违规流水的格式与读它的唯一分类函数 classifyRecord 归 M4（M4 0.4 §3.2）：请 M4 的 classifyRecord 认 rules: 开头且 mode record 的为『只记录』、mode late 的为『晚到的拦下』；在 M4 加上之前规则板的晨报一节 R7 自己数这两种、不经 classifyRecord。规则板只说它需要的取值、不自己另造 mode（0.9 把 shadow 改名 record、又加 late，与 M4 0.4 的 classifyRecord 只认 enforce、shadow、effect queue 对不上，这是 0.10 补的接缝）。三、observe 与 noteDenial（M4 0.4 §3.3）：M4 的 src/guard/gate.ts 在时，规则板的工具调用门第一件事调 observe(agent, call, callId)、拦下与开单拒绝时调 noteDenial(agent, callId, {rule: rules:<id>, …})（没有 rightPath），这样 guard 规则拦截之后下一次被规则板拦下的调用也进『拦截后下一步走对』的跟进；M4 不在时不调。0.10 采纳这两项，不采纳别的。四、evaluate 删除：规则板 §2.3 不再引 src/guard/rules.ts 的 evaluate（M4 0.4 G1 删掉它），判定出错即放行对到 src/guard/gate.ts 的 installRuleGate；规则板自己不经 installRuleGate（它的判定、排队与等待单是另一套，M4 0.4 §2.3 分工表已写）。五、违规流水 audit/violations.jsonl 按 d-rules-in-repo 进会话所属项目的 .llm/（M4 0.4 §2.4 已这样做，项目根与规则板 §7.3 同一个函数）；规则板写的是 guard 写的那一份、跟着搬。"
     }
   ]
 }
