@@ -704,8 +704,9 @@ export function createGit(runner: GitRunner = realGitRunner) {
     return succeeded(line?.[0])
   }
 
+  // `run` stays inside: it takes any arguments, so exporting it would let a caller start merge, push or update-ref past every check below.
   return {
-    run, toplevel, currentBranch, resolveCommit, branchTip, mergeBase, isAncestor,
+    toplevel, currentBranch, resolveCommit, branchTip, mergeBase, isAncestor,
     changedFiles, entryAt, sameContent, taskTrailers, lastTaskCommit,
     listWorktrees, ensureWorktree, removeWorktree, prepareGateWorktree,
     trunkUpstream, trunkRefs, reflogSubject, lsRemote,

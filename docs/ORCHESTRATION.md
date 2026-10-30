@@ -1255,7 +1255,7 @@ M7 判一个任务此刻能不能派、能不能写，要读目标的模块结�
 - `digest.ts`：简报、计划与批注用的 12 位摘要。
 这些函数没有调用方：`dispatch_task` 与执行行从 E4 起接上它们。
 ### 17.5 git 执行器（E3，`src/execute/git.ts`）
-harness 自己跑的 git 都从这里走：任务与门禁的工作树、两个提交之间的改动清单、一个文件在两个提交里的内容比对、提交尾注、主干与它的远端跟踪引用、`ls-remote`。`createGit(runner)` 返回全部操作，`execRunner(program)` 是 `execFile` 的包装（不经 shell，环境 `LC_ALL=C` 与 `GIT_TERMINAL_PROMPT=0`，输出上限 64 MiB），它不抛错，把「没有退出码」分成 `missing`、`timeout`、`overflow`、`failed`；测试对着 `node -e` 测退出码、超时和找不到程序。
+harness 自己跑的 git 都从这里走：任务与门禁的工作树、两个提交之间的改动清单、一个文件在两个提交里的内容比对、提交尾注、主干与它的远端跟踪引用、`ls-remote`。`createGit(runner)` 返回全部操作，是一组封闭的具名操作，各自检查自己的参数，没有接收任意 git 参数的入口（内部的 `run` 不对外；E3 评审 E3-3）；`tests/execute-git.spec.ts` 钉住这份名单，加操作要连这条断言一起改、一起过审。`execRunner(program)` 是 `execFile` 的包装（不经 shell，环境 `LC_ALL=C` 与 `GIT_TERMINAL_PROMPT=0`，输出上限 64 MiB），它不抛错，把「没有退出码」分成 `missing`、`timeout`、`overflow`、`failed`；测试对着 `node -e` 测退出码、超时和找不到程序。
 - 每次 git 调用都以 `--no-replace-objects` 开头，`git replace` 因此改不了 harness 读到的内容。`tests/execute-git.spec.ts` 把一个提交的树替换成另一个提交的树：普通 git 看不到那处改动、读到的是替换后的内容，执行器两样都读对了；同一个用例断言全部操作启动的每个 git 进程都带这个参数。唯一把文件路径当 pathspec 的调用（`ls-tree`）另带 `--literal-pathspecs`，所以名为 `:(top)x.txt` 的文件不会被当成魔法写法而读成「不存在」；它不是全局选项，因为 `check-ignore` 拒绝它。
 - 从外面来的修订号、分支名不能以 `-` 开头、不含空白与控制字符，不然不起 git 进程；`ls-remote` 只认配置里的远端名（`[A-Za-z0-9._-]`），不认 URL。git 失败不抛错：读操作返回 `Outcome`（成功的值，或失败的一行原因），有设计里的码的操作返回拒绝（`code`、`reason`、必要时带 `files`）。
 - `changedFiles(from, to)`：`diff --no-renames --ignore-submodules=none --name-status -z`。改名算删掉旧路径加新增新路径，`diff.renames` 配置改不了它；文件名按原样读（`-z`）。读不出是失败，由调用方照设计 §3.8.5 当作命中。

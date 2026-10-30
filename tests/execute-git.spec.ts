@@ -135,6 +135,13 @@ test('a git that fails, hangs or is missing is an outcome with a reason, never a
   assert.equal(await answer({ code: 128, stdout: '', stderr: 'fatal' }).toplevel(sandbox), undefined)
 })
 
+test('the executor is a closed set of named operations: no entry point takes git arguments from the caller (E3 review, E3-3)', () => {
+  assert.deepEqual(Object.keys(createGit()).sort(), [
+    'branchTip', 'changedFiles', 'currentBranch', 'ensureWorktree', 'entryAt', 'isAncestor', 'lastTaskCommit', 'listWorktrees', 'lsRemote', 'mergeBase',
+    'prepareGateWorktree', 'reflogSubject', 'removeWorktree', 'resolveCommit', 'sameContent', 'taskTrailers', 'toplevel', 'trunkRefs', 'trunkUpstream',
+  ], 'a new operation is added here on purpose, with its argument checks, after review')
+})
+
 withRepo('every git process the executor starts begins with --no-replace-objects', async (repo) => {
   const { runner, calls } = recording()
   const git = createGit(runner)
