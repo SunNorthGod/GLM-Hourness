@@ -380,6 +380,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M3 附录 .agents/tasks/m3/design-addendum.md（0.5）里项目根函数的名字由 projectRootOf 改为合入代码的 projectOf（src/data/project-root.ts；编排方裁定先建模块的一方的名字为准），共 9 处，没有改别的标识符。projectOf 在没有项目时返回 undefined，所以 §2.5 第 6 步里两处随之写明：返回 {root, git}，没有项目时返回 undefined；会话的工作目录没有项目的条件写作「返回 undefined，或返回的 git 为假」，其后改取被快照仓库的 toplevel 不变。M3 主设计 design.md 里没有这个名字，未动。附录里「谁先实现谁建」「M3 先到时按 M5 设计 §5.5 的解析规则写」这类在模块合入后已过时的句子没有改，留给对齐轮。"
+    },
+    {
+      "at": "2026-10-30T13:19:47.848Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "蓝屏之后重开 M3 实现：m3-implementation-resume（wf_06fa3fbfe6b1b960，claude-sonnet-5.5）。节点已是 doing，不改状态。任务说明里写明了工作树里被打断的半成品（.worktrees/m3 十个已跟踪加七个未跟踪、第 3 步写到一半；.worktrees/m3-flow 四加二、第 11 步写到一半且落后主干），要求把它当作「作者已不在的草稿」：先读真实 diff、对着设计判断，该补完的补完、该丢的明确丢掉，并在汇报里说明每一处的取舍，不许当成已完成就提交。另外交代了三件事：项目根函数用已合入的 projectOf（设计措辞已改）、src/data/lock.ts 与 src/data/project-root.ts 复用不另写、与 M7 的 E2 同改 src/shared/tool-names.ts 时后合入的一方机械并入。并要求提交得够密，再蓝一次至多只损失一步。"
     }
   ]
 }
