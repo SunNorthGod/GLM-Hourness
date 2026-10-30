@@ -7,13 +7,23 @@
  * `ls-remote`. It runs git with `execFile`, never through a shell, so a
  * branch name or a path is one argument and is never re-parsed.
  *
- * Two rules hold for every call:
+ * Three rules hold for every call:
  * - Each call carries `--no-replace-objects` first. `git replace` can make a
  *   commit or tree read as another one; the harness decides from what is
  *   really in the repository, so replacement refs must not change what it
  *   sees. (The one call that takes a file path as a pathspec, `ls-tree`,
  *   adds `--literal-pathspecs` so the path is never read as `:(magic)`;
  *   `check-ignore` refuses that option, which is why it is not global.)
+ * - Right behind it come `-c core.hooksPath=<the null device>` and `-c
+ *   core.fsmonitor=false`, so no hook of the repository and no configured
+ *   fsmonitor command runs inside a call the harness makes: a hook or
+ *   command that moved the trunk would do it outside any agent shell call,
+ *   where the trunk-advance check (design §3.8.4) could only class it as an
+ *   outside advance. A path under the null device is no directory, so git
+ *   finds no hook there on any platform; the cases in
+ *   `tests/execute-git.spec.ts` run real hooks and a real fsmonitor command
+ *   to show it. Attribute filter drivers (`filter.<name>.smudge`, run by a
+ *   checkout or a reset) are not switched off.
  * - A revision, branch or remote that reaches git from outside is checked
  *   first: it may not start with `-` (git would read an option) or hold
  *   whitespace or control characters.
@@ -32,6 +42,7 @@
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { readFile, stat } from 'node:fs/promises'
+import { devNull } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { ensureIgnored, projectOf } from '../data/project-root.ts'
 import { ID_PATTERN } from '../graph/schema.ts'
@@ -236,7 +247,8 @@ const samePath = (a: string, b: string): boolean => pathKey(a) === pathKey(b)
 
 const REMOTE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
 
-const GLOBAL_OPTIONS = ['--no-replace-objects'] as const
+/** In front of every git process the executor starts; see the rules at the top of the file. */
+const GLOBAL_OPTIONS = ['--no-replace-objects', '-c', `core.hooksPath=${devNull}`, '-c', 'core.fsmonitor=false'] as const
 const READ_TIMEOUT_MS = 60_000
 /** Checkouts, resets and cleans on a large tree. */
 const WRITE_TIMEOUT_MS = 10 * 60_000

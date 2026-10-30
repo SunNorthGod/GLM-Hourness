@@ -163,7 +163,7 @@ test('the executor is a closed set of named operations: no entry point takes git
   ], 'a new operation is added here on purpose, with its argument checks, after review')
 })
 
-withRepo('every git process the executor starts begins with --no-replace-objects', async (repo) => {
+withRepo('every git process the executor starts begins with --no-replace-objects and runs with the repository\'s hooks and fsmonitor off', async (repo) => {
   const { runner, calls } = recording()
   const git = createGit(runner)
   const base = repo.commit({ 'a.txt': 'one\n' }, 'first\n\nHourness-Task: task-1')
@@ -190,11 +190,17 @@ withRepo('every git process the executor starts begins with --no-replace-objects
   await git.lsRemote(repo.dir, 'origin', 'main')
   assert.ok(calls.length >= 25, `the cases ran ${calls.length} git processes`)
   assert.deepEqual(calls.filter(args => args[0] !== '--no-replace-objects'), [])
+  // Behind it, the two options that keep programs the repository's configuration names out of the executor's calls (E3 review, E3-6).
+  // The cases further down run real hooks and a real fsmonitor to show that these values do switch them off on this platform.
+  assert.deepEqual(
+    calls.filter(args => args[1] !== '-c' || args[2]?.startsWith('core.hooksPath=') !== true || args[3] !== '-c' || args[4] !== 'core.fsmonitor=false'),
+    [],
+  )
   // update-ref is the executor's only way to write a reference; it writes the gate worktree's record, never a branch, a tag or a tracking reference.
-  const refWrites = calls.filter(args => args[1] === 'update-ref')
+  const refWrites = calls.filter(args => subcommandOf(args) === 'update-ref')
   assert.ok(refWrites.length > 0)
   assert.ok(refWrites.every(args => args.includes('refs/hourness/gate-head')), JSON.stringify(refWrites))
-  assert.deepEqual(calls.filter(args => ['push', 'fetch', 'pull', 'merge', 'tag'].includes(args[1] ?? '')), [])
+  assert.deepEqual(calls.filter(args => ['push', 'fetch', 'pull', 'merge', 'tag'].includes(subcommandOf(args) ?? '')), [])
 })
 
 withRepo('git replace cannot change what the executor sees', async (repo, git) => {
@@ -835,6 +841,69 @@ withRepo('a git failure while the new gate worktree\'s commit is recorded is a r
   assert.equal(result.code, 'gate_worktree_invalid')
   assert.deepEqual(calls.map(subcommandOf).filter(sub => ['reset', 'clean'].includes(sub ?? '')), [])
   assert.equal(succeeded(await git.prepareGateWorktree({ root: repo.dir, commit: c1, saveSnapshot: okSaver })).created, false)
+})
+
+// ---------------------------------------------------------------------------
+// The repository's own programs stay out of the executor's calls (E3 review, E3-6)
+
+/** An executable script that appends its own name to `marker` each time git runs it; returns its path with `/` separators. */
+function writeProgram(directory: string, name: string, marker: string): string {
+  mkdirSync(directory, { recursive: true })
+  const file = join(directory, name)
+  writeFileSync(file, `#!/bin/sh\necho ${name} >> '${marker.replaceAll('\\', '/')}'\n`, { mode: 0o755 })
+  return file.replaceAll('\\', '/')
+}
+
+/** The names the programs left in `marker`, in the order they ran. */
+const ranPrograms = (marker: string): string[] => existsSync(marker) ? lines(readFileSync(marker, 'utf8')) : []
+
+withRepo('the repository\'s hooks do not run inside the executor\'s git calls: post-checkout and reference-transaction (E3 review, E3-6)', async (repo, git) => {
+  const c1 = repo.commit({ 'a.txt': '1\n' }, 'c1')
+  const c2 = repo.commit({ 'a.txt': '2\n' }, 'c2')
+  const outside = dirname(repo.dir)
+  const marker = join(outside, 'hooks-ran.txt')
+  for (const hook of ['post-checkout', 'reference-transaction']) writeProgram(join(outside, 'hooks'), hook, marker)
+  repo.git('config', 'core.hooksPath', join(outside, 'hooks').replaceAll('\\', '/'))
+
+  // Control: plain git runs both hooks on this machine, so an empty marker after the executor's calls says something.
+  repo.git('worktree', 'add', '--quiet', '--detach', join(outside, 'control'), c1)
+  repo.git('update-ref', 'refs/control/x', c1)
+  assert.deepEqual([...new Set(ranPrograms(marker))].sort(), ['post-checkout', 'reference-transaction'], 'plain git runs the hooks here')
+  rmSync(marker)
+
+  // Every call that checks out or writes a reference: a task worktree made (a new branch and a checkout), then found again,
+  // the gate worktree made (worktree add, update-ref) and moved with changes in it (checkout, update-ref, reset, clean), a worktree removed.
+  const task = succeeded(await git.ensureWorktree(repo.dir, 'task-1'))
+  succeeded(await git.ensureWorktree(repo.dir, 'task-1'))
+  const gate = succeeded(await git.prepareGateWorktree({ root: repo.dir, commit: c1, saveSnapshot: okSaver }))
+  writeFileSync(join(gate.path, 'a.txt'), 'edited\n')
+  writeFileSync(join(gate.path, 'new.txt'), 'n\n')
+  succeeded(await git.prepareGateWorktree({ root: repo.dir, commit: c2, saveSnapshot: okSaver }))
+  good(await git.removeWorktree(repo.dir, task.path))
+  assert.equal(sh(gate.path, 'rev-parse', 'HEAD'), c2, 'the calls did their work')
+  assert.equal(repo.git('rev-parse', 'refs/hourness/gate-head'), c2)
+  assert.deepEqual(ranPrograms(marker), [], 'no hook ran')
+})
+
+withRepo('a configured fsmonitor command does not run inside the executor\'s git calls (E3 review, E3-6)', async (repo, git) => {
+  const c1 = repo.commit({ 'a.txt': '1\n' }, 'c1')
+  const c2 = repo.commit({ 'a.txt': '2\n' }, 'c2')
+  const outside = dirname(repo.dir)
+  const marker = join(outside, 'fsmonitor-ran.txt')
+  const gate = succeeded(await git.prepareGateWorktree({ root: repo.dir, commit: c1, saveSnapshot: okSaver }))
+  repo.git('config', 'core.fsmonitor', writeProgram(outside, 'fsmonitor.sh', marker))
+
+  // Control: plain git status runs the command here.
+  sh(gate.path, 'status', '--porcelain')
+  assert.ok(ranPrograms(marker).includes('fsmonitor.sh'), 'plain git runs the fsmonitor command here')
+  rmSync(marker)
+
+  // status, checkout, reset and clean all read or refresh the index in the gate worktree, and an untracked file is found by status.
+  writeFileSync(join(gate.path, 'a.txt'), 'edited\n')
+  writeFileSync(join(gate.path, 'new.txt'), 'n\n')
+  succeeded(await git.prepareGateWorktree({ root: repo.dir, commit: c2, saveSnapshot: okSaver }))
+  assert.equal(sh(gate.path, 'rev-parse', 'HEAD'), c2)
+  assert.deepEqual(ranPrograms(marker), [], 'the fsmonitor command did not run')
 })
 
 // ---------------------------------------------------------------------------
