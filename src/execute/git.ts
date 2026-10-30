@@ -14,16 +14,23 @@
  *   sees. (The one call that takes a file path as a pathspec, `ls-tree`,
  *   adds `--literal-pathspecs` so the path is never read as `:(magic)`;
  *   `check-ignore` refuses that option, which is why it is not global.)
- * - Right behind it come `-c core.hooksPath=<the null device>` and `-c
- *   core.fsmonitor=false`, so no hook of the repository and no configured
- *   fsmonitor command runs inside a call the harness makes: a hook or
- *   command that moved the trunk would do it outside any agent shell call,
- *   where the trunk-advance check (design §3.8.4) could only class it as an
- *   outside advance. A path under the null device is no directory, so git
- *   finds no hook there on any platform; the cases in
- *   `tests/execute-git.spec.ts` run real hooks and a real fsmonitor command
- *   to show it. Attribute filter drivers (`filter.<name>.smudge`, run by a
- *   checkout or a reset) are not switched off.
+ * - Right behind it come `-c core.hooksPath=<the null device>`, `-c
+ *   core.fsmonitor=false` and `-c hook.<event>.enabled=false` for
+ *   `post-checkout`, `reference-transaction` and `post-index-change`, so no
+ *   hook of the repository (from its hooks directory or defined in git
+ *   configuration, `hook.<name>.event`) and no configured fsmonitor command
+ *   runs inside a call the harness makes: a hook or command that moved the
+ *   trunk would do it outside any agent shell call, where the trunk-advance
+ *   check (design §3.8.4) could only class it as an outside advance. A path
+ *   under the null device is no directory, so git finds no hook there on any
+ *   platform; configured hooks run in addition to the hooks directory, so
+ *   the per-event switch is what stops them (a git that does not know them
+ *   ignores the keys). Those three events are the ones the worktree,
+ *   checkout, reset, update-ref and branch calls below start; the cases in
+ *   `tests/execute-git.spec.ts` run real hooks from both places and a real
+ *   fsmonitor command to show it. Attribute filter drivers
+ *   (`filter.<name>.smudge`, run by a checkout or a reset) and the transport
+ *   programs `ls-remote` starts are not switched off.
  * - A revision, branch or remote that reaches git from outside is checked
  *   first: it may not start with `-` (git would read an option) or hold
  *   whitespace or control characters.
@@ -247,8 +254,16 @@ const samePath = (a: string, b: string): boolean => pathKey(a) === pathKey(b)
 
 const REMOTE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
 
+/** The hook events the executor's own calls start (worktree add and checkout, reset, every reference write, index writes). */
+const SWITCHED_OFF_HOOK_EVENTS = ['post-checkout', 'reference-transaction', 'post-index-change'] as const
+
 /** In front of every git process the executor starts; see the rules at the top of the file. */
-const GLOBAL_OPTIONS = ['--no-replace-objects', '-c', `core.hooksPath=${devNull}`, '-c', 'core.fsmonitor=false'] as const
+const GLOBAL_OPTIONS: readonly string[] = [
+  '--no-replace-objects',
+  '-c', `core.hooksPath=${devNull}`,
+  '-c', 'core.fsmonitor=false',
+  ...SWITCHED_OFF_HOOK_EVENTS.flatMap(event => ['-c', `hook.${event}.enabled=false`]),
+]
 const READ_TIMEOUT_MS = 60_000
 /** Checkouts, resets and cleans on a large tree. */
 const WRITE_TIMEOUT_MS = 10 * 60_000
@@ -264,7 +279,9 @@ const WORKTREES_DIR = '.worktrees'
 const GATE_NAME = 'gate'
 /**
  * The commit the harness last left the gate worktree on. The one reference
- * the executor writes: it keeps that commit reachable after the branch it
+ * the executor writes with `update-ref` (`ensureWorktree` also creates and
+ * renames its own `hz/<task>` branches; nothing writes the trunk or a
+ * remote-tracking reference): it keeps that commit reachable after the branch it
  * came from was rebased or deleted, and it is how a commit made in the gate
  * worktree afterwards (which no reference holds) is told from the one the
  * harness put there.
@@ -582,7 +599,7 @@ export function createGit(runner: GitRunner = realGitRunner) {
     return result.ok ? succeeded(result.value.trim() !== '') : result
   }
 
-  /** Record `commit` as the one the harness left the gate worktree on, in the one reference the executor writes. */
+  /** Record `commit` as the one the harness left the gate worktree on, in `GATE_HEAD_REF`, the one reference the executor writes with `update-ref`. */
   async function holdGateHead(root: string, commit: string): Promise<Outcome<undefined>> {
     const result = await read(root, ['update-ref', '-m', 'the harness left the gate worktree here', GATE_HEAD_REF, commit])
     return result.ok ? succeeded(undefined) : result

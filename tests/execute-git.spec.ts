@@ -10,7 +10,7 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import test, { describe, it } from 'node:test'
+import test, { describe, it, type TestContext } from 'node:test'
 import {
   createGit, DEFAULT_WATCHED, execRunner, parseNameStatus, parseTaskTrailers, parseWorktrees, realGitRunner, reflogKind, watchedDigest,
   type Git, type GitResult, type GitRunner, type Outcome, type Refusal, type SnapshotSaver,
@@ -41,10 +41,10 @@ interface Repo {
 
 let counter = 0
 /** The cases that need a repository; each has its own directory, so the suite at the end of the file runs them side by side. */
-const repositoryCases: (readonly [string, () => Promise<void>])[] = []
+const repositoryCases: (readonly [string, (t: TestContext) => Promise<void>])[] = []
 
-function withRepo(name: string, body: (repo: Repo, git: Git) => Promise<void>): void {
-  repositoryCases.push([name, async () => {
+function withRepo(name: string, body: (repo: Repo, git: Git, t: TestContext) => Promise<void>): void {
+  repositoryCases.push([name, async (t) => {
     const root = join(sandbox, `r${++counter}`)
     const dir = join(root, 'work')
     mkdirSync(dir, { recursive: true })
@@ -74,7 +74,7 @@ function withRepo(name: string, body: (repo: Repo, git: Git) => Promise<void>): 
       },
     }
     try {
-      await body(repo, createGit())
+      await body(repo, createGit(), t)
     }
     finally {
       rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
@@ -190,13 +190,19 @@ withRepo('every git process the executor starts begins with --no-replace-objects
   await git.lsRemote(repo.dir, 'origin', 'main')
   assert.ok(calls.length >= 25, `the cases ran ${calls.length} git processes`)
   assert.deepEqual(calls.filter(args => args[0] !== '--no-replace-objects'), [])
-  // Behind it, the two options that keep programs the repository's configuration names out of the executor's calls (E3 review, E3-6).
+  // Behind it, the options that keep programs the repository's configuration names out of the executor's calls (E3 review, E3-6; E3 follow-up review, FU-4):
+  // the hooks directory and the fsmonitor command, then the hooks defined in configuration for the three events these calls start.
   // The cases further down run real hooks and a real fsmonitor to show that these values do switch them off on this platform.
   assert.deepEqual(
     calls.filter(args => args[1] !== '-c' || args[2]?.startsWith('core.hooksPath=') !== true || args[3] !== '-c' || args[4] !== 'core.fsmonitor=false'),
     [],
   )
-  // update-ref is the executor's only way to write a reference; it writes the gate worktree's record, never a branch, a tag or a tracking reference.
+  assert.deepEqual(
+    calls.filter(args => args.slice(5, 11).join(' ') !== '-c hook.post-checkout.enabled=false -c hook.reference-transaction.enabled=false -c hook.post-index-change.enabled=false'),
+    [],
+  )
+  // update-ref is the executor's only way to write a reference with that command; it writes the gate worktree's record, never a branch, a tag or a tracking reference.
+  // (ensureWorktree also creates and renames its own hz/<task> branches, with worktree add -b and branch --move.)
   const refWrites = calls.filter(args => subcommandOf(args) === 'update-ref')
   assert.ok(refWrites.length > 0)
   assert.ok(refWrites.every(args => args.includes('refs/hourness/gate-head')), JSON.stringify(refWrites))
@@ -787,7 +793,7 @@ withRepo('the commit the harness left the gate worktree on is held by a referenc
   assert.equal(refusal.code, 'gate_worktree_invalid')
   assert.equal(calls.length, 0)
 
-  // The record is the only reference the executor writes, and only that one.
+  // The record is the only reference the executor writes with update-ref, and the only one under refs/hourness.
   assert.equal(lines(repo.git('for-each-ref', '--format=%(refname)', 'refs/hourness')).join(), 'refs/hourness/gate-head')
 })
 
@@ -857,22 +863,25 @@ function writeProgram(directory: string, name: string, marker: string): string {
 /** The names the programs left in `marker`, in the order they ran. */
 const ranPrograms = (marker: string): string[] => existsSync(marker) ? lines(readFileSync(marker, 'utf8')) : []
 
-withRepo('the repository\'s hooks do not run inside the executor\'s git calls: post-checkout and reference-transaction (E3 review, E3-6)', async (repo, git) => {
-  const c1 = repo.commit({ 'a.txt': '1\n' }, 'c1')
-  const c2 = repo.commit({ 'a.txt': '2\n' }, 'c2')
-  const outside = dirname(repo.dir)
-  const marker = join(outside, 'hooks-ran.txt')
-  for (const hook of ['post-checkout', 'reference-transaction']) writeProgram(join(outside, 'hooks'), hook, marker)
-  repo.git('config', 'core.hooksPath', join(outside, 'hooks').replaceAll('\\', '/'))
+/**
+ * The same git work with plain git, to show that a program configured for it runs on this machine: a worktree added, moved with
+ * `checkout --detach --force` and `reset --hard`, and a reference written. Cleans up after itself.
+ */
+function plainCheckoutsAndRefWrites(repo: Repo, c1: string, c2: string, options: readonly string[] = []): void {
+  const control = join(dirname(repo.dir), 'control')
+  sh(repo.dir, ...options, 'worktree', 'add', '--quiet', '--detach', control, c1)
+  sh(control, ...options, 'checkout', '--quiet', '--detach', '--force', c2)
+  sh(control, ...options, 'reset', '--quiet', '--hard', c2)
+  sh(repo.dir, ...options, 'update-ref', 'refs/control/x', c1)
+  sh(repo.dir, ...options, 'worktree', 'remove', '--force', control)
+  sh(repo.dir, ...options, 'update-ref', '-d', 'refs/control/x')
+}
 
-  // Control: plain git runs both hooks on this machine, so an empty marker after the executor's calls says something.
-  repo.git('worktree', 'add', '--quiet', '--detach', join(outside, 'control'), c1)
-  repo.git('update-ref', 'refs/control/x', c1)
-  assert.deepEqual([...new Set(ranPrograms(marker))].sort(), ['post-checkout', 'reference-transaction'], 'plain git runs the hooks here')
-  rmSync(marker)
-
-  // Every call that checks out or writes a reference: a task worktree made (a new branch and a checkout), then found again,
-  // the gate worktree made (worktree add, update-ref) and moved with changes in it (checkout, update-ref, reset, clean), a worktree removed.
+/**
+ * Every executor call that checks out or writes a reference: a task worktree made (a new branch and a checkout), then found again,
+ * the gate worktree made (worktree add, update-ref) and moved with changes in it (checkout, update-ref, reset, clean), a worktree removed.
+ */
+async function executorCheckoutsAndRefWrites(repo: Repo, git: Git, c1: string, c2: string): Promise<void> {
   const task = succeeded(await git.ensureWorktree(repo.dir, 'task-1'))
   succeeded(await git.ensureWorktree(repo.dir, 'task-1'))
   const gate = succeeded(await git.prepareGateWorktree({ root: repo.dir, commit: c1, saveSnapshot: okSaver }))
@@ -882,7 +891,63 @@ withRepo('the repository\'s hooks do not run inside the executor\'s git calls: p
   good(await git.removeWorktree(repo.dir, task.path))
   assert.equal(sh(gate.path, 'rev-parse', 'HEAD'), c2, 'the calls did their work')
   assert.equal(repo.git('rev-parse', 'refs/hourness/gate-head'), c2)
+}
+
+withRepo('the repository\'s hooks do not run inside the executor\'s git calls: post-checkout and reference-transaction (E3 review, E3-6)', async (repo, git) => {
+  const c1 = repo.commit({ 'a.txt': '1\n' }, 'c1')
+  const c2 = repo.commit({ 'a.txt': '2\n' }, 'c2')
+  const outside = dirname(repo.dir)
+  const marker = join(outside, 'hooks-ran.txt')
+  for (const hook of ['post-checkout', 'reference-transaction']) writeProgram(join(outside, 'hooks'), hook, marker)
+  repo.git('config', 'core.hooksPath', join(outside, 'hooks').replaceAll('\\', '/'))
+
+  // Control: plain git runs both hooks on this machine, so an empty marker after the executor's calls says something.
+  plainCheckoutsAndRefWrites(repo, c1, c2)
+  assert.deepEqual([...new Set(ranPrograms(marker))].sort(), ['post-checkout', 'reference-transaction'], 'plain git runs the hooks here')
+  rmSync(marker)
+
+  await executorCheckoutsAndRefWrites(repo, git, c1, c2)
   assert.deepEqual(ranPrograms(marker), [], 'no hook ran')
+})
+
+/** The hook events a configuration can name (`hook.<name>.event`) that this repository's local work could start; the first three are the ones the executor's calls do start. */
+const CONFIG_HOOK_EVENTS = [
+  'post-checkout', 'reference-transaction', 'post-index-change',
+  'applypatch-msg', 'pre-applypatch', 'post-applypatch', 'pre-commit', 'pre-merge-commit', 'prepare-commit-msg', 'commit-msg', 'post-commit',
+  'pre-rebase', 'post-merge', 'pre-push', 'pre-auto-gc', 'post-rewrite', 'push-to-checkout',
+] as const
+
+withRepo('hooks defined in git configuration do not run inside the executor\'s git calls (E3 follow-up review, FU-4)', async (repo, git, t) => {
+  const c1 = repo.commit({ 'a.txt': '1\n' }, 'c1')
+  const c2 = repo.commit({ 'a.txt': '2\n' }, 'c2')
+  const outside = dirname(repo.dir)
+  const marker = join(outside, 'config-hooks-ran.txt')
+  // A hook in configuration runs in addition to the hooks directory, so `core.hooksPath` cannot switch it off. Its friendly name may not be an event name.
+  for (const event of CONFIG_HOOK_EVENTS) {
+    repo.git('config', `hook.watch-${event}.command`, writeProgram(join(outside, 'config-hooks'), event, marker))
+    repo.git('config', `hook.watch-${event}.event`, event)
+  }
+
+  // Controls. Plain git runs the three hooks the executor's calls start. A git that does not read hooks from configuration (before 2.54) runs
+  // none of them, and a git that reads them but has no switch per event (2.54: only `hook.<name>.enabled`; `hook.<event>.enabled` is from 2.55)
+  // runs them with the executor's options too. In both cases the case has nothing to show and is skipped with that reason, not passed vacuously.
+  const version = sh(repo.dir, 'version')
+  plainCheckoutsAndRefWrites(repo, c1, c2)
+  const control = new Set(ranPrograms(marker))
+  if (control.size === 0) {
+    t.skip(`${version} does not run hooks defined in configuration (hook.<name>.event)`)
+    return
+  }
+  for (const event of ['post-checkout', 'reference-transaction', 'post-index-change']) assert.ok(control.has(event), `plain git runs the ${event} hook defined in configuration here`)
+  rmSync(marker)
+  plainCheckoutsAndRefWrites(repo, c1, c2, ['-c', 'hook.post-checkout.enabled=false', '-c', 'hook.reference-transaction.enabled=false', '-c', 'hook.post-index-change.enabled=false'])
+  if (ranPrograms(marker).length > 0) {
+    t.skip(`${version} has no hook.<event>.enabled switch to turn the hooks defined in configuration off by event`)
+    return
+  }
+
+  await executorCheckoutsAndRefWrites(repo, git, c1, c2)
+  assert.deepEqual(ranPrograms(marker), [], 'no hook defined in configuration ran')
 })
 
 withRepo('a configured fsmonitor command does not run inside the executor\'s git calls (E3 review, E3-6)', async (repo, git) => {
