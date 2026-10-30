@@ -6,7 +6,11 @@
  * does not trust); a state it rebuilt and persisted without loss is told but
  * does not degrade it, and neither does a clock that cannot be read (a
  * package without the GLM channel has no peak hours; docs/ORCHESTRATION.md
- * §11.3 treats that as a supported combination).
+ * §11.3 treats that as a supported combination). A snapshot that was altered
+ * or a journal that was cut degrades the row in every later session, because
+ * the slice has no /rules recovery to settle it; each such message ends with
+ * the way out, deleting `.llm/rules/` so the state starts again from the
+ * rules file.
  */
 import type { HealthState } from '../shared/health.ts'
 import { PEAK_LEVEL_WORDS } from '../shared/peak-mode.ts'
@@ -24,6 +28,9 @@ const RECOVERED_TEXT: Readonly<Record<RecoveryReason, string>> = {
   'journal-not-engine': '变更记录里有不是规则板自己写的记录',
 }
 
+/** The way out of a problem this slice cannot clear itself (there is no /rules recovery): start again from the rules file in the repository. */
+const WAY_OUT = '要清掉，删掉 .llm/rules/，规则板会照仓库里的规则文件重新开始'
+
 function diffText(diff: readonly RepoDiffLine[]): string {
   const change = { added: '多了', removed: '没了', changed: '改了' }
   return diff.map(line => `${line.path.join('.')}${change[line.change]}${line.fields === undefined ? '' : `（${line.fields.join('、')}）`}`).join('，')
@@ -40,8 +47,8 @@ export function projectHealth(name: string, read: ProjectRead, reading: PeakRead
   const unresolved = Object.values(state.unresolved ?? {})
   if (state.recovered !== undefined) told.push(RECOVERED_TEXT[state.recovered.reason])
   if (load.plan !== undefined) told.push('状态要重建，已在内存里按变更记录重放；下一次写入时留痕')
-  if (state.recovered?.reason === 'snapshot-modified' || state.recovered?.reason === 'journal-shorter') problems.push(RECOVERED_TEXT[state.recovered.reason])
-  if (unresolved.length > 0) problems.push(`变更记录里有 ${unresolved.length} 条没有生效的记录（编号 ${unresolved.map(entry => entry.label).join('、')}）。这一版还没有处理它们的命令；要清掉，删掉 .llm/rules/，规则板会照仓库里的规则文件重新开始`)
+  if (state.recovered?.reason === 'snapshot-modified' || state.recovered?.reason === 'journal-shorter') problems.push(`${RECOVERED_TEXT[state.recovered.reason]}。这一版还没有处理它的命令；${WAY_OUT}`)
+  if (unresolved.length > 0) problems.push(`变更记录里有 ${unresolved.length} 条没有生效的记录（编号 ${unresolved.map(entry => entry.label).join('、')}）。这一版还没有处理它们的命令；${WAY_OUT}`)
   if (repo.kind === 'unreadable') problems.push(`仓库里的规则文件读不出（${repo.reason}），没有生效`)
   if (repo.kind === 'outside') problems.push(`仓库里的规则文件被规则板以外改过，没有生效（${diffText(repo.diff)}）。要按存档重写它，打 /rules peak 重设一次档位`)
   else if (state.repo.outside !== undefined) problems.push(`仓库里的规则文件被规则板以外改过，没有生效（${diffText(state.repo.outside.diff)}）。要按存档重写它，打 /rules peak 重设一次档位`)

@@ -286,6 +286,37 @@ rowTest('a file in the repository that someone else changed does not change the 
   assert.equal(health(runtime).status, 'active')
 })
 
+// A recovery that cannot be proven lossless degrades the row in every later session; the slice has no /rules recovery, so the message carries the way out.
+for (const [reason, text, damage] of [
+  ['snapshot-modified', '存档与变更记录对不上', async (dir: string): Promise<void> => {
+    const snapshot = JSON.parse(await readFile(join(dir, 'state.json'), 'utf8')) as { peakMode: { level: string } }
+    snapshot.peakMode.level = 'stop'
+    await writeFile(join(dir, 'state.json'), JSON.stringify(snapshot))
+  }],
+  ['journal-shorter', '变更记录比存档短', async (dir: string): Promise<void> => {
+    const [first] = (await readFile(join(dir, 'journal.jsonl'), 'utf8')).split('\n')
+    await writeFile(join(dir, 'journal.jsonl'), `${first}\n`)
+  }],
+] as const) {
+  rowTest(`a ${reason} recovery keeps the row degraded in every session and says how to end it; deleting .llm/rules/ ends it`, async ({ root, runtime, run }) => {
+    await run('peak 不做')
+    await run('peak 无影响')
+    await run('peak 少做')
+    const dir = join(root, '.llm', 'rules')
+    await damage(dir)
+    for (const session of ['the session that finds it', 'the next session']) {
+      await runtime.create()
+      assert.equal(health(runtime).status, 'degraded', session)
+      assert.ok(health(runtime).reason.includes(text), `${session}: ${health(runtime).reason}`)
+      assert.ok(health(runtime).reason.includes('这一版还没有处理它的命令；要清掉，删掉 .llm/rules/，规则板会照仓库里的规则文件重新开始'), `${session}: ${health(runtime).reason}`)
+    }
+    await rm(dir, { recursive: true })
+    await runtime.create()
+    assert.equal(health(runtime).status, 'active')
+    assert.equal(health(runtime).reason.includes('存档'), false)
+  })
+}
+
 rowTest('a project that has the rules file and no state starts from the file when its first session appears', async ({ root, runtime, service }) => {
   await mkdir(join(root, 'docs', 'rules'), { recursive: true })
   await writeFile(join(root, 'docs', 'rules', 'rules.json'), repoJson({ version: 2, peakMode: { level: 'stop', at: '2026-10-29T01:00:00.000Z', origin: { actor: 'human' } } }))
