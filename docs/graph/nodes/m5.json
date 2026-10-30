@@ -77,6 +77,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "同一次失败带停了 M5 一支：0.4 已过第 4 轮评审（CHANGES_REQUESTED，R4-01、R4-02 两条 MEDIUM，九条 NIT），第二轮改稿刚开始就停了、没落盘，design.md 仍是评审过的 0.4。重开为 design-alignment-m4-m5-resume（wf_4ab43c8aa3dc25b0），M5 从第二轮改稿接着做：M3 与 M7 是已放行的设计不能改，M5 能就着它们现有的东西改就改，剩下的写成自举之后再办的请求。"
+    },
+    {
+      "at": "2026-10-30T19:18:16.504Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "更正上一条批注的运行编号：design-alignment-m4-m5-resume 的编号是 wf_151375592348ab59，上一条写的 wf_4ab43c8aa3dc25b0 不存在（编排方在运行返回编号之前就写了批注，写错了）。"
     }
   ]
 }

@@ -173,6 +173,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "design-alignment-7-modules（wf_7c912a9ce7fb220e）整体以失败收场：五支在账号超限时失败，带停了还在跑的 M4 与 M5 两支。M4 一支已写成 0.5（.agents/tasks/m4/design.md，02:53；0.4 原文在 design-0.4.md）：F17 人加的检查改成循环板上的普通条目、走同一条同意的路、由循环板执行，M4 给循环板 checkCommandOf、fillCheckArgv、formatCheckOutput 三样；F18–F20 与 N35–N42 及对齐轮要求的三件都已处理；独立评审没跑。重开为 design-alignment-m4-m5-resume（wf_4ab43c8aa3dc25b0），M4 从评审接着做。"
+    },
+    {
+      "at": "2026-10-30T19:18:16.335Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "更正上一条批注的运行编号：design-alignment-m4-m5-resume 的编号是 wf_151375592348ab59，上一条写的 wf_4ab43c8aa3dc25b0 不存在（编排方在运行返回编号之前就写了批注，写错了）。"
     }
   ]
 }
