@@ -65,6 +65,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "编排方裁定（可推翻），起因：改设计措辞那一活（run rules-design-amendments）把 M3 附录里 9 处 projectRootOf 改成已合入代码的 projectOf，但没有动 M5 §5.5，理由是那一节描述的是一对异步/同步、文件系统可注入的函数，与已合入的 projectOf 不是同一个东西，这个判断是对的、不算漏改。裁定：仓库里仍然只留一份项目根模块（src/data/project-root.ts，已合入，导出 projectOf、gitDirOf、ensureIgnored）。M5 复工时若确实需要可注入文件系统或异步的读法，由 M5 给这一份加选项（照 src/data/lock.ts 用 LockEnvironment 注入的同一种做法），不另写第二份；M5 §5.5 的措辞那时一并改。排在自举之后，与 M5 其余对齐一起做。"
+    },
+    {
+      "at": "2026-10-30T19:07:08.380Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M5 设计 0.4 对齐轮第 4 轮独立评审（run design-alignment-7-modules，wf_7c912a9ce7fb220e）：CHANGES_REQUESTED，MEDIUM 2、NIT 9。R4-01 学习信号的形状与 M3 0.5 及引擎对不上；R4-02 M5 依赖 M7 周报里的「纠正」一节，而 M7 0.6 的周报没有这一节。M7 已放行，按 d-freeze-until-dogfood 后一条只能写成自举之后再办的请求。该运行的 M5 一支还有一轮改稿加评审，结果出来后编排方再记。"
     }
   ]
 }
