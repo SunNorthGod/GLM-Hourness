@@ -236,6 +236,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "规则板设计 0.9 已照 plain-ui 0.7 §11 规则第 7 条加 BoardState.peakApplies（读不到是不是高峰时 guideLine 写原因与档位，没有计价服务时为 null）。规则页 0.9 的变化：检测器一组不再有「试运行」与「转为生效」；带脚本的规则写脚本的路径、和你同意的那一版一样还是不一样、超时与超时或出错时怎样；4 周没用过的标出来；仓库里的规则文件被改过时列出差别与 /rules recovery 文件 照改|忽略。上手页第 4 块讲到规则板时请不要用「试运行」。"
+    },
+    {
+      "at": "2026-10-30T10:20:53.021Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M3 附录 0.4 §9 第 5 条（面板设计 0.6 §11 的 M3 各条）：ANSWER_MARKS 在 src/shared/answer-marks.ts；PROPOSE_TO_HUMAN、RECORD_HUMAN_ANSWER 在 src/shared/tool-names.ts；main-agent-holder.ts 另导出 holderFileOf 与 holderHome；WishCard 完整卡片底部放 FirstVisitLine；PLAIN_LIMITS.background 只读常量（0.6 为 60）。isPersonMessage 不抽到 src/shared/person-message.ts，留在 src/design/talk.ts：面板 0.6 §4.9 已删去这个文件并交 M3 定（§11 M3 第 4 条与 §4.9 不一致，M3 按 §4.9）。"
     }
   ]
 }

@@ -245,6 +245,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "循环板 0.6 的一页人话放行稿写好（onepage.md，run boards-rules010-loops06 收尾步；0.4 版留作 onepage-0.5.md，草图 mockup-loops.svg 版本号升到 0.6）：命令改脚本带 4000 字/100 行上限、仓库 docs/loops/ 加项目 .llm/loops/ 与 git 操作中途先不写、没看过原文记录的条目不跑、人加的改完文件就跑检查。F42 在放行稿的疑问一行处理（高峰后叫醒闲着的主 Agent，嫌打扰可改不叫）。放行稿末尾留一题给人。等人放行。"
+    },
+    {
+      "at": "2026-10-30T10:20:51.186Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-10-30 放行循环板设计 0.6（原话「都没问题。尽快自举吧」，看的是 .agents/tasks/schedules/onepage.md）。放行稿末尾那一题人答「没问题」：高峰结束后叫醒闲着的主 Agent 照方案保留，不改成不叫。设计阶段结束，可以开工；但循环板不在自举的关键路径上（M7 骨架在循环板不在时自己执行事件条目），照 d-dogfood-scope 排在自举之后，由 DSH 里的主 Agent 做。三条 NIT（F57–F59）留给那一稿。"
+    },
+    {
+      "at": "2026-10-30T10:20:52.828Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M3 附录 0.4 §3.13（回应循环板 0.3 §17 M3 各条）：第 1、2 条（attach 按前缀分派、拍板之后 acceptProposal）、第 5 条（detail 原样接在四行之后，renderProposal 加第三个参数）、第 6 条（拍板前再问 attachable、核对 mustShow 都在主 Agent 的回话里，不全在 not_shown，都在时 reason 末尾加摘要）照做，分派表的 loops: 一行由循环板合入时加；第 7 条（持有者会话归档时 /wish 提醒人）本版不做，记在附录 §10。"
     }
   ]
 }

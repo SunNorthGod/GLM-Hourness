@@ -20,6 +20,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M3 附录 0.4 §3.11：M3 在执行边界上的八条拦截（main-agent-no-write、main-agent-ask、git-snapshot、design-before-release、main-agent-graph-relay、main-agent-graph-options、main-agent-graph-stage、main-agent-graph-cli）导出成 MAIN_AGENT_RULES，规则板的代码规则目录以 design:<id> 只读列出，标「dsh-hourness 带来的 · 只能看」；契约测试钉住违规流水里的每个 rule 都在表里。M3 没有循环板上的条目。"
+    },
+    {
+      "at": "2026-10-30T10:20:52.440Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M3 附录 0.4 §3.11：M3 在执行边界上的八条拦截（main-agent-no-write、main-agent-ask、git-snapshot、design-before-release、main-agent-graph-relay、main-agent-graph-options、main-agent-graph-stage、main-agent-graph-cli）导出成 MAIN_AGENT_RULES，规则板的代码规则目录以 design:<id> 只读列出，标「dsh-hourness 带来的 · 只能看」；契约测试钉住违规流水里的每个 rule 都在表里。M3 没有循环板上的条目。"
     }
   ]
 }

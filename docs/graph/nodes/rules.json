@@ -357,6 +357,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "规则板 0.10 的一页人话放行稿写好（onepage.md，run boards-rules010-loops06 收尾步；0.8 版留作 onepage-0.9.md）：存放改为仓库 docs/rules/ 加项目 .llm/rules/、不写用户级；换机器没有看过原文记录的带脚本规则列「没有你看过原文的记录」不跑；不做档里主 Agent 照常回话；§16.1 的最小一片。放行稿末尾留一题给人（少做时同时至多 1 个 GLM 子 agent，嫌慢可改 2）。等人放行。"
+    },
+    {
+      "at": "2026-10-30T10:20:50.939Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-10-30 放行规则板设计 0.10（原话「都没问题。尽快自举吧」，看的是 .agents/tasks/rules/onepage.md）。放行稿末尾那一题人答「没问题」：少做档同时至多 1 个 GLM 子 agent 照方案保留，不改成 2。设计阶段结束，可以开工。开工顺序照 d-dogfood-scope 与人「尽快自举」的要求：先做 d-rules-peak-slice 的最小一片（高峰档位、默认少做、少做的并发上限与它的服务读法，§16.1，全设计的严格子集），其余随整块在自举之后由 DSH 里的主 Agent 做。两条 NIT（F91、F92，0.8 的用户级旧说法没清干净）在开工那一稿顺手清。"
+    },
+    {
+      "at": "2026-10-30T10:20:52.634Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M3 附录 0.4 §9 第 12、13 条（给规则板设计下一稿）：代码规则目录里 M3 的条目由 0.8 §10.1 的两条改为 MAIN_AGENT_RULES 的八条（src/guard/main-agent-rules.ts，只有常量，builtin.ts 映射它）；§2.6 表的两行 M3 随之扩成八行。attach 的分派表在 src/design/attach.ts，规则板 R4 合入时自己加 rules: 一行；交回只挂在 record_human_answer。"
     }
   ]
 }

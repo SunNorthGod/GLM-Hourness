@@ -290,6 +290,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "循环板 0.6 对 M3 附录的请求（与 0.5 的两条一起，仍在 d-alignment-rounds 的 M3 对齐轮）：一、propose_to_human 的 attach 按前缀分派，loops: 走循环板服务的 attachable 与 loopProposalLine；record_human_answer 的「给人看过」核对对 script 与 check 两种会跑东西的提议都做（两块板的脚本提议都带 scriptDetail 生成的 detail，循环板的检查提议带 commandDetail 生成的 detail）；AttachDetail 的上限放大到 markdown 1–6000 个码点、mustShow 1–8 片每片 1–4000（放得下一段 4000 个码点的脚本）。二、持有者记录随 d-rules-in-repo 搬进项目的 .llm/，请导出按项目根定位、能分出 none 与 unreadable 两种的读法（readHolderFor(<项目根>)），循环板只换定位函数。三、评审 F56：图引擎对什么字段都没改的 set 返回 invalid（src/graph/engine.ts:613），所以把四行没变的同一张提议式待决重新给人看会每次都失败。M4 已请 M3 加一种不带四行、只把已有待决再给人看的 propose_to_human；循环板的 loops.remind-waiting（有事等你超过 24 小时再说一次）也要用它，M3 加了之后循环板在同一次改动里把那句文字换成用它，在此之前用退路写法「每件一行题目与要人做什么」。"
+    },
+    {
+      "at": "2026-10-30T10:20:51.687Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M3 附录 0.4 第 4 轮独立评审（run wf_d98c2216b51e14a7）：CHANGES_REQUESTED，挡路 2（M1、M2 都是 MEDIUM）、NIT 2；第 3 轮的 M1–M8、N1–N12 共 20 条全部关闭，挡路 8 → 2。两条挡路都是附录写成之后人定的新决定：M1 §2.8 的例题仍教主 Agent 高峰时自己少做或不做，与 d-main-agent-peak-exempt 相反，而例题进每个主 Agent 的系统提示词两次；M2 d-design-onepage 扩到产品后「每个模块一次放行归 M3」，0.4 仍是一个目标一次放行，正文无痕。NIT：N1 第 7 步与 /graph-apply 跟面板 0.6 已删这两样相反；N2 面板 0.6 §11-6c 要的契约测试没写进第 6 步 L2。M3 在自举的关键路径上，照人「尽快自举」的要求立刻再改一稿（0.5）并过一轮评审，不等对齐轮。"
+    },
+    {
+      "at": "2026-10-30T10:20:52.046Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M3 设计附录 0.4 写成（.agents/tasks/m3/design-addendum.md；0.3 原文另存 design-addendum-0.3.md），回应第 3 轮评审 MEDIUM 8、NIT 12（附录 §15），待评审。挡路 8 条：M1 M3 的八条拦截导出成 src/guard/main-agent-rules.ts 的 MAIN_AGENT_RULES，规则板代码规则目录以 design:<id> 列出（§3.11）；M2 第 3、10 步加独立评审，§0 写明每步按 norm-review-floor 哪一条；M3 git 快照存挡在写出路上的未跟踪文件，文件列表只读 git ls-files -z，git 在 LC_ALL=C 下跑，clean -n 只做核对；M4 被忽略的文件不进快照，clean -x/-X/-ff 拒绝，worktree remove 只记被忽略文件的路径、个数与大小、例行清理不再被拒，标签只打在只含旧引用值的提交上，push --mirror、push --tags 与推快照引用或对象拒绝；M5 阶段前进对所有会话只经 record_human_answer，子 agent 的图工具调用不能带 relay，放行之前批准放行集合或带原话新提节点被拒，会话里不用图的命令行写图，子 agent 与普通会话的尝试告警（违规流水、设计行行健康、通知主 Agent）；M6 人设一节按 3.17.1 重核，留在系统提示词、glm:context-management 之前、标题后单换行，不跟 3.17.1 的三处写进 docs/reference/zcode-verbatim.md 待编排方同意；M7 例题保留人给的格式，内容换成 d-peak-mode；M8 背景上限只读 PLAIN_LIMITS.background（面板设计 0.6 为 60）。接缝裁定的 attach 与交回按规则板 0.8、循环板 0.3 的请求落地（§3.13）。依据 main fe0bace。"
     }
   ]
 }

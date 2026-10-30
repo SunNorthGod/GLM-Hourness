@@ -26,6 +26,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M3 附录 0.4 §2.7：3.17.1 没有 Output Style 一节（风格正文 n8o 是主回合的上下文条目 output_style_instructions，另有每回合提醒 r8o）。m3-main-persona 验收第 1 条要系统提示词，所以人设一节留在系统提示词、glm:context-management 之前、标题后单换行，开头句用 pBa。不跟 3.17.1 的三处（放法、不加每回合提醒、范围说明一句）在人设一步写进 docs/reference/zcode-verbatim.md，请编排方同意；同意之前那一步不合入 main。"
+    },
+    {
+      "at": "2026-10-30T10:20:53.582Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M3 附录 0.4 §2.7：3.17.1 没有 Output Style 一节（风格正文 n8o 是主回合的上下文条目 output_style_instructions，另有每回合提醒 r8o）。m3-main-persona 验收第 1 条要系统提示词，所以人设一节留在系统提示词、glm:context-management 之前、标题后单换行，开头句用 pBa。不跟 3.17.1 的三处（放法、不加每回合提醒、范围说明一句）在人设一步写进 docs/reference/zcode-verbatim.md，请编排方同意；同意之前那一步不合入 main。"
     }
   ]
 }

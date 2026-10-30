@@ -227,6 +227,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "规则板设计 0.9 请 M7 下一稿改四处（规则板 §10.7 M7 一节）：一、glmHournessExecute 加成员 trunkAdvanceFor(callId): {branch, from, to} | undefined：执行行在 tools/pre-execute 里认出会让主干前进、advanceOk 成立而放行时按 exec.callId 记下（只在内存里，post-execute 或 60 秒后删），规则行在 next() 放行之后读它推出 gate.trunk-advance；执行后才发现的前进不推出。二、heldForPeak 删去（d-main-agent-peak-exempt：主 Agent 不再因不做档停着），M7 0.4 §2.5 退路执行者「heldForPeak 为真时留着」一句与 §3.9.1 对账表里「goal 为 paused、heldForPeak 为真」一行一起删。三、不做档里派 GLM 子 agent 的 dispatch_task 由规则板的门排队（builtin:glm-peak-stop-dispatch），M7 不另加判断；少做上限与 peakHoldFor 的空转判定照 0.8 的请求，不变。四、周报（operate.weekly）加「4 周没用过的规则」：读 rulesService(ctx)?.staleEntries(cwd)，取至多 3 件交主 Agent 用一个四行方案提议删；循环板的同类列表是另一节、另一条提议，两条各算周报的一件；再列 7 天里超时 3 次以上的脚本规则、提议修它；晨报的规则板一节加晚到的拦下与仓库里的规则文件被改过的次数。"
+    },
+    {
+      "at": "2026-10-30T10:20:53.405Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M3 附录 0.4 §9 第 7 条补充：DSH 委派在请求不覆盖时沿用父 agent 的模型，subagent 工具的 modelSelectionSettings 打开时可以按调用选 provider、model、reasoning_effort（限于允许清单），M7 设计派发选模型时先评估；git-snapshot.ts 的 gitInvocations、takeSnapshot、gitRisk 由 M7 加 export，被忽略文件不进快照与快照不出本机两条同样适用于 worker。"
     }
   ]
 }

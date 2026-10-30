@@ -143,6 +143,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "循环板 0.6 对指标流水的输入更新（§6.10、§9.1；指标流水合入之前循环板写 <项目根>/.llm/loops/runs.jsonl，合入之后写 metrics §3.3 的 <项目根>/.llm/metrics/）：一、loop-read（机器一级的运行者读额度，M6-L5）0.6 起写进 last-step.json 指向的那个项目的运行记录、字段加 project，用户级 machine/ 不再放一份项目之外的 runs.jsonl（评审 F52，d-memory-scope 与 CHARTER 0.7 §9 用户级只列账号的额度与用量）。二、loop-done 的结局 refused 多一个原因 not-in-checkout（条目文件在当前 git 检出里没有，评审 F44）；unfinished（脚本或检查超时没跑完）与 0.5 相同。loop-entry 的 op 不变（repin、external、adopt）。字段的通用部分由指标流水设计定，定了之后循环板只改 src/loops/metrics.ts 一个文件。"
+    },
+    {
+      "at": "2026-10-30T10:20:53.212Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M3 附录 0.4 §3.12：M3 交给指标流水的事件 design.proposal-shown、design.answer-recorded（一次 record_human_answer 一条）、design.answer-refused、design.holder-moved、design.rule-denied、design.bypass-refused、git.snapshot、git.snapshot-refused；只记数与 id，不记对话正文。出口 src/design/metrics.ts 的 emitMetric，接口到位之前不做事。"
     }
   ]
 }
