@@ -13,11 +13,19 @@
  * revision check of the write.
  *
  * Not rules-specific: this is the one file-lock module of the repository.
- * The rules board uses it today; M7's step E3 and M5 reuse it instead of
- * writing a second one (docs/ORCHESTRATION.md §16.3).
+ * The rules board uses it with the defaults below; M7's gate lock
+ * (src/execute/gate-lock.ts) passes `LockOptions` for a lock that is held for
+ * minutes and waited for up to an hour, and M5 reuses it instead of writing a
+ * second one (docs/ORCHESTRATION.md §16.3, §17.6). Every option defaults to
+ * the rules board's behavior, so a caller that passes none sees no change.
+ *
+ * Time is judged on the `at` stamp the holder wrote, which is the file's
+ * modification time because nobody rewrites the file; it comes from the
+ * injected clock, so tests do not touch file times.
  */
 import { randomUUID } from 'node:crypto'
-import { open, readFile, unlink } from 'node:fs/promises'
+import { open, readFile, rename, unlink } from 'node:fs/promises'
+import { uptime } from 'node:os'
 
 /** A lock older than this is taken over: the critical section lasts tens of milliseconds. */
 export const STALE_LOCK_MS = 10_000
@@ -31,6 +39,8 @@ export interface LockEnvironment {
   readonly pid: number
   /** Whether a process with this id is alive. */
   readonly isAlive: (pid: number) => boolean
+  /** When the machine booted, in epoch milliseconds: now minus uptime. */
+  readonly bootTime: () => number
 }
 
 export const realLockEnvironment: LockEnvironment = {
@@ -46,6 +56,7 @@ export const realLockEnvironment: LockEnvironment = {
       return (error as NodeJS.ErrnoException).code === 'EPERM'
     }
   },
+  bootTime: () => Date.now() - uptime() * 1000,
 }
 
 export interface WriteLock {
@@ -54,11 +65,34 @@ export interface WriteLock {
   release(): Promise<void>
 }
 
+/** What a caller can change; each default is the rules board's value. */
+export interface LockOptions {
+  /** Pause between attempts. Default 25 ms. */
+  readonly retryMs?: number
+  /** How long to wait before `busy`. Default `LOCK_WAIT_MS`. */
+  readonly waitMs?: number
+  /** A lock whose `at` stamp is older than this is taken over even when its holder lives. Default `STALE_LOCK_MS`. */
+  readonly staleMs?: number
+  /**
+   * A lock written in another boot of the machine is taken over: its `boot`
+   * differs from the current boot time by more than this. The tolerance
+   * absorbs rounding and small clock corrections between two computations of
+   * the boot time. Default: the boot time is not compared.
+   */
+  readonly bootToleranceMs?: number
+  /** Who holds the lock, written into the file for whoever finds it. */
+  readonly holder?: string
+  /** Rename a lock that is taken over to `<file>.stale-<ms>` instead of deleting it. Default: delete. */
+  readonly keepStale?: boolean
+}
+
 interface LockContent {
   readonly pid: number
   readonly startedAt: number
   readonly at: number
   readonly token: string
+  readonly boot: number
+  readonly holder?: string
 }
 
 async function readContent(file: string): Promise<{ readonly text: string, readonly content: Partial<LockContent> } | undefined> {
@@ -95,13 +129,22 @@ async function tryCreate(file: string, content: LockContent): Promise<boolean> {
   }
 }
 
+/** Whether the holder is gone, the lock is too old, or it was written before the machine last booted. */
+function isAbandoned(content: Partial<LockContent>, environment: LockEnvironment, options: LockOptions): boolean {
+  const { pid, at, boot } = content
+  if (typeof pid === 'number' && !environment.isAlive(pid)) return true
+  if (typeof at !== 'number' || environment.now() - at > (options.staleMs ?? STALE_LOCK_MS)) return true
+  return options.bootToleranceMs !== undefined && typeof boot === 'number' && Math.abs(boot - environment.bootTime()) > options.bootToleranceMs
+}
+
 /** Take the lock, or `busy` when someone else holds it for the whole wait. The directory of `file` must exist. */
-export async function acquireLock(file: string, environment: LockEnvironment = realLockEnvironment): Promise<WriteLock | 'busy'> {
+export async function acquireLock(file: string, environment: LockEnvironment = realLockEnvironment, options: LockOptions = {}): Promise<WriteLock | 'busy'> {
   const token = randomUUID()
   const startedAt = environment.now()
-  const deadline = startedAt + LOCK_WAIT_MS
+  const deadline = startedAt + (options.waitMs ?? LOCK_WAIT_MS)
   for (;;) {
-    if (await tryCreate(file, { pid: environment.pid, startedAt, at: environment.now(), token })) {
+    const written: LockContent = { pid: environment.pid, startedAt, at: environment.now(), token, boot: environment.bootTime(), ...(options.holder === undefined ? {} : { holder: options.holder }) }
+    if (await tryCreate(file, written)) {
       return {
         async held() {
           return (await readContent(file))?.content.token === token
@@ -117,12 +160,11 @@ export async function acquireLock(file: string, environment: LockEnvironment = r
       if (environment.now() >= deadline) return 'busy'
       continue
     }
-    const { pid, at } = holder.content
-    const abandoned = (typeof pid === 'number' && !environment.isAlive(pid)) || typeof at !== 'number' || environment.now() - at > STALE_LOCK_MS
-    // Delete only the lock that was read: a writer that took over in between keeps its fresh one.
-    const removed = abandoned && (await readContent(file))?.text === holder.text && await unlink(file).then(() => true, () => false)
+    // Remove only the lock that was read: a writer that took over in between keeps its fresh one.
+    const removed = isAbandoned(holder.content, environment, options) && (await readContent(file))?.text === holder.text
+      && await (options.keepStale === true ? rename(file, `${file}.stale-${environment.now()}`) : unlink(file)).then(() => true, () => false)
     if (removed) continue
     if (environment.now() >= deadline) return 'busy'
-    await environment.sleep(RETRY_MS)
+    await environment.sleep(options.retryMs ?? RETRY_MS)
   }
 }
