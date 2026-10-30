@@ -149,6 +149,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M3 附录 0.4 §3.12：M3 交给指标流水的事件 design.proposal-shown、design.answer-recorded（一次 record_human_answer 一条）、design.answer-refused、design.holder-moved、design.rule-denied、design.bypass-refused、git.snapshot、git.snapshot-refused；只记数与 id，不记对话正文。出口 src/design/metrics.ts 的 emitMetric，接口到位之前不做事。"
+    },
+    {
+      "at": "2026-10-30T10:29:59.590Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "省额度并集中在自举关键路径上（人：「省额度，你在跑的也立刻换」；d-dogfood-scope、d-subagent-sonnet）：metrics-design-v02（wf_90f11a942744818d）在写 0.2 的中途停住、不重开，本节点挂着不动（引擎不让从 doing 退回 approved，状态仍是 doing，实际没有运行在跑）。盘上留的是设计 0.2（.agents/tasks/metrics/design.md，按第 1 轮 F1–F22 修订，0.1 原文在 design-0.1.md），第 2 轮评审没有做。指标流水不在自举关键路径上：M7 骨架在它不在时各行自己写项目 .llm/ 下的流水。复工时机：自举之后；循环板 0.6 与规则板 0.10 对它的输入清单变化已记在本节点批注里，复工时一并照办。"
     }
   ]
 }

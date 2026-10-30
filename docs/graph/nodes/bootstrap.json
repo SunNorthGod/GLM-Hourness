@@ -88,6 +88,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "m8-plain-language 设计 0.6（design.md §5.3、§11 接管项目）：bootstrap_review 与 bootstrap_apply 写下的人定待决与提议是写法检查第二阶段前提 (c) 列出的一处；引擎对人定的待决改为提议式之后（M3 第 6 步），接管项目按提议式写、带一行 background（至多 60 个码点），并有一条在第二阶段常量下通过的契约测试。bootstrap_apply 以带原话的 llm 写图，不挡面板的上手页自动出现。"
+    },
+    {
+      "at": "2026-10-30T10:29:59.410Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "省额度并集中在自举关键路径上（人：「省额度，你在跑的也立刻换」、「尽快自举吧」；d-dogfood-scope、d-subagent-sonnet）：bootstrap-design（wf_3ed5efc7a51801d7）在第 3 轮评审中途停住、不重开，本节点挂着不动（引擎不让从 doing 退回 approved，所以状态仍是 doing，实际没有运行在跑）。盘上留的是设计 0.3（.agents/tasks/bootstrap/design.md，按第 2 轮 F23、F24 改完：给人看的文字全改成四行格式、两件事与清单改走 M3 的 propose_to_human / record_human_answer、不许碰的规则改走规则板的提议流程；草图 mockup-takeover.svg 已重画；记图草稿 graph-ops.json 21 条在图的临时副本上演练通过），第 3 轮独立评审没有做。复工时机：自举之后，先过一轮评审、按 d-alignment-rounds 对齐三条新决定（d-boards-as-hooks、d-rules-in-repo、d-main-agent-peak-exempt）与 d-memory-scope、d-agent-examples，再写一页人话交人放行。"
     }
   ]
 }
