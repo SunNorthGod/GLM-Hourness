@@ -143,7 +143,7 @@ DSH 官方类型已作为 devDependency 安装（`@deepseek-ai/dsh-llm`、`@deep
 | 2026-10-27 | `listModels` 缺 `provider` 字段 → `adapter returned invalid or duplicate model` | L1→L4 | adapter 契约靠猜 | 接入官方 .d.ts + `AdapterContractCheck`，tsc 直接拦 |
 | 2026-10-27 | 静态包 client 半用了 `styles` Builtin → `ReferenceError: styles is not defined` | L4 | 混淆了动态包沙盒 Builtin 与静态包模块表 | 静态包 client 半只有 `require`（React 等模块表）；样式用组件内 `<style>` 元素渲染 |
 | 2026-10-27 | 15:36–17:22 的 190 条用量记录与 1 条记忆写进 `~/.dsh/profiles/desktop/.llm/`，`/hourness` 读不到 | 审计数据复查 | 各行各自配置 `home`，没有单一数据目录 | 2026-10-28：数据目录行与服务（`DESIGN.md` §2.4），记录已复制到新位置 |
-| 2026-10-27 | guard 把 shell 命令文本里的 `=>`、`>>>`、`->` 当成重定向拦截，共 3 次 | L4 | 正则检测无引号感知；新门禁没有影子期 | 2026-10-28：引号感知检测，命令集不扩充；读不到的写法由工作区变更兜底以影子模式记录（`ROADMAP.md` M1.8、`ORCHESTRATION.md` §6.5）；L2 覆盖两种方言，L3 探针检查放行与影子记录 |
+| 2026-10-27 | guard 把 shell 命令文本里的 `=>`、`>>>`、`->` 当成重定向拦截，共 3 次 | L4 | 正则检测无引号感知 | 2026-10-28：引号感知检测，命令集不扩充；读不到的写法由工作区变更兜底在回合结束时记录，拦不住（`ROADMAP.md` M1.8、`ORCHESTRATION.md` §6.5.2）；L2 覆盖两种方言，L3 探针检查放行与影子记录 |
 | 2026-10-27 | guard 已知拦截至少 3 次，违规审计 0 条 | 审计数据复查 | 违规回调无法从配置传入，降级没有上报 | 2026-10-28：guard 经数据目录服务落盘，缺目录时控制台报一次，探针检查拦截后的违规记录（`ROADMAP.md` M1.4）；各行的降级经行健康上报，`/glm-status` 显示（M1.5，`DESIGN.md` §2.5） |
 | 2026-10-28 | 原生通道编码器按 `toolCalls` 字段读助手的工具调用，rc.3 以 `tool-call` 内容块传递，工具调用会被全部丢弃 | 读 rc.3 运行时包（修图片时） | `lm-min.ts` 的结构类型对照的是 `reference/deepseek-harness` 主干；通道只有单测和真网单轮冒烟，没有多轮工具调用的验证 | 结构类型按 rc.3 重写；探针请求摘要读 `tool-call` 块（`DESIGN.md` §4.5）；多轮工具调用的真机验证随 L4 |
 | 2026-10-28 | guard 对 `terminal_send` 读 `command` 参数，rc.3 的参数名是 `text`，终端里的 shell 写入从未被检查（桌面版 profile 装了终端包） | 读 rc.3 运行时包（M1.8） | M1.6 的接口对照只核了钩子、服务与载荷，没有逐个核对工具参数名；单测用的是同一个错误字段 | 改读 `text`，按 bash 与 pwsh 两种方言判；接口对照表加 shell 工具与文件工具的参数行（`DESIGN.md` §2.4a） |
