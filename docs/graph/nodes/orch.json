@@ -233,6 +233,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "按 d-five-runs：视频第三版做完、空出一个位子，排队第一的 M5 实现（impl-m5-memory-lessons，wf_1714ad4be33518c0）接上。"
+    },
+    {
+      "at": "2026-10-31T19:37:18.798Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "design-finish-m4-bootstrap-m6-uj（wf_de2de8aca321a79a）结束：用户图（插件使用流程）两审通过；M4 与接管的决定评审没过、各有停止报告；M6 决定评审通过、一页稿还要按新问法重写。四份批注草稿已记图。按 d-five-runs 接着派 design-finish2-m4-bootstrap-m6-panel（wf_02997774751aba4f）：M4 修 F13、F14 与 N15–N17，接管修 F13–F20，两者复审后写新格式一页稿；M6 只重写一页稿；面板按编排方对 P10-01、P10-02 的裁定改到 1.2、复审后重写一页稿。每份的「要你定的」按 d-ask-three-gates 的问法。"
     }
   ]
 }
