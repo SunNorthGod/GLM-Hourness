@@ -1276,3 +1276,27 @@ harness 自己跑的 git 都从这里走：任务与门禁的工作树、两个�
 - 释放时只删令牌还是自己的锁；被误判陈旧而被接手的持有者用 `held()` 发现，不会删接手者的锁。
 - 接手不是原子的（E3 评审 E3-8），有两个窗口。一是创建锁分两步：`wx` 打开，再写内容，等待者恰好在两步之间读到的是空文件，原先按「内容读不出就是废弃」立刻接手，创建者其实还活着。新选项 `unreadableGraceMs`（缺省 0，规则板的行为不变；门禁取 `GATE_UNREADABLE_GRACE_MS` = 2 秒，小于一次轮询）：没有 pid 也没有时间戳的内容（空文件、不是 JSON、`{}`）要同一个等待者连续看到同样的内容满这么久才算废弃，期间内容变成有效的锁就不接手，文件消失或被接手之后重新计时（上一次看到的空文件不算在后来的空文件头上）；创建者崩在两步之间留下的空文件，最多多等一次轮询。有 pid 的锁（持有者已死）照旧立即接手。二是等待者「重读、再改名」之间，接手者刚建的新锁可能被挪走，这个窗口是微秒级，没有复现，也没有在锁文件层面消除：门禁锁的持有者（E7）在写检查记录之前要调 `held()`，并按设计 §6.3 比较门禁工作树的 HEAD。
 - 测试 `tests/execute-gate-lock.spec.ts`（24 例）：门禁的值与 M5 的值（50 毫秒、2 秒、30 秒、120 秒）各对四个选项带一例，不传选项时的原有行为，`keepStale` 与 `holder`，活着的锁让后来者等到超时，陈旧（时间、开机时刻、进程已死），只删自己的令牌，同进程排队与放弃；没有 `bootTime` 的旧式环境对象，读不出内容的文件在缺省下立即接手、在宽限下等够才接手、创建者在宽限内写完就不接手、中间出现过有效的锁就重新计时、门禁锁的宽限。
+## 18. 循环板（起头：两块板共用的条目形状）〔L1 已实现 2026-10-31；还没有行〕
+
+完整设计是 `.agents/tasks/schedules/design.md`（不入库，版本 0.6，评审通过、人放行）。循环板放「到点了或碰到某件事，就去做一件事」，是编排层包 `dsh-hourness` 里的一块板，以后的行是 `glm-hourness/loops`（默认禁用）。这一节随实现分步补写；现在只落了第一步：规则板和循环板共用的条目形状，源码目录 `src/loops/` 登记在 `scripts/packages.mjs` 的 `hourness.src` 和 `packages/hourness/tsconfig.json` 的 `include` 里。还没有行、没有监听器、没有补丁里的条目、没有存储。
+
+### 18.1 条目的形状（`src/loops/trigger.ts`）
+
+- 两块板的每一条都是 `HookShape<A>`：`when`（`Trigger`：一次 `once`、每隔 `every`、每天 `daily`、每周 `weekly`、`cron`、事件 `event`、命令 `command`）加可选的 `filter`（`EventFilter`，只配事件触发）加各板自己的动作 `A`。脚本动作的共用部分是 `ScriptAction`（`ScriptRef` 钉住文件路径、内容哈希和语言）。规则板导入这个文件，不另写一份。
+- 共用的事件表里每个事件由 `LoopEventDeclaration` 声明：字段（`LoopEventField`，每个字段至多声明一种比法）、参数（`LoopEventParam`）、人能不能选、拦路的缺省（`gateOnErrorDefault`）、是否只列出（`listedOnly`）。`gate.` 开头的名字空间是规则板的拦路事件，`validateWhen` 只在 `allowGate` 为真时收。
+- 文件只有类型、常量和纯函数，不导入 Node 内置模块，面板也能导入。不读文件；唯一读时钟的地方是 `matches` 写入时试跑用的 `performance.now()`（Node 和浏览器都有的全局），条目要对着哪个时刻检查由调用方传入。
+- `nextOccurrence(when, after, systemTimeZone)`：`once`、`every`、`daily`、`weekly` 的下一个时刻；事件、命令和 cron 触发返回 `undefined`（cron 由 DSH 的定时服务算）。缺时区的写法取传入的系统时区。夏令时：春季跳过的钟点那一天不触发，秋季重复的钟点只取较早的一次。读不懂的输入返回 `undefined`，不抛错。
+- `validateWhen(when, filter, table, options)`：返回问题列表（`{path, message}`，空表示没问题），不抛错。检查：事件 1 到 4 个、都在事件表里、人只能选标了「人能选」的；筛选的键是每个列出的事件都声明了的字段、比法是字段声明的那一种、值的类型和个数合规（`in` 至多 50 个，`paths` 至多 20 个）；参数按声明（必填、类型、`min`/`max`）；`once` 严格晚于 `now` 且至多一年以后；`every` 为整数秒，告诉主 Agent 的至少 600、其余至少 300，至多 31,536,000；`daily`、`weekly` 的 `HH:MM`、时区（人写的必写）、星期 1 到 7；`cron` 五个字段、总长至多 100、只配告诉主 Agent；命令触发只给插件的「自己做」条目。`options` 在设计写的 `allowGate`、`origin` 之外多两项，都是设计里的规则需要它们才能在这里判：`now`（`once` 对着哪个时刻）和 `action`（`'tell-main'`、`'self'`、`'work'`：`every` 的下限、cron、命令触发和只列出的事件都取决于条目的动作）。路径是否存在、一个项目至多 20 个目录（`loops.file-changed` 的 `path`）这类要读文件系统的检查留给调用方。
+- `matchesFilter(filter, payload, project)`：这一次事件的载荷过不过筛选，纯函数，不抛错；字段缺了或类型不对就不过。`paths`：以 `/` 结尾是相对项目根的目录前缀；带 `/` 的名字是相对项目根的一个文件；不带 `/` 的名字匹配任何一层目录里的同名文件；`*` 不跨 `/`；整段的 `**` 匹配零个或多个目录（`docs/**/*.md` 也匹配 `docs/setup.md`，`**/x.json` 也匹配 `x.json`），不是整段的 `**` 同 `*`；项目根下的绝对路径先化成相对路径（反斜杠按 `/` 算，Windows 盘符路径不分大小写）。`matches`：JavaScript 正则，不分大小写，只看值的前 8192 个字符。
+- `matches` 的写入检查：至多 300 个字符、编得成；编成之后在固定的长输入上各试一次（一个字符重复、重复加一个不匹配的结尾、空格加结尾、`=` 重复、字母数字交替等九种形状），单次超过 50 毫秒就算太慢、不收。正则一旦开始回溯就停不下来，所以输入从 8 个字符起每次长 15%，一直到 8192，碰到第一个超限的就停；一个行为良好的正则要把全部长度跑完，开销可以忽略；平方级回溯的正则（例 `.*foo`）能跑完但要约一秒，每一步都不到 50 毫秒就照收。
+
+### 18.2 脚本的超时取值（人的决定 `d-timeout-measured`）
+
+- 超时的值只由一个纯函数 `effectiveTimeoutSeconds` 取：写脚本的 agent 在人批准时给的估计值起步；有运行记录之后取最近若干次运行里最慢一次的 3 倍（有运行时估计值让位）；永不高于上限，3 倍最慢超过上限时取上限并返回 `capped: true`，让调用方告诉主 Agent；没有估计也没有运行时取上限。上限：拦路的事件 30 秒（`GATE_TIMEOUT_MAX_SECONDS`），别的事件与时间触发 1800 秒（`WORK_TIMEOUT_MAX_SECONDS`）；下限 1 秒和 5 秒，是 `ScriptAction.timeoutSeconds` 允许的最小值。结果取整数秒、向上取整。设计原文的缺省 10 秒 / 60 秒是没有估计时的旧缺省，被这一决定取代。
+- 缺数据、负数、非有限数、空运行列表、没有 id 的运行都当作没有，函数不抛错，不读时钟与文件。结果总带来源：`'ceiling'`、`'estimate'`，或算出它所依据的运行 id 列表；传入的上一个取值原样放在 `previous`，以后写变更记录的一方由此能记下「谁、凭什么、从什么值改成什么值」。
+- `validateScriptAction(action, context)`：脚本动作的时间部分，两块板共用。`timeoutSeconds` 必须是整数秒，拦路的事件 1 到 30、别处 5 到 1800，没写时调 `effectiveTimeoutSeconds` 补上（结果带 `filled`，记着来源与有没有被上限截）；`onError` 只在拦路的事件上有，没写时取事件声明的 `gateOnErrorDefault`，再没有则 `allow`。
+- 这一步没有做的：每个条目的取值变更记录、每次超时的事件记录、超时后拦路脚本在后台接着跑到 10 分钟、给主 Agent 的超时消息、页面和晨报上的显示。它们都是脚本运行的产物，随共用的脚本执行器一起建（执行器和同意的路还没有，所以本轮没有脚本在跑）。
+
+### 18.3 验证
+
+L2：`tests/loops-trigger.spec.ts`（`nextOccurrence` 在 `Asia/Shanghai` 与有夏令时的 `America/New_York` 上的每天、每周、跳过的钟点、重复的钟点；`validateWhen` 各类触发与筛选；`matchesFilter` 的各种比法和路径写法；慢正则被拒；`effectiveTimeoutSeconds` 的每个分支和坏数字；`validateScriptAction`；模块不导入 Node 内置模块）。
