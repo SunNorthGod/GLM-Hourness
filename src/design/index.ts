@@ -12,7 +12,11 @@
  * (src/graph/main-agent-holder.ts) says which session of the project holds
  * the role; mode.ts `roleOf` combines them. When the role moves, the
  * session that lost it is told to leave main agent mode by a /wish off the
- * row runs for it, as soon as that session is idle.
+ * row runs for it, as soon as that session is idle. A record naming a
+ * session whose /wish did not take effect (cancelled after it claimed the
+ * record, or cut off by a crash) is deleted by the first of these to find
+ * out: the session's own next read of its role (cancelled), its creation
+ * (crash), or another session's /wish (which takes the role over).
  *
  * Both assembly listeners are installed per agent by `installAgentHooks`,
  * at agent creation and again by /wish itself, because an idle agent that
@@ -22,7 +26,7 @@
  * the row health. It ships disabled (packages/hourness/cordis.patch.yml).
  */
 import { statSync } from 'node:fs'
-import { holderFile, holderHome, projectKey, readHolder } from '../graph/main-agent-holder.ts'
+import { holderFile, holderHome, projectKey, readHolder, releaseHolder } from '../graph/main-agent-holder.ts'
 import { graphService } from '../graph/service.ts'
 import { installMainAgentRules } from '../guard/main-agent.ts'
 import { insertHournessSection } from '../guard/sections.ts'
@@ -32,7 +36,7 @@ import { dialectService, dialectWarner, toNativeTool } from '../shared/dialect.t
 import { createUserNotice, type AgentLike, type CommandDefinitionLike, type CommandsExecutor, type DesignAgentLike, type DesignAgentsService, type DesignInvocationLike, type InjectHost, type PreExecuteListener, type ProvideHost, type ServiceLookup, type SessionLike, type SessionPersistenceLike, type SessionProjectionsService } from '../shared/dsh-min.ts'
 import { provideRowHealth, sessionIdOf, type HealthState } from '../shared/health.ts'
 import { MAIN_AGENT_IDENTITY, MAIN_AGENT_SECTION } from './identity.ts'
-import { mainAgentProjection, modeOf, roleOf, wishHandler, type RoleDeps, type RoleReading, type WishDeps } from './mode.ts'
+import { mainAgentProjection, modeOf, roleOf, staleRecordKept, wishHandler, type RoleDeps, type RoleReading, type WishDeps } from './mode.ts'
 import { mainAgentFace } from './role-face.ts'
 import { HIDDEN_FROM_MAIN_AGENT } from './talk.ts'
 
@@ -126,6 +130,10 @@ export function apply(ctx: DesignContext): () => void {
       const project = projectOfSession(session)
       return project === undefined ? undefined : readHolder(project.file)
     },
+    release: (session) => {
+      const project = projectOfSession(session)
+      return project !== undefined && releaseHolder(project.file, session.id)
+    },
     report: (session, state, reason) => { health.report(session.id, state, reason) },
     warn: warnRead,
   }
@@ -158,6 +166,16 @@ export function apply(ctx: DesignContext): () => void {
     }
     catch (error) {
       failed(message(error))
+    }
+  }
+
+  /** Delete the record that names a session which is not the main agent; a record that stays is shown in that session's health. */
+  const releaseStale = (session: SessionLike): void => {
+    try {
+      role.release(session)
+    }
+    catch (error) {
+      health.report(session.id, 'degraded', staleRecordKept(message(error)))
     }
   }
 
@@ -223,10 +241,19 @@ export function apply(ctx: DesignContext): () => void {
    * A session that was a main agent when it was saved or forked, while another session holds the role now,
    * is told to leave it. Not awaited: agent/created is awaited serially before the agent finishes creation.
    * The agent is asked again when it is idle, because the person may have moved the role back meanwhile.
+   * A session whose log has no finished /wish that turned the mode on, while the record names it, is a
+   * /wish cut off after it claimed the record (a crash before command/done reached the disk): the record is deleted.
    */
   function alignOnCreation(agent: AgentLike): void {
     const session = agent.session
-    if (session === undefined || session.header.origin === 'subagent' || !modeOf(projections, session).active || heldElsewhere(session) !== true) return
+    if (session === undefined || session.header.origin === 'subagent') return
+    const mode = modeOf(projections, session)
+    if (!mode.active) {
+      // With no session state service or an unreadable state the mode is unknown, not off.
+      if (projections !== undefined && mode.error === undefined && heldElsewhere(session) === false) releaseStale(session)
+      return
+    }
+    if (heldElsewhere(session) !== true) return
     const idle = (agent as Partial<DesignAgentLike>).whenIdle
     const leaveIfStillElsewhere = (): Promise<void> => heldElsewhere(session) === true && modeOf(projections, session).active ? leaveRole(agent as DesignAgentLike) : Promise.resolve()
     void (typeof idle === 'function' ? idle.call(agent) : Promise.resolve()).then(leaveIfStillElsewhere).catch((error: unknown) => { leaveFailed(agent.id, message(error)) })

@@ -9,14 +9,15 @@
  */
 import assert from 'node:assert/strict'
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { createRequire, syncBuiltinESMExports } from 'node:module'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { apply, MAIN_AGENT_ACTIVE, MAIN_AGENT_INACTIVE, WAITING_STATE } from '../src/design/index.ts'
 import { MAIN_AGENT_IDENTITY, MAIN_AGENT_ROLE, MAIN_AGENT_SECTION, MAIN_AGENT_TALK } from '../src/design/identity.ts'
-import { CANCELLED_OFF, CANCELLED_ON, MAX_WISH_LENGTH, ROLE_UNCHANGED_MARK, STRONG_MODEL_NOTE } from '../src/design/mode.ts'
+import { CANCELLED_OFF, CANCELLED_ON, MAX_WISH_LENGTH, ROLE_UNCHANGED_MARK, STRONG_MODEL_NOTE, staleRecordKept } from '../src/design/mode.ts'
 import { HIDDEN_FROM_MAIN_AGENT, TALK_GUIDE, type ProposalKind } from '../src/design/talk.ts'
 import { STR_REPLACE_EDITOR_UNKNOWN, WRITE_NATIVES } from '../src/design/role-face.ts'
-import { claimHolder, holderFileOf, readHolder, replaceHolder } from '../src/graph/main-agent-holder.ts'
+import { claimHolder, holderFileOf, mainAgentOf, readHolder, replaceHolder } from '../src/graph/main-agent-holder.ts'
 import { MAIN_AGENT_KEY } from '../src/graph/main-agent.ts'
 import { PLAIN_QUESTION_GUIDE, plainWordsIn } from '../src/graph/plain-question.ts'
 import type { AssemblePayload, AssembledTool } from '../src/shared/dsh-min.ts'
@@ -320,20 +321,28 @@ test('/wish off ends the role from the very next step, deletes the record and te
   assert.equal(agent.sent.length, 2, 'a /wish off that changes nothing sends nothing')
 })
 
+/** A command whose request is cancelled after its handler returned: the log ends with `command/done` in error. */
+async function cancelled(host: DesignHost, agent: FakeAgent, line = '/wish'): Promise<void> {
+  const aborted = new Promise<void>((_resolve, reject) => { setImmediate(() => { reject(new Error('cancelled')) }) })
+  await assert.rejects(host.execute(agent, line, aborted), /cancelled/)
+}
+
+const holderOf = (host: DesignHost, workspace = 'ws'): string | undefined => mainAgentOf(host.userHome, graphDirOf(host, workspace))?.sessionId
+
 test('a /wish whose request was cancelled after the handler returned leaves the session as it was and the health says so', async () => {
   const { host } = open()
   const agent = host.addAgent('s1')
-  const cancelled = new Promise<void>((_resolve, reject) => { setImmediate(() => { reject(new Error('cancelled')) }) })
-  await assert.rejects(host.execute(agent, '/wish', cancelled), /cancelled/)
+  await cancelled(host, agent)
+  assert.equal(holderOf(host), 's1', 'the cancelled /wish had claimed the record before it was cancelled')
   assert.equal(isOn(host, agent), false)
   assert.equal(sectionOf(await agent.assemble()), undefined, 'the role is gone again at the next step')
   assert.deepEqual(sessionHealth(host, agent), { state: 'degraded', reason: CANCELLED_ON })
+  assert.deepEqual(readHolder(recordFile(host)), { kind: 'none' }, 'and the session\'s read of its role deleted the record')
 })
 
 test('a /wish off whose request was cancelled leaves the session the main agent, and the health says so', async () => {
   const { host, first } = await withMainAgent()
-  const cancelled = new Promise<void>((_resolve, reject) => { setImmediate(() => { reject(new Error('cancelled')) }) })
-  await assert.rejects(host.execute(first, '/wish off', cancelled), /cancelled/)
+  await cancelled(host, first, '/wish off')
   assert.equal(isOn(host, first), true)
   assert.ok(sectionOf(await first.assemble()), 'still the main agent at the next step')
   const report = sessionHealth(host, first)
@@ -524,6 +533,141 @@ test('a session whose graph directory is unknown is the main agent by its projec
   assert.equal(sessionHealth(host, lone)?.state, 'active')
 })
 
+// ---------------------------------------------------------------- a record that outlives its session's mode
+
+const lostRun = { commandId: 'lost', name: 'wish', args: '', source: { kind: 'user' } }
+const recordOf = (host: DesignHost, sessionId: string, workspace = 'ws'): Parameters<typeof claimHolder>[1] => ({ version: 1, sessionId, graphDir: graphDirOf(host, workspace), since: new Date().toISOString(), commandId: 'lost' })
+
+/** Run `body` with the deletion of any record file failing, as an antivirus scanner holding the file does on Windows. */
+async function whileRecordsCannotBeDeleted<T>(body: () => Promise<T>): Promise<T> {
+  const fs = createRequire(import.meta.url)('node:fs') as { unlinkSync: (path: string) => void }
+  const original = fs.unlinkSync
+  fs.unlinkSync = (path) => {
+    if (String(path).endsWith('.json')) throw new Error('EPERM: held by another program')
+    original(path)
+  }
+  syncBuiltinESMExports()
+  try {
+    return await body()
+  }
+  finally {
+    fs.unlinkSync = original
+    syncBuiltinESMExports()
+  }
+}
+
+test('after a cancelled /wish the project has no main agent for mainAgentOf, and another session\'s /wish becomes it without a pointer reply', async () => {
+  const { host } = open()
+  const first = host.addAgent('s1')
+  const second = host.addAgent('s2')
+  await cancelled(host, first)
+  await first.assemble()
+  assert.equal(holderOf(host), undefined)
+  const reply = await type(host, second, '/wish')
+  assert.ok(reply.text.startsWith('已让这个会话的 agent 当主 Agent'), reply.text)
+  assert.equal(holderOf(host), 's2')
+  assert.equal(isOn(host, second), true)
+})
+
+test('a /wish off right after a cancelled /wish also leaves no record behind, and the health still says the /wish was cancelled', async () => {
+  const { host } = open()
+  const first = host.addAgent('s1')
+  await cancelled(host, first)
+  assert.deepEqual(await type(host, first, '/wish off'), { kind: 'success', text: '这个会话本来就不是主 Agent' })
+  assert.equal(holderOf(host), undefined)
+  assert.deepEqual(sessionHealth(host, first), { state: 'degraded', reason: CANCELLED_ON })
+})
+
+test('a cancelled /wish whose session has not read its role yet: another session\'s /wish takes the stale record over, and the cancelled session still says so', async () => {
+  const { host } = open()
+  const first = host.addAgent('s1')
+  const second = host.addAgent('s2')
+  await cancelled(host, first)
+  assert.equal(holderOf(host), 's1')
+  const reply = await type(host, second, '/wish 记一笔账')
+  assert.ok(reply.text.startsWith('原来记的主 Agent 会话其实没有开着主 Agent 模式，已让这个会话的 agent 当主 Agent'), reply.text)
+  assert.ok(reply.text.endsWith(`已把你的愿望交给它。${STRONG_MODEL_NOTE}`))
+  assert.equal(holderOf(host), 's2')
+  assert.ok(sectionOf(await second.woken!), 'the woken turn has the section')
+  assert.equal(sectionOf(await first.assemble()), undefined)
+  assert.deepEqual(sessionHealth(host, first), { state: 'degraded', reason: CANCELLED_ON }, 'looking at the session did not settle its cancelled /wish')
+  assert.equal(holderOf(host), 's2', 'and the cancelled session\'s own read did not delete the new holder\'s record')
+  assert.deepEqual(host.executed, [], 'nobody had to be told to leave')
+})
+
+test('a record that names an open session with no /wish in its log is stale: the next /wish takes it over', async () => {
+  const { host } = open()
+  host.addAgent('s1')
+  const second = host.addAgent('s2')
+  claimHolder(recordFile(host), recordOf(host, 's1'))
+  const reply = await type(host, second, '/wish')
+  assert.ok(reply.text.startsWith('原来记的主 Agent 会话其实没有开着主 Agent 模式，'), reply.text)
+  assert.equal(holderOf(host), 's2')
+})
+
+test('a session that sends /wish again after a cancelled one keeps the record it claimed and becomes the main agent', async () => {
+  const { host } = open()
+  const first = host.addAgent('s1')
+  await cancelled(host, first)
+  const reply = await type(host, first, '/wish')
+  assert.ok(reply.text.startsWith('已让这个会话的 agent 当主 Agent'), reply.text)
+  assert.equal(holderOf(host), 's1')
+  assert.ok(sectionOf(await first.assemble()))
+  assert.deepEqual(sessionHealth(host, first), { state: 'active', reason: MAIN_AGENT_ACTIVE }, 'the new /wish replaced the cancelled one')
+  assert.equal(holderOf(host), 's1')
+})
+
+test('a session reopened after a crash cut off its /wish (a record that names it, no command/done in its log) has the record deleted at creation', async () => {
+  const { host } = open()
+  const crashed = host.addAgent('s1')
+  crashed.session.append('command/run', lostRun)
+  claimHolder(recordFile(host), recordOf(host, 's1'))
+  await host.created(crashed)
+  assert.deepEqual(readHolder(recordFile(host)), { kind: 'none' })
+  assert.deepEqual(sessionHealth(host, crashed), undefined)
+
+  const intact = open().host
+  const holder = intact.addAgent('s1')
+  await type(intact, holder, '/wish')
+  await intact.created(holder)
+  assert.equal(holderOf(intact), 's1', 'a main agent whose /wish finished keeps its record')
+  assert.deepEqual(intact.executed, [])
+})
+
+test('the record is not deleted at creation when the mode of the session cannot be known', async () => {
+  const noService = open({ projections: false }).host
+  const waiting = noService.addAgent('s1')
+  claimHolder(recordFile(noService), recordOf(noService, 's1'))
+  await noService.created(waiting)
+  assert.equal(holderOf(noService), 's1', 'no session state service')
+
+  const { host } = open()
+  const agent = host.addAgent('s1')
+  await type(host, agent, '/wish')
+  host.projections.stateOf = () => { throw new Error('log unreadable') }
+  await host.created(agent)
+  assert.equal(holderOf(host), 's1', 'a state that cannot be read')
+})
+
+test('a stale record that cannot be deleted stays, the health of the session says how to try again, and /wish off deletes it later', async () => {
+  const { host } = open()
+  const first = host.addAgent('s1')
+  await cancelled(host, first)
+  await whileRecordsCannotBeDeleted(() => first.assemble())
+  const stuck = staleRecordKept('EPERM: held by another program')
+  assert.deepEqual(sessionHealth(host, first), { state: 'degraded', reason: `${CANCELLED_ON}；${stuck}` })
+  assert.equal(holderOf(host), 's1')
+  assert.deepEqual(await type(host, first, '/wish off'), { kind: 'success', text: '这个会话本来就不是主 Agent' })
+  assert.equal(holderOf(host), undefined)
+
+  const crashed = host.addAgent('s9', { workspace: 'other' })
+  crashed.session.append('command/run', lostRun)
+  claimHolder(recordFile(host, 'other'), recordOf(host, 's9', 'other'))
+  await whileRecordsCannotBeDeleted(() => host.created(crashed))
+  assert.deepEqual(sessionHealth(host, crashed), { state: 'degraded', reason: stuck })
+  assert.equal(holderOf(host, 'other'), 's9')
+})
+
 // ---------------------------------------------------------------- a session that lost the role while it was away
 
 test('a fork of the main agent session is an ordinary session at once, and turns its projection off at its first idle, not inside agent/created', async () => {
@@ -601,16 +745,23 @@ test('a /wish off that cannot be run is warned once and shown in that session\'s
   saidToPerson.push(unresolved?.reason ?? '', thrown?.reason ?? '')
 })
 
-test('claiming a project twice at once: the second session reads the record again and is pointed to the first', async () => {
+test('claiming a project twice at once: while the first session\'s /wish is still settling, the second session is pointed to it', async () => {
   const { host } = open()
   const first = host.addAgent('s1')
   const second = host.addAgent('s2')
-  // Both read "no record"; the first claim lands between the second one's read and its claim.
-  const file = recordFile(host)
-  assert.equal(claimHolder(file, { version: 1, sessionId: 's1', graphDir: graphDirOf(host), since: new Date().toISOString(), commandId: 'cmd-0' }), true)
+  let settle = (): void => {}
+  const hold = new Promise<void>((resolve) => { settle = resolve })
+  // The first /wish has claimed the record and set its pending state; command/done has not landed.
+  const claiming = host.execute(first, '/wish', hold)
+  await tick()
+  assert.equal(holderOf(host), 's1')
   assert.ok((await type(host, second, '/wish')).text.startsWith('这个项目的主 Agent 在另一个会话里'))
   assert.equal(isOn(host, second), false)
-  assert.equal(isOn(host, first), false, 'the session named in the record never typed /wish, the record alone does not turn its projection on')
+  assert.equal(holderOf(host), 's1')
+  settle()
+  await claiming
+  assert.equal(isOn(host, first), true)
+  assert.equal(holderOf(host), 's1')
 })
 
 test('/wish puts the hooks on a main agent session that was open before the row loaded, even though it is the main agent already', async () => {
