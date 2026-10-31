@@ -2,11 +2,16 @@
  * Morning report: fold one period of the audit journal (decisions, violations,
  * usage) into the harvest report. Pure — reads parsed JSONL lines, emits text.
  * Granularity: exceptions first, then curve movement, then plain
- * facts; no padding, no restatement of completed work.
+ * facts; no padding, no restatement of completed work. The usage section is
+ * the usage panel's list (src/report/panel.ts), priced through the pricing
+ * service when there is one.
  */
 import { auditPaths, type DecisionRecord, type UsageRecord } from '../memory/audit.ts'
 import type { GuardRecord } from '../guard/index.ts'
+import { gapLines, parseGaps, usagePanelLines, usagePanelOf, type PanelLineOptions } from '../report/panel.ts'
 import type { DataHomes } from '../shared/data-home.ts'
+import type { UsagePricing } from '../shared/pricing.ts'
+import type { MomentZone } from '../shared/quota.ts'
 
 export interface ReportInput {
   readonly decisions: readonly DecisionRecord[]
@@ -14,20 +19,12 @@ export interface ReportInput {
   readonly violations: readonly GuardRecord[]
   readonly usage: readonly UsageRecord[]
   readonly period: string
-}
-
-/** Aggregate usage per model (ZCode panel vocabulary: in/out/total). */
-export function usageByModel(records: readonly UsageRecord[]): Array<{ model: string, calls: number, inputTokens: number, outputTokens: number, totalTokens: number }> {
-  const byModel = new Map<string, { model: string, calls: number, inputTokens: number, outputTokens: number, totalTokens: number }>()
-  for (const record of records) {
-    const entry = byModel.get(record.model) ?? { model: record.model, calls: 0, inputTokens: 0, outputTokens: 0, totalTokens: 0 }
-    entry.calls += 1
-    entry.inputTokens += record.usage.inputTokens
-    entry.outputTokens += record.usage.outputTokens
-    entry.totalTokens += record.usage.totalTokens ?? (record.usage.inputTokens + record.usage.outputTokens)
-    byModel.set(record.model, entry)
-  }
-  return [...byModel.values()].sort((a, b) => b.totalTokens - a.totalTokens)
+  /** Prices the usage section in credits; without it the section lists calls and tokens. */
+  readonly pricing?: UsagePricing | undefined
+  /** Hears about a pricing service that throws. */
+  readonly problem?: ((message: string) => void) | undefined
+  /** Finished list lines for the usage section after its first line: the gaps in the records the period covers. */
+  readonly usageScope?: readonly string[] | undefined
 }
 
 /** Render the morning report for one period. */
@@ -72,11 +69,15 @@ export function morningReport(input: ReportInput): string {
   }
 
   lines.push('')
-  lines.push('## 用量')
-  const models = usageByModel(input.usage)
-  if (models.length === 0) lines.push('- 无模型调用')
-  for (const model of models) {
-    lines.push(`- ${model.model}: ${model.calls} 次 · in ${model.inputTokens} / out ${model.outputTokens} / total ${model.totalTokens}`)
+  lines.push('## 用量（今天）')
+  // The panel's own list, minus its basis line (the panel section writes that once).
+  const scope = input.usageScope ?? []
+  if (input.usage.length === 0) {
+    lines.push('- 无模型调用', ...scope)
+  }
+  else {
+    const options: PanelLineOptions = { basis: false, scope }
+    lines.push(...usagePanelLines(usagePanelOf(input.usage, input.pricing, input.problem), options))
   }
 
   return lines.join('\n')
@@ -87,15 +88,27 @@ export interface ReportFs {
   readFile(path: string): Promise<string>
 }
 
+export interface ReportOptions {
+  /** Prices the usage section in credits; without it the section lists calls and tokens. */
+  readonly pricing?: UsagePricing | undefined
+  /** Hears about a pricing service that throws. */
+  readonly problem?: ((message: string) => void) | undefined
+  /** The moment the report is made, epoch milliseconds, which the times of the gap lines are worded against; default the clock. */
+  readonly now?: number | undefined
+  /** The display zone, minutes east of UTC; tests set it, the host's offset otherwise. */
+  readonly offsetMinutes?: number | undefined
+}
+
 /**
  * Assemble the morning report from the audit journal files: decisions and
- * violations from the project directory, usage from the user directory
- * (docs/DESIGN.md §2.4); an unknown directory reads as an empty journal.
+ * violations from the project directory, usage and the gap file (the
+ * deletions of usage records) from the user directory (docs/DESIGN.md §2.4);
+ * an unknown directory reads as an empty journal.
  * `since` (ISO instant) bounds the period: only records stamped at or after
  * it enter the report, so one period reports on that window, not on all
- * history.
+ * history. The usage section names the gaps that period meets.
  */
-export async function reportFromFiles(fs: ReportFs, homes: DataHomes, period: string, since?: string): Promise<string> {
+export async function reportFromFiles(fs: ReportFs, homes: DataHomes, period: string, since?: string, options: ReportOptions = {}): Promise<string> {
   const readJsonl = async (path: string | undefined) => {
     if (path === undefined) return []
     try {
@@ -120,10 +133,16 @@ export async function reportFromFiles(fs: ReportFs, homes: DataHomes, period: st
     ? records
     : records.filter(record => typeof record.at === 'string' && !Number.isNaN(Date.parse(record.at)) && Date.parse(record.at) >= sinceMs)
   const paths = auditPaths(homes)
+  const gapRaw = paths.gaps === undefined ? '' : await fs.readFile(paths.gaps).catch(() => '')
+  const periodStart = sinceMs === undefined || Number.isNaN(sinceMs) ? undefined : sinceMs
+  const zone: MomentZone = options.offsetMinutes === undefined ? {} : { offsetMinutes: options.offsetMinutes }
   return morningReport({
     decisions: inPeriod(await readJsonl(paths.decisions)) as DecisionRecord[],
     violations: inPeriod(await readJsonl(paths.violations)) as GuardRecord[],
     usage: inPeriod(await readJsonl(paths.usage)) as UsageRecord[],
     period,
+    pricing: options.pricing,
+    problem: options.problem,
+    usageScope: gapLines(parseGaps(gapRaw), options.now ?? Date.now(), zone, periodStart),
   })
 }

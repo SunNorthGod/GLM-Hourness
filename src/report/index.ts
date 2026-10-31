@@ -1,12 +1,14 @@
 /**
  * dsh-hourness row: the `/hourness` human command renders the audit journal —
- * morning report (exceptions → decision curve → usage) plus the usage panel
- * — from the project directory (decisions, violations) and the user-level
- * directory (usage, docs/DESIGN.md §2.4). Pure data plane from
- * src/report/panel.ts and src/workflow/morning-report.ts; no separate
- * bookkeeping. The panel prices calls through the pricing service the GLM
- * channel package's glm-login row provides (src/shared/pricing.ts), read per
- * invocation; without it the panel lists calls and tokens. Registers through
+ * morning report (exceptions → decision curve → usage), the usage panel and
+ * the quota section — from the project directory (decisions, violations) and
+ * the user-level directory (usage and its gap file, docs/DESIGN.md §2.4).
+ * Pure data plane from src/report/panel.ts and src/workflow/morning-report.ts;
+ * no separate bookkeeping. The panel prices calls through the pricing service
+ * the GLM channel package's glm-login row provides (src/shared/pricing.ts),
+ * read per invocation; without it the panel lists calls and tokens. The same
+ * service gives the peak line and, with its `quota` member, the quota section;
+ * the orchestration package holds none of the plan's words. Registers through
  * the DSH commands seam (command-compact is the reference shape); the
  * directories are resolved per invocation, and a missing one is named in the
  * output. The row also registers `/hourness-status`, the row health table of
@@ -14,11 +16,12 @@
  */
 import { readFile } from 'node:fs/promises'
 import { auditPaths } from '../memory/audit.ts'
-import { reportFromFiles } from '../workflow/morning-report.ts'
-import { usagePanel, usagePanelLines } from './panel.ts'
+import { reportFromFiles, type ReportOptions } from '../workflow/morning-report.ts'
+import { gapLines, parseGaps, peakLineOf, quotaSection, rangeLine, usagePanel, usagePanelLines } from './panel.ts'
 import { dataHomes, type DataHomes } from '../shared/data-home.ts'
 import { collectHealth, provideRowHealth, renderHealthTable, sessionIdOf, type HealthState } from '../shared/health.ts'
-import { pricingService, type UsagePricing } from '../shared/pricing.ts'
+import { pricingService, quotaOf, type UsagePricing } from '../shared/pricing.ts'
+import type { MomentZone } from '../shared/quota.ts'
 import type { CommandDefinitionLike, CommandsHost, ProvideHost, ServiceLookup } from '../shared/dsh-min.ts'
 
 export interface HournessConfig {
@@ -34,26 +37,39 @@ export interface RenderOptions {
   /** Injected fs for tests. */
   readonly fs?: { readFile(path: string): Promise<string> }
   readonly now?: Date
+  /** The display zone, minutes east of UTC; tests set it, the host's offset otherwise. The peak hours do not follow it. */
+  readonly offsetMinutes?: number
 }
 
 /** Render the report text for the resolved directories. */
 export async function renderHourness(homes: DataHomes, options: RenderOptions = {}): Promise<string> {
   const fs = options.fs ?? { readFile: (path: string) => readFile(path, 'utf8') }
   const now = options.now ?? new Date()
+  const nowMs = now.getTime()
   // The period is the local calendar day; the report covers that day only.
   const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
   const period = `${dayStart.getFullYear()}-${String(dayStart.getMonth() + 1).padStart(2, '0')}-${String(dayStart.getDate()).padStart(2, '0')}`
-  const report = await reportFromFiles(fs, homes, period, dayStart.toISOString())
+  const zone: MomentZone = options.offsetMinutes === undefined ? {} : { offsetMinutes: options.offsetMinutes }
+  const reportOptions: ReportOptions = { pricing: options.pricing, problem: options.problem, now: nowMs, offsetMinutes: options.offsetMinutes }
+  const report = await reportFromFiles(fs, homes, period, dayStart.toISOString(), reportOptions)
   const missing = [
     ...(homes.projectHome === undefined ? ['- 项目目录未配置（行配置 home 或数据目录行的 projectHome），决策与违规流水读不到'] : []),
     ...(homes.userHome === undefined ? ['- 用户级目录不可用（数据目录行 glm-hourness/data 未启用），用量流水读不到'] : []),
   ]
   const notice = missing.length === 0 ? '' : ['', '## 数据目录', ...missing].join('\n')
-  const usagePath = auditPaths(homes).usage
-  const usageRaw = usagePath === undefined ? '' : await fs.readFile(usagePath).catch(() => '')
-  if (usageRaw.length === 0) return report + notice
-  const summary = ['', '## 面板', ...usagePanelLines(usagePanel(usageRaw, options.pricing, options.problem))].join('\n')
-  return report + summary + notice
+  const paths = auditPaths(homes)
+  const usageRaw = paths.usage === undefined ? '' : await fs.readFile(paths.usage).catch(() => '')
+  // The panel needs records to say anything; the quota is the server's reading and does not.
+  let summary = ''
+  if (usageRaw.length > 0) {
+    const gapRaw = paths.gaps === undefined ? '' : await fs.readFile(paths.gaps).catch(() => '')
+    const panel = usagePanel(usageRaw, options.pricing, options.problem)
+    const peak = options.pricing === undefined ? undefined : peakLineOf(options.pricing, nowMs, zone, options.problem)
+    const scope = [rangeLine(panel, nowMs, zone), ...gapLines(parseGaps(gapRaw), nowMs, zone)]
+    summary = ['', '## 面板', ...(peak === undefined ? [] : [peak]), ...usagePanelLines(panel, { scope })].join('\n')
+  }
+  const quota = options.pricing === undefined ? '' : ['', '## 额度', ...await quotaSection(options.pricing, nowMs, zone, options.problem)].join('\n')
+  return report + summary + quota + notice
 }
 
 /** cordis plugin identity: needs the commands service (/hourness). */
@@ -62,17 +78,19 @@ export const inject = ['commands']
 
 /**
  * The row's status for one invocation's session (row health): which
- * journals the report can read, and whether the panel has a pricing
- * service. A missing pricing service does not lower the status.
+ * journals the report can read, whether the panel has a pricing service and
+ * whether that service reads the quota. A missing pricing service or quota
+ * does not lower the status.
  */
-export function hournessHealth(homes: DataHomes, priced: boolean): [HealthState, string] {
+export function hournessHealth(homes: DataHomes, priced: boolean, quota: boolean): [HealthState, string] {
   const missing = [
     ...(homes.projectHome === undefined ? ['项目目录未配置，决策与违规读不到'] : []),
     ...(homes.userHome === undefined ? ['用户级目录不可用，用量读不到'] : []),
   ]
   const pricing = priced ? '积分口径：已提供' : '积分口径：未提供，按 token 列'
-  if (missing.length === 0) return ['active', `报告读取项目目录与用户级目录；${pricing}`]
-  return [missing.length === 2 ? 'inactive' : 'degraded', [...missing, pricing].join('；')]
+  const quotaNote = quota ? '额度：已提供' : '额度：未提供'
+  if (missing.length === 0) return ['active', `报告读取项目目录与用户级目录；${pricing}；${quotaNote}`]
+  return [missing.length === 2 ? 'inactive' : 'degraded', [...missing, pricing, quotaNote].join('；')]
 }
 
 /**
@@ -113,7 +131,8 @@ export function apply(ctx: CommandsHost & ServiceLookup & Partial<ProvideHost>, 
       }
       const homes = dataHomes(ctx, config.home)
       const pricing = pricingService(ctx, problem)
-      health.report(sessionIdOf(invocation.agent), ...hournessHealth(homes, pricing !== undefined))
+      // The quota member is judged again where it is read, which reports a wrong shape; the status only says whether it is there.
+      health.report(sessionIdOf(invocation.agent), ...hournessHealth(homes, pricing !== undefined, pricing !== undefined && quotaOf(pricing) !== undefined))
       try {
         return { kind: 'success', text: await renderHourness(homes, { pricing, problem }) }
       }

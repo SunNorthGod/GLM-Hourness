@@ -194,6 +194,14 @@ function reportRow(store: Store): () => Promise<{ text: string, state?: string, 
   }
 }
 
+/** The lines of the `## <title>` section of /hourness, without the title and the blank lines. */
+function sectionLines(text: string, title: string): string[] {
+  const lines = text.split('\n')
+  const rest = lines.slice(lines.indexOf(`## ${title}`) + 1)
+  const end = rest.findIndex(line => line.startsWith('## '))
+  return (end < 0 ? rest : rest.slice(0, end)).filter(line => line.length > 0)
+}
+
 const loginRow = (store: Store, home: string, commands: Command[] = []): () => void =>
   loginApply({ commands: { register: (definition) => { commands.push(definition); return () => {} } }, ...store }, { home: join(home, 'credentials') })
 
@@ -217,21 +225,25 @@ test('pricing: glm-login provides the credit plan and the report row prices with
     assert.equal(health(store, 'glm-login').activation().state, 'active')
     const report = reportRow(store)
     const priced = await report()
-    assert.ok(priced.text.includes([
-      '## 面板',
+    // The panel opens with the peak line (of the clock now), says what it read, then gives the numbers; the quota section follows it.
+    const panel = sectionLines(priced.text, '面板')
+    assert.ok(panel[0]?.startsWith('- 高峰：') && panel[0].endsWith('（GLM 积分套餐）'), priced.text)
+    assert.ok(panel[2]?.startsWith('- 范围：2 条用量记录，最早 ') && panel[2].endsWith('；只含经 DSH 发出的请求，ZCode 等其他客户端的消耗不在内'), priced.text)
+    assert.deepEqual([panel[1], ...panel.slice(3)], [
       '- 全部用量记录；高峰为工作日 14:00–18:00（UTC+8），其余时段按 50% 计积分；高峰占比按积分计',
       '- 合计：积分 2.57 · 高峰 100% · 缓存命中 80%',
       '- glm-5.3：1 次 · 积分 2.57 · 高峰 100% · 缓存命中 80%',
       '- 不计积分（不在 GLM 积分套餐内）：deepseek-flash 1 次',
-    ].join('\n')), priced.text)
-    assert.deepEqual([priced.state, priced.reason], ['active', '报告读取项目目录与用户级目录；积分口径：已提供'])
+    ])
+    assert.deepEqual(sectionLines(priced.text, '额度'), ['额度：未登录 GLM（/glm-login）'])
+    assert.deepEqual([priced.state, priced.reason], ['active', '报告读取项目目录与用户级目录；积分口径：已提供；额度：已提供'])
 
     withdraw()
     assert.equal(pricingService(store), undefined)
     const plain = await report()
-    assert.ok(plain.text.includes('## 面板\n- 没有计价服务（GLM 通道包的 glm-login 行提供积分口径），只列调用与 token\n- 合计：2 次 · '), plain.text)
-    assert.ok(!plain.text.includes('积分 2.57'))
-    assert.deepEqual([plain.state, plain.reason], ['active', '报告读取项目目录与用户级目录；积分口径：未提供，按 token 列'])
+    assert.ok(plain.text.includes('## 面板\n- 没有计价服务（GLM 通道包的 glm-login 行提供积分口径），只列调用与 token\n- 范围：2 条用量记录，最早 '), plain.text)
+    assert.ok(!plain.text.includes('积分 2.57') && !plain.text.includes('## 额度') && !plain.text.includes('高峰：'), plain.text)
+    assert.deepEqual([plain.state, plain.reason], ['active', '报告读取项目目录与用户级目录；积分口径：未提供，按 token 列；额度：未提供'])
   }
   finally {
     rmSync(home, { recursive: true, force: true })
@@ -344,7 +356,7 @@ test('pricing through the report row: a malformed service lists tokens; a throwi
       const report = reportRow(malformed.store)
       return [await report(), await report()]
     })
-    assert.ok(fromMalformed.value.every(run => run.text.includes('## 面板\n- 没有计价服务') && run.reason?.endsWith('积分口径：未提供，按 token 列') === true))
+    assert.ok(fromMalformed.value.every(run => run.text.includes('## 面板\n- 没有计价服务') && run.reason?.endsWith('积分口径：未提供，按 token 列；额度：未提供') === true))
     assert.equal(fromMalformed.warnings.length, 1)
     assert.ok(fromMalformed.warnings[0]?.startsWith(`dsh-glm-hourness/hourness: ${PRICING_SERVICE} has the wrong shape`), fromMalformed.warnings[0])
 
@@ -355,7 +367,9 @@ test('pricing through the report row: a malformed service lists tokens; a throwi
       return [await report(), await report()]
     })
     for (const run of fromThrowing.value) {
-      assert.ok(run.text.includes('## 面板\n- 口径\n- 合计：积分 0.00\n- 无法计价的记录 2 条（计价服务出错），未计入'), run.text)
+      assert.ok(run.text.includes('## 面板\n- 高峰：不是高峰（套餐）\n- 口径\n- 范围：2 条用量记录，最早 '), run.text)
+      assert.ok(run.text.includes('\n- 合计：积分 0.00\n- 无法计价的记录 2 条（计价服务出错），未计入'), run.text)
+      assert.deepEqual(sectionLines(run.text, '额度'), ['额度：GLM 通道包没有提供额度数据'])
       assert.equal(run.state, 'active')
     }
     assert.equal(fromThrowing.warnings.length, 1)

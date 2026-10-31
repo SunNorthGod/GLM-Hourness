@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { FIVE_KEYS, gradeDecision } from '../src/workflow/decisions.ts'
-import { morningReport, reportFromFiles, usageByModel } from '../src/workflow/morning-report.ts'
+import { creditPricing } from '../src/glm-llm/credits.ts'
+import { usagePanelLines, usagePanelOf } from '../src/report/panel.ts'
+import { morningReport, reportFromFiles, type ReportFs, type ReportOptions } from '../src/workflow/morning-report.ts'
 import { apply } from '../src/workflow/index.ts'
 import type { AuditJournal, DecisionRecord, UsageRecord } from '../src/memory/audit.ts'
 
@@ -26,16 +28,34 @@ test('five-key card keeps the user-owned vocabulary in order', () => {
 })
 
 const usage: UsageRecord[] = [
-  { at: 't1', provider: 'glm', model: 'glm-5.3', usage: { inputTokens: 100, outputTokens: 50 } },
-  { at: 't2', provider: 'glm', model: 'glm-5.3', usage: { inputTokens: 30, outputTokens: 20, totalTokens: 50 } },
-  { at: 't3', provider: 'glm', model: 'glm-5.3-flash', usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 } },
+  { at: '2026-10-27T10:00:00+08:00', provider: 'glm', model: 'glm-5.3', usage: { inputTokens: 100, outputTokens: 50 } },
+  { at: '2026-10-27T11:00:00+08:00', provider: 'glm', model: 'glm-5.3', usage: { inputTokens: 30, outputTokens: 20, totalTokens: 50 } },
+  { at: '2026-10-27T12:00:00+08:00', provider: 'glm', model: 'glm-5.3-flash', usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 } },
 ]
+const quietReport = { period: 'p', decisions: [], violations: [] }
+const usageSectionOf = (report: string): string[] => report.slice(report.indexOf('## 用量（今天）')).split('\n')
 
-test('usage aggregation folds per model and ranks by total', () => {
-  assert.deepEqual(usageByModel(usage), [
-    { model: 'glm-5.3', calls: 2, inputTokens: 130, outputTokens: 70, totalTokens: 200 },
-    { model: 'glm-5.3-flash', calls: 1, inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+test('the usage section is the lines of the panel: credits per model with a pricing service, calls and tokens without; the basis line is left to the panel', () => {
+  const priced = usageSectionOf(morningReport({ ...quietReport, usage, pricing: creditPricing }))
+  assert.deepEqual(priced, ['## 用量（今天）', ...usagePanelLines(usagePanelOf(usage, creditPricing), { basis: false })])
+  assert.ok(priced.some(line => /^- glm-5\.3：2 次 · 积分 \d+\.\d\d · /.test(line)), priced.join('\n'))
+  assert.ok(priced.every(line => line !== `- ${creditPricing.basis}`))
+  assert.deepEqual(usageSectionOf(morningReport({ ...quietReport, usage })), [
+    '## 用量（今天）',
+    '- 没有计价服务（GLM 通道包的 glm-login 行提供积分口径），只列调用与 token',
+    '- 合计：3 次 · 未命中输入 140 · 缓存读 0 · 缓存写 0 · 输出 75 · 缓存命中 0%',
+    '- glm-5.3：2 次 · 未命中输入 130 · 缓存读 0 · 缓存写 0 · 输出 70 · 缓存命中 0%',
+    '- glm-5.3-flash：1 次 · 未命中输入 10 · 缓存读 0 · 缓存写 0 · 输出 5 · 缓存命中 0%',
   ])
+})
+
+test('a record the usage section cannot read is counted, not dropped; the pricing service\'s problems reach the callback', () => {
+  const problems: string[] = []
+  const throwing = { ...creditPricing, charged: () => { throw new Error('rate table gone') } }
+  const section = usageSectionOf(morningReport({ ...quietReport, usage: [...usage, { at: 'soon', provider: 'glm', model: 'glm-5.3', usage: { inputTokens: 1, outputTokens: 1 } }], pricing: throwing, problem: message => { problems.push(message) } }))
+  assert.ok(section.includes('- 无法计价的记录 3 条（计价服务出错），未计入'), section.join('\n'))
+  assert.ok(section.includes('- 无法读取的记录 1 条，未计入'))
+  assert.equal(problems.length, 3)
 })
 
 test('morning report leads with exceptions, then curve, then usage', () => {
@@ -56,7 +76,7 @@ test('morning report leads with exceptions, then curve, then usage', () => {
   assert.ok(report.includes('[L3] out-of-workspace: C:\\Windows\\x'))
   assert.ok(report.includes('违规 file-tools-only × 1'))
   assert.ok(report.includes('L1 自主 1 · L2 次日报备 0 · L3 当次申报 1'))
-  assert.ok(report.includes('glm-5.3: 2 次 · in 130 / out 70 / total 200'))
+  assert.ok(report.includes('- glm-5.3：2 次 · 未命中输入 130 · 缓存读 0 · 缓存写 0 · 输出 70 · 缓存命中 0%'))
 })
 
 test('clean period reports 无 exceptions and empty usage', () => {
@@ -100,7 +120,7 @@ test('records from routes the dialect did not claim are counted apart; records w
 test('report entry folds the three journal files from both directories and tolerates missing ones', async () => {
   const files = new Map<string, string>([
     ['C:/ws/.llm/audit/decisions.jsonl', JSON.stringify({ at: 't1', level: 'L1', kind: 'dispatch:spawn_teammate', subject: 'researcher' })],
-    ['C:/u/glm-hourness/audit/usage.jsonl', JSON.stringify({ at: 't2', provider: 'glm', model: 'glm-5.3', usage: { inputTokens: 9, outputTokens: 1 } })],
+    ['C:/u/glm-hourness/audit/usage.jsonl', JSON.stringify({ at: '2026-10-27T01:00:00+08:00', provider: 'glm', model: 'glm-5.3', usage: { inputTokens: 9, outputTokens: 1 } })],
   ])
   const fs = { readFile: async (path: string) => {
     const content = files.get(path)
@@ -114,7 +134,7 @@ test('report entry folds the three journal files from both directories and toler
   const report = await reportFromFiles(fs, { projectHome: 'C:/ws/.llm/', userHome: 'C:/u/glm-hourness' }, '2026-10-27')
   assert.ok(report.includes('# 晨报 2026-10-27'))
   assert.ok(report.includes('L1 自主 1'))
-  assert.ok(report.includes('glm-5.3: 1 次'))
+  assert.ok(report.includes('- glm-5.3：1 次 · 未命中输入 9 · 缓存读 0 · 缓存写 0 · 输出 1 · 缓存命中 0%'))
   assert.ok(report.includes('- 无')) // no violations journal, no exceptions
   const projectOnly = await reportFromFiles(fs, { projectHome: 'C:/ws/.llm' }, '2026-10-27')
   assert.ok(projectOnly.includes('- 无模型调用')) // no user directory: the usage journal reads as empty
@@ -131,6 +151,79 @@ test('report entry honors the period bound: older records stay out', async () =>
   const report = await reportFromFiles(fs, { projectHome: 'C:/ws/.llm' }, '2026-10-27', '2026-10-27T00:00:00Z')
   assert.ok(report.includes('L1 自主 1 · L2 次日报备 0 · L3 当次申报 0')) // today's record counted
   assert.ok(!report.includes('out-of-workspace: old')) // yesterday's L3 stayed out of the exceptions
+})
+
+// The gap file (docs/DESIGN.md §2.4): the usage section names the deletions that fall in its period.
+
+const USAGE_PATH = 'C:/u/glm-hourness/audit/usage.jsonl'
+const GAP_PATH = 'C:/u/glm-hourness/audit/usage-gaps.jsonl'
+const GAP_AT = '2026-10-29T03:12:34.750Z' // 11:12 UTC+8
+const GAP_LINE = '- 缺口：10-29 11:12 删去 806 条（旧路由的记录，按用户要求删除）；这些调用不在本节的数字里'
+const gapRow = (row: object): string => JSON.stringify({ at: GAP_AT, removed: 806, reason: '旧路由的记录，按用户要求删除', ...row })
+
+function memoryFs(files: Map<string, string>): ReportFs {
+  return { readFile: (path: string) => {
+    const content = files.get(path)
+    return content === undefined ? Promise.reject(new Error('ENOENT')) : Promise.resolve(content)
+  } }
+}
+
+/** The usage section of the report of `since` onward, made on 2026-10-31 20:00 UTC+8. */
+async function usageSectionFrom(since: string | undefined, gaps: string, extra: ReportOptions = {}): Promise<string[]> {
+  const files = new Map([
+    [USAGE_PATH, JSON.stringify({ at: '2026-10-31T10:00:00+08:00', provider: 'glm', model: 'glm-5.3', usage: { inputTokens: 9, outputTokens: 1 } })],
+    [GAP_PATH, gaps],
+  ])
+  const report = await reportFromFiles(memoryFs(files), { projectHome: 'C:/ws/.llm', userHome: 'C:/u/glm-hourness' }, 'p', since, { pricing: creditPricing, now: Date.parse('2026-10-31T20:00:00+08:00'), offsetMinutes: 480, ...extra })
+  return usageSectionOf(report)
+}
+
+test('report entry: a gap without a range is named when the period starts before the deletion, and not when it starts after', async () => {
+  const gaps = gapRow({})
+  const before = await usageSectionFrom('2026-10-29T00:00:00+08:00', gaps)
+  assert.deepEqual(before.slice(0, 2), ['## 用量（今天）', GAP_LINE])
+  assert.ok(before[2]?.startsWith('- 合计：积分'), before.join('\n'))
+  const after = await usageSectionFrom('2026-10-30T00:00:00+08:00', gaps)
+  assert.ok(after.every(line => !line.startsWith('- 缺口：')), after.join('\n'))
+  assert.ok(after[1]?.startsWith('- 合计：积分'), after.join('\n'))
+  // The same instant is not before it: the period starts at the deletion.
+  assert.ok((await usageSectionFrom(GAP_AT, gaps)).every(line => !line.startsWith('- 缺口：')))
+  // Without a period bound the report is the whole record, so every gap counts.
+  assert.ok((await usageSectionFrom(undefined, gaps)).includes(GAP_LINE))
+})
+
+test('report entry: a gap with a range is named when the period meets the range', async () => {
+  const gaps = gapRow({ from: '2026-10-20T00:00:00+08:00', to: '2026-10-28T12:00:00+08:00' })
+  assert.ok((await usageSectionFrom('2026-10-28T00:00:00+08:00', gaps)).includes(GAP_LINE), 'the period starts inside the range')
+  assert.ok((await usageSectionFrom('2026-10-28T12:00:00+08:00', gaps)).includes(GAP_LINE), 'the period starts at the end of the range')
+  assert.ok((await usageSectionFrom('2026-10-29T00:00:00+08:00', gaps)).every(line => !line.startsWith('- 缺口：')), 'the period starts after the range, though before the deletion')
+})
+
+test('report entry: gap rows that cannot be read are counted in the usage section; an empty period still names the gap', async () => {
+  const gaps = [gapRow({}), '{broken', gapRow({ removed: 0 })].join('\n')
+  const section = await usageSectionFrom('2026-10-29T00:00:00+08:00', gaps)
+  assert.deepEqual([section[1], section[2]], [GAP_LINE, '- 无法读取的缺口记录 2 条，未列出'])
+  const empty = await reportFromFiles(memoryFs(new Map([[GAP_PATH, gapRow({})]])), { userHome: 'C:/u/glm-hourness' }, 'p', '2026-10-29T00:00:00+08:00', { now: Date.parse('2026-10-31T20:00:00+08:00'), offsetMinutes: 480 })
+  assert.deepEqual(usageSectionOf(empty), ['## 用量（今天）', '- 无模型调用', GAP_LINE])
+  const noGap = await reportFromFiles(memoryFs(new Map()), { userHome: 'C:/u/glm-hourness' }, 'p', '2026-10-29T00:00:00+08:00')
+  assert.deepEqual(usageSectionOf(noGap), ['## 用量（今天）', '- 无模型调用'])
+})
+
+test('report entry: the usage section prices through the service in the options, and the records without a readable time stay out of the period', async () => {
+  const files = new Map([[USAGE_PATH, [
+    JSON.stringify({ at: '2026-10-31T10:00:00+08:00', provider: 'glm-zcode', model: 'glm-5.3', usage: { inputTokens: 1000, cacheReadTokens: 4000, outputTokens: 500, totalTokens: 5500 } }),
+    JSON.stringify({ at: 'whenever', provider: 'glm-zcode', model: 'glm-5.3', usage: { inputTokens: 1, outputTokens: 1 } }),
+    '{broken',
+  ].join('\n')]])
+  const homes = { userHome: 'C:/u/glm-hourness' }
+  const priced = usageSectionOf(await reportFromFiles(memoryFs(files), homes, 'p', '2026-10-31T00:00:00+08:00', { pricing: creditPricing }))
+  // Saturday morning: off-peak, so half of the 2.57 the same call costs in peak.
+  const credits = creditPricing.charged('glm-5.3', { inputTokens: 1000, cacheReadTokens: 4000, outputTokens: 500 }, Date.parse('2026-10-31T10:00:00+08:00'))
+  assert.ok(credits !== undefined && Math.abs(credits - 1.285) < 1e-9, String(credits))
+  assert.deepEqual(priced, ['## 用量（今天）', `- 合计：积分 ${credits.toFixed(2)} · 高峰 0% · 缓存命中 80%`, `- glm-5.3：1 次 · 积分 ${credits.toFixed(2)} · 高峰 0% · 缓存命中 80%`])
+  // With no period bound nothing is filtered by time: the record without a time is counted as unreadable, the broken line is not seen by the report.
+  const all = usageSectionOf(await reportFromFiles(memoryFs(files), homes, 'p', undefined, { pricing: creditPricing }))
+  assert.ok(all.includes('- 无法读取的记录 1 条，未计入'), all.join('\n'))
 })
 
 test('apply journals dispatch decisions and always delegates', async () => {

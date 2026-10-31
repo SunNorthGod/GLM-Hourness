@@ -22,6 +22,7 @@ import { createQuotaReader, QUOTA_TIMEOUT_MS, QUOTA_URL, quotaHealthText, type Q
 import { loginFingerprintOf, nodeQuotaFs, QuotaJournal, quotaJournalPath, type QuotaRecord } from '../src/glm-llm/quota-journal.ts'
 import { ZcodeAdapter, logout } from '../src/glm-llm/zcode.ts'
 import { creditPricing } from '../src/glm-llm/credits.ts'
+import { renderHourness } from '../src/report/index.ts'
 import { healthServiceName, type RowHealthView } from '../src/shared/health.ts'
 import { PRICING_SERVICE, pricingService, quotaOf } from '../src/shared/pricing.ts'
 import { quotaLines } from '../src/shared/quota.ts'
@@ -685,6 +686,25 @@ test('/glm-status returns within 3.5 seconds when the quota request does not ans
   gate.release?.()
   const next = await row.run('glm-status')
   assert.ok(next.includes('额度（服务端读数，含 ZCode 等其他客户端，读于 17:02）：max'), next)
+})
+
+test('/hourness, reading the quota through the service the row provides, returns within 3.5 seconds when the request does not answer, and shows the reading on the next call', async () => {
+  const home = newHome()
+  await signIn(home)
+  const gate: { release?: () => void } = {}
+  const { fetchImpl, calls } = rowFetch(() => new Promise<Response>(resolve => { gate.release = () => { resolve(json(quotaBody(START))) } }))
+  const row = loginRow({ home, fetchImpl })
+  const pricing = pricingService(row.store)
+  assert.ok(pricing !== undefined)
+  const render = (): Promise<string> => renderHourness({}, { pricing, fs: { readFile: () => Promise.reject(new Error('ENOENT')) }, now: new Date(START), offsetMinutes: 480 })
+  const started = Date.now()
+  const text = await render()
+  assert.ok(Date.now() - started < 3500, `returned after ${Date.now() - started} ms`)
+  assert.ok(text.includes('## 额度\n额度：正在读取，稍后再看'), text)
+  gate.release?.()
+  const next = await render()
+  assert.ok(next.includes('## 额度\n额度（服务端读数，含 ZCode 等其他客户端，读于 17:02）：max\n- 5 小时：已用 41% · 21:30 重置 · '), next)
+  assert.equal(calls.filter(call => call.includes('/api/monitor/')).length, 1, 'the second call joined the read in flight')
 })
 
 test('the row health says the last reading, the reason of a failed read, and a refused login; the state stays as the row had it', async () => {

@@ -81,6 +81,7 @@ GLM-Hourness（同仓两包，§2.3）
 | --- | --- | --- |
 | 用量流水、加密凭证；以后还有偏好类记忆 | 用户级目录 `$DSH_HOME/glm-hourness/`，默认 `C:\Users\29596\.dsh\glm-hourness\` | 额度跟账号走，一台机器一份，按项目拆开反而看不全 |
 | 额度流水：读数、读取失败、上游限额、登录被拒四种记录（§4.7） | 用户级目录 `$DSH_HOME/glm-hourness/audit/quota.jsonl`，只追加，不轮换（到 8 MiB 时行健康提示，轮换到那时再设计） | 额度与登录是整个账号的事，同一台机器上的项目共用，不属于哪个项目 |
+| 用量记录的缺口：每次删用量记录写一行（删除时刻 `at`、条数 `removed`、理由 `reason`，可选 `detail`、`from`、`to`、`ref`；字段与上限见下面「缺口文件」一条） | 用户级目录 `$DSH_HOME/glm-hourness/audit/usage-gaps.jsonl`，只追加；删记录的人手写这一行（`DEVELOPMENT.md` §5 第 8 条），`/hourness` 的面板与晨报的用量一节读它；2026-10-29 删去 806 条的那一行由项目图 `m6-gap` 写入 | 用量流水有多个读者（面板、标定运行器），都按用量记录解析，混进别的形状会被计为无法读取，所以缺口另放一个文件 |
 | 记忆（事实）、违规、决策 | 项目目录，即工作区 `.llm/` | 记录的是在这个项目里学到的东西与犯过的错，混在一起会互相污染 |
 | 项目图 | 仓库内 | 项目知识，随 git 版本化（`ORCHESTRATION.md` §2.6） |
 
@@ -90,6 +91,7 @@ GLM-Hourness（同仓两包，§2.3）
 
 - 新行 `glm-hourness/data`（`dist/data/index.js`）经 `ctx.provide` 提供 cordis 服务 `glmHournessData`，值为 `{userHome, projectHome?}`。`userHome` 按上面的顺序解析，行配置 `dshHome` 是显式项，测试与探针用它指向临时目录；`projectHome` 取行配置，bundle 默认为本仓库的 `.llm`（与通道两行相同的 `USERPROFILE` 相对写法）。激活期不做 I/O，不抛错；流水在第一次写入时建目录。
 - 流水路由（`src/memory/audit.ts`）：用量写 `<userHome>/audit/usage.jsonl`，违规与决策写 `<projectHome>/audit/`。各行的目录在每次写入时解析，所以数据行晚于使用者激活也不影响。写入失败不抛给调用方，每条流水第一次失败时在控制台报一次（缺目录也算失败）。
+- 缺口文件（`auditPaths(...).gaps`，读它的是 `src/report/panel.ts` 的 `parseGaps`）：一行一个 JSON 对象，记一次删用量记录。`at` 必填，ISO 8601，能解析，是删除的时刻；`removed` 必填，整数 1–10,000,000；`reason` 必填，1–300 个字符，为什么删、谁要求的；`detail` 可选，至多 300 个字符，按 provider 与模型的条数；`from`、`to` 可选，ISO 8601，被删记录的时间范围，`from` 不晚于 `to`；`ref` 可选，至多 200 个字符，留痕的出处。多出的字段忽略；不是 JSON 或不合上面任何一条的行，面板计为「无法读取的缺口记录 N 条」，其余照常。没有代码写这个文件：谁删用量记录，谁往文件追加一行（`DEVELOPMENT.md` §5 第 8 条），删掉文件即撤销。面板每条一行，晨报的用量一节只带本期遇到的（`ORCHESTRATION.md` §11.3）。
 - 取值顺序：项目目录取行配置的 `home`（用户 profile 补丁给 memory、workflow、hourness 配了仓库 `.llm`，照旧生效），没有再取服务的 `projectHome`；用户级目录只取服务，没有数据行就不写用量，保证没有任何一行把用户级数据写到数据行没解析过的地方。
 - 各行：guard 每次拦截都写违规流水，`onViolation` 回调删除；memory 的用量只经服务写用户级目录，记忆工具仍用行的 `home`，没有 `home` 时只关记忆工具；workflow 的决策与 hourness 的报告按上面的顺序取目录；`/hourness` 从用户级目录读用量，缺哪个目录就在输出里写明。
 - 验证：L2 覆盖三步解析、服务提供与撤回、取值顺序、有无服务两种情况；L3 探针确认数据行在真运行时上提供服务，用量只落在场景的用户级目录、真实的 `~/.dsh/glm-hourness` 不变，guard 拦下的 shell 写入在场景项目目录留下违规记录（带规则、工具、agent 与会话 id）。数据行经探针证明后默认启用。

@@ -16,14 +16,15 @@ function fakeFs() {
 const USER_HOME = 'C:/users/me/.dsh/glm-hourness'
 const service = { userHome: USER_HOME, projectHome: 'C:/ws/.llm' }
 
-test('audit paths: usage under the user directory, violations and decisions under the project directory', async () => {
+test('audit paths: usage and its gaps under the user directory, violations and decisions under the project directory', async () => {
   assert.deepEqual(auditPaths({ userHome: USER_HOME, projectHome: 'C:\\ws\\.llm\\' }), {
     violations: 'C:\\ws\\.llm/audit/violations.jsonl',
     decisions: 'C:\\ws\\.llm/audit/decisions.jsonl',
     usage: `${USER_HOME}/audit/usage.jsonl`,
+    gaps: `${USER_HOME}/audit/usage-gaps.jsonl`,
   })
   assert.deepEqual(auditPaths({ projectHome: 'C:/ws/.llm' }), { violations: 'C:/ws/.llm/audit/violations.jsonl', decisions: 'C:/ws/.llm/audit/decisions.jsonl' })
-  assert.deepEqual(auditPaths({ userHome: USER_HOME }), { usage: `${USER_HOME}/audit/usage.jsonl` })
+  assert.deepEqual(auditPaths({ userHome: USER_HOME }), { usage: `${USER_HOME}/audit/usage.jsonl`, gaps: `${USER_HOME}/audit/usage-gaps.jsonl` })
 })
 
 test('audit journal appends one JSONL line per record; a sink without a directory rejects', async () => {
