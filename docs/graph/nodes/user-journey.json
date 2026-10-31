@@ -143,6 +143,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "design-decisions-apply-1031 的用户图一支停下（MODULE-STOPPED）：第 2 轮评审 CHANGES_REQUESTED，HIGH 0、MEDIUM 1、NIT 8；DR1–DR10 都已关闭，剩下的 R1 是超时第一个数的两种读法（见 d-timeout-measured 本日的裁定）。新格式一页稿没写，停止报告在 .agents/tasks/user-journey/align-stop-report.md。编排方在这个运行结束后合并一个小运行，按裁定修 R1 并写一页稿。"
+    },
+    {
+      "at": "2026-10-31T13:16:51.517Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "用户图 0.6 第 3 轮决定评审 APPROVED（HIGH 0、MEDIUM 0、NIT 5）：R1 按超时裁定（方案 A）关闭，R2–R8 关闭；②③ 两件记为人已定。下一步按新格式写一页稿并单独评审（design-finish-m4-bootstrap-m6-uj）。"
     }
   ]
 }

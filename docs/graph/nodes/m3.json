@@ -476,6 +476,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M3 第 5 步（e48fc70）独立评审 APPROVED，挡路 0、不挡路 4（.agents/tasks/m3/impl/review-step5.md）。S5-1（MEDIUM）与第 4 步的 S4-1 是同一个洞：PTC 预设下带 parent 的嵌套调用整段跳过 tools/pre-execute 的判断，子 agent 的 run_code 能在目标或模块放行之前写文件，主 Agent 也一样；brief 已要求合入前修。S5-2（LOW）放行前不许写按每次写入时根会话的焦点判，不按派活时的焦点，主 Agent 把焦点移到已放行的模块后，派去写未放行模块的子 agent 就不再被拒。S5-3（NIT）阶段提醒里点名的 propose_to_human 与 record_human_answer 要到第 6 步才有。S5-4：提交说明里的几处解读请记为 agent 决定、人可推翻。编排方要求 S5-2 与 S4-1 一并在合入前修（判法改为派活时记下的模块）。"
+    },
+    {
+      "at": "2026-10-31T13:16:51.930Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M3 第 6 步在写的时候，有一份 src/graph/format.ts 的改动（PROPOSAL_FIELDS 的导入与 background、proposal、doubt、notTaken、conclusion 几个字段的检查）被写进了主检出而不只是 .worktrees/m3，main 上的图命令行与 npm test 因此失败（main 的 proposal.ts 没有 PROPOSAL_FIELDS）。编排方核对这 7 行在 m3 工作树里都有，用 git checkout 还原了主检出的这个文件，没有丢东西；已提醒第 6 步的会话只写 .worktrees/m3、命令都在那里跑。主检出的提交与已推送的历史不受影响。"
     }
   ]
 }
