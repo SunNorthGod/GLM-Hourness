@@ -203,6 +203,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M4 设计 0.6 对指标流水的接缝：M4 不再交影子记录的事件（没有影子）；交拦截、跟进、撤下、申报与放行的事件（只带规则 id、种类、结局、来源与会话 id，不带命令与路径），另交检查超时值调整与超时的事件（只带检查名、上限、实际耗时与结局）和每天一条压制计数事件；recordKey 与 metrics-files-only 照它的请求，metrics-files-only 经 installRuleGate 安装、启用即拦。"
+    },
+    {
+      "at": "2026-10-31T20:01:30.265Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M3 设计附录 0.6（d-ask-three-gates，试行）对指标流水设计的请求，2026-11-01 第 1 轮评审后补了新事件与字段。人要看这次试行的效果，数由 harness 写。一、design.proposal-shown 多两个载荷：form（recommend/choose/want/look；confirm、release 没有）与 points（返回给人的完整文字的码点数，含选方向的路）；text 的码点数、是否带 sample 也在（附录 §3.12）。二、design.answer-recorded 多 form，另多 delegated（对眼前一件说「你定」，recordedAs 以「交给主 Agent 定：」开头）与 pickedRecommended（choose 的 agree 且不是 delegated：人选的是不是推荐的那条路）。三、两个新事件：design.delegation（「这类你定」存下、撤下或没变：动作、写后的条数、scope 的码点数、存放位置 graph 或 m5，不记内容）与 design.proposal-refused（propose_to_human 被拒：kind、form、原因码 text-shape/text-too-long/plain-word/not-in-text/record/too_many，不记 text；试行里的 160、120、60、50 由人看效果再调，哪条硬限制命中多一眼看得出）。四、要能算的数：每种问法各问了几次；每问读多少字（points 的中位数与最大值）；从提议到人回话的毫秒数（已有）；一条回复里的问题数（已有，至多 3）；「你定」的次数（delegated 为真的条数）；跟随率只数 form 为 recommend 或 choose 的 agree，排除 delegated，choose 另要 pickedRecommended 为真，want 与 look 没有推荐，不进跟随率；「这类你定」存下的条数（数 design.delegation，或 M5 合入前数项目图上 norm-delegations 的 acceptance 项、之后数用户级 delegate-* 偏好）；「我定了：」告知句的条数（主 Agent 消息文本不进事件，由标定的 check.mjs 从会话日志数）。五、你的 §16 里两件待人定的事原按四行写，随新决定改成一个问句（附录 §2.8 的 recommend 例）。M3 的出口 emitMetric 在接口到位前什么都不做。附录 §3.12、第 12 步（a）。"
     }
   ]
 }

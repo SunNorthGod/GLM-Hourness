@@ -462,6 +462,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "来自用户图 0.6 的请求（第二轮决定评审之后），对已放行的 M7 0.6，等自举之后办（d-freeze-until-dogfood），不是现在的阻塞。§3.8.1 合入前的检查现在写每条上限 30 分钟、超时结束整棵进程树：改成按 d-timeout-measured 写（编排方 2026-10-31 裁定，08:17Z 批注，可逆）：写检查的 agent（提议 norm-merge-gate 的主 Agent）估预计用时，超时是它的 3 倍，第一次用估计，跑过之后用最近几次里最慢的一次，不超过现在写的每条上限，没有估计时取这个上限，所以没有估计的检查与今天的行为相同；超时算没过，消息写明哪一条、限多少秒、已跑多久、下一步怎么办；超时值的来历与历史、每次超时记下，晨报看得到。这与本节点上已有的「由提议 norm-merge-gate 的主 Agent 给首个估计」一致，差别只在估计的是预计用时、超时是它的 3 倍。接管项目 0.6 的清单已按这个口径写，对没有估计的命令标「（默认）」。journey.md §6.3 给 M7 的第 ⑤ 条是同一件，其余五条（额度、目标做完、周报比率、影子转生效、EXECUTE_RULES）不在本条。"
+    },
+    {
+      "at": "2026-10-31T20:01:29.524Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M3 设计附录 0.6（d-ask-three-gates，试行，人 2026-10-31：「都没问题。先这样改和试行吧，我看看效果」）对 M7 设计 0.6 的请求。一、报告里主 Agent 自己定的事用一句话告知，固定句式「我定了：X，因为 Y，不对就说」（附录 §2.2、§3.7）：§3.12 批次标记之后那句 Say in one line each… 和 pendingReport 的提醒照这个句式写，每条一句。二、askDraft（§3.7.4）产出的不再是四行草稿 {title, background, proposal, doubt, notTaken}，改为事实加一份按 recommend 问法写的草稿 {form: recommend, title, text, proposal, reason, cost?}：text 一行、恰好一个问号、不超过 160 个码点，proposal、reason 原样出现在 text 的问句（到问号为止）里，cost 在 text 里；有真取舍时 {form: choose, title, text, ways（2–3 条，推荐的放最后）, reason}。L2 里草稿改为过 askTextRefusal、textCoversRecord、proposalRecordRefusal（都从 src/graph/proposal.ts 导入）与 plainWordsIn（src/graph/plain-question.ts）；proposalLineRefusal、renderProposal、splitBold 被 M3 删除（附录 §4 开头）。三、停下之后提醒（§3.7.4 那段 tell）里的 propose_to_human 调用改写成 kind question、form recommend 加上面的字段；await_human、批次标记、一次至多三件不变。四、指标（§3.12.4）：每次要读多少字取 design.proposal-shown 的 points（返回给人的完整文字的码点数），每周被问几次可按 form 分；硬限制被拒的次数取 design.proposal-refused。五、周报里的提议（ladder、floor-add）同样按 recommend 问法交给人，每周至多 3 件不变。"
     }
   ]
 }

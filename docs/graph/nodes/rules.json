@@ -531,6 +531,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "来自用户图 0.6 的请求（第二轮决定评审之后），对已放行的规则板 0.10，等自举之后办（d-freeze-until-dogfood），不是现在的阻塞，规则板的实现也不因此停。一、§6.7 与脚本、检测器的超时。编排方 2026-10-31 的裁定（d-timeout-measured 08:17Z 批注，可逆）：写脚本的 agent 估的是预计用时，超时一律是它的 3 倍，第一次用估计，跑过之后用最近几次里最慢的一次，封顶在至多值，没给估计时取缺省；缺省与至多的数不变，超时后放行并在后台接着跑至多 10 分钟、晚到的拦下告诉主 Agent 也不变。0.10 现在写的是第一个数就是超时本身：规则页的脚本一行要写超时并在旁边写依据的预计；超时值的来历（agent 的估计，或按哪几次实测算的，被封顶时的想要值）、时间与上一个值，每次超时（条目、上限、实际耗时、结局），规则页和晨报看得到；超时是优雅失败：不崩、不丢工作，结局照条目写明的办法，消息写明哪一条、限多少秒、已跑多久、下一步怎么办。二、撤下（d-one-lift-path）：/rules lift <规则 id> 今天只管板上的条目；扩到写在代码里的规则，由规则板交给拥有它的那一行（M4 的规则交给 M4 的服务 glmHournessLifts），§1.4 第 12 条「没有解除，也没有任何改法」作废，规则页那一组标「可以撤下，不能改」，不再列 credential-read 与「只记下，不挡」。三、拦下记录：写在代码里的规则每次拦下都记进项目 .llm/ 里 guard 已在写的违规流水（规则 id、时刻、拦了什么、为什么），规则页按规则 id 数拦下次数。journey.md §6.3 给规则板的三条是同一批请求。"
+    },
+    {
+      "at": "2026-10-31T20:01:31.100Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M3 设计附录 0.6（d-ask-three-gates，试行）对规则板设计 0.10 的请求，2026-11-01 第 1 轮评审后改写：示范与测试是契约，其余是字句，所以不只是改字句。规则提议经 propose_to_human（attach 为 rules:p-…）交给人，原来写作「一个方案四行（background、proposal、doubt、notTaken）」。0.6 起这样的提议是 form recommend 的一问：text 一句是非问，推荐与理由在句子里（脚本提议时原文仍走 detail，附录 §3.13 不变），proposal、reason 原样出现在问句里，cost 在 text 里；图上的提议式待决存 ask、form、proposal、reason、cost、notTaken，不再有 background、doubt；M3 删除 proposalLineRefusal、renderProposal、splitBold、PROPOSAL_LABELS，引擎不再收 background、doubt。要改的：（a）§9.3 末段的两个示范（常量 RULES_PROPOSE_EXAMPLES，d-agent-examples）：propose_to_human 的参数表与「人在主 Agent 的对话里看到的」渲染块改为 form recommend、text、proposal、reason（脚本那个另带 attach，cost 可选），text 一行、恰好一个问号、不超过 160 个码点并原样含 proposal 与 reason，不再有 background、doubt 两栏（title 保留，notTaken 可写可不写）；（b）这两个示范的 L2 原来交给 proposalLineRefusal 和真实图引擎：改为过 askTextRefusal、textCoversRecord、proposalRecordRefusal（都在 src/graph/proposal.ts）、plainWordsIn（src/graph/plain-question.ts）与真实图引擎，其余检查（提得出、attachable 交回的 detail 合 M3 的上限、record_human_answer 同意之后规则生效）不变；（c）rules_propose 结果里的英文 message（§10.7 第 1 步，via: graph 那句「one plan in four lines … the cautions go in the doubt or not-doing line」）改为「Put it to the human with propose_to_human (kind question, form recommend, attach <attach>): one yes-or-no question with your recommendation and reason inside. …」，别再让主 Agent 去写已不存在的字段；via: board 那句的「in four lines」同改为一句是非问；（d）其他受影响的句子：§9.3 正文的「四行」、§10.7、第 7 条验收、/rules 提议的几处「四行」，周报里「用一个四行方案提议删掉（一次至多 3 件）」改为一个 recommend 问，件数不变。attach 只配 form recommend。（e）MAIN_AGENT_RULES 的条数（第 2 轮补）：M3 附录 0.6 起是九条，不是 0.4 与 0.5 的八条。新增 design:main-agent-graph-delegations（标题「「这类你定」只经记录人的话的工具写」，row design，effect block，step 6）；design:main-agent-graph-options 的标题改为「主 Agent 不在图上给人写选项表」；其余七条 id 与标题不变。规则板设计 0.10 里写「M3 的八条」的地方（第 20、170、358、1736、1738、1842、2347 行等，含 §2.6、§10.1、§10.7 第 4 条与 §10.1 的 id 清单）改九条，id 清单补上新增的一条；代码规则目录从 MAIN_AGENT_RULES 映射，条数不改契约测试的写法。"
+    },
+    {
+      "at": "2026-10-31T20:01:32.579Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "规则板与循环板实现 FEAT-003（6cdddcd）独立评审 APPROVED，挡路 0、7 条不挡路的说明；13 步里 3 步已过审。"
     }
   ]
 }

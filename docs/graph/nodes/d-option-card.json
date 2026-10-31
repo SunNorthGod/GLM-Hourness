@@ -141,6 +141,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M3 附录 0.3 §9 第 4 条：M3 只让主 Agent 不再写选项式的人定待决（main-agent-graph 第三条），引擎照旧接受选项式与新的提议式两种形状；graph_propose 的说明改为「人定的题是提议式，agent 自己定的题是选项表」。编排方用命令行写人定的题、面板的选项卡、e22282f 的必填规则要不要对新写入改为只收提议式，由改写本决定的那件事定。"
+    },
+    {
+      "at": "2026-10-31T20:01:31.895Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-10-31 定 d-ask-three-gates（试行），取代本条里给人看的表格版式：选项/怎么做/得到/代价表、「取决于」一行、「是 → X；否 → Y」一行、对话里用 DSH 问答卡、编排方给人的选项也照表格写。人看的选项现在是选方向问法：两三条路，每条一句写人会看到什么，推荐的标出并放最后（d-recommend-last 保留）。保留：引擎里 agent 自己定的题照旧是选项表（label/gain/cost/dimension/recommend，推荐放最后，crux/verdict/weight 免填）。待人定的一件：引擎里决定者为人的选项卡必填规则（crux、verdict、weight）不再有产品里的调用方（主 Agent 被 main-agent-graph-options 拦，人定的事走 propose_to_human 的提议式待决），M3 第 6 步不删它们（旧节点、编排方命令行和现有测试还在用）；要不要对新写入收紧为「决定者为人的待决一律不收选项表」，再删这些规则和面板的 OptionButtons，由人定。"
     }
   ]
 }

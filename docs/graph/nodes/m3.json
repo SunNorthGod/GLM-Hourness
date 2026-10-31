@@ -512,6 +512,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "M4 设计 0.6 对 M3 附录 0.5 的一条补充请求（决定评审第 2 轮 N12，等 dogfood 之后处理，不挡路），接在上一条关于 timeouts 的请求之后：人批准环境工具节点时，请把 graph_propose、graph_edit 结果里每条 timeouts[].text（不超过 40 个码点的字串）当作 detail.mustShow 的一片，走与 rules:、loops: 提议相同的「给人看过原文」核对（附录 0.5 §3.5 第 5a 步），人看过的文字里没有就不记批准。现在这一步只靠工具说明让主 Agent 抄进方案，M4 的 L4 第 12 项只有 GLM-5.3 一次样本，不算保证。接到哪一步（src/design/attach.ts 的分派表现在只有 rules:、loops: 两行）由 M3 定。"
+    },
+    {
+      "at": "2026-10-31T20:01:29.335Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M3 设计附录 0.6 写成（.agents/tasks/m3/design-addendum.md，0.5 原文在 design-addendum-0.5.md），2026-11-01 经第 1 轮独立评审（HIGH 1、MEDIUM 6、NIT 9）与第 2 轮（HIGH 0、MEDIUM 1、NIT 9）后两次修订并入同一版，待复审。第 2 轮主要改 m4 条（编排方裁定：M4 保留自己的放行词表与回话核对，只请申报文字照 recommend 形状写）和几处字数、旧句与小规则（form 建后不能改时旧待决改为 dropped 再新提；norm-delegations 的规整与 20 项上限），见附录 §19 末尾。起因：人 2026-10-31 定的 d-ask-three-gates（试行，relay「都没问题。先这样改和试行吧，我看看效果」）改主 Agent 问人的办法，M3 第 6 步因此暂停等本附录。只改这一件事：问人分三道关（问不问、什么时候问、怎么问），怎么问分四种问法（propose_to_human 新参数 form：recommend 确认建议、choose 选方向、want 问人要什么、look 看样子）；记录与问话分开：图上待决记 ask/form/proposal/reason/cost/ways/notTaken 与结论，harness 查记录；人读的 text 由主 Agent 自己写，harness 只查硬限制（一行、恰好一个问号、字数上限 recommend 160 其余 120、不含换词表词、一条回复至多三件），另查 proposal/reason/cost 原样在 text 里（recommend 与 want 的推荐和理由要在问句里，ask 是 text 从开头到问号为止）。取消四行、背景字段、doubt、renderProposal/proposalLineRefusal/splitBold、0.5 的高峰例题；例题改为每种问法一道（虚构的图书管理系统，放进 propose_to_human 的说明）。新增：「你定」「这类你定」两种人话（§3.7）；「这类你定」只经 record_human_answer 的新种类 delegation 写：harness 核对人的最后一条消息后直接写，M5 合入前存在图上固定 id 的节点 norm-delegations，之后存进 M5 的偏好；新规则 main-agent-graph-delegations 拒绝任何会话用图工具碰这个节点，MAIN_AGENT_RULES 变九条（§3.5、§3.8、§3.15）；访谈第 1–6 步留在聊天里先猜后让人改，不走工具（§2.2）；confirm/release/look 可带必须原样给人看的 sample（§3.4）；「你定」与 choose 选了哪一条进指标（DELEGATED、way、delegated、pickedRecommended，§3.12）。硬限制的纯函数与 TALK_LIMITS 在 src/graph/proposal.ts，不在 talk.ts。第 6 步（正在做、未提交）要改与要删的代码逐文件列在附录 §4 开头。待人看一眼的新增项：附录 §18 末段列出的、决定里没写而为了落地加的几处。待编排方确认的一件：design-context.md「Questions for the person carry their background」一节是否随新决定改写；确认前第 6 步按汇报里交代来由一句、加面板「讲细点」先显示上级标题实现（附录 §9 第 23 条）。"
+    },
+    {
+      "at": "2026-10-31T20:01:32.383Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M3 附录 0.6（问人改成三道关，d-ask-three-gates）第 3 轮评审 APPROVED（HIGH 0、MEDIUM 0、NIT 9，N-19 至 N-27 留到实现时处理）；各轮挡路 7、1、0。0.5 另存 design-addendum-0.5.md。编排方恢复 M3 实现（wf_92ad3963b261025d），第 6 步按 0.6 接着写，并删掉因此变成死代码的四格字段与格式检查；要点已追加到 .agents/tasks/m3/impl/brief.md。"
     }
   ]
 }

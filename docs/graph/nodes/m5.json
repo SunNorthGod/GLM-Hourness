@@ -143,6 +143,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "M5 设计 0.7 修改第 1 遍完成：第 1 轮评审的 F1–F5、N1–N11 都已处理（人说不要的同一习惯 28 天内不再问；人确认过的习惯变成带人回话与当时问句的偏好，不再淡忘），等第 2 轮评审。"
+    },
+    {
+      "at": "2026-10-31T20:01:30.472Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M3 设计附录 0.6（d-ask-three-gates，试行）对 M5 的请求，2026-11-01 第 1 轮评审后改写：人说「这类你定」（某一类问题以后只告知、不再问，只对能撤回的事成立）要存成人能撤的偏好，归 M5。一、写入口：M3 的 record_human_answer 有新种类 delegation（附录 §3.5），先用 personSaid 核对人的原话（只认人的最后一条消息）再写。M5 目前只有 memory_store 一个写路，且 relay 不由 M5 核对（M5 设计 §2.3 末段），模型能带编的 relay 自己写授权。请在 glmHournessMemory 上加 storeDelegation({scope, relay, callId}) 与 forgetDelegation({scope, relay, callId})：存成 type feedback、scope all、name 以 delegate- 开头加短名、relay 为 harness 核对过的人的原话、description 写这一类（人的话，至多 60 个码点）、body 写 Why 并注明只对能撤回的事；并让 memory_store 对 delegate- 开头的名字一律拒绝（hint：用 record_human_answer 的 delegation），memory_forget 对它们也只认 harness 的入口。二、会话开局索引把这类偏好排在前面（你的 §3.3 已是偏好在前），主 Agent 每个会话都看得到，M3 不读不写。三、M3 合入时的回退：偏好存在图上固定 id 的规范节点 norm-delegations（只经 delegation 写，其余会话的图工具被 main-agent-graph-delegations 拒绝），M3 的阶段提醒多一行读它。身份节只写调用、不写存放位置，所以你合入时不用改身份节。你合入时请在步骤里列：把 delegation 里写 norm-delegations 的那一支换成调 storeDelegation 与 forgetDelegation，删 M3 的提醒行与它的测试（src/design/stage-notice.ts），并把项目图上 norm-delegations 已有的项在人在场时搬进偏好。四、汇报细度 depth 的偏好写法不变。附录 §3.15、§9 第 25 条。"
+    },
+    {
+      "at": "2026-10-31T20:01:32.961Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M5 设计 0.7（推测出的习惯先问人再记）第 3 遍复核 APPROVED（NIT 7，N16–N22）；第 2 遍的 F6–F8、N12–N15 都已关闭。impl-m5-memory-lessons 接着做实施计划与九个任务节点的草稿。"
     }
   ]
 }

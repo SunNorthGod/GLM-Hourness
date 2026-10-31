@@ -317,6 +317,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "来自用户图 0.6 的请求（第二轮决定评审之后），对已放行的循环板 0.6，等自举之后办（d-freeze-until-dogfood），不是现在的阻塞，循环板的实现也不因此停。§6.6 脚本与检查条目的超时：编排方 2026-10-31 的裁定（d-timeout-measured 08:17Z 批注，可逆）：写它的 agent 估的是预计用时，超时一律是它的 3 倍，第一次用估计，跑过之后用最近几次里最慢的一次，封顶在至多值，没给估计时取缺省；拦路的 GATE_TIMEOUT_MS、GATE_TIMEOUT_MAX_MS 与不拦路的 WORK_TIMEOUT_MS、WORK_TIMEOUT_MAX_MS 的数不变，拦路脚本超时后放行并在后台接着跑至多 10 分钟不变。0.6 现在写的是第一个数就是超时本身（页面写「超时 60 秒」，没有预计这一栏）：页面上每个脚本与检查条目写超时并在旁边写依据的预计，写超时的说明（哪一条、限多少秒、已跑多久、下一步怎么办）、值的来历与历史、每次超时的记录。人加的检查条目的预计秒数由 M4 的检查行经 checkCommandOf 交来（M4 0.6 §6.1.2），M4 改稿后与这里对齐为乘 3。另外 §2.4 里 loops:schedule-tools、loops:files-only 若按影子列，改成启用即拦（d-code-rules-enforce）。journey.md §6.3 给循环板的一条是同一批请求。"
+    },
+    {
+      "at": "2026-10-31T20:01:31.309Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M3 设计附录 0.6（d-ask-three-gates，试行）对循环板设计 0.6 的请求，2026-11-01 第 1 轮评审后补了一处。循环板的提议（loops:lp-…，含脚本与人加的检查）经 propose_to_human 交给人，写作「四行」的地方改为 form recommend 的一问：text 一句是非问，推荐与理由在问句里；命令原文与注意事项走 attach 的 detail（上限、给人看过原文的核对都不变）。loop_propose 结果里的英文 message（§7.1 第 1 步，via: graph 那句「one plan in four lines; the recommendation line says what describe says」与 via: board 那句「in four lines」）是代码字串，改为「one yes-or-no question with your recommendation and reason inside, shape recommend」，别再让主 Agent 去写已不存在的字段。「有事等你超过 24 小时再说一次」用 propose_to_human 只带 question 与新的 text（附录 §3.4 的再给人看一次，0.6 起要带 text，可以换个说法，字数上限取待决现有的 form）。图上的提议式待决存 ask、form、proposal、reason、cost、notTaken，不再有 background、doubt。attach 只配 form recommend。"
     }
   ]
 }

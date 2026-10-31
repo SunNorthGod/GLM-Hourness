@@ -27,6 +27,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "design-user-graph 进度：设计 0.1 写出（写到一半按 d-ask-three-gates 调整了访谈与问人的部分），第 1 轮评审 CHANGES_REQUESTED（HIGH 3、MEDIUM 9、LOW 5）；0.2 回应全部 17 条，第 2 轮 CHANGES_REQUESTED（MEDIUM 4、LOW 7），挡路 12 → 4；0.3 回应第 2 轮 11 条，等第 3 轮评审。"
+    },
+    {
+      "at": "2026-10-31T20:01:30.841Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M3 设计附录 0.6（d-ask-three-gates，试行）对用户图设计的回应与请求，2026-11-01 第 1 轮评审后改了第一点。你的 §4.4 已按新决定写，M3 0.6 的落点：一、访谈的第 1–6 步在聊天里问（附录 §2.2、§2.3）：先猜后让人改，写成「我猜用它的有读者和管理员……，对吗？」，不走 propose_to_human，不受硬限制和一条回复三件的计数管。want 问法（propose_to_human 的 form want，text 一句带猜测的问句，proposal 是那个猜测并在问句里，恰好一个问号、不超过 120 个码点）只用于访谈之外单独一件「猜一个让人改」的问题，或明确要求答案落到图上的时候；人纠正时主 Agent 记 agree 并把纠正后的话写进 recordedAs（附录 §3.5）。二、确认建议（拆流程、放行）是 recommend；加一步放进已有模块还是新模块有真取舍，是 choose（路 2–3 条，推荐的放最后，harness 排版并标推荐）。三、「看样子」与 confirm 带样稿：M3 0.6 的 propose_to_human 多一个 sample 参数（confirm、release 或 form look 可带，至多 6000 个码点），harness 原样接在问话之后（look 的放进围栏代码块，按画的样子显示），record_human_answer 核对整段确实出现在主 Agent 紧接着的回复里（第 5b 步，同放行稿 page 的做法）；renderUserGraph 的文字由主 Agent 从你的工具结果取来放进 sample，M3 不调你的服务。confirm 的 text 可以是「哪里不对？」一类开放问句，也可以是「需求这样定，可以吗？」，都过同一组硬限制。四、人自己说的「借书前要先交押金」这类，沿用 M3 §3.7：收不回的事清单外的短话先复述再记，可逆的事直接记。五、M3 不再有 background 字段（附录 §2.9）。"
     }
   ]
 }

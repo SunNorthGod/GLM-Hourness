@@ -264,6 +264,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M6 实现 FEAT-005（m6-probe，探针核对没有额度请求、三种包组合与请求正文）提交 42b3925：build、preflight、npm test 退出码 0，npm run probe 两次都是 161/161，没有留下 probe 用的 profile，用量流水没变。5 步都写完，等这一步的独立评审，之后是整合评审、沙盒、合入与桌面版实测。"
+    },
+    {
+      "at": "2026-10-31T20:01:32.772Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M6 实现：FEAT-005（m6-probe，42b3925）独立评审 APPROVED、NIT 1；整合轮的修复提交 b327857（文档）、db0cd5d（probe-net.mjs 头注乱码）、f520d88（glm-quota 测试），HEAD f520d88 上 build、preflight、npm test 退出码 0，probe 161/161，与 origin/main 9b1a8ea 试合并没有冲突；等整合评审。M6 一页稿按新问法重写（onepage.md，1,198 个汉字，替人定的方向 34 个：§19 的 30 个加 §0.1 的 4 条接缝裁定），评审 APPROVED、NIT 3。"
     }
   ]
 }

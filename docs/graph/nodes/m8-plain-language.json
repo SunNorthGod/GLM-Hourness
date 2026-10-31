@@ -314,6 +314,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "面板设计 1.1 第 10 轮评审仍 CHANGES_REQUESTED（挡路 2 条，各轮 6、2、2、2、2、0、2、0、3、2），本运行按规矩停下，写了 .agents/tasks/plain-ui/align-stop-report.md。两条都是邻居设计更新后留下的旧说法：P10-01 撤规则的说明里还写接管自己的 /hourness-init unlock-shell（已按 d-one-lift-path 取消）；P10-02 没写估计、按上限起步的超时值被要求带变更历史与 7 天计数，而 M4 0.6 §6.3.1 只在值变化时写记录。编排方裁定（可逆）：P10-01 照 d-one-lift-path 改；P10-02 照 M4 0.6 §6.3.1，按上限起步的值来源写「上限」，没有历史不算缺记录、不报警。等当前运行结束后派一遍只改这两条加复审。"
+    },
+    {
+      "at": "2026-10-31T20:01:29.896Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M3 设计附录 0.6（d-ask-three-gates，试行）对面板设计（m8-plain-language）的请求，2026-11-01 第 1 轮评审后补了五、六两处。一、待决不再带 background：四行取消，M3 的提议式待决改带 ask（问句：主 Agent 写的 text 从开头到问号为止，恰好一个问号，不超过该问法的 TALK_LIMITS，recommend 160 其余 120）、form（recommend/choose/want/look）、proposal、reason、cost、ways（只有 choose 有，2–3 条，推荐的放最后）、notTaken。请把人定待决的必带字段从 background 改成 ask（第一阶段警告、第二阶段拒绝）；PLAIN_LIMITS 里 M3 只留 title，why 没有 M3 的读者，由你合入 plain.ts 时自己加；M3 第 6 步的 6c 契约测试在你的 plain.ts 合入时补第二阶段断言（读的是 ask）。二、「需要你」的每一项先显示问句 ask（第一行就是人要回答的那句话），选方向的再列 ways、最后一条标推荐；不再有背景/推荐/疑问/不做四行、标签与加粗，不再导入 splitBold 与 PROPOSAL_LABELS（M3 删了它们）。三、首页第一件显示全部，其余件显示问句一行，「讲细点」展开理由与代价。四、写法检查的 jargon 规则改查 title、ask、proposal、reason、cost、ways、notTaken；换词表仍是 M3 的 PLAIN_WORDS。五、被取消的背景一行的替代：人 2026-10-29 要求每个问题带前因后果（design-context.md「Questions for the person carry their background」），0.6 把前因后果放进问题前面的汇报里（身份节有一句要求汇报逐个交代每个问题是什么事、从哪来）；面板上对应的是：每件的「讲细点」先显示它的上级标题和 why（或正文第一句），再显示理由与代价。六、确认需求与放行这类不在图上的「等你」项（面板设计 1.1 的 §1.4 第 6 条 (b) 与 §4.3 写的是四行）：从 shownProposalOf 解析出的结果里取 text，显示到问号为止那一句（src/graph/proposal.ts 的 askOf），不再是四行；面板设计里方向表、§13 的问题写法、验收第 6、9 条里的「四行」「background」同改。七、ui/src/graph/common.tsx 的 ProposalView 是 M3 第 6 步的最小显示，由你整体重写，谁后合入谁 rebase。附录 §2.9、§3.3、§4 开头。"
     }
   ]
 }

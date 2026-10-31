@@ -50,6 +50,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "人 2026-10-31 定 d-ask-three-gates（试行），取代本条的四行版式（背景、推荐、疑问、不做，关键词加粗）与「不列选项」。本条保留的部分：用人话、换词表（plain-words）、不用验收、标定、门禁、影子这类词。"
+    },
+    {
+      "at": "2026-10-31T20:01:31.504Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-10-31 定 d-ask-three-gates（试行）取代本条的四行版式；M3 附录 0.6 的落法。保留：换词表（PLAIN_WORDS）与「用人话」，仍只定义一次，在 src/graph/plain-question.ts，身份节和 propose_to_human 的说明都引用。变化：例题由一道四行题改为每种问法一道（recommend/choose/want/look），共四道，虚构的图书管理系统，只放在 propose_to_human 的说明里（d-agent-examples：示范放在写它的工具的说明里），身份节只留换词表一句；harness 在 propose_to_human 里对 text 与记录字段查换词表（plainWordsIn）。被取代：每道题固定四行、重点加粗、背景一行至多 60 个码点（PLAIN_LIMITS.background 取消）。"
     }
   ]
 }
