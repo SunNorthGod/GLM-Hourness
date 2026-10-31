@@ -5,8 +5,8 @@ import { CLAMP, COLORS, EASE } from "../theme";
 import { T } from "./timeline";
 
 // Layout for 1080x1920. Everything is driven by `t`, a frame of the whole
-// video, so the hook can show a later moment of the same graph. Nothing goes
-// right of x = 945: the short-video apps put their buttons in that column.
+// video. Nothing goes right of x = 945: the short-video apps put their
+// buttons in that column.
 
 type Box = { label: string; x: number; y: number; w: number; h: number };
 
@@ -18,7 +18,7 @@ const MODULES: Box[] = [
 ];
 const TASKS: (Box & { parent: number; above?: number })[] = [
   { label: "冲突检查", x: 175, y: 1100, w: 260, h: 104, parent: 0 },
-  { label: "日历视图", x: 175, y: 1250, w: 260, h: 104, parent: 0, above: 0 },
+  { label: "日历视图", x: 175, y: 1265, w: 260, h: 104, parent: 0, above: 0 },
   { label: "到点通知", x: 495, y: 1100, w: 260, h: 104, parent: 1 },
 ];
 const TRUNK_Y = 1470;
@@ -298,20 +298,6 @@ export const GraphStage: React.FC<{ t: number }> = ({ t }) => {
           ● 子 Agent {"ABC"[i]}
         </Chip>
       ))}
-      {/* A dispatch to the module still in design is turned back. */}
-      <Chip
-        t={t}
-        from={T.refusedTry}
-        to={T.refusedTry + 14}
-        leave={T.refused + 20}
-        x0={1100}
-        y0={1200}
-        x1={470}
-        y1={MODULES[2].y + MODULES[2].h / 2 + 18}
-        color={COLORS.rose}
-      >
-        {t >= T.refused ? "✗ 没放行，派不出去" : "● 派活"}
-      </Chip>
       <Trunk t={t} />
       {/* A commit that skipped the check is turned back from the trunk. */}
       <Chip
