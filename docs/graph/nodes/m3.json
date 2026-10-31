@@ -488,6 +488,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "人 2026-10-31 定 d-ask-three-gates（问人改成三道关、记录与问话分开），正好打在 M3 第 6 步（propose_to_human）上，按 d-freeze-until-dogfood 的例外即刻并入：编排方暂停 m3-steps-4-to-merge（wf_92ad3963b261025d）的第 6 步，派 design-m3-addendum-ask-v06（wf_039c21ebf89edd32）把附录改到 0.6（只改问人的部分：身份节、换词与例题、talk.ts、提议式待决、propose_to_human 的种类与硬线、五种话、一页放行稿的要你定的、「你定」偏好、第 6 步与第 9 步的步骤表），独立评审通过后第 6 步按 0.6 接着写，并删掉因此变成死代码的四格字段与检查。"
+    },
+    {
+      "at": "2026-10-31T17:15:52.362Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M3 附录 0.6（问人改成三道关）第 1 稿写出、0.5 另存；第 1 轮评审 CHANGES_REQUESTED（HIGH 1、MEDIUM 6、NIT 9，.agents/tasks/m3/reviews/addendum-v06-review.md）；作者已回应全部 16 条，等第 2 轮评审。M3 实现第 6 步仍按计划暂停等这一版。"
     }
   ]
 }

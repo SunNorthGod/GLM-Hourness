@@ -21,6 +21,12 @@
       "reason": "派出 design-user-graph（wf_02e76a7de13ebdf1）：只写设计、过独立评审，再按新格式写一页稿并单独评审；人放行后，实现排在 M3 与 M7 骨架合入之后",
       "from": "approved",
       "to": "doing"
+    },
+    {
+      "at": "2026-10-31T17:15:52.165Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "design-user-graph 进度：设计 0.1 写出（写到一半按 d-ask-three-gates 调整了访谈与问人的部分），第 1 轮评审 CHANGES_REQUESTED（HIGH 3、MEDIUM 9、LOW 5）；0.2 回应全部 17 条，第 2 轮 CHANGES_REQUESTED（MEDIUM 4、LOW 7），挡路 12 → 4；0.3 回应第 2 轮 11 条，等第 3 轮评审。"
     }
   ]
 }
