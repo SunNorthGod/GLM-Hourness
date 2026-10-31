@@ -6,7 +6,8 @@ import { CLAMP, COLORS, EASE } from "../theme";
  * One caption, burnt in so the video reads with the sound off. It sits in the
  * top third, centred on x = 495 (the middle of the 45-945 column the content
  * keeps to), clear of the platforms' overlays at the bottom and the right.
- * The first caption of the video is already on screen at frame 0.
+ * The first caption of the video, sub-line included, is already on screen at
+ * frame 0.
  */
 export const Caption: React.FC<{ title: string; sub?: string; immediate?: boolean }> = ({
   title,
@@ -38,7 +39,7 @@ export const Caption: React.FC<{ title: string; sub?: string; immediate?: boolea
             fontSize: 50,
             color: COLORS.dim,
             textAlign: "center",
-            opacity: interpolate(frame, [immediate ? 0 : 6, immediate ? 1 : 14], [0, 1], CLAMP),
+            opacity: immediate ? 1 : interpolate(frame, [6, 14], [0, 1], CLAMP),
           }}
         >
           {sub}

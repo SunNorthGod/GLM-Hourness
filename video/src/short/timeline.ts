@@ -1,12 +1,12 @@
 // The vertical short follows the bars of public/music/score.wav: 120 BPM,
 // one bar is 60 frames at 30 fps, one beat 15. Every caption and every cut
-// starts on a bar line; the events inside a bar land on its beats.
+// starts on a bar line; the events inside a bar land on its beats, except
+// rogueRefused in T, which falls 5 frames after a beat.
 
 export const BAR = 60;
 export const BEAT = 15;
 /** First frame of bar n, counting bars from 1 as the score does. */
 export const bar = (n: number) => (n - 1) * BAR;
-export const BARS = 20;
 
 /**
  * Captions, one per bar where the story changes every bar; a caption with
@@ -34,22 +34,24 @@ export const CAPTIONS: { bar: number; bars?: number; title: string; sub?: string
   { bar: 13, title: "每件活都过独立审查" },
   { bar: 14, title: "审查谁定深浅", sub: "主 Agent 定；必须全审的，一律全审" },
   { bar: 15, title: "主干只收检查过的提交" },
-  { bar: 16, title: "检查结果由系统记", sub: "模型说的不算" },
+  { bar: 16, title: "检查结果由系统记录", sub: "模型说的不算" },
   { bar: 17, bars: 2, title: "系统每周数给你看", sub: "问你几次、你读多少、等你多久" },
   { bar: 19, bars: 2, title: "人在图上编程", sub: "图下的活交给 harness" },
 ];
 
 /**
  * Moments on the project graph, in frames of the whole video. The person's
- * nod is the first beat of bar 10; the blocks grow after it, and the
- * sub-agents arrive on the first three beats of bar 11.
+ * nod starts on the first beat of bar 10; the three blocks grow on the next
+ * three beats, one per beat. A block's "released" badge comes one beat after
+ * the block, "designing" with it. Each task card comes one beat before its
+ * sub-agent, which arrives on the first three beats of bar 11.
  */
 export const T = {
   goal: bar(7),
-  modules: [bar(10) + 20, bar(10) + 30, bar(10) + 40],
-  released: [bar(10) + 36, bar(10) + 46],
-  designing: bar(10) + 48,
-  tasks: [bar(11) - 10, bar(11) + 5, bar(11) + 20],
+  modules: [bar(10) + BEAT, bar(10) + 2 * BEAT, bar(10) + 3 * BEAT],
+  released: [bar(10) + 2 * BEAT, bar(10) + 3 * BEAT],
+  designing: bar(10) + 3 * BEAT,
+  tasks: [bar(11) - BEAT, bar(11), bar(11) + BEAT],
   arrive: [bar(11), bar(11) + BEAT, bar(11) + 2 * BEAT],
   reviewed: [bar(13) + BEAT, bar(13) + 3 * BEAT, bar(14) + BEAT],
   commits: [bar(15) + BEAT, bar(15) + 3 * BEAT, bar(16) + 3 * BEAT],

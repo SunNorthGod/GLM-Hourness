@@ -30,6 +30,3 @@ export const CLAMP = {
   extrapolateLeft: "clamp",
   extrapolateRight: "clamp",
 } as const;
-
-// The score runs at 120 BPM: one beat is half a second.
-export const BEAT_FRAMES = 15;

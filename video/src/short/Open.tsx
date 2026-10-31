@@ -15,6 +15,9 @@ const EVIDENCE: Evidence[] = [
 ];
 
 const TURN = [8, 112] as const;
+// The hour hand passes 6 o'clock (540 degrees) at dawn = 210 / 270, about 0.78;
+// the label says morning only after that.
+const MORNING = 0.8;
 const FACE = 320;
 const PILE_BARS = [
   [260, 170],
@@ -35,8 +38,8 @@ const Clock: React.FC = () => {
   return (
     <>
       <Reveal at={6} style={{ position: "absolute", left: 70, top: 1090 }}>
-        <Pill color={dawn < 0.5 ? COLORS.indigo : COLORS.apricot} style={{ fontSize: 34 }}>
-          {dawn < 0.5 ? "深夜" : "早上"}
+        <Pill color={dawn < MORNING ? COLORS.indigo : COLORS.apricot} style={{ fontSize: 34 }}>
+          {dawn < MORNING ? "深夜" : "早上"}
         </Pill>
       </Reveal>
       <Reveal at={8} style={{ position: "absolute", left: 70, top: 1150 }}>
