@@ -15,6 +15,7 @@ import {
   createGit, DEFAULT_WATCHED, execRunner, parseNameStatus, parseTaskTrailers, parseWorktrees, realGitRunner, reflogKind, watchedDigest,
   type Git, type GitResult, type GitRunner, type Outcome, type Refusal, type SnapshotSaver,
 } from '../src/execute/git.ts'
+import { skipIfTempInsideGit } from './temp-outside-git.ts'
 
 const sandbox = realpathSync.native(mkdtempSync(join(tmpdir(), 'execute-git-')))
 const globalConfig = join(sandbox, 'gitconfig')
@@ -540,11 +541,15 @@ withRepo('a branch whose worktree is gone gets a new worktree, and the broken st
   assert.match(refused(await git.ensureWorktree(repo.dir, 'task-4')).reason, /is on other, not on hz\/task-4/)
 })
 
-withRepo('no worktree outside a repository, none from a detached main checkout, and a bad task id is refused first', async (repo, git) => {
-  const first = repo.commit({ 'a.txt': '1' }, 'first')
+// git finds a repository by walking up from the folder: with the temporary directory inside one, a folder made under it is not outside git.
+test('no worktree outside a repository', { skip: skipIfTempInsideGit() }, async () => {
   const nowhere = join(sandbox, 'not-a-repository')
   mkdirSync(nowhere, { recursive: true })
-  assert.equal(refused(await git.ensureWorktree(nowhere, 'task-1')).code, 'not_git')
+  assert.equal(refused(await createGit().ensureWorktree(nowhere, 'task-1')).code, 'not_git')
+})
+
+withRepo('no worktree from a detached main checkout, and a bad task id is refused first', async (repo, git) => {
+  const first = repo.commit({ 'a.txt': '1' }, 'first')
   assert.equal(refused(await git.ensureWorktree(repo.dir, 'Task 1')).code, 'bad_task')
   assert.equal(refused(await git.ensureWorktree(repo.dir, '../escape')).code, 'bad_task')
   assert.equal(refused(await git.ensureWorktree(repo.dir, 'gate')).code, 'bad_task', 'hz-gate is the gate worktree\'s directory')

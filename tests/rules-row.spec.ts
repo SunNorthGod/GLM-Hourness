@@ -19,6 +19,7 @@ import { repoJson } from '../src/rules/model.ts'
 import { fakeRuntime, type FakeRuntime } from './fake-rc3.ts'
 import { captureWarnings } from './graph-helpers.ts'
 import { quickIo } from './rules-helpers.ts'
+import { skipIfTempInsideGit } from './temp-outside-git.ts'
 
 const NOW = Date.parse('2026-10-28T15:00:00+08:00') // a Wednesday in the GLM peak, 14:00-18:00 UTC+8
 const OFF_PEAK = Date.parse('2026-10-28T20:00:00+08:00')
@@ -218,7 +219,7 @@ rowTest('a session without a working directory has no state and a reply that say
   assert.equal((await run('peak 不做')).kind, 'error')
 }, { cwd: null })
 
-test('a folder that is no project has no state, and nothing is created in it', async () => {
+test('a folder that is no project has no state, and nothing is created in it', { skip: skipIfTempInsideGit() }, async () => {
   const bare = await mkdtemp(join(tmpdir(), 'rules-bare-'))
   try {
     await withRow(async ({ runtime, service, run }) => {

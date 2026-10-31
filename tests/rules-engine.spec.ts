@@ -15,6 +15,7 @@ import { effectivePeakMode, stateProblem, type JournalRecord, type RulesActor } 
 import { refusalFor } from '../src/rules/permissions.ts'
 import { loadState, rulesPaths, stateDigest } from '../src/rules/store.ts'
 import { impatientLock, projectTest, quickIo } from './rules-helpers.ts'
+import { skipIfTempInsideGit } from './temp-outside-git.ts'
 
 const SET = { op: 'peak-mode-set', level: 'stop' } as const
 
@@ -154,19 +155,25 @@ test('a project is the repository root: the main checkout, its work trees and an
     await writeFile(join(sub, '.git'), `gitdir: ${join(base, 'modules', 'sub')}\n`)
     assert.equal(projectOf(sub)?.root, sub)
 
-    // Outside git only a folder that already has a `.llm` is a project.
-    const plain = join(base, 'plain')
-    await mkdir(plain)
-    assert.equal(projectOf(plain), undefined)
-    await mkdir(join(plain, '.llm'))
-    assert.deepEqual(projectOf(plain), { root: plain, git: false })
-
-    // The home folder and a drive root are never a project, whatever they hold.
-    assert.equal(projectOf(plain, plain), undefined)
+    // A drive root is never a project.
     assert.equal(projectOf(parse(base).root), undefined)
     assert.notEqual(homedir(), base)
   }
   finally {
     await rm(base, { recursive: true, force: true })
+  }
+})
+
+// Outside git the walk up from the folder must find no repository, so these need a temporary directory that is not inside one.
+test('outside git only a folder that already has a `.llm` is a project, and the home folder never is', { skip: skipIfTempInsideGit() }, async () => {
+  const plain = await mkdtemp(join(tmpdir(), 'rules-plain-'))
+  try {
+    assert.equal(projectOf(plain), undefined)
+    await mkdir(join(plain, '.llm'))
+    assert.deepEqual(projectOf(plain), { root: plain, git: false })
+    assert.equal(projectOf(plain, plain), undefined, 'the home folder is never a project, whatever it holds')
+  }
+  finally {
+    await rm(plain, { recursive: true, force: true })
   }
 })
