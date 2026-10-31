@@ -434,6 +434,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "第 4 步（bd91f2c，m3-1）独立评审 APPROVED，挡路 0、不挡路 7（.agents/tasks/m3/impl/review-step4.md）。编排方裁定其中四条在 m3 分支合入之前修掉，各一个提交、先写失败的测试，写进了 .agents/tasks/m3/impl/brief.md 的编排方附注，由之后先碰同一文件的步骤做，最迟在 fold 步：S4-1（MEDIUM）PTC 预设下 run_code 派出的嵌套调用带 parent、跳过主 Agent 的规矩，主 Agent 因此能写文件，与一页稿「它自己从来不写文件」相违，优先让嵌套的写工具调用也过这条规矩；S4-2（MEDIUM）对外检查读 remote.<名>.mirror 与 push 时不带命令自己的 -c；S4-3（LOW）别名展开后不再做对外检查与 clean 拒绝；S4-4（LOW）guard 的声明还叫主 Agent 用 Write/Edit。S4-5 至 S4-7 可以写进 ORCHESTRATION §6.7 的残余。"
+    },
+    {
+      "at": "2026-10-31T05:37:43.661Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "第 3 步评审遗留的 S3-1（持有者记录过期）已在 m3 分支修掉，提交 5d47374（m3-1），build、preflight、test 退出码 0（1039 个测试，0 失败，eslint、knip、jscpd 基线不变），等独立评审（m3-steps-4-to-merge 的 review-s3-1）。"
     }
   ]
 }

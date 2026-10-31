@@ -1,0 +1,19 @@
+{
+  "id": "d-desktop-direct-use",
+  "type": "decision",
+  "title": "验证时可以直接用 DSH 桌面版，包括重启，不必先问人",
+  "status": "approved",
+  "parent": "orch",
+  "verification": "unverified",
+  "body": "人 2026-10-31：「桌面版你直接用就行，现在又不是高峰期为什么不放行」。取代此前「要重启桌面版，开始前告诉你」的做法（M5 一页稿等处）。不变的：AGENTS.md 的顺序照旧，涉及 loader 组合、新包、新行的改动先在临时 profile 用 headless 沙盒验证；动 ~/.dsh 之前备份要改的文件，每一处改动与它的备份写进运行报告；装后重启并确认桌面版日志没有本包的新错误，plugin_manager 的 applied 不算启动成功；主 profile 不留验证用不着的改动。",
+  "history": [
+    {
+      "at": "2026-10-31T05:37:42.944Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "人允许直接用桌面版验证，不必先问",
+      "relay": "桌面版你直接用就行",
+      "to": "approved"
+    }
+  ]
+}
