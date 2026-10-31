@@ -130,6 +130,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "design-decisions-apply-1031 的接管一支写出设计 0.6（0.5 另存 design-0.5.md）：F44–F49 按评审的改法做了纯文字修改，并写进 d-code-rules-enforce（bootstrap-read-no-shell 首日就拦不再是例外）、d-credentials-readable、d-timeout-measured；graph-ops-decisions.json 有一条给 bootstrap 的批注草稿。下一步是独立评审，通过后按新格式写一页稿。"
+    },
+    {
+      "at": "2026-10-31T08:17:53.828Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "接管设计 0.6 的评审 CHANGES_REQUESTED：MEDIUM 2、NIT 5。F44–F49 全部核实关闭，人定的两条决定已写进。F1：拦路脚本写成 10 秒上限（应为缺省 10 秒、最长 30 秒）；F2：/hourness-init unlock-shell 与 d-one-lift-path 冲突。编排方已把两条的裁定转给修复轮：按 d-timeout-measured 本日的裁定写超时；不设 unlock-shell，人撤读项目时停掉命令行的那条规则也走跟主 Agent 说或 /rules lift。"
     }
   ]
 }

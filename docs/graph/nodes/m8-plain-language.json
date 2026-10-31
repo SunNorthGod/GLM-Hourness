@@ -302,6 +302,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "面板说人话与新手引导的设计 0.9 在对齐轮第 8 轮评审 APPROVED（HIGH 0、MEDIUM 0、NIT 6，各轮挡路 6、2、2、2、2、0、2、0），一页稿按旧格式重写过。0.9 写在人 2026-10-31 的几条决定之前，编排方派 design-metrics-plainui-1031（wf_e2ecc72eb5bf10ad）改到 1.0：写进 d-code-rules-enforce（去掉「只记下，不挡」一类标注）、d-credentials-readable、d-timeout-measured（板上条目显示超时值的来源与超时记录）、用户图两件（额度重置后自动接上；做完一块汇报一块、人不在时攒着收菜）与 d-desktop-direct-use，再评审，并按 d-onepage-concrete 重写一页稿；17 条怎样算做完作为一件四行交人定，人话清单另放 onepage-done.md。"
+    },
+    {
+      "at": "2026-10-31T08:17:54.024Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "面板设计 1.0（写进人 2026-10-31 的五条决定与第 8 轮六条 NIT）第 9 轮评审 CHANGES_REQUESTED：挡路 3 条（都是 MEDIUM）、NIT 6，各轮挡路 6、2、2、2、2、0、2、0、3；同一运行（design-metrics-plainui-1031）还有一遍修改与评审。指标设计 0.4 也已写出（F23–F39 在正文处理，五条决定已折进），等评审。"
     }
   ]
 }

@@ -137,6 +137,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "design-decisions-apply-1031 对用户图 0.6 的评审 CHANGES_REQUESTED：HIGH 0、MEDIUM 3、NIT 8（.agents/tasks/user-journey/decisions-review.md）。三条人定的决定与 ②③ 两件评审认为都写对了，超时规则只写在一处。三条 MEDIUM：DR1 拦路脚本的数写成 10 秒上限，规则板与循环板是缺省 10 秒、最长 30 秒（编排方原话写错，已更正在 d-timeout-measured）；DR2 撤写在代码里的规则是 d-defaults-readonly 的例外，用户图没写；DR3 两套撤规则的命令并存，编排方裁定只留一条路（记在 d-code-rules-enforce 上）。都已转给修复轮。"
+    },
+    {
+      "at": "2026-10-31T08:17:53.446Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "design-decisions-apply-1031 的用户图一支停下（MODULE-STOPPED）：第 2 轮评审 CHANGES_REQUESTED，HIGH 0、MEDIUM 1、NIT 8；DR1–DR10 都已关闭，剩下的 R1 是超时第一个数的两种读法（见 d-timeout-measured 本日的裁定）。新格式一页稿没写，停止报告在 .agents/tasks/user-journey/align-stop-report.md。编排方在这个运行结束后合并一个小运行，按裁定修 R1 并写一页稿。"
     }
   ]
 }

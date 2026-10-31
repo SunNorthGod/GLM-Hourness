@@ -483,6 +483,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "规则板与循环板实现 FEAT-001（src/loops/trigger.ts，两块板共用的条目形状）第 1 轮评审挡在一条：测试里一个必须通过的正则在 50 毫秒的探测上限下要跑 31–36 毫秒，5 次里有 2 次超时失败；fe3a99c 已修，单跑 5 次全过，等第 2 轮评审。同一评审报告：第一次完整跑 npm test 时 tests/rules-engine.spec.ts 失败、单跑通过，与本步无关。编排方把它当成 main 上的又一个时过时不过的测试，另派一个运行复现并修。"
+    },
+    {
+      "at": "2026-10-31T08:17:52.602Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "main 上 tests/rules-engine.spec.ts 时过时不过的原因查清并已修，提交 639bd8e（tests/，src/ 没动），已推到 origin/main（wf_d9b73564647bab6e）。原因：用例「a project is the repository root」在系统临时目录下建一个「不在 git 里」的文件夹，期望 projectOf 返回 undefined；而项目发现（src/data/project-root.ts）和 git 都是从该文件夹向上找 .git，临时目录（TEMP）若落在某个检出里（video/.tmp、工作树内），这个文件夹就在检出里，projectOf 返回外层检出，断言失败。代码没错（仓库里的文件夹本来就属于该仓库），是用例假定了 TEMP 的位置。复现：TEMP 指到仓库内时该用例 30 次顺序 30 次失败、8 路并行 80 次 80 次失败；TEMP 为系统临时目录时 30 次顺序加 80 次并行 0 次失败，所以 rules-loops 评审那一次失败时的 TEMP 值没法确认，但失败的用例与 gate-FEAT-001.json N5 记的是同一条。同样的前提还在两个用例里：tests/rules-row.spec.ts「a folder that is no project」与 tests/execute-git.spec.ts「no worktree outside a repository」，TEMP 在仓库内时也失败；其余 60 个 spec 逐个跑 TEMP 在仓库内全过。修法：新增 tests/temp-outside-git.ts 的 skipIfTempInsideGit()，自己向上找 .git，找到就让这三个用例带原因跳过；rules-engine 那条用例拆成两条，自己建 .git 的部分在任何 TEMP 下照跑，只有「文件夹在 git 之外」的部分会被跳过。修后 TEMP 在仓库内 30 次顺序加 80 次并行 0 次失败（每次跳过 1 条），系统 TEMP 同样 0 次失败 0 条跳过；63 个 spec 逐个跑 TEMP 在仓库内 0 个失败。build、preflight、test 在系统 TEMP 下退出码全 0，rebase 到 92dabbe 后又跑一遍全 0。注意：门禁要在系统 TEMP 下跑；TEMP 在仓库内时这三条是跳过，不是通过。"
     }
   ]
 }

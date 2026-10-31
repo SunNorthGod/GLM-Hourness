@@ -101,6 +101,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "design-decisions-apply-1031 的 M5 一支停下（MODULE-STOPPED）：设计 0.6 对 d-code-rules-enforce 的改动评审认可，挡路的 F1（MEDIUM）出在核对记录与图批注草稿里：它们说宪章与 ORCHESTRATION 仍写先影子后拦截，而 cd257a7 已改掉；另有 NIT F2–F4（d-timeout-measured 写成待定、依据写宪章 0.7、批注里引号中的话是转述）。批注草稿没有执行，图上没有这条错记录。新格式的一页稿与 onepage-done.md 因此没写，人现在读到的 M5 一页稿仍是 0.5 的。编排方另派一个小运行：逐字采用评审给的替换句修 F1–F4，再写新格式的一页稿与九件活的人话清单，并单独评审一页稿。"
+    },
+    {
+      "at": "2026-10-31T08:17:54.234Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "design-m5-finish-1031（wf_3868c96ec67fd014）：F1–F4 四处按评审原句修好；新格式一页稿 onepage.md、onepage-0.5.md、九件活的人话清单 onepage-done.md 与草图 mockup-lessons.svg 已写。第 1 轮评审 CHANGES_REQUESTED、挡路 2 条，都在一页稿上；作者已修（四行压成一句一处加粗；现状写明插件默认关着、桌面验证不必先说、放行即可开工），894 个汉字，等复评。"
     }
   ]
 }
