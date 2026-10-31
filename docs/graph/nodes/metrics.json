@@ -184,7 +184,7 @@
       "at": "2026-10-31T05:51:16.766Z",
       "actor": "llm",
       "op": "comment",
-      "text": "对齐轮 align-resume-c-to-g（wf_3794f89cc38873d4）的指标 D 支第二遍修改没有做完：会话文件在 2026-10-31 机器重启后读不出（Failed to load session，JSON 损坏），整个运行因此记为失败；其余四支（M6、接管、用户图、面板）都已收尾。盘上 design.md 已写到 0.4（12:44），报告没交出来，按作者已离开的草稿处理。编排方重派 design-metrics-plainui-1031（wf_e2ecc72eb5bf10ad）：核对并补完 0.4、处理第 2 轮的 F23–F28 与 F29–F39，并写进人 2026-10-31 定的 d-code-rules-enforce、d-credentials-readable、d-timeout-measured（超时事件与超时值变更的事件种类与字段）与用户图两件；评审通过后按 d-onepage-concrete 写一页稿。"
+      "text": "对齐轮 align-resume-c-to-g（wf_3794f89cc38873d4）的指标 D 支第二遍修改没有做完：会话文件读不出（Failed to load session，JSON 损坏），整个运行因此记为失败；其余四支（M6、接管、用户图、面板）都已收尾。盘上 design.md 已写到 0.4（12:44），报告没交出来，按作者已离开的草稿处理。编排方重派 design-metrics-plainui-1031（wf_e2ecc72eb5bf10ad）：核对并补完 0.4、处理第 2 轮的 F23–F28 与 F29–F39，并写进人 2026-10-31 定的 d-code-rules-enforce、d-credentials-readable、d-timeout-measured（超时事件与超时值变更的事件种类与字段）与用户图两件；评审通过后按 d-onepage-concrete 写一页稿。"
     }
   ]
 }

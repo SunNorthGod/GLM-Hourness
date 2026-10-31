@@ -385,19 +385,19 @@
       "at": "2026-10-30T13:19:47.848Z",
       "actor": "llm",
       "op": "comment",
-      "text": "蓝屏之后重开 M3 实现：m3-implementation-resume（wf_06fa3fbfe6b1b960，claude-sonnet-5.5）。节点已是 doing，不改状态。任务说明里写明了工作树里被打断的半成品（.worktrees/m3 十个已跟踪加七个未跟踪、第 3 步写到一半；.worktrees/m3-flow 四加二、第 11 步写到一半且落后主干），要求把它当作「作者已不在的草稿」：先读真实 diff、对着设计判断，该补完的补完、该丢的明确丢掉，并在汇报里说明每一处的取舍，不许当成已完成就提交。另外交代了三件事：项目根函数用已合入的 projectOf（设计措辞已改）、src/data/lock.ts 与 src/data/project-root.ts 复用不另写、与 M7 的 E2 同改 src/shared/tool-names.ts 时后合入的一方机械并入。并要求提交得够密，再蓝一次至多只损失一步。"
+      "text": "重开 M3 实现：m3-implementation-resume（wf_06fa3fbfe6b1b960，claude-sonnet-5.5）。节点已是 doing，不改状态。任务说明里写明了工作树里被打断的半成品（.worktrees/m3 十个已跟踪加七个未跟踪、第 3 步写到一半；.worktrees/m3-flow 四加二、第 11 步写到一半且落后主干），要求把它当作「作者已不在的草稿」：先读真实 diff、对着设计判断，该补完的补完、该丢的明确丢掉，并在汇报里说明每一处的取舍，不许当成已完成就提交。另外交代了三件事：项目根函数用已合入的 projectOf（设计措辞已改）、src/data/lock.ts 与 src/data/project-root.ts 复用不另写、与 M7 的 E2 同改 src/shared/tool-names.ts 时后合入的一方机械并入。并要求提交得够密，再蓝一次至多只损失一步。"
     },
     {
       "at": "2026-10-30T14:53:38.559Z",
       "actor": "llm",
       "op": "comment",
-      "text": "第四次中断后的实际状态：第 3 步（m3-1，主 Agent 模式、持有者与身份）已在分支 m3 提交（e854399），该步自己报的门禁是 build、preflight、test 全 0（817 过、0 失败）与 probe 149/149，但独立评审还没跑、没合入主干。第 11 步（m3-6，流程条与 /wish 入口）已在分支 m3-flow 提交（b4c23dd），build、preflight、test 全 0（786 过、0 失败）；它少写了一条 L2（plainWordsIn 过给人看的字串），因为 src/graph/plain-question.ts 只在分支 m3 上，这一条等两支汇合后补。中断前的半成品盘查写在 .agents/tasks/m3/impl/leftover-triage.md，两个工作树当时都已快进到 0b6edf1 并保留草稿作起点，现在两支都干净、活已提交。重开运行接着做：先补第 3 步的独立评审，再做第 4、5、6、8、9、10 步与人设一步，然后汇合 m3-flow、标定、合入主干。"
+      "text": "中断后的实际状态：第 3 步（m3-1，主 Agent 模式、持有者与身份）已在分支 m3 提交（e854399），该步自己报的门禁是 build、preflight、test 全 0（817 过、0 失败）与 probe 149/149，但独立评审还没跑、没合入主干。第 11 步（m3-6，流程条与 /wish 入口）已在分支 m3-flow 提交（b4c23dd），build、preflight、test 全 0（786 过、0 失败）；它少写了一条 L2（plainWordsIn 过给人看的字串），因为 src/graph/plain-question.ts 只在分支 m3 上，这一条等两支汇合后补。中断前的半成品盘查写在 .agents/tasks/m3/impl/leftover-triage.md，两个工作树当时都已快进到 0b6edf1 并保留草稿作起点，现在两支都干净、活已提交。重开运行接着做：先补第 3 步的独立评审，再做第 4、5、6、8、9、10 步与人设一步，然后汇合 m3-flow、标定、合入主干。"
     },
     {
       "at": "2026-10-30T16:58:12.938Z",
       "actor": "llm",
       "op": "comment",
-      "text": "第四次中断后重开 M3 的后续：m3-implementation-continue（wf_e62452cf55a077a6，claude-sonnet-5.5）。从已提交的第 3 步（e854399）接着做，顺序是：先补第 3 步欠的独立评审并合入，再做第 4、5、6、8、9、10 步与人设一步，然后汇合 m3-flow（第 11 步 b4c23dd 已提交）、补第 11 步因 src/graph/plain-question.ts 只在 m3 上而写不了的那条 L2、标定、合入主干。任务说明里交代了三件保命的事：一步绿了立刻提交（两次崩溃已经证明只有这条救回了四步活）、门禁失败先查依赖是不是被中断清空（这次主检出的 node_modules 就被清空、重装后全绿）、与 M7 的 E2 同改 src/shared/tool-names.ts 时后合入的一方机械并入。本运行 22:55 起因网络错误卡在创建步骤、随后被 agent 重启打断，编排方已恢复。"
+      "text": "中断后重开 M3 的后续：m3-implementation-continue（wf_e62452cf55a077a6，claude-sonnet-5.5）。从已提交的第 3 步（e854399）接着做，顺序是：先补第 3 步欠的独立评审并合入，再做第 4、5、6、8、9、10 步与人设一步，然后汇合 m3-flow（第 11 步 b4c23dd 已提交）、补第 11 步因 src/graph/plain-question.ts 只在 m3 上而写不了的那条 L2、标定、合入主干。任务说明里交代了三件保命的事：一步绿了立刻提交（两次崩溃已经证明只有这条救回了四步活）、门禁失败先查依赖是不是被中断清空（这次主检出的 node_modules 就被清空、重装后全绿）、与 M7 的 E2 同改 src/shared/tool-names.ts 时后合入的一方机械并入。本运行 22:55 起因网络错误卡在创建步骤、随后被 agent 重启打断，编排方已恢复。"
     },
     {
       "at": "2026-10-30T18:23:50.688Z",

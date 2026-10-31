@@ -79,7 +79,7 @@
       "at": "2026-10-29T16:16:17.174Z",
       "actor": "llm",
       "op": "comment",
-      "text": "运行 wf_c8477623711d96d8 的评审步因运行环境的解密错误（BAD_DECRYPT，蓝屏之后）失败，与代码无关；分支 prompt-fixes 上的四个提交保留。剩下的评审、探针与合入交给 prompt-fixes-merge-then-zcode-3171（wf_920936995c163f50），并要求去掉代码步为让 npm test 通过而做的两处本地变通。"
+      "text": "运行 wf_c8477623711d96d8 的评审步因运行环境的解密错误（BAD_DECRYPT）失败，与代码无关；分支 prompt-fixes 上的四个提交保留。剩下的评审、探针与合入交给 prompt-fixes-merge-then-zcode-3171（wf_920936995c163f50），并要求去掉代码步为让 npm test 通过而做的两处本地变通。"
     },
     {
       "at": "2026-10-29T16:49:49.632Z",

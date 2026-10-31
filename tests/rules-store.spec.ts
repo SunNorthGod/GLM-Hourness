@@ -3,7 +3,7 @@
  * §15 R2 for the peak level): the journal and the snapshot in the project's
  * `.llm/rules/`, the rules file in the repository, and what a read does when
  * the files disagree. Real files in temporary directories: the failures it
- * checks are what a blue screen or a git switch leaves behind, so a fake
+ * checks are what a crash or a git switch leaves behind, so a fake
  * file system would hide them. The file also serves as the writer process of
  * the concurrency test (`--writer`).
  */
