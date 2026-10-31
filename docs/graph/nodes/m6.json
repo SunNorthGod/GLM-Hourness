@@ -216,6 +216,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "编排方裁定（2026-10-31，可逆）回答 M6 0.6 第 2 轮评审 F7：凡是写在代码里的规则拦下的（包括练习题与真网核对被规则挡下），都写进项目 .llm/ 下 guard 已在写的违规流水，带规则 id、时刻、挡了什么、为什么，规则页与晨报从那里数（d-code-rules-enforce，人：「试运行规则啥的直接拦就行了，这样反而有问题好发现」）。M6 实现计划的 S2（m6-script-gate）照这一条做。由 design-finish-m4-bootstrap-m6-uj 修进设计。"
+    },
+    {
+      "at": "2026-10-31T13:26:38.055Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M6 实现 FEAT-002（m6-reminder-text，高峰提醒按规则板交出的档位选正文）提交 47fb740（分支 m6-glm-upkeep，未推送）：build、preflight、npm test 退出码 0，probe 155/155；顺带按评审的 N22–N26、N29 改了设计文字。等独立评审。"
     }
   ]
 }

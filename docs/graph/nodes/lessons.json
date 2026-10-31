@@ -100,6 +100,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "按人 2026-10-31 的定案 d-code-rules-enforce，第一批经验第 7 条的解法改了：原写 `start a new gate in shadow mode and count false denials before enforcing it`，现写「引号感知解析；启用行之前把无害写法写进测试；规则从行启用那天起就拦，误拦表现为带规则 id 的拦截记录」，不写影子期。2026-10-30T21:57:57Z 那条批注里「第一批 21 条与「新的门禁先在影子模式运行」的保留不变」作废。lessons-4 的验收不受影响（21 条、重复导入不多出一条、按 PowerShell encoding 能查到第 1 条、对 docs/graph/** 派活简报带第 19 条）。改动见 .agents/tasks/m5/design.md 0.6 §4.8。"
+    },
+    {
+      "at": "2026-10-31T13:26:37.878Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-10-31 随 M5 一起放行经验板块（原话「没问题，不过习惯最好问一嘴再记」），实现由 impl-m5-memory-lessons（wf_1714ad4be33518c0）做，见 m5 节点同日批注。"
     }
   ]
 }
