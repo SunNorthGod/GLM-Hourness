@@ -228,6 +228,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M6 实现进度：FEAT-002（m6-reminder-text，47fb740）独立评审 APPROVED、没有发现；FEAT-003（额度读取、登录状态、上游限额流水、/glm-status 一节与文档）提交 7a701d1，build、preflight、npm test 退出码 0，probe 155/155，等评审。两个提交都在分支 m6-glm-upkeep，未推送。"
+    },
+    {
+      "at": "2026-10-31T14:39:35.937Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M6 实现 FEAT-003（7a701d1，额度读取、登录状态、上游限额流水与 /glm-status 一节）独立评审 APPROVED，挡路 0、NIT 3（reviews/FEAT-003.json）。M6 的 5 步里前 3 步已写完并审过，接着做第 4 步。"
     }
   ]
 }
