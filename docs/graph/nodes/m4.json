@@ -203,6 +203,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "人 2026-10-31 读过 M4 一页稿（0.5）：「M4我大概看完了…应该没啥大问题吧？」，并问了三件：一、「密钥文件能读。而且不是都能读吗？什么叫没拦？」，定为 d-credentials-readable，credential-read 规则删掉；二、「试运行规则啥的直接拦就行了」，定为 d-code-rules-enforce，四条新规则启用即拦，PROMOTION 与回放删掉；三、「还有超时的时间咋办？要不让llm自己写时间或者实际跑过一次后再由llm写时间？」，编排方推荐第一次由写检查的 agent 估、跑过之后由 harness 按实测（最慢一次的 3 倍、不超过现有上限）自动定，LLM 不手抄实测数，待人定（D-timeout）。人还说「自带的检查器随你批准那个工具节点生效 这个我没听懂」，编排方在对话里解释，一页稿按 d-onepage-concrete 改写时要讲清楚。放行等改稿（0.6）后人再看一眼新一页稿；由 design-decisions-apply-1031（wf_8180e53b6019bc5a）做。"
+    },
+    {
+      "at": "2026-10-31T12:56:14.017Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "design-finish-m4-bootstrap-m6-uj（wf_de2de8aca321a79a）对 M4 0.6 的决定评审 CHANGES_REQUESTED：HIGH 0、MEDIUM 10、NIT 8（.agents/tasks/m4/decisions-review.md）。四条人定的决定大体写对，剩下的缺口在撤规则（F1–F4）、超时（F5–F9）与 looksSecret 的说法（F10）。编排方对 F1–F8 的裁定记在 d-code-rules-enforce 与 d-timeout-measured 上，已转给修复轮；这个循环最多 3 轮。"
     }
   ]
 }

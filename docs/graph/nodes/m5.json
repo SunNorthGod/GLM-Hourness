@@ -107,6 +107,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "design-m5-finish-1031（wf_3868c96ec67fd014）：F1–F4 四处按评审原句修好；新格式一页稿 onepage.md、onepage-0.5.md、九件活的人话清单 onepage-done.md 与草图 mockup-lessons.svg 已写。第 1 轮评审 CHANGES_REQUESTED、挡路 2 条，都在一页稿上；作者已修（四行压成一句一处加粗；现状写明插件默认关着、桌面验证不必先说、放行即可开工），894 个汉字，等复评。"
+    },
+    {
+      "at": "2026-10-31T12:56:12.840Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M5 设计 0.5 核对人 2026-10-31 的三条定案，结果：改为 0.6（.agents/tasks/m5/design.md；0.5 原文另存为 design-0.5.md；逐处核对记录在 decisions-check.md）。一、d-code-rules-enforce 触到一处：第一批经验第 7 条的解法原写 `start a new gate in shadow mode and count false denials before enforcing it`，与定案相反，现改为「引号感知解析；启用行之前把无害写法写进测试；规则从行启用那天起就拦，误拦表现为带规则 id 的拦截记录」，不写影子期。随之改了 §4.8 表后说明、§0 摘要末句、§8.3 末条，§1.1 加一行定案，§11 加一条 agent 决定（改写而不删），§15 加 0.6 一段。M5 里没有 PROMOTION 门槛、影子判定与标注、会话回放、页面标注、周报「影子转生效」，没有别的要删；M5 两行不注册拦截，没有规则要改成启用即拦；规则提议经规则板和 propose_to_human，板上条目本来就看过原文即生效，不受影响。二、d-credentials-readable 不触：M5 没有读密钥文件的规则；§5.6 的 looksSecret 拒收管的是写进记忆、经验、简报、交回摘要和图退路批注的文本，不管 agent 读什么文件，定案写明 looksSecret 与 check:secrets 照旧。三、脚本与检查的超时（d-timeout-measured）：不触本稿。M5 没有写脚本或检查，全文的 2 秒、50 毫秒、30 秒、120 秒是文件锁参数，60 秒与 15 秒是图修订检查与页面刷新的间隔，M7 的「超过 2 秒时不带经验」是服务调用限制，所以本稿不写 d-timeout-measured 的规则。宪章与编排文档里「先影子后拦截」的条款已由提交 cd257a7（CHARTER 0.8 §3.2 第 3 条与 §6、ORCHESTRATION §6.5）取代，M5 对这些文档没有要改的请求。M5 0.5 放行时留下的八条 NIT（R5-01 至 R5-08）本次没有处理，仍留到实现时。 复核后的小修（版本仍是 0.6）：§4.8 表后说明改正对 DEVELOPMENT.md §7「影子记录」（指 guard 的工作区变更兜底，只记录、拦不住，由 M4 定它变成什么）与 ROADMAP.md M1.8（没有影子字样）的描述；§1.4、§8.3 的「M4 0.4 §2.4」改为「M4 §2.4」；§15 的 0.4 一段加「0.6 取代」的指向。给人看的一页稿 .agents/tasks/m5/onepage.md 已按 0.6 的新格式重写（描述 0.5 的旧稿另存为 onepage-0.5.md），九件活「怎样算做完」的人话版移到 onepage-done.md。"
+    },
+    {
+      "at": "2026-10-31T12:56:14.228Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "design-m5-finish-1031（wf_3868c96ec67fd014）完成：F1–F4 按评审原句修好；新格式一页稿 onepage.md（891 个汉字，不算草图）、onepage-0.5.md、九件活的人话清单 onepage-done.md 与草图 mockup-lessons.svg 写好，第 2 轮评审 APPROVED、挡路 0。M5 的一页稿可以交人：一件四行，九件活怎样算做完与放行合成一问。"
     }
   ]
 }

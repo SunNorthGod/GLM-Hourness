@@ -94,6 +94,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M5 设计 0.5 对经验板块的改动（相对 0.4）：lessons_merge 的工具说明末尾带一个完整示范（图片批处理的坑），并附「人要删时用 delete 带原话」一句，示范在 L2 里过与真实调用同一个校验函数；经验的 id 在单份流水里查重、复发计数在单份流水里算，正文不再叙述旧做法；候选与复发提醒的「主 Agent」判断改经薄访问器 isMainAgentFor 调 M3 导出的 mainAgentOf，取不到时任何根 agent 都算，行健康写原因；纠正信号读经验流水里的 learnedFrom 判断「已落点」，经学习摘要送到主 Agent（见 m5 节点同日批注）。经验页仍无写入控件，删除与恢复仍在主 Agent 的对话里说。第一批 21 条与「新的门禁先在影子模式运行」的保留不变。第 5 轮评审通过（结果见 m5 节点同日批注）。经验板块相关的小事留到实现：候选练习题落点改用 graph_comment（R5-08）、§8.2 残留旧说法（R5-06）、面板页要在 scripts/packages.mjs 的 client.sources 加 ui/src/lessons/（R5-07）。给人看的页面描述（只看不点、删除在对话里说）见 onepage.md。"
+    },
+    {
+      "at": "2026-10-31T12:56:13.052Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "按人 2026-10-31 的定案 d-code-rules-enforce，第一批经验第 7 条的解法改了：原写 `start a new gate in shadow mode and count false denials before enforcing it`，现写「引号感知解析；启用行之前把无害写法写进测试；规则从行启用那天起就拦，误拦表现为带规则 id 的拦截记录」，不写影子期。2026-10-30T21:57:57Z 那条批注里「第一批 21 条与「新的门禁先在影子模式运行」的保留不变」作废。lessons-4 的验收不受影响（21 条、重复导入不多出一条、按 PowerShell encoding 能查到第 1 条、对 docs/graph/** 派活简报带第 19 条）。改动见 .agents/tasks/m5/design.md 0.6 §4.8。"
     }
   ]
 }
