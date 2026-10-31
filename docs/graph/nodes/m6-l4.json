@@ -1,0 +1,38 @@
+{
+  "id": "m6-l4",
+  "type": "task",
+  "title": "M6 Q4：桌面版真实读取一次并重启核对",
+  "status": "approved",
+  "parent": "m6",
+  "kind": "test",
+  "tier": "standard",
+  "body": "设计 §16 的 Q4，计划第 6 与第 8 步。合入前用临时 profile 的 headless 沙盒验加载与一次真实的额度读取（已授权，不花积分），行的形状记进 docs/FACTS.md §2.4；合入并在主检出 build 之后重启桌面版，看日志没有本包的新错误，/glm-status 与 /hourness 的样子。桌面版从主检出加载，所以重启只能在合入之后。",
+  "acceptance": [
+    "返回的行（type、字段、离重置时长、level）记进 FACTS.md §2.4，§4.3 的命名按它确认或改正",
+    "重启后桌面版日志没有本包的新错误；/glm-status 与 /hourness 显示高峰行、范围与额度一节",
+    "对 ~/.dsh 的每处改动与备份逐条列在汇报里"
+  ],
+  "edges": [
+    {
+      "type": "depends",
+      "to": "m6-panel"
+    },
+    {
+      "type": "depends",
+      "to": "m6-probe"
+    },
+    {
+      "type": "depends",
+      "to": "m6-quota-read"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-31T07:01:03.782Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "按实现计划建节点",
+      "to": "approved"
+    }
+  ]
+}

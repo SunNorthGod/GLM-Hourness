@@ -20,6 +20,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "Docs commit cd257a7 (decision text in CHARTER 0.8 section 3.2 item 3 and section 6, ORCHESTRATION section 6.5, DEVELOPMENT, HANDOFF, ROADMAP) reviewed APPROVED with no findings (.agents/tasks/m4/docs-commit/review.json) and pushed to origin/main on 2026-10-31; origin/main was unchanged (bd5e017) so no rebase and no gate re-run was needed. Gates recorded in the commit message for the final tree: npm run build 0, npm run preflight 0, npm test 0. Only cd257a7 was pushed; local commits eaf9587 (graph) and 9085ef2 (video re-cut) stay unpushed."
+    },
+    {
+      "at": "2026-10-31T07:04:52.397Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "编排方裁定 d-one-lift-path（2026-10-31，可逆，不是人定的）：人撤一条规则只有一条路，跟主 Agent 说，或打 /rules lift <编号>，板上的条目与写在代码里的规则都走它，规则页把两种都列出来。起因：用户图 0.6 评审（DR3）发现两套撤规则的办法并存，M4 0.6 新加的 /guard lift 与 guard_lift（撤写在代码里的规则）和请规则板做的 /rules lift（撤板上的条目）；本条要的「一句话或一条命令就能撤」，两套命令就要人先分清规则是谁写的。写在代码里的规则由规则板把撤下交给拥有它的那一行（M4 的规则交给 M4 的撤下记录），M4 留着撤下记录与门里的判断，不再给人一条单独的命令。这是 d-defaults-readonly 的例外：插件自带的写在代码里的规则，人可以撤（DR2）。没有采用：两条命令各管各的。规则板 0.10 已放行，写成自举之后的请求；在跑的规则板实现里 rule-lift 只管板上条目，接写在代码里的规则等 M4 合入。已转给用户图与 M4 的改稿步。"
     }
   ]
 }

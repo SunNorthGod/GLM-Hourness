@@ -1,0 +1,33 @@
+{
+  "id": "m6-metrics-events",
+  "type": "task",
+  "title": "M6：GLM 包的四类指标事件交给指标流水",
+  "status": "approved",
+  "parent": "m6",
+  "kind": "implement",
+  "tier": "standard",
+  "body": "设计 §14.2 与验收 22 的 GLM 一侧，设计 §16 的步骤表里没有单列（Q2 的内容里带），实现计划拆出来。被挡：等指标流水（特性 metrics）的设计成稿，定服务名、信封，以及账号一级事件归哪份流水；主干上没有指标服务，M6 不自己起名。事件：glm.quota-read、glm.upstream-limit、glm.login-rejected、glm.peak-reminder；服务在时交，不在时什么都不做、不告警。验证层 L2。",
+  "acceptance": [
+    "每次额度读取、每条上游限额记录、每条登录被拒记录、每条高峰提醒各交一条事件，事件里没有令牌与请求头",
+    "指标服务不在时什么都不交、不告警"
+  ],
+  "edges": [
+    {
+      "type": "depends",
+      "to": "m6-quota-read"
+    },
+    {
+      "type": "depends",
+      "to": "metrics"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-31T07:01:04.680Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "按实现计划建节点，标明被挡",
+      "to": "approved"
+    }
+  ]
+}

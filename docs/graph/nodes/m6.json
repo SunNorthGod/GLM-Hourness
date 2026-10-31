@@ -198,6 +198,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "design-decisions-apply-1031 对 M6 0.6（只改文字）的评审 CHANGES_REQUESTED：HIGH 0、MEDIUM 1、NIT 5（.agents/tasks/m6/decisions-review.md）。那一条 MEDIUM 是真的缺口：按 d-code-rules-enforce，拦错了要在规则页与晨报里看得见，但练习题与真网核对被挡下时（checkCall）既不写命中记录也不写违规流水，一页稿里「拦错了看得见」的话没有落点。同一运行的修复轮补写；编排方已把这一条转给在跑的 M6 实现（impl-m6-usage-peak 的规划步），挡下时写一条带规则 id、时刻、脚本、档位、原因的拦截记录。评审的 F2 指出任务书写超时待定、图上 d-timeout-measured 已定：以图为准。"
+    },
+    {
+      "at": "2026-10-31T07:01:04.883Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M6 实现计划（规划步，运行 wf_2c498acb17c89ff4）：计划文件 .agents/tasks/m6/impl-plan.md，FEAT 文件 .agents/tasks/m6/feats/task-m6-glm-upkeep/。现在能做并会合入的：m6-quota-contract（Q1）、m6-reminder-text（R1）、m6-host-export 与 m6-quota-read（Q0、Q2）、m6-panel（P1）、m6-probe（Q3）；m6-l4 与 m6-gap（Q4、G1）在合入并在主检出 build 之后用桌面版做，因为桌面版从主检出加载。被挡的：m6-rules-text（S1）与 m6-script-gate（S2）等整块规则板 R1 到 R4，m6-script-gate 另等设计修订稿指定拦下记录写在哪里（编排方通知：每次拦下带规则 id 记下，缺省写守卫已有的违规流水）；m6-rules-probe（S3）等 S1 与规则板 R4；m6-metrics-events 等指标流水的设计。设计评审 N22 到 N26、N29 落在 m6-reminder-text，N27 归并行运行重写一页稿，N28 已由 graph-ops-align.json 关闭。本机 main 比 origin/main 多一个只改文档的提交 cd257a7，合入步先变基到它。"
     }
   ]
 }

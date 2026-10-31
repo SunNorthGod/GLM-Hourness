@@ -1,0 +1,30 @@
+{
+  "id": "m6-panel",
+  "type": "task",
+  "title": "M6 P1：面板与晨报按积分、高峰行、范围与缺口、额度一节",
+  "status": "approved",
+  "parent": "m6",
+  "kind": "implement",
+  "tier": "standard",
+  "body": "设计 §16 的 P1，计划第 4 步，FEAT-004。usagePanelOf 与 usagePanelLines 一份口径，晨报「用量（今天）」改积分并删 usageByModel；高峰行、范围行、缺口文件与 auditPaths.gaps、额度一节（3 秒上限）、行健康；ORCHESTRATION.md §11.3 与 §12，DESIGN.md §2.4，DEVELOPMENT.md 加「删用量记录要留缺口行」。验证层 L2。",
+  "acceptance": [
+    "设计验收 2、3（面板一侧）、4（L2 部分）、7 通过；只装编排层包时按 token 列、没有高峰行与额度一节",
+    "编排层源码没有 GLM 套餐的系数与钟点",
+    "npm run build、preflight、test、probe 退出码 0"
+  ],
+  "edges": [
+    {
+      "type": "depends",
+      "to": "m6-quota-contract"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-31T07:01:03.427Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "按实现计划建节点",
+      "to": "approved"
+    }
+  ]
+}

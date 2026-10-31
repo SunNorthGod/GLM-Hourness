@@ -1,0 +1,23 @@
+{
+  "id": "m6-host-export",
+  "type": "task",
+  "title": "M6 Q0：只读导出 ZCode 3.17.1 的 host 包作机制参考",
+  "status": "approved",
+  "parent": "m6",
+  "kind": "docs",
+  "tier": "simple",
+  "body": "设计 §16 的 Q0，计划并入第 3 步，FEAT-003 的第一步。安装版仍是 3.17.1 且 MD5 一致时，把 out/host/index.js 与 chunk 导出到主检出 reference/zcode-3.17.1/host/（不进 git），MD5 记进 docs/FACTS.md §1，顺带核 V7；不一致就只记观察值。",
+  "acceptance": [
+    "导出目录有说明文件，写明这是安装包的导出、可能带用户补丁、只作机制参考，逐字文本以 pristine zcode.cjs 为准",
+    "FACTS.md §1 记了大小与 MD5，或记了观察到的版本与 MD5 和未导出的原因"
+  ],
+  "history": [
+    {
+      "at": "2026-10-31T07:01:03.070Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "按实现计划建节点",
+      "to": "approved"
+    }
+  ]
+}

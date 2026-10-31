@@ -1,0 +1,37 @@
+{
+  "id": "m6-rules-probe",
+  "type": "task",
+  "title": "M6 S3：探针里人设排队规则夹具与少做档两条 notice 并存",
+  "status": "approved",
+  "parent": "m6",
+  "kind": "test",
+  "tier": "standard",
+  "body": "设计 §16 的 S3、验收 13 的 S3 部分与 16。被挡：等 m6-rules-text、m6-reminder-text 与整块规则板 R4 的探针场景及每步提醒。时钟平移到周三 17:59:30，npm run calibrate 被排队、文字带「until 18:00」，18:00 之后重判唤醒；少做档周三 15:00 两条 notice 都在且不相抵。验证层 L3。",
+  "acceptance": [
+    "探针新检查通过，npm run probe 退出码 0",
+    "来源 glm-peak-reminder 的 notice 不含 information only、keep working、postpone；来源 hourness-rules 的 notice 不含 keep working、postpone"
+  ],
+  "edges": [
+    {
+      "type": "depends",
+      "to": "m6-reminder-text"
+    },
+    {
+      "type": "depends",
+      "to": "m6-rules-text"
+    },
+    {
+      "type": "depends",
+      "to": "rules"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-31T07:01:04.498Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "按实现计划建节点，标明被挡",
+      "to": "approved"
+    }
+  ]
+}

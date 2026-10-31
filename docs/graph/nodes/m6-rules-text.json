@@ -1,0 +1,33 @@
+{
+  "id": "m6-rules-text",
+  "type": "task",
+  "title": "M6 S1：规则板的排队、提醒与唤醒文字写出高峰结束的时刻",
+  "status": "approved",
+  "parent": "m6",
+  "kind": "implement",
+  "tier": "standard",
+  "body": "设计 §16 的 S1、§7.2 第 1 条。被挡：等整块规则板 R1 到 R4 合入（运行 wf_e3f665460875b14b，.worktrees/rules-loops）；主干上只有规则板最小一片，没有排队文字渲染。合入后在规则板的文字渲染函数加可选参数 peakUntil，用例写在规则板的测试文件里。验证层 L2。",
+  "acceptance": [
+    "排队文字的 Boundary 段写「glm-peak is true until 18:00」，每步提醒的等待单一项写「, until 18:00」，唤醒文字写「glm-peak ended at 18:00」",
+    "没有计价服务或 glm-peak 读不出时文字里没有时刻"
+  ],
+  "edges": [
+    {
+      "type": "depends",
+      "to": "m6-quota-contract"
+    },
+    {
+      "type": "depends",
+      "to": "rules"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-31T07:01:04.147Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "按实现计划建节点，标明被挡",
+      "to": "approved"
+    }
+  ]
+}

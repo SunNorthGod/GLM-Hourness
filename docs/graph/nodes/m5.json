@@ -95,6 +95,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M5 设计 0.5（.agents/tasks/m5/design.md）对齐轮第二稿：答第 4 轮评审的两条挡路（R4-01、R4-02）与九条非阻断。R4-01：学习信号按引擎实际写出的历史读，人改的字段认「human，或 llm 带 relay」，对话里的否掉与补充是不带 relay 的批注（engine.ts 第 150 行丢掉 comment 的 relay），测试用真实图引擎写、读回。R4-02：M7 0.6 的周报没有「纠正与学习」一节，规范阶梯也不收 M5 的组，M7 已放行不改，所以 M5 自带出口：记忆行加只读工具 learning_signals（延迟工具，根 agent）和每七天至多一次的摘要提醒（记忆流水新增 learn-notified 记录做节流），m5-4 的验收不再依赖 M7。另：feedback 必须写明范围（R4-03）；projectDirOf 只返回路径、忽略条目仍由 ensureIgnored 写（R4-04）；规则行不在时用 propose_to_human 直接提待决（R4-05）；主 Agent 的判断经薄访问器调 M3 导出的 mainAgentOf，取不到按设计行不在处理（R4-06）；项目目录被删后下一次写入重建（R4-07）；正文只写现行设计（R4-08）；D1「不做」「疑问」两行措辞改（R4-10）；memory_store 与 lessons_merge 的工具说明各带一个示范（R4-11）。给已放行设计的请求都记成自举之后再办的批注（m7 两条、rules 一条、m3 一条可选）。第 5 轮独立评审结果：通过（APPROVED），挡路 0 条，非阻断 8 条（R5-01 至 R5-08，全是 NIT）。各轮挡路数（0.1 至 0.5）为 2、2、1、2、0，非阻断数为 11、3、4、9、8。8 条不挡开工，设计正文本轮没有再改，留到实现时顺手处理：R5-01 判主 Agent 的访问器 isMainAgentFor 不能放 src/shared/（eslint 禁止共享目录导入包目录），改放 src/data/main-agent.ts 并提前到 A1，dir 取 ctx.get(glmHournessGraph)?.dirFor(会话头 cwd)；R5-02 learning_signals 要进工具名契约（新增 LEARNING_TOOL_NAMES，MEMORY_TOOL_NAMES 不动）；R5-03 学习摘要提醒在组键集合没变时不重发；R5-04 学习信号第 1 行排除读作 agree 的 edit，示例改成真实出现的组；R5-05 以人的身份写图的是 /graph-run（run-control.ts），不是 panel-row.ts，重开样例人身份与 llm 带 relay 各写一份；R5-06 §8.2 等处残留 0.3 的说法，lessons-1 验收第 3 条改 isMainAgentFor；R5-07 文件清单补 src/memory/service.ts 与 scripts/packages.mjs（client.sources 加 ui/src/lessons/）；R5-08 候选练习题的落点改用 graph_comment 写「学自：<键>」，learningDigest 统一用对象参数写法。一页放行稿 onepage.md 已改写：九件活「怎样算做完」（D1）的人话版本在其中，D1 与放行各是一项四行方案，等人回话。0.4 原文在 design-0.4.md。"
+    },
+    {
+      "at": "2026-10-31T07:01:05.512Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "design-decisions-apply-1031 的 M5 一支停下（MODULE-STOPPED）：设计 0.6 对 d-code-rules-enforce 的改动评审认可，挡路的 F1（MEDIUM）出在核对记录与图批注草稿里：它们说宪章与 ORCHESTRATION 仍写先影子后拦截，而 cd257a7 已改掉；另有 NIT F2–F4（d-timeout-measured 写成待定、依据写宪章 0.7、批注里引号中的话是转述）。批注草稿没有执行，图上没有这条错记录。新格式的一页稿与 onepage-done.md 因此没写，人现在读到的 M5 一页稿仍是 0.5 的。编排方另派一个小运行：逐字采用评审给的替换句修 F1–F4，再写新格式的一页稿与九件活的人话清单，并单独评审一页稿。"
     }
   ]
 }

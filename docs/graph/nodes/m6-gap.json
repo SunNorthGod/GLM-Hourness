@@ -1,0 +1,33 @@
+{
+  "id": "m6-gap",
+  "type": "task",
+  "title": "M6 G1：写 2026-10-29 删去 806 条用量记录的缺口行",
+  "status": "approved",
+  "parent": "m6",
+  "kind": "docs",
+  "tier": "simple",
+  "body": "设计 §16 的 G1 与 §6.2，计划第 8 步。主 Agent 用一条一次性的 node 命令往 ~/.dsh/glm-hourness/audit/usage-gaps.jsonl 追加缺口行，at 由 new Date(1793243554750).toISOString() 算出；文件是插件自己的用户级数据文件，删掉即撤销。",
+  "acceptance": [
+    "桌面版 /hourness 显示「10-29 11:12 删去 806 条」",
+    "在 m6 节点上批注写了什么与「删掉这个文件即撤销」"
+  ],
+  "edges": [
+    {
+      "type": "depends",
+      "to": "m6-l4"
+    },
+    {
+      "type": "depends",
+      "to": "m6-panel"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-31T07:01:03.977Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "按实现计划建节点",
+      "to": "approved"
+    }
+  ]
+}

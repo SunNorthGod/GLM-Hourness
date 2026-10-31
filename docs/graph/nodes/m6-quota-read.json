@@ -1,0 +1,38 @@
+{
+  "id": "m6-quota-read",
+  "type": "task",
+  "title": "M6 Q2：额度读取、登录状态、预估与循环板条目数据",
+  "status": "approved",
+  "parent": "m6",
+  "kind": "implement",
+  "tier": "hard",
+  "body": "设计 §16 的 Q2，计划第 3 步，FEAT-003，需要凭证、网络、流水与登录判据层级的独立评审。GET https://bigmodel.cn/api/monitor/usage/quota/limit，头恰好 authorization 与 x-request-id，15 秒超时，不重试，401 不重铸；额度流水在用户级目录，登录被拒与上游限额记录写进它；quota-projection；loop-defaults 四条；glm-login 的 plan 与 Config；/glm-status 的一段。不含四类指标事件（见 m6-metrics-events）。验证层 L2。",
+  "acceptance": [
+    "设计验收 5、6、7、8、9、10、11、12、20、21 由具名测试钉住，验收 18 成立",
+    "令牌与请求头不进额度流水、命令输出、控制台；npm run check:secrets 通过",
+    "npm run build、preflight、test、probe 退出码 0，没有新的 knip、ESLint、jscpd 发现，基线文件未改"
+  ],
+  "edges": [
+    {
+      "type": "depends",
+      "to": "m6-host-export"
+    },
+    {
+      "type": "depends",
+      "to": "m6-quota-contract"
+    },
+    {
+      "type": "depends",
+      "to": "m6-reminder-text"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-31T07:01:03.247Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "按实现计划建节点",
+      "to": "approved"
+    }
+  ]
+}

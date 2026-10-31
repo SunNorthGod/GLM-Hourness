@@ -1,0 +1,34 @@
+{
+  "id": "m6-script-gate",
+  "type": "task",
+  "title": "M6 S2：仓库脚本启动前按项目规则与高峰模式自查，拦下要留带规则 id 的记录",
+  "status": "approved",
+  "parent": "m6",
+  "kind": "implement",
+  "tier": "standard",
+  "body": "设计 §16 的 S2、§7.2 第 2 条。被挡：等整块规则板 R1（附属条目与缺省档位）与 R3（src/rules/check.ts 的 checkCall 与 RulesCheckError）合入；另等设计修订稿指定一处：编排方 2026-10-31 通知，d-code-rules-enforce 之下每次拦下都要带规则 id 记下，练习题与真网冒烟被 checkCall 拒绝（退出码 4 或 5）时目前没有命中记录也没有违规流水行；记录含规则 id、时刻、脚本、档位、理由，要在规则页与晨报里读得到。修订稿发出之前缺省写到守卫已在写的违规流水 audit/violations.jsonl。scripts/rules-gate.mjs 的 gateOnRules、两个脚本的调用点、tests/rules-gate.spec.ts、DEVELOPMENT.md 两节、ORCHESTRATION.md §11.4 排期条一句。d-timeout-measured 已定，S2 不设超时。验证层 L2。",
+  "acceptance": [
+    "设计验收 15、16、17、22（真 checkCall 一遍）、24 通过",
+    "每次拒绝（退出码 4、5）写一条带规则 id 的拦下记录，规则页与晨报读得到",
+    "gateOnRules 不含 child_process，不设超时，不写判定事件"
+  ],
+  "edges": [
+    {
+      "type": "depends",
+      "to": "m6-quota-contract"
+    },
+    {
+      "type": "depends",
+      "to": "rules"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-31T07:01:04.320Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "按实现计划建节点，标明被挡，并带入编排方通知的 MEDIUM",
+      "to": "approved"
+    }
+  ]
+}
