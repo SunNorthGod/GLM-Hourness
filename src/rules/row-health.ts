@@ -14,7 +14,7 @@
  */
 import type { HealthState } from '../shared/health.ts'
 import { PEAK_LEVEL_WORDS } from '../shared/peak-mode.ts'
-import { effectivePeakMode, type RecoveryReason, type RepoDiffLine } from './model.ts'
+import { effectivePeakMode, unapprovedScripts, type RecoveryReason, type RepoDiffLine } from './model.ts'
 import type { PeakReading } from './peak.ts'
 import type { ProjectRead } from './repo.ts'
 
@@ -53,5 +53,7 @@ export function projectHealth(name: string, read: ProjectRead, reading: PeakRead
   if (repo.kind === 'outside') problems.push(`仓库里的规则文件被规则板以外改过，没有生效（${diffText(repo.diff)}）。要按存档重写它，打 /rules peak 重设一次档位`)
   else if (state.repo.outside !== undefined) problems.push(`仓库里的规则文件被规则板以外改过，没有生效（${diffText(state.repo.outside.diff)}）。要按存档重写它，打 /rules peak 重设一次档位`)
   if (repo.kind === 'owed') told.push(gitOperation === undefined ? '规则文件待写回' : `规则文件待写回（git 正在做 ${gitOperation}）`)
+  // A script that came with the rules file, or changed in it, does not run until a person has read it: told, not a fault of the board.
+  for (const script of unapprovedScripts(state)) told.push(`${script.id}（${script.title}）的脚本在这台电脑上没有你看过原文的记录，先不跑；要用，跟主 Agent 说，它会把原文给你看`)
   return [problems.length === 0 ? 'active' : 'degraded', [head, clock, ...told, ...problems].join('；')]
 }

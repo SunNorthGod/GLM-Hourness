@@ -5,9 +5,9 @@
  */
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { canonicalJson, DEFAULT_PEAK_LEVEL, diffRepo, effectivePeakMode, effectOf, emptyState, parsePeakLevel, parseRepoRules, repoJson, repoPart, stateFromRepo, stateProblem, validateRule, withoutEmptyCollections, type PeakModeSetting, type ProjectState, type RepoRules, type RowState } from '../src/rules/model.ts'
+import { adoptRepo, canonicalJson, DEFAULT_PEAK_LEVEL, diffRepo, effectivePeakMode, effectOf, emptyState, parsePeakLevel, parseRepoRules, repoJson, repoPart, stateFromRepo, stateProblem, unapprovedScripts, validateRule, withoutEmptyCollections, type Notice, type PeakModeSetting, type ProjectState, type RepoRules, type RowState, type Ticket } from '../src/rules/model.ts'
 import type { HealthState } from '../src/shared/health.ts'
-import { contextOf, draftOf, NOW, SHA } from './rules-fixtures.ts'
+import { contextOf, draftOf, FULL_RULES_FILE, NOW, ruleOf, scriptRef, SHA, SHA_OTHER } from './rules-fixtures.ts'
 
 const CHOSEN: PeakModeSetting = { level: 'stop', at: '2026-10-30T01:00:00.000Z', origin: { actor: 'human' } }
 
@@ -77,7 +77,8 @@ test('the rules file is read back only if it is exactly the board\'s shape', () 
   assert.equal(refused('not json'), '不是 JSON')
   assert.equal(refused('[]'), '最外层不是对象')
   assert.match(refused('{ "version": 1 }'), /version/)
-  assert.match(refused('{ "version": 2, "rules": {} }'), /rules\.rules is not a field/)
+  assert.deepEqual(parseRepoRules('{ "version": 2, "rules": {} }'), { ok: true, repo: { version: 2, rules: {} } }, 'a collection with nothing in it is the full board\'s empty collection, not a mistake')
+  assert.match(refused('{ "version": 2, "proposals": {} }'), /rules\.proposals is not a field/)
   assert.match(refused(JSON.stringify({ version: 2, peakMode: { ...CHOSEN, level: 'sometimes' } })), /level/)
   assert.match(refused(JSON.stringify({ version: 2, peakMode: { ...CHOSEN, at: 'yesterday' } })), /\bat\b/)
   assert.match(refused(JSON.stringify({ version: 2, peakMode: { ...CHOSEN, origin: { actor: 'detector' } } })), /actor/)
@@ -109,6 +110,211 @@ test('a project that starts from the rules file has the decision, a first sequen
   const state = stateFromRepo({ version: 2, peakMode: CHOSEN }, '0123456789abcdef')
   assert.deepEqual(state, { version: 2, seq: 1, peakMode: CHOSEN, repo: { digest: '0123456789abcdef' } })
   assert.equal(stateProblem(state), undefined)
+})
+
+// ------------------------------------------------------------ the full stored shape (design §7.2, §7.5)
+
+const FILE_DIGEST = '0123456789abcdef'
+const TICKET: Ticket = {
+  id: 'q-1',
+  state: 'deferred',
+  rules: ['r-no-evening-push'],
+  sessionId: 's-1',
+  agentLabel: 'main',
+  host: { pid: 100, startedAt: 1_700_000_000_000 },
+  signature: 'abcdef012345',
+  tool: 'pwsh',
+  summary: 'git push origin main',
+  since: '2026-11-04T07:00:00.000Z',
+}
+const NOTICE: Notice = { kind: 'late-block', rule: 'r-lint-gate', text: 'The lint script finished late and blocks the merge.', at: '2026-11-04T07:05:00.000Z' }
+const fromFile = (): ProjectState => stateFromRepo(FULL_RULES_FILE, FILE_DIGEST)
+const pinOf = (state: ProjectState, id: string): NonNullable<ProjectState['scripts']>[string] => {
+  const pin = state.scripts?.[id]
+  assert.ok(pin !== undefined, `${id} has a pin`)
+  return pin
+}
+const approve = (state: ProjectState, id: string): ProjectState => ({ ...state, scripts: { ...state.scripts, [id]: { ...pinOf(state, id), approvedAt: '2026-10-30T03:00:00.000Z' } } })
+
+/** The same content with the keys of every object in the other order. */
+function reversed(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(reversed)
+  if (typeof value !== 'object' || value === null) return value
+  return Object.fromEntries(Object.entries(value).reverse().map(([key, field]) => [key, reversed(field)]))
+}
+
+test('a project that starts from a file of everything a person decided has all of it, no approval for any script, and the file\'s digest', () => {
+  const state = fromFile()
+  assert.equal(stateProblem(state), undefined)
+  assert.deepEqual(Object.keys(state.rules ?? {}).sort(), ['r-lint-gate', 'r-no-evening-push'])
+  assert.deepEqual(Object.keys(state.signals ?? {}).sort(), ['code-freeze', 'server-errors-5m'])
+  assert.deepEqual(Object.keys(state.detectors ?? {}), ['d-server-errors'])
+  assert.deepEqual([state.seq, state.repo, state.peakMode?.level], [1, { digest: FILE_DIGEST }, 'stop'])
+  assert.deepEqual(state.scripts, FULL_RULES_FILE.scripts)
+  for (const pin of Object.values(state.scripts ?? {})) assert.equal('approvedAt' in pin, false, 'a pin that came with the file is not an approval')
+  for (const absent of ['tickets', 'notices', 'nextTicket', 'unresolved', 'recovered'] as const) assert.equal(absent in state, false, `${absent} is the runtime's, not the file's`)
+  assert.deepEqual(repoPart(state), FULL_RULES_FILE, 'what the state exports is what it started from')
+})
+
+test('what belongs to a session or to the runtime never goes to the rules file', () => {
+  const session = ruleOf({ id: 'r-session-only', scope: 'session', sessionId: 's-1', lifetime: { kind: 'session' } })
+  const base = fromFile()
+  const state: ProjectState = {
+    ...base,
+    seq: 9,
+    rules: { ...base.rules, 'r-session-only': session },
+    signals: { ...base.signals, 'server-errors-5m': { type: { kind: 'number', unit: 'errors' }, detector: 'd-server-errors', detected: { value: 4, since: '2026-11-04T07:00:00.000Z' } } },
+    tickets: { 'q-1': TICKET },
+    nextTicket: 2,
+    notices: { 'n-1': NOTICE },
+    recovered: { at: '2026-11-04T07:00:00.000Z', reason: 'snapshot-corrupt', lost: false },
+  }
+  assert.equal(stateProblem(state), undefined)
+  assert.deepEqual(repoPart(state), FULL_RULES_FILE)
+  assert.equal(repoJson(repoPart(state)!).includes('r-session-only'), false)
+})
+
+test('the rules file reads the same whatever order the keys were written in: sorted keys, two spaces, a final newline, no empty collection', () => {
+  const text = repoJson(FULL_RULES_FILE)
+  assert.equal(repoJson(reversed(FULL_RULES_FILE) as RepoRules), text)
+  assert.equal(repoJson({ ...(reversed(FULL_RULES_FILE) as RepoRules), tickets: {}, notices: {} } as RepoRules), text, 'empty collections of the runtime change nothing')
+  assert.ok(text.startsWith('{\n  "detectors": {\n    "d-server-errors": {\n'), 'collections in key order, two spaces')
+  assert.ok(text.endsWith('\n  "version": 2\n}\n'))
+  assert.equal(text.split('\n').filter(line => /^\t/.test(line)).length, 0)
+  const parsed = parseRepoRules(text)
+  assert.ok(parsed.ok)
+  assert.deepEqual(parsed.repo, FULL_RULES_FILE)
+  assert.equal(repoJson(parsed.repo), text, 'writing what was read gives the same text')
+})
+
+test('a rules file is read only if every entry of it is sound; what a person cannot have decided is refused with the field', () => {
+  type Json = { [key: string]: unknown }
+  /** The file with each `[path, value]` put in place (an undefined value deletes), as the text a hand edit leaves. */
+  const refused = (...edits: ReadonlyArray<readonly [readonly string[], unknown]>): string => {
+    const file = JSON.parse(JSON.stringify(FULL_RULES_FILE)) as Json
+    for (const [path, value] of edits) {
+      const parent = path.slice(0, -1).reduce<Json>((node, key) => node[key] as Json, file)
+      const last = path.at(-1) ?? ''
+      if (value === undefined) delete parent[last]
+      else parent[last] = value
+    }
+    const result = parseRepoRules(JSON.stringify(file))
+    assert.equal(result.ok, false)
+    return result.ok ? '' : result.reason
+  }
+  const push = ['rules', 'r-no-evening-push'] as const
+  assert.match(refused([[...push, 'scope'], 'session'], [[...push, 'sessionId'], 's-1']), /scope/)
+  assert.match(refused([[...push, 'action'], { kind: 'explode' }]), /action/)
+  assert.match(refused([[...push, 'status'], 'sleeping']), /status/)
+  assert.match(refused([[...push, 'origin'], undefined]), /origin/)
+  assert.match(refused([['rules', 'r-other'], FULL_RULES_FILE.rules?.['r-no-evening-push']]), /r-other\.id/)
+  assert.match(refused([['scripts', 'r-lint-gate', 'approvedAt'], '2026-10-30T03:00:00.000Z']), /rules\.scripts\.r-lint-gate\.approvedAt is not a field/)
+  assert.match(refused([['scripts', 'r-lint-gate', 'sha256'], 'short']), /sha256/)
+  assert.match(refused([['signals', 'code-freeze', 'manual', 'value'], 'yes']), /code-freeze\.manual/)
+  assert.match(refused([['signals', 'server-errors-5m', 'detected'], { value: 1, since: '2026-11-04T07:00:00.000Z' }]), /detected is not a field/)
+  assert.match(refused([['detectors', 'd-server-errors', 'action', 'kind'], 'block']), /action/)
+  assert.match(refused([['detectors', 'd-server-errors', 'when'], { kind: 'every', seconds: 59 }]), /when/)
+  assert.match(refused([['tickets'], {}]), /rules\.tickets is not a field/)
+  assert.match(refused([['proposals'], {}]), /rules\.proposals is not a field/)
+})
+
+test('a stored rule is checked for its shape, not for the moment or the project: an expired time to live, a signal nobody defines and more than fifty rules are kept as they are', () => {
+  const parse = (file: RepoRules): boolean => parseRepoRules(repoJson(file)).ok
+  const stale = ruleOf({ id: 'r-stale', lifetime: { kind: 'ttl', expiresAt: '2020-01-01T00:00:00.000Z' }, status: 'expired', condition: { signal: 'gone-signal', is: true } })
+  assert.equal(parse({ version: 2, rules: { 'r-stale': stale } }), true)
+  const many = Object.fromEntries(Array.from({ length: 60 }, (_, index) => [`r-${index}`, ruleOf({ id: `r-${index}` })]))
+  assert.equal(parse({ version: 2, rules: many }), true)
+  assert.equal(parse({ version: 2, rules: { 'r-stale': { ...stale, condition: { signal: 'gone-signal', is: true, above: 3 } } } }), false, 'the comparison itself is still checked')
+})
+
+test('a state is checked entry by entry for the collections of the full board; proposals are not part of it', () => {
+  const full: ProjectState = { ...fromFile(), seq: 3, tickets: { 'q-1': TICKET }, nextTicket: 2, notices: { 'n-1': NOTICE } }
+  assert.equal(stateProblem(full), undefined)
+  const bad = (change: Partial<ProjectState> | Record<string, unknown>): string => stateProblem({ ...full, ...change }) ?? ''
+  assert.match(bad({ proposals: {} }), /state\.proposals is not a field/)
+  assert.match(bad({ nextTicket: -1 }), /nextTicket/)
+  assert.match(bad({ tickets: { 'q-1': { ...TICKET, state: 'lost' } } }), /tickets\.q-1\.state/)
+  assert.match(bad({ tickets: { 'q-2': TICKET } }), /tickets\.q-2\.id/)
+  assert.match(bad({ tickets: { 'q-1': { ...TICKET, host: { pid: 'x', startedAt: 1 } } } }), /host/)
+  assert.match(bad({ notices: { 'n-1': { ...NOTICE, kind: 'rumour' } } }), /notices\.n-1\.kind/)
+  assert.match(bad({ scripts: { 'r-lint-gate': { ...scriptRef('r-lint-gate'), approvedAt: 'long ago' } } }), /approvedAt/)
+  assert.match(bad({ rules: { 'r-x': ruleOf({ id: 'r-no-evening-push' }) } }), /rules\.r-x\.id/)
+  assert.match(bad({ signals: { 'code-freeze': { type: { kind: 'boolean' }, manual: { value: 3, at: '2026-10-30T02:00:00.000Z' } } } }), /signals\.code-freeze\.manual/)
+  assert.match(bad({ detectors: { 'd-server-errors': { ...(full.detectors ?? {})['d-server-errors'], status: 'gone' } } }), /detectors\.d-server-errors\.status/)
+  assert.equal(stateProblem({ ...full, rules: {}, signals: {}, detectors: {}, tickets: {}, scripts: {}, notices: {} }), undefined, 'the empty collections of the full board digest as absent')
+})
+
+test('the difference between the file and the state names each decided entry, in the order the file lists them', () => {
+  const state = fromFile()
+  assert.deepEqual(diffRepo(state, FULL_RULES_FILE), [])
+  const file: RepoRules = {
+    ...FULL_RULES_FILE,
+    peakMode: { ...FULL_RULES_FILE.peakMode!, level: 'inform' },
+    rules: { 'r-no-evening-push': { ...FULL_RULES_FILE.rules!['r-no-evening-push'], reason: 'Edited by hand.', title: 'Edited' }, 'r-new': ruleOf({ id: 'r-new' }) },
+    signals: { 'code-freeze': { type: { kind: 'boolean' }, description: 'Nobody merges' }, 'server-errors-5m': FULL_RULES_FILE.signals!['server-errors-5m'] },
+    scripts: { 'r-lint-gate': scriptRef('r-lint-gate', SHA_OTHER), 'd-server-errors': scriptRef('d-server-errors', SHA_OTHER) },
+  }
+  delete (file as { detectors?: unknown }).detectors
+  assert.deepEqual(diffRepo(state, file), [
+    { path: ['detectors', 'd-server-errors'], change: 'removed' },
+    { path: ['peakMode'], change: 'changed', fields: ['level'] },
+    { path: ['rules', 'r-lint-gate'], change: 'removed' },
+    { path: ['rules', 'r-new'], change: 'added' },
+    { path: ['rules', 'r-no-evening-push'], change: 'changed', fields: ['reason', 'title'] },
+    { path: ['scripts', 'r-lint-gate'], change: 'changed', fields: ['sha256'] },
+    { path: ['signals', 'code-freeze'], change: 'changed', fields: ['manual'] },
+  ])
+  assert.deepEqual(diffRepo({ ...state, tickets: { 'q-1': TICKET }, rules: { ...state.rules, 'r-session': ruleOf({ id: 'r-session', scope: 'session', sessionId: 's-1', lifetime: { kind: 'session' } }) } }, FULL_RULES_FILE), [], 'the runtime and the sessions are not compared with a file that cannot hold them')
+})
+
+test('adopting a file replaces what a person decided, keeps what the runtime holds and the approvals of scripts that did not change', () => {
+  const approved = approve(approve({ ...fromFile(), seq: 7 }, 'r-lint-gate'), 'd-server-errors')
+  const session = ruleOf({ id: 'r-session-only', scope: 'session', sessionId: 's-1', lifetime: { kind: 'session' } })
+  const state: ProjectState = {
+    ...approved,
+    rules: { ...approved.rules, 'r-session-only': session },
+    signals: { ...approved.signals, 'server-errors-5m': { type: { kind: 'number', unit: 'errors' }, detector: 'd-server-errors', detected: { value: 4, since: '2026-11-04T07:00:00.000Z' } } },
+    tickets: { 'q-1': TICKET },
+    nextTicket: 2,
+    repo: { digest: '1111111111111111', outside: { digest: '2222222222222222', at: '2026-11-04T08:00:00.000Z', copy: 'x', diff: [] } },
+  }
+  const file: RepoRules = {
+    version: 2,
+    rules: {
+      'r-lint-gate': { ...FULL_RULES_FILE.rules!['r-lint-gate'], action: { kind: 'script', script: scriptRef('r-lint-gate', SHA_OTHER), onError: 'block' } },
+      'r-new-script': ruleOf({ id: 'r-new-script', action: { kind: 'script', script: scriptRef('r-new-script') } }),
+    },
+    signals: FULL_RULES_FILE.signals!,
+    detectors: FULL_RULES_FILE.detectors!,
+    scripts: { 'r-lint-gate': scriptRef('r-lint-gate', SHA_OTHER), 'r-new-script': scriptRef('r-new-script'), 'd-server-errors': scriptRef('d-server-errors', SHA_OTHER) },
+  }
+  const next = adoptRepo(state, file, '3333333333333333')
+  assert.equal(stateProblem(next), undefined)
+  assert.deepEqual([next.seq, next.repo], [7, { digest: '3333333333333333' }], 'the digest is the file\'s and the outside mark is cleared; the sequence is the engine\'s to set')
+  assert.equal(next.peakMode, undefined, 'the file has none')
+  assert.deepEqual(Object.keys(next.rules ?? {}).sort(), ['r-lint-gate', 'r-new-script', 'r-session-only'], 'the rule the file lacks is gone, the session\'s stays')
+  assert.deepEqual(next.tickets, { 'q-1': TICKET })
+  assert.equal(next.nextTicket, 2)
+  assert.deepEqual(next.signals?.['server-errors-5m']?.detected, { value: 4, since: '2026-11-04T07:00:00.000Z' }, 'a measured value is the runtime\'s')
+  assert.equal(next.scripts?.['d-server-errors']?.approvedAt, '2026-10-30T03:00:00.000Z', 'the same bytes, the same approval')
+  assert.equal('approvedAt' in pinOf(next, 'r-lint-gate'), false, 'other bytes under the same name are not what was approved')
+  assert.equal('approvedAt' in pinOf(next, 'r-new-script'), false)
+  assert.deepEqual(unapprovedScripts(next).map(entry => [entry.id, entry.standing]), [['r-lint-gate', 'not-approved'], ['r-new-script', 'not-approved']])
+})
+
+test('a script can run only when its pin carries an approval for exactly the bytes the entry names', () => {
+  const state = fromFile()
+  assert.deepEqual(unapprovedScripts(state).map(entry => [entry.id, entry.standing]), [['d-server-errors', 'not-approved'], ['r-lint-gate', 'not-approved']], 'read from a file: listed, not approved')
+  assert.equal(unapprovedScripts(state)[1]?.title, 'The trunk only moves when lint passes')
+  assert.deepEqual(unapprovedScripts(approve(approve(state, 'r-lint-gate'), 'd-server-errors')), [])
+  const { scripts, ...withoutPins } = approve(state, 'r-lint-gate')
+  assert.deepEqual(unapprovedScripts(withoutPins).map(entry => [entry.id, entry.standing]), [['d-server-errors', 'no-pin'], ['r-lint-gate', 'no-pin']])
+  const changed = approve(state, 'r-lint-gate')
+  const swapped: ProjectState = { ...changed, scripts: { ...scripts, 'r-lint-gate': { ...pinOf(changed, 'r-lint-gate'), sha256: SHA_OTHER } } }
+  assert.deepEqual(unapprovedScripts(swapped).filter(entry => entry.id === 'r-lint-gate').map(entry => entry.standing), ['changed'], 'the pin and the entry name different bytes')
+  const lifted: ProjectState = { ...state, rules: { ...state.rules, 'r-lint-gate': { ...state.rules!['r-lint-gate'], status: 'lifted' } }, detectors: { 'd-server-errors': { ...state.detectors!['d-server-errors'], status: 'removed' } } }
+  assert.deepEqual(unapprovedScripts(lifted), [], 'what is lifted or removed does not run, so it is not waiting for anything')
+  assert.deepEqual(unapprovedScripts(emptyState()), [])
 })
 
 // ------------------------------------------------------------ rules (design §2.2, §2.3, §12)

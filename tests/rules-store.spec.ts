@@ -16,9 +16,10 @@ import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 import { acquireLock, LOCK_WAIT_MS, STALE_LOCK_MS } from '../src/data/lock.ts'
 import { openRulesBoard, type RulesBoard } from '../src/rules/engine.ts'
-import { effectivePeakMode, emptyState, repoJson, type JournalRecord, type PeakLevel, type PeakModeSetting, type ProjectState } from '../src/rules/model.ts'
+import { adoptRepo, effectivePeakMode, emptyState, repoJson, repoPart, stateFromRepo, type JournalRecord, type PeakLevel, type PeakModeSetting, type ProjectState } from '../src/rules/model.ts'
 import { gitOperationIn, readProject, settleProject } from '../src/rules/repo.ts'
-import { applyRecord, loadState, rulesPaths, stateDigest, textDigest, type RulesPaths, type StoreIo } from '../src/rules/store.ts'
+import { applyRecord, changesBetween, loadState, rulesPaths, stateDigest, textDigest, type RulesPaths, type StoreIo } from '../src/rules/store.ts'
+import { FULL_RULES_FILE, ruleOf, scriptRef } from './rules-fixtures.ts'
 import { impatientLock, projectTest, quickIo } from './rules-helpers.ts'
 
 const WRITER = '--writer'
@@ -381,7 +382,15 @@ test('applyRecord is a pure function of the state and the record: it reads no cl
   const listed = applyRecord(state, { seq: 5, changes: [{ path: ['unresolved', entry.key], value: entry }] })
   assert.deepEqual(listed.unresolved, { [entry.key]: entry })
   assert.equal('unresolved' in applyRecord(listed, { seq: 6, changes: [{ path: ['unresolved', entry.key] }] }), false, 'deleting the last entry leaves no empty collection behind')
-  assert.throws(() => applyRecord(state, { seq: 5, changes: [{ path: ['rules', 'r-x'], value: {} }] }), /not a path of the state/)
+  const withRule = applyRecord(state, { seq: 5, changes: [{ path: ['rules', 'r-1'], value: ruleOf() }, { path: ['nextTicket'], value: 2 }, { path: ['scripts', 'r-1'], value: scriptRef('r-1') }] })
+  assert.deepEqual([Object.keys(withRule.rules ?? {}), withRule.nextTicket, Object.keys(withRule.scripts ?? {})], [['r-1'], 2, ['r-1']], 'the collections of the full board change one entry at a time')
+  const without = applyRecord(withRule, { seq: 6, changes: [{ path: ['rules', 'r-1'] }, { path: ['scripts', 'r-1'] }] })
+  assert.deepEqual(['rules' in without, 'scripts' in without, without.nextTicket], [false, false, 2], 'the last entry of a collection takes the collection with it')
+  for (const collection of ['rules', 'signals', 'detectors', 'tickets', 'notices', 'scripts']) {
+    assert.doesNotThrow(() => applyRecord(state, { seq: 5, changes: [{ path: [collection, 'x'], value: {} }] }), collection)
+    assert.throws(() => applyRecord(state, { seq: 5, changes: [{ path: [collection], value: {} }] }), /not a path of the state/, `${collection} changes one entry at a time`)
+  }
+  assert.throws(() => applyRecord(state, { seq: 5, changes: [{ path: ['proposals', 'p-x'], value: {} }] }), /not a path of the state/, 'proposals are not part of this version of the state')
   assert.throws(() => applyRecord(state, { seq: 5, changes: [{ path: ['root'], value: 'C:/x' }] }), /not a path/)
   assert.throws(() => applyRecord(state, { seq: 5, changes: [{ path: ['repo'] }] }), /cannot be deleted/)
   assert.throws(() => applyRecord(state, { seq: 5, changes: [null as never] }), /needs a path/)
@@ -409,6 +418,74 @@ projectTest('a collection that is empty is absent from what is stored, so a stat
     assert.equal(stateDigest(extended), record.snapshot, `record ${record.seq} verifies under the extended shape`)
   }
   assert.equal(stateDigest(extended), stateDigest(slice))
+})
+
+// What the first version of the board (the peak level only) wrote for three choices, byte for byte: captured from that
+// code with a fixed clock. The full board has to read it and verify every digest in it.
+const SLICE_RECORDS = [
+  { seq: 1, at: '2026-10-30T01:01:00.000Z', actor: 'human', op: 'peak-mode-set', target: 'peakMode', from: 'reduce', to: 'stop', reason: '人把高峰模式改成了「不做」', changes: [{ path: ['peakMode'], value: { level: 'stop', at: '2026-10-30T01:01:00.000Z', origin: { actor: 'human' } } }, { path: ['repo'], value: { digest: 'cce76457d6bbca75' } }], snapshot: 'b2ae9523071139ff' },
+  { seq: 2, at: '2026-10-30T01:02:00.000Z', actor: 'human', op: 'peak-mode-set', target: 'peakMode', from: 'stop', to: 'inform', reason: '人把高峰模式改成了「无影响」', changes: [{ path: ['peakMode'], value: { level: 'inform', at: '2026-10-30T01:02:00.000Z', origin: { actor: 'human' } } }, { path: ['repo'], value: { digest: 'cb2ecbf4f1814ed8' } }], snapshot: '04e7ebaa50b9558b' },
+  { seq: 3, at: '2026-10-30T01:03:00.000Z', actor: 'human', op: 'peak-mode-set', target: 'peakMode', from: 'inform', to: 'reduce', reason: '人把高峰模式改成了「少做」', changes: [{ path: ['peakMode'], value: { level: 'reduce', at: '2026-10-30T01:03:00.000Z', origin: { actor: 'human' } } }, { path: ['repo'], value: { digest: 'e9453ea6ec106f85' } }], snapshot: '5c00c1969b4f716a' },
+]
+const SLICE_STATE = '{"peakMode":{"at":"2026-10-30T01:03:00.000Z","level":"reduce","origin":{"actor":"human"}},"repo":{"digest":"e9453ea6ec106f85"},"seq":3,"version":2}'
+const SLICE_RULES = '{\n  "peakMode": {\n    "at": "2026-10-30T01:03:00.000Z",\n    "level": "reduce",\n    "origin": {\n      "actor": "human"\n    }\n  },\n  "version": 2\n}\n'
+
+projectTest('the files of the first version of the board load and replay under the full shape with the digests they carry, and the rules file is still in sync', async ({ board }) => {
+  const { paths } = board
+  await mkdir(paths.runtimeDir, { recursive: true })
+  await mkdir(paths.rulesDir, { recursive: true })
+  await writeFile(paths.journal, SLICE_RECORDS.map(record => `${JSON.stringify(record)}\n`).join(''))
+  await writeFile(paths.state, SLICE_STATE)
+  await writeFile(paths.rulesFile, SLICE_RULES)
+  await writeFile(paths.repoWritten, `${JSON.stringify({ digest: 'e9453ea6ec106f85', at: '2026-10-30T01:03:00.000Z' })}\n`)
+
+  let state = emptyState()
+  for (const record of SLICE_RECORDS) {
+    state = applyRecord(state, record as unknown as JournalRecord)
+    assert.equal(stateDigest(state), record.snapshot, `record ${record.seq} verifies under the full shape`)
+  }
+  const direct = loadState(paths)
+  assert.deepEqual([direct.source, direct.plan, stateDigest(direct.state)], ['snapshot', undefined, '5c00c1969b4f716a'], 'the snapshot is used as it is')
+  assert.deepEqual(direct.state, state)
+
+  await unlink(paths.state)
+  const replayed = loadState(paths)
+  assert.equal(replayed.source, 'replay')
+  assert.deepEqual([stateDigest(replayed.state), replayed.state.unresolved, replayed.plan?.recovered?.skipped], ['5c00c1969b4f716a', undefined, []], 'every record takes effect, none is skipped')
+  assert.equal(textDigest(SLICE_RULES), 'e9453ea6ec106f85')
+  assert.equal(repoJson(repoPart(replayed.state)!), SLICE_RULES, 'the full board writes the same file for the same content')
+  assert.equal(readProject(paths).repo.kind, 'in-sync')
+
+  await writeFile(paths.state, SLICE_STATE)
+  const written = await board.apply('human', { op: 'peak-mode-set', level: 'stop' })
+  assert.ok(written.ok && written.changed)
+  const after = await lines(paths)
+  assert.deepEqual(after.map(record => record.seq), [1, 2, 3, 4], 'the sequence goes on from the slice\'s last record')
+  assert.equal(loadState(paths).state.seq, 4)
+})
+
+test('a collection that had entries and lost them digests like the state that never had them, and the changes between two states give the second from the first', () => {
+  const before = stateFromRepo(FULL_RULES_FILE, '0123456789abcdef')
+  const emptied = applyRecord(applyRecord(emptyState(), { seq: 1, changes: [{ path: ['rules', 'r-1'], value: ruleOf() }, { path: ['nextTicket'], value: 1 }] }), { seq: 2, changes: [{ path: ['rules', 'r-1'] }, { path: ['nextTicket'] }] })
+  assert.equal(stateDigest(emptied), stateDigest({ ...emptyState(), seq: 2 }))
+  assert.equal('rules' in emptied, false)
+
+  const file = { ...FULL_RULES_FILE, rules: { 'r-new': ruleOf({ id: 'r-new' }) }, scripts: { 'd-server-errors': scriptRef('d-server-errors', 'b'.repeat(64)) } }
+  delete (file as { peakMode?: unknown }).peakMode
+  const after = adoptRepo({ ...before, tickets: {}, nextTicket: 3 }, file, 'fedcba9876543210')
+  const changes = changesBetween(before, after)
+  assert.deepEqual(changes.map(change => change.path.join('/')), [
+    'nextTicket',
+    'peakMode',
+    'repo',
+    'rules/r-lint-gate',
+    'rules/r-new',
+    'rules/r-no-evening-push',
+    'scripts/r-lint-gate',
+  ], 'one change per entry that differs, collections and fields in key order')
+  assert.deepEqual(changes.filter(change => change.value === undefined).map(change => change.path.join('/')), ['peakMode', 'rules/r-lint-gate', 'rules/r-no-evening-push', 'scripts/r-lint-gate'], 'what is gone is a deletion')
+  assert.deepEqual(applyRecord(before, { seq: 2, changes }), { ...after, seq: 2 })
+  assert.deepEqual(changesBetween(before, before), [])
 })
 
 test('the write lock: a dead holder and an old lock are taken over, a live fresh one is waited for and then reported busy, and a lock taken over is no longer held', async () => {
@@ -574,7 +651,7 @@ projectTest('a rules file someone else changed does not take effect, is kept asi
   await writeFile(paths.rulesFile, changed)
   const read = readProject(paths)
   assert.equal(effectivePeakMode(read.state).level, 'stop', 'the journal decides')
-  assert.deepEqual(read.repo.kind === 'outside' ? read.repo.diff : undefined, [{ path: ['peakMode'], change: 'changed', fields: ['level', 'at'] }])
+  assert.deepEqual(read.repo.kind === 'outside' ? read.repo.diff : undefined, [{ path: ['peakMode'], change: 'changed', fields: ['at', 'level'] }])
   await settled(paths)
   const records = await lines(paths)
   assert.deepEqual([records.at(-1)?.op, records.at(-1)?.actor], ['repo-outside', 'harness'])

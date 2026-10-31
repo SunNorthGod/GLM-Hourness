@@ -22,7 +22,7 @@ import { readFileSync } from 'node:fs'
 import { copyFile, mkdir, open, rename as renameFile, truncate, unlink, writeFile } from 'node:fs/promises'
 import { isAbsolute, join } from 'node:path'
 import { ensureIgnored } from '../data/project-root.ts'
-import { canonicalJson, emptyState, stateProblem, withoutEmptyCollections, type Change, type JournalRecord, type ProjectState, type RecoveryReason, type SkippedRecord } from './model.ts'
+import { canonicalJson, compareCodePoints, emptyState, stateProblem, withoutEmptyCollections, type Change, type JournalRecord, type ProjectState, type RecoveryReason, type SkippedRecord } from './model.ts'
 
 /** The rules directory in the repository, relative to the project root. */
 export const DEFAULT_RULES_DIR = 'docs/rules'
@@ -90,14 +90,18 @@ export function textDigest(text: string): string {
   return digestOf(text, 16)
 }
 
-const FIELDS: readonly string[] = ['peakMode', 'repo', 'recovered']
+/** The top-level fields a change replaces or deletes as a whole. */
+const FIELDS: readonly string[] = ['peakMode', 'repo', 'recovered', 'nextTicket']
+
+/** The collections a change touches one entry of; `proposals` of the full design is not among them. */
+const COLLECTIONS: readonly string[] = ['rules', 'signals', 'detectors', 'scripts', 'tickets', 'notices', 'unresolved']
 
 /**
  * The state after a record. Pure: it reads no clock, file or process table.
  * A path outside the list the state has, or a missing `repo`, throws; a
  * replay reads that as a record that does not take effect. A collection the
  * record leaves empty is absent from the result (deleting the last entry of
- * `unresolved` removes `unresolved`).
+ * `rules` removes `rules`).
  */
 export function applyRecord(state: ProjectState, record: { readonly seq: number, readonly changes: readonly Change[] }): ProjectState {
   const next: Record<string, unknown> = { ...state }
@@ -109,16 +113,42 @@ export function applyRecord(state: ProjectState, record: { readonly seq: number,
       else if (head === 'repo') throw new Error('the repo field cannot be deleted')
       else delete next[head]
     }
-    else if (change.path.length === 2 && head === 'unresolved' && entry !== undefined) {
-      const unresolved = { ...(next.unresolved as Record<string, SkippedRecord> | undefined) }
-      if (change.value === undefined) delete unresolved[entry]
-      else unresolved[entry] = change.value as SkippedRecord
-      next.unresolved = unresolved
+    else if (change.path.length === 2 && head !== undefined && COLLECTIONS.includes(head) && entry !== undefined) {
+      // An entry named __proto__ would set the collection's prototype instead of an entry.
+      if (entry === '__proto__') throw new Error('__proto__ is not an entry name')
+      const collection = { ...(next[head] as Record<string, unknown> | undefined) }
+      if (change.value === undefined) delete collection[entry]
+      else collection[entry] = change.value
+      next[head] = collection
     }
     else throw new Error(`${JSON.stringify(change.path)} is not a path of the state`)
   }
   next.seq = record.seq
   return withoutEmptyCollections(next) as unknown as ProjectState
+}
+
+/**
+ * The changes that turn one state into the other: one for each top-level field and each collection entry whose content
+ * differs, in key order, a deletion for what only `before` has. The sequence number is the record's, not a change.
+ * `applyRecord(before, { seq, changes: changesBetween(before, after) })` is `after` with that sequence number.
+ */
+export function changesBetween(before: ProjectState, after: ProjectState): Change[] {
+  const was = before as unknown as Record<string, unknown>
+  const now = after as unknown as Record<string, unknown>
+  const union = (a: object, b: object): string[] => [...new Set([...Object.keys(a), ...Object.keys(b)])].sort(compareCodePoints)
+  const changes: Change[] = []
+  for (const name of union(was, now).filter(field => field !== 'seq' && field !== 'version')) {
+    if (!COLLECTIONS.includes(name)) {
+      if (canonicalJson(was[name]) !== canonicalJson(now[name])) changes.push(now[name] === undefined ? { path: [name] } : { path: [name], value: now[name] })
+      continue
+    }
+    const held = (was[name] ?? {}) as Record<string, unknown>
+    const next = (now[name] ?? {}) as Record<string, unknown>
+    for (const id of union(held, next)) {
+      if (canonicalJson(held[id]) !== canonicalJson(next[id])) changes.push(next[id] === undefined ? { path: [name, id] } : { path: [name, id], value: next[id] })
+    }
+  }
+  return changes
 }
 
 type Line = { readonly text: string } & (

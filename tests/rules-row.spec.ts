@@ -18,6 +18,7 @@ import { apply, clockText, inject, name, type RulesConfig, type RulesContext } f
 import { repoJson } from '../src/rules/model.ts'
 import { fakeRuntime, type FakeRuntime } from './fake-rc3.ts'
 import { captureWarnings } from './graph-helpers.ts'
+import { FULL_RULES_FILE } from './rules-fixtures.ts'
 import { quickIo } from './rules-helpers.ts'
 
 const NOW = Date.parse('2026-10-28T15:00:00+08:00') // a Wednesday in the GLM peak, 14:00-18:00 UTC+8
@@ -326,6 +327,18 @@ rowTest('a project that has the rules file and no state starts from the file whe
   assert.deepEqual([state?.level, state?.origin, state?.at], ['stop', 'human', '2026-10-29T01:00:00.000Z'])
   const journal = await readFile(join(root, '.llm', 'rules', 'journal.jsonl'), 'utf8')
   assert.equal((JSON.parse(journal) as { op: string }).op, 'base')
+})
+
+rowTest('a project that starts from a file with scripts says which scripts nobody has read here, keeps the row active, and the file is not touched', async ({ root, runtime, service }) => {
+  await mkdir(join(root, 'docs', 'rules'), { recursive: true })
+  const rules = join(root, 'docs', 'rules', 'rules.json')
+  await writeFile(rules, repoJson(FULL_RULES_FILE))
+  await runtime.create()
+  assert.equal(service.stateFor('agent-1')?.level, 'stop')
+  assert.equal(health(runtime).status, 'active')
+  for (const id of ['r-lint-gate', 'd-server-errors']) assert.match(health(runtime).reason, new RegExp(`${id}.{0,60}没有你看过原文的记录，先不跑`), id)
+  assert.equal(health(runtime).reason.includes('r-no-evening-push'), false, 'a rule without a script has nothing to approve')
+  assert.equal(await readFile(rules, 'utf8'), repoJson(FULL_RULES_FILE))
 })
 
 test('the rules directory can be named by the configuration, relative or absolute', async () => {
