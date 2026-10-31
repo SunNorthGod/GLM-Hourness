@@ -221,6 +221,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M4 设计 0.6 第 2 轮决定评审 CHANGES_REQUESTED（MEDIUM 2、NIT 6），上一轮 18 条关闭 17 条；作者已回应 F11（违规流水写失败没有信号）、F12（check_limit 的说明、示例、工具名登记与 E3 文件清单）与 N9–N14（§19.7），等第 3 轮评审。"
+    },
+    {
+      "at": "2026-10-31T19:32:09.017Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M4 设计 0.6 第 3 轮决定评审 CHANGES_REQUESTED（MEDIUM 2、NIT 3），本轮按规矩停下（.agents/tasks/m4/stop-report.md），新一页稿没写。上一轮的 F12、N9–N12、N14 关闭。剩下：F13 丢失的违规记录条数经行健康上报，而行健康每个会话只留一份、每次调用都被 guard 行的报告覆盖，数会丢；F14 lift-files-only 没盖到工作树里那份被跟踪的 lifts.jsonl；N15–N17。编排方之后与接管、M6 一页稿、面板一起派一遍修改与复审。"
     }
   ]
 }

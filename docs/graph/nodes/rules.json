@@ -501,6 +501,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "规则板与循环板实现 FEAT-002（规则板纯核心，23e71a7）独立评审 APPROVED，挡路 0、5 条不挡路的说明（.agents/tasks/rules-loops/gate-FEAT-002.json）。13 步里 2 步已过审。"
+    },
+    {
+      "at": "2026-10-31T19:32:09.202Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "规则板与循环板实现 FEAT-003（存储推广到完整形状，仓库里的规则文件）提交 6cdddcd，build、preflight、npm test 退出码 0，五个 rules 测试与新的 tests/rules-repo.spec.ts（10 例，真 git 仓库）通过，等独立评审。"
     }
   ]
 }
