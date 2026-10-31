@@ -209,6 +209,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "design-finish-m4-bootstrap-m6-uj（wf_de2de8aca321a79a）对 M4 0.6 的决定评审 CHANGES_REQUESTED：HIGH 0、MEDIUM 10、NIT 8（.agents/tasks/m4/decisions-review.md）。四条人定的决定大体写对，剩下的缺口在撤规则（F1–F4）、超时（F5–F9）与 looksSecret 的说法（F10）。编排方对 F1–F8 的裁定记在 d-code-rules-enforce 与 d-timeout-measured 上，已转给修复轮；这个循环最多 3 轮。"
+    },
+    {
+      "at": "2026-10-31T15:02:23.540Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M4 设计 0.6 按第 1 轮决定评审的 F1–F10、N1–N8 与编排方裁定改完（§19.6 逐条答复，graph-ops-decisions.json 10 条），等第 2 轮评审。"
     }
   ]
 }

@@ -137,6 +137,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "impl-m5-memory-lessons 的第 0 步：设计 0.7 写出（推测出的习惯先问人再记；人说不要的同一习惯 28 天内不再问；人确认过的习惯变成带人原话与当时问句的偏好，不再淡忘），工作树 .worktrees/m5、分支 m5-memory-lessons（基于 055189f）。独立评审第 1 轮 CHANGES_REQUESTED：MEDIUM 5、NIT 11（.worktrees/m5/.agents/tasks/m5/reviews/amend-review-1.md），修改轮在做，这个循环最多 3 轮。"
+    },
+    {
+      "at": "2026-10-31T15:02:23.910Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M5 设计 0.7 修改第 1 遍完成：第 1 轮评审的 F1–F5、N1–N11 都已处理（人说不要的同一习惯 28 天内不再问；人确认过的习惯变成带人回话与当时问句的偏好，不再淡忘），等第 2 轮评审。"
     }
   ]
 }

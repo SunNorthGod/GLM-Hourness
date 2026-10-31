@@ -240,6 +240,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M6 设计 0.6 第 3 轮决定评审 APPROVED（HIGH 0、MEDIUM 0、NIT 4）：F7 关闭，练习题与真网核对被规则挡下时（gateOnRules 退出码 4、5），每条命中的规则往项目 .llm/audit/violations.jsonl 追加一行，带规则 id、时刻、命令与原因；F8–F10 关闭，F7 以外行为不变。NIT：F11 晨报今天不数 mode 为 enforce 的行，计数要说明；F12 验收 26 的路径在 Windows 上要规范化；F13 写 cordis.patch.yml 而不是 profile；F14 /rules peak 那句与 d-one-lift-path 对齐。实现计划的 S2（m6-script-gate）照这一版做。评审提到的「图命令行在主检出里报 PROPOSAL_FIELDS 未导出」是 21:07–21:15 那份被误写进主检出的文件造成的，编排方已还原，现在正常。"
+    },
+    {
+      "at": "2026-10-31T15:02:23.720Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M6 新格式一页稿写好（onepage.md 与 onepage-mockup.svg，1,051 个汉字，旧稿另存 onepage-0.5.md），要人定 2 件，等一页稿评审。"
     }
   ]
 }

@@ -191,6 +191,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "指标设计 0.4 第 3 轮评审（design-metrics-plainui-1031，wf_e2ecc72eb5bf10ad）CHANGES_REQUESTED：挡路 2 条（MEDIUM F40、F41）、NIT 7 条（F42–F48），各轮挡路 11、6、2；F23–F39 全部关闭。同一运行还有一遍修改与评审。面板设计已改到 1.1，回答第 9 轮的 P9-01 至 P9-09，等评审。"
+    },
+    {
+      "at": "2026-10-31T15:02:22.994Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "指标设计 0.5 写出（0.4 另存 design-0.4.md），F40–F48 都在正文与变更记录里处理，等第 4 轮评审。"
     }
   ]
 }
