@@ -103,6 +103,8 @@ interface HarnessOptions {
   readonly timeoutMs?: number
   readonly respond?: Responder
   readonly storeFs?: StoreFs
+  /** The answer to the nth model request (1-based); every model request is refused with a token rejection when absent. */
+  readonly model?: (call: number) => Response
 }
 
 /** A quota reader on a temporary home, wired to a fetch double that answers the PAT plane, the quota URL (`respond`) and the model route. */
@@ -114,6 +116,7 @@ async function harness(options: HarnessOptions = {}): Promise<Harness> {
   const wire: string[] = []
   const quotaCalls: QuotaCall[] = []
   const state = { respond: options.respond ?? ((): Response => json(quotaBody(START))) }
+  let modelCalls = 0
   const fetchImpl = ((input: string | URL | Request, init?: RequestInit): Promise<Response> => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
     wire.push(`${init?.method ?? 'GET'} ${url}`)
@@ -124,7 +127,9 @@ async function harness(options: HarnessOptions = {}): Promise<Harness> {
     }
     const plane = pat.answer(url, init)
     if (plane !== undefined) return Promise.resolve(plane)
-    return Promise.resolve(url.endsWith('/v1/messages') ? modelRejection() : json('{}', 404))
+    if (!url.endsWith('/v1/messages')) return Promise.resolve(json('{}', 404))
+    modelCalls += 1
+    return Promise.resolve(options.model === undefined ? modelRejection() : options.model(modelCalls))
   }) as typeof fetch
   const journal = new QuotaJournal({ home })
   const adapter = new ZcodeAdapter({ home, journal, now: () => clock, fetchImpl, env: zcodeDataDir().env, ...(options.plan === undefined ? {} : { plan: options.plan }), ...(options.storeFs === undefined ? {} : { storeFs: options.storeFs }) })
@@ -163,13 +168,36 @@ async function warned(run: () => Promise<unknown>): Promise<string[]> {
   return (await withWarnings(run)).messages
 }
 
-/** The model request the adapter makes: two rejections in a row end the stream with an error. */
-async function streamOnce(adapter: ZcodeAdapter): Promise<unknown> {
-  const failure = await (async () => {
+/** The model request these specs make, read to its end: the error the stream ends with, or undefined. */
+function runModelRequest(adapter: ZcodeAdapter): Promise<unknown> {
+  return (async () => {
     for await (const chunk of adapter.stream({ provider: 'glm-zcode', model: 'glm-5.3', sessionId: 's1', messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }], system: 'be brief' } as never)) void chunk
   })().then(() => undefined, (error: unknown) => error)
+}
+
+/** The model request the adapter makes: two rejections in a row end the stream with an error. */
+async function streamOnce(adapter: ZcodeAdapter): Promise<unknown> {
+  const failure = await runModelRequest(adapter)
   assert.ok(failure instanceof Error, 'the stream ends with an error')
   return failure
+}
+
+/** A model answer that streams one short text. */
+function modelAnswer(): Response {
+  const frames = [
+    'data: {"type":"message_start","message":{"usage":{"input_tokens":5}}}',
+    'data: {"type":"content_block_start","index":0,"content_block":{"type":"text"}}',
+    'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"ok"}}',
+    'data: {"type":"content_block_stop","index":0}',
+    'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}',
+  ]
+  return new Response(frames.map(frame => `${frame}\n`).join(''), { status: 200, headers: { 'content-type': 'text/event-stream' } })
+}
+
+/** Waits for `ready` for at most two seconds of real time; the assertion after it says what did not happen. */
+async function until(ready: () => boolean): Promise<void> {
+  const deadline = Date.now() + 2_000
+  while (!ready() && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 5))
 }
 
 const iso = (ms: number): string => new Date(ms).toISOString()
@@ -263,7 +291,7 @@ test('a read is not started again within 60 seconds, by a command or by a caller
   h.respond = () => new Promise<Response>(resolve => { gate.release = () => { resolve(json(quotaBody(h.now()))) } })
   const first = h.reader.view({ waitMs: 2000 })
   const second = h.reader.view({ waitMs: 2000 })
-  await new Promise(resolve => setTimeout(resolve, 30))
+  await until(() => h.quotaCalls.length >= 3)
   assert.equal(h.quotaCalls.length, 3, 'one request for two callers')
   gate.release?.()
   const [one, two] = await Promise.all([first, second])
@@ -504,6 +532,14 @@ test('a model request that is refused again after a new token is a refused login
   h.advance(2 * MINUTE_MS)
   await streamOnce(h.adapter)
   assert.equal(kinds(h.records(), 'login-rejected').length, 2)
+})
+
+test('a model request refused once, then accepted after the new token, is no refused login', async () => {
+  const h = await harness({ model: call => (call === 1 ? modelRejection() : modelAnswer()) })
+  assert.equal(await runModelRequest(h.adapter), undefined, 'the retry with the new token went through')
+  assert.equal(h.pat.mints(), 2, 'the token was minted again before the retry')
+  assert.deepEqual(kinds(h.records(), 'login-rejected'), [])
+  assert.deepEqual((await h.reader.view({ read: false })).login, { state: 'ok' })
 })
 
 for (const status of [401, 403]) {
