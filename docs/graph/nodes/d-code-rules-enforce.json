@@ -14,6 +14,12 @@
       "reason": "人定：写在代码里的规则不设试运行期，启用即拦",
       "relay": "试运行规则啥的直接拦就行了，这样反而有问题好发现",
       "to": "approved"
+    },
+    {
+      "at": "2026-10-31T06:39:36.420Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "Docs commit cd257a7 (decision text in CHARTER 0.8 section 3.2 item 3 and section 6, ORCHESTRATION section 6.5, DEVELOPMENT, HANDOFF, ROADMAP) reviewed APPROVED with no findings (.agents/tasks/m4/docs-commit/review.json) and pushed to origin/main on 2026-10-31; origin/main was unchanged (bd5e017) so no rebase and no gate re-run was needed. Gates recorded in the commit message for the final tree: npm run build 0, npm run preflight 0, npm test 0. Only cd257a7 was pushed; local commits eaf9587 (graph) and 9085ef2 (video re-cut) stay unpushed."
     }
   ]
 }
