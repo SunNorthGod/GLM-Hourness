@@ -192,6 +192,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "人 2026-10-31 放行 M6 的设计 0.5（原话「桌面版你直接用就行，现在又不是高峰期为什么不放行」，看的是 .agents/tasks/m6/onepage.md）。编排方此前请人放行时问的疑问是「练习题一上来就真挡、没先试运行」，人同日定了 d-code-rules-enforce，这一处不再是例外。M6 的设计阶段到此结束。编排方派出 impl-m6-usage-peak（wf_2c498acb17c89ff4）：先由规划步把实现分成能开工与被挡的步骤（被挡的多半等规则板的排队、循环板的 GLM 条目与 M7 的派活上限），能开工的逐步写、每步独立评审、合入主干；桌面版按 d-desktop-direct-use 直接验。并行的 design-decisions-apply-1031 只把设计改一行文字（0.6，行为不变）并按新格式重写一页稿。"
+    },
+    {
+      "at": "2026-10-31T06:42:33.047Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "design-decisions-apply-1031 对 M6 0.6（只改文字）的评审 CHANGES_REQUESTED：HIGH 0、MEDIUM 1、NIT 5（.agents/tasks/m6/decisions-review.md）。那一条 MEDIUM 是真的缺口：按 d-code-rules-enforce，拦错了要在规则页与晨报里看得见，但练习题与真网核对被挡下时（checkCall）既不写命中记录也不写违规流水，一页稿里「拦错了看得见」的话没有落点。同一运行的修复轮补写；编排方已把这一条转给在跑的 M6 实现（impl-m6-usage-peak 的规划步），挡下时写一条带规则 id、时刻、脚本、档位、原因的拦截记录。评审的 F2 指出任务书写超时待定、图上 d-timeout-measured 已定：以图为准。"
     }
   ]
 }
