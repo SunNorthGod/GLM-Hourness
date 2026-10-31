@@ -27,7 +27,7 @@
  */
 import { statSync } from 'node:fs'
 import { holderFile, holderHome, projectKey, readHolder, releaseHolder } from '../graph/main-agent-holder.ts'
-import { graphService } from '../graph/service.ts'
+import { graphFocus, graphService } from '../graph/service.ts'
 import { installMainAgentRules } from '../guard/main-agent.ts'
 import { insertHournessSection } from '../guard/sections.ts'
 import { rowJournal } from '../memory/audit.ts'
@@ -38,6 +38,7 @@ import { provideRowHealth, sessionIdOf, type HealthState } from '../shared/healt
 import { MAIN_AGENT_IDENTITY, MAIN_AGENT_SECTION } from './identity.ts'
 import { mainAgentProjection, modeOf, roleOf, staleRecordKept, wishHandler, type RoleDeps, type RoleReading, type WishDeps } from './mode.ts'
 import { mainAgentFace } from './role-face.ts'
+import { installStageNotice } from './stage-notice.ts'
 import { HIDDEN_FROM_MAIN_AGENT } from './talk.ts'
 
 /** cordis plugin identity: needs the commands service. */
@@ -193,6 +194,8 @@ export function apply(ctx: DesignContext): () => void {
   const installed = new WeakSet<AgentLike>()
   // One assembly step of an agent as our two listeners see it: who the agent is, read once at the start by the identity listener (outermost of ours), and the problems of the step. The tool face listener (inside every prepended listener) reads the same role and adds its problems; the identity listener reports once when the step is over, so a later "in effect" never covers an earlier problem and the pending state of /wish is consumed by one reader only.
   const steps = new WeakMap<AgentLike, { readonly role: RoleReading, readonly problems: string[] }>()
+  // What the latest assembly of an agent decided: the stage reminder (an `agent/pre-step` notice, after the step's assembly) goes to a main agent only.
+  const assembledAsMain = new WeakMap<AgentLike, boolean>()
   // Sessions this row has reported as a main agent: when one stops being it, the report must not go on saying so.
   const reportedMain = new WeakSet<SessionLike>()
   /** The identity section and the tool face of the main agent, on this agent's own assembly. */
@@ -204,6 +207,7 @@ export function apply(ctx: DesignContext): () => void {
       const reading = roleForStep(agent)
       const step = { role: reading, problems: [...reading.problems] }
       steps.set(agent, step)
+      assembledAsMain.set(agent, reading.main)
       let assembled
       try {
         assembled = await next()
@@ -235,6 +239,19 @@ export function apply(ctx: DesignContext): () => void {
       }
       return { ...assembled, tools: face.tools }
     }))
+    // The stage reminder: after the step's assembly, so `assembledAsMain` is this step's. Its failure leaves the identity section and the tool face in place.
+    try {
+      const uninstall = installStageNotice(agent, {
+        eligible: () => assembledAsMain.get(agent) === true,
+        graph: () => graphFocus(ctx),
+        report: (reported, state, reason) => { health.report(sessionIdOf(reported), state, reason) },
+      })
+      if (uninstall !== undefined) disposers.push(uninstall)
+    }
+    catch (error) {
+      console.warn(`${name}: the stage reminder is not installed for agent ${agent.id}: ${message(error)}`)
+      health.report(agent.id, 'degraded', `阶段提醒没装上：${message(error)}`)
+    }
   }
 
   /**
@@ -349,6 +366,8 @@ export function apply(ctx: DesignContext): () => void {
   try {
     const journal = rowJournal(name, () => dataHomes(ctx, undefined))
     disposers.push(installMainAgentRules(ctx, {
+      agents,
+      graph: () => graphFocus(ctx),
       isMainAgent: (agent) => {
         const reading = roleOf(role, agent)
         if (reading.problems.length > 0 && agent.session !== undefined) health.report(agent.session.id, 'degraded', reading.problems.join('；'))

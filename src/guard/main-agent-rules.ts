@@ -23,9 +23,11 @@ export interface MainAgentRule {
 export const NO_WRITE_RULE = 'main-agent-no-write'
 export const ASK_RULE = 'main-agent-ask'
 export const GIT_SNAPSHOT_RULE = 'git-snapshot'
+export const DESIGN_RELEASE_RULE = 'design-before-release'
 
 export const MAIN_AGENT_RULES: readonly MainAgentRule[] = [
   { id: NO_WRITE_RULE, title: '主 Agent 不写文件', enforcement: 'deny', subjects: 'main-agent', step: 4 },
   { id: ASK_RULE, title: '主 Agent 不出问答卡', enforcement: 'deny', subjects: 'main-agent', step: 4 },
   { id: GIT_SNAPSHOT_RULE, title: '会丢工作的 git 命令先存档，存不了才拦；存档不推到远端', enforcement: 'deny-when-no-snapshot', subjects: 'main-agent', step: 4 },
+  { id: DESIGN_RELEASE_RULE, title: '放行之前（目标或模块），主 Agent 派出去的 agent 只读', enforcement: 'deny', subjects: 'main-agent-subagents', step: 5 },
 ]

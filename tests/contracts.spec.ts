@@ -303,11 +303,13 @@ test('pricing through the report row: a malformed service lists tokens; a throwi
 
 // The interceptions M3 puts on the main agent are a table the rules board reads (decisions d-rules-visible, d-defaults-readonly; addendum 3.11).
 // Each step adds its rows and its triggers here; the step of a row is the last step merged that may hold it.
-const MERGED_STEP = 4
+const MERGED_STEP = 5
 const TRIGGERS: Readonly<Record<string, (host: ReturnType<typeof designHost>, agent: AgentLike) => Promise<void>>> = {
   'main-agent-no-write': async (host, agent) => { await host.preExecute(agent, 'write', { file_path: 'a.txt', content: 'x' }) },
   'main-agent-ask': async (host, agent) => { await host.preExecute(agent, 'ask_user_question', {}) },
   'git-snapshot': async (host, agent) => { await host.preExecute(agent, 'pwsh', { command: 'git clean -fdx' }) },
+  // A write by a subagent of the main agent, which has no goal in focus.
+  'design-before-release': async (host, agent) => { await host.preExecute(host.addAgent('delegated', { origin: 'subagent', parentSession: agent.id }), 'write', { file_path: 'a.txt', content: 'x' }) },
 }
 
 test('main agent rules: ids are unique, titles are one short plain line, every rule steps no later than the merged step', () => {

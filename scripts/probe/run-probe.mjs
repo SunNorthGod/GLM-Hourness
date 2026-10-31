@@ -773,7 +773,7 @@ const repoGraphAfter = (await loadGraph(repoGraph)).revision
 // off themselves, mid-step, through the commands service (the probe
 // provider's `line` step), so command/run and command/done are in the log.
 const DESIGN_WISH = '记一下每天花了多少钱'
-const designScenario = (name, model, script, { wish, on, others, git } = {}) => {
+const designScenario = (name, model, script, { wish, on, others, git, extra } = {}) => {
   const dir = join(runDir, name)
   const ws = join(dir, 'ws')
   mkdirSync(join(ws, 'docs', 'graph'), { recursive: true })
@@ -786,7 +786,7 @@ const designScenario = (name, model, script, { wish, on, others, git } = {}) => 
     writeFileSync(join(ws, 'README.md'), 'probe workspace\nedited by the person\n')
   }
   const record = join(dir, 'human.jsonl')
-  const run = runScenario(name, model, script(ws), 'Reply done.', designRows({ record: slash(record), ...wish === undefined ? {} : { wish } }), ws, others ?? [], on)
+  const run = runScenario(name, model, script(ws), 'Reply done.', [...designRows({ record: slash(record), ...wish === undefined ? {} : { wish } }), ...extra ?? []], ws, others ?? [], on)
   return { ...run, name, dir, ws, human: jsonl(record) }
 }
 const designMainScript = ({ read, write, shell, ask, status }) => (ws) => {
@@ -829,6 +829,79 @@ const designOne = designScenario('glm-design-one-main', 'glm-5.3', ws => [
   { tool: { name: 'Write', arguments: { file_path: join(ws, '.llm', 'x.txt'), content: 'x\n' } }, status: true },
   { text: 'done' },
 ], { wish: true })
+// Stage reminders and design-before-release (docs/ORCHESTRATION.md §3.5, §6.1; M3 step 5).
+// The graph of the workspace is seeded before the run. The main agent
+// (the simulated human's /wish) dispatches subagents through the dispatch
+// spike's probe_dispatch, which starts a real child session through
+// subagents.startActivation; each child tries one Write, and the main agent
+// waits for it with a shell sleep before it moves on, so the judgment of a
+// child's write happens at the focus the scenario means.
+const stageWs = name => join(runDir, name, 'ws')
+async function stageGraph(name, seeds) {
+  const graph = join(stageWs(name), 'docs', 'graph')
+  mkdirSync(graph, { recursive: true })
+  const engine = openEngine(graph)
+  for (const [actor, node] of seeds) {
+    const seeded = await engine.apply(actor, { op: 'propose', reason: 'probe seed', node })
+    if (!seeded.ok) throw new Error(`probe: seeding the stage graph of ${name} failed: ${JSON.stringify(seeded.error)}`)
+  }
+  return graph
+}
+const stageDispatch = (name, task, file) => ({ tool: { name: 'DeferredToolCall', arguments: { name: 'probe_dispatch', input: { task, prompt: `Write ${file}, then reply done.`, cwd: stageWs(name), scope: '.', model: 'glm-5.3' } } } })
+const stageWait = { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 3', description: 'probe: let the subagent run' } } }
+const stageChild = (name, file) => [{ tool: { name: 'Write', arguments: { file_path: join(stageWs(name), file), content: 'x\n' } } }, { text: 'child done' }]
+const stageFocus = id => ({ tool: { name: 'graph_focus', arguments: { id } } })
+const stageRead = name => ({ tool: { name: 'Read', arguments: { file_path: join(stageWs(name), 'README.md') } } })
+const STAGE_BODY = '需求：记一下每天花了多少钱'
+
+// An interview: the goal is the main agent's own proposal. Request 1 has no focus, so the first child's write is refused for want of a goal; the second child is dispatched at stage interview; the main agent's edit of the goal body is answered by the reminder again.
+const STAGE = 'glm-design-stage'
+const stageGraphPath = await stageGraph(STAGE, [['llm', { type: 'goal', title: '记账小工具', stage: 'interview', body: STAGE_BODY }]])
+const stageRev = (await loadGraph(stageGraphPath)).revisions.get('goal-1')
+const designStage = designScenario(STAGE, 'glm-5.3', () => [
+  stageDispatch(STAGE, 'S1', 'sub-1.txt'),
+  stageWait,
+  stageFocus('goal-1'),
+  stageRead(STAGE),
+  stageDispatch(STAGE, 'S2', 'sub-2.txt'),
+  stageWait,
+  { tool: { name: 'graph_edit', arguments: { id: 'goal-1', rev: stageRev, set: { body: `${STAGE_BODY}\n问题：月底不知道钱花在哪` }, reason: 'probe: the interview answered the problem' } } },
+  stageRead(STAGE),
+  { text: 'done' },
+], { wish: true, extra: dispatchRow(join(runDir, STAGE, 'dispatch.jsonl')), others: [stageChild(STAGE, 'sub-1.txt'), stageChild(STAGE, 'sub-2.txt')] })
+
+// The same goal after a compaction: the reminder is added again, once the checkpoint is in the history.
+const STAGE_COMPACT = 'glm-design-stage-compact'
+await stageGraph(STAGE_COMPACT, [['llm', { type: 'goal', title: '记账小工具', stage: 'interview', body: STAGE_BODY }]])
+const designStageCompact = designScenario(STAGE_COMPACT, 'glm-5.3', () => [
+  stageFocus('goal-1'),
+  stageRead(STAGE_COMPACT),
+  stageRead(STAGE_COMPACT),
+  { text: 'done' },
+], { wish: true, extra: ['- id: compaction-basic', '  config: { thresholdRatio: 0.02, retainTokens: 0 }'] })
+
+// A released goal split into two modules, one released and one in design: the focus decides which subagent may write.
+const STAGE_MODULES = 'glm-design-released'
+await stageGraph(STAGE_MODULES, [
+  ['human', { type: 'goal', title: '记账小工具', stage: 'release' }],
+  ['human', { type: 'feature', id: 'module-a', title: '记一笔', parent: 'goal-1', stage: 'release' }],
+  ['human', { type: 'feature', id: 'module-b', title: '月底报表', parent: 'goal-1', stage: 'design' }],
+  ['human', { type: 'task', id: 'task-a', title: '写记账命令', parent: 'module-a' }],
+  ['human', { type: 'task', id: 'task-b', title: '写报表命令', parent: 'module-b' }],
+])
+const designReleased = designScenario(STAGE_MODULES, 'glm-5.3', () => [
+  stageFocus('goal-1'),
+  stageDispatch(STAGE_MODULES, 'R1', 'released-1.txt'),
+  stageWait,
+  stageFocus('task-b'),
+  stageDispatch(STAGE_MODULES, 'R2', 'released-2.txt'),
+  stageWait,
+  stageFocus('task-a'),
+  stageDispatch(STAGE_MODULES, 'R3', 'released-3.txt'),
+  stageWait,
+  { text: 'done' },
+], { wish: true, extra: dispatchRow(join(runDir, STAGE_MODULES, 'dispatch.jsonl')), others: [stageChild(STAGE_MODULES, 'released-1.txt'), stageChild(STAGE_MODULES, 'released-2.txt'), stageChild(STAGE_MODULES, 'released-3.txt')] })
+
 const designRecord = (scenario) => readHolder(holderFileOf(join(scenario.dir, 'dsh-home', 'glm-hourness'), join(scenario.ws, 'docs', 'graph')))
 const MAIN_HEAD = '# Main agent\nYou are the main agent of this project'
 const sectionAt = step => step?.system.indexOf(MAIN_HEAD) ?? -1
@@ -956,6 +1029,44 @@ function snapshotEditOf(scenario) {
   const line = jsonl(join(scenario.ws, '.llm', 'snapshots.jsonl')).at(0)
   return line?.stash === undefined ? undefined : spawnSync('git', ['show', `${line.stash}:README.md`], { cwd: scenario.ws, encoding: 'utf8' }).stdout
 }
+/** The stage reminders in a request, as the dump keeps them: the facts and the text. */
+const stageNotices = step => messagesOf(step, 'glm-design-stage')
+/** What the dispatched children of a scenario did: the child ids in dispatch order and each one's Write result (the second request of the child). */
+function stageChildren(name, scenario) {
+  const ids = dispatchRecord(name).filter(entry => entry.kind === 'started').map(entry => entry.childId)
+  return ids.map(id => ({ id, result: lastToolResult(bySession(scenario, id)[1]) }))
+}
+function stageChecks() {
+  const requests = designStage.steps.filter(step => step.sessionId === designStage.steps[0]?.sessionId)
+  const counts = requests.map(step => stageNotices(step).length)
+  const facts = (step, index) => stageNotices(step)[index]?.designStage
+  const children = stageChildren(STAGE, designStage)
+  const ws = stageWs(STAGE)
+  const violations = jsonl(join(runDir, STAGE, 'home', 'audit', 'violations.jsonl')).filter(record => record.rule === 'design-before-release')
+  const stageQuiet = scenario => !stderrOf(scenario).includes('dsh-glm-hourness/design')
+  const compacted = designStageCompact.steps.filter(step => step.sessionId === designStageCompact.steps[0]?.sessionId)
+  const after = compacted.flatMap((step) => {
+    const at = step.messages.findLastIndex(message => message.source === 'compact-checkpoint')
+    return at < 0 ? [] : [stageNotices({ messages: step.messages.slice(at + 1) }).map(message => message.designStage.reason)]
+  })
+  const released = designReleased.steps.filter(step => step.sessionId === designReleased.steps[0]?.sessionId)
+  const releasedChildren = stageChildren(STAGE_MODULES, designReleased)
+  const releasedViolations = jsonl(join(runDir, STAGE_MODULES, 'home', 'audit', 'violations.jsonl')).filter(record => record.rule === 'design-before-release')
+  const lastNotice = step => stageNotices(step).at(-1)
+  const wsFile = (name, file) => existsSync(join(stageWs(name), file))
+  return [
+    ['design stage: the first request carries the reminder for no goal in focus (no goal, stage none, reason goal) and tells the main agent to propose the goal and focus it', requests.length === 9 && counts[0] === 1 && facts(requests[0], 0)?.goal === '' && facts(requests[0], 0).stage === 'none' && facts(requests[0], 0).reason === 'goal' && stageNotices(requests[0])[0].text.includes('no goal is in your focus yet') && stageNotices(requests[0])[0].text.includes('graph_focus'), `${requests.length} requests; counts ${counts.join(',')}; ${JSON.stringify(facts(requests[0], 0) ?? null)}`],
+    ['design stage: a reminder that has not changed is not repeated: one notice in requests 1 to 3, one more at request 4 (graph_focus), none at 5 to 7, one more at request 8 (the edit)', isDeepStrictEqual(counts, [1, 1, 1, 2, 2, 2, 2, 3, 3]), counts.join(',')],
+    ['design stage: after graph_focus the reminder is about goal-1 at stage interview (reason goal), counts the requirement card, and asks the next question in the human\'s words', facts(requests[3], 1)?.goal === 'goal-1' && facts(requests[3], 1).stage === 'interview' && facts(requests[3], 1).reason === 'goal' && stageNotices(requests[3])[1].text.includes('Requirement card: 1 of 8 filled.') && stageNotices(requests[3])[1].text.includes('Next: ask 「做成以后，你的日子会有什么不一样」, then ') && stageNotices(requests[3])[1].text.includes('Interview the human in plain chat'), JSON.stringify(facts(requests[3], 1) ?? null)],
+    ['design stage: the main agent\'s edit of the goal body gets the reminder again (reason changed) with the card one item fuller, and no banned question tool is named in any reminder', facts(requests[7], 2)?.reason === 'changed' && stageNotices(requests[7])[2].text.includes('Requirement card: 2 of 8 filled.') && requests.every(step => stageNotices(step).every(message => !['ask_user_question', 'decision_card', 'design_review', 'ask_human'].some(word => message.text.includes(word)))), JSON.stringify(facts(requests[7], 2) ?? null)],
+    ['design-before-release: the first subagent (no goal in focus) is refused, with the main agent\'s four-part correction; the second (goal at stage interview) too; neither file exists', children.length === 2 && children.every(child => child.result?.isError === true) && children[0].result.text.includes('has no open goal in focus') && children[1].result.text.includes('at stage interview (goal goal-1): nothing is built before the human releases the design.') && children.every(child => child.result.text.includes('Exception: If a write is needed to answer a design question (a spike)')) && !existsSync(join(ws, 'sub-1.txt')) && !existsSync(join(ws, 'sub-2.txt')), children.map(child => `${child.result?.isError}:${(child.result?.text ?? '').slice(0, 60)}`).join(' | ')],
+    ['design-before-release: both refusals are in the violation journal under the rule, by the children', violations.length === 2 && violations.every(record => children.some(child => child.id === record.agentId)), JSON.stringify(violations.map(record => [record.rule, record.agentId]))],
+    ['design stage: the row activated quietly and no question card was raised', designStage.status === 0 && stageQuiet(designStage.name) && designStage.human.every(entry => entry.kind !== 'unexpected-question'), `exit ${designStage.status}; ${quiet(designStage.name)}`],
+    ['design stage (compact): after a compaction the first request with the checkpoint carries the reminder again, reason compaction', after.length > 0 && after.some(reasons => reasons.includes('compaction')) && designStageCompact.status === 0, `${designStageCompact.compactions.length} compaction(s); after checkpoints: ${JSON.stringify(after)}`],
+    ['design released: the goal level of a released goal split into modules lists both modules, one released and one in design; the module in design is described in its own reminder, the released one says so', stageNotices(released[1])[1]?.text.includes('The framework, the module list and the directions are released.') === true && stageNotices(released[1])[1].text.includes('- 记一笔（module-a）：已放行') && stageNotices(released[1])[1].text.includes('- 月底报表（module-b）：设计中') && lastNotice(released[4])?.text.includes('module module-b "月底报表", which is in design') === true && lastNotice(released[7])?.text.includes('This module is released.') === true, released.map(step => stageNotices(step).length).join(',')],
+    ['design-before-release: at the goal level of the released goal the first child writes; at a task of the module in design the second is refused with the module named; at a task of the released module the third writes', releasedChildren.length === 3 && releasedChildren[0].result?.isError !== true && wsFile(STAGE_MODULES, 'released-1.txt') && releasedChildren[1].result?.isError === true && releasedChildren[1].result.text.includes('module module-b (月底报表) of goal goal-1, and the human has not released that module yet') && releasedChildren[1].result.text.includes('(kind release, module module-b)') && !wsFile(STAGE_MODULES, 'released-2.txt') && releasedChildren[2].result?.isError !== true && wsFile(STAGE_MODULES, 'released-3.txt') && releasedViolations.length === 1, releasedChildren.map(child => `${child.result?.isError}:${(child.result?.text ?? '').slice(0, 50)}`).join(' | ')],
+  ]
+}
 function designChecks() {
   const zcode = (step) => step?.system.indexOf('You are ZCode, an interactive agent') ?? -1
   const ascending = (...marks) => marks.every(mark => mark >= 0) && marks.every((mark, index) => index === 0 || marks[index - 1] < mark)
@@ -1004,6 +1115,7 @@ function designChecks() {
     ['design one main: a second root session in the same workspace, typing /wish, is told where the main agent is and how to move it; its tool face and the first session\'s are not changed by it', mainSteps[0]?.other?.kind === 'success' && mainSteps[0].other.resultText.includes('这个项目的主 Agent 在另一个会话里') && mainSteps[0].other.resultText.includes('/wish here') && sectionAt(mainSteps[1]) >= 0 && lacks(mainSteps[1], ['Write', 'Edit']), JSON.stringify(mainSteps[0]?.other ?? null).slice(0, 160)],
     ['design one main: /wish here moves the role; the first session\'s next request has no section, its tool face back (Write, Edit, ask_user_question), the notice that the main agent moved; the Write runs', mainSteps[1]?.other?.kind === 'success' && mainSteps[1].other.resultText.startsWith('主 Agent 已从另一个会话移到这里；') && mainSteps[2] !== undefined && sectionAt(mainSteps[2]) < 0 && hasCut(mainSteps[2], GLM_CUT) && wishNotices(mainSteps[2]).some(message => message.text.includes('moved to another session')) && files(one, 'x.txt')[0], `${mainSteps[1]?.other?.kind}; section ${sectionAt(mainSteps[2])}; x.txt ${files(one, 'x.txt')[0]}`],
     ['design one main: the record names the second session, not the first and not the fork; the second session logged its own two commands', holder.kind === 'held' && holder.record.sessionId.startsWith('probe-other-') && holder.record.sessionId !== mainId && holder.record.sessionId !== forkNote?.sessionId && mainSteps[0]?.other?.types.join('>') === 'command/run>command/done', `${holder.kind === 'held' ? holder.record.sessionId : holder.kind}`],
+    ...stageChecks(),
     ['design one main: a fork of the first session at its /wish is an ordinary session from its first request on: no section, the ordinary face; the row ran /wish off for it, so its projection is off; the record is unchanged; the row warned of nothing', forkNote?.kind === 'forked' && forkSteps.length === 1 && forkSteps[0].sessionId === forkNote.sessionId && sectionAt(forkSteps[0]) < 0 && hasCut(forkSteps[0], GLM_CUT) && forkNote.types.includes('command/run') && forkNote.types.includes('command/done') && isDeepStrictEqual(forkNote.hournessMainAgent, { active: false }) && rowQuiet(one) && humanQuiet(one) && one.status === 0, JSON.stringify(forkNote ?? null).slice(0, 220)],
   ]
 }

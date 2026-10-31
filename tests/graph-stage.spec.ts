@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import type { LoadedGraph } from '../src/graph/parse.ts'
-import type { Actor, GraphNode, HistoryEntry, Status } from '../src/graph/schema.ts'
+import type { GraphNode, HistoryEntry, Status } from '../src/graph/schema.ts'
 import {
   designColumns,
   effectiveStage,
@@ -10,58 +9,9 @@ import {
   releaseSet,
   requirementCard,
   stageStatus,
-  type GateItem,
   type StageStatus,
 } from '../src/graph/stage.ts'
-
-type Fields = Omit<Partial<GraphNode>, 'history'> & Pick<GraphNode, 'id' | 'type'>
-
-/** A history time, second `n` of one minute. */
-function at(n: number): string {
-  return `2026-10-29T08:00:${String(n).padStart(2, '0')}.000Z`
-}
-
-function proposed(actor: Actor, n: number, to: Status): HistoryEntry {
-  return { at: at(n), actor, op: 'propose', reason: '测试', to }
-}
-
-/** A node proposed by `actor` at second `n`; extra history entries follow the propose. */
-function node(fields: Fields, n = 0, actor: Actor = 'llm', extra: readonly HistoryEntry[] = []): GraphNode {
-  const status = fields.status ?? 'approved'
-  return { title: fields.id, ...fields, status, history: [proposed(actor, n, status), ...extra] }
-}
-
-function graphOf(nodes: readonly GraphNode[]): LoadedGraph {
-  return { nodes: new Map(nodes.map(entry => [entry.id, entry])), revisions: new Map(nodes.map(entry => [entry.id, 'rev'])), revision: 'rev', issues: [] }
-}
-
-function decide(actor: Actor, n: number, option: string, relay?: string): HistoryEntry {
-  return { at: at(n), actor, op: 'decide', reason: '定', from: 'approved', to: 'done', option, evidence: [{ kind: 'decision', ref: option }], ...(relay === undefined ? {} : { relay }) }
-}
-
-const OPTIONS = [{ key: 'A', label: '甲', consequence: '快' }, { key: 'B', label: '乙', consequence: '稳' }]
-
-function question(id: string, parent: string, fields: Partial<GraphNode> = {}, extra: readonly HistoryEntry[] = []): GraphNode {
-  return node({ id, type: 'question', parent, options: OPTIONS, recommend: 'B', ...fields }, 1, 'llm', extra)
-}
-
-const GOAL_BODY = '需求：我想要一个命令行小工具，每天记一下花了多少钱\n问题：月底不知道钱花在哪\n给谁：本人\n约束：无'
-
-/** A goal in the interview whose requirement card is complete: body labels, acceptance, non-goals, a risk and a choice the human made. */
-function interview(goal: Partial<GraphNode> = {}, others: readonly GraphNode[] = []): { readonly graph: LoadedGraph, readonly goal: GraphNode } {
-  const root = node({ id: 'goal-1', type: 'goal', status: 'proposed', stage: 'interview', body: GOAL_BODY, acceptance: ['月底能看出钱花在哪'], nonGoals: ['不做多人共享'], ...goal })
-  const graph = graphOf([
-    root,
-    node({ id: 'risk-1', type: 'risk', parent: 'goal-1' }),
-    question('question-1', 'goal-1', { status: 'done', decision: 'B' }, [decide('human', 5, 'B')]),
-    ...others,
-  ])
-  return { graph, goal: graph.nodes.get('goal-1')! }
-}
-
-function failing(items: readonly GateItem[]): string[] {
-  return items.filter(item => !item.ok).map(item => item.key)
-}
+import { decide, design, failing, GOAL_BODY, graphOf, interview, node, question } from './graph-memory.ts'
 
 test('labeledSections: full-width and ASCII colons, multi-line sections, the first of a repeated label, text before the first label', () => {
   const body = [
@@ -165,23 +115,6 @@ test('requirementCard: the choice counts only a question whose last decide was t
   assert.deepEqual(card([]), ['choice'], 'not decided yet')
 })
 
-/** A goal in design with one complete design decision, its plan and a decided fork. */
-function design(decision: Partial<GraphNode> = {}, others: readonly GraphNode[] = []): { readonly graph: LoadedGraph, readonly goal: GraphNode } {
-  const graph = graphOf([
-    node({ id: 'goal-1', type: 'goal', status: 'approved', stage: 'design', body: GOAL_BODY, acceptance: ['a'], nonGoals: ['n'] }, 0, 'human'),
-    question('question-1', 'goal-1', { status: 'done', decision: 'B' }, [decide('human', 2, 'B')]),
-    node({
-      id: 'decision-1', type: 'decision', status: 'proposed', parent: 'goal-1', verification: 'unverified',
-      body: '理由：一个人用，不要服务端\n架构：本地 JSON 文件\n查过的现成方案：ledger-cli 太重',
-      acceptance: ['月底出一张分类表'], nonGoals: ['不做同步'], edges: [{ type: 'source', to: 'question-1' }], ...decision,
-    }, 3),
-    node({ id: 'feature-1', type: 'feature', status: 'proposed', parent: 'goal-1', edges: [{ type: 'source', to: 'decision-1' }] }, 4),
-    node({ id: 'task-1', type: 'task', status: 'proposed', parent: 'feature-1', acceptance: ['记一条能读回'] }, 5),
-    ...others,
-  ])
-  return { graph, goal: graph.nodes.get('goal-1')! }
-}
-
 test('designColumns: five columns, each one missing on its own; the plan counts open nodes under the goal with a source edge to the decision', () => {
   const columns = (fields: Partial<GraphNode> = {}, others: readonly GraphNode[] = []): string[] => {
     const { graph, goal } = design(fields, others)
@@ -237,6 +170,18 @@ test('stageStatus in design: the release gate lists the design decision, its fiv
   assert.deepEqual(failing(blocked([node({ id: 'task-4', type: 'task', status: 'proposed', parent: 'feature-1', acceptance: ['y'], edges: [{ type: 'supersedes', to: 'task-9' }] }, 7)]).items), ['task-4:supersedes'])
   const noDecision = blocked([], { status: 'approved' })
   assert.deepEqual([failing(noDecision.items), noDecision.exitReady], [['decision'], false], 'an adopted decision is not in the release set')
+})
+
+test('the hints that send the model to the human name the chat tools, not a question card', () => {
+  const noChoice = interview()
+  const withoutQuestion = graphOf([...noChoice.graph.nodes.values()].filter(entry => entry.type !== 'question'))
+  const choice = requirementCard(withoutQuestion, withoutQuestion.nodes.get('goal-1')!).find(item => item.key === 'choice')!
+  assert.equal(choice.ok, false)
+  assert.equal(choice.hint, 'interview step 7 (the fork only the human can decide): put it with propose_to_human (kind question) and record the answer with record_human_answer; a question the agent decided on its own does not count')
+  const waiting = design({}, [question('question-2', 'feature-1')])
+  const undecided = stageStatus(waiting.graph, waiting.goal).items.find(item => item.key === 'question-2:undecided')!
+  assert.equal(undecided.hint, 'the human decides question-2: wait for the human\'s answer in the chat and record it with record_human_answer')
+  for (const hint of [choice.hint, undecided.hint]) assert.ok(!hint.includes('decision_card') && !hint.includes('design_review') && !hint.includes('ask_user_question'), hint)
 })
 
 test('stageStatus in wish and interview: the requirement card plus the confirmation gate on a superseding goal', () => {

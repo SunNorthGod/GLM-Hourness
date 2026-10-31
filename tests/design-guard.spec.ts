@@ -8,16 +8,21 @@
  */
 import assert from 'node:assert/strict'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import test from 'node:test'
 import { apply } from '../src/design/index.ts'
 import { SNAPSHOT_NOTICE_KIND } from '../src/guard/git-snapshot.ts'
-import { ASK_RULE, GIT_SNAPSHOT_RULE, NO_WRITE_RULE } from '../src/guard/main-agent-rules.ts'
+import { openEngine } from '../src/graph/engine.ts'
+import type { Actor } from '../src/graph/schema.ts'
+import { loadGraph } from '../src/graph/store.ts'
+import { releaseVerdict } from '../src/guard/design-release.ts'
+import { ASK_RULE, DESIGN_RELEASE_RULE, GIT_SNAPSHOT_RULE, NO_WRITE_RULE } from '../src/guard/main-agent-rules.ts'
 import type { PreExecuteDecision } from '../src/shared/dsh-min.ts'
-import { healthServiceName, type RowHealthView } from '../src/shared/health.ts'
-import { designHost, type DesignHost, type FakeAgent } from './design-host.ts'
+import { designHost, healthOf, type DesignHost, type FakeAgent } from './design-host.ts'
 import { sh } from './git-fixture.ts'
 import { captureWarnings } from './graph-helpers.ts'
+import { graphOf, node } from './graph-memory.ts'
 
 /** What the GLM dialect row says about ZCode names. */
 const DIALECT = { claims: () => true, nativeOf: (name: string) => ({ Write: 'write', Edit: 'edit', Bash: 'pwsh', AskUserQuestion: 'ask_user_question' } as Record<string, string>)[name], faceName: (native: string) => ({ write: 'Write', edit: 'Edit', pwsh: 'Bash', ask_user_question: 'AskUserQuestion' } as Record<string, string>)[native] ?? native }
@@ -51,11 +56,6 @@ async function journaled(host: DesignHost, count: number): Promise<Array<Record<
 
 /** What was put before the agent's next step by the snapshot (the /wish notices are not these). */
 const snapshotNotices = (agent: FakeAgent): FakeAgent['sent'] => agent.sent.filter(sent => sent.message.source?.kind === SNAPSHOT_NOTICE_KIND)
-
-const healthOf = (host: DesignHost, agent: FakeAgent): { readonly state: string, readonly reason: string } | undefined => {
-  const report = (host.services.get(healthServiceName('design')) as RowHealthView).session(agent.id)
-  return report === undefined ? undefined : { state: report.state, reason: report.reason }
-}
 
 const FILE_TOOLS: ReadonlyArray<readonly [string, unknown]> = [
   ['write', { file_path: 'a.txt', content: 'x' }],
@@ -111,11 +111,11 @@ test('reading, the graph tools and delegation are not writes', async () => {
   }
 })
 
-test('an ordinary session, a delegated child and a nested call are not judged', async () => {
+test('an ordinary session, a session of another project and a nested call are not judged by the main agent rules; the subagents of a main agent are judged by design-before-release below', async () => {
   const { host } = await mainAgent()
   const plain = host.addAgent('plain', { workspace: 'other' })
   const sibling = host.addAgent('sibling')
-  const child = host.addAgent('child', { origin: 'subagent', parentSession: 's1' })
+  const child = host.addAgent('child', { origin: 'subagent', parentSession: 'plain' })
   const main = host.agents.get('s1')!
   for (const agent of [plain, sibling, child]) {
     assert.equal((await host.preExecute(agent, 'Write', { file_path: 'a.txt', content: 'x' })).kind, 'allow', agent.id)
@@ -254,3 +254,274 @@ test('a write in a shell line is denied before git is looked at', async () => {
   assert.deepEqual(snapshotNotices(agent), [])
 })
 
+// ---------------------------------------------------------------- design-before-release
+
+const DIALECT_WRITE = { Write: { file_path: 'x.txt', content: 'x' } }
+
+interface World {
+  readonly host: DesignHost
+  readonly main: FakeAgent
+  readonly child: FakeAgent
+  readonly grandchild: FakeAgent
+  readonly graphDir: string
+  /** Write to the graph as `actor`; the revision is read first. */
+  readonly act: (actor: Actor, mutation: Record<string, unknown>) => Promise<void>
+  /** Move a node's stage as the human. */
+  readonly stage: (id: string, stage: string) => Promise<void>
+  /** The agent's `Write`, judged. */
+  readonly write: (agent: FakeAgent) => Promise<PreExecuteDecision>
+}
+
+/** A main agent s1 whose workspace has an empty graph, a subagent of it and a subagent of that. */
+async function world(options: Parameters<typeof designHost>[0] = {}): Promise<World> {
+  const { host, agent } = await mainAgent(options)
+  const graphDir = join(host.workspace('ws'), 'docs', 'graph')
+  const child = host.addAgent('child', { origin: 'subagent', parentSession: 's1' })
+  const grandchild = host.addAgent('grandchild', { origin: 'subagent', parentSession: 'child' })
+  const act: World['act'] = async (actor, mutation) => {
+    const id = mutation.id as string | undefined
+    const rev = id === undefined ? undefined : (await loadGraph(graphDir)).revisions.get(id)
+    const result = await openEngine(graphDir).apply(actor, { ...mutation, ...rev === undefined ? {} : { rev }, reason: 'test' })
+    assert.ok(result.ok, JSON.stringify(result))
+  }
+  return {
+    host, main: agent, child, grandchild, graphDir, act,
+    stage: (id, stage) => act('human', { op: 'edit', id, set: { stage } }),
+    write: agent => host.preExecute(agent, 'Write', DIALECT_WRITE.Write),
+  }
+}
+
+const propose = (nodes: readonly Record<string, unknown>[]) => async (w: World, actor: Actor = 'human'): Promise<void> => {
+  for (const node of nodes) await w.act(actor, { op: 'propose', node })
+}
+
+test('design-before-release: with no goal in focus, nothing the main agent plans is released, and the subagent\'s write is denied', async () => {
+  const w = await world()
+  const reason = denied(await w.write(w.child))
+  assert.match(reason, /^You tried to write "x\.txt"\./)
+  assert.ok(reason.includes('Boundary: You were dispatched (directly or through other subagents) by the main agent, and it has no open goal in focus, so nothing it plans is released yet.'), reason)
+  assert.ok(reason.includes('Right path: Read, search and report back; do not hand the write to another subagent, the same rule covers every agent the main agent\'s dispatch chain reaches. The main agent puts the design to the human with propose_to_human; once what it works on (the goal, or its module) is released, the work can be dispatched again. If the main agent has no goal in focus, it focuses the goal or task this work belongs to first.'), reason)
+  assert.ok(reason.endsWith('Exception: If a write is needed to answer a design question (a spike), report back and let the main agent put the question to the human.'), reason)
+  // A focus that is not in the graph is the same state.
+  w.host.focuses.set('s1', 'goal-9')
+  assert.ok(denied(await w.write(w.child)).includes('no open goal in focus'))
+})
+
+test('releaseVerdict: a focus with no goal above it (a graph the engine would not have written) and a closed goal are the state with no open goal', () => {
+  const orphan = graphOf([node({ id: 'task-9', type: 'task' }), node({ id: 'goal-1', type: 'goal', status: 'done', stage: 'release' }, 0, 'human'), node({ id: 'task-1', type: 'task', parent: 'goal-1' })])
+  for (const focus of [undefined, 'missing-1', 'task-9', 'goal-1', 'task-1']) {
+    const verdict = releaseVerdict(orphan, focus)
+    assert.equal(verdict.kind, 'deny', String(focus))
+    assert.match((verdict as { violation: string }).violation, /it has no open goal in focus/, String(focus))
+  }
+})
+
+test('design-before-release: the goal in wish, interview or design denies, whatever stage a proposed goal names; release and later allow; a goal without a stage allows', async () => {
+  const w = await world()
+  await propose([{ type: 'goal', title: '记账' }])(w, 'llm')
+  w.host.focuses.set('s1', 'goal-1')
+  assert.match(denied(await w.write(w.child)), /of a design loop at stage wish \(goal goal-1\): nothing is built before the human releases the design\./)
+  await w.act('llm', { op: 'edit', id: 'goal-1', set: { stage: 'design' } })
+  const lying = denied(await w.write(w.child))
+  assert.match(lying, /at stage interview \(goal goal-1\)/, 'a goal the human did not approve is in the interview, whatever stage it names')
+  await w.act('human', { op: 'approve', id: 'goal-1' })
+  assert.match(denied(await w.write(w.child)), /at stage design \(goal goal-1\)/)
+  await w.stage('goal-1', 'interview')
+  assert.match(denied(await w.write(w.child)), /at stage interview \(goal goal-1\)/)
+  for (const stage of ['release', 'decompose', 'execute', 'merge', 'operate']) {
+    await w.stage('goal-1', stage)
+    assert.equal((await w.write(w.child)).kind, 'allow', stage)
+  }
+  await propose([{ type: 'goal', title: '不走设计循环' }])(w)
+  w.host.focuses.set('s1', 'goal-2')
+  assert.equal((await w.write(w.child)).kind, 'allow', 'an approved goal that names no stage')
+})
+
+test('design-before-release: a closed goal denies; the focus on a task below the goal is judged by the goal', async () => {
+  const w = await world()
+  await propose([{ type: 'goal', title: '记账', stage: 'release' }, { type: 'task', title: '写', id: 'task-1', parent: 'goal-1' }])(w)
+  w.host.focuses.set('s1', 'task-1')
+  assert.equal((await w.write(w.child)).kind, 'allow')
+  await w.stage('goal-1', 'design')
+  assert.match(denied(await w.write(w.child)), /at stage design \(goal goal-1\)/)
+  await w.stage('goal-1', 'release')
+  await w.act('human', { op: 'status', id: 'task-1', to: 'dropped' })
+  await w.act('human', { op: 'status', id: 'goal-1', to: 'dropped' })
+  assert.ok(denied(await w.write(w.child)).includes('no open goal in focus'), 'a dropped goal has nothing released')
+})
+
+test('design-before-release: a grandchild is judged like a child, whatever the depth setting; the main agent\'s own writes are still the no-write rule', async () => {
+  const w = await world()
+  await propose([{ type: 'goal', title: '记账', stage: 'design' }])(w)
+  w.host.focuses.set('s1', 'goal-1')
+  denied(await w.write(w.grandchild))
+  denied(await w.write(w.child))
+  assert.match(denied(await w.write(w.main)), /^You tried to write "x\.txt"\.\nBoundary: You are the main agent of this session/)
+  await w.stage('goal-1', 'release')
+  assert.equal((await w.write(w.grandchild)).kind, 'allow')
+  assert.equal((await w.write(w.child)).kind, 'allow')
+  denied(await w.write(w.main))
+})
+
+test('design-before-release: shell writes and file tools by any name are writes; reading, git and the graph tools are not', async () => {
+  const w = await world({ dialect: DIALECT })
+  await propose([{ type: 'goal', title: '记账', stage: 'design' }])(w)
+  w.host.focuses.set('s1', 'goal-1')
+  for (const [name, args] of FILE_TOOLS) denied(await w.host.preExecute(w.child, name, args))
+  for (const command of ['Set-Content a.txt x', 'echo x > a.txt', 'sed -i s/a/b/ a.txt']) {
+    const reason = denied(await w.host.preExecute(w.grandchild, 'Bash', { command }))
+    assert.match(reason, /^You tried to change files through the shell: /, command)
+    assert.ok(reason.includes('Boundary: You were dispatched'), command)
+  }
+  for (const [name, args] of [['Read', { file_path: 'a.txt' }], ['str_replace_editor', { command: 'view', path: 'a.txt' }], ['Bash', { command: 'git commit -m x' }], ['Bash', { command: 'ls' }], ['graph_show', { id: 'goal-1' }], ['subagent', {}]] as const) {
+    assert.equal((await w.host.preExecute(w.child, name, args)).kind, 'allow', name)
+  }
+})
+
+test('design-before-release: only a main agent roots a judged chain; a nested call, a fork and a chain under an ordinary session are not judged', async () => {
+  const w = await world()
+  await propose([{ type: 'goal', title: '记账', stage: 'design' }])(w)
+  w.host.focuses.set('s1', 'goal-1')
+  denied(await w.write(w.child))
+  assert.equal((await w.host.preExecute(w.child, 'Write', DIALECT_WRITE.Write, {})).kind, 'allow', 'a transport call with a parent token passes')
+  const plain = w.host.addAgent('plain', { workspace: 'other' })
+  const underPlain = w.host.addAgent('under-plain', { workspace: 'other', origin: 'subagent', parentSession: 'plain' })
+  w.host.focuses.set('plain', 'goal-1')
+  assert.equal((await w.write(underPlain)).kind, 'allow')
+  assert.equal((await w.write(plain)).kind, 'allow')
+  await w.host.execute(w.main, '/wish off')
+  assert.equal((await w.write(w.child)).kind, 'allow', 'after /wish off the session is no main agent and its subagents write')
+})
+
+test('design-before-release: the violation journal has the rule, the subagent and the name the call used', async () => {
+  const w = await world({ dialect: DIALECT })
+  await propose([{ type: 'goal', title: '记账', stage: 'design' }])(w)
+  w.host.focuses.set('s1', 'goal-1')
+  denied(await w.write(w.child))
+  const [line] = await journaled(w.host, 1)
+  assert.deepEqual([line?.rule, line?.tool, line?.agentId, line?.sessionId, line?.scope], [DESIGN_RELEASE_RULE, 'Write', 'child', 'child', 'dialect'])
+  assert.match(String(line?.correction), /Boundary: You were dispatched .* at stage design \(goal goal-1\)/)
+})
+
+test('design-before-release: what it cannot judge it lets through and says why, in the health of the subagent and of the main agent', async () => {
+  const unjudged = async (w: World, caller: FakeAgent, why: RegExp): Promise<void> => {
+    const { result } = await captureWarnings(() => w.write(caller))
+    assert.equal(result.kind, 'allow')
+    for (const agent of [caller, w.main]) {
+      const health = healthOf(w.host, agent)
+      if (agent === w.main && !why.test(health?.reason ?? '')) continue
+      assert.equal(health?.state, 'degraded', agent.id)
+      assert.match(health?.reason ?? '', /派出去的 agent 的写入没有按放行状态判/)
+      assert.match(health?.reason ?? '', why)
+    }
+  }
+  // The graph row is gone.
+  const noGraph = await world()
+  noGraph.host.services.delete('glmHournessGraph')
+  await unjudged(noGraph, noGraph.child, /the graph row does not say where the project graph is/)
+  // The agents registry is gone.
+  const noAgents = await world()
+  noAgents.host.services.delete('agents')
+  await unjudged(noAgents, noAgents.child, /the agents service is not there/)
+  // The chain loses its link: no parentSession, a parent that is not live, a loop.
+  const broken = await world()
+  const orphan = broken.host.addAgent('orphan', { origin: 'subagent' })
+  await unjudged(broken, orphan, /has no parentSession/)
+  const gone = broken.host.addAgent('gone', { origin: 'subagent', parentSession: 'nobody' })
+  await unjudged(broken, gone, /nobody on the dispatch chain is not a live agent/)
+  const a = broken.host.addAgent('loop-a', { origin: 'subagent', parentSession: 'loop-b' })
+  broken.host.addAgent('loop-b', { origin: 'subagent', parentSession: 'loop-a' })
+  await unjudged(broken, a, /the dispatch chain loops back to loop-a/)
+  // The graph cannot be read: its nodes directory is a file.
+  const unreadable = await world()
+  await mkdir(join(unreadable.graphDir), { recursive: true })
+  writeFileSync(join(unreadable.graphDir, 'nodes'), 'not a directory')
+  unreadable.host.focuses.set('s1', 'goal-1')
+  await unjudged(unreadable, unreadable.child, /ENOTDIR|ENOENT|EEXIST|not a directory/)
+})
+
+test('design-before-release: a read of the main agent\'s role that throws lets the call through and the health says so', async () => {
+  const w = await world()
+  await propose([{ type: 'goal', title: '记账', stage: 'design' }])(w)
+  w.host.focuses.set('s1', 'goal-1')
+  denied(await w.write(w.child))
+  w.host.projections.stateOf = () => { throw new Error('projection down') }
+  const { result } = await captureWarnings(() => w.write(w.child))
+  assert.equal(result.kind, 'allow')
+  assert.equal(healthOf(w.host, w.main)?.state, 'degraded')
+  assert.match(healthOf(w.host, w.main)?.reason ?? '', /projection down/)
+})
+
+// ---------------------------------------------------------------- design-before-release, by module
+
+/**
+ * goal-1 at release, split into module-a (released), module-b (design) and a candidate;
+ * tasks below each, and a task directly under the goal.
+ */
+async function splitWorld(): Promise<World> {
+  const w = await world()
+  await propose([
+    { type: 'goal', title: '记账', stage: 'release' },
+    { type: 'feature', id: 'module-a', title: '模块甲', parent: 'goal-1', stage: 'release' },
+    { type: 'feature', id: 'module-b', title: '模块乙', parent: 'goal-1', stage: 'design' },
+    { type: 'task', id: 'task-a', title: '甲的活', parent: 'module-a' },
+    { type: 'task', id: 'task-b', title: '乙的活', parent: 'module-b' },
+    { type: 'task', id: 'task-loose', title: '目标下的活', parent: 'goal-1' },
+  ])(w)
+  await propose([{ type: 'feature', id: 'candidate-c', title: '候选丙', parent: 'goal-1', stage: 'design' }])(w, 'llm')
+  await propose([{ type: 'task', id: 'task-c', title: '丙的活', parent: 'candidate-c' }])(w, 'llm')
+  return w
+}
+
+test('design-before-release by module: a released module\'s work is allowed, an unreleased module\'s and a candidate\'s is denied with the module named', async () => {
+  const w = await splitWorld()
+  const judged = async (focus: string): Promise<PreExecuteDecision> => {
+    w.host.focuses.set('s1', focus)
+    return w.write(w.child)
+  }
+  assert.equal((await judged('module-a')).kind, 'allow')
+  assert.equal((await judged('task-a')).kind, 'allow')
+  for (const [focus, id, title] of [['module-b', 'module-b', '模块乙'], ['task-b', 'module-b', '模块乙'], ['candidate-c', 'candidate-c', '候选丙'], ['task-c', 'candidate-c', '候选丙']] as const) {
+    const reason = denied(await judged(focus))
+    assert.ok(reason.includes(`Boundary: You were dispatched (directly or through other subagents) by the main agent, whose focus is in module ${id} (${title}) of goal goal-1, and the human has not released that module yet: nothing in a module is built before its release.`), `${focus}: ${reason}`)
+    assert.ok(reason.includes(`The main agent puts the module to the human with propose_to_human (kind release, module ${id}); once the module is released, the work can be dispatched again.`), `${focus}: ${reason}`)
+    assert.ok(reason.includes('Right path: Read, search and report back;'))
+  }
+})
+
+test('design-before-release by module: the focus at the goal level, or on a node in no module, is allowed once the goal is released (the known remainder)', async () => {
+  const w = await splitWorld()
+  for (const focus of ['goal-1', 'task-loose']) {
+    w.host.focuses.set('s1', focus)
+    assert.equal((await w.write(w.child)).kind, 'allow', focus)
+  }
+})
+
+test('design-before-release by module: the goal back in design (the framework is being changed) denies under the whole goal, a released module included', async () => {
+  const w = await splitWorld()
+  await w.stage('goal-1', 'design')
+  for (const focus of ['module-a', 'task-a', 'module-b', 'goal-1']) {
+    w.host.focuses.set('s1', focus)
+    assert.match(denied(await w.write(w.child)), /at stage design \(goal goal-1\)/, focus)
+  }
+})
+
+test('design-before-release by module: a module sent back to design is denied again, and released again it is allowed', async () => {
+  const w = await splitWorld()
+  w.host.focuses.set('s1', 'task-a')
+  assert.equal((await w.write(w.child)).kind, 'allow')
+  await w.stage('module-a', 'design')
+  assert.ok(denied(await w.write(w.child)).includes('module module-a (模块甲)'))
+  await w.stage('module-a', 'release')
+  assert.equal((await w.write(w.grandchild)).kind, 'allow')
+})
+
+test('design-before-release by module: a module done at release still lets rework below it be written', async () => {
+  const w = await splitWorld()
+  w.host.focuses.set('s1', 'task-a')
+  await w.act('human', { op: 'status', id: 'module-a', to: 'doing' })
+  assert.equal((await w.write(w.child)).kind, 'allow')
+  await w.act('human', { op: 'status', id: 'task-a', to: 'done', evidence: [{ kind: 'commit', ref: 'e1c4c15' }] })
+  await w.act('human', { op: 'status', id: 'module-a', to: 'done', evidence: [{ kind: 'commit', ref: 'e1c4c15' }] })
+  assert.equal((await w.write(w.child)).kind, 'allow')
+})

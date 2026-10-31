@@ -103,6 +103,8 @@ function summarizeMessage(message) {
     ...(message.source === undefined ? {} : { source: message.source.kind }),
     // The graph step projection records why it was added (src/graph/reminder.ts).
     ...(typeof message.source?.graphProjection?.reason === 'string' ? { projection: message.source.graphProjection.reason } : {}),
+    // The main agent's stage reminder records what it was about and why it was added (src/design/stage-notice.ts).
+    ...(typeof message.source?.designStage?.reason === 'string' ? { designStage: message.source.designStage } : {}),
   }
 }
 

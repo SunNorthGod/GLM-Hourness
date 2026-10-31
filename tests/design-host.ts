@@ -14,7 +14,8 @@ import { mkdirSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import type { DesignContext } from '../src/design/index.ts'
-import type { AgentLike, AssemblePayload, AssembledSection, AssembledTool, CommandDefinitionLike, CommandExecutionLike, CommandResultLike, DesignAgentLike, DesignAgentsService, DesignInvocationLike, PreExecuteDecision, PreExecuteListener, SessionEventLike, SessionLike, SessionProjectionsService, ToolExecutionPayload, UserNotice } from '../src/shared/dsh-min.ts'
+import type { AgentLike, AssemblePayload, AssembledSection, AssembledTool, CommandDefinitionLike, CommandExecutionLike, CommandResultLike, DesignAgentLike, DesignAgentsService, DesignInvocationLike, PreExecuteDecision, PreExecuteListener, PreStepDecision, PreStepPayload, SessionEventLike, SessionLike, SessionProjectionsService, ToolExecutionPayload, UserNotice } from '../src/shared/dsh-min.ts'
+import { healthServiceName, type RowHealthView } from '../src/shared/health.ts'
 import { fakeInjector, serviceStore } from './fake-rc3.ts'
 
 interface LoggedEvent extends SessionEventLike {
@@ -25,11 +26,14 @@ type Header = SessionLike['header']
 
 interface FakeSession extends SessionLike {
   readonly events: LoggedEvent[]
+  /** The request-visible history `deriveMessages()` returns: what the steps admitted. */
+  readonly history: unknown[]
   readonly inherited: number
   append(type: string, data: unknown): void
 }
 
 type AssembleListener = (assembly: AssemblePayload, context: unknown, next: () => Promise<AssemblePayload>) => Promise<AssemblePayload>
+type PreStepListener = (payload: PreStepPayload, next: () => Promise<PreStepDecision>) => Promise<PreStepDecision>
 
 export interface FakeAgent extends DesignAgentLike {
   readonly session: FakeSession
@@ -42,8 +46,16 @@ export interface FakeAgent extends DesignAgentLike {
   readonly listeners: AssembleListener[]
   /** Assemble one step the way the agent loop does: the base assembly through the agent's own listeners. */
   assemble(options?: { readonly sections?: readonly AssembledSection[], readonly tools?: readonly AssembledTool[] }): Promise<AssemblePayload>
+  /** Run `agent/pre-step` for one step the way the agent loop does: the claimed messages through the scoped listeners; what the step admits is appended to the session history. Returns the decision. */
+  step(options?: { readonly messages?: readonly unknown[], readonly step?: number }): Promise<PreStepDecision>
   /** The agent finishes its activity. */
   becomeIdle(): void
+}
+
+/** The row health the design row reported for an agent's session; undefined when it reported none. */
+export function healthOf(host: DesignHost, agent: FakeAgent): { readonly state: string, readonly reason: string } | undefined {
+  const report = (host.services.get(healthServiceName('design')) as RowHealthView).session(agent.id)
+  return report === undefined ? undefined : { state: report.state, reason: report.reason }
 }
 
 export const BASE_TOOLS: readonly AssembledTool[] = ['read', 'write', 'edit', 'pwsh', 'ask_user_question', 'graph_show'].map(toolName => ({ name: toolName, description: toolName, parameters: { type: 'object', properties: {} } }))
@@ -58,6 +70,8 @@ export interface DesignHost {
   /** The project directory the violation journal is written under (the data service's). */
   readonly projectHome: string
   readonly workspace: (name: string) => string
+  /** The node each session has in focus, as the graph row's `focusOf` reports it (session id to node id). */
+  readonly focuses: Map<string, string>
   /** Registered commands by name. */
   readonly commands: Map<string, CommandDefinitionLike<DesignInvocationLike>>
   /** Every line the row itself ran through `commands.execute`, with the agent it ran on (not the lines the person types through `execute` below). */
@@ -103,6 +117,7 @@ export function designHost(options: { readonly graph?: boolean, readonly project
   const createdListeners: Array<(payload: { agent: AgentLike }) => Promise<void> | void> = []
   const gates: PreExecuteListener[] = []
   const stored: string[] = []
+  const focuses = new Map<string, string>()
   const failures = new Map<string, 'undefined' | 'throw'>()
   let commandCounter = 0
 
@@ -135,7 +150,7 @@ export function designHost(options: { readonly graph?: boolean, readonly project
 
   const injector = fakeInjector(options.projections === false ? {} : { sessionProjections: projections })
 
-  if (options.graph !== false) store.provide('glmHournessGraph', { dirFor: (cwd: string | undefined) => cwd === undefined ? undefined : resolve(cwd, 'docs/graph'), isGraphTool: () => false })
+  if (options.graph !== false) store.provide('glmHournessGraph', { dirFor: (cwd: string | undefined) => cwd === undefined ? undefined : resolve(cwd, 'docs/graph'), isGraphTool: () => false, focusOf: (session: SessionLike) => focuses.get(session.id) })
   const projectHome = join(root, 'project')
   store.provide('glmHournessData', { userHome, projectHome })
   const registry: DesignAgentsService = { get: id => agents.get(id), roots: () => [...agents.values()].filter(agent => agent.session.header.origin !== 'subagent') }
@@ -200,6 +215,7 @@ export function designHost(options: { readonly graph?: boolean, readonly project
     userHome,
     projectHome,
     workspace,
+    focuses,
     commands,
     executed,
     agents,
@@ -211,22 +227,29 @@ export function designHost(options: { readonly graph?: boolean, readonly project
       const header: Header = { id, cwd, ...agentOptions.origin === undefined ? {} : { origin: agentOptions.origin }, ...agentOptions.parentSession === undefined ? {} : { parentSession: agentOptions.parentSession } }
       const inheritedEvents = agentOptions.inheritFrom?.session.events ?? []
       const events: LoggedEvent[] = inheritedEvents.map(event => ({ ...event }))
+      const history: unknown[] = []
       const session: FakeSession = {
         id,
         header,
         events,
+        history,
         inherited: events.length,
-        deriveMessages: () => [],
+        deriveMessages: () => [...history],
         append(type, data) { events.push({ type, seq: events.length, time: Date.now(), data }) },
       }
       const idleWaiters: Array<() => void> = []
       const listeners: AssembleListener[] = []
+      const preStepListeners: PreStepListener[] = []
       const agentCtx = {
-        on: (event: string, listener: AssembleListener, opts?: { prepend?: boolean }) => {
+        on: (event: string, listener: AssembleListener | PreStepListener, opts?: { prepend?: boolean }) => {
+          if (event === 'agent/pre-step') {
+            preStepListeners.push(listener as PreStepListener)
+            return () => { preStepListeners.splice(preStepListeners.indexOf(listener as PreStepListener), 1) }
+          }
           if (event !== 'system-prompt/assemble') throw new Error(`fake agent context does not model ${event}`)
-          if (opts?.prepend === true) listeners.unshift(listener)
-          else listeners.push(listener)
-          return () => { listeners.splice(listeners.indexOf(listener), 1) }
+          if (opts?.prepend === true) listeners.unshift(listener as AssembleListener)
+          else listeners.push(listener as AssembleListener)
+          return () => { listeners.splice(listeners.indexOf(listener as AssembleListener), 1) }
         },
       } as unknown as DesignAgentLike['ctx']
       const agent: FakeAgent = {
@@ -244,6 +267,17 @@ export function designHost(options: { readonly graph?: boolean, readonly project
             () => Promise.resolve({ ...base, contexts: [], variables: {} }),
           )
           return chain()
+        },
+        async step(stepOptions = {}) {
+          const messages = stepOptions.messages ?? []
+          const payload: PreStepPayload = { agent, messages, signal: new AbortController().signal, turn: 1, step: stepOptions.step ?? 2 }
+          const chain = preStepListeners.reduceRight<() => Promise<PreStepDecision>>(
+            (next, listener) => () => listener(payload, next),
+            () => Promise.resolve({ kind: 'enter', messages }),
+          )
+          const decision = await chain()
+          if (decision.kind === 'enter') history.push(...decision.messages)
+          return decision
         },
         followup(message) {
           this.sent.push({ via: 'followup', message })

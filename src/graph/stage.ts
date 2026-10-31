@@ -93,6 +93,11 @@ export function effectiveStage(node: GraphNode): Stage | null {
   return null
 }
 
+/** Whether a node is done, dropped or superseded. */
+export function isClosed(node: GraphNode): boolean {
+  return CLOSED.has(node.status)
+}
+
 /** The node itself when it is a goal, else its nearest goal ancestor: the current goal of a focus. Undefined when the node is missing or no goal is above it. */
 export function goalOf(graph: LoadedGraph, id: string): GraphNode | undefined {
   const node = graph.nodes.get(id)
@@ -138,7 +143,7 @@ export function requirementCard(graph: LoadedGraph, goal: GraphNode): readonly G
       key: 'choice',
       label: '岔路（人拍板的选择）',
       ok: below.some(node => node.type === 'question' && node.status === 'done' && node.decision !== undefined && lastDecidedByHuman(node)),
-      hint: 'interview step 7 (two or three ways with their trade-offs, the recommendation last): ask the human with decision_card; a question the agent decided on its own does not count',
+      hint: 'interview step 7 (the fork only the human can decide): put it with propose_to_human (kind question) and record the answer with record_human_answer; a question the agent decided on its own does not count',
     },
   ]
 }
@@ -209,7 +214,7 @@ function releaseGate(graph: LoadedGraph, goal: GraphNode): GateItem[] {
       key: `${question.id}:undecided`,
       label: `待决「${question.title}」还没拍板`,
       ok: false,
-      hint: question.decider === 'agent' ? `${question.id} is yours: decide it with graph_decide` : `the human decides ${question.id}: wait for their decision in the panel, or ask them with decision_card`,
+      hint: question.decider === 'agent' ? `${question.id} is yours: decide it with graph_decide` : `the human decides ${question.id}: wait for the human's answer in the chat and record it with record_human_answer`,
     })),
     ...set.flatMap(node => supersedesItem(node, `${node.id}:supersedes`, `${HUMAN_SUPERSEDES}; or remove the edge and raise a question instead`)),
   ]
@@ -225,7 +230,7 @@ export function stageStatus(graph: LoadedGraph, goal: GraphNode): StageStatus {
   return {
     goal: goal.id,
     stage,
-    closed: CLOSED.has(goal.status),
+    closed: isClosed(goal),
     items,
     exitReady: leaving && items.every(item => item.ok),
     waitingHuman: descendants(graph, goal).filter(waitsForHuman).length,
