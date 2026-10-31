@@ -69,10 +69,14 @@ export function fullCredits(rate: CreditRate, usage: TokenUsage): number {
   return ((usage.inputTokens + (usage.cacheWriteTokens ?? 0)) * rate.input + (usage.cacheReadTokens ?? 0) * rate.cached + usage.outputTokens * rate.output) / 10_000
 }
 
+/** The share of the full rate charged at `ms`: 1 in peak hours, `OFF_PEAK_RATE` otherwise. */
+export function rateShareAt(ms: number): number {
+  return peakWindowAt(ms) === undefined ? OFF_PEAK_RATE : 1
+}
+
 /** Credits charged for one call made at `ms`: the full rate in peak hours, `OFF_PEAK_RATE` of it otherwise. */
 export function chargedCredits(rate: CreditRate, usage: TokenUsage, ms: number): number {
-  const full = fullCredits(rate, usage)
-  return peakWindowAt(ms) === undefined ? full * OFF_PEAK_RATE : full
+  return fullCredits(rate, usage) * rateShareAt(ms)
 }
 
 /** The pricing service value of the credit plan (src/shared/pricing.ts). */

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { chargedCredits, CREDIT_RATES, creditPricing, creditRate, fullCredits, PEAK_END_LABEL, PEAK_HOURS, peakWindowAt } from '../src/glm-llm/credits.ts'
+import { chargedCredits, CREDIT_RATES, creditPricing, creditRate, fullCredits, PEAK_END_LABEL, PEAK_HOURS, peakWindowAt, rateShareAt } from '../src/glm-llm/credits.ts'
 
 // The GLM credit formula (docs/FACTS.md §2.4). The usage panel that prices
 // a journal with it through the pricing service is in tests/hourness.spec.ts.
@@ -44,4 +44,24 @@ test('credits follow the FACTS.md 2.4 formula; off-peak calls are charged half, 
   const written = { inputTokens: 1000, cacheReadTokens: 1000, cacheWriteTokens: 500, outputTokens: 1000 }
   close(fullCredits(flash, written), 1.201)
   close(chargedCredits(flash, written, at('2026-10-31T15:00:00+08:00')), 0.6005)
+})
+
+test('rateShareAt: the share of the full rate at an instant, 1 in peak hours and 0.5 at every other time, the same rule that charges a call', () => {
+  assert.equal(rateShareAt(at('2026-10-28T13:59:59+08:00')), 0.5)
+  assert.equal(rateShareAt(at('2026-10-28T14:00:00+08:00')), 1)
+  assert.equal(rateShareAt(at('2026-10-28T17:59:59+08:00')), 1)
+  assert.equal(rateShareAt(at('2026-10-28T18:00:00+08:00')), 0.5)
+  assert.equal(rateShareAt(at('2026-10-31T15:00:00+08:00')), 0.5, 'Saturday')
+  assert.equal(rateShareAt(Number.NaN), 0.5)
+  const glm = creditRate('glm-5.3')!
+  const usage = { inputTokens: 1000, outputTokens: 500 }
+  for (const iso of ['2026-10-28T15:00:00+08:00', '2026-10-28T19:00:00+08:00', '2026-11-01T15:00:00+08:00']) {
+    close(chargedCredits(glm, usage, at(iso)), fullCredits(glm, usage) * rateShareAt(at(iso)))
+  }
+})
+
+test('the constant creditPricing stays the plan alone: the quota reader and the loop entries are members of the service the glm-login row provides, not of the constant the calibration and the probe use', () => {
+  assert.ok(Object.isFrozen(creditPricing))
+  assert.equal('quota' in creditPricing, false)
+  assert.equal('loopDefaults' in creditPricing, false)
 })

@@ -31,6 +31,13 @@ export const PROJECT_TOKEN_CODES = {
 /** Prefix of the 3.17.1 code for an HTTP status failure (`project_token_http_` + status). */
 export const PROJECT_TOKEN_HTTP_CODE_PREFIX = 'project_token_http_'
 
+/**
+ * The bigmodel API origin in production: the project access token is minted
+ * at it and the quota is read from it (`resolveBigModelApiOrigin`, the
+ * production origin constant of the CLI bundle and of the desktop host).
+ */
+export const BIGMODEL_API_ORIGIN = 'https://bigmodel.cn'
+
 /** The personal coding-plan API key name the client finds or creates. */
 export const ZCODE_API_KEY_NAME = 'zcode-api-key'
 

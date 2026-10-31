@@ -44,7 +44,7 @@ GLM-Hourness（同仓两包，§2.3）
 | 行 id | 包 | 入口 | 层 | 现状 |
 | --- | --- | --- | --- | --- |
 | `glm-hourness/glm-llm` | `dsh-glm-zcode` | `dist/glm-llm/index.js` | 通道 | 真网冒烟通过〔实测〕；2026-10-28 桌面版 L4 真实会话通过（GLM-5.3 多轮工具调用、GLM-5.3-Flash 收图）〔实读会话记录〕；凭证目录见 §2.4 |
-| `glm-hourness/glm-login` | `dsh-glm-zcode` | `dist/glm-llm/login-row.js` | 通道 | `/glm-login`、`/glm-status`（凭证状态与行健康表，§2.5）、`/glm-logout`；提供计价服务 `glmHournessPricing`：GLM 积分套餐的公式与高峰时段（`src/glm-llm/credits.ts`），契约在 `src/shared/pricing.ts`，面板经它计积分（`ORCHESTRATION.md` §11.2、§11.3）。选这一行提供：它是账号与套餐的入口，默认启用，不依赖路由；通道行默认禁用，方言行禁用时面板不该丢掉积分 |
+| `glm-hourness/glm-login` | `dsh-glm-zcode` | `dist/glm-llm/login-row.js` | 通道 | `/glm-login`、`/glm-status`（凭证状态与行健康表，§2.5）、`/glm-logout`；提供计价服务 `glmHournessPricing`：GLM 积分套餐的公式与高峰时段（`src/glm-llm/credits.ts`），契约在 `src/shared/pricing.ts`，面板经它计积分（`ORCHESTRATION.md` §11.2、§11.3）；同一个服务还带额度读取 `quota`（`src/glm-llm/quota.ts`）与循环板的四条默认条目 `loopDefaults`（`src/glm-llm/loop-defaults.ts`），`/glm-status` 在凭证行之后写高峰行与额度一段（§4.7）。行配置 `plan`（默认 `coding-plan`）须与 `glm-llm` 行的 `plan` 相同：这一行用它写凭证行的套餐，并决定读不读额度（体验套餐不读，`cordis.patch.yml` 在这一行上有注释，凭证行写出这一行用的套餐）。选这一行提供：它是账号与套餐的入口，默认启用，不依赖路由；通道行默认禁用，方言行禁用时面板不该丢掉积分 |
 | `glm-hourness/glm-prompt` | `dsh-glm-zcode` | `dist/glm-prompt/index.js` | 方言 | 见 §5；另带高峰提醒（本项目的 notice，`ORCHESTRATION.md` §11.4） |
 | `glm-hourness/glm-compact` | `dsh-glm-zcode` | `dist/glm-prompt/compact-row.js` | 方言 | 见 §5.6 |
 | `glm-hourness/data` | `dsh-hourness` | `dist/data/index.js` | 编排 | 数据目录服务 `glmHournessData`，见 §2.4 |
@@ -80,6 +80,7 @@ GLM-Hourness（同仓两包，§2.3）
 | 数据 | 位置 | 理由 |
 | --- | --- | --- |
 | 用量流水、加密凭证；以后还有偏好类记忆 | 用户级目录 `$DSH_HOME/glm-hourness/`，默认 `C:\Users\29596\.dsh\glm-hourness\` | 额度跟账号走，一台机器一份，按项目拆开反而看不全 |
+| 额度流水：读数、读取失败、上游限额、登录被拒四种记录（§4.7） | 用户级目录 `$DSH_HOME/glm-hourness/audit/quota.jsonl`，只追加，不轮换（到 8 MiB 时行健康提示，轮换到那时再设计） | 额度与登录是整个账号的事，同一台机器上的项目共用，不属于哪个项目 |
 | 记忆（事实）、违规、决策 | 项目目录，即工作区 `.llm/` | 记录的是在这个项目里学到的东西与犯过的错，混在一起会互相污染 |
 | 项目图 | 仓库内 | 项目知识，随 git 版本化（`ORCHESTRATION.md` §2.6） |
 
@@ -472,15 +473,39 @@ DSH 的 `TokenUsage` 各计数互不重叠：`inputTokens` 只算未命中缓存
 
 曾有缺陷：解码器在 `message_delta` 上发出 `{inputTokens: 0, outputTokens}`，下游取最后一个用量块，于是输入计为 0；缓存读写从未解析。积分口径依赖这三项（`FACTS.md` §2.4）。现在整个流只在 `finish` 前发一个合并后的用量块，含 `cacheReadTokens` / `cacheWriteTokens`〔已实现 2026-10-27；真网冒烟实测 `inputTokens: 24, outputTokens: 3, cacheReadTokens: 0`〕。此前写入的用量流水中输入计数均为 0，不能用于积分统计。那版解码器的用量块没有 `totalTokens`，修正后的总带它；用量面板据此（provider `glm-zcode`、输入 0、无 `totalTokens`）识别修正前的记录，不计入积分，只报条数（2026-10-28，`ORCHESTRATION.md` §11.2）。
 
-### 4.7 额度数据〔规划〕
+### 4.7 额度数据〔已实现 2026-10-31，项目图 `m6-quota-read`；真机读取的核对在 `m6-l4`〕
 
-通道负责取数，编排层负责展示：5 小时窗口剩余、周额度、积分余额、MCP 余额，以及错误码 1308/1310/1316–1321 携带的 `next_flush_time`。计算口径见 `ORCHESTRATION.md` §11 与 `FACTS.md` §2.4。
+通道负责取数，编排层负责展示：5 小时窗口与每周窗口的已用比例、MCP 工具调用窗口、预计何时用完、登录是否被服务端拒绝。数据经计价服务（`glmHournessPricing`，`glm-login` 行提供）的 `quota` 成员交给编排层；契约与措辞函数在 `src/shared/quota.ts`，取数与预估只在 GLM 包（`src/glm-llm/`）。计算口径见 `ORCHESTRATION.md` §11 与 `FACTS.md` §2.4。ZCode 3.17.1 怎么取、本包照做到哪里、哪几处不同，见 §4.8 与 `FACTS.md` §1。
+
+- 请求（`src/glm-llm/quota.ts` `createQuotaReader`）：`GET https://bigmodel.cn/api/monitor/usage/quota/limit`（origin 常量 `BIGMODEL_API_ORIGIN` 在 `zcode-wire.ts`，项目令牌铸造用同一个）。头恰好两个：`authorization`，值是项目令牌原样（不加 `Bearer `）；`x-request-id`，每次读取新生成的 UUID。不加 ZCode 的身份头，不读环境变量覆盖地址，15 秒超时，不重试；401 只是一个失败原因，不重铸令牌、不在同一次读取里重发，所以额度读取不会发出 3.17.1 不会发的 `POST …/access_tokens`。
+- 凭证：`ZcodeAdapter.usageAuthorization()`。`plan` 为 `start-plan` 时抛 `start-plan`，不读凭证、不发任何请求；没有凭证抛 `not-logged-in`；`coding-plan` 时返回项目令牌，与模型请求用同一个适配器的缓存，不接受被拒指纹（3.17.1 的额度路径不核对账号作用域）。令牌铸不出来时抛 `zcode-wire.ts` 的 `PROJECT_TOKEN_CODES` 码或 ZCode 的凭证缺失原文。
+- 套餐：`glm-login` 行的适配器按这一行自己的 `plan` 构造（`LoginConfig.plan`，行导出 `Config`，插件管理器里是真开关）。两行的 `plan` 必须相同，行之间没有读配置的契约；设得不同时，`/glm-status` 凭证行写出的是这一行用的套餐。
+- 读取时机：GLM 包没有定时器。读取在有调用方时才开始：`/glm-status`、经 `quota` 成员调用的编排层（`/hourness`、循环板）。距上一次读取开始不满 60 秒不再发（成功或失败都算），进行中的读取由并发的调用方共用；流水里有晚于上一次读取开始的上游限额记录时越过这 60 秒。`quota({read: false})` 不发请求，只给流水末尾的最近读数与登录状态。命令至多等 3 秒（`waitMs`），超时用上一次读数并写「正在读取，稍后再看」，读取在后台继续至多 15 秒。
+- 结果与原因码（每类一个，写进流水与行健康；读不到从不让命令失败，也不改变任何请求）：`not-logged-in`、`start-plan`（不进流水）、`credential:<码>`、`network`、`timeout`、`http-401`、`http-<码>`、`too-large`（响应超过 256 KiB）、`envelope:<code>`（不是 JSON 或信封不成功）、`no-windows`（成功但没有可用的行，含数据形状认不出）。控制台每种原因告警一次，未登录除外：它是新装的常态，由额度一节和行健康说，控制台只说失败。
+- 解析（`src/glm-llm/quota-parse.ts`，与 3.17.1 `jD`、`QD` 相同的取舍加上限）：`data.limits` 至多取前 32 行，`type` 须是 1–64 个字符的非空字符串，只留数字字段（`percentage` 大于 100 按 100 保留、负数丢掉这个字段，`nextResetTime` 小于 10^12 按秒、之后须落在读取时刻前 1 天到后 45 天内），`unit` 与 `usageDetails` 不留；没有 `percentage` 与 `remaining` 的行丢弃并计数。窗口按「离重置还有多久」命名：`TIME_LIMIT` 是 MCP；有重置时刻的 `TOKENS_LIMIT` 里，5 小时 2 分钟以内的是 5 小时候选，其余是每周候选，各至多一个时命名为 5 小时与每周，其余情形不猜，各自是「额度窗口（HH:MM 重置）」。
+- 额度流水（`src/glm-llm/quota-journal.ts`，`<用户级目录>/audit/quota.jsonl`，`credentialHome(config.home)` 解析，两行写同一个文件）：每行一个 JSON，只追加。四种记录：`reading`（解析后的行、丢弃数与丢弃行的键名，不存原始响应与窗口名）、`failure`（原因码，同一原因 10 分钟一条）、`upstream-limit`、`login-rejected`。都不含令牌、Key 与请求头。写失败不抛，每种失败控制台告警一次，记录仍留在本进程的内存里。显示时读文件末尾至多 256 KiB，跳过不合法的行并计数（写进行健康），文件的大小与修改时刻没变就不重读。
+- 上游限额（`ZcodeAdapter.stream`，`src/glm-llm/account-signals.ts`）：模型请求回 429、正文是 `{"error": {"code": …, "message": …}}` 且 `code` 为 1308、1310、1316–1321 时追加 `upstream-limit`；消息里第一个 `YYYY-MM-DD HH:MM[:SS]` 按 UTC+8 读，落在现在到 8 天之内才写 `until`。抛出的错误、重试行为不变。额度一节在有晚于最近读数的这类记录时第一行写「额度已用完（服务端 1308）」，有恢复时刻时加「预计 HH:MM 恢复」。这一项不是 ZCode 的行为，正文形状经 ultra 网关时是否相同未核实（V4）。
+- 预估（`src/glm-llm/quota-projection.ts`，纯函数，积分规则仍只在 `credits.ts`，经 `rateShareAt`）：速度按每全价小时涨多少个百分点算，非高峰的一小时只计半个。取第一个可用的：同一期里离本次 10–90 分钟的最早一次读数（比例下降说明窗口已刷新，不用）；5 小时与每周窗口自开始起的平均（周额度的平均含夜间，偏低，行里注明）。之后按分钟累加，在重置前到 100 报「预计 HH:MM 用完」（向下取整到分钟），否则报「到重置时约 N%」；没有重置时刻只在 7 天内找；已用完、最近没有消耗、读数不足、即将重置各有原因。MCP 窗口和不认识的类型不预估。非高峰半价计入额度是推断（V5），不成立时速度最多差一倍，预估行写明依据。
+- 登录状态（`QuotaView.login`）：`absent`（凭证文件不存在、为空——`/glm-logout` 写空串、解不开或没有登录令牌；解不开时行健康另写一句）、`rejected`、`ok`。适配器在三种情形写 `login-rejected`，同一路径与同一登录 10 分钟一条：模型请求带被拒指纹重铸令牌、重试之后仍被拒（`path: model`）；定位 Key 或铸造令牌时 PAT 平面回 401 或 403（`project_token_http_401`、`project_token_http_403`，在 `projectToken` 里认码，原错误原样抛出）；登录令牌为空（`project_token_login_required`）；后两种的 `path` 是 `mint`。网络错误、超时、429、5xx、账号或项目状态、额度路径的 401 都不算。记录带登录令牌的指纹（去掉 `Bearer ` 前缀与空白后 SHA-256 的前 16 位十六进制）。状态为 `rejected`：最新一条 `login-rejected` 的指纹等于当前凭证里登录令牌的指纹，且晚于最新一条成功读数。项目 Key 的位置记录会写回同一个凭证文件，所以不按文件的修改时刻判重新登录，按指纹判；凭证文件的大小与修改时刻没变就不解密。
+- `/glm-status`（`login-row.ts`）：凭证行（设置页解析它，格式不变）、空行、高峰行、额度一段、空行、行健康表。高峰行的「到几点」用 `nextPeakChange`，时刻按本机时区写（`formatMoment`，高峰的判定仍按 UTC+8）。`glm-login` 行健康的说明在原文后加「额度：读于 HH:MM」或「额度：读不到（原因码）」，登录被拒时再加「登录被拒」；额度从不使行降级。`LoginConfig` 的 `now` 与 `offsetMinutes` 只给测试，不在 `Config` 里。
+- 循环板条目：`src/glm-llm/loop-defaults.ts` 导出冻结的四条（`glm:peak-reminder`、`glm:quota-on-command`、`glm:quota-low`、`glm:login-rejected`），经计价服务的 `loopDefaults` 交出，只是数据；GLM 包自己做的两条（高峰提醒、看状态时读额度）只被列出。`creditPricing` 常量仍不带 `quota` 与 `loopDefaults`，标定与探针用它。
+- 不做：不按额度或积分拦截、推迟、限速、换模型或换套餐，本节没有在 `tools/pre-execute` 与 `agent/pre-step` 上注册任何监听器。四类指标事件（`glm.quota-read` 等）等指标服务的设计定了名字与信封再交（项目图 `m6-metrics-events`）。
+- 未核实：V3 行的含义与单位（`TOKENS_LIMIT` 是 5 小时与每周、`TIME_LIMIT` 是 MCP，出自他人 2026-10-12 的实测）、V4、V5、V6 命令处理函数等 3 秒在客户端一侧不被打断、V8 登录被拒的三种判据在真实的登录失效时够用。真机读取在 `m6-l4`，读到的行记进 `FACTS.md` §2.4。V7 已核（`FACTS.md` §1）。
 
 ### 4.8 与 ZCode 的一致性与已知差异〔m1-parity 2026-10-28 按 3.16.3；2026-10-30 跟到 3.17.1〕
 
 验收口径〔定案 2026-10-28，用户：「看量或者扣减看不出来的。你就代码级别一样就行」〕：coding-plan 请求中本包能控制的部分与基线代码级一致（2026-10-30 起为 3.17.1），不做额度或扣减测量。
 
-已一致（细节与偏移见各节）：模型请求凭证是项目令牌，拿不到即失败（§4.1）；配置请求只带 `x-api-key-id`，凭证不再含 secret（§4.1、§4.4）；`X-Title` 与 User-Agent（§4.2）；头的组装链与线上顺序（§4.3）；归因头（§4.5b）；`metadata.user_id` 的 deviceMid：读取，缺失时生成并在锁内写回 ZCode 状态文件（§4.5b）；请求体键序、`model` 大小写、`thinking` 与 `output_config`、会话标题非流式（§4.5）；`max_tokens` 规则（§4.6）。3.17.1 跟进补上的：版本号（§4.2）、`x-zcode-session-features`（§4.5b）、项目令牌请求失败的细分错误码（§4.1）。
+已一致（细节与偏移见各节）：模型请求凭证是项目令牌，拿不到即失败（§4.1）；配置请求只带 `x-api-key-id`，凭证不再含 secret（§4.1、§4.4）；`X-Title` 与 User-Agent（§4.2）；头的组装链与线上顺序（§4.3）；归因头（§4.5b）；`metadata.user_id` 的 deviceMid：读取，缺失时生成并在锁内写回 ZCode 状态文件（§4.5b）；请求体键序、`model` 大小写、`thinking` 与 `output_config`、会话标题非流式（§4.5）；`max_tokens` 规则（§4.6）。3.17.1 跟进补上的：版本号（§4.2）、`x-zcode-session-features`（§4.5b）、项目令牌请求失败的细分错误码（§4.1）。额度读取（§4.7，`m6-quota-read`）已一致：地址与 15 秒超时、头恰好 `authorization`（项目令牌原样）与 `x-request-id`（每次新的 UUID）、不加 ZCode 身份头、失败只是一个原因（不重试，401 不重铸）、读取结果 60 秒内复用；偏移按 3.17.1，见 `FACTS.md` §1。
+
+额度读取的已知差异〔2026-10-31，项目图 `m6-quota-read`〕：
+
+- 项目令牌缓存一行一份：`glm-login` 与 `glm-llm` 两行的适配器各有一份缓存，一个令牌有效期内至多多铸造一次；ZCode 一个进程一份缓存。理由：两行没有共享对象的契约，为此加一个服务多一套提供与撤销。
+- 不做读额度前的订阅核验：ZCode 的一条路径在读额度之前先核验订阅，结果不改变本包显示的内容，多一个 OAuth 请求。
+- start-plan 不读额度：体验套餐没有 5 小时与周额度，ZCode 用套餐 JWT 照读；本包不发请求，额度一节说明原因。
+- 模型请求 429 的 1308 等上游限额记录与展示：ZCode 没有，是本项目加的展示；正文形状经 ultra 网关未核实（§4.7 的 V4）。
+- 读取时机：ZCode 在设置页挂载与刷新时读，聊天输入框旁的用量条在打开时触发刷新，3.17.1 的渲染层没有定时读额度（V7，`FACTS.md` §1）；本包在命令时读，装了循环板时另在 GLM 有新用量后至多每 15 分钟读一次，没有定时器。
+- 登录被拒的判定：ZCode 没有，是本项目加的（§4.7 的 V8）。
 
 3.17.1 跟进的已知差异〔2026-10-30，项目图 `zcode-3171-follow`〕：
 

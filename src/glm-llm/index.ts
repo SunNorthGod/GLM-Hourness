@@ -9,6 +9,7 @@
  */
 import { ZcodeAdapter } from './zcode.ts'
 import { credentialHome } from '../shared/data-home.ts'
+import { homeField, planField } from './config-fields.ts'
 import { asAttachments } from './images.ts'
 import Schema from '../shared/schemastery.ts'
 import { provideRowHealth } from '../shared/health.ts'
@@ -40,8 +41,8 @@ export interface GlmConfig {
 
 /** Runtime Config schema: the channel knobs as real switches in the DSH plugin manager. */
 export const Config = Schema.object({
-  home: Schema.string().description('Credential directory: the encrypted credential store lives here. Default: <DSH home>/glm-hourness.'),
-  plan: Schema.union([Schema.const('coding-plan'), Schema.const('start-plan')]).default('coding-plan').description('Plan tier: coding-plan (default, usage bonus) or start-plan (gateway 3-block prompt, JWT auth).'),
+  home: homeField,
+  plan: planField,
   provider: Schema.string().default('glm-zcode').description('Provider route id registered on the LLM seam.'),
 })
 

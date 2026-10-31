@@ -7,7 +7,11 @@
  */
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { creditPricing } from '../src/glm-llm/credits.ts'
+import { mintRejectionOf, upstreamLimitOf } from '../src/glm-llm/account-signals.ts'
+import { creditPricing, rateShareAt } from '../src/glm-llm/credits.ts'
+import { GLM_LOOP_DEFAULTS } from '../src/glm-llm/loop-defaults.ts'
+import { nameWindows, parseQuotaBody, type QuotaLimitRow } from '../src/glm-llm/quota-parse.ts'
+import { projectWindow, samePeriod, type WindowPoint, type WindowState } from '../src/glm-llm/quota-projection.ts'
 import { loopDefaultsOf, type ChannelLoopDefault, type ChannelTrigger } from '../src/shared/channel-loop.ts'
 import { peakHoursOf, quotaOf, type UsagePricing } from '../src/shared/pricing.ts'
 import {
@@ -355,4 +359,294 @@ test('loopDefaultsOf: an entry that is not an object is reported by its place; a
   assert.equal(capped.problems.length, 1)
   assert.match(capped.problems[0] ?? '', /17 entries/)
   assert.deepEqual(readLoopDefaults(many.slice(0, 16)), { entries: many.slice(0, 16), problems: [] })
+})
+
+// The channel half of the quota contract, the pure part: the response text as rows,
+// the names of the windows, and the projection (docs/DESIGN.md §4.3, §4.7). The
+// reader that fetches and journals them is tested in tests/glm-quota.spec.ts.
+
+const HOUR_MS = 60 * MINUTE_MS
+const DAY_MS = 24 * HOUR_MS
+const READ_AT = at('2026-10-28T17:02:00+08:00')
+const bodyOf = (limits: unknown[], rest: Record<string, unknown> = {}): string => JSON.stringify({ code: 200, success: true, data: { level: 'max', limits }, ...rest })
+const rowsOf = (text: string): readonly QuotaLimitRow[] => {
+  const parsed = parseQuotaBody(text, READ_AT)
+  assert.ok(parsed.ok, JSON.stringify(parsed))
+  return parsed.limits
+}
+const refusalOf = (text: string): { reason: string, text: string } => {
+  const parsed = parseQuotaBody(text, READ_AT)
+  assert.ok(!parsed.ok, 'the response is not read as rows')
+  return { reason: parsed.reason, text: parsed.text }
+}
+
+/** The three rows of the real reading zcode-api recorded on 2026-10-12 (max plan), with reset times moved to be ahead of READ_AT. */
+const REAL_ROWS = [
+  { type: 'TOKENS_LIMIT', unit: 3, number: 5, percentage: 41, nextResetTime: READ_AT + 3 * HOUR_MS },
+  { type: 'TIME_LIMIT', unit: 5, number: 1, usage: 1000, currentValue: 40, remaining: 3836, percentage: 4, nextResetTime: READ_AT + 5 * DAY_MS, usageDetails: [{ modelCode: 'search-prime', usage: 3 }] },
+  { type: 'TOKENS_LIMIT', unit: 6, number: 1, percentage: 63, nextResetTime: READ_AT + 4 * DAY_MS },
+]
+
+test('parseQuotaBody: the three-row reading of zcode-api reads in full; unit, number-as-total and usageDetails are not kept; the windows are named by how long they run', () => {
+  const parsed = parseQuotaBody(bodyOf(REAL_ROWS), READ_AT)
+  assert.ok(parsed.ok)
+  assert.equal(parsed.level, 'max')
+  assert.equal(parsed.dropped, 0)
+  assert.deepEqual(parsed.limits[1], { type: 'TIME_LIMIT', number: 1, usage: 1000, currentValue: 40, remaining: 3836, percentage: 4, nextResetTime: READ_AT + 5 * DAY_MS })
+  assert.ok(parsed.limits.every(row => !('unit' in row) && !('usageDetails' in row)))
+  assert.deepEqual(nameWindows(parsed.limits, READ_AT, ZONE).map(({ name, label }) => [name, label]), [['five-hour', '5 小时'], ['mcp', 'MCP 工具调用'], ['weekly', '每周']])
+})
+
+test('parseQuotaBody: a reset time in seconds is read as seconds, one in milliseconds as it is, and one far outside the week of the reading is dropped', () => {
+  const reset = READ_AT + 2 * HOUR_MS
+  const read = (nextResetTime: number): QuotaLimitRow | undefined => rowsOf(bodyOf([{ type: 'TOKENS_LIMIT', percentage: 10, nextResetTime }]))[0]
+  assert.equal(read(reset / 1000)?.nextResetTime, reset)
+  assert.equal(read(reset)?.nextResetTime, reset)
+  assert.equal(read(READ_AT - DAY_MS - 1000)?.nextResetTime, undefined, 'more than a day back')
+  assert.equal(read(READ_AT + 46 * DAY_MS)?.nextResetTime, undefined, 'more than 45 days ahead')
+  assert.equal(read(READ_AT + 44 * DAY_MS)?.nextResetTime, READ_AT + 44 * DAY_MS)
+  assert.equal(read(READ_AT - 1000)?.nextResetTime, READ_AT - 1000, 'just passed is kept')
+  assert.equal(read(READ_AT + 46 * DAY_MS)?.percentage, 10, 'a dropped time keeps the row')
+})
+
+test('parseQuotaBody: a share above 100 is kept as 100, a negative one and one that is not a finite number are dropped from the row; a row left with neither share nor remainder is dropped', () => {
+  const read = (extra: Record<string, unknown>): QuotaLimitRow | undefined => rowsOf(bodyOf([{ type: 'TOKENS_LIMIT', remaining: 7, ...extra }, { type: 'TIME_LIMIT', percentage: 1 }]))[0]
+  assert.equal(read({ percentage: 130 })?.percentage, 100)
+  assert.equal(read({ percentage: 100 })?.percentage, 100)
+  assert.equal(read({ percentage: 0 })?.percentage, 0)
+  assert.equal(read({ percentage: -5 })?.percentage, undefined)
+  assert.equal(read({ percentage: Number.NaN })?.percentage, undefined, 'NaN is null on the wire')
+  assert.equal(read({ percentage: '50' })?.percentage, undefined)
+  assert.equal(read({ percentage: -5 })?.remaining, 7, 'the row stays for its remainder')
+  const only = parseQuotaBody(bodyOf([{ type: 'TOKENS_LIMIT', percentage: -5 }]), READ_AT)
+  assert.deepEqual(only, { ok: false, reason: 'no-windows', text: '额度：服务端没有返回可识别的窗口', keys: ['type', 'percentage'] })
+})
+
+test('parseQuotaBody: an unknown type is kept under its own name; a row without a usable type or without numbers is dropped and counted, with the names of its keys', () => {
+  const parsed = parseQuotaBody(bodyOf([
+    { type: 'WEEKLY_PROMPTS', percentage: 12 },
+    { type: '', percentage: 1 },
+    { type: 7, percentage: 1 },
+    { type: 'x'.repeat(65), percentage: 1 },
+    { type: 'NO_NUMBERS', label: 'text only' },
+    'a string',
+    null,
+    { type: 'TOKENS_LIMIT', percentage: 5 },
+  ]), READ_AT)
+  assert.ok(parsed.ok)
+  assert.deepEqual(parsed.limits.map(row => row.type), ['WEEKLY_PROMPTS', 'TOKENS_LIMIT'])
+  assert.equal(parsed.dropped, 6)
+  assert.deepEqual(parsed.keys, ['type', 'percentage', 'label'])
+  assert.deepEqual(nameWindows(parsed.limits, READ_AT).map(({ name, label }) => [name, label]), [['other', 'WEEKLY_PROMPTS'], ['window', '额度窗口']])
+})
+
+test('parseQuotaBody: at most 32 rows are read; the rest are counted as dropped', () => {
+  const rows = Array.from({ length: 40 }, (_, index) => ({ type: `T${index}`, percentage: index }))
+  const parsed = parseQuotaBody(bodyOf(rows), READ_AT)
+  assert.ok(parsed.ok)
+  assert.equal(parsed.limits.length, 32)
+  assert.equal(parsed.limits.at(-1)?.type, 'T31')
+  assert.equal(parsed.dropped, 8)
+})
+
+test('parseQuotaBody: the level is kept trimmed, one to 32 characters', () => {
+  const level = (value: unknown): string | undefined => {
+    const parsed = parseQuotaBody(JSON.stringify({ code: 200, data: { level: value, limits: [{ type: 'TOKENS_LIMIT', percentage: 1 }] } }), READ_AT)
+    return parsed.ok ? parsed.level : 'unread'
+  }
+  assert.equal(level('  pro '), 'pro')
+  assert.equal(level('x'.repeat(32)), 'x'.repeat(32))
+  assert.equal(level('x'.repeat(33)), undefined)
+  assert.equal(level('   '), undefined)
+  assert.equal(level(5), undefined)
+})
+
+test('parseQuotaBody: the envelope succeeds without a code, with 0 or 200 (as a number or a numeric string) unless success is false; anything else is a refusal named by its code', () => {
+  const limits = [{ type: 'TOKENS_LIMIT', percentage: 1 }]
+  const succeeds = (envelope: Record<string, unknown>): boolean => parseQuotaBody(JSON.stringify({ data: { limits }, ...envelope }), READ_AT).ok
+  assert.ok(succeeds({}))
+  assert.ok(succeeds({ code: null }))
+  assert.ok(succeeds({ code: 0 }))
+  assert.ok(succeeds({ code: 200, success: true }))
+  assert.ok(succeeds({ code: '200' }))
+  assert.ok(!succeeds({ code: 200, success: false }))
+  assert.ok(!succeeds({ code: 1001 }))
+  assert.ok(!succeeds({ code: 500 }))
+  assert.ok(!succeeds({ code: {} }))
+  assert.deepEqual(refusalOf(JSON.stringify({ code: 1001, msg: 'token\nexpired\u0007 ' })), { reason: 'envelope:1001', text: '额度：服务端拒绝（1001 token expired）' })
+  assert.deepEqual(refusalOf(JSON.stringify({ code: '401', message: 'm'.repeat(200) })), { reason: 'envelope:401', text: `额度：服务端拒绝（401 ${'m'.repeat(80)}）` })
+  assert.deepEqual(refusalOf(JSON.stringify({ success: false })), { reason: 'envelope:unsuccessful', text: '额度：服务端拒绝（unsuccessful）' })
+  assert.deepEqual(refusalOf(JSON.stringify({ code: {}, msg: 'x' })), { reason: 'envelope:invalid', text: '额度：服务端拒绝（invalid x）' })
+})
+
+test('parseQuotaBody: text that is not a JSON object is a refusal; a successful envelope whose data has no rows is no-windows', () => {
+  assert.deepEqual(refusalOf('<html>bad gateway</html>'), { reason: 'envelope:not-json', text: '额度：服务端拒绝（not-json）' })
+  assert.deepEqual(refusalOf(''), { reason: 'envelope:not-json', text: '额度：服务端拒绝（not-json）' })
+  assert.deepEqual(refusalOf('[1,2]'), { reason: 'envelope:not-json', text: '额度：服务端拒绝（not-json）' })
+  assert.deepEqual(refusalOf('7'), { reason: 'envelope:not-json', text: '额度：服务端拒绝（not-json）' })
+  for (const data of [undefined, null, 'x', [], {}, { limits: 'x' }, { limits: [] }, { limits: {} }]) {
+    assert.equal(refusalOf(JSON.stringify({ code: 200, data })).reason, 'no-windows', JSON.stringify(data))
+  }
+})
+
+test('nameWindows: one row of each class is named by its time to the reset, the five-hour edge is two minutes past five hours', () => {
+  const name = (...resets: Array<number | undefined>): string[] => nameWindows(resets.map(nextResetTime => ({ type: 'TOKENS_LIMIT', percentage: 1, ...(nextResetTime === undefined ? {} : { nextResetTime }) })), READ_AT, ZONE).map(window => window.name)
+  assert.deepEqual(name(READ_AT + HOUR_MS, READ_AT + 3 * DAY_MS), ['five-hour', 'weekly'])
+  assert.deepEqual(name(READ_AT + 3 * DAY_MS, READ_AT + HOUR_MS), ['weekly', 'five-hour'], 'by the time to the reset, not by the order of the rows')
+  assert.deepEqual(name(READ_AT + HOUR_MS), ['five-hour'])
+  assert.deepEqual(name(READ_AT + 3 * DAY_MS), ['weekly'])
+  assert.deepEqual(name(READ_AT + 5 * HOUR_MS + 2 * MINUTE_MS), ['five-hour'])
+  assert.deepEqual(name(READ_AT + 5 * HOUR_MS + 2 * MINUTE_MS + 1), ['weekly'])
+  assert.deepEqual(name(READ_AT - HOUR_MS), ['five-hour'], 'a reset just passed is still the near window')
+})
+
+test('nameWindows: two rows that both reset within five hours, both after, or three rows are not guessed: each is an unnamed window with its reset clock', () => {
+  const windows = (...resets: number[]): Array<[string, string]> => nameWindows(resets.map(nextResetTime => ({ type: 'TOKENS_LIMIT', percentage: 1, nextResetTime })), READ_AT, ZONE).map(window => [window.name, window.label])
+  const soon = at('2026-10-28T21:30:00+08:00')
+  assert.deepEqual(windows(soon, READ_AT + HOUR_MS), [['window', '额度窗口（21:30 重置）'], ['window', '额度窗口（18:02 重置）']])
+  assert.deepEqual(windows(READ_AT + 2 * DAY_MS, READ_AT + 3 * DAY_MS).map(([name]) => name), ['window', 'window'])
+  assert.deepEqual(windows(READ_AT + HOUR_MS, READ_AT + 2 * HOUR_MS, READ_AT + 3 * DAY_MS).map(([name]) => name), ['window', 'window', 'window'])
+  assert.deepEqual(windows(READ_AT + HOUR_MS, READ_AT + 2 * DAY_MS, READ_AT + 3 * DAY_MS).map(([name]) => name), ['window', 'window', 'window'])
+})
+
+test('nameWindows: a TIME_LIMIT row is the MCP window, a TOKENS_LIMIT row without a reset time is an unnamed window, another type keeps its own name; none of them takes the place of a named window', () => {
+  const rows: QuotaLimitRow[] = [
+    { type: 'TIME_LIMIT', percentage: 4 },
+    { type: 'TOKENS_LIMIT', percentage: 1 },
+    { type: 'TOKENS_LIMIT', percentage: 2, nextResetTime: READ_AT + HOUR_MS },
+    { type: 'TOKENS_LIMIT', percentage: 3, nextResetTime: READ_AT + 3 * DAY_MS },
+    { type: 'PROMPT_LIMIT', percentage: 5 },
+  ]
+  assert.deepEqual(nameWindows(rows, READ_AT).map(({ name, label }) => [name, label]), [['mcp', 'MCP 工具调用'], ['window', '额度窗口'], ['five-hour', '5 小时'], ['weekly', '每周'], ['other', 'PROMPT_LIMIT']])
+})
+
+// 2026-10-28 is a Wednesday: the plan's peak is 14:00-18:00 UTC+8, the rest of the day half price.
+const wed = (clock: string): number => at(`2026-10-28T${clock}:00+08:00`)
+const point = (clock: string, usedPercent: number): WindowPoint => ({ at: wed(clock), usedPercent })
+const FIVE_HOUR_STATE = (usedPercent: number | undefined, resetAt: number | undefined): WindowState => ({ name: 'five-hour', ...(usedPercent === undefined ? {} : { usedPercent }), ...(resetAt === undefined ? {} : { resetAt }) })
+const project = (state: WindowState, clock: string, earlier: readonly WindowPoint[]): QuotaProjection => projectWindow(state, wed(clock), earlier, rateShareAt)
+const between = (from: string, to: string): QuotaBasis => ({ kind: 'recent', from: wed(from), to: wed(to) })
+
+test('projectWindow: the worked example crosses 18:00 and is half price after it: 20% at 17:00 and 30% at 17:30 reach about 75% at the 21:30 reset', () => {
+  assert.deepEqual(project(FIVE_HOUR_STATE(30, wed('21:30')), '17:30', [point('17:00', 20)]), { kind: 'at-reset', percent: 75, basis: between('17:00', '17:30') })
+})
+
+test('projectWindow: the share reaches 100 before the reset, at the minute it does; the speed is per full-price hour, so off-peak minutes count half', () => {
+  // 30 points in half an hour at peak is 60 per hour: 80 at 18:00, then 30 per hour: 20 more takes 40 minutes.
+  assert.deepEqual(project(FIVE_HOUR_STATE(50, wed('21:30')), '17:30', [point('17:00', 20)]), { kind: 'exhausts', at: wed('18:40'), basis: between('17:00', '17:30') })
+  // 35 points in half an hour: 70 per hour, 90 at 18:00, 35 per hour after: 10 more takes 17 minutes and a bit, rounded down to the minute.
+  assert.deepEqual(project(FIVE_HOUR_STATE(55, wed('21:30')), '17:30', [point('17:00', 20)]), { kind: 'exhausts', at: wed('18:17'), basis: between('17:00', '17:30') })
+  // Reaching 100 exactly at 18:00 is 18:00, not a minute before.
+  assert.deepEqual(project(FIVE_HOUR_STATE(60, wed('21:30')), '17:30', [point('17:00', 20)]), { kind: 'exhausts', at: wed('18:00'), basis: between('17:00', '17:30') })
+})
+
+test('projectWindow: a window already at 100 is spent, a window that did not move between the readings is idle, and a reset that has passed is about to reset', () => {
+  assert.deepEqual(project(FIVE_HOUR_STATE(100, wed('21:30')), '17:30', [point('17:00', 90)]), { kind: 'spent' })
+  assert.deepEqual(project(FIVE_HOUR_STATE(100, undefined), '17:30', []), { kind: 'spent' })
+  assert.deepEqual(project(FIVE_HOUR_STATE(30, wed('21:30')), '17:30', [point('17:00', 30)]), { kind: 'idle', basis: between('17:00', '17:30') })
+  assert.deepEqual(project(FIVE_HOUR_STATE(30, wed('17:29')), '17:30', [point('17:00', 20)]), { kind: 'none', reason: '即将重置' })
+  assert.deepEqual(project(FIVE_HOUR_STATE(30, wed('17:30')), '17:30', [point('17:00', 20)]), { kind: 'none', reason: '即将重置' })
+})
+
+test('projectWindow: the speed comes from the earliest earlier reading 10 to 90 minutes back; closer or older readings are not used', () => {
+  const late = FIVE_HOUR_STATE(50, wed('23:30'))
+  // 40 points in the 90 minutes from 16:00, all at peak (1.5 full-price hours): 26.67 per hour, 63.33 at 18:00, then 13.33 per hour: 100 at 20:45.
+  assert.deepEqual(project(late, '17:30', [point('16:00', 10), point('17:00', 40), point('17:20', 45)]), { kind: 'exhausts', at: wed('20:45'), basis: between('16:00', '17:30') }, 'the earliest in range, 90 minutes back')
+  // 10 points in half an hour: 20 per hour, 60 at 18:00, then 10 per hour: 100 at 22:00.
+  assert.deepEqual(project(late, '17:30', [point('17:00', 40), point('17:20', 45)]), { kind: 'exhausts', at: wed('22:00'), basis: between('17:00', '17:30') })
+  // Readings 91 and 9 minutes back are out of range: the average since the window began at 16:30 (50 points in one peak hour), 75 at 18:00, then 25 per hour: 100 at 19:00.
+  const reset = FIVE_HOUR_STATE(50, wed('21:30'))
+  assert.deepEqual(project(reset, '17:30', [point('15:59', 10), point('17:21', 45)]), { kind: 'exhausts', at: wed('19:00'), basis: { kind: 'window', since: wed('16:30'), includesNights: false } })
+})
+
+test('projectWindow: a share that fell between the readings means the window was reset; the speed is then the average since the window began', () => {
+  // The reading 30 minutes back was 60%, now 20%: five-hour window with a reset at 21:30 began at 16:30.
+  const dropped = project(FIVE_HOUR_STATE(20, wed('21:30')), '17:30', [point('17:00', 60)])
+  // 20 points in the one peak hour since 16:30 is 20 per full-price hour: +10 to 18:00, then 3.5 half-price hours (1.75 full-price) +35: 65 at the reset.
+  assert.deepEqual(dropped, { kind: 'at-reset', percent: 65, basis: { kind: 'window', since: wed('16:30'), includesNights: false } })
+})
+
+test('projectWindow: the weekly window averages over seven days and says it includes the nights; the five-hour window does not', () => {
+  const resetAt = at('2026-11-02T10:00:00+08:00')
+  const week = projectWindow({ name: 'weekly', usedPercent: 30, resetAt }, wed('12:00'), [], rateShareAt)
+  assert.equal(week.kind, 'at-reset')
+  assert.deepEqual((week as { basis: QuotaBasis }).basis, { kind: 'window', since: at('2026-10-26T10:00:00+08:00'), includesNights: true })
+})
+
+test('projectWindow: without a second reading and a window to average, there is no estimate and the reason says why', () => {
+  const none = (state: WindowState, earlier: readonly WindowPoint[] = []): QuotaProjection => project(state, '17:30', earlier)
+  assert.deepEqual(none(FIVE_HOUR_STATE(0, wed('21:30'))), { kind: 'none', reason: '本窗口还没有消耗' })
+  assert.deepEqual(none({ name: 'window', usedPercent: 10 }), { kind: 'none', reason: '没有重置时刻' })
+  assert.deepEqual(none({ name: 'window', usedPercent: 10, resetAt: wed('21:30') }), { kind: 'none', reason: '读数不足' }, 'an unnamed window is never averaged')
+  assert.deepEqual(none({ name: 'weekly', usedPercent: 10, resetAt: wed('17:00') }), { kind: 'none', reason: '即将重置' })
+  assert.deepEqual(none({ name: 'weekly', usedPercent: 10, resetAt: wed('17:30') + 8 * DAY_MS }), { kind: 'none', reason: '读数不足' }, 'the window began after the reading')
+  assert.deepEqual(none({ name: 'five-hour', resetAt: wed('21:30') }), { kind: 'none', reason: '没有已用比例' })
+  assert.deepEqual(none({ name: 'mcp', usedPercent: 50, resetAt: wed('21:30') }, [point('17:00', 10)]), { kind: 'none', reason: '' })
+  assert.deepEqual(none({ name: 'other', usedPercent: 50 }, [point('17:00', 10)]), { kind: 'none', reason: '' })
+})
+
+test('projectWindow: a window without a reset time is searched for seven days only: it runs out inside them, or it is reported as lasting longer', () => {
+  const unnamed = (earlierPercent: number): QuotaProjection => project({ name: 'window', usedPercent: 30 }, '17:30', [point('17:00', earlierPercent)])
+  // 10 points in half an hour at peak: 20 per full-price hour, 40 at 18:00, then 10 per hour: the 60 left take 6 hours, to midnight.
+  assert.deepEqual(unnamed(20), { kind: 'exhausts', at: at('2026-10-29T00:00:00+08:00'), basis: between('17:00', '17:30') })
+  // 0.1 points in half an hour: 350 full-price hours are more than seven days.
+  assert.deepEqual(unnamed(29.9), { kind: 'none', reason: '7 天内用不完' })
+})
+
+test('samePeriod: the name and the reset time agree within two minutes; an unnamed window needs a reset time to be told from the others', () => {
+  const reset = wed('21:30')
+  const five = (resetAt?: number): WindowState => ({ name: 'five-hour', ...(resetAt === undefined ? {} : { resetAt }) })
+  assert.ok(samePeriod(five(reset), five(reset + 120_000)))
+  assert.ok(!samePeriod(five(reset), five(reset + 120_001)))
+  assert.ok(!samePeriod(five(reset), { name: 'weekly', resetAt: reset }))
+  assert.ok(samePeriod(five(), five()), 'a named window without a reset time on both sides')
+  assert.ok(!samePeriod(five(reset), five()))
+  assert.ok(!samePeriod({ name: 'window' }, { name: 'window' }))
+  assert.ok(!samePeriod({ name: 'other' }, { name: 'other' }))
+  assert.ok(samePeriod({ name: 'window', resetAt: reset }, { name: 'window', resetAt: reset }))
+})
+
+test('upstreamLimitOf: a body with one of the limit codes, as a string or a number, is a limit; the recovery time in the message is read as UTC+8 and must be within eight days', () => {
+  const now = at('2026-10-28T12:00:00Z')
+  const body = (code: unknown, message: unknown): string => JSON.stringify({ error: { code, message } })
+  for (const code of ['1308', 1308, '1310', '1316', '1317', '1318', '1319', '1320', 1321]) assert.equal(upstreamLimitOf(body(code, 'x'), now)?.code, String(code), String(code))
+  for (const code of ['1302', 1313, '1311', '1315', '1322', 'RATE', undefined, null, {}]) assert.equal(upstreamLimitOf(body(code, 'x'), now), undefined, `${JSON.stringify(code)}`)
+  assert.deepEqual(upstreamLimitOf(body('1308', '已达到使用上限，将于 2026-10-28 21:30:00 恢复'), now), { code: '1308', until: at('2026-10-28T21:30:00+08:00') })
+  assert.deepEqual(upstreamLimitOf(body('1308', 'resets at 2026-10-29T08:05'), now), { code: '1308', until: at('2026-10-29T08:05:00+08:00') })
+  assert.deepEqual(upstreamLimitOf(body('1308', 'in the past 2026-10-28 08:00:00'), now), { code: '1308' }, 'before now')
+  assert.deepEqual(upstreamLimitOf(body('1308', 'too far 2026-11-07 08:00:00'), now), { code: '1308' }, 'more than eight days ahead')
+  assert.deepEqual(upstreamLimitOf(body('1308', 'not a date 2026-13-45 99:99:99'), now), { code: '1308' })
+  assert.deepEqual(upstreamLimitOf(body('1308', 'no time here'), now), { code: '1308' })
+  assert.deepEqual(upstreamLimitOf(body('1308', 5), now), { code: '1308' })
+  assert.equal(upstreamLimitOf('not json', now), undefined)
+  assert.equal(upstreamLimitOf('{"error":"1308"}', now), undefined)
+  assert.equal(upstreamLimitOf('[]', now), undefined)
+  assert.equal(upstreamLimitOf(body('1308', 'x'.repeat(70_000)), now), undefined, 'a body over 64 KiB is not parsed')
+})
+
+test('mintRejectionOf: only a 401 or 403 of the token mint and an empty login token mean the login was refused', () => {
+  assert.deepEqual(mintRejectionOf('project_token_http_401'), { status: 401 })
+  assert.deepEqual(mintRejectionOf('project_token_http_403'), { status: 403 })
+  assert.deepEqual(mintRejectionOf('project_token_login_required'), { code: 'project_token_login_required' })
+  for (const code of ['project_token_network_error', 'project_token_timeout', 'project_token_http_429', 'project_token_http_500', 'project_token_http_503', 'project_token_http_404', 'project_token_disabled', 'project_token_project_unavailable', 'project_token_invalid_response', 'project_token_scope_invalidated', 'project_token_request_failed', 'Account request credential is unavailable: bigmodel', '']) {
+    assert.equal(mintRejectionOf(code), undefined, code)
+  }
+})
+
+test('GLM_LOOP_DEFAULTS: the four entries of the design, frozen, read as valid by the loop board reader, a notice only on the two the loop board runs', () => {
+  assert.deepEqual(GLM_LOOP_DEFAULTS.map(entry => entry.id), ['glm:peak-reminder', 'glm:quota-on-command', 'glm:quota-low', 'glm:login-rejected'])
+  const expected = (id: string, title: string, why: string, when: ChannelTrigger, runBy: ChannelLoopDefault['runBy'], tell?: string): ChannelLoopDefault => ({ id, title, why, when, runBy, ...(tell === undefined ? {} : { tell }) })
+  assert.deepEqual(GLM_LOOP_DEFAULTS, [
+    expected('glm:peak-reminder', 'GLM 高峰开始时提醒模型', '高峰时段里 GLM 按全价算积分，其余时段半价。每段高峰里，GLM 会话的第一步会收到一句提醒，说法跟着你选的高峰档位走。这一条由 GLM 通道包自己做，不装编排层也照常。', { kind: 'peak-start' }, 'channel'),
+    expected('glm:quota-on-command', '看状态时读一次 GLM 额度', '你敲 /glm-status 或 /hourness 时，向服务端读一次额度，60 秒内不重复读。这一条由 GLM 通道包自己做。', { kind: 'command', names: ['glm-status', 'hourness'] }, 'channel'),
+    expected('glm:quota-low', 'GLM 额度快用完时告诉你', '5 小时或每周额度用到 80%，或照现在的速度一小时内会用完时，主 Agent 在下一次回话里告诉你一句。每个额度周期只说一次。只在 GLM 有新用量、上次读数满 15 分钟时才去读额度。', QUOTA_LOW, 'loop-board', '[GLM] Quota running low. Tell the human this line in your next reply: "{line}". Do not switch models or plans because of it unless the human asks.'),
+    expected('glm:login-rejected', 'GLM 登录失效时提醒你重新登录', 'GLM 的登录被服务端拒绝后，GLM 的请求都会失败。主 Agent 在下一次回话里告诉你运行 /glm-login。', { kind: 'login-rejected' }, 'loop-board', '[GLM] The GLM login was rejected; GLM requests fail until the human signs in again. Tell the human this line in your next reply: "{line}".'),
+  ])
+  assert.deepEqual(GLM_LOOP_DEFAULTS.map(entry => 'tell' in entry), [false, false, true, true])
+  assert.ok(Object.isFrozen(GLM_LOOP_DEFAULTS) && GLM_LOOP_DEFAULTS.every(entry => Object.isFrozen(entry) && Object.isFrozen(entry.when)))
+  const names = GLM_LOOP_DEFAULTS[1]?.when
+  assert.ok(names?.kind === 'command' && Object.isFrozen(names.names))
+  const problems: string[] = []
+  assert.deepEqual(loopDefaultsOf({ ...creditPricing, loopDefaults: GLM_LOOP_DEFAULTS }, message => { problems.push(message) }), GLM_LOOP_DEFAULTS)
+  assert.deepEqual(problems, [])
 })

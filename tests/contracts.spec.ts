@@ -208,7 +208,12 @@ test('pricing: glm-login provides the credit plan and the report row prices with
     assert.deepEqual([creditPricing.peak(Date.parse(PEAK)), creditPricing.peak(Date.parse('2026-10-28T10:00:00+08:00'))], [true, false])
 
     const withdraw = loginRow(store, home)
-    assert.equal(pricingService(store), creditPricing)
+    // The service is the plan with the two members glm-login adds: the plan's own members are the constant's.
+    const service = pricingService(store)
+    assert.deepEqual([service?.basis, service?.plan, service?.peakHours], [creditPricing.basis, creditPricing.plan, creditPricing.peakHours])
+    assert.equal(service?.charged('GLM-5.3', usage, Date.parse(PEAK)), creditPricing.charged('GLM-5.3', usage, Date.parse(PEAK)))
+    assert.equal(service?.peak(Date.parse(PEAK)), true)
+    assert.deepEqual([typeof service?.quota, Array.isArray(service?.loopDefaults)], ['function', true])
     assert.equal(health(store, 'glm-login').activation().state, 'active')
     const report = reportRow(store)
     const priced = await report()

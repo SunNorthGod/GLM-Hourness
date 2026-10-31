@@ -21,6 +21,9 @@ import { buildAuthHeaders, buildModelRequestHeaders, RequestAttributionTracker, 
 import { EndpointRoutingService, type RoutingCredential } from './endpoint-routing.ts'
 import { ClientSigningManager, sendWithClientSigning } from './signing.ts'
 import { ProjectAccessTokenClient, projectTokenFingerprint, projectTokenRequest, type ProjectKeyLocationStore, type ResolvedProjectToken } from './auth/project-token.ts'
+import { mintRejectionOf, upstreamLimitOf } from './account-signals.ts'
+import { loginFingerprintOf, nodeQuotaFs, QuotaJournal } from './quota-journal.ts'
+import { BIGMODEL_API_ORIGIN } from './zcode-wire.ts'
 import { encodeRequest, decodeMessage, decodeSse, metadataUserId, splitSystemPrompt, type WireShape } from './anthropic.ts'
 import { glmImageRequestTarget, prepareRequestImages } from './images.ts'
 import { buildStartPlanSystem, buildContextPrefixMessage } from './start-plan.ts'
@@ -42,8 +45,8 @@ import type { ImageAttachmentRef, ImageRequestTarget } from '@deepseek-ai/dsh-at
 /** Bigmodel coding-plan Anthropic endpoint (the provider baseURL, before server-side remapping; its origin hosts the signing handshake). */
 const BIGMODEL_ANTHROPIC_BASE = 'https://open.bigmodel.cn/api/anthropic'
 
-/** The bigmodel API origin the project access token is minted at (3.16.3 `resolveBigModelApiOrigin` in production). */
-const BIGMODEL_API_ORIGIN = 'https://bigmodel.cn'
+/** A refused login is recorded once per path and login in this long. */
+const REJECTION_RECORD_INTERVAL_MS = 10 * 60_000
 
 /**
  * The failures 3.16.3 reports when an account model request has no request
@@ -91,6 +94,10 @@ export interface ZcodeAdapterOptions {
   readonly report?: (sessionId: string | undefined, state: HealthState, reason: string) => void
   /** The header of a live DSH session (the `agents` service), read per request to tell a delegated child. */
   readonly sessionHeader?: (sessionId: string) => SessionHeaderLike | undefined
+  /** The quota journal that takes the upstream-limit and login-rejected records; default the journal under `home`. */
+  readonly journal?: QuotaJournal
+  /** The clock of those records, epoch milliseconds; default `Date.now`. */
+  readonly now?: () => number
 }
 
 const storeFsDefault: StoreFs = {
@@ -98,7 +105,20 @@ const storeFsDefault: StoreFs = {
   writeFile: (path, data) => writeFile(path, data),
   rename,
   unlink,
+  stat: path => nodeQuotaFs.stat(path),
 }
+
+/**
+ * The stored login as the quota reader needs it (docs/DESIGN.md §4.9):
+ * `present` with the fingerprint of the login token, `absent` (no file, an
+ * empty file after /glm-logout, no login token in it, or a file that cannot
+ * be decrypted, then `unreadable`), or `unknown` when the file's metadata
+ * could not be read.
+ */
+export type LoginIdentity =
+  | { readonly kind: 'present', readonly fingerprint: string }
+  | { readonly kind: 'absent', readonly unreadable?: true }
+  | { readonly kind: 'unknown', readonly reason: string }
 
 /** Interactive login state shared between the /glm-login and /glm-status commands. */
 export interface LoginHandle {
@@ -189,9 +209,15 @@ export class ZcodeAdapter {
   private readonly projectTokenLoads = new Map<string, Promise<ResolvedProjectToken>>()
   /** The credential the latest coding-plan request resolved, for the routed handshake. */
   private routingCredential: RoutingCredential = {}
+  private readonly journal: QuotaJournal
+  /** When a refused login was last recorded, per path and login fingerprint. */
+  private readonly rejectionRecords = new Map<string, number>()
+  /** The login identity of the credential file as of its size and modification time. */
+  private identity: { readonly size: number, readonly mtimeMs: number, readonly value: LoginIdentity } | undefined
 
   constructor(options: ZcodeAdapterOptions) {
     this.options = options
+    this.journal = options.journal ?? new QuotaJournal({ home: options.home })
     this.routing = new EndpointRoutingService({
       identity: { ...DEFAULT_IDENTITY, ...options.identity },
       ...(options.fetchImpl === undefined ? {} : { fetchImpl: options.fetchImpl }),
@@ -252,6 +278,11 @@ export class ZcodeAdapter {
         accountId,
         clientVersion: { ...DEFAULT_IDENTITY, ...this.options.identity }.appVersion,
         ...(rejectedFingerprint === undefined ? {} : { rejectedFingerprint }),
+      }).catch(async (error: unknown) => {
+        // A refused login is noted for the quota view (docs/DESIGN.md §4.9); the error goes on unchanged.
+        const rejection = mintRejectionOf(error instanceof Error ? error.message : '')
+        if (rejection !== undefined) await this.noteLoginRejected('mint', oauth, rejection)
+        throw error
       })
       const current = await this.loadCredential().catch(() => undefined)
       if (current?.oauthAccessToken?.trim() !== oauth) throw new Error('project_token_scope_invalidated')
@@ -261,6 +292,77 @@ export class ZcodeAdapter {
     const release = (): void => { if (this.projectTokenLoads.get(key) === load) this.projectTokenLoads.delete(key) }
     load.then(release, release)
     return load
+  }
+
+  private clock(): number {
+    return (this.options.now ?? Date.now)()
+  }
+
+  /**
+   * Note in the quota journal that the server refused the login (docs/DESIGN.md
+   * §4.9): once per path and per login in ten minutes, with the fingerprint of
+   * the login token and never the token. The journal never throws.
+   */
+  private async noteLoginRejected(path: 'model' | 'mint', loginToken: string, detail: { readonly status: 401 | 403 } | { readonly code: string }): Promise<void> {
+    const now = this.clock()
+    const login = loginToken.trim().length === 0 ? undefined : loginFingerprintOf(loginToken)
+    const key = `${path}:${login ?? ''}`
+    const last = this.rejectionRecords.get(key)
+    if (last !== undefined && now - last < REJECTION_RECORD_INTERVAL_MS) return
+    this.rejectionRecords.set(key, now)
+    await this.journal.append({ at: new Date(now).toISOString(), kind: 'login-rejected', path, ...detail, ...(login === undefined ? {} : { login }) })
+  }
+
+  /** Note in the quota journal that a 429 body announces a spent quota (docs/DESIGN.md §4.6). */
+  private async noteUpstreamLimit(body: string): Promise<void> {
+    const now = this.clock()
+    const limit = upstreamLimitOf(body, now)
+    if (limit === undefined) return
+    await this.journal.append({ at: new Date(now).toISOString(), kind: 'upstream-limit', code: limit.code, ...(limit.until === undefined ? {} : { until: new Date(limit.until).toISOString() }) })
+  }
+
+  /**
+   * The request credential of the quota read: the project access token of
+   * the coding plan, from the same cache as the model requests (3.17.1 reads
+   * the quota with the account's request credential for `reason: "usage"`,
+   * which takes no rejected fingerprint). The experience plan has no
+   * five-hour or weekly quota, so it throws `start-plan` before the
+   * credential is read and nothing is sent; no login throws `not-logged-in`;
+   * a token that cannot be minted throws its `zcode-wire.ts`
+   * PROJECT_TOKEN_CODES code or the 3.16.3 credential message.
+   */
+  async usageAuthorization(): Promise<string> {
+    if ((this.options.plan ?? 'coding-plan') === 'start-plan') throw new Error('start-plan')
+    const credential = await this.loadCredential().catch(() => undefined)
+    if (credential === undefined) throw new Error('not-logged-in')
+    return (await this.projectToken(credential)).token
+  }
+
+  /**
+   * Which login is stored (docs/DESIGN.md §4.9). When the store reports the
+   * file's size and modification time, the file is decrypted again only after
+   * one of them changed; an empty file (/glm-logout writes one) or a missing
+   * one is absent without decrypting.
+   */
+  async loginIdentity(): Promise<LoginIdentity> {
+    const storeFs = this.options.storeFs ?? storeFsDefault
+    let meta: { readonly size: number, readonly mtimeMs: number } | undefined
+    if (storeFs.stat !== undefined) {
+      try {
+        meta = await storeFs.stat(this.credentialPath())
+      }
+      catch (error) {
+        return { kind: 'unknown', reason: error instanceof Error ? error.message : String(error) }
+      }
+      if (meta === undefined || meta.size === 0) return { kind: 'absent' }
+      if (this.identity?.size === meta.size && this.identity.mtimeMs === meta.mtimeMs) return this.identity.value
+    }
+    const value = await this.loadCredential().then((credential): LoginIdentity => {
+      const token = credential?.oauthAccessToken?.trim() ?? ''
+      return token.length === 0 ? { kind: 'absent' } : { kind: 'present', fingerprint: loginFingerprintOf(token) }
+    }, (): LoginIdentity => ({ kind: 'absent', unreadable: true }))
+    if (meta !== undefined) this.identity = { size: meta.size, mtimeMs: meta.mtimeMs, value }
+    return value
   }
 
   /**
@@ -462,10 +564,13 @@ export class ZcodeAdapter {
       await response.body?.cancel().catch(() => { /* already closed */ })
       projectToken = await this.projectToken(credential, await projectTokenFingerprint(projectToken.token)).catch((error: unknown) => failClosed(report, error))
       response = await attempt(projectToken)
+      // A token that was just minted and is refused again: the login itself is no longer accepted.
+      if (await isProjectTokenRejection(response)) await this.noteLoginRejected('model', credential.oauthAccessToken ?? '', { status: 401 })
     }
     if (!response.ok) {
       report('inactive', `上游返回 ${response.status}`)
       const detail = await response.text()
+      if (response.status === 429) await this.noteUpstreamLimit(detail)
       throw new Error(`glm-zcode ${response.status}: ${detail.slice(0, 400)}`)
     }
     if (wire?.stream === false) {

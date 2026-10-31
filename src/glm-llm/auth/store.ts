@@ -18,6 +18,8 @@ export interface StoreFs {
   exists?(path: string): Promise<boolean>
   /** Removes a temp file left by a failed write. */
   unlink?(path: string): Promise<void>
+  /** The store file's size and modification time, undefined when it does not exist; lets a reader skip decrypting a file that did not change. */
+  stat?(path: string): Promise<{ readonly size: number, readonly mtimeMs: number } | undefined>
 }
 
 /** Derive the AES-256-GCM key as SHA-256(seed): real 32-byte diffusion for env-secret deployments. */

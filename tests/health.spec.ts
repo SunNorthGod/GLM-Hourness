@@ -205,6 +205,7 @@ async function withMissingDshHome<T>(run: (dshHome: string) => T | Promise<T>): 
   } finally {
     if (previous === undefined) delete process.env.DSH_HOME
     else process.env.DSH_HOME = previous
+    rmSync(dshHome, { recursive: true, force: true })
   }
 }
 
@@ -247,28 +248,46 @@ test('glm-llm: a coding-plan request without a project access token reports the 
 
 type Command = Pick<CommandDefinitionLike, 'name' | 'handler'>
 
+/** A transport with no network: every request fails the way a lost connection does. */
+const OFFLINE = (() => Promise.reject(new TypeError('fetch failed'))) as typeof fetch
+
+/** Wednesday 15:00 UTC+8, inside the plan's peak hours: the clock and the zone of every login row of this spec. */
+const PEAK_NOW = Date.parse('2026-10-28T15:00:00+08:00')
+const PEAK_LINE = '高峰：高峰中，到 18:00（GLM 积分套餐）'
+const NO_LOGIN_LINE = '额度：未登录 GLM（/glm-login）'
+
+const emptyHomes: string[] = []
+process.on('exit', () => { for (const dir of emptyHomes) rmSync(dir, { recursive: true, force: true }) })
+/** A credential directory with no credential in it, and a journal that is free to write. */
+function emptyHome(): string {
+  const dir = mkdtempSync(join(tmpdir(), 'glmh-health-empty-'))
+  emptyHomes.push(dir)
+  return dir
+}
+
 function loginRow(config: LoginConfig) {
   const store = serviceStore()
   const commands: Command[] = []
-  const dispose = loginApply({ commands: { register: definition => { commands.push(definition); return () => {} } }, ...store }, config)
+  const dispose = loginApply({ commands: { register: definition => { commands.push(definition); return () => {} } }, ...store }, { now: () => PEAK_NOW, offsetMinutes: 480, ...config })
   const run = (name: string, sessionId: string) => commands.find(command => command.name === name)!.handler({ agent: agentIn(sessionId), rawInput: '' })
   return { store, commands, dispose, run }
 }
 
 test('/glm-status prints the credential line, then the health table of the invoking session', async () => {
-  const { store, run } = loginRow({ home: 'C:/definitely-missing-glm-hourness-health-home' })
+  const { store, run } = loginRow({ home: emptyHome() })
   provideRowHealth(store, 'guard', 'active', '已加载').report('s1', 'active', '门禁生效')
-  const result = await run('glm-status', 's1')
+  const result = await quietly(() => run('glm-status', 's1'))
   assert.equal(result.kind, 'success')
   const credential = result.text.slice(0, result.text.indexOf('\n\n'))
-  const table = result.text.slice(credential.length + 2)
+  const table = result.text.slice(result.text.indexOf('## 行健康'))
   assert.equal(credential, 'glm-zcode：未登录（套餐 coding-plan）。运行 /glm-login 开始登录')
+  assert.equal(result.text.slice(credential.length, result.text.length - table.length), `\n\n${PEAK_LINE}\n${NO_LOGIN_LINE}\n\n`, 'the peak line and the quota section sit between the credential line and the table')
   assert.ok(table!.startsWith('## 行健康（会话 s1）\n\n| 包 | 行 | 状态 | 说明 |'))
   assert.deepEqual(table!.split('\n').slice(4).map(line => line.split(' | ')[1]), [...HEALTH_ROWS]) // one line per row, in patch order
-  assert.ok(table!.includes('| dsh-glm-zcode | glm-login | 生效 | /glm-login、/glm-status、/glm-logout 已注册 |'))
+  assert.ok(table!.includes('| dsh-glm-zcode | glm-login | 生效 | /glm-login、/glm-status、/glm-logout 已注册；额度：读不到（not-logged-in） |'), 'the row health carries the quota note')
   assert.ok(table!.includes('| dsh-hourness | guard | 生效 | 门禁生效 |'))
   assert.ok(table!.includes('| dsh-glm-zcode | glm-prompt | 未加载 | 行未启用，或激活未完成 |'))
-  const other = await run('glm-status', 's2')
+  const other = await quietly(() => run('glm-status', 's2'))
   assert.ok(other.text.includes('| dsh-hourness | guard | 已加载，本会话未触发 | 已加载 |')) // another session: the guard has not acted there
 })
 
@@ -278,8 +297,8 @@ test('/glm-status reports a stored login coding-plan cannot use as not logged in
   try {
     const fs: StoreFs = { readFile: path => readFile(path, 'utf8'), writeFile: (path, data) => writeFile(path, data), rename }
     const statusLine = async (): Promise<string> => {
-      const { run } = loginRow({ home })
-      const result = await run('glm-status', 's1')
+      const { run } = loginRow({ home, fetchImpl: OFFLINE })
+      const result = await quietly(() => run('glm-status', 's1'))
       return result.text.slice(0, result.text.indexOf('\n\n'))
     }
     await saveCredential(fs, join(home, 'credentials.json'), { version: 2, provider: 'bigmodel', userId: 'user-1' })
@@ -298,9 +317,9 @@ test('without a home the login row uses the user-level directory: all three comm
   await withMissingDshHome(async () => {
     const { commands, run } = loginRow({})
     assert.deepEqual(commands.map(command => command.name).sort(), ['glm-login', 'glm-logout', 'glm-status'])
-    const result = await run('glm-status', 's1')
-    assert.ok(result.text.startsWith('glm-zcode：未登录（套餐 coding-plan）。运行 /glm-login 开始登录\n\n## 行健康（会话 s1）'))
-    assert.ok(result.text.includes('| dsh-glm-zcode | glm-login | 生效 | /glm-login、/glm-status、/glm-logout 已注册 |'))
+    const result = await quietly(() => run('glm-status', 's1'))
+    assert.ok(result.text.startsWith(`glm-zcode：未登录（套餐 coding-plan）。运行 /glm-login 开始登录\n\n${PEAK_LINE}\n${NO_LOGIN_LINE}\n\n## 行健康（会话 s1）`))
+    assert.ok(result.text.includes('| dsh-glm-zcode | glm-login | 生效 | /glm-login、/glm-status、/glm-logout 已注册；额度：读不到（not-logged-in） |'))
   })
 })
 
@@ -310,7 +329,9 @@ test('the GLM pill reads the real /glm-status text: credential fields, the last 
   try {
     const fs: StoreFs = { readFile: path => readFile(path, 'utf8'), writeFile: (path, data) => writeFile(path, data), rename }
     const reply = (text: string) => ({ ok: true, missing: false, text })
-    const statusText = async (row: ReturnType<typeof loginRow>): Promise<string> => (await row.run('glm-status', 's1')).text
+    const statusText = async (row: ReturnType<typeof loginRow>): Promise<string> => (await quietly(() => row.run('glm-status', 's1'))).text
+    // The peak line and the quota section are lines the pill shows as they are: neither a field nor a health row.
+    const quotaRest = (reason: string): string[] => [PEAK_LINE, reason]
 
     // Not logged in: plan only; every health row in patch order, an escaped | in a reason kept.
     const fresh = loginRow({ home })
@@ -320,28 +341,28 @@ test('the GLM pill reads the real /glm-status text: credential fields, the last 
     const rows = parseHealth(empty)
     assert.deepEqual(rows?.map(entry => entry.row), [...HEALTH_ROWS])
     assert.deepEqual(rows?.find(entry => entry.row === 'guard'), { row: 'guard', state: '部分生效', reason: '门禁 | 部分生效' })
-    assert.deepEqual(rows?.find(entry => entry.row === 'glm-login'), { row: 'glm-login', state: '生效', reason: '/glm-login、/glm-status、/glm-logout 已注册' })
-    assert.deepEqual(restOf(empty), [])
+    assert.deepEqual(rows?.find(entry => entry.row === 'glm-login'), { row: 'glm-login', state: '生效', reason: '/glm-login、/glm-status、/glm-logout 已注册；额度：读不到（not-logged-in）' })
+    assert.deepEqual(restOf(empty), quotaRest(NO_LOGIN_LINE))
 
     // Without the orchestration package its rows are one line, named by the package.
     const alone = await statusText(loginRow({ home }))
     assert.deepEqual(parseHealth(alone)?.map(entry => entry.row), [...GLM_ROWS, 'dsh-hourness'])
     assert.deepEqual(parseHealth(alone)?.at(-1), { row: 'dsh-hourness', state: '未加载', reason: '包未安装，或它的行全部禁用' })
     assert.deepEqual(statusOf(reply(alone)), { logged: false, plan: 'coding-plan' })
-    assert.deepEqual(restOf(alone), [])
+    assert.deepEqual(restOf(alone), quotaRest(NO_LOGIN_LINE))
 
     // A stored login coding-plan cannot use: its reason is a field.
     await saveCredential(fs, join(home, 'credentials.json'), { version: 2, provider: 'bigmodel', userId: 'user-1' })
     const incomplete = await statusText(loginRow({ home }))
     assert.deepEqual(statusOf(reply(incomplete)), { logged: false, plan: 'coding-plan', incomplete: 'Account request credential is unavailable: bigmodel' })
-    assert.deepEqual(restOf(incomplete), [])
+    assert.deepEqual(restOf(incomplete), quotaRest('额度：项目令牌拿不到（Account request credential is unavailable: bigmodel），运行 /glm-login'))
 
     // Logged in with a located project key: plan, key preview and account.
     const location = { key: 'project-key-location:v1:p', value: JSON.stringify({ apiKeyId: '5acebe0123' }) }
     await saveCredential(fs, join(home, 'credentials.json'), { version: 2, provider: 'bigmodel', oauthAccessToken: 'fake-oauth', userId: 'user-1', location })
-    const logged = await statusText(loginRow({ home }))
+    const logged = await statusText(loginRow({ home, fetchImpl: OFFLINE }))
     assert.deepEqual(statusOf(reply(logged)), { logged: true, plan: 'coding-plan', key: '5acebe…', userId: 'user-1' })
-    assert.deepEqual(restOf(logged), [])
+    assert.deepEqual(restOf(logged), quotaRest('额度：项目令牌拿不到（project_token_network_error），运行 /glm-login'), 'the quota line of a login whose token cannot be minted offline')
 
     // The authorize link is issued, then the background poll fails (a 404 is fatal, auth/oauth.ts): the next read names the error.
     const failedPoll = ((url: string | URL) => Promise.resolve(String(url).endsWith('/oauth/cli/init')
@@ -355,7 +376,7 @@ test('the GLM pill reads the real /glm-status text: credential fields, the last 
       failed = await statusText(failing)
     }
     assert.deepEqual(statusOf(reply(failed)), { logged: false, plan: 'coding-plan', loginError: 'bigmodel login poll failed: status=404' })
-    assert.deepEqual(restOf(failed), [])
+    assert.deepEqual(restOf(failed), quotaRest(NO_LOGIN_LINE))
 
     // Replies the pill cannot read: the reason is named, and an unread credential line stays above the health list.
     assert.deepEqual(statusOf({ ok: false, missing: true, text: '' }), { unknown: 'glm-login 行没有加载' })
@@ -496,13 +517,14 @@ function hournessStatus(store: Store): Command {
 }
 
 test('/hourness-status prints the health table of the invoking session, the one /glm-status prints after its credential line', async () => {
-  const { store, run } = loginRow({ home: 'C:/definitely-missing-glm-hourness-health-home' })
+  const { store, run } = loginRow({ home: emptyHome() })
   const status = hournessStatus(store)
   provideRowHealth(store, 'guard', 'active', '已加载').report('s1', 'active', '门禁生效')
+  // /glm-status first: it reads the quota, and the row health of both commands then carries the same note.
+  const glm = await quietly(() => run('glm-status', 's1'))
   const table = await status.handler({ agent: agentIn('s1'), rawInput: ' ' })
-  const glm = await run('glm-status', 's1')
   assert.equal(table.kind, 'success')
-  assert.equal(table.text, glm.text.slice(glm.text.indexOf('\n\n') + 2))
+  assert.equal(table.text, glm.text.slice(glm.text.indexOf('## 行健康')))
   assert.ok(table.text.startsWith('## 行健康（会话 s1）\n\n| 包 | 行 | 状态 | 说明 |'))
   // Reading the table is not the row acting in the session.
   assert.ok(table.text.includes('| dsh-hourness | hourness | 已加载，本会话未触发 | /hourness、/hourness-status 已注册 |'))

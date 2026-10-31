@@ -20,6 +20,11 @@
       inject: [llm]
       config: {}
     - id: glm-hourness/glm-login
+      # `plan` (default coding-plan) must equal the glm-llm row's `plan`:
+      # glm-login uses it for the plan on the /glm-status credential line
+      # and to decide whether the quota is read (start-plan reads none).
+      # The rows cannot read each other's config; /glm-status names the
+      # plan this row uses.
       name: dsh-glm-zcode/glm-login
       inject: [commands]
       config: {}

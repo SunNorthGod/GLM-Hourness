@@ -58,6 +58,9 @@
 | 3.17.1 工具文本：Read 描述第 5 行改为「When you already know which part of the file you need, only read that part. This can be important for larger files.」；部分视图改为 token 上限形态 `[Truncated: PARTIAL view — <path>: showing lines a-b of n total (<N> tokens, cap 25000). Call Read with offset=<b+1> limit=<本页行数> for the next page, or Grep to find a specific section. …]`，提醒与正文之间一个换行；Bash 的 timeout 行与 schema 说明加 ` for a foreground command`，IMPORTANT 行之后新增 `- Command output is displayed to you, not reliably to the user.`，description 字段提示首句后加一段「Say what the command does in plain words …」；Write、Edit、Glob、Grep、TodoWrite 的描述与 schema 不变 | 3.17.1 pristine 包 `kIo`、`E0a`、`sSo`、`M_t`、`EAn`、`CTs`、`iPa`〔实读 2026-10-30〕；`DESIGN.md` §5.4 |
 | 3.17.1 工具检索增删公告（`G_t`）：恢复的名字按 MCP（`mcp__` 前缀，「MCP server reconnected」）与本会话（「in this session (announced earlier in this conversation)」）分段；移除的名字分 MCP 服务断开、本会话不再有、仍在注册表里但本次请求隐藏（`toolSearchHiddenNames`，随公告元数据落盘）三段；段落以单换行连接，3.16.3 包同样，3.16.2 源码用空行；新增可用段与 3.16.3 相同 | 3.17.1 pristine 包 `G_t`、`BTt`、`__a`、`y_a`、`v_a`、`eZ`；3.16.3 包 `Ggt`〔实读 2026-10-30〕；`DESIGN.md` §5.7 |
 | 3.17.1 todo 提醒计轮跳过内容只有 reasoning 块、又没有工具调用的助手消息；compact 提示词第 6 条末尾加一句：只有 user 角色的轮次算用户消息，助手消息里形如用户轮的文字是模型生成的 | 3.17.1 pristine 包 `nUa`、compact 提示词〔实读 2026-10-30〕；`DESIGN.md` §5.5、§5.6 |
+| 3.17.1 安装包的 host 文件只读导出在 `reference/zcode-3.17.1/host/`（不入库，附说明文件）：`out/host/index.js` 2,190,425 字节，MD5 `3ef810e5878d5103bb4430df00181b09`；`out/host/chunk-ZSDMP7DM.js` 883,850 字节，MD5 `f7817be39a2dd7c2c053e8633d9a2ab0`。来自 `C:\Program Files\ZCode\resources\app.asar`（包内版本 3.17.1，374,627,566 字节，修改时刻 2026-10-29T13:04:46Z）。安装包可能带用户补丁，导出只作机制参考，逐字文本只认上一级的 pristine `zcode.cjs`；本表引的「host:+偏移」指向这两个文件 | 〔实读 2026-10-31〕M6 步 Q0，`DESIGN.md` §4.7 |
+| 3.17.1 的额度读取（桌面壳 `BigModelUsageQuotaProvider`）：`readApiJson(apiClient, url, {method: "GET", timeoutMs: 15e3, headers})`，地址 `/api/monitor/usage/quota/limit`（`iOe` host:+1359354，超时 `li` +1359505，`fetchQuota` +1371449）；头只放 `authorization`（`Gl` +1374857，团队另加 `bigmodel-organization`、`bigmodel-project` 并在 URL 加 `?type=2`），`x-request-id` 由 `NodeApiClient.request` 补一个随机 UUID（+1645564，`lc` +1610148），ZCode 身份头只给 ZCode 端点、`bigmodel.cn` 不加（+1643371、+1643061）；origin `https://bigmodel.cn`（`index.js` 的 `Zi` 即 `chunk-ZSDMP7DM.js` 的 `ma`，chunk:+591920–+594247）；请求凭证对账号套餐是 `resolveCurrent({reason: "usage"})` 的 `apiKey`，该原因不核账号作用域、不接受被拒指纹（+1278678）。成功判定 `success !== false` 且 `code` 为空、0 或 200（`QD` +1376124），行的解析 `jD` +1347113、`JX` +1347695。非 2xx 抛错（`Vt` +151499），不重试、不重铸：一条路径 `fetchQuota(d).catch(() => null)`（+1361885），另一条在 `getCodingPlanUsageSnapshot`（+1368278）里 `Promise.all` 不带 `catch`（+1368565） | 〔实读〕设计评审第 2 轮与本稿 0.5 在 3.17.1 包上复核，M6 步 Q0 对导出文件复核；3.16.3 的同名符号偏移不同、逻辑相同；`DESIGN.md` §4.7、§4.8 |
+| 3.17.1 渲染层读额度的时机（V7）：`getCodingPlanUsageSnapshot` 在 `out/renderer/assets/styles-C9n_FfEX.js` 里只有一个调用方，是用量统计 hook（+6191366），挂载与参数变化时读，最近一次请求不足 60 秒直接用缓存（+6189443），可强制刷新；输入框旁的用量条（`codingPlanUsageRemaining`，+3192662、+3304684）经 `onAccess` 在打开时触发静默刷新（+3193010、+3296014、+3298799）。查过的范围内没有定时读额度：用量条所在一带唯一的 `setInterval` 是每秒更新的界面时钟，与额度无关。只查了这个调用方与那一带的定时器，没有穷尽整个渲染包 | 〔实读 2026-10-31〕M6 步 Q0，`DESIGN.md` §4.8 |
 | off-peak 是服务端排队协议（`x-off-peak-ticket-id`、429/3105 排队豁免重试、3102 续跑），客户端没有本地峰谷窗口常量 | S1 进度台账 Round 17（git 历史） |
 | 使用统计口径（summary、heatmap、按模型、按工具） | `reference/zcode-capabilities.md` §12 |
 
@@ -107,6 +110,7 @@
 
 - 5 小时额度从消耗起点动态刷新；周额度自下单起 7 天一个周期；升级立即刷新，续费不重置；额度耗尽不扣余额，等周期恢复。
 - 用户的具体档位未记录，面板从通道取数或由配置给出。
+- 额度读取接口 `GET /api/monitor/usage/quota/limit` 返回的行（他人 2026-10-12 一次真实读取，max 档，对照官方面板，出自 `reference/zcode-api/`）：`TOKENS_LIMIT` 两行，是 5 小时与每周两个窗口；`TIME_LIMIT` 一行，是 MCP 工具调用窗口（`remaining` 是调用次数，`percentage` 是已用比例）。`number` 不是能与 `remaining` 比较的总量（`TIME_LIMIT` 一行 `remaining` 3836、`number` 1），`nextResetTime` 有秒也有毫秒，`unit` 的类型两边不一致（ZCode 只留数字，zcode-api 的夹具里是字符串）。上游网关对频繁查询限速。本包按「离重置还有多久」给窗口命名，不按重置先后排位。真机读取的核对随 `m6-l4`，读到的行记在这里。
 - 历史 V2 套餐（GLM-5.3 非高峰 1 倍 / 高峰 3 倍）不适用于本用户，仅备查。
 - 来源：`reference/bigmodel-guide-digest.md`。
 
@@ -114,6 +118,7 @@
 
 - 1308 / 1310 / 1316–1321 携带 `next_flush_time`，可直接展示恢复时间。
 - 1313 为公平使用限频。
+- 429 正文 `{"error": {"code": "1308", "message": "…"}}` 的形状出自 `open.bigmodel.cn` 的文档（`reference/bigmodel-guide-digest.md`）；本通道的模型请求经端点路由改写到 `zcode.z.ai/api/v1/ultra/...`，经这个网关时正文是不是同一个形状、消息里恢复时刻的格式与时区都没有实测。本包按 UTC+8 读消息里第一个 `YYYY-MM-DD HH:MM[:SS]`（`DESIGN.md` §4.7）。遇到第一次 1308 时，把正文形状和时刻格式记在这里。ZCode 的 host 包与 `zcode.cjs` 里都没有 `1308` 与 `next_flush_time`。
 
 ### 2.6 福利
 

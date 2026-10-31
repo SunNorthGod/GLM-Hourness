@@ -9,6 +9,7 @@ import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { StoreFs } from '../src/glm-llm/auth/store.ts'
+import { QuotaJournal, type QuotaFs } from '../src/glm-llm/quota-journal.ts'
 
 /** An in-memory credential store; `files` is its content. */
 export function memoryStore(): { fs: StoreFs, files: Map<string, string> } {
@@ -36,6 +37,27 @@ export function memoryStore(): { fs: StoreFs, files: Map<string, string> } {
     },
   }
   return { fs, files }
+}
+
+/**
+ * A quota journal on an in-memory filesystem, for the adapters of specs whose
+ * `home` is only a name for the memory credential store: a record the adapter
+ * writes (a refused login, a spent quota) must not create that directory on the disk.
+ */
+export function memoryJournal(home = 'C:/ws/.llm'): QuotaJournal {
+  const files = new Map<string, string>()
+  let version = 0
+  const quotaFs: QuotaFs = {
+    mkdir: () => Promise.resolve(),
+    appendFile: (path, data) => {
+      files.set(path, (files.get(path) ?? '') + data)
+      version += 1
+      return Promise.resolve()
+    },
+    stat: path => Promise.resolve(files.has(path) ? { size: Buffer.byteLength(files.get(path) ?? ''), mtimeMs: version } : undefined),
+    readTail: (path, bytes) => Promise.resolve(Buffer.from(files.get(path) ?? '').subarray(-bytes).toString('utf8')),
+  }
+  return new QuotaJournal({ home, fs: quotaFs })
 }
 
 /**
