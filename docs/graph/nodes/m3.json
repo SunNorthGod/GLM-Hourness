@@ -464,6 +464,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "S3-1 的修复 5d47374 独立评审 APPROVED，挡路 0、不挡路 4（.agents/tasks/m3/impl/review-s3-1.md）。执行边界从没信过过期的持有者记录（isMainAgent 要求模式为真且记录指向本会话），没有新增让一个项目同时有两个主 Agent 的路径。编排方裁定合入之前修掉两条复现过的：R3（MEDIUM，本提交引入）新加的 lapsed 接管与 /wish here 等别的会话退出的那段相撞，两个会话同时发 /wish 时项目最后一个主 Agent 都没有，第二个会话还先收到成功回复；R1（MEDIUM）/wish 写下记录之后出错时留下没人清的过期记录，连同 S3-3 一起修。R2：mainAgentOf 仍按记录原样返回，可能指向模式已关的会话；编排方请 M3 在它旁边加一个对照会话模式的读法，循环板实现的 FEAT-012 在那之前自己对照模式。R4 改 ORCHESTRATION §3.1 的措辞。5d47374 合入之前还欠一次 npm run probe。都写进了 .agents/tasks/m3/impl/brief.md 的编排方附注。"
+    },
+    {
+      "at": "2026-10-31T08:50:53.441Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M3 第 5 步提交 e48fc70（分支 m3，图节点 m3-3 与 m3-6）：build、preflight 退出码 0，npm test 退出码 0（1091 个测试，0 失败），probe 165/165。没做的：第 4 步评审的 S4-1 至 S4-4 与 execute-stage.ts 里模块替身的替换，提交说明写明了原因；第 5 步的独立评审还没做。"
     }
   ]
 }
