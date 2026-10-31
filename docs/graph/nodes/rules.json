@@ -507,6 +507,30 @@
       "actor": "llm",
       "op": "comment",
       "text": "规则板与循环板实现 FEAT-003（存储推广到完整形状，仓库里的规则文件）提交 6cdddcd，build、preflight、npm test 退出码 0，五个 rules 测试与新的 tests/rules-repo.spec.ts（10 例，真 git 仓库）通过，等独立评审。"
+    },
+    {
+      "at": "2026-10-31T19:34:33.460Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M4 设计 0.6 对规则板 0.10 的接缝请求（等 dogfood 之后处理，d-freeze-until-dogfood；M4 不要求现在改任何东西）。规则板怎样接 /rules lift 的整体请求由用户旅程那一侧写在规则板的节点上，这里只列 M4 一侧的接口与 M4 自己的请求，不重复。一、§10.1 的代码规则目录与映射：guard 行的规则是 workspace-containment、file-tools-only、suppression-reason、checker-config、scratch-only、lift-files-only，没有 credential-read（d-credentials-readable）；接管行有 bootstrap-read-no-shell（行值 bootstrap，规则页上的 id 是 bootstrap:bootstrap-read-no-shell）；目录项带 liftVia（any 或 board）：lift-files-only 是 board，guard_lift 撤不了，只有 /rules lift 撤得下；条目没有 mode 一栏；规则页上不写「只记下，不挡」，也不显示「人标过的误判数」（标注随 d-code-rules-enforce 删掉），改读 ruleStats 的次数、拦截后走对的比例与撤下状态。二、d-one-lift-path：人在规则板上打 /rules lift <规则 id> 与 /rules restore <规则 id> 时，目录里 <行>:<规则 id> 的代码规则交给 M4 的服务 glmHournessLifts 的 setLifted（cwd、rule、action、command；规则 id 先整串精确匹配，不中再去掉一个 <行>: 前缀），规则页读同一个服务的 lifted 显示「已撤下 · 时刻 · 原话」；代码规则的内容只读，撤下与恢复是 d-defaults-readonly 的例外。三、classifyRecord 对 mode late 的认法：除 rules: 开头的以外，file-tools-only 的晚到的拦下也是 late-denial（进违规、另列一行）。四、拦路脚本的超时按 d-timeout-measured：已放行的规则板 0.10 把条目写的秒数当超时本身（默认 10 秒，每条可写 1–30 秒），与裁定有一处差别：条目里写的应是写脚本的 agent 估的运行时间，第一个超时 = 它的 3 倍，跑过之后是最近几次里最慢一次的 3 倍，都不低于规则板写在最大值旁的下限（现有取值范围的下限是 1 秒）、不超过最大 30 秒；没有估计时用缺省 10 秒；3 倍超过最大时保持最大并只告诉主 Agent、由它自己处理、不问人；人同意时看到超时和它从哪个估计算出来；每个超时值与每次超时有记录，规则页与晨报看得见；写在规则板自己的设计里一处。"
+    },
+    {
+      "at": "2026-10-31T19:34:35.920Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M4 设计 0.6 的一处接口说明（决定评审第 2 轮 F11，不是新请求，其余照上面的接缝请求）：规则板写自己的记录经 M4 的 projectJournal，其 violation(record) 现在返回 Promise<'written' | 'failed' | 'no-home'>（原先调用方看不到写失败）；规则板可以不看返回值，也可以像 M4 的 installRuleGate 那样对 'failed' 按会话计数、在自己的行健康里写没有落盘的条数。写失败的记录补不回来，晨报与规则页的拦下次数因此可能少于实际拦下次数，只有行健康里的「N 条违规没有落盘」能看出差；规则页若显示拦下次数，等 dogfood 之后请带上这一点。"
+    },
+    {
+      "at": "2026-10-31T19:34:37.594Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M6 设计 0.6 的请求（d-code-rules-enforce 要每次拦下带规则 id 记下，并在规则页里看得见）：规则页的 7 天命中数读 hits.json（规则板 0.10 §9.1），checkCall 与 M6 的 gateOnRules 都不写它（规则板 0.10 §9.4「不写规则板的文件」一段）。M6 的 gateOnRules 在 checkCall 返回退出码 4 或 5 时，已向项目的违规流水（<项目根>/.llm/audit/violations.jsonl，guard 写的那份）为每个命中的规则追加一行带规则 id 的 rules: 记录，晨报按这份流水数，不需要规则板为此改 checkCall。请规则板的实现落地时让规则页的 7 天命中数也算这些行（经 M4 0.6 §2.3 写的 ruleStats），或另定办法。已放行的规则板设计不改稿（d-freeze-until-dogfood），这是自举之后办的批注。M6 的验收不依赖它。出处：.agents/tasks/m6/design.md §7.2「拦下记录」「看得见」、§18 新加的两行。"
+    },
+    {
+      "at": "2026-10-31T19:34:39.111Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "来自用户图 0.6 的请求（第二轮决定评审之后），对已放行的规则板 0.10，等自举之后办（d-freeze-until-dogfood），不是现在的阻塞，规则板的实现也不因此停。一、§6.7 与脚本、检测器的超时。编排方 2026-10-31 的裁定（d-timeout-measured 08:17Z 批注，可逆）：写脚本的 agent 估的是预计用时，超时一律是它的 3 倍，第一次用估计，跑过之后用最近几次里最慢的一次，封顶在至多值，没给估计时取缺省；缺省与至多的数不变，超时后放行并在后台接着跑至多 10 分钟、晚到的拦下告诉主 Agent 也不变。0.10 现在写的是第一个数就是超时本身：规则页的脚本一行要写超时并在旁边写依据的预计；超时值的来历（agent 的估计，或按哪几次实测算的，被封顶时的想要值）、时间与上一个值，每次超时（条目、上限、实际耗时、结局），规则页和晨报看得到；超时是优雅失败：不崩、不丢工作，结局照条目写明的办法，消息写明哪一条、限多少秒、已跑多久、下一步怎么办。二、撤下（d-one-lift-path）：/rules lift <规则 id> 今天只管板上的条目；扩到写在代码里的规则，由规则板交给拥有它的那一行（M4 的规则交给 M4 的服务 glmHournessLifts），§1.4 第 12 条「没有解除，也没有任何改法」作废，规则页那一组标「可以撤下，不能改」，不再列 credential-read 与「只记下，不挡」。三、拦下记录：写在代码里的规则每次拦下都记进项目 .llm/ 里 guard 已在写的违规流水（规则 id、时刻、拦了什么、为什么），规则页按规则 id 数拦下次数。journey.md §6.3 给规则板的三条是同一批请求。"
     }
   ]
 }

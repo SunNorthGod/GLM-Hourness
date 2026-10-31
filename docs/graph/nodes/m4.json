@@ -227,6 +227,30 @@
       "actor": "llm",
       "op": "comment",
       "text": "M4 设计 0.6 第 3 轮决定评审 CHANGES_REQUESTED（MEDIUM 2、NIT 3），本轮按规矩停下（.agents/tasks/m4/stop-report.md），新一页稿没写。上一轮的 F12、N9–N12、N14 关闭。剩下：F13 丢失的违规记录条数经行健康上报，而行健康每个会话只留一份、每次调用都被 guard 行的报告覆盖，数会丢；F14 lift-files-only 没盖到工作树里那份被跟踪的 lifts.jsonl；N15–N17。编排方之后与接管、M6 一页稿、面板一起派一遍修改与复审。"
+    },
+    {
+      "at": "2026-10-31T19:34:33.068Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M4 设计 0.6（.agents/tasks/m4/design.md；0.5 原文留在 design-0.5.md），按人 2026-10-31 的三个定案与编排方同日的裁定 d-one-lift-path 修订，别的照 0.5；决定评审第 1 轮（CHANGES_REQUESTED，MEDIUM 10、NIT 8）之后又改一遍，逐条处理见设计 §19.6。一、d-code-rules-enforce：代码里的规则启用即拦。删掉规则模式（RuleMode、GuardRule.mode）、影子判定与影子记录、标注与精确率召回率、PROMOTION（20 条含回放、14 天、误伤 0）、历史会话回放、回归语料、「只记下，不挡」、M7 周报阶梯的「影子转生效」一步。保留：新插件行默认禁用；每次拦下带规则 id、时刻、被拦的是什么、为什么，记进项目的违规流水，晨报按规则列次数、走对的比例、最近一次拦下的样子，规则页读同一份；「拦截后下一步走对」的度量（理由：不依赖试运行，规则板 0.10 已采纳 observe 与 noteDenial，拦截第一天就生效时纠偏文案的好坏只有它量得到）。补上：撤下一条代码规则的路（§3.5）、上线前的手写用例取代语料（§3.7）。file-tools-only 的工作区变更兜底（shadow.ts）只能事后发现，不能拦：改名 fallback.ts，写一条晚到的拦下（mode late），并在那个 agent 的下一步之前送一条纠正提醒（§3.4）。checker-config 与 scratch-only 一启用就拦，所以进可申报名单（§5.3）。二、d-credentials-readable：credential-read 整条删掉，不留作只记录；四条新规则变三条，判定上下文去掉凭证路径（§4.2）；违规流水不遮盖命令原文，写明暴露面（评审 F10，§4.2、§15）。三、d-timeout-measured（D-timeout 已定，人原话：「超时那就这样定。不过还是我说的现在拿不准的事情，要做到优雅失败以及可追溯性」）：规则只在设计 §6.3.1 写一次。检查行加可选的预计秒数 <预计>（预计的运行时间，写在格式与 $ 之间，check eslint eslint-json 3s $ …）；超时 = 3 倍运行时间，不低于下限 5 秒（编排方 12:56Z 细化裁定保留，写在上限旁）、不超过上限 60 秒；第一次取预计的 3 倍，没有预计才直接取上限，跑过之后取最近 10 次里最慢一次的 3 倍；一步最多等 20 秒；超时那一次按不短于当时的上限计入，下一次的值随之升高。人批准工具节点时看到的是超时，旁边写它从哪个估计算出来：graph_propose、graph_edit 对环境工具节点的结果附 timeouts 一句（timeoutText，不超过 40 个码点）。3 倍超过上限时保持上限，只告诉主 Agent（环境提醒只给根 agent，不写问人），由它自己处理：拆小或收窄检查，或用新工具 check_limit 把这一项的上限当作可撤回的设置调高（61–600 秒、写理由、写进项目 .llm/env-checks/limits.jsonl、reset 撤回、只对正被截住的检查可调）。优雅失败：超时不让行崩、不丢工作，给 agent 的话写明检查名、上限、实际耗时与下一次的值，估错只影响下一次的值。可追溯：timing.jsonl 记每个超时值的来源（估计的带节点、版本、actor、时刻与会话；图历史没有会话字段，由图工具在返回前写 EstimateLine 补上）、时间、旧值，以及每次超时的检查、上限、实际耗时与结局，循环板页明细与晨报「检查的超时」一节看得见。四、d-one-lift-path：人撤下一条规则只有一条路，对主 Agent 说，或在规则板上打 /rules lift <规则 id>。M4 留撤下记录（仓库的 docs/guard/lifts.jsonl，只追加，via 只有 chat 与 board，由新规则 lift-files-only 护住，只认这一个确切路径、不判 git）与门里的查询，给主 Agent 工具 guard_lift，给规则板服务 glmHournessLifts；M4 不注册面向人的命令，第一版的 /guard 删掉。guard_lift 照 M3 核对人的回话的办法核对原话（客户端送来的最近一条人的消息里的一段、起止在边界上），另要含撤下意图词、至少 4 个码点、一条人的消息至多换一次撤下，agent 不能自己撤；lift-files-only 只走规则板那一路（liftVia board），拦下时的提示不指点手改文件；bootstrap-read-no-shell 登记进 GUARD_RULES（行值 bootstrap）。代码规则可撤是对 d-defaults-readonly 的例外，设计在两处只读的说法旁各记半句。同一条裁定更正拦路脚本的数：规则板 0.10 的默认 10 秒、最大 30 秒。任务 m4-shadow 改名 m4-gate（节点还没建，七个任务的数不变）；建议验收 35 条，七个任务行的验收单元格共 7,059 个字符，约 7,000 字（D1 的不做一行同改）。agent 自己定的几处见 §16（撤下原话的意图词表与一条消息一次、check_limit 的 600 秒硬顶、lift-files-only 只走规则板、遮盖不做）。"
+    },
+    {
+      "at": "2026-10-31T19:34:35.041Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M4 设计 0.6 再修订一遍，答决定评审第 2 轮（CHANGES_REQUESTED，MEDIUM 2、NIT 6，编号 F11、F12、N9–N14；第 2 轮的评审文件覆盖了第 1 轮的同名文件），逐条处理见设计 §19.7；版本号不变，上面第 1 轮的批注仍有效。改动：一、违规流水的写入结果：rowJournal 原先吞掉写失败，installRuleGate 数不到丢掉的记录；projectJournal 的 violation 现在返回 'written'、'failed'、'no-home' 之一，installRuleGate 按会话累加，行健康写「N 条违规没有落盘」。二、check_limit 补全：参数表、给模型的描述与示范、编号的检查顺序，ENV_TOOL_NAMES 登记，GLM 上延迟；raise 的前提改为这一项被当前生效的上限截住（只数晚于该项在 limits.jsonl 最后一行的记录）。三、上限提醒的文字分开写：调高上限是主 Agent 的决定、不用人批准，改检查行要人批准如常。四、guard_lift 的「最近一条人的消息」定为最后一条用户来源且无 form 的消息，必须带 rpcId；撤下意图词命中前紧挨着否定词的不算。五、lift-files-only 的提示和纠偏不再指向规则板上还不存在的命令，也不写「对主 Agent 说就能撤它」。agent 自己定的几处（check_limit 的 reason 过 plainWordsIn、seconds 必须高于现在生效的上限、否定词表 NEGATIONS、返回值用三个值而不是 boolean）见设计 §19.7，可推翻。"
+    },
+    {
+      "at": "2026-10-31T19:34:36.684Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "接管设计 0.6 对 M4 0.6 的请求（来自 bootstrap；M4 0.6 的评审结论以本节点为准，写进 M4 的下一稿或评审答复即可）。一、M4 0.6 §6.3.1 的 CHECK_TIMEOUT_CAP_MS（60 秒）与 CHECK_STEP_DEADLINE_MS（20 秒）以只读方式让接管读到有效值。接管清单注意事项里的『改完文件就跑的检查每项最多跑 <n> 秒，超时算没跑完』读它；读不到时写 60 并标『默认』。二、（已被本文件里 m4 的第二条批注取代）接管写的检查行带 <预计>，值是试跑用时。三、不是请求：读项目门禁 bootstrap-read-no-shell 由接管在自己的步里加进 GUARD_RULES（row 为 bootstrap，M4 §3.8），经 installRuleGate 安装；撤下用 M4 已有的 guard_lift 与服务 glmHournessLifts，拦下次数用 ruleStats，拦下记录由 installRuleGate 写进项目的违规流水。"
+    },
+    {
+      "at": "2026-10-31T19:34:36.888Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "接管设计 0.6 对 M4 0.6 的跟进（复核评审第 2 轮 F8 的编排方裁定，可逆；取代本文件里 m4 第一条批注的第二点）。一、接管的试跑就是被量的那一次。接管写的每条带 when 的检查行，只要那条命令的试跑有可用结果（passed，或 failed 且有耗时，且不是准备没过之后的结果），就带 <预计>：试跑用时向上取整到整秒，至少 1 秒，写法是 M4 0.6 §6.1.1 已有的 check <名字> <格式> <预计> $ <命令>（例 8s）；没有可用结果的行不带 <预计>，M4 第一次的超时用上限。所以第一个超时是预计的 3 倍，在 5 秒与 60 秒之间，这就是人批准的数，接管清单上写的也是这个数。M4 0.6 §6.1.1 与 §6.3.1 第 2 条已经这样写，这一条不要求改稿，只确认接管按它的写法做。数的权威在 harness：整条检查行由接管算出，主 Agent 原样写进自己提的工具节点，bootstrap_review 逐字核对，对不上不开版（接管设计 §7.2 第 10 条）。二、请求：src/env/timeout.ts 导出纯函数 checkTimeout 与常量 CHECK_TIMEOUT_FACTOR、CHECK_TIMEOUT_FLOOR_MS、CHECK_TIMEOUT_CAP_MS，接管清单里的 executorTimeout 读同一个公式，不抄第二份；envBranch 读出的检查行带 estimateSeconds。三、M4 §18 第 5 条里 bootstrap 一项写的是接管设计 0.5 和『不带时第一次的超时就是上限，不影响接管』，请在 M4 的下一稿里改成接管设计 0.6 和『接管把试跑用时写进 <预计>；没有可用试跑结果的行不带』。四、不是请求：试跑量到的用时是冷缓存、隔离、至多 3 个文件，与改完文件时的真实用时可能不同；真实用时超过预计的 3 倍时第一次超时，结局是没跑完，M4 §6.3.1 第 5 条按不短于当时的上限记入实测，下一次的值是上一次的 3 倍。"
     }
   ]
 }

@@ -500,6 +500,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "M3 附录 0.6 第 2 轮评审 CHANGES_REQUESTED（HIGH 0、MEDIUM 1、NIT 9），第 1 轮 16 条全部关闭。剩下的 F-08 在给 m4 的批注草稿里：要 M4 改用 M3 的同意词表、并在 M4 的申请流程里复述再记，与 M4 0.6 §5.5 冲突。编排方裁定（可逆）：M4 保留自己的同意词与申请流程，三道关只改申请给人读的样子（一句是非问在前、用人话、有长度上限），不改 M4 对回话的核对；已转给第 3 轮修改。"
+    },
+    {
+      "at": "2026-10-31T19:34:34.041Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M4 设计 0.6 对 M3 附录 0.5 的一条小请求（评审 F6，等 dogfood 之后处理，不挡路）：人批准环境工具节点时，主 Agent 要把 graph_propose 与 graph_edit 结果里的超时那一句（timeouts 数组里的 text，如「超时 9 秒（估 3 秒，乘 3）」，每句不超过 40 个码点，合 propose_to_human 一行的上限）放进给人看的方案。这类方案若走 propose_to_human 而背景一行与「附」放不下时，请给一个放它的位置；在那之前主 Agent 把这一句放在回复里检查行的旁边，以工具结果里的字段为准。图历史（HistoryEntry）没有会话字段，M4 自己在 timing.jsonl 里补记估计的会话，不要求 M3 加字段。"
+    },
+    {
+      "at": "2026-10-31T19:34:35.254Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M4 设计 0.6 对 M3 附录 0.5 的一条补充请求（决定评审第 2 轮 N12，等 dogfood 之后处理，不挡路），接在上一条关于 timeouts 的请求之后：人批准环境工具节点时，请把 graph_propose、graph_edit 结果里每条 timeouts[].text（不超过 40 个码点的字串）当作 detail.mustShow 的一片，走与 rules:、loops: 提议相同的「给人看过原文」核对（附录 0.5 §3.5 第 5a 步），人看过的文字里没有就不记批准。现在这一步只靠工具说明让主 Agent 抄进方案，M4 的 L4 第 12 项只有 GLM-5.3 一次样本，不算保证。接到哪一步（src/design/attach.ts 的分派表现在只有 rules:、loops: 两行）由 M3 定。"
     }
   ]
 }

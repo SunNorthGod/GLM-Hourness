@@ -34,6 +34,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M3 附录 0.3 §9 第 6 条：原定复用的 src/design/cards.ts 与 human-writes.ts 不再有。按 d-chat-not-cards，出工作区的申报也该是主 Agent 在对话里提、人回话、harness 核对原话（src/design/talk.ts 的 personSaid 可直接用）；「批准只放行当次」的执行另设计。"
+    },
+    {
+      "at": "2026-10-31T19:34:33.272Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M4 设计 0.6 对本任务的影响（d-code-rules-enforce）：可申报的规则从 workspace-containment 一条扩到三条，加 checker-config 与 scratch-only。这两条一启用就拦，没有试运行期去量误伤，所以拦下之后的出路是申报；申报文字的题目与疑问一行按规则取，scratch-only 的题目是「要在项目里新建脚本」，疑问是「这个脚本若只用一次，就该放草稿区」（设计 §5.3、§5.4）。验收第 1 条加一句：这两条规则的拒绝同样带申报编号。其余照 0.5；验收仍在 D1 同意时补。"
     }
   ]
 }

@@ -148,6 +148,24 @@
       "actor": "llm",
       "op": "comment",
       "text": "接管 0.6 第 3 轮决定评审 CHANGES_REQUESTED：F1–F12 全部关闭，三条裁定都照做；剩 F13（MEDIUM）：试跑超时的消息总说下一步由合入前的检查跑、上限按分钟，对工具节点的检查行（M4 改完就跑，60 秒）与夜间巡检行不对，与同一清单上写的上限矛盾，改成按命令类别写下一步；另有 NIT F14–F20。本轮按规矩停下（stop-report.md），一页稿没写。编排方之后另派一遍只改 F13–F20 加复审。"
+    },
+    {
+      "at": "2026-10-31T19:34:34.421Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M4 设计 0.6 对接管设计 0.6 的两处影响（含接管评审 F8 的要求）。一、环境工具节点里的检查行（toolNodeDraft 的默认节点）带预计秒数 <预计>，写在格式与 $ 之间，格式 check eslint eslint-json 3s $ …（设计 §6.1.1）。<预计> 是预计的运行时间：接管把试跑这条命令实际用的时间向上取整到整秒（至少 1 秒）写进去；第一个超时 = 它的 3 倍，不低于 5 秒、不超过 60 秒；只有不带预计的检查行才从上限开始。人批准工具节点时看到的是超时和它从哪个估计算出来（graph_propose 的结果里有这一句），不是裸的估计。二、bootstrap-read-no-shell 登记在 M4 的 GUARD_RULES（行值 bootstrap，liftVia any，规则页上的 id 是 bootstrap:bootstrap-read-no-shell），经 installRuleGate 安装；人说一句话由主 Agent 调 guard_lift，或打 /rules lift bootstrap:bootstrap-read-no-shell，都撤得下。其余格式照 M4 0.5 §6.1.1。"
+    },
+    {
+      "at": "2026-10-31T19:34:36.243Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "接管设计 0.6（2026-10-31，design.md，0.5 原文在 design-0.5.md；复核评审第 1 轮 decisions-review-pass-1.md 的修订已并入，版本号不变，答复见 design.md §25.6）。一、评审第 5 轮 F44–F49 的文字改动已做（逐条见 §25.1）：F44 提醒模板加『目标不走访谈』一句，行健康的说明改成可检测的流水提示，验收加断言；F45 §12 与 §9.4 的旧句；F46 /hourness-init 回话带后半步；F47 判路第 2 条的上级目录与夹具；F48 B3 开工条件写明凭据；F49 清单注意事项里的上限读执行行配置的有效值，读不到标『默认』。F34 不在本分支处理。二、人定的三件事的落实（§25.2）：1. d-code-rules-enforce：读项目门禁 bootstrap-read-no-shell（D2 答『停』时才有）启用即拦，没有影子期，也没有『改回影子』的出路。撤下走唯一一条路（d-one-lift-path，编排方裁定）：人对主 Agent 说一句话（主 Agent 调 guard_lift，原话由 harness 核对），或打 /rules lift bootstrap-read-no-shell；规则登记在 M4 的 GUARD_RULES（row 为 bootstrap），门经 installRuleGate 查 M4 的撤下记录；接管没有自己的撤下命令（第一版的 /hourness-init unlock-shell 与流水的 shell-unlocked 已删）；撤下不分接管，到人恢复为止；人能撤插件自带的代码规则，是 d-defaults-readonly 的例外。每次拦下由 installRuleGate 向项目的 .llm/audit/violations.jsonl 写一条记录：规则 id、时刻、被拦的工具与命令或地址、原因；规则页和晨报按规则 id 计数。2. d-credentials-readable：接管里没有读密钥的规则或记录；门禁只拦 shell 与 web_fetch，读文件一律放行。3. d-timeout-measured：超时一律是预计用时的 3 倍（预计用时第一次取写脚本或检查的 agent 的估计，跑过之后取最近几次里最慢的一次），不超过现有上限，3 倍超过上限时保持上限并告诉主 Agent，没有估计用缺省；规则只写在 §2.5『超时』一条。上限的数：拦路脚本缺省 10 秒、最长 30 秒（超时放行，脚本接着跑至多 10 分钟，晚到的拦下报给主 Agent），改完文件就跑的检查每项 60 秒、一步 20 秒（M4），合入前的检查每条 30 分钟（M7）。清单每条命令旁写预计用时与由它得出的超时（预计取试跑实测；没有写『没预计』与缺省并标『默认』），人同意时看到。试跑每条与合计限时是固定上限，超时只让那一条记 timed-out，不拖垮行、不丢结果，流水与清单记命令、上限、已用时间、下一步。规则板 0.10 与循环板 0.6 现在写的是第一个数就是超时本身，与 3 倍的差异是自举之后办的请求，不在本文件里。三、对 M7、M4 的请求另写在 m7、m4 节点的批注里（design.md §25.4）。四、宪章 0.8（cd257a7）与 ORCHESTRATION §6.5 已取代先影子的文字，没有待办。复核评审第 2 轮（如需要）与 onepage.md 在后面的步骤。"
+    },
+    {
+      "at": "2026-10-31T19:34:37.091Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "接管设计 0.6 复核评审第 2 轮（decisions-review-pass-2.md：CHANGES_REQUESTED，MEDIUM 1、NIT 4）的修订已并入 design.md（版本号仍是 0.6，答复见 §25.7）。F8（MEDIUM）：清单上给人看的超时必须等于执行方第一次真跑用的数。按编排方裁定，接管的试跑就是被量的那一次：改完文件就跑的检查，检查行带试跑用时（向上取整到整秒，至少 1 秒）作为 <预计>，第一个超时是它的 3 倍（M4 的下限 5 秒、上限 60 秒）；整条检查行由 harness 在 bootstrap_review 的 gate_unmet 里给出（新增第 10 条），主 Agent 原样写进自己提的节点，不一致不开版；读取函数 executorTimeout 按执行方实际情形算清单上的数；合入前的检查在 M7 收预计之前写『试跑约 N；超时 30 分（默认）』。新项目只跑探测，检查行不带 <预计>，M4 第一次用上限。F9：B4 合入之前，图上要有挂在 orch 下的规范节点（正文带『级别：门禁』『规则：bootstrap-read-no-shell』，M4 §3.8 的格式），由编排者提；否则 M4 的契约测试在加目录那一条的提交上失败。F10：D1 与记图草稿里的字数改为约 5,800 字（验收一列 5,844 字）。F11：§1.1 两处宪章版本号改 0.8。F12：试跑超时进晨报的路径写在 §6.3，指标设计定下 trial 事件种类之前只在 status、清单全文和节点批注里看得到。一页稿 onepage.md 在复核通过之后由后面的步骤写。"
     }
   ]
 }
