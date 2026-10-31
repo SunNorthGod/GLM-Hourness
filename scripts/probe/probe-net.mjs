@@ -1,5 +1,5 @@
 ﻿/**
- * Probe net log (docs/DEVELOPMENT.md 搂3, docs/ORCHESTRATION.md 搂11.3): an
+ * Probe net log (docs/DEVELOPMENT.md §3, docs/ORCHESTRATION.md §11.3): an
  * overlay-only row that records every outgoing request of the host process
  * that goes through Node's fetch, as one JSON line `{ origin, path }` in
  * `config.record` (no query, no header, no body). Not part of the bundle:
