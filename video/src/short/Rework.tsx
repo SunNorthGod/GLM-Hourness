@@ -2,29 +2,23 @@ import React from "react";
 import { AbsoluteFill, Easing, interpolate, interpolateColors, useCurrentFrame } from "remotion";
 import { Pill, Reveal } from "../parts";
 import { CLAMP, COLORS } from "../theme";
-import { Claim, type Evidence } from "./Claim";
+import { BAR, BEAT } from "./timeline";
 
-// Bars 1-2. Frame 0 is the model's 「✓ 全部完成」 with two red lines under it,
-// readable at a glance. From the first beat a clock turns from night to
-// morning while red changes pile up beside it. Frames are counted from the
-// start of bar 1.
+// Bars 4-5, under the bubble of Claim.tsx. In bar 4 a clock turns from night
+// to morning and, on the last beat, the label of the pile comes in; in bar 5
+// the red changes pile up beside it, one to a beat. Frames are counted from
+// the start of bar 4.
 
-const EVIDENCE: Evidence[] = [
-  { text: "✗ 测试没过", at: -12 },
-  { text: "✗ 改了不该碰的文件", at: -12 },
-];
-
-const TURN = [8, 112] as const;
+const TURN = [BEAT, BAR - 3] as const;
 // The hour hand passes 6 o'clock (540 degrees) at dawn = 210 / 270, about 0.78;
 // the label says morning only after that.
 const MORNING = 0.8;
 const FACE = 320;
-const PILE_BARS = [
+const PILE_ROWS = [
   [260, 170],
   [200, 260],
   [300, 140],
   [220, 210],
-  [280, 190],
 ] as const;
 
 const Clock: React.FC = () => {
@@ -36,52 +30,48 @@ const Clock: React.FC = () => {
   const ring = interpolateColors(dawn, [0, 1], ["rgba(142, 162, 255, 0.75)", "rgba(255, 208, 138, 0.95)"]);
   const c = FACE / 2;
   return (
-    <>
-      <Reveal at={6} style={{ position: "absolute", left: 70, top: 1090 }}>
-        <Pill color={dawn < MORNING ? COLORS.indigo : COLORS.apricot} style={{ fontSize: 34 }}>
-          {dawn < MORNING ? "深夜" : "早上"}
-        </Pill>
-      </Reveal>
-      <Reveal at={8} style={{ position: "absolute", left: 70, top: 1150 }}>
-        <svg width={FACE} height={FACE}>
-          <circle cx={c} cy={c} r={c - 6} fill={face} stroke={ring} strokeWidth={6} />
-          {Array.from({ length: 12 }, (_, i) => (
-            <line
-              key={i}
-              x1={c}
-              y1={20}
-              x2={c}
-              y2={i % 3 === 0 ? 40 : 32}
-              stroke="rgba(255,255,255,0.55)"
-              strokeWidth={i % 3 === 0 ? 5 : 3}
-              strokeLinecap="round"
-              transform={`rotate(${i * 30} ${c} ${c})`}
-            />
-          ))}
+    <Reveal at={0} style={{ position: "absolute", left: 70, top: 1090 }}>
+      <Pill color={dawn < MORNING ? COLORS.indigo : COLORS.apricot} style={{ fontSize: 34, width: "fit-content" }}>
+        {dawn < MORNING ? "深夜" : "早上"}
+      </Pill>
+      <svg width={FACE} height={FACE} style={{ marginTop: 16 }}>
+        <circle cx={c} cy={c} r={c - 6} fill={face} stroke={ring} strokeWidth={6} />
+        {Array.from({ length: 12 }, (_, i) => (
           <line
+            key={i}
             x1={c}
-            y1={c}
+            y1={20}
             x2={c}
-            y2={c - 78}
-            stroke={COLORS.text}
-            strokeWidth={9}
+            y2={i % 3 === 0 ? 40 : 32}
+            stroke="rgba(255,255,255,0.55)"
+            strokeWidth={i % 3 === 0 ? 5 : 3}
             strokeLinecap="round"
-            transform={`rotate(${hour} ${c} ${c})`}
+            transform={`rotate(${i * 30} ${c} ${c})`}
           />
-          <line
-            x1={c}
-            y1={c}
-            x2={c}
-            y2={c - 118}
-            stroke={COLORS.text}
-            strokeWidth={5}
-            strokeLinecap="round"
-            transform={`rotate(${hour * 12} ${c} ${c})`}
-          />
-          <circle cx={c} cy={c} r={9} fill={COLORS.text} />
-        </svg>
-      </Reveal>
-    </>
+        ))}
+        <line
+          x1={c}
+          y1={c}
+          x2={c}
+          y2={c - 78}
+          stroke={COLORS.text}
+          strokeWidth={9}
+          strokeLinecap="round"
+          transform={`rotate(${hour} ${c} ${c})`}
+        />
+        <line
+          x1={c}
+          y1={c}
+          x2={c}
+          y2={c - 118}
+          stroke={COLORS.text}
+          strokeWidth={5}
+          strokeLinecap="round"
+          transform={`rotate(${hour * 12} ${c} ${c})`}
+        />
+        <circle cx={c} cy={c} r={9} fill={COLORS.text} />
+      </svg>
+    </Reveal>
   );
 };
 
@@ -92,7 +82,7 @@ const PileRow: React.FC<{ at: number; widths: readonly [number, number] }> = ({ 
       display: "flex",
       alignItems: "center",
       gap: 18,
-      height: 54,
+      height: 66,
       padding: "0 20px",
       borderRadius: 14,
       background: `${COLORS.rose}1F`,
@@ -110,7 +100,7 @@ const PileRow: React.FC<{ at: number; widths: readonly [number, number] }> = ({ 
 
 const Pile: React.FC = () => (
   <>
-    <Reveal at={20} style={{ position: "absolute", left: 470, top: 1090 }}>
+    <Reveal at={BAR - BEAT} style={{ position: "absolute", left: 470, top: 1090 }}>
       <Pill color={COLORS.rose} style={{ fontSize: 34 }}>
         待返工
       </Pill>
@@ -124,19 +114,18 @@ const Pile: React.FC = () => (
         height: 330,
         display: "flex",
         flexDirection: "column-reverse",
-        gap: 12,
+        gap: 16,
       }}
     >
-      {PILE_BARS.map((widths, i) => (
-        <PileRow key={i} at={20 + i * 17} widths={widths} />
+      {PILE_ROWS.map((widths, i) => (
+        <PileRow key={i} at={BAR + i * BEAT} widths={widths} />
       ))}
     </div>
   </>
 );
 
-export const Open: React.FC = () => (
+export const Rework: React.FC = () => (
   <AbsoluteFill>
-    <Claim tone="red" evidence={EVIDENCE} />
     <Clock />
     <Pile />
   </AbsoluteFill>

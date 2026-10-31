@@ -2,6 +2,7 @@ import React from "react";
 import { Composition } from "remotion";
 import { Sample } from "./Sample";
 import { Short } from "./short/Short";
+import { BAR, BARS } from "./short/timeline";
 
 export const RemotionRoot: React.FC = () => {
   return (
@@ -17,7 +18,7 @@ export const RemotionRoot: React.FC = () => {
       <Composition
         id="Short"
         component={Short}
-        durationInFrames={1200}
+        durationInFrames={BARS * BAR}
         fps={30}
         width={1080}
         height={1920}

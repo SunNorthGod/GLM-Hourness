@@ -4,13 +4,17 @@
 //   public/music/score.wav   the rendered audio, 48 kHz stereo
 // Run scripts/get-soundbank.mjs once first.
 //
-// Form: 20 bars of 4/4 at 120 BPM, 40 s, C major. One bar is 2 s (60 frames
+// Form: 24 bars of 4/4 at 120 BPM, 48 s, C major. One bar is 2 s (60 frames
 // at 30 fps), one beat 0.5 s (15 frames), so scene cuts land on the bar.
-//   bars 1-2    hook      the four-note sound logo  E D G C', full beat at once
-//   bars 3-6    verse     piano broken chords, pizzicato, light drums
-//   bars 7-10   pre       rising sequence, strings swell, snare roll, reverse cymbal
-//   bars 11-18  chorus    hook grown from the logo, full band, timpani on the downbeat
-//   bars 19-20  ending    F to borrowed Fm6 (iv) to Cadd9, the logo once more
+//   bars 1-2    open      the four-note sound logo  E D G C' and its answer, piano and strings, with a soft reverse cymbal through bar 2
+//   bars 3-4    hook      the same two bars with the full beat
+//   bars 5-8    verse     piano broken chords, pizzicato, light drums
+//   bars 9-12   pre       rising sequence, strings swell, snare roll, reverse cymbal
+//   bars 13-20  chorus    hook grown from the logo, full band, timpani on the downbeat
+//   bars 21-22  ending    F to borrowed Fm6 (iv) to Cadd9, the logo once more
+//   bars 23-24  coda      Cadd9 held for two bars, a last C' over it, and faded out
+// Bars 3-22 are the 20-bar score from before the opening and the coda were
+// added, note for note.
 // Harmony: I - V6 - vi7 - IVmaj7 in the verse; ii7 - iii7 - IVmaj7 - V7sus4 V7 in
 // the pre-chorus; in the chorus a secondary dominant (E7/G# to Am7), a ii-V to
 // the subdominant (Gm7 C7 to Fmaj7), the borrowed minor iv (Fm6), and V/ii
@@ -34,9 +38,13 @@ const PPQ = 480
 const BEAT = PPQ
 const BAR = PPQ * 4
 const BPM = 120
-const BARS = 20
+const BARS = 24
 const SAMPLE_RATE = 48000
 const TAIL_SECONDS = 0 // the video ends on the last bar line; the last chord fades with it
+const FADE_SECONDS = 2.5 // the master fade across the end of the coda
+
+// First bar of each section, counting bars from 0.
+const START = { open: 0, hook: 2, verse: 4, pre: 8, chorus: 12, end: 20, coda: 22 }
 
 // ---------------------------------------------------------------- notes
 
@@ -63,13 +71,15 @@ function line(text) {
 }
 
 // Deterministic humanising: small velocity changes, no timing changes (the cuts are on the beat).
+// The opening and the coda use a spread of 0 and draw nothing from the
+// sequence, so the velocities of bars 3-22 are the ones they had before.
 let seed = 1031
 const random = () => {
   seed = (seed * 1664525 + 1013904223) >>> 0
   return seed / 0x100000000
 }
 const human = (velocity, spread = 6) =>
-  Math.max(1, Math.min(127, Math.round(velocity + (random() * 2 - 1) * spread)))
+  spread === 0 ? velocity : Math.max(1, Math.min(127, Math.round(velocity + (random() * 2 - 1) * spread)))
 
 // ---------------------------------------------------------------- harmony
 
@@ -93,10 +103,13 @@ const CHORDS = {
   A7: { tones: [9, 1, 4, 7], bass: 9 },
 }
 
-// One entry per bar: [chord, beats], beats summing to 4.
+// One entry per bar: [chord, beats], beats summing to 4. The coda holds one
+// chord for two bars, so its second entry is empty.
 const CHART = [
-  [['Cadd9', 4]],
-  [['Fmaj9', 2], ['G6', 2]],
+  [['Cadd9', 4]], // 1  open
+  [['Fmaj9', 2], ['G6', 2]], // 2
+  [['Cadd9', 4]], // 3  hook
+  [['Fmaj9', 2], ['G6', 2]], // 4
   [['C', 4]],
   [['G/B', 4]],
   [['Am7', 4]],
@@ -114,11 +127,12 @@ const CHART = [
   [['Em7', 2], ['A7', 2]],
   [['Dm7', 2], ['G7', 2]],
   [['Fmaj7', 2], ['Fm6', 2]],
-  [['Cadd9', 4]],
+  [['Cadd9', 4]], // 22
+  [['Cadd9', 8]], // 23 coda
+  [], // 24
 ]
 
-const SECTION = bar =>
-  bar < 2 ? 'hook' : bar < 6 ? 'verse' : bar < 10 ? 'pre' : bar < 18 ? 'chorus' : 'end'
+const SECTION = bar => Object.keys(START).findLast(name => bar >= START[name])
 
 // Every chord event with its absolute start and length in ticks.
 const EVENTS = []
@@ -153,6 +167,8 @@ function voicings(tones, low, high) {
 function voiceLead(low, high) {
   let previous = null
   return EVENTS.map(event => {
+    // The chain starts afresh at the hook, so bars 3-22 keep the voicings they had before the opening.
+    if (event.bar === START.hook) previous = null
     const candidates = voicings(event.chord.tones, low, high)
     if (!previous) {
       previous = candidates.sort((a, b) => Math.abs(a[0] - (low + 7)) - Math.abs(b[0] - (low + 7)))[0]
@@ -176,40 +192,44 @@ const bassNote = event => {
 // ---------------------------------------------------------------- melody
 
 const MELODY = [
-  'E5:8 D5:8 G5:4 C6:2', // 1  the sound logo
+  'E5:8 D5:8 G5:4 C6:2', // 1  open: the sound logo
   'C6:8 B5:8 A5:4 G5:2', // 2  its answer
-  'E5:8 D5:8 E5:8 G5:8 r:4 C5:8 D5:8', // 3
-  'D5:8 B4:8 D5:8 G5:8 r:2', // 4
-  'C5:8 B4:8 C5:8 E5:8 r:4 A4:8 B4:8', // 5
-  'C5:4 A4:4 E5:2', // 6  ends on the major seventh of F
-  'D5:8 F5:8 A5:4 A5:8 G5:8 F5:4', // 7  rising sequence, one step per bar
-  'E5:8 G5:8 B5:4 B5:8 A5:8 G5:4', // 8
-  'F5:8 A5:8 C6:4 C6:8 B5:8 A5:4', // 9
-  'G5:4 C6:4 B5:4 F5:4', // 10 the seventh F resolves down to the chorus E
-  'E5:8 D5:8 G5:4 C6:4. B5:8', // 11 chorus: the logo, extended
-  'B5:4 G#5:8 E5:8 D6:4 C6:8 B5:8', // 12 over E7/G#
-  'C6:8 B5:8 A5:4 E5:4 G5:4', // 13
-  'F5:4 G5:8 A5:8 Bb5:4 G5:4', // 14 Bb, the seventh of C7
-  'A5:4. G5:8 A5:4 C6:4', // 15
-  'Ab5:4. G5:8 F5:4 D5:4', // 16 the borrowed Ab
-  'E5:8 D5:8 G5:4 C#6:4 B5:8 A5:8', // 17 the logo again, then C# of A7
-  'D6:4 C6:8 A5:8 B5:4 G5:4', // 18
-  'A5:4 G5:4 Ab5:4 G5:4', // 19 A falls to Ab over F to Fm6
-  'E5:8 D5:8 G5:4 C6:2', // 20 the sound logo
+  'E5:8 D5:8 G5:4 C6:2', // 3  hook: the same two bars
+  'C6:8 B5:8 A5:4 G5:2', // 4
+  'E5:8 D5:8 E5:8 G5:8 r:4 C5:8 D5:8', // 5
+  'D5:8 B4:8 D5:8 G5:8 r:2', // 6
+  'C5:8 B4:8 C5:8 E5:8 r:4 A4:8 B4:8', // 7
+  'C5:4 A4:4 E5:2', // 8  ends on the major seventh of F
+  'D5:8 F5:8 A5:4 A5:8 G5:8 F5:4', // 9  rising sequence, one step per bar
+  'E5:8 G5:8 B5:4 B5:8 A5:8 G5:4', // 10
+  'F5:8 A5:8 C6:4 C6:8 B5:8 A5:4', // 11
+  'G5:4 C6:4 B5:4 F5:4', // 12 the seventh F resolves down to the chorus E
+  'E5:8 D5:8 G5:4 C6:4. B5:8', // 13 chorus: the logo, extended
+  'B5:4 G#5:8 E5:8 D6:4 C6:8 B5:8', // 14 over E7/G#
+  'C6:8 B5:8 A5:4 E5:4 G5:4', // 15
+  'F5:4 G5:8 A5:8 Bb5:4 G5:4', // 16 Bb, the seventh of C7
+  'A5:4. G5:8 A5:4 C6:4', // 17
+  'Ab5:4. G5:8 F5:4 D5:4', // 18 the borrowed Ab
+  'E5:8 D5:8 G5:4 C#6:4 B5:8 A5:8', // 19 the logo again, then C# of A7
+  'D6:4 C6:8 A5:8 B5:4 G5:4', // 20
+  'A5:4 G5:4 Ab5:4 G5:4', // 21 A falls to Ab over F to Fm6
+  'E5:8 D5:8 G5:4 C6:2', // 22 the sound logo
+  'C6:1', // 23 coda: one last C over the held chord
+  'r:1', // 24
 ].map(line)
 
 // A cello-like counter line under the chorus and ending, half notes.
 const COUNTER = {
-  10: 'E4:2 G4:2',
-  11: 'G#4:2 B4:2',
-  12: 'A4:2 E4:2',
-  13: 'D4:2 E4:2',
-  14: 'F4:2 A4:2',
-  15: 'Ab4:2 C5:2',
-  16: 'G4:2 C#4:2',
-  17: 'F4:2 F4:2',
-  18: 'E4:2 D4:2',
-  19: 'E4:1',
+  12: 'E4:2 G4:2',
+  13: 'G#4:2 B4:2',
+  14: 'A4:2 E4:2',
+  15: 'D4:2 E4:2',
+  16: 'F4:2 A4:2',
+  17: 'Ab4:2 C5:2',
+  18: 'G4:2 C#4:2',
+  19: 'F4:2 F4:2',
+  20: 'E4:2 D4:2',
+  21: 'E4:1',
 }
 
 // ---------------------------------------------------------------- build
@@ -254,6 +274,12 @@ for (const [name, setup] of Object.entries(CH)) {
   cc(name, 0, 11, 127)
 }
 
+// Velocity of the melody by section; the opening and the coda are played quietly.
+const LEVEL = { open: 70, hook: 100, verse: 78, pre: 78, chorus: 100, end: 100, coda: 56 }
+// The opening and the coda are written with fixed velocities (see `human`).
+const FIXED = new Set(['open', 'coda'])
+const spread = (section, normal = 6) => (FIXED.has(section) ? 0 : normal)
+
 // Melody: piano, doubled an octave up by the glockenspiel in the hook, chorus and ending.
 MELODY.forEach((bar, i) => {
   const section = SECTION(i)
@@ -261,7 +287,7 @@ MELODY.forEach((bar, i) => {
   for (const n of bar) {
     const start = i * BAR + n.start
     const accent = n.start % BEAT === 0 ? 6 : 0
-    note('melody', n.note, start, n.len - 10, human((loud ? 100 : 78) + accent))
+    note('melody', n.note, start, n.len - 10, human(LEVEL[section] + accent, spread(section)))
     if (loud) note('glock', n.note + 12, start, Math.min(n.len, BEAT), human(70))
   }
 })
@@ -281,7 +307,8 @@ EVENTS.forEach((event, i) => {
 
   // Strings pad: a sustained voicing, an octave higher in the chorus.
   const lift = section === 'chorus' ? 12 : 0
-  for (const n of pad) note('pad', n + lift, start, len - 10, human(section === 'verse' ? 62 : 80, 3))
+  const padLevel = { open: 56, verse: 62, coda: 54 }[section] ?? 80
+  for (const n of pad) note('pad', n + lift, start, len - 10, human(padLevel, spread(section, 3)))
 
   // Piano accompaniment.
   if (section === 'verse') {
@@ -292,7 +319,7 @@ EVENTS.forEach((event, i) => {
     }
     note('piano', bass + 12, start, len - 20, human(66))
   } else if (section === 'pre') {
-    const ramp = 58 + (event.bar - 6) * 8
+    const ramp = 58 + (event.bar - START.pre) * 8
     for (let k = 0; k < eighths; k++) {
       for (const n of piano) note('piano', n, start + k * (BEAT / 2), BEAT / 2 - 30, human(ramp + (k % 2 === 0 ? 8 : 0)))
     }
@@ -310,19 +337,23 @@ EVENTS.forEach((event, i) => {
     }
     note('piano', bass + 12, start, len - 20, human(84))
   } else {
-    for (const n of piano) note('piano', n, start, len - 10, human(80))
-    note('piano', bass + 12, start, len - 10, human(80))
+    // The opening, the ending and the coda: each chord struck once and let ring.
+    const level = { open: 52, coda: 50 }[section] ?? 80
+    for (const n of piano) note('piano', n, start, len - 10, human(level, spread(section)))
+    note('piano', bass + 12, start, len - 10, human(level, spread(section)))
   }
 
-  // Bass.
+  // Bass: none in the opening, which has no bass and no drums.
   const bassLine =
-    section === 'verse'
-      ? [[0, 3, 0], [3, 1, 0], [4, 2, 7], [6, 2, 0]]
-      : section === 'pre'
-        ? Array.from({ length: 8 }, (_, k) => [k, 1, 0])
-        : section === 'chorus'
-          ? [[0, 3, 0], [3, 1, 0], [4, 1, 12], [5, 1, 0], [6, 1, 7], [7, 1, 10]]
-          : [[0, 8, 0]]
+    section === 'open'
+      ? []
+      : section === 'verse'
+        ? [[0, 3, 0], [3, 1, 0], [4, 2, 7], [6, 2, 0]]
+        : section === 'pre'
+          ? Array.from({ length: 8 }, (_, k) => [k, 1, 0])
+          : section === 'chorus'
+            ? [[0, 3, 0], [3, 1, 0], [4, 1, 12], [5, 1, 0], [6, 1, 7], [7, 1, 10]]
+            : [[0, eighths, 0]]
   for (const [pos, span, interval] of bassLine) {
     const at = start + pos * (BEAT / 2)
     if (at >= start + len) continue
@@ -333,7 +364,7 @@ EVENTS.forEach((event, i) => {
       const next = EVENTS[i + 1]
       pitch = next ? bassNote(next) - 1 : bass
     }
-    note('bass', pitch, at, length - 20, human(section === 'chorus' ? 104 : 92))
+    note('bass', pitch, at, length - 20, human(section === 'chorus' ? 104 : section === 'coda' ? 60 : 92, spread(section)))
   }
 
   // Pizzicato in the verse: chord tones in eighths, an octave up.
@@ -365,62 +396,66 @@ function hit(key, bar, pos, velocity) {
 for (let bar = 0; bar < BARS; bar++) {
   const section = SECTION(bar)
   if (section === 'hook') {
-    if (bar === 0) hit(CRASH, bar, 0, 100)
+    if (bar === START.hook) hit(CRASH, bar, 0, 100)
     for (const p of [0, 8, 10]) hit(KICK, bar, p, 108)
     for (const p of [4, 12]) { hit(SNARE, bar, p, 96); hit(CLAP, bar, p, 70) }
     for (let p = 0; p < 16; p += 2) hit(HAT, bar, p, p % 4 === 0 ? 80 : 60)
-    if (bar === 1) TOMS.forEach((t, k) => hit(t, bar, 12 + k, 90 + k * 4))
+    if (bar === START.hook + 1) TOMS.forEach((t, k) => hit(t, bar, 12 + k, 90 + k * 4))
   } else if (section === 'verse') {
     for (const p of [0, 6, 8]) hit(KICK, bar, p, 92)
     for (const p of [4, 12]) hit(STICK, bar, p, 80)
     for (let p = 0; p < 16; p += 2) hit(HAT, bar, p, p % 4 === 0 ? 62 : 46)
     for (let p = 1; p < 16; p += 2) hit(SHAKER, bar, p, 40)
   } else if (section === 'pre') {
-    for (const p of [0, 4, 8, 12]) hit(KICK, bar, p, 96 + (bar - 6) * 3)
-    if (bar < 9) {
+    for (const p of [0, 4, 8, 12]) hit(KICK, bar, p, 96 + (bar - START.pre) * 3)
+    if (bar < START.pre + 3) {
       for (const p of [4, 12]) hit(SNARE, bar, p, 88)
-      for (let p = 0; p < 16; p += 2) hit(bar === 8 ? OPEN : HAT, bar, p + (bar === 8 ? 1 : 0) - (bar === 8 ? 1 : 0), 60)
+      for (let p = 0; p < 16; p += 2) hit(bar === START.pre + 2 ? OPEN : HAT, bar, p + (bar === START.pre + 2 ? 1 : 0) - (bar === START.pre + 2 ? 1 : 0), 60)
     } else {
       for (let p = 0; p < 16; p++) hit(SNARE, bar, p, 50 + p * 4)
     }
   } else if (section === 'chorus') {
-    if (bar === 10 || bar === 14) hit(CRASH, bar, 0, 110)
+    if (bar === START.chorus || bar === START.chorus + 4) hit(CRASH, bar, 0, 110)
     for (const p of [0, 6, 8]) hit(KICK, bar, p, 112)
     for (const p of [4, 12]) { hit(SNARE, bar, p, 104); hit(CLAP, bar, p, 82) }
     for (let p = 0; p < 16; p += 2) hit(p % 4 === 2 ? OPEN : HAT, bar, p, p % 4 === 2 ? 66 : 70)
     for (let p = 2; p < 16; p += 4) hit(TAMB, bar, p, 58)
-    if (bar === 13) TOMS.forEach((t, k) => hit(t, bar, 12 + k, 92 + k * 4))
-    if (bar === 17) {
+    if (bar === START.chorus + 3) TOMS.forEach((t, k) => hit(t, bar, 12 + k, 92 + k * 4))
+    if (bar === START.chorus + 7) {
       for (const p of [8, 10]) hit(SNARE, bar, p, 100)
       TOMS.forEach((t, k) => hit(t, bar, 12 + k, 96 + k * 4))
     }
-  } else {
-    if (bar === 18 || bar === 19) {
-      hit(CRASH, bar, 0, bar === 19 ? 112 : 96)
-      hit(KICK, bar, 0, 110)
-    }
+  } else if (section === 'end') {
+    hit(CRASH, bar, 0, bar === START.coda - 1 ? 112 : 96)
+    hit(KICK, bar, 0, 110)
   }
 }
 
-// Timpani on the hook, the chorus downbeat and the last bar; a reverse cymbal into the chorus.
-for (const bar of [0, 10, 19]) note('timpani', 36, bar * BAR, BAR, human(110, 3))
-note('sweep', 60, 8 * BAR, 2 * BAR, 96)
+// Timpani on the hook, the chorus downbeat and the last bar of the ending.
+for (const bar of [START.hook, START.chorus, START.coda - 1]) note('timpani', 36, bar * BAR, BAR, human(110, 3))
+// A soft reverse cymbal through the second bar of the opening into the hook;
+// a loud one through the last two bars before the chorus.
+note('sweep', 60, (START.hook - 1) * BAR, BAR, 52)
+note('sweep', 60, (START.chorus - 2) * BAR, 2 * BAR, 96)
 
-// Sustain pedal on the verse broken chords and the ending, changed with each chord.
+// Sustain pedal on the opening, the verse broken chords, the ending and the coda, changed with each chord.
 for (const event of EVENTS) {
   const section = SECTION(event.bar)
-  if (section === 'verse' || section === 'end') {
+  if (section === 'open' || section === 'verse' || section === 'end' || section === 'coda') {
     cc('piano', event.start, 64, 0)
     cc('piano', event.start + 10, 64, 127)
   }
 }
 cc('piano', BARS * BAR - 1, 64, 0)
 
-// Strings swell through the pre-chorus.
-for (let t = 0; t <= 4 * BAR; t += BEAT / 2) {
-  cc('pad', 6 * BAR + t, 11, Math.round(82 + (45 * t) / (4 * BAR)))
+// Strings swell: in from a quiet start through the opening, and through the pre-chorus.
+for (let t = 0; t <= START.hook * BAR; t += BEAT / 2) {
+  cc('pad', t, 11, Math.round(60 + (67 * t) / (START.hook * BAR)))
 }
-cc('pad', 10 * BAR, 11, 127)
+for (let t = 0; t <= 4 * BAR; t += BEAT / 2) {
+  cc('pad', START.pre * BAR + t, 11, Math.round(82 + (45 * t) / (4 * BAR)))
+}
+cc('pad', START.chorus * BAR, 11, 127)
 
 for (const n of notes) {
   midi.noteOn(n.start, TRACK[n.part], CH[n.part].ch, n.pitch, n.velocity)
@@ -463,13 +498,16 @@ for (let done = 0; done < total; done += BLOCK) {
   synth.process(left, right, done, Math.min(BLOCK, total - done))
 }
 
-// Master: a short fade at the very end, gentle soft clipping, peak at -1 dBFS.
-const fade = Math.round(1.2 * SAMPLE_RATE)
+// Master: a fade across the end of the coda, gentle soft clipping, peak at -1 dBFS.
+// DRIVE sets how hard the soft clip works; 1.5 puts the integrated loudness of
+// the 48 s score at about -15 LUFS (the quiet opening and coda cost 0.5 LU at 1.2).
+const DRIVE = 1.5
+const fade = Math.round(FADE_SECONDS * SAMPLE_RATE)
 let peak = 0
 for (let i = 0; i < total; i++) {
   const g = Math.min(1, (total - i) / fade)
-  left[i] = Math.tanh(left[i] * g * 1.2)
-  right[i] = Math.tanh(right[i] * g * 1.2)
+  left[i] = Math.tanh(left[i] * g * DRIVE)
+  right[i] = Math.tanh(right[i] * g * DRIVE)
   peak = Math.max(peak, Math.abs(left[i]), Math.abs(right[i]))
 }
 const target = 10 ** (-1 / 20)

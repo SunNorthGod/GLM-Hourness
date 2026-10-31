@@ -6,17 +6,11 @@ import { CLAMP, COLORS, EASE } from "../theme";
  * One caption, burnt in so the video reads with the sound off. It sits in the
  * top third, centred on x = 495 (the middle of the 45-945 column the content
  * keeps to), clear of the platforms' overlays at the bottom and the right.
- * The first caption of the video, sub-line included, is already on screen at
- * frame 0.
  */
-export const Caption: React.FC<{ title: string; sub?: string; immediate?: boolean }> = ({
-  title,
-  sub,
-  immediate = false,
-}) => {
+export const Caption: React.FC<{ title: string; sub?: string }> = ({ title, sub }) => {
   const frame = useCurrentFrame();
   // Starts part-way visible, so no frame on a bar line is left without a caption.
-  const enter = immediate ? 1 : interpolate(frame, [0, 7], [0.35, 1], { ...CLAMP, easing: EASE });
+  const enter = interpolate(frame, [0, 7], [0.35, 1], { ...CLAMP, easing: EASE });
   return (
     <AbsoluteFill style={{ alignItems: "center", paddingTop: 230, paddingLeft: 45, paddingRight: 135 }}>
       <div
@@ -39,7 +33,7 @@ export const Caption: React.FC<{ title: string; sub?: string; immediate?: boolea
             fontSize: 50,
             color: COLORS.dim,
             textAlign: "center",
-            opacity: immediate ? 1 : interpolate(frame, [6, 14], [0, 1], CLAMP),
+            opacity: interpolate(frame, [6, 14], [0, 1], CLAMP),
           }}
         >
           {sub}

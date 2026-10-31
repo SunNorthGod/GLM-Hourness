@@ -1,37 +1,43 @@
 import React from "react";
-import { AbsoluteFill, Easing, interpolate, useCurrentFrame } from "remotion";
+import { AbsoluteFill, interpolate, useCurrentFrame } from "remotion";
 import { GLASS, Pill, Reveal } from "../parts";
-import { CLAMP, COLORS } from "../theme";
+import { CLAMP, COLORS, EASE } from "../theme";
 import { Avatar, MODEL } from "./Avatar";
-import { BAR } from "./timeline";
+import { BAR, BEAT } from "./timeline";
 
-// Bars 3-4. A long chat scrolls up and its first line, the goal, fades out;
-// then the model says it has tested, with nothing to show for it. Frames are
-// counted from the start of bar 3.
+// Bars 6-8. In bars 6-7 a chat grows by one exchange to a beat and scrolls
+// up, and its first line, the goal, fades out. In bar 8 the model says it has
+// tested, with nothing to show for it. Frames are counted from the start of
+// bar 6.
 
-type Message = { who: "user"; text: string; goal?: boolean } | { who: "model"; lines: number[] };
+type Exchange = { user: string; goal?: boolean; lines: number[] };
 
-const CHAT: Message[] = [
-  { who: "user", text: "给团队做一个订会议室的小工具", goal: true },
-  { who: "model", lines: [520, 380] },
-  { who: "user", text: "再加个提醒" },
-  { who: "model", lines: [560, 460, 300] },
-  { who: "user", text: "按钮颜色换一下" },
-  { who: "model", lines: [440] },
-  { who: "user", text: "管理页也要" },
-  { who: "model", lines: [560, 520, 380] },
-  { who: "user", text: "刚才那个改回去" },
-  { who: "model", lines: [500, 340] },
-  { who: "user", text: "再加个日历视图" },
-  { who: "model", lines: [540, 480] },
-  { who: "user", text: "怎么又报错了" },
-  { who: "model", lines: [460, 400, 320] },
-  { who: "user", text: "先别管这个，接着改" },
-  { who: "model", lines: [520, 440] },
+const CHAT: Exchange[] = [
+  { user: "给团队做一个订会议室的小工具", goal: true, lines: [520, 380] },
+  { user: "再加个提醒", lines: [560, 460, 300] },
+  { user: "按钮颜色换一下", lines: [440] },
+  { user: "管理页也要", lines: [560, 520, 380] },
+  { user: "刚才那个改回去", lines: [500, 340] },
+  { user: "再加个日历视图", lines: [540, 480] },
+  { user: "怎么又报错了", lines: [460, 400, 320] },
+  { user: "先别管这个，接着改", lines: [520, 440] },
 ];
 
-const SCROLL = 820;
-const TESTED_AT = 66;
+// Row heights are fixed so that the scroll can be worked out from them.
+const PAD = 90;
+const GAP = 26;
+const USER_H = 96;
+const modelH = (lines: number) => 35 + 28 * lines;
+const exchangeH = (e: Exchange) => USER_H + GAP + modelH(e.lines.length);
+/** Where the scroll has to be for exchange k to sit inside the window. */
+const FOLLOW = 800;
+const scrollTo = (k: number) => {
+  if (k < 0) return 0;
+  const bottom = PAD + CHAT.slice(0, k + 1).reduce((sum, e) => sum + exchangeH(e) + GAP, -GAP);
+  return Math.max(0, bottom - FOLLOW);
+};
+
+const TESTED_AT = 2 * BAR + BEAT;
 
 const UserBubble: React.FC<{ goal: boolean; children: React.ReactNode }> = ({ goal, children }) => (
   <div style={{ display: "flex", justifyContent: "flex-end" }}>
@@ -40,10 +46,12 @@ const UserBubble: React.FC<{ goal: boolean; children: React.ReactNode }> = ({ go
         display: "flex",
         alignItems: "center",
         gap: 18,
+        height: USER_H,
+        boxSizing: "border-box",
         background: "linear-gradient(135deg, rgba(142,162,255,0.32), rgba(195,166,255,0.22))",
         border: "2px solid rgba(195,166,255,0.38)",
         borderRadius: 30,
-        padding: "20px 32px",
+        padding: "0 32px",
         fontSize: 40,
         maxWidth: 840,
       }}
@@ -71,9 +79,14 @@ const ModelBubble: React.FC<{ lines: number[] }> = ({ lines }) => (
 
 export const Drift: React.FC = () => {
   const frame = useCurrentFrame();
-  const scroll = interpolate(frame, [0, 2 * BAR], [0, SCROLL], { ...CLAMP, easing: Easing.in(Easing.quad) });
-  const goal = interpolate(frame, [10, 66], [1, 0.1], CLAMP);
-  const dim = interpolate(frame, [TESTED_AT - 4, TESTED_AT + 10], [1, 0.3], CLAMP);
+  const scroll = interpolate(
+    frame,
+    CHAT.flatMap((_, k) => [k * BEAT, k * BEAT + 12]),
+    CHAT.flatMap((_, k) => [scrollTo(k - 1), scrollTo(k)]),
+    { ...CLAMP, easing: EASE },
+  );
+  const goal = interpolate(frame, [2 * BEAT, 7 * BEAT], [1, 0.1], CLAMP);
+  const dim = interpolate(frame, [2 * BAR, 2 * BAR + 10], [1, 0.3], CLAMP);
   return (
     <AbsoluteFill>
       <div
@@ -90,55 +103,57 @@ export const Drift: React.FC = () => {
       >
         <div
           style={{
-            paddingTop: 90,
+            paddingTop: PAD,
             display: "flex",
             flexDirection: "column",
-            gap: 26,
+            gap: GAP,
             translate: `0px ${-scroll}px`,
           }}
         >
-          {CHAT.map((m, i) =>
-            m.who === "user" ? (
-              <div key={i} style={m.goal ? { opacity: goal } : {}}>
-                <UserBubble goal={m.goal === true}>{m.text}</UserBubble>
+          {CHAT.map((e, k) => (
+            <Reveal key={e.user} at={k * BEAT} style={{ display: "flex", flexDirection: "column", gap: GAP }}>
+              <div style={e.goal ? { opacity: goal } : {}}>
+                <UserBubble goal={e.goal === true}>{e.user}</UserBubble>
               </div>
-            ) : (
-              <ModelBubble key={i} lines={m.lines} />
-            ),
-          )}
+              <div style={{ height: modelH(e.lines.length) }}>
+                <ModelBubble lines={e.lines} />
+              </div>
+            </Reveal>
+          ))}
         </div>
       </div>
-      <Reveal at={TESTED_AT} style={{ position: "absolute", left: 45, top: 1190, width: 900 }}>
-        <div style={{ display: "flex", gap: 20, alignItems: "flex-start" }}>
+      <div style={{ position: "absolute", left: 45, top: 1190, width: 900 }}>
+        <Reveal at={TESTED_AT} style={{ display: "flex", gap: 20, alignItems: "flex-start" }}>
           <Avatar {...MODEL} size={72} />
-          <div>
-            <div
-              style={{
-                ...GLASS,
-                background: "linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03)), #0B0D18",
-                padding: "22px 40px",
-                fontSize: 60,
-                fontWeight: 700,
-              }}
-            >
-              ✓ 测过了
-            </div>
-            <div
-              style={{
-                marginTop: 16,
-                background: "#0B0D18",
-                border: `2.5px dashed ${COLORS.faint}`,
-                borderRadius: 20,
-                padding: "14px 30px",
-                fontSize: 40,
-                color: COLORS.dim,
-              }}
-            >
-              证据：—
-            </div>
+          <div
+            style={{
+              ...GLASS,
+              background: "linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03)), #0B0D18",
+              padding: "22px 40px",
+              fontSize: 60,
+              fontWeight: 700,
+            }}
+          >
+            ✓ 测过了
           </div>
-        </div>
-      </Reveal>
+        </Reveal>
+        <Reveal
+          at={TESTED_AT + BEAT}
+          style={{
+            marginTop: 16,
+            marginLeft: 92,
+            width: "fit-content",
+            background: "#0B0D18",
+            border: `2.5px dashed ${COLORS.faint}`,
+            borderRadius: 20,
+            padding: "14px 30px",
+            fontSize: 40,
+            color: COLORS.dim,
+          }}
+        >
+          证据：—
+        </Reveal>
+      </div>
     </AbsoluteFill>
   );
 };

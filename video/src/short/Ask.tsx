@@ -5,10 +5,10 @@ import { CLAMP, COLORS } from "../theme";
 import { Avatar, MAIN_AGENT, PERSON } from "./Avatar";
 import { BAR, BEAT } from "./timeline";
 
-// Bars 7-10, over the project graph. The person asks three questions
-// (bar 8), the main agent answers four things (bar 9), the person nods once
-// (bar 10) and the graph grows (Graph.tsx). Questions and answers are
-// CHARTER §4. Frames are counted from the start of bar 7.
+// Bars 11-14, over the project graph. The person asks three questions
+// (bar 12), the main agent answers four things (bar 13), the person nods once
+// (bar 14) and the graph grows (Graph.tsx). Questions and answers are
+// CHARTER §4. Frames are counted from the start of bar 11.
 
 const QUESTIONS = ["为什么", "怎么做", "效果是"];
 const ANSWERS: [string, number][] = [

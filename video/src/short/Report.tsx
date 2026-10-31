@@ -4,10 +4,10 @@ import { GLASS, GradientText, Pill, Reveal } from "../parts";
 import { CLAMP, COLORS, EASE } from "../theme";
 import { BAR, BEAT } from "./timeline";
 
-// Bars 17-18: the weekly report card. The four rows are the numbers
+// Bars 21-22: the weekly report card. The four rows are the numbers
 // CHARTER §3.2 item 5 names, taken from the system; there is no real data
 // yet, so the card carries bars and trend arrows only, and says it is a
-// sketch. Frames are counted from the start of bar 17.
+// sketch. Frames are counted from the start of bar 21.
 
 const ROWS: { label: string; bars: number[] }[] = [
   { label: "被问的次数", bars: [64, 56, 48, 36, 28] },
@@ -25,7 +25,7 @@ const Trend: React.FC<{ row: number; bars: number[] }> = ({ row, bars }) => {
   return (
     <div style={{ display: "flex", alignItems: "flex-end", gap: 10, height: 72 }}>
       {bars.map((h, j) => {
-        const k = interpolate(frame, [BAR + 4 + row * 8 + j * 3, BAR + 14 + row * 8 + j * 3], [0, 1], {
+        const k = interpolate(frame, [BAR - 16 + row * 8 + j * 3, BAR - 6 + row * 8 + j * 3], [0, 1], {
           ...CLAMP,
           easing: EASE,
         });

@@ -5,52 +5,59 @@ import { Backdrop } from "../parts";
 import { COLORS, FONT } from "../theme";
 import { Ask } from "./Ask";
 import { Caption } from "./Caption";
+import { Claim } from "./Claim";
 import { Drift } from "./Drift";
-import { End } from "./End";
 import { GraphStage } from "./Graph";
 import { Name } from "./Name";
-import { Open } from "./Open";
 import { Report } from "./Report";
+import { Rework } from "./Rework";
+import { Ending, Opening } from "./Title";
 import { BAR, bar, CAPTIONS } from "./timeline";
 
-// Vertical short, 1080x1920, 40 s. Cuts and captions fall on the bar lines of
-// the score: the claim and the pain (1-4), the name (5-6), the person decides
-// on the graph (7-10), the work, where frame 0's question is answered
-// (11-16), the weekly report (17-18), and the end card (19-20), which shows
-// frame 0's bubble again with green evidence under it.
+// Vertical short, 1080x1920, 48 s. Cuts and captions fall on the bar lines of
+// the score: the title (bars 1-2), the pain, one thing to a beat (3-8), the
+// name taken apart (9-10), the person decides on the graph (11-14), the work,
+// where the question of bar 3 is answered (15-20), the weekly report (21-22),
+// and the end card (23-24), which fades out with the score.
 
 const Work: React.FC = () => {
   const frame = useCurrentFrame();
-  return <GraphStage t={bar(7) + frame} />;
+  return <GraphStage t={bar(11) + frame} />;
 };
 
 export const Short: React.FC = () => (
   <AbsoluteFill style={{ fontFamily: FONT, color: COLORS.text }}>
     <Backdrop />
-    <Sequence name="Claim" from={bar(1)} durationInFrames={2 * BAR}>
-      <Open />
+    <Sequence name="Title" from={bar(1)} durationInFrames={2 * BAR}>
+      <Opening />
     </Sequence>
-    <Sequence name="Drift" from={bar(3)} durationInFrames={2 * BAR}>
+    <Sequence name="Claim" from={bar(3)} durationInFrames={3 * BAR}>
+      <Claim />
+    </Sequence>
+    <Sequence name="Rework" from={bar(4)} durationInFrames={2 * BAR}>
+      <Rework />
+    </Sequence>
+    <Sequence name="Drift" from={bar(6)} durationInFrames={3 * BAR}>
       <Drift />
     </Sequence>
-    <Sequence name="Name" from={bar(5)} durationInFrames={2 * BAR}>
+    <Sequence name="Name" from={bar(9)} durationInFrames={2 * BAR}>
       <Name />
     </Sequence>
-    <Sequence name="Graph" from={bar(7)} durationInFrames={10 * BAR}>
+    <Sequence name="Graph" from={bar(11)} durationInFrames={10 * BAR}>
       <Work />
     </Sequence>
-    <Sequence name="Ask" from={bar(7)} durationInFrames={4 * BAR}>
+    <Sequence name="Ask" from={bar(11)} durationInFrames={4 * BAR}>
       <Ask />
     </Sequence>
-    <Sequence name="Report" from={bar(17)} durationInFrames={2 * BAR}>
+    <Sequence name="Report" from={bar(21)} durationInFrames={2 * BAR}>
       <Report />
     </Sequence>
-    <Sequence name="End" from={bar(19)} durationInFrames={2 * BAR}>
-      <End />
+    <Sequence name="End card" from={bar(23)} durationInFrames={2 * BAR}>
+      <Ending />
     </Sequence>
     {CAPTIONS.map((c) => (
       <Sequence key={c.bar} name={`Caption ${c.bar}`} from={bar(c.bar)} durationInFrames={(c.bars ?? 1) * BAR}>
-        <Caption title={c.title} {...(c.sub ? { sub: c.sub } : {})} immediate={c.bar === 1} />
+        <Caption title={c.title} {...(c.sub ? { sub: c.sub } : {})} />
       </Sequence>
     ))}
     <Audio name="Score" src={staticFile("music/score.wav")} />
