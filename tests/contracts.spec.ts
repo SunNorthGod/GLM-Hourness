@@ -10,7 +10,9 @@ import { apply as glmPromptApply, dialectServiceFor } from '../src/glm-prompt/in
 import { READ_IMAGE_NATIVE, READ_NAME, READ_NATIVE } from '../src/glm-prompt/read-alias.ts'
 import { TODO_NATIVE, TODO_WRITE_NAME } from '../src/glm-prompt/todo-reminder.ts'
 import { graphTools } from '../src/graph/tools.ts'
-import { apply as guardApply } from '../src/guard/index.ts'
+import { GUARD_RULES } from '../src/guard/catalog.ts'
+import { graphFilesOnly } from '../src/guard/graph-files.ts'
+import { activeRules, apply as guardApply } from '../src/guard/index.ts'
 import { memoryTools, storeIo } from '../src/memory/tools.ts'
 import { DIALECT_SERVICE, dialectNames, dialectService, toNativeTool, ZCODE_ALIAS_NATIVES, type DialectService } from '../src/shared/dialect.ts'
 import type { AgentLike, CommandDefinitionLike, ToolFinalResult } from '../src/shared/dsh-min.ts'
@@ -57,6 +59,19 @@ test('tool names: the graph and memory rows register exactly the contract names'
   assert.deepEqual(graphTools('docs/graph', new Map()).map(tool => tool.name), GRAPH_TOOL_NAMES)
   const io = storeIo({ readFile: () => Promise.resolve(''), writeFile: () => Promise.resolve(), rename: () => Promise.resolve() }, 'C:/ws/.llm')
   assert.deepEqual(memoryTools(io).map(tool => tool.name), MEMORY_TOOL_NAMES)
+})
+
+test('guard catalog: each listed rule is the id of a rule object its row installs, and nothing the row installs is missing', () => {
+  // The guard row installs what activeRules gives with a containment root; the graph row installs graphFilesOnly.
+  const installed = {
+    guard: activeRules({ workspaceRoots: ['C:/work/app'], base: 'C:/work/app' }).map(rule => rule.id),
+    graph: [graphFilesOnly('C:/work/app/docs/graph', 'C:/work/app').id],
+  }
+  const listed = (row: string): string[] => GUARD_RULES.filter(rule => rule.row === row).map(rule => rule.id)
+  assert.deepEqual(listed('guard').sort(), [...installed.guard].sort())
+  assert.deepEqual(listed('graph'), installed.graph)
+  assert.deepEqual([...new Set(GUARD_RULES.map(rule => rule.row))].sort(), ['graph', 'guard'], 'only rows that exist on main')
+  assert.ok(GUARD_RULES.every(rule => rule.mode === 'enforce'), 'a rule that is in the catalog denies: there is no shadow mode')
 })
 
 test('tool names: every orchestration tool kept resident exists, and GLM tool search keeps it resident', () => {

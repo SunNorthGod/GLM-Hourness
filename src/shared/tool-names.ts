@@ -13,6 +13,15 @@ export const GRAPH_TOOL_NAMES: readonly string[] = [
   'graph_unlink', 'graph_comment', 'graph_verify', 'graph_decide', 'graph_approve', 'graph_reject',
 ]
 
+/**
+ * The rules row's tools. An agent that the rules board holds back can still
+ * call them, because it has to be able to read the rules that hold it
+ * (src/rules/judge.ts leaves them out of what a one-ticket-per-session entry
+ * queues). The row that registers them, and the contract test that pins the
+ * registration to this list, come with the row.
+ */
+export const RULES_TOOL_NAMES: readonly string[] = ['rules_show']
+
 /** The memory row's tools. */
 export const MEMORY_TOOL_NAMES: readonly string[] = ['memory_store', 'memory_query', 'memory_forget']
 
