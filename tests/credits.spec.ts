@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { chargedCredits, CREDIT_RATES, creditRate, fullCredits, peakWindowAt } from '../src/glm-llm/credits.ts'
+import { chargedCredits, CREDIT_RATES, creditPricing, creditRate, fullCredits, PEAK_END_LABEL, PEAK_HOURS, peakWindowAt } from '../src/glm-llm/credits.ts'
 
 // The GLM credit formula (docs/FACTS.md §2.4). The usage panel that prices
 // a journal with it through the pricing service is in tests/hourness.spec.ts.
@@ -20,6 +20,14 @@ test('peak windows are weekdays 14:00-18:00 UTC+8, named by their UTC+8 date', (
   assert.equal(peakWindowAt(at('2026-11-01T15:00:00+08:00')), undefined) // Sunday
   assert.equal(peakWindowAt(at('2026-11-02T14:30:00+08:00')), '2026-11-02') // Monday
   assert.equal(peakWindowAt(Number.NaN), undefined)
+})
+
+test('the peak hours text and the end label are frozen constants; the pricing service carries the text and keeps its basis byte for byte', () => {
+  assert.deepEqual(PEAK_HOURS, { en: 'weekdays 14:00-18:00 UTC+8', zh: '工作日 14:00–18:00（UTC+8）' })
+  assert.ok(Object.isFrozen(PEAK_HOURS))
+  assert.equal(PEAK_END_LABEL, '18:00')
+  assert.equal(creditPricing.basis, '全部用量记录；高峰为工作日 14:00–18:00（UTC+8），其余时段按 50% 计积分；高峰占比按积分计')
+  assert.equal(creditPricing.peakHours, PEAK_HOURS)
 })
 
 test('credits follow the FACTS.md 2.4 formula; off-peak calls are charged half, cache writes as input', () => {

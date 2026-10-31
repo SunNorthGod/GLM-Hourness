@@ -35,13 +35,14 @@ import { isGlmAssembly, rewriteDialectSections, rewriteToolFace } from './assemb
 import { mapTodoWriteToDsh } from './todowrite.ts'
 import { TODO_WRITE_DESCRIPTION, TODO_WRITE_INPUT_SCHEMA } from './zcode-tool-text.ts'
 import { installTodoReminder, TODO_NATIVE, TODO_WRITE_NAME } from './todo-reminder.ts'
-import { installPeakReminder } from './peak-reminder.ts'
+import { installPeakReminder, readPeakMode, type PeakModeRead } from './peak-reminder.ts'
 import { installToolSearch } from '../toolsearch/index.ts'
 import { DIALECT_SERVICE, type DialectService } from '../shared/dialect.ts'
+import { peakModeService } from '../shared/peak-mode.ts'
 import { provideRowHealth, sessionIdOf, type HealthState, type RowHealth } from '../shared/health.ts'
 import { assemblyRoute, isGlmModel, type Route } from '../shared/route.ts'
 import { MEMORY_TOOL_NAMES } from '../shared/tool-names.ts'
-import type { AgentLike, AssemblePayload, PluginContext, ProvideHost, ToolDefinitionLike } from '../shared/dsh-min.ts'
+import type { AgentLike, AssemblePayload, PluginContext, ProvideHost, ServiceLookup, ToolDefinitionLike } from '../shared/dsh-min.ts'
 import Schema from '../shared/schemastery.ts'
 import type { JsonValue } from '../shared/json.ts'
 
@@ -195,9 +196,11 @@ export function buildAgentAliases(agent: AgentLike): BuiltAlias[] {
  * split sees ZCode names. The reminder reads this step's rewrite: GLM route
  * and TodoWrite on the face before tool search defers it (ZCode checks the
  * turn tools, not the request's resident face). The peak-hour reminder
- * reads the GLM route of the step and the wall clock `now`.
+ * reads the GLM route of the step and the wall clock `now`, and words itself
+ * by the peak mode `peakMode` reads (once per notice sent); without a reader
+ * it sends the M6.1 text.
  */
-export function installDialect(agent: AgentLike, config: GlmPromptConfig = {}, health?: Pick<RowHealth, 'report'>, now: () => number = () => Date.now()): () => void {
+export function installDialect(agent: AgentLike, config: GlmPromptConfig = {}, health?: Pick<RowHealth, 'report'>, now: () => number = () => Date.now(), peakMode?: () => PeakModeRead): () => void {
   const env = sessionEnv(config.env, agent)
   const sections = dialectSections(false, config.persona ?? 'balanced', env === undefined ? config : { ...config, env })
   const withoutMemory = sections.filter(section => section.name !== MEMORY_SECTION)
@@ -229,7 +232,7 @@ export function installDialect(agent: AgentLike, config: GlmPromptConfig = {}, h
   if (todoReminder !== undefined) disposers.push(todoReminder)
   // Registered last, so it runs innermost: its notice precedes the ZCode
   // notices, which keep their collection order after it.
-  const peakReminder = installPeakReminder(agent, () => glmStep, now)
+  const peakReminder = installPeakReminder(agent, () => glmStep, now, peakMode)
   if (peakReminder !== undefined) disposers.push(peakReminder)
   return () => { for (const dispose of disposers.splice(0)) dispose() }
 }
@@ -261,8 +264,24 @@ function provideDialect(ctx: Partial<ProvideHost>, active: WeakSet<AgentLike>): 
   }
 }
 
+/** Where a bad answer of the peak mode service is reported; one function for the process, so each reason is said once (readPeakMode). */
+const warnPeakMode = (message: string): void => console.warn(`dsh-glm-hourness/glm-prompt: ${message}`)
+
+/**
+ * The peak mode of the session `agent` runs, read when the reminder is sent:
+ * the rules row's service as cordis finds it now (the row may come and go),
+ * then the state it holds for the session.
+ */
+function peakModeReader(ctx: ServiceLookup, agent: AgentLike): () => PeakModeRead {
+  return () => {
+    let shapeProblem = false
+    const service = peakModeService(ctx, () => { shapeProblem = true })
+    return readPeakMode(service, shapeProblem, sessionIdOf(agent), warnPeakMode)
+  }
+}
+
 /** cordis plugin entry (cordis passes `ctx` and `config`; `now` is the wall clock, injectable for tests). */
-export function apply(ctx: PluginContext & Partial<ProvideHost>, config: GlmPromptConfig = {}, now: () => number = () => Date.now()): () => void {
+export function apply(ctx: PluginContext & Partial<ProvideHost> & ServiceLookup, config: GlmPromptConfig = {}, now: () => number = () => Date.now()): () => void {
   const installed = new WeakSet<AgentLike>()
   // Agents whose dialect installed without error: the ones the service claims.
   const active = new WeakSet<AgentLike>()
@@ -280,7 +299,7 @@ export function apply(ctx: PluginContext & Partial<ProvideHost>, config: GlmProm
     if (installed.has(agent)) return
     installed.add(agent)
     try {
-      disposers.push(installDialect(agent, config, reporter, now))
+      disposers.push(installDialect(agent, config, reporter, now, peakModeReader(ctx, agent)))
       active.add(agent)
     }
     catch (error) {

@@ -13,7 +13,7 @@
  * are not priced here.
  */
 import type { TokenUsage } from '../shared/lm-min.ts'
-import type { UsagePricing } from '../shared/pricing.ts'
+import type { PeakHoursText, UsagePricing } from '../shared/pricing.ts'
 
 /** Coefficients per 10,000 tokens. */
 interface CreditRate {
@@ -35,6 +35,15 @@ const OFF_PEAK_RATE = 0.5
 const PLAN_OFFSET_MS = 8 * 3_600_000
 const PEAK_START_HOUR = 14
 const PEAK_END_HOUR = 18
+
+/**
+ * The peak hours as text for models (`en`) and people (`zh`), and the end of
+ * a peak as the models read it. The text and the hours (PEAK_START_HOUR,
+ * PEAK_END_HOUR) are in this one file, so a change of the hours is a change
+ * here only.
+ */
+export const PEAK_HOURS: PeakHoursText = Object.freeze({ en: 'weekdays 14:00-18:00 UTC+8', zh: '工作日 14:00–18:00（UTC+8）' })
+export const PEAK_END_LABEL = '18:00'
 
 /**
  * The peak window an instant (epoch milliseconds) falls in, named by its
@@ -68,8 +77,9 @@ export function chargedCredits(rate: CreditRate, usage: TokenUsage, ms: number):
 
 /** The pricing service value of the credit plan (src/shared/pricing.ts). */
 export const creditPricing: UsagePricing = Object.freeze({
-  basis: '全部用量记录；高峰为工作日 14:00–18:00（UTC+8），其余时段按 50% 计积分；高峰占比按积分计',
+  basis: `全部用量记录；高峰为${PEAK_HOURS.zh}，其余时段按 50% 计积分；高峰占比按积分计`,
   plan: 'GLM 积分套餐',
+  peakHours: PEAK_HOURS,
   charged: (model: string, usage: TokenUsage, atMs: number): number | undefined => {
     const rate = creditRate(model)
     return rate === undefined ? undefined : chargedCredits(rate, usage, atMs)

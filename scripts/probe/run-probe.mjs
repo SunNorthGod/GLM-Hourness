@@ -49,8 +49,9 @@ import { dirname, join } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import { crc32, deflateSync } from 'node:zlib'
 import { DISPATCH_TOOLS } from '../../packages/hourness/dist/workflow/index.js'
+import { openRulesBoard } from '../../packages/hourness/dist/rules/engine.js'
 import { clockText } from '../../packages/hourness/dist/rules/index.js'
-import { PEAK_REMINDER_SOURCE, PEAK_REMINDER_TEXT } from '../../packages/glm/dist/glm-prompt/peak-reminder.js'
+import { PEAK_REMINDER_SOURCE, PEAK_REMINDER_TEXT, peakReminderText } from '../../packages/glm/dist/glm-prompt/peak-reminder.js'
 import { peakWindowAt } from '../../packages/glm/dist/glm-llm/credits.js'
 import { userDataHome } from '../../packages/hourness/dist/shared/data-home.js'
 import { HEALTH_PACKAGES, HEALTH_ROWS } from '../../packages/hourness/dist/shared/health.js'
@@ -362,7 +363,12 @@ const peakNotices = step => (step?.messages ?? []).filter(message => message.rol
 const expectedPeakCounts = steps => steps.map((_, index) => new Set(steps.slice(0, index + 1).map(step => peakWindowAt(step.clock)).filter(window => window !== undefined)).size)
 const peakCountsMatch = scenario => scenario.steps.length > 0 && expectedPeakCounts(scenario.steps).every((count, index) => peakNotices(scenario.steps[index]).length === count)
 const peakFirst = peakNotices(peak.steps[0])
-const PEAK_NOTICE = `<system-reminder>\n${PEAK_REMINDER_TEXT}\n</system-reminder>`
+const wrapReminder = text => `<system-reminder>\n${text}\n</system-reminder>`
+// PEAK_NOTICE is what a session gets without the rules row (today's text); REDUCE_NOTICE and STOP_NOTICE what the project's level makes of it (the factory level with the rules board's cap of one GLM subagent, and the person's stop).
+const PEAK_NOTICE = wrapReminder(PEAK_REMINDER_TEXT)
+const REDUCE_NOTICE = wrapReminder(peakReminderText({ level: 'reduce', origin: 'default', glmWorkerCap: 1 }))
+const STOP_NOTICE = wrapReminder(peakReminderText({ level: 'stop', origin: 'human' }))
+const FORBIDDEN_REMINDER_WORDS = ['information only', 'keep working', 'pause', 'postpone', 'defers the tool calls', 'tells you when to continue']
 
 // /hourness-status runs at the same step, after /glm-status is recorded.
 const plain = runScenario('non-glm', 'deepseek-probe', [{ text: 'done', status: true, command: { name: 'hourness-status' } }], 'Reply done.', clockRow(PEAK_AT))
@@ -384,7 +390,12 @@ const stderrOf = scenario => existsSync(join(runDir, scenario, 'stderr.txt')) ? 
 // The GLM route runs both packages, so the pricing service says it is peak
 // (until 18:00 UTC+8); the orchestration package alone has no pricing
 // service and so no peak to read. The main agent's own tool calls run in
-// every state.
+// every state. The GLM package words its peak reminder by the level
+// (docs/ORCHESTRATION.md §11.4): rules-peak sends the factory level's text on
+// the first request and keeps that one notice through the two changes;
+// rules-peak-stop sets the level to 不做 as the person through the rules
+// engine before the run and reads the stop text on the first request, with
+// the main agent's Read executed.
 const RULES_ROW = ['- id: glm-hourness/rules', '  disabled: false']
 const rulesProject = (name) => {
   const ws = join(runDir, name, 'ws')
@@ -398,6 +409,12 @@ const rulesPeak = runScenario('rules-peak', 'glm-5.3', [
   { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } }, command: { name: 'rules', input: 'peak 不做' }, peakMode: true },
   { text: 'done', status: true, command: { name: 'rules', input: 'peak 无影响' }, peakMode: true },
 ], 'Read package.json twice, then reply done.', [...RULES_ROW, ...clockRow(PEAK_AT)], rulesGlm.ws)
+const rulesStopProject = rulesProject('rules-peak-stop')
+const rulesStopSet = rulesStopProject.ready ? await openRulesBoard({ projectRoot: rulesStopProject.ws }).apply('human', { op: 'peak-mode-set', level: 'stop' }) : undefined
+const rulesPeakStop = runScenario('rules-peak-stop', 'glm-5.3', [
+  { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } }, peakMode: true },
+  { text: 'done', peakMode: true },
+], 'Read package.json, then reply done.', [...RULES_ROW, ...clockRow(PEAK_AT)], rulesStopProject.ws)
 const rulesAlone = rulesProject('rules-peak-hourness')
 const rulesPeakAlone = runScenario('rules-peak-hourness', 'deepseek-probe', [
   { tool: { name: 'pwsh', arguments: { command: 'Write-Output probe-rules', description: 'Print a word' } }, command: { name: 'rules', input: 'peak 不做' }, peakMode: true },
@@ -1114,6 +1131,12 @@ const checks = [
   ['rules-peak: the main agent is held on no level: its Read ran under the factory level and again under 不做 in the peak', [1, 2].every(index => { const result = lastToolResult(rulesPeak.steps[index]); return result !== undefined && result.isError !== true }), [1, 2].map(index => lastToolResult(rulesPeak.steps[index])?.text?.slice(0, 40) ?? 'no result').join(' | ')],
   ['rules-peak: the choice is in the repository file and in the project\'s journal (two person\'s writes), and nothing is written in the scenario\'s user-level directory', rulesFile?.peakMode?.level === 'inform' && isDeepStrictEqual(rulesRecords.map(record => [record.op, record.actor, record.from, record.to]), [['peak-mode-set', 'human', 'reduce', 'stop'], ['peak-mode-set', 'human', 'stop', 'inform']]) && !existsSync(join(runDir, 'rules-peak', 'dsh-home', 'glm-hourness', 'rules')), `${JSON.stringify(rulesFile ?? null)}; ${rulesRecords.length} record(s)`],
   ['rules-peak: /glm-status lists the rules row in effect with the level in force at that step and the clock', rulesHealth.rules?.status === ACTED && rulesHealth.rules.package === 'dsh-hourness' && rulesHealth.rules.reason.includes('高峰模式 不做（你选的）；现在是高峰') && grouped(rulesHealth), healthLine(rulesHealth, 'rules') + ` (${rulesHealth.rules?.reason ?? ''})`],
+  ['rules-peak: the first GLM request carries exactly one peak reminder, worded by the factory level with the cap of one GLM subagent, and the two level changes leave that one notice as it was', REDUCE_NOTICE.includes('at most 1 GLM subagent') && rulesPeak.steps.length === 3 && rulesPeak.steps.every(step => peakNotices(step).length === 1 && peakNotices(step)[0].text === REDUCE_NOTICE), `${rulesPeak.steps.map(step => peakNotices(step).length).join('/')} notice(s): ${(peakNotices(rulesPeak.steps[0])[0]?.text ?? '').slice(0, 100).replace(/\n/g, ' ')}`],
+  ['rules-peak-stop: with the level set to 不做 by the person before the run, the row boots on the GLM route, runs both scripted steps and exits clean with nothing from the packages on stderr', rulesStopProject.ready && rulesStopSet?.ok === true && rulesPeakStop.status === 0 && rulesPeakStop.steps.length === 2 && quiet('rules-peak-stop'), `exit ${rulesPeakStop.status}, ${rulesPeakStop.steps.length} step(s), git ${rulesStopProject.ready}, write ${rulesStopSet?.ok === true ? 'ok' : JSON.stringify(rulesStopSet ?? null)}`],
+  ['rules-peak-stop: at the first request the service gives the person\'s stop in the peak, with no cap and the hold of the stop level', rulesPeakStop.steps[0]?.peakMode?.state?.level === 'stop' && rulesPeakStop.steps[0].peakMode.state.origin === 'human' && rulesPeakStop.steps[0].peakMode.state.peak === true && rulesPeakStop.steps[0].peakMode.state.glmWorkerCap === undefined && isDeepStrictEqual(rulesPeakStop.steps[0].peakMode.hold, { level: 'stop', until: PEAK_END }), JSON.stringify(rulesPeakStop.steps[0]?.peakMode ?? null)],
+  ['rules-peak-stop: the first GLM request carries exactly one peak reminder with the stop text, and the next request carries that one again', rulesPeakStop.steps.length === 2 && rulesPeakStop.steps.every(step => peakNotices(step).length === 1 && peakNotices(step)[0].text === STOP_NOTICE), `${rulesPeakStop.steps.map(step => peakNotices(step).length).join('/')} notice(s): ${(peakNotices(rulesPeakStop.steps[0])[0]?.text ?? '').slice(0, 100).replace(/\n/g, ' ')}`],
+  ['rules-peak-stop: the stop text says the main agent is not held, and has none of the words that would tell it to stop, wait or hold its answers', STOP_NOTICE.includes('The main agent is not held on any level: it keeps answering the human and working.') && STOP_NOTICE.endsWith('Do not switch models or plans unless the user asks.\n</system-reminder>') && FORBIDDEN_REMINDER_WORDS.every(word => !STOP_NOTICE.includes(word) && !REDUCE_NOTICE.includes(word)), FORBIDDEN_REMINDER_WORDS.filter(word => STOP_NOTICE.includes(word) || REDUCE_NOTICE.includes(word)).join(', ') || 'none present'],
+  ['rules-peak-stop: the main agent is held on no level: its Read ran under 不做 in the peak and the reply was produced', lastToolResult(rulesPeakStop.steps[1]) !== undefined && lastToolResult(rulesPeakStop.steps[1]).isError !== true && rulesPeakStop.status === 0, lastToolResult(rulesPeakStop.steps[1])?.text?.slice(0, 40) ?? 'no result'],
   ['rules-peak-hourness: with only the orchestration package there is no pricing service: the person\'s choice is kept, no peak is known, there is no cap and no hold, and the command says why', rulesPeakAlone.status === 0 && aloneState !== undefined && aloneState !== null && aloneState.level === 'stop' && aloneState.origin === 'human' && !('peak' in aloneState) && !('glmWorkerCap' in aloneState) && !('until' in aloneState) && rulesPeakAlone.steps[0].peakMode.hold === null && rulesPeakAlone.steps[0].command?.text.includes('读不到是不是高峰（没有计价服务（GLM 通道包未装，或它的 glm-login 行未启用））') === true, JSON.stringify(rulesPeakAlone.steps[0]?.peakMode ?? null)],
   ['rules-peak-hourness: the row is in effect without the pricing service (a supported combination) and the main agent\'s tool call ran', aloneHealth.rules?.status === ACTED && aloneHealth.rules.reason.includes('读不出是不是高峰') && lastToolResult(rulesPeakAlone.steps[1])?.isError !== true && !stderrOf('rules-peak-hourness').includes('dsh-glm-hourness/rules'), `${healthLine(aloneHealth, 'rules')} (${aloneHealth.rules?.reason ?? ''})`],
   ...designChecks(),

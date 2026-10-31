@@ -58,6 +58,8 @@ reference/     不入库：审计用参考源码（zcode-api、deepseek-harness�
 
 M6 额度契约（Q1，项目图 `m6-quota-contract`，分支 `m6-glm-upkeep`，未合入 main）：公共库新增 `src/shared/quota.ts`（额度视图的类型与 `formatMoment`、`peakLine`、`quotaLines`、`quotaLowOf`、`quotaLowLine`、`loginLine`）和 `src/shared/channel-loop.ts`（通道交给循环板的默认条目类型与 `loopDefaultsOf`）；计价服务加三个可选成员 `peakHours`、`quota`、`loopDefaults`，读取函数 `peakHoursOf`、`quotaOf` 在 `src/shared/pricing.ts`。只有契约与纯函数：GLM 包没有提供这三个成员，编排层包没有读它们，两个包的行为不变；`tests/quota.spec.ts` 已进 `npm test` 列表。
 
+M6 高峰提醒按档位（R1，项目图 `m6-reminder-text`，分支 `m6-glm-upkeep`，未合入 main）：GLM 包的高峰提醒按规则行服务 `glmHournessPeakMode` 交出的档位措辞（少做、不做各一段，无影响与读不到档位用 M6.1 原文），不叫主 Agent 停下；`credits.ts` 导出 `PEAK_HOURS` 与 `PEAK_END_LABEL`，`creditPricing` 带 `peakHours`；`ORCHESTRATION.md` §11.4 整节改写；探针 `rules-peak` 加正文检查、新场景 `rules-peak-stop`。合入顺序：先于规则行去掉补丁里的 `disabled: true`，与整块规则板的 R4 先后不限。
+
 行健康（`DESIGN.md` §2.5）：13 个宿主行（下面 2026-10-29 L4 的数字是规则板行加入之前的 11 个）都在激活时与会话中上报生效、部分生效或未生效及原因，`/glm-status` 显示。2026-10-29 L4 的第二次 `/glm-status`：11 行全部生效，glm-llm 的原因是「上游已应答（套餐 coding-plan）」，没有设备 ID 的附注；第一次（还没运行 `/hourness`、没调用图工具）hourness 与 graph 为「已加载，本会话未触发」，其余 9 行生效。
 
 装机：2026-10-29 10:02（UTC+8）agent 重启桌面版，加载主检出 `0f9f284`（代码与 `a9f12e1` 相同）。没有新的 crash log，宿主 stdout 与 stderr 里没有本包的输出；页面控制台只有已知的三类噪声，都不来自本包：inspector 插件连 `ws://127.0.0.1:9230/ingest` 失败、`dsh-app://app/plugins/events` 的 `ERR_FAILED`、旧会话的 `changes.summary` 404。10:48 清理之后再重启一次（`m1-cleanup`）：新实例没有 crash log，控制台只有 ingest 噪声，宿主输出里没有本包；重启时被强制结束的旧实例留下一份 renderer crash log（见 §6 桌面版自验）。
