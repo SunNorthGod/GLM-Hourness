@@ -18,7 +18,11 @@
  * runner's exit with an armed goal. The graph panel scenarios run the
  * bundle's /graph-apply and /graph-run handlers mid-step for the session;
  * the GLM and non-GLM scenarios run /hourness and /hourness-status at their
- * last step, after /glm-status is recorded.
+ * last step, after /glm-status is recorded. Every scenario also mounts the
+ * probe net log (scripts/probe/probe-net.mjs), which records the origin and
+ * path of each request the host process sends; the quota checks read it
+ * (no request to /api/monitor anywhere) together with the quota output of the
+ * three package combinations and the request bodies (no quota text in them).
  *
  * Usage: node scripts/probe/run-probe.mjs
  * Requires the desktop install (DSH_DESKTOP_DIR overrides the location).
@@ -53,6 +57,7 @@ import { openRulesBoard } from '../../packages/hourness/dist/rules/engine.js'
 import { clockText } from '../../packages/hourness/dist/rules/index.js'
 import { PEAK_REMINDER_SOURCE, PEAK_REMINDER_TEXT, peakReminderText } from '../../packages/glm/dist/glm-prompt/peak-reminder.js'
 import { peakWindowAt } from '../../packages/glm/dist/glm-llm/credits.js'
+import { GLM_LOOP_DEFAULTS } from '../../packages/glm/dist/glm-llm/loop-defaults.js'
 import { userDataHome } from '../../packages/hourness/dist/shared/data-home.js'
 import { HEALTH_PACKAGES, HEALTH_ROWS } from '../../packages/hourness/dist/shared/health.js'
 import { GRAPH_TOOL_NAMES, MEMORY_TOOL_NAMES } from '../../packages/glm/dist/shared/tool-names.js'
@@ -64,6 +69,7 @@ import { compareShapes, describeDifference, isProjectDifference, profileShape } 
 import { PACKAGES } from '../packages.mjs'
 import { attachmentsIn, dataRows, designRows, generateProfile, initRepo, limitsRow, PROBE_PROFILES, repo, requireDesktop, sandboxCommand, slash, unlinkProfile, workspaceChangesRow } from '../sandbox.mjs'
 import { GOAL_GATE_DENIAL, PROJECTION_SOURCE, SCOPE_DENIAL } from './probe-dispatch.mjs'
+import { CANARY } from './probe-net.mjs'
 
 requireDesktop('probe')
 
@@ -135,6 +141,11 @@ const realUsage = join(userDataHome(), 'audit', 'usage.jsonl')
 const usageStamp = () => existsSync(realUsage) ? (({ size, mtimeMs }) => `${size}/${mtimeMs}`)(statSync(realUsage)) : 'absent'
 const realUsageBefore = usageStamp()
 
+/** Every scenario booted in this run, in order: the net log and the request dump of each are read by the quota checks. */
+const scenarioNames = []
+/** A scenario's net log (scripts/probe/probe-net.mjs). */
+const netLogOf = name => join(runDir, name, 'net.jsonl')
+
 /**
  * Boot one headless task on `model` with a scripted reply sequence and return
  * the main agent's step requests plus the compaction requests (the
@@ -148,6 +159,7 @@ const realUsageBefore = usageStamp()
  * it lists, so a single-package run has no override without a target.
  */
 function runScenario(name, model, script, task, overlay = [], cwd = repo, others = [], on = profiles['probe-full']) {
+  scenarioNames.push(name)
   const dir = join(runDir, name)
   const home = join(dir, 'home')
   mkdirSync(home, { recursive: true })
@@ -167,6 +179,10 @@ function runScenario(name, model, script, task, overlay = [], cwd = repo, others
     `      name: ${JSON.stringify(slash(join(repo, 'scripts', 'probe', 'probe-llm.mjs')))}`,
     '      inject: [llm]',
     `      config: { dump: ${JSON.stringify(slash(dump))}, script: ${JSON.stringify(JSON.stringify(script))}, others: ${JSON.stringify(JSON.stringify(others))} }`,
+    // The net log goes into every scenario: the checks on requests need all of them.
+    '    - id: glm-hourness-probe/net',
+    `      name: ${JSON.stringify(slash(join(repo, 'scripts', 'probe', 'probe-net.mjs')))}`,
+    `      config: { record: ${JSON.stringify(slash(netLogOf(name)))} }`,
     ...overlay,
     '',
   ].join('\n'))
@@ -932,6 +948,31 @@ const onlyOneLoaded = (health, own, other) => rowsOf(own).every(row => health[ro
 const glmOnlyHealth = healthOf(glmOnly)
 const hournessOnlyHealth = tableOf(hournessOnlyStatus?.text ?? '')
 const hournessOnlyPanel = hournessOnlyReport?.text.split('## 面板\n')[1] ?? ''
+
+// Quota and requests (docs/ORCHESTRATION.md §11.3, M6 acceptance 18 and 19).
+// The glm-login home of every scenario holds no credential, so the quota
+// reader has nothing to send: the net logs (scripts/probe/probe-net.mjs)
+// show no request to /api/monitor, /glm-status and /hourness say not logged
+// in, and no model request carries the quota section.
+const netLog = name => jsonl(netLogOf(name))
+const isCanary = entry => entry.origin === CANARY.origin && entry.path === CANARY.path
+const scenariosWithoutCanary = scenarioNames.filter(name => !netLog(name).some(isCanary))
+const recordedRequests = scenarioNames.reduce((count, name) => count + netLog(name).length, 0)
+const monitorRequests = scenarioNames.flatMap(name => netLog(name).filter(entry => entry.path.startsWith('/api/monitor')).map(entry => `${name}: ${entry.origin}${entry.path}`))
+const NOT_LOGGED_IN_LINE = '额度：未登录 GLM（/glm-login）'
+const PEAK_LINE = /^高峰：(高峰中(，到 .+)?|不是高峰(；下一个高峰 .+)?)（GLM 积分套餐）$/
+const PEAK_LINE_ANYWHERE = /^(- )?高峰：/m
+/** What `quotaLines` starts its lines with (src/shared/quota.ts): the quota section's text in a request body. */
+const QUOTA_TEXT_MARKERS = ['额度：', '额度（服务端读数', '额度已用完（服务端']
+const LOOP_ENTRY_IDS = GLM_LOOP_DEFAULTS.map(entry => entry.id)
+/** The non-empty lines under `## <heading>` of a report, up to the next heading. */
+const sectionOf = (text, heading) => (text.split(`\n## ${heading}\n`)[1] ?? '').split('\n## ')[0].split('\n').filter(line => line.length > 0)
+// /glm-status: credential line, then the peak line and quota section, then the health table.
+const [glmOnlyCredential = '', glmOnlyQuota = '', glmOnlyTable = ''] = (statusStep(glmOnly)?.status ?? '').split('\n\n')
+const hournessOnlyText = hournessOnlyReport?.text ?? ''
+const glmQuotaSection = sectionOf(glmHourness?.text ?? '', '额度')
+const quotaTextBodies = scenarioNames.flatMap(name => jsonl(join(runDir, name, 'requests.jsonl')).map(request => ({ name, body: JSON.stringify({ system: request.system, tools: request.tools, messages: request.messages }) })))
+const quotaTextHits = quotaTextBodies.filter(({ body }) => QUOTA_TEXT_MARKERS.some(marker => body.includes(marker))).map(({ name }) => name)
 const hournessOnlyViolations = jsonl(join(hournessOnlyDir, 'home', 'audit', 'violations.jsonl'))
 const glmOnlyUsage = [join(glmOnlyDir, 'home', 'audit', 'usage.jsonl'), join(glmOnlyDir, 'dsh-home', 'glm-hourness', 'audit', 'usage.jsonl'), join(runDir, 'dsh-root', 'glm-hourness', 'audit', 'usage.jsonl')].filter(file => existsSync(file))
 const quiet = scenario => !stderrOf(scenario).includes('skipping profile bundle') && !stderrOf(scenario).includes('dsh-glm-hourness/')
@@ -1017,6 +1058,12 @@ const checks = [
   titleCheck('hourness-only', hournessOnly.steps[3]?.meta, ['hourness']),
   ['client-modules: mounted on probe-full with glm-ui enabled, the service composes both packages\' client faces, each once, without an error', Array.isArray(clientGraph?.entries) && CLIENT_PACKAGES.every(name => clientGraph.entries.filter(id => id === name).length === 1) && !stderrOf('client-modules').includes('client-modules') && quiet('client-modules'), `${JSON.stringify(clientGraph ?? null)}; stderr ${stderrOf('client-modules').length} byte(s)`],
   ['hourness-only: /hourness lists calls and tokens without the pricing service; no skipped bundle and no row warning', hournessOnlyReport?.kind === 'success' && hournessOnlyPanel.startsWith('- 没有计价服务（GLM 通道包的 glm-login 行提供积分口径），只列调用与 token') && /^- deepseek-probe：\d+ 次 · 未命中输入 \d+/m.test(hournessOnlyPanel) && quiet('hourness-only'), `${hournessOnlyReport?.kind ?? 'not run'}; ${JSON.stringify(hournessOnlyPanel.split('\n').slice(0, 3))}`],
+  [`net: the recorder was live in the host process of every scenario (${scenarioNames.length}): each net log holds the recorder's own request to ${CANARY.origin}${CANARY.path}`, scenarioNames.length > 0 && scenariosWithoutCanary.length === 0, scenariosWithoutCanary.length === 0 ? `${recordedRequests} request(s) recorded in all` : `no canary in: ${scenariosWithoutCanary.join(', ')}`],
+  ['net: no scenario sent a request to /api/monitor (the glm-login home of the probe holds no credential, so the quota reader sends nothing)', scenariosWithoutCanary.length === 0 && monitorRequests.length === 0, monitorRequests.join(', ') || `none among ${recordedRequests} recorded request(s)`],
+  ['glm-only: /glm-status has the peak line and the line saying not logged in between the credential line and the health table', glmOnlyCredential.startsWith('glm-zcode：未登录（套餐 coding-plan）') && PEAK_LINE.test(glmOnlyQuota.split('\n')[0] ?? '') && glmOnlyQuota.split('\n').slice(1).join('\n') === NOT_LOGGED_IN_LINE && glmOnlyTable.startsWith('## 行健康'), JSON.stringify(glmOnlyQuota)],
+  ['hourness-only: /hourness lists tokens and has no peak line, no quota section, no GLM loop-board entry and no warning', hournessOnlyReport?.kind === 'success' && hournessOnlyPanel.startsWith('- 没有计价服务') && /^- deepseek-probe：\d+ 次 · 未命中输入 \d+/m.test(hournessOnlyPanel) && !PEAK_LINE_ANYWHERE.test(hournessOnlyText) && !hournessOnlyText.includes('## 额度') && QUOTA_TEXT_MARKERS.every(marker => !hournessOnlyText.includes(marker)) && LOOP_ENTRY_IDS.every(id => !hournessOnlyText.includes(id)) && !hournessOnlyText.includes('[GLM]') && quiet('hourness-only'), `${hournessOnlyReport?.kind ?? 'not run'}; headings ${hournessOnlyText.split('\n').filter(line => line.startsWith('## ')).join(' | ')}`],
+  ['both packages: /hourness ends in the quota section and it says not logged in', glmHourness?.kind === 'success' && isDeepStrictEqual(glmQuotaSection, [NOT_LOGGED_IN_LINE]), JSON.stringify(glmQuotaSection)],
+  [`quota: none of the ${quotaTextBodies.length} model requests of the ${scenarioNames.length} scenarios (system prompt, tools, messages) contains the quota section text`, quotaTextBodies.length > 0 && quotaTextHits.length === 0, quotaTextHits.length === 0 ? `markers ${QUOTA_TEXT_MARKERS.join(' ')}` : `in: ${[...new Set(quotaTextHits)].join(', ')}`],
   ['glm boot: the runtime reached the probe provider', glmFirst !== undefined, `exit ${glm.status}, ${glm.steps.length} step(s)`],
   ['graph panel: /graph-apply comments as the human in the graph under the session working directory', panelCommands[0]?.kind === 'success' && panelCommands[0].text === '已批注「探针目标」' && panelLast('goal-1')?.actor === 'human' && panelLast('goal-1')?.text === 'probe comment', JSON.stringify(panelCommands[0] ?? null)],
   ['graph panel: /graph-apply decides with the question rev as the human', panelCommands[1]?.kind === 'success' && panelCommands[1].text === '已拍板「探针问题」：A 甲' && panelAfter.nodes.get('question-1')?.status === 'done' && panelLast('question-1')?.actor === 'human' && panelLast('question-1')?.op === 'decide', JSON.stringify(panelCommands[1] ?? null)],
