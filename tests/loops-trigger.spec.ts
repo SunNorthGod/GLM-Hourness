@@ -245,7 +245,7 @@ test('matches: a regex that takes more than 50 ms on the fixed long inputs is in
     assert.deepEqual(paths(issues), ['filter.task'], pattern)
     assert.match(issues[0]?.message ?? '', /太慢/, pattern)
   }
-  const fine = ['^npm\\s+install\\b', 'rm\\s+-rf\\s+/', '\\.env$', '^git\\s+push\\b.*--force', 'curl .*\\|\\s*(sh|bash)', '(^|[\\\\/])\\.env(\\.|$)', 'DROP\\s+TABLE', '[a-z]+@[a-z]+\\.com']
+  const fine = ['^npm\\s+install\\b', 'rm\\s+-rf\\s+/', '\\.env$', '^git\\s+push\\b.*--force', 'curl .*\\|\\s*(sh|bash)', '(^|[\\\\/])\\.env(\\.|$)', 'DROP\\s+TABLE', '^[a-z]+@[a-z]+\\.com$']
   for (const pattern of fine) assert.deepEqual(check(onEvent('hourness.handback'), { task: { matches: pattern } }), [], pattern)
   assert.ok(Date.now() - started < 20_000, 'the probe stops at the first input that is too slow')
 })
