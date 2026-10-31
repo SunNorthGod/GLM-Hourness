@@ -1,10 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1460" height="13338" viewBox="0 0 1460 13338" font-family="system-ui, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" data-revision="f910b0b4dd53">
-<title>项目图 · 修订 f910b0b4dd53 · 188 个节点</title>
+<svg xmlns="http://www.w3.org/2000/svg" width="1460" height="13569" viewBox="0 0 1460 13569" font-family="system-ui, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" data-revision="c76cc669b5f2">
+<title>项目图 · 修订 c76cc669b5f2 · 191 个节点</title>
 <defs><marker id="graph-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#6b7280"/></marker><marker id="graph-arrow-purple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#7c3aed"/></marker></defs>
-<rect width="1460" height="13338" fill="#ffffff"/>
+<rect width="1460" height="13569" fill="#ffffff"/>
 <g data-legend="true" transform="translate(20 20)">
 <rect width="596" height="134" rx="8" fill="#f9fafb" stroke="#e5e7eb"/>
-<text x="10" y="23" font-size="13" font-weight="600" fill="#111827">项目图 · 修订 f910b0b4dd53 · 188 个节点</text>
+<text x="10" y="23" font-size="13" font-weight="600" fill="#111827">项目图 · 修订 c76cc669b5f2 · 191 个节点</text>
 <text x="10" y="48.2" font-size="12" fill="#6b7280">状态</text>
 <rect x="54" y="37" width="28" height="14" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
 <text x="88" y="48.2" font-size="12" fill="#111827">完成</text>
@@ -44,11 +44,11 @@
 <text x="10" y="118.2" font-size="12" fill="#6b7280">箭头指向后来的一方：从前置指向依赖它的节点，从来源指向因它而有的节点，从旧节点指向取代它的新节点</text>
 </g>
 <g data-graph="true" transform="translate(20 170)">
-<path data-edge="parent" data-node="m0" data-to="hourness" d="M220 4885.5C252 4885.5 252 24.5 284 24.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="orch" data-to="hourness" d="M220 4885.5C252 4885.5 252 4770 284 4770" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m6" data-to="orch" d="M513 4770C545 4770 545 95.5 577 95.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-native-panel" data-to="orch" d="M513 4770C545 4770 545 163.5 577 163.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m2" data-to="orch" d="M513 4770C545 4770 545 734.5 577 734.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m0" data-to="hourness" d="M220 5001C252 5001 252 24.5 284 24.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="orch" data-to="hourness" d="M220 5001C252 5001 252 4885.5 284 4885.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m6" data-to="orch" d="M513 4885.5C545 4885.5 545 95.5 577 95.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-native-panel" data-to="orch" d="M513 4885.5C545 4885.5 545 163.5 577 163.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m2" data-to="orch" d="M513 4885.5C545 4885.5 545 734.5 577 734.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="q-graph-design" data-to="m2" d="M819 734.5C851 734.5 851 252.5 883 252.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m2-3" data-to="m2" d="M819 734.5C851 734.5 851 329.5 883 329.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m2-2" data-to="m2" d="M819 734.5C851 734.5 851 406.5 883 406.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
@@ -66,7 +66,7 @@
 <path data-edge="parent" data-node="question-2" data-to="m2-11" d="M1145 1086.5C1177 1086.5 1177 1086.5 1209 1086.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="q-graph-details" data-to="m2" d="M819 734.5C851 734.5 851 1166.5 883 1166.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="question-1" data-to="m2" d="M819 734.5C851 734.5 851 1225.5 883 1225.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m3" data-to="orch" d="M513 4770C545 4770 545 1894.5 577 1894.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m3" data-to="orch" d="M513 4885.5C545 4885.5 545 1894.5 577 1894.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m3-2" data-to="m3" d="M819 1894.5C851 1894.5 851 1296.5 883 1296.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m3-3" data-to="m3" d="M819 1894.5C851 1894.5 851 1355.5 883 1355.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m3-4" data-to="m3" d="M819 1894.5C851 1894.5 851 1414.5 883 1414.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
@@ -84,164 +84,167 @@
 <path data-edge="parent" data-node="question-26" data-to="m3" d="M819 1894.5C851 1894.5 851 2311.5 883 2311.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="d-interview-cards" data-to="m3" d="M819 1894.5C851 1894.5 851 2397.5 883 2397.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="question-39" data-to="m3" d="M819 1894.5C851 1894.5 851 2483.5 883 2483.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-role-cards" data-to="orch" d="M513 4770C545 4770 545 2572.5 577 2572.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-dispatch" data-to="orch" d="M513 4770C545 4770 545 2658.5 577 2658.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m4" data-to="orch" d="M513 4770C545 4770 545 2747.5 577 2747.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-role-cards" data-to="orch" d="M513 4885.5C545 4885.5 545 2572.5 577 2572.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-dispatch" data-to="orch" d="M513 4885.5C545 4885.5 545 2658.5 577 2658.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m4" data-to="orch" d="M513 4885.5C545 4885.5 545 2747.5 577 2747.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m4-request-card" data-to="m4" d="M819 2747.5C851 2747.5 851 2747.5 883 2747.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-async-cards" data-to="orch" d="M513 4770C545 4770 545 2827.5 577 2827.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-driver" data-to="orch" d="M513 4770C545 4770 545 2913.5 577 2913.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="risk-orch-distribution" data-to="orch" d="M513 4770C545 4770 545 2999.5 577 2999.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="norm-decision-tiers" data-to="orch" d="M513 4770C545 4770 545 3067.5 577 3067.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="norm-audit-trail" data-to="orch" d="M513 4770C545 4770 545 3135.5 577 3135.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="norm-verify-tiers" data-to="orch" d="M513 4770C545 4770 545 3212.5 577 3212.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="split" data-to="orch" d="M513 4770C545 4770 545 3467 577 3467" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-async-cards" data-to="orch" d="M513 4885.5C545 4885.5 545 2827.5 577 2827.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-driver" data-to="orch" d="M513 4885.5C545 4885.5 545 2913.5 577 2913.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="risk-orch-distribution" data-to="orch" d="M513 4885.5C545 4885.5 545 2999.5 577 2999.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="norm-decision-tiers" data-to="orch" d="M513 4885.5C545 4885.5 545 3067.5 577 3067.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="norm-audit-trail" data-to="orch" d="M513 4885.5C545 4885.5 545 3135.5 577 3135.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="norm-verify-tiers" data-to="orch" d="M513 4885.5C545 4885.5 545 3212.5 577 3212.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="split" data-to="orch" d="M513 4885.5C545 4885.5 545 3467 577 3467" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="question-18" data-to="split" d="M819 3467C851 3467 851 3301.5 883 3301.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="question-13" data-to="split" d="M819 3467C851 3467 851 3369.5 883 3369.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="question-14" data-to="split" d="M819 3467C851 3467 851 3437.5 883 3437.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="question-15" data-to="split" d="M819 3467C851 3467 851 3505.5 883 3505.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="question-16" data-to="split" d="M819 3467C851 3467 851 3564.5 883 3564.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="question-17" data-to="split" d="M819 3467C851 3467 851 3632.5 883 3632.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m5" data-to="orch" d="M513 4770C545 4770 545 3730.5 577 3730.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m5" data-to="orch" d="M513 4885.5C545 4885.5 545 3730.5 577 3730.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="lessons" data-to="m5" d="M819 3730.5C851 3730.5 851 3730.5 883 3730.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="d-memory-scope" data-to="lessons" d="M1145 3730.5C1177 3730.5 1177 3730.5 1209 3730.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="dogfood" data-to="orch" d="M513 4770C545 4770 545 3903 577 3903" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-dogfood-scope" data-to="dogfood" d="M819 3903C851 3903 851 3846.5 883 3846.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-rules-peak-slice" data-to="dogfood" d="M819 3903C851 3903 851 3959.5 883 3959.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="question-10" data-to="orch" d="M513 4770C545 4770 545 4066.5 577 4066.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="bootstrap" data-to="orch" d="M513 4770C545 4770 545 4143.5 577 4143.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="field-trial" data-to="orch" d="M513 4770C545 4770 545 4211.5 577 4211.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m8" data-to="orch" d="M513 4770C545 4770 545 4513.5 577 4513.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m8-detail-layout" data-to="m8" d="M819 4513.5C851 4513.5 851 4282.5 883 4282.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-ui-look-not-operate" data-to="m8" d="M819 4513.5C851 4513.5 851 4350.5 883 4350.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m8-doing-layout" data-to="m8" d="M819 4513.5C851 4513.5 851 4418.5 883 4418.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m8-ui-audit" data-to="m8" d="M819 4513.5C851 4513.5 851 4486.5 883 4486.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="onboarding" data-to="m8" d="M819 4513.5C851 4513.5 851 4563.5 883 4563.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m8-plain-language" data-to="m8" d="M819 4513.5C851 4513.5 851 4649.5 883 4649.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m8-row-titles" data-to="m8" d="M819 4513.5C851 4513.5 851 4735.5 883 4735.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="rules" data-to="orch" d="M513 4770C545 4770 545 5105.5 577 5105.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-rules-human-only" data-to="rules" d="M819 5105.5C851 5105.5 851 4824.5 883 4824.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="question-32" data-to="rules" d="M819 5105.5C851 5105.5 851 4892.5 883 4892.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="question-33" data-to="rules" d="M819 5105.5C851 5105.5 851 4951.5 883 4951.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="question-34" data-to="rules" d="M819 5105.5C851 5105.5 851 5019.5 883 5019.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="question-35" data-to="rules" d="M819 5105.5C851 5105.5 851 5087.5 883 5087.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="question-36" data-to="rules" d="M819 5105.5C851 5105.5 851 5146.5 883 5146.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-peak-mode" data-to="rules" d="M819 5105.5C851 5105.5 851 5223.5 883 5223.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-main-agent-peak-exempt" data-to="rules" d="M819 5105.5C851 5105.5 851 5309.5 883 5309.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-rules-in-repo" data-to="rules" d="M819 5105.5C851 5105.5 851 5386.5 883 5386.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m7" data-to="orch" d="M513 4770C545 4770 545 5931 577 5931" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-plan-approval" data-to="m7" d="M819 5931C851 5931 851 5484.5 883 5484.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="question-37" data-to="m7" d="M819 5931C851 5931 851 5561.5 883 5561.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="question-38" data-to="m7" d="M819 5931C851 5931 851 5629.5 883 5629.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m7-1" data-to="m7" d="M819 5931C851 5931 851 5715.5 883 5715.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m7-2" data-to="m7" d="M819 5931C851 5931 851 5801.5 883 5801.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m7-3" data-to="m7" d="M819 5931C851 5931 851 5878.5 883 5878.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="risk-calib-read" data-to="m7" d="M819 5931C851 5931 851 5955.5 883 5955.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m7-10" data-to="m7" d="M819 5931C851 5931 851 6023.5 883 6023.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m7-4" data-to="m7" d="M819 5931C851 5931 851 6082.5 883 6082.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m7-5" data-to="m7" d="M819 5931C851 5931 851 6150.5 883 6150.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m7-6" data-to="m7" d="M819 5931C851 5931 851 6218.5 883 6218.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m7-7" data-to="m7" d="M819 5931C851 5931 851 6277.5 883 6277.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m7-8" data-to="m7" d="M819 5931C851 5931 851 6336.5 883 6336.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m7-9" data-to="m7" d="M819 5931C851 5931 851 6395.5 883 6395.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="risk-shared-desktop" data-to="orch" d="M513 4770C545 4770 545 6484.5 577 6484.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="ablation" data-to="orch" d="M513 4770C545 4770 545 6561.5 577 6561.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="question-30" data-to="orch" d="M513 4770C545 4770 545 6629.5 577 6629.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="prompt-fixes" data-to="orch" d="M513 4770C545 4770 545 6706.5 577 6706.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="question-11" data-to="orch" d="M513 4770C545 4770 545 6783.5 577 6783.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="question-12" data-to="orch" d="M513 4770C545 4770 545 6851.5 577 6851.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="reading-digest" data-to="orch" d="M513 4770C545 4770 545 6928.5 577 6928.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="prompt-audit" data-to="orch" d="M513 4770C545 4770 545 7023.5 577 7023.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-recommend-last" data-to="orch" d="M513 4770C545 4770 545 7109.5 577 7109.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="recommend-last" data-to="orch" d="M513 4770C545 4770 545 7195.5 577 7195.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-failure-plans" data-to="orch" d="M513 4770C545 4770 545 7281.5 577 7281.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="question-28" data-to="orch" d="M513 4770C545 4770 545 7358.5 577 7358.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-counter-line" data-to="orch" d="M513 4770C545 4770 545 7435.5 577 7435.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="question-29" data-to="orch" d="M513 4770C545 4770 545 7521.5 577 7521.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-option-card" data-to="orch" d="M513 4770C545 4770 545 7616.5 577 7616.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-inertia-breaker" data-to="orch" d="M513 4770C545 4770 545 7702.5 577 7702.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="question-31" data-to="orch" d="M513 4770C545 4770 545 7779.5 577 7779.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-plain-questions" data-to="orch" d="M513 4770C545 4770 545 7856.5 577 7856.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-auto-drive" data-to="orch" d="M513 4770C545 4770 545 7942.5 577 7942.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-main-agent-models" data-to="orch" d="M513 4770C545 4770 545 8028.5 577 8028.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-main-agent-shell" data-to="orch" d="M513 4770C545 4770 545 8105.5 577 8105.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-one-main-agent" data-to="orch" d="M513 4770C545 4770 545 8200.5 577 8200.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-design-onepage" data-to="orch" d="M513 4770C545 4770 545 8304.5 577 8304.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="metrics" data-to="orch" d="M513 4770C545 4770 545 8390.5 577 8390.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-chat-not-cards" data-to="orch" d="M513 4770C545 4770 545 8476.5 577 8476.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="schedules" data-to="orch" d="M513 4770C545 4770 545 8571.5 577 8571.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-defaults-readonly" data-to="orch" d="M513 4770C545 4770 545 8666.5 577 8666.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-rules-visible" data-to="orch" d="M513 4770C545 4770 545 8752.5 577 8752.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="user-journey" data-to="orch" d="M513 4770C545 4770 545 8838.5 577 8838.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-boards-as-hooks" data-to="orch" d="M513 4770C545 4770 545 8951.5 577 8951.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-alignment-rounds" data-to="orch" d="M513 4770C545 4770 545 9064.5 577 9064.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-script-timeout" data-to="orch" d="M513 4770C545 4770 545 9168.5 577 9168.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-agent-examples" data-to="orch" d="M513 4770C545 4770 545 9272.5 577 9272.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-subagent-sonnet" data-to="orch" d="M513 4770C545 4770 545 9358.5 577 9358.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-freeze-until-dogfood" data-to="orch" d="M513 4770C545 4770 545 9435.5 577 9435.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-graph-programming" data-to="hourness" d="M220 4885.5C252 4885.5 252 9515.5 284 9515.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="question-27" data-to="hourness" d="M220 4885.5C252 4885.5 252 9592.5 284 9592.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="norm-merge-gate" data-to="hourness" d="M220 4885.5C252 4885.5 252 9678.5 284 9678.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="norm-review-floor" data-to="hourness" d="M220 4885.5C252 4885.5 252 9746.5 284 9746.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="q-old-folder" data-to="glm-house" d="M220 11479.5C252 11479.5 252 9844.5 284 9844.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="zcode-3171" data-to="glm-house" d="M220 11479.5C252 11479.5 252 9930.5 284 9930.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="zcode-3171-follow" data-to="glm-house" d="M220 11479.5C252 11479.5 252 10016.5 284 10016.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-zcode-3171" data-to="glm-house" d="M220 11479.5C252 11479.5 252 10102.5 284 10102.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="bottom" data-to="glm-house" d="M220 11479.5C252 11479.5 252 11657.5 284 11657.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="q-glm-route" data-to="bottom" d="M513 11657.5C545 11657.5 545 10200.5 577 10200.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="risk-signing" data-to="bottom" d="M513 11657.5C545 11657.5 545 10277.5 577 10277.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-direct" data-to="bottom" d="M513 11657.5C545 11657.5 545 10354.5 577 10354.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-baseline" data-to="bottom" d="M513 11657.5C545 11657.5 545 10431.5 577 10431.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-toolsearch" data-to="bottom" d="M513 11657.5C545 11657.5 545 10517.5 577 10517.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="q-cot" data-to="bottom" d="M513 11657.5C545 11657.5 545 10603.5 577 10603.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="risk-l3-only" data-to="bottom" d="M513 11657.5C545 11657.5 545 10680.5 577 10680.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="risk-rc3" data-to="bottom" d="M513 11657.5C545 11657.5 545 10757.5 577 10757.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m1" data-to="bottom" d="M513 11657.5C545 11657.5 545 11980.5 577 11980.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m1-1" data-to="m1" d="M819 11980.5C851 11980.5 851 10846.5 883 10846.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m1-2" data-to="m1" d="M819 11980.5C851 11980.5 851 10914.5 883 10914.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m1-3" data-to="m1" d="M819 11980.5C851 11980.5 851 10973.5 883 10973.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m1-6" data-to="m1" d="M819 11980.5C851 11980.5 851 11041.5 883 11041.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m1-8" data-to="m1" d="M819 11980.5C851 11980.5 851 11118.5 883 11118.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m1-7" data-to="m1" d="M819 11980.5C851 11980.5 851 11195.5 883 11195.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m1-4" data-to="m1" d="M819 11980.5C851 11980.5 851 11272.5 883 11272.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="q-profile-cleanup" data-to="m1" d="M819 11980.5C851 11980.5 851 11349.5 883 11349.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m1-10" data-to="m1" d="M819 11980.5C851 11980.5 851 11426.5 883 11426.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m1-11" data-to="m1" d="M819 11980.5C851 11980.5 851 11494.5 883 11494.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m1-usage" data-to="m1" d="M819 11980.5C851 11980.5 851 11553.5 883 11553.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m1-cleanup" data-to="m1" d="M819 11980.5C851 11980.5 851 11630.5 883 11630.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m1-5" data-to="m1" d="M819 11980.5C851 11980.5 851 11716.5 883 11716.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="q-l4" data-to="m1" d="M819 11980.5C851 11980.5 851 11784.5 883 11784.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m1-compact" data-to="m1" d="M819 11980.5C851 11980.5 851 11852.5 883 11852.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="q-checkers" data-to="m1" d="M819 11980.5C851 11980.5 851 11929.5 883 11929.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m1-images" data-to="m1" d="M819 11980.5C851 11980.5 851 12006.5 883 12006.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m1-9" data-to="m1" d="M819 11980.5C851 11980.5 851 12083.5 883 12083.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="q-gitleaks" data-to="m1" d="M819 11980.5C851 11980.5 851 12160.5 883 12160.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="q-eslint-js" data-to="m1" d="M819 11980.5C851 11980.5 851 12228.5 883 12228.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="q-scripts-dev" data-to="m1" d="M819 11980.5C851 11980.5 851 12296.5 883 12296.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="q-typescript" data-to="m1" d="M819 11980.5C851 11980.5 851 12364.5 883 12364.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m1-followups" data-to="m1" d="M819 11980.5C851 11980.5 851 12450.5 883 12450.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m1-signing" data-to="m1" d="M819 11980.5C851 11980.5 851 12557.5 883 12557.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="question-3" data-to="m1-signing" d="M1145 12557.5C1177 12557.5 1177 12557.5 1209 12557.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m1-l4fix" data-to="m1" d="M819 11980.5C851 11980.5 851 12637.5 883 12637.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m1-cache" data-to="m1" d="M819 11980.5C851 11980.5 851 12705.5 883 12705.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m1-cache-flash" data-to="m1" d="M819 11980.5C851 11980.5 851 12794.5 883 12794.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="question-5" data-to="m1-cache-flash" d="M1145 12794.5C1177 12794.5 1177 12794.5 1209 12794.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m1-parity" data-to="m1" d="M819 11980.5C851 11980.5 851 12999 883 12999" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="question-6" data-to="m1-parity" d="M1145 12999C1177 12999 1177 12883.5 1209 12883.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="question-7" data-to="m1-parity" d="M1145 12999C1177 12999 1177 12960.5 1209 12960.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="question-8" data-to="m1-parity" d="M1145 12999C1177 12999 1177 13037.5 1209 13037.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="question-9" data-to="m1-parity" d="M1145 12999C1177 12999 1177 13114.5 1209 13114.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="depends" data-node="ablation" data-to="split" d="M819 3480.4C899 3480.4 899 6571.3 819 6571.3" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#graph-arrow)"/>
-<path data-edge="depends" data-node="bootstrap" data-to="split" d="M819 3480.4C899 3480.4 899 4156.9 819 4156.9" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#graph-arrow)"/>
-<path data-edge="depends" data-node="dogfood" data-to="m3" d="M819 1904.3C899 1904.3 899 3916.4 819 3916.4" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#graph-arrow)"/>
-<path data-edge="depends" data-node="dogfood" data-to="m7" d="M819 5940.8C899 5940.8 899 3916.4 819 3916.4" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#graph-arrow)"/>
-<path data-edge="depends" data-node="field-trial" data-to="dogfood" d="M819 3916.4C893.8 3916.4 893.8 4221.3 819 4221.3" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#graph-arrow)"/>
+<path data-edge="parent" data-node="question-10" data-to="orch" d="M513 4885.5C545 4885.5 545 3828.5 577 3828.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="bootstrap" data-to="orch" d="M513 4885.5C545 4885.5 545 3905.5 577 3905.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="dogfood" data-to="orch" d="M513 4885.5C545 4885.5 545 4069 577 4069" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-dogfood-scope" data-to="dogfood" d="M819 4069C851 4069 851 4012.5 883 4012.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-rules-peak-slice" data-to="dogfood" d="M819 4069C851 4069 851 4125.5 883 4125.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m8" data-to="orch" d="M513 4885.5C545 4885.5 545 4454.5 577 4454.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m8-detail-layout" data-to="m8" d="M819 4454.5C851 4454.5 851 4223.5 883 4223.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-ui-look-not-operate" data-to="m8" d="M819 4454.5C851 4454.5 851 4291.5 883 4291.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m8-doing-layout" data-to="m8" d="M819 4454.5C851 4454.5 851 4359.5 883 4359.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m8-ui-audit" data-to="m8" d="M819 4454.5C851 4454.5 851 4427.5 883 4427.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="onboarding" data-to="m8" d="M819 4454.5C851 4454.5 851 4504.5 883 4504.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m8-plain-language" data-to="m8" d="M819 4454.5C851 4454.5 851 4590.5 883 4590.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m8-row-titles" data-to="m8" d="M819 4454.5C851 4454.5 851 4676.5 883 4676.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="rules" data-to="orch" d="M513 4885.5C545 4885.5 545 5046.5 577 5046.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-rules-human-only" data-to="rules" d="M819 5046.5C851 5046.5 851 4765.5 883 4765.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="question-32" data-to="rules" d="M819 5046.5C851 5046.5 851 4833.5 883 4833.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="question-33" data-to="rules" d="M819 5046.5C851 5046.5 851 4892.5 883 4892.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="question-34" data-to="rules" d="M819 5046.5C851 5046.5 851 4960.5 883 4960.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="question-35" data-to="rules" d="M819 5046.5C851 5046.5 851 5028.5 883 5028.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="question-36" data-to="rules" d="M819 5046.5C851 5046.5 851 5087.5 883 5087.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-peak-mode" data-to="rules" d="M819 5046.5C851 5046.5 851 5164.5 883 5164.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-main-agent-peak-exempt" data-to="rules" d="M819 5046.5C851 5046.5 851 5250.5 883 5250.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-rules-in-repo" data-to="rules" d="M819 5046.5C851 5046.5 851 5327.5 883 5327.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m7" data-to="orch" d="M513 4885.5C545 4885.5 545 5872 577 5872" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-plan-approval" data-to="m7" d="M819 5872C851 5872 851 5425.5 883 5425.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="question-37" data-to="m7" d="M819 5872C851 5872 851 5502.5 883 5502.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="question-38" data-to="m7" d="M819 5872C851 5872 851 5570.5 883 5570.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m7-1" data-to="m7" d="M819 5872C851 5872 851 5656.5 883 5656.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m7-2" data-to="m7" d="M819 5872C851 5872 851 5742.5 883 5742.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m7-3" data-to="m7" d="M819 5872C851 5872 851 5819.5 883 5819.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="risk-calib-read" data-to="m7" d="M819 5872C851 5872 851 5896.5 883 5896.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m7-10" data-to="m7" d="M819 5872C851 5872 851 5964.5 883 5964.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m7-4" data-to="m7" d="M819 5872C851 5872 851 6023.5 883 6023.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m7-5" data-to="m7" d="M819 5872C851 5872 851 6091.5 883 6091.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m7-6" data-to="m7" d="M819 5872C851 5872 851 6159.5 883 6159.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m7-7" data-to="m7" d="M819 5872C851 5872 851 6218.5 883 6218.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m7-8" data-to="m7" d="M819 5872C851 5872 851 6277.5 883 6277.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m7-9" data-to="m7" d="M819 5872C851 5872 851 6336.5 883 6336.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="field-trial" data-to="orch" d="M513 4885.5C545 4885.5 545 6407.5 577 6407.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="risk-shared-desktop" data-to="orch" d="M513 4885.5C545 4885.5 545 6484.5 577 6484.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="question-11" data-to="orch" d="M513 4885.5C545 4885.5 545 6570.5 577 6570.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="prompt-fixes" data-to="orch" d="M513 4885.5C545 4885.5 545 6647.5 577 6647.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="ablation" data-to="orch" d="M513 4885.5C545 4885.5 545 6715.5 577 6715.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="question-30" data-to="orch" d="M513 4885.5C545 4885.5 545 6783.5 577 6783.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="prompt-audit" data-to="orch" d="M513 4885.5C545 4885.5 545 6869.5 577 6869.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="question-12" data-to="orch" d="M513 4885.5C545 4885.5 545 6946.5 577 6946.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="reading-digest" data-to="orch" d="M513 4885.5C545 4885.5 545 7023.5 577 7023.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-recommend-last" data-to="orch" d="M513 4885.5C545 4885.5 545 7109.5 577 7109.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="recommend-last" data-to="orch" d="M513 4885.5C545 4885.5 545 7195.5 577 7195.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-failure-plans" data-to="orch" d="M513 4885.5C545 4885.5 545 7281.5 577 7281.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="question-28" data-to="orch" d="M513 4885.5C545 4885.5 545 7358.5 577 7358.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-counter-line" data-to="orch" d="M513 4885.5C545 4885.5 545 7435.5 577 7435.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="question-29" data-to="orch" d="M513 4885.5C545 4885.5 545 7521.5 577 7521.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-option-card" data-to="orch" d="M513 4885.5C545 4885.5 545 7616.5 577 7616.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-inertia-breaker" data-to="orch" d="M513 4885.5C545 4885.5 545 7702.5 577 7702.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="question-31" data-to="orch" d="M513 4885.5C545 4885.5 545 7779.5 577 7779.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-plain-questions" data-to="orch" d="M513 4885.5C545 4885.5 545 7856.5 577 7856.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-auto-drive" data-to="orch" d="M513 4885.5C545 4885.5 545 7942.5 577 7942.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-main-agent-models" data-to="orch" d="M513 4885.5C545 4885.5 545 8028.5 577 8028.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-main-agent-shell" data-to="orch" d="M513 4885.5C545 4885.5 545 8105.5 577 8105.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-one-main-agent" data-to="orch" d="M513 4885.5C545 4885.5 545 8200.5 577 8200.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-design-onepage" data-to="orch" d="M513 4885.5C545 4885.5 545 8304.5 577 8304.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="metrics" data-to="orch" d="M513 4885.5C545 4885.5 545 8390.5 577 8390.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-chat-not-cards" data-to="orch" d="M513 4885.5C545 4885.5 545 8476.5 577 8476.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="schedules" data-to="orch" d="M513 4885.5C545 4885.5 545 8571.5 577 8571.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-defaults-readonly" data-to="orch" d="M513 4885.5C545 4885.5 545 8666.5 577 8666.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-rules-visible" data-to="orch" d="M513 4885.5C545 4885.5 545 8752.5 577 8752.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="user-journey" data-to="orch" d="M513 4885.5C545 4885.5 545 8838.5 577 8838.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-boards-as-hooks" data-to="orch" d="M513 4885.5C545 4885.5 545 8951.5 577 8951.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-alignment-rounds" data-to="orch" d="M513 4885.5C545 4885.5 545 9064.5 577 9064.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-script-timeout" data-to="orch" d="M513 4885.5C545 4885.5 545 9168.5 577 9168.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-agent-examples" data-to="orch" d="M513 4885.5C545 4885.5 545 9272.5 577 9272.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-subagent-sonnet" data-to="orch" d="M513 4885.5C545 4885.5 545 9358.5 577 9358.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-freeze-until-dogfood" data-to="orch" d="M513 4885.5C545 4885.5 545 9435.5 577 9435.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-code-rules-enforce" data-to="orch" d="M513 4885.5C545 4885.5 545 9512.5 577 9512.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-credentials-readable" data-to="orch" d="M513 4885.5C545 4885.5 545 9589.5 577 9589.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-build-all-released" data-to="orch" d="M513 4885.5C545 4885.5 545 9666.5 577 9666.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-graph-programming" data-to="hourness" d="M220 5001C252 5001 252 9746.5 284 9746.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="question-27" data-to="hourness" d="M220 5001C252 5001 252 9823.5 284 9823.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="norm-merge-gate" data-to="hourness" d="M220 5001C252 5001 252 9909.5 284 9909.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="norm-review-floor" data-to="hourness" d="M220 5001C252 5001 252 9977.5 284 9977.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="q-old-folder" data-to="glm-house" d="M220 11710.5C252 11710.5 252 10075.5 284 10075.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="zcode-3171" data-to="glm-house" d="M220 11710.5C252 11710.5 252 10161.5 284 10161.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="zcode-3171-follow" data-to="glm-house" d="M220 11710.5C252 11710.5 252 10247.5 284 10247.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-zcode-3171" data-to="glm-house" d="M220 11710.5C252 11710.5 252 10333.5 284 10333.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="bottom" data-to="glm-house" d="M220 11710.5C252 11710.5 252 11888.5 284 11888.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="q-glm-route" data-to="bottom" d="M513 11888.5C545 11888.5 545 10431.5 577 10431.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="risk-signing" data-to="bottom" d="M513 11888.5C545 11888.5 545 10508.5 577 10508.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-direct" data-to="bottom" d="M513 11888.5C545 11888.5 545 10585.5 577 10585.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-baseline" data-to="bottom" d="M513 11888.5C545 11888.5 545 10662.5 577 10662.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-toolsearch" data-to="bottom" d="M513 11888.5C545 11888.5 545 10748.5 577 10748.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="q-cot" data-to="bottom" d="M513 11888.5C545 11888.5 545 10834.5 577 10834.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="risk-l3-only" data-to="bottom" d="M513 11888.5C545 11888.5 545 10911.5 577 10911.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="risk-rc3" data-to="bottom" d="M513 11888.5C545 11888.5 545 10988.5 577 10988.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m1" data-to="bottom" d="M513 11888.5C545 11888.5 545 12211.5 577 12211.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m1-1" data-to="m1" d="M819 12211.5C851 12211.5 851 11077.5 883 11077.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m1-2" data-to="m1" d="M819 12211.5C851 12211.5 851 11145.5 883 11145.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m1-3" data-to="m1" d="M819 12211.5C851 12211.5 851 11204.5 883 11204.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m1-6" data-to="m1" d="M819 12211.5C851 12211.5 851 11272.5 883 11272.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m1-8" data-to="m1" d="M819 12211.5C851 12211.5 851 11349.5 883 11349.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m1-7" data-to="m1" d="M819 12211.5C851 12211.5 851 11426.5 883 11426.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m1-4" data-to="m1" d="M819 12211.5C851 12211.5 851 11503.5 883 11503.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="q-profile-cleanup" data-to="m1" d="M819 12211.5C851 12211.5 851 11580.5 883 11580.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m1-10" data-to="m1" d="M819 12211.5C851 12211.5 851 11657.5 883 11657.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m1-11" data-to="m1" d="M819 12211.5C851 12211.5 851 11725.5 883 11725.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m1-usage" data-to="m1" d="M819 12211.5C851 12211.5 851 11784.5 883 11784.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m1-cleanup" data-to="m1" d="M819 12211.5C851 12211.5 851 11861.5 883 11861.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m1-5" data-to="m1" d="M819 12211.5C851 12211.5 851 11947.5 883 11947.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="q-l4" data-to="m1" d="M819 12211.5C851 12211.5 851 12015.5 883 12015.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m1-compact" data-to="m1" d="M819 12211.5C851 12211.5 851 12083.5 883 12083.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="q-checkers" data-to="m1" d="M819 12211.5C851 12211.5 851 12160.5 883 12160.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m1-images" data-to="m1" d="M819 12211.5C851 12211.5 851 12237.5 883 12237.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m1-9" data-to="m1" d="M819 12211.5C851 12211.5 851 12314.5 883 12314.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="q-gitleaks" data-to="m1" d="M819 12211.5C851 12211.5 851 12391.5 883 12391.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="q-eslint-js" data-to="m1" d="M819 12211.5C851 12211.5 851 12459.5 883 12459.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="q-scripts-dev" data-to="m1" d="M819 12211.5C851 12211.5 851 12527.5 883 12527.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="q-typescript" data-to="m1" d="M819 12211.5C851 12211.5 851 12595.5 883 12595.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m1-followups" data-to="m1" d="M819 12211.5C851 12211.5 851 12681.5 883 12681.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m1-signing" data-to="m1" d="M819 12211.5C851 12211.5 851 12788.5 883 12788.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="question-3" data-to="m1-signing" d="M1145 12788.5C1177 12788.5 1177 12788.5 1209 12788.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m1-l4fix" data-to="m1" d="M819 12211.5C851 12211.5 851 12868.5 883 12868.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m1-cache" data-to="m1" d="M819 12211.5C851 12211.5 851 12936.5 883 12936.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m1-cache-flash" data-to="m1" d="M819 12211.5C851 12211.5 851 13025.5 883 13025.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="question-5" data-to="m1-cache-flash" d="M1145 13025.5C1177 13025.5 1177 13025.5 1209 13025.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m1-parity" data-to="m1" d="M819 12211.5C851 12211.5 851 13230 883 13230" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="question-6" data-to="m1-parity" d="M1145 13230C1177 13230 1177 13114.5 1209 13114.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="question-7" data-to="m1-parity" d="M1145 13230C1177 13230 1177 13191.5 1209 13191.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="question-8" data-to="m1-parity" d="M1145 13230C1177 13230 1177 13268.5 1209 13268.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="question-9" data-to="m1-parity" d="M1145 13230C1177 13230 1177 13345.5 1209 13345.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="depends" data-node="ablation" data-to="split" d="M819 3480.4C899 3480.4 899 6725.3 819 6725.3" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#graph-arrow)"/>
+<path data-edge="depends" data-node="bootstrap" data-to="split" d="M819 3480.4C899 3480.4 899 3918.9 819 3918.9" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#graph-arrow)"/>
+<path data-edge="depends" data-node="dogfood" data-to="m3" d="M819 1904.3C899 1904.3 899 4082.4 819 4082.4" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#graph-arrow)"/>
+<path data-edge="depends" data-node="dogfood" data-to="m7" d="M819 5881.8C899 5881.8 899 4082.4 819 4082.4" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#graph-arrow)"/>
+<path data-edge="depends" data-node="field-trial" data-to="dogfood" d="M819 4082.4C899 4082.4 899 6417.3 819 6417.3" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#graph-arrow)"/>
 <path data-edge="depends" data-node="lessons" data-to="split" d="M819 3480.4C851 3480.4 851 3747.5 883 3747.5" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#graph-arrow)"/>
-<path data-edge="depends" data-node="m1-11" data-to="m1-5" d="M1145 11729.9C1206.6 11729.9 1206.6 11504.3 1145 11504.3" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#graph-arrow)"/>
-<path data-edge="depends" data-node="m1-11" data-to="m1-parity" d="M1145 13016C1225 13016 1225 11504.3 1145 11504.3" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#graph-arrow)"/>
-<path data-edge="depends" data-node="m1-11" data-to="q-l4" d="M1140.2 11794.3C1217.3 11794.3 1217.3 11504.3 1145 11504.3" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#graph-arrow)"/>
-<path data-edge="depends" data-node="m1-8" data-to="m1-4" d="M1145 11285.9C1194.7 11285.9 1194.7 11131.9 1145 11131.9" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#graph-arrow)"/>
-<path data-edge="depends" data-node="m1-9" data-to="q-checkers" d="M1140.2 11942.9C1194.7 11942.9 1194.7 12096.9 1145 12096.9" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#graph-arrow)"/>
-<path data-edge="depends" data-node="m1-cleanup" data-to="m1-11" d="M1145 11504.3C1192.9 11504.3 1192.9 11647.5 1145 11647.5" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#graph-arrow)"/>
+<path data-edge="depends" data-node="m1-11" data-to="m1-5" d="M1145 11960.9C1206.6 11960.9 1206.6 11735.3 1145 11735.3" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#graph-arrow)"/>
+<path data-edge="depends" data-node="m1-11" data-to="m1-parity" d="M1145 13247C1225 13247 1225 11735.3 1145 11735.3" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#graph-arrow)"/>
+<path data-edge="depends" data-node="m1-11" data-to="q-l4" d="M1140.2 12025.3C1217.3 12025.3 1217.3 11735.3 1145 11735.3" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#graph-arrow)"/>
+<path data-edge="depends" data-node="m1-8" data-to="m1-4" d="M1145 11516.9C1194.7 11516.9 1194.7 11362.9 1145 11362.9" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#graph-arrow)"/>
+<path data-edge="depends" data-node="m1-9" data-to="q-checkers" d="M1140.2 12173.9C1194.7 12173.9 1194.7 12327.9 1145 12327.9" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#graph-arrow)"/>
+<path data-edge="depends" data-node="m1-cleanup" data-to="m1-11" d="M1145 11735.3C1192.9 11735.3 1192.9 11878.5 1145 11878.5" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#graph-arrow)"/>
 <path data-edge="depends" data-node="m2-1" data-to="q-graph-design" d="M1140.2 265.9C1205.4 265.9 1205.4 484.3 1145 484.3" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#graph-arrow)"/>
 <path data-edge="depends" data-node="m2-10" data-to="m2-7" d="M1145 720.3C1217.4 720.3 1217.4 1010.9 1145 1010.9" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#graph-arrow)"/>
 <path data-edge="depends" data-node="m2-2" data-to="m2-1" d="M1145 484.3C1179.7 484.3 1179.7 419.9 1145 419.9" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#graph-arrow)"/>
@@ -254,50 +257,50 @@
 <path data-edge="depends" data-node="m3-main-persona" data-to="m3-1" d="M1145 1862.9C1181.8 1862.9 1181.8 1939.9 1145 1939.9" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#graph-arrow)"/>
 <path data-edge="depends" data-node="m4-request-card" data-to="m3-5" d="M1145 1631.9C1225 1631.9 1225 2757.3 1145 2757.3" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#graph-arrow)"/>
 <path data-edge="depends" data-node="m4-request-card" data-to="split" d="M819 3480.4C851 3480.4 851 2757.3 883 2757.3" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#graph-arrow)"/>
-<path data-edge="depends" data-node="m7-10" data-to="ablation" d="M819 6571.3C851 6571.3 851 6033.3 883 6033.3" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#graph-arrow)"/>
-<path data-edge="depends" data-node="m8-plain-language" data-to="split" d="M819 3480.4C851 3480.4 851 4666.5 883 4666.5" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#graph-arrow)"/>
-<path data-edge="depends" data-node="m8-row-titles" data-to="split" d="M819 3480.4C851 3480.4 851 4748.9 883 4748.9" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#graph-arrow)"/>
-<path data-edge="depends" data-node="m8-ui-audit" data-to="m8-doing-layout" d="M1145 4428.3C1180.9 4428.3 1180.9 4499.9 1145 4499.9" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#graph-arrow)"/>
-<path data-edge="depends" data-node="onboarding" data-to="split" d="M819 3480.4C851 3480.4 851 4576.9 883 4576.9" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#graph-arrow)"/>
-<path data-edge="depends" data-node="prompt-fixes" data-to="split" d="M819 3480.4C899 3480.4 899 6719.9 819 6719.9" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#graph-arrow)"/>
-<path data-edge="depends" data-node="rules" data-to="split" d="M819 3480.4C899 3480.4 899 5118.9 819 5118.9" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#graph-arrow)"/>
-<path data-edge="depends" data-node="split" data-to="m1-parity" d="M883 13016C851 13016 851 3480.4 819 3480.4" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#graph-arrow)"/>
-<path data-edge="depends" data-node="zcode-3171-follow" data-to="zcode-3171" d="M513 9947.5C550.7 9947.5 550.7 10029.9 513 10029.9" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#graph-arrow)"/>
-<path data-edge="source" data-node="ablation" data-to="question-30" d="M814.2 6642.9C854.9 6642.9 854.9 6571.3 819 6571.3" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="2 3" marker-end="url(#graph-arrow)"/>
-<path data-edge="source" data-node="ablation" data-to="risk-calib-read" d="M883 5968.9C851 5968.9 851 6571.3 819 6571.3" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="2 3" marker-end="url(#graph-arrow)"/>
-<path data-edge="source" data-node="m1-cache-flash" data-to="m1-cache" d="M1145 12718.9C1183.8 12718.9 1183.8 12807.9 1145 12807.9" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="2 3" marker-end="url(#graph-arrow)"/>
-<path data-edge="source" data-node="m1-cleanup" data-to="q-glm-route" d="M814.2 10213.9C848.6 10213.9 848.6 11647.5 883 11647.5" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="2 3" marker-end="url(#graph-arrow)"/>
-<path data-edge="source" data-node="m1-cleanup" data-to="q-old-folder" d="M508.2 9857.9C695.6 9857.9 695.6 11647.5 883 11647.5" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="2 3" marker-end="url(#graph-arrow)"/>
-<path data-edge="source" data-node="m1-cleanup" data-to="q-profile-cleanup" d="M1140.2 11362.9C1216.4 11362.9 1216.4 11647.5 1145 11647.5" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="2 3" marker-end="url(#graph-arrow)"/>
-<path data-edge="source" data-node="m1-followups" data-to="q-eslint-js" d="M1140.2 12238.3C1207.8 12238.3 1207.8 12471.1 1145 12471.1" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="2 3" marker-end="url(#graph-arrow)"/>
-<path data-edge="source" data-node="m1-followups" data-to="q-gitleaks" d="M1140.2 12173.9C1218.5 12173.9 1218.5 12471.1 1145 12471.1" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="2 3" marker-end="url(#graph-arrow)"/>
-<path data-edge="source" data-node="m1-followups" data-to="q-scripts-dev" d="M1140.2 12309.9C1195.9 12309.9 1195.9 12471.1 1145 12471.1" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="2 3" marker-end="url(#graph-arrow)"/>
-<path data-edge="source" data-node="m1-followups" data-to="q-typescript" d="M1140.2 12374.3C1185.1 12374.3 1185.1 12471.1 1145 12471.1" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="2 3" marker-end="url(#graph-arrow)"/>
-<path data-edge="source" data-node="m1-signing" data-to="risk-signing" d="M819 10290.9C851 10290.9 851 12570.9 883 12570.9" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="2 3" marker-end="url(#graph-arrow)"/>
+<path data-edge="depends" data-node="m7-10" data-to="ablation" d="M819 6725.3C851 6725.3 851 5974.3 883 5974.3" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#graph-arrow)"/>
+<path data-edge="depends" data-node="m8-plain-language" data-to="split" d="M819 3480.4C851 3480.4 851 4607.5 883 4607.5" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#graph-arrow)"/>
+<path data-edge="depends" data-node="m8-row-titles" data-to="split" d="M819 3480.4C851 3480.4 851 4689.9 883 4689.9" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#graph-arrow)"/>
+<path data-edge="depends" data-node="m8-ui-audit" data-to="m8-doing-layout" d="M1145 4369.3C1180.9 4369.3 1180.9 4440.9 1145 4440.9" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#graph-arrow)"/>
+<path data-edge="depends" data-node="onboarding" data-to="split" d="M819 3480.4C851 3480.4 851 4517.9 883 4517.9" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#graph-arrow)"/>
+<path data-edge="depends" data-node="prompt-fixes" data-to="split" d="M819 3480.4C899 3480.4 899 6660.9 819 6660.9" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#graph-arrow)"/>
+<path data-edge="depends" data-node="rules" data-to="split" d="M819 3480.4C899 3480.4 899 5059.9 819 5059.9" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#graph-arrow)"/>
+<path data-edge="depends" data-node="split" data-to="m1-parity" d="M883 13247C851 13247 851 3480.4 819 3480.4" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#graph-arrow)"/>
+<path data-edge="depends" data-node="zcode-3171-follow" data-to="zcode-3171" d="M513 10178.5C550.7 10178.5 550.7 10260.9 513 10260.9" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#graph-arrow)"/>
+<path data-edge="source" data-node="ablation" data-to="question-30" d="M814.2 6796.9C854.9 6796.9 854.9 6725.3 819 6725.3" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="2 3" marker-end="url(#graph-arrow)"/>
+<path data-edge="source" data-node="ablation" data-to="risk-calib-read" d="M883 5909.9C851 5909.9 851 6725.3 819 6725.3" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="2 3" marker-end="url(#graph-arrow)"/>
+<path data-edge="source" data-node="m1-cache-flash" data-to="m1-cache" d="M1145 12949.9C1183.8 12949.9 1183.8 13038.9 1145 13038.9" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="2 3" marker-end="url(#graph-arrow)"/>
+<path data-edge="source" data-node="m1-cleanup" data-to="q-glm-route" d="M814.2 10444.9C848.6 10444.9 848.6 11878.5 883 11878.5" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="2 3" marker-end="url(#graph-arrow)"/>
+<path data-edge="source" data-node="m1-cleanup" data-to="q-old-folder" d="M508.2 10088.9C695.6 10088.9 695.6 11878.5 883 11878.5" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="2 3" marker-end="url(#graph-arrow)"/>
+<path data-edge="source" data-node="m1-cleanup" data-to="q-profile-cleanup" d="M1140.2 11593.9C1216.4 11593.9 1216.4 11878.5 1145 11878.5" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="2 3" marker-end="url(#graph-arrow)"/>
+<path data-edge="source" data-node="m1-followups" data-to="q-eslint-js" d="M1140.2 12469.3C1207.8 12469.3 1207.8 12702.1 1145 12702.1" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="2 3" marker-end="url(#graph-arrow)"/>
+<path data-edge="source" data-node="m1-followups" data-to="q-gitleaks" d="M1140.2 12404.9C1218.5 12404.9 1218.5 12702.1 1145 12702.1" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="2 3" marker-end="url(#graph-arrow)"/>
+<path data-edge="source" data-node="m1-followups" data-to="q-scripts-dev" d="M1140.2 12540.9C1195.9 12540.9 1195.9 12702.1 1145 12702.1" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="2 3" marker-end="url(#graph-arrow)"/>
+<path data-edge="source" data-node="m1-followups" data-to="q-typescript" d="M1140.2 12605.3C1185.1 12605.3 1185.1 12702.1 1145 12702.1" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="2 3" marker-end="url(#graph-arrow)"/>
+<path data-edge="source" data-node="m1-signing" data-to="risk-signing" d="M819 10521.9C851 10521.9 851 12801.9 883 12801.9" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="2 3" marker-end="url(#graph-arrow)"/>
 <path data-edge="source" data-node="m2-7" data-to="d-native-panel" d="M814.2 176.9C848.6 176.9 848.6 720.3 883 720.3" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="2 3" marker-end="url(#graph-arrow)"/>
 <path data-edge="source" data-node="m4-request-card" data-to="question-24" d="M1140.2 1785.9C1225 1785.9 1225 2757.3 1145 2757.3" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="2 3" marker-end="url(#graph-arrow)"/>
-<path data-edge="source" data-node="m7-10" data-to="risk-calib-read" d="M1145 5968.9C1179.7 5968.9 1179.7 6033.3 1145 6033.3" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="2 3" marker-end="url(#graph-arrow)"/>
-<path data-edge="source" data-node="m8-plain-language" data-to="d-ui-look-not-operate" d="M1140.2 4363.9C1219.4 4363.9 1219.4 4666.5 1145 4666.5" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="2 3" marker-end="url(#graph-arrow)"/>
-<path data-edge="source" data-node="m8-row-titles" data-to="question-18" d="M1140.2 3314.9C1225 3314.9 1225 4748.9 1145 4748.9" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="2 3" marker-end="url(#graph-arrow)"/>
-<path data-edge="source" data-node="onboarding" data-to="d-ui-look-not-operate" d="M1140.2 4363.9C1204.5 4363.9 1204.5 4576.9 1145 4576.9" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="2 3" marker-end="url(#graph-arrow)"/>
-<path data-edge="source" data-node="prompt-fixes" data-to="prompt-audit" d="M819 7040.5C896.4 7040.5 896.4 6719.9 819 6719.9" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="2 3" marker-end="url(#graph-arrow)"/>
-<path data-edge="source" data-node="q-eslint-js" data-to="m1-9" d="M1145 12096.9C1192.6 12096.9 1192.6 12238.3 1140.2 12238.3" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="2 3" marker-end="url(#graph-arrow)"/>
-<path data-edge="source" data-node="q-gitleaks" data-to="m1-9" d="M1145 12096.9C1181.8 12096.9 1181.8 12173.9 1140.2 12173.9" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="2 3" marker-end="url(#graph-arrow)"/>
-<path data-edge="source" data-node="q-old-folder" data-to="m0" d="M513 34.3C593 34.3 593 9857.9 508.2 9857.9" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="2 3" marker-end="url(#graph-arrow)"/>
-<path data-edge="source" data-node="q-profile-cleanup" data-to="m1-4" d="M1145 11285.9C1181.8 11285.9 1181.8 11362.9 1140.2 11362.9" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="2 3" marker-end="url(#graph-arrow)"/>
-<path data-edge="source" data-node="q-scripts-dev" data-to="m1-9" d="M1145 12096.9C1204.5 12096.9 1204.5 12309.9 1140.2 12309.9" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="2 3" marker-end="url(#graph-arrow)"/>
-<path data-edge="source" data-node="q-typescript" data-to="m1-9" d="M1145 12096.9C1215.2 12096.9 1215.2 12374.3 1140.2 12374.3" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="2 3" marker-end="url(#graph-arrow)"/>
+<path data-edge="source" data-node="m7-10" data-to="risk-calib-read" d="M1145 5909.9C1179.7 5909.9 1179.7 5974.3 1145 5974.3" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="2 3" marker-end="url(#graph-arrow)"/>
+<path data-edge="source" data-node="m8-plain-language" data-to="d-ui-look-not-operate" d="M1140.2 4304.9C1219.4 4304.9 1219.4 4607.5 1145 4607.5" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="2 3" marker-end="url(#graph-arrow)"/>
+<path data-edge="source" data-node="m8-row-titles" data-to="question-18" d="M1140.2 3314.9C1225 3314.9 1225 4689.9 1145 4689.9" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="2 3" marker-end="url(#graph-arrow)"/>
+<path data-edge="source" data-node="onboarding" data-to="d-ui-look-not-operate" d="M1140.2 4304.9C1204.5 4304.9 1204.5 4517.9 1145 4517.9" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="2 3" marker-end="url(#graph-arrow)"/>
+<path data-edge="source" data-node="prompt-fixes" data-to="prompt-audit" d="M819 6886.5C880.6 6886.5 880.6 6660.9 819 6660.9" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="2 3" marker-end="url(#graph-arrow)"/>
+<path data-edge="source" data-node="q-eslint-js" data-to="m1-9" d="M1145 12327.9C1192.6 12327.9 1192.6 12469.3 1140.2 12469.3" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="2 3" marker-end="url(#graph-arrow)"/>
+<path data-edge="source" data-node="q-gitleaks" data-to="m1-9" d="M1145 12327.9C1181.8 12327.9 1181.8 12404.9 1140.2 12404.9" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="2 3" marker-end="url(#graph-arrow)"/>
+<path data-edge="source" data-node="q-old-folder" data-to="m0" d="M513 34.3C593 34.3 593 10088.9 508.2 10088.9" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="2 3" marker-end="url(#graph-arrow)"/>
+<path data-edge="source" data-node="q-profile-cleanup" data-to="m1-4" d="M1145 11516.9C1181.8 11516.9 1181.8 11593.9 1140.2 11593.9" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="2 3" marker-end="url(#graph-arrow)"/>
+<path data-edge="source" data-node="q-scripts-dev" data-to="m1-9" d="M1145 12327.9C1204.5 12327.9 1204.5 12540.9 1140.2 12540.9" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="2 3" marker-end="url(#graph-arrow)"/>
+<path data-edge="source" data-node="q-typescript" data-to="m1-9" d="M1145 12327.9C1215.2 12327.9 1215.2 12605.3 1140.2 12605.3" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="2 3" marker-end="url(#graph-arrow)"/>
 <path data-edge="source" data-node="recommend-last" data-to="d-recommend-last" d="M814.2 7122.9C857.9 7122.9 857.9 7212.5 819 7212.5" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="2 3" marker-end="url(#graph-arrow)"/>
-<path data-edge="source" data-node="split" data-to="question-10" d="M814.2 4079.9C899 4079.9 899 3480.4 819 3480.4" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="2 3" marker-end="url(#graph-arrow)"/>
+<path data-edge="source" data-node="split" data-to="question-10" d="M814.2 3841.9C899 3841.9 899 3480.4 819 3480.4" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="2 3" marker-end="url(#graph-arrow)"/>
 <path data-edge="supersedes" data-node="d-dispatch" data-to="d-role-cards" d="M814.2 2585.9C853.1 2585.9 853.1 2675.5 814.2 2675.5" fill="none" stroke="#7c3aed" stroke-width="1.8" marker-end="url(#graph-arrow-purple)"/>
 <g data-id="hourness" data-type="goal" data-status="doing" data-tone="doing">
 <title>开发体系由 harness 保证实施：任何模型在 DSH 里沿项目图干活，人在图上编程
 hourness · 目标 · 进行中</title>
-<rect x="0" y="4838.5" width="220" height="94" rx="10" fill="#fef3c7" stroke="#d97706" stroke-width="2.5"/>
-<text x="110" y="4862.3" text-anchor="middle" font-size="15" font-weight="600" fill="#111827">开发体系由 harness 保证</text>
-<text x="110" y="4883.3" text-anchor="middle" font-size="15" font-weight="600" fill="#111827">实施：任何模型在 DSH 里沿</text>
-<text x="110" y="4904.3" text-anchor="middle" font-size="15" font-weight="600" fill="#111827">项目图干活，人在图上编程</text>
-<text x="110" y="4920.9" text-anchor="middle" font-size="11" fill="#6b7280">hourness</text>
+<rect x="0" y="4954" width="220" height="94" rx="10" fill="#fef3c7" stroke="#d97706" stroke-width="2.5"/>
+<text x="110" y="4977.8" text-anchor="middle" font-size="15" font-weight="600" fill="#111827">开发体系由 harness 保证</text>
+<text x="110" y="4998.8" text-anchor="middle" font-size="15" font-weight="600" fill="#111827">实施：任何模型在 DSH 里沿</text>
+<text x="110" y="5019.8" text-anchor="middle" font-size="15" font-weight="600" fill="#111827">项目图干活，人在图上编程</text>
+<text x="110" y="5036.4" text-anchor="middle" font-size="11" fill="#6b7280">hourness</text>
 </g>
 <g data-id="m0" data-type="feature" data-status="done" data-tone="done">
 <title>M0 文档沉淀
@@ -309,9 +312,9 @@ m0 · 特性 · 完成</title>
 <g data-id="orch" data-type="feature" data-status="approved" data-tone="todo">
 <title>编排层：LLM 之上的工作流
 orch · 特性 · 已批准</title>
-<rect x="284" y="4745.5" width="229" height="49" rx="6" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.5"/>
-<text x="398.5" y="4767.1" text-anchor="middle" font-size="13" fill="#111827">编排层：LLM 之上的工作流</text>
-<text x="398.5" y="4782.9" text-anchor="middle" font-size="11" fill="#6b7280">orch</text>
+<rect x="284" y="4861" width="229" height="49" rx="6" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.5"/>
+<text x="398.5" y="4882.6" text-anchor="middle" font-size="13" fill="#111827">编排层：LLM 之上的工作流</text>
+<text x="398.5" y="4898.4" text-anchor="middle" font-size="11" fill="#6b7280">orch</text>
 </g>
 <g data-id="m6" data-type="feature" data-status="doing" data-tone="doing">
 <title>M6 用量与峰谷
@@ -778,314 +781,314 @@ d-memory-scope · 决策 · 已批准 · 未验证</title>
 <text x="1314.5" y="3745.6" text-anchor="middle" font-size="13" fill="#111827">经验）进项目</text>
 <text x="1314.5" y="3761.4" text-anchor="middle" font-size="11" fill="#6b7280">d-memory-scope · 未验证</text>
 </g>
-<g data-id="dogfood" data-type="feature" data-status="approved" data-tone="todo">
-<title>用本项目自己的编排层开发本项目
-dogfood · 特性 · 已批准</title>
-<rect x="577" y="3869.5" width="242" height="67" rx="6" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.5"/>
-<text x="698" y="3891.1" text-anchor="middle" font-size="13" fill="#111827">用本项目自己的编排层开发</text>
-<text x="698" y="3909.1" text-anchor="middle" font-size="13" fill="#111827">本项目</text>
-<text x="698" y="3924.9" text-anchor="middle" font-size="11" fill="#6b7280">dogfood</text>
-</g>
-<g data-id="d-dogfood-scope" data-type="decision" data-status="approved" data-tone="todo">
-<title>自举前只做 M3 与 M7 的最薄骨架，其余模块搬进 DSH 之后由主 Agent 自己做
-d-dogfood-scope · 决策 · 已批准 · 未验证</title>
-<polygon points="895,3795 1133,3795 1145,3846.5 1133,3898 895,3898 883,3846.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="1014" y="3816.6" text-anchor="middle" font-size="13" fill="#111827">自举前只做 M3 与 M7 的</text>
-<text x="1014" y="3834.6" text-anchor="middle" font-size="13" fill="#111827">最薄骨架，其余模块搬进</text>
-<text x="1014" y="3852.6" text-anchor="middle" font-size="13" fill="#111827">DSH 之后由主 Agent 自</text>
-<text x="1014" y="3870.6" text-anchor="middle" font-size="13" fill="#111827">己做</text>
-<text x="1014" y="3886.4" text-anchor="middle" font-size="11" fill="#6b7280">d-dogfood-scope · 未验证</text>
-</g>
-<g data-id="d-rules-peak-slice" data-type="decision" data-status="approved" data-tone="todo">
-<title>规则板先做最小的一片（高峰档位与少做的并发上限），与 M3、M7 骨架一起搬进 DSH
-d-rules-peak-slice · 决策 · 已批准 · 未验证</title>
-<polygon points="895,3908 1133,3908 1145,3959.5 1133,4011 895,4011 883,3959.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="1014" y="3929.6" text-anchor="middle" font-size="13" fill="#111827">规则板先做最小的一片（高</text>
-<text x="1014" y="3947.6" text-anchor="middle" font-size="13" fill="#111827">峰档位与少做的并发上</text>
-<text x="1014" y="3965.6" text-anchor="middle" font-size="13" fill="#111827">限），与 M3、M7 骨架一</text>
-<text x="1014" y="3983.6" text-anchor="middle" font-size="13" fill="#111827">起搬进 DSH</text>
-<text x="1014" y="3999.4" text-anchor="middle" font-size="11" fill="#6b7280">d-rules-peak-slice · 未验证</text>
-</g>
 <g data-id="question-10" data-type="question" data-status="done" data-tone="done">
 <title>编排层要不要和 GLM 解耦，怎么拆
 question-10 · 待决 · 完成
 拍板：A 同仓库拆成两个包</title>
-<polygon points="589,4033 807,4033 819,4066.5 807,4100 589,4100 577,4066.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="698" y="4054.6" text-anchor="middle" font-size="13" fill="#111827">编排层要不要和 GLM 解</text>
-<text x="698" y="4072.6" text-anchor="middle" font-size="13" fill="#111827">耦，怎么拆</text>
-<text x="698" y="4088.4" text-anchor="middle" font-size="11" fill="#6b7280">question-10 · 选 A</text>
+<polygon points="589,3795 807,3795 819,3828.5 807,3862 589,3862 577,3828.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="698" y="3816.6" text-anchor="middle" font-size="13" fill="#111827">编排层要不要和 GLM 解</text>
+<text x="698" y="3834.6" text-anchor="middle" font-size="13" fill="#111827">耦，怎么拆</text>
+<text x="698" y="3850.4" text-anchor="middle" font-size="11" fill="#6b7280">question-10 · 选 A</text>
 </g>
 <g data-id="bootstrap" data-type="feature" data-status="doing" data-tone="doing">
 <title>接管项目：初始化新项目与迁移已有项目
 bootstrap · 特性 · 进行中</title>
-<rect x="577" y="4110" width="242" height="67" rx="6" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
-<text x="698" y="4131.6" text-anchor="middle" font-size="13" fill="#111827">接管项目：初始化新项目与</text>
-<text x="698" y="4149.6" text-anchor="middle" font-size="13" fill="#111827">迁移已有项目</text>
-<text x="698" y="4165.4" text-anchor="middle" font-size="11" fill="#6b7280">bootstrap</text>
+<rect x="577" y="3872" width="242" height="67" rx="6" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
+<text x="698" y="3893.6" text-anchor="middle" font-size="13" fill="#111827">接管项目：初始化新项目与</text>
+<text x="698" y="3911.6" text-anchor="middle" font-size="13" fill="#111827">迁移已有项目</text>
+<text x="698" y="3927.4" text-anchor="middle" font-size="11" fill="#6b7280">bootstrap</text>
 </g>
-<g data-id="field-trial" data-type="feature" data-status="doing" data-tone="doing">
-<title>真实项目试用与社区反馈
-field-trial · 特性 · 进行中</title>
-<rect x="577" y="4187" width="242" height="49" rx="6" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
-<text x="698" y="4208.6" text-anchor="middle" font-size="13" fill="#111827">真实项目试用与社区反馈</text>
-<text x="698" y="4224.4" text-anchor="middle" font-size="11" fill="#6b7280">field-trial</text>
+<g data-id="dogfood" data-type="feature" data-status="approved" data-tone="todo">
+<title>用本项目自己的编排层开发本项目
+dogfood · 特性 · 已批准</title>
+<rect x="577" y="4035.5" width="242" height="67" rx="6" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.5"/>
+<text x="698" y="4057.1" text-anchor="middle" font-size="13" fill="#111827">用本项目自己的编排层开发</text>
+<text x="698" y="4075.1" text-anchor="middle" font-size="13" fill="#111827">本项目</text>
+<text x="698" y="4090.9" text-anchor="middle" font-size="11" fill="#6b7280">dogfood</text>
+</g>
+<g data-id="d-dogfood-scope" data-type="decision" data-status="approved" data-tone="todo">
+<title>自举前只做 M3 与 M7 的最薄骨架，其余模块搬进 DSH 之后由主 Agent 自己做
+d-dogfood-scope · 决策 · 已批准 · 未验证</title>
+<polygon points="895,3961 1133,3961 1145,4012.5 1133,4064 895,4064 883,4012.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="1014" y="3982.6" text-anchor="middle" font-size="13" fill="#111827">自举前只做 M3 与 M7 的</text>
+<text x="1014" y="4000.6" text-anchor="middle" font-size="13" fill="#111827">最薄骨架，其余模块搬进</text>
+<text x="1014" y="4018.6" text-anchor="middle" font-size="13" fill="#111827">DSH 之后由主 Agent 自</text>
+<text x="1014" y="4036.6" text-anchor="middle" font-size="13" fill="#111827">己做</text>
+<text x="1014" y="4052.4" text-anchor="middle" font-size="11" fill="#6b7280">d-dogfood-scope · 未验证</text>
+</g>
+<g data-id="d-rules-peak-slice" data-type="decision" data-status="approved" data-tone="todo">
+<title>规则板先做最小的一片（高峰档位与少做的并发上限），与 M3、M7 骨架一起搬进 DSH
+d-rules-peak-slice · 决策 · 已批准 · 未验证</title>
+<polygon points="895,4074 1133,4074 1145,4125.5 1133,4177 895,4177 883,4125.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="1014" y="4095.6" text-anchor="middle" font-size="13" fill="#111827">规则板先做最小的一片（高</text>
+<text x="1014" y="4113.6" text-anchor="middle" font-size="13" fill="#111827">峰档位与少做的并发上</text>
+<text x="1014" y="4131.6" text-anchor="middle" font-size="13" fill="#111827">限），与 M3、M7 骨架一</text>
+<text x="1014" y="4149.6" text-anchor="middle" font-size="13" fill="#111827">起搬进 DSH</text>
+<text x="1014" y="4165.4" text-anchor="middle" font-size="11" fill="#6b7280">d-rules-peak-slice · 未验证</text>
 </g>
 <g data-id="m8" data-type="feature" data-status="approved" data-tone="todo">
 <title>M8 呈现
 m8 · 特性 · 已批准</title>
-<rect x="577" y="4489" width="242" height="49" rx="6" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.5"/>
-<text x="698" y="4510.6" text-anchor="middle" font-size="13" fill="#111827">M8 呈现</text>
-<text x="698" y="4526.4" text-anchor="middle" font-size="11" fill="#6b7280">m8</text>
+<rect x="577" y="4430" width="242" height="49" rx="6" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.5"/>
+<text x="698" y="4451.6" text-anchor="middle" font-size="13" fill="#111827">M8 呈现</text>
+<text x="698" y="4467.4" text-anchor="middle" font-size="11" fill="#6b7280">m8</text>
 </g>
 <g data-id="m8-detail-layout" data-type="task" data-status="done" data-tone="done">
 <title>面板节点详情的排版
 m8-detail-layout · 任务 · 完成</title>
-<rect x="883" y="4258" width="262" height="49" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
-<text x="1014" y="4279.6" text-anchor="middle" font-size="13" fill="#111827">面板节点详情的排版</text>
-<text x="1014" y="4295.4" text-anchor="middle" font-size="11" fill="#6b7280">m8-detail-layout</text>
+<rect x="883" y="4199" width="262" height="49" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+<text x="1014" y="4220.6" text-anchor="middle" font-size="13" fill="#111827">面板节点详情的排版</text>
+<text x="1014" y="4236.4" text-anchor="middle" font-size="11" fill="#6b7280">m8-detail-layout</text>
 </g>
 <g data-id="d-ui-look-not-operate" data-type="decision" data-status="approved" data-tone="todo">
 <title>项目图给人看、少给人用；底层细节下沉，界面说人话
 d-ui-look-not-operate · 决策 · 已批准 · 未验证</title>
-<polygon points="895,4317 1133,4317 1145,4350.5 1133,4384 895,4384 883,4350.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="1014" y="4338.6" text-anchor="middle" font-size="13" fill="#111827">项目图给人看、少给人用；</text>
-<text x="1014" y="4356.6" text-anchor="middle" font-size="13" fill="#111827">底层细节下沉，界面说人话</text>
-<text x="1014" y="4372.4" text-anchor="middle" font-size="11" fill="#6b7280">d-ui-look-not-operate · 未验证</text>
+<polygon points="895,4258 1133,4258 1145,4291.5 1133,4325 895,4325 883,4291.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="1014" y="4279.6" text-anchor="middle" font-size="13" fill="#111827">项目图给人看、少给人用；</text>
+<text x="1014" y="4297.6" text-anchor="middle" font-size="13" fill="#111827">底层细节下沉，界面说人话</text>
+<text x="1014" y="4313.4" text-anchor="middle" font-size="11" fill="#6b7280">d-ui-look-not-operate · 未验证</text>
 </g>
 <g data-id="m8-doing-layout" data-type="task" data-status="done" data-tone="done">
 <title>面板「正在做」视图的版面
 m8-doing-layout · 任务 · 完成</title>
-<rect x="883" y="4394" width="262" height="49" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
-<text x="1014" y="4415.6" text-anchor="middle" font-size="13" fill="#111827">面板「正在做」视图的版面</text>
-<text x="1014" y="4431.4" text-anchor="middle" font-size="11" fill="#6b7280">m8-doing-layout</text>
+<rect x="883" y="4335" width="262" height="49" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+<text x="1014" y="4356.6" text-anchor="middle" font-size="13" fill="#111827">面板「正在做」视图的版面</text>
+<text x="1014" y="4372.4" text-anchor="middle" font-size="11" fill="#6b7280">m8-doing-layout</text>
 </g>
 <g data-id="m8-ui-audit" data-type="task" data-status="done" data-tone="done">
 <title>全部 UI 的审查与优化，最后完整走一轮
 m8-ui-audit · 任务 · 完成</title>
-<rect x="883" y="4453" width="262" height="67" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
-<text x="1014" y="4474.6" text-anchor="middle" font-size="13" fill="#111827">全部 UI 的审查与优化，最</text>
-<text x="1014" y="4492.6" text-anchor="middle" font-size="13" fill="#111827">后完整走一轮</text>
-<text x="1014" y="4508.4" text-anchor="middle" font-size="11" fill="#6b7280">m8-ui-audit</text>
+<rect x="883" y="4394" width="262" height="67" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+<text x="1014" y="4415.6" text-anchor="middle" font-size="13" fill="#111827">全部 UI 的审查与优化，最</text>
+<text x="1014" y="4433.6" text-anchor="middle" font-size="13" fill="#111827">后完整走一轮</text>
+<text x="1014" y="4449.4" text-anchor="middle" font-size="11" fill="#6b7280">m8-ui-audit</text>
 </g>
 <g data-id="onboarding" data-type="feature" data-status="doing" data-tone="doing">
 <title>新手引导：装上插件之后人怎样上手
 onboarding · 特性 · 进行中</title>
-<rect x="883" y="4530" width="262" height="67" rx="6" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
-<text x="1014" y="4551.6" text-anchor="middle" font-size="13" fill="#111827">新手引导：装上插件之后人</text>
-<text x="1014" y="4569.6" text-anchor="middle" font-size="13" fill="#111827">怎样上手</text>
-<text x="1014" y="4585.4" text-anchor="middle" font-size="11" fill="#6b7280">onboarding</text>
+<rect x="883" y="4471" width="262" height="67" rx="6" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
+<text x="1014" y="4492.6" text-anchor="middle" font-size="13" fill="#111827">新手引导：装上插件之后人</text>
+<text x="1014" y="4510.6" text-anchor="middle" font-size="13" fill="#111827">怎样上手</text>
+<text x="1014" y="4526.4" text-anchor="middle" font-size="11" fill="#6b7280">onboarding</text>
 </g>
 <g data-id="m8-plain-language" data-type="task" data-status="doing" data-tone="doing">
 <title>面板说人话：一眼看懂在做什么、接下来做什么、要我做什么
 m8-plain-language · 任务 · 进行中</title>
-<rect x="883" y="4607" width="262" height="85" rx="6" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
-<text x="1014" y="4628.6" text-anchor="middle" font-size="13" fill="#111827">面板说人话：一眼看懂在做</text>
-<text x="1014" y="4646.6" text-anchor="middle" font-size="13" fill="#111827">什么、接下来做什么、要我</text>
-<text x="1014" y="4664.6" text-anchor="middle" font-size="13" fill="#111827">做什么</text>
-<text x="1014" y="4680.4" text-anchor="middle" font-size="11" fill="#6b7280">m8-plain-language</text>
+<rect x="883" y="4548" width="262" height="85" rx="6" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
+<text x="1014" y="4569.6" text-anchor="middle" font-size="13" fill="#111827">面板说人话：一眼看懂在做</text>
+<text x="1014" y="4587.6" text-anchor="middle" font-size="13" fill="#111827">什么、接下来做什么、要我</text>
+<text x="1014" y="4605.6" text-anchor="middle" font-size="13" fill="#111827">做什么</text>
+<text x="1014" y="4621.4" text-anchor="middle" font-size="11" fill="#6b7280">m8-plain-language</text>
 </g>
 <g data-id="m8-row-titles" data-type="task" data-status="done" data-tone="done">
 <title>设置页插件清单的行名不再显示文件路径（V-01）
 m8-row-titles · 任务 · 完成</title>
-<rect x="883" y="4702" width="262" height="67" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
-<text x="1014" y="4723.6" text-anchor="middle" font-size="13" fill="#111827">设置页插件清单的行名不再</text>
-<text x="1014" y="4741.6" text-anchor="middle" font-size="13" fill="#111827">显示文件路径（V-01）</text>
-<text x="1014" y="4757.4" text-anchor="middle" font-size="11" fill="#6b7280">m8-row-titles</text>
+<rect x="883" y="4643" width="262" height="67" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+<text x="1014" y="4664.6" text-anchor="middle" font-size="13" fill="#111827">设置页插件清单的行名不再</text>
+<text x="1014" y="4682.6" text-anchor="middle" font-size="13" fill="#111827">显示文件路径（V-01）</text>
+<text x="1014" y="4698.4" text-anchor="middle" font-size="11" fill="#6b7280">m8-row-titles</text>
 </g>
 <g data-id="rules" data-type="feature" data-status="doing" data-tone="doing">
 <title>规则板块：实时生效的规则与资源管理
 rules · 特性 · 进行中</title>
-<rect x="577" y="5072" width="242" height="67" rx="6" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
-<text x="698" y="5093.6" text-anchor="middle" font-size="13" fill="#111827">规则板块：实时生效的规则</text>
-<text x="698" y="5111.6" text-anchor="middle" font-size="13" fill="#111827">与资源管理</text>
-<text x="698" y="5127.4" text-anchor="middle" font-size="11" fill="#6b7280">rules</text>
+<rect x="577" y="5013" width="242" height="67" rx="6" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
+<text x="698" y="5034.6" text-anchor="middle" font-size="13" fill="#111827">规则板块：实时生效的规则</text>
+<text x="698" y="5052.6" text-anchor="middle" font-size="13" fill="#111827">与资源管理</text>
+<text x="698" y="5068.4" text-anchor="middle" font-size="11" fill="#6b7280">rules</text>
 </g>
 <g data-id="d-rules-human-only" data-type="decision" data-status="approved" data-tone="todo">
 <title>规则只有人能加、改、撤；agent 只能提议
 d-rules-human-only · 决策 · 已批准 · 未验证</title>
-<polygon points="895,4791 1133,4791 1145,4824.5 1133,4858 895,4858 883,4824.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="1014" y="4812.6" text-anchor="middle" font-size="13" fill="#111827">规则只有人能加、改、撤；</text>
-<text x="1014" y="4830.6" text-anchor="middle" font-size="13" fill="#111827">agent 只能提议</text>
-<text x="1014" y="4846.4" text-anchor="middle" font-size="11" fill="#6b7280">d-rules-human-only · 未验证</text>
+<polygon points="895,4732 1133,4732 1145,4765.5 1133,4799 895,4799 883,4765.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="1014" y="4753.6" text-anchor="middle" font-size="13" fill="#111827">规则只有人能加、改、撤；</text>
+<text x="1014" y="4771.6" text-anchor="middle" font-size="13" fill="#111827">agent 只能提议</text>
+<text x="1014" y="4787.4" text-anchor="middle" font-size="11" fill="#6b7280">d-rules-human-only · 未验证</text>
 </g>
 <g data-id="question-32" data-type="question" data-status="done" data-tone="done">
 <title>规则板管多大范围
 question-32 · 待决 · 完成
 拍板：C 机器管资源，项目管规则</title>
-<polygon points="895,4868 1133,4868 1145,4892.5 1133,4917 895,4917 883,4892.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="1014" y="4889.6" text-anchor="middle" font-size="13" fill="#111827">规则板管多大范围</text>
-<text x="1014" y="4905.4" text-anchor="middle" font-size="11" fill="#6b7280">question-32 · 选 C</text>
+<polygon points="895,4809 1133,4809 1145,4833.5 1133,4858 895,4858 883,4833.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="1014" y="4830.6" text-anchor="middle" font-size="13" fill="#111827">规则板管多大范围</text>
+<text x="1014" y="4846.4" text-anchor="middle" font-size="11" fill="#6b7280">question-32 · 选 C</text>
 </g>
 <g data-id="question-33" data-type="question" data-status="dropped" data-tone="closed" opacity="0.5">
 <title>「你在用电脑」怎么判断
 question-33 · 待决 · 废弃</title>
-<polygon points="895,4927 1133,4927 1145,4951.5 1133,4976 895,4976 883,4951.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="1014" y="4948.6" text-anchor="middle" font-size="13" fill="#111827">「你在用电脑」怎么判断</text>
-<text x="1014" y="4964.4" text-anchor="middle" font-size="11" fill="#6b7280">question-33</text>
+<polygon points="895,4868 1133,4868 1145,4892.5 1133,4917 895,4917 883,4892.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="1014" y="4889.6" text-anchor="middle" font-size="13" fill="#111827">「你在用电脑」怎么判断</text>
+<text x="1014" y="4905.4" text-anchor="middle" font-size="11" fill="#6b7280">question-33</text>
 </g>
 <g data-id="question-34" data-type="question" data-status="dropped" data-tone="closed" opacity="0.5">
 <title>你在电脑前时，LLM 的活限速还是排队
 question-34 · 待决 · 废弃</title>
-<polygon points="895,4986 1133,4986 1145,5019.5 1133,5053 895,5053 883,5019.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="1014" y="5007.6" text-anchor="middle" font-size="13" fill="#111827">你在电脑前时，LLM 的活限</text>
-<text x="1014" y="5025.6" text-anchor="middle" font-size="13" fill="#111827">速还是排队</text>
-<text x="1014" y="5041.4" text-anchor="middle" font-size="11" fill="#6b7280">question-34</text>
+<polygon points="895,4927 1133,4927 1145,4960.5 1133,4994 895,4994 883,4960.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="1014" y="4948.6" text-anchor="middle" font-size="13" fill="#111827">你在电脑前时，LLM 的活限</text>
+<text x="1014" y="4966.6" text-anchor="middle" font-size="13" fill="#111827">速还是排队</text>
+<text x="1014" y="4982.4" text-anchor="middle" font-size="11" fill="#6b7280">question-34</text>
 </g>
 <g data-id="question-35" data-type="question" data-status="dropped" data-tone="closed" opacity="0.5">
 <title>你在电脑前时的默认预算
 question-35 · 待决 · 废弃</title>
-<polygon points="895,5063 1133,5063 1145,5087.5 1133,5112 895,5112 883,5087.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="1014" y="5084.6" text-anchor="middle" font-size="13" fill="#111827">你在电脑前时的默认预算</text>
-<text x="1014" y="5100.4" text-anchor="middle" font-size="11" fill="#6b7280">question-35</text>
+<polygon points="895,5004 1133,5004 1145,5028.5 1133,5053 895,5053 883,5028.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="1014" y="5025.6" text-anchor="middle" font-size="13" fill="#111827">你在电脑前时的默认预算</text>
+<text x="1014" y="5041.4" text-anchor="middle" font-size="11" fill="#6b7280">question-35</text>
 </g>
 <g data-id="question-36" data-type="question" data-status="done" data-tone="done">
 <title>已有规则收进规则板多少
 question-36 · 待决 · 完成
 拍板：B 一条都不收</title>
-<polygon points="895,5122 1133,5122 1145,5146.5 1133,5171 895,5171 883,5146.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="1014" y="5143.6" text-anchor="middle" font-size="13" fill="#111827">已有规则收进规则板多少</text>
-<text x="1014" y="5159.4" text-anchor="middle" font-size="11" fill="#6b7280">question-36 · 选 B</text>
+<polygon points="895,5063 1133,5063 1145,5087.5 1133,5112 895,5112 883,5087.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="1014" y="5084.6" text-anchor="middle" font-size="13" fill="#111827">已有规则收进规则板多少</text>
+<text x="1014" y="5100.4" text-anchor="middle" font-size="11" fill="#6b7280">question-36 · 选 B</text>
 </g>
 <g data-id="d-peak-mode" data-type="decision" data-status="approved" data-tone="todo">
 <title>高峰继续提醒模型，另加人选的高峰模式：无影响、少做、不做
 d-peak-mode · 决策 · 已批准 · 未验证</title>
-<polygon points="895,5181 1133,5181 1145,5223.5 1133,5266 895,5266 883,5223.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="1014" y="5202.6" text-anchor="middle" font-size="13" fill="#111827">高峰继续提醒模型，另加人</text>
-<text x="1014" y="5220.6" text-anchor="middle" font-size="13" fill="#111827">选的高峰模式：无影响、少</text>
-<text x="1014" y="5238.6" text-anchor="middle" font-size="13" fill="#111827">做、不做</text>
-<text x="1014" y="5254.4" text-anchor="middle" font-size="11" fill="#6b7280">d-peak-mode · 未验证</text>
+<polygon points="895,5122 1133,5122 1145,5164.5 1133,5207 895,5207 883,5164.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="1014" y="5143.6" text-anchor="middle" font-size="13" fill="#111827">高峰继续提醒模型，另加人</text>
+<text x="1014" y="5161.6" text-anchor="middle" font-size="13" fill="#111827">选的高峰模式：无影响、少</text>
+<text x="1014" y="5179.6" text-anchor="middle" font-size="13" fill="#111827">做、不做</text>
+<text x="1014" y="5195.4" text-anchor="middle" font-size="11" fill="#6b7280">d-peak-mode · 未验证</text>
 </g>
 <g data-id="d-main-agent-peak-exempt" data-type="decision" data-status="approved" data-tone="todo">
 <title>主 Agent 不受高峰模式影响，任何一档都随时回话
 d-main-agent-peak-exempt · 决策 · 已批准 · 未验证</title>
-<polygon points="895,5276 1133,5276 1145,5309.5 1133,5343 895,5343 883,5309.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="1014" y="5297.6" text-anchor="middle" font-size="13" fill="#111827">主 Agent 不受高峰模式影</text>
-<text x="1014" y="5315.6" text-anchor="middle" font-size="13" fill="#111827">响，任何一档都随时回话</text>
-<text x="1014" y="5331.4" text-anchor="middle" font-size="11" fill="#6b7280">d-main-agent-peak-exempt · 未验证</text>
+<polygon points="895,5217 1133,5217 1145,5250.5 1133,5284 895,5284 883,5250.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="1014" y="5238.6" text-anchor="middle" font-size="13" fill="#111827">主 Agent 不受高峰模式影</text>
+<text x="1014" y="5256.6" text-anchor="middle" font-size="13" fill="#111827">响，任何一档都随时回话</text>
+<text x="1014" y="5272.4" text-anchor="middle" font-size="11" fill="#6b7280">d-main-agent-peak-exempt · 未验证</text>
 </g>
 <g data-id="d-rules-in-repo" data-type="decision" data-status="approved" data-tone="todo">
 <title>规则进仓库，运行时的东西进项目的 .llm/
 d-rules-in-repo · 决策 · 已批准 · 未验证</title>
-<polygon points="895,5353 1133,5353 1145,5386.5 1133,5420 895,5420 883,5386.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="1014" y="5374.6" text-anchor="middle" font-size="13" fill="#111827">规则进仓库，运行时的东西</text>
-<text x="1014" y="5392.6" text-anchor="middle" font-size="13" fill="#111827">进项目的 .llm/</text>
-<text x="1014" y="5408.4" text-anchor="middle" font-size="11" fill="#6b7280">d-rules-in-repo · 未验证</text>
+<polygon points="895,5294 1133,5294 1145,5327.5 1133,5361 895,5361 883,5327.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="1014" y="5315.6" text-anchor="middle" font-size="13" fill="#111827">规则进仓库，运行时的东西</text>
+<text x="1014" y="5333.6" text-anchor="middle" font-size="13" fill="#111827">进项目的 .llm/</text>
+<text x="1014" y="5349.4" text-anchor="middle" font-size="11" fill="#6b7280">d-rules-in-repo · 未验证</text>
 </g>
 <g data-id="m7" data-type="feature" data-status="doing" data-tone="doing">
 <title>M7 执行、汇合与运维
 m7 · 特性 · 进行中</title>
-<rect x="577" y="5906.5" width="242" height="49" rx="6" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
-<text x="698" y="5928.1" text-anchor="middle" font-size="13" fill="#111827">M7 执行、汇合与运维</text>
-<text x="698" y="5943.9" text-anchor="middle" font-size="11" fill="#6b7280">m7</text>
+<rect x="577" y="5847.5" width="242" height="49" rx="6" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
+<text x="698" y="5869.1" text-anchor="middle" font-size="13" fill="#111827">M7 执行、汇合与运维</text>
+<text x="698" y="5884.9" text-anchor="middle" font-size="11" fill="#6b7280">m7</text>
 </g>
 <g data-id="d-plan-approval" data-type="decision" data-status="approved" data-tone="todo">
 <title>派发计划由主 Agent 批，人只在需求确认、设计放行与必须问人的岔路出场
 d-plan-approval · 决策 · 已批准 · 未验证</title>
-<polygon points="895,5442 1133,5442 1145,5484.5 1133,5527 895,5527 883,5484.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="1014" y="5463.6" text-anchor="middle" font-size="13" fill="#111827">派发计划由主 Agent 批，</text>
-<text x="1014" y="5481.6" text-anchor="middle" font-size="13" fill="#111827">人只在需求确认、设计放行</text>
-<text x="1014" y="5499.6" text-anchor="middle" font-size="13" fill="#111827">与必须问人的岔路出场</text>
-<text x="1014" y="5515.4" text-anchor="middle" font-size="11" fill="#6b7280">d-plan-approval · 未验证</text>
+<polygon points="895,5383 1133,5383 1145,5425.5 1133,5468 895,5468 883,5425.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="1014" y="5404.6" text-anchor="middle" font-size="13" fill="#111827">派发计划由主 Agent 批，</text>
+<text x="1014" y="5422.6" text-anchor="middle" font-size="13" fill="#111827">人只在需求确认、设计放行</text>
+<text x="1014" y="5440.6" text-anchor="middle" font-size="13" fill="#111827">与必须问人的岔路出场</text>
+<text x="1014" y="5456.4" text-anchor="middle" font-size="11" fill="#6b7280">d-plan-approval · 未验证</text>
 </g>
 <g data-id="question-37" data-type="question" data-status="done" data-tone="done">
 <title>M7 的十个任务用什么验收
 question-37 · 待决 · 完成
 拍板：A 你逐条改写验收</title>
-<polygon points="895,5537 1133,5537 1145,5561.5 1133,5586 895,5586 883,5561.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="1014" y="5558.6" text-anchor="middle" font-size="13" fill="#111827">M7 的十个任务用什么验收</text>
-<text x="1014" y="5574.4" text-anchor="middle" font-size="11" fill="#6b7280">question-37 · 选 A</text>
+<polygon points="895,5478 1133,5478 1145,5502.5 1133,5527 895,5527 883,5502.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="1014" y="5499.6" text-anchor="middle" font-size="13" fill="#111827">M7 的十个任务用什么验收</text>
+<text x="1014" y="5515.4" text-anchor="middle" font-size="11" fill="#6b7280">question-37 · 选 A</text>
 </g>
 <g data-id="question-38" data-type="question" data-status="done" data-tone="done">
 <title>评审深浅交给主 Agent 自己定吗
 question-38 · 待决 · 完成
 拍板：C 主 Agent 定深浅，人定底线</title>
-<polygon points="895,5596 1133,5596 1145,5629.5 1133,5663 895,5663 883,5629.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="1014" y="5617.6" text-anchor="middle" font-size="13" fill="#111827">评审深浅交给主 Agent 自</text>
-<text x="1014" y="5635.6" text-anchor="middle" font-size="13" fill="#111827">己定吗</text>
-<text x="1014" y="5651.4" text-anchor="middle" font-size="11" fill="#6b7280">question-38 · 选 C</text>
+<polygon points="895,5537 1133,5537 1145,5570.5 1133,5604 895,5604 883,5570.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="1014" y="5558.6" text-anchor="middle" font-size="13" fill="#111827">评审深浅交给主 Agent 自</text>
+<text x="1014" y="5576.6" text-anchor="middle" font-size="13" fill="#111827">己定吗</text>
+<text x="1014" y="5592.4" text-anchor="middle" font-size="11" fill="#6b7280">question-38 · 选 C</text>
 </g>
 <g data-id="m7-1" data-type="task" data-status="approved" data-tone="todo">
 <title>派活、只写自己那块、先批计划、和干活的子 agent 说话
 m7-1 · 任务 · 已批准</title>
-<rect x="883" y="5673" width="262" height="85" rx="6" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.5"/>
-<text x="1014" y="5694.6" text-anchor="middle" font-size="13" fill="#111827">派活、只写自己那块、先批</text>
-<text x="1014" y="5712.6" text-anchor="middle" font-size="13" fill="#111827">计划、和干活的子 agent</text>
-<text x="1014" y="5730.6" text-anchor="middle" font-size="13" fill="#111827">说话</text>
-<text x="1014" y="5746.4" text-anchor="middle" font-size="11" fill="#6b7280">m7-1</text>
+<rect x="883" y="5614" width="262" height="85" rx="6" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.5"/>
+<text x="1014" y="5635.6" text-anchor="middle" font-size="13" fill="#111827">派活、只写自己那块、先批</text>
+<text x="1014" y="5653.6" text-anchor="middle" font-size="13" fill="#111827">计划、和干活的子 agent</text>
+<text x="1014" y="5671.6" text-anchor="middle" font-size="13" fill="#111827">说话</text>
+<text x="1014" y="5687.4" text-anchor="middle" font-size="11" fill="#6b7280">m7-1</text>
 </g>
 <g data-id="m7-2" data-type="task" data-status="approved" data-tone="todo">
 <title>派活前的检查、空位提醒、经验
 m7-2 · 任务 · 已批准</title>
-<rect x="883" y="5768" width="262" height="67" rx="6" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.5"/>
-<text x="1014" y="5789.6" text-anchor="middle" font-size="13" fill="#111827">派活前的检查、空位提醒、</text>
-<text x="1014" y="5807.6" text-anchor="middle" font-size="13" fill="#111827">经验</text>
-<text x="1014" y="5823.4" text-anchor="middle" font-size="11" fill="#6b7280">m7-2</text>
+<rect x="883" y="5709" width="262" height="67" rx="6" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.5"/>
+<text x="1014" y="5730.6" text-anchor="middle" font-size="13" fill="#111827">派活前的检查、空位提醒、</text>
+<text x="1014" y="5748.6" text-anchor="middle" font-size="13" fill="#111827">经验</text>
+<text x="1014" y="5764.4" text-anchor="middle" font-size="11" fill="#6b7280">m7-2</text>
 </g>
 <g data-id="m7-3" data-type="task" data-status="approved" data-tone="todo">
 <title>自动推进与「目标做完了」的检查
 m7-3 · 任务 · 已批准</title>
-<rect x="883" y="5845" width="262" height="67" rx="6" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.5"/>
-<text x="1014" y="5866.6" text-anchor="middle" font-size="13" fill="#111827">自动推进与「目标做完了」</text>
-<text x="1014" y="5884.6" text-anchor="middle" font-size="13" fill="#111827">的检查</text>
-<text x="1014" y="5900.4" text-anchor="middle" font-size="11" fill="#6b7280">m7-3</text>
+<rect x="883" y="5786" width="262" height="67" rx="6" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.5"/>
+<text x="1014" y="5807.6" text-anchor="middle" font-size="13" fill="#111827">自动推进与「目标做完了」</text>
+<text x="1014" y="5825.6" text-anchor="middle" font-size="13" fill="#111827">的检查</text>
+<text x="1014" y="5841.4" text-anchor="middle" font-size="11" fill="#6b7280">m7-3</text>
 </g>
 <g data-id="risk-calib-read" data-type="risk" data-status="approved" data-tone="todo">
 <title>标定时被测模型读得到验收脚本与前几次的解
 risk-calib-read · 风险 · 已批准</title>
-<rect x="883" y="5922" width="262" height="67" rx="6" fill="#f3f4f6" stroke="#dc2626" stroke-width="1.5" stroke-dasharray="5 3"/>
-<text x="1014" y="5943.6" text-anchor="middle" font-size="13" fill="#111827">标定时被测模型读得到验收</text>
-<text x="1014" y="5961.6" text-anchor="middle" font-size="13" fill="#111827">脚本与前几次的解</text>
-<text x="1014" y="5977.4" text-anchor="middle" font-size="11" fill="#6b7280">risk-calib-read</text>
+<rect x="883" y="5863" width="262" height="67" rx="6" fill="#f3f4f6" stroke="#dc2626" stroke-width="1.5" stroke-dasharray="5 3"/>
+<text x="1014" y="5884.6" text-anchor="middle" font-size="13" fill="#111827">标定时被测模型读得到验收</text>
+<text x="1014" y="5902.6" text-anchor="middle" font-size="13" fill="#111827">脚本与前几次的解</text>
+<text x="1014" y="5918.4" text-anchor="middle" font-size="11" fill="#6b7280">risk-calib-read</text>
 </g>
 <g data-id="m7-10" data-type="task" data-status="approved" data-tone="todo">
 <title>练习题只查有没有改坏
 m7-10 · 任务 · 已批准</title>
-<rect x="883" y="5999" width="262" height="49" rx="6" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.5"/>
-<text x="1014" y="6020.6" text-anchor="middle" font-size="13" fill="#111827">练习题只查有没有改坏</text>
-<text x="1014" y="6036.4" text-anchor="middle" font-size="11" fill="#6b7280">m7-10</text>
+<rect x="883" y="5940" width="262" height="49" rx="6" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.5"/>
+<text x="1014" y="5961.6" text-anchor="middle" font-size="13" fill="#111827">练习题只查有没有改坏</text>
+<text x="1014" y="5977.4" text-anchor="middle" font-size="11" fill="#6b7280">m7-10</text>
 </g>
 <g data-id="m7-4" data-type="task" data-status="approved" data-tone="todo">
 <title>审查
 m7-4 · 任务 · 已批准</title>
-<rect x="883" y="6058" width="262" height="49" rx="6" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.5"/>
-<text x="1014" y="6079.6" text-anchor="middle" font-size="13" fill="#111827">审查</text>
-<text x="1014" y="6095.4" text-anchor="middle" font-size="11" fill="#6b7280">m7-4</text>
+<rect x="883" y="5999" width="262" height="49" rx="6" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.5"/>
+<text x="1014" y="6020.6" text-anchor="middle" font-size="13" fill="#111827">审查</text>
+<text x="1014" y="6036.4" text-anchor="middle" font-size="11" fill="#6b7280">m7-4</text>
 </g>
 <g data-id="m7-5" data-type="task" data-status="doing" data-tone="doing">
 <title>主 Agent 合入，harness 核对与记证据
 m7-5 · 任务 · 进行中</title>
-<rect x="883" y="6117" width="262" height="67" rx="6" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
-<text x="1014" y="6138.6" text-anchor="middle" font-size="13" fill="#111827">主 Agent 合入，harness</text>
-<text x="1014" y="6156.6" text-anchor="middle" font-size="13" fill="#111827">核对与记证据</text>
-<text x="1014" y="6172.4" text-anchor="middle" font-size="11" fill="#6b7280">m7-5</text>
+<rect x="883" y="6058" width="262" height="67" rx="6" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
+<text x="1014" y="6079.6" text-anchor="middle" font-size="13" fill="#111827">主 Agent 合入，harness</text>
+<text x="1014" y="6097.6" text-anchor="middle" font-size="13" fill="#111827">核对与记证据</text>
+<text x="1014" y="6113.4" text-anchor="middle" font-size="11" fill="#6b7280">m7-5</text>
 </g>
 <g data-id="m7-6" data-type="task" data-status="approved" data-tone="todo">
 <title>晨报
 m7-6 · 任务 · 已批准</title>
-<rect x="883" y="6194" width="262" height="49" rx="6" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.5"/>
-<text x="1014" y="6215.6" text-anchor="middle" font-size="13" fill="#111827">晨报</text>
-<text x="1014" y="6231.4" text-anchor="middle" font-size="11" fill="#6b7280">m7-6</text>
+<rect x="883" y="6135" width="262" height="49" rx="6" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.5"/>
+<text x="1014" y="6156.6" text-anchor="middle" font-size="13" fill="#111827">晨报</text>
+<text x="1014" y="6172.4" text-anchor="middle" font-size="11" fill="#6b7280">m7-6</text>
 </g>
 <g data-id="m7-7" data-type="task" data-status="approved" data-tone="todo">
 <title>夜间巡检
 m7-7 · 任务 · 已批准</title>
-<rect x="883" y="6253" width="262" height="49" rx="6" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.5"/>
-<text x="1014" y="6274.6" text-anchor="middle" font-size="13" fill="#111827">夜间巡检</text>
-<text x="1014" y="6290.4" text-anchor="middle" font-size="11" fill="#6b7280">m7-7</text>
+<rect x="883" y="6194" width="262" height="49" rx="6" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.5"/>
+<text x="1014" y="6215.6" text-anchor="middle" font-size="13" fill="#111827">夜间巡检</text>
+<text x="1014" y="6231.4" text-anchor="middle" font-size="11" fill="#6b7280">m7-7</text>
 </g>
 <g data-id="m7-8" data-type="task" data-status="approved" data-tone="todo">
 <title>规矩的升降与周报
 m7-8 · 任务 · 已批准</title>
-<rect x="883" y="6312" width="262" height="49" rx="6" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.5"/>
-<text x="1014" y="6333.6" text-anchor="middle" font-size="13" fill="#111827">规矩的升降与周报</text>
-<text x="1014" y="6349.4" text-anchor="middle" font-size="11" fill="#6b7280">m7-8</text>
+<rect x="883" y="6253" width="262" height="49" rx="6" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.5"/>
+<text x="1014" y="6274.6" text-anchor="middle" font-size="13" fill="#111827">规矩的升降与周报</text>
+<text x="1014" y="6290.4" text-anchor="middle" font-size="11" fill="#6b7280">m7-8</text>
 </g>
 <g data-id="m7-9" data-type="task" data-status="approved" data-tone="todo">
 <title>交付的四个数
 m7-9 · 任务 · 已批准</title>
-<rect x="883" y="6371" width="262" height="49" rx="6" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.5"/>
-<text x="1014" y="6392.6" text-anchor="middle" font-size="13" fill="#111827">交付的四个数</text>
-<text x="1014" y="6408.4" text-anchor="middle" font-size="11" fill="#6b7280">m7-9</text>
+<rect x="883" y="6312" width="262" height="49" rx="6" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.5"/>
+<text x="1014" y="6333.6" text-anchor="middle" font-size="13" fill="#111827">交付的四个数</text>
+<text x="1014" y="6349.4" text-anchor="middle" font-size="11" fill="#6b7280">m7-9</text>
+</g>
+<g data-id="field-trial" data-type="feature" data-status="doing" data-tone="doing">
+<title>真实项目试用与社区反馈
+field-trial · 特性 · 进行中</title>
+<rect x="577" y="6383" width="242" height="49" rx="6" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
+<text x="698" y="6404.6" text-anchor="middle" font-size="13" fill="#111827">真实项目试用与社区反馈</text>
+<text x="698" y="6420.4" text-anchor="middle" font-size="11" fill="#6b7280">field-trial</text>
 </g>
 <g data-id="risk-shared-desktop" data-type="risk" data-status="approved" data-tone="todo">
 <title>验证用的就是用户自己的桌面版，worker 用时人不能放心用
@@ -1096,64 +1099,64 @@ risk-shared-desktop · 风险 · 已批准</title>
 <text x="698" y="6499.6" text-anchor="middle" font-size="13" fill="#111827">放心用</text>
 <text x="698" y="6515.4" text-anchor="middle" font-size="11" fill="#6b7280">risk-shared-desktop</text>
 </g>
+<g data-id="question-11" data-type="question" data-status="done" data-tone="done">
+<title>审查跑满两轮仍未通过时怎么办
+question-11 · 待决 · 完成
+拍板：A 自动再加一轮修复与审查，第三轮仍不过就停下等人</title>
+<polygon points="589,6537 807,6537 819,6570.5 807,6604 589,6604 577,6570.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="698" y="6558.6" text-anchor="middle" font-size="13" fill="#111827">审查跑满两轮仍未通过时怎</text>
+<text x="698" y="6576.6" text-anchor="middle" font-size="13" fill="#111827">么办</text>
+<text x="698" y="6592.4" text-anchor="middle" font-size="11" fill="#6b7280">question-11 · 选 A</text>
+</g>
+<g data-id="prompt-fixes" data-type="task" data-status="done" data-tone="done">
+<title>修注入文字里的事实错误与文档不一致
+prompt-fixes · 任务 · 完成</title>
+<rect x="577" y="6614" width="242" height="67" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+<text x="698" y="6635.6" text-anchor="middle" font-size="13" fill="#111827">修注入文字里的事实错误与</text>
+<text x="698" y="6653.6" text-anchor="middle" font-size="13" fill="#111827">文档不一致</text>
+<text x="698" y="6669.4" text-anchor="middle" font-size="11" fill="#6b7280">prompt-fixes</text>
+</g>
 <g data-id="ablation" data-type="task" data-status="approved" data-tone="todo">
 <title>注入文字的消融对比
 ablation · 任务 · 已批准</title>
-<rect x="577" y="6537" width="242" height="49" rx="6" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.5"/>
-<text x="698" y="6558.6" text-anchor="middle" font-size="13" fill="#111827">注入文字的消融对比</text>
-<text x="698" y="6574.4" text-anchor="middle" font-size="11" fill="#6b7280">ablation</text>
+<rect x="577" y="6691" width="242" height="49" rx="6" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.5"/>
+<text x="698" y="6712.6" text-anchor="middle" font-size="13" fill="#111827">注入文字的消融对比</text>
+<text x="698" y="6728.4" text-anchor="middle" font-size="11" fill="#6b7280">ablation</text>
 </g>
 <g data-id="question-30" data-type="question" data-status="done" data-tone="done">
 <title>要不要花积分做注入文字的消融对比
 question-30 · 待决 · 完成
 拍板：B 每臂一开始跑 5 次</title>
-<polygon points="589,6596 807,6596 819,6629.5 807,6663 589,6663 577,6629.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="698" y="6617.6" text-anchor="middle" font-size="13" fill="#111827">要不要花积分做注入文字的</text>
-<text x="698" y="6635.6" text-anchor="middle" font-size="13" fill="#111827">消融对比</text>
-<text x="698" y="6651.4" text-anchor="middle" font-size="11" fill="#6b7280">question-30 · 选 B</text>
-</g>
-<g data-id="prompt-fixes" data-type="task" data-status="done" data-tone="done">
-<title>修注入文字里的事实错误与文档不一致
-prompt-fixes · 任务 · 完成</title>
-<rect x="577" y="6673" width="242" height="67" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
-<text x="698" y="6694.6" text-anchor="middle" font-size="13" fill="#111827">修注入文字里的事实错误与</text>
-<text x="698" y="6712.6" text-anchor="middle" font-size="13" fill="#111827">文档不一致</text>
-<text x="698" y="6728.4" text-anchor="middle" font-size="11" fill="#6b7280">prompt-fixes</text>
-</g>
-<g data-id="question-11" data-type="question" data-status="done" data-tone="done">
-<title>审查跑满两轮仍未通过时怎么办
-question-11 · 待决 · 完成
-拍板：A 自动再加一轮修复与审查，第三轮仍不过就停下等人</title>
 <polygon points="589,6750 807,6750 819,6783.5 807,6817 589,6817 577,6783.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="698" y="6771.6" text-anchor="middle" font-size="13" fill="#111827">审查跑满两轮仍未通过时怎</text>
-<text x="698" y="6789.6" text-anchor="middle" font-size="13" fill="#111827">么办</text>
-<text x="698" y="6805.4" text-anchor="middle" font-size="11" fill="#6b7280">question-11 · 选 A</text>
+<text x="698" y="6771.6" text-anchor="middle" font-size="13" fill="#111827">要不要花积分做注入文字的</text>
+<text x="698" y="6789.6" text-anchor="middle" font-size="13" fill="#111827">消融对比</text>
+<text x="698" y="6805.4" text-anchor="middle" font-size="11" fill="#6b7280">question-30 · 选 B</text>
+</g>
+<g data-id="prompt-audit" data-type="task" data-status="done" data-tone="done">
+<title>清点所有注入给模型的文字：放在哪、多长、贴不贴训练分布、有没有用
+prompt-audit · 任务 · 完成</title>
+<rect x="577" y="6827" width="242" height="85" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+<text x="698" y="6848.6" text-anchor="middle" font-size="13" fill="#111827">清点所有注入给模型的文</text>
+<text x="698" y="6866.6" text-anchor="middle" font-size="13" fill="#111827">字：放在哪、多长、贴不贴</text>
+<text x="698" y="6884.6" text-anchor="middle" font-size="13" fill="#111827">训练分布、有没有用</text>
+<text x="698" y="6900.4" text-anchor="middle" font-size="11" fill="#6b7280">prompt-audit</text>
 </g>
 <g data-id="question-12" data-type="question" data-status="done" data-tone="done">
 <title>清理类工作要不要逐项问人
 question-12 · 待决 · 完成
 拍板：A agent 自己定，含 ~/.dsh 下的条目</title>
-<polygon points="589,6827 807,6827 819,6851.5 807,6876 589,6876 577,6851.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="698" y="6848.6" text-anchor="middle" font-size="13" fill="#111827">清理类工作要不要逐项问人</text>
-<text x="698" y="6864.4" text-anchor="middle" font-size="11" fill="#6b7280">question-12 · 选 A</text>
+<polygon points="589,6922 807,6922 819,6946.5 807,6971 589,6971 577,6946.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="698" y="6943.6" text-anchor="middle" font-size="13" fill="#111827">清理类工作要不要逐项问人</text>
+<text x="698" y="6959.4" text-anchor="middle" font-size="11" fill="#6b7280">question-12 · 选 A</text>
 </g>
 <g data-id="reading-digest" data-type="task" data-status="doing" data-tone="doing">
 <title>每周读 Anthropic 与 OpenAI 的 agent 工程文章，对照本项目
 reading-digest · 任务 · 进行中</title>
-<rect x="577" y="6886" width="242" height="85" rx="6" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
-<text x="698" y="6907.6" text-anchor="middle" font-size="13" fill="#111827">每周读 Anthropic 与</text>
-<text x="698" y="6925.6" text-anchor="middle" font-size="13" fill="#111827">OpenAI 的 agent 工程文</text>
-<text x="698" y="6943.6" text-anchor="middle" font-size="13" fill="#111827">章，对照本项目</text>
-<text x="698" y="6959.4" text-anchor="middle" font-size="11" fill="#6b7280">reading-digest</text>
-</g>
-<g data-id="prompt-audit" data-type="task" data-status="done" data-tone="done">
-<title>清点所有注入给模型的文字：放在哪、多长、贴不贴训练分布、有没有用
-prompt-audit · 任务 · 完成</title>
-<rect x="577" y="6981" width="242" height="85" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
-<text x="698" y="7002.6" text-anchor="middle" font-size="13" fill="#111827">清点所有注入给模型的文</text>
-<text x="698" y="7020.6" text-anchor="middle" font-size="13" fill="#111827">字：放在哪、多长、贴不贴</text>
-<text x="698" y="7038.6" text-anchor="middle" font-size="13" fill="#111827">训练分布、有没有用</text>
-<text x="698" y="7054.4" text-anchor="middle" font-size="11" fill="#6b7280">prompt-audit</text>
+<rect x="577" y="6981" width="242" height="85" rx="6" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
+<text x="698" y="7002.6" text-anchor="middle" font-size="13" fill="#111827">每周读 Anthropic 与</text>
+<text x="698" y="7020.6" text-anchor="middle" font-size="13" fill="#111827">OpenAI 的 agent 工程文</text>
+<text x="698" y="7038.6" text-anchor="middle" font-size="13" fill="#111827">章，对照本项目</text>
+<text x="698" y="7054.4" text-anchor="middle" font-size="11" fill="#6b7280">reading-digest</text>
 </g>
 <g data-id="d-recommend-last" data-type="decision" data-status="approved" data-tone="todo">
 <title>每组选项照旧给一个推荐，推荐永远放在最后
@@ -1392,442 +1395,466 @@ d-freeze-until-dogfood · 决策 · 已批准 · 未验证</title>
 <text x="698" y="9441.6" text-anchor="middle" font-size="13" fill="#111827">上图、不塞进在跑的设计稿</text>
 <text x="698" y="9457.4" text-anchor="middle" font-size="11" fill="#6b7280">d-freeze-until-dogfood · 未验证</text>
 </g>
+<g data-id="d-code-rules-enforce" data-type="decision" data-status="approved" data-tone="todo">
+<title>写在代码里的规则启用即拦，不设试运行期
+d-code-rules-enforce · 决策 · 已批准 · 未验证</title>
+<polygon points="589,9479 807,9479 819,9512.5 807,9546 589,9546 577,9512.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="698" y="9500.6" text-anchor="middle" font-size="13" fill="#111827">写在代码里的规则启用即</text>
+<text x="698" y="9518.6" text-anchor="middle" font-size="13" fill="#111827">拦，不设试运行期</text>
+<text x="698" y="9534.4" text-anchor="middle" font-size="11" fill="#6b7280">d-code-rules-enforce · 未验证</text>
+</g>
+<g data-id="d-credentials-readable" data-type="decision" data-status="approved" data-tone="todo">
+<title>agent 可以读登录密钥文件，不设读密钥的规则
+d-credentials-readable · 决策 · 已批准 · 未验证</title>
+<polygon points="589,9556 807,9556 819,9589.5 807,9623 589,9623 577,9589.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="698" y="9577.6" text-anchor="middle" font-size="13" fill="#111827">agent 可以读登录密钥文</text>
+<text x="698" y="9595.6" text-anchor="middle" font-size="13" fill="#111827">件，不设读密钥的规则</text>
+<text x="698" y="9611.4" text-anchor="middle" font-size="11" fill="#6b7280">d-credentials-readable · 未验证</text>
+</g>
+<g data-id="d-build-all-released" data-type="decision" data-status="approved" data-tone="todo">
+<title>已放行的设计都开工，不再只做自举骨架
+d-build-all-released · 决策 · 已批准 · 未验证</title>
+<polygon points="589,9633 807,9633 819,9666.5 807,9700 589,9700 577,9666.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="698" y="9654.6" text-anchor="middle" font-size="13" fill="#111827">已放行的设计都开工，不再</text>
+<text x="698" y="9672.6" text-anchor="middle" font-size="13" fill="#111827">只做自举骨架</text>
+<text x="698" y="9688.4" text-anchor="middle" font-size="11" fill="#6b7280">d-build-all-released · 未验证</text>
+</g>
 <g data-id="d-graph-programming" data-type="decision" data-status="approved" data-tone="todo">
 <title>第一理念：在图上编程
 d-graph-programming · 决策 · 已批准 · 未验证</title>
-<polygon points="296,9491 501,9491 513,9515.5 501,9540 296,9540 284,9515.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="398.5" y="9512.6" text-anchor="middle" font-size="13" fill="#111827">第一理念：在图上编程</text>
-<text x="398.5" y="9528.4" text-anchor="middle" font-size="11" fill="#6b7280">d-graph-programming · 未验证</text>
+<polygon points="296,9722 501,9722 513,9746.5 501,9771 296,9771 284,9746.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="398.5" y="9743.6" text-anchor="middle" font-size="13" fill="#111827">第一理念：在图上编程</text>
+<text x="398.5" y="9759.4" text-anchor="middle" font-size="11" fill="#6b7280">d-graph-programming · 未验证</text>
 </g>
 <g data-id="question-27" data-type="question" data-status="done" data-tone="done">
 <title>「减轻人的负担而质量不降」要不要写进编排层目标并量化
 question-27 · 待决 · 完成
 拍板：B 写进编排层目标的正文，并加一条可量化的验收</title>
-<polygon points="296,9550 501,9550 513,9592.5 501,9635 296,9635 284,9592.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="398.5" y="9571.6" text-anchor="middle" font-size="13" fill="#111827">「减轻人的负担而质量不</text>
-<text x="398.5" y="9589.6" text-anchor="middle" font-size="13" fill="#111827">降」要不要写进编排层目标</text>
-<text x="398.5" y="9607.6" text-anchor="middle" font-size="13" fill="#111827">并量化</text>
-<text x="398.5" y="9623.4" text-anchor="middle" font-size="11" fill="#6b7280">question-27 · 选 B</text>
+<polygon points="296,9781 501,9781 513,9823.5 501,9866 296,9866 284,9823.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="398.5" y="9802.6" text-anchor="middle" font-size="13" fill="#111827">「减轻人的负担而质量不</text>
+<text x="398.5" y="9820.6" text-anchor="middle" font-size="13" fill="#111827">降」要不要写进编排层目标</text>
+<text x="398.5" y="9838.6" text-anchor="middle" font-size="13" fill="#111827">并量化</text>
+<text x="398.5" y="9854.4" text-anchor="middle" font-size="11" fill="#6b7280">question-27 · 选 B</text>
 </g>
 <g data-id="norm-merge-gate" data-type="norm" data-status="approved" data-tone="todo">
 <title>合入主干前必须全部通过的命令
 norm-merge-gate · 规范 · 已批准</title>
-<rect x="284" y="9645" width="229" height="67" rx="6" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.5"/>
-<text x="398.5" y="9666.6" text-anchor="middle" font-size="13" fill="#111827">合入主干前必须全部通过的</text>
-<text x="398.5" y="9684.6" text-anchor="middle" font-size="13" fill="#111827">命令</text>
-<text x="398.5" y="9700.4" text-anchor="middle" font-size="11" fill="#6b7280">norm-merge-gate</text>
+<rect x="284" y="9876" width="229" height="67" rx="6" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.5"/>
+<text x="398.5" y="9897.6" text-anchor="middle" font-size="13" fill="#111827">合入主干前必须全部通过的</text>
+<text x="398.5" y="9915.6" text-anchor="middle" font-size="13" fill="#111827">命令</text>
+<text x="398.5" y="9931.4" text-anchor="middle" font-size="11" fill="#6b7280">norm-merge-gate</text>
 </g>
 <g data-id="norm-review-floor" data-type="norm" data-status="approved" data-tone="todo">
 <title>本仓库必须全审的改动
 norm-review-floor · 规范 · 已批准</title>
-<rect x="284" y="9722" width="229" height="49" rx="6" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.5"/>
-<text x="398.5" y="9743.6" text-anchor="middle" font-size="13" fill="#111827">本仓库必须全审的改动</text>
-<text x="398.5" y="9759.4" text-anchor="middle" font-size="11" fill="#6b7280">norm-review-floor</text>
+<rect x="284" y="9953" width="229" height="49" rx="6" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.5"/>
+<text x="398.5" y="9974.6" text-anchor="middle" font-size="13" fill="#111827">本仓库必须全审的改动</text>
+<text x="398.5" y="9990.4" text-anchor="middle" font-size="11" fill="#6b7280">norm-review-floor</text>
 </g>
 <g data-id="glm-house" data-type="goal" data-status="doing" data-tone="doing">
 <title>GLM 住进 DSH：以 ZCode 3.16.3 的训练分布工作，质量与官方 ZCode 一致
 glm-house · 目标 · 进行中</title>
-<rect x="0" y="11422" width="220" height="115" rx="10" fill="#fef3c7" stroke="#d97706" stroke-width="2.5"/>
-<text x="110" y="11445.8" text-anchor="middle" font-size="15" font-weight="600" fill="#111827">GLM 住进 DSH：以</text>
-<text x="110" y="11466.8" text-anchor="middle" font-size="15" font-weight="600" fill="#111827">ZCode 3.16.3 的训练分布</text>
-<text x="110" y="11487.8" text-anchor="middle" font-size="15" font-weight="600" fill="#111827">工作，质量与官方 ZCode</text>
-<text x="110" y="11508.8" text-anchor="middle" font-size="15" font-weight="600" fill="#111827">一致</text>
-<text x="110" y="11525.4" text-anchor="middle" font-size="11" fill="#6b7280">glm-house</text>
+<rect x="0" y="11653" width="220" height="115" rx="10" fill="#fef3c7" stroke="#d97706" stroke-width="2.5"/>
+<text x="110" y="11676.8" text-anchor="middle" font-size="15" font-weight="600" fill="#111827">GLM 住进 DSH：以</text>
+<text x="110" y="11697.8" text-anchor="middle" font-size="15" font-weight="600" fill="#111827">ZCode 3.16.3 的训练分布</text>
+<text x="110" y="11718.8" text-anchor="middle" font-size="15" font-weight="600" fill="#111827">工作，质量与官方 ZCode</text>
+<text x="110" y="11739.8" text-anchor="middle" font-size="15" font-weight="600" fill="#111827">一致</text>
+<text x="110" y="11756.4" text-anchor="middle" font-size="11" fill="#6b7280">glm-house</text>
 </g>
 <g data-id="q-old-folder" data-type="question" data-status="done" data-tone="done">
 <title>删除旧文件夹 dsh-glm-dialect
 q-old-folder · 待决 · 完成
 拍板：A 删除</title>
-<polygon points="296,9811 501,9811 513,9844.5 501,9878 296,9878 284,9844.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="398.5" y="9832.6" text-anchor="middle" font-size="13" fill="#111827">删除旧文件夹</text>
-<text x="398.5" y="9850.6" text-anchor="middle" font-size="13" fill="#111827">dsh-glm-dialect</text>
-<text x="398.5" y="9866.4" text-anchor="middle" font-size="11" fill="#6b7280">q-old-folder · 选 A</text>
+<polygon points="296,10042 501,10042 513,10075.5 501,10109 296,10109 284,10075.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="398.5" y="10063.6" text-anchor="middle" font-size="13" fill="#111827">删除旧文件夹</text>
+<text x="398.5" y="10081.6" text-anchor="middle" font-size="13" fill="#111827">dsh-glm-dialect</text>
+<text x="398.5" y="10097.4" text-anchor="middle" font-size="11" fill="#6b7280">q-old-folder · 选 A</text>
 </g>
 <g data-id="zcode-3171" data-type="task" data-status="done" data-tone="done">
 <title>查清 ZCode 3.17.1 相对 3.16.3 改了什么，给出跟进方案
 zcode-3171 · 任务 · 完成</title>
-<rect x="284" y="9888" width="229" height="85" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
-<text x="398.5" y="9909.6" text-anchor="middle" font-size="13" fill="#111827">查清 ZCode 3.17.1 相对</text>
-<text x="398.5" y="9927.6" text-anchor="middle" font-size="13" fill="#111827">3.16.3 改了什么，给出跟</text>
-<text x="398.5" y="9945.6" text-anchor="middle" font-size="13" fill="#111827">进方案</text>
-<text x="398.5" y="9961.4" text-anchor="middle" font-size="11" fill="#6b7280">zcode-3171</text>
+<rect x="284" y="10119" width="229" height="85" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+<text x="398.5" y="10140.6" text-anchor="middle" font-size="13" fill="#111827">查清 ZCode 3.17.1 相对</text>
+<text x="398.5" y="10158.6" text-anchor="middle" font-size="13" fill="#111827">3.16.3 改了什么，给出跟</text>
+<text x="398.5" y="10176.6" text-anchor="middle" font-size="13" fill="#111827">进方案</text>
+<text x="398.5" y="10192.4" text-anchor="middle" font-size="11" fill="#6b7280">zcode-3171</text>
 </g>
 <g data-id="zcode-3171-follow" data-type="task" data-status="done" data-tone="done">
 <title>GLM 通道跟到 ZCode 3.17.1
 zcode-3171-follow · 任务 · 完成</title>
-<rect x="284" y="9983" width="229" height="67" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
-<text x="398.5" y="10004.6" text-anchor="middle" font-size="13" fill="#111827">GLM 通道跟到 ZCode</text>
-<text x="398.5" y="10022.6" text-anchor="middle" font-size="13" fill="#111827">3.17.1</text>
-<text x="398.5" y="10038.4" text-anchor="middle" font-size="11" fill="#6b7280">zcode-3171-follow</text>
+<rect x="284" y="10214" width="229" height="67" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+<text x="398.5" y="10235.6" text-anchor="middle" font-size="13" fill="#111827">GLM 通道跟到 ZCode</text>
+<text x="398.5" y="10253.6" text-anchor="middle" font-size="13" fill="#111827">3.17.1</text>
+<text x="398.5" y="10269.4" text-anchor="middle" font-size="11" fill="#6b7280">zcode-3171-follow</text>
 </g>
 <g data-id="d-zcode-3171" data-type="decision" data-status="approved" data-tone="todo">
 <title>ZCode 基线从 3.16.3 换到 3.17.1，用户的工程环境声明照旧
 d-zcode-3171 · 决策 · 已批准 · 未验证</title>
-<polygon points="296,10060 501,10060 513,10102.5 501,10145 296,10145 284,10102.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="398.5" y="10081.6" text-anchor="middle" font-size="13" fill="#111827">ZCode 基线从 3.16.3 换</text>
-<text x="398.5" y="10099.6" text-anchor="middle" font-size="13" fill="#111827">到 3.17.1，用户的工程环</text>
-<text x="398.5" y="10117.6" text-anchor="middle" font-size="13" fill="#111827">境声明照旧</text>
-<text x="398.5" y="10133.4" text-anchor="middle" font-size="11" fill="#6b7280">d-zcode-3171 · 未验证</text>
+<polygon points="296,10291 501,10291 513,10333.5 501,10376 296,10376 284,10333.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="398.5" y="10312.6" text-anchor="middle" font-size="13" fill="#111827">ZCode 基线从 3.16.3 换</text>
+<text x="398.5" y="10330.6" text-anchor="middle" font-size="13" fill="#111827">到 3.17.1，用户的工程环</text>
+<text x="398.5" y="10348.6" text-anchor="middle" font-size="13" fill="#111827">境声明照旧</text>
+<text x="398.5" y="10364.4" text-anchor="middle" font-size="11" fill="#6b7280">d-zcode-3171 · 未验证</text>
 </g>
 <g data-id="bottom" data-type="feature" data-status="doing" data-tone="doing">
 <title>底层：通道与方言
 bottom · 特性 · 进行中</title>
-<rect x="284" y="11633" width="229" height="49" rx="6" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
-<text x="398.5" y="11654.6" text-anchor="middle" font-size="13" fill="#111827">底层：通道与方言</text>
-<text x="398.5" y="11670.4" text-anchor="middle" font-size="11" fill="#6b7280">bottom</text>
+<rect x="284" y="11864" width="229" height="49" rx="6" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
+<text x="398.5" y="11885.6" text-anchor="middle" font-size="13" fill="#111827">底层：通道与方言</text>
+<text x="398.5" y="11901.4" text-anchor="middle" font-size="11" fill="#6b7280">bottom</text>
 </g>
 <g data-id="q-glm-route" data-type="question" data-status="done" data-tone="done">
 <title>8317 的 pi-ai glm 路由去留
 q-glm-route · 待决 · 完成
 拍板：A 保留到 L4 验收通过后再定</title>
-<polygon points="589,10167 807,10167 819,10200.5 807,10234 589,10234 577,10200.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="698" y="10188.6" text-anchor="middle" font-size="13" fill="#111827">8317 的 pi-ai glm 路由</text>
-<text x="698" y="10206.6" text-anchor="middle" font-size="13" fill="#111827">去留</text>
-<text x="698" y="10222.4" text-anchor="middle" font-size="11" fill="#6b7280">q-glm-route · 选 A</text>
+<polygon points="589,10398 807,10398 819,10431.5 807,10465 589,10465 577,10431.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="698" y="10419.6" text-anchor="middle" font-size="13" fill="#111827">8317 的 pi-ai glm 路由</text>
+<text x="698" y="10437.6" text-anchor="middle" font-size="13" fill="#111827">去留</text>
+<text x="698" y="10453.4" text-anchor="middle" font-size="11" fill="#6b7280">q-glm-route · 选 A</text>
 </g>
 <g data-id="risk-signing" data-type="risk" data-status="approved" data-tone="todo">
 <title>1.5 倍用量取决于请求与 ZCode 一致，用量上看不出
 risk-signing · 风险 · 已批准</title>
-<rect x="577" y="10244" width="242" height="67" rx="6" fill="#f3f4f6" stroke="#dc2626" stroke-width="1.5" stroke-dasharray="5 3"/>
-<text x="698" y="10265.6" text-anchor="middle" font-size="13" fill="#111827">1.5 倍用量取决于请求与</text>
-<text x="698" y="10283.6" text-anchor="middle" font-size="13" fill="#111827">ZCode 一致，用量上看不出</text>
-<text x="698" y="10299.4" text-anchor="middle" font-size="11" fill="#6b7280">risk-signing</text>
+<rect x="577" y="10475" width="242" height="67" rx="6" fill="#f3f4f6" stroke="#dc2626" stroke-width="1.5" stroke-dasharray="5 3"/>
+<text x="698" y="10496.6" text-anchor="middle" font-size="13" fill="#111827">1.5 倍用量取决于请求与</text>
+<text x="698" y="10514.6" text-anchor="middle" font-size="13" fill="#111827">ZCode 一致，用量上看不出</text>
+<text x="698" y="10530.4" text-anchor="middle" font-size="11" fill="#6b7280">risk-signing</text>
 </g>
 <g data-id="d-direct" data-type="decision" data-status="approved" data-tone="todo">
 <title>原生通道在插件内直连，不经反向代理
 d-direct · 决策 · 已批准 · 沙盒验证</title>
-<polygon points="589,10321 807,10321 819,10354.5 807,10388 589,10388 577,10354.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="698" y="10342.6" text-anchor="middle" font-size="13" fill="#111827">原生通道在插件内直连，不</text>
-<text x="698" y="10360.6" text-anchor="middle" font-size="13" fill="#111827">经反向代理</text>
-<text x="698" y="10376.4" text-anchor="middle" font-size="11" fill="#6b7280">d-direct · 沙盒验证</text>
+<polygon points="589,10552 807,10552 819,10585.5 807,10619 589,10619 577,10585.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="698" y="10573.6" text-anchor="middle" font-size="13" fill="#111827">原生通道在插件内直连，不</text>
+<text x="698" y="10591.6" text-anchor="middle" font-size="13" fill="#111827">经反向代理</text>
+<text x="698" y="10607.4" text-anchor="middle" font-size="11" fill="#6b7280">d-direct · 沙盒验证</text>
 </g>
 <g data-id="d-baseline" data-type="decision" data-status="approved" data-tone="todo">
 <title>ZCode 基线统一为 3.16.3
 d-baseline · 决策 · 已批准 · 沙盒验证</title>
-<polygon points="589,10398 807,10398 819,10431.5 807,10465 589,10465 577,10431.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="698" y="10419.6" text-anchor="middle" font-size="13" fill="#111827">ZCode 基线统一为</text>
-<text x="698" y="10437.6" text-anchor="middle" font-size="13" fill="#111827">3.16.3</text>
-<text x="698" y="10453.4" text-anchor="middle" font-size="11" fill="#6b7280">d-baseline · 沙盒验证</text>
+<polygon points="589,10629 807,10629 819,10662.5 807,10696 589,10696 577,10662.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="698" y="10650.6" text-anchor="middle" font-size="13" fill="#111827">ZCode 基线统一为</text>
+<text x="698" y="10668.6" text-anchor="middle" font-size="13" fill="#111827">3.16.3</text>
+<text x="698" y="10684.4" text-anchor="middle" font-size="11" fill="#6b7280">d-baseline · 沙盒验证</text>
 </g>
 <g data-id="d-toolsearch" data-type="decision" data-status="approved" data-tone="todo">
 <title>工具检索默认开启，按 ZCode 3.16.3 local 模式实现
 d-toolsearch · 决策 · 已批准 · 沙盒验证</title>
-<polygon points="589,10475 807,10475 819,10517.5 807,10560 589,10560 577,10517.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="698" y="10496.6" text-anchor="middle" font-size="13" fill="#111827">工具检索默认开启，按</text>
-<text x="698" y="10514.6" text-anchor="middle" font-size="13" fill="#111827">ZCode 3.16.3 local 模</text>
-<text x="698" y="10532.6" text-anchor="middle" font-size="13" fill="#111827">式实现</text>
-<text x="698" y="10548.4" text-anchor="middle" font-size="11" fill="#6b7280">d-toolsearch · 沙盒验证</text>
+<polygon points="589,10706 807,10706 819,10748.5 807,10791 589,10791 577,10748.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="698" y="10727.6" text-anchor="middle" font-size="13" fill="#111827">工具检索默认开启，按</text>
+<text x="698" y="10745.6" text-anchor="middle" font-size="13" fill="#111827">ZCode 3.16.3 local 模</text>
+<text x="698" y="10763.6" text-anchor="middle" font-size="13" fill="#111827">式实现</text>
+<text x="698" y="10779.4" text-anchor="middle" font-size="11" fill="#6b7280">d-toolsearch · 沙盒验证</text>
 </g>
 <g data-id="q-cot" data-type="question" data-status="done" data-tone="done">
 <title>是否关闭 cot-translation 实验行
 q-cot · 待决 · 完成
 拍板：A 关闭，改 profile 前先备份</title>
-<polygon points="589,10570 807,10570 819,10603.5 807,10637 589,10637 577,10603.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="698" y="10591.6" text-anchor="middle" font-size="13" fill="#111827">是否关闭</text>
-<text x="698" y="10609.6" text-anchor="middle" font-size="13" fill="#111827">cot-translation 实验行</text>
-<text x="698" y="10625.4" text-anchor="middle" font-size="11" fill="#6b7280">q-cot · 选 A</text>
+<polygon points="589,10801 807,10801 819,10834.5 807,10868 589,10868 577,10834.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="698" y="10822.6" text-anchor="middle" font-size="13" fill="#111827">是否关闭</text>
+<text x="698" y="10840.6" text-anchor="middle" font-size="13" fill="#111827">cot-translation 实验行</text>
+<text x="698" y="10856.4" text-anchor="middle" font-size="11" fill="#6b7280">q-cot · 选 A</text>
 </g>
 <g data-id="risk-l3-only" data-type="risk" data-status="approved" data-tone="todo">
 <title>运行时改动只有 L3 证据，未经真机验收
 risk-l3-only · 风险 · 已批准</title>
-<rect x="577" y="10647" width="242" height="67" rx="6" fill="#f3f4f6" stroke="#dc2626" stroke-width="1.5" stroke-dasharray="5 3"/>
-<text x="698" y="10668.6" text-anchor="middle" font-size="13" fill="#111827">运行时改动只有 L3 证据，</text>
-<text x="698" y="10686.6" text-anchor="middle" font-size="13" fill="#111827">未经真机验收</text>
-<text x="698" y="10702.4" text-anchor="middle" font-size="11" fill="#6b7280">risk-l3-only</text>
+<rect x="577" y="10878" width="242" height="67" rx="6" fill="#f3f4f6" stroke="#dc2626" stroke-width="1.5" stroke-dasharray="5 3"/>
+<text x="698" y="10899.6" text-anchor="middle" font-size="13" fill="#111827">运行时改动只有 L3 证据，</text>
+<text x="698" y="10917.6" text-anchor="middle" font-size="13" fill="#111827">未经真机验收</text>
+<text x="698" y="10933.4" text-anchor="middle" font-size="11" fill="#6b7280">risk-l3-only</text>
 </g>
 <g data-id="risk-rc3" data-type="risk" data-status="approved" data-tone="todo">
 <title>DSH rc.3 运行时与参考源码不一致，且还在变
 risk-rc3 · 风险 · 已批准</title>
-<rect x="577" y="10724" width="242" height="67" rx="6" fill="#f3f4f6" stroke="#dc2626" stroke-width="1.5" stroke-dasharray="5 3"/>
-<text x="698" y="10745.6" text-anchor="middle" font-size="13" fill="#111827">DSH rc.3 运行时与参考源</text>
-<text x="698" y="10763.6" text-anchor="middle" font-size="13" fill="#111827">码不一致，且还在变</text>
-<text x="698" y="10779.4" text-anchor="middle" font-size="11" fill="#6b7280">risk-rc3</text>
+<rect x="577" y="10955" width="242" height="67" rx="6" fill="#f3f4f6" stroke="#dc2626" stroke-width="1.5" stroke-dasharray="5 3"/>
+<text x="698" y="10976.6" text-anchor="middle" font-size="13" fill="#111827">DSH rc.3 运行时与参考源</text>
+<text x="698" y="10994.6" text-anchor="middle" font-size="13" fill="#111827">码不一致，且还在变</text>
+<text x="698" y="11010.4" text-anchor="middle" font-size="11" fill="#6b7280">risk-rc3</text>
 </g>
 <g data-id="m1" data-type="feature" data-status="done" data-tone="done">
 <title>M1 底层收口
 m1 · 特性 · 完成</title>
-<rect x="577" y="11956" width="242" height="49" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
-<text x="698" y="11977.6" text-anchor="middle" font-size="13" fill="#111827">M1 底层收口</text>
-<text x="698" y="11993.4" text-anchor="middle" font-size="11" fill="#6b7280">m1</text>
+<rect x="577" y="12187" width="242" height="49" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+<text x="698" y="12208.6" text-anchor="middle" font-size="13" fill="#111827">M1 底层收口</text>
+<text x="698" y="12224.4" text-anchor="middle" font-size="11" fill="#6b7280">m1</text>
 </g>
 <g data-id="m1-1" data-type="task" data-status="done" data-tone="done">
 <title>1.1 版本基线 3.16.3 与方言文本重建
 m1-1 · 任务 · 完成</title>
-<rect x="883" y="10813" width="262" height="67" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
-<text x="1014" y="10834.6" text-anchor="middle" font-size="13" fill="#111827">1.1 版本基线 3.16.3 与</text>
-<text x="1014" y="10852.6" text-anchor="middle" font-size="13" fill="#111827">方言文本重建</text>
-<text x="1014" y="10868.4" text-anchor="middle" font-size="11" fill="#6b7280">m1-1</text>
+<rect x="883" y="11044" width="262" height="67" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+<text x="1014" y="11065.6" text-anchor="middle" font-size="13" fill="#111827">1.1 版本基线 3.16.3 与</text>
+<text x="1014" y="11083.6" text-anchor="middle" font-size="13" fill="#111827">方言文本重建</text>
+<text x="1014" y="11099.4" text-anchor="middle" font-size="11" fill="#6b7280">m1-1</text>
 </g>
 <g data-id="m1-2" data-type="task" data-status="done" data-tone="done">
 <title>1.2 路由判定收口
 m1-2 · 任务 · 完成</title>
-<rect x="883" y="10890" width="262" height="49" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
-<text x="1014" y="10911.6" text-anchor="middle" font-size="13" fill="#111827">1.2 路由判定收口</text>
-<text x="1014" y="10927.4" text-anchor="middle" font-size="11" fill="#6b7280">m1-2</text>
+<rect x="883" y="11121" width="262" height="49" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+<text x="1014" y="11142.6" text-anchor="middle" font-size="13" fill="#111827">1.2 路由判定收口</text>
+<text x="1014" y="11158.4" text-anchor="middle" font-size="11" fill="#6b7280">m1-2</text>
 </g>
 <g data-id="m1-3" data-type="task" data-status="done" data-tone="done">
 <title>1.3 删除反代判断与文案
 m1-3 · 任务 · 完成</title>
-<rect x="883" y="10949" width="262" height="49" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
-<text x="1014" y="10970.6" text-anchor="middle" font-size="13" fill="#111827">1.3 删除反代判断与文案</text>
-<text x="1014" y="10986.4" text-anchor="middle" font-size="11" fill="#6b7280">m1-3</text>
+<rect x="883" y="11180" width="262" height="49" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+<text x="1014" y="11201.6" text-anchor="middle" font-size="13" fill="#111827">1.3 删除反代判断与文案</text>
+<text x="1014" y="11217.4" text-anchor="middle" font-size="11" fill="#6b7280">m1-3</text>
 </g>
 <g data-id="m1-6" data-type="task" data-status="done" data-tone="done">
 <title>1.6 DSH 契约对照与薄适配层
 m1-6 · 任务 · 完成</title>
-<rect x="883" y="11008" width="262" height="67" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
-<text x="1014" y="11029.6" text-anchor="middle" font-size="13" fill="#111827">1.6 DSH 契约对照与薄适</text>
-<text x="1014" y="11047.6" text-anchor="middle" font-size="13" fill="#111827">配层</text>
-<text x="1014" y="11063.4" text-anchor="middle" font-size="11" fill="#6b7280">m1-6</text>
+<rect x="883" y="11239" width="262" height="67" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+<text x="1014" y="11260.6" text-anchor="middle" font-size="13" fill="#111827">1.6 DSH 契约对照与薄适</text>
+<text x="1014" y="11278.6" text-anchor="middle" font-size="13" fill="#111827">配层</text>
+<text x="1014" y="11294.4" text-anchor="middle" font-size="11" fill="#6b7280">m1-6</text>
 </g>
 <g data-id="m1-8" data-type="task" data-status="done" data-tone="done">
 <title>1.8 guard 引号感知与影子模式
 m1-8 · 任务 · 完成</title>
-<rect x="883" y="11085" width="262" height="67" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
-<text x="1014" y="11106.6" text-anchor="middle" font-size="13" fill="#111827">1.8 guard 引号感知与影</text>
-<text x="1014" y="11124.6" text-anchor="middle" font-size="13" fill="#111827">子模式</text>
-<text x="1014" y="11140.4" text-anchor="middle" font-size="11" fill="#6b7280">m1-8</text>
+<rect x="883" y="11316" width="262" height="67" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+<text x="1014" y="11337.6" text-anchor="middle" font-size="13" fill="#111827">1.8 guard 引号感知与影</text>
+<text x="1014" y="11355.6" text-anchor="middle" font-size="13" fill="#111827">子模式</text>
+<text x="1014" y="11371.4" text-anchor="middle" font-size="11" fill="#6b7280">m1-8</text>
 </g>
 <g data-id="m1-7" data-type="task" data-status="done" data-tone="done">
 <title>1.7 L3 沙盒自动化与标定测试集
 m1-7 · 任务 · 完成</title>
-<rect x="883" y="11162" width="262" height="67" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
-<text x="1014" y="11183.6" text-anchor="middle" font-size="13" fill="#111827">1.7 L3 沙盒自动化与标定</text>
-<text x="1014" y="11201.6" text-anchor="middle" font-size="13" fill="#111827">测试集</text>
-<text x="1014" y="11217.4" text-anchor="middle" font-size="11" fill="#6b7280">m1-7</text>
+<rect x="883" y="11393" width="262" height="67" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+<text x="1014" y="11414.6" text-anchor="middle" font-size="13" fill="#111827">1.7 L3 沙盒自动化与标定</text>
+<text x="1014" y="11432.6" text-anchor="middle" font-size="13" fill="#111827">测试集</text>
+<text x="1014" y="11448.4" text-anchor="middle" font-size="11" fill="#6b7280">m1-7</text>
 </g>
 <g data-id="m1-4" data-type="task" data-status="done" data-tone="done">
 <title>1.4 共享数据目录与审计服务
 m1-4 · 任务 · 完成</title>
-<rect x="883" y="11239" width="262" height="67" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
-<text x="1014" y="11260.6" text-anchor="middle" font-size="13" fill="#111827">1.4 共享数据目录与审计服</text>
-<text x="1014" y="11278.6" text-anchor="middle" font-size="13" fill="#111827">务</text>
-<text x="1014" y="11294.4" text-anchor="middle" font-size="11" fill="#6b7280">m1-4</text>
+<rect x="883" y="11470" width="262" height="67" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+<text x="1014" y="11491.6" text-anchor="middle" font-size="13" fill="#111827">1.4 共享数据目录与审计服</text>
+<text x="1014" y="11509.6" text-anchor="middle" font-size="13" fill="#111827">务</text>
+<text x="1014" y="11525.4" text-anchor="middle" font-size="11" fill="#6b7280">m1-4</text>
 </g>
 <g data-id="q-profile-cleanup" data-type="question" data-status="done" data-tone="done">
 <title>清理 profile 里的备份与旧数据目录
 q-profile-cleanup · 待决 · 完成
 拍板：A 1.4 迁移并核对条数后删除两者</title>
-<polygon points="895,11316 1133,11316 1145,11349.5 1133,11383 895,11383 883,11349.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="1014" y="11337.6" text-anchor="middle" font-size="13" fill="#111827">清理 profile 里的备份与</text>
-<text x="1014" y="11355.6" text-anchor="middle" font-size="13" fill="#111827">旧数据目录</text>
-<text x="1014" y="11371.4" text-anchor="middle" font-size="11" fill="#6b7280">q-profile-cleanup · 选 A</text>
+<polygon points="895,11547 1133,11547 1145,11580.5 1133,11614 895,11614 883,11580.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="1014" y="11568.6" text-anchor="middle" font-size="13" fill="#111827">清理 profile 里的备份与</text>
+<text x="1014" y="11586.6" text-anchor="middle" font-size="13" fill="#111827">旧数据目录</text>
+<text x="1014" y="11602.4" text-anchor="middle" font-size="11" fill="#6b7280">q-profile-cleanup · 选 A</text>
 </g>
 <g data-id="m1-10" data-type="task" data-status="done" data-tone="done">
 <title>1.10 todo 提醒按助手轮次计数
 m1-10 · 任务 · 完成</title>
-<rect x="883" y="11393" width="262" height="67" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
-<text x="1014" y="11414.6" text-anchor="middle" font-size="13" fill="#111827">1.10 todo 提醒按助手轮</text>
-<text x="1014" y="11432.6" text-anchor="middle" font-size="13" fill="#111827">次计数</text>
-<text x="1014" y="11448.4" text-anchor="middle" font-size="11" fill="#6b7280">m1-10</text>
+<rect x="883" y="11624" width="262" height="67" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+<text x="1014" y="11645.6" text-anchor="middle" font-size="13" fill="#111827">1.10 todo 提醒按助手轮</text>
+<text x="1014" y="11663.6" text-anchor="middle" font-size="13" fill="#111827">次计数</text>
+<text x="1014" y="11679.4" text-anchor="middle" font-size="11" fill="#6b7280">m1-10</text>
 </g>
 <g data-id="m1-11" data-type="task" data-status="done" data-tone="done">
 <title>1.11 L4 真机验收
 m1-11 · 任务 · 完成</title>
-<rect x="883" y="11470" width="262" height="49" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
-<text x="1014" y="11491.6" text-anchor="middle" font-size="13" fill="#111827">1.11 L4 真机验收</text>
-<text x="1014" y="11507.4" text-anchor="middle" font-size="11" fill="#6b7280">m1-11</text>
+<rect x="883" y="11701" width="262" height="49" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+<text x="1014" y="11722.6" text-anchor="middle" font-size="13" fill="#111827">1.11 L4 真机验收</text>
+<text x="1014" y="11738.4" text-anchor="middle" font-size="11" fill="#6b7280">m1-11</text>
 </g>
 <g data-id="m1-usage" data-type="task" data-status="done" data-tone="done">
 <title>用量块：输入与缓存计数
 m1-usage · 任务 · 完成</title>
-<rect x="883" y="11529" width="262" height="49" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
-<text x="1014" y="11550.6" text-anchor="middle" font-size="13" fill="#111827">用量块：输入与缓存计数</text>
-<text x="1014" y="11566.4" text-anchor="middle" font-size="11" fill="#6b7280">m1-usage</text>
+<rect x="883" y="11760" width="262" height="49" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+<text x="1014" y="11781.6" text-anchor="middle" font-size="13" fill="#111827">用量块：输入与缓存计数</text>
+<text x="1014" y="11797.4" text-anchor="middle" font-size="11" fill="#6b7280">m1-usage</text>
 </g>
 <g data-id="m1-cleanup" data-type="task" data-status="done" data-tone="done">
 <title>清理：profile 备份、旧目录、8317 路由、仓库内旧凭证、空 worktree
 m1-cleanup · 任务 · 完成</title>
-<rect x="883" y="11588" width="262" height="85" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
-<text x="1014" y="11609.6" text-anchor="middle" font-size="13" fill="#111827">清理：profile 备份、旧目</text>
-<text x="1014" y="11627.6" text-anchor="middle" font-size="13" fill="#111827">录、8317 路由、仓库内旧</text>
-<text x="1014" y="11645.6" text-anchor="middle" font-size="13" fill="#111827">凭证、空 worktree</text>
-<text x="1014" y="11661.4" text-anchor="middle" font-size="11" fill="#6b7280">m1-cleanup</text>
+<rect x="883" y="11819" width="262" height="85" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+<text x="1014" y="11840.6" text-anchor="middle" font-size="13" fill="#111827">清理：profile 备份、旧目</text>
+<text x="1014" y="11858.6" text-anchor="middle" font-size="13" fill="#111827">录、8317 路由、仓库内旧</text>
+<text x="1014" y="11876.6" text-anchor="middle" font-size="13" fill="#111827">凭证、空 worktree</text>
+<text x="1014" y="11892.4" text-anchor="middle" font-size="11" fill="#6b7280">m1-cleanup</text>
 </g>
 <g data-id="m1-5" data-type="task" data-status="done" data-tone="done">
 <title>1.5 行健康上报与 /glm-status 健康表
 m1-5 · 任务 · 完成</title>
-<rect x="883" y="11683" width="262" height="67" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
-<text x="1014" y="11704.6" text-anchor="middle" font-size="13" fill="#111827">1.5 行健康上报与</text>
-<text x="1014" y="11722.6" text-anchor="middle" font-size="13" fill="#111827">/glm-status 健康表</text>
-<text x="1014" y="11738.4" text-anchor="middle" font-size="11" fill="#6b7280">m1-5</text>
+<rect x="883" y="11914" width="262" height="67" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+<text x="1014" y="11935.6" text-anchor="middle" font-size="13" fill="#111827">1.5 行健康上报与</text>
+<text x="1014" y="11953.6" text-anchor="middle" font-size="13" fill="#111827">/glm-status 健康表</text>
+<text x="1014" y="11969.4" text-anchor="middle" font-size="11" fill="#6b7280">m1-5</text>
 </g>
 <g data-id="q-l4" data-type="question" data-status="done" data-tone="done">
 <title>L4 真机验收什么时候做
 q-l4 · 待决 · 完成
 拍板：B 先验收已完成的部分，之后每批运行时改动再验</title>
-<polygon points="895,11760 1133,11760 1145,11784.5 1133,11809 895,11809 883,11784.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="1014" y="11781.6" text-anchor="middle" font-size="13" fill="#111827">L4 真机验收什么时候做</text>
-<text x="1014" y="11797.4" text-anchor="middle" font-size="11" fill="#6b7280">q-l4 · 选 B</text>
+<polygon points="895,11991 1133,11991 1145,12015.5 1133,12040 895,12040 883,12015.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="1014" y="12012.6" text-anchor="middle" font-size="13" fill="#111827">L4 真机验收什么时候做</text>
+<text x="1014" y="12028.4" text-anchor="middle" font-size="11" fill="#6b7280">q-l4 · 选 B</text>
 </g>
 <g data-id="m1-compact" data-type="task" data-status="done" data-tone="done">
 <title>glm-compact 改走 llm/stream 瀑布
 m1-compact · 任务 · 完成</title>
-<rect x="883" y="11819" width="262" height="67" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
-<text x="1014" y="11840.6" text-anchor="middle" font-size="13" fill="#111827">glm-compact 改走</text>
-<text x="1014" y="11858.6" text-anchor="middle" font-size="13" fill="#111827">llm/stream 瀑布</text>
-<text x="1014" y="11874.4" text-anchor="middle" font-size="11" fill="#6b7280">m1-compact</text>
+<rect x="883" y="12050" width="262" height="67" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+<text x="1014" y="12071.6" text-anchor="middle" font-size="13" fill="#111827">glm-compact 改走</text>
+<text x="1014" y="12089.6" text-anchor="middle" font-size="13" fill="#111827">llm/stream 瀑布</text>
+<text x="1014" y="12105.4" text-anchor="middle" font-size="11" fill="#6b7280">m1-compact</text>
 </g>
 <g data-id="q-checkers" data-type="question" data-status="done" data-tone="done">
 <title>M1.9 新增开发依赖与检查器
 q-checkers · 待决 · 完成
 拍板：A ESLint 与 typescript-eslint、knip、jscpd，精确版本的开发依赖，不加格式化器</title>
-<polygon points="895,11896 1133,11896 1145,11929.5 1133,11963 895,11963 883,11929.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="1014" y="11917.6" text-anchor="middle" font-size="13" fill="#111827">M1.9 新增开发依赖与检查</text>
-<text x="1014" y="11935.6" text-anchor="middle" font-size="13" fill="#111827">器</text>
-<text x="1014" y="11951.4" text-anchor="middle" font-size="11" fill="#6b7280">q-checkers · 选 A</text>
+<polygon points="895,12127 1133,12127 1145,12160.5 1133,12194 895,12194 883,12160.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="1014" y="12148.6" text-anchor="middle" font-size="13" fill="#111827">M1.9 新增开发依赖与检查</text>
+<text x="1014" y="12166.6" text-anchor="middle" font-size="13" fill="#111827">器</text>
+<text x="1014" y="12182.4" text-anchor="middle" font-size="11" fill="#6b7280">q-checkers · 选 A</text>
 </g>
 <g data-id="m1-images" data-type="task" data-status="done" data-tone="done">
 <title>原生通道读图与 rc.3 工具调用编码
 m1-images · 任务 · 完成</title>
-<rect x="883" y="11973" width="262" height="67" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
-<text x="1014" y="11994.6" text-anchor="middle" font-size="13" fill="#111827">原生通道读图与 rc.3 工具</text>
-<text x="1014" y="12012.6" text-anchor="middle" font-size="13" fill="#111827">调用编码</text>
-<text x="1014" y="12028.4" text-anchor="middle" font-size="11" fill="#6b7280">m1-images</text>
+<rect x="883" y="12204" width="262" height="67" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+<text x="1014" y="12225.6" text-anchor="middle" font-size="13" fill="#111827">原生通道读图与 rc.3 工具</text>
+<text x="1014" y="12243.6" text-anchor="middle" font-size="13" fill="#111827">调用编码</text>
+<text x="1014" y="12259.4" text-anchor="middle" font-size="11" fill="#6b7280">m1-images</text>
 </g>
 <g data-id="m1-9" data-type="task" data-status="done" data-tone="done">
 <title>1.9 规范、死代码、重复检查与告警基线
 m1-9 · 任务 · 完成</title>
-<rect x="883" y="12050" width="262" height="67" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
-<text x="1014" y="12071.6" text-anchor="middle" font-size="13" fill="#111827">1.9 规范、死代码、重复检</text>
-<text x="1014" y="12089.6" text-anchor="middle" font-size="13" fill="#111827">查与告警基线</text>
-<text x="1014" y="12105.4" text-anchor="middle" font-size="11" fill="#6b7280">m1-9</text>
+<rect x="883" y="12281" width="262" height="67" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+<text x="1014" y="12302.6" text-anchor="middle" font-size="13" fill="#111827">1.9 规范、死代码、重复检</text>
+<text x="1014" y="12320.6" text-anchor="middle" font-size="13" fill="#111827">查与告警基线</text>
+<text x="1014" y="12336.4" text-anchor="middle" font-size="11" fill="#6b7280">m1-9</text>
 </g>
 <g data-id="q-gitleaks" data-type="question" data-status="done" data-tone="done">
 <title>密钥扫描 gitleaks 装不装
 q-gitleaks · 待决 · 完成
 拍板：A 装到用户级工具目录，接成 npm test 的一道</title>
-<polygon points="895,12127 1133,12127 1145,12160.5 1133,12194 895,12194 883,12160.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="1014" y="12148.6" text-anchor="middle" font-size="13" fill="#111827">密钥扫描 gitleaks 装不</text>
-<text x="1014" y="12166.6" text-anchor="middle" font-size="13" fill="#111827">装</text>
-<text x="1014" y="12182.4" text-anchor="middle" font-size="11" fill="#6b7280">q-gitleaks · 选 A</text>
+<polygon points="895,12358 1133,12358 1145,12391.5 1133,12425 895,12425 883,12391.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="1014" y="12379.6" text-anchor="middle" font-size="13" fill="#111827">密钥扫描 gitleaks 装不</text>
+<text x="1014" y="12397.6" text-anchor="middle" font-size="13" fill="#111827">装</text>
+<text x="1014" y="12413.4" text-anchor="middle" font-size="11" fill="#6b7280">q-gitleaks · 选 A</text>
 </g>
 <g data-id="q-eslint-js" data-type="question" data-status="done" data-tone="done">
 <title>是否新增 @eslint/js
 q-eslint-js · 待决 · 完成
 拍板：A 加 @eslint/js 精确版本，配置改成社区常规写法</title>
-<polygon points="895,12204 1133,12204 1145,12228.5 1133,12253 895,12253 883,12228.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="1014" y="12225.6" text-anchor="middle" font-size="13" fill="#111827">是否新增 @eslint/js</text>
-<text x="1014" y="12241.4" text-anchor="middle" font-size="11" fill="#6b7280">q-eslint-js · 选 A</text>
+<polygon points="895,12435 1133,12435 1145,12459.5 1133,12484 895,12484 883,12459.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="1014" y="12456.6" text-anchor="middle" font-size="13" fill="#111827">是否新增 @eslint/js</text>
+<text x="1014" y="12472.4" text-anchor="middle" font-size="11" fill="#6b7280">q-eslint-js · 选 A</text>
 </g>
 <g data-id="q-scripts-dev" data-type="question" data-status="done" data-tone="done">
 <title>scripts/dev/ 的 9 个历史调试脚本去留
 q-scripts-dev · 待决 · 完成
 拍板：A 删除</title>
-<polygon points="895,12263 1133,12263 1145,12296.5 1133,12330 895,12330 883,12296.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="1014" y="12284.6" text-anchor="middle" font-size="13" fill="#111827">scripts/dev/ 的 9 个历</text>
-<text x="1014" y="12302.6" text-anchor="middle" font-size="13" fill="#111827">史调试脚本去留</text>
-<text x="1014" y="12318.4" text-anchor="middle" font-size="11" fill="#6b7280">q-scripts-dev · 选 A</text>
+<polygon points="895,12494 1133,12494 1145,12527.5 1133,12561 895,12561 883,12527.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="1014" y="12515.6" text-anchor="middle" font-size="13" fill="#111827">scripts/dev/ 的 9 个历</text>
+<text x="1014" y="12533.6" text-anchor="middle" font-size="13" fill="#111827">史调试脚本去留</text>
+<text x="1014" y="12549.4" text-anchor="middle" font-size="11" fill="#6b7280">q-scripts-dev · 选 A</text>
 </g>
 <g data-id="q-typescript" data-type="question" data-status="done" data-tone="done">
 <title>TypeScript 升级
 q-typescript · 待决 · 完成
 拍板：A 先按例行流程升到 5.9.3，7.x 等 typescript-eslint 支持后再议</title>
-<polygon points="895,12340 1133,12340 1145,12364.5 1133,12389 895,12389 883,12364.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="1014" y="12361.6" text-anchor="middle" font-size="13" fill="#111827">TypeScript 升级</text>
-<text x="1014" y="12377.4" text-anchor="middle" font-size="11" fill="#6b7280">q-typescript · 选 A</text>
+<polygon points="895,12571 1133,12571 1145,12595.5 1133,12620 895,12620 883,12595.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="1014" y="12592.6" text-anchor="middle" font-size="13" fill="#111827">TypeScript 升级</text>
+<text x="1014" y="12608.4" text-anchor="middle" font-size="11" fill="#6b7280">q-typescript · 选 A</text>
 </g>
 <g data-id="m1-followups" data-type="task" data-status="done" data-tone="done">
 <title>M1.9 跟进：gitleaks、@eslint/js、删 scripts/dev、TypeScript 5.9.3
 m1-followups · 任务 · 完成</title>
-<rect x="883" y="12399" width="262" height="103" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
-<text x="1014" y="12420.6" text-anchor="middle" font-size="13" fill="#111827">M1.9 跟进：gitleaks、</text>
-<text x="1014" y="12438.6" text-anchor="middle" font-size="13" fill="#111827">@eslint/js、删</text>
-<text x="1014" y="12456.6" text-anchor="middle" font-size="13" fill="#111827">scripts/dev、</text>
-<text x="1014" y="12474.6" text-anchor="middle" font-size="13" fill="#111827">TypeScript 5.9.3</text>
-<text x="1014" y="12490.4" text-anchor="middle" font-size="11" fill="#6b7280">m1-followups</text>
+<rect x="883" y="12630" width="262" height="103" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+<text x="1014" y="12651.6" text-anchor="middle" font-size="13" fill="#111827">M1.9 跟进：gitleaks、</text>
+<text x="1014" y="12669.6" text-anchor="middle" font-size="13" fill="#111827">@eslint/js、删</text>
+<text x="1014" y="12687.6" text-anchor="middle" font-size="13" fill="#111827">scripts/dev、</text>
+<text x="1014" y="12705.6" text-anchor="middle" font-size="13" fill="#111827">TypeScript 5.9.3</text>
+<text x="1014" y="12721.4" text-anchor="middle" font-size="11" fill="#6b7280">m1-followups</text>
 </g>
 <g data-id="m1-signing" data-type="task" data-status="done" data-tone="done">
 <title>签名握手 404：找 3.16.3 的握手地址与失败缓存
 m1-signing · 任务 · 完成</title>
-<rect x="883" y="12524" width="262" height="67" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
-<text x="1014" y="12545.6" text-anchor="middle" font-size="13" fill="#111827">签名握手 404：找 3.16.3</text>
-<text x="1014" y="12563.6" text-anchor="middle" font-size="13" fill="#111827">的握手地址与失败缓存</text>
-<text x="1014" y="12579.4" text-anchor="middle" font-size="11" fill="#6b7280">m1-signing</text>
+<rect x="883" y="12755" width="262" height="67" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+<text x="1014" y="12776.6" text-anchor="middle" font-size="13" fill="#111827">签名握手 404：找 3.16.3</text>
+<text x="1014" y="12794.6" text-anchor="middle" font-size="13" fill="#111827">的握手地址与失败缓存</text>
+<text x="1014" y="12810.4" text-anchor="middle" font-size="11" fill="#6b7280">m1-signing</text>
 </g>
 <g data-id="question-3" data-type="question" data-status="done" data-tone="done">
 <title>签名握手失败后怎么处理
 question-3 · 待决 · 完成
 拍板：A 失败冷却 60 秒，Authorization 改回原样</title>
-<polygon points="1221,12533 1408,12533 1420,12557.5 1408,12582 1221,12582 1209,12557.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="1314.5" y="12554.6" text-anchor="middle" font-size="13" fill="#111827">签名握手失败后怎么处理</text>
-<text x="1314.5" y="12570.4" text-anchor="middle" font-size="11" fill="#6b7280">question-3 · 选 A</text>
+<polygon points="1221,12764 1408,12764 1420,12788.5 1408,12813 1221,12813 1209,12788.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="1314.5" y="12785.6" text-anchor="middle" font-size="13" fill="#111827">签名握手失败后怎么处理</text>
+<text x="1314.5" y="12801.4" text-anchor="middle" font-size="11" fill="#6b7280">question-3 · 选 A</text>
 </g>
 <g data-id="m1-l4fix" data-type="task" data-status="done" data-tone="done">
 <title>L4 第一轮跟进修复
 m1-l4fix · 任务 · 完成</title>
-<rect x="883" y="12613" width="262" height="49" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
-<text x="1014" y="12634.6" text-anchor="middle" font-size="13" fill="#111827">L4 第一轮跟进修复</text>
-<text x="1014" y="12650.4" text-anchor="middle" font-size="11" fill="#6b7280">m1-l4fix</text>
+<rect x="883" y="12844" width="262" height="49" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+<text x="1014" y="12865.6" text-anchor="middle" font-size="13" fill="#111827">L4 第一轮跟进修复</text>
+<text x="1014" y="12881.4" text-anchor="middle" font-size="11" fill="#6b7280">m1-l4fix</text>
 </g>
 <g data-id="m1-cache" data-type="task" data-status="done" data-tone="done">
 <title>提示词缓存：会话 id、线上对齐与保留思考
 m1-cache · 任务 · 完成</title>
-<rect x="883" y="12672" width="262" height="67" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
-<text x="1014" y="12693.6" text-anchor="middle" font-size="13" fill="#111827">提示词缓存：会话 id、线上</text>
-<text x="1014" y="12711.6" text-anchor="middle" font-size="13" fill="#111827">对齐与保留思考</text>
-<text x="1014" y="12727.4" text-anchor="middle" font-size="11" fill="#6b7280">m1-cache</text>
+<rect x="883" y="12903" width="262" height="67" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+<text x="1014" y="12924.6" text-anchor="middle" font-size="13" fill="#111827">提示词缓存：会话 id、线上</text>
+<text x="1014" y="12942.6" text-anchor="middle" font-size="13" fill="#111827">对齐与保留思考</text>
+<text x="1014" y="12958.4" text-anchor="middle" font-size="11" fill="#6b7280">m1-cache</text>
 </g>
 <g data-id="m1-cache-flash" data-type="task" data-status="done" data-tone="done">
 <title>Flash 会话第二步缓存未命中
 m1-cache-flash · 任务 · 完成</title>
-<rect x="883" y="12761" width="262" height="67" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
-<text x="1014" y="12782.6" text-anchor="middle" font-size="13" fill="#111827">Flash 会话第二步缓存未命</text>
-<text x="1014" y="12800.6" text-anchor="middle" font-size="13" fill="#111827">中</text>
-<text x="1014" y="12816.4" text-anchor="middle" font-size="11" fill="#6b7280">m1-cache-flash</text>
+<rect x="883" y="12992" width="262" height="67" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+<text x="1014" y="13013.6" text-anchor="middle" font-size="13" fill="#111827">Flash 会话第二步缓存未命</text>
+<text x="1014" y="13031.6" text-anchor="middle" font-size="13" fill="#111827">中</text>
+<text x="1014" y="13047.4" text-anchor="middle" font-size="11" fill="#6b7280">m1-cache-flash</text>
 </g>
 <g data-id="question-5" data-type="question" data-status="done" data-tone="done">
 <title>缓存重放要不要再试 W 臂
 question-5 · 待决 · 完成
 拍板：A 不试，写进设计文档后关掉</title>
-<polygon points="1221,12770 1408,12770 1420,12794.5 1408,12819 1221,12819 1209,12794.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="1314.5" y="12791.6" text-anchor="middle" font-size="13" fill="#111827">缓存重放要不要再试 W 臂</text>
-<text x="1314.5" y="12807.4" text-anchor="middle" font-size="11" fill="#6b7280">question-5 · 选 A</text>
+<polygon points="1221,13001 1408,13001 1420,13025.5 1408,13050 1221,13050 1209,13025.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="1314.5" y="13022.6" text-anchor="middle" font-size="13" fill="#111827">缓存重放要不要再试 W 臂</text>
+<text x="1314.5" y="13038.4" text-anchor="middle" font-size="11" fill="#6b7280">question-5 · 选 A</text>
 </g>
 <g data-id="m1-parity" data-type="task" data-status="done" data-tone="done">
 <title>coding-plan 请求与 ZCode 3.16.3 一致（150% 加成）
 m1-parity · 任务 · 完成</title>
-<rect x="883" y="12956.5" width="262" height="85" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
-<text x="1014" y="12978.1" text-anchor="middle" font-size="13" fill="#111827">coding-plan 请求与</text>
-<text x="1014" y="12996.1" text-anchor="middle" font-size="13" fill="#111827">ZCode 3.16.3 一致</text>
-<text x="1014" y="13014.1" text-anchor="middle" font-size="13" fill="#111827">（150% 加成）</text>
-<text x="1014" y="13029.9" text-anchor="middle" font-size="11" fill="#6b7280">m1-parity</text>
+<rect x="883" y="13187.5" width="262" height="85" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+<text x="1014" y="13209.1" text-anchor="middle" font-size="13" fill="#111827">coding-plan 请求与</text>
+<text x="1014" y="13227.1" text-anchor="middle" font-size="13" fill="#111827">ZCode 3.16.3 一致</text>
+<text x="1014" y="13245.1" text-anchor="middle" font-size="13" fill="#111827">（150% 加成）</text>
+<text x="1014" y="13260.9" text-anchor="middle" font-size="11" fill="#6b7280">m1-parity</text>
 </g>
 <g data-id="question-6" data-type="question" data-status="done" data-tone="done">
 <title>PAT 铸造失败时模型请求怎么办
 question-6 · 待决 · 完成
 拍板：B 照 3.16.3 报错</title>
-<polygon points="1221,12850 1408,12850 1420,12883.5 1408,12917 1221,12917 1209,12883.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="1314.5" y="12871.6" text-anchor="middle" font-size="13" fill="#111827">PAT 铸造失败时模型请求怎</text>
-<text x="1314.5" y="12889.6" text-anchor="middle" font-size="13" fill="#111827">么办</text>
-<text x="1314.5" y="12905.4" text-anchor="middle" font-size="11" fill="#6b7280">question-6 · 选 B</text>
+<polygon points="1221,13081 1408,13081 1420,13114.5 1408,13148 1221,13148 1209,13114.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="1314.5" y="13102.6" text-anchor="middle" font-size="13" fill="#111827">PAT 铸造失败时模型请求怎</text>
+<text x="1314.5" y="13120.6" text-anchor="middle" font-size="13" fill="#111827">么办</text>
+<text x="1314.5" y="13136.4" text-anchor="middle" font-size="11" fill="#6b7280">question-6 · 选 B</text>
 </g>
 <g data-id="question-7" data-type="question" data-status="done" data-tone="done">
 <title>max_tokens 要不要照 3.16.3 按上下文剩余裁剪
 question-7 · 待决 · 完成
 拍板：B 照 3.16.3 裁剪</title>
-<polygon points="1221,12927 1408,12927 1420,12960.5 1408,12994 1221,12994 1209,12960.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="1314.5" y="12948.6" text-anchor="middle" font-size="13" fill="#111827">max_tokens 要不要照</text>
-<text x="1314.5" y="12966.6" text-anchor="middle" font-size="13" fill="#111827">3.16.3 按上下文剩余裁剪</text>
-<text x="1314.5" y="12982.4" text-anchor="middle" font-size="11" fill="#6b7280">question-7 · 选 B</text>
+<polygon points="1221,13158 1408,13158 1420,13191.5 1408,13225 1221,13225 1209,13191.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="1314.5" y="13179.6" text-anchor="middle" font-size="13" fill="#111827">max_tokens 要不要照</text>
+<text x="1314.5" y="13197.6" text-anchor="middle" font-size="13" fill="#111827">3.16.3 按上下文剩余裁剪</text>
+<text x="1314.5" y="13213.4" text-anchor="middle" font-size="11" fill="#6b7280">question-7 · 选 B</text>
 </g>
 <g data-id="question-8" data-type="question" data-status="done" data-tone="done">
 <title>X-Title 报 cli 还是 electron
 question-8 · 待决 · 完成
 拍板：B 改为 Z Code@electron</title>
-<polygon points="1221,13004 1408,13004 1420,13037.5 1408,13071 1221,13071 1209,13037.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="1314.5" y="13025.6" text-anchor="middle" font-size="13" fill="#111827">X-Title 报 cli 还是</text>
-<text x="1314.5" y="13043.6" text-anchor="middle" font-size="13" fill="#111827">electron</text>
-<text x="1314.5" y="13059.4" text-anchor="middle" font-size="11" fill="#6b7280">question-8 · 选 B</text>
+<polygon points="1221,13235 1408,13235 1420,13268.5 1408,13302 1221,13302 1209,13268.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="1314.5" y="13256.6" text-anchor="middle" font-size="13" fill="#111827">X-Title 报 cli 还是</text>
+<text x="1314.5" y="13274.6" text-anchor="middle" font-size="13" fill="#111827">electron</text>
+<text x="1314.5" y="13290.4" text-anchor="middle" font-size="11" fill="#6b7280">question-8 · 选 B</text>
 </g>
 <g data-id="question-9" data-type="question" data-status="done" data-tone="done">
 <title>没有 ZCode 设备 id 时怎么办
 question-9 · 待决 · 完成
 拍板：A 照 ZCode 做：生成并写回 ~/.zcode</title>
-<polygon points="1221,13081 1408,13081 1420,13114.5 1408,13148 1221,13148 1209,13114.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="1314.5" y="13102.6" text-anchor="middle" font-size="13" fill="#111827">没有 ZCode 设备 id 时怎</text>
-<text x="1314.5" y="13120.6" text-anchor="middle" font-size="13" fill="#111827">么办</text>
-<text x="1314.5" y="13136.4" text-anchor="middle" font-size="11" fill="#6b7280">question-9 · 选 A</text>
+<polygon points="1221,13312 1408,13312 1420,13345.5 1408,13379 1221,13379 1209,13345.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="1314.5" y="13333.6" text-anchor="middle" font-size="13" fill="#111827">没有 ZCode 设备 id 时怎</text>
+<text x="1314.5" y="13351.6" text-anchor="middle" font-size="13" fill="#111827">么办</text>
+<text x="1314.5" y="13367.4" text-anchor="middle" font-size="11" fill="#6b7280">question-9 · 选 A</text>
 </g>
 </g>
 </svg>

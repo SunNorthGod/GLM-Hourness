@@ -185,6 +185,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "2026-10-31 事故：编排方提交时 git 报「Author identity unknown」。查明是共用的 PowerShell 进程里留着两个环境变量：GIT_CONFIG_GLOBAL 指向一个已经不存在的临时文件 C:\\Users\\29596\\AppData\\Local\\Temp\\hookprobe-904039318\\gc，GIT_CONFIG_NOSYSTEM=1；从文件名看，是某个运行在探钩子行为（E3-6）时用 $env: 设在了 shell 里而没有撤。人的全局 git 配置（~/.gitconfig，身份 北方帝国@NorthGod）没有被改。编排方只从自己的 shell 里删掉这两个变量，没有动任何 git 配置，然后重做了两次提交（616ca99、649db9b，已推送）。已把做法转告正在跑的 m7-e3-followup-resume 的改代码一步：探钩子只给子进程设这些变量，提交前先确认身份读得到；同类问题也可能波及共用 shell 的其他运行（m3-implementation-resume-step4），它们若遇到同样的报错，按同样办法处理，不许去改 git 配置。"
+    },
+    {
+      "at": "2026-10-31T05:20:26.524Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-10-31 桌面电脑又重启了一次（人：「我又重启电脑了」）。编排方核对：main 与 origin/main 同为 dc53997，工作树 m3（bd91f2c）与 m3-flow（49f5d3e）在，根目录与 video/ 的 node_modules 都在，git 身份正常，没有索引损坏。两个被重启打断的运行已恢复：m3-steps-4-to-merge（wf_92ad3963b261025d，第 4 步评审已过，在做第 3 步评审遗留的 S3-1）与 align-resume-c-to-g（wf_3794f89cc38873d4，指标 D 支在改第二稿、已收到本日两条新决定，面板 G 支 0.9 待评审）。按 d-build-all-released 新派两个：design-decisions-apply-1031（wf_8180e53b6019bc5a）与 impl-rules-loops-boards（wf_e3f665460875b14b）。面板 G 支的 0.9 写在两条新决定之前，评审之后由编排方另补一遍。还开不了的：M7 的 E1b、E2、E4 等 M3 第 3–6 步；M5 等人看九件活的完成条件；视频改版等人看过方案；M6 等人放行。"
     }
   ]
 }

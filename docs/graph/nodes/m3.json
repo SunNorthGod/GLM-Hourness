@@ -428,6 +428,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "用户图 0.5（user-journey）对 M3 附录 0.5 的三条请求，d-freeze-until-dogfood 下等自举之后再办，不要求现在改任何契约，这里只记用户图的格子依赖哪几条请求：一、G1：/wish 在没有项目图时先调接管的 prepare，接管 0.5 已在本节点 2026-10-30T21:02Z 记了请求，过渡办法写在接管 0.5 §3.1；在它做完之前，新用户的第一步在三处说法不同（M3 报「还没有项目图」，接管说 /wish，面板卡片写 /hourness-init）。二、G25：moduleReleaseGate 加第 8 项，数 M7 写的模块设计审查记录，记录形状见本节点 2026-10-30T12:40Z 的批注；加上之前，模块放行页能在没有独立审查的情况下提出来，用户图 S6 靠主 Agent 自己对照并在放行稿「替你定了的方向」一段写出来。三、G24：持有者记录从用户级目录搬进项目的 .llm/（宪章 0.7 §9、d-rules-in-repo），循环板、规则板、M5 已各记请求，请 M3 对齐轮合并处理；面板与循环板只经 mainAgentOf 读，搬家前后用户图的格子都成立。"
+    },
+    {
+      "at": "2026-10-31T05:20:26.287Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "第 4 步（bd91f2c，m3-1）独立评审 APPROVED，挡路 0、不挡路 7（.agents/tasks/m3/impl/review-step4.md）。编排方裁定其中四条在 m3 分支合入之前修掉，各一个提交、先写失败的测试，写进了 .agents/tasks/m3/impl/brief.md 的编排方附注，由之后先碰同一文件的步骤做，最迟在 fold 步：S4-1（MEDIUM）PTC 预设下 run_code 派出的嵌套调用带 parent、跳过主 Agent 的规矩，主 Agent 因此能写文件，与一页稿「它自己从来不写文件」相违，优先让嵌套的写工具调用也过这条规矩；S4-2（MEDIUM）对外检查读 remote.<名>.mirror 与 push 时不带命令自己的 -c；S4-3（LOW）别名展开后不再做对外检查与 clean 拒绝；S4-4（LOW）guard 的声明还叫主 Agent 用 Write/Edit。S4-5 至 S4-7 可以写进 ORCHESTRATION §6.7 的残余。"
     }
   ]
 }
