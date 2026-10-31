@@ -222,6 +222,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M6 实现 FEAT-002（m6-reminder-text，高峰提醒按规则板交出的档位选正文）提交 47fb740（分支 m6-glm-upkeep，未推送）：build、preflight、npm test 退出码 0，probe 155/155；顺带按评审的 N22–N26、N29 改了设计文字。等独立评审。"
+    },
+    {
+      "at": "2026-10-31T14:35:57.787Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M6 实现进度：FEAT-002（m6-reminder-text，47fb740）独立评审 APPROVED、没有发现；FEAT-003（额度读取、登录状态、上游限额流水、/glm-status 一节与文档）提交 7a701d1，build、preflight、npm test 退出码 0，probe 155/155，等评审。两个提交都在分支 m6-glm-upkeep，未推送。"
     }
   ]
 }
