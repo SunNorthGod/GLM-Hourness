@@ -149,6 +149,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "用户图 0.6 第 3 轮决定评审 APPROVED（HIGH 0、MEDIUM 0、NIT 5）：R1 按超时裁定（方案 A）关闭，R2–R8 关闭；②③ 两件记为人已定。下一步按新格式写一页稿并单独评审（design-finish-m4-bootstrap-m6-uj）。"
+    },
+    {
+      "at": "2026-10-31T14:38:46.746Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "用户图一页稿按新格式写好（.agents/tasks/user-journey/onepage.md 与草图 onepage-mockup.svg，629 个汉字，不算草图；旧稿另存 onepage-0.5.md），等一页稿的独立评审。要人定的只剩一件：放行用户图 0.6。"
     }
   ]
 }
