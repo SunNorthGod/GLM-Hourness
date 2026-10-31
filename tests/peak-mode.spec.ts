@@ -96,6 +96,12 @@ test('nextPeakChange names the first whole minute the GLM plan changes between p
   assert.equal(iso(nextPeakChange(peak, at('2026-10-28T14:00:00+08:00'))), iso(at('2026-10-28T18:00:00+08:00')), 'on the first peak minute the peak ends at 18:00')
   assert.equal(iso(nextPeakChange(peak, at('2026-10-28T18:30:00+08:00'))), iso(at('2026-10-29T14:00:00+08:00')))
   assert.equal(iso(nextPeakChange(peak, at('2026-10-30T18:30:00+08:00'))), iso(at('2026-11-02T14:00:00+08:00')), 'Friday evening: the next peak is Monday')
+  // The six moments of the peak line (tests/quota.spec.ts): the minute before the peak, its last minute, the first off-peak minute, Friday 18:00, Saturday.
+  assert.equal(iso(nextPeakChange(peak, at('2026-10-28T13:59:00+08:00'))), iso(at('2026-10-28T14:00:00+08:00')), 'the minute before the peak')
+  assert.equal(iso(nextPeakChange(peak, at('2026-10-28T17:59:00+08:00'))), iso(at('2026-10-28T18:00:00+08:00')), 'the last peak minute')
+  assert.equal(iso(nextPeakChange(peak, at('2026-10-28T18:00:00+08:00'))), iso(at('2026-10-29T14:00:00+08:00')), 'the first off-peak minute: the next peak is tomorrow')
+  assert.equal(iso(nextPeakChange(peak, at('2026-10-30T18:00:00+08:00'))), iso(at('2026-11-02T14:00:00+08:00')), 'Friday 18:00: the next peak is Monday')
+  assert.equal(iso(nextPeakChange(peak, at('2026-10-31T15:00:00+08:00'))), iso(at('2026-11-02T14:00:00+08:00')), 'Saturday: the next peak is Monday')
   assert.equal(nextPeakChange(() => true, at('2026-10-28T15:00:00+08:00')), undefined, 'a plan that is always peak does not change')
   assert.equal(nextPeakChange(ms => ms < at('2026-10-28T15:00:30+08:00'), at('2026-10-28T15:00:00+08:00'), 120_000), at('2026-10-28T15:01:00+08:00'))
   assert.equal(nextPeakChange(ms => ms < at('2026-10-28T16:00:00+08:00'), at('2026-10-28T15:00:00+08:00'), 600_000), undefined, 'a change beyond the horizon is not found')

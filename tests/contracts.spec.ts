@@ -12,10 +12,12 @@ import { TODO_NATIVE, TODO_WRITE_NAME } from '../src/glm-prompt/todo-reminder.ts
 import { graphTools } from '../src/graph/tools.ts'
 import { apply as guardApply } from '../src/guard/index.ts'
 import { memoryTools, storeIo } from '../src/memory/tools.ts'
+import { loopDefaultsOf, type ChannelLoopDefault } from '../src/shared/channel-loop.ts'
 import { DIALECT_SERVICE, dialectNames, dialectService, toNativeTool, ZCODE_ALIAS_NATIVES, type DialectService } from '../src/shared/dialect.ts'
 import type { AgentLike, CommandDefinitionLike, ToolFinalResult } from '../src/shared/dsh-min.ts'
 import { healthServiceName, type HealthRow, type RowHealthView } from '../src/shared/health.ts'
-import { PRICING_SERVICE, pricingService, type UsagePricing } from '../src/shared/pricing.ts'
+import { PRICING_SERVICE, peakHoursOf, pricingService, quotaOf, type UsagePricing } from '../src/shared/pricing.ts'
+import type { QuotaView } from '../src/shared/quota.ts'
 import { GRAPH_TOOL_NAMES, MEMORY_TOOL_NAMES, ORCHESTRATION_RESIDENT_TOOLS } from '../src/shared/tool-names.ts'
 import { RESIDENT_TOOLS } from '../src/toolsearch/exposure.ts'
 import { apply as hournessApply } from '../src/report/index.ts'
@@ -263,6 +265,69 @@ test('pricing readers: absent and malformed services read as none; a wider one s
   store2.provide(PRICING_SERVICE, wider)
   assert.equal(pricingService(store2, problem), wider)
   assert.equal(problems.length, 1)
+})
+
+// The three members M6 adds to the pricing service (docs/ORCHESTRATION.md §11.3):
+// each is optional and each is read on its own, so a newer or a broken one never
+// takes the credits away from the panel.
+
+const PEAK_HOURS = { en: 'weekdays 14:00-18:00 UTC+8', zh: '工作日 14:00–18:00（UTC+8）' }
+const LOOP_ENTRY: ChannelLoopDefault = { id: 'glm:peak-reminder', title: '标题', why: '原因', when: { kind: 'peak-start' }, runBy: 'channel' }
+const EMPTY_VIEW: QuotaView = { login: { state: 'ok' }, pending: false }
+
+test('pricing members of the quota contract: a service with all three, and one without them, both read; the members read from the same value', async () => {
+  const problems: string[] = []
+  const problem = (message: string): void => { problems.push(message) }
+  const wide: UsagePricing = { ...creditPricing, peakHours: PEAK_HOURS, quota: () => Promise.resolve(EMPTY_VIEW), loopDefaults: [LOOP_ENTRY] }
+  const store = serviceStore()
+  store.provide(PRICING_SERVICE, wide)
+  assert.equal(pricingService(store, problem), wide)
+  assert.deepEqual(peakHoursOf(wide, problem), PEAK_HOURS)
+  assert.equal(await quotaOf(wide, problem)?.({ waitMs: 3000 }), EMPTY_VIEW)
+  assert.deepEqual(loopDefaultsOf(wide, problem), [LOOP_ENTRY])
+
+  const old = serviceStore()
+  old.provide(PRICING_SERVICE, creditPricing)
+  const oldService = pricingService(old, problem)
+  assert.equal(oldService, creditPricing)
+  assert.equal(quotaOf(creditPricing, problem), undefined)
+  assert.deepEqual(loopDefaultsOf(creditPricing, problem), [])
+  assert.deepEqual(problems, [], 'an older channel package reports nothing')
+})
+
+test('pricing members of the quota contract: a member of the wrong shape drops only itself and is reported once; the rest of the service still reads', () => {
+  const problems: string[] = []
+  const problem = (message: string): void => { problems.push(message) }
+  const usage = { inputTokens: 1000, cacheReadTokens: 4000, outputTokens: 500 }
+  const bent = { ...creditPricing, peakHours: 'weekdays', quota: 'later', loopDefaults: 'glm:a' } as unknown as UsagePricing
+  const store = serviceStore()
+  store.provide(PRICING_SERVICE, bent)
+  assert.equal(pricingService(store, problem), bent, 'the four old members decide whether the service reads')
+  assert.equal(bent.charged('glm-5.3', usage, Date.parse(PEAK)), creditPricing.charged('glm-5.3', usage, Date.parse(PEAK)))
+  assert.equal(peakHoursOf(bent, problem), undefined)
+  assert.equal(quotaOf(bent, problem), undefined)
+  assert.deepEqual(loopDefaultsOf(bent, problem), [])
+  assert.equal(problems.length, 3)
+
+  const onlyQuota = { ...creditPricing, peakHours: PEAK_HOURS, quota: 5, loopDefaults: [LOOP_ENTRY] } as unknown as UsagePricing
+  assert.equal(quotaOf(onlyQuota, problem), undefined)
+  assert.deepEqual(peakHoursOf(onlyQuota, problem), PEAK_HOURS, 'a wrong quota leaves the peak hours')
+  assert.deepEqual(loopDefaultsOf(onlyQuota, problem), [LOOP_ENTRY], 'a wrong quota leaves the entries')
+  assert.equal(problems.length, 4)
+})
+
+test('pricing members of the quota contract: a quota that rejects leaves the pricing readable and priced', async () => {
+  const problems: string[] = []
+  const rejecting: UsagePricing = { ...creditPricing, quota: () => Promise.reject(new Error('quota gone')) }
+  const store = serviceStore()
+  store.provide(PRICING_SERVICE, rejecting)
+  const service = pricingService(store, message => { problems.push(message) })
+  assert.equal(service, rejecting)
+  assert.deepEqual([service?.peak(Date.parse(PEAK)), service?.plan], [true, creditPricing.plan])
+  const read = quotaOf(rejecting)
+  assert.ok(read !== undefined)
+  await assert.rejects(read(), /quota gone/)
+  assert.deepEqual(problems, [])
 })
 
 test('pricing through the report row: a malformed service lists tokens; a throwing one leaves its calls out of every number; each row warns once', async () => {
