@@ -494,6 +494,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M3 附录 0.6（问人改成三道关）第 1 稿写出、0.5 另存；第 1 轮评审 CHANGES_REQUESTED（HIGH 1、MEDIUM 6、NIT 9，.agents/tasks/m3/reviews/addendum-v06-review.md）；作者已回应全部 16 条，等第 2 轮评审。M3 实现第 6 步仍按计划暂停等这一版。"
+    },
+    {
+      "at": "2026-10-31T19:24:47.665Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M3 附录 0.6 第 2 轮评审 CHANGES_REQUESTED（HIGH 0、MEDIUM 1、NIT 9），第 1 轮 16 条全部关闭。剩下的 F-08 在给 m4 的批注草稿里：要 M4 改用 M3 的同意词表、并在 M4 的申请流程里复述再记，与 M4 0.6 §5.5 冲突。编排方裁定（可逆）：M4 保留自己的同意词与申请流程，三道关只改申请给人读的样子（一句是非问在前、用人话、有长度上限），不改 M4 对回话的核对；已转给第 3 轮修改。"
     }
   ]
 }

@@ -215,6 +215,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M4 设计 0.6 按第 1 轮决定评审的 F1–F10、N1–N8 与编排方裁定改完（§19.6 逐条答复，graph-ops-decisions.json 10 条），等第 2 轮评审。"
+    },
+    {
+      "at": "2026-10-31T19:24:47.852Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M4 设计 0.6 第 2 轮决定评审 CHANGES_REQUESTED（MEDIUM 2、NIT 6），上一轮 18 条关闭 17 条；作者已回应 F11（违规流水写失败没有信号）、F12（check_limit 的说明、示例、工具名登记与 E3 文件清单）与 N9–N14（§19.7），等第 3 轮评审。"
     }
   ]
 }

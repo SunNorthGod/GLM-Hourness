@@ -246,6 +246,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M6 新格式一页稿写好（onepage.md 与 onepage-mockup.svg，1,051 个汉字，旧稿另存 onepage-0.5.md），要人定 2 件，等一页稿评审。"
+    },
+    {
+      "at": "2026-10-31T19:24:48.224Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M6 实现 FEAT-004（m6-panel，面板与晨报按积分、高峰行、范围与缺口、额度一节）提交 a7e80d3，build、preflight、npm test、probe 155/155 全过，独立评审 APPROVED、NIT 3。5 步里 4 步已过审。M6 一页稿第 2 轮评审 CHANGES_REQUESTED（MEDIUM 2）：「要你定的」还是四行版式，已被 d-ask-three-gates 取代；替人定的方向数漏了 4 条接缝裁定。编排方之后与接管一起派一遍修改。"
     }
   ]
 }
