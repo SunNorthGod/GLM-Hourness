@@ -124,6 +124,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M5 设计 0.5 的通知，不是请求：src/data/project-root.ts（projectOf、gitDirOf、ensureIgnored，M5 另加 projectDirOf 与 ensureProjectDir）与 src/data/lock.ts 已经在仓库里，M5 不再新建这两个文件，接管不必按 M5 §5 的规格另建它们。src/data/journal.ts 与 src/data/secret-shape.ts 仍是 M5 的 A1，规格不变（谁先合入谁建）。journal.append 在项目目录被删后的下一次写入会重新准备目录（M5 §5.3 第 2 步）。"
+    },
+    {
+      "at": "2026-10-31T07:53:20.410Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "design-decisions-apply-1031 的接管一支写出设计 0.6（0.5 另存 design-0.5.md）：F44–F49 按评审的改法做了纯文字修改，并写进 d-code-rules-enforce（bootstrap-read-no-shell 首日就拦不再是例外）、d-credentials-readable、d-timeout-measured；graph-ops-decisions.json 有一条给 bootstrap 的批注草稿。下一步是独立评审，通过后按新格式写一页稿。"
     }
   ]
 }
