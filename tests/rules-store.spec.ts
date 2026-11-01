@@ -8,7 +8,7 @@
  * the concurrency test (`--writer`).
  */
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { appendFile, mkdir, mkdtemp, readdir, readFile, rename, rm, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -520,6 +520,28 @@ test('the write lock: a dead holder and an old lock are taken over, a live fresh
     assert.equal((JSON.parse(await readFile(file, 'utf8')) as { token: string }).token, 'someone else', 'and does not delete the lock of the one that took over')
   }
   finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+// Windows answers EPERM, not EEXIST, to a create that meets a lock file another process is unlinking; a deny entry on the directory gives the same EPERM for as long as the test wants.
+test('on Windows the EPERM of a lock file being deleted is waited out, and one that does not pass is reported as it is', { skip: process.platform !== 'win32' }, async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'rules-lock-'))
+  const EVERYONE = '*S-1-1-0'
+  const icacls = join(process.env['SystemRoot'] ?? 'C:\\Windows', 'System32', 'icacls.exe')
+  const acl = (...args: string[]): void => { execFileSync(icacls, [dir, ...args], { stdio: 'ignore' }) }
+  try {
+    const file = join(dir, 'rules.lock')
+    acl('/deny', `${EVERYONE}:(WD,AD)`)
+    await assert.rejects(acquireLock(file, impatientLock()), { code: 'EPERM' }, 'a refusal that lasts the whole wait is the error itself, not busy')
+    setTimeout(() => acl('/remove:d', EVERYONE), 150)
+    const lock = await acquireLock(file)
+    assert.notEqual(lock, 'busy', 'the refusal passed within the wait')
+    assert.equal(await (lock as Exclude<typeof lock, 'busy'>).held(), true)
+    await (lock as Exclude<typeof lock, 'busy'>).release()
+  }
+  finally {
+    acl('/remove:d', EVERYONE)
     await rm(dir, { recursive: true, force: true })
   }
 })
