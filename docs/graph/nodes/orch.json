@@ -263,6 +263,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "人 2026-11-01 答「推」：四条进行中的分支已推到 origin 作备份，远端与本机同点——m3 a9b8ad5、m3-flow 49f5d3e、rules-loops-impl c632387、m5-memory-lessons 6e21948。main 未动，在跑的运行未受影响。docs/HANDOFF.md §9 的「只在本机」一条随之改写（含「有新提交要重新推送」「合入后删远端分支」）。这补上了 d-docs-tracked-for-handover 里留的那一项。"
+    },
+    {
+      "at": "2026-11-01T09:47:18.464Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-11-01 一次重启后的恢复核对：git fsck 无输出、退出码 0，对象库完好；main 与 origin/main 同点（a893687）；四条进行中的分支与远端逐一同点（m3 3fbc1e9、m3-flow 49f5d3e、rules-loops-impl 336a1d0、m5-memory-lessons 8af90b9，按 d-wip-branch-push 已推过）；三个工作树各有未提交的在制改动（m3 18 处、m5 24 处、rules-loops 13 处），由各自的运行接着做，没有丢活。主检出里 .agents/tasks/bootstrap/design.md 有未提交改动，是 design-drop-read-no-shell 被打断那一步写到一半的。四条运行（M3、规则与循环、M5、design-drop-read-no-shell）已请求恢复。"
     }
   ]
 }
