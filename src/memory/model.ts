@@ -75,10 +75,18 @@ export interface MemoryEntry {
   readonly status: 'active' | 'forgotten'
 }
 
+/** The last learning digest reminder (§3.6): when it was sent and the keys of the groups it listed. */
+export interface LearnNotice {
+  readonly at: string
+  readonly keys: readonly string[]
+}
+
 /** The entries of one scope by name, forgotten ones included (they can be restored). */
 export interface MemoryState {
   readonly scope: Scope
   readonly entries: ReadonlyMap<string, MemoryEntry>
+  /** The latest `learn-notified` record; only a project journal has one. */
+  readonly learnNotice?: LearnNotice
 }
 
 export const emptyMemory = (scope: Scope): MemoryState => ({ scope, entries: new Map() })
@@ -371,6 +379,7 @@ const WRITERS: ReadonlyMap<string, readonly Actor[]> = new Map([
   ['review', ['harness']],
   ['forget', ['human', 'llm']],
   ['restore', ['human', 'llm']],
+  ['learn-notified', ['harness']],
 ])
 
 const originOf = (record: JournalRecord): MemoryOrigin => ({
@@ -387,7 +396,7 @@ const whoOf = (record: JournalRecord): Who => ({
 function withEntries(state: MemoryState, changed: readonly MemoryEntry[]): FoldStep<MemoryState> {
   const entries = new Map(state.entries)
   for (const entry of changed) entries.set(entry.name, entry)
-  return { state: { scope: state.scope, entries } }
+  return { state: { ...state, entries } }
 }
 
 /** An entry as a snapshot stores it (a base, a forget): every field, checked against the scope of the journal; the class is computed, not trusted. */
@@ -454,7 +463,7 @@ function applyBase(state: MemoryState, record: JournalRecord): FoldStep<MemorySt
     if (entries.has(entry.name)) return { bad: `entries[${index}]: ${entry.name} appears twice` }
     entries.set(entry.name, entry)
   }
-  return { state: { scope: state.scope, entries } }
+  return { state: { ...state, entries } }
 }
 
 /** The six fields a write controls, the ones an update replaces. */
@@ -548,6 +557,26 @@ function applyRevoke(state: MemoryState, record: JournalRecord, op: 'forget' | '
   return withEntries(state, entry === undefined ? [] : [{ ...entry, status: op === 'forget' ? 'forgotten' : 'active' }])
 }
 
+/** The most group keys one learning digest reminder records; the reminder lists no more. */
+export const NOTICE_KEYS_MAX = 50
+
+/** The harness's record that the learning digest reminder went to the main agent, listing the groups it named. Only the project's journal takes it. */
+export const learnNotifiedRecord = (keys: readonly string[], by: NonNullable<NewRecord['by']>): NewRecord<'learn-notified'> => ({
+  actor: 'harness',
+  by,
+  op: 'learn-notified',
+  id: '*',
+  data: { keys: [...keys] },
+})
+
+function applyLearnNotified(state: MemoryState, record: JournalRecord): FoldStep<MemoryState> {
+  if (state.scope !== 'project') return { bad: 'a learning digest reminder is recorded in the project journal only' }
+  if (record.id !== '*') return { bad: 'a learn-notified record is about the file: its id is *' }
+  const keys = isObject(record.data) ? listOf(record.data.keys) : undefined
+  if (keys === undefined || keys.length === 0 || keys.length > NOTICE_KEYS_MAX || !keys.every(key => typeof key === 'string' && isGroupKey(key))) return { bad: `data.keys is not a list of 1 to ${NOTICE_KEYS_MAX} group keys` }
+  return { state: { ...state, learnNotice: { at: record.at, keys: keys as string[] } } }
+}
+
 /** One record applied to a state, or why it does not hold. Pure: the time is the record's `at`. */
 export function applyRecord(state: MemoryState, record: JournalRecord): FoldStep<MemoryState> {
   const writers = WRITERS.get(record.op)
@@ -558,7 +587,8 @@ export function applyRecord(state: MemoryState, record: JournalRecord): FoldStep
     case 'store': return applyStore(state, record)
     case 'review': return applyReview(state, record)
     case 'forget': return applyRevoke(state, record, 'forget')
-    // The table above admits only these five operations.
+    case 'learn-notified': return applyLearnNotified(state, record)
+    // The table above admits only these six operations.
     default: return applyRevoke(state, record, 'restore')
   }
 }

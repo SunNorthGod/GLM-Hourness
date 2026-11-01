@@ -7,57 +7,22 @@
  * the row health. The journals are real files in temporary directories.
  */
 import assert from 'node:assert/strict'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import test from 'node:test'
 import { openEngine } from '../src/graph/engine.ts'
 import { loadGraph } from '../src/graph/store.ts'
-import { apply, INDEX_SOURCE, inject, MEMORY_PROJECTION, name, type MemoryConfig, type MemoryContext } from '../src/memory/index.ts'
+import { apply, INDEX_SOURCE, inject, MEMORY_PROJECTION, name, type MemoryContext } from '../src/memory/index.ts'
 import { journalFile } from '../src/memory/storage.ts'
 import { MEMORY_STORE_EXAMPLE } from '../src/memory/tools.ts'
-import type { MemoryRowService } from '../src/memory/service.ts'
-import type { AgentCommandInvocationLike, CommandDefinitionLike, SessionProjectionsService, UserNotice } from '../src/shared/dsh-min.ts'
 import { collectHealth } from '../src/shared/health.ts'
 import { MEMORY_SERVICE, memoryService } from '../src/shared/memory-service.ts'
-import { MEMORY_TOOL_NAMES } from '../src/shared/tool-names.ts'
-import { fakeRuntime, type FakeRuntime } from './fake-rc3.ts'
+import { LEARNING_TOOL_NAMES, MEMORY_TOOL_NAMES } from '../src/shared/tool-names.ts'
+import { fakeRuntime } from './fake-rc3.ts'
 import { captureWarnings } from './graph-helpers.ts'
-import { createChild, failRegistration, optionalServices, stepOf } from './row-host.ts'
+import { rowHealth, withRow, type Row } from './memory-row-host.ts'
+import { createChild, failRegistration } from './row-host.ts'
 import { skipIfTempInsideGit } from './temp-outside-git.ts'
-
-interface Row {
-  readonly root: string
-  readonly work: string
-  readonly project: string
-  readonly userDir: string
-  readonly runtime: FakeRuntime
-  readonly commands: Map<string, CommandDefinitionLike<AgentCommandInvocationLike>>
-  readonly projections: Array<Parameters<SessionProjectionsService['register']>[0]>
-  readonly service: MemoryRowService
-  readonly dispose: () => void
-  /** The optional services as the host brings them: provide after 
-emove brings them back. */
-  readonly services: { provide(): void, remove(): void }
-  /** Run a memory tool as the main agent of the fake host. */
-  readonly tool: (name: string, args: unknown) => Promise<Record<string, unknown>>
-  /** Run `/memory <input>` in the main agent's session. */
-  readonly run: (input: string) => Promise<{ readonly kind: string, readonly text?: string }>
-  /** One step of the main agent; the notice the row adds persists in the history like a real one. */
-  readonly step: () => Promise<readonly UserNotice[]>
-}
-
-interface Options {
-  /** No data row: no user-level directory, no usage. */
-  readonly noData?: boolean
-  /** The data row names no project for the session. */
-  readonly noProject?: boolean
-  readonly config?: MemoryConfig
-  /** Leave the optional services out: the host has no `inject`. */
-  readonly bare?: boolean
-  /** The commands and sessionProjections services are not there when the row starts. */
-  readonly late?: boolean
-}
 
 const PREFERENCE = { ...MEMORY_STORE_EXAMPLE }
 const FACT = {
@@ -68,50 +33,8 @@ const FACT = {
   source: ['docs/DESIGN.md'],
 }
 
-async function withRow(body: (row: Row) => Promise<void> | void, options: Options = {}): Promise<void> {
-  const root = mkdtempSync(join(tmpdir(), 'memory-row-'))
-  const work = join(root, 'work')
-  mkdirSync(join(work, 'docs'), { recursive: true })
-  writeFileSync(join(work, 'docs', 'DESIGN.md'), '# design\n')
-  const project = join(root, 'project')
-  const userDir = join(root, 'dsh', 'glm-hourness', 'memory')
-  const runtime = fakeRuntime({ natives: ['pwsh'], cwd: work })
-  if (options.noData !== true) runtime.services.set('glmHournessData', { userHome: join(root, 'dsh', 'glm-hourness'), projectDirOf: () => options.noProject === true ? undefined : project })
-  const optional = optionalServices(runtime, options)
-  const { commands, projections, services } = optional
-  const ctx = optional.ctx as unknown as MemoryContext
-  const dispose = apply(ctx, options.config)
-  const service = runtime.services.get(MEMORY_SERVICE) as MemoryRowService
-  const row: Row = {
-    root,
-    work,
-    project,
-    userDir,
-    runtime,
-    commands,
-    projections,
-    service,
-    dispose,
-    services,
-    tool: async (toolName, args) => await runtime.execute(toolName, args) as Record<string, unknown>,
-    run: async input => commands.get('memory')!.handler({ commandId: 'cmd-1', agent: { id: runtime.agent.id, session: runtime.agent.session }, rawInput: input } as unknown as AgentCommandInvocationLike),
-    step: () => stepOf(runtime),
-
-  }
-  try {
-    await runtime.create()
-    await body(row)
-  }
-  finally {
-    dispose()
-    rmSync(root, { recursive: true, force: true })
-  }
-}
-
 /** The row needs a folder outside git for the session's working directory. */
 const skip = skipIfTempInsideGit()
-
-const rowHealth = (row: Row, sessionId = 'agent-1') => collectHealth(row.runtime.ctx, sessionId).find(entry => entry.row === 'memory')!
 
 const refused = async (promise: Promise<unknown>): Promise<{ code: string, message: string }> => {
   try {
@@ -123,11 +46,11 @@ const refused = async (promise: Promise<unknown>): Promise<{ code: string, messa
   return assert.fail('expected a refusal')
 }
 
-test('the row is a cordis plugin that needs the tools service; it registers the three tools, gates no tool call and listens to nothing else than agent creation and model calls', { skip }, async () => {
+test('the row is a cordis plugin that needs the tools service; it registers the three memory tools and the learning tool, gates no tool call and listens to nothing else than agent creation and model calls', { skip }, async () => {
   await withRow((row) => {
     assert.equal(name, 'dsh-glm-hourness/memory')
     assert.deepEqual(inject, ['tools'])
-    assert.deepEqual(row.runtime.scoped.map(tool => tool.name), MEMORY_TOOL_NAMES)
+    assert.deepEqual(row.runtime.scoped.map(tool => tool.name), [...MEMORY_TOOL_NAMES, ...LEARNING_TOOL_NAMES])
     const events = new Set(row.runtime.listeners.map(entry => entry.event))
     assert.deepEqual([...events].sort(), ['agent/created', 'agent/pre-step', 'llm/stream'])
     assert.ok(!events.has('tools/pre-execute'), 'the memory row blocks no tool call (d-code-rules-enforce: it registers no rule)')
@@ -206,24 +129,26 @@ test('a memory journal that cannot be read does not stop the step: the index is 
   })
 })
 
-test('a delegated child loses the memory tools from its request and gets no index; calling a tool by name is refused', { skip }, async () => {
+test('a delegated child loses the memory tools and the learning tool from its request and gets no index and no reminder; calling a tool by name is refused', { skip }, async () => {
   await withRow(async (row) => {
     const { child, stepListenersAdded } = await createChild(row.runtime)
-    assert.equal(stepListenersAdded, 0, 'no index listener for a child')
+    assert.equal(stepListenersAdded, 0, 'no index listener and no learning reminder for a child')
 
     const assembled = await row.runtime.assemble({ provider: 'glm-probe', model: 'glm-5.3' })
-    assert.deepEqual(assembled.tools.map(tool => tool.name), ['pwsh'], 'the memory tools are not in the child\'s face')
-    const result = await row.runtime.ctx.tools.execute({ callId: 'c1', name: 'memory_store', arguments: PREFERENCE, agent: child, signal: new AbortController().signal })
-    assert.equal(result.isError, true)
-    assert.ok(result.content[0]?.text?.includes('"code":"role"') === true)
+    assert.deepEqual(assembled.tools.map(tool => tool.name), ['pwsh'], 'the memory tools and the learning tool are not in the child\'s face')
+    for (const [callId, name, args] of [['c1', 'memory_store', PREFERENCE], ['c2', 'learning_signals', {}]] as const) {
+      const result = await row.runtime.ctx.tools.execute({ callId, name, arguments: args, agent: child, signal: new AbortController().signal })
+      assert.equal(result.isError, true, name)
+      assert.ok(result.content[0]?.text?.includes('"code":"role"') === true, name)
+    }
     assert.ok(!existsSync(journalFile(row.userDir)))
   })
 })
 
-test('a root agent keeps the memory tools in its request', { skip }, async () => {
+test('a root agent keeps the memory tools and the learning tool in its request', { skip }, async () => {
   await withRow(async (row) => {
     const assembled = await row.runtime.assemble({ provider: 'glm-probe', model: 'glm-5.3' })
-    assert.deepEqual(assembled.tools.map(tool => tool.name).sort(), ['memory_forget', 'memory_query', 'memory_store', 'pwsh'])
+    assert.deepEqual(assembled.tools.map(tool => tool.name).sort(), ['learning_signals', 'memory_forget', 'memory_query', 'memory_store', 'pwsh'])
   })
 })
 

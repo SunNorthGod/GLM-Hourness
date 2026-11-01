@@ -21,6 +21,7 @@ import { readFile, rename, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { ParsedRef } from '../data/evidence.ts'
 import { appendJournal, readJournal, type AppendOptions, type AppendResult, type JournalRecord, type NewRecord } from '../data/journal.ts'
+import type { GraphNode } from '../graph/schema.ts'
 import type { SessionLike } from '../shared/dsh-min.ts'
 import { baseRecord, convertLegacy, memoryFold, type MemoryEntry, type MemoryState, type Scope } from './model.ts'
 
@@ -38,7 +39,7 @@ const legacyFile = (dir: string): string => join(dir, 'memory.json')
 export const dirOfScope = (places: Places, scope: Scope): string | undefined => scope === 'project' ? places.project : places.user
 
 /** What kind of problem a note to the row's health is about; a later success under the same key clears it (`depth` stays: the session read the reporting depth once). */
-export type NoteKey = 'directory' | 'lock' | 'io' | 'legacy' | 'index' | 'depth'
+export type NoteKey = 'directory' | 'lock' | 'io' | 'legacy' | 'index' | 'depth' | 'learning' | 'learn-notice' | 'main-agent'
 
 /** Whether a source named in a memory exists, as far as the graph and the project's files say. */
 export interface SourceCheck {
@@ -46,9 +47,17 @@ export interface SourceCheck {
   inspect(ref: ParsedRef): 'ok' | 'missing' | 'dead' | 'unchecked'
 }
 
+/** The nodes of a session's project graph, or why there are none to read. */
+export type GraphRead =
+  | { readonly ok: true, readonly nodes: ReadonlyMap<string, GraphNode> }
+  /** `failure` is why a graph that is there could not be read; absent when the session has no graph. */
+  | { readonly ok: false, readonly failure?: string }
+
 export interface MemoryEnv {
   places(session: SessionLike | undefined): Places
   sources(session: SessionLike | undefined): Promise<SourceCheck>
+  /** The project graph of the session, for the learning digest. */
+  graph(session: SessionLike | undefined): Promise<GraphRead>
   now(): Date
   /** Tell the row what is wrong with one session's memory (Chinese, for the row health), or `undefined` that it is fine again. */
   note(sessionId: string | undefined, key: NoteKey, text: string | undefined): void

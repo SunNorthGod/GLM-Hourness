@@ -3,7 +3,7 @@ import test from 'node:test'
 import { auditJournal, auditPaths, rowJournal } from '../src/memory/audit.ts'
 import { apply } from '../src/memory/index.ts'
 import type { StreamChunk } from '../src/shared/lm-min.ts'
-import { MEMORY_TOOL_NAMES } from '../src/shared/tool-names.ts'
+import { LEARNING_TOOL_NAMES, MEMORY_TOOL_NAMES } from '../src/shared/tool-names.ts'
 
 function fakeFs() {
   const files = new Map<string, string>()
@@ -101,7 +101,7 @@ test('apply records usage in the user-level journal after the stream settles and
   const { files, fs } = fakeFs()
   const { ctx, stream, registered } = memoryContext(service)
   const dispose = apply(ctx, { home: 'C:/ws/.llm', fs })
-  assert.deepEqual(registered, MEMORY_TOOL_NAMES)
+  assert.deepEqual(registered, [...MEMORY_TOOL_NAMES, ...LEARNING_TOOL_NAMES])
   const seen = await drain(stream({ provider: 'glm', model: 'glm-5.3' }, chunks))
   dispose()
   assert.deepEqual(seen, ['text-delta', 'usage', 'finish'])
@@ -118,7 +118,7 @@ test('without the data service the stream still passes through and no usage is w
   console.warn = () => {}
   try {
     apply(ctx, { home: 'C:/ws/.llm', fs })
-    assert.equal(registered.length, 3) // the memory tools do not need the data row: the project memory follows the session
+    assert.equal(registered.length, MEMORY_TOOL_NAMES.length + LEARNING_TOOL_NAMES.length) // the memory tools do not need the data row: the project memory follows the session
     assert.deepEqual(await drain(stream({ provider: 'glm', model: 'glm-5.3' }, chunks)), ['text-delta', 'usage', 'finish'])
   }
   finally {
@@ -148,7 +148,7 @@ test('a row without the home setting registers the memory tools too and keeps th
   finally {
     console.warn = warn
   }
-  assert.deepEqual(registered, MEMORY_TOOL_NAMES)
+  assert.deepEqual(registered, [...MEMORY_TOOL_NAMES, ...LEARNING_TOOL_NAMES])
   await drain(stream({ provider: 'glm', model: 'glm-5.3' }, chunks))
   dispose()
   assert.ok((files.get(`${USER_HOME}/audit/usage.jsonl`) ?? '').includes('"inputTokens":10'))

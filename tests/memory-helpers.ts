@@ -9,8 +9,8 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { ParsedRef } from '../src/data/evidence.ts'
-import type { MemoryEnv, NoteKey, Places, SourceCheck } from '../src/memory/storage.ts'
-import { memoryTools } from '../src/memory/tools.ts'
+import type { GraphRead, MemoryEnv, NoteKey, Places, SourceCheck } from '../src/memory/storage.ts'
+import { learningTools, memoryTools } from '../src/memory/tools.ts'
 import type { AgentLike, PluginContext, ToolDefinitionLike } from '../src/shared/dsh-min.ts'
 
 /** An agent with a session header; `subagent` makes it a delegated child. */
@@ -42,11 +42,13 @@ export interface FixtureOptions {
   /** The clock; default 2026-11-01T12:00:00Z. */
   readonly now?: Date
   readonly append?: MemoryEnv['append']
+  /** What the project graph reads as; none by default. */
+  readonly graph?: GraphRead
 }
 
 export const MAIN = agentOf('main-session', { cwd: 'C:/work/project' })
 
-/** A memory environment over temporary directories, and the three tools over it. */
+/** A memory environment over temporary directories, and the memory tools and the learning tool over it. */
 export function memoryFixture(options: FixtureOptions = {}): MemoryFixture {
   const root = mkdtempSync(join(tmpdir(), 'memory-'))
   const places: Places = options.places?.(root) ?? { project: join(root, 'project'), user: join(root, 'user', 'memory') }
@@ -58,11 +60,12 @@ export function memoryFixture(options: FixtureOptions = {}): MemoryFixture {
   const env: MemoryEnv = {
     places: () => places,
     sources: () => Promise.resolve(check),
+    graph: () => Promise.resolve(options.graph ?? { ok: false }),
     now: () => options.now ?? new Date('2026-11-01T12:00:00Z'),
     note: (sessionId, key, text) => { notes.push({ sessionId, key, text }) },
     ...(options.append === undefined ? {} : { append: options.append }),
   }
-  const tools = new Map(memoryTools(env).map(tool => [tool.name, tool]))
+  const tools = new Map([...memoryTools(env), ...learningTools(env)].map(tool => [tool.name, tool]))
   return {
     root,
     places,

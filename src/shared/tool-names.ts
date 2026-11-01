@@ -17,6 +17,15 @@ export const GRAPH_TOOL_NAMES: readonly string[] = [
 export const MEMORY_TOOL_NAMES: readonly string[] = ['memory_store', 'memory_query', 'memory_forget']
 
 /**
+ * The memory row's read-only tool for the learning digest: the main agent's,
+ * deferred on the GLM route (the digest reminder names it). Kept apart from
+ * MEMORY_TOOL_NAMES because the GLM Memory section is for the three tools
+ * that save and recall; the row registers both lists and hides both from a
+ * delegated child.
+ */
+export const LEARNING_TOOL_NAMES: readonly string[] = ['learning_signals']
+
+/**
  * The lessons row's lookup tool. The GLM Memory section says where pitfalls
  * go and how to look them up only in a request that has it (src/glm-prompt/index.ts).
  */

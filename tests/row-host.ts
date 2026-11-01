@@ -3,9 +3,12 @@
  * the fake rc.3 host (tests/fake-rc3.ts): the optional services the host
  * brings (commands, session projections), one step of the main agent with the
  * notices it gets kept in the history, a delegated child created the way the
- * host creates one, and a tool registration that fails.
+ * host creates one, a tool registration that fails, the run of a spec body
+ * over a row and its clean-up, and the health a row reports for a session.
  */
+import { rmSync } from 'node:fs'
 import type { AgentCommandInvocationLike, AgentLike, CommandDefinitionLike, DerivedMessage, SessionProjectionsService, UserNotice } from '../src/shared/dsh-min.ts'
+import { collectHealth } from '../src/shared/health.ts'
 import { fakeInjector, type FakeRuntime } from './fake-rc3.ts'
 
 const USER_MESSAGE = { role: 'user', content: [{ type: 'text', text: 'Please start.' }] }
@@ -67,3 +70,18 @@ export function failRegistration(runtime: FakeRuntime, nth: number, message: str
     return real(definition)
   }
 }
+
+/** Create the agent of the fake host, run body over the row, and afterwards withdraw the row and remove the temporary folder root. */
+export async function runRow<Row>(runtime: FakeRuntime, row: Row, dispose: () => void, root: string, body: (row: Row) => Promise<void> | void): Promise<void> {
+  try {
+    await runtime.create()
+    await body(row)
+  }
+  finally {
+    dispose()
+    rmSync(root, { recursive: true, force: true })
+  }
+}
+
+/** The health the named row reports for a session of the fake host. */
+export const healthOf = (runtime: FakeRuntime, rowName: string, sessionId = 'agent-1') => collectHealth(runtime.ctx, sessionId).find(entry => entry.row === rowName)!

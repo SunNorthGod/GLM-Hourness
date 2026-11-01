@@ -67,7 +67,7 @@ import { PEAK_REMINDER_SOURCE, PEAK_REMINDER_TEXT } from '../../packages/glm/dis
 import { peakWindowAt } from '../../packages/glm/dist/glm-llm/credits.js'
 import { userDataHome } from '../../packages/hourness/dist/shared/data-home.js'
 import { HEALTH_PACKAGES, HEALTH_ROWS } from '../../packages/hourness/dist/shared/health.js'
-import { GRAPH_TOOL_NAMES, LESSONS_TOOL_NAMES, MEMORY_TOOL_NAMES } from '../../packages/glm/dist/shared/tool-names.js'
+import { GRAPH_TOOL_NAMES, LEARNING_TOOL_NAMES, LESSONS_TOOL_NAMES, MEMORY_TOOL_NAMES } from '../../packages/glm/dist/shared/tool-names.js'
 import { openEngine } from '../../packages/hourness/dist/graph/engine.js'
 import { holderFileOf, readHolder } from '../../packages/hourness/dist/graph/main-agent-holder.js'
 import { runNote } from '../../packages/hourness/dist/graph/run.js'
@@ -162,6 +162,17 @@ const fileStamp = file => existsSync(file) ? (({ size, mtimeMs }) => `${size}/${
 const realMemoryBefore = realMemoryFiles.map(fileStamp)
 
 /**
+ * The first line of the project journal of every scenario: the record of a
+ * learning digest reminder sent a moment ago. The sessions of a scenario run
+ * in this repository, so the main agent reads its project graph, whose
+ * history holds real corrections of the person; without the record a
+ * reminder would be in the requests of every scenario and change with the
+ * repository. `memoryJournalOf` leaves the record out of what it counts; the
+ * reminder has its own specs on the fake host (tests/memory-learning.spec.ts).
+ */
+const learnSeed = seq => `${JSON.stringify({ v: 1, seq, at: new Date().toISOString(), actor: 'harness', op: 'learn-notified', id: '*', data: { keys: ['edit:task.body'] } })}\n`
+
+/**
  * Boot one headless task on `model` with a scripted reply sequence and return
  * the main agent's step requests plus the compaction requests (the
  * session-title request carries no tools), the exit status and the wall
@@ -177,6 +188,7 @@ function runScenario(name, model, script, task, overlay = [], cwd = repo, others
   const dir = join(runDir, name)
   const home = join(dir, 'home')
   mkdirSync(home, { recursive: true })
+  if (!existsSync(join(home, 'memory.jsonl'))) writeFileSync(join(home, 'memory.jsonl'), learnSeed(1))
   const dump = join(dir, 'requests.jsonl')
   writeFileSync(dump, '')
   const patch = join(dir, 'probe.patch.yml')
@@ -809,18 +821,20 @@ const memoryGlm = runScenario('glm-memory', 'glm-5.3', memoryScript(), 'Store fo
 const memoryPlain = runScenario('non-glm-memory', 'deepseek-probe', memoryScript(), 'Store four memories, then reply done.', [], repo, memoryOthers('read'))
 const memoryIndexes = step => (step?.messages ?? []).filter(message => message.role === 'user' && message.source === MEMORY_INDEX_SOURCE)
 const memoryFace = step => (step?.tools ?? []).filter(tool => MEMORY_TOOL_NAMES.includes(tool.name))
+const learningFace = step => (step?.tools ?? []).filter(tool => LEARNING_TOOL_NAMES.includes(tool.name))
 /** The steps of the root agent that wrote the memories, and those of the one the probe provider started after it (the id is in the last request of the first). */
 const memorySessions = (scenario) => {
   const second = scenario.steps.at(-1)?.spawn?.sessionId
   return { first: scenario.steps.filter(step => step.sessionId !== second), second: bySession(scenario, second) }
 }
-const memoryJournalOf = (scenario, scope) => jsonl(join(runDir, scenario, ...(scope === 'all' ? ['dsh-home', 'glm-hourness', 'memory'] : ['home']), 'memory.jsonl'))
+/** The records of a memory journal of a scenario, without the learning digest record every scenario starts with (learnSeed). */
+const memoryJournalOf = (scenario, scope) => jsonl(join(runDir, scenario, ...(scope === 'all' ? ['dsh-home', 'glm-hourness', 'memory'] : ['home']), 'memory.jsonl')).filter(record => record.op !== 'learn-notified')
 /** A norm of the project already in the project journal when the scenario starts (written the way the person's /memory would). */
 const seedProjectMemory = (scenario) => {
   const home = join(runDir, scenario, 'home')
   mkdirSync(home, { recursive: true })
   const data = { name: 'seeded-norm', scope: 'project', type: 'feedback', description: 'A norm of this project', body: 'Keep commits small.\n**Why:** reviews stay short.' }
-  writeFileSync(join(home, 'memory.jsonl'), `${JSON.stringify({ v: 1, seq: 1, at: '2026-10-31T00:00:00.000Z', actor: 'human', op: 'store', id: 'project:seeded-norm', data })}\n`)
+  writeFileSync(join(home, 'memory.jsonl'), `${learnSeed(1)}${JSON.stringify({ v: 1, seq: 2, at: '2026-10-31T00:00:00.000Z', actor: 'human', op: 'store', id: 'project:seeded-norm', data })}\n`)
 }
 
 // Reporting depth (M5 design §3.7, m5-5): the glm:persona section names the
@@ -866,6 +880,7 @@ const workerWs = join(workerDir, 'ws')
 mkdirSync(join(workerWs, 'allowed'), { recursive: true })
 const memoryWorker = runScenario('glm-worker-memory', 'glm-5.3', [
   { tool: { name: 'DeferredToolCall', arguments: { name: 'probe_dispatch', input: { task: 'T1', prompt: 'Probe task T1: try the memory tools and report.', cwd: workerWs, scope: 'allowed', model: 'glm-5.3-flash' } } } },
+  { tool: { name: 'DeferredToolCall', arguments: { name: 'learning_signals', input: {} } } },
   { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } } },
   { text: 'Waiting for task T1.' },
   { text: 'done', status: true },
@@ -873,6 +888,7 @@ const memoryWorker = runScenario('glm-worker-memory', 'glm-5.3', [
   { tool: { name: 'memory_store', arguments: MEMORY_FEEDBACK } },
   { tool: { name: 'memory_query', arguments: { focus: 'commits' } } },
   { tool: { name: 'memory_forget', arguments: { name: 'seeded-norm', reason: 'try', scope: 'project' } } },
+  { tool: { name: 'learning_signals', arguments: {} } },
   { tool: { name: 'DeferredToolCall', arguments: { name: 'structured_output', input: HAND_BACK } } },
   { text: 'child done' },
 ]])
@@ -1228,6 +1244,7 @@ function memoryChecks() {
         [`memory (${label}): the second root agent of the workspace has the index in its first request after the first user message, with the four memories, once, and not repeated in its next request`, run.second.length === 2 && afterFirstUser(run.second[0]) && isDeepStrictEqual(counts(run.second), [1, 1]) && MEMORY_NAMES.every(entry => indexTexts(run.second[0])[0]?.includes(`- ${entry} (`) === true), run.second.length === 0 ? `no second session (exit ${scenario.status}): ${JSON.stringify(scenario.steps.at(-1)?.spawn ?? null)}` : `index notices per request: ${counts(run.second).join(', ')}; ${(indexTexts(run.second[0])[0] ?? 'none').replace(/\n/g, ' | ').slice(0, 160)}`],
         [`memory (${label}): each root agent's system prompt is the same at every step`, new Set(run.first.map(step => step.system)).size === 1 && new Set(run.second.map(step => step.system)).size === 1, `${new Set(run.first.map(step => step.system)).size} and ${new Set(run.second.map(step => step.system)).size} distinct prompt(s)`],
         [`memory (${label}): the three memory tools are in the face of the root agent, resident, and the glm:memory section is ${glmRoute ? 'in' : 'not in'} the prompt`, memoryFace(run.first[0]).length === 3 && memoryFace(run.first[0]).every(tool => tool.deferLoading !== true) && run.first[0].system.includes(MEMORY_SECTION_LINE) === glmRoute, `${memoryFace(run.first[0]).map(tool => tool.name).join(', ')}; section ${run.first[0]?.system.includes(MEMORY_SECTION_LINE)}`],
+        [`memory (${label}): the learning tool ${glmRoute ? 'is deferred on the GLM route: it is not in the face and tool search reaches it' : 'is in the face of the root agent'}`, glmRoute ? learningFace(run.first[0]).length === 0 : learningFace(run.first[0]).length === 1 && learningFace(run.first[0]).every(tool => tool.deferLoading !== true), `${learningFace(run.first[0]).map(tool => tool.name).join(', ') || 'none'} in the face`],
         [`memory (${label}): the row reports itself in effect and says the session has the index; the configured home is said to be ignored`, healthOf(scenario).memory?.status === ACTED && healthOf(scenario).memory.reason.includes('本会话已带索引') && healthOf(scenario).memory.reason.includes('行配置 home 已不再使用（M5）'), JSON.stringify(healthOf(scenario).memory ?? null)],
       ]
     }),
@@ -1236,8 +1253,9 @@ function memoryChecks() {
     ['memory depth: the session started after the store names concise from its first request on, and forgetting the preference in its first step leaves its prompt as it was', depthSessions.second.length === 2 && depthSessions.second.every(step => depthOf(step) === 'concise') && new Set(depthSessions.second.map(step => step.system)).size === 1 && lastToolResult(depthSessions.second[1])?.isError !== true && lastToolResult(depthSessions.second[1])?.text.includes('"forgotten":true') === true, depthSessions.second.length === 0 ? 'no second session' : `depths of the second session: ${depthSessions.second.map(depthOf).join(', ')}; ${(lastToolResult(depthSessions.second[1])?.text ?? 'none').slice(0, 80)}`],
     ['memory depth: the session started after the forget names the configured depth again; the user-level journal holds the store and the forget', depthSessions.third.length === 1 && depthOf(depthSessions.third[0]) === 'balanced' && isDeepStrictEqual(memoryJournalOf('glm-memory-depth', 'all').map(record => record.op), ['store', 'forget']), `depth of the third session: ${depthSessions.third.map(depthOf).join(', ') || 'no request'}; journal ${memoryJournalOf('glm-memory-depth', 'all').map(record => record.op).join(', ')}`],
     ['memory depth: the glm-prompt and memory rows report themselves in effect for the second session, and the run warned of nothing', healthOf(memoryDepth)['glm-prompt']?.status === ACTED && healthOf(memoryDepth).memory?.status === ACTED && quiet('glm-memory-depth'), `${healthLine(healthOf(memoryDepth), 'glm-prompt')}; ${healthLine(healthOf(memoryDepth), 'memory')}; stderr ${stderrOf('glm-memory-depth').length} byte(s)`],
-    ['memory worker: the child has no memory tool in its request, no glm:memory section and no index; the main agent of the project has the index and the section', workerChild.length > 0 && workerChild.every(step => memoryFace(step).length === 0 && !step.system.includes(MEMORY_SECTION_LINE) && memoryIndexes(step).length === 0) && memoryIndexes(workerMain[0]).length === 1 && indexTexts(workerMain[0])[0]?.includes('- seeded-norm (feedback)') === true && workerMain[0].system.includes(MEMORY_SECTION_LINE), workerChild.length === 0 ? `no child request (exit ${memoryWorker.status})` : `child: ${workerChild.length} request(s), ${memoryFace(workerChild[0]).length} memory tool(s); main index notices ${counts(workerMain).join(', ')}`],
-    ['memory worker: the child calling memory_store, memory_query and memory_forget by name is refused with role and the way to hand back, and the journals are as they were', [1, 2, 3].every(index => roleRefusal(workerChild[index])) && memoryJournalOf('glm-worker-memory', 'project').length === 1 && memoryJournalOf('glm-worker-memory', 'all').length === 0, [1, 2, 3].map(index => (lastToolResult(workerChild[index])?.text ?? 'none').slice(0, 60)).join(' | ')],
+    ['memory worker: the child has no memory tool and no learning tool in its request, no glm:memory section and no index; the main agent of the project has the index and the section', workerChild.length > 0 && workerChild.every(step => memoryFace(step).length === 0 && learningFace(step).length === 0 && !step.system.includes(MEMORY_SECTION_LINE) && memoryIndexes(step).length === 0) && memoryIndexes(workerMain[0]).length === 1 && indexTexts(workerMain[0])[0]?.includes('- seeded-norm (feedback)') === true && workerMain[0].system.includes(MEMORY_SECTION_LINE), workerChild.length === 0 ? `no child request (exit ${memoryWorker.status})` : `child: ${workerChild.length} request(s), ${memoryFace(workerChild[0]).length} memory tool(s); main index notices ${counts(workerMain).join(', ')}`],
+    ['memory worker: the child calling memory_store, memory_query, memory_forget and learning_signals by name is refused with role and the way to hand back, and the journals are as they were', [1, 2, 3, 4].every(index => roleRefusal(workerChild[index])) && memoryJournalOf('glm-worker-memory', 'project').length === 1 && memoryJournalOf('glm-worker-memory', 'all').length === 0, [1, 2, 3, 4].map(index => (lastToolResult(workerChild[index])?.text ?? 'none').slice(0, 60)).join(' | ')],
+    ['memory worker: the main agent reaches learning_signals through tool search and gets the digest (the groups of the window and whether the graph could be read), and the project journal has only the seeded norm', lastToolResult(workerMain[2])?.isError !== true && lastToolResult(workerMain[2])?.text.includes('"groups":[') === true && /"graph":"(ok|unavailable)"/.test(lastToolResult(workerMain[2])?.text ?? '') && memoryJournalOf('glm-worker-memory', 'project').length === 1, (lastToolResult(workerMain[2])?.text ?? 'no result').slice(0, 120)],
     ['memory: the probe leaves the real user-level memory journal and the journals of the project this checkout belongs to as they were, and the user-level directory has no lessons directory', isDeepStrictEqual(realMemoryFiles.map(fileStamp), realMemoryBefore) && !existsSync(join(userDataHome(), 'lessons')), `${realMemoryBefore.join(' ')} -> ${realMemoryFiles.map(fileStamp).join(' ')}`],
   ]
 }

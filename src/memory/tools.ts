@@ -2,9 +2,11 @@
  * The memory tools (memory_store, memory_query, memory_forget; M5 design
  * §3.2 to §3.4): the main agent's surface over the memory journals. They
  * register through the normal tools seam and GLM tool search keeps them
- * resident (src/shared/tool-names.ts). A tool body checks its caller itself,
- * because a tool outside an agent's face still runs when it is called by
- * name: a delegated child is refused with `role`.
+ * resident (src/shared/tool-names.ts). The learning tool (learning_signals,
+ * §3.6) is the same agent's read-only view of the corrections the person
+ * made; it is deferred on the GLM route. A tool body checks its caller
+ * itself, because a tool outside an agent's face still runs when it is
+ * called by name: a delegated child is refused with `role`.
  *
  * A refusal is a tool error whose text is `{code, message, field?, hint?}`
  * (as the graph tools do), in English because the model reads it. Whether
@@ -16,6 +18,7 @@ import { secretRefusal } from '../data/secret-shape.ts'
 import { invalid, isObject, isRefusal, refuse, type Refusal } from '../data/refusal.ts'
 import type { AgentLike, SessionLike, ToolDefinitionLike, ToolExecutionContext } from '../shared/dsh-min.ts'
 import { checkSourceKnown, checkStore, classify, judgeStore, revokeRecord, revokeRefusal, reviewRecord, storeRecord, strength, type MemoryEntry, type MemoryState, type MemoryType, type Scope } from './model.ts'
+import { readDigest } from './digest.ts'
 import { visibleEntries } from './recall.ts'
 import { dirOfScope, noteWrite, readBoth, writeScope, type MemoryEnv, type ReadOutcome, type WriteResult } from './storage.ts'
 
@@ -323,7 +326,57 @@ async function forget(env: MemoryEnv, args: unknown, exec: unknown): Promise<unk
   return { forgotten: true, name: request.name, scope, kind }
 }
 
+// --- learning_signals ------------------------------------------------------
+
+interface LearningRequest {
+  readonly since?: string
+  readonly minCount?: number
+}
+
+const LEARNING_KEYS: readonly string[] = ['since', 'minCount']
+
+function checkLearning(args: unknown, now: Date): LearningRequest | Refusal<'invalid'> {
+  if (args !== undefined && !isObject(args)) return invalid(undefined, 'arguments must be an object')
+  const extra = Object.keys(args ?? {}).find(key => !LEARNING_KEYS.includes(key))
+  if (extra !== undefined) return invalid(extra, `unknown field ${extra}`)
+  const { since, minCount } = args ?? {}
+  if (since !== undefined && (typeof since !== 'string' || Number.isNaN(Date.parse(since)) || Date.parse(since) >= now.getTime())) return invalid('since', 'since must be an ISO date or time in the past')
+  if (minCount !== undefined && (typeof minCount !== 'number' || !Number.isInteger(minCount) || minCount < 1 || minCount > 50)) return invalid('minCount', 'minCount must be a whole number from 1 to 50')
+  return { ...(typeof since === 'string' ? { since } : {}), ...(typeof minCount === 'number' ? { minCount } : {}) }
+}
+
+const LEARNING_DESCRIPTION = [
+  'Read-only: lists the kinds of correction the person has made to your work, in the last 28 days or since `since`, that happened at least `minCount` times (default 2). Each group has its key, what the key means, how many times it happened, examples, how many memories, lessons and notes already settle it (learned), how many times it came back after the first of those (recurrences) and the counts of the last four weeks (weekly).',
+  'Call it when the learning digest reminder arrives or the person asks what could be learned. It writes nothing. Settle a group with memory_store or lessons_merge and name the group key in learnedFrom, or with a graph_comment on the node that starts "学自：" and the key. Example key: edit:task.acceptance, "the person changed the acceptance the agent had set on a task".',
+].join('\n')
+
+async function signals(env: MemoryEnv, args: unknown, exec: unknown): Promise<unknown> {
+  const caller = callerSession(exec)
+  const request = checkLearning(args, env.now())
+  if (isRefusal(request)) fail(request)
+  return await readDigest(env, caller.session, request)
+}
+
 const render: ToolDefinitionLike['output']['render'] = (_args, value) => [{ type: 'text', text: JSON.stringify(value) }]
+
+/** The learning tool over the row's environment: the main agent's, deferred on the GLM route, hidden from a delegated child like the memory tools. */
+export function learningTools(env: MemoryEnv): ToolDefinitionLike[] {
+  return [
+    {
+      name: 'learning_signals',
+      description: LEARNING_DESCRIPTION,
+      parameters: {
+        type: 'object',
+        properties: {
+          since: { type: 'string', description: 'ISO date or time to start from; default 28 days before now.' },
+          minCount: { type: 'number', description: 'List groups with at least this many corrections, 1 to 50 (default 2).' },
+        },
+      },
+      output: { schema: { type: 'object', properties: { since: { type: 'string' }, until: { type: 'string' }, groups: { type: 'array', items: { type: 'object' } }, graph: { type: 'string' }, notes: { type: 'array', items: { type: 'string' } } } }, render },
+      execute: (args, exec) => signals(env, args, exec),
+    },
+  ]
+}
 
 /** The three memory tools over the row's environment. */
 export function memoryTools(env: MemoryEnv): ToolDefinitionLike[] {

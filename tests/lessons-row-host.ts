@@ -15,10 +15,9 @@ import { apply, type LessonsConfig, type LessonsContext } from '../src/lessons/i
 import { LESSONS_SERVICE, type LessonsService } from '../src/lessons/service.ts'
 import { journalFile } from '../src/lessons/storage.ts'
 import type { AgentCommandInvocationLike, CommandDefinitionLike, SessionLike, SessionProjectionsService, UserNotice } from '../src/shared/dsh-min.ts'
-import { collectHealth } from '../src/shared/health.ts'
 import { fakeRuntime, type FakeRuntime } from './fake-rc3.ts'
 import { CANDIDATE, NOW } from './lessons-helpers.ts'
-import { optionalServices, stepOf } from './row-host.ts'
+import { healthOf, optionalServices, runRow, stepOf } from './row-host.ts'
 
 export const WORK = resolve(tmpdir(), 'lessons-row-project')
 const GRAPH_DIR = join(WORK, 'docs', 'graph')
@@ -111,16 +110,9 @@ export async function withRow(body: (row: Row) => Promise<void> | void, options:
       }
     },
   }
-  try {
-    await runtime.create()
-    await body(row)
-  }
-  finally {
-    dispose()
-    rmSync(root, { recursive: true, force: true })
-  }
+  await runRow(runtime, row, dispose, root, body)
 }
 
-export const rowHealth = (row: Row, sessionId = 'agent-1') => collectHealth(row.runtime.ctx, sessionId).find(entry => entry.row === 'lessons')!
+export const rowHealth = (row: Row, sessionId?: string) => healthOf(row.runtime, 'lessons', sessionId)
 export const kinds = (notices: readonly UserNotice[]): string[] => notices.map(notice => notice.source.kind)
 export const proposeFrom = (row: Row, session: string, candidate: object = CANDIDATE) => row.service.propose(candidate as never, { session: { id: session, header: { id: session }, deriveMessages: () => [] }, task: 'task-3' })

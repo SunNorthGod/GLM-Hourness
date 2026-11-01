@@ -16,7 +16,7 @@ import type { AgentLike, CommandDefinitionLike, ToolFinalResult } from '../src/s
 import { healthServiceName, type HealthRow, type RowHealthView } from '../src/shared/health.ts'
 import { MEMORY_SERVICE, memoryService } from '../src/shared/memory-service.ts'
 import { PRICING_SERVICE, pricingService, type UsagePricing } from '../src/shared/pricing.ts'
-import { GRAPH_TOOL_NAMES, LESSONS_MERGE_TOOL, LESSONS_QUERY_TOOL, LESSONS_TOOL_NAMES, MEMORY_TOOL_NAMES, ORCHESTRATION_RESIDENT_TOOLS } from '../src/shared/tool-names.ts'
+import { GRAPH_TOOL_NAMES, LEARNING_TOOL_NAMES, LESSONS_MERGE_TOOL, LESSONS_QUERY_TOOL, LESSONS_TOOL_NAMES, MEMORY_TOOL_NAMES, ORCHESTRATION_RESIDENT_TOOLS } from '../src/shared/tool-names.ts'
 import { RESIDENT_TOOLS } from '../src/toolsearch/exposure.ts'
 import { apply as hournessApply } from '../src/report/index.ts'
 import { PACKAGES } from '../scripts/packages.mjs'
@@ -56,12 +56,12 @@ test('row ids: each package\'s host rows and its client row are the fixed list',
   assert.deepEqual(PACKAGES.flatMap(pkg => [...pkg.rows.map(row => row.id), pkg.client.row]), ROW_IDS)
 })
 
-test('tool names: the graph, memory and lessons rows register exactly the contract names', () => {
+test('tool names: the graph, memory (with its learning tool) and lessons rows register exactly the contract names', () => {
   assert.deepEqual(graphTools('docs/graph', new Map()).map(tool => tool.name), GRAPH_TOOL_NAMES)
   const memory = memoryFixture()
   const lessons = lessonsFixture()
   try {
-    assert.deepEqual([...memory.tools.keys()], MEMORY_TOOL_NAMES)
+    assert.deepEqual([...memory.tools.keys()], [...MEMORY_TOOL_NAMES, ...LEARNING_TOOL_NAMES])
     assert.deepEqual([...lessons.tools.keys()], LESSONS_TOOL_NAMES)
   }
   finally {
@@ -93,6 +93,11 @@ test('tool names: every orchestration tool kept resident exists, and GLM tool se
     assert.ok(known.has(name), `${name} is resident but no orchestration row registers it`)
     assert.ok(RESIDENT_TOOLS.has(name), name)
   }
+})
+
+test('tool names: the learning tool is the main agent\'s read-only view and stays deferred in the GLM face; the memory tools stay resident', () => {
+  for (const name of LEARNING_TOOL_NAMES) assert.ok(!ORCHESTRATION_RESIDENT_TOOLS.has(name) && !RESIDENT_TOOLS.has(name), name)
+  for (const name of MEMORY_TOOL_NAMES) assert.ok(ORCHESTRATION_RESIDENT_TOOLS.has(name) && RESIDENT_TOOLS.has(name), name)
 })
 
 test('tool names: the lookup of the lessons board is resident for every agent in the GLM face, the merge tool is the main agent\'s and stays deferred', () => {

@@ -1,6 +1,8 @@
 /**
  * dsh-memory row entry (M5 design §2.2, §3, §7): the three memory tools, the
- * memory index a root agent starts a session with, `/memory`, the service
+ * read-only learning tool `learning_signals` and the digest reminder that
+ * points the main agent to it (src/memory/notices.ts), the memory index a
+ * root agent starts a session with, `/memory`, the service
  * `glmHournessMemory`, the session projection `hournessMemory`, and the
  * usage per model call that the read-only `llm/stream` waterfall feeds into
  * the user-level journal the data row provides (docs/DESIGN.md §2.4).
@@ -8,8 +10,8 @@
  * Memory is per session: the project directory follows the working
  * directory of the session (the row's old `home` setting is ignored and the
  * health says so), what is about the person is in the user-level directory.
- * A delegated child gets neither the tools nor the index: a listener on the
- * child's own scope removes the tools from its request (it does not
+ * A delegated child gets neither the tools nor the index nor the reminder: a
+ * listener on the child's own scope removes the tools from its request (it does not
  * `prepend`, so the dialect's section decision, which runs outside it, sees
  * the tools that are left), and the tool bodies refuse a child that calls
  * one by name. The row blocks no tool call: it registers no
@@ -29,10 +31,11 @@ import { graphService } from '../graph/service.ts'
 import { loadGraph } from '../graph/store.ts'
 import { rowJournal, type AuditFs, type UsageRecord } from './audit.ts'
 import { memoryCommand } from './commands.ts'
+import { learningNotice } from './notices.ts'
 import { renderIndex, visibleEntries } from './recall.ts'
 import { memoryRowService } from './service.ts'
-import { readBoth, type Both, type MemoryEnv, type NoteKey, type Places, type SourceCheck } from './storage.ts'
-import { memoryTools } from './tools.ts'
+import { readBoth, type Both, type GraphRead, type MemoryEnv, type NoteKey, type Places, type SourceCheck } from './storage.ts'
+import { learningTools, memoryTools } from './tools.ts'
 import { dataHomes, dataService } from '../shared/data-home.ts'
 import { createUserNotice } from '../shared/dsh-min.ts'
 import type { AgentLike, DerivedMessage, InjectHost, LlmStreamHost, ProvideHost, ServiceLookup, SessionLike, SessionProjectionsService, ToolsLike } from '../shared/dsh-min.ts'
@@ -41,7 +44,7 @@ import type { TokenUsage } from '../shared/lm-min.ts'
 import { MEMORY_SERVICE } from '../shared/memory-service.ts'
 import { sessionNotebook, warnOnceFor, whenPresent } from '../shared/row-support.ts'
 import { installStepNotice } from '../shared/step-notice.ts'
-import { MEMORY_TOOL_NAMES } from '../shared/tool-names.ts'
+import { LEARNING_TOOL_NAMES, MEMORY_TOOL_NAMES } from '../shared/tool-names.ts'
 import type { AppendOptions } from '../data/journal.ts'
 
 export interface MemoryConfig {
@@ -112,19 +115,24 @@ const isIndexNotice = (message: DerivedMessage): boolean => message.role === 'us
 /** A path as the project knows it: the file named by a source, without a `§section` or `#anchor`. */
 const pathOfSource = (text: string): string => text.replace(/\s*[§#].*$/s, '').trim()
 
+/** The project graph of one session, read through the graph row's service. */
+async function graphOf(ctx: ServiceLookup, session: SessionLike | undefined): Promise<GraphRead> {
+  const cwd = session?.header.cwd
+  const dir = cwd === undefined ? undefined : graphService(ctx)?.dirFor(cwd)
+  if (dir === undefined) return { ok: false }
+  try {
+    return { ok: true, nodes: (await loadGraph(dir)).nodes }
+  }
+  catch (error) {
+    return { ok: false, failure: messageOf(error) }
+  }
+}
+
 /** What the graph and the project's files say about the sources of one session. */
 async function sourceCheckFor(ctx: ServiceLookup, session: SessionLike | undefined): Promise<SourceCheck> {
   const cwd = session?.header.cwd
-  const graphDir = cwd === undefined ? undefined : graphService(ctx)?.dirFor(cwd)
-  let nodes: Awaited<ReturnType<typeof loadGraph>>['nodes'] | undefined
-  if (graphDir !== undefined) {
-    try {
-      nodes = (await loadGraph(graphDir)).nodes
-    }
-    catch {
-      nodes = undefined
-    }
-  }
+  const graph = await graphOf(ctx, session)
+  const nodes = graph.ok ? graph.nodes : undefined
   const root = cwd === undefined ? undefined : projectOf(cwd)?.root ?? resolve(cwd)
   const node = (id: string): ReturnType<SourceCheck['inspect']> => {
     if (nodes === undefined) return 'unchecked'
@@ -222,6 +230,7 @@ export function apply(ctx: MemoryContext, config: MemoryConfig = {}): () => void
   const env: MemoryEnv = {
     places: session => placesFor(session?.header.cwd),
     sources: session => sourceCheckFor(ctx, session),
+    graph: session => graphOf(ctx, session),
     now,
     note: notebook.note,
     ...(config.append === undefined ? {} : { append: config.append }),
@@ -234,7 +243,7 @@ export function apply(ctx: MemoryContext, config: MemoryConfig = {}): () => void
 
   const registered: Array<() => void> = []
   try {
-    for (const tool of memoryTools(env)) registered.push(ctx.tools.register(tool))
+    for (const tool of [...memoryTools(env), ...learningTools(env)]) registered.push(ctx.tools.register(tool))
     disposers.push(...registered)
   }
   catch (error) {
@@ -279,16 +288,19 @@ export function apply(ctx: MemoryContext, config: MemoryConfig = {}): () => void
     }
   }, 'memory')
 
-  /** A delegated child's request loses the memory tools. */
+  /** A delegated child's request loses the memory tools and the learning tool. */
   const hideTools = (agent: AgentLike): (() => void) => agent.ctx.on('system-prompt/assemble', async (_assembly, _context, next) => {
     const assembled = await next()
-    return { ...assembled, tools: assembled.tools.filter(tool => !MEMORY_TOOL_NAMES.includes(tool.name)) }
+    return { ...assembled, tools: assembled.tools.filter(tool => !MEMORY_TOOL_NAMES.includes(tool.name) && !LEARNING_TOOL_NAMES.includes(tool.name)) }
   })
+
+  /** The learning digest reminder of a root agent: installed first, so the index comes before it in a step that has both. */
+  const installLearning = learningNotice({ ctx, env, report, warn: warnOnce })
 
   disposers.push(ctx.on('agent/created', ({ agent }) => {
     try {
-      const off = agent.session?.header.origin === 'subagent' ? hideTools(agent) : installIndex(agent)
-      if (off !== undefined) disposers.push(off)
+      const offs = agent.session?.header.origin === 'subagent' ? [hideTools(agent)] : [installLearning(agent), installIndex(agent)]
+      for (const off of offs) if (off !== undefined) disposers.push(off)
     }
     catch (error) {
       console.warn(`${name}: the memory is not installed for agent ${agent.id}: ${messageOf(error)}`)

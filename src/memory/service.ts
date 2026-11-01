@@ -1,8 +1,10 @@
 /**
  * The service the memory row provides (`glmHournessMemory`, M5 design §3.7,
  * §4.9, §8.6): `depth` for the GLM dialect (its contract is
- * src/shared/memory-service.ts), and `stats` and `hygiene` for the weekly
- * report and the inspection, which read the journals only.
+ * src/shared/memory-service.ts), and `stats`, `hygiene` and `learningDigest`
+ * for the weekly report and the inspection, which read the journals only
+ * (`learningDigest` also the project graph, and is what `learning_signals`
+ * answers with).
  *
  * `depth` is synchronous because the dialect asks while it assembles the
  * system prompt. The first time a session asks it reads the user-level
@@ -15,6 +17,8 @@ import { parseRef } from '../data/evidence.ts'
 import { readJournal, readJournalSync, type Fold } from '../data/journal.ts'
 import type { SessionLike } from '../shared/dsh-min.ts'
 import type { MemoryService, ReportingDepth } from '../shared/memory-service.ts'
+import { readDigest } from './digest.ts'
+import type { DigestOptions, LearningDigest } from './learning.ts'
 import { applyRecord, emptyMemory, memoryFold, strength, type MemoryState, type Scope } from './model.ts'
 import { journalFile, readBoth, type MemoryEnv } from './storage.ts'
 
@@ -42,6 +46,8 @@ export interface MemoryRowService extends MemoryService {
   stats(session: SessionLike | undefined, since: string, until: string): Promise<MemoryStats>
   /** What the inspection should look at, at `now` (ISO). */
   hygiene(session: SessionLike | undefined, now: string): Promise<readonly HygieneFinding[]>
+  /** The groups of corrections in the window and where each is settled, the answer of `learning_signals`. */
+  learningDigest(session: SessionLike | undefined, options?: DigestOptions): Promise<LearningDigest>
 }
 
 interface Counting {
@@ -134,6 +140,8 @@ export function memoryRowService(env: MemoryEnv, problem: (message: string) => v
         reportingDepthChanges: project.reportingDepthChanges + user.reportingDepthChanges,
       }
     },
+
+    learningDigest: (session, options) => readDigest(env, session, options),
 
     async hygiene(session, now) {
       const places = env.places(session)
