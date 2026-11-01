@@ -24,6 +24,10 @@
  * root agent in the same workspace (the provider's `spawn` step) and check
  * its index, the index after a compaction, a child's tool face, the reporting
  * depth each session's prompt names and the real journals left unchanged.
+ * The lessons scenarios (glm-lessons, non-glm-lessons) enable the lessons row
+ * with the overlay and start from a lesson and a candidate left in the project
+ * journal: the notices to the main agent, lessons_merge and lessons_query, the
+ * person's words for a delete, /lessons, and propose through the overlay tool.
  *
  * Usage: node scripts/probe/run-probe.mjs
  * Requires the desktop install (DSH_DESKTOP_DIR overrides the location).
@@ -59,12 +63,13 @@ import { PEAK_REMINDER_SOURCE, PEAK_REMINDER_TEXT } from '../../packages/glm/dis
 import { peakWindowAt } from '../../packages/glm/dist/glm-llm/credits.js'
 import { userDataHome } from '../../packages/hourness/dist/shared/data-home.js'
 import { HEALTH_PACKAGES, HEALTH_ROWS } from '../../packages/hourness/dist/shared/health.js'
-import { GRAPH_TOOL_NAMES, MEMORY_TOOL_NAMES } from '../../packages/glm/dist/shared/tool-names.js'
+import { GRAPH_TOOL_NAMES, LESSONS_TOOL_NAMES, MEMORY_TOOL_NAMES } from '../../packages/glm/dist/shared/tool-names.js'
 import { openEngine } from '../../packages/hourness/dist/graph/engine.js'
 import { holderFileOf, readHolder } from '../../packages/hourness/dist/graph/main-agent-holder.js'
 import { runNote } from '../../packages/hourness/dist/graph/run.js'
 import { projectDirOf } from '../../packages/hourness/dist/data/project-root.js'
 import { loadGraph } from '../../packages/hourness/dist/graph/store.js'
+import { PENDING_SOURCE as LESSONS_PENDING_SOURCE } from '../../packages/hourness/dist/lessons/notices.js'
 import { INDEX_SOURCE as MEMORY_INDEX_SOURCE } from '../../packages/hourness/dist/memory/index.js'
 import { compareShapes, describeDifference, isProjectDifference, profileShape } from '../profile-shape.mjs'
 import { PACKAGES } from '../packages.mjs'
@@ -870,6 +875,55 @@ const workerChildId = dispatchRecord('glm-worker-memory').find(entry => entry.ki
 const workerChild = bySession(memoryWorker, workerChildId)
 const workerMain = memoryWorker.steps.filter(step => step.sessionId !== workerChildId)
 
+// Lessons (docs/ORCHESTRATION.md §8.6, M5 design §10.1). The row ships
+// disabled; the overlay enables it. The project journal of the scenario
+// (<scenario>/home/lessons.jsonl, scripts/sandbox.mjs dataRows) starts with a
+// lesson and a candidate the way an earlier session would have left them. The
+// main agent merges the candidate, hands a second one to the lessons service
+// through the overlay tool probe_propose (what the dispatch of work does with
+// a worker's handback), queries, deletes and restores the lesson with the
+// person's words, is refused when it tries without them, and the person
+// deletes and restores it with /lessons.
+const LESSONS_ROW = ['- id: glm-hourness/lessons', '  disabled: false']
+const SEED_LESSON = 'L-0a1b2c'
+const SEED_CANDIDATE = 'C-aaaaaa'
+const seedLessons = (scenario) => {
+  const home = join(runDir, scenario, 'home')
+  mkdirSync(home, { recursive: true })
+  const lines = [
+    { v: 1, seq: 1, at: '2026-10-31T00:00:00.000Z', actor: 'llm', op: 'new', id: SEED_LESSON, reason: 'seed from the probe', evidence: ['docs/HANDOFF.md §6'], data: { situation: { files: ['probe/**'], tools: [], commands: ['probe-run'], errors: ['probe-lesson-fragment-1'] }, pitfall: 'The probe command fails with probe-lesson-fragment-1 while the sandbox is busy.', fix: 'Wait for the other run to finish, then run it again.' } },
+    { v: 1, seq: 2, at: '2026-10-31T00:01:00.000Z', actor: 'harness', op: 'propose', id: SEED_CANDIDATE, evidence: ['task:task-seed', 'session:session-seed'], data: { situation: { files: [], tools: [], commands: ['probe-merge'], errors: ['probe-candidate-fragment-1'] }, pitfall: 'The merge probe candidate fails with probe-candidate-fragment-1.', fix: 'Merge the candidate with lessons_merge.' } },
+  ]
+  writeFileSync(join(home, 'lessons.jsonl'), `${lines.map(line => JSON.stringify(line)).join('\n')}\n`)
+}
+const PROBE_COMMIT = 'b'.repeat(40)
+const PROBE_CANDIDATE = { problem: 'The proposed probe candidate fails with probe-propose-fragment-1.', fix: 'Drop it or merge it.', files: [], commands: ['probe-propose'], tools: ['Bash'], errors: ['probe-propose-fragment-1'] }
+const LESSONS_QUERY = { text: 'probe command sandbox busy' }
+/** The script of the main agent: on GLM the tools that are deferred there go through DeferredToolCall. */
+const lessonsScript = (glmRoute) => {
+  const deferred = (name, input) => ({ tool: glmRoute ? { name: 'DeferredToolCall', arguments: { name, input } } : { name, arguments: input } })
+  const query = { tool: { name: 'lessons_query', arguments: LESSONS_QUERY } }
+  return [
+    deferred('lessons_merge', { action: 'new', reason: 'worth keeping', candidate: SEED_CANDIDATE }),
+    deferred('probe_propose', { candidate: PROBE_CANDIDATE, task: 'task-9', childId: 'session-probe-child', commit: PROBE_COMMIT }),
+    query,
+    deferred('lessons_merge', { action: 'delete', lesson: SEED_LESSON, reason: 'the person asked', relay: 'Delete that lesson.' }),
+    query,
+    deferred('lessons_merge', { action: 'restore', lesson: SEED_LESSON, reason: 'the person asked', relay: 'Bring it back.' }),
+    query,
+    deferred('lessons_merge', { action: 'delete', lesson: SEED_LESSON, reason: 'no words quoted' }),
+    { ...query, command: { name: 'lessons', input: `delete ${SEED_LESSON}` } },
+    { ...query, command: { name: 'lessons', input: `restore ${SEED_LESSON}` } },
+    { text: 'done', status: true },
+  ]
+}
+seedLessons('glm-lessons')
+const lessonsGlm = runScenario('glm-lessons', 'glm-5.3', lessonsScript(true), 'Merge the candidate lesson, then reply done.', [...LESSONS_ROW, ...dispatchRow(join(runDir, 'glm-lessons', 'dispatch.jsonl'))])
+seedLessons('non-glm-lessons')
+const lessonsPlain = runScenario('non-glm-lessons', 'deepseek-probe', lessonsScript(false), 'Merge the candidate lesson, then reply done.', [...LESSONS_ROW, ...dispatchRow(join(runDir, 'non-glm-lessons', 'dispatch.jsonl'))])
+const lessonsNotices = step => (step?.messages ?? []).filter(message => message.role === 'user' && message.source === LESSONS_PENDING_SOURCE)
+const lessonsFace = step => (step?.tools ?? []).filter(tool => LESSONS_TOOL_NAMES.includes(tool.name))
+const lessonsJournalOf = scenario => jsonl(join(runDir, scenario, 'home', 'lessons.jsonl'))
 // Main agent mode (docs/ORCHESTRATION.md §3.1, ROADMAP M3 step 3): the design
 // row ships disabled; the overlay (scripts/sandbox.mjs designRows) enables it,
 // mounts ask_user_question, which the headless template lacks, and mounts the
@@ -960,7 +1014,7 @@ const checkpoint = compacted.steps.at(-1)?.messages.find(message => message.sour
 const usageOf = scenario => jsonl(join(runDir, scenario, 'dsh-home', 'glm-hourness', 'audit', 'usage.jsonl'))
 const glmUsage = usageOf('glm').filter(record => record.purpose === undefined)
 const compactUsage = usageOf('glm-compact').filter(record => record.purpose === 'compaction')
-const projectUsage = ['glm', 'glm-flash', 'glm-todo', 'glm-compact', 'glm-shadow', 'glm-guard-paths', 'non-glm', 'non-glm-guard', 'glm-no-dialect', 'glm-peak', 'limits-steps', 'limits-time', 'glm-dispatch', 'glm-goal', 'goal-headless', 'glm-only', 'hourness-only', 'client-modules', 'glm-memory', 'non-glm-memory', 'glm-memory-compact', 'glm-worker-memory', 'glm-memory-depth'].filter(scenario => existsSync(join(runDir, scenario, 'home', 'audit', 'usage.jsonl')))
+const projectUsage = ['glm', 'glm-flash', 'glm-todo', 'glm-compact', 'glm-shadow', 'glm-guard-paths', 'non-glm', 'non-glm-guard', 'glm-no-dialect', 'glm-peak', 'limits-steps', 'limits-time', 'glm-dispatch', 'glm-goal', 'goal-headless', 'glm-only', 'hourness-only', 'client-modules', 'glm-memory', 'non-glm-memory', 'glm-memory-compact', 'glm-worker-memory', 'glm-memory-depth', 'glm-lessons', 'non-glm-lessons'].filter(scenario => existsSync(join(runDir, scenario, 'home', 'audit', 'usage.jsonl')))
 const glmViolations = jsonl(join(glmDir, 'home', 'audit', 'violations.jsonl'))
 const stepLimits = jsonl(limitsRecord('limits-steps'))
 const timeLimits = jsonl(limitsRecord('limits-time'))
@@ -1131,6 +1185,32 @@ function memoryChecks() {
   ]
 }
 
+/**
+ * Lessons (docs/ORCHESTRATION.md §8.6; scenarios glm-lessons,
+ * non-glm-lessons): what the real runtime did with the lessons row once the
+ * overlay enabled it: the candidate notices, the two tools and their
+ * permissions, `/lessons`, the face of the main agent and the journal.
+ */
+function lessonsChecks() {
+  const route = [[lessonsGlm, 'glm-lessons', true, 'GLM'], [lessonsPlain, 'non-glm-lessons', false, 'non-GLM']]
+  return route.flatMap(([scenario, name, glmRoute, label]) => {
+    const result = index => lastToolResult(scenario.steps[index])
+    const text = index => result(index)?.text ?? 'none'
+    const journal = lessonsJournalOf(name)
+    const shows = (index, id) => result(index)?.isError !== true && text(index).includes(`"id":"${id}"`)
+    const commandAt = index => scenario.steps[index]?.command
+    const face = lessonsFace(scenario.steps[0])
+    return [
+      [`lessons (${label}): the candidate the session started with is listed once, the second one handed to the service is listed once more, and merging does not bring the first back`, scenario.steps.length === 11 && isDeepStrictEqual(scenario.steps.map(step => lessonsNotices(step).length), [1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2]) && lessonsNotices(scenario.steps[0])[0].text.includes(SEED_CANDIDATE) && lessonsNotices(scenario.steps[2]).at(-1).text.includes('(1)'), scenario.steps.length === 0 ? `no request (exit ${scenario.status})` : `notices per request: ${scenario.steps.map(step => lessonsNotices(step).length).join(', ')}`],
+      [`lessons (${label}): lessons_merge makes the candidate a lesson as the agent; the service keeps the candidate of a handback with the task, the worker's session and the full commit as its evidence`, result(1)?.isError !== true && text(1).includes('"action":"new"') && text(1).includes(`"candidate":"${SEED_CANDIDATE}"`) && text(2).includes('"status":"candidate"') && isDeepStrictEqual(journal.map(record => `${record.op}:${record.actor}`).slice(0, 4), ['new:llm', 'propose:harness', 'new:llm', 'propose:harness']) && isDeepStrictEqual(journal[3].evidence, ['task:task-9', 'session:session-probe-child', `commit:${PROBE_COMMIT}`]), `${text(1).slice(0, 80)} | ${text(2).slice(0, 60)}; ${journal.map(record => record.op).join(', ')}`],
+      [`lessons (${label}): lessons_query finds the lesson and lists the open candidate as unreviewed`, shows(3, SEED_LESSON) && text(3).includes('"unreviewed":true'), text(3).slice(0, 200)],
+      [`lessons (${label}): with the person's words the lesson is deleted and restored, and a delete without them is refused with user_only`, text(4).includes('"status":"deleted"') && !shows(5, SEED_LESSON) && text(6).includes('"status":"active"') && shows(7, SEED_LESSON) && result(8)?.isError === true && text(8).includes('user_only') && isDeepStrictEqual(journal.slice(4, 6).map(record => [record.op, record.actor, record.relay]), [['delete', 'llm', 'Delete that lesson.'], ['restore', 'llm', 'Bring it back.']]), `${text(4).slice(0, 60)} | ${text(8).slice(0, 100)}`],
+      [`lessons (${label}): /lessons delete and /lessons restore act as the person: the lesson is gone from the next query and back after the next`, commandAt(8)?.kind === 'success' && commandAt(8).text.startsWith('已删除') && commandAt(9)?.kind === 'success' && commandAt(9).text.startsWith('已找回') && !shows(9, SEED_LESSON) && shows(10, SEED_LESSON) && isDeepStrictEqual(journal.slice(6, 8).map(record => [record.op, record.actor, record.by?.commandId]), [['delete', 'human', 'probe-lessons'], ['restore', 'human', 'probe-lessons']]) && journal.length === 8, `${JSON.stringify(commandAt(8) ?? null).slice(0, 100)} | ${JSON.stringify(commandAt(9) ?? null).slice(0, 100)}; ${journal.length} record(s)`],
+      [`lessons (${label}): the face of the main agent has lessons_query${glmRoute ? ', resident, and lessons_merge only deferred' : ' and lessons_merge'}`, glmRoute ? face.some(tool => tool.name === 'lessons_query' && tool.deferLoading !== true) && !face.some(tool => tool.name === 'lessons_merge' && tool.deferLoading !== true) : LESSONS_TOOL_NAMES.every(tool => face.some(entry => entry.name === tool && entry.deferLoading !== true)), `${face.map(tool => `${tool.name}${tool.deferLoading === true ? ' (deferred)' : ''}`).join(', ') || 'none'}`],
+      [`lessons (${label}): the row reports itself loaded with the project's counts, and the run warned of nothing`, healthOf(scenario).lessons?.status !== '未加载' && healthOf(scenario).lessons?.reason.includes('生效经验') === true && quiet(name), `${healthLine(healthOf(scenario), 'lessons')}; ${healthOf(scenario).lessons?.reason.slice(0, 120) ?? ''}; stderr ${stderrOf(name).length} byte(s)`],
+    ]
+  })
+}
 const checks = [
   ['sandbox: the runtime booted each profile generated under the run directory (its cordis.yml rewritten by the launcher); the real profiles directory has none of them', rewritten.length === GENERATED_PROFILES.length && leaked.length === 0, `rewritten: ${rewritten.join(', ') || 'none'}; under ${realProfiles}: ${leaked.join(', ') || 'none'}`],
   ['glm-only: with only the GLM channel package the GLM request has the ZCode identity, the aliases and the search controls, and no graph or memory tool', glmOnlyFirst?.system.includes('You are ZCode, an interactive agent') === true && zcodeFace.every(name => glmOnlyTools.has(name)) && searchControls.every(name => glmOnlyTools.has(name)) && ![...glmOnlyTools].some(name => GRAPH_TOOL_NAMES.includes(name) || MEMORY_TOOL_NAMES.includes(name)) && glmOnlyRead?.isError !== true, glmOnlyFirst === undefined ? `no request (exit ${glmOnly.status})` : `${glmOnlyTools.size} tools; ${[...glmOnlyTools].filter(name => name.startsWith('graph_') || name.startsWith('memory_')).join(', ') || 'no graph or memory tool'}`],
@@ -1217,6 +1297,7 @@ const checks = [
   ['memory usage: one record per GLM step with the request provider, model and session id', glmUsage.length === glm.steps.length && glmUsage.every(record => record.provider === 'glm-probe' && record.model === 'glm-5.3' && typeof record.sessionId === 'string' && record.sessionId.length > 0), `${glmUsage.length} record(s) for ${glm.steps.length} step(s); first: ${JSON.stringify(glmUsage[0] ?? null).slice(0, 120)}`],
   ['memory usage: the compaction call is recorded with purpose compaction', compactUsage.length === compacted.compactions.length && compactUsage.length > 0, `${compactUsage.length} compaction record(s) for ${compacted.compactions.length} request(s)`],
   ...memoryChecks(),
+  ...lessonsChecks(),
   ['data: usage lands only in the user-level directory, never in a project directory or the real one', projectUsage.length === 0 && realUsageBefore === realUsageAfter, `project usage files: ${projectUsage.join(', ') || 'none'}; real ${realUsage}: ${realUsageBefore} -> ${realUsageAfter}`],
   ['guard: a shell write is denied with the four-part correction naming the ZCode tools, and the file is not created', blockedResult?.isError === true && blockedResult.text.includes('Shell file writes are not permitted') && blockedResult.text.includes(RIGHT_PATH_ZCODE) && !existsSync(blocked), blockedResult === undefined ? 'no tool result' : blockedResult.text.slice(0, 100).replace(/\n/g, ' ')],
   ['guard: the denial is journaled in the scenario project directory with rule, tool and the calling agent ids', glmViolations.length === 1 && glmViolations[0].rule === 'file-tools-only' && glmViolations[0].tool === 'Bash' && typeof glmViolations[0].agentId === 'string' && glmViolations[0].agentId.length > 0 && glmViolations[0].sessionId === glmUsage[0]?.sessionId, `${glmViolations.length} record(s); first: ${JSON.stringify(glmViolations[0] ?? null).slice(0, 140)}`],

@@ -28,6 +28,10 @@
  *     `tools/pre-execute` until the goal agent's workspace holds the
  *     evidence file.
  *
+ * (d) `probe_propose` hands a candidate lesson to the lessons service the way
+ *     the dispatch of work does when a worker's handback carries one (M5
+ *     design §8.1), so the lessons scenarios see `propose` on the real runtime.
+ *
  * Every observation is one JSON line in `config.record`.
  */
 import { appendFileSync, existsSync } from 'node:fs'
@@ -138,6 +142,29 @@ export function apply(ctx, config = {}) {
     },
   }))
 
+  disposers.push(ctx.tools.register({
+    name: 'probe_propose',
+    description: 'Probe only: hand the candidate lesson `candidate` to the lessons service the way a worker\'s handback does (task `task`, worker session `childId`, full commit id `commit`) and return what the service answers.',
+    parameters: {
+      type: 'object',
+      properties: {
+        candidate: { type: 'object' },
+        task: { type: 'string' },
+        childId: { type: 'string' },
+        commit: { type: 'string' },
+      },
+      required: ['candidate'],
+    },
+    output: { schema: { type: 'object' }, render: (_args, value) => [textOf(value)] },
+    async execute(args, exec) {
+      const lessons = ctx.get('glmHournessLessons')
+      const session = exec.agent?.session
+      if (lessons === undefined || session === undefined) throw new Error('probe_propose needs the lessons service and a calling agent')
+      const result = await lessons.propose(args.candidate, { session, task: args.task, childId: args.childId, commit: args.commit })
+      note({ kind: 'proposed', task: args.task ?? null, result })
+      return result
+    },
+  }))
   disposers.push(ctx.tools.register({
     name: 'probe_goal_run',
     description: 'Probe only: create a root agent in `cwd` with goal `objective` and wait until the goal leaves the active phase.',

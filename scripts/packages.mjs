@@ -56,6 +56,7 @@ export const PACKAGES = [
       { id: 'glm-hourness/data', module: 'data/index' },
       { id: 'glm-hourness/guard', module: 'guard/index' },
       { id: 'glm-hourness/memory', module: 'memory/index' },
+      { id: 'glm-hourness/lessons', module: 'lessons/index' },
       { id: 'glm-hourness/workflow', module: 'workflow/index' },
       { id: 'glm-hourness/hourness', module: 'report/index' },
       { id: 'glm-hourness/graph', module: 'graph/index' },

@@ -16,11 +16,12 @@ import type { AgentLike, CommandDefinitionLike, ToolFinalResult } from '../src/s
 import { healthServiceName, type HealthRow, type RowHealthView } from '../src/shared/health.ts'
 import { MEMORY_SERVICE, memoryService } from '../src/shared/memory-service.ts'
 import { PRICING_SERVICE, pricingService, type UsagePricing } from '../src/shared/pricing.ts'
-import { GRAPH_TOOL_NAMES, MEMORY_TOOL_NAMES, ORCHESTRATION_RESIDENT_TOOLS } from '../src/shared/tool-names.ts'
+import { GRAPH_TOOL_NAMES, LESSONS_MERGE_TOOL, LESSONS_QUERY_TOOL, LESSONS_TOOL_NAMES, MEMORY_TOOL_NAMES, ORCHESTRATION_RESIDENT_TOOLS } from '../src/shared/tool-names.ts'
 import { RESIDENT_TOOLS } from '../src/toolsearch/exposure.ts'
 import { apply as hournessApply } from '../src/report/index.ts'
 import { PACKAGES } from '../scripts/packages.mjs'
 import { fakeRuntime, serviceStore, type FakeRuntime } from './fake-rc3.ts'
+import { lessonsFixture } from './lessons-helpers.ts'
 import { memoryFixture } from './memory-helpers.ts'
 
 // Contracts between the GLM channel package and the orchestration package
@@ -41,6 +42,7 @@ const ROW_IDS = [
   'glm-hourness/data',
   'glm-hourness/guard',
   'glm-hourness/memory',
+  'glm-hourness/lessons',
   'glm-hourness/workflow',
   'glm-hourness/hourness',
   'glm-hourness/graph',
@@ -54,14 +56,17 @@ test('row ids: each package\'s host rows and its client row are the fixed list',
   assert.deepEqual(PACKAGES.flatMap(pkg => [...pkg.rows.map(row => row.id), pkg.client.row]), ROW_IDS)
 })
 
-test('tool names: the graph and memory rows register exactly the contract names', () => {
+test('tool names: the graph, memory and lessons rows register exactly the contract names', () => {
   assert.deepEqual(graphTools('docs/graph', new Map()).map(tool => tool.name), GRAPH_TOOL_NAMES)
   const memory = memoryFixture()
+  const lessons = lessonsFixture()
   try {
     assert.deepEqual([...memory.tools.keys()], MEMORY_TOOL_NAMES)
+    assert.deepEqual([...lessons.tools.keys()], LESSONS_TOOL_NAMES)
   }
   finally {
     memory.dispose()
+    lessons.dispose()
   }
 })
 
@@ -83,11 +88,16 @@ test('memory service readers: absent and malformed services read as none; a wide
 })
 
 test('tool names: every orchestration tool kept resident exists, and GLM tool search keeps it resident', () => {
-  const known = new Set([...GRAPH_TOOL_NAMES, ...MEMORY_TOOL_NAMES])
+  const known = new Set([...GRAPH_TOOL_NAMES, ...MEMORY_TOOL_NAMES, ...LESSONS_TOOL_NAMES])
   for (const name of ORCHESTRATION_RESIDENT_TOOLS) {
     assert.ok(known.has(name), `${name} is resident but no orchestration row registers it`)
     assert.ok(RESIDENT_TOOLS.has(name), name)
   }
+})
+
+test('tool names: the lookup of the lessons board is resident for every agent in the GLM face, the merge tool is the main agent\'s and stays deferred', () => {
+  assert.ok(ORCHESTRATION_RESIDENT_TOOLS.has(LESSONS_QUERY_TOOL) && RESIDENT_TOOLS.has(LESSONS_QUERY_TOOL))
+  assert.ok(!ORCHESTRATION_RESIDENT_TOOLS.has(LESSONS_MERGE_TOOL) && !RESIDENT_TOOLS.has(LESSONS_MERGE_TOOL))
 })
 
 test('dialect: the static alias table is the dialect\'s own alias definitions plus Read and TodoWrite', () => {

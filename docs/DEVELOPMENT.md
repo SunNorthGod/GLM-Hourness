@@ -236,3 +236,20 @@ DSH 官方类型已作为 devDependency 安装（`@deepseek-ai/dsh-llm`、`@deep
 3. 读 JSON 输出用 `npm run -s`，否则 npm 先往 stdout 打两行命令回显。Windows PowerShell 5.1 下写请求一律用 `--file`：经管道送 stdin 时 `--` 被吞、中文变问号，参数里的 JSON 会丢引号（`ORCHESTRATION.md` §2.10）。
 4. 试写不要用 `docs/graph`：复制到临时目录，命令加 `--dir`。
 5. 引擎与命令行不碰 DSH，改它们只需过 `npm run build`、`npm run preflight`、`npm test`，不需要 `npm run probe`。接触 DSH 的是编排层包 `dsh-hourness` 里的图行（`src/graph/index.ts`、`tools.ts`、`reminder.ts`、`row-health.ts`，它提供给 guard 行的服务 `src/graph/service.ts`，以及它注册的门禁规则 `src/guard/graph-files.ts`，行 `glm-hourness/graph`，`ORCHESTRATION.md` §2.5、§2.7、§2.10）与面板行（`src/graph/panel-row.ts`、`live.ts`）：L2 在假宿主 `tests/fake-rc3.ts` 上，L3 是探针场景 `glm-graph`、`non-glm-graph`、`glm-graph-compact`、`glm-graph-goal`、`glm-graph-panel` 与派发场景里的现场检查，改了这些文件要跑 `npm run probe`。两行都默认启用（2026-10-28 经 L3、L4）。
+
+## 13. 经验命令行
+
+经验板（`ORCHESTRATION.md` §8.6）的命令行，用来在 DSH 会话之外把经验写进一个项目的 `.llm/lessons.jsonl`，第一批经验就是这样进去的。代码在 `src/lessons/cli.ts`，入口在 `scripts/lessons/cli.ts`，只用 Node 22 内置模块，经 `--experimental-strip-types` 直接从源码运行。项目是 `--cwd` 给的文件夹（缺省是 npm 启动时所在的文件夹，`INIT_CWD`）所属的项目：在 git 仓库里就是仓库根（工作树回到主检出），不在仓库里只认已有 `.llm/` 的文件夹；用户主目录与盘符根不是项目。第一次写之前 `.llm/` 先加进该仓库的 `.git/info/exclude`。
+
+| 命令 | 作用 |
+| --- | --- |
+| `npm run -s lessons -- [--cwd 文件夹] show` | 列出生效的经验与开着的候选，JSON 输出 |
+| `npm run -s lessons -- [--cwd 文件夹] apply --file <请求文件>` | 以 `llm` 身份按 `lessons_merge` 的规则写一组请求；请求文件是 JSON 列表，每项是一个 `lessons_merge` 的参数（`new` 为主，写法见 `ORCHESTRATION.md` §8.6）；不带 `--file` 时从 stdin 读。退出码 0 全部写成或已有、1 有请求没写成、2 用法或输入错误 |
+
+规则：
+
+1. `apply` 逐项报告：`applied` 写成的，`skipped` 同签名的经验已经有（所以同一个文件可以再导一次，不会多出重复），`failed` 不合格的与原因。已经写进去的不回滚。
+2. 请求里像密钥的文字、不合语法的证据和出处照 `lessons_merge` 的规则拒绝，拒绝的内容不落盘。
+3. Windows PowerShell 5.1 下请求文件用 UTF-8 存，一律用 `--file`；读 JSON 输出用 `npm run -s`。
+4. 试写不要对本仓库：对本工作树的路径，项目根会解析到主检出，写进主检出的 `.llm/`。在一个带自己 `.git` 的临时文件夹里用 `--cwd`，或让规格用临时目录。
+5. 改命令行或经验的纯函数层只需过 `npm run build`、`npm run preflight`、`npm test`；改经验行（`src/lessons/index.ts`、`tools.ts`、`service.ts`、`notices.ts`、`import.ts`、`commands.ts`）要再跑 `npm run probe`：L3 场景是 `glm-lessons`、`non-glm-lessons`。

@@ -18,6 +18,8 @@
  * all three kinds of character.
  */
 
+import { refuse, type Refusal } from './refusal.ts'
+
 /** What a secret looked like. */
 export type SecretClass = 'prefix' | 'bearer' | 'pem' | 'token' | 'hex'
 
@@ -94,6 +96,15 @@ export function findSecret(text: string, skip: readonly SecretClass[] = []): Sec
  */
 export function looksSecret(text: string, skip?: readonly SecretClass[]): SecretClass | undefined {
   return findSecret(text, skip)?.secretClass
+}
+
+/** The refusal for the first of the named texts (field name, value) that looks like a secret; values that are not text are not looked at. */
+export function secretRefusal(fields: ReadonlyArray<readonly [string, unknown]>): Refusal<'secret_like'> | undefined {
+  for (const [field, text] of fields) {
+    const found = typeof text === 'string' ? findSecret(text) : undefined
+    if (found !== undefined) return refuse('secret_like', found.message, field)
+  }
+  return undefined
 }
 
 /** `text` with every run that matches a class (not in `skip`) replaced by `[redacted]`. */

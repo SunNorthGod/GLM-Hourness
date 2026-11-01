@@ -35,10 +35,11 @@ import { readBoth, type Both, type MemoryEnv, type NoteKey, type Places, type So
 import { memoryTools } from './tools.ts'
 import { dataHomes, dataService } from '../shared/data-home.ts'
 import { createUserNotice } from '../shared/dsh-min.ts'
-import type { AgentLike, DerivedMessage, InjectHost, InjectableServices, LlmStreamHost, ProvideHost, ServiceLookup, SessionLike, SessionProjectionsService, ToolsLike } from '../shared/dsh-min.ts'
+import type { AgentLike, DerivedMessage, InjectHost, LlmStreamHost, ProvideHost, ServiceLookup, SessionLike, SessionProjectionsService, ToolsLike } from '../shared/dsh-min.ts'
 import { provideRowHealth, type HealthState, type RowHealth } from '../shared/health.ts'
 import type { TokenUsage } from '../shared/lm-min.ts'
 import { MEMORY_SERVICE } from '../shared/memory-service.ts'
+import { sessionNotebook, warnOnceFor, whenPresent } from '../shared/row-support.ts'
 import { installStepNotice } from '../shared/step-notice.ts'
 import { MEMORY_TOOL_NAMES } from '../shared/tool-names.ts'
 import type { AppendOptions } from '../data/journal.ts'
@@ -196,7 +197,7 @@ function sessionHealth(session: SessionLike, places: Places, read: Both | undefi
 export function apply(ctx: MemoryContext, config: MemoryConfig = {}): () => void {
   const disposers: Array<() => void> = []
   const now = config.now ?? ((): Date => new Date())
-  const sessionNotes = new Map<string, Map<NoteKey, string>>()
+  const notebook = sessionNotebook<NoteKey>()
   const reads = new Map<string, Both>()
   const indexed = new Set<string>()
   const waiting = { commands: WAITING_COMMANDS as string | undefined, projection: WAITING_PROJECTION as string | undefined }
@@ -217,29 +218,18 @@ export function apply(ctx: MemoryContext, config: MemoryConfig = {}): () => void
     const project = data?.projectDirOf !== undefined ? data.projectDirOf(cwd) : cwd === undefined ? undefined : projectDirOf(cwd)
     return { ...(project === undefined ? {} : { project }), ...(data === undefined ? {} : { user: join(data.userHome, 'memory') }) }
   }
-  const warned = new Set<string>()
-  const warnOnce = (key: string, text: string): void => {
-    if (warned.has(key)) return
-    warned.add(key)
-    console.warn(`${name}: ${text}`)
-  }
+  const warnOnce = warnOnceFor(name)
   const env: MemoryEnv = {
     places: session => placesFor(session?.header.cwd),
     sources: session => sourceCheckFor(ctx, session),
     now,
-    note(sessionId, key, text) {
-      if (sessionId === undefined) return
-      const notes = sessionNotes.get(sessionId) ?? new Map<NoteKey, string>()
-      if (text === undefined) notes.delete(key)
-      else notes.set(key, text)
-      sessionNotes.set(sessionId, notes)
-    },
+    note: notebook.note,
     ...(config.append === undefined ? {} : { append: config.append }),
   }
 
   /** Report the session's health from what the row last read and noted. */
   const report = (session: SessionLike): void => {
-    health.report(session.id, ...sessionHealth(session, env.places(session), reads.get(session.id), sessionNotes.get(session.id), indexed.has(session.id), homeConfigured))
+    health.report(session.id, ...sessionHealth(session, env.places(session), reads.get(session.id), notebook.notesOf(session.id), indexed.has(session.id), homeConfigured))
   }
 
   const registered: Array<() => void> = []
@@ -326,40 +316,9 @@ export function apply(ctx: MemoryContext, config: MemoryConfig = {}): () => void
   })()))
 
   // The commands and the projection arrive when their services do; without them the tools and the index work all the same.
-  const whenPresent = <K extends keyof InjectableServices>(service: K, slot: keyof typeof waiting, waitingText: string, label: string, install: (services: Pick<InjectableServices, K>) => () => void): void => {
-    if (typeof ctx.inject !== 'function') {
-      waiting[slot] = `宿主没有 inject，没有注册${label}`
-      return
-    }
-    const off = (error: unknown): void => {
-      console.warn(`${name}: ${label} is off: ${messageOf(error)}`)
-      waiting[slot] = `${label}没注册上：${messageOf(error)}`
-      health.reactivate(...activation())
-    }
-    try {
-      ctx.inject([service], (services) => {
-        try {
-          const dispose = install(services)
-          waiting[slot] = undefined
-          health.reactivate(...activation())
-          return () => {
-            dispose()
-            waiting[slot] = waitingText
-            health.reactivate(...activation())
-          }
-        }
-        catch (error) {
-          off(error)
-          return undefined
-        }
-      })
-    }
-    catch (error) {
-      off(error)
-    }
-  }
-  whenPresent('commands', 'commands', WAITING_COMMANDS, '命令 /memory', ({ commands }) => commands.register(memoryCommand(env)))
-  whenPresent('sessionProjections', 'projection', WAITING_PROJECTION, '会话投影 hournessMemory', ({ sessionProjections }) => sessionProjections.register(projectionFor(placesFor)))
+  const optional = { name, ctx, waiting, health, activation }
+  whenPresent(optional, 'commands', 'commands', WAITING_COMMANDS, '命令 /memory', ({ commands }) => commands.register(memoryCommand(env)))
+  whenPresent(optional, 'sessionProjections', 'projection', WAITING_PROJECTION, '会话投影 hournessMemory', ({ sessionProjections }) => sessionProjections.register(projectionFor(placesFor)))
 
   health.reactivate(...activation())
   return () => { for (const dispose of disposers.splice(0).reverse()) dispose() }

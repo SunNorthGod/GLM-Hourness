@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "经验板",
+    "description": "项目的经验板：agent 查找以前踩过的坑与解法，主 Agent 负责整理。"
+  }
+}

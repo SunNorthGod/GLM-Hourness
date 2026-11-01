@@ -17,12 +17,13 @@ import { apply, INDEX_SOURCE, inject, MEMORY_PROJECTION, name, type MemoryConfig
 import { journalFile } from '../src/memory/storage.ts'
 import { MEMORY_STORE_EXAMPLE } from '../src/memory/tools.ts'
 import type { MemoryRowService } from '../src/memory/service.ts'
-import type { AgentCommandInvocationLike, AgentLike, CommandDefinitionLike, DerivedMessage, SessionProjectionsService, UserNotice } from '../src/shared/dsh-min.ts'
+import type { AgentCommandInvocationLike, CommandDefinitionLike, SessionProjectionsService, UserNotice } from '../src/shared/dsh-min.ts'
 import { collectHealth } from '../src/shared/health.ts'
 import { MEMORY_SERVICE, memoryService } from '../src/shared/memory-service.ts'
 import { MEMORY_TOOL_NAMES } from '../src/shared/tool-names.ts'
-import { fakeInjector, fakeRuntime, type FakeRuntime } from './fake-rc3.ts'
+import { fakeRuntime, type FakeRuntime } from './fake-rc3.ts'
 import { captureWarnings } from './graph-helpers.ts'
+import { createChild, failRegistration, optionalServices, stepOf } from './row-host.ts'
 import { skipIfTempInsideGit } from './temp-outside-git.ts'
 
 interface Row {
@@ -66,7 +67,6 @@ const FACT = {
   body: 'The two tiers sign differently.\n**Why:** a request signed the wrong way is refused.',
   source: ['docs/DESIGN.md'],
 }
-const USER_MESSAGE = { role: 'user', content: [{ type: 'text', text: 'Please start.' }] }
 
 async function withRow(body: (row: Row) => Promise<void> | void, options: Options = {}): Promise<void> {
   const root = mkdtempSync(join(tmpdir(), 'memory-row-'))
@@ -77,21 +77,9 @@ async function withRow(body: (row: Row) => Promise<void> | void, options: Option
   const userDir = join(root, 'dsh', 'glm-hourness', 'memory')
   const runtime = fakeRuntime({ natives: ['pwsh'], cwd: work })
   if (options.noData !== true) runtime.services.set('glmHournessData', { userHome: join(root, 'dsh', 'glm-hourness'), projectDirOf: () => options.noProject === true ? undefined : project })
-  const commands = new Map<string, CommandDefinitionLike<AgentCommandInvocationLike>>()
-  const projections: Row['projections'] = []
-  const injector = fakeInjector()
-  const services = {
-    provide() {
-      injector.provide('commands', { register: (definition) => { commands.set(definition.name, definition); return () => { commands.delete(definition.name) } } })
-      injector.provide('sessionProjections', { register: (definition) => { projections.push(definition); return () => { projections.splice(projections.indexOf(definition), 1) } } } as SessionProjectionsService)
-    },
-    remove() {
-      injector.remove('commands')
-      injector.remove('sessionProjections')
-    },
-  }
-  if (options.late !== true) services.provide()
-  const ctx = (options.bare === true ? runtime.ctx : { ...runtime.ctx, inject: injector.inject }) as unknown as MemoryContext
+  const optional = optionalServices(runtime, options)
+  const { commands, projections, services } = optional
+  const ctx = optional.ctx as unknown as MemoryContext
   const dispose = apply(ctx, options.config)
   const service = runtime.services.get(MEMORY_SERVICE) as MemoryRowService
   const row: Row = {
@@ -107,12 +95,8 @@ async function withRow(body: (row: Row) => Promise<void> | void, options: Option
     services,
     tool: async (toolName, args) => await runtime.execute(toolName, args) as Record<string, unknown>,
     run: async input => commands.get('memory')!.handler({ commandId: 'cmd-1', agent: { id: runtime.agent.id, session: runtime.agent.session }, rawInput: input } as unknown as AgentCommandInvocationLike),
-    step: async () => {
-      const decision = await runtime.preStep({ messages: [USER_MESSAGE] })
-      const notices = decision.kind === 'enter' ? decision.messages.slice(1) as UserNotice[] : []
-      for (const notice of notices) runtime.history.push({ role: 'user', content: notice.content, source: notice.source } satisfies DerivedMessage)
-      return notices
-    },
+    step: () => stepOf(runtime),
+
   }
   try {
     await runtime.create()
@@ -224,12 +208,9 @@ test('a memory journal that cannot be read does not stop the step: the index is 
 
 test('a delegated child loses the memory tools from its request and gets no index; calling a tool by name is refused', { skip }, async () => {
   await withRow(async (row) => {
-    const { agent } = row.runtime
-    const child: AgentLike = { ...agent, session: { ...agent.session!, header: { ...agent.session!.header, origin: 'subagent' } } }
-    const created = row.runtime.listeners.find(entry => entry.event === 'agent/created')!.listener as (payload: { agent: AgentLike }) => unknown
-    const before = row.runtime.listeners.filter(entry => entry.event === 'agent/pre-step').length
-    await created({ agent: child })
-    assert.equal(row.runtime.listeners.filter(entry => entry.event === 'agent/pre-step').length, before, 'no index listener for a child')
+    const { child, stepListenersAdded } = await createChild(row.runtime)
+    assert.equal(stepListenersAdded, 0, 'no index listener for a child')
+
     const assembled = await row.runtime.assemble({ provider: 'glm-probe', model: 'glm-5.3' })
     assert.deepEqual(assembled.tools.map(tool => tool.name), ['pwsh'], 'the memory tools are not in the child\'s face')
     const result = await row.runtime.ctx.tools.execute({ callId: 'c1', name: 'memory_store', arguments: PREFERENCE, agent: child, signal: new AbortController().signal })
@@ -454,13 +435,8 @@ test('the optional services arriving late or never: the tools and the index work
 
 test('activation does not throw when a tool cannot be registered: the tools that were registered are withdrawn and the row says why', { skip }, async () => {
   const runtime = fakeRuntime({ natives: ['pwsh'] })
-  const real = runtime.ctx.tools.register.bind(runtime.ctx.tools)
-  let count = 0
-  runtime.ctx.tools.register = (definition) => {
-    count += 1
-    if (count === 2) throw new Error('name taken')
-    return real(definition)
-  }
+  failRegistration(runtime, 2, 'name taken')
+
   const { warnings, result: dispose } = await captureWarnings(() => apply(runtime.ctx as unknown as MemoryContext))
   assert.deepEqual(runtime.scoped, [])
   assert.equal(warnings.length, 1)

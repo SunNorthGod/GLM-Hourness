@@ -933,6 +933,17 @@ LLM 爱造轮子，因为写脚本只花当前这一轮的力气，装工具却�
 - 汇报细度闭环〔已实现，M5 步骤 R1〕：三档滑杆（简洁 / 适中 / 详细，LLM 每次自选）的常设档，是人最近一次说定的。人的话表明长短要一直这样时，主 Agent 调 `memory_store`（`name: reporting-depth`、`type: user`、`value` 是三档之一、`relay` 写人的原话）；人只是这一次嫌长或嫌短，主 Agent 只改这一次的讲法，不写。GLM 方言的 `glm:persona` 一节在会话的 agent 创建时读 `glmHournessMemory` 的 `depth` 一次，没有时用配置的 `persona`：写入的那个会话里系统提示词不变，下一个会话带上新的档。人说「汇报细度恢复默认」，主 Agent 带原话调 `memory_forget reporting-depth`，或人打 `/memory forget reporting-depth`，下一个会话回到配置。服务不在、形状不对、读不出时用配置的档，并在行健康里说明。
 - 子 agent 各配独立记忆目录，避免互相污染。
 
+### 8.6 经验板〔M5 步骤 L1 已实现，L2、L3；桌面版第一批验收未做；行默认禁用〕
+
+经验板（`src/lessons/`，行 `glm-hourness/lessons`）记「在某种情况下踩过的坑与解法」。一条经验写明情况（文件、工具、命令、报错片段）、坑、解法、证据、最近一次确认；都属于项目，存在项目的 `.llm/lessons.jsonl`，没有用户级经验（`d-memory-scope`）。设计与验收在 `.agents/tasks/m5/design.md` §4（项目图节点 `lessons`）。经验是建议，不是规则：行不注册任何 `tools/pre-execute` 监听器，不拦任何调用（`d-code-rules-enforce`：本行没有规则）。
+
+- 来源：worker 交回的候选经验，经服务 `glmHournessLessons` 的 `propose` 收下（契约 `src/lessons/service.ts`）。签名与某条生效经验相同的并入它，与人删过的相同的丢弃，其余成为候选；字段不合格或像密钥的答 `rejected`，什么都不写；服务自己写不成的答 `{error}`，派发一侧走退路批注 `[候选经验] …`，经验行在主 Agent 的下一步（距上次检查超过一分钟且图的修订变了；`propose` 失败之后不等一分钟）把图上的批注导入成候选，每条批注只试一次，被拒的也记一条 `import`。根 agent 自己遇到的坑用 `lessons_merge new` 直接写。
+- 工具：`lessons_query`（所有 agent，worker 在内；GLM 路由上常驻）按 `text`、`file`、`command`、`error` 查生效经验，其后至多两条候选，标 `status: "candidate"` 与 `unreviewed`；`lessons_merge`（根 agent；GLM 路由上延迟，候选提醒里写着它的名字）九种动作：`new`（从候选或自己写）、`into`、`revise`、`confirm`、`retire`、`drop`、`reopen`、`delete`、`restore`。`delete`、`restore` 与恢复人删掉的东西是人的决定：身份为人（输入框的 `/lessons`），或 `llm` 带人的原话（`relay`），没带得 `user_only`；删除是墓碑加快照，不抹掉。子 agent 调 `lessons_merge` 得 `role`，正路是交回结构；`lessons_merge` 的工具面过滤和记忆行的同一做法（`agent/created` 上的不带 `prepend` 的 `system-prompt/assemble` 监听器）。
+- 提醒（只给 `isMainAgentFor` 判为主 Agent 的步；`src/data/main-agent.ts` 是唯一的判断，设计行不在时所有根 agent 都算，原因写进行健康）：候选提醒（来源 `glm-hourness-lessons-pending`）在开着的候选集与可见历史里最近一条这种提醒列的不同时才来，压缩之后来一次；开了 30 天的候选在这一步记为过期，`lessons_merge reopen` 恢复，年龄从恢复算起。复发提醒（来源 `glm-hourness-lessons-recur`）：一条经验 28 天内在 3 个会话里被命中或并入，提醒主 Agent 可以向人提规则，一步一条、每个项目每周至多两条，先记 `recur-notified` 再提醒。
+- `/lessons show | delete <L-编号> | restore <L-编号> | drop <C-编号>`（输入框，身份为人）；命令行 `npm run -s lessons -- [--cwd 文件夹] show | apply [--file 文件]`（`DEVELOPMENT.md` §13），`apply` 按 `lessons_merge` 的规则以 `llm` 身份写，同签名的跳过，所以同一个文件可以再导一次；会话投影 `hournessLessons` 把项目流水的路径交给将来的经验页。
+- 服务给 M7 的另两个成员：`stats`（期间的新增、并入、丢弃、过期、人删、人恢复，开着的候选，每条经验碰到的会话数，删后复发）与 `hygiene`（读不出的行、180 天没确认的经验、超过 7 天的候选、相似的经验、被拒的批注）。
+- 还没做：派发简报里带经验和交回处理调 `propose`（M7 的派发简报与交回，E1b）、周报里的经验一节（E8）、命令失败时按报错片段推提醒（步骤 L2）、经验页（步骤 P1）、第一批经验（步骤 S1）；这些等邻居或后面的步骤，经验板自己的部分不受影响。
+
 ## 9. 规范体系
 
 ### 9.1 规范即数据

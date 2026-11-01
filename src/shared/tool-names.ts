@@ -22,6 +22,12 @@ export const MEMORY_TOOL_NAMES: readonly string[] = ['memory_store', 'memory_que
  */
 export const LESSONS_QUERY_TOOL = 'lessons_query'
 
+/** The lessons row's merge tool: the main agent's only. */
+export const LESSONS_MERGE_TOOL = 'lessons_merge'
+
+/** The lessons row's tools, in registration order. */
+export const LESSONS_TOOL_NAMES: readonly string[] = [LESSONS_QUERY_TOOL, LESSONS_MERGE_TOOL]
+
 /**
  * Orchestration tools GLM tool search keeps resident (project decisions,
  * docs/ORCHESTRATION.md §8 for memory, §2.8 and §2.10 for the graph). Named
@@ -31,6 +37,8 @@ export const LESSONS_QUERY_TOOL = 'lessons_query'
 export const ORCHESTRATION_RESIDENT_TOOLS: ReadonlySet<string> = new Set([
   // memory
   'memory_store', 'memory_query', 'memory_forget',
+  // lessons: the lookup every agent has; the merge tool is the main agent's and stays deferred
+  LESSONS_QUERY_TOOL,
   // project graph
   'graph_show', 'graph_open', 'graph_focus', 'graph_propose', 'graph_status', 'graph_edit',
   'graph_link', 'graph_unlink', 'graph_comment', 'graph_verify', 'graph_decide', 'graph_approve', 'graph_reject',

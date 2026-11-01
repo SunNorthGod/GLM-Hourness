@@ -12,7 +12,7 @@
  * (src/memory/model.ts); the tool finds the directories, takes the lock
  * through the journal and turns the outcome into the tool's answer.
  */
-import { findSecret } from '../data/secret-shape.ts'
+import { secretRefusal } from '../data/secret-shape.ts'
 import { invalid, isObject, isRefusal, refuse, type Refusal } from '../data/refusal.ts'
 import type { AgentLike, SessionLike, ToolDefinitionLike, ToolExecutionContext } from '../shared/dsh-min.ts'
 import { checkSourceKnown, checkStore, classify, judgeStore, revokeRecord, revokeRefusal, reviewRecord, storeRecord, strength, type MemoryEntry, type MemoryState, type MemoryType, type Scope } from './model.ts'
@@ -284,10 +284,8 @@ function checkForget(args: unknown): ForgetRequest | Refusal {
   if (scope !== undefined && scope !== 'project' && scope !== 'all') return invalid('scope', 'scope must be "project" or "all"')
   if (typeof reason !== 'string' || reason.length < 1 || reason.length > 300) return invalid('reason', 'reason must be 1 to 300 characters')
   if (relay !== undefined && (typeof relay !== 'string' || relay.trim() === '' || relay.length > 500)) return invalid('relay', 'relay must be the user\'s own words, 1 to 500 characters')
-  for (const [field, text] of [['reason', reason], ['relay', relay]] as const) {
-    const found = typeof text === 'string' ? findSecret(text) : undefined
-    if (found !== undefined) return refuse('secret_like', found.message, field)
-  }
+  const secret = secretRefusal([['reason', reason], ['relay', relay]])
+  if (secret !== undefined) return secret
   return { name, reason, ...(scope === undefined ? {} : { scope }), ...(typeof relay === 'string' ? { relay } : {}) }
 }
 

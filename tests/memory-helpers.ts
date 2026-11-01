@@ -69,13 +69,16 @@ export function memoryFixture(options: FixtureOptions = {}): MemoryFixture {
     notes,
     env,
     tools,
-    async call(name, args, agent = MAIN) {
-      const tool = tools.get(name)
-      assert.ok(tool !== undefined, name)
-      return await tool.execute(args, { agent, callId: 'call-1', signal: new AbortController().signal, deferContext: () => {}, concludeTurn: () => {} }) as Record<string, unknown>
-    },
+    call: (name, args, agent = MAIN) => runTool(tools, name, args, agent),
     dispose: () => { rmSync(root, { recursive: true, force: true }) },
   }
+}
+
+/** Run a tool of a table as gent; resolves to the tool's value. */
+export async function runTool(tools: ReadonlyMap<string, ToolDefinitionLike>, name: string, args: unknown, agent: AgentLike): Promise<Record<string, unknown>> {
+  const tool = tools.get(name)
+  assert.ok(tool !== undefined, name)
+  return await tool.execute(args, { agent, callId: 'call-1', signal: new AbortController().signal, deferContext: () => {}, concludeTurn: () => {} }) as Record<string, unknown>
 }
 
 /** The refusal a tool answered with: the JSON after "Error: ", which the tool body throws as the error message. */

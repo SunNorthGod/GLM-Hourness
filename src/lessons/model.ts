@@ -345,8 +345,8 @@ const WRITERS: ReadonlyMap<string, readonly Actor[]> = new Map([
 
 type Step = { readonly state: LessonsState } | Refusal
 
-const CANDIDATE_ID = /^C-[0-9a-f]{6}$/
-const LESSON_ID = /^L-[0-9a-f]{6}$/
+export const CANDIDATE_ID = /^C-[0-9a-f]{6}$/
+export const LESSON_ID = /^L-[0-9a-f]{6}$/
 const ANNOTATION_KEY = /^[^\s@]{1,100}@\S{1,100}$/
 
 const withLesson = (state: LessonsState, lesson: Lesson): LessonsState => ({ ...state, lessons: new Map(state.lessons).set(lesson.id, lesson) })
@@ -539,7 +539,8 @@ function applyReopen(state: LessonsState, record: JournalRecord): Step {
       if (refusal !== undefined) return refusal
     }
     const { deletedMatch: _deletedMatch, ...open } = candidate
-    return { state: withCandidate(state, { ...open, status: 'open' }) }
+    // Reopened, a candidate waits for a merge another 30 days: its age counts from now, or it would expire again at once.
+    return { state: withCandidate(state, { ...open, status: 'open', at: record.at }) }
   }
   const lesson = state.lessons.get(record.id)
   if (lesson === undefined) return refuse('not_found', `no lesson ${record.id}`, 'lesson')

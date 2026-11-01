@@ -27,6 +27,18 @@
       name: dsh-hourness/memory
       inject: [tools]
       config: {}
+    - id: glm-hourness/lessons
+      # Lessons board (docs/ORCHESTRATION.md §8.6): the pitfalls and fixes of
+      # a project, kept in its .llm/lessons.jsonl. lessons_query for every
+      # agent, lessons_merge for the main agent, the service
+      # glmHournessLessons for the dispatch of work, notices to the main agent
+      # and /lessons. Advice, not rules: blocks nothing. Ships disabled until
+      # the L3 probe (scenarios glm-lessons, non-glm-lessons) and the first
+      # desktop pass (docs/DEVELOPMENT.md §3, AGENTS.md).
+      name: dsh-hourness/lessons
+      disabled: true
+      inject: [tools]
+      config: {}
     - id: glm-hourness/workflow
       name: dsh-hourness/workflow
       config: {}

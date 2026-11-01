@@ -406,8 +406,10 @@ test('a candidate is dropped, expires, and comes back with reopen; only an open 
   assert.equal(codeOf(expired, rec('llm', 'drop', CAND)), 'stale')
   assert.equal(codeOf(expired, rec('harness', 'expire', CAND2)), 'stale')
   assert.equal(codeOf(start, rec('llm', 'drop', 'C-ffffff')), 'not_found')
-  const reopened = ok([rec('llm', 'reopen', CAND), rec('llm', 'reopen', CAND2)], expired)
+  const LATER = '2026-12-05T08:00:00.000Z'
+  const reopened = ok([rec('llm', 'reopen', CAND), rec('llm', 'reopen', CAND2, {}, LATER)], expired)
   assert.deepEqual([candidateOf(reopened, CAND).status, candidateOf(reopened, CAND2).status], ['open', 'open'])
+  assert.equal(candidateOf(reopened, CAND2).at, LATER, 'a reopened candidate is as old as its reopening: it does not expire again at once')
   assert.equal(codeOf(start, rec('llm', 'reopen', CAND)), 'stale', 'an open candidate is not reopened')
   const merged = ok([rec('llm', 'into', LESSON, { data: { candidate: CAND } })], ok([newRec(LESSON)], start))
   assert.equal(codeOf(merged, rec('llm', 'reopen', CAND)), 'stale', 'a merged candidate stays merged')
