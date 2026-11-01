@@ -40,6 +40,10 @@ export interface LoopsFixture {
   readonly health: () => ReturnType<typeof collectHealth>[number]
   /** Provide the session projection registry, as the host does once it is loaded. */
   readonly provideProjections: () => void
+  /** Provide or take away the session controller: only with it does the row hand its service out and run entries (design §6.1). */
+  readonly controller: (there: boolean) => void
+  /** The beats the row asked for, so a test drives them itself. */
+  readonly beats: Array<{ readonly ms: number, readonly run: () => void }>
 }
 
 export interface LoopsFixtureOptions {
@@ -53,6 +57,8 @@ export interface LoopsFixtureOptions {
   readonly without?: ReadonlyArray<'commands' | 'on' | 'inject'>
   /** Provide the session projection registry from the start (default true). */
   readonly projections?: boolean
+  /** Provide the session controller from the start (default true): without it the row provides no service and runs nothing. */
+  readonly controller?: boolean
 }
 
 const NATIVES = ['pwsh', 'write', 'edit', 'read', 'str_replace_editor']
@@ -84,7 +90,8 @@ export async function withLoopsRow(body: (fixture: LoopsFixture) => Promise<void
     const commands: LoopsFixture['commands'] = new Map()
     const projections: LoopsFixture['projections'] = []
     const delayed: LoopsFixture['delayed'] = []
-    const injector = fakeInjector()
+    const beats: LoopsFixture['beats'] = []
+    const injector = fakeInjector({}, runtime.ctx)
     const registry: Pick<SessionProjectionsService, 'register'> = {
       register: (definition) => {
         projections.push(definition as unknown as LoopsFixture['projections'][number])
@@ -99,14 +106,32 @@ export async function withLoopsRow(body: (fixture: LoopsFixture) => Promise<void
       ...(missing.has('inject') ? {} : { inject: injector.inject }),
     } as unknown as LoopsContext
     const io = quickIo(options.now === undefined ? {} : { now: options.now })
-    const config: LoopsConfig = { io, delay: fakeDelay(delayed), ...options.config }
+    const config: LoopsConfig = {
+      io,
+      delay: fakeDelay(delayed),
+      beat: (run, ms) => {
+        const beat = { ms, run }
+        beats.push(beat)
+        return () => {
+          const at = beats.indexOf(beat)
+          if (at >= 0) beats.splice(at, 1)
+        }
+      },
+      ...options.config,
+    }
     const provideProjections = (): void => { injector.provide('sessionProjections', registry as SessionProjectionsService) }
+    /** The session controller as rc.3 has it: only the revival of a cold session, which the delivery side will call. */
+    const controller = (there: boolean): void => {
+      if (there) injector.provide('sessionController', { resolveAgent: () => Promise.resolve({ error: { code: 'session/not-found' } }) })
+      else injector.remove('sessionController')
+    }
     const start = (): (() => void) => {
       const stop = apply(context, config)
       stops.push(stop)
       return stop
     }
     if (options.projections !== false) provideProjections()
+    if (options.controller !== false) controller(true)
     if (options.start !== false) start()
     await body({
       root,
@@ -114,8 +139,10 @@ export async function withLoopsRow(body: (fixture: LoopsFixture) => Promise<void
       commands,
       projections,
       delayed,
+      beats,
       start,
       provideProjections,
+      controller,
       calls,
       run: input => commands.get('loops')!.handler({ commandId: 'test', agent: runtime.agent, rawInput: input } as unknown as AgentCommandInvocationLike),
       exec: execTool(runtime),

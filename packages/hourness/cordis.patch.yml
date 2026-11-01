@@ -100,9 +100,15 @@
       # them, an entry whose event nobody declares waits greyed, and the row
       # brings four entries of its own (dependency check after a merge,
       # a reminder for what waits for you too long, the two ends of a GLM
-      # peak). Only the registry and the service so far: no inbox, no runner,
-      # no storage, no tool or command yet. Ships disabled until the L3 probe
-      # and the first desktop pass (docs/DEVELOPMENT.md §3, AGENTS.md).
+      # peak). It keeps the entries a person agreed to (docs/loops/ in the
+      # repository, the change record in the project's .llm/loops/), gives the
+      # person /loops, keeps its own files to itself (loops:files-only), and in
+      # a process that has a session controller it holds the project's run
+      # lock, beats every 60 seconds, reads the inbox and runs what an entry
+      # says to do. Not here yet: the delivery to the main agent, the binding
+      # of DSH schedules, the tools and the pages, and the executor of a script
+      # or a check entry (those two end refused). Ships disabled until the L3
+      # probe and the first desktop pass (docs/DEVELOPMENT.md §3, AGENTS.md).
       name: dsh-hourness/loops
       disabled: true
       config: {}

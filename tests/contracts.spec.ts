@@ -23,7 +23,7 @@ import { LOOPS_DECLARATION, LOOPS_SERVICE, loopsService } from '../src/loops/ser
 import { DECLARATION_SECTION } from '../src/guard/sections.ts'
 import { DIALECT_SERVICE, dialectNames, dialectService, toNativeTool, ZCODE_ALIAS_NATIVES, type DialectService } from '../src/shared/dialect.ts'
 import type { AgentLike, CommandDefinitionLike, ToolFinalResult } from '../src/shared/dsh-min.ts'
-import { healthServiceName, type HealthRow, type RowHealthView } from '../src/shared/health.ts'
+import { healthServiceName, type HealthRow, type HealthState, type RowHealthView } from '../src/shared/health.ts'
 import { PRICING_SERVICE, pricingService, type UsagePricing } from '../src/shared/pricing.ts'
 import { DISPATCH_TOOL_NAMES, GRAPH_TOOL_NAMES, MEMORY_TOOL_NAMES, ORCHESTRATION_RESIDENT_TOOLS, RULES_TOOL_NAMES } from '../src/shared/tool-names.ts'
 import { RESIDENT_TOOLS } from '../src/toolsearch/exposure.ts'
@@ -116,28 +116,35 @@ test('loops service: absent reads as none without a word, a wrong shape reads as
   assert.equal(loopsService(serviceStore(), problem), undefined)
   assert.equal(loopsService({}, problem), undefined) // a context without get
   assert.equal(problems.length, 0)
-  for (const [count, value] of [[1, { contribute: 'yes', declaration: LOOPS_DECLARATION }], [2, 42], [3, {}], [4, { contribute: () => ({ ok: false, reason: 'x' }) }], [5, { contribute: () => ({ ok: false, reason: 'x' }), declaration: '' }]] as const) {
+  const runtime = { emit: () => 1, listens: () => true, recordRun: () => undefined }
+  for (const [count, value] of [[1, { ...runtime, contribute: 'yes', declaration: LOOPS_DECLARATION }], [2, 42], [3, {}], [4, { ...runtime, contribute: () => ({ ok: false, reason: 'x' }) }], [5, { ...runtime, contribute: () => ({ ok: false, reason: 'x' }), declaration: '' }], [6, { contribute: () => ({ ok: false, reason: 'x' }), declaration: LOOPS_DECLARATION }]] as const) {
     const store = serviceStore()
     store.provide(LOOPS_SERVICE, value)
     assert.equal(loopsService(store, problem), undefined)
     assert.equal(problems.length, count)
     assert.ok(problems[count - 1]?.includes(LOOPS_SERVICE))
   }
-  const wider = { contribute: () => ({ ok: false, reason: 'x' }), declaration: LOOPS_DECLARATION, emit: () => 1 }
+  const wider = { ...runtime, contribute: () => ({ ok: false, reason: 'x' }), declaration: LOOPS_DECLARATION, staleEntries: () => [] }
   const store2 = serviceStore()
   store2.provide(LOOPS_SERVICE, wider)
   assert.equal(loopsService(store2, problem), wider)
-  assert.equal(problems.length, 5)
+  assert.equal(problems.length, 6)
   const wrong = serviceStore()
   wrong.provide(LOOPS_SERVICE, 0)
   assert.equal(loopsService(wrong), undefined, 'the callback is optional')
 })
 
-/** The lines of the glm:guard section the guard row declares on a GLM route, with the rules service as given (none when undefined). */
-async function guardDeclaration(rules: unknown, loops?: unknown): Promise<{ lines: string[], warnings: string[] }> {
+/**
+ * The lines of the glm:guard section the guard row declares on a GLM route,
+ * with the rules service as given (none when undefined) and the loop row in
+ * the activation state given (not loaded when undefined): the loop board's gate
+ * is in every host process while its service is only in the one that can reach
+ * a session, so its line follows the row's health (loops design §6.1, §11.1).
+ */
+async function guardDeclaration(rules: unknown, loops?: HealthState): Promise<{ lines: string[], warnings: string[] }> {
   const rt = fakeRuntime({ route: GLM })
   if (rules !== undefined) rt.services.set(RULES_SERVICE, rules)
-  if (loops !== undefined) rt.services.set(LOOPS_SERVICE, loops)
+  if (loops !== undefined) rt.services.set(healthServiceName('loops'), { row: 'loops', activation: () => ({ state: loops, reason: '循环板', at: new Date() }), session: () => undefined } satisfies RowHealthView)
   guardApply(rt.ctx as never, { home: 'C:/ws/.llm', fs: { mkdir: () => Promise.resolve(undefined), appendFile: () => Promise.resolve() } })
   const { warnings } = await quietly(() => rt.create())
   const assembled = await quietly(() => rt.assemble(GLM))
@@ -156,16 +163,14 @@ test('guard declaration: the glm:guard section gets exactly one extra line when 
   assert.deepEqual(malformed.lines, without.lines)
   assert.equal(malformed.warnings.filter(warning => warning.includes(RULES_SERVICE)).length, 1, 'a service of the wrong shape is warned about once')
 })
-test('guard declaration: the loop board\'s line follows the rules board\'s when its service is there, and a service of the wrong shape adds nothing and is warned about once', async () => {
+test('guard declaration: the loop board\'s line follows its row, not its service, so a process that runs no entry still declares the gate', async () => {
   const without = await guardDeclaration(undefined)
-  const board = { contribute: () => ({ ok: false, reason: 'x' }), declaration: LOOPS_DECLARATION }
-  const both = await guardDeclaration({ declaration: RULES_DECLARATION }, board)
+  const both = await guardDeclaration({ declaration: RULES_DECLARATION }, 'active')
   assert.equal(both.lines.length, without.lines.length + 2)
   assert.deepEqual(both.lines.slice(-2), [`- ${RULES_DECLARATION}`, `- ${LOOPS_DECLARATION}`])
-  assert.equal((await guardDeclaration(undefined, board)).lines.at(-1), `- ${LOOPS_DECLARATION}`)
-  const malformed = await guardDeclaration(undefined, { contribute: 'x', declaration: 1 })
-  assert.deepEqual(malformed.lines, without.lines)
-  assert.equal(malformed.warnings.filter(warning => warning.includes(LOOPS_SERVICE)).length, 1)
+  assert.equal((await guardDeclaration(undefined, 'degraded')).lines.at(-1), `- ${LOOPS_DECLARATION}`, 'a row that is partly in effect still has its gate')
+  assert.deepEqual((await guardDeclaration(undefined, 'inactive')).lines, without.lines, 'a row that cannot act declares nothing')
+  assert.deepEqual(without.lines.filter(line => line.includes(LOOPS_DECLARATION)), [], 'and neither does one that is not loaded')
 })
 
 test('guard catalog: each listed rule is the id of a rule object its row installs, and nothing the row installs is missing', () => {

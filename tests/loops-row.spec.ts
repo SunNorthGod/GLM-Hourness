@@ -217,10 +217,33 @@ rowTest('until the session projection registry is there the row is partly in eff
 
 // ------------------------------------------------------ a host that lacks a part
 
-for (const [part, said] of [['commands', /宿主没有 commands，\/loops 注册不了/], ['on', /宿主没有 on，loops:files-only 装不上，没有什么拦着别人写循环板的文件/], ['inject', /宿主没有 inject，会话投影未注册/]] as const) {
+for (const [part, said] of [['commands', /宿主没有 commands，\/loops 注册不了/], ['on', /宿主没有 on，loops:files-only 装不上，没有什么拦着别人写循环板的文件/]] as const) {
   rowTest(`a host without ${part} does not stop the row: it still provides the service, and the health says what is missing`, ({ health, runtime }) => {
     assert.equal(health().status, 'degraded')
     assert.match(health().reason, said)
     assert.ok(loopsService(runtime.ctx) !== undefined)
   }, { without: [part] })
 }
+
+rowTest('a host without inject keeps the row and its gate, and says that this process hands out no service and runs nothing', ({ health, runtime }) => {
+  // The service and the running of entries live inside ctx.inject(['sessionController']) (design §3.1, §6.1).
+  assert.equal(health().status, 'degraded')
+  assert.match(health().reason, /宿主没有 inject，会话投影未注册/)
+  assert.match(health().reason, /宿主没有 inject，这个进程不提供循环板的服务/)
+  assert.equal(loopsService(runtime.ctx), undefined)
+}, { without: ['inject'] })
+
+rowTest('without a session controller the row registers everything and says it runs nothing; when one arrives it hands the service out and beats', ({ health, runtime, controller, beats }) => {
+  assert.equal(loopsService(runtime.ctx), undefined, 'a process that cannot reach a session hands out no service')
+  assert.equal(health().status, 'active', 'that is not a fault: headless and the probe are like this (design §11.1)')
+  assert.match(health().reason, /这个进程不跑循环板（没有会话控制器）/)
+  assert.equal(beats.length, 0)
+  controller(true)
+  assert.ok(loopsService(runtime.ctx) !== undefined)
+  assert.equal(beats.length, 1)
+  assert.equal(beats[0]?.ms, 60_000)
+  assert.match(health().reason, /glmHournessLoops 已就绪/)
+  controller(false)
+  assert.equal(loopsService(runtime.ctx), undefined, 'the service and the beat leave with the controller')
+  assert.equal(beats.length, 0)
+}, { controller: false })

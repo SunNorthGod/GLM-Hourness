@@ -160,4 +160,24 @@ export function statusOf(project: Pick<GitProject, 'store'>, id: string): string
 /** The names in a directory, or none when it is not there. */
 export const namesIn = (dir: string): Promise<string[]> => readdir(dir).catch(() => [])
 
+/**
+ * The one-shot timers the board asks for, held until a case fires them: the
+ * debounce, the quiet of the file watch and the limit of a harness action all
+ * go through it, so no case waits a real minute.
+ */
+export function heldTimers(): { readonly timers: Array<{ readonly ms: number, readonly run: () => void }>, readonly delay: (run: () => void, ms: number) => () => void } {
+  const timers: Array<{ readonly ms: number, readonly run: () => void }> = []
+  return {
+    timers,
+    delay: (run, ms) => {
+      const timer = { ms, run }
+      timers.push(timer)
+      return () => {
+        const at = timers.indexOf(timer)
+        if (at >= 0) timers.splice(at, 1)
+      }
+    },
+  }
+}
+
 

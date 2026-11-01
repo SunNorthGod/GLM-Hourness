@@ -51,9 +51,9 @@ import { rowJournal, type AuditFs } from '../memory/audit.ts'
 import { dataHomes } from '../shared/data-home.ts'
 import { dialectNames, dialectService, dialectWarner, toNativeTool, type DialectProblem } from '../shared/dialect.ts'
 import { GRAPH_FILES_DECLARATION, graphService } from '../graph/service.ts'
-import { loopsService } from '../loops/service.ts'
+import { LOOPS_DECLARATION } from '../loops/service.ts'
 import { rulesService } from '../rules/service.ts'
-import { provideRowHealth, sessionIdOf, type HealthState } from '../shared/health.ts'
+import { activationState, provideRowHealth, sessionIdOf, type HealthState } from '../shared/health.ts'
 import { assemblyRoute, sessionRoute, type Route } from '../shared/route.ts'
 import type { JsonValue } from '../shared/json.ts'
 import type { AgentLike, AssembledSection, PluginContext, PreExecuteHost, ProvideHost, ServiceLookup, SessionEventHost, WorkingDirectoryService } from '../shared/dsh-min.ts'
@@ -175,7 +175,6 @@ export function apply(ctx: GuardHost, config: GuardConfig = {}): () => void {
   const shadow = shadowFallback(ctx, record => void journal.violation(record))
   const warn = dialectWarner('guard')
   const rulesWarn = dialectWarner('guard')
-  const loopsWarn = dialectWarner('guard')
   const installed = new WeakSet<AgentLike>()
   const disposers: Array<() => void> = [() => health.dispose()]
 
@@ -233,8 +232,9 @@ export function apply(ctx: GuardHost, config: GuardConfig = {}): () => void {
         const rules = activeRules({ ...config, workspaceRoots: rootsFor(agent, config) })
         // graph-files-only is the graph row's rule, and the gates of the rules board and the loop board are their rows'; declared here so the model reads every rule in one place.
         const board = rulesService(ctx, rulesWarn)
-        const loops = loopsService(ctx, loopsWarn)
-        const others = [...(graphService(ctx) === undefined ? [] : [GRAPH_FILES_DECLARATION]), ...(board === undefined ? [] : [board.declaration]), ...(loops === undefined ? [] : [loops.declaration])]
+        // The loop board's gate is in every host process, while its service is only in the one that can reach a session (loops design §6.1), so the line follows the row, not the service.
+        const loops = activationState(ctx, 'loops')
+        const others = [...(graphService(ctx) === undefined ? [] : [GRAPH_FILES_DECLARATION]), ...(board === undefined ? [] : [board.declaration]), ...(loops === 'absent' || loops === 'inactive' ? [] : [LOOPS_DECLARATION])]
         const face = dialectNames(dialectService(ctx, warn), agent, route, warn) ?? NATIVE_FACE
         return { ...assembled, sections: [...assembled.sections, declarationSection(rules, others, face)] }
       }, { prepend: true }))

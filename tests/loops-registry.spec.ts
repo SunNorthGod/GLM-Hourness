@@ -12,6 +12,7 @@ import assert from 'node:assert/strict'
 import { readdirSync, readFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
+import { CHANNEL_EVENTS } from '../src/loops/channel.ts'
 import { LOOP_ACTIONS, LOOP_CONTRIBUTION, LOOP_DEFAULTS, DEPENDENCY_FILES } from '../src/loops/defaults.ts'
 import { fileChangedKey, hostRestartedKey, LOOP_EVENT_TABLE, LOOP_EVENTS, waitingOnHumanKey } from '../src/loops/events.ts'
 import { apply, inject, name, type LoopsContext } from '../src/loops/index.ts'
@@ -638,10 +639,11 @@ function quietly<T>(body: () => T): { readonly value: T, readonly warnings: stri
 
 const healthOf = (store: ReturnType<typeof serviceStore>) => collectHealth(store, undefined).find(entry => entry.row === 'loops')
 
-/** A host with every part the row sets itself up with (the command, the gate, the projection registry), over a service store. */
+/** A host with every part the row sets itself up with (the command, the gate, the projection registry, the session controller), over a service store. */
 function hostWithParts(): ReturnType<typeof serviceStore> & LoopsContext {
-  const injector = fakeInjector({ sessionProjections: { register: () => () => {} } as never })
-  return Object.assign(serviceStore(), { commands: { register: () => () => {} }, on: () => () => {}, inject: injector.inject })
+  const store = serviceStore()
+  const injector = fakeInjector({ sessionProjections: { register: () => () => {} } as never, sessionController: { resolveAgent: () => Promise.resolve({}) } }, store)
+  return Object.assign(store, { commands: { register: () => () => {} }, on: () => () => {}, inject: injector.inject })
 }
 
 test('the row is a cordis plugin that needs the commands service, provides the service and its health, and withdraws both', () => {
@@ -659,7 +661,7 @@ test('the row is a cordis plugin that needs the commands service, provides the s
 })
 
 test('through the service a row hands over its table, the loop row\'s own four are there already, and its namespace is reserved', () => {
-  const store = serviceStore()
+  const store = hostWithParts()
   const { value: stop, warnings } = quietly(() => apply(store))
   const service = loopsService(store)!
   assert.deepEqual(warnings, [])
@@ -673,7 +675,7 @@ test('through the service a row hands over its table, the loop row\'s own four a
 })
 
 test('a dropped entry degrades the row health with the reason, once, and the row keeps working', () => {
-  const store = serviceStore()
+  const store = hostWithParts()
   const stop = apply(store)
   const service = loopsService(store)!
   assert.ok(service.contribute(OPERATE, { entries: [{ ...M7_OPERATE.entries[0], why: '' }] }).ok)
@@ -720,7 +722,8 @@ test('src/loops/ holds no other row\'s table and no channel file: nothing import
   const directory = new URL('../src/loops/', import.meta.url)
   const files = readdirSync(directory).filter(file => file.endsWith('.ts'))
   assert.ok(files.includes('registry.ts') && files.includes('defaults.ts'))
-  assert.ok(!files.includes('channel.ts'), 'channel.ts waits for M6 Q1')
+  // channel.ts declares the one channel event the loop row derives itself; the two account-level ones wait for M6 Q1 and Q2.
+  assert.deepEqual(CHANNEL_EVENTS.map(declared => declared.id), ['channel.peak-changed'])
   for (const file of files) {
     const text = readFileSync(new URL(file, directory), 'utf8')
     const specifiers = [...text.matchAll(/(?:^|\n)\s*(?:import|export)\s[^;]*?\sfrom\s+['"]([^'"]+)['"]/g)].map(match => match[1] ?? '')

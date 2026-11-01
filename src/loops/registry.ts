@@ -306,6 +306,13 @@ interface RegistryOptions {
   readonly now?: () => Date
   /** Told each distinct problem once, in words for the row health. */
   readonly report?: (message: string) => void
+  /**
+   * The channel events (src/loops/channel.ts), which the loop row puts out
+   * itself from the pricing service and which are in the table only while that
+   * service is there (design §4.3). They are not handed over: the `channel`
+   * namespace belongs to no hand-over (§3.2).
+   */
+  readonly channel?: () => readonly LoopEventDeclaration[]
 }
 
 export interface LoopsRegistry {
@@ -315,6 +322,15 @@ export interface LoopsRegistry {
   entries(): readonly RegisteredEntry[]
   /** The event table as it stands: the loop row's own events and the held hand-overs' accepted ones. */
   events(): ReadonlyMap<string, LoopEventDeclaration>
+  /**
+   * The `run` of the hand-over that brought this entry, with the action ids it
+   * listed: how the runner executes a harness entry (design §6.5). Undefined
+   * when no held hand-over has the entry, or when its source listed actions
+   * without handing a `run` over.
+   */
+  actionOf(entry: string): { readonly run: NonNullable<Contribution['run']>, readonly actions: readonly string[] } | undefined
+  /** The row that declared this event (`<row>` of its hand-over), for the record of what handed an event over; undefined for an event nobody declares. */
+  declarerOf(event: string): string | undefined
 }
 
 /** "Event X is nobody's now (the part of <package> is off); this entry does not run." */
@@ -348,7 +364,7 @@ export function createRegistry(options: RegistryOptions = {}): LoopsRegistry {
   const holders = new Map<string, Held>()
 
   const contextFor = (skip: string | undefined): ContributionContext => {
-    const table = new Map(LOOP_EVENT_TABLE)
+    const table = new Map([...LOOP_EVENT_TABLE, ...(options.channel?.() ?? []).map(declared => [declared.id, declared] as const)])
     const owners = new Map<string, string>()
     for (const [key, held] of holders) {
       if (key === skip) continue
@@ -404,6 +420,22 @@ export function createRegistry(options: RegistryOptions = {}): LoopsRegistry {
     },
     events() {
       return contextFor(undefined).table
+    },
+    declarerOf(event) {
+      for (const held of holders.values()) {
+        if (held.check.events.some(declared => declared.id === event)) return held.source.row
+      }
+      return undefined
+    },
+    actionOf(entry) {
+      for (const held of holders.values()) {
+        if (!held.check.entries.some(item => item.definition.id === entry)) continue
+        const source = held.contribution
+        if (typeof source.run !== 'function') return undefined
+        // Called through the hand-over, so the row's own `this` is its own object.
+        return { run: (action, event) => source.run?.(action, event) ?? Promise.resolve({ outcome: 'failed', reason: 'run 不在了' }), actions: held.check.actions.map(action => action.id) }
+      }
+      return undefined
     },
   }
 }

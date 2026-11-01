@@ -63,6 +63,16 @@ export interface LoopsPaths {
   readonly tmpDir: string
   readonly lock: string
   readonly view: string
+  /** The project's inbox: one line per event handed over (design §6.3). */
+  readonly events: string
+  /** What the runner keeps between beats and restarts: the inbox position, the dedupe keys, what waits, the host (design §9.1). */
+  readonly state: string
+  /** The project's run lock: the process that runs the board holds it (design §6.1). */
+  readonly runner: string
+  /** Where a process in which the main agent's session is open asks for the run lock (design §6.1). */
+  readonly handover: string
+  /** The record of every run, until the metrics stream lands (design §6.10). */
+  readonly runs: string
 }
 
 export function loopsPaths(projectRoot: string): LoopsPaths {
@@ -76,6 +86,11 @@ export function loopsPaths(projectRoot: string): LoopsPaths {
     tmpDir: join(runtimeDir, 'tmp'),
     lock: join(runtimeDir, 'write.lock'),
     view: join(runtimeDir, 'view.json'),
+    events: join(runtimeDir, 'events.jsonl'),
+    state: join(runtimeDir, 'state.json'),
+    runner: join(runtimeDir, 'runner.lock'),
+    handover: join(runtimeDir, 'handover.json'),
+    runs: join(runtimeDir, 'runs.jsonl'),
   }
 }
 

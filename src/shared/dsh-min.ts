@@ -307,7 +307,7 @@ export interface ServiceLookup {
  * and dsh-user-questions register their projection units this way.
  */
 export interface InjectHost {
-  inject<K extends keyof InjectableServices>(names: readonly K[], callback: (ctx: Pick<InjectableServices, K>) => (() => void) | void): unknown
+  inject<K extends keyof InjectableServices>(names: readonly K[], callback: (ctx: Pick<InjectableServices, K> & ProvideHost & ServiceLookup) => (() => void) | void): unknown
 }
 
 /** The services rows take optionally through `ctx.inject`. */
@@ -315,6 +315,18 @@ export interface InjectableServices {
   readonly sessionProjections: SessionProjectionsService
   readonly agents: AgentsService
   readonly subagents: SubagentsService
+  /**
+   * `sessionController` (api-session-controller:2951–2952): only a process
+   * that has it can reach a session, so only there does the loop board
+   * provide its service and run entries (loop board design §3.1, §6.1).
+   * `resolveAgent` revives a cold session, or says why not with the codes
+   * `session/not-found`, `session/writer-held`, `gateway/internal`
+   * (api-session-controller:3037–3039, 221–246); the delivery that calls it
+   * comes with the main agent's side of the board.
+   */
+  readonly sessionController: {
+    resolveAgent(sessionId: string): Promise<{ readonly agent?: AgentLike, readonly error?: { readonly code: string, readonly message?: string } }>
+  }
 }
 
 /**

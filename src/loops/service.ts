@@ -6,14 +6,17 @@
  * runs through `contribute`; the board validates them (registry.ts) and lists
  * them.
  *
- * `LoopsService` has the members that exist. `contribute` is built, and so is
- * the line the guard adds to its prompt section while this row is on
- * (`declaration`, as the rules service has it). The members for events and
- * runs (`emit`, `listens`, `recordRun`) arrive with the
- * runtime that has an inbox and a run record, and the members of the path of a
- * person's agreement (`attachable`, `acceptProposal`, `staleEntries`,
- * `timeoutEntries`) with that path, which is not built yet. The reader checks
- * the members that exist and takes a service that has more.
+ * `LoopsService` has the members that exist: `contribute`, the events and runs
+ * of the runtime (`emit`, `listens`, `recordRun`), and the line the guard adds
+ * to its prompt section while this row is on (`declaration`, as the rules
+ * service has it). The members of the path of a person's agreement
+ * (`attachable`, `acceptProposal`, `staleEntries`, `timeoutEntries`) arrive
+ * with that path, which is not built yet. The reader checks the members that
+ * exist and takes a service that has more.
+ *
+ * The service is handed out only in a process that has a session controller,
+ * which is the one process that can reach a session and deliver (design §3.1,
+ * §6.1): a row that does not find it runs its own event entries itself.
  *
  * The declarations of events (`LoopEventDeclaration` and the types in it) are
  * defined in trigger.ts, which both boards share, and are exported here under
@@ -58,6 +61,40 @@ export type HarnessResult =
   | { readonly outcome: 'skipped', readonly reason: string }
   | { readonly outcome: 'failed', readonly reason: string, readonly tell?: string }
 
+/** One event a row hands over (design §3.1). */
+export interface LoopEventInput {
+  readonly event: string
+  /** The working directory of the session it happened in; the project is read from it (design §2.1). */
+  readonly cwd: string
+  /** The session it is about (the execute row hands the holder session over). */
+  readonly session?: string
+  /**
+   * The dedupe key, 1 to 200 characters, which says *this occurrence*:
+   * `<event without its namespace>:<subject>:<what makes this occurrence this
+   * one>`, at least three parts and none of them empty (design §4, the key
+   * column of each table). One key is run once in seven days in one project.
+   */
+  readonly key: string
+  readonly payload: Readonly<Record<string, unknown>>
+}
+
+export type EmitResult =
+  | { readonly ok: true, readonly id: string, readonly duplicate: boolean }
+  /** This process runs the project, has read the entries, and no entry that could run hears the event: nothing was written and no key was kept. */
+  | { readonly ok: true, readonly duplicate: false, readonly unheard: true }
+  | { readonly ok: false, readonly code: 'unknown-event' | 'invalid' | 'no-project' | 'busy' | 'io', readonly message: string }
+
+/** One run of a `self` entry, reported by the row that ran it (design §3.1). */
+export interface ListedRun {
+  readonly cwd: string
+  readonly entry: string
+  readonly outcome: 'ran' | 'reported' | 'skipped' | 'failed'
+  readonly durationMs?: number
+  readonly exits?: readonly number[]
+  /** One line, at most 120 code points. */
+  readonly reason?: string
+}
+
 export interface Contribution {
   readonly events?: readonly LoopEventDeclaration[]
   readonly entries: readonly LoopEntryDefinition[]
@@ -82,6 +119,24 @@ export interface LoopsService {
    * event nobody declares yet stands, greyed); `dropped` is what did not pass, with the path of the field and why.
    */
   contribute(source: ContributionSource, contribution: Contribution): ContributeResult
+  /**
+   * Hand one event over: it is checked and appended to the project's inbox,
+   * whoever runs that project (design §6.3). Does not throw and the promise is
+   * not rejected; a write that could not be made is retried three times inside
+   * ten seconds before the result says `busy` or `io`. A caller on a hot path
+   * need not await it.
+   */
+  emit(event: LoopEventInput): Promise<EmitResult>
+  /**
+   * Whether an entry that could run now hears this event in this project
+   * (`self` entries do not count: they do not read the inbox). Memory only,
+   * does not throw. True when this process does not run the project or has not
+   * read its entries yet: the event is handed over and whoever holds the lock
+   * judges it.
+   */
+  listens(event: string, cwd: string): boolean
+  /** One run of a `self` entry, reported by the row that ran it; the id of an entry that is not a listed one is dropped. Does not throw. */
+  recordRun(run: ListedRun): void
 }
 
 /** Read the service; undefined while the loop row is off, or when a member has the wrong type (reported to `problem`). */
@@ -89,7 +144,8 @@ export function loopsService(ctx: ServiceLookup, problem?: (message: string) => 
   const value: unknown = typeof ctx.get === 'function' ? ctx.get(LOOPS_SERVICE) : undefined
   if (value === undefined || value === null) return undefined
   const members = value as Partial<Record<keyof LoopsService, unknown>>
-  if (typeof members.contribute === 'function' && typeof members.declaration === 'string' && members.declaration.length > 0) return value as LoopsService
+  if (typeof members.contribute === 'function' && typeof members.emit === 'function' && typeof members.listens === 'function' && typeof members.recordRun === 'function'
+    && typeof members.declaration === 'string' && members.declaration.length > 0) return value as LoopsService
   problem?.(`${LOOPS_SERVICE} has the wrong shape; the row cannot hand its entries over`)
   return undefined
 }

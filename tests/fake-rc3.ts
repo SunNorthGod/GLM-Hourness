@@ -22,9 +22,11 @@ type ServiceName = keyof InjectableServices
  * returned function is its fiber's disposer, cordis:1071, 1142–1143): a
  * callback runs once every service it names is present, at the call or
  * when `provide` adds the last one, and its disposer runs when `remove`
- * takes one of them away.
+ * takes one of them away. `base` is the context the child fiber inherits
+ * (the host's `provide` and `get`), which a row that provides a service of
+ * its own inside the callback needs.
  */
-export function fakeInjector(initial: Partial<InjectableServices> = {}): {
+export function fakeInjector(initial: Partial<InjectableServices> = {}, base: object = {}): {
   /** A function property, so a test hands it on as the row's `ctx.inject`. */
   readonly inject: InjectHost['inject']
   provide<K extends ServiceName>(name: K, value: InjectableServices[K]): void
@@ -37,7 +39,8 @@ export function fakeInjector(initial: Partial<InjectableServices> = {}): {
       const ready = fiber.names.every(name => services[name] !== undefined)
       if (ready && !fiber.running) {
         fiber.running = true
-        const dispose = fiber.callback(services as never)
+        // A cordis child fiber's context is the parent's with the named services on it: `provide` and `get` are there too.
+        const dispose = fiber.callback({ ...base, ...services } as never)
         fiber.dispose = typeof dispose === 'function' ? dispose : undefined
       }
       else if (!ready && fiber.running) {
