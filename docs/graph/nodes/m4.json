@@ -5,6 +5,9 @@
   "status": "doing",
   "parent": "orch",
   "body": "ORCHESTRATION.md §6.4 的规划规矩；影子模式机制；检查器运行与当轮回传；告警棘轮与压制规则；环境分支与草稿区；清理 .llm/docs/ 下的抓取脚本（ROADMAP.md M4）。",
+  "acceptance": [
+    "七件都做完，这一整块（m4）就算做完；它本身没有单独的做完条件，随七件一起关掉，整批再过一次更强模型的逐条审查。"
+  ],
   "history": [
     {
       "at": "2026-10-27T20:04:04.872Z",
@@ -347,6 +350,27 @@
       "actor": "llm",
       "op": "comment",
       "text": "要采纳（M4 0.6）：超时的数与来源、撤下状态经 M4 的 statusItemsOf（env/*、rules/* 相关那几条）算一次，交 provideRowStatus；晨报『检查的超时』一节与面板那一格读同一条条目，不各自按 ValueLine 或 limits.jsonl 在两处取（关 P13-01 同源那一面）；对账（F16）读整份流水的口径由 M4 的条目函数定一次，面板与晨报都读它；撤下一行的 liftHow 等字段作为条目的 fields/detail。"
+    },
+    {
+      "at": "2026-11-01T09:15:44.008Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "人 2026-11-01 放行 M4 时定下的第 35 条（合起来那一条）",
+      "relay": "都没问题",
+      "changes": {
+        "acceptance": {
+          "from": null,
+          "to": [
+            "七件都做完，这一整块（m4）就算做完；它本身没有单独的做完条件，随七件一起关掉，整批再过一次更强模型的逐条审查。"
+          ]
+        }
+      }
+    },
+    {
+      "at": "2026-11-01T09:15:44.400Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "运行 design-drop-read-no-shell 一并改 M4：从 GUARD_RULES 登记表与引它的验收、示例里去掉 bootstrap-read-no-shell，撤下机制（d-one-lift-path）不动。节点已是 doing。"
     }
   ]
 }
