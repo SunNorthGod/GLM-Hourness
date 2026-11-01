@@ -275,6 +275,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "运行中断后的恢复核对（2026-11-01 第二次）：git fsck 无输出、退出码 0；main 与 origin/main 同点（0a4419d）；四条进行中的分支与远端逐一同点（m3 3fbc1e9、m3-flow 49f5d3e、rules-loops-impl 336a1d0、m5-memory-lessons 推到 7dc790a 后同点）；工作树 m3 有 30 处、rules-loops 有 26 处未提交的在制改动，m3-flow 与 m5 干净，主检出 8 处（design-drop-read-no-shell 写到一半的设计文件与三个未跟踪项）。没有丢活。四条运行（M3、M5、design-drop-read-no-shell、feat-010-loop-storage）已请求恢复。"
+    },
+    {
+      "at": "2026-11-01T12:19:07.140Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "编排方裁定（可逆，可由人一句话推翻）：派出去的运行不再把 build、preflight、test、probe 并排跑，改成一个一个串着跑；本机近日多次整机中断，串行能把 CPU 的瞬时尖峰压下去，代价是每轮慢几分钟。这条写进后续运行的简报。"
     }
   ]
 }

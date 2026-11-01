@@ -263,6 +263,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "确认性对接（指标 0.7，不要求指标改接口）：factsFor 的三个减负数字作为 metrics/load（audience:'agent'，供周报转述），第四个（返工）仍由 M7 从图算、不经 metrics 条目（§7.2、§7.3）；scoresFor 的比率不作为 hub 条目，走指标 0.7 §7.6 的专用指标板（boardView→view.json→MetricsBoardView、同一张登记表），hub 不复制为 StatusItem；裸指标流水从不交出（宪章 §8）。周报比率改在面板看。"
+    },
+    {
+      "at": "2026-11-01T12:19:07.322Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "条数更正：人 2026-11-01 答「可以」时，一页稿写的是 24 条系统自跑的检查（d-metrics-steps-by-checks）；设计 0.7 加了指标板那一条，§1.4 现在是 25 条，一页稿也已改成 25。编排方按 25 条记这条决定，人若不同意只需说一句。这 25 条在实施计划把十步拆成任务节点时写进各节点的验收。"
     }
   ]
 }
