@@ -18,7 +18,7 @@ import { CATALOG } from '../src/rules/builtin.ts'
 import { RULES_FILES_ONLY } from '../src/rules/gate.ts'
 import { apply as rulesApply, type RulesContext } from '../src/rules/index.ts'
 import { RULES_DECLARATION, RULES_SERVICE, rulesService } from '../src/rules/service.ts'
-import { loopsFilesOnly, LOOPS_FILES_ONLY } from '../src/loops/guard.ts'
+import { loopsFilesOnly, loopsScheduleTools, LOOPS_FILES_ONLY } from '../src/loops/guard.ts'
 import { LOOPS_DECLARATION, LOOPS_SERVICE, loopsService } from '../src/loops/service.ts'
 import { DECLARATION_SECTION } from '../src/guard/sections.ts'
 import { DIALECT_SERVICE, dialectNames, dialectService, toNativeTool, ZCODE_ALIAS_NATIVES, type DialectService } from '../src/shared/dialect.ts'
@@ -178,7 +178,7 @@ test('guard catalog: each listed rule is the id of a rule object its row install
   const installed = {
     guard: activeRules({ workspaceRoots: ['C:/work/app'], base: 'C:/work/app' }).map(rule => rule.id),
     graph: [graphFilesOnly('C:/work/app/docs/graph', 'C:/work/app').id],
-    loops: [loopsFilesOnly(['C:/work/app'], 'C:/work/app').id],
+    loops: [loopsFilesOnly(['C:/work/app'], 'C:/work/app').id, loopsScheduleTools(true).id],
   }
   const listed = (row: string): string[] => GUARD_RULES.filter(rule => rule.row === row).map(rule => rule.id)
   assert.deepEqual(listed('guard').sort(), [...installed.guard].sort())

@@ -38,11 +38,16 @@ import { openEngine } from '../graph/engine.ts'
 import { listOpenItems } from '../graph/projection.ts'
 import { DEFAULT_GRAPH_DIR } from '../graph/tools.ts'
 import { join } from 'node:path'
+import { agentsOf } from '../rules/wake.ts'
 import type { StoreIo } from '../rules/store.ts'
+import type { ServiceLookup } from '../shared/dsh-min.ts'
 import { nextPeakChange } from '../shared/pricing.ts'
+import { reconcile, scheduleOf, type BindDeps, type BindOutcome } from './bind.ts'
 import { CHANNEL_PEAK_CHANGED, peakChangedKey } from './channel.ts'
+import { createDelivery, type Deliver, type DeliverResult, type LoopDelivery } from './deliver.ts'
 import { fileChangedKey, hostRestartedKey, waitingOnHumanKey } from './events.ts'
 import { currentRun, runAction } from './harness.ts'
+import { holderFault, holderLine, holderRecordFor, holderStateOf, WRITER_HELD_MS, type HolderState } from './holder.ts'
 import { openInbox, type EmitInput, type EmitResult, type Inbox, type RunBatch, type RunnableEntry } from './inbox.ts'
 import { createRunLock, type LockStand } from './lock.ts'
 import { watchPaths, type WatchDeps, type Watched } from './file-watch.ts'
@@ -53,32 +58,6 @@ import type { LoopStore } from './store.ts'
 
 /** How often a project's board beats (design §6.1). */
 export const BEAT_MS = 60_000
-/** One message the board has for the main agent, or for the session an event came from. */
-export interface DeliverRequest {
-  readonly project: string
-  readonly entry: string
-  readonly run: string
-  readonly title: string
-  readonly text: string
-  readonly wake: boolean
-  /** The session the result goes to, when it is not the main agent's (design §6.4 last paragraph). */
-  readonly session?: string
-}
-
-export type DeliverResult =
-  | { readonly kind: 'delivered', readonly how: 'steer' | 'inject' | 'followup', readonly messageId?: string }
-  /** Nobody can be told now; the message is kept and told later, with the reason the design names (design §6.4). */
-  | { readonly kind: 'held', readonly reason: string }
-  | { readonly kind: 'failed', readonly reason: string }
-
-export type Deliver = (request: DeliverRequest) => Promise<DeliverResult>
-
-/**
- * The seam until the main agent's side of the board is built (design §16 S4):
- * the board cannot read which session is the main agent's, so a message waits.
- * The run says so, and the page and the row's health carry it.
- */
-export const heldDeliver: Deliver = () => Promise.resolve({ kind: 'held', reason: 'holder-unreadable' })
 
 export interface ProjectDeps {
   readonly root: string
@@ -90,8 +69,18 @@ export interface ProjectDeps {
   readonly delay: (run: () => void, ms: number) => () => void
   readonly pid: number
   readonly boot: () => number
-  /** Where a message for the main agent goes; `heldDeliver` until that side is built. */
+  /**
+   * The host, for the main agent's side of the board: the holder record, the
+   * schedule service, the live agents and the session controller (holder.ts,
+   * bind.ts, deliver.ts). Without it the board runs its event entries and holds
+   * every message for the main agent, which is what a process that cannot
+   * reach a session can do.
+   */
+  readonly ctx?: ServiceLookup
+  /** Where a message for the main agent goes; the delivery of deliver.ts when absent. */
   readonly deliver?: Deliver
+  /** How the main agent's session reads; holder.ts over `ctx` when absent. Tests replace it. */
+  readonly holder?: () => HolderState
   readonly report: (text: string, level: 'info' | 'degraded') => void
   /** The channel's peak reading, while a pricing service is there (design §4.3). */
   readonly peak?: () => ((atMs: number) => boolean) | undefined
@@ -117,6 +106,14 @@ export interface ProjectRuntime {
   readonly root: string
   /** Take or refresh the run lock and do everything a beat does. Never throws. */
   beat(): Promise<void>
+  /** Reconcile the DSH reminders now, without waiting for the next beat: the holder session was archived, or DSH said a task changed (design §6.2). Never throws. */
+  settleTasks(): Promise<void>
+  /** How the main agent's session of this project reads now (design §6.4). */
+  holder(): HolderState
+  /** The ids of the DSH reminders the board made for this project, for the schedule gate (design §6.2). */
+  bindings(): ReadonlySet<string>
+  /** The entry one of those reminders belongs to, and the run of its last delivery, for the line of a step that took it (design §6.4). */
+  binding(scheduleId: string): { readonly entry: string, readonly run?: string } | undefined
   /** Hand one event over (the service's `emit`, design §3.1). */
   emit(input: Omit<EmitInput, 'project'>): Promise<EmitResult>
   /** Whether an entry that could run now hears this event (the service's `listens`). */
@@ -157,7 +154,7 @@ async function graphWaiting(root: string): Promise<readonly WaitingItem[]> {
 export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
   const paths = deps.store.paths
   const key = projectKey(deps.root)
-  const deliver = deps.deliver ?? heldDeliver
+  const ctx: ServiceLookup = deps.ctx ?? {}
   const startedAt = new Date(deps.now()).toISOString()
   /** The runs of this process that are in flight; the lock is not handed over while one is (design §6.1). */
   const flight = new Map<string, string>()
@@ -166,11 +163,45 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
   let restartTold = false
   let watched: Watched | undefined
   let peakTimer: (() => void) | undefined
+  /** The session this process handed the run lock over for: the main agent's session is open in that other process (design §6.1, §6.4 (a)). */
+  let handedTo: string | undefined
+  /** Since when the holder session has read `elsewhere` without a break, for the five minutes after which the row says so (design §6.4). */
+  let elsewhereSince: number | undefined
   /** The person's entries, read at most once a second: `listens` is called on a hot path (design §4.4). */
   let read: { at: number, entries: readonly RunnableEntry[] } | undefined
 
   const iso = (): string => new Date(deps.now()).toISOString()
   const record = (line: LoopRecord): void => { void appendRun(paths, line, text => { deps.report(text, 'info') }) }
+
+  /**
+   * How the main agent's session reads, asked again every time (design §6.4):
+   * the record, the mode of the session it names, the host's archive set and
+   * what the last `resolveAgent` answered. A process that was given no host
+   * cannot read any of it and holds its messages.
+   */
+  function holder(): HolderState {
+    if (deps.holder !== undefined) return deps.holder()
+    if (deps.ctx === undefined) return { kind: 'unknown', reason: 'holder-unreadable', detail: '这个进程没有宿主上下文' }
+    return holderStateOf({
+      projectRoot: deps.root,
+      ctx,
+      now: deps.now,
+      memory: () => inbox.state().holderMemory,
+      handedElsewhere: () => handedTo,
+    })
+  }
+
+  const delivery: LoopDelivery = createDelivery({
+    ctx,
+    project: deps.root,
+    now: deps.now,
+    state: () => inbox.state(),
+    holder,
+    memory: () => inbox.state().holderMemory,
+    report: deps.report,
+    delay: deps.delay,
+  })
+  const deliver: Deliver = deps.deliver ?? delivery.deliver
 
   function entries(): readonly RunnableEntry[] {
     if (read !== undefined && deps.now() - read.at < 1_000) return read.entries
@@ -458,15 +489,92 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
     return { outcome: 'failed', reason: result.reason }
   }
 
+  /**
+   * The main agent's session when it is open in this process (design §6.1):
+   * then the run lock belongs here, because only this process can deliver to
+   * it (`resolveAgent` elsewhere answers `session/writer-held`). Read from the
+   * record alone, not from `holderState`, which asks about the hand-over.
+   */
+  function holderHere(): string | undefined {
+    if (deps.holderHere !== undefined) return deps.holderHere()
+    if (deps.ctx === undefined) return undefined
+    try {
+      const reading = holderRecordFor(ctx, deps.root)
+      if (reading.kind !== 'held') return undefined
+      return agentsOf(ctx)?.get(reading.record.sessionId) === undefined ? undefined : reading.record.sessionId
+    }
+    catch {
+      return undefined
+    }
+  }
+
+  const bindDeps: BindDeps = {
+    paths,
+    io: deps.io,
+    now: deps.now,
+    state: () => inbox.state(),
+    schedule: () => scheduleOf(ctx, text => { deps.report(text, 'degraded') }),
+    holder,
+    entries,
+    deleted: (entry) => {
+      try {
+        return deps.store.read().entries.find(item => item.id === entry)?.status.kind === 'deleted'
+      }
+      catch {
+        return false
+      }
+    },
+    startedAt,
+    record,
+    report: deps.report,
+    deliver,
+  }
+
+  /** One reconciliation, with what it did told to the row (design §6.2). */
+  async function settleTasks(): Promise<void> {
+    if (stopped) return
+    try {
+      const done = await reconcile(bindDeps)
+      told(done)
+      await inbox.save()
+    }
+    catch (error) {
+      deps.report(`对不上 DSH 的定时任务：${message(error)}`, 'degraded')
+    }
+  }
+
+  /** What a reconciliation and the holder state say to the row's health (design §6.2, §6.4). */
+  function told(done: BindOutcome): void {
+    for (const line of done.lines) deps.report(line, 'info')
+    if (done.kept.length > 0) deps.report(`有 ${done.kept.length} 条 DSH 提醒这一拍没删`, 'info')
+  }
+
+  /** The `loop-holder` record of a change of state, so "the messages waited because the session was archived" can be looked up afterwards (design §6.10). */
+  function holderChanged(state: HolderState): void {
+    const known = inbox.state().holder
+    if (known?.state === state.kind && known.reason === state.reason && known.session === state.session) return
+    inbox.state().holder = { state: state.kind, at: iso(), ...(state.reason === undefined ? {} : { reason: state.reason }), ...(state.session === undefined ? {} : { session: state.session }) }
+    record({ kind: 'loop-holder', at: iso(), project: deps.root, state: state.kind, ...(state.reason === undefined ? {} : { reason: state.reason }), ...(state.session === undefined ? {} : { session: state.session }) })
+    const fault = holderFault(state)
+    if (fault !== undefined) deps.report(fault, 'degraded')
+    else {
+      const line = holderLine(state)
+      if (line !== undefined) deps.report(line, 'info')
+    }
+  }
+
   const lock = createRunLock({
     paths,
     io: deps.io,
     now: deps.now,
     pid: deps.pid,
     boot: deps.boot,
-    holderHere: () => deps.holderHere?.(),
+    holderHere,
     busy: () => [...flight.values()][0],
-    record: (op, session) => { record({ kind: 'loop-handover', at: iso(), project: deps.root, op, pid: deps.pid, ...(session === undefined ? {} : { session }) }) },
+    record: (op, session) => {
+      handedTo = op === 'release' ? session : undefined
+      record({ kind: 'loop-handover', at: iso(), project: deps.root, op, pid: deps.pid, ...(session === undefined ? {} : { session }) })
+    },
   })
 
   async function beat(): Promise<void> {
@@ -481,11 +589,23 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
         return
       }
       await restarted()
+      const now = holder()
+      holderChanged(now)
+      if (now.kind === 'elsewhere') {
+        elsewhereSince ??= deps.now()
+        if (deps.now() - elsewhereSince >= WRITER_HELD_MS) {
+          const running = [...flight.values()][0]
+          deps.report(running === undefined ? '主 Agent 的会话在另一个 DSH 窗口里，这块板交不过去' : `主 Agent 的会话在另一个 DSH 窗口里，这块板等手上的「${running}」跑完就交过去`, 'degraded')
+        }
+      }
+      else elsewhereSince = undefined
       const files = follow()
       await files.beat()
       inbox.state().files = Object.fromEntries([...files.states()])
       await peakChanged()
       await waitingOnHuman()
+      told(await reconcile(bindDeps))
+      await delivery.flush()
       await inbox.beat()
     }
     catch (error) {
@@ -496,6 +616,15 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
   return {
     root: deps.root,
     beat,
+    settleTasks,
+    holder,
+    bindings: () => new Set(Object.values(inbox.state().bindings).map(binding => binding.scheduleId)),
+    binding(scheduleId) {
+      const found = Object.entries(inbox.state().bindings).find(([, binding]) => binding.scheduleId === scheduleId)
+      if (found === undefined) return undefined
+      const last = inbox.state().last[found[0]]
+      return { entry: found[0], ...(last?.outcome === 'delivered' ? { run: last.run } : {}) }
+    },
     stand: () => stand,
     emit: input => inbox.emit({ ...input, project: deps.root }),
     listens: event => inbox.listens(event),
@@ -525,6 +654,7 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
       stopped = true
       peakTimer?.()
       watched?.dispose()
+      delivery.dispose()
       inbox.dispose()
       try {
         const state = inbox.state()

@@ -19,9 +19,10 @@ import { CHANNEL_EVENTS, peakChangedKey } from '../src/loops/channel.ts'
 import { hostRestartedKey } from '../src/loops/events.ts'
 import { currentRun } from '../src/loops/harness.ts'
 import type { LoopEntryDefinition } from '../src/loops/model.ts'
-import type { DoneRecord, FiredRecord, HandoverRecord, LoopRecord } from '../src/loops/records.ts'
+import type { DoneRecord, FiredRecord, HandoverRecord, HolderRecord as LoopHolderRecord, LoopRecord } from '../src/loops/records.ts'
 import { createRegistry } from '../src/loops/registry.ts'
-import { createProjectRuntime, heldDeliver, type DeliverRequest, type DeliverResult, type ProjectDeps, type ProjectRuntime, type WaitingItem } from '../src/loops/run.ts'
+import type { DeliverRequest, DeliverResult } from '../src/loops/deliver.ts'
+import { createProjectRuntime, type ProjectDeps, type ProjectRuntime, type WaitingItem } from '../src/loops/run.ts'
 import type { Contribution, ContributionSource, HarnessResult, LoopEventDeclaration } from '../src/loops/service.ts'
 import { ensureRuntimeDir, openLoopStore, type LoopStore } from '../src/loops/store.ts'
 import { gitProjectTest, quickIo, scriptEntry, seedAgreed, SCRIPT_TEXT, tellEntry } from './loops-helpers.ts'
@@ -321,8 +322,8 @@ gitProjectTest('a harness action: done with a tell is delivered, skipped and fai
   const done = runs.filter((record): record is DoneRecord => record.kind === 'loop-done')
   assert.deepEqual(done.map(record => record.outcome), ['delivered', 'skipped', 'failed'])
   assert.deepEqual(done.map(record => record.reason), [undefined, '这次不用跑', '起不来'])
-  assert.equal(world.told.filter(line => line.level === 'degraded').length, 1, 'only the action that could not run degrades the row')
-  assert.match(world.told.find(line => line.level === 'degraded')?.text ?? '', /harness 动作失败/)
+  // This runtime was given no host, so it also says it cannot read who the main agent is (design §6.4); of the three actions only the one that could not run degrades the row.
+  assert.deepEqual(world.told.filter(line => line.level === 'degraded').map(line => line.text.replace(/：.*$/, '')), ['读不出主 Agent 的记录', `${EXECUTE.row.split('/')[1]}.trunk 的 harness 动作失败`])
   const fired = runs.filter((record): record is FiredRecord => record.kind === 'loop-fired')
   assert.deepEqual(fired.map(record => [record.source, record.plugin, record.row]), [['plugin', 'dsh-hourness', EXECUTE.row], ['plugin', 'dsh-hourness', EXECUTE.row], ['plugin', 'dsh-hourness', EXECUTE.row]])
   assert.deepEqual(fired.map(record => record.trigger.event), [HANDBACK.id, HANDBACK.id, HANDBACK.id])
@@ -382,13 +383,17 @@ gitProjectTest('a check entry is refused with check-missing, and nothing in the 
   await world.runtime.stop()
 })
 
-gitProjectTest('until the main agent\'s side is built a message waits: the run is held with the reason, and nothing is lost', async ({ root }) => {
-  const world = await worldOf(root, { pid: 9501, entries: [entryHearing('execute.handback')], deliver: request => heldDeliver(request) })
+gitProjectTest('a process that cannot read which session is the main agent holds the message: the run is held with the reason, and nothing is lost', async ({ root }) => {
+  const world = await worldOf(root, { pid: 9501, entries: [entryHearing('execute.handback')], deliver: () => Promise.resolve({ kind: 'held', reason: 'holder-unreadable' }) })
   await world.tick()
   await world.runtime.emit({ event: HANDBACK.id, key: 'handback:t-1:c-1', payload: { task: 't-1' }, from: EXECUTE.row })
   await world.tick(2_000)
-  const done = (await runsOf(world.store)).filter((record): record is DoneRecord => record.kind === 'loop-done')
+  const written = await runsOf(world.store)
+  const done = written.filter((record): record is DoneRecord => record.kind === 'loop-done')
   assert.deepEqual(done.map(record => [record.outcome, record.reason]), [['held', 'holder-unreadable']])
+  // Why it waited is a record of its own, so it can be looked up afterwards (design §6.10).
+  const holder = written.filter((record): record is LoopHolderRecord => record.kind === 'loop-holder')
+  assert.deepEqual(holder.map(record => [record.state, record.reason]), [['unknown', 'holder-unreadable']])
   const records = await runsOf(world.store)
   assert.equal(records.every(record => !JSON.stringify(record).includes(TELL)), true, 'no record carries what was said')
   await world.runtime.stop()

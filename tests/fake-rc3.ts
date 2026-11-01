@@ -11,7 +11,7 @@
  */
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { AgentLike, AssemblePayload, AssembledTool, InjectHost, InjectableServices, PluginContext, PreExecuteDecision, PreExecuteListener, PreStepDecision, PreStepPayload, ProvideHost, ServiceLookup, SessionLike, ToolDefinitionLike, ToolExecuteInput, ToolExecutionPayload, ToolFinalResult, UserNotice } from '../src/shared/dsh-min.ts'
+import type { AgentLike, AssemblePayload, AssembledTool, InjectHost, InjectableServices, PluginContext, PreExecuteDecision, PreExecuteListener, PreStepDecision, PreStepPayload, ProvideHost, ScheduleCatalogEntry, ScheduleRecordLike, ScheduleSelector, ScheduleService, ScheduleUpdateResult, ServiceLookup, SessionLike, ToolDefinitionLike, ToolExecuteInput, ToolExecutionPayload, ToolFinalResult, UserNotice, WorkspaceRegistryService } from '../src/shared/dsh-min.ts'
 
 type Listener = (...args: never[]) => unknown
 
@@ -235,6 +235,230 @@ export function fakeLive(): FakeLive {
     breakGoalChange(id, op, message = `${op} refused`, code = 'GOAL_INVALID_TRANSITION') { entries.get(id)?.changeBroken.set(op, { message, code }) },
   }
 }
+/** One call the schedule service took, in order, so a spec can see what the board asked of the host. */
+export interface ScheduleCall {
+  readonly op: 'create' | 'list' | 'catalog' | 'delete' | 'update'
+  readonly sessionId?: string
+  readonly id?: string
+}
+
+/**
+ * The host's schedule service as the loop board uses it (rc.3 dsh-schedule),
+ * with the refusals that decide what the board may do: a title that is empty
+ * or over 120 characters and a request without exactly one selector throw
+ * (schedule:93–97, 2083); `update` decodes `expected` by its whole key set, so
+ * a row of the catalog, which carries three keys more, is `invalid_rule`
+ * (schedule:74–77, 1806–1815, the failure of review F7), and an `expected`
+ * that is not the stored record is `schedule_conflict`; a timing change the
+ * host normalizes to the stored rule answers `updated: false` without a code
+ * (schedule:1824–1829); `delete` takes the row and its deliveries away
+ * (schedule:2164–2182); `catalog` carries `sessionId`, `status` and
+ * `lastDelivery` and is sorted by due time and then by id (schedule:2129–2136);
+ * every write sends `schedule/changed` afterwards (schedule:2231–2237).
+ */
+export interface FakeSchedule {
+  readonly service: ScheduleService
+  readonly calls: ScheduleCall[]
+  /** The catalog as the host would give it. */
+  tasks(): ScheduleCatalogEntry[]
+  /** Make a task the way a person does on the DSH task page (and the way a board of an earlier run left one). */
+  seed(sessionId: string, record: Partial<ScheduleRecordLike> & Pick<ScheduleRecordLike, 'title' | 'prompt'>): ScheduleCatalogEntry
+  /** Change a task the way a person does on the DSH task page: the board's reconciliation finds the fingerprint changed. */
+  edit(id: string, over: Partial<ScheduleRecordLike>): void
+  /** Deliver one task, as the host's own drive does: a one-shot becomes inactive, a repeating one gets its next due time (schedule:1576–1625). */
+  fire(id: string, options?: { readonly messageId?: string, readonly nextAt?: string }): void
+  /** Set the due time of a task, so a spec can let one fall due without the host's clock. */
+  due(id: string, at: string): void
+  /** Make the next call of this kind throw; every later one too. */
+  breakOp(op: ScheduleCall['op'], message?: string): void
+  /** How many times `schedule/changed` was sent. */
+  changed(): number
+}
+
+/** The host's workspace registry as the board reads it (rc.3 dsh-workspace): the archive set, the workspaces, and the stop event an archive with `stopActivity` sends. */
+export interface FakeWorkspaceRegistry {
+  readonly service: WorkspaceRegistryService
+  /** Archive a session with `stopActivity`: the set is written first, then the `workspace/session-stop` providers are asked (dsh-workspace:526–541, 621–629). */
+  archive(sessionId: string): Promise<void>
+  unarchive(sessionId: string): void
+  addWorkspace(path: string): void
+  /** Make the getter throw, as `requireState` does before the service starts (dsh-workspace:934–937). */
+  breakState(message?: string): void
+}
+
+/** The schedule service of rc.3, reduced to what the board calls, over a table in memory. */
+export function fakeSchedule(options: { readonly now?: () => number, readonly changed?: () => void } = {}): FakeSchedule {
+  const now = options.now ?? ((): number => Date.now())
+  const rows = new Map<string, { sessionId: string, record: ScheduleRecordLike, status: 'active' | 'inactive', lastDelivery?: { scheduledAt: string, deliveredAt: string, messageId: string } }>()
+  const calls: ScheduleCall[] = []
+  const broken = new Map<ScheduleCall['op'], string>()
+  let changes = 0
+  let made = 0
+  const iso = (at: number): string => new Date(at).toISOString()
+  const check = (op: ScheduleCall['op']): void => {
+    const why = broken.get(op)
+    if (why !== undefined) throw new Error(why)
+  }
+  const emit = (): void => {
+    changes += 1
+    options.changed?.()
+  }
+  const KEYS: Readonly<Record<string, readonly string[]>> = {
+    at: ['id', 'kind', 'title', 'prompt', 'scheduledAt'],
+    after: ['id', 'kind', 'title', 'prompt', 'afterSeconds', 'scheduledAt'],
+    every: ['id', 'kind', 'title', 'prompt', 'everySeconds', 'scheduledAt'],
+    daily: ['id', 'kind', 'title', 'prompt', 'time', 'timeZone', 'scheduledAt'],
+    weekly: ['id', 'kind', 'title', 'prompt', 'time', 'timeZone', 'weekdays', 'scheduledAt'],
+    cron: ['id', 'kind', 'title', 'prompt', 'expression', 'timeZone', 'scheduledAt'],
+  }
+  /** The whole-key decoding of the durable boundary: a value with a key more or less is not a record. */
+  const decodes = (value: unknown): boolean => {
+    if (typeof value !== 'object' || value === null) return false
+    const record = value as Record<string, unknown>
+    const expected = KEYS[String(record.kind)]
+    if (expected === undefined) return false
+    return expected.every(key => key in record) && Object.keys(record).every(key => expected.includes(key))
+  }
+  const time = (value: string): string => `${value.length === 5 ? `${value}:00` : value}${value.includes('.') ? '' : '.000'}`
+  const zone = (value: string): string => new Intl.DateTimeFormat('en-US', { timeZone: value }).resolvedOptions().timeZone
+  const recordOf = (id: string, request: { readonly title: string, readonly prompt: string } & ScheduleSelector): ScheduleRecordLike => {
+    const base = { id, title: request.title.trim(), prompt: request.prompt }
+    if ('at' in request) return { ...base, kind: 'at', scheduledAt: iso(Date.parse(request.at)) }
+    if ('every_seconds' in request) {
+      if (!Number.isSafeInteger(request.every_seconds) || request.every_seconds < 60) throw new Error('everySeconds must be a safe integer of at least 60')
+      return { ...base, kind: 'every', everySeconds: request.every_seconds, scheduledAt: iso(now() + request.every_seconds * 1000) }
+    }
+    if ('daily' in request) return { ...base, kind: 'daily', time: time(request.daily.time), timeZone: zone(request.daily.time_zone), scheduledAt: iso(now() + 3_600_000) }
+    if ('weekly' in request) return { ...base, kind: 'weekly', time: time(request.weekly.time), timeZone: zone(request.weekly.time_zone), weekdays: [...request.weekly.weekdays].sort((left, right) => left - right), scheduledAt: iso(now() + 3_600_000) }
+    return { ...base, kind: 'cron', expression: request.cron.expression, timeZone: zone(request.cron.time_zone), scheduledAt: iso(now() + 3_600_000) }
+  }
+  const selectors = ['at', 'after_seconds', 'every_seconds', 'daily', 'weekly', 'cron']
+  const catalogOf = (): ScheduleCatalogEntry[] => [...rows.values()]
+    .map(row => ({ ...row.record, sessionId: row.sessionId, status: row.status, ...(row.lastDelivery === undefined ? {} : { lastDelivery: row.lastDelivery }) }))
+    .sort((left, right) => left.scheduledAt.localeCompare(right.scheduledAt) || left.id.localeCompare(right.id))
+  const service: ScheduleService = {
+    create(sessionId, request) {
+      calls.push({ op: 'create', sessionId })
+      check('create')
+      const title = request.title.trim()
+      if (title.length === 0) throw new Error('title is required and must be non-empty after trimming.')
+      if (title.length > 120) throw new Error('title must be at most 120 characters.')
+      if (request.prompt.trim().length === 0) throw new Error('prompt must be non-empty after trimming.')
+      if (selectors.filter(key => Object.hasOwn(request, key)).length !== 1) throw new Error('Exactly one reminder selector is required.')
+      made += 1
+      const id = `schedule-fake-${String(made).padStart(3, '0')}`
+      const record = recordOf(id, request)
+      rows.set(id, { sessionId, record, status: 'active' })
+      emit()
+      return Promise.resolve(record)
+    },
+    list(request) {
+      calls.push({ op: 'list', sessionId: request.sessionId })
+      check('list')
+      return Promise.resolve([...rows.values()].filter(row => row.sessionId === request.sessionId && row.status === 'active').map(row => row.record))
+    },
+    catalog() {
+      calls.push({ op: 'catalog' })
+      check('catalog')
+      return Promise.resolve(catalogOf())
+    },
+    delete(request) {
+      calls.push({ op: 'delete', sessionId: request.sessionId, id: request.id })
+      check('delete')
+      const row = rows.get(request.id)
+      if (row === undefined || row.sessionId !== request.sessionId) return Promise.resolve({ id: request.id, deleted: false, code: 'schedule_not_found' })
+      rows.delete(request.id)
+      emit()
+      return Promise.resolve({ id: request.id, deleted: true })
+    },
+    update(request): Promise<ScheduleUpdateResult> {
+      calls.push({ op: 'update', sessionId: request.sessionId, id: request.id })
+      check('update')
+      if (!decodes(request.expected)) return Promise.resolve({ code: 'invalid_rule', message: 'expected must be a complete valid Schedule record.' })
+      const row = rows.get(request.id)
+      if (row === undefined || row.sessionId !== request.sessionId) return Promise.resolve({ id: request.id, updated: false as const, code: 'schedule_not_found' })
+      if (row.status === 'inactive') return Promise.resolve({ id: request.id, updated: false as const, code: 'schedule_ended' })
+      if (JSON.stringify(row.record) !== JSON.stringify(request.expected)) return Promise.resolve({ id: request.id, updated: false as const, code: 'schedule_conflict' })
+      const changeKind = request.change?.kind
+      const timed = request.change === undefined ? row.record : recordOf(request.id, { title: request.title ?? row.record.title, prompt: request.prompt ?? row.record.prompt, ...Object.fromEntries(Object.entries(request.change).filter(([key]) => key !== 'kind')) } as { readonly title: string, readonly prompt: string } & ScheduleSelector)
+      const next: ScheduleRecordLike = { ...timed, id: request.id, ...(changeKind === undefined ? {} : {}), title: request.title ?? row.record.title, prompt: request.prompt ?? row.record.prompt }
+      // A change the host normalizes to the stored rule writes nothing and is not an error (schedule:1824–1829).
+      if (JSON.stringify({ ...next, scheduledAt: row.record.scheduledAt }) === JSON.stringify(row.record)) return Promise.resolve({ id: request.id, updated: false as const, record: row.record })
+      rows.set(request.id, { ...row, record: next })
+      emit()
+      return Promise.resolve({ id: request.id, updated: true as const, record: next })
+    },
+  }
+  return {
+    service,
+    calls,
+    tasks: catalogOf,
+    seed(sessionId, record) {
+      made += 1
+      const id = record.id ?? `schedule-seed-${String(made).padStart(3, '0')}`
+      const full: ScheduleRecordLike = { kind: 'daily', time: '09:00:00.000', timeZone: 'Asia/Shanghai', scheduledAt: iso(now() + 3_600_000), ...record, id, title: record.title, prompt: record.prompt }
+      rows.set(id, { sessionId, record: full, status: 'active' })
+      return { ...full, sessionId, status: 'active' }
+    },
+    edit(id, over) {
+      const row = rows.get(id)
+      if (row !== undefined) rows.set(id, { ...row, record: { ...row.record, ...over } })
+    },
+    fire(id, fired = {}) {
+      const row = rows.get(id)
+      if (row === undefined) return
+      const lastDelivery = { scheduledAt: row.record.scheduledAt, deliveredAt: iso(now()), messageId: fired.messageId ?? `message-${id}-${String(changes)}` }
+      const repeating = row.record.kind !== 'at' && row.record.kind !== 'after'
+      rows.set(id, {
+        ...row,
+        record: { ...row.record, scheduledAt: fired.nextAt ?? (repeating ? iso(now() + 86_400_000) : row.record.scheduledAt) },
+        status: repeating ? 'active' : 'inactive',
+        lastDelivery,
+      })
+      emit()
+    },
+    due(id, at) {
+      const row = rows.get(id)
+      if (row !== undefined) rows.set(id, { ...row, record: { ...row.record, scheduledAt: at } })
+    },
+    breakOp(op, why = `${op} failed`) { broken.set(op, why) },
+    changed: () => changes,
+  }
+}
+
+/** The workspace registry of rc.3, reduced to the two members the board reads, over a set in memory. */
+export function fakeWorkspaceRegistry(options: { readonly stop?: (sessionId: string) => Promise<void> | void } = {}): FakeWorkspaceRegistry {
+  const archived = new Set<string>()
+  const workspaces: Array<{ readonly path: string }> = []
+  let fault: string | undefined
+  const requireState = (): void => {
+    if (fault !== undefined) throw new Error(fault)
+  }
+  return {
+    service: {
+      get archivedSessionIds() {
+        requireState()
+        return [...archived]
+      },
+      list() {
+        requireState()
+        return workspaces
+      },
+    },
+    async archive(sessionId) {
+      requireState()
+      archived.add(sessionId)
+      await options.stop?.(sessionId)
+    },
+    unarchive(sessionId) {
+      requireState()
+      archived.delete(sessionId)
+    },
+    addWorkspace(path) { workspaces.push({ path }) },
+    breakState(message = 'workspace registry is not started yet') { fault = message },
+  }
+}
+
 export interface FakeRuntime {
   /** The context every row receives; cordis contexts also read and provide services. */
   readonly ctx: PluginContext & ServiceLookup & ProvideHost
@@ -497,7 +721,7 @@ export function fakeRuntime(options: { natives?: readonly string[], calls?: Arra
       if (opts?.prepend === true) listeners.unshift(entry)
       else listeners.push(entry)
       return () => { listeners.splice(listeners.indexOf(entry), 1) }
-    }) as PluginContext['on'],
+    }),
   }
   // rc.3 session header: `cwd` is present when the store recorded a working directory (session:1820–1826).
   const header = options.cwd === undefined ? { id: 'agent-1' } : { id: 'agent-1', cwd: options.cwd }

@@ -41,6 +41,7 @@
  */
 import { projectOf } from '../data/project-root.ts'
 import type { LockEnvironment } from '../data/lock.ts'
+import { projectKey } from '../graph/main-agent-holder.ts'
 import { rowJournal } from '../memory/audit.ts'
 import { dataHomes } from '../shared/data-home.ts'
 import type { AgentCommandInvocationLike, AgentLike, CommandDefinitionLike, CommandResultLike, CommandsHost, InjectHost, PreExecuteHost, PreExecuteListener, ProvideHost, ServiceLookup } from '../shared/dsh-min.ts'
@@ -50,13 +51,16 @@ import { realStoreIo } from '../rules/store.ts'
 import { statSync } from 'node:fs'
 import { realLockEnvironment } from '../data/lock.ts'
 import { pricingService } from '../shared/pricing.ts'
+import { scheduleOf } from './bind.ts'
 import { createBoards, realDelay, type Delay } from './boards.ts'
 import { CHANNEL_EVENTS, CHANNEL_PEAK_CHANGED } from './channel.ts'
 import { LOOPS_HINT, NOT_A_PROJECT, runLoopsCommand } from './commands.ts'
 import { LOOP_ACTIONS, LOOP_CONTRIBUTION, LOOP_DEFAULTS } from './defaults.ts'
-import { installLoopsFileGuard, LOOPS_FILES_ONLY } from './guard.ts'
+import { installLoopsFileGuard, installLoopsScheduleGuard, LOOPS_FILES_ONLY, LOOPS_SCHEDULE_TOOLS } from './guard.ts'
+import { holderRecordFor } from './holder.ts'
 import { LOOPS_KEY, loopsProjection } from './projection.ts'
 import { createRegistry, LOOPS_SOURCE } from './registry.ts'
+import { installLoopStepNotice, machineStepFile } from './reminder.ts'
 import { BEAT_MS, createProjectRuntime, type ProjectRuntime } from './run.ts'
 import { LOOPS_DECLARATION, LOOPS_SERVICE, type Contribution, type LoopEventInput, type LoopsService } from './service.ts'
 
@@ -120,6 +124,10 @@ export interface LoopsContext extends Partial<ProvideHost>, Partial<InjectHost>,
   readonly on?: {
     (event: 'agent/created', listener: (payload: { agent: AgentLike }) => Promise<void> | void): () => void
     (event: 'tools/pre-execute', listener: PreExecuteListener, options?: { prepend?: boolean }): () => void
+    /** `schedule/changed` has no payload and is sent after a task write landed (schedule:2231–2237). */
+    (event: 'schedule/changed', listener: () => Promise<void> | void): () => void
+    /** `workspace/session-stop` is sent only when a session is archived with `stopActivity` (dsh-workspace:540, 623). */
+    (event: 'workspace/session-stop', listener: (payload: { sessionId: string }) => Promise<void> | void): () => void
   }
 }
 
@@ -181,7 +189,7 @@ export function apply(ctx: LoopsContext, config: LoopsConfig = {}): () => void {
         `循环板自己的 ${registry.entries().length} 项条目已登记`,
         ...notes,
         ...(setup.command === undefined ? [`命令 /${LOOPS_COMMAND} 已注册`] : []),
-        ...(setup.gate === undefined ? [`${LOOPS_FILES_ONLY} 已装上`] : []),
+        ...(setup.gate === undefined ? [`${LOOPS_FILES_ONLY} 与 ${LOOPS_SCHEDULE_TOOLS} 已装上`] : []),
         ...(setup.projection === undefined ? [`会话投影 ${LOOPS_KEY} 已注册`] : []),
         ...faults,
         ...listed,
@@ -227,6 +235,7 @@ export function apply(ctx: LoopsContext, config: LoopsConfig = {}): () => void {
       delay,
       pid: config.lock?.pid ?? process.pid,
       boot: () => config.lock?.bootTime?.() ?? realLockEnvironment.bootTime?.() ?? Date.now(),
+      ctx,
       report: say,
       peak: () => {
         const pricingRead = pricingService(ctx)
@@ -236,6 +245,68 @@ export function apply(ctx: LoopsContext, config: LoopsConfig = {}): () => void {
     })
     running.set(root, { runtime, touchedAt: io.now() })
     return runtime
+  }
+
+  /** The projects this process runs whose main agent is this session (design §6.2: an archived holder session is reconciled at once). */
+  function runtimeOfHolder(sessionId: string): ProjectRuntime | undefined {
+    for (const held of running.values()) {
+      if (held.runtime.holder().session === sessionId) return held.runtime
+    }
+    return undefined
+  }
+
+  /** The reminders the board bound in a project, for the schedule gate; empty for a project this process does not run. */
+  function bindingsOf(root: string): ReadonlySet<string> {
+    const runtime = running.get(root)?.runtime
+    return runtime === undefined ? new Set() : runtime.bindings()
+  }
+
+  /**
+   * The board's line at a step of the main agent, and the two notes of a walk
+   * (reminder.ts): installed on every session of a project, since the holder
+   * record decides at each step whether this session is the main agent and the
+   * record moves with `/wish here`.
+   */
+  function stepNotice(agent: AgentLike, root: string): void {
+    try {
+      const userHome = dataHomes(ctx, config.home).userHome
+      const store = boards.storeOf(root)
+      const stop = installLoopStepNotice(agent, {
+        project: root,
+        projectKey: projectKey(root),
+        mainStep: store.paths.mainStep,
+        ...(userHome === undefined ? {} : { lastStep: machineStepFile(userHome) }),
+        io,
+        now: io.now,
+        isHolder: (sessionId) => {
+          const reading = holderRecordFor(ctx, root)
+          return reading.kind === 'held' && reading.record.sessionId === sessionId
+        },
+        settle: async () => { await running.get(root)?.runtime.settleTasks() },
+        runOf: entry => runOfEntry(root, entry),
+        entryOf: scheduleId => running.get(root)?.runtime.binding(scheduleId)?.entry,
+        peak: (atMs) => {
+          const pricingRead = pricingService(ctx)
+          return pricingRead === undefined ? undefined : pricingRead.peak(atMs)
+        },
+        warn: text => { console.warn(`${name}: ${text}`) },
+      })
+      if (stop !== undefined) disposers.push(stop)
+    }
+    catch (error) {
+      say(`主 Agent 的走步记录没装上：${message(error)}`, 'info')
+    }
+  }
+
+  /** The run of the last delivery of one entry, as the runtime's records have it. */
+  function runOfEntry(root: string, entry: string): string | undefined {
+    const runtime = running.get(root)?.runtime
+    if (runtime === undefined) return undefined
+    for (const id of runtime.bindings()) {
+      const found = runtime.binding(id)
+      if (found?.entry === entry) return found.run
+    }
+    return undefined
   }
 
   /** One beat: every project that runs, and the projects that have gone quiet are given up. */
@@ -288,12 +359,31 @@ export function apply(ctx: LoopsContext, config: LoopsConfig = {}): () => void {
   if (typeof ctx.on === 'function') {
     try {
       const journal = rowJournal(name, () => dataHomes(ctx, config.home))
-      disposers.push(installLoopsFileGuard({ ctx: ctx as PreExecuteHost & ServiceLookup, now: io.now, journal: (record) => { void journal.violation(record) } }))
+      const guardCtx = ctx as PreExecuteHost & ServiceLookup
+      const report = (record: Parameters<typeof journal.violation>[0]): void => { void journal.violation(record) }
+      disposers.push(installLoopsFileGuard({ ctx: guardCtx, now: io.now, journal: report }))
+      disposers.push(installLoopsScheduleGuard({
+        ctx: guardCtx,
+        now: io.now,
+        journal: report,
+        bindings: bindingsOf,
+        taskOf: async (id) => {
+          const schedule = scheduleOf(ctx)
+          if (schedule === undefined) return undefined
+          try {
+            return (await schedule.catalog()).find(task => task.id === id)
+          }
+          catch {
+            // The catalog cannot be read: the call passes and the reconciliation puts the task back afterwards (design §6.2).
+            return undefined
+          }
+        },
+      }))
       setup.gate = undefined
     }
     catch (error) {
-      console.warn(`${name}: the gate ${LOOPS_FILES_ONLY} is not installed, nothing keeps the board's files to the board: ${message(error)}`)
-      setup.gate = `${LOOPS_FILES_ONLY} 没装上，没有什么拦着别人写循环板的文件：${message(error)}`
+      console.warn(`${name}: the gates ${LOOPS_FILES_ONLY} and ${LOOPS_SCHEDULE_TOOLS} are not installed, nothing keeps the board's files and reminders to the board: ${message(error)}`)
+      setup.gate = `${LOOPS_FILES_ONLY} 与 ${LOOPS_SCHEDULE_TOOLS} 没装上，没有什么拦着别人写循环板的文件与改它的到点提醒：${message(error)}`
     }
     try {
       // A session that starts in a project is the host meeting that project: its files are settled, its view written, and this process starts running it.
@@ -302,12 +392,32 @@ export function apply(ctx: LoopsContext, config: LoopsConfig = {}): () => void {
         const project = typeof cwd === 'string' && cwd !== '' ? projectOf(cwd) : undefined
         if (project === undefined) return
         await boards.refresh(project.root)
-        await runtimeOf(project.root)?.beat()
+        const runtime = runtimeOf(project.root)
+        stepNotice(agent, project.root)
+        await runtime?.beat()
       }))
     }
     catch (error) {
       console.warn(`${name}: the session listener is not registered, a project's files are settled only when /${LOOPS_COMMAND} runs: ${message(error)}`)
       problems.push(`会话事件没注册上：${message(error)}`)
+    }
+    try {
+      // DSH says a task was written: the reconciliation does not wait for the next beat (design §6.2).
+      disposers.push(ctx.on('schedule/changed', async () => {
+        for (const held of [...running.values()]) await held.runtime.settleTasks()
+      }))
+    }
+    catch (error) {
+      say(`DSH 的 schedule/changed 没监听上，任务对账只靠每 60 秒一拍：${message(error)}`, 'info')
+    }
+    try {
+      // A session archived with stopActivity loses its tasks (dsh-workspace:540, 623; schedule:2056-2058): the board settles that project at once.
+      disposers.push(ctx.on('workspace/session-stop', async ({ sessionId }) => {
+        await runtimeOfHolder(sessionId)?.settleTasks()
+      }))
+    }
+    catch (error) {
+      say(`DSH 的 workspace/session-stop 没监听上，主 Agent 的会话被归档至多 60 秒后才发现：${message(error)}`, 'info')
     }
   }
   else setup.gate = `宿主没有 on，${LOOPS_FILES_ONLY} 装不上，没有什么拦着别人写循环板的文件`

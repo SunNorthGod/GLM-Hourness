@@ -26,4 +26,5 @@ export const GUARD_RULES: readonly GuardRuleEntry[] = [
   { id: 'file-tools-only', row: 'guard', mode: 'enforce', title: '文件只用专用工具改：shell 里写文件会被拒' },
   { id: 'graph-files-only', row: 'graph', mode: 'enforce', title: '项目图的文件只经图工具改' },
   { id: 'files-only', row: 'loops', mode: 'enforce', title: '循环板的条目、脚本和运行时文件只由循环板自己写：写这些文件的调用会被拒' },
+  { id: 'schedule-tools', row: 'loops', mode: 'enforce', title: '循环板自己的 DSH 提醒不经定时工具改，也不许冒充循环板建提醒' },
 ]

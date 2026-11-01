@@ -32,6 +32,7 @@
 import { open, rename, stat } from 'node:fs/promises'
 import { matchesFilter, type LoopEventDeclaration } from './trigger.ts'
 import { ROTATE_BYTES, appendLine, readText, stamp, writeAtomic, type StoreIo } from '../rules/store.ts'
+import type { HolderMemory } from './holder.ts'
 import type { LoopEntryDefinition } from './model.ts'
 import { eventId, firedRecord, type FiredRecord, type LoopRecord } from './records.ts'
 import type { EmitResult, LoopEventRecord } from './service.ts'
@@ -123,7 +124,7 @@ interface PendingGroup {
   cause?: string
 }
 
-interface RuntimeState {
+export interface RuntimeState {
   /** Where in the inbox the reading stands. */
   position: { bytes: number, lastId?: string }
   /** The dedupe keys, by namespace and key. */
@@ -143,10 +144,54 @@ interface RuntimeState {
   waitingHour?: string
   /** The runs whose own execution is going on, with the entry they belong to: the self-loop window is measured from them. */
   causes: Record<string, { entry: string, at: string }>
+  /** The DSH reminder of each time entry, by entry id (design §6.2 `bindings`). */
+  bindings: Record<string, Binding>
+  /** The messages that could not be delivered yet, oldest first (design §6.4). */
+  held: HeldMessage[]
+  /** What the board last read about the main agent's session, so one `loop-holder` record is written for each change. */
+  holder?: { state: string, reason?: string, session?: string, at: string }
+  /** What reaching the holder session has answered so far (design §6.4). */
+  holderMemory: HolderMemory
+  /** Entries the execution table does not hold now, and since when: `entry-gone` waits them out (design §6.2, review F41). */
+  missing: Record<string, { since: string, checks: number, at: string }>
+  /** The day a line about one task was last written on the page, so the same task says it once a day (design §6.2 item 3). */
+  said: Record<string, string>
+  /** The day the 30-day trim of `removed-tasks.jsonl` last ran. */
+  trimmedDay?: string
 }
 
-function emptyState(): RuntimeState {
-  return { position: { bytes: 0 }, keys: {}, pending: {}, last: {}, files: {}, waiting: {}, causes: {} }
+/** One DSH reminder the board holds for one entry (design §6.2). */
+export interface Binding {
+  readonly scheduleId: string
+  readonly sessionId: string
+  /** The digest of the title, the text and the timing of the entry, as the board last wrote them. */
+  readonly specDigest: string
+  /** The record DSH last gave back, reduced to the keys of its kind. */
+  readonly fingerprint: string
+  /** A one-shot reminder that has fired: DSH keeps it inactive and the board does not make it again. */
+  readonly done?: boolean
+  /** The message id of the last delivery the board has seen, so the next one is one run (design §6.2 "after the due time"). */
+  readonly deliveredMessageId?: string
+  /** When the board started waiting for a delivery that DSH has not made (the later of the due time and the start of this run of the project). */
+  readonly dueSince?: string
+}
+
+/** One message of the board that nobody could be told yet (design §6.4). */
+export interface HeldMessage {
+  readonly at: string
+  readonly entry: string
+  readonly run: string
+  readonly title: string
+  readonly text: string
+  readonly wake: boolean
+  readonly reason: string
+  /** The session the result was for, when it was not the main agent's. */
+  readonly session?: string
+}
+
+/** The state a project starts from, and the one a state file that cannot be read is rebuilt as (design §6.8). */
+export function emptyState(): RuntimeState {
+  return { position: { bytes: 0 }, keys: {}, pending: {}, last: {}, files: {}, waiting: {}, causes: {}, bindings: {}, held: [], holderMemory: {}, missing: {}, said: {} }
 }
 
 export interface InboxDeps {
@@ -641,6 +686,11 @@ function readState(paths: LoopsPaths, nowMs: number): RuntimeState {
       files: value.files ?? {},
       waiting: value.waiting ?? {},
       causes: value.causes ?? {},
+      bindings: value.bindings ?? {},
+      held: Array.isArray(value.held) ? value.held : [],
+      holderMemory: value.holderMemory ?? {},
+      missing: value.missing ?? {},
+      said: value.said ?? {},
     }
   }
   catch {

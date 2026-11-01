@@ -7,18 +7,19 @@
  * a part. The storage under it is in loops-store.spec.ts.
  */
 import assert from 'node:assert/strict'
-import { appendFile, readFile, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
 import test from 'node:test'
-import { projectKey } from '../src/graph/main-agent-holder.ts'
+import { holderFileOf, projectKey } from '../src/graph/main-agent-holder.ts'
 import { inject, LOOPS_COMMAND, name } from '../src/loops/index.ts'
+import { LOOP_STEP_SOURCE, machineStepFile, STEP_NOTE_MS, type MachineStepNote, type StepNote } from '../src/loops/reminder.ts'
 import { LOOPS_KEY } from '../src/loops/projection.ts'
 import { LOOPS_DECLARATION, loopsService } from '../src/loops/service.ts'
 import { NOT_A_PROJECT } from '../src/loops/commands.ts'
 import { entryFileText } from '../src/loops/model.ts'
 import { openLoopStore } from '../src/loops/store.ts'
 import type { LoopsView } from '../src/loops/view.ts'
-import { entryFileOf, quickIo, recordsOf, scriptEntry, SCRIPT_TEXT, seedAgreed, tellEntry, writeFiles } from './loops-helpers.ts'
+import { entryFileOf, NOW, quickIo, recordsOf, scriptEntry, SCRIPT_TEXT, seedAgreed, tellEntry, writeFiles } from './loops-helpers.ts'
 import { withLoopsRow, type LoopsFixture } from './loops-host.ts'
 
 const A = 'u-0a1b2c3d'
@@ -247,3 +248,26 @@ rowTest('without a session controller the row registers everything and says it r
   assert.equal(loopsService(runtime.ctx), undefined, 'the service and the beat leave with the controller')
   assert.equal(beats.length, 0)
 }, { controller: false })
+
+rowTest('the main agent walking a step leaves the two notes of the walk, and a step with no reminder of the board gets no line', async ({ root, runtime }) => {
+  // The holder record of this project names the fake agent's session, as /wish would have left it.
+  const file = holderFileOf(join(root, 'user'), join(root, 'docs', 'graph'))
+  await mkdir(dirname(file), { recursive: true })
+  await writeFile(file, `${JSON.stringify({ version: 1, sessionId: runtime.agent.id, graphDir: join(root, 'docs', 'graph'), since: new Date(NOW - 3_600_000).toISOString(), commandId: 'command-1' })}\n`)
+  await runtime.create()
+  const mainStep = join(root, '.llm', 'loops', 'main-step.json')
+  const lastStep = machineStepFile(join(root, 'user'))
+  // A step that admits a message of its own: installStepNotice does not build on an empty first step.
+  const step = { messages: [{ role: 'user', content: [{ type: 'text', text: 'hello' }] }], step: 2 }
+  await runtime.preStep(step)
+  const note = JSON.parse(await readFile(mainStep, 'utf8')) as StepNote
+  const machine = JSON.parse(await readFile(lastStep, 'utf8')) as MachineStepNote
+  assert.equal(note.session, runtime.agent.id)
+  assert.equal(machine.projectKey, projectKey(root))
+  assert.equal(machine.project, root)
+  assert.equal(STEP_NOTE_MS, 60_000)
+  // A step with no reminder of the board's in it gets no line: the step keeps exactly the messages it admitted.
+  const plain = await runtime.preStep(step)
+  assert.equal(plain.messages.length, step.messages.length)
+  assert.equal(JSON.stringify(plain.messages).includes(LOOP_STEP_SOURCE), false)
+})

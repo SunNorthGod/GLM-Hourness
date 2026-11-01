@@ -15,7 +15,7 @@ import type { LoopsProjectionState } from '../src/loops/projection.ts'
 import { DATA_SERVICE } from '../src/shared/data-home.ts'
 import type { AgentCommandInvocationLike, AgentLike, CommandDefinitionLike, CommandResultLike, SessionProjectionsService, ToolFinalResult } from '../src/shared/dsh-min.ts'
 import { collectHealth } from '../src/shared/health.ts'
-import { execTool, fakeInjector, fakeRuntime, readViolations, type ExecTool, type FakeRuntime, type ReadViolations } from './fake-rc3.ts'
+import { execTool, fakeInjector, fakeRuntime, fakeSchedule, readViolations, type ExecTool, type FakeRuntime, type FakeSchedule, type ReadViolations } from './fake-rc3.ts'
 import { git, quickIo } from './loops-helpers.ts'
 
 export interface LoopsFixture {
@@ -44,6 +44,8 @@ export interface LoopsFixture {
   readonly controller: (there: boolean) => void
   /** The beats the row asked for, so a test drives them itself. */
   readonly beats: Array<{ readonly ms: number, readonly run: () => void }>
+  /** The host's schedule service, which the row binds its time entries to (design §6.2). */
+  readonly schedule: FakeSchedule
 }
 
 export interface LoopsFixtureOptions {
@@ -61,7 +63,13 @@ export interface LoopsFixtureOptions {
   readonly controller?: boolean
 }
 
-const NATIVES = ['pwsh', 'write', 'edit', 'read', 'str_replace_editor']
+/**
+ * The natives the gates judge: the file tools, the shell, and the four
+ * reminder tools the Web composition mounts over the host's schedule service
+ * (rc.3 dsh-tool-schedule registers exactly these names, tool-schedule:508,
+ * 548, 570, 600).
+ */
+const NATIVES = ['pwsh', 'write', 'edit', 'read', 'str_replace_editor', 'schedule_create', 'schedule_list', 'schedule_update', 'schedule_delete']
 
 /** A timer that holds what it is asked to run until a test fires it; firing or cancelling takes it out of `held`. */
 function fakeDelay(held: LoopsFixture['delayed']): NonNullable<LoopsConfig['delay']> {
@@ -106,6 +114,9 @@ export async function withLoopsRow(body: (fixture: LoopsFixture) => Promise<void
       ...(missing.has('inject') ? {} : { inject: injector.inject }),
     } as unknown as LoopsContext
     const io = quickIo(options.now === undefined ? {} : { now: options.now })
+    // The host's schedule service, as the Web composition mounts it; the row reads it through ctx.get (design §10.1).
+    const schedule = fakeSchedule({ now: io.now })
+    runtime.services.set('schedule', schedule.service)
     const config: LoopsConfig = {
       io,
       delay: fakeDelay(delayed),
@@ -140,6 +151,7 @@ export async function withLoopsRow(body: (fixture: LoopsFixture) => Promise<void
       projections,
       delayed,
       beats,
+      schedule,
       start,
       provideProjections,
       controller,

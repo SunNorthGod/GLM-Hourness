@@ -73,6 +73,10 @@ export interface LoopsPaths {
   readonly handover: string
   /** The record of every run, until the metrics stream lands (design §6.10). */
   readonly runs: string
+  /** The whole text of every DSH reminder the board deleted, written before the delete (design §6.2). */
+  readonly removedTasks: string
+  /** The last step of the main agent's session of this project, written by every process (design §6.1). */
+  readonly mainStep: string
 }
 
 export function loopsPaths(projectRoot: string): LoopsPaths {
@@ -91,6 +95,8 @@ export function loopsPaths(projectRoot: string): LoopsPaths {
     runner: join(runtimeDir, 'runner.lock'),
     handover: join(runtimeDir, 'handover.json'),
     runs: join(runtimeDir, 'runs.jsonl'),
+    removedTasks: join(runtimeDir, 'removed-tasks.jsonl'),
+    mainStep: join(runtimeDir, 'main-step.json'),
   }
 }
 

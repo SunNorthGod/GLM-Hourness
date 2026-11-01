@@ -80,7 +80,37 @@ export interface HandoverRecord {
   readonly session?: string
 }
 
-export type LoopRecord = FiredRecord | DoneRecord | DuplicateRecord | HandoverRecord
+/** Somebody changed, deleted or did not deliver a reminder of the board's in DSH (design §6.10). */
+export interface DriftRecord {
+  readonly kind: 'loop-drift'
+  readonly at: string
+  readonly project: string
+  readonly entry: string
+  readonly what: 'edited' | 'deleted' | 'not-delivered' | 'orphan'
+}
+
+/** Whether the main agent's session can be told, and why not (design §6.4, §6.10): the one record that says afterwards why messages waited. */
+export interface HolderRecord {
+  readonly kind: 'loop-holder'
+  readonly at: string
+  readonly project: string
+  readonly session?: string
+  readonly state: 'ok' | 'none' | 'archived' | 'not-found' | 'elsewhere' | 'unknown'
+  readonly reason?: string
+}
+
+/** The board deleted one DSH reminder; the whole text of it is in `removed-tasks.jsonl` and only its id is here (design §6.2, §6.10). */
+export interface TaskDeleteRecord {
+  readonly kind: 'loop-task-delete'
+  readonly at: string
+  readonly project: string
+  readonly entry?: string
+  readonly scheduleId: string
+  readonly why: 'moved' | 'entry-gone' | 'duplicate' | 'no-holder' | 'holder-archived' | 'holder-not-found' | 'repair' | 'not-delivered'
+  readonly deleted: boolean
+}
+
+export type LoopRecord = FiredRecord | DoneRecord | DuplicateRecord | HandoverRecord | DriftRecord | HolderRecord | TaskDeleteRecord
 
 /** `run-<12 hex digits>`: one run of one entry, named in both of its records and in the message the main agent gets. */
 export function runId(): string {

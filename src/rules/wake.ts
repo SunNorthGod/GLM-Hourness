@@ -38,8 +38,13 @@ export function agentsOf(ctx: ServiceLookup): MessageableAgentsService | undefin
  * other idle agent gets a followup, which opens a turn. A goal service that is
  * absent, or throws because the agent is not its live instance (dsh-goal
  * `assertLive`, goal:611–614), means no goal.
+ *
+ * The loop board reaches the main agent the same way (loops design §6.4 item 3
+ * says "the same wake table as the rules board"), so it calls this; its only
+ * difference, that a message which does not wake the session is injected, is
+ * judged before it gets here.
  */
-function wayTo(ctx: ServiceLookup, agent: MessageableAgentLike): 'steer' | 'inject' | 'followup' {
+export function wayTo(ctx: ServiceLookup, agent: MessageableAgentLike): 'steer' | 'inject' | 'followup' {
   if (agent.status === 'running') return 'steer'
   const goals: unknown = typeof ctx.get === 'function' ? ctx.get('goals') : undefined
   if (typeof (goals as GoalsService | undefined)?.get !== 'function') return 'followup'

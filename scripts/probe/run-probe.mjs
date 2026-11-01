@@ -26,8 +26,10 @@
  * level: a GLM subagent's goal is paused and resumed, and what the row does to
  * it when the host exits). The loop board scenario (loops) runs in a scratch
  * git clone that already carries a person's entry file: the board takes the
- * entry in, and loops:files-only refuses a file tool and a shell command that
- * write into the board's own files. The graph panel scenarios run the
+ * entry in, loops:files-only refuses a file tool and a shell command that
+ * write into the board's own files, and both of the row's gates are installed
+ * (the three calls loops:schedule-tools judges cannot be made in a headless
+ * host, which mounts no schedule service). The graph panel scenarios run the
  * bundle's /graph-apply and /graph-run handlers mid-step for the session;
  * the GLM and non-GLM scenarios run /hourness and /hourness-status at their
  * last step, after /glm-status is recorded.
@@ -1412,6 +1414,8 @@ const checks = [
   ['loops: the runtime directory stays out of git (.llm/ in the exclude file, its own .gitignore) and git status lists nothing after the board wrote', loopsIgnore === '*\n' && loopsExclude.split('\n').includes('.llm/') && loopsGitStatus === '', `ignore ${JSON.stringify(loopsIgnore)}; exclude ${JSON.stringify(loopsExclude.split('\n').filter(line => line.includes('llm')))}; status ${JSON.stringify(loopsGitStatus)}`],
   ['loops: the read of the entry file passes, /glm-status lists the row in effect, and every request declares the loop board in the guard section', lastToolResult(loops.steps[3])?.isError !== true && (lastToolResult(loops.steps[3])?.text ?? '').includes(LOOPS_ENTRY_ID) && loopsHealth.loops?.status === ACTED && loops.steps.every(step => step.system.includes(LOOPS_DECLARATION)), `${healthLine(loopsHealth, 'loops')} (${loopsHealth.loops?.reason ?? ''}); declared ${loops.steps.filter(step => step.system.includes(LOOPS_DECLARATION)).length}/${loops.steps.length}`],
   ['loops: a headless host has no session controller, so the row says it runs no entry here, hands out no service, takes no run lock and writes nothing of the runtime, while its gate and its files work', (loopsHealth.loops?.reason ?? '').includes('这个进程不跑循环板（没有会话控制器）') && loopsRanNothing.length === 0 && loops.steps.every(step => step.system.includes(LOOPS_DECLARATION)), `reason ${loopsHealth.loops?.reason ?? 'none'}; runtime files ${JSON.stringify(loopsRanNothing)}`],
+  // Both gates of the row are installed on the real runtime from the day the row is enabled (d-code-rules-enforce). The three calls loops:schedule-tools judges cannot be made here: the headless template mounts neither dsh-schedule nor the session controller, so the reminder tools are not registered (loops design §10.2 V1; L2 covers the three in tests/loops-guard.spec.ts).
+  ['loops: the row installs both of its gates and says so, and no reminder of the board can exist in a host without the schedule service', (loopsHealth.loops?.reason ?? '').includes('loops:files-only 与 loops:schedule-tools 已装上') && !(loopsHealth.loops?.reason ?? '').includes('定时服务'), `reason ${loopsHealth.loops?.reason ?? 'none'}`],
   ['rules-peak-hourness: the row is in effect without the pricing service (a supported combination) and the main agent\'s tool call ran', aloneHealth.rules?.status === ACTED && aloneHealth.rules.reason.includes('读不出是不是高峰') && lastToolResult(rulesPeakAlone.steps[1])?.isError !== true && !stderrOf('rules-peak-hourness').includes('dsh-glm-hourness/rules'), `${healthLine(aloneHealth, 'rules')} (${aloneHealth.rules?.reason ?? ''})`],
   ...designChecks(),
   ['non-glm boot: the runtime reached the probe provider', plainFirst !== undefined, `exit ${plain.status}, ${plain.steps.length} step(s)`],
