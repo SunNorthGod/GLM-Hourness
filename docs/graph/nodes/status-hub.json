@@ -1,0 +1,26 @@
+{
+  "id": "status-hub",
+  "type": "feature",
+  "title": "状态板块：各模块的状态只交一次，面板、晨报、周报与主 Agent 都从这里读",
+  "status": "doing",
+  "parent": "orch",
+  "body": "依据 d-status-hub。设计放在 .agents/tasks/status-hub/。范围：状态条目的形状（谁交的、给谁看、何时的、来源）、与面板板块登记表的关系（复用，不另起）、晨报周报怎样成为它的显示、主 Agent 怎样读（只读 Agent 也能读的条目）、取不到时怎样降级并出声；以及面板、M4、晨报、指标等设计各自要改的对接部分。",
+  "history": [
+    {
+      "at": "2026-11-01T04:58:21.220Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "落实 d-status-hub",
+      "relay": "可以",
+      "to": "approved"
+    },
+    {
+      "at": "2026-11-01T04:59:02.080Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "运行 design-status-hub 已开：写状态板块的短设计与各设计的对接改动表，复审后写一页稿。",
+      "from": "approved",
+      "to": "doing"
+    }
+  ]
+}
