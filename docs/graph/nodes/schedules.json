@@ -377,6 +377,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "运行 feat-012-schedule-binding 已开（单 agent 一步派发，接 f9cd8f8）：做 FEAT-012／计划 L5 —— 按时间触发的条目经 DSH 排程服务绑到主 Agent 会话，按计划里追加的那条附注核对持有者模式而不是信过期记录；主 Agent 的持有者契约只读 M3 附录，不依赖未合入的代码，取不到就按设计降级。排程服务属宿主契约，要写明核过哪些事实、在哪核的。四道检查串行跑（按本节点上的裁定），门禁一过先提交推送再写报告。本节点已是 doing。"
+    },
+    {
+      "at": "2026-11-01T13:50:47.790Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "FEAT-012（计划 L5：按时间触发的条目经 DSH 排程服务绑到主 Agent 会话）完成并推送：提交 c6fbf24 在 rules-loops-impl 上。四道检查串行跑、在被提交的树上全部退出码 0，probe 195/195；eslint 压制数由 250 降到 249（剪掉一条已失效的压制，棘轮只减不增，合规），knip 21、jscpd 2 不变；两行仍 disabled: true。13 项中 12 项完成，只剩 FEAT-013（计划 L6：loops.peak-start 与 loops.peak-end）与整条分支的合入。"
+    },
+    {
+      "at": "2026-11-01T13:51:16.285Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "运行 feat-013-peak-edges 已开（单 agent 一步派发，接 c6fbf24）：做 FEAT-013／计划 L6 —— loops.peak-start 与 loops.peak-end，高峰开始与结束时各做什么；并要求与人的决定 d-m6-low-mode 对齐（少做档里已派出的 GLM 子 agent 做完再停；真账号核对在少做档照跑、只在不做档停），设计若相左则按人的决定做、把冲突记进 FEAT findings。四道检查串行跑，门禁一过先提交推送再写报告；不做合入，合入另开一条运行。本节点已是 doing。"
     }
   ]
 }
