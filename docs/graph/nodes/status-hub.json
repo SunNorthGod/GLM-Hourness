@@ -39,6 +39,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "设计 0.1 第 1 轮复审 CHANGES_REQUESTED（HIGH 2、MEDIUM 1、LOW 3）。HIGH-1：引的是指标 0.6，现稿已是 0.7（落实 d-metrics-ratios-person-only 的那一版），「factsFor 的四个减负数字」不成立（0.7 的 factsFor 只有三个，第四个来自 M7 与图），且没有与已放行的指标板（指标 0.7 §7.6 MetricsBoardView）对齐。HIGH-2：§5 与 §1.4 第 3 条把只给人看的比率放进 /hourness，与指标 0.7 §7.3（只给事实）相悖，有违宪章第 8 条的泄漏风险。MEDIUM-1：「homeLine 必须等于某个条目的 text」这条不变量与已放行的几块板冲突（它们的首页行可能是诊断、过期、归档或额度停摆的说法）。第 2 遍修订接着做。"
+    },
+    {
+      "at": "2026-11-01T08:20:27.982Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "设计改到 0.2（42,979 字节）：第 1 轮的 H1、H2、M1 与 N1-N3 全部处理（引用改到指标 0.7、与已放行的指标板对齐、只给人看的比率不进 /hourness、homeLine 那条不变量放宽以容纳诊断与过期一类首页行）。等第 2 轮复审。"
     }
   ]
 }
