@@ -165,6 +165,6 @@ M6 桌面版核对（批次 L4，项目图 `m6-l4`、`m6-gap`，2026-11-01，主
 
 - **入库的材料**：`docs/graph/`（进度的事实源）、`docs/*.md`、`AGENTS.md`、`.agents/tasks/**/*.md` 与 `**/*.svg`（2026-11-01 起，提交 `6e2ef46`：设计、一页放行稿、评审记录、简报、实施计划、草图）。
 - **不入库**：`.agents` 下的运行产物、日志与一次性脚本；`.worktrees/`（工作树本身，分支提交在 git 对象库里）；`.llm/`、`reference/`；`.kiro/`（Kiro 的工作区配置与编排规则，换到别的 agent 要手动带）。
-- **只在本机的分支**：`m3`、`m3-flow`、`rules-loops-impl`、`m5-memory-lessons` 都没有推到 origin。换机器前要推送这几条，否则这部分实现会丢。
+- **进行中的分支**：`m3`（`a9b8ad5`）、`m3-flow`（`49f5d3e`）、`rules-loops-impl`（`c632387`）、`m5-memory-lessons`（`6e21948`）已于 2026-11-01 按人的要求推到 origin 作备份（`d-docs-tracked-for-handover`），远端与本机同点。它们是进行中的线，不要据此当成已放行；合入 main 之后删掉远端分支。再有新提交时要重新推送。
 - **编排运行**：属于 Kiro 的会话，换 IDE 即断。它们的产出都已落盘（设计文稿与分支提交），换过去之后照项目图重新派活。
 - **起步读法**：`AGENTS.md` → `docs/CHARTER.md` → 本文件第 8、9 节 → `npm run -s graph -- open`。
