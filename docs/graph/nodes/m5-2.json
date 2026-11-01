@@ -1,0 +1,25 @@
+{
+  "id": "m5-2",
+  "type": "task",
+  "title": "会话开局的召回",
+  "status": "approved",
+  "parent": "m5",
+  "kind": "implement",
+  "body": "M5 设计 0.7（.agents/tasks/m5/design.md）§1.2 的 m5-2。实现步骤见 .agents/tasks/m5/impl-plan.md 的 S2、S4。验证层：L2；L3 `glm-memory`、`glm-memory-compact`、`glm-worker-memory`；L4。",
+  "acceptance": [
+    "一个新的根会话，存储里有条目时，第一次请求里、第一条用户消息之后有一条来源为 `glm-hourness-memory` 的 `<system-reminder>` 记忆索引（偏好在前，事实按强度，淡忘的事实不列）；之后每步的系统提示词与第一步逐字节相同，索引不再重复；开局时存储为空的会话第一步没有这条，本会话第一次写入之后的下一步出现一次，之后不再重复（§3.3）。",
+    "压缩检查点之后的第一次请求再带一次索引，之后不重复。",
+    "子 agent 的请求里没有记忆工具，也没有 `# Memory` 一节；根 agent 有三个记忆工具，GLM 路由上不带 `deferLoading`。`subagent_fork` 的子 agent 继承父会话的历史，历史里可以有父会话的索引与候选提醒，这不算违反本条（§2.3）。",
+    "索引至多 200 行、25,000 字符，超出时末尾有截断说明"
+  ],
+  "history": [
+    {
+      "at": "2026-11-01T01:25:15.150Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "按 M5 设计 0.7（.agents/tasks/m5/design.md）§13 第 2 条建任务节点，怎样算做完取自 §1.2。人 2026-10-31 放行时说「没问题，不过习惯最好问一嘴再记」，0.7 照办。",
+      "relay": "没问题，不过习惯最好问一嘴再记",
+      "to": "approved"
+    }
+  ]
+}

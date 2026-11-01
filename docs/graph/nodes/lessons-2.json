@@ -1,0 +1,30 @@
+{
+  "id": "lessons-2",
+  "type": "task",
+  "title": "命令失败时的提醒与复发",
+  "status": "approved",
+  "parent": "lessons",
+  "kind": "implement",
+  "body": "M5 设计 0.7（.agents/tasks/m5/design.md）§1.2 的 lessons-2。实现步骤见 .agents/tasks/m5/impl-plan.md 的 S3、S8。验证层：L2；L3 `glm-lessons-failure`。",
+  "acceptance": [
+    "shell 调用（GLM 路由上名为 `Bash`，其他路由上为 `pwsh`，按原生名判）退出码非 0、stderr 里有某条经验的报错片段时，下一次请求在这次工具结果之后带一条经验提醒（至多 2 条）；同一会话里同一条不再推；成功的调用从不触发。",
+    "匹配代码抛错时工具结果不变，行健康降级。",
+    "每次匹配记一次命中；一条经验 28 天内在 3 个会话里命中或被并入时，本项目的主 Agent 收到一次复发提醒（§4.6），建议用 `rules_propose` 记成提议、再用 `propose_to_human` 向人提规则（每个项目每周至多 2 条）；任何调用都不被拦"
+  ],
+  "edges": [
+    {
+      "type": "depends",
+      "to": "lessons-1"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-11-01T01:25:15.708Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "按 M5 设计 0.7（.agents/tasks/m5/design.md）§13 第 2 条建任务节点，怎样算做完取自 §1.2。人 2026-10-31 放行时说「没问题，不过习惯最好问一嘴再记」，0.7 照办。",
+      "relay": "没问题，不过习惯最好问一嘴再记",
+      "to": "approved"
+    }
+  ]
+}

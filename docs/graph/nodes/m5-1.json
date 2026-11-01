@@ -1,0 +1,30 @@
+{
+  "id": "m5-1",
+  "type": "task",
+  "title": "记忆的存取",
+  "status": "approved",
+  "parent": "m5",
+  "kind": "implement",
+  "body": "M5 设计 0.7（.agents/tasks/m5/design.md）§1.2 的 m5-1。实现步骤见 .agents/tasks/m5/impl-plan.md 的 S1、S2、S4（习惯先问的部分在 S12）。验证层：L2；L3 `glm-memory`、`non-glm-memory`。",
+  "acceptance": [
+    "`user` 或 `feedback` 条目是偏好，60 天后强度仍为 1；`project` 或 `reference` 条目是事实，0 次复审时 14 天后强度为 0.5（注入时钟）。",
+    "含 `coding-plan/start-plan` 与 `src/shared/dsh-min.ts` 的文本能存进去；含深层路径（如 `reference/ZCode/apps/zcode-cli/packages/core/src/context/sections/memory.ts`）与 32 字符以上标识符（如 `buildProviderEndpointRoutingHeaders`）的正文与出处存得进去；作出处的 40 位提交号（裸写与 `commit:` 写法，§5.7）存得进去；`commit:` 后面不是 7–40 位十六进制时拒绝（`invalid`）；`ghp_` 开头的令牌、40 个字符的大小写加数字混排令牌、PEM 头被拒为 `secret_like`，拒绝信息写出命中的类别（§5.6）；源码里不再有 `defaultKnowableFromGit`、`shouldStore` 与行配置 `knowableFromGit`。",
+    "`feedback`、`project` 正文没有 `Why:` 一行时拒绝（`invalid`）；`project` 没有可识别的出处时拒绝（`bad_source`）；`project`、`reference` 类带范围 `all` 拒绝（`invalid`，`d-memory-scope`：用户级只放关于人本人的记忆）；`feedback` 没写 `scope` 拒绝（`invalid`，`hint` 说明 `all` 与 `project` 各指什么），`user` 没写 `scope` 时按 `all` 存；多余字段拒绝；`user`、`feedback` 由 `llm` 写入而没有 `relay` 拒绝（`ask_first`；M1 的 `hint` 说明：只有人的原话能成为偏好，只是从改动里猜的习惯不要存，先不要自己去问；H1 起 `hint` 点名 `memory_habit`，§3.2），这类写入的 `store` 记录记 `relayChecked: false`，H1 之前不核对原话，`reporting-depth` 缺 `relay` 仍先得 `invalid`（`field: value`）；同名条目已存在而 `type` 不同拒绝（`invalid`，`field: type`）；读流水时没有凭据（`relay` 为空，且写入者不是 `human`）的 `user`、`feedback` 条目计入坏行。",
+    "新名字与已有条目相似时拒绝（`similar`）并列出相似条目，带 `confirmNew: true` 时存。",
+    "两个仓库里的两个会话各写进自己项目根的 `.llm/memory.jsonl`；工作树里的会话写主检出的 `.llm`；范围 `all` 写进用户级目录（只有 `user`、`feedback` 两类能用）；第一次往一个项目写之前，该项目的 `.git/info/exclude` 里有了 `.llm/`，加不进去时这次写入得 `io`、`.llm/` 没有被建出来（§5.5）；会话没有工作目录时 `project` 范围拒绝（`no_project`），`all` 照常；不在 git 仓库里的文件夹没有 `.llm/` 时同样 `no_project`、不建 `.llm/`，已有 `.llm/` 时写进它（§5.5）。",
+    "旧的 `.llm/memory.json` 在第一次写入时迁移：新流水第一行是带这条条目的 `base`，旧文件改名为 `memory.json.migrated-<时间>`；读不出的旧文件不被覆盖，工具报 `io`。",
+    "agent 删偏好不带 `relay` 被拒（同一会话里自己刚写的除外，按条目的 `origin` 判，同名更新不改它），带了就删；流水记下身份、原话、原因与被删条目；人对主 Agent 说「忘掉这条」，主 Agent 带人的原话调 `memory_forget`，偏好也删得掉；人在输入框打 `/memory forget` 能删任何条目。",
+    "两个进程各向同一流水写 200 条，`seq` 从 1 到 400 连续，没有丢。",
+    "同名更新按 §3.1 折叠：`created`、`origin`、`confirmed`、`learnedFrom` 保留，`description`、`body`、`source`、`value`、`relay`、`relayChecked` 换成新记录的，`reviews` 加一；`forgotten` 的条目之上再来一条 `store` 是新条目；新记录带的 `learnedFrom` 并进旧的、合计至多 5 个"
+  ],
+  "history": [
+    {
+      "at": "2026-11-01T01:25:14.777Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "按 M5 设计 0.7（.agents/tasks/m5/design.md）§13 第 2 条建任务节点，怎样算做完取自 §1.2；m5-1 第 9 条的折叠字段按 design.md §3.1 补全为六个（amend-review N18）。人 2026-10-31 放行时说「没问题，不过习惯最好问一嘴再记」，0.7 照办。",
+      "relay": "没问题，不过习惯最好问一嘴再记",
+      "to": "approved"
+    }
+  ]
+}

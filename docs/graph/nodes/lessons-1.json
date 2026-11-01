@@ -1,0 +1,28 @@
+{
+  "id": "lessons-1",
+  "type": "task",
+  "title": "经验的存取",
+  "status": "approved",
+  "parent": "lessons",
+  "kind": "implement",
+  "body": "M5 设计 0.7（.agents/tasks/m5/design.md）§1.2 的 lessons-1。实现步骤见 .agents/tasks/m5/impl-plan.md 的 S1、S3、S7。验证层：L2；L3 `glm-lessons`、`non-glm-lessons`。",
+  "acceptance": [
+    "字段按 §4.1 校验（情况至少一项、坑与解法的长度、证据至少一条）；经验和候选都进本项目的 `<项目根>/.llm/lessons.jsonl`，用户级目录里没有经验流水；候选带 `scope: \"all\"`（M7 0.6 的交回仍可能带）时照收并存进本项目，`notes` 写明「不分范围，已存进本项目」。",
+    "`glmHournessLessons.propose` 收下交回里的候选：与已有经验签名相同时并入，与人删过的相同时丢弃，其余成为候选；字段不合格或像密钥的候选返回 `{status: 'rejected', code}`，什么都不写；只有服务内部失败（`busy`、`io`、没有项目目录）返回 `{error}`；不向调用方抛错。带 `ghp_` 令牌的候选返回 `rejected`，假的 M7 退路没有被调用（§8.1 第 5 条）。上下文带完整 40 位提交号的候选成为候选，证据里是 `commit:<40 位>`，对它的 `lessons_merge new {candidate}` 与 `into` 都成功；`context.commit` 不是 7–40 位十六进制时候选照收、不带这一项，收下的结果在 `notes` 里写明（§5.7）。",
+    "有候选时主 Agent（按 `isMainAgentFor` 判，它读 M3 的持有者记录并核对会话的主 Agent 状态；没有 M3 设计行时为根 agent；持有者是别的会话时，这个会话收不到）收到一条列出候选的提醒（内容变了才再来），同项目里的普通会话收不到；`lessons_merge` 的九种动作都可用；子 agent 调 `lessons_merge` 被拒，正路是交回结构，它的工具面里也没有这个工具。",
+    "`relevant` 返回至多 `limit` 条得分不低于 2 的经验，每条渲染不超过 300 字符。",
+    "每个 agent（含 worker）都能调 `lessons_query`，GLM 路由上常驻；候选在结果里标为未审；没有任何查询条件时拒绝。",
+    "人对主 Agent 说「删掉这条经验」，主 Agent 带人的原话调 `lessons_merge {action: \"delete\", lesson, reason, relay}`，这条变成墓碑（带快照），查询与简报都不再返回它，流水里身份是 `llm` 并带原话；说「恢复」后主 Agent 带原话调 `restore` 恢复；不带 `relay` 的 `delete`、`restore` 得 `user_only`；人在输入框打 `/lessons delete <id>`、`/lessons restore <id>` 同样有效，身份为人；子 agent 调用得 `role`。",
+    "图上 M7 退路写下的 `[候选经验]` 批注被导入一次，成为候选；宿主运行期间新写的批注不等重启：图的修订变了时，距上次检查超过 60 秒的下一次候选提醒计算里导入，`propose` 返回过 `{error}` 之后的下一次计算不等 60 秒（§4.2 第 2 步）；导入时被拒的批注也写一条 `import` 记录（`data` 为 `{rejected: <代码>}`），之后不再试"
+  ],
+  "history": [
+    {
+      "at": "2026-11-01T01:25:14.963Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "按 M5 设计 0.7（.agents/tasks/m5/design.md）§13 第 2 条建任务节点，怎样算做完取自 §1.2；lessons-1 第 3 条的主 Agent 判法按 R5-06 改为 isMainAgentFor 并加上持有者是别的会话的情形。人 2026-10-31 放行时说「没问题，不过习惯最好问一嘴再记」，0.7 照办。",
+      "relay": "没问题，不过习惯最好问一嘴再记",
+      "to": "approved"
+    }
+  ]
+}

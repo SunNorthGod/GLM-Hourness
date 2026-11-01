@@ -1,0 +1,43 @@
+{
+  "id": "m5-4",
+  "type": "task",
+  "title": "从你的改动里学习",
+  "status": "approved",
+  "parent": "m5",
+  "kind": "implement",
+  "body": "M5 设计 0.7（.agents/tasks/m5/design.md）§1.2 的 m5-4。实现步骤见 .agents/tasks/m5/impl-plan.md 的 S9、S12（S12 等 M3 的 talk.ts）。验证层：L2；L3 `glm-memory-habit`（第 4 至 8 条要 M3 的 `talk.ts`，§9.1 H1）。",
+  "acceptance": [
+    "测试的图历史不手写，由真实的图引擎（`src/graph/engine.ts`）在临时目录里写出再读回：一次 `llm` 带 `relay` 的 `edit`（人经主 Agent 改字段）、一次人身份的 `edit`、一次不带 `relay` 的 `llm` 的 `edit`（agent 自己改，不是信号）、一次 `llm` 带 `relay` 的 `reject`、一次开头是 `ANSWER_MARKS.reject` 的 `comment`、一次开头是 `ANSWER_MARKS.add` 的 `comment`（批注不带 `relay`，引擎丢掉它）、一次人发起的重开。`correctionSignals` 在这份读回的历史上找出：人改了 LLM 写的字段、人否决提议、人在对话里对方案说的否掉与补充、人发起的重开，再加汇报细度的变动；按键分组；同样的输入得到同样的输出（§3.6 第 1 步）。",
+    "学习摘要不依赖 M7 的周报：记忆行的只读工具 `learning_signals` 在这份历史上返回至少 2 次的组，以及已经学过（带 `learnedFrom`）之后又出现的复发数，附前 4 周的值；根 agent 有这个工具，子 agent 的工具面里没有，直接调用被拒（`role`）；有符合条件的组、且距上一次摘要提醒满 7 天时，主 Agent 的下一步收到一条提醒，7 天内、没有符合条件的组、摘要没有变化时不来（§3.6 第 2 步）。",
+    "落点有五种：偏好（人说过的）、习惯、经验、规则提议、候选标定题。偏好、经验、候选标定题不出给人的待决；规则提议经 `propose_to_human` 交给人；习惯只出一句问话（第 4 条），图上不新增待决。",
+    "`memory_habit {action: \"ask\"}`：字段按 §3.8.1 校验；`question` 或 `description` 用了换词表里的词得 `plain_words`；子 agent 得 `role`；读不到会话里人的消息得 `unavailable` 且流水没有新行；成功时流水里有一条 `ask` 记录，名字、范围、正文、问话与参数一致，返回的 `text` 第一行以 `①` 开头，这条回复里已经交给人一件 M3 的提议时是 `②`，第二行是 `要记的：` 加 `description`；与 M3 的提议合计超过三件得 `too_many`（问话排在提议之后时数得准，先问后提时 M3 不数问话，§3.8.5）；已是偏好得 `known`，28 天内问过没有结果的同一条得 `asked_recently`，一个项目一周里的第四条得 `week_cap`；换了名字、换了说法而 `learnedFrom` 带同一个组键的第二次 `ask`，按第一次的结果得 `declined_recently`、`asked_recently` 或 `known`（§3.8.1 第 7 步）。",
+    "`confirm`：人在问话之后发的第一条消息里说了可以，主 Agent 带那句话的原话确认，得到一条偏好：`relay` 是这句原话，`confirmed` 记着当时的问话，60 天后强度仍为 1，索引里与人亲口说的偏好没有区别；原话不在那条消息里、只在更晚的消息里、问话是别的会话写的、人还没回话，分别得 `words_not_found`、`words_not_found`、`other_session`、`not_answered`，什么都不存；原话里有像密钥的一段得 `secret_like`（`field: words`），什么都不存，问话仍开着；存下的内容就是问话时记下的，`confirm` 没有可改内容的字段。",
+    "`decline`：同样核对原话，记下 `decline`；同一条习惯此后 28 天内问不了（`declined_recently`；注入时钟，第 27 天仍拒，第 29 天可以问）；人撤掉一条确认过的习惯（`memory_forget` 带原话）同样让它 28 天内不再被问，同一会话里 agent 不带原话删一条确认过的习惯得 `preference_owner`；确认之后同一个 agent 用 `memory_store` 带人最近一条消息里的话更新这条习惯，条目仍带 `confirmed`、`origin` 不变，再在同一会话里不带原话 `memory_forget`，仍得 `preference_owner`（更新去不掉这两样，§3.1）；没回的问话同样让同一条 28 天内问不了，满 7 天后不能再 `confirm`（`lapsed`）。",
+    "会话里人的消息读得到时，`memory_store` 的 `relay` 要出自这个会话里人发的最近一条消息，否则 `relay_not_said`（只在更早一条消息里的也一样，`hint` 说明要引最近一条消息，或请人再说一遍）；读得到且通过的，`store` 记录的 `data` 写 `relayChecked: true`；读不到时照收，`data` 写 `relayChecked: false`，`memory_query` 与 `/memory show` 的结果里标「原话未核对」；更新一条带 `confirmed` 的习惯而原话没能核对（读不到时）得 `unavailable`，什么都不存（§3.2 第 5 步）。",
+    "学习摘要把 28 天内问过没有结果的问话（没回的与「不用」）和确认过的习惯都算已落点，同一组不再来；过期的「不用」不算，组里新事件够数时重新出现"
+  ],
+  "edges": [
+    {
+      "type": "depends",
+      "to": "lessons-1"
+    },
+    {
+      "type": "depends",
+      "to": "m3-5"
+    },
+    {
+      "type": "depends",
+      "to": "m5-1"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-11-01T01:25:16.259Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "按 M5 设计 0.7（.agents/tasks/m5/design.md）§13 第 2 条建任务节点，怎样算做完取自 §1.2。人 2026-10-31 放行时说「没问题，不过习惯最好问一嘴再记」，0.7 照办。",
+      "relay": "没问题，不过习惯最好问一嘴再记",
+      "to": "approved"
+    }
+  ]
+}

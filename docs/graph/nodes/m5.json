@@ -155,6 +155,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M5 设计 0.7（推测出的习惯先问人再记）第 3 遍复核 APPROVED（NIT 7，N16–N22）；第 2 遍的 F6–F8、N12–N15 都已关闭。impl-m5-memory-lessons 接着做实施计划与九个任务节点的草稿。"
+    },
+    {
+      "at": "2026-11-01T01:25:39.080Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "实施计划完成：12 步（S1-S12），九个任务节点已上图（m5-1 至 m5-5、lessons-1 至 lessons-4）。S1-S11 可以开始；S12 等 M3 的对话层（talk.ts）合入后再做。基线 build、preflight、test 全过，probe 149/149。"
     }
   ]
 }

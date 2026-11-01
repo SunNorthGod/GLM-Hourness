@@ -1,0 +1,30 @@
+{
+  "id": "m5-5",
+  "type": "task",
+  "title": "汇报长短",
+  "status": "approved",
+  "parent": "m5",
+  "kind": "implement",
+  "body": "M5 设计 0.7（.agents/tasks/m5/design.md）§1.2 的 m5-5。实现步骤见 .agents/tasks/m5/impl-plan.md 的 S4、S6。验证层：L2；L3（M3 的改名步骤合入之后核对节名）。",
+  "acceptance": [
+    "主 Agent 调 `memory_store {name: \"reporting-depth\", type: \"user\", value: \"concise\", relay: <人的原话>, …}` 之后，用户级记忆流水里有偏好 `reporting-depth`，值是 `concise`，身份 `llm` 带原话，不衰减；不带 `relay` 的同名写入、`value` 不是三档之一、`value` 用在别的名字上，都得 `invalid`（§3.2）。",
+    "宿主重启后的第一个新会话取到这一档（§3.7 第 2 步的同步读）；GLM 会话的汇报细度一节（今天叫 `glm:persona`，M3 附录 0.5 §2.7 改名为 `glm:reporting-depth`）写的是这一档，没有偏好时用配置的 `reportingDepth`；写入的那个会话里系统提示词不变。",
+    "人对主 Agent 说「汇报细度恢复默认」，主 Agent 带原话调 `memory_forget reporting-depth`，或人在输入框打 `/memory forget reporting-depth`，下一个会话回到配置的默认"
+  ],
+  "edges": [
+    {
+      "type": "depends",
+      "to": "m5-1"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-11-01T01:25:15.530Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "按 M5 设计 0.7（.agents/tasks/m5/design.md）§13 第 2 条建任务节点，怎样算做完取自 §1.2。人 2026-10-31 放行时说「没问题，不过习惯最好问一嘴再记」，0.7 照办。",
+      "relay": "没问题，不过习惯最好问一嘴再记",
+      "to": "approved"
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "id": "m5-3",
+  "type": "task",
+  "title": "给 GLM 的提示词里讲记忆的一段",
+  "status": "approved",
+  "parent": "m5",
+  "kind": "implement",
+  "body": "M5 设计 0.7（.agents/tasks/m5/design.md）§1.2 的 m5-3。实现步骤见 .agents/tasks/m5/impl-plan.md 的 S5。验证层：L1、L2；L3。",
+  "acceptance": [
+    "ZCode 原句放在镜像文件 `src/glm-prompt/zcode-memory-text.ts`，`npm run check:verbatim` 通过（门禁只读 `reference/zcode-3.17.1/zcode.cjs`）；本地化后的节与 §3.5 写定的全文逐字相同；节里保留 §3.5 表中标「原样」的每一句（L2 逐句核对）；白名单断言通过：节里不是 ZCode 原文的文字只有 Z2、Z6 的改写句，Z3 的 `body: ` 前缀与 `type:` 行去掉的缩进，Z7 的两处替换，L1 与 L2（§3.5「白名单断言」）。不设占比下限。",
+    "记忆工具三个都在才出这一节；`lessons_query` 在工具面里才出提到经验板块的那一句。",
+    "节里没有「memory_store 会拒绝仓库能回答的内容」这类说法。",
+    "探针 `glm` 场景看到新的首句，`glm-only` 场景没有这一节"
+  ],
+  "edges": [
+    {
+      "type": "depends",
+      "to": "m5-1"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-11-01T01:25:15.344Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "按 M5 设计 0.7（.agents/tasks/m5/design.md）§13 第 2 条建任务节点，怎样算做完取自 §1.2。人 2026-10-31 放行时说「没问题，不过习惯最好问一嘴再记」，0.7 照办。",
+      "relay": "没问题，不过习惯最好问一嘴再记",
+      "to": "approved"
+    }
+  ]
+}

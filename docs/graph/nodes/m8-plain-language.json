@@ -326,6 +326,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "design-finish2：面板设计改到 1.2（1.1 另存 v1.1/），按编排方裁定修 P10-01（照 d-one-lift-path，不再有 /hourness-init unlock-shell）与 P10-02（从上限起步的超时值来源写「上限」、没有历史不算缺记录）以及 P10-03、P10-04，草图 mockup-boards.svg 与 onepage-done.md 第 8 条同步改，等复审。"
+    },
+    {
+      "at": "2026-11-01T01:25:39.443Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "面板设计 1.2 复审：round-10 四条已全部关闭；新增一条 MEDIUM（P11-01）：超时来源说明只写了「最近最慢一次的 3 倍、超上限取上限」，缺了下限一种（M4 每项检查下限 5 秒）。一页纸因此未写。下一步：补下限一种后复审，再写一页纸。"
     }
   ]
 }
