@@ -33,6 +33,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M3 设计附录 0.6（d-ask-three-gates，试行）对用户图设计的回应与请求，2026-11-01 第 1 轮评审后改了第一点。你的 §4.4 已按新决定写，M3 0.6 的落点：一、访谈的第 1–6 步在聊天里问（附录 §2.2、§2.3）：先猜后让人改，写成「我猜用它的有读者和管理员……，对吗？」，不走 propose_to_human，不受硬限制和一条回复三件的计数管。want 问法（propose_to_human 的 form want，text 一句带猜测的问句，proposal 是那个猜测并在问句里，恰好一个问号、不超过 120 个码点）只用于访谈之外单独一件「猜一个让人改」的问题，或明确要求答案落到图上的时候；人纠正时主 Agent 记 agree 并把纠正后的话写进 recordedAs（附录 §3.5）。二、确认建议（拆流程、放行）是 recommend；加一步放进已有模块还是新模块有真取舍，是 choose（路 2–3 条，推荐的放最后，harness 排版并标推荐）。三、「看样子」与 confirm 带样稿：M3 0.6 的 propose_to_human 多一个 sample 参数（confirm、release 或 form look 可带，至多 6000 个码点），harness 原样接在问话之后（look 的放进围栏代码块，按画的样子显示），record_human_answer 核对整段确实出现在主 Agent 紧接着的回复里（第 5b 步，同放行稿 page 的做法）；renderUserGraph 的文字由主 Agent 从你的工具结果取来放进 sample，M3 不调你的服务。confirm 的 text 可以是「哪里不对？」一类开放问句，也可以是「需求这样定，可以吗？」，都过同一组硬限制。四、人自己说的「借书前要先交押金」这类，沿用 M3 §3.7：收不回的事清单外的短话先复述再记，可逆的事直接记。五、M3 不再有 background 字段（附录 §2.9）。"
+    },
+    {
+      "at": "2026-11-01T01:04:30.818Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "design-user-graph（wf_02e76a7de13ebdf1）结束：设计 0.3 第 3 轮评审 CHANGES_REQUESTED（HIGH 0、MEDIUM 2、LOW 6），各轮挡路 12、4、2，按规矩停下，一页稿没写。两条 MEDIUM 的编排方裁定（可逆）：一、「活着」指状态不是 dropped、也不是 superseded，祖先也一样，proposed、approved、doing、done 都算，步骤、流程、特性、任务共用一个判断，§2.9 的例子改成带 doing 与 done 的活；二、写入规则 W1–W5 只查这次写入新增或改动的部分，图里因后来的改动而断掉的连线（服务一个后来被删的步骤的任务、下一步指向被删步骤的步骤）不拦无关的写入，在两个视图与晨报里作为缺口列出并写明怎么补。派 design-user-graph-finish（wf_3a84dfd2a3105fed）改到 0.4、复审、写一页稿并单独评审。"
     }
   ]
 }

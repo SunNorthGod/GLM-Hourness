@@ -172,6 +172,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M3 设计附录 0.6（d-ask-three-gates，试行）对接管设计（bootstrap）的请求。接管里每件要人回话的事（费用与独占机器、不许碰的地方、整份清单）原来是 harness 给的题目加四行草稿，经 bootstrap_review 交回主 Agent。0.6 取消四行：一、两件必须问人的事各改为一个问句：花钱或独占机器是第一道关里人的事，用 recommend（「这些检查要花钱，我建议只在你同意后才跑，可以吗？」）或有真取舍时 choose；不许碰的地方用 want 问法先猜一个让人改（「我猜这些地方不该碰：……，对吗？」）。二、整份接管清单是 recommend 的一问；清单本身和命令原文走 attach 的 detail（附录 §3.13 不变，attach 只配 form recommend）或放在问句前面的汇报里；原来「四行里只放最要紧的数」改为问句里带推荐与理由，数放汇报里。三、bootstrap_review 交回的不再是四行草稿，而是事实加建议的 form、proposal、reason、cost 与 text；text 过 M3 的硬限制（src/graph/proposal.ts 的 askTextRefusal、textCoversRecord）：一行、恰好一个问号、不超过 160 个码点、proposal 与 reason 原样在问句里、不含换词表词；一次至多三件不变。四、你的一页放行稿里「每件是一个题目加四行」的句子随之改。新项目的访谈问法（先猜后让人改，在聊天里问，不走工具）与用户图设计 §4.4 一致。附录 §2.2、§3.3、§3.4、§3.13。"
+    },
+    {
+      "at": "2026-11-01T01:04:31.484Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "design-finish2：接管按 F13（试跑超时的消息按命令类别写下一步与上限）与 F14–F20 改完（§25.8），等复审。"
     }
   ]
 }

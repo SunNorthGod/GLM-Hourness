@@ -257,6 +257,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M3 设计附录 0.6（d-ask-three-gates，试行）对 M4（m4-request-card）的请求，2026-11-01 第 1 轮评审后改写，第 2 轮评审后再改（F-08，编排方裁定）。0.6 取消四行：PROPOSAL_LABELS、proposalLineRefusal、renderProposal、splitBold 被 M3 删除，M4 的 plan-text.ts 与 §3.3 里按四行检查的地方要换；M4 设计 0.6 §18 第 5 条里「G4 先开工时照附录 §3.3 原样建这几个函数、M3 改成导入」作废，G4 不要建它们。不请 M4 改的：M4 保留自己的 APPROVAL_WORDS、DECLINE_WORDS、answerOf 与 harness 写的确认句（M4 §5.5），人回话的核对与放行判据一概不变；三道关改的是申报读给人的方式，不是 M4 对回话的核对。M3 的 AGREE_WORDS 与 isPlainYes 只管 record_human_answer 之前主 Agent 要不要复述，不是授权词表，M4 不需要它们。一、申报（request_exception）仍由工具直接返回一段 harness 写好的文字，不走 propose_to_human、不在图上建待决（M4 §5.8 不变）。请这段文字照 recommend 形状（确认建议）写：题目行与事实行（路径、文件在不在、多大、会不会备份，都由 harness 核对后写）在前，最后一行是问话：一句是非问，推荐与理由在句子里，真有代价才加一句，不含路径；怎样回答才算数的那半句（回「可以」才算数）M4 照 §5.5 自己写，可以接在同一行里，不再加问号。检查用 M3 导出的纯函数，只查最后这一行问话，不查整段：askTextRefusal(recommend, 问话那一行)（src/graph/proposal.ts：一行、恰好一个问号、不超过 160 个码点）与 plainWordsIn（src/graph/plain-question.ts）；事实行里的路径是数据，原样显示，不查换词表（M4 §5.4 不变）。例：事实行「要写的文件：../notes/todo.md（已存在，写之前备份原文件）」，问话「我建议放行这一次写入，因为这一步不写就做不完，可以吗？（回「可以」才算数）」。二、第三次修复之前的一问：reopen.ts 在图上建提议式待决时写 ask、form: recommend、proposal、reason（有真代价可带 cost），过 M3 的 proposalRecordRefusal；ask 是一个问号结尾的问句，不超过 160 个码点，不再写 background、doubt。主 Agent 展示时用 propose_to_human 的 question（这张待决）加 text（附录 §3.4 的再给人看一次），text 须原样含待决的 proposal 与 reason（在问句里），所以 M4 在待决正文里把这两句写出来，主 Agent 才写得出。继续修一轮是 recommend；停下、再修、换做法有真取舍时才用 choose，路存进 ways，推荐的放最后。三、其余请求（本会话有开着的申报时 propose_to_human 返回 busy 等）仍留给对齐轮。"
+    },
+    {
+      "at": "2026-11-01T01:04:31.237Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "design-finish2：M4 按 F13（丢失违规条数要落在规则页与晨报读得到的地方）、F14（lift-files-only 盖到每个工作树里的那份文件）与 N15–N17 改完（§19.8），等复审。"
     }
   ]
 }

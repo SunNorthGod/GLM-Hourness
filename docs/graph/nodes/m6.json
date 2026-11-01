@@ -270,6 +270,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M6 实现：FEAT-005（m6-probe，42b3925）独立评审 APPROVED、NIT 1；整合轮的修复提交 b327857（文档）、db0cd5d（probe-net.mjs 头注乱码）、f520d88（glm-quota 测试），HEAD f520d88 上 build、preflight、npm test 退出码 0，probe 161/161，与 origin/main 9b1a8ea 试合并没有冲突；等整合评审。M6 一页稿按新问法重写（onepage.md，1,198 个汉字，替人定的方向 34 个：§19 的 30 个加 §0.1 的 4 条接缝裁定），评审 APPROVED、NIT 3。"
+    },
+    {
+      "at": "2026-11-01T01:04:31.028Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M6 实现的整合评审 APPROVED（HEAD f520d88，挡路 0、NIT 6）。接下来是沙盒验证、合入主干与桌面版实测。"
     }
   ]
 }
