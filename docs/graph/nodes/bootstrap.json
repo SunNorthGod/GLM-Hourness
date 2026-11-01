@@ -232,6 +232,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "运行 design-drop-read-no-shell 第 1 遍复审 CHANGES_REQUESTED，挡路 1 条（F-N1，MEDIUM）：删规则之后，活动章节仍写着接管行会在每个 agent 上装门禁，并指向已经改成「不装门禁」的 §8.2，前后不一致。门禁文件 gate-noshell.json，评审 review-noshell.md。本轮循环的第 2 遍修订接着做。"
+    },
+    {
+      "at": "2026-11-01T10:36:13.547Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "运行 design-drop-read-no-shell 第 2 遍修订完成：按唯一挡路的 F-N1 改了 design.md §4.3（会话钩子清单里去掉门禁与指向 §8.2 的那一句），并把这一处补进 §20 修订记录与 §25.11 的逐处表；§1.4 重数仍 41 条、6,322 字，一页稿未动。等第 2 遍复审。"
     }
   ]
 }
