@@ -389,6 +389,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "运行 feat-013-peak-edges 已开（单 agent 一步派发，接 c6fbf24）：做 FEAT-013／计划 L6 —— loops.peak-start 与 loops.peak-end，高峰开始与结束时各做什么；并要求与人的决定 d-m6-low-mode 对齐（少做档里已派出的 GLM 子 agent 做完再停；真账号核对在少做档照跑、只在不做档停），设计若相左则按人的决定做、把冲突记进 FEAT findings。四道检查串行跑，门禁一过先提交推送再写报告；不做合入，合入另开一条运行。本节点已是 doing。"
+    },
+    {
+      "at": "2026-11-01T14:07:26.375Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "运行 feat-013-peak-edges 与运行 impl-m5-memory-lessons 因 Kiro 积分用尽而失败：工作树里的改动未提交、未丢失；分支与 origin 同点（rules-loops-impl c6fbf24、m5-memory-lessons a5df445）。两条运行将在 ZCode 继续之前先在图上记一笔「已中断、活还在」，以免换机后忘记那几处在制改动。"
     }
   ]
 }
