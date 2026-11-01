@@ -275,6 +275,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "面板评审 P13-01 指出：M4 0.6 §6.3.1「调高写在取值记录的来源里」与 limits.jsonl 之间有同样的时差（只在超时的数变化时写取值记录，撤回或调高而数不变时显示会过期）。建议 M4 的明细与晨报取 limits.jsonl 该项最后一行，或 check_limit 每次成功后补写一条取值记录；并进 M4 下一次修订。"
+    },
+    {
+      "at": "2026-11-01T04:49:40.340Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "finish2 第二遍复审 CHANGES_REQUESTED：F15 与 N18-N23 已关闭；新 MEDIUM F16：晨报对账只读当天的违规日志，今天以前解除的规则每天早上都会被报成对不上，reportFromFiles 读 docs/guard/lifts.jsonl 的输入也没定义；另 NIT N24-N29。两遍用完，模块停下，一页稿未写（stop-report-finish2.md）。改法已由评审给出，不需要人定。"
+    },
+    {
+      "at": "2026-11-01T04:50:58.573Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "运行 design-followup-metrics07-m4fix3-m6record 已开第三遍：F16 与 N24-N29，并按面板 1.3 的 capRaised 取数改 §6.3.1；复审只看改动处，放行后写一页稿。"
     }
   ]
 }

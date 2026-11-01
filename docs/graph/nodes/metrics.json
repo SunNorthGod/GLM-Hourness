@@ -227,6 +227,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "编排方按评审给的改法改了一页稿（O8：改为到插件仓库的命令行敲 npm run metrics -- summary --project <项目目录>；O9：改为「这次启动以来丢了 0 条」），1399 个码点，无 BOM，无禁用词。这两处没有再经独立复审；一页稿可以交人读，内含两件要人定的事。F63–F65（NIT）留到设计下一次修订。"
+    },
+    {
+      "at": "2026-11-01T04:50:58.365Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "运行 design-followup-metrics07-m4fix3-m6record 已开：按 d-metrics-ratios-person-only 把设计改到 0.7（比率做成面板上指标自己的一块板，板的新手引导一行写明在哪看，命令行留作后备；周报只转述四个减负数字），一并处理 F63-F65；一页稿 ② 改为已定，① 仍待人定。"
     }
   ]
 }

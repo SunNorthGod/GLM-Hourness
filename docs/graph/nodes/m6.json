@@ -288,6 +288,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M6 合入 main（061bd32，10 个提交，基于 f4efa6c 变基后快进）。编排方在 main 上复核：build、preflight、test 退出码 0（1110 项通过）；合入步在同一棵树上 probe 161/161。规则行在 main 上仍是 disabled: true（N23）。剩桌面版实测（m6-l4）与报告。"
+    },
+    {
+      "at": "2026-11-01T04:50:58.776Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "运行 design-followup-metrics07-m4fix3-m6record 已开：把 d-m6-low-mode 的两件写进 M6 设计与一页稿，并核对 main 上已合入的代码是否与两件一致（只读，不改代码）。"
     }
   ]
 }

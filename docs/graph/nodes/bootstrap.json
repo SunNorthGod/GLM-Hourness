@@ -178,6 +178,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "design-finish2：接管按 F13（试跑超时的消息按命令类别写下一步与上限）与 F14–F20 改完（§25.8），等复审。"
+    },
+    {
+      "at": "2026-11-01T04:49:40.926Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "一页稿已写（onepage.md 与 onepage-mockup.svg，带 D1-D3 三件要人定的事，替人定了 55 个方向）。第一遍评审 CHANGES_REQUESTED：MEDIUM P1-P3、NIT P4-P8；第二遍修订接着做。"
     }
   ]
 }

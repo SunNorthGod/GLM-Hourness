@@ -39,6 +39,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "design-user-graph（wf_02e76a7de13ebdf1）结束：设计 0.3 第 3 轮评审 CHANGES_REQUESTED（HIGH 0、MEDIUM 2、LOW 6），各轮挡路 12、4、2，按规矩停下，一页稿没写。两条 MEDIUM 的编排方裁定（可逆）：一、「活着」指状态不是 dropped、也不是 superseded，祖先也一样，proposed、approved、doing、done 都算，步骤、流程、特性、任务共用一个判断，§2.9 的例子改成带 doing 与 done 的活；二、写入规则 W1–W5 只查这次写入新增或改动的部分，图里因后来的改动而断掉的连线（服务一个后来被删的步骤的任务、下一步指向被删步骤的步骤）不拦无关的写入，在两个视图与晨报里作为缺口列出并写明怎么补。派 design-user-graph-finish（wf_3a84dfd2a3105fed）改到 0.4、复审、写一页稿并单独评审。"
+    },
+    {
+      "at": "2026-11-01T04:49:40.724Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "设计 0.4 第 4 轮复审 CHANGES_REQUESTED：MEDIUM 2、LOW 5，挡路数四轮为 12、4、2、2（design-review-4.md）。收尾运行的第二遍修订接着做。"
     }
   ]
 }

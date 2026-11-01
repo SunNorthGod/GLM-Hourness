@@ -2,7 +2,7 @@
   "id": "m6-l4",
   "type": "task",
   "title": "M6 Q4：桌面版真实读取一次并重启核对",
-  "status": "doing",
+  "status": "done",
   "parent": "m6",
   "kind": "test",
   "tier": "standard",
@@ -26,6 +26,17 @@
       "to": "m6-quota-read"
     }
   ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "3bc5d98"
+    },
+    {
+      "kind": "check",
+      "ref": "desktop-live: build, preflight, test, probe 161/161",
+      "exit": 0
+    }
+  ],
   "history": [
     {
       "at": "2026-10-31T07:01:03.782Z",
@@ -41,6 +52,25 @@
       "reason": "沙盒实测完成：沙盒启动无新错误，真实读取额度一次；返回的是按积分计的 CREDIT_LIMIT 行而不是 TOKENS_LIMIT 行，窗口命名已修（fa3e324），返回形状记入 FACTS.md 2.4（061bd32）。~/.dsh 未改。下一步：桌面版真实读取一次并重启核对（运行 m6-glm-upkeep 的 desktop-live 步）。",
       "from": "approved",
       "to": "doing"
+    },
+    {
+      "at": "2026-11-01T04:49:39.941Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "桌面版实测完成：桌面版 2026-11-01 09:38 启动，无新的崩溃记录、无本包错误；/glm-status 与 /hourness 显示高峰行、范围行与额度一节。HANDOFF 提交 3bc5d98，工作树四道检查退出码 0（probe 161/161）。备份有一处缺口：应用追加写入的那个会话文件在第一条命令前没有先拷贝，见运行报告。",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "3bc5d98"
+        },
+        {
+          "kind": "check",
+          "ref": "desktop-live: build, preflight, test, probe 161/161",
+          "exit": 0
+        }
+      ]
     }
   ]
 }

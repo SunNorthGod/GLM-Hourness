@@ -2,7 +2,7 @@
   "id": "m6-gap",
   "type": "task",
   "title": "M6 G1：写 2026-10-29 删去 806 条用量记录的缺口行",
-  "status": "approved",
+  "status": "done",
   "parent": "m6",
   "kind": "docs",
   "tier": "simple",
@@ -21,6 +21,12 @@
       "to": "m6-panel"
     }
   ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "3bc5d98"
+    }
+  ],
   "history": [
     {
       "at": "2026-10-31T07:01:03.977Z",
@@ -28,6 +34,20 @@
       "op": "propose",
       "reason": "按实现计划建节点",
       "to": "approved"
+    },
+    {
+      "at": "2026-11-01T04:49:40.148Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "缺口行写入新的 usage-gaps.jsonl，桌面版显示为删去 806 条；随 3bc5d98 记入 HANDOFF。",
+      "from": "approved",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "3bc5d98"
+        }
+      ]
     }
   ]
 }
