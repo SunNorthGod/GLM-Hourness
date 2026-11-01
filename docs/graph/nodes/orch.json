@@ -269,6 +269,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "2026-11-01 一次重启后的恢复核对：git fsck 无输出、退出码 0，对象库完好；main 与 origin/main 同点（a893687）；四条进行中的分支与远端逐一同点（m3 3fbc1e9、m3-flow 49f5d3e、rules-loops-impl 336a1d0、m5-memory-lessons 8af90b9，按 d-wip-branch-push 已推过）；三个工作树各有未提交的在制改动（m3 18 处、m5 24 处、rules-loops 13 处），由各自的运行接着做，没有丢活。主检出里 .agents/tasks/bootstrap/design.md 有未提交改动，是 design-drop-read-no-shell 被打断那一步写到一半的。四条运行（M3、规则与循环、M5、design-drop-read-no-shell）已请求恢复。"
+    },
+    {
+      "at": "2026-11-01T10:32:47.292Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "运行中断后的恢复核对（2026-11-01 第二次）：git fsck 无输出、退出码 0；main 与 origin/main 同点（0a4419d）；四条进行中的分支与远端逐一同点（m3 3fbc1e9、m3-flow 49f5d3e、rules-loops-impl 336a1d0、m5-memory-lessons 推到 7dc790a 后同点）；工作树 m3 有 30 处、rules-loops 有 26 处未提交的在制改动，m3-flow 与 m5 干净，主检出 8 处（design-drop-read-no-shell 写到一半的设计文件与三个未跟踪项）。没有丢活。四条运行（M3、M5、design-drop-read-no-shell、feat-010-loop-storage）已请求恢复。"
     }
   ]
 }
