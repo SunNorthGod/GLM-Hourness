@@ -5,7 +5,6 @@
   "status": "approved",
   "parent": "hourness",
   "slope": "uphill",
-  "stage": "design",
   "body": "项目图与主 Agent、设计循环、guard、环境与检查器、记忆与学习、用量与峰谷、运维、报告、UI 呈现（CHARTER.md §4，设计见 ORCHESTRATION.md）。",
   "acceptance": [
     "决定 LLM 怎么干活，人怎么看见并管住它"
@@ -287,6 +286,31 @@
       "actor": "llm",
       "op": "comment",
       "text": "运行中断后的恢复核对（2026-11-01 第三次）：git fsck 无输出、退出码 0；main 与 origin/main 同点（ffa7e79）；m3 本机 2d43b29 领先远端 5b6e77d 两个提交、m5-memory-lessons 本机 16bcf88 领先远端 001494a，均已推送；rules-loops-impl 与远端同点 f9cd8f8，工作树有 4 处 FEAT-012 的在制改动（src/loops/inbox.ts、run.ts、store.ts、src/shared/dsh-min.ts）；m3 与 m5 工作树干净。没有丢活。三条运行（M3、M5、feat-012-schedule-binding）已请求恢复。"
+    },
+    {
+      "at": "2026-11-01T13:16:04.848Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按 M3 第 9 步评审 S9-1 与 R5b-N1，合入 main 之前清掉 orch 的阶段",
+      "relay": "其余没问题",
+      "changes": {
+        "stage": {
+          "from": "design",
+          "to": null
+        }
+      }
+    },
+    {
+      "at": "2026-11-01T13:16:12.282Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-11-01 就仓库许可给的方向：「要不写成稍微宽松一点的，就是自用没问题商用需要授权的那种」。编排方要查证的事实与建议写在下一条批注里，等人拍板具体用哪一份。"
+    },
+    {
+      "at": "2026-11-01T13:18:01.065Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "许可的事实与建议（编排方查证，等人拍板）。人要的形态「自用可以、商用要授权」对应三份常见的源码可见许可：① PolyForm Noncommercial 1.0.0 —— 条文是平白英文，明确授予一切非商业用途（个人、研究、慈善、教育、政府），商业用途另行授权，与人的说法最贴；② Business Source License 1.1 —— 除你自己写明的例外用途之外都允许，并在约定日期（至多四年）自动转为开源许可，条款比 ① 复杂；③ Elastic License 2.0 —— 禁的是「拿它做托管服务」与去掉许可校验，不完全等于禁商业。三份都不是 OSI 认定的开源，平台上会显示为 source available。编排方建议 ①。另有一件比许可文件更要紧、必须在公开之前定的事：本仓库的代码里逐字复刻了 ZCode 3.17.1 的提示词文本（逐字门禁与 docs/reference/zcode-verbatim.md 就是为此而存在），那是第三方的文本，本仓库给自己挂任何许可都不等于取得了转发它的权利；reference/ 下的参考资料（含 CC BY-NC-SA）目前被 .gitignore 挡着、不随仓库分发，风险在已入库的逐字文本。可走的路：公开版不内嵌那段文本，改成构建或首次运行时从使用者本机已装的 ZCode 读出来。这件事影响发布形态，建议在写 LICENSE 之前先定。"
     }
   ]
 }

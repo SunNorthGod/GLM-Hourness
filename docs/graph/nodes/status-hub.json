@@ -5,6 +5,14 @@
   "status": "doing",
   "parent": "orch",
   "body": "依据 d-status-hub。设计放在 .agents/tasks/status-hub/。范围：状态条目的形状（谁交的、给谁看、何时的、来源）、与面板板块登记表的关系（复用，不另起）、晨报周报怎样成为它的显示、主 Agent 怎样读（只读 Agent 也能读的条目）、取不到时怎样降级并出声；以及面板、M4、晨报、指标等设计各自要改的对接部分。",
+  "acceptance": [
+    "第 1 条：同一件状态在面板、晨报、周报、hourness_report 四处的数值一致（同一份条目，L3）。",
+    "第 2 条：hourness_report（任一 kind）的结果里没有一条 person 条目（L2 受众过滤加 L3 探针）。",
+    "第 3 条：/hourness 与 hourness_report 的输出里都没有 person 条目、没有指标比率（L2 受众过滤加 L3 探针）；指标比率只在面板的指标板上（指标 0.7 §7.6），L4 核人能在面板看到、主 Agent 转述的晨报与周报看不到。",
+    "第 4 条：某模块的条目函数抛错时，别的模块的条目照显示，出错处写一条可见占位并告警（L2）。",
+    "第 5 条：陈旧条目带「截至 <asOf>」的提示，不被丢掉（L2）。",
+    "第 6 条：M6 用量清单经 hub 的一条 section 条目显示，面板与晨报不各自调 usagePanelOf（L2、L3）。"
+  ],
   "history": [
     {
       "at": "2026-11-01T04:58:21.220Z",
@@ -57,6 +65,26 @@
       "actor": "llm",
       "op": "comment",
       "text": "状态板块设计 0.3（第 3 稿，依据决定 d-status-hub）：design-gate 判定 APPROVED（pass 3，关闭 SH2-01..SH2-05，剩 SH3-01、SH3-02 两条 LOW 不挡路）；onepage-gate 判定 APPROVED（pass 2，OPR1-01..OPR1-04 已关、无剩余发现），onepage.md 已就绪。§12 对接表列出各模块下一稿要采纳的接口改动；按 d-freeze-until-dogfood，已放行设计本轮不改，只记图、自举之后各自改。"
+    },
+    {
+      "at": "2026-11-01T13:16:54.240Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "人 2026-11-01 放行状态板块设计 0.3 并定下 6 条做完条件（design.md §1.4）",
+      "relay": "其余没问题",
+      "changes": {
+        "acceptance": {
+          "from": null,
+          "to": [
+            "第 1 条：同一件状态在面板、晨报、周报、hourness_report 四处的数值一致（同一份条目，L3）。",
+            "第 2 条：hourness_report（任一 kind）的结果里没有一条 person 条目（L2 受众过滤加 L3 探针）。",
+            "第 3 条：/hourness 与 hourness_report 的输出里都没有 person 条目、没有指标比率（L2 受众过滤加 L3 探针）；指标比率只在面板的指标板上（指标 0.7 §7.6），L4 核人能在面板看到、主 Agent 转述的晨报与周报看不到。",
+            "第 4 条：某模块的条目函数抛错时，别的模块的条目照显示，出错处写一条可见占位并告警（L2）。",
+            "第 5 条：陈旧条目带「截至 <asOf>」的提示，不被丢掉（L2）。",
+            "第 6 条：M6 用量清单经 hub 的一条 section 条目显示，面板与晨报不各自调 usagePanelOf（L2、L3）。"
+          ]
+        }
+      }
     }
   ]
 }

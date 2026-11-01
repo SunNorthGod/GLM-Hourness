@@ -1,0 +1,19 @@
+{
+  "id": "d-status-hub-released",
+  "type": "decision",
+  "title": "状态板块设计 0.3 放行；6 条做完条件由人定下",
+  "status": "approved",
+  "parent": "status-hub",
+  "verification": "unverified",
+  "body": "人 2026-11-01 读状态板块一页稿后答「其余没问题」，①「照这 6 条定下来并放行」即人的决定。定下：设计 0.3 放行（第 3 轮复审 APPROVED，余 SH3-01、SH3-02 两条 LOW）；6 条做完条件按 design.md §1.4 定稿，已写进 status-hub 节点的验收，此后改动要人出手。代价（已告知人）：定下之后再改要人出手。实现等各模块手上这一轮收尾，再按 §12 的对接表逐个改；面板的代码也等它落地（d-panel-released 的遗留）。",
+  "history": [
+    {
+      "at": "2026-11-01T13:16:12.050Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "人放行状态板块设计 0.3 并定下 6 条做完条件",
+      "relay": "其余没问题",
+      "to": "approved"
+    }
+  ]
+}
