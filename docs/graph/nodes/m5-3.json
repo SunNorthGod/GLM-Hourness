@@ -2,7 +2,7 @@
   "id": "m5-3",
   "type": "task",
   "title": "给 GLM 的提示词里讲记忆的一段",
-  "status": "approved",
+  "status": "done",
   "parent": "m5",
   "kind": "implement",
   "body": "M5 设计 0.7（.agents/tasks/m5/design.md）§1.2 的 m5-3。实现步骤见 .agents/tasks/m5/impl-plan.md 的 S5。验证层：L1、L2；L3。",
@@ -18,6 +18,12 @@
       "to": "m5-1"
     }
   ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "2a1ac01"
+    }
+  ],
   "history": [
     {
       "at": "2026-11-01T01:25:15.344Z",
@@ -26,6 +32,20 @@
       "reason": "按 M5 设计 0.7（.agents/tasks/m5/design.md）§13 第 2 条建任务节点，怎样算做完取自 §1.2。人 2026-10-31 放行时说「没问题，不过习惯最好问一嘴再记」，0.7 照办。",
       "relay": "没问题，不过习惯最好问一嘴再记",
       "to": "approved"
+    },
+    {
+      "at": "2026-11-01T15:57:25.411Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "归位：S5 已提交、评审 APPROVED。合入时两件在制备忘（DESIGN.md §5.9 镜像清单补 zcode-memory-text.ts；glm-prompt/index.ts 与 M6 的冲突）由 m5 的合入运行处理。",
+      "from": "approved",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "2a1ac01"
+        }
+      ]
     }
   ]
 }

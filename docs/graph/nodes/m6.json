@@ -2,9 +2,15 @@
   "id": "m6",
   "type": "feature",
   "title": "M6 用量与峰谷",
-  "status": "doing",
+  "status": "done",
   "parent": "orch",
   "body": "积分口径与峰谷修正（ORCHESTRATION.md §11.2）；通道额度取数（DESIGN.md §4.7）；高峰提醒；排期功能（ROADMAP.md M6）。\n分属两个包：积分公式、额度取数与高峰提醒在 GLM 通道包 `dsh-glm-zcode`；编排层包 `dsh-hourness` 经计价服务（glm-login 提供）读积分与高峰时段，额度的展示与排期在编排层包。",
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "3bc5d98"
+    }
+  ],
   "history": [
     {
       "at": "2026-10-27T20:04:04.900Z",
@@ -318,6 +324,20 @@
       "actor": "llm",
       "op": "comment",
       "text": "要采纳（M6 0.7）：用量清单 glm/usage、额度 glm/quota、高峰 rules/peak（高峰的计算在 M6、档位在规则板）化为 audience:'agent' 条目（§10）；usagePanelOf/usagePanelLines、peakLineOf、quotaSection 作为条目的内部实现保留，只被 statusItemsOf 一处调；晨报与面板不再各自调它们。"
+    },
+    {
+      "at": "2026-11-01T15:48:45.174Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "归位：M6 已合入 main（11dce6b..3bc5d98）并于 2026-11-01 桌面版核对通过（/glm-status 额度段、/hourness 面板与缺口行、probe 161/161，见 HANDOFF「M6 桌面版核对」）。遗留各自成节点：m6-script-gate、m6-metrics-events、m6-rules-text、m6-rules-probe。",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "3bc5d98"
+        }
+      ]
     }
   ]
 }

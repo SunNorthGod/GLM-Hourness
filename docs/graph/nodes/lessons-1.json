@@ -2,7 +2,7 @@
   "id": "lessons-1",
   "type": "task",
   "title": "经验的存取",
-  "status": "doing",
+  "status": "done",
   "parent": "lessons",
   "kind": "implement",
   "body": "M5 设计 0.7（.agents/tasks/m5/design.md）§1.2 的 lessons-1。实现步骤见 .agents/tasks/m5/impl-plan.md 的 S1、S3、S7。验证层：L2；L3 `glm-lessons`、`non-glm-lessons`。",
@@ -14,6 +14,12 @@
     "每个 agent（含 worker）都能调 `lessons_query`，GLM 路由上常驻；候选在结果里标为未审；没有任何查询条件时拒绝。",
     "人对主 Agent 说「删掉这条经验」，主 Agent 带人的原话调 `lessons_merge {action: \"delete\", lesson, reason, relay}`，这条变成墓碑（带快照），查询与简报都不再返回它，流水里身份是 `llm` 并带原话；说「恢复」后主 Agent 带原话调 `restore` 恢复；不带 `relay` 的 `delete`、`restore` 得 `user_only`；人在输入框打 `/lessons delete <id>`、`/lessons restore <id>` 同样有效，身份为人；子 agent 调用得 `role`。",
     "图上 M7 退路写下的 `[候选经验]` 批注被导入一次，成为候选；宿主运行期间新写的批注不等重启：图的修订变了时，距上次检查超过 60 秒的下一次候选提醒计算里导入，`propose` 返回过 `{error}` 之后的下一次计算不等 60 秒（§4.2 第 2 步）；导入时被拒的批注也写一条 `import` 记录（`data` 为 `{rejected: <代码>}`），之后不再试"
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "001494a"
+    }
   ],
   "history": [
     {
@@ -31,6 +37,20 @@
       "reason": "S1（A1）在 m5-memory-lessons 上提交为 662ed88，build、preflight、test 退出码 0，probe 149/149；等评审。",
       "from": "approved",
       "to": "doing"
+    },
+    {
+      "at": "2026-11-01T15:57:26.889Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "归位：本节点三步（S1、S3、S7）全部提交且评审 APPROVED（f17e3e6、8af90b9、001494a），实现完毕；剩合入，由 lessons 节点跟踪。",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "001494a"
+        }
+      ]
     }
   ]
 }

@@ -2,7 +2,7 @@
   "id": "bottom",
   "type": "feature",
   "title": "底层：通道与方言",
-  "status": "doing",
+  "status": "done",
   "parent": "glm-house",
   "slope": "downhill",
   "stage": "execute",
@@ -10,6 +10,12 @@
   "acceptance": [
     "服务端接受请求并正确计费",
     "模型处在训练分布中"
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "a9f12e1"
+    }
   ],
   "history": [
     {
@@ -39,6 +45,20 @@
           "to": "glm-house"
         }
       }
+    },
+    {
+      "at": "2026-11-01T15:48:56.247Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "归位：底层容器的活全部完成——m1 与 m1-parity 合入（a9f12e1）、zcode-3171-follow 完成基线切换（3.17.1 逐字门禁已知偏差 0）、桌面版 L4（2026-10-29）通过、沙盒真实网络 10/10。§5 的存量已知问题（start-plan 真机授权、签名可观测性）无未闭合子节点，随 HANDOFF §5 跟踪。",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "a9f12e1"
+        }
+      ]
     }
   ]
 }

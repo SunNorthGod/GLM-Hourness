@@ -2,7 +2,7 @@
   "id": "m3-main-persona",
   "type": "task",
   "title": "人设只作用于主 Agent，子 agent 一律不带人设",
-  "status": "doing",
+  "status": "done",
   "parent": "m3",
   "kind": "implement",
   "body": "编排层提供一处设置，人在里面写主 Agent 跟人说话的人设（语气、称呼、自称等）；它只注入主 Agent 会话的系统提示词，并且只管主 Agent 回给人的话；派出去的子 agent、审查者以及它们写进文件的东西（代码、注释、提交信息、文档）一律不带人设。插件只提供这个设置位，不带任何人设内容，人设文字是用户自己的配置（CHARTER.md 非目标「人设与个人习惯不进插件」照旧成立）。现有 glm-prompt 的 persona 只是汇报细度（简洁、适中、详细），与人设不是一回事，命名上区分开。比把人设放进全局 AGENTS.md 好：全局的会被每个 agent 读到，写进代码注释就闹笑话。",
@@ -15,6 +15,12 @@
     {
       "type": "depends",
       "to": "m3-1"
+    }
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "a178f32"
     }
   ],
   "history": [
@@ -51,6 +57,20 @@
       "actor": "llm",
       "op": "comment",
       "text": "M5 设计 0.5 §3.7、§8.5：汇报细度的常设值来自用户级记忆里的 reporting-depth 偏好（主 Agent 判断人的话是「以后都这样」后带原话调 memory_store 写入），GLM 包的汇报细度一节读记忆行服务 glmHournessMemory.depth(sessionId)，没有偏好时用配置 reportingDepth（旧键 persona 照读），再退到 balanced。本步把 persona.ts 改名 reporting-depth.ts、节名 glm:persona 改 glm:reporting-depth 时，M5 的读法跟着节名改（取 main 上当时的名字），不需要 M3 改任何函数。"
+    },
+    {
+      "at": "2026-11-01T15:49:13.625Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "归位：人设设置位、GLM 路由的 hourness:output-style 落位与 glm-prompt persona→reportingDepth 改名全部提交（a178f32，附录 0.6 §2.7），门禁绿（test 1355、probe 213/213）并已推 origin/m3。桌面版 L4 第 8 项属第 12 步（b），按 2026-11-01 裁定由合入后的运行自己做（d-desktop-direct-use）。",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "a178f32"
+        }
+      ]
     }
   ]
 }

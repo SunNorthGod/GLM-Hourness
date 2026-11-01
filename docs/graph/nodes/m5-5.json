@@ -2,7 +2,7 @@
   "id": "m5-5",
   "type": "task",
   "title": "汇报长短",
-  "status": "approved",
+  "status": "done",
   "parent": "m5",
   "kind": "implement",
   "body": "M5 设计 0.7（.agents/tasks/m5/design.md）§1.2 的 m5-5。实现步骤见 .agents/tasks/m5/impl-plan.md 的 S4、S6。验证层：L2；L3（M3 的改名步骤合入之后核对节名）。",
@@ -15,6 +15,12 @@
     {
       "type": "depends",
       "to": "m5-1"
+    }
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "17696f5"
     }
   ],
   "history": [
@@ -31,6 +37,20 @@
       "actor": "llm",
       "op": "comment",
       "text": "人 2026-11-01 问：汇报细度这一档是不是不需要了。编排方的看法：新问法（d-ask-three-gates）管的是问话，一页稿规则管的是放行稿篇幅，两者都不管平时对话里汇报的长短，所以这一档还有它独管的那一块；而且存储与同步读在 S1、S2 已经落地，剩下的只是方言里一句加测试。等人定。"
+    },
+    {
+      "at": "2026-11-01T15:57:26.173Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "归位：S4、S6 已提交，S6 评审 APPROVED；档位去留已由 d-reporting-depth-keep（approved）定为保留，按原计划做完。S12 的人设相关残余属 m5-4 的 S12，不在此。",
+      "from": "approved",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "17696f5"
+        }
+      ]
     }
   ]
 }

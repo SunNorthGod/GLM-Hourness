@@ -1,0 +1,17 @@
+{
+  "id": "risk-1",
+  "type": "risk",
+  "title": "公开形态与逐字文本的转发权",
+  "status": "approved",
+  "parent": "orch",
+  "body": "本仓库代码内嵌 ZCode 3.17.1 的提示词逐字文本（逐字门禁所钉、docs/reference/zcode-verbatim.md 为此而设），那是第三方文本；本仓库的 LICENSE（PolyForm Noncommercial 1.0.0）不等于取得转发它的权利，公开分发前必须先定发布形态。可走的路：公开版不内嵌逐字文本，改为构建时或首次运行时从使用者本机已装的 ZCode 读出。内容取自 orch 节点 2026-11-01T13:18 批注（许可事实与建议），批注里此前只有这一份。",
+  "history": [
+    {
+      "at": "2026-11-01T15:49:39.865Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "归位：orch 上许可分析批注里的发布风险只有图上一份，立成风险节点免得随批注沉底。",
+      "to": "approved"
+    }
+  ]
+}

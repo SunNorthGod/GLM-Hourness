@@ -4,8 +4,15 @@
   "title": "规则进仓库，运行时的东西进项目的 .llm/",
   "status": "approved",
   "parent": "rules",
-  "verification": "unverified",
+  "verification": "sandbox",
   "body": "规则板的规则（含人定义的开关）与人在循环板上加的条目存进项目仓库，和项目图一样可以评审、随 git 走、换电脑或换人都在；在等的工作、命中计数、心跳、变更记录这些运行时的东西存进项目自己的 .llm/（接管项目时已建并加进忽略），不进 git。编排方的理解（人可纠正）：「一样」指开一下就关的开关也进仓库，接受提交记录多一些。取代规则板设计 0.8 §7.1 的「用户级目录按项目分」。规则文件由规则板自己写，guard 的规则文件门禁照旧挡住其他写入。规则板与循环板下一稿照此改。",
+  "evidence": [
+    {
+      "kind": "test",
+      "ref": "npm run probe",
+      "exit": 0
+    }
+  ],
   "history": [
     {
       "at": "2026-10-30T05:44:51.725Z",
@@ -26,6 +33,21 @@
       "actor": "llm",
       "op": "comment",
       "text": "「运行时的东西进项目的 .llm/、不进 git」现在在任何项目里成立，不再只靠本仓库的 .gitignore：规则行第一次建 .llm/rules/ 之前把 .llm/ 追加进 .git/info/exclude（分支 rules-followup，提交 6bdffac，L2 用例覆盖没有 info 目录、空文件、已有条目的几种写法、.git 是文件、不在 git 仓库里、写不进时拒绝）。"
+    },
+    {
+      "at": "2026-11-01T15:52:41.009Z",
+      "actor": "llm",
+      "op": "verify",
+      "reason": "归位：仓库 docs/rules/ 与项目 .llm/rules/ 存储（FEAT-003 6cdddcd、FEAT-010 06c5e3e），.llm/ 自动进 .git/info/exclude（6bdffac，已合入 main）。",
+      "from": "unverified",
+      "to": "sandbox",
+      "evidence": [
+        {
+          "kind": "test",
+          "ref": "npm run probe",
+          "exit": 0
+        }
+      ]
     }
   ]
 }

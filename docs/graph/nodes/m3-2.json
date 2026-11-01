@@ -103,6 +103,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "第 8 步（3fbc1e9）第 2 轮评审：S8-1、S8-2、S8-8、S8-9 已修；仍开着 7 条（S8-3 到 S8-7、S8-10、S8-11），其中 S8-10 是新发现的——这次 amend 改写了已经推到 origin/m3 的 a9b8ad5，本机与远端因此岔开（本机 3fbc1e9 领先 1、落后 1）。第一轮原稿另存为 review-step8-round1.md。编排方要定远端那条备份分支怎么办（强推要人同意，AGENTS.md 不许自行强推）。"
+    },
+    {
+      "at": "2026-11-01T15:49:51.459Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "裁定核对（归位）：评审记的 S8-10（3fbc1e9 改写已推送的 a9b8ad5）不需要再向人要同意——d-wip-branch-push（approved，人 2026-11-01 定）允许改写进行中的分支、只有 main 不强推；origin/m3 现已是改写后历史（3fbc1e9 在祖先链，a9b8ad5 不在）。"
     }
   ]
 }
