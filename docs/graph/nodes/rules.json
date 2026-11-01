@@ -567,6 +567,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "FEAT-007（等待票、唤醒、交回派活根、过期、每步提醒与心跳写入）b9a2d81、5458cd3 评审 APPROVED；npm test 曾有一次偶发失败（rules-store 并发用例在 Windows 上 rules.lock 报 EPERM），已在 b761ae1 修好；修后 build、preflight、test、probe 退出码 0（probe 173/173，含 rules-queue 与 rules-handover）。7 条不挡路的备注在 gate-FEAT-007.json。13 项中 7 项通过，均在 rules-loops-impl 分支，未合入。"
+    },
+    {
+      "at": "2026-11-01T07:22:53.127Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "FEAT-008（计划 R4c：高峰档位真正生效 —— 不做档把 GLM 子 agent 排队并暂停、恢复它们的目标，主 Agent 从不被排队；少做档按 checkCall 排队自报的可省 GLM 开销；主 Agent 每步的处理照旧）在 rules-loops-impl 上提交为 47a9852 与 c632387，基底 b761ae1。build、preflight、npm test、npm run probe 全部退出码 0（probe 186/186）。等评审。注：m6 的「不做档停下真账号核对」要等本项与 m6-script-gate 落地。"
     }
   ]
 }
