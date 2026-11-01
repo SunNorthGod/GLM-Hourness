@@ -1,38 +1,12 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { openEngine, type ApplyResult, type GraphEngine } from '../src/graph/engine.ts'
+import { openEngine, type ApplyResult } from '../src/graph/engine.ts'
 import { serializeNode } from '../src/graph/format.ts'
 import { renderGraph } from '../src/graph/render.ts'
-import type { Actor, GraphNode } from '../src/graph/schema.ts'
+import type { GraphNode } from '../src/graph/schema.ts'
 import { loadGraph } from '../src/graph/store.ts'
-import { fixtureTest } from './graph-helpers.ts'
-
-type Success = Extract<ApplyResult, { ok: true }>
-
-interface Fixture {
-  readonly dir: string
-  readonly engine: GraphEngine
-  rev(id: string): Promise<string>
-  node(id: string): Promise<GraphNode>
-  run(actor: Actor, mutation: Record<string, unknown>): Promise<Success>
-  /** Apply a mutation with the current rev of mutation.id filled in. */
-  act(actor: Actor, mutation: Record<string, unknown>): Promise<ApplyResult>
-}
-
-function must(result: ApplyResult): Success {
-  assert.ok(result.ok, `expected success, got ${JSON.stringify(result)}`)
-  return result
-}
-
-function refused(result: ApplyResult, code: string, field?: string): void {
-  assert.equal(result.ok, false, `expected ${code}, got success`)
-  const { error } = result
-  assert.equal(error.code, code, JSON.stringify(error))
-  if (field !== undefined) assert.equal(error.field, field, JSON.stringify(error))
-  assert.ok(error.hint.length > 0, 'every refusal names the way forward')
-}
+import { engineFixture, fixtureTest, must, refused, type EngineFixture } from './graph-helpers.ts'
 
 /**
  * goal-1 (stage design, acceptance, non-goals)
@@ -40,20 +14,15 @@ function refused(result: ApplyResult, code: string, field?: string): void {
  *     task-1 approved, with acceptance
  *     task-2 approved, without acceptance
  */
+type Fixture = EngineFixture
+
 async function fixture(): Promise<Fixture> {
-  const dir = await mkdtemp(join(tmpdir(), 'graph-engine-'))
-  let tick = 0
-  const engine = openEngine(dir, { now: () => new Date(Date.UTC(2026, 9, 28, 8, 0, tick++)) })
-  const rev = async (id: string): Promise<string> => (await loadGraph(dir)).revisions.get(id)!
-  const node = async (id: string): Promise<GraphNode> => (await loadGraph(dir)).nodes.get(id)!
-  const run = async (actor: Actor, mutation: Record<string, unknown>): Promise<Success> => must(await engine.apply(actor, mutation))
-  const act = async (actor: Actor, mutation: Record<string, unknown>): Promise<ApplyResult> =>
-    engine.apply(actor, { ...mutation, rev: await rev(mutation.id as string) })
-  await run('human', { op: 'propose', reason: '立项', node: { type: 'goal', title: '项目图引擎', stage: 'design', acceptance: ['人能看，LLM 能读写'], nonGoals: ['不接 DSH 运行时'] } })
-  await run('human', { op: 'propose', reason: '拆分', node: { type: 'feature', title: '引擎', parent: 'goal-1' } })
-  await run('human', { op: 'propose', reason: '拆分', node: { type: 'task', title: '存储', parent: 'feature-1', acceptance: ['往返逐字节一致'] } })
-  await run('human', { op: 'propose', reason: '拆分', node: { type: 'task', title: '投影', parent: 'feature-1' } })
-  return { dir, engine, rev, node, run, act }
+  return engineFixture('graph-engine-', 28, async ({ run }) => {
+    await run('human', { op: 'propose', reason: '立项', node: { type: 'goal', title: '项目图引擎', stage: 'design', acceptance: ['人能看，LLM 能读写'], nonGoals: ['不接 DSH 运行时'] } })
+    await run('human', { op: 'propose', reason: '拆分', node: { type: 'feature', title: '引擎', parent: 'goal-1' } })
+    await run('human', { op: 'propose', reason: '拆分', node: { type: 'task', title: '存储', parent: 'feature-1', acceptance: ['往返逐字节一致'] } })
+    await run('human', { op: 'propose', reason: '拆分', node: { type: 'task', title: '投影', parent: 'feature-1' } })
+  })
 }
 
 const graphTest = fixtureTest(fixture)

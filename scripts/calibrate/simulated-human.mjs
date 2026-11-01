@@ -1,9 +1,10 @@
 /**
- * Simulated human (docs/DEVELOPMENT.md §3, docs/ORCHESTRATION.md §3.1): an
+ * Simulated human (docs/DEVELOPMENT.md §3, docs/ORCHESTRATION.md §3.1, §3.5): an
  * overlay-only row for the L3 probe and the calibration runs, standing in for
- * the person where a run has none. It types `/wish` the way the person does
- * and refuses the question cards the main agent must never raise. Not part of
- * the bundle: scripts/sandbox.mjs passes its path to the DSH Loader.
+ * the person where a run has none. It types `/wish` the way the person does,
+ * answers the main agent in the conversation, and refuses the question cards the
+ * main agent must never raise. Not part of the bundle: scripts/sandbox.mjs
+ * passes its path to the DSH Loader.
  *
  * - `wish`: when `true`, the first root agent gets `/wish` as the person's
  *   first command; a string is typed after it (`/wish <string>`). A person
@@ -11,36 +12,194 @@
  *   for. The command runs in the serial `agent/created` listener, so its
  *   events come before the task message the headless runner sends. A command
  *   that cannot run (the design row is off) is recorded as `wish-failed`.
+ * - Replies: when the config names `replies` or `answers`, the person answers
+ *   in the conversation when a turn of a root session ends (its last message
+ *   calls no tool), as a message of the user (`source: {kind: 'user'}`, the shape of a headless task
+ *   message), so the harness takes it as the human's words. What is said is
+ *   chosen by `simulatedReply`, a pure function of the turn. Without those two
+ *   keys it never speaks, so the runs that only need `/wish` do not change.
  * - Question cards: every agent gets a `user-questions/request` listener that
  *   cancels the request (`ASK_CANCELLED`, the shape the client rejects with)
  *   and records `unexpected-question` with the question ids: the main agent
  *   has no ask_user_question, so any card is a violation to count.
  *
  * Everything the row did is appended to `config.record` (one JSON object per
- * line, `human.jsonl` in the run directory). Answering questions and
- * replying in chat arrive with the steps that need them.
+ * line, `human.jsonl` in the run directory): `wish`, `wish-failed`,
+ * `unexpected-question`, and `{kind: 'reply' | 'silent', rule, text?, shown}`
+ * for each turn it considered.
  */
 import { appendFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 export const name = 'glm-hourness-calibrate/simulated-human'
 export const inject = ['commands']
+
+const KINDS = ['question', 'confirm', 'release', 'module']
+const DEFAULTS = { question: '可以，就按推荐的来', confirm: '对，就这样', release: '可以，放行', module: '可以，放行这个模块' }
+const KNOWN = new Set(['record', 'wish', 'answers', 'replies', 'restateReply', 'fallback', 'maxReplies'])
 
 /** The error the client rejects a question with when the person closes the card; the user-questions service restores it by name and code. */
 function cancelled() {
   return Object.assign(new Error('the user cancelled ask_user_question'), { name: 'UserQuestionError', code: 'ASK_CANCELLED' })
 }
 
-export function apply(ctx, config = {}) {
-  const note = (entry) => {
-    if (typeof config.record === 'string') appendFileSync(config.record, `${JSON.stringify(entry)}\n`)
+const isRecord = value => typeof value === 'object' && value !== null && !Array.isArray(value)
+const isText = value => typeof value === 'string' && value.trim().length > 0
+
+/** The config, checked: unknown fields and items of the wrong shape are reported through `warn` and left out. */
+export function readConfig(raw, warn = () => {}) {
+  const config = isRecord(raw) ? raw : {}
+  for (const key of Object.keys(config)) if (!KNOWN.has(key)) warn(`unknown field "${key}" is ignored`)
+  const out = { restateReply: '对', fallback: '你按经验定吧', maxReplies: 24, replies: {}, answers: {}, enabled: false }
+  if (config.restateReply !== undefined) isText(config.restateReply) ? out.restateReply = config.restateReply : warn('restateReply must be a non-empty string')
+  if (config.fallback !== undefined) isText(config.fallback) ? out.fallback = config.fallback : warn('fallback must be a non-empty string')
+  if (config.maxReplies !== undefined) Number.isInteger(config.maxReplies) && config.maxReplies >= 0 ? out.maxReplies = config.maxReplies : warn('maxReplies must be a whole number from 0')
+  if (config.replies !== undefined) {
+    if (!isRecord(config.replies)) warn('replies must be an object of kind to a list of sentences')
+    else {
+      out.enabled = true
+      for (const [kind, list] of Object.entries(config.replies)) {
+        if (!KINDS.includes(kind)) warn(`replies.${kind} is not a kind of matter (${KINDS.join(', ')})`)
+        else if (!Array.isArray(list) || list.length === 0 || !list.every(isText)) warn(`replies.${kind} must be a non-empty list of sentences`)
+        else out.replies[kind] = list
+      }
+    }
   }
-  const wishLine = config.wish === true ? '/wish' : typeof config.wish === 'string' ? `/wish ${config.wish}` : undefined
+  if (config.answers !== undefined) {
+    if (!isRecord(config.answers)) warn('answers must be an object of requirement item key to a sentence')
+    else {
+      out.enabled = true
+      for (const [key, text] of Object.entries(config.answers)) isText(text) ? out.answers[key] = text : warn(`answers.${key} must be a non-empty string`)
+    }
+  }
+  return out
+}
+
+/**
+ * What the person says at the end of a turn (docs/ORCHESTRATION.md §3.5), the
+ * first rule that holds:
+ *   1. `maxReplies` replies were given: nothing.
+ *   2. The last message of the main agent says it will record the answer
+ *      ("我记成"): `restateReply`.
+ *   3. The main agent put matters to the human this turn: for each, in order,
+ *      the next sentence of `replies[kind]` (the last one again when they run
+ *      out; `module` for a release of a module), joined by line breaks, said
+ *      once. Without a configured sentence: the defaults above.
+ *   4. The goal in focus has a requirement item missing: `answers[key]` of the
+ *      first item in the order the interview asks them, else `fallback`.
+ *   5. The goal is not released, or a module of it is still in design: `fallback`.
+ *   6. Otherwise nothing (the run ends).
+ * `context`: `config` (readConfig), `replied`, `lastAssistant`, `shown`
+ * ({kind, number, form?, module?} of the matters put this turn), `used` (the sentences
+ * taken so far per kind), `missing` (key of the first missing item of the
+ * requirement card, or undefined), `unreleased` (the goal in focus is not
+ * released or has a module in design). Returns `{kind: 'reply' | 'silent',
+ * rule, text?, shown, used}`.
+ */
+export function simulatedReply(context) {
+  const { config, replied, lastAssistant = '', shown = [], used = {} } = context
+  const summary = shown.map(({ kind, number, form }) => ({ kind, number, ...form === undefined ? {} : { form } }))
+  const silent = rule => ({ kind: 'silent', rule, shown: summary, used })
+  if (replied >= config.maxReplies) return silent(1)
+  if (lastAssistant.includes('我记成')) return { kind: 'reply', rule: 2, text: config.restateReply, shown: summary, used }
+  if (shown.length > 0) {
+    const taken = { ...used }
+    const lines = shown.map((entry) => {
+      const kind = entry.kind === 'release' && entry.module !== undefined ? 'module' : entry.kind
+      const list = config.replies[kind] ?? [DEFAULTS[kind]]
+      const line = list[Math.min(taken[kind] ?? 0, list.length - 1)]
+      taken[kind] = (taken[kind] ?? 0) + 1
+      return line
+    })
+    return { kind: 'reply', rule: 3, text: lines.join('\n'), shown: summary, used: taken }
+  }
+  if (context.missing !== undefined) return { kind: 'reply', rule: 4, text: config.answers[context.missing] ?? config.fallback, shown: summary, used }
+  if (context.unreleased === true) return { kind: 'reply', rule: 5, text: config.fallback, shown: summary, used }
+  return silent(6)
+}
+
+const distOf = file => import(pathToFileURL(join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'packages', 'hourness', 'dist', file)).href)
+
+export function apply(ctx, rawConfig = {}) {
+  const note = (entry) => {
+    if (typeof rawConfig.record === 'string') appendFileSync(rawConfig.record, `${JSON.stringify(entry)}\n`)
+  }
+  const config = readConfig(rawConfig, text => console.warn(`${name}: ${text}`))
+  const wishLine = rawConfig.wish === true ? '/wish' : typeof rawConfig.wish === 'string' ? `/wish ${rawConfig.wish}` : undefined
   let typed = false
+  let talk
+  let modules
+  /** The talk fold, the graph reading and the interview order of the built package, loaded on first use. */
+  const load = async () => {
+    talk ??= await distOf('design/talk.js')
+    modules ??= { store: await distOf('graph/store.js'), stage: await distOf('graph/stage.js'), notice: await distOf('design/stage-notice.js'), release: await distOf('graph/modules.js') }
+  }
+  const sessions = new Map()
+  const stateOf = (session) => {
+    let state = sessions.get(session.id)
+    if (state === undefined) {
+      state = { talk: talk.talkInit(session.header, 0), assistant: '', replied: 0, used: {}, handled: -1 }
+      sessions.set(session.id, state)
+    }
+    return state
+  }
+  /** The first missing item of the focus goal's requirement card, and whether the goal still has to be released. */
+  const goalNeeds = async (agentSession) => {
+    const service = ctx.get('glmHournessGraph')
+    const dir = service?.dirFor?.(agentSession.header.cwd)
+    const focus = service?.focusOf?.(agentSession)
+    if (dir === undefined || focus === undefined) return {}
+    const graph = await modules.store.loadGraph(dir)
+    const goal = modules.stage.goalOf(graph, focus)
+    if (goal === undefined) return {}
+    const status = modules.stage.stageStatus(graph, goal)
+    if (status.stage === 'wish' || status.stage === 'interview') {
+      const next = modules.notice.nextInterviewItem(status.items.filter(item => !item.ok))
+      if (next !== undefined) return { missing: next.item.key }
+    }
+    const released = status.stage === 'release'
+    const inDesign = released && modules.release.isSplit(graph, goal) && modules.release.modulesOf(graph, goal).some(module => modules.stage.effectiveStage(module) === 'design')
+    return { unreleased: !released || inDesign }
+  }
+  const answer = async (session, state) => {
+    const agent = ctx.get('agents')?.get(session.id)
+    if (agent === undefined) return
+    const lastPerson = state.talk.people.at(-1)?.seq ?? -1
+    const shown = state.talk.shown.filter(entry => entry.seq > lastPerson && entry.seq > state.handled)
+    const needs = shown.length === 0 ? await goalNeeds(session).catch(() => ({})) : {}
+    const result = simulatedReply({ config, replied: state.replied, lastAssistant: state.assistant, shown, used: state.used, ...needs })
+    note({ kind: result.kind, rule: result.rule, ...result.text === undefined ? {} : { text: result.text }, shown: result.shown })
+    if (result.kind !== 'reply') return
+    state.replied += 1
+    state.used = result.used
+    if (shown.length > 0) state.handled = shown.at(-1).seq
+    // The session log cannot take the reply while it is publishing the event that brought us here, but one microtask later it can, and the agent is still finishing the turn, so the run goes on with the reply as the next turn. Any later (a timer) and the headless runner has already decided the run is over.
+    await Promise.resolve()
+    agent.followup({ id: `simulated-human-${session.id}-${state.replied}`, role: 'user', content: [{ type: 'text', text: result.text }], source: { kind: 'user' } })
+  }
+  const listeners = []
+  if (config.enabled) {
+    listeners.push(ctx.on('session/event', (session, event) => {
+      if (session.header?.origin !== undefined || talk === undefined) return
+      const state = stateOf(session)
+      state.talk = talk.talkApply(state.talk, event)
+      if (event.type === 'assistant/message') {
+        const blocks = event.data?.message?.content ?? []
+        const text = blocks.filter(block => block.type === 'text').map(block => block.text).join('\n')
+        if (text.length > 0) state.assistant = text
+        // A message that calls no tool ends the turn: the person answers while the agent is still finishing it, so that the reply is taken as the next turn of the same run.
+        if (!blocks.some(block => block.type === 'tool-call')) answer(session, state).catch(error => note({ kind: 'reply-failed', reason: error instanceof Error ? error.message : String(error) }))
+      }
+      else if (event.type === 'turn/start') state.assistant = ''
+    }))
+  }
   const stop = ctx.on('agent/created', async ({ agent }) => {
     agent.ctx.on('user-questions/request', (request) => {
       note({ kind: 'unexpected-question', id: (request.questions ?? []).map(question => question.id) })
       return Promise.reject(cancelled())
     })
+    if (config.enabled) await load().catch(error => note({ kind: 'reply-failed', reason: `the built package could not be loaded: ${error instanceof Error ? error.message : String(error)}` }))
     // Only a root agent has a person to type for it; a delegated child carries `origin` in its session header.
     if (wishLine === undefined || typed || agent.session?.header?.origin !== undefined) return
     typed = true
@@ -53,5 +212,8 @@ export function apply(ctx, config = {}) {
       note({ kind: 'wish-failed', reason: error instanceof Error ? error.message : String(error) })
     }
   })
-  return stop
+  return () => {
+    stop()
+    for (const off of listeners) off()
+  }
 }

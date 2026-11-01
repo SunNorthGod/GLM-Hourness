@@ -18,6 +18,11 @@
  *   goal, or its module) is released (src/guard/design-release.ts). It
  *   judges a write by a delegated session, so it is the one rule here that
  *   is not about the main agent's own calls.
+ * - main-agent-graph-relay, main-agent-graph-options and
+ *   main-agent-graph-delegations: how a session may write the project graph
+ *   (src/guard/main-agent-graph.ts). The delegations rule is for every
+ *   session; the other two judge the main agent, and the relay rule also
+ *   refuses a delegated session's `relay`.
  *
  * The listener first reads the call (a cheap look at the tool name and the
  * shell text) and only then asks who the session is, so ordinary calls cost
@@ -32,16 +37,22 @@ import type { AgentLike, PreExecuteDecision, PreExecuteHost, ServiceLookup, Sess
 import type { JsonValue } from '../shared/json.ts'
 import { dialectNames, dialectService, dialectWarner, toNativeTool } from '../shared/dialect.ts'
 import type { HealthState } from '../shared/health.ts'
+import { DELEGATIONS_ID } from '../shared/answer-marks.ts'
 import { sessionRoute } from '../shared/route.ts'
+import { GRAPH_TOOL_NAMES } from '../shared/tool-names.ts'
 import { baseFor, type ViolationRecord } from './index.ts'
 import { guardGit, SNAPSHOT_NOTICE_KIND, snapshotCorrection, type SnapshotEnvironment } from './git-snapshot.ts'
 import { judgeDispatchedWrite, releaseCorrection, type ReleaseDeps } from './design-release.ts'
-import { ASK_RULE, DESIGN_RELEASE_RULE, GIT_SNAPSHOT_RULE, NO_WRITE_RULE } from './main-agent-rules.ts'
+import { attemptOf, DELEGATIONS_CORRECTION, judgeMainAgentGraph, relayOf, SUBAGENT_RELAY_CORRECTION, writesDelegations, type GraphRuleDeps } from './main-agent-graph.ts'
+import { ASK_RULE, DESIGN_RELEASE_RULE, GIT_SNAPSHOT_RULE, GRAPH_DELEGATIONS_RULE, GRAPH_RELAY_RULE, NO_WRITE_RULE } from './main-agent-rules.ts'
 import { originOf } from './origin.ts'
 import { evaluate, fileWriteTarget, isFileWrite, NATIVE_FACE, renderCorrection, shellCommandOf, shellWriteOf, type Correction, type GuardRule, type RuleVerdict, type ToolCall } from './rules.ts'
 import { describeWrite } from './shell.ts'
 
 const ALLOW: RuleVerdict = { kind: 'allow' }
+
+/** The graph tools by name. */
+const GRAPH_NAMES: ReadonlySet<string> = new Set(GRAPH_TOOL_NAMES)
 
 const NO_WRITE_VIOLATION = 'You are the main agent of this session (/wish): the main agent plans, dispatches and accepts work; it never writes files itself.'
 const NO_WRITE_RIGHT_PATH = 'Record designs and decisions on the project graph with the graph tools. For a change to files, describe it as a task node (graph_propose, type task, with acceptance), graph_focus it, and hand it to a subagent with the subagent tool; subagents write only once what you work on (the goal, or its module) is released, which the human does when you put the design to them with propose_to_human.'
@@ -93,8 +104,20 @@ function mainAgentAsk(hidden: readonly string[]): GuardRule {
 /** The part of an agent the rules read: its id and its session. A live agent of the registry is one too. */
 type Subject = Pick<AgentLike, 'id' | 'session'>
 
+/** A graph write that tried to move work on with the human's words, by a session that has no right to them: what the design row tells the human about (the row health, a notice to the main agent). */
+export interface BypassAlert {
+  readonly rule: string
+  readonly agent: Subject
+  readonly kind: 'subagent' | 'ordinary'
+  readonly tool: string
+  /** What was tried, in the human's words: 把「…」推到 …, 批准「…」. */
+  readonly what: string
+  readonly goal?: string
+  readonly node?: string
+}
+
 /** What the design row hands to the rules. */
-export interface MainAgentRulesDeps extends Pick<ReleaseDeps, 'agents' | 'graph'> {
+export interface MainAgentRulesDeps extends Pick<ReleaseDeps, 'agents' | 'graph'>, Pick<GraphRuleDeps, 'checkRelay'> {
   /** Whether the agent's session is its project's main agent now. May throw: the call then passes and the health says why. */
   readonly isMainAgent: (agent: Subject) => boolean
   /** DSH natives of the tools the main agent does not get (ask_user_question). */
@@ -105,6 +128,10 @@ export interface MainAgentRulesDeps extends Pick<ReleaseDeps, 'agents' | 'graph'
   readonly report: (agent: Subject, state: HealthState, reason: string) => void
   /** Put a notice before the agent's next step; false when the agent could not be reached. */
   readonly tell: (agent: AgentLike, notice: { readonly kind: string, readonly summary: string, readonly text: string }) => boolean
+  /** A delegated session sent the human's words with a graph write: told to the human and the main agent. Never rejects into the call. */
+  readonly bypass: (alert: BypassAlert) => void
+  /** One metrics event (src/design/metrics.ts); never throws. */
+  readonly metric: (event: { readonly event: string, readonly [field: string]: unknown }) => void
   /** The machine the snapshot runs on; tests replace the parts they control. */
   readonly snapshots?: SnapshotEnvironment
 }
@@ -124,15 +151,35 @@ export function installMainAgentRules(ctx: PreExecuteHost & ServiceLookup, deps:
     const call: ToolCall = { name: toNativeTool(dialect, payload.name, warn), arguments: (payload.arguments ?? {}) as JsonValue }
     const shell = shellCommandOf(call)
     const delegated = agent.session.header.origin === 'subagent'
+    // A graph write is looked at only when it carries the human's words, proposes or edits (the options rule), or points at norm-delegations.
+    const toDelegations = writesDelegations(call)
+    const graphCall = GRAPH_NAMES.has(call.name) && (relayOf(call) !== undefined || call.name === 'graph_propose' || call.name === 'graph_edit' || toDelegations)
     // Most calls are neither: read, search, graph tools. They pass before anything is asked about the session. A shell call is always looked at: whether its text runs git is for the shell reader to say, not for a search of the raw text (`"g"it` runs git). A delegated session is judged for its writes only.
-    if (!isFileWrite(call) && !(!delegated && deps.hiddenTools.includes(call.name)) && shell === undefined) return next()
+    if (!isFileWrite(call) && !(!delegated && deps.hiddenTools.includes(call.name)) && shell === undefined && !graphCall) return next()
     const session = agent.session
-    const denial = (rule: string, correction: Correction) => {
+    const denial = (rule: string, correction: Correction, extra: Partial<Pick<ViolationRecord, 'session' | 'goal' | 'node'>> = {}) => {
       const route = sessionRoute(session)
       const origin = originOf(dialectNames(dialect, agent, route, warn) !== undefined, route)
       const reason = renderCorrection(correction)
-      deps.journal({ at: new Date().toISOString(), rule, tool: payload.name, agentId: agent.id, sessionId: session.id, ...origin, correction: reason })
+      deps.journal({ at: new Date().toISOString(), rule, tool: payload.name, agentId: agent.id, sessionId: session.id, ...origin, correction: reason, ...extra })
+      deps.metric({ event: 'design.rule-denied', rule, tool: call.name, session: delegated ? 'subagent' : 'main-agent' })
       return { kind: 'deny' as const, reason }
+    }
+    // Every kind of session: the node of what the human handed over for good is written by record_human_answer alone.
+    if (toDelegations) return denial(GRAPH_DELEGATIONS_RULE, DELEGATIONS_CORRECTION, { node: DELEGATIONS_ID })
+    if (graphCall && delegated) {
+      // A subagent has no human to quote: its relay is refused whatever it says.
+      if (relayOf(call) === undefined) return next()
+      const attempt = await attemptOf(deps, { session }, call)
+      const parent = session.header.parentSession
+      const decision = denial(GRAPH_RELAY_RULE, SUBAGENT_RELAY_CORRECTION, { session: { id: session.id, kind: 'subagent', ...parent === undefined ? {} : { parent } }, goal: attempt.goal, node: attempt.node })
+      try {
+        deps.bypass({ rule: GRAPH_RELAY_RULE, agent: { id: agent.id, session }, kind: 'subagent', tool: call.name, what: attempt.what, ...attempt.goal === undefined ? {} : { goal: attempt.goal }, ...attempt.node === undefined ? {} : { node: attempt.node } })
+      }
+      catch (error) {
+        deps.report(agent, 'degraded', `子 agent 带转述的图写入被拒了，但没能告诉人（${message(error)}）`)
+      }
+      return decision
     }
     if (delegated) return judgeDelegated(deps, { id: agent.id, session }, writeFactOf(call), denial, next)
     let main: boolean
@@ -144,6 +191,11 @@ export function installMainAgentRules(ctx: PreExecuteHost & ServiceLookup, deps:
       return next()
     }
     if (!main) return next()
+    if (graphCall) {
+      const verdict = await judgeMainAgentGraph(deps, { id: agent.id, session }, call)
+      if (verdict.degraded !== undefined) deps.report(agent, 'degraded', verdict.degraded)
+      return verdict.kind === 'deny' ? denial(verdict.rule, verdict.correction, verdict.node === undefined ? {} : { node: verdict.node }) : next()
+    }
     const route = sessionRoute(session)
     const face = dialectNames(dialect, agent, route, warn) ?? NATIVE_FACE
     const verdict = evaluate([ask, mainAgentNoWrite], call, face)

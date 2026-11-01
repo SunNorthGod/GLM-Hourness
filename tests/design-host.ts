@@ -10,19 +10,26 @@
  * starts its first assembly before the call returns, agent-loop:800–807).
  * Services are those of the cordis store. Nothing the runtime does not do.
  */
-import { mkdirSync, mkdtempSync } from 'node:fs'
+import assert from 'node:assert/strict'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import type { DesignContext } from '../src/design/index.ts'
-import type { AgentLike, AssemblePayload, AssembledSection, AssembledTool, CommandDefinitionLike, CommandExecutionLike, CommandResultLike, DesignAgentLike, DesignAgentsService, DesignInvocationLike, PreExecuteDecision, PreExecuteListener, PreStepDecision, PreStepPayload, SessionEventLike, SessionLike, SessionProjectionsService, ToolExecutionPayload, UserNotice } from '../src/shared/dsh-min.ts'
+import type { AgentLike, AssemblePayload, AssembledSection, AssembledTool, CommandDefinitionLike, CommandExecutionLike, CommandResultLike, DesignAgentLike, DesignAgentsService, DesignInvocationLike, PreExecuteDecision, PreExecuteListener, PreStepDecision, PreStepPayload, SessionEventLike, SessionLike, SessionProjectionsService, ToolDefinitionLike, ToolExecutionContext, ToolExecutionPayload, ToolsLike, UserNotice } from '../src/shared/dsh-min.ts'
 import { healthServiceName, type RowHealthView } from '../src/shared/health.ts'
-import { fakeInjector, serviceStore } from './fake-rc3.ts'
+import { fakeInjector, schemaViolations, serviceStore } from './fake-rc3.ts'
 
 interface LoggedEvent extends SessionEventLike {
   readonly time: number
 }
 
 type Header = SessionLike['header']
+
+/** What a tool call came to, as the runtime would hand it to the model: stopped by a gate, a tool error (`Error: ` and the JSON of its refusal) or a value. */
+type ToolOutcome =
+  | { readonly kind: 'denied', readonly reason: string }
+  | { readonly kind: 'error', readonly error: { readonly code: string, readonly message: string, readonly field?: string, readonly hint: string } }
+  | { readonly kind: 'ok', readonly value: Record<string, unknown> }
 
 interface FakeSession extends SessionLike {
   readonly events: LoggedEvent[]
@@ -90,6 +97,16 @@ export interface DesignHost {
   execute(agent: FakeAgent, line: string, holdDone?: Promise<void>): Promise<CommandExecutionLike | undefined>
   /** Make `commands.execute` of the named command's line refuse, to model a failing /wish off. */
   failExecute(agentId: string, failure: 'undefined' | 'throw'): void
+  /** The tools the row registered, by name. */
+  readonly tools: Map<string, ToolDefinitionLike>
+  /** The person sends a message in the agent's session, a little after whatever was written before it. */
+  say(agent: FakeAgent, text: string): Promise<void>
+  /** The model says something: an `assistant/message` with the text. */
+  reply(agent: FakeAgent, text: string): void
+  /** The model calls a tool as the runtime runs it: the call is logged, the gates of `tools/pre-execute` run, the body runs, the result is logged. */
+  callTool(agent: FakeAgent, name: string, args: unknown): Promise<ToolOutcome>
+  /** Run a tool body that was built by the test, not registered by the row, as a call of the model: logged, no gates. */
+  invoke(agent: FakeAgent, tool: ToolDefinitionLike, args: unknown): Promise<ToolOutcome>
 }
 
 interface Cell {
@@ -98,7 +115,7 @@ interface Cell {
 }
 
 /** A host with a workspace directory tree in a temporary directory; `options.graph` false leaves the graph row's service out. */
-export function designHost(options: { readonly graph?: boolean, readonly projections?: boolean, readonly persistence?: boolean, readonly dialect?: unknown } = {}): DesignHost {
+export function designHost(options: { readonly graph?: boolean, readonly projections?: boolean, readonly persistence?: boolean, readonly dialect?: unknown, readonly tools?: boolean } = {}): DesignHost {
   const root = mkdtempSync(join(tmpdir(), 'design-host-'))
   const userHome = join(root, 'user')
   const store = serviceStore()
@@ -120,6 +137,7 @@ export function designHost(options: { readonly graph?: boolean, readonly project
   const focuses = new Map<string, string>()
   const failures = new Map<string, 'undefined' | 'throw'>()
   let commandCounter = 0
+  let callCounter = 0
 
   const registrations = new Map<string, Parameters<SessionProjectionsService['register']>[0]>()
   const cells = new Map<string, WeakMap<SessionLike, Cell>>()
@@ -148,7 +166,43 @@ export function designHost(options: { readonly graph?: boolean, readonly project
   // The title unit the dsh-session-title row registers: the latest title text.
   projections.register({ key: 'title', stateVersion: 1, stateSchema: { parse: value => value }, init: () => null, apply: (state: never, event: never) => (event as SessionEventLike).type === 'session/title' ? ((event as SessionEventLike).data as { title: string }).title : state })
 
-  const injector = fakeInjector(options.projections === false ? {} : { sessionProjections: projections })
+  // The tools service: registration checks the schemas against the subset rc.3 enforces; a name registered twice is refused.
+  const tools = new Map<string, ToolDefinitionLike>()
+  const toolsService: ToolsLike = {
+    register(definition) {
+      if (tools.has(definition.name)) throw new Error(`tool "${definition.name}" is already registered`)
+      const violations = [...schemaViolations(definition.parameters, `${definition.name}.parameters`), ...schemaViolations(definition.output.schema, `${definition.name}.output`)]
+      if (violations.length > 0) throw new Error(`tool "${definition.name}" has a schema outside the enforced subset: ${violations.join('; ')}`)
+      tools.set(definition.name, definition)
+      return () => { tools.delete(definition.name) }
+    },
+    get: name => tools.get(name),
+    execute: () => Promise.reject(new Error('the design host runs tools through callTool')),
+  }
+
+  const logCall = (agent: FakeAgent, name: string, args: unknown): string => {
+    const callId = `call-${++callCounter}`
+    agent.session.append('assistant/message', { message: { id: `assistant-${agent.session.events.length}`, role: 'assistant', content: [{ type: 'tool-call', id: callId, name, arguments: JSON.stringify(args) }], source: { kind: 'model', provider: 'probe', model: 'probe' } }, turn: 1 })
+    return callId
+  }
+  const logResult = (agent: FakeAgent, callId: string, text: string, isError: boolean): void => {
+    agent.session.append('tool/result', { message: { id: `tool-${callId}`, role: 'tool', content: [{ type: 'text', text }], toolCallId: callId, ...isError ? { isError: true } : {}, source: { kind: 'tool', callId } } })
+  }
+  const runBody = async (agent: FakeAgent, tool: ToolDefinitionLike, args: unknown, callId: string): Promise<ToolOutcome> => {
+    const exec: ToolExecutionContext = { callId, agent, signal: new AbortController().signal, deferContext: () => undefined, concludeTurn: () => undefined }
+    try {
+      const value = await tool.execute(args, exec)
+      logResult(agent, callId, tool.output.render(args, value).map(part => part.text ?? '').join(''), false)
+      return { kind: 'ok', value: value as Record<string, unknown> }
+    }
+    catch (error) {
+      const text = error instanceof Error ? error.message : String(error)
+      logResult(agent, callId, `Error: ${text}`, true)
+      return { kind: 'error', error: JSON.parse(text) as { code: string, message: string, field?: string, hint: string } }
+    }
+  }
+
+  const injector = fakeInjector({ ...options.projections === false ? {} : { sessionProjections: projections }, ...options.tools === false ? {} : { tools: toolsService } })
 
   if (options.graph !== false) store.provide('glmHournessGraph', { dirFor: (cwd: string | undefined) => cwd === undefined ? undefined : resolve(cwd, 'docs/graph'), isGraphTool: () => false, focusOf: (session: SessionLike) => focuses.get(session.id) })
   const projectHome = join(root, 'project')
@@ -235,6 +289,7 @@ export function designHost(options: { readonly graph?: boolean, readonly project
         history,
         inherited: events.length,
         deriveMessages: () => [...history],
+        snapshotEvents: () => [...events],
         append(type, data) { events.push({ type, seq: events.length, time: Date.now(), data }) },
       }
       const idleWaiters: Array<() => void> = []
@@ -307,5 +362,59 @@ export function designHost(options: { readonly graph?: boolean, readonly project
       return run(agent, line, new AbortController().signal, holdDone)
     },
     failExecute: (agentId, failure) => { failures.set(agentId, failure) },
+    tools,
+    async say(agent, text) {
+      await new Promise<void>(resolve => { setTimeout(resolve, 4) })
+      agent.session.append('user/message', { id: `user-${agent.session.events.length}`, role: 'user', content: [{ type: 'text', text }], source: { kind: 'user' } })
+    },
+    reply(agent, text) {
+      agent.session.append('assistant/message', { message: { id: `assistant-${agent.session.events.length}`, role: 'assistant', content: [{ type: 'text', text }], source: { kind: 'model', provider: 'probe', model: 'probe' } }, turn: 1 })
+    },
+    async callTool(agent, name, args) {
+      const callId = logCall(agent, name, args)
+      const chain = gates.reduceRight<() => Promise<PreExecuteDecision>>((next, listener) => () => listener({ name, arguments: args, agent } satisfies ToolExecutionPayload, next), () => Promise.resolve({ kind: 'allow' }))
+      const decision = await chain()
+      if (decision.kind !== 'allow') {
+        const reason = decision.kind === 'deny' ? decision.reason : decision.kind
+        logResult(agent, callId, `Error: ${reason}`, true)
+        return { kind: 'denied', reason }
+      }
+      const tool = tools.get(name)
+      if (tool === undefined) throw new Error(`no tool "${name}" is registered`)
+      return runBody(agent, tool, args, callId)
+    },
+    invoke(agent, tool, args) {
+      return runBody(agent, tool, args, logCall(agent, tool.name, args))
+    },
   }
+}
+
+export const sleep = (ms: number): Promise<void> => new Promise(resolve => { setTimeout(resolve, ms) })
+
+/** The reason of a call the rules denied; fails the test for any other decision. */
+export function denied(decision: PreExecuteDecision): string {
+  assert.equal(decision.kind, 'deny', JSON.stringify(decision))
+  return (decision as { reason: string }).reason
+}
+
+/** The lines of the violation journal once there are `count` of them (the row writes them without waiting). */
+export async function journaled(host: DesignHost, count: number): Promise<Array<Record<string, unknown>>> {
+  const file = join(host.projectHome, 'audit', 'violations.jsonl')
+  for (let attempt = 0; attempt < 200; attempt++) {
+    const rows = existsSync(file) ? readFileSync(file, 'utf8').split('\n').filter(line => line !== '').map(line => JSON.parse(line) as Record<string, unknown>) : []
+    if (rows.length >= count) return rows
+    await sleep(10)
+  }
+  assert.fail(`the violation journal never reached ${count} lines`)
+}
+
+/** A host where the talk projection cannot be registered (its key is taken), so the tools read the session log instead. */
+export function hostWithoutTalkProjection(): DesignHost {
+  const host = designHost()
+  const register = host.projections.register.bind(host.projections)
+  host.projections.register = (definition) => {
+    if (definition.key === 'hournessTalk') throw new Error('projection key is taken')
+    return register(definition)
+  }
+  return host
 }

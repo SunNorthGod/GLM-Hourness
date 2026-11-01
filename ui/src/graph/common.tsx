@@ -228,11 +228,35 @@ interface OptionsProps {
 }
 
 /**
+ * A question in the proposal shape: the question as the human read it, the
+ * ways when it has them (the last one is the recommended), and where to
+ * answer. The panel only looks (decision d-ui-look-not-operate): there is no
+ * button; the answer is said in the chat and recorded by the main agent.
+ */
+function ProposalView({ node }: { readonly node: GraphNode }): ReactElement {
+  const ways = node.ways ?? []
+  return (
+    <div className="glmg-options">
+      {node.ask === undefined ? null : <div className="glmg-text">{node.ask}</div>}
+      {ways.map((way, index) => <div key={way} className="glmg-text">{index + 1}. {way}{index === ways.length - 1 ? '（推荐）' : ''}</div>)}
+      {node.status === 'done' && node.conclusion !== undefined
+        ? <div className="glmg-text">定了：{node.conclusion}</div>
+        : <div className="glmg-notice">在主 Agent 的对话里回话</div>}
+    </div>
+  )
+}
+
+/** The options of a question as buttons, or the lines of a proposal without any. */
+export function Options(props: OptionsProps): ReactElement {
+  return props.node.options === undefined ? <ProposalView node={props.node} /> : <OptionButtons {...props} />
+}
+
+/**
  * The options of a question as buttons. Picking one asks for an optional
  * reason and decides as the human; on a decided question the current
  * choice is marked and the others overturn it.
  */
-export function Options({ graph, node, onDecided }: OptionsProps): ReactElement {
+function OptionButtons({ graph, node, onDecided }: OptionsProps): ReactElement {
   const writer = useWriter()
   const [picked, setPicked] = useState<string | undefined>(undefined)
   const [reason, setReason] = useState('')

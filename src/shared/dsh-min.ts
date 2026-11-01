@@ -44,6 +44,13 @@ export interface SessionLike {
    * test sessions may leave it out; rc.3 sessions always have it.
    */
   requestHeader?(): RequestHeaderLike | undefined
+  /**
+   * The whole log, copied (rc.3 marks it `@deprecated`, "new production calls
+   * are prohibited", session:1444–1452). Only the way back for the main
+   * agent's talk state when the session projection hournessTalk could not
+   * be registered (src/design/talk.ts `talkFold`).
+   */
+  snapshotEvents?(): readonly SessionEventLike[]
 }
 
 /** A live agent (dsh-agent-loop `ReactLoopAgent`): its id (shared with its session), scoped context and session. */
@@ -130,10 +137,11 @@ export interface PreExecuteHost {
   on(event: 'tools/pre-execute', listener: PreExecuteListener, options?: { prepend?: boolean }): () => void
 }
 
-/** A frozen session log event (dsh-session `append`: `{type, seq, time, data}`). */
+/** A frozen session log event (dsh-session `append`: `{type, seq, time, data}`, `time` in whole milliseconds, session:1126–1128). */
 export interface SessionEventLike {
   readonly type: string
   readonly seq: number
+  readonly time: number
   readonly data?: unknown
 }
 
@@ -315,6 +323,7 @@ export interface InjectableServices {
   readonly sessionProjections: SessionProjectionsService
   readonly agents: AgentsService
   readonly subagents: SubagentsService
+  readonly tools: ToolsLike
 }
 
 /**

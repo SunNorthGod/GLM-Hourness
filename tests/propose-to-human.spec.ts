@@ -1,0 +1,535 @@
+/**
+ * propose_to_human (src/design/propose.ts, docs/ORCHESTRATION.md §3.4) on the
+ * fake host: the rules of the call, what it writes to the graph, the text it
+ * returns, the limit of three questions in one reply, who may call it, what
+ * `attach` does, and the question shown once more. The face of the sessions
+ * that are not the main agent has neither design tool.
+ */
+import assert from 'node:assert/strict'
+import test from 'node:test'
+import { PROPOSE_TO_HUMAN, RECORD_HUMAN_ANSWER, DESIGN_TOOL_NAMES } from '../src/shared/tool-names.ts'
+import { ordinaryFace } from '../src/design/role-face.ts'
+import { proposeTool } from '../src/design/propose.ts'
+import { TALK_SHAPES } from '../src/design/talk.ts'
+import { PLAIN_QUESTION_EXAMPLES, PLAIN_QUESTION_GUIDE, plainWordsIn } from '../src/graph/plain-question.ts'
+import { ASK_FORMS, PROPOSAL_LIMITS, TALK_LIMITS, askOf, renderAsk } from '../src/graph/proposal.ts'
+import { PLAIN_LIMITS } from '../src/graph/schema.ts'
+import { BASE_TOOLS, hostWithoutTalkProjection, type DesignHost, type FakeAgent } from './design-host.ts'
+import { fakeBoard, mainAgentWithGoal, toolDeps } from './design-tools-helpers.ts'
+import { exampleArgs } from './proposal-examples.ts'
+
+type Outcome = Awaited<ReturnType<DesignHost['callTool']>>
+
+const errorOf = (outcome: Outcome): { code: string, field: string | undefined, message: string, hint: string } | undefined => outcome.kind === 'error' ? outcome.error : undefined
+const valueOf = (outcome: Outcome): Record<string, unknown> => {
+  assert.equal(outcome.kind, 'ok', JSON.stringify(outcome))
+  return outcome.kind === 'ok' ? outcome.value : {}
+}
+
+/** The human answers between two questions, so each is the first of its reply. */
+async function nextReply(host: DesignHost, agent: FakeAgent): Promise<void> {
+  host.reply(agent, '…')
+  await host.say(agent, '好')
+}
+
+test('each way of asking puts a question to the human: it is written to the graph waiting for them and the text to show is the main agent\'s own, laid out only where the harness must', async () => {
+  const { host, agent, node } = await mainAgentWithGoal()
+  let index = 0
+  for (const form of ASK_FORMS) {
+    const example = PLAIN_QUESTION_EXAMPLES[form]
+    const value = valueOf(await host.callTool(agent, PROPOSE_TO_HUMAN, exampleArgs(form)))
+    index += 1
+    const id = `question-${index}`
+    assert.equal(value.tool, PROPOSE_TO_HUMAN)
+    assert.deepEqual([value.kind, value.form, value.goal, value.question, value.number], ['question', form, 'goal-1', id, 1])
+    assert.equal(value.text, renderAsk(example.text, 1, example.ways, example.sample, true), form)
+    assert.match(String(value.message), /^Show text to the human exactly as given; it is Markdown\. Put it after your report, together with the other questions of this reply, then end your turn\./)
+    assert.equal(String(value.message).includes('keep it verbatim'), form === 'look', `only a question with a sample carries the original text: ${form}`)
+    const question = await node(id)
+    assert.equal(question.status, 'approved')
+    assert.equal(question.form, form)
+    assert.equal(question.ask, askOf(example.text), 'the question is the text up to its question mark')
+    assert.equal(question.proposal, example.proposal ?? example.ways?.at(-1), 'a choose takes its last way as the proposal')
+    assert.deepEqual([question.reason, question.cost, question.ways, question.notTaken], [example.reason, example.cost, example.ways, example.notTaken])
+    assert.equal(question.title, example.title)
+    assert.equal(question.body, undefined)
+    assert.equal(question.parent, 'goal-1')
+    const first = question.history[0]
+    assert.deepEqual([first.actor, first.op, first.to], ['llm', 'propose', 'approved'])
+    assert.match(first.reason ?? '', /^主 Agent 在对话里把这件事交给人（propose_to_human call-\d+）$/)
+    await nextReply(host, agent)
+  }
+})
+
+test('the ways of a choose are a numbered list set apart from the question, the last marked as the pick; a look sample is fenced; the words the harness adds are plain', async () => {
+  const { host, agent } = await mainAgentWithGoal()
+  const choose = valueOf(await host.callTool(agent, PROPOSE_TO_HUMAN, exampleArgs('choose')))
+  const [question, ...list] = String(choose.text).split('\n\n')
+  assert.ok(question.startsWith('① '))
+  assert.deepEqual(list.join('\n\n').split('\n').map(line => line.slice(0, 3)), ['1. ', '2. '])
+  assert.ok(String(choose.text).endsWith('（推荐）'))
+  assert.deepEqual(plainWordsIn(String(choose.text)), [])
+  await nextReply(host, agent)
+  const look = valueOf(await host.callTool(agent, PROPOSE_TO_HUMAN, exampleArgs('look')))
+  assert.ok(String(look.text).includes('\n\n```\n[借书页]'), 'the sketch is in a code fence so that its line breaks stay')
+})
+
+test('the call hangs under the node it names, with sources as source edges, and under the goal in focus when it names none', async () => {
+  const { host, agent, node, engine } = await mainAgentWithGoal()
+  await engine.apply('human', { op: 'propose', reason: '拆分', node: { type: 'feature', title: '记一笔', parent: 'goal-1' } })
+  valueOf(await host.callTool(agent, PROPOSE_TO_HUMAN, { ...exampleArgs('want'), parent: 'feature-1', sources: ['goal-1'] }))
+  assert.equal((await node('question-1')).parent, 'feature-1')
+  assert.deepEqual((await node('question-1')).edges, [{ type: 'source', to: 'goal-1' }])
+  host.focuses.set(agent.id, 'feature-1')
+  await nextReply(host, agent)
+  valueOf(await host.callTool(agent, PROPOSE_TO_HUMAN, exampleArgs('want')))
+  assert.equal((await node('question-2')).parent, 'goal-1', 'the goal above the focus')
+  host.focuses.delete(agent.id)
+  const none = errorOf(await host.callTool(agent, PROPOSE_TO_HUMAN, exampleArgs('want')))
+  assert.deepEqual([none?.code, none?.field], ['invalid', 'parent'])
+})
+
+test('the parent must exist and be open', async () => {
+  const { host, agent, engine } = await mainAgentWithGoal()
+  const missing = errorOf(await host.callTool(agent, PROPOSE_TO_HUMAN, { ...exampleArgs('want'), parent: 'feature-9' }))
+  assert.deepEqual([missing?.code, missing?.field], ['invalid', 'parent'])
+  await engine.apply('human', { op: 'propose', reason: '拆分', node: { type: 'feature', title: '记一笔', parent: 'goal-1' } })
+  await engine.apply('human', { op: 'status', id: 'feature-1', rev: (await engine.load()).revisions.get('feature-1'), to: 'dropped', reason: '不做了' })
+  const closed = errorOf(await host.callTool(agent, PROPOSE_TO_HUMAN, { ...exampleArgs('want'), parent: 'feature-1' }))
+  assert.deepEqual([closed?.code, closed?.field], ['invalid', 'parent'])
+})
+
+test('the shape of the call: what goes with what, one rule at a time, and nothing is written', async () => {
+  const { host, agent, engine } = await mainAgentWithGoal()
+  const before = (await engine.load()).revision
+  const refused = async (args: unknown, field: string | undefined, message?: RegExp): Promise<void> => {
+    const error = errorOf(await host.callTool(agent, PROPOSE_TO_HUMAN, args))
+    assert.equal(error?.code, 'invalid', JSON.stringify(args))
+    assert.equal(error?.field, field, JSON.stringify(error))
+    assert.ok((error?.hint ?? '').length > 0)
+    if (message !== undefined) assert.match(error?.message ?? '', message)
+  }
+  const want = exampleArgs('want')
+  const { text: _text, ...noText } = want
+  const { form: _form, ...noForm } = want
+  await refused('not an object', undefined, /must be a JSON object/)
+  await refused({ ...want, extra: 1 }, 'extra')
+  await refused({ ...want, kind: 'nonsense' }, 'kind')
+  await refused(noText, 'text', /text is required/)
+  await refused(noForm, 'form')
+  await refused({ kind: 'question', text: '这样吗？' }, 'form', /needs form, title and its record/)
+  await refused({ ...want, form: 'sing' }, 'form')
+  await refused({ ...want, goal: 'goal-1' }, 'goal')
+  await refused({ ...want, module: 'module-a' }, 'module')
+  await refused({ ...want, page: 'p' }, 'page')
+  await refused({ ...want, sources: 'goal-1' }, 'sources')
+  await refused({ ...want, ways: 'a' }, 'ways')
+  await refused({ ...want, parent: 'goal-1', question: 'question-1' }, 'question')
+  await refused({ ...want, sample: '样稿' }, 'sample', /taken by form look/)
+  await refused({ ...want, attach: 'rules:p-3f9a1c07' }, 'attach', /taken only by form recommend/)
+  await refused({ ...exampleArgs('look'), attach: 'rules:p-3f9a1c07' }, 'sample', /exclude each other/)
+  await refused({ ...exampleArgs('recommend'), attach: 'rules:p-3f9a1c07', sample: '样稿' }, 'sample', /exclude each other/)
+  await refused({ ...exampleArgs('look'), sample: '' }, 'sample')
+  await refused({ ...exampleArgs('look'), sample: '字'.repeat(6001) }, 'sample')
+  await refused({ ...want, title: 7 }, 'title', /must be a string/)
+  for (const kind of ['confirm', 'release']) {
+    const error = errorOf(await host.callTool(agent, PROPOSE_TO_HUMAN, { kind, text: '这样吗？', goal: 'goal-1' }))
+    assert.deepEqual([error?.code, error?.field], ['invalid', 'kind'], kind)
+    assert.match(error?.hint ?? '', /^not yet/, kind)
+  }
+  assert.equal((await engine.load()).revision, before, 'the graph did not change')
+})
+
+test('the hard limits of the text, one case each, with the sentence to shorten named', async () => {
+  const { host, agent, engine } = await mainAgentWithGoal()
+  const before = (await engine.load()).revision
+  const refused = async (patch: Record<string, unknown>, message: RegExp, hint?: RegExp): Promise<void> => {
+    const error = errorOf(await host.callTool(agent, PROPOSE_TO_HUMAN, { ...exampleArgs('want'), ...patch }))
+    assert.deepEqual([error?.code, error?.field], ['invalid', 'text'], JSON.stringify(patch))
+    assert.match(error?.message ?? '', message)
+    if (hint !== undefined) assert.match(error?.hint ?? '', hint)
+  }
+  await refused({ text: '' }, /non-empty/)
+  await refused({ text: '第一行？\n第二行' }, /one line/)
+  await refused({ text: '我猜你要导入一整批（比如一个表格），对吗。' }, /exactly one question mark, it has 0/)
+  await refused({ text: '我猜你要导入一整批（比如一个表格），对吗？是不是？' }, /it has 2/)
+  await refused({ text: `${'字'.repeat(TALK_LIMITS.text.want)}？` }, new RegExp(`longer than ${TALK_LIMITS.text.want}`), /^shorten the sentence that ends with the question mark/)
+  await refused({ text: `我猜你要导入一整批（比如一个表格），对吗？${'字'.repeat(TALK_LIMITS.text.want)}` }, /longer than/, /^shorten the sentence after the question mark/)
+  const long = `${'字'.repeat(TALK_LIMITS.text.recommend - 1)}？`
+  const error = errorOf(await host.callTool(agent, PROPOSE_TO_HUMAN, { ...exampleArgs('recommend'), text: long }))
+  assert.equal(error?.field, 'text')
+  assert.equal((await engine.load()).revision, before)
+  // The limit of the way of asking: a recommend question may be longer than a choose question.
+  const asked = valueOf(await host.callTool(agent, PROPOSE_TO_HUMAN, { ...exampleArgs('want'), text: `我猜你${'字'.repeat(TALK_LIMITS.text.want - 7)}，对吗？`, proposal: '字' }))
+  assert.equal(asked.kind, 'question')
+})
+
+test('the words the person has not learned are refused wherever they are written, with what to say instead', async () => {
+  const { host, agent, engine } = await mainAgentWithGoal()
+  const before = (await engine.load()).revision
+  const cases: Array<[Record<string, unknown>, string]> = [
+    [{ text: '我猜你要把验收做成一页，对吗？', proposal: '把验收做成一页' }, 'text'],
+    [{ title: '标定的事' }, 'title'],
+    [{ ...exampleArgs('choose'), ways: ['看门禁', '站内通知加邮件：到期前一天和逾期当天各发一次，没登录也收得到'] }, 'ways'],
+  ]
+  for (const [patch, field] of cases) {
+    const error = errorOf(await host.callTool(agent, PROPOSE_TO_HUMAN, { ...exampleArgs('want'), ...patch }))
+    assert.deepEqual([error?.code, error?.field], ['invalid', field], JSON.stringify(patch))
+    assert.match(error?.message ?? '', /has not learned/)
+    assert.match(error?.hint ?? '', /^say .+ instead of /)
+  }
+  assert.equal((await engine.load()).revision, before)
+})
+
+test('the record is checked by way of asking: what each needs, what it does not take, fillers, and the proposal of a choose', async () => {
+  const { host, agent, engine } = await mainAgentWithGoal()
+  const before = (await engine.load()).revision
+  const refused = async (form: (typeof ASK_FORMS)[number], patch: Record<string, unknown>, field: string): Promise<void> => {
+    const error = errorOf(await host.callTool(agent, PROPOSE_TO_HUMAN, { ...exampleArgs(form), ...patch }))
+    assert.deepEqual([error?.code, error?.field], ['invalid', field], `${form} ${JSON.stringify(patch)}`)
+    assert.ok((error?.hint ?? '').length > 0)
+  }
+  await refused('recommend', { title: '' }, 'title')
+  await refused('recommend', { title: '字'.repeat(PLAIN_LIMITS.title + 1) }, 'title')
+  await refused('recommend', { reason: undefined }, 'reason')
+  await refused('choose', { reason: undefined }, 'reason')
+  await refused('choose', { ways: ['只有一条'] }, 'ways')
+  await refused('choose', { ways: ['甲', '乙', '丙', '丁'] }, 'ways')
+  await refused('choose', { ways: undefined }, 'ways')
+  await refused('choose', { cost: '一点代价' }, 'cost')
+  await refused('choose', { proposal: '不是最后一条' }, 'proposal')
+  await refused('recommend', { ways: ['甲', '乙'] }, 'ways')
+  await refused('want', { reason: '押金要退还' }, 'reason')
+  await refused('want', { proposal: undefined }, 'proposal')
+  await refused('look', { cost: '代价' }, 'cost')
+  await refused('recommend', { cost: '无' }, 'cost')
+  await refused('recommend', { notTaken: '没有' }, 'notTaken')
+  await refused('recommend', { proposal: '字'.repeat(PROPOSAL_LIMITS.line + 1) }, 'proposal')
+  assert.equal((await engine.load()).revision, before)
+  // A choose question's proposal is given or left out; given, it must be the last way.
+  valueOf(await host.callTool(agent, PROPOSE_TO_HUMAN, { ...exampleArgs('choose'), proposal: PLAIN_QUESTION_EXAMPLES.choose.ways!.at(-1) }))
+})
+
+test('the record is in the words: reason and proposal in the question itself, cost and the reason of a choose anywhere; a reason after the question mark is refused with where it belongs', async () => {
+  const { host, agent, node, engine } = await mainAgentWithGoal()
+  const recommend = { kind: 'question', form: 'recommend', title: '借书要不要先交押金', proposal: '借书先不收押金', reason: '押金要退还' }
+  const before = (await engine.load()).revision
+  const after = errorOf(await host.callTool(agent, PROPOSE_TO_HUMAN, { ...recommend, text: '我建议借书先不收押金，可以吗？理由是押金要退还。' }))
+  assert.deepEqual([after?.code, after?.field], ['invalid', 'text'])
+  assert.match(after?.message ?? '', /reason is not in text word for word/)
+  assert.match(after?.hint ?? '', /in the sentence that ends with the question mark/)
+  const missing = errorOf(await host.callTool(agent, PROPOSE_TO_HUMAN, { ...recommend, text: '我建议先不收押金，因为押金要退还，可以吗？' }))
+  assert.match(missing?.message ?? '', /proposal is not in text/)
+  const cost = errorOf(await host.callTool(agent, PROPOSE_TO_HUMAN, { ...recommend, text: '我建议借书先不收押金，因为押金要退还，可以吗？', cost: '书丢了只能事后追责' }))
+  assert.match(cost?.message ?? '', /cost is not in text/)
+  assert.match(cost?.hint ?? '', /in text:/)
+  assert.equal((await engine.load()).revision, before)
+  // The cost after the question mark is fine; the stored question runs from the start to the mark.
+  valueOf(await host.callTool(agent, PROPOSE_TO_HUMAN, { ...recommend, text: '我建议借书先不收押金，因为押金要退还，可以吗？代价是书丢了只能事后追责。', cost: '书丢了只能事后追责' }))
+  await nextReply(host, agent)
+  valueOf(await host.callTool(agent, PROPOSE_TO_HUMAN, { ...recommend, text: '我建议借书先不收押金。理由是押金要退还。可以吗？' }))
+  assert.equal((await node('question-2')).ask, '我建议借书先不收押金。理由是押金要退还。可以吗？', 'the whole stretch to the mark, not the last sentence')
+  await nextReply(host, agent)
+  const choose = errorOf(await host.callTool(agent, PROPOSE_TO_HUMAN, { ...exampleArgs('choose'), text: '读者快到期或逾期时怎么提醒他们？' }))
+  assert.match(choose?.message ?? '', /reason is not in text/)
+})
+
+test('the engine\'s own refusal comes through as it is', async () => {
+  const { host, agent } = await mainAgentWithGoal()
+  const error = errorOf(await host.callTool(agent, PROPOSE_TO_HUMAN, { ...exampleArgs('want'), sources: ['nowhere-1'] }))
+  assert.equal(error?.code, 'invalid')
+})
+
+test('at most three questions in one reply: the fourth is refused with nothing written, and the count starts again at the human\'s next message', async () => {
+  const { host, agent, engine } = await mainAgentWithGoal()
+  const numbers: unknown[] = []
+  for (let index = 1; index <= 3; index++) {
+    const outcome = await host.callTool(agent, PROPOSE_TO_HUMAN, { ...exampleArgs('want'), title: `第 ${index} 件` })
+    numbers.push(outcome.kind === 'ok' ? [outcome.value.number, String(outcome.value.text).slice(0, 1)] : outcome.kind)
+  }
+  assert.deepEqual(numbers, [[1, '①'], [2, '②'], [3, '③']])
+  const before = (await engine.load()).revision
+  const fourth = errorOf(await host.callTool(agent, PROPOSE_TO_HUMAN, { ...exampleArgs('want'), title: '第 4 件' }))
+  assert.deepEqual([fourth?.code, fourth?.hint], ['too_many', 'at most three questions in one reply: end this reply with the questions you have and wait'])
+  assert.equal((await engine.load()).revision, before)
+  host.reply(agent, '三件事，你看呢？')
+  await host.say(agent, '第一件可以，另外两件再说')
+  const again = valueOf(await host.callTool(agent, PROPOSE_TO_HUMAN, { ...exampleArgs('want'), title: '新的一件' }))
+  assert.equal(again.number, 1)
+})
+
+test('only the main agent may call it: an ordinary session and a delegated one are refused, and neither has the tool on its face', async () => {
+  const { host, agent } = await mainAgentWithGoal()
+  const plain = host.addAgent('plain')
+  const child = host.addAgent('child', { origin: 'subagent', parentSession: agent.id })
+  for (const other of [plain, child]) {
+    const error = errorOf(await host.callTool(other, PROPOSE_TO_HUMAN, exampleArgs('want')))
+    assert.deepEqual([error?.code, error?.hint], ['forbidden', 'only the main agent puts matters to the human; the human turns main agent mode on with /wish'], other.id)
+  }
+  const withTools = [...BASE_TOOLS, ...DESIGN_TOOL_NAMES.map(name => ({ name, description: name, parameters: { type: 'object', properties: {} } }))]
+  await host.created(plain)
+  await host.created(child)
+  await host.created(agent)
+  for (const other of [plain, child]) {
+    assert.deepEqual((await other.assemble({ tools: withTools })).tools.map(tool => tool.name), BASE_TOOLS.map(tool => tool.name), other.id)
+  }
+  const main = (await agent.assemble({ tools: withTools })).tools.map(tool => tool.name)
+  assert.ok(DESIGN_TOOL_NAMES.every(name => main.includes(name)), 'the main agent keeps both')
+  assert.equal(main.includes('write'), false)
+})
+
+test('the face of a session that is not the main agent loses the two tools and nothing else, and is the same array when it has none', () => {
+  const tools = [...BASE_TOOLS, { name: PROPOSE_TO_HUMAN, description: '', parameters: {} }, { name: RECORD_HUMAN_ANSWER, description: '', parameters: {} }]
+  assert.deepEqual(ordinaryFace(tools, name => name).map(tool => tool.name), BASE_TOOLS.map(tool => tool.name))
+  assert.equal(ordinaryFace(BASE_TOOLS, name => name), BASE_TOOLS)
+  const aliased = [...BASE_TOOLS, { name: 'ProposeToHuman', description: '', parameters: {} }]
+  assert.deepEqual(ordinaryFace(aliased, name => name === 'ProposeToHuman' ? PROPOSE_TO_HUMAN : name).map(tool => tool.name), BASE_TOOLS.map(tool => tool.name), 'compared by native name')
+})
+
+test('the tool description carries the shapes of a question and the worked examples', async () => {
+  const { host } = await mainAgentWithGoal()
+  const tool = host.tools.get(PROPOSE_TO_HUMAN)!
+  assert.ok(tool.description.includes(TALK_SHAPES))
+  assert.ok(tool.description.includes(PLAIN_QUESTION_GUIDE))
+  assert.match(tool.description, /^Put one matter to the human: one question they can answer in a few words\. The harness checks it, keeps it on the graph when the human decides it, and returns the text to show\./)
+  for (const kind of ['question', 'confirm', 'release']) assert.ok(tool.description.includes(`kind ${kind}:`), kind)
+  const properties = (tool.parameters as { properties: Record<string, unknown> }).properties
+  assert.deepEqual(Object.keys(properties), ['kind', 'text', 'form', 'title', 'proposal', 'reason', 'cost', 'ways', 'notTaken', 'sample', 'goal', 'module', 'page', 'parent', 'question', 'sources', 'attach'])
+  assert.deepEqual((tool.parameters as { required: string[] }).required, ['kind', 'text'])
+})
+
+/** A recommend question that carries a board's proposal is put and answered once, so that the next call is a second reply. */
+async function putWithBoard(fixture: Awaited<ReturnType<typeof mainAgentWithGoal>>): Promise<{ readonly board: ReturnType<typeof fakeBoard>, readonly tool: ReturnType<typeof proposeTool> }> {
+  const board = fakeBoard()
+  const tool = proposeTool(toolDeps(fixture, [board.board]))
+  await fixture.host.invoke(fixture.agent, tool, { ...exampleArgs('recommend'), attach: 'rules:p-3f9a1c07' })
+  await nextReply(fixture.host, fixture.agent)
+  return { board, tool }
+}
+
+// ---------------------------------------------------------------- revising and showing once more
+
+test('after the human added or turned it down, the question is revised in place with its record; what is not given is cleared; the way of asking cannot change; a decided question is not revised', async () => {
+  const { host, agent, node, engine } = await mainAgentWithGoal()
+  valueOf(await host.callTool(agent, PROPOSE_TO_HUMAN, { ...exampleArgs('recommend'), notTaken: '先收押金' }))
+  await nextReply(host, agent)
+  const { text: _t, cost: _c, notTaken: _n, ...base } = exampleArgs('recommend')
+  const text = '我建议借书先不收押金，因为押金要退还，管理员得多做一份对账，可以吗？'
+  const revised = valueOf(await host.callTool(agent, PROPOSE_TO_HUMAN, { ...base, question: 'question-1', text }))
+  assert.equal(revised.question, 'question-1')
+  assert.equal(revised.number, 1, 'a new reply counts from one')
+  const question = await node('question-1')
+  assert.deepEqual([question.cost, question.notTaken], [undefined, undefined], 'what the revision did not give is cleared')
+  assert.equal(question.ask, text)
+  assert.equal(question.history.at(-1)?.op, 'edit')
+  assert.match(question.history.at(-1)?.reason ?? '', /^主 Agent 在对话里改了交给人的方案（propose_to_human call-\d+）$/)
+  assert.equal(revised.text, renderAsk(text, 1))
+  // The way of asking is set once.
+  const change = errorOf(await host.callTool(agent, PROPOSE_TO_HUMAN, { ...exampleArgs('want'), question: 'question-1' }))
+  assert.deepEqual([change?.code, change?.field], ['invalid', 'form'])
+  assert.match(change?.hint ?? '', /drop this question with graph_status \(status dropped, the human's exact words in relay\) and put a new one with propose_to_human/)
+  // A revision gives the form and the title with the record.
+  const partial = errorOf(await host.callTool(agent, PROPOSE_TO_HUMAN, { kind: 'question', question: 'question-1', text, proposal: '借书先不收押金' }))
+  assert.deepEqual([partial?.code, partial?.field], ['invalid', 'form'])
+  // Decided: refused.
+  const rev = (await engine.load()).revisions.get('question-1')
+  assert.equal((await engine.apply('human', { op: 'decide', id: 'question-1', rev, conclusion: '借书先不收押金', reason: '同意' })).ok, true)
+  const late = errorOf(await host.callTool(agent, PROPOSE_TO_HUMAN, { ...base, question: 'question-1', text }))
+  assert.deepEqual([late?.code, late?.field, late?.hint], ['invalid', 'question', 'decided; propose a new question'])
+})
+
+test('a question that is not a proposal waiting for the human cannot be revised or shown once more', async () => {
+  const { host, agent, engine } = await mainAgentWithGoal()
+  await engine.apply('human', { op: 'propose', reason: '建图', node: { type: 'question', title: '存储格式', parent: 'goal-1', options: [{ key: 'B', label: 'a', gain: 'g', cost: 'c' }, { key: 'A', label: 'b', gain: 'g', cost: 'c' }], recommend: 'A', crux: '取决于什么？', verdict: '是 → B；否 → A', weight: 'two-way' } })
+  for (const args of [{ question: 'question-1', text: '再问一次吗？' }, { ...exampleArgs('want'), question: 'question-1' }, { question: 'goal-1', text: '再问一次吗？' }, { question: 'question-9', text: '再问一次吗？' }]) {
+    const error = errorOf(await host.callTool(agent, PROPOSE_TO_HUMAN, { kind: 'question', ...args }))
+    assert.ok(['invalid', 'not_found'].includes(error?.code ?? ''), JSON.stringify(args))
+    assert.equal(error?.field, 'question', JSON.stringify(args))
+  }
+})
+
+test('a question already put is shown once more with its own words held to the same limits and to its record, without writing, and takes one of the three', async () => {
+  const { host, agent, engine } = await mainAgentWithGoal()
+  valueOf(await host.callTool(agent, PROPOSE_TO_HUMAN, exampleArgs('choose')))
+  await nextReply(host, agent)
+  const revision = (await engine.load()).revision
+  const text = '上次问的提醒方式还没定：读者快到期或逾期时怎么提醒他们？我推荐站内通知加邮件，因为多数读者不会每天登录。'
+  const again = valueOf(await host.callTool(agent, PROPOSE_TO_HUMAN, { kind: 'question', question: 'question-1', text }))
+  assert.equal(again.question, 'question-1')
+  assert.equal(again.form, 'choose', 'the form is the question\'s own')
+  assert.equal(again.text, renderAsk(text, 1, PLAIN_QUESTION_EXAMPLES.choose.ways), 'the ways come from the node')
+  assert.equal((await engine.load()).revision, revision, 'the history did not change')
+  const state = host.projections.stateOf(agent.session, 'hournessTalk') as { shown: Array<{ question?: string, form?: string }> }
+  assert.deepEqual(state.shown.filter(entry => entry.question === 'question-1').map(entry => entry.form), ['choose', 'choose'], 'the session log has an item for it again')
+  assert.equal(valueOf(await host.callTool(agent, PROPOSE_TO_HUMAN, { kind: 'question', question: 'question-1', text })).number, 2)
+  // The new words are held to the limits and to the record of the node.
+  const refused = [
+    errorOf(await host.callTool(agent, PROPOSE_TO_HUMAN, { kind: 'question', question: 'question-1', text: '没有问号。' })),
+    errorOf(await host.callTool(agent, PROPOSE_TO_HUMAN, { kind: 'question', question: 'question-1', text: '还没定，怎么提醒他们？' })),
+    errorOf(await host.callTool(agent, PROPOSE_TO_HUMAN, { kind: 'question', question: 'question-1', text: '还没定，怎么提醒他们？我推荐站内通知加邮件，因为多数读者不会每天登录。', attach: 'rules:p-3f9a1c07' })),
+  ]
+  assert.deepEqual(refused.map(error => [error?.code, error?.field]), [['invalid', 'text'], ['invalid', 'text'], ['invalid', 'attach']])
+})
+
+// ---------------------------------------------------------------- attach
+
+test('with no board in the table, attach is refused with the reason, and a prefix the table does not know too', async () => {
+  const { host, agent, engine } = await mainAgentWithGoal()
+  const before = (await engine.load()).revision
+  for (const attach of ['rules:p-3f9a1c07', 'loops:lp-3f9a1c07', 'scripts:x']) {
+    const error = errorOf(await host.callTool(agent, PROPOSE_TO_HUMAN, { ...exampleArgs('recommend'), attach }))
+    assert.deepEqual([error?.code, error?.field], ['invalid', 'attach'], attach)
+    assert.match(error?.message ?? '', /no component in this composition takes attach (rules:|loops:|scripts:)/, attach)
+  }
+  assert.equal((await engine.load()).revision, before)
+})
+
+test('a board\'s proposal is shown with its original text after the question, and the question\'s body ends with the line that ties it', async () => {
+  const fixture = await mainAgentWithGoal()
+  const { host, agent, node } = fixture
+  const board = fakeBoard()
+  const tool = proposeTool(toolDeps(fixture, [board.board]))
+  const outcome = await host.invoke(agent, tool, { ...exampleArgs('recommend'), attach: 'rules:p-3f9a1c07' })
+  const value = valueOf(outcome)
+  const detail = (board.answer.ok ? board.answer.detail?.markdown : '') ?? ''
+  assert.equal(value.text, renderAsk(PLAIN_QUESTION_EXAMPLES.recommend.text, 1, undefined, detail))
+  assert.ok(String(value.text).endsWith(detail), 'the original text is the last paragraph, verbatim')
+  assert.equal(value.attach, 'rules:p-3f9a1c07')
+  assert.match(String(value.message), /The last paragraph is the exact text the human must see before agreeing: keep it verbatim in your reply\.$/)
+  assert.equal((await node('question-1')).body, `${detail}\n\n提议：p-3f9a1c07`)
+  assert.deepEqual(board.asked.map(entry => entry.proposal), ['p-3f9a1c07'])
+})
+
+test('a board that refuses, is not running, answers oddly or sends a detail outside the limits keeps the question from being put', async () => {
+  const fixture = await mainAgentWithGoal()
+  const { host, agent, engine } = fixture
+  const board = fakeBoard()
+  const tool = proposeTool(toolDeps(fixture, [board.board]))
+  const piece = (size: number): string => '字'.repeat(size)
+  const answers: Array<[string, unknown]> = [
+    ['refused', { ok: false, message: 'the script has been changed' }],
+    ['not an answer', 'yes'],
+    ['markdown too long', { ok: true, detail: { markdown: piece(6001), mustShow: ['x'] } }],
+    ['markdown empty', { ok: true, detail: { markdown: '', mustShow: ['x'] } }],
+    ['no pieces', { ok: true, detail: { markdown: 'x', mustShow: [] } }],
+    ['too many pieces', { ok: true, detail: { markdown: 'x', mustShow: Array.from({ length: 9 }, () => 'x') } }],
+    ['piece too long', { ok: true, detail: { markdown: 'x', mustShow: [piece(4001)] } }],
+    ['detail of another shape', { ok: true, detail: 'text' }],
+  ]
+  const args = { ...exampleArgs('recommend'), attach: 'rules:p-3f9a1c07' }
+  for (const [name, answer] of answers) {
+    board.answer = answer as typeof board.answer
+    const error = errorOf(await host.invoke(agent, tool, args))
+    assert.deepEqual([error?.code, error?.field], ['invalid', 'attach'], name)
+  }
+  // At the limits it goes through: 6000 code points of text, 8 pieces of 4000.
+  board.answer = { ok: true, detail: { markdown: piece(6000), mustShow: Array.from({ length: 8 }, () => piece(4000)) } }
+  assert.equal((await host.invoke(agent, tool, args)).kind, 'ok')
+  // A throwing board and a board that is not running.
+  board.answer = { ok: true }
+  board.service.attachable = () => { throw new Error('board down') }
+  assert.match(errorOf(await host.invoke(agent, tool, args))?.message ?? '', /board down/)
+  const absent = proposeTool(toolDeps(fixture, [{ ...board.board, service: () => undefined }]))
+  assert.match(errorOf(await host.invoke(agent, absent, args))?.message ?? '', /the rules board is not running here/)
+  assert.equal(errorOf(await host.invoke(agent, tool, { ...args, attach: 'rules:p-xyz' }))?.field, 'attach')
+  assert.deepEqual([...(await engine.load()).nodes.keys()], ['goal-1', 'question-1'], 'only the question that was accepted at the limits was written')
+})
+
+test('revising a question that carries a board\'s proposal needs a new attach, and replaces the whole body with it', async () => {
+  const fixture = await mainAgentWithGoal()
+  const { host, agent, node } = fixture
+  const { board, tool } = await putWithBoard(fixture)
+  const { cost: _cost, notTaken: _notTaken, ...revision } = exampleArgs('recommend')
+  const text = '我建议借书先不收押金，因为押金要退还，管理员得多做一份对账，可以吗？'
+  const without = errorOf(await host.invoke(agent, tool, { ...revision, question: 'question-1', text }))
+  assert.deepEqual([without?.code, without?.field], ['invalid', 'attach'])
+  assert.match(without?.hint ?? '', /record the revised proposal with the board first and pass its new attach/)
+  board.answer = { ok: true, detail: { markdown: '新的脚本原文', mustShow: ['新的脚本原文'] } }
+  const revised = valueOf(await host.invoke(agent, tool, { ...revision, question: 'question-1', text, attach: 'rules:p-aaaaaaaa' }))
+  assert.equal((await node('question-1')).body, '新的脚本原文\n\n提议：p-aaaaaaaa')
+  assert.equal(revised.text, renderAsk(text, 1, undefined, '新的脚本原文'))
+})
+
+test('showing a question with a board\'s proposal once more asks the board again for the original text; one whose board is not running cannot be shown', async () => {
+  const fixture = await mainAgentWithGoal()
+  const { host, agent } = fixture
+  const { board, tool } = await putWithBoard(fixture)
+  board.answer = { ok: true, detail: { markdown: '重新核对过的原文', mustShow: ['重新核对过的原文'] } }
+  const text = PLAIN_QUESTION_EXAMPLES.recommend.text
+  const again = valueOf(await host.invoke(agent, tool, { kind: 'question', question: 'question-1', text }))
+  assert.equal(again.text, renderAsk(text, 1, undefined, '重新核对过的原文'), 'the detail as the board gives it now, after the question')
+  assert.deepEqual(board.asked.map(entry => entry.proposal), ['p-3f9a1c07', 'p-3f9a1c07'])
+  board.answer = { ok: false, message: 'the proposal has been withdrawn' }
+  const refused = errorOf(await host.invoke(agent, tool, { kind: 'question', question: 'question-1', text }))
+  assert.deepEqual([refused?.code, refused?.field], ['invalid', 'attach'])
+  const absent = proposeTool(toolDeps(fixture, [{ ...board.board, service: () => undefined }]))
+  const out = errorOf(await host.invoke(agent, absent, { kind: 'question', question: 'question-1', text }))
+  assert.deepEqual([out?.code, out?.field], ['invalid', 'attach'])
+})
+
+// ---------------------------------------------------------------- when the session's messages cannot be read
+
+test('when the session\'s messages cannot be read at all the question is counted as the first and the row health says so', async () => {
+  const fixture = await mainAgentWithGoal()
+  const { host, agent } = fixture
+  const reports: string[] = []
+  const tool = proposeTool(toolDeps(fixture, [], { talk: () => undefined, report: (_agent, _state, reason) => { reports.push(reason) } }))
+  for (let index = 0; index < 4; index++) {
+    const outcome = await host.invoke(agent, tool, { ...exampleArgs('want'), title: `第 ${index + 1} 件` })
+    assert.equal(outcome.kind === 'ok' ? outcome.value.number : outcome.kind, 1, 'the limit of three cannot be counted, so it is not enforced')
+  }
+  assert.match(reports[0] ?? '', /编号只按第 1 件算/)
+})
+
+test('without the talk projection the tool reads the session log, the count is right, and the row health says so', async () => {
+  const host = hostWithoutTalkProjection()
+  const { captureWarnings } = await import('./graph-helpers.ts')
+  const { apply } = await import('../src/design/index.ts')
+  const { warnings } = await captureWarnings(() => apply(host.ctx))
+  assert.ok(warnings.some(text => text.includes('hournessTalk')), warnings.join('\n'))
+  const agent = host.addAgent('s1')
+  await host.execute(agent, '/wish')
+  const { openEngine } = await import('../src/graph/engine.ts')
+  const dir = `${host.workspace('ws')}/docs/graph`
+  await openEngine(dir).apply('human', { op: 'propose', reason: '立项', node: { type: 'goal', title: '记账小工具', stage: 'interview' } })
+  host.focuses.set('s1', 'goal-1')
+  const numbers: unknown[] = []
+  for (const title of ['一', '二', '三']) {
+    const outcome = await host.callTool(agent, PROPOSE_TO_HUMAN, { ...exampleArgs('want'), title })
+    numbers.push(outcome.kind === 'ok' ? outcome.value.number : outcome.kind)
+  }
+  assert.deepEqual(numbers, [1, 2, 3])
+  assert.equal((await host.callTool(agent, PROPOSE_TO_HUMAN, { ...exampleArgs('want'), title: '四' })).kind, 'error')
+  const { healthOf } = await import('./design-host.ts')
+  assert.equal(healthOf(host, agent)?.state, 'degraded')
+  assert.match(healthOf(host, agent)?.reason ?? '', /人的消息改从会话日志读/)
+})
+
+// ---------------------------------------------------------------- the contract with the panel (panel design 0.7 §11, 6c)
+
+test('contract with the panel: a question the tool puts for each worked example, and one that carries a board\'s original text, goes through the engine inside the limits and is kept as given', async () => {
+  const fixture = await mainAgentWithGoal()
+  const { host, agent, node } = fixture
+  let index = 0
+  for (const form of ASK_FORMS) {
+    valueOf(await host.callTool(agent, PROPOSE_TO_HUMAN, exampleArgs(form)))
+    index += 1
+    const example = PLAIN_QUESTION_EXAMPLES[form]
+    const stored = await node(`question-${index}`)
+    assert.deepEqual([stored.ask, stored.form, stored.proposal, stored.title], [askOf(example.text), form, example.proposal ?? example.ways?.at(-1), example.title], form)
+    assert.ok(stored.title.length <= PLAIN_LIMITS.title)
+    await nextReply(host, agent)
+  }
+  const board = fakeBoard()
+  const tool = proposeTool(toolDeps(fixture, [board.board]))
+  valueOf(await host.invoke(agent, tool, { ...exampleArgs('recommend'), attach: 'rules:p-3f9a1c07' }))
+  const attached = await node('question-5')
+  assert.equal(attached.ask, askOf(PLAIN_QUESTION_EXAMPLES.recommend.text))
+  assert.ok(attached.body?.endsWith('提议：p-3f9a1c07'))
+})
+
+// The second phase of the panel design's writing check (src/graph/plain.ts, panel design 0.7 §5.3) is not on main yet. The commit of
+// the panel design that brings plain.ts removes this skip and adds the assertion that the engine returns no warning and no
+// refusal for the questions above under the constants of the second phase; whoever merges later adds it. No stand-in of plain.ts
+// is written here: it is the repository's own module.
+test('contract with the panel: the second phase of the writing check', { skip: 'waits for src/graph/plain.ts (panel design 0.7 §5.3, §11 6c)' }, () => undefined)

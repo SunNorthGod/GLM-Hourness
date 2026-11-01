@@ -7,7 +7,7 @@
  * session that is its project's main agent and nobody else's.
  */
 import assert from 'node:assert/strict'
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, writeFileSync } from 'node:fs'
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -19,7 +19,7 @@ import { loadGraph } from '../src/graph/store.ts'
 import { releaseVerdict } from '../src/guard/design-release.ts'
 import { ASK_RULE, DESIGN_RELEASE_RULE, GIT_SNAPSHOT_RULE, NO_WRITE_RULE } from '../src/guard/main-agent-rules.ts'
 import type { PreExecuteDecision } from '../src/shared/dsh-min.ts'
-import { designHost, healthOf, type DesignHost, type FakeAgent } from './design-host.ts'
+import { denied, designHost, healthOf, journaled, type DesignHost, type FakeAgent } from './design-host.ts'
 import { sh } from './git-fixture.ts'
 import { captureWarnings } from './graph-helpers.ts'
 import { graphOf, node } from './graph-memory.ts'
@@ -28,7 +28,6 @@ import { graphOf, node } from './graph-memory.ts'
 const DIALECT = { claims: () => true, nativeOf: (name: string) => ({ Write: 'write', Edit: 'edit', Bash: 'pwsh', AskUserQuestion: 'ask_user_question' } as Record<string, string>)[name], faceName: (native: string) => ({ write: 'Write', edit: 'Edit', pwsh: 'Bash', ask_user_question: 'AskUserQuestion' } as Record<string, string>)[native] ?? native }
 
 const tick = (): Promise<void> => new Promise(resolve => { setImmediate(resolve) })
-const sleep = (ms: number): Promise<void> => new Promise(resolve => { setTimeout(resolve, ms) })
 
 async function mainAgent(options: Parameters<typeof designHost>[0] = {}): Promise<{ readonly host: DesignHost, readonly agent: FakeAgent }> {
   const host = designHost(options)
@@ -36,22 +35,6 @@ async function mainAgent(options: Parameters<typeof designHost>[0] = {}): Promis
   const agent = host.addAgent('s1')
   assert.equal((await host.execute(agent, '/wish'))?.result.kind, 'success')
   return { host, agent }
-}
-
-function denied(decision: PreExecuteDecision): string {
-  assert.equal(decision.kind, 'deny', JSON.stringify(decision))
-  return (decision as { reason: string }).reason
-}
-
-/** The lines of the violation journal once there are `count` of them (the row writes them without waiting). */
-async function journaled(host: DesignHost, count: number): Promise<Array<Record<string, unknown>>> {
-  const file = join(host.projectHome, 'audit', 'violations.jsonl')
-  for (let attempt = 0; attempt < 200; attempt++) {
-    const rows = existsSync(file) ? readFileSync(file, 'utf8').split('\n').filter(line => line !== '').map(line => JSON.parse(line) as Record<string, unknown>) : []
-    if (rows.length >= count) return rows
-    await sleep(10)
-  }
-  assert.fail(`the violation journal never reached ${count} lines`)
 }
 
 /** What was put before the agent's next step by the snapshot (the /wish notices are not these). */

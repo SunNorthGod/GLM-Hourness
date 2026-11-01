@@ -161,7 +161,15 @@ L3 核实〔实测 2026-10-28，派发可行性验证 (c)，`ROADMAP.md` 借用�
 | `crux` | 字符串 | 待决，人定的必填 | 「取决于」：只有人知道答案的那个关键问题 |
 | `verdict` | 字符串 | 待决，人定的必填 | 结论行「是 → X；否 → Y」，点名选项 key |
 | `weight` | 枚举 | 待决，人定的必填 | `one-way` 单向门（改目标、验收条件或非目标，或以后改起来很贵的方向，§2.9.1 第 1、5 类）、`two-way` 双向门 |
-| `decision` | 选项 key | 待决，拍板后 | 人选中的选项 |
+| `decision` | 选项 key | 带 `options` 的待决，拍板后 | 人选中的选项 |
+| `ask` | 字符串 | 提议式待决，必填 | 问句：主 Agent 对人说的那句话从开头到第一个问号（含），一行，恰好一个问号并以它结尾，不超过该问法的字数上限（`recommend` 160，其余 120） |
+| `form` | 枚举 | 提议式待决，必填，建后不能改 | 问法：`recommend` 让人同意一条推荐，`choose` 在两三条路里选，`want` 让人改正一个猜测，`look` 让人看一样东西指毛病 |
+| `proposal` | 字符串 | 提议式待决，必填 | 推荐的做法、猜测或给人看的东西的名字，一行，不超过 60 个字；`choose` 取 `ways` 的最后一项 |
+| `reason` | 字符串 | `recommend`、`choose` 必填 | 为什么，一行，不超过 60 个字 |
+| `cost` | 字符串 | `recommend`，可选 | 真有代价才写，一行，不超过 60 个字 |
+| `ways` | 字符串数组 | `choose` 必填 | 两三条路，每条一行写人会看到什么，不超过 50 个字，没有问号，互不相同，推荐的放最后 |
+| `notTaken` | 字符串 | `recommend`、`choose`，可选 | 没选的做法，留给记录，一行，不超过 60 个字 |
+| `conclusion` | 字符串 | 提议式待决，拍板后 | 人定了什么，一行，不超过 120 个字 |
 | `edges` | 数组 | 可选 | `{type, to}`：`depends` 依赖（本节点依赖 `to`）、`source` 来源（本节点因 `to` 而存在）、`supersedes` 取代（本节点取代 `to`） |
 | `evidence` | 数组 | 可选 | `{kind, ref, exit?, note?}`：`commit`（`ref` 为 7–40 位十六进制提交号）；`test` 与 `check`（`ref` 为命令或检查器名，`exit` 为退出码，必填）；`decision`（拍板时由引擎写入，`ref` 为选项 key） |
 | `history` | 数组 | 必填，至少一条 | 每次变更一条，格式见 §2.9 |
@@ -176,7 +184,7 @@ L3 核实〔实测 2026-10-28，派发可行性验证 (c)，`ROADMAP.md` 借用�
 
 - 字段类型、枚举值、必填字段，未知字段报错；id 与文件名一致。
 - `parent` 与连线目标都存在，连线不指向自己，同一节点上没有重复连线；分解与依赖都无环；目标节点没有父节点，其他节点必须有父节点，于是沿 `parent` 最终走到一个目标节点。
-- `recommend` 与 `decision` 是已有选项；`verification` 只出现在决策节点，`options`、`dimension`、`recommend`、`crux`、`verdict`、`weight`、`decider`、`decision` 只出现在待决节点，`stage` 只出现在目标与特性节点；`decision` 类证据只出现在待决节点，`ref` 是已有选项。表格卡的字段在文件里只查形状：`gain`、`cost`、`consequence`、`crux`、`verdict` 是非空字符串，`weight` 是两个取值之一，`dimension` 有非空的 `name` 与 `values`，`values` 至少一格，键是选项 key 的格式，格子是非空字符串。行文、长度与必填是写入规则（见下）。
+- `recommend` 与 `decision` 是已有选项；`verification` 只出现在决策节点，`options`、`dimension`、`recommend`、`crux`、`verdict`、`weight`、`decider`、`decision` 只出现在待决节点，`stage` 只出现在目标与特性节点；`decision` 类证据只出现在待决节点，`ref` 是已有选项（提议式待决的 `ref` 固定为 `conclusion`）。`ask`、`form`、`proposal`、`reason`、`cost`、`ways`、`notTaken`、`conclusion` 只出现在没有 `options` 的待决节点，带 `options` 的待决不带它们；没有 `options` 的待决必须有 `ask`、`form`、`proposal`，并按问法有该有的、没有不收的（见下，提议式待决）。表格卡的字段在文件里只查形状：`gain`、`cost`、`consequence`、`crux`、`verdict` 是非空字符串，`weight` 是两个取值之一，`dimension` 有非空的 `name` 与 `values`，`values` 至少一格，键是选项 key 的格式，格子是非空字符串。行文、长度与必填是写入规则（见下）。
 - 派发属性（`kind`、`tier`、`worktree`、`outputSchema`、`writeScope`）只出现在任务节点；`kind` 为 `review` 的任务 `writeScope` 为空；`writeScope` 里没有重复路径。派发属性都是可选的：缺属性的任务照样是合法节点，派发时缺什么由以后的简报门禁拦（§3.3）。
 - 状态为 `done` 的节点有至少一条通过的证据：`commit`，或 `exit` 为 0 的 `test` / `check`，或 `decision`。
 - 历史条目的字段与取值见 §2.9。
@@ -200,6 +208,8 @@ L3 核实〔实测 2026-10-28，派发可行性验证 (c)，`ROADMAP.md` 借用�
 这些不是文件校验：规则之前写下的待决照常读入、照常显示、照常拍板（已决的不迁移），改标题、正文、`decider` 也照常。改了卡面字段的那次写入要让整张卡合规：例如第一次改旧待决的 `options`，要把 `consequence` 换成 `gain` 与 `cost`，人定的还要在同一次写入里补上 `crux`、`verdict`、`weight`。只改 `decider` 的写入不核对卡面：LLM 随时可以把待决交给人（§2.9.1），而它改不了已批准待决的卡面字段，核对会让这种交还做不成；代价是这样交给人的 agent 待决可能没有「取决于」与结论行。
 
 面板（`ui/src/graph/common.tsx` 的 `Options`）按存储顺序列出选项，「推荐」只是推荐项上的一个标记；每个选项下的一行说明显示 `consequence`，没有时显示「得到 …；代价 …」。表格版式、对比列、「取决于」与结论行在面板上的显示交给 `m8-plain-language`。
+
+提议式待决〔M3 第 6 步，设计行默认禁用；决策 `d-ask-three-gates`，试行，人看效果再调数〕：待决有两种形状。带 `options` 的是表格卡（上）；没有 `options` 的是提议式，由主 Agent 在对话里交给人（`propose_to_human`，§3.1），人在同一个对话里回话，主 Agent 用 `record_human_answer` 带人的原话记下，面板只看不点（`d-ui-look-not-operate`）。记录与问话分开：记录是上表的字段；问话是主 Agent 自己写的一句话，不进图，只由工具查几条硬限制（§3.1）。引擎在 `propose` 与 `edit` 时按问法核对记录（`src/graph/proposal.ts` 的 `proposalRecordRefusal`），第一条不符就拒绝（`invalid`），`field` 是要改的字段：标题（一行，不超过 40 个字）；`form` 是四种之一；问句一行、恰好一个问号并以它结尾、不超过该问法的字数上限；`choose` 的 `ways`（两条或三条，每条一行、不超过 50 个字、没有问号、互不相同）；`proposal`（一行，不超过 60 个字；`choose` 的等于 `ways` 的最后一条）；按问法该有与不收的字段：`recommend` 要 `reason`，可有 `cost`、`notTaken`，不收 `ways`；`choose` 要 `reason` 与 `ways`，可有 `notTaken`，不收 `cost`；`want`、`look` 只有 `proposal`；可选的几行不能是填充（「无」「没有」「暂无」「不适用」、n/a、none 或只有标点）。`form` 建后不能改：`edit` 带 `form` 是 `invalid`，`hint` 说明丢掉旧的（`graph_status` 改为 `dropped`，带人的原话）、再新提一张。已拍板的提议式待决，LLM 与 harness 不能再改它的记录字段（人可以）。人定的提议式待决用 `decide` 带 `conclusion` 拍板（一行，不超过 120 个字，去掉首尾空白），不带 `option`；带 `options` 的待决照旧带 `option`，两者互斥；写下 `conclusion` 的同时追加一条 `decision` 证据，`ref` 为 `conclusion`。文件校验只查形状；行文与长度是写入规则，所以规则之前写下的待决照常读入。`ask` 取那句话从开头到第一个问号，所以 `recommend` 的 `proposal` 与 `reason`、`want` 的 `proposal` 必须逐字在这个问句里（由 `propose_to_human` 查，§3.1）。`PLAIN_LIMITS` 只剩标题（`schema.ts`），其余的数在 `src/graph/proposal.ts`，改数只动这一处与 `src/design/talk.ts`。需求卡的「岔路」一项（`stage.ts`）把提议式待决的 `conclusion` 与表格卡的 `decision` 一样算人拍过板的选择，`pins.ts` 按 `conclusion ?? decision` 读结论。
 
 有错误的图照常可读：解析失败、或已知字段的类型与必填不对的文件不进节点表；其余问题（未知字段、跨字段规则、引用与环）只报告，节点照常显示。这样一个手误不会让它的整棵子树从面板里消失。只读 `nodes/` 下的 `.json` 文件；引擎写入时的临时文件名为 `.<id>.<随机串>.tmp`，读入时忽略；`nodes/` 不存在时是一张空图。
 
@@ -250,7 +260,7 @@ guard 拦截〔已实现，规则 `graph-files-only`，`src/guard/graph-files.ts
 - `projection(id)`：§2.5 的投影。含节点本身（不含历史）与修订号、历史条数与最近 5 条历史；到目标的祖先链（父节点在前，目标在末），链尾的目标节点带验收条件与非目标；子节点；它依赖的与依赖它的；来源与取代，两个方向都给；所在阶段（自身或最近祖先的 `stage`，都没有时为 `null`）；未通过的门禁。投影里引用到的每个节点都给出 id、类型、标题、状态与修订号（决策另给验证状态，待决另给拍板结果），拿到投影就能直接对这些节点发 mutation。
 - `openItems`：等人批准的提议；人的决策队列（`questions`，见下）；agent 自己的决策队列（`agentQueue`，决定者为 agent 的未拍板待决，排法同人的队列）；最近的拍板（`recentDecisions`，见下）；进行中的节点；可以开工的叶子（状态为已批准的任务，除废弃与被取代的以外没有子节点，依赖全部完成）；验证债（状态为已批准、进行中或完成，验证状态仍为 `unverified` 的决策）。
 
-决策队列就是异步决策卡（§5）〔定案 2026-10-28：自建，卡即图上的待决节点〕：已批准或进行中（拍过后重开）、决定者为人的待决，按提出时间从早到晚排（首条历史的时间，同一时刻按 id）。每张卡带节点引用、正文、选项（说法、得到与代价，表格卡之前的待决是说法与后果）、推荐项、决定者、提出它的节点（父节点）、来源连线指向的节点、提出时间与提出者。人在面板里选一个选项、写一句理由拍板（`decide`，actor 为 `human`），或在对话里告诉 LLM，由 LLM 带转述拍板（见下）；都不阻塞 agent。拍板后卡离开队列，待决转为完成并带 `decision`，LLM 下次读投影就能看到：父节点与来源节点的投影里这张卡的引用带 `decision`，待决自己的投影带 `decision` 与拍板那条历史（含理由）。
+决策队列就是异步决策卡（§5）〔定案 2026-10-28：自建，卡即图上的待决节点；提议式待决（§2.6）也在这里，带问句、问法、推荐与做法，没有选项，面板上不点，在对话里回话〕：已批准或进行中（拍过后重开）、决定者为人的待决，按提出时间从早到晚排（首条历史的时间，同一时刻按 id）。每张卡带节点引用、正文、选项（说法、得到与代价，表格卡之前的待决是说法与后果）、推荐项、决定者、提出它的节点（父节点）、来源连线指向的节点、提出时间与提出者。人在面板里选一个选项、写一句理由拍板（`decide`，actor 为 `human`），或在对话里告诉 LLM，由 LLM 带转述拍板（见下）；都不阻塞 agent。拍板后卡离开队列，待决转为完成并带 `decision`，LLM 下次读投影就能看到：父节点与来源节点的投影里这张卡的引用带 `decision`，待决自己的投影带 `decision` 与拍板那条历史（含理由）。
 
 最近的拍板：全图已完成的待决按最后一次拍板时间从新到旧，最多 20 条。每条带节点引用、选中的选项与它的说法、决定者、拍板时间、拍板者（`human`、`llm`）、转述原话与理由（有则带）、拍板次数（大于 1 表示改过）与提出它的节点。人在这里看 agent 自己定了什么，不同意就直接再拍一次（推翻）。
 
@@ -291,7 +301,7 @@ guard 拦截〔已实现，规则 `graph-files-only`，`src/guard/graph-files.ts
 | `edit` | `id`、`rev`、`set`（字段 → 新值，`null` 表示删除） | 改字段 | 可以 | 只能改 `title`、`body`、`slope`、待决的 `decider` 与任务的派发属性（`kind`、`tier`、`worktree`、`outputSchema`、`writeScope`）；`decider` 只能改为 `human` 或删掉，改为 `agent` 拒绝；不能改目标节点，自己提议且仍为 `proposed` 的目标除外。自己提议（首条历史是同一身份的 `propose`）且仍为 `proposed` 的节点可以改全部字段，`decider` 改为 `agent` 除外；对这样的目标，`acceptance`、`nonGoals`、`stage` 都在内（2026-10-29 用户选定，`question-23` A：没被人批准的目标是 LLM 的草稿，人批准时看到全部内容）。人批准之后的目标照旧不能改；`harness` 不能改 `llm` 提议的目标（首条历史的身份要相同） |
 | `link` / `unlink` | `id`、`rev`、`type`、`to` | 加 / 删 `depends` 或 `source` 连线 | 可以 | 可以，目标节点除外（自己提议的目标也一样） |
 | `comment` | `id`、`text` | 批注 | 可以 | 可以 |
-| `decide` | `id`、`rev`、`option` | 已批准、进行中或完成的待决拍板：写入 `decision`，追加 `decision` 证据，状态转为（或保持）完成；完成的待决再拍即推翻 | 可以 | 决定者为 `agent`、且人没有拍过的待决可以；其余拒绝，正路同 `approve`。这条拒绝排在修订号检查之前 |
+| `decide` | `id`、`rev`、`option`；提议式待决改带 `conclusion`，二选一 | 已批准、进行中或完成的待决拍板：写入 `decision`（提议式待决写 `conclusion`），追加 `decision` 证据，状态转为（或保持）完成；完成的待决再拍即推翻 | 可以 | 决定者为 `agent`、且人没有拍过的待决可以；其余拒绝，正路同 `approve`。这条拒绝排在修订号检查之前 |
 | `verify` | `id`、`rev`、`to`、`evidence?` | 改决策的验证状态 | 可以 | 可以 |
 | `supersede` | `id`（旧）、`rev`、`by`（新） | 新节点取代旧节点：新节点加 `supersedes` 连线，旧节点转为 `superseded`。新旧节点都须为已批准、进行中或完成 | 可以 | 拒绝，正路是提议新节点并带 `supersedes` 连线，人批准时生效；带转述的提议立即生效 |
 
@@ -489,11 +499,13 @@ SVG 只用表现属性，不含脚本、样式表、网络字体与外部引用�
 - 职责：访谈、规划、派发、验收、汇报。
 - 谁是主 Agent：会话级的状态，由人用 `/wish` 开启，模型发不出斜杠命令，所以不能自己进出这个角色。`/wish` 让当前会话当这个项目的主 Agent，后面跟一句话就从许愿开始（空闲的 agent 被唤醒，运行中的 agent 在下一步收到），`/wish off` 退出。状态从命令的 `command/run`、`command/done` 折叠成会话投影 `hournessMainAgent`，处理函数返回到 `command/done` 落盘之间由内存里的待生效状态补上，所以角色从命令之后的第一步就变（身份节、工具面各变一次）。委派出去的子会话从来不是主 Agent。
 - 一个项目一个主 Agent：项目就是图目录（同一仓库的两个工作树各有自己的 `docs/graph/`，算两个项目）。持有者记录是用户级目录里 `main-agent/<项目键的哈希前 16 位>.json`，内容是会话 id、图目录、开始时间与命令 id；写入靠独占新建（两个会话同时抢，只有一个成功）和临时文件加改名，读按文件的修改时间与大小缓存。投影为真还不够，记录要指向本会话；记录读不到时只按投影判，行健康提醒再发一次 `/wish`。已有主 Agent 时在别的会话发 `/wish`，回复说它在哪个会话、从什么时候开始、会话标题，并提示 `/wish here`（带一句话时提示「/wish here 加这句话」）；记录指向的会话已经不存在（打开着的会话里没有，存着的会话里也没有）时直接接管；指向一个打开着、却没有开着主 Agent 模式的会话（它的 `/wish` 在写下记录之后被取消或没有成功，会话里又没有正在进行的 `/wish`）时同样直接接管，回复开头说原来记的会话其实没有开着主 Agent 模式，被接管的会话不受影响，它被取消的说明还在它自己下一次读角色时报出来。`/wish here`（后面可以跟一句话）把主 Agent 从别的会话移到当前会话：记录换人，原会话如果还开着，由本行以人的身份对它执行 `/wish off`（原会话变回普通会话，收到一条说明）；原会话没开着的，下次打开时对齐，人 fork 出来的会话也一样，在它第一次空闲之后对齐，不在 `agent/created` 监听器里等。记录不比会话的模式活得久〔第 3 步评审 S3-1〕：指向本会话的记录，在这个会话的 `/wish` 被取消（`command/done` 记成出错）之后由这个会话下一次读自己的角色时删掉，同一个会话再发 `/wish` 则以新命令为准、不删；会话创建时日志里没有收尾的 `/wish`（崩溃在 `command/done` 落盘之前）而记录指向它，创建时删掉；会话状态读不到（服务没到、状态读不出）时不判断、不删；删不掉时那个会话的行健康写「在这个会话里发一次 `/wish off`」。同一时刻至多一个会话是主 Agent；`mainAgentOf(userHome, dir)` 给晨报、周报与巡检找人用，它只读记录，所以从 `/wish` 被取消到该会话下一次读自己的角色之前，它仍返回这个会话。
-- 身份〔定案 2026-10-28，2026-10-30 收窄〕：本项目自己的提示词文本，是系统提示词里的一节 `hourness:main-agent`，分两部分。第一部分只写角色与边界：这个项目的主 Agent、项目经理，没有写文件的工具；harness 执行的规矩只点名一句（写文件的 shell 命令被拒、放行之前子 agent 只读、图只经图工具改、转述人的话要在人发来的消息里）；git 与 shell 归主 Agent，会丢工作的 git 命令之前 harness 先存快照；设计循环的四个阶段；`/plan` 打开时 `exit_plan_mode` 只离开计划模式、不放行任何节点。第二部分写怎样跟人说话：一次至多三件事、没有选项和字母、一两个开放的问题、要人答的事用 `propose_to_human` 交四行方案、含糊的回答先复述「那我记成：……」等人点头再记，以及换词表与一道完整的好题（题材是高峰时段派出去的活怎么排，已经定了的事，只示范版式）。访谈怎么问、图上怎么写由阶段提醒与工具结果随时下发，不放在身份节里。长度上限由测试钉住：第一部分 1,500 字符，第二部分 1,400，整节 2,700。不用 DSH 的 agent preset 或 persona 行承载。
+- 身份〔定案 2026-10-28，2026-10-30 收窄〕：本项目自己的提示词文本，是系统提示词里的一节 `hourness:main-agent`，分两部分。第一部分只写角色与边界：这个项目的主 Agent、项目经理，没有写文件的工具；harness 执行的规矩只点名一句（写文件的 shell 命令被拒、放行之前子 agent 只读、图只经图工具改、转述人的话要在人发来的消息里）；git 与 shell 归主 Agent，会丢工作的 git 命令之前 harness 先存快照；设计循环的四个阶段；`/plan` 打开时 `exit_plan_mode` 只离开计划模式、不放行任何节点。第二部分写怎样跟人说话（`TALK_GUIDE`）：只问人的事，能撤回的技术选择自己定、下一批里用一句话告知；人说「这类你定」就用 `record_human_answer` 的 `delegation` 记下；访谈留在聊天里，先猜一个让人改；要人答的事用 `propose_to_human`，原样给人看它返回的文字；回复末尾提问，一条至多三个；收不回的事得到随口的短回答（不在 `AGREE_WORDS` 里）先复述「那我记成：……」等人点头再记；加上换词表。四种问法的写法与硬限制（`TALK_SHAPES`）和每种一道例题（`PLAIN_QUESTION_EXAMPLES`，题材是虚构的图书馆系统，只示范形状）在 `propose_to_human` 的工具说明里，不在身份节里。访谈怎么问、图上怎么写由阶段提醒与工具结果随时下发。长度上限由测试钉住：第一部分 1,500 字符，第二部分 1,800，整节 3,000。身份节只写调用，不写「这类你定」存在哪里（回退时是 `norm-delegations`，M5 合入后是偏好），换存储时它不用改。不用 DSH 的 agent preset 或 persona 行承载。
 - 工具面〔定案 2026-10-30，`question-26` C，取代 2026-10-28 的「主 Agent 的工具面不变」〕：设计行的第二个组装监听器（不带 `prepend`，所以在方言与工具检索的 `prepend` 监听器里层，它们 `next()` 之后看到的已是去掉之后的工具）按原生名去掉 `write`、`edit`（`Write`、`Edit` 经方言服务或静态别名表换算）与 `ask_user_question`（问人改成聊天，主 Agent 不出问答卡），并把装着的 `str_replace_editor` 的 `command` 收窄成只剩 `view`。这只是不让模型看见用不了的工具，不是边界：rc.3 按名执行，按名直接调用 `Write`、`write` 或 `ask_user_question` 仍会执行，拦截是 guard 的规则 `main-agent-no-write` 与 `main-agent-ask`（§6.7，M3 第 4 步）。
 - 不写代码〔定案；机制于 2026-10-28 改定，工具面一半于 2026-10-30 提前〕：写文件的 shell 命令由 guard 在主 Agent 的 `tools/pre-execute` 拦下，正路是派发任务；文件工具不在主 Agent 的工具面里。
 - 阶段提醒与派出去的 agent 只读〔M3 第 5 步，设计行默认禁用〕：主 Agent 的每一步，在本步接纳的消息之后带一条阶段提醒（`agent/pre-step` 的 notice，来源 `glm-design-stage`，不进系统提示词），写明焦点所在的目标、它的阶段、本阶段怎么做、还缺什么、下一步问人什么（§4.8）。放行之前，主 Agent 派出的子 agent 和它们再派出的各层 agent 只读；放行指目标，分了模块的目标指焦点所在的那个模块（§4.9）。拦的是 guard 规则 `design-before-release`（§6.8）。
-- 说话方式〔定案 2026-10-29 `d-chat-not-cards`，取代每个问题带选项与推荐的卡片〕：聊天，不给选项和字母，少术语，给人的话先过换词表（`src/graph/plain-question.ts`）。
+- 说话方式〔定案 2026-10-29 `d-chat-not-cards`，取代每个问题带选项与推荐的卡片；2026-10-31 `d-ask-three-gates` 改写怎么问，试行，人看效果再调〕：聊天，不出问答卡，少术语，给人的话先过换词表（`src/graph/plain-question.ts`）。问人分三道关：问不问（只问人的事）、什么时候问（回复末尾，报告在前、问题在后）、怎么问（四种问法：`recommend` 同意一条推荐、`choose` 在两三条路里选、`want` 改正一个猜测、`look` 看一样东西指毛病；没有统一模板，没有标签行）。
+- 把事交给人、把人的话记下来〔M3 第 6 步，设计行默认禁用；`src/design/propose.ts`、`src/design/record.ts`〕：两个工具只给主 Agent（别的会话的工具面去掉它们，直接调用得 `forbidden`），在 GLM 上常驻。`propose_to_human` 把一件事交给人，记录与问话分开：记录是 `form`、`title`、`proposal`、`reason`、`cost`、`ways`、`notTaken`，进图成为一张提议式待决（§2.6），harness 核对齐不齐、合不合规则；问话是 `text`，主 Agent 自己写的一句话，一行、恰好一个问号、`recommend` 不超过 160 个字其余 120、不含换词表上的词，harness 只查这些硬限制，并查记录是不是逐字在话里（`recommend` 的 `proposal` 与 `reason`、`want` 的 `proposal` 在问句里，`cost`、`choose` 的 `reason`、`look` 的 `proposal` 在整段话里）。返回的文字要原样给人看：编号（①②③），`choose` 的几条路排成编号列表、最后一条标「（推荐）」，必须原样给人看的原文（`look` 的样稿放进代码围栏；别的组件记下的提议带的原文，`attach`，分派表 `src/design/attach.ts` 此刻是空的，由那块板合入时各加一行）接在最后。已经交过人、人还没回的，可以带 `question` 与新的话再给人看一次，或带 `form`、`title` 与记录改一次（`form` 不能变）。一条回复至多三件（`too_many`）。`confirm` 与 `release` 两种在后面的步骤打开，现在得 `invalid`（`not yet`）。`record_human_answer`（`question`）记人的回话（`agree`、`add`、`reject`）：主 Agent 带人的原话（1 至 3 段），harness 在写图之前核对每一段都是人在这件事交给人之后发来的消息里的整句或整段（起止在标点、空白或换行上，`personSaid`，`src/design/talk.ts`；会话投影 `hournessTalk` 折叠出人的消息与给人看过的东西，注册不上时退回读会话日志并让行健康降级，两样都没有就 `unavailable`），之后以 `llm` 加 `relay` 写图，所以带人的权限：同意是 `decide` 带 `conclusion`，补充与否掉是待决上的批注，待决仍开着。`choose` 的同意要带 `way`（人选的第几条），除非人把整件交给主 Agent 定（`recordedAs` 以「交给主 Agent 定：」开头）；带样稿的 `look`，主 Agent 的回话里没有整份样稿就 `not_shown`，图不变。三种说法的字面固定在 `src/shared/answer-marks.ts`。指标事件的出口 `src/design/metrics.ts` 此刻不做事（指标流水的接口还没定）。
+- 「这类你定」〔M3 第 6 步〕：人说某一类事以后由主 Agent 定，主 Agent 调 `record_human_answer` 的 `delegation`（`scope` 写那一类，`undo: true` 收回）；harness 核对原话出自人的最后一条消息，再在工具体里直接写图上固定 id 的规范节点 `norm-delegations`（每项 `<类>：主 Agent 定，只告知`，类按规整值存，至多 20 项；M5 的偏好合入前的回退，合入后换存储）。任何会话用图工具碰这个节点都被拒（`main-agent-graph-delegations`，§6.7），所以模型不能自己给自己授权。只对能撤回的事成立，由主 Agent 在遇到同一类里收不回的事时照旧问。
 - 人设分层：用户的人设管「怎么说」，主 Agent 的身份文本管「做什么」，两层叠加互不干扰。身份节与 `glm-prompt` 的方言改写的叠加已在 L3 实测（场景 `glm-design-wish-idle`、`glm-design-main` 等，`ROADMAP.md` 借用组件核实清单第 16 项）：GLM 路由上这一节在方言节之后、`glm:guard` 之前，非 GLM 路由上在 `glm:guard` 之前。
 - 降级：会话状态服务没到、`/wish` 注册不上、持有者记录读不到、会话状态读不出时，设计行报告降级并说明原因，普通会话不受影响（`DESIGN.md` §2.5、§7）。
 - 分布说明：ZCode 里的 GLM 是自己写代码的单 agent，「主 Agent 只编排」在 ZCode 训练分布之外，子 agent 干活仍在分布内。用户判断后续模型会具备编排能力〔定案〕；这一层单独度量简报完整率、返工率与主 Agent 上下文占用。
@@ -711,10 +723,12 @@ L3 核实〔实测 2026-10-28，派发可行性验证 (a)(b)，`ROADMAP.md` 借�
 阶段提醒〔M3 第 5 步，`src/design/stage-notice.ts`；L2 `tests/design-stage-notice.spec.ts`，L3 场景 `glm-design-stage`、`glm-design-stage-compact`、`glm-design-released`〕：`stageReminder(graph, focus)` 从图和焦点读出正文，英文，中文原话与标签原样；`stageNotice` 决定这一步要不要带（规则在 `src/graph/digest-notice.ts`，每步投影用同一个：历史里还没有这个目标的提醒、正文摘要变了、压缩检查点在最近一条提醒之后或提醒锚在另一个检查点上、本步接纳了目标轮消息，才注入，原因记在 notice 来源的 `designStage.reason`：`goal`、`changed`、`compaction`、`goal-round`）。焦点来自图行服务的 `focusOf`（`src/graph/service.ts`，和每步投影看到的是同一个焦点）。读图或读焦点失败时这一步不带提醒，进程里警告一次，该会话的行健康写「阶段提醒这一步没带上」。提醒只给主 Agent：本步组装时判为主 Agent 的会话。
 
 - 没有焦点、焦点不在图里、焦点上面没有目标：说主 Agent 还没有目标在焦点上，派出去的子 agent 只能读；刚许过愿就按访谈第 1 步提议目标并聚焦，否则 `graph_open` 找到目标或任务再聚焦。目标已关闭：写明状态，要聚焦一项没关闭的工作。已批准而没有阶段的目标：写「不走设计循环」。
-- `wish`、`interview`：一行访谈的做法（一两个问题一问，用人的话，猜一个供挑，答完就写进图）；需求卡几项齐了；其余缺项各一行（标签与 `hint`）；一行「下一步」：缺项里访谈步号最小的一项的问句，步号相同按表次序（`problem` 在 `audience` 之前），不按需求卡数组的次序（它把约束排在成功之前）。问句取 §4.2 表的原文；第 7 步不是一句问话，写成「用 `propose_to_human`（`kind question`）把只有人能定的那个岔路交给人，再用 `record_human_answer` 记下回答；自己定的不算」。缺项只有取代旧节点的连线时没有「下一步」，只列它的标签与 `hint`。8 项齐了写「用 `propose_to_human`（`kind confirm`）把需求交给人」。对照表是 `INTERVIEW_STEPS`，键与 `requirementCard` 的 8 个键一一对应，测试钉住。
+- `wish`、`interview`：一行访谈的做法（一两个问题一问，用人的话，猜一个供挑，答完就写进图）；需求卡几项齐了；其余缺项各一行（标签与 `hint`）；一行「下一步」：缺项里访谈步号最小的一项的问句，步号相同按表次序（`problem` 在 `audience` 之前），不按需求卡数组的次序（它把约束排在成功之前）。问句取 §4.2 表的原文；第 7 步不是一句问话，写成「用 `propose_to_human`（`kind question`，`form` 取 `recommend` 或 `choose`）把只有人能定的那个岔路交给人，再用 `record_human_answer` 记下回答；自己定的不算」。缺项只有取代旧节点的连线时没有「下一步」，只列它的标签与 `hint`。8 项齐了写「用 `propose_to_human`（`kind confirm`）把需求交给人」。对照表是 `INTERVIEW_STEPS`，键与 `requirementCard` 的 8 个键一一对应，测试钉住。
 - `design`：写图格式一行（每个设计决策正文里写「理由：」「架构：」「查过的现成方案：」，有验收和非目标；任务挂在目标下，以 `source` 连线指向决策，每个任务有验收；小项目的任务直接挂在目标下，只有各部分独立、要人一个一个放行的活才规划成目标下的特性即模块）；决策里五栏最少的那个有几栏；放行门禁的缺项各一行；门禁成立写「用 `propose_to_human`（`kind release`）把方案交给人」。目标下已有直接的特性（分了模块）时换成大循环的写法：框架写成目标下的设计决策，每个模块是目标下直接的特性并以 `source` 连线指向一个框架决策，人定的方向写成目标下 id 为 `norm-directions` 的一个规范节点的验收项；模块自己的决策和任务以后写在模块下面。分了模块的目标的放行门禁与「下一步」一行随第 9 步，本步这一支没有。事前验尸一行（`如果失败：`）也在第 9 步。
 - `release`：没分模块写「方案已放行，向人说一句；分解与派发是下一步」。分了模块的目标放行之后写：框架、模块清单和方向已放行，每个模块从设计开始，在模块下写决策和规划，对照 `norm-directions` 的每条方向，用 `propose_to_human`（`kind release`、`module`、`page`）交给人，模块放行之前下面什么都不建；派写文件的子 agent 之前先把焦点聚到那个模块或它下面的任务上。后面逐行列模块，`<标题>（<id>）：设计中 | 已放行 | 退回设计`（退回设计由阶段从 `release` 之后改回 `design` 的历史认出），至多 8 行，多的写 `and <n> more`。焦点在一个模块里：模块在设计时写模块的写图格式（决策挂在模块下、规划挂在模块下、对照每条方向、在「疑问」一行写出它顶着的方向）和同一句聚焦提醒；模块已放行写「这个模块已放行，向人说一句」。模块的放行门禁与「下一步」一行随第 9 步。候选（还是提议的特性）按目标一级读。
 - 其他阶段（`decompose` 起）：只写阶段名和不属于设计循环。最后一行：目标下有等人拍板的待决时写件数。
+- 每个阶段的提醒末尾，图上的 `norm-delegations`（§3.1）有项时多一行：`The human told you to decide these kinds yourself and only report them, while the matter can still be undone: <各类用「；」连接，至多 20 项>.` 加收回的办法（`record_human_answer` 的 `delegation`，`undo: true`）；节点不在、没有项、已关闭时不写；节点不是规范节点时不写并让行健康说明一句。M5 的偏好合入后这一行与它的测试删掉。
+- 访谈阶段的提醒说明访谈的问题在聊天里问、先猜一个写成「我猜你……，对吗？」让人改，不走 `propose_to_human`。
 - 所有阶段的正文不含 `ask_user_question`、`decision_card`、`design_review`、`ask_human` 与「（推荐）」类字样，测试钉住；`stage.ts` 里两条原来点名 `decision_card` 的 `hint`（岔路一项，放行门禁里人定的待决未拍板）已改写为 `propose_to_human` 与 `record_human_answer` 的说法。
 
 ### 4.9 两层循环：模块的读法〔M3 第 5 步一半，设计行默认禁用〕
@@ -730,6 +744,8 @@ L3 核实〔实测 2026-10-28，派发可行性验证 (a)(b)，`ROADMAP.md` 借�
 ## 5. 决策卡
 
 申报、待批、L3、设计放行本质上都是「需要人拍板的决策」，区别只在急不急，合并为一种决策卡〔定案〕。
+
+〔2026-10-29 `d-chat-not-cards`，2026-10-31 `d-ask-three-gates`；M3 第 6 步实现，设计行默认禁用〕主 Agent 模式下，要人定的事不再是卡片：主 Agent 在对话里问（`propose_to_human`，§3.1），待决仍作为提议式待决留在图上、出现在决策队列里（§2.6、§2.9），人当场或之后在同一个对话里回话，主 Agent 带原话记下（`record_human_answer`）。面板对它只看不点。下面的表格卡版式仍用于 agent 自己定的待决与旧待决。
 
 | 形式 | 场景 | 行为 |
 | --- | --- | --- |
@@ -803,6 +819,7 @@ guard 跟着编排层包 `dsh-hourness` 走：包启用时，所有路由、所�
 | 工作区圈禁：写操作只在工作区内 | 已实现 |
 | 文件修改只用专用工具：shell 不写文件 | 已实现；2026-10-28 改为识别引号（`=>`、`>>>`、`->` 误判已发生 3 次）：只看命令位置与引号外的真实重定向，git 子命令放行；执行后以工作区变更记录兜底，只记录不拦截（§6.5） |
 | 设计阶段不写代码 | 已实现（M3 第 5 步，设计行默认禁用）：规则 `design-before-release`，放行之前（目标，或分了模块的目标里的那个模块）主 Agent 派出的各层子 agent 写文件被拒，拒绝进违规流水（§6.8）；计划模式不拦工具，所以不用它 |
+| 转述的人话要在人发来的消息里；不给人列选项表；「这类你定」只经记录工具写 | 已实现（M3 第 6 步，设计行默认禁用）：规则 `main-agent-graph-relay`、`main-agent-graph-options`、`main-agent-graph-delegations`（§6.9），拒绝进违规流水 |
 | 主 Agent 不写文件 | 已实现（M3 第 3、4 步，设计行默认禁用）：主 Agent 的工具面里没有写文件的工具，也没有 `ask_user_question`（§3.1）；按名直接调用与 shell 写入由规则 `main-agent-no-write`、`main-agent-ask` 拒绝（§6.7），拒绝进违规流水；git 不算写文件，会丢工作的 git 命令先存快照（规则 `git-snapshot`，§6.7） |
 | 图文件只经图工具修改 | 已实现（规则 `graph-files-only`，由行 `glm-hourness/graph` 注册，拒绝记入违规流水，L3、L4 后默认启用；§2.7） |
 | 临时脚本只在草稿区 | 规划 |
@@ -873,6 +890,18 @@ guard 跟着编排层包 `dsh-hourness` 走：包启用时，所有路由、所�
 - 每个子 agent 的写入调用都读一次图目录（`loadGraph`）。读不重不阻塞主 Agent，但图很大时每次写入多读一遍节点文件；要缓存时按图修订号缓存，不是本步。
 
 验证：L2 `tests/design-guard.spec.ts`（无焦点、各阶段、关闭的目标、孙 agent、shell 写入与读写区分、不判的会话、违规流水、判不出的各种情形、按模块判、模块退回再放行、完成的模块）、`tests/graph-modules.spec.ts`、`tests/contracts.spec.ts`（规则表第四行）；L3 场景 `glm-design-stage`（真的子会话，无焦点与访谈中各被拒一次）、`glm-design-released`（已放行的目标一级与已放行模块里的写入执行，设计中的模块里被拒并写出模块）。
+
+### 6.9 图写入的规矩：谁的转述算人的话〔M3 第 6 步，设计行默认禁用〕
+
+图工具对所有 agent 注册，引擎给任何带 `relay` 的 `llm` 写入人的权限（§2.9.1），所以「这段话是人说的」要在工具执行之前核对，不靠模型自觉（`d-chat-not-cards`、`d-one-main-agent`）。设计行把三条规矩装在 §6.7 的同一个监听器上（`src/guard/main-agent-graph.ts`，同样不导入 `src/design/`，核对用的 `personSaid` 由设计行传入），按会话的种类分开：
+
+- `main-agent-graph-relay`：主 Agent 的图写入带 `relay` 时，`relay` 的每一行都要是人在该节点最后一次变更（批注不算）之后发来的消息里的整句或整段；新提议的节点没有更早的状态，本会话里人的任何消息都算。读不到会话的消息时一律拒绝，不让没核对过的话把人的权限带进图。子 agent（会话头 `origin: 'subagent'`）带 `relay` 一律拒绝，它不和人说话；这种尝试还会通知持有者：违规流水一条、设计行行健康 degraded、持有者会话下一步里一条 `glm-design-bypass` 的 notice（同一会话同一目标 10 分钟内不重复发）。普通会话的 `relay` 不核对。
+- `main-agent-graph-options`（主 Agent）：`graph_propose` 提议、或 `graph_edit` 改，使一张人定的待决带上选项表被拒；正路是 `propose_to_human`（`choose` 在真有取舍时列两三条路）。agent 自己定的待决（`decider: agent`）不受影响；读不到图时放行，行健康降级。
+- `main-agent-graph-delegations`（所有会话）：写类图工具（`graph_show`、`graph_open`、`graph_focus` 之外）指向 `norm-delegations`——`graph_propose` 的节点 id 与连线任一端、`graph_link` 与 `graph_unlink` 的两端、其余工具的 `id`——一律被拒，带不带 `relay` 都一样，不告警。只看参数里的节点 id，不读图，没有失败的路。这个节点记的是人交给主 Agent 的长期授权；唯一的写路是 `record_human_answer` 的 `delegation`（§3.1），它先核对原话再直接写引擎。
+
+残余：三条规矩都在 §6.7 的监听器里，嵌套调用（带 `parent`）到不了它，所以脚本式工具调用（PTC）里再嵌一层的图写入绕过它们，与 §6.7 的另外几条相同，等 `S4-1` 的修复一起补。图的命令行（`src/graph/cli.ts`）也以 `llm` 身份写、可带 `relay`，在 DSH 之外不受这些规矩管。
+
+验证：L2 `tests/design-graph-rules.spec.ts`（三条规矩，主 Agent、子会话、普通会话，读不到会话时的拒绝，通知的去重）、`tests/contracts.spec.ts`（规则表与触发）；L3 探针场景 `glm-design-question`（`DEVELOPMENT.md` §3）。
 
 ## 7. 环境与检查器
 
@@ -1300,7 +1329,7 @@ M7 判一个任务此刻能不能派、能不能写，要读目标的模块结�
 - `scopedTasks(graph, node, readers?)`：目标或模块子树里的任务，去掉模块设计的审查任务；对目标另外去掉设计中的模块下的任务。
 - `isDesignReview(graph, task, readers?)`：`kind` 为 `review`、写入范围为空、`source` 连线都指向某个模块下的决策，并且第一条历史是 `harness` 的提议。最后一项比设计多一条：普通审查任务也引用决策，没有它，挂在没放行的模块下的普通审查任务会被当成设计评审而跳过放行检查和「只收已批准」的检查。读法抛错时结果为 `false`。
 ### 17.3 pins（E1a，`src/graph/pins.ts`）
-`pinsOf(graph, task, sha256)` 对任务、它到目标的每个祖先、它的 `source` 连线指向的每个节点各算 12 位十六进制摘要，只含改变意图的字段，按节点类型：任务是验收、非目标、`kind`、是否废弃或被取代；目标、特性等祖先是验收、非目标、是否废弃或被取代，目标和读法认出的模块另带 `releaseAt`；决策是 `verification` 是否为 `overturned` 或 `superseded`、状态；待决是拍板结果或提议式的结论、状态。标题、正文、历史、写入范围不进摘要。`staleness(graph, line, sha256)` 返回变了或不在图里的节点；读不出的 pins 行返回一条 `(pins)`，不会被当成没变。哈希函数是参数，文件不导入 Node 内置模块，客户端也能导入。待决的 `conclusion` 字段在 M3 的图格式改动合入前不在 `GraphNode` 的类型里，读时按未知字段处理。
+`pinsOf(graph, task, sha256)` 对任务、它到目标的每个祖先、它的 `source` 连线指向的每个节点各算 12 位十六进制摘要，只含改变意图的字段，按节点类型：任务是验收、非目标、`kind`、是否废弃或被取代；目标、特性等祖先是验收、非目标、是否废弃或被取代，目标和读法认出的模块另带 `releaseAt`；决策是 `verification` 是否为 `overturned` 或 `superseded`、状态；待决是拍板结果或提议式的结论、状态。标题、正文、历史、写入范围不进摘要。`staleness(graph, line, sha256)` 返回变了或不在图里的节点；读不出的 pins 行返回一条 `(pins)`，不会被当成没变。哈希函数是参数，文件不导入 Node 内置模块，客户端也能导入。待决的 `conclusion` 字段由 M3 第 6 步加进 `GraphNode`（§2.6），摘要直接读它。
 ### 17.4 派发的纯函数（E1a，`src/execute/`）
 - `brief.ts`：`parseDispatchArgs`（§6.4 的形状检查）；`briefGate(graph, node, ctx)` 按设计 §3.5.1 的次序返回第一条拒绝：`invalid`、`bad_task`、`not_released`、`bad_attributes`、`no_acceptance`、`deps_open`、`waiting_human`、`busy`、`scope_busy`、`slots_full`（槽位与高峰少做上限两处）、`bad_schema`、`nothing_to_review`、`no_directions`；读不出模块结构时在这之前就以 `not_released` 拒绝。门禁读 `ctx.release`，不读阶段；模块设计的审查任务跳过模块层、目标层照查。要审查任务的交回状态、`outputSchema` 是否可解析这类要别的步骤才有的事实，门禁从 `ctx` 取，不自己造。`renderBrief` 按 §3.5.2 从图生成给 worker 的简报：英文、至多 9000 字符，超出时依次把经验、上一次的发现细节、主 Agent 的补充换成「truncated」；页脚带正文的摘要与图修订号。审查任务和模块设计评审的简报在 E6 与 E4。
 - `plan.ts`：`checkPlan` 对 worker 交来的计划做 §3.3.2 的检查（入参按 `unknown` 处理，每条问题一行）；计划一节在任务正文里的渲染、读回、替换与批准标记；批准批注；`carriedPlan` 判已批的计划能不能带到下一次派发。设计里 `checkPlan(task, plan, norm)` 有第三个参数 `norm`，文中没有任何一条检查用到它，没有实现。

@@ -5,6 +5,8 @@
  * module only names things.
  */
 
+import type { AskForm } from './proposal.ts'
+
 export const NODE_TYPES = ['goal', 'feature', 'decision', 'task', 'risk', 'question', 'norm', 'tool', 'retro'] as const
 export type NodeType = typeof NODE_TYPES[number]
 
@@ -54,6 +56,14 @@ type Weight = typeof WEIGHTS[number]
 /** Longest texts of a question's table card, in code points (§2.6 table card). */
 export const CARD_LIMITS = { label: 20, gain: 60, cost: 60, dimensionName: 12, cell: 20, crux: 60, verdict: 120 } as const
 
+/**
+ * Longest texts of what the person reads, in code points (panel design,
+ * docs/ORCHESTRATION.md §2.6 proposal shape): the title of a question. The
+ * value belongs to the panel design; code and tests read this constant, and
+ * the panel design adds its other limits when its writing check arrives.
+ */
+export const PLAIN_LIMITS = { title: 40 } as const
+
 /** Mutation operations (§2.9); every history entry names one. */
 export const OPS = ['propose', 'approve', 'reject', 'status', 'edit', 'link', 'unlink', 'comment', 'decide', 'verify', 'supersede'] as const
 export type Op = typeof OPS[number]
@@ -95,6 +105,7 @@ export interface Evidence {
 export const EDITABLE_FIELDS = [
   'title', 'parent', 'slope', 'stage', 'kind', 'tier', 'worktree', 'outputSchema', 'body',
   'acceptance', 'nonGoals', 'writeScope', 'options', 'dimension', 'recommend', 'crux', 'verdict', 'weight', 'decider',
+  'ask', 'proposal', 'reason', 'cost', 'ways', 'notTaken',
 ] as const
 export type EditableField = typeof EDITABLE_FIELDS[number]
 
@@ -121,8 +132,10 @@ export interface HistoryEntry {
   /** Status (or, for verify, verification state) before and after. */
   readonly from?: string
   readonly to?: string
-  /** Chosen option of a decide. */
+  /** Chosen option of a decide on a question with options. */
   readonly option?: string
+  /** What a decide on a proposal-shaped question concluded. */
+  readonly conclusion?: string
   /** Id of the node that superseded this one. */
   readonly by?: string
   /** Edge added or removed by link, unlink or supersede. */
@@ -167,7 +180,22 @@ export interface GraphNode {
   readonly weight?: Weight
   /** Question only: who decides it; absent means the human. */
   readonly decider?: Decider
+  /**
+   * Question only, the proposal shape (src/graph/proposal.ts): the question
+   * as the human reads it, the way of asking it (set once), what is
+   * recommended, guessed or shown, and by way of asking the reason, the cost,
+   * the ways to choose between and the way not taken.
+   */
+  readonly ask?: string
+  readonly form?: AskForm
+  readonly proposal?: string
+  readonly reason?: string
+  readonly cost?: string
+  readonly ways?: readonly string[]
+  readonly notTaken?: string
   readonly decision?: string
+  /** Question only, the proposal shape, after the decision: what was decided, one line. */
+  readonly conclusion?: string
   readonly edges?: readonly GraphEdge[]
   readonly evidence?: readonly Evidence[]
   readonly history: readonly HistoryEntry[]
@@ -175,9 +203,10 @@ export interface GraphNode {
 
 /** Write order of node fields (§2.6 table order). */
 export const NODE_FIELDS = [
-  'id', 'type', 'title', 'status', 'parent', 'slope', 'stage', 'verification',
+  'id', 'type', 'title', 'ask', 'form', 'status', 'parent', 'slope', 'stage', 'verification',
   'kind', 'tier', 'worktree', 'outputSchema', 'body', 'acceptance', 'nonGoals', 'writeScope',
-  'options', 'dimension', 'recommend', 'crux', 'verdict', 'weight', 'decider', 'decision', 'edges', 'evidence', 'history',
+  'options', 'dimension', 'recommend', 'proposal', 'reason', 'cost', 'ways', 'notTaken', 'crux', 'verdict', 'weight', 'decider', 'decision', 'conclusion',
+  'edges', 'evidence', 'history',
 ] as const satisfies readonly (keyof GraphNode)[]
 
 /** Question fields that make up the table card a question shows (§2.6); a write that sets any of them meets the card rules. */
@@ -188,7 +217,7 @@ export const DISPATCH_FIELDS = ['kind', 'tier', 'worktree', 'outputSchema', 'wri
 
 /** Write order of history entry fields. */
 export const HISTORY_FIELDS = [
-  'at', 'actor', 'op', 'reason', 'relay', 'from', 'to', 'option', 'by', 'edge', 'changes', 'evidence', 'text',
+  'at', 'actor', 'op', 'reason', 'relay', 'from', 'to', 'option', 'conclusion', 'by', 'edge', 'changes', 'evidence', 'text',
 ] as const satisfies readonly (keyof HistoryEntry)[]
 
 export const ID_PATTERN = /^[a-z][a-z0-9-]{0,47}$/

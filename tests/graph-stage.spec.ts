@@ -177,7 +177,7 @@ test('the hints that send the model to the human name the chat tools, not a ques
   const withoutQuestion = graphOf([...noChoice.graph.nodes.values()].filter(entry => entry.type !== 'question'))
   const choice = requirementCard(withoutQuestion, withoutQuestion.nodes.get('goal-1')!).find(item => item.key === 'choice')!
   assert.equal(choice.ok, false)
-  assert.equal(choice.hint, 'interview step 7 (the fork only the human can decide): put it with propose_to_human (kind question) and record the answer with record_human_answer; a question the agent decided on its own does not count')
+  assert.equal(choice.hint, 'interview step 7 (the fork only the human can decide): put it with propose_to_human (kind question, form recommend or choose) and record the answer with record_human_answer; a question the agent decided on its own does not count')
   const waiting = design({}, [question('question-2', 'feature-1')])
   const undecided = stageStatus(waiting.graph, waiting.goal).items.find(item => item.key === 'question-2:undecided')!
   assert.equal(undecided.hint, 'the human decides question-2: wait for the human\'s answer in the chat and record it with record_human_answer')

@@ -24,10 +24,16 @@ export const NO_WRITE_RULE = 'main-agent-no-write'
 export const ASK_RULE = 'main-agent-ask'
 export const GIT_SNAPSHOT_RULE = 'git-snapshot'
 export const DESIGN_RELEASE_RULE = 'design-before-release'
+export const GRAPH_RELAY_RULE = 'main-agent-graph-relay'
+export const GRAPH_OPTIONS_RULE = 'main-agent-graph-options'
+export const GRAPH_DELEGATIONS_RULE = 'main-agent-graph-delegations'
 
 export const MAIN_AGENT_RULES: readonly MainAgentRule[] = [
   { id: NO_WRITE_RULE, title: '主 Agent 不写文件', enforcement: 'deny', subjects: 'main-agent', step: 4 },
   { id: ASK_RULE, title: '主 Agent 不出问答卡', enforcement: 'deny', subjects: 'main-agent', step: 4 },
   { id: GIT_SNAPSHOT_RULE, title: '会丢工作的 git 命令先存档，存不了才拦；存档不推到远端', enforcement: 'deny-when-no-snapshot', subjects: 'main-agent', step: 4 },
   { id: DESIGN_RELEASE_RULE, title: '放行之前（目标或模块），主 Agent 派出去的 agent 只读', enforcement: 'deny', subjects: 'main-agent-subagents', step: 5 },
+  { id: GRAPH_RELAY_RULE, title: '转述的人话要在人发来的消息里；子 agent 不转述人的话', enforcement: 'deny', subjects: 'every-session', step: 6 },
+  { id: GRAPH_OPTIONS_RULE, title: '主 Agent 不在图上给人写选项表', enforcement: 'deny', subjects: 'main-agent', step: 6 },
+  { id: GRAPH_DELEGATIONS_RULE, title: '「这类你定」只经记录人的话的工具写', enforcement: 'deny', subjects: 'every-session', step: 6 },
 ]

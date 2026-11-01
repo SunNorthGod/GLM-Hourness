@@ -15,6 +15,7 @@ import { DEFERRED_TOOL_CALL_NAME } from '../src/shared/zcode-notice.ts'
 import { LOCAL_TOOL_SEARCH_NAME } from '../src/toolsearch/zcode-text.ts'
 import { fakeRuntime, schemaViolations, type FakeRuntime } from './fake-rc3.ts'
 import { captureWarnings, seedAsHuman, type GraphAnswer } from './graph-helpers.ts'
+import { exampleRecord } from './proposal-examples.ts'
 
 interface Fixture {
   /** The session working directory; the graph is docs/graph under it. */
@@ -98,7 +99,7 @@ test('the row registers one tool per llm operation with schemas inside the rc.3 
   assert.deepEqual(runtime.scoped.map(tool => tool.name), GRAPH_TOOL_NAMES)
   for (const tool of runtime.scoped) {
     assert.deepEqual(schemaViolations(tool.parameters, `${tool.name}.parameters`), [])
-    assert.ok(tool.description.length > 0 && tool.description.length < 400, tool.name)
+    assert.ok(tool.description.length > 0 && tool.description.length < 600, tool.name)
   }
   // A supersession is a proposal with a supersedes edge (ORCHESTRATION.md §2.9); it has no tool of its own.
   assert.equal(runtime.ctx.tools.get('graph_supersede'), undefined)
@@ -123,7 +124,7 @@ toolTest('graph_propose explains the table card next to recommend-last; a questi
   const propose = runtime.scoped.find(tool => tool.name === 'graph_propose')!
   type Described = { description: string, properties?: Record<string, Described>, items?: Described, enum?: string[] }
   const node = (propose.parameters.properties as Record<string, Described>).node.properties!
-  assert.match(propose.description, /table card: rows of label, gain, cost, recommended option last; the human's also crux, verdict, weight/)
+  assert.match(propose.description, /A question for the human is a proposal: ask \(the question\), form \(recommend, choose, want or look\), proposal and, by form, reason, cost, ways; the main agent puts one with propose_to_human\. A question you decide yourself \(decider agent\) is a table of options, the recommended option last\./)
   const row = node.options.items!.properties!
   assert.deepEqual(Object.keys(row), ['key', 'label', 'gain', 'cost'], 'new rows have no consequence')
   assert.match(row.label.description, /怎么做: .* at most 20 characters/)
@@ -141,6 +142,29 @@ toolTest('graph_propose explains the table card next to recommend-last; a questi
   assert.match(error.hint, /取决于/)
   const asked = ok(await call('graph_propose', { node: { ...bare, crux: '缓存要跨重启留着吗？', verdict: '是 → A；否 → B', weight: 'two-way' }, reason: '问人' }))
   assert.deepEqual([asked.node.crux, asked.node.verdict, asked.node.weight], ['缓存要跨重启留着吗？', '是 → A；否 → B', 'two-way'])
+})
+
+toolTest('graph_propose takes a proposal; graph_decide decides it with a conclusion, for the human only with their words', async ({ runtime, call, rev }) => {
+  type Described = { description: string, properties?: Record<string, Described> }
+  const propose = runtime.scoped.find(tool => tool.name === 'graph_propose')!
+  const node = (propose.parameters.properties as Record<string, Described>).node.properties!
+  for (const field of ['ask', 'form', 'proposal', 'reason', 'cost', 'ways', 'notTaken']) assert.match(node[field].description, /Question only, a proposal/, field)
+  const decide = runtime.scoped.find(tool => tool.name === 'graph_decide')!
+  assert.deepEqual((decide.parameters as { required: string[] }).required, ['id', 'rev', 'reason'])
+  assert.deepEqual(Object.keys((decide.parameters as { properties: object }).properties), ['id', 'rev', 'option', 'conclusion', 'reason', 'relay'])
+  assert.match(decide.description, /takes conclusion: one line, what was decided/)
+
+  const record = exampleRecord('recommend')
+  const asked = ok(await call('graph_propose', { node: { type: 'question', parent: 'feature-1', ...record }, reason: '问人' }))
+  assert.equal(asked.node.options, undefined)
+  assert.equal(asked.node.ask, record.ask)
+  assert.equal(asked.node.form, 'recommend')
+  refused(await call('graph_decide', { id: asked.id, rev: asked.rev, conclusion: '默认少做', reason: '我定' }), 'forbidden')
+  refused(await call('graph_decide', { id: asked.id, rev: asked.rev, option: 'A', conclusion: '默认少做', reason: '我定', relay: '可以' }), 'invalid', 'option')
+  refused(await call('graph_decide', { id: asked.id, rev: asked.rev, reason: '我定', relay: '可以' }), 'invalid', 'option')
+  const decided = ok(await call('graph_decide', { id: asked.id, rev: await rev(asked.id), conclusion: '默认少做', reason: '人在对话里同意', relay: '可以，就按推荐的来' }))
+  assert.equal(decided.node.status, 'done')
+  assert.equal(decided.node.conclusion, '默认少做')
 })
 
 test('every graph tool stays resident on GLM requests', () => {

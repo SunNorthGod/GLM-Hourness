@@ -250,7 +250,7 @@ const done = (text: string): CommandResultLike => ({ kind: 'success', text })
 
 const pad = (value: number): string => String(value).padStart(2, '0')
 
-function localTime(iso: string): string {
+export function localTime(iso: string): string {
   const at = new Date(iso)
   return Number.isNaN(at.getTime()) ? iso : `${at.getMonth() + 1}月${at.getDate()}日 ${pad(at.getHours())}:${pad(at.getMinutes())}`
 }

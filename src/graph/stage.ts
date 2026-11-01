@@ -142,8 +142,8 @@ export function requirementCard(graph: LoadedGraph, goal: GraphNode): readonly G
     {
       key: 'choice',
       label: '岔路（人拍板的选择）',
-      ok: below.some(node => node.type === 'question' && node.status === 'done' && node.decision !== undefined && lastDecidedByHuman(node)),
-      hint: 'interview step 7 (the fork only the human can decide): put it with propose_to_human (kind question) and record the answer with record_human_answer; a question the agent decided on its own does not count',
+      ok: below.some(node => node.type === 'question' && node.status === 'done' && (node.decision !== undefined || node.conclusion !== undefined) && lastDecidedByHuman(node)),
+      hint: 'interview step 7 (the fork only the human can decide): put it with propose_to_human (kind question, form recommend or choose) and record the answer with record_human_answer; a question the agent decided on its own does not count',
     },
   ]
 }

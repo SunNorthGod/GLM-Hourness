@@ -28,18 +28,22 @@
 import { statSync } from 'node:fs'
 import { holderFile, holderHome, projectKey, readHolder, releaseHolder } from '../graph/main-agent-holder.ts'
 import { graphFocus, graphService } from '../graph/service.ts'
-import { installMainAgentRules } from '../guard/main-agent.ts'
+import { installMainAgentRules, type BypassAlert } from '../guard/main-agent.ts'
 import { insertHournessSection } from '../guard/sections.ts'
 import { rowJournal } from '../memory/audit.ts'
 import { dataHomes } from '../shared/data-home.ts'
 import { dialectService, dialectWarner, toNativeTool } from '../shared/dialect.ts'
 import { createUserNotice, type AgentLike, type CommandDefinitionLike, type CommandsExecutor, type DesignAgentLike, type DesignAgentsService, type DesignInvocationLike, type InjectHost, type PreExecuteListener, type ProvideHost, type ServiceLookup, type SessionLike, type SessionPersistenceLike, type SessionProjectionsService } from '../shared/dsh-min.ts'
 import { provideRowHealth, sessionIdOf, type HealthState } from '../shared/health.ts'
+import { ATTACH_BOARDS } from './attach.ts'
 import { MAIN_AGENT_IDENTITY, MAIN_AGENT_SECTION } from './identity.ts'
-import { mainAgentProjection, modeOf, roleOf, staleRecordKept, wishHandler, type RoleDeps, type RoleReading, type WishDeps } from './mode.ts'
-import { mainAgentFace } from './role-face.ts'
+import { emitMetric } from './metrics.ts'
+import { localTime, mainAgentProjection, modeOf, roleOf, staleRecordKept, wishHandler, type RoleDeps, type RoleReading, type WishDeps } from './mode.ts'
+import { proposeTool, type DesignToolDeps } from './propose.ts'
+import { recordTool } from './record.ts'
+import { mainAgentFace, ordinaryFace } from './role-face.ts'
 import { installStageNotice } from './stage-notice.ts'
-import { HIDDEN_FROM_MAIN_AGENT } from './talk.ts'
+import { HIDDEN_FROM_MAIN_AGENT, TALK_PROJECTION, parseTalkState, personSaid, talkApply, talkFold, talkInit, type TalkState } from './talk.ts'
 
 /** cordis plugin identity: needs the commands service. */
 export const name = 'dsh-glm-hourness/design'
@@ -57,6 +61,9 @@ export interface DesignContext extends ServiceLookup, Partial<InjectHost>, Parti
 
 /** What the row says while the session state service has not arrived. */
 export const WAITING_STATE = '主 Agent 模式要会话状态服务（sessionProjections）'
+
+/** The projection of what the human said and was shown (src/design/talk.ts), for the session state service. */
+const talkProjection = { key: TALK_PROJECTION, stateVersion: 1, stateSchema: { parse: parseTalkState }, init: talkInit, apply: talkApply } as const
 
 /** What a main agent session's row health says when nothing is wrong. */
 export const MAIN_AGENT_ACTIVE = '主 Agent：身份节已加上，写文件的工具和 ask_user_question 已从工具面去掉'
@@ -96,11 +103,26 @@ export function apply(ctx: DesignContext): () => void {
   let registration: string | undefined
   // Why the execution-boundary rules of the main agent are not installed (docs/ORCHESTRATION.md §6.1).
   let boundary: string | undefined
+  // Why the human's messages are read from the session log (the projection hournessTalk is not registered), and why the two tools are not registered.
+  let talkNote: string | undefined
+  let toolsNote: string | undefined = '设计工具要工具服务（tools）'
 
-  const status = (): [HealthState, string] => [
-    registration !== undefined ? 'inactive' : waiting === undefined && boundary === undefined ? 'active' : 'degraded',
-    [registration ?? `命令 /${WISH_COMMAND} 已注册`, waiting ?? '会话状态服务已就绪', ...boundary === undefined ? [] : [boundary]].join('；'),
-  ]
+  // Graph writes by sessions that have no right to the human's words that were refused, newest last: the last 50, told for 24 hours after the latest.
+  const bypasses: Array<{ readonly at: number, readonly text: string }> = []
+  const BYPASS_KEPT = 50
+  const BYPASS_WINDOW_MS = 24 * 60 * 60 * 1000
+  const bypassNote = (): string | undefined => {
+    const recent = bypasses.filter(entry => entry.at >= Date.now() - BYPASS_WINDOW_MS)
+    return recent.length === 0 ? undefined : `最近 24 小时有 ${recent.length} 次不经人的同意推进目标的写入被拦下，最近一次：${recent.at(-1)!.text}`
+  }
+
+  const status = (): [HealthState, string] => {
+    const notes = [boundary, talkNote, toolsNote, bypassNote()].filter(note => note !== undefined)
+    return [
+      registration !== undefined ? 'inactive' : waiting === undefined && notes.length === 0 ? 'active' : 'degraded',
+      [registration ?? `命令 /${WISH_COMMAND} 已注册`, waiting ?? '会话状态服务已就绪', ...notes].join('；'),
+    ]
+  }
   const health = provideRowHealth(ctx, 'design', ...status())
   disposers.push(() => { health.dispose() })
 
@@ -146,6 +168,64 @@ export function apply(ctx: DesignContext): () => void {
   }
 
   const agents = (): DesignAgentsService | undefined => service<DesignAgentsService>(ctx, 'agents', ['get', 'roots'])
+
+  /**
+   * What the human said and was shown in a session: the session projection
+   * hournessTalk, else a fold of the session log, which rc.3 marks deprecated
+   * and which is only the way back; undefined when neither can be read.
+   */
+  const talkOf = (agent: { readonly id: string, readonly session?: SessionLike | undefined }): TalkState | undefined => {
+    const session = agent.session
+    if (session === undefined) return undefined
+    try {
+      const state = projections?.stateOf(session, TALK_PROJECTION)
+      if (state !== undefined) return state as TalkState
+    }
+    catch (error) {
+      warnRead(`the talk state of a session cannot be read from its projection: ${message(error)}`)
+    }
+    if (typeof session.snapshotEvents !== 'function') return undefined
+    try {
+      const folded = talkFold(session.header, session.snapshotEvents())
+      health.report(session.id, 'degraded', '人的消息改从会话日志读（会话投影 hournessTalk 没注册上）')
+      return folded
+    }
+    catch (error) {
+      warnRead(`the talk state of a session cannot be read from its log: ${message(error)}`)
+      return undefined
+    }
+  }
+
+  /** Whether a session is its project's main agent now; what is wrong with reading that is the session's degraded row health. */
+  const isMain = (agent: { readonly id: string, readonly session?: SessionLike | undefined }): boolean => {
+    const reading = roleOf(role, agent)
+    if (reading.problems.length > 0 && agent.session !== undefined) health.report(agent.session.id, 'degraded', reading.problems.join('；'))
+    return reading.main
+  }
+
+  // A delegated session that sent the human's words with a graph write was refused: the human is told through the row health and the main agent's next reply, once in ten minutes per session and goal.
+  const noticed = new Map<string, number>()
+  const NOTICE_GAP_MS = 10 * 60 * 1000
+  const onBypass = (alert: BypassAlert): void => {
+    const at = Date.now()
+    const session = alert.agent.session
+    const title = session === undefined ? undefined : (() => { try { const text = projections?.stateOf(session, 'title'); return typeof text === 'string' && text.length > 0 ? text : undefined } catch { return undefined } })()
+    const label = alert.kind === 'subagent' ? `子 agent「${alert.agent.id}」` : `另一个会话「${title ?? alert.agent.id}」`
+    bypasses.push({ at, text: `${label}想${alert.what}，${localTime(new Date(at).toISOString())}` })
+    if (bypasses.length > BYPASS_KEPT) bypasses.shift()
+    health.reactivate(...status())
+    emitMetric({ event: 'design.bypass-refused', rule: alert.rule, session: alert.kind, goal: alert.goal, node: alert.node, tool: alert.tool })
+    const holder = session === undefined ? undefined : role.holder(session)
+    if (holder?.kind !== 'held') return
+    health.report(holder.record.sessionId, 'degraded', bypassNote() ?? '')
+    const key = `${alert.agent.id}\n${alert.goal ?? ''}`
+    const last = noticed.get(key)
+    if (last !== undefined && at - last < NOTICE_GAP_MS) return
+    noticed.set(key, at)
+    const live = agents()?.get(holder.record.sessionId)
+    if (live === undefined) return
+    live.inject(createUserNotice('glm-design-bypass', 'a write that moves work on without the human was refused', `[拦下] ${label}想不经人的同意${alert.what}，harness 拒绝了（${alert.rule}）。下一次回复里用一句话告诉人。`))
+  }
 
   let reportedOffFailure = false
   /** A session could not be made to leave main agent mode: warned once, and shown in that session's row health. */
@@ -205,7 +285,10 @@ export function apply(ctx: DesignContext): () => void {
     // Prepend, like the guard's declaration: the section lands before glm:guard whichever listener is outermost.
     disposers.push(agent.ctx.on('system-prompt/assemble', async (_assembly, _context, next) => {
       const reading = roleForStep(agent)
-      const step = { role: reading, problems: [...reading.problems] }
+      // The main agent's health keeps saying that a write was refused until 24 hours after the latest one.
+      const refused = reading.main ? bypassNote() : undefined
+      if (bypasses.length > 0) health.reactivate(...status())
+      const step = { role: reading, problems: [...reading.problems, ...refused === undefined ? [] : [refused]] }
       steps.set(agent, step)
       assembledAsMain.set(agent, reading.main)
       let assembled
@@ -230,8 +313,12 @@ export function apply(ctx: DesignContext): () => void {
     disposers.push(agent.ctx.on('system-prompt/assemble', async (_assembly, _context, next) => {
       const assembled = await next()
       const step = steps.get(agent)
-      if (!(step?.role ?? roleForStep(agent)).main) return assembled
       const dialect = dialectService(ctx, problem)
+      // The two tools of this row are the main agent's only: every other session's face is without them.
+      if (!(step?.role ?? roleForStep(agent)).main) {
+        const tools = ordinaryFace(assembled.tools, tool => toNativeTool(dialect, tool, problem))
+        return tools === assembled.tools ? assembled : { ...assembled, tools: [...tools] }
+      }
       const face = mainAgentFace(assembled.tools, tool => toNativeTool(dialect, tool, problem))
       for (const why of face.problems) {
         if (step === undefined) health.report(sessionIdOf(agent), 'degraded', why)
@@ -347,6 +434,15 @@ export function apply(ctx: DesignContext): () => void {
         }
         projections = projectionCtx.sessionProjections
         waiting = undefined
+        // What the human said is read from this projection; without it the main agent's tools and rules read the session log (rc.3 marks that deprecated).
+        try {
+          projectionCtx.sessionProjections.register(talkProjection)
+          talkNote = undefined
+        }
+        catch (error) {
+          console.warn(`${name}: the talk projection ${TALK_PROJECTION} is off, the human's messages are read from the session log: ${message(error)}`)
+          talkNote = `人的消息改从会话日志读（会话投影 ${TALK_PROJECTION} 没注册上：${message(error)}）`
+        }
         health.reactivate(...status())
         return () => {
           projections = undefined
@@ -362,17 +458,67 @@ export function apply(ctx: DesignContext): () => void {
   }
   else waiting = '宿主没有 inject，会话状态服务拿不到，/wish 用不了'
 
+  // The two tools of the main agent: put a matter to the human, record their reply (src/design/propose.ts, record.ts).
+  const toolDeps: DesignToolDeps = {
+    boards: ATTACH_BOARDS,
+    lookup: ctx,
+    isMainAgent: isMain,
+    graph: (agent) => {
+      const graph = graphFocus(ctx)
+      const cwd = agent.session?.header.cwd
+      const dir = graph?.dirFor(cwd)
+      if (graph === undefined || agent.session === undefined || dir === undefined || !isDirectory(dir)) return undefined
+      return { dir, cwd, focus: graph.focusOf(agent.session) }
+    },
+    talk: talkOf,
+    report: (agent, state, reason) => { health.report(sessionIdOf(agent), state, reason) },
+  }
+  if (typeof ctx.inject === 'function') {
+    try {
+      ctx.inject(['tools'], toolsCtx => {
+        const undo: Array<() => void> = []
+        try {
+          undo.push(toolsCtx.tools.register(proposeTool(toolDeps)))
+          undo.push(toolsCtx.tools.register(recordTool(toolDeps)))
+        }
+        catch (error) {
+          for (const withdraw of undo.splice(0).reverse()) withdraw()
+          console.warn(`${name}: registering the design tools failed, the main agent cannot put a matter to the human: ${message(error)}`)
+          toolsNote = `propose_to_human 和 record_human_answer 没注册上：${message(error)}`
+          health.reactivate(...status())
+          return undefined
+        }
+        toolsNote = undefined
+        health.reactivate(...status())
+        return () => {
+          for (const withdraw of undo.splice(0).reverse()) withdraw()
+          toolsNote = '设计工具要工具服务（tools）'
+          health.reactivate(...status())
+        }
+      })
+    }
+    catch (error) {
+      console.warn(`${name}: the design tools are not registered: ${message(error)}`)
+      toolsNote = `设计工具没注册上：${message(error)}`
+    }
+  }
+  else toolsNote = '宿主没有 inject，设计工具拿不到工具服务'
+
   // The main agent has no tool that writes files, but the runtime executes by name: the rules deny a write, a question card and a git command that cannot be saved first (src/guard/main-agent.ts).
   try {
     const journal = rowJournal(name, () => dataHomes(ctx, undefined))
     disposers.push(installMainAgentRules(ctx, {
       agents,
       graph: () => graphFocus(ctx),
-      isMainAgent: (agent) => {
-        const reading = roleOf(role, agent)
-        if (reading.problems.length > 0 && agent.session !== undefined) health.report(agent.session.id, 'degraded', reading.problems.join('；'))
-        return reading.main
+      isMainAgent: isMain,
+      checkRelay: (agent, quotes, afterMs) => {
+        const state = talkOf(agent)
+        if (state === undefined) return undefined
+        const said = personSaid(state, quotes, afterMs)
+        return said.ok ? { ok: true } : { ok: false, reason: said.reason, offBoundary: said.offBoundary }
       },
+      bypass: onBypass,
+      metric: emitMetric,
       hiddenTools: HIDDEN_FROM_MAIN_AGENT,
       journal: (record) => { void journal.violation(record) },
       report: (agent, state, reason) => { health.report(sessionIdOf(agent), state, reason) },

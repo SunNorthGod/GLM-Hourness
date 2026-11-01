@@ -32,6 +32,7 @@ import type { GraphFocusService } from '../graph/service.ts'
 import { goalOf, releaseSet, stageStatus, type GateItem } from '../graph/stage.ts'
 import { loadGraph } from '../graph/store.ts'
 import { createUserNotice, type AgentLike, type DerivedMessage, type UserNotice } from '../shared/dsh-min.ts'
+import { DELEGATIONS_ID, DELEGATION_LIMIT, delegationKindOf } from '../shared/answer-marks.ts'
 import type { HealthState } from '../shared/health.ts'
 import { installStepNotice } from '../shared/step-notice.ts'
 import { wrapSystemReminder } from '../shared/zcode-notice.ts'
@@ -57,13 +58,15 @@ export interface StageReminder {
   readonly goal: string
   readonly stage: string
   readonly text: string
+  /** Something the reminder went without, for the row health. */
+  readonly degraded?: string
 }
 
 /**
  * The line that tells the main agent how to interview: one or two questions
  * at a time, in the human's words, each answer onto the graph at once.
  */
-export const INTERVIEW_METHOD = 'Interview the human in plain chat, one or two questions at a time, in their words: say 怎样算做成 for acceptance, 明确不做的 for non-goals, 最可能出岔子的地方 for risks, 不能改、不能花、不能冒的险 for constraints; offer your guess from experience; write each answer to the graph as soon as you have it.'
+export const INTERVIEW_METHOD = 'Interview the human in plain chat, one or two questions at a time, in their words: say 怎样算做成 for acceptance, 明确不做的 for non-goals, 最可能出岔子的地方 for risks, 不能改、不能花、不能冒的险 for constraints; guess first and write it as 「我猜你……，对吗？」 so they only correct it; write each answer to the graph as soon as you have it. These interview questions are asked in chat, not through propose_to_human.'
 
 /** What the main agent asks next for one missing item of the requirement card: the interview step and the "Next:" line (`hint` is the item's hint). */
 interface InterviewStep {
@@ -89,7 +92,7 @@ export const INTERVIEW_STEPS: readonly InterviewStep[] = [
   { key: 'non-goals', step: 4, next: askLine('有没有你明确不想要的', ' with your guesses in one line') },
   { key: 'constraints', step: 5, next: askLine('有没有不能改、不能花、不能冒的险') },
   { key: 'risks', step: 6, next: askLine('假如最后没做成，最可能是因为什么', ' with your three guesses in one line') },
-  { key: 'choice', step: 7, next: () => 'Next: put the one fork only the human can decide with propose_to_human (kind question) and record their answer with record_human_answer; a question you decide on your own does not count.' },
+  { key: 'choice', step: 7, next: () => 'Next: put the one fork only the human can decide with propose_to_human (kind question, form recommend or choose) and record their answer with record_human_answer; a question you decide on your own does not count.' },
 ]
 
 const CONFIRM_NEXT = 'Next: put the requirement to the human with propose_to_human (kind confirm).'
@@ -101,7 +104,7 @@ const FRAMEWORK_FORMAT = 'The work is split into modules. Write the framework as
 
 const DISPATCH_FOCUS = 'Before you dispatch a subagent that writes, graph_focus to the module or the task it belongs to.'
 
-const MODULE_FORMAT = `Write this module's design decisions as children of the module (the same columns), its plan as features and tasks under the module, every task with acceptance; check the design against every direction in norm-directions and name in the 疑问 line any it strains. ${DISPATCH_FOCUS}`
+const MODULE_FORMAT = `Write this module's design decisions as children of the module (the same columns), its plan as features and tasks under the module, every task with acceptance; check the design against every direction in norm-directions and name in your report any it strains. ${DISPATCH_FOCUS}`
 
 const RELEASED_LINE = 'The design is released. Tell the human in one line; decomposition and dispatch come next.'
 
@@ -190,6 +193,28 @@ function moduleLines(modules: readonly GraphNode[]): string[] {
  * here; a design stage lists the gate of an unsplit goal only.
  */
 export function stageReminder(graph: LoadedGraph, focus: string | undefined): StageReminder {
+  const reminder = reminderFor(graph, focus)
+  const { line, degraded } = delegationsLine(graph)
+  return { ...reminder, ...line === undefined ? {} : { text: `${reminder.text}\n${line}` }, ...degraded === undefined ? {} : { degraded } }
+}
+
+/**
+ * The line that lists the kinds of matter the human handed to the main agent
+ * for good (the node norm-delegations, written only by record_human_answer),
+ * at the end of every reminder while there are any. It only reminds; a node
+ * that cannot be read as the list goes without the line and the row health
+ * says so.
+ */
+function delegationsLine(graph: LoadedGraph): { readonly line?: string, readonly degraded?: string } {
+  const node = graph.nodes.get(DELEGATIONS_ID)
+  if (node === undefined || node.status === 'dropped' || node.status === 'superseded') return {}
+  if (node.type !== 'norm') return { degraded: `${DELEGATIONS_ID} 不是 norm 节点，提醒里没写交给主 Agent 定的几类事` }
+  const kinds = (node.acceptance ?? []).slice(0, DELEGATION_LIMIT).map(delegationKindOf)
+  if (kinds.length === 0) return {}
+  return { line: `The human told you to decide these kinds yourself and only report them, while the matter can still be undone: ${kinds.join('；')}. To take one back, record_human_answer kind delegation with undo: true, that kind and their words.` }
+}
+
+function reminderFor(graph: LoadedGraph, focus: string | undefined): StageReminder {
   const node = focus === undefined ? undefined : graph.nodes.get(focus)
   const goal = node === undefined ? undefined : goalOf(graph, node.id)
   if (node === undefined || goal === undefined) return noGoal(focus, graph)
@@ -273,7 +298,9 @@ export function installStageNotice(agent: AgentLike, deps: StageNoticeDeps): (()
       const graph = deps.graph()
       const dir = graph?.dirFor(session.header.cwd)
       if (graph === undefined || dir === undefined) throw new Error('the graph row does not say where the project graph is or what the session has in focus')
-      return stageNotice(history, admitted, stageReminder(await loadGraph(dir), graph.focusOf(session)))
+      const reminder = stageReminder(await loadGraph(dir), graph.focusOf(session))
+      if (reminder.degraded !== undefined) deps.report(agent, 'degraded', reminder.degraded)
+      return stageNotice(history, admitted, reminder)
     }
     catch (error) {
       const why = error instanceof Error ? error.message : String(error)

@@ -45,7 +45,7 @@ export function failure(code: ErrorCode, message: string, hint: string, field?: 
 }
 
 /** Fields a propose request may carry; status, verification, evidence and history are set by the engine. */
-export const PROPOSE_FIELDS = ['id', 'type', ...EDITABLE_FIELDS, 'edges'] as const
+export const PROPOSE_FIELDS = ['id', 'type', ...EDITABLE_FIELDS, 'form', 'edges'] as const
 
 export type ProposedNode =
   & Pick<GraphNode, 'type' | 'title'>
@@ -72,7 +72,7 @@ export type Mutation =
   | (Targeted & { readonly op: 'edit', readonly set: Readonly<Partial<Record<EditableField, FieldValue | null>>> })
   | (Targeted & { readonly op: 'link' | 'unlink', readonly type: LinkType, readonly to: string })
   | { readonly op: 'comment', readonly id: string, readonly text: string }
-  | (Targeted & { readonly op: 'decide', readonly option: string })
+  | (Targeted & { readonly op: 'decide', readonly option?: string, readonly conclusion?: string })
   | (Targeted & { readonly op: 'verify', readonly to: Verification, readonly evidence?: readonly Evidence[] })
   | (Targeted & { readonly op: 'supersede', readonly by: string })
 
@@ -80,7 +80,7 @@ export type Mutation =
 type FieldCheck = (value: unknown, field: string) => Failure | undefined
 
 const SHAPE_HINT = 'send {op, ...fields} as described in docs/ORCHESTRATION.md §2.9'
-const EDIT_HINT = `edit changes ${EDITABLE_FIELDS.join(', ')}; status, edges, evidence, decision and verification have their own ops (status, link and unlink, decide, verify)`
+const EDIT_HINT = `edit changes ${EDITABLE_FIELDS.join(', ')}; status, edges, evidence, decision, conclusion and verification have their own ops (status, link and unlink, decide, verify)`
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -132,6 +132,7 @@ const fieldSet: FieldCheck = (value, field) => {
   if (keys.length === 0) return invalid(field, 'must name at least one field', EDIT_HINT)
   const editable = new Set<string>(EDITABLE_FIELDS)
   const extra = keys.find(key => !editable.has(key))
+  if (extra === 'form') return invalid(`${field}.${extra}`, 'is set when the question is made and cannot change', 'propose a new question; to replace this one, first drop it with graph_status (status dropped) and the human\'s exact words in relay')
   return extra === undefined ? undefined : invalid(`${field}.${extra}`, 'is not an editable field', EDIT_HINT)
 }
 
@@ -156,12 +157,12 @@ const OP_FIELDS: Readonly<Record<Op, Readonly<Record<string, FieldCheck>>>> = {
   link: { ...targeted, type: oneOf(['depends', 'source']), to: nodeId },
   unlink: { ...targeted, type: oneOf(['depends', 'source']), to: nodeId },
   comment: { id: nodeId, text },
-  decide: { ...targeted, option: optionKey },
+  decide: { ...targeted, option: optionKey, conclusion: text },
   verify: { ...targeted, to: oneOf(VERIFICATIONS), evidence },
   supersede: { ...targeted, by: nodeId },
 }
 
-const OPTIONAL_FIELDS = new Set(['evidence', 'relay'])
+const OPTIONAL_FIELDS = new Set(['evidence', 'relay', 'option', 'conclusion'])
 
 /** Check the request shape; the engine applies the graph rules afterwards. */
 export function parseMutation(input: unknown): { readonly ok: true, readonly mutation: Mutation } | Failure {
@@ -179,6 +180,10 @@ export function parseMutation(input: unknown): { readonly ok: true, readonly mut
     }
     const bad = check(value, field)
     if (bad !== undefined) return bad
+  }
+  // A question with options is decided with an option, a proposal with a conclusion: exactly one of the two.
+  if (op === 'decide' && (input.option === undefined) === (input.conclusion === undefined)) {
+    return invalid('option', input.option === undefined ? 'or conclusion is required' : 'and conclusion are exclusive', 'decide takes option (a question with options) or conclusion (a proposal), not both')
   }
   return { ok: true, mutation: input as unknown as Mutation }
 }

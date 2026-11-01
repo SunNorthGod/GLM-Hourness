@@ -19,7 +19,7 @@ import { DIALECT_SERVICE, dialectNames, dialectService, toNativeTool, ZCODE_ALIA
 import type { AgentLike, CommandDefinitionLike, ToolFinalResult } from '../src/shared/dsh-min.ts'
 import { healthServiceName, type HealthRow, type RowHealthView } from '../src/shared/health.ts'
 import { PRICING_SERVICE, pricingService, type UsagePricing } from '../src/shared/pricing.ts'
-import { GRAPH_TOOL_NAMES, MEMORY_TOOL_NAMES, ORCHESTRATION_RESIDENT_TOOLS } from '../src/shared/tool-names.ts'
+import { DESIGN_TOOL_NAMES, GRAPH_TOOL_NAMES, MEMORY_TOOL_NAMES, ORCHESTRATION_RESIDENT_TOOLS } from '../src/shared/tool-names.ts'
 import { RESIDENT_TOOLS } from '../src/toolsearch/exposure.ts'
 import { apply as hournessApply } from '../src/report/index.ts'
 import { PACKAGES } from '../scripts/packages.mjs'
@@ -63,8 +63,16 @@ test('tool names: the graph and memory rows register exactly the contract names'
   assert.deepEqual(memoryTools(io).map(tool => tool.name), MEMORY_TOOL_NAMES)
 })
 
+test('tool names: the design row registers exactly the contract names, and withdraws them when the tools service leaves', () => {
+  const host = designHost()
+  designApply(host.ctx)
+  assert.deepEqual([...host.tools.keys()], DESIGN_TOOL_NAMES)
+  host.injector.remove('tools')
+  assert.deepEqual([...host.tools.keys()], [])
+})
+
 test('tool names: every orchestration tool kept resident exists, and GLM tool search keeps it resident', () => {
-  const known = new Set([...GRAPH_TOOL_NAMES, ...MEMORY_TOOL_NAMES])
+  const known = new Set([...GRAPH_TOOL_NAMES, ...MEMORY_TOOL_NAMES, ...DESIGN_TOOL_NAMES])
   for (const name of ORCHESTRATION_RESIDENT_TOOLS) {
     assert.ok(known.has(name), `${name} is resident but no orchestration row registers it`)
     assert.ok(RESIDENT_TOOLS.has(name), name)
@@ -303,13 +311,18 @@ test('pricing through the report row: a malformed service lists tokens; a throwi
 
 // The interceptions M3 puts on the main agent are a table the rules board reads (decisions d-rules-visible, d-defaults-readonly; addendum 3.11).
 // Each step adds its rows and its triggers here; the step of a row is the last step merged that may hold it.
-const MERGED_STEP = 5
+const MERGED_STEP = 6
 const TRIGGERS: Readonly<Record<string, (host: ReturnType<typeof designHost>, agent: AgentLike) => Promise<void>>> = {
   'main-agent-no-write': async (host, agent) => { await host.preExecute(agent, 'write', { file_path: 'a.txt', content: 'x' }) },
   'main-agent-ask': async (host, agent) => { await host.preExecute(agent, 'ask_user_question', {}) },
   'git-snapshot': async (host, agent) => { await host.preExecute(agent, 'pwsh', { command: 'git clean -fdx' }) },
   // A write by a subagent of the main agent, which has no goal in focus.
   'design-before-release': async (host, agent) => { await host.preExecute(host.addAgent('delegated', { origin: 'subagent', parentSession: agent.id }), 'write', { file_path: 'a.txt', content: 'x' }) },
+  // A subagent sends the human's words with a graph write; the main agent proposes a question with options or touches the delegations.
+  'main-agent-graph-relay': async (host, agent) => { await host.preExecute(host.addAgent('relaying', { origin: 'subagent', parentSession: agent.id }), 'graph_edit', { id: 'goal-1', rev: 'r', set: { stage: 'release' }, reason: 'x', relay: '可以，放行' }) },
+  'main-agent-graph-options': async (host, agent) => { await host.preExecute(agent, 'graph_propose', { node: { type: 'question', title: '放哪', parent: 'goal-1', options: [{ key: 'A', label: 'a', gain: 'g', cost: 'c' }, { key: 'B', label: 'b', gain: 'g', cost: 'c' }], recommend: 'B' }, reason: 'x' }) },
+  // Any session writes the node of what the human handed over for good with a graph tool.
+  'main-agent-graph-delegations': async (host, agent) => { await host.preExecute(agent, 'graph_edit', { id: 'norm-delegations', rev: 'r', set: { acceptance: ['代码风格：主 Agent 定，只告知'] }, reason: 'x' }) },
 }
 
 test('main agent rules: ids are unique, titles are one short plain line, every rule steps no later than the merged step', () => {

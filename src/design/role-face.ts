@@ -7,6 +7,7 @@
  * alias of the same tool goes too.
  */
 import type { AssembledTool } from '../shared/dsh-min.ts'
+import { DESIGN_TOOL_NAMES } from '../shared/tool-names.ts'
 import { HIDDEN_FROM_MAIN_AGENT } from './talk.ts'
 
 /** DSH natives that write files. */
@@ -27,6 +28,17 @@ function viewOnly(tool: AssembledTool): AssembledTool | undefined {
   const command = properties.command
   if (!isRecord(command) || !Array.isArray(command.enum)) return undefined
   return { ...tool, parameters: { ...tool.parameters, properties: { ...properties, command: { ...command, enum: ['view'] } } } }
+}
+
+/**
+ * The tools of the face of a session that is not the main agent: the tools of
+ * the design row (propose_to_human, record_human_answer) are for the main
+ * agent only, so they are taken off every other session's face. The same
+ * array when it has none of them.
+ */
+export function ordinaryFace(tools: readonly AssembledTool[], native: (name: string) => string): readonly AssembledTool[] {
+  const kept = tools.filter(tool => !DESIGN_TOOL_NAMES.includes(native(tool.name)))
+  return kept.length === tools.length ? tools : kept
 }
 
 /**

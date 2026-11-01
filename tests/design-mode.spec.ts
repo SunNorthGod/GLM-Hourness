@@ -15,11 +15,13 @@ import test from 'node:test'
 import { apply, MAIN_AGENT_ACTIVE, MAIN_AGENT_INACTIVE, WAITING_STATE } from '../src/design/index.ts'
 import { MAIN_AGENT_IDENTITY, MAIN_AGENT_ROLE, MAIN_AGENT_SECTION, MAIN_AGENT_TALK } from '../src/design/identity.ts'
 import { CANCELLED_OFF, CANCELLED_ON, MAX_WISH_LENGTH, ROLE_UNCHANGED_MARK, STRONG_MODEL_NOTE, staleRecordKept } from '../src/design/mode.ts'
-import { HIDDEN_FROM_MAIN_AGENT, TALK_GUIDE, type ProposalKind } from '../src/design/talk.ts'
+import { HIDDEN_FROM_MAIN_AGENT, TALK_GUIDE, TALK_SHAPES, type ProposalKind } from '../src/design/talk.ts'
+import { ASK_FORMS, TALK_LIMITS } from '../src/graph/proposal.ts'
+import { AGREE_WORDS } from '../src/shared/answer-marks.ts'
 import { STR_REPLACE_EDITOR_UNKNOWN, WRITE_NATIVES } from '../src/design/role-face.ts'
 import { claimHolder, holderFileOf, mainAgentOf, readHolder, replaceHolder } from '../src/graph/main-agent-holder.ts'
 import { MAIN_AGENT_KEY } from '../src/graph/main-agent.ts'
-import { PLAIN_QUESTION_GUIDE, plainWordsIn } from '../src/graph/plain-question.ts'
+import { PLAIN_QUESTION_GUIDE, PLAIN_WORDS_GUIDE, plainWordsIn } from '../src/graph/plain-question.ts'
 import type { AssemblePayload, AssembledTool } from '../src/shared/dsh-min.ts'
 import { healthServiceName, type RowHealthView } from '../src/shared/health.ts'
 import { BASE_TOOLS, designHost, type DesignHost, type FakeAgent } from './design-host.ts'
@@ -86,13 +88,25 @@ const listen = (agent: FakeAgent, listener: AssembleListener, prepend: boolean):
 
 // ---------------------------------------------------------------- the identity section
 
-test('the identity section: role and boundaries within 1,500, the talk guide and the plain-question guide within 1,400, the whole within 2,700', () => {
+test('the identity section: role and boundaries within 1,500, the talk guide and the plain-words list within 1,800, the whole within 3,000', () => {
   assert.ok(MAIN_AGENT_ROLE.length <= 1500, `role ${MAIN_AGENT_ROLE.length}`)
-  assert.equal(MAIN_AGENT_TALK, `${TALK_GUIDE}\n${PLAIN_QUESTION_GUIDE}`)
-  assert.ok(MAIN_AGENT_TALK.length <= 1400, `talk ${MAIN_AGENT_TALK.length}`)
+  assert.equal(MAIN_AGENT_TALK, `${TALK_GUIDE}\n${PLAIN_WORDS_GUIDE}`)
+  assert.ok(MAIN_AGENT_TALK.length <= 1800, `talk ${MAIN_AGENT_TALK.length}`)
   assert.equal(MAIN_AGENT_IDENTITY, `${MAIN_AGENT_ROLE}\n\n${MAIN_AGENT_TALK}`)
-  assert.ok(MAIN_AGENT_IDENTITY.length <= 2700, `whole ${MAIN_AGENT_IDENTITY.length}`)
+  assert.ok(MAIN_AGENT_IDENTITY.length <= 3000, `whole ${MAIN_AGENT_IDENTITY.length}`)
   assert.equal(MAIN_AGENT_SECTION, 'hourness:main-agent')
+})
+
+test('the tool description carries the shapes of a question and the worked examples; its limits come from the constants', () => {
+  assert.ok(TALK_SHAPES.length <= 1700, `shapes ${TALK_SHAPES.length}`)
+  assert.ok(PLAIN_QUESTION_GUIDE.length <= 1200, `examples ${PLAIN_QUESTION_GUIDE.length}`)
+  assert.ok(TALK_SHAPES.includes(`at most ${TALK_LIMITS.text.recommend} characters for recommend and ${TALK_LIMITS.text.choose} for the others`))
+  for (const form of ASK_FORMS) assert.ok(TALK_SHAPES.includes(`${form}:`), form)
+})
+
+test('the guide lists the words that plainly say yes: the list the harness reads, plus the number of a way', () => {
+  const listed = [...TALK_GUIDE.matchAll(/\(((?:「[^」]+」)+)\)/g)].flatMap(match => [...match[1].matchAll(/「([^」]+)」/g)].map(word => word[1]))
+  assert.deepEqual(listed, [...AGREE_WORDS, '第 N 条'])
 })
 
 test('the first part has the five items: role, the harness boundaries, git with its snapshot, the design loop, /plan', () => {
@@ -108,9 +122,9 @@ test('the first part has the five items: role, the harness boundaries, git with 
   ]) assert.ok(MAIN_AGENT_ROLE.includes(part), part)
 })
 
-test('the section names the two tools and the four labels, and none of the retired names or phrases', () => {
-  for (const wanted of ['propose_to_human', 'record_human_answer', '背景', '推荐', '疑问', '不做']) assert.ok(MAIN_AGENT_IDENTITY.includes(wanted), wanted)
-  for (const gone of ['ask_user_question', 'decision_card', 'design_review', 'ask_human', '(Recommended)', '(推荐)', '（推荐）', 'depth']) assert.ok(!MAIN_AGENT_IDENTITY.includes(gone), gone)
+test('the section names the two tools, the delegation call, the four ways of asking and the plain yes-words, and none of the retired names or phrases', () => {
+  for (const wanted of ['propose_to_human', 'record_human_answer', 'delegation', ...ASK_FORMS, ...AGREE_WORDS]) assert.ok(MAIN_AGENT_IDENTITY.includes(wanted), wanted)
+  for (const gone of ['ask_user_question', 'decision_card', 'design_review', 'ask_human', '(Recommended)', '(推荐)', '（推荐）', 'depth', 'never give them options', 'four short lines', 'norm-delegations']) assert.ok(!MAIN_AGENT_IDENTITY.includes(gone), gone)
 })
 
 test('talk.ts: the question tool hidden from the main agent, and the three proposal kinds', () => {

@@ -45,12 +45,6 @@ export interface PinChange {
 const PINS_PREFIX = 'pins: '
 const PIN_PATTERN = /^([a-z][a-z0-9-]{0,47})@([0-9a-f]{12})$/
 
-/** `conclusion` is the proposal-form answer of a question (M3 addendum §3.3); the field is not in the schema until M3's change lands. */
-function conclusionOf(node: GraphNode): string | null {
-  const value = (node as { readonly conclusion?: unknown }).conclusion
-  return typeof value === 'string' ? value : null
-}
-
 function isModule(graph: LoadedGraph, node: GraphNode, readers: ModuleReaders): boolean {
   if (node.type !== 'feature') return false
   try {
@@ -70,7 +64,7 @@ function semanticFields(graph: LoadedGraph, node: GraphNode, readers: ModuleRead
     case 'decision':
       return { overturned: node.verification === 'overturned' || node.verification === 'superseded', status: node.status }
     case 'question':
-      return { decision: node.decision ?? null, conclusion: conclusionOf(node), status: node.status }
+      return { decision: node.decision ?? null, conclusion: node.conclusion ?? null, status: node.status }
     default: {
       const fields: Record<string, unknown> = { acceptance: node.acceptance ?? [], nonGoals: node.nonGoals ?? [], gone }
       if (node.type === 'goal' || isModule(graph, node, readers)) fields.releaseAt = releaseAtOf(node)

@@ -67,6 +67,10 @@ export interface ViolationRecord {
   readonly scope?: RouteScope | undefined
   readonly route?: Route | undefined
   readonly correction: string
+  /** A denial of a graph write that tried to move a goal on without the human (src/guard/main-agent-graph.ts): which session tried, and at what. */
+  readonly session?: { readonly id: string, readonly kind: 'subagent' | 'ordinary', readonly parent?: string | undefined } | undefined
+  readonly goal?: string | undefined
+  readonly node?: string | undefined
 }
 
 /** A line of the violation journal: an enforced denial or a shadow record. */

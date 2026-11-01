@@ -14,6 +14,7 @@ import type { GraphNode } from '../src/graph/schema.ts'
 import type { DerivedMessage, UserNotice } from '../src/shared/dsh-min.ts'
 import { designHost, healthOf, type DesignHost, type FakeAgent } from './design-host.ts'
 import { GOAL_BODY, design, graphOf, interview, node } from './graph-memory.ts'
+import { withNode } from './execute-helpers.ts'
 import { captureWarnings, seedAsHuman } from './graph-helpers.ts'
 
 /** Words a stage reminder must not carry: the question cards are gone, the human is asked in plain chat. */
@@ -64,7 +65,7 @@ test('interview: the fork only the human can decide is put with propose_to_human
   const { graph } = interview()
   const withoutChoice = graphOf([...graph.nodes.values()].filter(entry => entry.type !== 'question'))
   const reminder = stageReminder(withoutChoice, 'goal-1')
-  assert.equal(nextLine(reminder), 'Next: put the one fork only the human can decide with propose_to_human (kind question) and record their answer with record_human_answer; a question you decide on your own does not count.')
+  assert.equal(nextLine(reminder), 'Next: put the one fork only the human can decide with propose_to_human (kind question, form recommend or choose) and record their answer with record_human_answer; a question you decide on your own does not count.')
 })
 
 test('interview: only a superseding goal missing means no Next line, only the label and the hint', () => {
@@ -349,4 +350,49 @@ test('a graph that cannot be read: the step goes without the reminder and the se
   const missing = await captureWarnings(() => stepNotices(agent))
   assert.deepEqual(missing.result, [])
   assert.equal(healthOf(host, agent)?.state, 'degraded')
+})
+
+// ---------------------------------------------------------------- the interview in chat, and the kinds handed to the main agent
+
+test('interview: the questions are asked in chat after a guess, not through propose_to_human', () => {
+  const { graph } = interview({ body: GOAL_BODY.split('\n').filter(line => !line.startsWith('问题')).join('\n') })
+  const text = stageReminder(graph, 'goal-1').text
+  assert.ok(text.includes('我猜你……，对吗？'), 'the guess comes first')
+  assert.ok(text.includes('These interview questions are asked in chat, not through propose_to_human.'))
+})
+
+const DELEGATION_LINE = 'The human told you to decide these kinds yourself and only report them, while the matter can still be undone: '
+const UNDO_LINE = '. To take one back, record_human_answer kind delegation with undo: true, that kind and their words.'
+const delegations = (acceptance: readonly string[] | undefined, fields: Partial<GraphNode> = {}): GraphNode => node({ id: 'norm-delegations', type: 'norm', parent: 'goal-1', ...acceptance === undefined ? {} : { acceptance }, ...fields })
+
+test('the kinds the human handed over are the last line of the reminder of every stage, without the ending of each item', () => {
+  const items = ['代码风格：主 Agent 定，只告知', '命名：主 Agent 定，只告知']
+  for (const base of [interview(), design()]) {
+    const reminder = stageReminder(withNode(base.graph, delegations(items)), 'goal-1')
+    assert.equal(lines(reminder).at(-1), `${DELEGATION_LINE}代码风格；命名${UNDO_LINE}`, reminder.stage)
+    assert.equal(reminder.degraded, undefined)
+    assert.equal(stageReminder(base.graph, 'goal-1').text, reminder.text.split('\n').slice(0, -1).join('\n'), 'the rest of the reminder is as it was')
+  }
+  const nothing = stageReminder(withNode(interview().graph, delegations(items)), undefined)
+  assert.equal(lines(nothing).at(-1)?.startsWith(DELEGATION_LINE), true, 'also when no goal is in focus')
+})
+
+test('no line when the node is not there, holds no kind, or is closed; at most twenty kinds are listed', () => {
+  const { graph } = interview()
+  for (const other of [delegations(undefined), delegations([]), delegations(['代码风格：主 Agent 定，只告知'], { status: 'dropped' })]) {
+    assert.equal(stageReminder(withNode(graph, other), 'goal-1').text.includes(DELEGATION_LINE), false, JSON.stringify(other.acceptance))
+  }
+  assert.equal(stageReminder(graph, 'goal-1').text.includes(DELEGATION_LINE), false)
+  // The tool cannot write more than twenty; a file written by hand can, and the line stops at twenty.
+  const many = Array.from({ length: 21 }, (_, index) => `类别${index + 1}：主 Agent 定，只告知`)
+  const line = lines(stageReminder(withNode(graph, delegations(many)), 'goal-1')).at(-1)
+  assert.equal(line, `${DELEGATION_LINE}${many.slice(0, 20).map(item => item.replace('：主 Agent 定，只告知', '')).join('；')}${UNDO_LINE}`)
+  assert.equal(line?.includes('类别21'), false)
+})
+
+test('a node of that id that is not a norm goes without the line, and the reminder says why for the row health', () => {
+  const { graph } = interview()
+  const reminder = stageReminder(withNode(graph, node({ id: 'norm-delegations', type: 'task', parent: 'goal-1' })), 'goal-1')
+  assert.equal(reminder.text.includes(DELEGATION_LINE), false)
+  assert.match(reminder.degraded ?? '', /norm-delegations 不是 norm 节点/)
 })

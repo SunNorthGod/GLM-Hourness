@@ -55,7 +55,7 @@ function Recent({ graph, items }: { readonly graph: LoadedGraph, readonly items:
               {/* The title is the row's keyboard handle: its click bubbles to the row, which toggles. */}
               <button type="button" className="glmg-row-title glmg-row-toggle" aria-expanded={isOpen}>{record.title}</button>
               <div className="glmg-meta">
-                <span>选了 {record.decision} {record.label}</span>
+                <span>{record.decision === undefined ? `定了：${record.label}` : `选了 ${record.decision} ${record.label}`}</span>
                 <When at={record.decidedAt} />
                 {record.rounds > 1 ? <span>改过 {record.rounds - 1} 次</span> : null}
               </div>
