@@ -226,6 +226,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "运行 design-drop-read-no-shell 已开：按 d-bootstrap-released 把 bootstrap-read-no-shell 与 D2 整条从设计、一页稿与草图里去掉，重数 §1.4 与一页稿引的条数，再独立复审改动处（至多 2 遍）。节点已是 doing。"
+    },
+    {
+      "at": "2026-11-01T10:22:34.406Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "运行 design-drop-read-no-shell 第 1 遍复审 CHANGES_REQUESTED，挡路 1 条（F-N1，MEDIUM）：删规则之后，活动章节仍写着接管行会在每个 agent 上装门禁，并指向已经改成「不装门禁」的 §8.2，前后不一致。门禁文件 gate-noshell.json，评审 review-noshell.md。本轮循环的第 2 遍修订接着做。"
     }
   ]
 }
