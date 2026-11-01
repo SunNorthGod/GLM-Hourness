@@ -395,6 +395,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "运行 feat-013-peak-edges 与运行 impl-m5-memory-lessons 因 Kiro 积分用尽而失败：工作树里的改动未提交、未丢失；分支与 origin 同点（rules-loops-impl c6fbf24、m5-memory-lessons a5df445）。两条运行将在 ZCode 继续之前先在图上记一笔「已中断、活还在」，以免换机后忘记那几处在制改动。"
+    },
+    {
+      "at": "2026-11-01T19:59:45.268Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "FEAT-013（计划 L6：loops.peak-start 与 loops.peak-end）完成并推送：提交 d8263e4 在 rules-loops-impl 上（续跑 2026-11-01 被积分中断的运行，接 c6fbf24；实现者 ZCode 会话接手，从在制 prep diff 完成）。十行判断表逐行一例（tests/loops-peak.spec.ts，40 用例）；顺带修了三处继承工作的缺陷：拍未串行化（文件监听触发的拍与在飞拍并发读同一份日志）、inbox save 换对象导致在飞运行丢 held 与 armed 组、探针检查拿数字比字符串常量（NaN，永假）。四道门禁串行全绿：build 0、preflight 0（eslint 249 压制、knip 21、jscpd 2）、test 0（1564/1564）、probe 0（198/198，此前 197/198）。计划 13 项全部完成；整条分支只剩合入 main（按 2026-11-01 收尾暂缓，合入另开一条运行）。两行仍 disabled: true。"
     }
   ]
 }
