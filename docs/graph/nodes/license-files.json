@@ -2,7 +2,7 @@
   "id": "license-files",
   "type": "task",
   "title": "仓库许可与第三方声明：LICENSE、第三方声明、依赖许可清单",
-  "status": "doing",
+  "status": "done",
   "parent": "orch",
   "body": "依据 d-license-polyform（PolyForm Noncommercial 1.0.0）与 d-publish-as-is。做完条件见本节点验收。待人提供：授权人名字与商业授权联系方式，先留占位。",
   "acceptance": [
@@ -12,6 +12,25 @@
     "第 4 条：package.json 的 license 字段用 SPDX 实际使用的标识；若 SPDX 没有对应标识则写 SEE LICENSE IN LICENSE，并在报告里说明是怎么核的。",
     "第 5 条：README 有一两句说明许可与商业授权的询问去处，占位与 LICENSE 一致。",
     "第 6 条：build、preflight、test 三道串行跑且退出码 0（test 含逐字检查与密钥扫描），改动分提交推到 origin/main，main 不强推。"
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "15dc9e2"
+    },
+    {
+      "kind": "commit",
+      "ref": "2526808"
+    },
+    {
+      "kind": "commit",
+      "ref": "78cb234"
+    },
+    {
+      "kind": "test",
+      "ref": "npm test on main after the licence commits",
+      "exit": 0
+    }
   ],
   "history": [
     {
@@ -35,6 +54,39 @@
       "actor": "llm",
       "op": "comment",
       "text": "人 2026-11-01 提供了两处只有人能填的值，原话是「NorthGod」与「northgod@qq.com」：许可里的授权人名字为 NorthGod，商业授权联系方式为 northgod@qq.com。已转给运行 license-and-notices，LICENSE、第三方声明与 README 一节都用这两个值，占位 <LICENSOR NAME> 与 <CONTACT> 不再保留。编排方提醒过一句：公开仓库里的裸邮箱会招垃圾邮件，想换成表单或者别名随时能改，人未就此表态。"
+    },
+    {
+      "at": "2026-11-01T13:58:16.305Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "许可与第三方声明已合入 main：LICENSE 为 PolyForm Noncommercial 1.0.0 逐字原文（授权人 NorthGod、联系 northgod@qq.com，无占位残留，5KB）；THIRD-PARTY-NOTICES.md 11KB 含依赖调查；四份清单（根、video、packages/glm、packages/hourness）的 license 字段都是真实存在的 SPDX 标识 PolyForm-Noncommercial-1.0.0；README 有许可一节。build、preflight、test 退出码 0。提交 15dc9e2、2526808、78cb234 已推到 origin/main。",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "15dc9e2"
+        },
+        {
+          "kind": "commit",
+          "ref": "2526808"
+        },
+        {
+          "kind": "commit",
+          "ref": "78cb234"
+        },
+        {
+          "kind": "test",
+          "ref": "npm test on main after the licence commits",
+          "exit": 0
+        }
+      ]
+    },
+    {
+      "at": "2026-11-01T13:58:16.533Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "依赖许可调查的结论（报告在 .agents/tasks/license-files/report.md）：两个包的主依赖树里没有任何 copyleft 许可（GPL、LGPL、AGPL、MPL），也没有缺许可的包。需要人知道的在 video/ 这一侧：① Remotion 自己的许可是两档制、不是 OSI 开源许可（个人与小团队免费，公司规模超过门槛要付费），涉及 remotion、@remotion/cli、@remotion/bundler 等；② 经 Remotion 间接引入 4 个 MPL-2.0 的包（mediabunny 1.62.0 与它的三个编码器），MPL 是弱传染：改了那些文件才要公开改动，原样使用不受限。video/ 只用来做宣传视频、不进两个 bundle 的构建，所以不影响插件的分发；但若日后以公司身份用它做视频，Remotion 那一档要重新看。编排方的一处错误一并记下：本次运行的简报把 ZCode 的文本权属写成了 ByteDance，实际 ZCode 由 Z.ai（原智谱 AI）发布，写进 THIRD-PARTY-NOTICES.md 的是更正后的说法。"
     }
   ]
 }

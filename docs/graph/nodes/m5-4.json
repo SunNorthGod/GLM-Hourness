@@ -38,6 +38,12 @@
       "reason": "按 M5 设计 0.7（.agents/tasks/m5/design.md）§13 第 2 条建任务节点，怎样算做完取自 §1.2。人 2026-10-31 放行时说「没问题，不过习惯最好问一嘴再记」，0.7 照办。",
       "relay": "没问题，不过习惯最好问一嘴再记",
       "to": "approved"
+    },
+    {
+      "at": "2026-11-01T13:58:16.762Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "S9（G1，m5-4）第一遍实现在 m5-memory-lessons 上提交为 a5df445：build、preflight、npm test、probe 198/198 全部退出码 0，check:secrets 在该提交上干净。等评审。"
     }
   ]
 }
