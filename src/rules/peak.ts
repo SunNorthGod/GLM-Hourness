@@ -26,6 +26,8 @@ export interface PeakReading {
   readonly until?: string
   /** Why `peak` is undefined. */
   readonly why?: string
+  /** The same for a model to read, when the pricing service is there and failed. */
+  readonly problem?: string
   /** There is no usable pricing service (it is absent or of the wrong shape): the default rule of GLM's prices has nothing to tell about, and rules_show leaves it out. */
   readonly noService?: true
 }
@@ -53,14 +55,14 @@ export function peakReader(ctx: ServiceLookup, now: () => number, warn: (message
   const read = (pricing: UsagePricing, at: number): PeakReading => {
     try {
       const peak: unknown = pricing.peak(at)
-      if (typeof peak !== 'boolean') return { peak: undefined, why: '计价服务的 peak 没有返回是或否' }
+      if (typeof peak !== 'boolean') return { peak: undefined, why: '计价服务的 peak 没有返回是或否', problem: 'the pricing service\'s peak did not return true or false' }
       const next = nextPeakChange(atMs => pricing.peak(atMs), at)
       return { peak, ...(next === undefined ? {} : { until: new Date(next).toISOString() }) }
     }
     catch (error) {
       const text = (error instanceof Error ? error.message : String(error)).slice(0, 80)
       warnOnce(`the pricing service's peak threw: ${text}`)
-      return { peak: undefined, why: `计价服务的 peak 出错：${text}` }
+      return { peak: undefined, why: `计价服务的 peak 出错：${text}`, problem: `the pricing service failed: ${text}` }
     }
   }
   return () => {

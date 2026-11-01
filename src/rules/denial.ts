@@ -36,6 +36,8 @@ export interface DenialInput {
   readonly nested?: true
   /** The call came from a subagent: it reports the ticket in its handoff, and the agent that dispatched it is told when it clears. */
   readonly subagent?: true
+  /** What the stop level did with the goal of the session the ticket holds: `paused`, or `not-paused` when the pause was refused. Absent when there was no goal. */
+  readonly goal?: 'paused' | 'not-paused'
   readonly peak: PeakSetting & { readonly until?: string }
 }
 
@@ -175,8 +177,42 @@ export function ticketLimitText(attempt: string, open: readonly string[]): strin
   })
 }
 
+/**
+ * The refusal of the stop level for a call that got a ticket (design §6.4):
+ * to a GLM subagent, which is told to stop and report the ticket, and to the
+ * agent that dispatches one, which is told it is not held. Undefined for any
+ * other refusal.
+ */
+function stopText(input: DenialInput): string | undefined {
+  const [only, ...more] = input.rules
+  if (input.effect !== 'queue' || input.ticket === undefined || only === undefined || more.length > 0) return undefined
+  const id = only.rule.id
+  if (id !== 'builtin:glm-peak-stop' && id !== 'builtin:glm-peak-stop-dispatch') return undefined
+  const ticket = input.ticket
+  const until = input.peak.until === undefined ? undefined : localClock(input.peak.until)
+  const now = `GLM peak hours now${until === undefined ? '' : ` until ${until}`}, and the human chose "stop" for peak hours:`
+  const nested = input.nested === true ? ' Your program received this as an error.' : ''
+  if (id === 'builtin:glm-peak-stop-dispatch') {
+    return renderCorrection({
+      fact: input.attempt,
+      violation: `Deferred as ticket ${ticket}. ${now} no GLM subagents until then. You are not held: keep answering the human and doing other work.${nested}`,
+      rightPath: `The dispatch did not run. Do other planned work, or dispatch this task with a non-GLM model if that fits; ${until === undefined ? 'when peak ends' : `at ${until}`} the harness tells you that you can dispatch it again.`,
+      exception: `The human can let this one dispatch through now (/rules let ${ticket}), or change the peak mode (/rules peak).`,
+    })
+  }
+  const goal = input.goal === 'paused' ? ' Your goal is paused.' : input.goal === 'not-paused' ? ' Your goal could not be paused; end your turn anyway.' : ''
+  return renderCorrection({
+    fact: input.attempt,
+    violation: `Deferred as ticket ${ticket}. ${now} GLM subagents do no work until then.${goal}${nested}`,
+    rightPath: `The call did not run. Stop and report ticket ${ticket} and where you stopped in your handoff; the agent that dispatched you is told ${until === undefined ? 'when peak ends' : `at ${until}`} and can dispatch the work again. Other tool calls before then return this message.`,
+    exception: `The human can let this session work through this peak (/rules let ${ticket}), or change the peak mode (/rules peak).`,
+  })
+}
+
 /** The refusal a model reads: what it tried, the boundary that stopped it, the right path, and who can change it. */
 export function denialText(input: DenialInput): string {
+  const stop = stopText(input)
+  if (stop !== undefined) return stop
   const codeEntries = input.rules.filter(entry => entry.rule.scope === 'builtin')
   const personEntries = input.rules.filter(entry => entry.rule.scope !== 'builtin')
   return renderCorrection({

@@ -7,6 +7,11 @@
  * carries them out and tells the agent in the refusal; the default rule of
  * GLM's prices is not in it, since the GLM package's reminder tells that.
  *
+ * The main agent, and a session the stop level holds, are also told on the
+ * first line where the peak stands, which level is chosen and who chose it,
+ * and what that asks of them. It is the one place the main agent hears of the
+ * level; nothing about the level is ever carried out on the main agent.
+ *
  * Like the graph's step projection, it reads the request-visible history and
  * adds a notice only when that history does not show the current text: the
  * first time, when the text changed, after a compaction took the earlier
@@ -17,6 +22,7 @@ import { createHash } from 'node:crypto'
 import { projectOf } from '../data/project-root.ts'
 import { CHECKPOINT_SOURCE, GOAL_ROUND_SOURCE } from '../graph/reminder.ts'
 import { createUserNotice, type AgentLike, type DerivedMessage, type ServiceLookup, type SessionLike } from '../shared/dsh-min.ts'
+import { PEAK_REDUCE_GLM_WORKERS } from '../shared/peak-mode.ts'
 import { installStepNotice } from '../shared/step-notice.ts'
 import { wrapSystemReminder } from '../shared/zcode-notice.ts'
 import { callerOf } from './caller.ts'
@@ -24,9 +30,10 @@ import { localClock } from './denial.ts'
 import { stepEvent } from './events.ts'
 import { judge, judgeInput } from './judge.ts'
 import { openTickets } from './listing.ts'
-import { effectivePeakMode, type Ticket } from './model.ts'
+import { effectivePeakMode, type PeakLevel, type Ticket } from './model.ts'
 import type { PeakReading, ProjectView } from './peak.ts'
 import { clockReadings, tableOf } from './table.ts'
+import { isStopTicket } from './wake.ts'
 
 /** Source kind of the persisted reminder notice. */
 const REMINDER_SOURCE = 'hourness-rules'
@@ -114,6 +121,25 @@ function ticketItem(ticket: Ticket, subagent: boolean): string {
     : `${ticket.id} ${call} (deferred since ${localClock(ticket.since)})`
 }
 
+const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+/** The first line of the main agent's reminder (design §3.6, §6.4): whether it is peak, until when or from when, the level and where it came from, and what the level asks of the agent. The time of the person's choice is not in it. */
+function peakLineOf(mode: { readonly level: PeakLevel, readonly origin: 'default' | 'human' }, reading: PeakReading): string {
+  const who = mode.origin === 'default' ? `Peak mode: ${mode.level} (the default; the human can change it)` : `Peak mode set by the human: ${mode.level}`
+  if (reading.peak === undefined) return `GLM peak: unknown (${reading.problem ?? 'the pricing service could not be read'}). ${who}; it does not apply while peak is unknown.`
+  const until = reading.until === undefined ? undefined : localClock(reading.until)
+  if (!reading.peak) {
+    const head = `GLM peak: not now${reading.until === undefined ? '' : ` (next ${DAYS[new Date(reading.until).getDay()] ?? ''} ${until ?? ''})`}. ${who}`
+    if (mode.level === 'reduce') return `${head}. Work moved out of peak can run now.`
+    return mode.level === 'stop' ? `${head}. GLM subagents and scripts that report GLM spending can run now.` : `${head} (no change to your work).`
+  }
+  const head = `GLM peak: now${until === undefined ? '' : ` until ${until}`}. ${who}`
+  if (mode.level === 'inform') return `${head} (no change to your work).`
+  if (mode.level === 'stop') return `${head}. You keep working and answering the human; ${until === undefined ? 'while peak lasts' : `until ${until}`} no GLM subagents and no scripts that report GLM spending: such dispatches and scripts are deferred and you are told when they can run.`
+  const workers = `${PEAK_REDUCE_GLM_WORKERS} GLM subagent${PEAK_REDUCE_GLM_WORKERS === 1 ? '' : 's'}`
+  return `${head}. Run at most ${workers} at a time${until === undefined ? '' : ` until ${until}`}. Move optional work that spends many GLM credits (calibration runs, ablations, large reviews) to after ${until ?? 'peak ends'}, including work you dispatch; keep necessary work going.`
+}
+
 /**
  * The text of the reminder for one agent: empty when nothing applies to it;
  * undefined when its session is not in a project the board can read.
@@ -126,8 +152,10 @@ function textFor(deps: ReminderDeps, agent: AgentLike, session: SessionLike): st
   const { state } = view.read
   const caller = callerOf(deps.ctx, agent)
   const now = new Date(deps.now())
-  const { readings } = clockReadings(state, deps.peak(), now)
-  const table = tableOf(state, effectivePeakMode(state).level)
+  const reading = deps.peak()
+  const { readings } = clockReadings(state, reading, now)
+  const mode = effectivePeakMode(state)
+  const table = tableOf(state, mode.level)
   const why = (item: 'role' | 'model' | 'session'): string => caller.unknown[item] ?? `the ${item} of this step is not known`
   const input = judgeInput({
     now,
@@ -143,14 +171,16 @@ function textFor(deps: ReminderDeps, agent: AgentLike, session: SessionLike): st
   })
   const tickets = openTickets(state).filter(ticket => ticket.sessionId === session.id)
   const subagent = session.header.origin === 'subagent'
-  // A line of tickets is worth more than a line of rules: it keeps its place when the rules are cut.
-  const room = MAX_ITEMS - (tickets.length > 0 ? 1 : 0)
+  // The main agent is told where the peak stands and what the level asks of it, and so is a session the stop level holds. With no pricing service there is no peak to tell of.
+  const peakLine = reading.noService !== true && (caller.role === 'main-agent' || tickets.some(isStopTicket)) ? peakLineOf(mode, reading) : undefined
+  // A line of tickets is worth more than a line of rules: it keeps its place when the rules are cut; the peak line comes first of all.
+  const room = MAX_ITEMS - (tickets.length > 0 ? 1 : 0) - (peakLine === undefined ? 0 : 1)
   const rules = informing.slice(0, room).map(rule => `- [inform, not checked] ${rule.id}: "${rule.title}" (set by ${rule.origin.actor === 'human' ? 'the human' : 'an agent, with the human\'s agreement'})`)
   const more = informing.length - rules.length
   const handedOver = tickets.some(ticket => ticket.handedFrom !== undefined && !subagent)
   const ticketLine = tickets.length === 0 ? [] : [`Your open tickets: ${tickets.map(ticket => ticketItem(ticket, subagent)).join('; ')}.${handedOver ? ` ${HANDED_OVER_ADVICE}` : ''}`]
   const items = [...rules, ...(more > 0 ? [`and ${more} more: call rules_show`] : []), ...ticketLine]
-  return items.length === 0 ? '' : [...(informing.length > 0 ? [HEADING] : []), ...items].join('\n')
+  return peakLine === undefined && items.length === 0 ? '' : [...(peakLine === undefined ? [] : [peakLine]), ...(informing.length > 0 ? [HEADING] : []), ...items].join('\n')
 }
 
 /**

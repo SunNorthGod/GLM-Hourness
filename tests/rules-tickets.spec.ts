@@ -17,10 +17,12 @@
  */
 import assert from 'node:assert/strict'
 import { mkdir, writeFile } from 'node:fs/promises'
+import { MAIN_AGENT_KEY } from '../src/graph/main-agent.ts'
 import { openRulesBoard } from '../src/rules/engine.ts'
 import type { RepoRules } from '../src/rules/model.ts'
-import { rulesPaths } from '../src/rules/store.ts'
+import { loadState, rulesPaths } from '../src/rules/store.ts'
 import type { AgentLike } from '../src/shared/dsh-min.ts'
+import { collectHealth } from '../src/shared/health.ts'
 import { ruleOf } from './rules-fixtures.ts'
 import { fakeClock, journalOf, MINUTE, quickIo, type FakeClock } from './rules-helpers.ts'
 import { health, rowTest, subagentOf, textOf, type Fixture, type Options } from './rules-host.ts'
@@ -43,18 +45,22 @@ const DEPLOY = 'npm run deploy'
 
 /** A row on a clock the test moves, with the live host (`agents`, `goals`) and the freeze rule; the fake agent is `agent-1`, idle. */
 function ticketTest(title: string, body: (fixture: Fixture, clock: FakeClock) => Promise<void>, over: Partial<Options> = {}): void {
-  const clock = fakeClock('2026-10-28T07:00:00.000Z')
+  const clock = over.clock ?? fakeClock('2026-10-28T07:00:00.000Z')
   rowTest(title, fixture => body(fixture, clock), { live: true, clock, rules: file([FREEZE_RULE, RED_RULE]), natives: ['pwsh', 'subagent'], ...over })
 }
 
 /** A second agent of the host: a subagent of `agent-1` by default, live in the registry. */
-function subagent(fixture: Fixture, id = 'sub-1'): AgentLike {
-  const base = subagentOf(fixture.runtime.agent)
+function subagentFor(parts: { readonly runtime: Fixture['runtime'], readonly live: Fixture['live'] }, id = 'sub-1'): AgentLike {
+  const base = subagentOf(parts.runtime.agent)
   const session = base.session!
   const agent: AgentLike = { ...base, id, session: { ...session, id, header: { ...session.header, id } } }
-  fixture.live.add(agent)
+  parts.live.add(agent)
   return agent
 }
+const subagent = (fixture: Fixture, id = 'sub-1'): AgentLike => subagentFor(fixture, id)
+
+/** The rules row's line in the health table of the session. */
+const healthOf = (fixture: Fixture, sessionId: string): ReturnType<typeof collectHealth>[number] => collectHealth(fixture.runtime.ctx, sessionId).find(entry => entry.row === 'rules')!
 
 /** The ticket of that number, which must exist. */
 const ticketOf = (fixture: Fixture, id: string): NonNullable<ReturnType<Fixture['tickets']>[string]> => {
@@ -452,22 +458,423 @@ ticketTest('a stronger rule that blocks the call now clears the ticket: the call
   assert.deepEqual(Object.keys(fixture.tickets()), ['q-1'])
 })
 
-// ------------------------------------------------------- the code's entries
+// ------------------------------------------------------- the peak levels
+//
+// The stop level queues the GLM subagents of a project in a GLM peak: one
+// ticket for the whole session, and its active goal is paused for the time.
+// The main agent is never held. The peak is 15:00-18:00 UTC+8; the clock of
+// these tests starts at 15:00 and `OVER` moves it past 18:00.
 
-ticketTest('an entry of the code that queues is not carried out yet: a stop-level GLM subagent call runs and opens no ticket', async (fixture) => {
-  await fixture.run('peak 不做')
-  const sub = subagent(fixture)
-  const result = await fixture.exec('pwsh', shell('echo hi'), { agent: sub })
-  assert.equal(result.isError, false)
+const GLM = { provider: 'zai', model: 'glm-4.6' }
+const DEEPSEEK = { provider: 'deepseek', model: 'deepseek-chat' }
+const PEAK_END = '2026-10-28T10:00:00.000Z'
+const AFTER_PEAK = '2026-10-28T11:00:00.000Z'
+const STOP = 'any:builtin:glm-peak-stop'
+const OVER = 3 * HOUR + MINUTE
+const OLD_HOST = { pid: 4242, startedAt: 1 }
+const STOP_NATIVES = ['pwsh', 'subagent', 'propose_to_human', 'record_human_answer']
+const MAIN_PROJECTION = { sessionProjections: { stateOf: (_session: unknown, key: string) => (key === MAIN_AGENT_KEY ? { active: true } : undefined) } }
+const DISPATCH = { provider: 'zai', model: 'glm-4.6', prompt: 'build the ui' }
+
+/** `HH:MM` on the wall clock of this machine, by another route than the code takes (the Swedish format is year-first and 24-hour). */
+const clockHm = (iso: string): string => new Date(iso).toLocaleString('sv-SE').slice(11, 16)
+
+/** A GLM project at the stop level, in a peak, with a GLM subagent that has an active goal (`goal-sub-1`, revision 1). */
+function stopTest(title: string, body: (fixture: Fixture, clock: FakeClock, sub: AgentLike) => Promise<void>, over: Partial<Options> = {}): void {
+  ticketTest(title, async (fixture, clock) => {
+    assert.equal((await fixture.run('peak 不做')).kind, 'success')
+    const sub = subagent(fixture)
+    fixture.live.setGoal(sub.id, 'active')
+    await body(fixture, clock, sub)
+  }, { route: GLM, rules: { version: 2 }, natives: STOP_NATIVES, ...over })
+}
+
+/** The refusal a GLM subagent gets at the stop level, for ticket `id` (design §6.4). */
+const stopRefusal = (attempt: string, id: string, goal: string): string => [
+  attempt,
+  `Boundary: Deferred as ticket ${id}. GLM peak hours now until ${clockHm(PEAK_END)}, and the human chose "stop" for peak hours: GLM subagents do no work until then.${goal}`,
+  `Right path: The call did not run. Stop and report ticket ${id} and where you stopped in your handoff; the agent that dispatched you is told at ${clockHm(PEAK_END)} and can dispatch the work again. Other tool calls before then return this message.`,
+  `Exception: The human can let this session work through this peak (/rules let ${id}), or change the peak mode (/rules peak).`,
+].join('\n')
+
+const RELEASED = '[rules board] Ticket q-1 cleared: GLM peak hours are over (or the human changed the peak mode).'
+
+stopTest('the first tool call of a GLM subagent opens one ticket for the session and pauses its active goal; later calls of any kind share the ticket and pause nothing again', async (fixture, _clock, sub) => {
+  const result = await fixture.exec('pwsh', shell('npm test'), { agent: sub })
+  assert.equal(result.isError, true)
+  assert.deepEqual(fixture.calls, [], 'the call never ran')
+  assert.equal(reasonOf(result), stopRefusal('You tried to run "npm test".', 'q-1', ' Your goal is paused.'))
+  const ticket = ticketOf(fixture, 'q-1')
+  assert.deepEqual([ticket.state, ticket.signature, ticket.rules, ticket.sessionId, ticket.tool, ticket.summary], ['deferred', STOP, ['builtin:glm-peak-stop'], 'sub-1', 'pwsh', 'npm test'])
+  assert.deepEqual([ticket.pausedGoal, ticket.pauseFailed, ticket.resumedAt], [{ id: 'goal-sub-1', revision: 2 }, undefined, undefined], 'the revision after the pause')
+  assert.deepEqual(fixture.live.goalCalls, [{ op: 'pause', agentId: 'sub-1', ref: { id: 'goal-sub-1', revision: 1 } }])
+  assert.equal(fixture.live.goalOf('sub-1')?.phase, 'paused')
+  const other = await fixture.exec('pwsh', shell('npm run build'), { agent: sub })
+  assert.equal(reasonOf(other).split('\n').slice(1).join('\n'), reasonOf(result).split('\n').slice(1).join('\n'), 'a different call is the same ticket and the same words')
+  assert.deepEqual(Object.keys(fixture.tickets()), ['q-1'])
+  assert.equal(fixture.live.goalCalls.length, 1, 'the goal is paused once')
+  const [first, second, ...rest] = await fixture.violations(2)
+  assert.equal(rest.length, 0)
+  assert.deepEqual([first?.rule, first?.effect, first?.ticket, second?.ticket], ['rules:builtin:glm-peak-stop', 'queue', 'q-1', 'q-1'])
+})
+
+stopTest('the tools of the rules board are not held at the stop level, so the subagent can still read the rules and report', async (fixture, _clock, sub) => {
+  const shown = await fixture.exec('rules_show', {}, { agent: sub })
+  assert.equal(shown.isError, false)
   assert.deepEqual(Object.keys(fixture.tickets()), [])
-}, { route: { provider: 'zai', model: 'glm-4.6' }, rules: { version: 2 } })
+  assert.deepEqual(fixture.live.goalCalls, [])
+})
+
+stopTest('a GLM subagent with no goal gets the ticket and the words without the goal sentence, and nothing is paused', async (fixture, _clock, sub) => {
+  fixture.live.setGoal(sub.id, undefined)
+  const result = await fixture.exec('pwsh', shell('npm test'), { agent: sub })
+  assert.equal(reasonOf(result), stopRefusal('You tried to run "npm test".', 'q-1', ''))
+  assert.deepEqual([ticketOf(fixture, 'q-1').pausedGoal, ticketOf(fixture, 'q-1').pauseFailed], [undefined, undefined])
+  assert.deepEqual(fixture.live.goalCalls, [])
+})
+
+stopTest('a goal created after the first call is paused by the next one: the ticket had no goal to pause yet', async (fixture, _clock, sub) => {
+  fixture.live.setGoal(sub.id, undefined)
+  await fixture.exec('pwsh', shell('npm test'), { agent: sub })
+  fixture.live.setGoal(sub.id, 'active')
+  const again = await fixture.exec('pwsh', shell('npm test'), { agent: sub })
+  assert.match(reasonOf(again), /Your goal is paused\.\nRight path/)
+  assert.deepEqual(ticketOf(fixture, 'q-1').pausedGoal, { id: 'goal-sub-1', revision: 2 })
+  assert.equal(fixture.live.goalCalls.length, 1)
+})
+
+stopTest('a pause that throws leaves pauseFailed with the first 80 characters, degrades the row\'s health, says so to the agent, and queueing goes on without another try', async (fixture, _clock, sub) => {
+  const why = `the goal moved on ${'x'.repeat(100)}`
+  fixture.live.breakGoalChange('sub-1', 'pause', why, 'GOAL_STALE_REVISION')
+  const result = await fixture.exec('pwsh', shell('npm test'), { agent: sub })
+  assert.equal(result.isError, true)
+  assert.equal(reasonOf(result), stopRefusal('You tried to run "npm test".', 'q-1', ' Your goal could not be paused; end your turn anyway.'))
+  const ticket = ticketOf(fixture, 'q-1')
+  assert.deepEqual([ticket.pausedGoal, ticket.pauseFailed], [undefined, why.slice(0, 80)])
+  assert.equal(healthOf(fixture, 'sub-1').status, 'degraded')
+  assert.match(healthOf(fixture, 'sub-1').reason, /goal 没暂停/)
+  assert.equal((await fixture.exec('pwsh', shell('npm run build'), { agent: sub })).isError, true, 'still queued')
+  assert.equal(fixture.live.goalCalls.length, 1, 'no second try')
+  assert.equal(fixture.live.goalOf('sub-1')?.phase, 'active')
+})
+
+// ----------------------------------------------------- nobody else is held
+
+/** Every kind of call the main agent makes runs, and its goal is not touched. */
+const neverHeld = async (fixture: Fixture): Promise<void> => {
+  fixture.live.setGoal('agent-1', 'active')
+  for (const [name, args] of [['pwsh', shell('npm test')], ['rules_show', {}], ['propose_to_human', {}], ['record_human_answer', {}]] as const) {
+    assert.equal((await fixture.exec(name, args)).isError, false, `${name} runs`)
+  }
+  assert.deepEqual(Object.keys(fixture.tickets()), [])
+  assert.deepEqual(fixture.live.goalCalls, [], 'no goal is paused')
+  assert.equal(fixture.live.goalOf('agent-1')?.phase, 'active')
+}
+
+stopTest('a GLM main agent is never held or paused at the stop level, with or without the main-agent mode', async (fixture) => {
+  await neverHeld(fixture)
+})
+
+stopTest('the main agent by the main-agent projection is the same', async (fixture) => {
+  await neverHeld(fixture)
+}, { services: MAIN_PROJECTION })
+
+stopTest('a main agent that is not on GLM is never held either', async (fixture) => {
+  await neverHeld(fixture)
+}, { route: DEEPSEEK, services: MAIN_PROJECTION })
+
+stopTest('a subagent that is not on GLM is not held and keeps its goal', async (fixture, _clock, sub) => {
+  fixture.live.setGoal(sub.id, 'active')
+  assert.equal((await fixture.exec('pwsh', shell('npm test'), { agent: sub })).isError, false)
+  assert.deepEqual(Object.keys(fixture.tickets()), [])
+  assert.deepEqual(fixture.live.goalCalls, [])
+}, { route: DEEPSEEK })
+
+stopTest('nothing is held at the stop level while the GLM peak cannot be read, and the dispatch of a GLM subagent runs', async (fixture, _clock, sub) => {
+  assert.equal((await fixture.exec('pwsh', shell('npm test'), { agent: sub })).isError, false)
+  assert.equal((await fixture.exec('subagent', DISPATCH)).isError, false)
+  assert.deepEqual(Object.keys(fixture.tickets()), [])
+  assert.deepEqual(fixture.live.goalCalls, [])
+}, { pricing: 'none' })
+
+stopTest('outside a peak nothing is held at the stop level', async (fixture, _clock, sub) => {
+  assert.equal((await fixture.exec('pwsh', shell('npm test'), { agent: sub })).isError, false)
+  assert.deepEqual(Object.keys(fixture.tickets()), [])
+}, { clock: fakeClock(AFTER_PEAK) })
+
+stopTest('at the reduce level the gate holds nothing: the calls of a GLM subagent and the dispatch of one run', async (fixture, _clock, sub) => {
+  await fixture.run('peak 少做')
+  assert.equal((await fixture.exec('pwsh', shell('npm test'), { agent: sub })).isError, false)
+  assert.equal((await fixture.exec('subagent', DISPATCH)).isError, false)
+  assert.deepEqual(Object.keys(fixture.tickets()), [])
+  assert.deepEqual(fixture.live.goalCalls, [])
+})
+
+// ------------------------------------------------------------- the dispatch
+
+stopTest('a main agent that dispatches a GLM subagent gets an ordinary ticket and keeps working: nothing is paused, and it is told it can dispatch again when the peak is over', async (fixture, clock) => {
+  fixture.live.setGoal('agent-1', 'active')
+  const result = await fixture.exec('subagent', DISPATCH)
+  assert.equal(result.isError, true)
+  assert.deepEqual(fixture.calls, [])
+  const until = clockHm(PEAK_END)
+  assert.equal(reasonOf(result), [
+    'You tried to call subagent.',
+    `Boundary: Deferred as ticket q-1. GLM peak hours now until ${until}, and the human chose "stop" for peak hours: no GLM subagents until then. You are not held: keep answering the human and doing other work.`,
+    `Right path: The dispatch did not run. Do other planned work, or dispatch this task with a non-GLM model if that fits; at ${until} the harness tells you that you can dispatch it again.`,
+    'Exception: The human can let this one dispatch through now (/rules let q-1), or change the peak mode (/rules peak).',
+  ].join('\n'))
+  const ticket = ticketOf(fixture, 'q-1')
+  assert.match(ticket.signature, /^[0-9a-f]{12}$/, 'an ordinary ticket, by the call')
+  assert.deepEqual([ticket.rules, ticket.sessionId, ticket.pausedGoal], [['builtin:glm-peak-stop-dispatch'], 'agent-1', undefined])
+  assert.equal(reasonOf(await fixture.exec('subagent', DISPATCH)), reasonOf(result), 'the same dispatch is the same ticket')
+  assert.equal((await fixture.exec('pwsh', shell('npm test'))).isError, false, 'the main agent goes on with its other calls')
+  assert.deepEqual(fixture.live.goalCalls, [], 'the main agent\'s goal is never paused')
+  await pass(fixture, clock, OVER)
+  assert.equal(ticketOf(fixture, 'q-1').state, 'cleared')
+  assert.deepEqual(fixture.live.woken.map(entry => [entry.agentId, entry.how, entry.kind, entry.text]), [['agent-1', 'inject', 'hourness-rules-wake', `${RELEASED} You can dispatch again: subagent "${JSON.stringify(DISPATCH)}".`]])
+  assert.equal((await fixture.exec('subagent', DISPATCH)).isError, false, 'dispatching again runs')
+  assert.equal(ticketOf(fixture, 'q-1').state, 'done')
+  assert.deepEqual(fixture.live.goalCalls, [])
+}, { services: MAIN_PROJECTION })
+
+// -------------------------------------------------------- peak end and level
+
+stopTest('when the peak ends the goal is resumed first, then the subagent is told to carry on, and the ticket is done', async (fixture, clock, sub) => {
+  await fixture.exec('pwsh', shell('npm test'), { agent: sub })
+  await pass(fixture, clock, MINUTE)
+  assert.equal(ticketOf(fixture, 'q-1').state, 'deferred', 'the peak goes on')
+  assert.equal(fixture.live.goalCalls.length, 1)
+  await pass(fixture, clock, OVER)
+  assert.deepEqual(fixture.live.goalCalls.at(-1), { op: 'resume', agentId: 'sub-1', ref: { id: 'goal-sub-1', revision: 2 } })
+  assert.equal(fixture.live.goalOf('sub-1')?.phase, 'active')
+  assert.deepEqual(fixture.live.log, ['goal:pause', 'goal:resume', 'wake:inject'], 'resume, then the wake')
+  assert.deepEqual(fixture.live.woken.map(entry => [entry.agentId, entry.kind, entry.text]), [['sub-1', 'hourness-rules-wake', `${RELEASED} Your goal is resumed. Continue your work from where you stopped; the call that was deferred was pwsh "npm test".`]])
+  const ticket = ticketOf(fixture, 'q-1')
+  assert.equal(ticket.state, 'done')
+  assert.equal(ticket.resumedAt, new Date(clock.now()).toISOString())
+  await pass(fixture, clock, MINUTE)
+  assert.equal(fixture.live.log.length, 3, 'once')
+  assert.equal(health(fixture.runtime).status, 'active')
+})
+
+stopTest('a goal that cannot be resumed is told in the wake with the reason, the agent is told to inform the person, and the ticket is done', async (fixture, clock, sub) => {
+  await fixture.exec('pwsh', shell('npm test'), { agent: sub })
+  const why = `round budget used up ${'y'.repeat(100)}`
+  fixture.live.breakGoalChange('sub-1', 'resume', why, 'GOAL_INVALID_TRANSITION')
+  await pass(fixture, clock, OVER)
+  assert.deepEqual(fixture.live.woken.map(entry => entry.text), [`${RELEASED} Your goal could not be resumed: ${why.slice(0, 80)}. Tell the human; they can resume it from the goal bar or with /goal resume. Continue your work from where you stopped; the call that was deferred was pwsh "npm test".`])
+  const ticket = ticketOf(fixture, 'q-1')
+  assert.deepEqual([ticket.state, ticket.resumedAt], ['done', undefined])
+  assert.equal(healthOf(fixture, 'sub-1').status, 'degraded')
+  assert.match(healthOf(fixture, 'sub-1').reason, /goal 没能恢复/)
+  assert.equal(fixture.live.goalCalls.filter(call => call.op === 'resume').length, 1, 'no second try')
+})
+
+stopTest('a goal the person resumed or changed in the peak is not resumed: only the wake is sent', async (fixture, clock, sub) => {
+  await fixture.exec('pwsh', shell('npm test'), { agent: sub })
+  fixture.live.setGoal('sub-1', 'active')
+  assert.equal(fixture.live.goalOf('sub-1')?.revision, 3)
+  await pass(fixture, clock, OVER)
+  assert.deepEqual(fixture.live.goalCalls.map(call => call.op), ['pause'], 'no resume')
+  assert.deepEqual(fixture.live.woken.map(entry => entry.text), [`${RELEASED} Continue your work from where you stopped; the call that was deferred was pwsh "npm test".`])
+  assert.equal(ticketOf(fixture, 'q-1').state, 'done')
+  assert.equal(fixture.live.goalOf('sub-1')?.revision, 3, 'the person\'s goal is as they left it')
+})
+
+stopTest('changing the level from stop to inform resolves the ticket the same way, at once', async (fixture, _clock, sub) => {
+  await fixture.exec('pwsh', shell('npm test'), { agent: sub })
+  assert.equal((await fixture.run('peak 无影响')).kind, 'success')
+  assert.deepEqual(fixture.live.log, ['goal:pause', 'goal:resume', 'wake:inject'])
+  assert.equal(ticketOf(fixture, 'q-1').state, 'done')
+  assert.equal((await fixture.exec('pwsh', shell('npm test'), { agent: sub })).isError, false, 'the next call runs')
+})
+
+stopTest('a subagent that handed back and ended before the peak did: the root is told to dispatch the task again, and nothing is resumed', async (fixture, clock, sub) => {
+  await fixture.exec('pwsh', shell('npm test'), { agent: sub })
+  fixture.live.release('sub-1')
+  fixture.runtime.disposeSession(sub.session!)
+  await fixture.until(() => fixture.tickets()['q-1']?.sessionId === 'agent-1')
+  await fixture.pass()
+  await pass(fixture, clock, OVER)
+  assert.deepEqual(fixture.live.goalCalls.map(call => call.op), ['pause'], 'the ended session\'s goal is not touched')
+  assert.deepEqual(fixture.live.woken.map(entry => [entry.agentId, entry.text]), [['agent-1', `${RELEASED} Subagent "sub-1" stopped during peak at pwsh "npm test". Dispatch the task again to continue it.`]])
+  assert.equal(ticketOf(fixture, 'q-1').state, 'done')
+})
+
+// ----------------------------------------------------------------- let once
+
+stopTest('/rules let on a stop ticket lets the session work to the end of this peak and resumes its goal; the ticket stays open and nobody is woken', async (fixture, clock, sub) => {
+  await fixture.exec('pwsh', shell('npm test'), { agent: sub })
+  const reply = await fixture.run('let q-1')
+  assert.equal(reply.kind, 'success')
+  assert.match(reply.text ?? '', new RegExp(`q-1 .*到 (周. )?${clockHm(PEAK_END)}`))
+  const ticket = ticketOf(fixture, 'q-1')
+  assert.deepEqual([ticket.state, ticket.letOnceUntil, ticket.resumedAt], ['deferred', PEAK_END, new Date(clock.now()).toISOString()])
+  assert.deepEqual(fixture.live.goalCalls.map(call => call.op), ['pause', 'resume'])
+  assert.equal(fixture.live.goalOf('sub-1')?.phase, 'active')
+  for (const command of ['npm test', 'npm run build']) assert.equal((await fixture.exec('pwsh', shell(command), { agent: sub })).isError, false, `${command} passes`)
+  assert.deepEqual(fixture.calls.map(call => call.name), ['pwsh', 'pwsh'])
+  assert.equal(ticketOf(fixture, 'q-1').state, 'deferred', 'the ticket is not closed by the calls')
+  assert.deepEqual(fixture.live.woken, [])
+  await pass(fixture, clock, OVER)
+  assert.equal(ticketOf(fixture, 'q-1').state, 'done', 'it closes with the peak')
+  assert.deepEqual(fixture.live.woken, [], 'the agent worked through it and is not told')
+  assert.deepEqual(fixture.live.goalCalls.map(call => call.op), ['pause', 'resume'], 'resumed once')
+})
+
+stopTest('a let when the end of the peak cannot be read lasts four hours', async (fixture, clock, sub) => {
+  await fixture.exec('pwsh', shell('npm test'), { agent: sub })
+  fixture.runtime.services.delete('glmHournessPricing')
+  const expected = new Date(clock.now() + 4 * HOUR).toISOString()
+  assert.equal((await fixture.run('let q-1')).kind, 'success')
+  assert.equal(ticketOf(fixture, 'q-1').letOnceUntil, expected)
+  assert.equal(fixture.live.goalOf('sub-1')?.phase, 'active')
+})
+
+stopTest('a late heartbeat that expires a stop ticket under a live host does not strand the paused goal: the host takes the ticket back, and the goal is resumed when the peak ends', async (fixture, clock, sub) => {
+  await fixture.exec('pwsh', shell('npm test'), { agent: sub })
+  clock.advance(MINUTE)
+  const board = openRulesBoard({ projectRoot: fixture.root, io: quickIo({ now: clock.now }) })
+  assert.ok((await board.apply('harness', { op: 'notice-add', kind: 'late-block', rule: 'r-x', text: 'any write lets the board expire the ticket of a host whose heartbeat is late' })).ok)
+  assert.equal(ticketOf(fixture, 'q-1').state, 'expired')
+  await fixture.pass()
+  const back = ticketOf(fixture, 'q-1')
+  assert.deepEqual([back.state, back.expiredWhy, back.host.pid], ['deferred', undefined, process.pid])
+  assert.deepEqual(fixture.live.woken, [], 'the ticket is the host\'s again, nobody is told it ended')
+  await pass(fixture, clock, OVER)
+  assert.deepEqual(fixture.live.log, ['goal:pause', 'goal:resume', 'wake:inject'])
+  assert.equal(ticketOf(fixture, 'q-1').state, 'done')
+})
+
+// ------------------------------------------------------------------ restart
+
+const RESTART = { sessionId: 'sub-1', agentLabel: 'sub-1', host: OLD_HOST, signature: STOP, tool: 'pwsh', summary: 'npm test', rules: ['builtin:glm-peak-stop'] }
+
+/** What a host that is gone leaves: the stop level and a ticket of its own in the project; with live, the subagent is already on the next host when it starts, its goal paused. */
+function leftBehind(ticket: Record<string, unknown>, state: { readonly expire?: boolean, readonly stamp?: boolean, readonly live?: boolean } = {}): NonNullable<Options['setup']> {
+  return async ({ root, runtime, live, now }) => {
+    const board = openRulesBoard({ projectRoot: root, io: quickIo({ now }) })
+    assert.ok((await board.apply('human', { op: 'peak-mode-set', level: 'stop' })).ok)
+    assert.ok((await board.apply('harness', { op: 'ticket-open', ...RESTART, ...ticket })).ok)
+    if (state.stamp === true) assert.ok((await board.apply('harness', { op: 'ticket-update', id: 'q-1', resumed: true })).ok)
+    if (state.expire === true) {
+      assert.ok((await board.apply('harness', { op: 'notice-add', kind: 'late-block', rule: 'r-x', text: 'a write that lets the board expire the ticket of a host without a heartbeat' })).ok)
+      assert.equal(loadState(rulesPaths(root)).state.tickets?.['q-1']?.state, 'expired')
+    }
+    if (state.live === true) pausedSubagent({ runtime, live })
+  }
+}
+const PAUSED = { pausedGoal: { id: 'goal-sub-1', revision: 2 } }
+
+/** The subagent of the ticket on this host, with its goal paused (revision 2) as a session that was paused before the restart is. */
+function pausedSubagent(parts: { readonly runtime: Fixture['runtime'], readonly live: Fixture['live'] }): AgentLike {
+  const sub = subagentFor(parts)
+  parts.live.setGoal(sub.id, 'active')
+  parts.live.setGoal(sub.id, 'paused')
+  return sub
+}
+
+ticketTest('after a restart the new host takes over the stop ticket of a session that appears: the goal stays paused through the peak and is resumed, with the wake, when it ends', async (fixture, clock) => {
+  await fixture.runtime.create(pausedSubagent(fixture))
+  const adopted = ticketOf(fixture, 'q-1')
+  assert.deepEqual([adopted.state, adopted.host.pid, adopted.host.pid === OLD_HOST.pid], ['deferred', process.pid, false])
+  assert.equal((await journalOf(rulesPaths(fixture.root))).filter(record => record.op === 'ticket-adopt').length, 1)
+  assert.deepEqual(fixture.live.goalCalls, [], 'the peak goes on: nothing resumed')
+  await pass(fixture, clock, OVER)
+  assert.deepEqual(fixture.live.log, ['goal:resume', 'wake:inject'])
+  assert.deepEqual(fixture.live.woken.map(entry => entry.text), [`${RELEASED} Your goal is resumed. Continue your work from where you stopped; the call that was deferred was pwsh "npm test".`])
+  assert.equal(ticketOf(fixture, 'q-1').state, 'done')
+}, { route: GLM, rules: { version: 2 }, setup: leftBehind(PAUSED) })
+
+ticketTest('a ticket the host that left had already expired as host-gone is taken over too, and is deferred again', async (fixture) => {
+  assert.equal(ticketOf(fixture, 'q-1').state, 'expired')
+  await fixture.runtime.create(pausedSubagent(fixture))
+  const adopted = ticketOf(fixture, 'q-1')
+  assert.deepEqual([adopted.state, adopted.expiredWhy, adopted.host.pid], ['deferred', undefined, process.pid])
+}, { route: GLM, rules: { version: 2 }, setup: leftBehind(PAUSED, { expire: true }) })
+
+ticketTest('a ticket whose goal was already resumed is not taken over', async (fixture) => {
+  await fixture.runtime.create(pausedSubagent(fixture))
+  assert.deepEqual([ticketOf(fixture, 'q-1').state, ticketOf(fixture, 'q-1').host.pid], ['expired', OLD_HOST.pid])
+  assert.deepEqual(fixture.live.goalCalls, [])
+}, { route: GLM, rules: { version: 2 }, setup: leftBehind(PAUSED, { expire: true, stamp: true }) })
+
+ticketTest('an ordinary ticket is not taken over: it waited for a call that ended with the host', async (fixture) => {
+  await fixture.runtime.create(pausedSubagent(fixture))
+  assert.equal(ticketOf(fixture, 'q-1').host.pid, OLD_HOST.pid)
+  assert.deepEqual(fixture.live.goalCalls, [])
+}, { route: GLM, rules: { version: 2 }, setup: leftBehind({ signature: 'abcdef012345', rules: ['r-freeze'] }) })
+
+ticketTest('when the peak is already over at the restart the goal is resumed and the subagent woken at once', async (fixture) => {
+  await fixture.runtime.create(pausedSubagent(fixture))
+  assert.deepEqual(fixture.live.log, ['goal:resume', 'wake:inject'])
+  assert.equal(ticketOf(fixture, 'q-1').state, 'done')
+  assert.equal(fixture.live.goalOf('sub-1')?.phase, 'active')
+}, { route: GLM, rules: { version: 2 }, clock: fakeClock(AFTER_PEAK), setup: leftBehind(PAUSED) })
+
+ticketTest('a row that starts with the session already live takes the ticket over without waiting for agent/created', async (fixture) => {
+  await fixture.until(() => ticketOf(fixture, 'q-1').host.pid === process.pid)
+  await fixture.pass()
+  assert.equal(ticketOf(fixture, 'q-1').state, 'deferred')
+  assert.deepEqual(fixture.live.goalCalls, [])
+}, { route: GLM, rules: { version: 2 }, setup: leftBehind(PAUSED, { live: true }) })
+
+ticketTest('a row that starts after the peak with the session live resumes the goal and wakes it', async (fixture) => {
+  await fixture.until(() => fixture.live.log.length === 2)
+  assert.deepEqual(fixture.live.log, ['goal:resume', 'wake:inject'])
+  assert.equal(ticketOf(fixture, 'q-1').state, 'done')
+}, { route: GLM, rules: { version: 2 }, clock: fakeClock(AFTER_PEAK), setup: leftBehind(PAUSED, { live: true }) })
+
+// ------------------------------------------------------------------- unload
+
+stopTest('unloading the row resumes the goal of every stop ticket of this host, writes it down, and wakes nobody', async (fixture, _clock, sub) => {
+  await fixture.exec('pwsh', shell('npm test'), { agent: sub })
+  await fixture.dispose()
+  assert.deepEqual(fixture.live.log, ['goal:pause', 'goal:resume'])
+  assert.equal(fixture.live.goalOf('sub-1')?.phase, 'active')
+  const ticket = ticketOf(fixture, 'q-1')
+  assert.ok(ticket.resumedAt)
+  assert.deepEqual(fixture.live.woken, [])
+  const records = await journalOf(rulesPaths(fixture.root))
+  assert.deepEqual([records.at(-1)?.op, records.at(-1)?.reason], ['ticket-update', '规则行卸载，goal 已恢复'])
+})
+
+stopTest('a resume that throws on unload leaves the ticket as it was for the next start', async (fixture, _clock, sub) => {
+  await fixture.exec('pwsh', shell('npm test'), { agent: sub })
+  fixture.live.breakGoalChange('sub-1', 'resume')
+  await fixture.dispose()
+  const ticket = ticketOf(fixture, 'q-1')
+  assert.deepEqual([ticket.state, ticket.resumedAt, ticket.pausedGoal], ['deferred', undefined, { id: 'goal-sub-1', revision: 2 }])
+  assert.equal(fixture.live.goalOf('sub-1')?.phase, 'paused')
+})
+
+stopTest('the whole unload step is bounded by two seconds, and the goals are resumed before the board is asked for its lock', async (fixture, _clock, sub) => {
+  await fixture.exec('pwsh', shell('npm test'), { agent: sub })
+  const paths = rulesPaths(fixture.root)
+  await mkdir(paths.runtimeDir, { recursive: true })
+  await writeFile(paths.lock, JSON.stringify({ pid: process.pid, startedAt: Date.now(), at: Date.now() + HOUR, token: 'someone-else' }))
+  const started = Date.now()
+  await fixture.dispose()
+  assert.ok(Date.now() - started < 3_500, `took ${Date.now() - started} ms`)
+  assert.equal(fixture.live.goalOf('sub-1')?.phase, 'active', 'the goal is resumed although the ticket could not be written')
+  assert.equal(ticketOf(fixture, 'q-1').resumedAt, undefined)
+})
+
+stopTest('a stop ticket of another host is left alone on unload', async (fixture, _clock, sub) => {
+  await fixture.exec('pwsh', shell('npm test'), { agent: sub })
+  const board = openRulesBoard({ projectRoot: fixture.root, io: quickIo() })
+  assert.ok((await board.apply('harness', { op: 'ticket-adopt', id: 'q-1', host: OLD_HOST })).ok)
+  await fixture.dispose()
+  assert.deepEqual(fixture.live.log, ['goal:pause'])
+})
 
 // ------------------------------------------------------------- teardown
 
 ticketTest('the row\'s timers go with the row, and a row that is gone sends nothing', async (fixture) => {
   await fixture.exec('pwsh', shell(DEPLOY))
   assert.equal(fixture.timers() > 0, true, 'the row holds its timers while it is on')
-  fixture.dispose()
+  await fixture.dispose()
   assert.equal(fixture.timers(), 0)
   await fixture.pass()
   assert.equal(fixture.live.woken.length, 0)

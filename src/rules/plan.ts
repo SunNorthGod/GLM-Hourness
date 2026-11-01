@@ -16,7 +16,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { PEAK_LEVEL_WORDS } from '../shared/peak-mode.ts'
-import { GLM_PEAK_STOP } from './builtin.ts'
+import { PEAK_STOP_SIGNATURE } from './builtin.ts'
 import { matchesType, ticketProblem } from './entries.ts'
 import { HEARTBEAT_FRESH_MS } from './heartbeat.ts'
 import { evaluateCondition, judgeInput } from './judge.ts'
@@ -82,9 +82,6 @@ const DAY_MS = 24 * 3_600_000
 const NOT_RETRIED_MS = 30 * MINUTE_MS
 const LET_ONCE_MS = 10 * MINUTE_MS
 const SUMMARY_CHARS = 160
-
-/** The signature of the ticket the peak-stop entry opens for a whole session (design §6.3). */
-const PEAK_STOP_SIGNATURE = `any:${GLM_PEAK_STOP.id}`
 
 /** The entry of a collection by its name, and not what every object has under that name (`constructor`, `__proto__`). */
 function own<T>(collection: Readonly<Record<string, T>> | undefined, key: string): T | undefined {

@@ -60,7 +60,8 @@ export interface Fixture {
   readonly until: (condition: () => boolean) => Promise<void>
   readonly commands: Map<string, CommandDefinitionLike<AgentCommandInvocationLike>>
   readonly service: PeakModeService
-  readonly dispose: () => void
+  /** Unload the row and wait for what it does on the way out (the goals it resumes). A second call does nothing. */
+  readonly dispose: () => Promise<void>
   /** What the native tools were called with: a call the gate refused is not in it. */
   readonly calls: Array<{ name: string, args: unknown }>
   /** Run `/rules <input>` in the fake agent's session, as the person. */
@@ -92,6 +93,8 @@ export interface Options {
   readonly live?: boolean
   /** A clock the test moves: the row's and the board's moment. Replaces `now`. */
   readonly clock?: FakeClock
+  /** Run before the row is applied, with the project, the host and the live agents: the state a row meets when it starts (a ticket another run left, a live subagent). */
+  readonly setup?: (parts: { readonly root: string, readonly runtime: FakeRuntime, readonly live: FakeLive, readonly now: () => number }) => Promise<void>
 }
 
 /** A git project in a temporary directory with the rules row applied on a fake host whose agent works in it. */
@@ -127,9 +130,11 @@ export async function withRow(body: (fixture: Fixture) => Promise<void>, options
       runtime.services.set('agents', live.agents)
       runtime.services.set('goals', live.goals)
     }
+    await options.setup?.({ root, runtime, live, now: moment })
     const timers = fakeTimers()
-    const dispose = apply(ctx, { now: moment, io: quickIo({ now: moment }), timer: timers.timer, ...options.config })
+    const unload = apply(ctx, { now: moment, io: quickIo({ now: moment }), timer: timers.timer, ...options.config })
     let counter = 0
+    const dispose = async (): Promise<void> => { await unload() }
     await body({
       root,
       runtime,
@@ -164,7 +169,7 @@ export async function withRow(body: (fixture: Fixture) => Promise<void>, options
         await new Promise(resolve => setTimeout(resolve, 40))
         return read()
       },    })
-    dispose()
+    await dispose()
   }
   finally {
     await rm(root, { recursive: true, force: true })

@@ -379,18 +379,44 @@ export interface MessageableAgentLike extends LiveAgentLike {
   steer(message: UserNotice): void
 }
 
-/** The `agents` registry as the rules board reads it: `get(id)` is the live agent of a session id, undefined once it is released (agent:596). */
+/**
+ * The `agents` registry as the rules board reads it: `get(id)` is the live
+ * agent of a session id, undefined once it is released (agent:596); `list()`
+ * is every live agent in registration order (agent:614–616).
+ */
 export interface MessageableAgentsService {
   get(id: string): MessageableAgentLike | undefined
+  list(): readonly MessageableAgentLike[]
+}
+
+/** What a goal operation names: the goal and the revision the caller read; any other revision is refused as stale (rc.3 dsh-goal `expectCurrent`, goal:760–765). */
+export interface GoalRef {
+  readonly id: string
+  readonly revision: number
+}
+
+/** A goal as the service returns it, as far as the rules board reads it: its identity, its revision (every change raises it by one, goal:174) and its phase. */
+export interface GoalView extends GoalRef {
+  readonly phase: string
 }
 
 /**
- * The `goals` service member the rules board reads (rc.3 dsh-goal `get`,
- * goal:611–614): the goal of an exact live agent, undefined when it has none;
- * it throws `GoalError` for an agent that is not the registry's live instance.
+ * The `goals` service members the rules board uses (rc.3 dsh-goal, no
+ * installed `.d.ts`): `get` is the goal of an exact live agent, undefined when
+ * it has none (goal:611–614); `pause` takes an `active` goal to `paused` and
+ * `resume` an `active`, `paused` or `blocked` one to `active` while its round
+ * budget lasts, each returning the new view (goal:676–699). All three throw
+ * `GoalError` for an agent that is not the registry's live instance
+ * (goal:767–769), and the two changes for a reference that is not the current
+ * goal and revision (`GOAL_STALE_REVISION`, goal:760–765) or a phase they do
+ * not take (`GOAL_INVALID_TRANSITION`). The round driver cancels the running
+ * step of a paused agent only when the initiator is not that agent
+ * (goal-round-driver:246).
  */
 export interface GoalsService {
-  get(agent: LiveAgentLike): { readonly phase: string } | undefined
+  get(agent: LiveAgentLike): GoalView | undefined
+  pause(agent: LiveAgentLike, ref: GoalRef): GoalView
+  resume(agent: LiveAgentLike, ref: GoalRef): GoalView
 }
 
 /**

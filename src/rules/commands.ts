@@ -24,6 +24,7 @@ import type { SignalReading } from './signals.ts'
 import { GLM_PEAK } from './signals.ts'
 import type { StoreIo } from './store.ts'
 import { readingsOf, tableOf } from './table.ts'
+import { isStopTicket } from './wake.ts'
 
 /** What the subcommands say, as the usage of the command (input.hint) and as the reply to a line that is none of them. */
 export const RULES_HINT = 'show | peak [无影响|少做|不做] | lift <规则> | delete <规则或开关> | on <开关> [时长] | off <开关> | set <信号> <值> [时长] | clear <信号> | let <单号> | cancel <单号> | recovery <编号…|文件> 照改|忽略'
@@ -162,7 +163,7 @@ function parse(input: string): Parsed | string {
 
 // -------------------------------------------------------------------- show
 
-const EFFECT_WORDS = { block: '拦下', queue: '排队（这一版还没有执行）', record: '只记下，不挡', inform: '只告知' } as const
+const EFFECT_WORDS = { block: '拦下', queue: '排队', record: '只记下，不挡', inform: '只告知' } as const
 
 function lifetimeWords(rule: Rule): string {
   switch (rule.lifetime.kind) {
@@ -248,7 +249,7 @@ export async function runRulesCommand(input: string, project: ProjectLocation | 
     const clock = env.peak()
     const line = view === undefined ? '' : peakLine(stateOf(view.read, clock), clock.why, env.now())
     const file = result.file === 'deferred' ? '仓库里的规则文件等 git 做完合并或变基再写。' : result.file === 'failed' ? '仓库里的规则文件没写成，下次读状态时补写。' : ''
-    return { kind: 'success', text: `高峰模式改成了「${words.name}」（${words.half}）。${line}${file}\n档位已记下，派活和提醒那几块读它；这一版没有排队和暂停，不拦任何调用。` }
+    return { kind: 'success', text: `高峰模式改成了「${words.name}」（${words.half}）。${line}${file}\n档位已记下，从下一次工具调用和派活起生效。` }
   }
 
   if (parsed.kind === 'repo') {
@@ -264,8 +265,40 @@ export async function runRulesCommand(input: string, project: ProjectLocation | 
     return { kind: 'success', text: filed[result.file] }
   }
 
-  const result = await board.apply('human', parsed.request)
+  let request = parsed.request
+  let done = parsed.done
+  if (request.op === 'ticket-let-once' && typeof request.id === 'string') {
+    const letting = await letThroughPeak(request.id, env)
+    if (letting !== undefined) {
+      request = { ...request, until: letting.until }
+      done = letting.done
+    }
+  }
+  const result = await board.apply('human', request)
   await env.settle()
   if (!result.ok) return error(failureText(result.error))
-  return { kind: 'success', text: result.changed ? parsed.done : '已经是这样，没有改动。' }
+  return { kind: 'success', text: result.changed ? done : '已经是这样，没有改动。' }
+}
+
+/** How long a let lasts when the end of the peak cannot be read. */
+const LET_UNREADABLE_MS = 4 * 3_600_000
+
+/**
+ * A let on the ticket of the stop level is not for one call: the session
+ * works until the end of this peak, or four hours when that cannot be read.
+ * Undefined for any other ticket.
+ */
+async function letThroughPeak(id: string, env: RulesCommandEnv): Promise<{ readonly until: string, readonly done: string } | undefined> {
+  const tickets = (await env.settle())?.read.state.tickets
+  const ticket = tickets !== undefined && Object.hasOwn(tickets, id) ? tickets[id] : undefined
+  if (ticket === undefined || !isStopTicket(ticket)) return undefined
+  const clock = env.peak()
+  const known = clock.peak === true && clock.until !== undefined
+  const until = known && clock.until !== undefined ? clock.until : new Date(env.now() + LET_UNREADABLE_MS).toISOString()
+  return {
+    until,
+    done: known
+      ? `${id} 放行：这个会话到 ${clockText(until, env.now())}（这一段高峰结束）照常做，被暂停的 goal 马上恢复。`
+      : `${id} 放行：读不出这一段高峰什么时候结束，先让这个会话照常做 4 小时，被暂停的 goal 马上恢复。`,
+  }
 }

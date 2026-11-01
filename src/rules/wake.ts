@@ -4,11 +4,16 @@
  * when a ticket clears, when the agent that opened it is gone and the ticket
  * went to the agent that dispatched it, and when a ticket was expired by the
  * heartbeat of a host that was alive; and the way it is sent, chosen by what
- * the agent is doing. The text is for the model, so it is English. Pure
+ * the agent is doing. The ticket of the stop level has its own words: the
+ * subagent that is told to carry on (with what became of its goal), the agent
+ * that dispatched it told to dispatch again, and the dispatch a peak held told
+ * it may be made again. The text is for the model, so it is English. Pure
  * except `deliver`, which calls the host and never throws.
  */
 import { createUserNotice, type GoalsService, type MessageableAgentLike, type MessageableAgentsService, type ServiceLookup, type UserNotice } from '../shared/dsh-min.ts'
+import { GLM_PEAK_STOP_DISPATCH, PEAK_STOP_SIGNATURE } from './builtin.ts'
 import { localClock } from './denial.ts'
+import type { Resume } from './goal.ts'
 import { ended, judgeInput } from './judge.ts'
 import type { ProjectState, Ticket } from './model.ts'
 import type { SignalReading } from './signals.ts'
@@ -76,14 +81,39 @@ export function wakeNotice(ticket: Ticket, text: string): UserNotice {
 
 const callOf = (ticket: Ticket): string => `${ticket.tool} "${ticket.summary}"`
 
+/** The ticket that holds a GLM subagent for the whole peak (the stop level), the only kind that pauses a goal. */
+export const isStopTicket = (ticket: Ticket): boolean => ticket.signature === PEAK_STOP_SIGNATURE
+
+/** What the stop level says when the peak is over or the level changed: the reason the ticket clears for. */
+const PEAK_OVER = 'GLM peak hours are over (or the human changed the peak mode)'
+
+/**
+ * The wake of a ticket of the stop level (design §6.4). A subagent that is
+ * still there is told to carry on, with the word on its goal: resumed, could
+ * not be resumed (the person must, and is to be told), or nothing (the goal
+ * was changed by the person, or there was none). A ticket that sits with the
+ * agent that dispatched the subagent says the subagent has stopped and the
+ * task is to be dispatched again.
+ */
+export function stopWakeText(ticket: Ticket, because: string, handedOver: boolean, goal: Resume): string {
+  const head = `[rules board] Ticket ${ticket.id} cleared: ${because}.`
+  if (handedOver && ticket.handedFrom !== undefined) return `${head} Subagent "${ticket.handedFrom.agentLabel}" stopped during peak at ${callOf(ticket)}. Dispatch the task again to continue it.`
+  const word = goal.kind === 'resumed'
+    ? 'Your goal is resumed. '
+    : goal.kind === 'failed' ? `Your goal could not be resumed: ${goal.why}. Tell the human; they can resume it from the goal bar or with /goal resume. ` : ''
+  return `${head} ${word}Continue your work from where you stopped; the call that was deferred was ${callOf(ticket)}.`
+}
+
 /**
  * A ticket cleared. `because` says why (`clearedBecause`). A ticket that sits
  * with the agent that dispatched the subagent it was opened by says the
- * subagent has ended; any other tells the agent it may run the call again, and
- * from where when the call was made by a `run_code` program.
+ * subagent has ended; a dispatch the stop level held says it may be made
+ * again; any other tells the agent it may run the call again, and from where
+ * when the call was made by a `run_code` program.
  */
 export function wakeText(ticket: Ticket, because: string, handedOver: boolean): string {
   const head = `[rules board] Ticket ${ticket.id} cleared: ${because}.`
+  if (ticket.rules.includes(GLM_PEAK_STOP_DISPATCH.id)) return `${head} You can dispatch again: ${callOf(ticket)}.`
   if (handedOver && ticket.handedFrom !== undefined) {
     return `${head} Subagent "${ticket.handedFrom.agentLabel}" was deferred on ${callOf(ticket)} and has ended. Dispatch the task again or run the call yourself; a new dispatch of the same call reuses ${ticket.id}.`
   }
@@ -104,6 +134,8 @@ function signalNow(name: string, reading: SignalReading | undefined, state: Proj
 }
 
 function whyEnded(id: string, state: ProjectState, readings: ReadonlyMap<string, SignalReading>, now: Date): string {
+  // An entry of the code is not in the state: it ends with the peak or with the level the person chose.
+  if (id.startsWith('builtin:')) return PEAK_OVER
   const rule = state.rules !== undefined && Object.hasOwn(state.rules, id) ? state.rules[id] : undefined
   if (rule === undefined) return `rule ${id} was deleted`
   if (rule.status === 'lifted') return `rule ${id} was lifted by the human`

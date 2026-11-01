@@ -21,9 +21,11 @@
  *    records lets it run and leaves a line; informing rules change nothing. A
  *    rule of the person that queues refuses the call once with a ticket, and
  *    the same call again with the same ticket (tickets.ts); a call that ran
- *    answers the cleared ticket it waited on. The entries of the code that
- *    queue (the peak levels) are not carried out yet: the call runs, and
- *    `rules_show` says so.
+ *    answers the cleared ticket it waited on. The entries of the stop level
+ *    queue the same way: a GLM subagent's tool calls are one ticket for the
+ *    session and its active goal is paused with it, the dispatch of a GLM
+ *    subagent is an ordinary ticket on the agent that dispatches, and
+ *    nothing is ever queued for the main agent's own calls (tickets.ts).
  *
  * The listener never throws. Reading or judging that fails lets the call run
  * and degrades the row's health with the reason; the board's own faults never
@@ -232,8 +234,8 @@ export function installRulesGate(deps: GateDeps): () => void {
       return { kind: 'deny', reason }
     }
     const session = agent.session
-    // Only the rules of the person queue here: an entry of the code that queues waits for the peak levels to be carried out.
-    const queued = verdict.effect === 'queue' ? pairs(verdict.strongest).filter(entry => entry.rule.scope !== 'builtin') : []
+    // The rules of the person and the entries of the stop level queue alike: the entries only name the calls of GLM subagents and the dispatch of one, never the main agent's own.
+    const queued = verdict.effect === 'queue' ? pairs(verdict.strongest) : []
     if (session !== undefined && queued.length > 0) {
       const deferral = await deps.tickets.defer({ session, caller, view, root: project.root, cwd, tool, args: exec.arguments, described, events, unreadable, nested: exec.parent !== undefined, rules: queued, peak })
       if (deferral.kind === 'deny') {

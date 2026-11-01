@@ -9,6 +9,7 @@ import { appendFile, mkdir, mkdtemp, readdir, readFile, rename as renameFile, rm
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import { MAIN_AGENT_KEY } from '../src/graph/main-agent.ts'
 import type { UserNotice } from '../src/shared/dsh-min.ts'
 import { collectHealth, healthServiceName } from '../src/shared/health.ts'
 import { PEAK_MODE_SERVICE, PEAK_REDUCE_GLM_WORKERS, peakModeService } from '../src/shared/peak-mode.ts'
@@ -41,7 +42,7 @@ rowTest('the row is a cordis plugin that needs the tools and commands services, 
   assert.ok(runtime.services.has(RULES_SERVICE))
   assert.deepEqual(health(runtime), { row: 'rules', status: 'idle', reason: `命令 /rules、工具 rules_show 与高峰模式服务 ${PEAK_MODE_SERVICE} 已就绪` })
   assert.ok(peakModeService(runtime.ctx) !== undefined)
-  dispose()
+  void dispose()
   assert.equal(commands.size, 0)
   assert.equal(runtime.scoped.length, 0, 'the tool leaves with the row')
   assert.equal(peakModeService(runtime.ctx), undefined, 'the readers see the service leave with the row')
@@ -79,7 +80,8 @@ rowTest('/rules peak 不做 stores the choice in the repository and the project,
   const result = await run('peak 不做')
   assert.equal(result.kind, 'success')
   assert.ok(result.text?.startsWith('高峰模式改成了「不做」（高峰里 GLM 的活停下排队，高峰结束后接着做）。现在是高峰，到 '), result.text)
-  assert.ok(result.text?.includes('不拦任何调用'), 'the reply says what this version does not do yet')
+  assert.ok(result.text?.includes('从下一次工具调用和派活起生效'), 'the reply says when the level takes hold')
+  assert.ok(!result.text?.includes('不拦任何调用'), 'the level does hold things back now')
   const state = service.stateFor('agent-1')
   assert.deepEqual([state?.level, state?.origin, state?.peak, state?.until, 'glmWorkerCap' in (state ?? {})], ['stop', 'human', true, PEAK_END, false])
   assert.match(state?.at ?? '', /^\d{4}-\d\d-\d\dT/)
@@ -326,12 +328,12 @@ test('activation never throws: a command that cannot register, a service that ca
     const ctx = { ...twice.ctx, commands: { register: () => () => {} } } as unknown as RulesContext
     const first = apply(ctx, {})
     const second = apply(ctx, {})
-    first()
-    second()
+    void first()
+    void second()
 
     // A host that cannot provide anything.
     const lone = fakeRuntime({ natives: [] })
-    apply({ commands: { register: () => () => {} }, on: (...args: unknown[]) => (lone.ctx.on as (...inner: unknown[]) => () => void)(...args), get: (key: string) => lone.ctx.get?.(key) } as unknown as RulesContext, {})()
+    void apply({ commands: { register: () => () => {} }, on: (...args: unknown[]) => (lone.ctx.on as (...inner: unknown[]) => () => void)(...args), get: (key: string) => lone.ctx.get?.(key) } as unknown as RulesContext, {})()
 
     // A host whose event registration throws: the gate is not installed, so the row executes no rule and says so.
     const noEvents = fakeRuntime({ natives: [] })
@@ -340,14 +342,14 @@ test('activation never throws: a command that cannot register, a service that ca
     assert.equal(view?.status, 'inactive')
     assert.ok(view?.reason.includes('会话事件没注册上：no events'), view?.reason)
     assert.ok(view?.reason.includes('工具调用的门没装上，这一行不执行任何规则：no events'), view?.reason)
-    stop()
+    void stop()
 
     // A configuration that is not a path: nothing registers.
     const badDir = fakeRuntime({ natives: [] })
     const never = apply({ ...badDir.ctx, commands: { register: () => { throw new Error('must not register') } } } as unknown as RulesContext, { dir: '  ' })
     assert.equal(collectHealth(badDir.ctx, undefined).find(entry => entry.row === 'rules')?.status, 'inactive')
     assert.equal(badDir.services.has(PEAK_MODE_SERVICE), false)
-    never()
+    void never()
   })
   const ours = warnings.filter(warning => warning.startsWith('dsh-glm-hourness/rules: '))
   assert.equal(ours.length, 8, ours.join(' | '))
@@ -673,7 +675,7 @@ rowTest('the row withdraws its timers, its listeners and its heartbeat file when
   await runtime.create()
   assert.equal(timers() > 0, true)
   assert.equal(Object.keys(await heartbeatsOf(root)).length, 1)
-  dispose()
+  await dispose()
   assert.equal(timers(), 0)
   assert.deepEqual(runtime.listeners.map(entry => entry.event), [])
   assert.deepEqual(await heartbeatsOf(root), {})
@@ -801,3 +803,95 @@ rowTest('an agent created twice gets one reminder, not two', async (fixture) => 
   await fixture.runtime.create()
   assert.equal((await stepOf(fixture)).length, 1)
 }, { rules: reminderFile(INFORM_FRIDAY) })
+
+// ------------------------------------------------------ the main agent's peak line
+
+const MAIN_AGENT = { sessionProjections: { stateOf: (_session: unknown, key: string) => (key === MAIN_AGENT_KEY ? { active: true } : undefined) } }
+/** `HH:MM` on the wall clock of this machine, by another route than the code takes (the Swedish format is year-first and 24-hour). */
+const clockHm = (iso: string): string => new Date(iso).toLocaleString('sv-SE').slice(11, 16)
+const END = clockHm(PEAK_END)
+const NEXT = `${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][new Date(NEXT_PEAK).getDay()]} ${clockHm(NEXT_PEAK)}`
+const DEFAULT_MODE = 'Peak mode: reduce (the default; the human can change it)'
+const REDUCE_WORDS = (until: string): string => `Run at most 1 GLM subagent at a time until ${until}. Move optional work that spends many GLM credits (calibration runs, ablations, large reviews) to after ${until}, including work you dispatch; keep necessary work going.`
+const STOP_WORDS = `You keep working and answering the human; until ${END} no GLM subagents and no scripts that report GLM spending: such dispatches and scripts are deferred and you are told when they can run.`
+const reminderOf = (...lines: string[]): string => `<system-reminder>\n${lines.join('\n')}\n</system-reminder>`
+const SILENT_PRICING = { basis: 'test', plan: 'test', charged: () => undefined, peak: () => { throw new Error('boom') } }
+
+rowTest('the main agent\'s reminder starts with a line about the peak and the level, in the words of the level and of where it came from', async (fixture) => {
+  await fixture.runtime.create()
+  assert.equal(bodyOf((await stepOf(fixture))[0]), reminderOf(`GLM peak: now until ${END}. ${DEFAULT_MODE}. ${REDUCE_WORDS(END)}`))
+  await fixture.run('peak 无影响')
+  assert.equal(bodyOf((await stepOf(fixture))[0]), reminderOf(`GLM peak: now until ${END}. Peak mode set by the human: inform (no change to your work).`))
+  await fixture.run('peak 不做')
+  assert.equal(bodyOf((await stepOf(fixture))[0]), reminderOf(`GLM peak: now until ${END}. Peak mode set by the human: stop. ${STOP_WORDS}`))
+  await fixture.run('peak 少做')
+  assert.equal(bodyOf((await stepOf(fixture))[0]), reminderOf(`GLM peak: now until ${END}. Peak mode set by the human: reduce. ${REDUCE_WORDS(END)}`), 'chosen again, it is the human\'s now')
+}, { services: MAIN_AGENT, rules: { version: 2 } })
+
+rowTest('out of a peak the line says when the next one is, and what may run now', async (fixture) => {
+  await fixture.runtime.create()
+  assert.equal(bodyOf((await stepOf(fixture))[0]), reminderOf(`GLM peak: not now (next ${NEXT}). ${DEFAULT_MODE}. Work moved out of peak can run now.`))
+  await fixture.run('peak 无影响')
+  assert.equal(bodyOf((await stepOf(fixture))[0]), reminderOf(`GLM peak: not now (next ${NEXT}). Peak mode set by the human: inform (no change to your work).`))
+  await fixture.run('peak 不做')
+  assert.equal(bodyOf((await stepOf(fixture))[0]), reminderOf(`GLM peak: not now (next ${NEXT}). Peak mode set by the human: stop. GLM subagents and scripts that report GLM spending can run now.`))
+}, { services: MAIN_AGENT, rules: { version: 2 }, now: OFF_PEAK })
+
+rowTest('when the peak cannot be read the line says so with the reason, and that the level does not apply', async (fixture) => {
+  await fixture.runtime.create()
+  assert.equal(bodyOf((await stepOf(fixture))[0]), reminderOf(`GLM peak: unknown (the pricing service failed: boom). ${DEFAULT_MODE}; it does not apply while peak is unknown.`))
+}, { services: MAIN_AGENT, rules: { version: 2 }, pricing: SILENT_PRICING })
+
+test('the line is injected when the peak starts, when it ends and when the level changes, and not again within a peak', async () => {
+  const clock = fakeClock('2026-10-28T05:30:00.000Z')
+  await withRow(async (fixture) => {
+    await fixture.runtime.create()
+    const lines: string[] = []
+    const step = async (): Promise<void> => {
+      const [notice] = await stepOf(fixture)
+      if (notice !== undefined) lines.push(bodyOf(notice).split('\n')[1] ?? '')
+    }
+    await step()
+    await step()
+    clock.advance(31 * MINUTE)
+    await step()
+    await step()
+    clock.advance(2 * 3_600_000)
+    await step()
+    await fixture.run('peak 不做')
+    await step()
+    await step()
+    clock.advance(2 * 3_600_000)
+    await step()
+    assert.deepEqual(lines.map(line => line.slice(0, line.indexOf('Peak mode') - 1)), [
+      `GLM peak: not now (next ${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][new Date('2026-10-28T06:00:00.000Z').getDay()]} ${clockHm('2026-10-28T06:00:00.000Z')}).`,
+      `GLM peak: now until ${END}.`,
+      `GLM peak: now until ${END}.`,
+      `GLM peak: not now (next ${NEXT}).`,
+    ], 'the first step, the start of the peak, the level changed in it, and its end: one line each')
+    assert.match(lines[2] ?? '', /Peak mode set by the human: stop/)
+  }, { clock, services: MAIN_AGENT, rules: { version: 2 } })
+})
+
+rowTest('there is no line while there is no pricing service, and an agent that is not the main agent has none', async (fixture) => {
+  await fixture.runtime.create()
+  assert.deepEqual(await stepOf(fixture), [])
+}, { services: MAIN_AGENT, rules: { version: 2 }, pricing: 'none' })
+
+rowTest('a session that holds a stop ticket gets the line though it is not the main agent', async (fixture) => {
+  await fixture.runtime.create()
+  assert.deepEqual(await stepOf(fixture), [], 'no line before it has one')
+  await fixture.run('peak 不做')
+  const board = openRulesBoard({ projectRoot: fixture.root, io: quickIo() })
+  assert.ok((await board.apply('harness', { op: 'ticket-open', sessionId: 'agent-1', agentLabel: 'agent-1', host: { pid: process.pid, startedAt: 1 }, signature: 'any:builtin:glm-peak-stop', tool: 'pwsh', summary: 'npm test', rules: ['builtin:glm-peak-stop'] })).ok)
+  const [notice] = await stepOf(fixture)
+  assert.match(bodyOf(notice), /^<system-reminder>\nGLM peak: now until \d\d:\d\d\. Peak mode set by the human: stop\. .*\nYour open tickets: q-1 pwsh "npm test" \(deferred since \d\d:\d\d\)\.\n<\/system-reminder>$/)
+}, { rules: { version: 2 } })
+
+rowTest('the line counts as one of the 12 items', async (fixture) => {
+  await fixture.runtime.create()
+  const lines = bodyOf((await stepOf(fixture))[0]).split('\n')
+  assert.match(lines[1] ?? '', /^GLM peak: now until /)
+  assert.equal(lines.filter(line => line.startsWith('- [inform')).length, 11)
+  assert.equal(lines.at(-2), 'and 4 more: call rules_show')
+}, { services: MAIN_AGENT, rules: reminderFile(...Array.from({ length: 15 }, (_, index) => ruleOf({ id: `r-note-${String(index).padStart(2, '0')}`, title: `Note ${index}`, when: { kind: 'event', events: ['rules.step'] }, action: { kind: 'inform' } }))) })

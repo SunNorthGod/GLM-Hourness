@@ -73,7 +73,7 @@ test('tool names: the rules row registers exactly the contract names, and the di
   const rt = fakeRuntime({ natives: [] })
   const stop = rulesApply({ ...rt.ctx, commands: { register: () => () => {} } } as unknown as RulesContext, {})
   assert.deepEqual(rt.scoped.map(tool => tool.name), [...RULES_TOOL_NAMES])
-  stop()
+  void stop()
 })
 
 test('rules catalog: the rules board\'s gate on its own files is listed under the id the gate carries', () => {

@@ -27,11 +27,18 @@
  * - the per-step reminder (reminder.ts) of the rules that only inform and of
  *   the agent's own tickets.
  *
- * The main agent is never held by a peak level, and the entries of the code
- * that queue (the peak levels) are not carried out yet: the board refuses,
- * defers calls the person's rules queue, and records, nothing else. Nothing a
- * rule says can be written by an agent; only the person's `/rules`, as the
- * human, changes rules.
+ * - the stop level (goal.ts, tickets.ts): in a GLM peak the tool calls of a GLM
+ *   subagent are one ticket for its session and its active goal is paused;
+ *   dispatching a GLM subagent is an ordinary ticket on the agent that
+ *   dispatches. When the peak is over, or the person changes the level or lets
+ *   the session work, the goal is resumed and the agent told. A host takes over
+ *   the stop tickets of a session that appears on it after a restart, and a row
+ *   that goes resumes the goals it paused.
+ *
+ * The main agent is never held by a peak level: its own tool calls run and its
+ * goal is not paused on any level; it gets a line about the peak and the level
+ * at the top of its reminder. Nothing a rule says can be written by an agent;
+ * only the person's `/rules`, as the human, changes rules.
  *
  * Activation never throws. A failed registration or provision warns once and
  * degrades the row's health with the reason; a gate that cannot be installed
@@ -119,13 +126,19 @@ function onceWarner(): (text: string) => void {
   }
 }
 
+/** What the row does on its way out: undefined when it is done at once, else a promise that ends when the goals the stop level paused are resumed and written down (at most two seconds). */
+export type Unload = () => Promise<void> | undefined
+
 /** cordis plugin entry: register /rules and rules_show, install the gate, provide the services and the row health. Activation never throws. */
-export function apply(ctx: RulesContext, config: RulesConfig = {}): () => void {
+export function apply(ctx: RulesContext, config: RulesConfig = {}): Unload {
   const configured: unknown = config.dir ?? DEFAULT_RULES_DIR
   if (typeof configured !== 'string' || configured.trim().length === 0) {
     console.warn(`${name}: config.dir must be a non-empty path; the rules row stays off`)
     const off = provideRowHealth(ctx, 'rules', 'inactive', 'config.dir 不是非空路径，规则板未启用')
-    return () => { off.dispose() }
+    return () => {
+      off.dispose()
+      return undefined
+    }
   }
   const rulesDir: string = configured
   const now = config.now ?? ((): number => Date.now())
@@ -165,12 +178,13 @@ export function apply(ctx: RulesContext, config: RulesConfig = {}): () => void {
   })
   const tickets = createTicketDesk({ ctx, rulesDir, now, io: config.io, host, project: read, peak: reading, health, heartbeat, warn })
   const reminders = new Map<string, () => void>()
-  disposers.push(() => {
+  // What is left to do once the goals are right: the heartbeat goes last, since the tickets are the host's only while it is there.
+  const finish = (): void => {
     tickets.stop()
     heartbeat.stop()
     for (const off of reminders.values()) off()
     reminders.clear()
-  })
+  }
 
   /** Persist what the project's files need (a recovery, the start from the rules file, an owed write), then report the session's health. Never throws. */
   async function settle(sessionId: string | undefined, cwd: string | undefined): Promise<ProjectView | undefined> {
@@ -270,6 +284,8 @@ export function apply(ctx: RulesContext, config: RulesConfig = {}): () => void {
       }
       if (sessionId !== undefined && cwd !== undefined) await heartbeat.join(sessionId, cwd)
       await settle(sessionId, cwd)
+      // A session that appears after a restart may have a goal an earlier host paused for the stop level.
+      await tickets.adopt(agent)
     }))
     disposers.push(ctx.on('session/disposed', (session) => {
       sessions.delete(session.id)
@@ -296,7 +312,16 @@ export function apply(ctx: RulesContext, config: RulesConfig = {}): () => void {
   disposers.push(every(guarded(() => tickets.reconcile()), PASS_MS), every(guarded(() => heartbeat.beat()), BEAT_MS))
 
   health.reactivate(...activation())
+  // The sessions that are live when the row starts: the same takeover as for a session that appears.
+  void tickets.adoptLive()
   return () => {
+    // Goals the stop level paused are put back first, while the heartbeat still says this host is there, and everything else goes without waiting for them.
+    const resuming = tickets.release()
     for (const dispose of disposers.splice(0).reverse()) dispose()
+    if (resuming === undefined) {
+      finish()
+      return undefined
+    }
+    return resuming.finally(finish)
   }
 }

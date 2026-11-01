@@ -173,11 +173,12 @@ rowTest('a queue rule defers the call: it does not run, a ticket is opened, the 
   assert.equal((await exec('pwsh', shell('echo other'))).isError, false, 'a call the rule does not name runs')
 }, { rules: file([ruleOf({ id: 'r-hold', title: 'Hold deploys', filter: { command: { matches: 'deploy' } }, action: { kind: 'queue' } })]) })
 
-rowTest('the entries of the code that queue are listed with a note that nothing defers a call for them yet, and a call they would defer runs', async ({ exec, calls, run }) => {
+rowTest('the entries of the code that queue are carried out like the rules of the person: listed with no note that they are not, and a call they do not name runs', async ({ exec, calls, run }) => {
   await run('peak 不做')
   const shown = (await exec('rules_show', {})).value as { text: string }
-  assert.match(shown.text, /- \[queue\] builtin:glm-peak-stop-dispatch: .*Not enforced yet: a call this rule would defer runs\./)
-  assert.equal((await exec('pwsh', shell('npm run deploy'))).isError, false)
+  assert.match(shown.text, /- \[queue\] builtin:glm-peak-stop-dispatch: /)
+  assert.doesNotMatch(shown.text, /Not enforced yet/)
+  assert.equal((await exec('pwsh', shell('npm run deploy'))).isError, false, 'the main agent\'s call is not named')
   assert.deepEqual(calls.map(call => call.name), ['pwsh'])
 }, { route: GLM_ROUTE })
 

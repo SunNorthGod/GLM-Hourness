@@ -100,54 +100,111 @@ interface FakeLiveAgent {
   cancel(): void
 }
 
-/** What rc.3 throws when a goal is asked of an agent that is not the registry's live instance (dsh-goal `assertLive`, goal:611–614). */
+/** What rc.3 throws for a goal operation it refuses (dsh-goal `GoalError`: `GOAL_AGENT_NOT_LIVE`, `GOAL_STALE_REVISION`, `GOAL_INVALID_TRANSITION`, `GOAL_NOT_FOUND`). */
 class GoalError extends Error {
-  readonly code = 'GOAL_NOT_LIVE'
+  readonly code: string
+  constructor(message: string, code = 'GOAL_AGENT_NOT_LIVE') {
+    super(message)
+    this.code = code
+  }
+}
+
+/** A goal as `goals.get` returns it, as far as the rows read it: its identity, the revision that every change raises by one, and the phase. */
+interface FakeGoal {
+  readonly id: string
+  readonly revision: number
+  readonly phase: string
+}
+
+/** What a row asked of the goal service, in order, with the reference it gave. */
+interface GoalCall {
+  readonly op: 'pause' | 'resume'
+  readonly agentId: string
+  readonly ref: { readonly id: string, readonly revision: number }
 }
 
 /**
  * The live-agent registry and the goal service of rc.3 as far as the rows
  * read them: `agents.get(id)` is the live agent of a session and undefined
- * once the agent is released; `goals.get(agent)` is the goal view of a live
- * agent and throws `GoalError` for one that is not live. Every message put
- * in front of an agent is recorded in `woken`.
+ * once the agent is released, `agents.list()` all live agents; `goals.get`
+ * is the goal view of a live agent and `goals.pause` / `goals.resume` change
+ * it by one revision, all three throwing `GoalError` for an agent that is not
+ * live (dsh-goal `assertLive`, goal:611–614) and the two changes for a stale
+ * reference (`expectCurrent`, goal:760–765) or a phase they do not take
+ * (goal:676–699). Every message put in front of an agent is recorded in
+ * `woken`, every pause and resume in `goalCalls`, and both in `log` in the
+ * order they happened.
  */
 export interface FakeLive {
-  readonly agents: { get(id: string): FakeLiveAgent | undefined }
-  readonly goals: { get(agent: FakeLiveAgent): { readonly phase: string } | undefined }
+  readonly agents: { get(id: string): FakeLiveAgent | undefined, list(): FakeLiveAgent[] }
+  readonly goals: {
+    get(agent: FakeLiveAgent): FakeGoal | undefined
+    pause(agent: FakeLiveAgent, ref: GoalCall['ref']): FakeGoal
+    resume(agent: FakeLiveAgent, ref: GoalCall['ref']): FakeGoal
+  }
   readonly woken: Woken[]
+  /** The pauses and resumes the rows asked for, whether or not they worked. */
+  readonly goalCalls: GoalCall[]
+  /** `goal:pause`, `goal:resume` and `wake:<way>` in the order they happened. */
+  readonly log: string[]
   /** Register the live agent of a session. */
   add(agent: AgentLike, status?: 'idle' | 'running'): void
   /** The agent is released: the registry no longer knows it. */
   release(id: string): void
   setStatus(id: string, status: 'idle' | 'running'): void
-  /** The phase of the agent's goal; none when undefined. */
+  /** Give the agent's goal this phase, as a person's change would: a new goal is revision 1, an existing one goes up by one revision; none when undefined. */
   setGoal(id: string, phase: string | undefined): void
+  /** The agent's goal now. */
+  goalOf(id: string): FakeGoal | undefined
   /** Make the ways named (all three when none are) throw for the agent. */
   breakWake(id: string, ...ways: Array<Woken['how']>): void
   /** Make `goals.get` throw for the agent, as it does for one that is not live. */
   breakGoals(id: string): void
+  /** Make the next `goals.pause` or `goals.resume` for the agent throw with this message (every one after it too). */
+  breakGoalChange(id: string, op: GoalCall['op'], message?: string, code?: string): void
 }
 
 export function fakeLive(): FakeLive {
-  const entries = new Map<string, { live: FakeLiveAgent, status: 'idle' | 'running', goal: string | undefined, broken: ReadonlySet<Woken['how']>, goalsBroken: boolean }>()
+  const entries = new Map<string, { live: FakeLiveAgent, status: 'idle' | 'running', goal: FakeGoal | undefined, broken: ReadonlySet<Woken['how']>, goalsBroken: boolean, changeBroken: Map<GoalCall['op'], { message: string, code: string }> }>()
   const woken: Woken[] = []
+  const goalCalls: GoalCall[] = []
+  const log: string[] = []
   const WAYS = ['steer', 'inject', 'followup'] as const
+  const liveEntry = (agent: FakeLiveAgent) => {
+    const entry = entries.get(agent.id)
+    if (entry?.live !== agent || entry.goalsBroken) throw new GoalError(`agent "${agent.id}" is not live in this registry`)
+    return entry
+  }
+  const change = (op: GoalCall['op']) => (agent: FakeLiveAgent, ref: GoalCall['ref']): FakeGoal => {
+    goalCalls.push({ op, agentId: agent.id, ref: { ...ref } })
+    log.push(`goal:${op}`)
+    const entry = liveEntry(agent)
+    const broken = entry.changeBroken.get(op)
+    if (broken !== undefined) throw new GoalError(broken.message, broken.code)
+    const goal = entry.goal
+    if (goal === undefined) throw new GoalError('no current goal', 'GOAL_NOT_FOUND')
+    if (ref.id !== goal.id || ref.revision !== goal.revision) throw new GoalError(`stale goal ref "${ref.id}" revision ${ref.revision}; current is "${goal.id}" revision ${goal.revision}`, 'GOAL_STALE_REVISION')
+    const allowed = op === 'pause' ? ['active'] : ['active', 'paused', 'blocked']
+    if (!allowed.includes(goal.phase)) throw new GoalError(`cannot ${op} goal "${goal.id}" from phase "${goal.phase}"`, 'GOAL_INVALID_TRANSITION')
+    entry.goal = { id: goal.id, revision: goal.revision + 1, phase: op === 'pause' ? 'paused' : 'active' }
+    return entry.goal
+  }
   return {
     woken,
-    agents: { get: id => entries.get(id)?.live },
+    goalCalls,
+    log,
+    agents: { get: id => entries.get(id)?.live, list: () => [...entries.values()].map(entry => entry.live) },
     goals: {
-      get: (agent) => {
-        const entry = entries.get(agent.id)
-        if (entry?.live !== agent || entry.goalsBroken) throw new GoalError(`agent "${agent.id}" is not the registry's live instance`)
-        return entry.goal === undefined ? undefined : { phase: entry.goal }
-      },
+      get: agent => liveEntry(agent).goal,
+      pause: change('pause'),
+      resume: change('resume'),
     },
     add(agent, status = 'idle') {
       const session = agent.session!
       const send = (how: Woken['how']) => (message: UserNotice): void => {
         if (entries.get(agent.id)?.broken.has(how) === true) throw new Error(`${how} failed for ${agent.id}`)
         woken.push({ agentId: agent.id, how, kind: String(message.source.kind), text: message.content.map(part => part.text).join('') })
+        log.push(`wake:${how}`)
       }
       const live: FakeLiveAgent = {
         id: agent.id,
@@ -158,16 +215,21 @@ export function fakeLive(): FakeLive {
         followup: send('followup'),
         cancel() {},
       }
-      entries.set(agent.id, { live, status, goal: undefined, broken: new Set(), goalsBroken: false })
+      entries.set(agent.id, { live, status, goal: undefined, broken: new Set(), goalsBroken: false, changeBroken: new Map() })
     },
     release: id => void entries.delete(id),
     setStatus(id, status) { const entry = entries.get(id); if (entry !== undefined) entry.status = status },
-    setGoal(id, phase) { const entry = entries.get(id); if (entry !== undefined) entry.goal = phase },
+    setGoal(id, phase) {
+      const entry = entries.get(id)
+      if (entry === undefined) return
+      entry.goal = phase === undefined ? undefined : { id: entry.goal?.id ?? `goal-${id}`, revision: (entry.goal?.revision ?? 0) + 1, phase }
+    },
+    goalOf: id => entries.get(id)?.goal,
     breakWake(id, ...ways) { const entry = entries.get(id); if (entry !== undefined) entry.broken = new Set(ways.length === 0 ? WAYS : ways) },
     breakGoals(id) { const entry = entries.get(id); if (entry !== undefined) entry.goalsBroken = true },
+    breakGoalChange(id, op, message = `${op} refused`, code = 'GOAL_INVALID_TRANSITION') { entries.get(id)?.changeBroken.set(op, { message, code }) },
   }
 }
-
 export interface FakeRuntime {
   /** The context every row receives; cordis contexts also read and provide services. */
   readonly ctx: PluginContext & ServiceLookup & ProvideHost
@@ -188,8 +250,8 @@ export interface FakeRuntime {
   readonly executed: ToolExecuteInput[]
   /** Run the agent-scoped assemble waterfall with the route the model selection would inject. */
   assemble(route: { provider?: string, model?: string }, sections?: AssemblePayload['sections']): Promise<AssemblePayload>
-  /** Fire `agent/created` for the fake agent. */
-  create(): Promise<void>
+  /** Fire `agent/created` for the fake agent, or for another agent of the host. */
+  create(target?: AgentLike): Promise<void>
   /** Fire `session/disposed` for a session (session:1925–1936): observers run synchronously, as in rc.3. */
   disposeSession(session: SessionLike): void
   /** Run `agent/pre-step` for one step; the runtime's default decision admits the claimed messages. */
@@ -416,8 +478,8 @@ export function fakeRuntime(options: { natives?: readonly string[], calls?: Arra
       )
       return chain()
     },
-    async create() {
-      for (const listener of of('agent/created')) await (listener as unknown as (p: { agent: AgentLike }) => unknown)({ agent })
+    async create(target = agent) {
+      for (const listener of of('agent/created')) await (listener as unknown as (p: { agent: AgentLike }) => unknown)({ agent: target })
     },
     disposeSession(session) {
       for (const listener of of('session/disposed')) (listener as unknown as (session: SessionLike) => unknown)(session)
