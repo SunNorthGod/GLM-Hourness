@@ -311,6 +311,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "第三遍复审 APPROVED（HIGH 0、MEDIUM 0、NIT 2）：F16、N24-N29 与面板的 P13-01 全部关闭，F13-F15 与 N15-N23 仍关闭；复审独立核过 ownRules 第五行 35 码点、D1 那句 124 码点无禁用词、checkoutRootOf 约 10 行可复用 gitEntry、path.resolve 保留盘符大小写、P13-01 的取法与 plain-ui 1.3 §8.2/§11 一致（取 limits.jsonl 最后一行，不取 ValueLine.cap）。两条不挡路：NIT-01 「未提交」那一行要跑 git status，在只读文件的纯报告管线里没有落点，morningReport 的 lifts 输入也不带未提交标记；NIT-02 liftStatesOf 描述为每条规则只留最终态，但②的逐行对账需要逐行解析。设计 0.6 可放行，接着写一页稿。"
+    },
+    {
+      "at": "2026-11-01T07:54:56.227Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "一页放行稿写好（设计 0.6 第三遍，decisions-gate-fix3.json 为 APPROVED）：onepage.md 938 个码点，开头是一个具体场景（agent 要往工作区外写文件、它必须给出的请求、人回「可以」），5 条变化，1 件要人定的事（D1：七件活的「怎样算做完」与放行，代价句取自设计 §17）；人话版 onepage-done.md 5,816 个码点，把设计 §1.2 的条件按七件活分组，共 34 条编号条件加 m4 特性合起来一行。等一页稿评审。"
     }
   ]
 }
