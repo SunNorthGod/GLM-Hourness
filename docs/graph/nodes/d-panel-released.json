@@ -1,0 +1,19 @@
+{
+  "id": "d-panel-released",
+  "type": "decision",
+  "title": "面板与新手引导放行：设计 1.3、一页稿与 17 条做完条件由人定下",
+  "status": "approved",
+  "parent": "m8",
+  "verification": "unverified",
+  "body": "人 2026-11-01 读面板一页稿后答「其余没问题」，并对「放行这一页时把 17 条做完条件一起定下」答「可以」。定下：① 设计 1.3 与一页稿放行；② 17 条做完条件按人话版（.agents/tasks/plain-ui/onepage-done.md）定稿，已写进 m8-plain-language（第 1-10、17 条）与 onboarding（第 11-16 条）的验收，此后改动要人出手；③ 编排方主动标出的那一处人也接受：面板只读，没有批准、拒绝、运行控制一类按钮，要停一件事、改规则、换高峰档位都跟主 Agent 说一句或在输入框打命令（例如 /rules peak 不做），尽管人此前说过「档位当然能选」。遗留：第 6、9 条写的是旧问法的四行，面板按 d-ask-three-gates 换新问法时要再请人改一次；实现由后续运行按这 17 条拆任务节点。",
+  "history": [
+    {
+      "at": "2026-11-01T07:21:29.940Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "人放行面板与新手引导的设计 1.3、一页稿与 17 条做完条件",
+      "relay": "其余没问题",
+      "to": "approved"
+    }
+  ]
+}
