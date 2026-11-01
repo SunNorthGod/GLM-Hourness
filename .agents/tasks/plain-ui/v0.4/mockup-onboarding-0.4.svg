@@ -1,0 +1,161 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="980" viewBox="0 0 1440 980">
+  <style>
+    text{font-family:'Microsoft YaHei','PingFang SC','Noto Sans CJK SC',sans-serif;fill:#ececf1}
+    .cap{font-size:12px;fill:#8a8a92}
+    .capb{font-size:13px;font-weight:700;fill:#b5b5bb}
+    .hero{font-size:26px;font-weight:700}
+    .h1{font-size:16px;font-weight:700}
+    .tb{font-size:13.5px;font-weight:700}
+    .t{font-size:13px}
+    .s{font-size:12.5px;fill:#b5b5bb}
+    .m{font-size:12px;fill:#8a8a92}
+    .a{font-size:12.5px;fill:#6aa1ff}
+    .side{font-size:13.5px;fill:#d4d4d8}
+    .dim{font-size:12.5px;fill:#8a8a92}
+    .btn{font-size:13px;font-weight:600;fill:#111113}
+    .w{font-size:12.5px;fill:#e3b341}
+  </style>
+  <rect width="1440" height="980" fill="#111113"/>
+  <text class="capb" x="20" y="24">新手引导第一屏：两个插件都装上之后，第一次开一个新会话</text>
+  <text class="cap" x="20" y="44">中间是新会话的开场画面：DSH 的标题、工作区那一行（右端是 GLM 插件的「GLM · 上手」）、编排层插件的卡片（在输入框正上方，与输入框同宽）、输入框。开场画面没有输入框下方那一排。</text>
+
+  <!-- window -->
+  <rect x="20" y="60" width="1400" height="900" rx="10" fill="#141416" stroke="#2c2c31"/>
+
+  <!-- left sidebar -->
+  <rect x="20" y="60" width="270" height="900" rx="10" fill="#18181b"/>
+  <text class="h1" x="44" y="104">deepseek</text>
+  <rect x="128" y="91" width="64" height="18" rx="3" fill="#ececf1"/>
+  <text x="160" y="105" font-size="11" font-weight="700" text-anchor="middle" style="fill:#18181b">HARNESS</text>
+  <rect x="36" y="124" width="238" height="40" rx="10" fill="#2a2a2f"/>
+  <text class="side" x="155" y="149" text-anchor="middle">⊕ 新会话</text>
+  <text class="side" x="44" y="196">插件</text>
+  <text class="side" x="44" y="228">自动化任务</text>
+  <text class="side" x="44" y="260">更多</text>
+  <text class="dim" x="44" y="304">工作区</text>
+  <text class="side" x="44" y="336">GLM-Hourness</text>
+  <rect x="36" y="348" width="238" height="32" rx="8" fill="#26262b"/>
+  <text class="side" x="60" y="369">新会话</text>
+  <text class="side" x="60" y="404" style="fill:#a1a1aa">验证 m1-l4 scratch 只读搜索</text>
+  <text class="side" x="60" y="436" style="fill:#a1a1aa">这是一次只读验证：不要修改</text>
+
+  <!-- center: blank session hero -->
+  <text class="hero" x="600" y="168" text-anchor="middle">探索未至之境</text>
+  <rect x="690" y="148" width="50" height="22" rx="5" fill="#26262b"/>
+  <text class="m" x="715" y="164" text-anchor="middle">预览版</text>
+
+  <!-- workspace row -->
+  <rect x="365" y="196" width="132" height="26" rx="6" fill="#1c1c20" stroke="#2c2c31"/>
+  <rect x="377" y="204" width="14" height="10" rx="2" fill="#e3b341"/>
+  <text class="t" x="399" y="214">GLM-Hourness ▾</text>
+  <rect x="790" y="196" width="96" height="26" rx="6" fill="#26262b" stroke="#3a3a40"/>
+  <circle cx="805" cy="209" r="5" fill="none" stroke="#ececf1" stroke-width="1.3"/>
+  <text class="t" x="815" y="214">GLM · 上手</text>
+
+  <!-- hourness card in conversation.input.dock -->
+  <rect x="345" y="234" width="560" height="214" rx="12" fill="#1f1f23" stroke="#3a3a40"/>
+  <text class="h1" x="369" y="264">把这个工作区交给主 Agent</text>
+  <text class="s" x="369" y="290">说一句你想做的。主 Agent 先问清楚、出方案给你批，再分给子 agent 去做；</text>
+  <text class="s" x="369" y="310">它自己不写代码。</text>
+  <rect x="369" y="324" width="136" height="32" rx="8" fill="#ececf1"/>
+  <text class="btn" x="437" y="345" text-anchor="middle">写一句你想做的</text>
+  <rect x="517" y="324" width="150" height="32" rx="8" fill="none" stroke="#3a3a40"/>
+  <text class="t" x="592" y="345" text-anchor="middle">接着推进现有项目</text>
+  <rect x="369" y="366" width="512" height="28" rx="7" fill="#2a2416" stroke="#5c4a1f"/>
+  <path d="M381 386 L388 373 L395 386 Z" fill="none" stroke="#e3b341" stroke-width="1.4"/>
+  <text class="w" x="403" y="385">主 Agent 用强一点的模型（如 GLM-5.3），子 agent 用便宜的就行。</text>
+  <text class="m" x="369" y="414">命令是 /wish，随时 /wish off 退出。</text>
+  <text class="m" x="369" y="436">第一次用？</text>
+  <text class="a" x="431" y="436">看看项目图怎么用</text>
+
+  <!-- composer (hero) -->
+  <rect x="345" y="460" width="560" height="120" rx="18" fill="#1f1f23" stroke="#3a3a40"/>
+  <text class="dim" x="369" y="494">描述你想要构建的内容, / 调用指令, @ 文件或对话</text>
+  <circle cx="379" cy="552" r="13" fill="#2a2a2f"/>
+  <text class="t" x="379" y="557" text-anchor="middle">+</text>
+  <text class="s" x="760" y="557" text-anchor="end">GLM-5.3-Flash High ▾</text>
+  <circle cx="873" cy="552" r="16" fill="#3b5fa8"/>
+  <text class="t" x="873" y="557" text-anchor="middle">↑</text>
+
+  <!-- GLM dialog inset -->
+  <path d="M838 224 C 940 240, 940 600, 860 626" fill="none" stroke="#6aa1ff" stroke-dasharray="3 3"/>
+  <rect x="425" y="626" width="460" height="262" rx="12" fill="#232327" stroke="#3a3a40"/>
+  <circle cx="449" cy="651" r="6" fill="none" stroke="#ececf1" stroke-width="1.3"/>
+  <text class="tb" x="462" y="656">GLM 通道</text>
+  <text class="s" x="865" y="656" text-anchor="end">第一次用</text>
+  <line x1="441" y1="670" x2="869" y2="670" stroke="#3a3a40"/>
+  <text class="tb" x="441" y="694">第一次用 GLM 通道</text>
+  <circle cx="451" cy="718" r="8" fill="none" stroke="#8a8a92"/>
+  <text class="m" x="451" y="722" text-anchor="middle">1</text>
+  <text class="t" x="467" y="722">登录 ZCode 账号：在浏览器里授权，链接 5 分钟内有效</text>
+  <rect x="805" y="706" width="60" height="26" rx="6" fill="#ececf1"/>
+  <text class="btn" x="835" y="724" text-anchor="middle">登录</text>
+  <circle cx="451" cy="756" r="8" fill="none" stroke="#8a8a92"/>
+  <text class="m" x="451" y="760" text-anchor="middle">2</text>
+  <text class="t" x="467" y="760">在输入框右下角的模型选择器里，选「GLM（ZCode 原生通道）」</text>
+  <text class="t" x="467" y="780">下的 GLM-5.3 或 GLM-5.3-Flash</text>
+  <circle cx="451" cy="806" r="8" fill="none" stroke="#8a8a92"/>
+  <text class="m" x="451" y="810" text-anchor="middle">3</text>
+  <text class="t" x="467" y="810">发一句话试试</text>
+  <text class="m" x="441" y="842">登录好以后这一块自己收起；设置 → GLM-Hourness 里能再打开。</text>
+  <text class="a" x="441" y="870">跳过</text>
+  <text class="cap" x="425" y="910">（实际从「GLM · 上手」下方弹出，画在这里是为了不挡住卡片。开场画面里不自动读登录状态，</text>
+  <text class="cap" x="425" y="928">点「登录」才执行 /glm-login；会话开始后，输入框下方的 GLM 按钮同样写「GLM · 上手」。</text>
+  <text class="cap" x="425" y="946">任何一次读到已登录就算上手完成；一直不点的话，小按钮出现过 3 个会话后自己收起。）</text>
+
+  <!-- right sidebar: project panel first open -->
+  <rect x="958" y="60" width="462" height="900" fill="#161618"/>
+  <line x1="958" y1="60" x2="958" y2="960" stroke="#2c2c31"/>
+  <rect x="974" y="74" width="110" height="30" rx="8" fill="#26262b"/>
+  <text class="t" x="990" y="94">项目图</text>
+  <text class="m" x="1068" y="94">×</text>
+
+  <text class="h1" x="982" y="142">项目图：给你看项目，细节不用你管</text>
+  <text class="m" x="982" y="164">第一次打开时看一眼；以后在首页页脚「上手说明」里还能再看。</text>
+
+  <circle cx="992" cy="200" r="10" fill="none" stroke="#3a3a40"/>
+  <text class="m" x="992" y="204" text-anchor="middle">1</text>
+  <text class="tb" x="1012" y="205">一眼看懂</text>
+  <text class="s" x="1012" y="227">首页告诉你离目标还差多少、接下来做什么、</text>
+  <text class="s" x="1012" y="247">上次看之后变了什么。想知道为什么点「讲细点」，</text>
+  <text class="s" x="1012" y="267">看够了点「说重点」。</text>
+
+  <circle cx="992" cy="302" r="10" fill="none" stroke="#3a3a40"/>
+  <text class="m" x="992" y="306" text-anchor="middle">2</text>
+  <text class="tb" x="1012" y="307">你要动手的只有四种时候</text>
+  <text class="s" x="1012" y="329">回答卡片、确认需求、放行方案、定规则。</text>
+  <text class="s" x="1012" y="349">其余是 agent 的事；它自己定的，你随时能推翻。</text>
+  <text class="s" x="1012" y="369">卡片上每个选项前面有字母，跟 agent 说「选 B」也行。</text>
+  <text class="s" x="1012" y="388">每张卡先说前因后果；「取决于」是只有你能回答的那个问题。</text>
+
+  <circle cx="992" cy="404" r="10" fill="none" stroke="#3a3a40"/>
+  <text class="m" x="992" y="408" text-anchor="middle">3</text>
+  <text class="tb" x="1012" y="409">让主 Agent 接手</text>
+  <text class="s" x="1012" y="431">在输入框打 /wish，后面跟一句你想做的。</text>
+  <text class="w" x="1012" y="451">主 Agent 用强一点的模型，子 agent 用便宜的就行。</text>
+  <rect x="1012" y="462" width="136" height="30" rx="8" fill="none" stroke="#3a3a40"/>
+  <text class="t" x="1080" y="482" text-anchor="middle">写一句你想做的</text>
+
+  <circle cx="992" cy="516" r="10" fill="none" stroke="#3a3a40"/>
+  <text class="m" x="992" y="520" text-anchor="middle">4</text>
+  <text class="tb" x="1012" y="521">规则</text>
+  <text class="s" x="1012" y="543">你定下的规矩；出厂只带一条：GLM 高峰时段按全价计积分。</text>
+  <text class="s" x="1012" y="563">只有你能加、改、撤；agent 觉得该有，只能提给你。</text>
+  <text class="a" x="1012" y="587">去看规则</text>
+
+  <circle cx="992" cy="622" r="10" fill="none" stroke="#3a3a40"/>
+  <text class="m" x="992" y="626" text-anchor="middle">5</text>
+  <text class="tb" x="1012" y="627">去哪看进度</text>
+  <text class="s" x="1012" y="649">就在这块面板。主 Agent 的会话里，输入框上方还有</text>
+  <text class="s" x="1012" y="669">一条进度条；每天的晨报用 /hourness。</text>
+
+  <rect x="982" y="702" width="96" height="32" rx="8" fill="#ececf1"/>
+  <text class="btn" x="1030" y="723" text-anchor="middle">去首页</text>
+  <text class="m" x="1092" y="723">跳过也是点它</text>
+
+  <text class="cap" x="982" y="786">点卡片上的「看看项目图怎么用」打开的就是这一页。</text>
+  <text class="cap" x="982" y="804">「写一句你想做的」只在 /wish 已注册、有项目图时出现；</text>
+  <text class="cap" x="982" y="822">「去看规则」只在规则板装上时出现（规则板的内容</text>
+  <text class="cap" x="982" y="840">由 .agents/tasks/rules/design.md 定）。没有项目图时，</text>
+  <text class="cap" x="982" y="858">第一次打开显示「这个工作区还没有项目图」，不显示这一页。</text>
+</svg>

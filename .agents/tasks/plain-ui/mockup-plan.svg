@@ -1,0 +1,157 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="560" height="1720" viewBox="0 0 560 1720">
+  <style>
+    text{font-family:'Microsoft YaHei','PingFang SC','Noto Sans CJK SC',sans-serif;fill:#ececf1}
+    .cap{font-size:12px;fill:#8a8a92}
+    .capb{font-size:13px;font-weight:700;fill:#b5b5bb}
+    .lab{font-size:11px;font-weight:700;fill:#8a8a92;letter-spacing:.5px}
+    .h1{font-size:15px;font-weight:700}
+    .t{font-size:13.5px}
+    .s{font-size:12.5px;fill:#b5b5bb}
+    .m{font-size:12px;fill:#8a8a92}
+    .a{font-size:12.5px;fill:#6aa1ff}
+    .n{font-size:12px;fill:#8a8a92;font-variant-numeric:tabular-nums}
+    .rule{stroke:#26262b}
+  </style>
+  <rect width="560" height="1720" fill="#111113"/>
+  <text class="capb" x="20" y="24">计划：在首页「怎么做」上点「讲细点」</text>
+  <text class="cap" x="20" y="44">按 2026-10-29T13:04Z 的真实图与 §4.4 的规则算出；第 1 件展开了。假设这是主 Agent 会话、焦点在拆包上。</text>
+
+  <rect x="20" y="60" width="520" height="1644" rx="12" fill="#161618" stroke="#2c2c31"/>
+
+  <rect x="36" y="74" width="84" height="28" rx="7" fill="none" stroke="#3a3a40"/>
+  <text class="t" x="78" y="93" text-anchor="middle">‹ 说重点</text>
+  <text class="h1" x="40" y="132">怎么做：还剩 21 件</text>
+  <text class="m" x="40" y="154">有依赖的按依赖排，其余按加进来的先后；agent 改了依赖，这里跟着变。</text>
+  <line x1="36" y1="170" x2="524" y2="170" stroke="#2c2c31"/>
+
+  <!-- 在做 -->
+  <text class="lab" x="40" y="194">在做 · 7</text>
+  <text class="n" x="44" y="220">1</text>
+  <text class="t" x="64" y="220">拆成两个插件：GLM 通道和项目编排各装各的</text>
+  <text class="a" x="520" y="220" text-anchor="end">说重点</text>
+  <circle cx="68" cy="238" r="3" fill="#d29922"/>
+  <text class="s" x="76" y="242">在做 · 主 Agent 在这里</text>
+  <rect x="64" y="252" width="456" height="152" rx="8" fill="#1f1f23" stroke="#2c2c31"/>
+  <text class="lab" x="78" y="274">为什么</text>
+  <text class="s" x="78" y="294" style="fill:#ececf1">不用 GLM 的人也能单独装项目编排，两边出问题互不连累。</text>
+  <text class="lab" x="78" y="320">在等它的 · 9 件</text>
+  <text class="s" x="78" y="340" style="fill:#ececf1">第 3、5、6、7、14、15、16、17、18 件</text>
+  <text class="lab" x="78" y="366">它在等的</text>
+  <text class="s" x="146" y="366">没有：它依赖的那件已经做完</text>
+  <text class="a" x="78" y="392">讲细点 · 打开这一件</text>
+  <line x1="64" y1="418" x2="520" y2="418" class="rule"/>
+
+  <text class="n" x="44" y="440">2</text>
+  <text class="t" x="64" y="440">派活给子 agent、合并结果，出错能接着跑</text>
+  <text class="a" x="520" y="440" text-anchor="end">讲细点</text>
+  <circle cx="68" cy="458" r="3" fill="#d29922"/>
+  <text class="s" x="76" y="462">在做 · 26 分钟前有进展</text>
+  <line x1="64" y1="474" x2="520" y2="474" class="rule"/>
+
+  <text class="n" x="44" y="496">3</text>
+  <text class="t" x="64" y="496">规则：你定下的规矩，agent 每一步都照做</text>
+  <text class="a" x="520" y="496" text-anchor="end">讲细点</text>
+  <circle cx="68" cy="514" r="3" fill="#d29922"/>
+  <text class="s" x="76" y="518">在做 · 还要等第 1 件做完</text>
+  <line x1="64" y1="530" x2="520" y2="530" class="rule"/>
+
+  <text class="n" x="44" y="552">4</text>
+  <text class="t" x="64" y="552">看得见花了多少额度，高峰时段省着用</text>
+  <text class="a" x="520" y="552" text-anchor="end">讲细点</text>
+  <circle cx="68" cy="570" r="3" fill="#d29922"/>
+  <text class="s" x="76" y="574">在做 · 31 分钟前有进展</text>
+  <line x1="64" y1="586" x2="520" y2="586" class="rule"/>
+
+  <text class="n" x="44" y="608">5</text>
+  <text class="t" x="64" y="608">经验：踩过的坑和解法，子 agent 不用再摸一遍</text>
+  <text class="a" x="520" y="608" text-anchor="end">讲细点</text>
+  <circle cx="68" cy="626" r="3" fill="#d29922"/>
+  <text class="s" x="76" y="630">在做 · 还要等第 1 件做完</text>
+  <line x1="64" y1="642" x2="520" y2="642" class="rule"/>
+
+  <text class="n" x="44" y="664">6</text>
+  <text class="t" x="64" y="664">面板说人话：一眼看懂在做什么、接下来做什么、要我做什么</text>
+  <text class="a" x="520" y="682" text-anchor="end">讲细点</text>
+  <circle cx="68" cy="682" r="3" fill="#d29922"/>
+  <text class="s" x="76" y="686">在做 · 还要等第 1 件做完</text>
+  <line x1="64" y1="698" x2="520" y2="698" class="rule"/>
+
+  <text class="n" x="44" y="720">7</text>
+  <text class="t" x="64" y="720">装好插件后，第一次怎么上手</text>
+  <text class="a" x="520" y="720" text-anchor="end">讲细点</text>
+  <circle cx="68" cy="738" r="3" fill="#d29922"/>
+  <text class="s" x="76" y="742">在做 · 还要等第 1 件做完</text>
+
+  <!-- 可以开工 -->
+  <text class="lab" x="40" y="780">可以开工 · 6</text>
+  <text class="n" x="44" y="806">8</text>
+  <text class="t" x="64" y="806">主 Agent 当项目经理：只排活，不亲手写代码</text>
+  <circle cx="68" cy="824" r="3" fill="#8a8a92"/>
+  <text class="s" x="76" y="828">可以开工</text>
+  <line x1="64" y1="840" x2="520" y2="840" class="rule"/>
+  <text class="n" x="44" y="858">9</text>
+  <text class="t" x="64" y="858">用八个问题把一句话需求问清楚</text>
+  <circle cx="68" cy="876" r="3" fill="#8a8a92"/>
+  <text class="s" x="76" y="880">可以开工</text>
+  <line x1="64" y1="892" x2="520" y2="892" class="rule"/>
+  <text class="n" x="40" y="910">10</text>
+  <text class="t" x="64" y="910">方案写全五栏，才交给你批</text>
+  <circle cx="68" cy="928" r="3" fill="#8a8a92"/>
+  <text class="s" x="76" y="932">可以开工</text>
+  <line x1="64" y1="944" x2="520" y2="944" class="rule"/>
+  <text class="n" x="40" y="962">11</text>
+  <text class="t" x="64" y="962">方案下面的五个按钮：批准、拒绝、补充、讲细点、说重点</text>
+  <circle cx="68" cy="980" r="3" fill="#8a8a92"/>
+  <text class="s" x="76" y="984">可以开工</text>
+  <line x1="64" y1="996" x2="520" y2="996" class="rule"/>
+  <text class="n" x="40" y="1014">12</text>
+  <text class="t" x="64" y="1014">要你拍板的事做成卡片，不耽误 agent 干别的</text>
+  <circle cx="68" cy="1032" r="3" fill="#8a8a92"/>
+  <text class="s" x="76" y="1036">可以开工</text>
+  <line x1="64" y1="1048" x2="520" y2="1048" class="rule"/>
+  <text class="n" x="40" y="1066">13</text>
+  <text class="t" x="64" y="1066">看得见现在走到哪一步：许愿、访谈、设计、放行</text>
+  <circle cx="68" cy="1084" r="3" fill="#8a8a92"/>
+  <text class="s" x="76" y="1088">可以开工</text>
+
+  <!-- 要等 -->
+  <text class="lab" x="40" y="1126">要等别的先做完 · 8</text>
+  <text class="n" x="40" y="1152">14</text>
+  <text class="t" x="64" y="1152">一键把新项目或老项目交给主 Agent</text>
+  <text class="s" x="64" y="1172">等第 1 件</text>
+  <line x1="64" y1="1184" x2="520" y2="1184" class="rule"/>
+  <text class="n" x="40" y="1204">15</text>
+  <text class="t" x="64" y="1204">设置页的插件清单不再显示文件路径</text>
+  <text class="s" x="64" y="1224">等第 1 件</text>
+  <line x1="64" y1="1236" x2="520" y2="1236" class="rule"/>
+  <text class="n" x="40" y="1256">16</text>
+  <text class="t" x="64" y="1256">agent 想动工作区外的东西时，先发卡片问你</text>
+  <text class="s" x="64" y="1276">等第 1、12 件</text>
+  <line x1="64" y1="1288" x2="520" y2="1288" class="rule"/>
+  <text class="n" x="40" y="1308">17</text>
+  <text class="t" x="64" y="1308">改掉提示词里说错的事实</text>
+  <text class="s" x="64" y="1328">等第 1 件</text>
+  <line x1="64" y1="1340" x2="520" y2="1340" class="rule"/>
+  <text class="n" x="40" y="1360">18</text>
+  <text class="t" x="64" y="1360">逐段去掉提示词里的话，看 GLM 的表现变不变</text>
+  <text class="s" x="64" y="1380">等第 1 件</text>
+  <line x1="64" y1="1392" x2="520" y2="1392" class="rule"/>
+  <text class="n" x="40" y="1412">19</text>
+  <text class="t" x="64" y="1412">用这套编排开发它自己</text>
+  <text class="s" x="64" y="1432">等「一句话需求到方案放行：主 Agent 先问清楚再动手」等 2 件</text>
+  <line x1="64" y1="1444" x2="520" y2="1444" class="rule"/>
+  <text class="n" x="40" y="1464">20</text>
+  <text class="t" x="64" y="1464">说话的语气只给主 Agent，派出去干活的不带</text>
+  <text class="s" x="64" y="1484">等第 8 件</text>
+  <line x1="64" y1="1496" x2="520" y2="1496" class="rule"/>
+  <text class="n" x="40" y="1516">21</text>
+  <text class="t" x="64" y="1516">拿真实项目试用，听别人的反馈</text>
+  <text class="s" x="64" y="1536">等第 19 件</text>
+
+  <!-- 例行的活 -->
+  <text class="a" x="40" y="1574">到点或碰到某件事就做的例行活在循环板上 ›</text>
+  <line x1="36" y1="1600" x2="524" y2="1600" stroke="#2c2c31"/>
+  <text class="m" x="40" y="1622">注：画的是 2026-10-29T13:04Z 的图。那时 8–13 没有等拆包的依赖连线，</text>
+  <text class="m" x="40" y="1640">所以在「可以开工」；拆包 13:51Z 完成之后这条依赖不再需要。</text>
+  <text class="m" x="40" y="1658">每周读文章那件由循环板接手（0.5 去掉了「定期」一组与 repeat），不在计划里。</text>
+</svg>

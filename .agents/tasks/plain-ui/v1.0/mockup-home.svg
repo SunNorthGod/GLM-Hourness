@@ -1,0 +1,109 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="560" height="1430" viewBox="0 0 560 1430">
+  <style>
+    text{font-family:'Microsoft YaHei','PingFang SC','Noto Sans CJK SC',sans-serif;fill:#ececf1}
+    .cap{font-size:12px;fill:#8a8a92}
+    .capb{font-size:13px;font-weight:700;fill:#b5b5bb}
+    .lab{font-size:11px;font-weight:700;fill:#8a8a92;letter-spacing:.5px}
+    .h1{font-size:15px;font-weight:700}
+    .t{font-size:13.5px}
+    .tb{font-size:13.5px;font-weight:700}
+    .s{font-size:12.5px;fill:#b5b5bb}
+    .sb{font-size:12.5px;fill:#ececf1;font-weight:700}
+    .m{font-size:12px;fill:#8a8a92}
+    .a{font-size:12.5px;fill:#6aa1ff}
+    .n{font-size:12px;fill:#8a8a92;font-variant-numeric:tabular-nums}
+    .rule{stroke:#26262b}
+  </style>
+  <rect width="560" height="1430" fill="#111113"/>
+  <text class="capb" x="20" y="24">首页（第 0 层）：打开项目图就是这一页，没有页签</text>
+  <text class="cap" x="20" y="44">示意：目标与计划的数按 2026-10-30 的图粗算；「需要你」两件是造的例子。面板上没有任何写入按钮。</text>
+
+  <rect x="20" y="60" width="520" height="1206" rx="12" fill="#161618" stroke="#2c2c31"/>
+  <text class="h1" x="40" y="94">项目图</text>
+  <circle cx="478" cy="89" r="4" fill="#3fb950"/>
+  <text class="m" x="488" y="94">实时</text>
+  <line x1="36" y1="108" x2="524" y2="108" stroke="#2c2c31"/>
+
+  <!-- 效果是 -->
+  <text class="lab" x="40" y="132">效果是</text>
+  <text class="a" x="470" y="132">讲细点</text>
+  <text class="t" x="40" y="156">GLM 在 DSH 里跟在 ZCode 里一样好用</text>
+  <rect x="40" y="166" width="400" height="6" rx="3" fill="#2c2c31"/>
+  <rect x="40" y="166" width="400" height="6" rx="3" fill="#3fb950"/>
+  <text class="n" x="452" y="173">21 / 21</text>
+  <text class="s" x="40" y="194">做完 21 件，没有剩下的；还开着的：「GLM 的通道与 ZCode 方言」</text>
+  <text class="t" x="40" y="224">AI 按规矩推进项目，你只管要什么和拍板</text>
+  <rect x="40" y="234" width="400" height="6" rx="3" fill="#2c2c31"/>
+  <rect x="40" y="234" width="204" height="6" rx="3" fill="#6aa1ff"/>
+  <text class="n" x="452" y="241">24 / 47</text>
+  <text class="s" x="40" y="262">做完 24 件，还剩 23 件；其中 2 块还没细分成小步</text>
+  <text class="s" x="40" y="284">6 个模块：<tspan class="sb">1 个等你放行</tspan> · 2 个在开发 · 2 个设计中 · 1 个做完了 <tspan class="a">›</tspan></text>
+  <g transform="translate(0,24)">
+  <line x1="36" y1="280" x2="524" y2="280" stroke="#2c2c31"/>
+
+  <!-- 需要你 -->
+  <text class="lab" x="40" y="304">需要你 · 2</text>
+  <rect x="36" y="316" width="488" height="216" rx="9" fill="#1b1b1e" stroke="#2c2c31"/>
+  <text class="tb" x="52" y="342">这两件事怎样算做完</text>
+  <text class="s" x="52" y="372">背景：面板和新手引导共 17 条「怎样算做完」，定下之后<tspan class="sb">再改要你出手</tspan></text>
+  <text class="s" x="52" y="402">推荐：<tspan class="sb">放进一页放行稿</tspan>，你放行时一起看；人话版另有一页</text>
+  <text class="s" x="52" y="432">疑问：人话版里<tspan class="sb">第 8 条</tspan>最长，我拿不准有没有说清</text>
+  <text class="s" x="52" y="462">不做：<tspan class="sb">照方案原样写入</tspan>：上次派活那块你选了自己看</text>
+  <line x1="52" y1="482" x2="508" y2="482" class="rule"/>
+  <text class="a" x="52" y="508">去主 Agent 的对话回话 ›</text>
+  <text class="m" x="440" y="508">2 小时前提的</text>
+
+  <rect x="36" y="544" width="488" height="128" rx="9" fill="#1b1b1e" stroke="#2c2c31"/>
+  <text class="m" x="52" y="566">主 Agent 在对话里等你放行「循环板：到点或碰到某件事就去做」</text>
+  <text class="tb" x="52" y="590">循环板这一块的设计</text>
+  <text class="s" x="52" y="616">背景：框架和模块清单你定过，这是 <tspan class="sb">6 块里的第 3 块</tspan></text>
+  <text class="a" x="460" y="616">讲细点</text>
+  <line x1="52" y1="632" x2="508" y2="632" class="rule"/>
+  <text class="a" x="52" y="656">去主 Agent 的对话回话 ›</text>
+  <text class="m" x="452" y="656">10 分钟前</text>
+  <line x1="36" y1="690" x2="524" y2="690" stroke="#2c2c31"/>
+
+  <!-- 现在 -->
+  <text class="lab" x="40" y="714">现在</text>
+  <text class="a" x="470" y="714">讲细点</text>
+  <text class="t" x="40" y="738">这个对话的 agent 在「派活给子 agent」上 · 在读文件</text>
+  <text class="s" x="40" y="760">另有 2 个子 agent 在跑 · <tspan class="a">主 Agent 在另一个对话里 ›</tspan></text>
+  <text class="s" x="40" y="782">GLM 高峰中，到 18:00 · 高峰模式：少做 <tspan class="a">›</tspan></text>
+<text class="s" x="40" y="804">推进停住：GLM 额度用完了 · 约 15:00 重置，之后自己接上 <tspan class="a">›</tspan></text>
+  <line x1="36" y1="822" x2="524" y2="822" stroke="#2c2c31"/>
+
+  <!-- 怎么做 -->
+  <text class="lab" x="40" y="846">怎么做 · 接下来</text>
+  <text class="n" x="44" y="872">1</text>
+  <text class="t" x="64" y="872">一句话需求到方案放行：主 Agent 先问清楚再动手</text>
+  <text class="s" x="64" y="892">在做 · 1 小时前有进展</text>
+  <text class="n" x="44" y="920">2</text>
+  <text class="t" x="64" y="920">派活给子 agent、合并结果，出错能接着跑</text>
+  <text class="s" x="64" y="940">在做 · 26 分钟前有进展</text>
+  <text class="n" x="44" y="968">3</text>
+  <text class="t" x="64" y="968">规则：你定下的规矩，agent 每一步都照做</text>
+  <text class="s" x="64" y="988">在做 · 还要等第 1 件做完</text>
+  <text class="a" x="40" y="1016">讲细点 · 全部 23 件</text>
+  <line x1="36" y1="1032" x2="524" y2="1032" stroke="#2c2c31"/>
+
+  <!-- 上次看之后 -->
+  <text class="lab" x="40" y="1056">上次看之后 · 2 小时前</text>
+  <text class="s" x="40" y="1080">你在对话里同意了「高峰时段要不要告诉模型」：继续提醒，加高峰模式</text>
+  <text class="s" x="40" y="1104">你在对话里补充了「读书会报名」的需求</text>
+  <text class="s" x="40" y="1128">「拆成两个插件：GLM 通道和项目编排各装各的」这一块做完了</text>
+  <text class="s" x="40" y="1152">开始做「看得见花了多少额度，高峰时段省着用」等 3 件</text>
+  <text class="s" x="40" y="1176">agent 自己定了「流程条放哪」：选了「排队条之后」· 要推翻跟主 Agent 说</text>
+  <text class="a" x="40" y="1204">讲细点 · 还有 6 处变化</text>
+  <line x1="36" y1="1218" x2="524" y2="1218" stroke="#2c2c31"/>
+  <text class="a" x="40" y="1234" font-size="12">规则板 ›　循环板 ›　经验 ›　整张图 ›　上手说明 ›</text>
+
+  <text class="m" x="20" y="1266">「需要你」第一件四行都显示，其余件先显示题目与背景，讲细点展开；每件只有一个链接，回话在主 Agent 的对话里。</text>
+  <text class="m" x="20" y="1284">第二件取自主 Agent 对话的现场投影：一个模块的设计交给你放行了，还没记下回话。</text>
+  <text class="m" x="20" y="1302">你说「讲细点」它还在；主 Agent 记下你的回话、或这个模块的阶段过了才消失。</text>
+  <text class="m" x="20" y="1320">这页开在普通对话里，所以写「这个对话的 agent」；主 Agent 的对话里写「主 Agent 在……」。</text>
+  <text class="m" x="20" y="1338">「现在」后两行各由一块板给：高峰一行是规则板的，只在 GLM 高峰时出现；「推进停住」一行是循环板的，额度用完时出现。页脚三块板在对应的行装上之前不显示。</text>
+  <text class="m" x="20" y="1356">「效果是」里模块那一行只在图上有方向清单时出现，点了打开「框架与模块」页。</text>
+  <text class="m" x="20" y="1374">1.0：「上次看之后」里一个模块或里程碑做完写成「这一块做完了」；整个目标做完写「做完了，整体审查的结论在它的节点页」。</text>
+  <text class="m" x="20" y="1392">这几行与主 Agent 在对话里的汇报同一件事；你不在时汇报攒着，回来时一起给你，面板这里一直看得到。</text>
+  </g>
+</svg>

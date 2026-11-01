@@ -1,0 +1,108 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="860" viewBox="0 0 1400 860" font-family="'Microsoft YaHei', 'PingFang SC', 'Segoe UI', sans-serif">
+  <title>接管已有项目：对话里你会看到的样子（草图）</title>
+  <rect x="0" y="0" width="1400" height="860" fill="#f5f6f8"/>
+  <text x="24" y="34" font-size="18" font-weight="bold" fill="#1f2328">接管已有项目：对话里你会看到的样子（草图）</text>
+  <text x="24" y="58" font-size="12" fill="#656d76">没有按钮，也没有选择题。每件事是一句是非问，推荐和理由写在句子里，有真代价才多一句。灰色小字是说明，不在界面上；名字和数字是举例。</text>
+
+  <!-- left column -->
+  <g transform="translate(24,80)">
+    <text x="0" y="14" font-size="12" font-weight="bold" fill="#424a53">一、发 /wish，十几秒后看到判断，再被问两件事</text>
+
+    <rect x="330" y="26" width="270" height="34" rx="10" fill="#ddf4ff" stroke="#54aeff"/>
+    <text x="344" y="48" font-size="13" fill="#1f2328">/wish 加一个按月导出</text>
+
+    <text x="0" y="82" font-size="11" fill="#8c959f">命令结果：系统直接给出，不经过模型</text>
+    <rect x="0" y="88" width="600" height="108" rx="8" fill="#f6f8fa" stroke="#d0d7de"/>
+    <g font-size="12.5" fill="#1f2328">
+      <text x="14" y="112">判为已有项目：412 个代码文件、1,204 个提交、用 uv 管理依赖。</text>
+      <text x="14" y="132">不对的话发 /hourness-init new。</text>
+      <text x="14" y="152">已在本机建了存放接管记录的目录，git 不会提交它。</text>
+      <text x="14" y="172">主 Agent 开始读这个项目，读完先问你两件事。</text>
+    </g>
+
+    <text x="0" y="218" font-size="11" fill="#8c959f">主 Agent 读完后的消息</text>
+    <rect x="0" y="224" width="600" height="190" rx="8" fill="#ffffff" stroke="#d0d7de"/>
+    <g font-size="13" fill="#1f2328">
+      <text x="14" y="248">读完了，先问两件事。</text>
+      <text x="14" y="278">① 端到端测试跑一遍约 20 分钟，要独占整台机器。</text>
+      <text x="14" y="298">我建议攒到一批再跑，不放进每次合入前的检查，</text>
+      <text x="14" y="318">可以吗？代价是每次合入前少了这一道检查。</text>
+      <text x="14" y="348">② vendor/ 目录像是别人的代码。我建议记成「不许碰」，</text>
+      <text x="14" y="368">并另提一条规则，直接拦住改它的调用，可以吗？</text>
+      <text x="14" y="388">代价是以后升级 vendor/ 要先解除这条规则。</text>
+    </g>
+
+    <rect x="330" y="430" width="270" height="34" rx="10" fill="#ddf4ff" stroke="#54aeff"/>
+    <text x="344" y="452" font-size="13" fill="#1f2328">可以。docs/legal/ 也别动</text>
+
+    <text x="0" y="490" font-size="11" fill="#8c959f">你随口补充时，主 Agent 先复述一遍，你说「对」它才记</text>
+    <rect x="0" y="496" width="600" height="62" rx="8" fill="#ffffff" stroke="#d0d7de"/>
+    <g font-size="12.5" fill="#1f2328">
+      <text x="14" y="520">那我记成：① 端到端测试攒到一批再跑；</text>
+      <text x="14" y="542">② vendor/ 和 docs/legal/ 不许碰，另提一条规则拦住。对吗？</text>
+    </g>
+
+    <rect x="540" y="574" width="60" height="34" rx="10" fill="#ddf4ff" stroke="#54aeff"/>
+    <text x="561" y="596" font-size="13" fill="#1f2328">对</text>
+  </g>
+
+  <!-- right column -->
+  <g transform="translate(664,80)">
+    <text x="0" y="14" font-size="12" font-weight="bold" fill="#424a53">二、再给两件：规则和清单，你回一句</text>
+
+    <rect x="0" y="26" width="712" height="388" rx="8" fill="#ffffff" stroke="#d0d7de"/>
+    <g font-size="13" fill="#1f2328">
+      <text x="14" y="52">读完了。拦住那两处的规则和整份接管清单，各一件：</text>
+      <text x="14" y="84">① 现在就让「不许改 vendor/ 和 docs/legal/」这条规则生效，可以吗？</text>
+      <text x="14" y="104">我建议生效，因为只写进规范的话，换个会话就没人拦着。</text>
+      <text x="14" y="136">② 照这份清单接管「气象站数据工具」，可以吗？读出 2 个目标、14 件活，</text>
+      <text x="14" y="156">其中 9 件已做完、带提交号。我建议同意后把这 9 件标成完成，其余等你说再动。</text>
+      <text x="14" y="176">代价是 uv run pytest 在副本里没跑通，合入前才知道结果。</text>
+    </g>
+    <text x="14" y="208" font-size="12" fill="#424a53">同意之后会跑的命令（原文，在项目目录里，每次照这样跑）：</text>
+    <g font-size="12" fill="#424a53">
+      <text x="14" y="232">合入前</text>
+      <text x="14" y="252">合入前</text>
+      <text x="14" y="272">改完文件就跑</text>
+      <text x="130" y="232">试跑约 8 秒；超时 30 分（默认）</text>
+      <text x="130" y="252">没预计，超时 30 分（默认）</text>
+      <text x="130" y="272">约 8 秒，超时 24 秒</text>
+    </g>
+    <g font-size="12" fill="#424a53" font-family="Consolas, 'Courier New', monospace">
+      <text x="350" y="232">uv run ruff check --output-format concise {files}</text>
+      <text x="350" y="252">uv run pytest</text>
+      <text x="350" y="272">uv run ruff check --output-format concise {files}</text>
+    </g>
+    <g font-size="12" fill="#424a53">
+      <text x="14" y="302">注意：合入前的检查每次合入都在你电脑上真实环境里跑；没过时主干不前进；</text>
+      <text x="14" y="320">每条合入前的检查最多跑 30 分钟（默认），超时算没过；</text>
+      <text x="14" y="338">改完文件就跑的检查在改了文件的那个 agent 的下一步之前跑；</text>
+      <text x="14" y="356">改完文件就跑的检查每项最多跑 60 秒，超时算没跑完；</text>
+      <text x="14" y="374">这些检查调用的程序和配置文件不在这次同意里；</text>
+      <text x="14" y="392">旧告警不挡合入，只挡新出的；有 1 条在副本里没跑通，第一次真跑才知道</text>
+    </g>
+
+    <g font-size="11" fill="#8c959f">
+      <text x="0" y="436">命令前的预计用时和超时是这一版新加的。改完文件就跑的检查：预计是副本里量到的用时，</text>
+      <text x="0" y="452">超时是它的 3 倍（5 到 60 秒）。合入前的检查还没有收预计的写法，超时先用默认值。</text>
+      <text x="0" y="468">你同意的就是上面这段原文；主 Agent 没把它放进回复，就不能记你的同意。</text>
+    </g>
+    <rect x="632" y="480" width="80" height="34" rx="10" fill="#ddf4ff" stroke="#54aeff"/>
+    <text x="651" y="502" font-size="13" fill="#1f2328">都可以</text>
+
+    <rect x="0" y="534" width="712" height="84" rx="8" fill="#ffffff" stroke="#d0d7de"/>
+    <g font-size="12.5" fill="#1f2328">
+      <text x="14" y="558">接管好了：批准 31 个节点，9 件做完的已关掉；规则「不许改 vendor/ 和 docs/legal/」</text>
+      <text x="14" y="578">已生效；项目图已提交进 git（a1b2c3d）。接下来按你的愿望「加一个按月导出」</text>
+      <text x="14" y="598">问你几句。</text>
+    </g>
+  </g>
+
+  <!-- notes -->
+  <g transform="translate(24,744)" font-size="12" fill="#656d76">
+    <text x="0" y="0" font-weight="bold" fill="#424a53">说明</text>
+    <text x="0" y="20">· 你回的是一句话，不是点按钮：同意、否掉、补充、「讲细点」「说重点」都直接说；一条消息至多三件。</text>
+    <text x="0" y="40">· 新项目没有右边的清单：两件事在聊需求时问，规则在放行之前问；「环境与检查」是模块清单里的一个模块，放行它之前你再看一页稿。</text>
+    <text x="0" y="60">· Windows 上跑不出结论的命令写成「没跑通」，不说成坏了；清单全文里引出命中的那一行。</text>
+  </g>
+</svg>

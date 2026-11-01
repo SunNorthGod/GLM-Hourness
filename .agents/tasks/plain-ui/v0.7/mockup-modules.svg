@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="560" height="1040" viewBox="0 0 560 1040">
+  <style>
+    text{font-family:'Microsoft YaHei','PingFang SC','Noto Sans CJK SC',sans-serif;fill:#ececf1}
+    .cap{font-size:12px;fill:#8a8a92}
+    .capb{font-size:13px;font-weight:700;fill:#b5b5bb}
+    .lab{font-size:11px;font-weight:700;fill:#8a8a92;letter-spacing:.5px}
+    .h1{font-size:15px;font-weight:700}
+    .h2{font-size:13.5px;font-weight:700}
+    .t{font-size:13.5px}
+    .s{font-size:12.5px;fill:#b5b5bb}
+    .sb{font-size:12.5px;fill:#ececf1;font-weight:700}
+    .m{font-size:12px;fill:#8a8a92}
+    .a{font-size:12.5px;fill:#6aa1ff}
+    .n{font-size:12px;fill:#8a8a92;font-variant-numeric:tabular-nums}
+    .st{font-size:12px;fill:#ececf1;font-weight:700}
+    .rule{stroke:#26262b}
+  </style>
+  <rect width="560" height="1040" fill="#111113"/>
+  <text class="capb" x="20" y="24">「框架与模块」页（第 2 层，0.7）：从首页「效果是」的模块一行进入</text>
+  <text class="cap" x="20" y="44">示意：目标、模块与方向都是造的例子。页上没有任何写入按钮；放行、退回、改清单都在主 Agent 的对话里。</text>
+
+  <rect x="20" y="60" width="520" height="880" rx="12" fill="#161618" stroke="#2c2c31"/>
+  <rect x="36" y="74" width="84" height="26" rx="7" fill="none" stroke="#3a3a40"/>
+  <text class="t" x="78" y="92" text-anchor="middle">‹ 说重点</text>
+  <text class="h1" x="40" y="128">框架与模块</text>
+  <text class="m" x="40" y="148">先定框架、模块与方向，再一块一块地设计、放行、开发</text>
+  <line x1="36" y1="162" x2="524" y2="162" stroke="#2c2c31"/>
+
+  <text class="h2" x="40" y="188">AI 按规矩推进项目，你只管要什么和拍板</text>
+
+  <!-- 框架 -->
+  <text class="lab" x="40" y="216">框架</text>
+  <text class="t" x="40" y="240">规则、循环、派活各管一块，面板只给你看</text>
+  <text class="s" x="40" y="260">为什么：几块能分开装、分开改，一块出错不拖垮别的</text>
+  <text class="s" x="40" y="280">定了 · 10 月 30 日你放行的</text>
+  <text class="a" x="430" y="280">讲细点 · 打开</text>
+  <line x1="40" y1="296" x2="520" y2="296" class="rule"/>
+
+  <!-- 模块 -->
+  <text class="lab" x="40" y="320">模块 · 6</text>
+
+  <text class="n" x="44" y="346">1</text>
+  <text class="t" x="64" y="346">拆成两个插件：GLM 通道和项目编排各装各的</text>
+  <text class="st" x="64" y="366">做完了</text>
+  <text class="m" x="116" y="366">10 月 29 日做完</text>
+
+  <text class="n" x="44" y="398">2</text>
+  <text class="t" x="64" y="398">项目图说人话：面板只给你看</text>
+  <text class="st" x="64" y="418">在开发</text>
+  <text class="m" x="116" y="418">做完 3 件，还剩 5 件</text>
+
+  <text class="n" x="44" y="450">3</text>
+  <text class="t" x="64" y="450">循环板：到点或碰到某件事就去做</text>
+  <text class="st" x="64" y="470">等你放行</text>
+  <text class="a" x="128" y="470">去主 Agent 的对话回话 ›</text>
+
+  <text class="n" x="44" y="502">4</text>
+  <text class="t" x="64" y="502">规则板：你定下的规矩，agent 每一步都照做</text>
+  <text class="st" x="64" y="522">在开发</text>
+  <text class="m" x="116" y="522">做完 6 件，还剩 2 件</text>
+
+  <text class="n" x="44" y="554">5</text>
+  <text class="t" x="64" y="554">派活给子 agent、合并结果，出错能接着跑</text>
+  <text class="st" x="64" y="574">设计中</text>
+  <text class="m" x="116" y="574">主 Agent 在写这一块的设计</text>
+
+  <text class="n" x="44" y="606">6</text>
+  <text class="t" x="64" y="606">接手已有的项目</text>
+  <text class="st" x="64" y="626">设计中</text>
+  <text class="m" x="116" y="626">主 Agent 在写这一块的设计</text>
+  <text class="m" x="40" y="646">按定清单时的先后排，状态变了位置不动；点一行打开那一块</text>
+  <line x1="36" y1="668" x2="524" y2="668" stroke="#2c2c31"/>
+
+  <!-- 方向清单 -->
+  <text class="lab" x="40" y="692">方向清单 · 你定的</text>
+  <text class="m" x="40" y="712">你定过的方向。每个模块的设计都对照它，违背了要改设计</text>
+  <text class="n" x="44" y="738">1</text>
+  <text class="s" x="64" y="738">要你定的事在主 Agent 的对话里问，一次至多三件</text>
+  <text class="n" x="44" y="762">2</text>
+  <text class="s" x="64" y="762">面板只给你看，不给你操作</text>
+  <text class="n" x="44" y="786">3</text>
+  <text class="s" x="64" y="786">插件带来的规矩暂时只能看，高峰档位你能改</text>
+  <text class="n" x="44" y="810">4</text>
+  <text class="s" x="64" y="810">方案你放行以后，主 Agent 自己推进到做完</text>
+  <text class="n" x="44" y="834">5</text>
+  <text class="s" x="64" y="834">子 agent 用什么模型由主 Agent 选</text>
+  <text class="m" x="40" y="862">项目图上的「方向清单」· 你定的</text>
+  <text class="m" x="40" y="882">要改：跟主 Agent 说「方向清单加一条……」</text>
+
+  <text class="m" x="20" y="962">状态从图算：设计中、放行了、在开发、做完了看阶段与任务；</text>
+  <text class="m" x="20" y="980">等你放行看主 Agent 的对话里交给你、还没记下回话的那一次。</text>
+  <text class="m" x="20" y="998">框架在改时框架那一行写「在改」，首页模块一行前面多「框架在改 ·」。</text>
+  <text class="m" x="20" y="1016">图上没有方向清单时，这一页和首页那一行都不出现。</text>
+</svg>

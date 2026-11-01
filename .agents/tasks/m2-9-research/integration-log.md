@@ -1,0 +1,102 @@
+# m2-9 integration log
+
+## Step 1: rebase and gates
+
+- Rebased branch m2-9 (worktree `.worktrees/m2-9`) onto main `e3305a6` (docs(graph): m2-3 done; m1-cache-flash replay result; equal to origin/main after `git fetch origin`). Old base `2a45bd1`, old commit `5ce5a3d`.
+- Main had moved by three commits (`a7b7432`, `7f2b7b8`, `e3305a6`), touching only `docs/DEVELOPMENT.md` and `docs/graph/`. m2-9 touches neither, so the rebase applied without conflicts.
+- Rebased commit: `20cdf6f` feat(graph): run controls on task nodes, /graph-run start|stop|redo (m2-9). Content identical to `5ce5a3d`.
+- Checked after the rebase:
+  - `package.json` test script: `check-lint.mjs` then `check-secrets.mjs`, then all 37 specs including `tests/graph-run.spec.ts` (after `graph-row.spec.ts`), then `scripts/graph/smoke.ts`.
+  - Doc placement: main did not move the sections. `docs/ORCHESTRATION.md` §2.10 has the `/graph-run` rows and the 运行控制 block after 实时现场; `docs/DESIGN.md` §2.1 row table and §2.4a interface rows hold the m2-9 rows.
+- New commits: none. No code or doc fix was needed.
+- Gates, run in the worktree as `cmd /c "npm ... > log 2>&1"` (logs `step1-build.log`, `step1-preflight.log`, `step1-test.log` in this directory):
+  - `npm run build`: exit 0.
+  - `npm run preflight`: exit 0 (13 exports, 1 patch, ui bundle client half built).
+  - `npm test`: exit 0. check-verbatim OK against the installed ZCode bundle (397 verbatim, 0 known deviations). ESLint 303 suppressed, knip 22 in baseline, jscpd 3 clones / 26 duplicated lines: all equal to the 303/22/3 baselines. check-secrets: gitleaks 8.30.1, 94 commits on HEAD plus staged and unstaged changes, no leaks. 37 spec files all `# fail 0` (graph-run.spec.ts 7/7). graph:smoke ok.
+- Environment issues met on the way (not code problems):
+  - The worktree has no `reference/` (gitignored), so `tests/glm-startplan.spec.ts` case 2 failed with ENOENT on `reference/zcode-api/src/proxy/zcode_system.json`. Fixed locally by copying that one file from the main checkout's `reference/zcode-api` into `.worktrees/m2-9/reference/zcode-api/src/proxy/` (ignored by git, nothing staged). A directory junction was tried first and replaced with the file copy, so a recursive delete of the worktree cannot reach the main checkout's reference tree.
+  - One `npm test` run failed in check-verbatim (SECURITY_NOTICE_OFFICIAL and start-plan stable section 1, security-notice line unmatched against the bundle). Three immediate reruns of check-verbatim on the same tree passed, as did the next full `npm test`. The worktree has no `reference/ZCode`, so the installed bundle (`C:/Program Files/ZCode/resources/glm/zcode.cjs`, user-patched in the security notice) is the only reference; the one-off mismatch looks like that file being read in a different state. Not investigated further; the main checkout also has `reference/ZCode`, which satisfies the line regardless.
+- Not run in this step (shared resources held by integrate-m1-signing-2): `npm run probe`, `npm run calibrate`, any headless sandbox session. The L3 scenario `glm-graph-run` is still unrun.
+- Resulting m2-9 HEAD: `20cdf6f6c2c48241b5404461736487886ae3c1b3`.
+
+## Step 2: wait, second rebase and gates
+- Wait: polling started 2026-10-28T19:35:18+08:00 (file absent). `.agents/tasks/m1-signing/integration.md` was found at 2026-10-28T19:59:21+08:00 (about 24 minutes, 2-minute polls). No probe, calibrate or headless sandbox session was run while waiting; `.worktrees/m1-signing` and branch `m1-signing` were not touched.
+- m1-signing report read (no credential values in it or copied here): fast-forward merge of `b6367d3` fix(glm-llm): sign on the provider URL so the handshake reaches open.bigmodel.cn (m1-signing) and `6af6c51` fix(glm-llm): keep credentials and server text out of signing notices (review of 9050e32).
+- Main check: after `git fetch origin`, `main` = `origin/main` = `6af6c517559bc25286aadc7348361c8c7d19a720`; `git log main` shows `6af6c51`, `b6367d3` on top of `e3305a6`. The m1-signing fix is on main.
+- Rebase: `git -C .worktrees/m2-9 rebase main` onto `6af6c51`. No conflicts (m1-signing touches `src/glm-llm/` and docs sections that m2-9 does not). Rebased commit: `3d9a195` feat(graph): run controls on task nodes, /graph-run start|stop|redo (m2-9). The diff against main is the same 19 files as before (980 insertions, 128 deletions).
+- `package.json` test script after the rebase: the only change against main is `tests/graph-run.spec.ts` inserted after `tests/graph-row.spec.ts`; `check-secrets.mjs` runs right after `check-lint.mjs`; every main spec is kept.
+- New commits: none. No code or doc fix was needed.
+- Gates, run in the worktree as `cmd /c "npm ... > log 2>&1"` (logs `step2-build.log`, `step2-preflight.log`, `step2-test.log` in this directory):
+  - `npm run build`: exit 0.
+  - `npm run preflight`: exit 0 (13 exports, 1 patch, client half absent; ui bundle client half built).
+  - `npm test`: exit 0. check-verbatim OK against the bundle (397 verbatim, 0 known deviations; passed first time, no repeat of the step 1 flake). ESLint 303 suppressed, knip 22 in baseline, jscpd 3 clones / 26 duplicated lines: equal to the 303/22/3 baselines. check-secrets: gitleaks 8.30.1, 96 commits on HEAD plus staged and unstaged changes, no leaks. 37 spec files, 490 tests passed, 0 failed (graph-run.spec.ts 7/7). graph:smoke ok (revision 21119951a393).
+- `git status --short` in the worktree is empty after the gates.
+- Not run in this step: `npm run probe`, `npm run calibrate`, headless sandbox. The L3 scenario `glm-graph-run` is still unrun.
+- Resulting m2-9 HEAD: `3d9a195c98f3210d863c757087a3748034e65224`. Worktree `.worktrees/m2-9` left in place.
+
+## Step 3: L3 probe
+- Pre-build: `npm run build` exit 0 (`build-probe-pre.txt`). `npm run calibrate` not run. `.worktrees/m1-signing`, branch `m1-signing` and `docs/graph/` not touched.
+- Probe run 1 (`probe-1.txt`, run `.llm/probe-runs/2026-10-28T12-01-49-842Z`): exit 1, `probe: 89/94 passed`. All 89 pre-existing checks passed; the five new `glm-graph-run` checks failed:
+  - start mid-turn: command result `{"kind":"error","text":"probe: /graph-run is not registered"}`, no human comments.
+  - start notice opens turn 2: no notice (1 request, exit 0).
+  - live view on the node after graph_focus: null.
+  - stop cancels the turn: null (1 request).
+  - /glm-status graph-panel: `missing`.
+- Cause (environment, not m2-9 code): profile `glmsandbox` links `dsh-glm-hourness` and `dsh-glm-hourness-ui` to the main checkout (`~/.dsh/profiles/glmsandbox/package.json` `link:C:/Users/29596/Desktop/Project/GLM-Hourness`, `node_modules/dsh-glm-hourness` is a junction to the same path). A probe started in the worktree uses the worktree's scripts but boots main's `dist`; the main checkout (`main` @ `6af6c51`, clean) has no `graph-run` string in `dist/graph/*.js`. `run-probe.mjs` already documented the requirement ("the glmsandbox profile linked to this repository"). The desktop profile links the main checkout too, so rebuilding main's dist with m2-9 was not an option. Side observation: the m1-signing worktree probe (89/89, 11:47) also booted main's dist under the same layout.
+- Fix `a12d319` chore(probe): sandbox profile override for probes run from a git worktree. `scripts/sandbox.mjs` reads `DSH_SANDBOX_PROFILE` (default `glmsandbox`); header of `run-probe.mjs` and `DEVELOPMENT.md` §3 describe the temporary-profile procedure. No product code changed, no L2 test added (no product defect found).
+- Temporary profile `glmsandbox-m29`: config files copied from `glmsandbox`, `package.json` and both lock files re-pointed to the worktree, the two junctions pointing at `.worktrees/m2-9` and `.worktrees/m2-9/ui`. Existing profiles (`glmsandbox`, `desktop`, `headless`) unchanged. Deleted after the run (junctions removed with `rmdir` first; worktree intact; `glmsandbox` junction still targets the main checkout).
+- Probe run 2 (`probe-2.txt`, run `.llm/probe-runs/2026-10-28T12-10-44-466Z`, `DSH_SANDBOX_PROFILE=glmsandbox-m29`, same content as `a12d319`): exit 0, `probe: 94/94 passed`. The `glm-graph-run` checks:
+  - PASS start mid-turn: `已让主 Agent 从「探针任务」开始做（它正忙，这一轮做完就接着做）`; task-1 human comments `人在面板里点了「从这里开始做」`, `人在面板里点了「暂停」：停下了主 Agent`.
+  - PASS start notice: request 2 opens with a `glm-graph-run` user notice containing `graph_focus {"id":"task-1"}`; request 1 has none.
+  - PASS live view: `graphLive.focus` `task-1`, `turnSince` set, recent `graph_focus` ok.
+  - PASS stop: `已暂停「探针任务」：停下了主 Agent`, history entry present, 3 requests in the session (scripted Bash never ran; headless exit 1 from the cancelled turn).
+  - PASS /glm-status: graph-panel `生效 (命令 /graph-apply、/graph-run 已注册；现场投影 graphLive 已注册；能停子 agent)`, stderr without graph-panel.
+- Gates after the fix (`build-3.txt`, `preflight-3.txt`, `test-3.txt`): build 0, preflight 0, `npm test` 0; check-verbatim 397/0; ESLint 303, knip 22, jscpd 3 (26 lines), equal to baseline; gitleaks 8.30.1, 96 commits plus staged and unstaged changes, no leaks; 37 spec files, 490 tests, 0 failures; graph:smoke ok.
+- `git status --short` in the worktree empty after the commit.
+- Resulting m2-9 HEAD: `a12d31978454e00d49dd1fc93000f609c1fd21c2`.
+## Step 4: merge and push
+- Precheck: `git merge-base --is-ancestor main m2-9` exit 0; main was `6af6c517559bc25286aadc7348361c8c7d19a720` (unchanged since the rebase), main checkout clean.
+- `git merge --ff-only m2-9`: fast-forward `6af6c51..a12d319` (21 files, +987/-132).
+- Commits now on main from m2-9:
+  - `3d9a195` feat(graph): run controls on task nodes, /graph-run start|stop|redo (m2-9)
+  - `a12d319` chore(probe): sandbox profile override for probes run from a git worktree
+- `git push origin main` (GCM_INTERACTIVE=never, GIT_TERMINAL_PROMPT=0): exit 0, `6af6c51..a12d319  main -> main`. No force push.
+- After `git fetch origin`: origin/main = main = `a12d31978454e00d49dd1fc93000f609c1fd21c2`.
+- Worktree `.worktrees/m2-9` and branch `m2-9` left in place (both at `a12d319`).
+## Step 5: L4 desktop
+- Build: the desktop profile `desktop` links `dsh-glm-hourness` and `dsh-glm-hourness-ui` to the main checkout (junctions), so `npm run build` ran on main @ `a12d319` before the restart (`l4-build.txt`, exit 0). First desktop run with the merged m1-signing fix.
+- Test node: `m2-9-l4` "m2-9 L4 验证任务", task under `m2-9`, proposed with the graph CLI as `llm` (`l4-propose.json`, approved), then `status` to doing (`l4-doing.json`); `npm run -s graph:render` 0. Body: read-only, no file edits, no graph writes except graph_focus, graph_focus then Bash `Start-Sleep -Seconds 60`, one-sentence reply.
+- Restart: `l4/restart.ps1` (CloseMainWindow, 3 s, Stop-Process -Force, Start-Process with `--remote-debugging-port=9333` and stdout/stderr redirected to `m2-panel/dsh-out.txt`, `dsh-err.txt`, 18 s). The window came up hidden (`document.visibilityState` hidden, no `MainWindowHandle`; `Page.captureScreenshot` hung). Starting the exe a second time (single-instance handoff) shows the window; `l4/shot.ps1` does that before each screenshot when the page reports hidden. The window hides again after some CDP clicks; same workaround.
+- Session: new session, GLM-5.3-Flash (GLM (ZCode native)), `session-920b46b6-b7d5-461a-8058-31df26fe3fae`, first message read-only, reply `收到喵～…` (`l4/05-reply.png`). Event excerpts in `l4/events-all.txt` (read with `l4/events.mjs`, multi-frame zstd).
+- (a) 从这里开始做: PASS.
+  - Detail before: 「现在没有 agent 在这里干活」 + button 从这里开始做 (`l4/07-detail.png`).
+  - Chat: command row `graph-run · 已让主 Agent 从「m2-9 L4 验证任务」开始做` and card 「收到执行请求 20:26」 (`l4/08-start-clicked.png`, `l4/findtext-1.json`). Events: `command/run` `graph-run start m2-9-l4` (seq 24), notice spliced and `turn/start` turn 2 (seq 25-26), `command/done` success (seq 28), user message `[项目图] 人在面板上点了「从这里开始做」：任务 m2-9-l4…` (seq 30).
+  - GLM: `graph_focus {"id":"m2-9-l4"}` ok (seq 32-33), then `Bash Start-Sleep -Seconds 60` (seq 38, job registered seq 39) (`l4/09-running.png`).
+  - Live: `主 Agent glm-5.3-flash 55k tokens 在跑 Bash · 33 秒 在「m2-9 L4 验证任务」` (`l4/10-live.png`); graph badge 「主 Agent」 on node m2-9-l4 (`l4/13-graph.png`). Detail switched to 「在这里干活：主 Agent」 + button 暂停.
+  - Node history: `你 · 批注：人在面板里点了「从这里开始做」`.
+- (b) 暂停 during the sleep: PASS.
+  - Clicked 12:27:07.868Z. Events: `command/run` `graph-run stop m2-9-l4` (seq 40), stop notice spliced (seq 41), `command/done` `已暂停「m2-9 L4 验证任务」：停下了主 Agent` (seq 42), job settled, Bash result aborted, `turn/end` `{"kind":"aborted","reason":{"kind":"user"}}` (seq 46).
+  - Chat: 「已停止」 under the turn, tool row `Error: tool call aborted`, command row `graph-run · 已暂停「m2-9 L4 验证任务」：停下了主…` (`l4/11-paused.png`, `l4/16-stop-line.png`, trace `l4/14-trace.png` shows Bash ABORTED); `l4/chat-after-pause.json`.
+  - Live: `空闲，等你说话 在「m2-9 L4 验证任务」` (`l4/12-live-idle.png`); detail back to 「现在没有 agent 在这里干活」 + 从这里开始做.
+  - Node history: `你 · 批注：人在面板里点了「暂停」：停下了主 Agent`.
+  - The stop notice (`不要接着做这个节点，也不要重新派发它`) was read at the start of the next turn (seq 53); GLM replied the node stays paused and did not resume.
+- Acceptance edit for (c): typed `/graph-apply {"op":"edit",…}` into the composer with `Input.insertText`; the command picker was not selected, so it went to the model as plain text (driver error, not a product defect). GLM applied it with `graph_edit` carrying a `relay`: first call omitted `rev` (`invalid: rev is required`), the retry succeeded (rev `ecc7d89b561b`). The retry's relay was prefixed with GLM's own words (「人在面板上暂停了任务 m2-9-l4 上的工作，并给出 …」), so it was not verbatim. History: `你（经对话）· 编辑：L4：改验收条件，用来验证「改了验收条件后重做」`. Acceptance now has a second item 「暂停后点重做，主 Agent 能在本节点上重新开工」.
+- (c) 改了验收条件后重做: PASS.
+  - Detail before: 「现在没有 agent 在这里干活 验收条件在上次开始之后改过」 + buttons 从这里开始做, 改了验收条件后重做 (`l4/18-before-redo.png`).
+  - Clicked 12:43:43.370Z. Events: `command/run` `graph-run redo m2-9-l4` (seq 71), redo notice with before/after acceptance and `先调用 graph_focus {"id":"m2-9-l4"}` (seq 72), `turn/start` turn 4, `command/done` `已让主 Agent 按新的验收条件重做「m2-9 L4 验证任务」` (seq 75). The agent was idle, so there was no turn to cancel; the busy-redo path (cancel then followup) was not exercised on the desktop (covered by L2).
+  - GLM: `graph_focus` ok, `graph_show`, Bash `Start-Sleep -Seconds 60` completed exit 0, `graph_status` to done with evidence (test `Start-Sleep -Seconds 60` exit 0; check for the redo flow), one-sentence reply. Live during the run: `在想 · 第 1 步 · 16 秒 在「m2-9 L4 验证任务」`, detail showed 暂停 (`l4/19-redo.png`).
+  - Node history: `你 · 批注：人在面板里点了「改了验收条件后重做」`.
+  - GLM wrote `graph_status` although the node body said not to write the graph: the redo notice tells it 「标完成要带证据」 and it followed the notice. Expected product behaviour, but node-level read-only instructions do not override the run-control notice.
+- (d) child subagent: PASS.
+  - Asked the main agent (chat) to dispatch one subagent that graph_focuses m2-9-l4 and sleeps 120 s. GLM called `subagent` (label `L4 验证：焦点+睡眠120秒`, child `f46b8af7-54e8-40e4-ad94-a03e0ab46f18`, background), ended its turn. Live: child `glm-5.3-flash 39k tokens 在跑 Bash · 49 秒 在「m2-9 L4 验证任务」` (`l4/20-child-running.png`); detail showed 暂停 while the main agent was idle.
+  - Clicked 12:49:26.614Z. Events: `command/run` `graph-run stop m2-9-l4` (seq 119), notice to the main agent `[项目图] 人在面板上暂停了任务 m2-9-l4 … 停下了子 agent L4 验证：焦点+睡眠120秒。不要接着做这个节点，也不要重新派发它…` with `graphRun.stopped` `["f46b8af7-…"]` (seq 120), `command/done` `已暂停「m2-9 L4 验证任务」：停下了子 agent L4 验证：焦点+睡眠120秒` (seq 121), DSH settlement `Background subagent f46b8af7-… was stopped before it finished.` (seq 122), turn 6 reads both in the same step (seq 127-128).
+  - GLM (turn 6, no tool calls): 「收到，子 agent 已被主人的暂停停下（未跑完、无收尾消息），喵桃不重派、不接续，原地待命…」. No re-dispatch.
+  - Live: `✓ L4 验证：焦点+睡眠120秒 … 已停下 在「m2-9 L4 验证任务」` (`l4/live-after-child-pause.json`, `l4/21-child-paused.png`).
+  - Node history: `你 · 批注：人在面板里点了「暂停」：停下了子 agent L4 验证：焦点+睡眠120秒`.
+- Logs: `dsh-out.txt` 12 lines (update checks, inspector and web URLs, DeepSeek model listing), nothing from dsh-glm-hourness. `dsh-err.txt` 3 lines (DevTools listening, one Chromium `CompositorAnimationObserver` line, Chromium cache errors from the second-instance launches went to `l4/second-err.txt`). CDP logs over 10 min (`l4/cdp-logs-1.txt`, 221 lines): 218 `WebSocket connection to 'ws://127.0.0.1:9230/ingest' failed` (inspector plugin) and 3 `Failed to load resource: net::ERR_FAILED dsh-app://app/plugins/events`; no exception and no entry naming dsh-glm-hourness or glmg-.
+- /glm-status (picked from the command picker, `command/done` seq 133, rows via `l4/status-rows.mjs`): glm-llm 生效 (上游已应答, coding-plan); glm-login, glm-prompt, data, guard, memory, workflow, graph (82 个节点；焦点 m2-9-l4) 生效; glm-compact, hourness 已加载，本会话未触发; graph-panel 生效 (命令 /graph-apply、/graph-run 已注册；现场投影 graphLive 已注册；能停子 agent).
+- GLM channel: 13 assistant messages over 6 turns plus 2 title requests, all answered, no upstream error. `~/.dsh/glm-hourness/audit/usage.jsonl` for the session: `cacheReadTokens` 18048 on the second request of turn 2 and 18k-25k on every later main-session step (status bar 「缓存命中 66%」 after turn 2). Signing handshake outcome not observable: the row does not wire the adapter's `onEvent` sink, so fail-open signing/routing notices are not surfaced anywhere on the desktop; no captured traffic in this run. GLM fidelity: one `graph_edit` without `rev`, one relay not verbatim (see above).
+- Node close: `m2-9-l4` was already `done` (GLM's `graph_status` in the redo turn, rev `7c6f47efe682`); closed out with a CLI `comment` carrying the L4 results (`l4-comment.json`, exit 0). `npm run -s graph:render` 0. `npm test` exit 0 (`l4-test.txt`, graph:smoke ok).
+- Commit `25c9a1ad6d10fed8314d7e1e6a48af3e09517ab9` chore(graph): record the m2-9 L4 desktop run on test node m2-9-l4 (`docs/graph/nodes/m2-9-l4.json`, `docs/graph/graph.svg`). Push: `a12d319..25c9a1a  main -> main`, no force. origin/main = `25c9a1ad6d10fed8314d7e1e6a48af3e09517ab9`.
+- Profile default model: new session, model menu, DeepSeek-V4.1-Flash under 「DeepSeek 账号」 (`l4/24-model-restored.png`). `C:\Users\29596\.dsh\profiles\desktop\cordis.patch.yml` entry `agent-default-model`: provider `deepseek-account`, model `deepseek-flash`, reasoningEffort `high`.
+- Screenshots: `C:\Users\29596\Desktop\Project\GLM-Hourness\.agents\tasks\m2-9-research\l4\01-start.png` … `24-model-restored.png`.

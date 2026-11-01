@@ -1,0 +1,112 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="960" viewBox="0 0 1240 960" font-family="'Microsoft YaHei', 'PingFang SC', 'Segoe UI', sans-serif">
+  <title>接管已有项目：对话里人会看到的样子（草图，设计 0.4 §3.1、§5.4、§7.3、§7.4）</title>
+  <rect x="0" y="0" width="1240" height="960" fill="#f5f6f8"/>
+  <text x="24" y="34" font-size="18" font-weight="bold" fill="#1f2328">接管已有项目：对话里人会看到的样子（草图）</text>
+  <text x="24" y="58" font-size="12" fill="#656d76">没有问答卡，也没有选项按钮。每件事是题目一段，背景、推荐、疑问、不做四行各自成段，标签不加粗，每行一处加粗，问话在整条消息最后。灰色小字是说明，不在界面上；数字与名字是例子；主 Agent 的人设语气不画进草图。</text>
+
+  <!-- left column: start and the two things -->
+  <g transform="translate(24,80)">
+    <text x="0" y="14" font-size="12" font-weight="bold" fill="#424a53">一、接管开始，先问两件事</text>
+
+    <rect x="356" y="26" width="220" height="34" rx="10" fill="#ddf4ff" stroke="#54aeff"/>
+    <text x="370" y="48" font-size="13" fill="#1f2328">/wish 加一个按月导出</text>
+
+    <text x="0" y="82" font-size="11" fill="#8c959f">命令结果：harness 写的，至多 20 秒（§3.1）</text>
+    <rect x="0" y="88" width="576" height="104" rx="8" fill="#f6f8fa" stroke="#d0d7de"/>
+    <text x="14" y="108" font-size="11" fill="#656d76">命令 /wish</text>
+    <g font-size="12.5" fill="#1f2328">
+      <text x="14" y="128">判为已有项目：412 个代码文件、1,204 个提交、package.json。不对的话发 /hourness-init new。</text>
+      <text x="14" y="148">已建 .llm/（只在本机，git 不会提交它）。</text>
+      <text x="14" y="168">已让这个会话当主 Agent。主 Agent 开始读这个项目，读完先问你两件事。</text>
+    </g>
+
+    <text x="0" y="214" font-size="11" fill="#8c959f">主 Agent 的消息：两件都经 propose_to_human 交给你，四行出自 harness 按扫描写的草稿（§5.4）</text>
+    <rect x="0" y="220" width="576" height="300" rx="8" fill="#ffffff" stroke="#d0d7de"/>
+    <g font-size="13" fill="#1f2328">
+      <text x="14" y="246">① 哪些检查花钱或要独占机器</text>
+      <text x="14" y="274">背景：项目里找到 <tspan font-weight="bold">npm run e2e</tspan>，像是要独占机器的测试</text>
+      <text x="14" y="298">推荐：e2e <tspan font-weight="bold">攒到一批再跑</tspan>，不进每次合入前的检查</text>
+      <text x="14" y="322">疑问：npm run bench <tspan font-weight="bold">拿不准</tspan>，可能也要独占</text>
+      <text x="14" y="346">不做：没算 <tspan font-weight="bold">npm test</tspan>，它在副本里两分钟跑完</text>
+      <text x="14" y="382">② 哪些地方不许碰</text>
+      <text x="14" y="410">背景：项目里有 <tspan font-weight="bold">vendor/</tspan> 目录，像是别人的代码</text>
+      <text x="14" y="434">推荐：vendor/ 记成<tspan font-weight="bold">不许碰</tspan>，另提一条规则拦住</text>
+      <text x="14" y="458">疑问：文档里写着别改的 <tspan font-weight="bold">docs/legal/</tspan> 拿不准</text>
+      <text x="14" y="482">不做：没算 <tspan font-weight="bold">.env.example</tspan>，它只是示例文件</text>
+      <text x="14" y="508">这两件对吗，还有要加的吗？</text>
+    </g>
+
+    <rect x="296" y="534" width="280" height="34" rx="10" fill="#ddf4ff" stroke="#54aeff"/>
+    <text x="310" y="556" font-size="13" fill="#1f2328">bench 不用管。docs/legal/ 也别动</text>
+
+    <text x="0" y="590" font-size="11" fill="#8c959f">人随口补充时，主 Agent 先复述，人说「对」再记</text>
+    <rect x="0" y="596" width="576" height="56" rx="8" fill="#ffffff" stroke="#d0d7de"/>
+    <g font-size="12.5" fill="#1f2328">
+      <text x="14" y="618">那我记成：① 花钱或独占的只有 e2e，攒到一批再跑；</text>
+      <text x="14" y="638">② vendor/ 和 docs/legal/ 不许碰，另提一条规则拦住。对吗？</text>
+    </g>
+
+    <rect x="516" y="666" width="60" height="34" rx="10" fill="#ddf4ff" stroke="#54aeff"/>
+    <text x="537" y="688" font-size="13" fill="#1f2328">对</text>
+
+    <g font-size="11" fill="#8c959f">
+      <text x="0" y="724">主 Agent 用 record_human_answer 记两件，原话就是你这两句；harness 核对它们是你在这两件交给你</text>
+      <text x="0" y="740">之后自己打的字。然后主 Agent 带原话把回答写进两条规范，再按 harness 的草稿提那条规则。</text>
+    </g>
+  </g>
+
+  <!-- right column: the rule and the list -->
+  <g transform="translate(628,80)">
+    <text x="0" y="14" font-size="12" font-weight="bold" fill="#424a53">二、读完再给两件：规则和清单，你回一句</text>
+
+    <text x="0" y="40" font-size="11" fill="#8c959f">① 的四行照规则板交回的说明写；② 的题目与四行是 bootstrap_review 交回的原文，主 Agent 不能改（§7.3）</text>
+    <rect x="0" y="46" width="588" height="468" rx="8" fill="#ffffff" stroke="#d0d7de"/>
+    <g font-size="13" fill="#1f2328">
+      <text x="14" y="72">读完了。拦住那两处的规则和整份接管清单，各一件：</text>
+      <text x="14" y="104">① 不许改 vendor/ 和 docs/legal/</text>
+      <text x="14" y="132">背景：你说这两处<tspan font-weight="bold">不许碰</tspan>，现在没有东西拦着</text>
+      <text x="14" y="156">推荐：改这两处文件的调用<tspan font-weight="bold">直接拦下</tspan></text>
+      <text x="14" y="180">疑问：以后升级 vendor/ 要<tspan font-weight="bold">先解除</tspan>这条规则</text>
+      <text x="14" y="204">不做：只写进规范，那样<tspan font-weight="bold">换个会话</tspan>就没人拦着</text>
+      <text x="14" y="240">② 照这份清单接管「气象站数据工具」</text>
+      <text x="14" y="268">背景：读出 <tspan font-weight="bold">2 个目标、26 件活</tspan>，17 件已做完、带提交号</text>
+      <text x="14" y="292">推荐：同意后 <tspan font-weight="bold">17 件标完成</tspan>，其余等你说再动</text>
+      <text x="14" y="316">疑问：npm test 在副本里<tspan font-weight="bold">没跑通</tspan>，合入前才知道</text>
+      <text x="14" y="340">不做：现在的 <tspan font-weight="bold">312 条旧告警</tspan>不挡合入，只挡新出的</text>
+    </g>
+    <g font-size="12" fill="#424a53">
+      <text x="14" y="372">同意之后会跑的命令（原文，在项目目录里，每次照这样跑）：</text>
+      <text x="14" y="392" font-family="Consolas, 'Courier New', monospace">合入前　　　　npm test</text>
+      <text x="14" y="410" font-family="Consolas, 'Courier New', monospace">合入前　　　　npx tsc --noEmit</text>
+      <text x="14" y="428" font-family="Consolas, 'Courier New', monospace">改完文件就跑　node node_modules/eslint/bin/eslint.js --format json {files}</text>
+      <text x="14" y="450">注意：合入前的检查每次合入都在你电脑上真实环境里跑；没过时主干不前进；</text>
+      <text x="14" y="468">它们调用的程序和配置文件不在这次同意里</text>
+    </g>
+    <text x="14" y="500" font-size="13" fill="#1f2328">这两件你看行吗？</text>
+
+    <text x="0" y="532" font-size="11" fill="#8c959f">四行之后的命令原文是 M3 接上的（§7.3）：你同意的就是这段原文，主 Agent 没把它放进回复，M3 不让拍板</text>
+    <text x="0" y="548" font-size="11" fill="#8c959f">「讲细点」时主 Agent 从 .llm/bootstrap/&lt;接管 id&gt;/review-1.md 取全部节点与命令；「说重点」只留题目与疑问</text>
+    <rect x="508" y="556" width="80" height="34" rx="10" fill="#ddf4ff" stroke="#54aeff"/>
+    <text x="527" y="578" font-size="13" fill="#1f2328">都可以</text>
+
+    <g font-size="11" fill="#8c959f">
+      <text x="0" y="614">主 Agent 记两次：规则那一件由规则板写成规则（写进项目的 docs/rules/）；清单那一件记成「照第 1 版清单接管」，</text>
+      <text x="0" y="630">接管照这次拍板写图，每条批准的历史里记着「都可以」。宿主中途退出时，下一步之前照图上的拍板续做完（§7.4、§9.2）</text>
+    </g>
+    <rect x="0" y="640" width="588" height="104" rx="8" fill="#ffffff" stroke="#d0d7de"/>
+    <g font-size="12.5" fill="#1f2328">
+      <text x="14" y="664">接管好了：批准 41 个节点，17 件做完的已关掉；规则「不许改 vendor/ 和</text>
+      <text x="14" y="684">docs/legal/」已生效；「导出 CSV」提了两次，去掉了后一个。</text>
+      <text x="14" y="704">项目图已提交进 git（a1b2c3d）。接下来按你的愿望「加一个按月导出」</text>
+      <text x="14" y="724">问你几句。</text>
+    </g>
+  </g>
+
+  <!-- notes -->
+  <g transform="translate(24,856)" font-size="12" fill="#656d76">
+    <text x="0" y="0" font-weight="bold" fill="#424a53">说明</text>
+    <text x="0" y="20">· 你回的是一句话，不是点按钮：同意、否掉、补充、「讲细点」「说重点」都直接说；一条消息至多三件。想对照主 Agent 有没有转述走样：/hourness-init status 打印 harness 写的这一版。</text>
+    <text x="0" y="40">· 新项目没有右边的清单：两件事在聊限制时问，规则在大循环放行之前问；目标一级的东西随大循环放行同意，环境与检查随它自己的模块放行同意。</text>
+    <text x="0" y="60">· 文字里没有「验收」「门禁」「标定」这类词；Windows 上跑不出结论的命令写成「没跑通」，不说成坏了，清单全文引出命中的那一行。</text>
+  </g>
+</svg>

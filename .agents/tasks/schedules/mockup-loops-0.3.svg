@@ -1,0 +1,121 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="560" height="1620" viewBox="0 0 560 1620">
+  <style>
+    text{font-family:'Microsoft YaHei','PingFang SC','Noto Sans CJK SC',sans-serif;fill:#ececf1}
+    .cap{font-size:12px;fill:#8a8a92}
+    .capb{font-size:13px;font-weight:700;fill:#b5b5bb}
+    .lab{font-size:11px;font-weight:700;fill:#8a8a92;letter-spacing:.5px}
+    .h1{font-size:15.5px;font-weight:700}
+    .tb{font-size:14px;font-weight:700}
+    .s{font-size:12.5px;fill:#b5b5bb}
+    .m{font-size:12px;fill:#8a8a92}
+    .a{font-size:12.5px;fill:#6aa1ff}
+    .w{font-size:12.5px;fill:#e3b341}
+    .r{font-size:12.5px;fill:#f85149}
+    .n{font-size:12px;fill:#8a8a92;font-variant-numeric:tabular-nums}
+  </style>
+  <rect width="560" height="1620" fill="#111113"/>
+  <text class="capb" x="20" y="24">循环板（第 2 层的一页，从首页页脚「循环板 ›」进入）· 设计 0.3</text>
+  <text class="cap" x="20" y="44">草图：本仓库自举之后的样子；时刻、次数与「本项目加的」一项是造的例子。页面只看，没有按钮与表单。</text>
+
+  <rect x="20" y="60" width="520" height="1540" rx="12" fill="#161618" stroke="#2c2c31"/>
+
+  <!-- 页头 -->
+  <text class="a" x="40" y="90">‹ 说重点</text>
+  <text class="h1" x="40" y="120">循环板 · 到点了或碰到某件事，就去做一件事</text>
+  <text class="s" x="40" y="144">主 Agent 在会话「GLM-Hourness 主线」</text>
+  <text class="a" x="520" y="144" text-anchor="end">去主 Agent 的对话 ›</text>
+  <text class="m" x="40" y="166">到点告诉主 Agent 的几项，DSH 的自动化任务页里也看得到；在那里改的不算数。</text>
+  <text class="m" x="40" y="184">主 Agent 的会话里挂着这些提醒，归档它时 DSH 会先停掉，换到新会话后循环板再建。</text>
+  <line x1="40" y1="200" x2="520" y2="200" stroke="#2c2c31"/>
+
+  <!-- 要你看一眼的 -->
+  <text class="lab" x="40" y="226">要你看一眼的 · 1</text>
+  <circle cx="46" cy="248" r="4" fill="#e3b341"/>
+  <text class="s" x="58" y="252">「服务器巡查」连着 3 次没过，最近一次 09:30</text>
+  <text class="a" x="520" y="252" text-anchor="end">讲细点</text>
+  <line x1="40" y1="270" x2="520" y2="270" stroke="#2c2c31"/>
+
+  <!-- 碰到某件事就做的 -->
+  <text class="lab" x="40" y="296">碰到某件事就做的 · 17</text>
+
+  <text class="tb" x="40" y="324">一件活交回之后：派审查</text>
+  <text class="s" x="40" y="344">一件活交回了 · 告诉主 Agent 派审查，深浅与模型由它定</text>
+  <text class="n" x="40" y="364">上次 10 月 30 日 01:40 · 已交给主 Agent</text>
+  <text class="m" x="40" y="382">项目编排带来的 · 只能看</text>
+
+  <text class="tb" x="40" y="414">合进主干之后：在主干上跑一遍完整的检查</text>
+  <text class="s" x="40" y="434">合进主干了 · 在专门做检查的那份检出里跑一遍合入前的检查，没过时告诉主 Agent</text>
+  <text class="n" x="40" y="454">上次 10 月 30 日 01:12 · 这次不用跑（这个提交的每条检查都跑过了）</text>
+  <text class="m" x="40" y="472">项目编排带来的 · 只能看</text>
+
+  <text class="tb" x="40" y="504">改完文件就跑检查</text>
+  <text class="s" x="40" y="524">一个 agent 改了文件 · 跑你批过的检查，结果在它下一步交给它</text>
+  <text class="m" x="56" y="544">ESLint：改了 .ts、.mts、.js、.mjs、.tsx 之后跑</text>
+  <text class="m" x="56" y="562">TypeScript：改了 .ts、.mts、.tsx 之后跑</text>
+  <text class="m" x="56" y="580">检查器自己的规矩：一步至多等 20 秒；连续失败 3 次后这个会话不再跑 · 讲细点</text>
+  <text class="m" x="40" y="598">项目编排带来的 · 它自己执行，这里只列出 · 只能看</text>
+
+  <text class="tb" x="40" y="630">GLM 高峰结束时：接上挪开的活</text>
+  <text class="s" x="40" y="650">此刻：不是高峰；下一个高峰 明天 14:00 · 高峰模式：少做（出厂默认）</text>
+  <text class="m" x="40" y="668">档位在规则板上看；要改：在输入框打 /rules peak 不做，或跟主 Agent 说</text>
+  <text class="n" x="40" y="688">上次 10 月 29 日 18:00 · 已交给主 Agent（主 Agent 闲着，高峰里干过活）</text>
+  <text class="m" x="40" y="706">项目编排带来的 · 依据 GLM 通道的高峰时刻与规则板的高峰模式 · 只能看</text>
+
+  <text class="tb" x="40" y="738">GLM 额度快用完时告诉你</text>
+  <text class="s" x="40" y="758">额度快用完了（80% 或一小时内用完）· 主 Agent 在下一次回话里告诉你一句</text>
+  <text class="n" x="40" y="778">上次读额度 10 月 30 日 09:15：每周 41%，没到</text>
+  <text class="m" x="40" y="796">GLM 通道带来的 · 只能看</text>
+
+  <text class="tb" x="40" y="828">GLM 高峰开始时提醒模型</text>
+  <text class="s" x="40" y="848">高峰开始时 · GLM 会话的第一步收到一句提醒</text>
+  <text class="m" x="40" y="866">GLM 通道带来的 · 它自己执行，这里只列出 · 只能看</text>
+
+  <text class="a" x="40" y="898">还有 11 项：设计放行之后、审查过了之后、停下之后、活都关了之后、重启之后、依赖变了之后、</text>
+  <text class="a" x="40" y="916">等你太久时、第三次返工之前、高峰开始时收放、看状态时读额度、登录失效时 · 讲细点</text>
+  <line x1="40" y1="936" x2="520" y2="936" stroke="#2c2c31"/>
+
+  <!-- 到点做的 -->
+  <text class="lab" x="40" y="962">到点做的 · 3</text>
+  <text class="tb" x="40" y="990">每天 08:30：晨报</text>
+  <text class="s" x="40" y="1010">告诉主 Agent 出晨报原样给你看，等你的事至多三件</text>
+  <text class="n" x="40" y="1030">上次 10 月 30 日 08:30 · 已交给主 Agent · 下次 10 月 31 日 08:30 · 每天叫醒主 Agent 1 次</text>
+  <text class="m" x="40" y="1048">项目编排带来的 · 只能看</text>
+  <text class="a" x="40" y="1078">还有 2 项：每周一 09:00 周报、每天 02:30 夜间巡检 · 讲细点</text>
+  <line x1="40" y1="1098" x2="520" y2="1098" stroke="#2c2c31"/>
+
+  <!-- 本项目加的 -->
+  <text class="lab" x="40" y="1124">本项目加的 · 1</text>
+  <text class="tb" x="40" y="1152">服务器巡查</text>
+  <text class="s" x="40" y="1172">每 30 分钟 · 跑 pwsh -NoProfile -File scripts/check-server.ps1，没过时告诉主 Agent</text>
+  <text class="r" x="40" y="1192">上次 10:00 · 没过（退出码 1），已告诉主 Agent</text>
+  <text class="n" x="300" y="1192">· 下次 10:30</text>
+  <text class="m" x="40" y="1212">你在对话里加的：「每半小时查一下服务器，挂了告诉我」</text>
+  <text class="m" x="40" y="1230">要改：跟主 Agent 说「把服务器巡查改成……」；要删：在输入框打 /loops delete 服务器巡查</text>
+  <line x1="40" y1="1250" x2="520" y2="1250" stroke="#2c2c31"/>
+
+  <!-- 主 Agent 自己设的提醒 -->
+  <text class="lab" x="40" y="1276">主 Agent 自己设的提醒（DSH 自带）· 1</text>
+  <text class="s" x="40" y="1300">半小时后看一眼 CI · 下次 10:40</text>
+  <text class="m" x="520" y="1300" text-anchor="end">在 DSH 的自动化任务页里管理</text>
+  <line x1="40" y1="1320" x2="520" y2="1320" stroke="#2c2c31"/>
+
+  <!-- 最近跑过的 -->
+  <text class="lab" x="40" y="1346">最近跑过的</text>
+  <text class="n" x="40" y="1370">10:00</text>
+  <text class="s" x="90" y="1370">服务器巡查 · 跑完了，已告诉主 Agent</text>
+  <text class="n" x="40" y="1394">09:30</text>
+  <text class="s" x="90" y="1394">服务器巡查 · 跑完了，已告诉主 Agent</text>
+  <text class="n" x="40" y="1418">08:30</text>
+  <text class="s" x="90" y="1418">晨报 · 已交给主 Agent · 主 Agent 记：「晨报已发，3 件等你」</text>
+  <text class="n" x="40" y="1442">02:30</text>
+  <text class="s" x="90" y="1442">夜间巡检 · 已交给主 Agent</text>
+  <text class="a" x="40" y="1466">讲细点 · 全部 20 次</text>
+  <line x1="40" y1="1486" x2="520" y2="1486" stroke="#2c2c31"/>
+
+  <!-- 循环板自己的规矩 -->
+  <text class="lab" x="40" y="1512">循环板自己的规矩</text>
+  <text class="a" x="520" y="1512" text-anchor="end">讲细点</text>
+  <text class="m" x="40" y="1536">插件的：5 秒内的事合成一次、每小时至多 30 次；你加的：30 秒、6 次，多的合进下一次；</text>
+  <text class="m" x="40" y="1556">循环板自己做的事引起的事，10 分钟内又触发同一项时停下那一次；</text>
+  <text class="m" x="40" y="1576">命令 60 秒超时、拿不到 DSH 的凭证；给主 Agent 的文字先遮住像密钥的字串。</text>
+</svg>

@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 780" width="960" height="780" font-family="'Microsoft YaHei','PingFang SC','Noto Sans CJK SC','Source Han Sans SC',sans-serif">
+  <title>周三 17:30，高峰里想跑练习题：先看状态，练习题被拦下，加 --wait 等到 18:00（示意）</title>
+  <desc>三块终端的示意图。第一块：在 DSH 里敲 /glm-status，看到正在高峰、到 18:00，以及 5 小时、每周、MCP 工具调用三行额度。第二块：在终端启动练习题，立刻停下，写明命中的规则、当前档位和 18:00 以后再跑，退出码 5，没有建沙盒也没有发任何请求。第三块：加 --wait 再启动，等到 18:00 再判一次。数字是举例，终端里的文字取自设计里写定的样子。</desc>
+  <rect width="960" height="780" fill="#f3f4f7"/>
+  <rect x="20" y="16" width="920" height="748" rx="10" fill="#ffffff" stroke="#c9ced8"/>
+  <path d="M20 26a10 10 0 0 1 10-10h900a10 10 0 0 1 10 10v56H20z" fill="#eaeef5"/>
+  <text x="44" y="46" font-size="17" font-weight="700" fill="#1f2937">周三 17:30，高峰还剩半小时，你想跑一遍练习题</text>
+  <text x="44" y="68" font-size="12" fill="#6b7280">数字是举例；终端里的文字取自设计里写定的样子，默认档位是少做</text>
+  <rect x="852" y="30" width="64" height="24" rx="12" fill="#fde9c4"/>
+  <text x="884" y="47" font-size="13" text-anchor="middle" fill="#8a5a00">示意</text>
+
+  <text x="44" y="110" font-size="14" font-weight="700" fill="#1f2937">① 先在 DSH 里敲 /glm-status</text>
+  <rect x="44" y="120" width="872" height="162" rx="8" fill="#1f2430"/>
+  <g font-family="Consolas,'Cascadia Mono','Courier New','Microsoft YaHei',monospace" font-size="13" fill="#e6e9ef" xml:space="preserve">
+    <text x="60" y="146">glm-zcode：已登录（套餐 coding-plan，Key …）</text>
+    <text x="60" y="186" fill="#ffcf70">高峰：高峰中，到 18:00（GLM 积分套餐）</text>
+    <text x="60" y="206">额度（服务端读数，含 ZCode 等其他客户端，读于 17:30）：pro</text>
+    <text x="60" y="226">- 5 小时：已用 30% · 21:30 重置 · 到重置时约 75%，按 17:00–17:30 两次读数的速度</text>
+    <text x="60" y="246">- 每周：已用 35% · 周一 10:00 重置 · 到重置时约 98%，按本窗口 10-26 10:00 以来的平均速度（含夜间，偏低）</text>
+    <text x="60" y="266">- MCP 工具调用：已用 4% · 周一 08:00 重置</text>
+  </g>
+  <text x="44" y="304" font-size="12" fill="#4b5a73">额度读自服务端，ZCode 等其他软件用掉的也在内；预估的每一行写着按什么算的。</text>
+
+  <text x="44" y="344" font-size="14" font-weight="700" fill="#1f2937">② 在终端启动练习题：马上停下</text>
+  <rect x="44" y="354" width="872" height="206" rx="8" fill="#1f2430"/>
+  <g font-family="Consolas,'Cascadia Mono','Courier New','Microsoft YaHei',monospace" font-size="13" fill="#e6e9ef" xml:space="preserve">
+    <text x="60" y="380" fill="#9fd0a8">$ npm run calibrate</text>
+    <text x="60" y="404">You tried to run "npm run calibrate".</text>
+    <text x="60" y="424">Boundary: Would be deferred; the command line opens no ticket. GLM peak hours now until 18:00</text>
+    <text x="60" y="444">(weekdays 14:00-18:00 UTC+8). Peak mode: reduce (the default; the human can change it).</text>
+    <text x="60" y="464">Rule builtin:glm-peak-reduce defers scripts that report optional GLM spending until peak ends.</text>
+    <text x="60" y="484">Right path: Run it again after 18:00.</text>
+    <text x="60" y="504">Exception: The human can change the peak mode (/rules peak).</text>
+    <text x="60" y="524" fill="#ffcf70">rules gate: builtin:glm-peak-reduce queues this run; GLM peak ends at 18:00. Rerun with --wait to wait.</text>
+    <text x="60" y="544" fill="#8fa3bf"># 退出码 5。没建沙盒，没发任何请求。</text>
+  </g>
+  <text x="44" y="582" font-size="12" fill="#4b5a73">同一刻，项目的违规记录里多了一行：哪条规则、几点、拦了哪条命令、当时哪一档、为什么。屏幕上看不到它。</text>
+
+  <text x="44" y="622" font-size="14" font-weight="700" fill="#1f2937">③ 不想重敲：加 --wait，它自己等到 18 点</text>
+  <rect x="44" y="632" width="872" height="86" rx="8" fill="#1f2430"/>
+  <g font-family="Consolas,'Cascadia Mono','Courier New','Microsoft YaHei',monospace" font-size="13" fill="#e6e9ef" xml:space="preserve">
+    <text x="60" y="658" fill="#9fd0a8">$ npm run calibrate -- --wait</text>
+    <text x="60" y="682">rules gate: waiting until 18:00</text>
+    <text x="60" y="702" fill="#8fa3bf"># 18:00:01 再判一次，放行后照常开始。</text>
+  </g>
+  <text x="44" y="742" font-size="12" fill="#4b5a73">想放行：敲 /rules peak 无影响，或对主 Agent 说一句。三档里主 Agent 自己都随时回话。</text>
+</svg>

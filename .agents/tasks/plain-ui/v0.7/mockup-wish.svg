@@ -1,0 +1,136 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="1560" viewBox="0 0 960 1560">
+  <style>
+    text{font-family:'Microsoft YaHei','PingFang SC','Noto Sans CJK SC',sans-serif;fill:#ececf1}
+    .cap{font-size:12px;fill:#8a8a92}
+    .capb{font-size:13px;font-weight:700;fill:#b5b5bb}
+    .fr{font-size:13.5px;font-weight:700;fill:#d4d4d8}
+    .hero{font-size:18px;font-weight:700}
+    .h1{font-size:15px;font-weight:700}
+    .t{font-size:13px}
+    .s{font-size:12.5px;fill:#b5b5bb}
+    .m{font-size:12px;fill:#8a8a92}
+    .a{font-size:12.5px;fill:#6aa1ff}
+    .w{font-size:12.5px;fill:#e3b341}
+    .dim{font-size:12.5px;fill:#8a8a92}
+    .btn{font-size:13px;font-weight:600;fill:#111113}
+    .mono{font-family:Consolas,'Cascadia Mono',monospace;font-size:13px}
+  </style>
+  <rect width="960" height="1560" fill="#111113"/>
+  <text class="capb" x="20" y="24">/wish 的入口（m3-1 验收第 4 条）：规格与实现归 M3 附录 §2.6，这张图是它引用的样子</text>
+  <text class="cap" x="20" y="44">五个场景从上到下。按钮只在 /wish 已注册时出现；点按钮等于人自己发命令或写好草稿。</text>
+
+  <!-- ① hero -->
+  <text class="fr" x="20" y="84">① 新会话的开场画面：卡片在工作区那一行下面、输入框正上方，与输入框同宽；发出第一句话后消失；开启主 Agent 而会话仍空白时换成一行退出（M3 附录 §2.6）</text>
+  <rect x="20" y="98" width="920" height="372" rx="10" fill="#141416" stroke="#2c2c31"/>
+  <!-- left: has graph -->
+  <text class="hero" x="250" y="132" text-anchor="middle">探索未至之境</text>
+  <rect x="40" y="146" width="122" height="24" rx="6" fill="#1c1c20" stroke="#2c2c31"/>
+  <text class="t" x="52" y="163">GLM-Hourness ▾</text>
+  <rect x="40" y="178" width="420" height="196" rx="12" fill="#1f1f23" stroke="#3a3a40"/>
+  <text class="h1" x="58" y="204">把这个工作区交给主 Agent</text>
+  <text class="s" x="58" y="226">说一句你想做的。主 Agent 先问清楚、出方案给你批，</text>
+  <text class="s" x="58" y="244">再分给子 agent 去做；它自己不写代码。</text>
+  <rect x="58" y="256" width="132" height="30" rx="8" fill="#ececf1"/>
+  <text class="btn" x="124" y="276" text-anchor="middle">写一句你想做的</text>
+  <rect x="200" y="256" width="146" height="30" rx="8" fill="none" stroke="#3a3a40"/>
+  <text class="t" x="273" y="276" text-anchor="middle">接着推进现有项目</text>
+  <rect x="58" y="296" width="384" height="26" rx="7" fill="#2a2416" stroke="#5c4a1f"/>
+  <path d="M68 315 L75 302 L82 315 Z" fill="none" stroke="#e3b341" stroke-width="1.4"/>
+  <text class="w" x="90" y="314">主 Agent 用强一点的模型</text>
+  <text class="m" x="58" y="346">命令是 /wish，随时 /wish off 退出。</text>
+  <rect x="40" y="384" width="420" height="44" rx="14" fill="#1f1f23" stroke="#3a3a40"/>
+  <text class="dim" x="56" y="411">描述你想要构建的内容, / 调用指令, @ 文件或对话</text>
+  <text class="cap" x="40" y="452">有项目图的工作区，每个新会话都有。「接着推进现有项目」只在图上有没做完的目标时出现。</text>
+
+  <!-- right: no graph -->
+  <text class="hero" x="710" y="132" text-anchor="middle">探索未至之境</text>
+  <rect x="500" y="146" width="104" height="24" rx="6" fill="#1c1c20" stroke="#2c2c31"/>
+  <text class="t" x="512" y="163">expense-cli ▾</text>
+  <rect x="500" y="178" width="420" height="196" rx="12" fill="#1f1f23" stroke="#3a3a40"/>
+  <text class="h1" x="518" y="204">这个工作区还没有项目图</text>
+  <text class="s" x="518" y="226">项目图记下要做成什么、接下来做什么、哪些要你定。</text>
+  <text class="s" x="518" y="244">有了它，主 Agent 才能接手。</text>
+  <rect x="518" y="256" width="116" height="30" rx="8" fill="#ececf1"/>
+  <text class="btn" x="576" y="276" text-anchor="middle">建一张项目图</text>
+  <text class="m" x="518" y="314">接管项目的命令装上之前，按钮换成一行字：</text>
+  <text class="m" x="518" y="332">在对话里让 agent 建空目录 docs/graph/nodes，面板会自己跟上。</text>
+  <rect x="500" y="384" width="420" height="44" rx="14" fill="#1f1f23" stroke="#3a3a40"/>
+  <text class="dim" x="516" y="411">描述你想要构建的内容, / 调用指令, @ 文件或对话</text>
+  <text class="cap" x="500" y="452">没有项目图的工作区：每个工作区只出现一次，之后只在面板里说明。</text>
+
+  <!-- ② ordinary session -->
+  <text class="fr" x="20" y="506">② 已经开始的普通会话：输入框下方常驻「交给主 Agent」，不弹窗、不闪、没有角标；点开是小弹层</text>
+  <rect x="20" y="520" width="920" height="330" rx="10" fill="#141416" stroke="#2c2c31"/>
+  <text class="t" x="60" y="552">收到，子 agent 已被暂停（未跑完、无收尾消息），不重派、不接续……</text>
+  <rect x="470" y="568" width="440" height="150" rx="10" fill="#232327" stroke="#3a3a40"/>
+  <text class="t" x="488" y="594">让主 Agent 接手这个工作区：它按项目图推进，自己不写代码。</text>
+  <text class="t" x="488" y="614">命令是 /wish，随时 /wish off 退出。</text>
+  <text class="w" x="488" y="638">主 Agent 用强一点的模型。</text>
+  <rect x="488" y="654" width="132" height="30" rx="8" fill="#ececf1"/>
+  <text class="btn" x="554" y="674" text-anchor="middle">写一句你想做的</text>
+  <rect x="630" y="654" width="146" height="30" rx="8" fill="none" stroke="#3a3a40"/>
+  <text class="t" x="703" y="674" text-anchor="middle">接着推进现有项目</text>
+  <rect x="40" y="730" width="880" height="64" rx="16" fill="#1f1f23" stroke="#3a3a40"/>
+  <text class="dim" x="62" y="758">发消息或创建任务, / 调用指令, @ 文件或对话</text>
+  <text class="s" x="760" y="782" text-anchor="end">GLM-5.3-Flash High ▾</text>
+  <circle cx="890" cy="776" r="14" fill="#3b5fa8"/>
+  <text class="t" x="890" y="781" text-anchor="middle">↑</text>
+  <text class="m" x="62" y="824">6 轮 13 步 · 282K tok · 缓存命中 97%</text>
+  <rect x="500" y="808" width="64" height="24" rx="6" fill="#26262b" stroke="#3a3a40"/>
+  <text class="t" x="532" y="825" text-anchor="middle">◎ GLM</text>
+  <rect x="572" y="808" width="106" height="24" rx="6" fill="#26262b" stroke="#6aa1ff"/>
+  <text class="t" x="625" y="825" text-anchor="middle">交给主 Agent</text>
+  <path d="M625 806 L625 720" stroke="#6aa1ff" stroke-dasharray="3 3"/>
+  <text class="cap" x="20" y="870">顺序：DSH 的统计（order 0、1）、GLM 按钮 150、交给主 Agent 160；order 170 空着（规则设计 0.5 去掉了在场按钮）。没有项目图的工作区里没有「交给主 Agent」。</text>
+
+  <!-- ③ draft -->
+  <text class="fr" x="20" y="910">③ 点了「写一句你想做的」：输入框里已经写好 /wish，接着打一句话、回车就交给主 Agent</text>
+  <rect x="20" y="924" width="920" height="168" rx="10" fill="#141416" stroke="#2c2c31"/>
+  <rect x="40" y="944" width="880" height="72" rx="16" fill="#1f1f23" stroke="#6aa1ff"/>
+  <rect x="58" y="958" width="50" height="22" rx="5" fill="#2b3a55"/>
+  <text class="mono" x="83" y="974" text-anchor="middle">/wish</text>
+  <text class="t" x="116" y="974">我想要一个命令行小工具，每天记一下花了多少钱，月底能看出钱花在哪了</text>
+  <rect x="550" y="961" width="1.5" height="16" fill="#ececf1"/>
+  <text class="s" x="760" y="1004" text-anchor="end">GLM-5.3 High ▾</text>
+  <circle cx="890" cy="998" r="14" fill="#3b5fa8"/>
+  <text class="t" x="890" y="1003" text-anchor="middle">↑</text>
+  <text class="cap" x="40" y="1044">输入框里原来有没发出的字时不覆盖：按钮下方提示「输入框里还有没发出的字」，什么都不改。</text>
+  <text class="cap" x="40" y="1062">拿不到往输入框写字的接口时，不执行任何命令：按钮换成一行「在输入框打 /wish，后面跟一句你想做的」</text>
+  <text class="cap" x="40" y="1080">与「复制 /wish」，复制的结果写在旁边。</text>
+
+  <!-- ④ main agent session -->
+  <text class="fr" x="20" y="1124">④ 主 Agent 会话：输入框上方是 M3 的流程条，用的是便宜档时它带一句提醒；下方按钮换成「主 Agent」，点开能退出</text>
+  <rect x="20" y="1138" width="920" height="304" rx="10" fill="#141416" stroke="#2c2c31"/>
+  <rect x="470" y="1152" width="440" height="112" rx="10" fill="#232327" stroke="#3a3a40"/>
+  <text class="t" x="488" y="1180">这个会话的 agent 是主 Agent：按项目图推进，不写文件。</text>
+  <text class="t" x="488" y="1200">进度在右边的项目图里。</text>
+  <rect x="488" y="1218" width="176" height="32" rx="8" fill="none" stroke="#3a3a40"/>
+  <text class="t" x="576" y="1239" text-anchor="middle">退出主 Agent（/wish off）</text>
+  <rect x="40" y="1278" width="880" height="34" rx="10" fill="#1c1c20" stroke="#2c2c31"/>
+  <circle cx="60" cy="1295" r="4" fill="#d29922"/>
+  <text class="t" x="72" y="1300">主 Agent · 访谈 · 需求卡 5/8 · 等你确认</text>
+  <path d="M384 1302 L391 1289 L398 1302 Z" fill="none" stroke="#e3b341" stroke-width="1.4"/>
+  <text class="w" x="406" y="1300">现在是 GLM-5.3-Flash；主 Agent 建议换强一点的模型</text>
+  <text class="a" x="904" y="1300" text-anchor="end">这次就用它</text>
+  <rect x="40" y="1320" width="880" height="64" rx="16" fill="#1f1f23" stroke="#3a3a40"/>
+  <text class="dim" x="62" y="1348">发消息或创建任务, / 调用指令, @ 文件或对话</text>
+  <text class="s" x="760" y="1372" text-anchor="end">GLM-5.3-Flash High ▾</text>
+  <circle cx="890" cy="1366" r="14" fill="#3b5fa8"/>
+  <text class="t" x="890" y="1371" text-anchor="middle">↑</text>
+  <text class="m" x="62" y="1416">2 轮 9 步 · 41K tok</text>
+  <rect x="500" y="1400" width="64" height="24" rx="6" fill="#26262b" stroke="#3a3a40"/>
+  <text class="t" x="532" y="1417" text-anchor="middle">◎ GLM</text>
+  <rect x="572" y="1400" width="84" height="24" rx="6" fill="#2b3a55" stroke="#6aa1ff"/>
+  <text class="t" x="614" y="1417" text-anchor="middle">主 Agent</text>
+  <path d="M614 1398 L614 1266" stroke="#6aa1ff" stroke-dasharray="3 3"/>
+
+  <!-- ⑤ narrow -->
+  <text class="fr" x="20" y="1474">⑤ 右侧栏打开、那一排窄于 520 px 时：按钮用短标签</text>
+  <rect x="20" y="1486" width="920" height="54" rx="10" fill="#141416" stroke="#2c2c31"/>
+  <text class="m" x="40" y="1518">6 轮 13 步 ·...</text>
+  <rect x="300" y="1502" width="56" height="24" rx="6" fill="#26262b" stroke="#3a3a40"/>
+  <text class="t" x="328" y="1519" text-anchor="middle">◎ GLM</text>
+  <rect x="364" y="1502" width="56" height="24" rx="6" fill="#26262b" stroke="#6aa1ff"/>
+  <text class="t" x="392" y="1519" text-anchor="middle">/wish</text>
+  <text class="cap" x="440" y="1519">「交给主 Agent」写「/wish」；GLM 按钮写「GLM」；「主 Agent」不变。</text>
+</svg>

@@ -1,0 +1,149 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="620" viewBox="0 0 1400 620" font-family="Microsoft YaHei, PingFang SC, sans-serif" font-size="13">
+  <title>用户图总览：十个阶段</title>
+  <rect width="1400" height="620" fill="#ffffff"/>
+  <text x="20" y="32" font-size="20" font-weight="bold" fill="#222">用户图总览：从装上到做完（journey.md 0.4）</text>
+  <text x="20" y="54" fill="#666">横着是十个阶段；每格写问不问人与主要模块。灰底：只装 GLM 通道时有的；蓝框：只装编排层时有的。细节与缺口见 journey.md §3、§4、§6。</text>
+
+  <!-- legend -->
+  <rect x="20" y="70" width="14" height="14" fill="#e8f5e9" stroke="#2e7d32"/><text x="40" y="82">不问</text>
+  <rect x="90" y="70" width="14" height="14" fill="#fff8e1" stroke="#f9a825"/><text x="110" y="82">对话或四行问人</text>
+  <rect x="220" y="70" width="14" height="14" fill="#fdecea" stroke="#c62828"/><text x="240" y="82">只在必须问人时四行</text>
+
+  <g id="stages">
+    <!-- S1 -->
+    <rect x="20" y="100" width="128" height="230" rx="6" fill="#e8f5e9" stroke="#2e7d32"/>
+    <text x="30" y="122" font-weight="bold">S1 装上两个插件</text>
+    <text x="30" y="144">可以只装一个</text>
+    <text x="30" y="164">重启后才算启动</text>
+    <text x="30" y="200" fill="#2e7d32">不问</text>
+    <text x="30" y="240" fill="#555">GLM 通道</text>
+    <text x="30" y="258" fill="#555">编排层各行</text>
+    <text x="30" y="276" fill="#555">新手引导</text>
+
+    <!-- S2 -->
+    <rect x="156" y="100" width="128" height="230" rx="6" fill="#e8f5e9" stroke="#2e7d32"/>
+    <text x="166" y="122" font-weight="bold">S2 登录 GLM</text>
+    <text x="166" y="144">登录、选模型、</text>
+    <text x="166" y="164">发一句话</text>
+    <text x="166" y="200" fill="#2e7d32">不问</text>
+    <text x="166" y="240" fill="#555">GLM 通道</text>
+    <text x="166" y="258" fill="#555">新手引导</text>
+    <text x="166" y="276" fill="#555">M6</text>
+
+    <!-- S3 -->
+    <rect x="292" y="100" width="128" height="230" rx="6" fill="#e8f5e9" stroke="#2e7d32"/>
+    <text x="302" y="122" font-weight="bold">S3 新手引导</text>
+    <text x="302" y="144">上手页六块</text>
+    <text x="302" y="164">高峰模式默认少做</text>
+    <text x="302" y="200" fill="#2e7d32">不问</text>
+    <text x="302" y="240" fill="#555">新手引导、面板</text>
+    <text x="302" y="258" fill="#555">规则板、循环板</text>
+
+    <!-- S4 -->
+    <rect x="428" y="100" width="128" height="230" rx="6" fill="#fff8e1" stroke="#f9a825"/>
+    <text x="438" y="122" font-weight="bold">S4 新项目或接管</text>
+    <text x="438" y="144">判路、扫描、试跑</text>
+    <text x="438" y="164">整份清单一次同意</text>
+    <text x="438" y="200" fill="#b26a00">对话、四行</text>
+    <text x="438" y="240" fill="#555">接管项目、M3</text>
+    <text x="438" y="258" fill="#555">M4、M7、规则板</text>
+    <text x="438" y="300" fill="#c62828">缺口 G1 G2 G22</text>
+
+    <!-- S5 -->
+    <rect x="564" y="100" width="128" height="230" rx="6" fill="#fff8e1" stroke="#f9a825"/>
+    <text x="574" y="122" font-weight="bold">S5 许愿与访谈</text>
+    <text x="574" y="144">/wish 一句话</text>
+    <text x="574" y="164">开放的问题问清楚</text>
+    <text x="574" y="200" fill="#b26a00">对话、四行</text>
+    <text x="574" y="240" fill="#555">M3、面板</text>
+    <text x="574" y="258" fill="#555">指标流水</text>
+    <text x="574" y="300" fill="#c62828">缺口 G3 G11</text>
+
+    <!-- S6 -->
+    <rect x="700" y="100" width="128" height="230" rx="6" fill="#fff8e1" stroke="#f9a825"/>
+    <text x="710" y="122" font-weight="bold">S6 设计放行</text>
+    <text x="710" y="144">定框架与模块</text>
+    <text x="710" y="164">每个模块一次四行</text>
+    <text x="710" y="200" fill="#b26a00">对话、四行</text>
+    <text x="710" y="240" fill="#555">M3、M7、面板</text>
+    <text x="710" y="300" fill="#c62828">缺口 G3 G4</text>
+
+    <!-- S7 -->
+    <rect x="836" y="100" width="128" height="230" rx="6" fill="#fdecea" stroke="#c62828"/>
+    <text x="846" y="122" font-weight="bold">S7 自己推进</text>
+    <text x="846" y="144">派活、审查、合入</text>
+    <text x="846" y="164">人不发命令</text>
+    <text x="846" y="200" fill="#c62828">必须问人时四行</text>
+    <text x="846" y="240" fill="#555">M7、M4、M5、M6</text>
+    <text x="846" y="258" fill="#555">规则板、循环板</text>
+    <text x="846" y="276" fill="#555">指标流水</text>
+    <text x="846" y="300" fill="#c62828">缺口 G4 G7–G9 G21</text>
+
+    <!-- S8 -->
+    <rect x="972" y="100" width="128" height="230" rx="6" fill="#e8f5e9" stroke="#2e7d32"/>
+    <text x="982" y="122" font-weight="bold">S8 看面板与两块板</text>
+    <text x="982" y="144">首页五节</text>
+    <text x="982" y="164">只看不操作</text>
+    <text x="982" y="200" fill="#2e7d32">不问</text>
+    <text x="982" y="240" fill="#555">面板、M5</text>
+    <text x="982" y="258" fill="#555">规则板、循环板</text>
+    <text x="982" y="300" fill="#c62828">缺口 G4 G9 G10</text>
+
+    <!-- S9 -->
+    <rect x="1108" y="100" width="128" height="230" rx="6" fill="#fff8e1" stroke="#f9a825"/>
+    <text x="1118" y="122" font-weight="bold">S9 晨报周报</text>
+    <text x="1118" y="144">晨报 08:30</text>
+    <text x="1118" y="164">周报周一 09:00</text>
+    <text x="1118" y="182">巡检 02:30</text>
+    <text x="1118" y="210" fill="#b26a00">周报可带四行</text>
+    <text x="1118" y="240" fill="#555">循环板、M7</text>
+    <text x="1118" y="258" fill="#555">M6、指标流水</text>
+    <text x="1118" y="300" fill="#c62828">缺口 G7 G11</text>
+
+    <!-- S10 -->
+    <rect x="1244" y="100" width="136" height="230" rx="6" fill="#fdecea" stroke="#c62828"/>
+    <text x="1254" y="122" font-weight="bold">S10 目标做完</text>
+    <text x="1254" y="144">整体审查加</text>
+    <text x="1254" y="164">「目标做完了」检查</text>
+    <text x="1254" y="200" fill="#c62828">不收敛时四行</text>
+    <text x="1254" y="240" fill="#555">M7、循环板、面板</text>
+    <text x="1254" y="300" fill="#c62828">缺口 G7 G18</text>
+  </g>
+
+  <!-- arrows -->
+  <g stroke="#999" stroke-width="2">
+    <line x1="148" y1="215" x2="156" y2="215"/><line x1="284" y1="215" x2="292" y2="215"/>
+    <line x1="420" y1="215" x2="428" y2="215"/><line x1="556" y1="215" x2="564" y2="215"/>
+    <line x1="692" y1="215" x2="700" y2="215"/><line x1="828" y1="215" x2="836" y2="215"/>
+    <line x1="964" y1="215" x2="972" y2="215"/><line x1="1100" y1="215" x2="1108" y2="215"/>
+    <line x1="1236" y1="215" x2="1244" y2="215"/>
+  </g>
+
+  <!-- one plugin alone -->
+  <text x="20" y="368" font-size="15" font-weight="bold" fill="#222">只装一个插件（§4）</text>
+  <rect x="20" y="380" width="264" height="26" fill="#eeeeee" stroke="#888"/>
+  <text x="30" y="398">只装 GLM 通道：S1、S2，之后是普通对话</text>
+  <rect x="292" y="380" width="1088" height="26" fill="none" stroke="#1565c0" stroke-dasharray="6 3"/>
+  <rect x="20" y="380" width="128" height="26" fill="none" stroke="#1565c0" stroke-dasharray="6 3"/>
+  <text x="302" y="398" fill="#1565c0">只装编排层：S1、S3–S10（没有 S2，上手页不讲高峰模式，高峰模式不起作用）</text>
+
+  <!-- failure paths -->
+  <text x="20" y="444" font-size="15" font-weight="bold" fill="#222">用户会碰到的失败（§5）：5.5 在 S5、S6，其余在 S7 到 S9</text>
+  <g font-size="13">
+    <rect x="20" y="456" width="214" height="56" rx="4" fill="#fafafa" stroke="#aaa"/>
+    <text x="30" y="476">5.1 GLM 登录过期</text><text x="30" y="496" fill="#666">只告诉，人打 /glm-login</text>
+    <rect x="244" y="456" width="214" height="56" rx="4" fill="#fafafa" stroke="#aaa"/>
+    <text x="254" y="476">5.2 额度快用完</text><text x="254" y="496" fill="#666">只告诉；用完时缺口 G15</text>
+    <rect x="468" y="456" width="214" height="56" rx="4" fill="#fafafa" stroke="#aaa"/>
+    <text x="478" y="476">5.3 高峰 14:00–18:00，默认少做</text><text x="478" y="496" fill="#666">不问；结束时循环板接上推进</text>
+    <rect x="692" y="456" width="214" height="56" rx="4" fill="#fafafa" stroke="#aaa"/>
+    <text x="702" y="476">5.4 崩溃或重启</text><text x="702" y="496" fill="#666">不问；对账接着走</text>
+    <rect x="916" y="456" width="214" height="56" rx="4" fill="#fafafa" stroke="#aaa"/>
+    <text x="926" y="476">5.5 方案被否掉</text><text x="926" y="496" fill="#666">新的一版仍是四行</text>
+    <rect x="1140" y="456" width="240" height="56" rx="4" fill="#fafafa" stroke="#aaa"/>
+    <text x="1150" y="476">5.6 审查一再不过</text><text x="1150" y="496" fill="#666">第 3 轮仍不过就停下，四行问人</text>
+  </g>
+
+  <text x="20" y="560" fill="#444">问人的方式只有三种：对话（开放的一两句）、四行（背景、推荐、疑问、不做，一条回复至多三件）、不问。面板只给人看，人改东西在对话里说或打命令。</text>
+  <text x="20" y="584" fill="#444">接缝裁定补上的格子见 §6.2；设计之间对不上的格子见 §6.1（G1–G22；G3 G5 G6 G12 G17 G19 已对上，留着备查）。S6 到 S8 的两层循环是人定的，M3、M7、面板还没跟上（G4）。</text>
+</svg>

@@ -1,0 +1,125 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="560" height="1600" viewBox="0 0 560 1600">
+  <style>
+    text{font-family:'Microsoft YaHei','PingFang SC','Noto Sans CJK SC',sans-serif;fill:#ececf1}
+    .cap{font-size:12px;fill:#8a8a92}
+    .capb{font-size:13px;font-weight:700;fill:#b5b5bb}
+    .lab{font-size:11px;font-weight:700;fill:#8a8a92;letter-spacing:.5px}
+    .h1{font-size:16px;font-weight:700}
+    .t{font-size:13px}
+    .s{font-size:12.5px;fill:#b5b5bb}
+    .m{font-size:12px;fill:#8a8a92}
+    .a{font-size:12.5px;fill:#6aa1ff}
+    .k{font-size:12px;fill:#8a8a92}
+    .mono{font-family:Consolas,'Cascadia Mono',monospace;font-size:12px;fill:#b5b5bb}
+  </style>
+  <rect width="560" height="1600" fill="#111113"/>
+  <text class="capb" x="20" y="24">节点页：在一件事上点「讲细点」打开（例：拆成两个插件）</text>
+  <text class="cap" x="20" y="44">目标、特性、任务都用同一个排法：效果是、怎么做、为什么、不做什么、进展；底账收在最后。内容取自 2026-10-29T13:04Z 的图。</text>
+
+  <rect x="20" y="60" width="520" height="1524" rx="12" fill="#161618" stroke="#2c2c31"/>
+
+  <rect x="36" y="74" width="84" height="28" rx="7" fill="none" stroke="#3a3a40"/>
+  <text class="t" x="78" y="93" text-anchor="middle">‹ 说重点</text>
+  <text class="a" x="520" y="93" text-anchor="end">在图上看</text>
+  <line x1="36" y1="114" x2="524" y2="114" stroke="#2c2c31"/>
+
+  <text class="m" x="40" y="138">效果是：<tspan class="a" style="font-size:12px">AI 按规矩推进项目，你只管要什么和拍板</tspan> › <tspan class="a" style="font-size:12px">按项目图干活：规划、分工、</tspan></text>
+  <text class="a" x="40" y="156" style="font-size:12px">检查都有规矩</text>
+  <text class="h1" x="40" y="184">拆成两个插件：GLM 通道和项目编排各装各的</text>
+  <circle cx="44" cy="204" r="3.5" fill="#d29922"/>
+  <text class="s" x="54" y="208">在做 · 30 分钟前有进展 · 这个会话里没有 agent 在做它</text>
+  <line x1="40" y1="226" x2="520" y2="226" stroke="#2c2c31"/>
+
+  <!-- 效果是 -->
+  <text class="lab" x="40" y="250">效果是 · 怎样算做完</text>
+  <circle cx="46" cy="270" r="2" fill="#8a8a92"/>
+  <text class="t" x="56" y="274">两个包单独装上、单独启用都不报错（以探针生成的 <tspan class="mono">probe-glm</tspan>、</text>
+  <text class="t" x="56" y="292"><tspan class="mono">probe-hourness</tspan> 与两包同列的 <tspan class="mono">probe-full</tspan> 为准）；只装编排层包时，</text>
+  <text class="t" x="56" y="310">非 GLM 会话里项目图与面板生效，guard 按 question-14（G3）</text>
+  <text class="t" x="56" y="328">对所有路由生效</text>
+  <circle cx="46" cy="348" r="2" fill="#8a8a92"/>
+  <text class="t" x="56" y="352">行 id 不变；桌面版与 glmsandbox 的 profile 只改了 <tspan class="mono">package.json</tspan></text>
+  <text class="t" x="56" y="370">的 bundles 与 dependencies（改前备份），五条本项目覆盖项照常</text>
+  <text class="t" x="56" y="388">生效（L4 结构比对）</text>
+  <circle cx="46" cy="408" r="2" fill="#8a8a92"/>
+  <text class="t" x="56" y="412">门禁、探针全过；桌面版批次 L4 通过</text>
+  <text class="m" x="40" y="436">这几条要能让机器检查，照原文显示。</text>
+  <line x1="40" y1="452" x2="520" y2="452" stroke="#2c2c31"/>
+
+  <!-- 怎么做 -->
+  <text class="lab" x="40" y="476">怎么做</text>
+  <text class="m" x="40" y="498">定下的做法 · 6（已关闭的题照原文显示）</text>
+
+  <text class="t" x="40" y="522">两个项目目标怎么拆</text>
+  <text class="k" x="520" y="522" text-anchor="end">你在对话里说的</text>
+  <text class="s" x="40" y="542">选了「两个根目标，编排层沿用 hourness，GLM 新建 glm-house」</text>
+  <line x1="40" y1="554" x2="520" y2="554" stroke="#26262b"/>
+
+  <text class="t" x="40" y="574">guard 在方言没接管的路由上怎么做</text>
+  <text class="k" x="520" y="574" text-anchor="end">你在对话里说的</text>
+  <text class="s" x="40" y="594">选了「全拦：C、N、O 都拦截」</text>
+  <line x1="40" y1="606" x2="520" y2="606" stroke="#26262b"/>
+
+  <text class="t" x="40" y="626">split 的验收怎么改写</text>
+  <text class="k" x="520" y="626" text-anchor="end">你在对话里说的</text>
+  <text class="s" x="40" y="646">选了「按设计的验证手段改写」</text>
+  <line x1="40" y1="658" x2="520" y2="658" stroke="#26262b"/>
+
+  <text class="t" x="40" y="678">两个包叫什么</text>
+  <text class="k" x="520" y="678" text-anchor="end">你在对话里说的</text>
+  <text class="s" x="40" y="698">选了「dsh-glm-zcode、dsh-hourness（客户端包加 -ui）」</text>
+  <line x1="40" y1="710" x2="520" y2="710" stroke="#26262b"/>
+
+  <text class="t" x="40" y="730">桌面版 profile 要不要跟着拆包改</text>
+  <text class="k" x="520" y="730" text-anchor="end">你在对话里说的</text>
+  <text class="s" x="40" y="750">选了「改成直接列两个子包」</text>
+  <line x1="40" y1="762" x2="520" y2="762" stroke="#26262b"/>
+
+  <text class="t" x="40" y="782">V-01（设置页行名）和拆包谁先</text>
+  <text class="k" x="520" y="782" text-anchor="end">你在对话里说的</text>
+  <text class="s" x="40" y="802">选了「V-01 推迟到 split 合入之后，在新布局上单独设计」</text>
+
+  <text class="m" x="40" y="834">规划</text>
+  <text class="s" x="40" y="856">这一件没有再拆成小步。在等它的有 9 件，见计划。</text>
+  <line x1="40" y1="874" x2="520" y2="874" stroke="#2c2c31"/>
+
+  <!-- 为什么 -->
+  <text class="lab" x="40" y="898">为什么</text>
+  <text class="t" x="40" y="922">不用 GLM 的人也能单独装项目编排，两边出问题互不连累。</text>
+  <text class="s" x="40" y="948">起因：你问过「编排层要不要和 GLM 解耦，怎么拆」，</text>
+  <text class="s" x="40" y="968">定的是「同一个仓库拆成两个包」。</text>
+  <line x1="40" y1="986" x2="520" y2="986" stroke="#2c2c31"/>
+
+  <!-- 不做什么 -->
+  <text class="lab" x="40" y="1010">不做什么</text>
+  <text class="s" x="40" y="1034" style="fill:#8a8a92">没写</text>
+  <line x1="40" y1="1052" x2="520" y2="1052" stroke="#2c2c31"/>
+
+  <!-- 进展 -->
+  <text class="lab" x="40" y="1076">进展</text>
+  <text class="s" x="40" y="1100">33 条记录，最近一条 30 分钟前；全文在底账里。</text>
+  <line x1="40" y1="1118" x2="520" y2="1118" stroke="#2c2c31"/>
+
+  <!-- 底账 -->
+  <text class="lab" x="40" y="1142">底账 · agent 的工作记录，追问「凭什么」时看</text>
+  <text class="a" x="520" y="1142" text-anchor="end">说重点</text>
+  <rect x="40" y="1154" width="480" height="380" rx="8" fill="#1a1a1d" stroke="#2c2c31"/>
+  <text class="k" x="56" y="1180">类型</text><text class="t" x="120" y="1180">特性</text>
+  <text class="k" x="56" y="1204">状态</text><text class="t" x="120" y="1204">进行中（10 月 28 日起）</text>
+  <text class="k" x="56" y="1228">id</text><text class="mono" x="120" y="1228">split</text>
+  <text class="k" x="56" y="1252">依赖</text><text class="mono" x="120" y="1252">m1-parity</text><text class="s" x="196" y="1252">完成</text>
+  <text class="k" x="56" y="1276">来源</text><text class="mono" x="120" y="1276">question-10</text>
+  <text class="k" x="56" y="1300">证据</text><text class="t" x="120" y="1300">0 条</text>
+  <line x1="56" y1="1314" x2="504" y2="1314" stroke="#26262b"/>
+  <text class="k" x="56" y="1336">正文</text>
+  <text class="s" x="56" y="1358">同一仓库拆成两个 bundle：GLM 通道与 ZCode 方言（glm-llm、</text>
+  <text class="s" x="56" y="1378">glm-login、glm-prompt、glm-compact、工具检索、高峰与积分）一个包；</text>
+  <text class="a" x="56" y="1398">展开</text>
+  <line x1="56" y1="1412" x2="504" y2="1412" stroke="#26262b"/>
+  <text class="k" x="56" y="1434">历史 · 36 条</text>
+  <text class="s" x="56" y="1456">30 分钟前 · agent · 批注：偏离（编排方记录）：profile 切换</text>
+  <text class="s" x="56" y="1476">没有走附录 0.5 要求的 A3 独立评审与 A4 演练……</text>
+  <text class="a" x="56" y="1506">看全部 36 条</text>
+  <text class="m" x="40" y="1558">祖先一行：「效果是：」后面是从根目标到父节点的人话标题，每段可点，放不下就换行。验收照原文，</text>
+  <text class="m" x="40" y="1576">所以这里还看得到 question-14 这类写法；「定下的做法」是这件事下面已拍板的 6 道题，照原文。</text>
+</svg>

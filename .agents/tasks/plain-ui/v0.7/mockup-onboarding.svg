@@ -1,0 +1,121 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="1000" viewBox="0 0 1120 1000">
+  <style>
+    text{font-family:'Microsoft YaHei','PingFang SC','Noto Sans CJK SC',sans-serif;fill:#ececf1}
+    .cap{font-size:12px;fill:#8a8a92}
+    .capb{font-size:13px;font-weight:700;fill:#b5b5bb}
+    .hero{font-size:22px;font-weight:700}
+    .h1{font-size:15px;font-weight:700}
+    .h2{font-size:13.5px;font-weight:700}
+    .t{font-size:13px}
+    .s{font-size:12.5px;fill:#b5b5bb}
+    .sb{font-size:12.5px;fill:#ececf1;font-weight:700}
+    .m{font-size:12px;fill:#8a8a92}
+    .a{font-size:12.5px;fill:#6aa1ff}
+    .y{font-size:12.5px;fill:#e3b341}
+    .tag{font-size:11px;fill:#8a8a92}
+    .tagb{font-size:11px;fill:#6aa1ff}
+  </style>
+  <rect width="1120" height="1000" fill="#111113"/>
+  <text class="capb" x="20" y="24">新手引导：左边是新会话的开场画面（有图与没图），右边是第一次打开项目图时的上手页</text>
+  <text class="cap" x="20" y="44">虚线框是 M3 的开场卡片（规格在 M3 附录 §2.6）；蓝色小字标出的是本稿的部分。编排层的引导不点名任何模型。</text>
+
+  <!-- 左上：有图的开场画面 -->
+  <rect x="20" y="60" width="500" height="440" rx="12" fill="#161618" stroke="#2c2c31"/>
+  <text class="tag" x="36" y="80">① 有项目图的工作区</text>
+  <text class="hero" x="270" y="124" text-anchor="middle">探索未至之境</text>
+  <rect x="40" y="146" width="132" height="26" rx="13" fill="none" stroke="#3a3a40"/>
+  <text class="t" x="106" y="164" text-anchor="middle">GLM-Hourness ▾</text>
+  <rect x="384" y="146" width="96" height="26" rx="13" fill="none" stroke="#6aa1ff"/>
+  <text class="a" x="432" y="164" text-anchor="middle">GLM · 上手</text>
+  <text class="tagb" x="384" y="188">GLM 包（§6.3）</text>
+
+  <rect x="40" y="196" width="440" height="222" rx="10" fill="#1b1b1e" stroke="#4a4a52" stroke-dasharray="5 4"/>
+  <text class="tag" x="322" y="214">M3 的卡片（M3 附录 §2.6）</text>
+  <text class="h2" x="56" y="234">把这个工作区交给主 Agent</text>
+  <text class="s" x="56" y="258">说一句你想做的。主 Agent 先问清楚、出方案给你批，</text>
+  <text class="s" x="56" y="278">再分给子 agent 去做；它自己不写代码。</text>
+  <rect x="56" y="292" width="124" height="28" rx="7" fill="#2b5fd9"/>
+  <text class="t" x="118" y="311" text-anchor="middle">写一句你想做的</text>
+  <rect x="190" y="292" width="124" height="28" rx="7" fill="none" stroke="#3a3a40"/>
+  <text class="t" x="252" y="311" text-anchor="middle">接着推进现有项目</text>
+  <text class="y" x="56" y="342">⚠ 主 Agent 用强一点的模型</text>
+  <text class="m" x="56" y="362">命令是 /wish，随时 /wish off 退出。</text>
+  <line x1="56" y1="376" x2="464" y2="376" stroke="#2c2c31"/>
+  <text class="a" x="56" y="400">第一次用？看看项目图怎么用 ›</text>
+  <text class="tagb" x="300" y="400">本稿：FirstVisitLine（§6.5）</text>
+
+  <rect x="40" y="430" width="440" height="52" rx="10" fill="#1b1b1e" stroke="#3a3a40"/>
+  <text class="m" x="56" y="461">描述你想要构建的内容, / 调用指令, @ 文件或对话</text>
+
+  <!-- 左下：没图的开场画面 -->
+  <rect x="20" y="520" width="500" height="380" rx="12" fill="#161618" stroke="#2c2c31"/>
+  <text class="tag" x="36" y="540">② 没有项目图的工作区</text>
+  <text class="hero" x="270" y="584" text-anchor="middle">探索未至之境</text>
+  <rect x="40" y="606" width="120" height="26" rx="13" fill="none" stroke="#3a3a40"/>
+  <text class="t" x="100" y="624" text-anchor="middle">expense-cli ▾</text>
+  <rect x="40" y="648" width="440" height="168" rx="10" fill="#1b1b1e" stroke="#6aa1ff"/>
+  <text class="tagb" x="300" y="666">本稿：hourness-nograph（§6.6）</text>
+  <text class="h2" x="56" y="688">这个工作区还没有项目图</text>
+  <text class="s" x="56" y="712">项目图记下这个项目要做成什么、接下来做什么、</text>
+  <text class="s" x="56" y="732">哪些要你回话。有了它，主 Agent 才能接手。</text>
+  <rect x="56" y="748" width="112" height="28" rx="7" fill="#2b5fd9"/>
+  <text class="t" x="112" y="767" text-anchor="middle">建一张项目图</text>
+  <text class="m" x="56" y="800">按钮执行 /hourness-init；它没注册时换成一行建空目录的做法。</text>
+  <rect x="40" y="830" width="440" height="52" rx="10" fill="#1b1b1e" stroke="#3a3a40"/>
+  <text class="m" x="56" y="861">描述你想要构建的内容, / 调用指令, @ 文件或对话</text>
+
+  <!-- 右：上手页 -->
+  <rect x="560" y="60" width="540" height="880" rx="12" fill="#161618" stroke="#2c2c31"/>
+  <text class="tag" x="576" y="80">③ 右侧栏的项目图，第一次打开（§6.4）</text>
+  <text class="h1" x="580" y="110">项目图：给你看项目，细节不用你管</text>
+  <text class="m" x="580" y="132">第一次打开时看一眼；以后在首页页脚「上手说明」里还能再看</text>
+  <line x1="576" y1="146" x2="1084" y2="146" stroke="#2c2c31"/>
+
+  <text class="h2" x="580" y="172">1　一眼看懂</text>
+  <text class="s" x="604" y="194">首页告诉你离目标还差多少、接下来做什么、上次看之后变了什么。</text>
+  <text class="s" x="604" y="214">想知道为什么点「讲细点」，看够了点「说重点」；这两个按钮只改显示。</text>
+
+  <text class="h2" x="580" y="248">2　你要做的只有回话</text>
+  <text class="s" x="604" y="270">要你定的事，主 Agent 会在它的对话里写成四行：背景、推荐、疑问、不做。</text>
+  <text class="s" x="604" y="290">你说「可以」、补一句，或说「不行，因为……」；随口说的它会先复述再记。</text>
+  <text class="s" x="604" y="310">这块面板只给你看；「需要你」列出在等你回话的事，点开就到主 Agent 的对话。</text>
+  <text class="m" x="604" y="332">几个词：主 Agent（替你管这个项目的 agent，一个项目只有一个）、</text>
+  <text class="m" x="604" y="350">子 agent（它派出去干活的）、底账（agent 的工作记录，追问「凭什么」时看）。</text>
+
+  <text class="h2" x="580" y="384">3　让主 Agent 接手</text>
+  <text class="s" x="604" y="406">在输入框打 /wish，后面跟一句你想做的。它先问清楚，再和你定下框架、</text>
+  <text class="s" x="604" y="426">分成哪几块、哪些方向不能变；每一块的设计你同意了才开工，之后它自己推进。</text>
+  <text class="y" x="604" y="448">⚠ 主 Agent 用强一点的模型</text>
+  <text class="m" x="790" y="448">它派出去的子 agent 用什么模型由它选</text>
+  <rect x="604" y="458" width="84" height="24" rx="6" fill="none" stroke="#3a3a40"/>
+  <text class="t" x="646" y="475" text-anchor="middle">复制 /wish</text>
+
+  <text class="h2" x="580" y="514">4　规则板</text>
+  <text class="s" x="604" y="536">你定下的规矩都在这里，还有两道会拦住动作的门：合入前要跑的检查、</text>
+  <text class="s" x="604" y="556">必须全审的改动。插件带来的只能看。</text>
+  <text class="s" x="604" y="580">高峰模式：GLM 高峰时段更费积分。三档：无影响、少做、不做；默认是<tspan class="sb">少做</tspan>：</text>
+  <text class="s" x="604" y="600">高峰时少派活，练习题、对照实验、大的评审挪到高峰之后，必要的活照做。</text>
+  <text class="s" x="604" y="620">要改：跟主 Agent 说「高峰改成不做」，或在输入框打 /rules peak 不做</text>
+  <text class="m" x="604" y="642">现在是：少做（出厂默认）</text>
+  <text class="a" x="1000" y="642">去看规则板 ›</text>
+
+  <text class="h2" x="580" y="676">5　循环板</text>
+  <text class="s" x="604" y="698">到点了或碰到某件事就自动做的：改完文件就跑的检查、合入后的完整检查、</text>
+  <text class="s" x="604" y="718">交回之后提醒派审查、晨报、周报、夜间巡检。插件带来的只能看；</text>
+  <text class="s" x="604" y="738">你可以让主 Agent 加自己的，例如服务器巡查。</text>
+  <text class="a" x="1000" y="738">去看循环板 ›</text>
+
+  <text class="h2" x="580" y="772">6　去哪看进度</text>
+  <text class="s" x="604" y="794">这块面板；主 Agent 对话里输入框上方的流程条；</text>
+  <text class="s" x="604" y="814">晨报和周报在主 Agent 的对话里，到点由系统提醒它写给你。</text>
+
+  <line x1="576" y1="838" x2="1084" y2="838" stroke="#2c2c31"/>
+  <rect x="580" y="856" width="84" height="30" rx="7" fill="#2b5fd9"/>
+  <text class="t" x="622" y="876" text-anchor="middle">去首页</text>
+  <text class="m" x="678" y="876">跳过也是点它</text>
+
+  <text class="m" x="20" y="924">第 4 块在规则板装上时出现；高峰模式三句与「现在是」一行在规则板有 GLM 计价服务时显示（读不到此刻是不是高峰时这一行写原因），只装编排层时整段不出现。第 5 块只在循环板装上时出现。</text>
+  <text class="m" x="20" y="944">「复制 /wish」只写剪贴板；上手页上没有执行命令或写图的按钮。图上已有身份 human 的历史时上手页不自动出现；接管与第一次 /wish 写下的带原话历史不挡它。</text>
+  <text class="m" x="20" y="964">GLM 包的「GLM · 上手」点开是三步（登录、选模型、发一句话），与 0.4 相同；它不讲高峰模式，因为 GLM 包不认识规则板。</text>
+  <text class="m" x="20" y="984">「第一次用？」在开场画面上打不开右侧栏时换成灰字「发出第一句话之后，在右侧栏打开「项目图」，上手说明会自己出现」（§6.5）。</text>
+</svg>

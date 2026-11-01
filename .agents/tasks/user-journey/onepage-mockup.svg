@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 660" width="960" height="660" font-family="'Microsoft YaHei','PingFang SC','Noto Sans CJK SC','Source Han Sans SC',sans-serif">
+  <title>夜里额度用完、重置，08:05 一起收到汇报（示意）</title>
+  <desc>主 Agent 对话窗口的示意图：22:12 放行三个模块；01:48 额度用完，推进停住并告诉用户；02:31 额度重置，推进自己接上；08:05 用户回来，两个模块做完的汇报一起交到。图里的话是示意，措辞没定。</desc>
+  <rect width="960" height="660" fill="#f3f4f7"/>
+  <rect x="20" y="16" width="920" height="628" rx="10" fill="#ffffff" stroke="#c9ced8"/>
+  <path d="M20 26a10 10 0 0 1 10-10h900a10 10 0 0 1 10 10v46H20z" fill="#eaeef5"/>
+  <text x="44" y="42" font-size="17" font-weight="700" fill="#1f2937">主 Agent · 旅行照片归档小工具</text>
+  <text x="44" y="62" font-size="12" fill="#6b7280">目标：把旅行照片按拍摄日期归到文件夹 · 示例里主 Agent 用的不是 GLM，子 agent 用 GLM</text>
+  <rect x="852" y="30" width="64" height="24" rx="12" fill="#fde9c4"/>
+  <text x="884" y="47" font-size="13" text-anchor="middle" fill="#8a5a00">示意</text>
+
+  <text x="44" y="98" font-size="12" fill="#6b7280">昨晚 22:12 · 你</text>
+  <rect x="44" y="106" width="560" height="36" rx="8" fill="#dbeafe" stroke="#9cc0f2"/>
+  <text x="60" y="130" font-size="15" fill="#111827">都可以</text>
+  <line x1="604" y1="124" x2="632" y2="124" stroke="#a8b0bf"/>
+  <text x="640" y="129" font-size="13" fill="#4b5a73">你放行三个模块，然后去睡</text>
+
+  <text x="44" y="166" font-size="12" fill="#6b7280">22:12 · 主 Agent</text>
+  <rect x="44" y="174" width="560" height="36" rx="8" fill="#f1f3f7" stroke="#d5dae3"/>
+  <text x="60" y="198" font-size="15" fill="#111827">收到放行。三个模块按顺序做，自动推进开始。</text>
+
+  <text x="44" y="234" font-size="12" fill="#6b7280">01:48 · 主 Agent</text>
+  <rect x="44" y="242" width="560" height="66" rx="8" fill="#fff4d6" stroke="#e0b44c"/>
+  <text x="60" y="266" font-size="15" fill="#111827">GLM 5 小时额度用完了，预计 02:30 重置。</text>
+  <text x="60" y="292" font-size="15" fill="#111827">自动推进先停住。重置后自动接上，不用你说。</text>
+  <line x1="604" y1="275" x2="632" y2="275" stroke="#a8b0bf"/>
+  <text x="640" y="272" font-size="13" fill="#4b5a73">额度用完：推进停住，</text>
+  <text x="640" y="291" font-size="13" fill="#4b5a73">对话里告诉你</text>
+
+  <text x="44" y="332" font-size="12" fill="#6b7280">02:31 · 主 Agent</text>
+  <rect x="44" y="340" width="560" height="36" rx="8" fill="#e3f4e6" stroke="#9fd0a8"/>
+  <text x="60" y="364" font-size="15" fill="#111827">额度重置了，自动推进已接上。</text>
+  <line x1="604" y1="358" x2="632" y2="358" stroke="#a8b0bf"/>
+  <text x="640" y="363" font-size="13" fill="#4b5a73">重置后自己接上，你没动手</text>
+
+  <line x1="44" y1="404" x2="604" y2="404" stroke="#c9ced8" stroke-dasharray="4 4"/>
+  <rect x="244" y="394" width="160" height="22" rx="11" fill="#ffffff" stroke="#c9ced8"/>
+  <text x="324" y="410" font-size="12" text-anchor="middle" fill="#6b7280">今天 08:05，你回来了</text>
+
+  <text x="44" y="438" font-size="12" fill="#6b7280">08:05 · 主 Agent</text>
+  <rect x="44" y="446" width="560" height="148" rx="8" fill="#f1f3f7" stroke="#d5dae3"/>
+  <text x="60" y="471" font-size="15" fill="#111827">你不在的时候做完了两个模块，一起交给你：</text>
+  <text x="60" y="497" font-size="15" fill="#111827">1. 读取拍摄日期（00:40 做完）：审查通过，合入前的检查全过。</text>
+  <text x="60" y="523" font-size="15" fill="#111827">2. 按日期建文件夹并移动（05:12 做完）：审查通过，检查全过。</text>
+  <text x="60" y="549" font-size="15" fill="#111827">第三个模块「重名和损坏文件」正在做。</text>
+  <text x="60" y="575" font-size="15" fill="#111827">整个目标还没做完；做完时用一句话带上整体审查的结论。</text>
+  <line x1="604" y1="520" x2="632" y2="520" stroke="#a8b0bf"/>
+  <text x="640" y="506" font-size="13" fill="#4b5a73">做完一个模块汇报一次；</text>
+  <text x="640" y="525" font-size="13" fill="#4b5a73">你不在时先攒着，</text>
+  <text x="640" y="544" font-size="13" fill="#4b5a73">回来一起交给你</text>
+
+  <text x="44" y="624" font-size="12" fill="#6b7280">图里的话是示意，措辞没定。额度重置后怎么知道、你回来了怎么知道，设计里还没写。</text>
+</svg>

@@ -1,0 +1,116 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="924" viewBox="0 0 1120 924">
+  <style>
+    text{font-family:'Microsoft YaHei','PingFang SC','Noto Sans CJK SC',sans-serif;fill:#ececf1}
+    .cap{font-size:12px;fill:#8a8a92}
+    .capb{font-size:13px;font-weight:700;fill:#b5b5bb}
+    .lab{font-size:11px;font-weight:700;fill:#8a8a92;letter-spacing:.5px}
+    .h1{font-size:15px;font-weight:700}
+    .t{font-size:13px}
+    .s{font-size:12px;fill:#b5b5bb}
+    .m{font-size:11.5px;fill:#8a8a92}
+    .a{font-size:12px;fill:#6aa1ff}
+    .code{font-size:12px;fill:#b5b5bb;font-family:Consolas,'Cascadia Mono',monospace}
+    .rule{stroke:#26262b}
+  </style>
+  <rect width="1120" height="924" fill="#111113"/>
+  <text class="capb" x="20" y="24">第 2 层的两块板：从首页页脚「规则板 ›」「循环板 ›」进入（§4.7）</text>
+  <text class="cap" x="20" y="44">只画面板定的版面约定：每条写从哪来；插件带来的只能看；人能改的写一句改法；页面没有任何控件。条目与字句归规则板、循环板设计，这里是示意。</text>
+
+  <!-- 规则板 -->
+  <rect x="20" y="60" width="520" height="800" rx="12" fill="#161618" stroke="#2c2c31"/>
+  <rect x="36" y="74" width="84" height="26" rx="7" fill="none" stroke="#3a3a40"/>
+  <text class="t" x="78" y="92" text-anchor="middle">‹ 说重点</text>
+  <text class="h1" x="40" y="128">规则板</text>
+  <text class="m" x="96" y="128">一件事要发生时，让不让做</text>
+  <line x1="36" y1="142" x2="524" y2="142" stroke="#2c2c31"/>
+
+  <text class="lab" x="40" y="166">会挡住动作的门</text>
+  <text class="t" x="40" y="190">合入前要跑的检查</text>
+  <text class="code" x="56" y="210">$ npm run build　　$ npm run preflight　　$ npm test</text>
+  <text class="code" x="56" y="228">碰到 src/、ui/、packages/ 等时：$ npm run probe</text>
+  <text class="m" x="40" y="248">项目图上的规范「合入主干前必须全部通过的命令」· 你批过的</text>
+  <text class="m" x="40" y="266">要改：跟主 Agent 说「合入前的检查加一条……」</text>
+  <line x1="40" y1="280" x2="520" y2="280" class="rule"/>
+  <text class="t" x="40" y="302">必须全审的改动</text>
+  <text class="s" x="56" y="322">改到拦截与权限 · 改到项目图引擎或数据格式</text>
+  <text class="s" x="56" y="340">删东西、推送这类收不回的操作 · 改用户配置目录或写到项目之外</text>
+  <text class="m" x="40" y="360">项目图上的规范「本仓库必须全审的改动」· 你批过的</text>
+  <text class="m" x="40" y="378">要改：跟主 Agent 说</text>
+  <line x1="36" y1="394" x2="524" y2="394" stroke="#2c2c31"/>
+
+  <text class="lab" x="40" y="418">默认规则</text>
+  <text class="t" x="40" y="442">GLM 高峰时段按全价计积分 · 只提醒模型</text>
+  <text class="s" x="40" y="462">现在：是，到 18:00</text>
+  <text class="m" x="40" y="480">项目编排带来的 · 只能看；高峰时段来自 GLM 通道</text>
+  <line x1="40" y1="494" x2="520" y2="494" class="rule"/>
+  <text class="t" x="40" y="516">高峰模式：少做</text>
+  <text class="m" x="150" y="516">出厂默认</text>
+  <text class="s" x="40" y="536">无影响：照常做，只提醒 · 少做：能挪的重活挪到 18 点后，必要的照做</text>
+  <text class="s" x="40" y="554">不做：GLM 的活停下排队，18 点后接着做</text>
+  <text class="m" x="40" y="574">要改：跟主 Agent 说「高峰改成不做」，或在输入框打 /rules peak 不做</text>
+  <line x1="36" y1="590" x2="524" y2="590" stroke="#2c2c31"/>
+
+  <text class="lab" x="40" y="614">你定的规则</text>
+  <text class="s" x="40" y="638">还没有。要加：跟主 Agent 说你想要的规矩，它会写成四行来问你。</text>
+  <line x1="36" y1="654" x2="524" y2="654" stroke="#2c2c31"/>
+
+  <text class="lab" x="40" y="678">写在代码里的规则 · 只能看</text>
+  <text class="s" x="40" y="702">主 Agent 没有写文件的工具</text>
+  <text class="m" x="360" y="702">项目编排带来的</text>
+  <text class="s" x="40" y="724">会丢工作的 git 命令先存档再执行</text>
+  <text class="m" x="360" y="724">项目编排带来的</text>
+  <text class="s" x="40" y="746">项目图的文件只经项目图工具改</text>
+  <text class="m" x="360" y="746">项目编排带来的</text>
+  <text class="s" x="40" y="768">规则文件只经规则板改</text>
+  <text class="m" x="360" y="768">项目编排带来的</text>
+  <line x1="36" y1="784" x2="524" y2="784" stroke="#2c2c31"/>
+  <text class="lab" x="40" y="808">在等的工作 · 提议与恢复</text>
+  <text class="s" x="40" y="832">没有。有的时候每件写一句改法，例「要放行：在输入框打 /rules let 3」</text>
+
+  <!-- 循环板 -->
+  <rect x="580" y="60" width="520" height="800" rx="12" fill="#161618" stroke="#2c2c31"/>
+  <rect x="596" y="74" width="84" height="26" rx="7" fill="none" stroke="#3a3a40"/>
+  <text class="t" x="638" y="92" text-anchor="middle">‹ 说重点</text>
+  <text class="h1" x="600" y="128">循环板</text>
+  <text class="m" x="656" y="128">到点了或碰到某件事，就去做一件事</text>
+  <line x1="596" y1="142" x2="1084" y2="142" stroke="#2c2c31"/>
+
+  <text class="lab" x="600" y="166">碰到某件事就做</text>
+  <text class="t" x="600" y="190">改完文件就跑检查器，结果交给改文件的 agent</text>
+  <text class="s" x="600" y="210">最近一次：10 分钟前，2 条发现</text>
+  <text class="m" x="600" y="228">项目编排带来的 · 只能看</text>
+  <line x1="600" y1="242" x2="1080" y2="242" class="rule"/>
+  <text class="t" x="600" y="264">合入主干之后跑一遍完整检查</text>
+  <text class="s" x="600" y="284">上次：昨天 21:40，全过</text>
+  <text class="m" x="600" y="302">项目编排带来的 · 只能看</text>
+  <line x1="600" y1="316" x2="1080" y2="316" class="rule"/>
+  <text class="t" x="600" y="338">高峰开始与结束时，按高峰模式收放活</text>
+  <text class="s" x="600" y="358">下次：今天 18:00 高峰结束</text>
+  <text class="m" x="600" y="376">项目编排带来的 · 依据 GLM 通道的高峰时刻与规则板的高峰模式 · 只能看</text>
+  <line x1="596" y1="392" x2="1084" y2="392" stroke="#2c2c31"/>
+
+  <text class="lab" x="600" y="416">到点做</text>
+  <text class="t" x="600" y="440">晨报 · 每天 9:00 · 主 Agent 在它的对话里写给你</text>
+  <text class="s" x="600" y="460">下次：明天 9:00</text>
+  <text class="m" x="600" y="478">项目编排带来的 · 只能看</text>
+  <line x1="600" y1="492" x2="1080" y2="492" class="rule"/>
+  <text class="t" x="600" y="514">周报 · 每周一 9:00</text>
+  <text class="s" x="600" y="534">下次：11 月 2 日 9:00</text>
+  <text class="m" x="600" y="552">项目编排带来的 · 只能看</text>
+  <line x1="600" y1="566" x2="1080" y2="566" class="rule"/>
+  <text class="t" x="600" y="588">夜间巡检 · 每天 2:00</text>
+  <text class="s" x="600" y="608">上次：今天 2:00，2 件交给了主 Agent</text>
+  <text class="m" x="600" y="626">项目编排带来的 · 只能看</text>
+  <line x1="596" y1="642" x2="1084" y2="642" stroke="#2c2c31"/>
+
+  <text class="lab" x="600" y="666">本项目加的</text>
+  <text class="t" x="600" y="690">每周读 Anthropic 与 OpenAI 的 agent 文章，对照本项目</text>
+  <text class="s" x="600" y="710">每 7 天 · 下次：11 月 5 日</text>
+  <text class="m" x="600" y="728">你定的 · 要改：跟主 Agent 说「读文章改成每两周一次」</text>
+  <line x1="596" y1="744" x2="1084" y2="744" stroke="#2c2c31"/>
+  <text class="s" x="600" y="770">要加一项（例如服务器巡查）：跟主 Agent 说做什么、多久一次</text>
+  <text class="s" x="600" y="788">或碰到什么事就做，它会写成四行来问你。</text>
+
+  <text class="m" x="20" y="884">时间、结果与条目都是示意；插件带来的条目暂时不能改、停、删（d-defaults-readonly），高峰模式的档位是例外，改法见左边。</text>
+  <text class="m" x="20" y="904">两页都没有新建、改、删、恢复、放行的按钮与表单；你加的条目怎么改都跟主 Agent 说。没装 GLM 包时默认规则一行写「装了 GLM 通道包才有高峰时段」，高峰模式只留档位。</text>
+</svg>

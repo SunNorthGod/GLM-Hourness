@@ -1,0 +1,383 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="2290" viewBox="0 0 1240 2290">
+  <style>
+    text{font-family:'Microsoft YaHei','PingFang SC','Noto Sans CJK SC',sans-serif;fill:#ececf1}
+    .cap{font-size:12px;fill:#8a8a92}
+    .capb{font-size:13px;font-weight:700;fill:#b5b5bb}
+    .fr{font-size:13.5px;font-weight:700;fill:#d4d4d8}
+    .q{font-size:14px;font-weight:700}
+    .cx{font-size:13px}
+    .th{font-size:11.5px;font-weight:700;fill:#8a8a92}
+    .ob{font-size:13px;font-weight:700}
+    .s{font-size:12.5px;fill:#b5b5bb}
+    .t{font-size:13px}
+    .m{font-size:12px;fill:#8a8a92}
+    .a{font-size:12.5px;fill:#6aa1ff}
+    .dis{font-size:13px;fill:#8a8a92}
+    .lb{font-size:14px;font-weight:500}
+    .ds{font-size:13px;fill:#8a8a92}
+    .nb{font-size:12px;fill:#b5b5bb}
+  </style>
+  <rect width="1240" height="2290" fill="#111113"/>
+  <text class="capb" x="20" y="24">选项卡：一张表，题目下面一行「取决于」，表格下面一行结论（d-option-card 最终定稿）</text>
+  <text class="cap" x="20" y="44">内容取自 2026-10-29T13:04Z 图上开着的真实待决（question-32、34、35；它们后来按人的更正拍板或不做，留作版式例子），假设字段已按新格式写入。左列是面板，右列是对话里 DSH 的问题卡、窄面板与设计放行卡。</text>
+  <text class="cap" x="20" y="62" style="fill:#d29922">design.md 0.4：每张卡在题目与取决于之间多两三句背景（background），对话卡写在 detail 第一段；样子见 mockup-home.svg 第一张卡。说重点也留背景。</text>
+
+  <!-- ===== ① default two-way ===== -->
+  <text class="fr" x="20" y="84">① 默认：取决于、四列的表、结论行；推荐是最后一行，表格里不标它</text>
+  <rect x="20" y="96" width="580" height="324" rx="10" fill="#1f1f23" stroke="#3a3a40"/>
+  <text class="q" x="40" y="124">你在电脑前时，LLM 的活限速还是排队</text>
+  <text class="cx" x="40" y="148">取决于：你另一个项目的构建主要吃内存还是吃 CPU？</text>
+  <text class="th" x="44" y="180">选项</text>
+  <text class="th" x="90" y="180">怎么做</text>
+  <text class="th" x="244" y="180">得到</text>
+  <text class="th" x="420" y="180">代价</text>
+  <line x1="40" y1="188" x2="580" y2="188" stroke="#2c2c31"/>
+  <circle cx="52" cy="204" r="6" fill="none" stroke="#8a8a92" stroke-width="1.3"/>
+  <text class="t" x="64" y="208">A</text>
+  <text class="ob" x="90" y="208">只限速</text>
+  <text class="s" x="244" y="208">所有活照跑，低优先级、</text>
+  <text class="s" x="244" y="226">CPU 有上限</text>
+  <text class="s" x="420" y="208">内存管不住</text>
+  <line x1="40" y1="238" x2="580" y2="238" stroke="#26262b"/>
+  <circle cx="52" cy="254" r="6" fill="none" stroke="#8a8a92" stroke-width="1.3"/>
+  <text class="t" x="64" y="258">B</text>
+  <text class="ob" x="90" y="258">只排队</text>
+  <text class="s" x="244" y="258">重活和多出的派发等你</text>
+  <text class="s" x="244" y="276">走开再跑，不要辅助进程</text>
+  <text class="s" x="420" y="258">没标成重活的命令照样全速</text>
+  <line x1="40" y1="288" x2="580" y2="288" stroke="#26262b"/>
+  <circle cx="52" cy="304" r="6" fill="none" stroke="#8a8a92" stroke-width="1.3"/>
+  <text class="t" x="64" y="308">C</text>
+  <text class="ob" x="90" y="308">重活排队，其余限速</text>
+  <text class="s" x="244" y="308">内存和 CPU 都管住</text>
+  <text class="s" x="420" y="308">CPU 上限要等辅助进程做好</text>
+  <text class="s" x="420" y="326">才生效，之前只降优先级</text>
+  <line x1="40" y1="338" x2="580" y2="338" stroke="#2c2c31"/>
+  <text class="cx" x="40" y="362">两样都吃 → C；只吃 CPU → A；只吃内存 → B · agent 推荐 C</text>
+  <rect x="40" y="378" width="92" height="28" rx="7" fill="none" stroke="#3a3a40"/>
+  <text class="dis" x="86" y="397" text-anchor="middle">批准所选</text>
+  <text class="t" x="148" y="397">都不要</text>
+  <text class="t" x="206" y="397">补充</text>
+  <text class="m" x="250" y="397">先选一项才能批准</text>
+  <text class="a" x="580" y="397" text-anchor="end">讲细点</text>
+
+  <!-- ===== ② one-way with dimension ===== -->
+  <text class="fr" x="20" y="454">② 以后改起来很贵：只多一句提示；带一列选项之间真正不同的维度</text>
+  <rect x="20" y="466" width="580" height="348" rx="10" fill="#1f1f23" stroke="#3a3a40"/>
+  <text class="q" x="40" y="494">你在电脑前时的默认预算</text>
+  <text class="m" x="40" y="516">这件事以后改起来很贵，多看一眼。</text>
+  <text class="cx" x="40" y="540">取决于：LLM 跑构建时，你的电脑是真卡，还是只是风扇响？</text>
+  <text class="th" x="44" y="572">选项</text>
+  <text class="th" x="90" y="572">怎么做</text>
+  <text class="th" x="184" y="572">得到</text>
+  <text class="th" x="332" y="572">代价</text>
+  <text class="th" x="480" y="572">CPU 上限</text>
+  <line x1="40" y1="580" x2="580" y2="580" stroke="#2c2c31"/>
+  <circle cx="52" cy="596" r="6" fill="none" stroke="#8a8a92" stroke-width="1.3"/>
+  <text class="t" x="64" y="600">A</text>
+  <text class="ob" x="90" y="600">严档</text>
+  <text class="s" x="184" y="600">LLM 几乎不占资源</text>
+  <text class="s" x="332" y="600">LLM 几乎停工，</text>
+  <text class="s" x="332" y="618">测试很慢</text>
+  <text class="s" x="480" y="600">32 个里用 4 个</text>
+  <line x1="40" y1="630" x2="580" y2="630" stroke="#26262b"/>
+  <circle cx="52" cy="646" r="6" fill="none" stroke="#8a8a92" stroke-width="1.3"/>
+  <text class="t" x="64" y="650">B</text>
+  <text class="ob" x="90" y="650">宽档</text>
+  <text class="s" x="184" y="650">不进系统作业，</text>
+  <text class="s" x="184" y="668">派发 2 路</text>
+  <text class="s" x="332" y="650">重活照样能把内存</text>
+  <text class="s" x="332" y="668">和风扇拉满</text>
+  <text class="s" x="480" y="650">不设上限</text>
+  <line x1="40" y1="680" x2="580" y2="680" stroke="#26262b"/>
+  <circle cx="52" cy="696" r="6" fill="none" stroke="#8a8a92" stroke-width="1.3"/>
+  <text class="t" x="64" y="700">C</text>
+  <text class="ob" x="90" y="700">中档</text>
+  <text class="s" x="184" y="700">重活排队，派发 1 路</text>
+  <text class="s" x="332" y="700">DSH 进系统作业，</text>
+  <text class="s" x="332" y="718">待到重启</text>
+  <text class="s" x="480" y="700">32 个里用 8 个</text>
+  <line x1="40" y1="730" x2="580" y2="730" stroke="#2c2c31"/>
+  <text class="cx" x="40" y="754">卡到不能用 → A；卡但能忍 → C；只是风扇响 → B · agent 推荐 C</text>
+  <rect x="40" y="772" width="92" height="28" rx="7" fill="none" stroke="#3a3a40"/>
+  <text class="dis" x="86" y="791" text-anchor="middle">批准所选</text>
+  <text class="t" x="148" y="791">都不要</text>
+  <text class="t" x="206" y="791">补充</text>
+  <text class="m" x="250" y="791">先选一项才能批准</text>
+  <text class="a" x="580" y="791" text-anchor="end">讲细点</text>
+
+  <!-- ===== ③ same-value column dropped ===== -->
+  <text class="fr" x="20" y="848">③ 所有行都一样的列不显示</text>
+  <rect x="20" y="860" width="580" height="348" rx="10" fill="#1f1f23" stroke="#3a3a40"/>
+  <text class="q" x="40" y="888">规则板管多大范围</text>
+  <text class="cx" x="40" y="912">取决于：你会同时开两个以上项目让 LLM 干活吗？</text>
+  <text class="th" x="44" y="944">选项</text>
+  <text class="th" x="90" y="944">怎么做</text>
+  <text class="th" x="244" y="944">得到</text>
+  <text class="th" x="420" y="944">代价</text>
+  <line x1="40" y1="952" x2="580" y2="952" stroke="#2c2c31"/>
+  <circle cx="52" cy="968" r="6" fill="none" stroke="#8a8a92" stroke-width="1.3"/>
+  <text class="t" x="64" y="972">A</text>
+  <text class="ob" x="90" y="972">全机一个规则库</text>
+  <text class="s" x="244" y="972">跨项目的规则只写一次</text>
+  <text class="s" x="420" y="972">给一个项目写的规则可能</text>
+  <text class="s" x="420" y="990">误伤另一个项目</text>
+  <line x1="40" y1="1002" x2="580" y2="1002" stroke="#26262b"/>
+  <circle cx="52" cy="1018" r="6" fill="none" stroke="#8a8a92" stroke-width="1.3"/>
+  <text class="t" x="64" y="1022">B</text>
+  <text class="ob" x="90" y="1022">全部按项目</text>
+  <text class="s" x="244" y="1022">和项目图一样按工作区分</text>
+  <text class="s" x="420" y="1022">两个项目会同时去动桌面</text>
+  <text class="s" x="420" y="1040">版；在场每个项目各点一次</text>
+  <line x1="40" y1="1052" x2="580" y2="1052" stroke="#26262b"/>
+  <circle cx="52" cy="1068" r="6" fill="none" stroke="#8a8a92" stroke-width="1.3"/>
+  <text class="t" x="64" y="1072">C</text>
+  <text class="ob" x="90" y="1072">机器管资源，</text>
+  <text class="ob" x="90" y="1090">项目管规则</text>
+  <text class="s" x="244" y="1072">桌面版、沙盒、你在不在、</text>
+  <text class="s" x="244" y="1090">CPU 预算全机共享</text>
+  <text class="s" x="420" y="1072">机器上多一份跨项目状态</text>
+  <line x1="40" y1="1102" x2="580" y2="1102" stroke="#2c2c31"/>
+  <text class="m" x="40" y="1124">示意：agent 若多写一列「改了能退回吗」，三行都是「能，迁一次状态文件」，这一列不显示。</text>
+  <text class="cx" x="40" y="1148">会 → C；不会 → B · agent 推荐 C</text>
+  <rect x="40" y="1166" width="92" height="28" rx="7" fill="none" stroke="#3a3a40"/>
+  <text class="dis" x="86" y="1185" text-anchor="middle">批准所选</text>
+  <text class="t" x="148" y="1185">都不要</text>
+  <text class="t" x="206" y="1185">补充</text>
+  <text class="m" x="250" y="1185">先选一项才能批准</text>
+  <text class="a" x="580" y="1185" text-anchor="end">讲细点</text>
+
+  <!-- ===== ⑤ think-first, before pick ===== -->
+  <text class="fr" x="20" y="1242">⑤ 先想后看（选之前）：顺序打乱，数字标号，取决于照常；结论行与推荐收起</text>
+  <rect x="20" y="1254" width="580" height="360" rx="10" fill="#1f1f23" stroke="#3a3a40"/>
+  <text class="q" x="40" y="1282">你在电脑前时的默认预算</text>
+  <text class="m" x="40" y="1304">这次先不告诉你 agent 推荐哪个：最近 10 次里你有 9 次选了推荐。</text>
+  <text class="m" x="40" y="1322">先按你自己的想法选；这次选项用数字标号，选完就能看到结论和推荐。</text>
+  <text class="m" x="40" y="1344">这件事以后改起来很贵，多看一眼。</text>
+  <text class="cx" x="40" y="1368">取决于：LLM 跑构建时，你的电脑是真卡，还是只是风扇响？</text>
+  <text class="th" x="44" y="1400">选项</text>
+  <text class="th" x="90" y="1400">怎么做</text>
+  <text class="th" x="184" y="1400">得到</text>
+  <text class="th" x="332" y="1400">代价</text>
+  <text class="th" x="480" y="1400">CPU 上限</text>
+  <line x1="40" y1="1408" x2="580" y2="1408" stroke="#2c2c31"/>
+  <circle cx="52" cy="1424" r="6" fill="none" stroke="#8a8a92" stroke-width="1.3"/>
+  <text class="t" x="64" y="1428">1</text>
+  <text class="ob" x="90" y="1428">宽档</text>
+  <text class="s" x="184" y="1428">不进系统作业，</text>
+  <text class="s" x="184" y="1446">派发 2 路</text>
+  <text class="s" x="332" y="1428">重活照样能把内存</text>
+  <text class="s" x="332" y="1446">和风扇拉满</text>
+  <text class="s" x="480" y="1428">不设上限</text>
+  <line x1="40" y1="1458" x2="580" y2="1458" stroke="#26262b"/>
+  <circle cx="52" cy="1474" r="6" fill="none" stroke="#8a8a92" stroke-width="1.3"/>
+  <text class="t" x="64" y="1478">2</text>
+  <text class="ob" x="90" y="1478">中档</text>
+  <text class="s" x="184" y="1478">重活排队，派发 1 路</text>
+  <text class="s" x="332" y="1478">DSH 进系统作业，</text>
+  <text class="s" x="332" y="1496">待到重启</text>
+  <text class="s" x="480" y="1478">32 个里用 8 个</text>
+  <line x1="40" y1="1508" x2="580" y2="1508" stroke="#26262b"/>
+  <circle cx="52" cy="1524" r="6" fill="none" stroke="#8a8a92" stroke-width="1.3"/>
+  <text class="t" x="64" y="1528">3</text>
+  <text class="ob" x="90" y="1528">严档</text>
+  <text class="s" x="184" y="1528">LLM 几乎不占资源</text>
+  <text class="s" x="332" y="1528">LLM 几乎停工，</text>
+  <text class="s" x="332" y="1546">测试很慢</text>
+  <text class="s" x="480" y="1528">32 个里用 4 个</text>
+  <line x1="40" y1="1558" x2="580" y2="1558" stroke="#2c2c31"/>
+  <rect x="40" y="1572" width="92" height="28" rx="7" fill="none" stroke="#3a3a40"/>
+  <text class="dis" x="86" y="1591" text-anchor="middle">批准所选</text>
+  <text class="t" x="148" y="1591">都不要</text>
+  <text class="t" x="206" y="1591">补充</text>
+  <text class="a" x="250" y="1591">看推荐</text>
+  <text class="a" x="580" y="1591" text-anchor="end">讲细点</text>
+
+  <!-- ===== ⑥ think-first, after pick, brief ===== -->
+  <text class="fr" x="20" y="1648">⑥ 先想后看（选了 1、点了说重点）：结论行出现，也用数字；还能改选</text>
+  <rect x="20" y="1660" width="580" height="346" rx="10" fill="#1f1f23" stroke="#3a3a40"/>
+  <text class="q" x="40" y="1688">你在电脑前时的默认预算</text>
+  <text class="m" x="40" y="1710">这次先不告诉你 agent 推荐哪个：最近 10 次里你有 9 次选了推荐。</text>
+  <text class="m" x="40" y="1732">这件事以后改起来很贵，多看一眼。</text>
+  <text class="cx" x="40" y="1756">取决于：LLM 跑构建时，你的电脑是真卡，还是只是风扇响？</text>
+  <text class="th" x="44" y="1788">选项</text>
+  <text class="th" x="90" y="1788">怎么做</text>
+  <line x1="40" y1="1796" x2="580" y2="1796" stroke="#2c2c31"/>
+  <circle cx="52" cy="1812" r="6" fill="none" stroke="#ececf1" stroke-width="1.3"/>
+  <circle cx="52" cy="1812" r="3" fill="#ececf1"/>
+  <text class="t" x="64" y="1816">1</text>
+  <text class="ob" x="90" y="1816">宽档</text>
+  <line x1="40" y1="1828" x2="580" y2="1828" stroke="#26262b"/>
+  <circle cx="52" cy="1844" r="6" fill="none" stroke="#8a8a92" stroke-width="1.3"/>
+  <text class="t" x="64" y="1848">2</text>
+  <text class="ob" x="90" y="1848">中档</text>
+  <line x1="40" y1="1860" x2="580" y2="1860" stroke="#26262b"/>
+  <circle cx="52" cy="1876" r="6" fill="none" stroke="#8a8a92" stroke-width="1.3"/>
+  <text class="t" x="64" y="1880">3</text>
+  <text class="ob" x="90" y="1880">严档</text>
+  <line x1="40" y1="1892" x2="580" y2="1892" stroke="#2c2c31"/>
+  <text class="cx" x="40" y="1918">卡到不能用 → 3；卡但能忍 → 2；只是风扇响 → 1 · agent 推荐 2</text>
+  <rect x="40" y="1936" width="92" height="28" rx="7" fill="#ececf1"/>
+  <text class="t" x="86" y="1955" text-anchor="middle" style="fill:#111113;font-weight:600">批准所选</text>
+  <text class="t" x="148" y="1955">都不要</text>
+  <text class="t" x="206" y="1955">补充</text>
+  <text class="a" x="580" y="1955" text-anchor="end">讲细点</text>
+  <text class="m" x="40" y="1988">拍板之后卡片回到字母与存储的顺序；底账写「要求先想后看；你看到的是先想后看，显示顺序 B、C、A」。</text>
+
+  <text class="cap" x="20" y="2038">表格各行同样的字号、颜色、行高与单选圈，没有默认选中；推荐只在结论行末尾写一次，读屏在所有选项之后读到。</text>
+  <text class="cap" x="20" y="2056">选中只改单选圈（选中标记与焦点框 3:1）；表格线与卡片框线用 DSH 的 border token。说重点留背景、取决于、选项与怎么做两列、结论行。</text>
+  <text class="cap" x="20" y="2074">单选是同名的原生单选，名称读字母与怎么做，说明依次读列头与格子（得到 …，代价 …，维度）；方向键在单选之间移动，Tab 不会先落到推荐行。</text>
+
+  <!-- ===== ⑦ conversation, normal ===== -->
+  <text class="fr" x="640" y="84">⑦ 对话里的同一张（question-34，DSH 的问题卡，第一问）</text>
+  <rect x="640" y="96" width="580" height="434" rx="12" fill="#1c1c20" stroke="#3a3a40"/>
+  <text class="m" x="660" y="120">要你拍板</text>
+  <text class="q" x="660" y="144">你在电脑前时，LLM 的活限速还是排队</text>
+  <text class="cx" x="660" y="170">取决于：你另一个项目的构建主要吃内存还是吃 CPU？</text>
+  <text class="cx" x="660" y="192">两样都吃 → C；只吃 CPU → A；只吃内存 → B · agent 推荐 C</text>
+  <rect x="660" y="206" width="540" height="56" rx="8" fill="#26262b" stroke="#3a3a40"/>
+  <rect x="670" y="216" width="20" height="20" rx="4" fill="#33333a"/>
+  <text class="nb" x="680" y="231" text-anchor="middle">1</text>
+  <text class="lb" x="700" y="231">A · 只限速</text>
+  <text class="ds" x="700" y="252">得到：所有活照跑，低优先级、CPU 有上限；代价：内存管不住</text>
+  <rect x="660" y="270" width="540" height="76" rx="8" fill="#26262b" stroke="#3a3a40"/>
+  <rect x="670" y="280" width="20" height="20" rx="4" fill="#33333a"/>
+  <text class="nb" x="680" y="295" text-anchor="middle">2</text>
+  <text class="lb" x="700" y="295">B · 只排队</text>
+  <text class="ds" x="700" y="316">得到：重活和多出的派发等你走开再跑，不要辅助进程；</text>
+  <text class="ds" x="700" y="336">代价：没标成重活的命令照样全速</text>
+  <rect x="660" y="354" width="540" height="76" rx="8" fill="#26262b" stroke="#3a3a40"/>
+  <rect x="670" y="364" width="20" height="20" rx="4" fill="#33333a"/>
+  <text class="nb" x="680" y="379" text-anchor="middle">3</text>
+  <text class="lb" x="700" y="379">C · 重活排队，其余限速</text>
+  <text class="ds" x="700" y="400">得到：内存和 CPU 都管住；代价：CPU 上限要等辅助进程做好才生效，</text>
+  <text class="ds" x="700" y="420">之前只降优先级</text>
+  <rect x="660" y="438" width="540" height="36" rx="8" fill="none" stroke="#3a3a40"/>
+  <text class="ds" x="676" y="461">输入你的答案</text>
+  <text class="m" x="660" y="506">‹  1 / 2  ›</text>
+  <rect x="1060" y="488" width="60" height="28" rx="7" fill="none" stroke="#3a3a40"/>
+  <text class="t" x="1090" y="507" text-anchor="middle">跳过</text>
+  <rect x="1128" y="488" width="72" height="28" rx="7" fill="#ececf1"/>
+  <text class="t" x="1164" y="507" text-anchor="middle" style="fill:#111113;font-weight:600">下一题</text>
+  <text class="cap" x="640" y="550">数字 1、2、3 是 DSH 按位置给的，字母是选项键；人说「选 1」或「选 A」都行，agent 按说法确认。</text>
+  <text class="cap" x="640" y="568">题目说明在选项之上，所以对话里结论行在选项之前读到（面板上在表格之后）。不加「(Recommended)」。</text>
+  <text class="cap" x="640" y="586">第二问是不带选项的「都不要或补充（可以跳过）」。</text>
+
+  <!-- ===== ⑧ conversation, think-first ===== -->
+  <text class="fr" x="640" y="624">⑧ 对话里的先想后看（question-35）：不写结论行，按钮不带字母，最后多一个「先看推荐再选」</text>
+  <rect x="640" y="636" width="580" height="522" rx="12" fill="#1c1c20" stroke="#3a3a40"/>
+  <text class="m" x="660" y="660">要你拍板</text>
+  <text class="q" x="660" y="684">你在电脑前时的默认预算</text>
+  <text class="cx" x="660" y="710">这次先不告诉你 agent 推荐哪个：最近 10 次里你有 9 次选了推荐。</text>
+  <text class="cx" x="660" y="730">先按你自己的想法选。</text>
+  <text class="cx" x="660" y="752">这件事以后改起来很贵，多看一眼。</text>
+  <text class="cx" x="660" y="774">取决于：LLM 跑构建时，你的电脑是真卡，还是只是风扇响？</text>
+  <rect x="660" y="790" width="540" height="76" rx="8" fill="#26262b" stroke="#3a3a40"/>
+  <rect x="670" y="800" width="20" height="20" rx="4" fill="#33333a"/>
+  <text class="nb" x="680" y="815" text-anchor="middle">1</text>
+  <text class="lb" x="700" y="815">宽档</text>
+  <text class="ds" x="700" y="836">得到：不进系统作业，派发 2 路；代价：重活照样能把内存和风扇拉满；</text>
+  <text class="ds" x="700" y="856">CPU 上限：不设上限</text>
+  <rect x="660" y="874" width="540" height="76" rx="8" fill="#26262b" stroke="#3a3a40"/>
+  <rect x="670" y="884" width="20" height="20" rx="4" fill="#33333a"/>
+  <text class="nb" x="680" y="899" text-anchor="middle">2</text>
+  <text class="lb" x="700" y="899">中档</text>
+  <text class="ds" x="700" y="920">得到：重活排队，派发 1 路；代价：DSH 进系统作业，待到重启；</text>
+  <text class="ds" x="700" y="940">CPU 上限：32 个里用 8 个</text>
+  <rect x="660" y="958" width="540" height="76" rx="8" fill="#26262b" stroke="#3a3a40"/>
+  <rect x="670" y="968" width="20" height="20" rx="4" fill="#33333a"/>
+  <text class="nb" x="680" y="983" text-anchor="middle">3</text>
+  <text class="lb" x="700" y="983">严档</text>
+  <text class="ds" x="700" y="1004">得到：LLM 几乎不占资源；代价：LLM 几乎停工，测试很慢；</text>
+  <text class="ds" x="700" y="1024">CPU 上限：32 个里用 4 个</text>
+  <rect x="660" y="1042" width="540" height="44" rx="8" fill="#26262b" stroke="#3a3a40" stroke-dasharray="4 3"/>
+  <rect x="670" y="1054" width="20" height="20" rx="4" fill="#33333a"/>
+  <text class="nb" x="680" y="1069" text-anchor="middle">4</text>
+  <text class="lb" x="700" y="1069">先看推荐再选</text>
+  <rect x="660" y="1094" width="540" height="36" rx="8" fill="none" stroke="#3a3a40"/>
+  <text class="ds" x="676" y="1117">输入你的答案</text>
+  <text class="m" x="660" y="1150">‹  1 / 2  ›</text>
+  <rect x="1060" y="1134" width="60" height="22" rx="6" fill="none" stroke="#3a3a40"/>
+  <text class="t" x="1090" y="1150" text-anchor="middle">跳过</text>
+  <rect x="1128" y="1134" width="72" height="22" rx="6" fill="#ececf1"/>
+  <text class="t" x="1164" y="1150" text-anchor="middle" style="fill:#111113;font-weight:600">下一题</text>
+  <text class="cap" x="640" y="1178">选了「先看推荐再选」，卡片按普通样子重新问一次（字母、存储顺序、结论行），这次记为先看了推荐。</text>
+  <text class="cap" x="640" y="1196">同时每步投影提醒 agent：问这道题先请你回答取决于、说自己的看法，再给结论；按说法确认，不按数字。</text>
+
+  <!-- ===== ④ narrow stacked ===== -->
+  <text class="fr" x="640" y="1236">④ 右侧栏窄到 320 px：同一张 question-34 竖排</text>
+  <rect x="640" y="1248" width="320" height="482" rx="10" fill="#1f1f23" stroke="#3a3a40"/>
+  <text class="q" x="656" y="1274">你在电脑前时，LLM 的活限速</text>
+  <text class="q" x="656" y="1294">还是排队</text>
+  <text class="cx" x="656" y="1320">取决于：你另一个项目的构建主要吃</text>
+  <text class="cx" x="656" y="1340">内存还是吃 CPU？</text>
+  <line x1="656" y1="1354" x2="944" y2="1354" stroke="#2c2c31"/>
+  <circle cx="664" cy="1370" r="6" fill="none" stroke="#8a8a92" stroke-width="1.3"/>
+  <text class="ob" x="676" y="1375">A · 只限速</text>
+  <text class="s" x="676" y="1395">得到：所有活照跑，低优先级、</text>
+  <text class="s" x="676" y="1413">CPU 有上限</text>
+  <text class="s" x="676" y="1433">代价：内存管不住</text>
+  <line x1="656" y1="1446" x2="944" y2="1446" stroke="#26262b"/>
+  <circle cx="664" cy="1462" r="6" fill="none" stroke="#8a8a92" stroke-width="1.3"/>
+  <text class="ob" x="676" y="1467">B · 只排队</text>
+  <text class="s" x="676" y="1487">得到：重活和多出的派发等你走开</text>
+  <text class="s" x="676" y="1505">再跑，不要辅助进程</text>
+  <text class="s" x="676" y="1525">代价：没标成重活的命令照样全速</text>
+  <line x1="656" y1="1538" x2="944" y2="1538" stroke="#26262b"/>
+  <circle cx="664" cy="1554" r="6" fill="none" stroke="#8a8a92" stroke-width="1.3"/>
+  <text class="ob" x="676" y="1559">C · 重活排队，其余限速</text>
+  <text class="s" x="676" y="1579">得到：内存和 CPU 都管住</text>
+  <text class="s" x="676" y="1599">代价：CPU 上限要等辅助进程做好</text>
+  <text class="s" x="676" y="1617">才生效，之前只降优先级</text>
+  <line x1="656" y1="1630" x2="944" y2="1630" stroke="#2c2c31"/>
+  <text class="cx" x="656" y="1652">两样都吃 → C；只吃 CPU → A；</text>
+  <text class="cx" x="656" y="1672">只吃内存 → B · agent 推荐 C</text>
+  <rect x="656" y="1688" width="84" height="28" rx="7" fill="none" stroke="#3a3a40"/>
+  <text class="dis" x="698" y="1707" text-anchor="middle">批准所选</text>
+  <text class="t" x="752" y="1707">都不要</text>
+  <text class="t" x="806" y="1707">补充</text>
+  <text class="a" x="944" y="1707" text-anchor="end">讲细点</text>
+  <text class="cap" x="980" y="1274">内容区窄于 40 + 110 × 内容列数</text>
+  <text class="cap" x="980" y="1292">（3 列 370 px，4 列 480 px）时竖排，</text>
+  <text class="cap" x="980" y="1310">320 px 也没有横向滚动。</text>
+  <text class="cap" x="980" y="1336">题目、取决于、结论行与动作行不变；</text>
+  <text class="cap" x="980" y="1354">读屏顺序与宽排相同。</text>
+  <text class="cap" x="980" y="1380">被删掉的列在竖排里也不出现；</text>
+  <text class="cap" x="980" y="1398">有维度时每块多一行「CPU 上限：…」。</text>
+
+  <!-- ===== ⑨ release card with pre-mortem ===== -->
+  <text class="fr" x="640" y="1764">⑨ 设计放行卡（M3 的五键卡）：五栏之后一行事前验尸，只在这里出现</text>
+  <rect x="640" y="1776" width="580" height="440" rx="12" fill="#1c1c20" stroke="#3a3a40"/>
+  <text class="q" x="660" y="1804">方案：一句话需求到方案放行，主 Agent 先问清楚再动手</text>
+  <text class="m" x="660" y="1832">理由</text>
+  <text class="s" x="730" y="1832">agent 拿到需求就写代码，没说出口的要求到最后才暴露。</text>
+  <text class="m" x="660" y="1858">架构</text>
+  <text class="s" x="730" y="1858">主 Agent 只排活不写代码；先问八个问题，方案五栏齐了才给你批。</text>
+  <text class="m" x="660" y="1884">效果是</text>
+  <text class="s" x="730" y="1884">一句话需求能走到方案放行，要你定的都用卡片问。</text>
+  <text class="m" x="660" y="1910">规划</text>
+  <text class="s" x="730" y="1910">6 件：当项目经理、八个问题、五栏方案、五个按钮、卡片、阶段条。</text>
+  <text class="m" x="660" y="1936">不做什么</text>
+  <text class="s" x="730" y="1936">把活分给子 agent 并行干（以后做）。</text>
+  <line x1="660" y1="1952" x2="1200" y2="1952" stroke="#2c2c31"/>
+  <text class="s" x="660" y="1976">如果失败，最可能是因为：GLM 当主 Agent 时跳过提问，直接出方案。</text>
+  <rect x="660" y="1996" width="104" height="34" rx="8" fill="#26262b" stroke="#3a3a40"/>
+  <text class="t" x="712" y="2018" text-anchor="middle">批准 · 放行</text>
+  <rect x="772" y="1996" width="64" height="34" rx="8" fill="#26262b" stroke="#3a3a40"/>
+  <text class="t" x="804" y="2018" text-anchor="middle">拒绝</text>
+  <rect x="844" y="1996" width="64" height="34" rx="8" fill="#26262b" stroke="#3a3a40"/>
+  <text class="t" x="876" y="2018" text-anchor="middle">补充</text>
+  <rect x="916" y="1996" width="76" height="34" rx="8" fill="#26262b" stroke="#3a3a40"/>
+  <text class="t" x="954" y="2018" text-anchor="middle">讲细点</text>
+  <rect x="1000" y="1996" width="76" height="34" rx="8" fill="#26262b" stroke="#3a3a40"/>
+  <text class="t" x="1038" y="2018" text-anchor="middle">说重点</text>
+  <text class="s" x="660" y="2060">理由或补充（可以跳过）</text>
+  <rect x="660" y="2070" width="540" height="40" rx="8" fill="none" stroke="#3a3a40"/>
+  <text class="m" x="676" y="2095">写一句</text>
+  <rect x="1104" y="2126" width="96" height="30" rx="8" fill="#ececf1"/>
+  <text class="t" x="1152" y="2146" text-anchor="middle" style="fill:#111113;font-weight:600">提交</text>
+  <text class="m" x="660" y="2184">事前验尸是设计决策正文里一行可选的「如果失败：…」；缺了不显示，不挡放行。</text>
+  <text class="m" x="660" y="2202">面板上同一行出现在这个设计决策的节点页里，不出现在选项卡、首页、计划上。</text>
+  <text class="cap" x="640" y="2244">五栏与五键卡属于 M3（m3-3、m3-4）；本稿只定事前验尸这一行在哪显示。示例内容取自 M3 的设计，</text>
+  <text class="cap" x="640" y="2262">按人话改写；「如果失败」一行是示意，实际由主 Agent 在方案里写。</text>
+</svg>

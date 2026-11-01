@@ -4,7 +4,15 @@ dist/
 .pnpm-store/
 /reference/
 *.tsbuildinfo
-.agents/
+# 编排任务目录：只有文稿入库（设计、一页放行稿、评审记录、简报、实施计划、草图），
+# 它们是换机器或换 IDE 之后唯一能读懂现状的材料；运行产物、日志与一次性脚本不入库。
+.agents/*
+!.agents/tasks/
+.agents/tasks/**/*
+!.agents/tasks/**/
+!.agents/tasks/**/*.md
+!.agents/tasks/**/*.svg
+.agents/tasks/**/runs/
 .worktrees/
 # Built by scripts/build-ui.mjs from ui/src (npm run build).
 /packages/*/ui/client.js

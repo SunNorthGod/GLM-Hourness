@@ -1,0 +1,1 @@
+UPDATE 6: lint/knip/jscpd clean; docs edited (ORCHESTRATION 6.7 + 3.1 + 6.4 row, DESIGN, HANDOFF, DEVELOPMENT). NEXT: build, preflight, npm test, probe, review-step4.json check (absent => implement), commit.

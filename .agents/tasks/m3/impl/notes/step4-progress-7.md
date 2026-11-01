@@ -1,0 +1,1 @@
+UPDATE 7: build/preflight exit 0; npm test exit 0 (1030 pass, 0 fail; eslint 250, knip 21, jscpd 2 unchanged); probe 155/155 exit 0 (after fixing own probe checks). NEXT: final self-review of diff against design, regression sweep (rerun build, preflight, test once after last edits), check review-step4.json absent -> commit with full message.

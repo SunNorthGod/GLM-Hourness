@@ -1,0 +1,187 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="790" viewBox="0 0 1400 790" font-family="'Microsoft YaHei', 'PingFang SC', 'Segoe UI', sans-serif">
+  <title>用户怎么用：图书管理系统里，用户图和开发图并排（草图）</title>
+  <desc>左边是用户视角（读者和管理员的流程与步骤），右边是开发视角（模块与任务）。选中第 2 步「确认借阅」，右边服务它的「借阅页面」亮起。「交押金」没人负责，「导出年度报表」不服务任何步骤。</desc>
+
+  <rect x="0" y="0" width="1400" height="790" fill="#f5f6f8"/>
+  <text x="24" y="34" font-size="18" font-weight="bold" fill="#1f2328">用户怎么用 · 图书管理系统（草图）</text>
+  <text x="24" y="58" font-size="12" fill="#656d76">同一张项目图的两个视角：左边是用户进来之后怎么走，右边是开发在做什么。名字和数字是举例；状态都写成字，颜色只帮助分辨。</text>
+
+  <!-- overview band -->
+  <rect x="24" y="74" width="1352" height="74" rx="8" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="40" y="102" font-size="14" font-weight="bold" fill="#1f2328">6 条流程：1 走通 · 1 走不通 · 2 做完了 · 1 没人负责 · 1 排上了　›</text>
+  <g font-size="13" fill="#1f2328">
+    <text x="40" y="130">▸ 「处理逾期」走不通：「发提醒或登记赔偿」</text>
+    <text x="380" y="130">▸ 「借书」的第 4 步「交押金」没人负责</text>
+    <text x="720" y="130">▸ 「导出年度报表」不服务任何步骤</text>
+  </g>
+
+  <!-- left panel: user view -->
+  <rect x="24" y="164" width="740" height="440" rx="8" fill="#ffffff" stroke="#d0d7de"/>
+  <rect x="24" y="164" width="740" height="30" rx="8" fill="#f6f8fa" stroke="#d0d7de"/>
+  <text x="40" y="184" font-size="13" font-weight="bold" fill="#1f2328">用户视角</text>
+  <text x="112" y="184" font-size="11.5" fill="#656d76">角色 › 流程 › 步骤</text>
+
+  <text x="40" y="216" font-size="13.5" font-weight="bold" fill="#1f2328">读者</text>
+
+  <!-- 登录 -->
+  <text x="40" y="244" font-size="12" fill="#656d76">▸</text>
+  <text x="56" y="244" font-size="13.5" font-weight="bold" fill="#1f2328">登录</text>
+  <rect x="130" y="228" width="44" height="22" rx="11" fill="#dafbe1" stroke="#2da44e"/>
+  <text x="152" y="244" font-size="12" text-anchor="middle" fill="#116329">走通</text>
+  <text x="186" y="244" font-size="11.5" fill="#656d76">4/4　10-30 09:00 · 命令 · 全部通过</text>
+
+  <!-- 搜书 -->
+  <text x="40" y="272" font-size="12" fill="#656d76">▸</text>
+  <text x="56" y="272" font-size="13.5" font-weight="bold" fill="#1f2328">搜书</text>
+  <rect x="130" y="256" width="116" height="22" rx="11" fill="#ddf4ff" stroke="#54aeff"/>
+  <text x="188" y="272" font-size="12" text-anchor="middle" fill="#0550ae">做完了，等走一遍</text>
+  <text x="258" y="272" font-size="11.5" fill="#656d76">3 步</text>
+
+  <!-- 借书 (expanded) -->
+  <text x="40" y="300" font-size="12" fill="#656d76">▾</text>
+  <text x="56" y="300" font-size="13.5" font-weight="bold" fill="#1f2328">借书</text>
+  <rect x="130" y="284" width="90" height="22" rx="11" fill="#ffebe9" stroke="#cf222e" stroke-dasharray="4 3"/>
+  <text x="175" y="300" font-size="12" text-anchor="middle" fill="#82071e">1 步没人负责</text>
+  <text x="232" y="300" font-size="11.5" fill="#656d76">4 步：1 在做 · 2 排上了 · 1 没人负责</text>
+
+  <!-- 借书 steps -->
+  <text x="76" y="328" font-size="12.5" fill="#424a53">1</text>
+  <text x="92" y="328" font-size="13" fill="#1f2328">在书的详情页点「借阅」</text>
+  <rect x="320" y="312" width="44" height="22" rx="11" fill="#fff8c5" stroke="#bf8700"/>
+  <text x="342" y="328" font-size="12" text-anchor="middle" fill="#7d4e00">在做</text>
+  <text x="376" y="328" font-size="11.5" fill="#656d76">服务者 1</text>
+
+  <text x="92" y="350" font-size="11.5" fill="#656d76">└ 已交押金 › 第 2 步；没交押金 › 第 4 步</text>
+
+  <rect x="68" y="359" width="412" height="24" rx="6" fill="#eef6ff" stroke="#0969da" stroke-width="2"/>
+  <text x="76" y="376" font-size="12.5" fill="#424a53">2</text>
+  <text x="92" y="376" font-size="13" fill="#1f2328">确认借阅</text>
+  <rect x="320" y="360" width="56" height="22" rx="11" fill="#eaeef2" stroke="#8c959f"/>
+  <text x="348" y="376" font-size="12" text-anchor="middle" fill="#424a53">排上了</text>
+  <text x="388" y="376" font-size="11.5" fill="#656d76">服务者 1</text>
+  <text x="440" y="376" font-size="11.5" font-weight="bold" fill="#0550ae">选中</text>
+
+  <text x="76" y="404" font-size="12.5" fill="#424a53">3</text>
+  <text x="92" y="404" font-size="13" fill="#1f2328">看到应还日期</text>
+  <rect x="320" y="388" width="56" height="22" rx="11" fill="#eaeef2" stroke="#8c959f"/>
+  <text x="348" y="404" font-size="12" text-anchor="middle" fill="#424a53">排上了</text>
+  <text x="388" y="404" font-size="11.5" fill="#656d76">服务者 1</text>
+
+  <text x="76" y="432" font-size="12.5" fill="#424a53">4</text>
+  <text x="92" y="432" font-size="13" fill="#1f2328">交押金</text>
+  <rect x="320" y="416" width="68" height="22" rx="11" fill="#ffebe9" stroke="#cf222e" stroke-dasharray="4 3"/>
+  <text x="354" y="432" font-size="12" text-anchor="middle" fill="#82071e">没人负责</text>
+  <text x="400" y="432" font-size="11.5" font-weight="bold" fill="#82071e">服务者 0</text>
+  <text x="462" y="432" font-size="11.5" fill="#656d76">› 回到第 2 步</text>
+
+  <!-- 还书 -->
+  <text x="40" y="462" font-size="12" fill="#656d76">▸</text>
+  <text x="56" y="462" font-size="13.5" font-weight="bold" fill="#1f2328">还书</text>
+  <rect x="130" y="446" width="56" height="22" rx="11" fill="#eaeef2" stroke="#8c959f"/>
+  <text x="158" y="462" font-size="12" text-anchor="middle" fill="#424a53">排上了</text>
+  <text x="198" y="462" font-size="11.5" fill="#656d76">3 步</text>
+
+  <line x1="40" y1="480" x2="748" y2="480" stroke="#eaeef2"/>
+  <text x="40" y="502" font-size="13.5" font-weight="bold" fill="#1f2328">管理员</text>
+
+  <!-- 录入新书 -->
+  <text x="40" y="530" font-size="12" fill="#656d76">▸</text>
+  <text x="56" y="530" font-size="13.5" font-weight="bold" fill="#1f2328">录入新书</text>
+  <rect x="130" y="514" width="104" height="22" rx="11" fill="#fbefff" stroke="#c297ff"/>
+  <text x="182" y="530" font-size="12" text-anchor="middle" fill="#6639ba">做完了，要重走</text>
+  <text x="246" y="530" font-size="11.5" fill="#656d76">4 步　上次走是 10-29，之后又改过</text>
+
+  <!-- 处理逾期 -->
+  <text x="40" y="558" font-size="12" fill="#656d76">▸</text>
+  <text x="56" y="558" font-size="13.5" font-weight="bold" fill="#1f2328">处理逾期</text>
+  <rect x="130" y="542" width="56" height="22" rx="11" fill="#ffebe9" stroke="#cf222e"/>
+  <text x="158" y="558" font-size="12" text-anchor="middle" fill="#82071e">走不通</text>
+  <text x="198" y="558" font-size="11.5" fill="#656d76">3 步走通 · 1 步走不通</text>
+  <text x="56" y="580" font-size="11.5" fill="#656d76">10-31 10:00 · 命令 · 「发提醒或登记赔偿」没过</text>
+
+  <!-- right panel: development view -->
+  <rect x="776" y="164" width="600" height="440" rx="8" fill="#ffffff" stroke="#d0d7de"/>
+  <rect x="776" y="164" width="600" height="30" rx="8" fill="#f6f8fa" stroke="#d0d7de"/>
+  <text x="792" y="184" font-size="13" font-weight="bold" fill="#1f2328">开发视角</text>
+  <text x="864" y="184" font-size="11.5" fill="#656d76">目标 › 模块 › 任务</text>
+
+  <text x="792" y="216" font-size="13.5" font-weight="bold" fill="#1f2328">图书管理系统</text>
+
+  <g opacity="0.6">
+    <text x="812" y="244" font-size="13" fill="#1f2328">账号</text>
+    <rect x="924" y="228" width="44" height="22" rx="11" fill="#dafbe1" stroke="#2da44e"/>
+    <text x="946" y="244" font-size="12" text-anchor="middle" fill="#116329">做完</text>
+    <text x="992" y="244" font-size="11.5" fill="#656d76">服务 5 步</text>
+
+    <text x="812" y="272" font-size="13" fill="#1f2328">书目</text>
+    <rect x="924" y="256" width="44" height="22" rx="11" fill="#dafbe1" stroke="#2da44e"/>
+    <text x="946" y="272" font-size="12" text-anchor="middle" fill="#116329">做完</text>
+    <text x="992" y="272" font-size="11.5" fill="#656d76">服务 6 步</text>
+
+    <text x="812" y="300" font-size="13" fill="#1f2328">借阅</text>
+    <rect x="924" y="284" width="44" height="22" rx="11" fill="#fff8c5" stroke="#bf8700"/>
+    <text x="946" y="300" font-size="12" text-anchor="middle" fill="#7d4e00">在做</text>
+    <text x="992" y="300" font-size="11.5" fill="#656d76">做完 0/3 · 服务 6 步</text>
+
+    <text x="836" y="328" font-size="13" fill="#1f2328">借阅接口</text>
+    <rect x="924" y="312" width="44" height="22" rx="11" fill="#fff8c5" stroke="#bf8700"/>
+    <text x="946" y="328" font-size="12" text-anchor="middle" fill="#7d4e00">在做</text>
+    <text x="992" y="328" font-size="11.5" fill="#656d76">服务 1 步</text>
+
+    <text x="836" y="384" font-size="13" fill="#1f2328">归还接口</text>
+    <rect x="924" y="368" width="56" height="22" rx="11" fill="#eaeef2" stroke="#8c959f"/>
+    <text x="952" y="384" font-size="12" text-anchor="middle" fill="#424a53">排上了</text>
+    <text x="992" y="384" font-size="11.5" fill="#656d76">服务 2 步</text>
+
+    <text x="812" y="412" font-size="13" fill="#1f2328">逾期与通知</text>
+    <rect x="924" y="396" width="44" height="22" rx="11" fill="#dafbe1" stroke="#2da44e"/>
+    <text x="946" y="412" font-size="12" text-anchor="middle" fill="#116329">做完</text>
+    <text x="992" y="412" font-size="11.5" fill="#656d76">服务 4 步</text>
+  </g>
+
+  <rect x="828" y="339" width="532" height="24" rx="6" fill="#fff3b0" stroke="#bf8700" stroke-width="2"/>
+  <text x="836" y="356" font-size="13" fill="#1f2328">借阅页面</text>
+  <rect x="924" y="340" width="56" height="22" rx="11" fill="#eaeef2" stroke="#8c959f"/>
+  <text x="952" y="356" font-size="12" text-anchor="middle" fill="#424a53">排上了</text>
+  <text x="992" y="356" font-size="11.5" fill="#656d76">服务 3 步</text>
+  <text x="1084" y="356" font-size="11.5" font-weight="bold" fill="#7d4e00">← 服务选中的第 2 步</text>
+
+  <text x="812" y="440" font-size="13" fill="#1f2328">导出年度报表</text>
+  <rect x="924" y="424" width="104" height="22" rx="11" fill="#ffebe9" stroke="#cf222e" stroke-dasharray="4 3"/>
+  <text x="976" y="440" font-size="12" text-anchor="middle" fill="#82071e">不服务任何步骤</text>
+
+  <rect x="792" y="464" width="568" height="130" rx="8" fill="#f6f8fa" stroke="#d0d7de"/>
+  <g font-size="12" fill="#424a53">
+    <text x="806" y="486" font-weight="bold">怎么读</text>
+    <text x="806" y="508">· 步骤旁的「服务者 n」：右边有几个模块或任务在做它。</text>
+    <text x="806" y="528">· 右边的「服务 n 步」：它在做左边的几步。点哪一边，</text>
+    <text x="806" y="546">  另一边对应的行亮起来，其余变淡。</text>
+    <text x="806" y="566">· 两边是同一张项目图的节点，不画连线，靠亮起来和标记对上。</text>
+    <text x="806" y="584">· 图里选中的是第 2 步「确认借阅」。</text>
+  </g>
+
+  <!-- legend -->
+  <text x="24" y="640" font-size="12" font-weight="bold" fill="#424a53">状态的字</text>
+  <rect x="100" y="624" width="44" height="22" rx="11" fill="#dafbe1" stroke="#2da44e"/>
+  <text x="122" y="640" font-size="12" text-anchor="middle" fill="#116329">走通</text>
+  <rect x="156" y="624" width="56" height="22" rx="11" fill="#ffebe9" stroke="#cf222e"/>
+  <text x="184" y="640" font-size="12" text-anchor="middle" fill="#82071e">走不通</text>
+  <rect x="224" y="624" width="44" height="22" rx="11" fill="#fff8c5" stroke="#bf8700"/>
+  <text x="246" y="640" font-size="12" text-anchor="middle" fill="#7d4e00">在做</text>
+  <rect x="280" y="624" width="56" height="22" rx="11" fill="#eaeef2" stroke="#8c959f"/>
+  <text x="308" y="640" font-size="12" text-anchor="middle" fill="#424a53">排上了</text>
+  <rect x="348" y="624" width="116" height="22" rx="11" fill="#ddf4ff" stroke="#54aeff"/>
+  <text x="406" y="640" font-size="12" text-anchor="middle" fill="#0550ae">做完了，等走一遍</text>
+  <rect x="476" y="624" width="104" height="22" rx="11" fill="#fbefff" stroke="#c297ff"/>
+  <text x="528" y="640" font-size="12" text-anchor="middle" fill="#6639ba">做完了，要重走</text>
+  <rect x="592" y="624" width="68" height="22" rx="11" fill="#ffebe9" stroke="#cf222e" stroke-dasharray="4 3"/>
+  <text x="626" y="640" font-size="12" text-anchor="middle" fill="#82071e">没人负责</text>
+
+  <!-- notes -->
+  <g transform="translate(24,684)" font-size="12" fill="#656d76">
+    <text x="0" y="0" font-weight="bold" fill="#424a53">说明</text>
+    <text x="0" y="22">· 「走通」要同时做到两件事：连着的活都做完了；这条流程在真实运行的产品上从头走过一遍，之后相关的活没再动过。</text>
+    <text x="0" y="42">· 「没人负责」是虚线框：这一步没有任何模块或任务连着。右边的「不服务任何步骤」是反过来的情况：这件活没有连着任何一步。</text>
+    <text x="0" y="62">· 这一页只能看，不能改。要改步骤，对主 Agent 说；它先复述「那我记成……」，你说对才写进图。页面窄的时候改成单列，用开关在两个视角之间切换，一次看一个。</text>
+  </g>
+</svg>
