@@ -112,6 +112,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "S3（C1，lessons-1、lessons-2）在 m5-memory-lessons 上提交为 8af90b9（基底 6e21948），build、preflight、npm test 退出码 0；第 1 遍评审 APPROVED，无挡路项（S1、S2、S3 均 APPROVED）。"
+    },
+    {
+      "at": "2026-11-01T13:00:25.152Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "S8（L2，lessons-2）在 m5-memory-lessons 上提交为 16bcf88：build、preflight、test、probe 195/195 全部退出码 0。等评审。M5 的图改动按计划留给编排方。"
     }
   ]
 }

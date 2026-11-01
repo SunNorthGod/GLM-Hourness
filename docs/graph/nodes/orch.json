@@ -281,6 +281,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "编排方裁定（可逆，可由人一句话推翻）：派出去的运行不再把 build、preflight、test、probe 并排跑，改成一个一个串着跑；本机近日多次整机中断，串行能把 CPU 的瞬时尖峰压下去，代价是每轮慢几分钟。这条写进后续运行的简报。"
+    },
+    {
+      "at": "2026-11-01T13:00:24.467Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "运行中断后的恢复核对（2026-11-01 第三次）：git fsck 无输出、退出码 0；main 与 origin/main 同点（ffa7e79）；m3 本机 2d43b29 领先远端 5b6e77d 两个提交、m5-memory-lessons 本机 16bcf88 领先远端 001494a，均已推送；rules-loops-impl 与远端同点 f9cd8f8，工作树有 4 处 FEAT-012 的在制改动（src/loops/inbox.ts、run.ts、store.ts、src/shared/dsh-min.ts）；m3 与 m5 工作树干净。没有丢活。三条运行（M3、M5、feat-012-schedule-binding）已请求恢复。"
     }
   ]
 }

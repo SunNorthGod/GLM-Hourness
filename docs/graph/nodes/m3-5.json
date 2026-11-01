@@ -80,6 +80,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "第 10 步（m3-5）在分支 m3 上提交为 5b6e77d：L1/L2/L3，删掉 FIVE_KEYS 与 src/workflow/decisions.ts，DecisionRecord 去掉 level，晨报新增读图的「等你定的事」一节。build、preflight 退出码 0，npm test 1321 项、0 失败、1 跳过（原已存在），probe 206/206，基线只减不增。第 10 步语义评审 APPROVED，0 挡路，5 条不挡路（MEDIUM 1、LOW 3、NIT 1），记录在 review-step10.md。"
+    },
+    {
+      "at": "2026-11-01T13:00:24.696Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人设那一步（m3-main-persona）在分支 m3 上提交为 a178f32：主 Agent 的人设设置、GLM 方言里的位置、glm-prompt 的 persona 改名为 reportingDepth（附录 0.6 §2.7）。build、preflight 退出码 0，npm test 1356 项中 1355 通过、0 失败、1 跳过，probe 213/213。随后 fold 步把 m3-flow 的 m3-6（流程条与客户端的 /wish 入口）并进 m3，提交 2d43b29。两条都已推到 origin/m3。"
     }
   ]
 }
