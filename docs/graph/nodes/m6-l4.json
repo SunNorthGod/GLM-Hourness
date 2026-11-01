@@ -71,6 +71,12 @@
           "exit": 0
         }
       ]
+    },
+    {
+      "at": "2026-11-01T04:54:34.150Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "完成：Q4 沙盒、真实读取与桌面版核对。沙盒（合入前）：临时 DSH 目录在 %TEMP% 下（profile m6tmp，junction 指向工作树的 packages），--dump-config 与 headless 启动退出码 0，无被测插件的契约或激活错误；glm-login 的 home、plan 被接受，plan 填错值给 ValidationError；~/.dsh 的 8,566 个文件前后 0 增 0 减 0 变。真实读取一次：GET quota/limit 返回 200、335 字节，请求头只有 authorization 与 x-request-id；信封有 code、msg、success、data；data.level 为 max，limits 两行，type 都是 CREDIT_LIMIT，没有 TOKENS_LIMIT 与 TIME_LIMIT；字段 unit、number、usage、currentValue、remaining、percentage；第一行 unit 3、number 5（5 小时窗口，未使用，无 nextResetTime），第二行 unit 6、number 1（每周，毫秒的 nextResetTime，约 2.7 天后）；percentage 是已用比例。设计 §4.3 的命名按它订正：nameWindows 对 CREDIT_LIMIT 与 TOKENS_LIMIT 同样处理（主干 fa3e324，原 406b36e，先红后绿），事实记入 FACTS.md §2.4（主干 061bd32，原 46a1c4d）。合入后桌面版（主检出 061bd32，build、preflight 退出码 0）2026-11-01 09:38:56 启动，崩溃日志目录无新文件，宿主 stderr 只有 DevTools 监听行，页面控制台只有 ingest 与 plugins/events 两类已知噪声；/glm-status 首次 761 毫秒（含一次真实读取），60 秒内第二次 2 毫秒；/hourness 两次各 302 毫秒；显示高峰行、范围行（389 条，最早 10-27 17:30）、额度一节（max 档，每周已用 24%）、行健康 13 行。HANDOFF.md 记在 3bc5d98。未关：空闲的 5 小时行读作『额度窗口』而不是『5 小时』（按 unit 与 number 命名需要流水存 unit，超出设计，待人定）；客户端在 3 秒上限处的行为未在真机上触发（读取最长 761 毫秒）。备份：桌面版预建的空会话文件在第一条命令前没有备份，违反备份规则，事后把原 548 字节复原到 %TEMP%/m6-desktop-live-session-eae64958-original-548B.zstd。"
     }
   ]
 }

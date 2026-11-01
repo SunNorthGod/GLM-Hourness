@@ -48,6 +48,12 @@
           "exit": 0
         }
       ]
+    },
+    {
+      "at": "2026-11-01T04:54:33.205Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "完成：Q0，结果记在主干提交 4018a7c（原 7a701d1）的 FACTS.md §1。安装的 ZCode 仍是 3.17.1，app.asar 374,627,566 字节；out/host/index.js 2,190,425 字节，MD5 3ef810e5878d5103bb4430df00181b09，与设计所写一致，所以做了导出：只读导出 index.js 与 chunk-ZSDMP7DM.js（883,850 字节，MD5 f7817be39a2dd7c2c053e8633d9a2ab0）到主检出 reference/zcode-3.17.1/host/，附 README.md（安装包导出，可能带用户补丁，只作机制参考，逐字文本以 ../zcode.cjs 为准）；reference/ 被 git 忽略，不在提交里。V7（渲染进程包里 getCodingPlanUsageSnapshot 的调用者）：只有用量统计 hook 一处，挂载与参数变化时读、60 秒内复用、可强制；输入框用量小标在打开时调用；没有任何定时器读额度。只搜了该函数的调用者与小标附近的定时器，不是穷举。"
     }
   ]
 }

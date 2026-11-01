@@ -55,6 +55,12 @@
           "exit": 0
         }
       ]
+    },
+    {
+      "at": "2026-11-01T04:54:32.979Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "完成：R1 高峰提醒按档位，主干提交 a3eb0ac（原 47fb740）feat(glm-prompt)。credits.ts 导出 PEAK_HOURS、PEAK_END_LABEL，creditPricing 带 peakHours，basis 字符串逐字不变；peak-reminder.ts 的 peakReminderText、readPeakMode 按 glmHournessPeakMode 的档位选正文（无影响与读不到档位时与 M6.1 原文逐字相同；少做、不做各一段，不叫主 Agent 停下），每发一个 notice 读一次档位，压缩后补发读当时的档位；ORCHESTRATION.md §11.4 整节改写；探针 rules-peak 加正文检查，新场景 rules-peak-stop。门禁：build、preflight、npm test、npm run probe 退出码 0，probe 155/155（首次 npm test 失败于三处 no-unnecessary-type-assertion 与一个未使用的导出类型，同一提交内修好后重跑全绿）。独立评审 1 遍 APPROVED，0 条发现。设计评审 NIT：N22、N23、N24、N25、N26、N29 已落实（代码、测试、ORCHESTRATION.md §11.4、design.md 27 处引文替换并在 §21 记为实施期订正，替换前的状态存为 .agents/tasks/m6/design-v0.6-pre-r1.md）；N24 定为五种记号、五种情形（no-service、no-state、not-peak、peak-unknown、invalid）。N23：合入时 packages/hourness/cordis.patch.yml 的规则行仍是 disabled: true（第 69、84 行），R1 已先入主干。N27：onepage.md 已重写为设计 0.6 的新格式，评审 APPROVED（NIT 3）。N28 已由 graph-ops-align.json 关闭。"
     }
   ]
 }

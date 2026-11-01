@@ -49,6 +49,12 @@
           "exit": 0
         }
       ]
+    },
+    {
+      "at": "2026-11-01T04:54:32.757Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "完成：Q1 公共契约，主干提交 11dce6b（分支上原为 9fb28be，变基后改号）feat(shared)。pricing.ts 加 peakHours、quota、loopDefaults 三个可选成员与 peakHoursOf、quotaOf；新文件 src/shared/quota.ts（formatMoment、peakLine、quotaLines、quotaLowOf、quotaLowLine、loginLine）与 src/shared/channel-loop.ts（loopDefaultsOf）；tests/quota.spec.ts 20 例，TZ=America/New_York 下同样通过；先红后绿（首次失败为 ERR_MODULE_NOT_FOUND）。门禁：build、preflight、npm test 退出码 0（64 个规格、1001 例、0 失败；eslint 250 抑制、knip 21、jscpd 2 个克隆，均与基线相同；check:verbatim 489/0）。独立评审 1 遍 APPROVED，NIT 1：windowLine 在 usedPercent 为 100 而投影不是 spent 时仍追加投影词，GLM 读取器不会产生这种读数，未改。无 GLM 包文件、无运行时行被动。"
     }
   ]
 }

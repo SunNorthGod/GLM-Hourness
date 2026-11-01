@@ -1,0 +1,19 @@
+{
+  "id": "d-metrics-steps-by-checks",
+  "type": "decision",
+  "title": "指标记录的十步，每步是否做完照设计 §1.4 的 24 条检查判",
+  "status": "approved",
+  "parent": "metrics",
+  "verification": "unverified",
+  "body": "人 2026-11-01 答指标一页稿 ①：「可以」。指标记录分十步实现，每一步是否做完照设计 §1.4 列的 24 条检查判；这些检查由系统自己跑，人不用逐条读。",
+  "history": [
+    {
+      "at": "2026-11-01T04:54:12.270Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "人同意指标实现十步按设计里系统自己跑的 24 条检查判做完",
+      "relay": "可以",
+      "to": "approved"
+    }
+  ]
+}

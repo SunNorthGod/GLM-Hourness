@@ -71,6 +71,12 @@
           "exit": 0
         }
       ]
+    },
+    {
+      "at": "2026-11-01T04:54:33.438Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "完成（不含指标事件，那是 m6-metrics-events）：Q2 额度读取与登录状态，主干提交 4018a7c（原 7a701d1）feat(glm-llm)，后续 6e156f7（测试改为等条件，并钉住『重铸后清除的 401 不写 login-rejected』）、fa3e324（CREDIT_LIMIT 行与 TOKENS_LIMIT 行同样命名，见 m6-l4）、7658a8c（文档）。GET bigmodel.cn/api/monitor/usage/quota/limit，头恰好 authorization 与 x-request-id，15 秒超时、不重试、401 不重铸；60 秒复用，无定时器；额度流水 audit/quota.jsonl 在用户级目录，upstream-limit 与 login-rejected 记录只带登录令牌指纹；quota-projection、loop-defaults 四条、glm-login 的 plan 与 Config、/glm-status 一段。门禁：build、preflight、npm test、npm run probe 退出码 0（该提交上 probe 155/155，合入树 161/161）。评审等级 A，独立评审 1 遍 APPROVED，NIT 3：F1 not-logged-in 不在控制台告警（与验收 8 的字面不同，保留，设计下一稿改措辞）；F2、F3 已在 6e156f7 修好。未关的 NIT（整合评审 F2）：失败的读数也复用 60 秒，/glm-login 完成后 60 秒内 /glm-status 的额度行仍可能显示『未登录』。评审中 glm-quota 规格重复 12 次运行有 1 次 43/44（固定 30 毫秒等待），已改为等条件。"
     }
   ]
 }

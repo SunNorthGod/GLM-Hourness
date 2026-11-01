@@ -2,7 +2,7 @@
   "id": "lessons-1",
   "type": "task",
   "title": "经验的存取",
-  "status": "approved",
+  "status": "doing",
   "parent": "lessons",
   "kind": "implement",
   "body": "M5 设计 0.7（.agents/tasks/m5/design.md）§1.2 的 lessons-1。实现步骤见 .agents/tasks/m5/impl-plan.md 的 S1、S3、S7。验证层：L2；L3 `glm-lessons`、`non-glm-lessons`。",
@@ -23,6 +23,14 @@
       "reason": "按 M5 设计 0.7（.agents/tasks/m5/design.md）§13 第 2 条建任务节点，怎样算做完取自 §1.2；lessons-1 第 3 条的主 Agent 判法按 R5-06 改为 isMainAgentFor 并加上持有者是别的会话的情形。人 2026-10-31 放行时说「没问题，不过习惯最好问一嘴再记」，0.7 照办。",
       "relay": "没问题，不过习惯最好问一嘴再记",
       "to": "approved"
+    },
+    {
+      "at": "2026-11-01T04:54:12.921Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "S1（A1）在 m5-memory-lessons 上提交为 662ed88，build、preflight、test 退出码 0，probe 149/149；等评审。",
+      "from": "approved",
+      "to": "doing"
     }
   ]
 }

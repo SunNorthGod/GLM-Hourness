@@ -63,6 +63,12 @@
           "exit": 0
         }
       ]
+    },
+    {
+      "at": "2026-11-01T04:54:33.666Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "完成：P1 面板与晨报，主干提交 210115e（原 a7e80d3）feat(report)，文档订正 7658a8c。usagePanelOf 一份口径供面板与晨报『用量（今天）』，usageByModel 已删；高峰行、范围行、缺口文件（auditPaths.gaps，audit/usage-gaps.jsonl）、额度一节（quota({waitMs: 3000})）、hourness 行健康加『额度：已提供/未提供』；ORCHESTRATION.md §11.3、§12，DESIGN.md §2.4，DEVELOPMENT.md §5 第 8 条（删用量记录要留缺口行）。门禁：build、preflight、npm test、npm run probe 退出码 0（该提交上 probe 155/155）。独立评审 1 遍 APPROVED，NIT 3：F1（HANDOFF 与 DESIGN 里两处过时的 hourness 行说法）已在 7658a8c 修好；F2（peak 出错的原因只进控制台告警，设计 §11 写的是进行健康）与 F3（缺口文件读错时用 catch 当作空，非 ENOENT 的读错误不出声）未改，留给设计下一稿或后续修复。验收 2、3（面板侧）、4（L2 部分）、7 由规格钉住；桌面版上的样子见 m6-l4。"
     }
   ]
 }
