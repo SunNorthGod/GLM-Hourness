@@ -19,7 +19,9 @@
  * git repositories with the row enabled by the overlay: rules-peak and
  * rules-peak-hourness drive /rules peak, glm-rules and non-glm-rules run
  * calls past a rules file that blocks one command and only informs about
- * another. The graph panel scenarios run the
+ * another, rules-queue and rules-handover run a call a rule queues: the
+ * agent is told when the ticket clears, and the ticket of a subagent that
+ * ends goes to the agent that dispatched it. The graph panel scenarios run the
  * bundle's /graph-apply and /graph-run handlers mid-step for the session;
  * the GLM and non-GLM scenarios run /hourness and /hourness-status at their
  * last step, after /glm-status is recorded.
@@ -415,7 +417,8 @@ const rulesPeakAlone = runScenario('rules-peak-hourness', 'deepseek-probe', [
 // rules, as a clone does: one that blocks a command naming `rules-probe-blocked`
 // and one that only informs. (A person's switch cannot be created yet: nothing
 // writes a rule but the proposal path, which is not built, so the rules that
-// queue are probed with the waiting tickets.) The scripted agent runs the
+// queue are probed in rules-queue and rules-handover, under a rules file that
+// names a queue rule.) The scripted agent runs the
 // blocked command, writes into the board's own files with a file tool, and runs
 // a command no rule names; the non-GLM run also reads the rules with
 // rules_show. The calls must be refused or run as the rules say, the refusals
@@ -430,12 +433,12 @@ const GATE_RULES_FILE = repoJson({
     'r-probe-note': gateRule('r-probe-note', 'Probe note', { when: { kind: 'event', events: ['rules.step'] }, action: { kind: 'inform' } }),
   },
 })
-const rulesGateProject = (name) => {
+const rulesGateProject = (name, text = GATE_RULES_FILE) => {
   const ws = join(runDir, name, 'ws')
   const rulesFile = join(ws, 'docs', 'rules', 'rules.json')
   mkdirSync(dirname(rulesFile), { recursive: true })
   writeFileSync(join(ws, 'README.md'), 'probe workspace\n')
-  writeFileSync(rulesFile, GATE_RULES_FILE)
+  writeFileSync(rulesFile, text)
   return { ws, rulesFile, ready: initRepo(ws) }
 }
 const glmRulesProject = rulesGateProject('glm-rules')
@@ -659,6 +662,45 @@ const firstRoundOrder = goalSteps[0] === undefined ? [] : [goalSteps[0].messages
 const gateDenied = lastToolResult(goalSteps[1])
 const goalCompleted = lastToolResult(goalSteps[4])
 const goalRunResult = lastToolResult(goalMain.at(-1))
+
+// Rules board, waiting tickets (docs/ORCHESTRATION.md §16.12). The scenario
+// projects are scratch git repositories whose rules file already holds a queue
+// rule and a rule that only informs, as a clone does. rules-queue runs on the
+// GLM route at the peak clock, where `glm-peak` is true: the call the rule
+// names is refused with a ticket, refused again under the same ticket, the
+// person lifts the rule through the real /rules handler (mid-step, as the
+// human), the board tells the session once, and the call runs. rules-handover
+// runs on the other route: a one-off subagent makes the call the rule names and
+// ends; its ticket goes to the agent that dispatched it, which is told when
+// the person lifts the rule. The board's reminder is in the request exactly
+// when something changed.
+const queueRule = (over = {}) => gateRule('r-probe-queue', 'Probe word, deferred', { filter: { command: { matches: 'rules-probe-queued' } }, action: { kind: 'queue' }, reason: 'The probe word waits.', ...over })
+const QUEUE_NOTE = gateRule('r-probe-note', 'Probe note', { when: { kind: 'event', events: ['rules.step'] }, action: { kind: 'inform' } })
+const QUEUE_RULES_FILE = repoJson({ version: 2, rules: { 'r-probe-queue': queueRule({ condition: { signal: 'glm-peak', is: true } }), 'r-probe-note': QUEUE_NOTE } })
+const HANDOVER_RULES_FILE = repoJson({ version: 2, rules: { 'r-probe-queue': queueRule(), 'r-probe-note': QUEUE_NOTE } })
+const QUEUED_WORD = 'Write-Output rules-probe-queued'
+const queueProject = rulesGateProject('rules-queue', QUEUE_RULES_FILE)
+const rulesQueue = runScenario('rules-queue', 'glm-5.3', [
+  { tool: { name: 'Bash', arguments: { command: QUEUED_WORD, timeout: 30000 } } },
+  { tool: { name: 'Bash', arguments: { command: QUEUED_WORD, timeout: 30000 } } },
+  { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } }, command: { name: 'rules', input: 'lift r-probe-queue' } },
+  { tool: { name: 'Bash', arguments: { command: QUEUED_WORD, timeout: 30000 } } },
+  { text: 'done', status: true },
+], 'Run the queued command twice, let the person lift the rule, run it again, then reply done.', [...RULES_ROW, ...clockRow(PEAK_AT)], queueProject.ws)
+const handoverDir = join(runDir, 'rules-handover')
+const handoverProject = rulesGateProject('rules-handover', HANDOVER_RULES_FILE)
+const rulesHandover = runScenario('rules-handover', 'deepseek-probe', [
+  { tool: { name: 'probe_dispatch', arguments: { task: 'T1', prompt: 'Probe task T1: run the queued command and report.', cwd: handoverProject.ws, scope: 'allowed', model: 'deepseek-probe' } } },
+  { tool: { name: 'read', arguments: { file_path: join(repo, 'package.json') } } },
+  { text: 'Waiting for task T1.' },
+  { tool: { name: 'pwsh', arguments: { command: 'Start-Sleep -Seconds 7', description: 'Let the board look at the finished subagent' } } },
+  { tool: { name: 'read', arguments: { file_path: join(repo, 'package.json') } }, command: { name: 'rules', input: 'lift r-probe-queue' } },
+  { text: 'done', status: true },
+], 'Dispatch task T1, wait for it, let the person lift the rule, then reply done.', [...RULES_ROW, ...dispatchRow(join(handoverDir, 'dispatch.jsonl'))], handoverProject.ws, [[
+  { tool: { name: 'pwsh', arguments: { command: QUEUED_WORD, description: 'Print the queued word' } } },
+  { tool: { name: 'structured_output', arguments: HAND_BACK } },
+  { text: 'child done' },
+]])
 
 // The headless runner exits at the first quiescent idle of its own agent: an
 // armed goal created in the task turn gets no round before exit (the reason
@@ -962,7 +1004,25 @@ const glmRulesRecords = gateRecords('glm-rules')
 const nonGlmRulesRecords = gateRecords('non-glm-rules')
 const glmRulesHealth = healthOf(glmRules)
 const nonGlmRulesHealth = healthOf(nonGlmRules)
-const boardMessages = scenario => scenario.steps.flatMap(step => step.messages.filter(message => message.source === 'hourness-rules'))
+// The board's reminders in one request (the session keeps them, so a request has every one sent so far), and the same for a scenario's requests in order.
+const boardTexts = step => (step?.messages ?? []).filter(message => message.source === 'hourness-rules').map(message => message.text)
+// The waiting-ticket scenarios: the tickets the board kept, what it journaled, and the wake messages the requests carried.
+const readStateOf = (project) => { const file = join(project.ws, '.llm', 'rules', 'state.json'); return existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : undefined }
+const journalOfProject = project => jsonl(join(project.ws, '.llm', 'rules', 'journal.jsonl'))
+const wakeMessages = step => (step?.messages ?? []).filter(message => message.source === 'hourness-rules-wake')
+const queueState = readStateOf(queueProject)
+const queueRecords = gateRecords('rules-queue')
+const queueJournal = journalOfProject(queueProject)
+const handoverState = readStateOf(handoverProject)
+const handoverNotes = dispatchRecord('rules-handover')
+const handoverStarted = handoverNotes.find(entry => entry.kind === 'started')
+const handoverChild = bySession(rulesHandover, handoverStarted?.childId)
+const handoverMain = bySession(rulesHandover, handoverStarted?.parentId)
+const handoverJournal = journalOfProject(handoverProject)
+const handoverTicket = handoverState?.tickets?.['q-1']
+const QUEUE_REFUSAL = /^Error: You tried to run "Write-Output rules-probe-queued"\.\nBoundary: Deferred as ticket q-1\. Rule r-probe-queue "Probe word, deferred" \(set by the human at [^)]+, until lifted\) defers it while glm-peak is on\.\nRight path: The call did not run\. Continue with other planned work; the harness sends you a message when q-1 clears, then run the same call again\. Running it again before that returns this message and does not queue it twice\.\nException: The human can let it through once \(\/rules let q-1\), or change the rule\.$/
+const queueWake = /^\[rules board\] Ticket q-1 cleared: rule r-probe-queue was lifted by the human\. You may run the deferred call again: pwsh "Write-Output rules-probe-queued"\.$/
+const consecutiveDiffer = texts => texts.every((text, index) => index === 0 || text !== texts[index - 1])
 const rulesRecordOf = (records, rule) => records.find(record => record.rule === rule)
 const stateWritten = existsSync(nonGlmRulesState) && readFileSync(nonGlmRulesState, 'utf8') === '{}\n'
 const conversationTexts = [glm, plain, compacted, shadow].flatMap(scenario => scenario.steps.flatMap(step => [step.system, ...step.messages.map(message => message.text)]))
@@ -1180,13 +1240,25 @@ const checks = [
   ['glm-rules: that refusal is in the violation journal as rules:r-probe-block, enforced, on the dialect route', rulesRecordOf(glmRulesRecords, 'rules:r-probe-block')?.mode === 'enforce' && rulesRecordOf(glmRulesRecords, 'rules:r-probe-block').effect === 'block' && rulesRecordOf(glmRulesRecords, 'rules:r-probe-block').scope === 'dialect' && rulesRecordOf(glmRulesRecords, 'rules:r-probe-block').tool === 'Bash', JSON.stringify(rulesRecordOf(glmRulesRecords, 'rules:r-probe-block') ?? null).slice(0, 200)],
   ['glm-rules: a file tool writing into the rules directory is refused by rules:files-only, the file is as it was and the refusal is journaled', lastToolResult(glmRules.steps[2])?.isError === true && (lastToolResult(glmRules.steps[2])?.text ?? '').includes('Rule rules:files-only') && readFileSync(glmRulesProject.rulesFile, 'utf8') === GATE_RULES_FILE && rulesRecordOf(glmRulesRecords, 'rules:files-only')?.mode === 'enforce', lastToolResult(glmRules.steps[2])?.text?.slice(0, 160) ?? 'no result'],
   ['glm-rules: a command no rule names runs', lastToolResult(glmRules.steps[3])?.isError !== true && (lastToolResult(glmRules.steps[3])?.text ?? '').includes('rules-probe-allowed'), lastToolResult(glmRules.steps[3])?.text?.slice(0, 80) ?? 'no result'],
-  ['glm-rules: the request carries no reminder from the board yet, and the system prompt declares the rules board in the guard section', boardMessages(glmRules).length === 0 && glmRules.steps.every(step => step.system.includes(RULES_DECLARATION)), `${boardMessages(glmRules).length} board message(s); declared ${glmRules.steps.filter(step => step.system.includes(RULES_DECLARATION)).length}/${glmRules.steps.length}`],
+  ['glm-rules: the first request carries the board\'s reminder of the rule that only informs, no request carries another (nothing changed), and the system prompt declares the rules board in the guard section', glmRules.steps.every(step => boardTexts(step).length === 1) && boardTexts(glmRules.steps[0])[0]?.includes('[inform, not checked] r-probe-note: "Probe note" (set by the human)') === true && !boardTexts(glmRules.steps[0])[0].includes('r-probe-block') && glmRules.steps.every(step => step.system.includes(RULES_DECLARATION)), `${glmRules.steps.map(step => boardTexts(step).length).join(', ')} board message(s) per request; declared ${glmRules.steps.filter(step => step.system.includes(RULES_DECLARATION)).length}/${glmRules.steps.length}`],
   ['glm-rules: /glm-status lists the rules row in effect with the rules of the person counted, and nothing is written in the scenario\'s user-level directory', glmRulesHealth.rules?.status === ACTED && glmRulesHealth.rules.reason.includes('2 条你设的规则生效') && !existsSync(join(runDir, 'glm-rules', 'dsh-home', 'glm-hourness', 'rules')), healthLine(glmRulesHealth, 'rules') + ` (${glmRulesHealth.rules?.reason ?? ''})`],
   ['non-glm-rules: the row boots on the non-GLM route with the rules file of the clone, runs its five steps and exits clean with nothing from it on stderr', nonGlmRulesProject.ready && nonGlmRules.status === 0 && nonGlmRules.steps.length === 5 && !stderrOf('non-glm-rules').includes('dsh-glm-hourness/rules'), `exit ${nonGlmRules.status}, ${nonGlmRules.steps.length} step(s), git ${nonGlmRulesProject.ready}; ${stderrOf('non-glm-rules').split('\n').find(line => line.includes('rules')) ?? 'no stderr line mentions rules'}`],
   ['non-glm-rules: the blocked command is refused and journaled as rules:r-probe-block on a route the dialect did not claim', lastToolResult(nonGlmRules.steps[1])?.isError === true && (lastToolResult(nonGlmRules.steps[1])?.text ?? '').includes('Rule r-probe-block "Probe word"') && rulesRecordOf(nonGlmRulesRecords, 'rules:r-probe-block')?.scope === 'other' && rulesRecordOf(nonGlmRulesRecords, 'rules:r-probe-block').tool === 'pwsh', lastToolResult(nonGlmRules.steps[1])?.text?.slice(0, 160) ?? 'no result'],
   ['non-glm-rules: a file tool writing into the project\'s .llm/rules/ is refused by rules:files-only and nothing is written', lastToolResult(nonGlmRules.steps[2])?.isError === true && (lastToolResult(nonGlmRules.steps[2])?.text ?? '').includes('Rule rules:files-only') && !stateWritten && rulesRecordOf(nonGlmRulesRecords, 'rules:files-only')?.scope === 'other', lastToolResult(nonGlmRules.steps[2])?.text?.slice(0, 160) ?? 'no result'],
   ['non-glm-rules: rules_show, in the real runtime, lists the rules in force for the caller, the signals and the peak mode', lastToolResult(nonGlmRules.steps[3])?.isError !== true && /^Rules board of ws\./.test(lastToolResult(nonGlmRules.steps[3])?.text ?? '') && /\] r-probe-block: /.test(lastToolResult(nonGlmRules.steps[3])?.text ?? '') && /\] r-probe-note: /.test(lastToolResult(nonGlmRules.steps[3])?.text ?? '') && (lastToolResult(nonGlmRules.steps[3])?.text ?? '').includes('Peak mode:'), lastToolResult(nonGlmRules.steps[3])?.text?.slice(0, 200) ?? 'no result'],
-  ['non-glm-rules: a command no rule names runs, the request carries no reminder from the board, and /glm-status lists the row in effect', lastToolResult(nonGlmRules.steps[4])?.isError !== true && (lastToolResult(nonGlmRules.steps[4])?.text ?? '').includes('rules-probe-allowed') && boardMessages(nonGlmRules).length === 0 && nonGlmRulesHealth.rules?.status === ACTED && !existsSync(join(runDir, 'non-glm-rules', 'dsh-home', 'glm-hourness', 'rules')), healthLine(nonGlmRulesHealth, 'rules') + ` (${nonGlmRulesHealth.rules?.reason ?? ''})`],
+  ['non-glm-rules: a command no rule names runs, every request carries the one reminder of the rule that only informs, and /glm-status lists the row in effect', lastToolResult(nonGlmRules.steps[4])?.isError !== true && (lastToolResult(nonGlmRules.steps[4])?.text ?? '').includes('rules-probe-allowed') && nonGlmRules.steps.every(step => boardTexts(step).length === 1) && boardTexts(nonGlmRules.steps[0])[0]?.includes('r-probe-note') === true && nonGlmRulesHealth.rules?.status === ACTED && !existsSync(join(runDir, 'non-glm-rules', 'dsh-home', 'glm-hourness', 'rules')), healthLine(nonGlmRulesHealth, 'rules') + ` (${nonGlmRulesHealth.rules?.reason ?? ''})`],
+  ['rules-queue: the row boots on the GLM route at the peak clock with a queue rule in the clone\'s rules file, runs its five steps and exits clean with nothing from it on stderr', queueProject.ready && rulesQueue.status === 0 && rulesQueue.steps.length === 5 && !stderrOf('rules-queue').includes('dsh-glm-hourness/rules'), `exit ${rulesQueue.status}, ${rulesQueue.steps.length} step(s), git ${queueProject.ready}; ${stderrOf('rules-queue').split('\n').find(line => line.includes('rules')) ?? 'no stderr line mentions rules'}`],
+  ['rules-queue: the call the rule names is refused with the ticket number and the four parts, so it never ran; the same call again gets the same text under the same ticket', QUEUE_REFUSAL.test(lastToolResult(rulesQueue.steps[1])?.text ?? '') && lastToolResult(rulesQueue.steps[2])?.text === lastToolResult(rulesQueue.steps[1])?.text && lastToolResult(rulesQueue.steps[1]).isError === true, lastToolResult(rulesQueue.steps[1])?.text?.slice(0, 200) ?? 'no result'],
+  ['rules-queue: the board kept one ticket, journaled both refusals as queue lines naming it, and opened it as the harness', isDeepStrictEqual(Object.keys(queueState?.tickets ?? {}), ['q-1']) && queueState.tickets['q-1'].tool === 'pwsh' && queueState.tickets['q-1'].rules.join() === 'r-probe-queue' && queueRecords.filter(record => record.rule === 'rules:r-probe-queue' && record.effect === 'queue' && record.mode === 'enforce' && record.ticket === 'q-1').length === 2 && queueJournal.find(record => record.op === 'ticket-open')?.actor === 'harness', JSON.stringify(queueState?.tickets ?? null).slice(0, 200)],
+  ['rules-queue: the person lifts the rule through the real /rules handler mid-step, and the session is told once: the next request carries the wake message and the one before did not', rulesQueue.steps[2]?.command?.kind === 'success' && wakeMessages(rulesQueue.steps[2]).length === 0 && wakeMessages(rulesQueue.steps[3]).length === 1 && queueWake.test(wakeMessages(rulesQueue.steps[3])[0].text) && wakeMessages(rulesQueue.steps.at(-1)).length === 1, wakeMessages(rulesQueue.steps[3])[0]?.text ?? `no wake in request 4; command: ${JSON.stringify(rulesQueue.steps[2]?.command ?? null).slice(0, 120)}`],
+  ['rules-queue: the call again runs, and the ticket it waited on is done', lastToolResult(rulesQueue.steps[4])?.isError !== true && (lastToolResult(rulesQueue.steps[4])?.text ?? '').includes('rules-probe-queued') && queueState?.tickets?.['q-1']?.state === 'done', `${lastToolResult(rulesQueue.steps[4])?.text?.slice(0, 80) ?? 'no result'}; ticket ${queueState?.tickets?.['q-1']?.state ?? 'missing'}`],
+  ['rules-queue: the request carries the reminder exactly when something changed: the rule that informs, then with the open ticket, then with it cleared, then the rule alone again', isDeepStrictEqual(rulesQueue.steps.map(step => boardTexts(step).length), [1, 2, 2, 3, 4]) && consecutiveDiffer(boardTexts(rulesQueue.steps.at(-1))) && boardTexts(rulesQueue.steps.at(-1))[1].includes('Your open tickets: q-1 pwsh "Write-Output rules-probe-queued" (deferred since') && boardTexts(rulesQueue.steps.at(-1))[2].includes('(cleared at') && boardTexts(rulesQueue.steps.at(-1))[3] === boardTexts(rulesQueue.steps.at(-1))[0], rulesQueue.steps.map(step => boardTexts(step).length).join(', ')],
+  ['rules-queue: nothing is written in the scenario\'s user-level directory', !existsSync(join(runDir, 'rules-queue', 'dsh-home', 'glm-hourness', 'rules')), ''],
+  ['rules-handover: a one-off subagent makes the call the rule names, is refused with the ticket and the text for a subagent, hands back and ends', handoverProject.ready && rulesHandover.status === 0 && handoverStarted !== undefined && handoverMain.length === 6 && handoverChild.length === 2 && lastToolResult(handoverChild[1])?.isError === true && (lastToolResult(handoverChild[1])?.text ?? '').includes('Deferred as ticket q-1.') && (lastToolResult(handoverChild[1])?.text ?? '').includes('stop and report ticket q-1 in your handoff; the agent that dispatched you is told when it clears.'), `exit ${rulesHandover.status}, main ${handoverMain.length} request(s), child ${handoverChild.length}; ${lastToolResult(handoverChild[1])?.text?.slice(0, 120) ?? 'no refusal'}`],
+  ['rules-handover: the ticket went to the agent that dispatched the subagent (the subagent kept in handedFrom), before the person lifted the rule', handoverTicket?.sessionId === handoverStarted?.parentId && handoverTicket?.handedFrom?.sessionId === handoverStarted?.childId && isDeepStrictEqual(handoverJournal.filter(record => record.op !== 'base').map(record => [record.op, record.actor]), [['ticket-open', 'harness'], ['ticket-handover', 'harness'], ['rule-lift', 'human'], ['ticket-update', 'harness']]), `${JSON.stringify(handoverTicket ?? null).slice(0, 200)}; ${handoverJournal.map(record => record.op).join(' > ')}; ${handoverJournal.find(record => record.op === 'ticket-handover')?.reason ?? 'no hand-over'}`],
+  ['rules-handover: after the person lifts the rule the main agent is told once, with the text for a ticket handed over from a subagent that has ended', handoverMain.length === 6 && wakeMessages(handoverMain[4]).length === 0 && wakeMessages(handoverMain[5]).length === 1 && new RegExp(`^\\[rules board\\] Ticket q-1 cleared: rule r-probe-queue was lifted by the human\\. Subagent "${handoverStarted?.childId.slice(-8)}" was deferred on pwsh "Write-Output rules-probe-queued" and has ended\\. Dispatch the task again or run the call yourself; a new dispatch of the same call reuses q-1\\.$`).test(wakeMessages(handoverMain[5])[0].text) && handoverTicket?.state === 'cleared', wakeMessages(handoverMain[5])[0]?.text ?? 'no wake in the last request'],
+  ['rules-handover: the main agent\'s requests carry the reminder only when it changed, and it names the ticket handed over from the subagent', handoverMain.length === 6 && boardTexts(handoverMain[0]).length === 1 && consecutiveDiffer(boardTexts(handoverMain.at(-1))) && boardTexts(handoverMain.at(-1)).some(text => text.includes('handed over from subagent') && text.includes('Do not dispatch these tasks again before their tickets clear.')), handoverMain.map(step => boardTexts(step).length).join(', ')],
+  ['rules-handover: nothing is written in the scenario\'s user-level directory', !existsSync(join(runDir, 'rules-handover', 'dsh-home', 'glm-hourness', 'rules')), ''],
   ['rules-peak-hourness: the row is in effect without the pricing service (a supported combination) and the main agent\'s tool call ran', aloneHealth.rules?.status === ACTED && aloneHealth.rules.reason.includes('读不出是不是高峰') && lastToolResult(rulesPeakAlone.steps[1])?.isError !== true && !stderrOf('rules-peak-hourness').includes('dsh-glm-hourness/rules'), `${healthLine(aloneHealth, 'rules')} (${aloneHealth.rules?.reason ?? ''})`],
   ...designChecks(),
   ['non-glm boot: the runtime reached the probe provider', plainFirst !== undefined, `exit ${plain.status}, ${plain.steps.length} step(s)`],

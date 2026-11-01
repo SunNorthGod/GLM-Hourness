@@ -65,10 +65,13 @@
       # records leaves a line in the violation journal), keeps its own files
       # to itself (rules:files-only), gives agents the tool rules_show, and
       # gives the person /rules; the peak mode is handed to the rows that read
-      # it through the glmHournessPeakMode service. Rules that queue are not
-      # carried out yet. Holds no main agent. Ships disabled until the L3
-      # probe (scenarios glm-rules, non-glm-rules, rules-peak) and the first
-      # desktop pass (docs/DEVELOPMENT.md §3, AGENTS.md).
+      # it through the glmHournessPeakMode service. A rule of the person that
+      # queues refuses the call once with a waiting ticket, and the agent is
+      # told when it clears; the entries of the code that queue (the peak
+      # levels) are not carried out yet. Holds no main agent. Ships disabled
+      # until the L3 probe (scenarios glm-rules, non-glm-rules, rules-queue,
+      # rules-handover, rules-peak) and the first desktop pass
+      # (docs/DEVELOPMENT.md §3, AGENTS.md).
       name: dsh-hourness/rules
       disabled: true
       inject: [tools, commands]
