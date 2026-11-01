@@ -320,6 +320,16 @@ test('a retired or deleted lesson does not match; the longest fragment goes firs
   assert.deepEqual(matchFailure(state, failure, { limit: 10 }).map(match => match.fragment.toLowerCase())[1], 'no such file or directory', 'a lesson with two fragments is judged by its longest match')
 })
 
+test('a fragment counts by its length with the colour codes read away: eight characters or more, or it matches nothing', () => {
+  const marked = `${ESC}[31mfoo${ESC}[0m`
+  assert.ok(marked.length >= 8, 'the write check sees twelve characters')
+  const short = stateOf([lessonOf({ id: 'L-000001', situation: { errors: [marked] } })])
+  assert.deepEqual(matchFailure(short, 'a foo happened'), [])
+  assert.deepEqual(queryLessons(short, { error: 'a foo happened' }, NOW).lessons, [])
+  const enough = stateOf([lessonOf({ id: 'L-000002', situation: { errors: [`${ESC}[31mfoo barz${ESC}[0m`] } })])
+  assert.deepEqual(matchFailure(enough, 'a foo barz happened').map(match => match.lesson.id), ['L-000002'])
+})
+
 test('at most two lessons are returned; those already shown to the session are left out before the cut', () => {
   const state = stateOf(['L-000001', 'L-000002', 'L-000003', 'L-000004'].map((id, index) => lessonOf({ id, situation: { errors: [`${'x'.repeat(index)}shared failure text`] } })))
   const failure = 'xxxshared failure text'

@@ -11,7 +11,7 @@
  * lessons are ever returned; a retired or deleted one is out of reach.
  */
 import { wordsOf } from '../data/words.ts'
-import { activeLessons, normalizeText, openCandidates, type Candidate, type Lesson, type LessonsState, type Situation } from './model.ts'
+import { activeLessons, ERROR_LENGTH, normalizeText, openCandidates, type Candidate, type Lesson, type LessonsState, type Situation } from './model.ts'
 
 // --- Paths: globs and how two paths meet -------------------------------------
 
@@ -168,10 +168,19 @@ const ANSI = new RegExp(`${ESC}\\[[0-9;?]*[ -/]*[@-~]|${ESC}\\][^${BEL}${ESC}]*(
 /** The text of a failure as lessons are matched against it: colour and cursor codes gone, lower case, white space folded. */
 export const normalizeFailure = (text: string): string => normalizeText(text.replace(ANSI, ''))
 
-/** The longest error fragment of a situation that occurs in a failure text (already normalised), or undefined. */
+/**
+ * The longest error fragment of a situation that occurs in a failure text
+ * (already normalised), or undefined. A fragment is counted after the colour
+ * codes are read away: one that is mostly codes passes the write check at
+ * eight characters and would be a word or two here, which occurs in
+ * everything.
+ */
 function longestFragment(situation: Situation, failure: string): string | undefined {
   return situation.errors
-    .filter(fragment => failure.includes(normalizeFailure(fragment)))
+    .filter((fragment) => {
+      const wanted = normalizeFailure(fragment)
+      return wanted.length >= ERROR_LENGTH.min && failure.includes(wanted)
+    })
     .sort((a, b) => b.length - a.length)[0]
 }
 

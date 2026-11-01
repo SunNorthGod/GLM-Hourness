@@ -151,7 +151,8 @@ const MAX_PITFALL = 300
 const MAX_FIX = 600
 const MAX_EVIDENCE = 8
 const MAX_LEARNED = 5
-const ERROR_LENGTH = { min: 8, max: 300 } as const
+/** The length of an error fragment as it is written; matching counts it again after the colour codes are read away (src/lessons/match.ts). */
+export const ERROR_LENGTH = { min: 8, max: 300 } as const
 const MAX_PATTERN = 200
 const MAX_COMMAND = 100
 const TOOL_NAME = /^[A-Za-z0-9_.:-]{1,64}$/

@@ -28,6 +28,10 @@
  * with the overlay and start from a lesson and a candidate left in the project
  * journal: the notices to the main agent, lessons_merge and lessons_query, the
  * person's words for a delete, /lessons, and propose through the overlay tool.
+ * The failure scenarios (glm-lessons-failure, non-glm-lessons-failure) start
+ * from a lesson with an error fragment and run a failing command in the main
+ * agent and in a dispatched child: the reminder after the tool result, the
+ * hits, and the reminder that a lesson keeps coming back.
  *
  * Usage: node scripts/probe/run-probe.mjs
  * Requires the desktop install (DSH_DESKTOP_DIR overrides the location).
@@ -69,7 +73,8 @@ import { holderFileOf, readHolder } from '../../packages/hourness/dist/graph/mai
 import { runNote } from '../../packages/hourness/dist/graph/run.js'
 import { projectDirOf } from '../../packages/hourness/dist/data/project-root.js'
 import { loadGraph } from '../../packages/hourness/dist/graph/store.js'
-import { PENDING_SOURCE as LESSONS_PENDING_SOURCE } from '../../packages/hourness/dist/lessons/notices.js'
+import { FAILURE_SOURCE } from '../../packages/hourness/dist/lessons/failure.js'
+import { PENDING_SOURCE as LESSONS_PENDING_SOURCE, RECUR_SOURCE as LESSONS_RECUR_SOURCE } from '../../packages/hourness/dist/lessons/notices.js'
 import { INDEX_SOURCE as MEMORY_INDEX_SOURCE } from '../../packages/hourness/dist/memory/index.js'
 import { compareShapes, describeDifference, isProjectDifference, profileShape } from '../profile-shape.mjs'
 import { PACKAGES } from '../packages.mjs'
@@ -887,12 +892,14 @@ const workerMain = memoryWorker.steps.filter(step => step.sessionId !== workerCh
 const LESSONS_ROW = ['- id: glm-hourness/lessons', '  disabled: false']
 const SEED_LESSON = 'L-0a1b2c'
 const SEED_CANDIDATE = 'C-aaaaaa'
+// Times are relative to the run: a candidate open for more than 30 days expires at the first notice step.
+const hoursAgo = hours => new Date(Date.now() - hours * 3_600_000).toISOString()
 const seedLessons = (scenario) => {
   const home = join(runDir, scenario, 'home')
   mkdirSync(home, { recursive: true })
   const lines = [
-    { v: 1, seq: 1, at: '2026-10-31T00:00:00.000Z', actor: 'llm', op: 'new', id: SEED_LESSON, reason: 'seed from the probe', evidence: ['docs/HANDOFF.md §6'], data: { situation: { files: ['probe/**'], tools: [], commands: ['probe-run'], errors: ['probe-lesson-fragment-1'] }, pitfall: 'The probe command fails with probe-lesson-fragment-1 while the sandbox is busy.', fix: 'Wait for the other run to finish, then run it again.' } },
-    { v: 1, seq: 2, at: '2026-10-31T00:01:00.000Z', actor: 'harness', op: 'propose', id: SEED_CANDIDATE, evidence: ['task:task-seed', 'session:session-seed'], data: { situation: { files: [], tools: [], commands: ['probe-merge'], errors: ['probe-candidate-fragment-1'] }, pitfall: 'The merge probe candidate fails with probe-candidate-fragment-1.', fix: 'Merge the candidate with lessons_merge.' } },
+    { v: 1, seq: 1, at: hoursAgo(26), actor: 'llm', op: 'new', id: SEED_LESSON, reason: 'seed from the probe', evidence: ['docs/HANDOFF.md §6'], data: { situation: { files: ['probe/**'], tools: [], commands: ['probe-run'], errors: ['probe-lesson-fragment-1'] }, pitfall: 'The probe command fails with probe-lesson-fragment-1 while the sandbox is busy.', fix: 'Wait for the other run to finish, then run it again.' } },
+    { v: 1, seq: 2, at: hoursAgo(25), actor: 'harness', op: 'propose', id: SEED_CANDIDATE, evidence: ['task:task-seed', 'session:session-seed'], data: { situation: { files: [], tools: [], commands: ['probe-merge'], errors: ['probe-candidate-fragment-1'] }, pitfall: 'The merge probe candidate fails with probe-candidate-fragment-1.', fix: 'Merge the candidate with lessons_merge.' } },
   ]
   writeFileSync(join(home, 'lessons.jsonl'), `${lines.map(line => JSON.stringify(line)).join('\n')}\n`)
 }
@@ -924,6 +931,56 @@ const lessonsPlain = runScenario('non-glm-lessons', 'deepseek-probe', lessonsScr
 const lessonsNotices = step => (step?.messages ?? []).filter(message => message.role === 'user' && message.source === LESSONS_PENDING_SOURCE)
 const lessonsFace = step => (step?.tools ?? []).filter(tool => LESSONS_TOOL_NAMES.includes(tool.name))
 const lessonsJournalOf = scenario => jsonl(join(runDir, scenario, 'home', 'lessons.jsonl'))
+
+// Failure matching (docs/ORCHESTRATION.md §8.6, M5 design §4.4, assumptions U1
+// and U2). The project journal starts with a lesson whose error fragment the
+// command below prints, and with one hit from an earlier session. The main
+// agent runs the failing command, a command that runs through, and the
+// failing one again, then dispatches a child that runs the failing command
+// too. The reminder must follow the tool result of the failed call in the next
+// request, of the main agent and of the child (the listener is on
+// tools/post-execute of the host); a command that ran through and the same
+// failure again bring nothing; the main agent's session and the child's are
+// recorded as hits, which with the earlier session make three, and the main
+// agent is told once that the lesson keeps coming back.
+const FAILURE_LESSON = 'L-0f1e2d'
+const FAILURE_FRAGMENT = 'probe-failure-fragment-1'
+const FAILURE_COMMAND = `[Console]::Error.WriteLine('${FAILURE_FRAGMENT}: simulated failure'); exit 3`
+const seedFailureLesson = (scenario) => {
+  const home = join(runDir, scenario, 'home')
+  mkdirSync(home, { recursive: true })
+  const lines = [
+    { v: 1, seq: 1, at: hoursAgo(3), actor: 'llm', op: 'new', id: FAILURE_LESSON, reason: 'seed from the probe', evidence: ['docs/HANDOFF.md §6'], data: { situation: { files: [], tools: [], commands: [], errors: [FAILURE_FRAGMENT] }, pitfall: 'The failure probe command fails with probe-failure-fragment-1.', fix: 'Run it again once the cause is fixed.' } },
+    { v: 1, seq: 2, at: hoursAgo(2), actor: 'harness', op: 'hit', id: FAILURE_LESSON, by: { session: 'session-seed', tool: 'pwsh' } },
+  ]
+  writeFileSync(join(home, 'lessons.jsonl'), `${lines.map(line => JSON.stringify(line)).join('\n')}\n`)
+}
+/** The scripts of the main agent and of its child: on GLM the shell is Bash and the tools that are deferred there go through DeferredToolCall. */
+const failureScripts = (glmRoute, ws) => {
+  const shell = command => ({ tool: glmRoute ? { name: 'Bash', arguments: { command } } : { name: 'pwsh', arguments: { command, description: 'Run the probe command' } } })
+  const call = (name, input) => ({ tool: glmRoute ? { name: 'DeferredToolCall', arguments: { name, input } } : { name, arguments: input } })
+  return {
+    main: [
+      shell(FAILURE_COMMAND),
+      shell('Write-Output probe-ran-through'),
+      shell(FAILURE_COMMAND),
+      call('probe_dispatch', { task: 'T1', prompt: 'Probe task T1: run the failing command and report.', cwd: ws, scope: 'allowed', model: glmRoute ? 'glm-5.3-flash' : 'deepseek-probe' }),
+      { tool: { name: glmRoute ? 'Read' : 'read', arguments: { file_path: join(repo, 'package.json') } } },
+      { text: 'Waiting for task T1.' },
+      { text: 'done', status: true },
+    ],
+    child: [shell(FAILURE_COMMAND), call('structured_output', HAND_BACK), { text: 'child done' }],
+  }
+}
+const runFailure = (name, model, glmRoute) => {
+  seedFailureLesson(name)
+  const ws = join(runDir, name, 'ws')
+  mkdirSync(join(ws, 'allowed'), { recursive: true })
+  const scripts = failureScripts(glmRoute, ws)
+  return runScenario(name, model, scripts.main, 'Run the failing command, a command that runs through, the failing one again, dispatch task T1, then reply done.', [...LESSONS_ROW, ...dispatchRow(join(runDir, name, 'dispatch.jsonl'))], repo, [scripts.child])
+}
+const failureGlm = runFailure('glm-lessons-failure', 'glm-5.3', true)
+const failurePlain = runFailure('non-glm-lessons-failure', 'deepseek-probe', false)
 // Main agent mode (docs/ORCHESTRATION.md §3.1, ROADMAP M3 step 3): the design
 // row ships disabled; the overlay (scripts/sandbox.mjs designRows) enables it,
 // mounts ask_user_question, which the headless template lacks, and mounts the
@@ -1014,7 +1071,7 @@ const checkpoint = compacted.steps.at(-1)?.messages.find(message => message.sour
 const usageOf = scenario => jsonl(join(runDir, scenario, 'dsh-home', 'glm-hourness', 'audit', 'usage.jsonl'))
 const glmUsage = usageOf('glm').filter(record => record.purpose === undefined)
 const compactUsage = usageOf('glm-compact').filter(record => record.purpose === 'compaction')
-const projectUsage = ['glm', 'glm-flash', 'glm-todo', 'glm-compact', 'glm-shadow', 'glm-guard-paths', 'non-glm', 'non-glm-guard', 'glm-no-dialect', 'glm-peak', 'limits-steps', 'limits-time', 'glm-dispatch', 'glm-goal', 'goal-headless', 'glm-only', 'hourness-only', 'client-modules', 'glm-memory', 'non-glm-memory', 'glm-memory-compact', 'glm-worker-memory', 'glm-memory-depth', 'glm-lessons', 'non-glm-lessons'].filter(scenario => existsSync(join(runDir, scenario, 'home', 'audit', 'usage.jsonl')))
+const projectUsage = ['glm', 'glm-flash', 'glm-todo', 'glm-compact', 'glm-shadow', 'glm-guard-paths', 'non-glm', 'non-glm-guard', 'glm-no-dialect', 'glm-peak', 'limits-steps', 'limits-time', 'glm-dispatch', 'glm-goal', 'goal-headless', 'glm-only', 'hourness-only', 'client-modules', 'glm-memory', 'non-glm-memory', 'glm-memory-compact', 'glm-worker-memory', 'glm-memory-depth', 'glm-lessons', 'non-glm-lessons', 'glm-lessons-failure', 'non-glm-lessons-failure'].filter(scenario => existsSync(join(runDir, scenario, 'home', 'audit', 'usage.jsonl')))
 const glmViolations = jsonl(join(glmDir, 'home', 'audit', 'violations.jsonl'))
 const stepLimits = jsonl(limitsRecord('limits-steps'))
 const timeLimits = jsonl(limitsRecord('limits-time'))
@@ -1211,6 +1268,36 @@ function lessonsChecks() {
     ]
   })
 }
+
+/**
+ * Lessons after a failed call (docs/ORCHESTRATION.md §8.6; scenarios
+ * glm-lessons-failure, non-glm-lessons-failure): what the real runtime did
+ * with the listener on tools/post-execute: where the reminder sits in the
+ * next request (U2), whether a child's call is seen (U1), what was recorded.
+ */
+function lessonsFailureChecks() {
+  const route = [[failureGlm, 'glm-lessons-failure', 'GLM'], [failurePlain, 'non-glm-lessons-failure', 'non-GLM']]
+  return route.flatMap(([scenario, name, label]) => {
+    const started = dispatchRecord(name).find(entry => entry.kind === 'started')
+    const main = bySession(scenario, started?.parentId)
+    const child = bySession(scenario, started?.childId)
+    const told = step => messagesOf(step, FAILURE_SOURCE)
+    const recurNotices = step => messagesOf(step, LESSONS_RECUR_SOURCE)
+    // The reminder sits right after a tool result in the request.
+    const afterResult = step => step !== undefined && step.messages.some((message, index) => message.source === FAILURE_SOURCE && step.messages[index - 1]?.role === 'tool')
+    const journal = lessonsJournalOf(name)
+    const hits = journal.filter(record => record.op === 'hit')
+    const recurred = journal.filter(record => record.op === 'recur-notified')
+    return [
+      [`lessons failure (${label}): the request after the failing command carries one reminder right after its tool result, naming the lesson and the fragment, and the result still shows the failure`, main.length >= 6 && told(main[0]).length === 0 && told(main[1]).length === 1 && afterResult(main[1]) && told(main[1])[0].text.includes(FAILURE_LESSON) && told(main[1])[0].text.includes(FAILURE_FRAGMENT) && told(main[1])[0].text.includes('advice, not a rule') && lastToolResult(main[1])?.isError !== true && lastToolResult(main[1]).text.includes(FAILURE_FRAGMENT), main.length === 0 ? `no main request (exit ${scenario.status})` : `reminders per request: ${main.map(step => told(step).length).join(', ')}; ${(told(main[1])[0]?.text ?? 'none').replace(/\n/g, ' | ').slice(0, 200)}`],
+      [`lessons failure (${label}): a command that ran through brings no reminder, and the same failure again brings no second one`, main.length >= 6 && lastToolResult(main[2])?.text.includes('probe-ran-through') === true && told(main[2]).length === 1 && told(main[3]).length === 1 && lastToolResult(main[3])?.isError !== true, main.length === 0 ? 'no main request' : `reminders per request: ${main.map(step => told(step).length).join(', ')}`],
+      [`lessons failure (${label}): the child's failing command gets its reminder right after its tool result as well, and its call was not changed`, child.length >= 2 && told(child[0]).length === 0 && told(child[1]).length === 1 && afterResult(child[1]) && told(child[1])[0].text.includes(FAILURE_LESSON) && lastToolResult(child[1])?.isError !== true && lastToolResult(child[1]).text.includes(FAILURE_FRAGMENT), child.length === 0 ? `no child request (exit ${scenario.status})` : `child reminders per request: ${child.map(step => told(step).length).join(', ')}; ${(lastToolResult(child[1])?.text ?? 'no tool result').slice(0, 80).replace(/\n/g, ' ')}`],
+      [`lessons failure (${label}): the main agent's session and the child's are recorded as hits by the harness with the native tool name, one each, and with the earlier session they make three`, hits.length === 3 && isDeepStrictEqual(new Set(hits.map(record => record.by?.session)), new Set(['session-seed', started?.parentId, started?.childId])) && hits.slice(1).every(record => record.actor === 'harness' && record.id === FAILURE_LESSON && record.by.tool === 'pwsh' && record.by.agent === record.by.session && typeof record.by.callId === 'string'), hits.map(record => JSON.stringify(record.by)).join(' | ') || 'no hit'],
+      [`lessons failure (${label}): the lesson that matched in three sessions is brought up to the main agent once, after its record; the child is not told`, recurred.length === 1 && recurred[0].id === FAILURE_LESSON && recurred[0].data?.sessions === 3 && recurNotices(main.at(-1)).length === 1 && recurNotices(main.at(-1))[0].text.includes(FAILURE_LESSON) && child.every(step => recurNotices(step).length === 0), `${recurred.length} record(s); reminders per request: ${main.map(step => recurNotices(step).length).join(', ') || 'none'}`],
+      [`lessons failure (${label}): the row reports itself loaded, and the run warned of nothing`, healthOf(scenario).lessons?.status !== '未加载' && quiet(name), `${healthLine(healthOf(scenario), 'lessons')}; ${healthOf(scenario).lessons?.reason.slice(0, 120) ?? ''}; stderr ${stderrOf(name).length} byte(s)`],
+    ]
+  })
+}
 const checks = [
   ['sandbox: the runtime booted each profile generated under the run directory (its cordis.yml rewritten by the launcher); the real profiles directory has none of them', rewritten.length === GENERATED_PROFILES.length && leaked.length === 0, `rewritten: ${rewritten.join(', ') || 'none'}; under ${realProfiles}: ${leaked.join(', ') || 'none'}`],
   ['glm-only: with only the GLM channel package the GLM request has the ZCode identity, the aliases and the search controls, and no graph or memory tool', glmOnlyFirst?.system.includes('You are ZCode, an interactive agent') === true && zcodeFace.every(name => glmOnlyTools.has(name)) && searchControls.every(name => glmOnlyTools.has(name)) && ![...glmOnlyTools].some(name => GRAPH_TOOL_NAMES.includes(name) || MEMORY_TOOL_NAMES.includes(name)) && glmOnlyRead?.isError !== true, glmOnlyFirst === undefined ? `no request (exit ${glmOnly.status})` : `${glmOnlyTools.size} tools; ${[...glmOnlyTools].filter(name => name.startsWith('graph_') || name.startsWith('memory_')).join(', ') || 'no graph or memory tool'}`],
@@ -1298,6 +1385,7 @@ const checks = [
   ['memory usage: the compaction call is recorded with purpose compaction', compactUsage.length === compacted.compactions.length && compactUsage.length > 0, `${compactUsage.length} compaction record(s) for ${compacted.compactions.length} request(s)`],
   ...memoryChecks(),
   ...lessonsChecks(),
+  ...lessonsFailureChecks(),
   ['data: usage lands only in the user-level directory, never in a project directory or the real one', projectUsage.length === 0 && realUsageBefore === realUsageAfter, `project usage files: ${projectUsage.join(', ') || 'none'}; real ${realUsage}: ${realUsageBefore} -> ${realUsageAfter}`],
   ['guard: a shell write is denied with the four-part correction naming the ZCode tools, and the file is not created', blockedResult?.isError === true && blockedResult.text.includes('Shell file writes are not permitted') && blockedResult.text.includes(RIGHT_PATH_ZCODE) && !existsSync(blocked), blockedResult === undefined ? 'no tool result' : blockedResult.text.slice(0, 100).replace(/\n/g, ' ')],
   ['guard: the denial is journaled in the scenario project directory with rule, tool and the calling agent ids', glmViolations.length === 1 && glmViolations[0].rule === 'file-tools-only' && glmViolations[0].tool === 'Bash' && typeof glmViolations[0].agentId === 'string' && glmViolations[0].agentId.length > 0 && glmViolations[0].sessionId === glmUsage[0]?.sessionId, `${glmViolations.length} record(s); first: ${JSON.stringify(glmViolations[0] ?? null).slice(0, 140)}`],

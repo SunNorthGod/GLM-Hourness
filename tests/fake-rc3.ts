@@ -4,12 +4,12 @@
  * scoped `tools.register(definition)` (rejecting output schemas outside the
  * enforced subset), `tools.get(name, scope)`, `tools.execute(input)`
  * (gated by `tools/pre-execute`, validating success values against the
- * output schema), the agent-scoped waterfalls, the session's derived
+ * output schema, ending in `tools/post-execute`), the agent-scoped waterfalls, the session's derived
  * history, and cordis `get` / `provide`. The route reaches plugins solely
  * through the assembly variables, exactly as installModelSelection injects
  * them.
  */
-import type { AgentLike, AssemblePayload, AssembledTool, InjectHost, InjectableServices, PluginContext, PreExecuteDecision, PreExecuteListener, PreStepDecision, PreStepPayload, ProvideHost, ServiceLookup, ToolDefinitionLike, ToolExecuteInput, ToolExecutionPayload, ToolFinalResult } from '../src/shared/dsh-min.ts'
+import type { AgentLike, AssemblePayload, AssembledTool, InjectHost, InjectableServices, PluginContext, PostExecuteDecision, PostExecuteListener, PostExecutePayload, PreExecuteDecision, PreExecuteListener, PreStepDecision, PreStepPayload, ProvideHost, ServiceLookup, ToolDefinitionLike, ToolExecuteInput, ToolFinalResult } from '../src/shared/dsh-min.ts'
 
 type Listener = (...args: never[]) => unknown
 
@@ -254,6 +254,28 @@ export function fakeRuntime(options: { natives?: readonly string[], calls?: Arra
     deferContext(context: unknown) { contexts.push(context) },
     concludeTurn() {},
   })
+  /**
+   * ToolRuntime.postExecute (tools:3598–3631): the `tools/post-execute`
+   * waterfall defaults to accept. `block` turns the call into an error whose
+   * content is the feedback and drops the contexts the body deferred; an
+   * accept keeps the result (its content replaced when the decision has
+   * one) and appends the decision's contexts to the result's. Replacing the
+   * value is not modeled.
+   */
+  const postExecuted = async (pending: PostExecutePayload, result: ToolFinalResult): Promise<ToolFinalResult> => {
+    const decision = await of('tools/post-execute').reduceRight<() => Promise<PostExecuteDecision>>(
+      (next, listener) => async () => (listener as unknown as PostExecuteListener)(pending, result, next),
+      () => Promise.resolve<PostExecuteDecision>({ kind: 'accept' }),
+    )()
+    const contexts = decision.additionalContexts ?? []
+    if (decision.kind === 'block') {
+      const message = decision.feedback.map(block => block.text ?? '').join('\n')
+      return { isError: true, content: decision.feedback, error: { message }, ...(contexts.length > 0 ? { additionalContexts: contexts } : {}) }
+    }
+    if (decision.value !== undefined) throw new Error('fake-rc3 does not model replacing the value in post-execute')
+    const additionalContexts = [...result.additionalContexts ?? [], ...contexts]
+    return { ...result, ...(decision.content === undefined ? {} : { content: decision.content }), ...(additionalContexts.length > 0 ? { additionalContexts } : {}) }
+  }
   const store = serviceStore()
   const ctx: FakeRuntime['ctx'] = {
     get: store.get,
@@ -266,22 +288,23 @@ export function fakeRuntime(options: { natives?: readonly string[], calls?: Arra
         return () => { scoped.splice(scoped.indexOf(definition), 1) }
       },
       get: name => visible().find(tool => tool.name === name),
-      // Pipeline order of ToolRuntime.execute: pre-execute gate, body, output render, deferred contexts.
+      // Pipeline order of ToolRuntime.execute: pre-execute gate, body, output render, deferred contexts, post-execute.
       async execute(input): Promise<ToolFinalResult> {
         executed.push(input)
         // prepareExecution (tools:3320–3321, 3337–3353): the waterfall defaults to allow; a deny reason
-        // becomes the error result and the body never runs. ask and cancel are not modeled.
-        const pending: ToolExecutionPayload = { name: input.name, arguments: input.arguments, ...(input.agent === undefined ? {} : { agent: input.agent }), ...(input.parent === undefined ? {} : { parent: input.parent }) }
+        // becomes the error result and the body never runs, but the result still goes through post-execute
+        // (prepareExecution hands it on as a post-result). ask and cancel are not modeled.
+        const pending: PostExecutePayload = { callId: input.callId, name: input.name, arguments: input.arguments, ...(input.agent === undefined ? {} : { agent: input.agent }), ...(input.parent === undefined ? {} : { parent: input.parent }) }
         const gate = await of('tools/pre-execute').reduceRight<() => Promise<PreExecuteDecision>>(
           (next, listener) => async () => (listener as unknown as PreExecuteListener)(pending, next),
           () => Promise.resolve<PreExecuteDecision>({ kind: 'allow' }),
         )()
-        if (gate.kind === 'deny') return { isError: true, content: [{ type: 'text', text: `Error: ${gate.reason}` }], error: { message: gate.reason } }
-        if (gate.kind !== 'allow') throw new Error(`fake-rc3 does not model the ${gate.kind} decision`)
+        if (gate.kind !== 'allow' && gate.kind !== 'deny') throw new Error(`fake-rc3 does not model the ${gate.kind} decision`)
         const tool = visible().find(candidate => candidate.name === input.name)
         const contexts: unknown[] = []
         let result: ToolFinalResult
         try {
+          if (gate.kind === 'deny') throw new Error(gate.reason)
           if (tool === undefined) throw new Error(`unknown tool "${input.name}"`)
           const value = await tool.execute(input.arguments, { ...execution(input.callId, input.signal, contexts), ...(input.agent === undefined ? {} : { agent: input.agent }) })
           const violations = valueViolations(tool.output.schema, value)
@@ -292,7 +315,7 @@ export function fakeRuntime(options: { natives?: readonly string[], calls?: Arra
           const message = error instanceof Error ? error.message : String(error)
           result = { isError: true, content: [{ type: 'text', text: `Error: ${message}` }], error: { message } }
         }
-        return contexts.length > 0 ? { ...result, additionalContexts: contexts } : result
+        return postExecuted(pending, contexts.length > 0 ? { ...result, additionalContexts: contexts } : result)
       },
     },
     on: ((event: string, listener: Listener, opts?: { prepend?: boolean }) => {

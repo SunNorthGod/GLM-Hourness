@@ -8,138 +8,31 @@
  * record.
  */
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import test from 'node:test'
-import { realLockEnvironment } from '../src/data/lock.ts'
-import { MAIN_AGENT_KEY } from '../src/graph/main-agent.ts'
-import { claimHolder, holderFileOf } from '../src/graph/main-agent-holder.ts'
-import { apply, inject, LESSONS_PROJECTION, name, type LessonsConfig, type LessonsContext } from '../src/lessons/index.ts'
+import { apply, inject, LESSONS_PROJECTION, name, type LessonsContext } from '../src/lessons/index.ts'
 import { PENDING_SOURCE, RECUR_SOURCE } from '../src/lessons/notices.ts'
-import { LESSONS_SERVICE, type LessonsService } from '../src/lessons/service.ts'
+import { LESSONS_SERVICE } from '../src/lessons/service.ts'
 import { journalFile } from '../src/lessons/storage.ts'
 import { LESSONS_MERGE_EXAMPLE } from '../src/lessons/tools.ts'
-import type { AgentCommandInvocationLike, CommandDefinitionLike, SessionLike, SessionProjectionsService, UserNotice } from '../src/shared/dsh-min.ts'
+import type { SessionLike } from '../src/shared/dsh-min.ts'
 import { collectHealth } from '../src/shared/health.ts'
 import { LESSONS_TOOL_NAMES } from '../src/shared/tool-names.ts'
-import { fakeRuntime, type FakeRuntime } from './fake-rc3.ts'
+import { fakeRuntime } from './fake-rc3.ts'
 import { captureWarnings } from './graph-helpers.ts'
 import { CANDIDATE, LESSON, NOW } from './lessons-helpers.ts'
+import { kinds, proposeFrom, rowHealth, withRow, WORK } from './lessons-row-host.ts'
 import { refusalOf } from './memory-helpers.ts'
-import { createChild, failRegistration, optionalServices, stepOf } from './row-host.ts'
-
-const WORK = resolve(tmpdir(), 'lessons-row-project')
-const GRAPH_DIR = join(WORK, 'docs', 'graph')
+import { createChild, failRegistration } from './row-host.ts'
 const DAY = 86_400_000
 
-interface Row {
-  readonly root: string
-  readonly project: string
-  readonly userHome: string
-  readonly runtime: FakeRuntime
-  readonly commands: Map<string, CommandDefinitionLike<AgentCommandInvocationLike>>
-  readonly projections: Array<Parameters<SessionProjectionsService['register']>[0]>
-  readonly service: LessonsService
-  readonly dispose: () => void
-  /** The modes the projection of each session reports, for the judgement of the main agent. */
-  readonly modes: Map<string, unknown>
-  readonly services: { provide(): void, remove(): void }
-  setNow(at: Date): void
-  /** Make `sessionId` the main agent of the project, in the record file. */
-  hold(sessionId: string): void
-  /** The records of the project's journal, in file order. */
-  readonly journal: () => Array<Record<string, unknown>>
-  /** One step of the main agent; the notices the row adds stay in the history like real ones. */
-  readonly step: () => Promise<readonly UserNotice[]>
-  /** Type `/lessons <input>` as the person, in the main agent's session. */
-  readonly run: (input: string) => Promise<{ readonly kind: string, readonly text?: string }>
-  /** Call a lessons tool as the main agent of the fake host. */
-  readonly tool: (name: string, args: unknown) => Promise<Record<string, unknown>>
-}
-
-interface Options {
-  /** The data row names no project for the session. */
-  readonly noProject?: boolean
-  readonly config?: LessonsConfig
-  /** Leave the optional services out: the host has no `inject`. */
-  readonly bare?: boolean
-  /** The commands and sessionProjections services are not there when the row starts. */
-  readonly late?: boolean
-  /** The graph row and the session state service are there, so the main agent is judged by its record. */
-  readonly judged?: boolean
-}
-
-async function withRow(body: (row: Row) => Promise<void> | void, options: Options = {}): Promise<void> {
-  const root = mkdtempSync(join(tmpdir(), 'lessons-row-'))
-  const project = join(root, 'project')
-  const userHome = join(root, 'dsh', 'glm-hourness')
-  let clock = NOW
-  const runtime = fakeRuntime({ natives: ['pwsh'], cwd: WORK })
-  runtime.services.set('glmHournessData', { userHome, projectDirOf: () => options.noProject === true ? undefined : project })
-  const modes = new Map<string, unknown>()
-  if (options.judged === true) {
-    runtime.services.set('glmHournessGraph', { dirFor: () => GRAPH_DIR, isGraphTool: () => false })
-    runtime.services.set('sessionProjections', { stateOf: (session: SessionLike, key: string) => key === MAIN_AGENT_KEY ? modes.get(session.id) : undefined })
-  }
-  const optional = optionalServices(runtime, options)
-  const { commands, projections, services } = optional
-  const ctx = optional.ctx as unknown as LessonsContext
-  const config: LessonsConfig = { now: () => clock, random: (() => { let drawn = 0x100000; return () => drawn++ })(), ignoreCase: false, append: { lock: { ...realLockEnvironment, now: () => clock.getTime() } }, ...options.config }
-  const dispose = apply(ctx, config)
-  const service = runtime.services.get(LESSONS_SERVICE) as LessonsService
-  const row: Row = {
-    root,
-    project,
-    userHome,
-    runtime,
-    commands,
-    projections,
-    service,
-    dispose,
-    modes,
-    services,
-    setNow(at) { clock = at },
-    hold(sessionId) {
-      rmSync(holderFileOf(userHome, GRAPH_DIR), { force: true })
-      claimHolder(holderFileOf(userHome, GRAPH_DIR), { version: 1, sessionId, graphDir: GRAPH_DIR, since: '2026-11-01T00:00:00.000Z', commandId: `cmd-${sessionId}` })
-    },
-    tool: async (toolName, args) => await runtime.execute(toolName, args) as Record<string, unknown>,
-    run: async input => commands.get('lessons')!.handler({ commandId: 'cmd-1', agent: { id: runtime.agent.id, session: runtime.agent.session }, rawInput: input } as unknown as AgentCommandInvocationLike),
-    step: () => stepOf(runtime),
-
-    journal: () => {
-      try {
-        return readJournalLines(journalFile(project))
-      }
-      catch {
-        return []
-      }
-    },
-  }
-  try {
-    await runtime.create()
-    await body(row)
-  }
-  finally {
-    dispose()
-    rmSync(root, { recursive: true, force: true })
-  }
-}
-
-const readJournalLines = (file: string): Array<Record<string, unknown>> => readFileSync(file, 'utf8').split('\n').filter(line => line !== '').map(line => JSON.parse(line) as Record<string, unknown>)
-
-const rowHealth = (row: Row, sessionId = 'agent-1') => collectHealth(row.runtime.ctx, sessionId).find(entry => entry.row === 'lessons')!
-const kinds = (notices: readonly UserNotice[]): string[] => notices.map(notice => notice.source.kind)
-const proposeFrom = (row: Row, session: string, candidate: object = CANDIDATE) => row.service.propose(candidate as never, { session: { id: session, header: { id: session }, deriveMessages: () => [] }, task: 'task-3' })
-
-test('the row is a cordis plugin that needs the tools service; it registers the two tools, gates no tool call and listens to agent creation and the step only', async () => {
+test('the row is a cordis plugin that needs the tools service; it registers the two tools, gates no tool call and listens to agent creation, the step and the result of a tool call only', async () => {
   await withRow((row) => {
     assert.equal(name, 'dsh-glm-hourness/lessons')
     assert.deepEqual(inject, ['tools'])
     assert.deepEqual(row.runtime.scoped.map(tool => tool.name), LESSONS_TOOL_NAMES)
     const events = new Set(row.runtime.listeners.map(entry => entry.event))
-    assert.deepEqual([...events].sort(), ['agent/created', 'agent/pre-step'])
+    assert.deepEqual([...events].sort(), ['agent/created', 'agent/pre-step', 'tools/post-execute'])
     assert.ok(!events.has('tools/pre-execute'), 'the lessons row blocks no tool call (d-code-rules-enforce: it registers no rule)')
     assert.ok(row.commands.has('lessons') && row.projections.length === 1 && row.runtime.services.has(LESSONS_SERVICE))
   })

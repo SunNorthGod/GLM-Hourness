@@ -50,7 +50,7 @@ GLM-Hourness（同仓两包，§2.3）
 | `glm-hourness/data` | `dsh-hourness` | `dist/data/index.js` | 编排 | 数据目录服务 `glmHournessData`，见 §2.4 |
 | `glm-hourness/guard` | `dsh-hourness` | `dist/guard/index.js` | 编排 | 见 `ORCHESTRATION.md` §6 |
 | `glm-hourness/memory` | `dsh-hourness` | `dist/memory/index.js` | 编排 | 记忆工具、会话开局的记忆索引、`/memory`、服务 `glmHournessMemory`、会话投影 `hournessMemory`，以及每次模型调用的用量流水（`ORCHESTRATION.md` §8；M5 步骤 M1）。项目目录跟会话的工作区，行配置 `home` 不再使用；不注册任何 `tools/pre-execute` 监听器 |
-| `glm-hourness/lessons` | `dsh-hourness` | `dist/lessons/index.js` | 编排 | 经验板（`ORCHESTRATION.md` §8.6；M5 步骤 L1）：项目踩过的坑与解法，存在项目的 `.llm/lessons.jsonl`；查询工具 `lessons_query`（所有 agent）、合并工具 `lessons_merge`（主 Agent）、服务 `glmHournessLessons`（派发工作的一侧读写）、给主 Agent 的候选与复发提醒、`/lessons`、会话投影 `hournessLessons`。经验是建议不是规则，不注册任何 `tools/pre-execute` 监听器。默认禁用，L3 场景 `glm-lessons` 与 `non-glm-lessons` 通过后、桌面版首轮验收前保持禁用 |
+| `glm-hourness/lessons` | `dsh-hourness` | `dist/lessons/index.js` | 编排 | 经验板（`ORCHESTRATION.md` §8.6；M5 步骤 L1）：项目踩过的坑与解法，存在项目的 `.llm/lessons.jsonl`；查询工具 `lessons_query`（所有 agent）、合并工具 `lessons_merge`（主 Agent）、服务 `glmHournessLessons`（派发工作的一侧读写）、给主 Agent 的候选与复发提醒、失败的调用结果里的经验提醒（M5 步骤 L2，`tools/post-execute`）、`/lessons`、会话投影 `hournessLessons`。经验是建议不是规则，不注册任何 `tools/pre-execute` 监听器；唯一的工具调用监听器在 `tools/post-execute`，只往结果里加提醒。默认禁用，L3 场景 `glm-lessons`、`non-glm-lessons`、`glm-lessons-failure` 与 `non-glm-lessons-failure` 通过后、桌面版首轮验收前保持禁用 |
 | `glm-hourness/workflow` | `dsh-hourness` | `dist/workflow/index.js` | 编排 | 仅记录派遣类工具调用 |
 | `glm-hourness/hourness` | `dsh-hourness` | `dist/report/index.js` | 编排 | `/hourness` 命令：晨报与用量面板；面板经计价服务按积分列，没有计价服务时按调用与 token 列（`ORCHESTRATION.md` §11.2、§11.3）；`/hourness-status`：两个包各行的健康（§2.5） |
 | `glm-hourness/graph` | `dsh-hourness` | `dist/graph/index.js` | 编排 | 项目图工具、每步投影与图文件门禁（`ORCHESTRATION.md` §2.5、§2.7、§2.10）；2026-10-28 经 L3 探针与 L4 桌面版验收后默认启用 |
@@ -116,6 +116,7 @@ GLM-Hourness（同仓两包，§2.3）
 - `src/lessons/tools.ts`：`lessons_query`（所有 agent）与 `lessons_merge`（根 agent；委派的子 agent 得 `role`）；说明里的示范是一次真实的调用。
 - `src/lessons/service.ts`：服务 `glmHournessLessons`：`relevant`（简报用，总分不到 2 的不给）、`propose`（收下 / 并入 / 丢弃，字段不合格或像密钥答 `rejected` 什么都不写，服务自己的失败答 `{error}`；从不抛错）、`stats`、`hygiene`。
 - `src/lessons/notices.ts` 与 `import.ts`：给主 Agent（`src/data/main-agent.ts` 的 `isMainAgentFor`）的候选提醒（候选集变了才再来；开了 30 天的候选在这一步记为过期）与复发提醒（先记 `recur-notified` 再提醒，一步一条）；候选提醒的步里按需导入 M7 留在图上的 `[候选经验]` 批注（第一次、之后至多一分钟一次且图的修订变了、`propose` 失败之后马上看）。
+- `src/lessons/failure.ts`〔M5 步骤 L2，设计 §4.4、§4.6，节点 `lessons-2`〕：host 级 `tools/post-execute` 监听器（类型 `PostExecuteHost` 等在 `src/shared/dsh-min.ts`）。失败的调用——shell 工具（原生名 `pwsh`、`bash`；GLM 路由上的 `Bash` 经 `toNativeTool` 换成 `pwsh`）退出码非 0 或超时，或任何工具的结果是错误（被 `tools/pre-execute` 拒绝的也是）——先 `await next()`，再用 `matchFailure` 找输出里含报错片段的生效经验（stderr 末尾 4,000 加 stdout 末尾 2,000 字符；错误结果取文字与 `error.message` 的前 6,000 字符），有就把一条来源为 `glm-hourness-lessons` 的 notice 放在下游决定的 `additionalContexts` 之前，其余保持下游的决定。同一会话同一条经验只提醒一次（可见历史里这种 notice 的 `lessons` 列过的，加本进程推给这个会话的）；带 `parent` 的传输层子调用与没有 agent 的调用不看。推出去的经验各记一条 `hit`（会话、agent、调用号、原生工具名），不等写完。监听器出错时返回下游的决定原样不动，告警一次，行健康写原因。`src/lessons/match.ts` 的片段比较按去掉颜色码后的长度算（至少 8 字符）。
 - `src/lessons/commands.ts`：`/lessons show | delete <L-编号> | restore <L-编号> | drop <C-编号>`，身份为人。`src/lessons/cli.ts` 与 `scripts/lessons/cli.ts`：命令行 `npm run -s lessons -- [--cwd 文件夹] show | apply [--file 文件]`（`docs/DEVELOPMENT.md` §13）。
 - `src/shared/row-support.ts`：记忆行与经验行共用的件（按原因只告警一次、按会话记备注、晚到的命令与投影服务）。`src/shared/tool-names.ts` 加 `LESSONS_TOOL_NAMES`，常驻名单加 `lessons_query`。
 
@@ -170,7 +171,8 @@ GLM-Hourness（同仓两包，§2.3）
 | `tools/pre-execute`（waterfall，`(exec, next)`，默认 `allow`） | guard、workflow、graph（图文件门禁，`prepend` 注册） | tools:3320–3321；决策 `allow` / `deny{reason, info?}` / `ask` / `cancel`，tools:3322–3345；拒绝时结果为 `Error: ` 加理由，工具体不执行，tools:3337–3353 | 一致；guard 的决策类型补上 `ask`、`cancel` 透传 |
 | `exec` 字段：`callId`、`rootCallId`、`name`、`arguments`、`signal`、`agent?`、`parent?`、`schema?`、`deferContext`、`concludeTurn` | guard、workflow | tools:3229–3260 | **偏差已修**：guard 从 `exec.agentId` / `exec.sessionId` 取违规记录的 id，rc.3 没有这两个字段，记录里永远为空；改为 `exec.agent.id` 与 `exec.agent.session.id` |
 | `llm/stream`（waterfall，`(options, next)`） | memory（用量流水）、glm-compact | llm:2397；`options` 即 `GenerateOptions`（官方 types.d.ts:506–548：`provider`、`model`、`messages`、`sessionId?`、`purpose?`），编译期检查 `LlmStreamOptionsContractCheck` | 一致；memory 对 `provider` / `model` 的 `'unknown'` 兜底删除（两者必填）。L3 探针实测每个 GLM 步一条用量记录，带 `sessionId`；压缩调用带 `purpose: 'compaction'` |
-| `tools/post-execute`、`ctx.systemPrompt` | 无 | tools:3600 | 已无行使用（todo 提醒改到 `agent/pre-step` 之后），结构类型删除 |
+| `tools/post-execute`（waterfall，`(exec, result, next)`，返回官方 `PostToolDecision`：`accept` 可带 `content`，`block` 带 `feedback`，两者都可带 `additionalContexts`；本包读 `exec` 的 `name`、`arguments`、`agent`、`parent`、`callId`，读 `result` 的 `isError`、`content`、`value`、`error`） | lessons（失败匹配，host 级监听器；类型 `PostExecutePayload`、`PostExecuteDecision`、`PostExecuteListener`、`PostExecuteHost` 在 `src/shared/dsh-min.ts`） | tools:3589–3631（`postExecute`：默认决策 `accept`，结果自带的 `additionalContexts` 在前、决策的在后，`block` 丢掉工具体延后的上下文）、3418–3420 与 3448（工具体失败、未知工具与被 `tools/pre-execute` 拒绝的结果同样走到这里，tools:3339–3353）；官方 `PostToolDecision` 见 `reference/deepseek-harness` 的 `api-catalog.ts` | 一致；先例 repeat-tool-reminder:2247–2260。假设 U1（host 级监听器看得到子 agent 的调用）与 U2（notice 在下一次请求里紧跟这次工具结果）由探针 `glm-lessons-failure`、`non-glm-lessons-failure` 核对，两条都成立（2026-11-01，GLM 与非 GLM 路由，子 agent 的失败也带提醒）。`tests/fake-rc3.ts` 的工具管线按真宿主的顺序补了这一步 |
+| `ctx.systemPrompt` | 无 | — | 已无行使用，结构类型删除 |
 
 服务：
 
@@ -258,7 +260,7 @@ GLM-Hourness（同仓两包，§2.3）
 | data | 激活 | 用户级目录与项目目录都已解析 | 项目目录未配置（部分生效）；服务提供失败 |
 | guard | 激活；每次根调用 | 门禁生效（所有路由，`ORCHESTRATION.md` §6.2），写明圈禁根、违规目录与影子兜底是否可用 | 会话没有工作目录（圈禁规则跳过）；无项目目录（违规不落盘）；方言服务不可用（工具名按静态别名表换算，纠偏用原生名）。组合里没有 workspace-changes 时说明写「影子兜底未启用」，状态不降级：影子兜底只记录，门禁本身不受影响 |
 | memory | 激活；根 agent 的每一步；命令或投影服务到来与离开时（激活状态） | 本会话的项目目录与用户级目录、两边的偏好与事实条数、本会话是否已带索引；用量记入用户级目录 | 数据目录行未启用（用户级记忆不可用，用量不记录）；会话没有工作目录，或不算项目（用户主目录、盘符根、不在 git 仓库里又没有 `.llm`）；流水有读不出的行或超过 8 MiB；旧 `memory.json` 读不出或还没迁移；写入时 `.llm/` 加不进 `.git/info/exclude`、写失败、锁被判陈旧过；索引提醒出错或有一份记忆读不出（索引不全）；`commands` 或 `sessionProjections` 服务没到（命令、投影没注册）；`glmHournessMemory` 没提供上。行配置 `home` 只在说明里写「已不再使用」，状态不因它降级。记忆工具注册失败时未生效 |
-| lessons | 激活；主 Agent 的每一步；有会话没有项目时；命令或投影服务到来与离开时（激活状态） | 本会话的项目目录、生效经验与候选的条数；候选被拒的条数与代码 | 会话没有工作目录，或不算项目；流水有读不出的行或超过 8 MiB；`.llm/` 加不进 `.git/info/exclude`、写失败、锁被判陈旧过；读不出项目图上的候选经验；候选没能记为过期；复发提醒没能记下（这一步不发）；取不到 M3 的主 Agent 判断（没有图行、没有持有者记录、记录指向本会话但模式已关；设计行不在时所有根 agent 都按主 Agent 处理）；`commands` 或 `sessionProjections` 服务没到；`glmHournessLessons` 没提供上。工具注册失败时未生效 |
+| lessons | 激活；主 Agent 的每一步；有会话没有项目时；失败匹配读不出经验或出错时；命令或投影服务到来与离开时（激活状态） | 本会话的项目目录、生效经验与候选的条数；候选被拒的条数与代码 | 会话没有工作目录，或不算项目；流水有读不出的行或超过 8 MiB；`.llm/` 加不进 `.git/info/exclude`、写失败、锁被判陈旧过；读不出项目图上的候选经验；候选没能记为过期；复发提醒没能记下（这一步不发）；失败匹配读不出经验或出错（调用的结果原样）；命中没能记下（提醒照给）；取不到 M3 的主 Agent 判断（没有图行、没有持有者记录、记录指向本会话但模式已关；设计行不在时所有根 agent 都按主 Agent 处理）；`commands` 或 `sessionProjections` 服务没到；`glmHournessLessons` 没提供上。工具注册失败时未生效 |
 | workflow | 激活；每次根调用 | 派遣决策记入项目目录 | 无项目目录 |
 | hourness | 激活；每次 `/hourness` | 两个目录都可读；说明另写「积分口径：已提供」或「积分口径：未提供，按 token 列」，状态不因计价服务缺席降级 | 缺项目目录或用户级目录 |
 | rules | 激活；每个会话创建时；每次 `/rules` | 命令与服务就绪；本会话所在项目的档位与来源、此刻是不是高峰；读不出是不是高峰（没有计价服务，或 `peak` 出错）时写原因，状态不降级 | `/rules` 没注册上、`glmHournessPeakMode` 没提供上、会话事件没注册上；会话没有工作目录或不在项目里；存档与变更记录对不上或有没生效的记录（存档被改过、流水被截短和有没生效的记录每个会话都报，消息末尾写出路：删掉项目的 `.llm/rules/`，`ORCHESTRATION.md` §16.5）；仓库里的规则文件读不出或被规则板以外改过；读状态失败。`config.dir` 不是路径时未生效 |
@@ -790,7 +792,7 @@ L3 探针：沙盒里把压缩阈值调低，摘要请求末条是 ZCode 提示�
 | guard | 无门禁 | 行健康（显式禁用除外） |
 | guard 影子兜底 | 组合里没有 workspace-changes：只少影子记录，门禁照常 | 行健康（guard 一行的说明） |
 | memory | 行禁用：没有记忆工具、索引与用量流水，其余行不受影响；工具注册失败：全部撤掉；没有数据目录行：用户级记忆不可用、不记用量，项目范围照常；会话不在项目里：项目范围不可用（`no_project`）；`.llm/` 加不进忽略文件：这次写入得 `io`、不建 `.llm/`；旧 `memory.json` 读不出：读与写都报 `io`、不覆盖；流水读不出：工具报 `io`，索引这一步不全；命令、投影服务晚到：先没有，到了再注册；任何一种都不挡 agent | 告警、工具错误、行健康（§2.5） |
-| lessons | 行禁用（出厂如此）：没有经验工具、候选提醒与服务，派发的简报不带经验，其余行不受影响；工具注册失败：全部撤掉；会话不在项目里：`lessons_query` 答空并说明，合并与提议得 `no_project`；`.llm/` 加不进忽略文件：这次写入得 `io`、不建 `.llm/`；流水读不出：工具报 `io`，提醒这一步不发，`relevant` 给空；`propose` 对字段不合格或像密钥的候选答 `rejected`（什么都不写），对服务自己的失败答 `{error}`（派发一侧走退路批注，之后由本行导入）；取不到主 Agent 的判断：候选与复发提醒改发所有根 agent；任何一种都不挡 agent，也不拦任何调用（`ORCHESTRATION.md` §8.6） | 告警、工具错误、行健康（§2.5） |
+| lessons | 行禁用（出厂如此）：没有经验工具、候选提醒与服务，派发的简报不带经验，其余行不受影响；工具注册失败：全部撤掉；会话不在项目里：`lessons_query` 答空并说明，合并与提议得 `no_project`；`.llm/` 加不进忽略文件：这次写入得 `io`、不建 `.llm/`；流水读不出：工具报 `io`，提醒这一步不发，失败的调用不带提醒，`relevant` 给空；失败匹配自己出错（读历史、读流水）：调用的结果原样，告警一次；命中写不下：提醒照给，告警一次；`propose` 对字段不合格或像密钥的候选答 `rejected`（什么都不写），对服务自己的失败答 `{error}`（派发一侧走退路批注，之后由本行导入）；取不到主 Agent 的判断：候选与复发提醒改发所有根 agent；任何一种都不挡 agent，也不拦任何调用（`ORCHESTRATION.md` §8.6） | 告警、工具错误、行健康（§2.5） |
 | workflow / hourness | 无记录、无报告 | 行健康 |
 | graph | 没有图工具、每步投影与图文件门禁；图目录缺失或图有校验错误时，工具照常注册并把问题报给模型，投影注入一条说明；读图抛错时本步不带投影；会话没有工作目录时门禁只判断绝对路径 | 告警、工具错误、行健康（§2.5） |
 | graph-panel | 命令注册失败时面板写不进图；现场投影注册失败时面板没有现场，写入照常 | 告警、行健康 |

@@ -130,6 +130,37 @@ export interface PreExecuteHost {
   on(event: 'tools/pre-execute', listener: PreExecuteListener, options?: { prepend?: boolean }): () => void
 }
 
+/**
+ * The `tools/post-execute` payload as far as the rows read it: the same
+ * execution `tools/pre-execute` gets, with the call id (dsh-tools
+ * `createExecution`: `callId`, `rootCallId`, `name`, `arguments`, `agent`,
+ * `parent`; tools:3229–3260).
+ */
+export interface PostExecutePayload extends ToolExecutionPayload {
+  readonly callId: string
+}
+
+/**
+ * `tools/post-execute` decision (rc.3 dsh-tools `postExecute`,
+ * tools:3598–3631; official `PostToolDecision`). `accept` keeps the result
+ * and may replace its `content` (or its `value`, never both), `block` turns
+ * it into an error result whose content is `feedback`. Either may attach
+ * `additionalContexts`, which the result carries to the next request; the
+ * contexts the tool body deferred stay with an accepted result and are
+ * dropped by a block.
+ */
+export type PostExecuteDecision =
+  | { readonly kind: 'accept', readonly content?: ToolFinalResult['content'], readonly value?: unknown, readonly additionalContexts?: readonly unknown[] }
+  | { readonly kind: 'block', readonly feedback: ToolFinalResult['content'], readonly additionalContexts?: readonly unknown[] }
+
+/** A `tools/post-execute` listener: `next()` is the decision of the listeners below it, `accept` when none decides. */
+export type PostExecuteListener = (exec: PostExecutePayload, result: ToolFinalResult, next: () => Promise<PostExecuteDecision>) => Promise<PostExecuteDecision>
+
+/** A context that sees every tool result before the call settles (the repeat-tool-reminder pattern); a host-level listener sees the calls of every agent, children included (tools:3600). */
+export interface PostExecuteHost {
+  on(event: 'tools/post-execute', listener: PostExecuteListener, options?: { prepend?: boolean }): () => void
+}
+
 /** A frozen session log event (dsh-session `append`: `{type, seq, time, data}`). */
 export interface SessionEventLike {
   readonly type: string

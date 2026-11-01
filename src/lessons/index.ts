@@ -9,10 +9,14 @@
  *
  * Lessons are advice, not rules: the row registers no `tools/pre-execute`
  * listener and blocks no tool call (`d-code-rules-enforce`: it has no rule).
- * A delegated child gets `lessons_query` but not `lessons_merge`: a listener
- * on the child's own scope removes the tool from its request (it does not
- * `prepend`, so the dialect's decisions outside it see what is left), and the
- * tool body refuses a child that calls it by name.
+ * Its one listener on a tool call is `tools/post-execute` of the host
+ * (src/lessons/failure.ts): a failed call that matches a lesson gets a
+ * reminder in its result, whichever agent made it, and the match is
+ * recorded; the call itself is never refused or changed. A delegated child
+ * gets `lessons_query` but not `lessons_merge`: a listener on the child's
+ * own scope removes the tool from its request (it does not `prepend`, so the
+ * dialect's decisions outside it see what is left), and the tool body
+ * refuses a child that calls it by name.
  *
  * Everything belongs to the project of the session (the working directory of
  * the session decides it); there is no user-level lessons journal. The row
@@ -22,12 +26,13 @@
  */
 import { randomInt } from 'node:crypto'
 import { dialectService, toNativeTool } from '../shared/dialect.ts'
-import type { AgentLike, InjectHost, ProvideHost, ServiceLookup, SessionLike, SessionProjectionsService, ToolsLike } from '../shared/dsh-min.ts'
+import type { AgentLike, InjectHost, PostExecuteHost, ProvideHost, ServiceLookup, SessionLike, SessionProjectionsService, ToolsLike } from '../shared/dsh-min.ts'
 import { provideRowHealth, type HealthState, type RowHealth } from '../shared/health.ts'
 import { sessionNotebook, warnOnceFor, whenPresent } from '../shared/row-support.ts'
 import { LESSONS_MERGE_TOOL } from '../shared/tool-names.ts'
 import type { AppendOptions } from '../data/journal.ts'
 import { lessonsCommand } from './commands.ts'
+import { installFailureMatching } from './failure.ts'
 import { createImporter } from './import.ts'
 import { activeLessons, openCandidates, type RandomSource } from './model.ts'
 import { installLessonNotices } from './notices.ts'
@@ -51,8 +56,8 @@ interface AgentLifecycleHost {
   on(event: 'agent/created', listener: (payload: { agent: AgentLike }) => Promise<void> | void): () => void
 }
 
-/** The row's context: the tools service, the agent lifecycle, and the services that may be missing. */
-export type LessonsContext = AgentLifecycleHost & ServiceLookup & Partial<ProvideHost> & Partial<InjectHost> & { readonly tools: Pick<ToolsLike, 'register'> }
+/** The row's context: the tools service, the agent lifecycle, the results of tool calls, and the services that may be missing. */
+export type LessonsContext = AgentLifecycleHost & PostExecuteHost & ServiceLookup & Partial<ProvideHost> & Partial<InjectHost> & { readonly tools: Pick<ToolsLike, 'register'> }
 
 /** cordis plugin identity: needs the tools service. */
 export const name = 'dsh-glm-hourness/lessons'
@@ -109,9 +114,9 @@ export function apply(ctx: LessonsContext, config: LessonsConfig = {}): () => vo
   const disposers: Array<() => void> = []
   const notebook = sessionNotebook<NoteKey>()
   const waiting = { commands: WAITING_COMMANDS as string | undefined, projection: WAITING_PROJECTION as string | undefined }
-  const failures: { registration?: string, service?: string } = {}
+  const failures: { registration?: string, service?: string, matching?: string } = {}
   const activation = (): [HealthState, string] => {
-    const problems = [failures.registration, failures.service, waiting.commands, waiting.projection].filter((text): text is string => text !== undefined)
+    const problems = [failures.registration, failures.service, failures.matching, waiting.commands, waiting.projection].filter((text): text is string => text !== undefined)
     if (failures.registration !== undefined) return ['inactive', failures.registration]
     return [problems.length === 0 ? 'active' : 'degraded', `经验工具已注册，项目目录跟会话的工作区${problems.length === 0 ? '' : `；${problems.join('；')}`}`]
   }
@@ -183,6 +188,15 @@ export function apply(ctx: LessonsContext, config: LessonsConfig = {}): () => vo
   if (provided.failure !== undefined) failures.service = provided.failure
 
   const notices = { ctx, env, importer: createImporter(ctx, env), report, warn: warnOnce }
+
+  // The reminder after a failed call; without it the lessons still reach the agent through the brief, the notices and lessons_query.
+  try {
+    disposers.push(installFailureMatching({ ctx, env, report, warn: warnOnce }))
+  }
+  catch (error) {
+    warnOnce('failure-matching', `failure matching is off: ${messageOf(error)}`)
+    failures.matching = `失败匹配没装上：${messageOf(error)}`
+  }
 
   /** A delegated child's request loses the tool that only the main agent has. */
   const hideMerge = (agent: AgentLike): (() => void) => agent.ctx.on('system-prompt/assemble', async (_assembly, _context, next) => {
