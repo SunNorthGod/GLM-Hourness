@@ -335,6 +335,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "一页稿第 2 遍复审 APPROVED（HIGH 0、MEDIUM 0、NIT 0）：F1 关闭，全稿只剩一处遍数「五遍」，与设计 §17 的定义一致；硬约束实测全过（929 码点、5 条变化、1 件要人定的事、具体场景开篇、无禁用词、无 BOM、仅 LF）。决定评审与一页稿两道都 APPROVED，没有写停止报告。设计 0.6 与一页稿可以交人读，待人定的是 D1（七件活的 35 条做完条件与放行）。"
+    },
+    {
+      "at": "2026-11-01T08:50:53.857Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m4 design.md 0.6（2026-10-31，2026-11-01 修订），finish2 第三遍。decisions-gate-fix3 verdict APPROVED：NIT-01、NIT-02（均 NIT，不挡路）。onepage-gate-fix3 verdict APPROVED：F1（MEDIUM，onepage.md 现状行与 D1 自相矛盾）关闭，一页稿就绪。两 gate 均 APPROVED，未写 stop-report-fix3.md。"
     }
   ]
 }

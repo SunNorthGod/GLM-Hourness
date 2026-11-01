@@ -106,6 +106,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "人 2026-10-31 随 M5 一起放行经验板块（原话「没问题，不过习惯最好问一嘴再记」），实现由 impl-m5-memory-lessons（wf_1714ad4be33518c0）做，见 m5 节点同日批注。"
+    },
+    {
+      "at": "2026-11-01T08:50:54.599Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "S3（C1，lessons-1、lessons-2）在 m5-memory-lessons 上提交为 8af90b9（基底 6e21948），build、preflight、npm test 退出码 0；第 1 遍评审 APPROVED，无挡路项（S1、S2、S3 均 APPROVED）。"
     }
   ]
 }

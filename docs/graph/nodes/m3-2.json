@@ -91,6 +91,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "第 8 步（a9b8ad5）语义评审 CHANGES_REQUESTED：9 条，1 条挡路。S8-1（HIGH，挡路）：main-agent-graph-stage 只守住设计循环那一侧，没有阶段的那一侧敞着——已批准但不带 stage 的目标 effectiveStage 为 null，design-before-release 放行 null（src/guard/design-release.ts:90），而 M7 的 isPostRelease 认为 release 及以后，于是有三种写法能把目标放行而不经人同意（评审在真引擎与真 judgeGraphStage 上复现过）。S8-2（MEDIUM）：confirmWrites 先批准目标、后写 stage: design，第二次写失败时目标停在「已批准、无阶段」，而提示让人再说一遍，重放会被 confirmGate 拒。S8-3（MEDIUM）：带 parent 的嵌套调用在 tools/pre-execute 直接 next()，PTC 预设下 graph_edit、graph_approve 与 shell 既不过 main-agent-graph-stage 也不过 main-agent-graph-cli——即 S4-1、S5-1、S6-2 同一个洞，现在又多两条规则依赖它。本轮循环的修订接着做；S8-3 与合入前必须关闭的那一项是同一件事。"
+    },
+    {
+      "at": "2026-11-01T08:50:54.794Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "第 8 步的评审修订已并进同一个提交，改号为 3fbc1e9：S8-1（挡路）与 S8-2 已修，S8-8、S8-9 已做；build、preflight 退出码 0，npm test 1252 通过、0 失败、1 跳过，probe 184/184。R5b-N1 留给第 9 步，需要的图改动写在提交说明里、未施加。"
     }
   ]
 }

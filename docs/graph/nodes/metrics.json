@@ -251,6 +251,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "设计 0.7 第 2 遍修订完成（版本仍 0.7，被评审稿存为 design-0.7-pass1.md）：F66 按选项 A 定——MetricsBoardGroup 加 readonly note?: string，宪章第四个减负数字「因你的决定返工几次」作为负担组的 note、不作为任何一行，§7.6.2、§7.6.3、§1.4 验收 25(a) 与示例一并对齐；F67、F68、F69（NIT）也已处理：基线为「引导入口 + 板页 + 命令行 summary 后备」已满足人要的「新手教程写明白」，面板把 guideLine 记作「此刻状态」而指标板用作固定指引句一事记成第四处文字对齐（经编排方裁定，日后维护者不要当缺陷），样本数括注由 board-view.ts 合进 values、samples 只作机读分母。登记表核对结论不变：不需要对面板提功能请求。等第 2 遍复审。"
+    },
+    {
+      "at": "2026-11-01T08:50:53.679Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "metrics design.md 升至 0.7（2026-11-01）。design-gate-07 verdict APPROVED：F66（MEDIUM）关闭，F67、F68、F69（NIT）关闭，F70（NIT，仅 §7.6 例子与 §7.6.2/§19.10 内层引号不一致、不挡路）状态 open。onepage-gate-07 verdict APPROVED，无 finding，一页稿就绪。两 gate 均 APPROVED，未写 stop-report-07.md。"
     }
   ]
 }

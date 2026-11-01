@@ -585,6 +585,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "FEAT-008 评审 APPROVED，无挡路项：build、preflight、npm test、probe 全部退出码 0（probe 186/186），三个 FEAT 用例文件通过。7 条不挡路的备注在 gate-FEAT-008.json，主要一条：对停下的票执行 /rules cancel 会让它暂停的目标留在暂停态（人的命令，可从目标条恢复）。13 项中 8 项通过，均在 rules-loops-impl 分支，未合入。"
+    },
+    {
+      "at": "2026-11-01T08:50:54.406Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "FEAT-009（循环板的登记表、缺省条目与关着的行骨架）afd66f3 评审 CHANGES_REQUESTED，1 条挡路：B1 validateContribution 允许执行行以外的任何行占用 hourness. 命名空间，而设计 §3.2 不许；像 env 这样以 hourness. 开头的行会被接受、它的事件进表，随后执行行交同一批事件会被丢掉；修法是加一行拒绝加一条用例加一句文档。npm test 有一次偶发失败（rules-tickets），重跑退出码 0；build、preflight、probe 186/186 通过。本轮修订接着做。"
     }
   ]
 }

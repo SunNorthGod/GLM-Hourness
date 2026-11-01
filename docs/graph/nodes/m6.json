@@ -306,6 +306,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M6 设计改到 0.7，一页稿改写：d-m6-low-mode 两件写成人 2026-11-01 的决定（「都按你说的来就行」）。对照 main 上的代码：① 少做档里已派出的 GLM 子 agent 做完再停，一致。② 少做档里真账号核对照跑，一致；不做档里停，main 上还没有任何地方拦（scripts/smoke-zcode-authorized.mjs 第 10-16 行不查档位；scripts/rules-gate.mjs 是 S2 m6-script-gate 的产物，尚未实现，等规则板 R1、R4）。这一处随 m6-script-gate 落实，不另开任务。"
+    },
+    {
+      "at": "2026-11-01T08:50:54.040Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m6 design.md 与 onepage.md 升至 0.7（2026-11-01），依据 d-m6-low-mode。finish2 F1、F2 在重写两件事时关闭。无 gate 评审。一页稿就绪（字数按汉字加全角标点 1337，在 1500 内；按全部码位 1812，超 1500）。与 main（54f9010，M6 代码 11dce6b..3bc5d98）只读对照：① 少做档已派出的 GLM 子 agent 做完再停 = MATCH；② 真账号核对在少做档照跑、仅不做档停 = MISMATCH，脚本检查（scripts/rules-gate.mjs、src/rules/check.ts）未实现，待规则板整块上线，补法 S2 m6-script-gate（approved）等 R1、R3。"
     }
   ]
 }
