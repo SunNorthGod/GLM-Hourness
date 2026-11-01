@@ -335,6 +335,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "运行 impl-rules-loops-finish 已开（接替在 FEAT-010 因会话解密失败而中断的 impl-rules-loops-boards）：在既有工作树 .worktrees/rules-loops、分支 rules-loops-impl（HEAD 336a1d0，与 origin 同点）上做计划 L3 至 L6——FEAT-010 循环板在 docs/loops/ 与项目 .llm/loops/ 的存储与对账；FEAT-011 运行时核心（运行锁与心跳、交接、收件箱，不含脚本执行器）；FEAT-012 按时间触发的条目经 DSH 排程服务绑到主 Agent 会话；FEAT-013 loops.peak-start 与 loops.peak-end。每项四道检查加评审（至多 3 遍），按 d-wip-branch-push 每轮推一次，最后变基、在合并结果上重跑四道检查、快进 main 并推送。本节点已是 doing。"
+    },
+    {
+      "at": "2026-11-01T10:21:23.642Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "运行 impl-rules-loops-finish 在同一处第二次失败：FEAT-010 的编码步，错误同为 BAD_DECRYPT（OpenSSL 解密失败），而且这是一个全新会话，所以不是上次那份会话记录坏了，是这一步的派发会复现。两次都发生在步骤刚开始、还没有任何产出的时候。分支与产出未受影响：rules-loops-impl 仍在 336a1d0，与 origin 同点，九项已过评审。下一步改用单 agent 的派发（agent://wf-coder）只做 FEAT-010，换一条派发路径试；若仍是同样的错，就由编排方自己写这一块，并把这件事作为编排层自身的可靠性问题记下来。"
+    },
+    {
+      "at": "2026-11-01T10:21:53.736Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "运行 feat-010-loop-storage 已开：改用单 agent 一步派发（agent://wf-coder），只做 FEAT-010（循环板在 docs/loops/ 与项目 .llm/loops/ 的存储与对账），在既有工作树 .worktrees/rules-loops、分支 rules-loops-impl 上做，四道检查后按 d-wip-branch-push 推一次，报告写到 .agents/tasks/rules-loops/feat-010-report.md。这是对两次 BAD_DECRYPT 的换路尝试；本节点已是 doing。"
     }
   ]
 }
