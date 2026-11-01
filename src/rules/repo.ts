@@ -114,11 +114,21 @@ function needsSettling(read: ProjectRead): boolean {
 /**
  * Write the rules file for a state, unless git is in the middle of an
  * operation; then the write waits (`deferred`) and the state says so by
- * differing from what `repo-written.json` recorded.
+ * differing from what `repo-written.json` recorded. A state in which nothing
+ * is decided (`part` is undefined) has no file: it is removed, with the board's
+ * note of what it wrote (`removed`).
  */
-export async function exportRepo(paths: RulesPaths, part: RepoRules, io: StoreIo = realStoreIo): Promise<'written' | 'deferred' | 'failed'> {
+export async function exportRepo(paths: RulesPaths, part: RepoRules | undefined, io: StoreIo = realStoreIo): Promise<'written' | 'removed' | 'deferred' | 'failed'> {
   if (gitOperationIn(paths.projectRoot) !== undefined) return 'deferred'
   try {
+    if (part === undefined) {
+      for (const file of [paths.rulesFile, paths.repoWritten]) {
+        await unlink(file).catch((error: NodeJS.ErrnoException) => {
+          if (error.code !== 'ENOENT') throw error
+        })
+      }
+      return 'removed'
+    }
     await mkdir(paths.rulesDir, { recursive: true })
     const text = repoJson(part)
     const written = await writeAtomic(paths.rulesFile, text, io)
@@ -268,10 +278,5 @@ export async function restoreRepoLocked(paths: RulesPaths, read: ProjectRead, io
   })
   await appendRecord(paths, record)
   await writeSnapshot(paths, next, io)
-  if (part !== undefined) return { ok: true, changed: true, state: next, file: await exportRepo(paths, part, io) }
-  if (gitOperationIn(paths.projectRoot) !== undefined) return { ok: true, changed: true, state: next, file: 'deferred' }
-  await unlink(paths.rulesFile).catch((error: NodeJS.ErrnoException) => {
-    if (error.code !== 'ENOENT') throw error
-  })
-  return { ok: true, changed: true, state: next, file: 'removed' }
+  return { ok: true, changed: true, state: next, file: await exportRepo(paths, part, io) }
 }

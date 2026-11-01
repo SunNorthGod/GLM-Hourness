@@ -153,7 +153,7 @@ export function detectorProblem(key: string, value: unknown, path: string): Prob
 }
 
 const TICKET_STATES = ['deferred', 'cleared', 'done', 'cancelled', 'expired'] as const
-const TICKET_FIELDS = ['id', 'state', 'rules', 'sessionId', 'agentLabel', 'host', 'signature', 'tool', 'summary', 'since', 'letOnceUntil', 'closedAt', 'expiredWhy', 'nested', 'scriptRules', 'pausedGoal', 'pauseFailed', 'resumedAt', 'handedFrom']
+const TICKET_FIELDS = ['id', 'state', 'rules', 'sessionId', 'agentLabel', 'host', 'signature', 'tool', 'summary', 'since', 'letOnceUntil', 'clearedAt', 'closedAt', 'expiredWhy', 'nested', 'scriptRules', 'pausedGoal', 'pauseFailed', 'resumedAt', 'handedFrom']
 
 /** A waiting ticket as stored (design §6.3, §7.2). */
 export function ticketProblem(key: string, value: unknown, path: string): Problem {
@@ -173,6 +173,7 @@ export function ticketProblem(key: string, value: unknown, path: string): Proble
     ?? textField(value, 'summary', path)
     ?? (isTime(value.since) ? undefined : `${path}.since must be an ISO time`)
     ?? timeField(value, 'letOnceUntil', path)
+    ?? timeField(value, 'clearedAt', path)
     ?? timeField(value, 'closedAt', path)
     ?? (value.expiredWhy === undefined ? undefined : oneOf(value, 'expiredWhy', ['age', 'not-retried', 'host-gone'], path))
     ?? (value.nested === undefined || value.nested === true ? undefined : `${path}.nested must be true`)

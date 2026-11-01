@@ -1166,7 +1166,7 @@ LLM 不讲人话，多半是默认在向评审汇报，想显得周全。做法�
 | 小改动简报的简化形态 | M7 设计 |
 | 审查 agent 的模型档位 | M7 设计 |
 
-## 16. 规则板（最小一片）〔已实现 2026-10-30，L2、L3；行默认禁用，桌面版首轮验收未做；纯核心 §16.8 已实现 2026-10-31，L2，还没有行去调用〕
+## 16. 规则板（最小一片）〔已实现 2026-10-30，L2、L3；行默认禁用，桌面版首轮验收未做；纯核心 §16.8 已实现 2026-10-31，L2，还没有行去调用；写入引擎的操作 §16.9 已实现 2026-11-01，L2，调用方只有测试〕
 
 完整设计是 `.agents/tasks/rules/design.md`（不入库，版本 0.10，评审通过、人放行）。自举之前只做其中的一片（项目图 `d-rules-peak-slice`，设计 §16.1）：每个项目一个由人选的高峰模式档位，加少做档的并发上限，经一个服务交出。这一片是整块设计的子集：整块规则板以后往同一批文件里添加，不改写、不删除这一片写下的任何东西。能这样，靠存下来的形状有一条规矩（§16.3）：为空的集合不出现在存档、流水记录的摘要和规则文件里，整块规则板添上它的集合之后，这一片写下的记录照样核对得上。发给模型的高峰提醒与它在各档下的措辞见 §11.4（GLM 通道包），规则板不碰。
 
@@ -1197,6 +1197,8 @@ LLM 不讲人话，多半是默认在向评审汇报，想显得周全。做法�
 | --- | --- | --- |
 | `<项目根>/docs/rules/rules.json`（行配置 `dir` 可改，相对项目根或绝对） | 人定的部分（`RepoRules`，`repoPart(state)` 一处取出）：`peakMode`、项目范围的规则 `rules`、开关与信号的定义和人手值 `signals`（不含检测器量出的值 `detected`）、检测器 `detectors`、每个脚本条目的引用 `scripts`（`{file, sha256, lang}`，不含批准时刻）。会话规则、检测值、等待单、提醒和恢复记录不在其中。键按码点排序、两个空格缩进、换行结尾，为空的集合不出现（`repoJson`）；人决定过什么之后才有这个文件 | 是 |
 | `<项目根>/.llm/rules/journal.jsonl` | 流水，事实源，只追加；每条记录带它写出的状态的摘要 | 否 |
+| `<项目根>/.llm/rules/journal-<最后的 seq>.jsonl` | 满了（8 MiB）而被换下来的旧流水，留作审计；新流水的第一条是带完整状态的 `base`（§16.9） | 否 |
+| `<项目根>/.llm/rules/hosts/<pid>-<启动毫秒>.json` | 宿主的心跳，只有那个宿主自己写；写入的规划读它的 `at`（45 秒内算宿主在），判断等待单的宿主还在不在（§16.9）；写它的是规则行，随等待单一起来 | 否 |
 | `<项目根>/.llm/rules/state.json` | 状态快照，流水推出的缓存 | 否 |
 | `<项目根>/.llm/rules/repo-written.json` | 规则板最近一次写成的 `rules.json` 的摘要，用来分清「规则板欠一次写」与「别处改了它」 | 否 |
 | `<项目根>/.llm/rules/rules.lock` | 写锁 | 否 |
@@ -1204,8 +1206,8 @@ LLM 不讲人话，多半是默认在向评审汇报，想显得周全。做法�
 
 `.llm/` 要在项目的忽略文件里，任何项目都一样（`d-rules-in-repo`）：第一次写 `.llm/rules/` 之前，规则板把 `.llm/` 追加进项目 git 目录的 `info/exclude`（`ensureIgnored`，在 `src/data/project-root.ts`，M5 的项目目录服务复用它；入口 `ensureRuntimeDir`，`src/rules/store.ts`，写入口和 `settleProject` 建目录前都经它）。`info/exclude` 属于这份克隆、不入库；`info/` 不在就建；文件里已有 `.llm`、`.llm/`、`/.llm`、`/.llm/` 之一（两侧空白不计）就不再加；不在 git 仓库里时不加（`.git` 是文件时用它指向的 git 目录）。只读状态（`loadState`、`readProject`、没有待办的 `settleProject`）不建目录也不动这个文件。写不进 `info/exclude` 时这一次写入得 `io` 错误，不在没被忽略的情况下建 `.llm/rules/`。本仓库的 `.gitignore` 本来就有 `.llm/`，这里只是多一条本地的。
 
-- 写：`openRulesBoard({projectRoot, rulesDir}).apply(actor, request)`（`src/rules/engine.ts`）是唯一的写入口。顺序：核对身份（`src/rules/permissions.ts`，`peak-mode-set` 只给 `human`，其他身份得 `forbidden` 和怎么做）与请求形状，取写锁（`wx` 创建，持有者不在或超过 10 秒的锁被接手，等 2 秒仍取不到得 `busy`；实现在 `src/data/lock.ts`，不是规则板专用的：仓库里只有这一份文件锁，M7 的门禁锁（§17.6）已经在用它，M5 以后也用它，不再写第二份；规则板用它的默认值，不传 `LockOptions`），先把读到的待办落实（恢复、从规则文件开始、欠的写），核对修订号 `rev`，规划（时钟与文件系统相关的决定都在这里做完、写进记录的 `changes`），再确认锁还是自己的，追加流水并 `fsync`，原子替换快照（改名遇 `EPERM`、`EBUSY` 按 20、40、80、160、320 毫秒重试，仍失败留下 `.state.json.pending`），最后导出 `rules.json`。同一档位的重复选择不写任何东西。
-- 状态的形状（`ProjectState`，`src/rules/model.ts`）：`peakMode`、`repo`、`recovered`、`unresolved`，加整块规则板的集合，都按 id 存成对象：`rules`（人设的项目规则与会话规则）、`signals`（开关与检测器的信号：定义、人手值、检测器量出的值）、`detectors`、`scripts`（脚本钉 `{file, sha256, lang, approvedAt?}`，键是条目 id）、`tickets`、`notices`，以及标量 `nextTicket`。一处改动 `Change` 只有两种路径：一层 `['peakMode']`、`['repo']`、`['recovered']`、`['nextTicket']` 整个替换或删除，两层 `[集合, id]` 替换或删除集合里的一项；`proposals` 不在这一版的状态里（只有同意的路能产生它，那条路还没有），路径写它得 `not a path of the state`。`stateProblem` 逐项核对每个集合（`src/rules/entries.ts` 管信号、脚本钉、检测器、等待单、提醒，规则用 `validateRule` 的 `stored` 模式：时间依赖与跨条目的限制不查，期限已过的规则、引用了后来被删的信号的规则照样存得下）；键叫 `__proto__` 的条目不收。`changesBetween(前, 后)`（`src/rules/store.ts`）给出把一个状态变成另一个的 `changes`，按键的码点顺序，每个不同的字段或条目一条。
+- 写：`openRulesBoard({projectRoot, rulesDir}).apply(actor, request)`（`src/rules/engine.ts`）是唯一的写入口。顺序：核对请求形状（`src/rules/request.ts`）与身份（`src/rules/permissions.ts`，一个操作一行，§16.9；身份不对得 `forbidden` 和怎么做），取写锁（`wx` 创建，持有者不在或超过 10 秒的锁被接手，等 2 秒仍取不到得 `busy`；实现在 `src/data/lock.ts`，不是规则板专用的：仓库里只有这一份文件锁，M7 的门禁锁（§17.6）已经在用它，M5 以后也用它，不再写第二份；规则板用它的默认值，不传 `LockOptions`），先把读到的待办落实（恢复、从规则文件开始、欠的写），核对修订号 `rev`，规划（`src/rules/plan.ts`，时钟、心跳目录与流水相关的决定都在这里做完、写进记录的 `changes`，含清理与到期，§16.9），再确认锁还是自己的，流水满了先换新（§16.9），追加流水并 `fsync`，原子替换快照（改名遇 `EPERM`、`EBUSY` 按 20、40、80、160、320 毫秒重试，仍失败留下 `.state.json.pending`），最后在人定的部分变了时导出 `rules.json`（人定的部分变成空的就删掉它）。请求要的已经是现状时（同一档位的重复选择、状态已经是那样的等待单）不写任何东西。
+- 状态的形状（`ProjectState`，`src/rules/model.ts`）：`peakMode`、`repo`、`recovered`、`unresolved`，加整块规则板的集合，都按 id 存成对象：`rules`（人设的项目规则与会话规则）、`signals`（开关与检测器的信号：定义、人手值、检测器量出的值）、`detectors`、`scripts`（脚本钉 `{file, sha256, lang, approvedAt?}`，键是条目 id）、`tickets`、`notices`，以及标量 `nextTicket`。一处改动 `Change` 只有两种路径（另可带 `cause`：`prune` 或 `expire`，写入时顺带的清理与到期，重放只照改动做，§16.9）：一层 `['peakMode']`、`['repo']`、`['recovered']`、`['nextTicket']` 整个替换或删除，两层 `[集合, id]` 替换或删除集合里的一项；`proposals` 不在这一版的状态里（只有同意的路能产生它，那条路还没有），路径写它得 `not a path of the state`。`stateProblem` 逐项核对每个集合（`src/rules/entries.ts` 管信号、脚本钉、检测器、等待单、提醒，规则用 `validateRule` 的 `stored` 模式：时间依赖与跨条目的限制不查，期限已过的规则、引用了后来被删的信号的规则照样存得下）；键叫 `__proto__` 的条目不收。`changesBetween(前, 后)`（`src/rules/store.ts`）给出把一个状态变成另一个的 `changes`，按键的码点顺序，每个不同的字段或条目一条。
 - 状态只经 `applyRecord(state, record)`（`src/rules/store.ts`，纯函数，不读时钟、文件与进程表）改变，写入与重放走同一个函数。重放逐条核对摘要：缺字段或摘要对不上的行（引擎以外追加或改过的）不生效、列入 `unresolved`；读不出的行把链断开，之后的记录不生效，直到一条带完整状态的 `base` 或 `recovered` 记录作锚点。快照清零、截断、被改，流水被截短或最后一行没写完，都按流水重建，旧快照原样另存；重建的结果与出事之前的状态摘要相同（`tests/rules-store.spec.ts` 的性质测试，5 个种子）。
 - 读不取锁、不写文件（`loadState`、`readProject`）；落实待办的是持锁的 `settleLocked`，在会话创建与每次 `/rules` 时由行调用。读者碰上写入者在追加与改名之间时，在内存里重放得到新状态，持锁重读后发现已一致就什么都不写。
 - 仓库里的规则文件（`src/rules/repo.ts`）：判定按流水，不按文件，因为 git 的切换、合并、回退和脚本都能换掉它。规则板写成之后文件被别处改了（摘要与 `repo-written.json` 的一致、与状态的不同），改动不生效，原样副本另存，差别记进状态（`repo.outside`），行健康写明；文件又改回规则板写的那一份时自己清掉。项目还没有自己的流水与快照（新克隆、换电脑、删了 `.llm/`）而文件里有决定时，状态从文件开始，写一条 `base` 记录。git 正在合并、变基、拣选、二分或持有索引时（`MERGE_HEAD`、`REBASE_HEAD`、`CHERRY_PICK_HEAD`、`rebase-merge`、`rebase-apply`、`BISECT_LOG`、`index.lock`）不写仓库里的文件，档位照流水生效，文件在 git 做完之后的下一次落实时写。规则板不提交、不暂存、不切分支。
@@ -1227,11 +1229,11 @@ LLM 不讲人话，多半是默认在向评审汇报，想显得周全。做法�
 
 ### 16.6 这一片没有做的
 
-整块规则板的其余部分，写下的代码按它们能直接加进来的形状留着，没有留空桩：规则页与面板、人加的规则与检测器、脚本与脚本执行器、工具调用门里的拦截、等待单与排队、违规流水的新记录、`checkCall` 与命令行、指标事件、`rules_show` 与 `rules_propose`、调用判定的行（默认规则 `GLM_PEAK_PRICING` 与按档位启用的附属条目已作为纯代码在库里，§16.8，没有门去判定它们，所以今天没有调用被它们挡）、`openRulesBoard` 的 `projectDir` 参数（设计 §7.4 有；没有调用方给它值，数据目录服务还没有 `projectDirOf`，运行时目录固定为 `<项目根>/.llm/rules/`，`.llm/` 的忽略条目也按项目根算；M5 的项目目录服务合入、规则行要按它放运行时目录时再加，两处一起改）、`/rules recovery`（没有生效的记录与被改过的规则文件只能列出：要清掉，删 `.llm/rules/` 让规则板照仓库里的文件重新开始，或再选一次档位让它按流水重写文件）、流水轮换、宿主心跳与 `hits.json`、`RulesService`（`glmHournessRules`）、对话里改档位的提议一路、高峰结束时叫醒主 Agent（循环板）与高峰里停住自动推进（M7）。
+整块规则板的其余部分，写下的代码按它们能直接加进来的形状留着，没有留空桩：规则页与面板、人加的规则与检测器、脚本与脚本执行器、工具调用门里的拦截、等待单与排队、违规流水的新记录、`checkCall` 与命令行、指标事件、`rules_show` 与 `rules_propose`、调用判定的行（默认规则 `GLM_PEAK_PRICING` 与按档位启用的附属条目已作为纯代码在库里，§16.8，没有门去判定它们，所以今天没有调用被它们挡）、`openRulesBoard` 的 `projectDir` 参数（设计 §7.4 有；没有调用方给它值，数据目录服务还没有 `projectDirOf`，运行时目录固定为 `<项目根>/.llm/rules/`，`.llm/` 的忽略条目也按项目根算；M5 的项目目录服务合入、规则行要按它放运行时目录时再加，两处一起改）、`/rules recovery` 命令（它调用的引擎操作 `recovery-accept`、`recovery-dismiss`、`repo-adopt`、`repo-restore` 已在 §16.9；命令随规则行，在那之前没有生效的记录与被改过的规则文件只能列出：要清掉，删 `.llm/rules/` 让规则板照仓库里的文件重新开始，或再选一次档位让它按流水重写文件）、宿主心跳的写入（读已有，§16.9）与 `hits.json`、`RulesService`（`glmHournessRules`）、对话里改档位的提议一路、高峰结束时叫醒主 Agent（循环板）与高峰里停住自动推进（M7）。
 
 ### 16.7 验证
 
-L2：`tests/peak-mode.spec.ts`（共用契约：上限与挡住的标记、读取函数、文字与少做那句里的数、`nextPeakChange`）、`tests/rules-model.spec.ts`（`effectivePeakMode`、序列化、规则文件、状态校验、完整形状的每个集合、规则文件逐项核对、`diffRepo`、`adoptRepo`、`unapprovedScripts`）、`tests/rules-store.spec.ts`（设计 §7.5 表里每一种情形、性质测试、锁、两个进程同时写、规则文件的各种情形与 git 操作、为空的集合不存、最小一片写下的文件按字节放进来仍核对得上、`changesBetween`、第一次写之前 `.git/info/exclude` 里的 `.llm/`）、`tests/rules-repo.spec.ts`（真实 git 仓库里设计 §7.5 末表的每一行：新克隆、`git checkout` 旧版、手改、`MERGE_HEAD` 期间只写流水与快照、`repo-adopt`、`repo-restore`、两者的崩溃点；没有 git 时整个文件跳过并写明原因）、`tests/rules-engine.spec.ts`（权限、请求校验、修订号、写入的产物、`busy` 与 `io`、项目根）、`tests/rules-row.spec.ts`（假宿主上的行：命令、服务、健康、恢复之后降级的出路、不挡任何调用、激活期降级、补丁里默认禁用）。L3：`npm run probe` 的场景 `rules-peak`（GLM 与编排层两个包，平移到周三 15:00 UTC+8 的探针时钟，临时 git 工作区：出厂档位、`/rules peak 不做`、`/rules peak 无影响`，每步经真实的 `/rules` 处理函数与服务读回状态）与 `rules-peak-hourness`（只装编排层包：没有计价服务，没有上限与挡住的标记）。L4（桌面版重启后核对）未做，行保持禁用。纯核心（§16.8）的 L2 是 `tests/rules-model.spec.ts`（规则的校验）、`tests/rules-judge.spec.ts`（事件、有效值、条件、判定、合并、未批准的脚本）、`tests/rules-builtin.spec.ts`（默认规则、三档、目录）和 `tests/contracts.spec.ts` 里的目录一条。
+L2：`tests/peak-mode.spec.ts`（共用契约：上限与挡住的标记、读取函数、文字与少做那句里的数、`nextPeakChange`）、`tests/rules-model.spec.ts`（`effectivePeakMode`、序列化、规则文件、状态校验、完整形状的每个集合、规则文件逐项核对、`diffRepo`、`adoptRepo`、`unapprovedScripts`）、`tests/rules-store.spec.ts`（设计 §7.5 表里每一种情形、性质测试、锁、两个进程同时写、规则文件的各种情形与 git 操作、为空的集合不存、最小一片写下的文件按字节放进来仍核对得上、`changesBetween`、第一次写之前 `.git/info/exclude` 里的 `.llm/`）、`tests/rules-repo.spec.ts`（真实 git 仓库里设计 §7.5 末表的每一行：新克隆、`git checkout` 旧版、手改、`MERGE_HEAD` 期间只写流水与快照、`repo-adopt`、`repo-restore`、两者的崩溃点；没有 git 时整个文件跳过并写明原因）、`tests/rules-engine.spec.ts`（身份表的每一格、请求校验、修订号、写入的产物、`busy` 与 `io`、项目根）、`tests/rules-ops.spec.ts`（每个操作：对的身份写一条记录、重放得到状态、做不了的请求得一句话且不写任何文件；清理与到期的每一种、重放不要时钟和心跳目录；恢复的照改与忽略）、`tests/rules-property.spec.ts`（§16.9 的性质测试，5 个种子）、`tests/rules-row.spec.ts`（假宿主上的行：命令、服务、健康、恢复之后降级的出路、不挡任何调用、激活期降级、补丁里默认禁用）。L3：`npm run probe` 的场景 `rules-peak`（GLM 与编排层两个包，平移到周三 15:00 UTC+8 的探针时钟，临时 git 工作区：出厂档位、`/rules peak 不做`、`/rules peak 无影响`，每步经真实的 `/rules` 处理函数与服务读回状态）与 `rules-peak-hourness`（只装编排层包：没有计价服务，没有上限与挡住的标记）。L4（桌面版重启后核对）未做，行保持禁用。纯核心（§16.8）的 L2 是 `tests/rules-model.spec.ts`（规则的校验）、`tests/rules-judge.spec.ts`（事件、有效值、条件、判定、合并、未批准的脚本）、`tests/rules-builtin.spec.ts`（默认规则、三档、目录）和 `tests/contracts.spec.ts` 里的目录一条。
 
 ### 16.8 纯核心（`src/rules/events.ts`、`model.ts`、`judge.ts`、`signals.ts`、`builtin.ts`，`src/guard/catalog.ts`）〔已实现 2026-10-31，L2；没有行、工具或命令，调用方只有测试〕
 
@@ -1246,6 +1248,46 @@ L2：`tests/peak-mode.spec.ts`（共用契约：上限与挡住的标记、读�
 - 默认规则与附属条目（`builtin.ts`）：`GLM_PEAK_PRICING`（`rules.step`，筛选 GLM 家族的模型 `^[^/]*/glm`，条件 `glm-peak` 为真，只告知，`toldBy: 'glm-prompt'`）总在；`builtinRulesFor(档位)` 在无影响档只给它，少做档加 `GLM_PEAK_REDUCE`（高峰里自报 `glmSpend: optional` 的脚本排队），不做档加 `GLM_PEAK_STOP`（高峰里 GLM 子 agent 的每次工具调用排队，一个会话一张单）、`GLM_PEAK_STOP_DISPATCH`（派 GLM 子 agent 的调用排队，不论谁派）和 `GLM_PEAK_STOP_SCRIPTS`（自报花 GLM 积分的脚本排队）。四条附属条目的条件是高峰且 `onUnknown: 'skip'`：读不出是不是高峰时什么都不拦。主 Agent 不受高峰模式管：没有一条条目筛选它，只有它派 GLM 子 agent 的那一次调用被 `GLM_PEAK_STOP_DISPATCH` 排队，因为被停下的是被派的子 agent。出厂档位由 `effectivePeakMode` 一处给出。
 - 代码规则目录（`builtin.ts` 的 `CATALOG`，设计 §10.1）：guard 框架的规则只在 `src/guard/catalog.ts` 的 `GUARD_RULES` 里写一份（`guard:workspace-containment`、`guard:file-tools-only`、`graph:graph-files-only`，`mode` 恒为 `enforce`：代码里的规则从所在行启用那天起就拦，没有影子模式），`CATALOG` 把它映射成 `<行>:<id>`，再加规则板自己的 `rules:files-only`（只有目录项，门随规则行）和默认规则与它的四条附属条目。`tests/contracts.spec.ts` 核对 `GUARD_RULES` 里每个 id 都是对应行实际装上的规则对象的 id。
 
+### 16.9 写入引擎的操作（`src/rules/permissions.ts`、`request.ts`、`plan.ts`、`engine.ts`、`store.ts`）〔已实现 2026-11-01，L2；调用方只有测试，命令与规则行随后〕
+
+设计 §2.5、§7.4、§9.2 里不经提议就能做的操作。`apply(actor, request)` 的顺序在 §16.3 的「写」；这一节写操作表、规划里的清理与到期、流水轮换和没有做的操作。
+
+**请求与身份。** `parseRequest`（`request.ts`）核对一个请求有它的操作要的字段、类型对；不认识的 `op` 得 `invalid`，请求里写着别的身份（`actor` 之类）的字段不读：身份只是入口给的。`permissions.ts` 的表一个操作一行（谁、做什么、不能做的人该怎么做），`refusalFor(actor, op)` 在不行时给一句「只有人能……（身份 llm 不行）」和怎么做；该人做的写 `/rules` 的命令，该规则板自己做的写「规则板自己会做这件事，不需要你操作」。`detector` 一个操作也不能做：它唯一的写入（自己信号的检测值）要同意的路。`repo-outside`、`repo-outside-cleared` 在表里，但不是请求：它们是 `settleLocked` 发现规则文件被改、又改回来时自己写的记录。
+
+| 操作 | 谁 | 做什么（请求的字段） | 做不了时（`conflict` 或 `invalid`） |
+| --- | --- | --- | --- |
+| `peak-mode-set` | 人 | 改高峰模式（`level`）；档位已经是人选的这一档时什么都不写 | `invalid`：档位不认识 |
+| `rule-lift` | 人 | 解除一条在生效的规则（`id`） | 没有这条、代码里的规则、不在生效 |
+| `rule-delete` | 人 | 删一条规则（`id`），它的脚本钉随它删；仓库里的脚本文件不动（脚本文件归同意的路） | 没有这条、代码里的规则 |
+| `rule-expire` | 规则板 | 让一条期限到了的规则失效（`id`，会话规则另带 `released: true`）；到期时刻已过、结束条件成立（只看时钟和没有检测器的开关），或宿主说会话已释放，证据写进 `evidence` | 期限没到、没有期限、结束条件里有规则板读不到的信号（`glm-peak`、检测器的信号、阶段）、会话规则没有 `released` |
+| `signal-manual` | 人 | 手设信号的值（`name`、`value`、可选 `durationMs`，至多 7 天） | 没有这个信号（`glm-peak` 由宿主现算）、值不合类型、时长越界 |
+| `signal-clear` | 人 | 清掉手设值（`name`） | 没有手设的值 |
+| `signal-delete` | 人 | 删一个开关（`name`）；引用它的规则留着，存下来的规则宽松读 | 没有、是检测器的信号 |
+| `ticket-open` | 规则板 | 开一张等待单：号码取 `nextTicket`（起始 1），`since` 取此刻，`summary` 取前 160 个字符；结果的 `target` 是单号 | 字段缺或类型不对 |
+| `ticket-update` | 规则板 | 改单：`state`（`deferred` 到 `cleared`、`done`、`cancelled`、`expired`；`cleared` 到后三种；关了的不再动）、`expiredWhy`、`rules`、`scriptRules`、`pausedGoal`、`pauseFailed`、`resumed`；时间由规划盖：进 `cleared` 记 `clearedAt`，进关闭的状态记 `closedAt`，`resumed` 记 `resumedAt` | 没有这张单、不能这样转；`expired` 没写 `expiredWhy`；什么都没要改 |
+| `ticket-handover` | 规则板 | 把开着的单转给别的会话（`sessionId`、`agentLabel`、可选 `focus`）；`handedFrom` 记第一个持有者，再转不改它 | 已经关了 |
+| `ticket-adopt` | 规则板 | 宿主接手不做档的单（签名 `any:builtin:glm-peak-stop`）：改 `host`；宿主丢了而过期的（`host-gone`，没有 `resumedAt`）改回 `deferred` | 不是不做档的单、已经结束 |
+| `ticket-let-once` | 人 | 放行这一次（`id`，可选 `until`）：`letOnceUntil` 默认此刻加 10 分钟，最晚 24 小时以后 | 已经解除、已经关了；`until` 越界 |
+| `ticket-cancel` | 人 | 取消开着的单 | 已经关了 |
+| `recovery-accept` | 人 | 照改没有生效的行（`labels`，规则页上的编号）：那几行自己的 `changes` 按它们在流水里的次序接起来，再加删掉 `unresolved` 里对应的项，写后整份校验，不合法整次拒绝 | 没有这个编号；读不出的行与已被锚点覆盖的行、没有 `changes` 的行只能忽略；改动做不了或状态不合法（`invalid`） |
+| `recovery-dismiss` | 人 | 忽略（`labels`）：只删 `unresolved` 里对应的项 | 没有这个编号 |
+| `repo-adopt` | 人 | 照被改过的规则文件改（`repo.ts` 的 `adoptRepoLocked`）；结果的 `repinNeeded` 列出没有批准的脚本 | 文件读不出或已被删掉 |
+| `repo-restore` | 人 | 按规则板自己的存档写回规则文件（`restoreRepoLocked`） | 没有外部改动时什么都不写 |
+| `repo-outside`、`repo-outside-cleared` | 规则板 | 见上，由 `settleLocked` 写 | — |
+| `notice-add` | 规则板 | 记下要告诉主 Agent 的话（`kind`、`rule`、`text`）；编号 `n-<记录的 seq>` | 字段不对 |
+| `notice-delivered` | 规则板 | 删一条已经发出的提醒（`id`） | 没有这条 |
+
+错误码：`forbidden`（身份不对）、`invalid`（请求形状不对，或写后的状态不合法）、`conflict`（请求没错，状态不允许）、`stale_revision`、`busy`、`io`。一个被拒的请求不写文件（先落实待办的恢复与规则文件的开始或变更记录是例外，它们本来就欠着）。
+
+**清理与到期（设计 §7.4 第 5 步）。** 每次写入的规划，在操作自己的改动之外，按此刻的时钟、心跳目录和状态再加这些改动，每条带 `cause`，值都写进记录，重放只照改动做：关闭（`done`、`cancelled`、`expired`）超过 24 小时的单删掉（`prune`）；开着的单转 `expired`（`expire`），原因依次看：宿主的心跳文件 `.llm/rules/hosts/<pid>-<启动毫秒>.json` 不在或 `at` 超过 45 秒（`host-gone`），`cleared` 超过 30 分钟没有人回来（`not-retried`，从 `clearedAt` 算；设计 §7.2 的 `Ticket` 没有这个时刻，这里加了一个可选字段），开单超过 24 小时（`age`）；生效的规则，到期时刻已过，或结束条件成立，转 `expired`（`expire`）。会话规则不在这里失效（会话有没有释放只有宿主知道，走 `rule-expire`）；条件里有规则板读不到的信号的规则也不在这里失效。这一次写入自己改的条目不清理：人取消了一张单，不会因为它的宿主不在了而被改写成过期。`applyRecord` 仍不读时钟、文件与进程表。
+
+**规则文件。** 写入后「人定的部分」（`repoPart`）变了，同一条记录带一个 `repo` 改动（新摘要；没有人定的内容时为 `null`），快照写成之后导出：写 `rules.json`，没有人定的内容了就删它和 `repo-written.json`（`exportRepo`，`file: 'removed'`）；git 正在合并等时延后。会话规则、等待单、提醒、恢复记录不在人定的部分里，写它们不动文件。人定的部分变时同时有外部改动的标记，标记随这条记录清掉，被覆盖的那份仍在 `.rules.json.outside-<时刻>` 里（与最小一片的 `peak-mode-set` 一致）。
+
+**流水轮换（设计 §7.6）。** 当前流水到 8 MiB（`BoardOptions.rotateAtBytes` 可改小，给测试用）时，下一次写入先把它存为 `journal-<最后的 seq>.jsonl`（复制并 `fsync`），再用一条 `base`（`actor: harness`，`changes` 为空，`state` 是完整状态）作为新流水的全部内容，原子换上去，之后才追加那次写入的记录；换不上去（Windows 上文件被别处打开，重试用完）整次写入得 `io`，什么都没变。崩溃只会留下两种东西：没换成而留下的一份复制，没有哪个新流水的 `base` 指向它，读时不理它，下一次轮换写过它；换成了但快照没跟上，读时在旧文件里找到快照那条记录接着重放，只当存档落后，不写 `recovered`。读时（`journalChain`）：以 `base` 开头的文件，接上 `journal-<base 的 seq - 1>.jsonl`，而且那个文件里最大的 seq 正好是它名字里的数，才算它的前一份，一路往前；循环或对不上就停。快照无效时重放从最近一条核对得上的 `base` 开始，没有就从头；`replayJournals(paths)` 把整个目录从头重放，每条（含 `base`）照常核对。
+
+**没有做的操作。** 只有同意的路（M3 第 6 步）能产生数据的都不在引擎里：`propose`、`proposal-show`、`proposal-accept`、`proposal-reject`、`proposal-expire`、`rule-set`、`signal-define`、`detector-set`、`detector-delete`、`repin`、`remove`、`signal-detected`。它们的请求得 `invalid`（不认识的 op），状态里没有 `proposals`。脚本文件的写入与删除也归那条路：`rule-delete` 只删脚本钉。
+
+**性质测试（`tests/rules-property.spec.ts`）。** 5 个固定种子，自写的生成器：请求按当前状态造，所以合法；注入时钟，轮换阈值调小。每个种子至少 200 次写入，用到表里的每个操作；其中一次时钟前进 25 小时并丢掉一个宿主的心跳（有 `prune` 与 `expire`），至少一次轮换，两行引擎以外追加的记录（一行 `snapshot` 随手写、一行没有）随后一个照改、一个忽略，规则文件被外部改了又分别被照改、写回、改回。每次写入后，把新增的记录逐条放到上一个状态上，摘要都要对上、结果等于读到的快照。结束后：(a) 清零快照读一次，摘要等于清零前、没有跳过的行，再写一条原因为 `snapshot-corrupt`、不登记行的 `recovered`；(b) 再清零一次，同样；(c) 对整个流水目录从空状态重放，摘要等于 (b) 之后的快照，`base` 链核对通过。失败时打印种子与第一条对不上的序号。
 ## 17. 执行层（M7）〔骨架进行中：E0、E1a、E3 已实现，只有纯函数、git 执行器、门禁锁和测试，没有行〕
 M7 的设计是 `.agents/tasks/m7/design.md`（不入库，版本 0.6，评审通过、人放行）。执行层的源码在编排层包的 `src/execute/`，目录登记在 `scripts/packages.mjs` 的 `hourness.src`，`packages/hourness/tsconfig.json` 的 `include` 同步加一项（preflight 比对二者）。骨架按设计 §8.1 的步骤实现：E0、E1a、E3 之后没有行、没有监听器，`cordis.patch.yml` 不变；`glm-hourness/execute` 行从 E4 起出现，默认禁用，E9 验证通过后才启用。
 ### 17.1 写入范围（E0，`src/execute/scope.ts`）

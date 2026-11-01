@@ -18,9 +18,9 @@ import { acquireLock, LOCK_WAIT_MS, STALE_LOCK_MS } from '../src/data/lock.ts'
 import { openRulesBoard, type RulesBoard } from '../src/rules/engine.ts'
 import { adoptRepo, effectivePeakMode, emptyState, repoJson, repoPart, stateFromRepo, type JournalRecord, type PeakLevel, type PeakModeSetting, type ProjectState } from '../src/rules/model.ts'
 import { gitOperationIn, readProject, settleProject } from '../src/rules/repo.ts'
-import { applyRecord, changesBetween, loadState, rulesPaths, stateDigest, textDigest, type RulesPaths, type StoreIo } from '../src/rules/store.ts'
+import { applyRecord, changesBetween, loadState, replayJournals, rulesPaths, stateDigest, textDigest, type RulesPaths, type StoreIo } from '../src/rules/store.ts'
 import { FULL_RULES_FILE, ruleOf, scriptRef } from './rules-fixtures.ts'
-import { impatientLock, projectTest, quickIo } from './rules-helpers.ts'
+import { clockedTest, impatientLock, journalOf, projectTest, quickIo, type ClockedProject } from './rules-helpers.ts'
 
 const WRITER = '--writer'
 
@@ -718,3 +718,123 @@ projectTest('every sign of an unfinished git operation holds the rules file back
   }
   assert.equal(gitOperationIn(join(root, 'docs')), undefined, 'a folder that is not a project root has no git directory')
 })
+
+// ------------------------------------------------------------ journal rotation (design §7.6)
+
+const rotatedFiles = async (paths: RulesPaths): Promise<string[]> => (await readdir(paths.runtimeDir)).filter(name => /^journal-\d+\.jsonl$/.test(name)).sort()
+const LEVELS_IN_TURN: readonly PeakLevel[] = ['stop', 'inform', 'reduce']
+/** A little more than the few records a write makes: a journal of three or four records is past it. */
+const ROTATE_AT = 1200
+
+/** Write levels until the journal has been rotated once; returns the last sequence number the old file holds. */
+async function writeUntilRotated({ clock, board, paths }: ClockedProject): Promise<number> {
+  for (let turn = 0; turn < 20; turn++) {
+    clock.advance(1000)
+    const before = loadState(paths).state.seq
+    const result = await board.apply('human', { op: 'peak-mode-set', level: LEVELS_IN_TURN[turn % LEVELS_IN_TURN.length] })
+    assert.ok(result.ok, JSON.stringify(result))
+    if ((await journalOf(paths))[0]?.op === 'base') return before
+  }
+  throw new Error('the journal was not rotated in 20 writes')
+}
+
+clockedTest('a journal past the size limit moves to journal-<last seq>.jsonl, and the next starts with a base that carries the whole state', async (project) => {
+  const { paths } = project
+  const last = await writeUntilRotated(project)
+  assert.deepEqual(await rotatedFiles(paths), [`journal-${last}.jsonl`])
+  const old = (await readFile(join(paths.runtimeDir, `journal-${last}.jsonl`), 'utf8')).split('\n').filter(line => line !== '').map(line => JSON.parse(line) as JournalRecord)
+  assert.deepEqual(old.map(record => record.seq), Array.from({ length: last }, (_, index) => index + 1), 'the old file holds the records up to the one that filled it')
+  const [base, write, ...rest] = await journalOf(paths)
+  assert.deepEqual([base?.op, base?.actor, base?.seq, base?.changes], ['base', 'harness', last + 1, []])
+  assert.equal(base?.snapshot, stateDigest(base?.state as ProjectState), 'the base is checked like any record: its state has the digest it says')
+  assert.deepEqual([write?.op, write?.seq, rest.length], ['peak-mode-set', last + 2, 0])
+  const load = loadState(paths)
+  assert.deepEqual([load.source, load.plan, load.state.seq, load.nextSeq], ['snapshot', undefined, last + 2, last + 3])
+}, { rotateAtBytes: ROTATE_AT })
+
+clockedTest('after a rotation a snapshot that is lost is rebuilt from the base, to the same state and with nothing skipped; the whole directory replays to it from nothing', async (project) => {
+  const { paths } = project
+  await writeUntilRotated(project)
+  const expected = stateDigest(loadState(paths).state)
+  await writeFile(paths.state, '')
+  const load = loadState(paths)
+  assert.deepEqual([load.source, load.reasons.at(-1), load.plan?.recovered?.skipped, stateDigest(load.state)], ['replay', 'snapshot-corrupt', [], expected])
+  const all = replayJournals(paths)
+  assert.deepEqual([stateDigest(all.state), all.skipped], [expected, []], 'the base found between the files passes the check like any record')
+}, { rotateAtBytes: ROTATE_AT })
+
+clockedTest('a snapshot one write behind a rotation is caught up from the old file, without a recovery record', async (project) => {
+  const { clock, board, paths } = project
+  // The snapshot of the write before the one that rotates, as a crash between the append and the snapshot would leave it.
+  let snapshotBefore = ''
+  for (let turn = 0; turn < 20; turn++) {
+    snapshotBefore = await readFile(paths.state, 'utf8').catch(() => '')
+    clock.advance(1000)
+    await board.apply('human', { op: 'peak-mode-set', level: LEVELS_IN_TURN[turn % LEVELS_IN_TURN.length] })
+    if ((await rotatedFiles(paths)).length > 0) break
+  }
+  const expected = stateDigest(loadState(paths).state)
+  await writeFile(paths.state, snapshotBefore)
+  const load = loadState(paths)
+  assert.deepEqual([load.reasons, stateDigest(load.state), load.plan?.rewriteSnapshot, load.plan?.recovered], [['snapshot-behind'], expected, true, undefined])
+}, { rotateAtBytes: ROTATE_AT })
+
+clockedTest('a file left by a rotation that did not finish changes nothing, and the next rotation writes over it', async (project) => {
+  const { board, paths } = project
+  await board.apply('human', { op: 'peak-mode-set', level: 'stop' })
+  const state = loadState(paths).state
+  // The copy was made and the journal was not replaced: files named like rotated ones, with whatever the crash left in them.
+  for (let seq = 1; seq <= 12; seq++) await writeFile(join(paths.runtimeDir, `journal-${seq}.jsonl`), 'half a copy')
+  assert.deepEqual([loadState(paths).source, stateDigest(loadState(paths).state)], ['snapshot', stateDigest(state)])
+  await unlink(paths.state)
+  assert.equal(stateDigest(loadState(paths).state), stateDigest(state), 'a journal that does not start with a base has no earlier file')
+  assert.equal(stateDigest(replayJournals(paths).state), stateDigest(state))
+  // The next rotation is made over it: the file is then the old journal, whole.
+  const last = await writeUntilRotated(project)
+  const text = await readFile(join(paths.runtimeDir, `journal-${last}.jsonl`), 'utf8')
+  assert.notEqual(text, 'half a copy')
+  assert.equal(text.split('\n').filter(line => line !== '').length, last)
+}, { rotateAtBytes: ROTATE_AT })
+
+clockedTest('a rotation that cannot replace the journal is an error, and the old journal, the state and the next read are as they were', async (project) => {
+  const { clock, paths, root } = project
+  const failing = openRulesBoard({
+    projectRoot: root,
+    rotateAtBytes: ROTATE_AT,
+    io: quickIo({
+      now: clock.now,
+      rename: async (from, to) => {
+        if (to === paths.journal) throw Object.assign(new Error('the file is open elsewhere'), { code: 'EPERM' })
+        await rename(from, to)
+      },
+    }),
+  })
+  let before = ''
+  let refused: { readonly code: string, readonly message: string } | undefined
+  for (let turn = 0; turn < 20 && refused === undefined; turn++) {
+    before = await readFile(paths.journal, 'utf8').catch(() => '')
+    clock.advance(1000)
+    const result = await failing.apply('human', { op: 'peak-mode-set', level: LEVELS_IN_TURN[turn % LEVELS_IN_TURN.length] })
+    if (!result.ok) refused = result.error
+  }
+  assert.equal(refused?.code, 'io')
+  assert.match(refused?.message ?? '', /流水/)
+  assert.equal(await readFile(paths.journal, 'utf8'), before, 'not one byte of the journal changed')
+  const load = loadState(paths)
+  assert.deepEqual([load.source, load.plan], ['snapshot', undefined])
+  assert.deepEqual((await readdir(paths.runtimeDir)).filter(name => name.endsWith('.tmp')), [], 'the temporary file is gone')
+})
+
+clockedTest('files that point at each other are not followed in a circle', async (project) => {
+  const { paths } = project
+  await writeUntilRotated(project)
+  const [name] = await rotatedFiles(paths)
+  const [base] = await journalOf(paths)
+  const line = `${JSON.stringify(base)}\n`
+  // The old file now starts with the same base as the current one: each names the other as its predecessor.
+  await writeFile(join(paths.runtimeDir, name), line)
+  await writeFile(paths.state, '')
+  const load = loadState(paths)
+  assert.equal(load.state.seq, (base?.seq ?? 0) + 1)
+  assert.equal(stateDigest(replayJournals(paths).state), stateDigest(load.state))
+}, { rotateAtBytes: ROTATE_AT })

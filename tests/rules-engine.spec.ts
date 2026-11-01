@@ -11,10 +11,11 @@ import { join, parse } from 'node:path'
 import test from 'node:test'
 import { gitDirOf, projectOf } from '../src/data/project-root.ts'
 import { openRulesBoard } from '../src/rules/engine.ts'
-import { effectivePeakMode, stateProblem, type JournalRecord, type RulesActor } from '../src/rules/model.ts'
-import { refusalFor } from '../src/rules/permissions.ts'
+import { effectivePeakMode, repoJson, stateProblem, type JournalRecord, type RulesActor } from '../src/rules/model.ts'
+import { refusalFor, WRITE_OPS, type WriteOp } from '../src/rules/permissions.ts'
 import { loadState, rulesPaths, stateDigest } from '../src/rules/store.ts'
-import { impatientLock, projectTest, quickIo } from './rules-helpers.ts'
+import { ruleOf } from './rules-fixtures.ts'
+import { impatientLock, projectTest, quickIo, treeOf } from './rules-helpers.ts'
 
 const SET = { op: 'peak-mode-set', level: 'stop' } as const
 
@@ -169,4 +170,115 @@ test('a project is the repository root: the main checkout, its work trees and an
   finally {
     await rm(base, { recursive: true, force: true })
   }
+})
+
+// The identity table of design §2.5 for the operations the board has, one row each: who may ask. The person asks for
+// what is the person's to decide; the host's own code for what only it knows; an agent and a detector for none of them
+// (an agent's way to a change is a proposal, and a detector's is the signal of its own, neither of which this board has yet).
+const PERSON: readonly WriteOp[] = ['peak-mode-set', 'rule-lift', 'rule-delete', 'signal-manual', 'signal-clear', 'signal-delete', 'ticket-let-once', 'ticket-cancel', 'recovery-accept', 'recovery-dismiss', 'repo-adopt', 'repo-restore']
+const HOST: readonly WriteOp[] = ['rule-expire', 'ticket-open', 'ticket-update', 'ticket-handover', 'ticket-adopt', 'repo-outside', 'repo-outside-cleared', 'notice-add', 'notice-delivered']
+const ACTORS = ['human', 'llm', 'harness', 'detector'] as const satisfies readonly RulesActor[]
+
+test('the identity table has a row for each operation the board has and no other, and every cell is as the design says', () => {
+  assert.deepEqual([...WRITE_OPS].sort(), [...PERSON, ...HOST].sort())
+  for (const op of WRITE_OPS) {
+    for (const actor of ACTORS) {
+      const allowed = PERSON.includes(op) ? actor === 'human' : actor === 'harness'
+      const refusal = refusalFor(actor, op)
+      assert.equal(refusal === undefined, allowed, `${actor} on ${op}`)
+      if (refusal !== undefined) {
+        assert.match(refusal.message, new RegExp(`身份 ${actor}`), `${actor} on ${op}: the message says who was refused`)
+        assert.ok(refusal.hint.length >= 8, `${actor} on ${op}: the hint says what to do instead`)
+      }
+    }
+  }
+})
+
+test('a refusal tells a person what to type, or that the board does it by itself', () => {
+  assert.match(refusalFor('llm', 'rule-lift')?.hint ?? '', /\/rules lift <规则 id>/)
+  assert.match(refusalFor('llm', 'rule-delete')?.hint ?? '', /\/rules delete <规则 id>/)
+  assert.match(refusalFor('llm', 'signal-manual')?.hint ?? '', /\/rules on <开关>.*\/rules set <信号> <值>/)
+  assert.match(refusalFor('llm', 'signal-clear')?.hint ?? '', /\/rules clear <信号>/)
+  assert.match(refusalFor('llm', 'signal-delete')?.hint ?? '', /\/rules delete <开关名>/)
+  assert.match(refusalFor('llm', 'ticket-let-once')?.hint ?? '', /\/rules let <单号>/)
+  assert.match(refusalFor('llm', 'ticket-cancel')?.hint ?? '', /\/rules cancel <单号>/)
+  assert.match(refusalFor('detector', 'recovery-accept')?.hint ?? '', /\/rules recovery <编号> 照改\|忽略/)
+  assert.match(refusalFor('llm', 'repo-adopt')?.hint ?? '', /\/rules recovery 文件 照改\|忽略/)
+  assert.match(refusalFor('human', 'ticket-open')?.hint ?? '', /规则板自己/)
+  assert.match(refusalFor('llm', 'rule-expire')?.message ?? '', /只有规则板自己能/)
+})
+
+/** A well formed request for each operation a caller can make; what it names need not exist, the identity is judged first. */
+const REQUESTS: Readonly<Record<Exclude<WriteOp, 'repo-outside' | 'repo-outside-cleared'>, Record<string, unknown>>> = {
+  'peak-mode-set': { op: 'peak-mode-set', level: 'stop' },
+  'rule-lift': { op: 'rule-lift', id: 'r-block' },
+  'rule-delete': { op: 'rule-delete', id: 'r-block' },
+  'rule-expire': { op: 'rule-expire', id: 'r-ttl' },
+  'signal-manual': { op: 'signal-manual', name: 'code-freeze', value: true },
+  'signal-clear': { op: 'signal-clear', name: 'code-freeze' },
+  'signal-delete': { op: 'signal-delete', name: 'code-freeze' },
+  'ticket-open': { op: 'ticket-open', sessionId: 's-1', agentLabel: 'w', host: { pid: 1, startedAt: 2 }, signature: 'abc123def456', tool: 'pwsh', summary: 'x', rules: ['r-block'] },
+  'ticket-update': { op: 'ticket-update', id: 'q-1', state: 'done' },
+  'ticket-handover': { op: 'ticket-handover', id: 'q-1', sessionId: 's-2', agentLabel: 'main' },
+  'ticket-adopt': { op: 'ticket-adopt', id: 'q-1', host: { pid: 1, startedAt: 2 } },
+  'ticket-let-once': { op: 'ticket-let-once', id: 'q-1' },
+  'ticket-cancel': { op: 'ticket-cancel', id: 'q-1' },
+  'recovery-accept': { op: 'recovery-accept', labels: ['3-1'] },
+  'recovery-dismiss': { op: 'recovery-dismiss', labels: ['3-1'] },
+  'repo-adopt': { op: 'repo-adopt' },
+  'repo-restore': { op: 'repo-restore' },
+  'notice-add': { op: 'notice-add', kind: 'late-block', rule: 'r-block', text: 't' },
+  'notice-delivered': { op: 'notice-delivered', id: 'n-1' },
+}
+
+projectTest('asked by the wrong identity, every operation is forbidden with how to do it, and no file is touched; by the right one it is not forbidden', async ({ root, board }) => {
+  await mkdir(board.paths.rulesDir, { recursive: true })
+  await writeFile(board.paths.rulesFile, repoJson({ version: 2, rules: { 'r-block': ruleOf({ id: 'r-block' }) } }))
+  assert.notEqual(await board.settle(), 'busy')
+  for (const [op, request] of Object.entries(REQUESTS)) {
+    const wrong = ACTORS.filter(actor => (PERSON as readonly string[]).includes(op) ? actor !== 'human' : actor !== 'harness')
+    for (const actor of wrong) {
+      const before = await treeOf(root)
+      const result = await board.apply(actor, request)
+      assert.deepEqual([op, actor, result.ok, result.ok ? undefined : result.error.code], [op, actor, false, 'forbidden'])
+      if (!result.ok) {
+        assert.match(result.error.message, new RegExp(`身份 ${actor}`))
+        assert.notEqual(result.error.hint, undefined)
+      }
+      assert.deepEqual(await treeOf(root), before, `${actor} on ${op}: nothing written`)
+    }
+    const right = PERSON.includes(op as WriteOp) ? 'human' : 'harness'
+    const result = await board.apply(right, request)
+    assert.notEqual(result.ok ? undefined : result.error.code, 'forbidden', `${right} on ${op}`)
+  }
+})
+
+test('the two records the board makes about the rules file by itself are not requests', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'rules-'))
+  try {
+    await mkdir(join(root, '.git'))
+    const board = openRulesBoard({ projectRoot: root })
+    for (const op of ['repo-outside', 'repo-outside-cleared']) {
+      for (const actor of ACTORS) {
+        const result = await board.apply(actor, { op })
+        assert.deepEqual([op, actor, result.ok, result.ok ? undefined : result.error.code], [op, actor, false, 'invalid'])
+      }
+    }
+    assert.deepEqual(await readdir(root), ['.git'])
+  }
+  finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+projectTest('nothing for a proposal is an operation of this board: each is an unknown op, whoever asks', async ({ root, board }) => {
+  const proposals = ['propose', 'proposal-show', 'proposal-accept', 'proposal-reject', 'proposal-expire', 'rule-set', 'signal-define', 'detector-set', 'detector-delete', 'repin', 'remove', 'signal-detected']
+  for (const op of proposals) {
+    for (const actor of ACTORS) {
+      const result = await board.apply(actor, { op, id: 'x', level: 'stop' })
+      assert.deepEqual([op, actor, result.ok, result.ok ? undefined : result.error.code], [op, actor, false, 'invalid'])
+      assert.match(result.ok ? '' : result.error.message, /不认识/)
+    }
+  }
+  assert.deepEqual(await readdir(root), ['.git'])
 })

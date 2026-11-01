@@ -112,6 +112,8 @@ export interface Ticket {
   readonly since: string
   /** The person let this one through, until this time. */
   readonly letOnceUntil?: string
+  /** When it entered `cleared`: the 30 minutes in which the agent may come back run from here (design §6.3). */
+  readonly clearedAt?: string
   /** When it entered `done`, `cancelled` or `expired`. */
   readonly closedAt?: string
   readonly expiredWhy?: 'age' | 'not-retried' | 'host-gone'
@@ -191,6 +193,8 @@ export interface Change {
   readonly path: readonly [string] | readonly [string, string]
   /** Absent means delete. */
   readonly value?: unknown
+  /** Why the write made this change by the way: a closed ticket past its day is pruned, a ticket or a rule whose time is up expires (design §7.4 step 5). Replay does exactly the change; the cause is for the person who reads the record. */
+  readonly cause?: 'prune' | 'expire'
 }
 
 export interface JournalRecord {
