@@ -1,6 +1,6 @@
 # 状态板块（status hub）：设计
 
-版本：0.1（2026-11-01），初稿，依据决定 `d-status-hub`。本稿是短设计：跨几份已放行模块设计的对接面，自身不引入新子系统。范围、决定与非目标见 §1、§12。本稿只写设计，不改任何产品代码，不改被引用的那几份设计，不写 `docs/graph/`。
+版本：0.2（2026-11-01），第 2 稿，依据决定 `d-status-hub`。本稿按第 1 遍设计复审（`design-gate.json` pass 1）的 6 条发现修订：H1、H2、M1、N1、N2、N3（逐条见 §13）。本稿是短设计：跨几份已放行模块设计的对接面，自身不引入新子系统。范围、决定与非目标见 §1、§12。本稿只写设计，不改任何产品代码，不改被引用的那几份设计，不写 `docs/graph/`。
 
 依据（读到的版本，均不改动）：
 
@@ -11,20 +11,20 @@
 - main 上的源码：`src/report/index.ts`（`/hourness`、`renderHourness`、`/hourness-status`）、`src/report/panel.ts`（`usagePanelOf`、`usagePanelLines`、`usagePanel`、`peakLineOf`、`quotaSection`、`rangeLine`、`parseGaps`、`gapLines`）、`src/workflow/morning-report.ts`（`morningReport`、`reportFromFiles`）、`src/graph/panel-row.ts`（`/graph-apply`、`/graph-run`、`hournessProject` 投影、行健康）、`src/shared/health.ts`（行健康登记：每行 `provideRowHealth` 提供只读视图服务 `glmHournessHealth/<row>`，`collectHealth` 汇总，`/hourness-status`、`/glm-status` 各渲染一张表）。
 - 面板设计 `.agents/tasks/plain-ui/design.md` 1.3（2026-11-01；§4.7 板块登记表、`BoardState`、`homeLine`、`guideLine`、`BOARD_ORDER`、§8.2 外部输入校验、§11 衔接）。只读接口部分。
 - M4 `.agents/tasks/m4/design.md` 0.6（§2.2、§3.10 晨报、§6.3.1 超时与 `limits.jsonl`、§6.8 交给循环板的两项、F16）。
-- 指标 `.agents/tasks/metrics/design.md` 0.6（§4.2 种类、§7.2 `factsFor`/`scoresFor` 两个出口、§16 ②、§7.3 报告怎样改读）。
+- 指标 `.agents/tasks/metrics/design.md` 0.7（2026-11-01，落实 `d-metrics-ratios-person-only`；评审通过的 0.6 存档为同目录 `design-0.6.md`）：§7.2 事实（`factsFor`）与打分（`scoresFor`）两个出口、§7.3 报告怎样改读、§7.6 指标板（宿主纯函数 `boardView` 由 `scoresFor` 算成一份 `view.json`，投影 `hournessMetrics` 给路径、客户端只读，形状 `MetricsBoardView`，登记在面板板块登记表上的 `id:'metrics'` 板）。
 - M6 `.agents/tasks/m6/design.md` 0.7（§6 面板与晨报，`usagePanelOf`/`usagePanelLines` 一份用量清单由晨报与面板共用）。
 - M7 `.agents/tasks/m7/design.md` 0.6（§3.10 四答晨报 `fourAnswers`、§3.11.1 运维行与 `hourness_report`、§3.12.4 周报 `weeklyReport`、§3.13 DORA；**周报今天的所有者是 M7**，见 §6）。
 - 循环板 `.agents/tasks/schedules/design.md` 0.6（§8 面板、§8.4 `view.json` 与投影 `hournessLoops`、§6.11 周报两张单子）。
 - 规则板 `.agents/tasks/rules/design.md` 0.10（§7.2 服务 `glmHournessRules`、§9.1 规则页、§10.5 晨报与指标）。
 - M5 `.worktrees/m5/.agents/tasks/m5/design.md` 0.7（§4.9 `stats`、§4.7 板块登记 `lessons`）；主检出的 `.agents/tasks/m5/design.md` 是 0.6，0.7 较新，按 0.7 读。
 - M3 附录 `.agents/tasks/m3/design-addendum.md` 0.6（`propose_to_human`、`record_human_answer`、`isMainAgent`、持有者记录）。
-- 契约证据：`reference/dsh-desktop-0.2.1-rc.3/`。`dsh-tools/lib/index.js`:2974 `register(definition)` 校验 `output { schema, render, presentationMeta? }`〔实读〕；`dsh-commands/lib/index.js`:329 `execute` 的注释「without sending it to the model」，`command/run`、`command/done` 为只记录的 lifecycle 追加〔实读〕；`dsh-session/README.md`:50、157 `tool/result` 是 surface（模型可见）条目，投影只折叠已有会话事件、第三方不能追加自定义事件（README:70）〔实读〕；`dsh-session-projection/README.md`:56–58 `register(definition)` 与 `stateVersion`〔实读〕；`dsh-api-workspace-files/README.md`:34、36 `readBytes`、`changes`〔实读〕。
+- 契约证据：`reference/dsh-desktop-0.2.1-rc.3/`。`dsh-tools/lib/index.js`:2974 `register(definition)` 校验 `output { schema, render, presentationMeta? }`〔实读〕；`dsh-commands/lib/index.js`:300 `execute` 的 JSDoc「without sending it to the model」（方法体自 :327，`parsed === void 0` 返回在 :329），`command/run`、`command/done` 为只记录的 lifecycle 追加（:334、:341）〔实读〕；`dsh-session/README.md`:50、157 `tool/result` 是 surface（模型可见）条目，投影只折叠已有会话事件、第三方不能追加自定义事件（README:70）〔实读〕；`dsh-session-projection/README.md`:56–58 `register(definition)` 与 `stateVersion`〔实读〕；`dsh-api-workspace-files/README.md`:34、36 `readBytes`、`changes`〔实读〕。
 
 ## 0. 摘要
 
 - 一件事只在它的模块里算一次。每个模块把自己的状态算成一组「状态条目」（`StatusItem`），面板、晨报、周报、主 Agent 的回答都是这一份条目的不同显示，不各算一遍。起因：面板 P13-01 与 M4 F16 都是同一件事从两处取数、显示对不上（§1）。
 - 每条条目注明给谁看（`audience`：`person` 只给人看，或 `agent` 主 Agent 也能读），并带何时（`asOf`）、来源引用（`source`）、给人看的一行字（`text`）、可选的结构化字段（`fields`）与可选的明细行（`detail`）、以及陈旧判据（`staleAfterMs`）。形状见 §2。
-- 主 Agent 只能读 `agent` 的条目。读的路子复用现成的工具 `hourness_report`（M7 的主 Agent 工具，结果进模型上下文）：它只收 `agent` 条目。`/hourness`（人敲的斜杠命令，结果不进模型）与面板（界面）两处可收 `person` 与 `agent` 两种。宪章「指标不给模型看」与 `d-metrics-ratios-person-only` 照旧：指标比率标 `person`，四个减负数字标 `agent`（§4、§6）。
+- 主 Agent 只能读 `agent` 的条目。读的路子复用现成的工具 `hourness_report`（M7 的主 Agent 工具，结果进模型上下文）：它只收 `agent` 条目。`/hourness` 渲染的晨报内容也会由 harness 另行提示给那唯一的主 Agent（`d-one-main-agent`；指标 0.7 §7.3 据此把 `/hourness` 当作经主 Agent 到人、即进模型上下文），所以 `/hourness` 同样只收 `agent`；只有面板（界面，永不进模型）收 `person` 与 `agent` 两种。指标比率不是 hub 条目：它是指标 0.7 §7.6 已放行的专用「指标」板（`MetricsBoardView`，登记在同一张板块登记表上），只给人看、主 Agent 读不到（宪章 §8、`d-metrics-ratios-person-only`）。宪章的四个减负数字里，流水算得出的三个标 `agent`（`metrics/load`），第四个（因人的决定返工几次）由 M7 从图算、不是 hub 条目（§4、§6）。
 - 不另起登记表（`d-status-hub`）。host 侧的收集照搬行健康的样式（`src/shared/health.ts` 的 `provideRowStatus`/`collectStatus`，与 `glmHournessHealth/<row>` 并列的 `glmHournessStatus/<row>`）；面板侧复用 plain-ui 已有的板块登记表 `ui/src/graph/boards.ts`，只在 `BoardState` 上加 `items`，不新建第二套面板登记（§3）。
 - 一件事只算一次由一条不变量钉住：每个模块把自己的条目写成一个纯函数，它的投影（面板那一路）与 host 收集器（报告那一路）都调这同一个函数。P13-01/F16 由此关闭（§3、§9）。
 - 模块拥有字（`text`、`detail` 的措辞，过人话检查）；hub 拥有版面（哪一处显示哪些条目、次序、分组、受众过滤、陈旧与缺失的写法）。hub 不改写模块的字（§5）。
@@ -42,7 +42,7 @@
 
 - F1 条目形状：定义一条状态条目的字段（谁交的、给谁看、何时、来源、给人的一行字、结构化字段、明细、陈旧），一处定义，各处引用。
 - F2 一件事一处算：每件状态由它的模块算一次；面板、晨报、周报、主 Agent 的回答读同一份，不各算。
-- F3 受众：每条标 `person` 或 `agent`；主 Agent 只读 `agent`；`person` 只到人面前（`/hourness`、面板），不进模型上下文。
+- F3 受众：每条标 `person` 或 `agent`；主 Agent 只读 `agent`；`person` 只到面板这类界面，不进模型上下文（`/hourness` 的晨报内容也会被 harness 提示给主 Agent，算模型上下文，所以只收 `agent`）。指标比率不是 hub 条目（在指标 0.7 §7.6 的专用板）。
 - F4 复用板块登记表：面板侧用 plain-ui 已有的 `boards.ts`，不另起登记。
 - F5 晨报、周报成为视图：晨报（`/hourness` 与 M7 四答晨报）与周报（M7）读 hub 的条目，模块仍拥有字、hub 拥有版面。
 - F6 主 Agent 的读路与禁区：主 Agent 经 `hourness_report` 读 `agent` 条目，永不读 `person` 条目（指标比率、宪章 §8 的裸指标流水）。
@@ -59,14 +59,14 @@
 
 1. 同一件状态在面板、晨报、周报、`hourness_report` 四处的数值一致（同一份条目，L3）。
 2. `hourness_report`（任一 `kind`）的结果里没有一条 `person` 条目（L2 受众过滤 + L3 探针）。
-3. `/hourness` 的人面输出含 `person` 条目（指标比率一行），`hourness_report` 不含（L2、L3）。
+3. `/hourness` 与 `hourness_report` 的输出里都没有 `person` 条目、没有指标比率（L2 受众过滤 + L3 探针）；指标比率只在面板的指标板上（指标 0.7 §7.6），L4 核人能在面板看到、主 Agent 转述的晨报/周报看不到。
 4. 某模块的条目函数抛错时，别的模块的条目照显示，出错处写一条可见占位并告警（L2）。
 5. 陈旧条目带「截至 <asOf>」的提示，不被丢掉（L2）。
 6. M6 用量清单经 hub 的一条 section 条目显示，面板与晨报不各自调 `usagePanelOf`（L2、L3）。
 
 ## 2. 一条状态条目的形状
 
-定义在公共库 `src/shared/status.ts`（两个包都编进去）。纯数据与纯函数，无 I/O。
+类型与校验定义在客户端安全的公共库 `src/shared/status.ts`（两个包都编进去；不导入 Node 内置模块，同指标 0.7 §7.6.2 的 `src/shared/metrics-board.ts` 约定），纯数据与纯函数、无 I/O，客户端只取类型 `StatusItem`（类型擦除）。宿主侧的登记与收集分开放在别的文件（§3.2、§3.3），不把引 `ProvideHost` 的宿主代码塞进客户端构建（N2）。
 
 ```ts
 export type StatusAudience = 'person' | 'agent'
@@ -99,7 +99,7 @@ export const STATUS_TEXT_MAX = 200
 
 `source` 写成「包 文件:行」或「投影名」或「节点 id」一类的引用，只给追溯用，不进人面显示（避免把内部符号名放到人面前，`d-plain-questions`）。
 
-受众的判据（§4 展开）：操作态（高峰、额度、用量、推进停住、汇报进度、合入前检查的结果）标 `agent`；指标比率与按模型/版本比较标 `person`；四个减负数字标 `agent`。
+受众的判据（§4 展开）：操作态（高峰、额度、用量、推进停住、汇报进度、合入前检查的结果）标 `agent`；宪章四个减负数字里流水算得出的三个标 `agent`；指标比率与按模型/版本比较不作为 hub 条目（在指标 0.7 §7.6 的专用板，§4.2）。
 
 ## 3. 一份来源：模块怎样交、谁怎样读
 
@@ -114,7 +114,7 @@ export const STATUS_TEXT_MAX = 200
 
 ### 3.2 host 侧登记：照搬行健康
 
-不新建基础设施样式。`src/shared/status.ts` 加一对与 `src/shared/health.ts` 平行的函数：
+不新建基础设施样式。宿主侧登记放在 `src/shared/status-host.ts`（与 `src/shared/health.ts` 平行、经 `./dsh-min.ts` 引 `ProvideHost`；与客户端安全的 `src/shared/status.ts` 分开，N2），加一对与 `provideRowHealth` 平行的函数：
 
 ```ts
 export interface RowStatusView {
@@ -140,7 +140,7 @@ export function collectStatus(ctx: ServiceLookup, sessionId: string | undefined,
 
 照 `collectHealth` 的写法：对每个已知行经 `ctx.get(statusServiceName(row))` 取视图，调 `items(sessionId)`，按 `audience` 过滤（`agent` 只收 `audience==='agent'`；`all` 两种都收），逐条过 §8 的校验，陈旧的按 §7 标注。某行的视图缺席（行未启用）跳过；`items` 抛错时这一行计一条占位、告警一次、别的行照常（§7）。返回按 owner 与 id 稳定排序的条目，和每行的取数结果（成功 / 缺席 / 出错）。
 
-已知行取自一个常量清单（同 `HEALTH_ROWS` 的办法），新行加进清单即被收。
+已知行取自常量清单 `STATUS_ROWS`（`src/report/status.ts`，写法同 `src/shared/health.ts` 的 `HEALTH_ROWS`）。`STATUS_ROWS` 是 `HEALTH_ROWS` 的超集：今天 `HEALTH_ROWS` 只有已合入 main 的行（`glm-*` 与 `data`、`guard`、`memory`、`workflow`、`hourness`、`graph`、`graph-panel`、`rules`、`design`），而 §4.2 里 owner 为 `metrics`、`execute`/`operate`、`loops` 的行还没合入；每个这样的行在它自己的包合入时把自己加进 `STATUS_ROWS`（新行默认 `disabled: true`，启用后才提供服务，没启用的行被 `collectStatus` 当缺席跳过）。preflight 照 `HEALTH_PACKAGES` 的办法核对 `STATUS_ROWS` 的每一项都是 `scripts/packages.mjs` 里真有的 loader 行（名字对不上即报错），两张清单不各写一份加载器事实。注意 `StatusItem.owner`（`<owner>/<name>`，如 `glm/usage`、`metrics/load`）标的是交这条的模块或板，可以不等于提供服务的 loader 行名（例 M6 的用量条目由 `glm-login` 行代交，§10）。
 
 ### 3.4 面板侧：复用板块登记表，不另起
 
@@ -151,22 +151,24 @@ readonly items?: readonly StatusItem[]  // 这块板的状态条目（§2）
 ```
 
 - 每块板的 `snapshot(sessionId)` 返回它的 `items`，由该板的投影经 §3.1 的 `statusItemsOf` 填出。
-- `homeLine`（首页「现在」的一行）由 `items` 推出，取这块板最该摆到首页的那条的 `text`，不再另算一行：`homeLine` 必须等于 `items` 里某一条的 `text`（面板断言，L2），所以首页那一行与板页上的同一条是同一份数据。读不到时 `homeLine` 为 `null`，照旧。
+- `homeLine`（首页「现在」的一行）由各板自己定。当它反映一条状态条目时，取该条目的 `text`（同源）；面板断言只核这种情形：`homeLine` 命中 `items` 里某条时与它逐字相等（L2），所以首页那一行与板页上的同一条是同一份数据。诊断型首页行豁免，照各板设计原样：指标板的 `homeLine` 是「指标板读不出 / 没能更新 / 停在 <时刻>」一类且比率不上首页（指标 0.7 §7.6.3）；循环板的「主 Agent 的会话已归档…」「在另一个 DSH 窗口里…」来自它自己、「额度停住」一行来自 M7（schedules 0.6 §6、验收第 26 项）。这些既不是某条 `items` 的 `text`、也不必为 `null`，断言不覆盖它们；一块板可以同时有 `items` 和一条诊断型 `homeLine`。读不到又没有诊断行时 `homeLine` 为 `null`。
 - `guideLine`、`peakApplies` 不变。
 - 板页（`Page`）列这块板的 `items`，按 §5 的版面。
 - 面板首页「现在」一节与晨报「现在」一类的几行都来自条目：首页读板块 `snapshot().items`，晨报读 `collectStatus`，两边同源（§3.1）。
 
 不新建第二套面板登记表；不新建跨板的面板端条目聚合器。跨板的首页「现在」仍按 `BOARD_ORDER` 遍历已登记的板、各取它的 `items`。
 
+指标板（指标 0.7 §7.6）登记在同一张登记表上（`id:'metrics'`、在 `BOARD_ORDER` 之外、排在三块已知板之后），但它交的是自带的 `MetricsBoardView`（宿主算 `view.json`、客户端只读），不用 `items`：§3.1 的「一件事一处算 → `items`」对它不成立，因为它的单一源就是指标流水本身，没有第二处在算同一个比率；hub 不把比率复制成 `StatusItem`。这是复用（同一张登记表、同一种板）而不是第二套登记（`d-status-hub`）。
+
 ## 4. 受众与禁区
 
 ### 4.1 两种受众落在两条读路上
 
 - `hourness_report`（M7 的主 Agent 工具，`dsh-tools` 注册，结果是 `tool/result` surface 条目、进模型上下文）：传 `audience = 'agent'`，只收 `agent` 条目。主 Agent 把它的文字原样转给人（晨报、周报），所以这一路的内容必须是 `agent` 的。
-- `/hourness`（人敲的斜杠命令；`dsh-commands` 的 `execute` 不把它作为模型提示发出，`command/run`、`command/done` 只记录）：传 `audience = 'all'`，收 `person` 与 `agent`。只到人面前的界面，不进模型上下文。
-- 面板（界面，经 `remote.workspaceFiles` 与投影读）：收两种，只到人面前。
+- `/hourness`（人敲的斜杠命令）：`dsh-commands` 的 `execute` 本身不把命令结果作为模型提示发出（`command/run`、`command/done` 只记录，:300/:334/:341），但它渲染的晨报内容会由 harness 另行提示给主 Agent（`d-one-main-agent`：晨报、周报、巡检由 harness 提示给那唯一的主 Agent；指标 0.7 §7.3 据此把 `/hourness` 当作经主 Agent 到人、即进模型上下文）。所以保守起见 `/hourness` 也传 `audience = 'agent'`，不含任何 `person` 条目与比率（与指标 0.7 §7.3「只用 `factsFor`、不含比率」一致）。
+- 面板（界面，经 `remote.workspaceFiles` 与投影读，永不进模型）：传 `audience = 'all'`，收两种。今天没有 `person` 型 hub 条目（唯一面向人的比率由指标板承载、不是 hub 条目），所以 `all` 与 `agent` 当前返回同一批 hub 条目；`'all'` 为将来可能出现的 `person` 条目留着。人在面板看到的比率来自指标板（§3.4）。
 
-受众边界因此落在「工具还是命令」上：进模型上下文的那一路（工具）只拿 `agent`。这是单一收口点（§9）。
+受众边界因此落在「会不会进模型上下文」上：能进模型的两路（`hourness_report` 工具结果、作为晨报提示给主 Agent 的 `/hourness` 内容）只拿 `agent`；只有面板 UI 拿 `all`。过滤是单一收口点（§9）。
 
 ### 4.2 条目的受众（本设计定；可由各模块在自己的设计里细化）
 
@@ -177,12 +179,11 @@ readonly items?: readonly StatusItem[]  // 这块板的状态条目（§2）
 | 用量清单（按模型调用/token/积分） | `glm/usage` | `agent` | 晨报已转述、模型已看到；section 型（§10） |
 | 推进停住（GLM 额度用完）、重置时刻 | `execute/stopped-quota` | `agent` | 主 Agent 要知道为何停、何时自己接上（用户图 G15） |
 | 汇报进度（一块做完、目标做完） | `execute/progress` | `agent` | 主 Agent 在对话里说（用户图 G18） |
-| 四个减负数字（每周问几次、每次读多少字、等多久、因人决定返工几次） | `metrics/load` | `agent` | 宪章 §3.2 第 5 条要每周报、主 Agent 转述（`d-metrics-ratios-person-only`） |
-| 指标比率（问法分布、原样同意比例、按模型/版本比较） | `metrics/ratios` | `person` | 宪章 §8「指标不注入模型上下文」；`d-metrics-ratios-person-only`：只给人看，做进面板 |
+| 三个减负数字（每周问几次、每次读多少字、等多久；来自 `factsFor`） | `metrics/load` | `agent` | 宪章 §3.2 第 5 条要每周报、主 Agent 转述（`d-metrics-ratios-person-only`、指标 0.7 §7.2「问人（减负数字）」）。第四个（因人的决定返工几次）由 M7 从图算（M7 §3.12.3），不是 hub 条目 |
 | 规则拦下计数、撤下状态、超时的数与来源 | `rules/*`、`env/*` | `agent` | 晨报、规则页都显示，主 Agent 要能答 |
 | 周报里的两张单子（4 周没结果的、反复超时的）与规矩阶梯提议 | `loops/*`、`rules/stale` | `agent` | 主 Agent 据它提议、转述（§6） |
 
-裸指标流水从不作为条目交出（宪章 §8）；指标的条目只来自 `factsFor`（`agent` 的四个减负数字）与 `scoresFor`（`person` 的比率），由指标设计的两个出口分开（§6、指标 §7.2）。
+裸指标流水从不作为条目交出（宪章 §8）。指标比率（问法分布、原样同意比例、按模型/版本比较）不是 hub 条目：指标 0.7 §7.6 已把它们做成面板上一块专用「指标」板（纯函数 `boardView` 由 `scoresFor` 算成 `MetricsBoardView`，经 `view.json` 与投影 `hournessMetrics` 读），登记在同一张板块登记表上、只给人看、主 Agent 读不到（宪章 §8、`d-metrics-ratios-person-only`）。hub 这边只收 `metrics/load` 一条（`factsFor` 的三个减负数字，`agent`），不复制比率为 `StatusItem`；指标的两个出口（`factsFor`/`scoresFor`）仍在指标设计里分（指标 0.7 §7.2）。
 
 ### 4.3 主 Agent 永不看到的
 
@@ -196,10 +197,10 @@ readonly items?: readonly StatusItem[]  // 这块板的状态条目（§2）
 
 - **模块拥有**：每条的 `text` 与 `detail` 的措辞由拥有它的模块写，过人话检查（换词表只在 `src/graph/plain-question.ts` 定义一次，plain-ui §5.3），不出「门禁」「验收」「标定」「投影」一类内部词。晨报、周报、面板不改写这些字。
 - **hub 拥有**：哪一处显示哪些条目、按什么次序与分组、受众过滤、陈旧与缺失怎么写、section 型条目怎么折叠。版面规则：
-  - 面板首页「现在」：按 `BOARD_ORDER` 遍历板，各取该板最该上首页的那条 `text`（即 `homeLine`，§3.4），至多各一行。
-  - 面板板页：这块板的全部 `items`，`person` 与 `agent` 都列（界面只给人看）。
-  - `/hourness`：晨报节次之后，`collectStatus(..., 'all')` 的条目按 owner 分组列出；指标比率这一行在此出现。
-  - `hourness_report` 晨报/周报：`collectStatus(..., 'agent')`，并入 M7 既有的节次（§6），不含 `person` 条目。
+  - 面板首页「现在」：按 `BOARD_ORDER` 遍历板，各取该板的 `homeLine`（命中某条 item 时是它的 `text`，否则是诊断行，§3.4），至多各一行。
+  - 面板板页：这块板的全部 `items`，`person` 与 `agent` 都列（界面只给人看）；指标板另按 `MetricsBoardView` 显示它的比率（§3.4）。
+  - `/hourness`（晨报，经主 Agent 进模型上下文）：晨报节次之后，`collectStatus(..., 'agent')` 的条目按 owner 分组列出；不含指标比率（比率在面板的指标板，指标 0.7 §7.3、§7.6）。`metrics/load`（三个减负数字）不在晨报，按 `d-metrics-ratios-person-only` 与指标 0.7 §7.3 放在周报（版面决定，hub 拥有版面）。
+  - `hourness_report` 晨报/周报：`collectStatus(..., 'agent')`，并入 M7 既有的节次（§6），不含 `person` 条目；周报列 `metrics/load` 的三个减负数字，第四个由 M7 从图算。
   - 陈旧：`isStale` 为真的条目，`text` 后加「（截至 <asOf 的人话时刻>）」，不丢。
   - 缺失/出错：某行取不到时写一行「<模块>的状态暂时读不到：<原因>」，不静默，不用别处的值顶替。
 
@@ -210,14 +211,14 @@ readonly items?: readonly StatusItem[]  // 这块板的状态条目（§2）
 今天的所有者（读 main 与 M7 0.6）：
 
 - `/hourness` 开头的基础晨报在 `src/report/index.ts`（`renderHourness`）与 `src/workflow/morning-report.ts`（`morningReport`、`reportFromFiles`）。用量一节由 M6 的 `usagePanelOf`/`usagePanelLines` 出（M6 0.7 §6）。
-- 四答晨报与**周报**在 M7：`fourAnswers`（`src/report/four-answers.ts`）、`weeklyReport`（`src/report/weekly.ts`），经主 Agent 工具 `hourness_report {kind}`（M7 §3.10、§3.11.1、§3.12.4）。**周报的所有者是 M7**；指标与 M5 只经各自的出口（`factsFor`/`scoresFor`、`stats`）把数交给 M7 的周报，M7 不改读指标流水（指标 §7.3 的 F26）。
+- 四答晨报与**周报**在 M7：`fourAnswers`（`src/report/four-answers.ts`）、`weeklyReport`（`src/report/weekly.ts`），经主 Agent 工具 `hourness_report {kind}`（M7 §3.10、§3.11.1、§3.12.4）。**周报的所有者是 M7**。按指标 0.7 §7.3，M7 的晨报与周报今天从图、检查与前进的记录、违规流水和用量流水算，不读指标流水；`d-status-hub` 要让周报也成为那一份源的视图，这条接缝写成对 M7 的请求（§12），自举之后落地。
 
 成为视图：
 
-- M7 的 `fourAnswers`、`weeklyReport` 读 `collectStatus(ctx, sid, 'agent', now)` 取状态节次（高峰、额度、用量、推进停住、汇报、四个减负数字、超时与撤下、两张单子），不再各自从流水/图重算这些行。M7 仍拥有节次的编排与它自己的计算（任务计数、DORA 等不是跨视图共享的那几项照旧在 M7 算）。
-- `renderHourness`（`/hourness`）读 `collectStatus(ctx, sid, 'all', now)`，在晨报节次之后列条目，含指标比率（`person`）。
+- M7 的 `fourAnswers`、`weeklyReport` 读 `collectStatus(ctx, sid, 'agent', now)` 取状态节次（高峰、额度、用量、推进停住、汇报、三个减负数字 `metrics/load`、超时与撤下、两张单子），不再各自从流水/图重算这些行；第四个减负数字（返工）仍由 M7 从图算（指标 0.7 §7.2、M7 §3.12.3）。M7 仍拥有节次的编排与它自己的计算（任务计数、DORA 等不是跨视图共享的那几项照旧在 M7 算）。
+- `renderHourness`（`/hourness`）读 `collectStatus(ctx, sid, 'agent', now)`，在晨报节次之后列 `agent` 条目，不含指标比率；`metrics/load` 的三个减负数字也不在 `/hourness`（指标 0.7 §7.3：`/hourness` 不列它们，人定的是周报里转述）。
 - 「数字由 harness 算，模型只转述」（M7 §3.12.4）与 hub 一致：条目的 `fields`/`text` 由 harness 算，主 Agent 只转述 `text`。
-- M7 §3.12.4 把人的负担、人怎么回的、质量对照这些比率放进 `hourness_report` 的结果，与宪章 §8、`d-metrics-ratios-person-only` 的岔路由指标 §16 ② 交人（人已在 2026-11-01 定：周报里主 Agent 只转述四个减负数字，其余比率只给人看）。hub 据此把四个减负数字标 `agent`、比率标 `person`，`hourness_report` 自然滤掉比率；这件事在自举之后随 M7 的下一稿落地（§12 对 M7 的请求），本设计不改 M7 的文件。
+- M7 0.6 §3.12.4 现在把人的负担、人怎么回的、质量对照这些比率放进 `hourness_report {kind:'weekly'}` 的结果；人 2026-11-01 定（`d-metrics-ratios-person-only`，指标 0.7 §7.3 据此写成对 M7 的请求）：周报里主 Agent 只转述宪章 §3.2 第 5 条的四个减负数字（三个来自 `factsFor` 的 `metrics/load`、第四个由 M7 从图算），其余比率只给人看、在面板的指标板上（指标 0.7 §7.6），`hourness_report` 结果末尾一行固定的话指人去看那块板。hub 据此只把 `metrics/load` 标 `agent`，比率不作为 hub 条目，`hourness_report` 自然不含比率；这件事在自举之后随 M7 的下一稿落地（§12 对 M7 的请求），本设计不改 M7 的文件。
 
 ## 7. 失败怎样被发现、怎样退
 
@@ -257,10 +258,10 @@ readonly items?: readonly StatusItem[]  // 这块板的状态条目（§2）
 | 不变量 | 所在层 | 理由 |
 | --- | --- | --- |
 | 一件状态只算一次 | 拥有它的模块的 `statusItemsOf` 纯函数；投影与 `collectStatus` 都调它 | 不存第二份就不会对不上（P13-01、F16） |
-| 主 Agent 不读 `person` 条目 | `hourness_report` 传 `agent`，`collectStatus` 过滤；裸指标流水不作为条目交（指标 §7.2 两个出口） | 进模型上下文的只有工具这一路，收口在一处（§4.1） |
-| `/hourness` 与面板不进模型上下文 | 命令结果不作为模型提示（`dsh-commands`）；面板是界面 | 人面可含 `person`，不碰模型 |
-| 指标比率 `person`、四个减负数字 `agent` | 指标设计的 `scoresFor`/`factsFor`；hub 据受众过滤 | 宪章 §8、`d-metrics-ratios-person-only` |
-| 面板首页一行与板页同源 | `homeLine` 等于 `items` 中某条的 `text`（面板断言） | 首页与板页不各算一行 |
+| 主 Agent 不读 `person` 条目 | 能进模型的两路（`hourness_report`、作为晨报提示的 `/hourness`）都传 `agent`，`collectStatus` 过滤；裸指标流水与比率不作为条目交（比率在指标 0.7 §7.6 的专用板） | 过滤是单一函数，收口在一处（§4.1） |
+| 能进模型上下文的只收 `agent`，只有面板 UI 收 `all` | `collectStatus` 的 `audience` 参数：`hourness_report` 与 `/hourness` 传 `agent`，面板传 `all` | `/hourness` 的晨报内容经主 Agent 进模型（`d-one-main-agent`、指标 0.7 §7.3），保守按进模型处理 |
+| 指标比率不是 hub 条目；三个减负数字 `agent`、第四个由 M7 从图算 | 指标设计的 `scoresFor`→指标板、`factsFor`→`metrics/load`；hub 不收比率 | 宪章 §8、`d-metrics-ratios-person-only` |
+| 面板首页一行命中某条 item 时与它同源 | `homeLine` 命中 `items` 某条时等于其 `text`（面板断言）；诊断型 `homeLine` 豁免 | 首页与板页不各算一行；诊断行各板自有（§3.4） |
 | 条目的字是人话 | 各模块写 `text`，过 `plainWordsIn`（换词表一处定义） | `d-plain-questions`；人话由模块写、检查由 harness 做 |
 
 ## 10. 迁移已并入的 M6 用量清单
@@ -281,11 +282,11 @@ M6 0.7 已把用量清单做成一份：`usagePanelOf` 算、`usagePanelLines` �
   - 每个模块的 `statusItemsOf`：给定投影/流水夹具，返回期望条目（受众、`asOf`、`source`、`text` 正确）。
   - `collectStatus`：`agent` 只收 `agent`；`all` 两种都收；某行视图抛错时别的行照常并出占位；陈旧条目带时刻提示；形状不对的条目被丢并告警。
   - `validateStatusItem`：§8 每条规则各一例，含 `audience` 不合法整条丢弃。
-  - 面板断言：`homeLine` 等于 `items` 中某条的 `text`。
+  - 面板断言：当 `homeLine` 命中某条 item 时与它的 `text` 逐字相等；诊断型 `homeLine`（指标板、会话已归档、额度停住）不被此断言覆盖。
   - 迁移：`glm/usage` 一条经 hub 出的 `text`+`detail` 等于旧 `usagePanelLines` 的输出（逐字钉住）。
 - L3（探针，真实运行时）：
-  - `hourness_report {kind:'morning'}` 与 `{kind:'weekly'}` 的结果里没有一条 `person` 条目（无指标比率一行）。
-  - `/hourness` 的人面输出含指标比率一行。
+  - `hourness_report {kind:'morning'}` 与 `{kind:'weekly'}` 的结果里没有一条 `person` 条目、没有指标比率。
+  - `/hourness` 的输出里没有 `person` 条目与指标比率；人在面板的指标板看到比率（指标 0.7 §7.6）。
   - 面板板块 `snapshot().items` 与 `collectStatus` 对同一夹具给出同一份条目（一源核对）。
 - L4（桌面版）：面板「现在」的高峰/额度一行与晨报同一行一致；主 Agent 转述的晨报不含比率；人在面板看到比率。
 
