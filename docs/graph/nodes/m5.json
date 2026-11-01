@@ -179,6 +179,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "要采纳（M5 0.7，.worktrees/m5；本轮可不改）：经验板已登记 id:'lessons'（§4.7）；若要在首页『现在』出一行，由它的 statusItemsOf 交 items、homeLine 命中该条时取其 text（今天 homeLine 为 null，不出首页行）。stats（§4.9）里给人看的比率不进 hub 条目（与指标比率一致，宪章 §8）：真要上面板，照指标板那种做法登记一块只读板或并进指标板，不作为 StatusItem；给主 Agent 看的计数若有，按 agent 条目交。"
+    },
+    {
+      "at": "2026-11-01T10:13:20.264Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "S4（M1，m5-1、m5-2、m5-5）在 m5-memory-lessons 上提交为 7dc790a（基底 8af90b9）：build、preflight、test 退出码 0，probe 165/165。等评审。"
     }
   ]
 }
