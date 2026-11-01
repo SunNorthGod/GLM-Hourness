@@ -14,13 +14,19 @@ import { GUARD_RULES } from '../src/guard/catalog.ts'
 import { graphFilesOnly } from '../src/guard/graph-files.ts'
 import { activeRules, apply as guardApply } from '../src/guard/index.ts'
 import { memoryTools, storeIo } from '../src/memory/tools.ts'
+import { CATALOG } from '../src/rules/builtin.ts'
+import { RULES_FILES_ONLY } from '../src/rules/gate.ts'
+import { apply as rulesApply, type RulesContext } from '../src/rules/index.ts'
+import { RULES_DECLARATION, RULES_SERVICE, rulesService } from '../src/rules/service.ts'
+import { DECLARATION_SECTION } from '../src/guard/sections.ts'
 import { DIALECT_SERVICE, dialectNames, dialectService, toNativeTool, ZCODE_ALIAS_NATIVES, type DialectService } from '../src/shared/dialect.ts'
 import type { AgentLike, CommandDefinitionLike, ToolFinalResult } from '../src/shared/dsh-min.ts'
 import { healthServiceName, type HealthRow, type RowHealthView } from '../src/shared/health.ts'
 import { PRICING_SERVICE, pricingService, type UsagePricing } from '../src/shared/pricing.ts'
-import { GRAPH_TOOL_NAMES, MEMORY_TOOL_NAMES, ORCHESTRATION_RESIDENT_TOOLS } from '../src/shared/tool-names.ts'
+import { DISPATCH_TOOL_NAMES, GRAPH_TOOL_NAMES, MEMORY_TOOL_NAMES, ORCHESTRATION_RESIDENT_TOOLS, RULES_TOOL_NAMES } from '../src/shared/tool-names.ts'
 import { RESIDENT_TOOLS } from '../src/toolsearch/exposure.ts'
 import { apply as hournessApply } from '../src/report/index.ts'
+import { DISPATCH_TOOLS } from '../src/workflow/index.ts'
 import { PACKAGES } from '../scripts/packages.mjs'
 import { fakeRuntime, serviceStore, type FakeRuntime } from './fake-rc3.ts'
 
@@ -61,6 +67,59 @@ test('tool names: the graph and memory rows register exactly the contract names'
   assert.deepEqual(memoryTools(io).map(tool => tool.name), MEMORY_TOOL_NAMES)
 })
 
+test('tool names: the rules row registers exactly the contract names, and the dispatch names are tools the workflow row records', () => {
+  assert.ok(DISPATCH_TOOL_NAMES.length > 0)
+  for (const name of DISPATCH_TOOL_NAMES) assert.ok((DISPATCH_TOOLS as readonly string[]).includes(name), `${name} is not a dispatch tool the workflow row knows`)
+  const rt = fakeRuntime({ natives: [] })
+  const stop = rulesApply({ ...rt.ctx, commands: { register: () => () => {} } } as unknown as RulesContext, {})
+  assert.deepEqual(rt.scoped.map(tool => tool.name), [...RULES_TOOL_NAMES])
+  stop()
+})
+
+test('rules catalog: the rules board\'s gate on its own files is listed under the id the gate carries', () => {
+  const entry = CATALOG.find(candidate => candidate.id === RULES_FILES_ONLY)
+  assert.deepEqual([entry?.row, entry?.effect, entry?.plugin], ['rules', 'block', 'dsh-hourness'])
+})
+
+test('rules service: absent and malformed values read as none and say so; a wider one still reads', () => {
+  const problems: string[] = []
+  const problem = (message: string) => { problems.push(message) }
+  const store = serviceStore()
+  assert.equal(rulesService(store, problem), undefined)
+  assert.equal(rulesService({}, problem), undefined) // a context without get
+  assert.deepEqual(problems, [])
+  store.provide(RULES_SERVICE, { declaration: '' })
+  assert.equal(rulesService(store, problem), undefined)
+  assert.equal(problems.length, 1)
+  const wider = { declaration: RULES_DECLARATION, acceptProposal: () => 1 }
+  const store2 = serviceStore()
+  store2.provide(RULES_SERVICE, wider)
+  assert.equal(rulesService(store2, problem), wider)
+  assert.equal(problems.length, 1)
+})
+
+/** The lines of the glm:guard section the guard row declares on a GLM route, with the rules service as given (none when undefined). */
+async function guardDeclaration(rules: unknown): Promise<{ lines: string[], warnings: string[] }> {
+  const rt = fakeRuntime({ route: GLM })
+  if (rules !== undefined) rt.services.set(RULES_SERVICE, rules)
+  guardApply(rt.ctx as never, { home: 'C:/ws/.llm', fs: { mkdir: () => Promise.resolve(undefined), appendFile: () => Promise.resolve() } })
+  const { warnings } = await quietly(() => rt.create())
+  const assembled = await quietly(() => rt.assemble(GLM))
+  const section = assembled.value.sections.find(candidate => candidate.name === DECLARATION_SECTION)
+  assert.ok(section !== undefined)
+  return { lines: section.text.split('\n'), warnings: [...warnings, ...assembled.warnings] }
+}
+
+test('guard declaration: the glm:guard section gets exactly one extra line when the rules service is present, and none when it is absent or malformed', async () => {
+  const without = await guardDeclaration(undefined)
+  const present = await guardDeclaration({ declaration: RULES_DECLARATION })
+  assert.equal(present.lines.length, without.lines.length + 1)
+  assert.deepEqual(present.lines.slice(0, -1), without.lines)
+  assert.equal(present.lines.at(-1), `- ${RULES_DECLARATION}`)
+  const malformed = await guardDeclaration({ declaration: 42 })
+  assert.deepEqual(malformed.lines, without.lines)
+  assert.equal(malformed.warnings.filter(warning => warning.includes(RULES_SERVICE)).length, 1, 'a service of the wrong shape is warned about once')
+})
 test('guard catalog: each listed rule is the id of a rule object its row installs, and nothing the row installs is missing', () => {
   // The guard row installs what activeRules gives with a containment root; the graph row installs graphFilesOnly.
   const installed = {

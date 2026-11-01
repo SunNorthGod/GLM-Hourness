@@ -51,6 +51,7 @@ import { rowJournal, type AuditFs } from '../memory/audit.ts'
 import { dataHomes } from '../shared/data-home.ts'
 import { dialectNames, dialectService, dialectWarner, toNativeTool, type DialectProblem } from '../shared/dialect.ts'
 import { GRAPH_FILES_DECLARATION, graphService } from '../graph/service.ts'
+import { rulesService } from '../rules/service.ts'
 import { provideRowHealth, sessionIdOf, type HealthState } from '../shared/health.ts'
 import { assemblyRoute, sessionRoute, type Route } from '../shared/route.ts'
 import type { JsonValue } from '../shared/json.ts'
@@ -66,11 +67,18 @@ export interface ViolationRecord {
   /** Where the call ran (src/guard/origin.ts); absent on records written before split step 7. */
   readonly scope?: RouteScope | undefined
   readonly route?: Route | undefined
+  /** Only the rules board's denials say it, `enforce`; a guard denial carries no mode and is enforced all the same. */
+  readonly mode?: 'enforce' | undefined
   readonly correction: string
 }
 
-/** A line of the violation journal: an enforced denial or a shadow record. */
-export type GuardRecord = ViolationRecord | ShadowRecord
+/** A call the rules board let through and noted (`mode: 'record'`): it ran, so there is no correction. Not a violation. */
+export interface RecordedCall extends Omit<ViolationRecord, 'correction' | 'mode'> {
+  readonly mode: 'record'
+}
+
+/** A line of the violation journal: an enforced denial, a call the rules board only recorded, or a shadow record. */
+export type GuardRecord = ViolationRecord | RecordedCall | ShadowRecord
 
 export interface GuardConfig {
   /** Workspace roots writes are confined to; defaults to the calling agent's session directory. */
@@ -165,6 +173,7 @@ export function apply(ctx: GuardHost, config: GuardConfig = {}): () => void {
   const journal = rowJournal(name, () => dataHomes(ctx, config.home), config.fs)
   const shadow = shadowFallback(ctx, record => void journal.violation(record))
   const warn = dialectWarner('guard')
+  const rulesWarn = dialectWarner('guard')
   const installed = new WeakSet<AgentLike>()
   const disposers: Array<() => void> = [() => health.dispose()]
 
@@ -220,8 +229,9 @@ export function apply(ctx: GuardHost, config: GuardConfig = {}): () => void {
         const assembled = await next()
         const route = assemblyRoute(assembled)
         const rules = activeRules({ ...config, workspaceRoots: rootsFor(agent, config) })
-        // graph-files-only is the graph row's rule; declared here so the model reads every rule in one place.
-        const others = graphService(ctx) === undefined ? [] : [GRAPH_FILES_DECLARATION]
+        // graph-files-only is the graph row's rule, and the rules board's gate is the rules row's; declared here so the model reads every rule in one place.
+        const board = rulesService(ctx, rulesWarn)
+        const others = [...(graphService(ctx) === undefined ? [] : [GRAPH_FILES_DECLARATION]), ...(board === undefined ? [] : [board.declaration])]
         const face = dialectNames(dialectService(ctx, warn), agent, route, warn) ?? NATIVE_FACE
         return { ...assembled, sections: [...assembled.sections, declarationSection(rules, others, face)] }
       }, { prepend: true }))

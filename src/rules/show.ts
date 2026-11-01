@@ -6,6 +6,8 @@
  * way. Pure: everything it prints is passed in. English, for the model.
  */
 import { basename } from 'node:path'
+import { pluginLabel } from '../shared/plugin-labels.ts'
+import { BUILTIN_PLUGIN } from './builtin.ts'
 import { builtinDeferral, conditionPhrase, localClock, localMinute, modeSentence, setByPhrase, type PeakSetting } from './denial.ts'
 import type { BuiltinRule, Rule, Ticket } from './model.ts'
 import type { SignalReading } from './signals.ts'
@@ -44,9 +46,20 @@ function glmPeakLine(reading: SignalReading, until: string | undefined): string 
   return `GLM peak: now${until === undefined ? '' : `, until ${localClock(until)}`}${where}.`
 }
 
-function ruleLine({ rule, note }: ShownRule): string {
+/** What the default rule of GLM's prices says: in a peak, until when it holds; otherwise the plain statement. The GLM package's reminder tells the model; this rule only informs. */
+function pricingText(glmPeak: SignalReading, until: string | undefined): string {
+  const told = "The GLM package's peak reminder tells you this."
+  return glmPeak.value === true && until !== undefined
+    ? `GLM peak hours until ${localClock(until)}: GLM usage is charged at the full credit rate, half outside peak. ${told}`
+    : `GLM usage is charged at the full credit rate in peak hours and half outside them. ${told}`
+}
+
+/** Said once under the rules, when any entry of the code is listed: where such an entry comes from and who can change what. */
+const PROVENANCE = `Entries named builtin: come with the package ${pluginLabel(BUILTIN_PLUGIN)} (${BUILTIN_PLUGIN}) and cannot be changed by you; the human changes the peak mode with /rules peak.`
+
+function ruleLine({ rule, note }: ShownRule, input: ShowInput): string {
   const what = rule.id === PRICING
-    ? 'GLM usage is charged at the full credit rate in peak hours and half outside them. The GLM package tells the model; this rule only informs.'
+    ? pricingText(input.glmPeak, input.until)
     : rule.scope === 'builtin'
       ? `Defers ${builtinDeferral(rule.id) ?? 'it'}.`
       : `${rule.title} (${setByPhrase(rule)}).`
@@ -73,7 +86,8 @@ export function showText(input: ShowInput): string {
     `Rules board of ${basename(input.project)}.`,
     modeSentence(input.peak),
     glmPeakLine(input.glmPeak, input.until),
-    ...section('Rules in force:', input.rules.map(ruleLine)),
+    ...section('Rules in force:', input.rules.map(entry => ruleLine(entry, input))),
+    ...(input.rules.some(({ rule }) => rule.scope === 'builtin') ? [PROVENANCE] : []),
     ...section('Waiting calls:', input.tickets.map(ticketLine)),
     ...section('Signals:', input.signals.map(signalLine)),
     ...input.notes,

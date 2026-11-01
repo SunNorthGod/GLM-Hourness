@@ -35,8 +35,9 @@ export function morningReport(input: ReportInput): string {
   const lines: string[] = [`# 晨报 ${input.period}`]
 
   const l3 = input.decisions.filter(decision => decision.level === 'L3')
-  const denials = input.violations.filter(violation => !('mode' in violation))
-  const shadows = input.violations.filter(violation => 'mode' in violation && violation.mode === 'shadow')
+  // A guard denial carries no mode; the rules board's denial says `enforce`, and a call it only recorded (`record`) is neither a violation nor a shadow record.
+  const denials = input.violations.filter(violation => violation.mode === undefined || violation.mode === 'enforce')
+  const shadows = input.violations.filter(violation => violation.mode === 'shadow')
   // Records from routes the GLM dialect did not claim count apart (src/guard/origin.ts):
   // the rules were tuned on GLM, so their misfires elsewhere stay visible.
   // Records without a scope predate split step 7 and were all GLM.

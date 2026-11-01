@@ -14,7 +14,7 @@ import { statSync } from 'node:fs'
 import { projectOf } from '../data/project-root.ts'
 import type { ServiceLookup } from '../shared/dsh-min.ts'
 import { peakHoldOf, peakModeState, type PeakModeService, type PeakModeState } from '../shared/peak-mode.ts'
-import { nextPeakChange, pricingService } from '../shared/pricing.ts'
+import { nextPeakChange, pricingService, type UsagePricing } from '../shared/pricing.ts'
 import { effectivePeakMode } from './model.ts'
 import { readProject, type ProjectRead } from './repo.ts'
 import { rulesPaths, type RulesPaths } from './store.ts'
@@ -26,15 +26,21 @@ export interface PeakReading {
   readonly until?: string
   /** Why `peak` is undefined. */
   readonly why?: string
+  /** There is no usable pricing service (it is absent or of the wrong shape): the default rule of GLM's prices has nothing to tell about, and rules_show leaves it out. */
+  readonly noService?: true
 }
 
+const MINUTE_MS = 60_000
 const NO_PRICING = '没有计价服务（GLM 通道包未装，或它的 glm-login 行未启用）'
 
 /**
  * A reader of the GLM plan's clock. The pricing service is read on every
  * call (it comes and goes with the glm-login row); a service of the wrong
  * shape, or a `peak` that throws, makes the answer unknown and is warned
- * about once per process.
+ * about once per process. The plan's peak changes on whole minutes
+ * (`nextPeakChange`), so the answer is kept for the minute it was read in:
+ * the tool-call gate reads it on every call, and finding the end of a peak is
+ * a scan over minutes.
  */
 export function peakReader(ctx: ServiceLookup, now: () => number, warn: (message: string) => void = message => { console.warn(`dsh-glm-hourness/rules: ${message}`) }): () => PeakReading {
   const warned = new Set<string>()
@@ -43,14 +49,8 @@ export function peakReader(ctx: ServiceLookup, now: () => number, warn: (message
     warned.add(message)
     warn(message)
   }
-  return () => {
-    let shapeProblem = false
-    const pricing = pricingService(ctx, message => {
-      shapeProblem = true
-      warnOnce(message)
-    })
-    if (pricing === undefined) return { peak: undefined, why: shapeProblem ? '计价服务的形状不对' : NO_PRICING }
-    const at = now()
+  let kept: { readonly pricing: UsagePricing, readonly minute: number, readonly reading: PeakReading } | undefined
+  const read = (pricing: UsagePricing, at: number): PeakReading => {
     try {
       const peak: unknown = pricing.peak(at)
       if (typeof peak !== 'boolean') return { peak: undefined, why: '计价服务的 peak 没有返回是或否' }
@@ -62,6 +62,20 @@ export function peakReader(ctx: ServiceLookup, now: () => number, warn: (message
       warnOnce(`the pricing service's peak threw: ${text}`)
       return { peak: undefined, why: `计价服务的 peak 出错：${text}` }
     }
+  }
+  return () => {
+    let shapeProblem = false
+    const pricing = pricingService(ctx, message => {
+      shapeProblem = true
+      warnOnce(message)
+    })
+    if (pricing === undefined) return { peak: undefined, why: shapeProblem ? '计价服务的形状不对' : NO_PRICING, noService: true }
+    const at = now()
+    const minute = Math.floor(at / MINUTE_MS)
+    if (kept?.pricing === pricing && kept.minute === minute) return kept.reading
+    const reading = read(pricing, at)
+    kept = { pricing, minute, reading }
+    return reading
   }
 }
 

@@ -24,18 +24,19 @@
 import { resolve } from 'node:path'
 import { projectOf } from '../data/project-root.ts'
 import { STAGES } from '../graph/schema.ts'
-import { builtinRulesFor } from './builtin.ts'
 import { describeCall } from './call.ts'
 import { denialText, type PeakSetting } from './denial.ts'
 import { gateEvents } from './events.ts'
 import { hostPeak, liveHeartbeats, readHeartbeats, type HostHeartbeat, type HostPeak } from './heartbeat.ts'
-import { ended, judge, judgeInput, type JudgeResult, type Truth } from './judge.ts'
+import { judge, judgeInput, type JudgeResult, type Truth } from './judge.ts'
+import { openTickets, projectSignals, rulesInForce, stateNotes } from './listing.ts'
 import { emitMetric, type MetricExit, type RulesCheckEvent } from './metrics.ts'
-import { effectivePeakMode, effectOf, unapprovedScripts, type BuiltinRule, type Condition, type Effect, type PeakLevel, type ProjectState, type Rule } from './model.ts'
+import { effectivePeakMode, effectOf, type Effect, type PeakLevel, type ProjectState } from './model.ts'
 import { readProject } from './repo.ts'
-import { showText, type ShownRule } from './show.ts'
+import { showText } from './show.ts'
 import { GLM_PEAK, effectiveSignal, type SignalReading } from './signals.ts'
 import { rulesPaths } from './store.ts'
+import { readingsOf, signalsRead, tableOf } from './table.ts'
 
 /** The signals the host computes and a caller may give a value for. */
 export type HostSignal = 'glm-peak'
@@ -130,15 +131,7 @@ async function readView(project: string, rulesDir: string | undefined, now: Date
       await sleep(REREAD_AFTER_MS)
       read = readProject(paths)
     }
-    if (read.load.fresh) {
-      notes.push(read.repo.kind === 'fresh-start'
-        ? '这个项目还没有规则板自己的状态，照仓库里的规则文件在内存里开始，没有写文件'
-        : read.repo.kind === 'unreadable'
-          ? `这个项目还没有规则板自己的状态，仓库里的规则文件读不出（${read.repo.reason}），按空状态判`
-          : '这个项目还没有规则板的状态')
-    }
-    else if (read.load.source === 'replay') notes.push('状态要重建，已在内存里按变更记录重放，没有写文件')
-    if (read.repo.kind === 'outside' || read.repo.kind === 'outside-known') notes.push('仓库里的规则文件被规则板以外改过，按变更记录判')
+    notes.push(...stateNotes(read))
     const { heartbeats, unreadable } = readHeartbeats(paths)
     notes.push(...unreadable.map(name => `心跳文件 ${name} 读不出，没有采用`))
     return { root, state: read.state, notes, hosts: liveHeartbeats(heartbeats, now.getTime()), now }
@@ -153,36 +146,6 @@ function glmPeakOf(given: boolean | undefined, host: HostPeak, peakUntil: string
   if (given !== undefined) return { reading: { name: GLM_PEAK, source: 'caller', value: given }, ...(given && peakUntil !== undefined ? { until: peakUntil } : {}) }
   if ('value' in host) return { reading: { name: GLM_PEAK, source: 'heartbeat', host: host.host, value: host.value }, ...(host.value && host.until !== undefined ? { until: host.until } : {}) }
   return { reading: host.host === undefined ? { name: GLM_PEAK, source: 'none', unknown: host.unknown } : { name: GLM_PEAK, source: 'heartbeat', host: host.host, unknown: host.unknown } }
-}
-
-/**
- * Every signal a condition can name: `glm-peak` and the project's switches and detector signals. No detector is
- * reported live here (nothing runs them yet), so a signal a detector defines reads as unknown unless a person set it.
- */
-function readingsOf(state: ProjectState, glmPeak: SignalReading, now: Date): ReadonlyMap<string, SignalReading> {
-  const readings = new Map(Object.keys(state.signals ?? {}).map(name => [name, effectiveSignal(name, state.signals?.[name], now)] as const))
-  return readings.set(GLM_PEAK, glmPeak)
-}
-
-function namesIn(condition: Condition | undefined): readonly string[] {
-  if (condition === undefined) return []
-  if ('signal' in condition) return [condition.signal]
-  if ('not' in condition) return namesIn(condition.not)
-  if ('all' in condition) return condition.all.flatMap(namesIn)
-  if ('any' in condition) return condition.any.flatMap(namesIn)
-  return []
-}
-
-/** The signals a rule reads: those of its condition and of the condition it lasts until. */
-function signalsRead(rule: Rule | BuiltinRule): readonly string[] {
-  return [...namesIn(rule.condition), ...(rule.lifetime.kind === 'until' ? namesIn(rule.lifetime.condition) : [])]
-}
-
-const compare = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0)
-
-/** The table of rules a judgement reads: the person's rules by id, then the entries of the code the peak level enables. */
-function tableOf(state: ProjectState, level: PeakLevel): readonly (Rule | BuiltinRule)[] {
-  return [...Object.values(state.rules ?? {}).sort((a, b) => compare(a.id, b.id)), ...builtinRulesFor(level)]
 }
 
 // ----------------------------------------------------------------- the options
@@ -336,12 +299,9 @@ export async function showProject(options: ShowOptions): Promise<ShowResult> {
   const { reading: glmPeak, until } = glmPeakOf(undefined, hostPeak(view.hosts, now.getTime()), undefined)
   const readings = readingsOf(view.state, glmPeak, now)
   const input = judgeInput({ now, project: view.root, events: [], signals: [...readings.values()] })
-  const unapproved = new Map(unapprovedScripts(view.state).map(entry => [entry.id, entry.standing]))
-  const rules: ShownRule[] = tableOf(view.state, peak.level)
-    .filter(rule => !('status' in rule && rule.status !== 'active') && !ended(rule, input))
-    .map(rule => (unapproved.has(rule.id) ? { rule, note: 'The script is not approved on this machine, so it is not run.' } : { rule }))
-  const tickets = Object.values(view.state.tickets ?? {}).filter(ticket => ticket.state === 'deferred' || ticket.state === 'cleared').sort((a, b) => compare(a.id, b.id))
-  const signals = Object.keys(view.state.signals ?? {}).sort(compare).flatMap(name => readings.get(name) ?? [])
+  const rules = rulesInForce(view.state, tableOf(view.state, peak.level), input)
+  const tickets = openTickets(view.state)
+  const signals = projectSignals(view.state, readings)
   return {
     project: view.root,
     text: showText({ project: view.root, peak, glmPeak, ...(until === undefined ? {} : { until }), rules, tickets, signals, notes: view.notes }),

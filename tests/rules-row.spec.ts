@@ -5,107 +5,54 @@
  * real GLM credit plan, as `glm-login` provides it; the clock is injected.
  */
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { appendFile, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { creditPricing } from '../src/glm-llm/credits.ts'
-import type { AgentCommandInvocationLike, CommandDefinitionLike, CommandResultLike } from '../src/shared/dsh-min.ts'
 import { collectHealth, healthServiceName } from '../src/shared/health.ts'
-import { PEAK_MODE_SERVICE, PEAK_REDUCE_GLM_WORKERS, peakModeService, type PeakModeService } from '../src/shared/peak-mode.ts'
-import { PRICING_SERVICE } from '../src/shared/pricing.ts'
-import { apply, clockText, inject, name, type RulesConfig, type RulesContext } from '../src/rules/index.ts'
-import { repoJson } from '../src/rules/model.ts'
-import { fakeRuntime, type FakeRuntime } from './fake-rc3.ts'
+import { PEAK_MODE_SERVICE, PEAK_REDUCE_GLM_WORKERS, peakModeService } from '../src/shared/peak-mode.ts'
+import { RULES_TOOL_NAMES } from '../src/shared/tool-names.ts'
+import { apply, clockText, inject, name, type RulesContext } from '../src/rules/index.ts'
+import { RULES_SERVICE } from '../src/rules/service.ts'
+import { openRulesBoard } from '../src/rules/engine.ts'
+import { repoJson, type JournalRecord, type RepoRules } from '../src/rules/model.ts'
+import { loadState } from '../src/rules/store.ts'
+import { fakeRuntime } from './fake-rc3.ts'
 import { captureWarnings } from './graph-helpers.ts'
-import { FULL_RULES_FILE } from './rules-fixtures.ts'
-import { quickIo } from './rules-helpers.ts'
+import { FULL_RULES_FILE, ruleOf } from './rules-fixtures.ts'
+import { quickIo, writeHeartbeat } from './rules-helpers.ts'
+import { health, PEAK_NOW, rowTest, withRow, type Fixture } from './rules-host.ts'
 
-const NOW = Date.parse('2026-10-28T15:00:00+08:00') // a Wednesday in the GLM peak, 14:00-18:00 UTC+8
+const NOW = PEAK_NOW
 const OFF_PEAK = Date.parse('2026-10-28T20:00:00+08:00')
 const PEAK_END = '2026-10-28T10:00:00.000Z'
 const NEXT_PEAK = '2026-10-29T06:00:00.000Z'
 
-interface Fixture {
-  readonly root: string
-  readonly runtime: FakeRuntime
-  readonly commands: Map<string, CommandDefinitionLike<AgentCommandInvocationLike>>
-  readonly service: PeakModeService
-  readonly dispose: () => void
-  /** Run `/rules <input>` in the fake agent's session. */
-  readonly run: (input: string) => Promise<CommandResultLike>
-}
-
-interface Options {
-  /** The pricing service on the host: the GLM credit plan unless given, none for `'none'`. */
-  readonly pricing?: unknown
-  readonly now?: number
-  readonly config?: RulesConfig
-  /** The working directory of the fake agent: the project unless given, none for `null`. */
-  readonly cwd?: string | null
-  readonly breakCommands?: boolean
-}
-
-/** A git project in a temporary directory with the rules row applied on a fake host whose agent works in it. */
-async function withRow(body: (fixture: Fixture) => Promise<void>, options: Options = {}): Promise<void> {
-  const root = await mkdtemp(join(tmpdir(), 'rules-row-'))
-  try {
-    await mkdir(join(root, '.git'))
-    const runtime = fakeRuntime({ natives: ['pwsh'], ...(options.cwd === null ? {} : { cwd: options.cwd ?? root }) })
-    if (options.pricing !== 'none') runtime.services.set(PRICING_SERVICE, options.pricing ?? creditPricing)
-    const commands = new Map<string, CommandDefinitionLike<AgentCommandInvocationLike>>()
-    const ctx = {
-      ...runtime.ctx,
-      commands: {
-        register: (definition: CommandDefinitionLike<AgentCommandInvocationLike>) => {
-          if (options.breakCommands === true) throw new Error('taken')
-          commands.set(definition.name, definition)
-          return () => { commands.delete(definition.name) }
-        },
-      },
-    } as unknown as RulesContext
-    const now = options.now ?? NOW
-    const dispose = apply(ctx, { now: () => now, io: quickIo(), ...options.config })
-    await body({
-      root,
-      runtime,
-      commands,
-      service: peakModeService(runtime.ctx)!,
-      dispose,
-      run: input => commands.get('rules')!.handler({ commandId: 'test', agent: { id: runtime.agent.id, session: runtime.agent.session }, rawInput: input } as unknown as AgentCommandInvocationLike),
-    })
-    dispose()
-  }
-  finally {
-    await rm(root, { recursive: true, force: true })
-  }
-}
-
-function rowTest(title: string, body: (fixture: Fixture) => Promise<void>, options: Options = {}): void {
-  test(title, () => withRow(body, options))
-}
-
-const health = (runtime: FakeRuntime) => collectHealth(runtime.ctx, 'agent-1').find(entry => entry.row === 'rules')!
-
-rowTest('the row is a cordis plugin that needs the commands service, registers /rules, provides the service and its health, and withdraws all of it', ({ runtime, commands, dispose }) => {
+rowTest('the row is a cordis plugin that needs the tools and commands services, registers /rules and rules_show, provides the services and its health, and withdraws all of it', ({ runtime, commands, dispose }) => {
   assert.equal(name, 'dsh-glm-hourness/rules')
-  assert.deepEqual(inject, ['commands'])
+  assert.deepEqual(inject, ['tools', 'commands'])
   const command = commands.get('rules')
-  assert.deepEqual([command?.definitionId, command?.name, command?.input?.hint], ['dsh-glm-hourness/rules', 'rules', 'peak [无影响|少做|不做]'])
+  assert.deepEqual([command?.definitionId, command?.name], ['dsh-glm-hourness/rules', 'rules'])
+  assert.equal(command?.input?.hint, 'show | peak [无影响|少做|不做] | lift <规则> | delete <规则或开关> | on <开关> [时长] | off <开关> | set <信号> <值> [时长] | clear <信号> | let <单号> | cancel <单号> | recovery <编号…|文件> 照改|忽略')
+  assert.deepEqual(runtime.scoped.map(tool => tool.name), [...RULES_TOOL_NAMES], 'the tools the row registers are the contract names')
   assert.ok(runtime.services.has(PEAK_MODE_SERVICE))
-  assert.deepEqual(health(runtime), { row: 'rules', status: 'idle', reason: `命令 /rules 与高峰模式服务 ${PEAK_MODE_SERVICE} 已就绪` })
+  assert.ok(runtime.services.has(RULES_SERVICE))
+  assert.deepEqual(health(runtime), { row: 'rules', status: 'idle', reason: `命令 /rules、工具 rules_show 与高峰模式服务 ${PEAK_MODE_SERVICE} 已就绪` })
   assert.ok(peakModeService(runtime.ctx) !== undefined)
   dispose()
   assert.equal(commands.size, 0)
+  assert.equal(runtime.scoped.length, 0, 'the tool leaves with the row')
   assert.equal(peakModeService(runtime.ctx), undefined, 'the readers see the service leave with the row')
   assert.equal(runtime.services.has(PEAK_MODE_SERVICE), false)
+  assert.equal(runtime.services.has(RULES_SERVICE), false)
   assert.equal(runtime.services.has(healthServiceName('rules')), false)
   assert.deepEqual(runtime.listeners.map(entry => entry.event), [])
   return Promise.resolve()
 })
 
-rowTest('nothing in the row holds or delays an agent: it listens to two lifecycle events and gates neither a tool call nor a step, on any level', async ({ runtime, run }) => {
-  assert.deepEqual(runtime.listeners.map(entry => entry.event).sort(), ['agent/created', 'session/disposed'])
+rowTest('the row never holds the main agent: its lifecycle listeners and the outermost tool-call gate are all it registers, and on every level the main agent\'s call runs and its step is admitted', async ({ runtime, run }) => {
+  assert.deepEqual(runtime.listeners.map(entry => entry.event).sort(), ['agent/created', 'session/disposed', 'tools/pre-execute'])
+  assert.deepEqual(runtime.listeners.find(entry => entry.event === 'tools/pre-execute')?.options, { prepend: true }, 'the gate is outermost')
   for (const level of ['无影响', '少做', '不做']) {
     await run(`peak ${level}`)
     const result = await runtime.ctx.tools.execute({ callId: `call-${level}`, name: 'pwsh', arguments: {}, agent: runtime.agent, signal: new AbortController().signal })
@@ -236,10 +183,11 @@ test('a folder that is no project has no state, and nothing is created in it', a
   }
 })
 
-rowTest('the command takes nothing but peak and one level, and says what it expects', async ({ run }) => {
-  for (const input of ['', 'show', 'lift r-x', 'peak a b']) {
+rowTest('the command takes the built subcommands and says what it expects for anything else; the proposal subcommands are not there', async ({ run }) => {
+  for (const input of ['', 'frobnicate', 'peak a b', 'accept p-1', 'reject p-1', 'detector d-x 生效', 'lift', 'on', 'set x', 'recovery 1-1']) {
     const result = await run(input)
-    assert.deepEqual([input, result.kind, result.text?.startsWith('用法：/rules peak [无影响|少做|不做]')], [input, 'error', true])
+    assert.deepEqual([input, result.kind, result.text?.startsWith('用法：/rules ')], [input, 'error', true])
+    assert.ok(result.text?.includes('/rules peak [无影响|少做|不做]'), `${input}: the usage names every subcommand`)
   }
   const unknown = await run('peak 多做')
   assert.deepEqual([unknown.kind, unknown.text?.startsWith('不认识档位「多做」。用法：')], ['error', true])
@@ -379,13 +327,15 @@ test('activation never throws: a command that cannot register, a service that ca
 
     // A host that cannot provide anything.
     const lone = fakeRuntime({ natives: [] })
-    apply({ commands: { register: () => () => {} }, on: (...args: unknown[]) => (lone.ctx.on as (...inner: unknown[]) => () => void)(...args), get: (key: string) => lone.ctx.get?.(key) }, {})()
+    apply({ commands: { register: () => () => {} }, on: (...args: unknown[]) => (lone.ctx.on as (...inner: unknown[]) => () => void)(...args), get: (key: string) => lone.ctx.get?.(key) } as unknown as RulesContext, {})()
 
-    // A host whose event registration throws.
+    // A host whose event registration throws: the gate is not installed, so the row executes no rule and says so.
     const noEvents = fakeRuntime({ natives: [] })
     const stop = apply({ ...noEvents.ctx, commands: { register: () => () => {} }, on: () => { throw new Error('no events') } }, {})
     const view = collectHealth(noEvents.ctx, undefined).find(entry => entry.row === 'rules')
-    assert.deepEqual([view?.status, view?.reason.includes('会话事件没注册上：no events')], ['degraded', true])
+    assert.equal(view?.status, 'inactive')
+    assert.ok(view?.reason.includes('会话事件没注册上：no events'), view?.reason)
+    assert.ok(view?.reason.includes('工具调用的门没装上，这一行不执行任何规则：no events'), view?.reason)
     stop()
 
     // A configuration that is not a path: nothing registers.
@@ -396,8 +346,17 @@ test('activation never throws: a command that cannot register, a service that ca
     never()
   })
   const ours = warnings.filter(warning => warning.startsWith('dsh-glm-hourness/rules: '))
-  assert.equal(ours.length, 5, ours.join(' | '))
-  for (const expected of [/registering \/rules failed, the level cannot be changed: taken/, /row health not provided/, /glmHournessPeakMode is not provided/, /the session listeners are not registered/, /config\.dir must be a non-empty path/]) {
+  assert.equal(ours.length, 8, ours.join(' | '))
+  for (const expected of [
+    /registering \/rules failed, the level cannot be changed: taken/,
+    /row health not provided/,
+    /glmHournessPeakMode is not provided/,
+    new RegExp(`${RULES_SERVICE} is not provided`),
+    /registering rules_show failed/,
+    /the session listeners are not registered/,
+    /the tool-call gate is not installed, the row executes no rule: no events/,
+    /config\.dir must be a non-empty path/,
+  ]) {
     assert.ok(ours.some(warning => expected.test(warning)), `${String(expected)} in ${ours.join(' | ')}`)
   }
 })
@@ -410,7 +369,7 @@ test('the row ships disabled in the orchestration patch, is exported, and has it
   const block = patch.slice(start, next < 0 ? undefined : next)
   assert.match(block, /^ {6}name: dsh-hourness\/rules$/m)
   assert.match(block, /^ {6}disabled: true$/m)
-  assert.match(block, /^ {6}inject: \[commands\]$/m)
+  assert.match(block, /^ {6}inject: \[tools, commands\]$/m)
   const manifest = JSON.parse(await readFile(new URL('../packages/hourness/package.json', import.meta.url), 'utf8')) as { exports: Record<string, string> }
   assert.equal(manifest.exports['./rules'], './dist/rules/index.js')
   assert.equal(manifest.exports['./rules/locale/*.json'], './locale/rules/*.json')
@@ -419,3 +378,185 @@ test('the row ships disabled in the orchestration patch, is exported, and has it
     assert.ok(locale.meta.title.length > 0 && locale.meta.description.length > 0, language)
   }
 })
+
+// ----------------------------------------------------- the subcommands of /rules
+
+/** What the commands act on: two rules, a switch and an enum signal. */
+const COMMAND_FILE: RepoRules = {
+  version: 2,
+  rules: {
+    'r-x': ruleOf({ id: 'r-x', title: 'No x' }),
+    'r-y': ruleOf({ id: 'r-y', title: 'No y' }),
+  },
+  signals: {
+    'code-freeze': { type: { kind: 'boolean' } },
+    phase: { type: { kind: 'enum', values: ['day', 'night'] } },
+  },
+}
+
+/** The records of the project's journal, oldest first. */
+async function journalOf(root: string): Promise<JournalRecord[]> {
+  const text = await readFile(join(root, '.llm', 'rules', 'journal.jsonl'), 'utf8').catch(() => '')
+  return text.split('\n').filter(line => line !== '').map(line => JSON.parse(line) as JournalRecord)
+}
+
+/** The last record of the journal after `input` has been typed, as [actor, op, target]. */
+async function wroteAfter(fixture: Fixture, input: string): Promise<{ readonly result: Awaited<ReturnType<Fixture['run']>>, readonly record: readonly [string | undefined, string | undefined, string | undefined], readonly count: number }> {
+  const before = (await journalOf(fixture.root)).length
+  const result = await fixture.run(input)
+  const records = await journalOf(fixture.root)
+  const last = records.at(-1)
+  return { result, record: [last?.actor, last?.op, last?.target], count: records.length - before }
+}
+
+rowTest('every subcommand that changes something writes its operation as the human, and says in one line what it did', async (fixture) => {
+  const cases: ReadonlyArray<readonly [input: string, op: string, target: string | undefined, reply: RegExp]> = [
+    ['lift r-x', 'rule-lift', 'r-x', /^规则 r-x 已解除/],
+    ['delete r-y', 'rule-delete', 'r-y', /^规则 r-y 已删除/],
+    ['on code-freeze', 'signal-manual', 'code-freeze', /^开关 code-freeze 已打开/],
+    ['off code-freeze', 'signal-manual', 'code-freeze', /^开关 code-freeze 已关上/],
+    ['on code-freeze 2h', 'signal-manual', 'code-freeze', /^开关 code-freeze 已打开（2h 后失效）/],
+    ['set phase night', 'signal-manual', 'phase', /^信号 phase 的值设成了 night/],
+    ['clear phase', 'signal-clear', 'phase', /^信号 phase 的手设值清掉了/],
+    ['delete code-freeze', 'signal-delete', 'code-freeze', /^开关 code-freeze 已删除/],
+    ['peak 无影响', 'peak-mode-set', 'peakMode', /^高峰模式改成了「无影响」/],
+  ]
+  for (const [input, op, target, reply] of cases) {
+    const { result, record, count } = await wroteAfter(fixture, input)
+    assert.equal(result.kind, 'success', `${input}: ${result.text}`)
+    assert.match(result.text ?? '', reply, input)
+    assert.equal(count >= 1, true, `${input}: a record`)
+    assert.deepEqual(record, ['human', op, target], input)
+  }
+  const manual = (await journalOf(fixture.root)).filter(record => record.op === 'signal-manual')
+  assert.equal(manual.length, 4)
+  const state = loadState(openRulesBoard({ projectRoot: fixture.root }).paths).state
+  assert.equal(state.rules?.['r-x']?.status, 'lifted')
+  assert.equal(state.rules?.['r-y'], undefined)
+}, { rules: COMMAND_FILE })
+
+rowTest('a value is true, false, a number or a word, and a duration is a number of minutes, hours or days at most seven', async (fixture) => {
+  const board = openRulesBoard({ projectRoot: fixture.root, io: quickIo() })
+  const valueOf = (name: string): unknown => loadState(board.paths).state.signals?.[name]?.manual?.value
+  assert.equal((await fixture.run('set phase day')).kind, 'success')
+  assert.equal(valueOf('phase'), 'day')
+  assert.equal((await fixture.run('set code-freeze true')).kind, 'success')
+  assert.equal(valueOf('code-freeze'), true)
+  const timed = await fixture.run('set code-freeze false 30m')
+  assert.equal(timed.kind, 'success')
+  const manual = loadState(board.paths).state.signals?.['code-freeze']?.manual
+  assert.equal(manual?.value, false)
+  assert.ok(manual?.expiresAt !== undefined && Date.parse(manual.expiresAt) - Date.parse(manual.at) === 30 * 60_000, 'thirty minutes after it was set')
+  for (const bad of ['on code-freeze 8d', 'on code-freeze soon', 'on code-freeze 0m', 'on code-freeze 2x']) {
+    const refused = await fixture.run(bad)
+    assert.deepEqual([bad, refused.kind, refused.text?.includes('时长')], [bad, 'error', true])
+  }
+}, { rules: COMMAND_FILE })
+
+rowTest('a subcommand the board refuses answers one line that says what is so, and writes nothing', async (fixture) => {
+  await fixture.run('lift r-x')
+  const before = (await journalOf(fixture.root)).length
+  const refusals: ReadonlyArray<readonly [string, RegExp]> = [
+    ['lift r-x', /r-x 不在生效，不用解除/],
+    ['lift r-nope', /没有 r-nope 这条规则/],
+    ['delete r-nope', /没有 r-nope 这条规则/],
+    ['delete builtin:glm-peak-pricing', /builtin:glm-peak-pricing 是写在代码里的规则/],
+    ['lift builtin:glm-peak-pricing', /写在代码里/],
+    ['on nope', /没有 nope 这个信号/],
+    ['set phase noon', /phase/],
+    ['clear phase', /没有手设的值/],
+    ['delete nope', /没有 nope 这个信号/],
+    ['let q-9', /没有 q-9 这张单/],
+    ['cancel q-9', /没有 q-9 这张单/],
+    ['recovery 9-9 照改', /没有编号 9-9 的记录/],
+    ['recovery 9-9 忽略', /没有编号 9-9 的记录/],
+  ]
+  for (const [input, reason] of refusals) {
+    const result = await fixture.run(input)
+    assert.equal(result.kind, 'error', input)
+    assert.match(result.text ?? '', reason, input)
+    assert.equal((result.text ?? '').includes('\n'), false, `${input}: one line`)
+  }
+  assert.equal((await journalOf(fixture.root)).length, before, 'nothing was written')
+}, { rules: COMMAND_FILE })
+
+rowTest('let and cancel act on a waiting call', async (fixture) => {
+  const board = openRulesBoard({ projectRoot: fixture.root, io: quickIo() })
+  const host = { pid: 1, startedAt: 1 }
+  await writeHeartbeat(board.paths, host, new Date().toISOString())
+  for (const signature of ['one', 'two']) {
+    const opened = await board.apply('harness', { op: 'ticket-open', sessionId: 'agent-1', agentLabel: 'main', host, signature, tool: 'pwsh', summary: `npm run ${signature}`, rules: ['r-x'] })
+    assert.ok(opened.ok, JSON.stringify(opened))
+  }
+  const letOnce = await wroteAfter(fixture, 'let q-1')
+  assert.equal(letOnce.result.kind, 'success', letOnce.result.text)
+  assert.match(letOnce.result.text ?? '', /^q-1 放行这一次/)
+  assert.deepEqual(letOnce.record, ['human', 'ticket-let-once', 'q-1'])
+  const cancel = await wroteAfter(fixture, 'cancel q-2')
+  assert.equal(cancel.result.kind, 'success', cancel.result.text)
+  assert.match(cancel.result.text ?? '', /^q-2 已取消/)
+  assert.deepEqual(cancel.record, ['human', 'ticket-cancel', 'q-2'])
+  assert.match((await fixture.run('cancel q-2')).text ?? '', /q-2 已经关了，不用取消/)
+}, { rules: COMMAND_FILE })
+
+/** Lines no engine wrote, as an outside writer leaves them; the row's settling lists them under the labels the person types. */
+async function forgeLines(fixture: Fixture): Promise<string[]> {
+  const notice = { kind: 'late-block', rule: 'r-x', text: 'forged', at: '2026-10-28T06:00:00.000Z' }
+  const lines = ['n-1', 'n-2'].map(key => JSON.stringify({ at: '2026-10-28T06:00:00.000Z', actor: 'harness', op: 'notice-add', changes: [{ path: ['notices', key], value: notice }] }))
+  for (const line of lines) await appendFile(join(fixture.root, '.llm', 'rules', 'journal.jsonl'), `${line}\n`)
+  await fixture.runtime.create()
+  return Object.values(loadState(openRulesBoard({ projectRoot: fixture.root }).paths).state.unresolved ?? {}).map(entry => entry.label).sort()
+}
+
+rowTest('recovery takes the numbers the health line names: 照改 makes the line the state\'s, 忽略 only clears it', async (fixture) => {
+  await fixture.runtime.create()
+  const labels = await forgeLines(fixture)
+  assert.equal(labels.length, 2)
+  assert.equal(health(fixture.runtime).status, 'degraded')
+  assert.ok(health(fixture.runtime).reason.includes(`/rules recovery ${labels[0]} 照改`), health(fixture.runtime).reason)
+  assert.ok(health(fixture.runtime).reason.includes(`/rules recovery ${labels[0]} 忽略`), health(fixture.runtime).reason)
+  assert.equal(health(fixture.runtime).reason.includes('这一版还没有处理'), false)
+  const accepted = await wroteAfter(fixture, `recovery ${labels[0]} 照改`)
+  assert.equal(accepted.result.kind, 'success', accepted.result.text)
+  assert.match(accepted.result.text ?? '', new RegExp(`^已照改 ${labels[0]}`))
+  assert.deepEqual(accepted.record, ['human', 'recovery-accept', labels[0]])
+  const dismissed = await wroteAfter(fixture, `recovery ${labels[1]} dismiss`)
+  assert.equal(dismissed.result.kind, 'success', dismissed.result.text)
+  assert.match(dismissed.result.text ?? '', new RegExp(`^已忽略 ${labels[1]}`))
+  assert.deepEqual(dismissed.record, ['human', 'recovery-dismiss', labels[1]])
+  await fixture.runtime.create()
+  assert.equal(health(fixture.runtime).status, 'active')
+}, { rules: COMMAND_FILE })
+
+rowTest('recovery 文件 照改 makes a rules file somebody else changed the state\'s, and 忽略 writes the board\'s own back', async (fixture) => {
+  const rules = join(fixture.root, 'docs', 'rules', 'rules.json')
+  await fixture.runtime.create()
+  const mine = await readFile(rules, 'utf8')
+  await writeFile(rules, mine.replace('No x', 'No x, by hand'))
+  await fixture.runtime.create()
+  assert.match(health(fixture.runtime).reason, /仓库里的规则文件被规则板以外改过/)
+  const adopted = await wroteAfter(fixture, 'recovery 文件 照改')
+  assert.equal(adopted.result.kind, 'success', adopted.result.text)
+  assert.deepEqual(adopted.record, ['human', 'repo-adopt', 'rules.json'])
+  assert.equal(loadState(openRulesBoard({ projectRoot: fixture.root }).paths).state.rules?.['r-x']?.title, 'No x, by hand')
+  assert.match((await fixture.run('recovery file 照改')).text ?? '', /没有被规则板以外改过，不用处理/)
+  await writeFile(rules, mine.replace('No y', 'No y, by hand'))
+  await fixture.runtime.create()
+  const restored = await wroteAfter(fixture, 'recovery 文件 忽略')
+  assert.equal(restored.result.kind, 'success', restored.result.text)
+  assert.deepEqual(restored.record, ['human', 'repo-restore', 'rules.json'])
+  const back = await readFile(rules, 'utf8')
+  assert.ok(back.includes('No x, by hand') && !back.includes('No y, by hand'), 'the board\'s own file is back')
+}, { rules: COMMAND_FILE })
+
+rowTest('show tells the person what rules_show tells an agent, in Chinese: the level, the rules in force, what is waiting and the signals', async (fixture) => {
+  await fixture.run('on code-freeze')
+  const result = await fixture.run('show')
+  assert.equal(result.kind, 'success')
+  const text = result.text ?? ''
+  assert.match(text, /^规则板 · rules-row-\w+/)
+  assert.ok(text.includes('高峰模式：少做（出厂默认）'), text)
+  for (const line of ['- r-x「No x」：拦下', '- r-y「No y」：拦下', '- builtin:glm-peak-pricing', '- code-freeze：开（手设）']) assert.ok(text.includes(line), `${line}\n${text}`)
+  assert.ok(text.includes('在等的工作：没有'), text)
+  assert.equal((await journalOf(fixture.root)).filter(record => record.op === 'signal-manual').length, 1, 'looking wrote no operation')
+}, { rules: COMMAND_FILE })

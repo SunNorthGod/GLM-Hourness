@@ -13,52 +13,20 @@
  * right path exist. Denials are journaled like the guard row's, with the
  * call's origin (src/guard/origin.ts).
  */
-import { isAbsolute, relative, resolve } from 'node:path'
+import { resolve } from 'node:path'
 import type { JsonValue } from '../shared/json.ts'
 import type { PreExecuteHost, ServiceLookup } from '../shared/dsh-min.ts'
 import { GRAPH_FILES_DECLARATION } from '../graph/service.ts'
 import { dialectNames, dialectService, dialectWarner, toNativeTool } from '../shared/dialect.ts'
 import { sessionRoute } from '../shared/route.ts'
+import { writesInto } from './directory-writes.ts'
 import { baseFor, type ViolationRecord } from './index.ts'
 import { originOf } from './origin.ts'
-import { evaluate, fileToolsOnly, NATIVE_FACE, renderCorrection, shellCommandOf, type Correction, type GuardRule, type RuleVerdict, type ToolCall } from './rules.ts'
+import { evaluate, renderCorrection, type Correction, type GuardRule, type RuleVerdict, type ToolCall } from './rules.ts'
 
 export const GRAPH_FILES_RULE = 'graph-files-only'
 
 const ALLOW: RuleVerdict = { kind: 'allow' }
-
-function argsOf(call: ToolCall): Record<string, JsonValue> | undefined {
-  return typeof call.arguments === 'object' && call.arguments !== null && !Array.isArray(call.arguments) ? call.arguments : undefined
-}
-
-/** The path a file tool writes (`call.name` is the DSH native): write and edit take file_path; str_replace_editor writes on every command but view. */
-function writeTarget(call: ToolCall): string | undefined {
-  const args = argsOf(call)
-  switch (call.name) {
-    case 'write': case 'edit':
-      return typeof args?.file_path === 'string' ? args.file_path : undefined
-    case 'str_replace_editor':
-      return args?.command !== 'view' && typeof args?.path === 'string' ? args.path : undefined
-    default:
-      return undefined
-  }
-}
-
-/** Comparable form of a path: forward slashes, no trailing slash, lower case (Windows file systems ignore case). */
-function pathKey(path: string): string {
-  return path.replaceAll('\\', '/').replace(/\/+/g, '/').replace(/\/$/, '').toLowerCase()
-}
-
-/** After a mention: a path-name character would make it a longer name (docs/graph.svg, docs/graphs). */
-const NAME_AFTER = String.raw`[\p{L}\p{N}_.\-]`
-/** Before a mention: a path-name character or a separator would make it part of a longer path (x/docs/graph). */
-const NAME_BEFORE = String.raw`[\p{L}\p{N}_.\-/:]`
-
-/** Matches a mention of a normalized directory spelling in a normalized command; ./ may precede it. */
-function mention(spelling: string): RegExp {
-  const escaped = spelling.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  return new RegExp(`(?<!${NAME_BEFORE})(?:\\./)?${escaped}(?!${NAME_AFTER})`, 'u')
-}
 
 /**
  * The rule for one call: `graphDir` is the absolute graph directory, `cwd`
@@ -66,26 +34,15 @@ function mention(spelling: string): RegExp {
  * resolve; without it a relative target cannot be judged and passes.
  */
 export function graphFilesOnly(graphDir: string, cwd: string | undefined): GuardRule {
-  const root = pathKey(resolve(graphDir))
-  const inside = (target: string): boolean => {
-    if (!isAbsolute(target) && cwd === undefined) return false
-    const key = pathKey(cwd === undefined ? resolve(target) : resolve(cwd, target))
-    return key === root || key.startsWith(`${root}/`)
-  }
-  const fromCwd = cwd === undefined ? undefined : pathKey(relative(resolve(cwd), resolve(graphDir)))
-  const mentions = [root, ...(fromCwd === undefined || fromCwd.length === 0 || fromCwd.startsWith('..') || isAbsolute(fromCwd) ? [] : [fromCwd])].map(mention)
+  const writes = writesInto([graphDir], cwd)
   const deny = (fact: string): RuleVerdict => ({ kind: 'deny', rule: GRAPH_FILES_RULE, correction: correction(fact, resolve(graphDir)) })
   return {
     id: GRAPH_FILES_RULE,
     declare: GRAPH_FILES_DECLARATION,
     detect(call) {
-      const target = writeTarget(call)
-      if (target !== undefined) return inside(target) ? deny(`You tried to write "${target}".`) : ALLOW
-      // The shell text as file-tools-only reads it (terminal_send carries it in `text`).
-      const shell = shellCommandOf(call)
-      if (shell === undefined || fileToolsOnly.detect(call, NATIVE_FACE).kind !== 'deny') return ALLOW
-      const normalized = pathKey(shell.command)
-      return mentions.some(pattern => pattern.test(normalized)) ? deny(`You tried to change project graph files through the shell: "${shell.command}".`) : ALLOW
+      const write = writes(call)
+      if (write === undefined) return ALLOW
+      return deny(write.kind === 'file' ? `You tried to write "${write.target}".` : `You tried to change project graph files through the shell: "${write.command}".`)
     },
   }
 }

@@ -118,7 +118,7 @@ export function builtinRulesFor(level: PeakLevel): readonly BuiltinRule[] {
 }
 
 /** Every row the catalog lists is in the orchestration package (design §10.1). */
-const PLUGIN = 'dsh-hourness'
+export const BUILTIN_PLUGIN = 'dsh-hourness'
 
 /**
  * The rules other rows implement, and the rules board's own, listed read-only
@@ -128,14 +128,14 @@ const PLUGIN = 'dsh-hourness'
  * with the rules row.
  */
 export const CATALOG: readonly CatalogEntry[] = [
-  ...GUARD_RULES.map((rule): CatalogEntry => ({ id: `${rule.row}:${rule.id}`, title: rule.title, row: rule.row, effect: 'block', plugin: PLUGIN })),
-  { id: 'rules:files-only', title: '规则文件只经规则板改：写规则目录的调用会被拒', row: 'rules', effect: 'block', plugin: PLUGIN },
+  ...GUARD_RULES.map((rule): CatalogEntry => ({ id: `${rule.row}:${rule.id}`, title: rule.title, row: rule.row, effect: 'block', plugin: BUILTIN_PLUGIN })),
+  { id: 'rules:files-only', title: '规则文件只经规则板改：写规则目录的调用会被拒', row: 'rules', effect: 'block', plugin: BUILTIN_PLUGIN },
   ...BUILTIN_RULES.map((rule): CatalogEntry => ({
     id: rule.id,
     title: rule.title,
     row: 'rules',
     effect: rule.action.kind,
-    plugin: PLUGIN,
+    plugin: BUILTIN_PLUGIN,
     ...(rule.toldBy === undefined ? {} : { toldBy: rule.toldBy }),
   })),
 ]

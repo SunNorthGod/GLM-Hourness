@@ -16,7 +16,7 @@
  * project writes nothing; `ensureIgnored` is the one function here that
  * does, and only when a board is about to create its runtime directory.
  */
-import { readFileSync, statSync } from 'node:fs'
+import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { appendFile, mkdir, readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join, parse, resolve } from 'node:path'
@@ -103,6 +103,37 @@ export function gitDirOf(root: string): string | undefined {
   const entry = gitEntry(root)
   if (entry === undefined) return undefined
   return entry.kind === 'dir' ? join(root, '.git') : namedGitDir(root, entry.text)
+}
+
+/**
+ * The directories of a repository's work trees, as `git worktree list` gives
+ * them, read from the git directory without a process: the project root (the
+ * main checkout) first, then the work tree each `worktrees/<name>/gitdir` file
+ * of the git directory names, in the order of the names. An entry whose file is
+ * missing or empty is not a work tree (git prunes such an entry). Only a main
+ * checkout has the list: a directory whose `.git` is a file, or that has none,
+ * gives an empty one.
+ */
+export function worktreesOf(root: string): readonly string[] {
+  if (gitEntry(root)?.kind !== 'dir') return []
+  const registry = join(root, '.git', 'worktrees')
+  let names: string[]
+  try {
+    names = readdirSync(registry).sort()
+  }
+  catch {
+    return [root]
+  }
+  const trees = names.flatMap((name) => {
+    try {
+      const pointer = readFileSync(join(registry, name, 'gitdir'), 'utf8').trim()
+      return pointer === '' ? [] : [dirname(resolve(registry, name, pointer))]
+    }
+    catch {
+      return []
+    }
+  })
+  return [root, ...trees]
 }
 
 /**

@@ -8,6 +8,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { creditPricing } from '../src/glm-llm/credits.ts'
 import { PEAK_LEVEL_WORDS, PEAK_MODE_SERVICE, PEAK_REDUCE_GLM_WORKERS, peakHoldOf, peakModeIntro, peakModeService, peakModeState, type PeakLevel, type PeakModeService } from '../src/shared/peak-mode.ts'
+import { pluginLabel } from '../src/shared/plugin-labels.ts'
 import { nextPeakChange } from '../src/shared/pricing.ts'
 import { serviceStore } from './fake-rc3.ts'
 
@@ -99,4 +100,11 @@ test('nextPeakChange names the first whole minute the GLM plan changes between p
   assert.equal(nextPeakChange(() => true, at('2026-10-28T15:00:00+08:00')), undefined, 'a plan that is always peak does not change')
   assert.equal(nextPeakChange(ms => ms < at('2026-10-28T15:00:30+08:00'), at('2026-10-28T15:00:00+08:00'), 120_000), at('2026-10-28T15:01:00+08:00'))
   assert.equal(nextPeakChange(ms => ms < at('2026-10-28T16:00:00+08:00'), at('2026-10-28T15:00:00+08:00'), 600_000), undefined, 'a change beyond the horizon is not found')
+})
+
+test('pluginLabel names the two packages as the plugin manager shows them and any other name as itself', () => {
+  assert.equal(pluginLabel('dsh-hourness'), '项目编排')
+  assert.equal(pluginLabel('dsh-glm-zcode'), 'GLM 通道')
+  assert.equal(pluginLabel('dsh-something-else'), 'dsh-something-else')
+  for (const inherited of ['constructor', 'toString', '__proto__']) assert.equal(pluginLabel(inherited), inherited, 'a name every object has is not a package')
 })
