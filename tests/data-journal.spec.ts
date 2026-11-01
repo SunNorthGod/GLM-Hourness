@@ -9,6 +9,8 @@
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import type { open } from 'node:fs/promises'
+import { createRequire, syncBuiltinESMExports } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
@@ -302,6 +304,54 @@ test('when the ignore line cannot be written the directory is not created and th
   assert.ok(!existsSync(join(root, '.llm')), '.llm/ was not created')
 })
 
+type FsPromises = { open: typeof open }
+const fsPromises = createRequire(import.meta.url)('node:fs/promises') as FsPromises
+
+/** Make creating a lock file fail with EPERM `times` times (what Windows reports when another process is deleting or has just replaced the name), then behave as before; `restore` puts the real `open` back. */
+function failLockCreation(times: number): { readonly restore: () => void, readonly failed: () => number } {
+  const real = fsPromises.open
+  let failed = 0
+  fsPromises.open = ((path: Parameters<typeof open>[0], flags?: Parameters<typeof open>[1], mode?: Parameters<typeof open>[2]) => {
+    if (typeof path === 'string' && path.endsWith('.lock') && flags === 'wx' && failed < times) {
+      failed += 1
+      return Promise.reject(Object.assign(new Error(`EPERM: operation not permitted, open '${path}'`), { code: 'EPERM' }))
+    }
+    return real(path, flags, mode)
+  })
+  syncBuiltinESMExports()
+  return { restore: () => { fsPromises.open = real; syncBuiltinESMExports() }, failed: () => failed }
+}
+
+test('creating the lock file failing with EPERM a few times (Windows, another process deleting it) is waited out, not reported as an I/O error', async () => {
+  const file = join(scratch(), 'j.jsonl')
+  const injected = failLockCreation(3)
+  try {
+    const result = await appendJournal(file, idsFold, add(tick('a')), OPTIONS)
+    assert.equal(result.status, 'ok', JSON.stringify(result))
+    assert.equal(injected.failed(), 3, 'the injected failures were hit')
+  }
+  finally {
+    injected.restore()
+  }
+  assert.equal(linesOf(file).length, 1)
+  assert.deepEqual(readdirSync(join(file, '..')).filter(name => name.includes('.lock')), [], 'no lock is left behind')
+})
+
+test('an EPERM that lasts the whole wait is io at the lock stage, with the system message', async () => {
+  const file = join(scratch(), 'j.jsonl')
+  const injected = failLockCreation(Number.POSITIVE_INFINITY)
+  try {
+    const result = await appendJournal(file, idsFold, add(tick('a')), { ...OPTIONS, lock: clockEnvironment() })
+    assert.equal(result.status, 'io')
+    assert.equal(result.status === 'io' && result.stage, 'lock')
+    assert.match(result.status === 'io' ? result.message : '', /EPERM/)
+    assert.ok(injected.failed() > 10, `it tried again meanwhile (${injected.failed()} attempts)`)
+  }
+  finally {
+    injected.restore()
+  }
+  assert.ok(!existsSync(file), 'nothing was written')
+})
 test('two processes appending 200 records each to one journal leave seq 1 to 400 without a gap or a repeat', { timeout: 120_000 }, async () => {
   const file = join(scratch(), 'shared', 'j.jsonl')
   const journal = pathToFileURL(resolve(import.meta.dirname, '..', 'src', 'data', 'journal.ts')).href

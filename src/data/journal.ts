@@ -235,7 +235,9 @@ export interface AppendOptions {
 }
 
 /** M5's lock values (docs/ORCHESTRATION.md §17.6). */
-const LOCK_OPTIONS: LockOptions = { retryMs: 50, waitMs: 2_000, staleMs: 30_000, bootToleranceMs: 120_000, keepStale: true }
+const LOCK_RETRY_MS = 50
+const LOCK_WAIT_MS = 2_000
+const LOCK_OPTIONS: LockOptions = { retryMs: LOCK_RETRY_MS, waitMs: LOCK_WAIT_MS, staleMs: 30_000, bootToleranceMs: 120_000, keepStale: true }
 
 const queues = new Map<string, Promise<unknown>>()
 const prepared = new Set<string>()
@@ -270,6 +272,27 @@ function build(seq: number, at: string, input: NewRecord): JournalRecord {
   }
 }
 
+/**
+ * `acquireLock`, trying again while creating the lock file fails with EPERM.
+ * On Windows a process that has just deleted or replaced the name makes
+ * `open(file, 'wx')` fail that way for a moment (about one attempt in thirty
+ * when several processes take the lock in a loop), and the lock module only
+ * reads EEXIST as "someone holds it". A permission problem that stays is
+ * reported after the wait a held lock gets.
+ */
+async function takeLock(file: string, environment: LockEnvironment, options: LockOptions): Promise<Awaited<ReturnType<typeof acquireLock>>> {
+  const deadline = environment.now() + LOCK_WAIT_MS
+  for (;;) {
+    try {
+      return await acquireLock(file, environment, options)
+    }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EPERM' || environment.now() >= deadline) throw error
+      await environment.sleep(LOCK_RETRY_MS)
+    }
+  }
+}
+
 async function prepare(directory: string, kind: AppendOptions['directory']): Promise<void> {
   const key = keyOf(directory)
   if (prepared.has(key)) return
@@ -289,7 +312,7 @@ async function write<Refusal, State>(path: string, fold: Fold<State>, plan: Plan
   const lockOptions: LockOptions = { ...LOCK_OPTIONS, holder: `m5:${options.row}` }
   let lock: Awaited<ReturnType<typeof acquireLock>>
   try {
-    lock = await acquireLock(`${path}.lock`, environment, lockOptions)
+    lock = await takeLock(`${path}.lock`, environment, lockOptions)
   }
   catch (error) {
     if (!missing(error)) return { status: 'io', stage: 'lock', message: messageOf(error) }
@@ -302,7 +325,7 @@ async function write<Refusal, State>(path: string, fold: Fold<State>, plan: Plan
       return { status: 'io', stage: 'directory', message: messageOf(again) }
     }
     try {
-      lock = await acquireLock(`${path}.lock`, environment, lockOptions)
+      lock = await takeLock(`${path}.lock`, environment, lockOptions)
     }
     catch (last) {
       return { status: 'io', stage: 'lock', message: messageOf(last) }
