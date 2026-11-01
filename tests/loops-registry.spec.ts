@@ -175,6 +175,30 @@ test('the namespace of M7\'s events is hourness., but only the execute row may u
   assert.ok(registry.events().has('hourness.handback'))
 })
 
+test('a hand-over whose namespace is hourness. from any row but the execute row is refused as a whole; the execute row\'s hand-over afterwards keeps all its events', () => {
+  const { registry, reports } = registryWith()
+  const refusal = { ok: false, reason: 'hourness 留给执行行（glm-hourness/execute），hourness. 的事件只从它收' }
+  const trunk = M7_EVENTS.find(declared => declared.id === 'hourness.trunk-advanced')
+  assert.ok(trunk)
+  const mine: LoopEntryDefinition = { ...M7_OPERATE.entries[0], id: 'hourness.mine' }
+  assert.deepEqual(registry.contribute(ENV, { events: [trunk], entries: [mine] }), refusal, 'entry and event in hourness.')
+  assert.deepEqual(registry.contribute(OPERATE, { events: [trunk] }), refusal, 'an event alone')
+  assert.deepEqual(registry.contribute(OPERATE, { entries: [mine] }), refusal, 'an entry alone')
+  assert.deepEqual(registry.contribute({ plugin: 'other-plugin', row: 'other/row' }, { actions: [{ id: 'hourness.act', title: '动作' }], run: done }), refusal, 'an action alone')
+  assert.equal(registry.events().has('hourness.trunk-advanced'), false)
+  assert.equal(registry.entries().length, 0)
+  assert.deepEqual(reports, [
+    'dsh-hourness 的 glm-hourness/env 交来的整份被拒：hourness 留给执行行（glm-hourness/execute），hourness. 的事件只从它收',
+    'dsh-hourness 的 glm-hourness/operate 交来的整份被拒：hourness 留给执行行（glm-hourness/execute），hourness. 的事件只从它收',
+    'other-plugin 的 other/row 交来的整份被拒：hourness 留给执行行（glm-hourness/execute），hourness. 的事件只从它收',
+  ])
+  const execute = registry.contribute(EXECUTE, M7_EXECUTE)
+  assert.ok(execute.ok)
+  assert.deepEqual(execute.dropped, [])
+  for (const declared of M7_EVENTS) assert.ok(registry.events().has(declared.id), declared.id)
+  assert.deepEqual(ids(registry.entries()), M7_ENTRIES.map(entry => entry.id))
+})
+
 test('a contribution that hands over nothing claims no namespace', () => {
   const { registry } = registryWith()
   const empty = registry.contribute(ENV, { entries: [] })

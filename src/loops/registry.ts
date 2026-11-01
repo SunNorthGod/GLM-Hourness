@@ -213,10 +213,10 @@ function eventsOf(raw: unknown): readonly string[] {
 
 /**
  * Check one hand-over against what the board knows. A hand-over is refused as a whole when the source is not a plugin
- * and a row, when a namespace is the loop row's (`loops`), nobody's (`channel`) or the rules row's (`gate`, which
- * declares gating events only), or when another source holds the namespace; everything else is dropped item by item.
- * The namespace is that of the first entry (else the first action, else the first event), and every id of the
- * hand-over starts with it; the execution row's events start with `hourness.`. At most 32 entries, 16 events and 16
+ * and a row, when a namespace is the loop row's (`loops`), the execution row's (`hourness`), nobody's (`channel`) or
+ * the rules row's (`gate`, which declares gating events only), or when another source holds the namespace; everything
+ * else is dropped item by item. The namespace is that of the first entry (else the first action, else the first
+ * event), and every id of the hand-over starts with it; the execution row's events start with `hourness.`. At most 32 entries, 16 events and 16
  * actions. A `script` or `check` entry, a machine scope and the rules row's entries are dropped. Pure; never throws.
  */
 export function validateContribution(source: ContributionSource, contribution: Contribution, context: ContributionContext): ContributionCheck {
@@ -238,6 +238,7 @@ export function validateContribution(source: ContributionSource, contribution: C
   if (namespace === 'gate' && row !== RULES_ROW) return noGate
   if (namespace === 'loops' && row !== LOOPS_SOURCE.row) return { ok: false, reason: 'loops 留给循环行' }
   if (namespace === 'channel') return { ok: false, reason: 'channel 是通道事件的名字空间，不能由一份交来的东西占用' }
+  if (namespace === 'hourness' && row !== EXECUTE_ROW) return { ok: false, reason: `hourness 留给执行行（${EXECUTE_ROW}），hourness. 的事件只从它收` }
   const holder = namespace === undefined ? undefined : context.owners.get(namespace)
   if (holder !== undefined && holder !== keyOf(source)) return { ok: false, reason: `${namespace} 已由 ${holder.slice(holder.indexOf('\n') + 1)} 交过` }
   const space = namespace ?? ''
