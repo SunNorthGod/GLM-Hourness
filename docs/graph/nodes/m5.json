@@ -197,6 +197,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "S6（R1，m5-5）实现完成：GLM 的汇报细度一节每个会话一次从 glmHournessMemory.depth 读人的常设档（落实 d-reporting-depth-keep）。HEAD 17696f5；build、preflight、test、probe 169/169、check:secrets 全部退出码 0。等评审。"
+    },
+    {
+      "at": "2026-11-01T12:16:29.309Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "S6（R1，m5-5）第 1 遍评审 APPROVED，无挡路项；两条不挡路留给合入步：DESIGN.md §2.5 的记忆行健康一行过期；M6 给 installDialect 加了 peakMode 参数之后，按位置传参的几处调用要重读。S7（L1，lessons-1）在 m5-memory-lessons 上提交为 001494a（基底 17696f5），build、preflight、test、probe 183/183 全部退出码 0，第 1 遍评审 APPROVED，无挡路项，7 条不挡路（例如 S3 留下的 ANSI 片段长度检查仍开着、候选因匹配到已删经验而被丢弃时的提示指向 restore 但它要的是一条经验）。S1 至 S7 全部通过，S8 至 S11 未开始。"
     }
   ]
 }

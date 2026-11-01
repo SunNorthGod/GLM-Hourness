@@ -359,6 +359,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "运行 feat-011-loop-runtime 已开（单 agent 一步派发，接 06c5e3e）：做 FEAT-011／计划 L4 —— 循环板的运行时核心，运行锁与心跳、交接、收件箱，不含脚本执行器；四道检查后按 d-wip-branch-push 推一次，报告写到 .agents/tasks/rules-loops/feat-011-report.md。本节点已是 doing。"
+    },
+    {
+      "at": "2026-11-01T12:16:29.112Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "运行 feat-011-loop-runtime 名义上完成，实际没有产出：分支 HEAD 仍是 06c5e3e，没有新提交，报告文件也没写出来，但工作树里留下 27 个改动过的文件（含 src/loops/index.ts、src/guard/index.ts、docs/DESIGN.md、docs/ORCHESTRATION.md、package.json、scripts/probe/run-probe.mjs），说明它改到一半就断了，和之前 BAD_DECRYPT 是同一类中断、只是这次被记成了完成。活没丢。重开为运行 feat-011-loop-runtime-2，明确交代先核这 27 处未提交改动、接着做完再过门禁与提交。"
     }
   ]
 }
