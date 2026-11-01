@@ -7,7 +7,9 @@
  * Writes to one graph directory are serialized within the process.
  */
 import { resolve } from 'node:path'
+import { ANSWER_MARKS } from '../shared/answer-marks.ts'
 import { CONCLUSION_REF, checkNode, nodeFile, type GraphIssue } from './format.ts'
+import { isReleased, moduleOf } from './modules.ts'
 import { PROPOSE_FIELDS, failure, parseMutation, type Failure, type Mutation, type ProposedNode } from './mutation.ts'
 import { PROPOSAL_FIELDS, PROPOSAL_LIMITS, codePointCount, proposalRecordRefusal } from './proposal.ts'
 import { OPEN_STATUSES, deciderOf, listOpenItems, projectNode, type OpenItems, type Projection } from './projection.ts'
@@ -17,6 +19,7 @@ import {
   DISPATCH_FIELDS,
   EDITABLE_FIELDS,
   isPassingEvidence,
+  STAGES,
   type Actor,
   type CardDimension,
   type DecisionOption,
@@ -29,6 +32,7 @@ import {
   type NodeType,
   type Status,
 } from './schema.ts'
+import { effectiveStage } from './stage.ts'
 import { graphRevision, hasErrors, loadGraph, writeNodes, type LoadedGraph, type NodeWrite } from './store.ts'
 import { validateGraph } from './validate.ts'
 
@@ -422,6 +426,17 @@ function questionRefusal(node: GraphNode, touched: (field: string) => boolean, b
   return undefined
 }
 
+/**
+ * Whether the node is, or is below, a module or a module candidate that is
+ * not released (docs/ORCHESTRATION.md §4.9): nothing under a module is built
+ * before its release, and what is built is what the release approved, so a
+ * task proposed there waits for that release like the rest of the design.
+ */
+function underUnreleasedModule(graph: LoadedGraph, node: GraphNode): boolean {
+  const module = moduleOf(graph, node)
+  return module !== undefined && !isReleased(module)
+}
+
 /** Initial status of a proposal (§2.9 propose row). */
 function initialStatus(context: Context, node: ProposedNode): Status {
   if (context.privileged) return 'approved'
@@ -431,7 +446,7 @@ function initialStatus(context: Context, node: ProposedNode): Status {
   if (parent === undefined) return 'proposed'
   if (node.type === 'task') {
     const underOpenWork = (parent.type === 'feature' || parent.type === 'task') && (parent.status === 'approved' || parent.status === 'doing')
-    return underOpenWork ? 'approved' : 'proposed'
+    return underOpenWork && !underUnreleasedModule(context.graph, parent) ? 'approved' : 'proposed'
   }
   if (OPEN_PARENT_TYPES.has(node.type)) return OPEN_STATUSES.has(parent.status) ? 'approved' : 'proposed'
   return 'proposed'
@@ -617,10 +632,37 @@ function shapeChange(node: GraphNode, set: Readonly<Partial<Record<EditableField
   return failure('invalid', `"${node.id}" is ${node.options === undefined ? 'a proposal' : 'a question with options'}, so ${foreign} cannot be set on it`, 'propose a new question', `set.${foreign}`)
 }
 
+/**
+ * The one edit of a stage that a write without the human's authority may
+ * make (§3.14.7, docs/ORCHESTRATION.md §4.8): a module sent back to design.
+ * It is the second tier of changes during development, reversible and local
+ * to the module, so the main agent decides it and the human sees it on the
+ * next one-page release note, but it is not the human's agreement and must
+ * not read as one. 'allowed' when the node is a module (a feature directly
+ * under a goal, approved or doing) that is released, `set` holds the stage
+ * design and nothing else, and the reason says why without beginning with
+ * the words of an agreement; a Failure when it has that shape and the reason
+ * begins that way; undefined for any other edit, which the rules of the
+ * actor decide as before.
+ */
+function moduleSendBack(context: Context, node: GraphNode, set: Readonly<Partial<Record<EditableField, unknown>>>, reason: string): 'allowed' | Failure | undefined {
+  const parent = node.parent === undefined ? undefined : context.graph.nodes.get(node.parent)
+  const module = node.type === 'feature' && parent?.type === 'goal' && node.stage !== undefined && (node.status === 'approved' || node.status === 'doing')
+  const stage = effectiveStage(node)
+  const fromRelease = stage !== null && STAGES.indexOf(stage) >= STAGES.indexOf('release')
+  if (!module || !fromRelease || Object.keys(set).length !== 1 || set.stage !== 'design' || reason.trim().length === 0) return undefined
+  if (reason.startsWith(ANSWER_MARKS.agree)) {
+    return failure('invalid', `the reason of sending "${node.id}" back to design begins like the human's agreement`, 'a module sent back to design is not the human\'s agreement: write why it goes back in your own words', 'reason')
+  }
+  return 'allowed'
+}
+
 function planEdit(context: Context, node: GraphNode, set: Readonly<Partial<Record<EditableField, unknown>>>, reason: string): Plan | Failure {
   const { actor, at } = context
   const fields = Object.keys(set) as EditableField[]
-  if (!context.privileged) {
+  const sendBack = context.privileged ? undefined : moduleSendBack(context, node, set, reason)
+  if (sendBack !== undefined && sendBack !== 'allowed') return sendBack
+  if (!context.privileged && sendBack === undefined) {
     const relayHint = 'if the human asked for it in the chat, send their words verbatim as relay'
     const first = node.history[0]
     const ownProposal = node.status === 'proposed' && first?.op === 'propose' && first.actor === actor

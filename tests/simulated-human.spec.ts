@@ -13,7 +13,7 @@ interface Reply {
   readonly kind: 'reply' | 'silent'
   readonly rule: number
   readonly text?: string
-  readonly shown: ReadonlyArray<{ readonly kind: string, readonly number: number, readonly form?: string }>
+  readonly shown: ReadonlyArray<{ readonly kind: string, readonly number: number, readonly form?: string, readonly module?: string }>
   readonly used: Record<string, number>
 }
 
@@ -61,4 +61,15 @@ test('rules 4 to 6: a missing requirement item is answered, an unfinished goal g
   assert.equal(reply({ config, replied: 0, missing: 'risks' }).text, '你按经验定吧')
   assert.deepEqual([reply({ config, replied: 0, unreleased: true }).rule, reply({ config, replied: 0, unreleased: true }).text], [5, '你按经验定吧'])
   assert.deepEqual([reply({ config, replied: 0 }).kind, reply({ config, replied: 0 }).rule], ['silent', 6])
+})
+
+test('rule 3: the release of the framework and of each module are answered with their own sentences, and the module a sentence was for is logged', () => {
+  const config = readConfig({ replies: { release: ['补充：月底的汇总按金额从大到小排', '可以，放行'], module: ['补充：先做记录再做汇总', '可以，放行这个模块'] } })
+  const first = reply({ config, replied: 0, shown: [{ kind: 'release', number: 1 }] })
+  assert.deepEqual([first.rule, first.text, first.used], [3, '补充：月底的汇总按金额从大到小排', { release: 1 }])
+  const second = reply({ config, replied: 1, shown: [{ kind: 'release', number: 1 }, { kind: 'release', number: 2, module: 'module-a' }], used: first.used })
+  assert.equal(second.text, '可以，放行\n补充：先做记录再做汇总')
+  assert.deepEqual(second.shown, [{ kind: 'release', number: 1 }, { kind: 'release', number: 2, module: 'module-a' }], 'what was put is logged with the module')
+  const third = reply({ config, replied: 2, shown: [{ kind: 'release', number: 1, module: 'module-a' }], used: second.used })
+  assert.equal(third.text, '可以，放行这个模块', 'the next sentence of the module list')
 })

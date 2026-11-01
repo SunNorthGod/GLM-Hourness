@@ -986,6 +986,108 @@ const designInterview = designScenario(INTERVIEW, 'glm-5.3', () => interviewStep
   others: [interviewOther],
 })
 
+// The release of a design as a conversation, goal not split into modules (docs/ORCHESTRATION.md §3.1, §4.5, §6.9; M3 step 9). The graph has the human's goal-1 in
+// design with one design decision and one task, the main agent's own proposals; the decision has an empty "查过的现成方案：" followed by a line "如果失败：", which is
+// not a column, so the release is refused as gate_unmet for the missing column. The model fixes it, puts the release (propose_to_human, kind release) and shows
+// the text; the simulated human adds something (replies.release, first sentence); record_human_answer (add) notes it on the goal and moves nothing; the model
+// changes the design and puts it again, the person says it can go; record_human_answer (agree) approves what they were shown and releases the goal, each write
+// with their words. A subagent dispatched after that writes its file: the goal is released.
+const RELEASE = 'glm-design-release'
+const RELEASE_TEXT = '照上面的方案放行，可以吗？'
+const RELEASE_ADD = '补充：月底的汇总按金额从大到小排'
+const RELEASE_GO = '可以，放行'
+const RELEASE_BODY = '理由：一个人用，不要服务端\n架构：本地 JSON 文件\n查过的现成方案：ledger-cli 太重'
+await stageGraph(RELEASE, [
+  ['human', { type: 'goal', title: '记账小工具', stage: 'design', body: STAGE_BODY, acceptance: ['月底能看到按类别的合计'], nonGoals: ['不做手机版'] }],
+  ['llm', { type: 'decision', id: 'decision-1', title: '用本地文件存账', parent: 'goal-1', body: '理由：一个人用，不要服务端\n架构：本地 JSON 文件\n查过的现成方案：\n如果失败：文件被改坏', acceptance: ['月底出一张分类表'], nonGoals: ['不做同步'] }],
+  ['llm', { type: 'task', id: 'task-1', title: '写记账命令', parent: 'goal-1', acceptance: ['记一条能读回'], edges: [{ type: 'source', to: 'decision-1' }] }],
+])
+const releaseCall = args => ({ tool: { name: 'propose_to_human', arguments: { kind: 'release', goal: 'goal-1', text: RELEASE_TEXT, ...args } } })
+const recordRelease = args => ({ tool: { name: 'record_human_answer', arguments: { kind: 'release', goal: 'goal-1', ...args } } })
+const releaseShown = renderAsk(RELEASE_TEXT, 1)
+const designRelease = designScenario(RELEASE, 'glm-5.3', () => [
+  stageFocus('goal-1'),
+  releaseCall({}),
+  { tool: { name: 'graph_edit', arguments: { id: 'decision-1', rev: '{rev:decision-1}', set: { body: `${RELEASE_BODY}\n如果失败：文件被改坏` }, reason: 'probe: the column is filled' } } },
+  releaseCall({}),
+  { text: releaseShown },
+  recordRelease({ answer: 'add', words: [RELEASE_ADD], recordedAs: '汇总按金额从大到小排' }),
+  { tool: { name: 'graph_edit', arguments: { id: 'task-1', rev: '{rev:task-1}', set: { acceptance: ['记一条能读回', '汇总按金额从大到小排'] }, reason: 'probe: the supplement is in the plan' } } },
+  releaseCall({}),
+  { text: releaseShown },
+  recordRelease({ answer: 'agree', words: [RELEASE_GO], recordedAs: '照这个方案放行' }),
+  stageDispatch(RELEASE, 'D1', 'released.txt'),
+  stageWait,
+  { text: 'done', status: true },
+], {
+  wish: true,
+  human: { replies: { release: [RELEASE_ADD, RELEASE_GO] }, maxReplies: 2 },
+  extra: dispatchRow(join(runDir, RELEASE, 'dispatch.jsonl')),
+  others: [stageChild(RELEASE, 'released.txt')],
+})
+
+// The two-level release of a goal split into modules (docs/ORCHESTRATION.md §4.9; M3 step 9). The graph has the human's goal-1 in design with the framework decision,
+// the list of directions and two module candidates with the design of each below it, all the main agent's proposals. Nothing under a module is built before
+// its release: a subagent's write is refused while the goal is in design and while the module is. The framework is released with a page (the first page
+// lacks a module, which is refused), the candidates become modules in design; module-a is released with a page, after the person adds something to it; a write
+// for module-a runs, one for module-b is refused with the module named. The words of the person are not taken for a release that was not put to them; the main
+// agent sends module-a back to design on its own word, a subagent that does the same is refused and the main agent is told.
+const MODULES = 'glm-design-modules'
+const MODULES_NAMES = { framework: '用本地文件存账', a: '记账', b: '月底汇总', directions: ['数据只存在本机', '先记账再汇总'] }
+const MODULES_PAGE = `框架：${MODULES_NAMES.framework}。\n模块：${MODULES_NAMES.a}、${MODULES_NAMES.b}。\n你定过的方向：${MODULES_NAMES.directions.join('；')}。`
+const MODULES_PAGE_A = `你会看到什么：${MODULES_NAMES.a}这一块做完以后的样子。\n它自己会做的：照图上的任务做。\n什么时候问你：碰到要你定的事。\n替你定了的方向：${MODULES_NAMES.directions[0]}。`
+const MODULES_PAGE_B = `你会看到什么：${MODULES_NAMES.b}这一块做完以后的样子。\n它自己会做的：照图上的任务做。\n什么时候问你：碰到要你定的事。\n替你定了的方向：${MODULES_NAMES.directions[1]}。`
+const MODULES_ADD = '补充：先做记录再做汇总'
+const MODULES_FIVE = { body: '理由：一个人用，不要服务端\n架构：本地 JSON 文件\n查过的现成方案：ledger-cli 太重', acceptance: ['月底出一张分类表'], nonGoals: ['不做同步'] }
+await stageGraph(MODULES, [
+  ['human', { type: 'goal', title: '记账小工具', stage: 'design', body: STAGE_BODY, acceptance: ['月底能看到按类别的合计'], nonGoals: ['不做手机版'] }],
+  ['llm', { type: 'decision', id: 'decision-fw', title: MODULES_NAMES.framework, parent: 'goal-1', ...MODULES_FIVE }],
+  ['llm', { type: 'norm', id: 'norm-directions', title: '方向清单', parent: 'goal-1', acceptance: MODULES_NAMES.directions }],
+  ...[['a', MODULES_NAMES.a], ['b', MODULES_NAMES.b]].flatMap(([key, title]) => [
+    ['llm', { type: 'feature', id: `module-${key}`, title, parent: 'goal-1', edges: [{ type: 'source', to: 'decision-fw' }] }],
+    ['llm', { type: 'decision', id: `decision-${key}`, title: `${title}怎么做`, parent: `module-${key}`, ...MODULES_FIVE }],
+    ['llm', { type: 'task', id: `task-${key}`, title: `写${title}`, parent: `module-${key}`, acceptance: ['能用'], edges: [{ type: 'source', to: `decision-${key}` }] }],
+  ]),
+])
+const modulesSteps = [
+  ['focus-a', stageFocus('task-a')],
+  ['dispatch-1', stageDispatch(MODULES, 'M1', 'modules-1.txt')],
+  ['wait-1', stageWait],
+  ['page-short', releaseCall({ page: MODULES_PAGE.replace(MODULES_NAMES.b, '') })],
+  ['put-framework', releaseCall({ page: MODULES_PAGE })],
+  ['show-framework', { text: renderAsk(RELEASE_TEXT, 1, undefined, MODULES_PAGE, false) }],
+  ['record-framework', recordRelease({ answer: 'agree', words: [RELEASE_GO], recordedAs: '框架、模块和方向放行' })],
+  ['dispatch-2', stageDispatch(MODULES, 'M2', 'modules-2.txt')],
+  ['wait-2', stageWait],
+  ['put-a', releaseCall({ module: 'module-a', page: MODULES_PAGE_A })],
+  ['show-a', { text: renderAsk(RELEASE_TEXT, 1, undefined, MODULES_PAGE_A, false) }],
+  ['record-a-add', recordRelease({ module: 'module-a', answer: 'add', words: [MODULES_ADD], recordedAs: '先记录后汇总' })],
+  ['revise-a', { tool: { name: 'graph_edit', arguments: { id: 'task-a', rev: '{rev:task-a}', set: { acceptance: ['能用', '先记录后汇总'] }, reason: 'probe: the supplement is in the plan' } } }],
+  ['put-a-again', releaseCall({ module: 'module-a', page: MODULES_PAGE_A })],
+  ['show-a-again', { text: renderAsk(RELEASE_TEXT, 1, undefined, MODULES_PAGE_A, false) }],
+  ['record-a', recordRelease({ module: 'module-a', answer: 'agree', words: ['可以，放行这个模块'], recordedAs: '放行记账' })],
+  ['dispatch-3', stageDispatch(MODULES, 'M3', 'modules-3.txt')],
+  ['wait-3', stageWait],
+  ['focus-b', stageFocus('task-b')],
+  ['dispatch-4', stageDispatch(MODULES, 'M4', 'modules-4.txt')],
+  ['wait-4', stageWait],
+  ['record-b-unshown', recordRelease({ module: 'module-b', answer: 'agree', words: ['可以，放行这个模块'], recordedAs: '放行月底汇总' })],
+  ['put-b', releaseCall({ module: 'module-b', page: MODULES_PAGE_B })],
+  ['record-b-invented', recordRelease({ module: 'module-b', answer: 'agree', words: ['我编的一句话'], recordedAs: '放行月底汇总' })],
+  ['record-b-borrowed', recordRelease({ module: 'module-b', answer: 'agree', words: ['可以，放行这个模块'], recordedAs: '放行月底汇总' })],
+  ['dispatch-5', stageDispatch(MODULES, 'M5', 'unused.txt')],
+  ['wait-5', stageWait],
+  ['send-back', { tool: { name: 'graph_edit', arguments: { id: 'module-a', rev: '{rev:module-a}', set: { stage: 'design' }, reason: 'probe: the direction of the module has to change' } } }],
+  ['done', { text: 'done', status: true }],
+]
+const modulesAt = name => modulesSteps.findIndex(([step]) => step === name)
+const modulesChild = [{ tool: { name: 'graph_edit', arguments: { id: 'module-a', rev: '{rev:module-a}', set: { stage: 'design' }, reason: 'probe: the child sends the module back' } } }, { text: 'child done' }]
+const designModules = designScenario(MODULES, 'glm-5.3', () => modulesSteps.map(([, step]) => step), {
+  wish: true,
+  human: { replies: { release: [RELEASE_GO], module: [MODULES_ADD, '可以，放行这个模块'] }, maxReplies: 3 },
+  extra: dispatchRow(join(runDir, MODULES, 'dispatch.jsonl')),
+  others: [stageChild(MODULES, 'modules-1.txt'), stageChild(MODULES, 'modules-2.txt'), stageChild(MODULES, 'modules-3.txt'), stageChild(MODULES, 'modules-4.txt'), modulesChild],
+})
 const designRecord = (scenario) => readHolder(holderFileOf(join(scenario.dir, 'dsh-home', 'glm-hourness'), join(scenario.ws, 'docs', 'graph')))
 const MAIN_HEAD = '# Main agent\nYou are the main agent of this project'
 const sectionAt = step => step?.system.indexOf(MAIN_HEAD) ?? -1
@@ -1220,6 +1322,90 @@ function interviewChecks() {
   ]
 }
 
+function releaseChecks() {
+  const main = designRelease.steps.filter(step => step.sessionId === designRelease.steps[0]?.sessionId)
+  const nodeOf = (id) => {
+    try {
+      return JSON.parse(readFileSync(join(stageWs(RELEASE), 'docs', 'graph', 'nodes', `${id}.json`), 'utf8'))
+    }
+    catch {
+      return { history: [] }
+    }
+  }
+  // The result of the tool call a scripted step made is in the next request.
+  const resultOf = index => lastToolResult(main[index + 1])
+  const jsonOf = index => { try { return JSON.parse(resultOf(index)?.text ?? '') } catch { return undefined } }
+  const goal = nodeOf('goal-1')
+  const replies = designRelease.human.filter(entry => entry.kind === 'reply')
+  const unmet = resultOf(1)
+  const first = jsonOf(3)
+  const added = jsonOf(5)
+  const released = jsonOf(9)
+  const child = stageChildren(RELEASE, designRelease)[0]
+  const violations = jsonl(join(runDir, RELEASE, 'home', 'audit', 'violations.jsonl'))
+  const note = goal.history.find(entry => entry.op === 'comment')
+  const stageWrite = goal.history.findLast(entry => entry.changes?.stage?.to === 'release')
+  const approvals = ['decision-1', 'task-1'].map(id => nodeOf(id).history.at(-1))
+  return [
+    ['design release: the scripted model made one request for each step and the design row activated quietly', main.length === 13 && designRelease.status === 0 && !stderrOf(RELEASE).includes('dsh-glm-hourness/design'), `${main.length} requests; exit ${designRelease.status}`],
+    ['design release: the release put before the design is complete is refused as gate_unmet naming the column that is missing as the person reads it, and nothing is shown: an empty "查过的现成方案：" followed by a line "如果失败：" is an empty column', unmet?.isError === true && unmet.text.includes('"code":"gate_unmet"') && unmet.text.includes('架构（含查过的现成方案）') && !unmet.text.includes('"tool":"propose_to_human"'), (unmet?.text ?? '').slice(0, 200)],
+    ['design release: with the column filled and the line "如果失败：" still there, the release is put: the text is the model\'s sentence under its number, and the set it will approve is the decision and the task with their revisions', first?.kind === 'release' && first.goal === 'goal-1' && first.number === 1 && first.text === releaseShown && isDeepStrictEqual(first.releaseSet?.map(entry => entry.id), ['decision-1', 'task-1']) && first.releaseSet.every(entry => /^[0-9a-f]+$/.test(entry.rev)) && nodeOf('decision-1').body.includes('如果失败：'), JSON.stringify(first ?? null).slice(0, 220)],
+    ['design release: the person is spoken to twice, by rule 3, both times about a release (number 1): first they add something, then they say it can go', replies.length === 2 && replies.every(reply => reply.rule === 3 && isDeepStrictEqual(reply.shown, [{ kind: 'release', number: 1 }])) && replies[0].text === RELEASE_ADD && replies[1].text === RELEASE_GO, JSON.stringify(replies.map(reply => [reply.rule, reply.text]))],
+    ['design release: record_human_answer (add) notes their words on the goal and moves nothing: the note begins with the mark of an addition, the design is still proposals, and the goal is still in design when the note is written', added?.outcome === 'added' && note?.text?.startsWith('人在对话里补充：「补充：月底的汇总按金额从大到小排」') === true && goal.history.indexOf(note) < goal.history.indexOf(stageWrite) && added.stage === undefined, JSON.stringify(added ?? null)],
+    ['design release: after the design is changed the release is put again and the person says it can go; record_human_answer (agree) releases the goal: the outcome is released, and the decision and the task are approved with their words as relay and the mark of the agreement', released?.outcome === 'released' && released.stage === 'release' && isDeepStrictEqual(released.approved, ['decision-1', 'task-1']) && approvals.every(entry => entry?.op === 'approve' && entry.relay === RELEASE_GO && /^人在对话里同意（record_human_answer [\w-]+）$/.test(entry.reason ?? '')), JSON.stringify(released ?? null)],
+    ['design release: the goal is at stage release; the write that moved it names the person\'s words and the call, and its change is design to release', goal.status === 'approved' && goal.stage === 'release' && stageWrite?.relay === RELEASE_GO && isDeepStrictEqual(stageWrite.changes, { stage: { from: 'design', to: 'release' } }) && /^人在对话里同意（record_human_answer [\w-]+）$/.test(stageWrite.reason ?? ''), JSON.stringify(stageWrite ?? null)],
+    ['design release: the subagent dispatched after the release writes its file, and no write of a subagent was refused', child?.result?.isError !== true && existsSync(join(stageWs(RELEASE), 'released.txt')) && violations.every(record => record.rule !== 'design-before-release'), `${child?.result?.isError}:${(child?.result?.text ?? '').slice(0, 60)}; ${violations.length} violation(s)`],
+    ['design release: the simulated human raised no question card', designRelease.human.every(entry => entry.kind !== 'unexpected-question'), JSON.stringify(designRelease.human.map(entry => entry.kind))],
+  ]
+}
+
+function modulesChecks() {
+  const main = designModules.steps.filter(step => step.sessionId === designModules.steps[0]?.sessionId)
+  const nodeOf = (id) => {
+    try {
+      return JSON.parse(readFileSync(join(stageWs(MODULES), 'docs', 'graph', 'nodes', `${id}.json`), 'utf8'))
+    }
+    catch {
+      return { history: [] }
+    }
+  }
+  const resultOf = name => lastToolResult(main[modulesAt(name) + 1])
+  const jsonOf = name => { try { return JSON.parse(resultOf(name)?.text ?? '') } catch { return undefined } }
+  const errorOf = name => { try { return JSON.parse((resultOf(name)?.text ?? '').replace(/^Error: /, '')) } catch { return undefined } }
+  const replies = designModules.human.filter(entry => entry.kind === 'reply')
+  const children = stageChildren(MODULES, designModules)
+  const violations = jsonl(join(runDir, MODULES, 'home', 'audit', 'violations.jsonl'))
+  const wsFile = file => existsSync(join(stageWs(MODULES), file))
+  const [goal, moduleA, moduleB] = ['goal-1', 'module-a', 'module-b'].map(nodeOf)
+  const digest = entry => / · 一页放行稿 [0-9a-f]{8}$/.test(entry?.reason ?? '')
+  const mark = entry => /^人在对话里同意（record_human_answer [\w-]+）/.test(entry?.reason ?? '')
+  const framework = jsonOf('record-framework')
+  const putFramework = jsonOf('put-framework')
+  const putA = jsonOf('put-a')
+  const recordedA = jsonOf('record-a')
+  const bypass = messagesOf(main.at(-1), 'glm-design-bypass').map(message => message.text)
+  const stageRows = violations.filter(record => record.rule === 'design-before-release')
+  const stageOf = id => nodeOf(id).stage
+  const writeOf = (node, to) => node.history.findLast(entry => entry.changes?.stage?.to === to)
+  const unshown = errorOf('record-b-unshown')
+  const invented = errorOf('record-b-invented')
+  const borrowed = errorOf('record-b-borrowed')
+  const sendBack = nodeOf('module-a').history.at(-1)
+  return [
+    ['design modules: the scripted model made one request for each step, the design row activated quietly, and the person was spoken to three times (the framework, then module-a twice) and no more', main.length === modulesSteps.length && designModules.status === 0 && !stderrOf(MODULES).includes('dsh-glm-hourness/design') && replies.length === 3 && replies[0].text === RELEASE_GO && isDeepStrictEqual(replies[0].shown, [{ kind: 'release', number: 1 }]) && replies[1].text === MODULES_ADD && isDeepStrictEqual(replies[1].shown, [{ kind: 'release', number: 1, module: 'module-a' }]) && replies[2].text === '可以，放行这个模块', `${main.length} of ${modulesSteps.length} requests; exit ${designModules.status}; ${JSON.stringify(replies.map(reply => [reply.rule, reply.text]))}`],
+    ['design modules: while the goal is in design a subagent dispatched with the focus on a task of module-a is refused for the goal; its file does not exist', children[0]?.result?.isError === true && children[0].result.text.includes('of a design loop at stage design (goal goal-1)') && !wsFile('modules-1.txt'), (children[0]?.result?.text ?? '').slice(0, 120)],
+    ['design modules: the page of the framework release that lacks a module is refused as invalid on page and names it; with it the release is put: the set is the framework decision, the directions and the two candidates, and the text is the model\'s sentence with the page after it', errorOf('page-short')?.code === 'invalid' && errorOf('page-short').field === 'page' && errorOf('page-short').message.includes(`the module "${MODULES_NAMES.b}"`) && putFramework?.kind === 'release' && putFramework.module === undefined && isDeepStrictEqual(putFramework.releaseSet?.map(entry => entry.id), ['decision-fw', 'norm-directions', 'module-a', 'module-b']) && putFramework.text === renderAsk(RELEASE_TEXT, 1, undefined, MODULES_PAGE, false), JSON.stringify(errorOf('page-short') ?? null).slice(0, 200)],
+    ['design modules: record_human_answer releases the framework: both candidates are modules in design, the framework and the directions are approved, the goal is at release, and the designs below the modules are still proposals; each module got its stage design while it was a proposal, then its approval, with the person\'s words', framework?.outcome === 'released' && isDeepStrictEqual(framework.modules, ['module-a', 'module-b']) && ['module-a', 'module-b'].every(id => nodeOf(id).status === 'approved' && stageOf(id) === 'design' && isDeepStrictEqual(nodeOf(id).history.slice(0, 3).map(entry => entry.op), ['propose', 'edit', 'approve']) && nodeOf(id).history.slice(1, 3).every(entry => entry.relay === RELEASE_GO && mark(entry))) && ['decision-fw', 'norm-directions'].every(id => nodeOf(id).status === 'approved') && ['decision-b', 'task-b'].every(id => nodeOf(id).status === 'proposed') && ['decision-a', 'task-a'].every(id => nodeOf(id).history.find(entry => entry.op === 'approve')?.at >= moduleA.history[2].at) && goal.stage === 'release' && digest(writeOf(goal, 'release')) && writeOf(goal, 'release').relay === RELEASE_GO, JSON.stringify(framework ?? null).slice(0, 200)],
+    ['design modules: with the goal released and module-a still in design the subagent is refused again, with the module named and the way to release it; its file does not exist', children[1]?.result?.isError === true && children[1].result.text.includes('module module-a (记账) of goal goal-1, and the human has not released that module yet') && children[1].result.text.includes('(kind release, module module-a)') && !wsFile('modules-2.txt'), (children[1]?.result?.text ?? '').slice(0, 160)],
+    ['design modules: the release of module-a is put with its page (the set is the design below it), the person adds something, record_human_answer (add) notes it on the module and the module stays in design', putA?.kind === 'release' && putA.module === 'module-a' && isDeepStrictEqual(putA.releaseSet?.map(entry => entry.id), ['decision-a', 'task-a']) && jsonOf('record-a-add')?.outcome === 'added' && moduleA.history.some(entry => entry.op === 'comment' && entry.text?.startsWith('人在对话里补充：「补充：先做记录再做汇总」')), JSON.stringify(putA ?? null).slice(0, 200)],
+    ['design modules: after the supplement is in the plan and the module put again, the person releases it: record_human_answer releases module-a: its design is approved with their words, its stage is release, and the write names the digest of the page; module-b, its design, the directions and the goal are as they were', recordedA?.outcome === 'released' && recordedA.module === 'module-a' && isDeepStrictEqual(recordedA.approved, ['decision-a', 'task-a']) && ['decision-a', 'task-a'].every(id => nodeOf(id).history.at(-1)?.relay === '可以，放行这个模块') && moduleA.history.findLast(entry => entry.changes?.stage?.to === 'release')?.relay === '可以，放行这个模块' && digest(moduleA.history.findLast(entry => entry.changes?.stage?.to === 'release')) && moduleB.stage === 'design' && ['decision-b', 'task-b'].every(id => nodeOf(id).status === 'proposed') && goal.history.filter(entry => entry.changes?.stage?.to === 'release').length === 1, JSON.stringify(recordedA ?? null).slice(0, 200)],
+    ['design modules: a subagent writes for released module-a and its file is there; with the focus on module-b the next one is refused with that module named and its file is not; three refusals in all by the rule, none for module-a', children[2]?.result?.isError !== true && wsFile('modules-3.txt') && children[3]?.result?.isError === true && children[3].result.text.includes('module module-b (月底汇总) of goal goal-1, and the human has not released that module yet') && !wsFile('modules-4.txt') && stageRows.length === 3, `${children[2]?.result?.isError}/${children[3]?.result?.isError}; ${stageRows.length} refusals`],
+    ['design modules: the release of module-b that was never put to the person is not_shown; once it is put, words the model made up and words the person said about module-a before are invalid on words; module-b stays in design with its design proposed', unshown?.code === 'not_shown' && unshown.field === 'module' && invented?.code === 'invalid' && invented.field === 'words' && borrowed?.code === 'invalid' && borrowed.field === 'words' && moduleB.status === 'approved' && moduleB.stage === 'design' && ['decision-b', 'task-b'].every(id => nodeOf(id).status === 'proposed'), `${unshown?.code}/${invented?.code}/${borrowed?.code}`],
+    ['design modules: a subagent that sends module-a back to design is refused by main-agent-graph-stage with the main agent\'s decision named, journaled as a subagent, and the main agent is told once; the row says it is partly in effect', children[4]?.result?.isError === true && children[4].result.text.includes('Only the main agent sends a module back to design.') && children[4].result.text.includes('Report back to the main agent.') && violations.some(record => record.rule === 'main-agent-graph-stage' && record.agentId === children[4].id && record.session?.kind === 'subagent' && record.node === 'module-a' && record.stageFrom === 'release' && record.stageTo === 'design') && bypass.length === 1 && bypass[0].includes('退回设计') && tableOf(main.at(-1)?.status ?? '').design?.status === '部分生效', `${(children[4]?.result?.text ?? '').slice(0, 100)}; ${bypass.length} notice(s)`],
+    ['design modules: the main agent sends module-a back to design on its own word: the edit goes through, the module is in design, and the write is the llm\'s, without the person\'s words, with the change release to design and a reason that is not the mark of an agreement', resultOf('send-back')?.isError !== true && moduleA.stage === 'design' && sendBack?.actor === 'llm' && sendBack.relay === undefined && isDeepStrictEqual(sendBack.changes, { stage: { from: 'release', to: 'design' } }) && !mark(sendBack), `${(resultOf('send-back')?.text ?? '').slice(0, 80)}; ${JSON.stringify(sendBack ?? null).slice(0, 160)}`],
+    ['design modules: no question card was raised', designModules.human.every(entry => entry.kind !== 'unexpected-question'), JSON.stringify(designModules.human.map(entry => entry.kind))],
+  ]
+}
 function designChecks() {
   const zcode = (step) => step?.system.indexOf('You are ZCode, an interactive agent') ?? -1
   const ascending = (...marks) => marks.every(mark => mark >= 0) && marks.every((mark, index) => index === 0 || marks[index - 1] < mark)
@@ -1271,6 +1457,8 @@ function designChecks() {
     ...stageChecks(),
     ...questionChecks(),
     ...interviewChecks(),
+  ...releaseChecks(),
+  ...modulesChecks(),
     ['design one main: a fork of the first session at its /wish is an ordinary session from its first request on: no section, the ordinary face; the row ran /wish off for it, so its projection is off; the record is unchanged; the row warned of nothing', forkNote?.kind === 'forked' && forkSteps.length === 1 && forkSteps[0].sessionId === forkNote.sessionId && sectionAt(forkSteps[0]) < 0 && hasCut(forkSteps[0], GLM_CUT) && forkNote.types.includes('command/run') && forkNote.types.includes('command/done') && isDeepStrictEqual(forkNote.hournessMainAgent, { active: false }) && rowQuiet(one) && humanQuiet(one) && one.status === 0, JSON.stringify(forkNote ?? null).slice(0, 220)],
   ]
 }

@@ -27,6 +27,11 @@
  *   tools. Five graph tool calls are denied whoever makes them, with or
  *   without `relay` (judgeGraphStage). A delegated or an ordinary session
  *   that tries one is also reported; the main agent only gets the denial.
+ *   A module of a goal split into modules moves the same way: its stage goes
+ *   forward only with the human's agreement to its release, nothing under a
+ *   module that is not released is approved, and the module list is settled
+ *   when the framework is released. Sending a module back to design is the
+ *   main agent's alone.
  * - main-agent-graph-cli, every session: the graph's command line writes as
  *   the llm with whatever `relay` it is given and checks nothing, so inside a
  *   session only its reading commands run (graphCliWrite).
@@ -34,9 +39,10 @@
  * An ordinary session's `relay` is not checked. Nested calls (they carry
  * `parent`) never reach these rules, like the other rules of the main agent.
  */
+import { isReleased, modulesOf, moduleOf } from '../graph/modules.ts'
 import { deciderOf } from '../graph/projection.ts'
 import type { LoadedGraph } from '../graph/parse.ts'
-import { CARD_FIELDS, STAGES, type Stage } from '../graph/schema.ts'
+import { CARD_FIELDS, STAGES, type GraphNode, type Stage } from '../graph/schema.ts'
 import type { GraphFocusService } from '../graph/service.ts'
 import { effectiveStage, goalOf } from '../graph/stage.ts'
 import { loadGraph } from '../graph/store.ts'
@@ -205,6 +211,10 @@ export interface StageAttempt {
   readonly node?: string | undefined
   readonly stageFrom?: Stage | undefined
   readonly stageTo?: Stage | undefined
+  /** The module the attempt is about, when it is about one: the correction then names its release. */
+  readonly module?: string | undefined
+  /** Only the main agent may do it: sending a module back to design is its decision. */
+  readonly mainAgentOnly?: boolean | undefined
 }
 
 const quoted = (title: string): string => `"${title}"`
@@ -212,13 +222,28 @@ const quoted = (title: string): string => `"${title}"`
 /** Types a call with the human's words may propose under a goal in the design loop: what is asked of the human, and what could go wrong. */
 const OPEN_WITH_WORDS: ReadonlySet<unknown> = new Set(['question', 'risk', 'retro'])
 
+/** Whether a goal has released its framework and has modules: its stage is release or later and a module exists, so its module list is settled. */
+function hasSettledModules(graph: LoadedGraph, goal: GraphNode): boolean {
+  const stage = effectiveStage(goal)
+  return stage !== null && !inDesignLoop(stage) && modulesOf(graph, goal).length > 0
+}
+
+/** Whether the node is a module of its goal: a feature directly under a goal that carries a stage and is approved, doing or done. */
+function moduleNode(graph: LoadedGraph, node: GraphNode): boolean {
+  const parent = node.parent === undefined ? undefined : graph.nodes.get(node.parent)
+  return node.type === 'feature' && parent?.type === 'goal' && modulesOf(graph, parent).some(module => module.id === node.id)
+}
+
 /**
  * a: an edit that takes a goal or a feature out of the design loop or on from
  * it. Three shapes: its stage set forward out of wish, interview or design;
  * its stage cleared while it is in one of them (it then runs no loop, and the
  * gates read a goal with no stage as one the human did not put through it);
  * a goal that has no stage given one after the interview (the same, from the
- * other side). A feature with no stage is a module's business (step 9).
+ * other side). Of a feature: a stage given to one that has none (that makes
+ * it a module, or releases it), and the stage of a module cleared at any
+ * time (a released module would lose the record of its release). e: a module
+ * sent back to design, which only the main agent may do (judgeGraphStage).
  */
 function editAttempt(graph: LoadedGraph, args: Record<string, unknown> | undefined): StageAttempt | undefined {
   const id = args?.id
@@ -227,41 +252,68 @@ function editAttempt(graph: LoadedGraph, args: Record<string, unknown> | undefin
   if (node === undefined || (node.type !== 'goal' && node.type !== 'feature')) return undefined
   const from = effectiveStage(node)
   const goal = goalOf(graph, node.id)?.id
+  const module = moduleNode(graph, node)
   if (to === null) {
     // A clear that changes nothing is left to the tool to refuse.
-    return node.stage !== undefined && inDesignLoop(from)
-      ? { fact: `You tried to clear the stage of ${quoted(node.title)} while it is in ${from}.`, what: `清掉「${node.title}」的阶段`, goal, node: node.id, stageFrom: from }
-      : undefined
+    if (node.stage === undefined) return undefined
+    if (inDesignLoop(from)) return { fact: `You tried to clear the stage of ${quoted(node.title)} while it is in ${from}.`, what: `清掉「${node.title}」的阶段`, goal, node: node.id, stageFrom: from }
+    return module ? { fact: `You tried to clear the stage of the module ${quoted(node.title)}.`, what: `清掉模块「${node.title}」的阶段`, goal, node: node.id, ...from === null ? {} : { stageFrom: from }, module: node.id } : undefined
   }
   if (!isStage(to)) return undefined
   if (from === null) {
-    return node.type === 'goal' && laterThan(to, 'interview')
+    if (node.type === 'feature') return { fact: `You tried to give the feature ${quoted(node.title)} the stage ${to}, which would make it a module of its goal.`, what: `给特性「${node.title}」写上阶段 ${to}`, goal, node: node.id, stageTo: to }
+    return laterThan(to, 'interview')
       ? { fact: `You tried to set the stage of ${quoted(node.title)} to ${to} while it runs no design loop.`, what: `把「${node.title}」推到 ${to}`, goal, node: node.id, stageTo: to }
       : undefined
   }
+  if (module && to === 'design' && from !== 'design' && laterThan(from, 'design')) {
+    return { fact: `You tried to send the module ${quoted(node.title)} back to design.`, what: `把模块「${node.title}」退回设计`, goal, node: node.id, stageFrom: from, stageTo: to, module: node.id, mainAgentOnly: true }
+  }
   const forward = from === 'wish' || from === 'interview' ? laterThan(to, 'interview') : from === 'design' && laterThan(to, 'design')
   return forward
-    ? { fact: `You tried to set the stage of ${quoted(node.title)} to ${to} while it is in ${from}.`, what: `把「${node.title}」推到 ${to}`, goal, node: node.id, stageFrom: from, stageTo: to }
+    ? { fact: `You tried to set the stage of ${quoted(node.title)} to ${to} while it is in ${from}.`, what: `把「${node.title}」推到 ${to}`, goal, node: node.id, stageFrom: from, stageTo: to, ...module ? { module: node.id } : {} }
     : undefined
 }
 
-/** b and c: an approval of a goal that is in wish or interview (the requirement is confirmed), or of a node under a goal that is in wish, interview or design (the design is released). */
+/**
+ * b and c: an approval of a goal that is in wish or interview (the requirement
+ * is confirmed), of a node under a goal that is in wish, interview or design
+ * (the design is released), of a node below a module that is not released (the
+ * module is released), and of a feature directly under a goal whose module
+ * list is settled (a new module).
+ */
 function approveAttempt(graph: LoadedGraph, args: Record<string, unknown> | undefined): StageAttempt | undefined {
   const id = args?.id
   const node = typeof id === 'string' ? graph.nodes.get(id) : undefined
   if (node === undefined) return undefined
   const goal = goalOf(graph, node.id)
-  const stage = goal === undefined ? null : effectiveStage(goal)
-  if (goal === undefined || !inDesignLoop(stage)) return undefined
-  if (goal.id === node.id) {
-    return stage === 'design'
-      ? undefined
-      : { fact: `You tried to approve the goal ${quoted(node.title)} while its requirement has not been confirmed (it is in ${stage}).`, what: `批准「${node.title}」`, goal: goal.id, node: node.id, stageFrom: stage }
+  if (goal === undefined) return undefined
+  const stage = effectiveStage(goal)
+  if (inDesignLoop(stage)) {
+    if (goal.id === node.id) {
+      return stage === 'design'
+        ? undefined
+        : { fact: `You tried to approve the goal ${quoted(node.title)} while its requirement has not been confirmed (it is in ${stage}).`, what: `批准「${node.title}」`, goal: goal.id, node: node.id, stageFrom: stage }
+    }
+    return { fact: `You tried to approve ${quoted(node.title)} under the goal ${quoted(goal.title)}, which is in ${stage}.`, what: `批准「${node.title}」`, goal: goal.id, node: node.id, stageFrom: stage }
   }
-  return { fact: `You tried to approve ${quoted(node.title)} under the goal ${quoted(goal.title)}, which is in ${stage}.`, what: `批准「${node.title}」`, goal: goal.id, node: node.id, stageFrom: stage }
+  const module = moduleOf(graph, node)
+  if (module !== undefined && module.id !== node.id && !isReleased(module)) {
+    return { fact: `You tried to approve ${quoted(node.title)} under the module ${quoted(module.title)}, which is not released.`, what: `批准「${node.title}」`, goal: goal.id, node: node.id, module: module.id }
+  }
+  if (node.type === 'feature' && node.parent === goal.id && hasSettledModules(graph, goal)) {
+    return { fact: `You tried to approve the feature ${quoted(node.title)} directly under the goal ${quoted(goal.title)}, whose modules were settled when its framework was released.`, what: `批准新模块「${node.title}」`, goal: goal.id, node: node.id }
+  }
+  return undefined
 }
 
-/** d: a proposal that carries the human's words and so is approved at once: a goal with no stage or past the interview, a feature that names a stage, or a node of a kind that is built from, under a goal still in the design loop. */
+/**
+ * d: a proposal that carries the human's words and so is approved at once: a
+ * goal with no stage or past the interview, a feature that names a stage, a
+ * node of a kind that is built from under a goal still in the design loop or
+ * under a module that is not released, or a feature directly under a goal whose
+ * module list is settled.
+ */
 function proposeAttempt(graph: LoadedGraph, args: Record<string, unknown> | undefined): StageAttempt | undefined {
   const node = recordOf(args?.node)
   const title = typeof node?.title === 'string' ? node.title : '一个节点'
@@ -276,12 +328,22 @@ function proposeAttempt(graph: LoadedGraph, args: Record<string, unknown> | unde
   if (type === 'feature' && isStage(stage)) {
     return { fact: `You tried to propose the feature ${quoted(title)} with the human's words at stage ${stage}.`, what: `提议已在 ${stage} 的特性「${title}」`, stageTo: stage }
   }
+  const under = typeof parent === 'string' ? graph.nodes.get(parent) : undefined
   const goal = typeof parent === 'string' ? goalOf(graph, parent) : undefined
   const at = goal === undefined ? null : effectiveStage(goal)
-  if (goal === undefined || !inDesignLoop(at) || OPEN_WITH_WORDS.has(type)) return undefined
-  return { fact: `You tried to propose ${quoted(title)} with the human's words under the goal ${quoted(goal.title)}, which is in ${at}.`, what: `用转述的话在「${goal.title}」下提议「${title}」`, goal: goal.id, stageFrom: at }
+  if (goal !== undefined && inDesignLoop(at) && !OPEN_WITH_WORDS.has(type)) {
+    return { fact: `You tried to propose ${quoted(title)} with the human's words under the goal ${quoted(goal.title)}, which is in ${at}.`, what: `用转述的话在「${goal.title}」下提议「${title}」`, goal: goal.id, stageFrom: at }
+  }
+  if (goal === undefined || under === undefined || OPEN_WITH_WORDS.has(type)) return undefined
+  const module = moduleOf(graph, under)
+  if (module !== undefined && !isReleased(module)) {
+    return { fact: `You tried to propose ${quoted(title)} with the human's words under the module ${quoted(module.title)}, which is not released.`, what: `用转述的话在模块「${module.title}」下提议「${title}」`, goal: goal.id, module: module.id }
+  }
+  if (type === 'feature' && under.id === goal.id && hasSettledModules(graph, goal)) {
+    return { fact: `You tried to propose the feature ${quoted(title)} with the human's words directly under the goal ${quoted(goal.title)}, whose modules were settled when its framework was released.`, what: `用转述的话在「${goal.title}」下提议新模块「${title}」`, goal: goal.id }
+  }
+  return undefined
 }
-
 /**
  * Whether a call could move a goal on, looked at without the graph: an edit
  * that sets or clears a stage, an approval, a proposal that carries `relay`.
@@ -298,11 +360,18 @@ export function stageCandidate(call: ToolCall): boolean {
 const MOVES_FORWARD_FACT = 'Only the main agent moves a goal forward, by recording the human\'s agreement to its proposal.'
 
 function stageCorrection(who: SessionKind, attempt: StageAttempt): Correction {
+  if (attempt.mainAgentOnly === true) {
+    return { fact: 'Only the main agent sends a module back to design.', violation: attempt.fact, rightPath: who === 'subagent' ? 'Report back to the main agent.' : 'Ask the main agent in its conversation.', exception: NO_ONE }
+  }
   if (who === 'main-agent') {
     return {
       fact: attempt.fact,
-      violation: 'A goal moves forward only when the human agrees to the requirement or the design you put to them, and the graph tools do not carry that agreement.',
-      rightPath: 'Put it to the human with propose_to_human (kind confirm or release) and record their answer with record_human_answer; the harness checks the requirement or the design first.',
+      violation: attempt.module === undefined
+        ? 'A goal moves forward only when the human agrees to the requirement or the design you put to them, and the graph tools do not carry that agreement.'
+        : 'A module moves forward only when the human agrees to the design you put to them, and the graph tools do not carry that agreement.',
+      rightPath: attempt.module === undefined
+        ? 'Put it to the human with propose_to_human (kind confirm or release) and record their answer with record_human_answer; the harness checks the requirement or the design first.'
+        : `Put the module to the human with propose_to_human (kind release, module ${attempt.module}, page) and record their answer with record_human_answer; the harness checks the module's design first.`,
       exception: NO_ONE,
     }
   }
@@ -341,7 +410,8 @@ export async function judgeGraphStage(deps: GraphRuleDeps, agent: Pick<AgentLike
     const graph = await loadGraph(dir)
     const args = recordOf(call.arguments)
     const attempt = call.name === 'graph_edit' ? editAttempt(graph, args) : call.name === 'graph_approve' ? approveAttempt(graph, args) : proposeAttempt(graph, args)
-    return attempt === undefined ? { kind: 'allow' } : { kind: 'deny', correction: stageCorrection(who, attempt), attempt }
+    // Sending a module back to design is the main agent's own decision (the engine asks no words of it); for anyone else it is refused like the rest.
+    return attempt === undefined || (attempt.mainAgentOnly === true && who === 'main-agent') ? { kind: 'allow' } : { kind: 'deny', correction: stageCorrection(who, attempt), attempt }
   }
   catch (error) {
     return { kind: 'deny', correction: UNREADABLE_GRAPH_CORRECTION, degraded: `读不到项目图，没法判断这次图写入会不会不经人的同意把目标推向前，已拒绝（${error instanceof Error ? error.message : String(error)}）` }

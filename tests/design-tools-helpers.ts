@@ -55,6 +55,69 @@ export function toolDeps(fixture: Pick<MainAgentFixture, 'host' | 'dir'>, boards
   }
 }
 
+/** The five columns of a design decision as the engine takes them: reason, architecture and the checked solutions in the body, acceptance and non-goals. The plan is the nodes that point at the decision. */
+const FIVE = { body: '理由：一个人用，不要服务端\n架构：本地 JSON 文件\n查过的现成方案：ledger-cli 太重', acceptance: ['月底出一张分类表'], nonGoals: ['不做同步'] } as const
+
+/** What the main agent writes into the graph as the design of goal-1, as the llm. */
+export type DesignShape = 'small' | 'split'
+
+/** The titles and directions a page of the framework release has to name, for the split design. */
+export const SPLIT_NAMES = { framework: '用本地文件存账', moduleA: '记账', moduleB: '月底汇总', directions: ['数据只存在本机', '先记账再汇总'] } as const
+
+/** A page that names all of them: the framework, both modules and both directions. */
+export const FRAMEWORK_PAGE = `框架：${SPLIT_NAMES.framework}。\n模块：${SPLIT_NAMES.moduleA}、${SPLIT_NAMES.moduleB}。\n你定过的方向：${SPLIT_NAMES.directions.join('；')}。`
+/** A page of one module: what the human will see of it, by the module's title. */
+export const modulePage = (title: string): string => `你会看到什么：${title}这一块做完以后的样子。\n它自己会做的：照图上的任务做。\n什么时候问你：碰到要你定的事。\n替你定了的方向：${SPLIT_NAMES.directions[0]}。`
+
+/**
+ * goal-1 in its design: the human's goal gets the stage design, then the main
+ * agent (the llm) proposes the design. `small`: one design decision and one
+ * task directly under the goal. `split`: the framework decision, the list of
+ * directions, two module candidates `module-a` and `module-b` pointing at the
+ * framework, and for each module its own decision and task: all proposals,
+ * the module designs below the candidates.
+ */
+export async function writeDesign(fixture: Pick<MainAgentFixture, 'engine' | 'node'>, shape: DesignShape): Promise<void> {
+  const { engine } = fixture
+  const send = async (actor: 'human' | 'llm', input: Record<string, unknown>): Promise<void> => {
+    const done = await engine.apply(actor, input)
+    if (!done.ok) throw new Error(JSON.stringify(done.error))
+  }
+  const propose = (node: Record<string, unknown>): Promise<void> => send('llm', { op: 'propose', reason: '设计', node })
+  await send('human', { op: 'edit', id: 'goal-1', rev: (await engine.load()).revisions.get('goal-1'), set: { stage: 'design' }, reason: '确认了需求' })
+  const source = (to: string): { edges: Array<{ type: 'source', to: string }> } => ({ edges: [{ type: 'source', to }] })
+  if (shape === 'small') {
+    await propose({ type: 'decision', id: 'decision-1', title: '用本地文件存账', parent: 'goal-1', ...FIVE })
+    await propose({ type: 'task', id: 'task-1', title: '写记账命令', parent: 'goal-1', acceptance: ['记一条能读回'], ...source('decision-1') })
+    return
+  }
+  await propose({ type: 'decision', id: 'decision-fw', title: SPLIT_NAMES.framework, parent: 'goal-1', ...FIVE })
+  await propose({ type: 'norm', id: 'norm-directions', title: '方向清单', parent: 'goal-1', acceptance: [...SPLIT_NAMES.directions] })
+  for (const [id, title] of [['module-a', SPLIT_NAMES.moduleA], ['module-b', SPLIT_NAMES.moduleB]] as const) {
+    const key = id.slice(-1)
+    await propose({ type: 'feature', id, title, parent: 'goal-1', ...source('decision-fw') })
+    await propose({ type: 'decision', id: `decision-${key}`, title: `${title}怎么做`, parent: id, ...FIVE })
+    await propose({ type: 'task', id: `task-${key}`, title: `写${title}`, parent: id, acceptance: ['能用'], ...source(`decision-${key}`) })
+  }
+}
+
+/**
+ * The graph as the release of the framework leaves it (writeDesign 'split'):
+ * the candidates are modules in design, the framework decision and the
+ * directions are approved, and the goal is at release; the designs of the
+ * modules are still proposals. Written as the human, so no rule is exercised.
+ */
+export async function frameworkReleased(fixture: Pick<MainAgentFixture, 'engine'>): Promise<void> {
+  const { engine } = fixture
+  const send = async (input: Record<string, unknown>): Promise<void> => {
+    const done = await engine.apply('human', { ...input, rev: (await engine.load()).revisions.get(input.id as string) })
+    if (!done.ok) throw new Error(JSON.stringify(done.error))
+  }
+  for (const id of ['module-a', 'module-b']) await send({ op: 'edit', id, set: { stage: 'design' }, reason: '放行框架' })
+  for (const id of ['decision-fw', 'norm-directions', 'module-a', 'module-b']) await send({ op: 'approve', id, reason: '放行框架' })
+  await send({ op: 'edit', id: 'goal-1', set: { stage: 'release' }, reason: '放行框架' })
+}
+
 /** The eight items of the requirement card, by the key of the gate item. */
 export type CardItem = 'need' | 'problem' | 'audience' | 'constraints' | 'acceptance' | 'non-goals' | 'risks' | 'choice'
 

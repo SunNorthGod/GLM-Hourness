@@ -13,7 +13,7 @@ import { releaseVerdict } from '../src/guard/design-release.ts'
 import { GRAPH_CLI_RULE, GRAPH_DELEGATIONS_RULE, GRAPH_OPTIONS_RULE, GRAPH_RELAY_RULE, GRAPH_STAGE_RULE, MAIN_AGENT_RULES } from '../src/guard/main-agent-rules.ts'
 import { denied, designHost, healthOf, hostWithoutTalkProjection, journaled, sleep, type DesignHost, type FakeAgent } from './design-host.ts'
 import { captureWarnings } from './graph-helpers.ts'
-import { mainAgentWithGoal, type MainAgentFixture } from './design-tools-helpers.ts'
+import { frameworkReleased, mainAgentWithGoal, writeDesign, type MainAgentFixture } from './design-tools-helpers.ts'
 import { exampleRecord } from './proposal-examples.ts'
 
 /** A question for the human in the proposal shape, put by the main agent. */
@@ -695,4 +695,186 @@ test('a delegated or an ordinary session that runs the command line with `relay`
 test('the rules table lists the two graph rules of the step that opens confirm, both for every session', () => {
   const ids = MAIN_AGENT_RULES.filter(rule => rule.step === 8).map(rule => [rule.id, rule.subjects, rule.enforcement])
   assert.deepEqual(ids, [[GRAPH_STAGE_RULE, 'every-session', 'deny'], [GRAPH_CLI_RULE, 'every-session', 'deny']])
+})
+
+// ---------------------------------------------------------------- main-agent-graph-stage, the modules of a goal split into modules (M3 step 9)
+
+/** The main agent, a subagent and an ordinary session over a goal split into two modules whose framework is released: both modules are in design. */
+async function modulesSessions(): Promise<Awaited<ReturnType<typeof sessions>>> {
+  const all = await sessions()
+  await writeDesign(all.fixture, 'split')
+  await frameworkReleased(all.fixture)
+  await all.host.say(all.agent, '可以，放行')
+  return all
+}
+
+/** Let module-a be released the way the human's hand would leave it. */
+async function releaseModule(fixture: MainAgentFixture, id: string): Promise<void> {
+  for (const [op, node, extra] of [['approve', 'decision-a', {}], ['approve', 'task-a', {}], ['edit', id, { set: { stage: 'release' } }]] as const) {
+    const done = await fixture.engine.apply('human', { op, id: node, rev: (await fixture.engine.load()).revisions.get(node), reason: '放行模块', ...extra })
+    assert.ok(done.ok, JSON.stringify(done))
+  }
+}
+
+test('nothing below a module that is not released is approved with a graph tool, with the human\'s words or without them; below a released module an approval is not a release', async () => {
+  const { fixture, host, agent } = await modulesSessions()
+  const rev = async (id: string): Promise<string | undefined> => (await fixture.engine.load()).revisions.get(id)
+  const MODULE_PATH = (id: string): string => `Right path: Put the module to the human with propose_to_human (kind release, module ${id}, page) and record their answer with record_human_answer; the harness checks the module's design first.`
+  for (const [id, module, relay] of [['decision-a', 'module-a', undefined], ['task-a', 'module-a', '可以，放行'], ['decision-b', 'module-b', undefined]] as const) {
+    const reason = denied(await host.preExecute(agent, 'graph_approve', { id, rev: await rev(id), reason: '放行集合', ...relay === undefined ? {} : { relay } }))
+    const title = id === 'decision-a' ? '记账怎么做' : id === 'task-a' ? '写记账' : '月底汇总怎么做'
+    assert.match(reason, new RegExp(`^You tried to approve "${title}" under the module "${module === 'module-a' ? '记账' : '月底汇总'}", which is not released\\.`), id)
+    assert.ok(reason.includes(MODULE_PATH(module)), id)
+    assert.ok(reason.includes('Boundary: A module moves forward only when the human agrees to the design you put to them'), id)
+  }
+  // A node deeper down is under the module too.
+  assert.ok((await fixture.engine.apply('llm', { op: 'propose', reason: '子特性', node: { type: 'feature', id: 'feature-1', title: '子特性', parent: 'module-a' } })).ok)
+  assert.match(denied(await host.preExecute(agent, 'graph_approve', { id: 'feature-1', rev: await rev('feature-1'), reason: '放行集合' })), /^You tried to approve "子特性" under the module "记账", which is not released\./)
+  const rows = await journaled(host, 4)
+  assert.equal(rows.filter(row => row.rule === GRAPH_STAGE_RULE).length, 4)
+  assert.equal(rows.find(row => row.node === 'feature-1')?.goal, 'goal-1')
+  // The module's release opens it: what is proposed below it is approved by the words of the human as anywhere else in a released goal.
+  await releaseModule(fixture, 'module-a')
+  assert.ok((await fixture.engine.apply('llm', { op: 'propose', reason: '补一条', node: { type: 'decision', id: 'decision-a2', title: '补充', parent: 'module-a' } })).ok)
+  await sleepForHistory()
+  await host.say(agent, '可以，放行')
+  await sleepForHistory()
+  await host.say(agent, '可以，放行')
+  assert.equal((await host.preExecute(agent, 'graph_approve', { id: 'decision-a2', rev: await rev('decision-a2'), reason: '放行', relay: '可以，放行' })).kind, 'allow')
+  assert.equal(denied(await host.preExecute(agent, 'graph_approve', { id: 'decision-b', rev: await rev('decision-b'), reason: '放行集合' })).includes('"月底汇总"'), true, 'the other module is still in design')
+})
+
+test('a subagent or an ordinary session that approves below a module that is not released is refused like one that moves a goal on: journaled, told to the human and the main agent', async () => {
+  const { fixture, host, agent, child, plain } = await modulesSessions()
+  const call = { id: 'task-a', rev: (await fixture.engine.load()).revisions.get('task-a'), reason: '放行集合' }
+  const FACT = 'Only the main agent moves a goal forward, by recording the human\'s agreement to its proposal.'
+  for (const [who, rightPath] of [[child, 'Report back to the main agent.'], [plain, 'The human agrees in the main agent\'s conversation; /wish in this session shows where it is.']] as const) {
+    const reason = denied(await host.preExecute(who, 'graph_approve', call))
+    assert.ok(reason.startsWith(FACT), who.id)
+    assert.match(reason, /^Boundary: You tried to approve "写记账" under the module "记账", which is not released\./m)
+    assert.ok(reason.includes(`Right path: ${rightPath}`))
+  }
+  const rows = (await journaled(host, 2)).filter(row => row.rule === GRAPH_STAGE_RULE)
+  assert.deepEqual(rows.map(row => [row.tool, row.node, row.goal, (row.session as { kind: string }).kind]).sort(), [['graph_approve', 'task-a', 'goal-1', 'ordinary'], ['graph_approve', 'task-a', 'goal-1', 'subagent']])
+  const notices = agent.sent.filter(entry => entry.message.source.kind === 'glm-design-bypass').map(entry => entry.message.content[0].text)
+  assert.deepEqual(notices, [
+    '[拦下] 子 agent「child」想不经人的同意批准「写记账」，harness 拒绝了（main-agent-graph-stage）。下一次回复里用一句话告诉人。',
+    '[拦下] 另一个会话「plain」想不经人的同意批准「写记账」，harness 拒绝了（main-agent-graph-stage）。下一次回复里用一句话告诉人。',
+  ])
+})
+
+test('a proposal that carries the human\'s words is approved at once, so below a module that is not released it is denied like an approval; a matter for the human and a proposal without their words are not', async () => {
+  const { fixture, host, agent, child, plain } = await modulesSessions()
+  const words = '可以，放行'
+  const at = (parent: string, type: string, relay: string | false = words): Record<string, unknown> => ({ node: { type, title: `${type}在${parent}下`, parent }, reason: '设计', ...relay === false ? {} : { relay } })
+  for (const parent of ['module-a', 'module-b', 'decision-a']) {
+    for (const type of ['task', 'decision', 'feature']) {
+      assert.match(denied(await host.preExecute(agent, 'graph_propose', at(parent, type))), new RegExp(`^You tried to propose "${type}在${parent}下" with the human's words under the module "(记账|月底汇总)", which is not released\\.`), `${parent} ${type}`)
+    }
+  }
+  for (const type of ['question', 'risk', 'retro']) assert.equal((await host.preExecute(agent, 'graph_propose', at('module-a', type))).kind, 'allow', `${type}: asked of the human or only noted`)
+  assert.equal((await host.preExecute(agent, 'graph_propose', at('module-a', 'task', false))).kind, 'allow', 'without their words it waits for the release')
+  assert.match(denied(await host.preExecute(plain, 'graph_propose', at('module-a', 'task'))), /^Only the main agent moves a goal forward/)
+  assert.match(denied(await host.preExecute(child, 'graph_propose', at('module-a', 'task'))), /^Subagents do not relay the human's words\./, 'a subagent is stopped by the rule about words first')
+  // Below a released module they are the ordinary proposals of a released goal.
+  await releaseModule(fixture, 'module-a')
+  assert.equal((await host.preExecute(agent, 'graph_propose', at('module-a', 'task'))).kind, 'allow')
+  assert.equal((await host.preExecute(plain, 'graph_propose', at('module-a', 'task'))).kind, 'allow')
+  assert.equal((await fixture.engine.load()).nodes.get('goal-1')!.stage, 'release')
+})
+
+test('a goal whose modules are settled gets no new module with a graph tool, with the words of the human or without: it is approved or proposed at once only by sending the goal back to design', async () => {
+  const { fixture, host, agent, plain } = await modulesSessions()
+  const feature = { type: 'feature', title: '导出', parent: 'goal-1' }
+  const proposed = denied(await host.preExecute(agent, 'graph_propose', { node: feature, reason: '新模块', relay: '可以，放行' }))
+  assert.match(proposed, /^You tried to propose the feature "导出" with the human's words directly under the goal "记账小工具", whose modules were settled when its framework was released\./)
+  assert.equal((await host.preExecute(agent, 'graph_propose', { node: feature, reason: '新模块' })).kind, 'allow', 'a proposal without their words is a proposal: it waits for the framework to be released again')
+  assert.ok((await fixture.engine.apply('llm', { op: 'propose', reason: '新模块', node: { ...feature, id: 'module-c' } })).ok)
+  await sleepForHistory()
+  await host.say(agent, '可以，放行')
+  const rev = (await fixture.engine.load()).revisions.get('module-c')
+  const approve = denied(await host.preExecute(agent, 'graph_approve', { id: 'module-c', rev, reason: '批准', relay: '可以，放行' }))
+  assert.match(approve, /^You tried to approve the feature "导出" directly under the goal "记账小工具", whose modules were settled when its framework was released\./)
+  assert.match(denied(await host.preExecute(plain, 'graph_approve', { id: 'module-c', rev, reason: '批准' })), /^Only the main agent moves a goal forward/)
+  // A goal that is released and has no module is not that: its features are the work of the goal.
+  const small = await mainAgentWithGoal()
+  await writeDesign(small, 'small')
+  await setStage(small, 'release')
+  await small.host.say(small.agent, '可以，放行')
+  assert.equal((await small.host.preExecute(small.agent, 'graph_propose', { node: feature, reason: '特性', relay: '可以，放行' })).kind, 'allow')
+  assert.ok((await small.engine.apply('llm', { op: 'propose', reason: '特性', node: { ...feature, id: 'feature-7' } })).ok)
+  await sleepForHistory()
+  await small.host.say(small.agent, '可以，放行')
+  assert.equal((await small.host.preExecute(small.agent, 'graph_approve', { id: 'feature-7', rev: (await small.engine.load()).revisions.get('feature-7'), reason: '批准', relay: '可以，放行' })).kind, 'allow')
+})
+
+test('a module is sent back to design by the main agent alone: a subagent and an ordinary session are refused, journaled and told to the human, the main agent is allowed without any words', async () => {
+  const { fixture, host, agent, child, plain } = await modulesSessions()
+  await releaseModule(fixture, 'module-a')
+  const back = async (reason = '方向要改'): Promise<Record<string, unknown>> => ({ id: 'module-a', rev: (await fixture.engine.load()).revisions.get('module-a'), set: { stage: 'design' }, reason })
+  assert.equal((await host.preExecute(agent, 'graph_edit', await back())).kind, 'allow', 'the main agent decides it and asks no one')
+  for (const [who, rightPath] of [[child, 'Report back to the main agent.'], [plain, 'Ask the main agent in its conversation.']] as const) {
+    const reason = denied(await host.preExecute(who, 'graph_edit', await back()))
+    assert.ok(reason.startsWith('Only the main agent sends a module back to design.'), who.id)
+    assert.match(reason, /^Boundary: You tried to send the module "记账" back to design\./m)
+    assert.ok(reason.includes(`Right path: ${rightPath}`))
+    assert.ok(reason.includes('Exception: none'))
+  }
+  const rows = (await journaled(host, 2)).filter(row => row.rule === GRAPH_STAGE_RULE)
+  assert.deepEqual(rows.map(row => [row.tool, row.node, row.stageFrom, row.stageTo, (row.session as { kind: string }).kind]).sort(), [['graph_edit', 'module-a', 'release', 'design', 'ordinary'], ['graph_edit', 'module-a', 'release', 'design', 'subagent']])
+  const notices = agent.sent.filter(entry => entry.message.source.kind === 'glm-design-bypass').map(entry => entry.message.content[0].text)
+  assert.deepEqual(notices, [
+    '[拦下] 子 agent「child」想不经人的同意把模块「记账」退回设计，harness 拒绝了（main-agent-graph-stage）。下一次回复里用一句话告诉人。',
+    '[拦下] 另一个会话「plain」想不经人的同意把模块「记账」退回设计，harness 拒绝了（main-agent-graph-stage）。下一次回复里用一句话告诉人。',
+  ])
+  await host.created(agent)
+  await agent.assemble()
+  assert.equal(healthOf(host, agent)?.state, 'degraded')
+  // The module is as it was, and the main agent\'s own call is the one the engine carries out.
+  assert.equal((await fixture.node('module-a')).stage, 'release')
+  const sent = await fixture.engine.apply('llm', { op: 'edit', ...await back() })
+  assert.ok(sent.ok, JSON.stringify(sent))
+  assert.equal((await fixture.node('module-a')).stage, 'design')
+})
+
+test('the stage of a module goes forward only with the human\'s agreement to its release: not with words, not for a module in design; it is not cleared at any time, and a feature that has none is not given one', async () => {
+  const { fixture, host, agent, child, plain } = await modulesSessions()
+  await releaseModule(fixture, 'module-a')
+  await sleepForHistory()
+  await host.say(agent, '可以，放行')
+  const rev = async (id: string): Promise<string | undefined> => (await fixture.engine.load()).revisions.get(id)
+  // module-b is in design: release, and anything later, is the human's agreement to record.
+  const forward = denied(await host.preExecute(agent, 'graph_edit', { id: 'module-b', rev: await rev('module-b'), set: { stage: 'release' }, reason: '放行', relay: '可以，放行' }))
+  assert.match(forward, /^You tried to set the stage of "月底汇总" to release while it is in design\./)
+  assert.ok(forward.includes('Right path: Put the module to the human with propose_to_human (kind release, module module-b, page)'))
+  assert.match(denied(await host.preExecute(agent, 'graph_edit', { id: 'module-b', rev: await rev('module-b'), set: { stage: 'decompose' }, reason: '放行' })), /to decompose while it is in design/)
+  // Clearing the stage: of a module in design (it leaves the loop), of a released module (it loses the record of its release).
+  assert.match(denied(await host.preExecute(agent, 'graph_edit', { id: 'module-b', rev: await rev('module-b'), set: { stage: null }, reason: '不要阶段' })), /^You tried to clear the stage of "月底汇总" while it is in design\./)
+  const cleared = denied(await host.preExecute(agent, 'graph_edit', { id: 'module-a', rev: await rev('module-a'), set: { stage: null }, reason: '不要阶段', relay: '可以，放行' }))
+  assert.match(cleared, /^You tried to clear the stage of the module "记账"\./)
+  for (const who of [child, plain]) assert.match(denied(await host.preExecute(who, 'graph_edit', { id: 'module-a', rev: await rev('module-a'), set: { stage: null }, reason: '不要阶段' })), /^Only the main agent moves a goal forward/, who.id)
+  // A feature with no stage is given none: it would become a module, or count as released.
+  assert.ok((await fixture.engine.apply('human', { op: 'propose', reason: '子特性', node: { type: 'feature', id: 'feature-1', title: '子特性', parent: 'module-a' } })).ok)
+  for (const stage of ['wish', 'design', 'release']) {
+    const reason = denied(await host.preExecute(agent, 'graph_edit', { id: 'feature-1', rev: await rev('feature-1'), set: { stage }, reason: '写阶段' }))
+    assert.match(reason, new RegExp(`^You tried to give the feature "子特性" the stage ${stage}, which would make it a module of its goal\\.`), stage)
+  }
+  // What does not move a module or take its stage away is left alone.
+  for (const set of [{ title: '记账（改名）' }, { body: '做什么' }]) assert.equal((await host.preExecute(agent, 'graph_edit', { id: 'module-a', rev: await rev('module-a'), set, reason: '改' })).kind, 'allow', JSON.stringify(set))
+})
+
+test('the module rules read the graph for the calls that could move a module on, and refuse them when the graph cannot be read, whoever makes them', async () => {
+  const { host, agent, plain } = await modulesSessions()
+  host.services.set('glmHournessGraph', { dirFor: () => { throw new Error('graph row broke') }, isGraphTool: () => false, focusOf: () => undefined })
+  await captureWarnings(async () => {
+    for (const who of [agent, plain]) {
+      for (const [tool, args] of [
+        ['graph_approve', { id: 'task-a', rev: 'r', reason: 'x' }],
+        ['graph_edit', { id: 'module-a', rev: 'r', set: { stage: 'design' }, reason: 'x' }],
+        ['graph_edit', { id: 'module-a', rev: 'r', set: { stage: null }, reason: 'x' }],
+        ['graph_propose', { node: { type: 'task', title: 'x', parent: 'module-a' }, reason: 'x', relay: '可以，放行' }],
+      ] as const) assert.match(denied(await host.preExecute(who, tool, args)), /^(The harness could not read the project graph to judge this call\.|The words you relayed)/, `${who.id} ${tool}`)
+    }
+  })
+  assert.match(healthOf(host, agent)?.reason ?? '', /读不到项目图/)
 })

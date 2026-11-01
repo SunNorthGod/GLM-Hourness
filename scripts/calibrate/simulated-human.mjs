@@ -91,7 +91,7 @@ export function readConfig(raw, warn = () => {}) {
  *   5. The goal is not released, or a module of it is still in design: `fallback`.
  *   6. Otherwise nothing (the run ends).
  * `context`: `config` (readConfig), `replied`, `lastAssistant`, `shown`
- * ({kind, number, form?, module?} of the matters put this turn), `used` (the sentences
+ * ({kind, number, form?, module?} of the matters put this turn; module is kept in the record of what was put), `used` (the sentences
  * taken so far per kind), `missing` (key of the first missing item of the
  * requirement card, or undefined), `unreleased` (the goal in focus is not
  * released or has a module in design). Returns `{kind: 'reply' | 'silent',
@@ -99,7 +99,7 @@ export function readConfig(raw, warn = () => {}) {
  */
 export function simulatedReply(context) {
   const { config, replied, lastAssistant = '', shown = [], used = {} } = context
-  const summary = shown.map(({ kind, number, form }) => ({ kind, number, ...form === undefined ? {} : { form } }))
+  const summary = shown.map(({ kind, number, form, module }) => ({ kind, number, ...form === undefined ? {} : { form }, ...module === undefined ? {} : { module } }))
   const silent = rule => ({ kind: 'silent', rule, shown: summary, used })
   if (replied >= config.maxReplies) return silent(1)
   if (lastAssistant.includes('我记成')) return { kind: 'reply', rule: 2, text: config.restateReply, shown: summary, used }

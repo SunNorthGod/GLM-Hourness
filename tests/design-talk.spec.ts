@@ -74,6 +74,15 @@ test('the way of asking of a question and the sample its call carried are kept w
   assert.equal(state.unparsed, 1, 'a result with a form that is not one of the four cannot be read')
 })
 
+test('the one-page note of a release is kept with the matter like a sample, the module of the release with it, and the revisions of the set', () => {
+  const call = (id: string, args: unknown): Record<string, unknown> => ({ type: 'tool-call', id, name: PROPOSE_TO_HUMAN, arguments: args })
+  const state = fold([
+    event('assistant/message', { message: { role: 'assistant', content: [{ type: 'text', text: '这一页放行吗' }, call('c1', JSON.stringify({ kind: 'release', goal: 'goal-1', module: 'module-a', page: '一页：记账' })), call('c2', { kind: 'release', goal: 'goal-1' })], source: { kind: 'model' } }, turn: 1 }, 10),
+    result('c1', shown('release', 1, { module: 'module-a', releaseSet: [{ id: 'decision-a', rev: 'r1' }] }), 11),
+    result('c2', shown('release', 2, { releaseSet: [] }), 12),
+  ])
+  assert.deepEqual(state.shown.map(entry => [entry.kind, entry.module, entry.exact, entry.releaseSet]), [['release', 'module-a', '一页：记账', [{ id: 'decision-a', rev: 'r1' }]], ['release', undefined, undefined, []]])
+})
 test('only the result of a propose_to_human call counts: an error, another tool\'s result with the same text and an unknown call id do not', () => {
   const text = shown('question', 1)
   const state = fold([

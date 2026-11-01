@@ -9,16 +9,18 @@
  * returns the text to show, with only the ways of a `choose` and a sample laid
  * out by the harness (renderAsk). Three kinds exist: `question` (a matter only
  * the human can decide), and `confirm` and `release`, which put the
- * requirements and the design to the human. `confirm` is open: it keeps no
- * record, takes only a goal, a yes-or-no question and an original text, and is
- * refused until the goal's requirement card is complete. `release` is refused
- * until the step that opens it.
+ * requirements and the design to the human. Both keep no record on the graph:
+ * they take a goal, a yes-or-no question and an original text (a sample, or for
+ * a release the one-page note), and are refused until the goal is ready, the
+ * requirement card complete for `confirm`, the release gate met for
+ * `release`. A goal split into modules is released twice over: the framework,
+ * the module list and the directions, then each module (`module`).
  */
 import { openEngine, type ApplyResult } from '../graph/engine.ts'
 import type { LoadedGraph } from '../graph/parse.ts'
 import { PLAIN_QUESTION_GUIDE, PLAIN_WORDS, plainWordsIn } from '../graph/plain-question.ts'
 import { OPEN_STATUSES } from '../graph/projection.ts'
-import { ASK_FORMS, PROPOSAL_LIMITS, askOf, askTextRefusal, codePointCount, proposalRecordRefusal, renderAsk, textCoversRecord, type AskForm } from '../graph/proposal.ts'
+import { ASK_FORMS, PAGE_LIMITS, PROPOSAL_LIMITS, askOf, askTextRefusal, codePointCount, proposalRecordRefusal, renderAsk, textCoversRecord, type AskForm } from '../graph/proposal.ts'
 import type { GraphNode } from '../graph/schema.ts'
 import { goalOf } from '../graph/stage.ts'
 import type { AgentLike, ServiceLookup, ToolDefinitionLike } from '../shared/dsh-min.ts'
@@ -27,7 +29,7 @@ import { PROPOSE_TO_HUMAN, type ShownProposal } from '../shared/tool-names.ts'
 import { askBoard, attachBody, boardOfBody, resolveAttach, type AttachBoard, type AttachDetail, type Attachment } from './attach.ts'
 import { emitMetric } from './metrics.ts'
 import { TALK_SHAPES, type TalkState } from './talk.ts'
-import { confirmGate, isRecord, mainAgentCall, openGoal, readGraph, refuse, refuseWith, toolShell } from './tool-support.ts'
+import { confirmGate, isRecord, mainAgentCall, moduleOfGoal, openGoal, readGraph, refuse, refuseWith, releasePage, releaseReady, toolShell } from './tool-support.ts'
 
 /** What the design row lets the tools know. */
 export interface DesignToolDeps {
@@ -48,7 +50,7 @@ type Where = NonNullable<ReturnType<DesignToolDeps['graph']>>
 
 const DESCRIPTION = [
   'Put one matter to the human: one question they can answer in a few words. The harness checks it, keeps it on the graph when the human decides it, and returns the text to show.',
-  'kind question: a matter only the human can decide. kind confirm: the interview is over, put the requirements to the human; pass goal and text (one yes-or-no question, like a recommend) and sample if there is original text they must see; the requirement itself goes in your report before the question, and nothing is written to the graph until they agree and you record it with record_human_answer. It is refused until the 8 items of the requirement card are filled. kind release: the design is done, put it to the human to release; for a goal split into modules the first release covers the framework, the module list and the directions, and each module is released again, with module and a one-page release note.',
+  `kind question: a matter only the human can decide. kind confirm: the interview is over, put the requirements to the human; pass goal and text (one yes-or-no question, like a recommend) and sample if there is original text they must see; the requirement itself goes in your report before the question, and nothing is written to the graph until they agree and you record it with record_human_answer. It is refused until the 8 items of the requirement card are filled. kind release: the design is done, put it to the human to release; pass goal and text (one yes-or-no question, like a recommend: 「照这一页放行「借阅」，可以吗？」), and the design itself goes in your report before the question. It is refused until the design is complete: the five columns of every decision, acceptance on every task, no question left open. A goal split into modules is released twice over: first the framework, the module list and the directions (no module), then each module (module); both take page, a one-page release note in plain words (at most ${PAGE_LIMITS.max} characters) that the harness appends to text and checks, so the framework release names every module, framework decision and direction word for word, and a module release names the module. A goal that is not split takes no page. Nothing is written to the graph until the human agrees and you record it with record_human_answer.`,
   TALK_SHAPES,
   PLAIN_QUESTION_GUIDE,
 ].join('\n')
@@ -67,10 +69,10 @@ const PARAMETERS = {
     cost: { type: 'string', description: 'kind question, recommend: the real cost, one short line, word for word in text; leave it out when there is none.' },
     ways: { type: 'array', items: { type: 'string' }, description: 'kind question, choose: two or three ways, each one line saying what the human would see, your pick last.' },
     notTaken: { type: 'string', description: 'kind question, recommend and choose: the way you did not take, kept for the record.' },
-    sample: { type: 'string', description: 'form look and kind confirm (and later release): text the human must see, such as a sketch; the harness shows it under your question, and for a look as drawn.' },
+    sample: { type: 'string', description: 'form look, kind confirm and kind release of a goal that is not split: text the human must see, such as a sketch; the harness shows it under your question, and for a look as drawn.' },
     goal: { type: 'string', description: 'kind confirm or release: the goal id (required).' },
-    module: { type: 'string', description: 'kind release: the module to release; leave out for the goal itself.' },
-    page: { type: 'string', description: 'kind release of a goal split into modules: the one-page release note.' },
+    module: { type: 'string', description: 'kind release of a goal split into modules: the module to release, once the framework is released; leave out for the framework, the module list and the directions.' },
+    page: { type: 'string', description: 'kind release of a goal split into modules: the one-page release note in plain words, at most 2000 characters; it must name every module, framework decision and direction (framework release) or the module (module release) word for word.' },
     parent: { type: 'string', description: 'kind question, new: the node it hangs under; the goal in your focus when left out.' },
     question: { type: 'string', description: 'kind question: the id of a question you already put, to revise it after the human added to it or turned it down (with form, title and the record), or to show it once more (with text alone).' },
     sources: { type: 'array', items: { type: 'string' }, description: 'kind question, new: nodes it exists because of.' },
@@ -138,47 +140,53 @@ function stringField(args: Record<string, unknown>, field: string): string | und
   return value
 }
 
-/** What a call of kind confirm carries: the goal whose requirement is put to the human, the question and the original text they must see, if any. */
-interface ConfirmArgs {
+/** What a call of kind confirm or release carries: the goal whose requirement or design is put to the human, the words, the original text they must see, if any; for a release also the module and the one-page note. */
+interface GoalArgs {
   readonly text: string
   readonly goal: string
   readonly sample?: string
+  readonly module?: string
+  readonly page?: string
 }
 
-/** The fields of a call that belong to kind question (and, for module and page, to kind release): refused for kind confirm. */
+/** The fields of a call that belong to kind question: refused for kind confirm and kind release. */
 const QUESTION_FIELDS = ['form', 'title', 'proposal', 'reason', 'cost', 'ways', 'notTaken', 'parent', 'question', 'sources', 'attach'] as const
 
-/** The arguments of a call of kind confirm, shape-checked: the goal and the words, and only the original text besides. */
-function parseConfirm(raw: Record<string, unknown>): ConfirmArgs {
+/** The arguments of a call of kind confirm or release, shape-checked: the goal and the words, and only the original text besides (for a release also the module and the page). */
+function parseGoalCall(raw: Record<string, unknown>, kind: 'confirm' | 'release'): GoalArgs {
+  const takes = kind === 'confirm' ? 'kind, text, goal and sample' : 'kind, text, goal, module, page and sample'
   for (const field of QUESTION_FIELDS) {
-    if (raw[field] !== undefined) refuse('invalid', `${field} belongs to kind question`, `kind confirm takes kind, text, goal and sample; leave ${field} out`, field)
+    if (raw[field] !== undefined) refuse('invalid', `${field} belongs to kind question`, `kind ${kind} takes ${takes}; leave ${field} out`, field)
   }
-  for (const field of ['module', 'page'] as const) {
-    if (raw[field] !== undefined) refuse('invalid', `${field} belongs to kind release`, `kind confirm takes kind, text, goal and sample; leave ${field} out`, field)
+  if (kind === 'confirm') {
+    for (const field of ['module', 'page'] as const) {
+      if (raw[field] !== undefined) refuse('invalid', `${field} belongs to kind release`, `kind confirm takes ${takes}; leave ${field} out`, field)
+    }
   }
   const { text, goal } = raw
-  if (typeof text !== 'string') refuse('invalid', 'text is required: the question as the human reads it', 'pass your own sentence as text: one yes-or-no question; the requirement itself is in your report before it', 'text')
-  if (typeof goal !== 'string' || goal.length === 0) refuse('invalid', 'goal is required for kind confirm: the id of the goal whose requirement you put to the human', 'pass the goal id', 'goal')
+  if (typeof text !== 'string') refuse('invalid', 'text is required: the question as the human reads it', `pass your own sentence as text: one yes-or-no question; the ${kind === 'confirm' ? 'requirement' : 'design'} itself is in your report before it`, 'text')
+  if (typeof goal !== 'string' || goal.length === 0) refuse('invalid', `goal is required for kind ${kind}: the id of the goal whose ${kind === 'confirm' ? 'requirement' : 'design'} you put to the human`, 'pass the goal id', 'goal')
   const sample = stringField(raw, 'sample')
   if (sample !== undefined && (sample.length === 0 || codePointCount(sample) > SAMPLE_LIMIT)) refuse('invalid', `sample must be 1 to ${SAMPLE_LIMIT} characters`, 'pass the text the human must see, shortened if need be', 'sample')
-  return { text, goal, ...sample === undefined ? {} : { sample } }
+  const module = stringField(raw, 'module')
+  if (module !== undefined && module.length === 0) refuse('invalid', 'module must be the id of a module', 'pass the module id, or leave module out for the framework of the goal', 'module')
+  const page = stringField(raw, 'page')
+  if (page !== undefined && sample !== undefined) refuse('invalid', 'page and sample exclude each other', 'the page is itself the original text the human must see', 'sample')
+  return { text, goal, ...sample === undefined ? {} : { sample }, ...module === undefined ? {} : { module }, ...page === undefined ? {} : { page } }
 }
 
-/** A call, shape-checked: of kind question with the arguments of a question, or of kind confirm with the goal and the words. */
-type Call = { readonly kind: 'question', readonly args: Args } | { readonly kind: 'confirm', readonly args: ConfirmArgs }
+/** A call, shape-checked: of kind question with the arguments of a question, or of kind confirm or release with the goal and the words. */
+type Call = { readonly kind: 'question', readonly args: Args } | { readonly kind: 'confirm', readonly args: GoalArgs } | { readonly kind: 'release', readonly args: GoalArgs }
 
 function parseCall(raw: unknown): Call {
   if (!isRecord(raw)) refuse('invalid', 'the arguments must be a JSON object', 'pass {kind, text, ...} as described in the tool description')
   const extra = Object.keys(raw).find(key => !CALL_FIELDS.has(key))
   if (extra !== undefined) refuse('invalid', `${extra} is not a field of ${PROPOSE_TO_HUMAN}`, `${PROPOSE_TO_HUMAN} takes ${[...CALL_FIELDS].join(', ')}`, extra)
   const kind = raw.kind
-  if (typeof kind !== 'string' || !(KINDS as readonly string[]).includes(kind)) refuse('invalid', `kind must be one of ${KINDS.join(', ')}`, 'pass kind question to put a matter to the human, kind confirm to put the requirement to them', 'kind')
-  if (kind === 'release') {
-    refuse('invalid', `kind ${kind} is not open yet`, 'not yet: only kind question and kind confirm work for now; ask the human in your reply and carry on with what you can', 'kind')
-  }
-  return kind === 'confirm' ? { kind, args: parseConfirm(raw) } : { kind: 'question', args: parseArgs(raw) }
+  if (typeof kind !== 'string' || !(KINDS as readonly string[]).includes(kind)) refuse('invalid', `kind must be one of ${KINDS.join(', ')}`, 'pass kind question to put a matter to the human, kind confirm to put the requirement to them, kind release to put the design to them', 'kind')
+  if (kind === 'question') return { kind, args: parseArgs(raw) }
+  return kind === 'confirm' ? { kind, args: parseGoalCall(raw, kind) } : { kind: 'release', args: parseGoalCall(raw, 'release') }
 }
-
 /** The arguments of a call of kind question, shape-checked: what goes with what. The rules of the words and of the record are checked after the graph is read. */
 function parseArgs(raw: Record<string, unknown>): Args {
   const text = raw.text
@@ -268,6 +276,22 @@ function talkRead(deps: DesignToolDeps, agent: AgentLike): TalkState | undefined
   return state
 }
 
+/** What a call of kind confirm or release checks before it looks at the goal: the graph, the words (the limits of a recommend, the plain words) and the number of this question in the reply. */
+async function beforeGoalCall(deps: DesignToolDeps, agent: AgentLike, where: Where, args: GoalArgs): Promise<{ readonly graph: LoadedGraph, readonly number: 1 | 2 | 3 }> {
+  const state = talkRead(deps, agent)
+  const graph = await readGraph(where.dir)
+  checkLimits('recommend', args.text)
+  checkPlain('text', args.text)
+  return { graph, number: numberOf(state) }
+}
+
+/** The error a call of kind confirm or release throws: a refusal of the harness is counted for the metrics and thrown as the message the model reads; any other error as it is. */
+function refusedCall(kind: Kind, error: unknown): Error {
+  if (!(error instanceof Refused)) return error instanceof Error ? error : new Error(String(error))
+  emitMetric({ event: 'design.proposal-refused', kind, reason: error.reasonCode, field: error.field })
+  return new Error(error.message, { cause: error })
+}
+
 /**
  * kind confirm: the requirement of a goal is put to the human. Nothing is
  * written to the graph: the card has to be complete, the words are held to
@@ -275,13 +299,9 @@ function talkRead(deps: DesignToolDeps, agent: AgentLike): TalkState | undefined
  * (kind confirm), which finds this showing in the session's talk state. The
  * requirement itself is in the main agent's report before the question.
  */
-async function confirmCall(deps: DesignToolDeps, agent: AgentLike, where: Where, args: ConfirmArgs): Promise<Record<string, unknown>> {
+async function confirmCall(deps: DesignToolDeps, agent: AgentLike, where: Where, args: GoalArgs): Promise<Record<string, unknown>> {
   try {
-    const state = talkRead(deps, agent)
-    const graph = await readGraph(where.dir)
-    checkLimits('recommend', args.text)
-    checkPlain('text', args.text)
-    const number = numberOf(state)
+    const { graph, number } = await beforeGoalCall(deps, agent, where, args)
     const goal = confirmGate(graph, openGoal(graph, args.goal))
     const text = renderAsk(args.text, number, undefined, args.sample, false)
     emitMetric({ event: 'design.proposal-shown', kind: 'confirm', number, goal: goal.id, codePoints: codePointCount(args.text), points: codePointCount(text), sample: args.sample !== undefined })
@@ -295,11 +315,43 @@ async function confirmCall(deps: DesignToolDeps, agent: AgentLike, where: Where,
     }
   }
   catch (error) {
-    if (error instanceof Refused) {
-      emitMetric({ event: 'design.proposal-refused', kind: 'confirm', reason: error.reasonCode, field: error.field })
-      throw new Error(error.message, { cause: error })
+    throw refusedCall('confirm', error)
+  }
+}
+
+/**
+ * kind release: the design of a goal, or of one of its modules, is put to the
+ * human. Nothing is written to the graph: the release gate has to be met, the
+ * words are held to the limits of a recommend, and the page of a split goal is
+ * held to what would let the human overlook a part of what they release
+ * (src/design/tool-support.ts `releaseReady`). The answer is recorded by
+ * record_human_answer (kind release), which finds this showing in the
+ * session's talk state, with the revisions of the nodes the release will
+ * approve as they are now: the human agrees to that version of them.
+ */
+async function releaseCall(deps: DesignToolDeps, agent: AgentLike, where: Where, args: GoalArgs): Promise<Record<string, unknown>> {
+  try {
+    const { graph, number } = await beforeGoalCall(deps, agent, where, args)
+    const goal = openGoal(graph, args.goal)
+    const module = args.module === undefined ? undefined : moduleOfGoal(graph, goal, args.module)
+    const ready = releaseReady(graph, goal, module)
+    releasePage(graph, goal, module, ready, args.page)
+    const exact = args.page ?? args.sample
+    const text = renderAsk(args.text, number, undefined, exact, false)
+    emitMetric({ event: 'design.proposal-shown', kind: 'release', number, goal: goal.id, module: module?.id, codePoints: codePointCount(args.text), points: codePointCount(text), sample: args.sample !== undefined, page: args.page !== undefined })
+    return {
+      tool: PROPOSE_TO_HUMAN,
+      kind: 'release',
+      goal: goal.id,
+      ...module === undefined ? {} : { module: module.id },
+      number,
+      text,
+      releaseSet: ready.set.map(node => ({ id: node.id, rev: graph.revisions.get(node.id)! })),
+      message: `${showMessage('release')} The design itself goes in your report before the question; text is only the question.${exact === undefined ? '' : ` ${DETAIL_MESSAGE}`}`,
     }
-    throw error
+  }
+  catch (error) {
+    throw refusedCall('release', error)
   }
 }
 
@@ -329,6 +381,7 @@ export function proposeTool(deps: DesignToolDeps): ToolDefinitionLike {
       const where = deps.graph(agent)
       if (where === undefined) refuse('not_found', 'the project graph is not here', 'the graph row is off or the graph directory does not exist; tell the human')
       if (parsed.kind === 'confirm') return await confirmCall(deps, agent, where, parsed.args)
+      if (parsed.kind === 'release') return await releaseCall(deps, agent, where, parsed.args)
       const { args } = parsed
       try {
         const state = talkRead(deps, agent)

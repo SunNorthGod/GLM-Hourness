@@ -17,8 +17,8 @@
  * here names a question card: the tools that put a matter to the human are
  * propose_to_human and record_human_answer. A goal split into modules is
  * designed twice (docs/ORCHESTRATION.md §4.9): the reminder says which loop
- * the focus is in. The release lines of the two loops come with the release
- * gates of the later steps and are not written here.
+ * the focus is in, what is missing before the framework or the module can be
+ * put to the human, and the release that comes next.
  *
  * Reading the graph can fail; the step then goes without the reminder, the
  * failure is warned once per process and the session's row health says so.
@@ -29,7 +29,7 @@ import { isReleased, isSplit, modulesOf, moduleOf } from '../graph/modules.ts'
 import type { LoadedGraph } from '../graph/parse.ts'
 import type { GraphNode } from '../graph/schema.ts'
 import type { GraphFocusService } from '../graph/service.ts'
-import { goalOf, releaseSet, stageStatus, type GateItem } from '../graph/stage.ts'
+import { bigLoopSet, goalOf, moduleReleaseGate, releaseSet, stageStatus, type GateItem } from '../graph/stage.ts'
 import { loadGraph } from '../graph/store.ts'
 import { createUserNotice, type AgentLike, type DerivedMessage, type UserNotice } from '../shared/dsh-min.ts'
 import { DELEGATIONS_ID, DELEGATION_LIMIT, delegationKindOf } from '../shared/answer-marks.ts'
@@ -97,6 +97,11 @@ export const INTERVIEW_STEPS: readonly InterviewStep[] = [
 
 const CONFIRM_NEXT = 'Next: put the requirement to the human with propose_to_human (kind confirm).'
 const RELEASE_NEXT = 'Next: put the design to the human with propose_to_human (kind release).'
+const FRAMEWORK_NEXT = 'Next: put the framework, the module list and the directions to the human with propose_to_human (kind release, page listing them).'
+const moduleNext = (id: string): string => `Next: put this module to the human with propose_to_human (kind release, module ${id}, page: one page in plain words).`
+
+/** The line that asks for the likeliest reason a design fails: not a column of the gate, said in plain words when the design is put to the human. */
+const FAILURE_LINE = 'Optionally add a line "如果失败：<the likeliest reason it fails>" to a decision body; when you put the design to the human, say it in plain words in your report.'
 
 const DESIGN_FORMAT = 'Write each design decision with "理由：", "架构：" and "查过的现成方案：" lines in its body, acceptance and nonGoals; plan tasks under the goal with a source edge to the decision, every task with acceptance; a small project keeps its tasks directly under the goal, and only work with independent parts the human should release one by one is planned as features (modules) under the goal.'
 
@@ -160,20 +165,27 @@ function interviewLines(items: readonly GateItem[]): string[] {
   ]
 }
 
-/** The lines of a design stage that is not split: how to write, the five columns, what blocks the release. */
-function designLines(graph: LoadedGraph, goal: GraphNode, items: readonly GateItem[], exitReady: boolean): string[] {
+/** The lines of a design stage: how to write, the five columns, what blocks the release and the release that comes next; for a goal split into modules those of the framework, the module list and the directions. */
+function designLines(graph: LoadedGraph, goal: GraphNode, items: readonly GateItem[], exitReady: boolean, split: boolean): string[] {
   // The columns of a decision are the items keyed `<decision id>:<column>`; a task's acceptance item has the same shape and is not one.
-  const counts = releaseSet(graph, goal).filter(entry => entry.type === 'decision').map(decision => ({
+  const counts = (split ? bigLoopSet(graph, goal) : releaseSet(graph, goal)).filter(entry => entry.type === 'decision').map(decision => ({
     id: decision.id,
     filled: items.filter(item => item.key.startsWith(`${decision.id}:`) && item.ok).length,
   }))
   const fewest = [...counts].sort((a, b) => a.filled - b.filled || (a.id < b.id ? -1 : 1))[0]
   return [
-    DESIGN_FORMAT,
+    split ? FRAMEWORK_FORMAT : DESIGN_FORMAT,
+    FAILURE_LINE,
     ...fewest === undefined ? [] : [`Design columns: ${counts.length} decision(s) proposed; ${fewest.id} has the fewest, ${fewest.filled} of 5.`],
     ...items.filter(item => !item.ok).map(itemLine),
-    ...exitReady ? [RELEASE_NEXT] : [],
+    ...exitReady ? [split ? FRAMEWORK_NEXT : RELEASE_NEXT] : [],
   ]
+}
+
+/** The lines of a module in design: how to write it, what blocks its release and the release that comes next. */
+function moduleDesignLines(graph: LoadedGraph, goal: GraphNode, module: GraphNode): string[] {
+  const missing = moduleReleaseGate(graph, goal, module).filter(item => !item.ok)
+  return [MODULE_FORMAT, FAILURE_LINE, ...missing.map(itemLine), ...missing.length === 0 ? [moduleNext(module.id)] : []]
 }
 function moduleState(module: GraphNode): string {
   if (isReleased(module)) return '已放行'
@@ -232,12 +244,12 @@ function reminderFor(graph: LoadedGraph, focus: string | undefined): StageRemind
   }
   const split = isSplit(graph, goal)
   if (stage === 'design') {
-    return done(stage, [`${head} is at stage design.`, ...split ? [FRAMEWORK_FORMAT] : designLines(graph, goal, status.items, status.exitReady)])
+    return done(stage, [`${head} is at stage design.`, ...designLines(graph, goal, status.items, status.exitReady, split)])
   }
   if (stage === 'release') {
     const module = moduleOf(graph, node)
     if (module !== undefined && modulesOf(graph, goal).includes(module)) {
-      const lines = isReleased(module) ? [MODULE_RELEASED_LINE] : [MODULE_FORMAT]
+      const lines = isReleased(module) ? [MODULE_RELEASED_LINE] : moduleDesignLines(graph, goal, module)
       return done(stage, [`${head} is released; you work in module ${module.id} ${quoted(module.title)}, which is ${isReleased(module) ? 'released' : 'in design'}.`, ...lines])
     }
     if (split) return done(stage, [`${head} is at stage release.`, MODULES_RELEASED_LINE, ...moduleLines(modulesOf(graph, goal))])

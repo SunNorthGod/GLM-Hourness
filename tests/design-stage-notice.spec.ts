@@ -13,7 +13,7 @@ import { requirementCard } from '../src/graph/stage.ts'
 import type { GraphNode } from '../src/graph/schema.ts'
 import type { DerivedMessage, UserNotice } from '../src/shared/dsh-min.ts'
 import { designHost, healthOf, type DesignHost, type FakeAgent } from './design-host.ts'
-import { GOAL_BODY, design, graphOf, interview, node } from './graph-memory.ts'
+import { GOAL_BODY, design, graphOf, interview, node, splitDesign } from './graph-memory.ts'
 import { withNode } from './execute-helpers.ts'
 import { captureWarnings, seedAsHuman } from './graph-helpers.ts'
 
@@ -103,10 +103,9 @@ function splitGoal(stage: 'design' | 'release', modules = 2): ReturnType<typeof 
   ])
 }
 
-/** The design fixture with its plan as tasks directly under the goal: a small project, not split into modules. */
+/** The design fixture: its plan is a task directly under the goal, a small project that is not split into modules. */
 function smallDesign(decision: Partial<GraphNode> = {}, others: readonly GraphNode[] = []): ReturnType<typeof graphOf> {
-  const base = design(decision, others).graph
-  return graphOf([...base.nodes.values()].filter(entry => entry.id !== 'feature-1').map(entry => entry.id === 'task-1' ? { ...entry, parent: 'goal-1', edges: [{ type: 'source' as const, to: 'decision-1' }] } : entry))
+  return design(decision, others).graph
 }
 
 test('design: the writing format with the three labels; the gate lists what blocks and, when it holds, asks for the release', () => {
@@ -118,7 +117,7 @@ test('design: the writing format with the three labels; the gate lists what bloc
   assert.equal(nextLine(blocked), undefined)
   assert.ok(blocked.text.includes('- 非目标: set nonGoals on decision-1'), blocked.text)
   assert.ok(blocked.text.includes('4 of 5'))
-  assert.ok(!blocked.text.includes('如果失败：'), 'the post-mortem line comes with step 9')
+  for (const reminder of [ready, blocked]) assert.ok(reminder.text.includes('Optionally add a line "如果失败：<the likeliest reason it fails>" to a decision body; when you put the design to the human, say it in plain words in your report.'), 'the post-mortem line is asked for')
 })
 
 test('design of a split goal: the framework and module writing format, no single-layer format line', () => {
@@ -127,9 +126,59 @@ test('design of a split goal: the framework and module writing format, no single
   assert.ok(reminder.text.includes('plan each module as a feature directly under the goal'))
   assert.ok(!reminder.text.includes('a small project keeps its tasks directly under the goal'))
   assert.ok(reminder.text.includes('理由：') && reminder.text.includes('查过的现成方案：'))
-  assert.equal(nextLine(reminder), undefined, 'the release lines of a split goal come with the release gate of step 9')
+  assert.equal(nextLine(reminder), undefined, 'this design is not ready to be put to the human')
 })
 
+test('design of a split goal: the gate of the framework lists what blocks, and when it holds asks for the release of the framework with a page', () => {
+  const ready = stageReminder(splitDesign().graph, 'goal-1')
+  assert.equal(nextLine(ready), 'Next: put the framework, the module list and the directions to the human with propose_to_human (kind release, page listing them).')
+  assert.ok(ready.text.includes('Design columns: 1 decision(s) proposed; decision-fw has the fewest, 5 of 5.'), 'the columns counted are those of the framework, not of the modules')
+  const blocked = (patch: Record<string, Partial<GraphNode>>): StageReminder => {
+    const graph = splitDesign().graph
+    return stageReminder(graphOf([...graph.nodes.values()].map(entry => patch[entry.id] === undefined ? entry : { ...entry, ...patch[entry.id] })), 'goal-1')
+  }
+  const noDirections = blocked({ 'norm-directions': { acceptance: [] } })
+  assert.equal(nextLine(noDirections), undefined)
+  assert.ok(noDirections.text.includes('- 人定过的方向清单: propose a norm node with the id norm-directions under the goal'), noDirections.text)
+  const noColumn = blocked({ 'decision-fw': { nonGoals: [] } })
+  assert.ok(noColumn.text.includes('- 非目标: set nonGoals on decision-fw'), noColumn.text)
+  assert.ok(noColumn.text.includes('Design columns: 1 decision(s) proposed; decision-fw has the fewest, 4 of 5.'))
+  assert.equal(nextLine(noColumn), undefined)
+  // What is below a module is not asked for here.
+  assert.equal(nextLine(blocked({ 'decision-a': { nonGoals: [] } })), ready.text.split('\n').find(line => line.startsWith('Next: ')))
+})
+
+/** The graph the release of the framework leaves: both modules approved and in design, the goal at release. */
+function frameworkReleased(patch: Record<string, Partial<GraphNode>> = {}): ReturnType<typeof graphOf> {
+  const graph = splitDesign().graph
+  return graphOf([...graph.nodes.values()].map((entry): GraphNode => {
+    const changed = patch[entry.id] === undefined ? entry : { ...entry, ...patch[entry.id] }
+    if (entry.id === 'goal-1') return { ...changed, stage: 'release' }
+    if (entry.id === 'module-a' || entry.id === 'module-b') return { ...changed, status: 'approved', stage: 'design' }
+    return entry.id === 'decision-fw' || entry.id === 'norm-directions' ? { ...changed, status: 'approved' } : changed
+  }))
+}
+
+test('focus inside a module in design: what blocks its release is listed, and when nothing does the release of this module is asked for', () => {
+  const ready = stageReminder(frameworkReleased(), 'task-a')
+  assert.equal(nextLine(ready), 'Next: put this module to the human with propose_to_human (kind release, module module-a, page: one page in plain words).')
+  assert.ok(ready.text.includes('Write this module\'s design decisions as children of the module'))
+  const blocked = stageReminder(frameworkReleased({ 'decision-a': { nonGoals: [] }, 'task-a': { acceptance: [] } }), 'decision-a')
+  assert.equal(nextLine(blocked), undefined)
+  assert.ok(blocked.text.includes('- 非目标: set nonGoals on decision-a'), blocked.text)
+  assert.ok(blocked.text.includes('- 任务「task-a」怎样算做完: set acceptance on task-a'), blocked.text)
+  const empty = stageReminder(frameworkReleased({ 'decision-a': { status: 'dropped' }, 'task-a': { status: 'dropped' } }), 'module-a')
+  assert.ok(empty.text.includes('- 要放行的内容: graph_propose the design of module-a'), empty.text)
+  assert.ok(empty.text.includes('- 模块自己的设计决策: '), empty.text)
+  // The other module has its own gate.
+  assert.equal(nextLine(stageReminder(frameworkReleased({ 'decision-a': { nonGoals: [] } }), 'task-b')), 'Next: put this module to the human with propose_to_human (kind release, module module-b, page: one page in plain words).')
+})
+
+test('the design stages ask for the line "如果失败：" of a decision: a small design, the framework of a split goal and a module in design', () => {
+  const line = 'Optionally add a line "如果失败：<the likeliest reason it fails>" to a decision body; when you put the design to the human, say it in plain words in your report.'
+  for (const reminder of [stageReminder(smallDesign(), 'goal-1'), stageReminder(splitDesign().graph, 'goal-1'), stageReminder(frameworkReleased(), 'task-a')]) assert.ok(reminder.text.includes(line), reminder.text)
+  for (const reminder of [stageReminder(interview().graph, 'goal-1'), stageReminder(frameworkReleased(), 'goal-1')]) assert.ok(!reminder.text.includes('如果失败：'), 'other stages do not ask for it')
+})
 test('release of an unsplit goal: one line to tell the human', () => {
   const reminder = stageReminder(graphOf([node({ id: 'goal-1', type: 'goal', stage: 'release' }, 0, 'human'), node({ id: 'task-1', type: 'task', parent: 'goal-1' })]), 'task-1')
   assert.deepEqual([reminder.goal, reminder.stage], ['goal-1', 'release'])

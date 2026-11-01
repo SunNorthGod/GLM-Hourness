@@ -11,16 +11,17 @@ import assert from 'node:assert/strict'
 import { createRequire, syncBuiltinESMExports } from 'node:module'
 import test from 'node:test'
 import { attachDigest } from '../src/design/attach.ts'
-import { recordTool } from '../src/design/record.ts'
+import { pageDigest, recordTool } from '../src/design/record.ts'
 import { proposeTool } from '../src/design/propose.ts'
 import { GOAL_ATTACHMENT_TEXT } from '../src/design/talk.ts'
+import { isSplit, modulesOf } from '../src/graph/modules.ts'
 import { PLAIN_QUESTION_EXAMPLES } from '../src/graph/plain-question.ts'
 import { stageStatus } from '../src/graph/stage.ts'
 import { releaseVerdict } from '../src/guard/design-release.ts'
 import { ANSWER_MARKS, DELEGATED, DELEGATIONS_ID, DELEGATION_LIMIT, DELEGATION_REASON, DELEGATION_SUFFIX, answerCallOf, answerKindOf } from '../src/shared/answer-marks.ts'
 import { PROPOSE_TO_HUMAN, RECORD_HUMAN_ANSWER } from '../src/shared/tool-names.ts'
-import { healthOf, hostWithoutTalkProjection, type FakeAgent } from './design-host.ts'
-import { fakeBoard, fillRequirementCard, mainAgentWithGoal, toolDeps, type MainAgentFixture } from './design-tools-helpers.ts'
+import { denied, healthOf, hostWithoutTalkProjection, type FakeAgent } from './design-host.ts'
+import { FRAMEWORK_PAGE, SPLIT_NAMES, fakeBoard, fillRequirementCard, frameworkReleased, mainAgentWithGoal, modulePage, toolDeps, writeDesign, type MainAgentFixture } from './design-tools-helpers.ts'
 import { exampleArgs } from './proposal-examples.ts'
 
 /** A question put to the human and answered "可以，就按推荐的来". */
@@ -195,7 +196,8 @@ test('the call is checked before anything is read: who calls, the shape of the w
     [{ recordedAs: '字'.repeat(121) }, 'recordedAs'],
     [{ answer: 'maybe' }, 'answer'],
     [{ kind: 'confirm' }, 'question'],
-    [{ kind: 'release' }, 'kind'],
+    [{ kind: 'release' }, 'question'],
+    [{ kind: 'bogus' }, 'kind'],
     [{ question: undefined }, 'question'],
     [{ extra: 1 }, 'extra'],
     [{ goal: 'goal-1' }, 'goal'],
@@ -206,7 +208,7 @@ test('the call is checked before anything is read: who calls, the shape of the w
     assert.equal(outcome.kind, 'error', JSON.stringify(patch))
     assert.deepEqual(outcome.kind === 'error' ? [outcome.error.code, outcome.error.field] : [], ['invalid', field], JSON.stringify(patch).slice(0, 80))
   }
-  assert.match(errorOf(await record(fixture, { kind: 'release' })).hint, /^not yet/)
+  assert.match(errorOf(await record(fixture, { kind: 'bogus' })).hint, /^pass kind question, confirm, release or delegation/)
   const missing = errorOf(await record(fixture, { question: 'question-9' }))
   assert.deepEqual([missing.code, missing.field], ['not_found', 'question'])
   const notProposal = errorOf(await record(fixture, { question: 'goal-1' }))
@@ -805,7 +807,7 @@ test('kind confirm: a sample shown with the requirement must have been whole in 
   const before = (await missing.engine.load()).revision
   const error = errorOf(await recordConfirm(missing))
   assert.equal(error.code, 'not_shown')
-  assert.match(error.message, /has not seen the whole sample they must see before agreeing/)
+  assert.match(error.message, /has not seen the whole page or sample they must see before agreeing/)
   assert.equal((await missing.engine.load()).revision, before)
   assert.equal(valueOfOk(await recordConfirm(missing, { answer: 'add', recordedAs: '先给他看全文' })).outcome, 'added')
 })
@@ -832,4 +834,399 @@ test('kind confirm: the shape of the call, one rule at a time; the fields of the
   // A question call keeps refusing the goal.
   const question = errorOf(await fixture.host.callTool(fixture.agent, RECORD_HUMAN_ANSWER, { kind: 'question', goal: 'goal-1', question: 'question-1', answer: 'agree', words: [AGREE], recordedAs: 'x' }))
   assert.deepEqual([question.code, question.field], ['invalid', 'goal'])
+})
+
+// ---------------------------------------------------------------- kind release (M3 step 9)
+
+const RELEASE_TEXT = '照上面的方案放行，可以吗？'
+const GO = '可以，放行'
+
+/** The release put to the human (a module's, with its page, when named); the main agent says the text it got back, and the human answers (unless `reply` is false). Returns what the tool returned. */
+async function releaseShown(fixture: MainAgentFixture, patch: Record<string, unknown> = {}, reply: string | false = GO, said?: string): Promise<Record<string, unknown>> {
+  const outcome = await fixture.host.callTool(fixture.agent, PROPOSE_TO_HUMAN, { kind: 'release', goal: 'goal-1', text: RELEASE_TEXT, ...patch })
+  assert.equal(outcome.kind, 'ok', JSON.stringify(outcome))
+  const value = outcome.kind === 'ok' ? outcome.value : {}
+  fixture.host.reply(fixture.agent, said ?? String(value.text))
+  if (reply !== false) await fixture.host.say(fixture.agent, reply)
+  return value
+}
+const recordRelease = (fixture: MainAgentFixture, patch: Record<string, unknown> = {}) => fixture.host.callTool(fixture.agent, RECORD_HUMAN_ANSWER, { kind: 'release', goal: 'goal-1', answer: 'agree', words: [GO], recordedAs: '照这一页放行', ...patch })
+const framework = (fixture: MainAgentFixture, reply: string | false = GO, said?: string) => releaseShown(fixture, { page: FRAMEWORK_PAGE }, reply, said)
+const moduleShown = (fixture: MainAgentFixture, id: 'module-a' | 'module-b', reply: string | false = GO, said?: string) => releaseShown(fixture, { module: id, page: modulePage(id === 'module-a' ? SPLIT_NAMES.moduleA : SPLIT_NAMES.moduleB) }, reply, said)
+const agreeMark = /^人在对话里同意（record_human_answer call-\d+）$/
+const changedStage = (node: Awaited<ReturnType<MainAgentFixture['node']>>, to: string) => node.history.filter(entry => entry.op === 'edit' && entry.changes?.stage?.to === to)
+
+test('kind release: the human agrees to the design of a goal that is not split, and what they were shown is approved and the goal released, each write with their words as relay', async () => {
+  const fixture = await mainAgentWithGoal()
+  await writeDesign(fixture, 'small')
+  await releaseShown(fixture)
+  const value = valueOfOk(await recordRelease(fixture))
+  assert.deepEqual([value.outcome, value.stage, value.approved, value.skipped, value.module, value.modules], ['released', 'release', ['decision-1', 'task-1'], undefined, undefined, undefined])
+  assert.match(String(value.message), /^Recorded: the human released the design of goal-1, and goal-1 is at stage release\./)
+  for (const id of ['decision-1', 'task-1']) {
+    const entry = (await fixture.node(id)).history.at(-1)!
+    assert.deepEqual([entry.op, entry.actor, entry.relay, entry.to], ['approve', 'llm', GO, 'approved'], id)
+    assert.match(entry.reason ?? '', agreeMark, id)
+  }
+  const goal = await fixture.node('goal-1')
+  const stage = goal.history.at(-1)!
+  assert.deepEqual([goal.stage, stage.op, stage.actor, stage.relay, stage.changes], ['release', 'edit', 'llm', GO, { stage: { from: 'design', to: 'release' } }])
+  assert.match(stage.reason ?? '', agreeMark, 'a goal that is not split has no page, so no digest')
+  assert.equal(answerKindOf(stage), 'agree')
+})
+
+test('kind release: a proposal that changed after the human saw it is skipped and the stage does not move; one added after is listed; the same words finish it once the design is shown again', async () => {
+  const fixture = await mainAgentWithGoal()
+  await writeDesign(fixture, 'small')
+  await releaseShown(fixture)
+  await fixture.engine.apply('llm', { op: 'edit', id: 'task-1', rev: (await fixture.engine.load()).revisions.get('task-1'), set: { acceptance: ['记一条能读回，改过了'] }, reason: '改' })
+  await fixture.engine.apply('llm', { op: 'propose', reason: '新', node: { type: 'task', id: 'task-2', title: '写汇总', parent: 'goal-1', acceptance: ['能汇总'], edges: [{ type: 'source', to: 'decision-1' }] } })
+  const value = valueOfOk(await recordRelease(fixture))
+  assert.deepEqual([value.outcome, value.stage, value.approved, value.skipped], ['partial', undefined, ['decision-1'], [{ id: 'task-1', code: 'stale_revision' }]])
+  assert.match(String(value.message), /the stage of goal-1 did not move.*task-1 \(stale_revision\).*2 proposal\(s\) are still waiting \(task-1, task-2\)/)
+  assert.deepEqual([(await fixture.node('goal-1')).stage, (await fixture.node('task-1')).status, (await fixture.node('task-2')).status, (await fixture.node('decision-1')).status], ['design', 'proposed', 'proposed', 'approved'])
+  // The design is shown again as it is now, the human nods once more, and the rest is released: what is approved already is not approved twice.
+  await releaseShown(fixture, {}, '好的，这回放行')
+  const done = valueOfOk(await recordRelease(fixture, { words: ['好的，这回放行'] }))
+  assert.deepEqual([done.outcome, done.approved], ['released', ['task-1', 'task-2']])
+  assert.equal((await fixture.node('decision-1')).history.filter(entry => entry.op === 'approve').length, 1)
+  assert.equal((await fixture.node('goal-1')).stage, 'release')
+})
+
+test('kind release: the gate is checked again at the answer, so a design that changed after it was shown is not released, and nothing is written', async () => {
+  const fixture = await mainAgentWithGoal()
+  await writeDesign(fixture, 'small')
+  await releaseShown(fixture)
+  await fixture.engine.apply('llm', { op: 'edit', id: 'task-1', rev: (await fixture.engine.load()).revisions.get('task-1'), set: { acceptance: null }, reason: '改' })
+  const before = (await fixture.engine.load()).revision
+  const error = errorOf(await recordRelease(fixture))
+  assert.equal(error.code, 'gate_unmet')
+  assert.match(error.message, /missing: 任务「写记账命令」怎样算做完$/)
+  assert.equal((await fixture.engine.load()).revision, before)
+})
+
+test('kind release: only the release that was put to the human in this session is recorded: not another goal\'s, not the goal\'s when a module\'s was shown, not a module\'s when the goal\'s was', async () => {
+  const fixture = await mainAgentWithGoal()
+  await writeDesign(fixture, 'split')
+  const before = (await fixture.engine.load()).revision
+  const notShown = errorOf(await recordRelease(fixture))
+  assert.deepEqual([notShown.code, notShown.field], ['not_shown', 'goal'])
+  assert.match(notShown.hint, /show it with propose_to_human first, in this session/)
+  await framework(fixture)
+  assert.equal(valueOfOk(await recordRelease(fixture)).outcome, 'released')
+  const settled = (await fixture.engine.load()).revision
+  assert.notEqual(settled, before)
+  // A module of the released framework: only its own release counts.
+  await moduleShown(fixture, 'module-a', GO)
+  const other = errorOf(await recordRelease(fixture, { module: 'module-b' }))
+  assert.deepEqual([other.code, other.field], ['not_shown', 'module'])
+  // Only module-a was put to the human: neither the release of the goal itself nor that of module-b is theirs to have agreed to.
+  const separate = await mainAgentWithGoal()
+  await writeDesign(separate, 'split')
+  await frameworkReleased(separate)
+  await moduleShown(separate, 'module-a')
+  assert.deepEqual([errorOf(await recordRelease(separate, {})).code, errorOf(await recordRelease(separate, { module: 'module-b' })).code], ['not_shown', 'not_shown'])
+  const goalLevel = errorOf(await recordRelease(fixture, {}))
+  assert.equal(goalLevel.code, 'invalid', 'the goal is released: its own release is over')
+  assert.equal((await fixture.engine.load()).revision, settled)
+  const missing = errorOf(await recordRelease(fixture, { goal: 'goal-9' }))
+  assert.deepEqual([missing.code, missing.field], ['not_found', 'goal'])
+})
+
+test('kind release: words the human did not say after the release was put to them are refused, and the graph does not move', async () => {
+  const fixture = await mainAgentWithGoal()
+  await writeDesign(fixture, 'small')
+  await fixture.host.say(fixture.agent, '之前说过：全部放行')
+  await releaseShown(fixture)
+  const before = (await fixture.engine.load()).revision
+  for (const words of [['我编的一句话'], ['全部放行'], [GO, '再编一句']]) {
+    const error = errorOf(await recordRelease(fixture, { words }))
+    assert.deepEqual([error.code, error.field], ['invalid', 'words'], words.join('|'))
+  }
+  assert.equal((await fixture.engine.load()).revision, before)
+  assert.deepEqual([(await fixture.node('goal-1')).stage, (await fixture.node('task-1')).status], ['design', 'proposed'])
+})
+
+test('kind release: adding or rejecting notes the human\'s words on the goal and moves nothing; the design is put to them again after it is changed', async () => {
+  for (const [answer, mark, outcome] of [['add', ANSWER_MARKS.add, 'added'], ['reject', ANSWER_MARKS.reject, 'rejected']] as const) {
+    const fixture = await mainAgentWithGoal()
+    await writeDesign(fixture, 'small')
+    const said = '补充：月底的汇总按金额从大到小排'
+    await releaseShown(fixture, {}, said)
+    const value = valueOfOk(await recordRelease(fixture, { answer, words: [said], recordedAs: '汇总按金额排序' }))
+    assert.equal(value.outcome, outcome)
+    assert.equal(value.stage, undefined)
+    assert.match(String(value.message), /put it to them again with propose_to_human \(kind release\)\.$/)
+    const goal = await fixture.node('goal-1')
+    assert.equal(goal.stage, 'design')
+    const note = goal.history.at(-1)!
+    assert.deepEqual([note.op, note.actor, note.relay], ['comment', 'llm', undefined])
+    assert.ok(note.text?.startsWith(mark))
+    assert.match(note.text ?? '', /「补充：月底的汇总按金额从大到小排」；主 Agent 记成：汇总按金额排序（record_human_answer call-\d+）$/)
+    assert.equal((await fixture.node('decision-1')).status, 'proposed')
+  }
+})
+
+test('kind release: a sample shown with the design must have been whole in what the main agent said before the human can agree to it', async () => {
+  const sample = '方案：用本地文件存账\n任务：写记账命令'
+  const whole = await mainAgentWithGoal()
+  await writeDesign(whole, 'small')
+  await releaseShown(whole, { sample })
+  assert.equal(valueOfOk(await recordRelease(whole)).outcome, 'released')
+  const missing = await mainAgentWithGoal()
+  await writeDesign(missing, 'small')
+  await releaseShown(missing, { sample }, GO, RELEASE_TEXT)
+  const before = (await missing.engine.load()).revision
+  const error = errorOf(await recordRelease(missing))
+  assert.equal(error.code, 'not_shown')
+  assert.match(error.message, /has not seen the whole page or sample they must see before agreeing/)
+  assert.equal((await missing.engine.load()).revision, before)
+  assert.equal(valueOfOk(await recordRelease(missing, { answer: 'add', recordedAs: '先给他看全文' })).outcome, 'added')
+})
+
+test('kind release: the shape of the call; the fields of the other kinds are refused and nothing is written', async () => {
+  const fixture = await mainAgentWithGoal()
+  await writeDesign(fixture, 'small')
+  await releaseShown(fixture)
+  const before = (await fixture.engine.load()).revision
+  for (const [patch, field] of [[{ question: 'question-1' }, 'question'], [{ way: 1 }, 'way'], [{ scope: '代码风格' }, 'scope'], [{ undo: true }, 'undo'], [{ goal: undefined }, 'goal'], [{ goal: '' }, 'goal'], [{ module: '' }, 'module'], [{ module: 7 }, 'module'], [{ answer: undefined }, 'answer'], [{ recordedAs: '' }, 'recordedAs'], [{ words: [] }, 'words']] as const) {
+    const error = errorOf(await recordRelease(fixture, patch))
+    assert.deepEqual([error.code, error.field], ['invalid', field], JSON.stringify(patch))
+  }
+  const named = errorOf(await recordRelease(fixture, { module: 'task-1' }))
+  assert.deepEqual([named.code, named.field], ['invalid', 'module'], 'a goal that is not split has no module')
+  assert.equal((await fixture.engine.load()).revision, before)
+})
+
+// ---- a goal split into modules: the release of the framework
+
+test('kind release, the framework of a goal split into modules: the candidates get the stage design, then everything shown is approved, then the goal is released; what is below a module stays a proposal', async () => {
+  const fixture = await mainAgentWithGoal()
+  await writeDesign(fixture, 'split')
+  await framework(fixture)
+  const value = valueOfOk(await recordRelease(fixture))
+  assert.deepEqual([value.outcome, value.stage, value.modules, value.approved], ['released', 'release', ['module-a', 'module-b'], ['decision-fw', 'norm-directions', 'module-a', 'module-b']])
+  assert.match(String(value.message), /^Recorded: the human released the framework, the module list and the directions of goal-1\. module-a, module-b are modules now, each in design/)
+  const graph = await fixture.engine.load()
+  const goal = graph.nodes.get('goal-1')!
+  assert.deepEqual(modulesOf(graph, goal).map(module => [module.id, module.status, module.stage]), [['module-a', 'approved', 'design'], ['module-b', 'approved', 'design']])
+  for (const id of ['decision-a', 'task-a', 'decision-b', 'task-b']) assert.equal(graph.nodes.get(id)!.status, 'proposed', id)
+  for (const id of ['decision-fw', 'norm-directions']) assert.equal(graph.nodes.get(id)!.status, 'approved', id)
+  // Every write has the human's words; the stage of the goal names the page the human saw.
+  for (const id of ['module-a', 'module-b']) {
+    const history = graph.nodes.get(id)!.history
+    assert.deepEqual(history.map(entry => entry.op), ['propose', 'edit', 'approve'], `${id}: the stage design is written while it is a proposal, then it is approved`)
+    assert.deepEqual(history.slice(1).map(entry => [entry.relay, entry.changes?.stage?.to]), [[GO, 'design'], [GO, undefined]], id)
+    for (const entry of history.slice(1)) assert.match(entry.reason ?? '', agreeMark, id)
+  }
+  const stage = goal.history.at(-1)!
+  assert.deepEqual([goal.stage, stage.relay, stage.changes], ['release', GO, { stage: { from: 'design', to: 'release' } }])
+  assert.match(stage.reason ?? '', new RegExp(`^人在对话里同意（record_human_answer call-\\d+） · 一页放行稿 ${pageDigest(FRAMEWORK_PAGE)}$`))
+  assert.match(pageDigest(FRAMEWORK_PAGE), /^[0-9a-f]{8}$/)
+  assert.equal(pageDigest(FRAMEWORK_PAGE), pageDigest(`  ${FRAMEWORK_PAGE.replaceAll('\n', '\r\n')}  `), 'the digest is of the page as texts are compared')
+  assert.notEqual(pageDigest(FRAMEWORK_PAGE), pageDigest(modulePage('x')))
+})
+
+test('kind release, the framework: the whole page must have been in what the main agent said, to the character', async () => {
+  const fixture = await mainAgentWithGoal()
+  await writeDesign(fixture, 'split')
+  const before = (await fixture.engine.load()).revision
+  await framework(fixture, GO, RELEASE_TEXT)
+  const absent = errorOf(await recordRelease(fixture))
+  assert.deepEqual([absent.code, absent.hint.includes('show the text from propose_to_human again, verbatim')], ['not_shown', true])
+  await framework(fixture, '好的', `${RELEASE_TEXT}\n\n${FRAMEWORK_PAGE.replace(SPLIT_NAMES.directions[0], `${SPLIT_NAMES.directions[0]}吧`)}`)
+  assert.equal(errorOf(await recordRelease(fixture, { words: ['好的'] })).code, 'not_shown', 'one word changed')
+  assert.equal((await fixture.engine.load()).revision, before)
+  await framework(fixture, '好的，放行', `先说几句。\n${RELEASE_TEXT}\n\n${FRAMEWORK_PAGE}\n后面还有话。`)
+  assert.equal(valueOfOk(await recordRelease(fixture, { words: ['好的，放行'] })).outcome, 'released')
+})
+
+test('kind release, the framework: the gate is checked again at the answer, so a framework that lost its directions after it was shown is not released, and nothing is written', async () => {
+  const fixture = await mainAgentWithGoal()
+  await writeDesign(fixture, 'split')
+  await framework(fixture)
+  await fixture.engine.apply('human', { op: 'reject', id: 'norm-directions', rev: (await fixture.engine.load()).revisions.get('norm-directions'), reason: '不要了' })
+  const before = (await fixture.engine.load()).revision
+  const gap = errorOf(await recordRelease(fixture))
+  assert.deepEqual([gap.code, gap.message.includes('人定过的方向清单')], ['gate_unmet', true])
+  assert.equal((await fixture.engine.load()).revision, before)
+  assert.deepEqual([(await fixture.node('module-a')).status, (await fixture.node('goal-1')).stage], ['proposed', 'design'])
+})
+
+test('kind release, the framework: a candidate changed after the human saw it is skipped, the others are released, and the goal stays in design', async () => {
+  const fixture = await mainAgentWithGoal()
+  await writeDesign(fixture, 'split')
+  assert.ok((await fixture.engine.apply('llm', { op: 'edit', id: 'module-a', rev: (await fixture.engine.load()).revisions.get('module-a'), set: { stage: 'release' }, reason: '自己写的' })).ok)
+  await framework(fixture)
+  assert.ok((await fixture.engine.apply('llm', { op: 'edit', id: 'module-a', rev: (await fixture.engine.load()).revisions.get('module-a'), set: { title: '记账（改名）' }, reason: '改名' })).ok)
+  const value = valueOfOk(await recordRelease(fixture))
+  assert.deepEqual([value.outcome, value.stage, value.skipped, value.modules], ['partial', undefined, [{ id: 'module-a', code: 'stale_revision' }], ['module-b']])
+  const graph = await fixture.engine.load()
+  assert.deepEqual([graph.nodes.get('module-a')!.status, graph.nodes.get('module-a')!.stage, graph.nodes.get('module-b')!.status, graph.nodes.get('module-b')!.stage, graph.nodes.get('goal-1')!.stage], ['proposed', 'release', 'approved', 'design', 'design'])
+  assert.equal(isSplit(graph, graph.nodes.get('goal-1')!), true)
+})
+
+test('kind release, the framework: a candidate that already has the stage design gets no second write, and one the main agent gave another stage is set to design, never left released', async () => {
+  const fixture = await mainAgentWithGoal()
+  await writeDesign(fixture, 'split')
+  assert.ok((await fixture.engine.apply('llm', { op: 'edit', id: 'module-a', rev: (await fixture.engine.load()).revisions.get('module-a'), set: { stage: 'release' }, reason: '自己写的' })).ok)
+  assert.ok((await fixture.engine.apply('llm', { op: 'edit', id: 'module-b', rev: (await fixture.engine.load()).revisions.get('module-b'), set: { stage: 'design' }, reason: '自己写的' })).ok)
+  await framework(fixture)
+  assert.equal(valueOfOk(await recordRelease(fixture)).outcome, 'released')
+  assert.deepEqual(changedStage(await fixture.node('module-a'), 'design').map(entry => entry.changes?.stage), [{ from: 'release', to: 'design' }])
+  assert.equal(changedStage(await fixture.node('module-b'), 'design').length, 1, 'only the main agent\'s own write, none of the harness\'s')
+  assert.deepEqual([(await fixture.node('module-a')).stage, (await fixture.node('module-b')).stage], ['design', 'design'])
+})
+
+/** A process that stops at the nth write of the graph store: the same failure the writes of a confirmation are tried with. */
+const stopAt = whileWriteFails
+
+test('kind release, the framework: a stop at any of the four points leaves a goal that is still split, and the same words finish it after the design is shown again', async () => {
+  // The writes of one agreement, in order: 1, 2 the stage design of the candidates; 3 to 6 the approvals (the framework decision, the directions, the candidates); 7 the stage of the goal.
+  const stops = [[2, 'a', ['module-a']], [3, 'b', ['module-a', 'module-b']], [6, 'c', ['module-a', 'module-b']], [7, 'd', ['module-a', 'module-b']]] as const
+  for (const [nth, name, designed] of stops) {
+    const fixture = await mainAgentWithGoal()
+    await writeDesign(fixture, 'split')
+    await framework(fixture)
+    const error = errorOf(await stopAt(nth, () => recordRelease(fixture)))
+    assert.equal(error.code, 'unavailable', name)
+    assert.match(error.hint, /already on the graph: .*; record the same words again to finish it; the human said: 可以，放行$/, name)
+    const stopped = await fixture.engine.load()
+    const goal = stopped.nodes.get('goal-1')!
+    assert.equal(isSplit(stopped, goal), true, `${name}: the goal is still split`)
+    assert.equal(goal.stage, 'design', name)
+    for (const id of ['module-a', 'module-b']) {
+      const entry = stopped.nodes.get(id)!
+      assert.ok(!(entry.status === 'approved' && entry.stage === undefined), `${name}: no module is approved without its stage (${id})`)
+    }
+    assert.deepEqual(['module-a', 'module-b'].filter(id => stopped.nodes.get(id)!.stage === 'design'), designed, name)
+    // Shown again: the page is required (the candidates are candidates whether or not they have the stage yet), then the same human words finish it.
+    const bare = await fixture.host.callTool(fixture.agent, PROPOSE_TO_HUMAN, { kind: 'release', goal: 'goal-1', text: RELEASE_TEXT })
+    assert.deepEqual(bare.kind === 'error' ? [bare.error.code, bare.error.field, bare.error.message.includes('not split')] : [], ['invalid', 'page', false], name)
+    const again = await framework(fixture, '好的，再放行一次')
+    if (name === 'd') assert.deepEqual(again.releaseSet, [], 'everything is approved already: nothing is left to approve')
+    const done = valueOfOk(await recordRelease(fixture, { words: ['好的，再放行一次'] }))
+    assert.deepEqual([done.outcome, done.stage], ['released', 'release'], name)
+    const graph = await fixture.engine.load()
+    for (const id of ['module-a', 'module-b']) {
+      const entry = graph.nodes.get(id)!
+      assert.deepEqual([entry.status, entry.stage], ['approved', 'design'], `${name}: ${id}`)
+      assert.equal(changedStage(entry, 'design').length, 1, `${name}: ${id} got the stage design once`)
+      assert.equal(entry.history.filter(item => item.op === 'approve').length, 1, `${name}: ${id} is approved once`)
+    }
+    assert.equal(graph.nodes.get('goal-1')!.stage, 'release', name)
+    for (const id of ['decision-a', 'task-a', 'decision-b', 'task-b']) assert.equal(graph.nodes.get(id)!.status, 'proposed', `${name}: ${id}`)
+  }
+})
+
+// ---- the release of one module
+
+test('kind release of a module: what is below it is approved and its stage is released with the page it was shown by; the other module, the directions and the goal are not touched', async () => {
+  const fixture = await mainAgentWithGoal()
+  await writeDesign(fixture, 'split')
+  await frameworkReleased(fixture)
+  const goalBefore = await fixture.node('goal-1')
+  await moduleShown(fixture, 'module-a')
+  const value = valueOfOk(await recordRelease(fixture, { module: 'module-a' }))
+  assert.deepEqual([value.outcome, value.stage, value.module, value.approved, value.modules], ['released', 'release', 'module-a', ['decision-a', 'task-a'], undefined])
+  assert.match(String(value.message), /^Recorded: the human released module module-a of goal-1\./)
+  const graph = await fixture.engine.load()
+  for (const id of ['decision-a', 'task-a']) {
+    const entry = graph.nodes.get(id)!.history.at(-1)!
+    assert.deepEqual([entry.op, entry.relay], ['approve', GO], id)
+  }
+  const module = graph.nodes.get('module-a')!
+  assert.deepEqual([module.stage, module.history.at(-1)!.relay, module.history.at(-1)!.changes], ['release', GO, { stage: { from: 'design', to: 'release' } }])
+  assert.match(module.history.at(-1)!.reason ?? '', new RegExp(`^人在对话里同意（record_human_answer call-\\d+） · 一页放行稿 ${pageDigest(modulePage(SPLIT_NAMES.moduleA))}$`))
+  assert.deepEqual(['decision-b', 'task-b'].map(id => graph.nodes.get(id)!.status), ['proposed', 'proposed'])
+  assert.equal(graph.nodes.get('module-b')!.stage, 'design')
+  assert.deepEqual(graph.nodes.get('goal-1'), goalBefore, 'the goal and the directions are not touched')
+})
+
+test('kind release of a module: a node changed after the human saw it is skipped and the module stays in design; a page that is not whole is not agreed to; adding notes the module', async () => {
+  const fixture = await mainAgentWithGoal()
+  await writeDesign(fixture, 'split')
+  await frameworkReleased(fixture)
+  await moduleShown(fixture, 'module-a')
+  await fixture.engine.apply('llm', { op: 'edit', id: 'task-a', rev: (await fixture.engine.load()).revisions.get('task-a'), set: { acceptance: ['能用，改过'] }, reason: '改' })
+  const partial = valueOfOk(await recordRelease(fixture, { module: 'module-a' }))
+  assert.deepEqual([partial.outcome, partial.stage, partial.skipped, partial.approved], ['partial', undefined, [{ id: 'task-a', code: 'stale_revision' }], ['decision-a']])
+  assert.match(String(partial.message), /^Recorded, but the stage of module module-a of goal-1 did not move/)
+  assert.match(String(partial.message), /put it to them again with propose_to_human \(kind release, module module-a\)\.$/)
+  assert.equal((await fixture.node('module-a')).stage, 'design')
+  await moduleShown(fixture, 'module-a', '好的，放行', `${RELEASE_TEXT}\n\n${modulePage(SPLIT_NAMES.moduleA).slice(0, -3)}`)
+  const before = (await fixture.engine.load()).revision
+  assert.equal(errorOf(await recordRelease(fixture, { module: 'module-a', words: ['好的，放行'] })).code, 'not_shown')
+  assert.equal((await fixture.engine.load()).revision, before)
+  const said = '补充：先做记录再做汇总'
+  await moduleShown(fixture, 'module-a', said)
+  const added = valueOfOk(await recordRelease(fixture, { module: 'module-a', answer: 'add', words: [said], recordedAs: '先记录后汇总' }))
+  assert.equal(added.outcome, 'added')
+  const note = (await fixture.node('module-a')).history.at(-1)!
+  assert.deepEqual([note.op, note.relay, (await fixture.node('module-a')).stage], ['comment', undefined, 'design'])
+  assert.ok(note.text?.startsWith(ANSWER_MARKS.add))
+  assert.equal((await fixture.node('goal-1')).history.some(entry => entry.op === 'comment' && entry.text?.startsWith(ANSWER_MARKS.add)), false, 'the note is on the module, not on the goal')
+})
+
+test('kind release of a module: a stop between the approvals and the stage leaves the module in design with its design approved, and the same words finish it after it is shown again', async () => {
+  const fixture = await mainAgentWithGoal()
+  await writeDesign(fixture, 'split')
+  await frameworkReleased(fixture)
+  await moduleShown(fixture, 'module-a')
+  const error = errorOf(await stopAt(3, () => recordRelease(fixture, { module: 'module-a' })))
+  assert.equal(error.code, 'unavailable')
+  assert.match(error.hint, /already on the graph: decision-a is approved; task-a is approved; record the same words again/)
+  assert.deepEqual([(await fixture.node('module-a')).stage, (await fixture.node('task-a')).status], ['design', 'approved'])
+  const again = await moduleShown(fixture, 'module-a', '好的，再放行')
+  assert.deepEqual(again.releaseSet, [], 'nothing is left to approve, and the module has its design: it is released with nothing new on the graph')
+  assert.equal(valueOfOk(await recordRelease(fixture, { module: 'module-a', words: ['好的，再放行'] })).outcome, 'released')
+  assert.equal((await fixture.node('module-a')).stage, 'release')
+})
+
+test('a module sent back to design by the main agent is released again with nothing new on the graph, once its design is shown again; the return is not the human\'s agreement', async () => {
+  const fixture = await mainAgentWithGoal()
+  await writeDesign(fixture, 'split')
+  await frameworkReleased(fixture)
+  await moduleShown(fixture, 'module-a')
+  valueOfOk(await recordRelease(fixture, { module: 'module-a' }))
+  const { host, agent } = fixture
+  // The module is not in design now, so a release of it is refused until it is sent back.
+  const early = await host.callTool(agent, PROPOSE_TO_HUMAN, { kind: 'release', goal: 'goal-1', text: RELEASE_TEXT, module: 'module-a', page: modulePage(SPLIT_NAMES.moduleA) })
+  assert.deepEqual(early.kind === 'error' ? [early.error.code, early.error.field] : [], ['invalid', 'module'])
+  const send = { id: 'module-a', rev: (await fixture.engine.load()).revisions.get('module-a'), set: { stage: 'design' }, reason: '方向要改：先记录再汇总' }
+  assert.equal((await host.preExecute(agent, 'graph_edit', send)).kind, 'allow', 'the rule lets the main agent do it')
+  assert.ok((await fixture.engine.apply('llm', { op: 'edit', ...send })).ok, 'and the engine asks no words of it')
+  const sent = (await fixture.node('module-a')).history.at(-1)!
+  assert.deepEqual([sent.actor, sent.relay, sent.changes], ['llm', undefined, { stage: { from: 'release', to: 'design' } }])
+  assert.equal(answerKindOf(sent), undefined, 'a return is not read as the human agreeing')
+  await moduleShown(fixture, 'module-a', '好的，再放行')
+  assert.equal(valueOfOk(await recordRelease(fixture, { module: 'module-a', words: ['好的，再放行'] })).outcome, 'released')
+  assert.equal(changedStage(await fixture.node('module-a'), 'release').length, 2, 'released, sent back, released again')
+})
+
+test('the framework of a goal sent back to design is released again with only the new candidate written: the module that is released keeps its stage', async () => {
+  const fixture = await mainAgentWithGoal()
+  await writeDesign(fixture, 'split')
+  await frameworkReleased(fixture)
+  await moduleShown(fixture, 'module-a')
+  valueOfOk(await recordRelease(fixture, { module: 'module-a' }))
+  const { engine } = fixture
+  // The human says the framework has to change: the goal goes back to design with their words, and a third module is proposed.
+  await fixture.host.say(fixture.agent, '框架要改，加一个导出的模块')
+  const back = { id: 'goal-1', rev: (await engine.load()).revisions.get('goal-1'), set: { stage: 'design' }, reason: '框架要改', relay: '框架要改，加一个导出的模块' }
+  assert.match(denied(await fixture.host.preExecute(fixture.agent, 'graph_edit', { ...back, relay: '我编的一句话' })), /^The words you relayed are not in a message the human sent/, 'words the human did not say do not send the goal back')
+  assert.equal((await fixture.host.preExecute(fixture.agent, 'graph_edit', back)).kind, 'allow', 'their words are checked and are theirs')
+  assert.ok((await engine.apply('llm', { op: 'edit', ...back })).ok)
+  // The goal is in design again: a subagent of the main agent only reads, in the module that was released too.
+  const verdict = releaseVerdict(await engine.load(), 'task-a')
+  assert.match(verdict.kind === 'deny' ? verdict.violation : 'allowed', /design loop at stage design \(goal goal-1\)/)
+  await engine.apply('llm', { op: 'propose', reason: '加模块', node: { type: 'feature', id: 'module-c', title: '导出', parent: 'goal-1', edges: [{ type: 'source', to: 'decision-fw' }] } })
+  const page = `${FRAMEWORK_PAGE}\n新加的模块：导出。`
+  await releaseShown(fixture, { page }, '可以，这样放行')
+  const done = valueOfOk(await recordRelease(fixture, { words: ['可以，这样放行'] }))
+  assert.deepEqual([done.outcome, done.modules, done.approved], ['released', ['module-c'], ['module-c']])
+  const graph = await engine.load()
+  assert.deepEqual(['module-a', 'module-b', 'module-c'].map(id => [graph.nodes.get(id)!.status, graph.nodes.get(id)!.stage]), [['approved', 'release'], ['approved', 'design'], ['approved', 'design']])
+  assert.equal(changedStage(graph.nodes.get('module-a')!, 'design').length, 1, 'the module released before is not written again')
+  assert.equal(graph.nodes.get('goal-1')!.stage, 'release')
 })

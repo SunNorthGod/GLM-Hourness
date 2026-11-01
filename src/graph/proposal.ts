@@ -30,6 +30,9 @@ export const PROPOSAL_LIMITS = { line: 60, way: 50, minWays: 2, maxWays: 3, conc
 /** Limits of what the human reads, in code points: the text of a question, by way of asking (confirm and release are asked as recommend). */
 export const TALK_LIMITS = { text: { recommend: 160, choose: 120, want: 120, look: 120 } } as const satisfies { readonly text: Readonly<Record<AskForm, number>> }
 
+/** Limits of the one-page release note a goal split into modules is released with, in code points. */
+export const PAGE_LIMITS = { max: 2000 } as const
+
 const CIRCLED = ['①', '②', '③'] as const
 
 /** The record of a question: what is kept on the graph. */
@@ -116,6 +119,23 @@ export function textCoversRecord(text: string, record: { readonly proposal?: str
     if (value !== undefined && !(within === 'ask' ? question : whole).includes(normalizeText(value))) return { field, within }
   }
   return undefined
+}
+
+/**
+ * Whether the one-page release note is one the human can release from: not empty,
+ * not longer than PAGE_LIMITS.max code points, and with every text in `wanted`
+ * in it (the titles of the modules and framework decisions, the directions word
+ * for word; compared after NFKC and with white space as one space). The harness
+ * checks what would let the human overlook a part of what they release, not
+ * the headings or the wording. `label` says what the first missing text is.
+ */
+export function pageRefusal(page: string, wanted: ReadonlyArray<{ readonly text: string, readonly label: string }>): Refusal | undefined {
+  const hint = `page is the one-page release note in plain words, 1 to ${PAGE_LIMITS.max} characters`
+  if (page.trim().length === 0) return { message: 'page must not be empty', hint }
+  if (codePointCount(page) > PAGE_LIMITS.max) return { message: `page is longer than ${PAGE_LIMITS.max} characters`, hint: `shorten the page to at most ${PAGE_LIMITS.max} characters` }
+  const whole = normalizeText(page)
+  const missing = wanted.find(entry => !whole.includes(normalizeText(entry.text)))
+  return missing === undefined ? undefined : { message: `page does not have ${missing.label}`, hint: `the page must name ${missing.label} word for word: ${missing.text}` }
 }
 
 /** A fence of backticks longer than any run in `text`, at least three. */

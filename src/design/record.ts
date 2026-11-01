@@ -13,14 +13,19 @@
  * the design (the only way a goal leaves it: the graph tools refuse, rule
  * main-agent-graph-stage); kind delegation records "this kind is yours to
  * decide" in the node norm-delegations, the only way that node is written.
- * The reply to release comes with the step that opens that kind.
+ * Kind release records the reply to a design put to the human: agreeing
+ * approves what the human was shown (the revisions recorded when it was shown)
+ * and moves the goal, or one module of it, to release, in the order of
+ * releaseWrites.
  */
+import { createHash } from 'node:crypto'
 import { openEngine, type ApplyResult, type GraphEngine } from '../graph/engine.ts'
+import { isSplit } from '../graph/modules.ts'
 import type { LoadedGraph } from '../graph/parse.ts'
 import { plainWordsIn } from '../graph/plain-question.ts'
 import { PROPOSAL_LIMITS, codePointCount, normalizeText } from '../graph/proposal.ts'
 import type { GraphNode } from '../graph/schema.ts'
-import { goalOf } from '../graph/stage.ts'
+import { bigLoopSet, goalOf, moduleSet, releaseSet } from '../graph/stage.ts'
 import { ANSWER_MARKS, DELEGATED, DELEGATIONS_ID, DELEGATION_LIMIT, DELEGATION_REASON, DELEGATION_SUFFIX, answerCallMark, delegationKindOf, type AnswerKind } from '../shared/answer-marks.ts'
 import type { ToolDefinitionLike } from '../shared/dsh-min.ts'
 import { RECORD_HUMAN_ANSWER } from '../shared/tool-names.ts'
@@ -28,7 +33,7 @@ import { askBoard, attachDigest, boardOfBody, piecesNotShown } from './attach.ts
 import { emitMetric } from './metrics.ts'
 import type { DesignToolDeps } from './propose.ts'
 import { normalizeTalk, personSaid, type Shown, type TalkState } from './talk.ts'
-import { confirmGate, errorText, isRecord, mainAgentCall, openGoal, readGraph, refuse, refuseWith, toolShell } from './tool-support.ts'
+import { confirmGate, errorText, isRecord, mainAgentCall, moduleOfGoal, openGoal, readGraph, refuse, refuseWith, releaseReady, toolShell } from './tool-support.ts'
 
 const ANSWERS = ['agree', 'add', 'reject'] as const satisfies readonly AnswerKind[]
 const KINDS = ['question', 'confirm', 'release', 'delegation'] as const
@@ -37,14 +42,14 @@ const DELEGATION_FIELDS = new Set(['kind', 'scope', 'undo', 'words'])
 const WORDS_LIMITS = { pieces: 3, piece: 500, whole: 2000 } as const
 const SCOPE_LIMIT = 60
 
-const DESCRIPTION = 'Record what the human said back to a matter you put to them with propose_to_human. Quote their own words exactly, from a message they sent after you showed it (words: 1 to 3 quotes, each a whole phrase); recordedAs is one line of what you take them to have said: the conclusion when they agree, your restatement when they add or reject. For a choose question they agree to, way is the number of the way they picked. The harness checks the quotes against their messages before it writes anything. Agree decides the question; add and reject note it and leave it open: revise the matter and show it again. kind confirm: the reply to the requirement you put to them with propose_to_human (kind confirm); pass goal instead of question. Agree approves the goal and moves it from the interview into the design (the harness checks the requirement card again first); add and reject note the goal and move nothing: change the goal and put the requirement to them again. kind delegation: when the human says a whole kind of matter is yours to decide, pass scope (the kind, in their words) and their words from the latest message they sent; undo: true takes a kind back.'
+const DESCRIPTION = 'Record what the human said back to a matter you put to them with propose_to_human. Quote their own words exactly, from a message they sent after you showed it (words: 1 to 3 quotes, each a whole phrase); recordedAs is one line of what you take them to have said: the conclusion when they agree, your restatement when they add or reject. For a choose question they agree to, way is the number of the way they picked. The harness checks the quotes against their messages before it writes anything. Agree decides the question; add and reject note it and leave it open: revise the matter and show it again. kind confirm: the reply to the requirement you put to them with propose_to_human (kind confirm); pass goal instead of question. Agree approves the goal and moves it from the interview into the design (the harness checks the requirement card again first); add and reject note the goal and move nothing: change the goal and put the requirement to them again. kind release: the reply to the design you put to them with propose_to_human (kind release); pass goal, and module when it was a module. Agree approves what they were shown and moves the goal, or the module, to release (the harness checks the design again first; for a goal split into modules the framework release makes the candidates modules, each in design, and the goal is released); add and reject note the goal or the module and move nothing: change the design and put it to them again. kind delegation: when the human says a whole kind of matter is yours to decide, pass scope (the kind, in their words) and their words from the latest message they sent; undo: true takes a kind back.'
 
 const PARAMETERS = {
   type: 'object',
   properties: {
     kind: { type: 'string', enum: [...KINDS] },
     goal: { type: 'string', description: 'kind confirm or release: the goal id.' },
-    module: { type: 'string', description: 'kind release: the module released; leave out for the goal itself.' },
+    module: { type: 'string', description: 'kind release: the module released; leave out for the goal itself (the framework of a goal split into modules).' },
     question: { type: 'string', description: 'kind question: the id of the question you put.' },
     answer: { type: 'string', enum: [...ANSWERS], description: 'agree: they accept; add: they want something added; reject: they turn it down.' },
     way: { type: 'integer', description: 'kind question, a choose question they agree to: the number of the way they picked, from 1. Leave it out when they hand the whole matter to you (recordedAs begins with 交给主 Agent 定：).' },
@@ -97,12 +102,16 @@ interface ConfirmArgs extends Words {
   readonly recordedAs: string
 }
 
+interface ReleaseArgs extends ConfirmArgs {
+  readonly module?: string
+}
+
 interface DelegationArgs extends Words {
   readonly scope: string
   readonly undo: boolean
 }
 
-type Args = { readonly kind: 'question' } & QuestionArgs | { readonly kind: 'confirm' } & ConfirmArgs | { readonly kind: 'delegation' } & DelegationArgs
+type Args = { readonly kind: 'question' } & QuestionArgs | { readonly kind: 'confirm' } & ConfirmArgs | { readonly kind: 'release' } & ReleaseArgs | { readonly kind: 'delegation' } & DelegationArgs
 
 function parseWords(words: unknown): readonly string[] {
   if (!Array.isArray(words) || words.length < 1 || words.length > WORDS_LIMITS.pieces || words.some(piece => typeof piece !== 'string' || piece.trim().length === 0 || codePointCount(piece.trim()) > WORDS_LIMITS.piece)) {
@@ -134,14 +143,15 @@ function parseArgs(raw: unknown): Args {
     if (raw.undo !== undefined && typeof raw.undo !== 'boolean') refuse('invalid', 'undo must be true or false', 'pass undo: true to take a kind back', 'undo')
     return { kind, scope: scopeOf(raw.scope), undo: raw.undo === true, words: parseWords(raw.words) }
   }
-  if (kind !== 'question' && kind !== 'confirm') {
-    refuse('invalid', `kind ${typeof kind === 'string' ? kind : JSON.stringify(kind)} is not open yet`, 'not yet: only kind question, kind confirm and kind delegation work for now', 'kind')
+  if (kind !== 'question' && kind !== 'confirm' && kind !== 'release') {
+    refuse('invalid', `kind ${typeof kind === 'string' ? kind : JSON.stringify(kind)} is not one of ${KINDS.join(', ')}`, 'pass kind question, confirm, release or delegation', 'kind')
   }
-  for (const field of kind === 'question' ? ['goal', 'module', 'scope', 'undo'] as const : ['question', 'way', 'module', 'scope', 'undo'] as const) {
+  for (const field of kind === 'question' ? ['goal', 'module', 'scope', 'undo'] as const : kind === 'confirm' ? ['question', 'way', 'module', 'scope', 'undo'] as const : ['question', 'way', 'scope', 'undo'] as const) {
     if (raw[field] !== undefined) refuse('invalid', `${field} does not go with kind ${kind}`, `leave ${field} out for kind ${kind}`, field)
   }
-  const { question, answer, way, recordedAs, goal } = raw
-  if (kind === 'confirm' && (typeof goal !== 'string' || goal.length === 0)) refuse('invalid', 'goal must be the id of the goal whose requirement you put to the human', 'pass the goal id propose_to_human returned', 'goal')
+  const { question, answer, way, recordedAs, goal, module } = raw
+  if (kind !== 'question' && (typeof goal !== 'string' || goal.length === 0)) refuse('invalid', `goal must be the id of the goal whose ${kind === 'confirm' ? 'requirement' : 'design'} you put to the human`, 'pass the goal id propose_to_human returned', 'goal')
+  if (module !== undefined && (typeof module !== 'string' || module.length === 0)) refuse('invalid', 'module must be the id of the module you put to the human', 'pass the module id propose_to_human returned, or leave module out for the goal itself', 'module')
   if (kind === 'question' && (typeof question !== 'string' || question.length === 0)) refuse('invalid', 'question must be the id of the question', 'pass the id propose_to_human returned', 'question')
   if (typeof answer !== 'string' || !(ANSWERS as readonly string[]).includes(answer)) refuse('invalid', `answer must be one of ${ANSWERS.join(', ')}`, 'agree when they accept, add when they want something added, reject when they turn it down', 'answer')
   if (way !== undefined && (typeof way !== 'number' || !Number.isInteger(way) || way < 1)) refuse('invalid', 'way must be a whole number from 1', 'pass the number of the way the human picked', 'way')
@@ -150,6 +160,7 @@ function parseArgs(raw: unknown): Args {
     refuse('invalid', `recordedAs must be one line of 1 to ${PROPOSAL_LIMITS.conclusion} characters`, 'write what you take the human to have said in one line', 'recordedAs')
   }
   if (kind === 'confirm') return { kind, goal: goal as string, answer: answer as AnswerKind, words: quotes, recordedAs: recordedAs.trim() }
+  if (kind === 'release') return { kind, goal: goal as string, ...module === undefined ? {} : { module }, answer: answer as AnswerKind, words: quotes, recordedAs: recordedAs.trim() }
   return { kind, question: question as string, answer: answer as AnswerKind, ...way === undefined ? {} : { way }, words: quotes, recordedAs: recordedAs.trim() }
 }
 
@@ -195,6 +206,7 @@ export function recordTool(deps: DesignToolDeps): ToolDefinitionLike {
         }
         if (args.kind === 'delegation') return await delegate(where, graph, state, args, context.callId, refusedWords)
         if (args.kind === 'confirm') return await confirm(where, graph, state, args, context.callId, refusedWords)
+        if (args.kind === 'release') return await release(where, graph, state, args, context.callId, refusedWords)
         return await answer(deps, where, graph, state, args, context.callId, refusedWords)
       }
       catch (error) {
@@ -288,6 +300,190 @@ function confirmMessage(outcome: 'confirmed' | 'added' | 'rejected', goal: strin
   if (outcome === 'confirmed') return `Recorded: the human confirmed the requirements. ${goal} is approved and in stage design. Start on the design: decisions with their five columns, and the plan under the goal.`
   if (outcome === 'added') return `Recorded: the human added to the requirements. Work it into ${goal} (its body, acceptance or non-goals), then put the requirement to them again with propose_to_human (kind confirm).`
   return `Recorded: the human turned the requirements down. Find out what they want different, change ${goal}, then put the requirement to them again with propose_to_human (kind confirm).`
+}
+
+/**
+ * The first 8 hexadecimal characters of the SHA-256 of a release page, as
+ * texts are compared (NFKC, white space as one space). The write that moves
+ * a goal or a module to release names it, so that the page the human saw can
+ * be found in the session log by the call and checked against the digest.
+ */
+export function pageDigest(page: string): string {
+  return createHash('sha256').update(normalizeText(page)).digest('hex').slice(0, 8)
+}
+
+/** What the writes of an agreement to a release did: the nodes approved, those skipped and why, those still proposed in its scope, the candidates that became modules, and whether the stage was moved. */
+interface Released {
+  readonly approved: readonly string[]
+  readonly skipped: ReadonlyArray<{ readonly id: string, readonly code: string }>
+  readonly left: readonly string[]
+  readonly modules: readonly string[]
+  readonly complete: boolean
+}
+
+/** The outcome of one write: the engine's, or a disk that would not take it. */
+type Written = ApplyResult | { readonly ok: false, readonly error: { readonly code: string, readonly message: string, readonly field?: string } }
+
+/**
+ * The writes of an agreement to a release, all as the llm with the human's
+ * words as relay, each with the revision the human was shown (nodes that
+ * changed since are skipped, the human agreed to the version they saw; nodes
+ * that are no longer proposals are done already and are passed over, so the
+ * same words finish what a stop left). The release gate is checked again
+ * first. A goal that is not split: the proposals of the goal are approved,
+ * then, if none is left, the goal's stage is set to release. A module: the
+ * same with the proposals below it, then its stage. A goal split into modules,
+ * the framework release, in this order (§3.14.2): the module candidates get
+ * the stage design while they are still proposals, so that a stop at any point
+ * leaves a goal that is split; then the set is approved; then, if none is left,
+ * the goal's stage is set to release. A stop (a disk that will not take the
+ * write) refuses with what is on the graph and the words, and recording the
+ * same words finishes it.
+ */
+async function releaseWrites(dir: string, first: LoadedGraph, goal: GraphNode, module: GraphNode | undefined, shown: Shown, relay: string, mark: string): Promise<Released> {
+  const ready = releaseReady(first, goal, module)
+  if (shown.releaseSet === undefined) refuse('not_shown', 'what the release approves was not recorded when it was put to the human', 'show it with propose_to_human again, in this session', module === undefined ? 'goal' : 'module')
+  const engine = openEngine(dir)
+  const agree = `${ANSWER_MARKS.agree}${mark}`
+  const written: string[] = []
+  const skipped: Array<{ readonly id: string, readonly code: string }> = []
+  const send = async (mutation: Record<string, unknown>): Promise<Written> => {
+    try {
+      return await engine.apply('llm', { ...mutation, relay })
+    }
+    catch (error) {
+      return { ok: false, error: { code: 'unavailable', message: `the graph could not be written: ${errorText(error)}` } }
+    }
+  }
+  const stop = (error: { readonly code: string, readonly message: string, readonly field?: string }): never => {
+    const left = written.length === 0 ? 'nothing more was recorded' : `already on the graph: ${written.join('; ')}`
+    return refuse(error.code, error.message, `${left}; record the same words again to finish it; the human said: ${relay}`, error.field)
+  }
+  /** A write that the engine refused: the node is skipped, except when the disk failed, which stops everything. */
+  const settle = (id: string, result: Extract<Written, { ok: false }>): void => {
+    if (result.error.code === 'unavailable') stop(result.error)
+    skipped.push({ id, code: result.error.code })
+  }
+  const recorded = new Map(shown.releaseSet.map(entry => [entry.id, entry.rev]))
+  const revs = new Map(recorded)
+  const isCandidate = (node: GraphNode): boolean => module === undefined && ready.split && node.type === 'feature' && node.parent === goal.id
+  const approved: string[] = []
+  const modules: string[] = []
+  const members = shown.releaseSet.flatMap((entry) => {
+    const node = first.nodes.get(entry.id)
+    return node !== undefined && node.status === 'proposed' ? [node] : []
+  })
+  /** One write to a node, with the revision it has now (a candidate's moved with its stage); a node that changed since the human saw it is skipped. */
+  const write = async (node: GraphNode, mutation: Record<string, unknown>, done: (rev: string) => void): Promise<void> => {
+    if (first.revisions.get(node.id) !== recorded.get(node.id)) {
+      skipped.push({ id: node.id, code: 'stale_revision' })
+      return
+    }
+    const result = await send({ ...mutation, id: node.id, rev: revs.get(node.id), reason: agree })
+    if (result.ok) done(result.rev)
+    else settle(node.id, result)
+  }
+  for (const node of members.filter(isCandidate)) {
+    if (node.stage !== 'design') {
+      await write(node, { op: 'edit', set: { stage: 'design' } }, (rev) => {
+        revs.set(node.id, rev)
+        written.push(`${node.id} has the stage design`)
+      })
+    }
+  }
+  for (const node of members) {
+    if (skipped.some(entry => entry.id === node.id)) continue
+    await write(node, { op: 'approve' }, () => {
+      approved.push(node.id)
+      written.push(`${node.id} is approved`)
+      if (isCandidate(node)) modules.push(node.id)
+    })
+  }
+  let graph = await readGraph(dir)
+  const left = (module !== undefined ? moduleSet(graph, module) : ready.split ? bigLoopSet(graph, goal) : releaseSet(graph, goal)).map(node => node.id)
+  const complete = skipped.length === 0 && left.length === 0
+  if (complete) {
+    const target = module ?? goal
+    const reason = `${agree}${ready.split && shown.exact !== undefined ? ` · 一页放行稿 ${pageDigest(shown.exact)}` : ''}`
+    for (let attempt = 0; ; attempt++) {
+      const result = await send({ op: 'edit', id: target.id, rev: graph.revisions.get(target.id), set: { stage: 'release' }, reason })
+      if (result.ok) break
+      if (result.error.code === 'stale_revision' && attempt === 0) {
+        graph = await readGraph(dir)
+        continue
+      }
+      stop(result.error)
+    }
+  }
+  return { approved, skipped, left, modules, complete }
+}
+
+function releaseMessage(outcome: 'released' | 'partial' | 'added' | 'rejected', goal: string, module: string | undefined, split: boolean, released: Released | undefined): string {
+  const what = module === undefined ? goal : `module ${module} of ${goal}`
+  const again = module === undefined ? 'propose_to_human (kind release)' : `propose_to_human (kind release, module ${module})`
+  if (outcome === 'added') return `Recorded: the human added to the design of ${what}. Work it into the design, then put it to them again with ${again}.`
+  if (outcome === 'rejected') return `Recorded: the human turned the design of ${what} down. Find out what they want different, change the design, then put it to them again with ${again}.`
+  if (outcome === 'partial') {
+    const skipped = released?.skipped.map(entry => `${entry.id} (${entry.code})`) ?? []
+    return `Recorded, but the stage of ${what} did not move: the human agreed to the design as they saw it, and ${skipped.length === 0 ? '' : `these changed since: ${skipped.join(', ')}; `}${released?.left.length ?? 0} proposal(s) are still waiting (${(released?.left ?? []).join(', ')}). Read them again, fix the design and put it to them again with ${again}.`
+  }
+  if (module !== undefined) return `Recorded: the human released module ${module} of ${goal}. Tell the human in one line; decomposition and dispatch of this module come next.`
+  if (split) return `Recorded: the human released the framework, the module list and the directions of ${goal}. ${(released?.modules ?? []).join(', ')} ${(released?.modules.length ?? 0) === 1 ? 'is a module' : 'are modules'} now, each in design: write its decisions and plan under it and put it to the human with propose_to_human (kind release, module, page). Nothing under a module is built before that module is released.`
+  return `Recorded: the human released the design of ${goal}, and ${goal} is at stage release. Tell the human in one line; decomposition and dispatch come next.`
+}
+
+/**
+ * kind release: the reply to the design that propose_to_human put to the
+ * human, for a goal or for one of its modules. Their words must come after
+ * the last time that release was shown in this session (a module's release
+ * and the goal's are two matters), and a page or sample shown with it must
+ * have been whole in what the main agent said. Agreeing is releaseWrites;
+ * adding and rejecting note the goal or the module and move nothing.
+ */
+async function release(where: Where, graph: LoadedGraph, state: TalkState, args: ReleaseArgs, call: string, refusedWords: Refuse): Promise<Record<string, unknown>> {
+  const goal = openGoal(graph, args.goal)
+  const module = args.module === undefined ? undefined : moduleOfGoal(graph, goal, args.module)
+  const target = module ?? goal
+  const shown = state.shown.filter(entry => entry.kind === 'release' && entry.goal === goal.id && entry.module === module?.id).at(-1)
+  if (shown === undefined) {
+    refuse('not_shown', `the release of ${module === undefined ? `"${goal.id}"` : `module "${module.id}"`} was not put to the human in this session`, 'show it with propose_to_human first, in this session', module === undefined ? 'goal' : 'module')
+  }
+  const said = personSaid(state, args.words, shown.time)
+  if (!said.ok) refusedWords(said, '')
+  const relay = said.ok ? said.relay : ''
+  const mark = answerCallMark(call)
+  let released: Released | undefined
+  if (args.answer === 'agree') {
+    sampleSeen([shown])
+    released = await releaseWrites(where.dir, graph, goal, module, shown, relay, mark)
+  }
+  else {
+    const noted = await openEngine(where.dir).apply('llm', { op: 'comment', id: target.id, text: `${ANSWER_MARKS[args.answer]}「${relay}」；主 Agent 记成：${args.recordedAs}${mark}` })
+    if (!noted.ok) refuseWith(noted)
+  }
+  const outcome = released === undefined ? args.answer === 'add' ? 'added' : 'rejected' : released.complete ? 'released' : 'partial'
+  const firstReply = state.people.find(message => message.time > shown.time)
+  emitMetric({
+    event: 'design.answer-recorded',
+    kind: 'release',
+    answer: args.answer,
+    outcome,
+    goal: goal.id,
+    module: module?.id,
+    delayMs: firstReply === undefined ? undefined : firstReply.time - shown.time,
+    codePoints: codePointCount(relay),
+    restated: firstReply?.restated,
+  })
+  const split = module !== undefined || isSplit(graph, goal)
+  return {
+    outcome,
+    message: releaseMessage(outcome, goal.id, module?.id, split, released),
+    ...outcome === 'released' ? { stage: 'release' } : {},
+    ...module === undefined ? {} : { module: module.id },
+    ...released === undefined || released.modules.length === 0 ? {} : { modules: released.modules },
+    ...released === undefined ? {} : { approved: released.approved },
+    ...released === undefined || released.skipped.length === 0 ? {} : { skipped: released.skipped },
+  }
 }
 
 /** Why the writes of an agreement stopped, and whether the stage was set to design when they did. */
@@ -396,7 +592,7 @@ async function proof(deps: DesignToolDeps, cwd: string | undefined, node: GraphN
 function sampleSeen(shown: readonly Shown[]): void {
   const last = shown.filter(entry => entry.exact !== undefined).at(-1)
   if (last?.exact === undefined) return
-  if (!normalizeTalk(last.after).includes(normalizeTalk(last.exact))) refuse('not_shown', 'The human has not seen the whole sample they must see before agreeing', SAMPLE_NOT_SHOWN)
+  if (!normalizeTalk(last.after).includes(normalizeTalk(last.exact))) refuse('not_shown', 'The human has not seen the whole page or sample they must see before agreeing', SAMPLE_NOT_SHOWN)
 }
 
 /** The writes of one reply: the decision with the human's words as relay, or a note on the question. One retry when the node moved under the write. */

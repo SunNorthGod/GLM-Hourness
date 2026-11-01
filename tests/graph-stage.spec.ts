@@ -1,17 +1,23 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { plainWordsIn } from '../src/graph/plain-question.ts'
 import type { GraphNode, HistoryEntry, Status } from '../src/graph/schema.ts'
 import {
+  bigLoopSet,
   designColumns,
   effectiveStage,
   goalOf,
   labeledSections,
+  moduleReleaseGate,
+  moduleSet,
+  releaseGate,
   releaseSet,
   requirementCard,
   stageStatus,
   type StageStatus,
 } from '../src/graph/stage.ts'
-import { decide, design, failing, GOAL_BODY, graphOf, interview, node, question } from './graph-memory.ts'
+import { decide, design, failing, GOAL_BODY, graphOf, interview, node, question, splitDesign } from './graph-memory.ts'
+import { stageEdit } from './execute-helpers.ts'
 
 test('labeledSections: full-width and ASCII colons, multi-line sections, the first of a repeated label, text before the first label', () => {
   const body = [
@@ -131,7 +137,7 @@ test('designColumns: five columns, each one missing on its own; the plan counts 
   assert.deepEqual(columns({ nonGoals: [] }), ['decision-1:non-goals'])
   const unplanned = (feature: Partial<GraphNode>): string[] => {
     const { graph, goal } = design()
-    const changed = graphOf([...graph.nodes.values()].map(entry => entry.id === 'feature-1' ? { ...entry, ...feature } : entry))
+    const changed = graphOf([...graph.nodes.values()].map(entry => entry.id === 'task-1' ? { ...entry, ...feature } : entry))
     return failing(designColumns(changed, goal, changed.nodes.get('decision-1')!))
   }
   assert.deepEqual(unplanned({ edges: [] }), ['decision-1:plan'])
@@ -141,13 +147,13 @@ test('designColumns: five columns, each one missing on its own; the plan counts 
 
 test('releaseSet: the proposed nodes under the goal by depth, creation time and id; parents before children', () => {
   const { graph, goal } = design({}, [
-    node({ id: 'task-0', type: 'task', status: 'proposed', parent: 'feature-1', acceptance: ['x'] }, 5),
+    node({ id: 'task-0', type: 'task', status: 'proposed', parent: 'task-1', acceptance: ['x'] }, 5),
     node({ id: 'risk-1', type: 'risk', status: 'proposed', parent: 'goal-1' }, 1),
-    node({ id: 'task-2', type: 'task', status: 'approved', parent: 'feature-1' }, 6),
+    node({ id: 'task-2', type: 'task', status: 'approved', parent: 'task-1' }, 6),
     node({ id: 'goal-2', type: 'goal', status: 'proposed' }, 0),
     node({ id: 'feature-9', type: 'feature', status: 'proposed', parent: 'goal-2' }, 0),
   ])
-  assert.deepEqual(releaseSet(graph, goal).map(entry => entry.id), ['risk-1', 'decision-1', 'feature-1', 'task-0', 'task-1'])
+  assert.deepEqual(releaseSet(graph, goal).map(entry => entry.id), ['risk-1', 'decision-1', 'task-1', 'task-0'])
 })
 
 test('stageStatus in design: the release gate lists the design decision, its five columns, task acceptance, undecided questions and supersessions', () => {
@@ -161,15 +167,17 @@ test('stageStatus in design: the release gate lists the design decision, its fiv
     const { graph, goal } = design(decision, others)
     return stageStatus(graph, goal)
   }
-  const human = blocked([question('question-2', 'feature-1')])
+  const human = blocked([question('question-2', 'task-1')])
   assert.deepEqual([failing(human.items), human.exitReady, human.waitingHuman], [['question-2:undecided'], false, 1])
   const agent = blocked([question('question-3', 'goal-1', { decider: 'agent' })])
   assert.deepEqual([failing(agent.items), agent.waitingHuman], [['question-3:undecided'], 0], 'an undecided question blocks whoever decides it')
   assert.match(agent.items.find(item => item.key === 'question-3:undecided')!.hint, /graph_decide/)
-  assert.deepEqual(failing(blocked([node({ id: 'task-3', type: 'task', status: 'proposed', parent: 'feature-1' }, 7)]).items), ['task-3:acceptance'])
-  assert.deepEqual(failing(blocked([node({ id: 'task-4', type: 'task', status: 'proposed', parent: 'feature-1', acceptance: ['y'], edges: [{ type: 'supersedes', to: 'task-9' }] }, 7)]).items), ['task-4:supersedes'])
-  const noDecision = blocked([], { status: 'approved' })
-  assert.deepEqual([failing(noDecision.items), noDecision.exitReady], [['decision'], false], 'an adopted decision is not in the release set')
+  assert.deepEqual(failing(blocked([node({ id: 'task-3', type: 'task', status: 'proposed', parent: 'task-1' }, 7)]).items), ['task-3:acceptance'])
+  assert.deepEqual(failing(blocked([node({ id: 'task-4', type: 'task', status: 'proposed', parent: 'task-1', acceptance: ['y'], edges: [{ type: 'supersedes', to: 'task-9' }] }, 7)]).items), ['task-4:supersedes'])
+  const noDecision = blocked([], { status: 'dropped' })
+  assert.deepEqual([failing(noDecision.items), noDecision.exitReady], [['decision'], false], 'a dropped decision is no design')
+  const adopted = blocked([], { status: 'approved' })
+  assert.deepEqual([failing(adopted.items), adopted.exitReady], [[], true], 'a decision approved already is the design: a release that stopped or skipped a node is put again from there')
 })
 
 test('the hints that send the model to the human name the chat tools, not a question card', () => {
@@ -178,7 +186,7 @@ test('the hints that send the model to the human name the chat tools, not a ques
   const choice = requirementCard(withoutQuestion, withoutQuestion.nodes.get('goal-1')!).find(item => item.key === 'choice')!
   assert.equal(choice.ok, false)
   assert.equal(choice.hint, 'interview step 7 (the fork only the human can decide): put it with propose_to_human (kind question, form recommend or choose) and record the answer with record_human_answer; a question the agent decided on its own does not count')
-  const waiting = design({}, [question('question-2', 'feature-1')])
+  const waiting = design({}, [question('question-2', 'task-1')])
   const undecided = stageStatus(waiting.graph, waiting.goal).items.find(item => item.key === 'question-2:undecided')!
   assert.equal(undecided.hint, 'the human decides question-2: wait for the human\'s answer in the chat and record it with record_human_answer')
   for (const hint of [choice.hint, undecided.hint]) assert.ok(!hint.includes('decision_card') && !hint.includes('design_review') && !hint.includes('ask_user_question'), hint)
@@ -205,4 +213,120 @@ test('stageStatus outside wish, interview and design: no items, not ready to lea
   assert.deepEqual(stageStatus(plain, plain.nodes.get('goal-1')!), { goal: 'goal-1', stage: null, closed: false, items: [], exitReady: false, waitingHuman: 2 })
   const closed = graphOf([node({ id: 'goal-1', type: 'goal', status: 'done', stage: 'design' }, 0, 'human')])
   assert.deepEqual(stageStatus(closed, closed.nodes.get('goal-1')!), { goal: 'goal-1', stage: null, closed: true, items: [], exitReady: false, waitingHuman: 0 })
+})
+
+test('the gate names a task and the goal of a decision as the human says them: what counts as done, not acceptance', () => {
+  const ready = design()
+  const items = stageStatus(ready.graph, ready.goal).items
+  assert.equal(items.find(item => item.key === 'decision-1:acceptance')?.label, '目标（怎样算做成）')
+  assert.equal(items.find(item => item.key === 'task-1:acceptance')?.label, '任务「task-1」怎样算做完')
+  const split = splitDesign()
+  const module = split.graph.nodes.get('module-a')!
+  const labels = [...releaseGate(split.graph, split.goal), ...moduleReleaseGate(split.graph, split.goal, module), ...items].map(item => item.label)
+  assert.ok(labels.length > 20)
+  for (const label of labels) assert.deepEqual(plainWordsIn(label), [], label)
+})
+
+test('a line "如果失败：" in a decision is not a column: it ends the section above it and the gate does not look at it', () => {
+  const columns = (body: string): string[] => {
+    const { graph, goal } = design({ body })
+    return failing(designColumns(graph, goal, graph.nodes.get('decision-1')!))
+  }
+  const line = '如果失败：文件被改坏'
+  assert.deepEqual(columns(`理由：一个人用\n架构：本地 JSON 文件\n查过的现成方案：ledger-cli 太重\n${line}`), [], 'a line after the columns changes nothing')
+  assert.deepEqual(columns(`理由：一个人用\n架构：本地 JSON 文件\n查过的现成方案：\n${line}`), ['decision-1:architecture'], 'an empty column followed by that line is still empty')
+  assert.deepEqual(columns(`理由：一个人用\n架构：\n${line}\n查过的现成方案：ledger-cli 太重`), ['decision-1:architecture'], 'so is the architecture')
+  assert.deepEqual(columns(`理由：\n${line}\n架构：本地 JSON 文件\n查过的现成方案：ledger-cli 太重`), ['decision-1:reason'], 'and the reason')
+  assert.deepEqual(columns(`${line}\n理由：一个人用\n架构：本地 JSON 文件\n查过的现成方案：ledger-cli 太重`), [], 'it may come first')
+  assert.deepEqual(columns('理由：一个人用\n架构：本地 JSON 文件\n查过的现成方案：ledger-cli 太重'), [], 'and it may be left out')
+})
+
+test('bigLoopSet: the proposals that are not below a module, the candidates included, in the order they are approved; moduleSet: those below one module', () => {
+  const { graph, goal } = splitDesign([
+    node({ id: 'task-0', type: 'task', status: 'proposed', parent: 'goal-1', acceptance: ['x'] }, 20),
+    node({ id: 'feature-1', type: 'feature', status: 'proposed', parent: 'module-a' }, 21),
+    node({ id: 'task-9', type: 'task', status: 'proposed', parent: 'feature-1', acceptance: ['x'] }, 22),
+    node({ id: 'decision-old', type: 'decision', status: 'approved', parent: 'goal-1' }, 0),
+    node({ id: 'module-c', type: 'feature', status: 'approved', parent: 'goal-1', stage: 'design' }, 23),
+    node({ id: 'task-c', type: 'task', status: 'proposed', parent: 'module-c', acceptance: ['x'] }, 24),
+  ])
+  assert.deepEqual(bigLoopSet(graph, goal).map(entry => entry.id), ['decision-fw', 'norm-directions', 'module-a', 'module-b', 'task-0'], 'a released module\'s own proposals are its own release, and an approved node is not in any set')
+  assert.deepEqual(moduleSet(graph, graph.nodes.get('module-a')!).map(entry => entry.id), ['decision-a', 'task-a', 'feature-1', 'task-9'], 'depth first: the parents come before their children')
+  assert.deepEqual(moduleSet(graph, graph.nodes.get('module-c')!).map(entry => entry.id), ['task-c'])
+  assert.equal(releaseSet(graph, goal).length, 12, 'the whole subtree is the set of a goal that is not split: the 5 of the framework and the 7 below the modules')
+})
+
+test('releaseGate of a goal split into modules: the framework, its five columns, the goal-level tasks, the questions outside the modules, the supersessions and the directions', () => {
+  const ready = splitDesign()
+  const status = stageStatus(ready.graph, ready.goal)
+  assert.deepEqual(status.items.map(item => item.key), [
+    'framework', 'directions', 'decision-fw:reason', 'decision-fw:architecture', 'decision-fw:acceptance', 'decision-fw:plan', 'decision-fw:non-goals',
+  ])
+  assert.deepEqual([failing(status.items), status.exitReady], [[], true])
+  const gate = (others: readonly GraphNode[], patch: Record<string, Partial<GraphNode>> = {}): string[] => {
+    const { graph, goal } = splitDesign(others)
+    const changed = graphOf([...graph.nodes.values()].map(entry => patch[entry.id] === undefined ? entry : { ...entry, ...patch[entry.id] }))
+    return failing(releaseGate(changed, changed.nodes.get(goal.id)!))
+  }
+  assert.deepEqual(gate([], { 'decision-fw': { status: 'dropped' } }), ['framework'])
+  assert.deepEqual(gate([], { 'decision-fw': { nonGoals: [] } }), ['decision-fw:non-goals'])
+  assert.deepEqual(gate([], { 'norm-directions': { status: 'dropped' } }), ['directions'])
+  assert.deepEqual(gate([], { 'norm-directions': { acceptance: [] } }), ['directions'], 'a list with no direction in it')
+  assert.deepEqual(gate([node({ id: 'task-0', type: 'task', status: 'proposed', parent: 'goal-1' }, 20)]), ['task-0:acceptance'])
+  assert.deepEqual(gate([question('question-2', 'goal-1')]), ['question-2:undecided'])
+  assert.deepEqual(gate([question('question-2', 'module-a')]), [], 'a question below a module is held for that module\'s release')
+  assert.deepEqual(gate([question('question-2', 'module-a')], { 'decision-fw': { edges: [{ type: 'source', to: 'question-2' }] } }), ['question-2:undecided'], 'unless the framework rests on it')
+  assert.deepEqual(gate([], { 'module-a': { edges: [{ type: 'supersedes', to: 'module-9' }] } }), ['module-a:supersedes'])
+  // The design of a module is not asked for here: a decision of it without its columns does not hold the framework back.
+  assert.deepEqual(gate([], { 'decision-a': { nonGoals: [] } }), [])
+  // An approved framework decision is the framework: a release put again after the goal was sent back to design needs no new one.
+  assert.deepEqual(gate([], { 'decision-fw': { status: 'approved' } }), [])
+  assert.match(releaseGate(ready.graph, ready.goal).find(item => item.key === 'directions')!.hint, /norm node with the id norm-directions under the goal/)
+})
+
+test('moduleReleaseGate: the framework released, something to release, a decision directly under the module, its five columns, the criteria of its tasks, no question left open below it', () => {
+  const at = (stage: 'design' | 'release', patch: Record<string, Partial<GraphNode>> = {}, others: readonly GraphNode[] = []): { graph: ReturnType<typeof graphOf>, goal: GraphNode, module: GraphNode } => {
+    const base = splitDesign(others).graph
+    const released = [...base.nodes.values()].map((entry): GraphNode => {
+      const changed = patch[entry.id] === undefined ? entry : { ...entry, ...patch[entry.id] }
+      if (entry.id === 'goal-1') return { ...changed, stage }
+      if (entry.id === 'module-a' || entry.id === 'module-b') return { ...changed, status: 'approved', stage: 'design' }
+      return changed
+    })
+    const graph = graphOf(released)
+    return { graph, goal: graph.nodes.get('goal-1')!, module: graph.nodes.get('module-a')! }
+  }
+  const gate = (stage: 'design' | 'release', patch: Record<string, Partial<GraphNode>> = {}, others: readonly GraphNode[] = []): string[] => {
+    const { graph, goal, module } = at(stage, patch, others)
+    return failing(moduleReleaseGate(graph, goal, module))
+  }
+  const ready = at('release')
+  assert.deepEqual(moduleReleaseGate(ready.graph, ready.goal, ready.module).map(item => item.key), [
+    'framework-released', 'changes', 'decision', 'decision-a:reason', 'decision-a:architecture', 'decision-a:acceptance', 'decision-a:plan', 'decision-a:non-goals', 'task-a:acceptance',
+  ])
+  assert.deepEqual(gate('release'), [])
+  assert.deepEqual(gate('design'), ['framework-released'], 'the goal has not released its framework')
+  assert.deepEqual(gate('release', { 'decision-a': { nonGoals: [] } }), ['decision-a:non-goals'])
+  assert.deepEqual(gate('release', { 'task-a': { acceptance: [] } }), ['task-a:acceptance'])
+  assert.deepEqual(gate('release', { 'task-a': { edges: [{ type: 'source', to: 'decision-b' }] } }), ['decision-a:plan'], 'the plan of a decision of the module is below the module')
+  assert.deepEqual(gate('release', {}, [question('question-2', 'module-a')]), ['question-2:undecided'])
+  assert.deepEqual(gate('release', {}, [question('question-2', 'goal-1')]), [], 'a question of the framework is held for the framework unless the module rests on it')
+  assert.deepEqual(gate('release', { 'decision-a': { edges: [{ type: 'source', to: 'question-2' }] } }, [question('question-2', 'goal-1')]), ['question-2:undecided'])
+  assert.deepEqual(gate('release', { 'task-a': { edges: [{ type: 'source', to: 'decision-a' }, { type: 'supersedes', to: 'task-9' }] } }), ['task-a:supersedes'])
+  // A decision only deeper down is not the module's own design.
+  assert.deepEqual(gate('release', { 'decision-a': { parent: 'task-a' } }), ['decision'])
+  // Nothing proposed below it: the module has nothing to release, unless its design is approved already (a stop after the approvals) or it was sent back to design.
+  const approved = { 'decision-a': { status: 'approved' as const }, 'task-a': { status: 'approved' as const } }
+  assert.deepEqual(gate('release', { 'decision-a': { status: 'dropped' }, 'task-a': { status: 'dropped' } }), ['changes', 'decision'])
+  assert.deepEqual(gate('release', approved), [], 'the design is approved and waits for the stage only')
+  const dropped = { 'decision-a': { status: 'approved' as const }, 'task-a': { status: 'dropped' as const } }
+  assert.deepEqual(gate('release', dropped), [])
+  const sentBack = at('release', { 'decision-a': { status: 'dropped' }, 'task-a': { status: 'dropped' }, 'module-a': { history: [...splitDesign().graph.nodes.get('module-a')!.history, stageEdit(9, 'release', 'design')] } })
+  assert.deepEqual(failing(moduleReleaseGate(sentBack.graph, sentBack.goal, sentBack.module)), ['decision'], 'sent back to design: something to release, but the module still needs its decision')
+})
+
+test('stageStatus of a goal split into modules in design: the gate is the framework\'s, not the single level\'s, and a goal with a plain task and no feature is still the single level\'s', () => {
+  const split = splitDesign()
+  assert.equal(stageStatus(split.graph, split.goal).items[0].key, 'framework')
+  assert.equal(stageStatus(design().graph, design().goal).items[0].key, 'decision')
 })

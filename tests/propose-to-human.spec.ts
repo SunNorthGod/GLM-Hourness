@@ -12,10 +12,10 @@ import { ordinaryFace } from '../src/design/role-face.ts'
 import { proposeTool } from '../src/design/propose.ts'
 import { TALK_PROJECTION, TALK_SHAPES, type TalkState } from '../src/design/talk.ts'
 import { PLAIN_QUESTION_EXAMPLES, PLAIN_QUESTION_GUIDE, plainWordsIn } from '../src/graph/plain-question.ts'
-import { ASK_FORMS, PROPOSAL_LIMITS, TALK_LIMITS, askOf, renderAsk } from '../src/graph/proposal.ts'
+import { ASK_FORMS, PAGE_LIMITS, PROPOSAL_LIMITS, TALK_LIMITS, askOf, renderAsk } from '../src/graph/proposal.ts'
 import { PLAIN_LIMITS } from '../src/graph/schema.ts'
 import { BASE_TOOLS, hostWithoutTalkProjection, type DesignHost, type FakeAgent } from './design-host.ts'
-import { fakeBoard, fillRequirementCard, mainAgentWithGoal, toolDeps } from './design-tools-helpers.ts'
+import { FRAMEWORK_PAGE, SPLIT_NAMES, fakeBoard, fillRequirementCard, frameworkReleased, mainAgentWithGoal, modulePage, toolDeps, writeDesign } from './design-tools-helpers.ts'
 import { exampleArgs } from './proposal-examples.ts'
 
 type Outcome = Awaited<ReturnType<DesignHost['callTool']>>
@@ -133,8 +133,8 @@ test('the shape of the call: what goes with what, one rule at a time, and nothin
   await refused({ ...exampleArgs('look'), sample: '字'.repeat(6001) }, 'sample')
   await refused({ ...want, title: 7 }, 'title', /must be a string/)
   const release = errorOf(await host.callTool(agent, PROPOSE_TO_HUMAN, { kind: 'release', text: '这样吗？', goal: 'goal-1' }))
-  assert.deepEqual([release?.code, release?.field], ['invalid', 'kind'])
-  assert.match(release?.hint ?? '', /^not yet/)
+  assert.deepEqual([release?.code, release?.field], ['invalid', 'goal'], 'a goal still in the interview is not released')
+  assert.match(release?.hint ?? '', /kind confirm first/)
   assert.equal((await engine.load()).revision, before, 'the graph did not change')
 })
 
@@ -627,6 +627,247 @@ test('the description of propose_to_human says what a confirm is and what it tak
   assert.match(description, /It is refused until the 8 items of the requirement card are filled\./)
 })
 
+// ---------------------------------------------------------------- kind release (M3 step 9)
+
+const RELEASE = { kind: 'release', goal: 'goal-1', text: '照上面的方案放行，可以吗？' }
+const releaseOf = (patch: Record<string, unknown> = {}): Record<string, unknown> => ({ ...RELEASE, ...patch })
+
+/** The call is refused with this code on this field, and the graph and the human's view are as they were. */
+async function releaseRefused(fixture: Awaited<ReturnType<typeof mainAgentWithGoal>>, patch: Record<string, unknown>, code: string, field: string | undefined): Promise<{ code: string, field: string | undefined, message: string, hint: string }> {
+  const { host, agent, engine } = fixture
+  const before = [(await engine.load()).revision, (host.projections.stateOf(agent.session, TALK_PROJECTION) as TalkState).shown.length]
+  const error = errorOf(await host.callTool(agent, PROPOSE_TO_HUMAN, releaseOf(patch)))
+  assert.deepEqual([error?.code, error?.field], [code, field], JSON.stringify(patch))
+  assert.ok((error?.hint ?? '').length > 0)
+  assert.deepEqual([(await engine.load()).revision, (host.projections.stateOf(agent.session, TALK_PROJECTION) as TalkState).shown.length], before, 'nothing was written and nothing was shown')
+  return error!
+}
+
+test('kind release puts the design of a goal that is not split to the human: the text is the main agent\'s own question, the set it will approve is recorded with its revisions, and nothing is written', async () => {
+  const fixture = await mainAgentWithGoal()
+  await writeDesign(fixture, 'small')
+  const { host, agent, engine } = fixture
+  const before = await engine.load()
+  const value = valueOf(await host.callTool(agent, PROPOSE_TO_HUMAN, RELEASE))
+  assert.deepEqual([value.tool, value.kind, value.goal, value.module, value.number, value.form, value.question], [PROPOSE_TO_HUMAN, 'release', 'goal-1', undefined, 1, undefined, undefined])
+  assert.equal(value.text, renderAsk(RELEASE.text, 1))
+  assert.deepEqual(value.releaseSet, [{ id: 'decision-1', rev: before.revisions.get('decision-1') }, { id: 'task-1', rev: before.revisions.get('task-1') }], 'the proposals of the goal in the order they are approved, each as the human is shown it')
+  assert.match(String(value.message), /^Show text to the human exactly as given; .* then call record_human_answer with kind release and their exact words\. The design itself goes in your report before the question; text is only the question\.$/)
+  assert.equal((await engine.load()).revision, before.revision, 'the graph did not change')
+  const talk = host.projections.stateOf(agent.session, TALK_PROJECTION) as TalkState
+  assert.deepEqual(talk.shown.map(entry => [entry.kind, entry.goal, entry.module, entry.number, entry.exact, entry.releaseSet]), [['release', 'goal-1', undefined, 1, undefined, value.releaseSet]])
+})
+
+test('kind release is refused until the design is complete: gate_unmet names each thing missing as the human reads it and where to write it', async () => {
+  const cases: ReadonlyArray<readonly [string, (fixture: Awaited<ReturnType<typeof mainAgentWithGoal>>) => Promise<void>, string]> = [
+    ['no design decision', async ({ engine }) => { await engine.apply('human', { op: 'reject', id: 'decision-1', rev: (await engine.load()).revisions.get('decision-1'), reason: '不要了' }) }, '设计决策'],
+    ['a column missing', async ({ engine }) => { await engine.apply('llm', { op: 'edit', id: 'decision-1', rev: (await engine.load()).revisions.get('decision-1'), set: { nonGoals: null }, reason: '改' }) }, '非目标'],
+    ['a task without its criteria', async ({ engine }) => { await engine.apply('llm', { op: 'edit', id: 'task-1', rev: (await engine.load()).revisions.get('task-1'), set: { acceptance: null }, reason: '改' }) }, '任务「写记账命令」怎样算做完'],
+    ['a question not answered', async ({ engine }) => { await engine.apply('llm', { op: 'propose', reason: '问', node: { type: 'question', parent: 'goal-1', ...exampleArgsRecord() } }) }, '待决'],
+  ]
+  for (const [name, spoil, label] of cases) {
+    const fixture = await mainAgentWithGoal()
+    await writeDesign(fixture, 'small')
+    await spoil(fixture)
+    const error = await releaseRefused(fixture, {}, 'gate_unmet', undefined)
+    assert.match(error.message, /^the design of "goal-1" is not complete; missing: /, name)
+    assert.ok(error.message.includes(label), `${name}: ${error.message}`)
+    assert.ok(!/验收|门禁/.test(error.message), 'the human reads plain words')
+  }
+})
+
+/** The record of a recommend question, as the engine takes it. */
+function exampleArgsRecord(): Record<string, unknown> {
+  const { text: _text, kind: _kind, ...record } = exampleArgs('recommend')
+  const { form, title, proposal, reason, cost } = record as Record<string, string>
+  return { form, title, ask: askOf(String(exampleArgs('recommend').text)), proposal, reason, cost }
+}
+
+test('kind release names a goal that is open and in its design: anything else is refused for the goal, one reason each', async () => {
+  const fixture = await mainAgentWithGoal()
+  await releaseRefused(fixture, { goal: 'goal-9' }, 'not_found', 'goal')
+  await releaseRefused(fixture, { goal: 'risk-9' }, 'not_found', 'goal')
+  const interview = await releaseRefused(fixture, {}, 'invalid', 'goal')
+  assert.match(interview.hint, /kind confirm first/)
+  await writeDesign(fixture, 'small')
+  const { engine } = fixture
+  assert.ok((await engine.apply('human', { op: 'edit', id: 'goal-1', rev: (await engine.load()).revisions.get('goal-1'), set: { stage: 'release' }, reason: '放行' })).ok)
+  assert.match((await releaseRefused(fixture, {}, 'invalid', 'goal')).hint, /released already/)
+  assert.ok((await engine.apply('human', { op: 'status', id: 'goal-1', rev: (await engine.load()).revisions.get('goal-1'), to: 'dropped', reason: '不做了' })).ok)
+  assert.match((await releaseRefused(fixture, {}, 'invalid', 'goal')).hint, /closed goal/)
+})
+
+test('kind release takes the goal, the text, the module, the page and a sample: the fields of a question are refused, the page and the sample exclude each other, a goal that is not split takes no page and no module', async () => {
+  const fixture = await mainAgentWithGoal()
+  await writeDesign(fixture, 'small')
+  for (const [field, value] of [['form', 'recommend'], ['title', '题'], ['proposal', '做法'], ['reason', '理由'], ['cost', '代价'], ['ways', ['甲', '乙']], ['notTaken', '没选的'], ['parent', 'goal-1'], ['question', 'question-1'], ['sources', ['goal-1']], ['attach', 'rules:p-3f9a1c07']] as const) {
+    assert.match((await releaseRefused(fixture, { [field]: value }, 'invalid', field)).hint, /kind release takes kind, text, goal, module, page and sample/)
+  }
+  await releaseRefused(fixture, { goal: undefined }, 'invalid', 'goal')
+  await releaseRefused(fixture, { text: undefined }, 'invalid', 'text')
+  await releaseRefused(fixture, { sample: '' }, 'invalid', 'sample')
+  await releaseRefused(fixture, { sample: '字'.repeat(6001) }, 'invalid', 'sample')
+  await releaseRefused(fixture, { module: '' }, 'invalid', 'module')
+  await releaseRefused(fixture, { page: '一页', sample: '样稿' }, 'invalid', 'sample')
+  assert.match((await releaseRefused(fixture, { page: '一页' }, 'invalid', 'page')).hint, /this goal is not split into modules/)
+  await releaseRefused(fixture, { module: 'task-1' }, 'invalid', 'module')
+  await releaseRefused(fixture, { module: 'module-z' }, 'not_found', 'module')
+})
+
+test('the text of a release is held to the limit of a recommend and to the plain words, and it counts among the three questions of a reply', async () => {
+  const fixture = await mainAgentWithGoal()
+  await writeDesign(fixture, 'small')
+  const { host, agent } = fixture
+  await releaseRefused(fixture, { text: '照上面的方案放行，可以吗。' }, 'invalid', 'text')
+  await releaseRefused(fixture, { text: `${'字'.repeat(TALK_LIMITS.text.recommend)}？` }, 'invalid', 'text')
+  const plain = await releaseRefused(fixture, { text: '验收过了，放行可以吗？' }, 'invalid', 'text')
+  assert.match(plain.message, /text uses the word 验收/)
+  assert.equal(valueOf(await host.callTool(agent, PROPOSE_TO_HUMAN, releaseOf({ text: `${'字'.repeat(TALK_LIMITS.text.recommend - 1)}？` }))).number, 1)
+  assert.equal(valueOf(await host.callTool(agent, PROPOSE_TO_HUMAN, RELEASE)).number, 2)
+  assert.equal(valueOf(await host.callTool(agent, PROPOSE_TO_HUMAN, exampleArgs('want'))).number, 3)
+  assert.equal(errorOf(await host.callTool(agent, PROPOSE_TO_HUMAN, RELEASE))?.code, 'too_many')
+})
+
+test('a release can carry the original text the human must see: it is laid under the question as it is and the showing remembers it', async () => {
+  const fixture = await mainAgentWithGoal()
+  await writeDesign(fixture, 'small')
+  const { host, agent } = fixture
+  const sample = '方案：用本地文件存账\n任务：写记账命令'
+  const value = valueOf(await host.callTool(agent, PROPOSE_TO_HUMAN, releaseOf({ sample })))
+  assert.equal(value.text, renderAsk(RELEASE.text, 1, undefined, sample, false))
+  assert.ok(String(value.message).endsWith('keep it verbatim in your reply.'))
+  assert.equal((host.projections.stateOf(agent.session, TALK_PROJECTION) as TalkState).shown[0]?.exact, sample)
+})
+
+// A goal split into modules is released twice over (src/graph/modules.ts): the framework with the module list and the directions, then each module.
+
+/** The things the framework release approves: the framework decision, the directions and the two candidates, not what is below the candidates. */
+const FRAMEWORK_SET = ['decision-fw', 'norm-directions', 'module-a', 'module-b']
+
+test('the framework release of a goal split into modules: the set is what is not below a module, the page is appended to the text and kept as the original text', async () => {
+  const fixture = await mainAgentWithGoal()
+  await writeDesign(fixture, 'split')
+  const { host, agent, engine } = fixture
+  const before = await engine.load()
+  const value = valueOf(await host.callTool(agent, PROPOSE_TO_HUMAN, releaseOf({ page: FRAMEWORK_PAGE })))
+  assert.deepEqual([value.kind, value.goal, value.module], ['release', 'goal-1', undefined])
+  assert.deepEqual((value.releaseSet as Array<{ id: string }>).map(entry => entry.id), FRAMEWORK_SET, 'depth first, then the order they were proposed in: the framework, the directions, the candidates')
+  assert.equal(value.text, renderAsk(RELEASE.text, 1, undefined, FRAMEWORK_PAGE, false))
+  assert.ok(String(value.message).endsWith('keep it verbatim in your reply.'))
+  assert.equal((await engine.load()).revision, before.revision)
+  assert.equal((host.projections.stateOf(agent.session, TALK_PROJECTION) as TalkState).shown[0]?.exact, FRAMEWORK_PAGE)
+})
+
+test('the framework release is refused one gap at a time: the framework, a column of it, the directions, a question left open outside the modules; what is below a module is not asked for yet', async () => {
+  const gap = async (name: string, spoil: (fixture: Awaited<ReturnType<typeof mainAgentWithGoal>>) => Promise<void>, label: string): Promise<void> => {
+    const fixture = await mainAgentWithGoal()
+    await writeDesign(fixture, 'split')
+    await spoil(fixture)
+    const error = await releaseRefused(fixture, { page: FRAMEWORK_PAGE }, 'gate_unmet', undefined)
+    assert.ok(error.message.includes(label), `${name}: ${error.message}`)
+    assert.ok(error.message.startsWith('the design of "goal-1" is not complete; missing: '), name)
+  }
+  const edit = (id: string, set: Record<string, unknown>) => async ({ engine }: Awaited<ReturnType<typeof mainAgentWithGoal>>): Promise<void> => {
+    assert.ok((await engine.apply('llm', { op: 'edit', id, rev: (await engine.load()).revisions.get(id), set, reason: '改' })).ok)
+  }
+  await gap('no framework decision', async ({ engine }) => { await engine.apply('human', { op: 'reject', id: 'decision-fw', rev: (await engine.load()).revisions.get('decision-fw'), reason: '不要了' }) }, '框架（设计决策）')
+  await gap('a column of the framework', edit('decision-fw', { nonGoals: null }), '非目标')
+  await gap('no directions node', async ({ engine }) => { await engine.apply('human', { op: 'reject', id: 'norm-directions', rev: (await engine.load()).revisions.get('norm-directions'), reason: '不要了' }) }, '人定过的方向清单')
+  await gap('no direction in it', edit('norm-directions', { acceptance: null }), '人定过的方向清单')
+  await gap('a question open outside the modules', async ({ engine }) => { await engine.apply('llm', { op: 'propose', reason: '问', node: { type: 'question', parent: 'goal-1', ...exampleArgsRecord() } }) }, '待决')
+  // The design of a module is its own release: a missing column below a module and an open question below it do not hold the framework back.
+  const fixture = await mainAgentWithGoal()
+  await writeDesign(fixture, 'split')
+  await edit('decision-a', { nonGoals: null })(fixture)
+  await fixture.engine.apply('llm', { op: 'propose', reason: '问', node: { type: 'question', parent: 'module-a', ...exampleArgsRecord() } })
+  assert.equal(valueOf(await fixture.host.callTool(fixture.agent, PROPOSE_TO_HUMAN, releaseOf({ page: FRAMEWORK_PAGE }))).kind, 'release')
+})
+
+test('the page of the framework release is required, within the limit, and names each module, each framework decision and each direction word for word; the first one missing is named', async () => {
+  const fixture = await mainAgentWithGoal()
+  await writeDesign(fixture, 'split')
+  assert.match((await releaseRefused(fixture, {}, 'invalid', 'page')).message, /page is required/)
+  const without = (text: string): string => FRAMEWORK_PAGE.replace(text, '')
+  assert.match((await releaseRefused(fixture, { page: without(SPLIT_NAMES.moduleB) }, 'invalid', 'page')).hint, new RegExp(`the module "${SPLIT_NAMES.moduleB}"`))
+  assert.match((await releaseRefused(fixture, { page: without(SPLIT_NAMES.framework) }, 'invalid', 'page')).message, /the framework decision/)
+  assert.match((await releaseRefused(fixture, { page: without(SPLIT_NAMES.directions[1]) }, 'invalid', 'page')).message, new RegExp(`the direction "${SPLIT_NAMES.directions[1]}"`))
+  assert.match((await releaseRefused(fixture, { page: ' ' }, 'invalid', 'page')).message, /must not be empty/)
+  assert.match((await releaseRefused(fixture, { page: `${FRAMEWORK_PAGE}${'字'.repeat(PAGE_LIMITS.max)}` }, 'invalid', 'page')).message, new RegExp(`longer than ${PAGE_LIMITS.max}`))
+  assert.equal(valueOf(await fixture.host.callTool(fixture.agent, PROPOSE_TO_HUMAN, releaseOf({ page: FRAMEWORK_PAGE }))).kind, 'release')
+})
+
+test('the release of a module needs the framework released first, a module of the goal that is in design, its own design complete and a page that names it', async () => {
+  const fixture = await mainAgentWithGoal()
+  await writeDesign(fixture, 'split')
+  const early = await releaseRefused(fixture, { module: 'module-a', page: modulePage(SPLIT_NAMES.moduleA) }, 'invalid', 'module')
+  assert.match(early.message, /is not a module of "goal-1"/, 'a candidate is not a module yet')
+  await frameworkReleased(fixture)
+  const { host, agent, engine } = fixture
+  const before = await engine.load()
+  const value = valueOf(await host.callTool(agent, PROPOSE_TO_HUMAN, releaseOf({ module: 'module-a', page: modulePage(SPLIT_NAMES.moduleA) })))
+  assert.deepEqual([value.kind, value.goal, value.module], ['release', 'goal-1', 'module-a'])
+  assert.deepEqual(value.releaseSet, [{ id: 'decision-a', rev: before.revisions.get('decision-a') }, { id: 'task-a', rev: before.revisions.get('task-a') }], 'only the design below that module')
+  assert.equal(value.text, renderAsk(RELEASE.text, 1, undefined, modulePage(SPLIT_NAMES.moduleA), false))
+  const talk = host.projections.stateOf(agent.session, TALK_PROJECTION) as TalkState
+  assert.deepEqual(talk.shown.map(entry => [entry.kind, entry.goal, entry.module]), [['release', 'goal-1', 'module-a']])
+  // The page names the module: the other module's page does not do, and neither does no page.
+  assert.match((await releaseRefused(fixture, { module: 'module-a', page: modulePage(SPLIT_NAMES.moduleB) }, 'invalid', 'page')).hint, new RegExp(SPLIT_NAMES.moduleA))
+  assert.match((await releaseRefused(fixture, { module: 'module-a' }, 'invalid', 'page')).message, /page is required/)
+  // Its design must be there: a decision directly under it with its columns, tasks with their criteria, no question open below it.
+  await engine.apply('llm', { op: 'edit', id: 'decision-b', rev: (await engine.load()).revisions.get('decision-b'), set: { nonGoals: null }, reason: '改' })
+  const gap = await releaseRefused(fixture, { module: 'module-b', page: modulePage(SPLIT_NAMES.moduleB) }, 'gate_unmet', undefined)
+  assert.match(gap.message, /^the design of module "module-b" is not complete; missing: .*非目标/)
+  await engine.apply('llm', { op: 'propose', reason: '问', node: { type: 'question', parent: 'module-b', ...exampleArgsRecord() } })
+  assert.match((await releaseRefused(fixture, { module: 'module-b', page: modulePage(SPLIT_NAMES.moduleB) }, 'gate_unmet', undefined)).message, /待决/)
+})
+
+test('a module that is released already, a node that is not a module and a goal that is not released are refused for the module', async () => {
+  const fixture = await mainAgentWithGoal()
+  await writeDesign(fixture, 'split')
+  await frameworkReleased(fixture)
+  const { engine } = fixture
+  await releaseRefused(fixture, { module: 'decision-fw', page: modulePage('x') }, 'invalid', 'module')
+  await releaseRefused(fixture, { module: 'task-a', page: modulePage('x') }, 'invalid', 'module')
+  for (const id of ['decision-a', 'task-a']) assert.ok((await engine.apply('human', { op: 'approve', id, rev: (await engine.load()).revisions.get(id), reason: '放行' })).ok)
+  assert.ok((await engine.apply('human', { op: 'edit', id: 'module-a', rev: (await engine.load()).revisions.get('module-a'), set: { stage: 'release' }, reason: '放行' })).ok)
+  assert.match((await releaseRefused(fixture, { module: 'module-a', page: modulePage(SPLIT_NAMES.moduleA) }, 'invalid', 'module')).hint, /already released/)
+  // The framework is put to the human again only after the goal is sent back to design: at release it is refused.
+  assert.match((await releaseRefused(fixture, { page: FRAMEWORK_PAGE }, 'invalid', 'goal')).hint, /release a module of it with module/)
+})
+
+test('an empty column of the checked solutions followed by the line "如果失败：" is still an empty column: the release is refused for the architecture as the person reads it, and a filled one with that line goes through', async () => {
+  const fixture = await mainAgentWithGoal()
+  await writeDesign(fixture, 'small')
+  const { engine, host, agent } = fixture
+  const body = async (text: string): Promise<void> => {
+    assert.ok((await engine.apply('llm', { op: 'edit', id: 'decision-1', rev: (await engine.load()).revisions.get('decision-1'), set: { body: text }, reason: '改' })).ok)
+  }
+  await body('理由：一个人用\n架构：本地 JSON 文件\n查过的现成方案：\n如果失败：文件被改坏')
+  const error = await releaseRefused(fixture, {}, 'gate_unmet', undefined)
+  assert.match(error.message, /missing: 架构（含查过的现成方案）$/)
+  assert.match(error.hint, /both "架构：" \(how it works\) and "查过的现成方案：" \(the existing solutions checked and why they are not used\) in the body of decision-1/)
+  await body('理由：一个人用\n架构：本地 JSON 文件\n查过的现成方案：ledger-cli 太重\n如果失败：文件被改坏')
+  assert.equal(valueOf(await host.callTool(agent, PROPOSE_TO_HUMAN, RELEASE)).kind, 'release')
+})
+
+test('a module whose goal went back to design cannot be put for release: the framework has to be released again first', async () => {
+  const fixture = await mainAgentWithGoal()
+  await writeDesign(fixture, 'split')
+  await frameworkReleased(fixture)
+  const { engine } = fixture
+  assert.ok((await engine.apply('human', { op: 'edit', id: 'goal-1', rev: (await engine.load()).revisions.get('goal-1'), set: { stage: 'design' }, reason: '框架要改' })).ok)
+  const error = await releaseRefused(fixture, { module: 'module-a', page: modulePage(SPLIT_NAMES.moduleA) }, 'gate_unmet', undefined)
+  assert.match(error.message, /^the design of module "module-a" is not complete; missing: 项目的框架、模块清单和方向$/)
+  assert.match(error.hint, /release the framework, the module list and the directions first \(propose_to_human kind release without module\)/)
+})
+test('the description of propose_to_human says what a release is, what it takes and when the page is asked for', async () => {
+  const { host } = await mainAgentWithGoal()
+  const description = host.tools.get(PROPOSE_TO_HUMAN)?.description ?? ''
+  assert.match(description, /kind release: the design is done, put it to the human to release; pass goal and text/)
+  assert.match(description, /A goal split into modules is released twice over: first the framework, the module list and the directions \(no module\), then each module \(module\)/)
+  assert.ok(description.includes(`at most ${PAGE_LIMITS.max} characters`))
+  assert.match(description, /A goal that is not split takes no page\./)
+})
 // ---------------------------------------------------------------- the contract with the panel (panel design 0.7 §11, 6c)
 
 test('contract with the panel: a question the tool puts for each worked example, and one that carries a board\'s original text, goes through the engine inside the limits and is kept as given', async () => {

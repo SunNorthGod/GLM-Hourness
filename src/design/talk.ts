@@ -95,7 +95,7 @@ export interface Shown {
   readonly releaseSet?: ReadonlyArray<{ readonly id: string, readonly rev: string }>
   /** The way of asking of a question. */
   readonly form?: AskForm
-  /** The original text the human must see before agreeing: the `sample` of the call (a release page comes with the step that opens release); `record_human_answer` finds it in `after`. */
+  /** The original text the human must see before agreeing: the `sample` or the `page` of the call; `record_human_answer` finds it in `after`. */
   readonly exact?: string
   /** At most AFTER_LIMIT code points. */
   readonly after: string
@@ -192,8 +192,8 @@ function exactOf(block: Record<string, unknown>): { readonly exact?: string } {
       return {}
     }
   }
-  const sample = isRecord(input) ? input.sample : undefined
-  return typeof sample === 'string' && sample.length > 0 ? { exact: sample } : {}
+  const exact = isRecord(input) ? input.sample ?? input.page : undefined
+  return typeof exact === 'string' && exact.length > 0 ? { exact } : {}
 }
 
 /** Fold one event into the state; pure, and an event it does not know leaves the state as it was. */

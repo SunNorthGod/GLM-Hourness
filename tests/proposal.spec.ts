@@ -8,7 +8,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { PLAIN_QUESTION_EXAMPLES, plainWordsIn } from '../src/graph/plain-question.ts'
-import { ASK_FORMS, PROPOSAL_FIELDS, PROPOSAL_LIMITS, TALK_LIMITS, askOf, askTextRefusal, codePointCount, normalizeText, proposalRecordRefusal, proposalTitleRefusal, renderAsk, textCoversRecord } from '../src/graph/proposal.ts'
+import { ASK_FORMS, PAGE_LIMITS, PROPOSAL_FIELDS, PROPOSAL_LIMITS, TALK_LIMITS, askOf, askTextRefusal, codePointCount, normalizeText, pageRefusal, proposalRecordRefusal, proposalTitleRefusal, renderAsk, textCoversRecord } from '../src/graph/proposal.ts'
 import { PLAIN_LIMITS } from '../src/graph/schema.ts'
 import { exampleRecord } from './proposal-examples.ts'
 
@@ -123,4 +123,21 @@ test('proposalRecordRefusal: every example passes; each rule names the field to 
     assert.equal(field('recommend', { cost: filler }), 'cost', filler)
     assert.equal(field('recommend', { notTaken: filler }), 'notTaken', filler)
   }
+})
+
+test('pageRefusal: a page is not empty, within the limit, and has each text it must name word for word, compared as texts are; the first missing one is named', () => {
+  const wanted = [{ text: '记账', label: 'the module "记账"' }, { text: '数据只存在本机', label: 'the direction "数据只存在本机"' }]
+  assert.equal(PAGE_LIMITS.max, 2000)
+  assert.equal(pageRefusal('记账这一块。你定过：数据只存在本机。', wanted), undefined)
+  assert.equal(pageRefusal('记账\n\n数据只  存在本机', [{ text: '数据只 存在本机', label: 'x' }]), undefined, 'white space is one space')
+  assert.equal(pageRefusal('ＡＢＣ　DEF', [{ text: 'ABC DEF', label: 'x' }]), undefined, 'full-width forms are the same as half-width ones (NFKC)')
+  assert.equal(pageRefusal('', wanted)?.message, 'page must not be empty')
+  assert.equal(pageRefusal(' \n ', wanted)?.message, 'page must not be empty')
+  assert.equal(pageRefusal('字'.repeat(PAGE_LIMITS.max), [])?.message, undefined, 'exactly the limit is within it')
+  assert.match(pageRefusal('字'.repeat(PAGE_LIMITS.max + 1), [])?.message ?? '', /longer than 2000 characters/)
+  assert.equal(pageRefusal('😀'.repeat(PAGE_LIMITS.max), []), undefined, 'a character outside the BMP counts once')
+  const missing = pageRefusal('只有记账。', wanted)
+  assert.equal(missing?.message, 'page does not have the direction "数据只存在本机"')
+  assert.equal(missing?.hint, 'the page must name the direction "数据只存在本机" word for word: 数据只存在本机')
+  assert.match(pageRefusal('数据只存在本机', wanted)?.message ?? '', /the module "记账"/, 'the first of them that is missing')
 })

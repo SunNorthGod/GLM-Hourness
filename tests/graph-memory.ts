@@ -35,7 +35,7 @@ export function interview(goal: Partial<GraphNode> = {}, others: readonly GraphN
   return { graph, goal: graph.nodes.get('goal-1')! }
 }
 
-/** A goal in design with one complete design decision, its plan and a decided fork. */
+/** A goal in design with one complete design decision, its plan (a task directly under the goal: a small project is released once, without modules) and a decided fork. */
 export function design(decision: Partial<GraphNode> = {}, others: readonly GraphNode[] = []): { readonly graph: LoadedGraph, readonly goal: GraphNode } {
   const graph = graphOf([
     node({ id: 'goal-1', type: 'goal', status: 'approved', stage: 'design', body: GOAL_BODY, acceptance: ['a'], nonGoals: ['n'] }, 0, 'human'),
@@ -45,8 +45,35 @@ export function design(decision: Partial<GraphNode> = {}, others: readonly Graph
       body: '理由：一个人用，不要服务端\n架构：本地 JSON 文件\n查过的现成方案：ledger-cli 太重',
       acceptance: ['月底出一张分类表'], nonGoals: ['不做同步'], edges: [{ type: 'source', to: 'question-1' }], ...decision,
     }, 3),
-    node({ id: 'feature-1', type: 'feature', status: 'proposed', parent: 'goal-1', edges: [{ type: 'source', to: 'decision-1' }] }, 4),
-    node({ id: 'task-1', type: 'task', status: 'proposed', parent: 'feature-1', acceptance: ['记一条能读回'] }, 5),
+    node({ id: 'task-1', type: 'task', status: 'proposed', parent: 'goal-1', acceptance: ['记一条能读回'], edges: [{ type: 'source', to: 'decision-1' }] }, 5),
+    ...others,
+  ])
+  return { graph, goal: graph.nodes.get('goal-1')! }
+}
+
+/** The columns, acceptance and non-goals of a design decision, as the gate reads them. */
+const COLUMNS = { body: '理由：一个人用，不要服务端\n架构：本地 JSON 文件\n查过的现成方案：ledger-cli 太重', acceptance: ['月底出一张分类表'], nonGoals: ['不做同步'] } as const
+
+/**
+ * A goal in design split into two module candidates, `module-a` and `module-b`
+ * (proposals, each pointing at the framework), with the framework decision
+ * `decision-fw`, the list of directions `norm-directions`, and below each
+ * candidate its own decision and task: everything is a proposal. `others` are
+ * added to the graph.
+ */
+export function splitDesign(others: readonly GraphNode[] = []): { readonly graph: LoadedGraph, readonly goal: GraphNode } {
+  const below = (key: 'a' | 'b', n: number): GraphNode[] => [
+    node({ id: `decision-${key}`, type: 'decision', status: 'proposed', parent: `module-${key}`, verification: 'unverified', ...COLUMNS }, n),
+    node({ id: `task-${key}`, type: 'task', status: 'proposed', parent: `module-${key}`, acceptance: ['能用'], edges: [{ type: 'source', to: `decision-${key}` }] }, n + 1),
+  ]
+  const graph = graphOf([
+    node({ id: 'goal-1', type: 'goal', status: 'approved', stage: 'design', body: GOAL_BODY, acceptance: ['a'], nonGoals: ['n'] }, 0, 'human'),
+    node({ id: 'decision-fw', type: 'decision', status: 'proposed', parent: 'goal-1', verification: 'unverified', title: '用本地文件存账', ...COLUMNS }, 1),
+    node({ id: 'norm-directions', type: 'norm', status: 'proposed', parent: 'goal-1', acceptance: ['数据只存在本机', '先记账再汇总'] }, 2),
+    node({ id: 'module-a', type: 'feature', status: 'proposed', parent: 'goal-1', title: '记账', edges: [{ type: 'source', to: 'decision-fw' }] }, 3),
+    node({ id: 'module-b', type: 'feature', status: 'proposed', parent: 'goal-1', title: '月底汇总', edges: [{ type: 'source', to: 'decision-fw' }] }, 4),
+    ...below('a', 5),
+    ...below('b', 7),
     ...others,
   ])
   return { graph, goal: graph.nodes.get('goal-1')! }
