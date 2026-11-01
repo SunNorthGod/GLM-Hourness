@@ -19,9 +19,11 @@
  * `<project>/.llm/memory.jsonl`, what is about the person in the user-level
  * `memory/memory.jsonl` (`d-memory-scope`).
  */
-import { checkRefs, isGroupKey, parseRef, type ParsedRef } from '../data/evidence.ts'
+import { checkRefs, groupKeysOf, isGroupKey, parseRef, type ParsedRef } from '../data/evidence.ts'
 import type { Actor, Fold, FoldStep, JournalRecord, JsonValue, NewRecord } from '../data/journal.ts'
+import { invalid, isObject, isRefusal, listOf, refuse, type Refusal as BaseRefusal } from '../data/refusal.ts'
 import { findSecret } from '../data/secret-shape.ts'
+import { jaccard, wordsOf } from '../data/words.ts'
 
 const MEMORY_TYPES = ['user', 'feedback', 'project', 'reference'] as const
 export type MemoryType = typeof MEMORY_TYPES[number]
@@ -84,25 +86,9 @@ export const emptyMemory = (scope: Scope): MemoryState => ({ scope, entries: new
 /** The id of a record about an entry: its name and its scope. */
 export const memoryId = (scope: Scope, name: string): string => `${scope}:${name}`
 
-/** What a refused write says: a code the caller maps to its tool error, the reason in English (it reaches the model that wrote it), the field at fault and the way out. */
-export interface Refusal {
-  readonly code: 'invalid' | 'ask_first' | 'secret_like' | 'bad_source' | 'similar' | 'preference_owner'
-  readonly message: string
-  readonly field?: string
-  readonly hint?: string
-}
+/** What a refused write says (src/data/refusal.ts), with the codes of a memory write. */
+export type Refusal = BaseRefusal<'invalid' | 'ask_first' | 'secret_like' | 'bad_source' | 'similar' | 'preference_owner'>
 
-const refuse = (code: Refusal['code'], message: string, field?: string, hint?: string): Refusal => ({
-  code,
-  message,
-  ...(field === undefined ? {} : { field }),
-  ...(hint === undefined ? {} : { hint }),
-})
-const invalid = (field: string | undefined, message: string, hint?: string): Refusal => refuse('invalid', message, field, hint)
-const isRefusal = (value: object): value is Refusal => 'code' in value
-
-const isObject = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value)
-const listOf = (value: unknown): unknown[] | undefined => Array.isArray(value) ? value as unknown[] : undefined
 const isMoment = (value: unknown): value is string => typeof value === 'string' && !Number.isNaN(Date.parse(value))
 const isType = (value: unknown): value is MemoryType => typeof value === 'string' && (MEMORY_TYPES as readonly string[]).includes(value)
 const isDepth = (value: unknown): value is Depth => typeof value === 'string' && (DEPTHS as readonly string[]).includes(value)
@@ -124,23 +110,9 @@ export function strength(entry: Pick<MemoryEntry, 'kind' | 'lastReviewed' | 'rev
   return Math.min(1, 0.5 ** (ageDays / HALF_LIFE_DAYS) * (1 + Math.min(entry.reviews, 10) * 0.05))
 }
 
-/** The words of a text: English by word, Chinese by adjacent pair of characters (a lone character stands for itself). */
-function wordsOf(text: string): Set<string> {
-  const words = new Set<string>()
-  for (const run of text.toLowerCase().match(/[a-z0-9]+|[\u3400-\u9fff]+/g) ?? []) {
-    if (/^[a-z0-9]/.test(run) || run.length === 1) words.add(run)
-    else for (let index = 0; index + 1 < run.length; index += 1) words.add(run.slice(index, index + 2))
-  }
-  return words
-}
-
 /** Overlap of the words of name and description, 0 to 1 (Jaccard). */
 export function similarity(a: Pick<MemoryEntry, 'name' | 'description'>, b: Pick<MemoryEntry, 'name' | 'description'>): number {
-  const left = wordsOf(`${a.name} ${a.description}`)
-  const right = wordsOf(`${b.name} ${b.description}`)
-  const shared = [...left].filter(word => right.has(word)).length
-  const union = left.size + right.size - shared
-  return union === 0 ? 0 : shared / union
+  return jaccard(wordsOf(`${a.name} ${a.description}`), wordsOf(`${b.name} ${b.description}`))
 }
 
 // --- Checking a write -------------------------------------------------------
@@ -193,16 +165,6 @@ function sourceRefs(source: unknown, type: MemoryType): Refusal | ParsedRef[] {
   return type === 'project' && refs.length === 0 ? refuse('bad_source', 'a project memory needs a source', 'source', SOURCE_HINT) : refs
 }
 
-function learnedKeys(keys: unknown): Refusal | string[] | undefined {
-  if (keys === undefined) return undefined
-  const list = listOf(keys)
-  if (list === undefined || list.length > MAX_LEARNED || !list.every(key => typeof key === 'string' && isGroupKey(key))) {
-    return invalid('learnedFrom', `learnedFrom must be a list of at most ${MAX_LEARNED} group keys, each one line of 1 to 80 characters`)
-  }
-  const unique = [...new Set(list as string[])]
-  return unique.length === 0 ? undefined : unique
-}
-
 /** The rules of the field table of §3.2, the same for a tool call and for a record read from a journal. */
 function validateFields(raw: Readonly<Record<string, unknown>>): Refusal | Fields {
   const { name, type, description, body, scope, value, relay, source, learnedFrom } = raw
@@ -228,7 +190,7 @@ function validateFields(raw: Readonly<Record<string, unknown>>): Refusal | Field
   }
   const refs = sourceRefs(source, type)
   if (!Array.isArray(refs)) return refs
-  const keys = learnedKeys(learnedFrom)
+  const keys = groupKeysOf(learnedFrom, MAX_LEARNED)
   if (keys !== undefined && !Array.isArray(keys)) return keys
   return {
     name,

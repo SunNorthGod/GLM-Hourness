@@ -10,6 +10,7 @@
  * not fit it is `invalid`, it never falls through to "other" and gets stored.
  */
 import { COMMIT_PATTERN, ID_PATTERN } from '../graph/schema.ts'
+import { invalid, listOf, type Refusal } from './refusal.ts'
 import { findSecret, type SecretClass } from './secret-shape.ts'
 
 /** The field a list of references belongs to; the rejection names it. */
@@ -105,4 +106,15 @@ const MAX_GROUP_KEY_LENGTH = 80
 /** Whether a learning group key (`edit:goal.stage`) is well formed: 1 to 80 characters, one line, no space at either end. */
 export function isGroupKey(key: string): boolean {
   return key.length >= 1 && key.length <= MAX_GROUP_KEY_LENGTH && !/[\r\n]/.test(key) && key === key.trim()
+}
+
+/** The `learnedFrom` of a write: a list of at most `max` group keys without repeats; undefined when it is absent or empty. */
+export function groupKeysOf(raw: unknown, max: number): Refusal<'invalid'> | string[] | undefined {
+  if (raw === undefined) return undefined
+  const list = listOf(raw)
+  if (list === undefined || list.length > max || !list.every(key => typeof key === 'string' && isGroupKey(key))) {
+    return invalid('learnedFrom', `learnedFrom must be a list of at most ${max} group keys, each one line of 1 to ${MAX_GROUP_KEY_LENGTH} characters`)
+  }
+  const unique = [...new Set(list as string[])]
+  return unique.length === 0 ? undefined : unique
 }

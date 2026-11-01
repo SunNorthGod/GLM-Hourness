@@ -13,6 +13,7 @@ import { mkdtempSync, appendFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import { foldRecords, type Folded } from './fold-helpers.ts'
 import { appendJournal, readJournal, type JournalRecord, type JsonValue, type NewRecord } from '../src/data/journal.ts'
 import {
   applyRecord, baseRecord, checkSourceKnown, checkStore, classify, convertLegacy, emptyMemory, judgeStore, memoryFold, memoryId,
@@ -67,18 +68,7 @@ const HUMAN: Writer = { actor: 'human', by: { commandId: 'cmd-1' } }
 let seq = 0
 const at = (record: NewRecord, time: string = T0): JournalRecord => ({ v: 1, seq: ++seq, at: time, ...record })
 
-interface Folded { readonly state: MemoryState, readonly bad: readonly string[] }
-
-function foldAll(records: readonly JournalRecord[], from: MemoryState = emptyMemory('project')): Folded {
-  let state = from
-  const bad: string[] = []
-  for (const record of records) {
-    const step = applyRecord(state, record)
-    if ('bad' in step) bad.push(step.bad)
-    else state = step.state
-  }
-  return { state, bad }
-}
+const foldAll = (records: readonly JournalRecord[], from: MemoryState = emptyMemory('project')): Folded<MemoryState> => foldRecords(applyRecord, records, from)
 
 const entryOf = (state: MemoryState, name: string): MemoryEntry => {
   const entry = state.entries.get(name)
