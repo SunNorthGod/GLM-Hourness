@@ -45,6 +45,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "设计 0.4 第 4 轮复审 CHANGES_REQUESTED：MEDIUM 2、LOW 5，挡路数四轮为 12、4、2、2（design-review-4.md）。收尾运行的第二遍修订接着做。"
+    },
+    {
+      "at": "2026-11-01T05:10:51.603Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "设计 0.4.1（第 5 遍稿）：第 4 轮评审的 7 条（MEDIUM 1、2 与 LOW 3-7）已关闭，等第 5 轮复审。"
     }
   ]
 }

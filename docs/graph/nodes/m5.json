@@ -161,6 +161,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "实施计划完成：12 步（S1-S12），九个任务节点已上图（m5-1 至 m5-5、lessons-1 至 lessons-4）。S1-S11 可以开始；S12 等 M3 的对话层（talk.ts）合入后再做。基线 build、preflight、test 全过，probe 149/149。"
+    },
+    {
+      "at": "2026-11-01T05:10:51.336Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "S1（A1，m5-1、lessons-1）662ed88 评审 APPROVED，无挡路项；不挡路的一条：appendJournal 的 open(path, \\\"a\\\") 在返回 io 的 try 之外，打开失败时调用会被拒绝，与注释「从不拒绝」不符，带到 S4 处理。重启后各运行已恢复。"
     }
   ]
 }

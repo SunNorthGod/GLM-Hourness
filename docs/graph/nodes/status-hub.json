@@ -21,6 +21,12 @@
       "reason": "运行 design-status-hub 已开：写状态板块的短设计与各设计的对接改动表，复审后写一页稿。",
       "from": "approved",
       "to": "doing"
+    },
+    {
+      "at": "2026-11-01T05:10:51.076Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "首次运行 design-status-hub 在作者步失败：会话记录在一次重启后损坏，未写出任何文件（.agents/tasks/status-hub/ 为空）。同一份要求重开为运行 design-status-hub-relaunch；节点保持 doing。"
     }
   ]
 }
