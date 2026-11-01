@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Loop board",
+    "description": "What is done when something happens or the time comes: rows hand their entries, events and actions to the loop board, which checks and lists them, and brings four entries of its own (dependency check after a merge, a reminder for what has waited for you too long, the two ends of a GLM peak). Registry and service only so far. Off by default."
+  }
+}

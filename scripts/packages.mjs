@@ -62,6 +62,7 @@ export const PACKAGES = [
       { id: 'glm-hourness/graph-panel', module: 'graph/panel-row' },
       { id: 'glm-hourness/rules', module: 'rules/index' },
       { id: 'glm-hourness/design', module: 'design/index' },
+      { id: 'glm-hourness/loops', module: 'loops/index' },
     ],
     client: {
       row: 'glm-hourness/ui',

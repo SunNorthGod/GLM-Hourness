@@ -1467,9 +1467,9 @@ harness 自己跑的 git 都从这里走：任务与门禁的工作树、两个�
 - 释放时只删令牌还是自己的锁；被误判陈旧而被接手的持有者用 `held()` 发现，不会删接手者的锁。
 - 接手不是原子的（E3 评审 E3-8），有两个窗口。一是创建锁分两步：`wx` 打开，再写内容，等待者恰好在两步之间读到的是空文件，原先按「内容读不出就是废弃」立刻接手，创建者其实还活着。新选项 `unreadableGraceMs`（缺省 0，规则板的行为不变；门禁取 `GATE_UNREADABLE_GRACE_MS` = 2 秒，小于一次轮询）：没有 pid 也没有时间戳的内容（空文件、不是 JSON、`{}`）要同一个等待者连续看到同样的内容满这么久才算废弃，期间内容变成有效的锁就不接手，文件消失或被接手之后重新计时（上一次看到的空文件不算在后来的空文件头上）；创建者崩在两步之间留下的空文件，最多多等一次轮询。有 pid 的锁（持有者已死）照旧立即接手。二是等待者「重读、再改名」之间，接手者刚建的新锁可能被挪走，这个窗口是微秒级，没有复现，也没有在锁文件层面消除：门禁锁的持有者（E7）在写检查记录之前要调 `held()`，并按设计 §6.3 比较门禁工作树的 HEAD。
 - 测试 `tests/execute-gate-lock.spec.ts`（24 例）：门禁的值与 M5 的值（50 毫秒、2 秒、30 秒、120 秒）各对四个选项带一例，不传选项时的原有行为，`keepStale` 与 `holder`，活着的锁让后来者等到超时，陈旧（时间、开机时刻、进程已死），只删自己的令牌，同进程排队与放弃；没有 `bootTime` 的旧式环境对象，读不出内容的文件在缺省下立即接手、在宽限下等够才接手、创建者在宽限内写完就不接手、中间出现过有效的锁就重新计时、门禁锁的宽限。
-## 18. 循环板（起头：两块板共用的条目形状）〔L1 已实现 2026-10-31；还没有行〕
+## 18. 循环板〔L1（两块板共用的条目形状）已实现 2026-10-31；L2（条目与校验、服务与登记表、循环行自己的事件和默认条目、行的骨架）已实现 2026-11-01，L2、L3；行默认禁用，桌面版首轮验收未做〕
 
-完整设计是 `.agents/tasks/schedules/design.md`（不入库，版本 0.6，评审通过、人放行）。循环板放「到点了或碰到某件事，就去做一件事」，是编排层包 `dsh-hourness` 里的一块板，以后的行是 `glm-hourness/loops`（默认禁用）。这一节随实现分步补写；现在只落了第一步：规则板和循环板共用的条目形状，源码目录 `src/loops/` 登记在 `scripts/packages.mjs` 的 `hourness.src` 和 `packages/hourness/tsconfig.json` 的 `include` 里。还没有行、没有监听器、没有补丁里的条目、没有存储。
+完整设计是 `.agents/tasks/schedules/design.md`（不入库，版本 0.6，评审通过、人放行）。循环板放「到点了或碰到某件事，就去做一件事」，是编排层包 `dsh-hourness` 里的一块板，行是 `glm-hourness/loops`（默认禁用）。这一节随实现分步补写：两块板共用的条目形状（§18.1、§18.2）、循环板的条目与校验（§18.3）、服务与登记表（§18.4）、循环行自己的事件和默认条目（§18.5）、行的骨架（§18.6）。源码目录 `src/loops/` 登记在 `scripts/packages.mjs` 的 `hourness.src` 和 `packages/hourness/tsconfig.json` 的 `include` 里。还没有：存储、收件箱、运行、DSH 定时任务的绑定、工具、命令、页面，以及通道事件（`src/loops/channel.ts`，等 M6 的契约 `src/shared/channel-loop.ts`）。
 
 ### 18.1 条目的形状（`src/loops/trigger.ts`）
 
@@ -1488,6 +1488,48 @@ harness 自己跑的 git 都从这里走：任务与门禁的工作树、两个�
 - `validateScriptAction(action, context)`：脚本动作的时间部分，两块板共用。`timeoutSeconds` 必须是整数秒，拦路的事件 1 到 30、别处 5 到 1800，没写时调 `effectiveTimeoutSeconds` 补上（结果带 `filled`，记着来源与有没有被上限截）；`onError` 只在拦路的事件上有，没写时取事件声明的 `gateOnErrorDefault`，再没有则 `allow`。
 - 这一步没有做的：每个条目的取值变更记录、每次超时的事件记录、超时后拦路脚本在后台接着跑到 10 分钟、给主 Agent 的超时消息、页面和晨报上的显示。它们都是脚本运行的产物，随共用的脚本执行器一起建（执行器和同意的路还没有，所以本轮没有脚本在跑）。
 
-### 18.3 验证
+### 18.3 条目与它的校验（`src/loops/model.ts`）
+
+- 一项条目 `LoopEntryDefinition` 是 `HookShape<Action>`（`when`、可选的 `filter`、`action`）加 `id`、`title`、`why?`、`limits?`（`debounceSeconds` 0 到 3600，`maxPerHour` 1 到 60）、`quiet?`（`from`、`to`，两个不同的 `HH:MM`）、`scope?`（`project`；`machine` 只给通道包的两项）、`basis?`（至多 80 个字）、`ownRules?`（至多 6 行，每行至多 80 个字）。`LoopEntry` 再加 `source` 与 `rev`；插件的条目 `rev` 是规范化 JSON（键按码点排序）的 SHA-256 前 12 位十六进制。人的条目的 `source`（谁、何时、经谁、原话）和 `status` 随存储，这一步的 `LoopEntry` 只有插件一种来源。
+- 动作 `Action` 五种：`tell-main`（`text`、`wake`）、`harness`（交来它的那一行跑的动作 id，可带 `tell`）、`script`、`check`、`self`（`does`、`by`，那一行自己做，循环板只列出）。`script` 与 `check` 是类型，校验只收人的条目；插件的条目只能是 `tell-main`、`harness`、`self`。
+- `validateEntry(input, origin, context)` 返回问题列表（`{path, message}`，空表示没问题），两种来源同一个函数，不抛错：
+  - 字段：`id`（人的 `u-` 加 8 位小写十六进制；插件的 `<名字空间>.<名>`，或通道的 `<通道>:<名>`）、`title`（去首尾空白后 1 到 60 个码点，一行）、`why`（插件的必填，人的可以没有；写了就是 1 到 150 个码点，一行）。不认识的字段按名字拒；`source`、`rev`、`status` 是循环板自己写的，写条目的一方不写。
+  - `when` 与 `filter`：交给 `validateWhen`（§18.1），`allowGate` 为假；`options.action` 由动作定：`tell-main` 取 `'tell-main'`，`self` 取 `'self'`，`harness`、`script`、`check` 取 `'work'`。
+  - 动作：人的条目只能是 `tell-main`、`script`、`check`，插件的只能是 `tell-main`、`harness`、`self`，别的种类按名字拒。`tell-main.text` 与 `harness.tell.text` 是 1 到 2000 个码点；`{名字}`（字母开头、只含字母和数字）必须是 `when.events` 里每个事件都声明的字段，到点的条目不能有占位；别的花括号写法（`{"a": 1}`、`{ x }`、`{}`）是普通文字。`harness.action` 必须在交来它的那一份列的动作里（`context.actions`）。脚本：`script.file` 等于 `docs/loops/scripts/<条目 id>.<后缀>`（`pwsh` 为 `ps1`，`node` 为 `mjs`，`python` 为 `py`，`bash` 为 `sh`），`sha256` 是 64 位小写十六进制，超时 5 到 1800 的整数秒（调 `validateScriptAction`，目的是 `'work'`）；检查：`tool`、可选的 `check`、`argv` 1 到 64 项且每项 1 到 2000 个码点、不含空字符、超时 5 到 1800；两者共有的 `report`（`always`、`on-failure`、`on-change`）、`to`（`main`；`event-session` 只配事件触发，到点的条目没有会话）、`note`（至多 500 个码点）、`glmSpend`。
+  - 安静时段只配「告诉主 Agent」的事件条目。
+- 事件表里没有的事件：`context.absent` 里列的 id，插件的条目可以点名（人的条目不行）。这时条目等着，能不靠声明查的现在查（事件个数、已声明的那几个事件的筛选与占位），其余等声明到了再查。
+- 这一步没有做、留给存储和 M4 的读法的检查：`loops.file-changed` 的 `path` 是存在的目录、一个项目至多 20 个；检查条目的 `tool` 在项目图上有节点、`commandText(argv)` 至多 4000 个码点。设计里没写上限、本版取的数：`self.does` 至多 500 个码点，`check.tool` 与 `check.check` 至多 200 个码点，事件的标题至多 60 个字。
+
+### 18.4 服务与登记表（`src/loops/service.ts`、`registry.ts`）
+
+- 服务 `glmHournessLoops`（常量 `LOOPS_SERVICE`）：契约与读取函数 `loopsService(ctx, problem)` 在 `service.ts`，不导入循环行的其余代码。成员只有已经做出来的 `contribute(source, contribution)`；`emit`、`listens`、`recordRun` 随收件箱和运行记录，`attachable`、`acceptProposal`、`staleEntries`、`timeoutEntries` 随人同意的那条路（还没有）。读取函数只查已有的成员，服务比契约宽也照读；不在时返回 `undefined` 不出声，成员类型不对时返回 `undefined` 并回调 `problem`。事件声明的类型（`LoopEventDeclaration`、`LoopEventField`、`LoopEventParam`）定义在 `trigger.ts`，`service.ts` 原名再导出。
+- `Contribution` 是 `{events?, entries, actions?, run?, details?}`：条目、这一行能告诉循环板的事件、这一行执行的 harness 动作 `{id, title}` 和执行它们的 `run`，以及只给页面看的明细。
+- `contribute` 同步完成，同一个来源（包名加行 id）再交一次整份替换上一次；返回的 `dispose` 只撤回它自己那一份（替换之后旧的 `dispose` 什么也不做）。返回 `ok: false` 的情形：来源的包名或行 id 写法不对；名字空间 `loops` 不是循环行交的、`channel` 谁也不能占用、`gate.` 的事件不是规则行交的（规则行只交事件，它交的条目被丢掉）；名字空间已被另一个来源占用。被整份拒绝的不改动已有的那一份。
+- 名字空间：一份里所有条目、事件、动作的 id 都以同一个名字空间开头，名字空间取第一个条目（没有就第一个动作、再没有就第一个事件）的 id；执行行 `glm-hourness/execute` 的事件例外，以 `hourness.` 开头，别的来源用 `hourness.` 的事件被丢掉。名字空间属于第一个交它的来源，撤回之后空出来。
+- 一份至多 32 项条目、16 个事件、16 个动作，多出的各记一条丢弃；id 写成 `<名字空间>.<名>`（名字空间 1 到 16 个字符、名 1 到 48 个字符，小写字母数字和连字符），一份里不重复；事件至多 16 个字段（名字 `^[a-z][A-Za-z0-9]{0,31}$`，不叫 `at`，不叫 `session`——拦路的 `gate.` 事件除外——，不重复；标题 1 到 20 个字；比法与类型相配：`in` 配 `string`，`is` 配 `boolean`，`atLeast` 配 `number`，`paths` 配 `strings`），参数同理；`gateOnErrorDefault` 只给拦路的事件。事件不合，引用它的条目随之丢掉。一份列了动作却没有 `run`，动作全部丢掉，引用它们的条目随之丢掉。`script` 与 `check` 的条目、`scope: 'machine'` 的条目被丢掉。丢掉的理由写成「字段路径：一句话」，几条用「；」连起来。
+- 条目引用了此刻没有谁声明的事件（执行行没启用，通道的计价服务不在）：照样收下，列为灰显的 `waiting`，带着等的事件 id 和一句理由（「<事件>现在没有谁报（项目编排的这一部分没启用），这一项现在不跑」），不执行。事件声明一到，登记表把所有已交的各份对着新的事件表再查一遍：合得上就转为生效；合不上（例如筛选的字段那一方没声明成可筛）就丢掉，告诉行健康。撤回声明它的那一份，条目回到灰显。事件名里只有 `hourness.`、`env.`、`graph.`（编排层）和 `channel.`（GLM 通道）认得是哪个包的，别的名字空间只写「没有谁报」。`loops.` 和 `gate.` 的事件不等：前者是循环行自己的，后者循环板的条目不收。
+- 人话：条目的 `title` 与 `why` 经 `plainWordsIn`（`src/graph/plain-question.ts`），有没学过的词照样收下，行健康写一次「<id> 的说法里有 <词>」。
+- 告诉行健康的每一条（来源、条目、理由）只说一次：「<包> 的 <行> 交来的 <id> 读不懂：<理由>」「<包> 的 <行> 交来的整份被拒：<理由>」。
+- `validateContribution(source, contribution, context)` 是纯函数部分（一份交来的东西，加已有的事件表、别的来源占着的名字空间、此刻的时间），`createRegistry({now?, report?})` 是内存里的登记表：`contribute`、`entries()`（每项带 `entry`、`state`、`waitingOn`、`reason`）、`events()`（循环行自己的三个事件加各份交来的）。登记表不落盘；落盘的是人的条目，随存储。
+
+### 18.5 循环行自己的事件和默认条目（`src/loops/events.ts`、`defaults.ts`）
+
+- 三个事件（设计 §4.1）：`loops.host-restarted`（字段 `previousStart`、`downMinutes`、`crashed`、`rebooted`、`appChanged`）、`loops.waiting-on-human`（字段 `items`、`count`；必填参数 `olderThanHours` 1 到 168）、`loops.file-changed`（字段 `path`、`size`、`mtime`；必填参数 `path`）。它们是事件表里一直在的部分，不用谁交；人都能选。发现它们的代码随运行时。去重键的写法已经定下，各一个纯函数：`host-restarted:<项目键>:<这个进程开始跑这个项目的时刻>`；`file-changed:<路径>:<大小>-<修改时间的毫秒>`（文件被删时大小写 `gone`，时间取最后一次看到的版本）；`waiting-on-human:<olderThanHours>:<这一次查的整点，宿主时区 YYYY-MM-DDTHH>`。
+- 四项默认条目（设计 §5.2，`LOOP_DEFAULTS`）：`loops.deps-after-merge`（听 `hourness.trunk-advanced`、`hourness.outside-advance`，`files` 里有依赖文件才算，告诉主 Agent 查依赖，去抖 30 秒、每小时至多 6 次；依赖文件的名单 `DEPENDENCY_FILES` 是 17 个不带斜杠的名字）、`loops.remind-waiting`（听 `loops.waiting-on-human` 且 `olderThanHours` 为 24，告诉主 Agent 再说一次，安静时段 22:00 到 08:00，去抖 60 秒、每小时 1 次）、`loops.peak-start`（听 `channel.peak-changed` 且 `edge` 为 `start`，`self`，由规则行做）、`loops.peak-end`（`edge` 为 `end`，harness 动作 `loops.peak-end`，给主 Agent 的话由动作的结果给）。后两项的 `basis` 是「GLM 通道的高峰时刻与规则板的高峰模式」。给模型的文字是英文，不含每条消息第一行的 `Loop board: <id> (default of <插件>).`，那一行投递时才写。
+- 不在 `src/loops/` 里的：别的行的条目。执行行、操作行、环境行、图行、GLM 通道包的条目表各在自己那一行里，循环板的代码不导入它们（静态检查：`src/loops/` 没有 `channel.ts`，也不导入 `execute`、`operate`、`env`、`glm-llm` 的目录和 `channel-loop`）。
+- 现在这四项里只有 `loops.remind-waiting` 生效：另三项听的事件（执行行的 `hourness.*`、GLM 通道的 `channel.peak-changed`）此刻没有谁声明，列为灰显，等声明的那一行交来。设计里「第 13、14 项只在计价服务在时出现」的联动随 `channel.ts`（读计价服务的那一步），这一步无条件交出这四项。
+- `loops.peak-end` 动作由循环行自己执行（设计 §6.9 第 4 条），那一步还没有做；在那之前它返回 `skipped`，理由「高峰结束时的接续这一版还没有做」，不做事也不报错。
+
+### 18.6 行（`src/loops/index.ts`）
+
+- 行 `glm-hourness/loops`（cordis 名 `dsh-glm-hourness/loops`，补丁里在 `design` 之后、`ui` 之前，`disabled: true`，没有 `inject`）。`apply(ctx)` 做三件事：提供服务 `glmHournessLoops`（只有 `contribute`，不把登记表的读法交出去）、提供行健康、把循环行自己的四项和那一个 harness 动作交给自己的登记表。不抛错：宿主没有 `provide`，或服务提供不上（第二个实例），行健康是 `inactive` 并写原因、告警一次，不动第一个实例的服务；登记表告诉的每一条（别的行交来的东西有几项不合、被整份拒绝、有没学过的词）进行健康，状态降为 `degraded`，其余照常。
+- 行健康只在激活时报（`ACTIVATION_ONLY`）：循环板属于项目，不属于某个会话。
+- 还没有的：设计里「服务只在有会话控制器的进程提供」（随运行时，在 `ctx.inject(['sessionController'], …)` 里提供），监听器、工具、命令、投影、存储。注册：`scripts/packages.mjs` 的 `rows`，`packages/hourness/cordis.patch.yml`（`disabled: true`），`packages/hourness/package.json` 的 `exports`，`packages/hourness/locale/loops/{en,zh}.json`，`src/shared/health.ts` 的 `HOURNESS_ROWS`（与补丁同序）。
+
+### 18.7 验证
 
 L2：`tests/loops-trigger.spec.ts`（`nextOccurrence` 在 `Asia/Shanghai` 与有夏令时的 `America/New_York` 上的每天、每周、跳过的钟点、重复的钟点；`validateWhen` 各类触发与筛选；`matchesFilter` 的各种比法和路径写法；慢正则被拒；`effectiveTimeoutSeconds` 的每个分支和坏数字；`validateScriptAction`；模块不导入 Node 内置模块）。
+
+L2（条目、登记表和行的骨架）：`tests/loops-model.spec.ts`（`validateEntry` 两种来源：id 与标题的边界，`why` 插件必填人可缺，不认识的字段与循环板自己写的字段，各种动作按来源收或拒，占位的各种情形，脚本引用与超时，检查的 `argv`，`to: event-session` 只配事件触发，`when` 的映射（告诉主 Agent 的 `every` 至少 600、脚本与 harness 至少 300），没有声明的事件等着，坏输入不抛错；模块不导入 Node 内置模块）；`tests/loops-registry.spec.ts`（测试里写的、形状取设计 §5.1 的 M7 条目表整份交给真实的 `contribute` 全部收下；每种不合的条目、事件、动作丢掉并带字段路径；来源与名字空间的整份拒绝；个数上限；灰显、转为生效、合不上时丢掉并告诉行健康、撤回后回到灰显；替换与撤回；`rev`；循环行自己的三个事件、参数和去重键；四项默认条目；行的激活、降级与卸载；补丁、清单、目录表和 locale；`src/loops/` 没有别的行的表和 `channel.ts`）；`tests/health.spec.ts`、`tests/contracts.spec.ts` 加了行 `loops` 与服务读取函数的用例。
+
+L3：`npm run probe` 不加场景。这一行被组装进探针的配置（补丁里 `disabled: true`，覆盖层不启用它），`client-modules` 的检查在设置页清单里认出它的 locale 标题和包的子路径（全部组合 16 行，只装编排层包 11 行）；探针 186 项全部通过，原有场景不受影响。行真正跑起来的场景随运行时，那时才有东西可探。

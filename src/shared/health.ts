@@ -23,7 +23,7 @@ import type { ProvideHost, ServiceLookup } from './dsh-min.ts'
 export const GLM_ROWS = ['glm-llm', 'glm-login', 'glm-prompt', 'glm-compact'] as const
 
 /** The orchestration package's host rows, in patch order. */
-export const HOURNESS_ROWS = ['data', 'guard', 'memory', 'workflow', 'hourness', 'graph', 'graph-panel', 'rules', 'design'] as const
+export const HOURNESS_ROWS = ['data', 'guard', 'memory', 'workflow', 'hourness', 'graph', 'graph-panel', 'rules', 'design', 'loops'] as const
 
 /**
  * Each package with its host rows: the runtime copy of the directory table
@@ -41,8 +41,8 @@ export const HEALTH_ROWS = [...GLM_ROWS, ...HOURNESS_ROWS] as const
 
 export type HealthRow = typeof HEALTH_ROWS[number]
 
-/** Rows whose status is fixed at activation: they do not act per session (graph-panel's command acts for the human, not a session's agent). */
-const ACTIVATION_ONLY: ReadonlySet<HealthRow> = new Set(['glm-login', 'data', 'graph-panel'])
+/** Rows whose status is fixed at activation: they do not act per session (graph-panel's command acts for the human, not a session's agent; the loop board belongs to the project, not to a session). */
+const ACTIVATION_ONLY: ReadonlySet<HealthRow> = new Set(['glm-login', 'data', 'graph-panel', 'loops'])
 
 /** A row's status: in effect, partly in effect, or not in effect. */
 export type HealthState = 'active' | 'degraded' | 'inactive'

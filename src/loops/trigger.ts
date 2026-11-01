@@ -627,7 +627,7 @@ export const GATE_TIMEOUT_MAX_SECONDS = 30
 export const WORK_TIMEOUT_MAX_SECONDS = 1800
 /** The least an entry's `timeoutSeconds` can be: the lower end of the range ScriptAction allows. */
 const GATE_TIMEOUT_MIN_SECONDS = 1
-const WORK_TIMEOUT_MIN_SECONDS = 5
+export const WORK_TIMEOUT_MIN_SECONDS = 5
 
 export interface TimeoutInput {
   /** Seconds the agent that wrote the script gave when the person approved it. Absent, zero, negative or not a finite number: no estimate. */

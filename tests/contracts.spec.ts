@@ -18,6 +18,7 @@ import { CATALOG } from '../src/rules/builtin.ts'
 import { RULES_FILES_ONLY } from '../src/rules/gate.ts'
 import { apply as rulesApply, type RulesContext } from '../src/rules/index.ts'
 import { RULES_DECLARATION, RULES_SERVICE, rulesService } from '../src/rules/service.ts'
+import { LOOPS_SERVICE, loopsService } from '../src/loops/service.ts'
 import { DECLARATION_SECTION } from '../src/guard/sections.ts'
 import { DIALECT_SERVICE, dialectNames, dialectService, toNativeTool, ZCODE_ALIAS_NATIVES, type DialectService } from '../src/shared/dialect.ts'
 import type { AgentLike, CommandDefinitionLike, ToolFinalResult } from '../src/shared/dsh-min.ts'
@@ -54,6 +55,7 @@ const ROW_IDS = [
   'glm-hourness/graph-panel',
   'glm-hourness/rules',
   'glm-hourness/design',
+  'glm-hourness/loops',
   'glm-hourness/ui',
 ]
 
@@ -96,6 +98,30 @@ test('rules service: absent and malformed values read as none and say so; a wide
   store2.provide(RULES_SERVICE, wider)
   assert.equal(rulesService(store2, problem), wider)
   assert.equal(problems.length, 1)
+})
+
+test('loops service: absent reads as none without a word, a wrong shape reads as none and says so, a wider service still reads', () => {
+  assert.equal(LOOPS_SERVICE, 'glmHournessLoops')
+  const problems: string[] = []
+  const problem = (message: string) => { problems.push(message) }
+  assert.equal(loopsService(serviceStore(), problem), undefined)
+  assert.equal(loopsService({}, problem), undefined) // a context without get
+  assert.equal(problems.length, 0)
+  for (const [count, value] of [[1, { contribute: 'yes' }], [2, 42], [3, {}]] as const) {
+    const store = serviceStore()
+    store.provide(LOOPS_SERVICE, value)
+    assert.equal(loopsService(store, problem), undefined)
+    assert.equal(problems.length, count)
+    assert.ok(problems[count - 1]?.includes(LOOPS_SERVICE))
+  }
+  const wider = { contribute: () => ({ ok: false, reason: 'x' }), emit: () => 1 }
+  const store2 = serviceStore()
+  store2.provide(LOOPS_SERVICE, wider)
+  assert.equal(loopsService(store2, problem), wider)
+  assert.equal(problems.length, 3)
+  const wrong = serviceStore()
+  wrong.provide(LOOPS_SERVICE, 0)
+  assert.equal(loopsService(wrong), undefined, 'the callback is optional')
 })
 
 /** The lines of the glm:guard section the guard row declares on a GLM route, with the rules service as given (none when undefined). */
