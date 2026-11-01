@@ -424,6 +424,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "运行 design-drop-read-no-shell 一并改面板：P11-02 当初拿 bootstrap-read-no-shell 举例说「还不能一句话撤下」，这条规则不再存在，已放行的面板文字不能承诺一条不存在的规则，相关几处删改。节点已是 doing。"
+    },
+    {
+      "at": "2026-11-01T10:55:50.401Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "接管的读项目门禁 `bootstrap-read-no-shell` 已随人 2026-11-01 的决定整条去掉（`d-bootstrap-released`），面板设计 1.3 把拿它当「可撤下的规则」举例的 6 处改成「接管行不带规则，页面上没有它的条目」：§4.7 讲 `liftHow` 为什么由板给的那一段、§10.3 第 13 项 (a) 的 L4 走查、§11「1.0 的对接」第 1 条给规则板的请求、同节第 4 条给 M4 的请求、§14 第 24 条与第 32 条的待写批注。页面上可撤下规则的例子只剩 `graph-files-only` 一个；撤不了的仍是 M3 的 `MAIN_AGENT_RULES`、M7 的 `EXECUTE_RULES`（在它们改经 `installRuleGate` 之前）与 `lift-files-only`，所以「现在还不能一句话撤下」的行照旧存在。版本号不变，仍是 1.3；面板行为与验收不依赖这条规则，`d-one-lift-path`、`d-code-rules-enforce` 的其余落点都没有动。留给写 1.2 那一批批注的一步：§14 第 33 条还留着「接管的读项目门禁与别的可撤的规则同路」一句，体裁是 1.2 的历史叙述，独立评审判为不挡路，写那一批批注时可以去掉，或改成「接管行不带规则（人 2026-11-01 定）」，免得图上多一条当时就已过时的句子。接管设计这一轮的独立评审（第 2 遍）结论 APPROVED、挡路 0 条，评审文件 `.agents/tasks/bootstrap/review-noshell.md`。"
     }
   ]
 }

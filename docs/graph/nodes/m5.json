@@ -185,6 +185,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "S4（M1，m5-1、m5-2、m5-5）在 m5-memory-lessons 上提交为 7dc790a（基底 8af90b9）：build、preflight、test 退出码 0，probe 165/165。等评审。"
+    },
+    {
+      "at": "2026-11-01T10:55:50.589Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "S5（D1，m5-3）在 m5-memory-lessons 上提交为 2a1ac01（基底 7dc790a）：GLM 的记忆一节改回 ZCode 3.17.1 的原文，经验那一句只在 lessons_query 在工具面里时才出现；build、preflight、npm test、check:verbatim、probe 165/165、check:secrets 全部退出码 0。第 1 遍评审 APPROVED，无挡路项，两条留给合入步：DESIGN.md §5.9 的镜像文件清单还漏了 zcode-memory-text.ts；src/glm-prompt/index.ts 的 import 与 M6 的冲突。合入前的冲突面：与 origin/main 预演合并有 5 个文件冲突（S4 时已有 4 个，S5 新增 index.ts 这一处），合入步要逐个解。"
     }
   ]
 }
