@@ -276,6 +276,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "M6 实现的整合评审 APPROVED（HEAD f520d88，挡路 0、NIT 6）。接下来是沙盒验证、合入主干与桌面版实测。"
+    },
+    {
+      "at": "2026-11-01T02:51:54.498Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M6 合入 main（061bd32，10 个提交，基于 f4efa6c 变基后快进）。编排方在 main 上复核：build、preflight、test 退出码 0（1110 项通过）；合入步在同一棵树上 probe 161/161。规则行在 main 上仍是 disabled: true（N23）。剩桌面版实测（m6-l4）与报告。"
+    },
+    {
+      "at": "2026-11-01T02:52:18.750Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M6 合入 main（061bd32，10 个提交，基于 f4efa6c 变基后快进）。编排方在 main 上复核：build、preflight、test 退出码 0（1110 项通过）；合入步在同一棵树上 probe 161/161。规则行在 main 上仍是 disabled: true（N23）。剩桌面版实测（m6-l4）与报告。"
     }
   ]
 }

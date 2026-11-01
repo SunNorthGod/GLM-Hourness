@@ -543,6 +543,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "规则板与循环板实现 FEAT-003（6cdddcd）独立评审 APPROVED，挡路 0、7 条不挡路的说明；13 步里 3 步已过审。"
+    },
+    {
+      "at": "2026-11-01T02:51:54.709Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "规则与循环实现进度：FEAT-004（写引擎接管全部非提议操作，日志轮转在此补上）d470003 评审 APPROVED，6 条不挡路的备注在 gate-FEAT-004.json；FEAT-005（checkCall、心跳读侧、指标出口、rules show/check 命令行）f8358fe 评审 APPROVED，4 条备注在 gate-FEAT-005.json。13 项中 5 项通过，均在 rules-loops-impl 分支，未合入。"
+    },
+    {
+      "at": "2026-11-01T02:52:18.969Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "规则与循环实现进度：FEAT-004（写引擎接管全部非提议操作，日志轮转在此补上）d470003 评审 APPROVED，6 条不挡路的备注在 gate-FEAT-004.json；FEAT-005（checkCall、心跳读侧、指标出口、rules show/check 命令行）f8358fe 评审 APPROVED，4 条备注在 gate-FEAT-005.json。13 项中 5 项通过，均在 rules-loops-impl 分支，未合入。"
     }
   ]
 }

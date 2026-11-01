@@ -2,7 +2,7 @@
   "id": "m6-probe",
   "type": "task",
   "title": "M6 Q3：探针核对没有额度请求、三种包组合与请求正文",
-  "status": "approved",
+  "status": "done",
   "parent": "m6",
   "kind": "test",
   "tier": "standard",
@@ -25,6 +25,21 @@
       "to": "m6-reminder-text"
     }
   ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "ce68f95"
+    },
+    {
+      "kind": "commit",
+      "ref": "badeba3"
+    },
+    {
+      "kind": "test",
+      "ref": "npm test on main 061bd32 (orchestrator re-run)",
+      "exit": 0
+    }
+  ],
   "history": [
     {
       "at": "2026-10-31T07:01:03.606Z",
@@ -32,6 +47,29 @@
       "op": "propose",
       "reason": "按实现计划建节点",
       "to": "approved"
+    },
+    {
+      "at": "2026-11-01T02:52:41.832Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "M6 合入 main 061bd32；FEAT-005 评审 APPROVED；probe 两次 161/161。",
+      "from": "approved",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "ce68f95"
+        },
+        {
+          "kind": "commit",
+          "ref": "badeba3"
+        },
+        {
+          "kind": "test",
+          "ref": "npm test on main 061bd32 (orchestrator re-run)",
+          "exit": 0
+        }
+      ]
     }
   ]
 }

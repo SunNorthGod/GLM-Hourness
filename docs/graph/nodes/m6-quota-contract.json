@@ -2,7 +2,7 @@
   "id": "m6-quota-contract",
   "type": "task",
   "title": "M6 Q1：额度、时段说明与循环条目的公共契约",
-  "status": "approved",
+  "status": "done",
   "parent": "m6",
   "kind": "implement",
   "tier": "standard",
@@ -12,6 +12,17 @@
     "formatMoment、peakLine、quotaLines、quotaLowOf、quotaLowLine、loginLine、loopDefaultsOf 的用例通过（设计验收 3、21 与 §11 的校验）",
     "npm run build、preflight、test 退出码 0，没有新的 knip、ESLint、jscpd 发现"
   ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "11dce6b"
+    },
+    {
+      "kind": "test",
+      "ref": "npm test on main 061bd32 (orchestrator re-run)",
+      "exit": 0
+    }
+  ],
   "history": [
     {
       "at": "2026-10-31T07:01:02.703Z",
@@ -19,6 +30,25 @@
       "op": "propose",
       "reason": "M6 放行后按实现计划建节点（人 2026-10-31 放行设计 0.5，0.6 只改文字）",
       "to": "approved"
+    },
+    {
+      "at": "2026-11-01T02:52:40.827Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "M6 合入 main 061bd32；FEAT-001 评审 APPROVED；main 上 build、preflight、test 退出码 0（1110 项通过），合入步 probe 161/161。",
+      "from": "approved",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "11dce6b"
+        },
+        {
+          "kind": "test",
+          "ref": "npm test on main 061bd32 (orchestrator re-run)",
+          "exit": 0
+        }
+      ]
     }
   ]
 }

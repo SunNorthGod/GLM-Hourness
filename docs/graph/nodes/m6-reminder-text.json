@@ -2,7 +2,7 @@
   "id": "m6-reminder-text",
   "type": "task",
   "title": "M6 R1：高峰提醒按规则板交出的档位选正文",
-  "status": "approved",
+  "status": "done",
   "parent": "m6",
   "kind": "implement",
   "tier": "standard",
@@ -18,6 +18,17 @@
       "to": "m6-quota-contract"
     }
   ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "a3eb0ac"
+    },
+    {
+      "kind": "test",
+      "ref": "npm test on main 061bd32 (orchestrator re-run)",
+      "exit": 0
+    }
+  ],
   "history": [
     {
       "at": "2026-10-31T07:01:02.899Z",
@@ -25,6 +36,25 @@
       "op": "propose",
       "reason": "按实现计划建节点",
       "to": "approved"
+    },
+    {
+      "at": "2026-11-01T02:52:41.029Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "M6 合入 main 061bd32；FEAT-002 评审 APPROVED；main 上 build、preflight、test 退出码 0，合入步 probe 161/161。",
+      "from": "approved",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "a3eb0ac"
+        },
+        {
+          "kind": "test",
+          "ref": "npm test on main 061bd32 (orchestrator re-run)",
+          "exit": 0
+        }
+      ]
     }
   ]
 }

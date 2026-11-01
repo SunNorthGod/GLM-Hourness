@@ -215,6 +215,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "设计评审停在 0.5：剩一条 MEDIUM（F49），四轮发现数 11、6、2、1。停止报告在 .agents/tasks/metrics/align-stop-report.md。下一步：一次小修补 F49 后复审。"
+    },
+    {
+      "at": "2026-11-01T02:53:00.674Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "fix 轮：设计 0.6（第二遍，2026-11-01 10:13）。关闭 F49（第 1 遍）与 F57–F62、F50–F56（第 2 遍）。设计评审 2 遍，结论 APPROVED（HIGH 0、MEDIUM 0），另记 NIT F63–F65 不挡路（design-review-fix.md、design-gate-fix.json）。一页放行稿 onepage.md 评审 2 遍未放行：第 1 遍 MEDIUM 3、NIT 4，第 2 遍关闭 O1–O7，余 O8（MEDIUM，summary 命令只在插件仓库，需带 --project）与 O9（NIT，丢失数只数本次启动）；onepage.md 未就绪，模块停下，见 .agents/tasks/metrics/stop-report-fix.md。"
+    },
+    {
+      "at": "2026-11-01T02:53:01.071Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "编排方按评审给的改法改了一页稿（O8：改为到插件仓库的命令行敲 npm run metrics -- summary --project <项目目录>；O9：改为「这次启动以来丢了 0 条」），1399 个码点，无 BOM，无禁用词。这两处没有再经独立复审；一页稿可以交人读，内含两件要人定的事。F63–F65（NIT）留到设计下一次修订。"
     }
   ]
 }

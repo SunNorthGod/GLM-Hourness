@@ -2,7 +2,7 @@
   "id": "m6-quota-read",
   "type": "task",
   "title": "M6 Q2：额度读取、登录状态、预估与循环板条目数据",
-  "status": "approved",
+  "status": "done",
   "parent": "m6",
   "kind": "implement",
   "tier": "hard",
@@ -26,6 +26,21 @@
       "to": "m6-reminder-text"
     }
   ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "4018a7c"
+    },
+    {
+      "kind": "commit",
+      "ref": "6e156f7"
+    },
+    {
+      "kind": "test",
+      "ref": "npm test on main 061bd32 (orchestrator re-run)",
+      "exit": 0
+    }
+  ],
   "history": [
     {
       "at": "2026-10-31T07:01:03.247Z",
@@ -33,6 +48,29 @@
       "op": "propose",
       "reason": "按实现计划建节点",
       "to": "approved"
+    },
+    {
+      "at": "2026-11-01T02:52:41.232Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "M6 合入 main 061bd32；FEAT-003 评审 APPROVED；main 上 build、preflight、test 退出码 0，合入步 probe 161/161。",
+      "from": "approved",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "4018a7c"
+        },
+        {
+          "kind": "commit",
+          "ref": "6e156f7"
+        },
+        {
+          "kind": "test",
+          "ref": "npm test on main 061bd32 (orchestrator re-run)",
+          "exit": 0
+        }
+      ]
     }
   ]
 }

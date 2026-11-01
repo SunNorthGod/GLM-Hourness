@@ -2,7 +2,7 @@
   "id": "m6-l4",
   "type": "task",
   "title": "M6 Q4：桌面版真实读取一次并重启核对",
-  "status": "approved",
+  "status": "doing",
   "parent": "m6",
   "kind": "test",
   "tier": "standard",
@@ -33,6 +33,14 @@
       "op": "propose",
       "reason": "按实现计划建节点",
       "to": "approved"
+    },
+    {
+      "at": "2026-11-01T02:51:54.296Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "沙盒实测完成：沙盒启动无新错误，真实读取额度一次；返回的是按积分计的 CREDIT_LIMIT 行而不是 TOKENS_LIMIT 行，窗口命名已修（fa3e324），返回形状记入 FACTS.md 2.4（061bd32）。~/.dsh 未改。下一步：桌面版真实读取一次并重启核对（运行 m6-glm-upkeep 的 desktop-live 步）。",
+      "from": "approved",
+      "to": "doing"
     }
   ]
 }
