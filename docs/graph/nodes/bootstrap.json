@@ -202,6 +202,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "finish2 收尾（一页稿）：onepage.md（设计 0.6）与 onepage-mockup.svg 已写，1,379 个汉字（不含草图；去掉图片说明为 1,360），评审员的计数与作者一致，不超 1,500。第 1 遍 CHANGES_REQUESTED（MEDIUM P1–P3、NIT P4–P8），第 2 遍 CHANGES_REQUESTED（MEDIUM 1、NIT 2）：P2–P8 已关闭；P1（MEDIUM）未变：一页稿与草图用 d-ask-three-gates 的一句是非问，design.md 仍把问话写成『题目加四行、每行一处加粗』，设计正文约 57 行涉及（§0 摘要、§0.1、§1.1 的 d-chat-not-cards 一行、§2.0、§1.4 的 5 条、§5.4、§5.9、§7.3 的 listLines 与 questionsDraft 模板、§17 的三行、§18），页面只披露了 41 条验收里的 5 条，批准 D1 等于批准没写出的验收；P9（NIT）草图里同一条命令文字的两行试跑用时分别是 45 秒和 8 秒，第一行应为约 8 秒；P10（NIT）变化第 4 条没写副本里的程序读得到你电脑上的文件。两遍用完，模块停下（stop-report-onepage-finish2.md、onepage-gate-finish2.json、onepage-review-finish2.md）。页面其余部分（场景、变化 5 条、D2、D3、替人定的 56 个方向）核对无误。编排方的裁定与后续运行 design-fix-bootstrap-P1 见 2026-11-01T04:59:50Z 的批注。留给人的三件（一页稿『要你定的』；页面没有通过评审，在 P1 关闭、页面改完并复审通过之前不交给人）：① 接管功能自己的 7 件活怎样算做完，共 41 条，建议这样写进项目图，可以吗；② 读别人的项目时先停掉主 Agent 的命令行和网页抓取，可以吗；③ 接管来的待做活开工前不用先看一页放行稿，你说『开始』就派，可以吗。"
+    },
+    {
+      "at": "2026-11-01T07:42:23.009Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "P1 修订完成（版本仍 0.6，被评审稿存为 design-0.6-finish2.md）：问话形状全稿改成 d-ask-three-gates 的一句是非问，编排方的裁定（形状归 M3 的一处模板，接管只引用）写进 §7.3 开头与 §17 新增一行；防改写的摘要由 linesDigest 改为 askDigest（题目 + ask + 记录字段）。M3 的规则名已对着 M3 附录 0.6 核实：proposalLineRefusal 已不存在，改为 askTextRefusal、proposalRecordRefusal、textCoversRecord、proposalTitleRefusal，由 renderAsk 渲染，因此不需要新的请求。P9、P10 已改。§1.4 重数为 41 条、6,598 字；一页稿 1,354 个汉字。等复审。"
     }
   ]
 }

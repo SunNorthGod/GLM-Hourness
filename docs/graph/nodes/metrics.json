@@ -233,6 +233,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "运行 design-followup-metrics07-m4fix3-m6record 已开：按 d-metrics-ratios-person-only 把设计改到 0.7（比率做成面板上指标自己的一块板，板的新手引导一行写明在哪看，命令行留作后备；周报只转述四个减负数字），一并处理 F63-F65；一页稿 ② 改为已定，① 仍待人定。"
+    },
+    {
+      "at": "2026-11-01T07:42:24.154Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "设计 0.7 初稿写好（0.6 存为 design-0.6.md）：按 d-metrics-ratios-person-only 新增 §7.6「指标板」（数据形状、投影、客户端字段、模型可读与不可读对照、降级表），周报只转述四个减负数字，比率只给人看；一并处理 F63-F65。对照已放行的 plain-ui 1.3 §4.7/§8.2 逐条核过：板块登记表能承载这块板（Board.id 是字符串、按 BOARD_ORDER 之后的登记先后排、homeLine 与 guideLine 各不超 60 码点、非规则板的 peakApplies 为假、每块板一个错误边界），不需要对面板提请求；三处文字对齐只作备注，照 d-freeze-until-dogfood 不作请求。§16 ① 仍是人要定的。等独立评审。"
     }
   ]
 }
