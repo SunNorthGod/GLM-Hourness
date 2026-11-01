@@ -116,14 +116,16 @@ export const slash = path => path.replaceAll('\\', '/')
  * `<dir>/home` (memory, workflow and hourness get it as their row home, as
  * the user's profile patch does; the guard reads it from the data service)
  * and the DSH home `<dir>/dsh-home`, so the user-level directory is
- * `<dir>/dsh-home/glm-hourness`.
+ * `<dir>/dsh-home/glm-hourness`. The data row's `projectOverride` is the
+ * same project directory: the memory and lessons rows put their project
+ * data there instead of in the `.llm` of the repository the scenario runs in.
  */
 export function dataRows(dir) {
   const home = JSON.stringify(slash(join(dir, 'home')))
   return [
     ...['memory', 'workflow', 'hourness'].flatMap(row => [`- id: glm-hourness/${row}`, `  config: { home: ${home} }`]),
     '- id: glm-hourness/data',
-    `  config: { dshHome: ${JSON.stringify(slash(join(dir, 'dsh-home')))}, projectHome: ${home} }`,
+    `  config: { dshHome: ${JSON.stringify(slash(join(dir, 'dsh-home')))}, projectHome: ${home}, projectOverride: ${home} }`,
   ]
 }
 

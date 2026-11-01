@@ -93,6 +93,14 @@ GLM-Hourness（同仓两包，§2.3）
 - 各行：guard 每次拦截都写违规流水，`onViolation` 回调删除；memory 的用量只经服务写用户级目录，记忆工具仍用行的 `home`，没有 `home` 时只关记忆工具；workflow 的决策与 hourness 的报告按上面的顺序取目录；`/hourness` 从用户级目录读用量，缺哪个目录就在输出里写明。
 - 验证：L2 覆盖三步解析、服务提供与撤回、取值顺序、有无服务两种情况；L3 探针确认数据行在真运行时上提供服务，用量只落在场景的用户级目录、真实的 `~/.dsh/glm-hourness` 不变，guard 拦下的 shell 写入在场景项目目录留下违规记录（带规则、工具、agent 与会话 id）。数据行经探针证明后默认启用。
 
+记忆与经验的存储底座〔M5 步骤 A1，设计 `.agents/tasks/m5/design.md` §5，节点 `m5-1`、`lessons-1`〕：关于人本人的记忆在用户级目录，项目事实与全部经验在项目的 `.llm/`（`d-memory-scope`），都用只追加的流水（JSON Lines）。
+
+- `src/data/journal.ts`：`readJournal`、`readJournalSync`（共用按文件大小与修改时间的缓存；坏行记行号与原因；末行没有换行的忽略）和 `appendJournal`（进程内按路径排队；锁用 `src/data/lock.ts`，选项 50 毫秒重试、2 秒等待、30 秒陈旧、开机时刻差 120 秒、陈旧锁改名留着；在锁里重读、由调用方的计划决定写什么、追加前核对锁还是自己的、给崩溃留下的半行补换行、`seq` 取最大加一、`fsync`）。折叠函数由使用者给（记忆与经验各自的模型）。目录被删之后下一次写入重新准备目录。
+- `src/data/project-root.ts` 加 `projectDirOf(cwd, home?)`（只返回 `<项目根>/.llm`，不写东西）与 `ensureProjectDir(dir)`（名字是 `.llm` 的目录先 `ensureIgnored` 再建；忽略条目写不进就抛错、不建目录）。
+- 数据目录服务多一个成员 `projectDirOf(cwd)`：行配置 `projectOverride` 非空时对所有会话返回它（探针、标定、测试指向运行目录；`scripts/sandbox.mjs` 的 `dataRows` 设为 `<dir>/home`），否则返回会话所在项目的 `.llm`。服务值可以没有这个成员，调用方这时直接调 `project-root.ts` 的同名函数。
+- `src/data/secret-shape.ts`（`looksSecret`、`findSecret`、`redactSecrets`：按令牌形状而不是「32 个以上的 base64 字符」判，路径与长标识符放行）与 `src/data/evidence.ts`（证据与出处的写法 `parseRef`、`checkRefs`，提交号不判密钥，`session:`、`call:`、`command:` 的 id 不判 `token`、`hex`；`isGroupKey`）：纯函数，不用 Node 内置模块。
+- `src/data/main-agent.ts`：`isMainAgentFor(ctx, agent)`，记忆行与经验行共用的唯一一处主 Agent 判断。子 agent 为否；读项目的持有者记录（`mainAgentOf`），记录指向别的会话为否，指向本会话时再核对本会话的 `hournessMainAgent` 投影；没有图服务、没有工作目录、记录读不到时按「设计行不在」处理，任何根 agent 都算，原因随返回值交给行健康。M3 在持有者记录旁边加的带模式核对的读法进 main 后，只改这个文件。
+
 迁移〔2026-10-28〕：从 `~/.dsh/profiles/desktop/.llm/`（只读）与仓库 `.llm/audit/usage.jsonl` 复制，按整行去重。用户级用量流水共 1080 条：仓库 890 条加旧目录 190 条，两者没有重复，按时间排序，最晚一条 2026-10-27T12:29:08.993Z。旧目录的 1 条记忆（`glm-hourness-handoff`）并入仓库 `.llm/memory.json`；旧目录的 3 条决策在仓库决策流水里都已存在。清理〔2026-10-29，项目图 `m1-cleanup`〕：重新核对旧目录的 190 条用量、3 条决策与记忆文件都已在新位置后，删除旧目录；仓库 `.llm/audit/usage.jsonl` 的最晚一条恰为截止点 2026-10-27T12:29:08.993Z，桌面版重启加载新代码之前没有再追加，补拷 0 条。同日按用户要求「用量之类的我们仓库的东西最好删掉」：用户级流水删去旧的 pi-ai `glm` 路由（8317 反代）留下的 806 条（`glm/glm-5.3` 796、`glm/glm-5.3-flash` 10），1177 条余 371 条，其余记录逐行不变；改前备份 `usage.jsonl.bak-1793243554750` 在 m8-ui-audit 最终走查核对过积分面板之后，按用户要求「顺手清掉没用的文件」于同日删除；仓库 `.llm/audit/usage.jsonl`（890 条，非旧路由的 274 条逐行都在用户级流水里）与没有代码再写的 `.llm/audit/dialect-init.jsonl` 删除。积分面板与 `/hourness` 从此不再计入反代时期的消耗。
 
 凭证与 deviceMid〔定案 2026-10-28，用户选 A；已实现 2026-10-28，L4 验收之后〕：保留加密凭证文件，搬到 `$DSH_HOME/glm-hourness/`，本包当时的 deviceMid（`device-mid.txt`）随行。凭证文件自 m1-parity 起只存登录令牌与项目 key 的定位，不再有 API Key 与 secret（§4.1）。自 m1-parity 起本包不再读写 `device-mid.txt`：请求发送的 deviceMid 是 ZCode 状态文件里的那个，状态文件没有时按 3.16.3 生成并写回（§4.5b）；已有的 `device-mid.txt` 是用户数据，不删除，也不再使用。加密密钥由 `GLM_HOURNESS_CREDENTIAL_SECRET` 或 `HOME`/`USERPROFILE`、平台、架构推导（§4.1，`src/glm-llm/auth/store.ts`），与文件路径无关，搬家后同一台机器照样能解密。
