@@ -603,6 +603,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "FEAT-009 第 2 遍：B1 已修（除 glm-hourness/execute 以外的行在 hourness 命名空间里交状态一律整条拒绝，加了用例，并订正 ORCHESTRATION.md 的说法），提交 336a1d0；第 2 遍评审 APPROVED，无挡路项，5 条不挡路的备注。build、preflight、npm test、probe 全部退出码 0（probe 186/186；npm test 第一次撞上已知的 rules-tickets 时序偶发，重跑退出码 0）。13 项中 9 项通过。"
+    },
+    {
+      "at": "2026-11-01T10:10:31.222Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "运行 impl-rules-loops-boards 在 FEAT-010 的编码步失败：会话记录解密失败（BAD_DECRYPT），与重启有关，不是代码或门禁问题。已完成且评审通过的九项（FEAT-001 至 FEAT-009）都在 rules-loops-impl 上，HEAD 336a1d0，与 origin 同点，没有丢活。剩 FEAT-010（循环板的存储与对账，计划 L3）、FEAT-011（运行时核心：运行锁与心跳、交接、收件箱，计划 L4）、FEAT-012（按时间触发的条目经 DSH 排程服务绑到主 Agent 会话，计划 L5）、FEAT-013（loops.peak-start 与 loops.peak-end，计划 L6）与合入。同一份计划（.agents/tasks/rules/impl-plan.md）重开为运行 impl-rules-loops-finish。"
     }
   ]
 }

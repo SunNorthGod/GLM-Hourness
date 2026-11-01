@@ -329,6 +329,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "要采纳（循环板 schedules 0.6）：循环板板块 snapshot 的 items 由它的 view.json 经 statusItemsOf 填（晨报/周报的两张单子 loops/*、运行结果那几行）；homeLine 保持可诊断——反映某条状态条目时取该条目的 text（同源），而『主 Agent 的会话已归档』『在另一个 DSH 窗口里』（循环板自有）与『额度停住』（来自 M7）等诊断行照旧（§6、验收第 26 项），不被面板的同源断言覆盖。周报的两张单子（§6.11）作为 agent 条目交给 M7 读，不另走一路。"
+    },
+    {
+      "at": "2026-11-01T10:11:12.454Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "运行 impl-rules-loops-finish 已开（接替在 FEAT-010 因会话解密失败而中断的 impl-rules-loops-boards）：在既有工作树 .worktrees/rules-loops、分支 rules-loops-impl（HEAD 336a1d0，与 origin 同点）上做计划 L3 至 L6——FEAT-010 循环板在 docs/loops/ 与项目 .llm/loops/ 的存储与对账；FEAT-011 运行时核心（运行锁与心跳、交接、收件箱，不含脚本执行器）；FEAT-012 按时间触发的条目经 DSH 排程服务绑到主 Agent 会话；FEAT-013 loops.peak-start 与 loops.peak-end。每项四道检查加评审（至多 3 遍），按 d-wip-branch-push 每轮推一次，最后变基、在合并结果上重跑四道检查、快进 main 并推送。本节点已是 doing。"
     }
   ]
 }
