@@ -70,6 +70,21 @@ function quotaBody(at: number, percentages: readonly [number, number, number] = 
     },
   })
 }
+/** The answer of bigmodel.cn to a credit plan as read on 2026-11-01 (docs/FACTS.md §2.4): two CREDIT_LIMIT rows, the idle five-hour one without a reset time. The numbers are made up. */
+function creditBody(at: number): string {
+  return JSON.stringify({
+    code: 200,
+    msg: 'ok',
+    success: true,
+    data: {
+      level: 'max',
+      limits: [
+        { type: 'CREDIT_LIMIT', unit: 3, number: 5, usage: 12000, currentValue: 0, remaining: 12000, percentage: 0 },
+        { type: 'CREDIT_LIMIT', unit: 6, number: 1, usage: 60000, currentValue: 6000, remaining: 54000, percentage: 10, nextResetTime: at + 3 * DAY_MS },
+      ],
+    },
+  })
+}
 const json = (body: string, status = 200): Response => new Response(body, { status, headers: { 'content-type': 'application/json' } })
 const modelRejection = (): Response => json(JSON.stringify({ error: { type: 'authentication_error', message: 'token expired' } }), 401)
 
@@ -245,6 +260,16 @@ test('the deadline of a read is 15 seconds', async () => {
     globalThis.setTimeout = original
   }
   assert.ok(delays.includes(15_000), `timers set: ${delays.join(', ')}`)
+})
+
+test('a credit plan answers with CREDIT_LIMIT rows: the weekly one is named, the idle five-hour one without a reset time is an unnamed window, and no line shows the raw type', async () => {
+  const h = await harness({ respond: () => json(creditBody(START)) })
+  const view = await h.reader.view({ waitMs: 1000 })
+  assert.deepEqual(view.reading?.windows.map(window => [window.name, window.label]), [['window', '额度窗口'], ['weekly', '每周']])
+  assert.equal(view.reading?.level, 'max')
+  const text = quotaLines(view, START, ZONE).join('\n')
+  assert.match(text, /每周/)
+  assert.doesNotMatch(text, /CREDIT_LIMIT/)
 })
 
 test('without a login nothing is sent and the line says so; with start-plan nothing is sent at all, not even the token mint, and nothing is journalled', async () => {

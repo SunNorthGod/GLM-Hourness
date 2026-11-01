@@ -158,22 +158,30 @@ export interface NamedWindow {
 const LABELS = { 'five-hour': '5 小时', weekly: '每周', mcp: 'MCP 工具调用' } as const
 
 /**
+ * The types of the rows of the five-hour and weekly quota. The server calls
+ * them `TOKENS_LIMIT` and, on a credit plan, `CREDIT_LIMIT` (the real read of
+ * 2026-11-01, docs/FACTS.md §2.4); the desktop client matches both alike.
+ */
+const TOKEN_WINDOW_TYPES: ReadonlySet<string> = new Set(['TOKENS_LIMIT', 'CREDIT_LIMIT'])
+
+/**
  * The windows of one reading, named by how long they run to their reset
  * (docs/DESIGN.md §4.3), counted from `readAt`: `TIME_LIMIT` is the MCP
- * window; of the `TOKENS_LIMIT` rows with a reset time, the ones resetting
- * within five hours are five-hour candidates and the rest weekly ones. One
- * candidate of each (or only one row) is named; any other count is not
- * guessed, each such row is an unnamed window. `zone` words the clock in the
- * label of an unnamed window.
+ * window; of the `TOKENS_LIMIT` and `CREDIT_LIMIT` rows with a reset time,
+ * the ones resetting within five hours are five-hour candidates and the rest
+ * weekly ones. One candidate of each (or only one row) is named; any other
+ * count is not guessed, each such row is an unnamed window, and so is a row
+ * without a reset time (a five-hour window that has not started has none).
+ * `zone` words the clock in the label of an unnamed window.
  */
 export function nameWindows(limits: readonly QuotaLimitRow[], readAt: number, zone?: MomentZone): NamedWindow[] {
-  const candidates = limits.filter(row => row.type === 'TOKENS_LIMIT' && row.nextResetTime !== undefined)
+  const candidates = limits.filter(row => TOKEN_WINDOW_TYPES.has(row.type) && row.nextResetTime !== undefined)
   const soon = candidates.filter(row => (row.nextResetTime ?? 0) - readAt <= FIVE_HOUR_MS)
   const later = candidates.filter(row => !soon.includes(row))
   const named = soon.length <= 1 && later.length <= 1
   return limits.map((row): NamedWindow => {
     if (row.type === 'TIME_LIMIT') return { name: 'mcp', label: LABELS.mcp, row }
-    if (row.type !== 'TOKENS_LIMIT') return { name: 'other', label: row.type, row }
+    if (!TOKEN_WINDOW_TYPES.has(row.type)) return { name: 'other', label: row.type, row }
     if (row.nextResetTime === undefined) return { name: 'window', label: '额度窗口', row }
     if (named) {
       const name = soon.includes(row) ? 'five-hour' : 'weekly'

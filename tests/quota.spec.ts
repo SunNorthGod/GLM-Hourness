@@ -520,6 +520,19 @@ test('nameWindows: a TIME_LIMIT row is the MCP window, a TOKENS_LIMIT row withou
   assert.deepEqual(nameWindows(rows, READ_AT).map(({ name, label }) => [name, label]), [['mcp', 'MCP 工具调用'], ['window', '额度窗口'], ['five-hour', '5 小时'], ['weekly', '每周'], ['other', 'PROMPT_LIMIT']])
 })
 
+test('nameWindows: a CREDIT_LIMIT row is a token window like a TOKENS_LIMIT row; the real read of 2026-11-01 (an idle five-hour row without a reset time, a weekly row resetting in three days) names the weekly one and leaves the idle one unnamed', () => {
+  // The fields and the types of the answer of bigmodel.cn to a credit plan (docs/FACTS.md §2.4); the numbers are made up.
+  const creditRow = (unit: number, extra: Record<string, number>): Record<string, unknown> => ({ type: 'CREDIT_LIMIT', unit, number: unit === 3 ? 5 : 1, usage: 12000, currentValue: 3000, remaining: 9000, percentage: 25, ...extra })
+  const idle = parseQuotaBody(bodyOf([creditRow(3, { percentage: 0 }), creditRow(6, { nextResetTime: READ_AT + 3 * DAY_MS })]), READ_AT)
+  assert.ok(idle.ok)
+  assert.deepEqual(nameWindows(idle.limits, READ_AT, ZONE).map(({ name, label }) => [name, label]), [['window', '额度窗口'], ['weekly', '每周']])
+  const active = parseQuotaBody(bodyOf([creditRow(3, { nextResetTime: READ_AT + 2 * HOUR_MS }), creditRow(6, { nextResetTime: READ_AT + 3 * DAY_MS })]), READ_AT)
+  assert.ok(active.ok)
+  assert.deepEqual(nameWindows(active.limits, READ_AT, ZONE).map(({ name, label }) => [name, label]), [['five-hour', '5 小时'], ['weekly', '每周']])
+  const mixed: QuotaLimitRow[] = [{ type: 'CREDIT_LIMIT', percentage: 1, nextResetTime: READ_AT + HOUR_MS }, { type: 'TOKENS_LIMIT', percentage: 2, nextResetTime: READ_AT + 3 * DAY_MS }]
+  assert.deepEqual(nameWindows(mixed, READ_AT, ZONE).map(window => window.name), ['five-hour', 'weekly'])
+})
+
 // 2026-10-28 is a Wednesday: the plan's peak is 14:00-18:00 UTC+8, the rest of the day half price.
 const wed = (clock: string): number => at(`2026-10-28T${clock}:00+08:00`)
 const point = (clock: string, usedPercent: number): WindowPoint => ({ at: wed(clock), usedPercent })
