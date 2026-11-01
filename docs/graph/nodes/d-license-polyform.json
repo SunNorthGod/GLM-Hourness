@@ -1,0 +1,19 @@
+{
+  "id": "d-license-polyform",
+  "type": "decision",
+  "title": "仓库许可用 PolyForm Noncommercial 1.0.0，另配第三方声明与依赖许可清单",
+  "status": "approved",
+  "parent": "orch",
+  "verification": "unverified",
+  "body": "人 2026-11-01 要编排方给建议，编排方推荐 PolyForm Noncommercial 1.0.0（非商业用途全放开，商业用途单独授权；条文短、平白英文；商业权利留在作者手上；日后想放宽随时能改，反向很难），并说清代价（不算 OSI 开源、平台显示为 source available、「非商业」边界模糊，公司内部使用算商业）。另给过两条备选：BSL 1.1（带到期日自动转开源，条款复杂）、Elastic License 2.0（禁托管服务，不完全等于禁商业）。人答「行」。定下：用 PolyForm Noncommercial 1.0.0；同时写第三方声明与依赖许可清单（许可只管本项目自己写的代码）；日后若接受外部提交，要 DCO 或 CLA，否则改许可会被卡住。运行 license-and-notices 落实。待人提供：许可里的授权人名字与商业授权的联系方式，流程先留明确的占位。",
+  "history": [
+    {
+      "at": "2026-11-01T13:41:04.599Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "人采纳编排方的许可建议",
+      "relay": "行",
+      "to": "approved"
+    }
+  ]
+}
