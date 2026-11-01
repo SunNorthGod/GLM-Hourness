@@ -132,6 +132,8 @@ M6 桌面版核对（批次 L4，项目图 `m6-l4`、`m6-gap`，2026-11-01，主
 - Windows PowerShell 5.1 的 `Get-Content`、`Set-Content` 不带 `-Encoding` 时按系统 ANSI 代码页读写，UTF-8 文件往返一次，非 ASCII 字符就坏了（2026-10-28 损坏过 `src/shared/dsh-min.ts` 的 en dash，已修复）。改文件用编辑工具或 Node 脚本；经 CDP 往页面送含中文的表达式或文本，用 `.agents/tasks/m2-panel/cdp.mjs` 的 `evalfile`、`typefile`。
 - 旧工作名文件夹 `Desktop\Project\dsh-glm-dialect` 已于 2026-10-29 删除（`m1-cleanup`）；它的 4 份文档在 M0 迁入本仓库（提交 `c518317`），删除前核对过 4 份文件的 blob 都在本仓库的对象库里。
 - gitleaks 8.30.1 装在 `%LOCALAPPDATA%\Programs\gitleaks\gitleaks.exe`（仓库外，`npm test` 的密钥扫描用它，没有它门禁失败；安装与升级见 `DEVELOPMENT.md` §11）。
+- 模型请求偶发 BAD_DECRYPT（`ERR_SSL_BAD_DECRYPT`，TLS 层，BoringSSL e_aes.cc.inc:862）：推断是本机 FlClash（Clash Meta，TUN 网卡 Meta Tunnel）损坏收到的加密流。2026-10-29 的 Kiro 进程 2360 次模型请求失败 13 次（约 0.55%），错误只出现在 FlClash 启动（00:00:51）之后，此前 9 个日志目录 0 次；不是凭据解密失败，失败的步骤往往已经做了一段，半成品稿都在。验证办法：让流量绕开 TUN（直连或规则放行）一段时间看是否消失。同一进程里另有 `USER_REQUEST_RATE_EXCEEDED`（并行运行过多被限流），是「模型服务 5xx 或限流」暂停的主要来源。（2026-10-29 查明，原文在项目图 `orch` 节点同日批注）
+- 共用 PowerShell 进程里可能残留 `GIT_CONFIG_GLOBAL`（指向已删除的 hookprobe 临时文件）与 `GIT_CONFIG_NOSYSTEM=1`（2026-10-31 事故：某次跑探钩子行为 E3-6 的运行用 `$env:` 设了没撤），git 报「Author identity unknown」。处理：只从自己的 shell 删这两个变量后重做提交，不改任何 git 配置（人的 `~/.gitconfig` 没有被动过）；给子进程设这些变量的运行，提交前先确认身份读得到。（修复提交 `616ca99`、`649db9b`，原文在项目图 `orch` 节点同日批注）
 
 ## 7. 下一步
 
