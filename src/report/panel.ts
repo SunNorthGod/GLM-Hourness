@@ -209,7 +209,6 @@ export function usagePanelLines(panel: UsagePanelData): string[] {
 
 export interface DispatchPanelRow {
   readonly at: string
-  readonly level: string
   readonly kind: string
   readonly subject: string
 }
@@ -218,5 +217,5 @@ export function dispatchPanel(decisionsRaw: string, limit = 20): DispatchPanelRo
   return parseJsonl<DecisionRecord>(decisionsRaw)
     .slice(-limit)
     .reverse()
-    .map(record => ({ at: record.at, level: record.level, kind: record.kind, subject: record.subject }))
+    .map(record => ({ at: record.at, kind: record.kind, subject: record.subject }))
 }

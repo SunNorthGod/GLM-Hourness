@@ -925,7 +925,7 @@ const designQuestion = designScenario(QUESTION, 'glm-5.3', () => [
   { tool: { name: 'graph_propose', arguments: { node: questionTable, reason: 'probe: a table for the human' } } },
   stageDispatch(QUESTION, 'Q1', 'unused.txt'),
   stageWait,
-  { text: 'done', status: true },
+  { text: 'done', status: true, command: { name: 'hourness' } },
 ], {
   wish: true,
   human: { replies: { question: [QUESTION_ANSWER] }, maxReplies: 1 },
@@ -1268,6 +1268,8 @@ function questionChecks() {
   const userMessages = messagesOf(main[3], 'user')
   const decide = question.history.at(-1)
   const asked = question.history.find(entry => entry.op === 'propose')
+  const report = main[8]?.command
+  const asks = report?.text.split('## 等你定的事\n')[1]?.split('\n\n')[0] ?? ''
   return [
     ['design question: the main agent\'s first request has propose_to_human with the shapes of a question and the worked examples in full (recommend, choose, want, look, the plain-words list at the end), and record_human_answer', main.length === 9 && ['recommend:', 'choose:', 'want:', 'look:', 'made-up matters'].every(part => description.includes(part)) && description.endsWith('say what the document is.') && faceOf(main[0]).includes('record_human_answer'), `${main.length} requests; description ${description.length} chars`],
     ['design question: propose_to_human returns text word for word as renderAsk lays out the example, and question-1 waits for the human as a recommend proposal whose question is the text up to its question mark', shownResult?.text === QUESTION_SHOWN && shownResult.question === 'question-1' && shownResult.number === 1 && shownResult.form === 'recommend' && question.status === 'done' && question.form === 'recommend' && question.ask === askOf(QUESTION_EXAMPLE.text) && question.proposal === QUESTION_EXAMPLE.proposal && question.reason === QUESTION_EXAMPLE.reason && asked?.to === 'approved' && asked.reason.startsWith('主 Agent 在对话里把这件事交给人（propose_to_human '), JSON.stringify(shownResult ?? null).slice(0, 200)],
@@ -1276,6 +1278,7 @@ function questionChecks() {
     ['design question: an invented quote is refused as invalid on words and the question stays as it was', lastToolResult(main[5])?.isError === true && lastToolResult(main[5]).text.includes('"field":"words"') && question.history.length === 2 && question.conclusion === QUESTION_EXAMPLE.proposal, (lastToolResult(main[5])?.text ?? '').slice(0, 160)],
     ['design question: a question with an option table proposed through graph_propose is refused by main-agent-graph-options with the right path, and no such question is on the graph', lastToolResult(main[6])?.isError === true && lastToolResult(main[6]).text.includes('You tried to put an option table for the human on the graph for "放哪".') && lastToolResult(main[6]).text.includes('Put the matter with propose_to_human') && !existsSync(join(stageWs(QUESTION), 'docs', 'graph', 'nodes', 'question-2.json')) && violations.some(record => record.rule === 'main-agent-graph-options'), (lastToolResult(main[6])?.text ?? '').slice(0, 160)],
     ['design question: a subagent that sends relay with an edit of the goal is refused by main-agent-graph-relay, the goal does not move, the violation names the subagent session, the main agent gets the glm-design-bypass notice, and the design row says it is partly in effect', childResult?.isError === true && childResult.text.includes('Subagents do not relay the human\'s words.') && nodeOf('goal-1').stage === 'interview' && violations.some(record => record.rule === 'main-agent-graph-relay' && record.agentId === childId && record.session?.kind === 'subagent') && messagesOf(main[8], 'glm-design-bypass').length === 1 && rowOf(main[8])?.status === '部分生效', `${childResult?.isError}:${(childResult?.text ?? '').slice(0, 80)}; notices ${messagesOf(main[8], 'glm-design-bypass').length}; ${JSON.stringify(rowOf(main[8]) ?? null)}`],
+    ['design question: /hourness at the last step reads the graph of the session through the graph row: nothing waits for the person, the one decision of the day is the person\'s in the chat, and the report has no grading', report?.kind === 'success' && asks.startsWith('- 等你定的 0 件\n- agent 自己要定的 0 件\n- 本期拍板 1 次：你 0 · 你在对话里说 1 · agent 0\n') && /^- 派遣类调用 \d+ 次$/m.test(asks) && !/L[123]/.test(report.text), `${report?.kind ?? 'not run'}; ${JSON.stringify(asks)}`],
     ['design question: the run ended with exit 0, the simulated human said nothing more, no question card was raised, and the row printed nothing to stderr', designQuestion.status === 0 && designQuestion.human.filter(entry => entry.kind === 'silent').length >= 1 && designQuestion.human.every(entry => entry.kind !== 'unexpected-question') && !stderrOf(QUESTION).includes('dsh-glm-hourness/design'), `exit ${designQuestion.status}; ${JSON.stringify(designQuestion.human.map(entry => entry.kind))}`],
   ]
 }

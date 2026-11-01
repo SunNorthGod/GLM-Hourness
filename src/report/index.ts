@@ -1,9 +1,11 @@
 /**
- * dsh-hourness row: the `/hourness` human command renders the audit journal —
- * morning report (exceptions → decision curve → usage) plus the usage panel
- * — from the project directory (decisions, violations) and the user-level
- * directory (usage, docs/DESIGN.md §2.4). Pure data plane from
- * src/report/panel.ts and src/workflow/morning-report.ts; no separate
+ * dsh-hourness row: the `/hourness` human command renders the audit journal
+ * and the project graph — morning report (exceptions → what waits for the
+ * person → usage) plus the usage panel — from the project directory
+ * (dispatch calls, violations), the project graph of the calling session
+ * (the asks) and the user-level directory (usage, docs/DESIGN.md §2.4).
+ * Pure data plane from src/report/panel.ts and
+ * src/workflow/morning-report.ts; no separate
  * bookkeeping. The panel prices calls through the pricing service the GLM
  * channel package's glm-login row provides (src/shared/pricing.ts), read per
  * invocation; without it the panel lists calls and tokens. Registers through
@@ -12,9 +14,11 @@
  * output. The row also registers `/hourness-status`, the row health table of
  * both packages, so it can be read without the GLM channel package.
  */
-import { readFile } from 'node:fs/promises'
+import { readFile, stat } from 'node:fs/promises'
+import { graphService } from '../graph/service.ts'
+import { loadGraph } from '../graph/store.ts'
 import { auditPaths } from '../memory/audit.ts'
-import { reportFromFiles } from '../workflow/morning-report.ts'
+import { localDay, reportFromFiles, type GraphReader } from '../workflow/morning-report.ts'
 import { usagePanel, usagePanelLines } from './panel.ts'
 import { dataHomes, type DataHomes } from '../shared/data-home.ts'
 import { collectHealth, provideRowHealth, renderHealthTable, sessionIdOf, type HealthState } from '../shared/health.ts'
@@ -34,6 +38,8 @@ export interface RenderOptions {
   /** Injected fs for tests. */
   readonly fs?: { readFile(path: string): Promise<string> }
   readonly now?: Date
+  /** Reads the project graph of the calling session; without it the report says the graph has no place. */
+  readonly graph?: GraphReader | undefined
 }
 
 /** Render the report text for the resolved directories. */
@@ -42,8 +48,8 @@ export async function renderHourness(homes: DataHomes, options: RenderOptions = 
   const now = options.now ?? new Date()
   // The period is the local calendar day; the report covers that day only.
   const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  const period = `${dayStart.getFullYear()}-${String(dayStart.getMonth() + 1).padStart(2, '0')}-${String(dayStart.getDate()).padStart(2, '0')}`
-  const report = await reportFromFiles(fs, homes, period, dayStart.toISOString())
+  const graph = options.graph ?? (() => Promise.reject(new Error('这次调用没有给出项目图的位置')))
+  const report = await reportFromFiles(fs, homes, localDay(dayStart), graph, dayStart.toISOString())
   const missing = [
     ...(homes.projectHome === undefined ? ['- 项目目录未配置（行配置 home 或数据目录行的 projectHome），决策与违规流水读不到'] : []),
     ...(homes.userHome === undefined ? ['- 用户级目录不可用（数据目录行 glm-hourness/data 未启用），用量流水读不到'] : []),
@@ -54,6 +60,29 @@ export async function renderHourness(homes: DataHomes, options: RenderOptions = 
   if (usageRaw.length === 0) return report + notice
   const summary = ['', '## 面板', ...usagePanelLines(usagePanel(usageRaw, options.pricing, options.problem))].join('\n')
   return report + summary + notice
+}
+
+/**
+ * The way to read the project graph of the session that ran `/hourness`: the
+ * graph row says where it is (`glmHournessGraph`, read at the call), the
+ * session's working directory picks it. The reader rejects with the reason, in
+ * the words the report shows, when the row is off, the session has no
+ * working directory, the directory is not there or the graph cannot be read.
+ */
+function graphReader(ctx: ServiceLookup, cwd: string | undefined): GraphReader {
+  return async () => {
+    const graph = graphService(ctx)
+    if (graph === undefined) throw new Error('项目图行 glm-hourness/graph 没有启用')
+    const dir = graph.dirFor(cwd)
+    if (dir === undefined) throw new Error('这个会话没有工作目录，找不到项目图')
+    if (!await stat(dir).then(info => info.isDirectory(), () => false)) throw new Error(`项目图目录 ${dir} 不存在`)
+    try {
+      return await loadGraph(dir)
+    }
+    catch (error) {
+      throw new Error(`读图出错：${error instanceof Error ? error.message : String(error)}`, { cause: error })
+    }
+  }
 }
 
 /** cordis plugin identity: needs the commands service (/hourness). */
@@ -115,7 +144,7 @@ export function apply(ctx: CommandsHost & ServiceLookup & Partial<ProvideHost>, 
       const pricing = pricingService(ctx, problem)
       health.report(sessionIdOf(invocation.agent), ...hournessHealth(homes, pricing !== undefined))
       try {
-        return { kind: 'success', text: await renderHourness(homes, { pricing, problem }) }
+        return { kind: 'success', text: await renderHourness(homes, { pricing, problem, graph: graphReader(ctx, invocation.agent?.session?.header?.cwd) }) }
       }
       catch (error) {
         return { kind: 'error', text: `晨报生成失败：${(error as Error).message}` }

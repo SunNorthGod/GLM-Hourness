@@ -50,8 +50,8 @@ GLM-Hourness（同仓两包，§2.3）
 | `glm-hourness/data` | `dsh-hourness` | `dist/data/index.js` | 编排 | 数据目录服务 `glmHournessData`，见 §2.4 |
 | `glm-hourness/guard` | `dsh-hourness` | `dist/guard/index.js` | 编排 | 见 `ORCHESTRATION.md` §6 |
 | `glm-hourness/memory` | `dsh-hourness` | `dist/memory/index.js` | 编排 | 见 `ORCHESTRATION.md` §8 |
-| `glm-hourness/workflow` | `dsh-hourness` | `dist/workflow/index.js` | 编排 | 仅记录派遣类工具调用 |
-| `glm-hourness/hourness` | `dsh-hourness` | `dist/report/index.js` | 编排 | `/hourness` 命令：晨报与用量面板；面板经计价服务按积分列，没有计价服务时按调用与 token 列（`ORCHESTRATION.md` §11.2、§11.3）；`/hourness-status`：两个包各行的健康（§2.5） |
+| `glm-hourness/workflow` | `dsh-hourness` | `dist/workflow/index.js` | 编排 | 仅记录派遣类工具调用，记录是 `{at, kind, subject}`，没有分级（`ORCHESTRATION.md` §5） |
+| `glm-hourness/hourness` | `dsh-hourness` | `dist/report/index.js` | 编排 | `/hourness` 命令：晨报与用量面板；晨报的「等你定的事」一节读调用会话所在的项目图（经图行服务 `glmHournessGraph` 的 `dirFor`，`ORCHESTRATION.md` §5），读不到时写原因；面板经计价服务按积分列，没有计价服务时按调用与 token 列（`ORCHESTRATION.md` §11.2、§11.3）；`/hourness-status`：两个包各行的健康（§2.5） |
 | `glm-hourness/graph` | `dsh-hourness` | `dist/graph/index.js` | 编排 | 项目图工具、每步投影与图文件门禁（`ORCHESTRATION.md` §2.5、§2.7、§2.10）；2026-10-28 经 L3 探针与 L4 桌面版验收后默认启用 |
 | `glm-hourness/graph-panel` | `dsh-hourness` | `dist/graph/panel-row.js` | 呈现 | 面板写入命令 `/graph-apply`、运行控制命令 `/graph-run` 与现场投影 `graphLive`（`ORCHESTRATION.md` §2.10） |
 | `glm-hourness/rules` | `dsh-hourness` | `dist/rules/index.js` | 编排 | 规则板最小一片（`ORCHESTRATION.md` §16）：每个项目的高峰模式档位（无影响、少做、不做，默认少做）、改档位的命令 `/rules peak`，提供服务 `glmHournessPeakMode`（契约在 `src/shared/peak-mode.ts`）；不挡任何 agent、不排队。默认禁用，L3 场景 `rules-peak` 与 `rules-peak-hourness` 通过后、桌面版首轮验收前保持禁用 |

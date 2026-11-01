@@ -1,14 +1,11 @@
 /**
- * dsh-workflow row entry: grades autonomous dispatch through the team seams
- * and journals every decision. DSH's Agent Team owns the actual spawning;
- * this row only observes (L1 logged silently, L2 journaled, L3 journaled —
- * the ask-now path is the guard's 申报 protocol, not ours). Decisions go to
- * the project directory (the row's own home, else the data service's,
- * docs/DESIGN.md §2.4); without either, the write is reported once and
- * dispatch goes on.
+ * dsh-workflow row entry: journals every dispatch call made through the team
+ * seams. DSH's Agent Team owns the actual spawning; this row only observes.
+ * Records go to the project directory (the row's own home, else the data
+ * service's, docs/DESIGN.md §2.4); without either, the write is reported
+ * once and dispatch goes on.
  */
 import { rowJournal, type AuditFs, type AuditJournal } from '../memory/audit.ts'
-import { gradeDecision } from './decisions.ts'
 import { dataHomes } from '../shared/data-home.ts'
 import { provideRowHealth, sessionIdOf, type HealthState } from '../shared/health.ts'
 import type { PreExecuteHost, ProvideHost, ServiceLookup, ToolExecutionPayload } from '../shared/dsh-min.ts'
@@ -27,10 +24,8 @@ export function applyOverJournal(ctx: PreExecuteHost, journal: Pick<AuditJournal
   return ctx.on('tools/pre-execute', (payload, next) => {
     if (payload.parent === undefined) observe?.(payload)
     if (payload.parent === undefined && (DISPATCH_TOOLS as readonly string[]).includes(payload.name)) {
-      const level = gradeDecision('dispatch')
       void journal.decision({
         at: new Date().toISOString(),
-        level,
         kind: `dispatch:${payload.name}`,
         subject: subjectOf(payload.arguments),
       }).catch(() => {}) // journal failures never block dispatch

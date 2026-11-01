@@ -15,7 +15,7 @@
 2. 流程对人和 LLM 同时可见：每个阶段都有告知（给 LLM）、门禁（在执行边界检查证据）、呈现（给人看的 UI）。
 3. DSH 已有的能力尽量借用官方组件，不自创；但不因此放弃功能，没有的就自己做。
 
-现状〔已实现〕：workflow 行只记录派遣类工具调用（`spawn_teammate`、`team_task_create`、`team_task_update`、`send_message`、`subagent`、`subagent_fork`），分级恒为 L1；五键文案已定义但没有任何调用点；晨报从三条审计流水聚合，决策与违规取自项目目录、用量取自用户级目录（`DESIGN.md` §2.4）；`/hourness` 命令输出晨报与积分口径的用量面板（§11.3）；GLM 会话进入高峰时段时收到一条提醒（§11.4）。
+现状〔已实现〕：workflow 行只记录派遣类工具调用（`spawn_teammate`、`team_task_create`、`team_task_update`、`send_message`、`subagent`、`subagent_fork`），记录是 `{at, kind, subject}`，没有分级（L1/L2/L3 与五键文案已在 M3 第 10 步删去）；晨报从三条审计流水和项目图聚合，派遣记录与违规取自项目目录、用量取自用户级目录（`DESIGN.md` §2.4），要人定的事取自调用会话所在的项目图（§5）；`/hourness` 命令输出晨报与积分口径的用量面板（§11.3）；GLM 会话进入高峰时段时收到一条提醒（§11.4）。
 
 ## 2. 项目图即主 Agent
 
@@ -783,7 +783,9 @@ L3 核实〔实测 2026-10-28，派发可行性验证 (a)(b)，`ROADMAP.md` 借�
   - 存储：异步卡就是图上的待决节点，存在节点文件里，跨回合、跨重启都在。
   - 呈现：回合末尾卡片、右侧栏决策队列、输入框上方条显示待批数（§13）。
   - 回写：人拍板时客户端经命令通道调用本包的命令，宿主侧写回节点文件，再向 agent 送一条用户角色消息，运行中用 steer、空闲时用 followup（会开启新回合），来源用本项目自己的 `kind`。命令运行记入会话日志、不进模型（`dsh-commands/README.md` 12、88 行），同时充当审计流水。
-- 取代现有的 L1/L2/L3 分级。
+- 取代现有的 L1/L2/L3 分级〔已实现，M3 第 10 步，项目图 `m3-5`〕。代码里没有 `gradeDecision`、`DecisionLevel`、`FIVE_KEYS`（`src/workflow/decisions.ts` 整个删去）；决策流水 `<项目目录>/audit/decisions.jsonl` 的记录是 `{at, kind, subject}`（`DecisionRecord`，`src/memory/audit.ts`），旧记录里的 `level` 读入时忽略。
+
+  晨报（`/hourness`，`src/workflow/morning-report.ts`）按顺序分三块：「例外」（违规，没有分级行）、「等你定的事」、「用量」，有影子记录时另有一节。「等你定的事」四行：等你定的件数与最早一件的提出日期（本地日期）；agent 自己要定的件数；本期拍板的次数，按拍板者分为「你」「你在对话里说」「agent」；派遣类调用次数（取决策流水，只数 `kind` 为 `dispatch` 或 `dispatch:` 开头的记录）。前两项取 `openItems()` 的 `questions` 与 `agentQueue`；拍板次数不取 `recentDecisions`（它最多 20 条，每张待决只留最后一次），而是扫全部待决节点的历史里 `op` 为 `decide` 且 `at` 在本期内的每一条：`actor` 为 `human` 记「你」；`actor` 为 `llm`、`reason` 以 `ANSWER_MARKS.agree` 开头（`record_human_answer` 写的同意，`answerKindOf`）并且带 `relay`（harness 核对过的人的原话）记「你在对话里说」；其余记「agent」，包括只带 `relay`、没有标记的旧式转述（原话没经 harness 核对）和只有标记、没有 `relay` 的写入。本期是本地日历日。图由 `/hourness` 的调用会话经图行服务 `dirFor(cwd)` 找到；图行没启用、会话没有工作目录、目录不存在或读图出错时，这一节写「项目图读不到：<原因>」，其余照常（派遣类调用次数仍在，它不取自图）。验证：`tests/workflow.spec.ts`、`tests/hourness.spec.ts`（夹具里本期拍板 25 次，计数 25，不被 20 截断；读不到图的四种原因；旧记录带 `level` 照常读）；L3 场景 `glm-design-question` 的最后一步经 `/hourness` 的处理函数核对输出。
 
 ## 6. guard：门禁与正路
 
@@ -1185,7 +1187,7 @@ LLM 不讲人话，多半是默认在向评审汇报，想显得周全。做法�
 - 交付指标（DORA）：交付频率、变更失败率、恢复时长。
 - 事故：生成无责复盘节点，再变成规范进入阶梯。
 - DSH 升级：先跑标定测试集与行为探针。
-- 晨报按四答对账：目标完成了多少、哪里偏离了规划、做过哪些计划外决策及理由、待批决策卡、花费（积分、峰谷占比）、测试与知识同步状态。晨报遵守汇报细度，带「讲细点 / 说重点」按钮。
+- 晨报按四答对账：目标完成了多少、哪里偏离了规划、做过哪些计划外决策及理由、等你定的事（`/hourness` 的晨报已有这一节，读项目图，§5）、花费（积分、峰谷占比）、测试与知识同步状态。晨报遵守汇报细度，带「讲细点 / 说重点」按钮。
 
 ## 13. 呈现
 

@@ -1,8 +1,13 @@
 import assert from 'node:assert/strict'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import test from 'node:test'
 import { creditPricing } from '../src/glm-llm/credits.ts'
 import { apply, renderHourness } from '../src/report/index.ts'
 import { cacheHitRate, usagePanel, usagePanelLines } from '../src/report/panel.ts'
+import { engineFixture, fixtureTest } from './graph-helpers.ts'
+import { exampleRecord } from './proposal-examples.ts'
 
 // The usage panel with the pricing service the GLM channel package provides
 // (its credit plan, src/glm-llm/credits.ts), and without it. The provider
@@ -103,8 +108,8 @@ test('without the pricing service the panel lists calls and token counts of ever
 test('renderHourness folds report and panel summary from both directories, bounded to the local day', async () => {
   const files = new Map<string, string>([
     ['C:/ws/.llm/audit/decisions.jsonl', [
-      JSON.stringify({ at: '2026-10-27T01:00:00+08:00', level: 'L1', kind: 'dispatch:spawn_teammate', subject: 'researcher' }),
-      JSON.stringify({ at: '2026-10-26T23:00:00+08:00', level: 'L3', kind: 'model-route', subject: 'yesterday must not leak in' }),
+      JSON.stringify({ at: '2026-10-27T01:00:00+08:00', kind: 'dispatch:spawn_teammate', subject: 'researcher' }),
+      JSON.stringify({ at: '2026-10-26T23:00:00+08:00', level: 'L3', kind: 'dispatch:subagent', subject: 'yesterday must not leak in' }),
     ].join('\n')],
     ['C:/u/glm-hourness/audit/usage.jsonl', [
       JSON.stringify({ at: '2026-10-27T02:00:00+08:00', provider: 'glm', model: 'glm-5.3', usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 } }),
@@ -114,7 +119,8 @@ test('renderHourness folds report and panel summary from both directories, bound
   const now = new Date('2026-10-27T20:00:00+08:00')
   const text = await renderHourness(homes, { pricing: creditPricing, fs: fakeFs(files), now })
   assert.ok(text.includes('# 晨报 2026-10-27'))
-  assert.ok(text.includes('L1 自主 1 · L2 次日报备 0 · L3 当次申报 0')) // yesterday's L3 filtered out
+  assert.ok(text.includes('- 派遣类调用 1 次')) // yesterday's call (written with a level) filtered out
+  assert.ok(!/L[123]/.test(text), text)
   assert.ok(!text.includes('yesterday must not leak in'))
   // The panel reads the full journal on the credit basis: 0.0945 off-peak
   // (02:00, half of 0.189) plus 0.0189 in peak (Tuesday 15:00).
@@ -128,10 +134,11 @@ test('renderHourness folds report and panel summary from both directories, bound
   assert.ok(!plain.includes('积分 0.11'))
 })
 
-test('empty journal still renders the clean report', async () => {
+test('empty journal still renders the clean report; without a place for the graph the section says so', async () => {
   const text = await renderHourness(homes, { fs: fakeFs(new Map()) })
   assert.ok(text.includes('- 无'))
   assert.ok(!text.includes('## 数据目录'))
+  assert.ok(text.includes('## 等你定的事\n- 项目图读不到：这次调用没有给出项目图的位置\n- 派遣类调用 0 次'), text)
 })
 
 test('a missing directory is named in the report', async () => {
@@ -142,16 +149,82 @@ test('a missing directory is named in the report', async () => {
   assert.ok(none.includes('- 用户级目录不可用'))
 })
 
-type Registered = { name: string, handler: (invocation: { rawInput: string }) => Promise<{ kind: string, text: string }> }
+type Invocation = { rawInput: string, agent?: { id: string, session: { id: string, header: { id: string, cwd?: string } } } }
+type Registered = { name: string, handler: (invocation: Invocation) => Promise<{ kind: string, text: string }> }
 
-function register(config: { home?: string }, data: unknown): { registered: Registered[], dispose: () => void } {
+function register(config: { home?: string }, data: unknown, graph?: unknown): { registered: Registered[], dispose: () => void } {
   const registered: Registered[] = []
   const dispose = apply({
     commands: { register: definition => { registered.push(definition as Registered); return () => {} } },
-    get: name => name === 'glmHournessData' ? data : undefined,
+    get: name => name === 'glmHournessData' ? data : name === 'glmHournessGraph' ? graph : undefined,
   }, config)
   return { registered, dispose }
 }
+
+/** A session invocation of /hourness whose working directory is `cwd`. */
+const inSession = (cwd?: string): Invocation => ({ rawInput: '', agent: { id: 's1', session: { id: 's1', header: { id: 's1', ...cwd === undefined ? {} : { cwd } } } } })
+
+/** The graph row's service, as the row provides it: where the graph is for a working directory (the call is recorded), and which names are graph tools. */
+function graphRow(where: (cwd: string | undefined) => string | undefined): { service: unknown, calls: Array<string | undefined> } {
+  const calls: Array<string | undefined> = []
+  return { calls, service: { dirFor: (cwd: string | undefined) => { calls.push(cwd); return where(cwd) }, isGraphTool: () => false } }
+}
+
+const reasonOf = async (graph: unknown, cwd?: string): Promise<string> => {
+  const { registered, dispose } = register({ home: 'C:/definitely-empty-hourness-home' }, { userHome: 'C:/definitely-empty-hourness-user' }, graph)
+  try {
+    const result = await registered[0].handler(inSession(cwd))
+    assert.equal(result.kind, 'success')
+    return result.text.split('## 等你定的事\n')[1].split('\n\n')[0]
+  }
+  finally {
+    dispose()
+  }
+}
+
+test('/hourness reads the graph of the calling session and names why when it cannot: the row off, no working directory, no directory, an unreadable graph', async () => {
+  assert.equal(await reasonOf(undefined, 'C:/ws'), '- 项目图读不到：项目图行 glm-hourness/graph 没有启用\n- 派遣类调用 0 次')
+
+  const none = graphRow(() => undefined)
+  assert.equal(await reasonOf(none.service), '- 项目图读不到：这个会话没有工作目录，找不到项目图\n- 派遣类调用 0 次')
+  assert.deepEqual(none.calls, [undefined])
+
+  const root = await mkdtemp(join(tmpdir(), 'glmh-report-graph-'))
+  try {
+    const missing = join(root, 'docs', 'graph')
+    const absent = graphRow(() => missing)
+    assert.equal(await reasonOf(absent.service, root), `- 项目图读不到：项目图目录 ${missing} 不存在\n- 派遣类调用 0 次`)
+    assert.deepEqual(absent.calls, [root])
+
+    // nodes is a file: the directory is there, the graph cannot be read.
+    const broken = join(root, 'broken')
+    await mkdir(broken)
+    await writeFile(join(broken, 'nodes'), 'not a directory')
+    const unreadable = await reasonOf(graphRow(() => broken).service, root)
+    assert.ok(unreadable.startsWith('- 项目图读不到：读图出错：'), unreadable)
+
+    // An existing directory without nodes is a graph with nothing on it.
+    const empty = join(root, 'empty')
+    await mkdir(empty)
+    assert.equal(await reasonOf(graphRow(() => empty).service, root), '- 等你定的 0 件\n- agent 自己要定的 0 件\n- 本期拍板 0 次：你 0 · 你在对话里说 0 · agent 0\n- 派遣类调用 0 次')
+  }
+  finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+const askedFixture = fixtureTest(() => engineFixture('glmh-report-asks-', 27, async ({ run }) => {
+  await run('human', { op: 'propose', reason: '立项', node: { type: 'goal', title: '记账小工具', stage: 'interview', body: '需求：记一下每天花了多少钱' } })
+  await run('llm', { op: 'propose', reason: '主 Agent 在对话里把这件事交给人', node: { type: 'question', parent: 'goal-1', ...exampleRecord('recommend') } })
+}))
+
+askedFixture('/hourness counts the asks of the graph the graph row points the session at', async g => {
+  const row = graphRow(() => g.dir)
+  const section = await reasonOf(row.service, 'C:/ws')
+  assert.ok(section.startsWith('- 等你定的 1 件，最早一件是 '), section)
+  assert.ok(section.includes('\n- agent 自己要定的 0 件\n'), section)
+  assert.deepEqual(row.calls, ['C:/ws'])
+})
 
 test('apply registers /hourness and /hourness-status; /hourness reports from the real directories', async () => {
   const { registered, dispose } = register({ home: 'C:/definitely-empty-hourness-home' }, { userHome: 'C:/definitely-empty-hourness-user' })

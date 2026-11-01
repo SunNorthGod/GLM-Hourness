@@ -247,10 +247,10 @@
   },
   "tests/workflow.spec.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 10
+      "count": 5
     },
     "@typescript-eslint/require-await": {
-      "count": 11
+      "count": 9
     }
   }
 }

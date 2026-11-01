@@ -19,7 +19,6 @@
     "types src/shared/dsh-min.ts LlmStreamOptionsContractCheck",
     "types src/shared/dsh-min.ts WorkspaceChangedFile",
     "types src/shared/health.ts HealthReport",
-    "types src/shared/lm-min.ts AttachmentsContractCheck",
-    "types src/workflow/decisions.ts FiveKey"
+    "types src/shared/lm-min.ts AttachmentsContractCheck"
   ]
 }

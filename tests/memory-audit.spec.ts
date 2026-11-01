@@ -30,11 +30,11 @@ test('audit journal appends one JSONL line per record; a sink without a director
   const { files, fs } = fakeFs()
   const journal = auditJournal((path, line) => fs.appendFile(path, line), auditPaths({ projectHome: 'C:/ws/.llm' }))
   await journal.violation({ at: '2026-10-27T00:00:00Z', rule: 'workspace-containment', tool: 'Write', correction: 'Boundary: …' })
-  await journal.decision({ at: '2026-10-27T00:00:02Z', level: 'L1', kind: 'dispatch', subject: 'subagent a' })
+  await journal.decision({ at: '2026-10-27T00:00:02Z', kind: 'dispatch', subject: 'subagent a' })
   await assert.rejects(journal.usage({ at: '2026-10-27T00:00:01Z', provider: 'glm', model: 'glm-5.3', usage: { inputTokens: 5, outputTokens: 3 } }), /no user-level directory/)
   const lines = (files.get('C:/ws/.llm/audit/decisions.jsonl') ?? '').trim().split('\n')
   assert.equal(lines.length, 1)
-  assert.deepEqual(Object.keys(JSON.parse(lines[0]!)), ['at', 'level', 'kind', 'subject'])
+  assert.deepEqual(Object.keys(JSON.parse(lines[0]!)), ['at', 'kind', 'subject'])
 })
 
 test('fsAppender creates the directory before the first append', async () => {
