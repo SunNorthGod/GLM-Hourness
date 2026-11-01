@@ -283,7 +283,7 @@ const WRITES: ReadonlyArray<{ readonly op: LlmOp, readonly description: string, 
   },
   {
     op: 'comment',
-    description: 'Comment on a node for the human or for later steps, for example why a question no longer matters. Needs no rev.',
+    description: 'Comment on a node for the human or for later steps, for example why a question no longer matters. Needs no rev. Keep it a short fact: what changed, why, where the full record lives. Long analysis goes to the design doc, pointed to here; preferences to memory; lasting pitfalls into the body or a retro. Link, don\'t paste.',
     parameters: object({ id: ID, text: { type: 'string' } }, ['id', 'text']),
   },
   {
