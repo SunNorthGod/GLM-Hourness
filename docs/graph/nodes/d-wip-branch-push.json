@@ -1,0 +1,19 @@
+{
+  "id": "d-wip-branch-push",
+  "type": "decision",
+  "title": "进行中的分支每轮改完就推，允许改写；只有 main 坚决不强推",
+  "status": "approved",
+  "parent": "orch",
+  "verification": "unverified",
+  "body": "人 2026-11-01 同意两件：① 把 origin/m3 强推成本机的样子（评审修订用 amend 改写了已推的 a9b8ad5，远端留旧提交会让人误以为那才是最新；已用 --force-with-lease 推成 3fbc1e9，远端与本机同点）。② 以后 m3、m3-flow、rules-loops-impl、m5-memory-lessons 一类进行中的分支，每轮评审改完就推一次，允许改写；main 仍然坚决不强推（AGENTS.md 第 7 条）。顺带：rules-loops-impl 推到 336a1d0、m5-memory-lessons 推到 8af90b9。",
+  "history": [
+    {
+      "at": "2026-11-01T09:11:32.014Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "人同意强推 m3 备份并定下进行中分支的推送规矩",
+      "relay": "其余都没问题",
+      "to": "approved"
+    }
+  ]
+}
