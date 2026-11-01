@@ -158,13 +158,28 @@ rowTest('the paths a rule on writes sees are relative to the session workspace',
   assert.equal((await exec('write', { file_path: join(root, 'src', 'other', 'c.ts'), content: 'x' })).isError, false)
 }, { natives: NATIVES, rules: file([ruleOf({ id: 'r-payments', title: 'Payments are frozen', filter: { writes: { paths: ['src/payments/**'] } } })]) })
 
-rowTest('a queue rule is not carried out yet: the call runs, nothing is journaled, and rules_show says the deferral is not enforced', async ({ exec, calls, violations }) => {
+rowTest('a queue rule defers the call: it does not run, a ticket is opened, the refusal is journaled as a queue line, and rules_show lists the rule and the ticket', async ({ exec, calls, violations }) => {
+  const result = await exec('pwsh', shell('npm run deploy'))
+  assert.equal(result.isError, true)
+  assert.deepEqual(calls, [])
+  assert.match(reasonOf(result), /Deferred as ticket q-1\./)
+  const [record, ...rest] = await violations(1)
+  assert.equal(rest.length, 0)
+  assert.deepEqual([record?.rule, record?.mode, record?.effect, record?.ticket], ['rules:r-hold', 'enforce', 'queue', 'q-1'])
+  const shown = (await exec('rules_show', {})).value as { text: string }
+  assert.match(shown.text, /- \[queue\] r-hold: Hold deploys \(set by the human at .+, until lifted\)\./)
+  assert.doesNotMatch(shown.text.split('\n').find(line => line.includes('r-hold:')) ?? '', /Not enforced yet/, 'a rule of the person is carried out')
+  assert.match(shown.text, /- q-1: pwsh "npm run deploy" is deferred since/)
+  assert.equal((await exec('pwsh', shell('echo other'))).isError, false, 'a call the rule does not name runs')
+}, { rules: file([ruleOf({ id: 'r-hold', title: 'Hold deploys', filter: { command: { matches: 'deploy' } }, action: { kind: 'queue' } })]) })
+
+rowTest('the entries of the code that queue are listed with a note that nothing defers a call for them yet, and a call they would defer runs', async ({ exec, calls, run }) => {
+  await run('peak 不做')
+  const shown = (await exec('rules_show', {})).value as { text: string }
+  assert.match(shown.text, /- \[queue\] builtin:glm-peak-stop-dispatch: .*Not enforced yet: a call this rule would defer runs\./)
   assert.equal((await exec('pwsh', shell('npm run deploy'))).isError, false)
   assert.deepEqual(calls.map(call => call.name), ['pwsh'])
-  assert.deepEqual(await violations(), [])
-  const shown = (await exec('rules_show', {})).value as { text: string }
-  assert.match(shown.text, /- \[queue\] r-hold: .*Not enforced yet: a call this rule would defer runs\./)
-}, { rules: file([ruleOf({ id: 'r-hold', title: 'Hold deploys', filter: { command: { matches: 'deploy' } }, action: { kind: 'queue' } })]) })
+}, { route: GLM_ROUTE })
 
 // -------------------------------------------------------------------- caller
 

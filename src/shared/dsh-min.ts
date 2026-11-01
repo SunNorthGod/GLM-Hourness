@@ -370,6 +370,30 @@ export interface AgentsService {
 }
 
 /**
+ * A live agent a message can be put in front of in each of the three ways
+ * (rc.3 dsh-agent-loop `ReactLoopAgent`, agent-loop:790–821): `steer` reaches
+ * the running turn's next step (and wakes an idle agent), `inject` the next
+ * step without waking, `followup` opens the next turn.
+ */
+export interface MessageableAgentLike extends LiveAgentLike {
+  steer(message: UserNotice): void
+}
+
+/** The `agents` registry as the rules board reads it: `get(id)` is the live agent of a session id, undefined once it is released (agent:596). */
+export interface MessageableAgentsService {
+  get(id: string): MessageableAgentLike | undefined
+}
+
+/**
+ * The `goals` service member the rules board reads (rc.3 dsh-goal `get`,
+ * goal:611–614): the goal of an exact live agent, undefined when it has none;
+ * it throws `GoalError` for an agent that is not the registry's live instance.
+ */
+export interface GoalsService {
+  get(agent: LiveAgentLike): { readonly phase: string } | undefined
+}
+
+/**
  * A live agent as the design row drives it: the scoped context its hooks
  * install on (agent-loop:748–781), `steer` (a waking message that reaches
  * the running turn's next step, agent-loop:806–814) and `whenIdle` (resolves

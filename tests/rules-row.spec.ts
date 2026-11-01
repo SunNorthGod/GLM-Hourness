@@ -5,22 +5,24 @@
  * real GLM credit plan, as `glm-login` provides it; the clock is injected.
  */
 import assert from 'node:assert/strict'
-import { appendFile, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { appendFile, mkdir, mkdtemp, readdir, readFile, rename as renameFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import type { UserNotice } from '../src/shared/dsh-min.ts'
 import { collectHealth, healthServiceName } from '../src/shared/health.ts'
 import { PEAK_MODE_SERVICE, PEAK_REDUCE_GLM_WORKERS, peakModeService } from '../src/shared/peak-mode.ts'
 import { RULES_TOOL_NAMES } from '../src/shared/tool-names.ts'
 import { apply, clockText, inject, name, type RulesContext } from '../src/rules/index.ts'
 import { RULES_SERVICE } from '../src/rules/service.ts'
+import type { HostHeartbeat } from '../src/rules/heartbeat.ts'
 import { openRulesBoard } from '../src/rules/engine.ts'
 import { repoJson, type JournalRecord, type RepoRules } from '../src/rules/model.ts'
 import { loadState } from '../src/rules/store.ts'
 import { fakeRuntime } from './fake-rc3.ts'
 import { captureWarnings } from './graph-helpers.ts'
 import { FULL_RULES_FILE, ruleOf } from './rules-fixtures.ts'
-import { quickIo, writeHeartbeat } from './rules-helpers.ts'
+import { fakeClock, MINUTE, quickIo, writeHeartbeat } from './rules-helpers.ts'
 import { health, PEAK_NOW, rowTest, withRow, type Fixture } from './rules-host.ts'
 
 const NOW = PEAK_NOW
@@ -68,7 +70,9 @@ rowTest('without a choice the project is at the factory level reduce; in a peak 
   await runtime.create()
   assert.deepEqual(service.stateFor('agent-1'), { level: 'reduce', origin: 'default', peak: true, until: PEAK_END, glmWorkerCap: 1 })
   assert.deepEqual(service.peakHoldFor('agent-1'), { level: 'reduce', until: PEAK_END })
-  assert.deepEqual(await readdir(root), ['.git'], 'looking wrote nothing')
+  assert.deepEqual((await readdir(root)).sort(), ['.git', '.llm'], 'a live session makes the host write its heartbeat')
+  assert.deepEqual(await readdir(join(root, '.llm')), ['rules'])
+  assert.deepEqual(await readdir(join(root, '.llm', 'rules')), ['hosts'], 'looking wrote no state: nothing but the heartbeat of this host')
 })
 
 rowTest('/rules peak 不做 stores the choice in the repository and the project, and the service hands it out; the choice is the person\'s with its time', async ({ root, runtime, service, run }) => {
@@ -560,3 +564,240 @@ rowTest('show tells the person what rules_show tells an agent, in Chinese: the l
   assert.ok(text.includes('在等的工作：没有'), text)
   assert.equal((await journalOf(fixture.root)).filter(record => record.op === 'signal-manual').length, 1, 'looking wrote no operation')
 }, { rules: COMMAND_FILE })
+
+// ------------------------------------------------------------- the heartbeat
+
+const HOURS = 60 * MINUTE
+const hostsDir = (root: string): string => join(root, '.llm', 'rules', 'hosts')
+
+/** The heartbeat files of the project's host directory, by file name. */
+async function heartbeatsOf(root: string): Promise<Record<string, HostHeartbeat>> {
+  const names = await readdir(hostsDir(root)).catch(() => [] as string[])
+  const files = await Promise.all(names.filter(entry => entry.endsWith('.json')).map(async entry => [entry, JSON.parse(await readFile(join(hostsDir(root), entry), 'utf8')) as HostHeartbeat] as const))
+  return Object.fromEntries(files)
+}
+
+const STARTED = fakeClock('2026-10-28T07:00:00.000Z')
+const catalogOf = (beat: HostHeartbeat, id: string): Record<string, unknown> | undefined => beat.catalog.find(entry => entry.id === id)
+
+rowTest('a live session makes the host write its heartbeat: the sessions, the GLM peak it computed, the state of the rows the catalog names, and runner false', async ({ root, runtime }) => {
+  assert.deepEqual(await heartbeatsOf(root), {}, 'no live session yet: no file')
+  await runtime.create()
+  const found = await heartbeatsOf(root)
+  const [[name, beat]] = Object.entries(found)
+  assert.equal(Object.keys(found).length, 1)
+  assert.match(name, new RegExp(`^${process.pid}-\\d+\\.json$`))
+  assert.deepEqual(beat.host, { pid: process.pid, startedAt: Number(name.slice(name.indexOf('-') + 1, -5)) })
+  assert.equal(beat.at, new Date(NOW).toISOString())
+  assert.deepEqual(beat.sessions, ['agent-1'])
+  assert.equal(beat.runner, false, 'the election is not built: no host is the runner')
+  assert.deepEqual(beat.computed, { glmPeak: { value: true, nextChangeAt: PEAK_END } })
+  assert.deepEqual(catalogOf(beat, 'rules:files-only'), { id: 'rules:files-only', state: 'active' }, 'a row reads by its activation')
+  assert.deepEqual(catalogOf(beat, 'guard:workspace-containment'), { id: 'guard:workspace-containment', state: 'absent' }, 'a row that is not loaded is absent')
+  assert.deepEqual(catalogOf(beat, 'builtin:glm-peak-pricing'), { id: 'builtin:glm-peak-pricing', state: 'active', toldState: 'degraded' }, 'the row that tells the model is read too')
+}, { services: { 'glmHournessHealth/glm-prompt': { row: 'glm-prompt', activation: () => ({ state: 'degraded', reason: 'test', at: '' }), session: () => undefined } } })
+
+rowTest('a GLM peak that cannot be read is written as unreadable, with the reason', async ({ root, runtime }) => {
+  await runtime.create()
+  const [beat] = Object.values(await heartbeatsOf(root))
+  const peak = beat?.computed.glmPeak
+  assert.ok(peak !== undefined && 'unknown' in peak && typeof peak.unknown === 'string' && !('value' in peak))
+}, { pricing: 'none' })
+
+rowTest('the heartbeat is written again on the 15-second timer with the moment of that write, and the sessions it holds follow agent/created and session/disposed', async ({ root, runtime, beat }) => {
+  await runtime.create()
+  await beat()
+  const [first] = Object.values(await heartbeatsOf(root))
+  assert.equal(first?.at, STARTED.iso())
+  STARTED.advance(15_000)
+  await beat()
+  const [second] = Object.values(await heartbeatsOf(root))
+  assert.equal(second?.at, STARTED.iso())
+}, { clock: STARTED })
+
+test('the heartbeat of a host is deleted after 60 seconds without a live session, and a heartbeat of any host older than an hour is removed with the next write', async () => {
+  const clock = fakeClock('2026-10-28T07:00:00.000Z')
+  await withRow(async ({ root, runtime, beat }) => {
+    await runtime.create()
+    const other = join(hostsDir(root), '99999-1.json')
+    const recent = join(hostsDir(root), '99998-1.json')
+    const stale = (at: string): string => JSON.stringify({ host: { pid: 99999, startedAt: 1 }, at, sessions: [], runner: false, computed: { glmPeak: { unknown: 'x' } }, catalog: [] })
+    await writeFile(other, stale(new Date(clock.now() - 2 * HOURS).toISOString()))
+    await writeFile(recent, stale(new Date(clock.now() - 10 * MINUTE).toISOString()))
+    await beat()
+    assert.deepEqual(Object.keys(await heartbeatsOf(root)).sort(), ['99998-1.json', ...Object.keys(await heartbeatsOf(root)).filter(entry => entry.startsWith(`${process.pid}-`))].sort(), 'the hour-old file of another host is gone, the 10-minute-old one stays')
+    runtime.disposeSession(runtime.agent.session!)
+    clock.advance(45_000)
+    await beat()
+    assert.equal(Object.keys(await heartbeatsOf(root)).filter(entry => entry.startsWith(`${process.pid}-`)).length, 1, 'less than 60 seconds without a session: the file stays')
+    clock.advance(20_000)
+    await beat()
+    assert.deepEqual(Object.keys(await heartbeatsOf(root)).filter(entry => entry.startsWith(`${process.pid}-`)), [], 'more than 60 seconds: deleted')
+  }, { clock })
+})
+
+test('a rename that fails with EPERM is retried with the board\'s backoff, then given up with one warning until a write succeeds; the temporary file is removed', async () => {
+  const clock = fakeClock('2026-10-28T07:00:00.000Z')
+  const sleeps: number[] = []
+  let failing = true
+  const io = quickIo({
+    now: clock.now,
+    sleep: (ms) => { sleeps.push(ms); return Promise.resolve() },
+    rename: (from, to) => (failing && to.includes('hosts') ? Promise.reject(Object.assign(new Error('EPERM: operation not permitted'), { code: 'EPERM' })) : renameFile(from, to)),
+  })
+  await withRow(async ({ root, runtime, beat }) => {
+    const { warnings } = await captureWarnings(async () => {
+      await runtime.create()
+      await beat()
+      await beat()
+    })
+    assert.deepEqual(await heartbeatsOf(root), {}, 'nothing was written')
+    assert.deepEqual(sleeps.slice(0, 5), [20, 40, 80, 160, 320], 'the backoff of the snapshot')
+    assert.deepEqual((await readdir(hostsDir(root))).filter(entry => entry.endsWith('.tmp')), [], 'no temporary file is left')
+    assert.equal(warnings.filter(line => /heartbeat/.test(line)).length, 1, 'warned once, not at every attempt')
+    failing = false
+    await beat()
+    assert.equal(Object.keys(await heartbeatsOf(root)).length, 1, 'the next period writes it')
+    failing = true
+    const again = await captureWarnings(() => beat())
+    assert.equal(again.warnings.filter(line => /heartbeat/.test(line)).length, 1, 'after a success the warning is owed again')
+  }, { clock, config: { io } })
+})
+
+rowTest('a session outside any project has no heartbeat, and a project the host does not live in has no host directory', async ({ root, runtime }) => {
+  await runtime.create()
+  assert.deepEqual(await heartbeatsOf(root), {})
+}, { cwd: null })
+
+rowTest('the row withdraws its timers, its listeners and its heartbeat file when it goes', async ({ root, runtime, dispose, timers }) => {
+  await runtime.create()
+  assert.equal(timers() > 0, true)
+  assert.equal(Object.keys(await heartbeatsOf(root)).length, 1)
+  dispose()
+  assert.equal(timers(), 0)
+  assert.deepEqual(runtime.listeners.map(entry => entry.event), [])
+  assert.deepEqual(await heartbeatsOf(root), {})
+})
+
+// --------------------------------------------------------------- the reminder
+
+const INFORM_FRIDAY = ruleOf({ id: 'r-friday', title: 'No release on Fridays', when: { kind: 'event', events: ['rules.step'] }, action: { kind: 'inform' } })
+const BLOCK_PROBE = ruleOf({ id: 'r-no-probe', title: 'No probe word', filter: { command: { matches: 'rules-probe-blocked' } } })
+const RECORD_NPM = ruleOf({ id: 'r-note-npm', title: 'Note npm runs', filter: { command: { matches: '^npm\\b' } }, action: { kind: 'record' } })
+const HOLD_DEPLOY = ruleOf({ id: 'r-hold', title: 'Hold deploys', filter: { command: { matches: 'deploy' } }, action: { kind: 'queue' } })
+const reminderFile = (...rules: Array<ReturnType<typeof ruleOf>>): RepoRules => ({ version: 2, rules: Object.fromEntries(rules.map(rule => [rule.id, rule])) })
+
+/** One step of the agent: the notices of the board among what the step admitted; the step's input is what rc.3 keeps in the history. */
+async function stepOf(fixture: Fixture, over: { readonly messages?: readonly unknown[] } = {}): Promise<UserNotice[]> {
+  const decision = await fixture.runtime.preStep({ messages: over.messages ?? [], step: 2 })
+  assert.equal(decision.kind, 'enter')
+  const admitted = (decision as { messages: readonly unknown[] }).messages
+  fixture.runtime.history.push(...admitted)
+  const notices = admitted.filter((message): message is UserNotice => (message as UserNotice).source?.kind === 'hourness-rules')
+  if (notices.length > 0) assert.equal(admitted.at(-1), notices.at(-1), 'a notice goes at the end of the step\'s input')
+  return notices
+}
+const bodyOf = (notice: UserNotice | undefined): string => notice?.content[0]?.text ?? ''
+
+rowTest('the reminder lists the rules that only inform and nothing the harness carries out; the default rule is never in it', async (fixture) => {
+  await fixture.runtime.create()
+  const [notice, ...rest] = await stepOf(fixture)
+  assert.equal(rest.length, 0)
+  assert.equal(bodyOf(notice), '<system-reminder>\nRules board: for your information only; the harness does not check these.\n- [inform, not checked] r-friday: "No release on Fridays" (set by the human)\n</system-reminder>')
+  assert.match(String(notice?.source.rulesReminder && (notice.source.rulesReminder as { digest: string }).digest), /^[0-9a-f]{12}$/)
+  assert.doesNotMatch(bodyOf(notice), /r-no-probe|r-note-npm|r-hold|glm-peak-pricing/)
+}, { rules: reminderFile(INFORM_FRIDAY, BLOCK_PROBE, RECORD_NPM, HOLD_DEPLOY) })
+
+rowTest('a project with no rule that informs and no ticket gets no reminder, and the default rule at a peak does not make one', async (fixture) => {
+  await fixture.runtime.create()
+  assert.deepEqual(await stepOf(fixture), [])
+  assert.deepEqual(await stepOf(fixture), [])
+}, { rules: reminderFile(BLOCK_PROBE) })
+
+rowTest('the reminder is injected when it changes, once, and when nothing is left once with a line that says so', async (fixture) => {
+  await fixture.runtime.create()
+  assert.equal((await stepOf(fixture)).length, 1)
+  assert.deepEqual(await stepOf(fixture), [], 'nothing changed, the request prefix stays the same')
+  assert.deepEqual(await stepOf(fixture), [])
+  assert.equal((await fixture.run('lift r-friday')).kind, 'success')
+  const [gone, ...rest] = await stepOf(fixture)
+  assert.equal(rest.length, 0)
+  assert.equal(bodyOf(gone), '<system-reminder>\nNo rules board item applies to you now.\n</system-reminder>')
+  assert.deepEqual(await stepOf(fixture), [], 'told once')
+}, { rules: reminderFile(INFORM_FRIDAY) })
+
+rowTest('the reminder is injected again after a compaction took the earlier one out of what the model sees, and once per checkpoint', async (fixture) => {
+  await fixture.runtime.create()
+  assert.equal((await stepOf(fixture)).length, 1)
+  fixture.runtime.history.splice(0, fixture.runtime.history.length, { role: 'user', content: [{ type: 'text', text: 'summary' }], source: { kind: 'compact-checkpoint', compactionId: 'c-1' } })
+  const [again] = await stepOf(fixture)
+  assert.equal((again?.source.rulesReminder as { reason: string }).reason, 'compaction')
+  assert.deepEqual(await stepOf(fixture), [], 'the checkpoint is answered once')
+  fixture.runtime.history.splice(0, fixture.runtime.history.length, { role: 'user', content: [{ type: 'text', text: 'summary' }], source: { kind: 'compact-checkpoint', compactionId: 'c-2' } })
+  assert.equal((await stepOf(fixture)).length, 1, 'another checkpoint, another reminder')
+}, { rules: reminderFile(INFORM_FRIDAY) })
+
+rowTest('a goal round carries the reminder again, one beat of the goal driver', async (fixture) => {
+  await fixture.runtime.create()
+  assert.equal((await stepOf(fixture)).length, 1)
+  assert.deepEqual(await stepOf(fixture), [])
+  const round = { id: 'g-1', role: 'user', content: [{ type: 'text', text: 'Round: 2/3' }], source: { kind: 'goal', round: 2 } }
+  const [notice] = await stepOf(fixture, { messages: [round] })
+  assert.equal((notice?.source.rulesReminder as { reason: string }).reason, 'goal-round')
+}, { rules: reminderFile(INFORM_FRIDAY) })
+
+rowTest('a rule that asks about a role or a model other than the agent\'s is not in its reminder', async (fixture) => {
+  await fixture.runtime.create()
+  assert.deepEqual(await stepOf(fixture), [], 'the main agent has nothing to be told')
+}, { rules: reminderFile(ruleOf({ id: 'r-subagents', title: 'Subagents only', when: { kind: 'event', events: ['rules.step'] }, filter: { role: { in: ['subagent'] } }, action: { kind: 'inform' } })) })
+
+test('the reminder names the agent\'s own open tickets with the time, and what it should do about a ticket handed over from a subagent; the tickets of others are not in it', async () => {
+  const clock = fakeClock('2026-10-28T07:00:00.000Z')
+  await withRow(async (fixture) => {
+    await fixture.runtime.create()
+    await fixture.exec('pwsh', { command: 'npm run deploy' })
+    const [first] = await stepOf(fixture)
+    assert.match(bodyOf(first), /\nYour open tickets: q-1 pwsh "npm run deploy" \(deferred since \d\d:\d\d\)\.\n<\/system-reminder>$/)
+    assert.doesNotMatch(bodyOf(first), /Do not dispatch/)
+    // A ticket of another session is not this agent's.
+    const other = openRulesBoard({ projectRoot: fixture.root, io: quickIo({ now: clock.now }) })
+    const opened = await other.apply('harness', { op: 'ticket-open', sessionId: 'sub-9', agentLabel: 'sub-9', host: { pid: process.pid, startedAt: 1 }, signature: 'abc', tool: 'pwsh', summary: 'npm test', rules: ['r-hold'] })
+    assert.ok(opened.ok)
+    assert.deepEqual(await stepOf(fixture), [], 'the other session\'s ticket changes nothing for this agent')
+    const handed = await other.apply('harness', { op: 'ticket-handover', id: 'q-2', sessionId: 'agent-1', agentLabel: 'agent-1' })
+    assert.ok(handed.ok)
+    const [second] = await stepOf(fixture)
+    assert.match(bodyOf(second), /q-2 handed over from subagent "sub-9": pwsh "npm test"/)
+    assert.match(bodyOf(second), /Do not dispatch these tasks again before their tickets clear\./)
+  }, { clock, live: true, rules: reminderFile(HOLD_DEPLOY) })
+})
+
+test('a ticket that cleared is told as cleared, and one that closed is gone from the reminder', async () => {
+  const clock = fakeClock('2026-10-28T07:00:00.000Z')
+  const rules: RepoRules = { ...reminderFile(ruleOf({ ...HOLD_DEPLOY, condition: { signal: 'code-freeze', is: true } })), signals: { 'code-freeze': { type: { kind: 'boolean' }, manual: { value: true, at: '2026-10-28T06:40:00.000Z' } } } }
+  await withRow(async (fixture) => {
+    await fixture.runtime.create()
+    await fixture.exec('pwsh', { command: 'npm run deploy' })
+    assert.equal((await stepOf(fixture)).length, 1)
+    await fixture.run('off code-freeze')
+    const [cleared] = await stepOf(fixture)
+    assert.match(bodyOf(cleared), /Your open tickets: q-1 pwsh "npm run deploy" \(cleared at \d\d:\d\d, run it again\)\./)
+    assert.equal((await fixture.exec('pwsh', { command: 'npm run deploy' })).isError, false)
+    const [gone] = await stepOf(fixture)
+    assert.equal(bodyOf(gone), '<system-reminder>\nNo rules board item applies to you now.\n</system-reminder>')
+  }, { clock, live: true, rules })
+})
+
+rowTest('at most 12 items: the rest is counted and rules_show is named', async (fixture) => {
+  await fixture.runtime.create()
+  const [notice] = await stepOf(fixture)
+  const lines = bodyOf(notice).split('\n')
+  assert.equal(lines.filter(line => line.startsWith('- [inform')).length, 12)
+  assert.equal(lines.at(-2), 'and 3 more: call rules_show')
+}, { rules: reminderFile(...Array.from({ length: 15 }, (_, index) => ruleOf({ id: `r-note-${String(index).padStart(2, '0')}`, title: `Note ${index}`, when: { kind: 'event', events: ['rules.step'] }, action: { kind: 'inform' } }))) })
+
+rowTest('an agent created twice gets one reminder, not two', async (fixture) => {
+  await fixture.runtime.create()
+  await fixture.runtime.create()
+  assert.equal((await stepOf(fixture)).length, 1)
+}, { rules: reminderFile(INFORM_FRIDAY) })

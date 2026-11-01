@@ -13,22 +13,51 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { creditPricing } from '../src/glm-llm/credits.ts'
-import { apply, type RulesConfig, type RulesContext } from '../src/rules/index.ts'
-import { repoJson, type RepoRules } from '../src/rules/model.ts'
+import { apply, BEAT_MS, PASS_MS, type IntervalTimer, type RulesConfig, type RulesContext } from '../src/rules/index.ts'
+import { repoJson, type RepoRules, type Ticket } from '../src/rules/model.ts'
+import { loadState, rulesPaths } from '../src/rules/store.ts'
 import type { AgentCommandInvocationLike, AgentLike, CommandDefinitionLike, CommandResultLike, ToolFinalResult } from '../src/shared/dsh-min.ts'
 import { DATA_SERVICE } from '../src/shared/data-home.ts'
 import { collectHealth } from '../src/shared/health.ts'
 import { peakModeService, type PeakModeService } from '../src/shared/peak-mode.ts'
 import { PRICING_SERVICE } from '../src/shared/pricing.ts'
-import { fakeRuntime, type FakeRuntime } from './fake-rc3.ts'
-import { quickIo } from './rules-helpers.ts'
+import { fakeLive, fakeRuntime, type FakeLive, type FakeRuntime } from './fake-rc3.ts'
+import { quickIo, type FakeClock } from './rules-helpers.ts'
 
 /** Wednesday 15:00 in UTC+8, inside GLM's peak hours (14:00-18:00). */
 export const PEAK_NOW = Date.parse('2026-10-28T15:00:00+08:00')
 
+/** The repeating timers a row asks for, held until a test runs them. */
+function fakeTimers(): { readonly timer: IntervalTimer, readonly run: (everyMs: number) => Promise<void>, readonly active: () => number } {
+  const timers = new Set<{ readonly tick: () => Promise<void>, readonly everyMs: number }>()
+  return {
+    timer: (tick, everyMs) => {
+      const entry = { tick, everyMs }
+      timers.add(entry)
+      return () => { timers.delete(entry) }
+    },
+    run: async (everyMs) => {
+      for (const entry of [...timers].filter(timer => timer.everyMs === everyMs)) await entry.tick()
+    },
+    active: () => timers.size,
+  }
+}
+
 export interface Fixture {
   readonly root: string
   readonly runtime: FakeRuntime
+  /** The live-agent registry and goal service, when the options ask for them (live: true); the fake agent is registered idle. */
+  readonly live: FakeLive
+  /** Run the row's re-judgement of its tickets (the 5-second timer) and wait for it. */
+  readonly pass: () => Promise<void>
+  /** Run the row's heartbeat (the 15-second timer) and wait for it. */
+  readonly beat: () => Promise<void>
+  /** The repeating timers the row holds now. */
+  readonly timers: () => number
+  /** The tickets of the project's state now, by number. */
+  readonly tickets: () => Readonly<Record<string, Ticket>>
+  /** Wait until the condition holds (work the row does on an event runs after the event returns). */
+  readonly until: (condition: () => boolean) => Promise<void>
   readonly commands: Map<string, CommandDefinitionLike<AgentCommandInvocationLike>>
   readonly service: PeakModeService
   readonly dispose: () => void
@@ -59,6 +88,10 @@ export interface Options {
   readonly services?: Readonly<Record<string, unknown>>
   /** Provide the data service that names the project directory (and with it the violation journal). Default true. */
   readonly data?: boolean
+  /** Provide the `agents` and `goals` services of a live host, with the fake agent registered. Default false. */
+  readonly live?: boolean
+  /** A clock the test moves: the row's and the board's moment. Replaces `now`. */
+  readonly clock?: FakeClock
 }
 
 /** A git project in a temporary directory with the rules row applied on a fake host whose agent works in it. */
@@ -87,11 +120,28 @@ export async function withRow(body: (fixture: Fixture) => Promise<void>, options
       },
     } as unknown as RulesContext
     const now = options.now ?? PEAK_NOW
-    const dispose = apply(ctx, { now: () => now, io: quickIo(), ...options.config })
+    const moment = options.clock?.now ?? ((): number => now)
+    const live = fakeLive()
+    if (options.live === true) {
+      live.add(runtime.agent)
+      runtime.services.set('agents', live.agents)
+      runtime.services.set('goals', live.goals)
+    }
+    const timers = fakeTimers()
+    const dispose = apply(ctx, { now: moment, io: quickIo({ now: moment }), timer: timers.timer, ...options.config })
     let counter = 0
     await body({
       root,
       runtime,
+      live,
+      pass: () => timers.run(PASS_MS),
+      beat: () => timers.run(BEAT_MS),
+      timers: timers.active,
+      tickets: () => loadState(rulesPaths(root)).state.tickets ?? {},
+      until: async (condition) => {
+        for (let waited = 0; waited < 3_000 && !condition(); waited += 10) await new Promise(resolve => setTimeout(resolve, 10))
+        if (!condition()) throw new Error('timed out waiting for the condition')
+      },
       commands,
       calls,
       service: peakModeService(runtime.ctx)!,

@@ -133,6 +133,12 @@ function asView(value: unknown): RowHealthView | undefined {
   return typeof record.activation === 'function' && typeof record.session === 'function' ? value as RowHealthView : undefined
 }
 
+/** A row's activation status as the host has it now (what the row says of itself, not of a session), `absent` when its health service is not there. */
+export function activationState(ctx: ServiceLookup, row: HealthRow): HealthState | 'absent' {
+  const view = asView(typeof ctx.get === 'function' ? ctx.get(healthServiceName(row)) : undefined)
+  return view === undefined ? 'absent' : view.activation().state
+}
+
 /**
  * Every row's status for one session. An inactive activation wins (the row
  * cannot act); otherwise the session report, else the activation status

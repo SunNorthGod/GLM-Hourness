@@ -39,7 +39,7 @@ export interface ShowToolDeps {
 
 const NO_PROJECT = 'This session has no working directory, or it is not in a project: no project\'s rules apply to it, only the rules in code do.'
 
-/** Said of a rule that queues: nothing defers a call yet. */
+/** Said of an entry of the code that queues (a peak level): nothing defers a call for it yet. A rule of the person that queues is carried out. */
 const QUEUE_NOT_ENFORCED = 'Not enforced yet: a call this rule would defer runs.'
 
 const ITEMS = ['role', 'model', 'session'] as const
@@ -79,7 +79,7 @@ function showFor(deps: ShowToolDeps, agent: AgentLike | undefined): string {
     const placed = aboutCaller(shown.rule, caller, project.root)
     if (placed.note !== undefined) notes.push(placed.note)
     if (!placed.applies) continue
-    rules.push(shown.rule.action.kind === 'queue' ? { ...shown, note: [shown.note, QUEUE_NOT_ENFORCED].filter(part => part !== undefined).join(' ') } : shown)
+    rules.push(shown.rule.action.kind === 'queue' && shown.rule.scope === 'builtin' ? { ...shown, note: [shown.note, QUEUE_NOT_ENFORCED].filter(part => part !== undefined).join(' ') } : shown)
   }
   const tickets = openTickets(state).filter(ticket => ticket.sessionId === caller.sessionId)
   return showText({ project: project.root, peak: level, glmPeak, ...(until === undefined ? {} : { until }), rules, tickets, signals: projectSignals(state, readings), notes })

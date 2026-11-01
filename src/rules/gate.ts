@@ -18,15 +18,19 @@
  *    declared and never pushed, nothing reports it yet) and judged with the
  *    same `judgeInput`, `judge` and table of rules `checkCall` uses.
  * 4. A rule that blocks refuses the call with the four-part text; a rule that
- *    records lets it run and leaves a line; informing rules change nothing.
- *    Rules that queue are not carried out yet: the call runs (waiting tickets
- *    arrive in the next step), and `rules_show` says so.
+ *    records lets it run and leaves a line; informing rules change nothing. A
+ *    rule of the person that queues refuses the call once with a ticket, and
+ *    the same call again with the same ticket (tickets.ts); a call that ran
+ *    answers the cleared ticket it waited on. The entries of the code that
+ *    queue (the peak levels) are not carried out yet: the call runs, and
+ *    `rules_show` says so.
  *
  * The listener never throws. Reading or judging that fails lets the call run
  * and degrades the row's health with the reason; the board's own faults never
- * hold an agent (design §11.2). Every refusal and every recorded call is a
- * line of the project's violation journal, the file the guard writes, with the
- * rule as `rules:<id>`.
+ * hold an agent (design §11.2), but a deferral whose ticket cannot be recorded
+ * still refuses, and says so. Every refusal and every recorded call is a line
+ * of the project's violation journal, the file the guard writes, with the rule
+ * as `rules:<id>`.
  */
 import { basename, isAbsolute, join, relative, resolve } from 'node:path'
 import { projectOf, worktreesOf } from '../data/project-root.ts'
@@ -51,6 +55,7 @@ import { gitOperationIn } from './repo.ts'
 import { projectHealth } from './row-health.ts'
 import { rulesPaths, type RulesPaths } from './store.ts'
 import { clockReadings, signalsRead, tableOf } from './table.ts'
+import type { TicketDesk } from './tickets.ts'
 
 /** The id of the gate on the board's own files, as the catalog lists it and the violation journal records it. */
 export const RULES_FILES_ONLY = 'rules:files-only'
@@ -68,6 +73,8 @@ export interface GateDeps {
   readonly peak: () => PeakReading
   readonly journal: AuditJournal
   readonly health: RowHealth
+  /** The waiting tickets of the calls a rule queues. */
+  readonly tickets: TicketDesk
 }
 
 const message = (error: unknown): string => (error instanceof Error ? error.message : String(error)).slice(0, 80)
@@ -113,9 +120,10 @@ function dispatchOf(args: unknown): NonNullable<GateCall['dispatch']> {
 /** The values of the signals a rule read, when it was judged; a signal that could not be read is null. */
 type SignalValues = Record<string, boolean | number | string | null>
 
-/** What a line of the violation journal says besides who, when and where (design §10.5): a denial has its correction, a call that ran has none. */
+/** What a line of the violation journal says besides who, when and where (design §10.5): a denial has its correction, a call that ran has none; a deferral also names its ticket. */
 type Line =
   | { readonly rule: string, readonly mode: 'enforce', readonly effect: 'block', readonly correction: string, readonly signals: SignalValues }
+  | { readonly rule: string, readonly mode: 'enforce', readonly effect: 'queue', readonly correction: string, readonly ticket?: string, readonly signals: SignalValues }
   | { readonly rule: string, readonly mode: 'record', readonly effect: 'record', readonly signals: SignalValues }
 
 /** Install the gate; the disposer takes it out. Throws only when the host refuses the registration. */
@@ -151,7 +159,7 @@ export function installRulesGate(deps: GateDeps): () => void {
     }
   }
 
-  function judgeCall(exec: ToolExecutionPayload, agent: AgentLike, cwd: string): PreExecuteDecision | undefined {
+  async function judgeCall(exec: ToolExecutionPayload, agent: AgentLike, cwd: string): Promise<PreExecuteDecision | undefined> {
     const project = projectOf(cwd)
     if (project === undefined) return undefined
     const dialect = dialectService(deps.ctx, warn)
@@ -189,27 +197,22 @@ export function installRulesGate(deps: GateDeps): () => void {
     const table = tableOf(state, level.level)
     const described = describeCall(tool, exec.arguments, caller.workspace)
     const why = (item: 'role' | 'model' | 'session'): string => caller.unknown[item] ?? `the ${item} of this call is not known`
-    const input = judgeInput({
-      now,
+    const unreadable = { role: why('role'), model: why('model'), session: why('session') }
+    const events = gateEvents({
+      at: now.toISOString(),
       project: project.root,
-      events: gateEvents({
-        at: now.toISOString(),
-        project: project.root,
-        cwd,
-        tool,
-        args: exec.arguments,
-        ...(described.command === undefined ? {} : { command: described.command }),
-        ...(described.writes === undefined ? {} : { writes: described.writes }),
-        ...(caller.role === undefined ? {} : { role: caller.role }),
-        ...(caller.model === undefined ? {} : { model: caller.model }),
-        ...(caller.sessionId === undefined ? {} : { session: caller.sessionId }),
-        nested: exec.parent !== undefined,
-        ...(DISPATCH_TOOL_NAMES.includes(tool) ? { dispatch: dispatchOf(exec.arguments) } : {}),
-      }),
-      signals: [...readings.values()],
-      unreadable: { role: why('role'), model: why('model'), session: why('session') },
+      cwd,
+      tool,
+      args: exec.arguments,
+      ...(described.command === undefined ? {} : { command: described.command }),
+      ...(described.writes === undefined ? {} : { writes: described.writes }),
+      ...(caller.role === undefined ? {} : { role: caller.role }),
+      ...(caller.model === undefined ? {} : { model: caller.model }),
+      ...(caller.sessionId === undefined ? {} : { session: caller.sessionId }),
+      nested: exec.parent !== undefined,
+      ...(DISPATCH_TOOL_NAMES.includes(tool) ? { dispatch: dispatchOf(exec.arguments) } : {}),
     })
-    const verdict = judge(input, table)
+    const verdict = judge(judgeInput({ now, project: project.root, events, signals: [...readings.values()], unreadable }), table)
     report(sessionId, basename(project.root), view, reading, project.root)
 
     // 4. What the strongest effect makes of the call.
@@ -218,18 +221,30 @@ export function installRulesGate(deps: GateDeps): () => void {
       const rule = byId.get(hit.rule)
       return Object.fromEntries((rule === undefined ? [] : signalsRead(rule)).map(name => [name, readings.get(name)?.value ?? null]))
     }
+    const peak = { ...level, ...(until === undefined ? {} : { until }) }
+    const pairs = (hits: readonly RuleHit[]): Array<{ readonly hit: RuleHit, readonly rule: Rule | BuiltinRule }> => hits.flatMap((hit) => {
+      const rule = byId.get(hit.rule)
+      return rule === undefined ? [] : [{ hit, rule }]
+    })
     if (verdict.effect === 'block') {
-      const rules = verdict.strongest.flatMap((hit) => {
-        const rule = byId.get(hit.rule)
-        return rule === undefined ? [] : [{ hit, rule }]
-      })
-      const reason = denialText({ attempt: described.attempt, effect: 'block', rules, peak: { ...level, ...(until === undefined ? {} : { until }) } })
+      const reason = denialText({ attempt: described.attempt, effect: 'block', rules: pairs(verdict.strongest), peak })
       for (const hit of verdict.strongest) note(agent, exec, claimed, { rule: `rules:${hit.rule}`, mode: 'enforce', effect: 'block', correction: reason, signals: signalsOf(hit) })
       return { kind: 'deny', reason }
+    }
+    const session = agent.session
+    // Only the rules of the person queue here: an entry of the code that queues waits for the peak levels to be carried out.
+    const queued = verdict.effect === 'queue' ? pairs(verdict.strongest).filter(entry => entry.rule.scope !== 'builtin') : []
+    if (session !== undefined && queued.length > 0) {
+      const deferral = await deps.tickets.defer({ session, caller, view, root: project.root, cwd, tool, args: exec.arguments, described, events, unreadable, nested: exec.parent !== undefined, rules: queued, peak })
+      if (deferral.kind === 'deny') {
+        for (const { hit } of queued) note(agent, exec, claimed, { rule: `rules:${hit.rule}`, mode: 'enforce', effect: 'queue', correction: deferral.reason, ...(deferral.ticket === undefined ? {} : { ticket: deferral.ticket }), signals: signalsOf(hit) })
+        return { kind: 'deny', reason: deferral.reason }
+      }
     }
     for (const hit of verdict.hits) {
       if (hit.effect === 'record') note(agent, exec, claimed, { rule: `rules:${hit.rule}`, mode: 'record', effect: 'record', signals: signalsOf(hit) })
     }
+    if (session !== undefined) await deps.tickets.passed({ session, view, root: project.root, cwd, tool, args: exec.arguments })
     return undefined
   }
 
@@ -240,7 +255,7 @@ export function installRulesGate(deps: GateDeps): () => void {
     try {
       const cwd = agent?.session?.header.cwd
       if (agent === undefined || typeof cwd !== 'string' || cwd === '') return decision
-      return judgeCall(exec, agent, cwd) ?? decision
+      return await judgeCall(exec, agent, cwd) ?? decision
     }
     catch (error) {
       deps.health.report(sessionIdOf(agent), 'degraded', `规则板判定出错：${message(error)}，这次调用放行`)

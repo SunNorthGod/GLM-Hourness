@@ -17,12 +17,21 @@
  *   subagents against `glmWorkerCap` (at most 1 under `reduce` during a peak),
  *   and asks `peakHoldFor` whether the peak holds a session's work back;
  * - the service `glmHournessRules`, whose one member is the line the guard adds
- *   to its prompt section while this row is on.
+ *   to its prompt section while this row is on;
+ * - waiting tickets (tickets.ts): a call a rule of the person queues is refused
+ *   with a ticket, judged again every 5 seconds by the host that owns it, and
+ *   the agent is told once when it clears; a subagent's ticket goes to the
+ *   agent that dispatched it when its session ends;
+ * - the heartbeat (heartbeat.ts) every 15 seconds in each project the host has
+ *   a live session in, which is how a ticket's host is known to be there;
+ * - the per-step reminder (reminder.ts) of the rules that only inform and of
+ *   the agent's own tickets.
  *
- * The main agent is never held by a peak level, and rules that queue are not
- * carried out yet (no waiting tickets): the board refuses and records, nothing
- * else. Nothing a rule says can be written by an agent; only the person's
- * `/rules`, as the human, changes rules.
+ * The main agent is never held by a peak level, and the entries of the code
+ * that queue (the peak levels) are not carried out yet: the board refuses,
+ * defers calls the person's rules queue, and records, nothing else. Nothing a
+ * rule says can be written by an agent; only the person's `/rules`, as the
+ * human, changes rules.
  *
  * Activation never throws. A failed registration or provision warns once and
  * degrades the row's health with the reason; a gate that cannot be installed
@@ -34,20 +43,39 @@ import { projectOf } from '../data/project-root.ts'
 import { rowJournal } from '../memory/audit.ts'
 import { dataHomes } from '../shared/data-home.ts'
 import type { AgentCommandInvocationLike, AgentLike, AgentsService, CommandDefinitionLike, CommandResultLike, CommandsHost, PreExecuteListener, ProvideHost, ServiceLookup, SessionLike, ToolsLike } from '../shared/dsh-min.ts'
-import { provideRowHealth, sessionIdOf, type HealthState, type RowHealth } from '../shared/health.ts'
+import { activationState, provideRowHealth, sessionIdOf, type HealthState, type RowHealth } from '../shared/health.ts'
 import { PEAK_MODE_SERVICE } from '../shared/peak-mode.ts'
 import { RULES_TOOL_NAMES } from '../shared/tool-names.ts'
+import { CATALOG } from './builtin.ts'
 import { NOT_A_PROJECT, RULES_HINT, runRulesCommand } from './commands.ts'
 import { openRulesBoard } from './engine.ts'
 import { installRulesGate } from './gate.ts'
+import { createHeartbeat, type HostHeartbeat } from './heartbeat.ts'
 import { peakModeServiceFor, peakReader, projectReader, type ProjectView } from './peak.ts'
 import { gitOperationIn, readProject } from './repo.ts'
+import { installReminder } from './reminder.ts'
+import type { HostRef } from './request.ts'
 import { projectHealth } from './row-health.ts'
 import { RULES_DECLARATION, RULES_SERVICE, type RulesService } from './service.ts'
-import { DEFAULT_RULES_DIR, type StoreIo } from './store.ts'
+import { DEFAULT_RULES_DIR, realStoreIo, type StoreIo } from './store.ts'
+import { createTicketDesk } from './tickets.ts'
 import { rulesShowTool } from './tool.ts'
 
 export { clockText } from './commands.ts'
+
+/** The period of the host's re-judgement of its waiting tickets, and of its heartbeat (design §6.3, §5.4). */
+export const PASS_MS = 5_000
+export const BEAT_MS = 15_000
+
+/** A repeating timer: `tick` every `everyMs` until the returned function is called. A tick never rejects. */
+export type IntervalTimer = (tick: () => Promise<void>, everyMs: number) => () => void
+
+const realTimer: IntervalTimer = (tick, everyMs) => {
+  const handle = setInterval(() => { void tick() }, everyMs)
+  // The row's timers never keep the host process alive.
+  handle.unref()
+  return () => { clearInterval(handle) }
+}
 
 export interface RulesConfig {
   /** The rules directory in the repository: relative to the project root, or absolute (the probe and tests). Default docs/rules. */
@@ -58,6 +86,8 @@ export interface RulesConfig {
   readonly now?: () => number
   /** The storage's file operations that tests replace (a rename that fails). */
   readonly io?: StoreIo
+  /** The repeating timer, for tests that run the 5-second and 15-second periods by hand; default `setInterval`, unref'd. */
+  readonly timer?: IntervalTimer
 }
 
 /** cordis plugin identity: needs the tools and commands services. */
@@ -77,6 +107,16 @@ export interface RulesContext extends CommandsHost<AgentCommandInvocationLike>, 
 
 function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
+}
+
+/** A warning on the host log, each distinct one said once. */
+function onceWarner(): (text: string) => void {
+  const said = new Set<string>()
+  return (text) => {
+    if (said.has(text)) return
+    said.add(text)
+    console.warn(`${name}: ${text}`)
+  }
 }
 
 /** cordis plugin entry: register /rules and rules_show, install the gate, provide the services and the row health. Activation never throws. */
@@ -111,6 +151,27 @@ export function apply(ctx: RulesContext, config: RulesConfig = {}): () => void {
   const health: RowHealth = provideRowHealth(ctx, 'rules', ...activation())
   disposers.push(() => { health.dispose() })
 
+  const warn = onceWarner()
+  const host: HostRef = { pid: process.pid, startedAt: Date.now() }
+  const heartbeat = createHeartbeat({
+    host,
+    rulesDir,
+    now,
+    io: config.io ?? realStoreIo,
+    peak: reading,
+    catalog: (): HostHeartbeat['catalog'] => CATALOG.map(entry => ({ id: entry.id, state: activationState(ctx, entry.row), ...(entry.toldBy === undefined ? {} : { toldState: activationState(ctx, entry.toldBy) }) })),
+    // The writer owes one warning per run of failures, and says so again after a success.
+    warn: (text) => { console.warn(`${name}: ${text}`) },
+  })
+  const tickets = createTicketDesk({ ctx, rulesDir, now, io: config.io, host, project: read, peak: reading, health, heartbeat, warn })
+  const reminders = new Map<string, () => void>()
+  disposers.push(() => {
+    tickets.stop()
+    heartbeat.stop()
+    for (const off of reminders.values()) off()
+    reminders.clear()
+  })
+
   /** Persist what the project's files need (a recovery, the start from the rules file, an owed write), then report the session's health. Never throws. */
   async function settle(sessionId: string | undefined, cwd: string | undefined): Promise<ProjectView | undefined> {
     try {
@@ -131,17 +192,20 @@ export function apply(ctx: RulesContext, config: RulesConfig = {}): () => void {
     }
   }
 
-  function rulesCommand(invocation: AgentCommandInvocationLike): Promise<CommandResultLike> {
+  async function rulesCommand(invocation: AgentCommandInvocationLike): Promise<CommandResultLike> {
     const cwd = invocation.agent.session.header.cwd
     const sessionId = invocation.agent.id
     if (cwd !== undefined) sessions.set(sessionId, cwd)
-    return runRulesCommand(invocation.rawInput, cwd === undefined ? undefined : projectOf(cwd), {
+    const result = await runRulesCommand(invocation.rawInput, cwd === undefined ? undefined : projectOf(cwd), {
       rulesDir,
       ...(config.io === undefined ? {} : { io: config.io }),
       now,
       peak: reading,
       settle: () => settle(sessionId, cwd),
     })
+    // What the person changed may clear a ticket now; the period would find it in five seconds.
+    await tickets.reconcile()
+    return result
   }
 
   const definition: CommandDefinitionLike<AgentCommandInvocationLike> = {
@@ -168,7 +232,7 @@ export function apply(ctx: RulesContext, config: RulesConfig = {}): () => void {
   }
 
   try {
-    disposers.push(installRulesGate({ ctx, rulesDir, now, project: read, peak: reading, journal: rowJournal(name, () => dataHomes(ctx, config.home)), health }))
+    disposers.push(installRulesGate({ ctx, rulesDir, now, project: read, peak: reading, journal: rowJournal(name, () => dataHomes(ctx, config.home)), health, tickets }))
     gateInstalled = true
   }
   catch (error) {
@@ -200,14 +264,36 @@ export function apply(ctx: RulesContext, config: RulesConfig = {}): () => void {
       const sessionId = sessionIdOf(agent)
       const cwd = agent.session?.header.cwd
       if (sessionId !== undefined && cwd !== undefined) sessions.set(sessionId, cwd)
+      if (sessionId !== undefined && !reminders.has(sessionId)) {
+        const off = installReminder(agent, { ctx, now, project: read, peak: reading, warn })
+        if (off !== undefined) reminders.set(sessionId, off)
+      }
+      if (sessionId !== undefined && cwd !== undefined) await heartbeat.join(sessionId, cwd)
       await settle(sessionId, cwd)
     }))
-    disposers.push(ctx.on('session/disposed', (session) => { sessions.delete(session.id) }))
+    disposers.push(ctx.on('session/disposed', (session) => {
+      sessions.delete(session.id)
+      reminders.get(session.id)?.()
+      reminders.delete(session.id)
+      heartbeat.leave(session.id)
+      void tickets.ended(session)
+    }))
   }
   catch (error) {
     console.warn(`${name}: the session listeners are not registered, the row answers only for sessions it finds in the agent registry: ${message(error)}`)
     problems.push(`会话事件没注册上：${message(error)}`)
   }
+
+  const every = config.timer ?? realTimer
+  const guarded = (run: () => Promise<void>) => async (): Promise<void> => {
+    try {
+      await run()
+    }
+    catch (error) {
+      warn(`a period of the row failed: ${message(error)}`)
+    }
+  }
+  disposers.push(every(guarded(() => tickets.reconcile()), PASS_MS), every(guarded(() => heartbeat.beat()), BEAT_MS))
 
   health.reactivate(...activation())
   return () => {

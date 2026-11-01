@@ -30,6 +30,12 @@ export interface DenialInput {
   readonly rules: ReadonlyArray<{ readonly hit: RuleHit, readonly rule: Rule | BuiltinRule }>
   /** The ticket the call was deferred as; absent when none was opened. */
   readonly ticket?: string
+  /** The call was a deferral that no ticket could be recorded for (the write failed): the agent is told to run it again itself. */
+  readonly unrecorded?: true
+  /** The call came from a `run_code` program, which received the refusal as an error. */
+  readonly nested?: true
+  /** The call came from a subagent: it reports the ticket in its handoff, and the agent that dispatched it is told when it clears. */
+  readonly subagent?: true
   readonly peak: PeakSetting & { readonly until?: string }
 }
 
@@ -125,15 +131,23 @@ function clauseOf(entry: Entry, effect: 'block' | 'queue'): string {
 
 function boundaryOf(input: DenialInput, codeEntries: readonly Entry[]): string {
   const parts: string[] = []
-  if (input.effect === 'queue') parts.push(input.ticket === undefined ? 'Would be deferred; the command line opens no ticket.' : `Deferred as ticket ${input.ticket}.`)
+  if (input.effect === 'queue') parts.push(input.ticket !== undefined ? `Deferred as ticket ${input.ticket}.` : input.unrecorded === true ? 'Deferred, but the board could not record a waiting ticket for it.' : 'Would be deferred; the command line opens no ticket.')
   if (codeEntries.length > 0) parts.push(`GLM peak hours now${input.peak.until === undefined ? '' : ` until ${localClock(input.peak.until)}`}.`, modeSentence(input.peak))
   parts.push(...input.rules.map(entry => clauseOf(entry, input.effect)))
+  if (input.nested === true) parts.push('Your program received this as an error.')
   return parts.join(' ')
 }
 
 function rightPathOf(input: DenialInput, onlyCode: boolean): string {
   if (input.effect === 'block') return 'Do not repeat the call. Continue with other planned work, or tell the human what you need and why.'
+  if (input.unrecorded === true) return 'The call did not run, and no message will come when the rule stops holding: run the call again yourself once it does not.'
   if (input.ticket === undefined && onlyCode) return `Run it again after ${input.peak.until === undefined ? 'peak ends' : localClock(input.peak.until)}.`
+  if (input.ticket !== undefined && input.subagent === true) {
+    return `${input.nested === true ? 'The call did not run; your program received this as an error.' : 'The call did not run.'} If your task cannot finish without this call, stop and report ticket ${input.ticket} in your handoff; the agent that dispatched you is told when it clears. Otherwise continue with the rest of your task.`
+  }
+  if (input.ticket !== undefined && input.nested === true) {
+    return `The call did not run. Continue with other planned work, in this program or the next one; the harness sends you a message when ${input.ticket} clears, then run the deferred call again. Running it again before that returns this message and does not queue it twice.`
+  }
   const next = input.ticket === undefined ? 'Run it again when the condition no longer holds.' : `the harness sends you a message when ${input.ticket} clears, then run the same call again.`
   return `The call did not run. Continue with other planned work; ${next} Running it again before that returns this message and does not queue it twice.`
 }
@@ -149,6 +163,16 @@ function exceptionOf(input: DenialInput, personEntries: readonly Entry[], codeEn
   }
   if (codeEntries.length > 0) parts.push('The human can change the peak mode (/rules peak).')
   return parts.join(' ')
+}
+
+/** The refusal of a call that would need a ticket beyond the 20 a session may have open: no ticket is opened. */
+export function ticketLimitText(attempt: string, open: readonly string[]): string {
+  return renderCorrection({
+    fact: attempt,
+    violation: `Too many open waiting tickets: this session already has ${open.length} (${open.join(', ')}), the most it may have.`,
+    rightPath: 'The call did not run and no ticket was opened. Deal with the open ones first: wait for the message that says one of them cleared, or tell the human.',
+    exception: 'The human can cancel tickets (/rules cancel <ticket>) or change the rules.',
+  })
 }
 
 /** The refusal a model reads: what it tried, the boundary that stopped it, the right path, and who can change it. */

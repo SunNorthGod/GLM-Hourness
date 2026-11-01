@@ -9,7 +9,7 @@
  * through the assembly variables, exactly as installModelSelection injects
  * them.
  */
-import type { AgentLike, AssemblePayload, AssembledTool, InjectHost, InjectableServices, PluginContext, PreExecuteDecision, PreExecuteListener, PreStepDecision, PreStepPayload, ProvideHost, ServiceLookup, ToolDefinitionLike, ToolExecuteInput, ToolExecutionPayload, ToolFinalResult } from '../src/shared/dsh-min.ts'
+import type { AgentLike, AssemblePayload, AssembledTool, InjectHost, InjectableServices, PluginContext, PreExecuteDecision, PreExecuteListener, PreStepDecision, PreStepPayload, ProvideHost, ServiceLookup, SessionLike, ToolDefinitionLike, ToolExecuteInput, ToolExecutionPayload, ToolFinalResult, UserNotice } from '../src/shared/dsh-min.ts'
 
 type Listener = (...args: never[]) => unknown
 
@@ -81,6 +81,93 @@ export function serviceStore(): ServiceLookup & ProvideHost & { readonly service
   }
 }
 
+/** A message put in front of a live agent: the way it was sent, and the kind and text of the notice. */
+interface Woken {
+  readonly agentId: string
+  readonly how: 'steer' | 'inject' | 'followup'
+  readonly kind: string
+  readonly text: string
+}
+
+/** A live agent as the `agents` registry hands it out (agent-loop:790–821): a status, and three ways to put a message in front of it. */
+interface FakeLiveAgent {
+  readonly id: string
+  readonly session: SessionLike
+  readonly status: 'idle' | 'running'
+  steer(message: UserNotice): void
+  inject(message: UserNotice): void
+  followup(message: UserNotice): void
+  cancel(): void
+}
+
+/** What rc.3 throws when a goal is asked of an agent that is not the registry's live instance (dsh-goal `assertLive`, goal:611–614). */
+class GoalError extends Error {
+  readonly code = 'GOAL_NOT_LIVE'
+}
+
+/**
+ * The live-agent registry and the goal service of rc.3 as far as the rows
+ * read them: `agents.get(id)` is the live agent of a session and undefined
+ * once the agent is released; `goals.get(agent)` is the goal view of a live
+ * agent and throws `GoalError` for one that is not live. Every message put
+ * in front of an agent is recorded in `woken`.
+ */
+export interface FakeLive {
+  readonly agents: { get(id: string): FakeLiveAgent | undefined }
+  readonly goals: { get(agent: FakeLiveAgent): { readonly phase: string } | undefined }
+  readonly woken: Woken[]
+  /** Register the live agent of a session. */
+  add(agent: AgentLike, status?: 'idle' | 'running'): void
+  /** The agent is released: the registry no longer knows it. */
+  release(id: string): void
+  setStatus(id: string, status: 'idle' | 'running'): void
+  /** The phase of the agent's goal; none when undefined. */
+  setGoal(id: string, phase: string | undefined): void
+  /** Make the ways named (all three when none are) throw for the agent. */
+  breakWake(id: string, ...ways: Array<Woken['how']>): void
+  /** Make `goals.get` throw for the agent, as it does for one that is not live. */
+  breakGoals(id: string): void
+}
+
+export function fakeLive(): FakeLive {
+  const entries = new Map<string, { live: FakeLiveAgent, status: 'idle' | 'running', goal: string | undefined, broken: ReadonlySet<Woken['how']>, goalsBroken: boolean }>()
+  const woken: Woken[] = []
+  const WAYS = ['steer', 'inject', 'followup'] as const
+  return {
+    woken,
+    agents: { get: id => entries.get(id)?.live },
+    goals: {
+      get: (agent) => {
+        const entry = entries.get(agent.id)
+        if (entry?.live !== agent || entry.goalsBroken) throw new GoalError(`agent "${agent.id}" is not the registry's live instance`)
+        return entry.goal === undefined ? undefined : { phase: entry.goal }
+      },
+    },
+    add(agent, status = 'idle') {
+      const session = agent.session!
+      const send = (how: Woken['how']) => (message: UserNotice): void => {
+        if (entries.get(agent.id)?.broken.has(how) === true) throw new Error(`${how} failed for ${agent.id}`)
+        woken.push({ agentId: agent.id, how, kind: String(message.source.kind), text: message.content.map(part => part.text).join('') })
+      }
+      const live: FakeLiveAgent = {
+        id: agent.id,
+        session,
+        get status() { return entries.get(agent.id)?.status ?? 'idle' },
+        steer: send('steer'),
+        inject: send('inject'),
+        followup: send('followup'),
+        cancel() {},
+      }
+      entries.set(agent.id, { live, status, goal: undefined, broken: new Set(), goalsBroken: false })
+    },
+    release: id => void entries.delete(id),
+    setStatus(id, status) { const entry = entries.get(id); if (entry !== undefined) entry.status = status },
+    setGoal(id, phase) { const entry = entries.get(id); if (entry !== undefined) entry.goal = phase },
+    breakWake(id, ...ways) { const entry = entries.get(id); if (entry !== undefined) entry.broken = new Set(ways.length === 0 ? WAYS : ways) },
+    breakGoals(id) { const entry = entries.get(id); if (entry !== undefined) entry.goalsBroken = true },
+  }
+}
+
 export interface FakeRuntime {
   /** The context every row receives; cordis contexts also read and provide services. */
   readonly ctx: PluginContext & ServiceLookup & ProvideHost
@@ -103,6 +190,8 @@ export interface FakeRuntime {
   assemble(route: { provider?: string, model?: string }, sections?: AssemblePayload['sections']): Promise<AssemblePayload>
   /** Fire `agent/created` for the fake agent. */
   create(): Promise<void>
+  /** Fire `session/disposed` for a session (session:1925–1936): observers run synchronously, as in rc.3. */
+  disposeSession(session: SessionLike): void
   /** Run `agent/pre-step` for one step; the runtime's default decision admits the claimed messages. */
   preStep(options?: { messages?: readonly unknown[], step?: number, turn?: number }): Promise<PreStepDecision>
   /** Execute a visible tool by name the way the runtime resolves calls (scoped shadows global); returns the body's value. */
@@ -329,6 +418,9 @@ export function fakeRuntime(options: { natives?: readonly string[], calls?: Arra
     },
     async create() {
       for (const listener of of('agent/created')) await (listener as unknown as (p: { agent: AgentLike }) => unknown)({ agent })
+    },
+    disposeSession(session) {
+      for (const listener of of('session/disposed')) (listener as unknown as (session: SessionLike) => unknown)(session)
     },
     async preStep({ messages = [], step = 1, turn = 1 } = {}) {
       const payload: PreStepPayload = { agent, messages, signal: new AbortController().signal, step, turn }

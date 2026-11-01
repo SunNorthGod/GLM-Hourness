@@ -38,9 +38,12 @@ export function rulesInForce(state: ProjectState, table: readonly (Rule | Builti
     .map(rule => (unapproved.has(rule.id) ? { rule, note: SCRIPT_NOT_APPROVED } : { rule }))
 }
 
-/** The calls still waiting, or cleared and not yet repeated, by number. */
+/** The number of a ticket (`q-12` is 12); a name that has none sorts last. */
+const numberOf = (ticket: Ticket): number => Number(/^q-(\d+)$/.exec(ticket.id)?.[1] ?? Number.POSITIVE_INFINITY)
+
+/** The calls still waiting, or cleared and not yet repeated, by number (`q-2` before `q-10`). */
 export function openTickets(state: ProjectState): Ticket[] {
-  return Object.values(state.tickets ?? {}).filter(ticket => ticket.state === 'deferred' || ticket.state === 'cleared').sort((a, b) => compare(a.id, b.id))
+  return Object.values(state.tickets ?? {}).filter(ticket => ticket.state === 'deferred' || ticket.state === 'cleared').sort((a, b) => numberOf(a) - numberOf(b) || compare(a.id, b.id))
 }
 
 /** The readings of the project's own signals (switches and the signals of detectors), by name. */
