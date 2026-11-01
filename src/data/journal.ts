@@ -28,9 +28,9 @@ import { dirname, resolve } from 'node:path'
 import { acquireLock, realLockEnvironment, type LockEnvironment, type LockOptions } from './lock.ts'
 import { ensureProjectDir } from './project-root.ts'
 
-type JsonValue = null | boolean | number | string | readonly JsonValue[] | { readonly [key: string]: JsonValue }
+export type JsonValue = null | boolean | number | string | readonly JsonValue[] | { readonly [key: string]: JsonValue }
 
-type Actor = 'human' | 'llm' | 'harness'
+export type Actor = 'human' | 'llm' | 'harness'
 
 /** Who and what caused a record: ids the host gave, never evidence. */
 interface RecordOrigin {
@@ -65,7 +65,7 @@ export interface JournalRecord<Op extends string = string> {
 export type NewRecord<Op extends string = string> = Omit<JournalRecord<Op>, 'v' | 'seq' | 'at'>
 
 /** What a fold does with one record: the next state, or the reason the record does not hold in the current one. */
-type FoldStep<State> = { readonly state: State } | { readonly bad: string }
+export type FoldStep<State> = { readonly state: State } | { readonly bad: string }
 
 export interface Fold<State> {
   /** The state of a journal without records. */
