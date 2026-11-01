@@ -9,7 +9,7 @@
   "acceptance": [
     "开启主 Agent 后每步的系统提示词带 hourness:main-agent 一节（/wish <一句话> 唤醒的第一步也带），GLM 路由上与方言改写叠加后仍在；未开启的会话没有",
     "主 Agent 的文件工具写入（write、edit、str_replace_editor 除 view 外）与 file-tools-only 判为写文件的 shell 命令，在 GLM 与非 GLM 路由上都被拒，拒绝带正路并进违规流水；/wish off 之后同一会话照常写",
-    "主 Agent 的工具面等于同一组合下普通会话的工具面去掉写文件的工具（Write、Edit 及其别名、str_replace_editor 的写操作）与 ask_user_question，加上 design_review、decision_card、ask_human；由编排层插件在组装时去掉，不用 preset；shell 写入由 guard 兜底",
+    "主 Agent 的工具面等于同一组合下普通会话的工具面去掉写文件的工具（Write、Edit 及其别名、str_replace_editor 的写操作）与 ask_user_question，加上 propose_to_human、record_human_answer；由编排层插件在组装时去掉，不用 preset；shell 写入由 guard 兜底",
     "/wish 的入口放在醒目处：没有开启主 Agent 的会话里，桌面版界面上有显眼的提示说明可以用 /wish 开启主 Agent，人不用记命令；开启后看得到当前是主 Agent 以及怎样 /wish off 退出；位置与样式经设计评审，L4 截图核对"
   ],
   "history": [
@@ -102,6 +102,29 @@
             "开启主 Agent 后每步的系统提示词带 hourness:main-agent 一节（/wish <一句话> 唤醒的第一步也带），GLM 路由上与方言改写叠加后仍在；未开启的会话没有",
             "主 Agent 的文件工具写入（write、edit、str_replace_editor 除 view 外）与 file-tools-only 判为写文件的 shell 命令，在 GLM 与非 GLM 路由上都被拒，拒绝带正路并进违规流水；/wish off 之后同一会话照常写",
             "主 Agent 的工具面等于同一组合下普通会话的工具面去掉写文件的工具（Write、Edit 及其别名、str_replace_editor 的写操作）与 ask_user_question，加上 design_review、decision_card、ask_human；由编排层插件在组装时去掉，不用 preset；shell 写入由 guard 兜底",
+            "/wish 的入口放在醒目处：没有开启主 Agent 的会话里，桌面版界面上有显眼的提示说明可以用 /wish 开启主 Agent，人不用记命令；开启后看得到当前是主 Agent 以及怎样 /wish off 退出；位置与样式经设计评审，L4 截图核对"
+          ]
+        }
+      }
+    },
+    {
+      "at": "2026-11-01T16:53:03.957Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "验收字句批改（附录 0.6 §9 第 1 条，对话里逐条端给过人）：第 3 条的工具面点名从已取消的 ask_human 改为对话里的 propose_to_human、record_human_answer",
+      "relay": "改",
+      "changes": {
+        "acceptance": {
+          "from": [
+            "开启主 Agent 后每步的系统提示词带 hourness:main-agent 一节（/wish <一句话> 唤醒的第一步也带），GLM 路由上与方言改写叠加后仍在；未开启的会话没有",
+            "主 Agent 的文件工具写入（write、edit、str_replace_editor 除 view 外）与 file-tools-only 判为写文件的 shell 命令，在 GLM 与非 GLM 路由上都被拒，拒绝带正路并进违规流水；/wish off 之后同一会话照常写",
+            "主 Agent 的工具面等于同一组合下普通会话的工具面去掉写文件的工具（Write、Edit 及其别名、str_replace_editor 的写操作）与 ask_user_question，加上 design_review、decision_card、ask_human；由编排层插件在组装时去掉，不用 preset；shell 写入由 guard 兜底",
+            "/wish 的入口放在醒目处：没有开启主 Agent 的会话里，桌面版界面上有显眼的提示说明可以用 /wish 开启主 Agent，人不用记命令；开启后看得到当前是主 Agent 以及怎样 /wish off 退出；位置与样式经设计评审，L4 截图核对"
+          ],
+          "to": [
+            "开启主 Agent 后每步的系统提示词带 hourness:main-agent 一节（/wish <一句话> 唤醒的第一步也带），GLM 路由上与方言改写叠加后仍在；未开启的会话没有",
+            "主 Agent 的文件工具写入（write、edit、str_replace_editor 除 view 外）与 file-tools-only 判为写文件的 shell 命令，在 GLM 与非 GLM 路由上都被拒，拒绝带正路并进违规流水；/wish off 之后同一会话照常写",
+            "主 Agent 的工具面等于同一组合下普通会话的工具面去掉写文件的工具（Write、Edit 及其别名、str_replace_editor 的写操作）与 ask_user_question，加上 propose_to_human、record_human_answer；由编排层插件在组装时去掉，不用 preset；shell 写入由 guard 兜底",
             "/wish 的入口放在醒目处：没有开启主 Agent 的会话里，桌面版界面上有显眼的提示说明可以用 /wish 开启主 Agent，人不用记命令；开启后看得到当前是主 Agent 以及怎样 /wish off 退出；位置与样式经设计评审，L4 截图核对"
           ]
         }
