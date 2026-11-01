@@ -524,6 +524,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M3 附录 0.6（问人改成三道关，d-ask-three-gates）第 3 轮评审 APPROVED（HIGH 0、MEDIUM 0、NIT 9，N-19 至 N-27 留到实现时处理）；各轮挡路 7、1、0。0.5 另存 design-addendum-0.5.md。编排方恢复 M3 实现（wf_92ad3963b261025d），第 6 步按 0.6 接着写，并删掉因此变成死代码的四格字段与格式检查；要点已追加到 .agents/tasks/m3/impl/brief.md。"
+    },
+    {
+      "at": "2026-11-01T07:13:31.664Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "合入前仍须关闭的项（简报附注 + 第 6 步评审）：S4-1、S4-4、S5-1（含 S6-2 指出的 PTC 嵌套调用绕过三条图规则）、S4-2、S4-3、S5-2、R1、R3；5d47374 的 probe 也欠一次。第 6 步已评审通过，运行 m3-steps-4-to-merge 接着做第 8、9、10 步。"
     }
   ]
 }
