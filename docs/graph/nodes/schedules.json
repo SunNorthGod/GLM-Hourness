@@ -347,6 +347,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "运行 feat-010-loop-storage 已开：改用单 agent 一步派发（agent://wf-coder），只做 FEAT-010（循环板在 docs/loops/ 与项目 .llm/loops/ 的存储与对账），在既有工作树 .worktrees/rules-loops、分支 rules-loops-impl 上做，四道检查后按 d-wip-branch-push 推一次，报告写到 .agents/tasks/rules-loops/feat-010-report.md。这是对两次 BAD_DECRYPT 的换路尝试；本节点已是 doing。"
+    },
+    {
+      "at": "2026-11-01T11:05:34.355Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "FEAT-010（循环板在 docs/loops/ 与项目 .llm/loops/ 的存储与对账，计划 L3）完成并推送：提交 06c5e3e 在 rules-loops-impl 上。四道检查在被提交的树上全部退出码 0，probe 193/193（新场景 loops），检查器基线不变（eslint 250、knip 21、jscpd 2）。被中断那一步留下的未提交改动是接着做完的、不是丢掉：那份改动缺全部文档与探针场景，而且过不了检查器门禁。换成单 agent 一步派发（agent://wf-coder）之后没有再出现 BAD_DECRYPT，这条路可行；FEAT-011 起照同样的办法往下做。13 项中 10 项完成。"
+    },
+    {
+      "at": "2026-11-01T11:06:00.283Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "运行 feat-011-loop-runtime 已开（单 agent 一步派发，接 06c5e3e）：做 FEAT-011／计划 L4 —— 循环板的运行时核心，运行锁与心跳、交接、收件箱，不含脚本执行器；四道检查后按 d-wip-branch-push 推一次，报告写到 .agents/tasks/rules-loops/feat-011-report.md。本节点已是 doing。"
     }
   ]
 }
