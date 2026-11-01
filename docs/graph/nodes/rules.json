@@ -561,6 +561,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "FEAT-006（规则闸门、rules:files-only、rules_show、完整的 /rules，探针场景 glm-rules 与 non-glm-rules）8a33926、20e12cf 评审 APPROVED；build、preflight、test、probe 退出码 0（probe 161/161）；规则行仍关着。6 条不挡路的备注在 gate-FEAT-006.json（闸门出错时只降级不留痕、拒绝文字提到不存在的 rules_propose、排队命中不写日志等）。13 项中 6 项通过，均在 rules-loops-impl 分支，未合入。"
+    },
+    {
+      "at": "2026-11-01T06:23:01.296Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "FEAT-007（等待票、唤醒、交回派活根、过期、每步提醒与心跳写入）b9a2d81、5458cd3 评审 APPROVED；npm test 曾有一次偶发失败（rules-store 并发用例在 Windows 上 rules.lock 报 EPERM），已在 b761ae1 修好；修后 build、preflight、test、probe 退出码 0（probe 173/173，含 rules-queue 与 rules-handover）。7 条不挡路的备注在 gate-FEAT-007.json。13 项中 7 项通过，均在 rules-loops-impl 分支，未合入。"
     }
   ]
 }

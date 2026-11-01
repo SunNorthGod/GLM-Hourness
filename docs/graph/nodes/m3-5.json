@@ -62,6 +62,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M3 附录 0.5 §9 第 1 条与第 7 步：面板设计 0.6 §9.1 起 /graph-apply 删去（0.7 §11 第 6a 条），第 7 步（面板拍板的回写）取消，编号保留。第 2 条验收（人在面板上拍板、批准或否决后主 Agent 会话收到消息）说的事不再存在，建议删去这一条；验收只能由人改，未改。0.4 建议的新字句作废。"
+    },
+    {
+      "at": "2026-11-01T06:23:00.015Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "附录 0.6 第 6 步在分支 m3 上提交为 05d524a（propose_to_human、record_human_answer、提议式待决、hournessTalk、attach）：build 退出码 0，preflight 通过，npm test 退出码 0（1216 通过、0 失败、1 跳过），eslint、knip、jscpd 均未超基线，probe 173/173，含新场景 glm-design-question。等语义评审（review-step6.json 尚未出现）。"
     }
   ]
 }
