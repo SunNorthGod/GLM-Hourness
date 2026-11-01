@@ -21,7 +21,10 @@
  * calls past a rules file that blocks one command and only informs about
  * another, rules-queue and rules-handover run a call a rule queues: the
  * agent is told when the ticket clears, and the ticket of a subagent that
- * ends goes to the agent that dispatched it. The graph panel scenarios run the
+ * ends goes to the agent that dispatched it; rules-peak (the main agent's
+ * line about the peak) and rules-peak-stop and rules-peak-stop-exit (the stop
+ * level: a GLM subagent's goal is paused and resumed, and what the row does to
+ * it when the host exits). The graph panel scenarios run the
  * bundle's /graph-apply and /graph-run handlers mid-step for the session;
  * the GLM and non-GLM scenarios run /hourness and /hourness-status at their
  * last step, after /glm-status is recorded.
@@ -50,7 +53,7 @@
  * change of the real usage journal fails the run (exit 1).
  */
 import { spawnSync } from 'node:child_process'
-import { cpSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import { crc32, deflateSync } from 'node:zlib'
@@ -400,12 +403,20 @@ const rulesProject = (name) => {
   writeFileSync(join(ws, 'README.md'), 'probe workspace\n')
   return { ws, ready: initRepo(ws) }
 }
+// The scenario's first step makes the session the main agent of the project
+// with /wish (the design row is enabled for it), since the board tells only the
+// main agent where the peak stands; the second lists the rules with rules_show
+// at the shifted clock, between the factory level and 不做.
 const rulesGlm = rulesProject('rules-peak')
+// /wish wants the project to have a graph directory, empty is enough (the design scenarios do the same).
+mkdirSync(join(rulesGlm.ws, 'docs', 'graph'), { recursive: true })
 const rulesPeak = runScenario('rules-peak', 'glm-5.3', [
+  { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } }, line: '/wish' },
   { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } }, command: { name: 'rules', input: 'peak' }, peakMode: true },
+  { tool: { name: 'DeferredToolCall', arguments: { name: 'rules_show', input: {} } } },
   { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } }, command: { name: 'rules', input: 'peak 不做' }, peakMode: true },
   { text: 'done', status: true, command: { name: 'rules', input: 'peak 无影响' }, peakMode: true },
-], 'Read package.json twice, then reply done.', [...RULES_ROW, ...clockRow(PEAK_AT)], rulesGlm.ws)
+], 'Become the main agent, read package.json twice, list the rules, then reply done.', [...RULES_ROW, ...clockRow(PEAK_AT), ...designRows({ record: slash(join(runDir, 'rules-peak', 'design.jsonl')) })], rulesGlm.ws)
 const rulesAlone = rulesProject('rules-peak-hourness')
 const rulesPeakAlone = runScenario('rules-peak-hourness', 'deepseek-probe', [
   { tool: { name: 'pwsh', arguments: { command: 'Write-Output probe-rules', description: 'Print a word' } }, command: { name: 'rules', input: 'peak 不做' }, peakMode: true },
@@ -701,6 +712,38 @@ const rulesHandover = runScenario('rules-handover', 'deepseek-probe', [
   { tool: { name: 'structured_output', arguments: HAND_BACK } },
   { text: 'child done' },
 ]])
+
+// Rules board, the stop level (docs/ORCHESTRATION.md §16.13). The project's rules
+// file holds the person's choice 不做, and the probe clock is in the GLM peak.
+// The GLM main agent runs the dispatch row's tool probe_stop_goal, which makes a
+// subagent session (a header with origin subagent) on GLM with a goal: its
+// first tool call is refused with a ticket and the row pauses the goal from
+// inside that call; a subagent session on a model that is not GLM runs its call;
+// no round starts while the peak holds; then the tool types /rules peak 无影响 as
+// the person through the real handler, the goal is resumed and the subagent is
+// told to carry on. rules-peak-stop-exit stops at the held goal and lets the
+// host exit, to see what the row does on its way out (V13).
+const STOP_RULES_FILE = repoJson({ version: 2, peakMode: { level: 'stop', at: '2026-10-28T06:00:00.000Z', origin: { actor: 'human' } } })
+const STOP_COMMAND = 'Write-Output rules-probe-stop'
+const stopProbe = (name, input, scripts) => {
+  const project = rulesGateProject(name, STOP_RULES_FILE)
+  const run = runScenario(name, 'glm-5.3', [
+    { tool: { name: 'DeferredToolCall', arguments: { name: 'probe_stop_goal', input: { objective: 'Run the probe command, then mark the goal complete.', cwd: project.ws, maxGoalRounds: 3, ...input } } } },
+    { text: 'done', status: true },
+  ], 'Run the stop-level goal probe, then reply done.', [...RULES_ROW, ...clockRow(PEAK_AT), ...dispatchRow(join(runDir, name, 'dispatch.jsonl'))], project.ws, scripts)
+  return { project, run }
+}
+const stopChildScript = [
+  { tool: { name: 'Bash', arguments: { command: STOP_COMMAND, timeout: 30000 } } },
+  { text: 'Stopped: the ticket is reported.' },
+  completeGoal,
+  { text: 'Goal complete.' },
+]
+const { project: stopProject, run: rulesPeakStop } = stopProbe('rules-peak-stop', {}, [
+  stopChildScript,
+  [{ tool: { name: 'pwsh', arguments: { command: 'Write-Output rules-probe-plain', description: 'Print a word' } } }, { text: 'ok' }],
+])
+const { project: stopExitProject, run: rulesPeakStopExit } = stopProbe('rules-peak-stop-exit', { lift: false }, [stopChildScript.slice(0, 2)])
 
 // The headless runner exits at the first quiescent idle of its own agent: an
 // armed goal created in the task turn gets no round before exit (the reason
@@ -1025,6 +1068,34 @@ const queueWake = /^\[rules board\] Ticket q-1 cleared: rule r-probe-queue was l
 const consecutiveDiffer = texts => texts.every((text, index) => index === 0 || text !== texts[index - 1])
 const rulesRecordOf = (records, rule) => records.find(record => record.rule === rule)
 const stateWritten = existsSync(nonGlmRulesState) && readFileSync(nonGlmRulesState, 'utf8') === '{}\n'
+// rules-peak: what the board told the main agent, at the wall clock of this machine (the model-facing lines write HH:MM in it).
+const localHm = iso => new Date(iso).toLocaleString('sv-SE').slice(11, 16)
+const PEAK_END_HM = localHm(PEAK_END)
+const peakTexts = boardTexts(rulesPeak.steps[1])
+const peakShown = lastToolResult(rulesPeak.steps[3])
+const REDUCE_LINE = `<system-reminder>\nGLM peak: now until ${PEAK_END_HM}. Peak mode: reduce (the default; the human can change it). Run at most 1 GLM subagent at a time until ${PEAK_END_HM}. Move optional work that spends many GLM credits (calibration runs, ablations, large reviews) to after ${PEAK_END_HM}, including work you dispatch; keep necessary work going.\n</system-reminder>`
+const STOP_LINE_START = `<system-reminder>\nGLM peak: now until ${PEAK_END_HM}. Peak mode set by the human: stop. `
+const peakSentences = PEAK_REMINDER_TEXT.split(/(?<=[.:])\s+/).filter(sentence => sentence.length > 20)
+// rules-peak-stop and -exit: the subagent's requests, what the dispatch row saw of its goal, and the ticket the board kept.
+const stopNotes = dispatchRecord('rules-peak-stop')
+const stopCreated = stopNotes.find(entry => entry.kind === 'stop-created')
+const stopChild = bySession(rulesPeakStop, stopCreated?.agentId)
+const stopPlainId = stopNotes.find(entry => entry.kind === 'stop-plain')?.agentId
+const stopPlain = bySession(rulesPeakStop, stopPlainId)
+const stopMain = rulesPeakStop.steps.filter(step => step.sessionId !== stopCreated?.agentId && step.sessionId !== stopPlainId)
+const stopState = readStateOf(stopProject)
+const stopJournal = journalOfProject(stopProject)
+const stopOps = stopNotes.filter(entry => entry.kind === 'goal-changed' && entry.agentId === stopCreated?.agentId)
+const stopNote = kind => stopNotes.find(entry => entry.kind === kind)
+const STOP_REFUSAL = /^Error: You tried to run "Write-Output rules-probe-stop"\.\nBoundary: Deferred as ticket q-1\. GLM peak hours now until \d\d:\d\d, and the human chose "stop" for peak hours: GLM subagents do no work until then\. Your goal is paused\.\nRight path: The call did not run\. Stop and report ticket q-1 and where you stopped in your handoff; the agent that dispatched you is told at \d\d:\d\d and can dispatch the work again\. Other tool calls before then return this message\.\nException: The human can let this session work through this peak \(\/rules let q-1\), or change the peak mode \(\/rules peak\)\.$/
+const STOP_WAKE = /^\[rules board\] Ticket q-1 cleared: GLM peak hours are over \(or the human changed the peak mode\)\. Your goal is resumed\. Continue your work from where you stopped; the call that was deferred was pwsh "Write-Output rules-probe-stop"\.$/
+const stopExitNotes = dispatchRecord('rules-peak-stop-exit')
+const stopExitState = readStateOf(stopExitProject)
+const stopExitJournal = journalOfProject(stopExitProject)
+const stopExitOps = stopExitNotes.filter(entry => entry.kind === 'goal-changed').map(entry => entry.operation)
+// A row that unloaded took its heartbeat file with it; a runner that left without unloading it left the file.
+const stopExitHosts = join(stopExitProject.ws, '.llm', 'rules', 'hosts')
+const stopExitUnloaded = !existsSync(stopExitHosts) || readdirSync(stopExitHosts).length === 0
 const conversationTexts = [glm, plain, compacted, shadow].flatMap(scenario => scenario.steps.flatMap(step => [step.system, ...step.messages.map(message => message.text)]))
 
 // The single-package runs: a package with no row loaded is one line whose
@@ -1227,13 +1298,17 @@ const checks = [
   ['goal (c): with the evidence present the gate allows complete in round 2; the goal ends complete and disarmed after 2 rounds', goalGates.length === 2 && goalGates[1].decision === 'allow' && goalCompleted?.isError !== true && goalCompleted?.text.includes('"phase":"complete"') === true && goalFinal?.goal?.phase === 'complete' && goalFinal.goal.roundsStarted === 2 && goalFinal.goal.activation === 'disarmed' && goalRunResult?.text.includes('"phase":"complete"') === true, JSON.stringify(goalFinal ?? null).slice(0, 160)],
   ['goal (headless): the one-shot runner exits at its agent\'s first quiescent idle, so an armed goal created in the task turn gets no round', headlessCreated?.isError !== true && headlessCreated?.text.includes('"activation":"armed"') === true && headlessGoal.steps.length === 2 && headlessGoal.steps.every(step => roundMessages(step).length === 0), `exit ${headlessGoal.status}, ${headlessGoal.steps.length} step(s); ${(headlessCreated?.text ?? 'no tool result').slice(0, 80)}`],
   ['rules: the row ships disabled: without the overlay /glm-status lists it as not loaded', glmHealth.rules?.status === '未加载' && plainHealth.rules?.status === '未加载', `${healthLine(glmHealth, 'rules')}; ${healthLine(plainHealth, 'rules')}`],
-  ['rules-peak: the row, enabled by the overlay in a scratch git workspace, boots on the GLM route, runs the three scripted steps and exits clean with nothing from it on stderr', rulesGlm.ready && rulesPeak.status === 0 && rulesPeak.steps.length === 3 && !rulesStderr.includes('dsh-glm-hourness/rules'), `exit ${rulesPeak.status}, ${rulesPeak.steps.length} step(s), git ${rulesGlm.ready}; ${rulesStderr.split('\n').find(line => line.includes('rules')) ?? 'no stderr line mentions rules'}`],
-  ['rules-peak: without a choice the project is at the factory level reduce: the command says so, and in the peak the service gives the cap of one GLM subagent and the hold until 18:00', rulesPeak.steps[0]?.command?.kind === 'success' && rulesPeak.steps[0].command.text.startsWith(`高峰模式：少做（出厂默认）。现在是高峰，到 ${clockText(PEAK_END, rulesPeak.steps[0].clock)}。`) && isDeepStrictEqual(rulesPeak.steps[0].peakMode, { state: { level: 'reduce', origin: 'default', peak: true, until: PEAK_END, glmWorkerCap: 1 }, hold: { level: 'reduce', until: PEAK_END } }), JSON.stringify(rulesPeak.steps[0]?.peakMode ?? null)],
-  ['rules-peak: /rules peak 不做 as the person: the reply names the level, the service gives the person\'s choice with no cap and the hold of the stop level', rulesPeak.steps[1]?.command?.kind === 'success' && rulesPeak.steps[1].command.text.startsWith('高峰模式改成了「不做」') && rulesPeak.steps[1].peakMode?.state?.level === 'stop' && rulesPeak.steps[1].peakMode.state.origin === 'human' && rulesPeak.steps[1].peakMode.state.peak === true && rulesPeak.steps[1].peakMode.state.glmWorkerCap === undefined && isDeepStrictEqual(rulesPeak.steps[1].peakMode.hold, { level: 'stop', until: PEAK_END }), JSON.stringify(rulesPeak.steps[1]?.peakMode ?? null)],
-  ['rules-peak: /rules peak 无影响 leaves no cap and no hold', rulesPeak.steps[2]?.command?.kind === 'success' && rulesPeak.steps[2].peakMode?.state?.level === 'inform' && rulesPeak.steps[2].peakMode.state.peak === true && rulesPeak.steps[2].peakMode.state.glmWorkerCap === undefined && rulesPeak.steps[2].peakMode.hold === null, JSON.stringify(rulesPeak.steps[2]?.peakMode ?? null)],
-  ['rules-peak: the main agent is held on no level: its Read ran under the factory level and again under 不做 in the peak', [1, 2].every(index => { const result = lastToolResult(rulesPeak.steps[index]); return result !== undefined && result.isError !== true }), [1, 2].map(index => lastToolResult(rulesPeak.steps[index])?.text?.slice(0, 40) ?? 'no result').join(' | ')],
+  ['rules-peak: the row, enabled by the overlay in a scratch git workspace, boots on the GLM route, runs the five scripted steps and exits clean with nothing from it on stderr', rulesGlm.ready && rulesPeak.status === 0 && rulesPeak.steps.length === 5 && !rulesStderr.includes('dsh-glm-hourness/rules'), `exit ${rulesPeak.status}, ${rulesPeak.steps.length} step(s), git ${rulesGlm.ready}; ${rulesStderr.split('\n').find(line => line.includes('rules')) ?? 'no stderr line mentions rules'}`],
+  ['rules-peak: without a choice the project is at the factory level reduce: the command says so, and in the peak the service gives the cap of one GLM subagent and the hold until 18:00', rulesPeak.steps[1]?.command?.kind === 'success' && rulesPeak.steps[1].command.text.startsWith(`高峰模式：少做（出厂默认）。现在是高峰，到 ${clockText(PEAK_END, rulesPeak.steps[1].clock)}。`) && isDeepStrictEqual(rulesPeak.steps[1].peakMode, { state: { level: 'reduce', origin: 'default', peak: true, until: PEAK_END, glmWorkerCap: 1 }, hold: { level: 'reduce', until: PEAK_END } }), JSON.stringify(rulesPeak.steps[1]?.peakMode ?? null)],
+  ['rules-peak: /rules peak 不做 as the person: the reply names the level, the service gives the person\'s choice with no cap and the hold of the stop level', rulesPeak.steps[3]?.command?.kind === 'success' && rulesPeak.steps[3].command.text.startsWith('高峰模式改成了「不做」') && rulesPeak.steps[3].peakMode?.state?.level === 'stop' && rulesPeak.steps[3].peakMode.state.origin === 'human' && rulesPeak.steps[3].peakMode.state.peak === true && rulesPeak.steps[3].peakMode.state.glmWorkerCap === undefined && isDeepStrictEqual(rulesPeak.steps[3].peakMode.hold, { level: 'stop', until: PEAK_END }), JSON.stringify(rulesPeak.steps[3]?.peakMode ?? null)],
+  ['rules-peak: /rules peak 无影响 leaves no cap and no hold', rulesPeak.steps[4]?.command?.kind === 'success' && rulesPeak.steps[4].peakMode?.state?.level === 'inform' && rulesPeak.steps[4].peakMode.state.peak === true && rulesPeak.steps[4].peakMode.state.glmWorkerCap === undefined && rulesPeak.steps[4].peakMode.hold === null, JSON.stringify(rulesPeak.steps[4]?.peakMode ?? null)],
+  ['rules-peak: the main agent is held on no level: its Read ran under the factory level and again under 不做 in the peak', [2, 4].every(index => { const result = lastToolResult(rulesPeak.steps[index]); return result !== undefined && result.isError !== true }), [2, 4].map(index => lastToolResult(rulesPeak.steps[index])?.text?.slice(0, 40) ?? 'no result').join(' | ')],
   ['rules-peak: the choice is in the repository file and in the project\'s journal (two person\'s writes), and nothing is written in the scenario\'s user-level directory', rulesFile?.peakMode?.level === 'inform' && isDeepStrictEqual(rulesRecords.map(record => [record.op, record.actor, record.from, record.to]), [['peak-mode-set', 'human', 'reduce', 'stop'], ['peak-mode-set', 'human', 'stop', 'inform']]) && !existsSync(join(runDir, 'rules-peak', 'dsh-home', 'glm-hourness', 'rules')), `${JSON.stringify(rulesFile ?? null)}; ${rulesRecords.length} record(s)`],
   ['rules-peak: /glm-status lists the rules row in effect with the level in force at that step and the clock', rulesHealth.rules?.status === ACTED && rulesHealth.rules.package === 'dsh-hourness' && rulesHealth.rules.reason.includes('高峰模式 不做（你选的）；现在是高峰') && grouped(rulesHealth), healthLine(rulesHealth, 'rules') + ` (${rulesHealth.rules?.reason ?? ''})`],
+  ['rules-peak: rules_show at the shifted clock lists the default rule with the end of the peak, and the peak line', peakShown?.isError !== true && peakShown?.text.includes('builtin:glm-peak-pricing') === true && peakShown.text.includes(`GLM peak hours until ${PEAK_END_HM}`) && peakShown.text.includes('GLM peak: now'), (peakShown?.text ?? 'no result').slice(0, 300)],
+  ['rules-peak: the GLM package\'s reminder is in every request exactly once, and the board\'s reminder neither repeats its sentences nor says keep working or postpone', rulesPeak.steps.every(step => peakNotices(step).length === 1) && peakTexts.length === 1 && peakSentences.every(sentence => !peakTexts[0].includes(sentence)) && !/keep working|postpone|charged at the full credit rate/i.test(peakTexts[0] ?? ''), `${rulesPeak.steps.map(step => peakNotices(step).length).join(', ')} | ${peakTexts.join(' // ')}`],
+  ['rules-peak: the main agent\'s first request after /wish starts the board\'s reminder with the peak line of the factory level: reduce, the default, one GLM subagent', peakTexts[0] === REDUCE_LINE, JSON.stringify(peakTexts)],
+  ['rules-peak: the line is said once while nothing changes, and again with the new level after 不做', rulesPeak.steps.slice(1, 4).every(step => boardTexts(step).length === 1) && boardTexts(rulesPeak.steps[4]).length === 2 && boardTexts(rulesPeak.steps[4])[1].startsWith(STOP_LINE_START), rulesPeak.steps.map(step => boardTexts(step).length).join(', ')],
   ['rules-peak-hourness: with only the orchestration package there is no pricing service: the person\'s choice is kept, no peak is known, there is no cap and no hold, and the command says why', rulesPeakAlone.status === 0 && aloneState !== undefined && aloneState !== null && aloneState.level === 'stop' && aloneState.origin === 'human' && !('peak' in aloneState) && !('glmWorkerCap' in aloneState) && !('until' in aloneState) && rulesPeakAlone.steps[0].peakMode.hold === null && rulesPeakAlone.steps[0].command?.text.includes('读不到是不是高峰（没有计价服务（GLM 通道包未装，或它的 glm-login 行未启用））') === true, JSON.stringify(rulesPeakAlone.steps[0]?.peakMode ?? null)],
   ['glm-rules: the row boots on the GLM route with the rules file of the clone, runs its four steps and exits clean with nothing from it on stderr', glmRulesProject.ready && glmRules.status === 0 && glmRules.steps.length === 4 && !stderrOf('glm-rules').includes('dsh-glm-hourness/rules'), `exit ${glmRules.status}, ${glmRules.steps.length} step(s), git ${glmRulesProject.ready}; ${stderrOf('glm-rules').split('\n').find(line => line.includes('rules')) ?? 'no stderr line mentions rules'}`],
   ['glm-rules: the command the block rule names is refused with the rule\'s four-part text, so it never ran', lastToolResult(glmRules.steps[1])?.isError === true && /^Error: You tried to run "Write-Output rules-probe-blocked"\.\nBoundary: Rule r-probe-block "Probe word" \(set by the human at [^)]+, until lifted\) blocks it now\.\nRight path: .+\nException: /.test(lastToolResult(glmRules.steps[1])?.text ?? ''), lastToolResult(glmRules.steps[1])?.text?.slice(0, 160) ?? 'no result'],
@@ -1259,6 +1334,15 @@ const checks = [
   ['rules-handover: after the person lifts the rule the main agent is told once, with the text for a ticket handed over from a subagent that has ended', handoverMain.length === 6 && wakeMessages(handoverMain[4]).length === 0 && wakeMessages(handoverMain[5]).length === 1 && new RegExp(`^\\[rules board\\] Ticket q-1 cleared: rule r-probe-queue was lifted by the human\\. Subagent "${handoverStarted?.childId.slice(-8)}" was deferred on pwsh "Write-Output rules-probe-queued" and has ended\\. Dispatch the task again or run the call yourself; a new dispatch of the same call reuses q-1\\.$`).test(wakeMessages(handoverMain[5])[0].text) && handoverTicket?.state === 'cleared', wakeMessages(handoverMain[5])[0]?.text ?? 'no wake in the last request'],
   ['rules-handover: the main agent\'s requests carry the reminder only when it changed, and it names the ticket handed over from the subagent', handoverMain.length === 6 && boardTexts(handoverMain[0]).length === 1 && consecutiveDiffer(boardTexts(handoverMain.at(-1))) && boardTexts(handoverMain.at(-1)).some(text => text.includes('handed over from subagent') && text.includes('Do not dispatch these tasks again before their tickets clear.')), handoverMain.map(step => boardTexts(step).length).join(', ')],
   ['rules-handover: nothing is written in the scenario\'s user-level directory', !existsSync(join(runDir, 'rules-handover', 'dsh-home', 'glm-hourness', 'rules')), ''],
+  ['rules-peak-stop: the stop level in a GLM peak: the GLM main agent runs the probe tool, a subagent session with a goal is made, and the run exits clean with nothing from the row on stderr', stopProject.ready && rulesPeakStop.status === 0 && stopCreated?.origin === 'subagent' && lastToolResult(stopMain.at(-1))?.isError !== true && !stderrOf('rules-peak-stop').includes('dsh-glm-hourness/rules'), `exit ${rulesPeakStop.status}, ${rulesPeakStop.steps.length} step(s), git ${stopProject.ready}; ${JSON.stringify(stopCreated ?? null)}; ${stderrOf('rules-peak-stop').split('\n').find(line => line.includes('rules')) ?? 'no stderr line mentions rules'}`],
+  ['rules-peak-stop: the subagent\'s first tool call is refused with the ticket, the words of the stop level and the sentence that its goal is paused, so it never ran', stopChild.length === 4 && lastToolResult(stopChild[1])?.isError === true && STOP_REFUSAL.test(lastToolResult(stopChild[1]).text), lastToolResult(stopChild[1])?.text ?? 'no result'],
+  ['rules-peak-stop: V12, the goal is paused from inside the subagent\'s own tool call: the pause came while the agent ran, the same step finished (its next request has the refusal), and the turn ended on the paused goal', isDeepStrictEqual(stopOps.slice(0, 2).map(entry => [entry.operation, entry.status]), [['create', 'idle'], ['pause', 'running']]) && stopOps[1]?.goal?.phase === 'paused' && stopNote('stop-paused')?.ok === true && stopNote('stop-paused').status === 'idle', JSON.stringify(stopOps.map(entry => [entry.operation, entry.status, entry.goal?.phase, entry.goal?.roundsStarted]))],
+  ['rules-peak-stop: no new round starts while the peak holds: four seconds later the goal is still paused, the agent idle, and the round count the same', stopNote('stop-held')?.status === 'idle' && stopNote('stop-held').goal?.phase === 'paused' && stopNote('stop-held').goal.roundsStarted === stopNote('stop-paused')?.goal?.roundsStarted && stopNote('stop-held').goal.roundsStarted === 1, JSON.stringify([stopNote('stop-paused')?.goal, stopNote('stop-held')?.goal])],
+  ['rules-peak-stop: a subagent session that is not on GLM runs its call and has no ticket', stopNote('stop-plain')?.ok === true && stopPlain.length === 2 && lastToolResult(stopPlain[1])?.isError !== true && (lastToolResult(stopPlain[1])?.text ?? '').includes('rules-probe-plain') && isDeepStrictEqual(Object.keys(stopState?.tickets ?? {}), ['q-1']), `${stopPlain.length} request(s); ${(lastToolResult(stopPlain[1])?.text ?? 'no result').slice(0, 60)}; tickets ${JSON.stringify(Object.keys(stopState?.tickets ?? {}))}`],
+  ['rules-peak-stop: /rules peak 无影响 as the person through the real handler: the goal is active again within 30 seconds, the subagent takes its next round at once and is told to carry on in the step after it, and the main agent was never touched', stopNote('stop-lifted')?.result.kind === 'success' && stopOps.map(entry => entry.operation).slice(0, 3).join() === 'create,pause,resume' && Date.parse(stopOps[2]?.at) - Date.parse(stopNote('stop-lifted').at) < 30_000 && stopChild.length === 4 && roundOf(stopChild[2], 2) && wakeMessages(stopChild[1]).length === 0 && wakeMessages(stopChild[2]).length === 0 && wakeMessages(stopChild[3]).length === 1 && STOP_WAKE.test(wakeMessages(stopChild[3])[0].text) && stopMain.every(step => wakeMessages(step).length === 0), `${stopNote('stop-lifted')?.result.kind}; ${stopOps.map(entry => entry.operation).join()}; ${stopChild.map(step => wakeMessages(step).length).join(', ')} wake(s) per request; ${wakeMessages(stopChild[3]).map(message => message.text).join(' // ') || 'no wake in the last request'}`],
+  ['rules-peak-stop: the goal ends complete after that round, and the ticket is done with the goal and revision the pause made and the time the goal was resumed', stopNote('stop-final')?.ok === true && stopNote('stop-final').goal?.phase === 'complete' && stopState?.tickets?.['q-1']?.state === 'done' && stopState.tickets['q-1'].signature === 'any:builtin:glm-peak-stop' && stopState.tickets['q-1'].sessionId === stopCreated?.agentId && stopState.tickets['q-1'].pausedGoal?.id === stopCreated?.goal?.id && stopState.tickets['q-1'].pausedGoal.revision === stopOps[1]?.goal?.revision && typeof stopState.tickets['q-1'].resumedAt === 'string', JSON.stringify(stopState?.tickets?.['q-1'] ?? null)],
+  ['rules-peak-stop: the journal has the ticket opened by the harness, the level changed by the person, and the ticket closed by the harness with its goal resumed, in that order; nothing is written in the scenario\'s user-level directory', isDeepStrictEqual(stopJournal.map(record => [record.op, record.actor]).filter(([op]) => op === 'ticket-open' || op === 'peak-mode-set' || op === 'ticket-update'), [['ticket-open', 'harness'], ['peak-mode-set', 'human'], ['ticket-update', 'harness']]) && !existsSync(join(runDir, 'rules-peak-stop', 'dsh-home', 'glm-hourness', 'rules')), JSON.stringify(stopJournal.map(record => [record.op, record.actor]))],
+  ['rules-peak-stop-exit: V13, the host exits with the goal paused at the stop level: the run is clean and the way out agrees with itself: a row that unloaded (its heartbeat file is gone) resumed the goal and wrote it on the ticket, a runner that left without unloading it left the goal and the ticket as the stop made them', stopExitProject.ready && rulesPeakStopExit.status === 0 && !stderrOf('rules-peak-stop-exit').includes('dsh-glm-hourness/rules') && stopExitNotes.some(entry => entry.kind === 'stop-held' && entry.goal?.phase === 'paused') && (stopExitUnloaded ? typeof stopExitState?.tickets?.['q-1']?.resumedAt === 'string' && stopExitOps.includes('resume') : stopExitState?.tickets?.['q-1']?.state === 'deferred' && stopExitState.tickets['q-1'].resumedAt === undefined && stopExitOps.join() === 'create,pause'), `unloaded ${stopExitUnloaded}; exit ${rulesPeakStopExit.status}; goal operations ${JSON.stringify(stopExitOps)}; ticket ${JSON.stringify(stopExitState?.tickets?.['q-1'] ?? null)}; journal ${JSON.stringify(stopExitJournal.map(record => [record.op, record.reason ?? null]).slice(-3))}; ${stderrOf('rules-peak-stop-exit').split('\n').find(line => line.includes('rules')) ?? 'no stderr line mentions rules'}`],
   ['rules-peak-hourness: the row is in effect without the pricing service (a supported combination) and the main agent\'s tool call ran', aloneHealth.rules?.status === ACTED && aloneHealth.rules.reason.includes('读不出是不是高峰') && lastToolResult(rulesPeakAlone.steps[1])?.isError !== true && !stderrOf('rules-peak-hourness').includes('dsh-glm-hourness/rules'), `${healthLine(aloneHealth, 'rules')} (${aloneHealth.rules?.reason ?? ''})`],
   ...designChecks(),
   ['non-glm boot: the runtime reached the probe provider', plainFirst !== undefined, `exit ${plain.status}, ${plain.steps.length} step(s)`],

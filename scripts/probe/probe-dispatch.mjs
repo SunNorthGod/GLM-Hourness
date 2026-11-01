@@ -28,6 +28,18 @@
  *     `tools/pre-execute` until the goal agent's workspace holds the
  *     evidence file.
  *
+ * (d) `probe_stop_goal` makes, outside any agent's turn, a session whose
+ *     header says `origin: 'subagent'` on the calling agent's model and gives
+ *     it a goal; waits until the rules row, at the stop level in a GLM peak,
+ *     has refused its first tool call and paused the goal; makes a second
+ *     subagent session on a model that is not GLM, which runs its call; waits
+ *     four seconds to see that no round starts; then types `/rules peak 无影响`
+ *     as the person through the row's real command handler and waits until the
+ *     goal leaves `paused` and the agent is idle again; with `lift: false` it
+ *     returns after the four seconds, the goal paused, and the host exits so.
+ *     The goal operations of these sessions are recorded with the agent's status
+ *     at that moment.
+ *
  * Every observation is one JSON line in `config.record`.
  */
 import { appendFileSync, existsSync } from 'node:fs'
@@ -76,6 +88,15 @@ const goalView = goal => goal === undefined
 
 const textOf = value => ({ type: 'text', text: JSON.stringify(value) })
 
+/** The output of a tool whose result is one JSON value. */
+const JSON_OUTPUT = { schema: { type: 'object' }, render: (_args, value) => [textOf(value)] }
+
+/** The agent a tool call comes from, which these probe tools need. */
+const callerOf = (exec, tool) => {
+  if (exec.agent === undefined) throw new Error(`${tool} needs a calling agent`)
+  return exec.agent
+}
+
 export function apply(ctx, config = {}) {
   const note = (entry) => {
     if (typeof config.record === 'string') appendFileSync(config.record, `${JSON.stringify({ at: new Date().toISOString(), ...entry })}\n`)
@@ -84,6 +105,23 @@ export function apply(ctx, config = {}) {
   const tasks = new Map()
   /** Goal agents by id: their workspace and evidence file. */
   const goalAgents = new Map()
+  /** The sessions `probe_stop_goal` makes, by id. */
+  const stopAgents = new Set()
+  /**
+   * A session on `model` of the calling agent's provider, with a goal when
+   * `goal` is given. Made outside any agent's turn, like a human command: the
+   * driver only drives an idle agent, and the goal tools check the initiator.
+   * `track` hears of the agent before its goal is created.
+   */
+  const makeAgent = (root, { prefix, meta, model, goal, track }) => ctx.agents.withoutInitiator(async () => {
+    const handle = await ctx.agents.create({
+      sessionId: `${prefix}-${randomUUID()}`,
+      meta,
+      agentOptions: { provider: root.options.provider, model },
+    })
+    track(handle.agent)
+    return { agent: handle.agent, created: goal === undefined ? undefined : ctx.goals.create(handle.agent, goal) }
+  })
   const disposers = []
 
   disposers.push(ctx.tools.register({
@@ -151,20 +189,15 @@ export function apply(ctx, config = {}) {
       },
       required: ['objective', 'cwd', 'evidence', 'maxGoalRounds'],
     },
-    output: { schema: { type: 'object' }, render: (_args, value) => [textOf(value)] },
+    output: JSON_OUTPUT,
     async execute(args, exec) {
-      const root = exec.agent
-      if (root === undefined) throw new Error('probe_goal_run needs a calling agent')
-      // Outside any agent's turn, like a human command: the driver only
-      // drives an idle agent, and the goal tools check the initiator.
-      const { agent, created } = await ctx.agents.withoutInitiator(async () => {
-        const handle = await ctx.agents.create({
-          sessionId: `probe-goal-${randomUUID()}`,
-          meta: { cwd: args.cwd },
-          agentOptions: { provider: root.options.provider, model: root.options.model },
-        })
-        goalAgents.set(handle.agent.id, { evidence: join(args.cwd, args.evidence) })
-        return { agent: handle.agent, created: ctx.goals.create(handle.agent, { objective: args.objective, maxGoalRounds: args.maxGoalRounds }) }
+      const root = callerOf(exec, 'probe_goal_run')
+      const { agent, created } = await makeAgent(root, {
+        prefix: 'probe-goal',
+        meta: { cwd: args.cwd },
+        model: root.options.model,
+        goal: { objective: args.objective, maxGoalRounds: args.maxGoalRounds },
+        track: made => goalAgents.set(made.id, { evidence: join(args.cwd, args.evidence) }),
       })
       note({ kind: 'goal-created', agentId: agent.id, root: ctx.agents.roots().includes(agent), goal: goalView(created) })
       const deadline = Date.now() + 90_000
@@ -180,8 +213,71 @@ export function apply(ctx, config = {}) {
     },
   }))
 
+  /** Wait until `condition` holds, polling; false when `ms` ran out first. */
+  const until = async (condition, ms, signal) => {
+    for (const deadline = Date.now() + ms; Date.now() < deadline && signal?.aborted !== true;) {
+      if (condition()) return true
+      await new Promise(resolveWait => setTimeout(resolveWait, 100))
+    }
+    return condition()
+  }
+
+  disposers.push(ctx.tools.register({
+    name: 'probe_stop_goal',
+    description: 'Probe only: with the rules row at the stop level in a GLM peak, make a subagent session on the calling agent\'s model with goal `objective` (its first tool call is refused and its goal paused), then a subagent session on a model that is not GLM (its tool call runs), then type `/rules peak 无影响` as the person and wait until the goal is active again and has had its next round.',
+    parameters: {
+      type: 'object',
+      properties: {
+        objective: { type: 'string' },
+        cwd: { type: 'string' },
+        maxGoalRounds: { type: 'number' },
+        lift: { type: 'boolean' },
+      },
+      required: ['objective', 'cwd', 'maxGoalRounds'],
+    },
+    output: JSON_OUTPUT,
+    async execute(args, exec) {
+      const root = callerOf(exec, 'probe_stop_goal')
+      const lift = args.lift !== false
+      // A session whose header says it is a delegated child, as the rules row reads the role from.
+      const child = (model, goal) => makeAgent(root, {
+        prefix: 'probe-stop',
+        meta: { cwd: args.cwd, origin: 'subagent', parentSession: root.id },
+        model,
+        ...(goal ? { goal: { objective: args.objective, maxGoalRounds: args.maxGoalRounds } } : {}),
+        track: made => stopAgents.add(made.id),
+      })
+      const { agent, created } = await child(root.options.model, true)
+      note({ kind: 'stop-created', agentId: agent.id, origin: agent.session.header.origin ?? null, goal: goalView(created) })
+      const paused = await until(() => ctx.goals.get(agent)?.phase === 'paused' && agent.status === 'idle', 30_000, exec.signal)
+      note({ kind: 'stop-paused', ok: paused, status: agent.status, goal: goalView(ctx.goals.get(agent)) })
+      // A session that is not on GLM is not held: its call runs.
+      if (lift) {
+        const plain = await child('deepseek-probe', false)
+        plain.agent.followup(createUserNotice('glm-probe-stop', 'probe', 'Run the probe command.'))
+        const plainDone = await until(() => plain.agent.status === 'idle' && plain.agent.session.deriveMessages().some(message => message.role === 'tool'), 30_000, exec.signal)
+        note({ kind: 'stop-plain', ok: plainDone, agentId: plain.agent.id, goal: goalView(ctx.goals.get(plain.agent)) })
+      }
+      // Nothing new starts while the peak holds the goal.
+      await new Promise(resolveWait => setTimeout(resolveWait, 4000))
+      note({ kind: 'stop-held', status: agent.status, goal: goalView(ctx.goals.get(agent)) })
+      // Without lift the tool returns with the goal paused and the host leaves it so.
+      if (!lift) return { agentId: agent.id, goal: goalView(ctx.goals.get(agent)) }
+      // The person changes the level through the row's real command handler.
+      const definition = ctx.get('commands')?.find(root, 'rules')
+      const lifted = definition === undefined
+        ? { kind: 'unresolved' }
+        : await definition.handler(Object.freeze({ commandId: 'probe-rules', agent: root, rawInput: 'peak 无影响', attachments: Object.freeze([]), signal: exec.signal })).catch(error => ({ kind: 'threw', text: error instanceof Error ? error.message : String(error) }))
+      note({ kind: 'stop-lifted', result: { kind: lifted.kind, text: lifted.text ?? null }, goal: goalView(ctx.goals.get(agent)) })
+      const resumed = await until(() => ctx.goals.get(agent)?.phase !== 'paused' && agent.status === 'idle', 30_000, exec.signal)
+      const final = goalView(ctx.goals.get(agent))
+      note({ kind: 'stop-final', ok: resumed, status: agent.status, goal: final })
+      return { agentId: agent.id, goal: final }
+    },
+  }))
+
   disposers.push(ctx.on('goal/changed', ({ agent, change }) => {
-    if (goalAgents.has(agent.id)) note({ kind: 'goal-changed', agentId: agent.id, operation: change?.operation ?? null, goal: goalView(ctx.goals.get(agent)) })
+    if (goalAgents.has(agent.id) || stopAgents.has(agent.id)) note({ kind: 'goal-changed', agentId: agent.id, operation: change?.operation ?? null, status: agent.status, goal: goalView(ctx.goals.get(agent)) })
   }))
 
   disposers.push(ctx.on('tools/pre-execute', async (payload, next) => {
