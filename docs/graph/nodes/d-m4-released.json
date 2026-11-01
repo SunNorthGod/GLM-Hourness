@@ -1,0 +1,19 @@
+{
+  "id": "d-m4-released",
+  "type": "decision",
+  "title": "M4 放行：七件活的 35 条做完条件由人定下，可以开工",
+  "status": "approved",
+  "parent": "m4",
+  "verification": "unverified",
+  "body": "人 2026-11-01 读 M4 一页稿后答「都没问题」，①「照这 35 条定下来并放行开工」即人的决定。定下：设计 0.6 放行；七件活的做完条件按人话版定稿，已写进 m4-gate、m4-rules、m4-request-card、m4-checks、m4-env、m4-suppressions、m4-cleanup 七个节点的验收（共 35 条），此后改动要人出手。代价（已告知人）：若日后不想每次 agent 改工作区外的文件都回一句「可以」，申请放行那一条要重写。遗留：读别人的项目时停命令行那条规则按 d-bootstrap-released 去掉，M4 的 GUARD_RULES 登记随之改；设计里还有 NIT-01（「未提交」那一行要跑 git status，在只读的报告管线里没有落点）与 NIT-02（liftStatesOf 的逐行对账）两条不挡路的发现。",
+  "history": [
+    {
+      "at": "2026-11-01T09:14:33.298Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "人 2026-11-01 读 M4 一页稿后放行，并把七件活的 35 条做完条件一起定下（人话版 .agents/tasks/m4/onepage-done.md，设计 0.6 §1.2）",
+      "relay": "都没问题",
+      "to": "approved"
+    }
+  ]
+}
