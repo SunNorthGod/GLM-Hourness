@@ -360,7 +360,13 @@ async function write<Refusal, State>(path: string, fold: Fold<State>, plan: Plan
       }
       return { status: 'busy', lockLost: true }
     }
-    const handle = await open(path, 'a')
+    let handle: FileHandle
+    try {
+      handle = await open(path, 'a')
+    }
+    catch (error) {
+      return { status: 'io', stage: 'write', message: messageOf(error) }
+    }
     try {
       await handle.writeFile(`${sealing ? '\n' : ''}${records.map(record => JSON.stringify(record)).join('\n')}\n`)
       await (options.sync ?? (file => file.sync()))(handle)

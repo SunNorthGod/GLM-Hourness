@@ -25,7 +25,11 @@
  * root session of the run, created at the first use in the working directory
  * of the calling session. Both record the result and the events the session
  * logged meanwhile; a step marked `fork` forks the session at its first
- * finished command into a new root session and records it. A step has `line`
+ * finished command into a new root session and records it; a step marked
+ * `spawn: { text }` starts a new root session in the working directory of the
+ * calling session, sends it `text` so that its first request reaches the
+ * provider, waits until it is idle and records its id (that session takes
+ * the next entry of `others`). A step has `line`
  * or `command`, not both.
  *
  * Each session follows its own script: the first session that sends a
@@ -252,6 +256,32 @@ class ProbeAdapter {
     }
   }
 
+  /**
+   * Start a new root session in the working directory of the request's
+   * session (a step marked `spawn`), send it `text`, and wait until it is
+   * idle: its requests have been answered by then. This is how a second
+   * session of the same project starts, one that sees the memory the first
+   * one wrote.
+   */
+  async spawnRoot(request, text) {
+    const agents = this.ctx.get('agents')
+    const own = agents?.get(request.sessionId)
+    if (own === undefined) return { kind: 'no-agent' }
+    try {
+      const { agent } = await agents.withoutInitiator(() => agents.create({
+        sessionId: `probe-root-${randomUUID()}`,
+        meta: { cwd: own.session.header.cwd },
+        agentOptions: { provider: own.options.provider, model: own.options.model },
+      }))
+      agent.followup({ id: randomUUID(), role: 'user', content: [{ type: 'text', text }], source: { kind: 'user' } })
+      await agent.whenIdle()
+      return { kind: 'spawned', sessionId: agent.id }
+    }
+    catch (error) {
+      return { kind: 'threw', resultText: error instanceof Error ? error.message : String(error) }
+    }
+  }
+
   /** Type a step's `line` into the request's own session, or its `other.line` into the second root session. */
   async typeFor(request, line, other) {
     const agents = this.ctx.get('agents')
@@ -343,6 +373,7 @@ class ProbeAdapter {
     const line = step.line === undefined ? undefined : await this.typeFor(request, step.line, false)
     const other = step.other?.line === undefined ? undefined : await this.typeFor(request, step.other.line, true)
     const fork = step.fork === true ? await this.forkFrom(request) : undefined
+    const spawn = step.spawn === undefined ? undefined : await this.spawnRoot(request, step.spawn.text)
     // A step marked `peakMode` records what the rules row's service
     // glmHournessPeakMode says about the request's session once the step's
     // command ran: its state and its hold, null when the service is absent.
@@ -404,6 +435,7 @@ class ProbeAdapter {
         ...(line === undefined ? {} : { line }),
         ...(other === undefined ? {} : { other }),
         ...(fork === undefined ? {} : { fork }),
+        ...(spawn === undefined ? {} : { spawn }),
         ...(peakMode === undefined ? {} : { peakMode }),
         ...(live === undefined ? {} : { live }),
         ...(modules === undefined ? {} : { modules }),

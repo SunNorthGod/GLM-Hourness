@@ -8,7 +8,7 @@
  */
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import type { open } from 'node:fs/promises'
 import { createRequire, syncBuiltinESMExports } from 'node:module'
 import { tmpdir } from 'node:os'
@@ -278,6 +278,21 @@ test('a failing flush is io at the write stage', async () => {
   const result = await appendJournal(file, idsFold, add(tick('a')), { ...OPTIONS, sync: () => Promise.reject(new Error('fsync refused')) })
   assert.deepEqual(result, { status: 'io', stage: 'write', message: 'fsync refused' })
   assert.ok(!existsSync(`${file}.lock`), 'the lock is released')
+})
+
+test('a journal that cannot be opened for appending is io at the write stage, not a rejection, and the lock is released', { skip: process.getuid?.() === 0 ? 'a superuser can append to a read-only file' : false }, async () => {
+  const file = join(scratch(), 'j.jsonl')
+  assert.equal((await appendJournal(file, idsFold, add(tick('a')), OPTIONS)).status, 'ok')
+  chmodSync(file, 0o444)
+  try {
+    const result = await appendJournal(file, idsFold, add(tick('b')), OPTIONS)
+    assert.equal(result.status === 'io' && result.stage, 'write')
+    assert.ok(!existsSync(`${file}.lock`), 'the lock is released')
+  }
+  finally {
+    chmodSync(file, 0o666)
+  }
+  assert.deepEqual((await readJournal(file, idsFold)).state, ['a'])
 })
 
 test('a project directory is made ignored before it is created, and made again when it was removed after the first write', async () => {

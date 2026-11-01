@@ -11,16 +11,17 @@ import { READ_IMAGE_NATIVE, READ_NAME, READ_NATIVE } from '../src/glm-prompt/rea
 import { TODO_NATIVE, TODO_WRITE_NAME } from '../src/glm-prompt/todo-reminder.ts'
 import { graphTools } from '../src/graph/tools.ts'
 import { apply as guardApply } from '../src/guard/index.ts'
-import { memoryTools, storeIo } from '../src/memory/tools.ts'
 import { DIALECT_SERVICE, dialectNames, dialectService, toNativeTool, ZCODE_ALIAS_NATIVES, type DialectService } from '../src/shared/dialect.ts'
 import type { AgentLike, CommandDefinitionLike, ToolFinalResult } from '../src/shared/dsh-min.ts'
 import { healthServiceName, type HealthRow, type RowHealthView } from '../src/shared/health.ts'
+import { MEMORY_SERVICE, memoryService } from '../src/shared/memory-service.ts'
 import { PRICING_SERVICE, pricingService, type UsagePricing } from '../src/shared/pricing.ts'
 import { GRAPH_TOOL_NAMES, MEMORY_TOOL_NAMES, ORCHESTRATION_RESIDENT_TOOLS } from '../src/shared/tool-names.ts'
 import { RESIDENT_TOOLS } from '../src/toolsearch/exposure.ts'
 import { apply as hournessApply } from '../src/report/index.ts'
 import { PACKAGES } from '../scripts/packages.mjs'
 import { fakeRuntime, serviceStore, type FakeRuntime } from './fake-rc3.ts'
+import { memoryFixture } from './memory-helpers.ts'
 
 // Contracts between the GLM channel package and the orchestration package
 // (docs/DESIGN.md §8): strings and service shapes no import rule sees.
@@ -55,8 +56,30 @@ test('row ids: each package\'s host rows and its client row are the fixed list',
 
 test('tool names: the graph and memory rows register exactly the contract names', () => {
   assert.deepEqual(graphTools('docs/graph', new Map()).map(tool => tool.name), GRAPH_TOOL_NAMES)
-  const io = storeIo({ readFile: () => Promise.resolve(''), writeFile: () => Promise.resolve(), rename: () => Promise.resolve() }, 'C:/ws/.llm')
-  assert.deepEqual(memoryTools(io).map(tool => tool.name), MEMORY_TOOL_NAMES)
+  const memory = memoryFixture()
+  try {
+    assert.deepEqual([...memory.tools.keys()], MEMORY_TOOL_NAMES)
+  }
+  finally {
+    memory.dispose()
+  }
+})
+
+test('memory service readers: absent and malformed services read as none; a wider one still reads', () => {
+  const problems: string[] = []
+  const problem = (message: string) => { problems.push(message) }
+  const store = serviceStore()
+  assert.equal(memoryService(store, problem), undefined)
+  assert.equal(memoryService({}, problem), undefined) // a context without get
+  assert.deepEqual(problems, [])
+  store.provide(MEMORY_SERVICE, { stats: () => ({}) })
+  assert.equal(memoryService(store, problem), undefined)
+  assert.equal(problems.length, 1)
+  const wider = { depth: () => 'concise' as const, stats: () => ({}), hygiene: () => [] }
+  const store2 = serviceStore()
+  store2.provide(MEMORY_SERVICE, wider)
+  assert.equal(memoryService(store2, problem), wider)
+  assert.equal(problems.length, 1)
 })
 
 test('tool names: every orchestration tool kept resident exists, and GLM tool search keeps it resident', () => {

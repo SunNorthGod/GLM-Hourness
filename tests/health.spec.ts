@@ -450,29 +450,30 @@ test('workflow: in effect with a project directory, inactive without one', async
   assert.equal(inSession(bare.store, 'workflow', 's1')!.state, 'inactive')
 })
 
-test('memory: each model call reports the usage journal and the memory tools of its session', () => {
-  const run = (config: Record<string, unknown>, data: unknown) => {
-    const store = serviceStore()
-    let listener: ((options: LlmStreamOptions, next: () => AsyncIterable<StreamChunk>) => AsyncIterable<StreamChunk>) | undefined
-    quietly(() => memoryApply({
-      on: (_event, registered) => { listener = registered; return () => {} },
-      tools: { register: () => () => {} },
-      ...store,
-      get: (name: string) => name === 'glmHournessData' ? data : store.get(name),
-    }, { ...config, fs: memoryFs }))
-    listener!({ provider: 'glm-zcode', model: 'glm-5.3', sessionId: 's1', messages: [] }, () => (async function* (): AsyncIterable<StreamChunk> {})())
-    return { activation: activation(store, 'memory'), session: inSession(store, 'memory', 's1') }
+test('memory: a root agent\'s step reports the directories of its session; the row says what is missing', async () => {
+  const run = async (data: unknown, config: Record<string, unknown> = {}) => {
+    const runtime = fakeRuntime({ cwd: 'C:/ws' })
+    if (data !== undefined) runtime.services.set('glmHournessData', data)
+    quietly(() => memoryApply(runtime.ctx as never, { ...config, fs: memoryFs }))
+    await runtime.create()
+    await runtime.preStep({ messages: [{ role: 'user', content: [{ type: 'text', text: 'hello' }] }] })
+    const store = { services: runtime.services, get: (name: string) => runtime.ctx.get?.(name), provide: (name: string, value: unknown) => runtime.ctx.provide(name, value) } as Store
+    return { activation: activation(store, 'memory'), session: inSession(store, 'memory', 'agent-1') }
   }
-  const full = run({ home: 'C:/ws/.llm' }, { userHome: 'C:/u/glm-hourness' })
-  assert.deepEqual(full.activation, { state: 'active', reason: '记忆工具已注册（C:/ws/.llm）' })
-  assert.deepEqual(full.session, { state: 'active', reason: '用量记入 C:/u/glm-hourness；记忆工具可用' })
-  assert.deepEqual(run({ home: 'C:/ws/.llm' }, undefined).session, { state: 'degraded', reason: '数据目录行未启用，用量不记录；记忆工具可用' })
-  const noHome = run({}, { userHome: 'C:/u/glm-hourness' })
-  assert.equal(noHome.activation.state, 'degraded')
-  assert.deepEqual(noHome.session, { state: 'degraded', reason: '用量记入 C:/u/glm-hourness；home 未配置，记忆工具关闭' })
-  assert.equal(run({}, undefined).session!.state, 'inactive')
+  const data = { userHome: 'C:/u/glm-hourness', projectDirOf: () => 'C:/ws/.llm' }
+  const full = await run(data)
+  // The fake host brings neither `inject` (the command and the projection) nor anything else optional.
+  assert.equal(full.activation.state, 'degraded')
+  assert.ok(full.activation.reason.startsWith('记忆工具已注册，项目目录跟会话的工作区；宿主没有 inject，没有注册命令 /memory'), full.activation.reason)
+  assert.deepEqual(full.session, { state: 'active', reason: `项目 C:/ws/.llm（偏好 0、事实 0）；用户级 ${join('C:/u/glm-hourness', 'memory')}（偏好 0、事实 0）；本会话还没带索引` })
+  const noData = await run(undefined)
+  assert.equal(noData.session!.state, 'degraded')
+  assert.ok(noData.session!.reason.includes('数据目录行未启用：用户级的记忆不可用，用量不记录'), noData.session!.reason)
+  assert.ok(noData.session!.reason.includes('这个文件夹不是项目'), noData.session!.reason)
+  const home = await run(data, { home: 'C:/ws/.llm' })
+  assert.equal(home.session!.state, 'active', 'a configured home is only noted')
+  assert.ok(home.session!.reason.endsWith('行配置 home 已不再使用（M5），项目目录跟会话的工作区'), home.session!.reason)
 })
-
 test('hourness: an invocation reports which journals the report can read and that the panel has no pricing service', async () => {
   const run = async (config: { home?: string }, data: unknown) => {
     const store = serviceStore()

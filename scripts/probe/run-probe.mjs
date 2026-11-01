@@ -18,7 +18,11 @@
  * runner's exit with an armed goal. The graph panel scenarios run the
  * bundle's /graph-apply and /graph-run handlers mid-step for the session;
  * the GLM and non-GLM scenarios run /hourness and /hourness-status at their
- * last step, after /glm-status is recorded.
+ * last step, after /glm-status is recorded. The memory scenarios
+ * (glm-memory, non-glm-memory, glm-memory-compact, glm-worker-memory) write
+ * memories from the first root agent, start a second root agent in the same
+ * workspace (the provider's `spawn` step) and check its index, the index after
+ * a compaction, a child's tool face and the real journals left unchanged.
  *
  * Usage: node scripts/probe/run-probe.mjs
  * Requires the desktop install (DSH_DESKTOP_DIR overrides the location).
@@ -58,7 +62,9 @@ import { GRAPH_TOOL_NAMES, MEMORY_TOOL_NAMES } from '../../packages/glm/dist/sha
 import { openEngine } from '../../packages/hourness/dist/graph/engine.js'
 import { holderFileOf, readHolder } from '../../packages/hourness/dist/graph/main-agent-holder.js'
 import { runNote } from '../../packages/hourness/dist/graph/run.js'
+import { projectDirOf } from '../../packages/hourness/dist/data/project-root.js'
 import { loadGraph } from '../../packages/hourness/dist/graph/store.js'
+import { INDEX_SOURCE as MEMORY_INDEX_SOURCE } from '../../packages/hourness/dist/memory/index.js'
 import { compareShapes, describeDifference, isProjectDifference, profileShape } from '../profile-shape.mjs'
 import { PACKAGES } from '../packages.mjs'
 import { attachmentsIn, dataRows, designRows, generateProfile, initRepo, limitsRow, PROBE_PROFILES, repo, requireDesktop, sandboxCommand, slash, unlinkProfile, workspaceChangesRow } from '../sandbox.mjs'
@@ -133,6 +139,16 @@ function redPng(size = 8) {
 const realUsage = join(userDataHome(), 'audit', 'usage.jsonl')
 const usageStamp = () => existsSync(realUsage) ? (({ size, mtimeMs }) => `${size}/${mtimeMs}`)(statSync(realUsage)) : 'absent'
 const realUsageBefore = usageStamp()
+// Memory and lessons put their journals in the project directory of the
+// session and in the user-level directory; the scenarios point both at their
+// own directory (scripts/sandbox.mjs dataRows), so the real ones, the
+// user-level memory journal and the journals in the `.llm` of the project
+// this checkout belongs to (a work tree's is the main checkout's), must not
+// change, and the user-level directory must not get a lessons directory.
+const mainProjectDir = projectDirOf(repo)
+const realMemoryFiles = [join(userDataHome(), 'memory', 'memory.jsonl'), ...(mainProjectDir === undefined ? [] : ['memory.jsonl', 'lessons.jsonl', 'memory.json'].map(file => join(mainProjectDir, file)))]
+const fileStamp = file => existsSync(file) ? (({ size, mtimeMs }) => `${size}/${mtimeMs}`)(statSync(file)) : 'absent'
+const realMemoryBefore = realMemoryFiles.map(fileStamp)
 
 /**
  * Boot one headless task on `model` with a scripted reply sequence and return
@@ -761,6 +777,76 @@ const controlStart = (controlSteps[1]?.messages ?? []).find(message => message.r
 const controlStderr = existsSync(join(controlDir, 'stderr.txt')) ? readFileSync(join(controlDir, 'stderr.txt'), 'utf8') : ''
 const repoGraphAfter = (await loadGraph(repoGraph)).revision
 
+// Memory (docs/ORCHESTRATION.md §8, M5 design §10.1). The data row points the
+// project directory of every session at <scenario>/home and the user-level
+// directory at <scenario>/dsh-home/glm-hourness (scripts/sandbox.mjs
+// dataRows). The first root agent writes four memories (a preference about
+// the person, a project fact with its source, a reference with text the old
+// path test refused, the reporting depth); the probe provider then starts a
+// second root agent in the same workspace, which must see them in its index.
+const MEMORY_FEEDBACK = { name: 'lead-with-the-answer', type: 'feedback', scope: 'all', description: 'Start every reply with the answer; keep jargon out', body: 'Open with the answer in one sentence, then the reasons.\n**Why:** the user reads replies on a phone.', relay: 'Start with the answer, and keep jargon out.' }
+const MEMORY_FACT = { name: 'signing-rules-differ', type: 'project', description: 'coding-plan and start-plan sign requests differently', body: 'The two tiers sign differently.\n**Why:** a request signed the wrong way is refused.', source: ['package.json'] }
+const MEMORY_REFERENCE = { name: 'host-surface-notes', type: 'reference', description: 'where the host surface is written down', body: 'See coding-plan/start-plan and src/shared/dsh-min.ts.' }
+const MEMORY_DEPTH = { name: 'reporting-depth', type: 'user', description: 'Wants short reports', body: 'Keep reports short.\n**Why:** reads them on a phone.', value: 'concise', relay: 'From now on just the key points.' }
+const MEMORY_NAMES = [MEMORY_FEEDBACK, MEMORY_FACT, MEMORY_REFERENCE, MEMORY_DEPTH].map(entry => entry.name)
+const memoryScript = () => [
+  ...[MEMORY_FEEDBACK, MEMORY_FACT, MEMORY_REFERENCE, MEMORY_DEPTH].map(entry => ({ tool: { name: 'memory_store', arguments: entry } })),
+  { text: 'done', status: true, spawn: { text: 'Start the second session.' } },
+]
+const memoryOthers = read => [[{ tool: { name: read, arguments: { file_path: join(repo, 'package.json') } } }, { text: 'second done' }]]
+const memoryGlm = runScenario('glm-memory', 'glm-5.3', memoryScript(), 'Store four memories, then reply done.', [], repo, memoryOthers('Read'))
+const memoryPlain = runScenario('non-glm-memory', 'deepseek-probe', memoryScript(), 'Store four memories, then reply done.', [], repo, memoryOthers('read'))
+const memoryIndexes = step => (step?.messages ?? []).filter(message => message.role === 'user' && message.source === MEMORY_INDEX_SOURCE)
+const memoryFace = step => (step?.tools ?? []).filter(tool => MEMORY_TOOL_NAMES.includes(tool.name))
+/** The steps of the root agent that wrote the memories, and those of the one the probe provider started after it (the id is in the last request of the first). */
+const memorySessions = (scenario) => {
+  const second = scenario.steps.at(-1)?.spawn?.sessionId
+  return { first: scenario.steps.filter(step => step.sessionId !== second), second: bySession(scenario, second) }
+}
+const memoryJournalOf = (scenario, scope) => jsonl(join(runDir, scenario, ...(scope === 'all' ? ['dsh-home', 'glm-hourness', 'memory'] : ['home']), 'memory.jsonl'))
+/** A norm of the project already in the project journal when the scenario starts (written the way the person's /memory would). */
+const seedProjectMemory = (scenario) => {
+  const home = join(runDir, scenario, 'home')
+  mkdirSync(home, { recursive: true })
+  const data = { name: 'seeded-norm', scope: 'project', type: 'feedback', description: 'A norm of this project', body: 'Keep commits small.\n**Why:** reviews stay short.' }
+  writeFileSync(join(home, 'memory.jsonl'), `${JSON.stringify({ v: 1, seq: 1, at: '2026-10-31T00:00:00.000Z', actor: 'human', op: 'store', id: 'project:seeded-norm', data })}\n`)
+}
+
+// Compaction: the session starts with a memory in the project, so its first
+// request has the index; the compaction removes it from the visible history
+// and the next request has it once more, and then no more.
+seedProjectMemory('glm-memory-compact')
+const memoryCompact = runScenario('glm-memory-compact', 'glm-5.3', [
+  { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } } },
+  { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } } },
+  { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } } },
+  { text: 'done', status: true },
+], 'Read package.json three times, then reply done.', ['- id: compaction-basic', '  config: { thresholdRatio: 0.02, retainTokens: 0 }'])
+const memoryCheckpointAt = step => step.messages.findLastIndex(message => message.source === 'compact-checkpoint')
+const memoryAfterCheckpoint = memoryCompact.steps.filter(step => memoryCheckpointAt(step) >= 0)
+
+// A delegated child gets no memory tools and no index, and is refused when it
+// calls the tools by name; the main agent of the same project has the index.
+seedProjectMemory('glm-worker-memory')
+const workerDir = join(runDir, 'glm-worker-memory')
+const workerWs = join(workerDir, 'ws')
+mkdirSync(join(workerWs, 'allowed'), { recursive: true })
+const memoryWorker = runScenario('glm-worker-memory', 'glm-5.3', [
+  { tool: { name: 'DeferredToolCall', arguments: { name: 'probe_dispatch', input: { task: 'T1', prompt: 'Probe task T1: try the memory tools and report.', cwd: workerWs, scope: 'allowed', model: 'glm-5.3-flash' } } } },
+  { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } } },
+  { text: 'Waiting for task T1.' },
+  { text: 'done', status: true },
+], 'Dispatch task T1, then reply done.', dispatchRow(join(workerDir, 'dispatch.jsonl')), repo, [[
+  { tool: { name: 'memory_store', arguments: MEMORY_FEEDBACK } },
+  { tool: { name: 'memory_query', arguments: { focus: 'commits' } } },
+  { tool: { name: 'memory_forget', arguments: { name: 'seeded-norm', reason: 'try', scope: 'project' } } },
+  { tool: { name: 'DeferredToolCall', arguments: { name: 'structured_output', input: HAND_BACK } } },
+  { text: 'child done' },
+]])
+const workerChildId = dispatchRecord('glm-worker-memory').find(entry => entry.kind === 'started')?.childId
+const workerChild = bySession(memoryWorker, workerChildId)
+const workerMain = memoryWorker.steps.filter(step => step.sessionId !== workerChildId)
+
 // Main agent mode (docs/ORCHESTRATION.md §3.1, ROADMAP M3 step 3): the design
 // row ships disabled; the overlay (scripts/sandbox.mjs designRows) enables it,
 // mounts ask_user_question, which the headless template lacks, and mounts the
@@ -851,7 +937,7 @@ const checkpoint = compacted.steps.at(-1)?.messages.find(message => message.sour
 const usageOf = scenario => jsonl(join(runDir, scenario, 'dsh-home', 'glm-hourness', 'audit', 'usage.jsonl'))
 const glmUsage = usageOf('glm').filter(record => record.purpose === undefined)
 const compactUsage = usageOf('glm-compact').filter(record => record.purpose === 'compaction')
-const projectUsage = ['glm', 'glm-flash', 'glm-todo', 'glm-compact', 'glm-shadow', 'glm-guard-paths', 'non-glm', 'non-glm-guard', 'glm-no-dialect', 'glm-peak', 'limits-steps', 'limits-time', 'glm-dispatch', 'glm-goal', 'goal-headless', 'glm-only', 'hourness-only', 'client-modules'].filter(scenario => existsSync(join(runDir, scenario, 'home', 'audit', 'usage.jsonl')))
+const projectUsage = ['glm', 'glm-flash', 'glm-todo', 'glm-compact', 'glm-shadow', 'glm-guard-paths', 'non-glm', 'non-glm-guard', 'glm-no-dialect', 'glm-peak', 'limits-steps', 'limits-time', 'glm-dispatch', 'glm-goal', 'goal-headless', 'glm-only', 'hourness-only', 'client-modules', 'glm-memory', 'non-glm-memory', 'glm-memory-compact', 'glm-worker-memory'].filter(scenario => existsSync(join(runDir, scenario, 'home', 'audit', 'usage.jsonl')))
 const glmViolations = jsonl(join(glmDir, 'home', 'audit', 'violations.jsonl'))
 const stepLimits = jsonl(limitsRecord('limits-steps'))
 const timeLimits = jsonl(limitsRecord('limits-time'))
@@ -982,6 +1068,41 @@ function designChecks() {
   ]
 }
 
+/**
+ * Memory (docs/ORCHESTRATION.md §8; scenarios glm-memory, non-glm-memory,
+ * glm-memory-compact, glm-worker-memory): what the real runtime did with the
+ * memory tools, the index notice, the child's tool face and the journals.
+ */
+function memoryChecks() {
+  const results = run => run.first.slice(1, 5).map(lastToolResult)
+  const lines = (journal, op) => journal.filter(record => record.op === op)
+  const indexTexts = step => memoryIndexes(step).map(message => message.text)
+  const counts = steps => steps.map(step => memoryIndexes(step).length)
+  const route = [[memoryGlm, 'glm-memory', true, 'GLM'], [memoryPlain, 'non-glm-memory', false, 'non-GLM']]
+  const afterFirstUser = step => step !== undefined && step.messages.findIndex(message => message.source === MEMORY_INDEX_SOURCE) > step.messages.findIndex(message => message.role === 'user' && message.source === 'user')
+  const roleRefusal = step => lastToolResult(step)?.isError === true && lastToolResult(step).text.includes('"code":"role"') && lastToolResult(step).text.includes('handback')
+  const compactFirst = memoryCompact.steps[0]
+  return [
+    ...route.flatMap(([scenario, name, glmRoute, label]) => {
+      const run = memorySessions(scenario)
+      const user = memoryJournalOf(name, 'all')
+      const project = memoryJournalOf(name, 'project')
+      return [
+        [`memory (${label}): the four memory_store calls are stored, the person's two go to the user-level journal as llm records with their words (not checked yet), the project's two to the project journal`, results(run).length === 4 && results(run).every(result => result?.isError !== true && result.text.includes('"stored":true')) && isDeepStrictEqual(lines(user, 'store').map(record => record.data.name), ['lead-with-the-answer', 'reporting-depth']) && lines(user, 'store').every(record => record.actor === 'llm' && typeof record.relay === 'string' && record.data.relayChecked === false) && isDeepStrictEqual(lines(project, 'store').map(record => record.data.name), ['signing-rules-differ', 'host-surface-notes']) && user.length === 2 && project.length === 2, `${results(run).map(result => (result?.text ?? 'none').slice(0, 40)).join(' | ')}; user ${user.length} record(s), project ${project.length}`],
+        [`memory (${label}): the first root agent has no index while the memory is empty, one from the step after its first write, and the index is not repeated`, run.first.length === 5 && isDeepStrictEqual(counts(run.first), [0, 1, 1, 1, 1]), `index notices per request: ${counts(run.first).join(', ')}`],
+        [`memory (${label}): the second root agent of the workspace has the index in its first request after the first user message, with the four memories, once, and not repeated in its next request`, run.second.length === 2 && afterFirstUser(run.second[0]) && isDeepStrictEqual(counts(run.second), [1, 1]) && MEMORY_NAMES.every(entry => indexTexts(run.second[0])[0]?.includes(`- ${entry} (`) === true), run.second.length === 0 ? `no second session (exit ${scenario.status}): ${JSON.stringify(scenario.steps.at(-1)?.spawn ?? null)}` : `index notices per request: ${counts(run.second).join(', ')}; ${(indexTexts(run.second[0])[0] ?? 'none').replace(/\n/g, ' | ').slice(0, 160)}`],
+        [`memory (${label}): each root agent's system prompt is the same at every step`, new Set(run.first.map(step => step.system)).size === 1 && new Set(run.second.map(step => step.system)).size === 1, `${new Set(run.first.map(step => step.system)).size} and ${new Set(run.second.map(step => step.system)).size} distinct prompt(s)`],
+        [`memory (${label}): the three memory tools are in the face of the root agent, resident, and the glm:memory section is ${glmRoute ? 'in' : 'not in'} the prompt`, memoryFace(run.first[0]).length === 3 && memoryFace(run.first[0]).every(tool => tool.deferLoading !== true) && run.first[0].system.includes(MEMORY_SECTION_LINE) === glmRoute, `${memoryFace(run.first[0]).map(tool => tool.name).join(', ')}; section ${run.first[0]?.system.includes(MEMORY_SECTION_LINE)}`],
+        [`memory (${label}): the row reports itself in effect and says the session has the index; the configured home is said to be ignored`, healthOf(scenario).memory?.status === ACTED && healthOf(scenario).memory.reason.includes('本会话已带索引') && healthOf(scenario).memory.reason.includes('行配置 home 已不再使用（M5）'), JSON.stringify(healthOf(scenario).memory ?? null)],
+      ]
+    }),
+    ['memory compaction: the first request has the index; after the compaction checkpoint the index comes once more, after the checkpoint, and is not repeated', memoryCompact.compactions.length > 0 && memoryIndexes(compactFirst).length === 1 && memoryAfterCheckpoint.length > 0 && memoryAfterCheckpoint.every(step => memoryIndexes(step).length === 1 && step.messages.findIndex(message => message.source === MEMORY_INDEX_SOURCE) > memoryCheckpointAt(step)), `${memoryCompact.compactions.length} compaction(s); index notices per request: ${counts(memoryCompact.steps).join(', ')}; requests with a checkpoint: ${memoryAfterCheckpoint.length}`],
+    ['memory worker: the child has no memory tool in its request, no glm:memory section and no index; the main agent of the project has the index and the section', workerChild.length > 0 && workerChild.every(step => memoryFace(step).length === 0 && !step.system.includes(MEMORY_SECTION_LINE) && memoryIndexes(step).length === 0) && memoryIndexes(workerMain[0]).length === 1 && indexTexts(workerMain[0])[0]?.includes('- seeded-norm (feedback)') === true && workerMain[0].system.includes(MEMORY_SECTION_LINE), workerChild.length === 0 ? `no child request (exit ${memoryWorker.status})` : `child: ${workerChild.length} request(s), ${memoryFace(workerChild[0]).length} memory tool(s); main index notices ${counts(workerMain).join(', ')}`],
+    ['memory worker: the child calling memory_store, memory_query and memory_forget by name is refused with role and the way to hand back, and the journals are as they were', [1, 2, 3].every(index => roleRefusal(workerChild[index])) && memoryJournalOf('glm-worker-memory', 'project').length === 1 && memoryJournalOf('glm-worker-memory', 'all').length === 0, [1, 2, 3].map(index => (lastToolResult(workerChild[index])?.text ?? 'none').slice(0, 60)).join(' | ')],
+    ['memory: the probe leaves the real user-level memory journal and the journals of the project this checkout belongs to as they were, and the user-level directory has no lessons directory', isDeepStrictEqual(realMemoryFiles.map(fileStamp), realMemoryBefore) && !existsSync(join(userDataHome(), 'lessons')), `${realMemoryBefore.join(' ')} -> ${realMemoryFiles.map(fileStamp).join(' ')}`],
+  ]
+}
+
 const checks = [
   ['sandbox: the runtime booted each profile generated under the run directory (its cordis.yml rewritten by the launcher); the real profiles directory has none of them', rewritten.length === GENERATED_PROFILES.length && leaked.length === 0, `rewritten: ${rewritten.join(', ') || 'none'}; under ${realProfiles}: ${leaked.join(', ') || 'none'}`],
   ['glm-only: with only the GLM channel package the GLM request has the ZCode identity, the aliases and the search controls, and no graph or memory tool', glmOnlyFirst?.system.includes('You are ZCode, an interactive agent') === true && zcodeFace.every(name => glmOnlyTools.has(name)) && searchControls.every(name => glmOnlyTools.has(name)) && ![...glmOnlyTools].some(name => GRAPH_TOOL_NAMES.includes(name) || MEMORY_TOOL_NAMES.includes(name)) && glmOnlyRead?.isError !== true, glmOnlyFirst === undefined ? `no request (exit ${glmOnly.status})` : `${glmOnlyTools.size} tools; ${[...glmOnlyTools].filter(name => name.startsWith('graph_') || name.startsWith('memory_')).join(', ') || 'no graph or memory tool'}`],
@@ -1067,6 +1188,7 @@ const checks = [
   ['glm compact: the checkpoint carries the formatted summary', checkpoint !== undefined && checkpoint.text.includes('Summary:\nprobe summary') && !checkpoint.text.includes('<analysis>'), checkpoint === undefined ? 'no checkpoint in the next request' : checkpoint.text.slice(0, 80).replace(/\n/g, ' ')],
   ['memory usage: one record per GLM step with the request provider, model and session id', glmUsage.length === glm.steps.length && glmUsage.every(record => record.provider === 'glm-probe' && record.model === 'glm-5.3' && typeof record.sessionId === 'string' && record.sessionId.length > 0), `${glmUsage.length} record(s) for ${glm.steps.length} step(s); first: ${JSON.stringify(glmUsage[0] ?? null).slice(0, 120)}`],
   ['memory usage: the compaction call is recorded with purpose compaction', compactUsage.length === compacted.compactions.length && compactUsage.length > 0, `${compactUsage.length} compaction record(s) for ${compacted.compactions.length} request(s)`],
+  ...memoryChecks(),
   ['data: usage lands only in the user-level directory, never in a project directory or the real one', projectUsage.length === 0 && realUsageBefore === realUsageAfter, `project usage files: ${projectUsage.join(', ') || 'none'}; real ${realUsage}: ${realUsageBefore} -> ${realUsageAfter}`],
   ['guard: a shell write is denied with the four-part correction naming the ZCode tools, and the file is not created', blockedResult?.isError === true && blockedResult.text.includes('Shell file writes are not permitted') && blockedResult.text.includes(RIGHT_PATH_ZCODE) && !existsSync(blocked), blockedResult === undefined ? 'no tool result' : blockedResult.text.slice(0, 100).replace(/\n/g, ' ')],
   ['guard: the denial is journaled in the scenario project directory with rule, tool and the calling agent ids', glmViolations.length === 1 && glmViolations[0].rule === 'file-tools-only' && glmViolations[0].tool === 'Bash' && typeof glmViolations[0].agentId === 'string' && glmViolations[0].agentId.length > 0 && glmViolations[0].sessionId === glmUsage[0]?.sessionId, `${glmViolations.length} record(s); first: ${JSON.stringify(glmViolations[0] ?? null).slice(0, 140)}`],

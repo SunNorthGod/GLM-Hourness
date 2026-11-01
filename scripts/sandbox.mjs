@@ -114,7 +114,8 @@ export const slash = path => path.replaceAll('\\', '/')
 /**
  * Overlay rows that keep a run's data inside `dir`: the project directory
  * `<dir>/home` (memory, workflow and hourness get it as their row home, as
- * the user's profile patch does; the guard reads it from the data service)
+ * the user's profile patch does, though memory ignores it and follows
+ * `projectOverride` below; the guard reads it from the data service)
  * and the DSH home `<dir>/dsh-home`, so the user-level directory is
  * `<dir>/dsh-home/glm-hourness`. The data row's `projectOverride` is the
  * same project directory: the memory and lessons rows put their project

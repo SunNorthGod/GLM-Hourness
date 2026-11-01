@@ -315,6 +315,7 @@ export interface InjectableServices {
   readonly sessionProjections: SessionProjectionsService
   readonly agents: AgentsService
   readonly subagents: SubagentsService
+  readonly commands: CommandsHost<AgentCommandInvocationLike>['commands']
 }
 
 /**
