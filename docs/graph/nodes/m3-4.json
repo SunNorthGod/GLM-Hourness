@@ -1,11 +1,11 @@
 {
   "id": "m3-4",
   "type": "task",
-  "title": "3.4 五键",
+  "title": "3.4 人在对话里对提议怎么说",
   "status": "doing",
   "parent": "m3",
   "kind": "implement",
-  "body": "借用 user-questions（ORCHESTRATION.md §4.4）。",
+  "body": "主 Agent 在对话里提提议（propose_to_human），人对提议说的五种话由 record_human_answer 记录（M3 附录 0.6 §3.5；d-chat-not-cards 之后不再出卡）。",
   "acceptance": [
     "五个键的结果都按 M3 设计 §3.4 回到主 Agent",
     "拒绝的理由与补充的文字（卡上第二问）记成人在目标上的批注，批注写明人点的键；人没有选键、只写了文字时批注写「没有选键」，不记成任何键",
@@ -52,6 +52,22 @@
       "reason": "派出 m3-implement（wf_947be4d28012cb22），同 m3-1",
       "from": "approved",
       "to": "doing"
+    },
+    {
+      "at": "2026-11-01T16:25:32.147Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "归位：标题与正文还写着已取消的五键卡与 user-questions 借用，按附录 0.6 §9 第 1 条末句的改写方向更新（验收字句另待人原话）",
+      "changes": {
+        "title": {
+          "from": "3.4 五键",
+          "to": "3.4 人在对话里对提议怎么说"
+        },
+        "body": {
+          "from": "借用 user-questions（ORCHESTRATION.md §4.4）。",
+          "to": "主 Agent 在对话里提提议（propose_to_human），人对提议说的五种话由 record_human_answer 记录（M3 附录 0.6 §3.5；d-chat-not-cards 之后不再出卡）。"
+        }
+      }
     }
   ]
 }

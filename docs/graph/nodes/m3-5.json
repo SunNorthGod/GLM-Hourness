@@ -1,11 +1,11 @@
 {
   "id": "m3-5",
   "type": "task",
-  "title": "3.5 决策卡（同步 / 异步）",
+  "title": "3.5 要人定的事",
   "status": "doing",
   "parent": "m3",
   "kind": "implement",
-  "body": "同步卡是本项目的 decision_card，经 userQuestions.ask 出卡，人关掉卡片即转为异步（question-20 B）；异步卡自建在项目图的待决节点上（见 d-async-cards）；取代 L1/L2/L3（ORCHESTRATION.md §5）。出工作区申报的同步卡场景归 M4（question-24 A，m4-request-card）。",
+  "body": "要人定的事在图上留一张待决，主 Agent 在对话里提出（ORCHESTRATION.md §5；d-chat-not-cards 之后不出卡）；取代 L1/L2/L3。出工作区申报的场景归 M4（question-24 A）。",
   "acceptance": [
     "decision_card 在图上留一张待决并在卡上问人，人选了由人拍板，关掉卡片则待决留在人的决策队列；卡片打开期间人已在面板上拍板时，卡片不改拍板结果",
     "人在面板上拍板、批准或否决后，同一张图上、焦点在这个节点所属目标下的主 Agent 会话收到消息（不论面板开在哪个会话里），下一次投影带结果；焦点在别的目标下的、工作在别的图上（节点 id 相同也算别的图）的主 Agent 会话与普通会话不收到",
@@ -86,6 +86,22 @@
       "actor": "llm",
       "op": "comment",
       "text": "人设那一步（m3-main-persona）在分支 m3 上提交为 a178f32：主 Agent 的人设设置、GLM 方言里的位置、glm-prompt 的 persona 改名为 reportingDepth（附录 0.6 §2.7）。build、preflight 退出码 0，npm test 1356 项中 1355 通过、0 失败、1 跳过，probe 213/213。随后 fold 步把 m3-flow 的 m3-6（流程条与客户端的 /wish 入口）并进 m3，提交 2d43b29。两条都已推到 origin/m3。"
+    },
+    {
+      "at": "2026-11-01T16:25:32.831Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "归位：标题与正文还写着决策卡与 userQuestions.ask 借用，按附录 0.6 §9 第 1 条末句的改写方向更新（第 2 条验收的删除另待人原话）",
+      "changes": {
+        "title": {
+          "from": "3.5 决策卡（同步 / 异步）",
+          "to": "3.5 要人定的事"
+        },
+        "body": {
+          "from": "同步卡是本项目的 decision_card，经 userQuestions.ask 出卡，人关掉卡片即转为异步（question-20 B）；异步卡自建在项目图的待决节点上（见 d-async-cards）；取代 L1/L2/L3（ORCHESTRATION.md §5）。出工作区申报的同步卡场景归 M4（question-24 A，m4-request-card）。",
+          "to": "要人定的事在图上留一张待决，主 Agent 在对话里提出（ORCHESTRATION.md §5；d-chat-not-cards 之后不出卡）；取代 L1/L2/L3。出工作区申报的场景归 M4（question-24 A）。"
+        }
+      }
     }
   ]
 }

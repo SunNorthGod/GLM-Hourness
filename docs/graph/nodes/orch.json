@@ -323,6 +323,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "归位第一批（2026-11-01，ZCode 接手后，人定的图设计反馈 ① 板块契约 ② 完工归位）：状态对齐 5 笔——m6、bottom、glm-house、m3-6、m3-main-persona 标 done（证据在各自 history）；新增风险节点 risk-1（逐字文本转发权，内容取自本节点 2026-11-01T13:18 批注）；reading-digest 留外部可验证性方向指针；m3-2 上记 S8-10 由 d-wip-branch-push 覆盖。记录边界已进图工具说明与 ORCHESTRATION.md §2.13（提交 8793229）：此后批注只记短事实，长文去设计稿，人的偏好进记忆。"
+    },
+    {
+      "at": "2026-11-01T16:24:56.790Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "归位收尾（人 2026-11-01 同意）：根目录 package-lock.json 已删（误跑 npm install 的残渣，2026-10-30T16:58 批注留待人定的一件至此关闭）；msg-refdir-gate.txt（M3 附录 0.2 的重复副本）已删，内容在 .agents/tasks/m3/design-addendum-0.2.md。"
     }
   ]
 }
