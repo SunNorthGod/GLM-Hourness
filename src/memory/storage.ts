@@ -37,8 +37,8 @@ const legacyFile = (dir: string): string => join(dir, 'memory.json')
 
 export const dirOfScope = (places: Places, scope: Scope): string | undefined => scope === 'project' ? places.project : places.user
 
-/** What kind of problem a note to the row's health is about; a later success under the same key clears it. */
-export type NoteKey = 'directory' | 'lock' | 'io' | 'legacy' | 'index'
+/** What kind of problem a note to the row's health is about; a later success under the same key clears it (`depth` stays: the session read the reporting depth once). */
+export type NoteKey = 'directory' | 'lock' | 'io' | 'legacy' | 'index' | 'depth'
 
 /** Whether a source named in a memory exists, as far as the graph and the project's files say. */
 export interface SourceCheck {

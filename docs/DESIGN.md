@@ -45,7 +45,7 @@ GLM-Hourness（同仓两包，§2.3）
 | --- | --- | --- | --- | --- |
 | `glm-hourness/glm-llm` | `dsh-glm-zcode` | `dist/glm-llm/index.js` | 通道 | 真网冒烟通过〔实测〕；2026-10-28 桌面版 L4 真实会话通过（GLM-5.3 多轮工具调用、GLM-5.3-Flash 收图）〔实读会话记录〕；凭证目录见 §2.4 |
 | `glm-hourness/glm-login` | `dsh-glm-zcode` | `dist/glm-llm/login-row.js` | 通道 | `/glm-login`、`/glm-status`（凭证状态与行健康表，§2.5）、`/glm-logout`；提供计价服务 `glmHournessPricing`：GLM 积分套餐的公式与高峰时段（`src/glm-llm/credits.ts`），契约在 `src/shared/pricing.ts`，面板经它计积分（`ORCHESTRATION.md` §11.2、§11.3）。选这一行提供：它是账号与套餐的入口，默认启用，不依赖路由；通道行默认禁用，方言行禁用时面板不该丢掉积分 |
-| `glm-hourness/glm-prompt` | `dsh-glm-zcode` | `dist/glm-prompt/index.js` | 方言 | 见 §5；另带高峰提醒（本项目的 notice，`ORCHESTRATION.md` §11.4） |
+| `glm-hourness/glm-prompt` | `dsh-glm-zcode` | `dist/glm-prompt/index.js` | 方言 | 见 §5；另带高峰提醒（本项目的 notice，`ORCHESTRATION.md` §11.4）；汇报细度一节的常设档在会话开局读一次记忆行的服务 `glmHournessMemory`，没有再用配置的 `persona`（M5 步骤 R1，`standing-depth.ts`） |
 | `glm-hourness/glm-compact` | `dsh-glm-zcode` | `dist/glm-prompt/compact-row.js` | 方言 | 见 §5.6 |
 | `glm-hourness/data` | `dsh-hourness` | `dist/data/index.js` | 编排 | 数据目录服务 `glmHournessData`，见 §2.4 |
 | `glm-hourness/guard` | `dsh-hourness` | `dist/guard/index.js` | 编排 | 见 `ORCHESTRATION.md` §6 |
@@ -142,7 +142,7 @@ GLM-Hourness（同仓两包，§2.3）
 | 模块导出 `name`、`inject`、`Config`、`apply(ctx, config)` | 全部行 | cordis:1625–1635（读 `plugin.name`、`plugin.Config`、`plugin.inject`），cordis:1536（`plugin.apply`），cordis:956–961（`Config` 经 `~standard` 校验） | 一致 |
 | Loader 行的 `inject` 与模块的 `inject` 合并 | glm-llm、glm-login、memory、hourness | cordis-plugin-loader:631 | 一致 |
 | `ctx.on(name, listener, options)`；`prepend` 排到最外层，`global` 跳过分发过滤 | 全部行 | cordis:372–381、cordis:263；服务的过滤只认同一 isolate，cordis:1785–1787 | 一致 |
-| `ctx.get(name)`：不需要 inject，提供方 fiber 未激活时为 `undefined` | glm-llm（`attachments`、`fs`）；guard、memory、workflow、hourness（`glmHournessData`，每次写入或命令调用时读）；glm-login（各行的 `glmHournessHealth/<行>`，`/glm-status` 调用时读）；rules（`glmHournessPricing`，每次读高峰时读；`agents`，会话登记里没有的会话才读） | cordis:763–766 | 一致；L3 探针实测 guard 与 memory 经它拿到数据行的目录，`/glm-status` 经它读到各行的健康视图 |
+| `ctx.get(name)`：不需要 inject，提供方 fiber 未激活时为 `undefined` | glm-llm（`attachments`、`fs`）；guard、memory、workflow、hourness（`glmHournessData`，每次写入或命令调用时读）；glm-login（各行的 `glmHournessHealth/<行>`，`/glm-status` 调用时读）；glm-prompt（`glmHournessMemory`，每个会话的 agent 创建时读一次 `depth`）；rules（`glmHournessPricing`，每次读高峰时读；`agents`，会话登记里没有的会话才读） | cordis:763–766 | 一致；L3 探针实测 guard 与 memory 经它拿到数据行的目录，`/glm-status` 经它读到各行的健康视图 |
 | `ctx.provide(name, value)`：服务归调用方 fiber，同名第二个提供方抛错，返回的 disposer 撤销服务，fiber 卸载时自动撤销 | data（`glmHournessData`）；memory（`glmHournessMemory`，契约在 `src/shared/memory-service.ts`）；全部主机行（`glmHournessHealth/<行>`，§2.5）；rules（`glmHournessPeakMode`，契约在 `src/shared/peak-mode.ts`，派活、GLM 包与循环板读它） | cordis:800–830（经 `fiber.effect` 注册）；同一用法 cmdline:29–31 | 一致；激活期的抛错被捕获，降级为 warn |
 | `ctx.inject(names, callback)`：所列服务都在时在子 fiber 里调 callback，其中一个离开时卸载这个 fiber；callback 返回的函数是它的 disposer | graph-panel（`sessionProjections`；`agents` 与 `subagents` 一起，停子 agent 用）；memory（`commands` 与 `sessionProjections` 各一次，注册 `/memory` 与投影 `hournessMemory`；不改本行的激活条件，服务晚到或不来时行健康写明） | cordis:1600、cordis:1071（返回 callback 的结果）、cordis:1142–1143（返回函数即收为 disposer） | 一致；L2 假宿主 `fakeInjector`（`tests/fake-rc3.ts`）按此建模 |
 
@@ -242,7 +242,7 @@ GLM-Hourness（同仓两包，§2.3）
 | --- | --- | --- | --- |
 | glm-llm | 激活；每次请求 | 已注册路由，写明套餐与凭证目录；上游已应答（设备 ID 未能写入 ZCode 状态文件时注明本进程用临时 ID，状态不降级） | 未登录（凭证为空）；凭证不可读；未拿到项目令牌（写明 3.16.3 的原因，§4.1）；上游返回非 2xx 状态码 |
 | glm-login | 激活 | 三个命令已注册，计价服务已提供 | 计价服务未提供（部分生效，写明原因，例如同名服务已在；面板按 token 列）。凭证目录总能解析（§2.4） |
-| glm-prompt | 激活；每步组装 | GLM 路由，ZCode 提示词与工具面，工具检索 local 或关闭 | 非 GLM 路由；工具检索未安装（会话历史不可读，部分生效）；方言安装失败 |
+| glm-prompt | 激活；每步组装 | GLM 路由，ZCode 提示词与工具面，工具检索 local 或关闭 | 非 GLM 路由；工具检索未安装（会话历史不可读，部分生效）；记忆服务给出的汇报细度用不了（形状不对、抛错、不认识的档，部分生效）；方言安装失败 |
 | glm-compact | 激活；每次压缩请求 | GLM 压缩请求改用 ZCode 指令与摘要格式 | 非 GLM 路由；未识别 compaction-basic 的指令（原样放行） |
 | data | 激活 | 用户级目录与项目目录都已解析 | 项目目录未配置（部分生效）；服务提供失败 |
 | guard | 激活；每次根调用 | 门禁生效（所有路由，`ORCHESTRATION.md` §6.2），写明圈禁根、违规目录与影子兜底是否可用 | 会话没有工作目录（圈禁规则跳过）；无项目目录（违规不落盘）；方言服务不可用（工具名按静态别名表换算，纠偏用原生名）。组合里没有 workspace-changes 时说明写「影子兜底未启用」，状态不降级：影子兜底只记录，门禁本身不受影响 |
@@ -551,7 +551,7 @@ DSH 的 `TokenUsage` 各计数互不重叠：`inputTokens` 只算未命中缓存
 | 2 | `harness:identity`（同名替换 DSH 身份节） | 两档；安全声明按档位二选一 |
 | 3 | `glm:dynamic-behavior` | coding-plan；3.17.1 原文，没有标题（§5.3） |
 | 4 | `glm:environment` | coding-plan，需配置 `env`；工作目录取会话头（§5.3 ③） |
-| 5 | `glm:persona`（汇报细度，标题 `# Reporting Depth`） | 两档 |
+| 5 | `glm:persona`（汇报细度，标题 `# Reporting Depth`） | 两档；常设档是人最近一次说定的（记忆行服务的 `depth`，agent 创建时读一次，同一会话不变），没有时用配置的 `persona` |
 | 6 | `glm:session-guidance` | coding-plan |
 | 7 | `glm:memory` | coding-plan；只在本次组装 `next()` 返回的工具里有全部三个记忆工具时出现，工具里还有 `lessons_query` 时末尾多一句经验板块（§5.3 ⑧） |
 | 8 | `glm:context-management` | coding-plan |
@@ -771,6 +771,7 @@ L3 探针：沙盒里把压缩阈值调低，摘要请求末条是 ZCode 提示�
 | glm-llm 签名 | 无签发送 | 状态、用量记录的签名标注〔规划〕 |
 | glm-llm 路由 | 保持原 URL | 状态〔规划〕 |
 | glm-prompt | 退回 DSH 原生工具面与文案 | 行健康 |
+| 汇报细度的常设档（glm-prompt 读记忆行的服务） | 没有服务或人没定过：用配置的 `persona`，不报；服务形状不对、`depth` 抛错、给出不认识的档：同样用配置的 `persona`，控制台每种原因告警一次，该会话的 glm-prompt 行健康降级；记忆行读不出流水：`depth` 给 `undefined`，该会话的 memory 行健康降级 | 告警、行健康 |
 | glm-compact | 压缩请求原样放行，profile 原有压缩照常 | 行健康 |
 | 工具检索（glm-prompt 内） | `toolSearchMode: off` 或会话历史不可读时全量直载 | 行健康（glm-prompt 一行的说明） |
 | data | 不写用量流水；违规与决策只由配了 `home` 的行写；`/hourness` 写明缺哪个目录 | 行健康、`/hourness` |

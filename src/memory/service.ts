@@ -81,11 +81,15 @@ function countingFold(scope: Scope, since: number, until: number): Fold<Counting
   }
 }
 
-/** The service over the row's environment; `problem` hears a failure to read the reporting depth. */
+/**
+ * The service over the row's environment; `problem` hears a failure to read
+ * the reporting depth (the console), and the row health of the session that
+ * asked says it too (the session keeps the configured depth).
+ */
 export function memoryRowService(env: MemoryEnv, problem: (message: string) => void): MemoryRowService {
   const depths = new Map<string, ReportingDepth | undefined>()
 
-  function readDepth(): ReportingDepth | undefined {
+  function readDepth(sessionId: string): ReportingDepth | undefined {
     const dir = env.places(undefined).user
     if (dir === undefined) return undefined
     try {
@@ -93,7 +97,9 @@ export function memoryRowService(env: MemoryEnv, problem: (message: string) => v
       return entry?.status === 'active' ? entry.value : undefined
     }
     catch (error) {
-      problem(`读不出汇报细度（${error instanceof Error ? error.message : String(error)}），这个会话用配置的默认档`)
+      const text = `读不出汇报细度（${error instanceof Error ? error.message : String(error)}），这个会话用配置的默认档`
+      problem(text)
+      env.note(sessionId, 'depth', text)
       return undefined
     }
   }
@@ -101,7 +107,7 @@ export function memoryRowService(env: MemoryEnv, problem: (message: string) => v
   return {
     depth(sessionId) {
       if (depths.has(sessionId)) return depths.get(sessionId)
-      const value = readDepth()
+      const value = readDepth(sessionId)
       depths.set(sessionId, value)
       if (depths.size > SESSIONS_KEPT) depths.delete(depths.keys().next().value as string)
       return value

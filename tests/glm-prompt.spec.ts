@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { buildIdentitySection } from '../src/glm-prompt/identity.ts'
-import { installDialect, memorySectionApplies } from '../src/glm-prompt/index.ts'
+import { apply as glmPromptApply, installDialect, memorySectionApplies, type GlmPromptConfig } from '../src/glm-prompt/index.ts'
 import {
   buildMemorySectionDsh,
   HARNESS_BLOCK_DSH,
@@ -12,6 +12,7 @@ import {
   MEMORY_Z6_LOCAL,
   replaceOnce,
 } from '../src/glm-prompt/localize.ts'
+import type { StandingDepth } from '../src/glm-prompt/standing-depth.ts'
 import { buildHarnessBlock } from '../src/glm-prompt/zcode-harness-text.ts'
 import { ZCODE_MEMORY_LINES } from '../src/glm-prompt/zcode-memory-text.ts'
 import {
@@ -20,9 +21,12 @@ import {
   SECURITY_NOTICE_USER,
   TODO_REMINDER_THRESHOLDS,
 } from '../src/glm-prompt/verbatim.ts'
-import type { AssemblePayload } from '../src/shared/dsh-min.ts'
+import type { AgentLike, AssemblePayload } from '../src/shared/dsh-min.ts'
+import { healthServiceName, type RowHealthView } from '../src/shared/health.ts'
+import { MEMORY_SERVICE } from '../src/shared/memory-service.ts'
 import { LESSONS_QUERY_TOOL, MEMORY_TOOL_NAMES } from '../src/shared/tool-names.ts'
-import { fakeRuntime, NATIVE_NAMES } from './fake-rc3.ts'
+import { fakeRuntime, NATIVE_NAMES, type FakeRuntime } from './fake-rc3.ts'
+import { captureWarnings } from './graph-helpers.ts'
 
 // glm:memory (docs/DESIGN.md §5.3 ⑧): only where next() returned every memory tool.
 
@@ -144,6 +148,112 @@ test('the GLM request carries the lessons sentence only when lessons_query is am
   assert.equal(await sectionText([]), MEMORY_SECTION_BASE)
   assert.equal(await sectionText([LESSONS_QUERY_TOOL]), MEMORY_SECTION_WITH_LESSONS)
   assert.equal(LESSONS_QUERY_TOOL, 'lessons_query')
+})
+
+// The reporting-depth section (m5 design §3.7, m5-5): glm:persona names the depth the person last asked
+// for. The memory row's service gives it once, when a session's agent is created; the configured depth
+// stands in when there is none.
+
+const GLM_ROUTE = { provider: 'glm-zcode', model: 'glm-5.3' }
+
+/** The depth id the standing-preference sentence of glm:persona names in a GLM request. */
+async function standingLevel(rt: FakeRuntime): Promise<string | undefined> {
+  const section = (await rt.assemble(GLM_ROUTE)).sections.find(entry => entry.name === 'glm:persona')
+  const sentence = section?.text.split('\n').find(line => line.startsWith('The user\'s standing preference is '))
+  return /（(\w+)）/.exec(sentence ?? '')?.[1]
+}
+
+test('the reporting-depth section starts from the standing depth the reader gives, else the configured one, else balanced', async () => {
+  const levelWith = async (config: GlmPromptConfig, standing?: () => StandingDepth) => {
+    const rt = fakeRuntime()
+    installDialect(rt.agent, config, undefined, undefined, standing)
+    return standingLevel(rt)
+  }
+  assert.equal(await levelWith({ persona: 'detailed' }, () => ({ level: 'concise' })), 'concise')
+  assert.equal(await levelWith({ persona: 'detailed' }, () => ({})), 'detailed')
+  assert.equal(await levelWith({ persona: 'detailed' }), 'detailed')
+  assert.equal(await levelWith({}), 'balanced')
+})
+
+test('the standing depth is read once when the dialect is installed on an agent, not at every step', async () => {
+  const rt = fakeRuntime()
+  let asked = 0
+  installDialect(rt.agent, {}, undefined, undefined, () => { asked += 1; return { level: 'concise' } })
+  assert.equal(asked, 1)
+  assert.equal(await standingLevel(rt), 'concise')
+  assert.equal(await standingLevel(rt), 'concise')
+  assert.equal(asked, 1)
+})
+
+test('a standing depth that could not be used degrades the row health of GLM requests and leaves the others inactive', async () => {
+  const reports: Array<{ state: string, reason: string }> = []
+  const rt = fakeRuntime()
+  installDialect(rt.agent, { persona: 'detailed' }, { report: (_session, state, reason) => { reports.push({ state, reason }) } }, undefined, () => ({ problem: '汇报细度：读不出' }))
+  assert.equal(await standingLevel(rt), 'detailed', 'the configured depth stands in')
+  await rt.assemble({ provider: 'deepseek', model: 'deepseek-flash' })
+  assert.deepEqual(reports.map(report => report.state), ['degraded', 'inactive'])
+  assert.ok(reports[0]?.reason.includes('汇报细度：读不出'), reports[0]?.reason)
+  assert.ok(!reports[1]?.reason.includes('汇报细度'), reports[1]?.reason)
+})
+
+/** A GLM runtime with the glm-prompt row applied over the memory service `service` (none when undefined). */
+async function promptRow(service?: unknown, config: GlmPromptConfig = {}): Promise<FakeRuntime> {
+  const rt = fakeRuntime()
+  if (service !== undefined) rt.ctx.provide(MEMORY_SERVICE, service)
+  glmPromptApply(rt.ctx, config)
+  await rt.create()
+  return rt
+}
+
+const promptHealth = (rt: FakeRuntime) => (rt.services.get(healthServiceName('glm-prompt')) as RowHealthView).session('agent-1')
+
+test('the row asks the memory service for the session once; a new session reads what was stored since', async () => {
+  const stored: { value: unknown } = { value: undefined }
+  const asked: string[] = []
+  const service = { depth: (sessionId: string) => { asked.push(sessionId); return stored.value } }
+  const first = await promptRow(service)
+  assert.deepEqual(asked, ['agent-1'])
+  assert.equal(await standingLevel(first), 'balanced')
+  stored.value = 'concise'
+  assert.equal(await standingLevel(first), 'balanced', 'the session keeps what it found')
+  assert.deepEqual(asked, ['agent-1'])
+  const second = await promptRow(service)
+  assert.equal(await standingLevel(second), 'concise')
+  assert.equal(promptHealth(second)?.state, 'active')
+})
+
+test('without a memory service the row uses the configured depth and says nothing', async () => {
+  const { result: rt, warnings } = await captureWarnings(() => promptRow(undefined, { persona: 'detailed' }))
+  assert.equal(await standingLevel(rt), 'detailed')
+  assert.equal(promptHealth(rt)?.state, 'active')
+  assert.deepEqual(warnings, [])
+})
+
+for (const [label, service, said] of [
+  ['a service of the wrong shape', { stats: () => ({}) }, 'wrong shape'],
+  ['a service whose depth throws', { depth: () => { throw new Error('journal gone') } }, 'journal gone'],
+  ['a service that gives a depth the dialect does not define', { depth: () => 'loud' }, 'loud'],
+] as const) {
+  test(`${label}: the configured depth stands in, the console hears why and the row health degrades`, async () => {
+    const { result: rt, warnings } = await captureWarnings(() => promptRow(service, { persona: 'detailed' }))
+    assert.equal(await standingLevel(rt), 'detailed')
+    assert.equal(warnings.length, 1, warnings.join(' | '))
+    assert.ok(warnings[0]?.includes(said), warnings[0])
+    assert.equal(promptHealth(rt)?.state, 'degraded')
+    assert.ok(promptHealth(rt)?.reason.includes('汇报细度'), promptHealth(rt)?.reason)
+  })
+}
+
+test('one console warning per reason for the row, however many agents it meets', async () => {
+  const row = fakeRuntime()
+  row.ctx.provide(MEMORY_SERVICE, { depth: () => { throw new Error('journal gone') } })
+  glmPromptApply(row.ctx)
+  const created = row.listeners.filter(entry => entry.event === 'agent/created').map(entry => entry.listener as unknown as (payload: { agent: AgentLike }) => Promise<void> | void)
+  const other = (id: string): AgentLike => ({ ...row.agent, id, session: { ...row.agent.session!, id } })
+  const { warnings } = await captureWarnings(async () => {
+    for (const agent of [row.agent, other('agent-2'), other('agent-3')]) for (const listener of created) await listener({ agent })
+  })
+  assert.equal(warnings.length, 1, warnings.join(' | '))
 })
 
 test('keeps the CliPrefix sentence exact', () => {

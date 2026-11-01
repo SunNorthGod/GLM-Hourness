@@ -19,10 +19,11 @@
  * bundle's /graph-apply and /graph-run handlers mid-step for the session;
  * the GLM and non-GLM scenarios run /hourness and /hourness-status at their
  * last step, after /glm-status is recorded. The memory scenarios
- * (glm-memory, non-glm-memory, glm-memory-compact, glm-worker-memory) write
- * memories from the first root agent, start a second root agent in the same
- * workspace (the provider's `spawn` step) and check its index, the index after
- * a compaction, a child's tool face and the real journals left unchanged.
+ * (glm-memory, non-glm-memory, glm-memory-compact, glm-worker-memory,
+ * glm-memory-depth) write memories from the first root agent, start a second
+ * root agent in the same workspace (the provider's `spawn` step) and check
+ * its index, the index after a compaction, a child's tool face, the reporting
+ * depth each session's prompt names and the real journals left unchanged.
  *
  * Usage: node scripts/probe/run-probe.mjs
  * Requires the desktop install (DSH_DESKTOP_DIR overrides the location).
@@ -812,6 +813,28 @@ const seedProjectMemory = (scenario) => {
   writeFileSync(join(home, 'memory.jsonl'), `${JSON.stringify({ v: 1, seq: 1, at: '2026-10-31T00:00:00.000Z', actor: 'human', op: 'store', id: 'project:seeded-norm', data })}\n`)
 }
 
+// Reporting depth (M5 design §3.7, m5-5): the glm:persona section names the
+// depth the person set, read once when a session starts. The first root agent
+// stores `concise` and starts a second, which forgets it in its first step
+// and starts a third. Each prompt names the depth its session found and
+// stays the same through the session: the configured `balanced` for the
+// first, `concise` for the second, `balanced` again for the third.
+const DEPTH_FORGET = { name: 'reporting-depth', reason: 'The person asked for the default again.', relay: 'Back to the default depth, please.' }
+const memoryDepth = runScenario('glm-memory-depth', 'glm-5.3', [
+  { tool: { name: 'memory_store', arguments: MEMORY_DEPTH } },
+  { text: 'done', spawn: { text: 'Start the second session.' } },
+], 'Store the reporting depth, then reply done.', [], repo, [
+  [{ tool: { name: 'memory_forget', arguments: DEPTH_FORGET } }, { text: 'second done', status: true, spawn: { text: 'Start the third session.' } }],
+  [{ text: 'third done' }],
+])
+const depthSessions = (() => {
+  const second = memoryDepth.steps.at(-1)?.spawn?.sessionId
+  const third = memoryDepth.steps.find(step => step.sessionId === second && step.spawn !== undefined)?.spawn?.sessionId
+  return { first: memoryDepth.steps.filter(step => step.sessionId !== second && step.sessionId !== third), second: bySession(memoryDepth, second), third: bySession(memoryDepth, third) }
+})()
+/** The depth id the standing-preference sentence of the request's prompt names. */
+const depthOf = step => /The user's standing preference is [^（]+（(\w+)）/.exec(step?.system ?? '')?.[1]
+
 // Compaction: the session starts with a memory in the project, so its first
 // request has the index; the compaction removes it from the visible history
 // and the next request has it once more, and then no more.
@@ -937,7 +960,7 @@ const checkpoint = compacted.steps.at(-1)?.messages.find(message => message.sour
 const usageOf = scenario => jsonl(join(runDir, scenario, 'dsh-home', 'glm-hourness', 'audit', 'usage.jsonl'))
 const glmUsage = usageOf('glm').filter(record => record.purpose === undefined)
 const compactUsage = usageOf('glm-compact').filter(record => record.purpose === 'compaction')
-const projectUsage = ['glm', 'glm-flash', 'glm-todo', 'glm-compact', 'glm-shadow', 'glm-guard-paths', 'non-glm', 'non-glm-guard', 'glm-no-dialect', 'glm-peak', 'limits-steps', 'limits-time', 'glm-dispatch', 'glm-goal', 'goal-headless', 'glm-only', 'hourness-only', 'client-modules', 'glm-memory', 'non-glm-memory', 'glm-memory-compact', 'glm-worker-memory'].filter(scenario => existsSync(join(runDir, scenario, 'home', 'audit', 'usage.jsonl')))
+const projectUsage = ['glm', 'glm-flash', 'glm-todo', 'glm-compact', 'glm-shadow', 'glm-guard-paths', 'non-glm', 'non-glm-guard', 'glm-no-dialect', 'glm-peak', 'limits-steps', 'limits-time', 'glm-dispatch', 'glm-goal', 'goal-headless', 'glm-only', 'hourness-only', 'client-modules', 'glm-memory', 'non-glm-memory', 'glm-memory-compact', 'glm-worker-memory', 'glm-memory-depth'].filter(scenario => existsSync(join(runDir, scenario, 'home', 'audit', 'usage.jsonl')))
 const glmViolations = jsonl(join(glmDir, 'home', 'audit', 'violations.jsonl'))
 const stepLimits = jsonl(limitsRecord('limits-steps'))
 const timeLimits = jsonl(limitsRecord('limits-time'))
@@ -1070,8 +1093,9 @@ function designChecks() {
 
 /**
  * Memory (docs/ORCHESTRATION.md §8; scenarios glm-memory, non-glm-memory,
- * glm-memory-compact, glm-worker-memory): what the real runtime did with the
- * memory tools, the index notice, the child's tool face and the journals.
+ * glm-memory-compact, glm-worker-memory, glm-memory-depth): what the real
+ * runtime did with the memory tools, the index notice, the child's tool face,
+ * the reporting depth of each session's prompt and the journals.
  */
 function memoryChecks() {
   const results = run => run.first.slice(1, 5).map(lastToolResult)
@@ -1097,6 +1121,10 @@ function memoryChecks() {
       ]
     }),
     ['memory compaction: the first request has the index; after the compaction checkpoint the index comes once more, after the checkpoint, and is not repeated', memoryCompact.compactions.length > 0 && memoryIndexes(compactFirst).length === 1 && memoryAfterCheckpoint.length > 0 && memoryAfterCheckpoint.every(step => memoryIndexes(step).length === 1 && step.messages.findIndex(message => message.source === MEMORY_INDEX_SOURCE) > memoryCheckpointAt(step)), `${memoryCompact.compactions.length} compaction(s); index notices per request: ${counts(memoryCompact.steps).join(', ')}; requests with a checkpoint: ${memoryAfterCheckpoint.length}`],
+    ['memory depth: the session that stores concise in its first step names the configured depth (balanced) in every request, with the same prompt each time', depthSessions.first.length === 2 && depthSessions.first.every(step => depthOf(step) === 'balanced') && new Set(depthSessions.first.map(step => step.system)).size === 1, `depths of the first session: ${depthSessions.first.map(depthOf).join(', ') || 'no request'} (exit ${memoryDepth.status})`],
+    ['memory depth: the session started after the store names concise from its first request on, and forgetting the preference in its first step leaves its prompt as it was', depthSessions.second.length === 2 && depthSessions.second.every(step => depthOf(step) === 'concise') && new Set(depthSessions.second.map(step => step.system)).size === 1 && lastToolResult(depthSessions.second[1])?.isError !== true && lastToolResult(depthSessions.second[1])?.text.includes('"forgotten":true') === true, depthSessions.second.length === 0 ? 'no second session' : `depths of the second session: ${depthSessions.second.map(depthOf).join(', ')}; ${(lastToolResult(depthSessions.second[1])?.text ?? 'none').slice(0, 80)}`],
+    ['memory depth: the session started after the forget names the configured depth again; the user-level journal holds the store and the forget', depthSessions.third.length === 1 && depthOf(depthSessions.third[0]) === 'balanced' && isDeepStrictEqual(memoryJournalOf('glm-memory-depth', 'all').map(record => record.op), ['store', 'forget']), `depth of the third session: ${depthSessions.third.map(depthOf).join(', ') || 'no request'}; journal ${memoryJournalOf('glm-memory-depth', 'all').map(record => record.op).join(', ')}`],
+    ['memory depth: the glm-prompt and memory rows report themselves in effect for the second session, and the run warned of nothing', healthOf(memoryDepth)['glm-prompt']?.status === ACTED && healthOf(memoryDepth).memory?.status === ACTED && quiet('glm-memory-depth'), `${healthLine(healthOf(memoryDepth), 'glm-prompt')}; ${healthLine(healthOf(memoryDepth), 'memory')}; stderr ${stderrOf('glm-memory-depth').length} byte(s)`],
     ['memory worker: the child has no memory tool in its request, no glm:memory section and no index; the main agent of the project has the index and the section', workerChild.length > 0 && workerChild.every(step => memoryFace(step).length === 0 && !step.system.includes(MEMORY_SECTION_LINE) && memoryIndexes(step).length === 0) && memoryIndexes(workerMain[0]).length === 1 && indexTexts(workerMain[0])[0]?.includes('- seeded-norm (feedback)') === true && workerMain[0].system.includes(MEMORY_SECTION_LINE), workerChild.length === 0 ? `no child request (exit ${memoryWorker.status})` : `child: ${workerChild.length} request(s), ${memoryFace(workerChild[0]).length} memory tool(s); main index notices ${counts(workerMain).join(', ')}`],
     ['memory worker: the child calling memory_store, memory_query and memory_forget by name is refused with role and the way to hand back, and the journals are as they were', [1, 2, 3].every(index => roleRefusal(workerChild[index])) && memoryJournalOf('glm-worker-memory', 'project').length === 1 && memoryJournalOf('glm-worker-memory', 'all').length === 0, [1, 2, 3].map(index => (lastToolResult(workerChild[index])?.text ?? 'none').slice(0, 60)).join(' | ')],
     ['memory: the probe leaves the real user-level memory journal and the journals of the project this checkout belongs to as they were, and the user-level directory has no lessons directory', isDeepStrictEqual(realMemoryFiles.map(fileStamp), realMemoryBefore) && !existsSync(join(userDataHome(), 'lessons')), `${realMemoryBefore.join(' ')} -> ${realMemoryFiles.map(fileStamp).join(' ')}`],

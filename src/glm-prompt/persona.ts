@@ -1,8 +1,9 @@
 /**
  * Persona slider: three reporting levels (简洁 / 适中 / 详细) the model chooses
- * per reply from task weight, mirroring the user-owned vocabulary. The slider
- * value lives in project config; the dialect injects the guidance section so
- * only glm sessions see it.
+ * per reply from task weight, mirroring the user-owned vocabulary. The
+ * standing level is the one the person set through the memory
+ * (src/glm-prompt/standing-depth.ts), else the row config; the dialect
+ * injects the guidance section so only glm sessions see it.
  */
 
 export const PERSONA_LEVELS = [

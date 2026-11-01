@@ -918,7 +918,7 @@ LLM 爱造轮子，因为写脚本只花当前这一轮的力气，装工具却�
 - 记忆工具 `memory_store`、`memory_query`、`memory_forget` 常驻（不进延迟目录）。`memory_query` 按关键词（命中数乘强度）或按名字取；返回的事实各算一次复审（项目流水里一条 `review` 记录），偏好不算。
 - 子 agent（委派出去的会话）不拿记忆工具、不收索引：行在子 agent 的 `agent/created` 上装一个不带 `prepend` 的 `system-prompt/assemble` 监听器去掉三个工具，方言的 `prepend` 监听器因此看不到它们，不给子 agent 加 `# Memory` 一节；工具体再按会话头的 `origin` 拒绝按名直接调用（`role`，正路是交回结构）。
 - `/memory`（输入框，身份为人）：`show` 列两处的条数与最近 10 条，`forget <名字> [project|all]`，`restore <名字> [project|all]`。
-- 服务 `glmHournessMemory`（契约 `src/shared/memory-service.ts`）：`depth(sessionId)` 给 GLM 方言读常设的汇报细度，一个会话第一次问到时同步读用户级流水，之后同一会话不变；另有 `stats`、`hygiene` 给周报与巡检（`src/memory/service.ts`）。会话投影 `hournessMemory` 把两份流水的路径交给面板。
+- 服务 `glmHournessMemory`（契约 `src/shared/memory-service.ts`）：`depth(sessionId)` 给 GLM 方言读常设的汇报细度：方言在会话的 agent 创建时问一次，那一次同步读用户级流水，之后同一会话不变（§8.5）；另有 `stats`、`hygiene` 给周报与巡检（`src/memory/service.ts`）。会话投影 `hournessMemory` 把两份流水的路径交给面板。
 - 行不注册任何 `tools/pre-execute` 监听器：记忆是建议，不拦任何调用（`d-code-rules-enforce`：本行没有规则）。
 
 ### 8.4 写入
@@ -930,7 +930,7 @@ LLM 爱造轮子，因为写脚本只花当前这一轮的力气，装工具却�
 
 - 信号：五键、拒绝理由、汇报细度拨档、对话中的纠正，以及最强的一种：人亲手修改了 LLM 的产出，改动本身就是偏好。
 - 流程：发现纠正 → 起草规则（写明 Why 与 How to apply）→ 人确认 → 注入 → 观察同类纠正的重复率。
-- 汇报细度闭环：现有的三档滑杆（简洁 / 适中 / 详细，LLM 每次自选，常设偏好可配）〔已实现〕接上「讲细点 / 说重点」的反馈，拨档并写入画像，下次会话自动带上。
+- 汇报细度闭环〔已实现，M5 步骤 R1〕：三档滑杆（简洁 / 适中 / 详细，LLM 每次自选）的常设档，是人最近一次说定的。人的话表明长短要一直这样时，主 Agent 调 `memory_store`（`name: reporting-depth`、`type: user`、`value` 是三档之一、`relay` 写人的原话）；人只是这一次嫌长或嫌短，主 Agent 只改这一次的讲法，不写。GLM 方言的 `glm:persona` 一节在会话的 agent 创建时读 `glmHournessMemory` 的 `depth` 一次，没有时用配置的 `persona`：写入的那个会话里系统提示词不变，下一个会话带上新的档。人说「汇报细度恢复默认」，主 Agent 带原话调 `memory_forget reporting-depth`，或人打 `/memory forget reporting-depth`，下一个会话回到配置。服务不在、形状不对、读不出时用配置的档，并在行健康里说明。
 - 子 agent 各配独立记忆目录，避免互相污染。
 
 ## 9. 规范体系

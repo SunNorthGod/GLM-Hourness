@@ -30,6 +30,7 @@ import { aliasSpecs, buildAliases, type BuiltAlias } from './aliases.ts'
 import { READ_IMAGE_NATIVE, READ_NAME, READ_NATIVE } from './read-alias.ts'
 import { CLI_PREFIX, DYNAMIC_BEHAVIOR } from './verbatim.ts'
 import { personaSection, PERSONA_LEVELS, type PersonaLevel } from './persona.ts'
+import { standingDepthReader, type StandingDepth } from './standing-depth.ts'
 import { buildEnvInfoSection, buildMemorySectionDsh, CONTEXT_MANAGEMENT_DSH, SESSION_GUIDANCE_DSH, SKILLS_NOTE_DSH } from './localize.ts'
 import { isGlmAssembly, rewriteDialectSections, rewriteToolFace } from './assembly.ts'
 import { mapTodoWriteToDsh } from './todowrite.ts'
@@ -41,13 +42,13 @@ import { DIALECT_SERVICE, type DialectService } from '../shared/dialect.ts'
 import { provideRowHealth, sessionIdOf, type HealthState, type RowHealth } from '../shared/health.ts'
 import { assemblyRoute, isGlmModel, type Route } from '../shared/route.ts'
 import { LESSONS_QUERY_TOOL, MEMORY_TOOL_NAMES } from '../shared/tool-names.ts'
-import type { AgentLike, AssemblePayload, PluginContext, ProvideHost, ToolDefinitionLike } from '../shared/dsh-min.ts'
+import type { AgentLike, AssemblePayload, PluginContext, ProvideHost, ServiceLookup, ToolDefinitionLike } from '../shared/dsh-min.ts'
 import Schema from '../shared/schemastery.ts'
 import type { JsonValue } from '../shared/json.ts'
 
 /** Row config. */
 export interface GlmPromptConfig {
-  /** Reporting-depth standing preference for the persona slider. */
+  /** Reporting-depth standing preference for the persona slider; the depth the person set through the memory row wins (standing-depth.ts). */
   readonly persona?: PersonaLevel
   /** Tier: coding-plan (localized, default) or start-plan (byte-identical official mirror). */
   readonly tier?: 'coding-plan' | 'start-plan'
@@ -61,7 +62,7 @@ export interface GlmPromptConfig {
 
 /** Runtime Config schema: exposes the row knobs (reporting depth included) as real switches in the DSH plugin manager. */
 export const Config = Schema.object({
-  persona: Schema.union(PERSONA_LEVELS.map(level => Schema.const(level.id))).default('balanced').description('Reporting-depth standing preference for the persona slider.'),
+  persona: Schema.union(PERSONA_LEVELS.map(level => Schema.const(level.id))).default('balanced').description('Reporting-depth standing preference for the persona slider; the depth the person set through the memory (reporting-depth) wins.'),
   tier: Schema.union(['coding-plan', 'start-plan'].map(value => Schema.const(value))).default('coding-plan').description('Tier: coding-plan (localized ledger) or start-plan (verbatim official mirror).'),
   env: (() => { const env = Schema.object({
     cwd: Schema.string().required().description('Working directory shown in the Environment section when the session records none; a session\'s own directory wins.'),
@@ -200,11 +201,16 @@ export function buildAgentAliases(agent: AgentLike): BuiltAlias[] {
  * split sees ZCode names. The reminder reads this step's rewrite: GLM route
  * and TodoWrite on the face before tool search defers it (ZCode checks the
  * turn tools, not the request's resident face). The peak-hour reminder
- * reads the GLM route of the step and the wall clock `now`.
+ * reads the GLM route of the step and the wall clock `now`. The reporting
+ * depth of the session is read once here: `standingDepth` gives the depth
+ * the person set (src/glm-prompt/standing-depth.ts), which wins over the
+ * configured one; a reading that could not be used is part of the row
+ * health of every GLM step.
  */
-export function installDialect(agent: AgentLike, config: GlmPromptConfig = {}, health?: Pick<RowHealth, 'report'>, now: () => number = () => Date.now()): () => void {
+export function installDialect(agent: AgentLike, config: GlmPromptConfig = {}, health?: Pick<RowHealth, 'report'>, now: () => number = () => Date.now(), standingDepth?: () => StandingDepth): () => void {
   const env = sessionEnv(config.env, agent)
-  const sections = dialectSections(false, config.persona ?? 'balanced', env === undefined ? config : { ...config, env })
+  const standing = standingDepth?.() ?? {}
+  const sections = dialectSections(false, standing.level ?? config.persona ?? 'balanced', env === undefined ? config : { ...config, env })
   const withoutMemory = sections.filter(section => section.name !== MEMORY_SECTION)
   const withLessons = sections.map(section => section.name === MEMORY_SECTION ? { ...section, text: buildMemorySectionDsh(true) } : section)
   const aliases = buildAgentAliases(agent)
@@ -220,7 +226,7 @@ export function installDialect(agent: AgentLike, config: GlmPromptConfig = {}, h
     const assembled = await next()
     const glm = isGlmAssembly(assembled)
     glmStep = glm
-    health?.report(sessionIdOf(agent), ...dialectHealth(assemblyRoute(assembled), glm, searchMode === 'off' ? 'off' : toolSearch === undefined ? 'missing' : 'local'))
+    health?.report(sessionIdOf(agent), ...withDepthProblem(dialectHealth(assemblyRoute(assembled), glm, searchMode === 'off' ? 'off' : toolSearch === undefined ? 'missing' : 'local'), standing.problem))
     // Judged on next()'s tools, before the face rewrite and tool search (memorySectionApplies); the lessons sentence follows the same tools.
     const wanted = !memorySectionApplies(assembled) ? withoutMemory : assembled.tools.some(tool => tool.name === LESSONS_QUERY_TOOL) ? withLessons : sections
     const withSections = glm ? rewriteDialectSections(assembled, wanted) : assembled
@@ -249,6 +255,11 @@ export function dialectHealth(route: Route, glm: boolean, search: 'local' | 'off
   return ['active', `GLM 路由 ${routeText}：ZCode 提示词与工具面，${search === 'off' ? '工具检索关闭（toolSearchMode: off）' : '工具检索 local'}`]
 }
 
+/** A dialect status that also says the standing reporting depth could not be used: degraded, unless the dialect is off for the request anyway. */
+function withDepthProblem([state, reason]: [HealthState, string], problem: string | undefined): [HealthState, string] {
+  return problem === undefined || state === 'inactive' ? [state, reason] : ['degraded', `${reason}；${problem}`]
+}
+
 /** cordis plugin identity. */
 export const name = 'dsh-glm-hourness/glm-prompt'
 
@@ -269,8 +280,15 @@ function provideDialect(ctx: Partial<ProvideHost>, active: WeakSet<AgentLike>): 
 }
 
 /** cordis plugin entry (cordis passes `ctx` and `config`; `now` is the wall clock, injectable for tests). */
-export function apply(ctx: PluginContext & Partial<ProvideHost>, config: GlmPromptConfig = {}, now: () => number = () => Date.now()): () => void {
+export function apply(ctx: PluginContext & Partial<ProvideHost> & ServiceLookup, config: GlmPromptConfig = {}, now: () => number = () => Date.now()): () => void {
   const installed = new WeakSet<AgentLike>()
+  // The console hears each way the memory service can fail to give a depth once per row; every session's health says it.
+  const warnedDepth = new Set<string>()
+  const warnDepth = (reason: string, message: string): void => {
+    if (warnedDepth.has(reason)) return
+    warnedDepth.add(reason)
+    console.warn(`${name}: ${message}`)
+  }
   // Agents whose dialect installed without error: the ones the service claims.
   const active = new WeakSet<AgentLike>()
   const health = provideRowHealth(ctx, 'glm-prompt', 'active', `已加载（工具检索 ${config.toolSearchMode ?? 'local'}）`)
@@ -287,7 +305,7 @@ export function apply(ctx: PluginContext & Partial<ProvideHost>, config: GlmProm
     if (installed.has(agent)) return
     installed.add(agent)
     try {
-      disposers.push(installDialect(agent, config, reporter, now))
+      disposers.push(installDialect(agent, config, reporter, now, standingDepthReader(ctx, agent, warnDepth)))
       active.add(agent)
     }
     catch (error) {

@@ -338,6 +338,21 @@ test('a reporting depth that cannot be read gives none and warns once', { skip }
   })
 })
 
+test('a reporting depth that cannot be read shows in the row health of the session that asked, and only there', { skip }, async () => {
+  await withRow(async (row) => {
+    mkdirSync(join(row.userDir, 'memory.jsonl'), { recursive: true })
+    await captureWarnings(() => row.service.depth('another-session'))
+    await row.step()
+    assert.ok(!rowHealth(row).reason.includes('读不出汇报细度'), rowHealth(row).reason)
+    await captureWarnings(() => row.service.depth('agent-1'))
+    await row.step()
+    const health = rowHealth(row)
+    assert.equal(health.status, 'degraded')
+    assert.ok(health.reason.includes('读不出汇报细度'), health.reason)
+    assert.ok(health.reason.includes('配置的默认档'), health.reason)
+  })
+})
+
 test('stats count what a period added and took out; the period decides', { skip }, async () => {
   await withRow(async (row) => {
     await row.tool('memory_store', PREFERENCE)
