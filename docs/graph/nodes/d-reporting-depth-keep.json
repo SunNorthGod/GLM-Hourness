@@ -1,0 +1,19 @@
+{
+  "id": "d-reporting-depth-keep",
+  "type": "decision",
+  "title": "汇报细度这一档保留，按 m5-5 原计划做完",
+  "status": "approved",
+  "parent": "m5",
+  "verification": "unverified",
+  "body": "人 2026-11-01 问「Agent 汇报的详细程度是不是不需要了」，编排方答：新问法（d-ask-three-gates）管问话，一页稿规则管放行稿篇幅，两者都不管平时对话里汇报的长短，这一档仍有独管的那一块；存储与同步读已随 S1、S2 落地，剩下的只是给 GLM 的提示词里一句加测试。人答「行那就留着」。定下：m5-5 按原计划做完（reporting-depth 三档 concise/balanced/detailed，user 类记忆，带原话写入，不衰减，人说「恢复默认」即 memory_forget）。没走的路：只留配置项 reportingDepth、去掉对话里学来的那一档。",
+  "history": [
+    {
+      "at": "2026-11-01T07:23:56.942Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "人决定保留汇报细度这一档，按原计划做完",
+      "relay": "行那就留着",
+      "to": "approved"
+    }
+  ]
+}
