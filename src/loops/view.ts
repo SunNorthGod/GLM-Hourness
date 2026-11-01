@@ -23,6 +23,26 @@ interface ViewEntry {
   readonly note?: string
 }
 
+/**
+ * What the view says about the GLM peak (design §8.2 item 3, §6.9 item 3):
+ * whether it is peak now and when it turns, from the pricing service the
+ * board reads its channel events from, and the level, from the rules board's
+ * service (`stateForProject`) — never from the rules board's files. A level
+ * the rules board cannot read for this project says where to look instead.
+ */
+export interface PeakView {
+  /** Whether it is peak now; undefined when the clock cannot be read. */
+  readonly now: boolean | undefined
+  /** ISO 8601: the end of this peak, or the start of the next one. */
+  readonly until?: string
+  /** The level's name (无影响/少做/不做), or 「档位在规则板上看」. */
+  readonly level: string
+  /** `default`: the factory level stands, the project never chose; `human`: the person chose it. Undefined with the fallback level. */
+  readonly origin?: 'default' | 'human'
+  /** The reduce level's cap line, while it is peak. */
+  readonly cap?: string
+}
+
 export interface LoopsView {
   readonly version: 1
   /** ISO time the view was made. */
@@ -32,6 +52,8 @@ export interface LoopsView {
   readonly entries: readonly ViewEntry[]
   /** What the person is to look at, one sentence each. */
   readonly attention: readonly string[]
+  /** The GLM peak as it stands; absent while this host has no pricing service at all (no peak to show, design §5.2). */
+  readonly peak?: PeakView
 }
 
 /** One thing the person is to look at; `degrades` says it also degrades the row's health, since it stops an entry or the record from being trusted. */
@@ -66,8 +88,8 @@ export function attentionOf(board: BoardRead): readonly Attention[] {
     : [...notes, { text: `变更记录第 ${lines.join('、')} 行读不出，已跳过；涉及的那一项按之后的记录显示。知道了就在输入框打 /loops ack`, degrades: true }]
 }
 
-/** The view of a project. `board` is undefined when the project's files could not be read. */
-export function buildView(input: { readonly at: string, readonly project: string, readonly plugin: ReturnType<LoopsRegistry['entries']>, readonly board: BoardRead | undefined }): LoopsView {
+/** The view of a project. `board` is undefined when the project's files could not be read; `peak` is absent while the host has no pricing service. */
+export function buildView(input: { readonly at: string, readonly project: string, readonly plugin: ReturnType<LoopsRegistry['entries']>, readonly board: BoardRead | undefined, readonly peak?: PeakView }): LoopsView {
   const plugin = input.plugin.map((item): ViewEntry => ({
     id: item.entry.id,
     title: item.entry.title,
@@ -79,5 +101,12 @@ export function buildView(input: { readonly at: string, readonly project: string
     const note = entry.status.kind === 'deleted' && entry.restorable ? `要恢复：在输入框打 /loops restore ${entry.id}` : undefined
     return { id: entry.id, title: entry.title, source: 'person', state: entry.status.kind, ...(note === undefined ? {} : { note }) }
   })
-  return { version: 1, at: input.at, project: input.project, entries: [...plugin, ...person], attention: input.board === undefined ? [] : attentionOf(input.board).map(item => item.text) }
+  return {
+    version: 1,
+    at: input.at,
+    project: input.project,
+    entries: [...plugin, ...person],
+    attention: input.board === undefined ? [] : attentionOf(input.board).map(item => item.text),
+    ...(input.peak === undefined ? {} : { peak: input.peak }),
+  }
 }

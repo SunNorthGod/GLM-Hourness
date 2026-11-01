@@ -329,6 +329,13 @@ export interface LoopsRegistry {
    * without handing a `run` over.
    */
   actionOf(entry: string): { readonly run: NonNullable<Contribution['run']>, readonly actions: readonly string[] } | undefined
+  /**
+   * The `run` of the hand-over that listed this harness action, for the loop
+   * row's own action to call another row's (design §6.9 item 4 row 3, the
+   * execute row's resume action). Undefined while nobody lists it — M7 does
+   * not exist yet — which is how the table skips its row 3.
+   */
+  runOfAction(action: string): NonNullable<Contribution['run']> | undefined
   /** The row that declared this event (`<row>` of its hand-over), for the record of what handed an event over; undefined for an event nobody declares. */
   declarerOf(event: string): string | undefined
 }
@@ -434,6 +441,15 @@ export function createRegistry(options: RegistryOptions = {}): LoopsRegistry {
         if (typeof source.run !== 'function') return undefined
         // Called through the hand-over, so the row's own `this` is its own object.
         return { run: (action, event) => source.run?.(action, event) ?? Promise.resolve({ outcome: 'failed', reason: 'run 不在了' }), actions: held.check.actions.map(action => action.id) }
+      }
+      return undefined
+    },
+    runOfAction(action) {
+      for (const held of holders.values()) {
+        if (!held.check.actions.some(listed => listed.id === action)) continue
+        const source = held.contribution
+        if (typeof source.run !== 'function') return undefined
+        return (actionId, event) => source.run?.(actionId, event) ?? Promise.resolve({ outcome: 'failed', reason: 'run 不在了' })
       }
       return undefined
     },

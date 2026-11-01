@@ -187,6 +187,15 @@ export interface HeldMessage {
   readonly reason: string
   /** The session the result was for, when it was not the main agent's. */
   readonly session?: string
+  /**
+   * Not a message but a judgement to make again (design §6.9 item 4 row 2):
+   * `loops.peak-end` while the main agent's session is open in another DSH
+   * process. It waits here so that it travels with the state when the run lock
+   * goes to that process, and the delivery never sends one.
+   */
+  readonly rerun?: 'loops.peak-end'
+  /** The event the rerun judges again, as the inbox read it. */
+  readonly event?: LoopEventRecord
 }
 
 /** The state a project starts from, and the one a state file that cannot be read is rebuilt as (design §6.8). */
@@ -309,7 +318,8 @@ export function quietUntil(quiet: { readonly from: string, readonly to: string }
 }
 
 export function openInbox(deps: InboxDeps): Inbox {
-  let state = readState(deps.paths, deps.now())
+  // One live object for the whole runtime: a save prunes it in place and never replaces it (see save).
+  const state = readState(deps.paths, deps.now())
   /** The groups whose run is in flight: no second run of a group overlaps the first. */
   const inFlight = new Set<string>()
   let armed: (() => void) | undefined
@@ -619,11 +629,30 @@ export function openInbox(deps: InboxDeps): Inbox {
     }
   }
 
-  async function save(): Promise<void> {
+  /**
+   * One snapshot of the run state onto disk. It prunes in place and writes
+   * the live object: a save never replaces `state`, because a run or a
+   * delivery in flight holds the object it read from `state()` and its
+   * mutations would land on an orphan — a held judgement or an armed run
+   * silently lost. Saves run one at a time (a beat, a run and a retry can
+   * save at once): the read of the object and the rename of the file travel
+   * together, so the last save on disk is the last one that started and no
+   * older snapshot lands over a newer one.
+   */
+  let saveChain: Promise<void> = Promise.resolve()
+  function save(): Promise<void> {
+    const run = saveChain.then(saveNow, saveNow)
+    saveChain = run.catch(() => {})
+    return run
+  }
+
+  async function saveNow(): Promise<void> {
     try {
-      const kept: RuntimeState = { ...state, keys: prune(state.keys, deps.now()), causes: Object.fromEntries(Object.entries(state.causes).filter(([, cause]) => deps.now() - Date.parse(cause.at) < SELF_LOOP_MS)) }
-      state = kept
-      const written = await writeAtomic(deps.paths.state, `${JSON.stringify(kept, null, 2)}\n`, deps.io)
+      pruneKeys(state.keys, deps.now())
+      for (const cause of Object.keys(state.causes)) {
+        if (deps.now() - Date.parse(state.causes[cause].at) >= SELF_LOOP_MS) delete state.causes[cause]
+      }
+      const written = await writeAtomic(deps.paths.state, `${JSON.stringify(state, null, 2)}\n`, deps.io)
       if (!written.ok) deps.report('state.json 换不上去，下一拍再写', 'info')
     }
     catch (error) {
@@ -668,6 +697,15 @@ function prune(keys: RuntimeState['keys'], nowMs: number): RuntimeState['keys'] 
     space,
     Object.fromEntries(Object.entries(known).filter(([, memory]) => nowMs - Date.parse(memory.firstSeen) < KEY_MEMORY_MS)),
   ]))
+}
+
+/** The same pruning, in place: the save writes the live state and must not rebuild it (see save). */
+function pruneKeys(keys: RuntimeState['keys'], nowMs: number): void {
+  for (const known of Object.values(keys)) {
+    for (const key of Object.keys(known)) {
+      if (nowMs - Date.parse(known[key].firstSeen) >= KEY_MEMORY_MS) delete known[key]
+    }
+  }
 }
 
 /** The state as it was left, or an empty one; a file that cannot be read is rebuilt, as design §6.8 says. */

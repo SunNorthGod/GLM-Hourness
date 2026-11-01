@@ -29,7 +29,15 @@
  * entry in, loops:files-only refuses a file tool and a shell command that
  * write into the board's own files, and both of the row's gates are installed
  * (the three calls loops:schedule-tools judges cannot be made in a headless
- * host, which mounts no schedule service). The graph panel scenarios run the
+ * host, which mounts no schedule service). The loop board's peak scenario
+ * (loops-peak) runs on the GLM route at the probe clock inside a peak, with
+ * the loop row and the rules row (少做) enabled and no contribution listing
+ * execute.resume-drive: the scripted agent becomes the main agent with /wish,
+ * works, shifts the clock past the peak's end with the probe clock's tool and
+ * idles over a pending background child, and the board's next beat wakes it
+ * once with the end-of-peak reminder; loops-peak-restart opens the same
+ * project again across the same boundary, whose key is consumed, so no second
+ * reminder goes out. The graph panel scenarios run the
  * bundle's /graph-apply and /graph-run handlers mid-step for the session;
  * the GLM and non-GLM scenarios run /hourness and /hourness-status at their
  * last step, after /glm-status is recorded.
@@ -67,6 +75,7 @@ import { clockText } from '../../packages/hourness/dist/rules/index.js'
 import { repoJson } from '../../packages/hourness/dist/rules/model.js'
 import { RULES_DECLARATION } from '../../packages/hourness/dist/rules/service.js'
 import { entryFileText } from '../../packages/hourness/dist/loops/model.js'
+import { LOOP_NOTICE_SOURCE } from '../../packages/hourness/dist/loops/deliver.js'
 import { LOOPS_DECLARATION } from '../../packages/hourness/dist/loops/service.js'
 import { PEAK_REMINDER_SOURCE, PEAK_REMINDER_TEXT } from '../../packages/glm/dist/glm-prompt/peak-reminder.js'
 import { peakWindowAt } from '../../packages/glm/dist/glm-llm/credits.js'
@@ -364,11 +373,11 @@ const plainShellResult = lastToolResult(plainGuard.steps[2])
 // requests carry it once because it persists, and the non-GLM scenario runs
 // on the same clock and gets none. Each request records the runtime clock.
 const PEAK_AT = '2026-10-28T15:00:00+08:00'
-const clockRow = at => [
+const clockRow = (at, shiftWith) => [
   '- insert:',
   '    - id: glm-hourness-probe/clock',
   `      name: ${JSON.stringify(slash(join(repo, 'scripts', 'probe', 'probe-clock.mjs')))}`,
-  `      config: { at: ${JSON.stringify(at)} }`,
+  `      config: { at: ${JSON.stringify(at)}${shiftWith === undefined ? '' : `, shiftWith: ${JSON.stringify(shiftWith)}`} }`,
 ]
 const peak = runScenario('glm-peak', 'glm-5.3', [
   { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } } },
@@ -790,6 +799,60 @@ const { project: stopProject, run: rulesPeakStop } = stopProbe('rules-peak-stop'
   [{ tool: { name: 'pwsh', arguments: { command: 'Write-Output rules-probe-plain', description: 'Print a word' } } }, { text: 'ok' }],
 ])
 const { project: stopExitProject, run: rulesPeakStopExit } = stopProbe('rules-peak-stop-exit', { lift: false }, [stopChildScript.slice(0, 2)])
+
+// Loop board, the end of a peak (docs/ORCHESTRATION.md §18.12, loops design
+// §6.9). The scenario project is a scratch git repository whose rules file
+// holds the person's 少做 choice; the loop row is enabled on the GLM route at
+// the probe clock, inside the peak, and no contribution lists
+// execute.resume-drive (the headless host has no execution row). The scripted
+// agent becomes the main agent with /wish and works (the board's step note
+// writes the walk record), lets the board's first beat read the peak, shifts
+// the clock past the peak's end with the probe clock's tool, dispatches a
+// background child that sleeps, and idles (the headless runner exits at a
+// quiescent idle, and the child keeps the idle from being one): the board's
+// second beat sees the edge, the table finds nobody to resume, and the idle
+// main agent that worked in this peak is woken once with the board's
+// reminder. The restart boot opens the same project five minutes before the
+// same peak's end, crosses into and out of the same peak again: the end
+// edge's key was consumed by the first boot, the re-emitted event is a
+// duplicate, and no second reminder goes out.
+const LOOPS_PEAK_END = '2026-10-28T10:00:00.000Z'
+// The same moment as a number: the step clock is a number, and a number compared with the string would coerce it to NaN (the check below reads this one).
+const LOOPS_PEAK_END_MS = Date.parse(LOOPS_PEAK_END)
+const SHIFT_TOOL = 'probe_shift_clock'
+// The headless runtime mounts no session controller, which is what lets the loop board's running half activate; the probe row stands in for it.
+const SESSIONS_ROW = [
+  '- insert:',
+  '    - id: glm-hourness-probe/sessions',
+  `      name: ${JSON.stringify(slash(join(repo, 'scripts', 'probe', 'probe-sessions.mjs')))}`,
+  '      inject: [agents]',
+]
+const REDUCE_RULES_FILE = repoJson({ version: 2, peakMode: { level: 'reduce', at: GATE_RULE_AT, origin: { actor: 'human' } } })
+const loopsPeakProject = rulesGateProject('loops-peak', REDUCE_RULES_FILE)
+mkdirSync(join(loopsPeakProject.ws, 'docs', 'graph'), { recursive: true })
+const loopsPeak = runScenario('loops-peak', 'glm-5.3', [
+  { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } }, line: '/wish' },
+  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 62', timeout: 120000 } } },
+  { tool: { name: 'DeferredToolCall', arguments: { name: SHIFT_TOOL, input: { at: '2026-10-28T10:05:00.000Z' } } } },
+  { tool: { name: 'DeferredToolCall', arguments: { name: 'probe_dispatch', input: { task: 'T1', prompt: 'Probe task T1: wait for the peak to end, then report.', cwd: loopsPeakProject.ws, scope: 'allowed', model: 'deepseek-probe' } } } },
+  { text: 'Waiting for the peak to end.' },
+  { text: 'done', status: true },
+], 'Become the main agent, read package.json, wait, shift the clock past the peak, dispatch a waiting task, then reply done when the board tells you the peak ended.', [...RULES_ROW, ...LOOPS_ROW, ...SESSIONS_ROW, ...clockRow(PEAK_AT, SHIFT_TOOL), ...dispatchRow(join(runDir, 'loops-peak', 'dispatch.jsonl')), ...designRows({ record: slash(join(runDir, 'loops-peak', 'design.jsonl')) })], loopsPeakProject.ws, [[
+  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 30' } } },
+  { tool: { name: 'structured_output', arguments: { summary: 'waited out the peak', files: [] } } },
+  { text: 'child done' },
+]])
+const loopNotices = step => (step?.messages ?? []).filter(message => message.role === 'user' && message.source === LOOP_NOTICE_SOURCE)
+const loopsPeakNoticeSteps = loopsPeak.steps.filter(step => loopNotices(step).length > 0)
+const loopsPeakRuns = () => jsonl(join(loopsPeakProject.ws, '.llm', 'loops', 'runs.jsonl'))
+const loopsPeakRestart = runScenario('loops-peak-restart', 'glm-5.3', [
+  { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } } },
+  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 62', timeout: 120000 } } },
+  { tool: { name: 'DeferredToolCall', arguments: { name: SHIFT_TOOL, input: { at: '2026-10-28T10:00:30.000Z' } } } },
+  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 62', timeout: 120000 } } },
+  { text: 'done', status: true },
+], 'Read package.json, wait, shift the clock past the peak, wait again, then reply done.', [...RULES_ROW, ...LOOPS_ROW, ...SESSIONS_ROW, ...clockRow('2026-10-28T09:55:00.000Z', SHIFT_TOOL)], loopsPeakProject.ws)
+const loopsPeakRestartNoticeSteps = loopsPeakRestart.steps.filter(step => loopNotices(step).length > 0)
 
 // The headless runner exits at the first quiescent idle of its own agent: an
 // armed goal created in the task turn gets no round before exit (the reason
@@ -1416,6 +1479,9 @@ const checks = [
   ['loops: a headless host has no session controller, so the row says it runs no entry here, hands out no service, takes no run lock and writes nothing of the runtime, while its gate and its files work', (loopsHealth.loops?.reason ?? '').includes('这个进程不跑循环板（没有会话控制器）') && loopsRanNothing.length === 0 && loops.steps.every(step => step.system.includes(LOOPS_DECLARATION)), `reason ${loopsHealth.loops?.reason ?? 'none'}; runtime files ${JSON.stringify(loopsRanNothing)}`],
   // Both gates of the row are installed on the real runtime from the day the row is enabled (d-code-rules-enforce). The three calls loops:schedule-tools judges cannot be made here: the headless template mounts neither dsh-schedule nor the session controller, so the reminder tools are not registered (loops design §10.2 V1; L2 covers the three in tests/loops-guard.spec.ts).
   ['loops: the row installs both of its gates and says so, and no reminder of the board can exist in a host without the schedule service', (loopsHealth.loops?.reason ?? '').includes('loops:files-only 与 loops:schedule-tools 已装上') && !(loopsHealth.loops?.reason ?? '').includes('定时服务'), `reason ${loopsHealth.loops?.reason ?? 'none'}`],
+  ['loops-peak: the boot reached the provider and ran its steps clean', loopsPeak.steps.length >= 5 && loopsPeak.status === 0 && !stderrOf('loops-peak').includes('dsh-glm-hourness/loops'), `exit ${loopsPeak.status}, ${loopsPeak.steps.length} step(s); ${stderrOf('loops-peak').split('\n').find(line => line.includes('loops')) ?? 'no stderr line mentions loops'}`],
+  ['loops-peak: after the shifted clock crossed the peak\'s end, the board waked the idle main agent that worked in the peak once — one delivered run, whose reminder the woken request carries (a followup persists, so the turn the child\'s completion woke still carries it) and says the words of the table\'s row 10', loopsPeakRuns().filter(record => record.kind === 'loop-done' && record.entry === 'loops.peak-end' && record.outcome === 'delivered').length === 1 && loopsPeakNoticeSteps.length >= 1 && loopNotices(loopsPeakNoticeSteps[0])[0].text.includes('Work you moved to after peak can start now.') && loopsPeakNoticeSteps[0].clock > LOOPS_PEAK_END_MS, `${loopsPeakNoticeSteps.length} step(s) with the reminder at ${JSON.stringify(loopsPeakNoticeSteps.map(step => step.clock))}; runs ${JSON.stringify(loopsPeakRuns().filter(record => record.entry === 'loops.peak-end').map(record => [record.kind, record.outcome]))}`],
+  ['loops-peak restart: the re-emitted end edge of the same peak is a duplicate, so no second reminder goes out after the restart, and the journal still carries the one delivered run', loopsPeakRestartNoticeSteps.length === 0 && loopsPeakRuns().some(record => record.kind === 'loop-duplicate' && record.key === `peak-changed:end:${LOOPS_PEAK_END}`) && loopsPeakRuns().filter(record => record.kind === 'loop-done' && record.entry === 'loops.peak-end').length === 1, `${loopsPeakRestartNoticeSteps.length} step(s) with a notice; duplicates ${loopsPeakRuns().filter(record => record.kind === 'loop-duplicate').length}; runs ${JSON.stringify(loopsPeakRuns().filter(record => record.entry === 'loops.peak-end').map(record => [record.kind, record.outcome]))}`],
   ['rules-peak-hourness: the row is in effect without the pricing service (a supported combination) and the main agent\'s tool call ran', aloneHealth.rules?.status === ACTED && aloneHealth.rules.reason.includes('读不出是不是高峰') && lastToolResult(rulesPeakAlone.steps[1])?.isError !== true && !stderrOf('rules-peak-hourness').includes('dsh-glm-hourness/rules'), `${healthLine(aloneHealth, 'rules')} (${aloneHealth.rules?.reason ?? ''})`],
   ...designChecks(),
   ['non-glm boot: the runtime reached the probe provider', plainFirst !== undefined, `exit ${plain.status}, ${plain.steps.length} step(s)`],

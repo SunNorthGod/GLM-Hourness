@@ -114,11 +114,12 @@ class GoalError extends Error {
   }
 }
 
-/** A goal as `goals.get` returns it, as far as the rows read it: its identity, the revision that every change raises by one, and the phase. */
+/** A goal as `goals.get` returns it, as far as the rows read it: its identity, the revision that every change raises by one, and the phase, with why a blocked one is blocked (dsh-goal `GoalBlockReason`). */
 interface FakeGoal {
   readonly id: string
   readonly revision: number
   readonly phase: string
+  readonly blockedReason?: { readonly code: string, readonly message: string }
 }
 
 /** What a row asked of the goal service, in order, with the reference it gave. */
@@ -157,8 +158,8 @@ export interface FakeLive {
   /** The agent is released: the registry no longer knows it. */
   release(id: string): void
   setStatus(id: string, status: 'idle' | 'running'): void
-  /** Give the agent's goal this phase, as a person's change would: a new goal is revision 1, an existing one goes up by one revision; none when undefined. */
-  setGoal(id: string, phase: string | undefined): void
+  /** Give the agent's goal this phase, as a person's change would: a new goal is revision 1, an existing one goes up by one revision; none when undefined. `blocked` is the reason a blocked phase carries. */
+  setGoal(id: string, phase: string | undefined, blocked?: { readonly code: string, readonly message: string }): void
   /** The agent's goal now. */
   goalOf(id: string): FakeGoal | undefined
   /** Make the ways named (all three when none are) throw for the agent. */
@@ -224,10 +225,17 @@ export function fakeLive(): FakeLive {
     },
     release: id => void entries.delete(id),
     setStatus(id, status) { const entry = entries.get(id); if (entry !== undefined) entry.status = status },
-    setGoal(id, phase) {
+    setGoal(id, phase, blocked) {
       const entry = entries.get(id)
       if (entry === undefined) return
-      entry.goal = phase === undefined ? undefined : { id: entry.goal?.id ?? `goal-${id}`, revision: (entry.goal?.revision ?? 0) + 1, phase }
+      entry.goal = phase === undefined
+        ? undefined
+        : {
+            id: entry.goal?.id ?? `goal-${id}`,
+            revision: (entry.goal?.revision ?? 0) + 1,
+            phase,
+            ...(blocked === undefined || phase !== 'blocked' ? {} : { blockedReason: blocked }),
+          }
     },
     goalOf: id => entries.get(id)?.goal,
     breakWake(id, ...ways) { const entry = entries.get(id); if (entry !== undefined) entry.broken = new Set(ways.length === 0 ? WAYS : ways) },

@@ -13,7 +13,10 @@
  * entries wait for (file-watch.ts) and the channel's peak reading (channel.ts),
  * each against what the state remembers, so a change made while the host was
  * down is caught once; read the graph once an hour for what has waited for the
- * human too long; then let the inbox start what is due (inbox.ts).
+ * human too long; then let the inbox start what is due (inbox.ts). When a peak
+ * ended, the loop row's own action runs the table of design §6.9 item 4
+ * (peak.ts), and a judgement that waits because the main agent's session is
+ * open in another process is made again here on every beat (row 2).
  *
  * What an entry's action does here:
  *
@@ -22,9 +25,13 @@
  *   run ends `held`, so nothing is lost and the page says why;
  * - `harness`: the action of the row that brought it runs (harness.ts) and its
  *   result becomes the outcome; `failed` degrades this row's health, a finding
- *   of the action does not;
+ *   of the action does not. The loop row's own peak-end action may answer a
+ *   skipped result whose run is `held` (peak.ts, design §6.9 item 4 row 2):
+ *   the judgement waits and the beat makes it again;
  * - `self`: never run here. The row that owns it runs it where it happens and
- *   reports through `recordRun`;
+ *   reports through `recordRun`; the one exception is the loop row's own
+ *   peak-start entry, whose run the board records itself, `delegated`, when
+ *   the channel event fires (design §6.9 item 5);
  * - `script` and `check`: refused, without starting anything. A script runs only
  *   after the person has read it and agreed, and that path does not exist on
  *   this computer yet (`unadopted`); a check needs the command of an approved
@@ -44,17 +51,19 @@ import type { ServiceLookup } from '../shared/dsh-min.ts'
 import { nextPeakChange } from '../shared/pricing.ts'
 import { reconcile, scheduleOf, type BindDeps, type BindOutcome } from './bind.ts'
 import { CHANNEL_PEAK_CHANGED, peakChangedKey } from './channel.ts'
-import { createDelivery, type Deliver, type DeliverResult, type LoopDelivery } from './deliver.ts'
+import { createDelivery, HELD_MS, type Deliver, type DeliverResult, type LoopDelivery } from './deliver.ts'
+import { PEAK_END_ACTION, PEAK_START_ENTRY } from './defaults.ts'
 import { fileChangedKey, hostRestartedKey, waitingOnHumanKey } from './events.ts'
 import { currentRun, runAction } from './harness.ts'
 import { holderFault, holderLine, holderRecordFor, holderStateOf, WRITER_HELD_MS, type HolderState } from './holder.ts'
 import { openInbox, type EmitInput, type EmitResult, type Inbox, type RunBatch, type RunnableEntry } from './inbox.ts'
 import { createRunLock, type LockStand } from './lock.ts'
 import { watchPaths, type WatchDeps, type Watched } from './file-watch.ts'
+import { createPeakEnd, peakLevelOf, type PeakEnd } from './peak.ts'
 import { appendRun, firedRecord, runId, type LoopRecord, type RunOutcome, type RunReason } from './records.ts'
 import type { LoopsRegistry } from './registry.ts'
-import type { ListedRun } from './service.ts'
-import type { LoopStore } from './store.ts'
+import type { HarnessResult, ListedRun, LoopEventRecord } from './service.ts'
+import { ensureRuntimeDir, type LoopStore } from './store.ts'
 
 /** How often a project's board beats (design §6.1). */
 export const BEAT_MS = 60_000
@@ -84,6 +93,10 @@ export interface ProjectDeps {
   readonly report: (text: string, level: 'info' | 'degraded') => void
   /** The channel's peak reading, while a pricing service is there (design §4.3). */
   readonly peak?: () => ((atMs: number) => boolean) | undefined
+  /** Told when a peak edge was emitted, so the page's view of the level is written again (design §6.9 item 3). */
+  readonly onPeakEdge?: () => void
+  /** The delivery's gather window; tests set 0 so a beat's delivery does not wait for a timer (the batching itself is deliver.ts's). */
+  readonly deliverBatchMs?: number
   /** The main agent's session if it is open in this process (design §6.1); without it the lock is never handed over. */
   readonly holderHere?: () => string | undefined
   /** What the graph has waiting for the human; the default reads the project's own graph. */
@@ -116,6 +129,8 @@ export interface ProjectRuntime {
   binding(scheduleId: string): { readonly entry: string, readonly run?: string } | undefined
   /** Hand one event over (the service's `emit`, design §3.1). */
   emit(input: Omit<EmitInput, 'project'>): Promise<EmitResult>
+  /** The loop row's own harness action for this project: the end of a peak (design §6.9 item 4). Never throws. */
+  peakEnd(action: string, event: LoopEventRecord): Promise<HarnessResult>
   /** Whether an entry that could run now hears this event (the service's `listens`). */
   listens(event: string): boolean
   /** One run of a `self` entry, reported by the row that ran it (the service's `recordRun`). */
@@ -159,6 +174,8 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
   /** The runs of this process that are in flight; the lock is not handed over while one is (design §6.1). */
   const flight = new Map<string, string>()
   let stopped = false
+  /** The runtime directory is made once, before the first lock beat (design §6.1). */
+  let dirMade = false
   let stand: LockStand = { kind: 'waiting', pid: 0 }
   let restartTold = false
   let watched: Watched | undefined
@@ -200,6 +217,7 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
     memory: () => inbox.state().holderMemory,
     report: deps.report,
     delay: deps.delay,
+    ...(deps.deliverBatchMs === undefined ? {} : { batchMs: deps.deliverBatchMs }),
   })
   const deliver: Deliver = deps.deliver ?? delivery.deliver
 
@@ -235,6 +253,80 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
     report: deps.report,
     delay: deps.delay,
   })
+
+  /**
+   * The end of a peak, the loop row's own harness action (design §6.9 item 4,
+   * peak.ts): the level through the rules board's service, the execute row's
+   * resume action through the registry, the walk record of this project. A
+   * judgement that has to wait (row 2) is kept in the held list as a rerun
+   * marker, which the beat makes again; it is not a message.
+   */
+  const peakEnd: PeakEnd = createPeakEnd({
+    ctx,
+    projectRoot: deps.root,
+    now: deps.now,
+    delay: deps.delay,
+    peak: () => deps.peak?.(),
+    holder,
+    memory: () => inbox.state().holderMemory,
+    mainStep: paths.mainStep,
+    runOfAction: action => deps.registry.runOfAction(action),
+    hold: (event, run, reason) => {
+      const state = inbox.state()
+      if (state.held.some(item => item.rerun === 'loops.peak-end' && item.run === run)) return
+      const title = entries().find(item => item.entry.id === PEAK_END_ACTION)?.entry.title ?? PEAK_END_ACTION
+      state.held.push({ at: iso(), entry: PEAK_END_ACTION, run, title, text: '', wake: true, reason, rerun: 'loops.peak-end', event })
+    },
+    report: deps.report,
+  })
+
+  /**
+   * A judgement that waited (row 2) is made again from the table's first row,
+   * with the run number it had (design §6.9 item 4 row 2). A day without a
+   * verdict ends the run `expired`; a verdict delivers its words and records
+   * the one more outcome the design asks for a held run.
+   */
+  async function rerunPeakEnd(): Promise<void> {
+    const state = inbox.state()
+    const waiting = state.held.filter(item => item.rerun === 'loops.peak-end' && item.event !== undefined)
+    for (const held of waiting) {
+      try {
+        if (deps.now() - Date.parse(held.at) >= HELD_MS) {
+          state.held.splice(state.held.indexOf(held), 1)
+          record({ kind: 'loop-done', at: iso(), project: deps.root, entry: held.entry, run: held.run, outcome: 'expired', reason: '高峰结束的再判等了一天还没判成' })
+          inbox.state().last[held.entry] = { run: held.run, at: iso(), outcome: 'expired', reason: '高峰结束的再判等了一天还没判成' }
+          continue
+        }
+        const judgement = await peakEnd.judge(held.event!, held.run)
+        if (judgement.outcome === 'held') continue
+        state.held.splice(state.held.indexOf(held), 1)
+        const title = entries().find(item => item.entry.id === held.entry)?.entry.title ?? held.entry
+        // A verdict of the table maps as the runner maps an action's: done with words is the delivery's outcome, failed stays failed (the words go out all the same).
+        let outcome: RunOutcome = judgement.outcome === 'done' ? 'delivered' : judgement.outcome
+        let why: RunReason | undefined = judgement.reason
+        if (judgement.outcome === 'done') {
+          const result = await deliver({ project: deps.root, entry: held.entry, run: held.run, title, text: judgement.tell, wake: true })
+            .catch((error: unknown): DeliverResult => ({ kind: 'failed', reason: message(error) }))
+          if (result.kind === 'delivered') outcome = 'delivered'
+          else if (result.kind === 'held') outcome = 'held'
+          else {
+            outcome = 'failed'
+            why = result.reason
+            deps.report(`没能把「${title}」交给主 Agent：${result.reason.slice(0, 80)}`, 'degraded')
+          }
+        }
+        else if (judgement.outcome === 'failed') {
+          await deliver({ project: deps.root, entry: held.entry, run: held.run, title, text: judgement.tell, wake: true })
+            .catch((error: unknown): DeliverResult => ({ kind: 'failed', reason: message(error) }))
+        }
+        record({ kind: 'loop-done', at: iso(), project: deps.root, entry: held.entry, run: held.run, outcome, ...(why === undefined ? {} : { reason: why }) })
+        inbox.state().last[held.entry] = { run: held.run, at: iso(), outcome, ...(why === undefined ? {} : { reason: why }) }
+      }
+      catch (error) {
+        deps.report(`高峰结束的再判出错：${message(error)}`, 'degraded')
+      }
+    }
+  }
 
   /** Hand one of the loop row's own events over, under the run that caused it when there is one. */
   async function own(event: string, key: string, payload: Readonly<Record<string, unknown>>, session?: string): Promise<void> {
@@ -333,6 +425,33 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
       boundary: new Date(boundary).toISOString(),
       until: until === undefined ? '' : new Date(until).toISOString(),
     })
+    recordPeakStart(edge)
+    deps.onPeakEdge?.()
+  }
+
+  /**
+   * The peak-start entry is the rules row's work: the board only records its
+   * run, `delegated`, with the level the rules board's service reads at that
+   * moment (design §5.2, §6.9 item 5). A `self` entry never runs from the
+   * inbox, so this is the one record it gets.
+   */
+  function recordPeakStart(edge: 'start' | 'end'): void {
+    if (edge !== 'start') return
+    const item = entries().find(candidate => candidate.entry.id === PEAK_START_ENTRY)
+    if (item === undefined || item.entry.action.kind !== 'self') return
+    const id = runId()
+    record(firedRecord({ at: iso(), project: deps.root, run: id, entry: item.entry, from: item, event: { event: CHANNEL_PEAK_CHANGED, at: iso() }, events: 1 }))
+    const level = peakLevelOf(ctx, deps.root)?.level
+    record({
+      kind: 'loop-done',
+      at: iso(),
+      project: deps.root,
+      entry: item.entry.id,
+      run: id,
+      outcome: 'delegated',
+      ...(level === undefined ? {} : { reason: level }),
+    })
+    inbox.state().last[item.entry.id] = { run: id, at: iso(), outcome: 'delegated', ...(level === undefined ? {} : { reason: level }) }
   }
 
   /** `loops.waiting-on-human`: once an hour, what has waited longer than an entry's threshold and has not been listed in the last 24 hours (design §4.1). */
@@ -414,16 +533,22 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
         else {
           const result = await runAction(action.action, batch.record, run, { run: listed.run, now: deps.now, delay: deps.delay })
           const text = result.tell ?? action.tell?.text
-          if (result.outcome === 'skipped') {
+          if (result.held !== undefined) {
+            // Row 2 of the peak-end table: the judgement waits in the held list and the beat makes it again (design §6.9 item 4 row 2).
+            outcome = 'held'
+            reason = result.held
+          }
+          else if (result.outcome === 'skipped') {
             outcome = 'skipped'
             reason = result.reason
           }
           else if (result.outcome === 'done') {
+            reason = result.reason
             if (text === undefined) outcome = 'ran'
             else {
               const told = await tell(item, run, text, action.tell?.wake ?? true, batch)
               outcome = told.outcome
-              reason = told.reason
+              reason = told.reason ?? result.reason
               how = told.how
               messageId = told.messageId
             }
@@ -577,9 +702,30 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
     },
   })
 
-  async function beat(): Promise<void> {
+  /**
+   * One beat of the board. Beats come from the clock, the host and the file
+   * watch, and a watch callback does not wait for the beat it starts, so two
+   * beats can be in flight at once; the run state (the inbox position, the
+   * held judgements) is not made for that. Every beat therefore waits for the
+   * one before it: the design's "the beat makes it again" keeps its order,
+   * and a beat that arrives while another runs becomes the next one, not a
+   * second reader of the same journal bytes.
+   */
+  let beatChain: Promise<void> = Promise.resolve()
+  function beat(): Promise<void> {
+    const run = beatChain.then(runBeat, runBeat)
+    beatChain = run.catch(() => {})
+    return run
+  }
+
+  async function runBeat(): Promise<void> {
     if (stopped) return
     try {
+      // A project adopted from the workspace registry beats before anything of it wrote here; the lock needs the directory (design §6.1).
+      if (!dirMade) {
+        dirMade = true
+        await ensureRuntimeDir(deps.store.paths)
+      }
       stand = await lock.beat()
       if (stand.kind === 'fault') deps.report(stand.reason, 'degraded')
       if (stand.kind !== 'held') {
@@ -606,6 +752,7 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
       await waitingOnHuman()
       told(await reconcile(bindDeps))
       await delivery.flush()
+      await rerunPeakEnd()
       await inbox.beat()
     }
     catch (error) {
@@ -618,6 +765,7 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
     beat,
     settleTasks,
     holder,
+    peakEnd: (action, event) => peakEnd.run(action, event),
     bindings: () => new Set(Object.values(inbox.state().bindings).map(binding => binding.scheduleId)),
     binding(scheduleId) {
       const found = Object.entries(inbox.state().bindings).find(([, binding]) => binding.scheduleId === scheduleId)

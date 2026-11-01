@@ -9,10 +9,11 @@
  * The words to the main agent are English; the first line of each message,
  * `Loop board: <id> (default of <plugin>).`, is written when the message is
  * delivered, so the texts here begin with the second line. A `{name}` is filled
- * from the payload of the event.
+ * from the payload of the event. The hand-over itself (`Contribution`) is built
+ * by the row (src/loops/index.ts), whose runner executes the one harness action
+ * (src/loops/peak.ts); this file is only the entries' data.
  */
 import type { LoopEntryDefinition } from './model.ts'
-import type { Contribution, HarnessResult } from './service.ts'
 
 /** Dependency files by name; a name without a slash counts in any directory. */
 export const DEPENDENCY_FILES: readonly string[] = [
@@ -36,6 +37,12 @@ export const DEPENDENCY_FILES: readonly string[] = [
 ]
 
 const PEAK_BASIS = 'GLM 通道的高峰时刻与规则板的高峰模式'
+
+/** The loop row's peak-start entry: a `self` entry the rules row does the work of; the board only lists it and records its run (design §5.2, §6.9 item 5). */
+export const PEAK_START_ENTRY = 'loops.peak-start'
+
+/** The loop row's own harness action, executed by src/loops/peak.ts (design §6.9 item 4). */
+export const PEAK_END_ACTION = 'loops.peak-end'
 
 export const LOOP_DEFAULTS: readonly LoopEntryDefinition[] = [
   {
@@ -65,7 +72,7 @@ export const LOOP_DEFAULTS: readonly LoopEntryDefinition[] = [
     quiet: { from: '22:00', to: '08:00' },
   },
   {
-    id: 'loops.peak-start',
+    id: PEAK_START_ENTRY,
     title: 'GLM 高峰开始时：按你选的高峰模式收放',
     why: '高峰里 GLM 更费积分，这一项让规则板按你选的档位收放',
     basis: PEAK_BASIS,
@@ -75,27 +82,19 @@ export const LOOP_DEFAULTS: readonly LoopEntryDefinition[] = [
     limits: { debounceSeconds: 5, maxPerHour: 6 },
   },
   {
-    id: 'loops.peak-end',
+    id: PEAK_END_ACTION,
     title: 'GLM 高峰结束时：接上挪开的活',
     why: '高峰里挪开的活要在高峰结束时接上，这一项到点接上并叫醒主 Agent',
     basis: PEAK_BASIS,
     when: { kind: 'event', events: ['channel.peak-changed'] },
     filter: { edge: { in: ['end'] } },
     // The words to the main agent come from the result of the action, not from the entry.
-    action: { kind: 'harness', action: 'loops.peak-end' },
+    action: { kind: 'harness', action: PEAK_END_ACTION },
     limits: { debounceSeconds: 5, maxPerHour: 6 },
   },
 ]
 
 /** The one harness action the loop row runs itself: what happens when a peak ends. */
 export const LOOP_ACTIONS: readonly { readonly id: string, readonly title: string }[] = [
-  { id: 'loops.peak-end', title: '高峰结束时接上挪开的活' },
+  { id: PEAK_END_ACTION, title: '高峰结束时接上挪开的活' },
 ]
-
-/** Until the handling of a peak's end is built, the action says it did nothing and why. */
-function peakEnd(): Promise<HarnessResult> {
-  return Promise.resolve({ outcome: 'skipped', reason: '高峰结束时的接续这一版还没有做' })
-}
-
-/** What the loop row hands to its own registry. */
-export const LOOP_CONTRIBUTION: Contribution = { entries: LOOP_DEFAULTS, actions: LOOP_ACTIONS, run: peakEnd }

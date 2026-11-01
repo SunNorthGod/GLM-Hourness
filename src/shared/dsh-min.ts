@@ -410,6 +410,14 @@ export interface GoalRef {
 /** A goal as the service returns it, as far as the rules board reads it: its identity, its revision (every change raises it by one, goal:174) and its phase. */
 export interface GoalView extends GoalRef {
   readonly phase: string
+  /**
+   * Why a `blocked` goal is blocked (dsh-goal `GoalBlockReason` of
+   * `GoalSnapshot`, which `GoalView` extends: `{code, message}`). The loop
+   * board reads the code to word what it says about a drive that is blocked
+   * when a peak ends (loops design §6.9 item 4 row 9); it never judges whether
+   * to resume by it, which stays with the execute row.
+   */
+  readonly blockedReason?: { readonly code: string, readonly message: string }
 }
 
 /**

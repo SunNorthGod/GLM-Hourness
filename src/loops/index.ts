@@ -17,12 +17,20 @@
  *   executes what an entry says to do. A message for the main agent waits until
  *   that side of the board is built; a script or a check entry is refused
  *   without starting anything;
+ * - runs the end of a GLM peak itself (peak.ts): the harness action of the
+ *   loop row's own hand-over takes the table of design §6.9 item 4 — the
+ *   execute row's resume action when a hand-over lists it, otherwise the wake
+ *   of the main agent alone — and records the peak-start entry's run as the
+ *   rules row's work it only lists;
+ * - lists projects from the host's workspace registry, so a project with a
+ *   main agent runs before any session of it is open (design §6.1);
  * - hands over the loop row's own events (events.ts) as the always-there part of
  *   the event table, and its own four entries (defaults.ts);
  * - keeps the entries a person agreed to (store.ts): files in the repository's
  *   `docs/loops/`, the change record in the project's `.llm/loops/`; settles what
  *   git or an editor changed behind its back whenever a session starts in a
- *   project (boards.ts) and writes the project's `view.json` (view.ts);
+ *   project (boards.ts) and writes the project's `view.json` (view.ts), whose
+ *   peak line reads the level from the rules board's service;
  * - `/loops` (commands.ts): the person deletes an entry, gets one back, or
  *   acknowledges a damaged change record;
  * - the gate `loops:files-only` (guard.ts), outermost on `tools/pre-execute`: a
@@ -44,18 +52,19 @@ import type { LockEnvironment } from '../data/lock.ts'
 import { projectKey } from '../graph/main-agent-holder.ts'
 import { rowJournal } from '../memory/audit.ts'
 import { dataHomes } from '../shared/data-home.ts'
-import type { AgentCommandInvocationLike, AgentLike, CommandDefinitionLike, CommandResultLike, CommandsHost, InjectHost, PreExecuteHost, PreExecuteListener, ProvideHost, ServiceLookup } from '../shared/dsh-min.ts'
+import type { AgentCommandInvocationLike, AgentLike, CommandDefinitionLike, CommandResultLike, CommandsHost, InjectHost, PreExecuteHost, PreExecuteListener, ProvideHost, ServiceLookup, WorkspaceRegistryService } from '../shared/dsh-min.ts'
 import { provideRowHealth, type HealthState, type RowHealth } from '../shared/health.ts'
 import type { StoreIo } from '../rules/store.ts'
 import { realStoreIo } from '../rules/store.ts'
 import { statSync } from 'node:fs'
 import { realLockEnvironment } from '../data/lock.ts'
-import { pricingService } from '../shared/pricing.ts'
+import { nextPeakChange, pricingService } from '../shared/pricing.ts'
+import { PEAK_LEVEL_WORDS, PEAK_REDUCE_GLM_WORKERS, peakModeService, type PeakModeState } from '../shared/peak-mode.ts'
 import { scheduleOf } from './bind.ts'
 import { createBoards, realDelay, type Delay } from './boards.ts'
 import { CHANNEL_EVENTS, CHANNEL_PEAK_CHANGED } from './channel.ts'
 import { LOOPS_HINT, NOT_A_PROJECT, runLoopsCommand } from './commands.ts'
-import { LOOP_ACTIONS, LOOP_CONTRIBUTION, LOOP_DEFAULTS } from './defaults.ts'
+import { LOOP_ACTIONS, LOOP_DEFAULTS } from './defaults.ts'
 import { installLoopsFileGuard, installLoopsScheduleGuard, LOOPS_FILES_ONLY, LOOPS_SCHEDULE_TOOLS } from './guard.ts'
 import { holderRecordFor } from './holder.ts'
 import { LOOPS_KEY, loopsProjection } from './projection.ts'
@@ -63,6 +72,7 @@ import { createRegistry, LOOPS_SOURCE } from './registry.ts'
 import { installLoopStepNotice, machineStepFile } from './reminder.ts'
 import { BEAT_MS, createProjectRuntime, type ProjectRuntime } from './run.ts'
 import { LOOPS_DECLARATION, LOOPS_SERVICE, type Contribution, type LoopEventInput, type LoopsService } from './service.ts'
+import type { PeakView } from './view.ts'
 
 /** cordis plugin identity: needs the commands service. */
 export const name = 'dsh-glm-hourness/loops'
@@ -108,14 +118,16 @@ function appStamp(): string | undefined {
  * (design §5.2; the deferral the review of the registry step recorded). The
  * channel events themselves are not handed over, since the `channel` namespace
  * belongs to no hand-over: the registry takes them from the same service
- * (design §4.3).
+ * (design §4.3). The run is the row's own peak-end action, dispatched to the
+ * runner of the project the event belongs to (design §6.9 item 4).
  */
-function ownContribution(hasPricing: boolean): Contribution {
-  if (hasPricing) return LOOP_CONTRIBUTION
+function ownContribution(hasPricing: boolean, run: NonNullable<Contribution['run']>): Contribution {
   return {
-    entries: LOOP_DEFAULTS.filter(entry => entry.when.kind !== 'event' || !entry.when.events.includes(CHANNEL_PEAK_CHANGED)),
+    entries: hasPricing
+      ? LOOP_DEFAULTS
+      : LOOP_DEFAULTS.filter(entry => entry.when.kind !== 'event' || !entry.when.events.includes(CHANNEL_PEAK_CHANGED)),
     actions: LOOP_ACTIONS,
-    run: (action, event) => LOOP_CONTRIBUTION.run?.(action, event) ?? Promise.resolve({ outcome: 'failed', reason: `${action} 没有执行者` }),
+    run,
   }
 }
 
@@ -204,20 +216,70 @@ export function apply(ctx: LoopsContext, config: LoopsConfig = {}): () => void {
   }
   const hasPricing = (): boolean => pricingService(ctx, text => { say(text, 'info') }) !== undefined
   const registry = createRegistry({ report: (text) => { say(text, 'degraded') }, channel: () => hasPricing() ? CHANNEL_EVENTS : [] })
-  const boards = createBoards({ registry, io, delay, changed: () => { health.reactivate(...activation()) }, ...(config.lock === undefined ? {} : { lock: config.lock }) })
-  let pricing = hasPricing()
-  let own = registry.contribute(LOOPS_SOURCE, ownContribution(pricing))
-  const disposers: Array<() => void> = []
 
   /**
    * The projects this process runs, by project root. A project is met when a
-   * session of it is created or `/loops` runs in it; it is given up after ten
-   * minutes without one, which lets the lock go to a process that has one
-   * (design §6.1).
+   * session of it is created or `/loops` runs in it, or when the host's
+   * workspace registry names it and it has a main agent; it is given up after
+   * ten minutes without either, which lets the lock go to a process that has a
+   * session (design §6.1).
    */
   const running = new Map<string, { readonly runtime: ProjectRuntime, touchedAt: number }>()
   /** Set while this process has the session controller, which is what lets it run entries at all. */
   let runs = false
+
+  /**
+   * The loop row's own harness action, dispatched to the runner of the project
+   * the event belongs to (design §6.9 item 4). An event of a project this
+   * process is not running cannot reach an action of its own runner.
+   */
+  const ownRun: NonNullable<Contribution['run']> = (action, event) => {
+    const held = running.get(event.project)
+    if (held === undefined) return Promise.resolve({ outcome: 'failed', reason: `这个进程此刻没有在跑 ${event.project}` })
+    return held.runtime.peakEnd(action, event)
+  }
+
+  /**
+   * The GLM peak of a project as the view shows it (design §6.9 item 3): the
+   * clock from the pricing service, the level from the rules board's service
+   * alone — a level the service cannot read says where to look, and with no
+   * pricing service there is no peak to show at all.
+   */
+  function peakOf(root: string): PeakView | undefined {
+    const pricing = pricingService(ctx)
+    if (pricing === undefined) return undefined
+    const at = io.now()
+    let now: boolean | undefined
+    let until: string | undefined
+    try {
+      now = pricing.peak(at)
+      const next = nextPeakChange(atMs => pricing.peak(atMs), at)
+      if (next !== undefined) until = new Date(next).toISOString()
+    }
+    catch {
+      now = undefined
+    }
+    let state: PeakModeState | undefined
+    try {
+      state = peakModeService(ctx)?.stateForProject(root)
+    }
+    catch {
+      state = undefined
+    }
+    if (state === undefined) return { now, ...(until === undefined ? {} : { until }), level: '档位在规则板上看' }
+    return {
+      now: state.peak ?? now,
+      ...(until === undefined ? {} : { until }),
+      level: PEAK_LEVEL_WORDS[state.level].name,
+      origin: state.origin,
+      ...(state.peak === true && state.level === 'reduce' ? { cap: `少做：高峰里同时至多 ${state.glmWorkerCap ?? PEAK_REDUCE_GLM_WORKERS} 个 GLM 子 agent` } : {}),
+    }
+  }
+
+  const boards = createBoards({ registry, io, delay, changed: () => { health.reactivate(...activation()) }, peakOf, ...(config.lock === undefined ? {} : { lock: config.lock }) })
+  let pricing = hasPricing()
+  let own = registry.contribute(LOOPS_SOURCE, ownContribution(pricing, ownRun))
+  const disposers: Array<() => void> = []
 
   function runtimeOf(root: string): ProjectRuntime | undefined {
     if (!runs) return undefined
@@ -241,6 +303,8 @@ export function apply(ctx: LoopsContext, config: LoopsConfig = {}): () => void {
         const pricingRead = pricingService(ctx)
         return pricingRead === undefined ? undefined : (atMs: number): boolean => pricingRead.peak(atMs)
       },
+      // A peak began or ended: the view's peak line is written again, so the page does not show the level of yesterday (design §6.9 item 3).
+      onPeakEdge: () => { void boards.refresh(root) },
       appStamp,
     })
     running.set(root, { runtime, touchedAt: io.now() })
@@ -309,14 +373,55 @@ export function apply(ctx: LoopsContext, config: LoopsConfig = {}): () => void {
     return undefined
   }
 
+  /** What a workspace registry that cannot be read says: not a fault, the projects then start when a session appears (design §6.1). */
+  const WORKSPACE_NOTE = 'DSH 的工作区登记表读不出，项目在它的会话出现时才开始跑'
+
+  /**
+   * The projects the host's workspace registry names (design §6.1, V17): each
+   * workspace whose project has a main-agent record starts running here, so a
+   * freshly started host handles events before the person opens a session.
+   * Every beat tries again; a registry that has not started yet (or is absent,
+   * as in a headless process) only narrows when projects start.
+   */
+  function adoptWorkspaces(): void {
+    const workspaces: unknown = typeof ctx.get === 'function' ? ctx.get('workspaceRegistry') : undefined
+    const registry = workspaces as WorkspaceRegistryService | undefined
+    if (typeof registry?.list !== 'function') {
+      say(WORKSPACE_NOTE, 'info')
+      return
+    }
+    let named: ReadonlyArray<{ readonly path: string }>
+    try {
+      named = registry.list()
+    }
+    catch {
+      say(WORKSPACE_NOTE, 'info')
+      return
+    }
+    for (const workspace of named) {
+      if (typeof workspace?.path !== 'string' || workspace.path === '') continue
+      const project = projectOf(workspace.path)
+      if (project === undefined) continue
+      try {
+        const reading = holderRecordFor(ctx, project.root)
+        if (reading.kind !== 'held') continue
+      }
+      catch {
+        continue
+      }
+      runtimeOf(project.root)
+    }
+  }
+
   /** One beat: every project that runs, and the projects that have gone quiet are given up. */
   async function beat(): Promise<void> {
     if (hasPricing() !== pricing) {
       // The GLM channel came or went: the two peak entries follow it (design §5.2).
       pricing = !pricing
       if (own.ok) own.dispose()
-      own = registry.contribute(LOOPS_SOURCE, ownContribution(pricing))
+      own = registry.contribute(LOOPS_SOURCE, ownContribution(pricing, ownRun))
     }
+    adoptWorkspaces()
     for (const [root, held] of [...running]) {
       if (io.now() - held.touchedAt > 10 * BEAT_MS) {
         running.delete(root)

@@ -17,7 +17,7 @@ import { projectKey } from '../graph/main-agent-holder.ts'
 import { writeAtomic, type StoreIo } from '../rules/store.ts'
 import type { LoopsRegistry } from './registry.ts'
 import { ensureRuntimeDir, openLoopStore, type LoopStore } from './store.ts'
-import { attentionOf, buildView, type LoopsView } from './view.ts'
+import { attentionOf, buildView, type LoopsView, type PeakView } from './view.ts'
 
 /** How often `view.json` of one project is written at most. */
 const VIEW_EVERY_MS = 2_000
@@ -39,6 +39,12 @@ interface BoardsDeps {
   readonly delay: Delay
   /** Told when what is wrong with the projects may have changed. */
   readonly changed: () => void
+  /**
+   * The GLM peak of a project as the view shows it (design §6.9 item 3):
+   * undefined while this host has no pricing service at all. The level comes
+   * from the rules board's service, the clock from the pricing service.
+   */
+  readonly peakOf?: (projectRoot: string) => PeakView | undefined
 }
 
 export interface Boards {
@@ -130,7 +136,8 @@ export function createBoards(deps: BoardsDeps): Boards {
       const settled = await store.settle()
       // A busy lock leaves the files as they are: the read shows them as they are.
       const board = settled === 'busy' ? store.read() : settled
-      await request(root, store, buildView({ at: new Date(deps.io.now()).toISOString(), project: projectKey(root), plugin: deps.registry.entries(), board }))
+      const peak = deps.peakOf?.(root)
+      await request(root, store, buildView({ at: new Date(deps.io.now()).toISOString(), project: projectKey(root), plugin: deps.registry.entries(), board, ...(peak === undefined ? {} : { peak }) }))
       note(root, 'files', attentionOf(board).filter(item => item.degrades).map(item => item.text))
     }
     catch (error) {

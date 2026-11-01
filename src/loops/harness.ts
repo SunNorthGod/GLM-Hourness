@@ -49,6 +49,13 @@ export interface HarnessOutcome {
   readonly tell?: string
   readonly reason?: string
   readonly durationMs: number
+  /**
+   * Row 2 of the peak-end table only (design §6.9 item 4): the result is a
+   * skipped one whose run is `held` — the judgement waits to be made again,
+   * and the runner carries the reason into the record. The loop row's own
+   * peak-end action sets it (peak.ts); no other row's result carries it.
+   */
+  readonly held?: string
 }
 
 const message = (error: unknown): string => error instanceof Error ? error.message : String(error)
@@ -64,11 +71,17 @@ export async function runAction(action: string, record: LoopEventRecord, run: st
   try {
     const result = await Promise.race([withinRun(run, () => deps.run(action, record)), limit])
     const durationMs = deps.now() - started
+    // The loop row's own peak-end action may put a `reason` on a done result and a `held` on a skipped one (peak.ts); no other row's result carries them.
+    const own = result as { readonly tell?: unknown, readonly reason?: unknown, readonly held?: unknown }
+    const tell = typeof own.tell === 'string' && own.tell.length > 0 ? { tell: own.tell } : {}
+    const reason = typeof own.reason === 'string' && own.reason.length > 0 ? { reason: own.reason } : {}
     if (result.outcome === 'done') {
-      return { outcome: 'done', durationMs, ...(typeof result.tell === 'string' && result.tell.length > 0 ? { tell: result.tell } : {}) }
+      return { outcome: 'done', durationMs, ...tell, ...reason }
     }
-    if (result.outcome === 'skipped') return { outcome: 'skipped', reason: result.reason, durationMs }
-    return { outcome: 'failed', reason: result.reason, durationMs, ...(typeof result.tell === 'string' && result.tell.length > 0 ? { tell: result.tell } : {}) }
+    if (result.outcome === 'skipped') {
+      return { outcome: 'skipped', reason: result.reason, durationMs, ...(typeof own.held === 'string' && own.held.length > 0 ? { held: own.held } : {}) }
+    }
+    return { outcome: 'failed', reason: result.reason, durationMs, ...tell }
   }
   catch (error) {
     return { outcome: 'failed', reason: message(error), durationMs: deps.now() - started }

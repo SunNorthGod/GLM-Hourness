@@ -124,6 +124,49 @@ function controllerOf(ctx: ServiceLookup): { resolveAgent(sessionId: string): Pr
   return typeof (value as { resolveAgent?: unknown } | undefined)?.resolveAgent === 'function' ? value as ReturnType<typeof controllerOf> : undefined
 }
 
+/** What a revival came to: the live agent, a reason to wait (neither of the two expected answers is a failure), or a failure. */
+export type Revival =
+  | { readonly agent: MessageableAgentLike }
+  /** `holder-not-found`: the person must name a new main agent. `writer-held`: another DSH process has the session, so the run lock must go there. `no-session-controller`: this process cannot reach a session at all. */
+  | { readonly wait: 'holder-not-found' | 'writer-held' | 'no-session-controller' }
+  | { readonly failed: string }
+
+/**
+ * Revive a cold session through `sessionController.resolveAgent`, the call the
+ * host's own schedule delivery makes (schedule:1576; api-session-controller:3037–3039).
+ * Its two expected errors are not failures and are remembered, so the holder
+ * state reads `not-found` or `elsewhere` afterwards
+ * (api-session-controller:237, 243; design §6.4 item 2). Never throws.
+ *
+ * The delivery and the end of a peak (peak.ts) both revive this way, so the
+ * memory and the error codes are read in one place.
+ */
+export async function reviveSession(ctx: ServiceLookup, session: string, memory: HolderMemory, at: string): Promise<Revival> {
+  const controller = controllerOf(ctx)
+  if (controller === undefined) return { wait: 'no-session-controller' }
+  let answer: { readonly agent?: unknown, readonly error?: { readonly code: string, readonly message?: string } }
+  try {
+    answer = await controller.resolveAgent(session)
+  }
+  catch (error) {
+    return { failed: message(error) }
+  }
+  const code = answer.error?.code
+  if (code === 'session/not-found') {
+    memory.notFound = { session, at }
+    return { wait: 'holder-not-found' }
+  }
+  if (code === 'session/writer-held') {
+    memory.writerHeld = { session, at }
+    return { wait: 'writer-held' }
+  }
+  if (code !== undefined) return { failed: `${code}${answer.error?.message === undefined ? '' : `：${answer.error.message}`}` }
+  const revived = answer.agent as MessageableAgentLike | undefined
+  if (revived === undefined || typeof revived.followup !== 'function') return { failed: 'resolveAgent 没有给出会话的 agent' }
+  // A session this process revived is in the registry now; the live agent of the registry is the one the wake table judges.
+  return { agent: agentsOf(ctx)?.get(session) ?? revived }
+}
+
 /** `agents.withoutInitiator(op)` when the host has it (agent:414), else the operation itself: a message of the board is nobody's turn. */
 function withoutInitiator<T>(ctx: ServiceLookup, op: () => T): T {
   const agents: unknown = typeof ctx.get === 'function' ? ctx.get('agents') : undefined
@@ -165,29 +208,9 @@ export function createDelivery(deps: DeliverDeps): LoopDelivery {
     const live = agentsOf(deps.ctx)?.get(session)
     if (live !== undefined) return { agent: live }
     if (!wake) return { kind: 'held', reason: 'session-cold' }
-    const controller = controllerOf(deps.ctx)
-    if (controller === undefined) return { kind: 'held', reason: 'no-session-controller' }
-    let answer: { readonly agent?: unknown, readonly error?: { readonly code: string, readonly message?: string } }
-    try {
-      answer = await controller.resolveAgent(session)
-    }
-    catch (error) {
-      return { kind: 'failed', reason: message(error) }
-    }
-    const code = answer.error?.code
-    if (code === 'session/not-found') {
-      deps.memory().notFound = { session, at: iso() }
-      return { kind: 'held', reason: 'holder-not-found' }
-    }
-    if (code === 'session/writer-held') {
-      deps.memory().writerHeld = { session, at: iso() }
-      return { kind: 'held', reason: 'writer-held' }
-    }
-    if (code !== undefined) return { kind: 'failed', reason: `${code}${answer.error?.message === undefined ? '' : `：${answer.error.message}`}` }
-    const revived = answer.agent as MessageableAgentLike | undefined
-    if (revived === undefined || typeof revived.followup !== 'function') return { kind: 'failed', reason: 'resolveAgent 没有给出会话的 agent' }
-    // A session this process revived is in the registry now; the live agent of the registry is the one the wake table judges.
-    return { agent: agentsOf(deps.ctx)?.get(session) ?? revived }
+    const revival = await reviveSession(deps.ctx, session, deps.memory(), iso())
+    if ('agent' in revival) return revival
+    return 'wait' in revival ? { kind: 'held', reason: revival.wait } : { kind: 'failed', reason: revival.failed }
   }
 
   /** Where one batch goes: the session of the event when it is live here, else the main agent. */
@@ -295,6 +318,8 @@ export function createDelivery(deps: DeliverDeps): LoopDelivery {
       const state = deps.state()
       if (state.held.length === 0) return
       const fresh = state.held.filter((held) => {
+        // A judgement that waits here is not a message: the runner makes it again and expires it (design §6.9 item 4 row 2).
+        if (held.rerun !== undefined) return true
         if (deps.now() - Date.parse(held.at) < HELD_MS) return true
         deps.report(`「${held.title}」存了一天还没交给主 Agent，作废`, 'info')
         return false
@@ -302,12 +327,14 @@ export function createDelivery(deps: DeliverDeps): LoopDelivery {
       state.held = fresh
       if (!canDeliver(deps.holder())) return
       // Oldest first, and one at a time: a state that turns while the queue runs stops the rest.
-      while (state.held.length > 0 && canDeliver(deps.holder())) {
-        const next = state.held[0]
+      while (canDeliver(deps.holder())) {
+        const at = state.held.findIndex(held => held.rerun === undefined)
+        if (at < 0) return
+        const next = state.held[at]
         const result = await send(next.session, [{ project: deps.project, entry: next.entry, run: next.run, title: next.title, text: next.text, wake: next.wake, ...(next.session === undefined ? {} : { session: next.session }) }])
           .catch((error: unknown): DeliverResult => ({ kind: 'failed', reason: message(error) }))
         if (result.kind === 'held') return
-        state.held.shift()
+        state.held.splice(at, 1)
         if (result.kind === 'failed') deps.report(`没能把存着的「${next.title}」交给主 Agent：${result.reason}`, 'degraded')
       }
     },

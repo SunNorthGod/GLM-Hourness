@@ -13,7 +13,7 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 import { CHANNEL_EVENTS } from '../src/loops/channel.ts'
-import { LOOP_ACTIONS, LOOP_CONTRIBUTION, LOOP_DEFAULTS, DEPENDENCY_FILES } from '../src/loops/defaults.ts'
+import { LOOP_ACTIONS, LOOP_DEFAULTS, DEPENDENCY_FILES } from '../src/loops/defaults.ts'
 import { fileChangedKey, hostRestartedKey, LOOP_EVENT_TABLE, LOOP_EVENTS, waitingOnHumanKey } from '../src/loops/events.ts'
 import { apply, inject, name, type LoopsContext } from '../src/loops/index.ts'
 import type { LoopEntryDefinition } from '../src/loops/model.ts'
@@ -30,6 +30,9 @@ const OPERATE: ContributionSource = { plugin: 'dsh-hourness', row: 'glm-hourness
 const ENV: ContributionSource = { plugin: 'dsh-hourness', row: 'glm-hourness/env' }
 const RULES: ContributionSource = { plugin: 'dsh-hourness', row: 'glm-hourness/rules' }
 const LOOPS: ContributionSource = { plugin: 'dsh-hourness', row: 'glm-hourness/loops' }
+
+/** The loop row's hand-over as the row builds it (src/loops/index.ts): the entries and the one action, with a run the specs stand in for. */
+const LOOP_HANDOVER = (run: NonNullable<Contribution['run']> = () => Promise.resolve({ outcome: 'skipped', reason: 'the specs do not run it' })): Contribution => ({ entries: LOOP_DEFAULTS, actions: LOOP_ACTIONS, run })
 
 // ------------------------------------------------- test data shaped like M7's
 
@@ -415,7 +418,7 @@ test('what is dropped is reported once per source, entry and reason', () => {
 
 test('an entry whose event nobody declares is listed greyed with the reason and the events it waits for, and runs when they arrive', () => {
   const { registry, reports } = registryWith()
-  const own = registry.contribute(LOOPS, LOOP_CONTRIBUTION)
+  const own = registry.contribute(LOOPS, LOOP_HANDOVER())
   assert.ok(own.ok)
   assert.deepEqual(own.dropped, [])
   const state = (): Record<string, string> => Object.fromEntries(registry.entries().map(item => [item.entry.id, item.state]))
@@ -435,7 +438,7 @@ test('an entry whose event nobody declares is listed greyed with the reason and 
   assert.deepEqual(registry.entries().find(item => item.entry.id === 'loops.deps-after-merge')?.waitingOn, [])
 
   const half = registryWith()
-  half.registry.contribute(LOOPS, LOOP_CONTRIBUTION)
+  half.registry.contribute(LOOPS, LOOP_HANDOVER())
   half.registry.contribute(EXECUTE, { ...M7_EXECUTE, events: M7_EVENTS.filter(declared => declared.id !== 'hourness.outside-advance'), entries: M7_ENTRIES.filter(entry => entry.id !== 'execute.trunk') })
   const partly = half.registry.entries().find(item => item.entry.id === 'loops.deps-after-merge')
   assert.deepEqual([partly?.state, partly?.waitingOn], ['waiting', ['hourness.outside-advance']], 'one of its events is still nobody\'s')
@@ -443,7 +446,7 @@ test('an entry whose event nobody declares is listed greyed with the reason and 
 
 test('withdrawn, the declaring part leaves its events and the entries that wait for them are greyed again', () => {
   const { registry } = registryWith()
-  registry.contribute(LOOPS, LOOP_CONTRIBUTION)
+  registry.contribute(LOOPS, LOOP_HANDOVER())
   const execute = registry.contribute(EXECUTE, M7_EXECUTE)
   assert.ok(execute.ok)
   assert.equal(registry.entries().find(item => item.entry.id === 'loops.deps-after-merge')?.state, 'active')
@@ -455,7 +458,7 @@ test('withdrawn, the declaring part leaves its events and the entries that wait 
 
 test('when the event arrives and the entry does not fit it, the entry is dropped and the row health is told', () => {
   const { registry, reports } = registryWith()
-  registry.contribute(LOOPS, LOOP_CONTRIBUTION)
+  registry.contribute(LOOPS, LOOP_HANDOVER())
   const files = (type: LoopEventField['type'], filter?: LoopEventField['filter']): LoopEventDeclaration[] => M7_EVENTS.map(declared => (declared.id === 'hourness.trunk-advanced' ? event(declared.id, declared.title, [field('from', 'string', '原来的提交'), field('to', 'string', '现在的提交'), field('files', type, '改到的文件', filter)]) : declared))
   const result = registry.contribute(EXECUTE, { ...M7_EXECUTE, events: files('string') })
   assert.ok(result.ok)
@@ -607,19 +610,32 @@ test('the four entries are sound: one line of why each, no word a person has not
     assert.deepEqual(plainWordsIn(`${entry.title}${entry.why ?? ''}${entry.basis ?? ''}`), [], entry.id)
   }
   const { registry, reports } = registryWith()
-  const result = registry.contribute(LOOPS, LOOP_CONTRIBUTION)
+  const result = registry.contribute(LOOPS, LOOP_HANDOVER())
   assert.ok(result.ok)
   assert.deepEqual(result.accepted, LOOP_DEFAULTS.map(entry => entry.id))
   assert.deepEqual(result.dropped, [])
   assert.deepEqual(reports, [])
 })
 
-test('the one harness action the loop row lists answers "skipped" until the peak handling is built, and says why', async () => {
-  assert.equal(typeof LOOP_CONTRIBUTION.run, 'function')
-  const record: LoopEventRecord = { id: 'ev-0000000000000000', event: 'channel.peak-changed', at: NOW.toISOString(), project: '/p', key: 'peak-changed:end:x', payload: {}, merged: [] }
-  const result = await LOOP_CONTRIBUTION.run?.('loops.peak-end', record)
-  assert.equal(result?.outcome, 'skipped')
-  assert.ok(result?.outcome === 'skipped' && result.reason.length > 0 && result.reason.length <= 300)
+test('runOfAction hands the run of the row that listed an action, and the loop row\'s run refuses a project it is not running', async () => {
+  const { registry } = registryWith()
+  assert.equal(registry.runOfAction('loops.peak-end'), undefined, 'nothing is handed over yet')
+  const asked: string[] = []
+  registry.contribute(EXECUTE, {
+    entries: [],
+    actions: [{ id: 'execute.resume-drive', title: '接上高峰里停住的自动推进' }],
+    run: (action) => { asked.push(action); return Promise.resolve({ outcome: 'done' }) },
+  })
+  assert.equal(registry.runOfAction('nobody.action'), undefined, 'an action nobody lists has no run')
+  const resume = registry.runOfAction('execute.resume-drive')
+  assert.ok(typeof resume === 'function')
+  const record: LoopEventRecord = { id: 'ev-0000000000000000', event: 'channel.peak-changed', at: NOW.toISOString(), project: '/p', key: 'peak-changed:end:x', payload: { edge: 'end', boundary: NOW.toISOString(), until: '' }, merged: [] }
+  await resume('execute.resume-drive', record)
+  assert.deepEqual(asked, ['execute.resume-drive'])
+  registry.contribute(LOOPS, LOOP_HANDOVER())
+  const own = registry.runOfAction('loops.peak-end')
+  assert.ok(typeof own === 'function', 'the loop row\'s own hand-over listed the action')
+  assert.deepEqual(await own('loops.peak-end', record), { outcome: 'skipped', reason: 'the specs do not run it' }, 'the run is the one the hand-over brought')
 })
 
 // ---------------------------------------------------------------- the row skeleton
@@ -728,6 +744,8 @@ test('src/loops/ holds no other row\'s table and no channel file: nothing import
     const text = readFileSync(new URL(file, directory), 'utf8')
     const specifiers = [...text.matchAll(/(?:^|\n)\s*(?:import|export)\s[^;]*?\sfrom\s+['"]([^'"]+)['"]/g)].map(match => match[1] ?? '')
     for (const specifier of specifiers) assert.doesNotMatch(specifier, /(?:^|\/)(execute|operate|env|glm-llm|channel-loop)(?:\/|\.|$)/, `${file} imports ${specifier}`)
-    assert.doesNotMatch(text, /['"`](?:execute|operate|env)\.[a-z]/, `${file} writes an id of another row`)
+    // The one id of another row the board may name is the execute row's resume-drive, which design §6.9 item 4 row 3 (with §17 M7 item 6) makes the board call by id; peak.ts is the only file that names it.
+    const withoutResume = text.replace(/['"`]execute\.resume-drive['"`]/g, '')
+    assert.doesNotMatch(withoutResume, /['"`](?:execute|operate|env)\.[a-z]/, `${file} writes an id of another row`)
   }
 })
