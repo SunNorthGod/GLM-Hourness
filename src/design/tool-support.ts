@@ -6,6 +6,8 @@
  */
 import type { ApplyResult } from '../graph/engine.ts'
 import type { LoadedGraph } from '../graph/parse.ts'
+import type { GraphNode } from '../graph/schema.ts'
+import { isClosed, stageStatus } from '../graph/stage.ts'
 import { hasErrors, loadGraph } from '../graph/store.ts'
 import type { AgentLike, ToolDefinitionLike, ToolExecutionContext } from '../shared/dsh-min.ts'
 
@@ -23,6 +25,32 @@ const render: ToolDefinitionLike['output']['render'] = (_args, value) => [{ type
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/** The goal a call of kind confirm or release names: it exists, it is a goal, and it is not closed. */
+export function openGoal(graph: LoadedGraph, id: string): GraphNode {
+  const goal = graph.nodes.get(id)
+  if (goal === undefined) refuse('not_found', `no node "${id}"`, 'pass the id of the goal; graph_open lists the open work', 'goal')
+  if (goal.type !== 'goal') refuse('invalid', `"${id}" is a ${goal.type}, not a goal`, 'pass the id of the goal', 'goal')
+  if (isClosed(goal)) refuse('invalid', `"${id}" is ${goal.status}`, 'a closed goal is not put to the human; graph_focus an open goal', 'goal')
+  return goal
+}
+
+/**
+ * The gate of the confirmation (docs/ORCHESTRATION.md §4.8): the goal is in
+ * wish or interview, the 8 items of its requirement card are filled and no
+ * edge supersedes a node. The goal when it passes; `invalid` for a goal past
+ * the interview, `gate_unmet` with what is missing and where to write it
+ * otherwise.
+ */
+export function confirmGate(graph: LoadedGraph, goal: GraphNode): GraphNode {
+  const status = stageStatus(graph, goal)
+  if (status.stage !== 'wish' && status.stage !== 'interview') {
+    refuse('invalid', `"${goal.id}" is ${status.stage === null ? 'outside the design loop' : `in ${status.stage}`}, so its requirement is not put to the human`, status.stage === null ? 'a goal with no stage does not run the design loop' : 'kind confirm is for a goal in wish or interview; a design is put to the human with kind release', 'goal')
+  }
+  const missing = status.items.filter(item => !item.ok)
+  if (missing.length > 0) refuse('gate_unmet', `the requirement card of "${goal.id}" is not complete; missing: ${missing.map(item => item.label).join('、')}`, missing.map(item => `${item.label}: ${item.hint}`).join('; '))
+  return goal
 }
 
 /** The graph as it is now; refused with `graph_invalid` while the node files have errors (every write is refused then). */

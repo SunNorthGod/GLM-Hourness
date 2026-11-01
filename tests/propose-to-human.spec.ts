@@ -10,12 +10,12 @@ import test from 'node:test'
 import { PROPOSE_TO_HUMAN, RECORD_HUMAN_ANSWER, DESIGN_TOOL_NAMES } from '../src/shared/tool-names.ts'
 import { ordinaryFace } from '../src/design/role-face.ts'
 import { proposeTool } from '../src/design/propose.ts'
-import { TALK_SHAPES } from '../src/design/talk.ts'
+import { TALK_PROJECTION, TALK_SHAPES, type TalkState } from '../src/design/talk.ts'
 import { PLAIN_QUESTION_EXAMPLES, PLAIN_QUESTION_GUIDE, plainWordsIn } from '../src/graph/plain-question.ts'
 import { ASK_FORMS, PROPOSAL_LIMITS, TALK_LIMITS, askOf, renderAsk } from '../src/graph/proposal.ts'
 import { PLAIN_LIMITS } from '../src/graph/schema.ts'
 import { BASE_TOOLS, hostWithoutTalkProjection, type DesignHost, type FakeAgent } from './design-host.ts'
-import { fakeBoard, mainAgentWithGoal, toolDeps } from './design-tools-helpers.ts'
+import { fakeBoard, fillRequirementCard, mainAgentWithGoal, toolDeps } from './design-tools-helpers.ts'
 import { exampleArgs } from './proposal-examples.ts'
 
 type Outcome = Awaited<ReturnType<DesignHost['callTool']>>
@@ -132,11 +132,9 @@ test('the shape of the call: what goes with what, one rule at a time, and nothin
   await refused({ ...exampleArgs('look'), sample: '' }, 'sample')
   await refused({ ...exampleArgs('look'), sample: '字'.repeat(6001) }, 'sample')
   await refused({ ...want, title: 7 }, 'title', /must be a string/)
-  for (const kind of ['confirm', 'release']) {
-    const error = errorOf(await host.callTool(agent, PROPOSE_TO_HUMAN, { kind, text: '这样吗？', goal: 'goal-1' }))
-    assert.deepEqual([error?.code, error?.field], ['invalid', 'kind'], kind)
-    assert.match(error?.hint ?? '', /^not yet/, kind)
-  }
+  const release = errorOf(await host.callTool(agent, PROPOSE_TO_HUMAN, { kind: 'release', text: '这样吗？', goal: 'goal-1' }))
+  assert.deepEqual([release?.code, release?.field], ['invalid', 'kind'])
+  assert.match(release?.hint ?? '', /^not yet/)
   assert.equal((await engine.load()).revision, before, 'the graph did not change')
 })
 
@@ -503,6 +501,130 @@ test('without the talk projection the tool reads the session log, the count is r
   const { healthOf } = await import('./design-host.ts')
   assert.equal(healthOf(host, agent)?.state, 'degraded')
   assert.match(healthOf(host, agent)?.reason ?? '', /人的消息改从会话日志读/)
+})
+
+// ---------------------------------------------------------------- kind confirm (M3 step 8)
+
+const CONFIRM = { kind: 'confirm', goal: 'goal-1', text: '需求就按上面这样定，可以吗？' }
+
+test('kind confirm puts the requirement of a goal to the human once its card is complete: the text is the main agent\'s own question, nothing is written, and the showing is kept for the answer', async () => {
+  const fixture = await mainAgentWithGoal()
+  await fillRequirementCard(fixture)
+  const { host, agent, engine } = fixture
+  const before = (await engine.load()).revision
+  const value = valueOf(await host.callTool(agent, PROPOSE_TO_HUMAN, CONFIRM))
+  assert.deepEqual([value.tool, value.kind, value.goal, value.number, value.form, value.question], [PROPOSE_TO_HUMAN, 'confirm', 'goal-1', 1, undefined, undefined])
+  assert.equal(value.text, renderAsk(CONFIRM.text, 1))
+  assert.match(String(value.message), /^Show text to the human exactly as given; .* then call record_human_answer with kind confirm and their exact words\. The requirement itself goes in your report before the question; text is only the question\.$/)
+  assert.equal((await engine.load()).revision, before, 'the graph did not change')
+  const talk = host.projections.stateOf(agent.session, TALK_PROJECTION) as TalkState
+  assert.deepEqual(talk.shown.map(entry => [entry.kind, entry.goal, entry.module, entry.number, entry.form, entry.exact]), [['confirm', 'goal-1', undefined, 1, undefined, undefined]])
+})
+
+test('kind confirm is refused until the card is complete: gate_unmet says what is missing and where to write it, and nothing is shown', async () => {
+  const fixture = await mainAgentWithGoal()
+  const { host, agent, engine } = fixture
+  const before = (await engine.load()).revision
+  const error = errorOf(await host.callTool(agent, PROPOSE_TO_HUMAN, CONFIRM))
+  assert.equal(error?.code, 'gate_unmet')
+  assert.match(error?.message ?? '', /^the requirement card of "goal-1" is not complete; missing: /)
+  for (const label of ['问题', '给谁', '约束', '成功（怎样算做成）', '非目标（明确不做的）', '风险（最可能出岔子的地方）', '岔路（人拍板的选择）']) assert.ok((error?.message ?? '').includes(label), label)
+  assert.match(error?.hint ?? '', /interview step 2 \(how their days change once it is done\)/)
+  assert.match(error?.hint ?? '', /interview step 7 \(the fork only the human can decide\): put it with propose_to_human/)
+  assert.equal((await engine.load()).revision, before)
+  assert.deepEqual((host.projections.stateOf(agent.session, TALK_PROJECTION) as TalkState).shown, [], 'a refused call shows the human nothing')
+  // One missing item at a time, each named as the card names it.
+  for (const [item, label] of [['need', '需求'], ['constraints', '约束'], ['acceptance', '成功（怎样算做成）'], ['non-goals', '非目标（明确不做的）'], ['risks', '风险（最可能出岔子的地方）'], ['choice', '岔路（人拍板的选择）']] as const) {
+    const one = await mainAgentWithGoal()
+    await fillRequirementCard(one, [item])
+    const missing = errorOf(await one.host.callTool(one.agent, PROPOSE_TO_HUMAN, CONFIRM))
+    assert.deepEqual([missing?.code, missing?.message], ['gate_unmet', `the requirement card of "goal-1" is not complete; missing: ${label}`], item)
+  }
+})
+
+test('kind confirm names a goal that is open and still in the interview: anything else is refused for the goal, one reason each', async () => {
+  const fixture = await mainAgentWithGoal()
+  await fillRequirementCard(fixture)
+  const { host, agent, engine } = fixture
+  const refused = async (patch: Record<string, unknown>, code: string, hint: RegExp | undefined): Promise<void> => {
+    const error = errorOf(await host.callTool(agent, PROPOSE_TO_HUMAN, { ...CONFIRM, ...patch }))
+    assert.deepEqual([error?.code, error?.field], [code, 'goal'], JSON.stringify(patch))
+    if (hint !== undefined) assert.match(error?.hint ?? '', hint)
+  }
+  await refused({ goal: 'goal-9' }, 'not_found', undefined)
+  await refused({ goal: 'risk-1' }, 'invalid', /pass the id of the goal/)
+  // The goal the human proposed is approved at once (the fixture's); its stage moves on by their hand.
+  assert.ok((await engine.apply('human', { op: 'edit', id: 'goal-1', rev: (await engine.load()).revisions.get('goal-1'), set: { stage: 'design' }, reason: '进设计' })).ok)
+  await refused({}, 'invalid', /a design is put to the human with kind release/)
+  assert.ok((await engine.apply('human', { op: 'status', id: 'goal-1', rev: (await engine.load()).revisions.get('goal-1'), to: 'dropped', reason: '不做了' })).ok)
+  await refused({}, 'invalid', /a closed goal is not put to the human/)
+})
+
+test('kind confirm takes only the goal, the text and a sample: the fields of a question and of a release are refused, and so is a call without them', async () => {
+  const fixture = await mainAgentWithGoal()
+  await fillRequirementCard(fixture)
+  const { host, agent, engine } = fixture
+  const before = (await engine.load()).revision
+  const refused = async (patch: Record<string, unknown>, field: string): Promise<void> => {
+    const error = errorOf(await host.callTool(agent, PROPOSE_TO_HUMAN, { ...CONFIRM, ...patch }))
+    assert.deepEqual([error?.code, error?.field], ['invalid', field], JSON.stringify(patch))
+    assert.ok((error?.hint ?? '').length > 0)
+  }
+  for (const [field, value] of [['form', 'recommend'], ['title', '题'], ['proposal', '做法'], ['reason', '理由'], ['cost', '代价'], ['ways', ['甲', '乙']], ['notTaken', '没选的'], ['parent', 'goal-1'], ['question', 'question-1'], ['sources', ['goal-1']], ['attach', 'rules:p-3f9a1c07'], ['module', 'module-a'], ['page', '一页']] as const) {
+    await refused({ [field]: value }, field)
+  }
+  await refused({ goal: undefined }, 'goal')
+  await refused({ goal: '' }, 'goal')
+  await refused({ text: undefined }, 'text')
+  await refused({ sample: '' }, 'sample')
+  await refused({ sample: '字'.repeat(6001) }, 'sample')
+  await refused({ sample: 7 }, 'sample')
+  assert.equal((await engine.load()).revision, before)
+})
+
+test('the text of a confirm is held to the limit of a recommend and to the plain words, and it counts among the three questions of a reply', async () => {
+  const fixture = await mainAgentWithGoal()
+  await fillRequirementCard(fixture)
+  const { host, agent } = fixture
+  const refused = async (text: string, message: RegExp): Promise<void> => {
+    const error = errorOf(await host.callTool(agent, PROPOSE_TO_HUMAN, { ...CONFIRM, text }))
+    assert.deepEqual([error?.code, error?.field], ['invalid', 'text'], text.slice(0, 20))
+    assert.match(error?.message ?? '', message)
+  }
+  await refused('', /non-empty/)
+  await refused('需求就按这样定？\n可以吗？', /one line/)
+  await refused('需求就按这样定，可以吗。', /exactly one question mark, it has 0/)
+  await refused('需求就按这样定吗？是不是？', /it has 2/)
+  await refused(`${'字'.repeat(TALK_LIMITS.text.recommend)}？`, new RegExp(`longer than ${TALK_LIMITS.text.recommend}`))
+  await refused('验收就按这样定，可以吗？', /text uses the word 验收, which the human has not learned/)
+  // The limit is the recommend one, longer than the others': 160 characters pass.
+  const longest = `${'字'.repeat(TALK_LIMITS.text.recommend - 1)}？`
+  assert.equal(valueOf(await host.callTool(agent, PROPOSE_TO_HUMAN, { ...CONFIRM, text: longest })).number, 1)
+  assert.equal(valueOf(await host.callTool(agent, PROPOSE_TO_HUMAN, CONFIRM)).number, 2)
+  assert.equal(valueOf(await host.callTool(agent, PROPOSE_TO_HUMAN, exampleArgs('want'))).number, 3)
+  const fourth = errorOf(await host.callTool(agent, PROPOSE_TO_HUMAN, CONFIRM))
+  assert.equal(fourth?.code, 'too_many')
+  assert.match(fourth?.hint ?? '', /at most three questions in one reply/)
+})
+
+test('a confirm can carry the original text the human must see: it is laid under the question as it is, the message says to keep it, and the showing remembers it', async () => {
+  const fixture = await mainAgentWithGoal()
+  await fillRequirementCard(fixture)
+  const { host, agent } = fixture
+  const sample = '需求：记一下每天花了多少钱\n问题：月底不知道钱花在哪'
+  const value = valueOf(await host.callTool(agent, PROPOSE_TO_HUMAN, { ...CONFIRM, sample }))
+  assert.equal(value.text, renderAsk(CONFIRM.text, 1, undefined, sample, false))
+  assert.ok(String(value.message).endsWith('The last paragraph is the exact text the human must see before agreeing: keep it verbatim in your reply.'))
+  const talk = host.projections.stateOf(agent.session, TALK_PROJECTION) as TalkState
+  assert.equal(talk.shown[0]?.exact, sample)
+  assert.ok(String(valueOf(await host.callTool(agent, PROPOSE_TO_HUMAN, CONFIRM)).message).includes('keep it verbatim') === false, 'no original text, no such sentence')
+})
+
+test('the description of propose_to_human says what a confirm is and what it takes', async () => {
+  const { host } = await mainAgentWithGoal()
+  const description = host.tools.get(PROPOSE_TO_HUMAN)?.description ?? ''
+  assert.match(description, /kind confirm: the interview is over, put the requirements to the human; pass goal and text/)
+  assert.match(description, /It is refused until the 8 items of the requirement card are filled\./)
 })
 
 // ---------------------------------------------------------------- the contract with the panel (panel design 0.7 §11, 6c)

@@ -10,6 +10,7 @@ import { apply as glmPromptApply, dialectServiceFor } from '../src/glm-prompt/in
 import { READ_IMAGE_NATIVE, READ_NAME, READ_NATIVE } from '../src/glm-prompt/read-alias.ts'
 import { TODO_NATIVE, TODO_WRITE_NAME } from '../src/glm-prompt/todo-reminder.ts'
 import { graphTools } from '../src/graph/tools.ts'
+import { openEngine } from '../src/graph/engine.ts'
 import { apply as designApply } from '../src/design/index.ts'
 import { plainWordsIn } from '../src/graph/plain-question.ts'
 import { apply as guardApply } from '../src/guard/index.ts'
@@ -311,7 +312,7 @@ test('pricing through the report row: a malformed service lists tokens; a throwi
 
 // The interceptions M3 puts on the main agent are a table the rules board reads (decisions d-rules-visible, d-defaults-readonly; addendum 3.11).
 // Each step adds its rows and its triggers here; the step of a row is the last step merged that may hold it.
-const MERGED_STEP = 6
+const MERGED_STEP = 8
 const TRIGGERS: Readonly<Record<string, (host: ReturnType<typeof designHost>, agent: AgentLike) => Promise<void>>> = {
   'main-agent-no-write': async (host, agent) => { await host.preExecute(agent, 'write', { file_path: 'a.txt', content: 'x' }) },
   'main-agent-ask': async (host, agent) => { await host.preExecute(agent, 'ask_user_question', {}) },
@@ -323,6 +324,13 @@ const TRIGGERS: Readonly<Record<string, (host: ReturnType<typeof designHost>, ag
   'main-agent-graph-options': async (host, agent) => { await host.preExecute(agent, 'graph_propose', { node: { type: 'question', title: '放哪', parent: 'goal-1', options: [{ key: 'A', label: 'a', gain: 'g', cost: 'c' }, { key: 'B', label: 'b', gain: 'g', cost: 'c' }], recommend: 'B' }, reason: 'x' }) },
   // Any session writes the node of what the human handed over for good with a graph tool.
   'main-agent-graph-delegations': async (host, agent) => { await host.preExecute(agent, 'graph_edit', { id: 'norm-delegations', rev: 'r', set: { acceptance: ['代码风格：主 Agent 定，只告知'] }, reason: 'x' }) },
+  // Any session approves the goal of an interview with a graph tool: only the human's agreement, recorded by record_human_answer, moves it on.
+  'main-agent-graph-stage': async (host, agent) => {
+    await openEngine(join(host.workspace('ws'), 'docs', 'graph')).apply('human', { op: 'propose', reason: '立项', node: { type: 'goal', title: '记账小工具', stage: 'interview' } })
+    await host.preExecute(agent, 'graph_approve', { id: 'goal-1', rev: 'r', reason: 'x' })
+  },
+  // Any session runs the graph's command line to write.
+  'main-agent-graph-cli': async (host, agent) => { await host.preExecute(agent, 'pwsh', { command: 'npm run -s graph -- approve \'{"id":"goal-1"}\'' }) },
 }
 
 test('main agent rules: ids are unique, titles are one short plain line, every rule steps no later than the merged step', () => {

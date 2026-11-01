@@ -8,11 +8,14 @@
  * graph, as the llm with the human's words as relay, which gives the write the
  * human's authority. The three replies, agreeing, adding and rejecting, are
  * written in the words fixed in src/shared/answer-marks.ts. Kind question
- * records the reply to a matter; kind delegation records "this kind is yours
- * to decide" in the node norm-delegations, the only way that node is written.
- * The replies to confirm and release come with the steps that open those kinds.
+ * records the reply to a matter; kind confirm records the reply to the
+ * requirement of a goal, and agreeing moves the goal from the interview into
+ * the design (the only way a goal leaves it: the graph tools refuse, rule
+ * main-agent-graph-stage); kind delegation records "this kind is yours to
+ * decide" in the node norm-delegations, the only way that node is written.
+ * The reply to release comes with the step that opens that kind.
  */
-import { openEngine, type ApplyResult } from '../graph/engine.ts'
+import { openEngine, type ApplyResult, type GraphEngine } from '../graph/engine.ts'
 import type { LoadedGraph } from '../graph/parse.ts'
 import { plainWordsIn } from '../graph/plain-question.ts'
 import { PROPOSAL_LIMITS, codePointCount, normalizeText } from '../graph/proposal.ts'
@@ -25,7 +28,7 @@ import { askBoard, attachDigest, boardOfBody, piecesNotShown } from './attach.ts
 import { emitMetric } from './metrics.ts'
 import type { DesignToolDeps } from './propose.ts'
 import { normalizeTalk, personSaid, type Shown, type TalkState } from './talk.ts'
-import { errorText, isRecord, mainAgentCall, readGraph, refuse, refuseWith, toolShell } from './tool-support.ts'
+import { confirmGate, errorText, isRecord, mainAgentCall, openGoal, readGraph, refuse, refuseWith, toolShell } from './tool-support.ts'
 
 const ANSWERS = ['agree', 'add', 'reject'] as const satisfies readonly AnswerKind[]
 const KINDS = ['question', 'confirm', 'release', 'delegation'] as const
@@ -34,7 +37,7 @@ const DELEGATION_FIELDS = new Set(['kind', 'scope', 'undo', 'words'])
 const WORDS_LIMITS = { pieces: 3, piece: 500, whole: 2000 } as const
 const SCOPE_LIMIT = 60
 
-const DESCRIPTION = 'Record what the human said back to a matter you put to them with propose_to_human. Quote their own words exactly, from a message they sent after you showed it (words: 1 to 3 quotes, each a whole phrase); recordedAs is one line of what you take them to have said: the conclusion when they agree, your restatement when they add or reject. For a choose question they agree to, way is the number of the way they picked. The harness checks the quotes against their messages before it writes anything. Agree decides the question; add and reject note it and leave it open: revise the matter and show it again. kind delegation: when the human says a whole kind of matter is yours to decide, pass scope (the kind, in their words) and their words from the latest message they sent; undo: true takes a kind back.'
+const DESCRIPTION = 'Record what the human said back to a matter you put to them with propose_to_human. Quote their own words exactly, from a message they sent after you showed it (words: 1 to 3 quotes, each a whole phrase); recordedAs is one line of what you take them to have said: the conclusion when they agree, your restatement when they add or reject. For a choose question they agree to, way is the number of the way they picked. The harness checks the quotes against their messages before it writes anything. Agree decides the question; add and reject note it and leave it open: revise the matter and show it again. kind confirm: the reply to the requirement you put to them with propose_to_human (kind confirm); pass goal instead of question. Agree approves the goal and moves it from the interview into the design (the harness checks the requirement card again first); add and reject note the goal and move nothing: change the goal and put the requirement to them again. kind delegation: when the human says a whole kind of matter is yours to decide, pass scope (the kind, in their words) and their words from the latest message they sent; undo: true takes a kind back.'
 
 const PARAMETERS = {
   type: 'object',
@@ -88,12 +91,18 @@ interface QuestionArgs extends Words {
   readonly recordedAs: string
 }
 
+interface ConfirmArgs extends Words {
+  readonly goal: string
+  readonly answer: AnswerKind
+  readonly recordedAs: string
+}
+
 interface DelegationArgs extends Words {
   readonly scope: string
   readonly undo: boolean
 }
 
-type Args = { readonly kind: 'question' } & QuestionArgs | { readonly kind: 'delegation' } & DelegationArgs
+type Args = { readonly kind: 'question' } & QuestionArgs | { readonly kind: 'confirm' } & ConfirmArgs | { readonly kind: 'delegation' } & DelegationArgs
 
 function parseWords(words: unknown): readonly string[] {
   if (!Array.isArray(words) || words.length < 1 || words.length > WORDS_LIMITS.pieces || words.some(piece => typeof piece !== 'string' || piece.trim().length === 0 || codePointCount(piece.trim()) > WORDS_LIMITS.piece)) {
@@ -125,21 +134,23 @@ function parseArgs(raw: unknown): Args {
     if (raw.undo !== undefined && typeof raw.undo !== 'boolean') refuse('invalid', 'undo must be true or false', 'pass undo: true to take a kind back', 'undo')
     return { kind, scope: scopeOf(raw.scope), undo: raw.undo === true, words: parseWords(raw.words) }
   }
-  if (kind !== 'question') {
-    refuse('invalid', `kind ${typeof kind === 'string' ? kind : JSON.stringify(kind)} is not open yet`, 'not yet: only kind question and kind delegation work for now', 'kind')
+  if (kind !== 'question' && kind !== 'confirm') {
+    refuse('invalid', `kind ${typeof kind === 'string' ? kind : JSON.stringify(kind)} is not open yet`, 'not yet: only kind question, kind confirm and kind delegation work for now', 'kind')
   }
-  for (const field of ['goal', 'module', 'scope', 'undo'] as const) {
-    if (raw[field] !== undefined) refuse('invalid', `${field} does not go with kind question`, `leave ${field} out for kind question`, field)
+  for (const field of kind === 'question' ? ['goal', 'module', 'scope', 'undo'] as const : ['question', 'way', 'module', 'scope', 'undo'] as const) {
+    if (raw[field] !== undefined) refuse('invalid', `${field} does not go with kind ${kind}`, `leave ${field} out for kind ${kind}`, field)
   }
-  const { question, answer, way, recordedAs } = raw
-  if (typeof question !== 'string' || question.length === 0) refuse('invalid', 'question must be the id of the question', 'pass the id propose_to_human returned', 'question')
+  const { question, answer, way, recordedAs, goal } = raw
+  if (kind === 'confirm' && (typeof goal !== 'string' || goal.length === 0)) refuse('invalid', 'goal must be the id of the goal whose requirement you put to the human', 'pass the goal id propose_to_human returned', 'goal')
+  if (kind === 'question' && (typeof question !== 'string' || question.length === 0)) refuse('invalid', 'question must be the id of the question', 'pass the id propose_to_human returned', 'question')
   if (typeof answer !== 'string' || !(ANSWERS as readonly string[]).includes(answer)) refuse('invalid', `answer must be one of ${ANSWERS.join(', ')}`, 'agree when they accept, add when they want something added, reject when they turn it down', 'answer')
   if (way !== undefined && (typeof way !== 'number' || !Number.isInteger(way) || way < 1)) refuse('invalid', 'way must be a whole number from 1', 'pass the number of the way the human picked', 'way')
   const quotes = parseWords(raw.words)
   if (typeof recordedAs !== 'string' || recordedAs.trim().length === 0 || /[\r\n]/.test(recordedAs) || codePointCount(recordedAs.trim()) > PROPOSAL_LIMITS.conclusion) {
     refuse('invalid', `recordedAs must be one line of 1 to ${PROPOSAL_LIMITS.conclusion} characters`, 'write what you take the human to have said in one line', 'recordedAs')
   }
-  return { kind, question, answer: answer as AnswerKind, ...way === undefined ? {} : { way }, words: quotes, recordedAs: recordedAs.trim() }
+  if (kind === 'confirm') return { kind, goal: goal as string, answer: answer as AnswerKind, words: quotes, recordedAs: recordedAs.trim() }
+  return { kind, question: question as string, answer: answer as AnswerKind, ...way === undefined ? {} : { way }, words: quotes, recordedAs: recordedAs.trim() }
 }
 
 /** The time after which the human's words count: the question's last proposal, edit or decision. A question decided once can be decided again, but only by what the human says after that. */
@@ -183,6 +194,7 @@ export function recordTool(deps: DesignToolDeps): ToolDefinitionLike {
           return refuse('invalid', said.reason, said.offBoundary ? `${WORDS_HINT}; ${BOUNDARY_HINT}${extra}` : `${WORDS_HINT}${extra}`, 'words')
         }
         if (args.kind === 'delegation') return await delegate(where, graph, state, args, context.callId, refusedWords)
+        if (args.kind === 'confirm') return await confirm(where, graph, state, args, context.callId, refusedWords)
         return await answer(deps, where, graph, state, args, context.callId, refusedWords)
       }
       catch (error) {
@@ -230,6 +242,112 @@ async function answer(deps: DesignToolDeps, where: Where, graph: LoadedGraph, st
     pickedRecommended: node.form === 'choose' && args.answer === 'agree' && !delegated ? args.way === node.ways?.length : undefined,
   })
   return { outcome, message: messageOf(outcome, node.id), ...handedBack === undefined ? {} : { handedBack } }
+}
+
+/**
+ * kind confirm: the reply to the requirement that propose_to_human put to the
+ * human. Their words must come after the last time it was shown in this
+ * session, and a sample shown with it must have been whole in what the main
+ * agent said. Agreeing writes the goal from the interview into the design: the
+ * requirement card is checked again (the graph may have changed since it was
+ * shown), then its stage is set to design and the goal is approved if it still
+ * is a proposal (confirmWrites), both with the human's words as relay. Adding and rejecting
+ * note the goal and move nothing. Nothing is kept of `recordedAs` when the
+ * human agrees: the goal's state is the record.
+ */
+async function confirm(where: Where, graph: LoadedGraph, state: TalkState, args: ConfirmArgs, call: string, refusedWords: Refuse): Promise<Record<string, unknown>> {
+  const goal = openGoal(graph, args.goal)
+  const shown = state.shown.filter(entry => entry.kind === 'confirm' && entry.goal === goal.id && entry.module === undefined).at(-1)
+  if (shown === undefined) refuse('not_shown', `the requirement of "${goal.id}" was not put to the human in this session`, 'show it with propose_to_human first, in this session', 'goal')
+  const said = personSaid(state, args.words, shown.time)
+  if (!said.ok) refusedWords(said, '')
+  const relay = said.ok ? said.relay : ''
+  if (args.answer === 'agree') sampleSeen([shown])
+  const mark = answerCallMark(call)
+  if (args.answer === 'agree') await confirmWrites(where.dir, graph, goal.id, relay, `${ANSWER_MARKS.agree}${mark}`)
+  else {
+    const noted = await openEngine(where.dir).apply('llm', { op: 'comment', id: goal.id, text: `${ANSWER_MARKS[args.answer]}「${relay}」；主 Agent 记成：${args.recordedAs}${mark}` })
+    if (!noted.ok) refuseWith(noted)
+  }
+  const outcome = args.answer === 'agree' ? 'confirmed' : args.answer === 'add' ? 'added' : 'rejected'
+  const firstReply = state.people.find(message => message.time > shown.time)
+  emitMetric({
+    event: 'design.answer-recorded',
+    kind: 'confirm',
+    answer: args.answer,
+    outcome,
+    goal: goal.id,
+    delayMs: firstReply === undefined ? undefined : firstReply.time - shown.time,
+    codePoints: codePointCount(relay),
+    restated: firstReply?.restated,
+  })
+  return { outcome, message: confirmMessage(outcome, goal.id), ...outcome === 'confirmed' ? { stage: 'design' } : {} }
+}
+
+function confirmMessage(outcome: 'confirmed' | 'added' | 'rejected', goal: string): string {
+  if (outcome === 'confirmed') return `Recorded: the human confirmed the requirements. ${goal} is approved and in stage design. Start on the design: decisions with their five columns, and the plan under the goal.`
+  if (outcome === 'added') return `Recorded: the human added to the requirements. Work it into ${goal} (its body, acceptance or non-goals), then put the requirement to them again with propose_to_human (kind confirm).`
+  return `Recorded: the human turned the requirements down. Find out what they want different, change ${goal}, then put the requirement to them again with propose_to_human (kind confirm).`
+}
+
+/** Why the writes of an agreement stopped, and whether the stage was set to design when they did. */
+interface Stopped {
+  readonly error: { readonly code: string, readonly message: string, readonly field?: string }
+  readonly stageSet: boolean
+}
+
+/**
+ * The two writes of an agreement, each with the revision just read and the
+ * human's words as relay: the stage is set to design (unless it is), then the
+ * goal is approved (if it still is a proposal). In that order, so that a stop
+ * between them leaves a proposal: its effective stage stays wish or interview
+ * whatever stage it names, the gates of the interview still hold for it, and
+ * the same words finish it. The other order leaves an approved goal with no
+ * stage, which the gates read as outside the design loop. What the engine
+ * refuses and what it throws (a disk that will not take the file) stop the
+ * writes alike.
+ */
+async function writeAgreement(engine: GraphEngine, goal: GraphNode, rev: string, relay: string, reason: string): Promise<Stopped | undefined> {
+  let stageSet = goal.stage === 'design'
+  try {
+    if (!stageSet) {
+      const done = await engine.apply('llm', { op: 'edit', id: goal.id, rev, set: { stage: 'design' }, reason, relay })
+      if (!done.ok) return { error: done.error, stageSet }
+      rev = done.rev
+      stageSet = true
+    }
+    if (goal.status === 'proposed') {
+      const done = await engine.apply('llm', { op: 'approve', id: goal.id, rev, reason, relay })
+      if (!done.ok) return { error: done.error, stageSet }
+    }
+    return undefined
+  }
+  catch (error) {
+    return { error: { code: 'unavailable', message: `the graph could not be written: ${errorText(error)}` }, stageSet }
+  }
+}
+
+/**
+ * The writes of an agreement to the requirement (writeAgreement), the
+ * requirement card checked again before each try. Once more when the goal
+ * moved under a write. When they stop, the error says what was written: a
+ * goal whose stage is set but which is not approved yet is told so, and
+ * recording the same words again finishes it.
+ */
+async function confirmWrites(dir: string, first: LoadedGraph, id: string, relay: string, reason: string): Promise<void> {
+  const engine = openEngine(dir)
+  let graph = first
+  for (let attempt = 0; ; attempt++) {
+    const goal = confirmGate(graph, openGoal(graph, id))
+    const stopped = await writeAgreement(engine, goal, graph.revisions.get(id)!, relay, reason)
+    if (stopped === undefined) return
+    if (stopped.error.code === 'stale_revision' && attempt === 0) {
+      graph = await readGraph(dir)
+      continue
+    }
+    const left = stopped.stageSet ? `${id} has its stage set to design and waits for its approval, and it is still a proposal: record the same words again to finish it; ` : 'nothing more was recorded; '
+    refuse(stopped.error.code, stopped.error.message, `${left}the human said: ${relay}`, stopped.error.field)
+  }
 }
 
 /** Which way the human picked: given for the agreement to a choose question, unless they handed the whole matter over; refused anywhere else. */

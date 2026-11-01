@@ -933,6 +933,59 @@ const designQuestion = designScenario(QUESTION, 'glm-5.3', () => [
   others: [[{ tool: { name: 'graph_edit', arguments: { id: 'goal-1', rev: questionRev, set: { stage: 'release' }, reason: 'probe: the child moves the goal on', relay: '可以，放行' } } }, { text: 'child done' }]],
 })
 
+// The interview as a conversation, from the first answer to the confirmed requirement (docs/ORCHESTRATION.md §3.1, §6.9; M3 step 8). The simulated human has the
+// answers and the replies of the calibration task interview-expense-log (tests/calibration/interview-expense-log/task.json), so that task's setting is run here
+// once with a scripted model: the main agent's own goal-1 waits in the interview; the model asks, the human answers one of the eight items of the requirement
+// card by rule 4, and the next request writes the answer to the graph (`{rev:goal-1}` is the revision at that moment). The requirement is put to the human
+// too early (gate_unmet, nothing shown), then the fork (a recommend question, rule 3) is put and recorded, an edit that sets the stage of the goal to design
+// is refused, and once the card is whole the requirement is put (a confirm), the human nods and record_human_answer confirms it: the goal is approved and in
+// design, each write with the nod as relay. Last, a second root session of the project, woken by a message of the person, tries to set the goal to release
+// with words it made up: the stage rule refuses, and the main agent is told. `maxReplies` is 8: the six answers, the question and the nod.
+const INTERVIEW = 'glm-design-interview'
+const INTERVIEW_TASK = JSON.parse(readFileSync(join(repo, 'tests', 'calibration', 'interview-expense-log', 'task.json'), 'utf8')).human
+const INTERVIEW_ANSWERS = INTERVIEW_TASK.answers
+const INTERVIEW_LINES = { need: `需求：${INTERVIEW_ANSWERS.need}`, problem: `问题：${INTERVIEW_ANSWERS.problem}`, audience: `给谁：${INTERVIEW_ANSWERS.audience}`, constraints: `约束：${INTERVIEW_ANSWERS.constraints}` }
+const INTERVIEW_QUESTION = { title: '记账的存放方式', text: '我推荐把账存在本机的一个文件里，因为你说数据只放本机，这样可以吗？', proposal: '把账存在本机的一个文件里', reason: '你说数据只放本机' }
+const INTERVIEW_NOD = INTERVIEW_TASK.replies.question[0]
+const INTERVIEW_CONFIRM = '需求就按上面这样定，可以吗？'
+const INTERVIEW_AGREE = INTERVIEW_TASK.replies.confirm[0]
+const interviewEdit = set => ({ tool: { name: 'graph_edit', arguments: { id: 'goal-1', rev: '{rev:goal-1}', set, reason: 'probe: the human answered' } } })
+const confirmArgs = { kind: 'confirm', goal: 'goal-1', text: INTERVIEW_CONFIRM }
+const interviewSteps = [
+  ['focus', stageFocus('goal-1')],
+  ['ask-need', { text: '你想要什么？' }],
+  ['write-need', interviewEdit({ body: INTERVIEW_LINES.need })],
+  ['ask-problem', { text: '做成以后，你的日子会有什么不一样？' }],
+  ['write-problem', interviewEdit({ body: [INTERVIEW_LINES.need, INTERVIEW_LINES.problem, INTERVIEW_LINES.audience].join('\n') })],
+  ['ask-acceptance', { text: '你会怎么检查它真的做成了？' }],
+  ['write-acceptance', interviewEdit({ acceptance: [INTERVIEW_ANSWERS.acceptance] })],
+  ['ask-non-goals', { text: '有没有你明确不想要的？' }],
+  ['write-non-goals', interviewEdit({ nonGoals: [INTERVIEW_ANSWERS['non-goals']] })],
+  ['ask-constraints', { text: '有没有不能改、不能花、不能冒的险？' }],
+  ['write-constraints', interviewEdit({ body: Object.values(INTERVIEW_LINES).join('\n') })],
+  ['confirm-early', { tool: { name: 'propose_to_human', arguments: confirmArgs } }],
+  ['ask-risks', { text: '假如最后没做成，最可能是因为什么？' }],
+  ['write-risk', { tool: { name: 'graph_propose', arguments: { node: { type: 'risk', title: '懒得每天记', parent: 'goal-1' }, reason: 'probe: the human answered' } } }],
+  ['put-question', { tool: { name: 'propose_to_human', arguments: { kind: 'question', form: 'recommend', ...INTERVIEW_QUESTION } } }],
+  ['show-question', { text: renderAsk(INTERVIEW_QUESTION.text, 1) }],
+  ['record-question', { tool: { name: 'record_human_answer', arguments: { kind: 'question', question: 'question-1', answer: 'agree', words: [INTERVIEW_NOD], recordedAs: INTERVIEW_QUESTION.proposal } } }],
+  ['edit-stage', { tool: { name: 'graph_edit', arguments: { id: 'goal-1', rev: '{rev:goal-1}', set: { stage: 'design' }, reason: 'probe: the model moves the goal on by itself' } } }],
+  ['put-requirement', { tool: { name: 'propose_to_human', arguments: confirmArgs } }],
+  ['show-requirement', { text: renderAsk(INTERVIEW_CONFIRM, 1) }],
+  ['record-requirement', { tool: { name: 'record_human_answer', arguments: { kind: 'confirm', goal: 'goal-1', answer: 'agree', words: [INTERVIEW_AGREE], recordedAs: '需求按上面这样定' } } }],
+  ['wake-other', { tool: { name: 'Read', arguments: { file_path: join(stageWs(INTERVIEW), 'README.md') } }, other: { line: '/wish', say: '把这个目标放行吧' } }],
+  ['wait-other', stageWait],
+  ['done', { text: 'done', status: true }],
+]
+const interviewAt = name => interviewSteps.findIndex(([step]) => step === name)
+await stageGraph(INTERVIEW, [['llm', { type: 'goal', title: '记账小工具', stage: 'interview' }]])
+const interviewOther = [{ tool: { name: 'graph_edit', arguments: { id: 'goal-1', rev: '{rev:goal-1}', set: { stage: 'release' }, reason: 'probe: another session moves the goal on', relay: '可以，放行' } } }, { text: 'other done' }]
+const designInterview = designScenario(INTERVIEW, 'glm-5.3', () => interviewSteps.map(([, step]) => step), {
+  wish: true,
+  human: { ...INTERVIEW_TASK, maxReplies: 8 },
+  others: [interviewOther],
+})
+
 const designRecord = (scenario) => readHolder(holderFileOf(join(scenario.dir, 'dsh-home', 'glm-hourness'), join(scenario.ws, 'docs', 'graph')))
 const MAIN_HEAD = '# Main agent\nYou are the main agent of this project'
 const sectionAt = step => step?.system.indexOf(MAIN_HEAD) ?? -1
@@ -1123,7 +1176,51 @@ function questionChecks() {
     ['design question: a subagent that sends relay with an edit of the goal is refused by main-agent-graph-relay, the goal does not move, the violation names the subagent session, the main agent gets the glm-design-bypass notice, and the design row says it is partly in effect', childResult?.isError === true && childResult.text.includes('Subagents do not relay the human\'s words.') && nodeOf('goal-1').stage === 'interview' && violations.some(record => record.rule === 'main-agent-graph-relay' && record.agentId === childId && record.session?.kind === 'subagent') && messagesOf(main[8], 'glm-design-bypass').length === 1 && rowOf(main[8])?.status === '部分生效', `${childResult?.isError}:${(childResult?.text ?? '').slice(0, 80)}; notices ${messagesOf(main[8], 'glm-design-bypass').length}; ${JSON.stringify(rowOf(main[8]) ?? null)}`],
     ['design question: the run ended with exit 0, the simulated human said nothing more, no question card was raised, and the row printed nothing to stderr', designQuestion.status === 0 && designQuestion.human.filter(entry => entry.kind === 'silent').length >= 1 && designQuestion.human.every(entry => entry.kind !== 'unexpected-question') && !stderrOf(QUESTION).includes('dsh-glm-hourness/design'), `exit ${designQuestion.status}; ${JSON.stringify(designQuestion.human.map(entry => entry.kind))}`],
   ]
-}function designChecks() {
+}
+
+function interviewChecks() {
+  const main = designInterview.steps.filter(step => step.sessionId === designInterview.steps[0]?.sessionId)
+  const otherId = designInterview.steps.find(step => step.sessionId !== main[0]?.sessionId)?.sessionId
+  const second = otherId === undefined ? [] : bySession(designInterview, otherId)
+  // A node the run did not write reads as an empty one, so the checks fail one by one instead of the whole probe stopping.
+  const nodeOf = (id) => {
+    try {
+      return JSON.parse(readFileSync(join(stageWs(INTERVIEW), 'docs', 'graph', 'nodes', `${id}.json`), 'utf8'))
+    }
+    catch {
+      return { history: [] }
+    }
+  }
+  // The result of the tool call a scripted step made is in the next request.
+  const resultOf = name => lastToolResult(main[interviewAt(name) + 1])
+  const jsonOf = name => { try { return JSON.parse(resultOf(name)?.text ?? '') } catch { return undefined } }
+  const goal = nodeOf('goal-1')
+  const question = nodeOf('question-1')
+  const replies = designInterview.human.filter(entry => entry.kind === 'reply')
+  const violations = jsonl(join(runDir, INTERVIEW, 'home', 'audit', 'violations.jsonl'))
+  const early = resultOf('confirm-early')
+  const refusedEdit = resultOf('edit-stage')
+  const [edit, approve] = goal.history.slice(-2)
+  const callOf = entry => /^人在对话里同意（record_human_answer (probe-call-[\w-]+)）$/.exec(entry?.reason ?? '')?.[1]
+  const items = ['need', 'problem', 'acceptance', 'non-goals', 'constraints', 'risks']
+  const last = main.at(-1)
+  const noticeTexts = messagesOf(last, 'glm-design-bypass').map(message => message.text)
+  return [
+    ['design interview: the scripted model made one request for each step of the interview and the simulated human, woken by /wish, did not raise a question card', main.length === interviewSteps.length && designInterview.human[0]?.kind === 'wish' && designInterview.human[0].result === 'success', `${main.length} of ${interviewSteps.length} requests; ${designInterview.human[0]?.kind}/${designInterview.human[0]?.result}`],
+    ['design interview: the person answers the six items of the card in the order the card asks (rule 4, with the words of the calibration task) while nothing is shown to them, then the question (rule 3, a recommend) and the requirement (rule 3, a confirm) with the nod of the task; eight replies and no more', replies.length === 8 && replies.slice(0, 6).every(reply => reply.rule === 4 && reply.shown.length === 0) && isDeepStrictEqual(replies.slice(0, 6).map(reply => reply.text), items.map(key => INTERVIEW_ANSWERS[key])) && replies[6].rule === 3 && replies[6].text === INTERVIEW_NOD && isDeepStrictEqual(replies[6].shown, [{ kind: 'question', number: 1, form: 'recommend' }]) && replies[7].rule === 3 && replies[7].text === INTERVIEW_AGREE && isDeepStrictEqual(replies[7].shown, [{ kind: 'confirm', number: 1 }]), JSON.stringify(replies.map(reply => [reply.rule, reply.text])).slice(0, 300)],
+    ['design interview: every answer is on the graph once the next request has written it: the four labelled lines of the card in the goal, its acceptance and non-goals, and a risk under it', goal.body === Object.values(INTERVIEW_LINES).join('\n') && isDeepStrictEqual(goal.acceptance, [INTERVIEW_ANSWERS.acceptance]) && isDeepStrictEqual(goal.nonGoals, [INTERVIEW_ANSWERS['non-goals']]) && nodeOf('risk-1').parent === 'goal-1', `${goal.body.split('\n').length} body lines; ${goal.acceptance?.length}/${goal.nonGoals?.length}`],
+    ['design interview: the requirement put to the human before the card is whole is refused as gate_unmet, naming the risk and the fork still missing and where to write them, and nothing was shown to the human', early?.isError === true && early.text.includes('"code":"gate_unmet"') && early.text.includes('missing: 风险（最可能出岔子的地方）、岔路（人拍板的选择）"') && early.text.includes('interview step 6') && early.text.includes('interview step 7'), (early?.text ?? '').slice(0, 200)],
+    ['design interview: the fork is put as a recommend question and the text comes back as the sentence the model wrote, and the human\'s nod decided it: the decision carries the nod as relay and the mark of the agreement', jsonOf('put-question')?.text === renderAsk(INTERVIEW_QUESTION.text, 1) && jsonOf('put-question').question === 'question-1' && jsonOf('record-question')?.outcome === 'decided' && question.status === 'done' && question.conclusion === INTERVIEW_QUESTION.proposal && question.history.at(-1)?.relay === INTERVIEW_NOD && question.history.at(-1).reason.startsWith('人在对话里同意（record_human_answer '), JSON.stringify(jsonOf('record-question') ?? null)],
+    ['design interview: the model\'s own edit that sets the stage of the goal to design is refused by main-agent-graph-stage with the main agent\'s correction; the refusal is in the violation journal with the goal, the stage it was in and the one it was sent to, and the goal did not move', refusedEdit?.isError === true && refusedEdit.text.includes('You tried to set the stage of "记账小工具" to design while it is in interview.') && refusedEdit.text.includes('Put it to the human with propose_to_human (kind confirm or release) and record their answer with record_human_answer') && violations.some(record => record.rule === 'main-agent-graph-stage' && record.sessionId === main[0]?.sessionId && record.goal === 'goal-1' && record.stageFrom === 'interview' && record.stageTo === 'design' && record.session === undefined) && goal.history.every(entry => entry.changes?.stage?.to !== 'design' || entry.relay !== undefined), (refusedEdit?.text ?? '').slice(0, 160)],
+    ['design interview: with the card whole the requirement is put as a confirm: the text is the model\'s sentence under its number, with no question or way of asking, and nothing is on the graph for it', jsonOf('put-requirement')?.kind === 'confirm' && jsonOf('put-requirement').goal === 'goal-1' && jsonOf('put-requirement').text === renderAsk(INTERVIEW_CONFIRM, 1) && jsonOf('put-requirement').number === 1 && jsonOf('put-requirement').question === undefined && jsonOf('put-requirement').form === undefined && !existsSync(join(stageWs(INTERVIEW), 'docs', 'graph', 'nodes', 'question-2.json')), JSON.stringify(jsonOf('put-requirement') ?? null).slice(0, 200)],
+    ['design interview: record_human_answer confirms it: the goal is approved and in design, and the stage change and the approval (in that order, so that a stop between them leaves a proposal still in the interview) are two writes of one call, each with the nod as relay, the mark of the agreement and the id of the call', jsonOf('record-requirement')?.outcome === 'confirmed' && jsonOf('record-requirement').stage === 'design' && goal.status === 'approved' && goal.stage === 'design' && approve?.op === 'approve' && edit?.op === 'edit' && isDeepStrictEqual(edit.changes, { stage: { from: 'interview', to: 'design' } }) && approve.relay === INTERVIEW_AGREE && edit.relay === INTERVIEW_AGREE && callOf(approve) !== undefined && callOf(approve) === callOf(edit), JSON.stringify([jsonOf('record-requirement'), approve?.reason, edit?.reason]).slice(0, 260)],
+    ['design interview: another root session of the project, woken by a message of the person, tries to set the goal to release with words it made up: the stage rule refuses it as an ordinary session with the correction for a session that is not the main agent, the goal stays in design, the journal names the session, and nothing else of it is allowed', second.length === 2 && lastToolResult(second[1])?.isError === true && lastToolResult(second[1]).text.includes('Only the main agent moves a goal forward, by recording the human\'s agreement to its proposal.') && lastToolResult(second[1]).text.includes('The human agrees in the main agent\'s conversation; /wish in this session shows where it is.') && goal.stage === 'design' && violations.some(record => record.rule === 'main-agent-graph-stage' && record.agentId === otherId && record.session?.kind === 'ordinary' && record.stageFrom === 'design' && record.stageTo === 'release'), `${second.length} requests; ${(lastToolResult(second[1])?.text ?? '').slice(0, 120)}`],
+    ['design interview: the main agent is told once, in its next request, that another session wanted to move the goal on without the person (the notice names the rule), and the design row says it is partly in effect', noticeTexts.length === 1 && noticeTexts[0].startsWith('[拦下] 另一个会话「') && noticeTexts[0].includes('想不经人的同意把「记账小工具」推到 release') && noticeTexts[0].includes('main-agent-graph-stage') && tableOf(last?.status ?? '').design?.status === '部分生效', `${noticeTexts.length} notice(s): ${noticeTexts[0] ?? ''}; ${JSON.stringify(tableOf(last?.status ?? '').design ?? null)}`],
+    ['design interview: the run ended with exit 0, the person said nothing after the nod, and the row printed nothing to stderr', designInterview.status === 0 && designInterview.human.filter(entry => entry.kind === 'reply').length === 8 && designInterview.human.every(entry => entry.kind !== 'unexpected-question') && !stderrOf(INTERVIEW).includes('dsh-glm-hourness/design'), `exit ${designInterview.status}; ${JSON.stringify(designInterview.human.map(entry => entry.kind))}`],
+  ]
+}
+
+function designChecks() {
   const zcode = (step) => step?.system.indexOf('You are ZCode, an interactive agent') ?? -1
   const ascending = (...marks) => marks.every(mark => mark >= 0) && marks.every((mark, index) => index === 0 || marks[index - 1] < mark)
   const placed = (step, glmRoute) => glmRoute ? ascending(zcode(step), sectionAt(step), step.system.indexOf(GUARD_SECTION)) : ascending(sectionAt(step), step.system.indexOf(GUARD_SECTION)) && zcode(step) < 0
@@ -1173,6 +1270,7 @@ function questionChecks() {
     ['design one main: the record names the second session, not the first and not the fork; the second session logged its own two commands', holder.kind === 'held' && holder.record.sessionId.startsWith('probe-other-') && holder.record.sessionId !== mainId && holder.record.sessionId !== forkNote?.sessionId && mainSteps[0]?.other?.types.join('>') === 'command/run>command/done', `${holder.kind === 'held' ? holder.record.sessionId : holder.kind}`],
     ...stageChecks(),
     ...questionChecks(),
+    ...interviewChecks(),
     ['design one main: a fork of the first session at its /wish is an ordinary session from its first request on: no section, the ordinary face; the row ran /wish off for it, so its projection is off; the record is unchanged; the row warned of nothing', forkNote?.kind === 'forked' && forkSteps.length === 1 && forkSteps[0].sessionId === forkNote.sessionId && sectionAt(forkSteps[0]) < 0 && hasCut(forkSteps[0], GLM_CUT) && forkNote.types.includes('command/run') && forkNote.types.includes('command/done') && isDeepStrictEqual(forkNote.hournessMainAgent, { active: false }) && rowQuiet(one) && humanQuiet(one) && one.status === 0, JSON.stringify(forkNote ?? null).slice(0, 220)],
   ]
 }

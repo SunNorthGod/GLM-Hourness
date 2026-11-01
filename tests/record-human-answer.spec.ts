@@ -8,16 +8,19 @@
  * model can be wrong or invent, the graph must not move.
  */
 import assert from 'node:assert/strict'
+import { createRequire, syncBuiltinESMExports } from 'node:module'
 import test from 'node:test'
 import { attachDigest } from '../src/design/attach.ts'
 import { recordTool } from '../src/design/record.ts'
 import { proposeTool } from '../src/design/propose.ts'
 import { GOAL_ATTACHMENT_TEXT } from '../src/design/talk.ts'
 import { PLAIN_QUESTION_EXAMPLES } from '../src/graph/plain-question.ts'
+import { stageStatus } from '../src/graph/stage.ts'
+import { releaseVerdict } from '../src/guard/design-release.ts'
 import { ANSWER_MARKS, DELEGATED, DELEGATIONS_ID, DELEGATION_LIMIT, DELEGATION_REASON, DELEGATION_SUFFIX, answerCallOf, answerKindOf } from '../src/shared/answer-marks.ts'
 import { PROPOSE_TO_HUMAN, RECORD_HUMAN_ANSWER } from '../src/shared/tool-names.ts'
 import { healthOf, hostWithoutTalkProjection, type FakeAgent } from './design-host.ts'
-import { fakeBoard, mainAgentWithGoal, toolDeps, type MainAgentFixture } from './design-tools-helpers.ts'
+import { fakeBoard, fillRequirementCard, mainAgentWithGoal, toolDeps, type MainAgentFixture } from './design-tools-helpers.ts'
 import { exampleArgs } from './proposal-examples.ts'
 
 /** A question put to the human and answered "可以，就按推荐的来". */
@@ -191,7 +194,7 @@ test('the call is checked before anything is read: who calls, the shape of the w
     [{ recordedAs: '一行\n两行' }, 'recordedAs'],
     [{ recordedAs: '字'.repeat(121) }, 'recordedAs'],
     [{ answer: 'maybe' }, 'answer'],
-    [{ kind: 'confirm' }, 'kind'],
+    [{ kind: 'confirm' }, 'question'],
     [{ kind: 'release' }, 'kind'],
     [{ question: undefined }, 'question'],
     [{ extra: 1 }, 'extra'],
@@ -203,7 +206,7 @@ test('the call is checked before anything is read: who calls, the shape of the w
     assert.equal(outcome.kind, 'error', JSON.stringify(patch))
     assert.deepEqual(outcome.kind === 'error' ? [outcome.error.code, outcome.error.field] : [], ['invalid', field], JSON.stringify(patch).slice(0, 80))
   }
-  assert.match(errorOf(await record(fixture, { kind: 'confirm' })).hint, /^not yet/)
+  assert.match(errorOf(await record(fixture, { kind: 'release' })).hint, /^not yet/)
   const missing = errorOf(await record(fixture, { question: 'question-9' }))
   assert.deepEqual([missing.code, missing.field], ['not_found', 'question'])
   const notProposal = errorOf(await record(fixture, { question: 'goal-1' }))
@@ -603,4 +606,230 @@ test('only the main agent hands a kind over, and the node is not taken from a cl
   assert.equal((await fixture.engine.apply('human', { op: 'status', id: DELEGATIONS_ID, rev, to: 'dropped', reason: '不要了' })).ok, true)
   const closed = errorOf(await delegate(fixture, '命名，这类你定', { scope: '命名' }))
   assert.deepEqual([closed.code, closed.field], ['invalid', 'scope'])
+})
+
+// ---------------------------------------------------------------- kind confirm (M3 step 8)
+
+const CONFIRM = { kind: 'confirm', goal: 'goal-1', text: '需求就按上面这样定，可以吗？' }
+const AGREE = '对，就这样'
+
+/** The requirement of goal-1 put to the human; the main agent says the text it got back, and the human answers (unless `reply` is false). */
+async function requirementShown(fixture: MainAgentFixture, reply: string | false = AGREE, sample?: string, said?: string): Promise<void> {
+  const outcome = await fixture.host.callTool(fixture.agent, PROPOSE_TO_HUMAN, { ...CONFIRM, ...sample === undefined ? {} : { sample } })
+  assert.equal(outcome.kind, 'ok', JSON.stringify(outcome))
+  fixture.host.reply(fixture.agent, said ?? (outcome.kind === 'ok' ? String(outcome.value.text) : ''))
+  if (reply !== false) await fixture.host.say(fixture.agent, reply)
+}
+const recordConfirm = (fixture: MainAgentFixture, patch: Record<string, unknown> = {}) => fixture.host.callTool(fixture.agent, RECORD_HUMAN_ANSWER, { kind: 'confirm', goal: 'goal-1', answer: 'agree', words: [AGREE], recordedAs: '需求按上面这样定', ...patch })
+const valueOfOk = (outcome: Awaited<ReturnType<typeof recordConfirm>>): Record<string, unknown> => {
+  assert.equal(outcome.kind, 'ok', JSON.stringify(outcome))
+  return outcome.kind === 'ok' ? outcome.value : {}
+}
+
+test('kind confirm: the human agrees to the requirement, and the goal is approved and put into the design, each write with their words as relay', async () => {
+  const fixture = await mainAgentWithGoal({}, 'llm')
+  await fillRequirementCard(fixture)
+  assert.equal((await fixture.node('goal-1')).status, 'proposed', 'the main agent\'s own proposal waits for the human')
+  await requirementShown(fixture)
+  const value = valueOfOk(await recordConfirm(fixture))
+  assert.deepEqual([value.outcome, value.stage], ['confirmed', 'design'])
+  assert.match(String(value.message), /^Recorded: the human confirmed the requirements\. goal-1 is approved and in stage design\./)
+  const goal = await fixture.node('goal-1')
+  assert.deepEqual([goal.status, goal.stage], ['approved', 'design'])
+  // The stage is written first, while the goal is still a proposal and so still in the interview, and the approval second: whichever write stops, the same words finish it.
+  const [edit, approve] = goal.history.slice(-2)
+  assert.deepEqual([approve.op, approve.actor, approve.relay, approve.to], ['approve', 'llm', AGREE, 'approved'])
+  assert.deepEqual([edit.op, edit.actor, edit.relay], ['edit', 'llm', AGREE])
+  assert.deepEqual(edit.changes, { stage: { from: 'interview', to: 'design' } })
+  for (const entry of [approve, edit]) {
+    assert.match(entry.reason ?? '', /^人在对话里同意（record_human_answer call-\d+）$/)
+    assert.equal(answerKindOf(entry), 'agree')
+  }
+  assert.equal(answerCallOf(approve), answerCallOf(edit), 'one call wrote both')
+})
+
+/** Run `body` with the nth file the graph store renames into place failing, as a disk that will not take the write does. */
+async function whileWriteFails<T>(nth: number, body: () => Promise<T>): Promise<T> {
+  const fs = createRequire(import.meta.url)('node:fs/promises') as { rename: (from: string, to: string) => Promise<void> }
+  const original = fs.rename
+  let calls = 0
+  fs.rename = (from, to) => {
+    calls += 1
+    return calls === nth ? Promise.reject(new Error('ENOSPC: no space left on device')) : original(from, to)
+  }
+  syncBuiltinESMExports()
+  try {
+    return await body()
+  }
+  finally {
+    fs.rename = original
+    syncBuiltinESMExports()
+  }
+}
+
+test('kind confirm: a write that fails leaves the goal in the interview, whichever write it is, and recording the same words finishes it', async () => {
+  for (const [nth, written] of [[1, 'nothing'], [2, 'the stage']] as const) {
+    const fixture = await mainAgentWithGoal({}, 'llm')
+    await fillRequirementCard(fixture)
+    await requirementShown(fixture)
+    const error = errorOf(await whileWriteFails(nth, () => recordConfirm(fixture)))
+    assert.equal(error.code, 'unavailable', written)
+    assert.match(error.message, /^the graph could not be written: ENOSPC/)
+    assert.match(error.hint, written === 'nothing' ? /^nothing more was recorded; the human said: 对，就这样$/ : /^goal-1 has its stage set to design and waits for its approval, and it is still a proposal: record the same words again to finish it; the human said: 对，就这样$/)
+    // Where it stopped the goal is a proposal, so the gates of the interview still hold: it is not released, not approved, and nothing it plans can be built.
+    const stopped = await fixture.node('goal-1')
+    assert.deepEqual([stopped.status, stopped.stage], ['proposed', written === 'nothing' ? 'interview' : 'design'], written)
+    const graph = await fixture.engine.load()
+    assert.equal(stageStatus(graph, stopped).stage, 'interview', written)
+    const verdict = releaseVerdict(graph, 'goal-1')
+    assert.match(verdict.kind === 'deny' ? verdict.violation : 'allowed', /design loop at stage interview/, written)
+    assert.deepEqual(stopped.history.filter(entry => entry.op === 'approve'), [], written)
+    // The same words, with nothing else, finish it: one stage write and one approval in all.
+    assert.equal(valueOfOk(await recordConfirm(fixture)).outcome, 'confirmed', written)
+    const done = await fixture.node('goal-1')
+    assert.deepEqual([done.status, done.stage], ['approved', 'design'], written)
+    assert.deepEqual(done.history.slice(-2).map(entry => [entry.op, entry.relay]), [['edit', AGREE], ['approve', AGREE]], written)
+    assert.equal(done.history.filter(entry => entry.op === 'edit' && entry.changes?.stage !== undefined).length, 1, written)
+  }
+})
+
+test('kind confirm: a goal that is approved already gets only its stage set, and one that names design already gets only its approval', async () => {
+  const approved = await mainAgentWithGoal()
+  await fillRequirementCard(approved)
+  await requirementShown(approved)
+  assert.equal(valueOfOk(await recordConfirm(approved)).outcome, 'confirmed')
+  const goal = await approved.node('goal-1')
+  assert.deepEqual(goal.history.filter(entry => entry.op === 'approve'), [])
+  assert.deepEqual([goal.history.at(-1)?.op, goal.history.at(-1)?.relay, goal.stage], ['edit', AGREE, 'design'])
+
+  const named = await mainAgentWithGoal({}, 'llm')
+  await fillRequirementCard(named)
+  assert.ok((await named.engine.apply('human', { op: 'edit', id: 'goal-1', rev: (await named.engine.load()).revisions.get('goal-1'), set: { stage: 'design' }, reason: '写了设计' })).ok)
+  await requirementShown(named)
+  assert.equal(valueOfOk(await recordConfirm(named)).outcome, 'confirmed')
+  const proposal = await named.node('goal-1')
+  assert.deepEqual([proposal.status, proposal.stage, proposal.history.at(-1)?.op, proposal.history.at(-2)?.actor], ['approved', 'design', 'approve', 'human'])
+})
+
+test('kind confirm: the card is checked again at the answer, so a requirement that changed after it was shown is not confirmed, and the same answer goes through once it is whole again', async () => {
+  const fixture = await mainAgentWithGoal({}, 'llm')
+  await fillRequirementCard(fixture)
+  await requirementShown(fixture)
+  const edit = async (set: Record<string, unknown>): Promise<void> => {
+    assert.ok((await fixture.engine.apply('human', { op: 'edit', id: 'goal-1', rev: (await fixture.engine.load()).revisions.get('goal-1'), set, reason: '改了' })).ok)
+  }
+  await edit({ acceptance: null })
+  const before = (await fixture.engine.load()).revision
+  const error = errorOf(await recordConfirm(fixture))
+  assert.equal(error.code, 'gate_unmet')
+  assert.match(error.message, /missing: 成功（怎样算做成）$/)
+  assert.equal((await fixture.engine.load()).revision, before, 'nothing was written')
+  await edit({ acceptance: ['月底跑一个命令能看到按类别的合计'] })
+  assert.equal(valueOfOk(await recordConfirm(fixture)).outcome, 'confirmed')
+  assert.deepEqual([(await fixture.node('goal-1')).status, (await fixture.node('goal-1')).stage], ['approved', 'design'])
+})
+
+test('kind confirm: only the requirement that was put to the human in this session is recorded, and a goal in the design or a closed one is not confirmed again', async () => {
+  const fixture = await mainAgentWithGoal()
+  await fillRequirementCard(fixture)
+  const notShown = errorOf(await recordConfirm(fixture))
+  assert.deepEqual([notShown.code, notShown.field], ['not_shown', 'goal'])
+  assert.match(notShown.hint, /show it with propose_to_human first, in this session/)
+  // A matter of another kind, or the requirement of another goal, is not it.
+  await asked(fixture)
+  assert.equal(errorOf(await recordConfirm(fixture)).code, 'not_shown')
+  assert.ok((await fixture.engine.apply('human', { op: 'propose', reason: '另一个', node: { type: 'goal', title: '另一个目标' } })).ok)
+  await requirementShown(fixture)
+  const other = errorOf(await recordConfirm(fixture, { goal: 'goal-2' }))
+  assert.deepEqual([other.code, other.field], ['not_shown', 'goal'])
+  // Confirmed once, it is in the design; recording it again changes nothing and says why.
+  assert.equal(valueOfOk(await recordConfirm(fixture)).outcome, 'confirmed')
+  const settled = (await fixture.engine.load()).revision
+  const again = errorOf(await recordConfirm(fixture))
+  assert.deepEqual([again.code, again.field], ['invalid', 'goal'])
+  assert.match(again.hint, /a design is put to the human with kind release/)
+  assert.equal((await fixture.engine.load()).revision, settled)
+  const revision = (await fixture.engine.load()).revisions.get('goal-1')
+  assert.ok((await fixture.engine.apply('human', { op: 'status', id: 'goal-1', rev: revision, to: 'dropped', reason: '不做了' })).ok)
+  assert.equal(errorOf(await recordConfirm(fixture)).code, 'invalid')
+})
+
+test('kind confirm: words the human did not say after the requirement was put to them are refused, and the goal does not move', async () => {
+  const fixture = await mainAgentWithGoal({}, 'llm')
+  await fillRequirementCard(fixture)
+  await fixture.host.say(fixture.agent, '之前说过：全部放行')
+  await requirementShown(fixture)
+  const before = (await fixture.engine.load()).revision
+  for (const words of [['我编的一句话'], ['全部放行'], [AGREE, '再编一句']]) {
+    const error = errorOf(await recordConfirm(fixture, { words }))
+    assert.deepEqual([error.code, error.field], ['invalid', 'words'], words.join('|'))
+  }
+  assert.equal((await fixture.engine.load()).revision, before)
+  assert.equal((await fixture.node('goal-1')).status, 'proposed')
+})
+
+test('kind confirm: adding or rejecting notes the human\'s words on the goal and moves nothing; the requirement is put to them again after it is changed', async () => {
+  for (const [answer, mark, outcome] of [['add', ANSWER_MARKS.add, 'added'], ['reject', ANSWER_MARKS.reject, 'rejected']] as const) {
+    const fixture = await mainAgentWithGoal({}, 'llm')
+    await fillRequirementCard(fixture)
+    const said = '补充：数据只存在本机，一个文件就够'
+    await requirementShown(fixture, said)
+    const value = valueOfOk(await recordConfirm(fixture, { answer, words: [said], recordedAs: '数据只放本机' }))
+    assert.equal(value.outcome, outcome)
+    assert.equal(value.stage, undefined)
+    assert.match(String(value.message), /put the requirement to them again with propose_to_human \(kind confirm\)\.$/)
+    const goal = await fixture.node('goal-1')
+    assert.deepEqual([goal.status, goal.stage], ['proposed', 'interview'])
+    const note = goal.history.at(-1)!
+    assert.deepEqual([note.op, note.actor, note.relay], ['comment', 'llm', undefined])
+    assert.ok(note.text?.startsWith(mark))
+    assert.match(note.text ?? '', /「补充：数据只存在本机，一个文件就够」；主 Agent 记成：数据只放本机（record_human_answer call-\d+）$/)
+    // The requirement is shown again and then answered with a nod: only that showing counts.
+    await requirementShown(fixture, '这回对了')
+    const stale = errorOf(await recordConfirm(fixture, { words: [said] }))
+    assert.deepEqual([stale.code, stale.field], ['invalid', 'words'])
+    assert.equal(valueOfOk(await recordConfirm(fixture, { words: ['这回对了'] })).outcome, 'confirmed')
+  }
+})
+
+test('kind confirm: a sample shown with the requirement must have been whole in what the main agent said before the human can agree to it; adding needs no such proof', async () => {
+  const sample = '需求：记一下每天花了多少钱\n问题：月底不知道钱花在哪'
+  const whole = await mainAgentWithGoal({}, 'llm')
+  await fillRequirementCard(whole)
+  await requirementShown(whole, AGREE, sample)
+  assert.equal(valueOfOk(await recordConfirm(whole)).outcome, 'confirmed')
+
+  const missing = await mainAgentWithGoal({}, 'llm')
+  await fillRequirementCard(missing)
+  await requirementShown(missing, AGREE, sample, CONFIRM.text)
+  const before = (await missing.engine.load()).revision
+  const error = errorOf(await recordConfirm(missing))
+  assert.equal(error.code, 'not_shown')
+  assert.match(error.message, /has not seen the whole sample they must see before agreeing/)
+  assert.equal((await missing.engine.load()).revision, before)
+  assert.equal(valueOfOk(await recordConfirm(missing, { answer: 'add', recordedAs: '先给他看全文' })).outcome, 'added')
+})
+
+test('kind confirm: the shape of the call, one rule at a time; the fields of the other kinds are refused and nothing is written', async () => {
+  const fixture = await mainAgentWithGoal({}, 'llm')
+  await fillRequirementCard(fixture)
+  await requirementShown(fixture)
+  const before = (await fixture.engine.load()).revision
+  const refused = async (patch: Record<string, unknown>, code: string, field: string): Promise<void> => {
+    const error = errorOf(await recordConfirm(fixture, patch))
+    assert.deepEqual([error.code, error.field], [code, field], JSON.stringify(patch))
+  }
+  for (const [field, value] of [['question', 'question-1'], ['way', 1], ['module', 'module-a'], ['scope', '代码风格'], ['undo', true]] as const) await refused({ [field]: value }, 'invalid', field)
+  await refused({ goal: undefined }, 'invalid', 'goal')
+  await refused({ goal: '' }, 'invalid', 'goal')
+  await refused({ answer: undefined }, 'invalid', 'answer')
+  await refused({ answer: 'maybe' }, 'invalid', 'answer')
+  await refused({ recordedAs: '' }, 'invalid', 'recordedAs')
+  await refused({ words: [] }, 'invalid', 'words')
+  await refused({ goal: 'goal-9' }, 'not_found', 'goal')
+  await refused({ goal: 'risk-1' }, 'invalid', 'goal')
+  assert.equal((await fixture.engine.load()).revision, before)
+  // A question call keeps refusing the goal.
+  const question = errorOf(await fixture.host.callTool(fixture.agent, RECORD_HUMAN_ANSWER, { kind: 'question', goal: 'goal-1', question: 'question-1', answer: 'agree', words: [AGREE], recordedAs: 'x' }))
+  assert.deepEqual([question.code, question.field], ['invalid', 'goal'])
 })

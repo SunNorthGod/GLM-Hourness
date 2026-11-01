@@ -18,11 +18,14 @@
  *   goal, or its module) is released (src/guard/design-release.ts). It
  *   judges a write by a delegated session, so it is the one rule here that
  *   is not about the main agent's own calls.
- * - main-agent-graph-relay, main-agent-graph-options and
- *   main-agent-graph-delegations: how a session may write the project graph
- *   (src/guard/main-agent-graph.ts). The delegations rule is for every
- *   session; the other two judge the main agent, and the relay rule also
- *   refuses a delegated session's `relay`.
+ * - main-agent-graph-relay, main-agent-graph-options,
+ *   main-agent-graph-delegations, main-agent-graph-stage and
+ *   main-agent-graph-cli: how a session may write the project graph
+ *   (src/guard/main-agent-graph.ts). The delegations, stage and cli rules are
+ *   for every session (a delegated or an ordinary session that tries to move
+ *   a goal on, or to write the graph through its command line with `relay`,
+ *   is also reported); the other two judge the main agent, and the relay rule
+ *   also refuses a delegated session's `relay`.
  *
  * The listener first reads the call (a cheap look at the tool name and the
  * shell text) and only then asks who the session is, so ordinary calls cost
@@ -43,8 +46,8 @@ import { GRAPH_TOOL_NAMES } from '../shared/tool-names.ts'
 import { baseFor, type ViolationRecord } from './index.ts'
 import { guardGit, SNAPSHOT_NOTICE_KIND, snapshotCorrection, type SnapshotEnvironment } from './git-snapshot.ts'
 import { judgeDispatchedWrite, releaseCorrection, type ReleaseDeps } from './design-release.ts'
-import { attemptOf, DELEGATIONS_CORRECTION, judgeMainAgentGraph, relayOf, SUBAGENT_RELAY_CORRECTION, writesDelegations, type GraphRuleDeps } from './main-agent-graph.ts'
-import { ASK_RULE, DESIGN_RELEASE_RULE, GIT_SNAPSHOT_RULE, GRAPH_DELEGATIONS_RULE, GRAPH_RELAY_RULE, NO_WRITE_RULE } from './main-agent-rules.ts'
+import { attemptOf, DELEGATIONS_CORRECTION, GRAPH_CLI_CORRECTION, graphCliWrite, judgeGraphStage, judgeMainAgentGraph, relayOf, stageCandidate, SUBAGENT_RELAY_CORRECTION, writesDelegations, type GraphRuleDeps, type SessionKind, type StageAttempt } from './main-agent-graph.ts'
+import { ASK_RULE, DESIGN_RELEASE_RULE, GIT_SNAPSHOT_RULE, GRAPH_CLI_RULE, GRAPH_DELEGATIONS_RULE, GRAPH_RELAY_RULE, GRAPH_STAGE_RULE, NO_WRITE_RULE } from './main-agent-rules.ts'
 import { originOf } from './origin.ts'
 import { evaluate, fileWriteTarget, isFileWrite, NATIVE_FACE, renderCorrection, shellCommandOf, shellWriteOf, type Correction, type GuardRule, type RuleVerdict, type ToolCall } from './rules.ts'
 import { describeWrite } from './shell.ts'
@@ -151,56 +154,90 @@ export function installMainAgentRules(ctx: PreExecuteHost & ServiceLookup, deps:
     const call: ToolCall = { name: toNativeTool(dialect, payload.name, warn), arguments: (payload.arguments ?? {}) as JsonValue }
     const shell = shellCommandOf(call)
     const delegated = agent.session.header.origin === 'subagent'
-    // A graph write is looked at only when it carries the human's words, proposes or edits (the options rule), or points at norm-delegations.
+    // A graph write is looked at only when it carries the human's words, proposes or edits (the options rule), approves, or points at norm-delegations.
     const toDelegations = writesDelegations(call)
-    const graphCall = GRAPH_NAMES.has(call.name) && (relayOf(call) !== undefined || call.name === 'graph_propose' || call.name === 'graph_edit' || toDelegations)
+    const graphCall = GRAPH_NAMES.has(call.name) && (relayOf(call) !== undefined || call.name === 'graph_propose' || call.name === 'graph_edit' || stageCandidate(call) || toDelegations)
     // Most calls are neither: read, search, graph tools. They pass before anything is asked about the session. A shell call is always looked at: whether its text runs git is for the shell reader to say, not for a search of the raw text (`"g"it` runs git). A delegated session is judged for its writes only.
     if (!isFileWrite(call) && !(!delegated && deps.hiddenTools.includes(call.name)) && shell === undefined && !graphCall) return next()
     const session = agent.session
-    const denial = (rule: string, correction: Correction, extra: Partial<Pick<ViolationRecord, 'session' | 'goal' | 'node'>> = {}) => {
+    // Who the session is, for the metric of a denial and the words of an alert; settled below once the role is read.
+    let who: SessionKind = delegated ? 'subagent' : 'main-agent'
+    const denial = (rule: string, correction: Correction, extra: Partial<Pick<ViolationRecord, 'session' | 'goal' | 'node' | 'stageFrom' | 'stageTo'>> = {}) => {
       const route = sessionRoute(session)
       const origin = originOf(dialectNames(dialect, agent, route, warn) !== undefined, route)
       const reason = renderCorrection(correction)
       deps.journal({ at: new Date().toISOString(), rule, tool: payload.name, agentId: agent.id, sessionId: session.id, ...origin, correction: reason, ...extra })
-      deps.metric({ event: 'design.rule-denied', rule, tool: call.name, session: delegated ? 'subagent' : 'main-agent' })
+      deps.metric({ event: 'design.rule-denied', rule, tool: call.name, session: who })
       return { kind: 'deny' as const, reason }
     }
-    // Every kind of session: the node of what the human handed over for good is written by record_human_answer alone.
-    if (toDelegations) return denial(GRAPH_DELEGATIONS_RULE, DELEGATIONS_CORRECTION, { node: DELEGATIONS_ID })
-    if (graphCall && delegated) {
-      // A subagent has no human to quote: its relay is refused whatever it says.
-      if (relayOf(call) === undefined) return next()
-      const attempt = await attemptOf(deps, { session }, call)
+    /** A delegated or an ordinary session tried to move work on without the human: the denial goes to the journal with who tried and at what, and the human and the main agent are told. */
+    const refusedAttempt = (rule: string, correction: Correction, attempt: Pick<StageAttempt, 'what' | 'goal' | 'node' | 'stageFrom' | 'stageTo'> | undefined) => {
       const parent = session.header.parentSession
-      const decision = denial(GRAPH_RELAY_RULE, SUBAGENT_RELAY_CORRECTION, { session: { id: session.id, kind: 'subagent', ...parent === undefined ? {} : { parent } }, goal: attempt.goal, node: attempt.node })
+      const kind = who === 'subagent' ? 'subagent' as const : 'ordinary' as const
+      const decision = denial(rule, correction, {
+        session: { id: session.id, kind, ...kind === 'subagent' && parent !== undefined ? { parent } : {} },
+        goal: attempt?.goal,
+        node: attempt?.node,
+        stageFrom: attempt?.stageFrom,
+        stageTo: attempt?.stageTo,
+      })
+      if (attempt === undefined) return decision
       try {
-        deps.bypass({ rule: GRAPH_RELAY_RULE, agent: { id: agent.id, session }, kind: 'subagent', tool: call.name, what: attempt.what, ...attempt.goal === undefined ? {} : { goal: attempt.goal }, ...attempt.node === undefined ? {} : { node: attempt.node } })
+        deps.bypass({ rule, agent: { id: agent.id, session }, kind, tool: call.name, what: attempt.what, ...attempt.goal === undefined ? {} : { goal: attempt.goal }, ...attempt.node === undefined ? {} : { node: attempt.node } })
       }
       catch (error) {
-        deps.report(agent, 'degraded', `子 agent 带转述的图写入被拒了，但没能告诉人（${message(error)}）`)
+        deps.report(agent, 'degraded', `不经人的同意推进目标的写入被拒了，但没能告诉人（${message(error)}）`)
       }
       return decision
     }
-    if (delegated) return judgeDelegated(deps, { id: agent.id, session }, writeFactOf(call), denial, next)
-    let main: boolean
+    /** main-agent-graph-stage for a session that is not the main agent. */
+    const stageRefusal = async () => {
+      const verdict = await judgeGraphStage(deps, { session }, call, who === 'main-agent' ? 'ordinary' : who)
+      if (verdict.kind === 'allow') return undefined
+      if (verdict.degraded !== undefined) deps.report(agent, 'degraded', verdict.degraded)
+      return refusedAttempt(GRAPH_STAGE_RULE, verdict.correction, verdict.attempt)
+    }
+    /** main-agent-graph-cli for a shell call of any session; an attempt with `relay` in it is told to the human like the graph tool's. */
+    const cliRefusal = () => {
+      const subcommand = shell === undefined ? undefined : graphCliWrite(shell.command, shell.dialects)
+      if (shell === undefined || subcommand === undefined) return undefined
+      if (who === 'main-agent') return denial(GRAPH_CLI_RULE, GRAPH_CLI_CORRECTION)
+      return refusedAttempt(GRAPH_CLI_RULE, GRAPH_CLI_CORRECTION, shell.command.includes('relay') ? { what: `用命令行带转述的话改项目图（${subcommand === '' ? '没有子命令' : subcommand}）` } : undefined)
+    }
+    // Every kind of session: the node of what the human handed over for good is written by record_human_answer alone.
+    if (toDelegations) return denial(GRAPH_DELEGATIONS_RULE, DELEGATIONS_CORRECTION, { node: DELEGATIONS_ID })
+    if (delegated) {
+      if (graphCall) {
+        // A subagent has no human to quote: its relay is refused whatever it says; what moves a goal on is refused with or without it.
+        if (relayOf(call) !== undefined) return refusedAttempt(GRAPH_RELAY_RULE, SUBAGENT_RELAY_CORRECTION, await attemptOf(deps, { session }, call))
+        return await stageRefusal() ?? next()
+      }
+      return cliRefusal() ?? judgeDelegated(deps, { id: agent.id, session }, writeFactOf(call), denial, next)
+    }
     try {
-      main = deps.isMainAgent(agent)
+      who = deps.isMainAgent(agent) ? 'main-agent' : 'ordinary'
     }
     catch (error) {
+      // The two rules that hold for every session still apply; the ones about the main agent's own calls cannot be judged.
       deps.report(agent, 'degraded', `读不到主 Agent 的状态（${message(error)}），这次调用没有按主 Agent 判`)
-      return next()
+      who = 'ordinary'
+      return (graphCall ? await stageRefusal() : cliRefusal()) ?? next()
     }
-    if (!main) return next()
+    if (who === 'ordinary') return (graphCall ? await stageRefusal() : cliRefusal()) ?? next()
     if (graphCall) {
       const verdict = await judgeMainAgentGraph(deps, { id: agent.id, session }, call)
       if (verdict.degraded !== undefined) deps.report(agent, 'degraded', verdict.degraded)
-      return verdict.kind === 'deny' ? denial(verdict.rule, verdict.correction, verdict.node === undefined ? {} : { node: verdict.node }) : next()
+      return verdict.kind === 'deny'
+        ? denial(verdict.rule, verdict.correction, { node: verdict.node, goal: verdict.goal, stageFrom: verdict.stageFrom, stageTo: verdict.stageTo })
+        : next()
     }
     const route = sessionRoute(session)
     const face = dialectNames(dialect, agent, route, warn) ?? NATIVE_FACE
     const verdict = evaluate([ask, mainAgentNoWrite], call, face)
     if (verdict.kind === 'deny') return denial(verdict.rule, verdict.correction)
     if (shell === undefined) return next()
+    const cli = cliRefusal()
+    if (cli !== undefined) return cli
     // The base the shell's relative paths resolve from: the session's working directory, as the guard row reads it.
     const base = baseFor(ctx, agent)
     const git = await guardGit({ command: shell.command, dialects: shell.dialects, base, sessionId: session.id, agentId: agent.id }, deps.snapshots)

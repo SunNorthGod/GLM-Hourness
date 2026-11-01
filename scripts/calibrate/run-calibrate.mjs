@@ -9,15 +9,27 @@
  * and scores completion, rework, interruptions, credits and violations.
  *
  * Usage: npm run calibrate -- [--tasks <id,...>] [--models glm-5.3,glm-5.3-flash]
- *        [--repeat 1] [--max-steps 40] [--minutes 15] [--permission danger-full-access]
+ *        [--repeat 1] [--max-steps <n>] [--minutes <n>] [--permission danger-full-access]
+ *        npm run calibrate -- --collect <timestamp>
  * Run `npm run build` first: the sandbox loads the build output under
  * packages/<package>/dist/ of the checkout its profile links.
- * Each invocation writes .llm/calibration-runs/<timestamp>/ (gitignored):
- * results.json for the whole invocation, and per run its overlay, the
- * headless --json event stream, stderr, the limits record, the checker
- * output, result.json, the workspace copy and the run's own data
- * directories (usage journal, guard journal). Nothing is written to the
- * real user-level directory.
+ * The bounds of a run are the task's (`limits` in its task.json: maxSteps,
+ * minutes), else 40 steps and 15 minutes; --max-steps and --minutes win over
+ * both. A run that stops on a bound is counted apart as "boundary too tight",
+ * not as a failure of the model.
+ * A batch runs outside the repository (scripts/calibrate/run-dir.mjs): every
+ * run in a directory of its own in the system temporary directory, so the
+ * model under test cannot find the repository or the other runs by walking up
+ * from its workspace. When the whole batch is done it is copied back to
+ * .llm/calibration-runs/<timestamp>/ (gitignored) and the temporary
+ * directories are deleted: results.json for the whole invocation, and per run
+ * its overlay, the headless --json event stream, stderr, the limits record,
+ * the checker output, result.json, the workspace copy and the run's own data
+ * directories (usage journal, guard journal; for an interview task also
+ * human.jsonl, what the simulated human said). A copy that did not finish
+ * leaves everything where it was; --collect <timestamp> finishes it, and
+ * does the same for a batch the runner did not get to close. Nothing is
+ * written to the real user-level directory.
  */
 import { spawn, spawnSync } from 'node:child_process'
 import { cpSync, createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -25,42 +37,57 @@ import { join } from 'node:path'
 import { parseArgs } from 'node:util'
 // The GLM credit plan (docs/FACTS.md §2.4) the glm-login row serves to the usage panel.
 import { chargedCredits, CREDIT_RATES, fullCredits, peakWindowAt } from '../../packages/glm/dist/glm-llm/credits.js'
-import { attachmentsIn, dataRows, initRepo, limitsRow, repo, requireDesktop, sandboxCommand, slash, workspaceChangesRow } from '../sandbox.mjs'
-
-requireDesktop('calibrate')
+import { attachmentsIn, dataRows, designRows, initRepo, limitsRow, repo, requireDesktop, sandboxCommand, slash, workspaceChangesRow } from '../sandbox.mjs'
+import { closeBatch, collectBatch, openBatch, openRun } from './run-dir.mjs'
 
 const TASKS_DIR = join(repo, 'tests', 'calibration')
 const PROVIDER = 'glm-zcode'
 /** File-writing tools and the argument naming the file (the guard's file tools). */
 const FILE_TOOLS = new Map([['Write', 'file_path'], ['Edit', 'file_path'], ['write', 'file_path'], ['edit', 'file_path'], ['str_replace_editor', 'path']])
 const SHELL_TOOLS = new Set(['Bash', 'pwsh', 'bash', 'terminal_send'])
-/** Tools that ask the human in an interactive session (dsh-tool-ask-user). */
+/** Tools the main agent must not call (dsh-tool-ask-user): in an interview the human is asked in plain chat. A call to one is counted apart (`forbiddenCalls`); the human's turns are counted from what the simulated human said. */
 const HUMAN_TOOLS = new Set(['ask_user_question'])
 /** Time after the limits row's own time limit before the process tree is killed. */
 const HARD_KILL_GRACE_MS = 120_000
+/** The bounds of a run whose task names none and whose command line gives none. */
+const DEFAULT_MAX_STEPS = 40
+const DEFAULT_MINUTES = 15
 
 const { values: options } = parseArgs({
   options: {
     'tasks': { type: 'string' },
     'models': { type: 'string', default: [...CREDIT_RATES.keys()].join(',') },
     'repeat': { type: 'string', default: '1' },
-    'max-steps': { type: 'string', default: '40' },
-    'minutes': { type: 'string', default: '15' },
+    'max-steps': { type: 'string' },
+    'minutes': { type: 'string' },
     'permission': { type: 'string', default: 'danger-full-access' },
+    'collect': { type: 'string' },
   },
 })
 const fail = (message) => {
   console.error(`calibrate: ${message}`)
   process.exit(2)
 }
-const positive = (name) => {
-  const value = Number(options[name])
-  if (!Number.isInteger(value) || value < 1) fail(`--${name} must be a positive integer`)
-  return value
+// A batch that was cut off, or whose copy did not finish: copy it back from its record and clear the temporary directories. It runs nothing, so it needs no desktop.
+if (options.collect !== undefined) {
+  const collected = collectBatch(repo, options.collect)
+  if (!collected.ok) {
+    console.error(`calibrate: ${collected.message}`)
+    process.exit(1)
+  }
+  if (collected.message !== '') console.warn(`calibrate: ${collected.message}`)
+  console.log(`calibrate: batch ${options.collect} copied to ${join(repo, '.llm', 'calibration-runs', options.collect)}`)
+  process.exit(0)
 }
-const repeat = positive('repeat')
-const maxSteps = positive('max-steps')
-const timeLimitMs = positive('minutes') * 60_000
+requireDesktop('calibrate')
+const positiveInteger = (value, label) => {
+  const number = Number(value)
+  if (!Number.isInteger(number) || number < 1) fail(`${label} must be a positive integer`)
+  return number
+}
+const repeat = positiveInteger(options.repeat, '--repeat')
+const flagSteps = options['max-steps'] === undefined ? undefined : positiveInteger(options['max-steps'], '--max-steps')
+const flagMinutes = options.minutes === undefined ? undefined : positiveInteger(options.minutes, '--minutes')
 const list = text => text.split(',').map(item => item.trim()).filter(item => item.length > 0)
 const available = readdirSync(TASKS_DIR, { withFileTypes: true })
   .filter(entry => entry.isDirectory() && existsSync(join(TASKS_DIR, entry.name, 'task.json')))
@@ -80,20 +107,27 @@ const permission = options.permission
 if (!PERMISSION_MODES.includes(permission)) fail(`--permission must be one of ${PERMISSION_MODES.join(', ')}`)
 const tasks = taskIds.map((id) => {
   const dir = join(TASKS_DIR, id)
-  return { id, dir, fixture: join(dir, 'fixture'), prompt: readFileSync(join(dir, 'prompt.md'), 'utf8'), ...JSON.parse(readFileSync(join(dir, 'task.json'), 'utf8')) }
+  const task = { id, dir, fixture: join(dir, 'fixture'), prompt: readFileSync(join(dir, 'prompt.md'), 'utf8'), ...JSON.parse(readFileSync(join(dir, 'task.json'), 'utf8')) }
+  // The bounds of the task: the command line wins, then the task's own `limits`, then the defaults. A value that is not a positive integer stops the runner before any run starts.
+  const own = task.limits ?? {}
+  const maxSteps = flagSteps ?? (own.maxSteps === undefined ? DEFAULT_MAX_STEPS : positiveInteger(own.maxSteps, `task ${id}: limits.maxSteps`))
+  const minutes = flagMinutes ?? (own.minutes === undefined ? DEFAULT_MINUTES : positiveInteger(own.minutes, `task ${id}: limits.minutes`))
+  return { ...task, bounds: { maxSteps, minutes, timeLimitMs: minutes * 60_000 } }
 })
 
 const gitOut = (args, cwd) => (spawnSync('git', args, { cwd, encoding: 'utf8' }).stdout ?? '').trim()
 const commit = gitOut(['rev-parse', '--short', 'HEAD'], repo)
 const dirty = gitOut(['status', '--porcelain', '--untracked-files=no'], repo).length > 0
-const runRoot = join(repo, '.llm', 'calibration-runs', new Date().toISOString().replace(/[:.]/g, '-'))
-mkdirSync(runRoot, { recursive: true })
+const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+// The batch runs in the system temporary directory and is copied to .llm/calibration-runs/<stamp>/ when it is done (scripts/calibrate/run-dir.mjs).
+const batch = openBatch(repo, stamp)
 
 const jsonl = file => existsSync(file) ? readFileSync(file, 'utf8').split('\n').filter(line => line.length > 0).map(line => JSON.parse(line)) : []
 const round = value => Math.round(value * 100) / 100
 
-/** Boot one headless run in `ws` and collect the --json run events (dsh-headless json-stream). */
-function runHeadless(dir, ws, prompt, model) {
+/** Boot one headless run in `ws` and collect the --json run events (dsh-headless json-stream). An interview task runs with the design row on and the simulated human answering (docs/ORCHESTRATION.md §10.5.1). */
+function runHeadless(dir, ws, task, model) {
+  const { maxSteps, timeLimitMs } = task.bounds
   const patch = join(dir, 'calibrate.patch.yml')
   writeFileSync(patch, [
     '- id: agent-default-model',
@@ -104,6 +138,7 @@ function runHeadless(dir, ws, prompt, model) {
     ...attachmentsIn(dir),
     ...limitsRow({ maxSteps, timeLimitMs, record: slash(join(dir, 'limits.jsonl')) }),
     ...workspaceChangesRow('glm-hourness-calibrate/workspace-changes'),
+    ...task.kind === 'interview' ? designRows({ record: slash(join(dir, 'human.jsonl')), ...task.human }) : [],
     '',
   ].join('\n'))
   const { exe, args, env } = sandboxCommand(patch, ['--json', '-'])
@@ -134,7 +169,7 @@ function runHeadless(dir, ws, prompt, model) {
     const hardKill = setTimeout(() => {
       killed = true
       spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'])
-    }, timeLimitMs + HARD_KILL_GRACE_MS)
+    }, task.bounds.timeLimitMs + HARD_KILL_GRACE_MS)
     child.on('error', (error) => {
       spawnError = error.message
     })
@@ -144,7 +179,7 @@ function runHeadless(dir, ws, prompt, model) {
       raw.end()
       resolve({ code, killed, events, durationMs: Date.now() - started, ...(spawnError === undefined ? {} : { spawnError }) })
     })
-    child.stdin.end(prompt)
+    child.stdin.end(task.prompt)
   })
 }
 
@@ -224,17 +259,20 @@ function creditsOf(records) {
 const countBy = (items, key) => Object.fromEntries([...new Set(items.map(item => item[key]))].sort().map(value => [value, items.filter(item => item[key] === value).length]))
 
 async function calibrate(task, model, index) {
-  const dir = join(runRoot, `${task.id}--${model}${repeat > 1 ? `--${index + 1}` : ''}`)
+  // The run's directory is one of its own in the temporary directory, recorded before it starts.
+  const dir = openRun(batch, `${task.id}--${model}${repeat > 1 ? `--${index + 1}` : ''}`)
   const ws = join(dir, 'ws')
   mkdirSync(join(dir, 'home'), { recursive: true })
   cpSync(task.fixture, ws, { recursive: true })
   if (!initRepo(ws)) fail(`git init of the workspace copy failed in ${ws}`)
   const startedAt = new Date().toISOString()
   console.log(`calibrate: ${task.id} on ${model}${repeat > 1 ? ` (run ${index + 1}/${repeat})` : ''} ...`)
-  const run = await runHeadless(dir, ws, task.prompt, model)
+  const run = await runHeadless(dir, ws, task, model)
   const limits = jsonl(join(dir, 'limits.jsonl'))
   const usage = jsonl(join(dir, 'dsh-home', 'glm-hourness', 'audit', 'usage.jsonl'))
   const guard = jsonl(join(dir, 'home', 'audit', 'violations.jsonl'))
+  // What the simulated human said (an interview task): each turn it answered is one interruption of the person.
+  const replies = jsonl(join(dir, 'human.jsonl')).filter(entry => entry.kind === 'reply').length
   const events = type => run.events.filter(event => event.type === type)
   const phases = phase => events('status').filter(event => event.phase === phase)
   const calls = events('tool_call')
@@ -255,6 +293,8 @@ async function calibrate(task, model, index) {
     exit: run.code,
     ...(run.spawnError === undefined ? {} : { spawnError: run.spawnError }),
     stop,
+    boundaryTooTight: stop === 'step-limit' || stop === 'time-limit',
+    bounds: { maxSteps: task.bounds.maxSteps, minutes: task.bounds.minutes },
     turnEnd,
     completed: acceptance.pass === true,
     acceptance,
@@ -263,7 +303,8 @@ async function calibrate(task, model, index) {
     toolErrors: [...results.values()].filter(entry => entry.status === 'error').length,
     tools: countBy(calls, 'tool'),
     rework: reworkOf(calls, results),
-    interruptions: limits.filter(entry => entry.kind === 'approval').length + calls.filter(call => HUMAN_TOOLS.has(call.tool)).length,
+    interruptions: limits.filter(entry => entry.kind === 'approval').length + replies,
+    forbiddenCalls: calls.filter(call => HUMAN_TOOLS.has(call.tool)).length,
     violations: guard.filter(record => record.mode !== 'shadow').length,
     shadowRecords: guard.filter(record => record.mode === 'shadow').length,
     changedFiles: changed,
@@ -289,8 +330,10 @@ function summarize(runs) {
     toolErrors: mean(run => run.toolErrors),
     rework: mean(run => run.rework),
     interruptions: sum(run => run.interruptions),
+    forbiddenCalls: sum(run => run.forbiddenCalls),
     violations: sum(run => run.violations),
     strayFiles: sum(run => run.strayFiles.length),
+    boundaryTooTight: sum(run => run.boundaryTooTight ? 1 : 0),
     creditsCharged: mean(run => run.credits.charged),
     creditsRaw: mean(run => run.credits.raw),
     minutes: mean(run => run.durationMs / 60_000),
@@ -300,11 +343,12 @@ function summarize(runs) {
 const runs = []
 const writeResults = () => {
   const groups = keyOf => [...new Set(runs.map(keyOf))].map(key => ({ key, ...summarize(runs.filter(run => keyOf(run) === key)) }))
-  writeFileSync(join(runRoot, 'results.json'), `${JSON.stringify({
+  // In the batch directory of the temporary root; the copy back to the repository is the end of the invocation.
+  writeFileSync(join(batch.root, 'results.json'), `${JSON.stringify({
     date: new Date().toISOString(),
     commit,
     dirty,
-    options: { tasks: taskIds, models, repeat, maxSteps, timeLimitMs, permission },
+    options: { tasks: taskIds, models, repeat, bounds: Object.fromEntries(tasks.map(task => [task.id, { maxSteps: task.bounds.maxSteps, minutes: task.bounds.minutes }])), permission },
     summary: { byTaskAndModel: groups(run => `${run.task} ${run.model}`), byModel: groups(run => run.model) },
     runs,
   }, null, 2)}\n`)
@@ -316,10 +360,17 @@ for (const model of models) {
       runs.push(result)
       writeResults()
       const failed = result.acceptance.checks.filter(check => !check.ok).map(check => check.name)
-      console.log(`  ${result.completed ? 'PASS' : 'FAIL'}  stop ${result.stop}, ${result.steps} step(s), ${result.toolCalls} call(s), rework ${result.rework}, interruptions ${result.interruptions}, violations ${result.violations}, credits ${result.credits.charged} (raw ${result.credits.raw}), ${round(result.durationMs / 60_000)} min${failed.length > 0 ? `; failed: ${failed.join('; ')}` : ''}${result.acceptance.error === undefined ? '' : `; checker: ${result.acceptance.error}`}`)
+      console.log(`  ${result.completed ? 'PASS' : 'FAIL'}  stop ${result.stop}${result.boundaryTooTight ? ' (boundary too tight, not the model\'s failure)' : ''}, ${result.steps} step(s), ${result.toolCalls} call(s), rework ${result.rework}, interruptions ${result.interruptions}, violations ${result.violations}, credits ${result.credits.charged} (raw ${result.credits.raw}), ${round(result.durationMs / 60_000)} min${failed.length > 0 ? `; failed: ${failed.join('; ')}` : ''}${result.acceptance.error === undefined ? '' : `; checker: ${result.acceptance.error}`}`)
     }
   }
 }
-console.log(`calibrate: ${runs.filter(run => run.completed).length}/${runs.length} completed at ${commit}${dirty ? ' (dirty)' : ''}; results in ${join(runRoot, 'results.json')}`)
+// The batch is done: everything goes back to the repository and the temporary directories are deleted, or nothing is deleted and the way to finish is said.
+const closed = closeBatch(batch)
+if (!closed.ok) {
+  console.error(`calibrate: ${closed.message}`)
+  process.exit(1)
+}
+if (closed.message !== '') console.warn(`calibrate: ${closed.message}`)
+console.log(`calibrate: ${runs.filter(run => run.completed).length}/${runs.length} completed at ${commit}${dirty ? ' (dirty)' : ''}${runs.some(run => run.boundaryTooTight) ? `; ${runs.filter(run => run.boundaryTooTight).length} stopped on a bound (boundary too tight)` : ''}; results in ${join(batch.target, 'results.json')}`)
 // A run that never reached the model is a harness failure, not a model result.
 process.exit(runs.some(run => run.steps === 0) ? 1 : 0)

@@ -71,6 +71,9 @@ export interface ViolationRecord {
   readonly session?: { readonly id: string, readonly kind: 'subagent' | 'ordinary', readonly parent?: string | undefined } | undefined
   readonly goal?: string | undefined
   readonly node?: string | undefined
+  /** main-agent-graph-stage: the stage the node was in and the one the call would have put it in. */
+  readonly stageFrom?: string | undefined
+  readonly stageTo?: string | undefined
 }
 
 /** A line of the violation journal: an enforced denial or a shadow record. */

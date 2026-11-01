@@ -27,6 +27,8 @@ export const DESIGN_RELEASE_RULE = 'design-before-release'
 export const GRAPH_RELAY_RULE = 'main-agent-graph-relay'
 export const GRAPH_OPTIONS_RULE = 'main-agent-graph-options'
 export const GRAPH_DELEGATIONS_RULE = 'main-agent-graph-delegations'
+export const GRAPH_STAGE_RULE = 'main-agent-graph-stage'
+export const GRAPH_CLI_RULE = 'main-agent-graph-cli'
 
 export const MAIN_AGENT_RULES: readonly MainAgentRule[] = [
   { id: NO_WRITE_RULE, title: '主 Agent 不写文件', enforcement: 'deny', subjects: 'main-agent', step: 4 },
@@ -36,4 +38,6 @@ export const MAIN_AGENT_RULES: readonly MainAgentRule[] = [
   { id: GRAPH_RELAY_RULE, title: '转述的人话要在人发来的消息里；子 agent 不转述人的话', enforcement: 'deny', subjects: 'every-session', step: 6 },
   { id: GRAPH_OPTIONS_RULE, title: '主 Agent 不在图上给人写选项表', enforcement: 'deny', subjects: 'main-agent', step: 6 },
   { id: GRAPH_DELEGATIONS_RULE, title: '「这类你定」只经记录人的话的工具写', enforcement: 'deny', subjects: 'every-session', step: 6 },
+  { id: GRAPH_STAGE_RULE, title: '目标只经确认需求与放行方案向前', enforcement: 'deny', subjects: 'every-session', step: 8 },
+  { id: GRAPH_CLI_RULE, title: '会话里不用命令行写项目图', enforcement: 'deny', subjects: 'every-session', step: 8 },
 ]

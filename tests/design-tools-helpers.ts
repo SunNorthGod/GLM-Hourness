@@ -14,6 +14,7 @@ import { openEngine, type GraphEngine } from '../src/graph/engine.ts'
 import type { GraphNode } from '../src/graph/schema.ts'
 import { loadGraph } from '../src/graph/store.ts'
 import { designHost, type DesignHost, type FakeAgent } from './design-host.ts'
+import { exampleRecord } from './proposal-examples.ts'
 
 export interface MainAgentFixture {
   readonly host: DesignHost
@@ -23,15 +24,19 @@ export interface MainAgentFixture {
   readonly node: (id: string) => Promise<GraphNode>
 }
 
-/** A main agent (`s1`, after /wish) whose project graph has the goal-1 it has in focus. */
-export async function mainAgentWithGoal(options: Parameters<typeof designHost>[0] = {}): Promise<MainAgentFixture> {
+/**
+ * A main agent (`s1`, after /wish) whose project graph has the goal-1 it has in
+ * focus: the human's own (approved at once) or, with `goalBy` `llm`, the main
+ * agent's proposal, which waits for the human's confirmation.
+ */
+export async function mainAgentWithGoal(options: Parameters<typeof designHost>[0] = {}, goalBy: 'human' | 'llm' = 'human'): Promise<MainAgentFixture> {
   const host = designHost(options)
   apply(host.ctx)
   const agent = host.addAgent('s1')
   await host.execute(agent, '/wish')
   const dir = join(host.workspace('ws'), 'docs', 'graph')
   const engine = openEngine(dir)
-  const seeded = await engine.apply('human', { op: 'propose', reason: '立项', node: { type: 'goal', title: '记账小工具', stage: 'interview', body: '需求：记一下每天花了多少钱' } })
+  const seeded = await engine.apply(goalBy, { op: 'propose', reason: '立项', node: { type: 'goal', title: '记账小工具', stage: 'interview', body: '需求：记一下每天花了多少钱' } })
   if (!seeded.ok) throw new Error(JSON.stringify(seeded.error))
   host.focuses.set(agent.id, 'goal-1')
   return { host, agent, dir, engine, node: async id => (await loadGraph(dir)).nodes.get(id)! }
@@ -47,6 +52,41 @@ export function toolDeps(fixture: Pick<MainAgentFixture, 'host' | 'dir'>, boards
     talk: agent => agent.session === undefined ? undefined : fixture.host.projections.stateOf(agent.session, TALK_PROJECTION) as TalkState | undefined,
     report: () => undefined,
     ...over,
+  }
+}
+
+/** The eight items of the requirement card, by the key of the gate item. */
+export type CardItem = 'need' | 'problem' | 'audience' | 'constraints' | 'acceptance' | 'non-goals' | 'risks' | 'choice'
+
+/**
+ * The requirement card of goal-1 filled in as the interview would, all eight
+ * items or all but those named in `leave` (the goal's body labels, its
+ * acceptance and non-goals, a risk, and a question the human decided).
+ */
+export async function fillRequirementCard(fixture: Pick<MainAgentFixture, 'engine'>, leave: readonly CardItem[] = []): Promise<void> {
+  const { engine } = fixture
+  const apply = async (actor: 'human' | 'llm', input: Record<string, unknown>): Promise<string> => {
+    const done = await engine.apply(actor, input)
+    if (!done.ok) throw new Error(JSON.stringify(done.error))
+    return done.id
+  }
+  const revOf = async (id: string): Promise<string> => (await engine.load()).revisions.get(id)!
+  const lines: Array<[CardItem, string]> = [['need', '需求：记一下每天花了多少钱'], ['problem', '问题：月底不知道钱花在哪'], ['audience', '给谁：我自己'], ['constraints', '约束：数据只存在本机']]
+  await apply('human', {
+    op: 'edit',
+    id: 'goal-1',
+    rev: await revOf('goal-1'),
+    reason: '访谈',
+    set: {
+      body: lines.filter(([key]) => !leave.includes(key)).map(([, line]) => line).join('\n'),
+      ...leave.includes('acceptance') ? {} : { acceptance: ['月底跑一个命令能看到按类别的合计'] },
+      ...leave.includes('non-goals') ? {} : { nonGoals: ['不要手机版'] },
+    },
+  })
+  if (!leave.includes('risks')) await apply('llm', { op: 'propose', reason: '访谈', node: { type: 'risk', title: '懒得每天记', parent: 'goal-1' } })
+  if (!leave.includes('choice')) {
+    const id = await apply('llm', { op: 'propose', reason: '交给人', node: { type: 'question', parent: 'goal-1', ...exampleRecord('recommend') } })
+    await apply('human', { op: 'decide', id, rev: await revOf(id), conclusion: '默认少做', reason: '人拍板' })
   }
 }
 

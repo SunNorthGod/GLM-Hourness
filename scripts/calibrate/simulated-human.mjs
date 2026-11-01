@@ -28,7 +28,7 @@
  * `unexpected-question`, and `{kind: 'reply' | 'silent', rule, text?, shown}`
  * for each turn it considered.
  */
-import { appendFileSync } from 'node:fs'
+import { appendFileSync, readdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
@@ -133,7 +133,32 @@ export function apply(ctx, rawConfig = {}) {
   /** The talk fold, the graph reading and the interview order of the built package, loaded on first use. */
   const load = async () => {
     talk ??= await distOf('design/talk.js')
-    modules ??= { store: await distOf('graph/store.js'), stage: await distOf('graph/stage.js'), notice: await distOf('design/stage-notice.js'), release: await distOf('graph/modules.js') }
+    modules ??= { store: await distOf('graph/store.js'), parse: await distOf('graph/parse.js'), stage: await distOf('graph/stage.js'), notice: await distOf('design/stage-notice.js'), release: await distOf('graph/modules.js') }
+  }
+  /**
+   * The graph as `loadGraph` reads it (src/graph/store.ts), read synchronously
+   * from the same pure parts. The reply has to be sent within the tick the
+   * turn ends in: a read that waits for the file system comes back after the
+   * headless runner has seen an idle agent and ended the run.
+   */
+  const loadGraphSync = (dir) => {
+    const nodesDir = join(dir, modules.parse.NODES_DIR)
+    let names = []
+    try {
+      names = modules.parse.nodeFileNames(readdirSync(nodesDir, { withFileTypes: true }).filter(entry => entry.isFile()).map(entry => entry.name))
+    }
+    catch (error) {
+      if (error.code !== 'ENOENT') throw error
+    }
+    const files = []
+    const revisions = new Map()
+    for (const name of names) {
+      const bytes = readFileSync(join(nodesDir, name))
+      const revision = modules.store.revisionOf(bytes)
+      files.push({ name, text: bytes.toString('utf8'), revision })
+      revisions.set(name.slice(0, -'.json'.length), revision)
+    }
+    return modules.parse.parseGraph(files, modules.store.graphRevision(revisions))
   }
   const sessions = new Map()
   const stateOf = (session) => {
@@ -145,12 +170,12 @@ export function apply(ctx, rawConfig = {}) {
     return state
   }
   /** The first missing item of the focus goal's requirement card, and whether the goal still has to be released. */
-  const goalNeeds = async (agentSession) => {
+  const goalNeeds = (agentSession) => {
     const service = ctx.get('glmHournessGraph')
     const dir = service?.dirFor?.(agentSession.header.cwd)
     const focus = service?.focusOf?.(agentSession)
     if (dir === undefined || focus === undefined) return {}
-    const graph = await modules.store.loadGraph(dir)
+    const graph = loadGraphSync(dir)
     const goal = modules.stage.goalOf(graph, focus)
     if (goal === undefined) return {}
     const status = modules.stage.stageStatus(graph, goal)
@@ -162,12 +187,22 @@ export function apply(ctx, rawConfig = {}) {
     const inDesign = released && modules.release.isSplit(graph, goal) && modules.release.modulesOf(graph, goal).some(module => modules.stage.effectiveStage(module) === 'design')
     return { unreleased: !released || inDesign }
   }
+  /** What the goal in focus needs, or nothing when the graph cannot be read (the person then says nothing about the goal). */
+  const readNeeds = (session) => {
+    try {
+      return goalNeeds(session)
+    }
+    catch (error) {
+      note({ kind: 'reply-failed', reason: `the graph could not be read: ${error instanceof Error ? error.message : String(error)}` })
+      return {}
+    }
+  }
   const answer = async (session, state) => {
     const agent = ctx.get('agents')?.get(session.id)
     if (agent === undefined) return
     const lastPerson = state.talk.people.at(-1)?.seq ?? -1
     const shown = state.talk.shown.filter(entry => entry.seq > lastPerson && entry.seq > state.handled)
-    const needs = shown.length === 0 ? await goalNeeds(session).catch(() => ({})) : {}
+    const needs = shown.length === 0 ? readNeeds(session) : {}
     const result = simulatedReply({ config, replied: state.replied, lastAssistant: state.assistant, shown, used: state.used, ...needs })
     note({ kind: result.kind, rule: result.rule, ...result.text === undefined ? {} : { text: result.text }, shown: result.shown })
     if (result.kind !== 'reply') return

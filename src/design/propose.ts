@@ -9,8 +9,10 @@
  * returns the text to show, with only the ways of a `choose` and a sample laid
  * out by the harness (renderAsk). Three kinds exist: `question` (a matter only
  * the human can decide), and `confirm` and `release`, which put the
- * requirements and the design to the human; those two are refused until the
- * steps that open them.
+ * requirements and the design to the human. `confirm` is open: it keeps no
+ * record, takes only a goal, a yes-or-no question and an original text, and is
+ * refused until the goal's requirement card is complete. `release` is refused
+ * until the step that opens it.
  */
 import { openEngine, type ApplyResult } from '../graph/engine.ts'
 import type { LoadedGraph } from '../graph/parse.ts'
@@ -25,7 +27,7 @@ import { PROPOSE_TO_HUMAN, type ShownProposal } from '../shared/tool-names.ts'
 import { askBoard, attachBody, boardOfBody, resolveAttach, type AttachBoard, type AttachDetail, type Attachment } from './attach.ts'
 import { emitMetric } from './metrics.ts'
 import { TALK_SHAPES, type TalkState } from './talk.ts'
-import { isRecord, mainAgentCall, readGraph, refuse, refuseWith, toolShell } from './tool-support.ts'
+import { confirmGate, isRecord, mainAgentCall, openGoal, readGraph, refuse, refuseWith, toolShell } from './tool-support.ts'
 
 /** What the design row lets the tools know. */
 export interface DesignToolDeps {
@@ -42,10 +44,11 @@ export interface DesignToolDeps {
 
 type Kind = ShownProposal['kind']
 const KINDS: readonly Kind[] = ['question', 'confirm', 'release']
+type Where = NonNullable<ReturnType<DesignToolDeps['graph']>>
 
 const DESCRIPTION = [
   'Put one matter to the human: one question they can answer in a few words. The harness checks it, keeps it on the graph when the human decides it, and returns the text to show.',
-  'kind question: a matter only the human can decide. kind confirm: the interview is over, put the requirements to the human. kind release: the design is done, put it to the human to release; for a goal split into modules the first release covers the framework, the module list and the directions, and each module is released again, with module and a one-page release note.',
+  'kind question: a matter only the human can decide. kind confirm: the interview is over, put the requirements to the human; pass goal and text (one yes-or-no question, like a recommend) and sample if there is original text they must see; the requirement itself goes in your report before the question, and nothing is written to the graph until they agree and you record it with record_human_answer. It is refused until the 8 items of the requirement card are filled. kind release: the design is done, put it to the human to release; for a goal split into modules the first release covers the framework, the module list and the directions, and each module is released again, with module and a one-page release note.',
   TALK_SHAPES,
   PLAIN_QUESTION_GUIDE,
 ].join('\n')
@@ -64,8 +67,8 @@ const PARAMETERS = {
     cost: { type: 'string', description: 'kind question, recommend: the real cost, one short line, word for word in text; leave it out when there is none.' },
     ways: { type: 'array', items: { type: 'string' }, description: 'kind question, choose: two or three ways, each one line saying what the human would see, your pick last.' },
     notTaken: { type: 'string', description: 'kind question, recommend and choose: the way you did not take, kept for the record.' },
-    sample: { type: 'string', description: 'form look (and later confirm, release): text the human must see, such as a sketch; the harness shows it as drawn under your question.' },
-    goal: { type: 'string', description: 'kind confirm or release: the goal id.' },
+    sample: { type: 'string', description: 'form look and kind confirm (and later release): text the human must see, such as a sketch; the harness shows it under your question, and for a look as drawn.' },
+    goal: { type: 'string', description: 'kind confirm or release: the goal id (required).' },
     module: { type: 'string', description: 'kind release: the module to release; leave out for the goal itself.' },
     page: { type: 'string', description: 'kind release of a goal split into modules: the one-page release note.' },
     parent: { type: 'string', description: 'kind question, new: the node it hangs under; the goal in your focus when left out.' },
@@ -95,7 +98,7 @@ const OUTPUT = {
   required: ['tool', 'kind', 'number', 'text', 'message'],
 } as const
 
-const SHOW_MESSAGE = 'Show text to the human exactly as given; it is Markdown. Put it after your report, together with the other questions of this reply, then end your turn. When they answer, restate a short answer about something that cannot be taken back in one line and wait; then call record_human_answer with kind question and their exact words.'
+const showMessage = (kind: Kind): string => `Show text to the human exactly as given; it is Markdown. Put it after your report, together with the other questions of this reply, then end your turn. When they answer, restate a short answer about something that cannot be taken back in one line and wait; then call record_human_answer with kind ${kind} and their exact words.`
 const DETAIL_MESSAGE = 'The last paragraph is the exact text the human must see before agreeing: keep it verbatim in your reply.'
 const CALL_FIELDS = new Set(['kind', 'text', 'form', 'title', 'proposal', 'reason', 'cost', 'ways', 'notTaken', 'sample', 'goal', 'module', 'page', 'parent', 'question', 'sources', 'attach'])
 const RECORD_FIELDS = ['form', 'title', 'proposal', 'reason', 'cost', 'ways', 'notTaken'] as const
@@ -135,16 +138,49 @@ function stringField(args: Record<string, unknown>, field: string): string | und
   return value
 }
 
-/** The arguments, shape-checked: what goes with what. The rules of the words and of the record are checked after the graph is read. */
-function parseArgs(raw: unknown): Args {
+/** What a call of kind confirm carries: the goal whose requirement is put to the human, the question and the original text they must see, if any. */
+interface ConfirmArgs {
+  readonly text: string
+  readonly goal: string
+  readonly sample?: string
+}
+
+/** The fields of a call that belong to kind question (and, for module and page, to kind release): refused for kind confirm. */
+const QUESTION_FIELDS = ['form', 'title', 'proposal', 'reason', 'cost', 'ways', 'notTaken', 'parent', 'question', 'sources', 'attach'] as const
+
+/** The arguments of a call of kind confirm, shape-checked: the goal and the words, and only the original text besides. */
+function parseConfirm(raw: Record<string, unknown>): ConfirmArgs {
+  for (const field of QUESTION_FIELDS) {
+    if (raw[field] !== undefined) refuse('invalid', `${field} belongs to kind question`, `kind confirm takes kind, text, goal and sample; leave ${field} out`, field)
+  }
+  for (const field of ['module', 'page'] as const) {
+    if (raw[field] !== undefined) refuse('invalid', `${field} belongs to kind release`, `kind confirm takes kind, text, goal and sample; leave ${field} out`, field)
+  }
+  const { text, goal } = raw
+  if (typeof text !== 'string') refuse('invalid', 'text is required: the question as the human reads it', 'pass your own sentence as text: one yes-or-no question; the requirement itself is in your report before it', 'text')
+  if (typeof goal !== 'string' || goal.length === 0) refuse('invalid', 'goal is required for kind confirm: the id of the goal whose requirement you put to the human', 'pass the goal id', 'goal')
+  const sample = stringField(raw, 'sample')
+  if (sample !== undefined && (sample.length === 0 || codePointCount(sample) > SAMPLE_LIMIT)) refuse('invalid', `sample must be 1 to ${SAMPLE_LIMIT} characters`, 'pass the text the human must see, shortened if need be', 'sample')
+  return { text, goal, ...sample === undefined ? {} : { sample } }
+}
+
+/** A call, shape-checked: of kind question with the arguments of a question, or of kind confirm with the goal and the words. */
+type Call = { readonly kind: 'question', readonly args: Args } | { readonly kind: 'confirm', readonly args: ConfirmArgs }
+
+function parseCall(raw: unknown): Call {
   if (!isRecord(raw)) refuse('invalid', 'the arguments must be a JSON object', 'pass {kind, text, ...} as described in the tool description')
   const extra = Object.keys(raw).find(key => !CALL_FIELDS.has(key))
   if (extra !== undefined) refuse('invalid', `${extra} is not a field of ${PROPOSE_TO_HUMAN}`, `${PROPOSE_TO_HUMAN} takes ${[...CALL_FIELDS].join(', ')}`, extra)
   const kind = raw.kind
-  if (typeof kind !== 'string' || !(KINDS as readonly string[]).includes(kind)) refuse('invalid', `kind must be one of ${KINDS.join(', ')}`, 'pass kind question to put a matter to the human', 'kind')
-  if (kind !== 'question') {
-    refuse('invalid', `kind ${kind} is not open yet`, 'not yet: only kind question works for now; ask the human in your reply and carry on with what you can', 'kind')
+  if (typeof kind !== 'string' || !(KINDS as readonly string[]).includes(kind)) refuse('invalid', `kind must be one of ${KINDS.join(', ')}`, 'pass kind question to put a matter to the human, kind confirm to put the requirement to them', 'kind')
+  if (kind === 'release') {
+    refuse('invalid', `kind ${kind} is not open yet`, 'not yet: only kind question and kind confirm work for now; ask the human in your reply and carry on with what you can', 'kind')
   }
+  return kind === 'confirm' ? { kind, args: parseConfirm(raw) } : { kind: 'question', args: parseArgs(raw) }
+}
+
+/** The arguments of a call of kind question, shape-checked: what goes with what. The rules of the words and of the record are checked after the graph is read. */
+function parseArgs(raw: Record<string, unknown>): Args {
   const text = raw.text
   if (typeof text !== 'string') refuse('invalid', 'text is required: the question as the human reads it', 'pass your own sentence as text', 'text')
   for (const field of ['goal', 'module', 'page'] as const) {
@@ -189,16 +225,24 @@ function parseArgs(raw: unknown): Args {
   }
 }
 
+/** The hard limits of the text: one line, one question mark, within the limit of its way of asking (a confirm is held to the recommend limit). Throws `Refused` with the reason code of the metrics. */
+function checkLimits(form: AskForm, text: string): void {
+  const limit = askTextRefusal(form, text)
+  if (limit !== undefined) throw new Refused(JSON.stringify({ code: 'invalid', message: limit.message, field: 'text', hint: limit.hint }), limit.hint.startsWith('shorten') ? 'text-too-long' : 'text-shape', 'text')
+}
+
+/** A word of the plain-words list in what the human reads: refused, with what to say instead. */
+function checkPlain(field: string, value: unknown): void {
+  const hit = typeof value === 'string' ? plainWordsIn(value)[0] : undefined
+  if (hit === undefined) return
+  const say = PLAIN_WORDS.find(entry => entry.avoid.includes(hit))?.say ?? 'a plainer word'
+  throw new Refused(JSON.stringify({ code: 'invalid', message: `${field} uses the word ${hit}, which the human has not learned`, field, hint: `say ${say} instead of ${hit}` }), 'plain-word', field)
+}
+
 /** The hard limits of the words (askTextRefusal, the plain-words list) and, with the record, the record's rules and its place in the words. Throws `Refused` with the reason code of the metrics. */
 function checkWords(form: AskForm, args: Args, record: Parameters<typeof proposalRecordRefusal>[0]): void {
-  const limit = askTextRefusal(form, args.text)
-  if (limit !== undefined) throw new Refused(JSON.stringify({ code: 'invalid', message: limit.message, field: 'text', hint: limit.hint }), limit.hint.startsWith('shorten') ? 'text-too-long' : 'text-shape', 'text')
-  for (const [field, value] of [['text', args.text], ['title', record.title], ['proposal', record.proposal], ['reason', record.reason], ['cost', record.cost], ['notTaken', record.notTaken], ...(record.ways ?? []).map(way => ['ways', way] as const)] as const) {
-    const hit = typeof value === 'string' ? plainWordsIn(value)[0] : undefined
-    if (hit === undefined) continue
-    const say = PLAIN_WORDS.find(entry => entry.avoid.includes(hit))?.say ?? 'a plainer word'
-    throw new Refused(JSON.stringify({ code: 'invalid', message: `${field} uses the word ${hit}, which the human has not learned`, field, hint: `say ${say} instead of ${hit}` }), 'plain-word', field)
-  }
+  checkLimits(form, args.text)
+  for (const [field, value] of [['text', args.text], ['title', record.title], ['proposal', record.proposal], ['reason', record.reason], ['cost', record.cost], ['notTaken', record.notTaken], ...(record.ways ?? []).map(way => ['ways', way] as const)] as const) checkPlain(field, value)
   const bad = proposalRecordRefusal(record)
   if (bad !== undefined) throw new Refused(JSON.stringify({ code: 'invalid', message: bad.message, field: bad.field, hint: bad.hint }), 'record', bad.field)
   const missing = textCoversRecord(args.text, record, form)
@@ -214,6 +258,49 @@ function numberOf(state: TalkState | undefined): 1 | 2 | 3 {
   const n = state.shown.filter(entry => entry.seq > since).length + 1
   if (n > PROPOSAL_LIMITS.perReply) throw new Refused(JSON.stringify({ code: 'too_many', message: `this reply has put ${n - 1} questions to the human already`, hint: 'at most three questions in one reply: end this reply with the questions you have and wait' }), 'too_many')
   return n as 1 | 2 | 3
+}
+
+/** The talk state of the agent's session, with the row health saying what cannot be read of it. */
+function talkRead(deps: DesignToolDeps, agent: AgentLike): TalkState | undefined {
+  const state = deps.talk(agent)
+  if (state === undefined) deps.report(agent, 'degraded', '读不到会话里人的消息和给人看过的东西，编号只按第 1 件算')
+  else if (state.unparsed > 0) deps.report(agent, 'degraded', `有 ${state.unparsed} 次 propose_to_human 的结果读不出来，没算作给人看过`)
+  return state
+}
+
+/**
+ * kind confirm: the requirement of a goal is put to the human. Nothing is
+ * written to the graph: the card has to be complete, the words are held to
+ * the limits of a recommend, and the answer is recorded by record_human_answer
+ * (kind confirm), which finds this showing in the session's talk state. The
+ * requirement itself is in the main agent's report before the question.
+ */
+async function confirmCall(deps: DesignToolDeps, agent: AgentLike, where: Where, args: ConfirmArgs): Promise<Record<string, unknown>> {
+  try {
+    const state = talkRead(deps, agent)
+    const graph = await readGraph(where.dir)
+    checkLimits('recommend', args.text)
+    checkPlain('text', args.text)
+    const number = numberOf(state)
+    const goal = confirmGate(graph, openGoal(graph, args.goal))
+    const text = renderAsk(args.text, number, undefined, args.sample, false)
+    emitMetric({ event: 'design.proposal-shown', kind: 'confirm', number, goal: goal.id, codePoints: codePointCount(args.text), points: codePointCount(text), sample: args.sample !== undefined })
+    return {
+      tool: PROPOSE_TO_HUMAN,
+      kind: 'confirm',
+      goal: goal.id,
+      number,
+      text,
+      message: `${showMessage('confirm')} The requirement itself goes in your report before the question; text is only the question.${args.sample === undefined ? '' : ` ${DETAIL_MESSAGE}`}`,
+    }
+  }
+  catch (error) {
+    if (error instanceof Refused) {
+      emitMetric({ event: 'design.proposal-refused', kind: 'confirm', reason: error.reasonCode, field: error.field })
+      throw new Error(error.message, { cause: error })
+    }
+    throw error
+  }
 }
 
 /** A question in the proposal shape that still waits for the human, found by its id. */
@@ -238,13 +325,13 @@ export function proposeTool(deps: DesignToolDeps): ToolDefinitionLike {
     ...toolShell(PROPOSE_TO_HUMAN, DESCRIPTION, PARAMETERS, OUTPUT),
     async execute(raw, exec) {
       const { context, agent } = mainAgentCall(deps.isMainAgent, exec, { message: `${PROPOSE_TO_HUMAN} is for the main agent`, hint: 'only the main agent puts matters to the human; the human turns main agent mode on with /wish' })
-      const args = parseArgs(raw)
+      const parsed = parseCall(raw)
       const where = deps.graph(agent)
       if (where === undefined) refuse('not_found', 'the project graph is not here', 'the graph row is off or the graph directory does not exist; tell the human')
+      if (parsed.kind === 'confirm') return await confirmCall(deps, agent, where, parsed.args)
+      const { args } = parsed
       try {
-        const state = deps.talk(agent)
-        if (state === undefined) deps.report(agent, 'degraded', '读不到会话里人的消息和给人看过的东西，编号只按第 1 件算')
-        else if (state.unparsed > 0) deps.report(agent, 'degraded', `有 ${state.unparsed} 次 propose_to_human 的结果读不出来，没算作给人看过`)
+        const state = talkRead(deps, agent)
         const graph = await readGraph(where.dir)
         const engine = openEngine(where.dir)
         const call = context.callId
@@ -275,7 +362,7 @@ export function proposeTool(deps: DesignToolDeps): ToolDefinitionLike {
           number,
           text,
           ...shown.attach === undefined ? {} : { attach: shown.attach },
-          message: exact === undefined ? SHOW_MESSAGE : `${SHOW_MESSAGE} ${DETAIL_MESSAGE}`,
+          message: exact === undefined ? showMessage('question') : `${showMessage('question')} ${DETAIL_MESSAGE}`,
         }
       }
       catch (error) {

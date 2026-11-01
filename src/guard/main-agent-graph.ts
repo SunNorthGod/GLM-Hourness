@@ -21,19 +21,31 @@
  *   norm-delegations is denied, with or without `relay` (writesDelegations).
  *   Only record_human_answer (kind delegation) writes that node, after it
  *   has checked the human's words.
+ * - main-agent-graph-stage, every session: a goal moves forward only when the
+ *   human agrees to the requirement or the design the main agent put to them,
+ *   which record_human_answer records and which does not go through the graph
+ *   tools. Five graph tool calls are denied whoever makes them, with or
+ *   without `relay` (judgeGraphStage). A delegated or an ordinary session
+ *   that tries one is also reported; the main agent only gets the denial.
+ * - main-agent-graph-cli, every session: the graph's command line writes as
+ *   the llm with whatever `relay` it is given and checks nothing, so inside a
+ *   session only its reading commands run (graphCliWrite).
  *
  * An ordinary session's `relay` is not checked. Nested calls (they carry
  * `parent`) never reach these rules, like the other rules of the main agent.
  */
 import { deciderOf } from '../graph/projection.ts'
-import { CARD_FIELDS } from '../graph/schema.ts'
+import type { LoadedGraph } from '../graph/parse.ts'
+import { CARD_FIELDS, STAGES, type Stage } from '../graph/schema.ts'
 import type { GraphFocusService } from '../graph/service.ts'
-import { goalOf } from '../graph/stage.ts'
+import { effectiveStage, goalOf } from '../graph/stage.ts'
 import { loadGraph } from '../graph/store.ts'
 import { DELEGATIONS_ID } from '../shared/answer-marks.ts'
 import type { AgentLike } from '../shared/dsh-min.ts'
 import { GRAPH_TOOL_NAMES } from '../shared/tool-names.ts'
+import { GRAPH_STAGE_RULE } from './main-agent-rules.ts'
 import type { Correction, ToolCall } from './rules.ts'
+import { commandName, simpleCommands, type ShellDialect } from './shell.ts'
 
 /** What the design row says about the quotes of a relay: whether the human said them; undefined when the session's messages cannot be read. */
 type RelayCheck = { readonly ok: true } | { readonly ok: false, readonly reason: string, readonly offBoundary: boolean }
@@ -45,7 +57,7 @@ export interface GraphRuleDeps {
 
 /** A judged graph call: denied with the correction, or let through (with what could not be judged, for the row health). */
 export type GraphVerdict =
-  | { readonly kind: 'deny', readonly rule: string, readonly correction: Correction, readonly node?: string, readonly degraded?: string }
+  | { readonly kind: 'deny', readonly rule: string, readonly correction: Correction, readonly node?: string, readonly goal?: string, readonly stageFrom?: string, readonly stageTo?: string, readonly degraded?: string }
   | { readonly kind: 'allow', readonly degraded?: string }
 
 function recordOf(value: unknown): Record<string, unknown> | undefined {
@@ -174,11 +186,230 @@ export function writesDelegations(call: ToolCall): boolean {
   return args?.id === DELEGATIONS_ID
 }
 
+/** Which kind of session made the call, for the words of the correction and for whether the attempt is reported. */
+export type SessionKind = 'main-agent' | 'subagent' | 'ordinary'
+
+/** The stages in the design loop: a goal in one of them has not been released to be built. */
+function inDesignLoop(stage: Stage | null): stage is 'wish' | 'interview' | 'design' {
+  return stage === 'wish' || stage === 'interview' || stage === 'design'
+}
+
+const isStage = (value: unknown): value is Stage => typeof value === 'string' && (STAGES as readonly string[]).includes(value)
+const laterThan = (stage: Stage, other: Stage): boolean => STAGES.indexOf(stage) > STAGES.indexOf(other)
+
+/** What a graph call that would move work on tried to do: in the words of the correction (`fact`) and of the human (`what`), with the goal and node it is about. */
+export interface StageAttempt {
+  readonly fact: string
+  readonly what: string
+  readonly goal?: string | undefined
+  readonly node?: string | undefined
+  readonly stageFrom?: Stage | undefined
+  readonly stageTo?: Stage | undefined
+}
+
+const quoted = (title: string): string => `"${title}"`
+
+/** Types a call with the human's words may propose under a goal in the design loop: what is asked of the human, and what could go wrong. */
+const OPEN_WITH_WORDS: ReadonlySet<unknown> = new Set(['question', 'risk', 'retro'])
+
+/**
+ * a: an edit that takes a goal or a feature out of the design loop or on from
+ * it. Three shapes: its stage set forward out of wish, interview or design;
+ * its stage cleared while it is in one of them (it then runs no loop, and the
+ * gates read a goal with no stage as one the human did not put through it);
+ * a goal that has no stage given one after the interview (the same, from the
+ * other side). A feature with no stage is a module's business (step 9).
+ */
+function editAttempt(graph: LoadedGraph, args: Record<string, unknown> | undefined): StageAttempt | undefined {
+  const id = args?.id
+  const to = recordOf(args?.set)?.stage
+  const node = typeof id === 'string' ? graph.nodes.get(id) : undefined
+  if (node === undefined || (node.type !== 'goal' && node.type !== 'feature')) return undefined
+  const from = effectiveStage(node)
+  const goal = goalOf(graph, node.id)?.id
+  if (to === null) {
+    // A clear that changes nothing is left to the tool to refuse.
+    return node.stage !== undefined && inDesignLoop(from)
+      ? { fact: `You tried to clear the stage of ${quoted(node.title)} while it is in ${from}.`, what: `清掉「${node.title}」的阶段`, goal, node: node.id, stageFrom: from }
+      : undefined
+  }
+  if (!isStage(to)) return undefined
+  if (from === null) {
+    return node.type === 'goal' && laterThan(to, 'interview')
+      ? { fact: `You tried to set the stage of ${quoted(node.title)} to ${to} while it runs no design loop.`, what: `把「${node.title}」推到 ${to}`, goal, node: node.id, stageTo: to }
+      : undefined
+  }
+  const forward = from === 'wish' || from === 'interview' ? laterThan(to, 'interview') : from === 'design' && laterThan(to, 'design')
+  return forward
+    ? { fact: `You tried to set the stage of ${quoted(node.title)} to ${to} while it is in ${from}.`, what: `把「${node.title}」推到 ${to}`, goal, node: node.id, stageFrom: from, stageTo: to }
+    : undefined
+}
+
+/** b and c: an approval of a goal that is in wish or interview (the requirement is confirmed), or of a node under a goal that is in wish, interview or design (the design is released). */
+function approveAttempt(graph: LoadedGraph, args: Record<string, unknown> | undefined): StageAttempt | undefined {
+  const id = args?.id
+  const node = typeof id === 'string' ? graph.nodes.get(id) : undefined
+  if (node === undefined) return undefined
+  const goal = goalOf(graph, node.id)
+  const stage = goal === undefined ? null : effectiveStage(goal)
+  if (goal === undefined || !inDesignLoop(stage)) return undefined
+  if (goal.id === node.id) {
+    return stage === 'design'
+      ? undefined
+      : { fact: `You tried to approve the goal ${quoted(node.title)} while its requirement has not been confirmed (it is in ${stage}).`, what: `批准「${node.title}」`, goal: goal.id, node: node.id, stageFrom: stage }
+  }
+  return { fact: `You tried to approve ${quoted(node.title)} under the goal ${quoted(goal.title)}, which is in ${stage}.`, what: `批准「${node.title}」`, goal: goal.id, node: node.id, stageFrom: stage }
+}
+
+/** d: a proposal that carries the human's words and so is approved at once: a goal with no stage or past the interview, a feature that names a stage, or a node of a kind that is built from, under a goal still in the design loop. */
+function proposeAttempt(graph: LoadedGraph, args: Record<string, unknown> | undefined): StageAttempt | undefined {
+  const node = recordOf(args?.node)
+  const title = typeof node?.title === 'string' ? node.title : '一个节点'
+  if (node === undefined) return undefined
+  const { type, stage, parent } = node
+  if (type === 'goal' && !isStage(stage)) {
+    return { fact: `You tried to propose the goal ${quoted(title)} with the human's words and no stage.`, what: `提议不走设计循环的目标「${title}」` }
+  }
+  if (type === 'goal' && isStage(stage) && laterThan(stage, 'interview')) {
+    return { fact: `You tried to propose the goal ${quoted(title)} with the human's words at stage ${stage}.`, what: `提议已在 ${stage} 的目标「${title}」`, stageTo: stage }
+  }
+  if (type === 'feature' && isStage(stage)) {
+    return { fact: `You tried to propose the feature ${quoted(title)} with the human's words at stage ${stage}.`, what: `提议已在 ${stage} 的特性「${title}」`, stageTo: stage }
+  }
+  const goal = typeof parent === 'string' ? goalOf(graph, parent) : undefined
+  const at = goal === undefined ? null : effectiveStage(goal)
+  if (goal === undefined || !inDesignLoop(at) || OPEN_WITH_WORDS.has(type)) return undefined
+  return { fact: `You tried to propose ${quoted(title)} with the human's words under the goal ${quoted(goal.title)}, which is in ${at}.`, what: `用转述的话在「${goal.title}」下提议「${title}」`, goal: goal.id, stageFrom: at }
+}
+
+/**
+ * Whether a call could move a goal on, looked at without the graph: an edit
+ * that sets or clears a stage, an approval, a proposal that carries `relay`.
+ * Only these are read against the graph.
+ */
+export function stageCandidate(call: ToolCall): boolean {
+  if (call.name === 'graph_approve') return true
+  if (call.name === 'graph_propose') return relayOf(call) !== undefined
+  if (call.name !== 'graph_edit') return false
+  const stage = recordOf(recordOf(call.arguments)?.set)?.stage
+  return typeof stage === 'string' || stage === null
+}
+
+const MOVES_FORWARD_FACT = 'Only the main agent moves a goal forward, by recording the human\'s agreement to its proposal.'
+
+function stageCorrection(who: SessionKind, attempt: StageAttempt): Correction {
+  if (who === 'main-agent') {
+    return {
+      fact: attempt.fact,
+      violation: 'A goal moves forward only when the human agrees to the requirement or the design you put to them, and the graph tools do not carry that agreement.',
+      rightPath: 'Put it to the human with propose_to_human (kind confirm or release) and record their answer with record_human_answer; the harness checks the requirement or the design first.',
+      exception: NO_ONE,
+    }
+  }
+  return {
+    fact: MOVES_FORWARD_FACT,
+    violation: attempt.fact,
+    rightPath: who === 'subagent' ? 'Report back to the main agent.' : 'The human agrees in the main agent\'s conversation; /wish in this session shows where it is.',
+    exception: NO_ONE,
+  }
+}
+
+const UNREADABLE_GRAPH_CORRECTION: Correction = {
+  fact: 'The harness could not read the project graph to judge this call.',
+  violation: 'A write that can move a goal forward is not let through unchecked.',
+  rightPath: 'Retry; if it fails again, tell the human the reason.',
+  exception: NO_ONE,
+}
+
+/** A graph call of a session, judged by main-agent-graph-stage: allowed, or denied with the correction and what it tried (for the journal and the report). */
+export type StageVerdict =
+  | { readonly kind: 'allow' }
+  | { readonly kind: 'deny', readonly correction: Correction, readonly attempt?: StageAttempt, readonly degraded?: string }
+
+/**
+ * main-agent-graph-stage for one call, for any session. Only the five calls
+ * that could move a goal on are looked at (stageCandidate) and only those
+ * read the graph. A graph that cannot be read denies the call: letting it
+ * through would be a release nobody checked. A call that names no node that
+ * exists is left to the tool to refuse. Never throws.
+ */
+export async function judgeGraphStage(deps: GraphRuleDeps, agent: Pick<AgentLike, 'session'>, call: ToolCall, who: SessionKind): Promise<StageVerdict> {
+  if (!stageCandidate(call)) return { kind: 'allow' }
+  try {
+    const dir = deps.graph()?.dirFor(agent.session?.header.cwd)
+    if (dir === undefined) return { kind: 'allow' }
+    const graph = await loadGraph(dir)
+    const args = recordOf(call.arguments)
+    const attempt = call.name === 'graph_edit' ? editAttempt(graph, args) : call.name === 'graph_approve' ? approveAttempt(graph, args) : proposeAttempt(graph, args)
+    return attempt === undefined ? { kind: 'allow' } : { kind: 'deny', correction: stageCorrection(who, attempt), attempt }
+  }
+  catch (error) {
+    return { kind: 'deny', correction: UNREADABLE_GRAPH_CORRECTION, degraded: `读不到项目图，没法判断这次图写入会不会不经人的同意把目标推向前，已拒绝（${error instanceof Error ? error.message : String(error)}）` }
+  }
+}
+
+/** The correction for a shell call that runs the graph's command line to write. */
+export const GRAPH_CLI_CORRECTION: Correction = {
+  fact: 'Inside DSH the project graph changes through the graph tools.',
+  violation: 'The graph tools check whose words a relay carries; the command line does not.',
+  rightPath: 'Use the graph tools (graph_propose, graph_edit, graph_decide, …).',
+  exception: 'The orchestrator runs the command line outside DSH.',
+}
+
+const PACKAGE_RUNNERS: ReadonlySet<string> = new Set(['npm', 'pnpm', 'yarn'])
+const READING_SUBCOMMANDS: ReadonlySet<string> = new Set(['show', 'open'])
+const CLI_PATH = 'scripts/graph/cli.ts'
+
+/** The words after the graph command line in one simple command, or undefined when it is not that command line: `npm|pnpm|yarn [run] [-s|--silent] graph …`, or `node … scripts/graph/cli.ts …` (`\` and `/` alike). */
+function graphCliArgs(words: readonly string[]): readonly string[] | undefined {
+  const name = commandName(words[0] ?? '').replace(/\.cmd$/u, '')
+  if (PACKAGE_RUNNERS.has(name)) {
+    let at = 1
+    while (words[at] === 'run' || words[at] === '-s' || words[at] === '--silent') at += 1
+    return words[at] === 'graph' ? words.slice(at + 1) : undefined
+  }
+  if (name !== 'node') return undefined
+  const at = words.findIndex((word, index) => index > 0 && word.replaceAll('\\', '/').endsWith(CLI_PATH))
+  return at < 0 ? undefined : words.slice(at + 1)
+}
+
+/** The command of the graph's command line, after its own option `--dir` and the `--` npm passes on; undefined when none is given. */
+function subcommandOf(args: readonly string[]): string | undefined {
+  for (let at = 0; at < args.length; at += 1) {
+    const word = args[at]
+    if (word === '--dir') at += 1
+    else if (word !== '--' && !word.startsWith('-')) return word
+  }
+  return undefined
+}
+
+/**
+ * main-agent-graph-cli: the graph subcommand a shell call runs when it is
+ * one that writes (anything but `show` and `open`, so a call with no
+ * subcommand counts too: its `''`); undefined when no simple command of it is
+ * the graph's command line, or all of them only read. Quoted text is no
+ * command (`simpleCommands`). Other ways to open the graph engine from a
+ * script are not recognised.
+ */
+export function graphCliWrite(command: string, dialects: readonly ShellDialect[]): string | undefined {
+  for (const dialect of dialects) {
+    for (const words of simpleCommands(command, dialect)) {
+      const args = graphCliArgs(words)
+      if (args === undefined) continue
+      const subcommand = subcommandOf(args)
+      if (subcommand === undefined || !READING_SUBCOMMANDS.has(subcommand)) return subcommand ?? ''
+    }
+  }
+  return undefined
+}
+
 /**
  * Judge a graph tool call of the main agent: the relay rule when the call
- * carries `relay`, the options rule for a proposal or an edit of a question.
+ * carries `relay`, the stage rule for the calls that could move a goal on,
+ * the options rule for a proposal or an edit of a question.
  * Never throws: what cannot be judged is let through and reported, except
- * the relay of a session whose messages cannot be read.
+ * the relay of a session whose messages cannot be read and the calls the
+ * stage rule cannot read the graph for.
  */
 export async function judgeMainAgentGraph(deps: GraphRuleDeps, agent: Pick<AgentLike, 'id' | 'session'>, call: ToolCall): Promise<GraphVerdict> {
   const relay = relayOf(call)
@@ -190,6 +421,20 @@ export async function judgeMainAgentGraph(deps: GraphRuleDeps, agent: Pick<Agent
   }
   catch (error) {
     return { kind: 'deny', rule: 'main-agent-graph-relay', correction: UNREADABLE_CORRECTION, degraded: `核对转述的人话时出错（${error instanceof Error ? error.message : String(error)}），这次写入被拒` }
+  }
+  const stage = await judgeGraphStage(deps, agent, call, 'main-agent')
+  if (stage.kind === 'deny') {
+    const { attempt } = stage
+    return {
+      kind: 'deny',
+      rule: GRAPH_STAGE_RULE,
+      correction: stage.correction,
+      ...attempt?.node === undefined ? {} : { node: attempt.node },
+      ...attempt?.goal === undefined ? {} : { goal: attempt.goal },
+      ...attempt?.stageFrom === undefined ? {} : { stageFrom: attempt.stageFrom },
+      ...attempt?.stageTo === undefined ? {} : { stageTo: attempt.stageTo },
+      ...stage.degraded === undefined ? {} : { degraded: stage.degraded },
+    }
   }
   if (call.name !== 'graph_propose' && call.name !== 'graph_edit') return { kind: 'allow' }
   try {
