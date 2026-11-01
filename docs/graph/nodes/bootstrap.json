@@ -184,6 +184,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "一页稿已写（onepage.md 与 onepage-mockup.svg，带 D1-D3 三件要人定的事，替人定了 55 个方向）。第一遍评审 CHANGES_REQUESTED：MEDIUM P1-P3、NIT P4-P8；第二遍修订接着做。"
+    },
+    {
+      "at": "2026-11-01T04:59:50.690Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "一页稿第二遍评审 CHANGES_REQUESTED：P2-P8 已关闭，P1（MEDIUM）未变，另有 NIT P9、P10；模块停下。P1：一页稿与草图用的是 d-ask-three-gates 的问法，design.md 仍写旧的「题目加四行」。编排方裁定（可逆）：给人看的问话形状只归 M3 的一处模板（M3 附录 0.6），接管只引用，不另写格式；图上记录的字段不变。运行 design-fix-bootstrap-P1 已开，按此改 design.md 并重数 §1.4，再与一页稿一起复审。"
     }
   ]
 }
