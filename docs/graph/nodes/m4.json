@@ -287,6 +287,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "运行 design-followup-metrics07-m4fix3-m6record 已开第三遍：F16 与 N24-N29，并按面板 1.3 的 capRaised 取数改 §6.3.1；复审只看改动处，放行后写一页稿。"
+    },
+    {
+      "at": "2026-11-01T05:15:56.767Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "finish2 收尾（决定评审）：设计 0.6（版本号未变，第四遍修订，该遍评审的稿是 design-0.6-finish2.md）第 2 遍复审结论 CHANGES_REQUESTED（HIGH 0、MEDIUM 1、NIT 6）。第 1 遍是 CHANGES_REQUESTED（MEDIUM F15、NIT N18–N23）；本遍关闭 F15 与 N18–N23，F13、F14、N15–N17 仍然关闭。未关闭：F16（MEDIUM）晨报对账只读当天的违规流水，今天以前撤下的规则每天早上都会被报成对不上，reportFromFiles 读 docs/guard/lifts.jsonl 要用的项目根也没有定义；N24（D1 框里的话没有理由，代价一句指向人没见过的申请项）、N25（ownRules 第五行实为 35 个码点，设计写 33）、N26（L2 案例 11 的提交顺序没写清）、N27（lift-files-only 比较项目根时没有路径归一化，Windows 盘符大小写会放过工作树）、N28（checkoutRootOf 只记在 §2.2 与 §19.9，没进 §13.3 与 §18）、N29（换电脑后流水里没有撤下记录，对账提醒每条规则每天重复）。两遍用完，模块停下（stop-report-finish2.md、decisions-gate-finish2.json、decisions-review-finish2.md）。一页稿未写，onepage-done.md 未写；同目录的 onepage.md 仍是 0.5 的旧稿（2,881 个汉字，超过 1,500），不是 0.6 的放行稿，不能交给人。改法由评审给出，没有待人定的事。第三遍已由运行 design-followup-metrics07-m4fix3-m6record 开始（见 2026-11-01T04:50:58Z 的批注），本条只记 finish2 这一轮的结果。留给人的：目前没有；设计 §17 的 D1（35 条验收的确认，与放行合成一项）要等一页稿重写、评审通过之后才问。"
+    },
+    {
+      "at": "2026-11-01T05:15:57.839Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "更正本节点 2026-10-31T19:34:36.684Z 那条批注（接管设计 0.6 对 M4 0.6 的请求）里的『二、（已被本文件里 m4 的第二条批注取代）接管写的检查行带 <预计>，值是试跑用时』：这一项没有请求内容，以同一次写入的第二条 m4 批注为准（接管写的检查行带试跑用时作为 <预计>，请 M4 导出 checkTimeout 与三个常量，设计 §25.4）。对 M4、M7 的请求没有变化。来源：接管设计 §19 第 7 条，复核第 4 轮 F19。"
     }
   ]
 }

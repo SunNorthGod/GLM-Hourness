@@ -350,6 +350,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "设计 1.3 第三遍复审 APPROVED（HIGH 0、MEDIUM 0、NIT 4）：P13-01 至 P13-04 全部关闭（design-review-fix3.md、design-gate-fix3.json）。一页稿在写。"
+    },
+    {
+      "at": "2026-11-01T05:15:58.536Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "finish2 收尾：面板与新手引导共用一份设计（design.md）。finish2 这一轮把设计改到 1.2，复审 CHANGES_REQUESTED（P11-01 MEDIUM：超时来源说明缺下限一种；NIT P11-02–P11-04：lift-files-only 接线后的撤下说法、测试板 id 的类型、§13 与 §2 仍按四行写）。之后 fix 轮的 1.3 两遍用完仍是 CHANGES_REQUESTED（P13-01 MEDIUM：capRaised 应取 limits.jsonl 最后一行；NIT P13-02–P13-04；见 stop-report-fix.md）。第三遍（运行 design-fix-panel-P13）复审 APPROVED（HIGH 0、MEDIUM 0、NIT 4，第 14 轮，design-review-fix3.md、design-gate-fix3.json）：P13-01 至 P13-04 全部关闭；不阻断的 NIT：P14-01（capRaised.reason 不合格的情形 §4.7 与 §8.2 列法不同，§10.1 缺 reason 缺失与非字符串的例）、P14-02（§4.7『超时记录』末句仍说晨报用同样的字归 M7 与循环板，M4 的『检查的超时』一节的字归 M4）、P14-03（§10.3 第 13 项 (b) 的理由写『两步都失败』，实际只有第一步失败）、P14-04（重置之后 held.by cap 的条目仍显示 120 秒，§8.2 与 §12 第 55 条没写这一笔代价）。设计版本 1.3（第 13 稿）。一页稿：onepage.md 已写（设计 1.3），957 个汉字（不含草图；去掉图片说明为 955），替人定的方向 56 个（design.md §12）。一页稿没有评审：目录里没有 onepage-gate-finish2.json 与 onepage-review-finish2.md，也没有这一阶段的停止报告；onepage-done.md 最后改于 2026-11-01 10:11，早于第 13、14 轮，没有核对 capRaised 取数带来的改动。因此一页稿的评审结论缺，页面不能交给人。留给人的一件（一页稿『要你定的』）：① 这两件事怎样算做完：面板和新手引导共 17 条『怎样算做完』，建议放进开工前给你看的这一页，你放行时对着大白话版一起看，可以吗？代价：定下之后，再改这 17 条要你出手。"
+    },
+    {
+      "at": "2026-11-01T05:16:29.195Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "一页稿（设计 1.3）第一遍评审 CHANGES_REQUESTED：HIGH 0、MEDIUM 2、NIT 6（onepage-review-fix3.md、onepage-gate-fix3.json）；运行 design-fix-panel-P13 的第二遍修订接着做。"
     }
   ]
 }
