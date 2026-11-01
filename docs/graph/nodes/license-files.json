@@ -29,6 +29,12 @@
       "reason": "运行 license-and-notices 已开（单 agent 一步派发）：写 LICENSE（PolyForm Noncommercial 1.0.0 逐字）、第三方声明、依赖许可清单，改 package.json 的 license 字段与 README 一节，三道检查串行跑后分提交推送。",
       "from": "approved",
       "to": "doing"
+    },
+    {
+      "at": "2026-11-01T13:46:16.157Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-11-01 提供了两处只有人能填的值，原话是「NorthGod」与「northgod@qq.com」：许可里的授权人名字为 NorthGod，商业授权联系方式为 northgod@qq.com。已转给运行 license-and-notices，LICENSE、第三方声明与 README 一节都用这两个值，占位 <LICENSOR NAME> 与 <CONTACT> 不再保留。编排方提醒过一句：公开仓库里的裸邮箱会招垃圾邮件，想换成表单或者别名随时能改，人未就此表态。"
     }
   ]
 }
