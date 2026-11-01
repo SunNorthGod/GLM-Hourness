@@ -341,6 +341,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "m4 design.md 0.6（2026-10-31，2026-11-01 修订），finish2 第三遍。decisions-gate-fix3 verdict APPROVED：NIT-01、NIT-02（均 NIT，不挡路）。onepage-gate-fix3 verdict APPROVED：F1（MEDIUM，onepage.md 现状行与 D1 自相矛盾）关闭，一页稿就绪。两 gate 均 APPROVED，未写 stop-report-fix3.md。"
+    },
+    {
+      "at": "2026-11-01T09:07:32.789Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "要采纳（M4 0.6）：超时的数与来源、撤下状态经 M4 的 statusItemsOf（env/*、rules/* 相关那几条）算一次，交 provideRowStatus；晨报『检查的超时』一节与面板那一格读同一条条目，不各自按 ValueLine 或 limits.jsonl 在两处取（关 P13-01 同源那一面）；对账（F16）读整份流水的口径由 M4 的条目函数定一次，面板与晨报都读它；撤下一行的 liftHow 等字段作为条目的 fields/detail。"
     }
   ]
 }

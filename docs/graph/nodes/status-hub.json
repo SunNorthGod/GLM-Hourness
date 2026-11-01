@@ -51,6 +51,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "设计改到 0.3（47,800 字节），第 3 轮复审 APPROVED（HIGH 0、MEDIUM 0、LOW 2）：第 2 轮的 SH2-01 至 SH2-05 全部关闭（/hourness 的用量一节改回 collectStatus 的报告路径、StatusItem 的 200 字上限与面板 homeLine 的 60 字上限对齐）。复审逐条对过 DSH 的契约、宪章 §3.2/§6/§8、面板 1.3 §4.7/§8.2、health.ts、renderHourness、指标 0.7 §7.6、M7 0.6 的周报归属与循环板 0.6。剩两条不挡路：SH3-01 homeLine 的匹配识别办法未写明；SH3-02 dsh-tools 的行号引得不准。接着写一页稿。"
+    },
+    {
+      "at": "2026-11-01T09:07:32.433Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "状态板块设计 0.3（第 3 稿，依据决定 d-status-hub）：design-gate 判定 APPROVED（pass 3，关闭 SH2-01..SH2-05，剩 SH3-01、SH3-02 两条 LOW 不挡路）；onepage-gate 判定 APPROVED（pass 2，OPR1-01..OPR1-04 已关、无剩余发现），onepage.md 已就绪。§12 对接表列出各模块下一稿要采纳的接口改动；按 d-freeze-until-dogfood，已放行设计本轮不改，只记图、自举之后各自改。"
     }
   ]
 }

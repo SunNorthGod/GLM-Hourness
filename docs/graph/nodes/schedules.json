@@ -323,6 +323,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M3 设计附录 0.6（d-ask-three-gates，试行）对循环板设计 0.6 的请求，2026-11-01 第 1 轮评审后补了一处。循环板的提议（loops:lp-…，含脚本与人加的检查）经 propose_to_human 交给人，写作「四行」的地方改为 form recommend 的一问：text 一句是非问，推荐与理由在问句里；命令原文与注意事项走 attach 的 detail（上限、给人看过原文的核对都不变）。loop_propose 结果里的英文 message（§7.1 第 1 步，via: graph 那句「one plan in four lines; the recommendation line says what describe says」与 via: board 那句「in four lines」）是代码字串，改为「one yes-or-no question with your recommendation and reason inside, shape recommend」，别再让主 Agent 去写已不存在的字段。「有事等你超过 24 小时再说一次」用 propose_to_human 只带 question 与新的 text（附录 §3.4 的再给人看一次，0.6 起要带 text，可以换个说法，字数上限取待决现有的 form）。图上的提议式待决存 ask、form、proposal、reason、cost、notTaken，不再有 background、doubt。attach 只配 form recommend。"
+    },
+    {
+      "at": "2026-11-01T09:07:33.341Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "要采纳（循环板 schedules 0.6）：循环板板块 snapshot 的 items 由它的 view.json 经 statusItemsOf 填（晨报/周报的两张单子 loops/*、运行结果那几行）；homeLine 保持可诊断——反映某条状态条目时取该条目的 text（同源），而『主 Agent 的会话已归档』『在另一个 DSH 窗口里』（循环板自有）与『额度停住』（来自 M7）等诊断行照旧（§6、验收第 26 项），不被面板的同源断言覆盖。周报的两张单子（§6.11）作为 agent 条目交给 M7 读，不另走一路。"
     }
   ]
 }

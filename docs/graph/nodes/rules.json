@@ -591,6 +591,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "FEAT-009（循环板的登记表、缺省条目与关着的行骨架）afd66f3 评审 CHANGES_REQUESTED，1 条挡路：B1 validateContribution 允许执行行以外的任何行占用 hourness. 命名空间，而设计 §3.2 不许；像 env 这样以 hourness. 开头的行会被接受、它的事件进表，随后执行行交同一批事件会被丢掉；修法是加一行拒绝加一条用例加一句文档。npm test 有一次偶发失败（rules-tickets），重跑退出码 0；build、preflight、probe 186/186 通过。本轮修订接着做。"
+    },
+    {
+      "at": "2026-11-01T09:07:33.527Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "要采纳（规则板 0.10）：规则板板块 snapshot 的 items 由 glmHournessRules 经 statusItemsOf 填（rules/peak、拦下计数、撤下状态、规矩阶梯提议、rules/stale）；高峰一行（homeLine）为其中一条的 text；rules/peak 标 agent。晨报的规则板一节（§10.5）与规则页读同一份条目。"
+    },
+    {
+      "at": "2026-11-01T09:07:34.099Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "FEAT-009 第 2 遍：B1 已修（除 glm-hourness/execute 以外的行在 hourness 命名空间里交状态一律整条拒绝，加了用例，并订正 ORCHESTRATION.md 的说法），提交 336a1d0；第 2 遍评审 APPROVED，无挡路项，5 条不挡路的备注。build、preflight、npm test、probe 全部退出码 0（probe 186/186；npm test 第一次撞上已知的 rules-tickets 时序偶发，重跑退出码 0）。13 项中 9 项通过。"
     }
   ]
 }

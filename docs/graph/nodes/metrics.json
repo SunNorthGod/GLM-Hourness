@@ -257,6 +257,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "metrics design.md 升至 0.7（2026-11-01）。design-gate-07 verdict APPROVED：F66（MEDIUM）关闭，F67、F68、F69（NIT）关闭，F70（NIT，仅 §7.6 例子与 §7.6.2/§19.10 内层引号不一致、不挡路）状态 open。onepage-gate-07 verdict APPROVED，无 finding，一页稿就绪。两 gate 均 APPROVED，未写 stop-report-07.md。"
+    },
+    {
+      "at": "2026-11-01T09:07:32.971Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "确认性对接（指标 0.7，不要求指标改接口）：factsFor 的三个减负数字作为 metrics/load（audience:'agent'，供周报转述），第四个（返工）仍由 M7 从图算、不经 metrics 条目（§7.2、§7.3）；scoresFor 的比率不作为 hub 条目，走指标 0.7 §7.6 的专用指标板（boardView→view.json→MetricsBoardView、同一张登记表），hub 不复制为 StatusItem；裸指标流水从不交出（宪章 §8）。周报比率改在面板看。"
     }
   ]
 }
