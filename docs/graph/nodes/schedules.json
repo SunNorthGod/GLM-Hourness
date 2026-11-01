@@ -365,6 +365,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "运行 feat-011-loop-runtime 名义上完成，实际没有产出：分支 HEAD 仍是 06c5e3e，没有新提交，报告文件也没写出来，但工作树里留下 27 个改动过的文件（含 src/loops/index.ts、src/guard/index.ts、docs/DESIGN.md、docs/ORCHESTRATION.md、package.json、scripts/probe/run-probe.mjs），说明它改到一半就断了，和之前 BAD_DECRYPT 是同一类中断、只是这次被记成了完成。活没丢。重开为运行 feat-011-loop-runtime-2，明确交代先核这 27 处未提交改动、接着做完再过门禁与提交。"
+    },
+    {
+      "at": "2026-11-01T12:31:04.329Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "FEAT-011（循环板的运行时核心：运行锁与心跳、交接、收件箱，不含脚本执行器，计划 L4）完成并推送：提交 f9cd8f8 在 rules-loops-impl 上。四道检查在被提交的树上全部退出码 0，probe 194/194，检查器基线不变（eslint 250、knip 21、jscpd 2），FEAT 文件置为 done 并写了 findings。上一次中断留下的 27 处改动由这一遍核过后接着做完。「门禁一过先提交推送、再写报告」这条交代有效，这次没有再丢活。13 项中 11 项完成，剩 FEAT-012（计划 L5，按时间触发的条目经 DSH 排程服务绑到主 Agent 会话）与 FEAT-013（计划 L6，loops.peak-start 与 loops.peak-end）以及合入。"
+    },
+    {
+      "at": "2026-11-01T12:31:35.568Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "运行 feat-012-schedule-binding 已开（单 agent 一步派发，接 f9cd8f8）：做 FEAT-012／计划 L5 —— 按时间触发的条目经 DSH 排程服务绑到主 Agent 会话，按计划里追加的那条附注核对持有者模式而不是信过期记录；主 Agent 的持有者契约只读 M3 附录，不依赖未合入的代码，取不到就按设计降级。排程服务属宿主契约，要写明核过哪些事实、在哪核的。四道检查串行跑（按本节点上的裁定），门禁一过先提交推送再写报告。本节点已是 doing。"
     }
   ]
 }
