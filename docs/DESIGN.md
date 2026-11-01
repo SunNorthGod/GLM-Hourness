@@ -553,7 +553,7 @@ DSH 的 `TokenUsage` 各计数互不重叠：`inputTokens` 只算未命中缓存
 | 4 | `glm:environment` | coding-plan，需配置 `env`；工作目录取会话头（§5.3 ③） |
 | 5 | `glm:persona`（汇报细度，标题 `# Reporting Depth`） | 两档 |
 | 6 | `glm:session-guidance` | coding-plan |
-| 7 | `glm:memory` | coding-plan；只在本次组装 `next()` 返回的工具里有全部三个记忆工具时出现（§5.3 ⑧） |
+| 7 | `glm:memory` | coding-plan；只在本次组装 `next()` 返回的工具里有全部三个记忆工具时出现，工具里还有 `lessons_query` 时末尾多一句经验板块（§5.3 ⑧） |
 | 8 | `glm:context-management` | coding-plan |
 | 9 | DSH 的其余节（`tool:pwsh`、`tool:read` 等） | 次序不变 |
 | 最后 | `glm:guard`（guard 行添加） | 所有路由；列出生效的规则，`interpolate: false`（`ORCHESTRATION.md` §6.1） |
@@ -577,7 +577,7 @@ start-plan 档只有第 1、2、5 节，后接 DSH 的节与 `glm:guard`。
 | ⑤ | Skills 引导 | DSH 技能清单 |
 | ⑥ | 工具描述与 schema 中的行为断言 | 垫片必须兑现描述与 schema 的承诺，兑现不了就改写或删去该句；七个别名的处理见 §5.4。Grep 删去原生做不到的参数，Bash 改写 shell 与工作目录两行 |
 | ⑦ | Context management | 3.17.1 原文（`IBo`）：标题加两段，单换行连接；3.16.3 后面的四段 3.17.1 已删除（2026-10-30）。承诺与 DSH 压缩一致 |
-| ⑧ | Memory | 写入纪律改为 memory 工具族与工作区 `.llm`。这一节只在本次组装 `next()` 返回的工具里有 `memory_store`、`memory_query`、`memory_forget` 三个时才加〔2026-10-29，split 第 2 步〕：编排层包没装、memory 行禁用或没配 `home`（这时它不注册记忆工具）时，GLM 不会被教去用不存在的工具。判定用 `next()` 的返回值本身（`memorySectionApplies`，在别名改写与工具检索之前），以后记忆工具被工具检索延迟加载也不会误删这一节；ZCode 原版的 Memory 段讲的是 ZCode 自己的记忆文件，DSH 里不存在，所以不回退到原版，直接不加。记忆工具的名字取自公共库的 `src/shared/tool-names.ts`，契约测试钉住它与 memory 行的注册一致 |
+| ⑧ | Memory | 3.17.1 `buildMemorySection`（`default-index` 一支）的原句，只改说到 ZCode 的记忆目录、`MEMORY.md` 与 Write 工具的两句，再加本项目的两句〔2026-11-01，项目图 `m5-3`〕。保留的十行放在镜像文件 `src/glm-prompt/zcode-memory-text.ts`（`ZCODE_MEMORY_LINES`，逐字门禁读它）。`localize.ts` 的 `buildMemorySectionDsh` 用镜像行与五个本地常量拼出这一节：`MEMORY_Z2_LOCAL`（Z2，记忆由 harness 保管，用 `memory_store`、`memory_query`、`memory_forget`）、`MEMORY_Z6_LOCAL`（Z6，索引每个会话载入，一条记忆一行，全文用 `memory_query` 读）、`MEMORY_L1`（人的原话放进 `relay`；项目记忆写明事实在源码里的出处）、`MEMORY_L2`（坑与解法归经验板块，用 `lessons_query` 查）、`MEMORY_BODY_PREFIX`（`body: `）。ZCode 的 frontmatter 块变成工具的字段：去掉两行 `---` 与 `metadata:`，`type:` 行去掉缩进，正文行前加 `body: `。Z7 到 Z9 在 ZCode 里是一行，只把 `existing file` 与 `Update that file` 换成 `existing memory` 与 `Update that memory`，由「恰好替换一次，否则抛错」的 `replaceOnce` 完成。全文 2,213 字符，不带 L2 时 2,114 字符；不再写衰减，衰减由 harness 处理，harness 会执行的规矩只在拒绝信息里教。`tests/glm-prompt.spec.ts` 钉三件事：全文逐字；ZCode 的每一句在节里整句出现；白名单，即节里不是 ZCode 原文的文字只有 Z2、Z6、L1、L2、`body: ` 前缀、`type:` 行去掉的缩进和 Z7 的两处替换，其余行与镜像一一相同、次序相同。出现条件：这一节只在本次组装 `next()` 返回的工具里有 `memory_store`、`memory_query`、`memory_forget` 三个时才加〔2026-10-29，split 第 2 步〕：编排层包没装、memory 行禁用或没配 `home`（这时它不注册记忆工具）时，GLM 不会被教去用不存在的工具。判定用 `next()` 的返回值本身（`memorySectionApplies`，在别名改写与工具检索之前），以后记忆工具被工具检索延迟加载也不会误删这一节；L2 同理，只在这份工具里还有 `lessons_query` 时出现（`LESSONS_QUERY_TOOL`）。ZCode 原版的 Memory 段讲的是 ZCode 自己的记忆文件，DSH 里不存在，所以不回退到原版，直接不加。工具的名字取自公共库的 `src/shared/tool-names.ts`，契约测试钉住记忆工具名与 memory 行的注册一致 |
 | ⑨ | Deferred 声明 | 不设；名单公告与工具检索按 ZCode 原文（§5.7） |
 | — | Dynamic Behavior | 3.17.1 原文（`TBo`），三段、没有标题：写代码与周边一致；对方的代词没说过时用 they/them；难撤销或对外的操作先确认，如实报告结果。按 3.17.1 的位置放在身份节之后〔2026-10-30，编排方定案 D-2，项目图 `zcode-3171-follow`〕。3.16.3 的这一节（`# Communicating with the user`，3,065 字符）coding-plan 一直没有发，3.17.1 把它整节重写了。逐字门禁检查它（`DYNAMIC_BEHAVIOR`）；start-plan 通道发同一段（`ZCODE_SYSTEM.dynamicSections.beforeEnvironment`）。以后的消融臂 A4 按 ZCode 自己的布局衡量这一节（项目图 `question-30`、`question-31`） |
 
@@ -700,6 +700,7 @@ L3 探针：沙盒里把压缩阈值调低，摘要请求末条是 ZCode 提示�
 | 17 | 保留式思考：历史中的 reasoning 带签名回传 | 通道 | 签名只回同一路由；ZCode 的签名拒收重试未移植（端点不校验，§4.5c） | 已实现 2026-10-28 |
 | 18 | 请求归因：会话 id、会话类型、请求与追踪 id、query id 与来源、`metadata.user_id` | 通道 | 按 3.16.3：会话级 trace id、回合级 query id、`main_turn` / `compact` / `session_title` / `subagent` 来源；委派子会话经 `agents` 服务的会话头判定；3.17.1 的 `x-zcode-session-features`（§4.5b） | 已实现 2026-10-28（m1-parity）；会话特征 2026-10-30 |
 | 19 | Dynamic Behavior 节 | 方言 | 3.17.1 原文，coding-plan 与 start-plan 都发（§5.3） | 已实现 2026-10-30 |
+| 20 | Memory 节 | 方言 | 3.17.1 `buildMemorySection` 的十行放进镜像文件，两句改写、两句新增，白名单测试钉住只改了这几处（§5.3 ⑧） | 已实现 2026-11-01（m5-3） |
 
 第 1、2、4、6、8 项的文本对齐状态以 §5.9 为准。
 
@@ -717,6 +718,7 @@ L3 探针：沙盒里把压缩阈值调低，摘要请求末条是 ZCode 提示�
 | todo 提醒正文 | `verbatim.ts` `TODO_REMINDER_BODY` | 曾有两处不一致（`to track progress`、`if has become stale`，原文语法如此），已按原文修正 | `runtime/helpers/runtime-reminders.ts` |
 | Context management | `localize.ts` `CONTEXT_MANAGEMENT_DSH` | 与 3.17.1 一致（2026-10-30：两段，删去 3.16.3 的后四段） | 3.17.1 包 `IBo` |
 | Dynamic Behavior | `verbatim.ts` `DYNAMIC_BEHAVIOR` | 3.17.1 原文（2026-10-30 新增） | 3.17.1 包 `TBo` |
+| Memory 节 | 镜像文件 `zcode-memory-text.ts` `ZCODE_MEMORY_LINES`（十行） | 与 3.17.1 一致（2026-11-01 新增）；`description:` 行 summary 后是逗号，四类定义写作 `` `user`: who … ``，Z7 与 Z9 在句号处断开，三处与 3.16.2 源码不同，取 3.17.1。另有 Z2、Z6、L1、L2 四句本地文字不在镜像里 | 3.17.1 包 `buildMemoryContent`（`default-index` 一支） |
 | compact 提示词 | `compact.ts` | 曾有 3 行不一致（第 4、8、9 节漏词），已按原文修正。结尾的 `REMINDER` 行与 3.16.3 安装包、pristine 一致，与源码不同，按安装包保留；第 6 条 2026-10-30 按 3.17.1 补一句 | `compact/prompt.ts` |
 | ToolSearch 描述 | 旧 `toolsearch/index.ts` | 首句一致，之后不一致。已按 3.16.3 安装包重建为 `LocalToolSearch` 描述（2026-10-27） | 安装包；源码 `tool/search/description.ts` 是 3.16.2 版本 |
 | Deferred 声明段 | 旧 `verbatim.ts` `DEFERRED_DECLARATION` | 任何来源中都找不到；ZCode 系统提示词没有这一段，已删除（2026-10-27） | — |

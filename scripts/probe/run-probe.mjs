@@ -419,7 +419,7 @@ const rulesPeakAlone = runScenario('rules-peak-hourness', 'deepseek-probe', [
   { tool: { name: 'pwsh', arguments: { command: 'Write-Output probe-rules', description: 'Print a word' } }, command: { name: 'rules', input: 'peak 不做' }, peakMode: true },
   { text: 'done', command: { name: 'hourness-status' }, peakMode: true },
 ], 'Print a word, then reply done.', [...RULES_ROW, ...clockRow(PEAK_AT)], rulesAlone.ws, [], profiles['probe-hourness'])
-const MEMORY_SECTION_LINE = 'You have a persistent memory in this workspace'
+const MEMORY_SECTION_LINE = 'You have a persistent memory that the harness keeps for you'
 const glmOnlyDir = join(runDir, 'glm-only')
 const glmOnly = runScenario('glm-only', 'glm-5.3', [
   { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } } },

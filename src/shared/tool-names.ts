@@ -17,6 +17,12 @@ export const GRAPH_TOOL_NAMES: readonly string[] = [
 export const MEMORY_TOOL_NAMES: readonly string[] = ['memory_store', 'memory_query', 'memory_forget']
 
 /**
+ * The lessons row's lookup tool. The GLM Memory section says where pitfalls
+ * go and how to look them up only in a request that has it (src/glm-prompt/index.ts).
+ */
+export const LESSONS_QUERY_TOOL = 'lessons_query'
+
+/**
  * Orchestration tools GLM tool search keeps resident (project decisions,
  * docs/ORCHESTRATION.md §8 for memory, §2.8 and §2.10 for the graph). Named
  * one by one: an orchestration tool added later is deferred like any DSH

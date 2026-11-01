@@ -12,6 +12,7 @@ import {
   HARNESS_TOOLS_LINE,
   harnessSystemTurnLine,
 } from './zcode-harness-text.ts'
+import { ZCODE_MEMORY_LINES } from './zcode-memory-text.ts'
 
 /**
  * ① Harness block: the 3.17.1 bullets (zcode-harness-text.ts) with the
@@ -87,17 +88,49 @@ export const CONTEXT_MANAGEMENT_DSH = [
 ].join('\n')
 
 /**
- * ⑧ Memory section: ZCode skeleton, write discipline rewritten for the
- * memory_store/memory_query tool family and the `.llm` home (not ~/.zcode).
+ * Replace the one occurrence of `from` in `text`. Any other count means the
+ * mirrored line no longer has the shape the rewrite expects, so it throws
+ * instead of passing a half-localized sentence on.
  */
-export const MEMORY_SECTION_DSH = [
-  '# Memory',
-  '',
-  'You have a persistent memory in this workspace (`.llm/memory.json`, served by the memory_store / memory_query / memory_forget tools). Store durable facts: who the user is, guidance the user has given on how you should work (with the why), ongoing goals not derivable from the code or git history, and pointers to external resources.',
-  '',
-  'Do not save what the repository already records (code structure, past fixes, git history, project docs) — memory_store refuses such entries. Don\'t save what only matters to this conversation.',
-  '',
-  'Before saving, query for an existing entry covering it — updating beats duplicating; delete memories that turn out to be wrong (memory_forget).',
-  '',
-  'Memories decay: each entry weakens over time unless a later store of the same id re-confirms it. Recall (memory_query) ranks by relevance times strength, so stale unconfirmed facts naturally fall away.',
-].join('\n')
+export function replaceOnce(text: string, from: string, to: string): string {
+  const found = text.split(from).length - 1
+  if (found !== 1) throw new Error(`replaceOnce: "${from}" found ${found} times, expected once`)
+  return text.replace(from, () => to)
+}
+
+/** ⑧ Memory section, Z2: the ZCode opening names a directory and the Write tool; DSH has the three memory tools. */
+export const MEMORY_Z2_LOCAL = 'You have a persistent memory that the harness keeps for you; write it with memory_store, read it with memory_query, delete with memory_forget. Each memory holds one fact, stored with these fields:'
+/** ⑧ Memory section, Z6: the ZCode index pointer names `MEMORY.md`; the harness keeps the index and `memory_query` reads one memory in full. */
+export const MEMORY_Z6_LOCAL = 'The memory index is loaded into context each session \u2014 one line per memory (name, type, description); read a memory in full with memory_query.'
+/** ⑧ Memory section, L1: preferences carry the person's own words (`relay`); a project memory points at its source. */
+export const MEMORY_L1 = 'When the user tells you how to work, pass their own words in relay. A project memory names where the fact lives in source (a project graph node id, a doc section, a commit or a URL); that source stays the authority.'
+/** ⑧ Memory section, L2: pitfalls and their fixes belong to the lessons board; only said when the request has `lessons_query`. */
+export const MEMORY_L2 = 'Pitfalls you hit and how you fixed them go on the lessons board; look them up with lessons_query.'
+/** ⑧ Memory section: the body line of the frontmatter block is a tool argument, `body`. */
+export const MEMORY_BODY_PREFIX = 'body: '
+
+const [ZCODE_HEADING, ZCODE_FENCE_OPEN, ZCODE_NAME, ZCODE_DESCRIPTION, ZCODE_TYPE, ZCODE_BODY, ZCODE_FENCE_CLOSE, ZCODE_LINKS, ZCODE_KINDS, ZCODE_SAVING] = ZCODE_MEMORY_LINES
+
+/** ⑧ Memory section, Z7 to Z9 (one line in ZCode): the sentences about files talk about memories here. */
+const MEMORY_SAVING_DSH = replaceOnce(replaceOnce(ZCODE_SAVING, 'existing file', 'existing memory'), 'Update that file', 'Update that memory')
+
+/**
+ * ⑧ Memory section: the ZCode 3.17.1 sentences (zcode-memory-text.ts) around
+ * the rewrites above. The frontmatter block becomes the tool's fields (no
+ * `---` rules or `metadata:`, a flat `type:` line, `body:` on the body line).
+ * `withLessons` adds L2 for a request whose tools include `lessons_query`.
+ * Lines are joined by one `\n`; an empty string is an empty line.
+ */
+export function buildMemorySectionDsh(withLessons: boolean): string {
+  return [
+    ZCODE_HEADING, '',
+    MEMORY_Z2_LOCAL, '',
+    ZCODE_FENCE_OPEN, ZCODE_NAME, ZCODE_DESCRIPTION, ZCODE_TYPE.trimStart(), `${MEMORY_BODY_PREFIX}${ZCODE_BODY}`, ZCODE_FENCE_CLOSE, '',
+    ZCODE_LINKS, '',
+    ZCODE_KINDS, '',
+    MEMORY_Z6_LOCAL, '',
+    MEMORY_SAVING_DSH, '',
+    MEMORY_L1,
+    ...withLessons ? ['', MEMORY_L2] : [],
+  ].join('\n')
+}

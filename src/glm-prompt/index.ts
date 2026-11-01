@@ -30,7 +30,7 @@ import { aliasSpecs, buildAliases, type BuiltAlias } from './aliases.ts'
 import { READ_IMAGE_NATIVE, READ_NAME, READ_NATIVE } from './read-alias.ts'
 import { CLI_PREFIX, DYNAMIC_BEHAVIOR } from './verbatim.ts'
 import { personaSection, PERSONA_LEVELS, type PersonaLevel } from './persona.ts'
-import { buildEnvInfoSection, CONTEXT_MANAGEMENT_DSH, MEMORY_SECTION_DSH, SESSION_GUIDANCE_DSH, SKILLS_NOTE_DSH } from './localize.ts'
+import { buildEnvInfoSection, buildMemorySectionDsh, CONTEXT_MANAGEMENT_DSH, SESSION_GUIDANCE_DSH, SKILLS_NOTE_DSH } from './localize.ts'
 import { isGlmAssembly, rewriteDialectSections, rewriteToolFace } from './assembly.ts'
 import { mapTodoWriteToDsh } from './todowrite.ts'
 import { TODO_WRITE_DESCRIPTION, TODO_WRITE_INPUT_SCHEMA } from './zcode-tool-text.ts'
@@ -40,7 +40,7 @@ import { installToolSearch } from '../toolsearch/index.ts'
 import { DIALECT_SERVICE, type DialectService } from '../shared/dialect.ts'
 import { provideRowHealth, sessionIdOf, type HealthState, type RowHealth } from '../shared/health.ts'
 import { assemblyRoute, isGlmModel, type Route } from '../shared/route.ts'
-import { MEMORY_TOOL_NAMES } from '../shared/tool-names.ts'
+import { LESSONS_QUERY_TOOL, MEMORY_TOOL_NAMES } from '../shared/tool-names.ts'
 import type { AgentLike, AssemblePayload, PluginContext, ProvideHost, ToolDefinitionLike } from '../shared/dsh-min.ts'
 import Schema from '../shared/schemastery.ts'
 import type { JsonValue } from '../shared/json.ts'
@@ -82,7 +82,12 @@ const HARNESS_IDENTITY_ORDER = -1000
 /** The section that teaches the memory tools; only in requests that have them (memorySectionApplies). */
 const MEMORY_SECTION = 'glm:memory'
 
-/** Sections the dialect adds beyond the shadowed identity. Tier selects the localization ledger (DESIGN.md §5.3). */
+/**
+ * Sections the dialect adds beyond the shadowed identity. Tier selects the
+ * localization ledger (DESIGN.md §5.3). The memory section is the one
+ * without the lessons sentence; installDialect swaps in the one with it for
+ * a request that has `lessons_query`.
+ */
 export function dialectSections(outputStyleActive = false, persona: PersonaLevel = 'balanced', config: GlmPromptConfig = {}): Array<{ name: string, order: number, text: string }> {
   const codingTier = (config.tier ?? 'coding-plan') === 'coding-plan'
   return [
@@ -99,7 +104,7 @@ export function dialectSections(outputStyleActive = false, persona: PersonaLevel
     ...(codingTier
       ? [
           { name: 'glm:session-guidance', order: 2300, text: config.skills === true ? [SESSION_GUIDANCE_DSH, SKILLS_NOTE_DSH].join('\n') : SESSION_GUIDANCE_DSH },
-          { name: MEMORY_SECTION, order: 2350, text: MEMORY_SECTION_DSH },
+          { name: MEMORY_SECTION, order: 2350, text: buildMemorySectionDsh(false) },
           { name: 'glm:context-management', order: 2400, text: CONTEXT_MANAGEMENT_DSH },
         ]
       : []),
@@ -201,6 +206,7 @@ export function installDialect(agent: AgentLike, config: GlmPromptConfig = {}, h
   const env = sessionEnv(config.env, agent)
   const sections = dialectSections(false, config.persona ?? 'balanced', env === undefined ? config : { ...config, env })
   const withoutMemory = sections.filter(section => section.name !== MEMORY_SECTION)
+  const withLessons = sections.map(section => section.name === MEMORY_SECTION ? { ...section, text: buildMemorySectionDsh(true) } : section)
   const aliases = buildAgentAliases(agent)
   const aliasNames = new Set(aliases.map(alias => alias.tool.name))
   const coveredNatives = new Set(aliases.flatMap(alias => alias.covers))
@@ -215,8 +221,9 @@ export function installDialect(agent: AgentLike, config: GlmPromptConfig = {}, h
     const glm = isGlmAssembly(assembled)
     glmStep = glm
     health?.report(sessionIdOf(agent), ...dialectHealth(assemblyRoute(assembled), glm, searchMode === 'off' ? 'off' : toolSearch === undefined ? 'missing' : 'local'))
-    // Judged on next()'s tools, before the face rewrite and tool search (memorySectionApplies).
-    const withSections = glm ? rewriteDialectSections(assembled, memorySectionApplies(assembled) ? sections : withoutMemory) : assembled
+    // Judged on next()'s tools, before the face rewrite and tool search (memorySectionApplies); the lessons sentence follows the same tools.
+    const wanted = !memorySectionApplies(assembled) ? withoutMemory : assembled.tools.some(tool => tool.name === LESSONS_QUERY_TOOL) ? withLessons : sections
+    const withSections = glm ? rewriteDialectSections(assembled, wanted) : assembled
     const face = rewriteToolFace(withSections.tools, glm, aliasNames, coveredNatives)
     todoReminderEligible = glm && face.some(tool => tool.name === TODO_WRITE_NAME)
     const tools = toolSearch === undefined ? face : glm ? toolSearch.expose(face) : toolSearch.hide(face)
