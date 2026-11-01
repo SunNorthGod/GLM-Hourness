@@ -118,6 +118,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "S8（L2，lessons-2）在 m5-memory-lessons 上提交为 16bcf88：build、preflight、test、probe 195/195 全部退出码 0。等评审。M5 的图改动按计划留给编排方。"
+    },
+    {
+      "at": "2026-11-01T13:04:10.484Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "S8（L2，lessons-2）第 1 遍评审 APPROVED，无挡路项，范围 001494a..16bcf88：post-execute 监听只加提醒，从不拒绝也不改调用，与 rc.3 的 postExecute 契约相符；told 集合的偏离符合验收第 1 条。两条不挡路的观察在 impl-S8-pass1.md。S1 至 S8 全部 APPROVED；S9、S10、S11 可以开工、尚未评审。"
     }
   ]
 }
