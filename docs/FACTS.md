@@ -110,7 +110,15 @@
 
 - 5 小时额度从消耗起点动态刷新；周额度自下单起 7 天一个周期；升级立即刷新，续费不重置；额度耗尽不扣余额，等周期恢复。
 - 用户的具体档位未记录，面板从通道取数或由配置给出。
-- 额度读取接口 `GET /api/monitor/usage/quota/limit` 返回的行（他人 2026-10-12 一次真实读取，max 档，对照官方面板，出自 `reference/zcode-api/`）：`TOKENS_LIMIT` 两行，是 5 小时与每周两个窗口；`TIME_LIMIT` 一行，是 MCP 工具调用窗口（`remaining` 是调用次数，`percentage` 是已用比例）。`number` 不是能与 `remaining` 比较的总量（`TIME_LIMIT` 一行 `remaining` 3836、`number` 1），`nextResetTime` 有秒也有毫秒，`unit` 的类型两边不一致（ZCode 只留数字，zcode-api 的夹具里是字符串）。上游网关对频繁查询限速。本包按「离重置还有多久」给窗口命名，不按重置先后排位。真机读取的核对随 `m6-l4`，读到的行记在这里。
+- 额度读取接口 `GET /api/monitor/usage/quota/limit` 返回的行（他人 2026-10-12 一次真实读取，max 档，对照官方面板，出自 `reference/zcode-api/`）：`TOKENS_LIMIT` 两行，是 5 小时与每周两个窗口；`TIME_LIMIT` 一行，是 MCP 工具调用窗口（`remaining` 是调用次数，`percentage` 是已用比例）。`number` 不是能与 `remaining` 比较的总量（`TIME_LIMIT` 一行 `remaining` 3836、`number` 1），`nextResetTime` 有秒也有毫秒，`unit` 的类型两边不一致（ZCode 只留数字，zcode-api 的夹具里是字符串）。上游网关对频繁查询限速。本包按「离重置还有多久」给窗口命名，不按重置先后排位。本账号的真实读数与这一条不同（`type` 是 `CREDIT_LIMIT`），见下一条。
+- 本账号的一次真实读取〔实测 2026-11-01，max 档，积分套餐；`ZcodeAdapter` 取项目令牌后经 `src/glm-llm/quota.ts` 的读取器发出，一次，只读，不花积分〕。请求：`POST …/access_tokens` 铸造项目令牌，200，约 320 毫秒；`GET https://bigmodel.cn/api/monitor/usage/quota/limit`，头恰好 `authorization` 与 `x-request-id`，200，约 210 毫秒；读取器的 `view` 含铸造共约 550 毫秒，响应 335 字节。形状：
+  - 信封：`code`（数字，200）、`msg`（字符串）、`success`（布尔，true）、`data`（对象）。`data` 只有 `level`（字符串，`max`）与 `limits`（数组，2 行）。
+  - 两行的 `type` 都是 `CREDIT_LIMIT`；没有 `TOKENS_LIMIT`，没有 `TIME_LIMIT`（MCP 工具调用窗口这个账号没有返回）。
+  - 每行的字段都是数字：`unit`、`number`、`usage`、`currentValue`、`remaining`、`percentage`；第二行另有 `nextResetTime`。没有 `usageDetails`，没有别的键。
+  - 第一行 `unit` 3、`number` 5，是 5 小时窗口：已用比例为 0，没有 `nextResetTime`。第二行 `unit` 6、`number` 1，是每周窗口：`nextResetTime` 13 位（毫秒），离读取约 3,856 分钟（约 2.7 天）。`unit`/`number` 的含义与 ZCode 3.16.2 源码文档（`reference/ZCode/docs/coding-plan/zai-bigmodel-team-plan-symmetry.md`）一致：5 小时是 `unit=3, number=5`，每周是 `unit=6`，工具（每月）是 `unit=5, number=1`；同一文档说明 zai 后端用 `CREDIT_LIMIT`、bigmodel 后端用 `TOKENS_LIMIT` 表示同一类窗口，ZCode 的消费方按两种类型等价匹配。
+  - `percentage` 是已用比例：两行都等于 `currentValue / usage` 的百分数（差不到一个百分点）。`usage = currentValue + remaining` 在 5 小时行成立，在每周行不成立，所以不要用 `usage` 与 `currentValue` 推 `remaining`。三个字段的单位（积分或别的）没有核。
+  - 5 小时窗口没有消耗时没有 `nextResetTime`，与「5 小时额度从消耗起点动态刷新」一致〔推断，一次读数不能证明：本账号这一行没有消耗，也没有重置时刻〕。
+  - 对 `DESIGN.md` §4.7 的影响：命名函数原来只认 `TOKENS_LIMIT`，两行都会显示成 `CREDIT_LIMIT`、没有预估；改为两种类型等价后，每周行命名为「每周」并预估，没有重置时刻的 5 小时行是「额度窗口」（`src/glm-llm/quota-parse.ts` 的 `nameWindows`，`tests/quota.spec.ts` 与 `tests/glm-quota.spec.ts` 有这个形状的用例）。5 小时窗口开始计时之后有重置时刻，会命名为「5 小时」。按 `unit`/`number` 命名可以让没有开始计时的 5 小时行也叫「5 小时」，但要在额度流水的行里多存 `unit`，是另一个改动，没有做。
 - 历史 V2 套餐（GLM-5.3 非高峰 1 倍 / 高峰 3 倍）不适用于本用户，仅备查。
 - 来源：`reference/bigmodel-guide-digest.md`。
 
