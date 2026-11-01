@@ -136,6 +136,21 @@ export function worktreesOf(root: string): readonly string[] {
   return [root, ...trees]
 }
 
+/** How long the list of a repository's work trees is kept. */
+const WORK_TREES_FRESH_MS = 60_000
+
+/** `worktreesOf`, read at most once a minute for each project root: the gates that keep a board's files to the board ask on every tool call. */
+export function cachedWorktrees(now: () => number): (root: string) => readonly string[] {
+  const kept = new Map<string, { readonly at: number, readonly trees: readonly string[] }>()
+  return (root) => {
+    const known = kept.get(root)
+    if (known !== undefined && now() - known.at < WORK_TREES_FRESH_MS) return known.trees
+    const trees = worktreesOf(root)
+    kept.set(root, { at: now(), trees })
+    return trees
+  }
+}
+
 /**
  * Make git ignore a top-level directory of the project (`directory` is its
  * name, `.llm`) without touching a tracked file: the line `<directory>/` is

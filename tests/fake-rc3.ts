@@ -9,6 +9,8 @@
  * through the assembly variables, exactly as installModelSelection injects
  * them.
  */
+import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import type { AgentLike, AssemblePayload, AssembledTool, InjectHost, InjectableServices, PluginContext, PreExecuteDecision, PreExecuteListener, PreStepDecision, PreStepPayload, ProvideHost, ServiceLookup, SessionLike, ToolDefinitionLike, ToolExecuteInput, ToolExecutionPayload, ToolFinalResult, UserNotice } from '../src/shared/dsh-min.ts'
 
 type Listener = (...args: never[]) => unknown
@@ -375,6 +377,47 @@ function valueViolations(schema: Record<string, unknown>, value: unknown, path =
       if (Object.hasOwn(schema, 'const') && value !== schema.const) return [`"${path}" must be ${JSON.stringify(schema.const)}`]
       return []
     }
+  }
+}
+
+/** Execute a tool through the full pipeline (`tools/pre-execute`, body, output check) as `agent` (the runtime's agent unless given). */
+export type ExecTool = (name: string, args: unknown, over?: { readonly agent?: AgentLike, readonly parent?: unknown }) => Promise<ToolFinalResult>
+
+/**
+ * {@link ExecTool} over a runtime, numbering the calls it makes. `parent` is
+ * what rc.3 puts on a call a `run_code` program makes from inside another,
+ * which a gate has to judge like a direct one. Both boards' fixtures
+ * (tests/rules-host.ts, tests/loops-host.ts) drive their gate through this.
+ */
+export function execTool(runtime: FakeRuntime): ExecTool {
+  let counter = 0
+  return (name, args, over = {}) => runtime.ctx.tools.execute({
+    callId: `call-${++counter}`,
+    name,
+    arguments: args,
+    agent: over.agent ?? runtime.agent,
+    signal: new AbortController().signal,
+    ...(over.parent === undefined ? {} : { parent: over.parent }),
+  })
+}
+
+/**
+ * The records of a project's violation journal. A gate does not wait for its
+ * writes (as the guard does not), so this waits until the expected number is
+ * there, then a moment more for any further one.
+ */
+export type ReadViolations = (expected?: number) => Promise<Array<Record<string, unknown>>>
+
+/** {@link ReadViolations} over the journal of the project at `root`. */
+export function readViolations(root: string): ReadViolations {
+  const read = async (): Promise<Array<Record<string, unknown>>> => {
+    const text = await readFile(join(root, '.llm', 'audit', 'violations.jsonl'), 'utf8').catch(() => '')
+    return text.split('\n').filter(line => line !== '').map(line => JSON.parse(line) as Record<string, unknown>)
+  }
+  return async (expected = 0) => {
+    for (let waited = 0; waited < 3_000 && (await read()).length < expected; waited += 25) await new Promise(resolve => setTimeout(resolve, 25))
+    await new Promise(resolve => setTimeout(resolve, 40))
+    return read()
   }
 }
 

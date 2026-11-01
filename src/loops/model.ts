@@ -66,6 +66,25 @@ export interface LoopEntry extends LoopEntryDefinition {
   readonly rev: string
 }
 
+/** Who agreed to a person's entry and how: the person's words travel with the entry into the repository (design §2.1, §14). */
+export interface PersonSource {
+  readonly kind: 'person'
+  /** When the person agreed (ISO time). */
+  readonly at: string
+  readonly via: 'chat' | 'board'
+  /** The person's words, as the main agent relayed them. */
+  readonly relay: string
+  /** The question on the project graph the agreement was recorded on; only when `via` is `chat`. */
+  readonly question?: string
+  /** The proposal the entry came from, `lp-<8 hex digits>`. */
+  readonly proposal: string
+}
+
+/** A person's entry as the file in the repository holds it: the definition and where it came from (`rev` and `status` are the journal's). */
+export interface PersonEntry extends LoopEntryDefinition {
+  readonly source: PersonSource
+}
+
 /** What `validateEntry` needs besides the entry. */
 export interface EntryContext {
   /** Every event the board knows now. */
@@ -305,4 +324,52 @@ export function validateEntry(input: unknown, origin: 'person' | 'plugin', conte
   if (entry.quiet !== undefined) checkQuiet(entry.quiet, entry, add)
   if (entry.scope !== undefined && !(entry.scope === 'project' || (entry.scope === 'machine' && origin === 'plugin'))) add('scope', 'scope 写 project；machine 只给通道包交来的条目')
   return issues
+}
+
+const PROPOSAL_ID = /^lp-[0-9a-f]{8}$/
+
+/** Everything wrong with the `source` of a person's entry, empty when it is sound. */
+function personSourceIssues(source: unknown): readonly TriggerIssue[] {
+  if (!isRecord(source)) return [{ path: 'source', message: '来源写成 {kind, at, via, relay, proposal}' }]
+  const issues: TriggerIssue[] = []
+  const add: Add = (path, message) => { issues.push({ path, message }) }
+  checkKeys(source, ['kind', 'at', 'via', 'relay', 'question', 'proposal'], 'source.', add)
+  if (source.kind !== 'person') add('source.kind', 'kind 写 person')
+  if (typeof source.at !== 'string' || Number.isNaN(Date.parse(source.at))) add('source.at', 'at 写成 ISO 8601 时刻')
+  if (source.via !== 'chat' && source.via !== 'board') add('source.via', 'via 写 chat 或 board')
+  if (!isText(source.relay, 1, 2000, false)) add('source.relay', '原话写 1 到 2000 个字')
+  if (source.question !== undefined && !isText(source.question, 1, 100)) add('source.question', '问题的 id 写 1 到 100 个字符')
+  if (typeof source.proposal !== 'string' || !PROPOSAL_ID.test(source.proposal)) add('source.proposal', '提议的 id 写成 lp- 加 8 位小写十六进制')
+  return issues
+}
+
+/**
+ * Everything wrong with the content of a person's entry file, empty when it is sound: the definition goes through
+ * `validateEntry` as a person's, the `source` through its own check. A file is read against the moment the person
+ * agreed (`context.now` is `source.at`): a `once` entry is later than that moment, whenever the file is read.
+ */
+export function validatePersonEntry(input: unknown, context: EntryContext): readonly TriggerIssue[] {
+  if (!isRecord(input)) return [{ path: 'entry', message: '条目要写成一个对象' }]
+  const { source, ...definition } = input
+  return [...validateEntry(definition, 'person', context), ...personSourceIssues(source)]
+}
+
+/** The order the keys of an entry file have, so that a change reads as a small `git diff`. */
+const FILE_ORDER = ['id', 'title', 'why', 'when', 'filter', 'action', 'limits', 'quiet', 'scope', 'basis', 'ownRules', 'source'] as const
+
+/** The value with the keys of every object in code point order; lists keep their order. */
+function sortedKeys(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortedKeys)
+  if (!isRecord(value)) return value
+  return Object.fromEntries(Object.keys(value).sort().map(key => [key, sortedKeys(value[key])]))
+}
+
+/**
+ * The bytes of a person's entry file (design §9.1): JSON with two-space indentation, the entry's own fields in a
+ * fixed order and the keys inside them in code point order, one line break at the end. One entry has one text, so
+ * the digest of the file says whether the entry is as the board wrote it.
+ */
+export function entryFileText(entry: PersonEntry): string {
+  const record = entry as unknown as Rec
+  return `${JSON.stringify(Object.fromEntries(FILE_ORDER.filter(key => record[key] !== undefined).map(key => [key, sortedKeys(record[key])])), null, 2)}\n`
 }

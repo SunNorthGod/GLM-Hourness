@@ -24,7 +24,10 @@
  * ends goes to the agent that dispatched it; rules-peak (the main agent's
  * line about the peak) and rules-peak-stop and rules-peak-stop-exit (the stop
  * level: a GLM subagent's goal is paused and resumed, and what the row does to
- * it when the host exits). The graph panel scenarios run the
+ * it when the host exits). The loop board scenario (loops) runs in a scratch
+ * git clone that already carries a person's entry file: the board takes the
+ * entry in, and loops:files-only refuses a file tool and a shell command that
+ * write into the board's own files. The graph panel scenarios run the
  * bundle's /graph-apply and /graph-run handlers mid-step for the session;
  * the GLM and non-GLM scenarios run /hourness and /hourness-status at their
  * last step, after /glm-status is recorded.
@@ -61,6 +64,8 @@ import { DISPATCH_TOOLS } from '../../packages/hourness/dist/workflow/index.js'
 import { clockText } from '../../packages/hourness/dist/rules/index.js'
 import { repoJson } from '../../packages/hourness/dist/rules/model.js'
 import { RULES_DECLARATION } from '../../packages/hourness/dist/rules/service.js'
+import { entryFileText } from '../../packages/hourness/dist/loops/model.js'
+import { LOOPS_DECLARATION } from '../../packages/hourness/dist/loops/service.js'
 import { PEAK_REMINDER_SOURCE, PEAK_REMINDER_TEXT } from '../../packages/glm/dist/glm-prompt/peak-reminder.js'
 import { peakWindowAt } from '../../packages/glm/dist/glm-llm/credits.js'
 import { userDataHome } from '../../packages/hourness/dist/shared/data-home.js'
@@ -468,6 +473,45 @@ const nonGlmRules = runScenario('non-glm-rules', 'deepseek-probe', [
   { tool: { name: 'pwsh', arguments: { command: 'Write-Output rules-probe-allowed', description: 'Print an allowed word' } } },
   { text: 'done', status: true },
 ], 'Run a command a rule blocks, write into the rules directory, read the rules, run a command no rule names, then reply done.', RULES_ROW, nonGlmRulesProject.ws)
+
+// Loop board, the storage and the gate on its own files
+// (docs/ORCHESTRATION.md §18.8, §18.9). The row ships disabled; the overlay
+// enables it in a scratch git repository that already carries a person's entry
+// file in docs/loops/ and has it committed, as a fresh clone does. The entry
+// only tells the main agent, so the board takes it in without an approval
+// record (loops design §9.3, impl-plan Interpretation 1). The scripted agent
+// writes into that entry file with a file tool, writes the board's runtime file
+// through the shell, and reads the entry file. Both writes must be refused by
+// loops:files-only with its four-part text and journaled as that rule, the read
+// must pass, the board must have taken the entry in and written its runtime
+// files, and git must see nothing of the runtime directory.
+const LOOPS_ROW = ['- id: glm-hourness/loops', '  disabled: false']
+const LOOPS_ENTRY_ID = 'u-1a2b3c4d'
+const LOOPS_ENTRY_TEXT = entryFileText({
+  id: LOOPS_ENTRY_ID,
+  title: 'Probe loop',
+  why: 'Probe the loop board storage.',
+  when: { kind: 'daily', time: '08:30', timeZone: 'Asia/Shanghai' },
+  action: { kind: 'tell-main', text: 'Probe: the loop board asked for this line.', wake: false },
+  source: { kind: 'person', at: GATE_RULE_AT, via: 'chat', relay: 'probe relay', question: 'question-1', proposal: 'lp-0a1b2c3d' },
+})
+const loopsProject = (name) => {
+  const ws = join(runDir, name, 'ws')
+  const entryFile = join(ws, 'docs', 'loops', 'entries', `${LOOPS_ENTRY_ID}.json`)
+  mkdirSync(dirname(entryFile), { recursive: true })
+  writeFileSync(join(ws, 'README.md'), 'probe workspace\n')
+  writeFileSync(entryFile, LOOPS_ENTRY_TEXT)
+  return { ws, entryFile, ready: initRepo(ws) }
+}
+const loopsBoard = loopsProject('loops')
+const loopsShellTarget = join(loopsBoard.ws, '.llm', 'loops', 'journal.jsonl')
+const loops = runScenario('loops', 'deepseek-probe', [
+  { tool: { name: 'write', arguments: { file_path: loopsBoard.entryFile, content: '{}\n' } } },
+  { tool: { name: 'pwsh', arguments: { command: `Set-Content -Path '${loopsShellTarget}' -Value probe`, description: 'Write the loop board runtime file through the shell' } } },
+  { tool: { name: 'read', arguments: { file_path: loopsBoard.entryFile } } },
+  { text: 'done', status: true },
+], 'Write into the loop board entry file, write its runtime file through the shell, read the entry file, then reply done.', LOOPS_ROW, loopsBoard.ws)
+
 const MEMORY_SECTION_LINE = 'You have a persistent memory in this workspace'
 const glmOnlyDir = join(runDir, 'glm-only')
 const glmOnly = runScenario('glm-only', 'glm-5.3', [
@@ -1068,6 +1112,21 @@ const queueWake = /^\[rules board\] Ticket q-1 cleared: rule r-probe-queue was l
 const consecutiveDiffer = texts => texts.every((text, index) => index === 0 || text !== texts[index - 1])
 const rulesRecordOf = (records, rule) => records.find(record => record.rule === rule)
 const stateWritten = existsSync(nonGlmRulesState) && readFileSync(nonGlmRulesState, 'utf8') === '{}\n'
+// The loop board scenario: what the board wrote in the project's .llm/loops/, what it left to git, and what the run journaled.
+const loopsRuntime = join(loopsBoard.ws, '.llm', 'loops')
+const readJsonOf = file => existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : undefined
+const loopsJournal = jsonl(join(loopsRuntime, 'journal.jsonl'))
+const loopsJournalText = existsSync(join(loopsRuntime, 'journal.jsonl')) ? readFileSync(join(loopsRuntime, 'journal.jsonl'), 'utf8') : ''
+const loopsView = readJsonOf(join(loopsRuntime, 'view.json'))
+const loopsWritten = readJsonOf(join(loopsRuntime, 'repo-written.json'))
+const loopsIgnore = existsSync(join(loopsRuntime, '.gitignore')) ? readFileSync(join(loopsRuntime, '.gitignore'), 'utf8') : ''
+const loopsExclude = existsSync(join(loopsBoard.ws, '.git', 'info', 'exclude')) ? readFileSync(join(loopsBoard.ws, '.git', 'info', 'exclude'), 'utf8') : ''
+const loopsGitStatus = spawnSync('git', ['status', '--porcelain'], { cwd: loopsBoard.ws, encoding: 'utf8' }).stdout ?? 'git status failed'
+const loopsRecords = gateRecords('loops')
+const loopsHealth = healthOf(loops)
+const loopsViewEntry = (loopsView?.entries ?? []).find(entry => entry.id === LOOPS_ENTRY_ID)
+const loopsAdopted = loopsJournal.filter(record => record.op === 'adopt' && record.id === LOOPS_ENTRY_ID)
+const LOOPS_DENIAL = new RegExp(`^Error: You tried to write "[^"]+"\\.\\nBoundary: Rule loops:files-only blocks writes under the loop board's files [^\\n]+\\nRight path: .+\\nException: `)
 // rules-peak: what the board told the main agent, at the wall clock of this machine (the model-facing lines write HH:MM in it).
 const localHm = iso => new Date(iso).toLocaleString('sv-SE').slice(11, 16)
 const PEAK_END_HM = localHm(PEAK_END)
@@ -1343,6 +1402,13 @@ const checks = [
   ['rules-peak-stop: the goal ends complete after that round, and the ticket is done with the goal and revision the pause made and the time the goal was resumed', stopNote('stop-final')?.ok === true && stopNote('stop-final').goal?.phase === 'complete' && stopState?.tickets?.['q-1']?.state === 'done' && stopState.tickets['q-1'].signature === 'any:builtin:glm-peak-stop' && stopState.tickets['q-1'].sessionId === stopCreated?.agentId && stopState.tickets['q-1'].pausedGoal?.id === stopCreated?.goal?.id && stopState.tickets['q-1'].pausedGoal.revision === stopOps[1]?.goal?.revision && typeof stopState.tickets['q-1'].resumedAt === 'string', JSON.stringify(stopState?.tickets?.['q-1'] ?? null)],
   ['rules-peak-stop: the journal has the ticket opened by the harness, the level changed by the person, and the ticket closed by the harness with its goal resumed, in that order; nothing is written in the scenario\'s user-level directory', isDeepStrictEqual(stopJournal.map(record => [record.op, record.actor]).filter(([op]) => op === 'ticket-open' || op === 'peak-mode-set' || op === 'ticket-update'), [['ticket-open', 'harness'], ['peak-mode-set', 'human'], ['ticket-update', 'harness']]) && !existsSync(join(runDir, 'rules-peak-stop', 'dsh-home', 'glm-hourness', 'rules')), JSON.stringify(stopJournal.map(record => [record.op, record.actor]))],
   ['rules-peak-stop-exit: V13, the host exits with the goal paused at the stop level: the run is clean and the way out agrees with itself: a row that unloaded (its heartbeat file is gone) resumed the goal and wrote it on the ticket, a runner that left without unloading it left the goal and the ticket as the stop made them', stopExitProject.ready && rulesPeakStopExit.status === 0 && !stderrOf('rules-peak-stop-exit').includes('dsh-glm-hourness/rules') && stopExitNotes.some(entry => entry.kind === 'stop-held' && entry.goal?.phase === 'paused') && (stopExitUnloaded ? typeof stopExitState?.tickets?.['q-1']?.resumedAt === 'string' && stopExitOps.includes('resume') : stopExitState?.tickets?.['q-1']?.state === 'deferred' && stopExitState.tickets['q-1'].resumedAt === undefined && stopExitOps.join() === 'create,pause'), `unloaded ${stopExitUnloaded}; exit ${rulesPeakStopExit.status}; goal operations ${JSON.stringify(stopExitOps)}; ticket ${JSON.stringify(stopExitState?.tickets?.['q-1'] ?? null)}; journal ${JSON.stringify(stopExitJournal.map(record => [record.op, record.reason ?? null]).slice(-3))}; ${stderrOf('rules-peak-stop-exit').split('\n').find(line => line.includes('rules')) ?? 'no stderr line mentions rules'}`],
+  ['loops: the row ships disabled: without the overlay /glm-status lists it as not loaded', glmHealth.loops?.status === '未加载' && plainHealth.loops?.status === '未加载', `${healthLine(glmHealth, 'loops')}; ${healthLine(plainHealth, 'loops')}`],
+  ['loops: the row, enabled by the overlay in a scratch git clone that carries a person\'s entry file, boots, runs its four steps and exits clean with nothing from it on stderr', loopsBoard.ready && loops.status === 0 && loops.steps.length === 4 && !stderrOf('loops').includes('dsh-glm-hourness/loops'), `exit ${loops.status}, ${loops.steps.length} step(s), git ${loopsBoard.ready}; ${stderrOf('loops').split('\n').find(line => line.includes('loops')) ?? 'no stderr line mentions loops'}`],
+  ['loops: a file tool writing into docs/loops/ is refused by loops:files-only with the four-part text, the entry file is as it was, and the refusal is journaled as enforced', lastToolResult(loops.steps[1])?.isError === true && LOOPS_DENIAL.test(lastToolResult(loops.steps[1]).text) && readFileSync(loopsBoard.entryFile, 'utf8') === LOOPS_ENTRY_TEXT && rulesRecordOf(loopsRecords, 'loops:files-only')?.mode === 'enforce', lastToolResult(loops.steps[1])?.text?.slice(0, 200) ?? 'no result'],
+  ['loops: a shell command writing into the project\'s .llm/loops/ is refused by the same rule, not by file-tools-only, and the board\'s change record does not carry what it wrote', lastToolResult(loops.steps[2])?.isError === true && (lastToolResult(loops.steps[2])?.text ?? '').includes('Rule loops:files-only') && loopsJournalText !== '' && !loopsJournalText.split('\n').includes('probe') && loopsRecords.filter(record => record.rule === 'loops:files-only').length === 2, `${lastToolResult(loops.steps[2])?.text?.slice(0, 160) ?? 'no result'}; ${loopsRecords.filter(record => record.rule === 'loops:files-only').length} journal line(s)`],
+  ['loops: the entry that only tells the main agent is taken in without an approval record: one adopt line by the harness, the file noted in repo-written.json, and view.json showing it as the agreed one', loopsAdopted.length === 1 && loopsAdopted[0].actor === 'harness' && loopsAdopted[0].via === 'repo' && /^[0-9a-f]{64}$/.test(loopsWritten?.[LOOPS_ENTRY_ID]?.fileSha256 ?? '') && loopsViewEntry?.source === 'person' && loopsViewEntry.state === 'ok' && (loopsView?.attention ?? ['none']).length === 0, `${loopsJournal.map(record => record.op).join(' > ') || 'no record'}; view ${JSON.stringify(loopsViewEntry ?? null)}; attention ${JSON.stringify(loopsView?.attention ?? null)}`],
+  ['loops: the runtime directory stays out of git (.llm/ in the exclude file, its own .gitignore) and git status lists nothing after the board wrote', loopsIgnore === '*\n' && loopsExclude.split('\n').includes('.llm/') && loopsGitStatus === '', `ignore ${JSON.stringify(loopsIgnore)}; exclude ${JSON.stringify(loopsExclude.split('\n').filter(line => line.includes('llm')))}; status ${JSON.stringify(loopsGitStatus)}`],
+  ['loops: the read of the entry file passes, /glm-status lists the row in effect, and every request declares the loop board in the guard section', lastToolResult(loops.steps[3])?.isError !== true && (lastToolResult(loops.steps[3])?.text ?? '').includes(LOOPS_ENTRY_ID) && loopsHealth.loops?.status === ACTED && loops.steps.every(step => step.system.includes(LOOPS_DECLARATION)), `${healthLine(loopsHealth, 'loops')} (${loopsHealth.loops?.reason ?? ''}); declared ${loops.steps.filter(step => step.system.includes(LOOPS_DECLARATION)).length}/${loops.steps.length}`],
   ['rules-peak-hourness: the row is in effect without the pricing service (a supported combination) and the main agent\'s tool call ran', aloneHealth.rules?.status === ACTED && aloneHealth.rules.reason.includes('读不出是不是高峰') && lastToolResult(rulesPeakAlone.steps[1])?.isError !== true && !stderrOf('rules-peak-hourness').includes('dsh-glm-hourness/rules'), `${healthLine(aloneHealth, 'rules')} (${aloneHealth.rules?.reason ?? ''})`],
   ...designChecks(),
   ['non-glm boot: the runtime reached the probe provider', plainFirst !== undefined, `exit ${plain.status}, ${plain.steps.length} step(s)`],

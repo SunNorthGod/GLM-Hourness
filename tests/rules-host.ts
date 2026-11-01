@@ -8,7 +8,7 @@
  * `tools.execute`, which runs the `tools/pre-execute` waterfall the way
  * rc.3 does (tests/fake-rc3.ts).
  */
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -21,7 +21,7 @@ import { DATA_SERVICE } from '../src/shared/data-home.ts'
 import { collectHealth } from '../src/shared/health.ts'
 import { peakModeService, type PeakModeService } from '../src/shared/peak-mode.ts'
 import { PRICING_SERVICE } from '../src/shared/pricing.ts'
-import { fakeLive, fakeRuntime, type FakeLive, type FakeRuntime } from './fake-rc3.ts'
+import { execTool, fakeLive, fakeRuntime, readViolations, type ExecTool, type FakeLive, type FakeRuntime, type ReadViolations } from './fake-rc3.ts'
 import { quickIo, type FakeClock } from './rules-helpers.ts'
 
 /** Wednesday 15:00 in UTC+8, inside GLM's peak hours (14:00-18:00). */
@@ -66,10 +66,8 @@ export interface Fixture {
   readonly calls: Array<{ name: string, args: unknown }>
   /** Run `/rules <input>` in the fake agent's session, as the person. */
   readonly run: (input: string) => Promise<CommandResultLike>
-  /** Execute a tool through the full pipeline (`tools/pre-execute`, body, output check) as `agent` (the fake agent unless given). */
-  readonly exec: (name: string, args: unknown, over?: { readonly agent?: AgentLike, readonly parent?: unknown }) => Promise<ToolFinalResult>
-  /** The records of the project's violation journal. The gate does not wait for its writes (as the guard does not), so this waits until expected records are there, then a moment more for any further one. */
-  readonly violations: (expected?: number) => Promise<Array<Record<string, unknown>>>
+  readonly exec: ExecTool
+  readonly violations: ReadViolations
 }
 
 export interface Options {
@@ -133,7 +131,6 @@ export async function withRow(body: (fixture: Fixture) => Promise<void>, options
     await options.setup?.({ root, runtime, live, now: moment })
     const timers = fakeTimers()
     const unload = apply(ctx, { now: moment, io: quickIo({ now: moment }), timer: timers.timer, ...options.config })
-    let counter = 0
     const dispose = async (): Promise<void> => { await unload() }
     await body({
       root,
@@ -152,23 +149,9 @@ export async function withRow(body: (fixture: Fixture) => Promise<void>, options
       service: peakModeService(runtime.ctx)!,
       dispose,
       run: input => commands.get('rules')!.handler({ commandId: 'test', agent: { id: runtime.agent.id, session: runtime.agent.session }, rawInput: input } as unknown as AgentCommandInvocationLike),
-      exec: (name, args, over = {}) => runtime.ctx.tools.execute({
-        callId: `call-${++counter}`,
-        name,
-        arguments: args,
-        agent: over.agent ?? runtime.agent,
-        signal: new AbortController().signal,
-        ...(over.parent === undefined ? {} : { parent: over.parent }),
-      }),
-      violations: async (expected = 0) => {
-        const read = async (): Promise<Array<Record<string, unknown>>> => {
-          const text = await readFile(join(root, '.llm', 'audit', 'violations.jsonl'), 'utf8').catch(() => '')
-          return text.split('\n').filter(line => line !== '').map(line => JSON.parse(line) as Record<string, unknown>)
-        }
-        for (let waited = 0; waited < 3_000 && (await read()).length < expected; waited += 25) await new Promise(resolve => setTimeout(resolve, 25))
-        await new Promise(resolve => setTimeout(resolve, 40))
-        return read()
-      },    })
+      exec: execTool(runtime),
+      violations: readViolations(root),
+    })
     await dispose()
   }
   finally {

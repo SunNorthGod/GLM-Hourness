@@ -492,7 +492,7 @@ export const realStoreIo: StoreIo = {
 /** Waits between the attempts to rename over a file a reader has open (Windows answers EPERM or EBUSY). */
 const RENAME_BACKOFF_MS = [20, 40, 80, 160, 320]
 
-async function renameWithRetry(io: StoreIo, from: string, to: string): Promise<boolean> {
+export async function renameWithRetry(io: StoreIo, from: string, to: string): Promise<boolean> {
   for (let attempt = 0; ; attempt++) {
     try {
       await io.rename(from, to)
@@ -520,9 +520,9 @@ export async function writeAtomic(file: string, text: string, io: StoreIo): Prom
   return await renameWithRetry(io, temporary, file) ? { ok: true } : { ok: false, temporary }
 }
 
-/** Append one record to the journal and sync it: from here the write has happened. */
-export async function appendRecord(paths: RulesPaths, record: JournalRecord): Promise<void> {
-  const handle = await open(paths.journal, 'a')
+/** Append one record, as a line of JSON, to a journal file and sync it: from here the write has happened. The loop board's change record is written the same way. */
+export async function appendLine(file: string, record: unknown): Promise<void> {
+  const handle = await open(file, 'a')
   try {
     await handle.appendFile(`${JSON.stringify(record)}\n`)
     await handle.sync()
@@ -530,6 +530,11 @@ export async function appendRecord(paths: RulesPaths, record: JournalRecord): Pr
   finally {
     await handle.close()
   }
+}
+
+/** Append one record to the journal and sync it: from here the write has happened. */
+export function appendRecord(paths: RulesPaths, record: JournalRecord): Promise<void> {
+  return appendLine(paths.journal, record)
 }
 
 /**

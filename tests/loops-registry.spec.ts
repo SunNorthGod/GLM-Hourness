@@ -14,14 +14,14 @@ import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 import { LOOP_ACTIONS, LOOP_CONTRIBUTION, LOOP_DEFAULTS, DEPENDENCY_FILES } from '../src/loops/defaults.ts'
 import { fileChangedKey, hostRestartedKey, LOOP_EVENT_TABLE, LOOP_EVENTS, waitingOnHumanKey } from '../src/loops/events.ts'
-import { apply, name } from '../src/loops/index.ts'
+import { apply, inject, name, type LoopsContext } from '../src/loops/index.ts'
 import type { LoopEntryDefinition } from '../src/loops/model.ts'
 import { createRegistry, validateContribution, type LoopsRegistry } from '../src/loops/registry.ts'
 import { LOOPS_SERVICE, loopsService, type Contribution, type ContributionSource, type LoopEventDeclaration, type LoopEventField, type LoopEventParam, type LoopEventRecord, type LoopsService } from '../src/loops/service.ts'
 import { validateWhen } from '../src/loops/trigger.ts'
 import { collectHealth, healthServiceName } from '../src/shared/health.ts'
 import { plainWordsIn } from '../src/graph/plain-question.ts'
-import { serviceStore } from './fake-rc3.ts'
+import { fakeInjector, serviceStore } from './fake-rc3.ts'
 
 const NOW = new Date('2026-11-02T01:00:00Z')
 const EXECUTE: ContributionSource = { plugin: 'dsh-hourness', row: 'glm-hourness/execute' }
@@ -503,7 +503,7 @@ test('validateContribution is the pure part: the same input gives the same answe
 
 test('the registry is a LoopsService: the type-level contract of what rows call', () => {
   const { registry } = registryWith()
-  const service: LoopsService = registry
+  const service: Pick<LoopsService, 'contribute'> = registry
   assert.equal(typeof service.contribute, 'function')
 })
 
@@ -638,9 +638,16 @@ function quietly<T>(body: () => T): { readonly value: T, readonly warnings: stri
 
 const healthOf = (store: ReturnType<typeof serviceStore>) => collectHealth(store, undefined).find(entry => entry.row === 'loops')
 
-test('the row is a cordis plugin with no requirement, provides the service and its health, and withdraws both', () => {
+/** A host with every part the row sets itself up with (the command, the gate, the projection registry), over a service store. */
+function hostWithParts(): ReturnType<typeof serviceStore> & LoopsContext {
+  const injector = fakeInjector({ sessionProjections: { register: () => () => {} } as never })
+  return Object.assign(serviceStore(), { commands: { register: () => () => {} }, on: () => () => {}, inject: injector.inject })
+}
+
+test('the row is a cordis plugin that needs the commands service, provides the service and its health, and withdraws both', () => {
   assert.equal(name, 'dsh-glm-hourness/loops')
-  const store = serviceStore()
+  assert.deepEqual(inject, ['commands'])
+  const store = hostWithParts()
   const stop = apply(store)
   assert.ok(loopsService(store) !== undefined)
   assert.equal(healthOf(store)?.status, 'active')
@@ -678,7 +685,7 @@ test('a dropped entry degrades the row health with the reason, once, and the row
 })
 
 test('activation never throws: a second instance, or a host without provide, is inactive with the reason and a warning', () => {
-  const store = serviceStore()
+  const store = hostWithParts()
   const first = apply(store)
   const second = quietly(() => apply(store))
   assert.equal(healthOf(store)?.status, 'active', 'the first instance is untouched')

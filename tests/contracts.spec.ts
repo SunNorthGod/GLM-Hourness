@@ -18,7 +18,8 @@ import { CATALOG } from '../src/rules/builtin.ts'
 import { RULES_FILES_ONLY } from '../src/rules/gate.ts'
 import { apply as rulesApply, type RulesContext } from '../src/rules/index.ts'
 import { RULES_DECLARATION, RULES_SERVICE, rulesService } from '../src/rules/service.ts'
-import { LOOPS_SERVICE, loopsService } from '../src/loops/service.ts'
+import { loopsFilesOnly, LOOPS_FILES_ONLY } from '../src/loops/guard.ts'
+import { LOOPS_DECLARATION, LOOPS_SERVICE, loopsService } from '../src/loops/service.ts'
 import { DECLARATION_SECTION } from '../src/guard/sections.ts'
 import { DIALECT_SERVICE, dialectNames, dialectService, toNativeTool, ZCODE_ALIAS_NATIVES, type DialectService } from '../src/shared/dialect.ts'
 import type { AgentLike, CommandDefinitionLike, ToolFinalResult } from '../src/shared/dsh-min.ts'
@@ -83,6 +84,14 @@ test('rules catalog: the rules board\'s gate on its own files is listed under th
   assert.deepEqual([entry?.row, entry?.effect, entry?.plugin], ['rules', 'block', 'dsh-hourness'])
 })
 
+test('rules catalog: the loop board\'s gate on its own files is listed under the id the gate carries, and the rule denies under that id', () => {
+  const entry = CATALOG.find(candidate => candidate.id === LOOPS_FILES_ONLY)
+  assert.deepEqual([entry?.row, entry?.effect, entry?.plugin], ['loops', 'block', 'dsh-hourness'])
+  assert.equal(LOOPS_FILES_ONLY, 'loops:files-only')
+  const verdict = loopsFilesOnly(['C:/work/app'], 'C:/work/app').detect({ name: 'write', arguments: { file_path: 'C:/work/app/docs/loops/entries/u-0a1b2c3d.json' } }, native => native)
+  assert.equal(verdict.kind === 'deny' && verdict.rule, LOOPS_FILES_ONLY)
+})
+
 test('rules service: absent and malformed values read as none and say so; a wider one still reads', () => {
   const problems: string[] = []
   const problem = (message: string) => { problems.push(message) }
@@ -107,27 +116,28 @@ test('loops service: absent reads as none without a word, a wrong shape reads as
   assert.equal(loopsService(serviceStore(), problem), undefined)
   assert.equal(loopsService({}, problem), undefined) // a context without get
   assert.equal(problems.length, 0)
-  for (const [count, value] of [[1, { contribute: 'yes' }], [2, 42], [3, {}]] as const) {
+  for (const [count, value] of [[1, { contribute: 'yes', declaration: LOOPS_DECLARATION }], [2, 42], [3, {}], [4, { contribute: () => ({ ok: false, reason: 'x' }) }], [5, { contribute: () => ({ ok: false, reason: 'x' }), declaration: '' }]] as const) {
     const store = serviceStore()
     store.provide(LOOPS_SERVICE, value)
     assert.equal(loopsService(store, problem), undefined)
     assert.equal(problems.length, count)
     assert.ok(problems[count - 1]?.includes(LOOPS_SERVICE))
   }
-  const wider = { contribute: () => ({ ok: false, reason: 'x' }), emit: () => 1 }
+  const wider = { contribute: () => ({ ok: false, reason: 'x' }), declaration: LOOPS_DECLARATION, emit: () => 1 }
   const store2 = serviceStore()
   store2.provide(LOOPS_SERVICE, wider)
   assert.equal(loopsService(store2, problem), wider)
-  assert.equal(problems.length, 3)
+  assert.equal(problems.length, 5)
   const wrong = serviceStore()
   wrong.provide(LOOPS_SERVICE, 0)
   assert.equal(loopsService(wrong), undefined, 'the callback is optional')
 })
 
 /** The lines of the glm:guard section the guard row declares on a GLM route, with the rules service as given (none when undefined). */
-async function guardDeclaration(rules: unknown): Promise<{ lines: string[], warnings: string[] }> {
+async function guardDeclaration(rules: unknown, loops?: unknown): Promise<{ lines: string[], warnings: string[] }> {
   const rt = fakeRuntime({ route: GLM })
   if (rules !== undefined) rt.services.set(RULES_SERVICE, rules)
+  if (loops !== undefined) rt.services.set(LOOPS_SERVICE, loops)
   guardApply(rt.ctx as never, { home: 'C:/ws/.llm', fs: { mkdir: () => Promise.resolve(undefined), appendFile: () => Promise.resolve() } })
   const { warnings } = await quietly(() => rt.create())
   const assembled = await quietly(() => rt.assemble(GLM))
@@ -146,16 +156,30 @@ test('guard declaration: the glm:guard section gets exactly one extra line when 
   assert.deepEqual(malformed.lines, without.lines)
   assert.equal(malformed.warnings.filter(warning => warning.includes(RULES_SERVICE)).length, 1, 'a service of the wrong shape is warned about once')
 })
+test('guard declaration: the loop board\'s line follows the rules board\'s when its service is there, and a service of the wrong shape adds nothing and is warned about once', async () => {
+  const without = await guardDeclaration(undefined)
+  const board = { contribute: () => ({ ok: false, reason: 'x' }), declaration: LOOPS_DECLARATION }
+  const both = await guardDeclaration({ declaration: RULES_DECLARATION }, board)
+  assert.equal(both.lines.length, without.lines.length + 2)
+  assert.deepEqual(both.lines.slice(-2), [`- ${RULES_DECLARATION}`, `- ${LOOPS_DECLARATION}`])
+  assert.equal((await guardDeclaration(undefined, board)).lines.at(-1), `- ${LOOPS_DECLARATION}`)
+  const malformed = await guardDeclaration(undefined, { contribute: 'x', declaration: 1 })
+  assert.deepEqual(malformed.lines, without.lines)
+  assert.equal(malformed.warnings.filter(warning => warning.includes(LOOPS_SERVICE)).length, 1)
+})
+
 test('guard catalog: each listed rule is the id of a rule object its row installs, and nothing the row installs is missing', () => {
   // The guard row installs what activeRules gives with a containment root; the graph row installs graphFilesOnly.
   const installed = {
     guard: activeRules({ workspaceRoots: ['C:/work/app'], base: 'C:/work/app' }).map(rule => rule.id),
     graph: [graphFilesOnly('C:/work/app/docs/graph', 'C:/work/app').id],
+    loops: [loopsFilesOnly(['C:/work/app'], 'C:/work/app').id],
   }
   const listed = (row: string): string[] => GUARD_RULES.filter(rule => rule.row === row).map(rule => rule.id)
   assert.deepEqual(listed('guard').sort(), [...installed.guard].sort())
   assert.deepEqual(listed('graph'), installed.graph)
-  assert.deepEqual([...new Set(GUARD_RULES.map(rule => rule.row))].sort(), ['graph', 'guard'], 'only rows that exist on main')
+  assert.deepEqual(listed('loops'), installed.loops)
+  assert.deepEqual([...new Set(GUARD_RULES.map(rule => rule.row))].sort(), ['graph', 'guard', 'loops'], 'only rows that exist on main')
   assert.ok(GUARD_RULES.every(rule => rule.mode === 'enforce'), 'a rule that is in the catalog denies: there is no shadow mode')
 })
 

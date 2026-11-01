@@ -35,7 +35,7 @@
  * as `rules:<id>`.
  */
 import { basename, isAbsolute, join, relative, resolve } from 'node:path'
-import { projectOf, worktreesOf } from '../data/project-root.ts'
+import { cachedWorktrees, projectOf } from '../data/project-root.ts'
 import { writesInto } from '../guard/directory-writes.ts'
 import { originOf } from '../guard/origin.ts'
 import { renderCorrection, type ToolCall } from '../guard/rules.ts'
@@ -62,9 +62,6 @@ import type { TicketDesk } from './tickets.ts'
 /** The id of the gate on the board's own files, as the catalog lists it and the violation journal records it. */
 export const RULES_FILES_ONLY = 'rules:files-only'
 
-/** How long the list of a repository's work trees is kept (design §2.5). */
-const WORK_TREES_FRESH_MS = 60_000
-
 export interface GateDeps {
   readonly ctx: PreExecuteHost & ServiceLookup
   /** The rules directory of the row's configuration, relative to the project root unless absolute. */
@@ -80,18 +77,6 @@ export interface GateDeps {
 }
 
 const message = (error: unknown): string => (error instanceof Error ? error.message : String(error)).slice(0, 80)
-
-/** The work trees of a repository, as `git worktree list` gives them, read at most once a minute for each project. */
-function workTreeList(now: () => number): (root: string) => readonly string[] {
-  const kept = new Map<string, { readonly at: number, readonly trees: readonly string[] }>()
-  return (root) => {
-    const known = kept.get(root)
-    if (known !== undefined && now() - known.at < WORK_TREES_FRESH_MS) return known.trees
-    const trees = worktreesOf(root)
-    kept.set(root, { at: now(), trees })
-    return trees
-  }
-}
 
 /** The directories only the rules board writes in: the rules directory, the same relative path in every other work tree, and the runtime directory. */
 function boardDirs(paths: RulesPaths, trees: readonly string[]): readonly string[] {
@@ -132,7 +117,7 @@ type Line =
 export function installRulesGate(deps: GateDeps): () => void {
   const warn = dialectWarner('rules')
   const warnFault = dialectWarner('rules')
-  const trees = workTreeList(deps.now)
+  const trees = cachedWorktrees(deps.now)
 
   /** A line for the violation journal; the journal never rejects into the call, the call does not wait for the write (the guard does not either), and a journal that cannot be reached never changes what the rules said about the call. */
   function note(agent: AgentLike, exec: ToolExecutionPayload, claimed: boolean, line: Line): void {
