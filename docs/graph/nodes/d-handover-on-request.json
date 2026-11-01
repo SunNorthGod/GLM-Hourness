@@ -1,0 +1,19 @@
+{
+  "id": "d-handover-on-request",
+  "type": "decision",
+  "title": "换工具的交接等人开口再做，照固定三步收尾",
+  "status": "approved",
+  "parent": "orch",
+  "verification": "unverified",
+  "body": "人 2026-11-01 问「如果一会我要换到 zcode 继续的话怎么办」，编排方给出现状与办法后，人答「没事你接着做，到时候我要换的话找你收尾」。定下：现在不停活、不做交接准备；人开口要换时，编排方按三步收尾——① 让在跑的运行各自把手上这一步收尾并提交，或就地把工作树里的在制改动当未完成提交掉（当时 m3 有 30 处、rules-loops 有 25 处未提交改动，都是被打断那一步写到一半的）；② 在 docs/HANDOFF.md 加一节「接着做什么」，各条线写明下一步跑什么命令、过哪几道检查，并按卡人的程度排序（M3 合入最先，M7 四块、M5 的 S12、用户图都在等它）；③ 推四条分支（按 d-wip-branch-push 允许改写）。带不走的三样已告知人：Kiro 的运行本身、.kiro/ 里的编排规则（AGENTS.md 与 .agents/tasks/design-context.md 两份要紧的都在 git 里）、并行干活的能力（ZCode 是一条线，过去之后顺序做）。",
+  "history": [
+    {
+      "at": "2026-11-01T10:14:53.439Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "人决定现在不做交接准备，换工具时再叫编排方收尾",
+      "relay": "没事你接着做，到时候我要换的话找你收尾",
+      "to": "approved"
+    }
+  ]
+}
