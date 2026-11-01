@@ -15,7 +15,11 @@
  * scenarios run the dispatch feasibility spike
  * (scripts/probe/probe-dispatch.mjs): a background child with a write
  * scope, a plugin-created goal driven through two rounds, and the headless
- * runner's exit with an armed goal. The graph panel scenarios run the
+ * runner's exit with an armed goal. The rules board scenarios run in scratch
+ * git repositories with the row enabled by the overlay: rules-peak and
+ * rules-peak-hourness drive /rules peak, glm-rules and non-glm-rules run
+ * calls past a rules file that blocks one command and only informs about
+ * another. The graph panel scenarios run the
  * bundle's /graph-apply and /graph-run handlers mid-step for the session;
  * the GLM and non-GLM scenarios run /hourness and /hourness-status at their
  * last step, after /glm-status is recorded.
@@ -50,6 +54,8 @@ import { isDeepStrictEqual } from 'node:util'
 import { crc32, deflateSync } from 'node:zlib'
 import { DISPATCH_TOOLS } from '../../packages/hourness/dist/workflow/index.js'
 import { clockText } from '../../packages/hourness/dist/rules/index.js'
+import { repoJson } from '../../packages/hourness/dist/rules/model.js'
+import { RULES_DECLARATION } from '../../packages/hourness/dist/rules/service.js'
 import { PEAK_REMINDER_SOURCE, PEAK_REMINDER_TEXT } from '../../packages/glm/dist/glm-prompt/peak-reminder.js'
 import { peakWindowAt } from '../../packages/glm/dist/glm-llm/credits.js'
 import { userDataHome } from '../../packages/hourness/dist/shared/data-home.js'
@@ -403,6 +409,51 @@ const rulesPeakAlone = runScenario('rules-peak-hourness', 'deepseek-probe', [
   { tool: { name: 'pwsh', arguments: { command: 'Write-Output probe-rules', description: 'Print a word' } }, command: { name: 'rules', input: 'peak 不做' }, peakMode: true },
   { text: 'done', command: { name: 'hourness-status' }, peakMode: true },
 ], 'Print a word, then reply done.', [...RULES_ROW, ...clockRow(PEAK_AT)], rulesAlone.ws, [], profiles['probe-hourness'])
+
+// Rules board, the tool-call gate (docs/ORCHESTRATION.md §16.11). The scenario
+// project is a scratch git repository whose rules file already holds a person's
+// rules, as a clone does: one that blocks a command naming `rules-probe-blocked`
+// and one that only informs. (A person's switch cannot be created yet: nothing
+// writes a rule but the proposal path, which is not built, so the rules that
+// queue are probed with the waiting tickets.) The scripted agent runs the
+// blocked command, writes into the board's own files with a file tool, and runs
+// a command no rule names; the non-GLM run also reads the rules with
+// rules_show. The calls must be refused or run as the rules say, the refusals
+// must be in the project's violation journal as rules:<id>, and /glm-status
+// must list the row.
+const GATE_RULE_AT = '2026-10-28T06:00:00.000Z'
+const gateRule = (id, title, over) => ({ id, title, scope: 'project', when: { kind: 'event', events: ['gate.tool-call'] }, action: { kind: 'block' }, lifetime: { kind: 'until-lifted' }, reason: 'probe', origin: { actor: 'human', at: GATE_RULE_AT }, status: 'active', ...over })
+const GATE_RULES_FILE = repoJson({
+  version: 2,
+  rules: {
+    'r-probe-block': gateRule('r-probe-block', 'Probe word', { filter: { command: { matches: 'rules-probe-blocked' } }, reason: 'The probe word is not allowed.' }),
+    'r-probe-note': gateRule('r-probe-note', 'Probe note', { when: { kind: 'event', events: ['rules.step'] }, action: { kind: 'inform' } }),
+  },
+})
+const rulesGateProject = (name) => {
+  const ws = join(runDir, name, 'ws')
+  const rulesFile = join(ws, 'docs', 'rules', 'rules.json')
+  mkdirSync(dirname(rulesFile), { recursive: true })
+  writeFileSync(join(ws, 'README.md'), 'probe workspace\n')
+  writeFileSync(rulesFile, GATE_RULES_FILE)
+  return { ws, rulesFile, ready: initRepo(ws) }
+}
+const glmRulesProject = rulesGateProject('glm-rules')
+const glmRules = runScenario('glm-rules', 'glm-5.3', [
+  { tool: { name: 'Bash', arguments: { command: 'Write-Output rules-probe-blocked', timeout: 30000 } } },
+  { tool: { name: 'Write', arguments: { file_path: glmRulesProject.rulesFile, content: '{}\n' } } },
+  { tool: { name: 'Bash', arguments: { command: 'Write-Output rules-probe-allowed', timeout: 30000 } } },
+  { text: 'done', status: true },
+], 'Run a command a rule blocks, write into the rules directory, run a command no rule names, then reply done.', RULES_ROW, glmRulesProject.ws)
+const nonGlmRulesProject = rulesGateProject('non-glm-rules')
+const nonGlmRulesState = join(nonGlmRulesProject.ws, '.llm', 'rules', 'state.json')
+const nonGlmRules = runScenario('non-glm-rules', 'deepseek-probe', [
+  { tool: { name: 'pwsh', arguments: { command: 'Write-Output rules-probe-blocked', description: 'Print the probe word' } } },
+  { tool: { name: 'write', arguments: { file_path: nonGlmRulesState, content: '{}\n' } } },
+  { tool: { name: 'rules_show', arguments: {} } },
+  { tool: { name: 'pwsh', arguments: { command: 'Write-Output rules-probe-allowed', description: 'Print an allowed word' } } },
+  { text: 'done', status: true },
+], 'Run a command a rule blocks, write into the rules directory, read the rules, run a command no rule names, then reply done.', RULES_ROW, nonGlmRulesProject.ws)
 const MEMORY_SECTION_LINE = 'You have a persistent memory in this workspace'
 const glmOnlyDir = join(runDir, 'glm-only')
 const glmOnly = runScenario('glm-only', 'glm-5.3', [
@@ -905,6 +956,15 @@ const rulesHealth = healthOf(rulesPeak)
 // The orchestration package alone has no /glm-status; its table is /hourness-status.
 const aloneHealth = tableOf(rulesPeakAlone.steps[1]?.command?.text ?? '')
 const aloneState = rulesPeakAlone.steps[0]?.peakMode?.state
+// The gate scenarios: what each run journaled in its project directory, what its steps saw, and whether the board's file is as it was.
+const gateRecords = name => jsonl(join(runDir, name, 'home', 'audit', 'violations.jsonl'))
+const glmRulesRecords = gateRecords('glm-rules')
+const nonGlmRulesRecords = gateRecords('non-glm-rules')
+const glmRulesHealth = healthOf(glmRules)
+const nonGlmRulesHealth = healthOf(nonGlmRules)
+const boardMessages = scenario => scenario.steps.flatMap(step => step.messages.filter(message => message.source === 'hourness-rules'))
+const rulesRecordOf = (records, rule) => records.find(record => record.rule === rule)
+const stateWritten = existsSync(nonGlmRulesState) && readFileSync(nonGlmRulesState, 'utf8') === '{}\n'
 const conversationTexts = [glm, plain, compacted, shadow].flatMap(scenario => scenario.steps.flatMap(step => [step.system, ...step.messages.map(message => message.text)]))
 
 // The single-package runs: a package with no row loaded is one line whose
@@ -1115,6 +1175,18 @@ const checks = [
   ['rules-peak: the choice is in the repository file and in the project\'s journal (two person\'s writes), and nothing is written in the scenario\'s user-level directory', rulesFile?.peakMode?.level === 'inform' && isDeepStrictEqual(rulesRecords.map(record => [record.op, record.actor, record.from, record.to]), [['peak-mode-set', 'human', 'reduce', 'stop'], ['peak-mode-set', 'human', 'stop', 'inform']]) && !existsSync(join(runDir, 'rules-peak', 'dsh-home', 'glm-hourness', 'rules')), `${JSON.stringify(rulesFile ?? null)}; ${rulesRecords.length} record(s)`],
   ['rules-peak: /glm-status lists the rules row in effect with the level in force at that step and the clock', rulesHealth.rules?.status === ACTED && rulesHealth.rules.package === 'dsh-hourness' && rulesHealth.rules.reason.includes('高峰模式 不做（你选的）；现在是高峰') && grouped(rulesHealth), healthLine(rulesHealth, 'rules') + ` (${rulesHealth.rules?.reason ?? ''})`],
   ['rules-peak-hourness: with only the orchestration package there is no pricing service: the person\'s choice is kept, no peak is known, there is no cap and no hold, and the command says why', rulesPeakAlone.status === 0 && aloneState !== undefined && aloneState !== null && aloneState.level === 'stop' && aloneState.origin === 'human' && !('peak' in aloneState) && !('glmWorkerCap' in aloneState) && !('until' in aloneState) && rulesPeakAlone.steps[0].peakMode.hold === null && rulesPeakAlone.steps[0].command?.text.includes('读不到是不是高峰（没有计价服务（GLM 通道包未装，或它的 glm-login 行未启用））') === true, JSON.stringify(rulesPeakAlone.steps[0]?.peakMode ?? null)],
+  ['glm-rules: the row boots on the GLM route with the rules file of the clone, runs its four steps and exits clean with nothing from it on stderr', glmRulesProject.ready && glmRules.status === 0 && glmRules.steps.length === 4 && !stderrOf('glm-rules').includes('dsh-glm-hourness/rules'), `exit ${glmRules.status}, ${glmRules.steps.length} step(s), git ${glmRulesProject.ready}; ${stderrOf('glm-rules').split('\n').find(line => line.includes('rules')) ?? 'no stderr line mentions rules'}`],
+  ['glm-rules: the command the block rule names is refused with the rule\'s four-part text, so it never ran', lastToolResult(glmRules.steps[1])?.isError === true && /^Error: You tried to run "Write-Output rules-probe-blocked"\.\nBoundary: Rule r-probe-block "Probe word" \(set by the human at [^)]+, until lifted\) blocks it now\.\nRight path: .+\nException: /.test(lastToolResult(glmRules.steps[1])?.text ?? ''), lastToolResult(glmRules.steps[1])?.text?.slice(0, 160) ?? 'no result'],
+  ['glm-rules: that refusal is in the violation journal as rules:r-probe-block, enforced, on the dialect route', rulesRecordOf(glmRulesRecords, 'rules:r-probe-block')?.mode === 'enforce' && rulesRecordOf(glmRulesRecords, 'rules:r-probe-block').effect === 'block' && rulesRecordOf(glmRulesRecords, 'rules:r-probe-block').scope === 'dialect' && rulesRecordOf(glmRulesRecords, 'rules:r-probe-block').tool === 'Bash', JSON.stringify(rulesRecordOf(glmRulesRecords, 'rules:r-probe-block') ?? null).slice(0, 200)],
+  ['glm-rules: a file tool writing into the rules directory is refused by rules:files-only, the file is as it was and the refusal is journaled', lastToolResult(glmRules.steps[2])?.isError === true && (lastToolResult(glmRules.steps[2])?.text ?? '').includes('Rule rules:files-only') && readFileSync(glmRulesProject.rulesFile, 'utf8') === GATE_RULES_FILE && rulesRecordOf(glmRulesRecords, 'rules:files-only')?.mode === 'enforce', lastToolResult(glmRules.steps[2])?.text?.slice(0, 160) ?? 'no result'],
+  ['glm-rules: a command no rule names runs', lastToolResult(glmRules.steps[3])?.isError !== true && (lastToolResult(glmRules.steps[3])?.text ?? '').includes('rules-probe-allowed'), lastToolResult(glmRules.steps[3])?.text?.slice(0, 80) ?? 'no result'],
+  ['glm-rules: the request carries no reminder from the board yet, and the system prompt declares the rules board in the guard section', boardMessages(glmRules).length === 0 && glmRules.steps.every(step => step.system.includes(RULES_DECLARATION)), `${boardMessages(glmRules).length} board message(s); declared ${glmRules.steps.filter(step => step.system.includes(RULES_DECLARATION)).length}/${glmRules.steps.length}`],
+  ['glm-rules: /glm-status lists the rules row in effect with the rules of the person counted, and nothing is written in the scenario\'s user-level directory', glmRulesHealth.rules?.status === ACTED && glmRulesHealth.rules.reason.includes('2 条你设的规则生效') && !existsSync(join(runDir, 'glm-rules', 'dsh-home', 'glm-hourness', 'rules')), healthLine(glmRulesHealth, 'rules') + ` (${glmRulesHealth.rules?.reason ?? ''})`],
+  ['non-glm-rules: the row boots on the non-GLM route with the rules file of the clone, runs its five steps and exits clean with nothing from it on stderr', nonGlmRulesProject.ready && nonGlmRules.status === 0 && nonGlmRules.steps.length === 5 && !stderrOf('non-glm-rules').includes('dsh-glm-hourness/rules'), `exit ${nonGlmRules.status}, ${nonGlmRules.steps.length} step(s), git ${nonGlmRulesProject.ready}; ${stderrOf('non-glm-rules').split('\n').find(line => line.includes('rules')) ?? 'no stderr line mentions rules'}`],
+  ['non-glm-rules: the blocked command is refused and journaled as rules:r-probe-block on a route the dialect did not claim', lastToolResult(nonGlmRules.steps[1])?.isError === true && (lastToolResult(nonGlmRules.steps[1])?.text ?? '').includes('Rule r-probe-block "Probe word"') && rulesRecordOf(nonGlmRulesRecords, 'rules:r-probe-block')?.scope === 'other' && rulesRecordOf(nonGlmRulesRecords, 'rules:r-probe-block').tool === 'pwsh', lastToolResult(nonGlmRules.steps[1])?.text?.slice(0, 160) ?? 'no result'],
+  ['non-glm-rules: a file tool writing into the project\'s .llm/rules/ is refused by rules:files-only and nothing is written', lastToolResult(nonGlmRules.steps[2])?.isError === true && (lastToolResult(nonGlmRules.steps[2])?.text ?? '').includes('Rule rules:files-only') && !stateWritten && rulesRecordOf(nonGlmRulesRecords, 'rules:files-only')?.scope === 'other', lastToolResult(nonGlmRules.steps[2])?.text?.slice(0, 160) ?? 'no result'],
+  ['non-glm-rules: rules_show, in the real runtime, lists the rules in force for the caller, the signals and the peak mode', lastToolResult(nonGlmRules.steps[3])?.isError !== true && /^Rules board of ws\./.test(lastToolResult(nonGlmRules.steps[3])?.text ?? '') && /\] r-probe-block: /.test(lastToolResult(nonGlmRules.steps[3])?.text ?? '') && /\] r-probe-note: /.test(lastToolResult(nonGlmRules.steps[3])?.text ?? '') && (lastToolResult(nonGlmRules.steps[3])?.text ?? '').includes('Peak mode:'), lastToolResult(nonGlmRules.steps[3])?.text?.slice(0, 200) ?? 'no result'],
+  ['non-glm-rules: a command no rule names runs, the request carries no reminder from the board, and /glm-status lists the row in effect', lastToolResult(nonGlmRules.steps[4])?.isError !== true && (lastToolResult(nonGlmRules.steps[4])?.text ?? '').includes('rules-probe-allowed') && boardMessages(nonGlmRules).length === 0 && nonGlmRulesHealth.rules?.status === ACTED && !existsSync(join(runDir, 'non-glm-rules', 'dsh-home', 'glm-hourness', 'rules')), healthLine(nonGlmRulesHealth, 'rules') + ` (${nonGlmRulesHealth.rules?.reason ?? ''})`],
   ['rules-peak-hourness: the row is in effect without the pricing service (a supported combination) and the main agent\'s tool call ran', aloneHealth.rules?.status === ACTED && aloneHealth.rules.reason.includes('读不出是不是高峰') && lastToolResult(rulesPeakAlone.steps[1])?.isError !== true && !stderrOf('rules-peak-hourness').includes('dsh-glm-hourness/rules'), `${healthLine(aloneHealth, 'rules')} (${aloneHealth.rules?.reason ?? ''})`],
   ...designChecks(),
   ['non-glm boot: the runtime reached the probe provider', plainFirst !== undefined, `exit ${plain.status}, ${plain.steps.length} step(s)`],

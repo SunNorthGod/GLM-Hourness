@@ -759,7 +759,7 @@ guard 跟着编排层包 `dsh-hourness` 走：包启用时，所有路由、所�
 
 - 拦截不看路由。宿主本来就不按路由分发：agent 循环把模型发出的每个调用连同发起它的 agent 交给工具服务（rc.3 `dsh-agent-loop` lib/index.js:506–517、582），`tools/pre-execute` 瀑布跑在按作用域过滤的载体上，没有作用域标记的宿主层监听器收到每个 agent 的调用（`dsh-tools` lib/index.js:3320–3321，`dsh-scope` lib/index.js:327–335）。guard 行与图文件门禁（§2.7）判定每次根调用；带 `parent` 的传输层子调用放行。没有 agent、或会话还没有请求头的根调用同样判定；rc.3 里模型发出的调用都带 agent，并且在请求头写入之后才执行，所以今天的组合里遇不到这两种〔推断〕。
 - 路由只决定两件事。一是纠偏与声明里的工具名（§6.1）：方言接管这个 agent 在这条路由上的请求时用方言名，否则用原生名。二是违规与影子记录里的来源（`src/guard/origin.ts`）：`scope` 为 `dialect`（方言接管）或 `other`（GLM 路由但方言不在，或其他模型），`route` 是发起调用那一步的 provider 与 model（会话请求头 `src/shared/route.ts` `sessionRoute`：agent 循环在每步调用模型之前写请求头，`dsh-agent-loop` lib/index.js:1226，`Session.requestHeader()` 折叠这些事件，`dsh-session` lib/index.js:1612；会话没有请求头时省略）。第 7 步之前写下的记录没有 `scope`，按 `dialect` 计：那时只有 GLM 路由被判定。编排层不再有模型族判定。
-- 声明：每个 agent 的每次组装都在最后加 `glm:guard` 一节（§6.1）。宿主只渲染节的文本、不渲染节名（`dsh-system-prompt` lib/index.js:117–118），所以名字照旧。非 GLM 路由上的这一节与方言不在时 GLM 路由上的逐字相同。升级前已开始的 DeepSeek 会话在下一步多出这一节：DeepSeek 官方模型声明 `systemPromptUpdate: "in-history"`（`dsh-llm-deepseek` lib/index.js:19–25），提示词的变化作为历史里的系统更新发出（同文件 :1677），前缀缓存不断〔推断：agent 循环怎样算出变化（`dsh-agent-loop` lib/index.js:1057–1058）没有读〕。
+- 声明：每个 agent 的每次组装都在最后加 `glm:guard` 一节（§6.1）。宿主只渲染节的文本、不渲染节名（`dsh-system-prompt` lib/index.js:117–118），所以名字照旧。非 GLM 路由上的这一节与方言不在时 GLM 路由上的逐字相同。升级前已开始的 DeepSeek 会话在下一步多出这一节：DeepSeek 官方模型声明 `systemPromptUpdate: "in-history"`（`dsh-llm-deepseek` lib/index.js:19–25），提示词的变化作为历史里的系统更新发出（同文件 :1677），前缀缓存不断〔推断：agent 循环怎样算出变化（`dsh-agent-loop` lib/index.js:1057–1058）没有读〕。规则行启用时（它提供服务 `glmHournessRules`）这一节末尾多一行规则板的声明（`RULES_DECLARATION`，§16.11），行卸载时随之消失；这一行不随规则变化，不影响缓存。
 - 行健康：每次判定都报「门禁生效 …」，不再有「非 GLM 路由，门禁不介入」。
 - 误伤怎样看：file-tools-only 的探测按 GLM 与 ZCode 的习惯调过，在其他模型上的误伤率还没有数据。晨报把 `scope: other` 的拒绝与影子记录另行计数（「违规 file-tools-only（其他路由） × n」），人看着这组数决定要不要调整规则。
 - 不装编排层包时：拦截与声明只来自 guard 行、图行注册的图文件门禁，以及 guard 行里的影子兜底，三者都在 `dsh-hourness`；GLM 包没有 `tools/pre-execute` 监听器，也不加规则节。人在插件管理器里单独禁用 `guard` 行是行级的选择，图文件门禁照旧跟着图行走。
@@ -1166,7 +1166,7 @@ LLM 不讲人话，多半是默认在向评审汇报，想显得周全。做法�
 | 小改动简报的简化形态 | M7 设计 |
 | 审查 agent 的模型档位 | M7 设计 |
 
-## 16. 规则板（最小一片）〔已实现 2026-10-30，L2、L3；行默认禁用，桌面版首轮验收未做；纯核心 §16.8 已实现 2026-10-31，L2，还没有行去调用；写入引擎的操作 §16.9 已实现 2026-11-01，L2，调用方只有测试；`checkCall` 与命令行 §16.10 已实现 2026-11-01，L2，调用方只有命令行与测试〕
+## 16. 规则板（最小一片）〔已实现 2026-10-30，L2、L3；行默认禁用，桌面版首轮验收未做；纯核心 §16.8 已实现 2026-10-31，L2，调用方是 §16.10 与 §16.11；写入引擎的操作 §16.9 已实现 2026-11-01，L2，调用方是 `/rules` 与测试；`checkCall` 与命令行 §16.10 已实现 2026-11-01，L2，调用方只有命令行与测试；工具调用门、`rules_show` 与完整的 `/rules` §16.11 已实现 2026-11-01，L2、L3，行仍默认禁用〕
 
 完整设计是 `.agents/tasks/rules/design.md`（不入库，版本 0.10，评审通过、人放行）。自举之前只做其中的一片（项目图 `d-rules-peak-slice`，设计 §16.1）：每个项目一个由人选的高峰模式档位，加少做档的并发上限，经一个服务交出。这一片是整块设计的子集：整块规则板以后往同一批文件里添加，不改写、不删除这一片写下的任何东西。能这样，靠存下来的形状有一条规矩（§16.3）：为空的集合不出现在存档、流水记录的摘要和规则文件里，整块规则板添上它的集合之后，这一片写下的记录照样核对得上。发给模型的高峰提醒与它在各档下的措辞见 §11.4（GLM 通道包），规则板不碰。
 
@@ -1175,7 +1175,7 @@ LLM 不讲人话，多半是默认在向评审汇报，想显得周全。做法�
 - 三档：无影响（`inform`，只提醒）、少做（`reduce`，出厂默认，`d-peak-mode`）、不做（`stop`）。档位按项目存，只有人能改（§16.4）。三档只在 GLM 高峰时段里起作用：此刻是不是高峰读 GLM 包的计价服务（`glmHournessPricing.peak`，`src/shared/pricing.ts`），规则板不带时段表。读不出（没有计价服务、`peak` 抛错或返回的不是布尔值）时三档都不起作用，`PeakModeState.peak` 为 `undefined`，不带上限与挡住的标记；同一条警告每个宿主进程只出一次。
 - 少做的并发上限：同一时间在跑的、经 `dispatch_task` 派出且模型为 GLM 的子 agent 至多 1 个（写任务、审查、检查都算），常量 `PEAK_REDUCE_GLM_WORKERS`（现在是 1；少做的说明文字 `PEAK_LEVEL_WORDS.reduce.half` 和 `/rules peak 少做` 的回话里的数字由它算出，不另写，`tests/peak-mode.spec.ts` 钉住文字里的数与常量相同）。数归规则板，执行归派活（M7）：派活在派模型为 GLM 的子 agent 之前读一次 `stateFor(<主 Agent 的会话>)?.glmWorkerCap`，有值就照它数在跑的 GLM 子 agent，没有就照自己的槽位；派活不加别的高峰逻辑。这一片不含派活，所以上限现在只是服务里的一个数。
 - `glmWorkerCap` 只在 `peak === true` 且档位为少做时有；`peakHoldFor` 只在高峰里、结束时刻读得出、档位为少做或不做时有值（`{level, until}`，与同一时刻 `stateFor` 的档位和结束时刻一致）。两者由 `src/shared/peak-mode.ts` 的 `peakModeState` 与 `peakHoldOf` 一处算出。这一片没有等待单，不做档的 `peakHoldFor` 对所有会话一视同仁（整块规则板的「本次高峰照常做」只改 GLM 子 agent 的单）。
-- 主 Agent 不受高峰模式影响（`d-main-agent-peak-exempt`）：行只监听 `agent/created` 与 `session/disposed`，不注册工具调用门，不在 `agent/pre-step` 里动消息，不暂停 goal；`peakHoldFor` 有值说的是它派 GLM 子 agent 与跑重活脚本的那部分活被挡着，规则板自己什么都不拦。这一片不排队、不暂停，三档下没有任何调用被拦。
+- 主 Agent 不受高峰模式影响（`d-main-agent-peak-exempt`）：行不在 `agent/pre-step` 里动消息，不暂停 goal；`peakHoldFor` 有值说的是它派 GLM 子 agent 与跑重活脚本的那部分活被挡着，规则板自己什么都不拦。行注册了工具调用门（§16.11），但三档的附属条目只排队、而排队这一版不执行（没有等待单），不暂停任何 goal：三档下没有任何调用因为档位被拦。
 
 ### 16.2 服务
 
@@ -1188,6 +1188,8 @@ LLM 不讲人话，多半是默认在向评审汇报，想显得周全。做法�
 | `peakHoldFor(sessionId)` | 见 §16.1 |
 
 会话的工作目录来自 `agent/created` 与 `/rules` 的调用参数，会话结束（`session/disposed`）时忘掉；登记里没有的会话再问宿主的 `agents` 服务（行在运行中途启用时仍然答得出）。读它的各方在用的那一刻读一次，不缓存：档位改了，下一次派活和下一条提醒就按新的走。行卸载时服务随 `ctx` 撤回，读的一方按读不出处理。
+
+规则行另提供 `glmHournessRules`（`src/rules/service.ts`，契约与读取函数 `rulesService(ctx, problem)` 同样不导入规则行）：现在只有一个成员 `declaration`，guard 读到它就在 `glm:guard` 节末尾多写这一行（§16.11）。
 
 ### 16.3 存放
 
@@ -1219,25 +1221,25 @@ LLM 不讲人话，多半是默认在向评审汇报，想显得周全。做法�
 
 ### 16.4 命令
 
-`/rules peak [无影响|少做|不做]`（也认 `inform`、`reduce`、`stop`），由 `glm-hourness/rules` 行注册；斜杠命令只有人能发，所以身份固定为 `human`。不带档位回现在的档位、来源（出厂默认，或「你在 HH:MM 选的」）、此刻是不是高峰与到几点，后面接三档的说明（`peakModeIntro`）；带档位就改，回一行并说明这一版只记档位、没有排队和暂停。其他子命令回用法。回话里的时刻按本机时区。人在对话里让主 Agent 改档位的路（`rules_propose` 与 M3 的 `propose_to_human`、`record_human_answer`）依赖 M3 第 6 步，不在这一片里；命令是现在唯一的改法，所以 `peakModeIntro` 只写命令。
+`/rules`（子命令的全表在 §16.11），由 `glm-hourness/rules` 行注册；斜杠命令只有人能发，所以身份固定为 `human`。`peak [无影响|少做|不做]`（也认 `inform`、`reduce`、`stop`）：不带档位回现在的档位、来源（出厂默认，或「你在 HH:MM 选的」）、此刻是不是高峰与到几点，后面接三档的说明（`peakModeIntro`）；带档位就改，回一行并说明这一版只记档位、没有排队和暂停。其他子命令（`show`、`lift`、`delete`、`on`、`off`、`set`、`clear`、`let`、`cancel`、`recovery`）各写自己的操作，别的字回用法。回话里的时刻按本机时区。人在对话里让主 Agent 改档位的路（`rules_propose` 与 M3 的 `propose_to_human`、`record_human_answer`）依赖 M3 第 6 步，不在这里；命令是现在唯一的改法，所以 `peakModeIntro` 只写命令。
 
 ### 16.5 行健康与降级
 
-行 `rules` 在 `HOURNESS_ROWS` 里，按会话上报（`src/rules/row-health.ts`）：项目名、档位与来源、此刻是不是高峰（读不出时写原因，不降级：只装编排层包是支持的组合）。部分生效的情形：`/rules` 没注册上、服务没提供上、会话事件没注册上、会话不在项目里、存档与流水对不上或有没生效的记录、仓库里的规则文件读不出或被改过、读状态失败。`config.dir` 不是路径时未生效。激活期不抛错。读状态失败只让这一次读不出，不影响别的会话。
+行 `rules` 在 `HOURNESS_ROWS` 里，按会话上报（`src/rules/row-health.ts`）：项目名、档位与来源、此刻是不是高峰（读不出时写原因，不降级：只装编排层包是支持的组合）。部分生效的情形：`/rules` 或 `rules_show` 没注册上、两个服务（`glmHournessPeakMode`、`glmHournessRules`）之一没提供上、会话事件没注册上、会话不在项目里、门读状态失败或判定出错（只那一次调用的上报，下一次能读的调用换回正常）、存档与流水对不上或有没生效的记录、仓库里的规则文件读不出或被改过、读状态失败。`config.dir` 不是路径、工具调用的门装不上时未生效。激活期不抛错。读状态失败只让这一次读不出，不影响别的会话。
 
-出路：存档被改过（`snapshot-modified`）、流水被截短（`journal-shorter`）和有没生效的记录这三种，行从此每个会话都报未生效，因为这一片没有 `/rules recovery`，状态里的 `recovered` 与 `unresolved` 只有后来的恢复记录能改。三条消息的结尾写同一个出路：要清掉，删掉项目的 `.llm/rules/`，规则板照仓库里的规则文件重新开始，下一个会话就不再报（`tests/rules-row.spec.ts`）。选这一条而不是「状态一致了就清掉原因」：前者只是消息文字，后者要新增一种清除记录和它的触发条件，而整块规则板的 `/rules recovery` 会取代两者。重建过且没有损失的几种（存档没跟上、存档坏了、流水末行没写完）只说明，不降级，也不用清。
+出路：有没生效的记录时，行报部分生效，消息写出编号和命令「`/rules recovery <编号> 照改` 或 `/rules recovery <编号> 忽略`」（§16.11）；处理完，下一次读状态时不再报。存档被改过（`snapshot-modified`）和流水被截短（`journal-shorter`）这两种没有清除它们的操作：行从此每个会话都报部分生效，消息的结尾写同一个出路：要清掉，删掉项目的 `.llm/rules/`，规则板照仓库里的规则文件重新开始，下一个会话就不再报（`tests/rules-row.spec.ts`）。选这一条而不是「状态一致了就清掉原因」：前者只是消息文字，后者要新增一种清除记录和它的触发条件。重建过且没有损失的几种（存档没跟上、存档坏了、流水末行没写完）只说明，不降级，也不用清。
 
 ### 16.6 这一片没有做的
 
-整块规则板的其余部分，写下的代码按它们能直接加进来的形状留着，没有留空桩：规则页与面板、人加的规则与检测器、脚本与脚本执行器、工具调用门里的拦截、等待单与排队、违规流水的新记录、指标事件（`rules.check` 的形状与可注入的出口已有，§16.10；其余事件与接收方没有）、`rules_show` 与 `rules_propose` 两个工具（`rules_show` 的文字已有，§16.10）、调用判定的行（默认规则 `GLM_PEAK_PRICING` 与按档位启用的附属条目已作为纯代码在库里，§16.8，没有门去判定它们，所以今天没有调用被它们挡）、`openRulesBoard` 的 `projectDir` 参数（设计 §7.4 有；没有调用方给它值，数据目录服务还没有 `projectDirOf`，运行时目录固定为 `<项目根>/.llm/rules/`，`.llm/` 的忽略条目也按项目根算；M5 的项目目录服务合入、规则行要按它放运行时目录时再加，两处一起改）、`/rules recovery` 命令（它调用的引擎操作 `recovery-accept`、`recovery-dismiss`、`repo-adopt`、`repo-restore` 已在 §16.9；命令随规则行，在那之前没有生效的记录与被改过的规则文件只能列出：要清掉，删 `.llm/rules/` 让规则板照仓库里的文件重新开始，或再选一次档位让它按流水重写文件）、宿主心跳的写入（读已有，§16.9、§16.10）与 `hits.json`、`RulesService`（`glmHournessRules`）、对话里改档位的提议一路、高峰结束时叫醒主 Agent（循环板）与高峰里停住自动推进（M7）。
+整块规则板的其余部分，写下的代码按它们能直接加进来的形状留着，没有留空桩：规则页与面板、人加的规则与检测器、脚本与脚本执行器、等待单与排队（门已在，§16.11，排队的规则这一版不执行）、指标事件（`rules.check` 的形状与可注入的出口已有，§16.10；其余事件与接收方没有）、`rules_propose` 工具、默认规则 `GLM_PEAK_PRICING` 与按档位启用的附属条目（已作为纯代码在库里，§16.8，门判定它们，但它们只排队，所以今天没有调用被它们挡）、`openRulesBoard` 的 `projectDir` 参数（设计 §7.4 有；没有调用方给它值，数据目录服务还没有 `projectDirOf`，运行时目录固定为 `<项目根>/.llm/rules/`，`.llm/` 的忽略条目也按项目根算；M5 的项目目录服务合入、规则行要按它放运行时目录时再加，两处一起改）、宿主心跳的写入（读已有，§16.9、§16.10）与 `hits.json`、`RulesService` 的 `attachable`、`acceptProposal`、`staleEntries`（`glmHournessRules` 只有 `declaration`，§16.11）、对话里改档位的提议一路、高峰结束时叫醒主 Agent（循环板）与高峰里停住自动推进（M7）。
 
 ### 16.7 验证
 
-L2：`tests/peak-mode.spec.ts`（共用契约：上限与挡住的标记、读取函数、文字与少做那句里的数、`nextPeakChange`）、`tests/rules-model.spec.ts`（`effectivePeakMode`、序列化、规则文件、状态校验、完整形状的每个集合、规则文件逐项核对、`diffRepo`、`adoptRepo`、`unapprovedScripts`）、`tests/rules-store.spec.ts`（设计 §7.5 表里每一种情形、性质测试、锁、两个进程同时写、规则文件的各种情形与 git 操作、为空的集合不存、最小一片写下的文件按字节放进来仍核对得上、`changesBetween`、第一次写之前 `.git/info/exclude` 里的 `.llm/`）、`tests/rules-repo.spec.ts`（真实 git 仓库里设计 §7.5 末表的每一行：新克隆、`git checkout` 旧版、手改、`MERGE_HEAD` 期间只写流水与快照、`repo-adopt`、`repo-restore`、两者的崩溃点；没有 git 时整个文件跳过并写明原因）、`tests/rules-engine.spec.ts`（身份表的每一格、请求校验、修订号、写入的产物、`busy` 与 `io`、项目根）、`tests/rules-ops.spec.ts`（每个操作：对的身份写一条记录、重放得到状态、做不了的请求得一句话且不写任何文件；清理与到期的每一种、重放不要时钟和心跳目录；恢复的照改与忽略）、`tests/rules-property.spec.ts`（§16.9 的性质测试，5 个种子）、`tests/rules-check.spec.ts`（`checkCall` 与命令行，§16.10）、`tests/rules-metrics.spec.ts`（指标事件的出口）、`tests/rules-row.spec.ts`（假宿主上的行：命令、服务、健康、恢复之后降级的出路、不挡任何调用、激活期降级、补丁里默认禁用）。L3：`npm run probe` 的场景 `rules-peak`（GLM 与编排层两个包，平移到周三 15:00 UTC+8 的探针时钟，临时 git 工作区：出厂档位、`/rules peak 不做`、`/rules peak 无影响`，每步经真实的 `/rules` 处理函数与服务读回状态）与 `rules-peak-hourness`（只装编排层包：没有计价服务，没有上限与挡住的标记）。L4（桌面版重启后核对）未做，行保持禁用。纯核心（§16.8）的 L2 是 `tests/rules-model.spec.ts`（规则的校验）、`tests/rules-judge.spec.ts`（事件、有效值、条件、判定、合并、未批准的脚本）、`tests/rules-builtin.spec.ts`（默认规则、三档、目录）和 `tests/contracts.spec.ts` 里的目录一条。
+L2：`tests/peak-mode.spec.ts`（共用契约：上限与挡住的标记、读取函数、文字与少做那句里的数、`nextPeakChange`）、`tests/rules-model.spec.ts`（`effectivePeakMode`、序列化、规则文件、状态校验、完整形状的每个集合、规则文件逐项核对、`diffRepo`、`adoptRepo`、`unapprovedScripts`）、`tests/rules-store.spec.ts`（设计 §7.5 表里每一种情形、性质测试、锁、两个进程同时写、规则文件的各种情形与 git 操作、为空的集合不存、最小一片写下的文件按字节放进来仍核对得上、`changesBetween`、第一次写之前 `.git/info/exclude` 里的 `.llm/`）、`tests/rules-repo.spec.ts`（真实 git 仓库里设计 §7.5 末表的每一行：新克隆、`git checkout` 旧版、手改、`MERGE_HEAD` 期间只写流水与快照、`repo-adopt`、`repo-restore`、两者的崩溃点；没有 git 时整个文件跳过并写明原因）、`tests/rules-engine.spec.ts`（身份表的每一格、请求校验、修订号、写入的产物、`busy` 与 `io`、项目根）、`tests/rules-ops.spec.ts`（每个操作：对的身份写一条记录、重放得到状态、做不了的请求得一句话且不写任何文件；清理与到期的每一种、重放不要时钟和心跳目录；恢复的照改与忽略）、`tests/rules-property.spec.ts`（§16.9 的性质测试，5 个种子）、`tests/rules-check.spec.ts`（`checkCall` 与命令行，§16.10）、`tests/rules-metrics.spec.ts`（指标事件的出口）、`tests/rules-row.spec.ts`（假宿主上的行：命令与各子命令、服务、健康、恢复之后降级的出路、三档下主 Agent 的调用照常执行、激活期降级、补丁里默认禁用）、`tests/rules-gate.spec.ts` 与 `tests/rules-host.ts`（门与 `rules_show`，§16.11）。L3：`npm run probe` 的场景 `glm-rules`、`non-glm-rules`（§16.11）与 `rules-peak`（GLM 与编排层两个包，平移到周三 15:00 UTC+8 的探针时钟，临时 git 工作区：出厂档位、`/rules peak 不做`、`/rules peak 无影响`，每步经真实的 `/rules` 处理函数与服务读回状态）与 `rules-peak-hourness`（只装编排层包：没有计价服务，没有上限与挡住的标记）。L4（桌面版重启后核对）未做，行保持禁用。纯核心（§16.8）的 L2 是 `tests/rules-model.spec.ts`（规则的校验）、`tests/rules-judge.spec.ts`（事件、有效值、条件、判定、合并、未批准的脚本）、`tests/rules-builtin.spec.ts`（默认规则、三档、目录）和 `tests/contracts.spec.ts` 里的目录一条。
 
-### 16.8 纯核心（`src/rules/events.ts`、`model.ts`、`judge.ts`、`signals.ts`、`builtin.ts`，`src/guard/catalog.ts`）〔已实现 2026-10-31，L2；没有行、工具或命令，调用方只有测试〕
+### 16.8 纯核心（`src/rules/events.ts`、`model.ts`、`judge.ts`、`signals.ts`、`builtin.ts`，`src/guard/catalog.ts`）〔已实现 2026-10-31，L2；调用方是 `checkCall`（§16.10）与规则行的门、`rules_show`（§16.11）〕
 
-设计 §2.2 至 §2.4、§3、§10.1、§12 的纯函数部分。规则行接上它的是门（`tools/pre-execute`）、`rules_show` 与 `checkCall`，那几步还没有做；这一节只写库里已有的东西。这几个文件只用公共库和 `src/loops/trigger.ts`（以及图的 `schema.ts` 里的阶段名和节点 id 格式），不导入 Node 内置模块，不读时钟、文件和环境：判定的时刻、信号和调用的字段都由调用方给。
+设计 §2.2 至 §2.4、§3、§10.1、§12 的纯函数部分。规则行接上它的是门（`tools/pre-execute`）、`rules_show` 与 `checkCall`（§16.10、§16.11）；这一节只写这些纯函数。这几个文件只用公共库和 `src/loops/trigger.ts`（以及图的 `schema.ts` 里的阶段名和节点 id 格式），不导入 Node 内置模块，不读时钟、文件和环境：判定的时刻、信号和调用的字段都由调用方给。
 
 - 四个事件（`events.ts`）：`gate.tool-call`、`gate.dispatch`、`gate.trunk-advance` 要拦，`rules.step` 不拦、只给只告知的规则。声明用循环板的 `LoopEventDeclaration`，合成 `RULES_EVENT_TABLE`；`gate.trunk-advance` 带 `gateOnErrorDefault: 'block'`，其余不带。`gateEvents(call)` 一处造出一次调用推出的事件：`gate.tool-call` 总有，调用方说它是派活就另有 `gate.dispatch`（没写被派的模型或任务时 `targetModel`、`task` 为空串），说它让主干前进就另有 `gate.trunk-advance`；命令文本取前 8 KiB，参数副本至多 64 KiB（多了截成字符串并带 `argsTruncated: true`，序列化不了的不带），调用读不出的字段（角色、模型、会话）不进载荷，不猜。`stepEvent` 造 `rules.step`；`modelId` 把请求头的路线写成 `提供方/模型`，没有 provider 时 provider 段为空，没有模型时没有值。哪个工具名算派活、什么算主干前进，由调用方在规则行里定。
 - 规则的形状（`model.ts`）：`Rule` 是循环板的 `when` 加 `filter`，再加规则板自己的 `condition`（信号、时钟、阶段的三值组合）、`onUnknown`、动作、期限、理由；动作是 `block`、`queue`、`record`、`inform` 四种执行方式之一，或人看过原文同意的脚本（`ScriptAction`）。`BuiltinRule` 是代码里的条目：范围 `builtin`，没有脚本，另有 `toldBy`、`partOf`、`enabledBy`、`ticketPerSession` 四个只有代码能用的字段。`effectOf` 取动作的执行方式，脚本没有。
@@ -1310,6 +1312,42 @@ L2：`tests/peak-mode.spec.ts`（共用契约：上限与挡住的标记、读�
 **命令行（`cli.ts`）。** `npm run -s rules -- show|check`，选项与退出码见 `DEVELOPMENT.md` §13。`show` 的文字由 `show.ts` 的 `showText` 写：高峰模式、`glm-peak`、生效的规则、开着的等待单、项目的信号；`rules_show` 工具用同一个格式化函数，按会话筛规则与高峰一行（设计 §6.4）随工具加。`propose` 子命令没有建（同意的路还没有）。
 
 **心跳的读侧（`heartbeat.ts`）。** `readHeartbeats` 读 `.llm/rules/hosts/*.json`，`liveHeartbeats` 取 45 秒内的、新的在前，`hostPeak` 按上面的顺序挑 `glm-peak`。`HEARTBEAT_FRESH_MS` 也是 `plan.ts` 判宿主还在不在的数。心跳的写入随后。
+### 16.11 工具调用门、`rules_show` 与完整的 `/rules`（`src/rules/gate.ts`、`caller.ts`、`tool.ts`、`commands.ts`、`listing.ts`、`table.ts`、`service.ts`、`src/guard/directory-writes.ts`）〔已实现 2026-11-01，L2、L3；行默认禁用，桌面版首轮验收未做〕
+
+设计 §6.1、§6.2、§6.4、§9.1（`rules_show` 的文字）、§9.2、§10.1、§10.3、§11。行的 `inject` 是 `['tools', 'commands']`（补丁里同写）。
+
+**门。** 在 `tools/pre-execute` 上以 `{prepend: true}` 注册，最外层。每次调用：
+
+1. 先 `await next()`，内层不是 `allow` 就原样返回：guard、图文件门禁先判，被它们拒绝的调用不进规则板，也不写规则板的流水。会话没有工作目录、不在项目里的调用也放行。
+2. 规则文件门禁 `rules:files-only`（下一段），不读状态。
+3. 推出事件、构造输入：`gateEvents`（`gate.tool-call` 每次都有；原生名在 `DISPATCH_TOOL_NAMES`（`subagent`、`subagent_fork`）里时另有 `gate.dispatch`；`gate.trunk-advance` 声明了、没有谁交，不推出）、`judgeInput`、`judge` 和规则表 `tableOf`（人设的规则按 id 排，再加此刻档位启用的代码条目）与 `checkCall` 是同一批函数。`glm-peak` 当场读计价服务（`clockReadings`，来源 `clock`），读不出时是未知并带原因，三种原因（没有计价服务、形状不对、`peak` 抛错）各不相同，行健康不降级。`writes` 取文件工具的目标与 shell 重定向的目标，会话工作区之下的写成相对工作区的形式（`describeCall` 的 `cwd` 参数）。原生 `subagent` 的调用带 `provider` 与 `model` 时，`targetModel` 是 `provider/model`，不带时为空串（按读不出处理）。
+4. 判定的结果：拦截（规则 `block`，或脚本规则的失败做法是拦下）得 `deny`，理由是 `denialText` 的四段式，与 `checkCall` 对同一批规则和信号给的文字逐字相同；只记录得 `allow`，另写一行 `mode: 'record'`；只告知不改判定。**排队的规则这一版不执行**（等待单随下一步）：调用照常执行，不写流水，`rules_show` 在这样的规则后面写「Not enforced yet: a call this rule would defer runs.」。
+5. 读状态或判定抛错时放行，行健康降级并写原因（「读规则板的状态失败：…，这次调用放行」「规则板判定出错：…，这次调用放行」）；下一次能读的调用把这一条上报换回正常的。门不抛错。
+
+**规则文件门禁。** 文件工具（`write`、`edit`、除 `view` 外的 `str_replace_editor`）的目标，以及 file-tools-only 判为写文件、又点了名这些目录的 shell 命令，落在三处就拒绝：规则目录（行配置 `dir`，默认 `<项目根>/docs/rules/`）、本仓库每个工作树里的同一相对路径、`<项目根>/.llm/rules/`。直接调用和带 `parent` 的子调用一样判，读不拦。工作树的名单由 `worktreesOf`（`src/data/project-root.ts`）从 git 目录的 `worktrees/*/gitdir` 读出，与 `git worktree list` 给的相同，不起进程；每个项目根缓存 60 秒。路径与命令的判法在 `src/guard/directory-writes.ts`，图文件门禁（`graph-files.ts`）用同一个函数。拒绝文字四段，违规流水里 `rule` 是 `rules:files-only`。
+
+**违规流水。** 规则板的拦截和只记录的调用写进 guard 写的那一份（`<项目目录>/audit/violations.jsonl`，行配置 `home`，否则数据目录服务的 `projectHome`），一行一次：`{at, rule: 'rules:<规则 id>', mode: 'enforce' | 'record', effect, tool, agentId, sessionId, scope, route, signals, correction?}`；`tool` 是模型调用时的名字，`signals` 是这条规则读到的信号值（读不出为 `null`）；只记录的行没有 `correction`。写流水不等：调用不等写完（同 guard），写失败各告警一次。晨报把 `mode: 'enforce'` 数作违规，`record` 不数（`src/workflow/morning-report.ts`）；`ViolationRecord.mode`、`RecordedCall` 在 `src/guard/index.ts`。
+
+**调用者（`caller.ts`）。** 角色：会话头 `origin: 'subagent'` 为 `subagent`；否则读投影 `hournessMainAgent`（`sessionProjections.stateOf`，交给 `mainAgentActive`）为 `main-agent`，缺值、服务不在、形状不对读作 `root`，投影读时抛错则角色读不出（带原因，问角色的规则不命中）。模型：会话最新请求头的 `provider/model`，没有请求头时读不出。会话：`session.id`。设计行的服务 `glmHournessDesign` 还没有，所以 `/wish` 之后的第一步可能读作 `root`。
+
+**`rules_show`（`tool.ts`）。** 无参数；输出 `{ok, text}`。列出：对调用者生效的规则（人设的规则里，问角色、模型、会话的筛选与调用者不合的不列，问的字段读不出的不列并写一句原因；会话规则只列本会话的）、有计价服务时的默认规则（高峰里写「GLM peak hours until HH:MM: …」，否则写价格的平铺陈述）、此刻档位启用的代码条目、调用者自己开着的等待单、项目的信号及来源、`glm-peak` 的读数、档位、状态读法的说明，一条不截；列了代码条目时末尾一句说它们来自「项目编排」（`pluginLabel`）、人用 `/rules peak` 改档位。文字与 `npm run -s rules -- show` 同一个格式化函数（`show.ts`）。没有工作目录或不在项目里的会话得一句话。`RULES_TOOL_NAMES` 里的工具不被「每会话一张单」的条目排队。
+
+**`/rules`（`commands.ts`）。** 子命令（`input.hint` 与回错的用法同一份）：`show`；`peak [档]`；`lift <规则>`（`rule-lift`）、`delete <规则或开关>`（`r-` 或 `builtin:` 开头为 `rule-delete`，其余为 `signal-delete`）；`on <开关> [时长]`、`off <开关>`、`set <信号> <值> [时长]`（`signal-manual`，值认 true、false、数，其余是字：时长 `30m`、`2h`、`1d`，至多 7 天）、`clear <信号>`（`signal-clear`）；`let <单号>`（`ticket-let-once`）、`cancel <单号>`（`ticket-cancel`）；`recovery <编号…> 照改|忽略`（`recovery-accept`、`recovery-dismiss`，也认 `accept`、`dismiss`，几个编号用逗号隔开）、`recovery 文件 照改|忽略`（`repo-adopt`、`repo-restore`，也认 `file`）。身份固定为 `human`。成功回一行中文，被引擎拒绝回引擎给的那一句（加它的 `hint`），不写任何文件。`/rules show` 用中文写这个项目的档位、生效的规则、在等的工作和信号。人加规则、定义开关、接受或驳回提议的子命令不在（提议一路没有建）：这些字当作未知子命令，回用法。
+
+**服务 `glmHournessRules`（`service.ts`）。** 现在的成员只有 `declaration`（一行说明），guard 在它的 `glm:guard` 节末尾多写这一行（`RULES_DECLARATION`，设计 §6.4 的原文）；服务不在或形状不对时不写，形状不对另告警一次（每个 guard 行一次）。`attachable`、`acceptProposal`、`staleEntries` 随提议一路加。
+
+**行健康。** 门装不上（`tools/pre-execute` 注册抛错）时行未生效，写「工具调用的门没装上，这一行不执行任何规则」；`rules_show` 或 `/rules` 注册失败、两个服务之一没提供上、会话事件没注册上时部分生效。每次判定的调用上报本会话的状态，规则数大于零时多一句「N 条你设的规则生效」。没有生效的记录这一项改为指向 `/rules recovery <编号> 照改 或 忽略`（§16.5）。
+
+**设计里没写死或与设计不同的地方。**
+- 排队的规则不执行，等待单、唤醒、会话结束的转交随 R4b；高峰不做的暂停与恢复、主 Agent 的高峰一行随 R4c。声明那一行（`RULES_DECLARATION`）照设计写，说到「ticket」，这一版还没有。
+- 拒绝文字（`denialText`，§16.10）的「Exception」一段提到 `rules_propose`，这个工具要等提议一路；`rules:files-only` 的文字不提它，只说告诉人、人用 `/rules` 改。
+- 工作树名单读 `.git/worktrees`，不起 `git worktree list`：`src/rules/` 不导入子进程模块（§16.10），读文件得到的名单相同。
+- 违规流水的 `mode` 取设计的 `enforce`、`record`（设计的 `late` 随脚本）；晨报因此改了一行，数 `enforce`。
+- `rules_show` 没有加进 GLM 工具搜索的常驻名单（`ORCHESTRATION_RESIDENT_TOOLS`）：GLM 会话里它是延后加载的工具；要不要常驻等桌面版验收时定。
+- `hits.json` 的命中计数、宿主心跳的写入、每步提醒和探针里的开关场景随后面的步。
+
+**验证。** L2：`tests/rules-gate.spec.ts`（门：先 `next()`、拦截与文字、与 `checkCall` 逐字相同、只记录、事件、目标模型、写路径、角色与模型与会话、规则文件门禁（直接、子调用、工作树、60 秒缓存、shell、行配置的目录、读不出状态时照守）、故障放行并降级、计价服务三种读不出、计价读数每分钟一次、`rules_show` 的各个部分）、`tests/rules-row.spec.ts`（行的注册与撤回、各子命令各写自己的操作、被拒回一行、`recovery`、`show`、激活期降级）、`tests/contracts.spec.ts`（工具名、目录、服务读取函数、guard 声明多一行）、`tests/peak-mode.spec.ts`（`pluginLabel`）、`tests/workflow.spec.ts`（晨报数 `enforce`）。L3：场景 `glm-rules`、`non-glm-rules`（场景工作区是临时 git 仓库，规则文件里预置一条拦命令文本 `rules-probe-blocked` 的规则和一条只告知的规则；被拦的命令不执行、违规流水有 `rules:r-probe-block`，文件工具写规则目录被 `rules:files-only` 拒绝、文件不变，没人点名的命令照常执行，请求里还没有规则板的提醒，`/glm-status` 列出这一行，场景的用户级目录里没有 `rules/`；非 GLM 场景另用真实运行时里的 `rules_show` 读到这两条规则）。
+
 ## 17. 执行层（M7）〔骨架进行中：E0、E1a、E3 已实现，只有纯函数、git 执行器、门禁锁和测试，没有行〕
 M7 的设计是 `.agents/tasks/m7/design.md`（不入库，版本 0.6，评审通过、人放行）。执行层的源码在编排层包的 `src/execute/`，目录登记在 `scripts/packages.mjs` 的 `hourness.src`，`packages/hourness/tsconfig.json` 的 `include` 同步加一项（preflight 比对二者）。骨架按设计 §8.1 的步骤实现：E0、E1a、E3 之后没有行、没有监听器，`cordis.patch.yml` 不变；`glm-hourness/execute` 行从 E4 起出现，默认禁用，E9 验证通过后才启用。
 ### 17.1 写入范围（E0，`src/execute/scope.ts`）
