@@ -167,6 +167,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "S1（A1，m5-1、lessons-1）662ed88 评审 APPROVED，无挡路项；不挡路的一条：appendJournal 的 open(path, \\\"a\\\") 在返回 io 的 try 之外，打开失败时调用会被拒绝，与注释「从不拒绝」不符，带到 S4 处理。重启后各运行已恢复。"
+    },
+    {
+      "at": "2026-11-01T07:53:31.541Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "S2（B1，m5-1、m5-2）在 m5-memory-lessons 上提交为 6e21948（基底 f17e3e6），build、preflight、npm test 退出码 0。门禁查出 S1 的两处缺陷，在 S2 的差异之外修掉：S1 提交因 check:secrets 对历史告警而被改写（662ed88 改为 f17e3e6，改的是一行测试样例）；3340229 让流水在 Windows 上等过创建锁的 EPERM（data-journal 用例偶发失败）。"
     }
   ]
 }

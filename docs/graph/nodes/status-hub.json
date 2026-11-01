@@ -33,6 +33,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "设计 0.1 初稿写好（33,636 字节）：状态条目的形状、各模块只交一次的贡献模型（每模块一个纯函数，同时喂面板的板投影与仿 src/shared/health.ts 的宿主收集器）、按给谁看过滤（hourness_report 只给 Agent；/hourness 与面板给全部）、失效与校验规则、不变量、M6 用量列表的迁移、L2/L3/L4 测试，以及八份设计各自要改的对接表（plain-ui 1.3、M4 0.6、metrics 0.6、M7 0.6 作为周报的主、schedules 0.6、rules 0.10、M6 0.7、M5 0.7）。等独立评审。"
+    },
+    {
+      "at": "2026-11-01T07:53:31.968Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "设计 0.1 第 1 轮复审 CHANGES_REQUESTED（HIGH 2、MEDIUM 1、LOW 3）。HIGH-1：引的是指标 0.6，现稿已是 0.7（落实 d-metrics-ratios-person-only 的那一版），「factsFor 的四个减负数字」不成立（0.7 的 factsFor 只有三个，第四个来自 M7 与图），且没有与已放行的指标板（指标 0.7 §7.6 MetricsBoardView）对齐。HIGH-2：§5 与 §1.4 第 3 条把只给人看的比率放进 /hourness，与指标 0.7 §7.3（只给事实）相悖，有违宪章第 8 条的泄漏风险。MEDIUM-1：「homeLine 必须等于某个条目的 text」这条不变量与已放行的几块板冲突（它们的首页行可能是诊断、过期、归档或额度停摆的说法）。第 2 遍修订接着做。"
     }
   ]
 }

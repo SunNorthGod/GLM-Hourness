@@ -208,6 +208,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "P1 修订完成（版本仍 0.6，被评审稿存为 design-0.6-finish2.md）：问话形状全稿改成 d-ask-three-gates 的一句是非问，编排方的裁定（形状归 M3 的一处模板，接管只引用）写进 §7.3 开头与 §17 新增一行；防改写的摘要由 linesDigest 改为 askDigest（题目 + ask + 记录字段）。M3 的规则名已对着 M3 附录 0.6 核实：proposalLineRefusal 已不存在，改为 askTextRefusal、proposalRecordRefusal、textCoversRecord、proposalTitleRefusal，由 renderAsk 渲染，因此不需要新的请求。P9、P10 已改。§1.4 重数为 41 条、6,598 字；一页稿 1,354 个汉字。等复审。"
+    },
+    {
+      "at": "2026-11-01T07:53:31.754Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "fix3 复核 CHANGES_REQUESTED：P1、P9、P10 全部关闭（design.md 已按裁定改写并引用 M3 的一处模板，§1.4 独立重数仍 41 条、6,598 码元）；新增 MEDIUM P11：草图右栏①②把建议与理由放在问号之后，与 M3 附录 0.6 的 textCoversRecord、§5.9 示范及 §7.3 新规则相悖，修法是把两问重排成建议与理由在问号前、代价在后；另 NIT P12（§0 摘要仍以「四行一致」为主词）。本轮循环的第二遍修订接着做。"
     }
   ]
 }

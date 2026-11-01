@@ -1,0 +1,19 @@
+{
+  "id": "d-docs-tracked-for-handover",
+  "type": "decision",
+  "title": ".agents/tasks 下的文稿纳入 git；docs/HANDOFF.md 写成完整交接状态",
+  "status": "approved",
+  "parent": "orch",
+  "verification": "unverified",
+  "body": "人 2026-11-01 问能否换到别的 IDE 继续（Kiro 积分将用完）。编排方查出 .agents/ 整个被 .gitignore 排除，全部设计、一页放行稿、评审记录只在本机磁盘上；正在跑的编排运行属于 Kiro 的会话，换 IDE 即断，但产出已落盘。人答「行」，同意两件：① 把 .agents/tasks 下的 *.md 与 *.svg 纳入 git（运行产物、日志、一次性脚本与 runs/ 仍不入库），提交 6e2ef46，324 个文件；② docs/HANDOFF.md 升到 0.7，新增第 8 节（编排层各模块的状态与还缺什么）、8.1（自举只缺 M3 合入、规则板收尾与接管、M4、M7 三块实现）与第 9 节（换机器或换 IDE 的接手办法），提交 625dbf2。同时同意换之前让在跑的运行各自把手上这一轮跑完。未决：m3、m3-flow、rules-loops-impl、m5-memory-lessons 四条分支只在本机，没有推到 origin，换机器前要推送，等人定。",
+  "history": [
+    {
+      "at": "2026-11-01T07:53:31.337Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "人同意把设计文稿纳入 git 并先写全交接文档",
+      "relay": "行",
+      "to": "approved"
+    }
+  ]
+}
