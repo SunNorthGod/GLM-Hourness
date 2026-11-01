@@ -52,7 +52,7 @@ export interface FakeAgent extends DesignAgentLike {
   /** The scoped `system-prompt/assemble` listeners, outermost first. */
   readonly listeners: AssembleListener[]
   /** Assemble one step the way the agent loop does: the base assembly through the agent's own listeners. */
-  assemble(options?: { readonly sections?: readonly AssembledSection[], readonly tools?: readonly AssembledTool[] }): Promise<AssemblePayload>
+  assemble(options?: { readonly sections?: readonly AssembledSection[], readonly tools?: readonly AssembledTool[], readonly variables?: Record<string, unknown> }): Promise<AssemblePayload>
   /** Run `agent/pre-step` for one step the way the agent loop does: the claimed messages through the scoped listeners; what the step admits is appended to the session history. Returns the decision. */
   step(options?: { readonly messages?: readonly unknown[], readonly step?: number }): Promise<PreStepDecision>
   /** The agent finishes its activity. */
@@ -317,9 +317,11 @@ export function designHost(options: { readonly graph?: boolean, readonly project
         listeners,
         assemble(assembleOptions = {}) {
           const base = { sections: assembleOptions.sections ?? BASE_SECTIONS, tools: assembleOptions.tools ?? BASE_TOOLS }
+          // The model-selection listener, innermost, injects the route into the variables after its own next() (rc.3); a test that needs a route passes it here.
+          const variables = assembleOptions.variables ?? {}
           const chain = listeners.reduceRight<() => Promise<AssemblePayload>>(
             (next, listener) => () => listener({ ...base, contexts: [], variables: {} }, undefined, next),
-            () => Promise.resolve({ ...base, contexts: [], variables: {} }),
+            () => Promise.resolve({ ...base, contexts: [], variables: { ...variables } }),
           )
           return chain()
         },

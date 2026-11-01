@@ -29,9 +29,9 @@ import { buildIdentitySection } from './identity.ts'
 import { aliasSpecs, buildAliases, type BuiltAlias } from './aliases.ts'
 import { READ_IMAGE_NATIVE, READ_NAME, READ_NATIVE } from './read-alias.ts'
 import { CLI_PREFIX, DYNAMIC_BEHAVIOR } from './verbatim.ts'
-import { personaSection, PERSONA_LEVELS, type PersonaLevel } from './persona.ts'
+import { readReportingDepth, reportingDepthSection, REPORTING_DEPTHS, type ReportingDepth } from './reporting-depth.ts'
 import { buildEnvInfoSection, CONTEXT_MANAGEMENT_DSH, MEMORY_SECTION_DSH, SESSION_GUIDANCE_DSH, SKILLS_NOTE_DSH } from './localize.ts'
-import { isGlmAssembly, rewriteDialectSections, rewriteToolFace } from './assembly.ts'
+import { CONTEXT_MANAGEMENT_SECTION, hasOutputStyle, isGlmAssembly, rewriteDialectSections, rewriteToolFace } from './assembly.ts'
 import { mapTodoWriteToDsh } from './todowrite.ts'
 import { TODO_WRITE_DESCRIPTION, TODO_WRITE_INPUT_SCHEMA } from './zcode-tool-text.ts'
 import { installTodoReminder, TODO_NATIVE, TODO_WRITE_NAME } from './todo-reminder.ts'
@@ -47,8 +47,10 @@ import type { JsonValue } from '../shared/json.ts'
 
 /** Row config. */
 export interface GlmPromptConfig {
-  /** Reporting-depth standing preference for the persona slider. */
-  readonly persona?: PersonaLevel
+  /** Reporting-depth standing preference; `balanced` when neither this nor the old key is written. */
+  readonly reportingDepth?: ReportingDepth
+  /** The old name of `reportingDepth`, read only when `reportingDepth` is absent. Not the person's persona (src/design/persona.ts). */
+  readonly persona?: ReportingDepth
   /** Tier: coding-plan (localized, default) or start-plan (byte-identical official mirror). */
   readonly tier?: 'coding-plan' | 'start-plan'
   /** Host facts for the Environment section (ledger ③); omitted skips the section. `cwd` stands in only for a session that records no working directory (sessionEnv). */
@@ -61,7 +63,9 @@ export interface GlmPromptConfig {
 
 /** Runtime Config schema: exposes the row knobs (reporting depth included) as real switches in the DSH plugin manager. */
 export const Config = Schema.object({
-  persona: Schema.union(PERSONA_LEVELS.map(level => Schema.const(level.id))).default('balanced').description('Reporting-depth standing preference for the persona slider.'),
+  // Neither depth key has a default: the keys present after the loader normalizes the config are the keys the person wrote, which readReportingDepth needs to tell the old key from the new.
+  reportingDepth: Schema.union(REPORTING_DEPTHS.map(level => Schema.const(level.id))).description('汇报细度的常设偏好：concise、balanced 或 detailed。缺省为 balanced。'),
+  persona: Schema.union(REPORTING_DEPTHS.map(level => Schema.const(level.id))).description('已改名为 reportingDepth，只为读旧配置。'),
   tier: Schema.union(['coding-plan', 'start-plan'].map(value => Schema.const(value))).default('coding-plan').description('Tier: coding-plan (localized ledger) or start-plan (verbatim official mirror).'),
   env: (() => { const env = Schema.object({
     cwd: Schema.string().required().description('Working directory shown in the Environment section when the session records none; a session\'s own directory wins.'),
@@ -82,8 +86,13 @@ const HARNESS_IDENTITY_ORDER = -1000
 /** The section that teaches the memory tools; only in requests that have them (memorySectionApplies). */
 const MEMORY_SECTION = 'glm:memory'
 
-/** Sections the dialect adds beyond the shadowed identity. Tier selects the localization ledger (DESIGN.md §5.3). */
-export function dialectSections(outputStyleActive = false, persona: PersonaLevel = 'balanced', config: GlmPromptConfig = {}): Array<{ name: string, order: number, text: string }> {
+/**
+ * Sections the dialect adds beyond the shadowed identity. Tier selects the
+ * localization ledger (DESIGN.md §5.3). `outputStyleActive` picks the opening
+ * sentence of the identity: the one of an active output style when the
+ * assembly carries the person's persona for the main agent.
+ */
+export function dialectSections(outputStyleActive = false, reportingDepth: ReportingDepth = 'balanced', config: GlmPromptConfig = {}): Array<{ name: string, order: number, text: string }> {
   const codingTier = (config.tier ?? 'coding-plan') === 'coding-plan'
   return [
     { name: 'glm:cli-prefix', order: -1001, text: CLI_PREFIX },
@@ -95,12 +104,12 @@ export function dialectSections(outputStyleActive = false, persona: PersonaLevel
     ...(codingTier && config.env !== undefined
       ? [{ name: 'glm:environment', order: -900, text: buildEnvInfoSection(config.env) }]
       : []),
-    personaSection(persona),
+    reportingDepthSection(reportingDepth),
     ...(codingTier
       ? [
           { name: 'glm:session-guidance', order: 2300, text: config.skills === true ? [SESSION_GUIDANCE_DSH, SKILLS_NOTE_DSH].join('\n') : SESSION_GUIDANCE_DSH },
           { name: MEMORY_SECTION, order: 2350, text: MEMORY_SECTION_DSH },
-          { name: 'glm:context-management', order: 2400, text: CONTEXT_MANAGEMENT_DSH },
+          { name: CONTEXT_MANAGEMENT_SECTION, order: 2400, text: CONTEXT_MANAGEMENT_DSH },
         ]
       : []),
   ]
@@ -195,12 +204,20 @@ export function buildAgentAliases(agent: AgentLike): BuiltAlias[] {
  * split sees ZCode names. The reminder reads this step's rewrite: GLM route
  * and TodoWrite on the face before tool search defers it (ZCode checks the
  * turn tools, not the request's resident face). The peak-hour reminder
- * reads the GLM route of the step and the wall clock `now`.
+ * reads the GLM route of the step and the wall clock `now`. The identity
+ * section comes in two forms, with and without the opening sentence of an
+ * active output style, both computed here; a step uses the one that matches
+ * whether its assembly carries the persona section of the main agent.
  */
 export function installDialect(agent: AgentLike, config: GlmPromptConfig = {}, health?: Pick<RowHealth, 'report'>, now: () => number = () => Date.now()): () => void {
   const env = sessionEnv(config.env, agent)
-  const sections = dialectSections(false, config.persona ?? 'balanced', env === undefined ? config : { ...config, env })
-  const withoutMemory = sections.filter(section => section.name !== MEMORY_SECTION)
+  const depth = readReportingDepth(config).depth
+  const sectionSets = (outputStyleActive: boolean): { readonly all: ReturnType<typeof dialectSections>, readonly withoutMemory: ReturnType<typeof dialectSections> } => {
+    const all = dialectSections(outputStyleActive, depth, env === undefined ? config : { ...config, env })
+    return { all, withoutMemory: all.filter(section => section.name !== MEMORY_SECTION) }
+  }
+  const plain = sectionSets(false)
+  const styled = sectionSets(true)
   const aliases = buildAgentAliases(agent)
   const aliasNames = new Set(aliases.map(alias => alias.tool.name))
   const coveredNatives = new Set(aliases.flatMap(alias => alias.covers))
@@ -216,7 +233,8 @@ export function installDialect(agent: AgentLike, config: GlmPromptConfig = {}, h
     glmStep = glm
     health?.report(sessionIdOf(agent), ...dialectHealth(assemblyRoute(assembled), glm, searchMode === 'off' ? 'off' : toolSearch === undefined ? 'missing' : 'local'))
     // Judged on next()'s tools, before the face rewrite and tool search (memorySectionApplies).
-    const withSections = glm ? rewriteDialectSections(assembled, memorySectionApplies(assembled) ? sections : withoutMemory) : assembled
+    const set = hasOutputStyle(assembled) ? styled : plain
+    const withSections = glm ? rewriteDialectSections(assembled, memorySectionApplies(assembled) ? set.all : set.withoutMemory) : assembled
     const face = rewriteToolFace(withSections.tools, glm, aliasNames, coveredNatives)
     todoReminderEligible = glm && face.some(tool => tool.name === TODO_WRITE_NAME)
     const tools = toolSearch === undefined ? face : glm ? toolSearch.expose(face) : toolSearch.hide(face)
@@ -266,14 +284,23 @@ export function apply(ctx: PluginContext & Partial<ProvideHost>, config: GlmProm
   const installed = new WeakSet<AgentLike>()
   // Agents whose dialect installed without error: the ones the service claims.
   const active = new WeakSet<AgentLike>()
-  const health = provideRowHealth(ctx, 'glm-prompt', 'active', `已加载（工具检索 ${config.toolSearchMode ?? 'local'}）`)
+  // The old key `persona` of the reporting depth: told once, and kept in the row health for as long as it decides or differs.
+  const depthKeys = readReportingDepth(config)
+  if (depthKeys.warn && depthKeys.note !== undefined) console.warn(`dsh-glm-hourness/glm-prompt: ${depthKeys.note}`)
+  const remark = (reason: string): string => depthKeys.note === undefined ? reason : `${reason}；${depthKeys.note}`
+  const health = provideRowHealth(ctx, 'glm-prompt', 'active', remark(`已加载（工具检索 ${config.toolSearchMode ?? 'local'}）`))
   const disposers: Array<() => void> = [() => health.dispose()]
   const dialect = provideDialect(ctx, active)
   if (dialect.withdraw !== undefined) disposers.push(dialect.withdraw)
-  else health.reactivate('degraded', `${DIALECT_SERVICE_MISSING}（${dialect.failure ?? ''}）`)
+  else health.reactivate('degraded', remark(`${DIALECT_SERVICE_MISSING}（${dialect.failure ?? ''}）`))
+  // A session's report replaces the activation text, so the remark rides on each report the dialect makes (a non-GLM route does not use the depth).
   // While the service is missing, a GLM step the dialect rewrote reports degraded, saying why.
-  const reporter: Pick<RowHealth, 'report'> = dialect.withdraw !== undefined ? health : {
-    report: (sessionId, state, reason) => state === 'inactive' ? health.report(sessionId, state, reason) : health.report(sessionId, 'degraded', `${reason}；${DIALECT_SERVICE_MISSING}`),
+  const reporter: Pick<RowHealth, 'report'> = {
+    report: (sessionId, state, reason) => {
+      if (state === 'inactive') health.report(sessionId, state, reason)
+      else if (dialect.withdraw !== undefined) health.report(sessionId, state, remark(reason))
+      else health.report(sessionId, 'degraded', remark(`${reason}；${DIALECT_SERVICE_MISSING}`))
+    },
   }
 
   disposers.push(ctx.on('agent/created', ({ agent }) => {

@@ -19,6 +19,7 @@ import { memoryTools, storeIo } from '../src/memory/tools.ts'
 import { DIALECT_SERVICE, dialectNames, dialectService, toNativeTool, ZCODE_ALIAS_NATIVES, type DialectService } from '../src/shared/dialect.ts'
 import type { AgentLike, CommandDefinitionLike, ToolFinalResult } from '../src/shared/dsh-min.ts'
 import { healthServiceName, type HealthRow, type RowHealthView } from '../src/shared/health.ts'
+import { OUTPUT_STYLE_SECTION } from '../src/shared/output-style.ts'
 import { PRICING_SERVICE, pricingService, type UsagePricing } from '../src/shared/pricing.ts'
 import { DESIGN_TOOL_NAMES, GRAPH_TOOL_NAMES, MEMORY_TOOL_NAMES, ORCHESTRATION_RESIDENT_TOOLS } from '../src/shared/tool-names.ts'
 import { RESIDENT_TOOLS } from '../src/toolsearch/exposure.ts'
@@ -78,6 +79,12 @@ test('tool names: every orchestration tool kept resident exists, and GLM tool se
     assert.ok(known.has(name), `${name} is resident but no orchestration row registers it`)
     assert.ok(RESIDENT_TOOLS.has(name), name)
   }
+})
+
+test('persona section: the name the design row adds and the dialect places is one string in the products of both packages', async () => {
+  const names = await Promise.all(PACKAGES.map(async pkg => ((await import(`../${pkg.dir}/dist/shared/output-style.js`)) as { OUTPUT_STYLE_SECTION: string }).OUTPUT_STYLE_SECTION))
+  assert.deepEqual(names, PACKAGES.map(() => 'hourness:output-style'))
+  assert.equal(OUTPUT_STYLE_SECTION, 'hourness:output-style')
 })
 
 test('dialect: the static alias table is the dialect\'s own alias definitions plus Read and TodoWrite', () => {

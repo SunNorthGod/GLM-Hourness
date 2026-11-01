@@ -18,6 +18,12 @@
  * out: the session's own next read of its role (cancelled), its creation
  * (crash), or another session's /wish (which takes the role over).
  *
+ * The person's persona (the row's `persona` setting, persona.ts) is a system
+ * prompt section for the main agent only. The tool face listener, the inner
+ * one, adds it, so the dialect's listener sees the section and places it
+ * whichever way round the two rows were installed. A session that is not the
+ * main agent, a delegated child included, never gets it.
+ *
  * Both assembly listeners are installed per agent by `installAgentHooks`,
  * at agent creation and again by /wish itself, because an idle agent that
  * /wish wakes assembles its first step before the command returns, and the
@@ -35,15 +41,30 @@ import { dataHomes } from '../shared/data-home.ts'
 import { dialectService, dialectWarner, toNativeTool } from '../shared/dialect.ts'
 import { createUserNotice, type AgentLike, type CommandDefinitionLike, type CommandsExecutor, type DesignAgentLike, type DesignAgentsService, type DesignInvocationLike, type InjectHost, type PreExecuteListener, type ProvideHost, type ServiceLookup, type SessionLike, type SessionPersistenceLike, type SessionProjectionsService } from '../shared/dsh-min.ts'
 import { provideRowHealth, sessionIdOf, type HealthState } from '../shared/health.ts'
+import Schema from '../shared/schemastery.ts'
 import { ATTACH_BOARDS } from './attach.ts'
 import { MAIN_AGENT_IDENTITY, MAIN_AGENT_SECTION } from './identity.ts'
 import { emitMetric } from './metrics.ts'
 import { localTime, mainAgentProjection, modeOf, roleOf, staleRecordKept, wishHandler, type RoleDeps, type RoleReading, type WishDeps } from './mode.ts'
+import { DEFAULT_PERSONA_NAME, PERSONA_NAME_LIMIT, PERSONA_TEXT_LIMIT, readPersona } from './persona.ts'
 import { proposeTool, type DesignToolDeps } from './propose.ts'
 import { recordTool } from './record.ts'
 import { mainAgentFace, ordinaryFace } from './role-face.ts'
 import { installStageNotice } from './stage-notice.ts'
 import { HIDDEN_FROM_MAIN_AGENT, TALK_PROJECTION, parseTalkState, personSaid, talkApply, talkFold, talkInit, type TalkState } from './talk.ts'
+
+/** Row config: the persona of the main agent (persona.ts). */
+export interface DesignConfig {
+  readonly persona?: { readonly name?: string, readonly text?: string }
+}
+
+/** Runtime Config schema: the persona of the main agent as settings in the DSH plugin manager. Empty `text` adds nothing. */
+export const Config = Schema.object({
+  persona: Schema.object({
+    name: Schema.string().default(DEFAULT_PERSONA_NAME).description(`人设的名字，一行，至多 ${PERSONA_NAME_LIMIT} 个字，超出的截掉。缺省为「${DEFAULT_PERSONA_NAME}」。`),
+    text: Schema.string().role('textarea').default('').description(`主 Agent 跟你说话的人设：语气、称呼、自称等，至多 ${PERSONA_TEXT_LIMIT} 个字。只作用于主 Agent 回给你的话，子 agent 和别的会话不带；留空就不加人设。`),
+  }).description('主 Agent 的人设。插件不带人设内容，写什么是你自己的配置。'),
+})
 
 /** cordis plugin identity: needs the commands service. */
 export const name = 'dsh-glm-hourness/design'
@@ -92,12 +113,15 @@ function isDirectory(dir: string): boolean {
 }
 
 /** cordis plugin entry: register /wish and the main agent projection, keep the role consistent. Activation never throws. */
-export function apply(ctx: DesignContext): () => void {
+export function apply(ctx: DesignContext, config: DesignConfig = {}): () => void {
   const disposers: Array<() => void> = []
   const dispose = (): void => {
     for (const undo of disposers.splice(0).reverse()) undo()
   }
   const problem = dialectWarner('design')
+  // The person's persona, read once: it does not change within a session (docs/ORCHESTRATION.md §3.1).
+  const persona = readPersona(config)
+  for (const text of persona.warnings) console.warn(`${name}: ${text}`)
   let projections: SessionProjectionsService | undefined
   let waiting: string | undefined = WAITING_STATE
   let registration: string | undefined
@@ -117,7 +141,7 @@ export function apply(ctx: DesignContext): () => void {
   }
 
   const status = (): [HealthState, string] => {
-    const notes = [boundary, talkNote, toolsNote, bypassNote()].filter(note => note !== undefined)
+    const notes = [boundary, talkNote, toolsNote, persona.problem, bypassNote()].filter(note => note !== undefined)
     return [
       registration !== undefined ? 'inactive' : waiting === undefined && notes.length === 0 ? 'active' : 'degraded',
       [registration ?? `命令 /${WISH_COMMAND} 已注册`, waiting ?? '会话状态服务已就绪', ...notes].join('；'),
@@ -288,7 +312,9 @@ export function apply(ctx: DesignContext): () => void {
       // The main agent's health keeps saying that a write was refused until 24 hours after the latest one.
       const refused = reading.main ? bypassNote() : undefined
       if (bypasses.length > 0) health.reactivate(...status())
-      const step = { role: reading, problems: [...reading.problems, ...refused === undefined ? [] : [refused]] }
+      // A persona the person wrote that was not added is the main agent's degraded state too: the session report would otherwise say "in effect".
+      const unadded = reading.main ? persona.problem : undefined
+      const step = { role: reading, problems: [...reading.problems, ...refused === undefined ? [] : [refused], ...unadded === undefined ? [] : [unadded]] }
       steps.set(agent, step)
       assembledAsMain.set(agent, reading.main)
       let assembled
@@ -324,7 +350,9 @@ export function apply(ctx: DesignContext): () => void {
         if (step === undefined) health.report(sessionIdOf(agent), 'degraded', why)
         else step.problems.push(why)
       }
-      return { ...assembled, tools: face.tools }
+      // The person's persona, for the main agent only; the dialect's listener, outside this one, places it.
+      const sections = persona.section === undefined ? assembled.sections : insertHournessSection(assembled.sections, persona.section)
+      return { ...assembled, sections, tools: face.tools }
     }))
     // The stage reminder: after the step's assembly, so `assembledAsMain` is this step's. Its failure leaves the identity section and the tool face in place.
     try {

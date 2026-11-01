@@ -147,11 +147,13 @@ export const limitsRow = config => [
  * (the headless template has none, and the main agent's face has to be seen
  * against a face that does), and the simulated human
  * (scripts/calibrate/simulated-human.mjs) stands in for the person with
- * `config` ({ record, wish }).
+ * `config` ({ record, wish }). `rowConfig`, when given, is the design row's
+ * own configuration (its `persona` setting).
  */
-export const designRows = config => [
+export const designRows = (config, rowConfig) => [
   '- id: glm-hourness/design',
   '  disabled: false',
+  ...rowConfig === undefined ? [] : [`  config: ${JSON.stringify(rowConfig)}`],
   '- insert:',
   '    - id: glm-hourness-probe/tool-ask-user',
   '      name: \'@deepseek-ai/dsh-tool-ask-user\'',

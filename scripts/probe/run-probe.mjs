@@ -51,6 +51,8 @@ import { crc32, deflateSync } from 'node:zlib'
 import { DISPATCH_TOOLS } from '../../packages/hourness/dist/workflow/index.js'
 import { clockText } from '../../packages/hourness/dist/rules/index.js'
 import { PEAK_REMINDER_SOURCE, PEAK_REMINDER_TEXT } from '../../packages/glm/dist/glm-prompt/peak-reminder.js'
+import { IDENTITY_OPENING_PLAIN, IDENTITY_OPENING_WITH_STYLE } from '../../packages/glm/dist/glm-prompt/verbatim.js'
+import { PERSONA_SCOPE } from '../../packages/hourness/dist/design/persona.js'
 import { peakWindowAt } from '../../packages/glm/dist/glm-llm/credits.js'
 import { userDataHome } from '../../packages/hourness/dist/shared/data-home.js'
 import { HEALTH_PACKAGES, HEALTH_ROWS } from '../../packages/hourness/dist/shared/health.js'
@@ -775,7 +777,7 @@ const repoGraphAfter = (await loadGraph(repoGraph)).revision
 // off themselves, mid-step, through the commands service (the probe
 // provider's `line` step), so command/run and command/done are in the log.
 const DESIGN_WISH = '记一下每天花了多少钱'
-const designScenario = (name, model, script, { wish, on, others, git, extra, human } = {}) => {
+const designScenario = (name, model, script, { wish, on, others, git, extra, human, persona } = {}) => {
   const dir = join(runDir, name)
   const ws = join(dir, 'ws')
   mkdirSync(join(ws, 'docs', 'graph'), { recursive: true })
@@ -788,7 +790,7 @@ const designScenario = (name, model, script, { wish, on, others, git, extra, hum
     writeFileSync(join(ws, 'README.md'), 'probe workspace\nedited by the person\n')
   }
   const record = join(dir, 'human.jsonl')
-  const run = runScenario(name, model, script(ws), 'Reply done.', [...designRows({ record: slash(record), ...wish === undefined ? {} : { wish }, ...human }), ...extra ?? []], ws, others ?? [], on)
+  const run = runScenario(name, model, script(ws), 'Reply done.', [...designRows({ record: slash(record), ...wish === undefined ? {} : { wish }, ...human }, persona === undefined ? undefined : { persona }), ...extra ?? []], ws, others ?? [], on)
   return { ...run, name, dir, ws, human: jsonl(record) }
 }
 const designMainScript = ({ read, write, shell, ask, status }) => (ws) => {
@@ -1088,6 +1090,19 @@ const designModules = designScenario(MODULES, 'glm-5.3', () => modulesSteps.map(
   extra: dispatchRow(join(runDir, MODULES, 'dispatch.jsonl')),
   others: [stageChild(MODULES, 'modules-1.txt'), stageChild(MODULES, 'modules-2.txt'), stageChild(MODULES, 'modules-3.txt'), stageChild(MODULES, 'modules-4.txt'), modulesChild],
 })
+// The person's persona for the main agent (docs/ORCHESTRATION.md §3.1; task m3-main-persona): the overlay gives the design row a persona with a mark in
+// its text. On the GLM route the main agent's system prompt opens its identity with the sentence of an active output style and carries the persona in
+// front of the context management section; the subagent the main agent dispatches (a real child session, as in glm-dispatch) has neither. On another
+// route the section is there and the DSH identity is untouched. Neither scenario seeds a graph: nothing here depends on one.
+const PERSONA = 'glm-design-persona'
+const PERSONA_PLAIN = 'non-glm-design-persona'
+const PERSONA_SETTING = { name: 'PM', text: 'End every reply to the human with 「（PM-MARK）」.' }
+const designPersona = designScenario(PERSONA, 'glm-5.3', () => [
+  { tool: { name: 'DeferredToolCall', arguments: { name: 'probe_dispatch', input: { task: 'P1', prompt: 'Reply done.', cwd: stageWs(PERSONA), scope: '.', model: 'glm-5.3' } } } },
+  stageWait,
+  { text: 'done', status: true },
+], { wish: true, persona: PERSONA_SETTING, extra: dispatchRow(join(runDir, PERSONA, 'dispatch.jsonl')), others: [[{ text: 'child done' }]] })
+const designPersonaPlain = designScenario(PERSONA_PLAIN, 'deepseek-probe', () => [{ text: 'done', command: { name: 'hourness-status' } }], { wish: true, persona: PERSONA_SETTING, on: profiles['probe-hourness'] })
 const designRecord = (scenario) => readHolder(holderFileOf(join(scenario.dir, 'dsh-home', 'glm-hourness'), join(scenario.ws, 'docs', 'graph')))
 const MAIN_HEAD = '# Main agent\nYou are the main agent of this project'
 const sectionAt = step => step?.system.indexOf(MAIN_HEAD) ?? -1
@@ -1409,6 +1424,29 @@ function modulesChecks() {
     ['design modules: no question card was raised', designModules.human.every(entry => entry.kind !== 'unexpected-question'), JSON.stringify(designModules.human.map(entry => entry.kind))],
   ]
 }
+/** A /glm-status or /hourness-status line of the design row for a main agent session that has nothing wrong with it. */
+const inEffectRow = row => row?.status === ACTED && row.reason.startsWith('主 Agent：身份节已加上')
+function personaChecks() {
+  const SECTION = `# Output Style: PM\n${PERSONA_SETTING.text}\n\n${PERSONA_SCOPE}`
+  const main = designPersona.steps.filter(step => step.sessionId === designPersona.steps[0]?.sessionId)
+  const childId = dispatchRecord(PERSONA).find(entry => entry.kind === 'started')?.childId
+  const child = childId === undefined ? [] : bySession(designPersona, childId)
+  const at = (step, text) => step?.system.indexOf(text) ?? -1
+  const ascending = (...marks) => marks.every(mark => mark >= 0) && marks.every((mark, index) => index === 0 || marks[index - 1] < mark)
+  const reminded = steps => steps.some(step => step.system.includes('output style is active') || step.messages.some(message => message.text.includes('output style is active')))
+  const rowAt = (scenario, text) => tableOf(text ?? '').design
+  const glmLast = main.at(-1)
+  const plain = designPersonaPlain.steps[0]
+  return [
+    ['design persona (GLM): the main agent\'s request has the identity opening of an active output style after the ZCode prefix, and the persona section (heading, the person\'s text, the scope sentence) after the reporting depth and ahead of the context management, the main agent section and the workspace rules', main.length === 3 && ascending(at(main[0], 'You are ZCode, an interactive agent'), at(main[0], IDENTITY_OPENING_WITH_STYLE), at(main[0], '# Reporting Depth'), at(main[0], SECTION), at(main[0], '# Context management'), sectionAt(main[0]), at(main[0], GUARD_SECTION)) && at(main[0], IDENTITY_OPENING_PLAIN) < 0, `${main.length} requests; ${[at(main[0], IDENTITY_OPENING_WITH_STYLE), at(main[0], '# Reporting Depth'), at(main[0], SECTION), at(main[0], '# Context management'), sectionAt(main[0]), at(main[0], GUARD_SECTION)].join(' < ')}`],
+    ['design persona (GLM): the persona is in the system prompt of every request of the main agent, not only the first (the dialect and the design row agree on it at every step)', main.length > 0 && main.every(step => step.system.includes(SECTION) && step.system.includes(IDENTITY_OPENING_WITH_STYLE)), main.map(step => step.system.includes(SECTION) ? 1 : 0).join('')],
+    ['design persona (GLM): the dispatched subagent is a real child session whose request has neither the persona section nor its mark nor the main agent section; its identity opens with the plain sentence', childId !== undefined && child.length > 0 && child.every(step => !step.system.includes('# Output Style') && !step.system.includes('PM-MARK') && sectionAt(step) < 0 && step.system.includes(IDENTITY_OPENING_PLAIN) && !step.system.includes(IDENTITY_OPENING_WITH_STYLE) && step.system.includes('You are ZCode, an interactive agent')), `child ${childId ?? 'not started'}; ${child.length} request(s); ${child.map(step => step.system.includes('# Output Style') ? 'has the section' : 'none').join(',')}`],
+    ['design persona (GLM): no reminder that the style is active is sent in the system prompt or the messages of any request, the main agent\'s or the child\'s', !reminded(main) && !reminded(child), `main ${reminded(main)}, child ${reminded(child)}`],
+    ['design persona (GLM): the design row is in effect for the main agent with the persona set, and ran quietly; the person was never asked through a card', inEffectRow(rowAt(designPersona, glmLast?.status)) && designPersona.status === 0 && !stderrOf(PERSONA).includes('dsh-glm-hourness/design') && designPersona.human.every(entry => entry.kind !== 'unexpected-question'), `${JSON.stringify(rowAt(designPersona, glmLast?.status) ?? null)}; exit ${designPersona.status}`],
+    ['design persona (non-GLM): the main agent\'s request has the persona section ahead of the main agent section and the workspace rules, the DSH identity untouched, and no ZCode identity or output style opening', plain !== undefined && ascending(at(plain, SECTION), sectionAt(plain), at(plain, GUARD_SECTION)) && plain.system.includes('powered by DeepSeek Harness') && !plain.system.includes('You are ZCode') && !plain.system.includes(IDENTITY_OPENING_WITH_STYLE) && !plain.system.includes(IDENTITY_OPENING_PLAIN) && !reminded(designPersonaPlain.steps), `${plain === undefined ? 'no request' : [at(plain, SECTION), sectionAt(plain), at(plain, GUARD_SECTION)].join(' < ')}`],
+    ['design persona (non-GLM): the row is in effect in /hourness-status and ran quietly', inEffectRow(rowAt(designPersonaPlain, designPersonaPlain.steps[0]?.command?.text)) && designPersonaPlain.status === 0 && !stderrOf(PERSONA_PLAIN).includes('dsh-glm-hourness/design'), `${JSON.stringify(rowAt(designPersonaPlain, designPersonaPlain.steps[0]?.command?.text) ?? null)}; exit ${designPersonaPlain.status}`],
+  ]
+}
 function designChecks() {
   const zcode = (step) => step?.system.indexOf('You are ZCode, an interactive agent') ?? -1
   const ascending = (...marks) => marks.every(mark => mark >= 0) && marks.every((mark, index) => index === 0 || marks[index - 1] < mark)
@@ -1462,6 +1500,7 @@ function designChecks() {
     ...interviewChecks(),
   ...releaseChecks(),
   ...modulesChecks(),
+  ...personaChecks(),
     ['design one main: a fork of the first session at its /wish is an ordinary session from its first request on: no section, the ordinary face; the row ran /wish off for it, so its projection is off; the record is unchanged; the row warned of nothing', forkNote?.kind === 'forked' && forkSteps.length === 1 && forkSteps[0].sessionId === forkNote.sessionId && sectionAt(forkSteps[0]) < 0 && hasCut(forkSteps[0], GLM_CUT) && forkNote.types.includes('command/run') && forkNote.types.includes('command/done') && isDeepStrictEqual(forkNote.hournessMainAgent, { active: false }) && rowQuiet(one) && humanQuiet(one) && one.status === 0, JSON.stringify(forkNote ?? null).slice(0, 220)],
   ]
 }

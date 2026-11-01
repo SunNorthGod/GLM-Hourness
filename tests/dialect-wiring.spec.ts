@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { evaluate, fileToolsOnly, renderCorrection, workspaceContainment } from '../src/guard/rules.ts'
 import { apply as glmPromptApply, dialectSections, installDialect } from '../src/glm-prompt/index.ts'
+import { REPORTING_DEPTH_SECTION } from '../src/glm-prompt/reporting-depth.ts'
 import { DYNAMIC_BEHAVIOR } from '../src/glm-prompt/verbatim.ts'
 import { isGlmModel } from '../src/shared/route.ts'
 import { fakeRuntime } from './fake-rc3.ts'
@@ -71,7 +72,7 @@ test('dialect sections mirror order anchors and carry verbatim content', () => {
     'glm:cli-prefix',
     'harness:identity',
     'glm:dynamic-behavior', // 3.17.1 Dynamic Behavior, verbatim
-    'glm:persona',
+    REPORTING_DEPTH_SECTION,
     'glm:session-guidance', // ledger ②⑤: coding-plan guidance
     'glm:memory', // ledger ⑧: memory home is .llm
     'glm:context-management', // ledger ⑦
@@ -87,7 +88,7 @@ test('dialect sections mirror order anchors and carry verbatim content', () => {
 
 test('start-plan tier keeps the byte-identical official mirror', () => {
   const sections = dialectSections(false, 'balanced', { tier: 'start-plan' })
-  assert.deepEqual(sections.map(section => section.name), ['glm:cli-prefix', 'harness:identity', 'glm:persona'])
+  assert.deepEqual(sections.map(section => section.name), ['glm:cli-prefix', 'harness:identity', REPORTING_DEPTH_SECTION])
   assert.ok(sections[1]!.text.includes('IMPORTANT: Assist with authorized security testing'))
   assert.ok(sections[1]!.text.includes('in a terminal')) // verbatim harness line, not the DSH rewrite
 })

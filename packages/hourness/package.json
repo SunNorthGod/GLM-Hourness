@@ -42,5 +42,8 @@
         "@deepseek-ai/dsh-api-remotes"
       ]
     }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cosmokit": "*"
   }
 }
