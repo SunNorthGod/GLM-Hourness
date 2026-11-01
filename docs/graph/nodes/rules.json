@@ -555,6 +555,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "规则与循环实现进度：FEAT-004（写引擎接管全部非提议操作，日志轮转在此补上）d470003 评审 APPROVED，6 条不挡路的备注在 gate-FEAT-004.json；FEAT-005（checkCall、心跳读侧、指标出口、rules show/check 命令行）f8358fe 评审 APPROVED，4 条备注在 gate-FEAT-005.json。13 项中 5 项通过，均在 rules-loops-impl 分支，未合入。"
+    },
+    {
+      "at": "2026-11-01T04:21:03.755Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "FEAT-006（规则闸门、rules:files-only、rules_show、完整的 /rules，探针场景 glm-rules 与 non-glm-rules）8a33926、20e12cf 评审 APPROVED；build、preflight、test、probe 退出码 0（probe 161/161）；规则行仍关着。6 条不挡路的备注在 gate-FEAT-006.json（闸门出错时只降级不留痕、拒绝文字提到不存在的 rules_propose、排队命中不写日志等）。13 项中 6 项通过，均在 rules-loops-impl 分支，未合入。"
     }
   ]
 }
