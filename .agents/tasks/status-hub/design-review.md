@@ -3,9 +3,9 @@
 - 被审文件：`.agents/tasks/status-hub/design.md`
 - 设计版本：0.1（2026-11-01）
 - 复审轮次：第 1 遍（无在先的 `design-gate.json` 与复审稿，非修订轮）
-- 判定：CHANGES_REQUESTED（HIGH 2、MEDIUM 1、NIT 3）
+- 判定：CHANGES_REQUESTED（HIGH 2、MEDIUM 1、LOW 3）
 
-判定依据机械计数：HIGH 或 MEDIUM 大于 0 即 CHANGES_REQUESTED。
+判定依据机械计数：HIGH 或 MEDIUM 大于 0 即 CHANGES_REQUESTED。本稿按该任务的 HIGH/MEDIUM/LOW 三级评级，LOW 即小瑕疵、不挡路。
 
 ## 复审范围与读过的源
 
@@ -47,19 +47,19 @@
 
 要求的改动：把不变量收窄为「当某块板的首页行反映一条状态条目时，它取该条目的 `text`（同源）；健康/陈旧/归档/额度停住等诊断型首页行豁免」，并写明非条目型 `homeLine` 如何与 `items` 共存，再据此改 §12 的 plain-ui 与 schedules 行。
 
-### N1（NIT）DSH 行号偏差：「without sending it to the model」注释不在 329 行
+### N1（LOW）DSH 行号偏差：「without sending it to the model」注释不在 329 行
 
 位置：design.md 依据清单第 22 行。
 
 `dsh-commands/lib/index.js` 该注释在第 300 行（`execute` 的 JSDoc：「Parse and execute a known command without sending it to the model.」），第 329 行是 `if (parsed === void 0) return void 0;`，`execute` 方法体自第 327 行起；`command/run`、`command/done` 的 lifecycle 追加在第 334、341 行。事实无误，仅行号需改为 300（或 300/327）。
 
-### N2（NIT）供客户端引用的 `StatusItem` 与宿主侧 `provideRowStatus` 同处一文件
+### N2（LOW）供客户端引用的 `StatusItem` 与宿主侧 `provideRowStatus` 同处一文件
 
 位置：design.md §2（`src/shared/status.ts`）、§3.2、§3.4。
 
 §3.4 让客户端模块 `ui/src/graph/boards.ts` 的 `BoardState` 引用 `src/shared/status.ts` 的 `StatusItem`，而同一文件又含宿主侧 `provideRowStatus`/`RowStatusView`（经 `./dsh-min.ts` 引 `ProvideHost`）。metrics 0.7 §7.6.2 已立下客户端安全的共享类型文件约定（`src/shared/metrics-board.ts`，「不导入 Node 内置模块」）。建议把纯 `StatusItem` 类型与 `validateStatusItem`/`isStale` 放进客户端安全的模块，宿主侧 `provideRowStatus`/`collectStatus` 分开，使客户端构建只拉可被类型擦除的部分。
 
-### N3（NIT）提供状态的行清单未列出，`§4.2` 的 owner 多数不在 `HEALTH_ROWS` 内
+### N3（LOW）提供状态的行清单未列出，`§4.2` 的 owner 多数不在 `HEALTH_ROWS` 内
 
 位置：design.md §3.3（「同 `HEALTH_ROWS` 的办法」的常量清单）、§4.2（owner 含 `metrics/*`、`execute/*`、`loops/*`）。
 
