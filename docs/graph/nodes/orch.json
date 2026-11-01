@@ -257,6 +257,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "交接发现（人问能否换到别的 IDE 继续）：.agents/ 在 .gitignore 第 7 行，整个 .agents/tasks（全部设计、一页稿、简报、评审记录）只在本机磁盘上，没有进 git；docs/graph 与 docs/*.md 在 git 里。同一台机器换 IDE 不丢东西；换机器或重新克隆会丢掉全部设计稿。正在跑的编排运行属于 Kiro 的会话，换 IDE 即断，但它们的产出已落盘（设计文件与分支提交），不会丢活。等人定：是否把 .agents/tasks 纳入 git，以及是否先把 docs/HANDOFF.md 写成完整交接状态。"
+    },
+    {
+      "at": "2026-11-01T07:57:17.268Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-11-01 答「推」：四条进行中的分支已推到 origin 作备份，远端与本机同点——m3 a9b8ad5、m3-flow 49f5d3e、rules-loops-impl c632387、m5-memory-lessons 6e21948。main 未动，在跑的运行未受影响。docs/HANDOFF.md §9 的「只在本机」一条随之改写（含「有新提交要重新推送」「合入后删远端分支」）。这补上了 d-docs-tracked-for-handover 里留的那一项。"
     }
   ]
 }
