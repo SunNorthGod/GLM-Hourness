@@ -4,7 +4,7 @@
   "private": true,
   "description": "GLM-Hourness development workspace that builds and checks the two DSH bundles under packages/ (dsh-glm-zcode, dsh-hourness)",
   "type": "module",
-  "license": "MIT",
+  "license": "PolyForm-Noncommercial-1.0.0",
   "scripts": {
     "build": "node scripts/clean-dist.mjs && tsc -p tsconfig.json && tsc -p packages/glm/tsconfig.json && tsc -p packages/hourness/tsconfig.json && tsc -p ui/tsconfig.json && node scripts/build-ui.mjs",
     "preflight": "node scripts/preflight-bundle.mjs",

@@ -54,7 +54,9 @@ dsh plugin --profile <名字> add <本仓库绝对路径>/packages/glm <本仓�
 
 ## 许可
 
-MIT。参考源与移植来源的许可见 `docs/FACTS.md` §4。
+本仓库自己的代码按 PolyForm Noncommercial License 1.0.0 授权（全文见 `LICENSE`，授权人 NorthGod）：任何非商业用途都已授予，商业用途需要另行取得授权，联系 northgod@qq.com。
+
+许可只管本仓库自己写的代码。仓库携带或依赖的第三方材料（含源码里逐字复现的 ZCode 3.17.1 提示词文本、依赖的许可清单）见 `THIRD-PARTY-NOTICES.md`；参考源与移植来源另见 `docs/FACTS.md` §4。
 
 ## Vendored schemastery
 

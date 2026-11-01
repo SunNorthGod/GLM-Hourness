@@ -213,7 +213,7 @@
 | 来源 | 许可 | 本仓库的使用 |
 | --- | --- | --- |
 | zai-org/ZCode | Apache-2.0 | 事实源；提示词与工具 schema 逐字镜像 |
-| TriDefender/zcode-api（`reference/zcode-api`） | CC BY-NC-SA | 多个通道模块移植自其实现（签名、身份头、凭证存储、start-plan 组装、系统提示词文本）。用户定案 2026-10-27：不受约束。本包许可为 MIT；若对外发布需复核 |
+| TriDefender/zcode-api（`reference/zcode-api`） | CC BY-NC-SA | 多个通道模块移植自其实现（签名、身份头、凭证存储、start-plan 组装、系统提示词文本）。用户定案 2026-10-27：不受约束。本仓库许可为 PolyForm Noncommercial 1.0.0（`LICENSE`），第三方材料清单见 `THIRD-PARTY-NOTICES.md` |
 | DSH `vendor/schemastery` | MIT | `src/shared/schemastery.ts` 为其拷贝，差异见 `README.md` |
 
 ## 5. 挂账

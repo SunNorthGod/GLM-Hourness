@@ -4,7 +4,7 @@
   "private": true,
   "description": "GLM ZCode channel for DeepSeek Harness: runs GLM on its ZCode 3.17.1 training distribution with the native channel and login, the prompt and tool-surface mirror, lazy tool loading and compaction.",
   "type": "module",
-  "license": "MIT",
+  "license": "PolyForm-Noncommercial-1.0.0",
   "exports": {
     ".": "./ui/index.js",
     "./client": "./ui/client.js",

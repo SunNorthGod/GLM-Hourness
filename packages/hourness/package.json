@@ -4,7 +4,7 @@
   "private": true,
   "description": "Hourness orchestration for DeepSeek Harness, for any model: the project graph and its panel, guard rails, the audit journal, memory and the /hourness report.",
   "type": "module",
-  "license": "MIT",
+  "license": "PolyForm-Noncommercial-1.0.0",
   "exports": {
     ".": "./ui/index.js",
     "./client": "./ui/client.js",
