@@ -84,12 +84,12 @@ export function clockedTest(name: string, body: (project: ClockedProject) => Pro
   })
 }
 
-/** A host's heartbeat file, as the host writes it: `<runtime dir>/hosts/<pid>-<start>.json`, stamped with the given moment. */
-export async function writeHeartbeat(paths: RulesPaths, host: { readonly pid: number, readonly startedAt: number }, at: string): Promise<string> {
+/** A host's heartbeat file, as the host writes it: `<runtime dir>/hosts/<pid>-<start>.json`, stamped with the given moment; `fields` replace or add to the file's other fields (`computed`, `catalog`). */
+export async function writeHeartbeat(paths: RulesPaths, host: { readonly pid: number, readonly startedAt: number }, at: string, fields: Readonly<Record<string, unknown>> = {}): Promise<string> {
   const dir = join(paths.runtimeDir, 'hosts')
   await mkdir(dir, { recursive: true })
   const file = join(dir, `${host.pid}-${host.startedAt}.json`)
-  await writeFile(file, JSON.stringify({ host, at, sessions: [], runner: false }))
+  await writeFile(file, JSON.stringify({ host, at, sessions: [], runner: false, ...fields }))
   return file
 }
 

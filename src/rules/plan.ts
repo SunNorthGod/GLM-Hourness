@@ -18,6 +18,7 @@ import { join } from 'node:path'
 import { PEAK_LEVEL_WORDS } from '../shared/peak-mode.ts'
 import { GLM_PEAK_STOP } from './builtin.ts'
 import { matchesType, ticketProblem } from './entries.ts'
+import { HEARTBEAT_FRESH_MS } from './heartbeat.ts'
 import { evaluateCondition, judgeInput } from './judge.ts'
 import { canonicalJson, effectivePeakMode, repoJson, repoPart, stateProblem, type Change, type Condition, type PeakModeSetting, type ProjectState, type RepoRules, type Rule, type SignalState, type SignalType, type Ticket } from './model.ts'
 import type { HostRef, Request } from './request.ts'
@@ -78,8 +79,6 @@ type Step = Own | Refused | 'unchanged'
 
 const MINUTE_MS = 60_000
 const DAY_MS = 24 * 3_600_000
-/** A heartbeat older than this is a host that is not there (design §5.4). */
-const HEARTBEAT_FRESH_MS = 45_000
 const NOT_RETRIED_MS = 30 * MINUTE_MS
 const LET_ONCE_MS = 10 * MINUTE_MS
 const SUMMARY_CHARS = 160

@@ -235,3 +235,21 @@ DSH 官方类型已作为 devDependency 安装（`@deepseek-ai/dsh-llm`、`@deep
 3. 读 JSON 输出用 `npm run -s`，否则 npm 先往 stdout 打两行命令回显。Windows PowerShell 5.1 下写请求一律用 `--file`：经管道送 stdin 时 `--` 被吞、中文变问号，参数里的 JSON 会丢引号（`ORCHESTRATION.md` §2.10）。
 4. 试写不要用 `docs/graph`：复制到临时目录，命令加 `--dir`。
 5. 引擎与命令行不碰 DSH，改它们只需过 `npm run build`、`npm run preflight`、`npm test`，不需要 `npm run probe`。接触 DSH 的是编排层包 `dsh-hourness` 里的图行（`src/graph/index.ts`、`tools.ts`、`reminder.ts`、`row-health.ts`，它提供给 guard 行的服务 `src/graph/service.ts`，以及它注册的门禁规则 `src/guard/graph-files.ts`，行 `glm-hourness/graph`，`ORCHESTRATION.md` §2.5、§2.7、§2.10）与面板行（`src/graph/panel-row.ts`、`live.ts`）：L2 在假宿主 `tests/fake-rc3.ts` 上，L3 是探针场景 `glm-graph`、`non-glm-graph`、`glm-graph-compact`、`glm-graph-goal`、`glm-graph-panel` 与派发场景里的现场检查，改了这些文件要跑 `npm run probe`。两行都默认启用（2026-10-28 经 L3、L4）。
+
+## 13. 规则板命令行
+
+设计见 `ORCHESTRATION.md` §16.10。库入口是 `src/rules/check.ts` 的 `checkCall`，命令行在 `src/rules/cli.ts`，入口脚本是 `scripts/rules/cli.mjs`，经 `--experimental-strip-types` 直接从源码运行，不用先 build。它在 DSH 之外、自己的进程里跑，只读规则板：不能加、改、解除规则，`check` 只判定不写。身份固定为 `llm`。项目默认是当前目录，按 git 仓库根找（主检出与它的工作树是同一个项目）。
+
+| 命令 | 作用 |
+| --- | --- |
+| `npm run -s rules -- show [--project 目录] [--rules-dir 目录]` | 项目的规则板：高峰模式、`glm-peak` 的读数与来源、生效的规则、开着的等待单、项目的信号；JSON 输出，`text` 是给 agent 看的那份文字，退出码 0 |
+| `npm run -s rules -- check --tool 工具名 --args 文件 [--project 目录] [--session id] [--model 提供方/模型] [--role main-agent\|root\|subagent] [--stage 阶段] [--signal glm-peak=true\|false] [--glm-spend optional\|necessary] [--peak-until ISO 时刻] [--waited-ms 毫秒]` | 对一个假设的工具调用判定（`--args` 是调用参数的 JSON 对象文件，至多 256 KiB，存为 UTF-8），输出 `CheckResult`；退出码 0 放行（含只告知、只记录）、4 拦截、5 排队 |
+
+退出码 1 是项目的规则板状态读不出，2 是命令行不合（标准错误一行写哪一项、为什么，标准输出为空）。
+规则：
+1. `check` 不写规则板的任何文件（仓库里的规则目录，`.llm/rules/` 下的状态、流水、心跳），也不取锁；每次判定向指标出口交一条 `rules.check`，出口现在什么都不做（`ORCHESTRATION.md` §16.10）。
+2. `glm-peak` 命令行读不到计价服务：用 `--signal glm-peak=true|false` 给，否则读这个项目 45 秒内更新过的宿主心跳（宿主写心跳随规则行加入），都没有就是读不出，规则按各自的失败做法判。只有 `glm-peak` 能这样给；项目状态里的开关与检测器的信号不能给，要改用规则页或 `/rules on|off`。
+3. 角色、模型、会话、阶段只取命令行给的；没给的那一项读不出，要求它的规则不命中，结果的 `subjects` 写出。
+4. 带脚本的规则当作脚本未批准，不起进程。
+5. 试写用 `--project` 指向临时的 git 仓库（`git init`，或只建一个 `.git` 目录），不要对本仓库的 `docs/rules` 做实验。读 JSON 输出用 `npm run -s`。
+6. 命令行与库不碰 DSH，改它们只需过 `npm run build`、`npm run preflight`、`npm test`，不需要 `npm run probe`；L2 是 `tests/rules-check.spec.ts`（含以独立进程跑 `show`、`check`）与 `tests/rules-metrics.spec.ts`。

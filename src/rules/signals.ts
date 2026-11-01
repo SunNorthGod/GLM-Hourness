@@ -18,7 +18,12 @@ type SignalSource = 'caller' | 'heartbeat' | 'manual' | 'detector' | 'clock' | '
 export type SignalReading = (
   | { readonly value: SignalValue, readonly unknown?: never }
   | { readonly unknown: string, readonly value?: never }
-) & { readonly name: string, readonly source: SignalSource }
+) & {
+  readonly name: string
+  readonly source: SignalSource
+  /** The pid of the host whose heartbeat the reading was taken from (source `heartbeat`). */
+  readonly host?: number
+}
 
 /** Whether the detector of a signal is live: its script is the approved one and its host reported a fresh success. The detector row decides; this file takes the answer. */
 export type DetectorStatus = { readonly live: true } | { readonly live: false, readonly reason: string }

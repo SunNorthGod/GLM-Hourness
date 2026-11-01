@@ -182,7 +182,8 @@ const SUBJECT_ITEMS: readonly SubjectItem[] = ['role', 'model', 'session', 'targ
 /** A script failing leaves a gating call through unless the entry, or the event it ran for, says to block. */
 const ON_ERROR_DEFAULT = 'allow'
 
-function ended(rule: Rule | BuiltinRule, input: JudgeInput): boolean {
+/** Whether a rule's own time is up: its expiry has passed, or the condition it was to last until holds. */
+export function ended(rule: Rule | BuiltinRule, input: JudgeInput): boolean {
   const life = rule.lifetime
   if (life.kind === 'ttl') return Date.parse(life.expiresAt) <= input.now.getTime()
   return life.kind === 'until' && evaluateCondition(life.condition, input) === 'true'

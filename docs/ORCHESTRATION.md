@@ -1166,7 +1166,7 @@ LLM 不讲人话，多半是默认在向评审汇报，想显得周全。做法�
 | 小改动简报的简化形态 | M7 设计 |
 | 审查 agent 的模型档位 | M7 设计 |
 
-## 16. 规则板（最小一片）〔已实现 2026-10-30，L2、L3；行默认禁用，桌面版首轮验收未做；纯核心 §16.8 已实现 2026-10-31，L2，还没有行去调用；写入引擎的操作 §16.9 已实现 2026-11-01，L2，调用方只有测试〕
+## 16. 规则板（最小一片）〔已实现 2026-10-30，L2、L3；行默认禁用，桌面版首轮验收未做；纯核心 §16.8 已实现 2026-10-31，L2，还没有行去调用；写入引擎的操作 §16.9 已实现 2026-11-01，L2，调用方只有测试；`checkCall` 与命令行 §16.10 已实现 2026-11-01，L2，调用方只有命令行与测试〕
 
 完整设计是 `.agents/tasks/rules/design.md`（不入库，版本 0.10，评审通过、人放行）。自举之前只做其中的一片（项目图 `d-rules-peak-slice`，设计 §16.1）：每个项目一个由人选的高峰模式档位，加少做档的并发上限，经一个服务交出。这一片是整块设计的子集：整块规则板以后往同一批文件里添加，不改写、不删除这一片写下的任何东西。能这样，靠存下来的形状有一条规矩（§16.3）：为空的集合不出现在存档、流水记录的摘要和规则文件里，整块规则板添上它的集合之后，这一片写下的记录照样核对得上。发给模型的高峰提醒与它在各档下的措辞见 §11.4（GLM 通道包），规则板不碰。
 
@@ -1229,11 +1229,11 @@ LLM 不讲人话，多半是默认在向评审汇报，想显得周全。做法�
 
 ### 16.6 这一片没有做的
 
-整块规则板的其余部分，写下的代码按它们能直接加进来的形状留着，没有留空桩：规则页与面板、人加的规则与检测器、脚本与脚本执行器、工具调用门里的拦截、等待单与排队、违规流水的新记录、`checkCall` 与命令行、指标事件、`rules_show` 与 `rules_propose`、调用判定的行（默认规则 `GLM_PEAK_PRICING` 与按档位启用的附属条目已作为纯代码在库里，§16.8，没有门去判定它们，所以今天没有调用被它们挡）、`openRulesBoard` 的 `projectDir` 参数（设计 §7.4 有；没有调用方给它值，数据目录服务还没有 `projectDirOf`，运行时目录固定为 `<项目根>/.llm/rules/`，`.llm/` 的忽略条目也按项目根算；M5 的项目目录服务合入、规则行要按它放运行时目录时再加，两处一起改）、`/rules recovery` 命令（它调用的引擎操作 `recovery-accept`、`recovery-dismiss`、`repo-adopt`、`repo-restore` 已在 §16.9；命令随规则行，在那之前没有生效的记录与被改过的规则文件只能列出：要清掉，删 `.llm/rules/` 让规则板照仓库里的文件重新开始，或再选一次档位让它按流水重写文件）、宿主心跳的写入（读已有，§16.9）与 `hits.json`、`RulesService`（`glmHournessRules`）、对话里改档位的提议一路、高峰结束时叫醒主 Agent（循环板）与高峰里停住自动推进（M7）。
+整块规则板的其余部分，写下的代码按它们能直接加进来的形状留着，没有留空桩：规则页与面板、人加的规则与检测器、脚本与脚本执行器、工具调用门里的拦截、等待单与排队、违规流水的新记录、指标事件（`rules.check` 的形状与可注入的出口已有，§16.10；其余事件与接收方没有）、`rules_show` 与 `rules_propose` 两个工具（`rules_show` 的文字已有，§16.10）、调用判定的行（默认规则 `GLM_PEAK_PRICING` 与按档位启用的附属条目已作为纯代码在库里，§16.8，没有门去判定它们，所以今天没有调用被它们挡）、`openRulesBoard` 的 `projectDir` 参数（设计 §7.4 有；没有调用方给它值，数据目录服务还没有 `projectDirOf`，运行时目录固定为 `<项目根>/.llm/rules/`，`.llm/` 的忽略条目也按项目根算；M5 的项目目录服务合入、规则行要按它放运行时目录时再加，两处一起改）、`/rules recovery` 命令（它调用的引擎操作 `recovery-accept`、`recovery-dismiss`、`repo-adopt`、`repo-restore` 已在 §16.9；命令随规则行，在那之前没有生效的记录与被改过的规则文件只能列出：要清掉，删 `.llm/rules/` 让规则板照仓库里的文件重新开始，或再选一次档位让它按流水重写文件）、宿主心跳的写入（读已有，§16.9、§16.10）与 `hits.json`、`RulesService`（`glmHournessRules`）、对话里改档位的提议一路、高峰结束时叫醒主 Agent（循环板）与高峰里停住自动推进（M7）。
 
 ### 16.7 验证
 
-L2：`tests/peak-mode.spec.ts`（共用契约：上限与挡住的标记、读取函数、文字与少做那句里的数、`nextPeakChange`）、`tests/rules-model.spec.ts`（`effectivePeakMode`、序列化、规则文件、状态校验、完整形状的每个集合、规则文件逐项核对、`diffRepo`、`adoptRepo`、`unapprovedScripts`）、`tests/rules-store.spec.ts`（设计 §7.5 表里每一种情形、性质测试、锁、两个进程同时写、规则文件的各种情形与 git 操作、为空的集合不存、最小一片写下的文件按字节放进来仍核对得上、`changesBetween`、第一次写之前 `.git/info/exclude` 里的 `.llm/`）、`tests/rules-repo.spec.ts`（真实 git 仓库里设计 §7.5 末表的每一行：新克隆、`git checkout` 旧版、手改、`MERGE_HEAD` 期间只写流水与快照、`repo-adopt`、`repo-restore`、两者的崩溃点；没有 git 时整个文件跳过并写明原因）、`tests/rules-engine.spec.ts`（身份表的每一格、请求校验、修订号、写入的产物、`busy` 与 `io`、项目根）、`tests/rules-ops.spec.ts`（每个操作：对的身份写一条记录、重放得到状态、做不了的请求得一句话且不写任何文件；清理与到期的每一种、重放不要时钟和心跳目录；恢复的照改与忽略）、`tests/rules-property.spec.ts`（§16.9 的性质测试，5 个种子）、`tests/rules-row.spec.ts`（假宿主上的行：命令、服务、健康、恢复之后降级的出路、不挡任何调用、激活期降级、补丁里默认禁用）。L3：`npm run probe` 的场景 `rules-peak`（GLM 与编排层两个包，平移到周三 15:00 UTC+8 的探针时钟，临时 git 工作区：出厂档位、`/rules peak 不做`、`/rules peak 无影响`，每步经真实的 `/rules` 处理函数与服务读回状态）与 `rules-peak-hourness`（只装编排层包：没有计价服务，没有上限与挡住的标记）。L4（桌面版重启后核对）未做，行保持禁用。纯核心（§16.8）的 L2 是 `tests/rules-model.spec.ts`（规则的校验）、`tests/rules-judge.spec.ts`（事件、有效值、条件、判定、合并、未批准的脚本）、`tests/rules-builtin.spec.ts`（默认规则、三档、目录）和 `tests/contracts.spec.ts` 里的目录一条。
+L2：`tests/peak-mode.spec.ts`（共用契约：上限与挡住的标记、读取函数、文字与少做那句里的数、`nextPeakChange`）、`tests/rules-model.spec.ts`（`effectivePeakMode`、序列化、规则文件、状态校验、完整形状的每个集合、规则文件逐项核对、`diffRepo`、`adoptRepo`、`unapprovedScripts`）、`tests/rules-store.spec.ts`（设计 §7.5 表里每一种情形、性质测试、锁、两个进程同时写、规则文件的各种情形与 git 操作、为空的集合不存、最小一片写下的文件按字节放进来仍核对得上、`changesBetween`、第一次写之前 `.git/info/exclude` 里的 `.llm/`）、`tests/rules-repo.spec.ts`（真实 git 仓库里设计 §7.5 末表的每一行：新克隆、`git checkout` 旧版、手改、`MERGE_HEAD` 期间只写流水与快照、`repo-adopt`、`repo-restore`、两者的崩溃点；没有 git 时整个文件跳过并写明原因）、`tests/rules-engine.spec.ts`（身份表的每一格、请求校验、修订号、写入的产物、`busy` 与 `io`、项目根）、`tests/rules-ops.spec.ts`（每个操作：对的身份写一条记录、重放得到状态、做不了的请求得一句话且不写任何文件；清理与到期的每一种、重放不要时钟和心跳目录；恢复的照改与忽略）、`tests/rules-property.spec.ts`（§16.9 的性质测试，5 个种子）、`tests/rules-check.spec.ts`（`checkCall` 与命令行，§16.10）、`tests/rules-metrics.spec.ts`（指标事件的出口）、`tests/rules-row.spec.ts`（假宿主上的行：命令、服务、健康、恢复之后降级的出路、不挡任何调用、激活期降级、补丁里默认禁用）。L3：`npm run probe` 的场景 `rules-peak`（GLM 与编排层两个包，平移到周三 15:00 UTC+8 的探针时钟，临时 git 工作区：出厂档位、`/rules peak 不做`、`/rules peak 无影响`，每步经真实的 `/rules` 处理函数与服务读回状态）与 `rules-peak-hourness`（只装编排层包：没有计价服务，没有上限与挡住的标记）。L4（桌面版重启后核对）未做，行保持禁用。纯核心（§16.8）的 L2 是 `tests/rules-model.spec.ts`（规则的校验）、`tests/rules-judge.spec.ts`（事件、有效值、条件、判定、合并、未批准的脚本）、`tests/rules-builtin.spec.ts`（默认规则、三档、目录）和 `tests/contracts.spec.ts` 里的目录一条。
 
 ### 16.8 纯核心（`src/rules/events.ts`、`model.ts`、`judge.ts`、`signals.ts`、`builtin.ts`，`src/guard/catalog.ts`）〔已实现 2026-10-31，L2；没有行、工具或命令，调用方只有测试〕
 
@@ -1288,6 +1288,28 @@ L2：`tests/peak-mode.spec.ts`（共用契约：上限与挡住的标记、读�
 **没有做的操作。** 只有同意的路（M3 第 6 步）能产生数据的都不在引擎里：`propose`、`proposal-show`、`proposal-accept`、`proposal-reject`、`proposal-expire`、`rule-set`、`signal-define`、`detector-set`、`detector-delete`、`repin`、`remove`、`signal-detected`。它们的请求得 `invalid`（不认识的 op），状态里没有 `proposals`。脚本文件的写入与删除也归那条路：`rule-delete` 只删脚本钉。
 
 **性质测试（`tests/rules-property.spec.ts`）。** 5 个固定种子，自写的生成器：请求按当前状态造，所以合法；注入时钟，轮换阈值调小。每个种子至少 200 次写入，用到表里的每个操作；其中一次时钟前进 25 小时并丢掉一个宿主的心跳（有 `prune` 与 `expire`），至少一次轮换，两行引擎以外追加的记录（一行 `snapshot` 随手写、一行没有）随后一个照改、一个忽略，规则文件被外部改了又分别被照改、写回、改回。每次写入后，把新增的记录逐条放到上一个状态上，摘要都要对上、结果等于读到的快照。结束后：(a) 清零快照读一次，摘要等于清零前、没有跳过的行，再写一条原因为 `snapshot-corrupt`、不登记行的 `recovered`；(b) 再清零一次，同样；(c) 对整个流水目录从空状态重放，摘要等于 (b) 之后的快照，`base` 链核对通过。失败时打印种子与第一条对不上的序号。
+
+### 16.10 `checkCall` 与命令行（`src/rules/check.ts`、`heartbeat.ts`、`metrics.ts`、`denial.ts`、`show.ts`、`call.ts`、`cli.ts`，`scripts/rules/cli.mjs`）〔已实现 2026-11-01，L2；调用方只有命令行与测试〕
+
+设计 §9.4、§10.5。库入口 `checkCall({tool, args}, options)` 对一个假设的工具调用（`tool` 是 DSH 原生名）按项目的规则判定，不在 DSH 里也能用；命令行 `check`、仓库脚本在启动前自查（M6 的 `gateOnRules`）、循环板跑脚本之前都走它。
+
+**与门共用的部分。** 事件由 `gateEvents` 构造，输入由 `judgeInput` 构造，判定是 `judge`，规则表是项目状态里的人设规则（按 id 排）加 `builtinRulesFor(effectivePeakMode(state).level)`。`checkCall` 只推出 `gate.tool-call`。调用里的字段由 `describeCall`（`call.ts`）取：shell 工具的命令文本，写入目标（`write`、`edit`、`str_replace_editor` 除 `view` 外的目标，以及守卫的引号感知读法在 shell 命令里找到的重定向目标；没有可见目标的 shell 写，如 `Set-Content`，没有目标，按 `writes` 筛的规则看不到它），和拒绝文字的第一句。门接上时取字段也走这个函数。
+
+**值从哪来。** 与门不同的只有来源：`glm-peak` 取调用方给的值（来源 `caller`，`peakUntil` 随它给），否则取 `liveHeartbeats` 挑出的心跳里第一份有值的 `computed.glmPeak`（来源 `heartbeat`，`host` 是 pid；它的 `nextChangeAt` 不晚于此刻时取反），有活的心跳但都读不出时取最新那份的原因，没有活的心跳时读不出，原因「没有活的宿主，命令行读不到计价服务」（来源 `none`）；阶段只取 `stage`；角色、模型、会话只取调用方给的，没给的那一项读不出，要求它的规则不命中，结果的 `subjects` 写出；开关与检测器的信号读项目状态，没有宿主报告检测器（检测器还没有），所以检测器定义的信号除非人设了值，一律读不出。`signals` 列的是命中事件和筛选的规则在条件与期限里读到的信号，每个一项。
+
+**只读。** `readProject` 读状态，不取锁，不写任何文件：`check.ts` 不导入 `engine.ts` 与 `data/lock.ts`，`src/rules/` 不导入子进程模块（`tests/rules-check.spec.ts` 逐文件查）。状态与流水不一致时隔 50 毫秒重读，至多 3 次，仍不一致就按流水在内存里重放，`notes` 写「状态要重建，已在内存里按变更记录重放，没有写文件」。没有 `.llm/rules/` 时：规则文件在，照它在内存里开始（不写 `base`），`notes` 写明；规则文件也没有，按空状态判，`notes` 写「这个项目还没有规则板的状态」。规则文件被规则板以外改过时照流水判，`notes` 写「仓库里的规则文件被规则板以外改过，按变更记录判」。读不出的心跳文件不采用，`notes` 列文件名。目录不在 git 仓库里、也没有 `.llm/` 时按没有规则状态判，`notes` 写明。读状态抛错是 `RulesCheckError('io')`。
+
+**脚本。** 不起进程。带脚本的规则一律当作脚本未批准（批准的路还没有）：按条目的失败做法判（阻塞的拦下，其余放行），`scripts` 列 `refused`，`notes` 写原因。设计的 `CheckOptions.runScript` 因此没有建。
+
+**结果。** `CheckResult` 照设计：`effect`、`exitCode`（拦截 4，排队 5，其余 0）、`rules`（命中事件和筛选的规则与条件的值；`effect` 比设计多一个 `script`，给脚本动作的规则，脚本的失败做法使它拦下时是 `block`）、`text`、`signals`、`subjects`、`scripts`、`peakMode`、`notes`。
+
+**文字（`denial.ts`）。** 拦截与排队用守卫的 `renderCorrection` 写四段。排队在门里是「Deferred as ticket q-N.」；`checkCall` 没有单，所以三处不同：这一句换成「Would be deferred; the command line opens no ticket.」，Right path 里 harness 发消息的那一句换成「Run it again when the condition no longer holds.」，例外里 `/rules let q-N` 那一半去掉（设计只写了前两处，没有单号时第三处留不住）。同一个函数也供门用，门传 `ticket`。命中的只有按档位启用的附属条目时，边界里写「GLM peak hours now until HH:MM.」（没有结束时刻写「now」）和档位一句（出厂默认「Peak mode: reduce (the default; the human can change it).」，人设过「Peak mode set by the human at YYYY-MM-DD HH:MM: stop.」），Right path 写「Run it again after HH:MM.」（没有时刻写「after peak ends」），例外写 `/rules peak`。时刻按本机时区。结束时刻取调用方的 `peakUntil`，没有则取心跳的 `nextChangeAt`。门里的子 agent 与 `run_code` 子调用变体、不做档的 goal 暂停句在门接上时加。
+
+**事件（`metrics.ts`）。** 每次判定恰好一次 `emitMetric`，交一条 `rules.check`：`effect`、`exitCode`、`rules`（命中的规则 id）、`peakMode.level` 与 `origin`、`glmSpend`、`glmPeakSource`、`unknownSignals`、`waitedMs`、`caller`，不含命令原文。出口是 `CheckOptions.metrics`，默认什么都不做；出口抛错或拒绝，判定、文字、退出码和文件都不变。用法错误不判定，也不交事件。指标流水有了写入口之后只改这个文件的默认出口。
+
+**命令行（`cli.ts`）。** `npm run -s rules -- show|check`，选项与退出码见 `DEVELOPMENT.md` §13。`show` 的文字由 `show.ts` 的 `showText` 写：高峰模式、`glm-peak`、生效的规则、开着的等待单、项目的信号；`rules_show` 工具用同一个格式化函数，按会话筛规则与高峰一行（设计 §6.4）随工具加。`propose` 子命令没有建（同意的路还没有）。
+
+**心跳的读侧（`heartbeat.ts`）。** `readHeartbeats` 读 `.llm/rules/hosts/*.json`，`liveHeartbeats` 取 45 秒内的、新的在前，`hostPeak` 按上面的顺序挑 `glm-peak`。`HEARTBEAT_FRESH_MS` 也是 `plan.ts` 判宿主还在不在的数。心跳的写入随后。
 ## 17. 执行层（M7）〔骨架进行中：E0、E1a、E3 已实现，只有纯函数、git 执行器、门禁锁和测试，没有行〕
 M7 的设计是 `.agents/tasks/m7/design.md`（不入库，版本 0.6，评审通过、人放行）。执行层的源码在编排层包的 `src/execute/`，目录登记在 `scripts/packages.mjs` 的 `hourness.src`，`packages/hourness/tsconfig.json` 的 `include` 同步加一项（preflight 比对二者）。骨架按设计 §8.1 的步骤实现：E0、E1a、E3 之后没有行、没有监听器，`cordis.patch.yml` 不变；`glm-hourness/execute` 行从 E4 起出现，默认禁用，E9 验证通过后才启用。
 ### 17.1 写入范围（E0，`src/execute/scope.ts`）
