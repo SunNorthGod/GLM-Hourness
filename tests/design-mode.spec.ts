@@ -591,6 +591,60 @@ async function whileTempUnlinkFails<T>(body: () => Promise<T>): Promise<T> {
 /** The `agents` service with a registry that cannot be walked, so demoteOthers throws after the record was written. */
 const brokenRegistry = { get: () => undefined, roots: () => { throw new Error('registry is down') } }
 
+/** Poll until the holder record names `id`, so a concurrent /wish starts only once the other's write has landed. */
+async function waitForRecord(host: DesignHost, id: string): Promise<void> {
+  for (let attempt = 0; attempt < 200 && holderOf(host) !== id; attempt++) await tick()
+  assert.equal(holderOf(host), id)
+}
+
+test('a plain /wish in another session does not steal the role while a /wish here is still moving it: it is pointed, and the mover finishes (S3-1 R3)', async () => {
+  const { host } = open()
+  const holder = host.addAgent('s0')
+  const mover = host.addAgent('s1')
+  const comer = host.addAgent('s2')
+  await type(host, holder, '/wish')
+  // Hold every /wish off the row runs itself, so the mover's handler stays inside demoteOthers.
+  let release: () => void = () => undefined
+  const held = new Promise<void>(resolve => { release = resolve })
+  const execute = host.ctx.commands.execute.bind(host.ctx.commands)
+  ;(host.ctx.commands as { execute: typeof execute }).execute = (agent, line, attachments, signal) => line === '/wish off' ? held.then(() => execute(agent, line, attachments, signal)) : execute(agent, line, attachments, signal)
+  const moving = type(host, mover, '/wish here')
+  await waitForRecord(host, 's1')
+  await tick()
+  const reply = await type(host, comer, '/wish')
+  assert.ok(reply.text.startsWith(ROLE_UNCHANGED_MARK), reply.text)
+  assert.equal(holderOf(host), 's1', 'the record still names the mover')
+  release()
+  const moved = await moving
+  assert.ok(moved.text.startsWith('主 Agent 已从另一个会话移到这里'), moved.text)
+  assert.equal(holderOf(host), 's1')
+  assert.equal(isOn(host, mover), true)
+})
+
+test('the loser\'s demoteOthers skips the session the record names: a /wish here that completes during another one\'s demote wait keeps the role (S3-1 R3)', async () => {
+  const { host } = open()
+  const holder = host.addAgent('s0')
+  const first = host.addAgent('s1')
+  const second = host.addAgent('s2')
+  await type(host, holder, '/wish')
+  // The first /wish off the row runs itself is held, so the first mover waits inside demoteOthers; the later ones run.
+  let offs = 0
+  let release: () => void = () => undefined
+  const held = new Promise<void>(resolve => { release = resolve })
+  const execute = host.ctx.commands.execute.bind(host.ctx.commands)
+  ;(host.ctx.commands as { execute: typeof execute }).execute = (agent, line, attachments, signal) => line === '/wish off' && offs++ === 0 ? held.then(() => execute(agent, line, attachments, signal)) : execute(agent, line, attachments, signal)
+  const slow = type(host, first, '/wish here')
+  await waitForRecord(host, 's1')
+  const quickReply = await type(host, second, '/wish here')
+  assert.ok(quickReply.text.startsWith('主 Agent 已从另一个会话移到这里'), quickReply.text)
+  assert.equal(holderOf(host), 's2')
+  release()
+  const slowReply = await slow
+  assert.equal(slowReply.kind, 'error', slowReply.text)
+  assert.equal(holderOf(host), 's2', 'the winner kept the record')
+  assert.equal(isOn(host, second), true)
+})
+
 test('a temp-file cleanup that fails does not fail the /wish: the claim stands and the mode comes on (S3-3, S3-1 R1)', async () => {
   const { host } = open()
   const agent = host.addAgent('s1')

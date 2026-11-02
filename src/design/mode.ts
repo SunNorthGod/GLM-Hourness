@@ -84,6 +84,15 @@ export const mainAgentProjection = {
 
 const pending = new WeakMap<SessionLike, { readonly commandId: string, readonly active: boolean }>()
 
+/**
+ * Claims in flight: the /wish handler has written the holder record (or is
+ * writing it) and has not reached its pending state yet. `standingOf` reads
+ * this to answer 'open' for such a session, so a plain /wish in another
+ * session does not take a role over while a /wish here is still moving it
+ * (review R3). Cleared when the handler stops, before any await of it runs.
+ */
+const claiming = new WeakMap<SessionLike, string>()
+
 const message = (error: unknown): string => error instanceof Error ? error.message : String(error)
 
 /** Record the role the /wish being handled asks for, before its command/done lands. */
@@ -265,6 +274,8 @@ export function localTime(iso: string): string {
 async function standingOf(deps: WishDeps, sessionId: string): Promise<'open' | 'lapsed' | 'closed' | 'gone'> {
   const live = deps.agents()?.get(sessionId)
   if (live !== undefined) {
+    // A /wish of this session has the record in flight: the role is not lapsed even though the pending state is not set yet.
+    if (claiming.get(live.session) !== undefined) return 'open'
     const mode = peekMode(deps.role.projections(), live.session)
     return mode.error === undefined && !mode.active ? 'lapsed' : 'open'
   }
@@ -337,15 +348,19 @@ export function wishHandler(deps: WishDeps): (invocation: DesignInvocationLike) 
     const key = projectKey(dir)
     const record: HolderRecord = { version: 1, sessionId: session.id, graphDir: dir, since: deps.now().toISOString(), commandId }
     let lead = ''
+    // From the first write on the claim is in flight (review R3): while the handler waits in demoteOthers, another session's /wish sees this one as open, not lapsed. Cleared when the marker's /wish stops writing the record; nothing of this handler awaits after that.
+    const mark = (): void => { claiming.set(session, commandId) }
     try {
       // Three tries: a claim that loses to a session claiming at the same moment reads the record again.
       for (let attempt = 0; attempt < 3; attempt++) {
         const reading = readHolder(file)
         if (reading.kind === 'none') {
+          mark()
           if (claimHolder(file, record)) break
           continue
         }
         if (reading.kind === 'unreadable') {
+          mark()
           replaceHolder(file, record)
           await deps.demoteOthers(key, session.id)
           lead = `原来的主 Agent 记录读不到（${reading.reason}），已改为这个会话；`
@@ -353,6 +368,7 @@ export function wishHandler(deps: WishDeps): (invocation: DesignInvocationLike) 
         }
         if (reading.record.sessionId === session.id) break
         if (input.here) {
+          mark()
           replaceHolder(file, record)
           await deps.demoteOthers(key, session.id)
           lead = MOVED_HERE
@@ -360,6 +376,7 @@ export function wishHandler(deps: WishDeps): (invocation: DesignInvocationLike) 
         }
         const standing = await standingOf(deps, reading.record.sessionId)
         if (standing === 'open' || standing === 'closed') return done(pointerText(deps, reading.record, standing, input.wish !== ''))
+        mark()
         replaceHolder(file, record)
         lead = standing === 'gone' ? '原来的主 Agent 会话已经不在了，' : '原来记的主 Agent 会话其实没有开着主 Agent 模式，'
         break
@@ -376,6 +393,10 @@ export function wishHandler(deps: WishDeps): (invocation: DesignInvocationLike) 
         deps.role.report(session, 'degraded', staleRecordKept(message(reason)))
       }
       return fail(`主 Agent 的持有者记录写不了：${message(error)}`)
+    }
+    finally {
+      // The pending state (set right below, in the same synchronous stretch) carries the claim from here on; a handler that did not claim the record leaves no marker behind.
+      claiming.delete(session)
     }
 
     // Hooks first, also for a session that is the main agent already: it may have been open before this row loaded.

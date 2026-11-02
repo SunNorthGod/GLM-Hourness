@@ -426,7 +426,11 @@ export function apply(ctx: DesignContext, config: DesignConfig = {}): () => void
       }
       for (const other of registry.roots()) {
         const session = other.session
-        if (session.id === except || session.header.origin === 'subagent' || projectOfSession(session)?.key !== key || !modeOf(projections, session).active) continue
+        const project = projectOfSession(session)
+        if (session.id === except || session.header.origin === 'subagent' || project === undefined || project.key !== key || !modeOf(projections, session).active) continue
+        // The session the record names holds the role now, whatever its projection says: demoting it would delete the record a running /wish relies on (review R3). Read per candidate: the record can change hands while this loop waits on a demotion.
+        const named = readHolder(project.file)
+        if (named.kind === 'held' && named.record.sessionId === session.id) continue
         await leaveRole(other)
       }
     },
