@@ -18,6 +18,7 @@
     "./rules": "./dist/rules/index.js",
     "./design": "./dist/design/index.js",
     "./loops": "./dist/loops/index.js",
+    "./env": "./dist/env/index.js",
     "./data/locale/*.json": "./locale/data/*.json",
     "./guard/locale/*.json": "./locale/guard/*.json",
     "./memory/locale/*.json": "./locale/memory/*.json",
@@ -28,6 +29,7 @@
     "./rules/locale/*.json": "./locale/rules/*.json",
     "./design/locale/*.json": "./locale/design/*.json",
     "./loops/locale/*.json": "./locale/loops/*.json",
+    "./env/locale/*.json": "./locale/env/*.json",
     "./locale/*.json": "./locale/*.json",
     "./icon": "./icon.svg"
   },

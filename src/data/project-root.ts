@@ -158,11 +158,12 @@ export function cachedWorktrees(now: () => number): (root: string) => readonly s
  * is never committed. Nothing happens outside a git repository, and a line
  * that already ignores the directory (`.llm`, `.llm/`, `/.llm`, `/.llm/`) is
  * not repeated. Throws when the file cannot be written; the caller then does
- * not create the directory.
+ * not create the directory. Resolves to true when a line was appended, false
+ * when the directory was already ignored (or there is no git directory).
  */
-export async function ensureIgnored(root: string, directory: string): Promise<void> {
+export async function ensureIgnored(root: string, directory: string): Promise<boolean> {
   const gitDir = gitDirOf(root)
-  if (gitDir === undefined || !isDirectory(gitDir)) return
+  if (gitDir === undefined || !isDirectory(gitDir)) return false
   const file = join(gitDir, 'info', 'exclude')
   let text = ''
   try {
@@ -172,7 +173,8 @@ export async function ensureIgnored(root: string, directory: string): Promise<vo
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
   }
   const present = [directory, `${directory}/`, `/${directory}`, `/${directory}/`]
-  if (text.split(/\r?\n/).some(line => present.includes(line.trim()))) return
+  if (text.split(/\r?\n/).some(line => present.includes(line.trim()))) return false
   await mkdir(dirname(file), { recursive: true })
   await appendFile(file, `${text === '' || text.endsWith('\n') ? '' : '\n'}${directory}/\n`)
+  return true
 }

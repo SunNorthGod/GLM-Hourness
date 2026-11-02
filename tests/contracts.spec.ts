@@ -59,6 +59,7 @@ const ROW_IDS = [
   'glm-hourness/rules',
   'glm-hourness/design',
   'glm-hourness/loops',
+  'glm-hourness/env',
   'glm-hourness/ui',
 ]
 
