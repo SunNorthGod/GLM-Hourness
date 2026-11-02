@@ -184,6 +184,9 @@ export const PANEL_CSS = `
 .glmg-notice-actions{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:4px}
 .glmg-notice-actions .glmg-more{margin-top:0}
 .glmg-notice-actions .glmg-more:disabled{color:var(--g-ink3);cursor:default}
+/* the temporary board entry (Panel.tsx footer): one line of board links under the stage, until plain-ui builds the real footer */
+.glmg-foot{display:flex;flex-wrap:wrap;gap:4px 14px;padding:8px 16px 10px;border-top:1px solid var(--g-line)}
+.glmg-foot .glmg-more{margin-top:0}
 @keyframes glmg-fade{from{opacity:0}to{opacity:1}}
 @keyframes glmg-rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 @keyframes glmg-slide{from{opacity:0;transform:translateX(18px)}to{opacity:1;transform:none}}

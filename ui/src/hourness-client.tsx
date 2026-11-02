@@ -8,6 +8,7 @@
  */
 import type { ClientContext } from './dsh.ts'
 import { installGraphTab } from './graph/tab.tsx'
+import { installLessonsBoard } from './lessons/LessonsPage.tsx'
 /**
  * Client services the tab uses; nested Remote namespaces are declared with
  * their root (docs/DEVELOPMENT.md §5.7).
@@ -15,4 +16,5 @@ import { installGraphTab } from './graph/tab.tsx'
 export const inject = ['slots', 'sidebarRightTabs', 'remote', 'remote.commands', 'remote.workspaceFiles', 'sessions']
 export function apply(ctx: ClientContext): void {
   installGraphTab(ctx)
+  ctx.effect(() => installLessonsBoard(ctx), 'glm-hourness-ui: lessons board')
 }

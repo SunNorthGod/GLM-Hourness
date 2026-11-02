@@ -196,33 +196,49 @@ export class GraphSource {
   }
 }
 
-interface Held {
-  readonly source: GraphSource
+interface Held<T> {
+  readonly value: T
   count: number
 }
 
-const held = new Map<string, Held>()
+/**
+ * One shared resource per key while someone holds it: the first holder
+ * makes it, the last release disposes it. The graph panel's sources and the
+ * lessons page's sources share this shape.
+ */
+export function holder<T extends { dispose: () => void }>(): (key: string, make: () => T) => { readonly value: T, release: () => void } {
+  const held = new Map<string, Held<T>>()
+  return (key, make) => {
+    let entry = held.get(key)
+    if (entry === undefined) {
+      entry = { value: make(), count: 0 }
+      held.set(key, entry)
+    }
+    entry.count++
+    const current = entry
+    let released = false
+    return {
+      value: current.value,
+      release: () => {
+        if (released) return
+        released = true
+        current.count--
+        if (current.count > 0) return
+        current.value.dispose()
+        if (held.get(key) === current) held.delete(key)
+      },
+    }
+  }
+}
+
+const holdGraphSource = holder<GraphSource>()
 
 /** The shared source of a session's graph; release it when the panel unmounts. */
-export function holdSource(remote: RemoteRoot, sessionId: string): { readonly source: GraphSource, release(): void } {
-  let entry = held.get(sessionId)
-  if (entry === undefined) {
-    entry = { source: new GraphSource(remote, sessionId), count: 0 }
-    held.set(sessionId, entry)
-    entry.source.start()
-  }
-  entry.count++
-  const current = entry
-  let released = false
-  return {
-    source: current.source,
-    release: () => {
-      if (released) return
-      released = true
-      current.count--
-      if (current.count > 0) return
-      current.source.dispose()
-      if (held.get(sessionId) === current) held.delete(sessionId)
-    },
-  }
+export function holdSource(remote: RemoteRoot, sessionId: string): { readonly source: GraphSource, release: () => void } {
+  const { value, release } = holdGraphSource(sessionId, () => {
+    const source = new GraphSource(remote, sessionId)
+    source.start()
+    return source
+  })
+  return { source: value, release }
 }

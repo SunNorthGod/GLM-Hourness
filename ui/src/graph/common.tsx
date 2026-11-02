@@ -6,7 +6,7 @@
  * decides (or overturns) a question.
  */
 import { Button, Input, MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
-import { createContext, useContext, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactElement, type ReactNode } from 'react'
+import { Component, createContext, useContext, useLayoutEffect, useRef, useState, type ErrorInfo, type KeyboardEvent, type ReactElement, type ReactNode } from 'react'
 import { TYPE_LABELS } from '../../../src/graph/labels.ts'
 import type { LoadedGraph } from '../../../src/graph/parse.ts'
 import { ancestorsOf } from '../../../src/graph/projection.ts'
@@ -296,4 +296,33 @@ export function Options({ graph, node, onDecided }: OptionsProps): ReactElement 
       <Outcome outcome={writer.outcome} />
     </div>
   )
+}
+
+/**
+ * A render error inside one view shows its message instead of retiring the
+ * tab body (the graph panel's body and each board page get their own).
+ * 重新加载 renders the children again.
+ */
+export class PanelBoundary extends Component<{ readonly label: string, readonly children: ReactNode }, { readonly error: unknown }> {
+  override state: { readonly error: unknown } = { error: undefined }
+
+  static getDerivedStateFromError(error: unknown): { readonly error: unknown } {
+    return { error }
+  }
+
+  override componentDidCatch(error: unknown, info: ErrorInfo): void {
+    console.error(`glm-hourness ${this.props.label}:`, error, info.componentStack)
+  }
+
+  override render(): ReactNode {
+    if (this.state.error === undefined) return this.props.children
+    const { error } = this.state
+    const message = error instanceof Error ? error.message : typeof error === 'string' ? error : 'unknown error'
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 8, padding: 16 }}>
+        <span style={{ color: 'var(--dsw-alias-state-error-primary)' }}>{`${this.props.label}出错了：${message}`}</span>
+        <Button variant="outline" size="sm" onClick={() => { this.setState({ error: undefined }) }}>重新加载</Button>
+      </div>
+    )
+  }
 }

@@ -20,7 +20,7 @@
  * `memory/memory.jsonl` (`d-memory-scope`).
  */
 import { checkRefs, groupKeysOf, isGroupKey, parseRef, type ParsedRef } from '../data/evidence.ts'
-import type { Actor, Fold, FoldStep, JournalRecord, JsonValue, NewRecord } from '../data/journal.ts'
+import type { Actor, Fold, FoldStep, JournalRecord, JsonValue, NewRecord } from '../data/record.ts'
 import { invalid, isObject, isRefusal, listOf, refuse, type Refusal as BaseRefusal } from '../data/refusal.ts'
 import { findSecret } from '../data/secret-shape.ts'
 import { jaccard, wordsOf } from '../data/words.ts'

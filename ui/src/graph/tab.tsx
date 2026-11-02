@@ -5,9 +5,10 @@
  * the type's id. The slot's inject hands the body its session; the body
  * holds that session's shared graph source while it is mounted.
  */
-import { Button, IconGoalOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
-import { Component, useEffect, useState, type ErrorInfo, type ReactElement, type ReactNode } from 'react'
+import { IconGoalOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
+import { useEffect, useState, type ReactElement } from 'react'
 import type { ClientContext, CommandsRemote, RemoteRoot, SessionsClient } from '../dsh.ts'
+import { PanelBoundary } from './common.tsx'
 import { GraphPanel } from './Panel.tsx'
 import { holdSource, type GraphSource } from './source.ts'
 
@@ -19,32 +20,6 @@ interface BodyProps {
   readonly graphSessionId: string
 }
 
-/** A render error shows its message instead of retiring the tab body. */
-class Boundary extends Component<{ readonly children: ReactNode }, { readonly error: unknown }> {
-  override state: { readonly error: unknown } = { error: undefined }
-
-  static getDerivedStateFromError(error: unknown): { readonly error: unknown } {
-    return { error }
-  }
-
-  override componentDidCatch(error: unknown, info: ErrorInfo): void {
-    console.error('glm-hourness graph panel:', error, info.componentStack)
-  }
-
-  override render(): ReactNode {
-    if (this.state.error === undefined) return this.props.children
-    const { error } = this.state
-    const message = error instanceof Error ? error.message : typeof error === 'string' ? error : 'unknown error'
-    // 重新加载 renders the panel again; the graph source is held by the body, so the panel comes back with the current graph.
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 8, padding: 16 }}>
-        <span style={{ color: 'var(--dsw-alias-state-error-primary)' }}>项目图面板出错了：{message}</span>
-        <Button variant="outline" size="sm" onClick={() => { this.setState({ error: undefined }) }}>重新加载</Button>
-      </div>
-    )
-  }
-}
-
 function makeBody(remote: RemoteRoot, commands: CommandsRemote, sessions: SessionsClient): (props: BodyProps) => ReactElement | null {
   return function GraphTabBody({ graphSessionId }: BodyProps): ReactElement | null {
     const [source, setSource] = useState<GraphSource | undefined>(undefined)
@@ -54,7 +29,8 @@ function makeBody(remote: RemoteRoot, commands: CommandsRemote, sessions: Sessio
       return () => { held.release() }
     }, [graphSessionId])
     if (source === undefined) return null
-    return <Boundary><GraphPanel source={source} commands={commands} sessions={sessions} sessionId={graphSessionId} /></Boundary>
+    // 重新加载 renders the panel again; the graph source is held by the body, so the panel comes back with the current graph.
+    return <PanelBoundary label="项目图面板"><GraphPanel source={source} commands={commands} sessions={sessions} sessionId={graphSessionId} /></PanelBoundary>
   }
 }
 

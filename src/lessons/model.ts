@@ -18,7 +18,7 @@
  * function, so a write the tool accepts is never a bad line afterwards.
  */
 import { checkRefs, groupKeysOf, parseRef } from '../data/evidence.ts'
-import type { Actor, Fold, FoldStep, JournalRecord, NewRecord } from '../data/journal.ts'
+import type { Actor, Fold, FoldStep, JournalRecord, NewRecord } from '../data/record.ts'
 import { invalid, isObject, isRefusal, listOf, refuse, type Refusal as BaseRefusal } from '../data/refusal.ts'
 import { findSecret } from '../data/secret-shape.ts'
 import { jaccard, wordsOf } from '../data/words.ts'
