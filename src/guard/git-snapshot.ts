@@ -1351,15 +1351,14 @@ function riskOf(invocation: GitInvocation): GitRisk | undefined {
   return invocation.sub === '' ? undefined : gitRisk(invocation.sub, invocation.args)
 }
 
-/** An alias is its expansion judged once more; one that starts with `!` runs a shell command and may do anything. */
-async function aliasRisk(g: Git, repo: string, invocation: GitInvocation): Promise<{ readonly risk: GitRisk, readonly invocation: GitInvocation } | undefined> {
+/** The expansion of `sub` when it is an alias (undefined when it is none); one that starts with `!` runs a shell command and may do anything. The expansion's risk is undefined when it loses nothing. */
+async function aliasOf(g: Git, repo: string, invocation: GitInvocation): Promise<{ readonly risk: GitRisk | undefined, readonly invocation: GitInvocation } | undefined> {
   const alias = first((await g(repo, ['config', '--get', `alias.${invocation.sub}`], { allow: [1] })).stdout)
   if (alias === undefined) return undefined
   if (alias.startsWith('!')) return { risk: 'both', invocation }
   const [sub = '', ...rest] = alias.split(/\s+/)
   const expanded: GitInvocation = { ...invocation, sub, args: [...rest, ...invocation.args] }
-  const risk = gitRisk(sub, expanded.args)
-  return risk === undefined ? undefined : { risk, invocation: expanded }
+  return { risk: gitRisk(sub, expanded.args), invocation: expanded }
 }
 
 /**
@@ -1417,10 +1416,16 @@ async function guardOne(invocation: GitInvocation, who: SnapshotWho, env: Snapsh
   let risk = written
   let effective = invocation
   if (risk === undefined) {
-    const aliased = await aliasRisk(g, repo, invocation)
+    const aliased = await aliasOf(g, repo, invocation)
     if (aliased === undefined) return undefined
     risk = aliased.risk
     effective = aliased.invocation
+    // What the command sends away and what clean deletes are about what it RUNS: both checks hold for the expansion too (S4-3).
+    const clean = cleanRefusal(effective)
+    if (clean !== undefined) return clean
+    const outbound = await outboundRefusal(effective, env, where?.root)
+    if (outbound !== undefined) return outbound
+    if (risk === undefined) return undefined
   }
   const outcome = await takeSnapshot(repo, effective, risk, who, env, info)
   switch (outcome.kind) {

@@ -6,7 +6,7 @@
  * and a merge left unresolved. Real git in temporary repositories.
  */
 import assert from 'node:assert/strict'
-import { mkdirSync, readdirSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -163,6 +163,17 @@ test('an alias is judged by what it runs: a shell alias is both, a plain one is 
   assert.equal(co.notices.length, 1)
   assert.equal(journal(repo).at(-1)?.risk, 'discard')
   assert.equal(journal(repo).at(-1)?.subcommand, 'checkout')
+})
+
+test('the outbound and clean checks hold for the alias expansion too: an aliased push --mirror and an aliased clean -fdx are refused (S4-3)', async () => {
+  const { repo } = await withSnapshot()
+  repo.git('config', 'alias.p', 'push')
+  assert.equal(refusal(await run(repo, 'git p --mirror')).code, 'snapshots-off-machine')
+  const clean = twoCommitRepo()
+  clean.write({ '.env': 'SECRET=1\n', 'keep.txt': 'k\n' })
+  clean.git('config', 'alias.wipe', 'clean -fdx')
+  assert.equal(refusal(await run(clean, 'git wipe')).code, 'ignored-files')
+  assert.equal(existsSync(join(clean.dir, '.env')), true, 'the ignored file is still there')
 })
 
 test('git -C <other repository>: the snapshot is of that repository, in this project\'s journal', async () => {
