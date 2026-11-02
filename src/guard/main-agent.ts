@@ -34,7 +34,11 @@
  * letting a command through without its copy loses the work. This file does
  * not import the design directory: the design row hands in what it knows.
  * Denials go to the violation journal in the guard's record shape, with the
- * call's origin (src/guard/origin.ts). Nested transport calls pass.
+ * call's origin (src/guard/origin.ts). A nested transport call (it carries a
+ * `parent` token, the way the PTC preset dispatches from run_code) is judged
+ * like a direct one: inside it the main agent has no write either, its
+ * dispatched sessions stay read-only, and the graph-write rules still hold
+ * (review findings S4-1, S5-1, S6-2, S8-3).
  */
 import type { AgentLike, PreExecuteDecision, PreExecuteHost, ServiceLookup, SessionLike } from '../shared/dsh-min.ts'
 import type { JsonValue } from '../shared/json.ts'
@@ -149,7 +153,8 @@ export function installMainAgentRules(ctx: PreExecuteHost & ServiceLookup, deps:
   const ask = mainAgentAsk(deps.hiddenTools)
   return ctx.on('tools/pre-execute', async (payload, next) => {
     const agent = payload.agent
-    if (payload.parent !== undefined || agent?.session === undefined) return next()
+    // A nested transport call is judged like a direct one of the same agent: the PTC preset reaches these rules through it, so it may not pass (S4-1, S5-1, S6-2, S8-3).
+    if (agent?.session === undefined) return next()
     const dialect = dialectService(ctx, warn)
     const call: ToolCall = { name: toNativeTool(dialect, payload.name, warn), arguments: (payload.arguments ?? {}) as JsonValue }
     const shell = shellCommandOf(call)

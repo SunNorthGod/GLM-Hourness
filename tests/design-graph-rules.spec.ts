@@ -206,9 +206,14 @@ test('the options rule lets the call through when the graph cannot be read, and 
   assert.match(healthOf(host, agent)?.reason ?? '', /没能查这次图写入是不是给人列选项/)
 })
 
-test('a nested call with a parent token is never judged by these rules, like the other rules of the main agent', async () => {
-  const { host, agent } = await mainAgentWithGoal()
-  assert.equal((await host.preExecute(agent, 'graph_decide', decideWith('question-1', '我编的'), {})).kind, 'allow')
+test('a nested call with a parent token is judged like a direct one: a fabricated relay is refused (S4-1, S5-1, S6-2, S8-3)', async () => {
+  const fixture = await mainAgentWithGoal()
+  const { host, agent } = fixture
+  await host.say(agent, '之前说过：全部放行')
+  const id = await proposal(fixture)
+  await host.say(agent, '可以，就按推荐的来')
+  const reason = denied(await host.preExecute(agent, 'graph_decide', decideWith(id, '我编的一句话'), {}))
+  assert.match(reason, new RegExp(`^The words you relayed are not in a message the human sent after ${id} last changed\\.`))
 })
 
 // ---------------------------------------------------------------- main-agent-graph-delegations
@@ -475,9 +480,10 @@ test('when the graph cannot be read the five calls that could move a goal on are
   assert.equal(child.sent.length, 0)
 })
 
-test('a nested call with a parent token is not judged by the stage rule either, like the other rules of the main agent (the open hole S4-1)', async () => {
+test('a nested call with a parent token is judged by the stage rule too: a nested stage change cannot walk around it (S4-1, S5-1, S6-2, S8-3)', async () => {
   const { host, agent } = await mainAgentWithGoal()
-  assert.equal((await host.preExecute(agent, 'graph_edit', { id: 'goal-1', rev: 'r', set: { stage: 'design' }, reason: 'x' }, {})).kind, 'allow')
+  const reason = denied(await host.preExecute(agent, 'graph_edit', { id: 'goal-1', rev: 'r', set: { stage: 'design' }, reason: 'x' }, {}))
+  assert.match(reason, /^You tried to set the stage of "记账小工具" to design while it is in interview\./)
 })
 
 // ---------------------------------------------------------------- main-agent-graph-stage, the side of the goals that run no design loop

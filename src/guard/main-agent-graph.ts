@@ -36,8 +36,9 @@
  *   the llm with whatever `relay` it is given and checks nothing, so inside a
  *   session only its reading commands run (graphCliWrite).
  *
- * An ordinary session's `relay` is not checked. Nested calls (they carry
- * `parent`) never reach these rules, like the other rules of the main agent.
+ * An ordinary session's `relay` is not checked. A nested call (it carries a
+ * `parent` token) is judged like a direct one of the same session, like the
+ * other rules of the main agent.
  */
 import { isReleased, modulesOf, moduleOf } from '../graph/modules.ts'
 import { deciderOf } from '../graph/projection.ts'

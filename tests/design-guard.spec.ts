@@ -94,18 +94,24 @@ test('reading, the graph tools and delegation are not writes', async () => {
   }
 })
 
-test('an ordinary session, a session of another project and a nested call are not judged by the main agent rules; the subagents of a main agent are judged by design-before-release below', async () => {
+test('an ordinary session and a session of another project are not judged by the main agent rules; the subagents of a main agent are judged by design-before-release below', async () => {
   const { host } = await mainAgent()
   const plain = host.addAgent('plain', { workspace: 'other' })
   const sibling = host.addAgent('sibling')
   const child = host.addAgent('child', { origin: 'subagent', parentSession: 'plain' })
-  const main = host.agents.get('s1')!
   for (const agent of [plain, sibling, child]) {
     assert.equal((await host.preExecute(agent, 'Write', { file_path: 'a.txt', content: 'x' })).kind, 'allow', agent.id)
     assert.equal((await host.preExecute(agent, 'ask_user_question', {})).kind, 'allow', agent.id)
     assert.equal((await host.preExecute(agent, 'Bash', { command: 'echo x > a.txt' })).kind, 'allow', agent.id)
   }
-  assert.equal((await host.preExecute(main, 'Write', { file_path: 'a.txt', content: 'x' }, {})).kind, 'allow', 'a transport call with a parent token passes')
+})
+
+test('a nested call with a parent token is judged like a direct one: the main agent writes nothing and a dispatched child stays read-only (S4-1, S5-1)', async () => {
+  const { host, agent } = await mainAgent()
+  assert.match(denied(await host.preExecute(agent, 'Write', { file_path: 'a.txt', content: 'x' }, {})), /^You tried to write "a\.txt"\./)
+  const child = host.addAgent('child', { origin: 'subagent', parentSession: agent.id })
+  const reason = denied(await host.preExecute(child, 'write', { file_path: 'a.txt', content: 'x' }, {}))
+  assert.ok(reason.includes('Boundary: You were dispatched (directly or through other subagents) by the main agent, and it has no open goal in focus, so nothing it plans is released yet.'), reason)
 })
 
 test('after /wish off the session writes again, and while /wish is still settling it is already the main agent', async () => {
@@ -361,12 +367,12 @@ test('design-before-release: shell writes and file tools by any name are writes;
   }
 })
 
-test('design-before-release: only a main agent roots a judged chain; a nested call, a fork and a chain under an ordinary session are not judged', async () => {
+test('design-before-release: only a main agent roots a judged chain; a fork and a chain under an ordinary session are not judged', async () => {
   const w = await world()
   await propose([{ type: 'goal', title: '记账', stage: 'design' }])(w)
   w.host.focuses.set('s1', 'goal-1')
   denied(await w.write(w.child))
-  assert.equal((await w.host.preExecute(w.child, 'Write', DIALECT_WRITE.Write, {})).kind, 'allow', 'a transport call with a parent token passes')
+  assert.match(denied(await w.host.preExecute(w.child, 'Write', DIALECT_WRITE.Write, {})), /^You tried to write "x\.txt"\./, 'a nested call is judged like a direct one (S4-1, S5-1)')
   const plain = w.host.addAgent('plain', { workspace: 'other' })
   const underPlain = w.host.addAgent('under-plain', { workspace: 'other', origin: 'subagent', parentSession: 'plain' })
   w.host.focuses.set('plain', 'goal-1')
