@@ -548,6 +548,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "合入门槛修复运行完成（2026-11-02，ZCode 派出，个人套餐 GLM-5.3-Flash）：S4-1、S4-2、S4-3、S4-4、S5-1（含 S6-2、S8-3）、S5-2、R1（连 S3-3）、R3、R4 全部关闭，分支 m3 新增 10 提交至 52769eb（已推送）。嵌套调用选「照判」修法（S4-1/S5-1/S6-2/S8-3 一个提交，pinned 测试翻转为「嵌套调用与直接调用同判」）；R1 连带 S3-3（临时文件清理不再抛错）；R3 的并发用例先红后绿。R2 按评审原文延期：m3 与 main 都没有 mainAgentOf 的消费方，接线条件已写进 ORCHESTRATION §3.1（接入步骤要么经设计行读法核对会话活着且模式开着，要么在自己的设计里写明接受窗口）。门禁在最终树串行全绿：build 0、preflight 0、test 0（1415 pass；eslint 243、knip 19、jscpd 1 均在基线；逐字门禁 489/0）、probe 0（213/213）；编排方另独立复跑四道（进行中）。第 12 步（a）的在制改动全程未被触碰（未提交增量逐字节一致，提交范围零标定文件）。至此合入 main 前的代码债清零，剩第 12 步（a 标定、b 合入与批次 L4）。运行笔记 .agents/tasks/m3/impl/notes/fixup-merge-gates.md。"
+    },
+    {
+      "at": "2026-11-02T23:04:05.676Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "第 12 步（a）标定已执行（2026-11-03 凌晨，用户授权「你直接跑吧」；指标代码 92f8e94；worktree 临时 profile、不碰 ~/.dsh；结果 .llm/calibration-runs/2026-11-02T20-00-33-933Z/）：interview-expense-log 两档各 3 次共 6 运行，验收 0/6，解锁（GLM-5.3 至少一次全过）未满足，12（b）合入未动。逐次：5.3 三次——run1 访谈结构全绿但放行后主 Agent 回合内实现交付（goal 推 done 又因模拟人答复重开 doing，工作区多出 hua/、hua-copy/）；run2、run3 访谈未完成吃步数上限（62/89 步，边界紧）。Flash 三次——run1 仅差一项：goal approved/release 全对，唯一脏文件 __pycache__/expense.cpython-314.pyc（跑 Python 原型的字节码缓存）；run2 缺放行/确认批注；run3 提议未经人话批准。六次共同点：工作区 docs/graph/ 外都有改动。interview 指标全部收到（disturbed/shown/questions/copiedExamples=0/loops/records/rules/snapshots）。花费约 2585 积分（谷段）。待裁决：放行后访谈是否终止、执行归谁——修任务侧（夹具 gitignore、边界）或流程侧（设计行提示词/规则）后重跑。"
     }
   ]
 }
