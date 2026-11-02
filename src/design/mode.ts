@@ -368,6 +368,13 @@ export function wishHandler(deps: WishDeps): (invocation: DesignInvocationLike) 
       if (final.kind !== 'held' || final.record.sessionId !== session.id) throw new Error('别的会话同时在抢，记录还没写上')
     }
     catch (error) {
+      // The record may have been written by this /wish and name this session while its mode is off: release it, so that no reader of mainAgentOf delivers to a session that is not the main agent (review R1). A release that fails is the session's degraded health; /wish off can try again.
+      try {
+        releaseHolder(file, session.id)
+      }
+      catch (reason) {
+        deps.role.report(session, 'degraded', staleRecordKept(message(reason)))
+      }
       return fail(`主 Agent 的持有者记录写不了：${message(error)}`)
     }
 

@@ -570,6 +570,72 @@ async function whileRecordsCannotBeDeleted<T>(body: () => Promise<T>): Promise<T
   }
 }
 
+/** Run `body` with the deletion of any temporary holder file failing, the way the same scanner holds the freshly written `.tmp`. */
+async function whileTempUnlinkFails<T>(body: () => Promise<T>): Promise<T> {
+  const fs = createRequire(import.meta.url)('node:fs') as { unlinkSync: (path: string) => void }
+  const original = fs.unlinkSync
+  fs.unlinkSync = (path) => {
+    if (String(path).endsWith('.tmp')) throw new Error('EPERM: held by another program')
+    original(path)
+  }
+  syncBuiltinESMExports()
+  try {
+    return await body()
+  }
+  finally {
+    fs.unlinkSync = original
+    syncBuiltinESMExports()
+  }
+}
+
+/** The `agents` service with a registry that cannot be walked, so demoteOthers throws after the record was written. */
+const brokenRegistry = { get: () => undefined, roots: () => { throw new Error('registry is down') } }
+
+test('a temp-file cleanup that fails does not fail the /wish: the claim stands and the mode comes on (S3-3, S3-1 R1)', async () => {
+  const { host } = open()
+  const agent = host.addAgent('s1')
+  await whileTempUnlinkFails(async () => {
+    const reply = await type(host, agent, '/wish')
+    assert.equal(reply.kind, 'success')
+  })
+  assert.equal(holderOf(host), 's1')
+  assert.equal(isOn(host, agent), true)
+})
+
+test('a /wish here that errors after it wrote the record releases it: no record naming a session whose mode is off (S3-1 R1)', async () => {
+  const { host } = open()
+  const holder = host.addAgent('s0')
+  const mover = host.addAgent('s1')
+  await type(host, holder, '/wish')
+  host.services.set('agents', brokenRegistry)
+  const reply = await type(host, mover, '/wish here')
+  assert.equal(reply.kind, 'error')
+  assert.ok(reply.text.startsWith('主 Agent 的持有者记录写不了：'), reply.text)
+  assert.ok(reply.text.includes('registry is down'), reply.text)
+  assert.equal(holderOf(host), undefined, 'the record was released')
+  assert.equal(isOn(host, mover), false)
+})
+
+test('a record that cannot be released after the error is reported in the mover\'s health (S3-1 R1)', async () => {
+  const { host } = open()
+  const holder = host.addAgent('s0')
+  const mover = host.addAgent('s1')
+  await type(host, holder, '/wish')
+  host.services.set('agents', brokenRegistry)
+  await whileRecordsCannotBeDeleted(async () => {
+    const reply = await type(host, mover, '/wish here')
+    assert.equal(reply.kind, 'error')
+  })
+  assert.equal(holderOf(host), 's1', 'the record could not be deleted')
+  const health = sessionHealth(host, mover)
+  assert.equal(health?.state, 'degraded')
+  assert.ok(health?.reason.startsWith('主 Agent 的持有者记录没能清掉（'), health?.reason)
+  // The person's way out is unchanged: /wish off in that session deletes the record.
+  host.services.delete('agents')
+  assert.deepEqual(await type(host, mover, '/wish off'), { kind: 'success', text: '这个会话本来就不是主 Agent' })
+  assert.equal(holderOf(host), undefined)
+})
+
 test('after a cancelled /wish the project has no main agent for mainAgentOf, and another session\'s /wish becomes it without a pointer reply', async () => {
   const { host } = open()
   const first = host.addAgent('s1')

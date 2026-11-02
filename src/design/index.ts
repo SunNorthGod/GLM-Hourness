@@ -13,10 +13,12 @@
  * the role; mode.ts `roleOf` combines them. When the role moves, the
  * session that lost it is told to leave main agent mode by a /wish off the
  * row runs for it, as soon as that session is idle. A record naming a
- * session whose /wish did not take effect (cancelled after it claimed the
- * record, or cut off by a crash) is deleted by the first of these to find
- * out: the session's own next read of its role (cancelled), its creation
- * (crash), or another session's /wish (which takes the role over).
+ * session whose /wish did not take effect is deleted by the first of these
+ * to find out: the handler itself when the /wish errors after it wrote the
+ * record (released before the error is returned; a failed release is that
+ * session's degraded health), the session's own next read of its role
+ * (cancelled), its creation (crash), or another session's /wish (which
+ * takes the role over).
  *
  * The person's persona (the row's `persona` setting, persona.ts) is a system
  * prompt section for the main agent only. The tool face listener, the inner
