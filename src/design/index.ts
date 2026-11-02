@@ -375,8 +375,8 @@ export function apply(ctx: DesignContext, config: DesignConfig = {}): () => void
    * A session that was a main agent when it was saved or forked, while another session holds the role now,
    * is told to leave it. Not awaited: agent/created is awaited serially before the agent finishes creation.
    * The agent is asked again when it is idle, because the person may have moved the role back meanwhile.
-   * A session whose log has no finished /wish that turned the mode on, while the record names it, is a
-   * /wish cut off after it claimed the record (a crash before command/done reached the disk): the record is deleted.
+   * A session whose mode is off (readable), while the record names it, has the record deleted at creation -
+   * whatever its log says about the /wish: finished, errored, or never written (review R4).
    */
   function alignOnCreation(agent: AgentLike): void {
     const session = agent.session
