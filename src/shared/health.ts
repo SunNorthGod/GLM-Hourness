@@ -62,10 +62,22 @@ export interface RowHealthView {
   session(sessionId: string): HealthReport | undefined
 }
 
-/** The write side a row keeps. */
-export interface RowHealth {
+/** The write side a row keeps, with its own view: the row reads what it reports, notes included. */
+export interface RowHealth extends RowHealthView {
   /** Report the row's status in one session; stored when new or changed. A report without a session id is dropped. */
   report(sessionId: string | undefined, state: HealthState, reason: string): void
+  /**
+   * Attach a lasting problem to one session's report (m4-gate G1, F13). The
+   * stored report is always the latest `report` call (the row's activation
+   * status if there has been none) with every note of the session appended
+   * to its reason, joined by '；', and its state raised to at least
+   * 'degraded' ('inactive' stays). A later `report` keeps the notes.
+   * `text` undefined withdraws the note. Like `report`, a call without a
+   * session id is dropped. At most 4 notes per session (a fifth key is
+   * dropped), each cut to 80 code points. Notes leave with the session's
+   * report when the 64-session limit evicts it.
+   */
+  note(sessionId: string | undefined, key: string, text: string | undefined): void
   /** Replace the activation status: a service the row waits for arrived or failed after activation. */
   reactivate(state: HealthState, reason: string): void
   /** Withdraw the health service. */
@@ -74,6 +86,12 @@ export interface RowHealth {
 
 /** Sessions remembered per row; the oldest report leaves first. */
 const SESSION_LIMIT = 64
+
+/** How many notes one session carries; a further key is dropped. */
+const NOTE_LIMIT = 4
+
+/** How many code points of one note are kept. */
+const NOTE_LENGTH = 80
 
 /** The cordis service name of one row's health view. */
 export function healthServiceName(row: HealthRow): string {
@@ -85,6 +103,12 @@ export function sessionIdOf(agent: { readonly id: string, readonly session?: { r
   return agent?.session?.id ?? agent?.id
 }
 
+/** A status composed of a base and the session's notes: the reason grows, the state rises to at least degraded ('inactive' stays). */
+function compose(state: HealthState, reason: string, notes: ReadonlyMap<string, string> | undefined): { state: HealthState, reason: string } {
+  if (notes === undefined || notes.size === 0) return { state, reason }
+  return { state: state === 'inactive' ? 'inactive' : 'degraded', reason: [reason, ...notes.values()].join('；') }
+}
+
 /**
  * Provide one row's health view with its activation status. A context
  * without `provide`, or a failing provide (a second instance of the row),
@@ -93,8 +117,41 @@ export function sessionIdOf(agent: { readonly id: string, readonly session?: { r
 export function provideRowHealth(ctx: Partial<ProvideHost>, row: HealthRow, state: HealthState, reason: string, now: () => Date = () => new Date()): RowHealth {
   const stamp = (state: HealthState, reason: string): HealthReport => Object.freeze({ state, reason, at: now().toISOString() })
   let activation = stamp(state, reason)
+  /** The base the notes compose onto: the latest raw report call per session. */
+  const bases = new Map<string, { state: HealthState, reason: string }>()
+  const notes = new Map<string, Map<string, string>>()
   const sessions = new Map<string, HealthReport>()
-  const view: RowHealthView = Object.freeze({ row, activation: () => activation, session: (sessionId: string) => sessions.get(sessionId) })
+  /** The sessions the row has reported on or noted, first touch first: the 64-session cap covers notes without a report too, and the oldest report leaves first. */
+  const touched = new Map<string, true>()
+  const touch = (sessionId: string): void => {
+    if (touched.has(sessionId)) return
+    touched.set(sessionId, true)
+    if (touched.size > SESSION_LIMIT) {
+      const oldest = touched.keys().next().value as string
+      touched.delete(oldest)
+      sessions.delete(oldest)
+      bases.delete(oldest)
+      notes.delete(oldest)
+    }
+  }
+  const store = (sessionId: string, report: { state: HealthState, reason: string }): void => {
+    const last = sessions.get(sessionId)
+    if (last !== undefined && last.state === report.state && last.reason === report.reason) return
+    sessions.delete(sessionId)
+    sessions.set(sessionId, stamp(report.state, report.reason))
+  }
+  const view: RowHealthView = Object.freeze({
+    row,
+    activation: () => activation,
+    session: (sessionId: string) => {
+      const stored = sessions.get(sessionId)
+      if (stored !== undefined) return stored
+      const ofSession = notes.get(sessionId)
+      if (ofSession === undefined || ofSession.size === 0) return undefined
+      const composed = compose(activation.state, activation.reason, ofSession)
+      return stamp(composed.state, composed.reason)
+    },
+  })
   let withdraw = (): void => {}
   if (typeof ctx.provide === 'function') {
     try {
@@ -105,13 +162,35 @@ export function provideRowHealth(ctx: Partial<ProvideHost>, row: HealthRow, stat
     }
   }
   return {
+    ...view,
     report(sessionId, state, reason) {
       if (sessionId === undefined || sessionId.length === 0) return
-      const last = sessions.get(sessionId)
-      if (last !== undefined && last.state === state && last.reason === reason) return
-      sessions.delete(sessionId)
-      sessions.set(sessionId, stamp(state, reason))
-      if (sessions.size > SESSION_LIMIT) sessions.delete(sessions.keys().next().value as string)
+      bases.set(sessionId, { state, reason })
+      store(sessionId, compose(state, reason, notes.get(sessionId)))
+      touch(sessionId)
+    },
+    note(sessionId, key, text) {
+      if (sessionId === undefined || sessionId.length === 0) return
+      touch(sessionId)
+      let ofSession = notes.get(sessionId)
+      if (text === undefined) {
+        if (ofSession === undefined) return
+        ofSession.delete(key)
+        if (ofSession.size === 0) notes.delete(sessionId)
+      }
+      else {
+        if (ofSession === undefined) {
+          ofSession = new Map()
+          notes.set(sessionId, ofSession)
+        }
+        if (!ofSession.has(key) && ofSession.size >= NOTE_LIMIT) return
+        // Map.set keeps the key's position: a note keeps the place it first took.
+        ofSession.set(key, Array.from(text).slice(0, NOTE_LENGTH).join(''))
+      }
+      const base = bases.get(sessionId)
+      if (base === undefined) return // a session without a report composes on read; nothing is stored yet
+      const composed = compose(base.state, base.reason, notes.get(sessionId))
+      store(sessionId, composed)
     },
     reactivate(state, reason) {
       activation = stamp(state, reason)

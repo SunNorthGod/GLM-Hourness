@@ -138,10 +138,10 @@ function lex(src: string, dialect: ShellDialect): Token[][] {
     i += 1
     let text = ''
     while (i < src.length) {
-      const c = src[i]!
+      const c = src[i]
       if (singles.includes(c)) {
         // PowerShell doubles a quote to embed it; POSIX single quotes have no escape.
-        if (pwsh && src[i + 1] !== undefined && singles.includes(src[i + 1]!)) {
+        if (pwsh && src[i + 1] !== undefined && singles.includes(src[i + 1])) {
           text += c
           i += 2
           continue
@@ -159,9 +159,9 @@ function lex(src: string, dialect: ShellDialect): Token[][] {
     i += 1
     let text = ''
     while (i < src.length) {
-      const c = src[i]!
+      const c = src[i]
       if (doubles.includes(c)) {
-        if (pwsh && src[i + 1] !== undefined && doubles.includes(src[i + 1]!)) {
+        if (pwsh && src[i + 1] !== undefined && doubles.includes(src[i + 1])) {
           text += c
           i += 2
           continue
@@ -200,12 +200,12 @@ function lex(src: string, dialect: ShellDialect): Token[][] {
 
   /** PowerShell here-string body; `i` is at `@`, the opener is the rest of its line. */
   const hereString = (): string => {
-    const quote = src[i + 1]!
+    const quote = src[i + 1]
     const closing = singles.includes(quote) ? singles : doubles
     const start = src.indexOf('\n', i) + 1
     let at = start
     while (at > 0 && at < src.length) {
-      if (closing.includes(src[at]!) && src[at + 1] === '@') {
+      if (closing.includes(src[at]) && src[at + 1] === '@') {
         i = at + 2
         return src.slice(start, at).replace(/\r?\n$/, '')
       }
@@ -227,7 +227,7 @@ function lex(src: string, dialect: ShellDialect): Token[][] {
     i += 1
     let text = ''
     while (i < src.length) {
-      const c = src[i]!
+      const c = src[i]
       if (c === '\\') {
         text += src[i + 1] ?? ''
         i += 2
@@ -250,7 +250,7 @@ function lex(src: string, dialect: ShellDialect): Token[][] {
     let quoted = false
     let any = false
     while (i < src.length) {
-      const c = src[i]!
+      const c = src[i]
       if (isBreak(c)) break
       any = true
       if (c === escape) {
@@ -380,7 +380,7 @@ function lex(src: string, dialect: ShellDialect): Token[][] {
 
   const commands = (): void => {
     while (i < src.length) {
-      const c = src[i]!
+      const c = src[i]
       if (c === closer) {
         i += 1
         return
@@ -491,7 +491,7 @@ function scriptOf(name: string, args: readonly Word[]): { text: string, dialect:
 function inspect(words: readonly Word[], dialect: ShellDialect, depth: number, found: ShellWrite[]): void {
   let k = 0
   while (k < words.length) {
-    const word = words[k]!
+    const word = words[k]
     if (!word.quoted && dialect === 'posix' && /^[A-Za-z_]\w*=/.test(word.text)) {
       k += 1 // variable assignment prefix
       continue
@@ -502,7 +502,7 @@ function inspect(words: readonly Word[], dialect: ShellDialect, depth: number, f
     }
     if (WRAPPERS.has(commandName(word.text))) {
       k += 1
-      while (k < words.length && words[k]!.text.startsWith('-')) k += 1
+      while (k < words.length && words[k].text.startsWith('-')) k += 1
       continue
     }
     break

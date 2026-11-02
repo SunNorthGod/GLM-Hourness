@@ -987,7 +987,7 @@ const graphCopy = join(graphWs, 'docs', 'graph')
 cpSync(join(repoGraph, 'nodes'), join(graphCopy, 'nodes'), { recursive: true })
 writeFileSync(join(graphWs, 'README.md'), 'probe workspace\n')
 const graphGitReady = initRepo(graphWs)
-const graphRow = dir => ['- id: glm-hourness/graph', '  disabled: false', `  config: { dir: ${JSON.stringify(slash(dir))} }`]
+const graphRow = (dir, home) => ['- id: glm-hourness/graph', '  disabled: false', `  config: { dir: ${JSON.stringify(slash(dir))}, home: ${JSON.stringify(slash(home))} }`]
 const copyBefore = await loadGraph(graphCopy)
 const parents = new Set([...copyBefore.nodes.values()].flatMap(node => node.parent === undefined ? [] : [node.parent]))
 const leafTask = status => [...copyBefore.nodes.values()].find(node => node.type === 'task' && node.status === status && !parents.has(node.id))
@@ -1008,7 +1008,7 @@ const graphRun = runScenario('glm-graph', 'glm-5.3', [
   { tool: { name: 'Bash', arguments: { command: `Set-Content -Path '${graphNodeFile}' -Value x` } } },
   { tool: { name: 'Write', arguments: { file_path: graphNotes, content: 'notes\n' } } },
   { text: 'done', status: true },
-], 'Work on the project graph, then reply done.', [...graphRow(graphCopy), ...workspaceChangesRow('glm-hourness-probe/workspace-changes')], graphWs)
+], 'Work on the project graph, then reply done.', [...graphRow(graphCopy, join(graphRowDir, 'home')), ...workspaceChangesRow('glm-hourness-probe/workspace-changes')], graphWs)
 const graphSteps = graphRun.steps
 const graphResult = index => lastToolResult(graphSteps[index])
 const graphNotices = step => (step?.messages ?? []).filter(message => message.role === 'user' && message.source === 'glm-graph-projection')
@@ -1020,7 +1020,7 @@ const graphFace = step => (step?.tools ?? []).filter(tool => GRAPH_TOOL_NAMES.in
 const plainGraph = runScenario('non-glm-graph', 'deepseek-probe', [
   { tool: { name: 'graph_open', arguments: {} } },
   { text: 'done' },
-], 'List the open work, then reply done.', graphRow(graphCopy), graphWs)
+], 'List the open work, then reply done.', graphRow(graphCopy, join(runDir, 'non-glm-graph', 'home')), graphWs)
 const plainGraphOpen = lastToolResult(plainGraph.steps[1])
 
 const compactGraph = runScenario('glm-graph-compact', 'glm-5.3', [
@@ -1028,7 +1028,7 @@ const compactGraph = runScenario('glm-graph-compact', 'glm-5.3', [
   { tool: { name: 'Read', arguments: { file_path: join(graphWs, 'README.md') } } },
   { tool: { name: 'Read', arguments: { file_path: join(graphWs, 'README.md') } } },
   { text: 'done' },
-], 'Set the focus, read the README twice, then reply done.', [...graphRow(graphCopy), '- id: compaction-basic', '  config: { thresholdRatio: 0.02, retainTokens: 0 }'], graphWs)
+], 'Set the focus, read the README twice, then reply done.', [...graphRow(graphCopy, join(runDir, 'glm-graph-compact', 'home')), '- id: compaction-basic', '  config: { thresholdRatio: 0.02, retainTokens: 0 }'], graphWs)
 /** Requests that carry a compaction checkpoint, and the projection reasons that follow it in each. */
 const reanchored = compactGraph.steps.flatMap((step) => {
   const at = step.messages.findLastIndex(message => message.source === 'compact-checkpoint')
@@ -1042,7 +1042,7 @@ writeFileSync(join(graphGoalWs, 'evidence.txt'), 'evidence\n')
 const graphGoal = runScenario('glm-graph-goal', 'glm-5.3', [
   { tool: { name: 'DeferredToolCall', arguments: { name: 'probe_goal_run', input: { objective: 'Set the graph focus, then mark the goal complete in the next round.', cwd: graphGoalWs, evidence: 'evidence.txt', maxGoalRounds: 2 } } } },
   { text: 'done' },
-], 'Run the goal probe, then reply done.', [...dispatchRow(join(graphGoalDir, 'dispatch.jsonl')), ...graphRow(graphCopy)], repo, [[
+], 'Run the goal probe, then reply done.', [...dispatchRow(join(graphGoalDir, 'dispatch.jsonl')), ...graphRow(graphCopy, join(graphGoalDir, 'home'))], repo, [[
   { tool: { name: 'graph_focus', arguments: { id: focusTask?.id } } },
   { text: 'Focus set; the goal stays active for the next round.' },
   completeGoal,
@@ -1078,7 +1078,7 @@ const graphControl = runScenario('glm-graph-run', 'glm-5.3', [
   { tool: { name: 'graph_focus', arguments: { id: 'task-1' } }, status: true },
   { tool: { name: 'Bash', arguments: { command: 'Write-Output probe-after-stop' } }, live: true, command: { name: 'graph-run', input: 'stop task-1' } },
   { text: 'after stop' },
-], 'Reply done.', [...PANEL_ROW, ...graphRow(controlGraph)], controlWs)
+], 'Reply done.', [...PANEL_ROW, ...graphRow(controlGraph, join(runDir, 'glm-graph-run', 'home'))], controlWs)
 const controlSteps = bySession(graphControl, graphControl.steps[0]?.sessionId)
 const controlCommands = controlSteps.flatMap(step => step.command === undefined ? [] : [step.command])
 const controlHistory = ((await loadGraph(controlGraph)).nodes.get('task-1')?.history ?? []).filter(entry => entry.actor === 'human' && entry.op === 'comment').map(entry => entry.text)
@@ -1591,7 +1591,7 @@ const checks = [
   ['rules-peak-stop-exit: V13, the host exits with the goal paused at the stop level: the run is clean and the way out agrees with itself: a row that unloaded (its heartbeat file is gone) resumed the goal and wrote it on the ticket, a runner that left without unloading it left the goal and the ticket as the stop made them', stopExitProject.ready && rulesPeakStopExit.status === 0 && !stderrOf('rules-peak-stop-exit').includes('dsh-glm-hourness/rules') && stopExitNotes.some(entry => entry.kind === 'stop-held' && entry.goal?.phase === 'paused') && (stopExitUnloaded ? typeof stopExitState?.tickets?.['q-1']?.resumedAt === 'string' && stopExitOps.includes('resume') : stopExitState?.tickets?.['q-1']?.state === 'deferred' && stopExitState.tickets['q-1'].resumedAt === undefined && stopExitOps.join() === 'create,pause'), `unloaded ${stopExitUnloaded}; exit ${rulesPeakStopExit.status}; goal operations ${JSON.stringify(stopExitOps)}; ticket ${JSON.stringify(stopExitState?.tickets?.['q-1'] ?? null)}; journal ${JSON.stringify(stopExitJournal.map(record => [record.op, record.reason ?? null]).slice(-3))}; ${stderrOf('rules-peak-stop-exit').split('\n').find(line => line.includes('rules')) ?? 'no stderr line mentions rules'}`],
   ['loops: the row ships disabled: without the overlay /glm-status lists it as not loaded', glmHealth.loops?.status === '未加载' && plainHealth.loops?.status === '未加载', `${healthLine(glmHealth, 'loops')}; ${healthLine(plainHealth, 'loops')}`],
   ['loops: the row, enabled by the overlay in a scratch git clone that carries a person\'s entry file, boots, runs its four steps and exits clean with nothing from it on stderr', loopsBoard.ready && loops.status === 0 && loops.steps.length === 4 && !stderrOf('loops').includes('dsh-glm-hourness/loops'), `exit ${loops.status}, ${loops.steps.length} step(s), git ${loopsBoard.ready}; ${stderrOf('loops').split('\n').find(line => line.includes('loops')) ?? 'no stderr line mentions loops'}`],
-  ['loops: a file tool writing into docs/loops/ is refused by loops:files-only with the four-part text, the entry file is as it was, and the refusal is journaled as enforced', lastToolResult(loops.steps[1])?.isError === true && LOOPS_DENIAL.test(lastToolResult(loops.steps[1]).text) && readFileSync(loopsBoard.entryFile, 'utf8') === LOOPS_ENTRY_TEXT && rulesRecordOf(loopsRecords, 'loops:files-only')?.mode === 'enforce', lastToolResult(loops.steps[1])?.text?.slice(0, 200) ?? 'no result'],
+  ['loops: a file tool writing into docs/loops/ is refused by loops:files-only with the four-part text, the entry file is as it was, and the refusal is journaled as a plain denial (the gate\'s records carry no mode, G1)', lastToolResult(loops.steps[1])?.isError === true && LOOPS_DENIAL.test(lastToolResult(loops.steps[1]).text) && readFileSync(loopsBoard.entryFile, 'utf8') === LOOPS_ENTRY_TEXT && rulesRecordOf(loopsRecords, 'loops:files-only') !== undefined && rulesRecordOf(loopsRecords, 'loops:files-only')?.mode === undefined, lastToolResult(loops.steps[1])?.text?.slice(0, 200) ?? 'no result'],
   ['loops: a shell command writing into the project\'s .llm/loops/ is refused by the same rule, not by file-tools-only, and the board\'s change record does not carry what it wrote', lastToolResult(loops.steps[2])?.isError === true && (lastToolResult(loops.steps[2])?.text ?? '').includes('Rule loops:files-only') && loopsJournalText !== '' && !loopsJournalText.split('\n').includes('probe') && loopsRecords.filter(record => record.rule === 'loops:files-only').length === 2, `${lastToolResult(loops.steps[2])?.text?.slice(0, 160) ?? 'no result'}; ${loopsRecords.filter(record => record.rule === 'loops:files-only').length} journal line(s)`],
   ['loops: the entry that only tells the main agent is taken in without an approval record: one adopt line by the harness, the file noted in repo-written.json, and view.json showing it as the agreed one', loopsAdopted.length === 1 && loopsAdopted[0].actor === 'harness' && loopsAdopted[0].via === 'repo' && /^[0-9a-f]{64}$/.test(loopsWritten?.[LOOPS_ENTRY_ID]?.fileSha256 ?? '') && loopsViewEntry?.source === 'person' && loopsViewEntry.state === 'ok' && (loopsView?.attention ?? ['none']).length === 0, `${loopsJournal.map(record => record.op).join(' > ') || 'no record'}; view ${JSON.stringify(loopsViewEntry ?? null)}; attention ${JSON.stringify(loopsView?.attention ?? null)}`],
   ['loops: the runtime directory stays out of git (.llm/ in the exclude file, its own .gitignore) and git status lists nothing after the board wrote', loopsIgnore === '*\n' && loopsExclude.split('\n').includes('.llm/') && loopsGitStatus === '', `ignore ${JSON.stringify(loopsIgnore)}; exclude ${JSON.stringify(loopsExclude.split('\n').filter(line => line.includes('llm')))}; status ${JSON.stringify(loopsGitStatus)}`],

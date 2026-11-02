@@ -6,6 +6,7 @@ import { usagePanelLines, usagePanelOf } from '../src/report/panel.ts'
 import { morningReport, reportFromFiles, type ReportFs, type ReportOptions } from '../src/workflow/morning-report.ts'
 import { apply } from '../src/workflow/index.ts'
 import type { AuditJournal, DecisionRecord, UsageRecord } from '../src/memory/audit.ts'
+import type { GuardRecord } from '../src/guard/records.ts'
 
 test('decision grading follows the L1/L2/L3 table', () => {
   assert.equal(gradeDecision('dispatch'), 'L1')
@@ -19,12 +20,12 @@ test('decision grading follows the L1/L2/L3 table', () => {
 
 test('five-key card keeps the user-owned vocabulary in order', () => {
   assert.deepEqual(FIVE_KEYS.map(entry => entry.key), ['approve', 'reject', 'augment', 'more-detail', 'to-the-point'])
-  assert.ok(FIVE_KEYS[1]!.label.includes('理由'))
+  assert.ok(FIVE_KEYS[1].label.includes('理由'))
   // User decision 2026-10-27: the depth keys are labelled by the action they request.
-  assert.equal(FIVE_KEYS[3]!.label, '讲细点')
-  assert.ok(FIVE_KEYS[3]!.meaning.includes('上调'))
-  assert.equal(FIVE_KEYS[4]!.label, '说重点')
-  assert.ok(FIVE_KEYS[4]!.meaning.includes('下调'))
+  assert.equal(FIVE_KEYS[3].label, '讲细点')
+  assert.ok(FIVE_KEYS[3].meaning.includes('上调'))
+  assert.equal(FIVE_KEYS[4].label, '说重点')
+  assert.ok(FIVE_KEYS[4].meaning.includes('下调'))
 })
 
 const usage: UsageRecord[] = [
@@ -86,51 +87,67 @@ test('clean period reports 无 exceptions and empty usage', () => {
   assert.ok(!report.includes('影子记录'))
 })
 
-test('shadow records are counted apart from denials: never blocked, not exceptions', () => {
-  const report = morningReport({
-    period: 'p',
-    decisions: [],
-    violations: [
-      { at: 't1', rule: 'file-tools-only', mode: 'shadow', sessionId: 's1', turn: 1, paths: ['gen.txt'], calls: [{ tool: 'Bash', command: '[IO.File]::WriteAllText(…)' }] },
-      { at: 't2', rule: 'file-tools-only', mode: 'shadow', sessionId: 's1', turn: 2, paths: ['b.txt'], calls: [{ tool: 'Bash', command: 'cmd /c …' }] },
-    ],
-    usage: [],
-  })
-  assert.ok(report.includes('## 例外（先看）\n- 无'))
-  assert.ok(!report.includes('违规 file-tools-only'))
-  assert.ok(report.includes('## 影子记录（只记录，未拦截）\n- file-tools-only × 2'))
+/** The report over one period's journal records alone: no decisions, no usage (the tests below read the exception section). */
+const reportOf = (violations: readonly GuardRecord[]): string => morningReport({ period: 'p', decisions: [], violations: [...violations], usage: [] })
+
+test('denials and late denials are the violations; a late denial is counted on its own line', () => {
+  const report = reportOf([
+      { at: 't1', rule: 'file-tools-only', tool: 'Bash', correction: '…' },
+      // A shadow record of the pre-0.6 fallback and a rules-board late block: both are late denials.
+      { at: 't2', rule: 'file-tools-only', mode: 'shadow', sessionId: 's1', turn: 1, paths: ['gen.txt'], calls: [{ tool: 'Bash', command: '[IO.File]::WriteAllText(…)' }] },
+      { at: 't3', rule: 'rules:r-no-push', mode: 'late', tool: 'pwsh', scope: 'other' },
+  ])
+  assert.ok(report.includes('## 例外（先看）\n- 违规 file-tools-only × 2\n- 违规 rules:r-no-push（其他路由） × 1\n- 其中晚到的拦下 2 条\n'), report)
+  assert.ok(!report.includes('## 影子记录'), 'the shadow section is gone')
 })
 
-test('a denial of the rules board (mode enforce) is a violation like the guard\'s; a call it only recorded is neither a violation nor a shadow record', () => {
+test('a denial of the rules board (mode enforce, effect block) is a violation like the guard\'s', () => {
   const report = morningReport({
     period: 'p',
     decisions: [],
     violations: [
-      { at: 't1', rule: 'rules:r-no-push', mode: 'enforce', tool: 'pwsh', scope: 'other', correction: '…' },
-      { at: 't2', rule: 'rules:r-no-push', mode: 'enforce', tool: 'pwsh', scope: 'other', correction: '…' },
-      { at: 't3', rule: 'rules:r-note-npm', mode: 'record', tool: 'pwsh', scope: 'other', correction: '…' },
+      { at: 't1', rule: 'rules:r-no-push', mode: 'enforce', effect: 'block', tool: 'pwsh', scope: 'other', correction: '…' },
     ],
     usage: [],
   })
-  assert.ok(report.includes('## 例外（先看）\n- 违规 rules:r-no-push（其他路由） × 2\n'), report)
-  assert.ok(!report.includes('r-note-npm'), 'recorded calls are not violations')
-  assert.ok(!report.includes('## 影子记录'), 'and not shadow records')
+  assert.ok(report.includes('- 违规 rules:r-no-push（其他路由） × 1'), report)
+})
+
+test('follow-up, request, grant, void, lift and gap records are not violations; a queued call, a recorded call and an unreadable line are counted apart', () => {
+  const report = morningReport({
+    period: 'p',
+    decisions: [],
+    violations: [
+      { at: 't1', rule: 'rules:r-note', mode: 'record', effect: 'record', tool: 'pwsh', scope: 'other' },
+      { at: 't2', rule: 'rules:r-queue', mode: 'enforce', effect: 'queue', tool: 'pwsh', scope: 'other', correction: '…' },
+      { at: 't3', kind: 'followup', rule: 'file-tools-only', tool: 'pwsh', outcome: 'repeat', denial: 'k', scope: 'dialect' },
+      { at: 't4', kind: 'request', rule: 'workspace-containment', tool: 'write', ref: 'r-1', outcome: 'approved', by: 'human', words: '可以', scope: 'dialect' },
+      { at: 't5', kind: 'grant', rule: 'workspace-containment', tool: 'write', ref: 'r-1', signature: 's', call: { tool: 'write', target: 'x' }, scope: 'dialect' },
+      { at: 't6', kind: 'grant-void', rule: 'workspace-containment', tool: 'write', ref: 'r-1', reason: 'changed', scope: 'dialect' },
+      { at: 't7', kind: 'lift', rule: 'scratch-only', action: 'lift', via: 'chat', words: '新建脚本那条先别拦了' },
+      { at: 't8', rule: 'x', mode: 'late' },
+      { at: 't9', kind: 'gap', row: 'guard', lost: 3, classes: { denial: 2, followup: 1 }, since: '2026-11-01T01:00:00Z', until: '2026-11-01T02:10:00Z' },
+    ],
+    usage: [],
+    offsetMinutes: 480,
+  })
+  assert.ok(report.includes('## 例外（先看）\n- 无\n'), report)
+  assert.ok(!report.includes('违规 rules:r-queue'), 'a queued call is not a violation')
+  assert.ok(!report.includes('违规 file-tools-only'), 'a follow-up record is not a violation')
+  assert.ok(!report.includes('违规 workspace-containment'), 'a request, a grant or a void is not a violation')
+  assert.ok(!report.includes('违规 scratch-only'), 'a lift record is not a violation')
+  assert.ok(report.includes('- 只记录 1 条（规则板上人选的做法）'), report)
+  assert.ok(report.includes('- 流水有缺口：这段时间有 3 条记录没写进来（拦下 2、跟进 1），最近一处到 11-01 10:10；当时的拦截都照常生效'), report)
+  assert.ok(report.includes('- 1 行记录读不懂'), report)
 })
 
 test('records from routes the dialect did not claim are counted apart; records without a scope count as before', () => {
-  const report = morningReport({
-    period: 'p',
-    decisions: [],
-    violations: [
+  const report = reportOf([
       { at: 't1', rule: 'file-tools-only', tool: 'Bash', correction: '…' }, // written before split step 7
       { at: 't2', rule: 'file-tools-only', tool: 'Bash', scope: 'dialect', route: { provider: 'glm-zcode', model: 'glm-5.3' }, correction: '…' },
       { at: 't3', rule: 'file-tools-only', tool: 'pwsh', scope: 'other', route: { provider: 'deepseek-account', model: 'deepseek-flash' }, correction: '…' },
-      { at: 't4', rule: 'file-tools-only', mode: 'shadow', sessionId: 's1', scope: 'other', route: { provider: 'deepseek-account', model: 'deepseek-flash' }, turn: 1, paths: ['gen.txt'], calls: [{ tool: 'pwsh', command: 'cmd /c …' }] },
-    ],
-    usage: [],
-  })
+  ])
   assert.ok(report.includes('## 例外（先看）\n- 违规 file-tools-only × 2\n- 违规 file-tools-only（其他路由） × 1\n'))
-  assert.ok(report.includes('## 影子记录（只记录，未拦截）\n- file-tools-only（其他路由） × 1'))
 })
 
 test('report entry folds the three journal files from both directories and tolerates missing ones', async () => {
@@ -250,10 +267,10 @@ test('apply journals dispatch decisions and always delegates', async () => {
     on: (_event, listener) => { listeners.push(listener as typeof listeners[number]); return () => {} },
   }, journal)
   let delegated = false
-  const result = await listeners[0]!({ name: 'spawn_teammate', arguments: { name: 'researcher' } }, async () => { delegated = true; return { kind: 'allow' } })
+  const result = await listeners[0]({ name: 'spawn_teammate', arguments: { name: 'researcher' } }, async () => { delegated = true; return { kind: 'allow' } })
   await new Promise(resolve => setImmediate(resolve))
-  await listeners[0]!({ name: 'read', arguments: {} }, async () => { delegated = true; return { kind: 'allow' } })
-  await listeners[0]!({ name: 'spawn_teammate', arguments: {}, parent: 'token' }, async () => { delegated = true; return { kind: 'allow' } })
+  await listeners[0]({ name: 'read', arguments: {} }, async () => { delegated = true; return { kind: 'allow' } })
+  await listeners[0]({ name: 'spawn_teammate', arguments: {}, parent: 'token' }, async () => { delegated = true; return { kind: 'allow' } })
   dispose()
   assert.equal(delegated, true)
   assert.deepEqual(result, { kind: 'allow' })
@@ -270,7 +287,7 @@ test('both subagent tools of the rc.3 base profile are dispatches', async () => 
   const listeners: Array<(payload: unknown, next: () => Promise<unknown>) => Promise<unknown>> = []
   apply({ on: (_event, listener) => { listeners.push(listener as typeof listeners[number]); return () => {} } }, journal)
   for (const name of ['subagent', 'subagent_fork']) {
-    await listeners[0]!({ name, arguments: { description: `${name} task` } }, async () => ({ kind: 'allow' }))
+    await listeners[0]({ name, arguments: { description: `${name} task` } }, async () => ({ kind: 'allow' }))
   }
   await new Promise(resolve => setImmediate(resolve))
   assert.deepEqual(decisions.map(record => [record.kind, record.subject]), [['dispatch:subagent', 'subagent task'], ['dispatch:subagent_fork', 'subagent_fork task']])
@@ -282,7 +299,7 @@ test('the installer form journals decisions into the row home, else the data ser
   const run = async (config: { home?: string }, data: unknown) => {
     const listeners: Array<(payload: unknown, next: () => Promise<unknown>) => Promise<unknown>> = []
     apply({ on: (_event, listener) => { listeners.push(listener as typeof listeners[number]); return () => {} }, get: name => name === 'glmHournessData' ? data : undefined }, { ...config, fs })
-    await listeners[0]!({ name: 'subagent', arguments: { description: 'task' } }, async () => ({ kind: 'allow' }))
+    await listeners[0]({ name: 'subagent', arguments: { description: 'task' } }, async () => ({ kind: 'allow' }))
     await new Promise(resolve => setImmediate(resolve))
   }
   await run({}, { userHome: 'C:/u/glm-hourness', projectHome: 'C:/svc/.llm' })

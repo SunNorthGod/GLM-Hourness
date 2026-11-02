@@ -73,6 +73,8 @@ interface TurnNotes {
   readonly known: Set<string>
   readonly calls: Array<{ tool: string, command: string }>
   agentId?: string
+  /** The session's working directory: the journal finds the project of the record with it (design §2.4). */
+  cwd?: string
   /** The origin of the shell calls so far: dialect once any ran on a claimed route; the last one's route. */
   origin?: CallOrigin
 }
@@ -103,9 +105,10 @@ const record = (value: unknown): Record<string, unknown> | undefined =>
 
 /**
  * The shadow fallback over the composition's services; `write` journals one
- * record (it never rejects into the caller).
+ * record with the session's working directory, so the project journal finds
+ * the record's project (it never rejects into the caller).
  */
-export function shadowFallback(services: ServiceLookup, write: (record: ShadowRecord) => void, now: () => Date = () => new Date()): ShadowFallback {
+export function shadowFallback(services: ServiceLookup, write: (record: ShadowRecord, cwd: string | undefined) => void, now: () => Date = () => new Date()): ShadowFallback {
   const turns = new Map<string, number>()
   const notes = new Map<string, Map<number, TurnNotes>>()
   const warn = dialectWarner('guard')
@@ -134,7 +137,7 @@ export function shadowFallback(services: ServiceLookup, write: (record: ShadowRe
       paths,
       ...(unlisted > 0 ? { unlisted } : {}),
       calls: noted.calls,
-    })
+    }, noted.cwd)
   }
 
   return {
@@ -147,6 +150,10 @@ export function shadowFallback(services: ServiceLookup, write: (record: ShadowRe
       const noted = byTurn.get(turn) ?? { targets: new Set<string>(), known: new Set<string>(), calls: [] }
       byTurn.set(turn, noted)
       if (payload.agent !== undefined) noted.agentId = payload.agent.id
+      if (noted.cwd === undefined) {
+        const header = session.header.cwd
+        if (typeof header === 'string' && header.length > 0) noted.cwd = header
+      }
       // A graph tool writes node files through the engine, which keeps the history: a known writer.
       const graph = graphService(services)
       if (graph?.isGraphTool(payload.name) === true) {

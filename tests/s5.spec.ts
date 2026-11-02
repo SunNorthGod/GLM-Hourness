@@ -36,8 +36,8 @@ test('remember upserts and forget removes', () => {
   store = remember(store, { id: 'a', text: 'v1', tags: [] }, NOW)
   store = remember(store, { id: 'a', text: 'v2', tags: [] }, NOW)
   assert.equal(store.entries.length, 1)
-  assert.equal(store.entries[0]!.text, 'v2')
-  assert.equal(store.entries[0]!.reviews, 2) // second remember counts as a review
+  assert.equal(store.entries[0].text, 'v2')
+  assert.equal(store.entries[0].reviews, 2) // second remember counts as a review
   const forgotten = forget(store, 'a')
   assert.equal(forgotten.existed, true)
   assert.equal(forgotten.store.entries.length, 0)
@@ -49,7 +49,7 @@ test('parseStore round-trips and rejects unknown formats', () => {
   assert.deepEqual(parseStore(JSON.stringify(store)), store)
   assert.throws(() => parseStore('{"version":2,"entries":[]}'), /unsupported/)
   const revived = parseStore(JSON.stringify(store))
-  assert.equal(revived.entries[0]!.text, 't')
+  assert.equal(revived.entries[0].text, 't')
 })
 
 test('storage policy: git-knowable facts are refused', () => {
@@ -84,8 +84,8 @@ test('store persists round-trip through the filesystem layer', async () => {
   await saveStore(fs, 'C:/ws/.llm', store)
   assert.equal(files.has('C:/ws/.llm/memory.json.tmp'), false) // atomic write leaves no temp behind
   const revived = await loadStore(fs, 'C:/ws/.llm')
-  assert.deepEqual(revived.entries[0]!.text, 'user prefers direct answers')
-  assert.equal(retrieve(revived, 'persona', NOW)[0]!.id, 'a')
+  assert.deepEqual(revived.entries[0].text, 'user prefers direct answers')
+  assert.equal(retrieve(revived, 'persona', NOW)[0].id, 'a')
 })
 
 test('a corrupted store fails loud instead of silently resetting', async () => {
@@ -96,11 +96,11 @@ test('a corrupted store fails loud instead of silently resetting', async () => {
 
 test('confirmed recall strengthens entries and re-stamps their review time', () => {
   let store = remember(emptyStore(), { id: 'a', text: 'user prefers direct answers', tags: ['persona'] }, daysAgo(30))
-  assert.ok(strength(store.entries[0]!, NOW) < 0.3) // a month unreviewed is weak
+  assert.ok(strength(store.entries[0], NOW) < 0.3) // a month unreviewed is weak
   store = strengthen(store, ['a'], NOW)
-  assert.equal(store.entries[0]!.reviews, 2)
-  assert.equal(store.entries[0]!.lastReviewed, NOW)
-  assert.ok(strength(store.entries[0]!, NOW) > 0.99) // the recall re-armed it
+  assert.equal(store.entries[0].reviews, 2)
+  assert.equal(store.entries[0].lastReviewed, NOW)
+  assert.ok(strength(store.entries[0], NOW) > 0.99) // the recall re-armed it
   assert.equal(strengthen(store, [], NOW), store) // no-op keeps identity
 })
 
@@ -120,8 +120,8 @@ test('dispatch panel lists newest decisions first with a cap', () => {
   const decisions = Array.from({ length: 30 }, (_, i) => JSON.stringify({ at: `t${i}`, level: 'L1', kind: 'dispatch:spawn', subject: `agent-${i}` })).join('\n')
   const rows = dispatchPanel(decisions, 10)
   assert.equal(rows.length, 10)
-  assert.equal(rows[0]!.subject, 'agent-29')
-  assert.equal(rows[9]!.subject, 'agent-20')
+  assert.equal(rows[0].subject, 'agent-29')
+  assert.equal(rows[9].subject, 'agent-20')
   assert.deepEqual(parseJsonl<{ at: string }>('{bad\n'), [])
 })
 
@@ -146,10 +146,10 @@ test('memory tools store, refuse git-knowable text, recall (strengthening), and 
 
   const recalled = await byName('memory_query').execute({ focus: 'routine architecture' })
   const matches = (recalled as { matches: Array<{ id: string, reviews: number }> }).matches
-  assert.equal(matches[0]!.id, 'm1')
-  assert.equal(matches[0]!.reviews, 3) // two stores + this confirmed recall
+  assert.equal(matches[0].id, 'm1')
+  assert.equal(matches[0].reviews, 3) // two stores + this confirmed recall
   const persisted = parseStore(files.get('C:/ws/.llm/memory.json')!)
-  assert.equal(persisted.entries[0]!.reviews, 3) // the strengthening hit the disk
+  assert.equal(persisted.entries[0].reviews, 3) // the strengthening hit the disk
 
   const forgotten = await byName('memory_forget').execute({ id: 'm1' })
   assert.deepEqual(forgotten, { deleted: true })

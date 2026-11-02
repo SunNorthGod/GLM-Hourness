@@ -1,12 +1,10 @@
 /**
  * The violation journal's record types and the one classifier every reader
  * shares (M4 design §3.2, task m4-gate): guard denials, the rules board's
- * recorded calls, and the workspace-change fallback's shadow records — the
- * kinds the harness writes today. The follow-up, request, grant, void,
- * lift and gap records arrive with their writers (design §3.2); the
- * classifier already reads every class the journal will hold. The journal
- * only ever appends, so a record's key is stable: `recordKey` hashes the
- * line's JSON text.
+ * recorded calls and late blocks, the workspace-change fallback's shadow
+ * records, and the follow-up, request, grant, grant-void, lift and gap
+ * records their steps write from here on. The journal only ever appends,
+ * so a record's key is stable: `recordKey` hashes the line's JSON text.
  */
 import { createHash } from 'node:crypto'
 import type { Route } from '../shared/route.ts'
@@ -46,17 +44,108 @@ export interface RecordedCall extends Omit<ViolationRecord, 'correction' | 'mode
   readonly mode: 'record'
 }
 
+/** What every record of a judged or settled event carries besides its kind. */
+interface RecordOrigin {
+  readonly at: string
+  readonly rule: string
+  /** The name the model called. */
+  readonly tool: string
+  readonly agentId?: string | undefined
+  readonly sessionId?: string | undefined
+  readonly scope: RouteScope
+  readonly route?: Route | undefined
+}
 
+/** The follow-up to one denial: what the model did next (design §3.3). */
+interface FollowupRecord extends RecordOrigin {
+  readonly kind: 'followup'
+  /** The recordKey of the denial's journal line. */
+  readonly denial: string
+  readonly outcome: 'right-path' | 'repeat' | 'other' | 'none'
+}
 
+/** One step of a request (design §5.3, §5.5). `tool` is the denied call's tool. */
+interface RequestRecord extends RecordOrigin {
+  readonly kind: 'request'
+  readonly ref: string
+  readonly outcome: 'asked' | 'approved' | 'declined' | 'unclear' | 'not-shown' | 'not-client' | 'closed' | 'expired'
+  readonly target?: string
+  /** approved and declined: the answer came from the human's own message through the DSH client. */
+  readonly by?: 'human'
+  readonly via?: 'chat'
+  /** The human's message, verbatim, at most 500 characters (approved, declined, unclear, not-client, not-shown). */
+  readonly words?: string
+  /** The DSH message id of the human's message. */
+  readonly messageId?: string
+}
 
+/** An approval was used (design §5.6). */
+interface GrantRecord extends RecordOrigin {
+  readonly kind: 'grant'
+  readonly ref: string
+  readonly signature: string
+  readonly call: CallSubject
+  /** `<project home>/requests/<ref>.before`. */
+  readonly backup?: string
+}
+
+/** An approval was voided at use time (design §5.6). */
+interface GrantVoidRecord extends RecordOrigin {
+  readonly kind: 'grant-void'
+  readonly ref: string
+  /** What changed, or the stat error code. */
+  readonly reason: string
+}
+
+/** The workspace-change fallback's late denial (design §3.4): after a turn, file-tools-only found files that a shell call changed and no file tool targeted. Nothing was blocked: the call had run. The fields are the fallback's shadow record's (G3 renames the writer's record to this one). */
+interface LateRecord extends Omit<ShadowRecord, 'mode'> {
+  readonly mode: 'late'
+  readonly via: 'turn-end'
+}
 
 /**
- * A line of the violation journal: the record kinds the harness writes
- * today. G1's gate adds the follow-up, request, grant, grant-void, lift and
- * gap records as their writers land, and G3 renames the fallback's
+ * Records the harness could not write (F13, design §3.2). Written by the first
+ * append that succeeds afterwards, directly before the record that append
+ * carries, or alone by flush() when the session ends. It is not a violation
+ * and not a denial.
+ */
+export interface GapRecord {
+  readonly kind: 'gap'
+  /** When this line was written. */
+  readonly at: string
+  /** The row whose journal lost the records: 'guard', 'graph', ... */
+  readonly row: string
+  /** Records lost since this journal instance's previous gap line, or since it started. */
+  readonly lost: number
+  /** Lost records per class (classifyRecord), e.g. { denial: 2, followup: 1 }. */
+  readonly classes: Readonly<Record<string, number>>
+  /** The `at` of the first and of the last lost record. */
+  readonly since: string
+  readonly until: string
+  /** The error code of the last failed append (EACCES, ENOSPC, ...), at most 40 characters; absent when the error had none. */
+  readonly code?: string
+}
+
+/** The human lifted or restored a code rule (design §3.5). */
+interface LiftRecord {
+  readonly kind: 'lift'
+  readonly at: string
+  readonly rule: string
+  readonly action: 'lift' | 'restore'
+  /** chat: the main agent called guard_lift with the human's words; board: the rules board handed over /rules lift or /rules restore. */
+  readonly via: 'chat' | 'board'
+  readonly sessionId?: string | undefined
+  /** chat: the human's words as the tool received them; board: the command text the board passed. At most 500 characters. */
+  readonly words: string
+}
+/**
+ * A line of the violation journal: every record kind the journal holds. The
+ * gate writes denials, the follow-up, request, grant and void records are
+ * written by their steps (G2, G4), the lift records by the lift entry points
+ * (G3), the gap records by the journal itself, and G3 renames the fallback's
  * `ShadowRecord` to the late denial it already classifies as.
  */
-export type GuardRecord = ViolationRecord | RecordedCall | ShadowRecord
+export type GuardRecord = ViolationRecord | RecordedCall | ShadowRecord | LateRecord | FollowupRecord | RequestRecord | GrantRecord | GrantVoidRecord | LiftRecord | GapRecord
 
 /** The class of one journal line; every reader of the journal goes through this. */
 export type RecordClass =

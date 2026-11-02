@@ -67,7 +67,7 @@ export function memoryTools(io: ToolStoreIo, knowableFromGit: (text: string) => 
     {
       name: 'memory_store',
       description: 'Store a durable cross-session fact in the agent memory. Only what git cannot answer belongs here; repository-knowable text is refused.',
-      parameters: STORE_PARAMETERS as unknown as Record<string, unknown>,
+      parameters: STORE_PARAMETERS,
       output: { schema: { type: 'object', properties: { stored: { type: 'boolean' }, reason: { type: 'string' } } }, render: jsonRender('{}') },
       async execute(args) {
         const input = args as { id: string, text: string, tags?: string[] }
@@ -83,7 +83,7 @@ export function memoryTools(io: ToolStoreIo, knowableFromGit: (text: string) => 
     {
       name: 'memory_query',
       description: 'Recall memorized facts by keyword focus, strongest first. Untouched memories decay (14-day half-life); each confirmed recall strengthens them.',
-      parameters: QUERY_PARAMETERS as unknown as Record<string, unknown>,
+      parameters: QUERY_PARAMETERS,
       output: { schema: { type: 'object', properties: { matches: { type: 'array' } } }, render: jsonRender('{}') },
       async execute(args) {
         const input = args as { focus: string, limit?: number }
@@ -102,7 +102,7 @@ export function memoryTools(io: ToolStoreIo, knowableFromGit: (text: string) => 
     {
       name: 'memory_forget',
       description: 'Delete one memory entry by id.',
-      parameters: FORGET_PARAMETERS as unknown as Record<string, unknown>,
+      parameters: FORGET_PARAMETERS,
       output: { schema: { type: 'object', properties: { deleted: { type: 'boolean' } } }, render: jsonRender('{}') },
       async execute(args) {
         const input = args as { id: string }

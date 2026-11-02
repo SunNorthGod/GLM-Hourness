@@ -6,8 +6,13 @@
  * tests/contracts.spec.ts checks that every id is the id of a rule object the
  * row installs, so a rule added to a row without being listed fails there.
  *
- * `mode` is `enforce` for every rule: a rule denies from the day its row is
- * enabled (decision d-code-rules-enforce), there is no shadow mode to list.
+ * There is no mode column (decision d-code-rules-enforce): a rule of this
+ * catalog denies from the day its row is enabled, and the gate
+ * (src/guard/gate.ts) is what installs it. `liftVia` is who can lift the
+ * rule (design §3.5): 'any' — the human tells the main agent, or types
+ * /rules lift on the rules board once it offers code rules; 'board' — only
+ * the rules board's command, for the rule that guards the lift record
+ * itself (lift-files-only arrives with G3).
  */
 import type { HealthRow } from '../shared/health.ts'
 
@@ -16,15 +21,17 @@ interface GuardRuleEntry {
   readonly id: string
   /** The row that installs the rule. */
   readonly row: HealthRow
-  readonly mode: 'enforce'
   /** What the rule keeps, in one line, for the rules page. */
   readonly title: string
+  /** What the rule blocks, in one phrase, for the lift result the main agent reads out. */
+  readonly blocks: string
+  readonly liftVia: 'any' | 'board'
 }
 
 export const GUARD_RULES: readonly GuardRuleEntry[] = [
-  { id: 'workspace-containment', row: 'guard', mode: 'enforce', title: '工作区圈禁：写文件的目标必须在工作区内' },
-  { id: 'file-tools-only', row: 'guard', mode: 'enforce', title: '文件只用专用工具改：shell 里写文件会被拒' },
-  { id: 'graph-files-only', row: 'graph', mode: 'enforce', title: '项目图的文件只经图工具改' },
-  { id: 'files-only', row: 'loops', mode: 'enforce', title: '循环板的条目、脚本和运行时文件只由循环板自己写：写这些文件的调用会被拒' },
-  { id: 'schedule-tools', row: 'loops', mode: 'enforce', title: '循环板自己的 DSH 提醒不经定时工具改，也不许冒充循环板建提醒' },
+  { id: 'workspace-containment', row: 'guard', title: '工作区圈禁：写文件的目标必须在工作区内', blocks: 'writes outside the workspace', liftVia: 'any' },
+  { id: 'file-tools-only', row: 'guard', title: '文件只用专用工具改：shell 里写文件会被拒', blocks: 'shell commands that write files', liftVia: 'any' },
+  { id: 'graph-files-only', row: 'graph', title: '项目图的文件只经图工具改', blocks: 'writes into the project graph', liftVia: 'any' },
+  { id: 'files-only', row: 'loops', title: '循环板的条目、脚本和运行时文件只由循环板自己写：写这些文件的调用会被拒', blocks: 'writes under the loop board\'s files', liftVia: 'any' },
+  { id: 'schedule-tools', row: 'loops', title: '循环板自己的 DSH 提醒不经定时工具改，也不许冒充循环板建提醒', blocks: 'changes to the loop board\'s reminders through the schedule tools', liftVia: 'any' },
 ]

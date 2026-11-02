@@ -18,8 +18,8 @@ test('poll flow init appends the desktop interstitial redirect param', async () 
     return jsonRespond(200, { code: 0, data: { flow_id: 'f1', poll_token: 'pt', authorize_url: 'https://bigmodel.cn/oauth?client=x', expires_at: Math.floor(Date.now() / 1000) + 600, poll_interval_sec: 1 } })
   })
   const started = await client.start()
-  assert.ok(seen[0]!.url.endsWith('/oauth/cli/init'))
-  assert.match(seen[0]!.authorization!, /^Bearer [0-9a-f]{64}$/) // 32 random bytes hex as the poll token
+  assert.ok(seen[0].url.endsWith('/oauth/cli/init'))
+  assert.match(seen[0].authorization!, /^Bearer [0-9a-f]{64}$/) // 32 random bytes hex as the poll token
   const url = new URL(started.authorizeUrl)
   assert.equal(url.searchParams.get('client'), 'x')
   assert.equal(url.searchParams.get('redirect'), buildDesktopOAuthRedirectParam(ZCODE_APP_VERSION))

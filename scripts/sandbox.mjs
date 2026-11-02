@@ -113,15 +113,18 @@ export const slash = path => path.replaceAll('\\', '/')
 
 /**
  * Overlay rows that keep a run's data inside `dir`: the project directory
- * `<dir>/home` (memory, workflow and hourness get it as their row home, as
- * the user's profile patch does; the guard reads it from the data service)
- * and the DSH home `<dir>/dsh-home`, so the user-level directory is
+ * `<dir>/home` (memory, workflow, hourness and the journaling rows guard,
+ * graph and loops get it as their row home, as the user's profile patch
+ * does; projectHomeFor takes the row home before the session's project
+ * root, and a run's working directories sit in this repository, whose
+ * project root would otherwise take the journals) and the DSH home
+ * `<dir>/dsh-home`, so the user-level directory is
  * `<dir>/dsh-home/glm-hourness`.
  */
 export function dataRows(dir) {
   const home = JSON.stringify(slash(join(dir, 'home')))
   return [
-    ...['memory', 'workflow', 'hourness'].flatMap(row => [`- id: glm-hourness/${row}`, `  config: { home: ${home} }`]),
+    ...['memory', 'workflow', 'hourness', 'guard', 'graph', 'loops'].flatMap(row => [`- id: glm-hourness/${row}`, `  config: { home: ${home} }`]),
     '- id: glm-hourness/data',
     `  config: { dshHome: ${JSON.stringify(slash(join(dir, 'dsh-home')))}, projectHome: ${home} }`,
   ]

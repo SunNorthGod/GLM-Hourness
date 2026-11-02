@@ -19,14 +19,20 @@ import { auditPaths } from '../memory/audit.ts'
 import { reportFromFiles, type ReportOptions } from '../workflow/morning-report.ts'
 import { gapLines, parseGaps, peakLineOf, quotaSection, rangeLine, usagePanel, usagePanelLines } from './panel.ts'
 import { dataHomes, type DataHomes } from '../shared/data-home.ts'
+import { projectHomeFor } from '../data/project-home.ts'
 import { collectHealth, provideRowHealth, renderHealthTable, sessionIdOf, type HealthState } from '../shared/health.ts'
 import { pricingService, quotaOf, type UsagePricing } from '../shared/pricing.ts'
 import type { MomentZone } from '../shared/quota.ts'
 import type { CommandDefinitionLike, CommandsHost, ProvideHost, ServiceLookup } from '../shared/dsh-min.ts'
 
 export interface HournessConfig {
-  /** The project directory (workspace `.llm`); decisions and violations live under `<home>/audit`. Defaults to the data service's. */
+  /** The project directory (workspace `.llm`); decisions and violations live under `<home>/audit`. Defaults to the calling session's project, else the data service's. */
   readonly home?: string
+}
+
+/** The homes with the project directory of one session: a resolved project home wins over the data service's. */
+function withProjectHome(homes: DataHomes, projectHome: string | undefined): DataHomes {
+  return projectHome === undefined ? homes : { ...homes, projectHome }
 }
 
 export interface RenderOptions {
@@ -129,7 +135,9 @@ export function apply(ctx: CommandsHost & ServiceLookup & Partial<ProvideHost>, 
       if (invocation.rawInput.trim().length > 0) {
         return { kind: 'error', text: '用法：/hourness（无需参数）' }
       }
-      const homes = dataHomes(ctx, config.home)
+      // The report reads the calling session's project journal (m4-gate G1, design §2.4): the row home wins, then the project of the session's working directory, then the data row's projectHome.
+      const header = invocation.agent?.session?.header?.cwd
+      const homes = withProjectHome(dataHomes(ctx, undefined), projectHomeFor(ctx, config.home, typeof header === 'string' && header.length > 0 ? header : undefined))
       const pricing = pricingService(ctx, problem)
       // The quota member is judged again where it is read, which reports a wrong shape; the status only says whether it is there.
       health.report(sessionIdOf(invocation.agent), ...hournessHealth(homes, pricing !== undefined, pricing !== undefined && quotaOf(pricing) !== undefined))

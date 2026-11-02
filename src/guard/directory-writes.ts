@@ -2,39 +2,22 @@
  * Whether a tool call writes into one of some directories
  * (docs/ORCHESTRATION.md §2.7, §16.11): the reading shared by the rules that
  * keep a directory to its one writer, graph-files-only and the rules board's
- * rules:files-only. A file tool counts when the path it writes (`write` and
- * `edit` take `file_path`; `str_replace_editor` writes on every command but
- * `view`) resolves into a directory. A shell command counts when file-tools-only
- * counts it as a write (src/guard/rules.ts, quote-aware) and the command names a
- * directory, by its absolute path or by its path from the session directory.
- * Paths are compared as strings (forward slashes, lower case), with no file
- * system access. Reads never count.
+ * rules:files-only. A file tool counts when the path it writes
+ * (src/guard/rules.ts fileToolTargetOf: `write` and `edit` take `file_path`;
+ * `str_replace_editor` writes on every command but `view`) resolves into a
+ * directory. A shell command counts when file-tools-only counts it as a write
+ * (src/guard/rules.ts, quote-aware) and the command names a directory, by its
+ * absolute path or by its path from the session directory. Paths are compared
+ * as strings (forward slashes, lower case), with no file system access. Reads
+ * never count.
  */
 import { isAbsolute, relative, resolve } from 'node:path'
-import type { JsonValue } from '../shared/json.ts'
-import { fileToolsOnly, NATIVE_FACE, shellCommandOf, type ToolCall } from './rules.ts'
+import { fileToolTargetOf, fileToolsOnly, NATIVE_FACE, shellCommandOf, type ToolCall } from './rules.ts'
 
 /** What the call writes: the path a file tool names, or the shell text. */
 export type DirectoryWrite =
   | { readonly kind: 'file', readonly target: string }
   | { readonly kind: 'shell', readonly command: string }
-
-function argsOf(call: ToolCall): Record<string, JsonValue> | undefined {
-  return typeof call.arguments === 'object' && call.arguments !== null && !Array.isArray(call.arguments) ? call.arguments : undefined
-}
-
-/** The path a file tool writes (`call.name` is the DSH native). */
-function writeTarget(call: ToolCall): string | undefined {
-  const args = argsOf(call)
-  switch (call.name) {
-    case 'write': case 'edit':
-      return typeof args?.file_path === 'string' ? args.file_path : undefined
-    case 'str_replace_editor':
-      return args?.command !== 'view' && typeof args?.path === 'string' ? args.path : undefined
-    default:
-      return undefined
-  }
-}
 
 /** Comparable form of a path: forward slashes, no trailing slash, lower case (Windows file systems ignore case). */
 function pathKey(path: string): string {
@@ -70,7 +53,7 @@ export function writesInto(dirs: readonly string[], cwd: string | undefined): (c
     return [roots[index], ...(fromCwd === undefined || fromCwd.length === 0 || fromCwd.startsWith('..') || isAbsolute(fromCwd) ? [] : [fromCwd])]
   }).map(mention)
   return (call) => {
-    const target = writeTarget(call)
+    const target = fileToolTargetOf(call)
     if (target !== undefined) return inside(target) ? { kind: 'file', target } : undefined
     // The shell text as file-tools-only reads it (terminal_send carries it in `text`).
     const text = shellCommandOf(call)

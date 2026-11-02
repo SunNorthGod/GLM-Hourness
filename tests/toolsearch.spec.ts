@@ -73,7 +73,7 @@ test('without deferred tools or without the controls, search is off and the cont
 
 test('the face drops deferLoading outside native mode', () => {
   const exposure = buildToolExposure([{ ...tool('Read'), deferLoading: true }, tool('web_fetch'), ...CONTROLS])
-  assert.equal(exposure.tools[0]!.deferLoading, undefined)
+  assert.equal(exposure.tools[0].deferLoading, undefined)
 })
 
 // --- announcement (ZCode buildToolSearchAnnouncement / renderToolSearchAnnouncement) ---
@@ -136,9 +136,9 @@ test('a search renders definitions with the loaded reminder; resident picks rend
   const [block, reminder] = projectSearchResult(['web_fetch'], projectionExposure, new Set())
   assert.equal(block, '<functions>\n<function>{"description":"Fetch a URL","name":"web_fetch","parameters":{"type":"object","properties":{}}}</function>\n</functions>')
   assert.equal(reminder, '<system-reminder>\nLoaded: web_fetch. Call it now with DeferredToolCall {"name":"<tool name>","input":{...}}, using the exact tool name and filling input according to its schema above. No additional LocalToolSearch is needed before calling these tools.\n</system-reminder>')
-  assert.ok(projectSearchResult(['web_fetch', 'TodoWrite'], projectionExposure, new Set())[1]!.includes('Loaded: web_fetch, TodoWrite. Call them now with'))
+  assert.ok(projectSearchResult(['web_fetch', 'TodoWrite'], projectionExposure, new Set())[1].includes('Loaded: web_fetch, TodoWrite. Call them now with'))
   assert.deepEqual(projectSearchResult(['Read'], projectionExposure, new Set()).length, 1)
-  assert.ok(projectSearchResult(['ToolSearch'], projectionExposure, new Set())[0]!.includes('"name":"LocalToolSearch"'))
+  assert.ok(projectSearchResult(['ToolSearch'], projectionExposure, new Set())[0].includes('"name":"LocalToolSearch"'))
 })
 
 test('definitions the model already holds come back as the already-loaded reminder', () => {
@@ -208,7 +208,7 @@ test('a GLM step gets one announcement notice whose delta persists in its source
   assert.equal(notice.role, 'user')
   assert.equal(typeof notice.id, 'string')
   assert.deepEqual(notice.source.toolSearchAnnouncement, { addedNames: ['TodoWrite', 'web_fetch'], removedNames: [], readdedNames: [] })
-  assert.ok(notice.content[0]!.text.startsWith('<system-reminder>\nThe following deferred tools are available via LocalToolSearch.'))
+  assert.ok(notice.content[0].text.startsWith('<system-reminder>\nThe following deferred tools are available via LocalToolSearch.'))
   rt.history.push(userInput, notice)
   await rt.assemble({ model: 'glm-5.3' })
   assert.deepEqual(noticesOf(await rt.preStep({ step: 2 })), [])
@@ -242,7 +242,7 @@ test('LocalToolSearch returns the projected content and renders it as text block
   assert.equal(value.total_deferred_tools, 2)
   const rendered = search.output.render({}, value)
   assert.equal(rendered.length, 2)
-  assert.ok(rendered[0]!.text!.startsWith('<functions>\n<function>{"description":"native web_fetch","name":"web_fetch"'))
+  assert.ok(rendered[0].text!.startsWith('<functions>\n<function>{"description":"native web_fetch","name":"web_fetch"'))
   const none = await rt.execute('LocalToolSearch', { query: 'zzz' }) as { content: string[] }
   assert.deepEqual(none.content, [NO_MATCHING_DEFERRED_TOOLS])
 })
@@ -258,8 +258,8 @@ test('DeferredToolCall runs the deferred target through the tool pipeline as a c
   assert.deepEqual(value.content, [{ type: 'text', text: 'todo_write' }]) // the target's own rendering
   assert.deepEqual(calls, [{ name: 'todo_write', args: { todos: [{ content: 'a', status: 'pending' }] } }])
   assert.equal(rt.executed.length, 1)
-  assert.equal(rt.executed[0]!.parent, undefined) // not a transport sub-dispatch: listeners see TodoWrite
-  assert.equal(rt.executed[0]!.callId, 'call-1:deferred')
+  assert.equal(rt.executed[0].parent, undefined) // not a transport sub-dispatch: listeners see TodoWrite
+  assert.equal(rt.executed[0].callId, 'call-1:deferred')
 })
 
 test('DeferredToolCall rejects resident, control, unknown and malformed calls with the ZCode texts', async () => {

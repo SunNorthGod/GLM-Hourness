@@ -18,9 +18,9 @@
 import { existsSync } from 'node:fs'
 import { isAbsolute } from 'node:path'
 import { installGraphFileGuard } from '../guard/graph-files.ts'
-import { rowJournal, type AuditFs } from '../memory/audit.ts'
-import { dataHomes } from '../shared/data-home.ts'
-import type { AgentLike, PreExecuteListener, ProvideHost, ServiceLookup, ToolDefinitionLike, ToolExecutionContext, ToolsLike } from '../shared/dsh-min.ts'
+import { projectJournal, type AuditFs } from '../memory/audit.ts'
+import { projectHomeFor } from '../data/project-home.ts'
+import type { AgentLike, PreExecuteListener, ProvideHost, ServiceLookup, SessionEventLike, SessionLike, ToolDefinitionLike, ToolExecutionContext, ToolsLike } from '../shared/dsh-min.ts'
 import { GRAPH_SERVICE, type GraphService } from './service.ts'
 import { provideRowHealth, sessionIdOf, type RowHealth } from '../shared/health.ts'
 import { installProjection } from './reminder.ts'
@@ -36,12 +36,15 @@ export interface GraphConfig {
   readonly fs?: AuditFs
 }
 
-/** The row's context: the injected tools service, the agent lifecycle event, the tool-call gate and service provision. */
+/** The row's context: the injected tools service, the agent lifecycle event, the session observers, the tool-call gate and service provision. */
 export interface GraphContext extends ServiceLookup, Partial<ProvideHost> {
   readonly tools: Pick<ToolsLike, 'register'>
   /** Awaited serially before agent creation resolves; the first step sees the effects. */
   on(event: 'agent/created', listener: (payload: { agent: AgentLike }) => Promise<void> | void): () => void
   on(event: 'tools/pre-execute', listener: PreExecuteListener, options?: { prepend?: boolean }): () => void
+  /** The gate's row journal flushes on a disposed session (m4-gate G1); the follow-up recorder hooks the other observer with G2. */
+  on(event: 'session/event', listener: (session: SessionLike, event: SessionEventLike) => void): () => void
+  on(event: 'session/disposed', listener: (session: SessionLike) => void): () => void
 }
 
 /** cordis plugin identity: needs the tools service. */
@@ -114,8 +117,9 @@ export function apply(ctx: GraphContext, config: GraphConfig = {}): () => void {
     const off = provideRowHealth(ctx, 'graph', 'inactive', `图工具注册失败：${error instanceof Error ? error.message : String(error)}`)
     return () => { off.dispose() }
   }
-  const journal = rowJournal(name, () => dataHomes(ctx, config.home), config.fs)
-  disposers.push(installGraphFileGuard(ctx, cwd => resolveGraphDir(dir, cwd), record => { void journal.violation(record) }))
+  // The violation journal of the calling session's project (m4-gate G1, design §2.4).
+  const journal = projectJournal(name, cwd => projectHomeFor(ctx, config.home, cwd), config.fs)
+  disposers.push(installGraphFileGuard(ctx, cwd => resolveGraphDir(dir, cwd), (record, cwd) => journal.violation(record, cwd), health))
   disposers.push(provideService(ctx, dir, new Set(tools.map(tool => tool.name))))
   const installed = new WeakSet<AgentLike>()
   disposers.push(ctx.on('agent/created', ({ agent }) => {

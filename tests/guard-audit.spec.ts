@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { mkdirSync } from 'node:fs'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { apply, guardHealth, type GuardRecord, type ViolationRecord } from '../src/guard/index.ts'
 import { DECLARATION_SECTION } from '../src/guard/sections.ts'
 import { apply as glmPromptApply, dialectServiceFor } from '../src/glm-prompt/index.ts'
@@ -27,8 +31,11 @@ function memoryFs() {
   return {
     files,
     fs: {
-      mkdir: async () => undefined,
-      appendFile: async (path: string, data: string) => { files.set(path, (files.get(path) ?? '') + data) },
+      mkdir: () => Promise.resolve(undefined),
+      appendFile: (path: string, data: string) => {
+        files.set(path, (files.get(path) ?? '') + data)
+        return Promise.resolve()
+      },
     },
     lines: (path: string) => (files.get(path) ?? '').split('\n').filter(line => line.length > 0).map(line => JSON.parse(line) as GuardRecord),
   }
@@ -59,7 +66,7 @@ function harness(roots: readonly string[] | undefined, options: { home?: string,
     },
     get: (name: string) => name === 'glmHournessData' ? options.service : services.get(name),
   }
-  apply(ctx as never, { ...(roots === undefined ? {} : { workspaceRoots: roots }), fs: store.fs, ...(options.home === undefined ? {} : { home: options.home }) })
+  apply(ctx, { ...(roots === undefined ? {} : { workspaceRoots: roots }), fs: store.fs, ...(options.home === undefined ? {} : { home: options.home }) })
   const preExecute = listeners.get('tools/pre-execute') as unknown as (payload: ToolExecutionPayload, next: () => Promise<PreExecuteDecision>) => Promise<PreExecuteDecision>
   return {
     decisions,
@@ -67,7 +74,7 @@ function harness(roots: readonly string[] | undefined, options: { home?: string,
     files: store.files,
     records: () => store.lines(VIOLATIONS),
     violations: () => store.lines(VIOLATIONS) as ViolationRecord[],
-    run: (payload: ToolExecutionPayload) => preExecute(payload, async () => options.inner ?? { kind: 'allow' }).then(decision => { decisions.push(decision) }).then(settle),
+    run: (payload: ToolExecutionPayload) => preExecute(payload, () => Promise.resolve(options.inner ?? { kind: 'allow' })).then(decision => { decisions.push(decision) }).then(settle),
     event: (session: SessionLike, event: SessionEventLike) => (listeners.get('session/event') as unknown as (s: SessionLike, e: SessionEventLike) => void)(session, event),
     disposed: (session: SessionLike) => (listeners.get('session/disposed') as unknown as (s: SessionLike) => void)(session),
   }
@@ -75,25 +82,26 @@ function harness(roots: readonly string[] | undefined, options: { home?: string,
 
 const decisionOf = (h: { decisions: PreExecuteDecision[] }) => h.decisions[0]
 
-test('out-of-workspace write is denied and journaled under <home>/audit with rule id, correction and the calling agent ids', async () => {
+test('out-of-workspace write is denied and journaled under <home>/audit with rule id, correction, the calling agent ids and what the call touched', async () => {
   const h = harness(['C:\\ws'])
   await h.run({ name: 'Write', arguments: { file_path: 'C:\\Windows\\x.dll' }, agent: agentAt(undefined, 'a1', 's1') })
-  assert.equal(decisionOf(h)!.kind, 'deny')
+  assert.equal(decisionOf(h).kind, 'deny')
   assert.equal(h.violations().length, 1)
-  const record = h.violations()[0]!
+  const record = h.violations()[0]
   assert.equal(record.rule, 'workspace-containment')
   assert.equal(record.tool, 'Write')
   assert.equal(record.agentId, 'a1')
   assert.equal(record.sessionId, 's1')
   assert.ok(record.correction.includes('Right path:'))
+  assert.deepEqual(record.call, { tool: 'write', target: 'C:\\Windows\\x.dll' }) // the subject keeps the DSH native the call ran; the record's tool keeps the model's spelling
   assert.ok(!Number.isNaN(Date.parse(record.at)))
 })
 
 test('shell write inside the workspace is still denied by file-tools-only', async () => {
   const h = harness(['C:\\ws'])
   await h.run({ name: 'Bash', arguments: { command: 'echo hi > C:/ws/out.txt' }, agent: agentAt(undefined) })
-  assert.equal(h.violations()[0]!.rule, 'file-tools-only')
-  assert.ok(h.violations()[0]!.correction.includes('(redirection > C:/ws/out.txt)'))
+  assert.equal(h.violations()[0].rule, 'file-tools-only')
+  assert.ok(h.violations()[0].correction.includes('(redirection > C:/ws/out.txt)'))
 })
 
 test('allowed calls are neither denied nor audited', async () => {
@@ -107,13 +115,13 @@ test('allowed calls are neither denied nor audited', async () => {
 test('terminal_send text is read like shell text (dsh-tool-terminal names the field text)', async () => {
   const h = harness(['C:\\ws'])
   await h.run({ name: 'terminal_send', arguments: { sessionId: 't1', text: 'Set-Content f.txt hi' }, agent: agentAt(undefined) })
-  assert.equal(h.violations()[0]!.rule, 'file-tools-only')
+  assert.equal(h.violations()[0].rule, 'file-tools-only')
 })
 
 test('without a row home the violation goes to the data service project directory', async () => {
   const h = harness(['C:\\ws'], { service: { userHome: 'C:/users/me/.dsh/glm-hourness', projectHome: 'C:/ws/.llm' } })
   await h.run({ name: 'Bash', arguments: { command: 'Set-Content f.txt hi' }, agent: agentAt('C:\\ws', 'a2', 's2') })
-  assert.equal(decisionOf(h)!.kind, 'deny')
+  assert.equal(decisionOf(h).kind, 'deny')
   assert.deepEqual(h.violations().map(record => [record.rule, record.tool, record.agentId, record.sessionId]), [['file-tools-only', 'Bash', 'a2', 's2']])
   assert.deepEqual([...h.files.keys()], [VIOLATIONS]) // nothing written to the user-level directory
 })
@@ -124,7 +132,7 @@ test('a row home wins over the data service project directory', async () => {
   assert.deepEqual([...h.files.keys()], [VIOLATIONS])
 })
 
-test('without any directory the call is still denied and the lost record is reported once', async () => {
+test('without any directory the call is still denied; nothing is attempted, the console stays quiet and the row health says so', async () => {
   const warnings: string[] = []
   const warn = console.warn
   console.warn = (message: string) => { warnings.push(message) }
@@ -134,28 +142,64 @@ test('without any directory the call is still denied and the lost record is repo
     await h.run({ name: 'Bash', arguments: { command: 'Out-File f.txt' }, agent: agentAt(undefined) })
     assert.deepEqual(h.decisions.map(decision => decision.kind), ['deny', 'deny'])
     assert.equal(h.files.size, 0)
-    assert.equal(warnings.length, 1)
-    assert.ok(warnings[0]!.includes('violations journal write failed: no project directory'))
+    assert.equal(warnings.length, 0, 'a record with no home is not a failed write; the row health names it')
+    assert.ok(guardHealth(['C:\\ws'], undefined)[1].includes('无项目目录，违规不落盘'))
   }
   finally {
     console.warn = warn
   }
 })
 
+test('each project\'s session journals into its own project directory', async () => {
+  const mkProject = async (name: string): Promise<string> => {
+    const root = await mkdtemp(join(tmpdir(), `guard-proj-${name}-`))
+    mkdirSync(join(root, '.llm'), { recursive: true })
+    return root
+  }
+  const rootA = await mkProject('a')
+  const rootB = await mkProject('b')
+  try {
+    const listeners = new Map<string, Listener>()
+    const ctx = {
+      on: (event: string, listener: Listener) => { listeners.set(event, listener); return () => {} },
+      get: () => undefined,
+    }
+    const store = memoryFs()
+    // The project of the session's working directory is resolved on the real
+    // file system (the temp projects exist with their .llm); the journal writes
+    // through the injected fs, so the run is deterministic.
+    apply(ctx, { workspaceRoots: [rootA], fs: store.fs }) // no home, no data service: the project of the session decides
+    const preExecute = listeners.get('tools/pre-execute') as unknown as (payload: ToolExecutionPayload, next: () => Promise<PreExecuteDecision>) => Promise<PreExecuteDecision>
+    await preExecute({ name: 'Bash', arguments: { command: 'Set-Content f.txt hi' }, agent: agentAt(rootA, 'a1', 's1') }, () => Promise.resolve({ kind: 'allow' }))
+    await preExecute({ name: 'Bash', arguments: { command: 'Set-Content f.txt hi' }, agent: agentAt(rootB, 'a2', 's2') }, () => Promise.resolve({ kind: 'allow' }))
+    await settle()
+    // The journal path as projectHomeFor builds it (forward slashes from the root on).
+    const linesOf = (root: string): ViolationRecord[] => store.lines(`${root}/.llm/audit/violations.jsonl`) as ViolationRecord[]
+    assert.equal(linesOf(rootA).length, 1)
+    const ofB = linesOf(rootB)[0]
+    assert.equal(ofB.rule, 'file-tools-only')
+    assert.equal(ofB.sessionId, 's2')
+  }
+  finally {
+    await rm(rootA, { recursive: true, force: true })
+    await rm(rootB, { recursive: true, force: true })
+  }
+})
+
 test('roots default to the calling agent session directory', async () => {
   const h = harness(undefined) // no containment roots configured
   await h.run({ name: 'Write', arguments: { file_path: 'C:\\ws\\src\\a.ts' }, agent: agentAt('C:\\ws') })
-  assert.equal(h.decisions[0]!.kind, 'allow') // inside the agent session directory
+  assert.equal(h.decisions[0].kind, 'allow') // inside the agent session directory
   await h.run({ name: 'Write', arguments: { file_path: 'C:\\elsewhere\\a.ts' }, agent: agentAt('C:\\ws') })
-  assert.equal(h.decisions[1]!.kind, 'deny') // outside it
+  assert.equal(h.decisions[1].kind, 'deny') // outside it
 })
 
 test('a call without config or agent directory keeps file-tools-only but skips containment', async () => {
   const h = harness(undefined)
   await h.run({ name: 'Write', arguments: { file_path: 'C:\\anywhere\\a.ts' }, agent: agentAt(undefined) })
-  assert.equal(h.decisions[0]!.kind, 'allow') // no provable root: containment cannot judge
+  assert.equal(h.decisions[0].kind, 'allow') // no provable root: containment cannot judge
   await h.run({ name: 'Bash', arguments: { command: 'echo x > a.txt' }, agent: agentAt(undefined) })
-  assert.equal(h.decisions[1]!.kind, 'deny') // the shell-write rule does not need a root
+  assert.equal(h.decisions[1].kind, 'deny') // the shell-write rule does not need a root
 })
 
 // Relative targets (L4 2026-10-28: `.llm/l4-dsh/calc.mjs` was denied as
@@ -237,7 +281,7 @@ test('shadow: a non-GLM turn is noted too; its record is tagged other with the r
   await h.run({ name: 'pwsh', arguments: { command: DOTNET_WRITE }, agent })
   announce(agent.session!, 3, changed(1, 'gen.txt'))
   await settle()
-  assert.deepEqual(h.records().map(record => ['mode' in record ? record.mode : 'denial', record.scope, record.route]), [['shadow', 'other', DEEPSEEK]])
+  assert.deepEqual(h.records().map(record => ['mode' in record ? record.mode : 'denial', 'scope' in record ? record.scope : undefined, 'route' in record ? record.route : undefined]), [['shadow', 'other', DEEPSEEK]])
 })
 
 test('shadow: one shell call where the dialect claims the agent makes the turn dialect; the route is the last shell call\'s', async () => {
@@ -253,7 +297,7 @@ test('shadow: one shell call where the dialect claims the agent makes the turn d
   await h.run({ name: 'pwsh', arguments: { command: 'npm test' }, agent })
   announce(agent.session!, 4, changed(1, 'gen.txt'))
   await settle()
-  assert.deepEqual(h.records().map(record => [record.scope, record.route]), [['dialect', DEEPSEEK]])
+  assert.deepEqual(h.records().map(record => ['scope' in record ? record.scope : undefined, 'route' in record ? record.route : undefined]), [['dialect', DEEPSEEK]])
 })
 
 // Workspace-change fallback, shadow mode (docs/ORCHESTRATION.md §6.5): the
@@ -316,7 +360,7 @@ test('shadow: no record without an allowed shell call, when file tools cover eve
   await h.run({ name: 'Bash', arguments: { command: 'Set-Content gen.txt x' }, agent: s3 }) // denied: never ran
   announce(s3.session!, 5, changed(1, 'gen.txt'))
   await settle()
-  assert.deepEqual(h.records().map(record => 'mode' in record ? 'shadow' : record.rule), ['file-tools-only']) // only s3's denial
+  assert.deepEqual(h.records().map(record => 'mode' in record && record.mode === 'shadow' ? 'shadow' : 'rule' in record ? record.rule : 'gap'), ['file-tools-only']) // only s3's denial
 
   const bare = harness(['C:\\ws'])
   bare.event(s1.session!, { type: 'turn/start', seq: 0, data: { turn: 1 } })
@@ -440,7 +484,7 @@ test('every request carries the rule declarations as the last system prompt sect
   assert.ok(section.text.includes('\n- You may only create and modify files inside the user\'s workspace.'))
   assert.ok(section.text.split('\n').includes(`- ${FILE_TOOLS_LINE_ZCODE}`), 'the dialect claims the agent: the line is word for word as before')
   assert.equal(glm.sections.filter(entry => entry.name === DECLARATION_SECTION).length, 1)
-  assert.equal(glm.sections[0]!.name, 'glm:cli-prefix') // the dialect rewrite still leads
+  assert.equal(glm.sections[0].name, 'glm:cli-prefix') // the dialect rewrite still leads
   const plain = await rt.assemble({ provider: 'deepseek', model: 'deepseek-flash' })
   const plainSection = plain.sections.at(-1)!
   assert.equal(plainSection.name, DECLARATION_SECTION)

@@ -175,9 +175,9 @@ export function parseSigningCredentialForm(credential: string): ParsedSigningCre
   if (segments.length !== 3 || segments[2] === undefined || segments[2].length === 0) return undefined
   try {
     const decode = (segment: string) => JSON.parse(Buffer.from(segment.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8')) as Record<string, unknown>
-    const header = decode(segments[0]!) as { alg?: string, typ?: string, sign_type?: string }
+    const header = decode(segments[0]) as { alg?: string, typ?: string, sign_type?: string }
     if (header.alg !== 'HS256' || header.typ !== 'JWT' || header.sign_type !== 'SIGN') return undefined
-    const payload = decode(segments[1]!) as { token_use?: string, api_key?: string }
+    const payload = decode(segments[1]) as { token_use?: string, api_key?: string }
     if (payload.token_use !== 'project_access' || typeof payload.api_key !== 'string' || payload.api_key.trim().length === 0) return undefined
     return { apiKeyId: payload.api_key, secret: credential }
   }

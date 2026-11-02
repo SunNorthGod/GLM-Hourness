@@ -39,7 +39,7 @@ import { cachedWorktrees, projectOf } from '../data/project-root.ts'
 import { writesInto } from '../guard/directory-writes.ts'
 import { originOf } from '../guard/origin.ts'
 import { renderCorrection, type ToolCall } from '../guard/rules.ts'
-import type { AuditJournal } from '../memory/audit.ts'
+import type { GuardRecord } from '../guard/records.ts'
 import { dialectNames, dialectService, dialectWarner, toNativeTool } from '../shared/dialect.ts'
 import type { AgentLike, PreExecuteDecision, PreExecuteHost, ServiceLookup, ToolExecutionPayload } from '../shared/dsh-min.ts'
 import { sessionIdOf, type RowHealth } from '../shared/health.ts'
@@ -70,7 +70,8 @@ export interface GateDeps {
   /** The project of a working directory, as the row reads it; it throws when the files cannot be read. */
   readonly project: (cwd: string) => ProjectView | undefined
   readonly peak: () => PeakReading
-  readonly journal: AuditJournal
+  /** Where the gate hands its record: the row journal (which reports how the write came out) or the raw audit journal; the gate does not read the outcome (design §3.2). */
+  readonly journal: { readonly violation: (record: GuardRecord) => Promise<unknown> }
   readonly health: RowHealth
   /** The waiting tickets of the calls a rule queues. */
   readonly tickets: TicketDesk

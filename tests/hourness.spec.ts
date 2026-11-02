@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { creditPricing } from '../src/glm-llm/credits.ts'
 import { apply, renderHourness } from '../src/report/index.ts'
 import { cacheHitRate, parseGaps, usagePanel, usagePanelLines, usagePanelOf, type PanelLineOptions } from '../src/report/panel.ts'
@@ -146,7 +149,7 @@ test('a missing directory is named in the report', async () => {
   assert.ok(none.includes('- 用户级目录不可用'))
 })
 
-type Registered = { name: string, handler: (invocation: { rawInput: string }) => Promise<{ kind: string, text: string }> }
+type Registered = { name: string, handler: (invocation: { rawInput: string, agent?: unknown }) => Promise<{ kind: string, text: string }> }
 
 function register(config: { home?: string }, data: unknown): { registered: Registered[], dispose: () => void } {
   const registered: Registered[] = []
@@ -160,10 +163,10 @@ function register(config: { home?: string }, data: unknown): { registered: Regis
 test('apply registers /hourness and /hourness-status; /hourness reports from the real directories', async () => {
   const { registered, dispose } = register({ home: 'C:/definitely-empty-hourness-home' }, { userHome: 'C:/definitely-empty-hourness-user' })
   assert.deepEqual(registered.map(definition => definition.name), ['hourness', 'hourness-status'])
-  assert.equal(registered[0]!.name, 'hourness')
-  const withArgs = await registered[0]!.handler({ rawInput: 'x' })
+  assert.equal(registered[0].name, 'hourness')
+  const withArgs = await registered[0].handler({ rawInput: 'x' })
   assert.equal(withArgs.kind, 'error')
-  const clean = await registered[0]!.handler({ rawInput: '' })
+  const clean = await registered[0].handler({ rawInput: '' })
   assert.equal(clean.kind, 'success')
   assert.ok(clean.text.includes('# 晨报'))
   assert.ok(!clean.text.includes('## 数据目录'))
@@ -172,11 +175,29 @@ test('apply registers /hourness and /hourness-status; /hourness reports from the
 
 test('without a home or the data service the command still registers and names what is missing', async () => {
   const { registered, dispose } = register({}, undefined)
-  const result = await registered[0]!.handler({ rawInput: '' })
+  const result = await registered[0].handler({ rawInput: '' })
   assert.equal(result.kind, 'success')
   assert.ok(result.text.includes('- 项目目录未配置'))
   assert.ok(result.text.includes('- 用户级目录不可用'))
   dispose()
+})
+
+test('the report reads the journal of the calling session\'s project (m4-gate G1, §2.4)', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'hourness-proj-'))
+  try {
+    mkdirSync(join(root, '.llm', 'audit'), { recursive: true })
+    writeFileSync(join(root, '.llm', 'audit', 'violations.jsonl'), `${JSON.stringify({ at: new Date().toISOString(), rule: 'file-tools-only', tool: 'pwsh', scope: 'other', correction: 'Boundary: …' })}\n`)
+    const { registered, dispose } = register({}, { userHome: join(root, 'user') })
+    const agent = { id: 's1', session: { id: 's1', header: { id: 's1', cwd: root }, deriveMessages: () => [] } }
+    const result = await registered[0].handler({ rawInput: '', agent })
+    assert.equal(result.kind, 'success')
+    assert.ok(result.text.includes('- 违规 file-tools-only（其他路由） × 1'), result.text)
+    assert.ok(!result.text.includes('项目目录未配置'))
+    dispose()
+  }
+  finally {
+    rmSync(root, { recursive: true, force: true })
+  }
 })
 
 // --- the panel of the usage journal: one function for both sections, the peak line, the scope of the records, the gaps and the quota ---

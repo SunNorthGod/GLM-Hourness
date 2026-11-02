@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { describeWrite, shellWrites, type ShellDialect } from '../src/guard/shell.ts'
-import { declarationOf, evaluate, fileToolsOnly, NATIVE_FACE, renderCorrection, shellCommandOf } from '../src/guard/rules.ts'
+import { declarationOf, fileToolsOnly, NATIVE_FACE, renderCorrection, shellCommandOf } from '../src/guard/rules.ts'
 
 // file-tools-only reads shell text quote-aware (docs/ORCHESTRATION.md §6.4):
 // only command positions and real redirections count. The three recorded
@@ -124,18 +124,18 @@ test('the script of an inner shell is read as commands', () => {
 
 test('file-tools-only: the denial names the write; the shell tools and their argument follow rc.3', () => {
   // Rules see DSH native names (the rows map the ZCode Bash alias to pwsh first, src/shared/dialect.ts).
-  const verdict = evaluate([fileToolsOnly], { name: 'pwsh', arguments: { command: 'echo x > out.txt' } })
+  const verdict = fileToolsOnly.detect({ name: 'pwsh', arguments: { command: 'echo x > out.txt' } }, NATIVE_FACE)
   assert.equal(verdict.kind, 'deny')
   if (verdict.kind === 'deny') assert.ok(renderCorrection(verdict.correction).startsWith('You tried to modify files through the shell: "echo x > out.txt" (redirection > out.txt).\nBoundary: Shell file writes are not permitted'))
-  assert.equal(evaluate([fileToolsOnly], { name: 'pwsh', arguments: { command: 'git commit -m "a -> b"' } }).kind, 'allow')
-  assert.equal(evaluate([fileToolsOnly], { name: 'Bash', arguments: { command: 'Set-Content f x' } }).kind, 'allow') // an alias name unmapped is no shell tool
-  assert.equal(evaluate([fileToolsOnly], { name: 'pwsh', arguments: { command: 'Set-Content f x' } }).kind, 'deny')
-  assert.equal(evaluate([fileToolsOnly], { name: 'bash', arguments: { command: 'touch f' } }).kind, 'deny')
+  assert.equal(fileToolsOnly.detect({ name: 'pwsh', arguments: { command: 'git commit -m "a -> b"' } }, NATIVE_FACE).kind, 'allow')
+  assert.equal(fileToolsOnly.detect({ name: 'Bash', arguments: { command: 'Set-Content f x' } }, NATIVE_FACE).kind, 'allow') // an alias name unmapped is no shell tool
+  assert.equal(fileToolsOnly.detect({ name: 'pwsh', arguments: { command: 'Set-Content f x' } }, NATIVE_FACE).kind, 'deny')
+  assert.equal(fileToolsOnly.detect({ name: 'bash', arguments: { command: 'touch f' } }, NATIVE_FACE).kind, 'deny')
   // dsh-tool-terminal: terminal_send carries `text`; the backend may run bash or pwsh, so both readings apply.
   assert.deepEqual(shellCommandOf({ name: 'terminal_send', arguments: { sessionId: 't1', text: 'ls' } }), { command: 'ls', dialects: ['pwsh', 'posix'] })
   assert.equal(shellCommandOf({ name: 'terminal_send', arguments: { sessionId: 't1', command: 'ls' } }), undefined)
-  assert.equal(evaluate([fileToolsOnly], { name: 'terminal_send', arguments: { sessionId: 't1', text: 'touch f' } }).kind, 'deny')
-  assert.equal(evaluate([fileToolsOnly], { name: 'Read', arguments: { command: 'rm x' } }).kind, 'allow')
+  assert.equal(fileToolsOnly.detect({ name: 'terminal_send', arguments: { sessionId: 't1', text: 'touch f' } }, NATIVE_FACE).kind, 'deny')
+  assert.equal(fileToolsOnly.detect({ name: 'Read', arguments: { command: 'rm x' } }, NATIVE_FACE).kind, 'allow')
 })
 
 test('file-tools-only declares the boundary it enforces, naming the file tools as the model sees them', () => {
@@ -146,6 +146,6 @@ test('file-tools-only declares the boundary it enforces, naming the file tools a
     assert.ok(declared.includes(term), term)
   }
   assert.ok(declarationOf(fileToolsOnly, NATIVE_FACE).startsWith('Modify files and code only with the dedicated write/edit tools.'))
-  const verdict = evaluate([fileToolsOnly], { name: 'pwsh', arguments: { command: 'Set-Content f x' } }, zcode)
+  const verdict = fileToolsOnly.detect({ name: 'pwsh', arguments: { command: 'Set-Content f x' } }, zcode)
   assert.equal(verdict.kind === 'deny' ? verdict.correction.rightPath : undefined, 'Read the target with Read, then apply the change with Write or Edit.')
 })

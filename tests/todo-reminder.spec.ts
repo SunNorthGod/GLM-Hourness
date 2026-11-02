@@ -10,7 +10,7 @@ let ids = 0
 function turn(calls: ReadonlyArray<{ name: string, args?: unknown, failed?: true }> = [{ name: 'Read' }], model = 'glm-5.3'): DerivedMessage[] {
   const blocks = calls.map(call => ({ type: 'tool-call', id: `call-${++ids}`, name: call.name, arguments: JSON.stringify(call.args ?? {}) }))
   const assistant: DerivedMessage = { role: 'assistant', content: blocks.length > 0 ? blocks : [{ type: 'text', text: 'ok' }], source: { kind: 'model', provider: 'glm-zcode', model } }
-  return [assistant, ...blocks.map((block, index) => ({ role: 'tool', toolCallId: block.id, isError: calls[index]!.failed === true, content: [{ type: 'text', text: 'ok' }] }))]
+  return [assistant, ...blocks.map((block, index) => ({ role: 'tool', toolCallId: block.id, isError: calls[index].failed === true, content: [{ type: 'text', text: 'ok' }] }))]
 }
 const turns = (count: number, calls?: Parameters<typeof turn>[0], model?: string): DerivedMessage[] => Array.from({ length: count }, () => turn(calls, model)).flat()
 const reminder: DerivedMessage = { role: 'user', content: [{ type: 'text', text: '<system-reminder>…' }], source: { kind: 'glm-todo-reminder', form: 'notice' } }

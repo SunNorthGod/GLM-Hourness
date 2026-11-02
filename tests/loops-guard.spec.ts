@@ -52,7 +52,7 @@ rowTest('a file tool writing into docs/loops/ or .llm/loops/ is denied with the 
   const records = await violations(targets.length)
   assert.equal(records.length, targets.length)
   assert.deepEqual(records.map(record => record.correction).sort(), [...reasons].sort())
-  assert.ok(records.every(record => record.rule === LOOPS_FILES_ONLY && record.mode === 'enforce' && record.agentId === 'agent-1' && record.sessionId === 'agent-1' && /^\d{4}-\d\d-\d\dT/.test(String(record.at))))
+  assert.ok(records.every(record => record.rule === LOOPS_FILES_ONLY && record.mode === undefined && record.agentId === 'agent-1' && record.sessionId === 'agent-1' && /^\d{4}-\d\d-\d\dT/.test(String(record.at))))
   assert.deepEqual(records.map(record => record.tool).sort(), targets.map(([tool]) => tool).sort())
 })
 rowTest('a shell command that file-tools-only counts as a write and that names the board\'s files is denied; a read of them, and a write elsewhere, run', async ({ exec, calls }) => {
@@ -203,7 +203,7 @@ rowTest('a schedule_create that pretends to be the board\'s is denied on the hos
   const records = await violations(1)
   assert.equal(records.length, 1)
   assert.equal(records[0].rule, LOOPS_SCHEDULE_TOOLS)
-  assert.equal(records[0].mode, 'enforce')
+  assert.equal(records[0].mode, undefined)
   assert.equal(records[0].tool, 'schedule_create')
 })
 rowTest('a schedule_delete of a reminder the board made is denied; of somebody else\'s it runs, and a catalog that cannot be read lets both through', async ({ exec, calls, schedule }) => {
@@ -218,8 +218,8 @@ rowTest('a schedule_delete of a reminder the board made is denied; of somebody e
   assert.equal((await exec('schedule_delete', { id: mine.id })).isError, false)
   assert.deepEqual(calls.map(call => call.name), ['schedule_delete', 'schedule_delete'])
 })
-test('both rules are listed in the guard framework\'s catalog as enforced, and nothing under src/loops/ has a mode that only records', () => {
-  assert.deepEqual(GUARD_RULES.filter(rule => rule.row === 'loops').map(rule => [rule.id, rule.mode]), [['files-only', 'enforce'], ['schedule-tools', 'enforce']])
+test('both rules are listed in the guard framework\'s catalog without a mode column, and nothing under src/loops/ has a mode that only records', () => {
+  assert.deepEqual(GUARD_RULES.filter(rule => rule.row === 'loops').map(rule => [rule.id, rule.liftVia]), [['files-only', 'any'], ['schedule-tools', 'any']])
   const dir = new URL('../src/loops/', import.meta.url)
   for (const file of readdirSync(dir).filter(name => name.endsWith('.ts'))) {
     assert.doesNotMatch(readFileSync(new URL(file, dir), 'utf8'), /shadow/i, `${file} has a shadow mode`)
