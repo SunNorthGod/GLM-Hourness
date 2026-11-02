@@ -26,7 +26,9 @@
  * its overlay, the headless --json event stream, stderr, the limits record,
  * the checker output, result.json, the workspace copy and the run's own data
  * directories (usage journal, guard journal; for an interview task also
- * human.jsonl, what the simulated human said). A copy that did not finish
+ * human.jsonl, what the simulated human said, and in result.json the
+ * `interview` numbers of tests/calibration/interview-metrics.mjs; event-times.json
+ * holds the arrival time of each line of events.jsonl). A copy that did not finish
  * leaves everything where it was; --collect <timestamp> finishes it, and
  * does the same for a batch the runner did not get to close. Nothing is
  * written to the real user-level directory.
@@ -146,10 +148,14 @@ function runHeadless(dir, ws, task, model) {
   return new Promise((resolve) => {
     const child = spawn(exe, args, { cwd: ws, env: { ...env, DSH_PERMISSION_MODE: permission } })
     const events = []
+    // When each event line arrived, in the order of `events` (the interview metrics measure how long a question waited).
+    const times = []
     const raw = createWriteStream(join(dir, 'events.jsonl'))
     const take = (line) => {
       try {
-        events.push(JSON.parse(line))
+        const event = JSON.parse(line)
+        events.push(event)
+        times.push(Date.now())
       }
       catch {
         // Not an event line.
@@ -176,8 +182,8 @@ function runHeadless(dir, ws, task, model) {
     child.on('close', (code) => {
       clearTimeout(hardKill)
       take(pending)
-      raw.end()
-      resolve({ code, killed, events, durationMs: Date.now() - started, ...(spawnError === undefined ? {} : { spawnError }) })
+      // The stream is complete on disk before the checker reads it.
+      raw.end(() => resolve({ code, killed, events, times, durationMs: Date.now() - started, ...(spawnError === undefined ? {} : { spawnError }) }))
     })
     child.stdin.end(task.prompt)
   })
@@ -268,6 +274,7 @@ async function calibrate(task, model, index) {
   const startedAt = new Date().toISOString()
   console.log(`calibrate: ${task.id} on ${model}${repeat > 1 ? ` (run ${index + 1}/${repeat})` : ''} ...`)
   const run = await runHeadless(dir, ws, task, model)
+  writeFileSync(join(dir, 'event-times.json'), JSON.stringify(run.times))
   const limits = jsonl(join(dir, 'limits.jsonl'))
   const usage = jsonl(join(dir, 'dsh-home', 'glm-hourness', 'audit', 'usage.jsonl'))
   const guard = jsonl(join(dir, 'home', 'audit', 'violations.jsonl'))
@@ -279,7 +286,8 @@ async function calibrate(task, model, index) {
   const results = new Map(events('tool_result').map(result => [result.callId, result]))
   const turnEnd = phases('turn_end').at(-1)?.reason
   const stop = run.killed ? 'killed' : limits.some(entry => entry.kind === 'time-limit') ? 'time-limit' : limits.some(entry => entry.kind === 'step-limit') ? 'step-limit' : turnEnd?.kind ?? 'no-turn-end'
-  const acceptance = runChecker(task, dir, ws)
+  // An interview task's checker also prints the numbers step 12(a) counts (tests/calibration/interview-metrics.mjs): they go to result.json as `interview`, apart from the verdict.
+  const { metrics, ...acceptance } = runChecker(task, dir, ws)
   const changed = changedFiles(ws)
   const result = {
     task: task.id,
@@ -304,6 +312,7 @@ async function calibrate(task, model, index) {
     tools: countBy(calls, 'tool'),
     rework: reworkOf(calls, results),
     interruptions: limits.filter(entry => entry.kind === 'approval').length + replies,
+    humanReplies: replies,
     forbiddenCalls: calls.filter(call => HUMAN_TOOLS.has(call.tool)).length,
     violations: guard.filter(record => record.mode !== 'shadow').length,
     shadowRecords: guard.filter(record => record.mode === 'shadow').length,
@@ -313,6 +322,7 @@ async function calibrate(task, model, index) {
     credits: creditsOf(usage),
     peakCalls: usage.filter(record => isPeak(record.at)).length,
     finalText: (events('final').at(-1)?.text ?? '').slice(0, 2000),
+    ...metrics === undefined ? {} : { interview: metrics },
   }
   writeFileSync(join(dir, 'result.json'), `${JSON.stringify(result, null, 2)}\n`)
   return result

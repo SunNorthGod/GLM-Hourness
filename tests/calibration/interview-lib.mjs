@@ -6,11 +6,14 @@
  * hold however the goal is released: a graph without errors, one goal with its
  * requirement, a risk, a question the human decided, a design decision with
  * its five columns, nothing left as a proposal, and no file written outside
- * the graph. Each check is [name, run] for `report` in ./lib.mjs.
+ * the graph. Each check is [name, run] for `report` in ./lib.mjs. `metricsOf`
+ * adds the numbers of the run (disturbance, shape of the questions, loop,
+ * records, rules, snapshots) that are baselines, not conditions.
  */
 import { spawnSync } from 'node:child_process'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { interviewMetrics, readRun } from './interview-metrics.mjs'
 
 const dist = file => import(pathToFileURL(join(import.meta.dirname, '..', '..', 'packages', 'hourness', 'dist', file)).href)
 const { loadGraph } = await dist('graph/store.js')
@@ -38,6 +41,9 @@ export async function readInterview(workspace) {
   }
   return { workspace, graph, nodes, goals, goal, below: goal === undefined ? [] : nodes.filter(node => under(node, goal)) }
 }
+
+/** The numbers step 12(a) counts (./interview-metrics.mjs), read from the run directory the workspace is in (`<run>/ws`) and the graph; printed next to the checks, not part of the verdict. */
+export const metricsOf = ({ workspace, graph }) => interviewMetrics({ ...readRun(dirname(workspace)), graph })
 
 const live = node => node.status !== 'dropped' && node.status !== 'superseded'
 const LABELS = ['需求', '问题', '给谁', '约束']

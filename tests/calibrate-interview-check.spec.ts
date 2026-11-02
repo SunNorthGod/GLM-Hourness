@@ -22,6 +22,7 @@ const MODULES_TASK = join(import.meta.dirname, 'calibration', 'interview-expense
 interface Verdict {
   readonly pass: boolean
   readonly checks: ReadonlyArray<{ readonly name: string, readonly ok: boolean, readonly detail?: string }>
+  readonly metrics?: Record<string, unknown>
 }
 
 /** A copy of the fixture as a git repository with one commit, as the runner makes it. */
@@ -124,6 +125,7 @@ test('the fixture as it is does not pass, and the graph the flow leaves does', a
   assert.deepEqual(failing(verdict), [])
   assert.equal(verdict.pass, true)
   assert.equal(verdict.checks.length, 9)
+  assert.deepEqual(Object.keys(verdict.metrics ?? {}), ['disturbed', 'shown', 'questions', 'copiedExamples', 'loops', 'records', 'rules', 'snapshots'], 'the numbers of step 12(a) are printed next to the checks, and are not checks')
 })
 
 test('what the script is there to catch makes it fail: a proposal left over, a release without the human\'s words, a module under the goal, a goal that never reached the release, a file outside the graph', async () => {

@@ -12,7 +12,7 @@
  * are in ./interview-lib.mjs.
  */
 import { checkerArgs, report } from '../lib.mjs'
-import { checks, humanWords, need, readInterview, stageEdit } from '../interview-lib.mjs'
+import { checks, humanWords, metricsOf, need, readInterview, stageEdit } from '../interview-lib.mjs'
 
 const interview = await readInterview(checkerArgs().workspace)
 const { goal, graph, nodes } = interview
@@ -59,4 +59,4 @@ await report([
     return need(modules.length > 0 && late.length === 0, late.map(module => module.id).join(',') || (modules.length === 0 ? 'no module' : undefined))
   }],
   checks.outside(interview),
-])
+], { metrics: metricsOf(interview) })

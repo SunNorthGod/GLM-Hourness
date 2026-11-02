@@ -9,7 +9,7 @@
  * are in ./interview-lib.mjs.
  */
 import { checkerArgs, report } from '../lib.mjs'
-import { checks, humanWords, need, readInterview, stageEdit } from '../interview-lib.mjs'
+import { checks, humanWords, metricsOf, need, readInterview, stageEdit } from '../interview-lib.mjs'
 
 const interview = await readInterview(checkerArgs().workspace)
 const { goal, nodes } = interview
@@ -34,4 +34,4 @@ await report([
     return need(approved && design && release && added, `approve ${approved}, stage design ${design}, stage release ${release}, note ${added}`)
   }],
   checks.outside(interview),
-])
+], { metrics: metricsOf(interview) })
