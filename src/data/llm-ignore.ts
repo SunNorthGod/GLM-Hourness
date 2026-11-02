@@ -7,11 +7,11 @@
  * process and repository; the caller turns the outcome into its row health
  * and writes its records all the same.
  */
-import { execFile } from 'node:child_process'
 import { statSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { ensureIgnored, gitDirOf } from './project-root.ts'
+import { GIT_TIMEOUT_MS, runGit } from './git-process.ts'
 
 /** What one ensure run came to. */
 export type LlmIgnoreOutcome =
@@ -24,19 +24,6 @@ export type LlmIgnoreOutcome =
 
 /** The path `git check-ignore` is run against; it need not exist. */
 const LLM_IGNORE_PROBE = '.llm/scratch/x'
-
-/** How long one git check may take. */
-const CHECK_MS = 5000
-
-function git(root: string, args: readonly string[]): Promise<{ readonly code: number, readonly out: string, readonly err: string }> {
-  return new Promise((resolve) => {
-    execFile('git', ['-C', root, ...args], { timeout: CHECK_MS }, (error, stdout, stderr) => {
-      // execFile hands null on a zero exit and an Error with a numeric code otherwise.
-      const code = error === null ? 0 : typeof error.code === 'number' ? error.code : -1
-      resolve({ code, out: String(stdout), err: String(stderr) })
-    })
-  })
-}
 
 async function once(root: string): Promise<LlmIgnoreOutcome> {
   const gitDir = gitDirOf(root)
@@ -56,7 +43,7 @@ async function once(root: string): Promise<LlmIgnoreOutcome> {
   }
   // The check runs against the scratch area: what has to be invisible is the
   // directory the harness writes into, not the name alone.
-  const checked = await git(root, ['check-ignore', '-q', LLM_IGNORE_PROBE])
+  const checked = await runGit(root, ['check-ignore', '-q', LLM_IGNORE_PROBE], GIT_TIMEOUT_MS)
   if (checked.code === 0) return { kind: 'ignored', appended }
   return { kind: 'visible', reason: await visibleReason(root, checked) }
 }
@@ -68,7 +55,7 @@ async function once(root: string): Promise<LlmIgnoreOutcome> {
  * name themselves instead.
  */
 async function visibleReason(root: string, checked: { readonly code: number }): Promise<string> {
-  const why = await git(root, ['check-ignore', '-v', '--no-index', LLM_IGNORE_PROBE])
+  const why = await runGit(root, ['check-ignore', '-v', '--no-index', LLM_IGNORE_PROBE], GIT_TIMEOUT_MS)
   if (why.out.trim() !== '') return why.out.trim()
   if (why.code !== 0 && why.code !== 1) return `git check-ignore failed: ${why.err.trim() !== '' ? why.err.trim() : `exit ${why.code}`}`
   const mentions: string[] = []

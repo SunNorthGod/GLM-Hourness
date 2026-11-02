@@ -8,6 +8,7 @@
  */
 import { auditPaths, type DecisionRecord, type UsageRecord } from '../memory/audit.ts'
 import type { GuardRecord } from '../guard/index.ts'
+import type { SuppressionRecord } from '../env/suppressions.ts'
 import { gapLines, parseGaps, usagePanelLines, usagePanelOf, type PanelLineOptions } from '../report/panel.ts'
 import type { DataHomes } from '../shared/data-home.ts'
 import type { UsagePricing } from '../shared/pricing.ts'
@@ -18,6 +19,8 @@ export interface ReportInput {
   /** Guard denials and shadow records (`mode: 'shadow'`, recorded without blocking). */
   readonly violations: readonly GuardRecord[]
   readonly usage: readonly UsageRecord[]
+  /** The daily suppression-comment counts the period covers (m4-suppressions), oldest first. */
+  readonly suppressions?: readonly SuppressionRecord[] | undefined
   readonly period: string
   /** Prices the usage section in credits; without it the section lists calls and tokens. */
   readonly pricing?: UsagePricing | undefined
@@ -25,6 +28,20 @@ export interface ReportInput {
   readonly problem?: ((message: string) => void) | undefined
   /** Finished list lines for the usage section after its first line: the gaps in the records the period covers. */
   readonly usageScope?: readonly string[] | undefined
+}
+
+/** The suppression-comment line, or undefined when the period holds no count. */
+export function suppressionLineOf(records: readonly SuppressionRecord[]): string | undefined {
+  if (records.length === 0) return undefined
+  const total = records[records.length - 1].total
+  let up = 0
+  let down = 0
+  for (let index = 1; index < records.length; index++) {
+    const delta = records[index].total - records[index - 1].total
+    if (delta > 0) up += delta
+    else down -= delta
+  }
+  return up === 0 && down === 0 ? `压制注释 ${total} 处` : `压制注释 ${total} 处（本期 +${up} / −${down}）`
 }
 
 /** Render the morning report for one period. */
@@ -55,6 +72,11 @@ export function morningReport(input: ReportInput): string {
     for (const decision of l3) lines.push(`- [L3] ${decision.kind}: ${decision.subject}`)
     for (const [rule, count] of countByRule(denials)) lines.push(`- 违规 ${rule} × ${count}`)
   }
+
+  // The suppression-comment total and its movement over the period (m4-suppressions §6.7):
+  // rises and falls counted apart, so a net-zero period with churn still shows.
+  const suppressionLine = suppressionLineOf(input.suppressions ?? [])
+  if (suppressionLine !== undefined) lines.push(suppressionLine)
 
   lines.push('')
   lines.push('## 决策曲线')
@@ -110,13 +132,13 @@ export interface ReportOptions {
  * history. The usage section names the gaps that period meets.
  */
 export async function reportFromFiles(fs: ReportFs, homes: DataHomes, period: string, since?: string, options: ReportOptions = {}): Promise<string> {
-  const readJsonl = async (path: string | undefined) => {
+  const readJsonl = async <T>(path: string | undefined): Promise<T[]> => {
     if (path === undefined) return []
     try {
       const raw = await fs.readFile(path)
-      return raw.split('\n').filter(line => line.trim().length > 0).flatMap(line => {
+      return raw.split('\n').filter(line => line.trim().length > 0).flatMap<T>(line => {
         try {
-          return [JSON.parse(line)]
+          return [JSON.parse(line) as T]
         }
         catch {
           return []
@@ -130,7 +152,7 @@ export async function reportFromFiles(fs: ReportFs, homes: DataHomes, period: st
   // Compare parsed instants, not strings: journal timestamps may carry
   // different UTC offsets and lexical order would misjudge them.
   const sinceMs = since === undefined ? undefined : Date.parse(since)
-  const inPeriod = (records: Array<{ at?: unknown }>) => sinceMs === undefined || Number.isNaN(sinceMs)
+  const inPeriod = <T extends { readonly at?: unknown }>(records: readonly T[]): readonly T[] => sinceMs === undefined || Number.isNaN(sinceMs)
     ? records
     : records.filter(record => typeof record.at === 'string' && !Number.isNaN(Date.parse(record.at)) && Date.parse(record.at) >= sinceMs)
   const paths = auditPaths(homes)
@@ -138,9 +160,10 @@ export async function reportFromFiles(fs: ReportFs, homes: DataHomes, period: st
   const periodStart = sinceMs === undefined || Number.isNaN(sinceMs) ? undefined : sinceMs
   const zone: MomentZone = options.offsetMinutes === undefined ? {} : { offsetMinutes: options.offsetMinutes }
   return morningReport({
-    decisions: inPeriod(await readJsonl(paths.decisions)) as DecisionRecord[],
-    violations: inPeriod(await readJsonl(paths.violations)) as GuardRecord[],
-    usage: inPeriod(await readJsonl(paths.usage)) as UsageRecord[],
+    decisions: inPeriod(await readJsonl<DecisionRecord>(paths.decisions)),
+    violations: inPeriod(await readJsonl<GuardRecord>(paths.violations)),
+    usage: inPeriod(await readJsonl<UsageRecord>(paths.usage)),
+    suppressions: inPeriod(await readJsonl<SuppressionRecord>(paths.suppressions)),
     period,
     pricing: options.pricing,
     problem: options.problem,

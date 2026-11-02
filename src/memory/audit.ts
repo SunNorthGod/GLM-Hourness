@@ -36,15 +36,17 @@ export interface AuditPaths {
   readonly violations?: string
   readonly usage?: string
   readonly decisions?: string
+  /** The daily counts of suppression comments (m4-suppressions), beside the violations journal. */
+  readonly suppressions?: string
   /** The deletions of usage records, beside the usage journal (docs/DESIGN.md §2.4): written by hand when records are removed, read by the report. */
   readonly gaps?: string
 }
 
-/** Usage and its gaps under the user directory, violations and decisions under the project directory. */
+/** Usage and its gaps under the user directory, violations, decisions and suppression counts under the project directory. */
 export function auditPaths(homes: DataHomes): AuditPaths {
   const under = (home: string, file: string) => `${home.replace(/[\\/]+$/, '')}/audit/${file}`
   return {
-    ...(homes.projectHome === undefined ? {} : { violations: under(homes.projectHome, 'violations.jsonl'), decisions: under(homes.projectHome, 'decisions.jsonl') }),
+    ...(homes.projectHome === undefined ? {} : { violations: under(homes.projectHome, 'violations.jsonl'), decisions: under(homes.projectHome, 'decisions.jsonl'), suppressions: under(homes.projectHome, 'suppressions.jsonl') }),
     ...(homes.userHome === undefined ? {} : { usage: under(homes.userHome, 'usage.jsonl'), gaps: under(homes.userHome, 'usage-gaps.jsonl') }),
   }
 }

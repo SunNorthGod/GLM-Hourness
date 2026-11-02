@@ -1,14 +1,19 @@
 /**
  * glm-hourness/env row entry (M4 design §7; docs/ORCHESTRATION.md §7.1,
- * §7.4): at agent creation installs the environment notice (notice.ts) —
- * the project's tools from the graph's `env` branch, the checks that run
- * after edits, and the scratch area — at the session's first step and
- * whenever the branch changes; and before the first notice for a repository
- * makes the project's `.llm/` git-ignored (src/shared/llm-ignore.ts), so
- * the harness's runtime records never show up in git. The check runner
- * (m4-checks) and the suppression count (m4-suppressions) join later.
- * Ships disabled: the row registers nothing model-facing until then.
+ * §7.4, §7.6): at agent creation installs the environment notice
+ * (notice.ts) — the project's tools from the graph's `env` branch, the
+ * checks that run after edits, and the scratch area — at the session's
+ * first step and whenever the branch changes; before the first notice for a
+ * repository makes the project's `.llm/` git-ignored
+ * (src/data/llm-ignore.ts), so the harness's runtime records never show up
+ * in git; and once per repository and day counts the repository's
+ * suppression comments into the project's `.llm/audit/
+ * suppressions.jsonl` (suppressions.ts, m4-suppressions). The check runner
+ * (m4-checks) joins later. Ships disabled: the row registers nothing
+ * model-facing until then.
  */
+import { appendFile, mkdir, readFile } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
 import { installStepNotice } from '../shared/step-notice.ts'
 import { ensureLlmIgnored } from '../data/llm-ignore.ts'
 import { projectOf } from '../data/project-root.ts'
@@ -16,6 +21,7 @@ import { provideRowHealth, sessionIdOf, type HealthState, type RowHealth } from 
 import type { AgentLike, ProvideHost, ServiceLookup, SessionLike } from '../shared/dsh-min.ts'
 import { graphService } from '../graph/service.ts'
 import { envNotice } from './notice.ts'
+import { dailySuppressions, type SuppressionRecord } from './suppressions.ts'
 
 /** The row's context: the agent lifecycle event and service lookup. */
 export interface EnvContext extends ServiceLookup, Partial<ProvideHost> {
@@ -36,7 +42,7 @@ export function envHealth(graph: string | undefined, ignore: { readonly kind: 'i
   return degraded ? ['degraded', parts.join('；')] : ['active', parts.join('；')]
 }
 
-/** Install the environment notice on one agent, and settle the `.llm/` ignore of its repository once. */
+/** Install the environment notice on one agent, and settle the repository work (ignore, daily count) once. */
 export function installEnvNotice(ctx: EnvContext, agent: AgentLike, health: RowHealth): (() => void) | undefined {
   const session = agent.session
   if (session === undefined) {
@@ -44,7 +50,7 @@ export function installEnvNotice(ctx: EnvContext, agent: AgentLike, health: RowH
     return undefined
   }
   const sessionId = sessionIdOf(agent)
-  const settled = ignoreOutcome(ctx, session, health, sessionId)
+  const settled = installWork(ctx, session, health, sessionId)
   const uninstall = installStepNotice(agent, 'environment notice', () => true, async (history, { session: stepSession }) => {
     await settled
     return await envNotice(ctx, history, stepSession)
@@ -52,14 +58,45 @@ export function installEnvNotice(ctx: EnvContext, agent: AgentLike, health: RowH
   return uninstall ?? undefined
 }
 
-/** The repository's ignore outcome, reported once to the session's row health. */
-function ignoreOutcome(ctx: EnvContext, session: SessionLike, health: RowHealth, sessionId: string | undefined): Promise<void> {
+/**
+ * The first-install work for one session's repository, in order: the
+ * `.llm/` ignore (its outcome goes to the row health), then the daily
+ * suppression count in the background. The count is fire-and-forget: a
+ * failure reaches the row health, never a step.
+ */
+function installWork(ctx: EnvContext, session: SessionLike, health: RowHealth, sessionId: string | undefined): Promise<void> {
   return (async () => {
     const cwd = session.header.cwd
     const root = typeof cwd === 'string' ? projectOf(cwd)?.root : undefined
     const outcome = root === undefined ? undefined : await ensureLlmIgnored(root)
     if (sessionId !== undefined) health.report(sessionId, ...envHealth(graphService(ctx)?.dirFor(cwd), outcome))
+    if (root === undefined) return
+    void dailySuppressions(root, record => appendSuppression(root, record), {
+      lastRecord: () => lastSuppression(root),
+      problem: (message) => {
+        if (sessionId !== undefined) health.report(sessionId, 'degraded', `压制注释计数失败：${message}`)
+        console.warn(`${name}: suppression count failed: ${message}`)
+      },
+    }).catch(() => {})
   })()
+}
+
+/** The last record of the repository's suppression journal, undefined when there is none. */
+async function lastSuppression(root: string): Promise<SuppressionRecord | undefined> {
+  try {
+    const lines = (await readFile(join(root, '.llm', 'audit', 'suppressions.jsonl'), 'utf8')).split('\n').filter(line => line.trim() !== '')
+    return lines.at(-1) === undefined ? undefined : JSON.parse(lines.at(-1)!) as SuppressionRecord
+  }
+  catch {
+    return undefined
+  }
+}
+
+/** Append one count record to the repository's `.llm/audit/suppressions.jsonl`. */
+async function appendSuppression(root: string, record: SuppressionRecord): Promise<void> {
+  const file = join(root, '.llm', 'audit', 'suppressions.jsonl')
+  await mkdir(dirname(file), { recursive: true })
+  await appendFile(file, `${JSON.stringify(record)}\n`)
 }
 
 /** cordis plugin entry. */
