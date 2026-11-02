@@ -194,4 +194,14 @@
 
 - 全量索引：`.llm/docs/_bigmodel_md/_llms.txt`
 - guide 37 页 + 补充 9 页 Markdown 原文：`.llm/docs/_bigmodel_md/cn__*.md`（文件名 = URL 路径斜线替换为 `__`）
-- 抓取脚本：`.llm/docs/_fetch_bigmodel.py`、`.llm/docs/_crawl_bigmodel.py`、`.llm/docs/_fetch_extra.py`
+
+抓取脚本（`_crawl_bigmodel.py`、`_fetch_bigmodel.py`、`_fetch_extra.py`）已删除（2026-11-02，任务 `m4-cleanup`）：它们是一次性 Python 脚本，本仓库只用 Node，重新抓取用现成的网页抓取工具即可。脚本没有留下副本，三个脚本里的地址与路径字面量逐字抄在下面。
+
+重新抓取的办法：取索引 `https://docs.bigmodel.cn/llms.txt`，按指南页模式得到 guide 各页；再取种子页，按导航链接模式补上索引里没有的页；加上末尾 9 个补充页。快照文件名是路径去掉首尾 `/`、`/` 换成 `__`（`https://docs.bigmodel.cn/cn/a/b.md` 存成 `cn__a__b.md`），逐页抓取存进 `.llm/docs/_bigmodel_md/`。
+
+字面量：
+
+- 基址 `https://docs.bigmodel.cn`（三个脚本各一处）。
+- `_crawl_bigmodel.py`：索引 `https://docs.bigmodel.cn/llms.txt`；指南页模式 `https://docs\.bigmodel\.cn(/cn/guide[^)\s"\']+?)\.md`（去掉含 `&` 的结果）；种子页 `https://docs.bigmodel.cn/cn/guide/start/introduction`；导航链接模式 `href="(/cn/guide[^"#?&]*)"`。
+- `_fetch_bigmodel.py`：链接模式 `href="(/cn/guide[^"#?]*)"`；请求头 `User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36`；超时 40 秒；重试 3 次。
+- `_fetch_extra.py` 的 9 个补充页：`/cn/coding-plan/overview.md`、`/cn/coding-plan/quick-start.md`、`/cn/coding-plan/latest-model.md`、`/cn/coding-plan/notice/api-key-management.md`、`/cn/coding-plan/notice/usage-revision.md`、`/cn/coding-plan/faq.md`、`/cn/api/rate-limit.md`、`/cn/faq/api-code.md`、`/cn/faq/user-rights.md`。
