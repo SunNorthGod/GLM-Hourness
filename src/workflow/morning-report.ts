@@ -7,7 +7,7 @@
  * service when there is one.
  */
 import { auditPaths, type DecisionRecord, type UsageRecord } from '../memory/audit.ts'
-import type { GuardRecord } from '../guard/index.ts'
+import type { RecordedCall, ShadowRecord, ViolationRecord } from '../guard/index.ts'
 import type { SuppressionRecord } from '../env/suppressions.ts'
 import { gapLines, parseGaps, usagePanelLines, usagePanelOf, type PanelLineOptions } from '../report/panel.ts'
 import type { DataHomes } from '../shared/data-home.ts'
@@ -16,8 +16,8 @@ import type { MomentZone } from '../shared/quota.ts'
 
 export interface ReportInput {
   readonly decisions: readonly DecisionRecord[]
-  /** Guard denials and shadow records (`mode: 'shadow'`, recorded without blocking). */
-  readonly violations: readonly GuardRecord[]
+  /** Guard denials, the rules board's recorded calls, and the fallback's shadow records (m4-gate widens this input when the report switches to classifyRecord). */
+  readonly violations: readonly (ViolationRecord | RecordedCall | ShadowRecord)[]
   readonly usage: readonly UsageRecord[]
   /** The daily suppression-comment counts the period covers (m4-suppressions), oldest first. */
   readonly suppressions?: readonly SuppressionRecord[] | undefined
@@ -29,6 +29,9 @@ export interface ReportInput {
   /** Finished list lines for the usage section after its first line: the gaps in the records the period covers. */
   readonly usageScope?: readonly string[] | undefined
 }
+
+/** The journal records the report reads today: denials, the rules board's recorded calls, the fallback's shadow records. */
+type JournalRecord = ViolationRecord | RecordedCall | ShadowRecord
 
 /** The suppression-comment line, or undefined when the period holds no count. */
 export function suppressionLineOf(records: readonly SuppressionRecord[]): string | undefined {
@@ -55,7 +58,7 @@ export function morningReport(input: ReportInput): string {
   // Records from routes the GLM dialect did not claim count apart (src/guard/origin.ts):
   // the rules were tuned on GLM, so their misfires elsewhere stay visible.
   // Records without a scope predate split step 7 and were all GLM.
-  const countByRule = (records: readonly GuardRecord[]): Map<string, number> => {
+  const countByRule = (records: readonly JournalRecord[]): Map<string, number> => {
     const byRule = new Map<string, number>()
     for (const record of records) {
       const label = record.scope === 'other' ? `${record.rule}（其他路由）` : record.rule
@@ -161,7 +164,7 @@ export async function reportFromFiles(fs: ReportFs, homes: DataHomes, period: st
   const zone: MomentZone = options.offsetMinutes === undefined ? {} : { offsetMinutes: options.offsetMinutes }
   return morningReport({
     decisions: inPeriod(await readJsonl<DecisionRecord>(paths.decisions)),
-    violations: inPeriod(await readJsonl<GuardRecord>(paths.violations)),
+    violations: inPeriod(await readJsonl<JournalRecord>(paths.violations)),
     usage: inPeriod(await readJsonl<UsageRecord>(paths.usage)),
     suppressions: inPeriod(await readJsonl<SuppressionRecord>(paths.suppressions)),
     period,
