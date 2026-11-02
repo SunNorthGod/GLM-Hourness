@@ -73,7 +73,7 @@
  * appearing under the real profiles directory (DSH_HOME not honored) or a
  * change of the real usage journal fails the run (exit 1).
  */
-import { execFileSync, spawnSync } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
@@ -631,9 +631,11 @@ const envNoticeRun = runScenario('env-notice', 'deepseek-probe', [
   '- id: glm-hourness/env',
   '  disabled: false',
 ], envNoticeWs, [], profiles['probe-hourness'])
-const envNoticeFirst = envNoticeRun.steps[0]?.messages.at(-1)
-const envNoticeSecond = envNoticeRun.steps[1]?.messages.at(-1)
+const envNoticeFirst = (envNoticeRun.steps[0]?.messages ?? []).find(message => message.source === 'hourness-env')
+const envNoticeRepeat = (envNoticeRun.steps[1]?.messages ?? []).filter(message => message.source === 'hourness-env').length
+const envNoticeLast = envNoticeRun.steps[1]?.messages.at(-1)
 const envExclude = existsSync(join(envNoticeWs, '.git', 'info', 'exclude')) ? readFileSync(join(envNoticeWs, '.git', 'info', 'exclude'), 'utf8') : ''
+const envIgnored = spawnSync('git', ['-C', envNoticeWs, 'check-ignore', '-q', '.llm/scratch/x'], { stdio: 'ignore' }).status
 
 // Client composition (split design §5.6, U3): the headless template has no
 // client-modules row, so the overlay mounts @deepseek-ai/dsh-client-modules
@@ -1415,9 +1417,9 @@ const checks = [
   ['hourness-only: a native write into the graph is denied by graph-files-only, a shell write by file-tools-only in native names; neither file is written and both records are tagged other', hournessOnlyWrite?.isError === true && hournessOnlyWrite.text.includes('inside the project graph') && !existsSync(hournessOnlyNode) && hournessOnlyPwsh?.isError === true && hournessOnlyPwsh.text.includes(RIGHT_PATH_NATIVE) && !existsSync(hournessOnlyShell) && hournessOnlyViolations.map(record => `${record.rule}:${record.tool}:${record.scope}`).join(',') === 'graph-files-only:write:other,file-tools-only:pwsh:other', `records: ${hournessOnlyViolations.map(record => `${record.rule}:${record.tool ?? ''}:${record.scope ?? ''}`).join(', ') || 'none'}; shell file ${existsSync(hournessOnlyShell)}`],
   ['hourness-only: the system prompt declares the workspace rules in native names, graph-files-only included', hournessOnlyFirst?.system.includes(GUARD_SECTION) === true && hournessOnlyFirst.system.includes('\n- Modify files and code only with the dedicated write/edit tools.') && hournessOnlyFirst.system.includes(GRAPH_FILES_LINE), hournessOnlyFirst === undefined ? 'no request' : `section at ${hournessOnlyFirst.system.indexOf(GUARD_SECTION)}`],
   ['hourness-only: /hourness-status lists the orchestration rows and the GLM package as one line not loaded', hournessOnlyStatus?.kind === 'success' && onlyOneLoaded(hournessOnlyHealth, 'hourness', 'glm'), `${hournessOnlyStatus?.kind ?? 'not run'}; ${JSON.stringify(hournessOnlyHealth[WHOLE] ?? null)}`],
-  ['env-notice: the first request ends with the wrapped environment notice — the tool line, the no-checks line, the scratch line', envNoticeFirst?.source === 'hourness-env' && typeof envNoticeFirst.text === 'string' && envNoticeFirst.text.startsWith('<system-reminder>\nProject tools (graph node env). Use these before writing your own.\n- ESLint [tool-1]: npm run lint\n') && envNoticeFirst.text.includes(NO_CHECKS_LINE) && envNoticeFirst.text.includes(SCRATCH_LINE) && envNoticeFirst.text.endsWith('\n</system-reminder>'), envNoticeFirst === undefined ? 'no request' : envNoticeFirst.text?.slice(0, 140).replace(/\n/g, ' | ')],
-  ['env-notice: the second request does not repeat the notice (the first one persists in the session)', envNoticeRun.steps.length === 2 && envNoticeSecond !== undefined && !(envNoticeSecond.source === 'hourness-env'), `last message of request 2: ${JSON.stringify({ source: envNoticeSecond?.source, text: String(envNoticeSecond?.text ?? '').slice(0, 60) })}`],
-  ['env-notice: the row appended .llm/ to the clone\'s .git/info/exclude and check-ignore verifies it', execFileSync('git', ['-C', envNoticeWs, 'check-ignore', '-q', '.llm/scratch/x'], { stdio: 'ignore' }) === '' && envExclude.split('\n').filter(line => line.trim() === '.llm/').length === 1, `exclude lines: ${envExclude.split('\n').filter(line => line.trim() === '.llm/').length}`],
+  ['env-notice: the first request carries the wrapped environment notice — the tool line, the no-checks line, the scratch line', envNoticeFirst !== undefined && typeof envNoticeFirst.text === 'string' && envNoticeFirst.text.startsWith('<system-reminder>\nProject tools (graph node env). Use these before writing your own.\n- ESLint [tool-1]: npm run lint\n') && envNoticeFirst.text.includes(NO_CHECKS_LINE) && envNoticeFirst.text.includes(SCRATCH_LINE) && envNoticeFirst.text.endsWith('\n</system-reminder>'), envNoticeFirst === undefined ? 'no notice in request 1' : envNoticeFirst.text.slice(0, 140).replace(/\n/g, ' | ')],
+  ['env-notice: the second request does not repeat the notice (the first one persists in the session)', envNoticeRun.steps.length === 2 && envNoticeRepeat === 1 && envNoticeLast?.source !== 'hourness-env', `hourness-env messages in request 2: ${envNoticeRepeat}; last: ${JSON.stringify({ source: envNoticeLast?.source, text: String(envNoticeLast?.text ?? '').slice(0, 60) })}`],
+  ['env-notice: the row appended .llm/ to the clone\'s .git/info/exclude and check-ignore verifies it', envIgnored === 0 && envExclude.split('\n').filter(line => line.trim() === '.llm/').length === 1, `check-ignore exit ${envIgnored}; exclude lines: ${envExclude.split('\n').filter(line => line.trim() === '.llm/').length}`],
   titleCheck('client-modules (probe-full)', clientModules.steps[0]?.meta, ['glm', 'hourness']),
   titleCheck('glm-only', glmOnly.steps[1]?.meta, ['glm']),
   titleCheck('hourness-only', hournessOnly.steps[3]?.meta, ['hourness']),
