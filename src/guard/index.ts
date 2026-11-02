@@ -117,10 +117,10 @@ function workingDirectoryService(ctx: ServiceLookup): WorkingDirectoryService | 
  */
 function mainAgentMode(ctx: ServiceLookup, agent: AgentLike | undefined): boolean {
   const service: unknown = typeof ctx.get === 'function' ? ctx.get('sessionProjections') : undefined
-  const stateOf = typeof service === 'object' && service !== null ? (service as { stateOf?: unknown }).stateOf : undefined
-  if (typeof stateOf !== 'function' || agent?.session === undefined) return false
+  const stateOf = typeof service === 'object' && service !== null ? (service as { stateOf?: SessionProjectionsService['stateOf'] }).stateOf : undefined
+  if (stateOf === undefined || agent?.session === undefined) return false
   try {
-    const state = (stateOf as SessionProjectionsService['stateOf'])(agent.session, MAIN_AGENT_KEY) as unknown
+    const state = stateOf(agent.session, MAIN_AGENT_KEY)
     return typeof state === 'object' && state !== null && (state as { active?: unknown }).active === true
   }
   catch {

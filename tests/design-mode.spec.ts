@@ -597,6 +597,16 @@ async function waitForRecord(host: DesignHost, id: string): Promise<void> {
   assert.equal(holderOf(host), id)
 }
 
+/** Hold the /wish off lines the row runs itself (`when` picks them by count) until the returned function lets them run. */
+function holdWishOffs(host: DesignHost, when: (count: number) => boolean): () => void {
+  let release: () => void = () => undefined
+  const held = new Promise<void>(resolve => { release = resolve })
+  const execute = host.ctx.commands.execute.bind(host.ctx.commands)
+  let offs = 0
+  ;(host.ctx.commands as { execute: typeof execute }).execute = (agent, line, attachments, signal) => line === '/wish off' && when(offs++) ? held.then(() => execute(agent, line, attachments, signal)) : execute(agent, line, attachments, signal)
+  return release
+}
+
 test('a plain /wish in another session does not steal the role while a /wish here is still moving it: it is pointed, and the mover finishes (S3-1 R3)', async () => {
   const { host } = open()
   const holder = host.addAgent('s0')
@@ -604,10 +614,7 @@ test('a plain /wish in another session does not steal the role while a /wish her
   const comer = host.addAgent('s2')
   await type(host, holder, '/wish')
   // Hold every /wish off the row runs itself, so the mover's handler stays inside demoteOthers.
-  let release: () => void = () => undefined
-  const held = new Promise<void>(resolve => { release = resolve })
-  const execute = host.ctx.commands.execute.bind(host.ctx.commands)
-  ;(host.ctx.commands as { execute: typeof execute }).execute = (agent, line, attachments, signal) => line === '/wish off' ? held.then(() => execute(agent, line, attachments, signal)) : execute(agent, line, attachments, signal)
+  const release = holdWishOffs(host, () => true)
   const moving = type(host, mover, '/wish here')
   await waitForRecord(host, 's1')
   await tick()
@@ -628,11 +635,7 @@ test('the loser\'s demoteOthers skips the session the record names: a /wish here
   const second = host.addAgent('s2')
   await type(host, holder, '/wish')
   // The first /wish off the row runs itself is held, so the first mover waits inside demoteOthers; the later ones run.
-  let offs = 0
-  let release: () => void = () => undefined
-  const held = new Promise<void>(resolve => { release = resolve })
-  const execute = host.ctx.commands.execute.bind(host.ctx.commands)
-  ;(host.ctx.commands as { execute: typeof execute }).execute = (agent, line, attachments, signal) => line === '/wish off' && offs++ === 0 ? held.then(() => execute(agent, line, attachments, signal)) : execute(agent, line, attachments, signal)
+  const release = holdWishOffs(host, count => count === 0)
   const slow = type(host, first, '/wish here')
   await waitForRecord(host, 's1')
   const quickReply = await type(host, second, '/wish here')
@@ -656,12 +659,18 @@ test('a temp-file cleanup that fails does not fail the /wish: the claim stands a
   assert.equal(isOn(host, agent), true)
 })
 
-test('a /wish here that errors after it wrote the record releases it: no record naming a session whose mode is off (S3-1 R1)', async () => {
+/** A project whose holder is the main agent, and a mover whose /wish here fails in demoteOthers because the registry cannot be walked. */
+async function moverWithBrokenRegistry(): Promise<{ readonly host: DesignHost, readonly holder: FakeAgent, readonly mover: FakeAgent }> {
   const { host } = open()
   const holder = host.addAgent('s0')
   const mover = host.addAgent('s1')
   await type(host, holder, '/wish')
   host.services.set('agents', brokenRegistry)
+  return { host, holder, mover }
+}
+
+test('a /wish here that errors after it wrote the record releases it: no record naming a session whose mode is off (S3-1 R1)', async () => {
+  const { host, mover } = await moverWithBrokenRegistry()
   const reply = await type(host, mover, '/wish here')
   assert.equal(reply.kind, 'error')
   assert.ok(reply.text.startsWith('主 Agent 的持有者记录写不了：'), reply.text)
@@ -671,11 +680,7 @@ test('a /wish here that errors after it wrote the record releases it: no record 
 })
 
 test('a record that cannot be released after the error is reported in the mover\'s health (S3-1 R1)', async () => {
-  const { host } = open()
-  const holder = host.addAgent('s0')
-  const mover = host.addAgent('s1')
-  await type(host, holder, '/wish')
-  host.services.set('agents', brokenRegistry)
+  const { host, mover } = await moverWithBrokenRegistry()
   await whileRecordsCannotBeDeleted(async () => {
     const reply = await type(host, mover, '/wish here')
     assert.equal(reply.kind, 'error')
