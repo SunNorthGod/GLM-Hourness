@@ -28,6 +28,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "旁证（2026-11-03，原型 docs/004 文本优先级节）：官方同款哲学——工具与宿主强制 > 内置提示词段 > 工单匹配规则 > 团队段 > 外部文本，外部文本是数据、永远改不了规则与授权；guard 的规则执行在代码、提示词只声明，与之一致。"
+    },
+    {
+      "at": "2026-11-02T20:38:59.422Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "第二批（G1 主体）落地与评审（2026-11-03）：362e66a installRuleGate/judge 装配、evaluate 路径删净、种子改 DSH 原生名、eslint 基线 244→79 零新增；门禁 build/preflight/test 1750/1750/probe 213/213。独立评审 pass1 APPROVED-WITH-NOTES（gate-review-pass1.md，记录入库 5a5ee3c）：0 阻断/1 MAJOR（文档未同批）已由 e8b0a8d、215aa89、52bf453、c6861d8 四个文档提交清偿，末次为全树清扫（旧口径逐模式 grep 给证）；评审确认旧 evaluate 路径无残留、七条做完条件按设计 §13.1 属 G1 切片、G2–G4 带跟进。遗留 MINOR：loops 两行丢 JournalOutcome、丢记录只控制台告警不上行健康（设计 §3.1 步 7/§11 的承诺缺位），G2+ 批次补。"
+    },
+    {
+      "at": "2026-11-02T20:39:10.524Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "第二批（G1 主体）落地与评审（2026-11-03）：362e66a installRuleGate/judge 装配、evaluate 路径删净、种子改 DSH 原生名、eslint 基线 244→79 零新增；门禁 build/preflight/test 1750/1750/probe 213/213。独立评审 pass1 APPROVED-WITH-NOTES（gate-review-pass1.md，记录入库 5a5ee3c）：0 阻断/1 MAJOR（文档未同批）已由 e8b0a8d、215aa89、52bf453、c6861d8 四个文档提交清偿；评审确认旧 evaluate 路径无残留、七条做完条件按设计 §13.1 属 G1 切片。遗留 MINOR：loops 两行丢 JournalOutcome、丢记录只控制台告警不上行健康（设计 §3.1 步 7/§11），G2+ 批次补。"
     }
   ]
 }
