@@ -43,6 +43,7 @@
  * Relative targets resolve against the session's working directory, as the
  * file tools resolve them.
  */
+import { MAIN_AGENT_KEY } from '../graph/main-agent.ts'
 import { declarationOf, evaluate, fileToolsOnly, NATIVE_FACE, renderCorrection, workspaceContainment, type GuardRule, type ToolCall, type ToolFace } from './rules.ts'
 import { DECLARATION_SECTION } from './sections.ts'
 import { shadowFallback, type ShadowRecord } from './shadow.ts'
@@ -54,7 +55,7 @@ import { GRAPH_FILES_DECLARATION, graphService } from '../graph/service.ts'
 import { provideRowHealth, sessionIdOf, type HealthState } from '../shared/health.ts'
 import { assemblyRoute, sessionRoute, type Route } from '../shared/route.ts'
 import type { JsonValue } from '../shared/json.ts'
-import type { AgentLike, AssembledSection, PluginContext, PreExecuteHost, ProvideHost, ServiceLookup, SessionEventHost, WorkingDirectoryService } from '../shared/dsh-min.ts'
+import type { AgentLike, AssembledSection, PluginContext, PreExecuteHost, ProvideHost, ServiceLookup, SessionEventHost, SessionProjectionsService, WorkingDirectoryService } from '../shared/dsh-min.ts'
 
 /** One audit record (JSONL line) for a denied call. */
 export interface ViolationRecord {
@@ -105,6 +106,26 @@ export function rootsFor(agent: AgentLike | undefined, config: GuardConfig): rea
 function workingDirectoryService(ctx: ServiceLookup): WorkingDirectoryService | undefined {
   const value: unknown = typeof ctx.get === 'function' ? ctx.get('workingDirectory') : undefined
   return typeof value === 'object' && value !== null && typeof (value as { get?: unknown }).get === 'function' ? value as WorkingDirectoryService : undefined
+}
+
+/**
+ * Whether the session is in main-agent mode by the projection the design row
+ * registers (src/graph/main-agent.ts): its identity section then holds the
+ * boundary, and the file-tools-only line would tell it to use the Write/Edit
+ * tools it does not have (review finding S4-4). Anything unreadable counts
+ * as not, which declares the rules as before.
+ */
+function mainAgentMode(ctx: ServiceLookup, agent: AgentLike | undefined): boolean {
+  const service: unknown = typeof ctx.get === 'function' ? ctx.get('sessionProjections') : undefined
+  const stateOf = typeof service === 'object' && service !== null ? (service as { stateOf?: unknown }).stateOf : undefined
+  if (typeof stateOf !== 'function' || agent?.session === undefined) return false
+  try {
+    const state = (stateOf as SessionProjectionsService['stateOf'])(agent.session, MAIN_AGENT_KEY) as unknown
+    return typeof state === 'object' && state !== null && (state as { active?: unknown }).active === true
+  }
+  catch {
+    return false
+  }
 }
 
 /**
@@ -227,10 +248,12 @@ export function apply(ctx: GuardHost, config: GuardConfig = {}): () => void {
         const assembled = await next()
         const route = assemblyRoute(assembled)
         const rules = activeRules({ ...config, workspaceRoots: rootsFor(agent, config) })
+        // The main agent reads its boundary in the identity section the design row assembles: the file-tools-only line would name the Write/Edit tools it does not have (S4-4).
+        const declared = mainAgentMode(ctx, agent) ? rules.map(rule => rule === fileToolsOnly ? { ...rule, declare: '' } : rule) : rules
         // graph-files-only is the graph row's rule; declared here so the model reads every rule in one place.
         const others = graphService(ctx) === undefined ? [] : [GRAPH_FILES_DECLARATION]
         const face = dialectNames(dialectService(ctx, warn), agent, route, warn) ?? NATIVE_FACE
-        return { ...assembled, sections: [...assembled.sections, declarationSection(rules, others, face)] }
+        return { ...assembled, sections: [...assembled.sections, declarationSection(declared, others, face)] }
       }, { prepend: true }))
     }
     catch (error) {
