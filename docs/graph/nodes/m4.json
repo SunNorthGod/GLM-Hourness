@@ -377,6 +377,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "接管的读项目门禁 `bootstrap-read-no-shell` 已随人 2026-11-01 的决定整条去掉（`d-bootstrap-released`），M4 0.6 随之删掉对它的全部登记：§3.8 的 `GUARD_RULES` 目录清单去掉这一项，`row` 的取值从五个减为四个（`guard`、`graph`、`loops`、`metrics`，不再有 `bootstrap`）；§0 摘要的 guard 规则清单、§1.2 `m4-gate` 第 6 条、§3.1 里「接管行经 `installRuleGate` 安装」那一句、§3.5 第 3 步的 L2 撤下例与 §14.2 的契约用例（`guard_lift`、`setLifted` 的 `bootstrap:bootstrap-read-no-shell`）、§18 第 5 条的那一项都删了；§19.6 的评审 F3 答复标为 2026-11-01 作废，原先采纳的内容留作记录。接管今后不向 `GUARD_RULES` 登记任何规则，M4 不必为接管留行值，也不必提挂在 `orch` 下的那个规范节点。没有改的：撤下机制本身（`d-one-lift-path` 的 `guard_lift`、`/rules lift`、`lift-files-only`、`setLifted`、`docs/guard/lifts.jsonl` 与它们的 L2）、接管对 M4 的另两项请求（导出 `checkTimeout` 与三个常量、两个有效上限）、split B4 由 M4 的 G1 接住。本轮改动范围只是文字与断言，M4 现稿里已没有一处声明接管行经 `installRuleGate` 安装或 `row` 有 `bootstrap` 取值。接管设计这一轮的独立评审（第 2 遍）结论 APPROVED、挡路 0 条，评审文件 `.agents/tasks/bootstrap/review-noshell.md`。"
+    },
+    {
+      "at": "2026-11-02T11:19:31.318Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "首批实现完成（2026-11-02，ZCode 派出，分支 m4 至 d012455 已推送）：m4-cleanup（154ecaa）、m4-env E1+E2（0855155 + 探针检查修正 9149286、07f0a4c）、m4-suppressions（e85daf0）完成；m4-gate 落了 G1 地基（d012455，guard records/分类器 + tests/guard-records.spec.ts 钉住设计 §3.2 分类表；主体 installRuleGate/judge/evaluate 下线留下批，一整步 15+ 文件不宜半做）。跳过三项并核实了依赖在 main 上确实缺失：m4-request-card（等 M3 第 4 步的 src/guard/main-agent.ts）、m4-checks（等循环板共用执行器，src/loops/run.ts 现拒绝 script/check）、m4-rules 第 2 条（等 M3 第 6 步的 propose_to_human；三条新规则随 m4-gate）。每提交门禁绿；最终运行时树 probe 213/213；eslint 压制 249→244（E4 泛型化顺手缩小）。4 处 agent 定的实现细节记在 impl-progress.md（可逆档）。独立评审与门禁复跑在途。"
     }
   ]
 }

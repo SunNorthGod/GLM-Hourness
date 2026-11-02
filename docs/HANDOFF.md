@@ -150,7 +150,7 @@ M6 桌面版核对（批次 L4，项目图 `m6-l4`、`m6-gap`，2026-11-01，主
 | 规则板与循环板 | 规则板 0.10、循环板 0.6 放行并冻结（`d-freeze-until-dogfood`） | 分支 `rules-loops-impl`：13 个 FEAT 全部完成（至 `d8263e4`；FEAT-013 于 2026-11-02 续跑完成）；已合入 main（合并提交 `c6e9bed`，2026-11-02，门禁全绿 test 1696/1696、probe 210/210；分支与工作树已删，运行记录入库 `122e322`；探针两边的场景并集，main 的停档措辞场景改名 `rules-stop-notice`） | 两行仍 `disabled: true`；启用前按 `DEVELOPMENT.md` §3 在临时 profile 验证；`src/rules/builtin.ts` 的 `MAIN_AGENT_RULES` 映射随 M3 合并追加（附录 §9 第 12 条） |
 | M5 记忆与经验 | 0.7 放行（含 `d-reporting-depth-keep`） | 分支 `m5-memory-lessons`：S1–S11 已提交（至 `aef9d43`，已推送），评审全 APPROVED（S11 的 21 条种子逐格对 §4.8 核过；S9 阻塞项已修 `d4421b7`） | S12 等 M3 的 `talk.ts`；整支合入 main（等 M3 合入，冲突清单在 progress.md 的 merge preview）；桌面两批与种子文件拷回见图上 m5 节点 2026-11-02 批注 |
 | M6 用量与高峰 | 0.7 | 已合入 main（`11dce6b`..`3bc5d98`），桌面版核对通过；2026-11-01 归位标 done | 「不做档停下真账号核对」在 main 上还没有拦，随 `m6-script-gate` 与规则板 FEAT-008 落地；`m6-metrics-events` 等指标 |
-| M4 guard 补齐与环境 | 0.6 放行（`d-m4-released`，2026-11-01，一页稿 APPROVED） | 未开工 | 派实现运行；七个任务节点已带人定的验收 |
+| M4 guard 补齐与环境 | 0.6 放行（`d-m4-released`，2026-11-01，一页稿 APPROVED） | 分支 `m4` 首批已提交（至 `d012455`，已推送；门禁全绿含 probe 213/213）：m4-cleanup、m4-env、m4-suppressions 完成，m4-gate 落了 G1 地基（records/分类器，评审在跑）；m4-rules、m4-checks、m4-request-card 跳过——分别等 M3 第 6 步、循环板共用执行器、M3 第 4 步合入 | 下一批：m4-gate G1 主体（installRuleGate、judge、evaluate 下线与调用方转换）；三个跳过任务的解锁条件如左；评审后达标的任务标 done |
 | M7 执行、汇合与运维 | 0.6 放行并冻结 | E0、E1a、E3 已合入 main（`a8dfc70`、`c3d66e0`、`af75fe8` + 跟进 `e57e744`） | E1b、E2、E4–E9 等 M3 合入 |
 | 面板与新手引导（`m8-plain-language`、`onboarding`） | 1.3 放行；17 条做完条件 2026-11-01 由人定下，写进这两个节点的验收（`d-panel-released`） | 未开工 | 等状态板块实现落地再动，否则两边改同一段取数逻辑；第 1、6、9、17 条按旧问法写，换新问法时要再请人改 |
 | 用户图 | 0.4.1 放行（`d-user-graph-released`）；三件待人定 2026-11-02 由人答齐（每项目都画、流程走通算画完、照页放行） | 未开工 | 等 M3 与 M7 的骨架 |
