@@ -117,6 +117,14 @@ test('a push with no refspec follows remote.<name>.mirror and remote.<name>.push
   allowed(await run(repo, 'git push'))
 })
 
+test('the -c pairs on the command line count for the outbound check: a mirror or a refspec set by -c is refused (S4-2)', async () => {
+  const { repo } = await withSnapshot()
+  assert.equal(refusal(await run(repo, 'git -c remote.origin.mirror=true push')).code, 'snapshots-off-machine')
+  assert.equal(refusal(await run(repo, 'git -c remote.origin.push=refs/*:refs/* push')).code, 'snapshots-off-machine')
+  // A -c pair that has nothing to do with what the push sends does not stop it.
+  allowed(await run(repo, 'git -c core.quotePath=false push origin main'))
+})
+
 test('pushing by name is fine, and --tags is fine while there is no snapshot tag', async () => {
   const repo = twoCommitRepo()
   repo.withRemote()

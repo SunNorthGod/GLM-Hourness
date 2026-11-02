@@ -586,7 +586,8 @@ async function outboundRefusal(invocation: GitInvocation, env: SnapshotEnvironme
   if (invocation.dir === undefined) return refuse('cd-unknown', 'the directory the push runs in is not in the command')
   if (!invocation.args.every(isLiteral)) return refuse('unreadable', 'the remote or a refspec is hidden behind a variable')
   const dir = invocation.dir
-  const options = invocation.repoOptions
+  // The reads see what the command's git would see: the `-c` pairs of the command line are config to it, as the snapshot's own calls read them (prefixOf).
+  const options = [...invocation.repoOptions, ...invocation.configs.flatMap(pair => ['-c', pair])]
   const call = gitCaller(env)
   const [named, ...specs] = flags.positional
   let sources = pushSources(specs)
