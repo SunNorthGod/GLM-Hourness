@@ -1,0 +1,39 @@
+{
+  "feature": "FEAT-009",
+  "pass": 2,
+  "verdict": "APPROVED",
+  "blocking": [],
+  "non_blocking": [
+    {
+      "id": "N1",
+      "where": "src/loops/registry.ts:233",
+      "what": "The execute exemption is keyed on the row id alone, so a hand-over from another plugin that names its row glm-hourness/execute passes it. Design 3.2 also keys only on the row, so this matches the design; ownership elsewhere is keyed on (plugin, row)."
+    },
+    {
+      "id": "N2",
+      "where": "src/loops/index.ts:44-49",
+      "what": "problems only grows. After a faulty hand-over is withdrawn or replaced by a good one the row health stays degraded until the row reloads, and 'told' in registry.ts keeps the same message from being re-reported if the fault returns. The set of distinct messages is bounded only by what rows hand over, so the health text can get long. No information is lost."
+    },
+    {
+      "id": "N3",
+      "where": "src/loops/registry.ts waitingReason",
+      "what": "A waiting entry's reason names the undeclared event by id, not by its human title (design 3.2 wants the title). The coder recorded this as Interpretation 3; the title is unknown while nobody declares the event, so the page step needs a remembered title or other wording."
+    },
+    {
+      "id": "N4",
+      "where": "src/loops/defaults.ts:50-77; src/loops/index.ts:56",
+      "what": "loops.peak-start and loops.peak-end are contributed unconditionally; design 5.2 says rows 13 and 14 appear only when the pricing service is there. Both stay greyed because channel.peak-changed has no declarer, and the deferral to channel.ts is documented. Revisit when channel.ts lands."
+    },
+    {
+      "id": "N5",
+      "where": "src/loops/registry.ts:218",
+      "what": "The doc comment on validateContribution was re-flowed by the B1 fix and one line is about 150 characters while the rest are wrapped near 120. Cosmetic."
+    }
+  ],
+  "gates": {
+    "build": 0,
+    "preflight": 0,
+    "test": 0,
+    "probe": 0
+  }
+}

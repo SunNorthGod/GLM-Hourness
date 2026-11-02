@@ -1,0 +1,39 @@
+{
+  "feature": "FEAT-002",
+  "pass": 1,
+  "verdict": "APPROVED",
+  "blocking": [],
+  "non_blocking": [
+    {
+      "id": "N1",
+      "where": "src/rules/judge.ts:ON_ERROR_DEFAULT, judge() pending branch (timeoutSeconds filled by validateScriptAction)",
+      "what": "A gating script that writes no timeout comes back in pending with timeoutSeconds 30 (the ceiling that effectiveTimeoutSeconds returns with no data; tests/rules-judge.spec.ts pins 30). The later orchestrator ruling in impl-plan.md (timeout meaning) says gating scripts default to 10 s with no estimate and 30 s maximum. The constant lives in FEAT-001's trigger.ts and no script runs in this build, so no call is affected today. Decide 10 vs 30 before the executor step (R4d) consumes pending. judge.ts also keeps a local ON_ERROR_DEFAULT = 'allow' that duplicates the fallback in validateScriptAction; replace it when src/loops/script.ts exists, as the coder already noted."
+    },
+    {
+      "id": "N2",
+      "where": "src/rules/events.ts:COMMAND_WINDOW, ARGS_LIMIT",
+      "what": "The 8 KiB command window and the 64 KiB args copy are counted in UTF-16 code units, not bytes (disclosed as interpretation 9). Design 2.3 says 8 KiB and 64 KiB serialized. For non-ASCII text the real size can be up to about 3x larger. Only scripts' stdin and the filters read these, and scripts are blocked, so nothing breaks now; fix when scripts get their envelope."
+    },
+    {
+      "id": "N3",
+      "where": "FEAT-002 acceptance line 3 vs src/rules/builtin.ts GLM_PEAK_STOP_DISPATCH",
+      "what": "The acceptance text says the three stop sub-entries never touch the main agent. glm-peak-stop-dispatch queues a main agent's dispatch of a GLM subagent. Design 3.6 and 13 (F86) and the R4 test list require exactly that, and the specs pin both facts (the main agent's every other call has the same verdict at all levels; its GLM dispatch is queued). The design wins; the FEAT wording is shorthand. Recorded so the reviewer of FEAT-006/008 does not read it as a regression."
+    },
+    {
+      "id": "N4",
+      "where": "src/rules/model.ts:checkLifetime",
+      "what": "Design 12 says a lifetime 'session' rule's sessionId must be a live session of the project. validateRule is pure and only checks scope === 'session'; the live-session check needs host state and belongs to the rules row / engine step (FEAT-004, FEAT-006)."
+    },
+    {
+      "id": "N5",
+      "where": "tests/tsconfig.json typecheck",
+      "what": "npx tsc -p tests/tsconfig.json still exits 2 with 123 lines of older-spec errors (for example tests/contracts.spec.ts lines 141 and 149). None are in tests/rules-*.spec.ts, tests/rules-fixtures.ts, src/rules, src/guard/catalog.ts or the lines added to contracts.spec.ts (checked). Not a gate and not introduced by this change."
+    }
+  ],
+  "gates": {
+    "build": 0,
+    "preflight": 0,
+    "test": 0,
+    "probe": null
+  }
+}

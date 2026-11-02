@@ -1,0 +1,49 @@
+{
+  "feature": "FEAT-007",
+  "pass": 1,
+  "verdict": "APPROVED",
+  "blocking": [],
+  "non_blocking": [
+    {
+      "id": "N1",
+      "where": "src/rules/gate.ts:247, src/rules/tickets.ts:303",
+      "what": "Every call the gate lets run goes through TicketDesk.passed, which first re-reads the project state from disk (readView) and runs inside the same promise chain as defer. The gate read the same state a moment earlier (call.view), so the extra read is redundant when state.tickets is empty, and a defer waiting up to 2 s for the write lock holds back the allowed calls of every other session in the host. Not a correctness failure. Fix: check call.view.read.state.tickets for cleared tickets of this host first and only then re-read and enter the chain."
+    },
+    {
+      "id": "N2",
+      "where": "src/rules/tickets.ts:232-245 (takeOver)",
+      "what": "A new subagent takes over only a ticket that sits with the dispatch root, is deferred and has handedFrom. The design (6.3) says any open same-signature ticket under the root. Consequence: when two sibling subagents under one root are both alive and make the same queued call, they get two tickets and the root is woken twice for one condition. The stated scenario (a subagent ended, the root dispatches the same task again) is covered and tested. The narrowing is recorded as an interpretation in ORCHESTRATION.md 16.12 and in the FEAT findings."
+    },
+    {
+      "id": "N3",
+      "where": "src/rules/tickets.ts:347-356 (tell) and 332-344 (unreachable)",
+      "what": "One failed delivery (agent.steer/inject/followup throwing, which may be transient) cancels a non-subagent ticket at once, with no retry; the agent is not told. The cancel reason is journaled ('唤醒发不出（...），等待单 q-N 取消') and the row health degrades, so it is traceable and the agent's next call meets the rule again. A single retry on the next 5-second pass before cancelling would lose fewer wakes."
+    },
+    {
+      "id": "N4",
+      "where": "src/rules/index.ts:271, src/rules/heartbeat.ts write()",
+      "what": "With the row enabled, every session created in a git project makes the host create .llm/rules/hosts/ and add .llm/ to .git/info/exclude (ensureRuntimeDir), even in projects with no rules. This follows design 5.4 and is documented in ORCHESTRATION.md 16.12 and the changed 'looking wrote nothing' test, and the row is disabled in the patch. It matters for the decision to enable the row on the main profile."
+    },
+    {
+      "id": "N5",
+      "where": "src/rules/tickets.ts:449-461 (reconcile) and stop()",
+      "what": "stop() sets stopped, but a reconcile pass already past its first line keeps running after the unload disposer: it can still write ticket updates and send a wake while the heartbeat files are already deleted. Narrow (unload during a pass); nothing is lost since the tickets expire host-gone afterwards. Checking 'stopped' before each ticket in reconcileProject would close it."
+    },
+    {
+      "id": "N6",
+      "where": "worktree root",
+      "what": "package-lock.json is untracked in the worktree (present before this review, not in any commit of the range). Keep it out of the merge."
+    },
+    {
+      "id": "N7",
+      "where": "FEAT-007 findings, verification answer V3",
+      "what": "The inject path (idle agent with an active goal) and the registry-fallback hand-over are covered by the fake-host unit specs only; no L3 scenario exercises them (rules-handover saw the session/disposed signal; rules-queue and rules-handover woke the agent by steer). FEAT-008's rules-peak-stop probe is the stated place for inject."
+    }
+  ],
+  "gates": {
+    "build": 0,
+    "preflight": 0,
+    "test": 0,
+    "probe": 0
+  }
+}

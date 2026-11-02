@@ -1,0 +1,49 @@
+{
+  "feature": "FEAT-003",
+  "pass": 1,
+  "verdict": "APPROVED",
+  "blocking": [],
+  "non_blocking": [
+    {
+      "id": "N1",
+      "where": "src/rules/model.ts:452 (adoptRepo, the `rules` merge)",
+      "what": "On an id collision the runtime's session rule wins over the file's project rule: `{ ...file.rules, ...sessionRules }`. Probed: a session rule r-no-evening-push plus a file that has a project rule of that id leaves scope 'session' in the adopted state. The adopted project rule is then absent from repoPart(state), and the next export of rules.json drops it with no outside record. Reversible (the outside copy and git keep the file) and unreachable today (nothing creates session rules yet). FEAT-004 should refuse an id that exists under the other scope when a rule is created, or adoptRepo should refuse the collision and name it."
+    },
+    {
+      "id": "N2",
+      "where": "src/rules/model.ts:441-444 (adoptRepo, `detected` carried over)",
+      "what": "A measured value is carried over to the file's signal without checking it against the file's type. If the file changes a signal's type, stateProblem(next) in adoptRepoLocked refuses the whole adoption (reason names the field) and the person can only restore. Detectors cannot run yet (R6 blocked), so no `detected` value exists today. Dropping a `detected` value that no longer fits would keep adoption possible."
+    },
+    {
+      "id": "N3",
+      "where": "src/rules/repo.ts:266 (restoreRepoLocked, unlink of repo-written.json before the record)",
+      "what": "Window: a crash after the unlink and before the record, followed by a further outside edit of rules.json before the next read, makes checkRepo read the project as 'owed' (state.repo.digest non-null, repo-written.json absent) and the board rewrites the file over that newer edit without a copy. Needs a crash and a second outside change inside one window; git history normally holds the lost content. recordWritten (unchanged) also swallows a failed note write, which has the same effect for exportRepo, adopt and fresh start. The FEAT-003 ordering is still an improvement over the slice's (fresh start used to note the digest after the record)."
+    },
+    {
+      "id": "N4",
+      "where": "src/rules/repo.ts:226 and 262",
+      "what": "adoptRepoLocked and restoreRepoLocked stamp actor 'human' themselves and have no production caller. The human-only check lives in the engine ops repo-adopt and repo-restore that FEAT-004 must register in permissions.ts; until then only tests reach them. Both functions can throw on an unexpected unlink error after the record is written (restore); the engine op has to catch that and report it."
+    },
+    {
+      "id": "N5",
+      "where": "tests/rules-store.spec.ts:630-637",
+      "what": "The 'rules.json present but unreadable, project without state' row of the 7.5 table is tested in a project made by `mkdir .git`, not by `git init`. The code under test only reads the .git directory, so the row's behaviour does not depend on real git, but acceptance 2 words it as a real temporary git repository. A gitTest in tests/rules-repo.spec.ts for this row would close the wording."
+    },
+    {
+      "id": "N6",
+      "where": ".agents/tasks/rules/impl-plan.md, R2 row",
+      "what": "The R2 row also lists 'the directory-set function the file gate uses'. FEAT-003's steps and acceptance do not, and no code of this FEAT needs it; the coder left it out and said so. It has to arrive with the rules:files-only gate (FEAT-006)."
+    },
+    {
+      "id": "N7",
+      "where": "src/rules/row-health.ts:53-54",
+      "what": "The outside-change line still tells the person to retype /rules peak to rewrite the file. The /rules recovery commands do not exist yet (FEAT-006); the wording has to change when they land. Acknowledged in the coder's findings."
+    }
+  ],
+  "gates": {
+    "build": 0,
+    "preflight": 0,
+    "test": 0,
+    "probe": null
+  }
+}

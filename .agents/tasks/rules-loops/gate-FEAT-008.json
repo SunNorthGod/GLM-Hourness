@@ -1,0 +1,49 @@
+{
+  "feature": "FEAT-008",
+  "pass": 1,
+  "verdict": "APPROVED",
+  "blocking": [],
+  "non_blocking": [
+    {
+      "id": "N1",
+      "where": "src/rules/commands.ts:148, src/rules/plan.ts:322 (planCancel), src/rules/tickets.ts:553-566 (reconcileProject)",
+      "what": "/rules cancel <q-N> on a stop ticket that has pausedGoal and no resumedAt closes the ticket as cancelled and nothing resumes the goal: reconcileProject only looks at open tickets and at host-gone expiries, and the next call of that session opens a new ticket that cannot pause (the goal is already paused) and so has no pausedGoal to resume at the peak end. The goal stays paused after the peak. It needs an explicit human command, the reply says only 'q-N 已取消', the cancelled ticket keeps pausedGoal and the reason, and the person can resume from the goal bar, so it is recoverable and traceable; cancel is also not one of the resume triggers in the acceptance criteria. Fix: in commands.ts treat ticket-cancel of a stop ticket like letThroughPeak (resume the goal and stamp resumedAt before the cancel) or name the paused goal in the reply."
+    },
+    {
+      "id": "N2",
+      "where": "src/rules/tickets.ts:289-298 (pauseOf, resumeOf), src/rules/gate.ts:218, src/shared/health.ts:108-115",
+      "what": "The 'goal not paused' and 'goal not resumed' health reports are the session's latest report only. The gate reports the project health for the same session on every judged call, so the degraded line is replaced as soon as the woken or refused subagent makes its next call. What stays is the warn line in the host log, pauseFailed on the ticket, and the wake text that tells the agent to inform the person (resume failure). Design 6.3 asks for exactly this health report, so this follows it; a sticky per-ticket note would make it reliably visible."
+    },
+    {
+      "id": "N3",
+      "where": "src/rules/tickets.ts:361-363 (defer)",
+      "what": "The goal is paused before the ticket-open write. A process death between the two leaves a paused goal with no ticket, and nothing adopts it; an unload that runs in that window reads the tickets from disk before the new one exists. Window is one board write (lock plus file I/O). The implementer lists it as risk (a); design 6.3 also pauses inside the call and records in the same write, the mirror order has the mirror gap, and a failed write is undone. Recoverable by the person with /goal resume."
+    },
+    {
+      "id": "N4",
+      "where": "src/rules/tickets.ts:310-311 (pauseLate)",
+      "what": "A new subagent that takes over a stop ticket handed to the root (takeOver) inherits the old session's pausedGoal, so pauseLate returns at once and an active goal of the new subagent is not paused; it keeps starting rounds that are each refused until the peak ends. At release the stale ref does not match the new goal (different id), so it is left alone and nothing wrong is resumed. Cost only, no wrong action. Recorded as interpretation 2 in ORCHESTRATION.md 16.13."
+    },
+    {
+      "id": "N5",
+      "where": "src/rules/tickets.ts:462-466 (runOut), 553-566",
+      "what": "A stop ticket that expires by age (24 h) while its goal is paused is not covered by the stranded path, which takes back only host-gone expiries. Not reachable with the clock signal (a peak is at most a few hours and a let ends with the peak), only if the glm-peak value were held for a day. In the stranded path, heartbeat.beat() runs on every 5 s pass for as long as a host-gone expired stop ticket with pausedGoal and a dead session stays in the state (until the 24 h cleanup); harmless extra writes."
+    },
+    {
+      "id": "N6",
+      "where": "FEAT-008 findings V3 and V13",
+      "what": "V3 (inject to an idle agent with an active goal) was not reached at L3: the wake went by steer, inject stays covered by the fake host only. V13 is answered for the one-shot headless runner (the row is not unloaded at exit, the goal and ticket stay as the stop left them, the next start adopts them, L2); whether the desktop's normal quit runs the unload is not verified. Both are stated as not verified with the reason, which the acceptance criterion allows. The agent/created listener awaits tickets.adopt, and rc.3 registers the agent before it announces agent/created (dsh-agent lib/index.js:526 before 581), so the registry check in the first reconcile finds the agent."
+    },
+    {
+      "id": "N7",
+      "where": "worktree root",
+      "what": "package-lock.json is untracked in the worktree and in no commit of the range. Keep it out of the merge."
+    }
+  ],
+  "gates": {
+    "build": 0,
+    "preflight": 0,
+    "test": 0,
+    "probe": 0
+  }
+}

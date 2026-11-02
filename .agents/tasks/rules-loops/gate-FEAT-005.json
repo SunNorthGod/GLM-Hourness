@@ -1,0 +1,34 @@
+{
+  "feature": "FEAT-005",
+  "pass": 1,
+  "verdict": "APPROVED",
+  "blocking": [],
+  "non_blocking": [
+    {
+      "id": "N1",
+      "where": "src/rules/check.ts:checkOptions (waitedMs, caller); src/rules/cli.ts:signalsOf",
+      "what": "Two validations from design sec 12 are not enforced. waitedMs has no 8-hour ceiling (`--waited-ms 99999999999` exits 0; the value only goes into the rules.check event) and CheckOptions.caller is not checked at run time. On the command line, `--signal __proto__=true` is silently dropped (assigning to __proto__ on a plain object does nothing, Object.hasOwn then misses it) and exits 0 instead of the usage error that any other unknown name gets. No verdict or file is affected. Fix: reject waitedMs above 28_800_000 and a caller outside cli/library in checkOptions, and build the --signal object with Object.create(null) or a Map."
+    },
+    {
+      "id": "N2",
+      "where": "src/rules/check.ts:glmPeakOf; docs/ORCHESTRATION.md 16.10",
+      "what": "When the caller gives glm-peak=true without --peak-until, the end of the peak is never taken from a live heartbeat's nextChangeAt, although the design's CheckOptions.peakUntil comment says it is read from the heartbeat when not given, and ORCHESTRATION 16.10 says 'no peakUntil: take the heartbeat's nextChangeAt'. The code only uses nextChangeAt when the glm-peak value itself came from the heartbeat. The code's choice avoids mixing a caller value with a host's change time, but the doc sentence is broader than the behaviour. Align one of them."
+    },
+    {
+      "id": "N3",
+      "where": "src/rules/denial.ts:signalPhrase",
+      "what": "The condition phrase for a signal omits the source parenthetical the design sec 6.4 sample shows ('code-freeze is on (set by the human at 14:02)'). Shared with the gate, so FEAT-006 should add it when it wires the gate; no gate exists yet to disagree with."
+    },
+    {
+      "id": "N4",
+      "where": "src/rules/denial.ts:exceptionOf",
+      "what": "A queue text without a ticket differs from the gate's in three places, not the two the FEAT step names (the third drops '/rules let q-N', which would name a ticket that does not exist). Deliberate, listed as interpretation 2 and in ORCHESTRATION 16.10, pinned by the spec. Recorded only so FEAT-006's gate-versus-checkCall text test uses the same three substitutions."
+    }
+  ],
+  "gates": {
+    "build": 0,
+    "preflight": 0,
+    "test": 0,
+    "probe": null
+  }
+}

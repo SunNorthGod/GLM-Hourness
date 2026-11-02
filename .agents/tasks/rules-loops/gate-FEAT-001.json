@@ -1,0 +1,34 @@
+{
+  "feature": "FEAT-001",
+  "pass": 2,
+  "verdict": "APPROVED",
+  "blocking": [],
+  "non_blocking": [
+    {
+      "id": "N2",
+      "where": "src/loops/trigger.ts:275-285 (tooSlow)",
+      "what": "Carried from pass 1. A regex cannot be interrupted, so the climb only protects against patterns that become slow within a few 15 % steps. A contrived pattern within the 300-character cap (about 40 repeated '(a*)' groups followed by 'b') measured 13.4 s inside validateWhen before it was rejected. Disclosed by the coder and accepted; a caller on the host main thread (rules_propose, loop_propose) should know validateWhen can take seconds on a hostile pattern."
+    },
+    {
+      "id": "N3",
+      "where": "src/loops/trigger.ts matchesFilter / passes (matches branch)",
+      "what": "Carried from pass 1. The regex is compiled on every matchesFilter call and a pattern that bypassed validateWhen (hand-edited file) runs against up to 8 KiB without a probe. Callers that load files (FEAT-003, FEAT-010) must call validateWhen on read; a compile cache is worth adding when the rules gate (FEAT-006) calls it before every tool call."
+    },
+    {
+      "id": "N4",
+      "where": "src/loops/trigger.ts checkEvery (action 'work' floor 300 s)",
+      "what": "Carried from pass 1. The rules design allows a detector 'every' of at least 60 s while validateWhen with action 'work' refuses under 300 s. Detectors are a blocked step (R6); R6 has to validate the detector floor itself or get a distinct action value."
+    },
+    {
+      "id": "N6",
+      "where": "src/loops/trigger.ts:657-684 (effectiveTimeoutSeconds)",
+      "what": "A computed value is raised to the entry minimum (gate 1 s, work 5 s) and rounded up, so an estimate of 2 s on a work script returns 5 s, not 2 s. Disclosed as interpretation 3 in the FEAT findings and needed so the result always passes validateScriptAction; recorded here so the later recorder of timeout changes does not read 'estimate' as 'the estimate verbatim'."
+    }
+  ],
+  "gates": {
+    "build": 0,
+    "preflight": 0,
+    "test": 0,
+    "probe": null
+  }
+}

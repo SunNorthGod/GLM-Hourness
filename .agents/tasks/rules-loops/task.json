@@ -1,0 +1,21 @@
+{
+  "task_id": "rules-loops",
+  "task_description": "Implement the startable parts of the released rules board (0.10) and loop board (0.6) in .worktrees/rules-loops on branch rules-loops-impl, merge them to main, and report what stays blocked. Plan: c:\\Users\\29596\\Desktop\\Project\\GLM-Hourness\\.agents\\tasks\\rules\\impl-plan.md. Blocked: the approval path (M3 step 6 and everything that only it can feed: rules_propose, loop_propose, script/check execution, detectors), M7 E1b/E2/E4/E7 and entries, M4, M6 Q1/Q2, plain-ui registry pages.",
+  "status": "pending",
+  "feature_order": [
+    "FEAT-001",
+    "FEAT-002",
+    "FEAT-003",
+    "FEAT-004",
+    "FEAT-005",
+    "FEAT-006",
+    "FEAT-007",
+    "FEAT-008",
+    "FEAT-009",
+    "FEAT-010",
+    "FEAT-011",
+    "FEAT-012",
+    "FEAT-013"
+  ],
+  "blocked_reason": null
+}

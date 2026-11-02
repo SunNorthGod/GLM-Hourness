@@ -1,0 +1,44 @@
+{
+  "feature": "FEAT-004",
+  "pass": 1,
+  "verdict": "APPROVED",
+  "blocking": [],
+  "non_blocking": [
+    {
+      "id": "N1",
+      "where": "src/rules/plan.ts:478-479, src/rules/engine.ts (rewrite branch)",
+      "what": "Any write that changes the decided part (including the rule expiry the clean-up adds to a harness write such as ticket-open) rewrites rules.json and replaces the whole repo change with {digest}, which silently drops a pending repo.outside mark before the person chose adopt or restore. Nothing is lost: the earlier repo-outside record has the diff and .rules.json.outside-<time> keeps the file, and docs/ORCHESTRATION.md 16.9 states it. A later step could keep the mark and write a record that the outside copy was overwritten, so the row can still tell the person."
+    },
+    {
+      "id": "N2",
+      "where": "src/rules/plan.ts:419-428 (hostAlive)",
+      "what": "Any read error on hosts/<pid>-<startedAt>.json (missing directory, a rename in flight on Windows, a half-written file) counts as host gone, so the next write expires every open ticket of that host and the queued call is released. This is the design's rule and nothing writes heartbeats yet, but FEAT-007 must write the file atomically and before ticket-open, and could treat errors other than ENOENT as unknown. The record carries cause expire and expiredWhy host-gone, but no evidence text such as the heartbeat age that design 7.4 table lists for ticket expiry."
+    },
+    {
+      "id": "N3",
+      "where": "src/rules/store.ts:386 (replayJournals)",
+      "what": "Exported for the property test's check (c) and called only by tests (the findings list it as point 12). knip stays at its baseline of 21 because tests are entry points. Acceptable here since the design's check (c) needs it; remove it if the check later moves into a test helper."
+    },
+    {
+      "id": "N4",
+      "where": "src/rules/store.ts:352-366 (journalChain), src/rules/store.ts:443-444",
+      "what": "The slow path of loadState and skippedLines walk back through every rotated file (each up to 8 MiB) before looking for an anchor, so a project with many rotations reads its whole history on each recovery read. The fast path (snapshot equals the last journal record) does not walk the chain, so ordinary writes are unaffected."
+    },
+    {
+      "id": "N5",
+      "where": "src/rules/repo.ts (exportRepo removal branch), findings point 6",
+      "what": "When the last decided entry is removed and git is mid-operation, or the process dies between the append and the unlink, rules.json stays on disk while the state decides nothing, and the next read reports it as an outside change. The person can choose restore (removes the file) or adopt. It is detected and recoverable, and the findings and docs describe it."
+    },
+    {
+      "id": "N6",
+      "where": "findings points 9, 10, 11",
+      "what": "Ticket dedup, the heartbeat writer and the generalized failureText of the row are left to FEAT-006 and FEAT-007. Their contracts (dedupe before ticket-open, heartbeat before ticket-open, command wording kept in step with the hints in permissions.ts) are written down in the findings and must be carried into those FEAT files."
+    }
+  ],
+  "gates": {
+    "build": 0,
+    "preflight": 0,
+    "test": 0,
+    "probe": null
+  }
+}

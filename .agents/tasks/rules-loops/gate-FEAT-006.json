@@ -1,0 +1,44 @@
+{
+  "feature": "FEAT-006",
+  "pass": 1,
+  "verdict": "APPROVED",
+  "blocking": [],
+  "non_blocking": [
+    {
+      "id": "N1",
+      "where": "src/rules/gate.ts:180 (project read failure) and src/rules/gate.ts:246 (outer catch)",
+      "what": "A fault while reading or judging lets the call run and sets the session's health to degraded, but nothing durable is written: no console warning (design 11.2 row 1 says 'degraded, warn once'; warnFault is in scope and used only for the journal and health-report faults), and the next healthy judgement in the same session replaces the degraded report (RowHealth.report overwrites). A transient fault, for example a Windows EBUSY while another process renames state.json, leaves one block rule unapplied with no trace afterwards. The cited design (6.2 step 7) and FEAT AC3 ask only for the health degrade with a reason, which is met, so this is not blocking. Fix: call warnFault with the message in both catch sites (once per distinct message)."
+    },
+    {
+      "id": "N2",
+      "where": "src/rules/denial.ts:146; src/rules/service.ts RULES_DECLARATION",
+      "what": "Text shown to the model points at things that do not exist in this step: the block refusal says 'you may propose a change with rules_propose' (tool not built), and the glm:guard declaration promises that a deferred call gets a ticket and a message when it clears (no queueing yet). Both are flagged in the FEAT findings (points 3 and 4) and ORCHESTRATION 16.11, and the row is disabled. Fix before the row is enabled: drop the rules_propose clause until the proposal path lands and word the declaration without tickets until FEAT-007."
+    },
+    {
+      "id": "N3",
+      "where": "src/rules/gate.ts:221-233",
+      "what": "A hit of effect queue lets the call run and leaves no journal line, so a queue rule from a cloned rules file is silent except for the note in rules_show. Accepted by the FEAT (queue is FEAT-007) and documented; if the row is ever enabled before FEAT-007, a record-style line for queue hits would keep it traceable."
+    },
+    {
+      "id": "N4",
+      "where": "docs/HANDOFF.md rules row (line 55); scripts/calibrate/run-calibrate.mjs:267",
+      "what": "HANDOFF still says the rules row 'does not block any call' and that recovery messages end with deleting .llm/rules/; both changed in this FEAT (earlier FEATs also left HANDOFF alone). The calibration script counts every line of violations.jsonl whose mode is not 'shadow' as a violation, so mode 'record' lines would be counted if the rules row is on during a calibration run."
+    },
+    {
+      "id": "N5",
+      "where": "src/rules/check.ts:208 vs src/rules/gate.ts describeCall(..., caller.workspace)",
+      "what": "The gate tells write targets under the workspace relative to it, checkCall calls describeCall without a cwd, so a rule on writes.paths sees an absolute target as spelled in checkCall and relative in the gate. Rules written against relative paths can be judged differently by the command line for absolute targets."
+    },
+    {
+      "id": "N6",
+      "where": "src/rules/tool.ts:101-104",
+      "what": "showFor runs synchronously inside execute, so an unreadable state (projectReader throws by design) surfaces as a tool error to the model instead of a degraded listing. The error text is honest; not a loss."
+    }
+  ],
+  "gates": {
+    "build": 0,
+    "preflight": 0,
+    "test": 0,
+    "probe": 0
+  }
+}
