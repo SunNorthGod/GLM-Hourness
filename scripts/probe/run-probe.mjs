@@ -612,7 +612,6 @@ mkdirSync(envNoticeGraph, { recursive: true })
 writeFileSync(join(envNoticeWs, 'a.txt'), 'probe\n')
 if (!initRepo(envNoticeWs)) throw new Error('probe: git init for env-notice failed')
 const envNoticeEngine = openEngine(envNoticeGraph)
-let envToolRev = ''
 for (const node of [
   { type: 'goal', title: '探针目标' },
   { id: 'env', type: 'feature', title: '环境', parent: 'goal-1' },
@@ -620,10 +619,10 @@ for (const node of [
 ]) {
   const seeded = await envNoticeEngine.apply('human', { op: 'propose', reason: 'probe seed', node })
   if (!seeded.ok) throw new Error(`probe: seeding the env-notice graph failed: ${JSON.stringify(seeded.error)}`)
-  if (node.id === 'tool-1') envToolRev = seeded.rev
-}
-if (!(await envNoticeEngine.apply('human', { op: 'status', id: 'tool-1', rev: envToolRev, to: 'approved', reason: 'probe' })).ok) {
-  throw new Error('probe: approving the env-notice tool node failed')
+  // A human proposal under an approved parent lands approved; a waiting one is approved here.
+  if (seeded.node?.status === 'proposed' && !(await envNoticeEngine.apply('human', { op: 'status', id: seeded.id, rev: seeded.rev, to: 'approved', reason: 'probe' })).ok) {
+    throw new Error(`probe: approving the env-notice node ${seeded.id} failed`)
+  }
 }
 const envNoticeRun = runScenario('env-notice', 'deepseek-probe', [
   { tool: { name: 'read', arguments: { file_path: join(envNoticeWs, 'a.txt') } } },
