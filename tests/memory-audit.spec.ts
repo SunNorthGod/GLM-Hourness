@@ -20,10 +20,11 @@ test('audit paths: usage and its gaps under the user directory, violations and d
   assert.deepEqual(auditPaths({ userHome: USER_HOME, projectHome: 'C:\\ws\\.llm\\' }), {
     violations: 'C:\\ws\\.llm/audit/violations.jsonl',
     decisions: 'C:\\ws\\.llm/audit/decisions.jsonl',
+    suppressions: 'C:\\ws\\.llm/audit/suppressions.jsonl',
     usage: `${USER_HOME}/audit/usage.jsonl`,
     gaps: `${USER_HOME}/audit/usage-gaps.jsonl`,
   })
-  assert.deepEqual(auditPaths({ projectHome: 'C:/ws/.llm' }), { violations: 'C:/ws/.llm/audit/violations.jsonl', decisions: 'C:/ws/.llm/audit/decisions.jsonl' })
+  assert.deepEqual(auditPaths({ projectHome: 'C:/ws/.llm' }), { violations: 'C:/ws/.llm/audit/violations.jsonl', decisions: 'C:/ws/.llm/audit/decisions.jsonl', suppressions: 'C:/ws/.llm/audit/suppressions.jsonl' })
   assert.deepEqual(auditPaths({ userHome: USER_HOME }), { usage: `${USER_HOME}/audit/usage.jsonl`, gaps: `${USER_HOME}/audit/usage-gaps.jsonl` })
 })
 
