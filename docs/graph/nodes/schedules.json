@@ -401,6 +401,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "FEAT-013（计划 L6：loops.peak-start 与 loops.peak-end）完成并推送：提交 d8263e4 在 rules-loops-impl 上（续跑 2026-11-01 被积分中断的运行，接 c6fbf24；实现者 ZCode 会话接手，从在制 prep diff 完成）。十行判断表逐行一例（tests/loops-peak.spec.ts，40 用例）；顺带修了三处继承工作的缺陷：拍未串行化（文件监听触发的拍与在飞拍并发读同一份日志）、inbox save 换对象导致在飞运行丢 held 与 armed 组、探针检查拿数字比字符串常量（NaN，永假）。四道门禁串行全绿：build 0、preflight 0（eslint 249 压制、knip 21、jscpd 2）、test 0（1564/1564）、probe 0（198/198，此前 197/198）。计划 13 项全部完成；整条分支只剩合入 main（按 2026-11-01 收尾暂缓，合入另开一条运行）。两行仍 disabled: true。"
+    },
+    {
+      "at": "2026-11-02T09:11:22.996Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "分支合入完成（2026-11-02，ZCode 派出）：rules-loops-impl 以合并提交 c6e9bed 进 main（origin 已同步，远端分支与工作树已删；13 份 FEAT 任务书与门禁结果入库 122e322）。合并树门禁全绿：build 0、preflight 0、test 1696/1696、probe 210/210（双方场景并集）；eslint 压制 249 在基线。冲突 8 文件：测试清单并集、探针场景并集（main 的简单停档场景改名 rules-stop-notice 让给分支的 rules-peak-stop）、docs/graph 整取 main。两件合并发现：① main 尖端的 graph.svg 失真是 506bb83 记账时漏渲染（编排方操作，已在合并提交修正重绘）；② src/rules/builtin.ts 不映射 MAIN_AGENT_RULES（该文件在 m3 上），随 M3 合并追加（附录 §9 第 12 条）。两行保持 disabled: true；启用前按 DEVELOPMENT §3 走临时 profile 验证。计划 13 项与合入全部完成。"
     }
   ]
 }

@@ -147,7 +147,7 @@ M6 桌面版核对（批次 L4，项目图 `m6-l4`、`m6-gap`，2026-11-01，主
 | 模块 | 设计 | 代码 | 还缺什么 |
 | --- | --- | --- | --- |
 | M3 对话与主 Agent | 附录 0.6 放行 | 分支 `m3`：第 4–10 步、人设步、流程条合入与全部合入门槛修复已提交（至 `52769eb`，已推送；S4-1..S4-4、S5-1 含 S6-2/S8-3、S5-2、R1、R3、R4 关闭，R2 按评审原文延期、接线条件写进 ORCHESTRATION §3.1；门禁全绿含 probe 213/213）；工作树留有第 12 步（a）标定指标的在制改动 | 第 12 步（a 标定、b 合入与批次 L4） |
-| 规则板与循环板 | 规则板 0.10、循环板 0.6 放行并冻结（`d-freeze-until-dogfood`） | 分支 `rules-loops-impl`：13 个 FEAT 全部完成（至 `d8263e4`，已推送；FEAT-013 于 2026-11-02 续跑完成，门禁全绿含 probe 198/198）；已合入 main（2026-11-02，与 M6 额度、3.17.1 跟进、图收尾的合并；探针两边的场景并集，main 的停档措辞场景改名 `rules-stop-notice`） | 两行仍 `disabled: true`；启用前按 `DEVELOPMENT.md` §3 在临时 profile 验证 |
+| 规则板与循环板 | 规则板 0.10、循环板 0.6 放行并冻结（`d-freeze-until-dogfood`） | 分支 `rules-loops-impl`：13 个 FEAT 全部完成（至 `d8263e4`；FEAT-013 于 2026-11-02 续跑完成）；已合入 main（合并提交 `c6e9bed`，2026-11-02，门禁全绿 test 1696/1696、probe 210/210；分支与工作树已删，运行记录入库 `122e322`；探针两边的场景并集，main 的停档措辞场景改名 `rules-stop-notice`） | 两行仍 `disabled: true`；启用前按 `DEVELOPMENT.md` §3 在临时 profile 验证；`src/rules/builtin.ts` 的 `MAIN_AGENT_RULES` 映射随 M3 合并追加（附录 §9 第 12 条） |
 | M5 记忆与经验 | 0.7 放行（含 `d-reporting-depth-keep`） | 分支 `m5-memory-lessons`：S1–S11 已提交（至 `aef9d43`，已推送），评审全 APPROVED（S11 的 21 条种子逐格对 §4.8 核过；S9 阻塞项已修 `d4421b7`） | S12 等 M3 的 `talk.ts`；整支合入 main（等 M3 合入，冲突清单在 progress.md 的 merge preview）；桌面两批与种子文件拷回见图上 m5 节点 2026-11-02 批注 |
 | M6 用量与高峰 | 0.7 | 已合入 main（`11dce6b`..`3bc5d98`），桌面版核对通过；2026-11-01 归位标 done | 「不做档停下真账号核对」在 main 上还没有拦，随 `m6-script-gate` 与规则板 FEAT-008 落地；`m6-metrics-events` 等指标 |
 | M4 guard 补齐与环境 | 0.6 放行（`d-m4-released`，2026-11-01，一页稿 APPROVED） | 未开工 | 派实现运行；七个任务节点已带人定的验收 |
