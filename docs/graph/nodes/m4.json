@@ -383,6 +383,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "首批实现完成（2026-11-02，ZCode 派出，分支 m4 至 d012455 已推送）：m4-cleanup（154ecaa）、m4-env E1+E2（0855155 + 探针检查修正 9149286、07f0a4c）、m4-suppressions（e85daf0）完成；m4-gate 落了 G1 地基（d012455，guard records/分类器 + tests/guard-records.spec.ts 钉住设计 §3.2 分类表；主体 installRuleGate/judge/evaluate 下线留下批，一整步 15+ 文件不宜半做）。跳过三项并核实了依赖在 main 上确实缺失：m4-request-card（等 M3 第 4 步的 src/guard/main-agent.ts）、m4-checks（等循环板共用执行器，src/loops/run.ts 现拒绝 script/check）、m4-rules 第 2 条（等 M3 第 6 步的 propose_to_human；三条新规则随 m4-gate）。每提交门禁绿；最终运行时树 probe 213/213；eslint 压制 249→244（E4 泛型化顺手缩小）。4 处 agent 定的实现细节记在 impl-progress.md（可逆档）。独立评审与门禁复跑在途。"
+    },
+    {
+      "at": "2026-11-02T11:41:48.399Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "首批评审 APPROVED 无阻断（review-first-batch.md，范围 1dd4c80..d012455）：三件 done 任务的验收逐条满足（m4-suppressions 第 1 条的指标事件按设计 §3.11 空操作、随 m6-metrics-events 补）；三个跳过理由在 main 上实读核实为真；m4-gate 地基未动今天的 evaluate 行为；棘轮 249→244、零人设零压制。追加两笔：3cba295（编排方复跑逮到 audit-paths spec 漏改，先败后绿）与评审后全量套件复跑全绿。解阻条件：G1 主体与 m4-rules 第 2 条等 M3 第 6 步，m4-checks 等循环板共用执行器，m4-request-card 等 M3 第 4 步。第二批（m4-gate G1 主体）已派。"
     }
   ]
 }

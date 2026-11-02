@@ -2,12 +2,18 @@
   "id": "m4-suppressions",
   "type": "task",
   "title": "跳过检查的注释计数",
-  "status": "approved",
+  "status": "done",
   "parent": "m4",
   "body": "M4 设计 0.6 的一件活。做完条件由人 2026-11-01 定下，见本节点验收（人话版 .agents/tasks/m4/onepage-done.md）。",
   "acceptance": [
     "第 1 条：代码里跳过检查的注释，总数每天至多记一次（写在项目的 `.llm/` 下），按标记分类；装了指标服务时同时交一条计数事件。",
     "第 2 条：晨报写「跳过检查的注释 N 处（本期 +a / −b）」。"
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "e85daf0"
+    }
   ],
   "history": [
     {
@@ -17,6 +23,20 @@
       "reason": "人 2026-11-01 读 M4 一页稿后放行，并把七件活的 35 条做完条件一起定下（人话版 .agents/tasks/m4/onepage-done.md，设计 0.6 §1.2）",
       "relay": "都没问题",
       "to": "approved"
+    },
+    {
+      "at": "2026-11-02T11:41:33.114Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "独立评审 APPROVED：计数侧全对（UTC+8 天一条、最长先数不重复、大文件跳过），晨报 +a/−b 逐日增量属披露偏差；指标计数事件未交——指标服务不存在，按设计 §3.11 空操作，服务落地时随既有节点 m6-metrics-events 补。审计路径 spec 的漏改由编排方复跑逮到、3cba295 修复（评审范围 d012455 之后的追加提交）。",
+      "from": "approved",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "e85daf0"
+        }
+      ]
     }
   ]
 }

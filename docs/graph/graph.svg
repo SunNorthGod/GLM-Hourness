@@ -1,10 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1570" height="17632" viewBox="0 0 1570 17632" font-family="system-ui, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" data-revision="8540adc109df">
-<title>项目图 · 修订 8540adc109df · 243 个节点</title>
+<svg xmlns="http://www.w3.org/2000/svg" width="1570" height="17632" viewBox="0 0 1570 17632" font-family="system-ui, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" data-revision="b034be0ff58e">
+<title>项目图 · 修订 b034be0ff58e · 243 个节点</title>
 <defs><marker id="graph-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#6b7280"/></marker><marker id="graph-arrow-purple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#7c3aed"/></marker></defs>
 <rect width="1570" height="17632" fill="#ffffff"/>
 <g data-legend="true" transform="translate(20 20)">
 <rect width="596" height="134" rx="8" fill="#f9fafb" stroke="#e5e7eb"/>
-<text x="10" y="23" font-size="13" font-weight="600" fill="#111827">项目图 · 修订 8540adc109df · 243 个节点</text>
+<text x="10" y="23" font-size="13" font-weight="600" fill="#111827">项目图 · 修订 b034be0ff58e · 243 个节点</text>
 <text x="10" y="48.2" font-size="12" fill="#6b7280">状态</text>
 <rect x="54" y="37" width="28" height="14" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
 <text x="88" y="48.2" font-size="12" fill="#111827">完成</text>
@@ -1119,24 +1119,24 @@ m4-checks · 任务 · 已批准</title>
 <text x="1058.5" y="5919.6" text-anchor="middle" font-size="13" fill="#111827">改完就跑的检查</text>
 <text x="1058.5" y="5935.4" text-anchor="middle" font-size="11" fill="#6b7280">m4-checks</text>
 </g>
-<g data-id="m4-env" data-type="task" data-status="approved" data-tone="todo">
+<g data-id="m4-env" data-type="task" data-status="done" data-tone="done">
 <title>环境分支与草稿区
-m4-env · 任务 · 已批准</title>
-<rect x="916" y="5957" width="285" height="49" rx="6" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.5"/>
+m4-env · 任务 · 完成</title>
+<rect x="916" y="5957" width="285" height="49" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
 <text x="1058.5" y="5978.6" text-anchor="middle" font-size="13" fill="#111827">环境分支与草稿区</text>
 <text x="1058.5" y="5994.4" text-anchor="middle" font-size="11" fill="#6b7280">m4-env</text>
 </g>
-<g data-id="m4-suppressions" data-type="task" data-status="approved" data-tone="todo">
+<g data-id="m4-suppressions" data-type="task" data-status="done" data-tone="done">
 <title>跳过检查的注释计数
-m4-suppressions · 任务 · 已批准</title>
-<rect x="916" y="6016" width="285" height="49" rx="6" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.5"/>
+m4-suppressions · 任务 · 完成</title>
+<rect x="916" y="6016" width="285" height="49" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
 <text x="1058.5" y="6037.6" text-anchor="middle" font-size="13" fill="#111827">跳过检查的注释计数</text>
 <text x="1058.5" y="6053.4" text-anchor="middle" font-size="11" fill="#6b7280">m4-suppressions</text>
 </g>
-<g data-id="m4-cleanup" data-type="task" data-status="approved" data-tone="todo">
+<g data-id="m4-cleanup" data-type="task" data-status="done" data-tone="done">
 <title>清理抓取脚本
-m4-cleanup · 任务 · 已批准</title>
-<rect x="916" y="6075" width="285" height="49" rx="6" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.5"/>
+m4-cleanup · 任务 · 完成</title>
+<rect x="916" y="6075" width="285" height="49" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
 <text x="1058.5" y="6096.6" text-anchor="middle" font-size="13" fill="#111827">清理抓取脚本</text>
 <text x="1058.5" y="6112.4" text-anchor="middle" font-size="11" fill="#6b7280">m4-cleanup</text>
 </g>
