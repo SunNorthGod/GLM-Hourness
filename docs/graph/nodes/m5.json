@@ -209,6 +209,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "续跑进展（ZCode 接手，子代理在个人套餐 GLM-5.3-Flash 上）：S9 评审完成——一个阻塞项（row-host.ts 注释里两个控制字符咬掉 body/root 的首字母），已修并把未推送提交改写为 d4421b7（S1 改写先例；od 验证无控制字符），判定转 APPROVED（pass 2，impl-S9-pass1.md）；其余全部验证通过（计划项、设计 3.6、宿主接缝、测试、无习惯代码泄漏）。S10（经验页）实现完成并提交 defad82（推送）：只读页 + boards.ts 登记（plain-ui 0.7 §4.7 接口）+ 静态检查禁止 ui/src/lessons 出现 commands.execute，四道门禁全绿（probe 198/198），评审在跑。S11（21 条种子经验）实现已派。S12 仍等 M3 的 talk.ts。分支 m5-memory-lessons 与 origin 同点。"
+    },
+    {
+      "at": "2026-11-02T00:59:20.658Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M5 可开工的实施步全部收官（2026-11-02，ZCode 续跑）：S11（21 条种子经验）实现 aef9d43 已推送，评审 APPROVED 零阻断（评审员用一次性脚本把 21 行逐格对 design §4.8，逐字一致；证据逐条实读解析；真实存储未动）；S1–S11 评审全 APPROVED（impl-review.json 11 步）。impl-plan 的可开工步用完，剩非步工作：分支合入 main（等 M3 合入后做，冲突清单在 progress.md 的 merge preview，S10 又添 src/data/record.ts 拆分与 ui 文件）、桌面两批（种子导入真实项目、DevTools 截图）、删除 .worktrees/m5 前把 lessons-seed.json 与 impl/ 拷回主检出（种子文件不入库）。S12 等 M3 的 talk.ts。分支 m5-memory-lessons 与 origin 同点（aef9d43）。"
     }
   ]
 }
