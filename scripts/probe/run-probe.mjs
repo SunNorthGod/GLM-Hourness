@@ -15,7 +15,29 @@
  * scenarios run the dispatch feasibility spike
  * (scripts/probe/probe-dispatch.mjs): a background child with a write
  * scope, a plugin-created goal driven through two rounds, and the headless
- * runner's exit with an armed goal. The graph panel scenarios run the
+ * runner's exit with an armed goal. The rules board scenarios run in scratch
+ * git repositories with the row enabled by the overlay: rules-peak and
+ * rules-peak-hourness drive /rules peak, glm-rules and non-glm-rules run
+ * calls past a rules file that blocks one command and only informs about
+ * another, rules-queue and rules-handover run a call a rule queues: the
+ * agent is told when the ticket clears, and the ticket of a subagent that
+ * ends goes to the agent that dispatched it; rules-peak (the main agent's
+ * line about the peak) and rules-peak-stop and rules-peak-stop-exit (the stop
+ * level: a GLM subagent's goal is paused and resumed, and what the row does to
+ * it when the host exits). The loop board scenario (loops) runs in a scratch
+ * git clone that already carries a person's entry file: the board takes the
+ * entry in, loops:files-only refuses a file tool and a shell command that
+ * write into the board's own files, and both of the row's gates are installed
+ * (the three calls loops:schedule-tools judges cannot be made in a headless
+ * host, which mounts no schedule service). The loop board's peak scenario
+ * (loops-peak) runs on the GLM route at the probe clock inside a peak, with
+ * the loop row and the rules row (少做) enabled and no contribution listing
+ * execute.resume-drive: the scripted agent becomes the main agent with /wish,
+ * works, shifts the clock past the peak's end with the probe clock's tool and
+ * idles over a pending background child, and the board's next beat wakes it
+ * once with the end-of-peak reminder; loops-peak-restart opens the same
+ * project again across the same boundary, whose key is consumed, so no second
+ * reminder goes out. The graph panel scenarios run the
  * bundle's /graph-apply and /graph-run handlers mid-step for the session;
  * the GLM and non-GLM scenarios run /hourness and /hourness-status at their
  * last step, after /glm-status is recorded. Every scenario also mounts the
@@ -48,13 +70,18 @@
  * change of the real usage journal fails the run (exit 1).
  */
 import { spawnSync } from 'node:child_process'
-import { cpSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import { crc32, deflateSync } from 'node:zlib'
 import { DISPATCH_TOOLS } from '../../packages/hourness/dist/workflow/index.js'
 import { openRulesBoard } from '../../packages/hourness/dist/rules/engine.js'
 import { clockText } from '../../packages/hourness/dist/rules/index.js'
+import { repoJson } from '../../packages/hourness/dist/rules/model.js'
+import { RULES_DECLARATION } from '../../packages/hourness/dist/rules/service.js'
+import { entryFileText } from '../../packages/hourness/dist/loops/model.js'
+import { LOOP_NOTICE_SOURCE } from '../../packages/hourness/dist/loops/deliver.js'
+import { LOOPS_DECLARATION } from '../../packages/hourness/dist/loops/service.js'
 import { PEAK_REMINDER_SOURCE, PEAK_REMINDER_TEXT, peakReminderText } from '../../packages/glm/dist/glm-prompt/peak-reminder.js'
 import { peakWindowAt } from '../../packages/glm/dist/glm-llm/credits.js'
 import { GLM_LOOP_DEFAULTS } from '../../packages/glm/dist/glm-llm/loop-defaults.js'
@@ -363,11 +390,11 @@ const plainShellResult = lastToolResult(plainGuard.steps[2])
 // requests carry it once because it persists, and the non-GLM scenario runs
 // on the same clock and gets none. Each request records the runtime clock.
 const PEAK_AT = '2026-10-28T15:00:00+08:00'
-const clockRow = at => [
+const clockRow = (at, shiftWith) => [
   '- insert:',
   '    - id: glm-hourness-probe/clock',
   `      name: ${JSON.stringify(slash(join(repo, 'scripts', 'probe', 'probe-clock.mjs')))}`,
-  `      config: { at: ${JSON.stringify(at)} }`,
+  `      config: { at: ${JSON.stringify(at)}${shiftWith === undefined ? '' : `, shiftWith: ${JSON.stringify(shiftWith)}`} }`,
 ]
 const peak = runScenario('glm-peak', 'glm-5.3', [
   { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } } },
@@ -409,7 +436,7 @@ const stderrOf = scenario => existsSync(join(runDir, scenario, 'stderr.txt')) ? 
 // every state. The GLM package words its peak reminder by the level
 // (docs/ORCHESTRATION.md §11.4): rules-peak sends the factory level's text on
 // the first request and keeps that one notice through the two changes;
-// rules-peak-stop sets the level to 不做 as the person through the rules
+// rules-stop-notice sets the level to 不做 as the person through the rules
 // engine before the run and reads the stop text on the first request, with
 // the main agent's Read executed.
 const RULES_ROW = ['- id: glm-hourness/rules', '  disabled: false']
@@ -419,23 +446,110 @@ const rulesProject = (name) => {
   writeFileSync(join(ws, 'README.md'), 'probe workspace\n')
   return { ws, ready: initRepo(ws) }
 }
+// The scenario's first step makes the session the main agent of the project
+// with /wish (the design row is enabled for it), since the board tells only the
+// main agent where the peak stands; the second lists the rules with rules_show
+// at the shifted clock, between the factory level and 不做.
 const rulesGlm = rulesProject('rules-peak')
+// /wish wants the project to have a graph directory, empty is enough (the design scenarios do the same).
+mkdirSync(join(rulesGlm.ws, 'docs', 'graph'), { recursive: true })
 const rulesPeak = runScenario('rules-peak', 'glm-5.3', [
+  { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } }, line: '/wish' },
   { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } }, command: { name: 'rules', input: 'peak' }, peakMode: true },
+  { tool: { name: 'DeferredToolCall', arguments: { name: 'rules_show', input: {} } } },
   { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } }, command: { name: 'rules', input: 'peak 不做' }, peakMode: true },
   { text: 'done', status: true, command: { name: 'rules', input: 'peak 无影响' }, peakMode: true },
-], 'Read package.json twice, then reply done.', [...RULES_ROW, ...clockRow(PEAK_AT)], rulesGlm.ws)
-const rulesStopProject = rulesProject('rules-peak-stop')
-const rulesStopSet = rulesStopProject.ready ? await openRulesBoard({ projectRoot: rulesStopProject.ws }).apply('human', { op: 'peak-mode-set', level: 'stop' }) : undefined
-const rulesPeakStop = runScenario('rules-peak-stop', 'glm-5.3', [
-  { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } }, peakMode: true },
-  { text: 'done', peakMode: true },
-], 'Read package.json, then reply done.', [...RULES_ROW, ...clockRow(PEAK_AT)], rulesStopProject.ws)
+], 'Become the main agent, read package.json twice, list the rules, then reply done.', [...RULES_ROW, ...clockRow(PEAK_AT), ...designRows({ record: slash(join(runDir, 'rules-peak', 'design.jsonl')) })], rulesGlm.ws)
 const rulesAlone = rulesProject('rules-peak-hourness')
 const rulesPeakAlone = runScenario('rules-peak-hourness', 'deepseek-probe', [
   { tool: { name: 'pwsh', arguments: { command: 'Write-Output probe-rules', description: 'Print a word' } }, command: { name: 'rules', input: 'peak 不做' }, peakMode: true },
   { text: 'done', command: { name: 'hourness-status' }, peakMode: true },
 ], 'Print a word, then reply done.', [...RULES_ROW, ...clockRow(PEAK_AT)], rulesAlone.ws, [], profiles['probe-hourness'])
+
+// Rules board, the tool-call gate (docs/ORCHESTRATION.md §16.11). The scenario
+// project is a scratch git repository whose rules file already holds a person's
+// rules, as a clone does: one that blocks a command naming `rules-probe-blocked`
+// and one that only informs. (A person's switch cannot be created yet: nothing
+// writes a rule but the proposal path, which is not built, so the rules that
+// queue are probed in rules-queue and rules-handover, under a rules file that
+// names a queue rule.) The scripted agent runs the
+// blocked command, writes into the board's own files with a file tool, and runs
+// a command no rule names; the non-GLM run also reads the rules with
+// rules_show. The calls must be refused or run as the rules say, the refusals
+// must be in the project's violation journal as rules:<id>, and /glm-status
+// must list the row.
+const GATE_RULE_AT = '2026-10-28T06:00:00.000Z'
+const gateRule = (id, title, over) => ({ id, title, scope: 'project', when: { kind: 'event', events: ['gate.tool-call'] }, action: { kind: 'block' }, lifetime: { kind: 'until-lifted' }, reason: 'probe', origin: { actor: 'human', at: GATE_RULE_AT }, status: 'active', ...over })
+const GATE_RULES_FILE = repoJson({
+  version: 2,
+  rules: {
+    'r-probe-block': gateRule('r-probe-block', 'Probe word', { filter: { command: { matches: 'rules-probe-blocked' } }, reason: 'The probe word is not allowed.' }),
+    'r-probe-note': gateRule('r-probe-note', 'Probe note', { when: { kind: 'event', events: ['rules.step'] }, action: { kind: 'inform' } }),
+  },
+})
+const rulesGateProject = (name, text = GATE_RULES_FILE) => {
+  const ws = join(runDir, name, 'ws')
+  const rulesFile = join(ws, 'docs', 'rules', 'rules.json')
+  mkdirSync(dirname(rulesFile), { recursive: true })
+  writeFileSync(join(ws, 'README.md'), 'probe workspace\n')
+  writeFileSync(rulesFile, text)
+  return { ws, rulesFile, ready: initRepo(ws) }
+}
+const glmRulesProject = rulesGateProject('glm-rules')
+const glmRules = runScenario('glm-rules', 'glm-5.3', [
+  { tool: { name: 'Bash', arguments: { command: 'Write-Output rules-probe-blocked', timeout: 30000 } } },
+  { tool: { name: 'Write', arguments: { file_path: glmRulesProject.rulesFile, content: '{}\n' } } },
+  { tool: { name: 'Bash', arguments: { command: 'Write-Output rules-probe-allowed', timeout: 30000 } } },
+  { text: 'done', status: true },
+], 'Run a command a rule blocks, write into the rules directory, run a command no rule names, then reply done.', RULES_ROW, glmRulesProject.ws)
+const nonGlmRulesProject = rulesGateProject('non-glm-rules')
+const nonGlmRulesState = join(nonGlmRulesProject.ws, '.llm', 'rules', 'state.json')
+const nonGlmRules = runScenario('non-glm-rules', 'deepseek-probe', [
+  { tool: { name: 'pwsh', arguments: { command: 'Write-Output rules-probe-blocked', description: 'Print the probe word' } } },
+  { tool: { name: 'write', arguments: { file_path: nonGlmRulesState, content: '{}\n' } } },
+  { tool: { name: 'rules_show', arguments: {} } },
+  { tool: { name: 'pwsh', arguments: { command: 'Write-Output rules-probe-allowed', description: 'Print an allowed word' } } },
+  { text: 'done', status: true },
+], 'Run a command a rule blocks, write into the rules directory, read the rules, run a command no rule names, then reply done.', RULES_ROW, nonGlmRulesProject.ws)
+
+// Loop board, the storage and the gate on its own files
+// (docs/ORCHESTRATION.md §18.8, §18.9). The row ships disabled; the overlay
+// enables it in a scratch git repository that already carries a person's entry
+// file in docs/loops/ and has it committed, as a fresh clone does. The entry
+// only tells the main agent, so the board takes it in without an approval
+// record (loops design §9.3, impl-plan Interpretation 1). The scripted agent
+// writes into that entry file with a file tool, writes the board's runtime file
+// through the shell, and reads the entry file. Both writes must be refused by
+// loops:files-only with its four-part text and journaled as that rule, the read
+// must pass, the board must have taken the entry in and written its runtime
+// files, and git must see nothing of the runtime directory.
+const LOOPS_ROW = ['- id: glm-hourness/loops', '  disabled: false']
+const LOOPS_ENTRY_ID = 'u-1a2b3c4d'
+const LOOPS_ENTRY_TEXT = entryFileText({
+  id: LOOPS_ENTRY_ID,
+  title: 'Probe loop',
+  why: 'Probe the loop board storage.',
+  when: { kind: 'daily', time: '08:30', timeZone: 'Asia/Shanghai' },
+  action: { kind: 'tell-main', text: 'Probe: the loop board asked for this line.', wake: false },
+  source: { kind: 'person', at: GATE_RULE_AT, via: 'chat', relay: 'probe relay', question: 'question-1', proposal: 'lp-0a1b2c3d' },
+})
+const loopsProject = (name) => {
+  const ws = join(runDir, name, 'ws')
+  const entryFile = join(ws, 'docs', 'loops', 'entries', `${LOOPS_ENTRY_ID}.json`)
+  mkdirSync(dirname(entryFile), { recursive: true })
+  writeFileSync(join(ws, 'README.md'), 'probe workspace\n')
+  writeFileSync(entryFile, LOOPS_ENTRY_TEXT)
+  return { ws, entryFile, ready: initRepo(ws) }
+}
+const loopsBoard = loopsProject('loops')
+const loopsShellTarget = join(loopsBoard.ws, '.llm', 'loops', 'journal.jsonl')
+const loops = runScenario('loops', 'deepseek-probe', [
+  { tool: { name: 'write', arguments: { file_path: loopsBoard.entryFile, content: '{}\n' } } },
+  { tool: { name: 'pwsh', arguments: { command: `Set-Content -Path '${loopsShellTarget}' -Value probe`, description: 'Write the loop board runtime file through the shell' } } },
+  { tool: { name: 'read', arguments: { file_path: loopsBoard.entryFile } } },
+  { text: 'done', status: true },
+], 'Write into the loop board entry file, write its runtime file through the shell, read the entry file, then reply done.', LOOPS_ROW, loopsBoard.ws)
+
 const MEMORY_SECTION_LINE = 'You have a persistent memory in this workspace'
 const glmOnlyDir = join(runDir, 'glm-only')
 const glmOnly = runScenario('glm-only', 'glm-5.3', [
@@ -641,6 +755,141 @@ const firstRoundOrder = goalSteps[0] === undefined ? [] : [goalSteps[0].messages
 const gateDenied = lastToolResult(goalSteps[1])
 const goalCompleted = lastToolResult(goalSteps[4])
 const goalRunResult = lastToolResult(goalMain.at(-1))
+
+// Rules board, waiting tickets (docs/ORCHESTRATION.md §16.12). The scenario
+// projects are scratch git repositories whose rules file already holds a queue
+// rule and a rule that only informs, as a clone does. rules-queue runs on the
+// GLM route at the peak clock, where `glm-peak` is true: the call the rule
+// names is refused with a ticket, refused again under the same ticket, the
+// person lifts the rule through the real /rules handler (mid-step, as the
+// human), the board tells the session once, and the call runs. rules-handover
+// runs on the other route: a one-off subagent makes the call the rule names and
+// ends; its ticket goes to the agent that dispatched it, which is told when
+// the person lifts the rule. The board's reminder is in the request exactly
+// when something changed.
+const queueRule = (over = {}) => gateRule('r-probe-queue', 'Probe word, deferred', { filter: { command: { matches: 'rules-probe-queued' } }, action: { kind: 'queue' }, reason: 'The probe word waits.', ...over })
+const QUEUE_NOTE = gateRule('r-probe-note', 'Probe note', { when: { kind: 'event', events: ['rules.step'] }, action: { kind: 'inform' } })
+const QUEUE_RULES_FILE = repoJson({ version: 2, rules: { 'r-probe-queue': queueRule({ condition: { signal: 'glm-peak', is: true } }), 'r-probe-note': QUEUE_NOTE } })
+const HANDOVER_RULES_FILE = repoJson({ version: 2, rules: { 'r-probe-queue': queueRule(), 'r-probe-note': QUEUE_NOTE } })
+const QUEUED_WORD = 'Write-Output rules-probe-queued'
+const queueProject = rulesGateProject('rules-queue', QUEUE_RULES_FILE)
+const rulesQueue = runScenario('rules-queue', 'glm-5.3', [
+  { tool: { name: 'Bash', arguments: { command: QUEUED_WORD, timeout: 30000 } } },
+  { tool: { name: 'Bash', arguments: { command: QUEUED_WORD, timeout: 30000 } } },
+  { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } }, command: { name: 'rules', input: 'lift r-probe-queue' } },
+  { tool: { name: 'Bash', arguments: { command: QUEUED_WORD, timeout: 30000 } } },
+  { text: 'done', status: true },
+], 'Run the queued command twice, let the person lift the rule, run it again, then reply done.', [...RULES_ROW, ...clockRow(PEAK_AT)], queueProject.ws)
+const handoverDir = join(runDir, 'rules-handover')
+const handoverProject = rulesGateProject('rules-handover', HANDOVER_RULES_FILE)
+const rulesHandover = runScenario('rules-handover', 'deepseek-probe', [
+  { tool: { name: 'probe_dispatch', arguments: { task: 'T1', prompt: 'Probe task T1: run the queued command and report.', cwd: handoverProject.ws, scope: 'allowed', model: 'deepseek-probe' } } },
+  { tool: { name: 'read', arguments: { file_path: join(repo, 'package.json') } } },
+  { text: 'Waiting for task T1.' },
+  { tool: { name: 'pwsh', arguments: { command: 'Start-Sleep -Seconds 7', description: 'Let the board look at the finished subagent' } } },
+  { tool: { name: 'read', arguments: { file_path: join(repo, 'package.json') } }, command: { name: 'rules', input: 'lift r-probe-queue' } },
+  { text: 'done', status: true },
+], 'Dispatch task T1, wait for it, let the person lift the rule, then reply done.', [...RULES_ROW, ...dispatchRow(join(handoverDir, 'dispatch.jsonl'))], handoverProject.ws, [[
+  { tool: { name: 'pwsh', arguments: { command: QUEUED_WORD, description: 'Print the queued word' } } },
+  { tool: { name: 'structured_output', arguments: HAND_BACK } },
+  { text: 'child done' },
+]])
+
+// Rules board, the stop level (docs/ORCHESTRATION.md §16.13). The project's rules
+// file holds the person's choice 不做, and the probe clock is in the GLM peak.
+// The GLM main agent runs the dispatch row's tool probe_stop_goal, which makes a
+// subagent session (a header with origin subagent) on GLM with a goal: its
+// first tool call is refused with a ticket and the row pauses the goal from
+// inside that call; a subagent session on a model that is not GLM runs its call;
+// no round starts while the peak holds; then the tool types /rules peak 无影响 as
+// the person through the real handler, the goal is resumed and the subagent is
+// told to carry on. rules-peak-stop-exit stops at the held goal and lets the
+// host exit, to see what the row does on its way out (V13).
+const STOP_RULES_FILE = repoJson({ version: 2, peakMode: { level: 'stop', at: '2026-10-28T06:00:00.000Z', origin: { actor: 'human' } } })
+const STOP_COMMAND = 'Write-Output rules-probe-stop'
+const stopProbe = (name, input, scripts) => {
+  const project = rulesGateProject(name, STOP_RULES_FILE)
+  const run = runScenario(name, 'glm-5.3', [
+    { tool: { name: 'DeferredToolCall', arguments: { name: 'probe_stop_goal', input: { objective: 'Run the probe command, then mark the goal complete.', cwd: project.ws, maxGoalRounds: 3, ...input } } } },
+    { text: 'done', status: true },
+  ], 'Run the stop-level goal probe, then reply done.', [...RULES_ROW, ...clockRow(PEAK_AT), ...dispatchRow(join(runDir, name, 'dispatch.jsonl'))], project.ws, scripts)
+  return { project, run }
+}
+const stopChildScript = [
+  { tool: { name: 'Bash', arguments: { command: STOP_COMMAND, timeout: 30000 } } },
+  { text: 'Stopped: the ticket is reported.' },
+  completeGoal,
+  { text: 'Goal complete.' },
+]
+const { project: stopProject, run: rulesPeakStop } = stopProbe('rules-peak-stop', {}, [
+  stopChildScript,
+  [{ tool: { name: 'pwsh', arguments: { command: 'Write-Output rules-probe-plain', description: 'Print a word' } } }, { text: 'ok' }],
+])
+const { project: stopExitProject, run: rulesPeakStopExit } = stopProbe('rules-peak-stop-exit', { lift: false }, [stopChildScript.slice(0, 2)])
+
+// The stop level set before the run by the person through the real board, on a
+// plain session (no goal): the service's snapshot per step and the wording of
+// the GLM package's reminder, which the stop level words (docs/ORCHESTRATION.md §11.4).
+const rulesStopNoticeProject = rulesProject('rules-stop-notice')
+const rulesStopNoticeSet = rulesStopNoticeProject.ready ? await openRulesBoard({ projectRoot: rulesStopNoticeProject.ws }).apply('human', { op: 'peak-mode-set', level: 'stop' }) : undefined
+const rulesStopNotice = runScenario('rules-stop-notice', 'glm-5.3', [
+  { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } }, peakMode: true },
+  { text: 'done', peakMode: true },
+], 'Read package.json, then reply done.', [...RULES_ROW, ...clockRow(PEAK_AT)], rulesStopNoticeProject.ws)
+
+// Loop board, the end of a peak (docs/ORCHESTRATION.md §18.12, loops design
+// §6.9). The scenario project is a scratch git repository whose rules file
+// holds the person's 少做 choice; the loop row is enabled on the GLM route at
+// the probe clock, inside the peak, and no contribution lists
+// execute.resume-drive (the headless host has no execution row). The scripted
+// agent becomes the main agent with /wish and works (the board's step note
+// writes the walk record), lets the board's first beat read the peak, shifts
+// the clock past the peak's end with the probe clock's tool, dispatches a
+// background child that sleeps, and idles (the headless runner exits at a
+// quiescent idle, and the child keeps the idle from being one): the board's
+// second beat sees the edge, the table finds nobody to resume, and the idle
+// main agent that worked in this peak is woken once with the board's
+// reminder. The restart boot opens the same project five minutes before the
+// same peak's end, crosses into and out of the same peak again: the end
+// edge's key was consumed by the first boot, the re-emitted event is a
+// duplicate, and no second reminder goes out.
+const LOOPS_PEAK_END = '2026-10-28T10:00:00.000Z'
+// The same moment as a number: the step clock is a number, and a number compared with the string would coerce it to NaN (the check below reads this one).
+const LOOPS_PEAK_END_MS = Date.parse(LOOPS_PEAK_END)
+const SHIFT_TOOL = 'probe_shift_clock'
+// The headless runtime mounts no session controller, which is what lets the loop board's running half activate; the probe row stands in for it.
+const SESSIONS_ROW = [
+  '- insert:',
+  '    - id: glm-hourness-probe/sessions',
+  `      name: ${JSON.stringify(slash(join(repo, 'scripts', 'probe', 'probe-sessions.mjs')))}`,
+  '      inject: [agents]',
+]
+const REDUCE_RULES_FILE = repoJson({ version: 2, peakMode: { level: 'reduce', at: GATE_RULE_AT, origin: { actor: 'human' } } })
+const loopsPeakProject = rulesGateProject('loops-peak', REDUCE_RULES_FILE)
+mkdirSync(join(loopsPeakProject.ws, 'docs', 'graph'), { recursive: true })
+const loopsPeak = runScenario('loops-peak', 'glm-5.3', [
+  { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } }, line: '/wish' },
+  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 62', timeout: 120000 } } },
+  { tool: { name: 'DeferredToolCall', arguments: { name: SHIFT_TOOL, input: { at: '2026-10-28T10:05:00.000Z' } } } },
+  { tool: { name: 'DeferredToolCall', arguments: { name: 'probe_dispatch', input: { task: 'T1', prompt: 'Probe task T1: wait for the peak to end, then report.', cwd: loopsPeakProject.ws, scope: 'allowed', model: 'deepseek-probe' } } } },
+  { text: 'Waiting for the peak to end.' },
+  { text: 'done', status: true },
+], 'Become the main agent, read package.json, wait, shift the clock past the peak, dispatch a waiting task, then reply done when the board tells you the peak ended.', [...RULES_ROW, ...LOOPS_ROW, ...SESSIONS_ROW, ...clockRow(PEAK_AT, SHIFT_TOOL), ...dispatchRow(join(runDir, 'loops-peak', 'dispatch.jsonl')), ...designRows({ record: slash(join(runDir, 'loops-peak', 'design.jsonl')) })], loopsPeakProject.ws, [[
+  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 30' } } },
+  { tool: { name: 'structured_output', arguments: { summary: 'waited out the peak', files: [] } } },
+  { text: 'child done' },
+]])
+const loopNotices = step => (step?.messages ?? []).filter(message => message.role === 'user' && message.source === LOOP_NOTICE_SOURCE)
+const loopsPeakNoticeSteps = loopsPeak.steps.filter(step => loopNotices(step).length > 0)
+const loopsPeakRuns = () => jsonl(join(loopsPeakProject.ws, '.llm', 'loops', 'runs.jsonl'))
+const loopsPeakRestart = runScenario('loops-peak-restart', 'glm-5.3', [
+  { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } } },
+  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 62', timeout: 120000 } } },
+  { tool: { name: 'DeferredToolCall', arguments: { name: SHIFT_TOOL, input: { at: '2026-10-28T10:00:30.000Z' } } } },
+  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 62', timeout: 120000 } } },
+  { text: 'done', status: true },
+], 'Read package.json, wait, shift the clock past the peak, wait again, then reply done.', [...RULES_ROW, ...LOOPS_ROW, ...SESSIONS_ROW, ...clockRow('2026-10-28T09:55:00.000Z', SHIFT_TOOL)], loopsPeakProject.ws)
+const loopsPeakRestartNoticeSteps = loopsPeakRestart.steps.filter(step => loopNotices(step).length > 0)
 
 // The headless runner exits at the first quiescent idle of its own agent: an
 // armed goal created in the task turn gets no round before exit (the reason
@@ -938,6 +1187,78 @@ const rulesHealth = healthOf(rulesPeak)
 // The orchestration package alone has no /glm-status; its table is /hourness-status.
 const aloneHealth = tableOf(rulesPeakAlone.steps[1]?.command?.text ?? '')
 const aloneState = rulesPeakAlone.steps[0]?.peakMode?.state
+// The gate scenarios: what each run journaled in its project directory, what its steps saw, and whether the board's file is as it was.
+const gateRecords = name => jsonl(join(runDir, name, 'home', 'audit', 'violations.jsonl'))
+const glmRulesRecords = gateRecords('glm-rules')
+const nonGlmRulesRecords = gateRecords('non-glm-rules')
+const glmRulesHealth = healthOf(glmRules)
+const nonGlmRulesHealth = healthOf(nonGlmRules)
+// The board's reminders in one request (the session keeps them, so a request has every one sent so far), and the same for a scenario's requests in order.
+const boardTexts = step => (step?.messages ?? []).filter(message => message.source === 'hourness-rules').map(message => message.text)
+// The waiting-ticket scenarios: the tickets the board kept, what it journaled, and the wake messages the requests carried.
+const readStateOf = (project) => { const file = join(project.ws, '.llm', 'rules', 'state.json'); return existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : undefined }
+const journalOfProject = project => jsonl(join(project.ws, '.llm', 'rules', 'journal.jsonl'))
+const wakeMessages = step => (step?.messages ?? []).filter(message => message.source === 'hourness-rules-wake')
+const queueState = readStateOf(queueProject)
+const queueRecords = gateRecords('rules-queue')
+const queueJournal = journalOfProject(queueProject)
+const handoverState = readStateOf(handoverProject)
+const handoverNotes = dispatchRecord('rules-handover')
+const handoverStarted = handoverNotes.find(entry => entry.kind === 'started')
+const handoverChild = bySession(rulesHandover, handoverStarted?.childId)
+const handoverMain = bySession(rulesHandover, handoverStarted?.parentId)
+const handoverJournal = journalOfProject(handoverProject)
+const handoverTicket = handoverState?.tickets?.['q-1']
+const QUEUE_REFUSAL = /^Error: You tried to run "Write-Output rules-probe-queued"\.\nBoundary: Deferred as ticket q-1\. Rule r-probe-queue "Probe word, deferred" \(set by the human at [^)]+, until lifted\) defers it while glm-peak is on\.\nRight path: The call did not run\. Continue with other planned work; the harness sends you a message when q-1 clears, then run the same call again\. Running it again before that returns this message and does not queue it twice\.\nException: The human can let it through once \(\/rules let q-1\), or change the rule\.$/
+const queueWake = /^\[rules board\] Ticket q-1 cleared: rule r-probe-queue was lifted by the human\. You may run the deferred call again: pwsh "Write-Output rules-probe-queued"\.$/
+const consecutiveDiffer = texts => texts.every((text, index) => index === 0 || text !== texts[index - 1])
+const rulesRecordOf = (records, rule) => records.find(record => record.rule === rule)
+const stateWritten = existsSync(nonGlmRulesState) && readFileSync(nonGlmRulesState, 'utf8') === '{}\n'
+// The loop board scenario: what the board wrote in the project's .llm/loops/, what it left to git, and what the run journaled.
+const loopsRuntime = join(loopsBoard.ws, '.llm', 'loops')
+const readJsonOf = file => existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : undefined
+const loopsJournal = jsonl(join(loopsRuntime, 'journal.jsonl'))
+const loopsJournalText = existsSync(join(loopsRuntime, 'journal.jsonl')) ? readFileSync(join(loopsRuntime, 'journal.jsonl'), 'utf8') : ''
+const loopsView = readJsonOf(join(loopsRuntime, 'view.json'))
+const loopsWritten = readJsonOf(join(loopsRuntime, 'repo-written.json'))
+const loopsIgnore = existsSync(join(loopsRuntime, '.gitignore')) ? readFileSync(join(loopsRuntime, '.gitignore'), 'utf8') : ''
+const loopsExclude = existsSync(join(loopsBoard.ws, '.git', 'info', 'exclude')) ? readFileSync(join(loopsBoard.ws, '.git', 'info', 'exclude'), 'utf8') : ''
+const loopsGitStatus = spawnSync('git', ['status', '--porcelain'], { cwd: loopsBoard.ws, encoding: 'utf8' }).stdout ?? 'git status failed'
+const loopsRecords = gateRecords('loops')
+const loopsHealth = healthOf(loops)
+const loopsViewEntry = (loopsView?.entries ?? []).find(entry => entry.id === LOOPS_ENTRY_ID)
+const loopsAdopted = loopsJournal.filter(record => record.op === 'adopt' && record.id === LOOPS_ENTRY_ID)
+// A headless host has no session controller, so the board hands out no service and runs no entry (loops design 6.1, 11.1): nothing of the runtime is written.
+const loopsRanNothing = ['runner.lock', 'handover.json', 'events.jsonl', 'runs.jsonl', 'state.json'].filter(name => existsSync(join(loopsRuntime, name)))
+const LOOPS_DENIAL = new RegExp(`^Error: You tried to write "[^"]+"\\.\\nBoundary: Rule loops:files-only blocks writes under the loop board's files [^\\n]+\\nRight path: .+\\nException: `)
+// rules-peak: what the board told the main agent, at the wall clock of this machine (the model-facing lines write HH:MM in it).
+const localHm = iso => new Date(iso).toLocaleString('sv-SE').slice(11, 16)
+const PEAK_END_HM = localHm(PEAK_END)
+const peakTexts = boardTexts(rulesPeak.steps[1])
+const peakShown = lastToolResult(rulesPeak.steps[3])
+const REDUCE_LINE = `<system-reminder>\nGLM peak: now until ${PEAK_END_HM}. Peak mode: reduce (the default; the human can change it). Run at most 1 GLM subagent at a time until ${PEAK_END_HM}. Move optional work that spends many GLM credits (calibration runs, ablations, large reviews) to after ${PEAK_END_HM}, including work you dispatch; keep necessary work going.\n</system-reminder>`
+const STOP_LINE_START = `<system-reminder>\nGLM peak: now until ${PEAK_END_HM}. Peak mode set by the human: stop. `
+const peakSentences = PEAK_REMINDER_TEXT.split(/(?<=[.:])\s+/).filter(sentence => sentence.length > 20)
+// rules-peak-stop and -exit: the subagent's requests, what the dispatch row saw of its goal, and the ticket the board kept.
+const stopNotes = dispatchRecord('rules-peak-stop')
+const stopCreated = stopNotes.find(entry => entry.kind === 'stop-created')
+const stopChild = bySession(rulesPeakStop, stopCreated?.agentId)
+const stopPlainId = stopNotes.find(entry => entry.kind === 'stop-plain')?.agentId
+const stopPlain = bySession(rulesPeakStop, stopPlainId)
+const stopMain = rulesPeakStop.steps.filter(step => step.sessionId !== stopCreated?.agentId && step.sessionId !== stopPlainId)
+const stopState = readStateOf(stopProject)
+const stopJournal = journalOfProject(stopProject)
+const stopOps = stopNotes.filter(entry => entry.kind === 'goal-changed' && entry.agentId === stopCreated?.agentId)
+const stopNote = kind => stopNotes.find(entry => entry.kind === kind)
+const STOP_REFUSAL = /^Error: You tried to run "Write-Output rules-probe-stop"\.\nBoundary: Deferred as ticket q-1\. GLM peak hours now until \d\d:\d\d, and the human chose "stop" for peak hours: GLM subagents do no work until then\. Your goal is paused\.\nRight path: The call did not run\. Stop and report ticket q-1 and where you stopped in your handoff; the agent that dispatched you is told at \d\d:\d\d and can dispatch the work again\. Other tool calls before then return this message\.\nException: The human can let this session work through this peak \(\/rules let q-1\), or change the peak mode \(\/rules peak\)\.$/
+const STOP_WAKE = /^\[rules board\] Ticket q-1 cleared: GLM peak hours are over \(or the human changed the peak mode\)\. Your goal is resumed\. Continue your work from where you stopped; the call that was deferred was pwsh "Write-Output rules-probe-stop"\.$/
+const stopExitNotes = dispatchRecord('rules-peak-stop-exit')
+const stopExitState = readStateOf(stopExitProject)
+const stopExitJournal = journalOfProject(stopExitProject)
+const stopExitOps = stopExitNotes.filter(entry => entry.kind === 'goal-changed').map(entry => entry.operation)
+// A row that unloaded took its heartbeat file with it; a runner that left without unloading it left the file.
+const stopExitHosts = join(stopExitProject.ws, '.llm', 'rules', 'hosts')
+const stopExitUnloaded = !existsSync(stopExitHosts) || readdirSync(stopExitHosts).length === 0
 const conversationTexts = [glm, plain, compacted, shadow].flatMap(scenario => scenario.steps.flatMap(step => [step.system, ...step.messages.map(message => message.text)]))
 
 // The single-package runs: a package with no row loaded is one line whose
@@ -1171,20 +1492,70 @@ const checks = [
   ['goal (c): with the evidence present the gate allows complete in round 2; the goal ends complete and disarmed after 2 rounds', goalGates.length === 2 && goalGates[1].decision === 'allow' && goalCompleted?.isError !== true && goalCompleted?.text.includes('"phase":"complete"') === true && goalFinal?.goal?.phase === 'complete' && goalFinal.goal.roundsStarted === 2 && goalFinal.goal.activation === 'disarmed' && goalRunResult?.text.includes('"phase":"complete"') === true, JSON.stringify(goalFinal ?? null).slice(0, 160)],
   ['goal (headless): the one-shot runner exits at its agent\'s first quiescent idle, so an armed goal created in the task turn gets no round', headlessCreated?.isError !== true && headlessCreated?.text.includes('"activation":"armed"') === true && headlessGoal.steps.length === 2 && headlessGoal.steps.every(step => roundMessages(step).length === 0), `exit ${headlessGoal.status}, ${headlessGoal.steps.length} step(s); ${(headlessCreated?.text ?? 'no tool result').slice(0, 80)}`],
   ['rules: the row ships disabled: without the overlay /glm-status lists it as not loaded', glmHealth.rules?.status === '未加载' && plainHealth.rules?.status === '未加载', `${healthLine(glmHealth, 'rules')}; ${healthLine(plainHealth, 'rules')}`],
-  ['rules-peak: the row, enabled by the overlay in a scratch git workspace, boots on the GLM route, runs the three scripted steps and exits clean with nothing from it on stderr', rulesGlm.ready && rulesPeak.status === 0 && rulesPeak.steps.length === 3 && !rulesStderr.includes('dsh-glm-hourness/rules'), `exit ${rulesPeak.status}, ${rulesPeak.steps.length} step(s), git ${rulesGlm.ready}; ${rulesStderr.split('\n').find(line => line.includes('rules')) ?? 'no stderr line mentions rules'}`],
-  ['rules-peak: without a choice the project is at the factory level reduce: the command says so, and in the peak the service gives the cap of one GLM subagent and the hold until 18:00', rulesPeak.steps[0]?.command?.kind === 'success' && rulesPeak.steps[0].command.text.startsWith(`高峰模式：少做（出厂默认）。现在是高峰，到 ${clockText(PEAK_END, rulesPeak.steps[0].clock)}。`) && isDeepStrictEqual(rulesPeak.steps[0].peakMode, { state: { level: 'reduce', origin: 'default', peak: true, until: PEAK_END, glmWorkerCap: 1 }, hold: { level: 'reduce', until: PEAK_END } }), JSON.stringify(rulesPeak.steps[0]?.peakMode ?? null)],
-  ['rules-peak: /rules peak 不做 as the person: the reply names the level, the service gives the person\'s choice with no cap and the hold of the stop level', rulesPeak.steps[1]?.command?.kind === 'success' && rulesPeak.steps[1].command.text.startsWith('高峰模式改成了「不做」') && rulesPeak.steps[1].peakMode?.state?.level === 'stop' && rulesPeak.steps[1].peakMode.state.origin === 'human' && rulesPeak.steps[1].peakMode.state.peak === true && rulesPeak.steps[1].peakMode.state.glmWorkerCap === undefined && isDeepStrictEqual(rulesPeak.steps[1].peakMode.hold, { level: 'stop', until: PEAK_END }), JSON.stringify(rulesPeak.steps[1]?.peakMode ?? null)],
-  ['rules-peak: /rules peak 无影响 leaves no cap and no hold', rulesPeak.steps[2]?.command?.kind === 'success' && rulesPeak.steps[2].peakMode?.state?.level === 'inform' && rulesPeak.steps[2].peakMode.state.peak === true && rulesPeak.steps[2].peakMode.state.glmWorkerCap === undefined && rulesPeak.steps[2].peakMode.hold === null, JSON.stringify(rulesPeak.steps[2]?.peakMode ?? null)],
-  ['rules-peak: the main agent is held on no level: its Read ran under the factory level and again under 不做 in the peak', [1, 2].every(index => { const result = lastToolResult(rulesPeak.steps[index]); return result !== undefined && result.isError !== true }), [1, 2].map(index => lastToolResult(rulesPeak.steps[index])?.text?.slice(0, 40) ?? 'no result').join(' | ')],
+  ['rules-peak: the row, enabled by the overlay in a scratch git workspace, boots on the GLM route, runs the five scripted steps and exits clean with nothing from it on stderr', rulesGlm.ready && rulesPeak.status === 0 && rulesPeak.steps.length === 5 && !rulesStderr.includes('dsh-glm-hourness/rules'), `exit ${rulesPeak.status}, ${rulesPeak.steps.length} step(s), git ${rulesGlm.ready}; ${rulesStderr.split('\n').find(line => line.includes('rules')) ?? 'no stderr line mentions rules'}`],
+  ['rules-peak: without a choice the project is at the factory level reduce: the command says so, and in the peak the service gives the cap of one GLM subagent and the hold until 18:00', rulesPeak.steps[1]?.command?.kind === 'success' && rulesPeak.steps[1].command.text.startsWith(`高峰模式：少做（出厂默认）。现在是高峰，到 ${clockText(PEAK_END, rulesPeak.steps[1].clock)}。`) && isDeepStrictEqual(rulesPeak.steps[1].peakMode, { state: { level: 'reduce', origin: 'default', peak: true, until: PEAK_END, glmWorkerCap: 1 }, hold: { level: 'reduce', until: PEAK_END } }), JSON.stringify(rulesPeak.steps[1]?.peakMode ?? null)],
+  ['rules-peak: /rules peak 不做 as the person: the reply names the level, the service gives the person\'s choice with no cap and the hold of the stop level', rulesPeak.steps[3]?.command?.kind === 'success' && rulesPeak.steps[3].command.text.startsWith('高峰模式改成了「不做」') && rulesPeak.steps[3].peakMode?.state?.level === 'stop' && rulesPeak.steps[3].peakMode.state.origin === 'human' && rulesPeak.steps[3].peakMode.state.peak === true && rulesPeak.steps[3].peakMode.state.glmWorkerCap === undefined && isDeepStrictEqual(rulesPeak.steps[3].peakMode.hold, { level: 'stop', until: PEAK_END }), JSON.stringify(rulesPeak.steps[3]?.peakMode ?? null)],
+  ['rules-peak: /rules peak 无影响 leaves no cap and no hold', rulesPeak.steps[4]?.command?.kind === 'success' && rulesPeak.steps[4].peakMode?.state?.level === 'inform' && rulesPeak.steps[4].peakMode.state.peak === true && rulesPeak.steps[4].peakMode.state.glmWorkerCap === undefined && rulesPeak.steps[4].peakMode.hold === null, JSON.stringify(rulesPeak.steps[4]?.peakMode ?? null)],
+  ['rules-peak: the main agent is held on no level: its Read ran under the factory level and again under 不做 in the peak', [2, 4].every(index => { const result = lastToolResult(rulesPeak.steps[index]); return result !== undefined && result.isError !== true }), [2, 4].map(index => lastToolResult(rulesPeak.steps[index])?.text?.slice(0, 40) ?? 'no result').join(' | ')],
   ['rules-peak: the choice is in the repository file and in the project\'s journal (two person\'s writes), and nothing is written in the scenario\'s user-level directory', rulesFile?.peakMode?.level === 'inform' && isDeepStrictEqual(rulesRecords.map(record => [record.op, record.actor, record.from, record.to]), [['peak-mode-set', 'human', 'reduce', 'stop'], ['peak-mode-set', 'human', 'stop', 'inform']]) && !existsSync(join(runDir, 'rules-peak', 'dsh-home', 'glm-hourness', 'rules')), `${JSON.stringify(rulesFile ?? null)}; ${rulesRecords.length} record(s)`],
   ['rules-peak: /glm-status lists the rules row in effect with the level in force at that step and the clock', rulesHealth.rules?.status === ACTED && rulesHealth.rules.package === 'dsh-hourness' && rulesHealth.rules.reason.includes('高峰模式 不做（你选的）；现在是高峰') && grouped(rulesHealth), healthLine(rulesHealth, 'rules') + ` (${rulesHealth.rules?.reason ?? ''})`],
-  ['rules-peak: the first GLM request carries exactly one peak reminder, worded by the factory level with the cap of one GLM subagent, and the two level changes leave that one notice as it was', REDUCE_NOTICE.includes('at most 1 GLM subagent') && rulesPeak.steps.length === 3 && rulesPeak.steps.every(step => peakNotices(step).length === 1 && peakNotices(step)[0].text === REDUCE_NOTICE), `${rulesPeak.steps.map(step => peakNotices(step).length).join('/')} notice(s): ${(peakNotices(rulesPeak.steps[0])[0]?.text ?? '').slice(0, 100).replace(/\n/g, ' ')}`],
-  ['rules-peak-stop: with the level set to 不做 by the person before the run, the row boots on the GLM route, runs both scripted steps and exits clean with nothing from the packages on stderr', rulesStopProject.ready && rulesStopSet?.ok === true && rulesPeakStop.status === 0 && rulesPeakStop.steps.length === 2 && quiet('rules-peak-stop'), `exit ${rulesPeakStop.status}, ${rulesPeakStop.steps.length} step(s), git ${rulesStopProject.ready}, write ${rulesStopSet?.ok === true ? 'ok' : JSON.stringify(rulesStopSet ?? null)}`],
-  ['rules-peak-stop: at the first request the service gives the person\'s stop in the peak, with no cap and the hold of the stop level', rulesPeakStop.steps[0]?.peakMode?.state?.level === 'stop' && rulesPeakStop.steps[0].peakMode.state.origin === 'human' && rulesPeakStop.steps[0].peakMode.state.peak === true && rulesPeakStop.steps[0].peakMode.state.glmWorkerCap === undefined && isDeepStrictEqual(rulesPeakStop.steps[0].peakMode.hold, { level: 'stop', until: PEAK_END }), JSON.stringify(rulesPeakStop.steps[0]?.peakMode ?? null)],
-  ['rules-peak-stop: the first GLM request carries exactly one peak reminder with the stop text, and the next request carries that one again', rulesPeakStop.steps.length === 2 && rulesPeakStop.steps.every(step => peakNotices(step).length === 1 && peakNotices(step)[0].text === STOP_NOTICE), `${rulesPeakStop.steps.map(step => peakNotices(step).length).join('/')} notice(s): ${(peakNotices(rulesPeakStop.steps[0])[0]?.text ?? '').slice(0, 100).replace(/\n/g, ' ')}`],
-  ['rules-peak-stop: the stop text says the main agent is not held, and has none of the words that would tell it to stop, wait or hold its answers', STOP_NOTICE.includes('The main agent is not held on any level: it keeps answering the human and working.') && STOP_NOTICE.endsWith('Do not switch models or plans unless the user asks.\n</system-reminder>') && FORBIDDEN_REMINDER_WORDS.every(word => !STOP_NOTICE.includes(word) && !REDUCE_NOTICE.includes(word)), FORBIDDEN_REMINDER_WORDS.filter(word => STOP_NOTICE.includes(word) || REDUCE_NOTICE.includes(word)).join(', ') || 'none present'],
-  ['rules-peak-stop: the main agent is held on no level: its Read ran under 不做 in the peak and the reply was produced', lastToolResult(rulesPeakStop.steps[1]) !== undefined && lastToolResult(rulesPeakStop.steps[1]).isError !== true && rulesPeakStop.status === 0, lastToolResult(rulesPeakStop.steps[1])?.text?.slice(0, 40) ?? 'no result'],
+  ['rules-peak: rules_show at the shifted clock lists the default rule with the end of the peak, and the peak line', peakShown?.isError !== true && peakShown?.text.includes('builtin:glm-peak-pricing') === true && peakShown.text.includes(`GLM peak hours until ${PEAK_END_HM}`) && peakShown.text.includes('GLM peak: now'), (peakShown?.text ?? 'no result').slice(0, 300)],
+  ['rules-peak: the GLM package\'s reminder is in every request exactly once, and the board\'s reminder neither repeats its sentences nor says keep working or postpone', rulesPeak.steps.every(step => peakNotices(step).length === 1) && peakTexts.length === 1 && peakSentences.every(sentence => !peakTexts[0].includes(sentence)) && !/keep working|postpone|charged at the full credit rate/i.test(peakTexts[0] ?? ''), `${rulesPeak.steps.map(step => peakNotices(step).length).join(', ')} | ${peakTexts.join(' // ')}`],
+  ['rules-peak: the main agent\'s first request after /wish starts the board\'s reminder with the peak line of the factory level: reduce, the default, one GLM subagent', peakTexts[0] === REDUCE_LINE, JSON.stringify(peakTexts)],
+  ['rules-peak: the line is said once while nothing changes, and again with the new level after 不做', rulesPeak.steps.slice(1, 4).every(step => boardTexts(step).length === 1) && boardTexts(rulesPeak.steps[4]).length === 2 && boardTexts(rulesPeak.steps[4])[1].startsWith(STOP_LINE_START), rulesPeak.steps.map(step => boardTexts(step).length).join(', ')],
+  ['rules-peak: the first GLM request carries exactly one peak reminder, worded by the factory level with the cap of one GLM subagent, and the two level changes leave that one notice as it was', REDUCE_NOTICE.includes('at most 1 GLM subagent') && rulesPeak.steps.length === 5 && rulesPeak.steps.every(step => peakNotices(step).length === 1 && peakNotices(step)[0].text === REDUCE_NOTICE), `${rulesPeak.steps.map(step => peakNotices(step).length).join('/')} notice(s): ${(peakNotices(rulesPeak.steps[0])[0]?.text ?? '').slice(0, 100).replace(/\n/g, ' ')}`],
+  ['rules-stop-notice: with the level set to 不做 by the person before the run, the row boots on the GLM route, runs both scripted steps and exits clean with nothing from the packages on stderr', rulesStopNoticeProject.ready && rulesStopNoticeSet?.ok === true && rulesStopNotice.status === 0 && rulesStopNotice.steps.length === 2 && quiet('rules-stop-notice'), `exit ${rulesStopNotice.status}, ${rulesStopNotice.steps.length} step(s), git ${rulesStopNoticeProject.ready}, write ${rulesStopNoticeSet?.ok === true ? 'ok' : JSON.stringify(rulesStopNoticeSet ?? null)}`],
+  ['rules-stop-notice: at the first request the service gives the person\'s stop in the peak, with no cap and the hold of the stop level', rulesStopNotice.steps[0]?.peakMode?.state?.level === 'stop' && rulesStopNotice.steps[0].peakMode.state.origin === 'human' && rulesStopNotice.steps[0].peakMode.state.peak === true && rulesStopNotice.steps[0].peakMode.state.glmWorkerCap === undefined && isDeepStrictEqual(rulesStopNotice.steps[0].peakMode.hold, { level: 'stop', until: PEAK_END }), JSON.stringify(rulesStopNotice.steps[0]?.peakMode ?? null)],
+  ['rules-stop-notice: the first GLM request carries exactly one peak reminder with the stop text, and the next request carries that one again', rulesStopNotice.steps.length === 2 && rulesStopNotice.steps.every(step => peakNotices(step).length === 1 && peakNotices(step)[0].text === STOP_NOTICE), `${rulesStopNotice.steps.map(step => peakNotices(step).length).join('/')} notice(s): ${(peakNotices(rulesStopNotice.steps[0])[0]?.text ?? '').slice(0, 100).replace(/\n/g, ' ')}`],
+  ['rules-stop-notice: the stop text says the main agent is not held, and has none of the words that would tell it to stop, wait or hold its answers', STOP_NOTICE.includes('The main agent is not held on any level: it keeps answering the human and working.') && STOP_NOTICE.endsWith('Do not switch models or plans unless the user asks.\n</system-reminder>') && FORBIDDEN_REMINDER_WORDS.every(word => !STOP_NOTICE.includes(word) && !REDUCE_NOTICE.includes(word)), FORBIDDEN_REMINDER_WORDS.filter(word => STOP_NOTICE.includes(word) || REDUCE_NOTICE.includes(word)).join(', ') || 'none present'],
+  ['rules-stop-notice: the main agent is held on no level: its Read ran under 不做 in the peak and the reply was produced', lastToolResult(rulesStopNotice.steps[1]) !== undefined && lastToolResult(rulesStopNotice.steps[1]).isError !== true && rulesStopNotice.status === 0, lastToolResult(rulesStopNotice.steps[1])?.text?.slice(0, 40) ?? 'no result'],
   ['rules-peak-hourness: with only the orchestration package there is no pricing service: the person\'s choice is kept, no peak is known, there is no cap and no hold, and the command says why', rulesPeakAlone.status === 0 && aloneState !== undefined && aloneState !== null && aloneState.level === 'stop' && aloneState.origin === 'human' && !('peak' in aloneState) && !('glmWorkerCap' in aloneState) && !('until' in aloneState) && rulesPeakAlone.steps[0].peakMode.hold === null && rulesPeakAlone.steps[0].command?.text.includes('读不到是不是高峰（没有计价服务（GLM 通道包未装，或它的 glm-login 行未启用））') === true, JSON.stringify(rulesPeakAlone.steps[0]?.peakMode ?? null)],
+  ['glm-rules: the row boots on the GLM route with the rules file of the clone, runs its four steps and exits clean with nothing from it on stderr', glmRulesProject.ready && glmRules.status === 0 && glmRules.steps.length === 4 && !stderrOf('glm-rules').includes('dsh-glm-hourness/rules'), `exit ${glmRules.status}, ${glmRules.steps.length} step(s), git ${glmRulesProject.ready}; ${stderrOf('glm-rules').split('\n').find(line => line.includes('rules')) ?? 'no stderr line mentions rules'}`],
+  ['glm-rules: the command the block rule names is refused with the rule\'s four-part text, so it never ran', lastToolResult(glmRules.steps[1])?.isError === true && /^Error: You tried to run "Write-Output rules-probe-blocked"\.\nBoundary: Rule r-probe-block "Probe word" \(set by the human at [^)]+, until lifted\) blocks it now\.\nRight path: .+\nException: /.test(lastToolResult(glmRules.steps[1])?.text ?? ''), lastToolResult(glmRules.steps[1])?.text?.slice(0, 160) ?? 'no result'],
+  ['glm-rules: that refusal is in the violation journal as rules:r-probe-block, enforced, on the dialect route', rulesRecordOf(glmRulesRecords, 'rules:r-probe-block')?.mode === 'enforce' && rulesRecordOf(glmRulesRecords, 'rules:r-probe-block').effect === 'block' && rulesRecordOf(glmRulesRecords, 'rules:r-probe-block').scope === 'dialect' && rulesRecordOf(glmRulesRecords, 'rules:r-probe-block').tool === 'Bash', JSON.stringify(rulesRecordOf(glmRulesRecords, 'rules:r-probe-block') ?? null).slice(0, 200)],
+  ['glm-rules: a file tool writing into the rules directory is refused by rules:files-only, the file is as it was and the refusal is journaled', lastToolResult(glmRules.steps[2])?.isError === true && (lastToolResult(glmRules.steps[2])?.text ?? '').includes('Rule rules:files-only') && readFileSync(glmRulesProject.rulesFile, 'utf8') === GATE_RULES_FILE && rulesRecordOf(glmRulesRecords, 'rules:files-only')?.mode === 'enforce', lastToolResult(glmRules.steps[2])?.text?.slice(0, 160) ?? 'no result'],
+  ['glm-rules: a command no rule names runs', lastToolResult(glmRules.steps[3])?.isError !== true && (lastToolResult(glmRules.steps[3])?.text ?? '').includes('rules-probe-allowed'), lastToolResult(glmRules.steps[3])?.text?.slice(0, 80) ?? 'no result'],
+  ['glm-rules: the first request carries the board\'s reminder of the rule that only informs, no request carries another (nothing changed), and the system prompt declares the rules board in the guard section', glmRules.steps.every(step => boardTexts(step).length === 1) && boardTexts(glmRules.steps[0])[0]?.includes('[inform, not checked] r-probe-note: "Probe note" (set by the human)') === true && !boardTexts(glmRules.steps[0])[0].includes('r-probe-block') && glmRules.steps.every(step => step.system.includes(RULES_DECLARATION)), `${glmRules.steps.map(step => boardTexts(step).length).join(', ')} board message(s) per request; declared ${glmRules.steps.filter(step => step.system.includes(RULES_DECLARATION)).length}/${glmRules.steps.length}`],
+  ['glm-rules: /glm-status lists the rules row in effect with the rules of the person counted, and nothing is written in the scenario\'s user-level directory', glmRulesHealth.rules?.status === ACTED && glmRulesHealth.rules.reason.includes('2 条你设的规则生效') && !existsSync(join(runDir, 'glm-rules', 'dsh-home', 'glm-hourness', 'rules')), healthLine(glmRulesHealth, 'rules') + ` (${glmRulesHealth.rules?.reason ?? ''})`],
+  ['non-glm-rules: the row boots on the non-GLM route with the rules file of the clone, runs its five steps and exits clean with nothing from it on stderr', nonGlmRulesProject.ready && nonGlmRules.status === 0 && nonGlmRules.steps.length === 5 && !stderrOf('non-glm-rules').includes('dsh-glm-hourness/rules'), `exit ${nonGlmRules.status}, ${nonGlmRules.steps.length} step(s), git ${nonGlmRulesProject.ready}; ${stderrOf('non-glm-rules').split('\n').find(line => line.includes('rules')) ?? 'no stderr line mentions rules'}`],
+  ['non-glm-rules: the blocked command is refused and journaled as rules:r-probe-block on a route the dialect did not claim', lastToolResult(nonGlmRules.steps[1])?.isError === true && (lastToolResult(nonGlmRules.steps[1])?.text ?? '').includes('Rule r-probe-block "Probe word"') && rulesRecordOf(nonGlmRulesRecords, 'rules:r-probe-block')?.scope === 'other' && rulesRecordOf(nonGlmRulesRecords, 'rules:r-probe-block').tool === 'pwsh', lastToolResult(nonGlmRules.steps[1])?.text?.slice(0, 160) ?? 'no result'],
+  ['non-glm-rules: a file tool writing into the project\'s .llm/rules/ is refused by rules:files-only and nothing is written', lastToolResult(nonGlmRules.steps[2])?.isError === true && (lastToolResult(nonGlmRules.steps[2])?.text ?? '').includes('Rule rules:files-only') && !stateWritten && rulesRecordOf(nonGlmRulesRecords, 'rules:files-only')?.scope === 'other', lastToolResult(nonGlmRules.steps[2])?.text?.slice(0, 160) ?? 'no result'],
+  ['non-glm-rules: rules_show, in the real runtime, lists the rules in force for the caller, the signals and the peak mode', lastToolResult(nonGlmRules.steps[3])?.isError !== true && /^Rules board of ws\./.test(lastToolResult(nonGlmRules.steps[3])?.text ?? '') && /\] r-probe-block: /.test(lastToolResult(nonGlmRules.steps[3])?.text ?? '') && /\] r-probe-note: /.test(lastToolResult(nonGlmRules.steps[3])?.text ?? '') && (lastToolResult(nonGlmRules.steps[3])?.text ?? '').includes('Peak mode:'), lastToolResult(nonGlmRules.steps[3])?.text?.slice(0, 200) ?? 'no result'],
+  ['non-glm-rules: a command no rule names runs, every request carries the one reminder of the rule that only informs, and /glm-status lists the row in effect', lastToolResult(nonGlmRules.steps[4])?.isError !== true && (lastToolResult(nonGlmRules.steps[4])?.text ?? '').includes('rules-probe-allowed') && nonGlmRules.steps.every(step => boardTexts(step).length === 1) && boardTexts(nonGlmRules.steps[0])[0]?.includes('r-probe-note') === true && nonGlmRulesHealth.rules?.status === ACTED && !existsSync(join(runDir, 'non-glm-rules', 'dsh-home', 'glm-hourness', 'rules')), healthLine(nonGlmRulesHealth, 'rules') + ` (${nonGlmRulesHealth.rules?.reason ?? ''})`],
+  ['rules-queue: the row boots on the GLM route at the peak clock with a queue rule in the clone\'s rules file, runs its five steps and exits clean with nothing from it on stderr', queueProject.ready && rulesQueue.status === 0 && rulesQueue.steps.length === 5 && !stderrOf('rules-queue').includes('dsh-glm-hourness/rules'), `exit ${rulesQueue.status}, ${rulesQueue.steps.length} step(s), git ${queueProject.ready}; ${stderrOf('rules-queue').split('\n').find(line => line.includes('rules')) ?? 'no stderr line mentions rules'}`],
+  ['rules-queue: the call the rule names is refused with the ticket number and the four parts, so it never ran; the same call again gets the same text under the same ticket', QUEUE_REFUSAL.test(lastToolResult(rulesQueue.steps[1])?.text ?? '') && lastToolResult(rulesQueue.steps[2])?.text === lastToolResult(rulesQueue.steps[1])?.text && lastToolResult(rulesQueue.steps[1]).isError === true, lastToolResult(rulesQueue.steps[1])?.text?.slice(0, 200) ?? 'no result'],
+  ['rules-queue: the board kept one ticket, journaled both refusals as queue lines naming it, and opened it as the harness', isDeepStrictEqual(Object.keys(queueState?.tickets ?? {}), ['q-1']) && queueState.tickets['q-1'].tool === 'pwsh' && queueState.tickets['q-1'].rules.join() === 'r-probe-queue' && queueRecords.filter(record => record.rule === 'rules:r-probe-queue' && record.effect === 'queue' && record.mode === 'enforce' && record.ticket === 'q-1').length === 2 && queueJournal.find(record => record.op === 'ticket-open')?.actor === 'harness', JSON.stringify(queueState?.tickets ?? null).slice(0, 200)],
+  ['rules-queue: the person lifts the rule through the real /rules handler mid-step, and the session is told once: the next request carries the wake message and the one before did not', rulesQueue.steps[2]?.command?.kind === 'success' && wakeMessages(rulesQueue.steps[2]).length === 0 && wakeMessages(rulesQueue.steps[3]).length === 1 && queueWake.test(wakeMessages(rulesQueue.steps[3])[0].text) && wakeMessages(rulesQueue.steps.at(-1)).length === 1, wakeMessages(rulesQueue.steps[3])[0]?.text ?? `no wake in request 4; command: ${JSON.stringify(rulesQueue.steps[2]?.command ?? null).slice(0, 120)}`],
+  ['rules-queue: the call again runs, and the ticket it waited on is done', lastToolResult(rulesQueue.steps[4])?.isError !== true && (lastToolResult(rulesQueue.steps[4])?.text ?? '').includes('rules-probe-queued') && queueState?.tickets?.['q-1']?.state === 'done', `${lastToolResult(rulesQueue.steps[4])?.text?.slice(0, 80) ?? 'no result'}; ticket ${queueState?.tickets?.['q-1']?.state ?? 'missing'}`],
+  ['rules-queue: the request carries the reminder exactly when something changed: the rule that informs, then with the open ticket, then with it cleared, then the rule alone again', isDeepStrictEqual(rulesQueue.steps.map(step => boardTexts(step).length), [1, 2, 2, 3, 4]) && consecutiveDiffer(boardTexts(rulesQueue.steps.at(-1))) && boardTexts(rulesQueue.steps.at(-1))[1].includes('Your open tickets: q-1 pwsh "Write-Output rules-probe-queued" (deferred since') && boardTexts(rulesQueue.steps.at(-1))[2].includes('(cleared at') && boardTexts(rulesQueue.steps.at(-1))[3] === boardTexts(rulesQueue.steps.at(-1))[0], rulesQueue.steps.map(step => boardTexts(step).length).join(', ')],
+  ['rules-queue: nothing is written in the scenario\'s user-level directory', !existsSync(join(runDir, 'rules-queue', 'dsh-home', 'glm-hourness', 'rules')), ''],
+  ['rules-handover: a one-off subagent makes the call the rule names, is refused with the ticket and the text for a subagent, hands back and ends', handoverProject.ready && rulesHandover.status === 0 && handoverStarted !== undefined && handoverMain.length === 6 && handoverChild.length === 2 && lastToolResult(handoverChild[1])?.isError === true && (lastToolResult(handoverChild[1])?.text ?? '').includes('Deferred as ticket q-1.') && (lastToolResult(handoverChild[1])?.text ?? '').includes('stop and report ticket q-1 in your handoff; the agent that dispatched you is told when it clears.'), `exit ${rulesHandover.status}, main ${handoverMain.length} request(s), child ${handoverChild.length}; ${lastToolResult(handoverChild[1])?.text?.slice(0, 120) ?? 'no refusal'}`],
+  ['rules-handover: the ticket went to the agent that dispatched the subagent (the subagent kept in handedFrom), before the person lifted the rule', handoverTicket?.sessionId === handoverStarted?.parentId && handoverTicket?.handedFrom?.sessionId === handoverStarted?.childId && isDeepStrictEqual(handoverJournal.filter(record => record.op !== 'base').map(record => [record.op, record.actor]), [['ticket-open', 'harness'], ['ticket-handover', 'harness'], ['rule-lift', 'human'], ['ticket-update', 'harness']]), `${JSON.stringify(handoverTicket ?? null).slice(0, 200)}; ${handoverJournal.map(record => record.op).join(' > ')}; ${handoverJournal.find(record => record.op === 'ticket-handover')?.reason ?? 'no hand-over'}`],
+  ['rules-handover: after the person lifts the rule the main agent is told once, with the text for a ticket handed over from a subagent that has ended', handoverMain.length === 6 && wakeMessages(handoverMain[4]).length === 0 && wakeMessages(handoverMain[5]).length === 1 && new RegExp(`^\\[rules board\\] Ticket q-1 cleared: rule r-probe-queue was lifted by the human\\. Subagent "${handoverStarted?.childId.slice(-8)}" was deferred on pwsh "Write-Output rules-probe-queued" and has ended\\. Dispatch the task again or run the call yourself; a new dispatch of the same call reuses q-1\\.$`).test(wakeMessages(handoverMain[5])[0].text) && handoverTicket?.state === 'cleared', wakeMessages(handoverMain[5])[0]?.text ?? 'no wake in the last request'],
+  ['rules-handover: the main agent\'s requests carry the reminder only when it changed, and it names the ticket handed over from the subagent', handoverMain.length === 6 && boardTexts(handoverMain[0]).length === 1 && consecutiveDiffer(boardTexts(handoverMain.at(-1))) && boardTexts(handoverMain.at(-1)).some(text => text.includes('handed over from subagent') && text.includes('Do not dispatch these tasks again before their tickets clear.')), handoverMain.map(step => boardTexts(step).length).join(', ')],
+  ['rules-handover: nothing is written in the scenario\'s user-level directory', !existsSync(join(runDir, 'rules-handover', 'dsh-home', 'glm-hourness', 'rules')), ''],
+  ['rules-peak-stop: the stop level in a GLM peak: the GLM main agent runs the probe tool, a subagent session with a goal is made, and the run exits clean with nothing from the row on stderr', stopProject.ready && rulesPeakStop.status === 0 && stopCreated?.origin === 'subagent' && lastToolResult(stopMain.at(-1))?.isError !== true && !stderrOf('rules-peak-stop').includes('dsh-glm-hourness/rules'), `exit ${rulesPeakStop.status}, ${rulesPeakStop.steps.length} step(s), git ${stopProject.ready}; ${JSON.stringify(stopCreated ?? null)}; ${stderrOf('rules-peak-stop').split('\n').find(line => line.includes('rules')) ?? 'no stderr line mentions rules'}`],
+  ['rules-peak-stop: the subagent\'s first tool call is refused with the ticket, the words of the stop level and the sentence that its goal is paused, so it never ran', stopChild.length === 4 && lastToolResult(stopChild[1])?.isError === true && STOP_REFUSAL.test(lastToolResult(stopChild[1]).text), lastToolResult(stopChild[1])?.text ?? 'no result'],
+  ['rules-peak-stop: V12, the goal is paused from inside the subagent\'s own tool call: the pause came while the agent ran, the same step finished (its next request has the refusal), and the turn ended on the paused goal', isDeepStrictEqual(stopOps.slice(0, 2).map(entry => [entry.operation, entry.status]), [['create', 'idle'], ['pause', 'running']]) && stopOps[1]?.goal?.phase === 'paused' && stopNote('stop-paused')?.ok === true && stopNote('stop-paused').status === 'idle', JSON.stringify(stopOps.map(entry => [entry.operation, entry.status, entry.goal?.phase, entry.goal?.roundsStarted]))],
+  ['rules-peak-stop: no new round starts while the peak holds: four seconds later the goal is still paused, the agent idle, and the round count the same', stopNote('stop-held')?.status === 'idle' && stopNote('stop-held').goal?.phase === 'paused' && stopNote('stop-held').goal.roundsStarted === stopNote('stop-paused')?.goal?.roundsStarted && stopNote('stop-held').goal.roundsStarted === 1, JSON.stringify([stopNote('stop-paused')?.goal, stopNote('stop-held')?.goal])],
+  ['rules-peak-stop: a subagent session that is not on GLM runs its call and has no ticket', stopNote('stop-plain')?.ok === true && stopPlain.length === 2 && lastToolResult(stopPlain[1])?.isError !== true && (lastToolResult(stopPlain[1])?.text ?? '').includes('rules-probe-plain') && isDeepStrictEqual(Object.keys(stopState?.tickets ?? {}), ['q-1']), `${stopPlain.length} request(s); ${(lastToolResult(stopPlain[1])?.text ?? 'no result').slice(0, 60)}; tickets ${JSON.stringify(Object.keys(stopState?.tickets ?? {}))}`],
+  ['rules-peak-stop: /rules peak 无影响 as the person through the real handler: the goal is active again within 30 seconds, the subagent takes its next round at once and is told to carry on in the step after it, and the main agent was never touched', stopNote('stop-lifted')?.result.kind === 'success' && stopOps.map(entry => entry.operation).slice(0, 3).join() === 'create,pause,resume' && Date.parse(stopOps[2]?.at) - Date.parse(stopNote('stop-lifted').at) < 30_000 && stopChild.length === 4 && roundOf(stopChild[2], 2) && wakeMessages(stopChild[1]).length === 0 && wakeMessages(stopChild[2]).length === 0 && wakeMessages(stopChild[3]).length === 1 && STOP_WAKE.test(wakeMessages(stopChild[3])[0].text) && stopMain.every(step => wakeMessages(step).length === 0), `${stopNote('stop-lifted')?.result.kind}; ${stopOps.map(entry => entry.operation).join()}; ${stopChild.map(step => wakeMessages(step).length).join(', ')} wake(s) per request; ${wakeMessages(stopChild[3]).map(message => message.text).join(' // ') || 'no wake in the last request'}`],
+  ['rules-peak-stop: the goal ends complete after that round, and the ticket is done with the goal and revision the pause made and the time the goal was resumed', stopNote('stop-final')?.ok === true && stopNote('stop-final').goal?.phase === 'complete' && stopState?.tickets?.['q-1']?.state === 'done' && stopState.tickets['q-1'].signature === 'any:builtin:glm-peak-stop' && stopState.tickets['q-1'].sessionId === stopCreated?.agentId && stopState.tickets['q-1'].pausedGoal?.id === stopCreated?.goal?.id && stopState.tickets['q-1'].pausedGoal.revision === stopOps[1]?.goal?.revision && typeof stopState.tickets['q-1'].resumedAt === 'string', JSON.stringify(stopState?.tickets?.['q-1'] ?? null)],
+  ['rules-peak-stop: the journal has the ticket opened by the harness, the level changed by the person, and the ticket closed by the harness with its goal resumed, in that order; nothing is written in the scenario\'s user-level directory', isDeepStrictEqual(stopJournal.map(record => [record.op, record.actor]).filter(([op]) => op === 'ticket-open' || op === 'peak-mode-set' || op === 'ticket-update'), [['ticket-open', 'harness'], ['peak-mode-set', 'human'], ['ticket-update', 'harness']]) && !existsSync(join(runDir, 'rules-peak-stop', 'dsh-home', 'glm-hourness', 'rules')), JSON.stringify(stopJournal.map(record => [record.op, record.actor]))],
+  ['rules-peak-stop-exit: V13, the host exits with the goal paused at the stop level: the run is clean and the way out agrees with itself: a row that unloaded (its heartbeat file is gone) resumed the goal and wrote it on the ticket, a runner that left without unloading it left the goal and the ticket as the stop made them', stopExitProject.ready && rulesPeakStopExit.status === 0 && !stderrOf('rules-peak-stop-exit').includes('dsh-glm-hourness/rules') && stopExitNotes.some(entry => entry.kind === 'stop-held' && entry.goal?.phase === 'paused') && (stopExitUnloaded ? typeof stopExitState?.tickets?.['q-1']?.resumedAt === 'string' && stopExitOps.includes('resume') : stopExitState?.tickets?.['q-1']?.state === 'deferred' && stopExitState.tickets['q-1'].resumedAt === undefined && stopExitOps.join() === 'create,pause'), `unloaded ${stopExitUnloaded}; exit ${rulesPeakStopExit.status}; goal operations ${JSON.stringify(stopExitOps)}; ticket ${JSON.stringify(stopExitState?.tickets?.['q-1'] ?? null)}; journal ${JSON.stringify(stopExitJournal.map(record => [record.op, record.reason ?? null]).slice(-3))}; ${stderrOf('rules-peak-stop-exit').split('\n').find(line => line.includes('rules')) ?? 'no stderr line mentions rules'}`],
+  ['loops: the row ships disabled: without the overlay /glm-status lists it as not loaded', glmHealth.loops?.status === '未加载' && plainHealth.loops?.status === '未加载', `${healthLine(glmHealth, 'loops')}; ${healthLine(plainHealth, 'loops')}`],
+  ['loops: the row, enabled by the overlay in a scratch git clone that carries a person\'s entry file, boots, runs its four steps and exits clean with nothing from it on stderr', loopsBoard.ready && loops.status === 0 && loops.steps.length === 4 && !stderrOf('loops').includes('dsh-glm-hourness/loops'), `exit ${loops.status}, ${loops.steps.length} step(s), git ${loopsBoard.ready}; ${stderrOf('loops').split('\n').find(line => line.includes('loops')) ?? 'no stderr line mentions loops'}`],
+  ['loops: a file tool writing into docs/loops/ is refused by loops:files-only with the four-part text, the entry file is as it was, and the refusal is journaled as enforced', lastToolResult(loops.steps[1])?.isError === true && LOOPS_DENIAL.test(lastToolResult(loops.steps[1]).text) && readFileSync(loopsBoard.entryFile, 'utf8') === LOOPS_ENTRY_TEXT && rulesRecordOf(loopsRecords, 'loops:files-only')?.mode === 'enforce', lastToolResult(loops.steps[1])?.text?.slice(0, 200) ?? 'no result'],
+  ['loops: a shell command writing into the project\'s .llm/loops/ is refused by the same rule, not by file-tools-only, and the board\'s change record does not carry what it wrote', lastToolResult(loops.steps[2])?.isError === true && (lastToolResult(loops.steps[2])?.text ?? '').includes('Rule loops:files-only') && loopsJournalText !== '' && !loopsJournalText.split('\n').includes('probe') && loopsRecords.filter(record => record.rule === 'loops:files-only').length === 2, `${lastToolResult(loops.steps[2])?.text?.slice(0, 160) ?? 'no result'}; ${loopsRecords.filter(record => record.rule === 'loops:files-only').length} journal line(s)`],
+  ['loops: the entry that only tells the main agent is taken in without an approval record: one adopt line by the harness, the file noted in repo-written.json, and view.json showing it as the agreed one', loopsAdopted.length === 1 && loopsAdopted[0].actor === 'harness' && loopsAdopted[0].via === 'repo' && /^[0-9a-f]{64}$/.test(loopsWritten?.[LOOPS_ENTRY_ID]?.fileSha256 ?? '') && loopsViewEntry?.source === 'person' && loopsViewEntry.state === 'ok' && (loopsView?.attention ?? ['none']).length === 0, `${loopsJournal.map(record => record.op).join(' > ') || 'no record'}; view ${JSON.stringify(loopsViewEntry ?? null)}; attention ${JSON.stringify(loopsView?.attention ?? null)}`],
+  ['loops: the runtime directory stays out of git (.llm/ in the exclude file, its own .gitignore) and git status lists nothing after the board wrote', loopsIgnore === '*\n' && loopsExclude.split('\n').includes('.llm/') && loopsGitStatus === '', `ignore ${JSON.stringify(loopsIgnore)}; exclude ${JSON.stringify(loopsExclude.split('\n').filter(line => line.includes('llm')))}; status ${JSON.stringify(loopsGitStatus)}`],
+  ['loops: the read of the entry file passes, /glm-status lists the row in effect, and every request declares the loop board in the guard section', lastToolResult(loops.steps[3])?.isError !== true && (lastToolResult(loops.steps[3])?.text ?? '').includes(LOOPS_ENTRY_ID) && loopsHealth.loops?.status === ACTED && loops.steps.every(step => step.system.includes(LOOPS_DECLARATION)), `${healthLine(loopsHealth, 'loops')} (${loopsHealth.loops?.reason ?? ''}); declared ${loops.steps.filter(step => step.system.includes(LOOPS_DECLARATION)).length}/${loops.steps.length}`],
+  ['loops: a headless host has no session controller, so the row says it runs no entry here, hands out no service, takes no run lock and writes nothing of the runtime, while its gate and its files work', (loopsHealth.loops?.reason ?? '').includes('这个进程不跑循环板（没有会话控制器）') && loopsRanNothing.length === 0 && loops.steps.every(step => step.system.includes(LOOPS_DECLARATION)), `reason ${loopsHealth.loops?.reason ?? 'none'}; runtime files ${JSON.stringify(loopsRanNothing)}`],
+  // Both gates of the row are installed on the real runtime from the day the row is enabled (d-code-rules-enforce). The three calls loops:schedule-tools judges cannot be made here: the headless template mounts neither dsh-schedule nor the session controller, so the reminder tools are not registered (loops design §10.2 V1; L2 covers the three in tests/loops-guard.spec.ts).
+  ['loops: the row installs both of its gates and says so, and no reminder of the board can exist in a host without the schedule service', (loopsHealth.loops?.reason ?? '').includes('loops:files-only 与 loops:schedule-tools 已装上') && !(loopsHealth.loops?.reason ?? '').includes('定时服务'), `reason ${loopsHealth.loops?.reason ?? 'none'}`],
+  ['loops-peak: the boot reached the provider and ran its steps clean', loopsPeak.steps.length >= 5 && loopsPeak.status === 0 && !stderrOf('loops-peak').includes('dsh-glm-hourness/loops'), `exit ${loopsPeak.status}, ${loopsPeak.steps.length} step(s); ${stderrOf('loops-peak').split('\n').find(line => line.includes('loops')) ?? 'no stderr line mentions loops'}`],
+  ['loops-peak: after the shifted clock crossed the peak\'s end, the board waked the idle main agent that worked in the peak once — one delivered run, whose reminder the woken request carries (a followup persists, so the turn the child\'s completion woke still carries it) and says the words of the table\'s row 10', loopsPeakRuns().filter(record => record.kind === 'loop-done' && record.entry === 'loops.peak-end' && record.outcome === 'delivered').length === 1 && loopsPeakNoticeSteps.length >= 1 && loopNotices(loopsPeakNoticeSteps[0])[0].text.includes('Work you moved to after peak can start now.') && loopsPeakNoticeSteps[0].clock > LOOPS_PEAK_END_MS, `${loopsPeakNoticeSteps.length} step(s) with the reminder at ${JSON.stringify(loopsPeakNoticeSteps.map(step => step.clock))}; runs ${JSON.stringify(loopsPeakRuns().filter(record => record.entry === 'loops.peak-end').map(record => [record.kind, record.outcome]))}`],
+  ['loops-peak restart: the re-emitted end edge of the same peak is a duplicate, so no second reminder goes out after the restart, and the journal still carries the one delivered run', loopsPeakRestartNoticeSteps.length === 0 && loopsPeakRuns().some(record => record.kind === 'loop-duplicate' && record.key === `peak-changed:end:${LOOPS_PEAK_END}`) && loopsPeakRuns().filter(record => record.kind === 'loop-done' && record.entry === 'loops.peak-end').length === 1, `${loopsPeakRestartNoticeSteps.length} step(s) with a notice; duplicates ${loopsPeakRuns().filter(record => record.kind === 'loop-duplicate').length}; runs ${JSON.stringify(loopsPeakRuns().filter(record => record.entry === 'loops.peak-end').map(record => [record.kind, record.outcome]))}`],
   ['rules-peak-hourness: the row is in effect without the pricing service (a supported combination) and the main agent\'s tool call ran', aloneHealth.rules?.status === ACTED && aloneHealth.rules.reason.includes('读不出是不是高峰') && lastToolResult(rulesPeakAlone.steps[1])?.isError !== true && !stderrOf('rules-peak-hourness').includes('dsh-glm-hourness/rules'), `${healthLine(aloneHealth, 'rules')} (${aloneHealth.rules?.reason ?? ''})`],
   ...designChecks(),
   ['non-glm boot: the runtime reached the probe provider', plainFirst !== undefined, `exit ${plain.status}, ${plain.steps.length} step(s)`],

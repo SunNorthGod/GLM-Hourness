@@ -8,7 +8,7 @@
  * the concurrency test (`--writer`).
  */
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { appendFile, mkdir, mkdtemp, readdir, readFile, rename, rm, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -16,10 +16,11 @@ import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 import { acquireLock, LOCK_WAIT_MS, STALE_LOCK_MS } from '../src/data/lock.ts'
 import { openRulesBoard, type RulesBoard } from '../src/rules/engine.ts'
-import { effectivePeakMode, emptyState, repoJson, type JournalRecord, type PeakLevel, type PeakModeSetting, type ProjectState } from '../src/rules/model.ts'
+import { adoptRepo, effectivePeakMode, emptyState, repoJson, repoPart, stateFromRepo, type JournalRecord, type PeakLevel, type PeakModeSetting, type ProjectState } from '../src/rules/model.ts'
 import { gitOperationIn, readProject, settleProject } from '../src/rules/repo.ts'
-import { applyRecord, loadState, rulesPaths, stateDigest, textDigest, type RulesPaths, type StoreIo } from '../src/rules/store.ts'
-import { impatientLock, projectTest, quickIo } from './rules-helpers.ts'
+import { applyRecord, changesBetween, loadState, replayJournals, rulesPaths, stateDigest, textDigest, type RulesPaths, type StoreIo } from '../src/rules/store.ts'
+import { FULL_RULES_FILE, ruleOf, scriptRef } from './rules-fixtures.ts'
+import { clockedTest, impatientLock, journalOf, projectTest, quickIo, type ClockedProject } from './rules-helpers.ts'
 
 const WRITER = '--writer'
 
@@ -381,7 +382,15 @@ test('applyRecord is a pure function of the state and the record: it reads no cl
   const listed = applyRecord(state, { seq: 5, changes: [{ path: ['unresolved', entry.key], value: entry }] })
   assert.deepEqual(listed.unresolved, { [entry.key]: entry })
   assert.equal('unresolved' in applyRecord(listed, { seq: 6, changes: [{ path: ['unresolved', entry.key] }] }), false, 'deleting the last entry leaves no empty collection behind')
-  assert.throws(() => applyRecord(state, { seq: 5, changes: [{ path: ['rules', 'r-x'], value: {} }] }), /not a path of the state/)
+  const withRule = applyRecord(state, { seq: 5, changes: [{ path: ['rules', 'r-1'], value: ruleOf() }, { path: ['nextTicket'], value: 2 }, { path: ['scripts', 'r-1'], value: scriptRef('r-1') }] })
+  assert.deepEqual([Object.keys(withRule.rules ?? {}), withRule.nextTicket, Object.keys(withRule.scripts ?? {})], [['r-1'], 2, ['r-1']], 'the collections of the full board change one entry at a time')
+  const without = applyRecord(withRule, { seq: 6, changes: [{ path: ['rules', 'r-1'] }, { path: ['scripts', 'r-1'] }] })
+  assert.deepEqual(['rules' in without, 'scripts' in without, without.nextTicket], [false, false, 2], 'the last entry of a collection takes the collection with it')
+  for (const collection of ['rules', 'signals', 'detectors', 'tickets', 'notices', 'scripts']) {
+    assert.doesNotThrow(() => applyRecord(state, { seq: 5, changes: [{ path: [collection, 'x'], value: {} }] }), collection)
+    assert.throws(() => applyRecord(state, { seq: 5, changes: [{ path: [collection], value: {} }] }), /not a path of the state/, `${collection} changes one entry at a time`)
+  }
+  assert.throws(() => applyRecord(state, { seq: 5, changes: [{ path: ['proposals', 'p-x'], value: {} }] }), /not a path of the state/, 'proposals are not part of this version of the state')
   assert.throws(() => applyRecord(state, { seq: 5, changes: [{ path: ['root'], value: 'C:/x' }] }), /not a path/)
   assert.throws(() => applyRecord(state, { seq: 5, changes: [{ path: ['repo'] }] }), /cannot be deleted/)
   assert.throws(() => applyRecord(state, { seq: 5, changes: [null as never] }), /needs a path/)
@@ -409,6 +418,74 @@ projectTest('a collection that is empty is absent from what is stored, so a stat
     assert.equal(stateDigest(extended), record.snapshot, `record ${record.seq} verifies under the extended shape`)
   }
   assert.equal(stateDigest(extended), stateDigest(slice))
+})
+
+// What the first version of the board (the peak level only) wrote for three choices, byte for byte: captured from that
+// code with a fixed clock. The full board has to read it and verify every digest in it.
+const SLICE_RECORDS = [
+  { seq: 1, at: '2026-10-30T01:01:00.000Z', actor: 'human', op: 'peak-mode-set', target: 'peakMode', from: 'reduce', to: 'stop', reason: '人把高峰模式改成了「不做」', changes: [{ path: ['peakMode'], value: { level: 'stop', at: '2026-10-30T01:01:00.000Z', origin: { actor: 'human' } } }, { path: ['repo'], value: { digest: 'cce76457d6bbca75' } }], snapshot: 'b2ae9523071139ff' },
+  { seq: 2, at: '2026-10-30T01:02:00.000Z', actor: 'human', op: 'peak-mode-set', target: 'peakMode', from: 'stop', to: 'inform', reason: '人把高峰模式改成了「无影响」', changes: [{ path: ['peakMode'], value: { level: 'inform', at: '2026-10-30T01:02:00.000Z', origin: { actor: 'human' } } }, { path: ['repo'], value: { digest: 'cb2ecbf4f1814ed8' } }], snapshot: '04e7ebaa50b9558b' },
+  { seq: 3, at: '2026-10-30T01:03:00.000Z', actor: 'human', op: 'peak-mode-set', target: 'peakMode', from: 'inform', to: 'reduce', reason: '人把高峰模式改成了「少做」', changes: [{ path: ['peakMode'], value: { level: 'reduce', at: '2026-10-30T01:03:00.000Z', origin: { actor: 'human' } } }, { path: ['repo'], value: { digest: 'e9453ea6ec106f85' } }], snapshot: '5c00c1969b4f716a' },
+]
+const SLICE_STATE = '{"peakMode":{"at":"2026-10-30T01:03:00.000Z","level":"reduce","origin":{"actor":"human"}},"repo":{"digest":"e9453ea6ec106f85"},"seq":3,"version":2}'
+const SLICE_RULES = '{\n  "peakMode": {\n    "at": "2026-10-30T01:03:00.000Z",\n    "level": "reduce",\n    "origin": {\n      "actor": "human"\n    }\n  },\n  "version": 2\n}\n'
+
+projectTest('the files of the first version of the board load and replay under the full shape with the digests they carry, and the rules file is still in sync', async ({ board }) => {
+  const { paths } = board
+  await mkdir(paths.runtimeDir, { recursive: true })
+  await mkdir(paths.rulesDir, { recursive: true })
+  await writeFile(paths.journal, SLICE_RECORDS.map(record => `${JSON.stringify(record)}\n`).join(''))
+  await writeFile(paths.state, SLICE_STATE)
+  await writeFile(paths.rulesFile, SLICE_RULES)
+  await writeFile(paths.repoWritten, `${JSON.stringify({ digest: 'e9453ea6ec106f85', at: '2026-10-30T01:03:00.000Z' })}\n`)
+
+  let state = emptyState()
+  for (const record of SLICE_RECORDS) {
+    state = applyRecord(state, record as unknown as JournalRecord)
+    assert.equal(stateDigest(state), record.snapshot, `record ${record.seq} verifies under the full shape`)
+  }
+  const direct = loadState(paths)
+  assert.deepEqual([direct.source, direct.plan, stateDigest(direct.state)], ['snapshot', undefined, '5c00c1969b4f716a'], 'the snapshot is used as it is')
+  assert.deepEqual(direct.state, state)
+
+  await unlink(paths.state)
+  const replayed = loadState(paths)
+  assert.equal(replayed.source, 'replay')
+  assert.deepEqual([stateDigest(replayed.state), replayed.state.unresolved, replayed.plan?.recovered?.skipped], ['5c00c1969b4f716a', undefined, []], 'every record takes effect, none is skipped')
+  assert.equal(textDigest(SLICE_RULES), 'e9453ea6ec106f85')
+  assert.equal(repoJson(repoPart(replayed.state)!), SLICE_RULES, 'the full board writes the same file for the same content')
+  assert.equal(readProject(paths).repo.kind, 'in-sync')
+
+  await writeFile(paths.state, SLICE_STATE)
+  const written = await board.apply('human', { op: 'peak-mode-set', level: 'stop' })
+  assert.ok(written.ok && written.changed)
+  const after = await lines(paths)
+  assert.deepEqual(after.map(record => record.seq), [1, 2, 3, 4], 'the sequence goes on from the slice\'s last record')
+  assert.equal(loadState(paths).state.seq, 4)
+})
+
+test('a collection that had entries and lost them digests like the state that never had them, and the changes between two states give the second from the first', () => {
+  const before = stateFromRepo(FULL_RULES_FILE, '0123456789abcdef')
+  const emptied = applyRecord(applyRecord(emptyState(), { seq: 1, changes: [{ path: ['rules', 'r-1'], value: ruleOf() }, { path: ['nextTicket'], value: 1 }] }), { seq: 2, changes: [{ path: ['rules', 'r-1'] }, { path: ['nextTicket'] }] })
+  assert.equal(stateDigest(emptied), stateDigest({ ...emptyState(), seq: 2 }))
+  assert.equal('rules' in emptied, false)
+
+  const file = { ...FULL_RULES_FILE, rules: { 'r-new': ruleOf({ id: 'r-new' }) }, scripts: { 'd-server-errors': scriptRef('d-server-errors', 'b'.repeat(64)) } }
+  delete (file as { peakMode?: unknown }).peakMode
+  const after = adoptRepo({ ...before, tickets: {}, nextTicket: 3 }, file, 'fedcba9876543210')
+  const changes = changesBetween(before, after)
+  assert.deepEqual(changes.map(change => change.path.join('/')), [
+    'nextTicket',
+    'peakMode',
+    'repo',
+    'rules/r-lint-gate',
+    'rules/r-new',
+    'rules/r-no-evening-push',
+    'scripts/r-lint-gate',
+  ], 'one change per entry that differs, collections and fields in key order')
+  assert.deepEqual(changes.filter(change => change.value === undefined).map(change => change.path.join('/')), ['peakMode', 'rules/r-lint-gate', 'rules/r-no-evening-push', 'scripts/r-lint-gate'], 'what is gone is a deletion')
+  assert.deepEqual(applyRecord(before, { seq: 2, changes }), { ...after, seq: 2 })
+  assert.deepEqual(changesBetween(before, before), [])
 })
 
 test('the write lock: a dead holder and an old lock are taken over, a live fresh one is waited for and then reported busy, and a lock taken over is no longer held', async () => {
@@ -443,6 +520,28 @@ test('the write lock: a dead holder and an old lock are taken over, a live fresh
     assert.equal((JSON.parse(await readFile(file, 'utf8')) as { token: string }).token, 'someone else', 'and does not delete the lock of the one that took over')
   }
   finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+// Windows answers EPERM, not EEXIST, to a create that meets a lock file another process is unlinking; a deny entry on the directory gives the same EPERM for as long as the test wants.
+test('on Windows the EPERM of a lock file being deleted is waited out, and one that does not pass is reported as it is', { skip: process.platform !== 'win32' }, async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'rules-lock-'))
+  const EVERYONE = '*S-1-1-0'
+  const icacls = join(process.env['SystemRoot'] ?? 'C:\\Windows', 'System32', 'icacls.exe')
+  const acl = (...args: string[]): void => { execFileSync(icacls, [dir, ...args], { stdio: 'ignore' }) }
+  try {
+    const file = join(dir, 'rules.lock')
+    acl('/deny', `${EVERYONE}:(WD,AD)`)
+    await assert.rejects(acquireLock(file, impatientLock()), { code: 'EPERM' }, 'a refusal that lasts the whole wait is the error itself, not busy')
+    setTimeout(() => acl('/remove:d', EVERYONE), 150)
+    const lock = await acquireLock(file)
+    assert.notEqual(lock, 'busy', 'the refusal passed within the wait')
+    assert.equal(await (lock as Exclude<typeof lock, 'busy'>).held(), true)
+    await (lock as Exclude<typeof lock, 'busy'>).release()
+  }
+  finally {
+    acl('/remove:d', EVERYONE)
     await rm(dir, { recursive: true, force: true })
   }
 })
@@ -574,7 +673,7 @@ projectTest('a rules file someone else changed does not take effect, is kept asi
   await writeFile(paths.rulesFile, changed)
   const read = readProject(paths)
   assert.equal(effectivePeakMode(read.state).level, 'stop', 'the journal decides')
-  assert.deepEqual(read.repo.kind === 'outside' ? read.repo.diff : undefined, [{ path: ['peakMode'], change: 'changed', fields: ['level', 'at'] }])
+  assert.deepEqual(read.repo.kind === 'outside' ? read.repo.diff : undefined, [{ path: ['peakMode'], change: 'changed', fields: ['at', 'level'] }])
   await settled(paths)
   const records = await lines(paths)
   assert.deepEqual([records.at(-1)?.op, records.at(-1)?.actor], ['repo-outside', 'harness'])
@@ -641,3 +740,123 @@ projectTest('every sign of an unfinished git operation holds the rules file back
   }
   assert.equal(gitOperationIn(join(root, 'docs')), undefined, 'a folder that is not a project root has no git directory')
 })
+
+// ------------------------------------------------------------ journal rotation (design §7.6)
+
+const rotatedFiles = async (paths: RulesPaths): Promise<string[]> => (await readdir(paths.runtimeDir)).filter(name => /^journal-\d+\.jsonl$/.test(name)).sort()
+const LEVELS_IN_TURN: readonly PeakLevel[] = ['stop', 'inform', 'reduce']
+/** A little more than the few records a write makes: a journal of three or four records is past it. */
+const ROTATE_AT = 1200
+
+/** Write levels until the journal has been rotated once; returns the last sequence number the old file holds. */
+async function writeUntilRotated({ clock, board, paths }: ClockedProject): Promise<number> {
+  for (let turn = 0; turn < 20; turn++) {
+    clock.advance(1000)
+    const before = loadState(paths).state.seq
+    const result = await board.apply('human', { op: 'peak-mode-set', level: LEVELS_IN_TURN[turn % LEVELS_IN_TURN.length] })
+    assert.ok(result.ok, JSON.stringify(result))
+    if ((await journalOf(paths))[0]?.op === 'base') return before
+  }
+  throw new Error('the journal was not rotated in 20 writes')
+}
+
+clockedTest('a journal past the size limit moves to journal-<last seq>.jsonl, and the next starts with a base that carries the whole state', async (project) => {
+  const { paths } = project
+  const last = await writeUntilRotated(project)
+  assert.deepEqual(await rotatedFiles(paths), [`journal-${last}.jsonl`])
+  const old = (await readFile(join(paths.runtimeDir, `journal-${last}.jsonl`), 'utf8')).split('\n').filter(line => line !== '').map(line => JSON.parse(line) as JournalRecord)
+  assert.deepEqual(old.map(record => record.seq), Array.from({ length: last }, (_, index) => index + 1), 'the old file holds the records up to the one that filled it')
+  const [base, write, ...rest] = await journalOf(paths)
+  assert.deepEqual([base?.op, base?.actor, base?.seq, base?.changes], ['base', 'harness', last + 1, []])
+  assert.equal(base?.snapshot, stateDigest(base?.state as ProjectState), 'the base is checked like any record: its state has the digest it says')
+  assert.deepEqual([write?.op, write?.seq, rest.length], ['peak-mode-set', last + 2, 0])
+  const load = loadState(paths)
+  assert.deepEqual([load.source, load.plan, load.state.seq, load.nextSeq], ['snapshot', undefined, last + 2, last + 3])
+}, { rotateAtBytes: ROTATE_AT })
+
+clockedTest('after a rotation a snapshot that is lost is rebuilt from the base, to the same state and with nothing skipped; the whole directory replays to it from nothing', async (project) => {
+  const { paths } = project
+  await writeUntilRotated(project)
+  const expected = stateDigest(loadState(paths).state)
+  await writeFile(paths.state, '')
+  const load = loadState(paths)
+  assert.deepEqual([load.source, load.reasons.at(-1), load.plan?.recovered?.skipped, stateDigest(load.state)], ['replay', 'snapshot-corrupt', [], expected])
+  const all = replayJournals(paths)
+  assert.deepEqual([stateDigest(all.state), all.skipped], [expected, []], 'the base found between the files passes the check like any record')
+}, { rotateAtBytes: ROTATE_AT })
+
+clockedTest('a snapshot one write behind a rotation is caught up from the old file, without a recovery record', async (project) => {
+  const { clock, board, paths } = project
+  // The snapshot of the write before the one that rotates, as a crash between the append and the snapshot would leave it.
+  let snapshotBefore = ''
+  for (let turn = 0; turn < 20; turn++) {
+    snapshotBefore = await readFile(paths.state, 'utf8').catch(() => '')
+    clock.advance(1000)
+    await board.apply('human', { op: 'peak-mode-set', level: LEVELS_IN_TURN[turn % LEVELS_IN_TURN.length] })
+    if ((await rotatedFiles(paths)).length > 0) break
+  }
+  const expected = stateDigest(loadState(paths).state)
+  await writeFile(paths.state, snapshotBefore)
+  const load = loadState(paths)
+  assert.deepEqual([load.reasons, stateDigest(load.state), load.plan?.rewriteSnapshot, load.plan?.recovered], [['snapshot-behind'], expected, true, undefined])
+}, { rotateAtBytes: ROTATE_AT })
+
+clockedTest('a file left by a rotation that did not finish changes nothing, and the next rotation writes over it', async (project) => {
+  const { board, paths } = project
+  await board.apply('human', { op: 'peak-mode-set', level: 'stop' })
+  const state = loadState(paths).state
+  // The copy was made and the journal was not replaced: files named like rotated ones, with whatever the crash left in them.
+  for (let seq = 1; seq <= 12; seq++) await writeFile(join(paths.runtimeDir, `journal-${seq}.jsonl`), 'half a copy')
+  assert.deepEqual([loadState(paths).source, stateDigest(loadState(paths).state)], ['snapshot', stateDigest(state)])
+  await unlink(paths.state)
+  assert.equal(stateDigest(loadState(paths).state), stateDigest(state), 'a journal that does not start with a base has no earlier file')
+  assert.equal(stateDigest(replayJournals(paths).state), stateDigest(state))
+  // The next rotation is made over it: the file is then the old journal, whole.
+  const last = await writeUntilRotated(project)
+  const text = await readFile(join(paths.runtimeDir, `journal-${last}.jsonl`), 'utf8')
+  assert.notEqual(text, 'half a copy')
+  assert.equal(text.split('\n').filter(line => line !== '').length, last)
+}, { rotateAtBytes: ROTATE_AT })
+
+clockedTest('a rotation that cannot replace the journal is an error, and the old journal, the state and the next read are as they were', async (project) => {
+  const { clock, paths, root } = project
+  const failing = openRulesBoard({
+    projectRoot: root,
+    rotateAtBytes: ROTATE_AT,
+    io: quickIo({
+      now: clock.now,
+      rename: async (from, to) => {
+        if (to === paths.journal) throw Object.assign(new Error('the file is open elsewhere'), { code: 'EPERM' })
+        await rename(from, to)
+      },
+    }),
+  })
+  let before = ''
+  let refused: { readonly code: string, readonly message: string } | undefined
+  for (let turn = 0; turn < 20 && refused === undefined; turn++) {
+    before = await readFile(paths.journal, 'utf8').catch(() => '')
+    clock.advance(1000)
+    const result = await failing.apply('human', { op: 'peak-mode-set', level: LEVELS_IN_TURN[turn % LEVELS_IN_TURN.length] })
+    if (!result.ok) refused = result.error
+  }
+  assert.equal(refused?.code, 'io')
+  assert.match(refused?.message ?? '', /流水/)
+  assert.equal(await readFile(paths.journal, 'utf8'), before, 'not one byte of the journal changed')
+  const load = loadState(paths)
+  assert.deepEqual([load.source, load.plan], ['snapshot', undefined])
+  assert.deepEqual((await readdir(paths.runtimeDir)).filter(name => name.endsWith('.tmp')), [], 'the temporary file is gone')
+})
+
+clockedTest('files that point at each other are not followed in a circle', async (project) => {
+  const { paths } = project
+  await writeUntilRotated(project)
+  const [name] = await rotatedFiles(paths)
+  const [base] = await journalOf(paths)
+  const line = `${JSON.stringify(base)}\n`
+  // The old file now starts with the same base as the current one: each names the other as its predecessor.
+  await writeFile(join(paths.runtimeDir, name), line)
+  await writeFile(paths.state, '')
+  const load = loadState(paths)
+  assert.equal(load.state.seq, (base?.seq ?? 0) + 1)
+  assert.equal(stateDigest(replayJournals(paths).state), stateDigest(load.state))
+}, { rotateAtBytes: ROTATE_AT })

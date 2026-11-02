@@ -16,6 +16,12 @@
  * - the board owes a write (git was merging or rebasing when it wrote): the
  *   write is made when git is done.
  *
+ * A person settles an outside change one of two ways, each a record of the
+ * person in the journal: `adoptRepoLocked` (`repo-adopt`) makes the file's
+ * decisions the state's, and `restoreRepoLocked` (`repo-restore`) writes the
+ * board's own file back. The engine's operations of the same names call them
+ * under its write lock, after `settleLocked`.
+ *
  * Nothing here commits, stages or switches anything in git.
  */
 import { existsSync } from 'node:fs'
@@ -23,8 +29,8 @@ import { copyFile, mkdir, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import { acquireLock, type LockEnvironment, realLockEnvironment } from '../data/lock.ts'
 import { gitDirOf } from '../data/project-root.ts'
-import { diffRepo, parseRepoRules, repoJson, repoPart, stateFromRepo, type Change, type JournalRecord, type ProjectState, type RepoDiffLine, type RepoRules } from './model.ts'
-import { appendRecord, applyRecord, ensureRuntimeDir, loadState, persistLoad, readText, realStoreIo, stamp, stateDigest, textDigest, writeAtomic, writeSnapshot, type LoadResult, type RulesPaths, type StoreIo } from './store.ts'
+import { adoptRepo, diffRepo, parseRepoRules, repoJson, repoPart, stateFromRepo, stateProblem, unapprovedScripts, type Change, type JournalRecord, type ProjectState, type RepoDiffLine, type RepoRules } from './model.ts'
+import { appendRecord, applyRecord, changesBetween, ensureRuntimeDir, loadState, persistLoad, readText, realStoreIo, stamp, stateDigest, textDigest, writeAtomic, writeSnapshot, type LoadResult, type RulesPaths, type StoreIo } from './store.ts'
 
 /** Files and directories in a git directory that say git is in the middle of something. */
 const GIT_MARKERS = ['MERGE_HEAD', 'REBASE_HEAD', 'CHERRY_PICK_HEAD', 'rebase-merge', 'rebase-apply', 'BISECT_LOG', 'index.lock']
@@ -70,7 +76,9 @@ function checkRepo(paths: RulesPaths, load: LoadResult): RepoCheck {
     if (text === undefined) return { kind: 'in-sync' }
     const parsed = parseRepoRules(text)
     if (!parsed.ok) return { kind: 'unreadable', reason: parsed.reason }
-    return parsed.repo.peakMode === undefined ? { kind: 'in-sync' } : { kind: 'fresh-start', repo: parsed.repo, digest: textDigest(text) }
+    const digest = textDigest(text)
+    // A file that decides nothing (no peak level, only empty collections) is no start.
+    return repoPart(stateFromRepo(parsed.repo, digest)) === undefined ? { kind: 'in-sync' } : { kind: 'fresh-start', repo: parsed.repo, digest }
   }
   const { state } = load
   if (here === state.repo.digest) return state.repo.outside === undefined ? { kind: 'in-sync' } : { kind: 'cleared' }
@@ -106,11 +114,21 @@ function needsSettling(read: ProjectRead): boolean {
 /**
  * Write the rules file for a state, unless git is in the middle of an
  * operation; then the write waits (`deferred`) and the state says so by
- * differing from what `repo-written.json` recorded.
+ * differing from what `repo-written.json` recorded. A state in which nothing
+ * is decided (`part` is undefined) has no file: it is removed, with the board's
+ * note of what it wrote (`removed`).
  */
-export async function exportRepo(paths: RulesPaths, part: RepoRules, io: StoreIo = realStoreIo): Promise<'written' | 'deferred' | 'failed'> {
+export async function exportRepo(paths: RulesPaths, part: RepoRules | undefined, io: StoreIo = realStoreIo): Promise<'written' | 'removed' | 'deferred' | 'failed'> {
   if (gitOperationIn(paths.projectRoot) !== undefined) return 'deferred'
   try {
+    if (part === undefined) {
+      for (const file of [paths.rulesFile, paths.repoWritten]) {
+        await unlink(file).catch((error: NodeJS.ErrnoException) => {
+          if (error.code !== 'ENOENT') throw error
+        })
+      }
+      return 'removed'
+    }
     await mkdir(paths.rulesDir, { recursive: true })
     const text = repoJson(part)
     const written = await writeAtomic(paths.rulesFile, text, io)
@@ -152,9 +170,11 @@ export async function settleLocked(paths: RulesPaths, io: StoreIo = realStoreIo)
   if (check.kind === 'fresh-start') {
     const next: ProjectState = { ...stateFromRepo(check.repo, check.digest), seq: load.nextSeq }
     const record: JournalRecord = { seq: next.seq, at: new Date(io.now()).toISOString(), actor: 'harness', op: 'base', evidence: `从仓库里的规则文件读入（${paths.rulesFile}）`, changes: [], snapshot: stateDigest(next), state: next }
+    // The file's digest is noted before the record that names it: a crash between the two leaves a project that starts
+    // from the file again, never one whose later outside change would look like a write the board still owes.
+    await recordWritten(paths, check.digest, io)
     await appendRecord(paths, record)
     await writeSnapshot(paths, next, io)
-    await recordWritten(paths, check.digest, io)
   }
   else if (check.kind === 'outside') {
     const copy = check.copyFrom === undefined ? '' : join(paths.runtimeDir, `.rules.json.outside-${stamp(io.now())}`)
@@ -185,4 +205,78 @@ export async function settleProject(paths: RulesPaths, io: StoreIo = realStoreIo
   finally {
     await lock.release()
   }
+}
+
+/** The record of a person's settling of an outside change, and the state it leaves. */
+function personRecord(read: ProjectRead, op: string, reason: string, evidence: string | undefined, changes: readonly Change[], io: StoreIo): { readonly record: JournalRecord, readonly next: ProjectState } {
+  const seq = read.load.nextSeq
+  const next = applyRecord(read.state, { seq, changes })
+  const record: JournalRecord = { seq, at: new Date(io.now()).toISOString(), actor: 'human', op, target: 'rules.json', reason, ...(evidence === undefined ? {} : { evidence }), changes, snapshot: stateDigest(next) }
+  return { record, next }
+}
+
+export type RepoAdoption =
+  | {
+    readonly ok: true
+    /** False when there was no outside change to adopt: nothing was written. */
+    readonly changed: boolean
+    readonly state: ProjectState
+    /** Entries whose script does not run until a person has read it: new or changed in the file. */
+    readonly needsRepin: readonly string[]
+  }
+  | { readonly ok: false, readonly reason: string }
+
+/**
+ * `repo-adopt`, the person's: make what the rules file says the state's decisions (design §7.5). One record whose
+ * changes are the differences, written under the write lock the caller holds, after `settleLocked`. The file is read
+ * and checked whole first and refused when it cannot be read, or is gone. The file is not rewritten; its digest becomes
+ * the state's and is noted as the board's, so the file is in sync as the person left it. Rules keep their own origin
+ * (the record says who adopted them); a script that is new or changed in the file has no approval.
+ */
+export async function adoptRepoLocked(paths: RulesPaths, read: ProjectRead, io: StoreIo = realStoreIo): Promise<RepoAdoption> {
+  if (read.state.repo.outside === undefined) return { ok: true, changed: false, state: read.state, needsRepin: [] }
+  const text = readText(paths.rulesFile)
+  if (text === undefined) return { ok: false, reason: '仓库里没有规则文件，没有可照改的内容；要按规则板的存档写回，选「忽略」' }
+  const parsed = parseRepoRules(text)
+  if (!parsed.ok) return { ok: false, reason: `仓库里的规则文件读不出（${parsed.reason}），不能照改` }
+  const digest = textDigest(text)
+  const { record, next } = personRecord(read, 'repo-adopt', '人照仓库里的规则文件改了', `仓库里的规则文件摘要 ${digest}`, changesBetween(read.state, adoptRepo(read.state, parsed.repo, digest)), io)
+  // What is written is what is checked: the state the record leaves, not the one the file was turned into.
+  const problem = stateProblem(next)
+  if (problem !== undefined) return { ok: false, reason: `照文件改出来的状态不合法（${problem}），不能照改` }
+  // The file's digest is noted before the record that names it: a crash between the two leaves the outside change as it was.
+  await recordWritten(paths, digest, io)
+  await appendRecord(paths, record)
+  await writeSnapshot(paths, next, io)
+  return { ok: true, changed: true, state: next, needsRepin: unapprovedScripts(next).map(entry => entry.id) }
+}
+
+export type RepoRestoration =
+  | {
+    readonly ok: true
+    /** False when there was no outside change: nothing was written. */
+    readonly changed: boolean
+    readonly state: ProjectState
+    /** What happened to the file: written, removed (nothing is decided), left for later because git is busy, failed, or not touched. */
+    readonly file: 'written' | 'removed' | 'deferred' | 'failed' | 'unchanged'
+  }
+
+/**
+ * `repo-restore`, the person's: write the board's own file back over the one somebody else changed or deleted
+ * (design §7.5). The record clears the outside mark first; the file follows. The board's note of what it last wrote is
+ * dropped before the record, so a crash or a git operation in between leaves a write the board owes, which the next
+ * settle makes, and not an outside change to record again. When nothing is decided the board's file is none and the
+ * file is removed (the copy of it made when it was found is kept); during a git operation that removal waits, and the
+ * file is found as an outside change again until the person asks once more.
+ */
+export async function restoreRepoLocked(paths: RulesPaths, read: ProjectRead, io: StoreIo = realStoreIo): Promise<RepoRestoration> {
+  if (read.state.repo.outside === undefined) return { ok: true, changed: false, state: read.state, file: 'unchanged' }
+  const part = repoPart(read.state)
+  const { record, next } = personRecord(read, 'repo-restore', '人让规则板按自己的存档写回了仓库里的规则文件', undefined, [{ path: ['repo'], value: { digest: part === undefined ? null : textDigest(repoJson(part)) } }], io)
+  await unlink(paths.repoWritten).catch((error: NodeJS.ErrnoException) => {
+    if (error.code !== 'ENOENT') throw error
+  })
+  await appendRecord(paths, record)
+  await writeSnapshot(paths, next, io)
+  return { ok: true, changed: true, state: next, file: await exportRepo(paths, part, io) }
 }

@@ -18,11 +18,11 @@
  * read found (`persistLoad`) is done by a caller that holds the write lock.
  */
 import { createHash } from 'node:crypto'
-import { readFileSync } from 'node:fs'
+import { readFileSync, statSync } from 'node:fs'
 import { copyFile, mkdir, open, rename as renameFile, truncate, unlink, writeFile } from 'node:fs/promises'
 import { isAbsolute, join } from 'node:path'
 import { ensureIgnored } from '../data/project-root.ts'
-import { canonicalJson, emptyState, stateProblem, withoutEmptyCollections, type Change, type JournalRecord, type ProjectState, type RecoveryReason, type SkippedRecord } from './model.ts'
+import { canonicalJson, compareCodePoints, emptyState, stateProblem, withoutEmptyCollections, type Change, type JournalRecord, type ProjectState, type RecoveryReason, type SkippedRecord } from './model.ts'
 
 /** The rules directory in the repository, relative to the project root. */
 export const DEFAULT_RULES_DIR = 'docs/rules'
@@ -90,14 +90,18 @@ export function textDigest(text: string): string {
   return digestOf(text, 16)
 }
 
-const FIELDS: readonly string[] = ['peakMode', 'repo', 'recovered']
+/** The top-level fields a change replaces or deletes as a whole. */
+const FIELDS: readonly string[] = ['peakMode', 'repo', 'recovered', 'nextTicket']
+
+/** The collections a change touches one entry of; `proposals` of the full design is not among them. */
+const COLLECTIONS: readonly string[] = ['rules', 'signals', 'detectors', 'scripts', 'tickets', 'notices', 'unresolved']
 
 /**
  * The state after a record. Pure: it reads no clock, file or process table.
  * A path outside the list the state has, or a missing `repo`, throws; a
  * replay reads that as a record that does not take effect. A collection the
  * record leaves empty is absent from the result (deleting the last entry of
- * `unresolved` removes `unresolved`).
+ * `rules` removes `rules`).
  */
 export function applyRecord(state: ProjectState, record: { readonly seq: number, readonly changes: readonly Change[] }): ProjectState {
   const next: Record<string, unknown> = { ...state }
@@ -109,16 +113,42 @@ export function applyRecord(state: ProjectState, record: { readonly seq: number,
       else if (head === 'repo') throw new Error('the repo field cannot be deleted')
       else delete next[head]
     }
-    else if (change.path.length === 2 && head === 'unresolved' && entry !== undefined) {
-      const unresolved = { ...(next.unresolved as Record<string, SkippedRecord> | undefined) }
-      if (change.value === undefined) delete unresolved[entry]
-      else unresolved[entry] = change.value as SkippedRecord
-      next.unresolved = unresolved
+    else if (change.path.length === 2 && head !== undefined && COLLECTIONS.includes(head) && entry !== undefined) {
+      // An entry named __proto__ would set the collection's prototype instead of an entry.
+      if (entry === '__proto__') throw new Error('__proto__ is not an entry name')
+      const collection = { ...(next[head] as Record<string, unknown> | undefined) }
+      if (change.value === undefined) delete collection[entry]
+      else collection[entry] = change.value
+      next[head] = collection
     }
     else throw new Error(`${JSON.stringify(change.path)} is not a path of the state`)
   }
   next.seq = record.seq
   return withoutEmptyCollections(next) as unknown as ProjectState
+}
+
+/**
+ * The changes that turn one state into the other: one for each top-level field and each collection entry whose content
+ * differs, in key order, a deletion for what only `before` has. The sequence number is the record's, not a change.
+ * `applyRecord(before, { seq, changes: changesBetween(before, after) })` is `after` with that sequence number.
+ */
+export function changesBetween(before: ProjectState, after: ProjectState): Change[] {
+  const was = before as unknown as Record<string, unknown>
+  const now = after as unknown as Record<string, unknown>
+  const union = (a: object, b: object): string[] => [...new Set([...Object.keys(a), ...Object.keys(b)])].sort(compareCodePoints)
+  const changes: Change[] = []
+  for (const name of union(was, now).filter(field => field !== 'seq' && field !== 'version')) {
+    if (!COLLECTIONS.includes(name)) {
+      if (canonicalJson(was[name]) !== canonicalJson(now[name])) changes.push(now[name] === undefined ? { path: [name] } : { path: [name], value: now[name] })
+      continue
+    }
+    const held = (was[name] ?? {}) as Record<string, unknown>
+    const next = (now[name] ?? {}) as Record<string, unknown>
+    for (const id of union(held, next)) {
+      if (canonicalJson(held[id]) !== canonicalJson(next[id])) changes.push(next[id] === undefined ? { path: [name, id] } : { path: [name, id], value: next[id] })
+    }
+  }
+  return changes
 }
 
 type Line = { readonly text: string } & (
@@ -162,8 +192,7 @@ export function readText(file: string): string | undefined {
   }
 }
 
-function readJournal(file: string): JournalRead {
-  const raw = readText(file) ?? ''
+function parseJournal(raw: string): JournalRead {
   const end = raw.lastIndexOf('\n') + 1
   const complete = raw.slice(0, end)
   return {
@@ -172,6 +201,11 @@ function readJournal(file: string): JournalRead {
     completeBytes: Buffer.byteLength(complete),
   }
 }
+
+const readJournal = (file: string): JournalRead => parseJournal(readText(file) ?? '')
+
+/** The name of a journal file that was rotated: it holds the records up to this sequence number. */
+const rotatedName = (seq: number): string => `journal-${seq}.jsonl`
 
 type SnapshotRead = { readonly kind: 'missing' } | { readonly kind: 'corrupt' } | { readonly kind: 'ok', readonly state: ProjectState }
 
@@ -309,6 +343,63 @@ function replay(lines: readonly Line[], from: number, start: ProjectState): { re
 }
 
 /**
+ * The journal files that make one journal, oldest first, the current one last (design §7.5 step 1, §7.6). A rotation
+ * sets the full file aside as `journal-<last seq>.jsonl` and starts the next with a `base`; so a file that begins with
+ * a base at sequence number B carries on from `journal-<B - 1>.jsonl`, and only when the highest sequence number in
+ * that file is B - 1. A file with that name that is not what the base carries on from (a copy a rotation made before
+ * it was interrupted, or one that was edited) is not part of the journal, and the walk stops where it cannot go on.
+ */
+function journalChain(paths: RulesPaths, current: JournalRead): readonly JournalRead[] {
+  const chain: JournalRead[] = [current]
+  for (;;) {
+    const head = chain[0]?.lines[0]
+    if (head?.kind !== 'record' || head.record.op !== 'base') break
+    const earlier = readText(join(paths.runtimeDir, rotatedName(head.record.seq - 1)))
+    if (earlier === undefined) break
+    const file = parseJournal(earlier)
+    const highest = Math.max(0, ...file.lines.flatMap(line => line.kind === 'record' ? [line.record.seq] : []))
+    if (highest !== head.record.seq - 1) break
+    chain.unshift(file)
+  }
+  return chain
+}
+
+/** Where a replay of the files restarts: after the record the snapshot was made from, else after the latest whole anchor at the head of a file, else from nothing. */
+function startOf(chain: readonly JournalRead[], snapshot: ProjectState | undefined, matching: number): { readonly from: number, readonly start: ProjectState } {
+  if (snapshot !== undefined && matching >= 0) return { from: matching + 1, start: snapshot }
+  let offset = chain.reduce((sum, file) => sum + file.lines.length, 0)
+  for (const file of [...chain].reverse()) {
+    offset -= file.lines.length
+    const head = file.lines[0]
+    const anchor = head?.kind === 'record' ? anchorOf(head.record) : undefined
+    if (anchor !== undefined) return { from: offset + 1, start: anchor }
+  }
+  return { from: 0, start: emptyState() }
+}
+
+/**
+ * The whole journal directory replayed in one go: every file the current one carries on from, in order, from nothing
+ * (or from the whole anchor the oldest file begins with, when the files before it are gone). Every record is checked
+ * like any other, a `base` included, so a chain of bases that does not carry on shows up as lines that did not take
+ * effect. Reads only.
+ */
+export function replayJournals(paths: RulesPaths): { readonly state: ProjectState, readonly skipped: readonly SkippedRecord[] } {
+  const history = journalChain(paths, readJournal(paths.journal)).flatMap(file => file.lines)
+  const head = history[0]
+  const anchor = head?.kind === 'record' ? anchorOf(head.record) : undefined
+  return anchor === undefined ? replay(history, 0, emptyState()) : replay(history, 1, anchor)
+}
+
+/** The `changes` of the lines listed under these keys (`unresolved`), once each, in the order the journal has them; a line with no changes has none. */
+export function skippedLines(paths: RulesPaths, keys: ReadonlySet<string>): ReadonlyArray<{ readonly key: string, readonly changes: unknown }> {
+  const found: Array<{ readonly key: string, readonly changes: unknown }> = []
+  for (const line of journalChain(paths, readJournal(paths.journal)).flatMap(file => file.lines)) {
+    const key = keyOf(line)
+    if (keys.has(key) && !found.some(item => item.key === key)) found.push({ key, changes: line.kind === 'record' ? line.record.changes : line.kind === 'foreign' ? line.fields.changes : undefined })
+  }
+  return found
+}
+/**
  * Read the state of a project from its files, without writing and without
  * the lock (docs/ORCHESTRATION.md §16; design §7.5). The snapshot is used
  * as it is when the journal ends with exactly the record it was made from;
@@ -348,19 +439,19 @@ export function loadState(paths: RulesPaths): LoadResult {
     return done(pending.state, 'pending', cutTail === undefined ? [] : ['journal-tail'], plan)
   }
 
-  // Replay. The start is the snapshot when the journal has the record it was made from, else the first line when that is a whole `base`, else nothing.
-  const matching = snapshot.kind === 'ok' ? lines.findIndex(line => line.kind === 'record' && line.record.seq === snapshot.state.seq && line.record.snapshot === stateDigest(snapshot.state)) : -1
-  const head = lines[0]
-  const headAnchor = head?.kind === 'record' ? anchorOf(head.record) : undefined
-  const from = matching >= 0 ? matching + 1 : headAnchor === undefined ? 0 : 1
-  const start = snapshot.kind === 'ok' && matching >= 0 ? snapshot.state : headAnchor ?? emptyState()
-  const { state, skipped } = replay(lines, from, start)
+  // Replay. The start is the snapshot when the journal has the record it was made from (it may be in the file a rotation set aside), else the latest `base` that is whole at the head of a file, else nothing.
+  const chain = journalChain(paths, journal)
+  const history = chain.flatMap(file => file.lines)
+  const matching = snapshot.kind === 'ok' ? history.findIndex(line => line.kind === 'record' && line.record.seq === snapshot.state.seq && line.record.snapshot === stateDigest(snapshot.state)) : -1
+  const { from, start } = startOf(chain, matching >= 0 && snapshot.kind === 'ok' ? snapshot.state : undefined, matching)
+  const { state, skipped } = replay(history, from, start)
+  const everyRecord = history.flatMap(line => line.kind === 'record' ? [line.record] : [])
 
   const reasons = new Set<RecoveryReason>()
   const parseableSnapshotReplaced = snapshot.kind === 'ok' && matching < 0
   if (matching >= 0 && snapshot.kind === 'ok' && state.seq > snapshot.state.seq) reasons.add('snapshot-behind')
   if (matching < 0) {
-    if (snapshot.kind === 'ok') reasons.add(records.some(record => record.seq >= snapshot.state.seq) ? 'snapshot-modified' : 'journal-shorter')
+    if (snapshot.kind === 'ok') reasons.add(everyRecord.some(record => record.seq >= snapshot.state.seq) ? 'snapshot-modified' : 'journal-shorter')
     else reasons.add('snapshot-corrupt')
   }
   if (cutTail !== undefined) reasons.add('journal-tail')
@@ -401,7 +492,7 @@ export const realStoreIo: StoreIo = {
 /** Waits between the attempts to rename over a file a reader has open (Windows answers EPERM or EBUSY). */
 const RENAME_BACKOFF_MS = [20, 40, 80, 160, 320]
 
-async function renameWithRetry(io: StoreIo, from: string, to: string): Promise<boolean> {
+export async function renameWithRetry(io: StoreIo, from: string, to: string): Promise<boolean> {
   for (let attempt = 0; ; attempt++) {
     try {
       await io.rename(from, to)
@@ -429,9 +520,9 @@ export async function writeAtomic(file: string, text: string, io: StoreIo): Prom
   return await renameWithRetry(io, temporary, file) ? { ok: true } : { ok: false, temporary }
 }
 
-/** Append one record to the journal and sync it: from here the write has happened. */
-export async function appendRecord(paths: RulesPaths, record: JournalRecord): Promise<void> {
-  const handle = await open(paths.journal, 'a')
+/** Append one record, as a line of JSON, to a journal file and sync it: from here the write has happened. The loop board's change record is written the same way. */
+export async function appendLine(file: string, record: unknown): Promise<void> {
+  const handle = await open(file, 'a')
   try {
     await handle.appendFile(`${JSON.stringify(record)}\n`)
     await handle.sync()
@@ -439,6 +530,11 @@ export async function appendRecord(paths: RulesPaths, record: JournalRecord): Pr
   finally {
     await handle.close()
   }
+}
+
+/** Append one record to the journal and sync it: from here the write has happened. */
+export function appendRecord(paths: RulesPaths, record: JournalRecord): Promise<void> {
+  return appendLine(paths.journal, record)
 }
 
 /**
@@ -457,6 +553,45 @@ export async function writeSnapshot(paths: RulesPaths, state: ProjectState, io: 
   return 'failed'
 }
 
+/** The size a journal file may reach before it is set aside (design §7.6). */
+export const ROTATE_BYTES = 8 * 1024 * 1024
+
+/** Whether the current journal has reached the size at which it is set aside. */
+export function journalIsFull(paths: RulesPaths, limit: number): boolean {
+  try {
+    return statSync(paths.journal).size >= limit
+  }
+  catch {
+    return false
+  }
+}
+
+/**
+ * Set the journal aside as `journal-<seq - 1>.jsonl` and start the next with a `base` at `seq` that carries the whole
+ * state (design §7.6). The caller holds the write lock and has read the state it passes; `seq` is the sequence number of
+ * the next record, so the file is named after the last record it holds. The old file is copied and synced, then the
+ * journal is replaced by the new one in one rename: until the rename the journal is as it was (the copy is a file that
+ * nothing carries on from, and the next rotation writes over it), after it the old records are in the copy. A rename that
+ * cannot be done throws, and nothing has changed.
+ */
+export async function rotateJournal(paths: RulesPaths, state: ProjectState, seq: number, io: StoreIo): Promise<void> {
+  const rotated = join(paths.runtimeDir, rotatedName(seq - 1))
+  await copyFile(paths.journal, rotated)
+  const copy = await open(rotated, 'r+')
+  try {
+    await copy.sync()
+  }
+  finally {
+    await copy.close()
+  }
+  const next = applyRecord(state, { seq, changes: [] })
+  const record: JournalRecord = { seq, at: new Date(io.now()).toISOString(), actor: 'harness', op: 'base', evidence: `流水满了，上一份存为 ${rotatedName(seq - 1)}`, changes: [], snapshot: stateDigest(next), state: next }
+  const written = await writeAtomic(paths.journal, `${JSON.stringify(record)}\n`, io)
+  if (!written.ok) {
+    await unlink(written.temporary).catch(() => {})
+    throw new Error('流水满了要换新的，但新文件换不上去（文件正被别处打开），这次没有写')
+  }
+}
 /** A time as it goes into a file name. */
 export function stamp(ms: number): string {
   return new Date(ms).toISOString().replace(/[:.]/g, '-')

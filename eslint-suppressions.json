@@ -95,9 +95,6 @@
     }
   },
   "tests/fake-rc3.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    },
     "@typescript-eslint/require-await": {
       "count": 3
     },

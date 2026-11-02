@@ -6,15 +6,16 @@
  * does not trust); a state it rebuilt and persisted without loss is told but
  * does not degrade it, and neither does a clock that cannot be read (a
  * package without the GLM channel has no peak hours; docs/ORCHESTRATION.md
- * §11.3 treats that as a supported combination). A snapshot that was altered
- * or a journal that was cut degrades the row in every later session, because
- * the slice has no /rules recovery to settle it; each such message ends with
- * the way out, deleting `.llm/rules/` so the state starts again from the
- * rules file.
+ * §11.3 treats that as a supported combination). Records the journal holds that
+ * the board did not write degrade it until the person has handled them with
+ * `/rules recovery`, and the message says how. A snapshot that was altered or a
+ * journal that was cut degrades the row in every later session, because no
+ * operation settles that; each such message ends with the way out, deleting
+ * `.llm/rules/` so the state starts again from the rules file.
  */
 import type { HealthState } from '../shared/health.ts'
 import { PEAK_LEVEL_WORDS } from '../shared/peak-mode.ts'
-import { effectivePeakMode, type RecoveryReason, type RepoDiffLine } from './model.ts'
+import { effectivePeakMode, unapprovedScripts, type RecoveryReason, type RepoDiffLine } from './model.ts'
 import type { PeakReading } from './peak.ts'
 import type { ProjectRead } from './repo.ts'
 
@@ -28,7 +29,7 @@ const RECOVERED_TEXT: Readonly<Record<RecoveryReason, string>> = {
   'journal-not-engine': '变更记录里有不是规则板自己写的记录',
 }
 
-/** The way out of a problem this slice cannot clear itself (there is no /rules recovery): start again from the rules file in the repository. */
+/** The way out of a problem no operation clears (a snapshot that was altered, a journal that was cut): start again from the rules file in the repository. */
 const WAY_OUT = '要清掉，删掉 .llm/rules/，规则板会照仓库里的规则文件重新开始'
 
 function diffText(diff: readonly RepoDiffLine[]): string {
@@ -43,15 +44,21 @@ export function projectHealth(name: string, read: ProjectRead, reading: PeakRead
   const clock = reading.peak === undefined ? `读不出是不是高峰（${reading.why ?? '原因不明'}），这一档现在不生效` : reading.peak ? '现在是高峰' : '现在不是高峰'
   const told: string[] = []
   const problems: string[] = []
+  const mine = Object.values(read.state.rules ?? {}).filter(rule => rule.status === 'active').length
   const { state, load, repo } = read
   const unresolved = Object.values(state.unresolved ?? {})
   if (state.recovered !== undefined) told.push(RECOVERED_TEXT[state.recovered.reason])
   if (load.plan !== undefined) told.push('状态要重建，已在内存里按变更记录重放；下一次写入时留痕')
   if (state.recovered?.reason === 'snapshot-modified' || state.recovered?.reason === 'journal-shorter') problems.push(`${RECOVERED_TEXT[state.recovered.reason]}。这一版还没有处理它的命令；${WAY_OUT}`)
-  if (unresolved.length > 0) problems.push(`变更记录里有 ${unresolved.length} 条没有生效的记录（编号 ${unresolved.map(entry => entry.label).join('、')}）。这一版还没有处理它们的命令；${WAY_OUT}`)
+  if (unresolved.length > 0) {
+    const [first] = unresolved.map(entry => entry.label)
+    problems.push(`变更记录里有 ${unresolved.length} 条没有生效的记录（编号 ${unresolved.map(entry => entry.label).join('、')}）。看一眼之后，在输入框打 /rules recovery ${first} 照改 或 /rules recovery ${first} 忽略`)
+  }
   if (repo.kind === 'unreadable') problems.push(`仓库里的规则文件读不出（${repo.reason}），没有生效`)
   if (repo.kind === 'outside') problems.push(`仓库里的规则文件被规则板以外改过，没有生效（${diffText(repo.diff)}）。要按存档重写它，打 /rules peak 重设一次档位`)
   else if (state.repo.outside !== undefined) problems.push(`仓库里的规则文件被规则板以外改过，没有生效（${diffText(state.repo.outside.diff)}）。要按存档重写它，打 /rules peak 重设一次档位`)
   if (repo.kind === 'owed') told.push(gitOperation === undefined ? '规则文件待写回' : `规则文件待写回（git 正在做 ${gitOperation}）`)
-  return [problems.length === 0 ? 'active' : 'degraded', [head, clock, ...told, ...problems].join('；')]
+  // A script that came with the rules file, or changed in it, does not run until a person has read it: told, not a fault of the board.
+  for (const script of unapprovedScripts(state)) told.push(`${script.id}（${script.title}）的脚本在这台电脑上没有你看过原文的记录，先不跑；要用，跟主 Agent 说，它会把原文给你看`)
+  return [problems.length === 0 ? 'active' : 'degraded', [head, clock, ...(mine === 0 ? [] : [`${mine} 条你设的规则生效`]), ...told, ...problems].join('；')]
 }

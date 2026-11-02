@@ -57,17 +57,26 @@
       inject: [commands]
       config: {}
     - id: glm-hourness/rules
-      # Rules board, first slice (docs/ORCHESTRATION.md §16): the peak mode of
-      # each project (no effect, do less, do none; the factory default is do
-      # less), changed only by the person with /rules peak, and handed to the
-      # rows that read it through the glmHournessPeakMode service. The level
-      # is kept in the repository (docs/rules/rules.json) and in the project's
-      # .llm/rules/. Holds and delays no agent. Ships disabled until the L3
-      # probe (scenario rules-peak) and the first desktop pass
+      # Rules board (docs/ORCHESTRATION.md §16): the rules of each project,
+      # kept in the repository (docs/rules/rules.json) and in the project's
+      # .llm/rules/, and its peak mode (no effect, do less, do none; the
+      # factory default is do less). The row judges every tool call after the
+      # gates inside it (a rule that blocks refuses the call, a rule that
+      # records leaves a line in the violation journal), keeps its own files
+      # to itself (rules:files-only), gives agents the tool rules_show, and
+      # gives the person /rules; the peak mode is handed to the rows that read
+      # it through the glmHournessPeakMode service. A rule of the person that
+      # queues refuses the call once with a waiting ticket, and the agent is
+      # told when it clears. At the stop level of the peak mode a GLM
+      # subagent's tool calls are one ticket for its session and its active goal
+      # is paused until the peak is over; dispatching a GLM subagent waits the
+      # same way. Holds no main agent and pauses none of its goals. Ships disabled
+      # until the L3 probe (scenarios glm-rules, non-glm-rules, rules-queue,
+      # rules-handover, rules-peak, rules-peak-stop) and the first desktop pass
       # (docs/DEVELOPMENT.md §3, AGENTS.md).
       name: dsh-hourness/rules
       disabled: true
-      inject: [commands]
+      inject: [tools, commands]
       config: {}
     - id: glm-hourness/design
       # Main agent mode (docs/ORCHESTRATION.md §3.1, §3.5): /wish makes one
@@ -83,6 +92,25 @@
       name: dsh-hourness/design
       disabled: true
       inject: [commands]
+      config: {}
+    - id: glm-hourness/loops
+      # Loop board (docs/ORCHESTRATION.md §18): what is done when something
+      # happens or the time comes. Rows hand their entries, events and harness
+      # actions to the service glmHournessLoops; the board validates and lists
+      # them, an entry whose event nobody declares waits greyed, and the row
+      # brings four entries of its own (dependency check after a merge,
+      # a reminder for what waits for you too long, the two ends of a GLM
+      # peak). It keeps the entries a person agreed to (docs/loops/ in the
+      # repository, the change record in the project's .llm/loops/), gives the
+      # person /loops, keeps its own files to itself (loops:files-only), and in
+      # a process that has a session controller it holds the project's run
+      # lock, beats every 60 seconds, reads the inbox and runs what an entry
+      # says to do. Not here yet: the delivery to the main agent, the binding
+      # of DSH schedules, the tools and the pages, and the executor of a script
+      # or a check entry (those two end refused). Ships disabled until the L3
+      # probe and the first desktop pass (docs/DEVELOPMENT.md §3, AGENTS.md).
+      name: dsh-hourness/loops
+      disabled: true
       config: {}
     - id: glm-hourness/ui
       # The package's client face (dsh.client in package.json, host half

@@ -307,7 +307,7 @@ export interface ServiceLookup {
  * and dsh-user-questions register their projection units this way.
  */
 export interface InjectHost {
-  inject<K extends keyof InjectableServices>(names: readonly K[], callback: (ctx: Pick<InjectableServices, K>) => (() => void) | void): unknown
+  inject<K extends keyof InjectableServices>(names: readonly K[], callback: (ctx: Pick<InjectableServices, K> & ProvideHost & ServiceLookup) => (() => void) | void): unknown
 }
 
 /** The services rows take optionally through `ctx.inject`. */
@@ -315,6 +315,18 @@ export interface InjectableServices {
   readonly sessionProjections: SessionProjectionsService
   readonly agents: AgentsService
   readonly subagents: SubagentsService
+  /**
+   * `sessionController` (api-session-controller:2951–2952): only a process
+   * that has it can reach a session, so only there does the loop board
+   * provide its service and run entries (loop board design §3.1, §6.1).
+   * `resolveAgent` revives a cold session, or says why not with the codes
+   * `session/not-found`, `session/writer-held`, `gateway/internal`
+   * (api-session-controller:3037–3039, 221–246); the delivery that calls it
+   * comes with the main agent's side of the board.
+   */
+  readonly sessionController: {
+    resolveAgent(sessionId: string): Promise<{ readonly agent?: AgentLike, readonly error?: { readonly code: string, readonly message?: string } }>
+  }
 }
 
 /**
@@ -370,6 +382,64 @@ export interface AgentsService {
 }
 
 /**
+ * A live agent a message can be put in front of in each of the three ways
+ * (rc.3 dsh-agent-loop `ReactLoopAgent`, agent-loop:790–821): `steer` reaches
+ * the running turn's next step (and wakes an idle agent), `inject` the next
+ * step without waking, `followup` opens the next turn.
+ */
+export interface MessageableAgentLike extends LiveAgentLike {
+  steer(message: UserNotice): void
+}
+
+/**
+ * The `agents` registry as the rules board reads it: `get(id)` is the live
+ * agent of a session id, undefined once it is released (agent:596); `list()`
+ * is every live agent in registration order (agent:614–616).
+ */
+export interface MessageableAgentsService {
+  get(id: string): MessageableAgentLike | undefined
+  list(): readonly MessageableAgentLike[]
+}
+
+/** What a goal operation names: the goal and the revision the caller read; any other revision is refused as stale (rc.3 dsh-goal `expectCurrent`, goal:760–765). */
+export interface GoalRef {
+  readonly id: string
+  readonly revision: number
+}
+
+/** A goal as the service returns it, as far as the rules board reads it: its identity, its revision (every change raises it by one, goal:174) and its phase. */
+export interface GoalView extends GoalRef {
+  readonly phase: string
+  /**
+   * Why a `blocked` goal is blocked (dsh-goal `GoalBlockReason` of
+   * `GoalSnapshot`, which `GoalView` extends: `{code, message}`). The loop
+   * board reads the code to word what it says about a drive that is blocked
+   * when a peak ends (loops design §6.9 item 4 row 9); it never judges whether
+   * to resume by it, which stays with the execute row.
+   */
+  readonly blockedReason?: { readonly code: string, readonly message: string }
+}
+
+/**
+ * The `goals` service members the rules board uses (rc.3 dsh-goal, no
+ * installed `.d.ts`): `get` is the goal of an exact live agent, undefined when
+ * it has none (goal:611–614); `pause` takes an `active` goal to `paused` and
+ * `resume` an `active`, `paused` or `blocked` one to `active` while its round
+ * budget lasts, each returning the new view (goal:676–699). All three throw
+ * `GoalError` for an agent that is not the registry's live instance
+ * (goal:767–769), and the two changes for a reference that is not the current
+ * goal and revision (`GOAL_STALE_REVISION`, goal:760–765) or a phase they do
+ * not take (`GOAL_INVALID_TRANSITION`). The round driver cancels the running
+ * step of a paused agent only when the initiator is not that agent
+ * (goal-round-driver:246).
+ */
+export interface GoalsService {
+  get(agent: LiveAgentLike): GoalView | undefined
+  pause(agent: LiveAgentLike, ref: GoalRef): GoalView
+  resume(agent: LiveAgentLike, ref: GoalRef): GoalView
+}
+
+/**
  * A live agent as the design row drives it: the scoped context its hooks
  * install on (agent-loop:748–781), `steer` (a waking message that reaches
  * the running turn's next step, agent-loop:806–814) and `whenIdle` (resolves
@@ -405,6 +475,116 @@ export interface SessionPersistenceLike {
  */
 export interface SubagentsService {
   interrupt(targetSessionId: string, authority: { readonly kind: 'user', readonly parentSessionId: string }): void
+}
+
+/**
+ * One stored reminder of the host-wide schedule service, as it comes back
+ * from `create`, `list` and `catalog` (rc.3 dsh-schedule: the decoders
+ * require exactly the keys of their kind, schedule:256–312 `at` and `after`,
+ * 356–365 `every`, 411–421 `daily`, 463–472 `weekly`, and the cron decoder
+ * after it; `scheduledAt` is a canonical UTC instant, schedule:150–156). The
+ * keys of the other kinds are optional here because one type covers all of
+ * them; the loop board reads only the ones of the record's own `kind`.
+ */
+export interface ScheduleRecordLike {
+  readonly id: string
+  readonly kind: 'at' | 'after' | 'every' | 'daily' | 'weekly' | 'cron'
+  readonly title: string
+  readonly prompt: string
+  readonly scheduledAt: string
+  readonly everySeconds?: number
+  /** `HH:mm:ss.SSS`, normalized by the host (schedule:1056–1057). */
+  readonly time?: string
+  /** The `Intl` canonical zone name the host normalized to (schedule:212–222). */
+  readonly timeZone?: string
+  readonly weekdays?: readonly number[]
+  readonly expression?: string
+}
+
+/** One row of `schedule.catalog()`: the record, the session it is bound to, whether it still fires, and the last delivery (schedule:2129–2136; the delivery is written at schedule:1598). */
+export interface ScheduleCatalogEntry extends ScheduleRecordLike {
+  readonly sessionId: string
+  readonly status: 'active' | 'inactive'
+  readonly lastDelivery?: { readonly scheduledAt: string, readonly deliveredAt: string, readonly messageId: string }
+}
+
+/**
+ * The timing of a reminder as `create` and the `change` of `update` take it:
+ * exactly one selector, in the host's snake-case wire form (schedule:2083–2093
+ * dispatches on these keys; `every_seconds` is at least 60, schedule:21; the
+ * `change` of an update carries `kind` and its own selector and nothing else,
+ * schedule:1710–1716).
+ */
+export type ScheduleSelector =
+  | { readonly at: string }
+  | { readonly every_seconds: number }
+  | { readonly daily: { readonly time: string, readonly time_zone: string } }
+  | { readonly weekly: { readonly time: string, readonly time_zone: string, readonly weekdays: readonly number[] } }
+  | { readonly cron: { readonly expression: string, readonly time_zone: string } }
+
+/** The timing change of an `update`: the kind and the one selector that belongs to it (schedule:1710–1716). */
+export type ScheduleChange = { readonly kind: 'at' | 'every' | 'daily' | 'weekly' | 'cron' } & ScheduleSelector
+
+/**
+ * What `update` answers (schedule:2197–2224, resolveScheduleUpdate at
+ * schedule:1806–1837): the committed record, `updated: false` for a change the
+ * host normalized to the stored rule, or a result that changed nothing with
+ * the code `schedule_conflict`, `schedule_not_found`, `schedule_ended`,
+ * `invalid_rule`, `invalid_prompt` or `subagent_session`. An input that does
+ * not decode has no `id`.
+ */
+export type ScheduleUpdateResult =
+  | { readonly id: string, readonly updated: true, readonly record: ScheduleRecordLike }
+  | { readonly id: string, readonly updated: false, readonly record?: ScheduleRecordLike, readonly code?: string, readonly message?: string }
+  | { readonly id?: undefined, readonly updated?: undefined, readonly code: string, readonly message?: string }
+
+/**
+ * The `schedule` service members the loop board calls (rc.3 dsh-schedule,
+ * `super(ctx, "schedule")` at schedule:1992; the model-facing tools read the
+ * same service as `ctx.schedule`, tool-schedule:540). Read through
+ * `ctx.get('schedule')` and not through `inject`: a headless composition
+ * mounts no schedule row, and the board degrades without one (loop board
+ * design §10.1, §11.1).
+ *
+ * `create` throws `ScheduleInputError` for a title that is empty or over 120
+ * characters (schedule:93–97), for more or fewer than one selector
+ * (schedule:2083) and for a session a delegated child owns
+ * (schedule:2254–2261, the only session it refuses: an archived session is
+ * accepted). `delete` is a hard removal, the saved deliveries with it
+ * (schedule:2164–2182). `list` returns the active records of one session
+ * (schedule:2120–2122), which is what an `update` has to pass as `expected`.
+ */
+export interface ScheduleService {
+  create(sessionId: string, request: { readonly title: string, readonly prompt: string } & ScheduleSelector, signal?: AbortSignal): Promise<ScheduleRecordLike>
+  list(request: { readonly sessionId: string }): Promise<readonly ScheduleRecordLike[]>
+  catalog(): Promise<readonly ScheduleCatalogEntry[]>
+  delete(request: { readonly sessionId: string, readonly id: string }, signal?: AbortSignal): Promise<{ readonly id: string, readonly deleted: boolean, readonly code?: string }>
+  update(request: {
+    readonly sessionId: string
+    readonly id: string
+    /** The complete record the caller observed, as `list` gave it; anything else is `invalid_rule` or `schedule_conflict` (schedule:1806–1815). */
+    readonly expected: ScheduleRecordLike
+    readonly title?: string
+    readonly prompt?: string
+    readonly change?: ScheduleChange
+  }, signal?: AbortSignal): Promise<ScheduleUpdateResult>
+}
+
+/**
+ * The `workspaceRegistry` service members the loop board reads (rc.3
+ * dsh-workspace, `super(ctx, "workspaceRegistry")` at dsh-workspace:376):
+ * `archivedSessionIds` is a getter over the stored state
+ * (dsh-workspace:506–508) and `list()` the registered workspaces in display
+ * order (dsh-workspace:454–460); both call `requireState`, which throws while
+ * the service has not started (dsh-workspace:934–937). Archiving with
+ * `stopActivity` writes the archive set first and then asks the
+ * `workspace/session-stop` providers to stop the session's activity, which is
+ * how the schedule service drops that session's active tasks
+ * (dsh-workspace:526–541, 621–629; schedule:2056–2058).
+ */
+export interface WorkspaceRegistryService {
+  readonly archivedSessionIds: readonly string[]
+  list(): ReadonlyArray<{ readonly path: string }>
 }
 
 /** cordis `ctx.provide(name, value)`: register a service owned by the calling fiber; the disposer unregisters it (also on unload). */

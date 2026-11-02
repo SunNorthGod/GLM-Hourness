@@ -126,7 +126,14 @@ async function readContent(file: string): Promise<{ readonly text: string, reado
   }
 }
 
-async function tryCreate(file: string, content: LockContent): Promise<boolean> {
+/**
+ * Created (`true`), held by someone else (`false`), or, on Windows only, the
+ * refusal `EPERM`: while another process is unlinking the previous lock the
+ * name answers access denied instead of `EEXIST` for a few milliseconds. The
+ * refusal is returned so the caller can wait it out; a refusal that does not
+ * pass is a real one and is thrown at the deadline.
+ */
+async function tryCreate(file: string, content: LockContent): Promise<boolean | Error> {
   try {
     const handle = await open(file, 'wx')
     try {
@@ -138,7 +145,9 @@ async function tryCreate(file: string, content: LockContent): Promise<boolean> {
     return true
   }
   catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'EEXIST') return false
+    const { code } = error as NodeJS.ErrnoException
+    if (code === 'EEXIST') return false
+    if (code === 'EPERM' && process.platform === 'win32') return error as Error
     throw error
   }
 }
@@ -163,7 +172,8 @@ export async function acquireLock(file: string, environment: LockEnvironment = r
   for (;;) {
     const boot = environment.bootTime?.()
     const written: LockContent = { pid: environment.pid, startedAt, at: environment.now(), token, ...(boot === undefined ? {} : { boot }), ...(options.holder === undefined ? {} : { holder: options.holder }) }
-    if (await tryCreate(file, written)) {
+    const created = await tryCreate(file, written)
+    if (created === true) {
       return {
         async held() {
           return (await readContent(file))?.content.token === token
@@ -172,6 +182,11 @@ export async function acquireLock(file: string, environment: LockEnvironment = r
           if ((await readContent(file))?.content.token === token) await unlink(file).catch(() => {})
         },
       }
+    }
+    if (created !== false) {
+      if (environment.now() >= deadline) throw created
+      await environment.sleep(options.retryMs ?? RETRY_MS)
+      continue
     }
     const holder = await readContent(file)
     if (holder === undefined) {

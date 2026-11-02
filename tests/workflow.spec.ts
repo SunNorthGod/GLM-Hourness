@@ -101,6 +101,22 @@ test('shadow records are counted apart from denials: never blocked, not exceptio
   assert.ok(report.includes('## 影子记录（只记录，未拦截）\n- file-tools-only × 2'))
 })
 
+test('a denial of the rules board (mode enforce) is a violation like the guard\'s; a call it only recorded is neither a violation nor a shadow record', () => {
+  const report = morningReport({
+    period: 'p',
+    decisions: [],
+    violations: [
+      { at: 't1', rule: 'rules:r-no-push', mode: 'enforce', tool: 'pwsh', scope: 'other', correction: '…' },
+      { at: 't2', rule: 'rules:r-no-push', mode: 'enforce', tool: 'pwsh', scope: 'other', correction: '…' },
+      { at: 't3', rule: 'rules:r-note-npm', mode: 'record', tool: 'pwsh', scope: 'other', correction: '…' },
+    ],
+    usage: [],
+  })
+  assert.ok(report.includes('## 例外（先看）\n- 违规 rules:r-no-push（其他路由） × 2\n'), report)
+  assert.ok(!report.includes('r-note-npm'), 'recorded calls are not violations')
+  assert.ok(!report.includes('## 影子记录'), 'and not shadow records')
+})
+
 test('records from routes the dialect did not claim are counted apart; records without a scope count as before', () => {
   const report = morningReport({
     period: 'p',

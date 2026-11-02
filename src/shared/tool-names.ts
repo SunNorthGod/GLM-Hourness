@@ -13,6 +13,25 @@ export const GRAPH_TOOL_NAMES: readonly string[] = [
   'graph_unlink', 'graph_comment', 'graph_verify', 'graph_decide', 'graph_approve', 'graph_reject',
 ]
 
+/**
+ * The rules row's tools, in registration order. An agent that the rules board
+ * holds back can still call them, because it has to be able to read the rules
+ * that hold it (src/rules/judge.ts leaves them out of what a
+ * one-ticket-per-session entry queues). tests/contracts.spec.ts pins the
+ * registration of src/rules/index.ts to this list.
+ */
+export const RULES_TOOL_NAMES: readonly string[] = ['rules_show']
+
+/**
+ * The DSH native tools that dispatch a subagent. A call to one of them is a
+ * `gate.dispatch` event of the rules board besides the `gate.tool-call` every
+ * call is (src/rules/events.ts). The dispatch tool of the orchestration
+ * package adds its own name when it exists. tests/contracts.spec.ts pins the
+ * names to the dispatch tools the workflow row recognises, which the L3 probe
+ * checks against the runtime's tool list.
+ */
+export const DISPATCH_TOOL_NAMES: readonly string[] = ['subagent', 'subagent_fork']
+
 /** The memory row's tools. */
 export const MEMORY_TOOL_NAMES: readonly string[] = ['memory_store', 'memory_query', 'memory_forget']
 
