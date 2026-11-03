@@ -9,6 +9,7 @@ import type { GraphNode } from '../src/graph/schema.ts'
 import type { RemoteRoot, StreamItem, WatchFrame } from '../ui/src/dsh.ts'
 import { absoluteTime, byCreation, decidedBy, dotTone, graphRevisionOf, headlineGoals, historyText, liveGroups, nobodyRunningText, placeText, presenceText, progressOf, progressText, revisionOfBytes, statusText, tokensText, visibleGraph } from '../ui/src/graph/model.ts'
 import { holderRecordOf } from '../src/shared/holder-record.ts'
+import { firstVisit, graphHasHumanActorHistory, GUIDE_KEY, noGraphKey, readStamp, writeStamp } from '../ui/src/guide/state.ts'
 import { cwdKeyOf, mainChatOf } from '../ui/src/graph/main-chat.ts'
 import { GraphSource, type GraphSnapshot } from '../ui/src/graph/source.ts'
 import { initialSeen, nextSeen, seenKeyOf, seenRecordOf, writeSeenRecord } from '../ui/src/graph/seen.ts'
@@ -434,4 +435,31 @@ test('主 Agent 的对话 (MainChat): the record shape and the working-directory
   }
   assert.equal(cwdKeyOf('D:\\Repo\\ws\\', true), 'd:/repo/ws', 'backslashes, trailing slash, Windows lower case')
   assert.equal(cwdKeyOf('/home/r/ws/', false), '/home/r/ws', 'no lower case off Windows')
+})
+
+graphTest('上手页 (guide state): first visit ends at a record or at human history, and the records fail quietly', async ({ dir }) => {
+  const backing = new Map<string, string>()
+  const storage = { getItem: (key: string) => backing.get(key) ?? null, setItem: (key: string, value: string) => { backing.set(key, value) } } as Storage
+  assert.equal(firstVisit(storage, false), true, 'no record, no human history: the first visit')
+  writeStamp(storage, GUIDE_KEY, '2026-11-04T00:00:00.000Z')
+  assert.equal(firstVisit(storage, false), false, 'a record ends it')
+  assert.equal(firstVisit(undefined, false), true, 'no storage behaves like no record')
+  assert.equal(firstVisit(storage, true), false, 'human history on the graph ends it, record or not')
+  const graph = await loadGraph(dir)
+  assert.equal(graphHasHumanActorHistory(graph), true, 'the seed writes human history (seedAsHuman)')
+  const fresh = await mkdtemp(join(tmpdir(), 'guide-fresh-'))
+  try {
+    await openEngine(fresh).apply('llm', { op: 'propose', reason: '建图', node: { type: 'goal', title: '项目图' } })
+    assert.equal(graphHasHumanActorHistory(await loadGraph(fresh)), false, 'an llm-only graph is a new user')
+    const relayed = await openEngine(fresh).apply('llm', { op: 'propose', reason: '建图', node: { type: 'task', title: '带原话', parent: 'goal-1' }, relay: '人随口说的一句话' })
+    assert.ok(relayed.ok, JSON.stringify(relayed))
+    assert.equal(graphHasHumanActorHistory(await loadGraph(fresh)), false, 'a relayed llm entry does not count (P5-02)')
+  }
+  finally {
+    await rm(fresh, { recursive: true, force: true })
+  }
+  const broken = { getItem: () => { throw new Error('full') }, setItem: () => { throw new Error('full') } } as unknown as Storage
+  assert.equal(readStamp(broken, GUIDE_KEY), undefined, 'a broken read is no record')
+  writeStamp(broken, GUIDE_KEY, '2026-11-04T00:00:00.000Z')
+  assert.equal(noGraphKey('D:\\Repo\\ws'), 'glm-hourness.nograph.v1:d:/repo/ws')
 })

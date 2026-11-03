@@ -68,7 +68,7 @@ export const PACKAGES = [
     client: {
       row: 'glm-hourness/ui',
       entry: 'ui/src/hourness-client.tsx',
-      sources: ['ui/src/hourness-client.tsx', 'ui/src/dsh.ts', 'ui/src/primitives.d.ts', 'ui/src/graph/', 'ui/src/lessons/', 'ui/src/flow/', 'ui/src/wish/'],
+      sources: ['ui/src/hourness-client.tsx', 'ui/src/dsh.ts', 'ui/src/primitives.d.ts', 'ui/src/graph/', 'ui/src/guide/', 'ui/src/lessons/', 'ui/src/flow/', 'ui/src/wish/'],
     },
   },
 ]

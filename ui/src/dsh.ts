@@ -188,6 +188,8 @@ export interface ClientContext {
     register<P>(registration: SlotRegistration<P>, component: ComponentType<never>): () => void
   }
   readonly sidebarRightTabs: { register(definition: TabDefinition): () => void }
+  /** dsh-client-ui-sidebar-right's navigation face (README, openTab): opens a page tab by kind; throws when no session surface is mounted. */
+  readonly sidebarRight: { openTab(kind: string, options?: { readonly params?: Record<string, unknown> }): void }
   readonly remote: RemoteRoot
   /** dsh-client-ui-workspace: opens a session in the main view (README, uiWorkspace.openSession). */
   readonly uiWorkspace: UiWorkspace

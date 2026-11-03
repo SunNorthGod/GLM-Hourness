@@ -20,11 +20,13 @@ import type { LoadedGraph } from '../../../src/graph/parse.ts'
 import type { AwaitingEntry } from '../../../src/graph/live.ts'
 import type { SessionsClient, UiWorkspace, WorkspaceFilesRemote } from '../dsh.ts'
 import { useAgents, useNow } from './agents.ts'
-import { boards, checkedBoardState, type Board, type BoardState } from './boards.ts'
+import { useBoard } from './board-state.ts'
+import { boards, type Board } from './boards.ts'
 import { ChangesPage } from './Changes.tsx'
 import { NowContext, PanelBoundary, ServicesContext, type PanelServices } from './common.tsx'
 import { Decisions } from './Decisions.tsx'
 import { GraphCanvas } from './GraphCanvas.tsx'
+import { GuidePage } from './Guide.tsx'
 import { Home } from './Home.tsx'
 import { MainChatContext, useMainAgent } from './MainChat.tsx'
 import { NeedsPage } from './NeedsYou.tsx'
@@ -35,6 +37,7 @@ import { PlanPage } from './Plan.tsx'
 import { GRAPH_DIR, type GraphSource } from './source.ts'
 import { initialSeen, nextSeen, seenKeyOf, seenRecordOf, writeSeenRecord } from './seen.ts'
 import { PANEL_CSS } from './styles.ts'
+import { firstVisit, graphHasHumanActorHistory } from '../guide/state.ts'
 
 /** A second-layer page, or the home when undefined. */
 type PageId = 'needs' | 'plan' | 'live' | 'changes' | 'decided' | 'modules' | 'graph'
@@ -69,39 +72,6 @@ function Problems({ summary, lines, retry }: { readonly summary: string, readonl
 }
 
 // --- The registered boards (plain-ui 1.3 §4.7, M5 §8.2) ----------------------
-
-const BOARD_UNAVAILABLE: BoardState = { available: false, homeLine: null, guideLine: null, peakApplies: false }
-const boardWarned = new WeakSet<Board>()
-
-/** A board whose subscribe or snapshot throws is treated as not available, warned about once; the others go on. */
-const warnBoardOnce = (board: Board, error: unknown): void => {
-  if (boardWarned.has(board)) return
-  boardWarned.add(board)
-  console.warn(`glm-hourness: board ${board.id} is not available:`, error)
-}
-
-/** The state of one registered board for one session (the hook lives here until plain-ui owns the table). */
-function useBoard(board: Board, sessionId: string): BoardState {
-  const subscribe = useCallback((listener: () => void) => {
-    try {
-      return board.subscribe(sessionId, listener)
-    }
-    catch (error) {
-      warnBoardOnce(board, error)
-      return () => {}
-    }
-  }, [board, sessionId])
-  const getSnapshot = useCallback(() => {
-    try {
-      return checkedBoardState(board.id, board.snapshot(sessionId)) ?? BOARD_UNAVAILABLE
-    }
-    catch (error) {
-      warnBoardOnce(board, error)
-      return BOARD_UNAVAILABLE
-    }
-  }, [board, sessionId])
-  return useSyncExternalStore(subscribe, getSnapshot)
-}
 
 /** The footer's entry of one board; hooks run here, not in the footer's loop. */
 function BoardLine({ board, sessionId, onOpen }: { readonly board: Board, readonly sessionId: string, readonly onOpen: () => void }): ReactElement | null {
@@ -141,6 +111,12 @@ export function GraphPanel({ source, sessions, files, workspace, sessionId }: Gr
   const shown = useRef(false)
   /** The body's visibility as state: it bounds the main chat's read window. */
   const [bodyVisible, setBodyVisible] = useState(false)
+  /**
+   * The guide page (plain-ui 1.3 §6.4): undefined until the first-visit
+   * rule has been answered (it needs the graph's history), then whether
+   * the page stands instead of the home. 手动打开 works without a graph.
+   */
+  const [guide, setGuide] = useState<boolean | undefined>(undefined)
   const open = useCallback((id: string) => {
     if (depth.current === 0) opener.current = document.activeElement instanceof HTMLElement || document.activeElement instanceof SVGElement ? document.activeElement : null
     setTrail(current => current.at(-1) === id ? current : [...current, id])
@@ -165,6 +141,11 @@ export function GraphPanel({ source, sessions, files, workspace, sessionId }: Gr
   const mainHere = main.chat?.kind === 'here' === true
   const awaiting: readonly AwaitingEntry[] = holderId !== undefined ? holderValues?.graphLive?.awaiting ?? [] : values?.graphLive?.awaiting ?? []
   const graph: LoadedGraph | undefined = snapshot.status === 'ready' ? snapshot.graph : undefined
+  // The first-visit rule needs the graph's history; answered once, at the first ready snapshot (§6.4).
+  useEffect(() => {
+    if (guide !== undefined || snapshot.status !== 'ready') return
+    setGuide(firstVisit(window.localStorage, graphHasHumanActorHistory(snapshot.graph)))
+  }, [guide, snapshot])
 
   // The needs list and the view models, from one graph; empty stand-ins while the graph reads.
   const needs = useMemo(() => graph === undefined ? [] : needsOf(graph, awaiting), [graph, awaiting])
@@ -234,20 +215,33 @@ export function GraphPanel({ source, sessions, files, workspace, sessionId }: Gr
   }, [covered])
 
   if (snapshot.status !== 'ready' || graph === undefined) {
+    // 没有项目图的一节 (plain-ui 1.3 §6.6): the 接管行 is not registered on main, so the wording is the without-bootstrap branch; 上手说明 opens manually, without a graph.
     return (
       <div className="glmg">
         <style>{PANEL_CSS}</style>
-        <div className="glmg-body">
-          {snapshot.status === 'loading'
-            ? <div className="glmg-empty"><span className="glmg-empty-title">正在读项目图…</span></div>
+        {guide === true
+          ? (
+              <div className="glmg-body">
+                <GuidePage sessionId={sessionId} onOpenBoard={() => {}} onDone={() => { setGuide(false) }} />
+              </div>
+            )
             : (
-                <div className="glmg-empty">
-                  <span className="glmg-empty-title">{snapshot.status === 'missing' ? '这个工作区还没有项目图' : '项目图读不出来'}</span>
-                  <span>{snapshot.status === 'missing' ? `项目图放在工作区的 ${GRAPH_DIR}/nodes 下；在对话里让 agent 建一个空目录，面板会自己跟上。` : snapshot.status === 'failed' ? snapshot.message : ''}</span>
-                  <button type="button" className="glmg-more" onClick={() => { void source.retry() }}>重新读取</button>
+                <div className="glmg-body">
+                  {snapshot.status === 'loading'
+                    ? <div className="glmg-empty"><span className="glmg-empty-title">正在读项目图…</span></div>
+                    : (
+                        <div className="glmg-empty">
+                          <span className="glmg-empty-title">{snapshot.status === 'missing' ? '这个工作区还没有项目图' : '项目图读不出来'}</span>
+                          <span>{snapshot.status === 'missing' ? '项目图记下这个项目要做成什么、接下来做什么、哪些要你回话。有了它，主 Agent 才能接手。' : snapshot.status === 'failed' ? snapshot.message : ''}</span>
+                          {snapshot.status === 'missing' ? <span>在对话里让 agent 建空目录 {GRAPH_DIR}/nodes，面板会自己跟上。</span> : null}
+                          <div className="glmg-actions">
+                            <button type="button" className="glmg-more" onClick={() => { void source.retry() }}>重新读取</button>
+                            <button type="button" className="glmg-more" onClick={() => { setGuide(true) }}>上手说明 ›</button>
+                          </div>
+                        </div>
+                      )}
                 </div>
               )}
-        </div>
       </div>
     )
   }
@@ -287,21 +281,25 @@ export function GraphPanel({ source, sessions, files, workspace, sessionId }: Gr
           {unreadable.length === 0 ? null : <Problems summary={`面板读不出 ${unreadable.length} 个节点文件，这些节点没有显示。`} lines={unreadable.map(entry => `${entry.file}：${entry.message}`)} retry={() => source.retry()} />}
           <div className="glmg-stage">
             <div ref={body} className="glmg-body">
-              <Home
-                graph={graph}
-                agents={agents}
-                awaiting={awaiting}
-                since={seen.since}
-                quiet={quiet}
-                sessionId={sessionId}
-                mainHere={mainHere}
-                onPlan={() => { setPage('plan') }}
-                onChanges={() => { setPage('changes') }}
-                onLive={() => { setPage('live') }}
-                onNeeds={() => { setPage('needs') }}
-                onModules={() => { setPage('modules') }}
-                onBoard={id => { setBoardId(id) }}
-              />
+              {guide === true
+                ? <GuidePage sessionId={sessionId} onOpenBoard={id => { setBoardId(id) }} onDone={() => { setGuide(false) }} />
+                : (
+                    <Home
+                      graph={graph}
+                      agents={agents}
+                      awaiting={awaiting}
+                      since={seen.since}
+                      quiet={quiet}
+                      sessionId={sessionId}
+                      mainHere={mainHere}
+                      onPlan={() => { setPage('plan') }}
+                      onChanges={() => { setPage('changes') }}
+                      onLive={() => { setPage('live') }}
+                      onNeeds={() => { setPage('needs') }}
+                      onModules={() => { setPage('modules') }}
+                      onBoard={id => { setBoardId(id) }}
+                    />
+                  )}
             </div>
             {selected !== undefined
               ? (
@@ -331,6 +329,7 @@ export function GraphPanel({ source, sessions, files, workspace, sessionId }: Gr
           </div>
           <div className="glmg-foot">
             {boards().map(board => <BoardLine key={board.id} board={board} sessionId={sessionId} onOpen={() => { setBoardId(board.id) }} />)}
+            <button type="button" className="glmg-more" onClick={() => { setGuide(true) }}>上手说明 ›</button>
             <button type="button" className="glmg-more" onClick={() => { setPage('graph') }}>整张图 ›</button>
           </div>
         </div>

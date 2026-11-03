@@ -14,7 +14,9 @@ import { holdSource, type GraphSource } from './source.ts'
 
 /** This implementation's identity in the tab system, and the key its body registers under. */
 const GRAPH_TAB_ID = 'dsh-glm-hourness-ui/graph'
-const GRAPH_TAB_KIND = 'glm-hourness-graph'
+
+/** The tab's kind: what sidebarRight.openTab names to open it (plain-ui 1.3 §6.5). */
+export const GRAPH_TAB_KIND = 'glm-hourness-graph'
 
 interface BodyProps {
   readonly graphSessionId: string
