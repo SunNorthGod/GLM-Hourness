@@ -24,6 +24,7 @@
 import type { DecisionRecord, UsageRecord } from '../memory/audit.ts'
 import { PRICING_SERVICE, quotaOf, type UsagePricing } from '../shared/pricing.ts'
 import { formatMoment, peakLine, quotaLines, type MomentZone, type QuotaView } from '../shared/quota.ts'
+import type { StatusItem } from '../shared/status.ts'
 
 /** The native channel's provider id at the time of the usage-chunk defect (src/glm-llm/index.ts default). */
 const NATIVE_PROVIDER = 'glm-zcode'
@@ -226,6 +227,28 @@ export interface PanelLineOptions {
   readonly scope?: readonly string[]
 }
 
+/** The line the panel and the report show when there is no pricing service; one definition, the faces write it. */
+export const NO_PRICING_LINE = '- 没有计价服务（GLM 通道包的 glm-login 行提供积分口径），只列调用与 token'
+
+/** The totals over the panel's models: what the 合计 line states and the usage item's fields carry. */
+export interface UsageTotals extends TokenCounts {
+  readonly calls: number
+  readonly credits: number
+  readonly peakCredits: number
+}
+
+/** The totals over the panel's models, most calls and credits alike. */
+export function usageTotals(panel: UsagePanelData): UsageTotals {
+  const sum = (key: keyof TokenCounts | 'calls' | 'credits' | 'peakCredits'): number => panel.models.reduce((total, model) => total + model[key], 0)
+  return { calls: sum('calls'), inputTokens: sum('inputTokens'), cacheReadTokens: sum('cacheReadTokens'), cacheWriteTokens: sum('cacheWriteTokens'), outputTokens: sum('outputTokens'), credits: sum('credits'), peakCredits: sum('peakCredits') }
+}
+
+/** The 合计 line: the credit facts with pricing, calls and token facts without it. */
+function usageTotalsLine(panel: UsagePanelData): string {
+  const totals = usageTotals(panel)
+  return panel.pricing === undefined ? `- 合计：${totals.calls} 次 · ${tokenFacts(totals)}` : `- 合计：${creditFacts(totals)}`
+}
+
 /**
  * The panel as Markdown list lines: the basis (or the note that there is no
  * pricing service), the scope lines, the totals and the models, then what
@@ -233,19 +256,17 @@ export interface PanelLineOptions {
  * section are both this list; the report leaves the basis to the panel.
  */
 export function usagePanelLines(panel: UsagePanelData, options: PanelLineOptions = {}): string[] {
-  const sum = (key: keyof TokenCounts | 'calls' | 'credits' | 'peakCredits'): number => panel.models.reduce((total, model) => total + model[key], 0)
-  const total = { inputTokens: sum('inputTokens'), cacheReadTokens: sum('cacheReadTokens'), cacheWriteTokens: sum('cacheWriteTokens'), outputTokens: sum('outputTokens'), credits: sum('credits'), peakCredits: sum('peakCredits') }
   const pricing = panel.pricing
   const first = pricing === undefined
-    ? ['- 没有计价服务（GLM 通道包的 glm-login 行提供积分口径），只列调用与 token']
+    ? [NO_PRICING_LINE]
     : options.basis === false ? [] : [`- ${pricing.basis}`]
   const body = pricing === undefined
     ? [
-        `- 合计：${sum('calls')} 次 · ${tokenFacts(total)}`,
+        usageTotalsLine(panel),
         ...panel.models.map(model => `- ${model.model}：${model.calls} 次 · ${tokenFacts(model)}`),
       ]
     : [
-        `- 合计：${creditFacts(total)}`,
+        usageTotalsLine(panel),
         ...panel.models.map(model => `- ${model.model}：${model.calls} 次 · ${creditFacts(model)}`),
         ...(panel.unpriced.length === 0 ? [] : [`- 不计积分（不在 ${pricing.plan}内）：${panel.unpriced.map(entry => `${entry.model} ${entry.calls} 次`).join('，')}`]),
       ]
@@ -259,10 +280,54 @@ export function usagePanelLines(panel: UsagePanelData, options: PanelLineOptions
   ]
 }
 
+/** What the records the panel read cover: the count and the earliest, the two numbers the scope line states. */
+export interface UsageCoverage {
+  readonly records: number
+  readonly earliest?: number
+}
+
 /** The scope line: how many records the panel read, from when, and what they leave out. */
-export function rangeLine(panel: UsagePanelData, now: number, zone?: MomentZone): string {
-  const earliest = panel.earliest === undefined ? '' : `，最早 ${formatMoment(panel.earliest, now, zone)}`
-  return `- 范围：${panel.records} 条用量记录${earliest}；只含经 DSH 发出的请求，ZCode 等其他客户端的消耗不在内`
+export function rangeLine(coverage: UsageCoverage, now: number, zone?: MomentZone): string {
+  const earliest = coverage.earliest === undefined ? '' : `，最早 ${formatMoment(coverage.earliest, now, zone)}`
+  return `- 范围：${coverage.records} 条用量记录${earliest}；只含经 DSH 发出的请求，ZCode 等其他客户端的消耗不在内`
+}
+
+/**
+ * The usage list as the status hub's one section-type entry (status hub
+ * design 0.3 §10), the computation every display of it shares: the totals
+ * line is the text, the model lines and the notes about what was left out
+ * are the detail, the totals and the records coverage are the fields. The
+ * basis and note line and the scope (range, gaps) stay with the face that
+ * lays its section out. The entry is the account of the whole journal — the
+ * window the 面板 section has always shown (M6 0.7 §6.2); the morning
+ * report's 用量 section keeps its own period slice until its hub adoption
+ * (the design's §6, §12 M7 row).
+ */
+export function usageStatusItems(panel: UsagePanelData, source: string, nowMs: number): StatusItem[] {
+  const lines = usagePanelLines(panel, { basis: false })
+  const text = usageTotalsLine(panel)
+  const at = lines.indexOf(text)
+  if (at < 0) throw new Error('用量合计一行不在用量清单里')
+  const totals = usageTotals(panel)
+  return [{
+    id: 'glm/usage',
+    owner: 'glm',
+    audience: 'agent',
+    asOf: new Date(nowMs).toISOString(),
+    source,
+    text,
+    detail: lines.slice(at + 1),
+    fields: {
+      records: panel.records,
+      calls: totals.calls,
+      inputTokens: totals.inputTokens,
+      cacheReadTokens: totals.cacheReadTokens,
+      cacheWriteTokens: totals.cacheWriteTokens,
+      outputTokens: totals.outputTokens,
+      ...(panel.earliest === undefined ? {} : { earliest: panel.earliest }),
+      ...(panel.pricing === undefined ? {} : { credits: totals.credits, peakCredits: totals.peakCredits }),
+    },
+  }]
 }
 
 /** One record of the gap file: usage records that were deleted, so no number of the panel covers them (docs/DESIGN.md §2.4). */

@@ -14,23 +14,35 @@
  * (command-compact is the reference shape); the directories are resolved per
  * invocation, and a missing one is named in the output. The row also
  * registers `/hourness-status`, the row health table of both packages, so it
- * can be read without the GLM channel package.
+ * can be read without the GLM channel package. Its status view
+ * `glmHournessStatus/hourness` (src/shared/status-host.ts) submits the usage
+ * list as the status hub's one `glm/usage` entry (src/report/panel.ts
+ * `usageStatusItems`), and the 面板 section reads it back through the
+ * collector (src/report/status.ts) instead of recomputing the panel.
  */
+import { readFileSync } from 'node:fs'
 import { readFile, stat } from 'node:fs/promises'
 import { graphService } from '../graph/service.ts'
 import { loadGraph } from '../graph/store.ts'
 import { auditPaths } from '../memory/audit.ts'
 import { localDay, reportFromFiles, type GraphReader, type ReportOptions } from '../workflow/morning-report.ts'
-import { gapLines, parseGaps, peakLineOf, quotaSection, rangeLine, usagePanel, usagePanelLines } from './panel.ts'
+import { gapLines, NO_PRICING_LINE, parseGaps, peakLineOf, quotaSection, rangeLine, usagePanel, usageStatusItems } from './panel.ts'
+import { collectStatus, statusPlaceholders } from './status.ts'
 import { dataHomes, type DataHomes } from '../shared/data-home.ts'
 import { collectHealth, provideRowHealth, renderHealthTable, sessionIdOf, type HealthState } from '../shared/health.ts'
+import { provideRowStatus } from '../shared/status-host.ts'
 import { pricingService, quotaOf, type UsagePricing } from '../shared/pricing.ts'
 import type { MomentZone } from '../shared/quota.ts'
+import type { StatusItem } from '../shared/status.ts'
 import type { CommandDefinitionLike, CommandsHost, ProvideHost, ServiceLookup } from '../shared/dsh-min.ts'
 
 export interface HournessConfig {
   /** The project directory (workspace `.llm`); decisions and violations live under `<home>/audit`. Defaults to the data service's. */
   readonly home?: string
+  /** Reads one file's text for the usage item's journal (the status view is synchronous); tests inject it, the host reads from disk. */
+  readonly readFile?: (path: string) => string
+  /** The clock the usage item's asOf is stamped with; default the wall clock. */
+  readonly now?: () => Date
 }
 
 export interface RenderOptions {
@@ -45,6 +57,8 @@ export interface RenderOptions {
   readonly offsetMinutes?: number
   /** Reads the project graph of the calling session; without it the report says the graph has no place. */
   readonly graph?: GraphReader | undefined
+  /** Reads the status services of the invoking session; without it the report has no 面板 section (nothing computes the usage entry). */
+  readonly status?: { readonly lookup: ServiceLookup, readonly sessionId: string | undefined }
 }
 
 /** Render the report text for the resolved directories. */
@@ -64,18 +78,31 @@ export async function renderHourness(homes: DataHomes, options: RenderOptions = 
   ]
   const notice = missing.length === 0 ? '' : ['', '## 数据目录', ...missing].join('\n')
   const paths = auditPaths(homes)
-  const usageRaw = paths.usage === undefined ? '' : await fs.readFile(paths.usage).catch(() => '')
-  // The panel needs records to say anything; the quota is the server's reading and does not.
+  // The 面板 section is the hub's glm/usage entry, read once through the collector (status hub design 0.3 §10);
+  // the quota is the server's reading and does not need it.
+  const collected = options.status === undefined ? undefined : collectStatus(options.status.lookup, options.status.sessionId, 'agent', nowMs)
+  const usage = collected?.items.find(item => item.id === 'glm/usage')
   let summary = ''
-  if (usageRaw.length > 0) {
+  if (usage !== undefined) {
     const gapRaw = paths.gaps === undefined ? '' : await fs.readFile(paths.gaps).catch(() => '')
-    const panel = usagePanel(usageRaw, options.pricing, options.problem)
     const peak = options.pricing === undefined ? undefined : peakLineOf(options.pricing, nowMs, zone, options.problem)
-    const scope = [rangeLine(panel, nowMs, zone), ...gapLines(parseGaps(gapRaw), nowMs, zone)]
-    summary = ['', '## 面板', ...(peak === undefined ? [] : [peak]), ...usagePanelLines(panel, { scope })].join('\n')
+    const scope = [rangeLine(coverageOf(usage), nowMs, zone), ...gapLines(parseGaps(gapRaw), nowMs, zone)]
+    const basis = options.pricing === undefined ? NO_PRICING_LINE : `- ${options.pricing.basis}`
+    summary = ['', '## 面板', ...(peak === undefined ? [] : [peak]), basis, ...scope, usage.text, ...(usage.detail ?? [])].join('\n')
+  }
+  else if (collected !== undefined) {
+    const placeholders = statusPlaceholders(collected.rows)
+    if (placeholders.length > 0) summary = ['', '## 面板', ...placeholders].join('\n')
   }
   const quota = options.pricing === undefined ? '' : ['', '## 额度', ...await quotaSection(options.pricing, nowMs, zone, options.problem)].join('\n')
   return report + summary + quota + notice
+}
+
+/** The records coverage the 范围 line states, as the usage entry's fields carry it. */
+function coverageOf(item: StatusItem): { records: number, earliest?: number } {
+  const fields = item.fields ?? {}
+  const earliest = fields.earliest
+  return { records: typeof fields.records === 'number' ? fields.records : 0, ...(typeof earliest === 'number' ? { earliest } : {}) }
 }
 
 /**
@@ -150,6 +177,26 @@ export function apply(ctx: CommandsHost & ServiceLookup & Partial<ProvideHost>, 
     if (!warned) console.warn(`dsh-glm-hourness/hourness: ${message}`)
     warned = true
   }
+  // The row's status view (status hub design 0.3 §3.2, §10): the usage list as the one glm/usage
+  // entry, computed when the collector asks. The usage journal is the account of the whole user-level
+  // directory, so the session id does not change it. A journal that is not there yet is no entry, not
+  // an error; one that cannot be read is, and the collector takes the placeholder.
+  const readFile = config.readFile ?? ((path: string) => readFileSync(path, 'utf8'))
+  const clock = config.now ?? (() => new Date())
+  const status = provideRowStatus(ctx, 'hourness', () => {
+    const path = auditPaths(dataHomes(ctx, config.home)).usage
+    if (path === undefined) return []
+    let raw: string
+    try {
+      raw = readFile(path)
+    }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []
+      throw error
+    }
+    if (raw.length === 0) return []
+    return usageStatusItems(usagePanel(raw, pricingService(ctx, problem), problem), path, clock().getTime())
+  })
   const unregister = ctx.commands.register({
     definitionId: 'dsh-glm-hourness/hourness',
     name: 'hourness',
@@ -163,7 +210,7 @@ export function apply(ctx: CommandsHost & ServiceLookup & Partial<ProvideHost>, 
       // The quota member is judged again where it is read, which reports a wrong shape; the status only says whether it is there.
       health.report(sessionIdOf(invocation.agent), ...hournessHealth(homes, pricing !== undefined, pricing !== undefined && quotaOf(pricing) !== undefined))
       try {
-        return { kind: 'success', text: await renderHourness(homes, { pricing, problem, graph: graphReader(ctx, invocation.agent?.session?.header?.cwd) }) }
+        return { kind: 'success', text: await renderHourness(homes, { pricing, problem, graph: graphReader(ctx, invocation.agent?.session?.header?.cwd), status: { lookup: ctx, sessionId: sessionIdOf(invocation.agent) } }) }
       }
       catch (error) {
         return { kind: 'error', text: `晨报生成失败：${(error as Error).message}` }
@@ -174,6 +221,7 @@ export function apply(ctx: CommandsHost & ServiceLookup & Partial<ProvideHost>, 
   return () => {
     unregisterStatus()
     unregister()
+    status.dispose()
     health.dispose()
   }
 }

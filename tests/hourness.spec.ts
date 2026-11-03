@@ -5,9 +5,12 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { creditPricing } from '../src/glm-llm/credits.ts'
 import { apply, renderHourness } from '../src/report/index.ts'
-import { cacheHitRate, parseGaps, usagePanel, usagePanelLines, usagePanelOf, type PanelLineOptions } from '../src/report/panel.ts'
+import { cacheHitRate, parseGaps, usagePanel, usagePanelLines, usagePanelOf, usageStatusItems, type PanelLineOptions } from '../src/report/panel.ts'
+import { statusServiceName, provideRowStatus } from '../src/shared/status-host.ts'
+import type { ServiceLookup } from '../src/shared/dsh-min.ts'
 import type { UsagePricing } from '../src/shared/pricing.ts'
 import { quotaLines, type QuotaView } from '../src/shared/quota.ts'
+import { serviceStore } from './fake-rc3.ts'
 import { engineFixture, fixtureTest } from './graph-helpers.ts'
 import { exampleRecord } from './proposal-examples.ts'
 
@@ -120,7 +123,8 @@ test('renderHourness folds report and panel summary from both directories, bound
     ].join('\n')],
   ])
   const now = new Date('2026-10-27T20:00:00+08:00')
-  const text = await renderHourness(homes, { pricing: creditPricing, fs: fakeFs(files), now, offsetMinutes: 480 })
+  const usageText = files.get(USAGE_FILE) ?? ''
+  const text = await renderHourness(homes, { pricing: creditPricing, fs: fakeFs(files), now, offsetMinutes: 480, ...statusOf(usageText, creditPricing, now.getTime()) })
   assert.ok(text.includes('# 晨报 2026-10-27'))
   assert.ok(text.includes('- 派遣类调用 1 次')) // yesterday's call (written with a level) filtered out
   assert.ok(!/L[123]/.test(text), text)
@@ -132,7 +136,7 @@ test('renderHourness folds report and panel summary from both directories, bound
   assert.ok(text.includes('- glm-5.3：2 次 · 积分 0.11 · 高峰 17% · 缓存命中 0%'))
   assert.ok(!text.includes('## 数据目录'))
   // Without the pricing service the same journal lists calls and tokens, and has no peak line.
-  const plain = await renderHourness(homes, { fs: fakeFs(files), now, offsetMinutes: 480 })
+  const plain = await renderHourness(homes, { fs: fakeFs(files), now, offsetMinutes: 480, ...statusOf(usageText, undefined, now.getTime()) })
   assert.ok(plain.includes('## 面板\n- 没有计价服务（GLM 通道包的 glm-login 行提供积分口径），只列调用与 token\n- 范围：2 条用量记录，最早 02:00；只含经 DSH 发出的请求，ZCode 等其他客户端的消耗不在内\n- 合计：2 次 · 未命中输入 110 · 缓存读 0 · 缓存写 0 · 输出 55 · 缓存命中 0%'))
   assert.ok(!plain.includes('积分 0.11'))
   assert.ok(!plain.includes('高峰：'))
@@ -272,6 +276,22 @@ function sectionOf(text: string, title: string): string[] {
 /** The totals, the per-model lines and the line of models outside the plan. */
 const factsOf = (lines: readonly string[]): string[] => lines.filter(line => /^- (合计：|不计积分|[^：]+：\d+ 次)/.test(line))
 
+/**
+ * A service lookup whose hourness row provides the usage entry built from the
+ * journal text, the way the row itself computes it (usagePanel over the raw
+ * journal, then usageStatusItems); the renderHourness calls of this spec read
+ * the 面板 section through it.
+ */
+function statusLookup(journalText: string, pricing: UsagePricing | undefined, now: number): ServiceLookup {
+  const store = serviceStore()
+  provideRowStatus(store, 'hourness', () => usageStatusItems(usagePanel(journalText, pricing), USAGE_FILE, now))
+  return store
+}
+
+/** The status option of a renderHourness call over the journal text. */
+const statusOf = (journalText: string, pricing: UsagePricing | undefined, now: number): { status: { lookup: ServiceLookup, sessionId: string } } =>
+  ({ status: { lookup: statusLookup(journalText, pricing, now), sessionId: 's1' } })
+
 /** Local calendar day 2026-10-28 at `hour` o'clock, as the report's own day. */
 const localAt = (hour: number): string => new Date(2026, 9, 28, hour, 0, 0).toISOString()
 const todays = [
@@ -306,7 +326,7 @@ test('usagePanelLines: basis false drops only the basis line, the note without p
 
 test('the usage (today) section and the panel section give the same calls, credits, peak share and cache hit per model; the basis line is in the panel only', async () => {
   const files = new Map([[USAGE_FILE, todays]])
-  const priced = await renderHourness(homes, { pricing: creditPricing, fs: fakeFs(files), now: localNoon, offsetMinutes: 480 })
+  const priced = await renderHourness(homes, { pricing: creditPricing, fs: fakeFs(files), now: localNoon, offsetMinutes: 480, ...statusOf(todays, creditPricing, localNoon.getTime()) })
   const usage = sectionOf(priced, '用量（今天）')
   const panel = sectionOf(priced, '面板')
   assert.equal(factsOf(usage).length, 4) // totals, two models, the model outside the plan
@@ -315,7 +335,7 @@ test('the usage (today) section and the panel section give the same calls, credi
   assert.equal(panel.filter(line => line === `- ${creditPricing.basis}`).length, 1)
   assert.equal(priced.split(creditPricing.basis).length - 1, 1)
 
-  const plain = await renderHourness(homes, { fs: fakeFs(files), now: localNoon, offsetMinutes: 480 })
+  const plain = await renderHourness(homes, { fs: fakeFs(files), now: localNoon, offsetMinutes: 480, ...statusOf(todays, undefined, localNoon.getTime()) })
   const note = '- 没有计价服务（GLM 通道包的 glm-login 行提供积分口径），只列调用与 token'
   assert.equal(sectionOf(plain, '用量（今天）').filter(line => line === note).length, 1)
   assert.equal(sectionOf(plain, '面板').filter(line => line === note).length, 1)
@@ -327,7 +347,7 @@ test('the usage (today) section and the panel section give the same calls, credi
 test('the panel starts with the peak line at the six moments of the acceptance; without a pricing service there is no peak line', async () => {
   const files = new Map([[USAGE_FILE, todays]])
   const firstLine = async (at: string, pricing: UsagePricing | undefined): Promise<string | undefined> =>
-    sectionOf(await renderHourness(homes, { pricing, fs: fakeFs(files), now: new Date(at), offsetMinutes: 480 }), '面板')[0]
+    sectionOf(await renderHourness(homes, { pricing, fs: fakeFs(files), now: new Date(at), offsetMinutes: 480, ...statusOf(todays, pricing, Date.parse(at)) }), '面板')[0]
   const moments: Array<[string, string]> = [
     ['2026-10-28T13:59:00+08:00', '不是高峰；下一个高峰 14:00'],
     ['2026-10-28T14:00:00+08:00', '高峰中，到 18:00'],
@@ -345,7 +365,7 @@ test('a peak function that throws or answers with something else leaves the peak
   const files = new Map([[USAGE_FILE, todays]])
   const problems: string[] = []
   const run = async (pricing: UsagePricing): Promise<string[]> =>
-    sectionOf(await renderHourness(homes, { pricing, problem: message => { problems.push(message) }, fs: fakeFs(files), now: localNoon, offsetMinutes: 480 }), '面板')
+    sectionOf(await renderHourness(homes, { pricing, problem: message => { problems.push(message) }, fs: fakeFs(files), now: localNoon, offsetMinutes: 480, ...statusOf(todays, pricing, localNoon.getTime()) }), '面板')
   const throwing = await run({ ...creditPricing, peak: () => { throw new Error('clock gone') } })
   const odd = await run({ ...creditPricing, peak: (() => 'yes') as unknown as UsagePricing['peak'] })
   for (const lines of [throwing, odd]) {
@@ -356,10 +376,10 @@ test('a peak function that throws or answers with something else leaves the peak
 })
 
 test('the panel says how many records it read and from when, and that other clients are not in them', async () => {
-  const text = await renderHourness(homes, { pricing: creditPricing, fs: fakeFs(new Map([[USAGE_FILE, journal]])), now: new Date('2026-10-31T20:00:00+08:00'), offsetMinutes: 480 })
+  const text = await renderHourness(homes, { pricing: creditPricing, fs: fakeFs(new Map([[USAGE_FILE, journal]])), now: new Date('2026-10-31T20:00:00+08:00'), offsetMinutes: 480, ...statusOf(journal, creditPricing, Date.parse('2026-10-31T20:00:00+08:00')) })
   // Seven records are readable (one of them from before the usage-chunk fix); the first is Tuesday 10-27 15:00.
   assert.ok(sectionOf(text, '面板').includes(`- 范围：7 条用量记录，最早 10-27 15:00；${SCOPE_NOTE}`), text)
-  const sameDay = await renderHourness(homes, { fs: fakeFs(new Map([[USAGE_FILE, todays]])), now: localNoon, offsetMinutes: -new Date(localAt(9)).getTimezoneOffset() })
+  const sameDay = await renderHourness(homes, { fs: fakeFs(new Map([[USAGE_FILE, todays]])), now: localNoon, offsetMinutes: -new Date(localAt(9)).getTimezoneOffset(), ...statusOf(todays, undefined, localNoon.getTime()) })
   assert.ok(sectionOf(sameDay, '面板').includes(`- 范围：4 条用量记录，最早 09:00；${SCOPE_NOTE}`), sameDay)
 })
 
@@ -404,7 +424,7 @@ test('parseGaps reads the rows of the gap file that follow the table and counts 
 test('the panel lists one line for each gap record, and one line for the records it cannot read', async () => {
   const gapFile = [JSON.stringify(GAP), '{broken', JSON.stringify({ at: GAP.at, removed: 0, reason: 'r' }), JSON.stringify({ at: '2026-10-30T09:30:00+08:00', removed: 12, reason: '换行\n的理由' })].join('\n')
   const files = new Map([[USAGE_FILE, journal], [GAP_FILE, gapFile]])
-  const text = await renderHourness(homes, { pricing: creditPricing, fs: fakeFs(files), now: new Date('2026-10-31T20:00:00+08:00'), offsetMinutes: 480 })
+  const text = await renderHourness(homes, { pricing: creditPricing, fs: fakeFs(files), now: new Date('2026-10-31T20:00:00+08:00'), offsetMinutes: 480, ...statusOf(journal, creditPricing, Date.parse('2026-10-31T20:00:00+08:00')) })
   const panel = sectionOf(text, '面板')
   const scope = panel.slice(panel.findIndex(line => line.startsWith('- 范围：')))
   assert.deepEqual(scope.slice(0, 4), [
@@ -415,7 +435,7 @@ test('the panel lists one line for each gap record, and one line for the records
   ])
   assert.ok(scope[4]?.startsWith('- 合计：积分'), scope[4])
   // Without a gap file there is no gap line and no line about unreadable ones.
-  const clean = await renderHourness(homes, { pricing: creditPricing, fs: fakeFs(new Map([[USAGE_FILE, journal]])), now: new Date('2026-10-31T20:00:00+08:00'), offsetMinutes: 480 })
+  const clean = await renderHourness(homes, { pricing: creditPricing, fs: fakeFs(new Map([[USAGE_FILE, journal]])), now: new Date('2026-10-31T20:00:00+08:00'), offsetMinutes: 480, ...statusOf(journal, creditPricing, Date.parse('2026-10-31T20:00:00+08:00')) })
   assert.ok(sectionOf(clean, '面板').every(line => !line.startsWith('- 缺口：') && !line.includes('缺口记录')))
 })
 
@@ -438,7 +458,7 @@ const quotaTextOf = async (pricing: UsagePricing | undefined, problems: string[]
 test('the quota section is what the service\'s quota member returns, asked for at most three seconds; the panel keeps its numbers', async () => {
   const asked: unknown[] = []
   const pricing = withQuota((request: unknown) => { asked.push(request); return Promise.resolve(VIEW) })
-  const text = await renderHourness(homes, { pricing, fs: fakeFs(new Map([[USAGE_FILE, journal]])), now: QUOTA_NOW, offsetMinutes: 480 })
+  const text = await renderHourness(homes, { pricing, fs: fakeFs(new Map([[USAGE_FILE, journal]])), now: QUOTA_NOW, offsetMinutes: 480, ...statusOf(journal, pricing, QUOTA_NOW.getTime()) })
   assert.deepEqual(asked, [{ waitMs: 3000 }])
   assert.deepEqual(sectionOf(text, '额度'), quotaLines(VIEW, QUOTA_NOW.getTime(), ZONE))
   assert.equal(sectionOf(text, '额度')[0], '额度（服务端读数，含 ZCode 等其他客户端，读于 19:40）：max')
@@ -465,7 +485,7 @@ test('a quota member that rejects, answers with a non-object, or answers a view 
   const problems: string[] = []
   const rejected = withQuota(() => Promise.reject(new Error('quota gone\nsecond line')))
   const texts = await Promise.all([
-    renderHourness(homes, { pricing: rejected, problem: message => { problems.push(message) }, fs: fakeFs(new Map([[USAGE_FILE, journal]])), now: QUOTA_NOW, offsetMinutes: 480 }),
+    renderHourness(homes, { pricing: rejected, problem: message => { problems.push(message) }, fs: fakeFs(new Map([[USAGE_FILE, journal]])), now: QUOTA_NOW, offsetMinutes: 480, ...statusOf(journal, rejected, QUOTA_NOW.getTime()) }),
   ])
   assert.deepEqual(sectionOf(texts[0] ?? '', '额度'), ['额度：读取出错（quota gone second line）'])
   assert.ok(sectionOf(texts[0] ?? '', '面板').includes('- 合计：积分 5.30 · 高峰 53% · 缓存命中 53%'))
@@ -474,4 +494,71 @@ test('a quota member that rejects, answers with a non-object, or answers a view 
   assert.deepEqual(await quotaTextOf(withQuota(() => Promise.resolve({ pending: false }))).then(lines => lines.map(line => line.slice(0, 7))), ['额度：读取出错'])
   assert.deepEqual(await quotaTextOf(withQuota(() => { throw new Error('sync') })), ['额度：读取出错（sync）'])
   assert.equal((await quotaTextOf(withQuota(() => Promise.reject(new Error('x'.repeat(200)))))).at(0)?.length, '额度：读取出错（）'.length + 80)
+})
+
+// --- the row's status view: the usage list as the hub's one glm/usage entry (status hub design 0.3 §3.2, §10) ---
+
+/** An apply whose row reads the journal through `read` (default: from `files`, a missing file reading as ENOENT), with the clock pinned. */
+function statusRow(files: Map<string, string>, read?: (path: string) => string): { run: () => Promise<{ kind: string, text: string }>, dispose: () => void, store: ReturnType<typeof serviceStore> } {
+  const store = serviceStore()
+  store.provide('glmHournessPricing', creditPricing)
+  const commands: Registered[] = []
+  const dispose = apply({
+    commands: { register: definition => { commands.push(definition as Registered); return () => {} } },
+    ...store,
+    get: (name: string) => name === 'glmHournessData' ? { userHome: 'C:/u/glm-hourness' } : store.get(name),
+  }, {
+    readFile: read ?? (path => {
+      const content = files.get(path)
+      if (content === undefined) {
+        const error = new Error('no such file') as NodeJS.ErrnoException
+        error.code = 'ENOENT'
+        throw error
+      }
+      return content
+    }),
+    now: () => QUOTA_NOW,
+  })
+  const hourness = commands.find(command => command.name === 'hourness')
+  assert.ok(hourness !== undefined)
+  return { run: () => hourness.handler(inSession()), dispose, store }
+}
+
+test('the row provides glmHournessStatus/hourness and withdraws it on dispose; /hourness renders the 面板 section from the entry the collector reads back', async () => {
+  const row = statusRow(new Map([[USAGE_FILE, journal]]))
+  const view = row.store.services.get(statusServiceName('hourness')) as { items(sessionId: string | undefined): Array<{ id: string, text: string, detail?: readonly string[] }> }
+  assert.ok(view !== undefined)
+  const provided = view.items('s1')
+  assert.deepEqual(provided.map(item => item.id), ['glm/usage'])
+  assert.equal(provided[0]?.detail?.at(0), '- glm-5.3：3 次 · 积分 4.70 · 高峰 60% · 缓存命中 57%')
+  const result = await row.run()
+  assert.equal(result.kind, 'success')
+  // The section is the entry with its basis and scope around it: the same line the entry carries.
+  assert.ok(sectionOf(result.text, '面板').includes('- 合计：积分 5.30 · 高峰 53% · 缓存命中 53%'), result.text)
+  assert.ok(sectionOf(result.text, '面板').includes(`- 范围：7 条用量记录，最早 10-27 15:00；${SCOPE_NOTE}`), result.text)
+  row.dispose()
+  assert.equal(row.store.services.get(statusServiceName('hourness')), undefined)
+})
+
+test('a journal that is not there yet is no entry and no section; one that cannot be read takes the placeholder and warns once', async () => {
+  const missing = await statusRow(new Map()).run()
+  assert.equal(missing.kind, 'success')
+  assert.ok(!missing.text.includes('## 面板'), missing.text)
+  const warnings: string[] = []
+  const warn = console.warn
+  console.warn = (message: string) => { warnings.push(message) }
+  try {
+    const blocked = statusRow(new Map(), () => {
+      const error = new Error('access denied') as NodeJS.ErrnoException
+      error.code = 'EPERM'
+      throw error
+    })
+    const result = await blocked.run()
+    assert.ok(result.text.includes('## 面板\nhourness 行的状态暂时读不到：access denied'), result.text)
+    assert.equal(warnings.filter(message => message.startsWith('dsh-glm-hourness/hourness: 状态读取失败')).length, 1)
+    blocked.dispose()
+  }
+  finally {
+    console.warn = warn
+  }
 })

@@ -155,7 +155,7 @@ M6 桌面版核对（批次 L4，项目图 `m6-l4`、`m6-gap`，2026-11-01，主
 | 面板与新手引导（`m8-plain-language`、`onboarding`） | 1.3 放行；17 条做完条件 2026-11-01 由人定下，写进这两个节点的验收（`d-panel-released`） | 未开工 | 等状态板块实现落地再动，否则两边改同一段取数逻辑；第 1、6、9、17 条按旧问法写，换新问法时要再请人改 |
 | 用户图 | 0.4.1 放行（`d-user-graph-released`）；三件待人定 2026-11-02 由人答齐（每项目都画、流程走通算画完、照页放行） | 未开工 | 等 M3 与 M7 的骨架 |
 | 指标 | 0.7（设计门禁与一页稿门禁 2026-11-01 通过）；§16 ① 2026-11-02 人已答（每步做完按 §1.4 的 25 条检查判） | 未开工 | 比率做成面板上指标自己的一块板（`d-metrics-ratios-person-only`） |
-| 状态板块 | 0.3 放行（2026-11-01，`d-status-hub-released`；6 条做完条件由人定下） | 未开工 | 各模块只交一次状态，面板、晨报、周报与主 Agent 都从它读，每条注明给谁看（`d-status-hub`） |
+| 状态板块 | 0.3 放行（2026-11-01，`d-status-hub-released`；6 条做完条件由人定下） | 分支 `status-hub`（工作树 `.worktrees/status-hub`）第 1 批已实现（2026-11-03）：hub 核心（`src/shared/status.ts` 契约与校验、`src/shared/status-host.ts` 登记、`src/report/status.ts` 收集器与 `STATUS_ROWS`）+ 第一条条目 `glm/usage`（`hourness` 行交，`src/report/panel.ts` 的 `usageStatusItems`）+ 第一个消费方（`renderHourness` 的「面板」一节经 `collectStatus(..., 'agent')` 读回，输出逐字不变）；L2 全绿，preflight 核对 `STATUS_ROWS`；机制与批次地图见 `DESIGN.md` §2.6 | 面板一节经条目显示（做完条件 6 的面板一半）；晨报的「用量（今天）」一节仍是本期切片，等 M7 接收集器时定两扇窗的口径（设计 §10 第 2 步后一半）；额度/高峰条目、M4 与 `metrics/load` 条目、各板 `snapshot().items`、`hourness_report` 与 L3 探针在后续批次 |
 | 接管（bootstrap） | 0.6 放行（`d-bootstrap-released`）；D1、D3 2026-11-02 人已答（41 条照草稿算数；待做活开工前不出一页放行稿） | 未开工 | 问话形状归 M3 的一处模板，接管只引用 |
 
 人定过的测试门（`d-tests-required-gate`）还没有落点：规则板与 M7 已冻结，对它们是请求；先在接管的默认表（每个生态的 `norm-merge-gate` 草稿）里落实。
