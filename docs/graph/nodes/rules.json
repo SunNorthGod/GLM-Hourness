@@ -615,6 +615,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "两行启用交付（2026-11-04，e35c422）：rules 与 loops 行去掉 disabled 交付。翻转前后探针各 323/323（专用场景全绿），重启对账 GLM 与非 GLM 路由均「生效」；glm-peak 检查改 pin 规则行在场时的官方 reduce 提醒措辞，glm-only 保留 M6.1 回退措辞；loops 行补丁注释里过期的「交付绑定未建」一并清掉。桌面批次 L4 按惯例欠着（HANDOFF §8）。"
+    },
+    {
+      "at": "2026-11-03T21:05:11.899Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "桌面首趟（L4 批次，2026-11-04）：/rules show 高峰行（「少做（出厂默认）· 下一次 14:00」）与两条生效规则可见；rules/peak 条目经 hub 上面板面。/loops 列表面尚无（commands.ts 头注：列表随 runner 里程碑），四条缺省条目与灰显语义在行侧就绪——「灰显」验收延到 runner 交付列表面后关闭。"
     }
   ]
 }
