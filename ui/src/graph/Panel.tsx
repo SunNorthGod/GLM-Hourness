@@ -10,11 +10,12 @@
  * focus returns to what opened it. Each view opens at its top. The
  * registered boards (./boards.ts) join the stage as pages of their own,
  * listed on the temporary footer until plain-ui builds the real one
- * (M5 design §8.2); a board's error is bounded to its own page.
+ * (M5 design §8.2); a board's error is bounded to its own page. The panel
+ * only looks (plain-ui, d-ui-look-not-operate): nothing here writes.
  */
 import { Button, SegmentedTabs, TextShimmer } from '@deepseek-ai/dsh-client-ui-primitives'
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactElement } from 'react'
-import type { CommandsRemote, SessionsClient } from '../dsh.ts'
+import type { SessionsClient } from '../dsh.ts'
 import { useAgents, useNow } from './agents.ts'
 import { boards, checkedBoardState, type Board, type BoardState } from './boards.ts'
 import { NowContext, PanelBoundary, ServicesContext, type PanelServices } from './common.tsx'
@@ -69,7 +70,6 @@ function Problems({ summary, lines, retry }: { readonly summary: string, readonl
 
 export interface GraphPanelProps {
   readonly source: GraphSource
-  readonly commands: CommandsRemote
   readonly sessions: SessionsClient
   readonly sessionId: string
 }
@@ -116,7 +116,7 @@ function BoardLine({ board, sessionId, onOpen }: { readonly board: Board, readon
   return <button type="button" className="glmg-more" onClick={onOpen}>{board.label} ›</button>
 }
 
-export function GraphPanel({ source, commands, sessions, sessionId }: GraphPanelProps): ReactElement {
+export function GraphPanel({ source, sessions, sessionId }: GraphPanelProps): ReactElement {
   const snapshot = useSyncExternalStore(source.subscribe, source.getSnapshot)
   const agents = useAgents(sessions, sessionId)
   const now = useNow(agents.some(agent => agent.running))
@@ -136,7 +136,7 @@ export function GraphPanel({ source, commands, sessions, sessionId }: GraphPanel
     if (depth.current === 0) opener.current = document.activeElement instanceof HTMLElement || document.activeElement instanceof SVGElement ? document.activeElement : null
     setTrail(current => current.at(-1) === id ? current : [...current, id])
   }, [])
-  const services = useMemo<PanelServices>(() => ({ commands, sessionId, open }), [commands, sessionId, open])
+  const services = useMemo<PanelServices>(() => ({ open }), [open])
 
   const waiting = snapshot.status === 'ready' ? snapshot.items.questions.length + snapshot.items.proposals.length : 0
   // The first view: 需要你 when anything waits, else 正在做. It stays put afterwards, so settling the last card shows the empty state.

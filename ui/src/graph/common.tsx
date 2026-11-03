@@ -1,24 +1,20 @@
 /**
- * Pieces every view of the graph panel shares: the services context, the
- * write hook (graph writes and run controls), markdown with its copy
- * labels, folding of long content, keyboard-reachable rows and the node
- * row, the titled parts views are made of, and the option picker that
- * decides (or overturns) a question.
+ * Pieces every view of the graph panel shares: the services context,
+ * markdown with its copy labels, folding of long content,
+ * keyboard-reachable rows and the node row, the titled parts views are
+ * made of, and a question's read-only display — the panel only looks
+ * (plain-ui, d-ui-look-not-operate): the answer is said in the main agent's
+ * chat, and every card says so.
  */
-import { Button, Input, MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
 import { Component, createContext, useContext, useLayoutEffect, useRef, useState, type ErrorInfo, type KeyboardEvent, type ReactElement, type ReactNode } from 'react'
 import { TYPE_LABELS } from '../../../src/graph/labels.ts'
 import type { LoadedGraph } from '../../../src/graph/parse.ts'
 import { ancestorsOf } from '../../../src/graph/projection.ts'
-import type { DecisionOption, GraphNode } from '../../../src/graph/schema.ts'
-import type { RunAction } from '../../../src/graph/run.ts'
-import type { CommandsRemote } from '../dsh.ts'
-import { applyMutation, runControl, type ApplyOutcome } from './apply.ts'
+import type { GraphNode } from '../../../src/graph/schema.ts'
 import { absoluteTime, progressOf, progressText, statusText, timeAgo } from './model.ts'
 
 export interface PanelServices {
-  readonly commands: CommandsRemote
-  readonly sessionId: string
   /** Show one node in the detail view. */
   readonly open: (id: string) => void
 }
@@ -38,35 +34,6 @@ export function useServices(): PanelServices {
   const services = useContext(ServicesContext)
   if (services === null) throw new Error('graph panel: services are missing')
   return services
-}
-
-export interface Writer {
-  readonly busy: boolean
-  readonly outcome: ApplyOutcome | undefined
-  run(mutation: Readonly<Record<string, unknown>>): Promise<ApplyOutcome>
-  /** A run control on a task (/graph-run). */
-  control(action: RunAction, id: string): Promise<ApplyOutcome>
-}
-
-/** One command at a time from one set of controls (no double sends: a command is not idempotent), with its outcome kept for display. */
-export function useWriter(): Writer {
-  const { commands, sessionId } = useServices()
-  const [busy, setBusy] = useState(false)
-  const [outcome, setOutcome] = useState<ApplyOutcome | undefined>(undefined)
-  const send = async (task: () => Promise<ApplyOutcome>): Promise<ApplyOutcome> => {
-    setBusy(true)
-    setOutcome(undefined)
-    const result = await task()
-    setBusy(false)
-    setOutcome(result)
-    return result
-  }
-  return {
-    busy,
-    outcome,
-    run: mutation => send(() => applyMutation(commands, sessionId, mutation)),
-    control: (action, id) => send(() => runControl(commands, sessionId, action, id)),
-  }
 }
 
 const MARKDOWN_LABELS = {
@@ -175,149 +142,29 @@ export function Part({ title, children }: { readonly title: ReactNode, readonly 
   )
 }
 
-/** The revision a write to this node must carry. */
-function revOf(graph: LoadedGraph, id: string): string {
-  return graph.revisions.get(id) ?? ''
-}
-
-export function Outcome({ outcome }: { readonly outcome: ApplyOutcome | undefined }): ReactElement | null {
-  if (outcome === undefined) return null
-  return <div className={outcome.ok ? 'glmg-result' : 'glmg-result bad'} role="status">{outcome.text}</div>
-}
-
 /**
- * Approve or reject a proposal, the same control on a 需要你 card and in
- * the detail: 批准 approves at once; 不要 asks for an optional reason and
- * a second click on 否决 before it rejects (a rejected node is dropped).
+ * A question as the panel shows it: the question as the human read it and
+ * the ways when it has them, with where to answer. The panel only looks
+ * (plain-ui, d-ui-look-not-operate): no option buttons, no letter keys, no
+ * recommendation marks — the answer is said in the main agent's chat. A
+ * decided question shows its conclusion; one with the legacy option card
+ * shows the options read-only with the current choice marked.
  */
-export function ProposalActions({ graph, node, onSettled }: { readonly graph: LoadedGraph, readonly node: GraphNode, readonly onSettled?: () => void }): ReactElement {
-  const writer = useWriter()
-  const [rejecting, setRejecting] = useState(false)
-  const [reason, setReason] = useState('')
-  const settle = async (op: 'approve' | 'reject'): Promise<void> => {
-    const fallback = op === 'approve' ? '在面板里批准' : '在面板里否决'
-    const result = await writer.run({ op, id: node.id, rev: revOf(graph, node.id), reason: reason.trim().length > 0 ? reason.trim() : fallback })
-    if (result.ok) onSettled?.()
-  }
-  return (
-    <>
-      {rejecting
-        ? (
-            <div className="glmg-confirm">
-              <Input value={reason} placeholder="为什么不要（可不填）" aria-label="否决理由" onChange={event => { setReason(event.target.value) }} />
-              <Button variant="outline" size="sm" disabled={writer.busy} onClick={() => { void settle('reject') }}>否决</Button>
-              <Button variant="ghost" size="sm" onClick={() => { setRejecting(false) }}>取消</Button>
-            </div>
-          )
-        : (
-            <div className="glmg-actions">
-              <Button variant="primary" size="sm" disabled={writer.busy} onClick={() => { void settle('approve') }}>批准</Button>
-              <Button variant="ghost" size="sm" disabled={writer.busy} onClick={() => { setRejecting(true) }}>不要</Button>
-            </div>
-          )}
-      <Outcome outcome={writer.outcome} />
-    </>
-  )
-}
-
-interface OptionsProps {
-  readonly graph: LoadedGraph
-  readonly node: GraphNode
-  /** Called after a successful decide, before the graph re-reads. */
-  readonly onDecided?: () => void
-}
-
-/**
- * A question in the proposal shape: the question as the human read it, the
- * ways when it has them (the last one is the recommended), and where to
- * answer. The panel only looks (decision d-ui-look-not-operate): there is no
- * button; the answer is said in the chat and recorded by the main agent.
- */
-function ProposalView({ node }: { readonly node: GraphNode }): ReactElement {
-  const ways = node.ways ?? []
+export function Options({ node }: { readonly node: GraphNode }): ReactElement {
+  const options = node.options ?? []
   return (
     <div className="glmg-options">
       {node.ask === undefined ? null : <div className="glmg-text">{node.ask}</div>}
-      {ways.map((way, index) => <div key={way} className="glmg-text">{index + 1}. {way}{index === ways.length - 1 ? '（推荐）' : ''}</div>)}
+      {(node.ways ?? []).map((way, index) => <div key={way} className="glmg-text">{index + 1}. {way}</div>)}
+      {options.map(option => (
+        <div key={option.key} className="glmg-text">
+          {node.status === 'done' && node.decision === option.key ? `选了「${option.label}」` : option.label}
+          {option.consequence === undefined ? null : `（${option.consequence}）`}
+        </div>
+      ))}
       {node.status === 'done' && node.conclusion !== undefined
         ? <div className="glmg-text">定了：{node.conclusion}</div>
         : <div className="glmg-notice">在主 Agent 的对话里回话</div>}
-    </div>
-  )
-}
-
-/** The options of a question as buttons, or the lines of a proposal without any. */
-export function Options(props: OptionsProps): ReactElement {
-  return props.node.options === undefined ? <ProposalView node={props.node} /> : <OptionButtons {...props} />
-}
-
-/**
- * The options of a question as buttons. Picking one asks for an optional
- * reason and decides as the human; on a decided question the current
- * choice is marked and the others overturn it.
- */
-function OptionButtons({ graph, node, onDecided }: OptionsProps): ReactElement {
-  const writer = useWriter()
-  const [picked, setPicked] = useState<string | undefined>(undefined)
-  const [reason, setReason] = useState('')
-  const options: readonly DecisionOption[] = node.options ?? []
-  const decide = async (option: DecisionOption): Promise<void> => {
-    const result = await writer.run({
-      op: 'decide',
-      id: node.id,
-      rev: revOf(graph, node.id),
-      option: option.key,
-      reason: reason.trim().length > 0 ? reason.trim() : `在面板里选了 ${option.key} ${option.label}`,
-    })
-    if (result.ok) {
-      setPicked(undefined)
-      setReason('')
-      onDecided?.()
-    }
-  }
-  return (
-    <div className="glmg-options">
-      {options.map(option => {
-        const current = node.status === 'done' && node.decision === option.key
-        const isPicked = picked === option.key
-        return (
-          <div key={option.key}>
-            <button
-              type="button"
-              className={`glmg-option${isPicked ? ' picked' : ''}${current ? ' current' : ''}`}
-              disabled={current || writer.busy}
-              onClick={() => { setPicked(isPicked ? undefined : option.key) }}
-            >
-              <span className="glmg-option-head">
-                <span className="glmg-option-key">{option.key}</span>
-                {option.label}
-                {node.recommend === option.key && node.status !== 'done' ? <span className="glmg-who relay">推荐</span> : null}
-                {current ? <span className="glmg-who human">当前</span> : null}
-              </span>
-              <span className="glmg-option-text">{option.consequence ?? `得到 ${option.gain ?? ''}；代价 ${option.cost ?? ''}`}</span>
-            </button>
-            {isPicked
-              ? (
-                  <div className="glmg-confirm">
-                    <Input
-                      value={reason}
-                      placeholder="一句理由（可不填）"
-                      aria-label="理由"
-                      onChange={event => { setReason(event.target.value) }}
-                      onKeyDown={event => {
-                        // The Enter that commits an IME composition is not a submit (DSH's own editors check the same), and a busy writer is not sent twice.
-                        if (event.key !== 'Enter' || event.nativeEvent.isComposing || event.keyCode === 229 || writer.busy) return
-                        void decide(option)
-                      }}
-                    />
-                    <Button variant="primary" size="sm" disabled={writer.busy} onClick={() => { void decide(option) }}>{node.status === 'done' ? '改成这个' : '就这个'}</Button>
-                  </div>
-                )
-              : null}
-          </div>
-        )
-      })}
-      <Outcome outcome={writer.outcome} />
     </div>
   )
 }

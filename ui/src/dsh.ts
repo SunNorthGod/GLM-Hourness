@@ -50,7 +50,7 @@ interface CommandDescriptor {
   readonly name: string
 }
 
-export interface CommandsRemote {
+interface CommandsRemote {
   execute(sessionId: string, line: string, attachments: readonly never[]): Promise<RemoteResult<{ readonly result: { readonly kind: 'success' | 'error', readonly text?: string } } | undefined>>
   /** The commands of a retained, open session (dsh-client-ui-commands lib/client.js CommandDirectory). */
   list(sessionId: string): Promise<RemoteResult<readonly CommandDescriptor[]>>

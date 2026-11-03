@@ -325,7 +325,7 @@ export function statusPhrase(node: GraphNode, graph: LoadedGraph, awaiting: read
 /** The state of a module (plain-ui 1.3 §4.11). 在开发 waits for M7's derived stage (E1b): until it lands a released module shows 放行了. */
 export type ModuleState = 'designing' | 'awaiting-release' | 'released' | 'developing' | 'done'
 
-export const MODULE_PHRASES: Readonly<Record<ModuleState, string>> = {
+const MODULE_PHRASES: Readonly<Record<ModuleState, string>> = {
   designing: '设计中',
   'awaiting-release': '等你放行',
   released: '放行了',

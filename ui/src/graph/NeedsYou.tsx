@@ -1,16 +1,17 @@
 /**
  * 需要你: everything that waits for the human, oldest first: questions the
  * human decides and proposals to approve or reject (docs/ORCHESTRATION.md
- * §2.9.1). Each card can be settled in place; a settled card slides out
- * before the re-read graph drops it.
+ * §2.9.1). The panel only looks (plain-ui, d-ui-look-not-operate): a card
+ * shows the matter and where to answer it — the answer is said in the main
+ * agent's chat, and the card is gone once the graph moves on.
  */
-import { Button, IconCheckCircleFillRegular } from '@deepseek-ai/dsh-client-ui-primitives'
-import { useState, type ReactElement } from 'react'
+import { IconCheckCircleFillRegular } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { ReactElement } from 'react'
 import { TYPE_LABELS } from '../../../src/graph/labels.ts'
 import type { LoadedGraph } from '../../../src/graph/parse.ts'
 import type { OpenItems } from '../../../src/graph/projection.ts'
 import type { GraphNode } from '../../../src/graph/schema.ts'
-import { Folded, Markdown, Options, ProposalActions, When, useServices } from './common.tsx'
+import { Folded, Markdown, Options, When, useServices } from './common.tsx'
 import { decidedBy } from './model.ts'
 
 function Body({ text }: { readonly text: string | undefined }): ReactElement | null {
@@ -35,15 +36,15 @@ function CardHead({ node, graph }: { readonly node: GraphNode, readonly graph: L
   )
 }
 
-/** One card: a proposal gets approve or reject, a question its options; settling it starts the slide-out. */
-function Card({ graph, node, onSettled }: { readonly graph: LoadedGraph, readonly node: GraphNode, readonly onSettled: () => void }): ReactElement {
+/** One card: the matter and where to answer it; nothing on it writes. */
+function Card({ graph, node }: { readonly graph: LoadedGraph, readonly node: GraphNode }): ReactElement {
   return (
     <div className="glmg-card wait">
       <CardHead node={node} graph={graph} />
       <Body text={node.body} />
       {node.status === 'proposed'
-        ? <ProposalActions graph={graph} node={node} onSettled={onSettled} />
-        : <Options graph={graph} node={node} onDecided={onSettled} />}
+        ? <div className="glmg-notice">要批准或不要：在主 Agent 的对话里回话</div>
+        : <Options node={node} />}
     </div>
   )
 }
@@ -58,7 +59,6 @@ function waiting(graph: LoadedGraph, items: OpenItems): GraphNode[] {
 }
 
 export function NeedsYou({ graph, items, onShowDecisions }: { readonly graph: LoadedGraph, readonly items: OpenItems, readonly onShowDecisions: () => void }): ReactElement {
-  const [leaving, setLeaving] = useState<ReadonlySet<string>>(new Set())
   const nodes = waiting(graph, items)
   if (nodes.length === 0) {
     const own = items.recentDecisions.filter(entry => decidedBy(entry) === 'agent').length
@@ -67,18 +67,13 @@ export function NeedsYou({ graph, items, onShowDecisions }: { readonly graph: Lo
         <span className="glmg-empty-mark"><IconCheckCircleFillRegular size={26} /></span>
         <span className="glmg-empty-title">没有需要你的事</span>
         <span>agent 按决策分级自己定的事都留了痕，不同意随时可以推翻。</span>
-        <Button variant="outline" size="sm" onClick={onShowDecisions}>{own > 0 ? `看看 agent 自己定的 ${own} 件事` : '看看最近拍板的事'}</Button>
+        <button type="button" className="glmg-more" onClick={onShowDecisions}>{own > 0 ? `看看 agent 自己定的 ${own} 件事` : '看看最近拍板的事'}</button>
       </div>
     )
   }
-  const settled = (id: string) => () => { setLeaving(new Set([...leaving, id])) }
   return (
     <div className="glmg-view">
-      {nodes.map(node => (
-        <div key={node.id} className={leaving.has(node.id) ? 'glmg-leaving' : undefined}>
-          <Card graph={graph} node={node} onSettled={settled(node.id)} />
-        </div>
-      ))}
+      {nodes.map(node => <Card key={node.id} graph={graph} node={node} />)}
     </div>
   )
 }

@@ -1,22 +1,18 @@
 /**
  * glm-hourness/graph-panel row entry (docs/ORCHESTRATION.md §2.10, §13):
- * the write path of the project graph panel in the DSH right sidebar. The
- * panel (ui/src) reads the node files through remote.workspaceFiles and
- * writes through this row's commands; a slash command only ever comes from
- * the human (the panel, or the composer), never from the model, so both act
- * as the human. The graph is the configured dir (default docs/graph) under
- * the invoking session's working directory, resolved per call like the
- * graph tools.
- *
- * /graph-apply applies one mutation with actor human. Its input is the
- * mutation JSON, which command/run does not record (recordInput false): the
- * node history already keeps the change, and the conversation shows the
- * readable outcome line instead of raw JSON.
+ * the human's commands for the project graph panel in the DSH right
+ * sidebar. The panel (ui/src) reads the node files through
+ * remote.workspaceFiles and writes nothing; a slash command only ever comes
+ * from the human (the composer), never from the model. The graph is the
+ * configured dir (default docs/graph) under the invoking session's working
+ * directory, resolved per call like the graph tools.
  *
  * /graph-run starts, stops or redoes the work on a task node
- * (run-control.ts). It sends the main agent a message, so unlike
- * /graph-apply it reaches the model. Its input (`start task-3`) is short
- * and is what the human clicked, so command/run records it.
+ * (run-control.ts); it sends the main agent a message, so it reaches the
+ * model. Its input (`start task-3`) is short and is what the human typed,
+ * so command/run records it. The panel carries no write command since
+ * plain-ui (the panel only looks, d-ui-look-not-operate): /graph-apply had
+ * no caller left and is gone.
  *
  * The row also registers the session projection the panel's live view
  * reads (live.ts), and takes the services the run controls read
@@ -24,16 +20,12 @@
  * subagents (stopping a child). Its row health is an activation status
  * that changes as those arrive or leave. Activation never throws.
  */
-import type { AgentCommandInvocationLike, CommandDefinitionLike, CommandInvocationLike, CommandResultLike, CommandsHost, InjectHost, ProvideHost } from '../shared/dsh-min.ts'
+import type { AgentCommandInvocationLike, CommandDefinitionLike, CommandsHost, InjectHost, ProvideHost } from '../shared/dsh-min.ts'
 import { provideRowHealth } from '../shared/health.ts'
-import { openEngine } from './engine.ts'
-import { STATUS_LABELS, noGraphText, refusalForHuman } from './labels.ts'
 import { LIVE_KEY, liveProjection } from './live.ts'
-import type { Mutation } from './mutation.ts'
 import { runFromCommand, type RunServices } from './run-control.ts'
 import { RUN_COMMAND } from './run.ts'
-import type { GraphNode } from './schema.ts'
-import { DEFAULT_GRAPH_DIR, locateGraph } from './tools.ts'
+import { DEFAULT_GRAPH_DIR } from './tools.ts'
 
 export interface GraphPanelConfig {
   /** Graph directory: absolute, or relative to the session working directory. Default docs/graph. */
@@ -44,55 +36,7 @@ export interface GraphPanelConfig {
 export const name = 'dsh-glm-hourness/graph-panel'
 export const inject = ['commands']
 
-/** The command the panel sends its writes through. */
-export const APPLY_COMMAND = 'graph-apply'
-
-const COMMANDS = `/${APPLY_COMMAND}、/${RUN_COMMAND}`
-
-/** One-line outcome of a write, shown as the command result in the conversation. */
-function outcomeText(mutation: Mutation, node: GraphNode): string {
-  const title = `「${node.title}」`
-  switch (mutation.op) {
-    case 'decide': {
-      const label = node.options?.find(entry => entry.key === node.decision)?.label
-      return `已拍板${title}：${node.decision ?? mutation.option}${label === undefined ? '' : ` ${label}`}`
-    }
-    case 'approve':
-      return `已批准${title}`
-    case 'reject':
-      return `已否决${title}`
-    case 'comment':
-      return `已批注${title}`
-    case 'status':
-      return `${title}改为${STATUS_LABELS[node.status]}`
-    case 'propose':
-      return `已新建${title}`
-    default:
-      return `已更新${title}`
-  }
-}
-
-/** Apply one mutation from a command invocation as the human; refusals read as labels.ts refusalForHuman. */
-export async function applyFromCommand(invocation: CommandInvocationLike, configured: string): Promise<CommandResultLike> {
-  let mutation: unknown
-  try {
-    mutation = JSON.parse(invocation.rawInput)
-  }
-  catch {
-    return { kind: 'error', text: `图没有写入（invalid）：/${APPLY_COMMAND} 后面要跟一个 JSON 写入请求` }
-  }
-  const cwd = invocation.agent.session?.header?.cwd
-  const dir = await locateGraph(configured, cwd)
-  if (typeof dir !== 'string') return { kind: 'error', text: `图没有写入（not_found）：${noGraphText(cwd, configured)}` }
-  const engine = openEngine(dir)
-  const result = await engine.apply('human', mutation)
-  if (!result.ok) {
-    const id = (mutation as { readonly id?: unknown } | null)?.id
-    const status = result.error.code === 'bad_transition' && typeof id === 'string' ? (await engine.load()).nodes.get(id)?.status : undefined
-    return { kind: 'error', text: refusalForHuman(result.error, status) }
-  }
-  return { kind: 'success', text: outcomeText(mutation as Mutation, result.node) }
-}
+const COMMANDS = `/${RUN_COMMAND}`
 
 const WAITING_LIVE = '现场投影等 sessionProjections 服务'
 const WAITING_CHILDREN = '停子 agent 等 agents、subagents 服务'
@@ -171,16 +115,9 @@ function registerCommands(ctx: CommandsHost<AgentCommandInvocationLike>, config:
   }
   const definitions: Array<CommandDefinitionLike<AgentCommandInvocationLike>> = [
     {
-      definitionId: name,
-      name: APPLY_COMMAND,
-      description: '项目图面板用：以人的身份改一次图',
-      recordInput: false,
-      handler: invocation => applyFromCommand(invocation, dir),
-    },
-    {
       definitionId: 'dsh-glm-hourness/graph-run',
       name: RUN_COMMAND,
-      description: '项目图面板用：开始、暂停或重做一个任务',
+      description: '开始、暂停或重做一个任务（人用）',
       input: { hint: 'start|stop|redo <节点 id>' },
       handler: invocation => runFromCommand(invocation, dir, services),
     },
@@ -201,9 +138,9 @@ function registerCommands(ctx: CommandsHost<AgentCommandInvocationLike>, config:
 }
 
 /**
- * cordis plugin entry: register /graph-apply, /graph-run and the live
- * projection. The row health is an activation status (the commands act for
- * the human, not for a session's agent); it follows the optional services.
+ * cordis plugin entry: register /graph-run and the live projection. The
+ * row health is an activation status (the command acts for the human, not
+ * for a session's agent); it follows the optional services.
  */
 export function apply(ctx: CommandsHost<AgentCommandInvocationLike> & Partial<InjectHost> & Partial<ProvideHost>, config: GraphPanelConfig = {}): () => void {
   const services: RunServices = { projections: undefined, children: undefined }

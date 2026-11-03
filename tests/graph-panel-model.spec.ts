@@ -354,3 +354,14 @@ test('a workspace without a graph is reported missing, and retry finds one creat
     await rm(workspace, { recursive: true, force: true })
   }
 })
+
+test('the panel sources carry no write path: no commands.execute and no apply import under ui/src/graph', async () => {
+  const dir = new URL('../ui/src/graph/', import.meta.url)
+  const names = (await readdir(dir)).filter(name => name.endsWith('.ts') || name.endsWith('.tsx'))
+  assert.ok(names.length > 0)
+  for (const name of names) {
+    const text = await readFile(new URL(name, dir), 'utf8')
+    assert.doesNotMatch(text, /commands\.execute/, name)
+    assert.doesNotMatch(text, /from '\.\/apply\.ts'/, name)
+  }
+})

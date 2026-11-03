@@ -128,7 +128,7 @@ function only(calls: readonly Call[], call: 'followup' | 'inject'): UserNotice {
 
 const sequence = (calls: readonly Call[]): string[] => calls.map(entry => `${entry.agent}.${entry.call}`)
 
-runTest('the row registers /graph-run beside /graph-apply; its short input stays on the command record', ({ command }) => {
+runTest('the row registers /graph-run; its short input stays on the command record', ({ command }) => {
   assert.equal(command.definitionId, 'dsh-glm-hourness/graph-run')
   assert.equal(command.recordInput, undefined, 'command/run keeps the raw input (dsh-commands default)')
   return Promise.resolve()

@@ -7,7 +7,7 @@
  */
 import { IconGoalOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 import { useEffect, useState, type ReactElement } from 'react'
-import type { ClientContext, CommandsRemote, RemoteRoot, SessionsClient } from '../dsh.ts'
+import type { ClientContext, RemoteRoot, SessionsClient } from '../dsh.ts'
 import { PanelBoundary } from './common.tsx'
 import { GraphPanel } from './Panel.tsx'
 import { holdSource, type GraphSource } from './source.ts'
@@ -20,7 +20,7 @@ interface BodyProps {
   readonly graphSessionId: string
 }
 
-function makeBody(remote: RemoteRoot, commands: CommandsRemote, sessions: SessionsClient): (props: BodyProps) => ReactElement | null {
+function makeBody(remote: RemoteRoot, sessions: SessionsClient): (props: BodyProps) => ReactElement | null {
   return function GraphTabBody({ graphSessionId }: BodyProps): ReactElement | null {
     const [source, setSource] = useState<GraphSource | undefined>(undefined)
     useEffect(() => {
@@ -30,7 +30,7 @@ function makeBody(remote: RemoteRoot, commands: CommandsRemote, sessions: Sessio
     }, [graphSessionId])
     if (source === undefined) return null
     // 重新加载 renders the panel again; the graph source is held by the body, so the panel comes back with the current graph.
-    return <PanelBoundary label="项目图面板"><GraphPanel source={source} commands={commands} sessions={sessions} sessionId={graphSessionId} /></PanelBoundary>
+    return <PanelBoundary label="项目图面板"><GraphPanel source={source} sessions={sessions} sessionId={graphSessionId} /></PanelBoundary>
   }
 }
 
@@ -49,7 +49,7 @@ export function installGraphTab(ctx: ClientContext): void {
       icon: IconGoalOutlineRegular,
     }],
   }), 'glm-hourness-ui: graph tab type')
-  const Body = makeBody(ctx.remote, ctx.remote.commands, ctx.sessions)
+  const Body = makeBody(ctx.remote, ctx.sessions)
   ctx.effect(() => ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register<BodyProps>({
     name: 'sidebar.right.pane.tab',
     key: GRAPH_TAB_ID,

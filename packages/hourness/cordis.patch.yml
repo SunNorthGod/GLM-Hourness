@@ -60,11 +60,12 @@
       inject: [tools]
       config: {}
     - id: glm-hourness/graph-panel
-      # Write path of the project graph panel (docs/ORCHESTRATION.md §2.10,
-      # §13): the /graph-apply command applies one mutation as the human to
-      # docs/graph under the invoking session's working directory (or
-      # config.dir). Registers nothing model-facing. Enabled after the L3
-      # probe (scenario glm-graph-panel) passed on 2026-10-28.
+      # The human's command for the project graph panel (docs/
+      # ORCHESTRATION.md §2.10, §13): /graph-run starts, stops or redoes a
+      # task under the invoking session's working directory (or config.dir);
+      # the panel itself only reads (plain-ui). Registers nothing
+      # model-facing. Enabled after the L3 probe (scenario glm-graph-panel)
+      # passed on 2026-10-28.
       name: dsh-hourness/graph-panel
       inject: [commands]
       config: {}

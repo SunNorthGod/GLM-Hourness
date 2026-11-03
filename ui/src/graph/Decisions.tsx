@@ -1,11 +1,11 @@
 /**
  * agent 定的: what the agent is about to decide, then the latest
  * decisions, newest first, with who made each one: the agent on its own,
- * the agent relaying the human's words, or the human in the panel
+ * the agent relaying the human's words, or the human in the chat
  * (docs/ORCHESTRATION.md §2.9.1). Both are parts like the other views',
  * with their counts in the titles. Opening a decision shows the reason,
- * the relayed words and the other options; picking one overturns the
- * decision as the human.
+ * the relayed words and the options read-only; overturning one is a word
+ * to the main agent (plain-ui, the panel only looks).
  */
 import type { ReactElement } from 'react'
 import { useState } from 'react'
@@ -64,7 +64,7 @@ function Recent({ graph, items }: { readonly graph: LoadedGraph, readonly items:
                     <div onClick={event => { event.stopPropagation() }}>
                       {record.reason === undefined ? null : <div className="glmg-text">理由：{record.reason}</div>}
                       {record.relay === undefined ? null : <blockquote className="glmg-quote">你说：{record.relay}</blockquote>}
-                      <Options graph={graph} node={node} />
+                      <Options node={node} />
                       <div className="glmg-actions"><button type="button" className="glmg-more" onClick={() => { open(record.id) }}>看这张卡的全部内容</button></div>
                     </div>
                   )

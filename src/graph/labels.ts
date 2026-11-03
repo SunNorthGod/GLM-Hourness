@@ -89,7 +89,7 @@ export const OP_LABELS: Readonly<Record<Op, string>> = {
 
 /**
  * An engine refusal as the human who clicked in the panel reads it
- * (/graph-apply and /graph-run outcomes): what happened and what to do, in
+ * (the /graph-run outcome): what happened and what to do, in
  * Chinese, with the engine's code in parentheses. The engine's message and
  * hint are written for the LLM, which gets them as the structured error of
  * a graph tool (tools.ts); here only the codes the panel cannot cause
