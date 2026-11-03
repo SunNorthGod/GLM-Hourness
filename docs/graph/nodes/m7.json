@@ -480,6 +480,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "设计输入（2026-11-03，官方 dsh-superagent-prototype 实读，FACTS.md §3）：(1) 派发与 loops 投递的副作用队列照原型 stored-work 三件套——决定后动作先落库、事务提交后执行、失败退避重试（2s 起倍增至 60s）、同一任务对同一会话的消息严格保序、连续失败 3 次才升健康告警；m4-gate 的缺口补写（journal 写失败留缺口、下条记录落地前先补）已是同款语义的日志侧。(2) 派发生命周期用 stage 表（在等人答/等审查/受阻/排队/空闲/在干，自上而下首条命中；人的消息一到受阻自动释放），工单状态自带、不跟随宿主 session（原型 001 拒绝概念清单）。(3) 派发工具形状：一次收多条决定、每项独立拒绝互不挡；派发 id 由输入派生（同输入同 id），重启不重放、重复接受不双开。详见 .agents/tasks/superagent-notes/findings.md（不入库）。"
+    },
+    {
+      "at": "2026-11-03T17:51:15.064Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "E1b/E2 落地（18b0083 + f0210b2，分支 origin/m7，基线 236e4cc，2026-11-04）：E1b 收敛与底线——normalizeVerdict（发现压过结论字面，blocking 必须挂在验收/方向/两条不可逆准则上否则降级计数）、converge 三停因、五种问人草稿（走 M3 的 proposalRecordRefusal）、parseFloor 四写法、七种门禁行、classifyTrunkCall 六条主干操作一律拒、driveDecision 表序、九事件五动作七缺省循环条目、derivedStage/goalCompletion/acceptanceRounds（补 F22 与 R5-F4 跳过）。E2 契约——hourness-handback-v1/review-v1 限 rc.3 assertObjectJsonSchema 子集、23 个指标事件与可注入 MetricSink、EXECUTE/WORKER/OPERATE 工具名与 structured_output 常驻、dsh-min 增 goals 五操作 subagents 六成员（typert 行号进 DESIGN §2.4a）。门禁全绿：test 2527（2 环境跳过）、probe 323/323、棘轮 220/19/1 未涨。探针核对一处：structured_output 常驻后脚本化交回改直调（两场景记录五变四）。下一步 E4 起，先并 main。"
     }
   ]
 }
