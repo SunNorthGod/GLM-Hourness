@@ -45,6 +45,8 @@ export interface PreferenceRow {
   readonly saidLine: string
   /** The words were not checked against the person's messages. */
   readonly unchecked: boolean
+  /** A habit the agent asked about and the person confirmed (§3.8.4): the question, the content as asked, and a changed-content line when an update rewrote it. */
+  readonly habit?: { readonly questionLine: string, readonly memorizeLine: string, readonly changedLine?: string }
   readonly changeLine: string
 }
 
@@ -59,9 +61,21 @@ export interface FactRow {
   readonly changeLine: string
 }
 
+/** A habit the person said no to, in the folded 你说过不用记的习惯 section (§3.8.4). */
+export interface DeclinedRow {
+  readonly name: string
+  readonly description: string
+  readonly questionLine: string
+  readonly saidLine: string
+  readonly untilLine: string
+  readonly changeLine: string
+}
+
 export interface MemoryRows {
   readonly preferences: readonly PreferenceRow[]
   readonly facts: readonly FactRow[]
+  /** The habits the person declined, folded by default; empty rows make no section. */
+  readonly declinedHabits: { readonly title: string, readonly rows: readonly DeclinedRow[] }
   /** The one line about how long reports should be; null when the person has not set one. */
   readonly depth: { readonly line: string, readonly changeLine: string } | null
 }
@@ -134,13 +148,29 @@ function lessonsGroup(state: LessonsState, status: 'retired' | 'deleted', nowMs:
 
 const forgetLine = (name: string): string => `要改：跟主 Agent 说「忘掉 ${name}」，或在输入框打 /memory forget ${name}`
 
-const preferenceRowOf = (entry: MemoryEntry): PreferenceRow => ({
-  name: entry.name,
-  description: entry.description,
-  saidLine: entry.relay === undefined ? `你 ${dayOf(entry.created)} 存入` : `你 ${dayOf(entry.created)} 说过「${entry.relay}」`,
-  unchecked: entry.relayChecked === false,
-  changeLine: forgetLine(entry.name),
-})
+/** The habit lines of a confirmed entry (lessons-3): what the person was asked, what was to be remembered, and what changed since. */
+const habitOf = (entry: MemoryEntry): PreferenceRow['habit'] => {
+  const confirmed = entry.confirmed
+  if (confirmed === undefined) return undefined
+  return {
+    questionLine: `当时问你的是：「${confirmed.question}」`,
+    memorizeLine: `要记的：${entry.description}`,
+    ...(confirmed.body !== entry.body ? { changedLine: `内容在你确认之后改过，依据是你 ${dayOf(entry.lastReviewed)} 说过「${entry.relay ?? ''}」` } : {}),
+  }
+}
+
+const preferenceRowOf = (entry: MemoryEntry): PreferenceRow => {
+  const habit = habitOf(entry)
+  return {
+    name: entry.name,
+    description: entry.description,
+    // The date of the words the row quotes: the latest write that set them.
+    saidLine: entry.relay === undefined ? `你 ${dayOf(entry.created)} 存入` : `你 ${dayOf(entry.lastReviewed)} 说过「${entry.relay}」`,
+    unchecked: entry.relayChecked === false,
+    ...(habit === undefined ? {} : { habit }),
+    changeLine: forgetLine(entry.name),
+  }
+}
 
 const factRowOf = (entry: MemoryEntry, nowMs: number): FactRow => ({
   name: entry.name,
@@ -155,7 +185,7 @@ const factRowOf = (entry: MemoryEntry, nowMs: number): FactRow => ({
 const DEPTH_LABELS: Readonly<Record<string, string>> = { concise: '简洁', balanced: '适中', detailed: '详细' }
 const REPORTING_DEPTH = 'reporting-depth'
 
-/** The rows of the memory half of the page: the person's preferences, the project's facts, the reporting depth. */
+/** The rows of the memory half of the page: the person's preferences (confirmed habits among them), the project's facts, the declined habits, the reporting depth. */
 export function memoryRows(project: MemoryState | null, user: MemoryState | null, nowMs: number): MemoryRows {
   const all = [...(user?.entries.values() ?? []), ...(project?.entries.values() ?? [])].filter(entry => entry.status === 'active')
   const byCreated = (a: MemoryEntry, b: MemoryEntry): number => Date.parse(b.created) - Date.parse(a.created) || (a.name < b.name ? -1 : 1)
@@ -167,6 +197,16 @@ export function memoryRows(project: MemoryState | null, user: MemoryState | null
     .filter(entry => entry.kind === 'fact')
     .sort((a, b) => Date.parse(b.lastReviewed) - Date.parse(a.lastReviewed) || (a.name < b.name ? -1 : 1))
     .map(entry => factRowOf(entry, nowMs))
+  const declined = [...(user?.declined.values() ?? []), ...(project?.declined.values() ?? [])]
+    .sort((a, b) => Date.parse(b.at) - Date.parse(a.at) || (a.name < b.name ? -1 : 1))
+    .map((no) => ({
+      name: no.name,
+      description: no.description,
+      questionLine: `当时问你的是：「${no.question}」`,
+      saidLine: `你 ${dayOf(no.at)} 说过「${no.relay}」`,
+      untilLine: `${dayOf(no.until)} 之前不再问`,
+      changeLine: `要改：${dayOf(no.until)} 之后想记回来，跟主 Agent 再说一次`,
+    }))
   const depthEntry = all.find(entry => entry.name === REPORTING_DEPTH)
   const depth = depthEntry === undefined
     ? null
@@ -178,7 +218,7 @@ export function memoryRows(project: MemoryState | null, user: MemoryState | null
           changeLine: forgetLine(depthEntry.name),
         }
       })()
-  return { preferences, facts, depth }
+  return { preferences, facts, declinedHabits: { title: `你说过不用记的习惯（${declined.length}）`, rows: declined }, depth }
 }
 
 /** The whole page model from the folded lessons journal and the memory rows. */

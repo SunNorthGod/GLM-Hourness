@@ -62,8 +62,13 @@ export interface MemoryEntry {
   readonly value?: Depth
   /** Computed from `type`, never given by a caller. */
   readonly kind: Kind
-  /** A habit the agent asked about and the person agreed to: the question's id and what the person was asked. Set when the entry is created and never removed. */
-  readonly confirmed?: { readonly ask: string, readonly question: string }
+  /**
+   * A habit the agent asked about and the person agreed to (§3.8.4): the
+   * question's id, what the person was asked, the content as it was at ask
+   * time, and when the person said yes. Set once by the `store` record that
+   * names the question, kept by every update, never removed.
+   */
+  readonly confirmed?: { readonly ask: string, readonly question: string, readonly body: string, readonly at: string }
   /** Keys of the learning groups (§3.6) this entry settled; an update joins new keys to the old, at most five. */
   readonly learnedFrom?: readonly string[]
   /** Came from the old `memory.json`. */
@@ -81,15 +86,34 @@ export interface LearnNotice {
   readonly keys: readonly string[]
 }
 
+/** An open habit question (§3.8): what the agent asked, and when and in which session. */
+export interface HabitAsk extends HabitFields {
+  readonly at: string
+  readonly session?: string
+}
+
+/** A habit the person said no to (§3.8.4): what had been asked, their words, and until when the same habit is not asked again. */
+interface HabitNo extends HabitFields {
+  readonly relay: string
+  readonly at: string
+  readonly until: string
+}
+
 /** The entries of one scope by name, forgotten ones included (they can be restored). */
 export interface MemoryState {
   readonly scope: Scope
   readonly entries: ReadonlyMap<string, MemoryEntry>
+  /** The open habit questions, by name; a confirm or a decline takes the question out. */
+  readonly asks: ReadonlyMap<string, HabitAsk>
+  /** The latest `decline` of each name; a no keeps the same habit from being asked again until `until`. */
+  readonly declined: ReadonlyMap<string, HabitNo>
+  /** The times of the `ask` records, the latest of each name last; the weekly cap of questions reads them. */
+  readonly askTimes: readonly string[]
   /** The latest `learn-notified` record; only a project journal has one. */
   readonly learnNotice?: LearnNotice
 }
 
-export const emptyMemory = (scope: Scope): MemoryState => ({ scope, entries: new Map() })
+export const emptyMemory = (scope: Scope): MemoryState => ({ scope, entries: new Map(), asks: new Map(), declined: new Map(), askTimes: [] })
 
 /** The id of a record about an entry: its name and its scope. */
 export const memoryId = (scope: Scope, name: string): string => `${scope}:${name}`
@@ -147,7 +171,7 @@ const WHY_LINE = /^[ \t]*(?:\*\*)?why:/im
 const MAX_SOURCES = 5
 const MAX_LEARNED = 5
 const SOURCE_HINT = 'Where the fact lives: a project graph node id, a file path (optionally with §section), a commit id, or a URL.'
-const ASK_FIRST_HINT = 'Only the user\'s own words make a preference. Do not store a habit you only guessed from their edits, and do not ask about it yet. If it is a fact the repo already records, store it as a project memory with its source.'
+const ASK_FIRST_HINT = 'Only the user\'s own words make a preference. To record a habit you only guessed from their edits, call memory_habit with action "ask"; when they say yes in their own words, record it with action "confirm". If it is a fact the repo already records, store it as a project memory with its source.'
 
 function resolveScope(type: MemoryType, scope: unknown): Refusal | Scope {
   if (scope !== undefined) {
@@ -171,6 +195,46 @@ function sourceRefs(source: unknown, type: MemoryType): Refusal | ParsedRef[] {
     refs.push(parsed)
   }
   return type === 'project' && refs.length === 0 ? refuse('bad_source', 'a project memory needs a source', 'source', SOURCE_HINT) : refs
+}
+
+/** The fields of a habit question (§3.8.1): a `feedback` entry plus the question that goes to the person. */
+export interface HabitFields {
+  readonly name: string
+  readonly scope: Scope
+  readonly description: string
+  readonly body: string
+  readonly question: string
+  readonly learnedFrom?: readonly string[]
+}
+
+const QUESTION_MIN = 10
+const QUESTION_MAX = 90
+
+/** The rules of the field table of §3.8.1, the same for the tool and for a record read from a journal. */
+export function validateHabitFields(raw: Readonly<Record<string, unknown>>): HabitFields | Refusal {
+  const { name, scope, description, body, question, learnedFrom } = raw
+  if (typeof name !== 'string' || name.length < 2 || name.length > 64 || !NAME_PATTERN.test(name)) {
+    return invalid('name', 'name must be kebab-case: lower-case letters and digits joined by single hyphens, 2 to 64 characters')
+  }
+  if (!isText(description, 200) || /[\r\n]/.test(description)) return invalid('description', 'description must be one line of 1 to 200 characters')
+  if (!isText(body, 4000) || !WHY_LINE.test(body)) {
+    return invalid('body', 'a habit needs a line that starts with Why:', 'follow the habit with **Why:** and **How to apply:** lines')
+  }
+  if (typeof question !== 'string' || /[\r\n]/.test(question) || [...question].length < QUESTION_MIN || [...question].length > QUESTION_MAX || !/[?？]$/u.test(question)) {
+    return invalid('question', `question must be one line of ${QUESTION_MIN} to ${QUESTION_MAX} code points that ends with ？ or ?`)
+  }
+  const resolved = resolveScope('feedback', scope)
+  if (typeof resolved === 'object') return resolved
+  const keys = groupKeysOf(learnedFrom, MAX_LEARNED)
+  if (keys !== undefined && !Array.isArray(keys)) return keys
+  return {
+    name,
+    scope: resolved,
+    description,
+    body,
+    question,
+    ...(keys === undefined ? {} : { learnedFrom: keys }),
+  }
 }
 
 /** The rules of the field table of §3.2, the same for a tool call and for a record read from a journal. */
@@ -329,8 +393,8 @@ export interface Writer {
 /** The JSON form of an entry, the same in a snapshot and in a base. */
 const snapshot = (entry: MemoryEntry): JsonValue => JSON.parse(JSON.stringify(entry)) as JsonValue
 
-/** A `store` record. `relayChecked` is false when the words were not checked against the person's messages, true when they were, absent when nothing was to be checked. */
-export function storeRecord(request: StoreRequest, writer: Writer & { readonly relayChecked?: boolean }): NewRecord<'store'> {
+/** A `store` record. `relayChecked` is false when the words were not checked against the person's messages, true when they were, absent when nothing was to be checked. `ask` names the open habit question the record settles (§3.8.2). */
+export function storeRecord(request: StoreRequest, writer: Writer & { readonly relayChecked?: boolean, readonly ask?: string }): NewRecord<'store'> {
   return {
     actor: writer.actor,
     ...(request.relay === undefined ? {} : { relay: request.relay }),
@@ -347,6 +411,7 @@ export function storeRecord(request: StoreRequest, writer: Writer & { readonly r
       ...(request.value === undefined ? {} : { value: request.value }),
       ...(request.learnedFrom === undefined ? {} : { learnedFrom: request.learnedFrom }),
       ...(writer.relayChecked === undefined ? {} : { relayChecked: writer.relayChecked }),
+      ...(writer.ask === undefined ? {} : { ask: writer.ask }),
     },
   }
 }
@@ -380,6 +445,8 @@ const WRITERS: ReadonlyMap<string, readonly Actor[]> = new Map([
   ['forget', ['human', 'llm']],
   ['restore', ['human', 'llm']],
   ['learn-notified', ['harness']],
+  ['ask', ['llm']],
+  ['decline', ['llm']],
 ])
 
 const originOf = (record: JournalRecord): MemoryOrigin => ({
@@ -413,7 +480,8 @@ function parseEntry(raw: unknown, scope: Scope): MemoryEntry | string {
   if (relay !== undefined && !isText(relay, 500)) return 'relay is not text of at most 500 characters'
   if (relayChecked !== undefined && relayChecked !== false) return 'relayChecked is not false'
   if (value !== undefined && !isDepth(value)) return 'value is not a reporting depth'
-  if (confirmed !== undefined && !(isObject(confirmed) && typeof confirmed.ask === 'string' && typeof confirmed.question === 'string')) return 'confirmed is not a question'
+  if (confirmed !== undefined && !(isObject(confirmed) && typeof confirmed.ask === 'string' && typeof confirmed.question === 'string'
+    && typeof confirmed.body === 'string' && isMoment(confirmed.at))) return 'confirmed is not a question'
   const keys = learnedFrom === undefined ? [] : listOf(learnedFrom)
   if (keys === undefined || keys.length > MAX_LEARNED || !keys.every(key => typeof key === 'string' && isGroupKey(key))) return 'learnedFrom is not a list of group keys'
   if (legacy !== undefined && legacy !== true) return 'legacy is not true'
@@ -436,7 +504,7 @@ function parseEntry(raw: unknown, scope: Scope): MemoryEntry | string {
     ...(relayChecked === undefined ? {} : { relayChecked }),
     ...(value === undefined ? {} : { value }),
     kind: classify(type),
-    ...(confirmed === undefined ? {} : { confirmed: confirmed as { ask: string, question: string } }),
+    ...(confirmed === undefined ? {} : { confirmed: confirmed as { ask: string, question: string, body: string, at: string } }),
     ...(keys.length === 0 ? {} : { learnedFrom: keys as string[] }),
     ...(legacy === undefined ? {} : { legacy }),
     created,
@@ -518,7 +586,7 @@ function revised(existing: MemoryEntry, fields: Fields, record: JournalRecord, u
 function applyStore(state: MemoryState, record: JournalRecord): FoldStep<MemoryState> {
   const data = record.data
   if (!isObject(data)) return { bad: 'data is not an object' }
-  if (data.ask !== undefined) return { bad: 'the record names a question that does not exist' }
+  if (data.ask !== undefined && typeof data.ask !== 'string') return { bad: 'data.ask is not a question' }
   if (data.relayChecked !== undefined && typeof data.relayChecked !== 'boolean') return { bad: 'relayChecked is not a boolean' }
   const fields = validateFields({ ...data, relay: record.relay })
   if (isRefusal(fields)) return { bad: `${fields.field ?? 'record'}: ${fields.message}` }
@@ -527,9 +595,39 @@ function applyStore(state: MemoryState, record: JournalRecord): FoldStep<MemoryS
   if (!hasCredential(fields.type, record.actor, fields.relay)) return { bad: 'a preference without the user\'s own words' }
   const unchecked = data.relayChecked === false
   const existing = state.entries.get(fields.name)
-  if (existing?.status !== 'active') return withEntries(state, [newEntry(fields, record, unchecked)])
-  if (existing.type !== fields.type) return { bad: `type ${fields.type} differs from the type ${existing.type} of the active entry` }
-  return withEntries(state, [revised(existing, fields, record, unchecked)])
+  if (existing?.status === 'active' && existing.type !== fields.type) {
+    return { bad: `type ${fields.type} differs from the type ${existing.type} of the active entry` }
+  }
+  // A store that names a question confirms a habit (§3.8.2): the content was
+  // recorded at ask time and must come back the same, in the asking session,
+  // inside the answer window; the entry then carries `confirmed`.
+  let confirmed: MemoryEntry['confirmed']
+  if (data.ask !== undefined) {
+    const open = state.asks.get(fields.name)
+    if (open === undefined || open.question !== data.ask) return { bad: 'the record names a question that does not exist' }
+    if (fields.type !== 'feedback') return { bad: 'a habit is a feedback memory' }
+    if (fields.description !== open.description || fields.body !== open.body
+      || (fields.learnedFrom?.join('\n') ?? '') !== (open.learnedFrom?.join('\n') ?? '')) {
+      return { bad: 'the content differs from what was asked' }
+    }
+    if (record.by?.session === undefined || record.by.session !== open.session) return { bad: 'the question was asked in another session' }
+    if (Date.parse(record.at) - Date.parse(open.at) > HABIT_ANSWER_DAYS * DAY_MS) return { bad: 'the answer to the question has lapsed' }
+    if (existing?.status === 'active' && existing.confirmed !== undefined) return { bad: 'the habit was confirmed already' }
+    confirmed = { ask: memoryId(state.scope, fields.name), question: open.question, body: open.body, at: record.at }
+  }
+  else if (existing?.status === 'active' && existing.confirmed !== undefined && unchecked) {
+    return { bad: 'a confirmed habit can only be updated with words that were checked against the person' }
+  }
+  const next = confirmed === undefined
+    ? (existing?.status === 'active'
+      ? revised(existing, fields, record, unchecked)
+      : newEntry(fields, record, unchecked))
+    : { ...(existing?.status === 'active' ? revised(existing, fields, record, unchecked) : newEntry(fields, record, unchecked)), confirmed }
+  const entries = new Map(state.entries)
+  entries.set(fields.name, next)
+  const asks = new Map(state.asks)
+  if (confirmed !== undefined) asks.delete(fields.name)
+  return { state: { ...state, entries, asks } }
 }
 
 function applyReview(state: MemoryState, record: JournalRecord): FoldStep<MemoryState> {
@@ -569,12 +667,83 @@ export const learnNotifiedRecord = (keys: readonly string[], by: NonNullable<New
   data: { keys: [...keys] },
 })
 
+/** An open habit question (§3.8.1): the content the `store` of a confirm must repeat word for word. */
+export function askRecord(fields: HabitFields, by: NonNullable<NewRecord['by']>): NewRecord<'ask'> {
+  return { actor: 'llm', by, op: 'ask', id: memoryId(fields.scope, fields.name), data: { ...fields } }
+}
+
+/** The person's no to a habit question (§3.8.4): their words and the content the question carried. */
+export function declineRecord(fields: HabitFields, relay: string, by: NonNullable<NewRecord['by']>): NewRecord<'decline'> {
+  return {
+    actor: 'llm',
+    relay,
+    by,
+    op: 'decline',
+    id: memoryId(fields.scope, fields.name),
+    data: { name: fields.name, question: fields.question, description: fields.description, ...(fields.learnedFrom === undefined ? {} : { learnedFrom: fields.learnedFrom }) },
+  }
+}
+
+/** The questions stay open this long: after it a confirm or a decline is `lapsed`, and the ask keeps the same habit from being asked again. */
+export const HABIT_ANSWER_DAYS = 7
+
+/** A no to a habit, and an unanswered ask, keep the same habit from being asked again this long (§3.8.4). */
+export const HABIT_DECLINE_DAYS = 28
+
 function applyLearnNotified(state: MemoryState, record: JournalRecord): FoldStep<MemoryState> {
   if (state.scope !== 'project') return { bad: 'a learning digest reminder is recorded in the project journal only' }
   if (record.id !== '*') return { bad: 'a learn-notified record is about the file: its id is *' }
   const keys = isObject(record.data) ? listOf(record.data.keys) : undefined
   if (keys === undefined || keys.length === 0 || keys.length > NOTICE_KEYS_MAX || !keys.every(key => typeof key === 'string' && isGroupKey(key))) return { bad: `data.keys is not a list of 1 to ${NOTICE_KEYS_MAX} group keys` }
   return { state: { ...state, learnNotice: { at: record.at, keys: keys as string[] } } }
+}
+
+/** How many ask times the state keeps: far above anything the weekly cap can meet, so a pruned one can never lie in its favour. */
+const ASK_TIMES_KEPT = 16
+
+function applyAsk(state: MemoryState, record: JournalRecord): FoldStep<MemoryState> {
+  if (!isObject(record.data)) return { bad: 'data is not an object' }
+  const fields = validateHabitFields(record.data)
+  if (isRefusal(fields)) return { bad: `${fields.field ?? 'record'}: ${fields.message}` }
+  if (record.id !== memoryId(state.scope, fields.name)) return { bad: `id is not ${memoryId(state.scope, fields.name)}` }
+  if (state.entries.get(fields.name)?.status === 'active') return { bad: `${fields.name} is already an active entry` }
+  const ask: HabitAsk = {
+    ...fields,
+    at: record.at,
+    ...(record.by?.session === undefined ? {} : { session: record.by.session }),
+  }
+  return {
+    state: {
+      ...state,
+      asks: new Map(state.asks).set(fields.name, ask),
+      askTimes: [...state.askTimes, record.at].slice(-ASK_TIMES_KEPT),
+    },
+  }
+}
+
+function applyDecline(state: MemoryState, record: JournalRecord): FoldStep<MemoryState> {
+  if (record.id === '*') return { bad: 'a decline is about an entry: its id is not *' }
+  const name = record.id.slice(state.scope.length + 1)
+  const ask = state.asks.get(name)
+  if (ask === undefined) return { bad: `no open question named ${name}` }
+  if (record.relay === undefined || record.relay.trim() === '') return { bad: 'a decline needs the person\'s own words in relay' }
+  const data = record.data
+  const question = isObject(data) && typeof data.question === 'string' ? data.question : ask.question
+  const description = isObject(data) && typeof data.description === 'string' ? data.description : ask.description
+  const no: HabitNo = {
+    name,
+    scope: state.scope,
+    question,
+    description,
+    body: ask.body,
+    relay: record.relay,
+    ...(ask.learnedFrom === undefined ? {} : { learnedFrom: ask.learnedFrom }),
+    at: record.at,
+    until: new Date(Date.parse(record.at) + HABIT_DECLINE_DAYS * DAY_MS).toISOString(),
+  }
+  const asks = new Map(state.asks)
+  asks.delete(name)
+  return { state: { ...state, asks, declined: new Map(state.declined).set(name, no) } }
 }
 
 /** One record applied to a state, or why it does not hold. Pure: the time is the record's `at`. */
@@ -588,7 +757,9 @@ export function applyRecord(state: MemoryState, record: JournalRecord): FoldStep
     case 'review': return applyReview(state, record)
     case 'forget': return applyRevoke(state, record, 'forget')
     case 'learn-notified': return applyLearnNotified(state, record)
-    // The table above admits only these six operations.
+    case 'ask': return applyAsk(state, record)
+    case 'decline': return applyDecline(state, record)
+    // The table above admits only these eight operations.
     default: return applyRevoke(state, record, 'restore')
   }
 }

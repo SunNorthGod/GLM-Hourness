@@ -13,7 +13,7 @@ import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type R
 import type { ClientContext, RemoteRoot, SessionsClient } from '../dsh.ts'
 import { registerBoard } from '../graph/boards.ts'
 import { lessonsBoard } from './board.ts'
-import type { FactRow, LessonRow, LessonsPageModel, PreferenceRow } from './model.ts'
+import type { DeclinedRow, FactRow, LessonRow, LessonsPageModel, PreferenceRow } from './model.ts'
 import { holdLessonsSource, type LessonsPaths, type LessonsSnapshot, type LessonsSource } from './source.ts'
 
 /**
@@ -62,7 +62,31 @@ function PreferenceItem({ row }: { readonly row: PreferenceRow }): ReactElement 
       <div className="glml-state">
         {row.saidLine}
         {row.unchecked ? <Tag tone="warning">原话未核对</Tag> : null}
+        {row.habit !== undefined ? <Tag tone="success">你确认的习惯</Tag> : null}
       </div>
+      {row.habit === undefined ? null : (
+        <div className="glml-grey">
+          {row.habit.questionLine}
+          <br />
+          {row.habit.memorizeLine}
+        </div>
+      )}
+      {row.habit?.changedLine === undefined ? null : <div className="glml-grey">{row.habit.changedLine}</div>}
+      <div className="glml-change">{row.changeLine}</div>
+    </div>
+  )
+}
+
+function DeclinedItem({ row }: { readonly row: DeclinedRow }): ReactElement {
+  return (
+    <div className="glml-item">
+      <div className="glml-title">{row.description}</div>
+      <div className="glml-grey">
+        {row.questionLine}
+        <br />
+        {row.saidLine}
+      </div>
+      <div className="glml-state">{row.untilLine}</div>
       <div className="glml-change">{row.changeLine}</div>
     </div>
   )
@@ -82,9 +106,9 @@ function FactItem({ row }: { readonly row: FactRow }): ReactElement {
   )
 }
 
-/** The memory half: the person's preferences with their relay, the project's facts, the reporting depth. */
+/** The memory half: the person's preferences with their relay (confirmed habits among them), the project's facts, the declined habits, the reporting depth. */
 function MemoryHalf({ memory }: { readonly memory: LessonsPageModel['memory'] }): ReactElement | null {
-  if (memory.preferences.length === 0 && memory.facts.length === 0 && memory.depth === null) return null
+  if (memory.preferences.length === 0 && memory.facts.length === 0 && memory.depth === null && memory.declinedHabits.rows.length === 0) return null
   return (
     <div className="glml-memory">
       <h3>记忆</h3>
@@ -96,6 +120,12 @@ function MemoryHalf({ memory }: { readonly memory: LessonsPageModel['memory'] })
         </div>
       )}
       {memory.preferences.length === 0 ? <div className="glml-grey">还没有记住关于你的事。</div> : memory.preferences.map(row => <PreferenceItem key={row.name} row={row} />)}
+      {memory.declinedHabits.rows.length === 0 ? null : (
+        <details className="glml-fold">
+          <summary>{memory.declinedHabits.title}</summary>
+          {memory.declinedHabits.rows.map(row => <DeclinedItem key={row.name} row={row} />)}
+        </details>
+      )}
       {memory.facts.length === 0 ? null : <div className="glml-section">项目里的线索</div>}
       {memory.facts.map(row => <FactItem key={row.name} row={row} />)}
     </div>

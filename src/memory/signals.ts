@@ -54,10 +54,11 @@ export interface DepthWrite {
   readonly value: ReportingDepth
 }
 
-/** A place a group was settled: the entry, lesson or note that names its key, and when it first did. */
+/** A place a group was settled: the entry, lesson, note or habit question that names its key, and when it first did. `until` bounds the landing: a habit question lands only while the question is fresh or the person's no still blocks (§3.8.4). */
 export interface Landing {
   readonly key: string
   readonly at: string
+  readonly until?: string
 }
 
 interface SignalInput {

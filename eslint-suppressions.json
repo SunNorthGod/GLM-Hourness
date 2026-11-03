@@ -44,11 +44,6 @@
       "count": 11
     }
   },
-  "src/memory/tools.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 3
-    }
-  },
   "src/toolsearch/index.ts": {
     "@typescript-eslint/require-await": {
       "count": 1
