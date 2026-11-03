@@ -55,9 +55,10 @@ import { mainAgentFace, ordinaryFace } from './role-face.ts'
 import { installStageNotice } from './stage-notice.ts'
 import { HIDDEN_FROM_MAIN_AGENT, TALK_PROJECTION, parseTalkState, personSaid, talkApply, talkFold, talkInit, type TalkState } from './talk.ts'
 
-/** Row config: the persona of the main agent (persona.ts). */
+/** Row config: the persona of the main agent (persona.ts) and the project directory (workspace `.llm`) for the violation journal; defaults to the calling session's project. */
 export interface DesignConfig {
   readonly persona?: { readonly name?: string, readonly text?: string }
+  readonly home?: string | undefined
 }
 
 /** Runtime Config schema: the persona of the main agent as settings in the DSH plugin manager. Empty `text` adds nothing. */
@@ -540,7 +541,7 @@ export function apply(ctx: DesignContext, config: DesignConfig = {}): () => void
 
   // The main agent has no tool that writes files, but the runtime executes by name: the rules deny a write, a question card and a git command that cannot be saved first (src/guard/main-agent.ts).
   try {
-    const journal = projectJournal(name, cwd => projectHomeFor(ctx, undefined, cwd))
+    const journal = projectJournal(name, cwd => projectHomeFor(ctx, config.home, cwd))
     disposers.push(installMainAgentRules(ctx, {
       agents,
       graph: () => graphFocus(ctx),
