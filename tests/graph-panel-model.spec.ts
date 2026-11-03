@@ -9,6 +9,7 @@ import type { GraphNode } from '../src/graph/schema.ts'
 import type { RemoteRoot, StreamItem, WatchFrame } from '../ui/src/dsh.ts'
 import { absoluteTime, byCreation, decidedBy, dotTone, graphRevisionOf, headlineGoals, historyText, liveGroups, nobodyRunningText, placeText, presenceText, progressOf, progressText, revisionOfBytes, statusText, tokensText, visibleGraph } from '../ui/src/graph/model.ts'
 import { GraphSource, type GraphSnapshot } from '../ui/src/graph/source.ts'
+import { initialSeen, nextSeen, seenKeyOf, seenRecordOf, writeSeenRecord } from '../ui/src/graph/seen.ts'
 import { fixtureTest, seedAsHuman } from './graph-helpers.ts'
 
 /** The table card of the seeded questions (ORCHESTRATION.md §2.6). */
@@ -364,4 +365,44 @@ test('the panel sources carry no write path: no commands.execute and no apply im
     assert.doesNotMatch(text, /commands\.execute/, name)
     assert.doesNotMatch(text, /from '\.\/apply\.ts'/, name)
   }
+})
+
+test('上次看之后 (seen.ts): arrivals and departures follow the ten-minute and five-second rules', () => {
+  const t = (minutes: number, seconds = 0): number => minutes * 60_000 + seconds * 1000
+  let state = initialSeen
+  let step = nextSeen(state, 'mount', t(0), t(-50))
+  state = step.state
+  assert.equal(state.since, t(-50), 'the arrival reads the record')
+  step = nextSeen(state, 'visible', t(0, 1), undefined)
+  state = step.state
+  assert.equal(state.visibleSince, t(0, 1))
+  step = nextSeen(state, 'hidden', t(0, 7), undefined)
+  assert.equal(step.departure, t(0, 7), 'six visible seconds are a departure')
+  state = step.state
+  step = nextSeen(state, 'visible', t(0, 9), t(0, 7))
+  state = step.state
+  assert.equal(state.since, t(-50), 'back within ten minutes: the same arrival, the same since')
+  assert.equal(state.visibleSince, t(0, 9))
+  step = nextSeen(state, 'hidden', t(0, 10), undefined)
+  assert.equal(step.departure, undefined, 'two visible seconds are not a departure')
+  state = step.state
+  step = nextSeen(state, 'visible', t(12), t(0, 7))
+  state = step.state
+  assert.equal(state.since, t(0, 7), 'hidden longer than ten minutes (the last write was t(0,7)): a new arrival reads the record again')
+  const brief = nextSeen(nextSeen(initialSeen, 'mount', t(0), undefined).state, 'visible', t(0, 1), undefined)
+  assert.equal(nextSeen(brief.state, 'hidden', t(0, 2), undefined).departure, undefined, 'a glance writes nothing')
+})
+
+test('上次看之后 (seen.ts): the local record reads, writes and fails quietly, and the key follows the graph directory', () => {
+  const backing = new Map<string, string>()
+  const storage = { getItem: (key: string) => backing.get(key) ?? null, setItem: (key: string, value: string) => { backing.set(key, value) } } as Storage
+  const windows = ['D:', 'Repo', 'docs', 'graph', 'nodes'].join('\\')
+  assert.equal(seenRecordOf(storage, seenKeyOf(windows)), undefined)
+  writeSeenRecord(storage, seenKeyOf(windows), 1_000)
+  assert.equal(seenRecordOf(storage, seenKeyOf(windows)), 1_000, 'the key folds separators and case like the design says')
+  assert.equal(seenRecordOf(undefined, 'x'), undefined, 'no storage: no record')
+  const broken = { getItem: () => { throw new Error('full') }, setItem: () => { throw new Error('full') } } as unknown as Storage
+  assert.equal(seenRecordOf(broken, 'x'), undefined, 'a broken read is no record')
+  writeSeenRecord(broken, 'x', 1_000)
+  assert.equal(backing.size, 1, 'a broken write stays quiet')
 })

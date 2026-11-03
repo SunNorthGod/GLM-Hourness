@@ -31,7 +31,7 @@ GLM-Hourness（同仓两包，§2.3）
 ├─ 编排层包 dsh-hourness（packages/hourness），对任何模型生效
 │  ├─ data（数据目录服务，§2.4）
 │  ├─ guard、memory、workflow、hourness（用量与报告）
-│  ├─ graph、graph-panel（项目图与面板写入）
+│  ├─ graph、graph-panel（项目图与运行控制；面板只读）
 │  ├─ rules（规则板：工具调用门、等待单与唤醒、每步提醒、心跳、`rules_show`、`/rules`、高峰模式的档位与服务，默认启用）
 │  ├─ loops（循环板：服务 `glmHournessLoops` 与条目登记表、循环行自己的事件和条目、人的条目的存储与 `/loops`、两道门 `loops:files-only` 与 `loops:schedule-tools`、运行锁与拍、收件箱与运行记录、到点的 DSH 任务与交给主 Agent、高峰结束的判断表（peak.ts），默认启用）
 │  └─ 呈现：包自己的客户端面（packages/hourness/ui，行 ui）

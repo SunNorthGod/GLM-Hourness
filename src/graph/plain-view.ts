@@ -123,7 +123,7 @@ export function progressLine(graph: LoadedGraph, goalId: string): string {
 
 // --- The plan ----------------------------------------------------------------
 
-interface PlanItem {
+export interface PlanItem {
   readonly node: GraphNode
   /** The goal the item hangs under, for the section headers when several goals remain. */
   readonly goalId: string
@@ -325,7 +325,7 @@ export function statusPhrase(node: GraphNode, graph: LoadedGraph, awaiting: read
 /** The state of a module (plain-ui 1.3 §4.11). 在开发 waits for M7's derived stage (E1b): until it lands a released module shows 放行了. */
 export type ModuleState = 'designing' | 'awaiting-release' | 'released' | 'developing' | 'done'
 
-const MODULE_PHRASES: Readonly<Record<ModuleState, string>> = {
+export const MODULE_PHRASES: Readonly<Record<ModuleState, string>> = {
   designing: '设计中',
   'awaiting-release': '等你放行',
   released: '放行了',
