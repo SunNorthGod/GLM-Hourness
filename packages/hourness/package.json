@@ -32,7 +32,9 @@
     "locale",
     "dist",
     "ui",
-    "README.md"
+    "README.md",
+    "LICENSE",
+    "THIRD-PARTY-NOTICES.md"
   ],
   "exports": {
     ".": "./ui/index.js",

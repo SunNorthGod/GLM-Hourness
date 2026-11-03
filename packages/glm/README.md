@@ -42,7 +42,7 @@ Declared in `cordis.patch.yml` (DSH Loader dialect). Row ids keep the `glm-hourn
 
 ## License
 
-The repository's own code is licensed under the PolyForm Noncommercial License 1.0.0 (licensor NorthGod): noncommercial use is granted, commercial use needs a separate grant (northgod@qq.com). Third-party material this bundle carries — in particular ZCode 3.17.1 prompt text reproduced verbatim and parts ported from TriDefender/zcode-api (CC BY-NC-SA) — is inventoried in the repository's `THIRD-PARTY-NOTICES.md` and is not covered by that license. See `LICENSE` and `THIRD-PARTY-NOTICES.md` at the repository root.
+The repository's own code is licensed under the PolyForm Noncommercial License 1.0.0 (licensor NorthGod): noncommercial use is granted, commercial use needs a separate grant (northgod@qq.com). Third-party material this bundle carries — in particular ZCode 3.17.1 prompt text reproduced verbatim and parts ported from TriDefender/zcode-api (CC BY-NC-SA) — is inventoried in the repository's `THIRD-PARTY-NOTICES.md` and is not covered by that license. Both files ship inside the package (`LICENSE`, `THIRD-PARTY-NOTICES.md`).
 
 ## 简体中文
 

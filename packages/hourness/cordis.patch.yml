@@ -18,8 +18,7 @@
       # project directory is the workspace `.llm`. Guard, memory, workflow
       # and hourness read it lazily and keep working without it.
       name: dsh-hourness/data
-      config:
-        projectHome: !!js "process.env.USERPROFILE + '/Desktop/Project/GLM-Hourness/.llm'"
+      config: {}
     - id: glm-hourness/guard
       name: dsh-hourness/guard
       config: {}

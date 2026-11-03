@@ -45,11 +45,11 @@ Declared in `cordis.patch.yml` (DSH Loader dialect). Row ids keep the `glm-hourn
 | `glm-hourness/loops` | loops board: entries, events, run lock | disabled |
 | `glm-hourness/ui` | client face: right sidebar project graph panel | enabled |
 
-The shipped `data` row defaults its project directory to the development checkout (`config.projectHome` in `cordis.patch.yml`); set your own per row in the plugin manager. Rows with `disabled` ship off until you enable them.
+The `data` row ships without a project directory; each session resolves its workspace `.llm` (set `projectHome` per row in the plugin manager to override). Rows with `disabled` ship off until you enable them.
 
 ## License
 
-The repository's own code is licensed under the PolyForm Noncommercial License 1.0.0 (licensor NorthGod): noncommercial use is granted, commercial use needs a separate grant (northgod@qq.com). Third-party material this bundle carries is inventoried in the repository's `THIRD-PARTY-NOTICES.md` and is not covered by that license. See `LICENSE` and `THIRD-PARTY-NOTICES.md` at the repository root.
+The repository's own code is licensed under the PolyForm Noncommercial License 1.0.0 (licensor NorthGod): noncommercial use is granted, commercial use needs a separate grant (northgod@qq.com). Third-party material this bundle carries is inventoried in `THIRD-PARTY-NOTICES.md` and is not covered by that license. Both files ship inside the package (`LICENSE`, `THIRD-PARTY-NOTICES.md`).
 
 ## 简体中文
 
