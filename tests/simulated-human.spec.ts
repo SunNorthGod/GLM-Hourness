@@ -5,6 +5,8 @@
  * runs, not part of the bundle.
  */
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import test from 'node:test'
 // @ts-expect-error The script is plain JavaScript without a declaration file.
 import { readConfig, simulatedReply } from '../scripts/calibrate/simulated-human.mjs'
@@ -13,6 +15,7 @@ interface Reply {
   readonly kind: 'reply' | 'silent'
   readonly rule: number
   readonly text?: string
+  readonly armed?: true
   readonly shown: ReadonlyArray<{ readonly kind: string, readonly number: number, readonly form?: string, readonly module?: string }>
   readonly used: Record<string, number>
 }
@@ -21,14 +24,20 @@ const reply = (context: Record<string, unknown>): Reply => simulatedReply(contex
 
 test('the config is read with defaults; what is wrong is reported and left out; without replies or answers the row never speaks', () => {
   const warnings: string[] = []
-  const config = readConfig({ replies: { question: ['可以，就按推荐的来'], bogus: ['x'], release: [] }, answers: { need: '记账' }, maxReplies: -1, extra: 1 }, (text: string) => warnings.push(text))
+  const config = readConfig({ replies: { question: ['可以，就按推荐的来'], bogus: ['x'], release: [] }, answers: { need: '记账' }, maxReplies: -1, extra: 1, stop: 3 }, (text: string) => warnings.push(text))
   assert.deepEqual(config.replies, { question: ['可以，就按推荐的来'] })
   assert.deepEqual(config.answers, { need: '记账' })
   assert.equal(config.maxReplies, 24)
   assert.equal(config.enabled, true)
-  assert.equal(warnings.length, 4, warnings.join(' | '))
+  assert.equal(warnings.length, 5, warnings.join(' | '))
   assert.equal(readConfig({ wish: true }).enabled, false)
   assert.equal(readConfig(undefined).enabled, false)
+})
+
+test('the stop sentence the interview task ends with, pinned word for word; the config keeps it as it is', () => {
+  const task = JSON.parse(readFileSync(join(import.meta.dirname, 'calibration', 'interview-expense-log', 'task.json'), 'utf8')) as { human: { stop: string } }
+  assert.equal(task.human.stop, '今天先到这，设计到这里就行，实现下次再说。')
+  assert.equal(readConfig({ replies: {}, stop: task.human.stop }).stop, task.human.stop)
 })
 
 test('rule 1: after maxReplies replies the person says nothing', () => {
@@ -72,4 +81,20 @@ test('rule 3: the release of the framework and of each module are answered with 
   assert.deepEqual(second.shown, [{ kind: 'release', number: 1 }, { kind: 'release', number: 2, module: 'module-a' }], 'what was put is logged with the module')
   const third = reply({ config, replied: 2, shown: [{ kind: 'release', number: 1, module: 'module-a' }], used: second.used })
   assert.equal(third.text, '可以，放行这个模块', 'the next sentence of the module list')
+})
+
+test('the stop: the reply that approves the goal\'s release with the last sentence of its list arms it; the add, a module release and a task without a stop sentence do not', () => {
+  const replies = { release: ['补充：月底的汇总按金额从大到小排', '可以，放行'] }
+  const stop = '今天先到这，设计到这里就行，实现下次再说。'
+  const withStop = readConfig({ replies, stop })
+  const add = reply({ config: withStop, replied: 0, shown: [{ kind: 'release', number: 1 }] })
+  assert.equal(add.armed, undefined, 'the supplement is not the approval')
+  const approval = reply({ config: withStop, replied: 1, shown: [{ kind: 'release', number: 1 }], used: add.used })
+  assert.deepEqual([approval.text, approval.armed], ['可以，放行', true])
+  const moduleRelease = reply({ config: withStop, replied: 2, shown: [{ kind: 'release', number: 1, module: 'module-a' }], used: approval.used })
+  assert.equal(moduleRelease.armed, undefined, 'the release of a module is not the goal\'s')
+  const withoutStop = readConfig({ replies })
+  const approved = reply({ config: withoutStop, replied: 1, shown: [{ kind: 'release', number: 1 }], used: { release: 1 } })
+  assert.equal(approved.armed, undefined, 'no stop sentence, nothing to arm')
+  assert.equal(reply({ config: readConfig({ replies: { release: ['可以，放行'] }, stop }), replied: 0, shown: [{ kind: 'release', number: 1 }] }).armed, true, 'a list whose only sentence is the approval arms at once')
 })

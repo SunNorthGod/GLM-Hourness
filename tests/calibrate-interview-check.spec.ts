@@ -9,9 +9,9 @@
  */
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { cpSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import test from 'node:test'
 import { openEngine, type GraphEngine } from '../src/graph/engine.ts'
 import { exampleRecord } from './proposal-examples.ts'
@@ -25,8 +25,27 @@ interface Verdict {
   readonly metrics?: Record<string, unknown>
 }
 
-/** A copy of the fixture as a git repository with one commit, as the runner makes it. */
-function workspace(task = TASK): string {
+/** The stop sentence of the interview task (its task.json `human.stop`), as the simulated human says it after the release. */
+const STOP = (JSON.parse(readFileSync(join(TASK, 'task.json'), 'utf8')) as { human: { stop: string } }).human.stop
+
+/**
+ * What a run directory holds around the workspace, read by the checker and
+ * the interview metrics: what the simulated human said (a script that ends
+ * with the stop after the release approval), and the run's turns, the last
+ * one ended after the stop woke it. `ending` replaces the last reply.
+ */
+function runDir(ws: string, ending: string = STOP): void {
+  const replies = ['可以，就按推荐的来', '我想要一个命令行小工具', '对，就这样', '补充：月底的汇总按金额从大到小排', '可以，放行', ending]
+  writeFileSync(join(dirname(ws), 'human.jsonl'), [
+    JSON.stringify({ kind: 'wish', line: '/wish', result: 'success' }),
+    ...replies.map(text => JSON.stringify({ kind: 'reply', rule: 3, text, shown: [] })),
+    '',
+  ].join('\n'))
+  writeFileSync(join(dirname(ws), 'events.jsonl'), `${JSON.stringify({ type: 'status', phase: 'turn_end', turn: replies.length + 1 })}\n`)
+}
+
+/** A copy of the fixture as a git repository with one commit, as the runner makes it, in a run directory whose human ends with the stop. */
+function workspace(task = TASK, ending?: string): string {
   const dir = join(mkdtempSync(join(tmpdir(), 'interview-check-')), 'ws')
   cpSync(join(task, 'fixture'), dir, { recursive: true })
   const git = (...args: string[]): void => {
@@ -36,6 +55,7 @@ function workspace(task = TASK): string {
   git('init', '-q')
   git('add', '.')
   git('commit', '-q', '-m', 'init')
+  if (task === TASK) runDir(dir, ending)
   return dir
 }
 
@@ -124,7 +144,7 @@ test('the fixture as it is does not pass, and the graph the flow leaves does', a
   const verdict = check(ws)
   assert.deepEqual(failing(verdict), [])
   assert.equal(verdict.pass, true)
-  assert.equal(verdict.checks.length, 9)
+  assert.equal(verdict.checks.length, 10)
   assert.deepEqual(Object.keys(verdict.metrics ?? {}), ['disturbed', 'shown', 'questions', 'copiedExamples', 'loops', 'records', 'rules', 'snapshots'], 'the numbers of step 12(a) are printed next to the checks, and are not checks')
 })
 
@@ -156,6 +176,10 @@ test('what the script is there to catch makes it fail: a proposal left over, a r
   mkdirSync(join(stray, 'src'))
   writeFileSync(join(stray, 'src', 'expense.js'), 'export {}\n')
   assert.deepEqual(failing(check(stray)), ['nothing in the workspace changed outside docs/graph/'])
+
+  const talked = workspace(undefined, '你按经验定吧')
+  await referenceGraph(talked)
+  assert.deepEqual(failing(check(talked)), ['the human\'s last word in the run is the stop message, and the run\'s last turn ended after it'], 'the person did not stop at the release: the run did not end when the human said so')
 })
 
 // ---------------------------------------------------------------- interview-expense-log-modules

@@ -5,14 +5,23 @@
  * human (task.json `human`) recorded by record_human_answer. The goal is
  * small ("one file is enough"), so it is released in one go, without
  * modules; the two-level release is checked by interview-expense-log-modules.
+ * The design is where the task ends: the human says so (task.json `human.stop`)
+ * after the release was approved, so the last thing they said in the run is
+ * that sentence, and the run's last turn ended after it - a goal released and
+ * a workspace left alone mean the main agent obeyed it.
  * Usage: see tests/calibration/lib.mjs. The checks both interview tasks share
  * are in ./interview-lib.mjs.
  */
+import { readFileSync } from 'node:fs'
+import { dirname } from 'node:path'
 import { checkerArgs, report } from '../lib.mjs'
 import { checks, humanWords, metricsOf, need, readInterview, stageEdit } from '../interview-lib.mjs'
+import { readRun } from '../interview-metrics.mjs'
 
-const interview = await readInterview(checkerArgs().workspace)
+const args = checkerArgs()
+const interview = await readInterview(args.workspace)
 const { goal, nodes } = interview
+const stop = JSON.parse(readFileSync(new URL('./task.json', import.meta.url), 'utf8')).human.stop
 
 await report([
   checks.valid(interview),
@@ -32,6 +41,13 @@ await report([
     const release = history.some(entry => stageEdit('release', entry) && humanWords(entry))
     const added = history.some(entry => entry.op === 'comment' && (entry.text ?? '').startsWith('人在对话里补充：'))
     return need(approved && design && release && added, `approve ${approved}, stage design ${design}, stage release ${release}, note ${added}`)
+  }],
+  ['the human\'s last word in the run is the stop message, and the run\'s last turn ended after it', () => {
+    const run = readRun(dirname(args.workspace))
+    const replies = run.human.filter(entry => entry.kind === 'reply')
+    const last = replies.at(-1)?.text
+    const lastTurn = Math.max(...run.events.filter(event => event.type === 'status' && event.phase === 'turn_end').map(event => event.turn), 0)
+    return need(last === stop && lastTurn > replies.length, `last reply ${JSON.stringify(last)}, last turn ${lastTurn}, replies ${replies.length}`)
   }],
   checks.outside(interview),
 ], { metrics: metricsOf(interview) })

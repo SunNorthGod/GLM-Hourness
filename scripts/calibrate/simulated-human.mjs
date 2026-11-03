@@ -18,6 +18,13 @@
  *   message), so the harness takes it as the human's words. What is said is
  *   chosen by `simulatedReply`, a pure function of the turn. Without those two
  *   keys it never speaks, so the runs that only need `/wish` do not change.
+ * - Stop: when the config names `stop` (a sentence), the person says it once
+ *   at the end of the turn after the goal's release card was answered with
+ *   its approval (the last sentence configured for `release`, said for a
+ *   release of the goal, not of a module), and from then on never speaks
+ *   again - no replies, no silents, nothing more is recorded. A task whose
+ *   design ends at the release says it there, so that the run measures
+ *   whether the main agent stops when the human says so.
  * - Question cards: every agent gets a `user-questions/request` listener that
  *   cancels the request (`ASK_CANCELLED`, the shape the client rejects with)
  *   and records `unexpected-question` with the question ids: the main agent
@@ -37,7 +44,7 @@ export const inject = ['commands']
 
 const KINDS = ['question', 'confirm', 'release', 'module']
 const DEFAULTS = { question: '可以，就按推荐的来', confirm: '对，就这样', release: '可以，放行', module: '可以，放行这个模块' }
-const KNOWN = new Set(['record', 'wish', 'answers', 'replies', 'restateReply', 'fallback', 'maxReplies'])
+const KNOWN = new Set(['record', 'wish', 'answers', 'replies', 'restateReply', 'fallback', 'maxReplies', 'stop'])
 
 /** The error the client rejects a question with when the person closes the card; the user-questions service restores it by name and code. */
 function cancelled() {
@@ -55,6 +62,7 @@ export function readConfig(raw, warn = () => {}) {
   if (config.restateReply !== undefined) isText(config.restateReply) ? out.restateReply = config.restateReply : warn('restateReply must be a non-empty string')
   if (config.fallback !== undefined) isText(config.fallback) ? out.fallback = config.fallback : warn('fallback must be a non-empty string')
   if (config.maxReplies !== undefined) Number.isInteger(config.maxReplies) && config.maxReplies >= 0 ? out.maxReplies = config.maxReplies : warn('maxReplies must be a whole number from 0')
+  if (config.stop !== undefined) isText(config.stop) ? out.stop = config.stop : warn('stop must be a non-empty string')
   if (config.replies !== undefined) {
     if (!isRecord(config.replies)) warn('replies must be an object of kind to a list of sentences')
     else {
@@ -85,7 +93,11 @@ export function readConfig(raw, warn = () => {}) {
  *   3. The main agent put matters to the human this turn: for each, in order,
  *      the next sentence of `replies[kind]` (the last one again when they run
  *      out; `module` for a release of a module), joined by line breaks, said
- *      once. Without a configured sentence: the defaults above.
+ *      once. Without a configured sentence: the defaults above. When
+ *      `config.stop` is set and one of the matters was the release of the
+ *      goal answered with the last sentence of its list, the release was
+ *      approved and the result carries `armed: true`: the caller says the
+ *      stop sentence at the end of the next turn and goes silent after it.
  *   4. The goal in focus has a requirement item missing: `answers[key]` of the
  *      first item in the order the interview asks them, else `fallback`.
  *   5. The goal is not released, or a module of it is still in design: `fallback`.
@@ -95,7 +107,7 @@ export function readConfig(raw, warn = () => {}) {
  * taken so far per kind), `missing` (key of the first missing item of the
  * requirement card, or undefined), `unreleased` (the goal in focus is not
  * released or has a module in design). Returns `{kind: 'reply' | 'silent',
- * rule, text?, shown, used}`.
+ * rule, text?, shown, used, armed?}`.
  */
 export function simulatedReply(context) {
   const { config, replied, lastAssistant = '', shown = [], used = {} } = context
@@ -105,14 +117,17 @@ export function simulatedReply(context) {
   if (lastAssistant.includes('我记成')) return { kind: 'reply', rule: 2, text: config.restateReply, shown: summary, used }
   if (shown.length > 0) {
     const taken = { ...used }
+    let approved = false
     const lines = shown.map((entry) => {
       const kind = entry.kind === 'release' && entry.module !== undefined ? 'module' : entry.kind
       const list = config.replies[kind] ?? [DEFAULTS[kind]]
-      const line = list[Math.min(taken[kind] ?? 0, list.length - 1)]
+      const at = Math.min(taken[kind] ?? 0, list.length - 1)
+      const line = list[at]
       taken[kind] = (taken[kind] ?? 0) + 1
+      if (config.stop !== undefined && entry.kind === 'release' && entry.module === undefined && at === list.length - 1) approved = true
       return line
     })
-    return { kind: 'reply', rule: 3, text: lines.join('\n'), shown: summary, used: taken }
+    return { kind: 'reply', rule: 3, text: lines.join('\n'), shown: summary, used: taken, ...approved ? { armed: true } : {} }
   }
   if (context.missing !== undefined) return { kind: 'reply', rule: 4, text: config.answers[context.missing] ?? config.fallback, shown: summary, used }
   if (context.unreleased === true) return { kind: 'reply', rule: 5, text: config.fallback, shown: summary, used }
@@ -164,7 +179,7 @@ export function apply(ctx, rawConfig = {}) {
   const stateOf = (session) => {
     let state = sessions.get(session.id)
     if (state === undefined) {
-      state = { talk: talk.talkInit(session.header, 0), assistant: '', replied: 0, used: {}, handled: -1 }
+      state = { talk: talk.talkInit(session.header, 0), assistant: '', replied: 0, used: {}, handled: -1, stopArmed: false, stopped: false }
       sessions.set(session.id, state)
     }
     return state
@@ -200,6 +215,18 @@ export function apply(ctx, rawConfig = {}) {
   const answer = async (session, state) => {
     const agent = ctx.get('agents')?.get(session.id)
     if (agent === undefined) return
+    // After the stop the person is gone: no replies, no silents, nothing recorded.
+    if (state.stopped) return
+    /** The turn after the release was approved: one stop sentence, then silence. */
+    const saying = state.stopArmed && typeof config.stop === 'string' ? config.stop : undefined
+    if (saying !== undefined) {
+      state.stopped = true
+      state.replied += 1
+      note({ kind: 'reply', rule: 7, text: saying, shown: [] })
+      await Promise.resolve()
+      agent.followup({ id: `simulated-human-${session.id}-${state.replied}`, role: 'user', content: [{ type: 'text', text: saying }], source: { kind: 'user' } })
+      return
+    }
     const lastPerson = state.talk.people.at(-1)?.seq ?? -1
     const shown = state.talk.shown.filter(entry => entry.seq > lastPerson && entry.seq > state.handled)
     const needs = shown.length === 0 ? readNeeds(session) : {}
@@ -208,6 +235,7 @@ export function apply(ctx, rawConfig = {}) {
     if (result.kind !== 'reply') return
     state.replied += 1
     state.used = result.used
+    if (result.armed === true) state.stopArmed = true
     if (shown.length > 0) state.handled = shown.at(-1).seq
     // The session log cannot take the reply while it is publishing the event that brought us here, but one microtask later it can, and the agent is still finishing the turn, so the run goes on with the reply as the next turn. Any later (a timer) and the headless runner has already decided the run is over.
     await Promise.resolve()
