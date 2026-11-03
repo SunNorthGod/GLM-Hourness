@@ -91,6 +91,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "设计输入（2026-11-03，原型 docs/005 面板原则节）：面板只答三问——现在需要我吗/系统健康吗/这件事的历史，每个元素必须答其一否则删；计数必须等于所链列表长度（诚实状态）；健康默认安静，一次性网络错误不上面板；待处理告警 24 小时内才追问，过期只留记录（问题会老化）。"
+    },
+    {
+      "at": "2026-11-03T17:20:21.535Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "批次 1（a7e2a66，分支 origin/status-hub）：集线器核心 + glm/usage 条目——StatusItem 契约（client-safe、§8 校验）、provideRowStatus（glmHournessStatus/<行>）、collectStatus（受众过滤、逐条校验、陈旧标注、行级错误隔离）、面板段改读条目（字节等价），preflight 增 STATUS_ROWS 检查。偏差：提供者由 hourness 行代交（设计备选）；晨报条目挪 M7 批次。批次 3（ee97e0f，并 4c315a9）：rules/peak 与 glm/quota 条目；配额读挪到 /hourness 命令时刻（3 秒上限、时间戳缓存），同步视图只交读到的行；audience 收紧回 agent|all（批次 1 的偏差回归）。批次 5（面板侧 BoardState.items 与三行 snapshot）进行中；批次 4 等 m4 合并，批次 6 等 M7。"
     }
   ]
 }
