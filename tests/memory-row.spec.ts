@@ -145,10 +145,10 @@ test('a delegated child loses the memory tools and the learning tool from its re
   })
 })
 
-test('a root agent keeps the memory tools and the learning tool in its request', { skip }, async () => {
+test('a root agent keeps the memory tools, the learning tool and the habit question tool in its request', { skip }, async () => {
   await withRow(async (row) => {
     const assembled = await row.runtime.assemble({ provider: 'glm-probe', model: 'glm-5.3' })
-    assert.deepEqual(assembled.tools.map(tool => tool.name).sort(), ['learning_signals', 'memory_forget', 'memory_query', 'memory_store', 'pwsh'])
+    assert.deepEqual(assembled.tools.map(tool => tool.name).sort(), ['learning_signals', 'memory_forget', 'memory_habit', 'memory_query', 'memory_store', 'pwsh'])
   })
 })
 

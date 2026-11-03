@@ -5,10 +5,13 @@
  * that refused.
  */
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { ParsedRef } from '../src/data/evidence.ts'
+import { realLockEnvironment } from '../src/data/lock.ts'
+import type { TalkView } from '../src/memory/answers.ts'
+import { journalFile } from '../src/memory/storage.ts'
 import type { GraphRead, MemoryEnv, NoteKey, Places, SourceCheck } from '../src/memory/storage.ts'
 import { learningTools, memoryTools } from '../src/memory/tools.ts'
 import type { AgentLike, PluginContext, ToolDefinitionLike } from '../src/shared/dsh-min.ts'
@@ -31,6 +34,8 @@ export interface MemoryFixture {
   readonly tools: ReadonlyMap<string, ToolDefinitionLike>
   /** Run a memory tool as `agent` (the main agent by default); resolves to the tool's value. */
   call(name: string, args: unknown, agent?: AgentLike): Promise<Record<string, unknown>>
+  /** Move the fixture's clock; the default stays until this is called. */
+  setNow(at: Date): void
   dispose(): void
 }
 
@@ -44,16 +49,20 @@ export interface FixtureOptions {
   readonly append?: MemoryEnv['append']
   /** What the project graph reads as; none by default. */
   readonly graph?: GraphRead
+  /** The talk state the session reads; none by default (the person's messages cannot be read). */
+  readonly talk?: TalkView
 }
 
 export const MAIN = agentOf('main-session', { cwd: 'C:/work/project' })
 
 /** A memory environment over temporary directories, and the memory tools and the learning tool over it. */
 export function memoryFixture(options: FixtureOptions = {}): MemoryFixture {
+
   const root = mkdtempSync(join(tmpdir(), 'memory-'))
   const places: Places = options.places?.(root) ?? { project: join(root, 'project'), user: join(root, 'user', 'memory') }
   const known = new Set(options.known ?? [])
   const notes: MemoryFixture['notes'] = []
+  let current = options.now ?? new Date('2026-11-01T12:00:00Z')
   const check: SourceCheck = {
     inspect: (ref: ParsedRef) => ref.kind === 'node' || ref.kind === 'other' ? (known.has(ref.id) || known.has(ref.text) ? 'ok' : 'missing') : 'ok',
   }
@@ -61,9 +70,12 @@ export function memoryFixture(options: FixtureOptions = {}): MemoryFixture {
     places: () => places,
     sources: () => Promise.resolve(check),
     graph: () => Promise.resolve(options.graph ?? { ok: false }),
-    now: () => options.now ?? new Date('2026-11-01T12:00:00Z'),
+    talk: () => options.talk,
+    now: () => current,
     note: (sessionId, key, text) => { notes.push({ sessionId, key, text }) },
-    ...(options.append === undefined ? {} : { append: options.append }),
+    // The journal's stamps follow the fixture's clock, so records written
+    // before and after `setNow` read as being apart by that time.
+    append: options.append ?? { lock: { ...realLockEnvironment, now: () => current.getTime() } },
   }
   const tools = new Map([...memoryTools(env), ...learningTools(env)].map(tool => [tool.name, tool]))
   return {
@@ -73,6 +85,7 @@ export function memoryFixture(options: FixtureOptions = {}): MemoryFixture {
     env,
     tools,
     call: (name, args, agent = MAIN) => runTool(tools, name, args, agent),
+    setNow: (at) => { current = at },
     dispose: () => { rmSync(root, { recursive: true, force: true }) },
   }
 }
@@ -82,6 +95,17 @@ export async function runTool(tools: ReadonlyMap<string, ToolDefinitionLike>, na
   const tool = tools.get(name)
   assert.ok(tool !== undefined, name)
   return await tool.execute(args, { agent, callId: 'call-1', signal: new AbortController().signal, deferContext: () => {}, concludeTurn: () => {} }) as Record<string, unknown>
+}
+
+/** Run a body against a fresh fixture, disposing it afterwards. */
+export async function withFixture(body: (memory: MemoryFixture) => Promise<void>, options: FixtureOptions = {}): Promise<void> {
+  const memory = memoryFixture(options)
+  try {
+    await body(memory)
+  }
+  finally {
+    memory.dispose()
+  }
 }
 
 /** The refusal a tool answered with: the JSON after "Error: ", which the tool body throws as the error message. */
@@ -94,4 +118,19 @@ export async function refusalOf(promise: Promise<unknown>): Promise<{ readonly c
   }
   assert.fail('the tool was expected to refuse')
 }
+
+/** One line of a memory journal, as far as the specs read it. */
+export interface JournalLine {
+  readonly op: string
+  readonly actor: string
+  readonly relay?: string
+  readonly id: string
+  readonly by?: Readonly<Record<string, string>>
+  readonly data: Readonly<Record<string, unknown>>
+}
+
+/** The records of a memory journal, an empty list when the file is not there yet. */
+export const journalRecords = (dir: string): JournalLine[] => existsSync(journalFile(dir))
+  ? readFileSync(journalFile(dir), 'utf8').split('\n').filter(line => line !== '').map(line => JSON.parse(line) as JournalLine)
+  : []
 

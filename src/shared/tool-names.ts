@@ -90,7 +90,13 @@ export const MEMORY_TOOL_NAMES: readonly string[] = ['memory_store', 'memory_que
  * that save and recall; the row registers both lists and hides both from a
  * delegated child.
  */
-export const LEARNING_TOOL_NAMES: readonly string[] = ['learning_signals']
+const LEARNING_SIGNALS = 'learning_signals'
+
+/** The memory row's habit question tool (M5 design §3.8, deferred like the learning tool): ask before a guessed habit is stored, confirm or decline on the person's words. */
+export const MEMORY_HABIT = 'memory_habit'
+
+/** The memory row's deferred tools: the learning digest and the habit questions, both the main agent's only. */
+export const LEARNING_TOOL_NAMES: readonly string[] = [LEARNING_SIGNALS, MEMORY_HABIT]
 
 /**
  * The lessons row's lookup tool. The GLM Memory section says where pitfalls

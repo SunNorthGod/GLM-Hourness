@@ -306,6 +306,20 @@ class ProbeAdapter {
     }
   }
 
+  /** Send `text` to the request's own session as a message of the user, the way the second session's `say` does; the queued followup wakes the agent and it follows its script's next step. Not awaited: the agent is mid-turn here. */
+  async tellOwn(request, text) {
+    const agents = this.ctx.get('agents')
+    const own = agents?.get(request.sessionId)
+    if (own === undefined) return { kind: 'no-agent' }
+    try {
+      own.followup({ id: randomUUID(), role: 'user', content: [{ type: 'text', text }], source: { kind: 'user' } })
+      return { kind: 'sent' }
+    }
+    catch (error) {
+      return { kind: 'threw', resultText: error instanceof Error ? error.message : String(error) }
+    }
+  }
+
   /** Type a step's `line` into the request's own session, or its `other.line` into the second root session; with `say` the second session is also sent that message as a message of the user, which wakes it (it follows the next script of `others`). */
   async typeFor(request, line, other, say) {
     const agents = this.ctx.get('agents')
@@ -399,6 +413,7 @@ class ProbeAdapter {
     const line = step.line === undefined ? undefined : await this.typeFor(request, step.line, false)
     const other = step.other?.line === undefined ? undefined : await this.typeFor(request, step.other.line, true, step.other.say)
     const fork = step.fork === true ? await this.forkFrom(request) : undefined
+    const tell = step.tell === undefined ? undefined : await this.tellOwn(request, step.tell)
     const spawn = step.spawn === undefined ? undefined : await this.spawnRoot(request, step.spawn.text)
     // A step marked `peakMode` records what the rules row's service
     // glmHournessPeakMode says about the request's session once the step's
@@ -461,6 +476,7 @@ class ProbeAdapter {
         ...(line === undefined ? {} : { line }),
         ...(other === undefined ? {} : { other }),
         ...(fork === undefined ? {} : { fork }),
+        ...(tell === undefined ? {} : { tell }),
         ...(spawn === undefined ? {} : { spawn }),
         ...(peakMode === undefined ? {} : { peakMode }),
         ...(live === undefined ? {} : { live }),

@@ -33,7 +33,8 @@ export const TALK_LIMITS = { text: { recommend: 160, choose: 120, want: 120, loo
 /** Limits of the one-page release note a goal split into modules is released with, in code points. */
 export const PAGE_LIMITS = { max: 2000 } as const
 
-const CIRCLED = ['①', '②', '③'] as const
+/** The circled number a question carries in the reply, first item ①; the habit question of the memory row numbers itself with them (M5 §3.8.1). */
+export const CIRCLED = ['①', '②', '③'] as const
 
 /** The record of a question: what is kept on the graph. */
 export interface ProposalRecord {
