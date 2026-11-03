@@ -130,6 +130,19 @@
       # (docs/DEVELOPMENT.md §3, AGENTS.md) is still owed.
       name: dsh-hourness/loops
       config: {}
+    - id: glm-hourness/metrics
+      # Metrics journal (metrics design 0.7, docs/ORCHESTRATION.md §10.6):
+      # one journal per project at .llm/metrics/ (envelope plus namespace
+      # body, SHA-256 chained, only harness writes). The row provides the
+      # glmHournessMetrics service for the other rows' events, observes the
+      # host's own seams for llm, tool, turn, approval, command and said, and
+      # checks yesterday and today in the background, handing the loop board
+      # a daily self-check entry when it is there. Ships disabled until the
+      # L3 probe (scenarios metrics, non-glm-metrics, metrics-concurrent)
+      # and the first desktop pass (docs/DEVELOPMENT.md §3, AGENTS.md).
+      name: dsh-hourness/metrics
+      disabled: true
+      config: {}
     - id: glm-hourness/ui
       # The package's client face (dsh.client in package.json, host half
       # ./ui/index.js, bundle ./ui/client.js): the project graph tab of the

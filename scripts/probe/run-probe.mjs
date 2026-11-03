@@ -55,6 +55,15 @@
  * with the overlay and start from a lesson and a candidate left in the project
  * journal: the notices to the main agent, lessons_merge and lessons_query, the
  * person's words for a delete, /lessons, and propose through the overlay tool.
+ * The metrics scenarios (metrics, non-glm-metrics) enable the metrics row
+ * with the overlay in a scratch git workspace whose rules file holds the
+ * person's stop level on the probe clock: the row writes while the peak mode
+ * holds and never reads it, the read of a fake-token file stays one plain
+ * tool event, the project keeps the journal next to its manifest and key
+ * while the user-level directory gains nothing, and the loop board's
+ * service receives the row's daily self-check entry.
+ * metrics-concurrent appends 5000 events from each of two one-shot processes
+ * through the library entry and both writer sequences come out complete.
  * The failure scenarios (glm-lessons-failure, non-glm-lessons-failure) start
  * from a lesson with an error fragment and run a failing command in the main
  * agent and in a dispatched child: the reminder after the tool result, the
@@ -83,9 +92,9 @@
  * appearing under the real profiles directory (DSH_HOME not honored) or a
  * change of the real usage journal fails the run (exit 1).
  */
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname, join, relative } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import { crc32, deflateSync } from 'node:zlib'
 import { DISPATCH_TOOLS } from '../../packages/hourness/dist/workflow/index.js'
@@ -115,6 +124,7 @@ import { FAILURE_SOURCE } from '../../packages/hourness/dist/lessons/failure.js'
 import { PENDING_SOURCE as LESSONS_PENDING_SOURCE, RECUR_SOURCE as LESSONS_RECUR_SOURCE } from '../../packages/hourness/dist/lessons/notices.js'
 import { INDEX_SOURCE as MEMORY_INDEX_SOURCE } from '../../packages/hourness/dist/memory/index.js'
 import { compareShapes, describeDifference, isProjectDifference, profileShape } from '../profile-shape.mjs'
+import { checkLog, readLog } from '../../packages/hourness/dist/metrics/read.js'
 import { PACKAGES } from '../packages.mjs'
 import { attachmentsIn, dataRows, designRows, generateProfile, initRepo, limitsRow, PROBE_PROFILES, repo, requireDesktop, sandboxCommand, slash, unlinkProfile, workspaceChangesRow } from '../sandbox.mjs'
 import { GOAL_GATE_DENIAL, PROJECTION_SOURCE, SCOPE_DENIAL } from './probe-dispatch.mjs'
@@ -2261,6 +2271,128 @@ function lessonsFailureChecks() {
     ]
   })
 }
+
+// Metrics journal (docs/ORCHESTRATION.md §10.6; metrics design §12 step 2).
+// The row ships disabled; both runs enable it with the overlay, in scratch git
+// workspaces where the person has set the stop level through the real board
+// (the same setup the rules-stop-notice scenario proves words the reminder;
+// the probe clock sits inside the peak): the row must write while the peak
+// mode is at 停 and must never have read it. The scripted turn reads a file
+// holding a fake token (d-credentials-readable: one plain tool event, nothing
+// else), asks one DSH native question (headless mounts no answerer, so the
+// answer ends no-provider), writes with the file tool, writes through the
+// shell (the guard denies that on every route), and reads again. The
+// probe-sessions overlay gives the loop board its session controller, so the
+// board's service is there and the row hands its daily self-check entry over;
+// /glm-status and /hourness-status read the row's line in the health table.
+const METRICS_ROW_ENABLED = ['- id: glm-hourness/metrics', '  disabled: false']
+const ASK_USER_ROW = ['- insert:', '    - id: glm-hourness-probe/ask-user', "      name: '@deepseek-ai/dsh-tool-ask-user'"]
+const metricsProject = rulesGateProject('metrics')
+mkdirSync(join(metricsProject.ws, 'docs', 'graph'), { recursive: true })
+const metricsStopSet = metricsProject.ready ? await openRulesBoard({ projectRoot: metricsProject.ws }).apply('human', { op: 'peak-mode-set', level: 'stop' }) : undefined
+const metricsPlainProject = rulesGateProject('non-glm-metrics')
+const metricsTokenDir = join(runDir, 'metrics', 'dsh-home', 'credentials')
+mkdirSync(metricsTokenDir, { recursive: true })
+const metricsTokenFile = join(metricsTokenDir, 'tokens.json')
+const METRICS_TOKEN = 'DSH-PROBE-FAKE-TOKEN-0123456789abcdef'
+writeFileSync(metricsTokenFile, `${JSON.stringify({ token: METRICS_TOKEN })}\n`)
+const metricsScript = (project, write, shell) => [
+  { tool: { name: 'Read', arguments: { file_path: metricsTokenFile } } },
+  { tool: { name: 'ask_user_question', arguments: { questions: [{ id: 'q-probe', question: '探针要选哪一项？', options: [{ label: 'A' }, { label: 'B' }] }] } } },
+  { tool: { name: write, arguments: { file_path: join(project.ws, 'scratch.txt'), content: 'probe\n' } } },
+  { tool: { name: shell, arguments: shell === 'Bash' ? { command: `Set-Content -Path '${join(project.ws, 'blocked.txt')}' -Value probe`, timeout: 30000 } : { command: `Set-Content -Path '${join(project.ws, 'plain.txt')}' -Value probe`, description: 'probe: write a file through the shell' } } },
+  { tool: { name: 'Read', arguments: { file_path: join(project.ws, 'README.md') } } },
+  { text: 'done', status: true, line: '/hourness-status' },
+]
+const METRICS_TASK = 'Read a file, ask one question, write a file, write one through the shell, read again, then reply done.'
+const metricsGlm = runScenario('metrics', 'glm-5.3', metricsScript(metricsProject, 'Write', 'Bash'), METRICS_TASK, [...METRICS_ROW_ENABLED, ...clockRow(PEAK_AT), ...SESSIONS_ROW, ...ASK_USER_ROW], metricsProject.ws)
+const metricsPlain = runScenario('non-glm-metrics', 'deepseek-probe', metricsScript(metricsPlainProject, 'write', 'pwsh'), METRICS_TASK, [...METRICS_ROW_ENABLED, ...clockRow(PEAK_AT), ...SESSIONS_ROW, ...ASK_USER_ROW], metricsPlainProject.ws)
+
+// Acceptance 12: two processes append 5000 events each to one journal at the
+// same time, through the library entry a one-shot process uses (§5.2), and
+// both journals come out complete.
+const concurrentDir = join(runDir, 'metrics-concurrent', 'ws')
+mkdirSync(concurrentDir, { recursive: true })
+if (spawnSync('git', ['init', '-q', '-b', 'main'], { cwd: concurrentDir }).status !== 0) throw new Error('probe: metrics-concurrent git init failed')
+const concurrentScript = join(runDir, 'metrics-concurrent', 'append.mjs')
+const concurrentLibrary = './' + slash(relative(join(runDir, 'metrics-concurrent'), join(repo, 'packages', 'hourness', 'dist', 'metrics', 'library.js')))
+writeFileSync(concurrentScript, `import { appendEvents } from ${JSON.stringify(concurrentLibrary)}
+const events = Array.from({ length: 5000 }, (_, i) => ({ k: 'count', by: 'guard', body: { what: \`w-\${process.pid}-\${i}\`, value: i } }))
+const result = await appendEvents(process.argv[2], events)
+console.log(JSON.stringify({ written: result.written, rejected: result.rejected, error: result.error ?? null }))
+`)
+const runAppend = () => new Promise((resolve, reject) => {
+  const child = spawn(process.execPath, [concurrentScript, slash(concurrentDir)])
+  let out = ''
+  child.stdout.on('data', chunk => { out += chunk })
+  child.stderr.on('data', chunk => { out += chunk })
+  child.on('close', () => {
+    try { resolve(JSON.parse(out.trim().split('\n').at(-1))) }
+    catch { reject(new Error(`append child failed: ${out.slice(0, 300)}`)) }
+  })
+})
+const concurrentResults = await Promise.all([runAppend(), runAppend()])
+const concurrentJournal = await readLog(concurrentDir)
+const concurrentFindings = await checkLog(concurrentDir)
+
+// The two runs' journals, read with the row's own reader.
+const metricsGlmJournal = await readLog(metricsProject.ws)
+const metricsPlainJournal = await readLog(metricsPlainProject.ws)
+
+/**
+ * The checks both runs must satisfy (acceptance 1, 2's tool half, 4's
+ * question half, 18, 19, 23): one llm per request with the route and the
+ * usage, the steps in order, one said, the question pair, the tool events
+ * with their outcome and hashes, the files where they belong and nowhere
+ * else, and the health line that says what the row did.
+ */
+function metricsChecks(label, run, journal, project, options) {
+  const main = run.steps[0]?.sessionId
+  const own = journal.events.filter(event => event.sid === main)
+  const llm = own.filter(event => event.k === 'llm')
+  const tool = own.filter(event => event.k === 'tool')
+  const said = own.filter(event => event.k === 'said')
+  const asks = own.filter(event => event.k === 'ask')
+  const answers = own.filter(event => event.k === 'answer')
+  const commands = own.filter(event => event.k === 'command')
+  const turns = own.filter(event => event.k === 'turn')
+  const sessions = own.filter(event => event.k === 'session')
+  const ofKind = (events, name) => events.find(event => event.body?.name === name)
+  const shellOut = ofKind(tool, options.shell)?.body?.out
+  const tokenRead = ofKind(tool, 'Read')
+  const health = healthOf(run)
+  const userHome = join(runDir, label, 'dsh-home')
+  const userMetrics = existsSync(userHome) ? readdirSync(userHome).filter(entry => entry.startsWith('metrics')) : []
+  const llmDir = join(project.ws, '.llm')
+  const metricsNames = readdirSync(llmDir).filter(entry => entry.startsWith('metrics')).sort()
+  const journalText = JSON.stringify(journal.events)
+  const calls = llm.filter(event => event.body.purpose === undefined)
+  const purposes = llm.filter(event => event.body.purpose !== undefined)
+  const finCounts = calls.reduce((counts, event) => { counts[event.body.fin] = (counts[event.body.fin] ?? 0) + 1; return counts }, {})
+  return [
+    [`${label}: the run exits clean and the row says nothing on stderr`, run.status === 0 && !stderrOf(label).includes('dsh-glm-hourness/metrics'), `exit ${run.status}; ${stderrOf(label).split('\n').find(line => line.includes('metrics')) ?? 'no stderr line mentions metrics'}`],
+    [`${label}: one llm event per request with the route, the usage and the duration, plus the one purpose call (the session title)`, calls.length === run.steps.length && purposes.length === 1 && [...calls, ...purposes].every(event => event.body.provider === options.provider && event.body.model === options.model && (event.body.ms ?? -1) >= 0 && (event.body.input ?? -1) >= 0 && (event.body.output ?? -1) >= 0), `${calls.length} calls + ${purposes.length} purpose (${purposes[0]?.body?.purpose ?? 'none'}) of ${run.steps.length} request(s); routes ${[...new Set(llm.map(event => `${event.body.provider}/${event.body.model}`))].join(', ')}`],
+    [`${label}: the steps line up with the scripted turns, and the reply ends stop`, isDeepStrictEqual(calls.map(event => event.body.step), calls.map((_event, index) => index + 1)) && calls.every(event => event.body.turn === 1) && finCounts.stop === 1 && finCounts['tool-calls'] === run.steps.length - 1, `steps ${JSON.stringify(calls.map(event => event.body.step))}; fin ${JSON.stringify(finCounts)}`],
+    [`${label}: one said for the task message, counted not read`, said.length === 1 && (said[0]?.body?.units ?? 0) > 0 && said[0]?.body?.source === 'user' && (said[0]?.body?.attachments ?? -1) === 0, JSON.stringify(said[0]?.body ?? null)],
+    [`${label}: the native question is one ask and one answer with the same q, ending no-provider`, asks.length === 1 && answers.length === 1 && asks[0]?.body?.q === answers[0]?.body?.q && asks[0]?.body?.qs === 1 && asks[0]?.body?.opts === 2 && answers[0]?.body?.end === 'no-provider' && answers[0]?.body?.pick === undefined, `ask ${JSON.stringify(asks[0]?.body ?? null)}; answer ${JSON.stringify({ q: answers[0]?.body?.q, end: answers[0]?.body?.end })}`],
+    [`${label}: one tool event per scripted call, with the outcome the route decides`, tool.length === 5 && tool.every(event => (event.body?.call ?? '').length > 0) && shellOut === options.shellOut && ofKind(tool, 'ask_user_question')?.body?.cat === 'question' && tokenRead?.body?.cat === 'read' && tokenRead?.body?.out === 'ok' && /^[0-9a-f]{12}$/.test(tokenRead?.body?.target ?? ''), `tool ${tool.map(event => `${event.body?.name}:${event.body?.out}`).join(', ')}`],
+    [`${label}: the file write is hashed under the project key, the shell names its first word`, /^[0-9a-f]{12}$/.test(ofKind(tool, options.write)?.body?.target ?? '') && ofKind(tool, options.shell)?.body?.cmd === 'set-content', `targets ${JSON.stringify(tool.map(event => event.body?.target))}; cmd ${ofKind(tool, options.shell)?.body?.cmd}`],
+    [`${label}: the read of the fake-token file is one plain tool event; no journal line carries the token or the file name (acceptance 23)`, !journalText.includes(METRICS_TOKEN) && !journalText.includes('tokens.json'), `token hits ${journalText.includes(METRICS_TOKEN)}, name hits ${journalText.includes('tokens.json')}, rule events ${own.filter(event => event.k === 'rule').length}`],
+    [`${label}: the turn opened and closed, the command ran and settled, and one session opened`, turns.length === 2 && turns.every(event => event.body.turn === 1) && turns[0]?.body?.phase === 'start' && turns[1]?.body?.phase === 'end' && commands.length === 2 && commands[0]?.body?.phase === 'run' && commands[1]?.body?.phase === 'done' && sessions.length === 1, `turns ${turns.length}; commands ${commands.map(event => event.body?.phase).join(',')}; sessions ${sessions.length}`],
+    [`${label}: the health table lists the row as in effect, writing and with nothing to report (acceptance 20's hand-off)`, health.metrics !== undefined && health.metrics.status === '生效' && health.metrics.reason.includes('指标记入') && health.metrics.reason.includes('自查条目已交给循环板') && !health.metrics.reason.includes('无项目') && !health.metrics.reason.includes('拒收') && !health.metrics.reason.includes('接缝没装上'), healthLine(health, 'metrics') + ` (${health.metrics?.reason ?? ''})`],
+    [`${label}: the project keeps metrics/, the manifest and the key; the user-level directory gains no metrics file (acceptance 18)`, isDeepStrictEqual(metricsNames, ['metrics', 'metrics-key', 'metrics-manifest.jsonl']) && userMetrics.length === 0, `${JSON.stringify(metricsNames)}; user-level ${JSON.stringify(userMetrics)}`],
+    ...(options.route === 'glm' ? [[`${label}: the stop level held (the person set it through the board) and the row wrote anyway (acceptance 19)`, metricsStopSet?.ok === true && run.steps.length > 0 && peakNotices(run.steps[0]).length === 1 && peakNotices(run.steps[0])[0]?.text === STOP_NOTICE && calls.length === run.steps.length, `set ${metricsStopSet?.ok === true}; notice ${(peakNotices(run.steps[0])[0]?.text ?? 'none').slice(0, 60).replace(/\n/g, ' ')}; calls ${calls.length}`]] : []),
+  ]
+}
+const metricsCheckList = [
+  ...metricsChecks('metrics', metricsGlm, metricsGlmJournal, metricsProject, { provider: 'glm-probe', model: 'glm-5.3', write: 'Write', shell: 'Bash', shellOut: 'denied', route: 'glm' }),
+  ...metricsChecks('non-glm-metrics', metricsPlain, metricsPlainJournal, metricsPlainProject, { provider: 'glm-probe', model: 'deepseek-probe', write: 'write', shell: 'pwsh', shellOut: 'denied', route: 'plain' }),
+]
+const metricsConcurrentChecks = [
+  ['metrics-concurrent: both one-shot processes wrote their 5000 events and left nothing rejected (the writer counts its own start and stop in `written`)', concurrentResults.every(result => result.written === 5002 && result.rejected === 0 && result.error === null), JSON.stringify(concurrentResults)],
+  ['metrics-concurrent: all 10004 lines parse (10000 events plus the start and stop of both writers), every writer sequence is complete, the chain recomputes and no writer is lost (acceptance 12)', concurrentJournal.problems.length === 0 && concurrentJournal.events.length === 10_004 && concurrentFindings.missing.length === 0 && concurrentFindings.chainBreaks.length === 0 && concurrentFindings.duplicates === 0 && concurrentFindings.noStop.length === 0 && concurrentFindings.unreadable.length === 0, `events ${concurrentJournal.events.length}; problems ${JSON.stringify(concurrentJournal.problems)}; writers ${concurrentJournal.events.filter(event => event.k === 'start').length} start / ${concurrentJournal.events.filter(event => event.k === 'stop').length} stop; findings missing ${concurrentFindings.missing.length} chain ${concurrentFindings.chainBreaks.length} noStop ${concurrentFindings.noStop.length}`],
+]
+
 const checks = [
   ['sandbox: the runtime booted each profile generated under the run directory (its cordis.yml rewritten by the launcher); the real profiles directory has none of them', rewritten.length === GENERATED_PROFILES.length && leaked.length === 0, `rewritten: ${rewritten.join(', ') || 'none'}; under ${realProfiles}: ${leaked.join(', ') || 'none'}`],
   ['glm-only: with only the GLM channel package the GLM request has the ZCode identity, the aliases and the search controls, and no graph or memory tool', glmOnlyFirst?.system.includes('You are ZCode, an interactive agent') === true && zcodeFace.every(name => glmOnlyTools.has(name)) && searchControls.every(name => glmOnlyTools.has(name)) && ![...glmOnlyTools].some(name => GRAPH_TOOL_NAMES.includes(name) || MEMORY_TOOL_NAMES.includes(name)) && glmOnlyRead?.isError !== true, glmOnlyFirst === undefined ? `no request (exit ${glmOnly.status})` : `${glmOnlyTools.size} tools; ${[...glmOnlyTools].filter(name => name.startsWith('graph_') || name.startsWith('memory_')).join(', ') || 'no graph or memory tool'}`],
@@ -2460,6 +2592,8 @@ const checks = [
   ['loops-peak: after the shifted clock crossed the peak\'s end, the board waked the idle main agent that worked in the peak once — one delivered run, whose reminder the woken request carries (a followup persists, so the turn the child\'s completion woke still carries it) and says the words of the table\'s row 10', loopsPeakRuns().filter(record => record.kind === 'loop-done' && record.entry === 'loops.peak-end' && record.outcome === 'delivered').length === 1 && loopsPeakNoticeSteps.length >= 1 && loopNotices(loopsPeakNoticeSteps[0])[0].text.includes('Work you moved to after peak can start now.') && loopsPeakNoticeSteps[0].clock > LOOPS_PEAK_END_MS, `${loopsPeakNoticeSteps.length} step(s) with the reminder at ${JSON.stringify(loopsPeakNoticeSteps.map(step => step.clock))}; runs ${JSON.stringify(loopsPeakRuns().filter(record => record.entry === 'loops.peak-end').map(record => [record.kind, record.outcome]))}`],
   ['loops-peak restart: the re-emitted end edge of the same peak is a duplicate, so no second reminder goes out after the restart, and the journal still carries the one delivered run', loopsPeakRestartNoticeSteps.length === 0 && loopsPeakRuns().some(record => record.kind === 'loop-duplicate' && record.key === `peak-changed:end:${LOOPS_PEAK_END}`) && loopsPeakRuns().filter(record => record.kind === 'loop-done' && record.entry === 'loops.peak-end').length === 1, `${loopsPeakRestartNoticeSteps.length} step(s) with a notice; duplicates ${loopsPeakRuns().filter(record => record.kind === 'loop-duplicate').length}; runs ${JSON.stringify(loopsPeakRuns().filter(record => record.entry === 'loops.peak-end').map(record => [record.kind, record.outcome]))}`],
   ['rules-peak-hourness: the row is in effect without the pricing service (a supported combination) and the main agent\'s tool call ran', aloneHealth.rules?.status === ACTED && aloneHealth.rules.reason.includes('读不出是不是高峰') && lastToolResult(rulesPeakAlone.steps[1])?.isError !== true && !stderrOf('rules-peak-hourness').includes('dsh-glm-hourness/rules'), `${healthLine(aloneHealth, 'rules')} (${aloneHealth.rules?.reason ?? ''})`],
+  ...metricsCheckList,
+  ...metricsConcurrentChecks,
   ...designChecks(),
   ['non-glm boot: the runtime reached the probe provider', plainFirst !== undefined, `exit ${plain.status}, ${plain.steps.length} step(s)`],
   ['non-glm prompt: DSH identity untouched', plainFirst?.system.includes('powered by DeepSeek Harness') === true && !plainFirst.system.includes('You are ZCode'), ''],

@@ -64,6 +64,7 @@ export const PACKAGES = [
       { id: 'glm-hourness/rules', module: 'rules/index' },
       { id: 'glm-hourness/design', module: 'design/index' },
       { id: 'glm-hourness/loops', module: 'loops/index' },
+      { id: 'glm-hourness/metrics', module: 'metrics/index' },
     ],
     client: {
       row: 'glm-hourness/ui',

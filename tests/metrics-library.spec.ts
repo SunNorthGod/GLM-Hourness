@@ -82,6 +82,39 @@ test('a rejected event is counted, not written', async () => {
   }
 })
 
+test('a second one-shot run on the same project prepares fine: the guard file is already there', async () => {
+  const root = repository()
+  try {
+    assert.deepEqual(await appendEvents(root, [CHECK()]), { written: 3, rejected: 0 })
+    assert.deepEqual(await appendEvents(join(root, 'src'), [CHECK()]), { written: 3, rejected: 0 }, 'the wx race on .gitignore is not an error')
+    const reading = await readLog(root)
+    assert.equal(reading.events.filter(event => event.k === 'rules.check').length, 2)
+    assert.deepEqual(reading.problems, [])
+  }
+  finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('a batch larger than the queue limit lands whole: the run drains between chunks (acceptance 12, one writer)', { timeout: 60_000 }, async () => {
+  const root = repository()
+  try {
+    const at = new Date().toISOString()
+    const events = Array.from({ length: 2500 }, (_, i) => ({ k: 'count', by: 'guard', at, body: { what: `w-${i}`, value: i } })) as unknown as Parameters<typeof appendEvents>[1]
+    const result = await appendEvents(root, events)
+    assert.deepEqual(result, { written: 2502, rejected: 0 }, '2500 events plus start and stop; nothing dropped')
+    const reading = await readLog(root)
+    assert.equal(reading.events.length, 2502)
+    assert.deepEqual(reading.problems, [])
+    const values = reading.events.filter(event => event.k === 'count').map(event => (event.body as { readonly value: number }).value)
+    assert.equal(values.length, 2500)
+    assert.deepEqual([values[0], values.at(-1)], [0, 2499], 'the head the queue would have dropped is in the file')
+  }
+  finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
 test('a real subprocess records one rules.check and exits before the microtask flush would run', { timeout: 60_000 }, async () => {
   const root = repository()
   try {

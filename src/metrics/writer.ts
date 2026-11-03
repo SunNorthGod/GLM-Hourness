@@ -18,7 +18,7 @@
  * fresh line.
  */
 import { createHash, randomBytes } from 'node:crypto'
-import { open, mkdir as fsMkdir, appendFile as fsAppendFile, stat as fsStat } from 'node:fs/promises'
+import { open, mkdir as fsMkdir, appendFile as fsAppendFile, stat as fsStat, readFile as fsReadFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { ensureIgnored } from '../data/project-root.ts'
 import { buildStamp } from '../shared/build-info.ts'
@@ -38,6 +38,8 @@ export interface MetricsFs {
   readTail(path: string, bytes: number): Promise<Uint8Array>
   /** Create a file only when it does not exist yet (`wx`); the metrics directory's `.gitignore`. */
   writeFileExclusive(path: string, data: string): Promise<void>
+  /** A whole file as text; the row reads a project's path-hash key with it. */
+  readFile(path: string): Promise<string>
 }
 
 /** The Node filesystem behind `openWriter` when no test injects one. */
@@ -45,6 +47,7 @@ export const nodeMetricsFs: MetricsFs = {
   mkdir: async (path, options) => { await fsMkdir(path, options) },
   appendFile: (path, data) => fsAppendFile(path, data),
   stat: async (path) => ({ size: (await fsStat(path)).size }),
+  readFile: async (path) => await fsReadFile(path, 'utf8'),
   readTail: async (path, bytes) => {
     const handle = await open(path, 'r')
     try {
@@ -246,6 +249,8 @@ export function openWriter(options: {
     if (event.at !== undefined && !AT_PATTERN.test(event.at)) return buildRejectLine(state, event.k, 'at')
     const at = event.at === undefined ? new Date(now()).toISOString() : event.at
     // The sequence and digest placeholders pass the envelope check; lineFor writes the real ones.
+    // The field order is the canonical one (schema.ts `serializeEvent`): the
+    // checker recomputes the chain over that exact text, sid before body.
     const stored: Record<string, unknown> = {
       s: FORMAT_VERSION,
       k: event.k,
@@ -255,9 +260,9 @@ export function openWriter(options: {
       h: '0'.repeat(12),
       v: event.v ?? stampOf(),
       by: event.by,
+      ...(event.sid === undefined ? {} : { sid: event.sid }),
       body: typeof event.body === 'object' && event.body !== null ? event.body : {},
     }
-    if (event.sid !== undefined) stored.sid = event.sid
     const table = METRICS_KINDS.get(typeof event.k === 'string' ? event.k : '')
     if (table === undefined) return buildRejectLine(state, event.k, 'k')
     const check = checkEvent(stored, METRICS_KINDS)
@@ -280,7 +285,11 @@ export function openWriter(options: {
       await ignore(dest, '.llm')
       const dir = join(dest, '.llm', 'metrics')
       await fs.mkdir(dir, { recursive: true })
-      await fs.writeFileExclusive(join(dir, '.gitignore'), '*\n')
+      // Two writers may race on the guard file (two sessions in one project,
+      // the library entry beside the row); losing the wx race is prepare done.
+      await fs.writeFileExclusive(join(dir, '.gitignore'), '*\n').catch((error: unknown) => {
+        if (errorOf(error) !== 'EEXIST') throw error
+      })
       state.prepared = true
     })()
     return state.preparing

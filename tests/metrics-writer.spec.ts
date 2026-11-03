@@ -63,6 +63,33 @@ test('the first destination line is `start`, every event follows with its sequen
   }
 })
 
+test('a second writer on a project that already has the guard file prepares fine: losing the wx race is not an error', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'metrics-writer-'))
+  try {
+    const dest: MetricsDest = root
+    const first = openWriter({ host: 'headless', fs: nodeMetricsFs, now: () => Date.parse(AT), randomId: () => 'aaaa1111' })
+    first.record(dest, TICK(1))
+    await first.flush()
+    await first.close()
+    const second = openWriter({ host: 'headless', fs: nodeMetricsFs, now: () => Date.parse(AT), randomId: () => 'bbbb2222' })
+    second.record(dest, TICK(2))
+    await second.flush()
+    await second.close()
+    const lines = journalLines(root)
+    assert.equal(lines.length, 6, 'start, count and stop per writer')
+    assert.ok(lines.some(line => line.includes('"w":"bbbb2222"') && line.includes('"k":"count"')))
+    const reading = await readLog(root)
+    assert.deepEqual(reading.problems, [])
+    const findings = await checkLog(root)
+    assert.deepEqual(findings.missing, [])
+    assert.equal(findings.chainBreaks.length, 0)
+    assert.equal(findings.noStop.length, 0)
+  }
+  finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
 test('a day file that ends mid-line is continued on a fresh line', async () => {
   const root = mkdtempSync(join(tmpdir(), 'metrics-writer-'))
   try {

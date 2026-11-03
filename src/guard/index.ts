@@ -236,7 +236,12 @@ export function apply(ctx: GuardHost, config: GuardConfig = {}): () => void {
         ...origin,
         correction: renderCorrection(verdict.correction),
       })
-      return { kind: 'deny', reason: renderCorrection(verdict.correction) }
+      // `info` rides on the result's error (dsh-tools prepareExecution:
+      // decision.info → result.error.info) and so reaches the session log's
+      // tool/result, where the metrics row reads the rule from it
+      // (metrics design §15 condition 2: the denied call's outcome is
+      // `denied` because the info names the rule).
+      return { kind: 'deny', reason: renderCorrection(verdict.correction), info: { rule: verdict.rule } }
     }
     const decision = await next()
     if (decision.kind === 'allow') shadow.observe(payload, origin)

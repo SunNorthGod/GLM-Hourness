@@ -80,6 +80,7 @@ test('out-of-workspace write is denied and journaled under <home>/audit with rul
   const h = harness(['C:\\ws'])
   await h.run({ name: 'Write', arguments: { file_path: 'C:\\Windows\\x.dll' }, agent: agentAt(undefined, 'a1', 's1') })
   assert.equal(decisionOf(h)!.kind, 'deny')
+  assert.deepEqual((decisionOf(h) as Extract<PreExecuteDecision, { readonly kind: 'deny', readonly info?: unknown }>).info, { rule: 'workspace-containment' }, 'the deny carries the rule in info, so the result error names it (metrics design §15 condition 2)')
   assert.equal(h.violations().length, 1)
   const record = h.violations()[0]!
   assert.equal(record.rule, 'workspace-containment')
