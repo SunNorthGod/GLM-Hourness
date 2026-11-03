@@ -38,6 +38,7 @@
 
 ## 设计与落地的差异（如实记）
 
+- `blockersOf` 落在 `src/graph/projection.ts`（设计 §5.4 写在 `plain-view.ts`）：`gatesOf` 与 `listOpenItems.ready` 同批改用它，而 projection 不依赖 plain-view，反过来 plain-view 依赖 projection——放在 projection 避免互相 import。`gatesOf` 的依赖门与 `graph_open` 的「可以开工」从此算祖先的依赖，口径与面板一致（§5.4 的要求）。
 - 提议式待决的四行（背景/推荐/疑问/不做）：M3 实际落地的是 `d-ask-three-gates`（`propose_to_human` 的 `recommend/choose/want/look` 问法与 `proposal/reason/cost/ways/notTaken` 字段），设计 1.3 §4.3 的四行版式没有对应字段。需要你的问题卡按落地 schema 显示（题目 + 问法字段原样、不显示选项键与推荐标记），四行版式等人重定第 1、6、9、17 条后再换（`d-panel-released` 已记此遗留）。
 - `plain.ts`/`PLAIN_LIMITS`/`why`/`background` 字段：引擎侧随第 9 条顺延（见上）。模板不依赖它们。
 - 模块的「在开发」状态：`derivedStage`（M7 E1b）不在 main，`moduleStateOf` 先把放行后的模块按「放行了/做完了」显示，M7 合入后同函数补两档（设计 §4.11 的表）。
