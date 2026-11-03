@@ -368,6 +368,14 @@ export interface InjectableServices {
     resolveAgent(sessionId: string): Promise<{ readonly agent?: AgentLike, readonly error?: { readonly code: string, readonly message?: string } }>
   }
   readonly commands: CommandsHost<AgentCommandInvocationLike>['commands']
+  /**
+   * The model catalog the execute row checks a dispatch's model choice
+   * against (M7 §3.1.3 — a check, not a gate) and the stored-session reader
+   * the reconcile folds a lost worker's last `structured_output` call from
+   * (§3.9.6).
+   */
+  readonly llm: LlmCatalog
+  readonly sessionQuery: SessionQueryService
 }
 
 /**
@@ -462,22 +470,34 @@ export interface GoalView extends GoalRef {
 }
 
 /**
- * The `goals` service members the rules board uses (rc.3 dsh-goal, no
- * installed `.d.ts`): `get` is the goal of an exact live agent, undefined when
- * it has none (goal:611–614); `pause` takes an `active` goal to `paused` and
- * `resume` an `active`, `paused` or `blocked` one to `active` while its round
- * budget lasts, each returning the new view (goal:676–699). All three throw
- * `GoalError` for an agent that is not the registry's live instance
- * (goal:767–769), and the two changes for a reference that is not the current
+ * The `goals` service members the rules board and the execute row use (rc.3
+ * dsh-goal, no installed `.d.ts`): `get` is the goal of an exact live agent,
+ * undefined when it has none (goal:611–614); `pause` takes an `active` goal
+ * to `paused` and `resume` an `active`, `paused` or `blocked` one to `active`
+ * while its round budget lasts, each returning the new view (goal:676–699).
+ * The execute row drives the rest of the life cycle (M7 design §3.9.1):
+ * `create` builds the goal of a released design (`{objective, maxGoalRounds?}`,
+ * `GOAL_ALREADY_EXISTS` when an unfinished one stands, goal:635–650), `edit`
+ * changes `objective` or `maxGoalRounds` (goal:657–669), `complete` finishes
+ * it (goal:706–712), `block` stops it with a lowercase-hyphen reason code and
+ * message (goal:720–729) and `clear` removes it (goal:736–753). Every member
+ * throws `GoalError` for an agent that is not the registry's live instance
+ * (goal:767–769), and the changes for a reference that is not the current
  * goal and revision (`GOAL_STALE_REVISION`, goal:760–765) or a phase they do
- * not take (`GOAL_INVALID_TRANSITION`). The round driver cancels the running
- * step of a paused agent only when the initiator is not that agent
- * (goal-round-driver:246).
+ * not take (`GOAL_INVALID_TRANSITION`). The service layer checks no human
+ * authority; that comes from the chat before the row calls (tool-goal:49–52).
+ * The round driver cancels the running step of a paused agent only when the
+ * initiator is not that agent (goal-round-driver:246).
  */
 export interface GoalsService {
   get(agent: LiveAgentLike): GoalView | undefined
+  create(agent: LiveAgentLike, request: { readonly objective: string, readonly maxGoalRounds?: number }): GoalView
+  edit(agent: LiveAgentLike, ref: GoalRef, change: { readonly objective?: string, readonly maxGoalRounds?: number }): GoalView
   pause(agent: LiveAgentLike, ref: GoalRef): GoalView
   resume(agent: LiveAgentLike, ref: GoalRef): GoalView
+  complete(agent: LiveAgentLike, ref: GoalRef): GoalView
+  block(agent: LiveAgentLike, ref: GoalRef, reason: { readonly code: string, readonly message: string }): GoalView
+  clear(agent: LiveAgentLike, ref: GoalRef): void
 }
 
 /**
@@ -507,15 +527,147 @@ export interface SessionPersistenceLike {
   list(options?: unknown): Promise<ReadonlyArray<{ readonly header: { readonly id: string } }>>
 }
 
+/** Why an activation ended (rc.3 `SubagentStopReasonMap`, subagent types). */
+type SubagentStopReason = 'completed' | 'aborted' | 'error' | 'max-tokens' | 'refusal'
+
+/** What a settled activation hands back (rc.3 `SubagentResult`). */
+interface SubagentResult {
+  readonly output: readonly unknown[]
+  readonly structured?: unknown
+  readonly diagnostic?: string
+  readonly stopReason: SubagentStopReason
+}
+
+/** A started activation (rc.3 `SubagentActivation`): the child's session id, the accepted message and the result promise. */
+interface SubagentActivation {
+  readonly childId: string
+  readonly messageId?: string
+  readonly result: Promise<SubagentResult>
+  dispose(): Promise<void>
+}
+
+/** The dispatch the execute row starts (rc.3 `SubagentActivationSpec`, `SubagentStartRequest`; the execute row passes no `agentPreset`). */
+interface SubagentStartSpec {
+  readonly provider: string
+  readonly label: string
+  readonly childId?: string
+  readonly request: {
+    readonly cwd?: string
+    readonly prompt: readonly unknown[]
+    readonly parent: LiveAgentLike
+    readonly agentOptions?: { readonly provider?: string, readonly model?: string, readonly reasoningEffort?: string }
+    readonly outputSchema?: unknown
+    readonly maxDepth?: number
+  }
+  readonly signal: AbortSignal
+  readonly delivery: 'caller' | 'parent'
+}
+
+/** A run an external provider started (rc.3 `SubagentRun`). */
+interface SubagentRun {
+  readonly id: string
+  readonly result: Promise<SubagentResult>
+  dispose(): Promise<void>
+}
+
+/** An entry of a parent's durable direct-child catalog (rc.3 `SubagentCatalogEntry`). */
+interface SubagentCatalogEntry {
+  readonly id: string
+  readonly createdAt: number
+  readonly label?: string
+  readonly mode: 'one-shot' | 'external' | 'continuable' | 'unknown'
+}
+
 /**
- * The `subagents` service member the run controls call (rc.3 dsh-subagent
- * `interrupt`, subagent:3105; the manager, subagent:1258–1277): under a
- * `user` authority it cancels the current turn of a live direct child of
- * that parent session and keeps its inbox; an absent child is an accepted
- * no-op; a child of another parent throws `UNAUTHORIZED`.
+ * An external activation backend the execute row registers for its checks
+ * (rc.3 `SubagentProvider`, subagent:3256–3267; `ResolvedSubagentStartRequest`
+ * carries the resolved `cwd`). Its capabilities are all false (the frozen
+ * `NO_START_CAPABILITIES`, subagent:2789–2794): an external activation takes
+ * no `agentOptions`, preset, schema or depth — the harness checks and waits
+ * for its result. `inheritsParentContext` is false: the backend runs its own
+ * permissions.
+ */
+interface SubagentProvider {
+  readonly name: string
+  readonly capabilities: { readonly agentOptions: false, readonly agentPreset: false, readonly outputSchema: false, readonly depthLimit: false }
+  readonly inheritsParentContext: false
+  readonly agentRouteDefaults?: Readonly<{ readonly provider: string, readonly model: string }>
+  start(request: {
+    readonly cwd: string
+    readonly agentPreset?: string
+    readonly label?: string
+    readonly prompt: readonly unknown[]
+    readonly parent: LiveAgentLike
+    readonly signal: AbortSignal
+    readonly agentOptions?: { readonly provider?: string, readonly model?: string, readonly reasoningEffort?: string }
+    readonly outputSchema?: unknown
+    readonly maxDepth?: number
+  }): Promise<SubagentRun>
+}
+
+/**
+ * The `subagents` service members the run controls and the execute row call
+ * (rc.3 dsh-subagent). `interrupt` (subagent:3105) cancels, under a `user`
+ * authority, the current turn of a live direct child of that parent session
+ * and keeps its inbox; an absent child is an accepted no-op; a child of
+ * another parent throws `UNAUTHORIZED`.
+ *
+ * What the execute row adds (M7 design §3.1.2, §3.8.2, §4):
+ * - `startActivation` (subagent:3036–3048, `startLocal` 1391–1477) starts a
+ *   child from a `spawn` provider or a registered external one and resolves
+ *   with the activation as soon as the child is accepted; a `childId` already
+ *   taken throws `DUPLICATE_CHILD` (1430–1437), an exhausted activation
+ *   budget `ACTIVATION_LIMIT_REACHED` (1046–1048). `request.cwd` an absolute
+ *   path is used as-is (1523–1527), `agentOptions` merge over the parent's
+ *   route (315–329), `outputSchema` gives the child `structured_output`
+ *   (889–960) and `delivery: 'caller'` keeps the harness as the only reader
+ *   of the result (1460, 2048–2063).
+ * - `resolveMaxDepth` (3023–3030) is the depth budget a dispatch passes on so
+ *   a worker cannot dispatch again.
+ * - `registerProvider` (3256–3267) installs an external backend; the disposer
+ *   unregisters it (new starts refuse, running ones live on).
+ * - `waitForChildren(parent)` (1296–1330) joins every progressing descendant;
+ *   true means work was joined and the host rechecks the parent's idle state.
+ * - `sendMessage(sender, targetId, content, options)` (1538–1550, 2119–2135)
+ *   steers one message to the sender's direct parent or direct continuable
+ *   child; an idle child starts a turn, an absent one cold-resumes from
+ *   persistence (2141–2189) without its `outputSchema` — which is why M7
+ *   refuses ended worker ids at the tool (§3.2.5).
+ * - `listChildren(parentSessionId, signal?)` (2339–2352) reads the durable
+ *   direct-child catalog without loading anyone: the reconcile's map of what
+ *   survived a restart.
  */
 export interface SubagentsService {
   interrupt(targetSessionId: string, authority: { readonly kind: 'user', readonly parentSessionId: string }): void
+  startActivation(spec: SubagentStartSpec): Promise<SubagentActivation>
+  resolveMaxDepth(configured?: number | 'provider-managed'): number | undefined
+  registerProvider(provider: SubagentProvider): () => void
+  waitForChildren(parent: LiveAgentLike): Promise<boolean>
+  sendMessage(sender: LiveAgentLike, targetId: string, content: readonly unknown[], options: { readonly signal: AbortSignal }): Promise<string>
+  listChildren(parentSessionId: string, signal?: AbortSignal): Promise<readonly SubagentCatalogEntry[]>
+}
+
+/**
+ * The `llm` service members the execute row reads for the model choice (rc.3
+ * dsh-llm, service name `llm`, 1816): `listModels` (2080–2101) is the
+ * deduplicated catalog of a provider, `{id, name?}` — the runtime does not
+ * bind the catalog to routing, so it is a check, not a gate (§3.1.3) — and it
+ * throws for a provider that is not registered; `resolveModelInfo`
+ * (2111–2116) adds the model's `reasoning.efforts` when it has any.
+ */
+export interface LlmCatalog {
+  listModels(provider: string): readonly { readonly id: string, readonly name?: string }[]
+  resolveModelInfo(provider: string, model: string): { readonly reasoning?: { readonly efforts?: readonly string[] } } | undefined
+}
+
+/**
+ * The `sessionQuery` service member the reconcile reads (rc.3 dsh-session-query
+ * `observeSession`, read through dsh-subagent's `listChildren` at 2339–2352):
+ * a stored session's consistent slice, from which the handback projection
+ * folds a lost worker's last `structured_output` call (§3.9.6).
+ */
+export interface SessionQueryService {
+  observeSession(sessionId: string, options?: { readonly signal?: AbortSignal }): { readonly projections?: { readonly values?: Readonly<Record<string, unknown>> } } | undefined
 }
 
 /**

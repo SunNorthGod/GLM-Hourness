@@ -237,7 +237,7 @@ GLM-Hourness（同仓两包，§2.3）
 | 派遣工具 `spawn_teammate`、`send_message`、`team_task_create`、`team_task_update`、`subagent`、`subagent_fork` | workflow | experimental-tool-agent-team:251、293、365、457；tool-subagent-control:23；tool-subagent:313（`toolName` 默认 `subagent`），base 的 `cordis.patch.yml`:384、395（`subagent`、`subagent_fork` 两行） | **偏差已修**：`subagent_fork` 不在名单里，fork 派遣从未记录。L3 探针实测运行时工具面同时有 `subagent` 与 `subagent_fork` |
 | compaction-basic 的指令开头、`purpose: 'compaction'`、经 `ctx.llm.stream()` 摘要 | glm-compact | compaction-basic:244、320、323 | 一致 |
 
-派发与驱动循环〔实测 2026-10-28，L3 派发可行性验证；`ORCHESTRATION.md` §2.1、§3.2〕：M7 后台派发与 goal 驱动要用的接口。现在只有探针覆盖层里的验证插件 `scripts/probe/probe-dispatch.mjs` 在用，它不属于 bundle，也不是产品功能；证据列的「探针」指 `npm run probe` 的场景。
+派发与驱动循环〔实测 2026-10-28，L3 派发可行性验证；`ORCHESTRATION.md` §2.1、§3.2；E2 起类型进 `src/shared/dsh-min.ts`〕：M7 后台派发与 goal 驱动要用的接口。探针覆盖层里的验证插件 `scripts/probe/probe-dispatch.mjs` 用过前几行，它不属于 bundle，也不是产品功能；证据列的「探针」指 `npm run probe` 的场景。
 
 | 接口 | 使用者 | rc.3 证据 | 结论 |
 | --- | --- | --- | --- |
@@ -250,6 +250,19 @@ GLM-Hourness（同仓两包，§2.3）
 | goal-round-driver 的 `agent/pre-step` 预约校验（下游监听器前后各一次）与收件箱竞争判定 | glm-prompt 的步 notice（目标轮上同样追加）；M2.3 的投影注入 | goal-round-driver:249、286–350 | 成立：`next()` 之后追加到决策 `messages` 的 notice 不破坏预约，下一轮照常开始；经收件箱投递会被判为竞争输入 |
 | `update_goal` 的完成授权（直接人类输入或当前目标轮）与收尾消息 `<goal_complete>` | 验证插件（完成门禁） | tool-goal:27、54、72、365 | 成立：经 DeferredToolCall 调用时 `tools/pre-execute` 看到的是 `update_goal`，可以拒绝 `complete` |
 | headless 运行器的退出条件：agent 空闲、`waitForChildren` 为假、会话序号不变 | 探针、标定运行器 | headless:349–351 | 实测：第一次静止空闲就退出，任务回合里建的 goal 一轮都跑不到（探针 `goal-headless`） |
+
+E2 批次（2026-11-04）把执行行要用的其余成员按 rc.3 的发布类型补进 `src/shared/dsh-min.ts`；行从 E4 起才调用，效果未核实：
+
+| 接口 | 使用者 | rc.3 证据 | 结论 |
+| --- | --- | --- | --- |
+| `goals.edit(agent, ref, {objective?, maxGoalRounds?})`、`goals.complete(agent, ref)`、`goals.block(agent, ref, {code, message})`、`goals.clear(agent)`：引用是 `{goalId, revision}`，经 `expectCurrent` 对不上抛 `GOAL_STALE_REVISION`（goal:760–765）；`edit` 改目标或轮次上限（goal:657–669），`complete` 收尾（goal:706–712），`block` 以小写连字符原因码与消息停住（goal:720–729），`clear` 删除（goal:736–753）；`create` 在有未完成的 goal 时抛 `GOAL_ALREADY_EXISTS`（goal:635–650） | M7 自动推进（`src/shared/dsh-min.ts` `GoalsService`；开始、退回设计、完成门禁、移会话清旧 goal，E4 起） | goal:635–753、767–769 | 〔实读〕；从行里调用的效果未核实（L4） |
+| `subagents.resolveMaxDepth(configured?)`：传了预算就按子 agent 的剩余深度裁，没传按宿主缺省（3023–3030），worker 由此不再派活 | M7 派发门禁（E4） | subagent:3023–3030 | 〔实读〕 |
+| `subagents.registerProvider(provider)`：装外部后端（`SubagentProvider`：`name`、`capabilities`、`inheritsParentContext`、`start(request)`），返回的 disposer 注销——新的启动被拒、在跑的活着；capabilities 全假与 `inheritsParentContext: false` 时外部激活被 `NO_START_CAPABILITIES` 挡住 | M7 的本地执行器（E8） | subagent:3256–3267、2789–2794 | 〔实读〕 |
+| `subagents.waitForChildren(parent)`：等这个父会话全部还在推进的后代交回，真表示等到了活、宿主要重查父的空闲状态 | M7 的驱动循环与收尾（E8） | subagent:1296–1330 | 〔实读〕 |
+| `subagents.sendMessage(sender, targetId, content, {signal})`：给发送者的直接父或直接可续子 agent 投一句话；空闲的子 agent 起一个回合，不在的从持久层冷恢复（2141–2189），但没有它的 `outputSchema`——所以 M7 在工具层拒绝已交回的 worker 号（§3.2.5） | M7 的主 Agent ↔ worker 对话（`answer_worker` 的执行体，E4） | subagent:1538–1550、2119–2135、2141–2189 | 〔实读〕 |
+| `subagents.listChildren(parentSessionId, signal?)`：不加载任何人地读持久的直接子 agent 目录（`SubagentCatalogEntry`） | M7 重启对账（E7 的存活图） | subagent:2339–2352 | 〔实读〕 |
+| `llm.listModels(provider)`：某 provider 去重后的目录 `{id, name?}`，运行时不把它绑定到路由——是核对不是门禁（§3.1.3），provider 没注册时抛错；`llm.resolveModelInfo(provider, model)`：补该模型的 `reasoning.efforts`（有才有） | M7 的模型选择（E4 的 `checkModelChoice`） | llm:1816、2080–2101、2111–2116 | 〔实读〕 |
+| `sessionQuery.observeSession(sessionId, {signal?})`：存着的会话的一致切面（`projections.values`），丢失派发的交回投影从它折叠（§3.9.6） | M7 重启对账（E7） | dsh-session-query `observeSession`，经 subagent:2339–2352 的读法 | 〔实读〕 |
 
 ### 2.5 行健康〔已实现 2026-10-28，`ROADMAP.md` M1.5〕
 
