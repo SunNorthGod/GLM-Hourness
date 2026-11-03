@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { creditPricing } from '../src/glm-llm/credits.ts'
 import { apply, renderHourness } from '../src/report/index.ts'
-import { cacheHitRate, parseGaps, usagePanel, usagePanelLines, usagePanelOf, usageStatusItems, type PanelLineOptions } from '../src/report/panel.ts'
+import { cacheHitRate, parseGaps, peakStatusItems, usagePanel, usagePanelLines, usagePanelOf, usageStatusItems, type PanelLineOptions } from '../src/report/panel.ts'
 import { statusServiceName, provideRowStatus } from '../src/shared/status-host.ts'
 import type { ServiceLookup } from '../src/shared/dsh-min.ts'
 import type { UsagePricing } from '../src/shared/pricing.ts'
@@ -277,14 +277,17 @@ function sectionOf(text: string, title: string): string[] {
 const factsOf = (lines: readonly string[]): string[] => lines.filter(line => /^- (合计：|不计积分|[^：]+：\d+ 次)/.test(line))
 
 /**
- * A service lookup whose hourness row provides the usage entry built from the
- * journal text, the way the row itself computes it (usagePanel over the raw
- * journal, then usageStatusItems); the renderHourness calls of this spec read
- * the 面板 section through it.
+ * A service lookup whose hourness row provides the peak and usage entries the
+ * way the row itself computes them (peakStatusItems, and usagePanel over the
+ * raw journal then usageStatusItems), in the display zone the renderHourness
+ * calls of this spec pass (480); the 面板 section reads them through it.
  */
-function statusLookup(journalText: string, pricing: UsagePricing | undefined, now: number): ServiceLookup {
+function statusLookup(journalText: string, pricing: UsagePricing | undefined, now: number, offsetMinutes = 480): ServiceLookup {
   const store = serviceStore()
-  provideRowStatus(store, 'hourness', () => usageStatusItems(usagePanel(journalText, pricing), USAGE_FILE, now))
+  provideRowStatus(store, 'hourness', () => [
+    ...(pricing === undefined ? [] : peakStatusItems(pricing, now, { offsetMinutes })),
+    ...usageStatusItems(usagePanel(journalText, pricing), USAGE_FILE, now),
+  ])
   return store
 }
 
@@ -362,17 +365,16 @@ test('the panel starts with the peak line at the six moments of the acceptance; 
 })
 
 test('a peak function that throws or answers with something else leaves the peak line out, reports once, and the rest of the panel stays', async () => {
-  const files = new Map([[USAGE_FILE, todays]])
-  const problems: string[] = []
-  const run = async (pricing: UsagePricing): Promise<string[]> =>
-    sectionOf(await renderHourness(homes, { pricing, problem: message => { problems.push(message) }, fs: fakeFs(files), now: localNoon, offsetMinutes: 480, ...statusOf(todays, pricing, localNoon.getTime()) }), '面板')
-  const throwing = await run({ ...creditPricing, peak: () => { throw new Error('clock gone') } })
-  const odd = await run({ ...creditPricing, peak: (() => 'yes') as unknown as UsagePricing['peak'] })
-  for (const lines of [throwing, odd]) {
+  const throwing = statusRow(new Map([[USAGE_FILE, todays]]), { pricing: { ...creditPricing, peak: () => { throw new Error('clock gone') } } })
+  const odd = statusRow(new Map([[USAGE_FILE, todays]]), { pricing: { ...creditPricing, peak: (() => 'yes') as unknown as UsagePricing['peak'] } })
+  for (const row of [throwing, odd]) {
+    const result = await row.run()
+    const lines = sectionOf(result.text, '面板')
     assert.ok(lines.every(line => !line.startsWith('- 高峰：')), lines.join('\n'))
     assert.ok(lines.some(line => line.startsWith('- 范围：')))
+    assert.equal(row.warnings.filter(message => message.includes('peak line')).length, 1)
+    row.dispose()
   }
-  assert.ok(problems.some(message => message.includes('peak line')), problems.join('\n'))
 })
 
 test('the panel says how many records it read and from when, and that other clients are not in them', async () => {
@@ -452,63 +454,82 @@ const VIEW: QuotaView = {
   pending: false,
 }
 const withQuota = (quota: unknown): UsagePricing => ({ ...creditPricing, quota } as UsagePricing)
-const quotaTextOf = async (pricing: UsagePricing | undefined, problems: string[] = [], usage = journal): Promise<string[]> =>
-  sectionOf(await renderHourness(homes, { pricing, problem: message => { problems.push(message) }, fs: fakeFs(new Map([[USAGE_FILE, usage]])), now: QUOTA_NOW, offsetMinutes: 480 }), '额度')
+
+/**
+ * A real /hourness run over the row: the command reads the quota (three
+ * seconds at most) and renders the entry it cached. Returns the whole text,
+ * the 额度 section's lines and the row's warnings.
+ */
+async function quotaSectionOf(pricing: UsagePricing | undefined, usage: string = journal): Promise<{ text: string, lines: string[], warnings: string[] }> {
+  const row = statusRow(new Map([[USAGE_FILE, usage]]), { pricing })
+  try {
+    const result = await row.run()
+    return { text: result.text, lines: sectionOf(result.text, '额度'), warnings: row.warnings }
+  }
+  finally {
+    row.dispose()
+  }
+}
 
 test('the quota section is what the service\'s quota member returns, asked for at most three seconds; the panel keeps its numbers', async () => {
   const asked: unknown[] = []
-  const pricing = withQuota((request: unknown) => { asked.push(request); return Promise.resolve(VIEW) })
-  const text = await renderHourness(homes, { pricing, fs: fakeFs(new Map([[USAGE_FILE, journal]])), now: QUOTA_NOW, offsetMinutes: 480, ...statusOf(journal, pricing, QUOTA_NOW.getTime()) })
+  const { text, lines } = await quotaSectionOf(withQuota((request: unknown) => { asked.push(request); return Promise.resolve(VIEW) }))
   assert.deepEqual(asked, [{ waitMs: 3000 }])
-  assert.deepEqual(sectionOf(text, '额度'), quotaLines(VIEW, QUOTA_NOW.getTime(), ZONE))
-  assert.equal(sectionOf(text, '额度')[0], '额度（服务端读数，含 ZCode 等其他客户端，读于 19:40）：max')
-  assert.equal(sectionOf(text, '额度')[1], '- 5 小时：已用 41% · 21:30 重置 · 不预估：读数不足')
+  assert.deepEqual(lines, quotaLines(VIEW, QUOTA_NOW.getTime(), ZONE))
+  assert.equal(lines[0], '额度（服务端读数，含 ZCode 等其他客户端，读于 19:40）：max')
+  assert.equal(lines[1], '- 5 小时：已用 41% · 21:30 重置 · 不预估：读数不足')
   assert.ok(text.indexOf('## 面板') < text.indexOf('## 额度'))
   assert.ok(sectionOf(text, '面板').includes('- 合计：积分 5.30 · 高峰 53% · 缓存命中 53%'))
 })
 
 test('a pricing service without a quota member says so; without a pricing service there is no quota section', async () => {
-  assert.deepEqual(await quotaTextOf(creditPricing), ['额度：GLM 通道包没有提供额度数据'])
-  assert.deepEqual(await quotaTextOf(undefined), [])
-  const bent: string[] = []
-  assert.deepEqual(await quotaTextOf(withQuota('later'), bent), ['额度：GLM 通道包没有提供额度数据'])
-  assert.equal(bent.length, 1)
+  assert.deepEqual((await quotaSectionOf(creditPricing)).lines, ['额度：GLM 通道包没有提供额度数据'])
+  assert.deepEqual((await quotaSectionOf(undefined)).lines, [])
+  const bent = await quotaSectionOf(withQuota('later'))
+  assert.deepEqual(bent.lines, ['额度：GLM 通道包没有提供额度数据'])
+  assert.equal(bent.warnings.length, 1)
 })
 
 test('the quota section is there when the usage journal is empty: it is the server\'s reading, not the local records', async () => {
-  const text = await renderHourness(homes, { pricing: withQuota(() => Promise.resolve(VIEW)), fs: fakeFs(new Map()), now: QUOTA_NOW, offsetMinutes: 480 })
+  const { text, lines } = await quotaSectionOf(withQuota(() => Promise.resolve(VIEW)), '')
   assert.ok(!text.includes('## 面板'))
-  assert.deepEqual(sectionOf(text, '额度'), quotaLines(VIEW, QUOTA_NOW.getTime(), ZONE))
+  assert.deepEqual(lines, quotaLines(VIEW, QUOTA_NOW.getTime(), ZONE))
 })
 
 test('a quota member that rejects, answers with a non-object, or answers a view the lines cannot be made from prints one line and is reported; the panel is otherwise normal', async () => {
-  const problems: string[] = []
-  const rejected = withQuota(() => Promise.reject(new Error('quota gone\nsecond line')))
-  const texts = await Promise.all([
-    renderHourness(homes, { pricing: rejected, problem: message => { problems.push(message) }, fs: fakeFs(new Map([[USAGE_FILE, journal]])), now: QUOTA_NOW, offsetMinutes: 480, ...statusOf(journal, rejected, QUOTA_NOW.getTime()) }),
-  ])
-  assert.deepEqual(sectionOf(texts[0] ?? '', '额度'), ['额度：读取出错（quota gone second line）'])
-  assert.ok(sectionOf(texts[0] ?? '', '面板').includes('- 合计：积分 5.30 · 高峰 53% · 缓存命中 53%'))
-  assert.equal(problems.length, 1)
-  assert.deepEqual(await quotaTextOf(withQuota(() => Promise.resolve(5))), ['额度：读取出错（返回的不是对象）'])
-  assert.deepEqual(await quotaTextOf(withQuota(() => Promise.resolve({ pending: false }))).then(lines => lines.map(line => line.slice(0, 7))), ['额度：读取出错'])
-  assert.deepEqual(await quotaTextOf(withQuota(() => { throw new Error('sync') })), ['额度：读取出错（sync）'])
-  assert.equal((await quotaTextOf(withQuota(() => Promise.reject(new Error('x'.repeat(200)))))).at(0)?.length, '额度：读取出错（）'.length + 80)
+  const rejected = await quotaSectionOf(withQuota(() => Promise.reject(new Error('quota gone\nsecond line'))))
+  assert.deepEqual(rejected.lines, ['额度：读取出错（quota gone second line）'])
+  assert.ok(sectionOf(rejected.text, '面板').includes('- 合计：积分 5.30 · 高峰 53% · 缓存命中 53%'))
+  assert.equal(rejected.warnings.length, 1)
+  assert.deepEqual((await quotaSectionOf(withQuota(() => Promise.resolve(5)))).lines, ['额度：读取出错（返回的不是对象）'])
+  assert.deepEqual((await quotaSectionOf(withQuota(() => Promise.resolve({ pending: false })))).lines.map(line => line.slice(0, 7)), ['额度：读取出错'])
+  assert.deepEqual((await quotaSectionOf(withQuota(() => { throw new Error('sync') }))).lines, ['额度：读取出错（sync）'])
+  assert.equal((await quotaSectionOf(withQuota(() => Promise.reject(new Error('x'.repeat(200)))))).lines.at(0)?.length, '额度：读取出错（）'.length + 80)
 })
 
-// --- the row's status view: the usage list as the hub's one glm/usage entry (status hub design 0.3 §3.2, §10) ---
+// --- the row's status view: the peak line, the usage list and the quota section as entries (status hub design 0.3 §3.2, §10) ---
 
-/** An apply whose row reads the journal through `read` (default: from `files`, a missing file reading as ENOENT), with the clock pinned. */
-function statusRow(files: Map<string, string>, read?: (path: string) => string): { run: () => Promise<{ kind: string, text: string }>, dispose: () => void, store: ReturnType<typeof serviceStore> } {
+/**
+ * An apply whose row reads the journal through `read` (default: from `files`,
+ * a missing file reading as ENOENT), with the clock pinned, `pricing`
+ * provided (default the credit plan) and the row's warnings captured.
+ */
+function statusRow(files: Map<string, string>, options: { read?: (path: string) => string, pricing?: UsagePricing } = {}): {
+  run: () => Promise<{ kind: string, text: string }>
+  dispose: () => void
+  store: ReturnType<typeof serviceStore>
+  warnings: string[]
+} {
   const store = serviceStore()
-  store.provide('glmHournessPricing', creditPricing)
+  if (options.pricing !== undefined) store.provide('glmHournessPricing', options.pricing)
   const commands: Registered[] = []
+  const warnings: string[] = []
   const dispose = apply({
     commands: { register: definition => { commands.push(definition as Registered); return () => {} } },
     ...store,
     get: (name: string) => name === 'glmHournessData' ? { userHome: 'C:/u/glm-hourness' } : store.get(name),
   }, {
-    readFile: read ?? (path => {
+    readFile: options.read ?? (path => {
       const content = files.get(path)
       if (content === undefined) {
         const error = new Error('no such file') as NodeJS.ErrnoException
@@ -518,22 +539,42 @@ function statusRow(files: Map<string, string>, read?: (path: string) => string):
       return content
     }),
     now: () => QUOTA_NOW,
+    offsetMinutes: 480,
   })
   const hourness = commands.find(command => command.name === 'hourness')
   assert.ok(hourness !== undefined)
-  return { run: () => hourness.handler(inSession()), dispose, store }
+  return {
+    warnings,
+    run: async () => {
+      const warn = console.warn
+      console.warn = (message: string) => { warnings.push(message) }
+      try {
+        return await hourness.handler(inSession())
+      }
+      finally {
+        console.warn = warn
+      }
+    },
+    dispose,
+    store,
+  }
 }
 
 test('the row provides glmHournessStatus/hourness and withdraws it on dispose; /hourness renders the 面板 section from the entry the collector reads back', async () => {
-  const row = statusRow(new Map([[USAGE_FILE, journal]]))
-  const view = row.store.services.get(statusServiceName('hourness')) as { items(sessionId: string | undefined): Array<{ id: string, text: string, detail?: readonly string[] }> }
+  const row = statusRow(new Map([[USAGE_FILE, journal]]), { pricing: creditPricing })
+  const view = row.store.services.get(statusServiceName('hourness')) as { readonly items: (sessionId: string | undefined) => Array<{ id: string, text: string, detail?: readonly string[] }> }
   assert.ok(view !== undefined)
   const provided = view.items('s1')
-  assert.deepEqual(provided.map(item => item.id), ['glm/usage'])
-  assert.equal(provided[0]?.detail?.at(0), '- glm-5.3：3 次 · 积分 4.70 · 高峰 60% · 缓存命中 57%')
+  assert.deepEqual(provided.map(item => item.id), ['rules/peak', 'glm/usage']) // the quota entry waits for the row's first read
+  assert.equal(provided[0]?.text, '- 高峰：不是高峰；下一个高峰 周一 14:00（GLM 积分套餐）')
+  assert.equal(provided[1]?.detail?.at(0), '- glm-5.3：3 次 · 积分 4.70 · 高峰 60% · 缓存命中 57%')
   const result = await row.run()
   assert.equal(result.kind, 'success')
-  // The section is the entry with its basis and scope around it: the same line the entry carries.
+  // The command read the quota; the view now serves all three entries.
+  assert.deepEqual(view.items('s1').map(item => item.id), ['rules/peak', 'glm/quota', 'glm/usage'])
+  assert.equal(view.items('s1').find(item => item.id === 'glm/quota')?.text, '额度：GLM 通道包没有提供额度数据')
+  // The sections are the entries with their layout around them: the same lines the entries carry.
+  assert.ok(sectionOf(result.text, '面板').includes('- 高峰：不是高峰；下一个高峰 周一 14:00（GLM 积分套餐）'), result.text)
   assert.ok(sectionOf(result.text, '面板').includes('- 合计：积分 5.30 · 高峰 53% · 缓存命中 53%'), result.text)
   assert.ok(sectionOf(result.text, '面板').includes(`- 范围：7 条用量记录，最早 10-27 15:00；${SCOPE_NOTE}`), result.text)
   row.dispose()
@@ -541,24 +582,16 @@ test('the row provides glmHournessStatus/hourness and withdraws it on dispose; /
 })
 
 test('a journal that is not there yet is no entry and no section; one that cannot be read takes the placeholder and warns once', async () => {
-  const missing = await statusRow(new Map()).run()
+  const missing = await statusRow(new Map(), { pricing: creditPricing }).run()
   assert.equal(missing.kind, 'success')
   assert.ok(!missing.text.includes('## 面板'), missing.text)
-  const warnings: string[] = []
-  const warn = console.warn
-  console.warn = (message: string) => { warnings.push(message) }
-  try {
-    const blocked = statusRow(new Map(), () => {
-      const error = new Error('access denied') as NodeJS.ErrnoException
-      error.code = 'EPERM'
-      throw error
-    })
-    const result = await blocked.run()
-    assert.ok(result.text.includes('## 面板\nhourness 行的状态暂时读不到：access denied'), result.text)
-    assert.equal(warnings.filter(message => message.startsWith('dsh-glm-hourness/hourness: 状态读取失败')).length, 1)
-    blocked.dispose()
-  }
-  finally {
-    console.warn = warn
-  }
+  const blocked = statusRow(new Map(), { pricing: creditPricing, read: () => {
+    const error = new Error('access denied') as NodeJS.ErrnoException
+    error.code = 'EPERM'
+    throw error
+  } })
+  const result = await blocked.run()
+  assert.ok(result.text.includes('## 面板\nhourness 行的状态暂时读不到：access denied'), result.text)
+  assert.equal(blocked.warnings.filter(message => message.startsWith('dsh-glm-hourness/hourness: 状态读取失败')).length, 1)
+  blocked.dispose()
 })

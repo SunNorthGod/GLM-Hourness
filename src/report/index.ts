@@ -15,10 +15,14 @@
  * invocation, and a missing one is named in the output. The row also
  * registers `/hourness-status`, the row health table of both packages, so it
  * can be read without the GLM channel package. Its status view
- * `glmHournessStatus/hourness` (src/shared/status-host.ts) submits the usage
- * list as the status hub's one `glm/usage` entry (src/report/panel.ts
- * `usageStatusItems`), and the 面板 section reads it back through the
- * collector (src/report/status.ts) instead of recomputing the panel.
+ * `glmHournessStatus/hourness` (src/shared/status-host.ts) submits the peak
+ * line, the usage list and the quota section as the status hub's entries
+ * `rules/peak`, `glm/usage` and `glm/quota` (src/report/panel.ts
+ * `peakStatusItems`, `usageStatusItems`, `quotaStatusItems`), and the 面板
+ * and 额度 sections read them back through the collector
+ * (src/report/status.ts) instead of recomputing them. The quota read is
+ * asynchronous, so the command reads once per invocation (the reading moment
+ * M6 fixed) and the view serves that reading.
  */
 import { readFileSync } from 'node:fs'
 import { readFile, stat } from 'node:fs/promises'
@@ -26,7 +30,7 @@ import { graphService } from '../graph/service.ts'
 import { loadGraph } from '../graph/store.ts'
 import { auditPaths } from '../memory/audit.ts'
 import { localDay, reportFromFiles, type GraphReader, type ReportOptions } from '../workflow/morning-report.ts'
-import { gapLines, NO_PRICING_LINE, parseGaps, peakLineOf, quotaSection, rangeLine, usagePanel, usageStatusItems } from './panel.ts'
+import { gapLines, NO_PRICING_LINE, parseGaps, peakStatusItems, quotaSection, quotaStatusItems, rangeLine, usagePanel, usageStatusItems } from './panel.ts'
 import { collectStatus, statusPlaceholders } from './status.ts'
 import { dataHomes, type DataHomes } from '../shared/data-home.ts'
 import { collectHealth, provideRowHealth, renderHealthTable, sessionIdOf, type HealthState } from '../shared/health.ts'
@@ -41,8 +45,10 @@ export interface HournessConfig {
   readonly home?: string
   /** Reads one file's text for the usage item's journal (the status view is synchronous); tests inject it, the host reads from disk. */
   readonly readFile?: (path: string) => string
-  /** The clock the usage item's asOf is stamped with; default the wall clock. */
+  /** The clock the entries' asOf are stamped with and the quota is worded against; default the wall clock. */
   readonly now?: () => Date
+  /** The display zone, minutes east of UTC, for the entries' times; tests set it, the host's offset otherwise. The peak hours do not follow it. */
+  readonly offsetMinutes?: number
 }
 
 export interface RenderOptions {
@@ -78,24 +84,26 @@ export async function renderHourness(homes: DataHomes, options: RenderOptions = 
   ]
   const notice = missing.length === 0 ? '' : ['', '## 数据目录', ...missing].join('\n')
   const paths = auditPaths(homes)
-  // The 面板 section is the hub's glm/usage entry, read once through the collector (status hub design 0.3 §10);
-  // the quota is the server's reading and does not need it.
+  // The 面板 and 额度 sections are the hub's entries (status hub design 0.3 §10), read once through
+  // the collector: `rules/peak` is the peak line, `glm/usage` the list with its basis and scope around
+  // it, `glm/quota` the server's reading. The section lays them out; the entries carry the words.
   const collected = options.status === undefined ? undefined : collectStatus(options.status.lookup, options.status.sessionId, 'agent', nowMs)
   const usage = collected?.items.find(item => item.id === 'glm/usage')
+  const peak = collected?.items.find(item => item.id === 'rules/peak')
+  const quota = collected?.items.find(item => item.id === 'glm/quota')
   let summary = ''
   if (usage !== undefined) {
     const gapRaw = paths.gaps === undefined ? '' : await fs.readFile(paths.gaps).catch(() => '')
-    const peak = options.pricing === undefined ? undefined : peakLineOf(options.pricing, nowMs, zone, options.problem)
     const scope = [rangeLine(coverageOf(usage), nowMs, zone), ...gapLines(parseGaps(gapRaw), nowMs, zone)]
     const basis = options.pricing === undefined ? NO_PRICING_LINE : `- ${options.pricing.basis}`
-    summary = ['', '## 面板', ...(peak === undefined ? [] : [peak]), basis, ...scope, usage.text, ...(usage.detail ?? [])].join('\n')
+    summary = ['', '## 面板', ...(peak === undefined ? [] : [peak.text]), basis, ...scope, usage.text, ...(usage.detail ?? [])].join('\n')
   }
   else if (collected !== undefined) {
     const placeholders = statusPlaceholders(collected.rows)
     if (placeholders.length > 0) summary = ['', '## 面板', ...placeholders].join('\n')
   }
-  const quota = options.pricing === undefined ? '' : ['', '## 额度', ...await quotaSection(options.pricing, nowMs, zone, options.problem)].join('\n')
-  return report + summary + quota + notice
+  const quotaText = quota === undefined ? '' : ['', '## 额度', quota.text, ...(quota.detail ?? [])].join('\n')
+  return report + summary + quotaText + notice
 }
 
 /** The records coverage the 范围 line states, as the usage entry's fields carry it. */
@@ -177,25 +185,42 @@ export function apply(ctx: CommandsHost & ServiceLookup & Partial<ProvideHost>, 
     if (!warned) console.warn(`dsh-glm-hourness/hourness: ${message}`)
     warned = true
   }
-  // The row's status view (status hub design 0.3 §3.2, §10): the usage list as the one glm/usage
-  // entry, computed when the collector asks. The usage journal is the account of the whole user-level
-  // directory, so the session id does not change it. A journal that is not there yet is no entry, not
-  // an error; one that cannot be read is, and the collector takes the placeholder.
+  // The row's status view (status hub design 0.3 §3.2, §10): the peak line, the usage list and the
+  // quota section as the entries `rules/peak`, `glm/usage` and `glm/quota`, computed when the
+  // collector asks. The journals are the account of the whole user-level directory, so the session id
+  // does not change them. A journal that is not there yet is no entry, not an error; one that cannot
+  // be read is, and the collector takes the placeholder. The quota read is asynchronous (at most
+  // three seconds) while the view is synchronous, so the row reads when the human runs /hourness (the
+  // reading moment M6 fixed) and the view serves that reading until the next one.
   const readFile = config.readFile ?? ((path: string) => readFileSync(path, 'utf8'))
   const clock = config.now ?? (() => new Date())
+  const zone = config.offsetMinutes === undefined ? undefined : { offsetMinutes: config.offsetMinutes }
+  let quotaCache: { readonly at: number, readonly lines: readonly string[] } | undefined
+  const refreshQuota = async (pricing: UsagePricing): Promise<void> => {
+    const at = clock().getTime()
+    quotaCache = { at, lines: await quotaSection(pricing, at, zone, problem) }
+  }
   const status = provideRowStatus(ctx, 'hourness', () => {
+    const items: StatusItem[] = []
+    const pricing = pricingService(ctx, problem)
+    if (pricing !== undefined) {
+      items.push(...peakStatusItems(pricing, clock().getTime(), zone, problem))
+      // The cached reading belongs to the service: with it gone (the GLM package unloaded), no entry.
+      if (quotaCache !== undefined) items.push(...quotaStatusItems(quotaCache.lines, quotaCache.at))
+    }
     const path = auditPaths(dataHomes(ctx, config.home)).usage
-    if (path === undefined) return []
-    let raw: string
-    try {
-      raw = readFile(path)
+    if (path !== undefined) {
+      let raw: string
+      try {
+        raw = readFile(path)
+      }
+      catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return items
+        throw error
+      }
+      if (raw.length > 0) items.push(...usageStatusItems(usagePanel(raw, pricing, problem), path, clock().getTime()))
     }
-    catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []
-      throw error
-    }
-    if (raw.length === 0) return []
-    return usageStatusItems(usagePanel(raw, pricingService(ctx, problem), problem), path, clock().getTime())
+    return items
   })
   const unregister = ctx.commands.register({
     definitionId: 'dsh-glm-hourness/hourness',
@@ -209,8 +234,9 @@ export function apply(ctx: CommandsHost & ServiceLookup & Partial<ProvideHost>, 
       const pricing = pricingService(ctx, problem)
       // The quota member is judged again where it is read, which reports a wrong shape; the status only says whether it is there.
       health.report(sessionIdOf(invocation.agent), ...hournessHealth(homes, pricing !== undefined, pricing !== undefined && quotaOf(pricing) !== undefined))
+      if (pricing !== undefined) await refreshQuota(pricing)
       try {
-        return { kind: 'success', text: await renderHourness(homes, { pricing, problem, graph: graphReader(ctx, invocation.agent?.session?.header?.cwd), status: { lookup: ctx, sessionId: sessionIdOf(invocation.agent) } }) }
+        return { kind: 'success', text: await renderHourness(homes, { pricing, problem, graph: graphReader(ctx, invocation.agent?.session?.header?.cwd), ...(config.offsetMinutes === undefined ? {} : { offsetMinutes: config.offsetMinutes }), status: { lookup: ctx, sessionId: sessionIdOf(invocation.agent) } }) }
       }
       catch (error) {
         return { kind: 'error', text: `晨报生成失败：${(error as Error).message}` }

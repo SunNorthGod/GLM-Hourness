@@ -2,13 +2,17 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { creditPricing } from '../src/glm-llm/credits.ts'
 import { collectStatus, STATUS_ROWS, statusPlaceholders } from '../src/report/status.ts'
-import { NO_PRICING_LINE, usagePanel, usagePanelLines, usagePanelOf, usageStatusItems, usageTotals } from '../src/report/panel.ts'
+import { NO_PRICING_LINE, PEAK_SOURCE, peakStatusItems, QUOTA_SOURCE, quotaStatusItems, usagePanel, usagePanelLines, usagePanelOf, usageStatusItems, usageTotals } from '../src/report/panel.ts'
 import type { ServiceLookup } from '../src/shared/dsh-min.ts'
 import { HEALTH_ROWS } from '../src/shared/health.ts'
 import { provideRowStatus, statusServiceName, type RowStatusView } from '../src/shared/status-host.ts'
-import { formatMoment } from '../src/shared/quota.ts'
+import { formatMoment, type MomentZone } from '../src/shared/quota.ts'
+import type { UsagePricing } from '../src/shared/pricing.ts'
 import { isStale, STATUS_TEXT_MAX, validateStatusItem, type StatusAudience, type StatusItem } from '../src/shared/status.ts'
 import { serviceStore } from './fake-rc3.ts'
+
+/** The display zone the specs run in, the one the renderHourness calls pass. */
+const ZONE: MomentZone = { offsetMinutes: 480 }
 
 // The status hub's L2 (status hub design 0.3 §11): the entry contract and its
 // validation, the host-side registration, the collector's audience filter,
@@ -294,4 +298,33 @@ test('the entry is computed once for whatever records it is given: the period sl
   assert.equal(zero?.text, '- 合计：积分 0.00')
   assert.equal(zero?.fields?.records, 0)
   assert.equal(zero?.fields?.earliest, undefined)
+})
+
+// --- the peak line and the quota section as entries (status hub design 0.3 §10) ---
+
+test('the rules/peak entry is the line the panel shows, worded for the display zone it is given', () => {
+  const [peak] = peakStatusItems(creditPricing, Date.parse('2026-10-28T15:00:00+08:00'), ZONE)
+  assert.deepEqual(peak, { id: 'rules/peak', owner: 'rules', audience: 'agent', asOf: '2026-10-28T07:00:00.000Z', source: PEAK_SOURCE, text: '- 高峰：高峰中，到 18:00（GLM 积分套餐）' })
+  const [off] = peakStatusItems(creditPricing, Date.parse('2026-10-28T18:00:00+08:00'), ZONE)
+  assert.equal(off?.text, '- 高峰：不是高峰；下一个高峰 明天 14:00（GLM 积分套餐）')
+  const bent = { ...creditPricing, peak: () => { throw new Error('clock gone') } } as UsagePricing
+  const problems: string[] = []
+  assert.deepEqual(peakStatusItems(bent, 0, undefined, message => { problems.push(message) }), [])
+  assert.equal(problems.length, 1)
+})
+
+test('the glm/quota entry mirrors the section\'s lines: the first is the text, the rest the detail', () => {
+  const [item] = quotaStatusItems(['额度（服务端读数，含 ZCode 等其他客户端，读于 19:40）：max', '- 5 小时：已用 41% · 21:30 重置 · 不预估：读数不足'], Date.parse('2026-10-31T20:00:00+08:00'))
+  assert.deepEqual(item, {
+    id: 'glm/quota',
+    owner: 'glm',
+    audience: 'agent',
+    asOf: '2026-10-31T12:00:00.000Z',
+    source: QUOTA_SOURCE,
+    text: '额度（服务端读数，含 ZCode 等其他客户端，读于 19:40）：max',
+    detail: ['- 5 小时：已用 41% · 21:30 重置 · 不预估：读数不足'],
+  })
+  const [one] = quotaStatusItems(['额度：正在读取，稍后再看'], 0)
+  assert.equal(one?.detail, undefined)
+  assert.deepEqual(quotaStatusItems([], 0), [])
 })

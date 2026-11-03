@@ -435,9 +435,10 @@ const failureWords = (error: unknown): string => (error instanceof Error ? error
  * the service's `peak` and plan name (`peakLine`, the one that the GLM
  * package's status command prints too). Undefined, reported to `problem`,
  * when `peak` throws or does not answer with a boolean: the panel then has no
- * such line.
+ * such line. Internal to the peak entry (`peakStatusItems`), the only face
+ * that shows it.
  */
-export function peakLineOf(pricing: UsagePricing, now: number, zone?: MomentZone, problem?: (message: string) => void): string | undefined {
+function peakLineOf(pricing: UsagePricing, now: number, zone?: MomentZone, problem?: (message: string) => void): string | undefined {
   try {
     const peak = (atMs: number): boolean => pricing.peak(atMs)
     if (typeof peak(now) !== 'boolean') throw new Error('peak did not answer with a boolean')
@@ -447,6 +448,45 @@ export function peakLineOf(pricing: UsagePricing, now: number, zone?: MomentZone
     problem?.(`${PRICING_SERVICE} peak is unreadable (${failureWords(error)}); the panel has no peak line`)
     return undefined
   }
+}
+
+/** The service member the peak entry reads. */
+export const PEAK_SOURCE = 'glmHournessPricing/peak'
+
+/** The service member the quota entry reads. */
+export const QUOTA_SOURCE = 'glmHournessPricing/quota'
+
+/**
+ * The peak line as the status hub's one `rules/peak` entry (status hub
+ * design 0.3 §10): the line the 面板 section shows — the same words
+ * `/glm-status` prints from `peakLine` — is the entry's text, so the panel
+ * and the reports read one computation. Worded for the display zone given
+ * here, the host's own in production, so the row's status view and its
+ * sections agree. No entry without a pricing service, or when `peak` throws
+ * or answers with something else, exactly as the section has shown no line.
+ * The peak mode level is the rules board's half of this entry (the design's
+ * §4.2, §12 rules row) and lands when that row adopts the hub.
+ */
+export function peakStatusItems(pricing: UsagePricing, nowMs: number, zone?: MomentZone, problem?: (message: string) => void): StatusItem[] {
+  const line = peakLineOf(pricing, nowMs, zone, problem)
+  if (line === undefined) return []
+  return [{ id: 'rules/peak', owner: 'rules', audience: 'agent', asOf: new Date(nowMs).toISOString(), source: PEAK_SOURCE, text: line }]
+}
+
+/**
+ * The quota section's lines as the status hub's one `glm/quota` entry: the
+ * first line is the text, the rest the detail, word for word what
+ * `quotaSection` wrote — the entry is the section's only face. The read
+ * itself is asynchronous (at most three seconds), so the row refreshes the
+ * lines when the human runs `/hourness` (M6's own reading moment) and this
+ * synchronous view serves the last reading; `asOfMs` is that reading's
+ * moment.
+ */
+export function quotaStatusItems(lines: readonly string[], asOfMs: number): StatusItem[] {
+  const text = lines.at(0)
+  if (text === undefined) return []
+  const detail = lines.slice(1)
+  return [{ id: 'glm/quota', owner: 'glm', audience: 'agent', asOf: new Date(asOfMs).toISOString(), source: QUOTA_SOURCE, text, ...(detail.length === 0 ? {} : { detail }) }]
 }
 
 /**

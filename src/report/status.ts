@@ -20,7 +20,7 @@ import type { HealthRow } from '../shared/health.ts'
 import { HEALTH_ROWS } from '../shared/health.ts'
 import { formatMoment } from '../shared/quota.ts'
 import { statusServiceName, type RowStatusView } from '../shared/status-host.ts'
-import { isStale, validateStatusItem, type StatusAudience, type StatusItem } from '../shared/status.ts'
+import { isStale, validateStatusItem, type StatusItem } from '../shared/status.ts'
 
 /**
  * Every row whose status view the collector reads, in patch order. A
@@ -66,7 +66,7 @@ function markedText(item: StatusItem, nowMs: number): string {
  * reason; a cleaned one (a field key dropped, a detail line cut) warns once
  * too. A row whose items throw yields no entries and an `error` outcome.
  */
-export function collectStatus(ctx: ServiceLookup, sessionId: string | undefined, audience: StatusAudience | 'all', nowMs: number): CollectedStatus {
+export function collectStatus(ctx: ServiceLookup, sessionId: string | undefined, audience: 'agent' | 'all', nowMs: number): CollectedStatus {
   const rows: StatusRowOutcome[] = []
   const items: StatusItem[] = []
   for (const row of STATUS_ROWS) {
