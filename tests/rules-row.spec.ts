@@ -368,14 +368,14 @@ test('activation never throws: a command that cannot register, a service that ca
   }
 })
 
-test('the row ships disabled in the orchestration patch, is exported, and has its locale files', async () => {
+test('the row ships enabled in the orchestration patch (no disabled key), is exported, and has its locale files', async () => {
   const patch = await readFile(new URL('../packages/hourness/cordis.patch.yml', import.meta.url), 'utf8')
   const start = patch.indexOf('    - id: glm-hourness/rules')
   assert.ok(start >= 0)
   const next = patch.indexOf('\n    - id:', start + 1)
   const block = patch.slice(start, next < 0 ? undefined : next)
   assert.match(block, /^ {6}name: dsh-hourness\/rules$/m)
-  assert.match(block, /^ {6}disabled: true$/m)
+  assert.doesNotMatch(block, /^ {6}disabled:/m)
   assert.match(block, /^ {6}inject: \[tools, commands\]$/m)
   const manifest = JSON.parse(await readFile(new URL('../packages/hourness/package.json', import.meta.url), 'utf8')) as { exports: Record<string, string> }
   assert.equal(manifest.exports['./rules'], './dist/rules/index.js')

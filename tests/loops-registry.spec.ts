@@ -716,14 +716,14 @@ test('activation never throws: a second instance, or a host without provide, is 
   bare.value()
 })
 
-test('the row ships disabled in the orchestration patch, is registered in the directory table and the health rows, and has its locale files', async () => {
+test('the row ships enabled in the orchestration patch (no disabled key), is registered in the directory table and the health rows, and has its locale files', async () => {
   const text = (path: string): Promise<string> => readFile(new URL(path, import.meta.url), 'utf8')
   const patch = await text('../packages/hourness/cordis.patch.yml')
   const rowAt = (id: string): number => patch.indexOf(`    - id: glm-hourness/${id}`)
   const start = rowAt('loops')
   assert.ok(rowAt('design') < start && start < rowAt('ui'), 'after design and before ui')
   const block = patch.slice(start, patch.indexOf('\n    - id:', start + 1))
-  assert.deepEqual(block.split('\n').filter(line => /^ {6}[a-z]/.test(line)), ['      name: dsh-hourness/loops', '      disabled: true', '      config: {}'])
+  assert.deepEqual(block.split('\n').filter(line => /^ {6}[a-z]/.test(line)), ['      name: dsh-hourness/loops', '      config: {}'])
   const exported = (JSON.parse(await text('../packages/hourness/package.json')) as { exports: Record<string, string> }).exports
   assert.deepEqual([exported['./loops'], exported['./loops/locale/*.json']], ['./dist/loops/index.js', './locale/loops/*.json'])
   const locales = await Promise.all(['en', 'zh'].map(async language => JSON.parse(await text(`../packages/hourness/locale/loops/${language}.json`)) as { meta: { title: string, description: string } }))
