@@ -49,6 +49,7 @@
     "./graph-panel": "./dist/graph/panel-row.js",
     "./rules": "./dist/rules/index.js",
     "./design": "./dist/design/index.js",
+    "./execute": "./dist/execute/index.js",
     "./loops": "./dist/loops/index.js",
     "./data/locale/*.json": "./locale/data/*.json",
     "./guard/locale/*.json": "./locale/guard/*.json",
@@ -60,6 +61,7 @@
     "./graph-panel/locale/*.json": "./locale/graph-panel/*.json",
     "./rules/locale/*.json": "./locale/rules/*.json",
     "./design/locale/*.json": "./locale/design/*.json",
+    "./execute/locale/*.json": "./locale/execute/*.json",
     "./loops/locale/*.json": "./locale/loops/*.json",
     "./locale/*.json": "./locale/*.json",
     "./icon": "./icon.svg"

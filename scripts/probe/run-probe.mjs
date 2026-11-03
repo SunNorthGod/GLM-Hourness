@@ -15,7 +15,17 @@
  * scenarios run the dispatch feasibility spike
  * (scripts/probe/probe-dispatch.mjs): a background child with a write
  * scope, a plugin-created goal driven through two rounds, and the headless
- * runner's exit with an armed goal. The rules board scenarios run in scratch
+ * runner's exit with an armed goal. The execute row scenarios
+ * (glm-exec-dispatch, non-glm-exec-dispatch) enable glm-hourness/execute by
+ * the overlay on a seeded released project: dispatch_task refuses a model
+ * the catalog does not list with the catalog in the hint and returns the
+ * dispatch summary at once for a valid one; the dispatched worker runs in
+ * its own worktree under the write-scope, graph and git rules (push
+ * refused, reset --hard after a snapshot), keeps the graph reads in its
+ * face but not the graph writes, hands back with structured_output and no
+ * settlement notice to the main agent; a plain subagent of the main agent
+ * may not write; the command record and the dispatch comment land in
+ * .llm/execute and on the graph. The rules board scenarios run in scratch
  * git repositories with the row enabled by the overlay: rules-peak and
  * rules-peak-hourness drive /rules peak, glm-rules and non-glm-rules run
  * calls past a rules file that blocks one command and only informs about
@@ -98,6 +108,9 @@ import { LOOP_NOTICE_SOURCE } from '../../packages/hourness/dist/loops/deliver.j
 import { LOOPS_DECLARATION } from '../../packages/hourness/dist/loops/service.js'
 import { PEAK_REMINDER_SOURCE, PEAK_REMINDER_TEXT, peakReminderText } from '../../packages/glm/dist/glm-prompt/peak-reminder.js'
 import { IDENTITY_OPENING_PLAIN, IDENTITY_OPENING_WITH_STYLE } from '../../packages/glm/dist/glm-prompt/verbatim.js'
+import { EXECUTE_TOOL_NAMES, OPERATE_TOOL_NAMES, WORKER_TOOL_NAMES } from '../../packages/hourness/dist/shared/tool-names.js'
+import { GRAPH_WRITE_TOOLS } from '../../packages/hourness/dist/execute/faces.js'
+import { handbackProblems } from '../../packages/hourness/dist/execute/schemas.js'
 import { PERSONA_SCOPE } from '../../packages/hourness/dist/design/persona.js'
 import { peakWindowAt } from '../../packages/glm/dist/glm-llm/credits.js'
 import { GLM_LOOP_DEFAULTS } from '../../packages/glm/dist/glm-llm/loop-defaults.js'
@@ -1651,6 +1664,73 @@ const designPersona = designScenario(PERSONA, 'glm-5.3', () => [
   { text: 'done', status: true },
 ], { wish: true, persona: PERSONA_SETTING, extra: dispatchRow(join(runDir, PERSONA, 'dispatch.jsonl')), others: [[{ text: 'child done' }]] })
 const designPersonaPlain = designScenario(PERSONA_PLAIN, 'deepseek-probe', () => [{ text: 'done', command: { name: 'hourness-status' } }], { wish: true, persona: PERSONA_SETTING, on: profiles['probe-hourness'] })
+
+// E4 (docs/ORCHESTRATION.md §17.9, M7 design §3.1, §9.1 glm-exec-dispatch).
+// The execute row, enabled by the overlay, on a seeded project: a released
+// goal over one task with a one-file write scope, dispatched quick. The main
+// agent (the simulated human's /wish) focuses the goal — the release and the
+// chain judgments read the focus — and dispatches with dispatch_task: a model
+// the catalog does not list is refused with the catalog in the hint (the
+// host validates the tool schema, so a call without the model never reaches
+// the tool); the valid call returns the dispatch summary at once and the
+// main agent moves on while the worker still runs — its last request is
+// later on the wall clock. The worker runs in its own worktree: writes in
+// scope and its .hourness/, refused out of scope and outside the worktree,
+// graph_status refused by name (gone from its face) while graph_comment
+// runs, a push refused with the branch correction, reset --hard run after
+// the harness's snapshot (one ref under refs/hourness/snapshots/ and one
+// journal line), structured_output as the handback; its first message is
+// the brief, with no DSH return guidance in it (U1). A subagent the main
+// agent started with the plain subagent tool may not write
+// (dispatch-chain-readonly). The dispatched worker settles without a
+// settlement notice to the main agent (delivery caller), while the plain
+// subagent's settlement arrives; the glm-hourness-execute notice of a
+// handback is E6's. The command record of the chain lands under
+// <proj>/.llm/execute/tasks/task-1 (§3.8.5).
+const EXEC_GLM = 'glm-exec-dispatch'
+const EXEC_PLAIN = 'non-glm-exec-dispatch'
+const EXEC_WHY = 'probe: the flash model is enough for this file'
+const EXEC_HAND_BACK = { status: 'done', summary: 'wrote site/feed/index.js; the probe refusals are the checks', commits: [], files: ['site/feed/index.js'], checks: [], questions: [], assumptions: [], lessons: [] }
+const execSeeds = [
+  ['human', { type: 'goal', title: '静态博客', stage: 'release', acceptance: ['the blog builds'] }],
+  ['human', { type: 'task', id: 'task-1', title: 'Add the feed', parent: 'goal-1', kind: 'implement', writeScope: ['site/feed/index.js'], acceptance: ['the feed builds'], nonGoals: ['no RSS yet'], worktree: true }],
+]
+await stageGraph(EXEC_GLM, execSeeds)
+await stageGraph(EXEC_PLAIN, execSeeds)
+const execScenario = (name, model, glmRoute) => {
+  const ws = join(runDir, name, 'ws')
+  const wt = join(ws, '.worktrees', 'hz-task-1')
+  const write = glmRoute ? 'Write' : 'write'
+  const shell = glmRoute ? 'Bash' : 'pwsh'
+  const writeCall = (file, content) => ({ tool: { name: write, arguments: { file_path: file, content } } })
+  const shellCall = (command, description) => ({ tool: { name: shell, arguments: { command, description } } })
+  const script = [
+    { tool: { name: 'graph_focus', arguments: { id: 'goal-1' } } },
+    { tool: { name: 'dispatch_task', arguments: { id: 'task-1', model: 'no-such-model', why: EXEC_WHY, quick: true } } },
+    { tool: { name: 'dispatch_task', arguments: { id: 'task-1', model, why: EXEC_WHY, quick: true, review: { depth: 'light', why: 'probe: one file' } } } },
+    { tool: { name: glmRoute ? 'Read' : 'read', arguments: { file_path: join(repo, 'package.json') } } },
+    { tool: { name: 'subagent', arguments: { description: 'probe plain subagent', prompt: 'Write README.md in the project root, then report.' } } },
+    shellCall('Start-Sleep -Seconds 8', 'probe: let the worker run'),
+    { text: 'done', ...(glmRoute ? { status: true } : { command: { name: 'hourness-status' } }) },
+  ]
+  const worker = [
+    shellCall('(Get-Location).Path', 'probe: show the working directory'),
+    writeCall(join(wt, 'site', 'feed', 'index.js'), 'probe\n'),
+    writeCall(join(wt, 'notes.txt'), 'no\n'),
+    writeCall(join(ws, 'README.md'), 'no\n'),
+    writeCall(join(wt, '.hourness', 'report.md'), 'report\n'),
+    { tool: { name: 'graph_status', arguments: { id: 'task-1' } } },
+    { tool: { name: 'graph_comment', arguments: { id: 'task-1', text: 'probe worker comment' } } },
+    shellCall('git push origin HEAD', 'probe: try to push'),
+    shellCall('git reset --hard', 'probe: reset the worktree'),
+    { tool: { name: 'structured_output', arguments: EXEC_HAND_BACK } },
+    { text: 'worker done' },
+  ]
+  const plain = [writeCall(join(ws, 'README.md'), 'plain\n'), { text: 'plain child done' }]
+  return designScenario(name, model, () => script, { wish: true, git: true, on: glmRoute ? undefined : profiles['probe-hourness'], extra: ['- id: glm-hourness/execute', '  disabled: false'], others: [worker, plain] })
+}
+const execGlm = execScenario(EXEC_GLM, 'glm-5.3-flash', true)
+const execPlain = execScenario(EXEC_PLAIN, 'deepseek-probe', false)
 const designRecord = (scenario) => readHolder(holderFileOf(join(scenario.dir, 'dsh-home', 'glm-hourness'), join(scenario.ws, 'docs', 'graph')))
 const MAIN_HEAD = '# Main agent\nYou are the main agent of this project'
 const sectionAt = step => step?.system.indexOf(MAIN_HEAD) ?? -1
@@ -2151,6 +2231,58 @@ function designChecks() {
 }
 
 /**
+ * E4 (docs/ORCHESTRATION.md §17.9; scenarios glm-exec-dispatch,
+ * non-glm-exec-dispatch): what the execute row's dispatch did on the real
+ * runtime, and what its rules and face filtering did to the dispatched
+ * worker and to a plain subagent of the main agent.
+ */
+function execChecks() {
+  return [[execGlm, EXEC_GLM, 'glm-5.3-flash', 'Write', 'Bash', 'GLM'], [execPlain, EXEC_PLAIN, 'deepseek-probe', 'write', 'pwsh', 'non-GLM']].flatMap(([scenario, name, model, write, shell, label]) => {
+    const ws = join(runDir, name, 'ws')
+    const wt = join(ws, '.worktrees', 'hz-task-1')
+    const main = scenario.steps.filter(step => step.sessionId === scenario.steps[0]?.sessionId)
+    const result = step => lastToolResult(step)?.text ?? ''
+    // The scripted steps: graph_focus, the bad-model dispatch, the valid one, a Read, the plain subagent, a sleep, done.
+    const badModel = lastToolResult(main[2])
+    const summaryJson = (() => { try { return JSON.parse(result(main[3])) } catch { return undefined } })()
+    const childId = summaryJson?.childId
+    const worker = childId === undefined ? [] : bySession(scenario, childId)
+    const plainId = /^started subagent (\S+)/.exec(result(main[5]))?.[1]
+    const plain = plainId === undefined ? [] : bySession(scenario, plainId)
+    const plainWrite = lastToolResult(plain[1])
+    const settled = main.flatMap(step => messagesOf(step, 'subagent-settled'))
+    const violations = jsonl(join(runDir, name, 'home', 'audit', 'violations.jsonl'))
+    const commands = childId === undefined ? [] : jsonl(join(ws, '.llm', 'execute', 'tasks', 'task-1', `${childId}.commands.jsonl`))
+    const snapshots = jsonl(join(ws, '.llm', 'snapshots.jsonl'))
+    const taskNode = (() => { try { return JSON.parse(readFileSync(join(ws, 'docs', 'graph', 'nodes', 'task-1.json'), 'utf8')) } catch { return undefined } })()
+    const history = taskNode?.history ?? []
+    const dispatchComment = history.find(entry => entry.op === 'comment' && String(entry.text).includes('第 1 次派发'))
+    const brief = worker[0]?.messages.find(message => message.source === 'user')?.text ?? ''
+    const workerFace = (worker[0]?.tools ?? []).map(tool => tool.name)
+    const mainFace = (main[0]?.tools ?? []).map(tool => tool.name)
+    const last = main.at(-1)
+    const rowAt = tableOf(last?.status ?? last?.command?.text ?? '')
+    const gitRefs = snapshotsOf({ ws })
+    return [
+      [`exec dispatch (${label}): dispatch_task is in the main agent's face, and a model the catalog does not list is refused before anything starts, with the provider's catalog in the hint`, mainFace.includes('dispatch_task') && badModel?.isError === true && result(main[2]).includes('not in the catalog') && result(main[2]).includes('Models on this provider:') && result(main[2]).includes('glm-5.3-flash'), `face ${mainFace.includes('dispatch_task')}; ${result(main[2]).slice(0, 140)}`],
+      [`exec dispatch (${label}): the valid call returns the dispatch summary at once: the task, the first attempt, the child id, provider and model, the light review, quick needs no plan, a 12-hex brief, the worktree and its branch`, summaryJson?.task === 'task-1' && summaryJson?.attempt === 1 && /^hz-task-1-a1-[0-9a-z]{6}$/.test(childId ?? '') && summaryJson?.provider === 'glm-probe' && summaryJson?.model === model && summaryJson?.review === 'light' && summaryJson?.plan === 'skipped' && /^[0-9a-f]{12}$/.test(summaryJson?.brief ?? '') && summaryJson?.worktree?.replaceAll('\\', '/') === '.worktrees/hz-task-1' && summaryJson?.branch === 'hz/task-1', JSON.stringify(summaryJson ?? null).slice(0, 220)],
+      [`exec dispatch (${label}): the dispatch did not wait for the worker: the main agent moved on while the worker was still making requests, and the run exits clean`, main.length === 7 && (worker.at(-1)?.clock ?? Number.POSITIVE_INFINITY) > main[3]?.clock && scenario.status === 0, `main ${main.length} step(s); worker's last clock ${worker.at(-1)?.clock ?? 'none'} vs main step 4 clock ${main[3]?.clock ?? 'none'}; exit ${scenario.status}`],
+      [`exec dispatch (${label}): the worker runs on the dispatched model in its own worktree`, worker.length >= 10 && worker.every(step => step.model === model) && (lastToolResult(worker[1])?.text ?? '').trim() === wt, `${worker.length} request(s) on ${[...new Set(worker.map(step => step.model))].join(', ') || 'none'}; cwd ${(lastToolResult(worker[1])?.text ?? '').trim() || 'no output'}`],
+      [`exec dispatch (${label}): the worker's first message is the brief, with no DSH return guidance in it (U1), and the handback the probe scripted passes the harness's own shape check`, brief.startsWith('# Task task-1: Add the feed') && brief.includes('You are a worker dispatched by the main agent') && brief.includes('brief ') && !brief.includes('Your parent agent id is') && isDeepStrictEqual(handbackProblems(EXEC_HAND_BACK), []), `brief ${brief.length} chars, head ${(brief.split('\n')[0] ?? '').slice(0, 60)}; guidance ${brief.includes('Your parent agent id is')}; problems ${JSON.stringify(handbackProblems(EXEC_HAND_BACK))}`],
+      [`exec dispatch (${label}): the worker's face keeps the write and shell tools and the graph reads, loses the nine graph writes and the execute and operate tools; the main agent's face has no worker tools`, GRAPH_WRITE_TOOLS.every(name => !workerFace.includes(name)) && ['graph_show', 'graph_open', 'graph_focus', 'graph_comment'].every(name => workerFace.includes(name)) && [...EXECUTE_TOOL_NAMES, ...OPERATE_TOOL_NAMES].every(name => !workerFace.includes(name)) && workerFace.includes(write) && workerFace.includes(shell) && WORKER_TOOL_NAMES.every(name => !mainFace.includes(name)), `worker face ${workerFace.length}, lost ${[...GRAPH_WRITE_TOOLS, ...EXECUTE_TOOL_NAMES, ...OPERATE_TOOL_NAMES].filter(name => workerFace.includes(name)).join(', ') || 'none'}; main face worker tools ${WORKER_TOOL_NAMES.filter(name => mainFace.includes(name)).join(', ') || 'none'}`],
+      [`exec dispatch (${label}): writes: in scope and the .hourness report run, out of scope and outside the worktree are refused and journaled`, lastToolResult(worker[2])?.isError !== true && existsSync(join(wt, 'site', 'feed', 'index.js')) && lastToolResult(worker[3])?.isError === true && !existsSync(join(wt, 'notes.txt')) && lastToolResult(worker[4])?.isError === true && readFileSync(join(ws, 'README.md'), 'utf8') !== 'no\n' && lastToolResult(worker[5])?.isError !== true && existsSync(join(wt, '.hourness', 'report.md')) && violations.some(record => record.rule === 'worker-scope' && record.agentId === childId), `results ${[2, 3, 4, 5].map(at => `${lastToolResult(worker[at])?.isError ?? '-'}`).join(' ')}; worker-scope records ${violations.filter(record => record.rule === 'worker-scope').length}`],
+      [`exec dispatch (${label}): the graph: status refused by name, the comment runs and lands in the task history as the worker's`, lastToolResult(worker[6])?.isError === true && lastToolResult(worker[7])?.isError !== true && history.some(entry => entry.actor === 'llm' && entry.text === 'probe worker comment'), `${lastToolResult(worker[6])?.isError}/${lastToolResult(worker[7])?.isError}; history ${JSON.stringify(history.map(entry => [entry.actor, entry.op]))}`],
+      [`exec dispatch (${label}): git: the push is refused with the branch correction and journaled; reset --hard runs after the harness's snapshot, whose ref and journal line are there`, lastToolResult(worker[8])?.isError === true && result(worker[8]).includes('use git only on your branch') && lastToolResult(worker[9])?.isError !== true && snapshots.length === 1 && snapshots[0]?.subcommand === 'reset' && String(snapshots[0]?.ref ?? '').startsWith('refs/hourness/snapshots/') && gitRefs.length === 1 && violations.some(record => record.rule === 'worker-git' && record.agentId === childId), `push ${result(worker[8]).slice(0, 60)}; reset ${lastToolResult(worker[9])?.isError}; snapshot ${JSON.stringify(snapshots[0] ?? null).slice(0, 140)}; refs ${gitRefs.join(', ')}`],
+      [`exec dispatch (${label}): the plain subagent's write is refused with the dispatch correction and the file is untouched`, plainWrite?.isError === true && result(plain[1]).includes('plain subagent tool') && readFileSync(join(ws, 'README.md'), 'utf8') !== 'plain\n', `${plainWrite?.isError}:${result(plain[1]).slice(0, 90)}`],
+      [`exec dispatch (${label}): no settlement notice for the dispatched worker reaches the main agent (delivery caller), while the plain subagent's does`, childId !== undefined && settled.length >= 1 && settled.every(message => !String(message.text).includes(childId)), `${settled.length} settlement(s): ${settled.map(message => String(message.text).slice(0, 40)).join(' | ') || 'none'}`],
+      [`exec dispatch (${label}): the command record of the chain is under .llm/execute/tasks/task-1: allowed writes, refusals, and the reset with its git subcommand`, commands.length >= 5 && commands.some(line => line.verdict === 'allowed' && line.tool === 'write' && line.writes === true) && commands.some(line => line.verdict === 'refused') && commands.some(line => line.verdict === 'allowed' && line.tool === 'pwsh' && JSON.stringify(line.git ?? []).includes('reset')), `${commands.length} line(s): ${commands.map(line => `${line.tool}:${line.verdict}`).join(', ') || 'none'}`],
+      [`exec dispatch (${label}): the dispatch comment on the task carries the child, the model and the reason`, dispatchComment !== undefined && String(dispatchComment.text).includes(`模型 glm-probe/${model}，理由：${EXEC_WHY}`) && String(dispatchComment.text).includes(childId ?? ''), (String(dispatchComment?.text ?? '').split('\n')[0] ?? 'no comment').slice(0, 170)],
+      [`exec dispatch (${label}): /status lists the execute row in effect with its dispatch line, and the row printed nothing to stderr`, rowAt.execute?.status === ACTED && (rowAt.execute?.reason ?? '').includes('dispatch_task') && scenario.status === 0 && !stderrOf(name).includes('dsh-glm-hourness/execute'), `${JSON.stringify(rowAt.execute ?? null)}; exit ${scenario.status}; stderr line ${stderrOf(name).split('\n').find(line => line.includes('execute')) ?? 'none'}`],
+    ]
+  })
+}
+
+/**
  * Memory (docs/ORCHESTRATION.md §8; scenarios glm-memory, non-glm-memory,
  * glm-memory-compact, glm-worker-memory, glm-memory-depth): what the real
  * runtime did with the memory tools, the index notice, the child's tool face,
@@ -2461,6 +2593,7 @@ const checks = [
   ['loops-peak restart: the re-emitted end edge of the same peak is a duplicate, so no second reminder goes out after the restart, and the journal still carries the one delivered run', loopsPeakRestartNoticeSteps.length === 0 && loopsPeakRuns().some(record => record.kind === 'loop-duplicate' && record.key === `peak-changed:end:${LOOPS_PEAK_END}`) && loopsPeakRuns().filter(record => record.kind === 'loop-done' && record.entry === 'loops.peak-end').length === 1, `${loopsPeakRestartNoticeSteps.length} step(s) with a notice; duplicates ${loopsPeakRuns().filter(record => record.kind === 'loop-duplicate').length}; runs ${JSON.stringify(loopsPeakRuns().filter(record => record.entry === 'loops.peak-end').map(record => [record.kind, record.outcome]))}`],
   ['rules-peak-hourness: the row is in effect without the pricing service (a supported combination) and the main agent\'s tool call ran', aloneHealth.rules?.status === ACTED && aloneHealth.rules.reason.includes('读不出是不是高峰') && lastToolResult(rulesPeakAlone.steps[1])?.isError !== true && !stderrOf('rules-peak-hourness').includes('dsh-glm-hourness/rules'), `${healthLine(aloneHealth, 'rules')} (${aloneHealth.rules?.reason ?? ''})`],
   ...designChecks(),
+  ...execChecks(),
   ['non-glm boot: the runtime reached the probe provider', plainFirst !== undefined, `exit ${plain.status}, ${plain.steps.length} step(s)`],
   ['non-glm prompt: DSH identity untouched', plainFirst?.system.includes('powered by DeepSeek Harness') === true && !plainFirst.system.includes('You are ZCode'), ''],
   ['non-glm tools: natives present, no aliases', plainFirst !== undefined && nativeFace.every(name => plainTools.has(name)) && zcodeFace.every(name => !plainTools.has(name)), zcodeFace.filter(name => plainTools.has(name)).join(', ') || ''],

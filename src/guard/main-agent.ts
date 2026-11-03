@@ -49,7 +49,7 @@ import { sessionRoute } from '../shared/route.ts'
 import { GRAPH_TOOL_NAMES } from '../shared/tool-names.ts'
 import { baseFor, type ViolationRecord } from './index.ts'
 import { guardGit, SNAPSHOT_NOTICE_KIND, snapshotCorrection, type SnapshotEnvironment } from './git-snapshot.ts'
-import { judgeDispatchedWrite, releaseCorrection, type ReleaseDeps } from './design-release.ts'
+import { DISPATCH_CHAIN_RULE, dispatchChainCorrection, judgeDispatchedWrite, releaseCorrection, type ReleaseDeps } from './design-release.ts'
 import { attemptOf, DELEGATIONS_CORRECTION, GRAPH_CLI_CORRECTION, graphCliWrite, judgeGraphStage, judgeMainAgentGraph, relayOf, stageCandidate, SUBAGENT_RELAY_CORRECTION, writesDelegations, type GraphRuleDeps, type SessionKind, type StageAttempt } from './main-agent-graph.ts'
 import { ASK_RULE, DESIGN_RELEASE_RULE, GIT_SNAPSHOT_RULE, GRAPH_CLI_RULE, GRAPH_DELEGATIONS_RULE, GRAPH_RELAY_RULE, GRAPH_STAGE_RULE, NO_WRITE_RULE } from './main-agent-rules.ts'
 import { originOf } from './origin.ts'
@@ -63,6 +63,8 @@ const GRAPH_NAMES: ReadonlySet<string> = new Set(GRAPH_TOOL_NAMES)
 
 const NO_WRITE_VIOLATION = 'You are the main agent of this session (/wish): the main agent plans, dispatches and accepts work; it never writes files itself.'
 const NO_WRITE_RIGHT_PATH = 'Record designs and decisions on the project graph with the graph tools. For a change to files, describe it as a task node (graph_propose, type task, with acceptance), graph_focus it, and hand it to a subagent with the subagent tool; subagents write only once what you work on (the goal, or its module) is released, which the human does when you put the design to them with propose_to_human.'
+/** The right path once the execute row is on (F18): writing work goes to dispatched workers, plain subagents only read. */
+const NO_WRITE_RIGHT_PATH_EXECUTE = 'Record designs and decisions on the project graph with the graph tools. For a change to files, describe it as a task node (graph_propose, type task, with acceptance), graph_focus it, and dispatch it with dispatch_task: writing work goes to workers you dispatch with dispatch_task; subagents started with the subagent tool only read.'
 const NO_WRITE_EXCEPTION = 'If the human wants this session to edit files directly, they leave main-agent mode with /wish off.'
 
 /** What a call does that writes files, as the first line of a correction; undefined when it writes nothing. `call.name` is the DSH native. */
@@ -75,16 +77,18 @@ function writeFactOf(call: ToolCall): string | undefined {
   return shell === undefined ? undefined : `You tried to change files through the shell: "${shell.command}" (${describeWrite(shell.write)}).`
 }
 
-/** main-agent-no-write: a file tool that writes, or a shell command that does. */
-const mainAgentNoWrite: GuardRule = {
-  id: NO_WRITE_RULE,
-  // The main agent reads the rules in its identity section (src/design/identity.ts), not in the guard section every session gets.
-  declare: '',
-  detect(call) {
-    const fact = writeFactOf(call)
-    if (fact === undefined) return ALLOW
-    return { kind: 'deny', rule: NO_WRITE_RULE, correction: { fact, violation: NO_WRITE_VIOLATION, rightPath: NO_WRITE_RIGHT_PATH, exception: NO_WRITE_EXCEPTION } }
-  },
+/** main-agent-no-write: a file tool that writes, or a shell command that does. The right path points at dispatch_task once the execute row is on (F18). */
+function mainAgentNoWrite(executeOn: () => boolean): GuardRule {
+  return {
+    id: NO_WRITE_RULE,
+    // The main agent reads the rules in its identity section (src/design/identity.ts), not in the guard section every session gets.
+    declare: '',
+    detect(call) {
+      const fact = writeFactOf(call)
+      if (fact === undefined) return ALLOW
+      return { kind: 'deny', rule: NO_WRITE_RULE, correction: { fact, violation: NO_WRITE_VIOLATION, rightPath: executeOn() ? NO_WRITE_RIGHT_PATH_EXECUTE : NO_WRITE_RIGHT_PATH, exception: NO_WRITE_EXCEPTION } }
+    },
+  }
 }
 
 /** main-agent-ask: the question tool hidden from the main agent, called by name. `hidden` lists the DSH natives. */
@@ -127,6 +131,17 @@ export interface BypassAlert {
 export interface MainAgentRulesDeps extends Pick<ReleaseDeps, 'agents' | 'graph'>, Pick<GraphRuleDeps, 'checkRelay'> {
   /** Whether the agent's session is its project's main agent now. May throw: the call then passes and the health says why. */
   readonly isMainAgent: (agent: Subject) => boolean
+  /**
+   * The execute row's wiring (src/shared/execute-service.ts): `isWorker` per
+   * call answers `true` for a registered worker or reviewer, `false` for an
+   * agent the row gates but no dispatch carries, `undefined` when the row is
+   * off; `executeOn` answers whether the row is on now. With it, the main
+   * agent's boundary line and no-write right path point at dispatch_task
+   * (F18), and design-before-release defers a registered worker's write to
+   * the execute row's rules.
+   */
+  readonly isWorker?: (agentId: string) => boolean | undefined
+  readonly executeOn?: () => boolean
   /** DSH natives of the tools the main agent does not get (ask_user_question). */
   readonly hiddenTools: readonly string[]
   /** Write one denial to the violation journal; never rejects into the call. */
@@ -151,6 +166,7 @@ function message(error: unknown): string {
 export function installMainAgentRules(ctx: PreExecuteHost & ServiceLookup, deps: MainAgentRulesDeps): () => void {
   const warn = dialectWarner('design')
   const ask = mainAgentAsk(deps.hiddenTools)
+  const noWrite = mainAgentNoWrite(() => deps.executeOn?.() ?? false)
   return ctx.on('tools/pre-execute', async (payload, next) => {
     const agent = payload.agent
     // A nested transport call is judged like a direct one of the same agent: the PTC preset reaches these rules through it, so it may not pass (S4-1, S5-1, S6-2, S8-3).
@@ -238,7 +254,7 @@ export function installMainAgentRules(ctx: PreExecuteHost & ServiceLookup, deps:
     }
     const route = sessionRoute(session)
     const face = dialectNames(dialect, agent, route, warn) ?? NATIVE_FACE
-    const verdict = evaluate([ask, mainAgentNoWrite], call, face)
+    const verdict = evaluate([ask, noWrite], call, face)
     if (verdict.kind === 'deny') return denial(verdict.rule, verdict.correction)
     if (shell === undefined) return next()
     const cli = cliRefusal()
@@ -266,6 +282,8 @@ async function judgeDelegated(
   if (fact === undefined) return next()
   const outcome = await judgeDispatchedWrite(deps, agent)
   if (outcome.kind === 'deny') return denial(DESIGN_RELEASE_RULE, releaseCorrection(fact, outcome.verdict))
+  // dispatch-chain-readonly (M7 design 0.6 §3.2.2): with the execute row on, the released stage is no longer a pass — a plain subagent of the main agent only reads.
+  if (outcome.kind === 'readonly') return denial(DISPATCH_CHAIN_RULE, dispatchChainCorrection(fact))
   if (outcome.unjudged !== undefined) {
     const why = `派出去的 agent 的写入没有按放行状态判（${outcome.unjudged}），这次调用放行了`
     deps.report(agent, 'degraded', why)

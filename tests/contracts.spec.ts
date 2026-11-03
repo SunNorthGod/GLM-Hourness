@@ -69,6 +69,7 @@ const ROW_IDS = [
   'glm-hourness/graph-panel',
   'glm-hourness/rules',
   'glm-hourness/design',
+  'glm-hourness/execute',
   'glm-hourness/loops',
   'glm-hourness/ui',
 ]
@@ -736,14 +737,14 @@ test('main agent rules: every rule of the table denies once on the fake host, an
   assert.deepEqual([...new Set(rules)].sort(), MAIN_AGENT_RULES.map(rule => rule.id).sort())
 })
 
-test('the model catalog and the session query shapes of the execute row are implementable against rc.3', () => {
+test('the model catalog and the session query shapes of the execute row are implementable against rc.3', async () => {
   const catalog: LlmCatalog = {
-    listModels: provider => (provider === 'glm' ? [{ id: 'glm-5.3-flash' }] : []),
-    resolveModelInfo: (provider, model) => (provider === 'glm' && model === 'glm-5.3-flash' ? { reasoning: { efforts: ['none', 'low'] } } : undefined),
+    listModels: provider => Promise.resolve(provider === 'glm' ? [{ id: 'glm-5.3-flash' }] : []),
+    resolveModelInfo: (provider, model) => Promise.resolve(provider === 'glm' && model === 'glm-5.3-flash' ? { reasoning: { efforts: ['none', 'low'] } } : undefined),
   }
-  assert.deepEqual(catalog.listModels('glm'), [{ id: 'glm-5.3-flash' }])
-  assert.equal(catalog.resolveModelInfo('glm', 'glm-5.3-flash')?.reasoning?.efforts?.length, 2)
-  assert.equal(catalog.resolveModelInfo('other', 'x'), undefined)
+  assert.deepEqual(await catalog.listModels('glm'), [{ id: 'glm-5.3-flash' }])
+  assert.equal((await catalog.resolveModelInfo('glm', 'glm-5.3-flash'))?.reasoning?.efforts?.length, 2)
+  assert.equal(await catalog.resolveModelInfo('other', 'x'), undefined)
   const query: SessionQueryService = {
     observeSession: sessionId => (sessionId === 's1' ? { projections: { values: { handback: '{}' } } } : undefined),
   }

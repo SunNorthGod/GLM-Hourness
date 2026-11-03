@@ -371,7 +371,7 @@ export interface BriefInput {
   /** An approved plan carried over from an earlier dispatch (§3.3.4), as `readPlanSection` gives it. */
   readonly plan?: { readonly version: number, readonly steps: string }
   /** The dispatch was `quick` and needs no plan. */
-  readonly quick: boolean
+  readonly quick?: boolean
   /** Lessons that match the task, one line each; at most five are used. */
   readonly lessons?: readonly string[]
   /** The rules board's lines for this session, when the rules row is on. */
@@ -482,4 +482,69 @@ export function renderBrief(input: BriefInput): Brief {
   }
   const digest = digest12(text)
   return { text: `${text}\n\nbrief ${digest} · graph ${input.graph.revision}`, digest, truncated: [...cut] }
+}
+
+// ---- the design review's brief (§3.7.5) ----
+
+const DECISION_TEXT_LIMIT = 400
+
+export interface DesignReviewInput {
+  readonly graph: LoadedGraph
+  readonly childId: string
+  /** The main agent's agent id. */
+  readonly parent: string
+  /** The review task; its module is read from the graph. */
+  readonly task: GraphNode
+}
+
+/**
+ * The brief of a module's design review (§3.7.5): the shape of §3.5.2, the
+ * goal line naming the module, the context carrying the design decisions
+ * under review with their reason text, the module's acceptance and non-goals,
+ * the planning already under the module, and the direction list as numbered
+ * `direction:<i>` items. The reviewer writes nothing but the report; the
+ * blocking criteria gain `direction:<i>`, and `checked` must cover every
+ * direction and every acceptance item.
+ */
+export function renderDesignReviewBrief(input: DesignReviewInput): Brief {
+  const readers = MODULE_READERS
+  const module = readers.moduleOf(input.graph, input.task)
+  // The gate guarantees a module under every design review it passes; a miss is a bug, not a brief.
+  if (module === undefined) throw new TypeError(`the review task ${input.task.id} is under no module`)
+  const sources = (input.task.edges ?? []).filter(edge => edge.type === 'source').flatMap(edge => {
+    const decision = input.graph.nodes.get(edge.to)
+    return decision === undefined ? [] : [decision]
+  })
+  const directions = directionsOf(input.graph)?.acceptance ?? []
+  const planned = [...input.graph.nodes.values()].filter(entry => entry.parent === module.id && (entry.type === 'feature' || entry.type === 'task') && entry.id !== input.task.id)
+  const lines: string[] = [
+    `# Design review ${input.task.id}: module ${module.id} "${module.title}"`,
+    `You are a reviewer dispatched by the main agent (agent id "${input.parent}") for exactly one review of the project graph.`,
+    '',
+    '## Goal',
+    `Review the design of module ${module.id} "${module.title}" against the direction list.`,
+    `Decisions it follows: ${sources.map(decisionLine).join('; ') || 'none recorded'}.`,
+    '',
+    '## Context',
+    '- Workspace: your working directory is the main checkout of the repository.',
+    '- The design decisions under review:',
+    ...sources.map(decision => `  - ${decision.id} "${decision.title}"${decision.body === undefined || decision.body.trim() === '' ? '' : ` — ${decision.body.trim().slice(0, DECISION_TEXT_LIMIT)}`}`),
+    `- The module's acceptance: ${(module.acceptance ?? []).join('; ') || 'none recorded'}.`,
+    `- Not in scope: ${(module.nonGoals ?? []).join('; ') || 'nothing recorded'}.`,
+    ...(planned.length > 0 ? ['- Planning already under the module:', ...planned.map(entry => `  - ${entry.type} "${entry.title}"${(entry.acceptance ?? []).length > 0 ? ` (acceptance: ${(entry.acceptance ?? []).join('; ')})` : ''}`)] : []),
+    '- The direction list:',
+    ...directions.map((direction, index) => `  - direction:${index} ${direction}`),
+    '',
+    '## Constraints',
+    '- You write nothing except your report under .hourness/ in your working directory.',
+    '- Questions that need the main agent: ask_main (state the assumption you will use if no answer comes). Do not end your turn to wait.',
+    '- A finding blocks only when it hangs on acceptance:<i> of the module, on irreversible-loss, on failure-plan, or on direction:<i> when the design violates direction item <i>. Everything else is not blocking.',
+    '- checked must cover every direction:<i> above and every acceptance:<i> of the module, each with the evidence you looked at.',
+    '',
+    '## Done when',
+    `- Hand back by calling structured_output once (verdict, commit, findings, checked, lessons). Write the long report to ".hourness/${input.childId}.md" in your working directory and give the path in "report".`,
+  ]
+  const text = lines.join('\n')
+  const digest = digest12(text)
+  return { text: `${text}\n\nbrief ${digest} · graph ${input.graph.revision}`, digest, truncated: [] }
 }

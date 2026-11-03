@@ -1,10 +1,11 @@
 /**
  * Dispatches and their register (M7 design 0.6 §3.1.2 steps 5 and 10,
  * §3.1.4): the child id of a dispatch, the record of one running dispatch,
- * the queries the gates make over a list of the running ones, and the dispatch comment
- * written on the task. Pure functions; the register itself, a module-level
- * map filled when `startActivation` succeeds, belongs to the dispatch
- * code (step E4).
+ * the queries the gates make over a list of the running ones, the dispatch
+ * comment written on the task, and the register itself — the module-level
+ * map filled when `startActivation` succeeds. The child id and the comment
+ * are pure functions; the register is the one piece of state in the layer
+ * that a process keeps.
  *
  * A child id names the task and the attempt and ends in a random suffix.
  * Decoding it is for display and diagnostics only: write permission comes
@@ -16,7 +17,7 @@ import type { GraphNode } from '../graph/schema.ts'
 type AttemptRole = 'worker' | 'review' | 'acceptance-review' | 'check'
 
 /** What `dispatch_task` reports about the plan of a worker. */
-type PlanStatus = 'required' | 'approved' | 'skipped' | 'none'
+export type PlanStatus = 'required' | 'approved' | 'skipped' | 'none'
 
 /** One running dispatch in the register. */
 export interface Attempt {
@@ -33,6 +34,8 @@ export interface Attempt {
   readonly reasoningEffort?: string
   readonly why: string
   readonly plan: PlanStatus
+  /** The approved plan's paths union (§3.2.1), carried from the task's approved plan at dispatch; present only while `plan` is `approved`. */
+  readonly planPaths?: readonly string[]
   /** The `pins:` line written on the dispatch comment. */
   readonly pins: string
 }
@@ -157,4 +160,57 @@ export function nextAttempt(node: GraphNode): number {
 /** The latest dispatch comment of a task, or undefined when it was never dispatched. */
 export function latestDispatch(node: GraphNode): DispatchRecord | undefined {
   return dispatchRecords(node).at(-1)
+}
+
+// ---- the register (§3.1.4) ----
+
+/**
+ * The dispatches this process started that have not finished their handback
+ * processing. Module-level on purpose: the register survives the row being
+ * disabled and enabled again in the same process, and is emptied only when
+ * the module itself is re-imported — then every still-alive worker reads as
+ * "not in the register" (read-only, listed as lost in the dispatch notice),
+ * never as a writer (§3.1.4). The activation is written here only after
+ * `startActivation` succeeded, and is kept until the handback processing is
+ * done; the live check (`agents.get(id)`) is the callers'.
+ */
+const register = new Map<string, Attempt>()
+
+/** Enter a started dispatch. */
+export function registerAttempt(attempt: Attempt): void {
+  register.set(attempt.childId, attempt)
+}
+
+/** Drop a dispatch whose handback processing is done. */
+export function forgetAttempt(childId: string): void {
+  register.delete(childId)
+}
+
+/** The dispatch a child id names, or undefined when this process did not start it (or it is gone). */
+export function registeredAttempt(childId: string): Attempt | undefined {
+  return register.get(childId)
+}
+
+/** Every dispatch in the register, for the running counts the gates and the health read. */
+export function registeredDispatches(): readonly Attempt[] {
+  return [...register.values()]
+}
+
+/** What `dispatch_task` returns (§3.1.1): the dispatch's facts and the brief digest, the plan as words. */
+export interface DispatchSummary {
+  readonly task: string
+  readonly attempt: number
+  readonly childId: string
+  readonly role: AttemptRole
+  /** Absolute path and branch of the worktree; workers only. */
+  readonly worktree?: string
+  readonly branch?: string
+  readonly provider: string
+  readonly model: string
+  readonly reasoningEffort?: string
+  /** The declared review depth; write tasks only. */
+  readonly review?: 'full' | 'light' | 'skip'
+  /** 12 hex digits of the brief. */
+  readonly brief: string
+  readonly plan: PlanStatus
 }

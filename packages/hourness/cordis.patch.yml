@@ -109,6 +109,19 @@
       name: dsh-hourness/design
       inject: [commands]
       config: {}
+    - id: glm-hourness/execute
+      # The execution line (docs/ORCHESTRATION.md §3, M7 design 0.6): dispatch_task
+      # for the main agent, the dispatched chain's execution-boundary rules
+      # (worker-scope, worker-graph-readonly, worker-git, worker-message-live-only;
+      # dispatch-chain-readonly is the change to M3's design-before-release), the
+      # tool faces of the chain, and the glmHournessExecute service. The worker
+      # tools, the merge gate, the drive and the loop-board seam arrive with E5–E8.
+      # Ships disabled until the E9 verification (L3 skeleton scenario, one real
+      # model run, the first L4 batch); AGENTS.md turns it on then.
+      name: dsh-hourness/execute
+      disabled: true
+      inject: [tools]
+      config: {}
     - id: glm-hourness/loops
       # Loop board (docs/ORCHESTRATION.md §18): what is done when something
       # happens or the time comes. Rows hand their entries, events and harness

@@ -13,11 +13,12 @@ import type { PreExecuteHost, ProvideHost, ServiceLookup, ToolExecutionPayload }
 /**
  * Dispatch tool names of the rc.3 composition: the Agent Team tools
  * (dsh-experimental-tool-agent-team), `send_message` (also
- * dsh-tool-subagent-control), and the two dsh-tool-subagent rows of the
+ * dsh-tool-subagent-control), the two dsh-tool-subagent rows of the
  * base profile, `subagent` (spawn) and `subagent_fork` (fork; dsh-base
- * cordis.patch.yml `toolName`).
+ * cordis.patch.yml `toolName`), and the orchestration package's own
+ * dispatch (M7 design 0.6 §2.1, E4).
  */
-export const DISPATCH_TOOLS = ['spawn_teammate', 'team_task_create', 'team_task_update', 'send_message', 'subagent', 'subagent_fork'] as const
+export const DISPATCH_TOOLS = ['spawn_teammate', 'team_task_create', 'team_task_update', 'send_message', 'subagent', 'subagent_fork', 'dispatch_task'] as const
 
 /** Observe root tool calls; dispatches are journaled, every root call reaches `observe` (row health). */
 export function applyOverJournal(ctx: PreExecuteHost, journal: Pick<AuditJournal, 'decision'>, observe?: (payload: ToolExecutionPayload) => void): () => void {

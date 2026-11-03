@@ -27,7 +27,7 @@ import type { AgentsService, LiveAgentLike, SessionLike } from '../shared/dsh-mi
 import type { Correction } from './rules.ts'
 
 /** Where a dispatched call's chain ends. */
-type RootLookup =
+export type RootLookup =
   | { readonly kind: 'self' }
   | { readonly kind: 'root', readonly root: LiveAgentLike }
   | { readonly kind: 'unknown', readonly why: string }
@@ -38,9 +38,10 @@ type RootLookup =
  * `parentSession` only, so the walk stops at it). Every hop goes to a
  * different live agent, so the walk ends in at most as many hops as there
  * are agents; a chain that loops, loses its `parentSession` or reaches an
- * agent that is gone is `unknown`.
+ * agent that is gone is `unknown`. The execute row's face filter walks the
+ * same chain (M7 design 0.6 §2.3.2), so the walk is shared here.
  */
-function dispatchRoot(agents: Pick<AgentsService, 'get'>, caller: { readonly id: string, readonly session: SessionLike }): RootLookup {
+export function dispatchRoot(agents: Pick<AgentsService, 'get'>, caller: { readonly id: string, readonly session: SessionLike }): RootLookup {
   if (caller.session.header.origin !== 'subagent') return { kind: 'self' }
   const seen = new Set<string>([caller.id])
   let header = caller.session.header
@@ -105,22 +106,45 @@ export function releaseCorrection(fact: string, verdict: Extract<ReleaseVerdict,
   return { fact, violation: verdict.violation, rightPath: `${RIGHT_PATH}${module}`, exception: EXCEPTION }
 }
 
+/** The rule id the execute row's dispatch-chain-readonly gate is journaled under (M7 design 0.6 §3.2.2, §12.1). */
+export const DISPATCH_CHAIN_RULE = 'dispatch-chain-readonly'
+
+const DISPATCH_CHAIN_FACT = 'In a main-agent session only dispatched task workers write; you were started with the plain subagent tool.'
+const DISPATCH_CHAIN_RIGHT = 'Read, search and report back; the main agent dispatches writing work with dispatch_task.'
+
+/** The four-part correction for a write by an agent of the main agent's chain that no dispatch carries (§3.2.2): `fact` says what the call tried. */
+export function dispatchChainCorrection(fact: string): Correction {
+  return { fact, violation: DISPATCH_CHAIN_FACT, rightPath: DISPATCH_CHAIN_RIGHT, exception: EXCEPTION }
+}
+
 /** What the judge needs from the design row; every member may throw, and the call then passes. */
 export interface ReleaseDeps {
   readonly agents: () => Pick<AgentsService, 'get'> | undefined
   /** Whether the agent is its project's main agent now. */
   readonly isMainAgent: (agent: LiveAgentLike) => boolean
   readonly graph: () => GraphFocusService | undefined
+  /**
+   * The execute row's register check (§3.2.2): `true` for a registered
+   * worker or reviewer (its writes are the execute row's rules' business,
+   * the release state among them — it passes here), `false` for an agent the
+   * row is on for but no dispatch carries, `undefined` when the row cannot
+   * say. Never throws.
+   */
+  readonly isWorker?: (agentId: string) => boolean | undefined
+  /** Whether the execute row is on now; the released stage passes only while it is off. */
+  readonly executeOn?: () => boolean
 }
 
-/** The outcome for one write by a dispatched agent: denied with the verdict, or let through, with why it could not be judged and the main agent it would have been judged against. */
+/** The outcome for one write by a dispatched agent: denied with the verdict, denied as a plain subagent of a main agent, or let through, with why it could not be judged and the main agent it would have been judged against. */
 export type ReleaseOutcome =
   | { readonly kind: 'deny', readonly verdict: Extract<ReleaseVerdict, { kind: 'deny' }> }
+  | { readonly kind: 'readonly' }
   | { readonly kind: 'allow', readonly unjudged?: string, readonly root?: LiveAgentLike }
 
 /**
  * Judge a write by a dispatched agent: follow the chain to its root, and if
- * the root is a main agent, judge the write by its focus. Never throws.
+ * the root is a main agent, judge the write by its focus, with the execute
+ * row's answer where the row is on. Never throws.
  */
 export async function judgeDispatchedWrite(deps: ReleaseDeps, caller: { readonly id: string, readonly session: SessionLike }): Promise<ReleaseOutcome> {
   let root: LiveAgentLike | undefined
@@ -132,11 +156,13 @@ export async function judgeDispatchedWrite(deps: ReleaseDeps, caller: { readonly
     if (lookup.kind === 'self') return { kind: 'allow' }
     root = lookup.root
     if (!deps.isMainAgent(root)) return { kind: 'allow' }
+    if (deps.isWorker?.(caller.id) === true) return { kind: 'allow' }
     const graph = deps.graph()
     const dir = graph?.dirFor(root.session.header.cwd)
     if (graph === undefined || dir === undefined) return { kind: 'allow', root, unjudged: 'the graph row does not say where the project graph is or what the main agent has in focus' }
     const verdict = releaseVerdict(await loadGraph(dir), graph.focusOf(root.session))
-    return verdict.kind === 'deny' ? { kind: 'deny', verdict } : { kind: 'allow' }
+    if (verdict.kind === 'deny') return { kind: 'deny', verdict }
+    return deps.executeOn?.() === true ? { kind: 'readonly' } : { kind: 'allow' }
   }
   catch (error) {
     return { kind: 'allow', ...root === undefined ? {} : { root }, unjudged: error instanceof Error ? error.message : String(error) }

@@ -9,6 +9,7 @@
  * does.
  */
 import type { GraphNode } from '../graph/schema.ts'
+import type { PlanStatus } from './attempts.ts'
 import { digest12 } from './digest.ts'
 import { isScopePath, within } from './scope.ts'
 
@@ -213,4 +214,10 @@ export function carriedPlan(task: GraphNode): PlanApproval | undefined {
   }).at(-1)
   const section = readPlanSection(task.body)
   return approval !== undefined && section !== undefined && section.state === 'approved' && section.digest === approval.digest ? approval : undefined
+}
+
+/** The `plan` word of a dispatch's summary (§3.1.1): an approved plan carried over, a `quick` dispatch without one, else a plan is required. */
+export function planStatusOf(task: GraphNode, quick: boolean | undefined): PlanStatus {
+  if (carriedPlan(task) !== undefined) return 'approved'
+  return quick === true ? 'skipped' : 'required'
 }

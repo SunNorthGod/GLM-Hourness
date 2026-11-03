@@ -649,15 +649,16 @@ export interface SubagentsService {
 
 /**
  * The `llm` service members the execute row reads for the model choice (rc.3
- * dsh-llm, service name `llm`, 1816): `listModels` (2080–2101) is the
- * deduplicated catalog of a provider, `{id, name?}` — the runtime does not
- * bind the catalog to routing, so it is a check, not a gate (§3.1.3) — and it
- * throws for a provider that is not registered; `resolveModelInfo`
- * (2111–2116) adds the model's `reasoning.efforts` when it has any.
+ * dsh-llm, service name `llm`, 1816): `listModels` (typert.host.js:236,
+ * `async listModels(provider: string): Promise<LlmModelInfo[]>`) is the
+ * deduplicated catalog of a provider — the runtime does not bind the catalog
+ * to routing, so it is a check, not a gate (§3.1.3) — and it throws for a
+ * provider that is not registered; `resolveModelInfo` (typert.host.js:243,
+ * async) adds the model's `reasoning.efforts` when it has any.
  */
 export interface LlmCatalog {
-  listModels(provider: string): readonly { readonly id: string, readonly name?: string }[]
-  resolveModelInfo(provider: string, model: string): { readonly reasoning?: { readonly efforts?: readonly string[] } } | undefined
+  listModels(provider: string): Promise<readonly { readonly id: string, readonly name?: string }[]>
+  resolveModelInfo(provider: string, model: string): Promise<{ readonly reasoning?: { readonly efforts?: readonly string[] } } | undefined>
 }
 
 /**

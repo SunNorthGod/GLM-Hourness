@@ -622,7 +622,7 @@ async function outboundRefusal(invocation: GitInvocation, env: SnapshotEnvironme
 // The snapshot
 
 /** Who asks for a snapshot, for the journal line. */
-interface SnapshotWho {
+export interface SnapshotWho {
   readonly command: string
   /** The working directory of the session: the project root is looked for there first. */
   readonly sessionDir?: string
@@ -638,7 +638,7 @@ interface RepoInfo {
   readonly top: string | undefined
 }
 
-type SnapshotOutcome =
+export type SnapshotOutcome =
   | { readonly kind: 'saved', readonly entry: SnapshotEntry, readonly notice: string | undefined, readonly journalError?: string }
   /** Nothing the command could lose is outside git's own history: no snapshot, no notice. */
   | { readonly kind: 'nothing' }
@@ -1078,7 +1078,7 @@ function snapshotNotice(entry: SnapshotEntry): string {
  * snapshot that cannot be made is `refused`, and git missing is
  * `git-missing`.
  */
-async function takeSnapshot(
+export async function takeSnapshot(
   repo: string,
   invocation: GitInvocation,
   risk: GitRisk,

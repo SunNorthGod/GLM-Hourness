@@ -490,6 +490,19 @@ export function createGit(runner: GitRunner = realGitRunner) {
     return result.ok ? succeeded(undefined) : result
   }
 
+  /**
+   * Delete a worktree the harness created in this same dispatch call and the
+   * branch it made for it (§3.1.2 step 4: a failed setup deletes both, so
+   * the next dispatch starts clean). The forced removal is safe here exactly
+   * because the worktree is the one this call created.
+   */
+  async function discardWorktree(cwd: string, path: string, branch: string): Promise<Outcome<undefined>> {
+    const removed = await read(cwd, ['worktree', 'remove', '--force', '--', path], WRITE_TIMEOUT_MS)
+    if (!removed.ok) return removed
+    const deleted = await read(cwd, ['branch', '--delete', '--force', `refs/heads/${branch}`])
+    return deleted.ok || deleted.reason.includes('not found') ? succeeded(undefined) : deleted
+  }
+
   /** `hz/<task>@<n>` for the first `n` from 1 that is no branch yet. */
   async function freeArchiveName(cwd: string, branch: string): Promise<string> {
     for (let n = 1; ; n++) {
@@ -746,7 +759,7 @@ export function createGit(runner: GitRunner = realGitRunner) {
   return {
     toplevel, currentBranch, resolveCommit, branchTip, mergeBase, isAncestor,
     changedFiles, entryAt, sameContent, taskTrailers, lastTaskCommit,
-    listWorktrees, ensureWorktree, removeWorktree, prepareGateWorktree,
+    listWorktrees, ensureWorktree, removeWorktree, discardWorktree, prepareGateWorktree,
     trunkUpstream, trunkRefs, reflogSubject, lsRemote,
   }
 }

@@ -361,7 +361,12 @@ class ProbeAdapter {
   providerRetryPolicy() { return undefined }
   imageRequestPricing() { return undefined }
   imageRequestTarget(_provider, _model, image) { return glmImageRequestTarget(image) }
-  listModels(provider) { return Promise.resolve(GLM_MODELS.map(model => ({ provider, id: model.id, name: `${model.name} (probe)`, inputModalities: [...model.inputModalities] }))) }
+  // The catalog the provider serves: the GLM models plus the probe's own
+  // non-GLM id, so a dispatch of the non-GLM scenarios passes the execute
+  // row's catalog check (the row reads llm.listModels; ORCHESTRATION §17.9).
+  listModels(provider) {
+    return Promise.resolve([...GLM_MODELS.map(model => ({ provider, id: model.id, name: `${model.name} (probe)`, inputModalities: [...model.inputModalities] })), { provider, id: 'deepseek-probe', name: 'DeepSeek Probe', inputModalities: ['text'] }])
+  }
   resolveModel(provider, model) {
     return Promise.resolve({
       provider,
