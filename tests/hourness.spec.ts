@@ -6,6 +6,7 @@ import test from 'node:test'
 import { creditPricing } from '../src/glm-llm/credits.ts'
 import { apply, renderHourness } from '../src/report/index.ts'
 import { cacheHitRate, parseGaps, peakStatusItems, usagePanel, usagePanelLines, usagePanelOf, usageStatusItems, type PanelLineOptions } from '../src/report/panel.ts'
+import { collectStatus } from '../src/report/status.ts'
 import { statusServiceName, provideRowStatus } from '../src/shared/status-host.ts'
 import type { ServiceLookup } from '../src/shared/dsh-min.ts'
 import type { UsagePricing } from '../src/shared/pricing.ts'
@@ -594,4 +595,32 @@ test('a journal that is not there yet is no entry and no section; one that canno
   assert.ok(result.text.includes('## 面板\nhourness 行的状态暂时读不到：access denied'), result.text)
   assert.equal(blocked.warnings.filter(message => message.startsWith('dsh-glm-hourness/hourness: 状态读取失败')).length, 1)
   blocked.dispose()
+})
+
+test('the hourness row yields its peak half while the rules row status view is there: one rules/peak entry, the rules row words', async () => {
+  const row = statusRow(new Map([[USAGE_FILE, journal]]), { pricing: creditPricing })
+  const provide = provideRowStatus(row.store, 'rules', () => [{
+    id: 'rules/peak',
+    owner: 'rules',
+    audience: 'agent',
+    asOf: new Date(QUOTA_NOW).toISOString(),
+    source: 'glmHournessStatus/rules',
+    text: '- 高峰：规则行在管这一条（少做）',
+  }])
+  try {
+    const view = row.store.services.get(statusServiceName('hourness')) as { readonly items: (sessionId: string | undefined) => Array<{ id: string, text: string }> }
+    assert.deepEqual(view.items('s1').map(item => item.id), ['glm/usage'], 'the peak half yields, the quota entry still waits for the first read')
+    const result = await row.run()
+    assert.equal(result.kind, 'success')
+    const panel = sectionOf(result.text, '面板')
+    assert.ok(panel.includes('- 高峰：规则行在管这一条（少做）'), result.text)
+    assert.ok(!panel.some(line => line.startsWith('- 高峰：不是高峰')), result.text)
+    const collected = collectStatus(row.store, 's1', 'agent', QUOTA_NOW.getTime())
+    assert.deepEqual(collected.items.filter(item => item.id === 'rules/peak').map(item => item.text), ['- 高峰：规则行在管这一条（少做）'])
+    assert.equal(collected.rows.find(entry => entry.row === 'rules')?.outcome, 'ok')
+  }
+  finally {
+    provide.dispose()
+    row.dispose()
+  }
 })

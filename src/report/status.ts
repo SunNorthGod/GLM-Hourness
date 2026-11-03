@@ -50,6 +50,17 @@ function asView(value: unknown): RowStatusView | undefined {
   return typeof (value as Partial<RowStatusView>).items === 'function' ? value as RowStatusView : undefined
 }
 
+/**
+ * The status view provided for one row, when a view of the right shape is
+ * there: the check the collector reads a row through, and the one a row's
+ * half of a shared entry yields on (the rules row owns `rules/peak` when it
+ * is on, status hub design 0.3 §12). A value of the wrong shape at the
+ * service name is not a view, so the owning row keeps its half.
+ */
+export function statusViewOf(ctx: ServiceLookup, row: HealthRow): RowStatusView | undefined {
+  return asView(typeof ctx.get === 'function' ? ctx.get(statusServiceName(row)) : undefined)
+}
+
 /** A failure's message on one line, cut to the length a reason quotes. */
 const failureWords = (error: unknown): string => (error instanceof Error ? error.message : String(error)).replace(/\s+/g, ' ').trim().slice(0, 80)
 
@@ -70,7 +81,7 @@ export function collectStatus(ctx: ServiceLookup, sessionId: string | undefined,
   const rows: StatusRowOutcome[] = []
   const items: StatusItem[] = []
   for (const row of STATUS_ROWS) {
-    const view = asView(typeof ctx.get === 'function' ? ctx.get(statusServiceName(row)) : undefined)
+    const view = statusViewOf(ctx, row)
     if (view === undefined) {
       rows.push({ row, outcome: 'absent' })
       continue

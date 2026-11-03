@@ -4,10 +4,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import type { ProjectionValues, RemoteRoot, SessionsClient, StreamItem, WatchFrame } from '../ui/src/dsh.ts'
-import { BOARD_ORDER, boards, registerBoard, type Board, type BoardState } from '../ui/src/graph/boards.ts'
+import { BOARD_ORDER, boards, checkedBoardState, homeLineFromItem, registerBoard, type Board, type BoardState } from '../ui/src/graph/boards.ts'
 import { buildLessonsPage, memoryRows } from '../ui/src/lessons/model.ts'
 import { foldJournalText, holdLessonsSource, LessonsSource, type LessonsPaths } from '../ui/src/lessons/source.ts'
 import { lessonsBoard } from '../ui/src/lessons/board.ts'
+import type { StatusItem } from '../src/shared/status.ts'
 import { lessonsFold } from '../src/lessons/model.ts'
 import { memoryFold } from '../src/memory/model.ts'
 
@@ -17,7 +18,9 @@ import { memoryFold } from '../src/memory/model.ts'
  * tag, the candidate count, the one reporting-depth line), the fold of whole
  * journal text, the page source (a failed read keeps the last content and
  * shows the reason; the change feed and the size+version poll), the board
- * registration table, and the static check that ui/src/lessons/ never
+ * registration table and the snapshot result the panel reads from it
+ * (plain-ui 1.3 §8.2, status hub 0.3 §12, including the home line mirrored
+ * from a board's entry), and the static check that ui/src/lessons/ never
  * writes: no commands.execute, no button, toggle or form. The pure
  * functions run without rendering React.
  */
@@ -114,6 +117,52 @@ test('the lessons board asks once for the projections of a session that has none
   assert.equal(refreshCountOf('cold'), 1)
   assert.equal(board.snapshot('cold').available, true)
   stop()
+})
+
+// --- The snapshot result the panel reads (plain-ui 1.3 §8.2, status hub 0.3 §12) ---
+
+/** A well-formed status entry, the shape a board's items hold. */
+const entryOf = (id: string, text: string): StatusItem => ({ id, owner: 'rules', audience: 'agent', asOf: new Date(NOW).toISOString(), source: 'glmHournessPricing/peak', text })
+
+test('the panel checks a snapshot result: unfit lines are hidden and wrong fields defaulted with one warning each, an unusable state is not available', () => {
+  const warnings: string[] = []
+  const original = console.warn
+  console.warn = (message: string) => { warnings.push(message) }
+  try {
+    const good: BoardState = { available: true, homeLine: '正常', guideLine: null, peakApplies: false }
+    assert.deepEqual(checkedBoardState('rules', good), good)
+    assert.equal(checkedBoardState('rules', good), checkedBoardState('rules', good), 'the same input object keeps the same checked state')
+    const checked = checkedBoardState('rules', {
+      available: true,
+      homeLine: '一'.repeat(61),
+      guideLine: '第一行\n第二行',
+      peakApplies: '是' as unknown as boolean,
+      items: [entryOf('rules/peak', '高峰中'), entryOf('', '缺号'), entryOf('glm/usage', '长'.repeat(201)), { ...entryOf('glm/quota', '额度'), detail: 3 } as unknown as StatusItem],
+    })
+    assert.deepEqual(checked, { available: true, homeLine: null, guideLine: null, peakApplies: false, items: [entryOf('rules/peak', '高峰中'), entryOf('glm/quota', '额度')] })
+    assert.equal(checkedBoardState('rules', { available: '是' as unknown as boolean, homeLine: null, guideLine: null, peakApplies: false }), null)
+    assert.deepEqual(checkedBoardState('rules', { available: true, homeLine: null, guideLine: null, peakApplies: false, items: '没有' as unknown as StatusItem[] }), { available: true, homeLine: null, guideLine: null, peakApplies: false })
+  }
+  finally {
+    console.warn = original
+  }
+  assert.equal(warnings.filter(text => text.includes('homeLine')).length, 1)
+  assert.equal(warnings.filter(text => text.includes('guideLine')).length, 1)
+  assert.equal(warnings.filter(text => text.includes('peakApplies')).length, 1)
+  assert.equal(warnings.filter(text => text.includes('id 不是')).length, 1)
+  assert.equal(warnings.filter(text => text.includes('text 为空、跨行或超过')).length, 1)
+  assert.equal(warnings.filter(text => text.includes('detail 不是字符串数组')).length, 1)
+  assert.equal(warnings.filter(text => text.includes('items that are not an array')).length, 1)
+  assert.equal(warnings.filter(text => text.includes('no boolean available')).length, 1)
+})
+
+test('the home line a board mirrors from an entry is that entry text verbatim when it fits 60 code points, and nothing otherwise', () => {
+  const items = [entryOf('rules/peak', '高峰中，到 18:00'), entryOf('glm/usage', '长'.repeat(61))]
+  assert.equal(homeLineFromItem(items, 'rules/peak'), '高峰中，到 18:00')
+  assert.equal(homeLineFromItem(items, 'glm/usage'), null)
+  assert.equal(homeLineFromItem(items, 'glm/quota'), null)
+  assert.equal(homeLineFromItem(undefined, 'rules/peak'), null)
+  assert.equal(homeLineFromItem([entryOf('rules/peak', '高'.repeat(60))], 'rules/peak'), '高'.repeat(60))
 })
 
 // --- The view model ----------------------------------------------------------

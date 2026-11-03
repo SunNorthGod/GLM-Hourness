@@ -9,10 +9,13 @@ import { appendFile, mkdir, mkdtemp, readdir, readFile, rename as renameFile, rm
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import { creditPricing } from '../src/glm-llm/credits.ts'
 import { MAIN_AGENT_KEY } from '../src/graph/main-agent.ts'
+import { peakStatusItems } from '../src/report/panel.ts'
 import type { UserNotice } from '../src/shared/dsh-min.ts'
 import { collectHealth, healthServiceName } from '../src/shared/health.ts'
 import { PEAK_MODE_SERVICE, PEAK_REDUCE_GLM_WORKERS, peakModeService } from '../src/shared/peak-mode.ts'
+import { statusServiceName, type RowStatusView } from '../src/shared/status-host.ts'
 import { RULES_TOOL_NAMES } from '../src/shared/tool-names.ts'
 import { apply, clockText, inject, name, type RulesContext } from '../src/rules/index.ts'
 import { RULES_SERVICE } from '../src/rules/service.ts'
@@ -20,7 +23,7 @@ import type { HostHeartbeat } from '../src/rules/heartbeat.ts'
 import { openRulesBoard } from '../src/rules/engine.ts'
 import { repoJson, type JournalRecord, type RepoRules } from '../src/rules/model.ts'
 import { loadState } from '../src/rules/store.ts'
-import { fakeRuntime } from './fake-rc3.ts'
+import { fakeRuntime, type FakeRuntime } from './fake-rc3.ts'
 import { captureWarnings } from './graph-helpers.ts'
 import { FULL_RULES_FILE, ruleOf } from './rules-fixtures.ts'
 import { fakeClock, MINUTE, quickIo, writeHeartbeat } from './rules-helpers.ts'
@@ -353,12 +356,13 @@ test('activation never throws: a command that cannot register, a service that ca
     void never()
   })
   const ours = warnings.filter(warning => warning.startsWith('dsh-glm-hourness/rules: '))
-  assert.equal(ours.length, 8, ours.join(' | '))
+  assert.equal(ours.length, 9, ours.join(' | '))
   for (const expected of [
     /registering \/rules failed, the level cannot be changed: taken/,
     /row health not provided/,
     /glmHournessPeakMode is not provided/,
     new RegExp(`${RULES_SERVICE} is not provided`),
+    /row status not provided/,
     /registering rules_show failed/,
     /the session listeners are not registered/,
     /the tool-call gate is not installed, the row executes no rule: no events/,
@@ -896,3 +900,40 @@ rowTest('the line counts as one of the 12 items', async (fixture) => {
   assert.equal(lines.filter(line => line.startsWith('- [inform')).length, 11)
   assert.equal(lines.at(-2), 'and 4 more: call rules_show')
 }, { services: MAIN_AGENT, rules: reminderFile(...Array.from({ length: 15 }, (_, index) => ruleOf({ id: `r-note-${String(index).padStart(2, '0')}`, title: `Note ${index}`, when: { kind: 'event', events: ['rules.step'] }, action: { kind: 'inform' } }))) })
+
+// --- the row's status view: the one rules/peak entry (status hub design 0.3 §3.2, §12 rules row) ---
+
+const statusView = (runtime: FakeRuntime): RowStatusView => {
+  const view = runtime.services.get(statusServiceName('rules')) as RowStatusView | undefined
+  assert.ok(view !== undefined, 'the row provides glmHournessStatus/rules')
+  return view
+}
+
+rowTest('the row submits its status view: the one rules/peak entry, the hours line the report face shows with the level in the fields, withdrawn with the row', async (fixture) => {
+  const view = statusView(fixture.runtime)
+  assert.equal(view.row, 'rules')
+  const [item] = view.items(fixture.runtime.agent.id)
+  const [hours] = peakStatusItems(creditPricing, PEAK_NOW)
+  assert.equal(item?.text, hours?.text, 'the words are the report face words, one computation')
+  assert.deepEqual(item?.fields, { peakMode: 'reduce', peakModeOrigin: 'default' })
+  assert.equal(item?.audience, 'agent')
+  await fixture.run('peak 不做')
+  assert.deepEqual(view.items(fixture.runtime.agent.id).at(0)?.fields, { peakMode: 'stop', peakModeOrigin: 'human' })
+  await fixture.dispose()
+  assert.equal(fixture.runtime.services.has(statusServiceName('rules')), false)
+}, { live: true })
+
+rowTest('the peak entry keeps the hours half alone for a session the row does not know the project of', async (fixture) => {
+  const view = statusView(fixture.runtime)
+  const [hours] = peakStatusItems(creditPricing, PEAK_NOW)
+  const [unknown] = view.items('no-such-session')
+  assert.equal(unknown?.text, hours?.text)
+  assert.equal(unknown?.fields, undefined)
+  await fixture.dispose()
+})
+
+rowTest('the row has no peak entry while there is no pricing service', async (fixture) => {
+  const view = statusView(fixture.runtime)
+  assert.deepEqual(view.items(fixture.runtime.agent.id), [])
+  await fixture.dispose()
+}, { pricing: 'none' })

@@ -20,7 +20,10 @@
  * `rules/peak`, `glm/usage` and `glm/quota` (src/report/panel.ts
  * `peakStatusItems`, `usageStatusItems`, `quotaStatusItems`), and the 面板
  * and 额度 sections read them back through the collector
- * (src/report/status.ts) instead of recomputing them. The quota read is
+ * (src/report/status.ts) instead of recomputing them. Its `rules/peak` is
+ * the hours half only, and it yields that half while the rules row's status
+ * view is there — the rules row serves the full entry, the level in the
+ * fields (status hub design 0.3 §12). The quota read is
  * asynchronous, so the command reads once per invocation (the reading moment
  * M6 fixed) and the view serves that reading.
  */
@@ -31,7 +34,7 @@ import { loadGraph } from '../graph/store.ts'
 import { auditPaths } from '../memory/audit.ts'
 import { localDay, reportFromFiles, type GraphReader, type ReportOptions } from '../workflow/morning-report.ts'
 import { gapLines, NO_PRICING_LINE, parseGaps, peakStatusItems, quotaSection, quotaStatusItems, rangeLine, usagePanel, usageStatusItems } from './panel.ts'
-import { collectStatus, statusPlaceholders } from './status.ts'
+import { collectStatus, statusPlaceholders, statusViewOf } from './status.ts'
 import { dataHomes, type DataHomes } from '../shared/data-home.ts'
 import { collectHealth, provideRowHealth, renderHealthTable, sessionIdOf, type HealthState } from '../shared/health.ts'
 import { provideRowStatus } from '../shared/status-host.ts'
@@ -204,7 +207,10 @@ export function apply(ctx: CommandsHost & ServiceLookup & Partial<ProvideHost>, 
     const items: StatusItem[] = []
     const pricing = pricingService(ctx, problem)
     if (pricing !== undefined) {
-      items.push(...peakStatusItems(pricing, clock().getTime(), zone, problem))
+      // The rules row owns the peak entry when it is on (status hub design 0.3 §12): its view serves
+      // the full entry, the level in the fields, so the hours half here yields. The check is the view's
+      // shape, so a broken value at that name keeps this row's half.
+      if (statusViewOf(ctx, 'rules') === undefined) items.push(...peakStatusItems(pricing, clock().getTime(), zone, problem))
       // The cached reading belongs to the service: with it gone (the GLM package unloaded), no entry.
       if (quotaCache !== undefined) items.push(...quotaStatusItems(quotaCache.lines, quotaCache.at))
     }
