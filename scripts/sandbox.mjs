@@ -142,8 +142,9 @@ export const limitsRow = config => [
 ]
 
 /**
- * Overlay lines for a run that exercises the design row: the row is enabled
- * (it ships disabled), the question tool of the standard presets is mounted
+ * Overlay lines for a run that exercises the design row: the row ships
+ * enabled since the m3 merge (step 12b), the overlay keeps naming it (the
+ * persona config rides on it), the question tool of the standard presets is mounted
  * (the headless template has none, and the main agent's face has to be seen
  * against a face that does), and the simulated human
  * (scripts/calibrate/simulated-human.mjs) stands in for the person with

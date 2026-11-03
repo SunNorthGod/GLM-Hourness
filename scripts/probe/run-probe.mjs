@@ -1048,8 +1048,9 @@ const controlStderr = existsSync(join(controlDir, 'stderr.txt')) ? readFileSync(
 const repoGraphAfter = (await loadGraph(repoGraph)).revision
 
 // Main agent mode (docs/ORCHESTRATION.md §3.1, ROADMAP M3 step 3): the design
-// row ships disabled; the overlay (scripts/sandbox.mjs designRows) enables it,
-// mounts ask_user_question, which the headless template lacks, and mounts the
+// row ships enabled since the m3 merge (step 12b); the overlay
+// (scripts/sandbox.mjs designRows) still mounts ask_user_question, which the
+// headless template lacks, and mounts the
 // simulated human (scripts/calibrate/simulated-human.mjs), which types
 // /wish for the first root session and refuses any question card, recording
 // both in human.jsonl. Each scenario works in its own workspace with an empty
@@ -1851,7 +1852,7 @@ function designChecks() {
   const lacks = (step, names) => names.every(name => !faceOf(step).includes(name))
   const route = [[designGlmMain, true, GLM_CUT, 'GLM'], [designPlainMain, false, PLAIN_CUT, 'non-GLM']]
   return [
-    ['design: the row ships disabled: without the overlay /glm-status and /hourness-status list it as not loaded', glmHealth.design?.status === '未加载' && plainHealth.design?.status === '未加载', `${healthLine(glmHealth, 'design')}; ${healthLine(plainHealth, 'design')}`],
+    ['design: the row ships enabled since the m3 merge (step 12b): without the overlay /glm-status and /hourness-status list it loaded but not triggered in this session', glmHealth.design?.status === '已加载，本会话未触发' && plainHealth.design?.status === '已加载，本会话未触发', `${healthLine(glmHealth, 'design')}; ${healthLine(plainHealth, 'design')}`],
     ['design idle: /wish <wish>, typed in agent/created as the person, succeeds and says to use a stronger model; the GLM and the non-GLM run both', wishOk(designGlmIdle) && wishOk(designPlainIdle), JSON.stringify([designGlmIdle.human[0]?.result, designPlainIdle.human[0]?.result])],
     ['design idle (GLM): the first request, the turn the wish woke, already has the identity section, no Write, Edit or ask_user_question, and the notice with the wish in the person\'s words', sectionAt(designGlmIdle.steps[0]) >= 0 && !GLM_CUT.some(name => faceOf(designGlmIdle.steps[0]).includes(name)) && wished(designGlmIdle.steps[0]), `section at ${sectionAt(designGlmIdle.steps[0])}; ${faceOf(designGlmIdle.steps[0]).filter(name => GLM_CUT.includes(name)).join(', ') || 'no cut tool'}; wish notice ${wished(designGlmIdle.steps[0])}`],
     ['design idle (GLM): the headless task turn has the section after the ZCode identity and before the workspace rules; /glm-status says the design row is in effect', placed(designGlmIdle.steps[1], true) && inEffect(rowAt(designGlmIdle, 1)), `${zcode(designGlmIdle.steps[1])} < ${sectionAt(designGlmIdle.steps[1])} < ${designGlmIdle.steps[1]?.system.indexOf(GUARD_SECTION)}; ${JSON.stringify(rowAt(designGlmIdle, 1) ?? null)}`],
