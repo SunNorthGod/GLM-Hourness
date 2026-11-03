@@ -278,6 +278,7 @@ test('/wish with a sentence wakes an idle agent: its first assembly, started bef
   const notice = agent.sent[0]?.message
   assert.ok(notice?.content[0]?.text.includes('"记一下每天花了多少钱"'))
   assert.ok(notice?.content[0]?.text.includes('需求：'))
+  assert.ok(notice?.content[0]?.text.includes('Propose it as a proposal, without their words as relay: their confirmation of the requirement card (record_human_answer, kind confirm) is what approves the goal with their own words, not an edit.'), 'the confirmation approves the goal, the proposal does not')
   const facts = notice?.source.designWish as { commandId: string, text: string }
   assert.equal(facts.text, '记一下每天花了多少钱')
   assert.ok(facts.commandId.startsWith('cmd-'))

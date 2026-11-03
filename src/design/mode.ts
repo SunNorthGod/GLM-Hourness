@@ -228,7 +228,7 @@ const ENTER_NOTICE = 'The human made this session\'s agent the main agent of thi
 const OFF_NOTICE = 'The human left main-agent mode with /wish off: from the next step this session\'s agent is an ordinary agent and may write files directly.'
 const MOVED_NOTICE = 'The main agent of this project moved to another session: from the next step this session\'s agent is an ordinary agent and may write files directly.'
 
-const wishNotice = (text: string, commandId: string): UserNotice => createUserNotice(NOTICE_KIND, 'main agent mode on, with a wish', `${ENTER_NOTICE}\nThe human's wish, in their words: "${text}"\nStart the interview: propose the goal on the graph with a body that starts with 需求： followed by their words verbatim, then graph_focus it.`, { designWish: { commandId, text } })
+const wishNotice = (text: string, commandId: string): UserNotice => createUserNotice(NOTICE_KIND, 'main agent mode on, with a wish', `${ENTER_NOTICE}\nThe human's wish, in their words: "${text}"\nStart the interview: propose the goal on the graph with a body that starts with 需求： followed by their words verbatim, then graph_focus it. Propose it as a proposal, without their words as relay: their confirmation of the requirement card (record_human_answer, kind confirm) is what approves the goal with their own words, not an edit.`, { designWish: { commandId, text } })
 
 /** What the /wish handler needs from the row. */
 export interface WishDeps {
