@@ -128,6 +128,15 @@ test('rules catalog: the loop board\'s gate on its own files is listed under the
   assert.equal(verdict.kind === 'deny' && verdict.rule, LOOPS_FILES_ONLY)
 })
 
+test('rules catalog: the main agent\'s rules are listed as design:<id>, titles copied, read-only on the design row', () => {
+  const entries = CATALOG.filter(entry => entry.id.startsWith('design:'))
+  assert.deepEqual(entries.map(entry => entry.id.slice('design:'.length)), MAIN_AGENT_RULES.map(rule => rule.id))
+  for (const rule of MAIN_AGENT_RULES) {
+    const entry = entries.find(candidate => candidate.id === `design:${rule.id}`)
+    assert.deepEqual([entry?.title, entry?.row, entry?.effect, entry?.plugin, entry?.toldBy], [rule.title, 'design', 'block', 'dsh-hourness', undefined], rule.id)
+  }
+})
+
 test('rules service: absent and malformed values read as none and say so; a wider one still reads', () => {
   const problems: string[] = []
   const problem = (message: string) => { problems.push(message) }
