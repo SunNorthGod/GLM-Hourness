@@ -110,6 +110,9 @@ DSH 官方类型已作为 devDependency 安装（`@deepseek-ai/dsh-llm`、`@deep
 7. **Cordis inject 写完整服务路径链**：访问 `ctx.remote.commands` 时，`inject` 必须同时声明 `'remote'` 与 `'remote.commands'`（照抄官方 ui-commands：`['inputTriggers', 'sessions', 'remote', 'remote.commands', 'locale']`）。只声明嵌套名会在访问 `ctx.remote` 根时抛 `cannot get property "remote" without inject`。写 Client 半前先读对应官方包的 `inject` 声明，不猜。
 
 8. **删用量记录要留缺口行**：用户级用量流水（`~/.dsh/glm-hourness/audit/usage.jsonl`）里的记录，谁删谁在同一天往同目录的 `usage-gaps.jsonl` 追加一行：`at`（删除的时刻）、`removed`（条数）、`reason`（为什么删、谁要求的）必填，`detail`（按 provider 与模型的条数）、`from`、`to`（被删记录的时间范围）、`ref`（留痕的出处）可选；字段与上限见 `DESIGN.md` §2.4。没有这一行，`/hourness` 的面板看不出删过记录，积分数会少得没有交代。改前备份、改后核对条数，与第 3 条同理；追加的行不改，要撤销就删掉那一行。
+9. **合并后即跑全量门禁**：合并 main（或任何分支）后，先跑全量门禁（build → preflight → `npm test` → probe）再继续开发；合并时的 build + 棘轮速查不足以暴露跨支测试的联动（2026-11-04 m7 合并后 `status.spec` 的期望行表缺 `execute`，全量测试才暴露）。
+10. **探针/标定运行中不重建该检出**：`npm run build` 先清 `dist/`，运行中的场景会瞬间失联（标定的同款条款见 §3）。
+
 ## 6. DSH 的报错机制速查
 
 ### 运行时
