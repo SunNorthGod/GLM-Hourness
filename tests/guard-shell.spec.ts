@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { describeWrite, shellWrites, type ShellDialect } from '../src/guard/shell.ts'
+import { describeWrite, simpleCommands, shellWrites, type ShellDialect } from '../src/guard/shell.ts'
 import { declarationOf, evaluate, fileToolsOnly, NATIVE_FACE, renderCorrection, shellCommandOf } from '../src/guard/rules.ts'
 
 // file-tools-only reads shell text quote-aware (docs/ORCHESTRATION.md §6.4):
@@ -148,4 +148,18 @@ test('file-tools-only declares the boundary it enforces, naming the file tools a
   assert.ok(declarationOf(fileToolsOnly, NATIVE_FACE).startsWith('Modify files and code only with the dedicated write/edit tools.'))
   const verdict = evaluate([fileToolsOnly], { name: 'pwsh', arguments: { command: 'Set-Content f x' } }, zcode)
   assert.equal(verdict.kind === 'deny' ? verdict.correction.rightPath : undefined, 'Read the target with Read, then apply the change with Write or Edit.')
+})
+
+// simpleCommands is what the git snapshot reads (docs/ORCHESTRATION.md §6.1): the words of every simple command, in the order shellWrites meets them.
+test('simpleCommands: assignments and wrappers are skipped, nested shells and subexpressions are read, quoted text is never a command', () => {
+  assert.deepEqual(simpleCommands('FOO=1 git status && echo "git reset --hard"', 'posix'), [['git', 'status'], ['echo', 'git reset --hard']])
+  assert.deepEqual(simpleCommands('sudo git reset --hard; env X=1 git clean -fd', 'posix'), [['git', 'reset', '--hard'], ['git', 'clean', '-fd']])
+  assert.deepEqual(simpleCommands('bash -c "git checkout -- a.txt; ls"', 'posix').slice(1), [['git', 'checkout', '--', 'a.txt'], ['ls']])
+  assert.deepEqual(simpleCommands('find . -name x -exec git rm -f {} \\;', 'posix').at(-1), ['git', 'rm', '-f', '{}', ';'])
+  assert.deepEqual(simpleCommands('echo $(git branch -D x)', 'posix').at(-1), ['git', 'branch', '-D', 'x'])
+  assert.deepEqual(simpleCommands('pwsh -Command "git reset --hard HEAD~1"', 'pwsh').at(-1), ['git', 'reset', '--hard', 'HEAD~1'])
+  assert.deepEqual(simpleCommands('git log | head', 'posix'), [['git', 'log'], ['head']])
+  // Reading the commands does not change what counts as a write.
+  assert.deepEqual(writes('git checkout -- a.txt; echo x > b.txt', 'posix'), writes('echo x > b.txt', 'posix'))
+  assert.equal(writes('git checkout -- a.txt; echo x > b.txt', 'posix').length, 1)
 })

@@ -7,6 +7,7 @@
  */
 import { compareText } from './format.ts'
 import { failure, type Failure } from './mutation.ts'
+import type { AskForm } from './proposal.ts'
 import type { Actor, Decider, DecisionOption, GraphNode, HistoryEntry, NodeType, Stage, Status } from './schema.ts'
 import type { LoadedGraph } from './parse.ts'
 
@@ -81,8 +82,17 @@ export interface Projection {
 /** One card of a decision queue (§5): an open question with what its decider needs to decide it. */
 interface QueueEntry extends NodeRef {
   readonly body?: string
+  /** The table of a question with options; empty for a proposal, which carries its lines below. */
   readonly options: readonly DecisionOption[]
   readonly recommend?: string
+  /** A proposal's record: the question, its way of asking and what goes with it (src/graph/proposal.ts). */
+  readonly ask?: string
+  readonly form?: AskForm
+  readonly proposal?: string
+  readonly reason?: string
+  readonly cost?: string
+  readonly ways?: readonly string[]
+  readonly notTaken?: string
   readonly decider: Decider
   /** The node the question was raised under (its parent); null when the parent is missing. */
   readonly raisedBy: NodeRef | null
@@ -95,8 +105,11 @@ interface QueueEntry extends NodeRef {
 
 /** The latest decide of a question: what was chosen, by whom, and whether it relayed the human's words. */
 export interface DecisionRecord extends NodeRef {
-  readonly decision: string
-  /** Label of the chosen option. */
+  /** The key of the chosen option; absent when a proposal was decided. */
+  readonly decision?: string
+  /** What a proposal concluded; absent when an option was chosen. */
+  readonly conclusion?: string
+  /** Label of the chosen option, or the conclusion of a proposal. */
   readonly label: string
   readonly decider: Decider
   readonly decidedAt: string
@@ -251,6 +264,15 @@ function queueEntry(graph: LoadedGraph, node: GraphNode): QueueEntry {
     ...(node.body === undefined ? {} : { body: node.body }),
     options: node.options ?? [],
     ...(node.recommend === undefined ? {} : { recommend: node.recommend }),
+    ...(node.options !== undefined || node.ask === undefined || node.form === undefined || node.proposal === undefined ? {} : {
+      ask: node.ask,
+      form: node.form,
+      proposal: node.proposal,
+      ...(node.reason === undefined ? {} : { reason: node.reason }),
+      ...(node.cost === undefined ? {} : { cost: node.cost }),
+      ...(node.ways === undefined ? {} : { ways: node.ways }),
+      ...(node.notTaken === undefined ? {} : { notTaken: node.notTaken }),
+    }),
     decider: deciderOf(node),
     raisedBy: parent === undefined ? null : nodeRef(graph, parent),
     sources: targets(graph, node, 'source').map(entry => nodeRef(graph, entry)),
@@ -268,12 +290,14 @@ function compareQueue(a: QueueEntry, b: QueueEntry): number {
 function decisionRecord(graph: LoadedGraph, node: GraphNode): DecisionRecord | undefined {
   const decides = node.history.filter(entry => entry.op === 'decide')
   const last = decides.at(-1)
-  if (node.status !== 'done' || node.decision === undefined || last === undefined) return undefined
+  const outcome = node.decision ?? node.conclusion
+  if (node.status !== 'done' || outcome === undefined || last === undefined) return undefined
   const parent = node.parent === undefined ? undefined : graph.nodes.get(node.parent)
   return {
     ...nodeRef(graph, node),
-    decision: node.decision,
-    label: node.options?.find(entry => entry.key === node.decision)?.label ?? node.decision,
+    ...(node.decision === undefined ? {} : { decision: node.decision }),
+    ...(node.conclusion === undefined ? {} : { conclusion: node.conclusion }),
+    label: node.options?.find(entry => entry.key === node.decision)?.label ?? outcome,
     decider: deciderOf(node),
     decidedAt: last.at,
     decidedBy: last.actor,

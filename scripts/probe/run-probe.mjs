@@ -83,12 +83,16 @@ import { entryFileText } from '../../packages/hourness/dist/loops/model.js'
 import { LOOP_NOTICE_SOURCE } from '../../packages/hourness/dist/loops/deliver.js'
 import { LOOPS_DECLARATION } from '../../packages/hourness/dist/loops/service.js'
 import { PEAK_REMINDER_SOURCE, PEAK_REMINDER_TEXT, peakReminderText } from '../../packages/glm/dist/glm-prompt/peak-reminder.js'
+import { IDENTITY_OPENING_PLAIN, IDENTITY_OPENING_WITH_STYLE } from '../../packages/glm/dist/glm-prompt/verbatim.js'
+import { PERSONA_SCOPE } from '../../packages/hourness/dist/design/persona.js'
 import { peakWindowAt } from '../../packages/glm/dist/glm-llm/credits.js'
 import { GLM_LOOP_DEFAULTS } from '../../packages/glm/dist/glm-llm/loop-defaults.js'
 import { userDataHome } from '../../packages/hourness/dist/shared/data-home.js'
 import { HEALTH_PACKAGES, HEALTH_ROWS } from '../../packages/hourness/dist/shared/health.js'
-import { GRAPH_TOOL_NAMES, MEMORY_TOOL_NAMES } from '../../packages/glm/dist/shared/tool-names.js'
+import { DESIGN_TOOL_NAMES, GRAPH_TOOL_NAMES, MEMORY_TOOL_NAMES } from '../../packages/glm/dist/shared/tool-names.js'
 import { openEngine } from '../../packages/hourness/dist/graph/engine.js'
+import { PLAIN_QUESTION_EXAMPLES } from '../../packages/hourness/dist/graph/plain-question.js'
+import { askOf, renderAsk } from '../../packages/hourness/dist/graph/proposal.js'
 import { holderFileOf, readHolder } from '../../packages/hourness/dist/graph/main-agent-holder.js'
 import { runNote } from '../../packages/hourness/dist/graph/run.js'
 import { loadGraph } from '../../packages/hourness/dist/graph/store.js'
@@ -1055,17 +1059,23 @@ const repoGraphAfter = (await loadGraph(repoGraph)).revision
 // off themselves, mid-step, through the commands service (the probe
 // provider's `line` step), so command/run and command/done are in the log.
 const DESIGN_WISH = '记一下每天花了多少钱'
-const designScenario = (name, model, script, { wish, on, others } = {}) => {
+const designScenario = (name, model, script, { wish, on, others, git, extra, human, persona } = {}) => {
   const dir = join(runDir, name)
   const ws = join(dir, 'ws')
   mkdirSync(join(ws, 'docs', 'graph'), { recursive: true })
   mkdirSync(join(ws, '.llm'), { recursive: true })
   writeFileSync(join(ws, 'README.md'), 'probe workspace\n')
+  // A scenario that runs git commands has a repository with README.md committed and then edited by a line, the work a checkout would lose.
+  if (git === true) {
+    const inWs = (...args) => spawnSync('git', ['-c', 'user.name=probe', '-c', 'user.email=probe@example.invalid', '-c', 'commit.gpgsign=false', ...args], { cwd: ws, encoding: 'utf8' })
+    for (const args of [['init', '-q', '-b', 'main'], ['add', 'README.md'], ['commit', '-q', '-m', 'probe workspace']]) if (inWs(...args).status !== 0) throw new Error(`probe: git ${args[0]} failed in ${ws}`)
+    writeFileSync(join(ws, 'README.md'), 'probe workspace\nedited by the person\n')
+  }
   const record = join(dir, 'human.jsonl')
-  const run = runScenario(name, model, script(ws), 'Reply done.', designRows({ record: slash(record), ...wish === undefined ? {} : { wish } }), ws, others ?? [], on)
+  const run = runScenario(name, model, script(ws), 'Reply done.', [...designRows({ record: slash(record), ...wish === undefined ? {} : { wish }, ...human }, persona === undefined ? undefined : { persona }), ...extra ?? []], ws, others ?? [], on)
   return { ...run, name, dir, ws, human: jsonl(record) }
 }
-const designMainScript = ({ read, write, status }) => (ws) => {
+const designMainScript = ({ read, write, shell, ask, status }) => (ws) => {
   const readme = { name: read, arguments: { file_path: join(ws, 'README.md') } }
   return [
     { tool: { name: write, arguments: { file_path: join(ws, '.llm', 'before.txt'), content: 'before\n' } } },
@@ -1074,14 +1084,21 @@ const designMainScript = ({ read, write, status }) => (ws) => {
     { tool: readme, line: `/wish ${DESIGN_WISH}` },
     { tool: readme, line: '/wish off' },
     { tool: { name: write, arguments: { file_path: join(ws, '.llm', 'after.txt'), content: 'after\n' } }, ...status },
-    { text: 'done' },
+    // The main agent again: the tools it has lost and the question card are refused by name (the runtime executes by name), a shell write too; git runs, and the checkout that would lose the person's edit leaves a snapshot and a notice.
+    { tool: readme, line: '/wish' },
+    { tool: { name: write, arguments: { file_path: join(ws, '.llm', 'denied.txt'), content: 'no\n' } } },
+    { tool: { name: shell, arguments: { command: `Set-Content -Path '${join(ws, '.llm', 'denied2.txt')}' -Value no`, description: 'probe: write a file through the shell' } } },
+    { tool: { name: shell, arguments: { command: 'git status', description: 'probe: git status' } } },
+    { tool: { name: shell, arguments: { command: 'git checkout -- README.md', description: 'probe: git checkout' } } },
+    { tool: { name: ask, arguments: { questions: [] } } },
+    { text: 'done', line: '/wish off' },
   ]
 }
 const designIdle = (status) => () => [{ text: 'ok' }, { text: 'done', ...status }]
 const designGlmIdle = designScenario('glm-design-wish-idle', 'glm-5.3', designIdle({ status: true }), { wish: DESIGN_WISH })
 const designPlainIdle = designScenario('non-glm-design-wish-idle', 'deepseek-probe', designIdle({ command: { name: 'hourness-status' } }), { wish: DESIGN_WISH, on: profiles['probe-hourness'] })
-const designGlmMain = designScenario('glm-design-main', 'glm-5.3', designMainScript({ read: 'Read', write: 'Write', status: { status: true } }))
-const designPlainMain = designScenario('non-glm-design-main', 'deepseek-probe', designMainScript({ read: 'read', write: 'write', status: { command: { name: 'hourness-status' } } }), { on: profiles['probe-hourness'] })
+const designGlmMain = designScenario('glm-design-main', 'glm-5.3', designMainScript({ read: 'Read', write: 'Write', shell: 'Bash', ask: 'ask_user_question', status: { status: true } }), { git: true })
+const designPlainMain = designScenario('non-glm-design-main', 'deepseek-probe', designMainScript({ read: 'read', write: 'write', shell: 'pwsh', ask: 'ask_user_question', status: { command: { name: 'hourness-status' } } }), { on: profiles['probe-hourness'], git: true })
 // One main agent per project: the main agent session (the simulated human's
 // /wish) types a second root session of the same workspace into existence
 // and has it type /wish, which only says where the main agent is, then
@@ -1098,6 +1115,276 @@ const designOne = designScenario('glm-design-one-main', 'glm-5.3', ws => [
   { tool: { name: 'Write', arguments: { file_path: join(ws, '.llm', 'x.txt'), content: 'x\n' } }, status: true },
   { text: 'done' },
 ], { wish: true })
+// Stage reminders and design-before-release (docs/ORCHESTRATION.md §3.5, §6.1; M3 step 5).
+// The graph of the workspace is seeded before the run. The main agent
+// (the simulated human's /wish) dispatches subagents through the dispatch
+// spike's probe_dispatch, which starts a real child session through
+// subagents.startActivation; each child tries one Write, and the main agent
+// waits for it with a shell sleep before it moves on, so the judgment of a
+// child's write happens at the focus the scenario means.
+const stageWs = name => join(runDir, name, 'ws')
+async function stageGraph(name, seeds) {
+  const graph = join(stageWs(name), 'docs', 'graph')
+  mkdirSync(graph, { recursive: true })
+  const engine = openEngine(graph)
+  for (const [actor, node] of seeds) {
+    const seeded = await engine.apply(actor, { op: 'propose', reason: 'probe seed', node })
+    if (!seeded.ok) throw new Error(`probe: seeding the stage graph of ${name} failed: ${JSON.stringify(seeded.error)}`)
+  }
+  return graph
+}
+const stageDispatch = (name, task, file) => ({ tool: { name: 'DeferredToolCall', arguments: { name: 'probe_dispatch', input: { task, prompt: `Write ${file}, then reply done.`, cwd: stageWs(name), scope: '.', model: 'glm-5.3' } } } })
+const stageWait = { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 3', description: 'probe: let the subagent run' } } }
+const stageChild = (name, file) => [{ tool: { name: 'Write', arguments: { file_path: join(stageWs(name), file), content: 'x\n' } } }, { text: 'child done' }]
+const stageFocus = id => ({ tool: { name: 'graph_focus', arguments: { id } } })
+const stageRead = name => ({ tool: { name: 'Read', arguments: { file_path: join(stageWs(name), 'README.md') } } })
+const STAGE_BODY = '需求：记一下每天花了多少钱'
+
+// An interview: the goal is the main agent's own proposal. Request 1 has no focus, so the first child's write is refused for want of a goal; the second child is dispatched at stage interview; the main agent's edit of the goal body is answered by the reminder again.
+const STAGE = 'glm-design-stage'
+const stageGraphPath = await stageGraph(STAGE, [['llm', { type: 'goal', title: '记账小工具', stage: 'interview', body: STAGE_BODY }]])
+const stageRev = (await loadGraph(stageGraphPath)).revisions.get('goal-1')
+const designStage = designScenario(STAGE, 'glm-5.3', () => [
+  stageDispatch(STAGE, 'S1', 'sub-1.txt'),
+  stageWait,
+  stageFocus('goal-1'),
+  stageRead(STAGE),
+  stageDispatch(STAGE, 'S2', 'sub-2.txt'),
+  stageWait,
+  { tool: { name: 'graph_edit', arguments: { id: 'goal-1', rev: stageRev, set: { body: `${STAGE_BODY}\n问题：月底不知道钱花在哪` }, reason: 'probe: the interview answered the problem' } } },
+  stageRead(STAGE),
+  { text: 'done' },
+], { wish: true, extra: dispatchRow(join(runDir, STAGE, 'dispatch.jsonl')), others: [stageChild(STAGE, 'sub-1.txt'), stageChild(STAGE, 'sub-2.txt')] })
+
+// The same goal after a compaction: the reminder is added again, once the checkpoint is in the history.
+const STAGE_COMPACT = 'glm-design-stage-compact'
+await stageGraph(STAGE_COMPACT, [['llm', { type: 'goal', title: '记账小工具', stage: 'interview', body: STAGE_BODY }]])
+const designStageCompact = designScenario(STAGE_COMPACT, 'glm-5.3', () => [
+  stageFocus('goal-1'),
+  stageRead(STAGE_COMPACT),
+  stageRead(STAGE_COMPACT),
+  { text: 'done' },
+], { wish: true, extra: ['- id: compaction-basic', '  config: { thresholdRatio: 0.02, retainTokens: 0 }'] })
+
+// A released goal split into two modules, one released and one in design: the focus decides which subagent may write.
+const STAGE_MODULES = 'glm-design-released'
+await stageGraph(STAGE_MODULES, [
+  ['human', { type: 'goal', title: '记账小工具', stage: 'release' }],
+  ['human', { type: 'feature', id: 'module-a', title: '记一笔', parent: 'goal-1', stage: 'release' }],
+  ['human', { type: 'feature', id: 'module-b', title: '月底报表', parent: 'goal-1', stage: 'design' }],
+  ['human', { type: 'task', id: 'task-a', title: '写记账命令', parent: 'module-a' }],
+  ['human', { type: 'task', id: 'task-b', title: '写报表命令', parent: 'module-b' }],
+])
+const designReleased = designScenario(STAGE_MODULES, 'glm-5.3', () => [
+  stageFocus('goal-1'),
+  stageDispatch(STAGE_MODULES, 'R1', 'released-1.txt'),
+  stageWait,
+  stageFocus('task-b'),
+  stageDispatch(STAGE_MODULES, 'R2', 'released-2.txt'),
+  stageWait,
+  stageFocus('task-a'),
+  stageDispatch(STAGE_MODULES, 'R3', 'released-3.txt'),
+  stageWait,
+  { text: 'done' },
+], { wish: true, extra: dispatchRow(join(runDir, STAGE_MODULES, 'dispatch.jsonl')), others: [stageChild(STAGE_MODULES, 'released-1.txt'), stageChild(STAGE_MODULES, 'released-2.txt'), stageChild(STAGE_MODULES, 'released-3.txt')] })
+
+// Putting a matter to the human and recording the answer (docs/ORCHESTRATION.md §3.1, §6.9; M3 step 6). The graph has the human's own goal-1 in interview.
+// The main agent focuses it, puts one recommend question with propose_to_human and shows its text, which ends the turn; the simulated human answers once
+// (`replies.question`, `maxReplies: 1`, so it is silent afterwards) with a message of the user. The next request records the agreement with the human's
+// words, then an invented quote (refused), a question with an option table (refused by the options rule), and a subagent that sends `relay` with an
+// edit of the goal's stage (refused by the relay rule; the row says so, and the main agent is told).
+const QUESTION = 'glm-design-question'
+const QUESTION_EXAMPLE = PLAIN_QUESTION_EXAMPLES.recommend
+const QUESTION_SHOWN = renderAsk(QUESTION_EXAMPLE.text, 1)
+const QUESTION_ANSWER = '可以，就按推荐的来'
+const questionGraphPath = await stageGraph(QUESTION, [['human', { type: 'goal', title: '记账小工具', stage: 'interview', body: STAGE_BODY }]])
+const questionRev = (await loadGraph(questionGraphPath)).revisions.get('goal-1')
+const questionTable = { type: 'question', title: '放哪', parent: 'goal-1', options: [{ key: 'B', label: '侧栏', gain: '与会话并排', cost: '窄，表格要竖排' }, { key: 'A', label: '网页', gain: '宽，表格放得下', cost: '离开 IDE' }], recommend: 'A', crux: '你常在 IDE 里看图吗？', verdict: '是 → B；否 → A', weight: 'two-way' }
+const designQuestion = designScenario(QUESTION, 'glm-5.3', () => [
+  stageFocus('goal-1'),
+  { tool: { name: 'propose_to_human', arguments: { kind: 'question', form: 'recommend', text: QUESTION_EXAMPLE.text, title: QUESTION_EXAMPLE.title, proposal: QUESTION_EXAMPLE.proposal, reason: QUESTION_EXAMPLE.reason, cost: QUESTION_EXAMPLE.cost } } },
+  { text: QUESTION_SHOWN },
+  { tool: { name: 'record_human_answer', arguments: { kind: 'question', question: 'question-1', answer: 'agree', words: [QUESTION_ANSWER], recordedAs: QUESTION_EXAMPLE.proposal } } },
+  { tool: { name: 'record_human_answer', arguments: { kind: 'question', question: 'question-1', answer: 'agree', words: ['我编的一句话'], recordedAs: '改成收押金' } } },
+  { tool: { name: 'graph_propose', arguments: { node: questionTable, reason: 'probe: a table for the human' } } },
+  stageDispatch(QUESTION, 'Q1', 'unused.txt'),
+  stageWait,
+  { text: 'done', status: true, command: { name: 'hourness' } },
+], {
+  wish: true,
+  human: { replies: { question: [QUESTION_ANSWER] }, maxReplies: 1 },
+  extra: dispatchRow(join(runDir, QUESTION, 'dispatch.jsonl')),
+  others: [[{ tool: { name: 'graph_edit', arguments: { id: 'goal-1', rev: questionRev, set: { stage: 'release' }, reason: 'probe: the child moves the goal on', relay: '可以，放行' } } }, { text: 'child done' }]],
+})
+
+// The interview as a conversation, from the first answer to the confirmed requirement (docs/ORCHESTRATION.md §3.1, §6.9; M3 step 8). The simulated human has the
+// answers and the replies of the calibration task interview-expense-log (tests/calibration/interview-expense-log/task.json), so that task's setting is run here
+// once with a scripted model: the main agent's own goal-1 waits in the interview; the model asks, the human answers one of the eight items of the requirement
+// card by rule 4, and the next request writes the answer to the graph (`{rev:goal-1}` is the revision at that moment). The requirement is put to the human
+// too early (gate_unmet, nothing shown), then the fork (a recommend question, rule 3) is put and recorded, an edit that sets the stage of the goal to design
+// is refused, and once the card is whole the requirement is put (a confirm), the human nods and record_human_answer confirms it: the goal is approved and in
+// design, each write with the nod as relay. Last, a second root session of the project, woken by a message of the person, tries to set the goal to release
+// with words it made up: the stage rule refuses, and the main agent is told. `maxReplies` is 8: the six answers, the question and the nod.
+const INTERVIEW = 'glm-design-interview'
+const INTERVIEW_TASK = JSON.parse(readFileSync(join(repo, 'tests', 'calibration', 'interview-expense-log', 'task.json'), 'utf8')).human
+const INTERVIEW_ANSWERS = INTERVIEW_TASK.answers
+const INTERVIEW_LINES = { need: `需求：${INTERVIEW_ANSWERS.need}`, problem: `问题：${INTERVIEW_ANSWERS.problem}`, audience: `给谁：${INTERVIEW_ANSWERS.audience}`, constraints: `约束：${INTERVIEW_ANSWERS.constraints}` }
+const INTERVIEW_QUESTION = { title: '记账的存放方式', text: '我推荐把账存在本机的一个文件里，因为你说数据只放本机，这样可以吗？', proposal: '把账存在本机的一个文件里', reason: '你说数据只放本机' }
+const INTERVIEW_NOD = INTERVIEW_TASK.replies.question[0]
+const INTERVIEW_CONFIRM = '需求就按上面这样定，可以吗？'
+const INTERVIEW_AGREE = INTERVIEW_TASK.replies.confirm[0]
+const interviewEdit = set => ({ tool: { name: 'graph_edit', arguments: { id: 'goal-1', rev: '{rev:goal-1}', set, reason: 'probe: the human answered' } } })
+const confirmArgs = { kind: 'confirm', goal: 'goal-1', text: INTERVIEW_CONFIRM }
+const interviewSteps = [
+  ['focus', stageFocus('goal-1')],
+  ['ask-need', { text: '你想要什么？' }],
+  ['write-need', interviewEdit({ body: INTERVIEW_LINES.need })],
+  ['ask-problem', { text: '做成以后，你的日子会有什么不一样？' }],
+  ['write-problem', interviewEdit({ body: [INTERVIEW_LINES.need, INTERVIEW_LINES.problem, INTERVIEW_LINES.audience].join('\n') })],
+  ['ask-acceptance', { text: '你会怎么检查它真的做成了？' }],
+  ['write-acceptance', interviewEdit({ acceptance: [INTERVIEW_ANSWERS.acceptance] })],
+  ['ask-non-goals', { text: '有没有你明确不想要的？' }],
+  ['write-non-goals', interviewEdit({ nonGoals: [INTERVIEW_ANSWERS['non-goals']] })],
+  ['ask-constraints', { text: '有没有不能改、不能花、不能冒的险？' }],
+  ['write-constraints', interviewEdit({ body: Object.values(INTERVIEW_LINES).join('\n') })],
+  ['confirm-early', { tool: { name: 'propose_to_human', arguments: confirmArgs } }],
+  ['ask-risks', { text: '假如最后没做成，最可能是因为什么？' }],
+  ['write-risk', { tool: { name: 'graph_propose', arguments: { node: { type: 'risk', title: '懒得每天记', parent: 'goal-1' }, reason: 'probe: the human answered' } } }],
+  ['put-question', { tool: { name: 'propose_to_human', arguments: { kind: 'question', form: 'recommend', ...INTERVIEW_QUESTION } } }],
+  ['show-question', { text: renderAsk(INTERVIEW_QUESTION.text, 1) }],
+  ['record-question', { tool: { name: 'record_human_answer', arguments: { kind: 'question', question: 'question-1', answer: 'agree', words: [INTERVIEW_NOD], recordedAs: INTERVIEW_QUESTION.proposal } } }],
+  ['edit-stage', { tool: { name: 'graph_edit', arguments: { id: 'goal-1', rev: '{rev:goal-1}', set: { stage: 'design' }, reason: 'probe: the model moves the goal on by itself' } } }],
+  ['put-requirement', { tool: { name: 'propose_to_human', arguments: confirmArgs } }],
+  ['show-requirement', { text: renderAsk(INTERVIEW_CONFIRM, 1) }],
+  ['record-requirement', { tool: { name: 'record_human_answer', arguments: { kind: 'confirm', goal: 'goal-1', answer: 'agree', words: [INTERVIEW_AGREE], recordedAs: '需求按上面这样定' } } }],
+  ['wake-other', { tool: { name: 'Read', arguments: { file_path: join(stageWs(INTERVIEW), 'README.md') } }, other: { line: '/wish', say: '把这个目标放行吧' } }],
+  ['wait-other', stageWait],
+  ['done', { text: 'done', status: true }],
+]
+const interviewAt = name => interviewSteps.findIndex(([step]) => step === name)
+await stageGraph(INTERVIEW, [['llm', { type: 'goal', title: '记账小工具', stage: 'interview' }]])
+const interviewOther = [{ tool: { name: 'graph_edit', arguments: { id: 'goal-1', rev: '{rev:goal-1}', set: { stage: 'release' }, reason: 'probe: another session moves the goal on', relay: '可以，放行' } } }, { text: 'other done' }]
+const designInterview = designScenario(INTERVIEW, 'glm-5.3', () => interviewSteps.map(([, step]) => step), {
+  wish: true,
+  human: { ...INTERVIEW_TASK, maxReplies: 8 },
+  others: [interviewOther],
+})
+
+// The release of a design as a conversation, goal not split into modules (docs/ORCHESTRATION.md §3.1, §4.5, §6.9; M3 step 9). The graph has the human's goal-1 in
+// design with one design decision and one task, the main agent's own proposals; the decision has an empty "查过的现成方案：" followed by a line "如果失败：", which is
+// not a column, so the release is refused as gate_unmet for the missing column. The model fixes it, puts the release (propose_to_human, kind release) and shows
+// the text; the simulated human adds something (replies.release, first sentence); record_human_answer (add) notes it on the goal and moves nothing; the model
+// changes the design and puts it again, the person says it can go; record_human_answer (agree) approves what they were shown and releases the goal, each write
+// with their words. A subagent dispatched after that writes its file: the goal is released.
+const RELEASE = 'glm-design-release'
+const RELEASE_TEXT = '照上面的方案放行，可以吗？'
+const RELEASE_ADD = '补充：月底的汇总按金额从大到小排'
+const RELEASE_GO = '可以，放行'
+const RELEASE_BODY = '理由：一个人用，不要服务端\n架构：本地 JSON 文件\n查过的现成方案：ledger-cli 太重'
+await stageGraph(RELEASE, [
+  ['human', { type: 'goal', title: '记账小工具', stage: 'design', body: STAGE_BODY, acceptance: ['月底能看到按类别的合计'], nonGoals: ['不做手机版'] }],
+  ['llm', { type: 'decision', id: 'decision-1', title: '用本地文件存账', parent: 'goal-1', body: '理由：一个人用，不要服务端\n架构：本地 JSON 文件\n查过的现成方案：\n如果失败：文件被改坏', acceptance: ['月底出一张分类表'], nonGoals: ['不做同步'] }],
+  ['llm', { type: 'task', id: 'task-1', title: '写记账命令', parent: 'goal-1', acceptance: ['记一条能读回'], edges: [{ type: 'source', to: 'decision-1' }] }],
+])
+const releaseCall = args => ({ tool: { name: 'propose_to_human', arguments: { kind: 'release', goal: 'goal-1', text: RELEASE_TEXT, ...args } } })
+const recordRelease = args => ({ tool: { name: 'record_human_answer', arguments: { kind: 'release', goal: 'goal-1', ...args } } })
+const releaseShown = renderAsk(RELEASE_TEXT, 1)
+const designRelease = designScenario(RELEASE, 'glm-5.3', () => [
+  stageFocus('goal-1'),
+  releaseCall({}),
+  { tool: { name: 'graph_edit', arguments: { id: 'decision-1', rev: '{rev:decision-1}', set: { body: `${RELEASE_BODY}\n如果失败：文件被改坏` }, reason: 'probe: the column is filled' } } },
+  releaseCall({}),
+  { text: releaseShown },
+  recordRelease({ answer: 'add', words: [RELEASE_ADD], recordedAs: '汇总按金额从大到小排' }),
+  { tool: { name: 'graph_edit', arguments: { id: 'task-1', rev: '{rev:task-1}', set: { acceptance: ['记一条能读回', '汇总按金额从大到小排'] }, reason: 'probe: the supplement is in the plan' } } },
+  releaseCall({}),
+  { text: releaseShown },
+  recordRelease({ answer: 'agree', words: [RELEASE_GO], recordedAs: '照这个方案放行' }),
+  stageDispatch(RELEASE, 'D1', 'released.txt'),
+  stageWait,
+  { text: 'done', status: true },
+], {
+  wish: true,
+  human: { replies: { release: [RELEASE_ADD, RELEASE_GO] }, maxReplies: 2 },
+  extra: dispatchRow(join(runDir, RELEASE, 'dispatch.jsonl')),
+  others: [stageChild(RELEASE, 'released.txt')],
+})
+
+// The two-level release of a goal split into modules (docs/ORCHESTRATION.md §4.9; M3 step 9). The graph has the human's goal-1 in design with the framework decision,
+// the list of directions and two module candidates with the design of each below it, all the main agent's proposals. Nothing under a module is built before
+// its release: a subagent's write is refused while the goal is in design and while the module is. The framework is released with a page (the first page
+// lacks a module, which is refused), the candidates become modules in design; module-a is released with a page, after the person adds something to it; a write
+// for module-a runs, one for module-b is refused with the module named. The words of the person are not taken for a release that was not put to them; the main
+// agent sends module-a back to design on its own word, a subagent that does the same is refused and the main agent is told.
+const MODULES = 'glm-design-modules'
+const MODULES_NAMES = { framework: '用本地文件存账', a: '记账', b: '月底汇总', directions: ['数据只存在本机', '先记账再汇总'] }
+const MODULES_PAGE = `框架：${MODULES_NAMES.framework}。\n模块：${MODULES_NAMES.a}、${MODULES_NAMES.b}。\n你定过的方向：${MODULES_NAMES.directions.join('；')}。`
+const MODULES_PAGE_A = `你会看到什么：${MODULES_NAMES.a}这一块做完以后的样子。\n它自己会做的：照图上的任务做。\n什么时候问你：碰到要你定的事。\n替你定了的方向：${MODULES_NAMES.directions[0]}。`
+const MODULES_PAGE_B = `你会看到什么：${MODULES_NAMES.b}这一块做完以后的样子。\n它自己会做的：照图上的任务做。\n什么时候问你：碰到要你定的事。\n替你定了的方向：${MODULES_NAMES.directions[1]}。`
+const MODULES_ADD = '补充：先做记录再做汇总'
+const MODULES_FIVE = { body: '理由：一个人用，不要服务端\n架构：本地 JSON 文件\n查过的现成方案：ledger-cli 太重', acceptance: ['月底出一张分类表'], nonGoals: ['不做同步'] }
+await stageGraph(MODULES, [
+  ['human', { type: 'goal', title: '记账小工具', stage: 'design', body: STAGE_BODY, acceptance: ['月底能看到按类别的合计'], nonGoals: ['不做手机版'] }],
+  ['llm', { type: 'decision', id: 'decision-fw', title: MODULES_NAMES.framework, parent: 'goal-1', ...MODULES_FIVE }],
+  ['llm', { type: 'norm', id: 'norm-directions', title: '方向清单', parent: 'goal-1', acceptance: MODULES_NAMES.directions }],
+  ...[['a', MODULES_NAMES.a], ['b', MODULES_NAMES.b]].flatMap(([key, title]) => [
+    ['llm', { type: 'feature', id: `module-${key}`, title, parent: 'goal-1', edges: [{ type: 'source', to: 'decision-fw' }] }],
+    ['llm', { type: 'decision', id: `decision-${key}`, title: `${title}怎么做`, parent: `module-${key}`, ...MODULES_FIVE }],
+    ['llm', { type: 'task', id: `task-${key}`, title: `写${title}`, parent: `module-${key}`, acceptance: ['能用'], edges: [{ type: 'source', to: `decision-${key}` }] }],
+  ]),
+])
+const modulesSteps = [
+  ['focus-a', stageFocus('task-a')],
+  ['dispatch-1', stageDispatch(MODULES, 'M1', 'modules-1.txt')],
+  ['wait-1', stageWait],
+  ['page-short', releaseCall({ page: MODULES_PAGE.replace(MODULES_NAMES.b, '') })],
+  ['put-framework', releaseCall({ page: MODULES_PAGE })],
+  ['show-framework', { text: renderAsk(RELEASE_TEXT, 1, undefined, MODULES_PAGE, false) }],
+  ['record-framework', recordRelease({ answer: 'agree', words: [RELEASE_GO], recordedAs: '框架、模块和方向放行' })],
+  ['dispatch-2', stageDispatch(MODULES, 'M2', 'modules-2.txt')],
+  ['wait-2', stageWait],
+  ['put-a', releaseCall({ module: 'module-a', page: MODULES_PAGE_A })],
+  ['show-a', { text: renderAsk(RELEASE_TEXT, 1, undefined, MODULES_PAGE_A, false) }],
+  ['record-a-add', recordRelease({ module: 'module-a', answer: 'add', words: [MODULES_ADD], recordedAs: '先记录后汇总' })],
+  ['revise-a', { tool: { name: 'graph_edit', arguments: { id: 'task-a', rev: '{rev:task-a}', set: { acceptance: ['能用', '先记录后汇总'] }, reason: 'probe: the supplement is in the plan' } } }],
+  ['put-a-again', releaseCall({ module: 'module-a', page: MODULES_PAGE_A })],
+  ['show-a-again', { text: renderAsk(RELEASE_TEXT, 1, undefined, MODULES_PAGE_A, false) }],
+  ['record-a', recordRelease({ module: 'module-a', answer: 'agree', words: ['可以，放行这个模块'], recordedAs: '放行记账' })],
+  ['dispatch-3', stageDispatch(MODULES, 'M3', 'modules-3.txt')],
+  ['wait-3', stageWait],
+  ['focus-b', stageFocus('task-b')],
+  ['dispatch-4', stageDispatch(MODULES, 'M4', 'modules-4.txt')],
+  ['wait-4', stageWait],
+  ['record-b-unshown', recordRelease({ module: 'module-b', answer: 'agree', words: ['可以，放行这个模块'], recordedAs: '放行月底汇总' })],
+  ['put-b', releaseCall({ module: 'module-b', page: MODULES_PAGE_B })],
+  ['record-b-invented', recordRelease({ module: 'module-b', answer: 'agree', words: ['我编的一句话'], recordedAs: '放行月底汇总' })],
+  ['record-b-borrowed', recordRelease({ module: 'module-b', answer: 'agree', words: ['可以，放行这个模块'], recordedAs: '放行月底汇总' })],
+  ['dispatch-5', stageDispatch(MODULES, 'M5', 'unused.txt')],
+  ['wait-5', stageWait],
+  ['send-back', { tool: { name: 'graph_edit', arguments: { id: 'module-a', rev: '{rev:module-a}', set: { stage: 'design' }, reason: 'probe: the direction of the module has to change' } } }],
+  ['done', { text: 'done', status: true }],
+]
+const modulesAt = name => modulesSteps.findIndex(([step]) => step === name)
+const modulesChild = [{ tool: { name: 'graph_edit', arguments: { id: 'module-a', rev: '{rev:module-a}', set: { stage: 'design' }, reason: 'probe: the child sends the module back' } } }, { text: 'child done' }]
+const designModules = designScenario(MODULES, 'glm-5.3', () => modulesSteps.map(([, step]) => step), {
+  wish: true,
+  human: { replies: { release: [RELEASE_GO], module: [MODULES_ADD, '可以，放行这个模块'] }, maxReplies: 3 },
+  extra: dispatchRow(join(runDir, MODULES, 'dispatch.jsonl')),
+  others: [stageChild(MODULES, 'modules-1.txt'), stageChild(MODULES, 'modules-2.txt'), stageChild(MODULES, 'modules-3.txt'), stageChild(MODULES, 'modules-4.txt'), modulesChild],
+})
+// The person's persona for the main agent (docs/ORCHESTRATION.md §3.1; task m3-main-persona): the overlay gives the design row a persona with a mark in
+// its text. On the GLM route the main agent's system prompt opens its identity with the sentence of an active output style and carries the persona in
+// front of the context management section; the subagent the main agent dispatches (a real child session, as in glm-dispatch) has neither. On another
+// route the section is there and the DSH identity is untouched. Neither scenario seeds a graph: nothing here depends on one.
+const PERSONA = 'glm-design-persona'
+const PERSONA_PLAIN = 'non-glm-design-persona'
+const PERSONA_SETTING = { name: 'PM', text: 'End every reply to the human with 「（PM-MARK）」.' }
+const designPersona = designScenario(PERSONA, 'glm-5.3', () => [
+  { tool: { name: 'DeferredToolCall', arguments: { name: 'probe_dispatch', input: { task: 'P1', prompt: 'Reply done.', cwd: stageWs(PERSONA), scope: '.', model: 'glm-5.3' } } } },
+  stageWait,
+  { text: 'done', status: true },
+], { wish: true, persona: PERSONA_SETTING, extra: dispatchRow(join(runDir, PERSONA, 'dispatch.jsonl')), others: [[{ text: 'child done' }]] })
+const designPersonaPlain = designScenario(PERSONA_PLAIN, 'deepseek-probe', () => [{ text: 'done', command: { name: 'hourness-status' } }], { wish: true, persona: PERSONA_SETTING, on: profiles['probe-hourness'] })
 const designRecord = (scenario) => readHolder(holderFileOf(join(scenario.dir, 'dsh-home', 'glm-hourness'), join(scenario.ws, 'docs', 'graph')))
 const MAIN_HEAD = '# Main agent\nYou are the main agent of this project'
 const sectionAt = step => step?.system.indexOf(MAIN_HEAD) ?? -1
@@ -1312,6 +1599,233 @@ const leaked = GENERATED_PROFILES.filter(name => existsSync(join(realProfiles, n
  * glm-design-one-main): what the real runtime did with the identity section,
  * the tool face, the notices and the holder record.
  */
+/** The refs under refs/hourness/snapshots/ of a scenario's workspace, and the README.md the first of them holds in its stash. */
+function snapshotsOf(scenario) {
+  const listed = spawnSync('git', ['for-each-ref', '--format=%(refname)', 'refs/hourness/snapshots'], { cwd: scenario.ws, encoding: 'utf8' })
+  return listed.stdout.split('\n').filter(line => line !== '')
+}
+const lfOf = text => (text ?? '').replaceAll('\r\n', '\n')
+function snapshotEditOf(scenario) {
+  const line = jsonl(join(scenario.ws, '.llm', 'snapshots.jsonl')).at(0)
+  return line?.stash === undefined ? undefined : spawnSync('git', ['show', `${line.stash}:README.md`], { cwd: scenario.ws, encoding: 'utf8' }).stdout
+}
+/** The stage reminders in a request, as the dump keeps them: the facts and the text. */
+const stageNotices = step => messagesOf(step, 'glm-design-stage')
+/** What the dispatched children of a scenario did: the child ids in dispatch order and each one's Write result (the second request of the child). */
+function stageChildren(name, scenario) {
+  const ids = dispatchRecord(name).filter(entry => entry.kind === 'started').map(entry => entry.childId)
+  return ids.map(id => ({ id, result: lastToolResult(bySession(scenario, id)[1]) }))
+}
+function stageChecks() {
+  const requests = designStage.steps.filter(step => step.sessionId === designStage.steps[0]?.sessionId)
+  const counts = requests.map(step => stageNotices(step).length)
+  const facts = (step, index) => stageNotices(step)[index]?.designStage
+  const children = stageChildren(STAGE, designStage)
+  const ws = stageWs(STAGE)
+  const violations = jsonl(join(runDir, STAGE, 'home', 'audit', 'violations.jsonl')).filter(record => record.rule === 'design-before-release')
+  const stageQuiet = scenario => !stderrOf(scenario).includes('dsh-glm-hourness/design')
+  const compacted = designStageCompact.steps.filter(step => step.sessionId === designStageCompact.steps[0]?.sessionId)
+  const after = compacted.flatMap((step) => {
+    const at = step.messages.findLastIndex(message => message.source === 'compact-checkpoint')
+    return at < 0 ? [] : [stageNotices({ messages: step.messages.slice(at + 1) }).map(message => message.designStage.reason)]
+  })
+  const released = designReleased.steps.filter(step => step.sessionId === designReleased.steps[0]?.sessionId)
+  const releasedChildren = stageChildren(STAGE_MODULES, designReleased)
+  const releasedViolations = jsonl(join(runDir, STAGE_MODULES, 'home', 'audit', 'violations.jsonl')).filter(record => record.rule === 'design-before-release')
+  const lastNotice = step => stageNotices(step).at(-1)
+  const wsFile = (name, file) => existsSync(join(stageWs(name), file))
+  return [
+    ['design stage: the first request carries the reminder for no goal in focus (no goal, stage none, reason goal) and tells the main agent to propose the goal and focus it', requests.length === 9 && counts[0] === 1 && facts(requests[0], 0)?.goal === '' && facts(requests[0], 0).stage === 'none' && facts(requests[0], 0).reason === 'goal' && stageNotices(requests[0])[0].text.includes('no goal is in your focus yet') && stageNotices(requests[0])[0].text.includes('graph_focus'), `${requests.length} requests; counts ${counts.join(',')}; ${JSON.stringify(facts(requests[0], 0) ?? null)}`],
+    ['design stage: a reminder that has not changed is not repeated: one notice in requests 1 to 3, one more at request 4 (graph_focus), none at 5 to 7, one more at request 8 (the edit)', isDeepStrictEqual(counts, [1, 1, 1, 2, 2, 2, 2, 3, 3]), counts.join(',')],
+    ['design stage: after graph_focus the reminder is about goal-1 at stage interview (reason goal), counts the requirement card, and asks the next question in the human\'s words', facts(requests[3], 1)?.goal === 'goal-1' && facts(requests[3], 1).stage === 'interview' && facts(requests[3], 1).reason === 'goal' && stageNotices(requests[3])[1].text.includes('Requirement card: 1 of 8 filled.') && stageNotices(requests[3])[1].text.includes('Next: ask 「做成以后，你的日子会有什么不一样」, then ') && stageNotices(requests[3])[1].text.includes('Interview the human in plain chat'), JSON.stringify(facts(requests[3], 1) ?? null)],
+    ['design stage: the main agent\'s edit of the goal body gets the reminder again (reason changed) with the card one item fuller, and no banned question tool is named in any reminder', facts(requests[7], 2)?.reason === 'changed' && stageNotices(requests[7])[2].text.includes('Requirement card: 2 of 8 filled.') && requests.every(step => stageNotices(step).every(message => !['ask_user_question', 'decision_card', 'design_review', 'ask_human'].some(word => message.text.includes(word)))), JSON.stringify(facts(requests[7], 2) ?? null)],
+    ['design-before-release: the first subagent (no goal in focus) is refused, with the main agent\'s four-part correction; the second (goal at stage interview) too; neither file exists', children.length === 2 && children.every(child => child.result?.isError === true) && children[0].result.text.includes('has no open goal in focus') && children[1].result.text.includes('at stage interview (goal goal-1): nothing is built before the human releases the design.') && children.every(child => child.result.text.includes('Exception: If a write is needed to answer a design question (a spike)')) && !existsSync(join(ws, 'sub-1.txt')) && !existsSync(join(ws, 'sub-2.txt')), children.map(child => `${child.result?.isError}:${(child.result?.text ?? '').slice(0, 60)}`).join(' | ')],
+    ['design-before-release: both refusals are in the violation journal under the rule, by the children', violations.length === 2 && violations.every(record => children.some(child => child.id === record.agentId)), JSON.stringify(violations.map(record => [record.rule, record.agentId]))],
+    ['design stage: the row activated quietly and no question card was raised', designStage.status === 0 && stageQuiet(designStage.name) && designStage.human.every(entry => entry.kind !== 'unexpected-question'), `exit ${designStage.status}; ${quiet(designStage.name)}`],
+    ['design stage (compact): after a compaction the first request with the checkpoint carries the reminder again, reason compaction', after.length > 0 && after.some(reasons => reasons.includes('compaction')) && designStageCompact.status === 0, `${designStageCompact.compactions.length} compaction(s); after checkpoints: ${JSON.stringify(after)}`],
+    ['design released: the goal level of a released goal split into modules lists both modules, one released and one in design; the module in design is described in its own reminder, the released one says so', stageNotices(released[1])[1]?.text.includes('The framework, the module list and the directions are released.') === true && stageNotices(released[1])[1].text.includes('- 记一笔（module-a）：已放行') && stageNotices(released[1])[1].text.includes('- 月底报表（module-b）：设计中') && lastNotice(released[4])?.text.includes('module module-b "月底报表", which is in design') === true && lastNotice(released[7])?.text.includes('This module is released.') === true, released.map(step => stageNotices(step).length).join(',')],
+    ['design-before-release: at the goal level of the released goal the first child writes; at a task of the module in design the second is refused with the module named; at a task of the released module the third writes', releasedChildren.length === 3 && releasedChildren[0].result?.isError !== true && wsFile(STAGE_MODULES, 'released-1.txt') && releasedChildren[1].result?.isError === true && releasedChildren[1].result.text.includes('module module-b (月底报表) of goal goal-1, and the human has not released that module yet') && releasedChildren[1].result.text.includes('(kind release, module module-b)') && !wsFile(STAGE_MODULES, 'released-2.txt') && releasedChildren[2].result?.isError !== true && wsFile(STAGE_MODULES, 'released-3.txt') && releasedViolations.length === 1, releasedChildren.map(child => `${child.result?.isError}:${(child.result?.text ?? '').slice(0, 50)}`).join(' | ')],
+  ]
+}
+function questionChecks() {
+  const main = designQuestion.steps.filter(step => step.sessionId === designQuestion.steps[0]?.sessionId)
+  const nodeOf = id => JSON.parse(readFileSync(join(stageWs(QUESTION), 'docs', 'graph', 'nodes', `${id}.json`), 'utf8'))
+  const shownResult = (() => { try { return JSON.parse(lastToolResult(main[2])?.text ?? '') } catch { return undefined } })()
+  const decided = (() => { try { return JSON.parse(lastToolResult(main[4])?.text ?? '') } catch { return undefined } })()
+  const question = nodeOf('question-1')
+  const violations = jsonl(join(runDir, QUESTION, 'home', 'audit', 'violations.jsonl'))
+  const replies = designQuestion.human.filter(entry => entry.kind === 'reply')
+  const childId = dispatchRecord(QUESTION).find(entry => entry.kind === 'started')?.childId
+  const childResult = childId === undefined ? undefined : lastToolResult(bySession(designQuestion, childId)[1])
+  const rowOf = step => tableOf(step?.status ?? '').design
+  const description = main[0]?.tools.find(tool => tool.name === 'propose_to_human')?.description ?? ''
+  const userMessages = messagesOf(main[3], 'user')
+  const decide = question.history.at(-1)
+  const asked = question.history.find(entry => entry.op === 'propose')
+  const report = main[8]?.command
+  const asks = report?.text.split('## 等你定的事\n')[1]?.split('\n\n')[0] ?? ''
+  return [
+    ['design question: the main agent\'s first request has propose_to_human with the shapes of a question and the worked examples in full (recommend, choose, want, look, the plain-words list at the end), and record_human_answer', main.length === 9 && ['recommend:', 'choose:', 'want:', 'look:', 'made-up matters'].every(part => description.includes(part)) && description.endsWith('say what the document is.') && faceOf(main[0]).includes('record_human_answer'), `${main.length} requests; description ${description.length} chars`],
+    ['design question: propose_to_human returns text word for word as renderAsk lays out the example, and question-1 waits for the human as a recommend proposal whose question is the text up to its question mark', shownResult?.text === QUESTION_SHOWN && shownResult.question === 'question-1' && shownResult.number === 1 && shownResult.form === 'recommend' && question.status === 'done' && question.form === 'recommend' && question.ask === askOf(QUESTION_EXAMPLE.text) && question.proposal === QUESTION_EXAMPLE.proposal && question.reason === QUESTION_EXAMPLE.reason && asked?.to === 'approved' && asked.reason.startsWith('主 Agent 在对话里把这件事交给人（propose_to_human '), JSON.stringify(shownResult ?? null).slice(0, 200)],
+    ['design question: the turn ended with the text, the simulated human replied once by rule 3 (a recommend question, number 1), and the next request carries the reply as a message of the user', replies.length === 1 && replies[0].rule === 3 && replies[0].text === QUESTION_ANSWER && isDeepStrictEqual(replies[0].shown, [{ kind: 'question', number: 1, form: 'recommend' }]) && userMessages.some(message => message.text.includes(QUESTION_ANSWER)), JSON.stringify(replies)],
+    ['design question: record_human_answer with the human\'s words decides the question: the outcome is decided, the conclusion is what the main agent recorded and the decision carries the words as relay and the mark of the agreement', decided?.outcome === 'decided' && decide?.op === 'decide' && decide.relay === QUESTION_ANSWER && decide.conclusion === QUESTION_EXAMPLE.proposal && decide.reason.startsWith('人在对话里同意（record_human_answer ') && question.conclusion === QUESTION_EXAMPLE.proposal, JSON.stringify(decided ?? null)],
+    ['design question: an invented quote is refused as invalid on words and the question stays as it was', lastToolResult(main[5])?.isError === true && lastToolResult(main[5]).text.includes('"field":"words"') && question.history.length === 2 && question.conclusion === QUESTION_EXAMPLE.proposal, (lastToolResult(main[5])?.text ?? '').slice(0, 160)],
+    ['design question: a question with an option table proposed through graph_propose is refused by main-agent-graph-options with the right path, and no such question is on the graph', lastToolResult(main[6])?.isError === true && lastToolResult(main[6]).text.includes('You tried to put an option table for the human on the graph for "放哪".') && lastToolResult(main[6]).text.includes('Put the matter with propose_to_human') && !existsSync(join(stageWs(QUESTION), 'docs', 'graph', 'nodes', 'question-2.json')) && violations.some(record => record.rule === 'main-agent-graph-options'), (lastToolResult(main[6])?.text ?? '').slice(0, 160)],
+    ['design question: a subagent that sends relay with an edit of the goal is refused by main-agent-graph-relay, the goal does not move, the violation names the subagent session, the main agent gets the glm-design-bypass notice, and the design row says it is partly in effect', childResult?.isError === true && childResult.text.includes('Subagents do not relay the human\'s words.') && nodeOf('goal-1').stage === 'interview' && violations.some(record => record.rule === 'main-agent-graph-relay' && record.agentId === childId && record.session?.kind === 'subagent') && messagesOf(main[8], 'glm-design-bypass').length === 1 && rowOf(main[8])?.status === '部分生效', `${childResult?.isError}:${(childResult?.text ?? '').slice(0, 80)}; notices ${messagesOf(main[8], 'glm-design-bypass').length}; ${JSON.stringify(rowOf(main[8]) ?? null)}`],
+    ['design question: /hourness at the last step reads the graph of the session through the graph row: nothing waits for the person, the one decision of the day is the person\'s in the chat, and the report has no grading', report?.kind === 'success' && asks.startsWith('- 等你定的 0 件\n- agent 自己要定的 0 件\n- 本期拍板 1 次：你 0 · 你在对话里说 1 · agent 0\n') && /^- 派遣类调用 \d+ 次$/m.test(asks) && !/L[123]/.test(report.text), `${report?.kind ?? 'not run'}; ${JSON.stringify(asks)}`],
+    ['design question: the run ended with exit 0, the simulated human said nothing more, no question card was raised, and the row printed nothing to stderr', designQuestion.status === 0 && designQuestion.human.filter(entry => entry.kind === 'silent').length >= 1 && designQuestion.human.every(entry => entry.kind !== 'unexpected-question') && !stderrOf(QUESTION).includes('dsh-glm-hourness/design'), `exit ${designQuestion.status}; ${JSON.stringify(designQuestion.human.map(entry => entry.kind))}`],
+  ]
+}
+
+function interviewChecks() {
+  const main = designInterview.steps.filter(step => step.sessionId === designInterview.steps[0]?.sessionId)
+  const otherId = designInterview.steps.find(step => step.sessionId !== main[0]?.sessionId)?.sessionId
+  const second = otherId === undefined ? [] : bySession(designInterview, otherId)
+  // A node the run did not write reads as an empty one, so the checks fail one by one instead of the whole probe stopping.
+  const nodeOf = (id) => {
+    try {
+      return JSON.parse(readFileSync(join(stageWs(INTERVIEW), 'docs', 'graph', 'nodes', `${id}.json`), 'utf8'))
+    }
+    catch {
+      return { history: [] }
+    }
+  }
+  // The result of the tool call a scripted step made is in the next request.
+  const resultOf = name => lastToolResult(main[interviewAt(name) + 1])
+  const jsonOf = name => { try { return JSON.parse(resultOf(name)?.text ?? '') } catch { return undefined } }
+  const goal = nodeOf('goal-1')
+  const question = nodeOf('question-1')
+  const replies = designInterview.human.filter(entry => entry.kind === 'reply')
+  const violations = jsonl(join(runDir, INTERVIEW, 'home', 'audit', 'violations.jsonl'))
+  const early = resultOf('confirm-early')
+  const refusedEdit = resultOf('edit-stage')
+  const [edit, approve] = goal.history.slice(-2)
+  const callOf = entry => /^人在对话里同意（record_human_answer (probe-call-[\w-]+)）$/.exec(entry?.reason ?? '')?.[1]
+  const items = ['need', 'problem', 'acceptance', 'non-goals', 'constraints', 'risks']
+  const last = main.at(-1)
+  const noticeTexts = messagesOf(last, 'glm-design-bypass').map(message => message.text)
+  return [
+    ['design interview: the scripted model made one request for each step of the interview and the simulated human, woken by /wish, did not raise a question card', main.length === interviewSteps.length && designInterview.human[0]?.kind === 'wish' && designInterview.human[0].result === 'success', `${main.length} of ${interviewSteps.length} requests; ${designInterview.human[0]?.kind}/${designInterview.human[0]?.result}`],
+    ['design interview: the person answers the six items of the card in the order the card asks (rule 4, with the words of the calibration task) while nothing is shown to them, then the question (rule 3, a recommend) and the requirement (rule 3, a confirm) with the nod of the task; eight replies and no more', replies.length === 8 && replies.slice(0, 6).every(reply => reply.rule === 4 && reply.shown.length === 0) && isDeepStrictEqual(replies.slice(0, 6).map(reply => reply.text), items.map(key => INTERVIEW_ANSWERS[key])) && replies[6].rule === 3 && replies[6].text === INTERVIEW_NOD && isDeepStrictEqual(replies[6].shown, [{ kind: 'question', number: 1, form: 'recommend' }]) && replies[7].rule === 3 && replies[7].text === INTERVIEW_AGREE && isDeepStrictEqual(replies[7].shown, [{ kind: 'confirm', number: 1 }]), JSON.stringify(replies.map(reply => [reply.rule, reply.text])).slice(0, 300)],
+    ['design interview: every answer is on the graph once the next request has written it: the four labelled lines of the card in the goal, its acceptance and non-goals, and a risk under it', goal.body === Object.values(INTERVIEW_LINES).join('\n') && isDeepStrictEqual(goal.acceptance, [INTERVIEW_ANSWERS.acceptance]) && isDeepStrictEqual(goal.nonGoals, [INTERVIEW_ANSWERS['non-goals']]) && nodeOf('risk-1').parent === 'goal-1', `${goal.body.split('\n').length} body lines; ${goal.acceptance?.length}/${goal.nonGoals?.length}`],
+    ['design interview: the requirement put to the human before the card is whole is refused as gate_unmet, naming the risk and the fork still missing and where to write them, and nothing was shown to the human', early?.isError === true && early.text.includes('"code":"gate_unmet"') && early.text.includes('missing: 风险（最可能出岔子的地方）、岔路（人拍板的选择）"') && early.text.includes('interview step 6') && early.text.includes('interview step 7'), (early?.text ?? '').slice(0, 200)],
+    ['design interview: the fork is put as a recommend question and the text comes back as the sentence the model wrote, and the human\'s nod decided it: the decision carries the nod as relay and the mark of the agreement', jsonOf('put-question')?.text === renderAsk(INTERVIEW_QUESTION.text, 1) && jsonOf('put-question').question === 'question-1' && jsonOf('record-question')?.outcome === 'decided' && question.status === 'done' && question.conclusion === INTERVIEW_QUESTION.proposal && question.history.at(-1)?.relay === INTERVIEW_NOD && question.history.at(-1).reason.startsWith('人在对话里同意（record_human_answer '), JSON.stringify(jsonOf('record-question') ?? null)],
+    ['design interview: the model\'s own edit that sets the stage of the goal to design is refused by main-agent-graph-stage with the main agent\'s correction; the refusal is in the violation journal with the goal, the stage it was in and the one it was sent to, and the goal did not move', refusedEdit?.isError === true && refusedEdit.text.includes('You tried to set the stage of "记账小工具" to design while it is in interview.') && refusedEdit.text.includes('Put it to the human with propose_to_human (kind confirm or release) and record their answer with record_human_answer') && violations.some(record => record.rule === 'main-agent-graph-stage' && record.sessionId === main[0]?.sessionId && record.goal === 'goal-1' && record.stageFrom === 'interview' && record.stageTo === 'design' && record.session === undefined) && goal.history.every(entry => entry.changes?.stage?.to !== 'design' || entry.relay !== undefined), (refusedEdit?.text ?? '').slice(0, 160)],
+    ['design interview: with the card whole the requirement is put as a confirm: the text is the model\'s sentence under its number, with no question or way of asking, and nothing is on the graph for it', jsonOf('put-requirement')?.kind === 'confirm' && jsonOf('put-requirement').goal === 'goal-1' && jsonOf('put-requirement').text === renderAsk(INTERVIEW_CONFIRM, 1) && jsonOf('put-requirement').number === 1 && jsonOf('put-requirement').question === undefined && jsonOf('put-requirement').form === undefined && !existsSync(join(stageWs(INTERVIEW), 'docs', 'graph', 'nodes', 'question-2.json')), JSON.stringify(jsonOf('put-requirement') ?? null).slice(0, 200)],
+    ['design interview: record_human_answer confirms it: the goal is approved and in design, and the stage change and the approval (in that order, so that a stop between them leaves a proposal still in the interview) are two writes of one call, each with the nod as relay, the mark of the agreement and the id of the call', jsonOf('record-requirement')?.outcome === 'confirmed' && jsonOf('record-requirement').stage === 'design' && goal.status === 'approved' && goal.stage === 'design' && approve?.op === 'approve' && edit?.op === 'edit' && isDeepStrictEqual(edit.changes, { stage: { from: 'interview', to: 'design' } }) && approve.relay === INTERVIEW_AGREE && edit.relay === INTERVIEW_AGREE && callOf(approve) !== undefined && callOf(approve) === callOf(edit), JSON.stringify([jsonOf('record-requirement'), approve?.reason, edit?.reason]).slice(0, 260)],
+    ['design interview: another root session of the project, woken by a message of the person, tries to set the goal to release with words it made up: the stage rule refuses it as an ordinary session with the correction for a session that is not the main agent, the goal stays in design, the journal names the session, and nothing else of it is allowed', second.length === 2 && lastToolResult(second[1])?.isError === true && lastToolResult(second[1]).text.includes('Only the main agent moves a goal forward, by recording the human\'s agreement to its proposal.') && lastToolResult(second[1]).text.includes('The human agrees in the main agent\'s conversation; /wish in this session shows where it is.') && goal.stage === 'design' && violations.some(record => record.rule === 'main-agent-graph-stage' && record.agentId === otherId && record.session?.kind === 'ordinary' && record.stageFrom === 'design' && record.stageTo === 'release'), `${second.length} requests; ${(lastToolResult(second[1])?.text ?? '').slice(0, 120)}`],
+    ['design interview: the main agent is told once, in its next request, that another session wanted to move the goal on without the person (the notice names the rule), and the design row says it is partly in effect', noticeTexts.length === 1 && noticeTexts[0].startsWith('[拦下] 另一个会话「') && noticeTexts[0].includes('想不经人的同意把「记账小工具」推到 release') && noticeTexts[0].includes('main-agent-graph-stage') && tableOf(last?.status ?? '').design?.status === '部分生效', `${noticeTexts.length} notice(s): ${noticeTexts[0] ?? ''}; ${JSON.stringify(tableOf(last?.status ?? '').design ?? null)}`],
+    ['design interview: the run ended with exit 0, the person said nothing after the nod, and the row printed nothing to stderr', designInterview.status === 0 && designInterview.human.filter(entry => entry.kind === 'reply').length === 8 && designInterview.human.every(entry => entry.kind !== 'unexpected-question') && !stderrOf(INTERVIEW).includes('dsh-glm-hourness/design'), `exit ${designInterview.status}; ${JSON.stringify(designInterview.human.map(entry => entry.kind))}`],
+  ]
+}
+
+function releaseChecks() {
+  const main = designRelease.steps.filter(step => step.sessionId === designRelease.steps[0]?.sessionId)
+  const nodeOf = (id) => {
+    try {
+      return JSON.parse(readFileSync(join(stageWs(RELEASE), 'docs', 'graph', 'nodes', `${id}.json`), 'utf8'))
+    }
+    catch {
+      return { history: [] }
+    }
+  }
+  // The result of the tool call a scripted step made is in the next request.
+  const resultOf = index => lastToolResult(main[index + 1])
+  const jsonOf = index => { try { return JSON.parse(resultOf(index)?.text ?? '') } catch { return undefined } }
+  const goal = nodeOf('goal-1')
+  const replies = designRelease.human.filter(entry => entry.kind === 'reply')
+  const unmet = resultOf(1)
+  const first = jsonOf(3)
+  const added = jsonOf(5)
+  const released = jsonOf(9)
+  const child = stageChildren(RELEASE, designRelease)[0]
+  const violations = jsonl(join(runDir, RELEASE, 'home', 'audit', 'violations.jsonl'))
+  const note = goal.history.find(entry => entry.op === 'comment')
+  const stageWrite = goal.history.findLast(entry => entry.changes?.stage?.to === 'release')
+  const approvals = ['decision-1', 'task-1'].map(id => nodeOf(id).history.at(-1))
+  return [
+    ['design release: the scripted model made one request for each step and the design row activated quietly', main.length === 13 && designRelease.status === 0 && !stderrOf(RELEASE).includes('dsh-glm-hourness/design'), `${main.length} requests; exit ${designRelease.status}`],
+    ['design release: the release put before the design is complete is refused as gate_unmet naming the column that is missing as the person reads it, and nothing is shown: an empty "查过的现成方案：" followed by a line "如果失败：" is an empty column', unmet?.isError === true && unmet.text.includes('"code":"gate_unmet"') && unmet.text.includes('架构（含查过的现成方案）') && !unmet.text.includes('"tool":"propose_to_human"'), (unmet?.text ?? '').slice(0, 200)],
+    ['design release: with the column filled and the line "如果失败：" still there, the release is put: the text is the model\'s sentence under its number, and the set it will approve is the decision and the task with their revisions', first?.kind === 'release' && first.goal === 'goal-1' && first.number === 1 && first.text === releaseShown && isDeepStrictEqual(first.releaseSet?.map(entry => entry.id), ['decision-1', 'task-1']) && first.releaseSet.every(entry => /^[0-9a-f]+$/.test(entry.rev)) && nodeOf('decision-1').body.includes('如果失败：'), JSON.stringify(first ?? null).slice(0, 220)],
+    ['design release: the person is spoken to twice, by rule 3, both times about a release (number 1): first they add something, then they say it can go', replies.length === 2 && replies.every(reply => reply.rule === 3 && isDeepStrictEqual(reply.shown, [{ kind: 'release', number: 1 }])) && replies[0].text === RELEASE_ADD && replies[1].text === RELEASE_GO, JSON.stringify(replies.map(reply => [reply.rule, reply.text]))],
+    ['design release: record_human_answer (add) notes their words on the goal and moves nothing: the note begins with the mark of an addition, the design is still proposals, and the goal is still in design when the note is written', added?.outcome === 'added' && note?.text?.startsWith('人在对话里补充：「补充：月底的汇总按金额从大到小排」') === true && goal.history.indexOf(note) < goal.history.indexOf(stageWrite) && added.stage === undefined, JSON.stringify(added ?? null)],
+    ['design release: after the design is changed the release is put again and the person says it can go; record_human_answer (agree) releases the goal: the outcome is released, and the decision and the task are approved with their words as relay and the mark of the agreement', released?.outcome === 'released' && released.stage === 'release' && isDeepStrictEqual(released.approved, ['decision-1', 'task-1']) && approvals.every(entry => entry?.op === 'approve' && entry.relay === RELEASE_GO && /^人在对话里同意（record_human_answer [\w-]+）$/.test(entry.reason ?? '')), JSON.stringify(released ?? null)],
+    ['design release: the goal is at stage release; the write that moved it names the person\'s words and the call, and its change is design to release', goal.status === 'approved' && goal.stage === 'release' && stageWrite?.relay === RELEASE_GO && isDeepStrictEqual(stageWrite.changes, { stage: { from: 'design', to: 'release' } }) && /^人在对话里同意（record_human_answer [\w-]+）$/.test(stageWrite.reason ?? ''), JSON.stringify(stageWrite ?? null)],
+    ['design release: the subagent dispatched after the release writes its file, and no write of a subagent was refused', child?.result?.isError !== true && existsSync(join(stageWs(RELEASE), 'released.txt')) && violations.every(record => record.rule !== 'design-before-release'), `${child?.result?.isError}:${(child?.result?.text ?? '').slice(0, 60)}; ${violations.length} violation(s)`],
+    ['design release: the simulated human raised no question card', designRelease.human.every(entry => entry.kind !== 'unexpected-question'), JSON.stringify(designRelease.human.map(entry => entry.kind))],
+  ]
+}
+
+function modulesChecks() {
+  const main = designModules.steps.filter(step => step.sessionId === designModules.steps[0]?.sessionId)
+  const nodeOf = (id) => {
+    try {
+      return JSON.parse(readFileSync(join(stageWs(MODULES), 'docs', 'graph', 'nodes', `${id}.json`), 'utf8'))
+    }
+    catch {
+      return { history: [] }
+    }
+  }
+  const resultOf = name => lastToolResult(main[modulesAt(name) + 1])
+  const jsonOf = name => { try { return JSON.parse(resultOf(name)?.text ?? '') } catch { return undefined } }
+  const errorOf = name => { try { return JSON.parse((resultOf(name)?.text ?? '').replace(/^Error: /, '')) } catch { return undefined } }
+  const replies = designModules.human.filter(entry => entry.kind === 'reply')
+  const children = stageChildren(MODULES, designModules)
+  const violations = jsonl(join(runDir, MODULES, 'home', 'audit', 'violations.jsonl'))
+  const wsFile = file => existsSync(join(stageWs(MODULES), file))
+  const [goal, moduleA, moduleB] = ['goal-1', 'module-a', 'module-b'].map(nodeOf)
+  const digest = entry => / · 一页放行稿 [0-9a-f]{8}$/.test(entry?.reason ?? '')
+  const mark = entry => /^人在对话里同意（record_human_answer [\w-]+）/.test(entry?.reason ?? '')
+  const framework = jsonOf('record-framework')
+  const putFramework = jsonOf('put-framework')
+  const putA = jsonOf('put-a')
+  const recordedA = jsonOf('record-a')
+  const bypass = messagesOf(main.at(-1), 'glm-design-bypass').map(message => message.text)
+  const stageRows = violations.filter(record => record.rule === 'design-before-release')
+  const stageOf = id => nodeOf(id).stage
+  const writeOf = (node, to) => node.history.findLast(entry => entry.changes?.stage?.to === to)
+  const unshown = errorOf('record-b-unshown')
+  const invented = errorOf('record-b-invented')
+  const borrowed = errorOf('record-b-borrowed')
+  const sendBack = nodeOf('module-a').history.at(-1)
+  return [
+    ['design modules: the scripted model made one request for each step, the design row activated quietly, and the person was spoken to three times (the framework, then module-a twice) and no more', main.length === modulesSteps.length && designModules.status === 0 && !stderrOf(MODULES).includes('dsh-glm-hourness/design') && replies.length === 3 && replies[0].text === RELEASE_GO && isDeepStrictEqual(replies[0].shown, [{ kind: 'release', number: 1 }]) && replies[1].text === MODULES_ADD && isDeepStrictEqual(replies[1].shown, [{ kind: 'release', number: 1, module: 'module-a' }]) && replies[2].text === '可以，放行这个模块', `${main.length} of ${modulesSteps.length} requests; exit ${designModules.status}; ${JSON.stringify(replies.map(reply => [reply.rule, reply.text]))}`],
+    ['design modules: while the goal is in design a subagent dispatched with the focus on a task of module-a is refused for the goal; its file does not exist', children[0]?.result?.isError === true && children[0].result.text.includes('of a design loop at stage design (goal goal-1)') && !wsFile('modules-1.txt'), (children[0]?.result?.text ?? '').slice(0, 120)],
+    ['design modules: the page of the framework release that lacks a module is refused as invalid on page and names it; with it the release is put: the set is the framework decision, the directions and the two candidates, and the text is the model\'s sentence with the page after it', errorOf('page-short')?.code === 'invalid' && errorOf('page-short').field === 'page' && errorOf('page-short').message.includes(`the module "${MODULES_NAMES.b}"`) && putFramework?.kind === 'release' && putFramework.module === undefined && isDeepStrictEqual(putFramework.releaseSet?.map(entry => entry.id), ['decision-fw', 'norm-directions', 'module-a', 'module-b']) && putFramework.text === renderAsk(RELEASE_TEXT, 1, undefined, MODULES_PAGE, false), JSON.stringify(errorOf('page-short') ?? null).slice(0, 200)],
+    ['design modules: record_human_answer releases the framework: both candidates are modules in design, the framework and the directions are approved, the goal is at release, and the designs below the modules are still proposals; each module got its stage design while it was a proposal, then its approval, with the person\'s words', framework?.outcome === 'released' && isDeepStrictEqual(framework.modules, ['module-a', 'module-b']) && ['module-a', 'module-b'].every(id => nodeOf(id).status === 'approved' && stageOf(id) === 'design' && isDeepStrictEqual(nodeOf(id).history.slice(0, 3).map(entry => entry.op), ['propose', 'edit', 'approve']) && nodeOf(id).history.slice(1, 3).every(entry => entry.relay === RELEASE_GO && mark(entry))) && ['decision-fw', 'norm-directions'].every(id => nodeOf(id).status === 'approved') && ['decision-b', 'task-b'].every(id => nodeOf(id).status === 'proposed') && ['decision-a', 'task-a'].every(id => nodeOf(id).history.find(entry => entry.op === 'approve')?.at >= moduleA.history[2].at) && goal.stage === 'release' && digest(writeOf(goal, 'release')) && writeOf(goal, 'release').relay === RELEASE_GO, JSON.stringify(framework ?? null).slice(0, 200)],
+    ['design modules: with the goal released and module-a still in design the subagent is refused again, with the module named and the way to release it; its file does not exist', children[1]?.result?.isError === true && children[1].result.text.includes('module module-a (记账) of goal goal-1, and the human has not released that module yet') && children[1].result.text.includes('(kind release, module module-a)') && !wsFile('modules-2.txt'), (children[1]?.result?.text ?? '').slice(0, 160)],
+    ['design modules: the release of module-a is put with its page (the set is the design below it), the person adds something, record_human_answer (add) notes it on the module and the module stays in design', putA?.kind === 'release' && putA.module === 'module-a' && isDeepStrictEqual(putA.releaseSet?.map(entry => entry.id), ['decision-a', 'task-a']) && jsonOf('record-a-add')?.outcome === 'added' && moduleA.history.some(entry => entry.op === 'comment' && entry.text?.startsWith('人在对话里补充：「补充：先做记录再做汇总」')), JSON.stringify(putA ?? null).slice(0, 200)],
+    ['design modules: after the supplement is in the plan and the module put again, the person releases it: record_human_answer releases module-a: its design is approved with their words, its stage is release, and the write names the digest of the page; module-b, its design, the directions and the goal are as they were', recordedA?.outcome === 'released' && recordedA.module === 'module-a' && isDeepStrictEqual(recordedA.approved, ['decision-a', 'task-a']) && ['decision-a', 'task-a'].every(id => nodeOf(id).history.at(-1)?.relay === '可以，放行这个模块') && moduleA.history.findLast(entry => entry.changes?.stage?.to === 'release')?.relay === '可以，放行这个模块' && digest(moduleA.history.findLast(entry => entry.changes?.stage?.to === 'release')) && moduleB.stage === 'design' && ['decision-b', 'task-b'].every(id => nodeOf(id).status === 'proposed') && goal.history.filter(entry => entry.changes?.stage?.to === 'release').length === 1, JSON.stringify(recordedA ?? null).slice(0, 200)],
+    ['design modules: a subagent writes for released module-a and its file is there; with the focus on module-b the next one is refused with that module named and its file is not; three refusals in all by the rule, none for module-a', children[2]?.result?.isError !== true && wsFile('modules-3.txt') && children[3]?.result?.isError === true && children[3].result.text.includes('module module-b (月底汇总) of goal goal-1, and the human has not released that module yet') && !wsFile('modules-4.txt') && stageRows.length === 3, `${children[2]?.result?.isError}/${children[3]?.result?.isError}; ${stageRows.length} refusals`],
+    ['design modules: the release of module-b that was never put to the person is not_shown; once it is put, words the model made up and words the person said about module-a before are invalid on words; module-b stays in design with its design proposed', unshown?.code === 'not_shown' && unshown.field === 'module' && invented?.code === 'invalid' && invented.field === 'words' && borrowed?.code === 'invalid' && borrowed.field === 'words' && moduleB.status === 'approved' && moduleB.stage === 'design' && ['decision-b', 'task-b'].every(id => nodeOf(id).status === 'proposed'), `${unshown?.code}/${invented?.code}/${borrowed?.code}`],
+    ['design modules: a subagent that sends module-a back to design is refused by main-agent-graph-stage with the main agent\'s decision named, journaled as a subagent, and the main agent is told once; the row says it is partly in effect', children[4]?.result?.isError === true && children[4].result.text.includes('Only the main agent sends a module back to design.') && children[4].result.text.includes('Report back to the main agent.') && violations.some(record => record.rule === 'main-agent-graph-stage' && record.agentId === children[4].id && record.session?.kind === 'subagent' && record.node === 'module-a' && record.stageFrom === 'release' && record.stageTo === 'design') && bypass.length === 1 && bypass[0].includes('退回设计') && tableOf(main.at(-1)?.status ?? '').design?.status === '部分生效', `${(children[4]?.result?.text ?? '').slice(0, 100)}; ${bypass.length} notice(s)`],
+    ['design modules: the main agent sends module-a back to design on its own word: the edit goes through, the module is in design, and the write is the llm\'s, without the person\'s words, with the change release to design and a reason that is not the mark of an agreement', resultOf('send-back')?.isError !== true && moduleA.stage === 'design' && sendBack?.actor === 'llm' && sendBack.relay === undefined && isDeepStrictEqual(sendBack.changes, { stage: { from: 'release', to: 'design' } }) && !mark(sendBack), `${(resultOf('send-back')?.text ?? '').slice(0, 80)}; ${JSON.stringify(sendBack ?? null).slice(0, 160)}`],
+    ['design modules: no question card was raised', designModules.human.every(entry => entry.kind !== 'unexpected-question'), JSON.stringify(designModules.human.map(entry => entry.kind))],
+  ]
+}
+/** A /glm-status or /hourness-status line of the design row for a main agent session that has nothing wrong with it. */
+const inEffectRow = row => row?.status === ACTED && row.reason.startsWith('主 Agent：身份节已加上')
+function personaChecks() {
+  const SECTION = `# Output Style: PM\n${PERSONA_SETTING.text}\n\n${PERSONA_SCOPE}`
+  const main = designPersona.steps.filter(step => step.sessionId === designPersona.steps[0]?.sessionId)
+  const childId = dispatchRecord(PERSONA).find(entry => entry.kind === 'started')?.childId
+  const child = childId === undefined ? [] : bySession(designPersona, childId)
+  const at = (step, text) => step?.system.indexOf(text) ?? -1
+  const ascending = (...marks) => marks.every(mark => mark >= 0) && marks.every((mark, index) => index === 0 || marks[index - 1] < mark)
+  const reminded = steps => steps.some(step => step.system.includes('output style is active') || step.messages.some(message => message.text.includes('output style is active')))
+  const rowAt = (scenario, text) => tableOf(text ?? '').design
+  const glmLast = main.at(-1)
+  const plain = designPersonaPlain.steps[0]
+  return [
+    ['design persona (GLM): the main agent\'s request has the identity opening of an active output style after the ZCode prefix, and the persona section (heading, the person\'s text, the scope sentence) after the reporting depth and ahead of the context management, the main agent section and the workspace rules', main.length === 3 && ascending(at(main[0], 'You are ZCode, an interactive agent'), at(main[0], IDENTITY_OPENING_WITH_STYLE), at(main[0], '# Reporting Depth'), at(main[0], SECTION), at(main[0], '# Context management'), sectionAt(main[0]), at(main[0], GUARD_SECTION)) && at(main[0], IDENTITY_OPENING_PLAIN) < 0, `${main.length} requests; ${[at(main[0], IDENTITY_OPENING_WITH_STYLE), at(main[0], '# Reporting Depth'), at(main[0], SECTION), at(main[0], '# Context management'), sectionAt(main[0]), at(main[0], GUARD_SECTION)].join(' < ')}`],
+    ['design persona (GLM): the persona is in the system prompt of every request of the main agent, not only the first (the dialect and the design row agree on it at every step)', main.length > 0 && main.every(step => step.system.includes(SECTION) && step.system.includes(IDENTITY_OPENING_WITH_STYLE)), main.map(step => step.system.includes(SECTION) ? 1 : 0).join('')],
+    ['design persona (GLM): the dispatched subagent is a real child session whose request has neither the persona section nor its mark nor the main agent section; its identity opens with the plain sentence', childId !== undefined && child.length > 0 && child.every(step => !step.system.includes('# Output Style') && !step.system.includes('PM-MARK') && sectionAt(step) < 0 && step.system.includes(IDENTITY_OPENING_PLAIN) && !step.system.includes(IDENTITY_OPENING_WITH_STYLE) && step.system.includes('You are ZCode, an interactive agent')), `child ${childId ?? 'not started'}; ${child.length} request(s); ${child.map(step => step.system.includes('# Output Style') ? 'has the section' : 'none').join(',')}`],
+    ['design persona (GLM): no reminder that the style is active is sent in the system prompt or the messages of any request, the main agent\'s or the child\'s', !reminded(main) && !reminded(child), `main ${reminded(main)}, child ${reminded(child)}`],
+    ['design persona (GLM): the design row is in effect for the main agent with the persona set, and ran quietly; the person was never asked through a card', inEffectRow(rowAt(designPersona, glmLast?.status)) && designPersona.status === 0 && !stderrOf(PERSONA).includes('dsh-glm-hourness/design') && designPersona.human.every(entry => entry.kind !== 'unexpected-question'), `${JSON.stringify(rowAt(designPersona, glmLast?.status) ?? null)}; exit ${designPersona.status}`],
+    ['design persona (non-GLM): the main agent\'s request has the persona section ahead of the main agent section and the workspace rules, the DSH identity untouched, and no ZCode identity or output style opening', plain !== undefined && ascending(at(plain, SECTION), sectionAt(plain), at(plain, GUARD_SECTION)) && plain.system.includes('powered by DeepSeek Harness') && !plain.system.includes('You are ZCode') && !plain.system.includes(IDENTITY_OPENING_WITH_STYLE) && !plain.system.includes(IDENTITY_OPENING_PLAIN) && !reminded(designPersonaPlain.steps), `${plain === undefined ? 'no request' : [at(plain, SECTION), sectionAt(plain), at(plain, GUARD_SECTION)].join(' < ')}`],
+    ['design persona (non-GLM): the row is in effect in /hourness-status and ran quietly', inEffectRow(rowAt(designPersonaPlain, designPersonaPlain.steps[0]?.command?.text)) && designPersonaPlain.status === 0 && !stderrOf(PERSONA_PLAIN).includes('dsh-glm-hourness/design'), `${JSON.stringify(rowAt(designPersonaPlain, designPersonaPlain.steps[0]?.command?.text) ?? null)}; exit ${designPersonaPlain.status}`],
+  ]
+}
 function designChecks() {
   const zcode = (step) => step?.system.indexOf('You are ZCode, an interactive agent') ?? -1
   const ascending = (...marks) => marks.every(mark => mark >= 0) && marks.every((mark, index) => index === 0 || marks[index - 1] < mark)
@@ -1348,15 +1862,24 @@ function designChecks() {
       return [
         [`design main (${label}): before /wish the first two requests have the ordinary face, with ${cut.join(', ')}, and no identity section`, [0, 1].every(index => !hasSection(index) && hasCut(steps[index], cut)), steps.slice(0, 2).map(step => `${sectionAt(step)}/${hasCut(step, cut)}`).join(' ')],
         [`design main (${label}): /wish, /wish <wish> and /wish off typed mid-step through the commands service succeed, and command/run and command/done are in the session log`, lineOk(steps[1], '/wish') && lineOk(steps[3], `/wish ${DESIGN_WISH}`) && lineOk(steps[4], '/wish off'), [1, 3, 4].map(index => `${steps[index]?.line?.kind}:${steps[index]?.line?.types?.join('>')}`).join(' | ')],
-        [`design main (${label}): the request after /wish has the section${glmRoute ? ' between the ZCode identity and the workspace rules' : ' before the workspace rules'}, the first request's face without ${cut.join(', ')}, the enter notice, and the row in effect`, hasSection(2) && placed(steps[2], glmRoute) && isDeepStrictEqual(faceOf(steps[2]), faceWithout(steps[0], cut)) && entered(steps[2]) && inEffect(rowAt(scenario, 2)), `section ${sectionAt(steps[2])}; face ${faceOf(steps[2]).length} of ${faceOf(steps[0]).length}; ${JSON.stringify(rowAt(scenario, 2) ?? null)}`],
+        [`design main (${label}): the request after /wish has the section${glmRoute ? ' between the ZCode identity and the workspace rules' : ' before the workspace rules'}, the first request's face without ${cut.join(', ')} and with propose_to_human and record_human_answer (the ordinary faces before and after have neither), the enter notice, and the row in effect`, hasSection(2) && placed(steps[2], glmRoute) && isDeepStrictEqual(faceOf(steps[2]), [...faceWithout(steps[0], cut), ...DESIGN_TOOL_NAMES].sort()) && DESIGN_TOOL_NAMES.every(name => !faceOf(steps[0]).includes(name) && !faceOf(steps[5]).includes(name)) && entered(steps[2]) && inEffect(rowAt(scenario, 2)), `section ${sectionAt(steps[2])}; face ${faceOf(steps[2]).length} of ${faceOf(steps[0]).length}; ${JSON.stringify(rowAt(scenario, 2) ?? null)}`],
         [`design main (${label}): /wish <wish> typed while the agent runs arrives at its next step with the words and the original marker`, !wished(steps[3]) && wished(steps[4]) && hasSection(3) && hasSection(4), `${steps.map(step => wished(step) ? 1 : 0).join('')}`],
         [`design main (${label}): after /wish off the request has no section, the first request's face and the leave notice; the row is not in effect; the Write after it ran, so did the one before`, !hasSection(5) && isDeepStrictEqual(faceOf(steps[5]), faceOf(steps[0])) && left(steps[5]) && !left(steps[4]) && notInEffect(rowAt(scenario, 5)) && files(scenario, 'before.txt', 'after.txt').every(Boolean), `${sectionAt(steps[5])}; ${JSON.stringify(rowAt(scenario, 5) ?? null)}; files ${files(scenario, 'before.txt', 'after.txt').join(',')}`],
+        [`design main (${label}): the main agent again: a Write and a shell write are refused by name with the main agent's correction, and neither file exists`, [8, 9].every(index => lastToolResult(steps[index])?.isError === true) && lastToolResult(steps[8]).text.includes('Boundary: You are the main agent of this session (/wish)') && lastToolResult(steps[8]).text.includes('You tried to write') && lastToolResult(steps[9]).text.includes('You tried to change files through the shell') && files(scenario, 'denied.txt', 'denied2.txt').every(present => !present), `${[8, 9].map(index => `${lastToolResult(steps[index])?.isError}:${(lastToolResult(steps[index])?.text ?? '').slice(0, 50)}`).join(' | ')}; files ${files(scenario, 'denied.txt', 'denied2.txt').join(',')}`],
+        [`design main (${label}): git status runs without a snapshot or a notice; git checkout -- README.md runs, the next request has the git snapshot notice with the way back, one ref is under refs/hourness/snapshots/, and the edit is in the snapshot`, lastToolResult(steps[10])?.isError !== true && messagesOf(steps[10], 'glm-git-snapshot').length === 0 && lastToolResult(steps[11])?.isError !== true && messagesOf(steps[11], 'glm-git-snapshot').length === 1 && messagesOf(steps[11], 'glm-git-snapshot')[0].text.startsWith('[git 快照] 执行「git checkout -- README.md」之前存了快照 ') && snapshotsOf(scenario).length === 1 && lfOf(readFileSync(join(scenario.ws, 'README.md'), 'utf8')) === 'probe workspace\n' && lfOf(snapshotEditOf(scenario)) === 'probe workspace\nedited by the person\n', `${lastToolResult(steps[10])?.isError}/${messagesOf(steps[10], 'glm-git-snapshot').length}; ${lastToolResult(steps[11])?.isError}/${messagesOf(steps[11], 'glm-git-snapshot').length}; refs ${snapshotsOf(scenario).length}`],
+        [`design main (${label}): ask_user_question called by name is refused with the main agent's ask correction, and both refusals and the shell write are in the violation journal`, lastToolResult(steps[12])?.isError === true && lastToolResult(steps[12]).text.includes('You called ask_user_question.') && lastToolResult(steps[12]).text.includes('Exception: none') && jsonl(join(scenario.dir, 'home', 'audit', 'violations.jsonl')).map(record => record.rule).join(',') === 'main-agent-no-write,main-agent-no-write,main-agent-ask', jsonl(join(scenario.dir, 'home', 'audit', 'violations.jsonl')).map(record => record.rule).join(',')],
         [`design main (${label}): the row activated quietly, the record is gone after /wish off, and no question card was raised`, scenario.status === 0 && rowQuiet(scenario) && humanQuiet(scenario) && designRecord(scenario).kind === 'none', `exit ${scenario.status}; record ${designRecord(scenario).kind}`],
       ]
     }),
     ['design one main: a second root session in the same workspace, typing /wish, is told where the main agent is and how to move it; its tool face and the first session\'s are not changed by it', mainSteps[0]?.other?.kind === 'success' && mainSteps[0].other.resultText.includes('这个项目的主 Agent 在另一个会话里') && mainSteps[0].other.resultText.includes('/wish here') && sectionAt(mainSteps[1]) >= 0 && lacks(mainSteps[1], ['Write', 'Edit']), JSON.stringify(mainSteps[0]?.other ?? null).slice(0, 160)],
     ['design one main: /wish here moves the role; the first session\'s next request has no section, its tool face back (Write, Edit, ask_user_question), the notice that the main agent moved; the Write runs', mainSteps[1]?.other?.kind === 'success' && mainSteps[1].other.resultText.startsWith('主 Agent 已从另一个会话移到这里；') && mainSteps[2] !== undefined && sectionAt(mainSteps[2]) < 0 && hasCut(mainSteps[2], GLM_CUT) && wishNotices(mainSteps[2]).some(message => message.text.includes('moved to another session')) && files(one, 'x.txt')[0], `${mainSteps[1]?.other?.kind}; section ${sectionAt(mainSteps[2])}; x.txt ${files(one, 'x.txt')[0]}`],
     ['design one main: the record names the second session, not the first and not the fork; the second session logged its own two commands', holder.kind === 'held' && holder.record.sessionId.startsWith('probe-other-') && holder.record.sessionId !== mainId && holder.record.sessionId !== forkNote?.sessionId && mainSteps[0]?.other?.types.join('>') === 'command/run>command/done', `${holder.kind === 'held' ? holder.record.sessionId : holder.kind}`],
+    ...stageChecks(),
+    ...questionChecks(),
+    ...interviewChecks(),
+  ...releaseChecks(),
+  ...modulesChecks(),
+  ...personaChecks(),
     ['design one main: a fork of the first session at its /wish is an ordinary session from its first request on: no section, the ordinary face; the row ran /wish off for it, so its projection is off; the record is unchanged; the row warned of nothing', forkNote?.kind === 'forked' && forkSteps.length === 1 && forkSteps[0].sessionId === forkNote.sessionId && sectionAt(forkSteps[0]) < 0 && hasCut(forkSteps[0], GLM_CUT) && forkNote.types.includes('command/run') && forkNote.types.includes('command/done') && isDeepStrictEqual(forkNote.hournessMainAgent, { active: false }) && rowQuiet(one) && humanQuiet(one) && one.status === 0, JSON.stringify(forkNote ?? null).slice(0, 220)],
   ]
 }

@@ -247,12 +247,18 @@ test('LocalToolSearch returns the projected content and renders it as text block
   assert.deepEqual(none.content, [NO_MATCHING_DEFERRED_TOOLS])
 })
 
-test('DeferredToolCall runs the deferred target through the tool pipeline as a call of its own', async () => {
-  const calls: Array<{ name: string, args: unknown }> = []
+/** A GLM runtime that logs the calls its tools receive. */
+async function loggingGlmRuntime(calls: Array<{ name: string, args: unknown }>) {
   const rt = fakeRuntime({ calls })
   glmPromptApply(rt.ctx)
   await rt.create()
   await rt.assemble({ model: 'glm-5.3' })
+  return rt
+}
+
+test('DeferredToolCall runs the deferred target through the tool pipeline as a call of its own', async () => {
+  const calls: Array<{ name: string, args: unknown }> = []
+  const rt = await loggingGlmRuntime(calls)
   const value = await rt.execute('DeferredToolCall', { name: 'TodoWrite', input: { todos: [{ content: 'a', status: 'pending', priority: 'high' }] } }) as { name: string, content: unknown[] }
   assert.equal(value.name, 'TodoWrite')
   assert.deepEqual(value.content, [{ type: 'text', text: 'todo_write' }]) // the target's own rendering
@@ -260,6 +266,13 @@ test('DeferredToolCall runs the deferred target through the tool pipeline as a c
   assert.equal(rt.executed.length, 1)
   assert.equal(rt.executed[0]!.parent, undefined) // not a transport sub-dispatch: listeners see TodoWrite
   assert.equal(rt.executed[0]!.callId, 'call-1:deferred')
+})
+
+test('DeferredToolCall is no way round the write tools: Write is resident on GLM, so the call fails and nothing is written (the main agent relies on it, addendum 2.1)', async () => {
+  const calls: Array<{ name: string, args: unknown }> = []
+  const rt = await loggingGlmRuntime(calls)
+  await assert.rejects(rt.execute('DeferredToolCall', { name: 'Write', input: { file_path: 'a.txt', content: 'x' } }), /^Error: (Call Write directly using its normal tool call; DeferredToolCall only accepts deferred tools\.|Tool not available in this request: Write)$/)
+  assert.deepEqual(calls, [])
 })
 
 test('DeferredToolCall rejects resident, control, unknown and malformed calls with the ZCode texts', async () => {

@@ -55,3 +55,21 @@ IMPORTANT: Assist with authorized security testing, defensive security, CTF chal
 ## 5. 后续待录
 
 - WorkflowActorIdentity（3.17.1 `kDn`，工作流 actor 的身份节）：本项目不发，未录原文。
+
+## 6. 不跟 3.17.1 的地方
+
+主 Agent 的人设（设计行 `glm-hourness/design` 的 `persona` 设置，`docs/ORCHESTRATION.md` §3.1）在系统提示词里是一节 `hourness:output-style`（`src/shared/output-style.ts`），GLM 路由上由 `src/glm-prompt/assembly.ts` 的 `rewriteDialectSections` 摆放（`docs/DESIGN.md` §5.2）。3.17.1 对输出风格的做法与它有三处不同，取舍是项目图 `m3-main-persona` 一步定的（M3 附录 §2.7，2026-11-01 写入本文件）。**编排方同意之前，该步不合入 main**（`zcode-3171-follow` 验收第 1 条的做法）；编排方不同意时，只改 GLM 包的 `rewriteDialectSections`、`installDialect` 与本节，设计行不变。
+
+3.17.1 的事实（pristine `reference/zcode-3.17.1/zcode.cjs`）：
+
+- 系统提示词的组装里没有 Output Style 一节。风格激活时只换身份节的开头句：`fBa` 激活时用 `pBa`，否则用 `dBa`（§3）。`docs/reference/zcode-capabilities.md` 记的「Environment、Output Style、Context management」是 3.16.x 的次序。
+- 风格正文由 `n8o` 生成：`# Output Style: ${name}`、一个换行、风格文字去掉首尾空白，中间没有空行。它作为上下文条目 `output_style_instructions` 只在主回合（`taskType` 为 `main_turn`）下发。
+- 另有一条 `output_style` 条目，正文由 `r8o` 生成：`${name} output style is active. Remember to follow the specific guidelines for this style.`
+
+本项目照 3.17.1 的地方：身份节的开头句在组装带人设一节时用 `pBa`（`IDENTITY_OPENING_WITH_STYLE`，逐字门禁已钉住），否则用 `dBa`；节的标题行与正文写法照 `n8o`，标题后单换行，风格文字去掉首尾空白。
+
+不跟的三处，每处一句理由：
+
+- (1) 风格正文放在系统提示词的一节里（GLM 路由上在 `glm:context-management` 之前；3.17.1 在这里没有节，选这里是因为 3.16.3 在这里，且这一节在会话内不变，放在动态内容之前不破坏提示词缓存），不作为主回合的上下文条目 `output_style_instructions`。理由：验收要求主 Agent 会话的系统提示词带人设一节，DSH 的节在每一步都在，不只主回合。
+- (2) 不加 `r8o` 的每回合提醒。理由：正文每一步都在系统提示词里，3.17.1 的提醒是为只在主回合下发的条目补的，这里加它只多花每回合的 token。
+- (3) 正文后面多一句范围说明：`This style applies to your replies to the human only. Text you put into tool calls (graph nodes, briefs for subagents) and anything written to files stays plain.` 理由：只让人设管对人说的话，子 agent 的简报、图节点与写进文件的东西保持朴素（验收第 2 条）。这一句是本项目的文字，不是 ZCode 的。

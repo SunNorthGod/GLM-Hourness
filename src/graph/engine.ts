@@ -7,8 +7,11 @@
  * Writes to one graph directory are serialized within the process.
  */
 import { resolve } from 'node:path'
-import { checkNode, nodeFile, type GraphIssue } from './format.ts'
+import { ANSWER_MARKS } from '../shared/answer-marks.ts'
+import { CONCLUSION_REF, checkNode, nodeFile, type GraphIssue } from './format.ts'
+import { isReleased, moduleOf } from './modules.ts'
 import { PROPOSE_FIELDS, failure, parseMutation, type Failure, type Mutation, type ProposedNode } from './mutation.ts'
+import { PROPOSAL_FIELDS, PROPOSAL_LIMITS, codePointCount, proposalRecordRefusal } from './proposal.ts'
 import { OPEN_STATUSES, deciderOf, listOpenItems, projectNode, type OpenItems, type Projection } from './projection.ts'
 import {
   CARD_FIELDS,
@@ -16,6 +19,7 @@ import {
   DISPATCH_FIELDS,
   EDITABLE_FIELDS,
   isPassingEvidence,
+  STAGES,
   type Actor,
   type CardDimension,
   type DecisionOption,
@@ -28,6 +32,7 @@ import {
   type NodeType,
   type Status,
 } from './schema.ts'
+import { effectiveStage } from './stage.ts'
 import { graphRevision, hasErrors, loadGraph, writeNodes, type LoadedGraph, type NodeWrite } from './store.ts'
 import { validateGraph } from './validate.ts'
 
@@ -281,14 +286,9 @@ function supersedeTargets(context: Context, by: string, edges: readonly GraphEdg
   })
 }
 
-/** Length in code points, so a character outside the BMP counts once. */
-function codePoints(text: string): number {
-  return [...text].length
-}
-
 /** One line of at most `limit` code points. */
 function shortLine(text: string, limit: number): boolean {
-  return !/[\r\n]/.test(text) && codePoints(text) <= limit
+  return !/[\r\n]/.test(text) && codePointCount(text) <= limit
 }
 
 /** Option keys a verdict names: the key written after each arrow, as in 是 → A；否 → B. */
@@ -310,7 +310,7 @@ function optionRefusal(node: GraphNode, option: DecisionOption, at: string): Fai
   if (option.consequence !== undefined) {
     return failure('invalid', `option "${option.key}" of "${node.id}" has a consequence`, 'consequence is kept only on questions written before the table card; write what the option gets as gain and what it costs as cost, one line each', `${at}.consequence`)
   }
-  if (codePoints(option.label) > CARD_LIMITS.label) {
+  if (codePointCount(option.label) > CARD_LIMITS.label) {
     return failure('invalid', `the label of option "${option.key}" of "${node.id}" is longer than ${CARD_LIMITS.label} characters`, LABEL_HINT, `${at}.label`)
   }
   for (const field of ['gain', 'cost'] as const) {
@@ -345,6 +345,18 @@ function dimensionRefusal(node: GraphNode, dimension: CardDimension, keys: reado
 }
 
 /**
+ * Write rules of a question in the proposal shape (§2.6): the record of the
+ * whole node (the rules look across its fields), whenever the write sets the
+ * title or a field of the record (src/graph/proposal.ts). `touched` names the
+ * fields the write sets.
+ */
+function proposalRefusal(node: GraphNode, touched: (field: string) => boolean, base: 'node' | 'set'): Failure | undefined {
+  if (!['title', 'form', ...PROPOSAL_FIELDS].some(touched)) return undefined
+  const refusal = proposalRecordRefusal(node)
+  return refusal === undefined ? undefined : failure('invalid', `${refusal.message} of "${node.id}"`, refusal.hint, `${base}.${refusal.field}`)
+}
+
+/**
  * Write rules of question nodes (§2.6) on top of the file format: they
  * hold for every question the engine writes, but a question written before
  * a rule existed still loads, is decided and takes edits of other fields.
@@ -362,7 +374,8 @@ function dimensionRefusal(node: GraphNode, dimension: CardDimension, keys: reado
  */
 function questionRefusal(node: GraphNode, touched: (field: string) => boolean, base: 'node' | 'set'): Failure | undefined {
   if (node.type !== 'question') return undefined
-  const options = node.options ?? []
+  if (node.options === undefined) return proposalRefusal(node, touched, base)
+  const options = node.options
   const keys = options.map(entry => entry.key)
   if (touched('options') || touched('recommend')) {
     const last = keys.at(-1)
@@ -413,6 +426,17 @@ function questionRefusal(node: GraphNode, touched: (field: string) => boolean, b
   return undefined
 }
 
+/**
+ * Whether the node is, or is below, a module or a module candidate that is
+ * not released (docs/ORCHESTRATION.md §4.9): nothing under a module is built
+ * before its release, and what is built is what the release approved, so a
+ * task proposed there waits for that release like the rest of the design.
+ */
+function underUnreleasedModule(graph: LoadedGraph, node: GraphNode): boolean {
+  const module = moduleOf(graph, node)
+  return module !== undefined && !isReleased(module)
+}
+
 /** Initial status of a proposal (§2.9 propose row). */
 function initialStatus(context: Context, node: ProposedNode): Status {
   if (context.privileged) return 'approved'
@@ -422,7 +446,7 @@ function initialStatus(context: Context, node: ProposedNode): Status {
   if (parent === undefined) return 'proposed'
   if (node.type === 'task') {
     const underOpenWork = (parent.type === 'feature' || parent.type === 'task') && (parent.status === 'approved' || parent.status === 'doing')
-    return underOpenWork ? 'approved' : 'proposed'
+    return underOpenWork && !underUnreleasedModule(context.graph, parent) ? 'approved' : 'proposed'
   }
   if (OPEN_PARENT_TYPES.has(node.type)) return OPEN_STATUSES.has(parent.status) ? 'approved' : 'proposed'
   return 'proposed'
@@ -514,8 +538,12 @@ function planChange(context: Context, mutation: Change): Plan | Failure {
       if (node.status !== 'approved' && node.status !== 'doing' && node.status !== 'done') {
         return failure('bad_transition', `"${node.id}" is ${node.status}`, node.status === 'proposed' ? 'approve the question first' : 'it is closed; propose a new question')
       }
-      const keys = (node.options ?? []).map(entry => entry.key)
-      if (!keys.includes(mutation.option)) return failure('invalid', `"${mutation.option}" is not an option of "${node.id}"`, `choose one of ${keys.join(', ')}`, 'option')
+      if (node.options === undefined) return planConclude(context, node, mutation.option, mutation.conclusion, reason)
+      if (mutation.conclusion !== undefined) {
+        return failure('invalid', `"${node.id}" has options, so it is decided with an option, not a conclusion`, 'send option: the key of the chosen option', 'conclusion')
+      }
+      const keys = node.options.map(entry => entry.key)
+      if (mutation.option === undefined || !keys.includes(mutation.option)) return failure('invalid', `"${mutation.option ?? ''}" is not an option of "${node.id}"`, `choose one of ${keys.join(', ')}`, 'option')
       if (node.status === 'done' && node.decision === mutation.option) return failure('bad_transition', `"${node.id}" is already decided ${mutation.option}`, 'nothing to change', 'option')
       const evidence: Evidence[] = [{ kind: 'decision', ref: mutation.option }]
       return plan(node.id, [change(context, node, { status: 'done', decision: mutation.option, ...withEvidence(node, evidence) }, {
@@ -552,6 +580,24 @@ function planChange(context: Context, mutation: Change): Plan | Failure {
   }
 }
 
+/** Decide a question in the proposal shape: the conclusion is what was decided, one line. */
+function planConclude(context: Context, node: GraphNode, option: string | undefined, conclusion: string | undefined, reason: string): Plan | Failure {
+  const { actor, at } = context
+  if (option !== undefined) {
+    return failure('invalid', `"${node.id}" is a proposal, so it is decided with a conclusion, not an option`, 'send conclusion: one line, what was decided', 'option')
+  }
+  const text = conclusion?.trim() ?? ''
+  const hint = `conclusion is one line of at most ${PROPOSAL_LIMITS.conclusion} characters: what was decided`
+  if (text.length === 0 || /[\r\n]/.test(text) || codePointCount(text) > PROPOSAL_LIMITS.conclusion) {
+    return failure('invalid', `the conclusion of "${node.id}" is not one line of 1 to ${PROPOSAL_LIMITS.conclusion} characters`, hint, 'conclusion')
+  }
+  if (node.status === 'done' && node.conclusion === text) return failure('bad_transition', `"${node.id}" is already decided this way`, 'nothing to change', 'conclusion')
+  const evidence: Evidence[] = [{ kind: 'decision', ref: CONCLUSION_REF }]
+  return plan(node.id, [change(context, node, { status: 'done', conclusion: text, ...withEvidence(node, evidence) }, {
+    at, actor, op: 'decide', reason, from: node.status, to: 'done', conclusion: text, evidence,
+  })])
+}
+
 function planStatus(context: Context, node: GraphNode, to: Status, evidence: readonly Evidence[] | undefined, reason: string): Plan | Failure {
   const { actor, at } = context
   const from = node.status
@@ -575,16 +621,61 @@ function planStatus(context: Context, node: GraphNode, to: Status, evidence: rea
   return plan(node.id, [change(context, node, { status: to, ...withEvidence(node, evidence) }, { at, actor, op: 'status', reason, from, to, ...entryEvidence(evidence) })])
 }
 
+/** An edit cannot turn a question with options into a proposal, or a proposal into a question with options. */
+function shapeChange(node: GraphNode, set: Readonly<Partial<Record<EditableField, unknown>>>): Failure | undefined {
+  if (node.type !== 'question') return undefined
+  const setting = (field: EditableField): boolean => set[field] !== undefined && set[field] !== null
+  const foreign = node.options === undefined
+    ? CARD_FIELDS.find(setting)
+    : PROPOSAL_FIELDS.find(setting)
+  if (foreign === undefined) return undefined
+  return failure('invalid', `"${node.id}" is ${node.options === undefined ? 'a proposal' : 'a question with options'}, so ${foreign} cannot be set on it`, 'propose a new question', `set.${foreign}`)
+}
+
+/**
+ * The one edit of a stage that a write without the human's authority may
+ * make (§3.14.7, docs/ORCHESTRATION.md §4.8): a module sent back to design.
+ * It is the second tier of changes during development, reversible and local
+ * to the module, so the main agent decides it and the human sees it on the
+ * next one-page release note, but it is not the human's agreement and must
+ * not read as one. 'allowed' when the node is a module (a feature directly
+ * under a goal, approved or doing) that is released, `set` holds the stage
+ * design and nothing else, and the reason says why without beginning with
+ * the words of an agreement; a Failure when it has that shape and the reason
+ * begins that way; undefined for any other edit, which the rules of the
+ * actor decide as before.
+ */
+function moduleSendBack(context: Context, node: GraphNode, set: Readonly<Partial<Record<EditableField, unknown>>>, reason: string): 'allowed' | Failure | undefined {
+  const parent = node.parent === undefined ? undefined : context.graph.nodes.get(node.parent)
+  const module = node.type === 'feature' && parent?.type === 'goal' && node.stage !== undefined && (node.status === 'approved' || node.status === 'doing')
+  const stage = effectiveStage(node)
+  const fromRelease = stage !== null && STAGES.indexOf(stage) >= STAGES.indexOf('release')
+  if (!module || !fromRelease || Object.keys(set).length !== 1 || set.stage !== 'design' || reason.trim().length === 0) return undefined
+  if (reason.startsWith(ANSWER_MARKS.agree)) {
+    return failure('invalid', `the reason of sending "${node.id}" back to design begins like the human's agreement`, 'a module sent back to design is not the human\'s agreement: write why it goes back in your own words', 'reason')
+  }
+  return 'allowed'
+}
+
 function planEdit(context: Context, node: GraphNode, set: Readonly<Partial<Record<EditableField, unknown>>>, reason: string): Plan | Failure {
   const { actor, at } = context
   const fields = Object.keys(set) as EditableField[]
-  if (!context.privileged) {
+  const sendBack = context.privileged ? undefined : moduleSendBack(context, node, set, reason)
+  if (sendBack !== undefined && sendBack !== 'allowed') return sendBack
+  if (!context.privileged && sendBack === undefined) {
     const relayHint = 'if the human asked for it in the chat, send their words verbatim as relay'
     const first = node.history[0]
     const ownProposal = node.status === 'proposed' && first?.op === 'propose' && first.actor === actor
     // A goal the actor proposed itself is its draft until the human approves it (decision question-23 A); an adopted goal is the human's.
     if (node.type === 'goal' && !ownProposal) return failure('forbidden', `${actor} cannot edit the goal`, `goals, acceptance criteria and non-goals are the human's: propose a question node under the goal; ${relayHint}`)
-    const denied = ownProposal ? undefined : fields.find(field => !LLM_EDITABLE.has(field))
+    // A proposal the human decided stays as they agreed to it: their words stand for that version (§3.3).
+    const decidedProposal = node.type === 'question' && node.options === undefined && node.status === 'done'
+    const sealed = !ownProposal && decidedProposal ? fields.find(field => field === 'title' || (PROPOSAL_FIELDS as readonly string[]).includes(field)) : undefined
+    if (sealed !== undefined) {
+      return failure('forbidden', `${actor} cannot edit ${sealed} of "${node.id}": the human decided this proposal`, 'the human decided this proposal; propose a new question', `set.${sealed}`)
+    }
+    const proposalOpen = node.type === 'question' && node.options === undefined && (node.status === 'approved' || node.status === 'doing')
+    const denied = ownProposal ? undefined : fields.find(field => !LLM_EDITABLE.has(field) && !(proposalOpen && (PROPOSAL_FIELDS as readonly string[]).includes(field)))
     if (denied !== undefined) {
       return failure('forbidden', `${actor} cannot edit ${denied} of "${node.id}"`, `${actor} edits ${[...LLM_EDITABLE].join(', ')}, or any field of its own open proposal; propose a question node to change the rest; ${relayHint}`, `set.${denied}`)
     }
@@ -592,6 +683,8 @@ function planEdit(context: Context, node: GraphNode, set: Readonly<Partial<Recor
       return failure('forbidden', `${actor} cannot take "${node.id}" from the human`, `the human decides it; ${relayHint}`, 'set.decider')
     }
   }
+  const reshaped = shapeChange(node, set)
+  if (reshaped !== undefined) return reshaped
   const raw: Record<string, unknown> = { ...node }
   for (const field of fields) {
     if (set[field] === null) delete raw[field]

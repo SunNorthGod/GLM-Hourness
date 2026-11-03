@@ -1,17 +1,38 @@
 /**
- * Morning report: fold one period of the audit journal (decisions, violations,
- * usage) into the harvest report. Pure — reads parsed JSONL lines, emits text.
- * Granularity: exceptions first, then curve movement, then plain
- * facts; no padding, no restatement of completed work. The usage section is
- * the usage panel's list (src/report/panel.ts), priced through the pricing
- * service when there is one.
+ * Morning report: fold one period of the audit journal (dispatch calls,
+ * violations, usage) and the project graph (the asks waiting for the person
+ * and who settled the others) into the harvest report. Pure — reads parsed
+ * JSONL lines and a loaded graph, emits text. Granularity: exceptions first,
+ * then what waits for the person, then plain facts; no padding, no
+ * restatement of completed work. The usage section is the usage panel's
+ * list (src/report/panel.ts), priced through the pricing service when there
+ * is one.
  */
 import { auditPaths, type DecisionRecord, type UsageRecord } from '../memory/audit.ts'
 import type { GuardRecord } from '../guard/index.ts'
+import type { LoadedGraph } from '../graph/parse.ts'
+import { listOpenItems } from '../graph/projection.ts'
+import type { HistoryEntry } from '../graph/schema.ts'
+import { answerKindOf } from '../shared/answer-marks.ts'
 import { gapLines, parseGaps, usagePanelLines, usagePanelOf, type PanelLineOptions } from '../report/panel.ts'
 import type { DataHomes } from '../shared/data-home.ts'
 import type { UsagePricing } from '../shared/pricing.ts'
 import type { MomentZone } from '../shared/quota.ts'
+
+/** Why the project graph could not be read; the report names it in place of the numbers. */
+interface GraphUnreadable {
+  readonly unreadable: string
+}
+
+/** What the report reads of the project graph. */
+export interface AskSummary {
+  /** Asks that wait for the person: how many, and the day the oldest was put (local calendar day; absent when none or when none has a time). */
+  readonly waiting: { readonly count: number, readonly oldest?: string }
+  /** Asks the agent settles itself. */
+  readonly agentOwn: number
+  /** Decisions made in the period, by who made them. */
+  readonly decided: { readonly person: number, readonly inChat: number, readonly agent: number }
+}
 
 export interface ReportInput {
   readonly decisions: readonly DecisionRecord[]
@@ -25,13 +46,76 @@ export interface ReportInput {
   readonly problem?: ((message: string) => void) | undefined
   /** Finished list lines for the usage section after its first line: the gaps in the records the period covers. */
   readonly usageScope?: readonly string[] | undefined
+  /** The asks on the project graph, or why they could not be read. */
+  readonly asks: AskSummary | GraphUnreadable
+}
+
+/** The local calendar day of an instant, as 2026-10-27. */
+export function localDay(at: Date): string {
+  return `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, '0')}-${String(at.getDate()).padStart(2, '0')}`
+}
+
+/** Who made a decision: the person on the panel or the command line, the person in the chat (the main agent recorded their checked words), or the agent. */
+function deciderOfEntry(entry: HistoryEntry): keyof AskSummary['decided'] {
+  if (entry.actor === 'human') return 'person'
+  // The mark alone is text the model could write into the reason of its own decision; the words the harness checked are the `relay`.
+  if (entry.actor === 'llm' && answerKindOf(entry) === 'agree' && entry.relay !== undefined) return 'inChat'
+  return 'agent'
+}
+
+/**
+ * The asks of a graph. The waiting counts come from the open items; the
+ * decisions come from the history of every question, not from the latest
+ * decisions the projection lists (at most 20, one per question). `since`
+ * (ISO instant) bounds the decisions counted to those made at or after it.
+ */
+export function askSummary(graph: LoadedGraph, since?: string): AskSummary {
+  const items = listOpenItems(graph)
+  const waitingSince = items.questions.flatMap(entry => entry.askedAt === undefined ? [] : [Date.parse(entry.askedAt)]).filter(time => !Number.isNaN(time))
+  const sinceMs = since === undefined ? undefined : Date.parse(since)
+  const decided = { person: 0, inChat: 0, agent: 0 }
+  for (const node of graph.nodes.values()) {
+    if (node.type !== 'question') continue
+    for (const entry of node.history) {
+      if (entry.op !== 'decide') continue
+      const at = Date.parse(entry.at)
+      if (sinceMs !== undefined && !Number.isNaN(sinceMs) && !(at >= sinceMs)) continue
+      decided[deciderOfEntry(entry)] += 1
+    }
+  }
+  return {
+    waiting: {
+      count: items.questions.length,
+      ...(waitingSince.length === 0 ? {} : { oldest: localDay(new Date(Math.min(...waitingSince))) }),
+    },
+    agentOwn: items.agentQueue.length,
+    decided,
+  }
+}
+
+/** The section of the asks: what waits for the person, who settled the rest, and how many dispatch calls were made. */
+function askLines(asks: AskSummary | GraphUnreadable, dispatches: number): string[] {
+  const calls = `- 派遣类调用 ${dispatches} 次`
+  if ('unreadable' in asks) return [`- 项目图读不到：${asks.unreadable}`, calls]
+  const { waiting, agentOwn, decided } = asks
+  return [
+    `- 等你定的 ${waiting.count} 件${waiting.oldest === undefined ? '' : `，最早一件是 ${waiting.oldest} 提出的`}`,
+    `- agent 自己要定的 ${agentOwn} 件`,
+    `- 本期拍板 ${decided.person + decided.inChat + decided.agent} 次：你 ${decided.person} · 你在对话里说 ${decided.inChat} · agent ${decided.agent}`,
+    calls,
+  ]
+}
+
+/** Whether a decision record is a dispatch call (the only kind the workflow row writes). */
+function isDispatch(record: DecisionRecord): boolean {
+  // The journal is read from disk without a schema: a line without a text kind is not a dispatch.
+  return typeof record.kind === 'string' && (record.kind === 'dispatch' || record.kind.startsWith('dispatch:'))
 }
 
 /** Render the morning report for one period. */
 export function morningReport(input: ReportInput): string {
   const lines: string[] = [`# 晨报 ${input.period}`]
 
-  const l3 = input.decisions.filter(decision => decision.level === 'L3')
   // A guard denial carries no mode; the rules board's denial says `enforce`, and a call it only recorded (`record`) is neither a violation nor a shadow record.
   const denials = input.violations.filter(violation => violation.mode === undefined || violation.mode === 'enforce')
   const shadows = input.violations.filter(violation => violation.mode === 'shadow')
@@ -48,19 +132,16 @@ export function morningReport(input: ReportInput): string {
   }
   lines.push('')
   lines.push('## 例外（先看）')
-  if (l3.length === 0 && denials.length === 0) {
+  if (denials.length === 0) {
     lines.push('- 无')
   }
   else {
-    for (const decision of l3) lines.push(`- [L3] ${decision.kind}: ${decision.subject}`)
     for (const [rule, count] of countByRule(denials)) lines.push(`- 违规 ${rule} × ${count}`)
   }
 
   lines.push('')
-  lines.push('## 决策曲线')
-  const graded = new Map<string, number>()
-  for (const decision of input.decisions) graded.set(decision.level, (graded.get(decision.level) ?? 0) + 1)
-  lines.push(`- L1 自主 ${graded.get('L1') ?? 0} · L2 次日报备 ${graded.get('L2') ?? 0} · L3 当次申报 ${graded.get('L3') ?? 0}`)
+  lines.push('## 等你定的事')
+  lines.push(...askLines(input.asks, input.decisions.filter(isDispatch).length))
 
   // Shadow records were never blocked; they measure a rule before it is enforced.
   if (shadows.length > 0) {
@@ -100,16 +181,30 @@ export interface ReportOptions {
   readonly offsetMinutes?: number | undefined
 }
 
+/** Reads the project graph of the session that asked for the report; rejects with the reason when it cannot. */
+export type GraphReader = () => Promise<LoadedGraph>
+
+/** The asks of the graph `read` gives, or why it could not be read: the report names the reason and goes on. */
+async function readAsks(read: GraphReader, since: string | undefined): Promise<AskSummary | GraphUnreadable> {
+  try {
+    return askSummary(await read(), since)
+  }
+  catch (error) {
+    return { unreadable: error instanceof Error ? error.message : String(error) }
+  }
+}
+
 /**
- * Assemble the morning report from the audit journal files: decisions and
- * violations from the project directory, usage and the gap file (the
+ * Assemble the morning report from the audit journal files: dispatch calls
+ * and violations from the project directory, usage and the gap file (the
  * deletions of usage records) from the user directory (docs/DESIGN.md §2.4);
- * an unknown directory reads as an empty journal.
- * `since` (ISO instant) bounds the period: only records stamped at or after
- * it enter the report, so one period reports on that window, not on all
- * history. The usage section names the gaps that period meets.
+ * an unknown directory reads as an empty journal. The asks come from the
+ * project graph `graph` reads. `since` (ISO instant) bounds the period: only
+ * records stamped at or after it enter the report, so one period reports on
+ * that window, not on all history. The usage section names the gaps that
+ * period meets.
  */
-export async function reportFromFiles(fs: ReportFs, homes: DataHomes, period: string, since?: string, options: ReportOptions = {}): Promise<string> {
+export async function reportFromFiles(fs: ReportFs, homes: DataHomes, period: string, graph: GraphReader, since?: string, options: ReportOptions = {}): Promise<string> {
   const readJsonl = async (path: string | undefined) => {
     if (path === undefined) return []
     try {
@@ -145,5 +240,6 @@ export async function reportFromFiles(fs: ReportFs, homes: DataHomes, period: st
     pricing: options.pricing,
     problem: options.problem,
     usageScope: gapLines(parseGaps(gapRaw), options.now ?? Date.now(), zone, periodStart),
+    asks: await readAsks(graph, since),
   })
 }

@@ -14,7 +14,7 @@ import { openEngine } from '../src/graph/engine.ts'
 import { apply } from '../src/graph/index.ts'
 import { apply as applyPanel } from '../src/graph/panel-row.ts'
 import type { ToolFinalResult } from '../src/shared/dsh-min.ts'
-import { GRAPH_SERVICE, graphService } from '../src/graph/service.ts'
+import { GRAPH_SERVICE, graphFocus, graphService } from '../src/graph/service.ts'
 import { collectHealth, healthServiceName, type HealthEntry, type RowHealthView } from '../src/shared/health.ts'
 import { fakeInjector, fakeRuntime, serviceStore, type FakeRuntime } from './fake-rc3.ts'
 import { captureWarnings } from './graph-helpers.ts'
@@ -87,6 +87,35 @@ test('the row provides the graph service: the directory per working directory an
   dispose()
   assert.equal(runtime.services.has(GRAPH_SERVICE), false)
   assert.equal(runtime.services.has(healthServiceName('graph')), false)
+})
+
+test('the graph service says what a session has in focus: the history first, as the step projection reads it, else the memory of graph_focus; reading changes nothing', async () => {
+  await withRow(async ({ runtime, call }) => {
+    const service = graphFocus(runtime.ctx)!
+    const session = runtime.agent.session!
+    assert.equal(service.focusOf(session), undefined, 'no focus yet')
+    assert.equal((await call('graph_focus', { id: 'goal-1' })).isError, false)
+    assert.equal(service.focusOf(session), 'goal-1', 'the memory graph_focus keeps, while the history shows nothing')
+    // The history shows a focus that is not the memory's: a person who rewound the conversation, and the history wins.
+    runtime.history.push(
+      { role: 'assistant', content: [{ type: 'tool-call', id: 'c-1', name: 'graph_focus', arguments: JSON.stringify({ id: 'task-7' }) }] },
+      { role: 'tool', toolCallId: 'c-1', isError: false, content: [] },
+    )
+    assert.equal(service.focusOf(session), 'task-7')
+    assert.equal(service.focusOf(session), 'task-7', 'reading twice gives the same answer')
+    // A call whose result is an error does not move the focus.
+    runtime.history.push(
+      { role: 'assistant', content: [{ type: 'tool-call', id: 'c-2', name: 'graph_focus', arguments: JSON.stringify({ id: 'task-8' }) }] },
+      { role: 'tool', toolCallId: 'c-2', isError: true, content: [] },
+    )
+    assert.equal(service.focusOf(session), 'task-7')
+    // The service for a reader of focus needs focusOf; the guard's reader does not.
+    assert.ok(graphService(runtime.ctx) !== undefined)
+    const bare = serviceStore()
+    bare.provide(GRAPH_SERVICE, { dirFor: () => undefined, isGraphTool: () => false })
+    assert.equal(graphFocus(bare), undefined)
+    assert.ok(graphService(bare) !== undefined)
+  })
 })
 
 test('row health: tools registered at activation; after a call the session reports the graph, its size and the focus', async () => {

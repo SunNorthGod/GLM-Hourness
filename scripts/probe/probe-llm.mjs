@@ -23,8 +23,11 @@
  * command/done reach the session log (the `command` step calls the handler
  * directly and leaves no events); `other: { line }` types it in a second
  * root session of the run, created at the first use in the working directory
- * of the calling session. Both record the result and the events the session
- * logged meanwhile; a step marked `fork` forks the session at its first
+ * of the calling session; with `other: { line, say }` that session is also
+ * sent `say` as a message of the user, which wakes it, and it then follows the
+ * next script of `others`. Both record the result and the events the session
+ * logged meanwhile; `{rev:<node id>}` in the arguments of a scripted call is
+ * the current revision of that node on the session's project graph; a step marked `fork` forks the session at its first
  * finished command into a new root session and records it. A step has `line`
  * or `command`, not both.
  *
@@ -43,6 +46,7 @@ import { appendFileSync } from 'node:fs'
 import { GLM_MODELS, glmInputModalities } from '../../packages/glm/dist/glm-llm/models.js'
 import { asAttachments, glmImageRequestTarget, prepareRequestImages } from '../../packages/glm/dist/glm-llm/images.js'
 import { encodeRequest, splitSystemPrompt } from '../../packages/glm/dist/glm-llm/anthropic.js'
+import { loadGraph } from '../../packages/hourness/dist/graph/store.js'
 
 export const name = 'glm-hourness-probe/llm'
 export const inject = ['llm']
@@ -56,6 +60,23 @@ function checkedScript(script) {
     if (step.line !== undefined && step.command !== undefined) throw new Error(`probe script: step ${index + 1} has both line and command`)
   })
   return script
+}
+
+/**
+ * `{rev:<node id>}` in the arguments of a scripted call becomes the revision of
+ * that node on the project graph of the request's session as it is when the
+ * request arrives, so a script can edit a node more than once (every edit
+ * changes the revision the next needs). A node that is not there leaves the
+ * text as it was.
+ */
+async function withRevisions(ctx, request, call) {
+  const text = JSON.stringify(call.arguments ?? {})
+  if (!text.includes('{rev:')) return call
+  const cwd = ctx.get('agents')?.get(request.sessionId)?.session?.header?.cwd
+  const dir = ctx.get('glmHournessGraph')?.dirFor?.(cwd)
+  if (dir === undefined) return call
+  const graph = await loadGraph(dir)
+  return { ...call, arguments: JSON.parse(text.replace(/\{rev:([A-Za-z0-9._-]+)\}/g, (whole, id) => graph.revisions.get(id) ?? whole)) }
 }
 
 /** One scripted reply per request, in order; the last entry repeats. Entries: `{ tool }`, `{ tools: [...] }` or `{ text }`, optionally with `status: true` or `goal: true`. */
@@ -103,6 +124,8 @@ function summarizeMessage(message) {
     ...(message.source === undefined ? {} : { source: message.source.kind }),
     // The graph step projection records why it was added (src/graph/reminder.ts).
     ...(typeof message.source?.graphProjection?.reason === 'string' ? { projection: message.source.graphProjection.reason } : {}),
+    // The main agent's stage reminder records what it was about and why it was added (src/design/stage-notice.ts).
+    ...(typeof message.source?.designStage?.reason === 'string' ? { designStage: message.source.designStage } : {}),
   }
 }
 
@@ -252,8 +275,8 @@ class ProbeAdapter {
     }
   }
 
-  /** Type a step's `line` into the request's own session, or its `other.line` into the second root session. */
-  async typeFor(request, line, other) {
+  /** Type a step's `line` into the request's own session, or its `other.line` into the second root session; with `say` the second session is also sent that message as a message of the user, which wakes it (it follows the next script of `others`). */
+  async typeFor(request, line, other, say) {
     const agents = this.ctx.get('agents')
     const own = agents?.get(request.sessionId)
     if (own === undefined) return { text: line, kind: 'no-agent', events: 0, types: [], bytes: 0 }
@@ -268,7 +291,9 @@ class ProbeAdapter {
     catch (error) {
       return { text: line, kind: 'threw', resultText: `probe: creating the second session failed: ${error instanceof Error ? error.message : String(error)}`, events: 0, types: [], bytes: 0 }
     }
-    return typeLine(this.ctx, this.second, line)
+    const typed = await typeLine(this.ctx, this.second, line)
+    if (typeof say === 'string') this.second.followup({ id: randomUUID(), role: 'user', content: [{ type: 'text', text: say }], source: { kind: 'user' } })
+    return typed
   }
 
   /** The cursor of a session, claiming the next unassigned script on its first scripted request. */
@@ -341,7 +366,7 @@ class ProbeAdapter {
     // person does, one with `other: { line }` into a second root session; the
     // results and the events they logged are recorded.
     const line = step.line === undefined ? undefined : await this.typeFor(request, step.line, false)
-    const other = step.other?.line === undefined ? undefined : await this.typeFor(request, step.other.line, true)
+    const other = step.other?.line === undefined ? undefined : await this.typeFor(request, step.other.line, true, step.other.say)
     const fork = step.fork === true ? await this.forkFrom(request) : undefined
     // A step marked `peakMode` records what the rules row's service
     // glmHournessPeakMode says about the request's session once the step's
@@ -418,7 +443,7 @@ class ProbeAdapter {
     // A step calls one tool (`tool`) or several in one assistant turn (`tools`).
     const scriptedCalls = step.tools ?? (step.tool === undefined ? [] : [step.tool])
     const goal = step.goal === true ? this.goalOf(request) : undefined
-    const calls = scriptedCalls.map(call => withGoal(call, goal))
+    const calls = await Promise.all(scriptedCalls.map(call => withRevisions(this.ctx, request, withGoal(call, goal))))
     if (calls.length > 0) {
       for (const [index, call] of calls.entries()) {
         const id = `probe-call-${this.requests}-${index}`

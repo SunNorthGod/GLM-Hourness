@@ -5,11 +5,13 @@
  * the main agent is and what the harness enforces; what changes with the
  * stage (the interview's questions, how to write to the graph) comes with
  * the stage reminders and the tool results. The second says how to talk with
- * the human: the talk guide and the plain-question guide with its worked
- * example. Instructions are in English, the words said to the human are in
- * Chinese. Length ceilings are pinned by tests/design-mode.spec.ts.
+ * the human: the talk guide (when to ask, how to answer, what to record) and
+ * the plain-words list. The shapes of a question and the worked examples are
+ * in the description of propose_to_human, not here. Instructions are in
+ * English, the words said to the human are in Chinese. Length ceilings are
+ * pinned by tests/design-mode.spec.ts.
  */
-import { PLAIN_QUESTION_GUIDE } from '../graph/plain-question.ts'
+import { PLAIN_WORDS_GUIDE } from '../graph/plain-question.ts'
 import { TALK_GUIDE } from './talk.ts'
 
 /** Role and boundaries. */
@@ -22,7 +24,7 @@ export const MAIN_AGENT_ROLE = [
 ].join('\n')
 
 /** How to talk with the human. */
-export const MAIN_AGENT_TALK = [TALK_GUIDE, PLAIN_QUESTION_GUIDE].join('\n')
+export const MAIN_AGENT_TALK = [TALK_GUIDE, PLAIN_WORDS_GUIDE].join('\n')
 
 /** The whole section text. */
 export const MAIN_AGENT_IDENTITY = [MAIN_AGENT_ROLE, MAIN_AGENT_TALK].join('\n\n')

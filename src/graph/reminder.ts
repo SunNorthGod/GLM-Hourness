@@ -18,48 +18,28 @@
  * per session; a process restart between a compaction and the next step
  * loses it until graph_focus is called again.
  */
-import { createHash } from 'node:crypto'
 import { createUserNotice, type AgentLike, type DerivedMessage, type UserNotice } from '../shared/dsh-min.ts'
 import { installStepNotice, toolCallArguments, toolCallOutcomes } from '../shared/step-notice.ts'
 import { wrapSystemReminder } from '../shared/zcode-notice.ts'
+import { changeReason, digestOf, isGoalRound, noticeHistory, type DigestFacts } from './digest-notice.ts'
 import { projectNode, type NodeRef, type Projection } from './projection.ts'
 import { FOCUS_TOOL } from './live.ts'
 import { readGraph, type GraphRead } from './row-health.ts'
 import type { FocusMemory } from './tools.ts'
 
+export { CHECKPOINT_SOURCE, GOAL_ROUND_SOURCE } from './digest-notice.ts'
+
 /** Source kind of the persisted projection notice. */
 export const PROJECTION_SOURCE = 'glm-graph-projection'
 
-/**
- * Source kind of the user message a compaction puts in place of the range
- * it summarized; the source also carries the string `compactionId`
- * (compaction:109, compaction:116–122; compaction-basic:595–598).
- */
-export const CHECKPOINT_SOURCE = 'compact-checkpoint'
-
-/** Source kind of a goal round message, queued with agent.followup and admitted by the next step (goal-round-driver:144–151, 164). */
-export const GOAL_ROUND_SOURCE = 'goal'
-
 const PROJECTION_REASONS = ['compaction', 'goal-round', 'focus', 'changed'] as const
-/** Why a notice was added: the first rule of projectionReason that applied. */
+/** Why a notice was added: the first rule of changeReason (digest-notice.ts) that applied. */
 type ProjectionReason = typeof PROJECTION_REASONS[number]
 
 /** Facts persisted in the notice source; later steps re-derive what the model was shown from them. */
-interface ProjectionFacts {
+interface ProjectionFacts extends DigestFacts {
   readonly focus: string
-  /** First 12 hex digits of the SHA-256 of the reminder body. */
-  readonly digest: string
-  /** compactionId of the latest checkpoint visible when the notice was added. */
-  readonly anchor?: string
   readonly reason: ProjectionReason
-}
-
-/** What the request-visible history shows about the step projection. */
-interface ProjectionHistory {
-  /** The latest focus: a successful graph_focus call or a projection notice, whichever is later. */
-  readonly focus?: string
-  readonly notice?: ProjectionFacts & { readonly index: number }
-  readonly checkpoint?: { readonly index: number, readonly id?: string }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -87,43 +67,26 @@ function focusCall(message: DerivedMessage, answered: ReadonlySet<string>, faile
   return undefined
 }
 
-function projectionHistory(history: readonly DerivedMessage[]): ProjectionHistory {
+/**
+ * The focus the request-visible history shows: the latest successful
+ * graph_focus call or projection notice, whichever is later; undefined when
+ * a compaction removed both. The step projection and the graph row's
+ * `focusOf` (src/graph/service.ts) read it the same way, so a reader that
+ * judges by the focus sees the focus the model sees.
+ */
+export function focusFromHistory(history: readonly DerivedMessage[]): string | undefined {
   const { answered, failed } = toolCallOutcomes(history)
-  let focus: string | undefined
-  let notice: ProjectionHistory['notice']
-  let checkpoint: ProjectionHistory['checkpoint']
   for (let index = history.length - 1; index >= 0; index--) {
-    if (focus !== undefined && notice !== undefined && checkpoint !== undefined) break
     const message = history[index]
-    const kind = message.source?.kind
-    if (kind === CHECKPOINT_SOURCE) {
-      const id = message.source?.compactionId
-      checkpoint ??= typeof id === 'string' ? { index, id } : { index }
+    if (message.role === 'user' && message.source?.kind === PROJECTION_SOURCE) {
+      const facts = noticeFacts(message.source.graphProjection)
+      if (facts !== undefined) return facts.focus
       continue
     }
-    if (message.role === 'user' && kind === PROJECTION_SOURCE) {
-      const facts = noticeFacts(message.source?.graphProjection)
-      if (facts === undefined) continue
-      notice ??= { ...facts, index }
-      focus ??= facts.focus
-      continue
-    }
-    if (focus === undefined && message.role === 'assistant') focus = focusCall(message, answered, failed)
+    if (message.role !== 'assistant') continue
+    const focus = focusCall(message, answered, failed)
+    if (focus !== undefined) return focus
   }
-  return {
-    ...(focus === undefined ? {} : { focus }),
-    ...(notice === undefined ? {} : { notice }),
-    ...(checkpoint === undefined ? {} : { checkpoint }),
-  }
-}
-
-/** Why this step needs a notice, or undefined when the history already shows the current projection. */
-function projectionReason(state: ProjectionHistory, focus: string, digest: string, goalRound: boolean): ProjectionReason | undefined {
-  const { notice, checkpoint } = state
-  if (checkpoint !== undefined && (notice === undefined || notice.index < checkpoint.index || notice.anchor !== checkpoint.id)) return 'compaction'
-  if (goalRound) return 'goal-round'
-  if (notice === undefined || notice.focus !== focus) return 'focus'
-  if (notice.digest !== digest) return 'changed'
   return undefined
 }
 
@@ -167,10 +130,6 @@ function reminderBody(read: GraphRead, focus: string): string {
   return renderProjection(result.projection, read.graph.issues.filter(issue => issue.severity === 'error').length)
 }
 
-function isGoalRound(message: unknown): boolean {
-  return isRecord(message) && isRecord(message.source) && message.source.kind === GOAL_ROUND_SOURCE
-}
-
 interface ProjectionInput {
   /** The request-visible history (`session.deriveMessages()`). */
   readonly history: readonly DerivedMessage[]
@@ -188,15 +147,15 @@ interface ProjectionInput {
 
 /** The notice this step needs, or undefined; keeps the focus it used in `focuses`. */
 async function projectionNotice(input: ProjectionInput): Promise<UserNotice | undefined> {
-  const state = projectionHistory(input.history)
-  const focus = state.focus ?? input.focuses.get(input.sessionId)
+  const state = noticeHistory(input.history, PROJECTION_SOURCE, source => noticeFacts(source.graphProjection))
+  const focus = focusFromHistory(input.history) ?? input.focuses.get(input.sessionId)
   if (focus === undefined) return undefined
   input.focuses.set(input.sessionId, focus)
   const read = await readGraph(input.dir, input.cwd)
   input.onRead(read, focus)
   const body = reminderBody(read, focus)
-  const digest = createHash('sha256').update(body).digest('hex').slice(0, 12)
-  const reason = projectionReason(state, focus, digest, input.admitted.some(isGoalRound))
+  const digest = digestOf(body)
+  const reason = changeReason(state, { digest, goalRound: input.admitted.some(isGoalRound), sameSubject: notice => notice.focus === focus }, 'focus')
   if (reason === undefined) return undefined
   const anchor = state.checkpoint?.id
   const facts: ProjectionFacts = { focus, digest, ...(anchor === undefined ? {} : { anchor }), reason }

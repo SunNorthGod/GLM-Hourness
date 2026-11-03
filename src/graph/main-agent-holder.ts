@@ -132,7 +132,13 @@ export function claimHolder(file: string, record: HolderRecord): boolean {
     throw error
   }
   finally {
-    unlinkSync(temporary)
+    // Cleanup must not fail the claim: the record is written, and a temporary file left behind is the lesser harm (S3-3).
+    try {
+      unlinkSync(temporary)
+    }
+    catch {
+      // the holder record is in place
+    }
   }
 }
 
@@ -144,7 +150,13 @@ export function replaceHolder(file: string, record: HolderRecord): void {
     cache.delete(file)
   }
   catch (error) {
-    unlinkSync(temporary)
+    // The rename error is the one to report; the cleanup failure must not mask it (S3-3).
+    try {
+      unlinkSync(temporary)
+    }
+    catch {
+      // a temporary file left behind
+    }
     throw error
   }
 }

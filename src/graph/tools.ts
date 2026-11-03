@@ -18,6 +18,7 @@ import { isAbsolute, resolve } from 'node:path'
 import type { ToolDefinitionLike, ToolExecutionContext } from '../shared/dsh-min.ts'
 import { openEngine } from './engine.ts'
 import { FOCUS_TOOL } from './live.ts'
+import { ASK_FORMS } from './proposal.ts'
 import { failure, type Failure } from './mutation.ts'
 import { listOpenItems, projectNode } from './projection.ts'
 import { NODE_TYPES, SLOPES, STAGES, TASK_KINDS, TIERS, WEIGHTS } from './schema.ts'
@@ -183,6 +184,13 @@ const NODE: JsonSchema = {
       additionalProperties: false,
     },
     recommend: { type: 'string', description: 'Question only: key of the recommended option, which must be the last option so the human reads the others first; anything else is refused.' },
+    ask: { type: 'string', description: 'Question only, a proposal: the question as the human reads it, one sentence ending with its one question mark.' },
+    form: { type: 'string', enum: [...ASK_FORMS], description: 'Question only, a proposal: the way of asking, set once: recommend, choose, want or look.' },
+    proposal: { type: 'string', description: 'Question only, a proposal: what you recommend, guess or show, one short line.' },
+    reason: { type: 'string', description: 'Question only, a proposal (recommend, choose): why, one short line.' },
+    cost: { type: 'string', description: 'Question only, a proposal (recommend): the real cost, one short line; leave it out when there is none.' },
+    ways: { ...STRINGS, description: 'Question only, a proposal (choose): two or three ways, each one short line, your pick last.' },
+    notTaken: { type: 'string', description: 'Question only, a proposal (recommend, choose): the way not taken, one short line.' },
     crux: { type: 'string', description: 'Question only, required when the human decides. 取决于: one line, at most 60 characters, the question only the human can answer that decides between the options.' },
     verdict: { type: 'string', description: 'Question only, required when the human decides: one line, at most 120 characters, 是 → <key>；否 → <key>; every key after → must exist and the recommended key must appear.' },
     weight: {
@@ -252,7 +260,7 @@ const WRITE_OUTPUT: JsonSchema = {
 const WRITES: ReadonlyArray<{ readonly op: LlmOp, readonly description: string, readonly parameters: JsonSchema }> = [
   {
     op: 'propose',
-    description: 'Add a node. Planned work starts approved: a task under an approved or in-progress feature or task; a risk, question or retro under an open node. Else (new branch, decision, norm, tool, goal, supersedes edge) it waits for the human unless relayed. A question is a table card: rows of label, gain, cost, recommended option last; the human\'s also crux, verdict, weight. Own choice: decider agent.',
+    description: 'Add a node. Planned work starts approved: a task under an approved or in-progress feature or task; a risk, question or retro under an open node. Else (new branch, decision, norm, tool, goal, supersedes edge) it waits for the human unless relayed. A question for the human is a proposal: ask (the question), form (recommend, choose, want or look), proposal and, by form, reason, cost, ways; the main agent puts one with propose_to_human. A question you decide yourself (decider agent) is a table of options, the recommended option last.',
     parameters: object({ node: NODE, reason: REASON, relay: RELAY }, ['node', 'reason']),
   },
   {
@@ -293,8 +301,15 @@ const WRITES: ReadonlyArray<{ readonly op: LlmOp, readonly description: string, 
   },
   {
     op: 'decide',
-    description: 'Decide a question: pick one of its options; the question becomes done with the choice recorded. Questions with decider agent are yours, until the human has decided one. The human\'s questions need their words as relay: decide only what they chose in the chat. A done question can be decided again (overturned) by whoever may decide it.',
-    parameters: object({ id: ID, rev: REV, option: { type: 'string', description: 'Key of the chosen option.' }, reason: REASON, relay: RELAY }, ['id', 'rev', 'option', 'reason']),
+    description: 'Decide a question: pick one of its options; the question becomes done with the choice recorded. A proposal (a question without options, put with propose_to_human) takes conclusion: one line, what was decided. Questions with decider agent are yours, until the human has decided one. The human\'s questions need their words as relay: decide only what they chose in the chat. A done question can be decided again (overturned) by whoever may decide it.',
+    parameters: object({
+      id: ID,
+      rev: REV,
+      option: { type: 'string', description: 'Key of the chosen option of a question with options.' },
+      conclusion: { type: 'string', description: 'What was decided, one line of at most 120 characters, for a proposal.' },
+      reason: REASON,
+      relay: RELAY,
+    }, ['id', 'rev', 'reason']),
   },
   {
     op: 'approve',

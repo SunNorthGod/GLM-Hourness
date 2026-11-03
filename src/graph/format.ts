@@ -36,6 +36,7 @@ import {
   type GraphNode,
   type HistoryEntry,
 } from './schema.ts'
+import { ASK_FORMS, PROPOSAL_FIELDS, type AskForm } from './proposal.ts'
 
 export interface GraphIssue {
   /** Errors block every write; notices are informational. */
@@ -265,6 +266,8 @@ const FIELD_CHECKERS: Record<typeof NODE_FIELDS[number], Checker> = {
   id: nodeId,
   type: oneOf(NODE_TYPES),
   title: line,
+  ask: line,
+  form: oneOf(ASK_FORMS),
   status: oneOf(STATUSES),
   parent: nodeId,
   slope: oneOf(SLOPES),
@@ -281,11 +284,17 @@ const FIELD_CHECKERS: Record<typeof NODE_FIELDS[number], Checker> = {
   options: list(option),
   dimension,
   recommend: optionKey,
+  proposal: line,
+  reason: line,
+  cost: line,
+  ways: list(line),
+  notTaken: line,
   crux: text,
   verdict: text,
   weight: oneOf(WEIGHTS),
   decider: oneOf(DECIDERS),
   decision: optionKey,
+  conclusion: line,
   edges: list(edge),
   evidence: list(evidenceItem),
   history: list(historyEntry),
@@ -327,6 +336,7 @@ function historyEntry(value: unknown, path: string, report: Report): unknown {
     ['from', oneOf(TRANSITION_STATES), false],
     ['to', oneOf(TRANSITION_STATES), false],
     ['option', optionKey, false],
+    ['conclusion', line, false],
     ['by', nodeId, false],
     ['edge', edge, false],
     ['changes', changes, false],
@@ -365,6 +375,56 @@ export function checkNode(value: unknown, file: string, issues: GraphIssue[]): G
   return node
 }
 
+/** The ref of the decision evidence a decided proposal carries: it has no option key to name. */
+export const CONCLUSION_REF = 'conclusion'
+
+/** Fields only question nodes carry. */
+const QUESTION_ONLY_FIELDS = [...CARD_FIELDS, 'decider', 'decision', 'form', ...PROPOSAL_FIELDS, 'conclusion'] as const
+
+/** Which of the optional fields of a proposal each way of asking requires and which it does not take (§3.3). */
+const BY_FORM: Readonly<Record<AskForm, { readonly required: readonly (typeof PROPOSAL_FIELDS[number])[], readonly refused: readonly (typeof PROPOSAL_FIELDS[number])[] }>> = {
+  recommend: { required: ['reason'], refused: ['ways'] },
+  choose: { required: ['reason', 'ways'], refused: ['cost'] },
+  want: { required: [], refused: ['reason', 'cost', 'ways', 'notTaken'] },
+  look: { required: [], refused: ['reason', 'cost', 'ways', 'notTaken'] },
+}
+
+/**
+ * The two shapes of a question (§2.6): with `options` it is a table card
+ * (2 to 4 options, a recommended one, a decision that names an option); without
+ * them it is a proposal: the question `ask`, its way of asking `form` and the
+ * `proposal`, by way of asking a reason and the ways, no card field, and after
+ * the decision a conclusion. A question with options does not carry the
+ * record of a proposal or a conclusion. The line rules (one line, length, the
+ * question mark) are write rules in the engine, not read here.
+ */
+function questionShapeIssues(node: GraphNode, keys: ReadonlySet<string>, report: Report): void {
+  if (node.options === undefined) {
+    const missing = (['ask', 'form', 'proposal'] as const).filter(field => node[field] === undefined)
+    if (missing.length > 0) report(missing[0], 'a question node has options, or ask, form and proposal')
+    for (const field of CARD_FIELDS) {
+      if (node[field] !== undefined) report(field, `a proposal has no ${field}: that belongs to a question with options`)
+    }
+    if (node.decision !== undefined) report('decision', 'a proposal is decided with a conclusion, not an option key')
+    if (node.form !== undefined) {
+      const rules = BY_FORM[node.form]
+      for (const field of rules.required) if (node[field] === undefined) report(field, `a question of the form ${node.form} has a ${field}`)
+      for (const field of rules.refused) if (node[field] !== undefined) report(field, `a question of the form ${node.form} does not take ${field}`)
+    }
+    return
+  }
+  if (node.options.length < 2 || node.options.length > 4) report('options', 'a question node has 2 to 4 options')
+  node.options.forEach((entry, index) => {
+    if (node.options!.findIndex(other => other.key === entry.key) !== index) report(`options[${index}].key`, `duplicate option key "${entry.key}"`)
+  })
+  if (node.recommend === undefined) report('recommend', 'is required for a question node')
+  else if (!keys.has(node.recommend)) report('recommend', `"${node.recommend}" is not an option key`)
+  if (node.decision !== undefined && !keys.has(node.decision)) report('decision', `"${node.decision}" is not an option key`)
+  for (const field of ['ask', 'form', 'proposal', 'reason', 'cost', 'ways', 'notTaken', 'conclusion'] as const) {
+    if (node[field] !== undefined) report(field, `a question with options has no ${field}: that belongs to a proposal`)
+  }
+}
+
 /** Cross-field rules of one node (§2.6 validation list). */
 function nodeRuleIssues(node: GraphNode, file: string): GraphIssue[] {
   const issues: GraphIssue[] = []
@@ -395,18 +455,11 @@ function nodeRuleIssues(node: GraphNode, file: string): GraphIssue[] {
   }
   const keys = new Set((node.options ?? []).map(entry => entry.key))
   if (node.type === 'question') {
-    if (node.options === undefined) report('options', 'is required for a question node')
-    else if (node.options.length < 2 || node.options.length > 4) report('options', 'a question node has 2 to 4 options')
-    node.options?.forEach((entry, index) => {
-      if (node.options!.findIndex(other => other.key === entry.key) !== index) report(`options[${index}].key`, `duplicate option key "${entry.key}"`)
-    })
-    if (node.recommend === undefined) report('recommend', 'is required for a question node')
-    else if (!keys.has(node.recommend)) report('recommend', `"${node.recommend}" is not an option key`)
-    if (node.decision !== undefined && !keys.has(node.decision)) report('decision', `"${node.decision}" is not an option key`)
+    questionShapeIssues(node, keys, report)
   }
   else {
-    for (const field of [...CARD_FIELDS, 'decider', 'decision'] as const) {
-      if (node[field] !== undefined) report(field, `only question nodes carry ${[...CARD_FIELDS, 'decider', 'decision'].join(', ')}`)
+    for (const field of QUESTION_ONLY_FIELDS) {
+      if (node[field] !== undefined) report(field, `only question nodes carry ${QUESTION_ONLY_FIELDS.join(', ')}`)
     }
   }
   node.edges?.forEach((entry, index) => {
@@ -415,6 +468,9 @@ function nodeRuleIssues(node: GraphNode, file: string): GraphIssue[] {
   node.evidence?.forEach((entry, index) => {
     if (entry.kind !== 'decision') return
     if (node.type !== 'question') report(`evidence[${index}].kind`, 'decision evidence belongs to question nodes')
+    else if (node.options === undefined) {
+      if (entry.ref !== CONCLUSION_REF) report(`evidence[${index}].ref`, `a proposal's decision evidence has the ref "${CONCLUSION_REF}"`)
+    }
     else if (!keys.has(entry.ref)) report(`evidence[${index}].ref`, `"${entry.ref}" is not an option key`)
   })
   if (node.status === 'done' && !(node.evidence ?? []).some(isPassingEvidence)) {

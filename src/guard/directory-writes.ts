@@ -11,30 +11,12 @@
  * system access. Reads never count.
  */
 import { isAbsolute, relative, resolve } from 'node:path'
-import type { JsonValue } from '../shared/json.ts'
-import { fileToolsOnly, NATIVE_FACE, shellCommandOf, type ToolCall } from './rules.ts'
+import { fileToolsOnly, fileWriteTarget, NATIVE_FACE, shellCommandOf, type ToolCall } from './rules.ts'
 
 /** What the call writes: the path a file tool names, or the shell text. */
 export type DirectoryWrite =
   | { readonly kind: 'file', readonly target: string }
   | { readonly kind: 'shell', readonly command: string }
-
-function argsOf(call: ToolCall): Record<string, JsonValue> | undefined {
-  return typeof call.arguments === 'object' && call.arguments !== null && !Array.isArray(call.arguments) ? call.arguments : undefined
-}
-
-/** The path a file tool writes (`call.name` is the DSH native). */
-function writeTarget(call: ToolCall): string | undefined {
-  const args = argsOf(call)
-  switch (call.name) {
-    case 'write': case 'edit':
-      return typeof args?.file_path === 'string' ? args.file_path : undefined
-    case 'str_replace_editor':
-      return args?.command !== 'view' && typeof args?.path === 'string' ? args.path : undefined
-    default:
-      return undefined
-  }
-}
 
 /** Comparable form of a path: forward slashes, no trailing slash, lower case (Windows file systems ignore case). */
 function pathKey(path: string): string {
@@ -70,7 +52,7 @@ export function writesInto(dirs: readonly string[], cwd: string | undefined): (c
     return [roots[index], ...(fromCwd === undefined || fromCwd.length === 0 || fromCwd.startsWith('..') || isAbsolute(fromCwd) ? [] : [fromCwd])]
   }).map(mention)
   return (call) => {
-    const target = writeTarget(call)
+    const target = fileWriteTarget(call)
     if (target !== undefined) return inside(target) ? { kind: 'file', target } : undefined
     // The shell text as file-tools-only reads it (terminal_send carries it in `text`).
     const text = shellCommandOf(call)

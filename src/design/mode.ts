@@ -84,6 +84,15 @@ export const mainAgentProjection = {
 
 const pending = new WeakMap<SessionLike, { readonly commandId: string, readonly active: boolean }>()
 
+/**
+ * Claims in flight: the /wish handler has written the holder record (or is
+ * writing it) and has not reached its pending state yet. `standingOf` reads
+ * this to answer 'open' for such a session, so a plain /wish in another
+ * session does not take a role over while a /wish here is still moving it
+ * (review R3). Cleared when the handler stops, before any await of it runs.
+ */
+const claiming = new WeakMap<SessionLike, string>()
+
 const message = (error: unknown): string => error instanceof Error ? error.message : String(error)
 
 /** Record the role the /wish being handled asks for, before its command/done lands. */
@@ -100,11 +109,8 @@ export interface Mode {
   readonly error?: string
 }
 
-/**
- * Whether the session has main agent mode on, by the pending state while the
- * command is unsettled and by the projection after.
- */
-export function modeOf(projections: Pick<SessionProjectionsService, 'stateOf'> | undefined, session: SessionLike): Mode {
+/** The mode, and whether the session's pending /wish has settled (then `modeOf` forgets it). */
+function readMode(projections: Pick<SessionProjectionsService, 'stateOf'> | undefined, session: SessionLike): { readonly mode: Mode, readonly settled: boolean } {
   let state: MainAgentState | undefined
   let error: string | undefined
   try {
@@ -116,22 +122,42 @@ export function modeOf(projections: Pick<SessionProjectionsService, 'stateOf'> |
   }
   const failure = error === undefined ? {} : { error }
   const waiting = pending.get(session)
-  if (waiting === undefined) return { active: state?.active === true, ...failure }
+  if (waiting === undefined) return { mode: { active: state?.active === true, ...failure }, settled: false }
   if (state?.settled === waiting.commandId) {
-    pending.delete(session)
-    return state.active === waiting.active ? { active: state.active } : { active: state.active, cancelled: waiting.active }
+    return { mode: state.active === waiting.active ? { active: state.active } : { active: state.active, cancelled: waiting.active }, settled: true }
   }
-  return { active: waiting.active, ...failure }
+  return { mode: { active: waiting.active, ...failure }, settled: false }
+}
+
+/**
+ * Whether the session has main agent mode on, by the pending state while the
+ * command is unsettled and by the projection after. A /wish that has settled
+ * is reported once, here, and then forgotten.
+ */
+export function modeOf(projections: Pick<SessionProjectionsService, 'stateOf'> | undefined, session: SessionLike): Mode {
+  const { mode, settled } = readMode(projections, session)
+  if (settled) pending.delete(session)
+  return mode
+}
+
+/** `modeOf` that leaves a settled /wish for the session's own next reader: for looking at another session. */
+function peekMode(projections: Pick<SessionProjectionsService, 'stateOf'> | undefined, session: SessionLike): Mode {
+  return readMode(projections, session).mode
 }
 
 export const CANCELLED_ON = '/wish 在生效前被取消，这个会话不是主 Agent'
 export const CANCELLED_OFF = '/wish off 在生效前被取消，这个会话仍是主 Agent'
+
+/** A holder record names a session that is not the main agent and could not be deleted: the person can send /wish off in that session to try again. */
+export const staleRecordKept = (why: string): string => `主 Agent 的持有者记录没能清掉（${why}）：在这个会话里发一次 /wish off`
 
 /** What `roleOf` and `isMainAgent` read. */
 export interface RoleDeps {
   projections(): Pick<SessionProjectionsService, 'stateOf'> | undefined
   /** The holder record of the session's project; undefined for a session with no graph directory. */
   holder(session: SessionLike): HolderReading | undefined
+  /** Delete the holder record of the session's project if it names this session; true when it was deleted. Throws when the record cannot be deleted. */
+  release(session: SessionLike): boolean
   /** Report the row's health in a session. */
   report(session: SessionLike, state: HealthState, reason: string): void
   /** Warn on the console; the row says it once. */
@@ -151,6 +177,11 @@ export interface RoleReading {
  * main agent" for this step (docs/ORCHESTRATION.md §3.1). Reports nothing
  * itself: the assembly listener folds the problems into the one health
  * report of its step, so a later "in effect" does not cover them.
+ *
+ * The one write: a /wish that was cancelled after it claimed the record
+ * leaves a record naming a session whose mode is off. The first reader that
+ * finds the cancelled /wish deletes that record, so that the readers of
+ * `mainAgentOf` do not deliver to a session that is not the main agent.
  */
 export function roleOf(deps: RoleDeps, agent: { readonly session?: SessionLike | undefined }): RoleReading {
   const session = agent.session
@@ -162,6 +193,14 @@ export function roleOf(deps: RoleDeps, agent: { readonly session?: SessionLike |
     problems.push(`读不到主 Agent 的会话状态（${mode.error}），这一步当作普通会话`)
   }
   if (mode.cancelled !== undefined) problems.push(mode.cancelled ? CANCELLED_ON : CANCELLED_OFF)
+  if (mode.cancelled === true) {
+    try {
+      deps.release(session)
+    }
+    catch (error) {
+      problems.push(staleRecordKept(message(error)))
+    }
+  }
   if (!mode.active) return { main: false, problems }
   const holder = deps.holder(session)
   if (holder === undefined) return { main: true, problems }
@@ -189,7 +228,7 @@ const ENTER_NOTICE = 'The human made this session\'s agent the main agent of thi
 const OFF_NOTICE = 'The human left main-agent mode with /wish off: from the next step this session\'s agent is an ordinary agent and may write files directly.'
 const MOVED_NOTICE = 'The main agent of this project moved to another session: from the next step this session\'s agent is an ordinary agent and may write files directly.'
 
-const wishNotice = (text: string, commandId: string): UserNotice => createUserNotice(NOTICE_KIND, 'main agent mode on, with a wish', `${ENTER_NOTICE}\nThe human's wish, in their words: "${text}"\nStart the interview: propose the goal on the graph with a body that starts with 需求： followed by their words verbatim, then graph_focus it.`, { designWish: { commandId, text } })
+const wishNotice = (text: string, commandId: string): UserNotice => createUserNotice(NOTICE_KIND, 'main agent mode on, with a wish', `${ENTER_NOTICE}\nThe human's wish, in their words: "${text}"\nStart the interview: propose the goal on the graph with a body that starts with 需求： followed by their words verbatim, then graph_focus it. Propose it as a proposal, without their words as relay: their confirmation of the requirement card (record_human_answer, kind confirm) is what approves the goal with their own words, not an edit.`, { designWish: { commandId, text } })
 
 /** What the /wish handler needs from the row. */
 export interface WishDeps {
@@ -220,14 +259,26 @@ const done = (text: string): CommandResultLike => ({ kind: 'success', text })
 
 const pad = (value: number): string => String(value).padStart(2, '0')
 
-function localTime(iso: string): string {
+export function localTime(iso: string): string {
   const at = new Date(iso)
   return Number.isNaN(at.getTime()) ? iso : `${at.getMonth() + 1}月${at.getDate()}日 ${pad(at.getHours())}:${pad(at.getMinutes())}`
 }
 
-/** Whether the session a record names is open now, stored but closed, or gone. */
-async function standingOf(deps: WishDeps, sessionId: string): Promise<'open' | 'closed' | 'gone'> {
-  if (deps.agents()?.get(sessionId) !== undefined) return 'open'
+/**
+ * Whether the session a record names is open now, open without main agent
+ * mode ('lapsed': its /wish was cancelled or failed after it claimed the
+ * record, so the record names a session that is not the main agent), stored
+ * but closed, or gone. A mode that cannot be read does not make a session
+ * lapsed.
+ */
+async function standingOf(deps: WishDeps, sessionId: string): Promise<'open' | 'lapsed' | 'closed' | 'gone'> {
+  const live = deps.agents()?.get(sessionId)
+  if (live !== undefined) {
+    // A /wish of this session has the record in flight: the role is not lapsed even though the pending state is not set yet.
+    if (claiming.get(live.session) !== undefined) return 'open'
+    const mode = peekMode(deps.role.projections(), live.session)
+    return mode.error === undefined && !mode.active ? 'lapsed' : 'open'
+  }
   const persistence = deps.persistence()
   if (persistence === undefined) return 'closed'
   try {
@@ -291,19 +342,25 @@ export function wishHandler(deps: WishDeps): (invocation: DesignInvocationLike) 
     if (!deps.dirExists(dir)) return fail(`这个工作区还没有项目图：先建空目录 ${dir}`)
     if (input.wish.length > MAX_WISH_LENGTH) return fail('愿望太长，请先用一两句话说')
 
+    // A /wish of this session that was cancelled earlier is superseded by this one. Reading the mode settles it, so that no reader deletes the record this /wish is about to rely on.
+    modeOf(deps.role.projections(), session)
     const file = holderFileOf(deps.userHome(), dir)
     const key = projectKey(dir)
     const record: HolderRecord = { version: 1, sessionId: session.id, graphDir: dir, since: deps.now().toISOString(), commandId }
     let lead = ''
+    // From the first write on the claim is in flight (review R3): while the handler waits in demoteOthers, another session's /wish sees this one as open, not lapsed. Cleared when the marker's /wish stops writing the record; nothing of this handler awaits after that.
+    const mark = (): void => { claiming.set(session, commandId) }
     try {
       // Three tries: a claim that loses to a session claiming at the same moment reads the record again.
       for (let attempt = 0; attempt < 3; attempt++) {
         const reading = readHolder(file)
         if (reading.kind === 'none') {
+          mark()
           if (claimHolder(file, record)) break
           continue
         }
         if (reading.kind === 'unreadable') {
+          mark()
           replaceHolder(file, record)
           await deps.demoteOthers(key, session.id)
           lead = `原来的主 Agent 记录读不到（${reading.reason}），已改为这个会话；`
@@ -311,22 +368,35 @@ export function wishHandler(deps: WishDeps): (invocation: DesignInvocationLike) 
         }
         if (reading.record.sessionId === session.id) break
         if (input.here) {
+          mark()
           replaceHolder(file, record)
           await deps.demoteOthers(key, session.id)
           lead = MOVED_HERE
           break
         }
         const standing = await standingOf(deps, reading.record.sessionId)
-        if (standing !== 'gone') return done(pointerText(deps, reading.record, standing, input.wish !== ''))
+        if (standing === 'open' || standing === 'closed') return done(pointerText(deps, reading.record, standing, input.wish !== ''))
+        mark()
         replaceHolder(file, record)
-        lead = '原来的主 Agent 会话已经不在了，'
+        lead = standing === 'gone' ? '原来的主 Agent 会话已经不在了，' : '原来记的主 Agent 会话其实没有开着主 Agent 模式，'
         break
       }
       const final = readHolder(file)
       if (final.kind !== 'held' || final.record.sessionId !== session.id) throw new Error('别的会话同时在抢，记录还没写上')
     }
     catch (error) {
+      // The record may have been written by this /wish and name this session while its mode is off: release it, so that no reader of mainAgentOf delivers to a session that is not the main agent (review R1). A release that fails is the session's degraded health; /wish off can try again.
+      try {
+        releaseHolder(file, session.id)
+      }
+      catch (reason) {
+        deps.role.report(session, 'degraded', staleRecordKept(message(reason)))
+      }
       return fail(`主 Agent 的持有者记录写不了：${message(error)}`)
+    }
+    finally {
+      // The pending state (set right below, in the same synchronous stretch) carries the claim from here on; a handler that did not claim the record leaves no marker behind.
+      claiming.delete(session)
     }
 
     // Hooks first, also for a session that is the main agent already: it may have been open before this row loaded.

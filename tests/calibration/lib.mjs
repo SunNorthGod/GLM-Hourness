@@ -6,8 +6,9 @@
  *   node check.mjs --workspace <run copy> --fixture <pristine fixture> --scratch <empty dir>
  *
  * The checker imports and runs workspace code in its own process (the runner
- * bounds the process time), prints one JSON object { pass, checks } and
- * exits 0 when every check holds, 1 otherwise.
+ * bounds the process time), prints one JSON object { pass, checks } (an
+ * interview task adds `metrics`) and exits 0 when every check holds, 1
+ * otherwise.
  */
 import { spawnSync } from 'node:child_process'
 import { cpSync, existsSync, readdirSync, readFileSync } from 'node:fs'
@@ -77,8 +78,8 @@ export function notRejected(fn, inputs, type) {
   return { ok: accepted.length === 0, detail: accepted.length === 0 ? undefined : `not rejected with ${type.name}: ${inspect(accepted)}` }
 }
 
-/** Run named checks in order and print the verdict; a throwing check fails with its message. */
-export async function report(checks) {
+/** Run named checks in order and print the verdict; a throwing check fails with its message. `extra` is added to the printed object as it is (the numbers of an interview run, which are not checks). */
+export async function report(checks, extra = {}) {
   const results = []
   for (const [name, run] of checks) {
     try {
@@ -90,6 +91,6 @@ export async function report(checks) {
     }
   }
   const pass = results.every(result => result.ok)
-  console.log(JSON.stringify({ pass, checks: results }))
+  console.log(JSON.stringify({ pass, checks: results, ...extra }))
   process.exitCode = pass ? 0 : 1
 }

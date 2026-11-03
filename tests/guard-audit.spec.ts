@@ -5,6 +5,7 @@ import { DECLARATION_SECTION } from '../src/guard/sections.ts'
 import { apply as glmPromptApply, dialectServiceFor } from '../src/glm-prompt/index.ts'
 import type { ShadowRecord } from '../src/guard/shadow.ts'
 import type { AgentLike, PreExecuteDecision, SessionEventLike, SessionLike, ToolExecutionPayload, WorkspaceChangesSummary } from '../src/shared/dsh-min.ts'
+import { MAIN_AGENT_KEY } from '../src/graph/main-agent.ts'
 import { GRAPH_FILES_DECLARATION, GRAPH_SERVICE } from '../src/graph/service.ts'
 import { DIALECT_SERVICE } from '../src/shared/dialect.ts'
 import { fakeRuntime } from './fake-rc3.ts'
@@ -461,6 +462,27 @@ test('without a session directory the declaration lists file-tools-only alone, a
   assert.ok(!section.text.includes('inside the user\'s workspace'))
   // No dialect row: the GLM request sees the native tools, and the declaration names them.
   assert.ok(section.text.includes('\n- Modify files and code only with the dedicated write/edit tools.'))
+})
+
+test('the main agent\'s declaration has no file-tools-only line: its identity section holds the boundary, and the line would name the Write/Edit tools it does not have (S4-4)', async () => {
+  const main = (): ReturnType<typeof fakeRuntime> => {
+    const rt = fakeRuntime({ cwd: 'C:\\ws' })
+    rt.services.set('sessionProjections', { stateOf: (session: SessionLike, key: string) => key === MAIN_AGENT_KEY ? { active: true } : undefined })
+    return rt
+  }
+  const rt = main()
+  apply(rt.ctx as never, { workspaceRoots: ['C:\\ws'], home: 'C:/ws/.llm', fs: memoryFs().fs })
+  await rt.create()
+  const section = (await rt.assemble({ provider: 'glm-zcode', model: 'glm-5.3' })).sections.at(-1)!
+  assert.equal(section.name, DECLARATION_SECTION)
+  assert.ok(section.text.includes('\n- You may only create and modify files inside the user\'s workspace.'), 'containment is still declared')
+  assert.ok(!section.text.includes('Modify files and code only with the dedicated'), 'no file-tools-only line for the main agent')
+  // An ordinary session keeps the line.
+  const plain = fakeRuntime({ cwd: 'C:\\ws' })
+  apply(plain.ctx as never, { workspaceRoots: ['C:\\ws'], home: 'C:/ws/.llm', fs: memoryFs().fs })
+  await plain.create()
+  const plainSection = (await plain.assemble({ provider: 'glm-zcode', model: 'glm-5.3' })).sections.at(-1)!
+  assert.ok(plainSection.text.includes('\n- Modify files and code only with the dedicated write/edit tools.'))
 })
 
 test('with the graph row active the GLM declaration also lists graph-files-only, last; it leaves with the row', async () => {
