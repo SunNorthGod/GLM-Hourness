@@ -43,9 +43,9 @@
 
 ## 未完成（留下一批）与跳过（带原因）
 
-### m4-gate — 完成第一片（records 地基，`d012455`），其余留下一批
+### m4-gate — G1 完成（`d012455` 地基 + `362e66a` 安装函数，详见 gate-progress.md），G2 完成（`52a36f6`），G3/G4 留下
 
-设计上 G1–G3 都不等别的设计。G1 的剩余部分一次要删 `evaluate`，而它今天被 guard 行、`graph-files.ts`、`loops/guard.ts` 两道门使用，同一次提交必须把四处全部改经 `installRuleGate` 并改晨报过滤（换 classifyRecord）、按项目写流水（projectHomeFor/projectJournal/gap）、`RowHealth.note`、`GUARD_RULES` 目录扩充与全部 guard 探针期望（glm、non-glm-guard、hourness-only 的纠偏逐字断言）——按设计是一整步（约 15+ 文件、6+ 测试文件）。地基已就位：records.ts 的类型与分类器、记录键、subjectOf 都按 §3.2 落好并有测试钉住；下一批从 `installRuleGate`（gate.ts）开始，先做失败优先的 spec（这次的 slice 是纯新增，失败优先没有意义，G1 的门不是）。开工前重读 §3 全节、`src/loops/guard.ts` 与规则板 `src/rules/gate.ts` 的判定路径。
+G1 的安装函数与旧 `evaluate` 路径的删除已完成并推送（commit `362e66a`，记录在 `.agents/tasks/m4/gate-progress.md`，该文件在 .agents/ 里不入 git）。G2 于 2026-11-04 完成，见下节。G3（撤下：`guard_lift` 工具、`glmHournessLifts` 服务、`lift-files-only`、三条新规则 `suppression-reason`/`checker-config`/`scratch-only`、判定上下文 `context.ts`、`mention.ts` 抽出、`shadow.ts` 改名 `fallback.ts` 与事后纠正、晨报撤下行与 lifts.jsonl 对账、§6.4 表改写、ORCHESTRATION §6.4 每行写明实现与状态〔m4-rules 验收第 3 条〕）不等别的设计，可随时开工。G4 等 M3 第 4 步（`dispatchRoot`）——注意分支经主检合并后 `src/guard/main-agent.ts` 与 `src/guard/git-snapshot.ts` 已可见，G4 开工前按设计 §5 重新核对依赖到位，跳过理由（本文件下方 m4-request-card 节）可能已过时。开工前重读 §3 全节、`src/guard/lift.ts`（G1 已建）与规则板判定路径。
 
 ### m4-rules — 部分跳过
 
@@ -74,3 +74,45 @@ G4 等 M3 第 4 步：`src/guard/main-agent.ts` 的 `dispatchRoot` 与两条写�
 ## 探针结果
 
 213/213 通过（exit 0），运行时树 `07f0a4c`；其后两笔提交（d012455 类型搬移、纯函数新增）不碰探针覆盖的运行时行为。
+
+## 追加：m4-gate G2（跟进记录器批次），commit `52a36f6`（已推，2026-11-04）
+
+### 接手与 WIP 处置
+
+前任 agent 在模型配额耗尽时留下未提交的 G2 WIP（14 改 + 8 新文件）。接手后先原样捕获：`.agents/tasks/m4/g2-wip-dead-agent.patch`（647 行）与同目录 untracked tarball，处置记录随之保留。审计结论：整体连贯、按设计形状落码，大部分保留；五处修补、一处补齐后提交。逐字契约核对过三处：`ToolExecutionPayload.callId` 对 rc.3 实源（dsh-tools `lib/index.js:3230` createExecution）、`tool/call` 事件数据形状对 dsh-agent-loop `appendToolCall`（:681–686）、`:deferred` 后缀对 `src/toolsearch/index.ts` execute 与 ZCode 3.17.1 的 `DeferredToolCall` schema。
+
+### 修补（对 WIP 的改动）
+
+1. 探针场景 `guard-followup` 按设计 §14.1 重写（最大一处）：WIP 版本只测 guard 行（两次 shell 拒绝 + none），测不出设计点名要它证的「图行与 guard 行共用一个记录器」（§3.3，F5）；设计版是图副本 + 图行 overlay，三次拒绝三次跟进 `repeat`（图行结算）/`other`/`right-path`。检查断言放宽为因果形状（跟进序列 `graph-files-only:repeat,graph-files-only:other,file-tools-only:right-path` + 图拒绝 ×2 + Bash 拒绝存在 + 文件断言），不钉跨行行序：图行与 guard 行的 journal 是两个实例并发追加同一文件，实测一次 Bash 拒绝行（at .168）晚于它的跟进（at .198）落盘——guard 行 journal 实例首写冷启动所致；跟进记录引用的 `denial` 键与拒绝行的 `keyOf` 精确匹配（实测 `72b67e621922`），因果无损。
+2. 晨报每规则一行的「原样重试 n 次」并回同一行（设计 §3.10 示例格式 `- 拦下 <规则> × n（最近一次：…） · 拦截后下一步走对 x/y · 原样重试 k 次`），删去 WIP 的「另写一行」写法与 ORCHESTRATION.md §6.5 里相应的错描。
+3. 晨报汇总行的比例覆盖所有有分母的规则（含拒绝全部在当期之外的规则——它的跟进在当期结算）；WIP 版本这类规则只把 `none` 计入「停下来」、其余跟进丢弃，一半进一半不进。
+4. `src/guard/cli.ts` stats 去掉 `since` 二次过滤：CLI 已用自己的时钟截断流水，ruleStats 再按相对天数截一次会跟列表用的界不一致。
+5. `scripts/guard/cli.mjs` 头注 DEVELOPMENT 引用 §4→§15。
+6. 补齐设计 §3.3 点名、且 G2 探针场景必需的 rightPath：`fileToolsOnly`（下一次调用为文件工具写入，`fileToolTargetOf` 判）与 `graphFilesOnly`（图的写工具，纠偏文本点名的八个）；requestable 三规则（圈禁、checker-config、scratch-only）的 rightPath 随申报通道在 G4。L2 加一条真实规则测试钉住（graph 读取工具不算走对）。
+
+### 落地内容（承接 WIP 保留部分）
+
+- `src/guard/followup.ts`：模块级记录器（§3.3 逐条——observe 结算、`tool/call` 事件判模型发出、同 turn+step 跳过（N16）、DeferredToolCall 拆包结算并双 id 记账（F9）、`turn/end` 与 `session/disposed` 记 none（N15）、经 `tools.execute` 的非模型调用不结算）；内存上限 256 待判 / 512 已结算 id / 每会话 512 事件 / 64 会话。
+- `src/guard/gate.ts`：监听器第一步 observe（F5，最外层结算一次）、`hookJournal` 把结算记录经行 journal 落盘（丢盘按 §3.1 第 7 步计数）、每个拒绝经 `noteDenial` 待判并桥接规则的 rightPath、拒绝与跟进各交一条指标事件。
+- `src/rules/gate.ts`：规则板工具门接同一记录器——第一步 observe，拦下与开单拒绝 `noteDenial`（无 rightPath，`key` 是它写下的拒绝记录 `keyOf`）；晚到拦下不调（§3.3 跨行）。
+- `src/guard/measure.ts` `ruleStats`（§3.3/§3.10）：每规则按 scope 的拒绝数、跟进四类、最近一次的样子（60 字符）；全流水缺口合计 `unrecorded`。晨报、命令行、（G3 的）规则页共用。
+- `src/guard/metrics.ts` `emitGuardMetric`（§3.11）：服务名 `glmHournessMetrics` 为占位，指标设计定稿前服务不在则什么都不做。
+- `src/guard/cli.ts` + `scripts/guard/cli.mjs` + 根 `package.json` 的 `guard` 脚本（§3.9）：只读 `records [--since] [--rule] [--show] [--home]` / `stats`，退出码 0/2，用法见 `DEVELOPMENT.md` §15。
+- 晨报（§3.10 G2 部分）：每被拦规则一行 + 「拦截后下一步走对」汇总行（分母不含 none，N30；另有 n 次停下来交给人或上级）。
+- `tests/fake-rc3.ts`：根调用 `tool/call` 事件先于 pre-execute、`turn/end`、`session/disposed`、`progress`（turn/step）。
+- 测试：`tests/guard-followup.spec.ts`（14）、`tests/guard-measure.spec.ts`（5）、`tests/workflow.spec.ts` +3；全部进 npm test 脚本。
+- 文档：`docs/DEVELOPMENT.md` §15（拦截命令行）、`docs/ORCHESTRATION.md` §6.3 度量句与 §6.5 误拦看得见一行。
+
+### 门禁（最终树 `52a36f6`）
+
+- `npm run build` exit 0；`npm run preflight` exit 0（2 包、15 src 目录、18 行——数字比 G1 记录的 14/17 高，是两次 main 合并带来的，不是本批）。
+- `npm test` exit 0（136 套 TAP、2552 测试、0 败）；棘轮 eslint 76 suppressed、knip 19、jscpd 1，全部不高于现行基线（main 合并后基线本身已从 G1 时的 244/21/2 降下来；本批零新增压制）。
+- `npm run -s probe` exit 0，327/327（含新场景 guard-followup）。口径注记：探针在分支自己的基（4c315a9 合并，rules/loops 行仍 `disabled: true`）上跑，行经 overlay 启用；main 已越过本分支合并点（e35c422 起），本批按指示不再合并，探针期望不依赖行的 shipped 状态。
+
+### 与设计的偏差（agent 定，可逆）
+
+1. 探针检查不钉跨行拒绝行序（见修补 1 的实测记录）；设计 §14.1 的「第一次图写入之后 repeat」按因果读，不按文件行序读。
+2. `followupOf` 的参数摘要按键排序的 canonical JSON 比较（设计只说「参数摘要相同」）；测试钉住同参异序算 repeat。
+3. 规则板开单拒绝（`effect: 'queue'` 的 deferral 拒绝）也调 `noteDenial`：设计说「拦下与开单拒绝时」，按文面执行。
+4. 指标服务名 `glmHournessMetrics` 是占位常量，指标设计的行落地时对齐（§3.11「服务名与信封由指标设计定」）。
+5. G2 步表未列 rules.ts/graph-files.ts，rightPath 两函数随本批落地：G2 的 L3 场景（设计的 §14.1）必须它们在场才能过，且无 G3/G4 依赖。
