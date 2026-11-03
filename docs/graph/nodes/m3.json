@@ -554,6 +554,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "第 12 步（a）标定已执行（2026-11-03 凌晨，用户授权「你直接跑吧」；指标代码 92f8e94；worktree 临时 profile、不碰 ~/.dsh；结果 .llm/calibration-runs/2026-11-02T20-00-33-933Z/）：interview-expense-log 两档各 3 次共 6 运行，验收 0/6，解锁（GLM-5.3 至少一次全过）未满足，12（b）合入未动。逐次：5.3 三次——run1 访谈结构全绿但放行后主 Agent 回合内实现交付（goal 推 done 又因模拟人答复重开 doing，工作区多出 hua/、hua-copy/）；run2、run3 访谈未完成吃步数上限（62/89 步，边界紧）。Flash 三次——run1 仅差一项：goal approved/release 全对，唯一脏文件 __pycache__/expense.cpython-314.pyc（跑 Python 原型的字节码缓存）；run2 缺放行/确认批注；run3 提议未经人话批准。六次共同点：工作区 docs/graph/ 外都有改动。interview 指标全部收到（disturbed/shown/questions/copiedExamples=0/loops/records/rules/snapshots）。花费约 2585 积分（谷段）。待裁决：放行后访谈是否终止、执行归谁——修任务侧（夹具 gitignore、边界）或流程侧（设计行提示词/规则）后重跑。"
+    },
+    {
+      "at": "2026-11-03T05:15:49.026Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "12(a) 失败复盘定案（2026-11-03 晨，用户裁决）：「设计都批完了为什么不能自己开工？按道理来说，不都是主Agent自行推进的吗」——放行后主 Agent 自行推进是框架本意（m7-3 验收原文即此），不是缺陷；错在标定任务的边界（它假设访谈止于放行，却没有任何东西告诉主 Agent 到此为止）。已批修复方案（「行。继续吧」）：(1) 模拟人在放行卡批准后发一条收场话并此后全静默，验收的终态与工作区干净两条原样保留、改为真正测「听话」；(2) 夹具 gitignore __pycache__/*.pyc；(3) 设计行提示词加一句：人的需求卡确认要落成带原话的 goal approve（堵 5.3 的「出生即批准」路径，Flash 走的正是正路）。修完重跑 GLM-5.3 三次（约 2.2k 积分），过则解锁 12(b)。直接改判据判过已被否：5.3 run1 的 approve-with-relay 缺失是真缺陷，不随测试边界修正而消失。"
     }
   ]
 }
