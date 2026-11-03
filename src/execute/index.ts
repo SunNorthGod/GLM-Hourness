@@ -1,13 +1,15 @@
 /**
  * glm-hourness/execute row entry (M7 design 0.6 §2.1, §3.1, §2.3.2, §6.7):
  * the execution line of the orchestration package. It registers
- * `dispatch_task` for the main agent, installs the dispatched chain's
+ * `dispatch_task` for the main agent, the worker's `submit_plan` and
+ * `ask_main` and the main agent's `answer_worker` (src/execute/requests.ts),
+ * installs the dispatched chain's
  * execution-boundary rules (src/guard/execute-rules.ts), filters every
  * agent's tool face by its role (src/execute/faces.ts), provides the
  * `glmHournessExecute` service whose `isWorker` tells M3's guard rules who a
  * dispatch carries, and reports the row health of the sessions it acts in.
- * The worker tools, the gate provider, the drive and the loop-board seam
- * arrive with E5–E8 on this same entry.
+ * The gate provider, the drive and the loop-board seam arrive with E6–E8 on
+ * this same entry.
  *
  * The row keeps the dispatch register (src/execute/attempts.ts) and the
  * revision-keyed graph cache the rules read; the graph of a project is
@@ -34,6 +36,7 @@ import Schema from '../shared/schemastery.ts'
 import { installExecuteRules } from '../guard/execute-rules.ts'
 import { registeredAttempt } from './attempts.ts'
 import { createGraphCache, dispatchTool, type GraphCache } from './dispatch.ts'
+import { answerWorkerTool, askMainTool, submitPlanTool, type RequestsDeps } from './requests.ts'
 import { faceOfRole, roleOfAgent, type FaceDeps } from './faces.ts'
 
 /** Row config: the parallel write slots. */
@@ -66,7 +69,7 @@ export function apply(ctx: ExecuteContext, config: ExecuteConfig = {}): () => vo
   const slots = config.slots ?? 3
   const journal = rowJournal(name, () => dataHomes(ctx, undefined))
 
-  let toolsNote: string | undefined = '派发工具要工具服务（tools）'
+  let toolsNote: string | undefined = '执行行的工具要工具服务（tools）'
   let rulesNote: string | undefined
   const health = provideRowHealth(ctx, 'execute', 'active', '已加载；派发与派发链的写入边界在本行的会话里生效')
   disposers.push(() => { health.dispose() })
@@ -144,32 +147,45 @@ export function apply(ctx: ExecuteContext, config: ExecuteConfig = {}): () => vo
     report,
   })
 
+  // The plan and communication tools (§3.3, §3.4): the worker's two and the main agent's one.
+  const requestDeps: RequestsDeps = {
+    lookup: ctx,
+    graphDir: graphDirOf,
+    cache,
+    isMainAgent: isMain,
+    designPresent,
+    report,
+  }
+  const requestTools = [submitPlanTool(requestDeps), askMainTool(requestDeps), answerWorkerTool(requestDeps)]
+  const tools = [dispatch, ...requestTools]
+
   if (typeof ctx.inject === 'function') {
     try {
       ctx.inject(['tools'], toolsCtx => {
-        let undo: (() => void) | undefined
+        const undos: (() => void)[] = []
         try {
-          undo = toolsCtx.tools.register(dispatch)
+          for (const tool of tools) undos.push(toolsCtx.tools.register(tool))
           toolsNote = undefined
           reactivate()
         }
         catch (error) {
-          toolsNote = `dispatch_task 没注册上：${error instanceof Error ? error.message : String(error)}`
+          for (const undo of undos.splice(0)) undo()
+          toolsNote = `执行行的工具没注册上：${error instanceof Error ? error.message : String(error)}`
           reactivate()
           return undefined
         }
         return () => {
-          undo?.()
-          toolsNote = '派发工具要工具服务（tools）'
+          for (const undo of undos.splice(0)) undo()
+          toolsNote = '执行行的工具要工具服务（tools）'
           reactivate()
         }
       })
     }
     catch (error) {
-      toolsNote = `dispatch_task 没注册上：${error instanceof Error ? error.message : String(error)}`
+      toolsNote = `执行行的工具没注册上：${error instanceof Error ? error.message : String(error)}`
     }
   }
-  else toolsNote = '宿主没有 inject，派发工具拿不到工具服务'
+  else toolsNote = '宿主没有 inject，执行行的工具拿不到工具服务'
 
   // The dispatched chain's execution-boundary rules (§3.2), prepend.
   try {

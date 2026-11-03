@@ -3,13 +3,23 @@
  * loaded graph (the engine is not needed for pure functions), the two-module
  * goal the module cases run on, and a gate context that is free by default.
  */
+import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
+import { writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { MODULE_READERS, releaseOf, type ModuleReaders } from '../src/graph/execute-stage.ts'
 import type { LoadedGraph } from '../src/graph/parse.ts'
 import type { Actor, GraphNode, HistoryEntry, Stage, Status } from '../src/graph/schema.ts'
 import type { BriefContext, GateResult } from '../src/execute/brief.ts'
 
 export type Fields = Omit<Partial<GraphNode>, 'history'> & Pick<GraphNode, 'id' | 'type'>
+
+/** A throwaway git repository with README.md committed, the way the tool specs seed one. */
+export function gitSeed(root: string): void {
+  const inRoot = (args: readonly string[]): boolean => spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.invalid', '-c', 'commit.gpgsign=false', ...args], { cwd: root, encoding: 'utf8' }).status === 0
+  writeFileSync(join(root, 'README.md'), 'probe workspace\n')
+  if (!inRoot(['init', '-q', '-b', 'main']) || !inRoot(['add', 'README.md']) || !inRoot(['commit', '-q', '-m', 'seed'])) throw new Error('git seed failed')
+}
 
 /** A history time: second `n` after 2026-10-30T08:00:00Z. */
 export function at(n: number): string {

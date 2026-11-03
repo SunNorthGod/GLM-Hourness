@@ -186,6 +186,20 @@ export function forgetAttempt(childId: string): void {
   register.delete(childId)
 }
 
+/**
+ * Replace a register entry's plan facts (§3.3.4): the main agent's approval
+ * marks the dispatch's plan approved and gives it the approved plan's path
+ * union, which the write gate reads from then on. Undefined when this
+ * process has no such dispatch (it may have handed back already).
+ */
+export function updateAttempt(childId: string, patch: Readonly<Partial<Pick<Attempt, 'plan' | 'planPaths'>>>): Attempt | undefined {
+  const current = register.get(childId)
+  if (current === undefined) return undefined
+  const updated: Attempt = { ...current, ...patch }
+  register.set(childId, updated)
+  return updated
+}
+
 /** The dispatch a child id names, or undefined when this process did not start it (or it is gone). */
 export function registeredAttempt(childId: string): Attempt | undefined {
   return register.get(childId)

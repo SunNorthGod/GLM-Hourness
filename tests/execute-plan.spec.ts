@@ -6,6 +6,7 @@ import {
   checkPlan,
   parseApprovalComment,
   planDigest,
+  planPathsOfSection,
   readPlanSection,
   renderApprovalComment,
   renderPlanSection,
@@ -186,4 +187,20 @@ test('carriedPlan: the latest approval whose digest is the one in the body now, 
   const stale = comment(3, renderApprovalComment(1, 'ffffffffffff', 'hz-t-a1-000000', 'call-1'))
   assert.equal(carriedPlan(node({ id: 't', type: 'task', body: approvedBody }, 0, 'llm', [approval, stale])), undefined)
   assert.equal(carriedPlan(node({ id: 't', type: 'task', body: approvedBody }, 0, 'llm', [stale, approval]))?.version, 2)
+})
+
+test('planPathsOfSection: the union of the step lines\u2019 paths, first-seen order, none for 无', () => {
+  const multi = renderPlanSection(plan({
+    title: 'Two files',
+    paths: ['site/feed/a.mjs', 'site/feed/b.mjs'],
+  }), 1, 'approved')
+  assert.deepEqual(planPathsOfSection(readPlanSection(withPlanSection(undefined, multi))!.steps), ['site/feed/a.mjs', 'site/feed/b.mjs'])
+  const twoSteps = [
+    '1. First\n   路径：site/x.mjs、site/y.mjs · 验证：L1',
+    '2. Second\n   路径：site/x.mjs · 验证：L2',
+    '3. Third\n   路径：无 · 验证：L4-batch',
+  ].join('\n')
+  assert.deepEqual(planPathsOfSection(twoSteps), ['site/x.mjs', 'site/y.mjs'], 'repeats collapse, 无 contributes none')
+  assert.deepEqual(planPathsOfSection('1. Empty\n   路径：无 · 验证：L4-batch'), [])
+  assert.deepEqual(planPathsOfSection('no step lines'), [])
 })

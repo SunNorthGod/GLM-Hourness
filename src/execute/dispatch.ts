@@ -35,7 +35,7 @@ import { makeChildId, nextAttempt, registerAttempt, registeredDispatches, render
 import { sha256Hex } from './digest.ts'
 import { dispatchDescription } from './examples.ts'
 import { agentOptionsOf, checkModelChoice, CATALOG_UNCHECKED_NOTE, type CatalogEntry, type ModelChoice } from './models.ts'
-import { carriedPlan, planStatusOf, readPlanSection } from './plan.ts'
+import { carriedPlan, planPathsOfSection, planStatusOf, readPlanSection } from './plan.ts'
 import { HANDBACK_SCHEMA, REVIEW_SCHEMA, mergeHandbackSchema } from './schemas.ts'
 import { DEFAULT_WATCHED, parseGateNorm } from './gate-norm.ts'
 import { createGit, watchedDigest, type Git } from './git.ts'
@@ -236,8 +236,8 @@ function lastLines(text: string, count: number): string[] {
 
 const sleep = (ms: number): Promise<void> => new Promise(done => { setTimeout(done, ms) })
 
-/** One engine write, retried three times with fresh revisions (§3.1.2 step 10); the thrown error is the last refusal. */
-async function writeWithRetry(run: () => Promise<ApplyResult>): Promise<ApplyResult> {
+/** One engine write, retried three times with fresh revisions (§3.1.2 step 10); the thrown error is the last refusal. The plan tools share it. */
+export async function writeWithRetry(run: () => Promise<ApplyResult>): Promise<ApplyResult> {
   for (let attempt = 0; ; attempt++) {
     const result = await run()
     if (result.ok) return result
@@ -516,7 +516,7 @@ export function dispatchTool(deps: DispatchDeps): ToolDefinitionLike {
         }
         refuse('invalid', `the subagent could not be started: ${message}`, 'fix what the message names and send the call again')
       }
-      const pins = `pins: ${renderPins(pinsOf(targetGraph, target, sha256Hex))}`
+      const pins = renderPins(pinsOf(targetGraph, target, sha256Hex))
       registerAttempt({
         childId,
         role: isWorkerRole ? 'worker' : 'review',
@@ -531,7 +531,10 @@ export function dispatchTool(deps: DispatchDeps): ToolDefinitionLike {
         ...(parsed.reasoningEffort === undefined ? {} : { reasoningEffort: parsed.reasoningEffort }),
         why: parsed.why,
         plan,
-        ...(plan === 'approved' ? { planPaths: [] } : {}),
+        // The carried plan's path union (§3.3.4): the write gate reads it
+        // (§3.2.1). A body whose section cannot be read carries an empty
+        // union — the worker can write nothing, the strict side.
+        ...(plan === 'approved' ? { planPaths: section === undefined ? [] : planPathsOfSection(section.steps) } : {}),
         pins,
       })
 

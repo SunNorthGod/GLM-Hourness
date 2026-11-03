@@ -1731,6 +1731,56 @@ const execScenario = (name, model, glmRoute) => {
 }
 const execGlm = execScenario(EXEC_GLM, 'glm-5.3-flash', true)
 const execPlain = execScenario(EXEC_PLAIN, 'deepseek-probe', false)
+
+// E5 (M7 design §3.3, §3.4, §9.1 glm-exec-plan): the plan and communication
+// tools on the real runtime, over two plan-required tasks. The worker's
+// writes are refused before a plan is approved; a plan that fails the checks
+// comes back at once and the main agent hears nothing of it; a passing one
+// lands on the task body and the notice wakes the main agent, whose scripted
+// answer_worker approves it (the request id is a runtime value, resolved by
+// the {plan-request:<task>} placeholder of the probe provider); the worker's
+// held call returns approved and the write in the approved paths runs. The
+// main agent's send_message while the worker waits in submit_plan arrives at
+// its next step (U3); the answer to the worker's ask_main returns inside the
+// same call; a send_message between siblings is UNAUTHORIZED.
+const EXEC_PLAN = 'glm-exec-plan'
+const execPlanSeeds = [
+  ['human', { type: 'goal', title: '静态博客', stage: 'release', acceptance: ['the blog builds'] }],
+  ['human', { type: 'task', id: 'task-1', title: 'Add the feed', parent: 'goal-1', kind: 'implement', writeScope: ['site/feed/index.js'], acceptance: ['the feed builds', 'every item has a title'], nonGoals: ['no RSS yet'], worktree: true }],
+  ['human', { type: 'task', id: 'task-2', title: 'Add the atom feed', parent: 'goal-1', kind: 'implement', writeScope: ['site/rss/atom.js'], acceptance: ['the atom feed is valid'], worktree: true }],
+]
+await stageGraph(EXEC_PLAN, execPlanSeeds)
+const PLAN_WHY = 'probe: the plan flow needs a running model'
+const PLAN_HAND_BACK_1 = { status: 'done', summary: 'wrote site/feed/index.js; the plan was approved and the question answered', commits: [], files: ['site/feed/index.js'], checks: [], questions: [], assumptions: ['Cap at 20.'], lessons: [] }
+const PLAN_HAND_BACK_2 = { status: 'done', summary: 'wrote site/rss/atom.js; the plan was approved', commits: [], files: ['site/rss/atom.js'], checks: [], questions: [], assumptions: [], lessons: [] }
+const execPlanWorker1 = [
+  { tool: { name: 'Write', arguments: { file_path: join(runDir, EXEC_PLAN, 'ws', '.worktrees', 'hz-task-1', 'site', 'feed', 'index.js'), content: 'too early\n' } } },
+  { tool: { name: 'submit_plan', arguments: { steps: [{ title: 'Write the feed builder', paths: ['site/feed/index.js'], acceptance: ['it lists the posts'], covers: [], verify: 'L1', commands: [] }] } } },
+  { tool: { name: 'submit_plan', arguments: { steps: [{ title: 'Write the feed builder', paths: ['site/feed/index.js'], acceptance: ['it lists the posts'], covers: [0, 1], verify: 'L2', commands: ['node --test'] }], notes: 'probe: one file' } } },
+  { tool: { name: 'Write', arguments: { file_path: join(runDir, EXEC_PLAN, 'ws', '.worktrees', 'hz-task-1', 'site', 'feed', 'index.js'), content: 'probe feed\n' } } },
+  { tool: { name: 'send_message', arguments: { agent_id: '{worker:task-2}', message: 'probe: sibling talk' } } },
+  { tool: { name: 'ask_main', arguments: { question: 'Cap the feed at how many items?', assumption: 'Cap at 20.', options: ['10', '20', '50'] } } },
+  { tool: { name: 'structured_output', arguments: PLAN_HAND_BACK_1 } },
+  { text: 'worker done' },
+]
+const execPlanWorker2 = [
+  { tool: { name: 'submit_plan', arguments: { steps: [{ title: 'Write the atom feed', paths: ['site/rss/atom.js'], acceptance: ['it is valid atom'], covers: [0], verify: 'L1', commands: [] }], notes: 'probe: one file' } } },
+  { tool: { name: 'structured_output', arguments: PLAN_HAND_BACK_2 } },
+  { text: 'worker two done' },
+]
+const execPlan = designScenario(EXEC_PLAN, 'glm-5.3-flash', () => [
+  { tool: { name: 'graph_focus', arguments: { id: 'goal-1' } } },
+  { tool: { name: 'dispatch_task', arguments: { id: 'task-1', model: 'glm-5.3-flash', why: PLAN_WHY } } },
+  { tool: { name: 'dispatch_task', arguments: { id: 'task-2', model: 'glm-5.3-flash', why: PLAN_WHY } } },
+  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 8', description: 'probe: let both workers submit their plans' } } },
+  { tool: { name: 'send_message', arguments: { agent_id: '{worker:task-1}', message: 'probe: keep the feed to twenty items' } } },
+  { tool: { name: 'answer_worker', arguments: { request: '{plan-request:task-1}', verdict: 'approve' } } },
+  { tool: { name: 'answer_worker', arguments: { request: '{plan-request:task-2}', verdict: 'approve' } } },
+  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 8', description: 'probe: let worker one ask' } } },
+  { tool: { name: 'answer_worker', arguments: { request: '{ask-request:task-1}', text: 'Twenty items, then stop.' } } },
+  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 8', description: 'probe: let the workers hand back' } } },
+  { text: 'done', status: true },
+], { wish: true, git: true, extra: ['- id: glm-hourness/execute', '  disabled: false'], others: [execPlanWorker1, execPlanWorker2] })
 const designRecord = (scenario) => readHolder(holderFileOf(join(scenario.dir, 'dsh-home', 'glm-hourness'), join(scenario.ws, 'docs', 'graph')))
 const MAIN_HEAD = '# Main agent\nYou are the main agent of this project'
 const sectionAt = step => step?.system.indexOf(MAIN_HEAD) ?? -1
@@ -2283,6 +2333,50 @@ function execChecks() {
 }
 
 /**
+ * E5 (M7 design §3.3, §3.4; scenario glm-exec-plan): what the plan and
+ * communication tools did on the real runtime. The request ids the scripts
+ * answer are runtime values; the checks read them back out of the notice
+ * bodies the requests carried.
+ */
+function planChecks() {
+  const name = EXEC_PLAN
+  const ws = join(runDir, name, 'ws')
+  const main = execPlan.steps.filter(step => step.sessionId === execPlan.steps[0]?.sessionId)
+  const result = step => lastToolResult(step)?.text ?? ''
+  const summary = index => { try { return JSON.parse(result(main[index])) } catch { return undefined } }
+  const child1 = summary(2)?.childId
+  const child2 = summary(3)?.childId
+  const worker1 = child1 === undefined ? [] : bySession(execPlan, child1)
+  const worker2 = child2 === undefined ? [] : bySession(execPlan, child2)
+  const face = step => (step?.tools ?? []).map(tool => tool.name)
+  const notices = main.flatMap(step => messagesOf(step, 'glm-hourness-execute'))
+  // The dump carries the notice bodies, not their summaries: the plan notice's
+  // body opens with the rendered section and the usage line, the question's
+  // with the question and the assumption. A delivered notice stays in the
+  // session, so later requests repeat it — the checks count distinct ids.
+  const planNoticeTexts = notices.filter(message => message.text.includes('Review it: answer_worker')).map(message => message.text)
+  const questionNoticeTexts = notices.filter(message => message.text.includes('The worker continues on its own assumption')).map(message => message.text)
+  const noticeIds = texts => new Set(texts.map(text => requestIdOf(text)).filter(id => id !== undefined))
+  const taskNode = (id) => { try { return JSON.parse(readFileSync(join(ws, 'docs', 'graph', 'nodes', `${id}.json`), 'utf8')) } catch { return undefined } }
+  const task1 = taskNode('task-1')
+  const history1 = task1?.history ?? []
+  const approval = history1.find(entry => entry.op === 'comment' && entry.actor === 'harness' && String(entry.text ?? '').startsWith('计划第 1 版已批'))
+  const requestIdOf = text => /"request": "(R-[0-9a-z]{6})"/.exec(text)?.[1]
+  return [
+    [`exec plan: the worker's face has submit_plan and ask_main, none of the main agent's tools; the main agent's face has answer_worker`, ['submit_plan', 'ask_main'].every(tool => face(worker1[0]).includes(tool)) && ['answer_worker', 'dispatch_task'].every(tool => !face(worker1[0]).includes(tool)) && face(main[0]).includes('answer_worker') && WORKER_TOOL_NAMES.every(tool => !face(main[0]).includes(tool)), `worker face ${face(worker1[0]).length}; answer_worker in main ${face(main[0]).includes('answer_worker')}`],
+    [`exec plan: the write before an approved plan is refused by the plan gate with the way out`, lastToolResult(worker1[1])?.isError === true && result(worker1[1]).includes('needs an approved plan') && result(worker1[1]).includes('submit_plan'), result(worker1[1]).slice(0, 140)],
+    [`exec plan: a plan that fails the checks comes back to the worker at once and nobody is notified`, lastToolResult(worker1[2])?.isError === true && result(worker1[2]).includes('not covered by any step') && noticeIds(planNoticeTexts).size === 2, `${result(worker1[2]).slice(0, 100)}; plan notice ids ${noticeIds(planNoticeTexts).size}`],
+    [`exec plan: the passing plan lands on the task body as version 1 pending review, the notices name their requests, and the submit returns approved`, String(task1?.body ?? '').includes('第 1 版 · 主 Agent 已批') && history1.some(entry => entry.op === 'edit' && String(entry.reason ?? '').includes('submit_plan')) && noticeIds(planNoticeTexts).size === 2 && lastToolResult(worker1[3])?.isError !== true && result(worker1[3]).includes('"status":"approved"') && result(worker1[3]).includes('"version":1'), `body ${(task1?.body ?? '').split('\n').find(line => line.startsWith('第 1 版')) ?? 'no section'}; submit ${result(worker1[3]).slice(0, 60)}; plan notice ids ${noticeIds(planNoticeTexts).size}`],
+    [`exec plan: the approval writes the approval comment with the worker's child id, and the section's digest matches it`, approval !== undefined && /^计划第 1 版已批 · 摘要 [0-9a-f]{12} · hz-task-1-a1-[0-9a-z]{6} · .+$/.test(approval.text) && approval.text.includes(child1 ?? ''), approval?.text ?? 'no approval comment'],
+    [`exec plan: the write inside the approved paths runs after the approval, and the send_message the main agent made during the wait arrived at that step (U3)`, lastToolResult(worker1[4])?.isError !== true && existsSync(join(ws, '.worktrees', 'hz-task-1', 'site', 'feed', 'index.js')) && messagesOf(worker1[4], 'agent-message').some(message => message.text.includes('twenty items')), `write ${lastToolResult(worker1[4])?.isError}; relay ${messagesOf(worker1[4], 'agent-message').length}`],
+    [`exec plan: send_message between siblings is refused by the lineage check`, lastToolResult(worker1[5])?.isError === true && /belongs to another parent session|UNAUTHORIZED/.test(result(worker1[5])), result(worker1[5]).slice(0, 100)],
+    [`exec plan: the answer to ask_main returns inside the same call, and the question notice carried the request id`, lastToolResult(worker1[6])?.isError !== true && result(worker1[6]).includes('"status":"answered"') && result(worker1[6]).includes('Twenty items, then stop.') && noticeIds(questionNoticeTexts).size === 1 && questionNoticeTexts.some(text => text.includes('Cap the feed at how many items?')), `${result(worker1[6]).slice(0, 80)}; question notice ids ${noticeIds(questionNoticeTexts).size}`],
+    [`exec plan: every answer_worker of the main agent delivered, the second worker's plan was approved in its own call, and both workers ended with the structured handback`, result(main[6]).includes('"delivered":true') && result(main[7]).includes('"delivered":true') && result(main[9]).includes('"delivered":true') && worker1.length === 7 && result(worker1.at(-1)).includes('"status":"answered"') && worker2.length === 2 && result(worker2.at(-1)).includes('"status":"approved"'), `approves ${[6, 7, 9].map(index => result(main[index]).slice(0, 20)).join(' | ')}; worker1 ${worker1.length}, worker2 ${worker2.length}`],
+    [`exec plan: the run exits clean with nothing from the execute row on stderr`, execPlan.status === 0 && !stderrOf(name).includes('dsh-glm-hourness/execute'), `exit ${execPlan.status}; main ${main.length} step(s); worker1 ${worker1.length}, worker2 ${worker2.length}`],
+  ]
+}
+
+/**
  * Memory (docs/ORCHESTRATION.md §8; scenarios glm-memory, non-glm-memory,
  * glm-memory-compact, glm-worker-memory, glm-memory-depth): what the real
  * runtime did with the memory tools, the index notice, the child's tool face,
@@ -2594,6 +2688,7 @@ const checks = [
   ['rules-peak-hourness: the row is in effect without the pricing service (a supported combination) and the main agent\'s tool call ran', aloneHealth.rules?.status === ACTED && aloneHealth.rules.reason.includes('读不出是不是高峰') && lastToolResult(rulesPeakAlone.steps[1])?.isError !== true && !stderrOf('rules-peak-hourness').includes('dsh-glm-hourness/rules'), `${healthLine(aloneHealth, 'rules')} (${aloneHealth.rules?.reason ?? ''})`],
   ...designChecks(),
   ...execChecks(),
+  ...planChecks(),
   ['non-glm boot: the runtime reached the probe provider', plainFirst !== undefined, `exit ${plain.status}, ${plain.steps.length} step(s)`],
   ['non-glm prompt: DSH identity untouched', plainFirst?.system.includes('powered by DeepSeek Harness') === true && !plainFirst.system.includes('You are ZCode'), ''],
   ['non-glm tools: natives present, no aliases', plainFirst !== undefined && nativeFace.every(name => plainTools.has(name)) && zcodeFace.every(name => !plainTools.has(name)), zcodeFace.filter(name => plainTools.has(name)).join(', ') || ''],

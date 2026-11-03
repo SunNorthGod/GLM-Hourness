@@ -52,6 +52,8 @@ import { GLM_MODELS, glmInputModalities } from '../../packages/glm/dist/glm-llm/
 import { asAttachments, glmImageRequestTarget, prepareRequestImages } from '../../packages/glm/dist/glm-llm/images.js'
 import { encodeRequest, splitSystemPrompt } from '../../packages/glm/dist/glm-llm/anthropic.js'
 import { loadGraph } from '../../packages/hourness/dist/graph/store.js'
+import { oldestPending } from '../../packages/hourness/dist/execute/requests.js'
+import { registeredDispatches } from '../../packages/hourness/dist/execute/attempts.js'
 
 export const name = 'glm-hourness-probe/llm'
 export const inject = ['llm']
@@ -68,20 +70,36 @@ function checkedScript(script) {
 }
 
 /**
- * `{rev:<node id>}` in the arguments of a scripted call becomes the revision of
- * that node on the project graph of the request's session as it is when the
- * request arrives, so a script can edit a node more than once (every edit
- * changes the revision the next needs). A node that is not there leaves the
- * text as it was.
+ * Runtime ids in the arguments of a scripted call, resolved as the request
+ * arrives:
+ * - `{rev:<node id>}` is the revision of that node on the project graph of
+ *   the request's session, so a script can edit a node more than once (every
+ *   edit changes the revision the next needs);
+ * - `{plan-request:<task id>}` and `{ask-request:<task id>}` are the id of
+ *   the oldest open request of that kind for the task (M7 E5), so the main
+ *   agent's script can answer a request whose id only exists at runtime;
+ * - `{worker:<task id>}` is the child id of the dispatch of that task that
+ *   is not the calling session itself, so a script can address a worker by
+ *   its runtime id (send_message).
+ * A value that is not there leaves the text as it was.
  */
 async function withRevisions(ctx, request, call) {
-  const text = JSON.stringify(call.arguments ?? {})
-  if (!text.includes('{rev:')) return call
-  const cwd = ctx.get('agents')?.get(request.sessionId)?.session?.header?.cwd
+  const original = JSON.stringify(call.arguments ?? {})
+  if (!/\{(rev|plan-request|ask-request|worker):/.test(original)) return call
+  const agent = ctx.get('agents')?.get(request.sessionId)
+  const cwd = agent?.session?.header?.cwd
   const dir = ctx.get('glmHournessGraph')?.dirFor?.(cwd)
   if (dir === undefined) return call
-  const graph = await loadGraph(dir)
-  return { ...call, arguments: JSON.parse(text.replace(/\{rev:([A-Za-z0-9._-]+)\}/g, (whole, id) => graph.revisions.get(id) ?? whole)) }
+  let text = original
+  if (text.includes('{rev:')) {
+    const graph = await loadGraph(dir)
+    text = text.replace(/\{rev:([A-Za-z0-9._-]+)\}/g, (whole, id) => graph.revisions.get(id) ?? whole)
+  }
+  text = text.replace(/\{plan-request:([A-Za-z0-9._-]+)\}/g, (whole, task) => oldestPending('plan', dir, task)?.id ?? whole)
+  text = text.replace(/\{ask-request:([A-Za-z0-9._-]+)\}/g, (whole, task) => oldestPending('question', dir, task)?.id ?? whole)
+  text = text.replace(/\{worker:([A-Za-z0-9._-]+)\}/g, (whole, task) => registeredDispatches().find(attempt => attempt.node === task && attempt.childId !== agent?.id)?.childId ?? whole)
+  if (text === original) return call
+  return { ...call, arguments: JSON.parse(text) }
 }
 
 /** One scripted reply per request, in order; the last entry repeats. Entries: `{ tool }`, `{ tools: [...] }` or `{ text }`, optionally with `status: true` or `goal: true`. */

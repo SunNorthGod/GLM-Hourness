@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { spawnSync } from 'node:child_process'
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { openEngine } from '../src/graph/engine.ts'
@@ -19,6 +18,7 @@ import { REVIEW_SCHEMA } from '../src/execute/schemas.ts'
 import { apply as executeApply } from '../src/execute/index.ts'
 import { designHost, denied } from './design-host.ts'
 import { execTool, fakeInjector, fakeRuntime, schemaViolations, type FakeRuntime } from './fake-rc3.ts'
+import { gitSeed } from './execute-helpers.ts'
 import { apply as designApply } from '../src/design/index.ts'
 
 // ---- fixtures ----
@@ -41,9 +41,7 @@ async function presetProject(nodes: readonly Partial<GraphNode>[]): Promise<Proj
     const seeded = await engine.apply('human', { op: 'propose', reason: 'test seed', node: { ...node, ...(id === 'goal-1' ? {} : {}) } })
     if (!seeded.ok) throw new Error(`seeding ${String(node.id ?? id)} failed: ${JSON.stringify(seeded.error)}`)
   }
-  const inRoot = (args: readonly string[]): boolean => spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.invalid', '-c', 'commit.gpgsign=false', ...args], { cwd: root, encoding: 'utf8' }).status === 0
-  writeFileSync(join(root, 'README.md'), 'probe workspace\n')
-  if (!inRoot(['init', '-q', '-b', 'main']) || !inRoot(['add', 'README.md']) || !inRoot(['commit', '-q', '-m', 'seed'])) throw new Error('git seed failed')
+  gitSeed(root)
   return { root, graphDir }
 }
 
