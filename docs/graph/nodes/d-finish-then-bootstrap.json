@@ -2,7 +2,7 @@
   "id": "d-finish-then-bootstrap",
   "type": "decision",
   "title": "先彻底做完再进自举",
-  "status": "proposed",
+  "status": "approved",
   "parent": "orch",
   "verification": "unverified",
   "body": "实施顺序方针：不按自举链优先排活，M4 剩余、M7 全部、M5 S12、状态板块、面板与新手引导、指标、用户图全部彻底做完后，最后做接管、进自举。",
@@ -13,6 +13,15 @@
       "op": "propose",
       "reason": "用户改方针",
       "to": "proposed"
+    },
+    {
+      "at": "2026-11-03T14:22:17.631Z",
+      "actor": "llm",
+      "op": "approve",
+      "reason": "用户改方针",
+      "relay": "先不用按自举算了，干脆直接在我们这边彻底做完再进自举吧",
+      "from": "proposed",
+      "to": "approved"
     }
   ]
 }
