@@ -10,6 +10,7 @@
  * then on and the button under the composer (WishPill) takes over.
  */
 import { useMemo, type ReactElement } from 'react'
+import { Tag } from '@deepseek-ai/dsh-client-ui-primitives'
 import { mainAgentActive } from '../../../src/graph/main-agent.ts'
 import type { ClientContext, RemoteRoot, SessionSlotProps, SessionsClient } from '../dsh.ts'
 import { useGraph, useSessionValues } from '../flow/session.ts'
@@ -53,8 +54,8 @@ function makeCard(remote: RemoteRoot, sessions: SessionsClient): (props: Session
       switch (name) {
         case 'title': return <h2 key={name} className="hw-title">{WISH_TEXT.cardTitle}</h2>
         case 'body': return <p key={name} className="hw-body">{WISH_TEXT.cardBody}</p>
-        case 'actions': return <WishButtons key={name} services={services} enter openGoal={openGoal} />
-        case 'strong': return <div key={name} className="hw-strong"><WarnIcon />{WISH_TEXT.strongModel}</div>
+        case 'actions': return <WishButtons key={name} services={services} enter openGoal={openGoal} size="md" />
+        case 'strong': return <Tag key={name} tone="warning" className="hw-strong"><WarnIcon />{WISH_TEXT.strongModel}</Tag>
         case 'hint': return <div key={name} className="hw-hint">{WISH_TEXT.commandHint}</div>
         case 'first-visit-line': return null
       }

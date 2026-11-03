@@ -1266,6 +1266,8 @@ LLM 不讲人话，多半是默认在向评审汇报，想显得周全。做法�
 
 风格贴近 DSH 原生〔定案〕。用 DSH 的基础组件库 `ui-primitives`：壳层的客户端模块表里有 `@deepseek-ai/dsh-client-ui-primitives`，第三方静态包可以 `require`（`dsh-web-frontend` 的 `index-BXV-oxvX.js` 中 `OZ()`，与 DSH 主干 `packages/client/web/src/platform.ts` 一致）〔实读 2026-10-28〕。组件名以 rc.3 官方包实际用到的为准：`Button`、`Modal`、`Menu`、`Tooltip`、`Switch`、`SegmentedControl`、`Pill`、`Tag`、`StateDot`、`MarkdownText`、`CodeBlock`、`DiffBlock`、`JsonTree`、`DisclosureRow`、`SettingsForm`、`Toast` 与一组 `Icon*`。颜色用 DSH 主题 token `--dsw-*`。上一版不被接受的原因判断为照着颜色变量手搓组件。
 
+尺寸同样照 rc.3 原生抄，不自己定数（2026-11-03 用户指令「这些 UI 大小都和 dsh 的统一一下」，实读 rc.3 的模块 CSS 取数）：输入框上方条用 GoalBar／TodoPanel 的 dock 几何与材质——`width: calc(100% - 2×(--dsh-composer-side-clearance) - 4×(--dsh-composer-dock-inset))`、`max-width: calc(var(--dsh-composer-card-max-width) - 4×(--dsh-composer-dock-inset))`、`margin: 0 auto`，面板圆角 `--dsw-radius-lg`、条形圆角 `--dsw-radius-md`、高 36px，底为 `--dsw-specific-menu` 加 `--dsw-menu-backdrop-filter`，影子 `--dsw-elevation-panel`（描边色 `--dsw-alias-border-l1`）；条上文字用目标条的字阶（名称 13px/500/24px、正文 13px/20px）。开场卡的标题与批准卡 headline 同阶（15px/500/24px），卡上的动作按钮用 `Button` 原生 md 档（36px 高、14px/22px、radius-md，同批准卡的动作行）。提醒徽章直接用 `Tag` 原生（tone warning：11px/17px/500、内边距 1px 8px、全圆角、底色 warn 色 12% 混入，无描边）。面板里的输入件照壳层 Input 的规格（34px 高、13px、.5px `--dsw-alias-border-l4`、radius-md、`--dsw-alias-bg-layer-3` 底、聚焦转 business 色），多行批注照 user-questions 的多行框（radius-lg、`--dsw-alias-bg-module-platform`、内边距 8px 12px）。`ui/src/flow/styles.ts` 的 `DOCK_BOX`／`DOCK_MATERIAL` 是流程条与开场卡共用的两段几何／材质声明。
+
 | 内容 | 位置 |
 | --- | --- |
 | 当前阶段与未过门禁 | 输入框上方流程条（同 DSH 目标条的位置） |
