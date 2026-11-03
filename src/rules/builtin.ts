@@ -14,6 +14,7 @@
  * dispatches, because it is the subagent that is being held back.
  */
 import { GUARD_RULES } from '../guard/catalog.ts'
+import { MAIN_AGENT_RULES } from '../guard/main-agent-rules.ts'
 import type { PeakLevel } from '../shared/peak-mode.ts'
 import type { BuiltinRule, CatalogEntry, Condition } from './model.ts'
 import { GLM_PEAK } from './signals.ts'
@@ -125,13 +126,16 @@ export const BUILTIN_PLUGIN = 'dsh-hourness'
 
 /**
  * The rules other rows implement, and the rules board's own, listed read-only
- * (design §10.1): the guard framework's (src/guard/catalog.ts, mapped to
- * `<row>:<id>`), the rules board's gate on its own files, the default rule
- * and its entries. The gate on the rules files is listed here and arrives
- * with the rules row.
+ * (design §10.1, m3 addendum §3.11, §9 item 12): the guard framework's
+ * (src/guard/catalog.ts, mapped to `<row>:<id>`), the main agent's
+ * (src/guard/main-agent-rules.ts, mapped to `design:<id>` on the design row,
+ * which installs the listener that enforces them), the rules board's gate on
+ * its own files, the default rule and its entries. The gate on the rules
+ * files is listed here and arrives with the rules row.
  */
 export const CATALOG: readonly CatalogEntry[] = [
   ...GUARD_RULES.map((rule): CatalogEntry => ({ id: `${rule.row}:${rule.id}`, title: rule.title, row: rule.row, effect: 'block', plugin: BUILTIN_PLUGIN })),
+  ...MAIN_AGENT_RULES.map((rule): CatalogEntry => ({ id: `design:${rule.id}`, title: rule.title, row: 'design', effect: 'block', plugin: BUILTIN_PLUGIN })),
   { id: 'rules:files-only', title: '规则文件只经规则板改：写规则目录的调用会被拒', row: 'rules', effect: 'block', plugin: BUILTIN_PLUGIN },
   ...BUILTIN_RULES.map((rule): CatalogEntry => ({
     id: rule.id,

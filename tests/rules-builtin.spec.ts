@@ -11,6 +11,7 @@ import { gateEvents, stepEvent } from '../src/rules/events.ts'
 import { judge, judgeInput } from '../src/rules/judge.ts'
 import { validateRule } from '../src/rules/model.ts'
 import { GUARD_RULES } from '../src/guard/catalog.ts'
+import { MAIN_AGENT_RULES } from '../src/guard/main-agent-rules.ts'
 import { HOURNESS_ROWS } from '../src/shared/health.ts'
 import type { PeakLevel } from '../src/shared/peak-mode.ts'
 import { RULES_TOOL_NAMES } from '../src/shared/tool-names.ts'
@@ -142,14 +143,20 @@ test('the main agent is never held at any level: every call but a GLM dispatch g
   }
 })
 
-test('the catalog lists the guard framework\'s rules, the rules board\'s own gate and the default rule with its entries, each as <row>:<id>', () => {
+test('the catalog lists the guard framework\'s rules, the main agent\'s, the rules board\'s own gate and the default rule with its entries, each as <row>:<id>', () => {
   assert.deepEqual(CATALOG.map(entry => entry.id), [
-    'guard:workspace-containment', 'guard:file-tools-only', 'graph:graph-files-only', 'loops:files-only', 'loops:schedule-tools', 'rules:files-only',
+    'guard:workspace-containment', 'guard:file-tools-only', 'graph:graph-files-only', 'loops:files-only', 'loops:schedule-tools',
+    ...MAIN_AGENT_RULES.map(rule => `design:${rule.id}`),
+    'rules:files-only',
     'builtin:glm-peak-pricing', 'builtin:glm-peak-reduce', 'builtin:glm-peak-stop', 'builtin:glm-peak-stop-dispatch', 'builtin:glm-peak-stop-scripts',
   ])
   for (const rule of GUARD_RULES) {
     const entry = CATALOG.find(candidate => candidate.id === `${rule.row}:${rule.id}`)
     assert.deepEqual([entry?.title, entry?.row, entry?.effect], [rule.title, rule.row, 'block'], rule.id)
+  }
+  for (const rule of MAIN_AGENT_RULES) {
+    const entry = CATALOG.find(candidate => candidate.id === `design:${rule.id}`)
+    assert.deepEqual([entry?.title, entry?.row, entry?.effect], [rule.title, 'design', 'block'], rule.id)
   }
   const byId = (id: string) => CATALOG.find(entry => entry.id === id)
   assert.deepEqual([byId('rules:files-only')?.row, byId('rules:files-only')?.effect], ['rules', 'block'])
