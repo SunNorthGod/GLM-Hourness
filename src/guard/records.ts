@@ -10,7 +10,7 @@ import { createHash } from 'node:crypto'
 import type { Route } from '../shared/route.ts'
 import { shellCommandOf, type ToolCall } from './rules.ts'
 import type { RouteScope } from './origin.ts'
-import type { ShadowRecord } from './shadow.ts'
+import type { ShadowRecord } from './fallback.ts'
 
 /** What one call touched, as the journal keeps it: shell text up to 8 KiB, or the target argument. */
 export interface CallSubject {
@@ -105,7 +105,7 @@ interface GrantVoidRecord extends RecordOrigin {
 }
 
 /** The workspace-change fallback's late denial (design §3.4): after a turn, file-tools-only found files that a shell call changed and no file tool targeted. Nothing was blocked: the call had run. The fields are the fallback's shadow record's (G3 renames the writer's record to this one). */
-interface LateRecord extends Omit<ShadowRecord, 'mode'> {
+export interface LateRecord extends Omit<ShadowRecord, 'mode'> {
   readonly mode: 'late'
   readonly via: 'turn-end'
 }
@@ -134,7 +134,7 @@ export interface GapRecord {
 }
 
 /** The human lifted or restored a code rule (design §3.5). */
-interface LiftRecord {
+export interface LiftRecord {
   readonly kind: 'lift'
   readonly at: string
   readonly rule: string

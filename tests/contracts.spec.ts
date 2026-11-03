@@ -34,7 +34,7 @@ import { MEMORY_SERVICE, memoryService } from '../src/shared/memory-service.ts'
 import { OUTPUT_STYLE_SECTION } from '../src/shared/output-style.ts'
 import { PRICING_SERVICE, peakHoursOf, pricingService, quotaOf, type UsagePricing } from '../src/shared/pricing.ts'
 import type { QuotaView } from '../src/shared/quota.ts'
-import { DESIGN_TOOL_NAMES, DISPATCH_TOOL_NAMES, GRAPH_TOOL_NAMES, LEARNING_TOOL_NAMES, LESSONS_MERGE_TOOL, LESSONS_QUERY_TOOL, LESSONS_TOOL_NAMES, MEMORY_TOOL_NAMES, ORCHESTRATION_RESIDENT_TOOLS, RULES_TOOL_NAMES } from '../src/shared/tool-names.ts'
+import { DESIGN_TOOL_NAMES, DISPATCH_TOOL_NAMES, GRAPH_TOOL_NAMES, GUARD_TOOL_NAMES, LEARNING_TOOL_NAMES, LESSONS_MERGE_TOOL, LESSONS_QUERY_TOOL, LESSONS_TOOL_NAMES, MEMORY_TOOL_NAMES, ORCHESTRATION_RESIDENT_TOOLS, RULES_TOOL_NAMES } from '../src/shared/tool-names.ts'
 import { RESIDENT_TOOLS } from '../src/toolsearch/exposure.ts'
 import { apply as hournessApply } from '../src/report/index.ts'
 import { DISPATCH_TOOLS } from '../src/workflow/index.ts'
@@ -245,6 +245,7 @@ test('guard catalog: each listed rule is the id of a rule object its row install
 test('guard catalog: the rows with rules install their pre-execute listeners through installRuleGate', () => {
   const rt = fakeRuntime({ route: GLM })
   guardApply(rt.ctx as never, { home: 'C:/ws/.llm', fs: { mkdir: () => Promise.resolve(undefined), appendFile: () => Promise.resolve() } })
+  assert.deepEqual(rt.scoped.map(tool => tool.name), [...GUARD_TOOL_NAMES], 'the guard row registers exactly the contract tool names')
   graphApply(rt.ctx as never, { dir: 'C:/work/app/docs/graph' })
   const guardListener = rt.listeners.filter(entry => entry.event === 'tools/pre-execute')
   assert.equal(guardListener.length, 2, 'the guard row and the graph row each install one listener')

@@ -43,13 +43,21 @@
  * Relative targets resolve against the session's working directory, as the
  * file tools resolve them.
  */
+import { randomBytes } from 'node:crypto'
+import { isAbsolute, resolve } from 'node:path'
 import { MAIN_AGENT_KEY } from '../graph/main-agent.ts'
-import { declarationOf, fileToolsOnly, NATIVE_FACE, workspaceContainment, type GuardRule, type ToolFace } from './rules.ts'
+import { declarationOf, fileToolTargetOf, fileToolsOnly, NATIVE_FACE, workspaceContainment, type GuardRule, type ToolCall, type ToolFace } from './rules.ts'
 import { installRuleGate, cwdOf } from './gate.ts'
 import { DECLARATION_SECTION } from './sections.ts'
-import { shadowFallback } from './shadow.ts'
+import { takeCorrection, workspaceFallback } from './fallback.ts'
 import { originOf } from './origin.ts'
-import { liftedRules } from './lift.ts'
+import { guardLift, liftedRules, liftedRulesOf } from './lift.ts'
+import { LIFT_SERVICE, liftServiceOver } from './lift-service.ts'
+import { checkerConfigOnly } from './checker-config.ts'
+import { prepareContext, type RuleContext } from './context.ts'
+import { liftFilesOnly } from './lift-files.ts'
+import { scratchOnly } from './scratch.ts'
+import { suppressionOnly } from './suppression.ts'
 import { projectJournal, type AuditFs } from '../memory/audit.ts'
 import { ensureLlmIgnored, type LlmIgnoreOutcome } from '../data/llm-ignore.ts'
 import { projectHomeFor, projectRootOf } from '../data/project-home.ts'
@@ -59,10 +67,19 @@ import { LOOPS_DECLARATION } from '../loops/service.ts'
 import { rulesService } from '../rules/service.ts'
 import { activationState, provideRowHealth, sessionIdOf, type HealthState } from '../shared/health.ts'
 import { assemblyRoute, sessionRoute } from '../shared/route.ts'
+import { createUserNotice, type ToolExecutionContext } from '../shared/dsh-min.ts'
+import { wrapSystemReminder } from '../shared/zcode-notice.ts'
+import { installStepNotice } from '../shared/step-notice.ts'
 import type { AgentLike, AssembledSection, PluginContext, PreExecuteHost, ProvideHost, ServiceLookup, SessionEventHost, SessionProjectionsService, WorkingDirectoryService } from '../shared/dsh-min.ts'
 
 export type { FollowupRecord, GuardRecord, RecordedCall, ViolationRecord } from './records.ts'
-export type { ShadowRecord } from './shadow.ts'
+export type { ShadowRecord } from './fallback.ts'
+
+/** The source kind of the guard row's post-hoc correction notice (design §3.4). */
+export const GUARD_CORRECTION_SOURCE = 'hourness-guard'
+
+/** The declaration's head line for root agents only (design §3.1): what to call when the human asks to stop enforcing a rule. */
+export const GUARD_LIFT_LINE = 'If the human asks you to stop enforcing one of these rules, call guard_lift with the rule id and the human\'s own words (the tool may be deferred: look it up first).'
 
 export interface GuardConfig {
   /** Workspace roots writes are confined to; defaults to the calling agent's session directory. */
@@ -75,9 +92,43 @@ export interface GuardConfig {
   readonly fs?: AuditFs | undefined
 }
 
-/** All active rules (shipped two first so user rules cannot weaken them); `base` is where relative write targets resolve. */
-export function activeRules(config: GuardConfig & { workspaceRoots: readonly string[] | undefined, base?: string | undefined }): readonly GuardRule[] {
-  return [...(config.workspaceRoots === undefined ? [] : [workspaceContainment(config.workspaceRoots, config.base)]), fileToolsOnly, ...(config.rules ?? [])]
+/**
+ * All active rules (shipped ones first so user rules cannot weaken them);
+ * `base` is where relative write targets resolve. The judgment context is
+ * prepared per call by the row (`prepareContext`); the no-context form here
+ * answers for the static callers (the declaration, the contracts test),
+ * where every fact is unknown and the fact-needing rules would pass — the
+ * ids are what those callers read.
+ */
+export function activeRules(config: GuardConfig & { workspaceRoots: readonly string[] | undefined, base?: string | undefined }, per?: { readonly context?: RuleContext, readonly ref?: string, readonly cwd?: string | undefined }): readonly GuardRule[] {
+  const context = per?.context ?? {}
+  const ref = per?.ref ?? ''
+  return [
+    ...(config.workspaceRoots === undefined ? [] : [workspaceContainment(config.workspaceRoots, config.base)]),
+    fileToolsOnly,
+    suppressionOnly(context),
+    checkerConfigOnly(context, ref),
+    scratchOnly(config.workspaceRoots ?? [], context, ref),
+    liftFilesOnly(per?.cwd),
+    ...(config.rules ?? []),
+  ]
+}
+
+/** The request ref one call's denials carry (design §5.2): `r-` plus eight base36 characters, generated per call, registered when denied (the book is G4's). */
+function refOf(): string {
+  const alphabet = '0123456789abcdefghijklmnopqrstuvwxyz'
+  let ref = 'r-'
+  for (const byte of randomBytes(8)) ref += alphabet[byte % 36]
+  return ref
+}
+
+/** Where one file-tool write target resolves absolutely: the way containment reads a relative spelling. */
+function absoluteTargetOf(call: ToolCall, base: string | undefined, roots: readonly string[] | undefined): string | undefined {
+  const target = fileToolTargetOf(call)
+  if (target === undefined) return undefined
+  if (isAbsolute(target)) return target
+  const from = base ?? roots?.[0]
+  return from === undefined ? undefined : resolve(from, target)
 }
 
 /** Containment roots for one agent: config wins, else the agent's session directory. */
@@ -133,16 +184,18 @@ export function baseFor(ctx: ServiceLookup, agent: AgentLike | undefined): strin
 }
 
 /**
- * The rule declaration section: one line per rule that declares itself,
- * then the lines of rules other rows enforce (graph-files-only, when the
- * graph row is active). Tool names in the lines come from `face`.
+ * The rule declaration section: the head (the guard_lift line for a root
+ * agent, design §3.1), one line per rule that declares itself, then the
+ * lines of rules other rows enforce (graph-files-only, when the graph row is
+ * active). Tool names in the lines come from `face`.
  */
-export function declarationSection(rules: readonly GuardRule[], others: readonly string[] = [], face: ToolFace = NATIVE_FACE): AssembledSection {
+export function declarationSection(rules: readonly GuardRule[], others: readonly string[] = [], face: ToolFace = NATIVE_FACE, root = false): AssembledSection {
   return {
     name: DECLARATION_SECTION,
     text: [
       '# Workspace rules',
       'The harness checks every tool call against these rules before it runs; a call that breaks one is denied with the reason and the right way to proceed.',
+      ...(root ? [GUARD_LIFT_LINE] : []),
       ...[...rules.map(rule => declarationOf(rule, face)), ...others].filter(line => line.length > 0).map(line => `- ${line}`),
     ].join('\n'),
     // Declarations are literal text; a rule may mention `{{` without meaning a prompt variable.
@@ -150,28 +203,32 @@ export function declarationSection(rules: readonly GuardRule[], others: readonly
   }
 }
 
-/** cordis plugin identity. */
+/** cordis plugin identity: the tools service, for guard_lift's registration. */
 export const name = 'dsh-glm-hourness/guard'
+export const inject = ['tools']
 
 /**
  * The guard's status for one call's session (row health): which rules can
- * judge, where denials go, the workspace-change fallback, whether the
- * dialect service was unusable for the call (malformed, or a method threw),
- * and whether the project's `.llm/` failed to stay out of git.
+ * judge, where denials go, the workspace-change correction (design §3.4),
+ * whether the dialect service was unusable for the call (malformed, or a
+ * method threw), whether the project's `.llm/` failed to stay out of git,
+ * and how many lines of the project's lift record cannot be read (design
+ * §3.5).
  */
-export function guardHealth(roots: readonly string[] | undefined, projectHome: string | undefined, shadow = false, dialectUnusable = false, ignore?: string): [HealthState, string] {
+export function guardHealth(roots: readonly string[] | undefined, projectHome: string | undefined, correction = false, dialectUnusable = false, ignore?: string, liftsUnreadable = 0): [HealthState, string] {
   const scope = roots === undefined ? '门禁生效（file-tools-only）' : `门禁生效（file-tools-only，圈禁根 ${roots.join('、')}）`
   const gaps = [
     ...(roots === undefined ? ['会话没有工作目录，圈禁规则跳过'] : []),
     ...(projectHome === undefined ? ['无项目目录，违规不落盘'] : []),
     ...(dialectUnusable ? ['方言服务不可用：工具名按静态别名表换算，纠偏用原生名'] : []),
     ...(ignore === undefined ? [] : [`项目的 .llm/ 没有被 git 忽略：${ignore}`]),
+    ...(liftsUnreadable > 0 ? [`lifts.jsonl 有 ${liftsUnreadable} 行读不懂`] : []),
   ]
-  const fallback = shadow ? '影子兜底：工作区变更记录' : '影子兜底未启用（组合里没有 workspace-changes）'
+  const fallback = correction ? '事后纠正启用：工作区变更记录' : '事后纠正未启用（组合里没有 workspace-changes）'
   return gaps.length === 0 ? ['active', `${scope}；违规记入 ${projectHome}；${fallback}`] : ['degraded', `${scope}；${gaps.join('；')}；${fallback}`]
 }
 
-type GuardHost = PreExecuteHost & SessionEventHost & Pick<PluginContext, 'on'> & ServiceLookup & Partial<ProvideHost>
+type GuardHost = PreExecuteHost & SessionEventHost & Pick<PluginContext, 'on' | 'tools'> & ServiceLookup & Partial<ProvideHost>
 
 /** Why a project's `.llm/` is still visible to git, as the last ensure run for its root came out. */
 function ignoreProblem(ignored: ReadonlyMap<string, LlmIgnoreOutcome>, root: string | undefined): string | undefined {
@@ -180,12 +237,27 @@ function ignoreProblem(ignored: ReadonlyMap<string, LlmIgnoreOutcome>, root: str
   return outcome?.kind === 'visible' || outcome?.kind === 'unwritable' ? outcome.reason : undefined
 }
 
+/** The description the model reads for guard_lift (design §3.5, verbatim). */
+const GUARD_LIFT_DESCRIPTION = 'Lift or restore one of the harness\'s code rules because the human asked for it in their latest message. Pass the rule id and the clause where the human asks for it, copied exactly. One human message lifts at most one rule. Do not call it on your own: a rule that blocks you is a reason to use its right path or to ask the human, not to lift it. The result says what to tell the human. Example: guard_lift {"rule": "scratch-only", "words": "新建脚本那条先别拦了"}'
+
+/** The parameters of guard_lift (design §3.5): exactly the three fields, strict. */
+const GUARD_LIFT_PARAMETERS = {
+  type: 'object',
+  properties: {
+    rule: { type: 'string', description: 'The id of the rule to lift or restore, one of the workspace rules the system prompt lists.' },
+    words: { type: 'string', description: 'The clause of the human\'s latest message that asks for it, copied exactly.' },
+    action: { type: 'string', enum: ['lift', 'restore'], description: 'lift (the default) stops enforcing the rule; restore enforces it again.' },
+  },
+  required: ['rule', 'words'],
+  additionalProperties: false,
+} as const
+
 /** cordis plugin entry. */
 export function apply(ctx: GuardHost, config: GuardConfig = {}): () => void {
   const health = provideRowHealth(ctx, 'guard', 'active', config.workspaceRoots === undefined ? '已加载，圈禁根取会话目录' : '已加载，圈禁根取配置')
   const journals = projectJournal(name, cwd => projectHomeFor(ctx, config.home, cwd), config.fs)
   const ignored = new Map<string, LlmIgnoreOutcome>()
-  const shadow = shadowFallback(ctx, (record, cwd) => { void journals.violation(record, cwd) })
+  const fallback = workspaceFallback(ctx, (record, cwd) => { void journals.violation(record, cwd) })
   const warn = dialectWarner('guard')
   const rulesWarn = dialectWarner('guard')
   const installed = new WeakSet<AgentLike>()
@@ -194,7 +266,7 @@ export function apply(ctx: GuardHost, config: GuardConfig = {}): () => void {
   disposers.push(installRuleGate(ctx, {
     row: 'guard',
     prepend: false,
-    rules: (payload, _call) => {
+    rules: async (payload, call) => {
       // Every route and model (ORCHESTRATION.md §6.2): the route only picks the
       // tool names of the correction and tags the record.
       const route = sessionRoute(payload.agent?.session)
@@ -208,9 +280,15 @@ export function apply(ctx: GuardHost, config: GuardConfig = {}): () => void {
       const cwd = cwdOf(payload)
       const roots = rootsFor(payload.agent, config)
       const root = projectRootOf(cwd)
-      health.report(sessionIdOf(payload.agent), ...guardHealth(roots, projectHomeFor(ctx, config.home, cwd), shadow.available(), dialectUnusable, ignoreProblem(ignored, root)))
+      const lifts = root === undefined ? undefined : liftedRulesOf(root)
+      health.report(sessionIdOf(payload.agent), ...guardHealth(roots, projectHomeFor(ctx, config.home, cwd), fallback.available(), dialectUnusable, ignoreProblem(ignored, root), lifts?.unreadable ?? 0))
+      // The judgment context (design §4.1): only a file-tool write prepares facts; the ref rides on every call's denials (design §5.2, the book arrives with G4).
+      const base = baseFor(ctx, payload.agent)
+      const ref = refOf()
+      const target = absoluteTargetOf(call, base, roots)
+      const context = await prepareContext(target, cwd)
       return {
-        rules: activeRules({ ...config, workspaceRoots: roots, base: baseFor(ctx, payload.agent) }),
+        rules: activeRules({ ...config, workspaceRoots: roots, base }, { context, ref, cwd }),
         face: names ?? NATIVE_FACE,
         origin: originOf(names !== undefined, route),
       }
@@ -221,17 +299,48 @@ export function apply(ctx: GuardHost, config: GuardConfig = {}): () => void {
       if (root !== undefined) ignored.set(root, await ensureLlmIgnored(root))
       return journals.violation(record, cwd)
     },
-    allowed: (payload, origin) => shadow.observe(payload, origin),
+    allowed: (payload, origin) => fallback.observe(payload, origin),
     health,
     flush: () => journals.flush(),
   }))
 
-  disposers.push(ctx.on('session/event', (session, event) => shadow.event(session, event)))
-  disposers.push(ctx.on('session/disposed', session => shadow.disposed(session)))
+  disposers.push(ctx.on('session/event', (session, event) => fallback.event(session, event)))
+  disposers.push(ctx.on('session/disposed', session => fallback.disposed(session)))
+
+  // The lift service (design §3.5): the rules board's `/rules lift` calls it once that side is wired (a seam request after dogfood).
+  if (ctx.provide !== undefined) {
+    const withdraw = ctx.provide(LIFT_SERVICE, liftServiceOver({
+      rootOf: cwd => projectRootOf(cwd),
+      record: (record, cwd) => journals.violation(record, cwd),
+      now: () => new Date(),
+    }))
+    if (withdraw !== undefined) disposers.push(withdraw)
+  }
+
+  // The lift tool (design §3.5): the main agent's way to stop enforcing a rule because the human said so.
+  if (ctx.tools !== undefined) {
+    disposers.push(ctx.tools.register({
+      name: 'guard_lift',
+      description: GUARD_LIFT_DESCRIPTION,
+      parameters: GUARD_LIFT_PARAMETERS,
+      output: { schema: { type: 'object', properties: { outcome: { type: 'string' }, rule: { type: 'string' }, title: { type: 'string' }, blocks: { type: 'string' }, message: { type: 'string' } } }, render: (_args, value) => [{ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value) }] },
+      execute: (args, exec) => {
+        const { agent } = (exec ?? {}) as ToolExecutionContext
+        const cwd = typeof agent?.session?.header.cwd === 'string' && agent.session.header.cwd.length > 0 ? agent.session.header.cwd : undefined
+        return guardLift(args as Parameters<typeof guardLift>[0], {
+          agent,
+          root: projectRootOf(cwd),
+          record: record => journals.violation(record, cwd),
+          now: () => new Date(),
+        })
+      },
+    }))
+  }
 
   disposers.push(ctx.on('agent/created', ({ agent }) => {
     if (installed.has(agent)) return
     installed.add(agent)
+    const isRoot = agent.session?.header.origin !== 'subagent'
     try {
       // Prepend, like the dialect row: post-`next()` sees the route the
       // model selection injected, which picks the tool names. Every route
@@ -254,12 +363,28 @@ export function apply(ctx: GuardHost, config: GuardConfig = {}): () => void {
         const graphDeclares = graphService(ctx) !== undefined && lifted?.has('graph-files-only') !== true
         const others = [...(graphDeclares ? [GRAPH_FILES_DECLARATION] : []), ...(board === undefined ? [] : [board.declaration]), ...(loops === 'absent' || loops === 'inactive' ? [] : [LOOPS_DECLARATION])]
         const face = dialectNames(dialectService(ctx, warn), agent, route, warn) ?? NATIVE_FACE
-        return { ...assembled, sections: [...assembled.sections, declarationSection(declared, others, face)] }
+        return { ...assembled, sections: [...assembled.sections, declarationSection(declared, others, face, isRoot)] }
       }, { prepend: true }))
     }
     catch (error) {
       // Agent creation must never fail on the declaration; the gate still holds.
       console.warn(`${name}: rule declaration not installed for agent ${agent.id}: ${(error as Error).message}`)
+    }
+    try {
+      // The post-hoc correction of the workspace-change fallback (design §3.4):
+      // the second step notice of a root agent delivers one queued correction
+      // before the agent's next step. A subagent gets none: reminders are for
+      // the top-level conversation.
+      if (isRoot) {
+        const notice = installStepNotice(agent, 'workspace-change correction', () => true, (_history, { session }) => {
+          const correction = takeCorrection(session.id)
+          return correction === undefined ? undefined : createUserNotice(GUARD_CORRECTION_SOURCE, 'workspace-change correction', wrapSystemReminder(correction))
+        }, 'guard')
+        if (notice !== undefined) disposers.push(notice)
+      }
+    }
+    catch (error) {
+      console.warn(`${name}: correction notice not installed for agent ${agent.id}: ${(error as Error).message}`)
     }
   }))
 

@@ -14,8 +14,10 @@
  * the end instead of silently shaping the numbers.
  */
 import { auditPaths, type DecisionRecord, type UsageRecord } from '../memory/audit.ts'
-import { classifyRecord, type GuardRecord } from '../guard/records.ts'
+import { classifyRecord, type GuardRecord, type LiftRecord } from '../guard/records.ts'
+import { liftStatesOf } from '../guard/lift.ts'
 import { ruleStats } from '../guard/measure.ts'
+import { runGit } from '../data/git-process.ts'
 import type { SuppressionRecord } from '../env/suppressions.ts'
 import type { LoadedGraph } from '../graph/parse.ts'
 import { listOpenItems } from '../graph/projection.ts'
@@ -59,6 +61,20 @@ export interface ReportInput {
   readonly asks: AskSummary | GraphUnreadable
   /** The display zone for the gap line's timestamp, minutes east of UTC; default UTC+8, the report's peak-hour zone. */
   readonly offsetMinutes?: number | undefined
+  /** The lift record of the project, over the WHOLE journal and the file (m4-gate G3, design §3.10) — not period-bounded; absent when the caller read nothing. */
+  readonly lifts?: LiftsInput | undefined
+}
+
+/** What the lift side of the report reads: the whole journal's lift records, the journal's earliest instant (gap records count their `since`), and the record file's text or read error. */
+export interface LiftsInput {
+  /** Every `kind: 'lift'` line of the whole violations journal. */
+  readonly records: readonly LiftRecord[]
+  /** The earliest instant any journal record (any class) carries; a gap record counts its `since`. Absent when the journal is empty. */
+  readonly earliest?: string | undefined
+  /** The record file's text, when the report knows the project root; absent without a root, and the report then derives the lifts from the journal alone. */
+  readonly file?: { readonly text: string } | { readonly error: string }
+  /** Whether git sees uncommitted changes to the record file (the caller ran `git status`, 5 seconds, failure absent). */
+  readonly uncommitted?: boolean | undefined
 }
 
 /** The local calendar day of an instant, as 2026-10-27. */
@@ -228,6 +244,88 @@ function ruleLines(records: readonly GuardRecord[], offsetMinutes: number): stri
   return lines
 }
 
+/**
+ * The lift lines of the 例外 section (m4-gate G3, design §3.10): which rules
+ * stand lifted right now, and whether the record file and the journal agree.
+ * The input is not period-bounded — a lift is a decision of the project, its
+ * day does not matter (review finish2 round 2 F16). Without a record file
+ * the report derives the lifted rules from the journal alone and reconciles
+ * nothing; an unreadable file says so and reconciles nothing. A mismatch
+ * never changes a rule's state (the gate reads the file), the line only
+ * names it.
+ */
+function liftLines(lifts: LiftsInput, offsetMinutes: number): string[] {
+  const lines: string[] = []
+  const journalOf = (rule: string): LiftRecord | undefined =>
+    [...lifts.records].filter(record => record.rule === rule).sort((a, b) => Date.parse(a.at) - Date.parse(b.at)).at(-1)
+  const journalStateOf = (rule: string): 'lift' | 'restore' | undefined => {
+    const last = journalOf(rule)
+    return last === undefined ? undefined : last.action
+  }
+  const file = lifts.file
+  const fileStates = file !== undefined && 'text' in file ? liftStatesOf(file.text) : undefined
+  const liftedRules = fileStates !== undefined
+    ? [...fileStates.states].filter(([, action]) => action === 'lift').map(([rule]) => rule)
+    : [...new Set(lifts.records.filter(record => record.action === 'lift').map(record => record.rule))].filter(rule => journalStateOf(rule) === 'lift')
+  // - 撤下的规则：one line, every rule now lifted, with the last lift record's moment and words (design §3.10).
+  if (liftedRules.length > 0) {
+    const parts = liftedRules.map((rule) => {
+      const last = journalOf(rule)
+      if (last === undefined) return rule
+      const at = Number.isNaN(Date.parse(last.at)) ? '' : `${renderStamp(Date.parse(last.at), offsetMinutes)}，`
+      const via = last.via === 'chat' ? `经对话，原话「${last.words}」` : `经规则板，写命令原文「${last.words}」`
+      return `${rule}（${at}${via}）`
+    })
+    lines.push(`- 撤下的规则：${parts.join('、')}`)
+  }
+  if (file !== undefined && 'error' in file) {
+    lines.push(`- lifts.jsonl 读不出（${file.error}），这一次没有对账`)
+    return lines
+  }
+  if (fileStates === undefined) return lines
+  // The reconciliation (review finish2 round F15): terminal state per rule,
+  // then the lines each side holds and the other lacks, keyed at+rule+action.
+  const earliestMs = lifts.earliest === undefined || Number.isNaN(Date.parse(lifts.earliest)) ? undefined : Date.parse(lifts.earliest)
+  const journalKeys = new Set(lifts.records.map(record => `${record.at}|${record.rule}|${record.action}`))
+  const preJournal = (at: string): boolean => earliestMs !== undefined && !Number.isNaN(Date.parse(at)) && Date.parse(at) < earliestMs
+  const say = (state: 'lift' | 'restore' | undefined, side: '文件' | '流水'): string =>
+    state === undefined ? (side === '文件' ? '文件里没有这条规则的行' : '流水里没有这条规则的记录') : `${side === '文件' ? '文件里最后一行是' : '流水里最后一条是'}${state === 'lift' ? '撤下' : '恢复'}`
+  const mismatched = new Set<string>()
+  const carried = new Set<string>()
+  for (const rule of [...new Set([...fileStates.states.keys(), ...lifts.records.map(record => record.rule)])]) {
+    const fileLines = fileStates.lines.filter(line => line.rule === rule)
+    const freshFileLines = fileLines.filter(line => !preJournal(line.at))
+    const journalRecords = lifts.records.filter(record => record.rule === rule)
+    // A rule the file lifts only before the journal's first record, with no
+    // journal record of its own, belongs to the new-machine row: its lines
+    // cannot be repopulated, so per-rule rows would never clear (review
+    // finish2 round 2 N29).
+    if (freshFileLines.length === 0 && journalRecords.length === 0) {
+      if (fileLines.length > 0) carried.add(rule)
+      continue
+    }
+    const fileState = fileStates.states.get(rule)
+    const journalState = journalStateOf(rule)
+    if (fileState !== journalState) {
+      mismatched.add(rule)
+      lines.push(`- lifts.jsonl 与流水对不上：${rule}，${say(fileState, '文件')}，${say(journalState, '流水')}`)
+      continue
+    }
+    const extraFile = freshFileLines.filter(line => !journalKeys.has(`${line.at}|${line.rule}|${line.action}`)).length
+    const extraJournal = journalRecords.filter(record => !fileStates.lines.some(line => line.at === record.at && line.action === record.action)).length
+    if (extraFile > 0 || extraJournal > 0) {
+      mismatched.add(rule)
+      lines.push(`- lifts.jsonl 与流水对不上：${rule}，文件里有 ${extraFile} 行流水没有的，流水里有 ${extraJournal} 条文件没有的`)
+    }
+  }
+  if (carried.size > 0) {
+    const names = [...carried].slice(0, 5).join('、')
+    lines.push(`- 流水里没有这些撤下记录（换了电脑？）：lifts.jsonl 里有 ${carried.size} 条规则的撤下或恢复早于本机流水：${names}${carried.size > 5 ? '等' : ''}`)
+  }
+  if (lifts.uncommitted === true) lines.push('- lifts.jsonl 有未提交的撤下，随下一次提交带上')
+  return lines
+}
+
 /** Render the morning report for one period. */
 export function morningReport(input: ReportInput): string {
   const lines: string[] = [`# 晨报 ${input.period}`]
@@ -260,6 +358,7 @@ export function morningReport(input: ReportInput): string {
   lines.push(...violationLines(denials))
   lines.push(...auxiliary)
   lines.push(...ruleLines(input.violations, offsetMinutes))
+  if (input.lifts !== undefined) lines.push(...liftLines(input.lifts, offsetMinutes))
 
   // The suppression-comment total and its movement over the period (m4-suppressions §6.7):
   // rises and falls counted apart, so a net-zero period with churn still shows.
@@ -299,6 +398,8 @@ export interface ReportOptions {
   readonly now?: number | undefined
   /** The display zone, minutes east of UTC; tests set it, the host's offset otherwise. */
   readonly offsetMinutes?: number | undefined
+  /** The project root (m4-gate G3): the record file `docs/guard/lifts.jsonl` is read there and git asks it about uncommitted lifts. Without it the report derives the lifted rules from the journal alone and reconciles nothing. */
+  readonly root?: string | undefined
 }
 
 /** Reads the project graph of the session that asked for the report; rejects with the reason when it cannot. */
@@ -344,7 +445,7 @@ export async function reportFromFiles(fs: ReportFs, homes: DataHomes, period: st
   }
   // Compare parsed instants, not strings: journal timestamps may carry
   // different UTC offsets and lexical order would misjudge them.
-  const sinceMs = since === undefined ? undefined : Date.parse(since)
+  const sinceMs = since === undefined || Number.isNaN(since) ? undefined : Date.parse(since)
   const inPeriod = <T extends { readonly at?: unknown }>(records: readonly T[]): readonly T[] => sinceMs === undefined || Number.isNaN(sinceMs)
     ? records
     : records.filter(record => typeof record.at === 'string' && !Number.isNaN(Date.parse(record.at)) && Date.parse(record.at) >= sinceMs)
@@ -352,9 +453,32 @@ export async function reportFromFiles(fs: ReportFs, homes: DataHomes, period: st
   const gapRaw = paths.gaps === undefined ? '' : await fs.readFile(paths.gaps).catch(() => '')
   const periodStart = sinceMs === undefined || Number.isNaN(sinceMs) ? undefined : sinceMs
   const zone: MomentZone = options.offsetMinutes === undefined ? {} : { offsetMinutes: options.offsetMinutes }
+  // The lift side reads the WHOLE journal, not the period (design §3.10, review finish2 round 2 F16): a lift is the project's decision, whatever day it fell on.
+  const wholeViolations = await readJsonl<GuardRecord>(paths.violations)
+  const liftRecords = wholeViolations.flatMap((record): LiftRecord[] => classifyRecord(record as unknown as Readonly<Record<string, unknown>>) === 'lift' ? [record as unknown as LiftRecord] : [])
+  let earliest: string | undefined
+  for (const record of wholeViolations) {
+    // A gap record counts its `since` too: the first lost record is earlier than any line the journal holds (design §3.10).
+    // A gap record counts its `since` too: the first lost record is earlier than any line the journal holds (design §3.10).
+    const gap = record as unknown as { readonly kind?: unknown, readonly since?: unknown }
+    for (const at of gap.kind === 'gap' && typeof gap.since === 'string' ? [record.at, gap.since] : [record.at]) {
+      if (typeof at !== 'string' || Number.isNaN(Date.parse(at))) continue
+      if (earliest === undefined || Date.parse(at) < Date.parse(earliest)) earliest = at
+    }
+  }
+  const root = options.root
+  const file = root === undefined
+    ? undefined
+    : await fs.readFile(`${root.replaceAll('\\', '/')}/docs/guard/lifts.jsonl`).then(
+      text => ({ text }),
+      error => ({ error: (error as NodeJS.ErrnoException).code ?? 'error' }),
+    )
+  const uncommitted = root === undefined || file === undefined || 'error' in file
+    ? undefined
+    : await runGit(root, ['status', '--porcelain', '--', 'docs/guard/lifts.jsonl']).then(run => run.code === 0 && run.out.trim().length > 0, () => undefined)
   return morningReport({
     decisions: inPeriod(await readJsonl<DecisionRecord>(paths.decisions)),
-    violations: inPeriod(await readJsonl<GuardRecord>(paths.violations)),
+    violations: inPeriod(wholeViolations),
     usage: inPeriod(await readJsonl<UsageRecord>(paths.usage)),
     suppressions: inPeriod(await readJsonl<SuppressionRecord>(paths.suppressions)),
     period,
@@ -363,5 +487,11 @@ export async function reportFromFiles(fs: ReportFs, homes: DataHomes, period: st
     usageScope: gapLines(parseGaps(gapRaw), options.now ?? Date.now(), zone, periodStart),
     asks: await readAsks(graph, since),
     offsetMinutes: options.offsetMinutes,
+    lifts: {
+      records: liftRecords,
+      ...(earliest === undefined ? {} : { earliest }),
+      ...(file === undefined ? {} : { file }),
+      ...(uncommitted === undefined ? {} : { uncommitted }),
+    },
   })
 }

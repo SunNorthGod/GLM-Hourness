@@ -21,6 +21,7 @@
       config: {}
     - id: glm-hourness/guard
       name: dsh-hourness/guard
+      inject: [tools]
       config: {}
     - id: glm-hourness/memory
       name: dsh-hourness/memory

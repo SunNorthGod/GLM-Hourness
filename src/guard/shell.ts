@@ -15,7 +15,7 @@
  * and every subexpression, command substitution and process substitution
  * are read as commands. What this reader cannot see (a .NET method call,
  * `cmd /c`, an interpreter one-liner) is left to the workspace-change
- * fallback, which records without blocking (src/guard/shadow.ts).
+ * fallback, which records without blocking (src/guard/fallback.ts).
  */
 
 export type ShellDialect = 'pwsh' | 'posix'

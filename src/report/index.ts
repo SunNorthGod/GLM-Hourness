@@ -25,6 +25,7 @@ import { gapLines, parseGaps, peakLineOf, quotaSection, rangeLine, usagePanel, u
 import { dataHomes, type DataHomes } from '../shared/data-home.ts'
 import { projectHomeFor } from '../data/project-home.ts'
 import { collectHealth, provideRowHealth, renderHealthTable, sessionIdOf, type HealthState } from '../shared/health.ts'
+import { projectOf } from '../data/project-root.ts'
 import { pricingService, quotaOf, type UsagePricing } from '../shared/pricing.ts'
 import type { MomentZone } from '../shared/quota.ts'
 import type { CommandDefinitionLike, CommandsHost, ProvideHost, ServiceLookup } from '../shared/dsh-min.ts'
@@ -51,6 +52,8 @@ export interface RenderOptions {
   readonly offsetMinutes?: number
   /** Reads the project graph of the calling session; without it the report says the graph has no place. */
   readonly graph?: GraphReader | undefined
+  /** The project root (m4-gate G3): the lift record is read there and reconciled; absent, the report derives the lifts from the journal alone. */
+  readonly root?: string | undefined
 }
 
 /** Render the report text for the resolved directories. */
@@ -62,7 +65,7 @@ export async function renderHourness(homes: DataHomes, options: RenderOptions = 
   const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
   const zone: MomentZone = options.offsetMinutes === undefined ? {} : { offsetMinutes: options.offsetMinutes }
   const graph = options.graph ?? (() => Promise.reject(new Error('这次调用没有给出项目图的位置')))
-  const reportOptions: ReportOptions = { pricing: options.pricing, problem: options.problem, now: nowMs, offsetMinutes: options.offsetMinutes }
+  const reportOptions: ReportOptions = { pricing: options.pricing, problem: options.problem, now: nowMs, offsetMinutes: options.offsetMinutes, ...(options.root === undefined ? {} : { root: options.root }) }
   const report = await reportFromFiles(fs, homes, localDay(dayStart), graph, dayStart.toISOString(), reportOptions)
   const missing = [
     ...(homes.projectHome === undefined ? ['- 项目目录未配置（行配置 home 或数据目录行的 projectHome），决策与违规流水读不到'] : []),
@@ -171,7 +174,10 @@ export function apply(ctx: CommandsHost & ServiceLookup & Partial<ProvideHost>, 
       // The quota member is judged again where it is read, which reports a wrong shape; the status only says whether it is there.
       health.report(sessionIdOf(invocation.agent), ...hournessHealth(homes, pricing !== undefined, pricing !== undefined && quotaOf(pricing) !== undefined))
       try {
-        return { kind: 'success', text: await renderHourness(homes, { pricing, problem, graph: graphReader(ctx, invocation.agent?.session?.header?.cwd) }) }
+        // The lift record lives in the project root of the session's working directory (design §3.10); without one there is no reconciliation, by the same reading the journal home takes.
+        const headerCwd = invocation.agent?.session?.header?.cwd
+        const root = typeof headerCwd === 'string' && headerCwd.length > 0 ? projectOf(headerCwd)?.root : undefined
+        return { kind: 'success', text: await renderHourness(homes, { pricing, problem, graph: graphReader(ctx, invocation.agent?.session?.header?.cwd), ...(root === undefined ? {} : { root }) }) }
       }
       catch (error) {
         return { kind: 'error', text: `晨报生成失败：${(error as Error).message}` }

@@ -1,6 +1,7 @@
 /**
- * Workspace-change fallback for file-tools-only, in shadow mode
- * (docs/ORCHESTRATION.md §6.4, §6.5): it records, it never blocks.
+ * Workspace-change fallback for file-tools-only (m4-gate G3, design §3.4):
+ * a rule only a turn's end can see, so it cannot block — it writes a late
+ * denial into the journal and queues a correction for the agent's next step.
  *
  * dsh-workspace-changes summarizes the files each top-level turn changed
  * (git working-tree snapshots at turn start and turn end plus whole-file
@@ -8,14 +9,17 @@
  * `workspace/changes` session event carrying the turn. The guard notes, per
  * session and turn, the targets of the file tools and the shell calls it let
  * through. When a turn that ran shell calls changed files no file tool of
- * that turn targeted, one shadow record goes to the violation journal: the
- * shell probably wrote them in a way the quote-aware reader does not see
- * (a .NET call, `cmd /c`, an interpreter one-liner). The records measure
- * what the reader misses before any new detection is enforced. Files under
+ * that turn targeted, the shell probably wrote them in a way the quote-aware
+ * reader does not see (a .NET call, `cmd /c`, an interpreter one-liner): one
+ * late denial goes to the violation journal (`mode: 'late'`, `via:
+ * 'turn-end'`; it counts as a violation, the model never read a denial —
+ * that call already ran) and one correction reminder is queued for the
+ * session, delivered by the guard row's `hourness-guard` step notice before
+ * the agent's next step, at most one per turn and eight queued. Files under
  * the project graph count as known in a turn that ran a graph tool (the
- * graph row's service, src/graph/service.ts): the engine wrote them.
- * The price is a blind spot: a shell write into the graph in that same
- * turn is not recorded (graph-files-only still denies the ones it sees).
+ * graph row's service, src/graph/service.ts): the engine wrote them. The
+ * price is a blind spot: a shell write into the graph in that same turn is
+ * not recorded (graph-files-only still denies the ones it sees).
  * Every route is noted, like the guard judges every route (ORCHESTRATION.md
  * §6.2); a record carries the origin of its turn's shell calls
  * (src/guard/origin.ts): `dialect` when any of them ran where the GLM
@@ -30,13 +34,14 @@
 import { resolve } from 'node:path'
 import { normalizePath, shellCommandOf, type ToolCall } from './rules.ts'
 import { originOf, type CallOrigin, type RouteScope } from './origin.ts'
-import { dialectService, dialectWarner, toNativeTool } from '../shared/dialect.ts'
+import { dialectNames, dialectService, dialectWarner, toNativeTool } from '../shared/dialect.ts'
 import type { JsonValue } from '../shared/json.ts'
 import type { Route } from '../shared/route.ts'
-import type { ServiceLookup, SessionEventLike, SessionLike, ToolExecutionPayload, WorkspaceChangesService } from '../shared/dsh-min.ts'
+import type { AgentLike, ServiceLookup, SessionEventLike, SessionLike, ToolExecutionPayload, WorkspaceChangesService } from '../shared/dsh-min.ts'
 import { graphService } from '../graph/service.ts'
+import type { LateRecord } from './records.ts'
 
-/** One shadow record (JSONL line in the violation journal). */
+/** One shadow record's fields (JSONL line in the violation journal); the late denial adds `mode: 'late'` and `via: 'turn-end'` (records.ts LateRecord). */
 export interface ShadowRecord {
   readonly at: string
   readonly rule: 'file-tools-only'
@@ -55,7 +60,7 @@ export interface ShadowRecord {
   readonly calls: ReadonlyArray<{ readonly tool: string, readonly command: string }>
 }
 
-export interface ShadowFallback {
+export interface WorkspaceFallback {
   /** A root tool call that is about to run, and where it runs. */
   observe(payload: ToolExecutionPayload, origin: CallOrigin): void
   /** A session log event. */
@@ -72,6 +77,7 @@ interface TurnNotes {
   /** Directories a known writer changed: the project graph, when a graph tool ran. */
   readonly known: Set<string>
   readonly calls: Array<{ tool: string, command: string }>
+  agent?: AgentLike
   agentId?: string
   /** The session's working directory: the journal finds the project of the record with it (design §2.4). */
   cwd?: string
@@ -104,11 +110,46 @@ const record = (value: unknown): Record<string, unknown> | undefined =>
   typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : undefined
 
 /**
- * The shadow fallback over the composition's services; `write` journals one
- * record with the session's working directory, so the project journal finds
- * the record's project (it never rejects into the caller).
+ * The correction reminder of one late denial (design §3.4, the wording verbatim; the tool names follow the face): the agent's
+ * next step reads it, at most one per turn and eight queued per session, oldest first.
  */
-export function shadowFallback(services: ServiceLookup, write: (record: ShadowRecord, cwd: string | undefined) => void, now: () => Date = () => new Date()): ShadowFallback {
+const CORRECTION_LIMIT = 8
+const pending = new Map<string, string[]>()
+
+/** Take one queued correction of the session, oldest first; the step notice calls this, and delivering clears it. */
+export function takeCorrection(sessionId: string): string | undefined {
+  const queue = pending.get(sessionId)
+  const text = queue?.shift()
+  if (queue !== undefined && queue.length === 0) pending.delete(sessionId)
+  return text
+}
+
+export function correctionBody(paths: readonly string[], calls: readonly { readonly tool: string, readonly command: string }[], face: (name: string) => string): string {
+  // At most ten files and three commands, the commands cut to 80 characters, the whole within 600 (design §3.4).
+  const shown = paths.slice(0, 10).map(displayOf)
+  const commands = calls.slice(-3).map(call => `${call.tool} "${cut(call.command, 80)}"`)
+  let body = `file-tools-only: in your last turn, shell commands changed files that no file tool wrote: ${shown.join(', ')}${commands.length > 0 ? ` (${commands.join(', ')})` : ''}. Those writes already happened. Check that the files are what you meant. From now on write files with ${face('write')} or ${face('edit')}: a shell command that writes a file is denied when the harness can read it, and recorded when it cannot.`
+  if (paths.length > 10) body += ` ${paths.length - 10} more.`
+  while ([...body].length > 600 && shown.length > 1) {
+    shown.pop()
+    body = `file-tools-only: in your last turn, shell commands changed files that no file tool wrote: ${shown.join(', ')}${commands.length > 0 ? ` (${commands.join(', ')})` : ''}. Those writes already happened. Check that the files are what you meant. From now on write files with ${face('write')} or ${face('edit')}: a shell command that writes a file is denied when the harness can read it, and recorded when it cannot.`
+  }
+  return cut(body, 600)
+}
+
+/** The display of one path: control characters out, as workspace-changes spells it. */
+function displayOf(path: string): string {
+  return path.replace(/[\p{C}]/gu, '?')
+}
+
+const cut = (text: string, limit: number): string => Array.from(text).slice(0, limit).join('')
+
+/**
+ * The workspace-change fallback over the composition's services; `write`
+ * journals one record with the session's working directory (it never rejects
+ * into the caller) and queues the correction the next step delivers.
+ */
+export function workspaceFallback(services: ServiceLookup, write: (record: LateRecord, cwd: string | undefined) => void, now: () => Date = () => new Date()): WorkspaceFallback {
   const turns = new Map<string, number>()
   const notes = new Map<string, Map<number, TurnNotes>>()
   const warn = dialectWarner('guard')
@@ -126,10 +167,14 @@ export function shadowFallback(services: ServiceLookup, write: (record: ShadowRe
     }).map(file => file.display)
     if (paths.length === 0) return
     const unlisted = summary.total - summary.files.length
+    // The correction names the tools as the agent sees them (design §3.4): the turn's own route decides.
+    const face = dialectNames(dialectService(services, warn), noted.agent, noted.origin?.route, warn) ?? ((name: string): string => name)
+    const correction = correctionBody(paths, noted.calls, face)
     write({
       at: now().toISOString(),
       rule: 'file-tools-only',
-      mode: 'shadow',
+      mode: 'late',
+      via: 'turn-end',
       sessionId,
       ...(noted.agentId === undefined ? {} : { agentId: noted.agentId }),
       ...noted.origin,
@@ -138,6 +183,11 @@ export function shadowFallback(services: ServiceLookup, write: (record: ShadowRe
       ...(unlisted > 0 ? { unlisted } : {}),
       calls: noted.calls,
     }, noted.cwd)
+    // At most eight queued per session, the oldest leaving first (design §3.4); the record is already in the journal.
+    const queue = pending.get(sessionId) ?? []
+    queue.push(correction)
+    if (queue.length > CORRECTION_LIMIT) queue.shift()
+    pending.set(sessionId, queue)
   }
 
   return {
@@ -149,7 +199,10 @@ export function shadowFallback(services: ServiceLookup, write: (record: ShadowRe
       notes.set(session.id, byTurn)
       const noted = byTurn.get(turn) ?? { targets: new Set<string>(), known: new Set<string>(), calls: [] }
       byTurn.set(turn, noted)
-      if (payload.agent !== undefined) noted.agentId = payload.agent.id
+      if (payload.agent !== undefined) {
+        noted.agent = payload.agent
+        noted.agentId = payload.agent.id
+      }
       if (noted.cwd === undefined) {
         const header = session.header.cwd
         if (typeof header === 'string' && header.length > 0) noted.cwd = header

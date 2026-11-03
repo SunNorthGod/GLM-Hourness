@@ -116,3 +116,44 @@ G4 等 M3 第 4 步：`src/guard/main-agent.ts` 的 `dispatchRoot` 与两条写�
 3. 规则板开单拒绝（`effect: 'queue'` 的 deferral 拒绝）也调 `noteDenial`：设计说「拦下与开单拒绝时」，按文面执行。
 4. 指标服务名 `glmHournessMetrics` 是占位常量，指标设计的行落地时对齐（§3.11「服务名与信封由指标设计定」）。
 5. G2 步表未列 rules.ts/graph-files.ts，rightPath 两函数随本批落地：G2 的 L3 场景（设计的 §14.1）必须它们在场才能过，且无 G3/G4 依赖。
+
+## 追加：m4-gate G3（三条规则、撤下与事后纠正），2026-11-04
+
+### 落地内容
+
+- 判定上下文（§4.1）：`src/guard/context.ts` 的 `prepareContext`（`RuleContext`、`ContextIo`、5 秒总限、1 MiB 内容上限、tracked 60 秒缓存、图按修订缓存且失败回退上次好读的一份；未知事实规则放行）；`src/guard/mention.ts` 抽出 `pathKey`/`mentionsPath`；`src/data/project-root.ts` 加 `checkoutRootOf`（最近 `.git`，不跟 commidr，N23：工作树答自己的检出）。
+- 三条规则：`src/guard/suppression.ts`（`suppressionOnly`，压制注释逐标记计数、节点 id 对图核、§4.3 纠偏原文）、`src/guard/checker-config.ts`（`checkerConfigOnly`，内建清单 + 图上 env 工具节点的 config 行按检出相对路径比对、纠偏带 `request_exception` 编号）、`src/guard/scratch.ts` 扩展（`scratchOnly`，脚本扩展名清单、`.llm/scratch/` 下放行、同扩展名已跟踪文件所在目录放行）。
+- 撤下（§3.5）：`src/guard/lift.ts`（`liftStatesOf` 共享解析、`liftedRulesOf`/`liftedRules` 按 stat 缓存、`appendLift`、原话词表与否定读取、`guardLift` 七步与拒绝码）、`src/guard/lift-service.ts`（`glmHournessLifts`：`resolveLiftRule` 先精确 id 再剥一层 `<row>:`、`setLifted`、`lifted`）、`src/guard/lift-files.ts`（规则 `lift-files-only`，`liftVia: 'board'`，主检出与 `git worktree` 工作树里那份都拦）、`guard_lift` 工具（严格三字段，`GUARD_TOOL_NAMES` 常量与 contracts 钉住）。
+- 事后纠正（§3.4）：`src/guard/shadow.ts` `git mv` 为 `src/guard/fallback.ts`，晚到的拦下（`mode: 'late'`、`via: 'turn-end'`）加每回合一条排队纠正（至多 8 条、FIFO、会话卸载即弃），`src/guard/index.ts` 的 `agent/created` 给根 agent 装第二条 step notice（来源 `hourness-guard`，system-reminder 包裹，至多 10 文件/3 命令（各 80 字符）/600 字符）。
+- 晨报（§3.10 G3 部分）：「撤下的规则」一行（对话与规则板两种写法）与 `lifts.jsonl` 对账（终态 + 逐行按 at/rule/action，换电脑的合并行，未提交一行）；`ReportOptions.root` 与 `RenderOptions.root`，`/hourness` 用 `projectOf(cwd)?.root` 填，没有 root 不对账不抛错。
+- 目录与文档：`src/guard/catalog.ts` +4 条；`docs/ORCHESTRATION.md` §6.4 表加「在哪实现/状态」两列、§6.5 撤下一条改「已实现」、§6.5.2 整节改写（兜底=晚到的拦下+下一步纠正）、§14 借用表该行更名。
+- 测试：`tests/guard-new-rules.spec.ts`（11）、`tests/guard-lift.spec.ts`（16）、`tests/guard-fallback.spec.ts`（4，真实临时仓库与工作树）；contracts 钉 `GUARD_TOOL_NAMES` 与注册、rules-builtin 目录计数 +4、hourness 加 root 对账、guard-audit/health 措辞与 fixture 更新。
+- 探针：新场景 `guard-new-rules`（GLM 与 deepseek-probe 各一）、`guard-lift`（GLM）、`guard-fallback`（GLM）；`scripts/probe/probe-lift.mjs` 覆盖插件扮演人与规则板；`glm-shadow` 的影子记录期望改为晚到拦下；共 337 检查。
+
+### 探针揭出的两个真问题（都在本批修掉）
+
+1. guard 行没有声明 `inject: [tools]`：G3 之前行不注册工具，`ctx.tools` 的访问在 cordis 里抛「cannot get property without inject」，整行激活失败——探针第一跑每个场景都报「1 entry did not activate」。修：`packages/hourness/cordis.patch.yml` guard 行加 `inject: [tools]`，模块导出 `inject`。G1/G2 的探针绿不暴露它（行没碰过 tools 面）。
+2. `scratchOnly` 在 tracked 清单未知时误拦（实现把未知当「没有同扩展名文件」），违背 §4.1「事实未知放行」——graph-guard 的临时目录 fixture 抓到。修：tracked 未知或目标不在任何检出里都放行；guard-new-rules 加显式用例钉住。
+
+### 探针扮演人的机制注记（G4 的 `guard-request` 直接复用）
+
+turn/end 之后 `agent.followup` 打不进去：模型最后一次文本回复后宿主同拍拆掉 agentLoop，inbox 投影注销，followup 抛「cannot read inbox state: its projection registration is not active」。probe-lift 改为注册两个探针工具，让脚本化的模型在回合中调用：`probe_say {text, rpcId?}`（`agent.followup` 排队下一条人的消息，回合结束即开新回合，`guard_lift` 从它读原话）与 `probe_restore {rule}`（经 `glmHournessLifts.setLifted` 走规则板那一路再排队板子的话）。G4 的申报场景按同一形状扮演人。
+
+### 与设计的偏差（agent 定，可逆）
+
+1. 契约测试的第三条断言（图上每个带「规则：」标签的规范节点 ↔ 目录一条）没有加：五条规范节点不带「规则：」标签，节点是编排人的泳道（§18 第 3 条）——保持单向测试（目录每条都能对上实装的规则），本文件记录在案。
+2. 探针检查断言的是「三规则的拒绝都在流水里、没有别的规则、scope 全对」，不是设计行文的「恰好三条拒绝」：`judge` 保留全部拒绝（G1 定案），一次 bare 压制注释同时留下 suppression-reason 与 scratch-only 两条拒绝记录；设计行文按每调用一条写。
+3. 撤下场景的流水断言不钉「拒绝与其跟进」的相邻行序（G2 已确立跨实例行序不钉），改为计数与因果断言：两条 lift 记录（chat 带原话、board 带命令）、lift-files-only 拒绝恰两条（工作树那份的 F14 证据）、工作树写伴随一条圈禁拒绝、每条拒绝有跟进结算。
+4. guard-fallback 的「再下一步没有」按「不再新增」断言：纠正一经投递就进会话历史，后续请求按历史重放它，不是消失。
+5. `guard-rules.spec.ts` 的事故表没有为三条新规则加种子：它们的表驱动用例（应拦与相邻不该拦，§3.7）整表落在 `tests/guard-new-rules.spec.ts`，真实临时仓库跑 tracked 清单与图读取。
+6. `probe-lift` 的 restore 走 `guard:scratch-only`（带行前缀），顺带钉住服务的一层剥前缀解析。
+
+### 门禁（最终树，2026-11-04）
+
+- `npm run build` exit 0；`npm run preflight` exit 0（2 包、15 src、18 行）。
+- `npm test` exit 0（2554 测试全过）；棘轮 eslint 76 suppressed、knip 19、jscpd 1，与基线持平，零新增。
+- `npm run -s probe` exit 0，337/337（G2 时 327；净增来自三个新场景与 glm-shadow/health 期望更新）。探针口径同 G2：分支自己的基（rules/loops 行仍出厂禁用），行经 overlay 启用。
+
+### G4 的依赖核对（用户要求在 G3 末尾做）
+
+设计 §5 依赖的 M3 件已全部在树上：`src/guard/main-agent.ts`（`installMainAgentRules`）、`src/guard/git-snapshot.ts`、派发链的根 `dispatchRoot` 在 `src/guard/design-release.ts`（沿 `parentSession` 上溯，`origin: 'subagent'` 链，M3 §3.3.3 的实现）；`plain-question.ts`、`proposal.ts` 的渲染也在。结论：G4 不必等，随 G3 合入后即可开工。

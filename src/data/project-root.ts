@@ -118,6 +118,23 @@ export function gitDirOf(root: string): string | undefined {
 }
 
 /**
+ * The checkout a path sits in (m4-gate G3, design §3.5, review finish2 round
+ * N23): the nearest `.git` entry above it — a directory, or the file a work
+ * tree carries — and the directory holding it. Unlike `projectOf` it does not
+ * follow `commondir`, so a work tree answers with its own root, not the main
+ * checkout's: the caller asks "which checkout is this file in", not "which
+ * project does it belong to". Directories that do not exist yet walk on
+ * (statSync misses, the walk continues); nothing spawns git. undefined when
+ * no `.git` sits above the path (a project outside git).
+ */
+export function checkoutRootOf(path: string): string | undefined {
+  for (let dir = resolve(path); ; dir = dirname(dir)) {
+    if (gitEntry(dir) !== undefined) return dir
+    if (dirname(dir) === dir) return undefined
+  }
+}
+
+/**
  * The directories of a repository's work trees, as `git worktree list` gives
  * them, read from the git directory without a process: the project root (the
  * main checkout) first, then the work tree each `worktrees/<name>/gitdir` file
