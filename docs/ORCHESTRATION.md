@@ -1112,11 +1112,11 @@ LLM 爱造轮子，因为写脚本只花当前这一轮的力气，装工具却�
 
 ### 10.1 三层指标
 
-| 层 | 看什么 | 指标 |
-| --- | --- | --- |
-| 过程合规 | 规矩有没有被遵守 | 门禁拦截数、五栏完整率、简报完整率、主 Agent 写代码次数、节点证据覆盖率、验证债 |
-| 产出质量 | 做出来的东西好不好 | 返工率、测试一次通过率、规划漂移、回归次数、新增告警与压制数 |
-| 人的体验 | 人是不是坐上了项目经理的位置 | 每个目标打扰人的次数、人亲手改代码的次数（目标为零）、同类纠正重复率、细度拨档频率、决策卡积压与处理时长 |
+| 层 | 看什么 | 指标 | 来源 |
+| --- | --- | --- | --- |
+| 过程合规 | 规矩有没有被遵守 | 门禁拦截数、五栏完整率、简报完整率、主 Agent 写代码次数、节点证据覆盖率、验证债 | 目标来源是指标流水（§10.6）：拦截计数从 `rule` 与 `rules.judged` 算，其余从图与检查记录算；流水行的发送方未接线前仍从各自记录算 |
+| 产出质量 | 做出来的东西好不好 | 返工率、测试一次通过率、规划漂移、回归次数、新增告警与压制数 | 目标来源是指标流水（§10.6）：返工从 `tool` 与图事件算，压制计数走 `count`；未接线前从违规流水与告警清单算 |
+| 人的体验 | 人是不是坐上了项目经理的位置 | 每个目标打扰人的次数、人亲手改代码的次数（目标为零）、同类纠正重复率、细度拨档频率、决策卡积压与处理时长 | 目标来源是指标流水（§10.6）：问人从 `design.proposal-shown`、`design.answer-recorded` 算；未接线前从项目图历史算 |
 
 ### 10.2 美学条款量法
 
@@ -1198,6 +1198,17 @@ LLM 不讲人话，多半是默认在向评审汇报，想显得周全。做法�
 按模型：GLM-5.3 六次全部完成，平均 8.67 步、15.53 积分、1.07 分钟；GLM-5.3-Flash 六次全部完成，平均 8.50 步、8.16 积分、2.28 分钟。工具失败、打扰、违规、影子记录、多余文件都是 0。Flash 在功能任务上输出 token 是 GLM-5.3 的约 3 倍（每次 6.5k–12.4k 对 2.7k–3.8k），所以积分省一半，耗时却长一倍多。基线连同两次试跑共花约 155 积分（计费口径）。
 
 解读与局限：两个起步任务对两档模型都没有区分度（12/12 完成），能拉开差距的只有积分、耗时与返工；区分完成率要靠 M3、M7 扩充的更难任务（重构、长程多步、需求访谈）。每格 3 次，样本小，单次波动明显（同一格的积分相差到 1.6 倍）。headless 没有人，打扰只能按审批申请与提问工具计。用量流水不报推理 token（`reasoningTokens` 恒为 0），推理计在输出里。
+
+### 10.6 指标流水〔第 1 步已实现 2026-11-04，分支 `metrics`；行与发送方未接线〕
+
+设计在 `.agents/tasks/metrics/design.md`（0.7；每步做完按 §1.4 的 25 条检查判）。每个项目一份只追加的事件流水 `<项目根>/.llm/metrics/events-<UTC 日期>.jsonl`，项目根用 `src/data/project-root.ts` 的 `projectOf`；用户级目录不放任何指标文件。已实现的部分：
+
+- 记录格式（设计 §4，信封加正文两层）：`src/metrics/schema.ts` 持有信封（`s`、`k`、`at`、`w`、`n`、`h`、`v`、`by`、`sid?`）、字段表文法、整行校验（未知键、类型不合、超 32 项、行超 4096 字节整条拒收）与确定性序列化。正文存一层 `body` 键内：`rules.peak-mode`、`glm.quota-read` 的正文有 `by`、`progress.handover` 与 `execute.dispatch` 等的正文有 `n`，与信封同名的字段只有分层装得下；读取回的 `MetricsEvent` 保持同样两层。种类闭表在 `src/metrics/kinds/<名字空间>.ts`：本设计的 26 种（§4.2 前两张表）加规则板 15、循环板 11、M7 的 `execute.*` 21 与 `operate.*` 2、M6 4、M3 加 git 10、接管 1，共 90 种；每张表对 `src/shared/metrics.ts` 的类型做编译期契约检查，名字只在一处。
+- 写入器（设计 §5.1）`src/metrics/writer.ts`：每项目一条队列（至多 2000 条，满则丢队首之后最早的一条并把缺口记成待报的 `gap`），序号与链式摘要在入队时定，与写成功与否无关；失败 30 秒重试，下一条事件也触发重试；首写先 `ensureIgnored` 再建目录并写 `*` 的 `.gitignore`；日文件本进程首开在项目的 `.llm/metrics-manifest.jsonl` 登记一行 `{file, w, firstN, at}`；崩溃留下的半行，接写前补一个换行；`close` 给写过的项目排 `stop` 并以 2 秒预算冲干净。文件系统 `MetricsFs` 可注入（测试用），Node 实现是 `nodeMetricsFs`。
+- 读取与核对（设计 §5.4、§7.1）`src/metrics/read.ts`：`readLog(root, {from, to, basis})` 按文件日期取窗口、逐行按同一张表校验、按 `(w, n)` 去重、按 `(at, w, n)` 排序，返回依据（每个文件读到的行数）与坏行清单；`checkLog` 报缺行（`gap` 覆盖的不算）、链断（从 `gap.lastH` 接上重算）、没有正常退出的写入者、时钟回拨、重复序号、清单里有而磁盘上没有且无 `prune` 覆盖的文件，以及 `start.host` 为 `cli` 却写了宿主专属种类的伪造。
+- 库写入口（设计 §5.2）`src/metrics/library.ts`：`appendEvents(dir, events, host)` 给 DSH 之外的一次性进程（规则板的 `checkCall` 等），项目按 `projectOf(dir)` 定位，写完 `close`；不在任何项目里时答 `{written: 0, rejected: 0, error: 'no-project'}`，不建任何目录。
+- 契约与词汇 `src/shared/metrics.ts`：服务 `glmHournessMetrics`（`emit(event, where)`）、`metricsOf`、`emitMetric`（补本包的构建戳 `v`；`by` 由事件自带，`rule` 与 `timeout.*` 的 `by` 随发送方变）。发送方接 §6.2 的表，行激活前 `emitMetric` 是空操作。字数口径 `src/shared/text-units.ts`（汉字假名谚文全角按字、英文按词）；构建戳 `src/shared/build-info.ts` 读本包 dist 的 `build-info.json`（`scripts/build-info.mjs` 在 `npm run build` 末尾写，`preflight` 检查它与包清单的版本一致）。
+- 未做（设计 §12 第 2–10 步）：指标行 `glm-hourness/metrics`（通用接缝的观察、行健康、后台自查、循环板的自查条目）、guard 与图文件门禁的 `rule`、图引擎观察者、`/hourness` 的 `report`、`calc` 与命令行、指标板（`d-metrics-ratios-person-only`）、启用与 `metrics-files-only`。
 
 ## 11. 用量与峰谷
 

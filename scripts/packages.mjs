@@ -51,7 +51,7 @@ export const PACKAGES = [
     key: 'hourness',
     name: 'dsh-hourness',
     dir: 'packages/hourness',
-    src: ['data', 'guard', 'memory', 'workflow', 'report', 'graph', 'rules', 'execute', 'design', 'loops', 'lessons'],
+    src: ['data', 'guard', 'memory', 'workflow', 'report', 'graph', 'rules', 'execute', 'design', 'loops', 'lessons', 'metrics'],
     rows: [
       { id: 'glm-hourness/data', module: 'data/index' },
       { id: 'glm-hourness/guard', module: 'guard/index' },

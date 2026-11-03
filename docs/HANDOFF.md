@@ -154,7 +154,7 @@ M6 桌面版核对（批次 L4，项目图 `m6-l4`、`m6-gap`，2026-11-01，主
 | M7 执行、汇合与运维 | 0.6 放行并冻结 | E0、E1a、E3 已合入 main（`a8dfc70`、`c3d66e0`、`af75fe8` + 跟进 `e57e744`） | E1b、E2、E4–E9 等 M3 合入 |
 | 面板与新手引导（`m8-plain-language`、`onboarding`） | 1.3 放行；17 条做完条件 2026-11-01 由人定下，写进这两个节点的验收（`d-panel-released`） | 未开工 | 等状态板块实现落地再动，否则两边改同一段取数逻辑；第 1、6、9、17 条按旧问法写，换新问法时要再请人改 |
 | 用户图 | 0.4.1 放行（`d-user-graph-released`）；三件待人定 2026-11-02 由人答齐（每项目都画、流程走通算画完、照页放行） | 未开工 | 等 M3 与 M7 的骨架 |
-| 指标 | 0.7（设计门禁与一页稿门禁 2026-11-01 通过）；§16 ① 2026-11-02 人已答（每步做完按 §1.4 的 25 条检查判） | 未开工 | 比率做成面板上指标自己的一块板（`d-metrics-ratios-person-only`） |
+| 指标 | 0.7（设计门禁与一页稿门禁 2026-11-01 通过）；§16 ① 2026-11-02 人已答（每步做完按 §1.4 的 25 条检查判） | 分支 `metrics`（工作树 `.worktrees/metrics`）：§12 第 1 步已提交——记录格式与 90 种闭表（`src/metrics/schema.ts`、`kinds/`，正文分层 `body`）、写入器（队列 2000、链与序号入队即定、清单、半行接写）、`readLog`/`checkLog`、库写入口 `appendEvents`、服务契约 `src/shared/metrics.ts`、字数与构建戳（`npm run build` 末尾写 dist 的 build-info.json，preflight 查版本）；L2 为 `tests/metrics-{schema,writer,read,library}.spec.ts` | 第 2 步起：指标行与接缝观察、guard 与图引擎观察者、`/hourness` 的 `report`、`calc` 与命令行、指标板（`d-metrics-ratios-person-only`）、启用与 `metrics-files-only`；M6 的 `m6-metrics-events` 等第 2 步的行 |
 | 状态板块 | 0.3 放行（2026-11-01，`d-status-hub-released`；6 条做完条件由人定下） | 未开工 | 各模块只交一次状态，面板、晨报、周报与主 Agent 都从它读，每条注明给谁看（`d-status-hub`） |
 | 接管（bootstrap） | 0.6 放行（`d-bootstrap-released`）；D1、D3 2026-11-02 人已答（41 条照草稿算数；待做活开工前不出一页放行稿） | 未开工 | 问话形状归 M3 的一处模板，接管只引用 |
 

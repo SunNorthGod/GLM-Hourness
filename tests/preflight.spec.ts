@@ -153,6 +153,7 @@ function writeLayout(root: string): void {
     const dir = join(root, pkg.dir)
     write(join(dir, 'package.json'), json({
       name: pkg.name,
+      version: '0.1.0',
       type: 'module',
       exports: {
         '.': './ui/index.js',
@@ -171,6 +172,7 @@ function writeLayout(root: string): void {
     }
     write(join(dir, 'icon.svg'), '<svg xmlns="http://www.w3.org/2000/svg"/>\n')
     for (const row of pkg.rows) write(join(dir, 'dist', `${row.module}.js`), 'import { peer } from \'@scope/peer\'\nexport const value = peer\n')
+    write(join(dir, 'dist', 'build-info.json'), json({ version: '0.1.0', commit: 'abc1234', dirty: false }))
     write(join(dir, 'dist', 'shared', 'health.js'), `export const HEALTH_PACKAGES = ${JSON.stringify(health)}\n`)
     write(join(dir, 'dist', 'shared', 'types.d.ts'), 'import type { X } from \'@scope/types-only\'\nexport type Y = X\n')
     write(join(dir, 'ui', 'index.js'), 'export function apply() {}\n')
@@ -258,6 +260,11 @@ test('a dist/ directory outside the table, a tsconfig include that differs, or H
   const health = await problemsAfter(root => write(join(root, 'packages/hourness/dist/shared/health.js'), `export const HEALTH_PACKAGES = ${JSON.stringify([{ name: 'pkg-glm', rows: ['glm-llm'] }, { name: 'pkg-hourness', rows: ['graph'] }])}\n`))
   assert.equal(health.length, 1)
   assert.ok(health[0]?.startsWith('packages/hourness/dist/shared/health.js: HEALTH_PACKAGES is '), health[0])
+})
+
+test('a missing build stamp, or one whose version is not the manifest\'s, fails', async () => {
+  assert.deepEqual(await problemsAfter(root => rmSync(join(root, 'packages/glm/dist/build-info.json'))), ['pkg-glm: dist/build-info.json is missing: run npm run build'])
+  assert.deepEqual(await problemsAfter(root => write(join(root, 'packages/glm/dist/build-info.json'), json({ version: '9.9.9', commit: 'abc1234', dirty: false }))), ['pkg-glm: dist/build-info.json needs the manifest\'s version, a commit and a dirty flag'])
 })
 
 test('a row not exported under its name fails; a package without locale/en.json or with a missing icon fails', async () => {
