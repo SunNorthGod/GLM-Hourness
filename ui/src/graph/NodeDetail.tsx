@@ -15,6 +15,7 @@ import { RUN_COMMAND } from '../../../src/graph/run.ts'
 import type { GraphNode, Verification } from '../../../src/graph/schema.ts'
 import { placements, runningOn, type AgentLive } from './agents.ts'
 import { Folded, Markdown, NodeRow, Options, Part, When, useServices } from './common.tsx'
+import { MainChatLine } from './MainChat.tsx'
 import { byCreation, dotTone, historyText, needsHuman, presenceText, progressOf, progressText, statusText } from './model.ts'
 
 const HISTORY_SHOWN = 6
@@ -108,8 +109,8 @@ export function NodeDetail({ graph, id, agents, onBack, onClose }: DetailProps):
           {node.tier === undefined ? null : <Tag tone="neutral">{TIER_LABELS[node.tier]}</Tag>}
         </div>
         {node.body === undefined ? null : <Folded lines={10} className="glmg-text"><Markdown text={node.body} /></Folded>}
-        {node.type === 'question' ? <Part title={done ? '选项' : '选项'}><Options node={node} /></Part> : null}
-        {node.status === 'proposed' ? <div className="glmg-notice">要批准或不要：在主 Agent 的对话里回话</div> : null}
+        {node.type === 'question' ? <Part title="选项"><Options node={node} /><MainChatLine /></Part> : null}
+        {node.status === 'proposed' && node.type !== 'question' ? <><div className="glmg-notice">要批准或不要</div><MainChatLine /></> : null}
         <RunLine node={node} agents={agents} />
         {(node.acceptance ?? []).length === 0
           ? null

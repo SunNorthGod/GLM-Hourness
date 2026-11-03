@@ -8,6 +8,8 @@ import { graphRevision, loadGraph, revisionOf } from '../src/graph/store.ts'
 import type { GraphNode } from '../src/graph/schema.ts'
 import type { RemoteRoot, StreamItem, WatchFrame } from '../ui/src/dsh.ts'
 import { absoluteTime, byCreation, decidedBy, dotTone, graphRevisionOf, headlineGoals, historyText, liveGroups, nobodyRunningText, placeText, presenceText, progressOf, progressText, revisionOfBytes, statusText, tokensText, visibleGraph } from '../ui/src/graph/model.ts'
+import { holderRecordOf } from '../src/shared/holder-record.ts'
+import { cwdKeyOf, mainChatOf } from '../ui/src/graph/main-chat.ts'
 import { GraphSource, type GraphSnapshot } from '../ui/src/graph/source.ts'
 import { initialSeen, nextSeen, seenKeyOf, seenRecordOf, writeSeenRecord } from '../ui/src/graph/seen.ts'
 import { fixtureTest, seedAsHuman } from './graph-helpers.ts'
@@ -405,4 +407,31 @@ test('上次看之后 (seen.ts): the local record reads, writes and fails quietl
   assert.equal(seenRecordOf(broken, 'x'), undefined, 'a broken read is no record')
   writeSeenRecord(broken, 'x', 1_000)
   assert.equal(backing.size, 1, 'a broken write stays quiet')
+})
+
+test('主 Agent 的对话 (MainChat): a readable record decides by itself, an absent one says so, an unreadable one falls back', () => {
+  const here = { kind: 'held', sessionId: 's-1' } as const
+  assert.deepEqual(mainChatOf(here, 's-1', ['s-1']), { kind: 'here' }, 'the fallback is not consulted when the record reads')
+  assert.deepEqual(mainChatOf(here, 's-2', []), { kind: 'there', sessionId: 's-1', guessed: false })
+  assert.deepEqual(mainChatOf({ kind: 'absent' } as const, 's-1', ['s-2']), { kind: 'absent' }, 'a readable none stays none')
+  const unreadable = { kind: 'unreadable', reason: 'denied' } as const
+  assert.deepEqual(mainChatOf(unreadable, 's-1', ['s-2']), { kind: 'there', sessionId: 's-2', guessed: true })
+  assert.deepEqual(mainChatOf(unreadable, 's-1', ['s-1']), { kind: 'here' }, 'the fallback finding this session makes it the main chat')
+  const lost = mainChatOf(unreadable, 's-1', [])
+  assert.equal(lost.kind, 'lost')
+  assert.match(lost.kind === 'lost' ? lost.reason : '', /记录读不出来/)
+  assert.match(lost.kind === 'lost' ? lost.reason : '', /没有哪个对话在主 Agent 模式/)
+  const many = mainChatOf(unreadable, 's-1', ['s-2', 's-3', 's-2'])
+  assert.equal(many.kind, 'lost')
+  assert.match(many.kind === 'lost' ? many.reason : '', /有 2 个对话在主 Agent 模式/, 'duplicates fold')
+})
+
+test('主 Agent 的对话 (MainChat): the record shape and the working-directory key follow M3', () => {
+  const record = holderRecordOf({ version: 1, sessionId: 's-9', graphDir: 'D:/R/docs/graph', since: '2026-11-04T00:00:00.000Z', commandId: 'c-1' })
+  assert.deepEqual(record, { version: 1, sessionId: 's-9', graphDir: 'D:/R/docs/graph', since: '2026-11-04T00:00:00.000Z', commandId: 'c-1' })
+  for (const bad of [undefined, null, 3, {}, { version: 2, sessionId: 's', graphDir: 'd', since: 'x', commandId: 'y' }, { version: 1, graphDir: 'd', since: 'x', commandId: 'y' }, { version: 1, sessionId: '', graphDir: 'd', since: 'x', commandId: 'y' }]) {
+    assert.equal(holderRecordOf(bad), undefined, JSON.stringify(bad) ?? 'undefined')
+  }
+  assert.equal(cwdKeyOf('D:\\Repo\\ws\\', true), 'd:/repo/ws', 'backslashes, trailing slash, Windows lower case')
+  assert.equal(cwdKeyOf('/home/r/ws/', false), '/home/r/ws', 'no lower case off Windows')
 })

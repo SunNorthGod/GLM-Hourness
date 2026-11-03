@@ -144,11 +144,12 @@ export function Part({ title, children }: { readonly title: ReactNode, readonly 
 
 /**
  * A question as the panel shows it: the question as the human read it and
- * the ways when it has them, with where to answer. The panel only looks
- * (plain-ui, d-ui-look-not-operate): no option buttons, no letter keys, no
- * recommendation marks — the answer is said in the main agent's chat. A
- * decided question shows its conclusion; one with the legacy option card
- * shows the options read-only with the current choice marked.
+ * the ways when it has them. The panel only looks (plain-ui,
+ * d-ui-look-not-operate): no option buttons, no letter keys, no
+ * recommendation marks — the answer is said in the main agent's chat, and
+ * the caller renders where that is (MainChatLine). A decided question
+ * shows its conclusion; one with the legacy option card shows the options
+ * read-only with the current choice marked.
  */
 export function Options({ node }: { readonly node: GraphNode }): ReactElement {
   const options = node.options ?? []
@@ -162,9 +163,7 @@ export function Options({ node }: { readonly node: GraphNode }): ReactElement {
           {option.consequence === undefined ? null : `（${option.consequence}）`}
         </div>
       ))}
-      {node.status === 'done' && node.conclusion !== undefined
-        ? <div className="glmg-text">定了：{node.conclusion}</div>
-        : <div className="glmg-notice">在主 Agent 的对话里回话</div>}
+      {node.status === 'done' && node.conclusion !== undefined ? <div className="glmg-text">定了：{node.conclusion}</div> : null}
     </div>
   )
 }

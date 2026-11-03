@@ -14,17 +14,21 @@
  * plain-ui (the panel only looks, d-ui-look-not-operate): /graph-apply had
  * no caller left and is gone.
  *
- * The row also registers the session projection the panel's live view
- * reads (live.ts), and takes the services the run controls read
- * optionally: sessionProjections (with the projection), agents and
- * subagents (stopping a child). Its row health is an activation status
- * that changes as those arrive or leave. Activation never throws.
+ * The row also registers the session projections the panel reads (live.ts;
+ * hournessProject, which hands the client the main agent holder record's
+ * absolute path so it can read it through remote.workspaceFiles, plain-ui
+ * 1.3 §4.9), and takes the services the run controls read optionally:
+ * sessionProjections (with the projections), agents and subagents
+ * (stopping a child). Its row health is an activation status that changes
+ * as those arrive or leave. Activation never throws.
  */
-import type { AgentCommandInvocationLike, CommandDefinitionLike, CommandsHost, InjectHost, ProvideHost } from '../shared/dsh-min.ts'
+import type { AgentCommandInvocationLike, CommandDefinitionLike, CommandsHost, InjectableServices, InjectHost, ProvideHost, ServiceLookup } from '../shared/dsh-min.ts'
 import { provideRowHealth } from '../shared/health.ts'
 import { LIVE_KEY, liveProjection } from './live.ts'
+import { holderFileOf, holderHome } from './main-agent-holder.ts'
 import { runFromCommand, type RunServices } from './run-control.ts'
 import { RUN_COMMAND } from './run.ts'
+import { graphService } from './service.ts'
 import { DEFAULT_GRAPH_DIR } from './tools.ts'
 
 export interface GraphPanelConfig {
@@ -45,13 +49,64 @@ function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
+/** Session projection key that names the main agent holder record's file. */
+export const PROJECT_KEY = 'hournessProject'
+
+/** The projection's wire view: where the record is, or why there is no path. */
+export interface ProjectView {
+  readonly holderFile: string | null
+  readonly reason?: string
+}
+
+function parseProjectView(value: unknown): ProjectView {
+  if (typeof value !== 'object' || value === null) throw new TypeError(`${PROJECT_KEY} must be an object`)
+  const view = value as Record<string, unknown>
+  if (view.holderFile !== null && typeof view.holderFile !== 'string') throw new TypeError(`${PROJECT_KEY}.holderFile must be a path or null`)
+  if (view.reason !== undefined && typeof view.reason !== 'string') throw new TypeError(`${PROJECT_KEY}.reason must be a string`)
+  return { holderFile: view.holderFile, ...(typeof view.reason === 'string' ? { reason: view.reason } : {}) }
+}
+
 /**
- * Register the live projection (live.ts) once the session projection
- * registry is present, and keep the registry for the run controls; without
- * it the panel shows no live state, stop and redo refuse, and the rest
- * works. `settled` hears why the projection is off, or undefined once it
- * registered; cordis may run the callback after activation, when the
- * registry arrives, and its disposer when the registry leaves.
+ * The holder record's absolute path for one project (plain-ui 1.3 §4.9,
+ * step 1): the one place the panel's code learns the path from, so the
+ * module that locates the record can move with the project's `.llm/`
+ * without the projection, the client or the tests changing. It wraps M3's
+ * locator, which today names the project by its graph directory; the
+ * working directory is already here for the day the locator takes the
+ * project root instead (M3 附录 §10).
+ */
+export function holderPathOf(ctx: ServiceLookup, dir: string, cwd: string | undefined): string {
+  void cwd
+  return holderFileOf(holderHome(ctx), dir)
+}
+
+/** The projection that hands the client the record's path; its state does not change after the session is created. */
+function projectProjection(lookup: ServiceLookup): Parameters<InjectableServices['sessionProjections']['register']>[0] {
+  return {
+    key: PROJECT_KEY,
+    stateVersion: 1,
+    stateSchema: { parse: parseProjectView },
+    init: (header: unknown): ProjectView => {
+      const cwd = (header as { readonly cwd?: unknown } | null)?.cwd
+      const dir = graphService(lookup)?.dirFor(typeof cwd === 'string' ? cwd : undefined)
+      if (dir === undefined) return { holderFile: null, reason: '图行服务不在，或这个工作区没有图目录' }
+      return { holderFile: holderPathOf(lookup, dir, typeof cwd === 'string' ? cwd : undefined) }
+    },
+    apply: (state: ProjectView): ProjectView => state,
+    wire: { viewSchema: { parse: parseProjectView }, view: (state: ProjectView): ProjectView => state },
+  }
+}
+
+/**
+ * Register the live projection (live.ts) and the project projection once
+ * the session projection registry is present, and keep the registry for
+ * the run controls; without it the panel shows no live state, stop and
+ * redo refuse, and the rest works. `settled` hears why a projection is
+ * off, or undefined once both registered; cordis may run the callback
+ * after activation, when the registry arrives, and its disposer when the
+ * registry leaves. A live projection that fails to register turns the
+ * whole seam off; the project projection failing only says so in the
+ * health, and the rest stays on.
  */
 function installLive(ctx: Partial<InjectHost>, services: RunServices, settled: (problem: string | undefined) => void): void {
   if (typeof ctx.inject !== 'function') {
@@ -71,8 +126,16 @@ function installLive(ctx: Partial<InjectHost>, services: RunServices, settled: (
         off(error)
         return undefined
       }
+      let projectProblem: string | undefined
+      try {
+        projectionCtx.sessionProjections.register(projectProjection(projectionCtx))
+      }
+      catch (error) {
+        console.warn(`${name}: the project projection is off: ${message(error)}`)
+        projectProblem = `位置投影 ${PROJECT_KEY} 未注册：${message(error)}`
+      }
       services.projections = projectionCtx.sessionProjections
-      settled(undefined)
+      settled(projectProblem)
       return () => {
         services.projections = undefined
         settled(WAITING_LIVE)
@@ -149,7 +212,7 @@ export function apply(ctx: CommandsHost<AgentCommandInvocationLike> & Partial<In
   let children: string | undefined = WAITING_CHILDREN
   const status = (): ['active' | 'degraded' | 'inactive', string] => [
     commands.problem !== undefined ? 'inactive' : live === undefined && children === undefined ? 'active' : 'degraded',
-    [commands.problem ?? `命令 ${COMMANDS} 已注册`, live ?? `现场投影 ${LIVE_KEY} 已注册`, children ?? '能停子 agent'].join('；'),
+    [commands.problem ?? `命令 ${COMMANDS} 已注册`, live ?? `现场投影 ${LIVE_KEY} 与位置投影 ${PROJECT_KEY} 已注册`, children ?? '能停子 agent'].join('；'),
   ]
   const health = provideRowHealth(ctx, 'graph-panel', ...status())
   installLive(ctx, services, problem => {

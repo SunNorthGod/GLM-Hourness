@@ -27,7 +27,7 @@ export type WatchFrame =
   | { readonly kind: 'ready' }
   | { readonly kind: 'change', readonly change: { readonly absolutePath: string, readonly absent?: true } }
 
-interface WorkspaceFilesRemote {
+export interface WorkspaceFilesRemote {
   list(sessionId: string, path: string, signal?: AbortSignal): Promise<RemoteResult<{ readonly path: string, readonly entries: readonly DirectoryEntry[], readonly truncated: boolean }>>
   /** Identity, version and size of one regular file, without content (dsh-api-workspace-files). */
   stat(sessionId: string, path: string, signal?: AbortSignal): Promise<RemoteResult<{ readonly absolutePath: string, readonly version: string, readonly bytes?: number }>>
@@ -109,13 +109,15 @@ export interface TokenUsage {
  * The projection values of one session this bundle reads; graphLive and
  * hournessMainAgent are this bundle's own units (the second is read through
  * mainAgentActive, which takes the table as a whole, hence the index signature),
- * and the two hourness keys are the wire views of the memory and lessons rows
- * (src/memory/index.ts, src/lessons/index.ts).
+ * hournessProject is the graph-panel row's holder-record pointer (plain-ui
+ * 1.3 §4.9), and the two hourness keys are the wire views of the memory and
+ * lessons rows (src/memory/index.ts, src/lessons/index.ts).
  */
 export interface ProjectionValues {
   readonly graphLive?: LiveView
   readonly subagentCatalog?: readonly CatalogEntry[]
   readonly tokenUsage?: TokenUsage
+  readonly hournessProject?: { readonly holderFile: string | null, readonly reason?: string }
   readonly hournessLessons?: { readonly journal: string | null }
   readonly hournessMemory?: { readonly projectJournal: string | null, readonly userJournal: string | null }
   readonly [key: string]: unknown
@@ -162,8 +164,17 @@ export interface SessionsClient {
   readonly list: {
     getSnapshot(): {
       readonly projectionsBySession: Readonly<Record<string, { readonly values: ProjectionValues, readonly state?: string } | undefined>>
-      /** The session summaries; `blank` is true until the first prompt (api-session-controller lib/client.js:4148-4163). */
-      readonly byId: Readonly<Record<string, { readonly blank?: boolean } | undefined>>
+      /**
+       * The session summaries; `blank` is true until the first prompt
+       * (api-session-controller lib/client.js:4148-4163). The fields the
+       * main chat's fallback reads (plain-ui 1.3 §4.9 step 4) come from
+       * the same summary: the working directory and the projection values.
+       */
+      readonly byId: Readonly<Record<string, {
+        readonly blank?: boolean
+        readonly cwd?: string
+        readonly projectionValues?: ProjectionValues
+      } | undefined>>
     }
     subscribe(listener: () => void): () => void
   }
@@ -178,5 +189,13 @@ export interface ClientContext {
   }
   readonly sidebarRightTabs: { register(definition: TabDefinition): () => void }
   readonly remote: RemoteRoot
+  /** dsh-client-ui-workspace: opens a session in the main view (README, uiWorkspace.openSession). */
+  readonly uiWorkspace: UiWorkspace
   effect(body: () => () => void, label?: string): void
+}
+
+/** The client `uiWorkspace` service as far as the panel uses it (dsh-client-ui-workspace README): jump to the main agent's conversation. */
+export interface UiWorkspace {
+  /** Replace the main view with the named session (a session id); synchronous, history loads in the target view. */
+  openSession: (target: string) => void
 }

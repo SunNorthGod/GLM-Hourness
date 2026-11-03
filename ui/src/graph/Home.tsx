@@ -18,6 +18,7 @@ import {
 import { boards, checkedBoardState, type Board } from './boards.ts'
 import type { AgentLive } from './agents.ts'
 import { NowContext, Part, When, useServices } from './common.tsx'
+import { MainChatLine } from './MainChat.tsx'
 import { headlineGoals, statusText } from './model.ts'
 
 /** The home rows of one goal: the progress line, and the module line when the two-level loop is on. */
@@ -40,7 +41,7 @@ function NeedCard({ need, first }: { readonly need: NeedEntry, readonly first: b
     return (
       <div className="glmg-card wait">
         <div className="glmg-row-title">{need.matter?.text ?? '主 Agent 在对话里等你回话'}</div>
-        <div className="glmg-meta"><span>主 Agent 在对话里等你回话</span></div>
+        {first ? <MainChatLine /> : null}
       </div>
     )
   }
@@ -48,7 +49,7 @@ function NeedCard({ need, first }: { readonly need: NeedEntry, readonly first: b
     <div className="glmg-card wait">
       <h3 className="glmg-card-title"><button type="button" className="glmg-card-link" onClick={() => { open(node.id) }}>{node.title}</button></h3>
       <div className="glmg-meta"><span>{statusText(node)}</span><When at={need.since} /></div>
-      {first ? <div className="glmg-notice">在主 Agent 的对话里回话</div> : null}
+      {first ? <MainChatLine /> : null}
     </div>
   )
 }

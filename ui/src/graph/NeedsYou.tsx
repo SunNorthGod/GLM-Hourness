@@ -8,6 +8,7 @@ import type { ReactElement } from 'react'
 import type { LoadedGraph } from '../../../src/graph/parse.ts'
 import type { NeedEntry } from '../../../src/graph/plain-view.ts'
 import { Options, When, useServices } from './common.tsx'
+import { MainChatLine } from './MainChat.tsx'
 
 /** 需要你, all of it (plain-ui 1.3 §4.3): every entry with its question open — the page behind the home section's 还有 N 件. */
 export function NeedsPage({ graph, needs }: { readonly graph: LoadedGraph, readonly needs: readonly NeedEntry[] }): ReactElement {
@@ -22,7 +23,7 @@ export function NeedsPage({ graph, needs }: { readonly graph: LoadedGraph, reado
           return (
             <div key={`awaiting:${index}`} className="glmg-card wait">
               <div className="glmg-row-title">{need.matter?.text ?? '主 Agent 在对话里等你回话'}</div>
-              <div className="glmg-notice">在主 Agent 的对话里回话</div>
+              <MainChatLine />
             </div>
           )
         }
@@ -35,9 +36,8 @@ export function NeedsPage({ graph, needs }: { readonly graph: LoadedGraph, reado
               <span>{parent === undefined || parent.type === 'goal' ? null : `挂在「${parent.title}」下`}</span>
               <When at={need.since} />
             </div>
-            {node.status === 'proposed'
-              ? <div className="glmg-notice">要批准或不要：在主 Agent 的对话里回话</div>
-              : <Options node={node} />}
+            {node.status === 'proposed' ? <div className="glmg-notice">要批准或不要</div> : <Options node={node} />}
+            <MainChatLine />
             {first === undefined ? null : <div className="glmg-meta">{first.actor === 'human' ? '你' : 'agent '}提的 · <When at={first.at} /></div>}
           </div>
         )

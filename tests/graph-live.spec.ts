@@ -91,12 +91,12 @@ test('the unit: schemas accept its own states and views and refuse others', () =
   assert.throws(() => liveProjection.stateSchema.parse({ ...state, inherited: 'x' }), /inherited/)
 })
 
-test('the panel row registers the unit when the registry arrives, and survives without it', async () => {
+test('the panel row registers the units when the registry arrives, and survives without it', async () => {
   const registered: string[] = []
   const commands = { register: () => () => {} }
   const snapshot = () => ({ values: {} })
   apply({ commands, inject: fakeInjector({ sessionProjections: { register: definition => { registered.push(definition.key); return () => {} }, snapshot } }).inject })
-  assert.deepEqual(registered, [LIVE_KEY])
+  assert.deepEqual(registered, [LIVE_KEY, 'hournessProject'], 'the live view and the holder-record pointer register together')
   const failing = await captureWarnings(() => apply({ commands, inject: fakeInjector({ sessionProjections: { register: () => { throw new Error('incompatible stateVersion') }, snapshot } }).inject }))
   assert.match(failing.warnings.join('\n'), /the live projection is off: incompatible stateVersion/)
   assert.equal(typeof apply({ commands }), 'function', 'no inject: the command still registers')

@@ -9,14 +9,16 @@
  * d-ui-look-not-operate); 展开 and navigation are its only clicks.
  * 上次看之后 runs on seen.ts: the arrival reads the last departure from
  * the browser's local storage, keyed by the graph's absolute nodes
- * directory.
+ * directory. The main chat's result (MainChat.tsx) is computed once here
+ * and handed to every view through its context; it also decides the
+ * 「现在」line's subject (mainHere) and whose session's awaiting the needs
+ * read (plain-ui 1.3 §4.9).
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactElement } from 'react'
-import { mainAgentActive } from '../../../src/graph/main-agent.ts'
 import { changesSince, modulesView, needsOf, planOf } from '../../../src/graph/plain-view.ts'
 import type { LoadedGraph } from '../../../src/graph/parse.ts'
 import type { AwaitingEntry } from '../../../src/graph/live.ts'
-import type { SessionsClient } from '../dsh.ts'
+import type { SessionsClient, UiWorkspace, WorkspaceFilesRemote } from '../dsh.ts'
 import { useAgents, useNow } from './agents.ts'
 import { boards, checkedBoardState, type Board, type BoardState } from './boards.ts'
 import { ChangesPage } from './Changes.tsx'
@@ -24,6 +26,7 @@ import { NowContext, PanelBoundary, ServicesContext, type PanelServices } from '
 import { Decisions } from './Decisions.tsx'
 import { GraphCanvas } from './GraphCanvas.tsx'
 import { Home } from './Home.tsx'
+import { MainChatContext, useMainAgent } from './MainChat.tsx'
 import { NeedsPage } from './NeedsYou.tsx'
 import { LiveSection } from './Live.tsx'
 import { ModulesPage } from './Modules.tsx'
@@ -110,10 +113,12 @@ function BoardLine({ board, sessionId, onOpen }: { readonly board: Board, readon
 export interface GraphPanelProps {
   readonly source: GraphSource
   readonly sessions: SessionsClient
+  readonly files: WorkspaceFilesRemote
+  readonly workspace: UiWorkspace
   readonly sessionId: string
 }
 
-export function GraphPanel({ source, sessions, sessionId }: GraphPanelProps): ReactElement {
+export function GraphPanel({ source, sessions, files, workspace, sessionId }: GraphPanelProps): ReactElement {
   const snapshot = useSyncExternalStore(source.subscribe, source.getSnapshot)
   const agents = useAgents(sessions, sessionId)
   const now = useNow(agents.some(agent => agent.running))
@@ -134,6 +139,8 @@ export function GraphPanel({ source, sessions, sessionId }: GraphPanelProps): Re
   const body = useRef<HTMLDivElement>(null)
   /** Whether the body intersects the viewport, as the observer last said. */
   const shown = useRef(false)
+  /** The body's visibility as state: it bounds the main chat's read window. */
+  const [bodyVisible, setBodyVisible] = useState(false)
   const open = useCallback((id: string) => {
     if (depth.current === 0) opener.current = document.activeElement instanceof HTMLElement || document.activeElement instanceof SVGElement ? document.activeElement : null
     setTrail(current => current.at(-1) === id ? current : [...current, id])
@@ -145,8 +152,18 @@ export function GraphPanel({ source, sessions, sessionId }: GraphPanelProps): Re
     () => sessions.list.getSnapshot().projectionsBySession,
   )
   const values = projections[sessionId]?.values
-  const mainHere = mainAgentActive(values)
-  const awaiting: readonly AwaitingEntry[] = values?.graphLive?.awaiting ?? []
+  const main = useMainAgent(sessionId, { sessions, files, openSession: workspace.openSession }, bodyVisible)
+  // The main agent's awaiting lives in its session's graphLive; when it is another session, ask the host once for its values.
+  const holderId = main.chat?.kind === 'there' ? main.chat.sessionId : undefined
+  const holderAsked = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    if (holderId === undefined || projections[holderId] !== undefined || holderAsked.current === holderId) return
+    holderAsked.current = holderId
+    void sessions.refreshProjections(holderId).catch(() => {})
+  }, [holderId, projections, sessions])
+  const holderValues = holderId === undefined ? undefined : projections[holderId]?.values
+  const mainHere = main.chat?.kind === 'here' === true
+  const awaiting: readonly AwaitingEntry[] = holderId !== undefined ? holderValues?.graphLive?.awaiting ?? [] : values?.graphLive?.awaiting ?? []
   const graph: LoadedGraph | undefined = snapshot.status === 'ready' ? snapshot.graph : undefined
 
   // The needs list and the view models, from one graph; empty stand-ins while the graph reads.
@@ -165,10 +182,12 @@ export function GraphPanel({ source, sessions, sessionId }: GraphPanelProps): Re
   }, [source])
   const seenKey = graphDirAbs === undefined ? undefined : seenKeyOf(`${graphDirAbs}/nodes`)
 
-  // 上次看之后 (seen.ts): the panel body's visibility decides arrivals and departures.
+  // The panel body's visibility decides both the seen window (seen.ts) and the main chat's read timing.
   useEffect(() => {
-    if (seenKey === undefined) return
-    const update = (event: 'visible' | 'hidden'): void => {
+    const apply = (intersecting: boolean): void => {
+      const event = intersecting && document.visibilityState === 'visible' ? 'visible' : 'hidden'
+      setBodyVisible(event === 'visible')
+      if (seenKey === undefined) return
       const at = Date.now()
       setSeen(current => {
         const { state, departure } = nextSeen(current, event, at, seenRecordOf(window.localStorage, seenKey))
@@ -180,18 +199,18 @@ export function GraphPanel({ source, sessions, sessionId }: GraphPanelProps): Re
       const intersecting = entries[0]?.isIntersecting === true
       if (intersecting === shown.current) return
       shown.current = intersecting
-      update(intersecting && document.visibilityState === 'visible' ? 'visible' : 'hidden')
+      apply(intersecting)
     })
     if (body.current !== null) observer.observe(body.current)
     const onVisibility = (): void => {
-      if (document.visibilityState === 'visible') update(shown.current ? 'visible' : 'hidden')
-      else update('hidden')
+      if (document.visibilityState === 'visible') apply(shown.current)
+      else apply(false)
     }
     document.addEventListener('visibilitychange', onVisibility)
     return () => {
       observer.disconnect()
       document.removeEventListener('visibilitychange', onVisibility)
-      update('hidden')
+      apply(false)
     }
   }, [seenKey])
 
@@ -253,8 +272,9 @@ export function GraphPanel({ source, sessions, sessionId }: GraphPanelProps): Re
             : <GraphCanvas graph={graph} selected={selected} onPick={open} agents={agents} />
 
   return (
-    <ServicesContext.Provider value={services}>
-      <NowContext.Provider value={now}>
+    <MainChatContext.Provider value={main}>
+      <ServicesContext.Provider value={services}>
+        <NowContext.Provider value={now}>
         <div className="glmg">
           <style>{PANEL_CSS}</style>
           <div className="glmg-head">
@@ -314,8 +334,9 @@ export function GraphPanel({ source, sessions, sessionId }: GraphPanelProps): Re
             <button type="button" className="glmg-more" onClick={() => { setPage('graph') }}>整张图 ›</button>
           </div>
         </div>
-      </NowContext.Provider>
-    </ServicesContext.Provider>
+        </NowContext.Provider>
+      </ServicesContext.Provider>
+    </MainChatContext.Provider>
   )
 }
 

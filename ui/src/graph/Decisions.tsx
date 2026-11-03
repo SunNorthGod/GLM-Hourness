@@ -12,6 +12,7 @@ import { useState } from 'react'
 import type { LoadedGraph } from '../../../src/graph/parse.ts'
 import type { OpenItems } from '../../../src/graph/projection.ts'
 import { Options, Part, When, asButton, useServices } from './common.tsx'
+import { MainChatLine } from './MainChat.tsx'
 import { DECIDED_BY_LABELS, decidedBy } from './model.ts'
 
 function Pending({ graph, items }: { readonly graph: LoadedGraph, readonly items: OpenItems }): ReactElement {
@@ -65,6 +66,7 @@ function Recent({ graph, items }: { readonly graph: LoadedGraph, readonly items:
                       {record.reason === undefined ? null : <div className="glmg-text">理由：{record.reason}</div>}
                       {record.relay === undefined ? null : <blockquote className="glmg-quote">你说：{record.relay}</blockquote>}
                       <Options node={node} />
+                      <MainChatLine />
                       <div className="glmg-actions"><button type="button" className="glmg-more" onClick={() => { open(record.id) }}>看这张卡的全部内容</button></div>
                     </div>
                   )

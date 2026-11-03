@@ -19,8 +19,10 @@ import { installWishPill } from './wish/WishPill.tsx'
 /**
  * Client services the tab, the bar and the entry use; nested Remote
  * namespaces are declared with their root (docs/DEVELOPMENT.md §5.7).
+ * `uiWorkspace` (dsh-client-ui-workspace) opens the main agent's
+ * conversation from the panel's jump lines (plain-ui 1.3 §4.9).
  */
-export const inject = ['slots', 'sidebarRightTabs', 'remote', 'remote.commands', 'remote.workspaceFiles', 'sessions']
+export const inject = ['slots', 'sidebarRightTabs', 'remote', 'remote.commands', 'remote.workspaceFiles', 'sessions', 'uiWorkspace']
 export function apply(ctx: ClientContext): void {
   installGraphTab(ctx)
   installFlowBar(ctx)

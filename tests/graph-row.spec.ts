@@ -12,6 +12,7 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { openEngine } from '../src/graph/engine.ts'
 import { apply } from '../src/graph/index.ts'
+import { holderFileOf, holderHome } from '../src/graph/main-agent-holder.ts'
 import { apply as applyPanel } from '../src/graph/panel-row.ts'
 import type { ToolFinalResult } from '../src/shared/dsh-min.ts'
 import { GRAPH_SERVICE, graphFocus, graphService } from '../src/graph/service.ts'
@@ -173,7 +174,7 @@ test('graph-panel health is an activation status: the commands, the live project
   }
   const full = fakeRuntime({ natives: [] })
   applyPanel({ ...full.ctx, commands, inject: fakeInjector(services).inject })
-  assert.deepEqual(entry(full, 'graph-panel'), { row: 'graph-panel', status: 'active', reason: '命令 /graph-run 已注册；现场投影 graphLive 已注册；能停子 agent' })
+  assert.deepEqual(entry(full, 'graph-panel'), { row: 'graph-panel', status: 'active', reason: '命令 /graph-run 已注册；现场投影 graphLive 与位置投影 hournessProject 已注册；能停子 agent' })
   const noInject = fakeRuntime({ natives: [] })
   applyPanel({ ...noInject.ctx, commands })
   assert.deepEqual(entry(noInject, 'graph-panel'), { row: 'graph-panel', status: 'degraded', reason: '命令 /graph-run 已注册；宿主没有 inject，现场投影未注册；宿主没有 inject，停不了子 agent' })
@@ -186,7 +187,7 @@ test('graph-panel health is an activation status: the commands, the live project
   host.provide('subagents', services.subagents)
   assert.equal(entry(late, 'graph-panel').status, 'active')
   host.remove('subagents')
-  assert.deepEqual(entry(late, 'graph-panel'), { row: 'graph-panel', status: 'degraded', reason: '命令 /graph-run 已注册；现场投影 graphLive 已注册；停子 agent 等 agents、subagents 服务' })
+  assert.deepEqual(entry(late, 'graph-panel'), { row: 'graph-panel', status: 'degraded', reason: '命令 /graph-run 已注册；现场投影 graphLive 与位置投影 hournessProject 已注册；停子 agent 等 agents、subagents 服务' })
   const noCommand = fakeRuntime({ natives: [] })
   await captureWarnings(() => { applyPanel({ ...noCommand.ctx, commands: { register: () => { throw new Error('taken') } } }) })
   assert.equal(entry(noCommand, 'graph-panel').status, 'inactive')
@@ -197,4 +198,31 @@ test('graph-panel health is an activation status: the commands, the live project
   await captureWarnings(() => { applyPanel({ ...second.ctx, commands: { register: definition => { if (definition.name === 'graph-run') throw new Error('taken'); return () => { withdrawn.push(definition.name) } } } }) })
   assert.deepEqual(withdrawn, [])
   assert.match(entry(second, 'graph-panel').reason, /^\/graph-run 注册失败：taken；/)
+})
+
+test('the project projection names the holder record: the path through the graph row service, or the reason', () => {
+  const commands = { register: () => () => {} }
+  const definitions: Array<{ readonly key: string, readonly init: (header: unknown) => unknown }> = []
+  const services = {
+    sessionProjections: { register: (definition: never) => { definitions.push(definition); return () => {} }, snapshot: () => ({ values: {} }) },
+    agents: { get: () => undefined },
+    subagents: { interrupt: () => {} },
+  }
+  const runtime = fakeRuntime({ natives: [] })
+  // The inject callback's context carries the parent's `get` (fake-rc3): the projection reads the graph row's service through it.
+  const store = serviceStore()
+  store.provide(GRAPH_SERVICE, { dirFor: (cwd: string | undefined) => cwd === undefined ? undefined : join(cwd, 'docs', 'graph'), isGraphTool: () => false })
+  applyPanel({ ...runtime.ctx, commands, inject: fakeInjector(services, { get: (key: string) => store.get(key) }).inject })
+  const project = definitions.find(definition => definition.key === 'hournessProject')
+  assert.ok(project !== undefined, 'the project projection is registered next to the live one')
+  const workspace = join(tmpdir(), 'panel-ws')
+  const view = project.init({ cwd: workspace }) as { readonly holderFile: string | null, readonly reason?: string }
+  assert.equal(view.holderFile, holderFileOf(holderHome(runtime.ctx), join(workspace, 'docs', 'graph')))
+  assert.equal(view.reason, undefined)
+  // No graph service (or no graph directory): no path, and the reason says why.
+  const bare = fakeRuntime({ natives: [] })
+  applyPanel({ ...bare.ctx, commands, inject: fakeInjector(services, { get: () => undefined }).inject })
+  const project2 = definitions.slice(2).find(definition => definition.key === 'hournessProject')!
+  assert.deepEqual(project2.init({ cwd: workspace }), { holderFile: null, reason: '图行服务不在，或这个工作区没有图目录' })
+  assert.deepEqual(project2.init(null), { holderFile: null, reason: '图行服务不在，或这个工作区没有图目录' })
 })
