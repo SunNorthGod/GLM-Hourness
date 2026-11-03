@@ -1,12 +1,15 @@
 {
   "name": "dsh-glm-zcode",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "ZCode-compatible GLM channel for DeepSeek Harness: native account login, identity headers, request signing, prompt and tool surface mirroring ZCode 3.17.1, lazy tool loading and compaction.",
   "type": "module",
   "license": "PolyForm-Noncommercial-1.0.0",
   "keywords": [
     "dsh",
+    "dsh-plugin",
     "deepseek-harness",
+    "deepseek",
+    "cordis",
     "glm",
     "zcode",
     "llm",
