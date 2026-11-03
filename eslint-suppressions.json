@@ -193,13 +193,13 @@
   },
   "tests/memory-audit.spec.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 6
+      "count": 2
     },
     "@typescript-eslint/no-unsafe-argument": {
       "count": 1
     },
     "@typescript-eslint/require-await": {
-      "count": 7
+      "count": 4
     }
   },
   "tests/reminder-wiring.spec.ts": {
@@ -209,10 +209,7 @@
   },
   "tests/s5.spec.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 14
-    },
-    "@typescript-eslint/require-await": {
-      "count": 3
+      "count": 2
     }
   },
   "tests/todo-reminder.spec.ts": {

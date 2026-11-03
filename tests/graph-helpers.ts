@@ -57,12 +57,12 @@ export function fixtureTest<F extends { readonly dir: string }>(make: () => Prom
 }
 
 /** Run `body` with console.warn captured. */
-export async function captureWarnings<T>(body: () => T): Promise<{ result: Awaited<T>, warnings: string[] }> {
+export async function captureWarnings<T>(body: (live: string[]) => T): Promise<{ result: Awaited<T>, warnings: string[] }> {
   const warnings: string[] = []
   const original = console.warn
   console.warn = (...args: unknown[]) => { warnings.push(args.map(String).join(' ')) }
   try {
-    return { result: await body(), warnings }
+    return { result: await body(warnings), warnings }
   }
   finally {
     console.warn = original

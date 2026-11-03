@@ -7,19 +7,23 @@
  * opens over the current view, on a stage that does not scroll with the
  * list, so it shows wherever the list was scrolled to. Nodes opened from
  * the detail stack up: 返回 goes back one, Escape closes the detail, and
- * focus returns to what opened it. Each view opens at its top.
+ * focus returns to what opened it. Each view opens at its top. The
+ * registered boards (./boards.ts) join the stage as pages of their own,
+ * listed on the temporary footer until plain-ui builds the real one
+ * (M5 design §8.2); a board's error is bounded to its own page.
  */
 import { Button, SegmentedTabs, TextShimmer } from '@deepseek-ai/dsh-client-ui-primitives'
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactElement } from 'react'
 import type { CommandsRemote, SessionsClient } from '../dsh.ts'
 import { useAgents, useNow } from './agents.ts'
-import { NowContext, ServicesContext, type PanelServices } from './common.tsx'
+import { boards, type Board, type BoardState } from './boards.ts'
+import { NowContext, PanelBoundary, ServicesContext, type PanelServices } from './common.tsx'
 import { Decisions } from './Decisions.tsx'
 import { Doing } from './Doing.tsx'
 import { GraphCanvas } from './GraphCanvas.tsx'
 import { headlineGoals } from './model.ts'
 import { NeedsYou } from './NeedsYou.tsx'
-import { NodeDetail } from './NodeDetail.tsx'
+import { Frame, NodeDetail } from './NodeDetail.tsx'
 import { GRAPH_DIR, type GraphSource } from './source.ts'
 import { PANEL_CSS } from './styles.ts'
 
@@ -70,6 +74,48 @@ export interface GraphPanelProps {
   readonly sessionId: string
 }
 
+// --- The registered boards (plain-ui 0.7 §4.7, M5 design §8.2) --------------
+
+const BOARD_UNAVAILABLE: BoardState = { available: false, homeLine: null, guideLine: null, peakApplies: false }
+const boardWarned = new WeakSet<Board>()
+
+/** A board whose subscribe or snapshot throws is treated as not available, warned about once; the others go on. */
+const warnBoardOnce = (board: Board, error: unknown): void => {
+  if (boardWarned.has(board)) return
+  boardWarned.add(board)
+  console.warn(`glm-hourness: board ${board.id} is not available:`, error)
+}
+
+/** The state of one registered board for one session (the hook lives here until plain-ui owns the table). */
+function useBoard(board: Board, sessionId: string): BoardState {
+  const subscribe = useCallback((listener: () => void) => {
+    try {
+      return board.subscribe(sessionId, listener)
+    }
+    catch (error) {
+      warnBoardOnce(board, error)
+      return () => {}
+    }
+  }, [board, sessionId])
+  const getSnapshot = useCallback(() => {
+    try {
+      return board.snapshot(sessionId)
+    }
+    catch (error) {
+      warnBoardOnce(board, error)
+      return BOARD_UNAVAILABLE
+    }
+  }, [board, sessionId])
+  return useSyncExternalStore(subscribe, getSnapshot)
+}
+
+/** The footer's entry of one board; hooks run here, not in the footer's loop. */
+function BoardLine({ board, sessionId, onOpen }: { readonly board: Board, readonly sessionId: string, readonly onOpen: () => void }): ReactElement | null {
+  const state = useBoard(board, sessionId)
+  if (!state.available) return null
+  return <button type="button" className="glmg-more" onClick={onOpen}>{board.label} ›</button>
+}
+
 export function GraphPanel({ source, commands, sessions, sessionId }: GraphPanelProps): ReactElement {
   const snapshot = useSyncExternalStore(source.subscribe, source.getSnapshot)
   const agents = useAgents(sessions, sessionId)
@@ -77,6 +123,8 @@ export function GraphPanel({ source, commands, sessions, sessionId }: GraphPanel
   const [view, setView] = useState<ViewName | undefined>(undefined)
   /** The opened nodes, the shown one last. */
   const [trail, setTrail] = useState<readonly string[]>([])
+  /** The board whose page is on the second layer, its id; undefined shows the list. */
+  const [boardId, setBoardId] = useState<string | undefined>(undefined)
   const selected = trail.at(-1)
   const depth = useRef(0)
   depth.current = trail.length
@@ -101,16 +149,17 @@ export function GraphPanel({ source, commands, sessions, sessionId }: GraphPanel
     setTrail(current => current.length === 0 ? current : [])
     if (body.current !== null) body.current.scrollTop = 0
   }, [shown])
-  // While the detail is open the list behind it takes no focus; on close the opener gets it back.
-  const detailOpen = selected !== undefined
+  // While the detail or a board page is open the list behind it takes no focus; on close the opener gets it back.
+  const openBoard = boardId === undefined ? undefined : boards().find(board => board.id === boardId)
+  const covered = selected !== undefined || openBoard !== undefined
   useEffect(() => {
     const element = body.current
-    if (element !== null) element.inert = detailOpen
-    if (detailOpen) return
+    if (element !== null) element.inert = covered
+    if (covered) return
     const target = opener.current
     opener.current = null
     if (target?.isConnected === true) target.focus()
-  }, [detailOpen])
+  }, [covered])
 
   if (snapshot.status !== 'ready') {
     return (
@@ -175,7 +224,23 @@ export function GraphPanel({ source, commands, sessions, sessionId }: GraphPanel
           {selected === undefined
             ? null
             : <NodeDetail key={selected} graph={graph} id={selected} agents={agents} onBack={() => { setTrail(current => current.slice(0, -1)) }} onClose={() => { setTrail([]) }} />}
+          {openBoard === undefined
+            ? null
+            : (
+                <Frame onBack={() => { setBoardId(undefined) }} onClose={() => { setBoardId(undefined) }}>
+                  <PanelBoundary key={openBoard.id} label={`${openBoard.label}页`}>
+                    <openBoard.Page sessionId={sessionId} />
+                  </PanelBoundary>
+                </Frame>
+              )}
         </div>
+        {boards().length === 0
+          ? null
+          : (
+              <div className="glmg-foot">
+                {boards().map(board => <BoardLine key={board.id} board={board} sessionId={sessionId} onOpen={() => { setBoardId(board.id) }} />)}
+              </div>
+            )}
       </div>
       </NowContext.Provider>
     </ServicesContext.Provider>

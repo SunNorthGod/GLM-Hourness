@@ -1031,35 +1031,56 @@ LLM 爱造轮子，因为写脚本只花当前这一轮的力气，装工具却�
 
 ## 8. 记忆与学习
 
-### 8.1 现状
+### 8.1 现状〔M5 步骤 M1、G1 已实现，L2、L3；桌面版第一批验收未做〕
 
-约 800 次 GLM 请求只存进 1 条记忆，且落在被废弃的目录（`~/.dsh/profiles/desktop/.llm/memory.json`）〔实读〕；这条记忆已于 2026-10-28 复制进仓库 `.llm/memory.json`（`DESIGN.md` §2.4）。原因：只能等模型主动查询；工具检索把记忆工具收进了延迟目录；会话开局召回未实现；「git 能查到的不存」的判据过严，句子里带斜杠或文件名就被拒（例：「coding-plan/start-plan 的签名规则不同」存不进去）。
+记忆行（`src/memory/`）按会话工作：项目目录跟会话的工作区，关于人本人的记忆在用户级目录（`d-memory-scope`），两处都是只追加的流水 `memory.jsonl`（`DESIGN.md` §2.4）；旧的 `memory.json` 在第一次写入时迁移（改名保留为 `memory.json.migrated-<毫秒>`，读不出的旧文件不被覆盖，读与写都报 `io`）。行配置 `home` 不再使用，行健康说明这一点。设计与验收在 `.agents/tasks/m5/design.md`（项目图节点 `m5`、`lessons`）。
+
+原先的问题与现在的做法：约 800 次 GLM 请求只存进 1 条记忆，且落在被废弃的目录——存放跟会话走；只能等模型主动查询——会话开局与压缩之后有索引（§8.3）；工具检索把记忆工具收进延迟目录——记忆工具常驻；「git 能查到的不存」的判据过严，句子里带斜杠或文件名就被拒（「coding-plan/start-plan 的签名规则不同」存不进去）——判据取消，改为类型、Why、出处与写入前查重（§8.4）。
 
 ### 8.2 两类记忆
 
 | 类 | 衰减 | 撤销 |
 | --- | --- | --- |
-| 事实 | 14 天半衰期，每次确认复审加成（上限 1.5 倍）〔已实现〕 | 可被新事实覆盖 |
-| 偏好与规范 | 不衰减：这是用户定下的，不因一段时间没被想起而淡化 | 只能由用户撤销 |
+| 事实（`project`、`reference`） | 14 天半衰期，每次被召回算一次复审（加成上限 1.5 倍）〔已实现〕；强度低于 0.1 的不进索引，`memory_query` 仍找得到 | 可被新事实覆盖；agent 可以直接删 |
+| 偏好（`user`、`feedback`） | 不衰减：这是用户定下的，不因一段时间没被想起而淡化 | 只能由用户撤销：人在输入框打 `/memory forget`；或对主 Agent 说，主 Agent 带人的原话调 `memory_forget`。同一会话里 agent 删自己刚写的误记除外 |
 
-存放〔定案 2026-10-28〕：关于人的偏好放用户级目录 `$DSH_HOME/glm-hourness/`，项目事实与项目规范放工作区 `.llm/`（`DESIGN.md` §2.4）。偏好类记忆尚未实现，现有记忆工具只写工作区。
+偏好一定有凭据：人的原话（`relay`），或人亲手打的命令。没有凭据的偏好存不进去（`memory_store` 得 `ask_first`），读流水时也算坏行。原话要到习惯先问再记（步骤 H1）才对照人发的消息核对；在那之前 `llm` 写的每条偏好记 `relayChecked: false`，`/memory show` 标「原话未核对」。
+
+存放〔定案 2026-10-28；`d-memory-scope` 2026-10-30〕：关于人本人的记忆（范围 `all`，只有 `user`、`feedback` 两类）放用户级目录 `$DSH_HOME/glm-hourness/memory/memory.jsonl`；项目事实与项目规范（范围 `project`）放会话所在项目的 `.llm/memory.jsonl`，项目按会话头的工作目录定（工作树回到主检出）。第一次往一个项目写之前，`.llm/` 先加进该项目的 `.git/info/exclude`，加不进去时这次写入得 `io`、不建 `.llm/`。同名条目：项目的遮住用户级的。
 
 ### 8.3 召回与工具
 
-- 会话开局把强度最高的若干条放进一节（会话内不变，不影响逐步缓存）。
-- 记忆工具常驻，不进延迟目录。
+- 会话开局的索引：根 agent 的第一步（存储里有条目时）和每次压缩之后的第一步，在对话末尾加一条来源为 `glm-hourness-memory` 的 `<system-reminder>`，偏好在前，事实按强度，淡忘的事实不列，至多 200 行与 25,000 字符。它是对话里的消息，不是系统提示词的一节，所以系统提示词逐步不变；可见历史里已经有它就不再加，开局时存储为空的会话在第一次写入之后的下一步得到一次。
+- 记忆工具 `memory_store`、`memory_query`、`memory_forget` 常驻（不进延迟目录）；只读的 `learning_signals`（§8.5）是主 Agent 的延迟工具，不并入记忆工具名单，所以 GLM 的 Memory 一节出现的条件（三个记忆工具都在）不变。`memory_query` 按关键词（命中数乘强度）或按名字取；返回的事实各算一次复审（项目流水里一条 `review` 记录），偏好不算。
+- 子 agent（委派出去的会话）不拿记忆工具和 `learning_signals`、不收索引与学习摘要提醒：行在子 agent 的 `agent/created` 上装一个不带 `prepend` 的 `system-prompt/assemble` 监听器去掉这四个工具，方言的 `prepend` 监听器因此看不到它们，不给子 agent 加 `# Memory` 一节；工具体再按会话头的 `origin` 拒绝按名直接调用（`role`，正路是交回结构）。
+- `/memory`（输入框，身份为人）：`show` 列两处的条数与最近 10 条，`forget <名字> [project|all]`，`restore <名字> [project|all]`。
+- 服务 `glmHournessMemory`（契约 `src/shared/memory-service.ts`）：`depth(sessionId)` 给 GLM 方言读常设的汇报细度：方言在会话的 agent 创建时问一次，那一次同步读用户级流水，之后同一会话不变（§8.5）；另有 `stats`、`hygiene` 给周报与巡检（`src/memory/service.ts`）。会话投影 `hournessMemory` 把两份流水的路径交给面板。
+- 行不注册任何 `tools/pre-execute` 监听器：记忆是建议，不拦任何调用（`d-code-rules-enforce`：本行没有规则）。
 
 ### 8.4 写入
 
-- 取消基于路径与文件名的拒绝判据。写入时要求标明类型与 Why；重复由写入前查询与运维巡检处理。
+- 取消基于路径与文件名的拒绝判据（`defaultKnowableFromGit`、`shouldStore`、行配置 `knowableFromGit` 已删）。写入时要求标明类型，`feedback`、`project` 要有 `Why:` 一行，`project` 要有一个能认出的出处（图里的节点 id、项目里存在的文件、提交号、地址）；`feedback` 必须写明范围；`user`、`feedback` 要有人的原话；像密钥的文本（令牌形状，不是路径或长标识符）整条拒收（`secret_like`）；与同类型的已有条目相似（名字与说明的词重合 0.6 以上，或出处相同）要带 `confirmNew` 才存。同名条目是更新，`type` 不能变。
+- 并发：每份流水旁一把锁文件（`src/data/lock.ts`），锁内重读、判写、追加，写不到锁得 `busy`。
 - 分工：git 管「是什么」，记忆管「为什么」与偏好。
-
 ### 8.5 学习流水线
 
-- 信号：五键、拒绝理由、汇报细度拨档、对话中的纠正，以及最强的一种：人亲手修改了 LLM 的产出，改动本身就是偏好。
-- 流程：发现纠正 → 起草规则（写明 Why 与 How to apply）→ 人确认 → 注入 → 观察同类纠正的重复率。
-- 汇报细度闭环：现有的三档滑杆（简洁 / 适中 / 详细，LLM 每次自选，常设偏好可配）〔已实现〕接上「讲细点 / 说重点」的反馈，拨档并写入画像，下次会话自动带上。
+- 信号〔已实现，M5 步骤 G1〕：harness 从项目图的历史和记忆流水里算出人对 agent 的纠正，按键分组（`src/memory/signals.ts`，纯函数，同样的输入得到同样的输出）：人改了 agent 写的字段 `edit:<节点类型>.<字段>`（人，或 `llm` 带 `relay` 转述人的话，改的字段上一次是 `llm` 或 `harness` 不带 `relay` 写的），人否决提议 `reject:<类型>`，人在对话里对方案的否掉与补充 `chat:reject`、`chat:add`（批注不带 `relay`，认开头的固定说法，`src/shared/answer-marks.ts`），人把做完的节点重开 `reopen:<类型>`，汇报细度从一档拨到另一档 `depth:up`、`depth:down`。开头是「人在对话里同意」的历史项是人对提议说可以，不算纠正。门禁以外的提交改了刚合入的文件这一类要等 M7 写的任务尾注，还没有。
+- 流程：学习摘要 → 主 Agent 为每一组选落点 → 观察是否复发。`learning_signals`（只读，主 Agent 的延迟工具，参数 `since`、`minCount`，默认近 28 天、至少 2 次）列出各组：键、一句说明、次数、至多 3 个例子、已落点数 `learned`、落点之后又出现的次数 `recurrences`、最近 4 周每周的次数 `weekly`（只看走向）；图读不出时 `graph: "unavailable"`，哪份流水读不出写进 `notes`，不报错。落点是带这个键的 `learnedFrom` 的记忆条目或经验（人删掉的、退役的不算），或节点上一条 `学自：<键>` 的批注（规则提议与候选标定题这样记）；落点的时刻取第一次写下这个键的那条记录。服务 `glmHournessMemory` 的 `learningDigest(session, {since?, until?, minCount?})` 给 M7 的周报同一份结构。
+- 学习摘要提醒〔已实现，M5 步骤 G1〕：给 `isMainAgentFor` 判为主 Agent 的步一条来源为 `glm-hourness-learning` 的提醒，指向 `learning_signals`；先看项目记忆流水里最近一条 `learn-notified`，满 7 天或没有才读图计算；至少有一个组没有落点或落点之后又出现，且这些组的键不是上一条提醒列的那些（摘要没变就不再发），才在项目的记忆流水里记一条 `learn-notified`（`data.keys` 是组键）并发出；记不下就不发。算出来不合条件的和写失败的，本进程一小时内不再算。提醒是建议，不拦任何调用，不在图上新增待决。
+- 汇报细度闭环〔已实现，M5 步骤 R1〕：三档滑杆（简洁 / 适中 / 详细，LLM 每次自选）的常设档，是人最近一次说定的。人的话表明长短要一直这样时，主 Agent 调 `memory_store`（`name: reporting-depth`、`type: user`、`value` 是三档之一、`relay` 写人的原话）；人只是这一次嫌长或嫌短，主 Agent 只改这一次的讲法，不写。GLM 方言的 `glm:persona` 一节在会话的 agent 创建时读 `glmHournessMemory` 的 `depth` 一次，没有时用配置的 `persona`：写入的那个会话里系统提示词不变，下一个会话带上新的档。人说「汇报细度恢复默认」，主 Agent 带原话调 `memory_forget reporting-depth`，或人打 `/memory forget reporting-depth`，下一个会话回到配置。服务不在、形状不对、读不出时用配置的档，并在行健康里说明。
 - 子 agent 各配独立记忆目录，避免互相污染。
+
+### 8.6 经验板〔M5 步骤 L1、L2 已实现，验到 L2、L3 层；桌面版第一批验收未做；行默认禁用〕
+
+经验板（`src/lessons/`，行 `glm-hourness/lessons`）记「在某种情况下踩过的坑与解法」。一条经验写明情况（文件、工具、命令、报错片段）、坑、解法、证据、最近一次确认；都属于项目，存在项目的 `.llm/lessons.jsonl`，没有用户级经验（`d-memory-scope`）。设计与验收在 `.agents/tasks/m5/design.md` §4（项目图节点 `lessons`）。经验是建议，不是规则：行不注册任何 `tools/pre-execute` 监听器，不拦任何调用（`d-code-rules-enforce`：本行没有规则）；它监听工具调用的唯一处是 `tools/post-execute`，只往失败的结果里加提醒，不改调用、不拒绝。
+
+- 来源：worker 交回的候选经验，经服务 `glmHournessLessons` 的 `propose` 收下（契约 `src/lessons/service.ts`）。签名与某条生效经验相同的并入它，与人删过的相同的丢弃，其余成为候选；字段不合格或像密钥的答 `rejected`，什么都不写；服务自己写不成的答 `{error}`，派发一侧走退路批注 `[候选经验] …`，经验行在主 Agent 的下一步（距上次检查超过一分钟且图的修订变了；`propose` 失败之后不等一分钟）把图上的批注导入成候选，每条批注只试一次，被拒的也记一条 `import`。根 agent 自己遇到的坑用 `lessons_merge new` 直接写。
+- 工具：`lessons_query`（所有 agent，worker 在内；GLM 路由上常驻）按 `text`、`file`、`command`、`error` 查生效经验，其后至多两条候选，标 `status: "candidate"` 与 `unreviewed`；`lessons_merge`（根 agent；GLM 路由上延迟，候选提醒里写着它的名字）九种动作：`new`（从候选或自己写）、`into`、`revise`、`confirm`、`retire`、`drop`、`reopen`、`delete`、`restore`。`delete`、`restore` 与恢复人删掉的东西是人的决定：身份为人（输入框的 `/lessons`），或 `llm` 带人的原话（`relay`），没带得 `user_only`；删除是墓碑加快照，不抹掉。子 agent 调 `lessons_merge` 得 `role`，正路是交回结构；`lessons_merge` 的工具面过滤和记忆行的同一做法（`agent/created` 上的不带 `prepend` 的 `system-prompt/assemble` 监听器）。
+- 提醒（只给 `isMainAgentFor` 判为主 Agent 的步；`src/data/main-agent.ts` 是唯一的判断，设计行不在时所有根 agent 都算，原因写进行健康）：候选提醒（来源 `glm-hourness-lessons-pending`）在开着的候选集与可见历史里最近一条这种提醒列的不同时才来，压缩之后来一次；开了 30 天的候选在这一步记为过期，`lessons_merge reopen` 恢复，年龄从恢复算起。复发提醒（来源 `glm-hourness-lessons-recur`）：一条经验 28 天内在 3 个会话里被命中或并入，提醒主 Agent 可以向人提规则，一步一条、每个项目每周至多两条，先记 `recur-notified` 再提醒。
+- `/lessons show | delete <L-编号> | restore <L-编号> | drop <C-编号>`（输入框，身份为人）；命令行 `npm run -s lessons -- [--cwd 文件夹] show | apply [--file 文件]`（`DEVELOPMENT.md` §13），`apply` 按 `lessons_merge` 的规则以 `llm` 身份写，同签名的跳过，所以同一个文件可以再导一次；会话投影 `hournessLessons` 把项目流水的路径交给将来的经验页。
+- 服务给 M7 的另两个成员：`stats`（期间的新增、并入、丢弃、过期、人删、人恢复，开着的候选，每条经验碰到的会话数，删后复发）与 `hygiene`（读不出的行、180 天没确认的经验、超过 7 天的候选、相似的经验、被拒的批注）。
+- 失败匹配（`src/lessons/failure.ts`，`tools/post-execute` 上的 host 级监听器，所有 agent 的调用都看得到，子 agent 的也是）：shell 工具（原生名 `pwsh` 或 `bash`，GLM 路由上的 `Bash` 就是 `pwsh`）退出码不是 0 或超时，或任何工具的结果是错误（被 `tools/pre-execute` 拒绝的调用也是），而输出里有某条生效经验的报错片段（规整后的子串，片段至少 8 个字符，颜色码去掉后也要够）时，这次调用的结果多带一条提醒（来源 `glm-hourness-lessons`，至多 2 条经验，最长的片段在前），下一次请求里它紧跟在这次工具结果之后。同一会话里同一条经验不再提醒（可见历史里这种提醒列过的，加上本进程已经推给这个会话的）；成功的调用从不触发；`run_code` 的传输层子调用与没有 agent 的调用不看。每条推出去的经验追加一条 `hit`（会话、agent、调用号、原生工具名），不等写完；写失败只告警一次并进行健康。监听器自己出错时结果原样不动，告警一次，行健康写原因。任何调用都不被拦，下游监听器的决定与上下文原样保留。
+- 还没做：派发简报里带经验和交回处理调 `propose`（M7 的派发简报与交回，E1b）、周报里的经验一节（E8）、经验页（步骤 P1）、第一批经验（步骤 S1）；这些等邻居或后面的步骤，经验板自己的部分不受影响。
 
 ## 9. 规范体系
 

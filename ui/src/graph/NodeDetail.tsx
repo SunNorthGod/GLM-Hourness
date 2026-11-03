@@ -86,10 +86,10 @@ interface DetailProps {
 
 /**
  * The detail's frame: 返回 on top, Escape closes, and focus moves to 返回
- * when a node opens (the frame mounts once per node), so the keyboard
- * starts inside the detail.
+ * when it opens (the frame mounts once per page), so the keyboard starts
+ * inside it. The board pages of the panel open in the same frame.
  */
-function Frame({ onBack, onClose, children }: Pick<DetailProps, 'onBack' | 'onClose'> & { readonly children: ReactNode }): ReactElement {
+export function Frame({ onBack, onClose, children }: Pick<DetailProps, 'onBack' | 'onClose'> & { readonly children: ReactNode }): ReactElement {
   const root = useRef<HTMLDivElement>(null)
   useEffect(() => { root.current?.querySelector<HTMLButtonElement>('.glmg-detail-head button')?.focus() }, [])
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {

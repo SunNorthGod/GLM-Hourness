@@ -13,13 +13,14 @@
  * Not rules-specific: this is the one project-root module of the
  * repository. The rules row uses it today; the data directory service (M5)
  * and the other boards reuse it instead of writing a second one. Finding the
- * project writes nothing; `ensureIgnored` is the one function here that
- * does, and only when a board is about to create its runtime directory.
+ * project writes nothing; `ensureIgnored` and `ensureProjectDir` (which
+ * calls it) are the functions here that do, and only when a board is about
+ * to create its runtime directory.
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { appendFile, mkdir, readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { dirname, join, parse, resolve } from 'node:path'
+import { basename, dirname, join, parse, resolve } from 'node:path'
 
 export interface ProjectLocation {
   /** The project root: the main checkout of the repository, or the directory itself outside one. */
@@ -96,6 +97,17 @@ export function projectOf(cwd: string, home: string = homedir()): ProjectLocatio
   if (sameDir(location.root, home) || parse(location.root).root === location.root) return undefined
   if (!location.git && !isDirectory(join(location.root, '.llm'))) return undefined
   return location
+}
+
+/**
+ * The runtime directory of the project of a working directory
+ * (`<root>/.llm`); undefined when there is no project. Only a path: nothing
+ * is created and `info/exclude` is not touched (`ensureProjectDir` does
+ * that, just before the first write).
+ */
+export function projectDirOf(cwd: string, home?: string): string | undefined {
+  const project = projectOf(cwd, home)
+  return project === undefined ? undefined : join(project.root, '.llm')
 }
 
 /** The git directory of a project root (`.git` itself, or the directory a `.git` file names); undefined without one. */
@@ -175,4 +187,18 @@ export async function ensureIgnored(root: string, directory: string): Promise<vo
   if (text.split(/\r?\n/).some(line => present.includes(line.trim()))) return
   await mkdir(dirname(file), { recursive: true })
   await appendFile(file, `${text === '' || text.endsWith('\n') ? '' : '\n'}${directory}/\n`)
+}
+
+/**
+ * Make a data directory of a project ready to be written: a directory named
+ * `.llm` is first made ignored by git (`ensureIgnored` on its parent) and
+ * then created, so a project that does not ignore `.llm/` never shows an
+ * unknown folder in `git status`. When the ignore line cannot be written the
+ * error is thrown and the directory is not created. Any other directory (the
+ * explicit one a probe or a test points at, outside a repository) is only
+ * created.
+ */
+export async function ensureProjectDir(dir: string): Promise<void> {
+  if (basename(dir) === '.llm') await ensureIgnored(dirname(dir), '.llm')
+  await mkdir(dir, { recursive: true })
 }

@@ -45,6 +45,20 @@
  * path of each request the host process sends; the quota checks read it
  * (no request to /api/monitor anywhere) together with the quota output of the
  * three package combinations and the request bodies (no quota text in them).
+ * The memory scenarios
+ * (glm-memory, non-glm-memory, glm-memory-compact, glm-worker-memory,
+ * glm-memory-depth) write memories from the first root agent, start a second
+ * root agent in the same workspace (the provider's `spawn` step) and check
+ * its index, the index after a compaction, a child's tool face, the reporting
+ * depth each session's prompt names and the real journals left unchanged.
+ * The lessons scenarios (glm-lessons, non-glm-lessons) enable the lessons row
+ * with the overlay and start from a lesson and a candidate left in the project
+ * journal: the notices to the main agent, lessons_merge and lessons_query, the
+ * person's words for a delete, /lessons, and propose through the overlay tool.
+ * The failure scenarios (glm-lessons-failure, non-glm-lessons-failure) start
+ * from a lesson with an error fragment and run a failing command in the main
+ * agent and in a dispatched child: the reminder after the tool result, the
+ * hits, and the reminder that a lesson keeps coming back.
  *
  * Usage: node scripts/probe/run-probe.mjs
  * Requires the desktop install (DSH_DESKTOP_DIR overrides the location).
@@ -89,13 +103,17 @@ import { peakWindowAt } from '../../packages/glm/dist/glm-llm/credits.js'
 import { GLM_LOOP_DEFAULTS } from '../../packages/glm/dist/glm-llm/loop-defaults.js'
 import { userDataHome } from '../../packages/hourness/dist/shared/data-home.js'
 import { HEALTH_PACKAGES, HEALTH_ROWS } from '../../packages/hourness/dist/shared/health.js'
-import { DESIGN_TOOL_NAMES, GRAPH_TOOL_NAMES, MEMORY_TOOL_NAMES } from '../../packages/glm/dist/shared/tool-names.js'
+import { DESIGN_TOOL_NAMES, GRAPH_TOOL_NAMES, LEARNING_TOOL_NAMES, LESSONS_TOOL_NAMES, MEMORY_TOOL_NAMES } from '../../packages/glm/dist/shared/tool-names.js'
 import { openEngine } from '../../packages/hourness/dist/graph/engine.js'
 import { PLAIN_QUESTION_EXAMPLES } from '../../packages/hourness/dist/graph/plain-question.js'
 import { askOf, renderAsk } from '../../packages/hourness/dist/graph/proposal.js'
 import { holderFileOf, readHolder } from '../../packages/hourness/dist/graph/main-agent-holder.js'
 import { runNote } from '../../packages/hourness/dist/graph/run.js'
+import { projectDirOf } from '../../packages/hourness/dist/data/project-root.js'
 import { loadGraph } from '../../packages/hourness/dist/graph/store.js'
+import { FAILURE_SOURCE } from '../../packages/hourness/dist/lessons/failure.js'
+import { PENDING_SOURCE as LESSONS_PENDING_SOURCE, RECUR_SOURCE as LESSONS_RECUR_SOURCE } from '../../packages/hourness/dist/lessons/notices.js'
+import { INDEX_SOURCE as MEMORY_INDEX_SOURCE } from '../../packages/hourness/dist/memory/index.js'
 import { compareShapes, describeDifference, isProjectDifference, profileShape } from '../profile-shape.mjs'
 import { PACKAGES } from '../packages.mjs'
 import { attachmentsIn, dataRows, designRows, generateProfile, initRepo, limitsRow, PROBE_PROFILES, repo, requireDesktop, sandboxCommand, slash, unlinkProfile, workspaceChangesRow } from '../sandbox.mjs'
@@ -171,6 +189,27 @@ function redPng(size = 8) {
 const realUsage = join(userDataHome(), 'audit', 'usage.jsonl')
 const usageStamp = () => existsSync(realUsage) ? (({ size, mtimeMs }) => `${size}/${mtimeMs}`)(statSync(realUsage)) : 'absent'
 const realUsageBefore = usageStamp()
+// Memory and lessons put their journals in the project directory of the
+// session and in the user-level directory; the scenarios point both at their
+// own directory (scripts/sandbox.mjs dataRows), so the real ones, the
+// user-level memory journal and the journals in the `.llm` of the project
+// this checkout belongs to (a work tree's is the main checkout's), must not
+// change, and the user-level directory must not get a lessons directory.
+const mainProjectDir = projectDirOf(repo)
+const realMemoryFiles = [join(userDataHome(), 'memory', 'memory.jsonl'), ...(mainProjectDir === undefined ? [] : ['memory.jsonl', 'lessons.jsonl', 'memory.json'].map(file => join(mainProjectDir, file)))]
+const fileStamp = file => existsSync(file) ? (({ size, mtimeMs }) => `${size}/${mtimeMs}`)(statSync(file)) : 'absent'
+const realMemoryBefore = realMemoryFiles.map(fileStamp)
+
+/**
+ * The first line of the project journal of every scenario: the record of a
+ * learning digest reminder sent a moment ago. The sessions of a scenario run
+ * in this repository, so the main agent reads its project graph, whose
+ * history holds real corrections of the person; without the record a
+ * reminder would be in the requests of every scenario and change with the
+ * repository. `memoryJournalOf` leaves the record out of what it counts; the
+ * reminder has its own specs on the fake host (tests/memory-learning.spec.ts).
+ */
+const learnSeed = seq => `${JSON.stringify({ v: 1, seq, at: new Date().toISOString(), actor: 'harness', op: 'learn-notified', id: '*', data: { keys: ['edit:task.body'] } })}\n`
 
 /** Every scenario booted in this run, in order: the net log and the request dump of each are read by the quota checks. */
 const scenarioNames = []
@@ -194,6 +233,7 @@ function runScenario(name, model, script, task, overlay = [], cwd = repo, others
   const dir = join(runDir, name)
   const home = join(dir, 'home')
   mkdirSync(home, { recursive: true })
+  if (!existsSync(join(home, 'memory.jsonl'))) writeFileSync(join(home, 'memory.jsonl'), learnSeed(1))
   const dump = join(dir, 'requests.jsonl')
   writeFileSync(dump, '')
   const patch = join(dir, 'probe.patch.yml')
@@ -469,7 +509,6 @@ const rulesPeakAlone = runScenario('rules-peak-hourness', 'deepseek-probe', [
   { tool: { name: 'pwsh', arguments: { command: 'Write-Output probe-rules', description: 'Print a word' } }, command: { name: 'rules', input: 'peak 不做' }, peakMode: true },
   { text: 'done', command: { name: 'hourness-status' }, peakMode: true },
 ], 'Print a word, then reply done.', [...RULES_ROW, ...clockRow(PEAK_AT)], rulesAlone.ws, [], profiles['probe-hourness'])
-
 // Rules board, the tool-call gate (docs/ORCHESTRATION.md §16.11). The scenario
 // project is a scratch git repository whose rules file already holds a person's
 // rules, as a clone does: one that blocks a command naming `rules-probe-blocked`
@@ -554,7 +593,7 @@ const loops = runScenario('loops', 'deepseek-probe', [
   { text: 'done', status: true },
 ], 'Write into the loop board entry file, write its runtime file through the shell, read the entry file, then reply done.', LOOPS_ROW, loopsBoard.ws)
 
-const MEMORY_SECTION_LINE = 'You have a persistent memory in this workspace'
+const MEMORY_SECTION_LINE = 'You have a persistent memory that the harness keeps for you'
 const glmOnlyDir = join(runDir, 'glm-only')
 const glmOnly = runScenario('glm-only', 'glm-5.3', [
   { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } } },
@@ -1047,6 +1086,203 @@ const controlStart = (controlSteps[1]?.messages ?? []).find(message => message.r
 const controlStderr = existsSync(join(controlDir, 'stderr.txt')) ? readFileSync(join(controlDir, 'stderr.txt'), 'utf8') : ''
 const repoGraphAfter = (await loadGraph(repoGraph)).revision
 
+// Memory (docs/ORCHESTRATION.md §8, M5 design §10.1). The data row points the
+// project directory of every session at <scenario>/home and the user-level
+// directory at <scenario>/dsh-home/glm-hourness (scripts/sandbox.mjs
+// dataRows). The first root agent writes four memories (a preference about
+// the person, a project fact with its source, a reference with text the old
+// path test refused, the reporting depth); the probe provider then starts a
+// second root agent in the same workspace, which must see them in its index.
+const MEMORY_FEEDBACK = { name: 'lead-with-the-answer', type: 'feedback', scope: 'all', description: 'Start every reply with the answer; keep jargon out', body: 'Open with the answer in one sentence, then the reasons.\n**Why:** the user reads replies on a phone.', relay: 'Start with the answer, and keep jargon out.' }
+const MEMORY_FACT = { name: 'signing-rules-differ', type: 'project', description: 'coding-plan and start-plan sign requests differently', body: 'The two tiers sign differently.\n**Why:** a request signed the wrong way is refused.', source: ['package.json'] }
+const MEMORY_REFERENCE = { name: 'host-surface-notes', type: 'reference', description: 'where the host surface is written down', body: 'See coding-plan/start-plan and src/shared/dsh-min.ts.' }
+const MEMORY_DEPTH = { name: 'reporting-depth', type: 'user', description: 'Wants short reports', body: 'Keep reports short.\n**Why:** reads them on a phone.', value: 'concise', relay: 'From now on just the key points.' }
+const MEMORY_NAMES = [MEMORY_FEEDBACK, MEMORY_FACT, MEMORY_REFERENCE, MEMORY_DEPTH].map(entry => entry.name)
+const memoryScript = () => [
+  ...[MEMORY_FEEDBACK, MEMORY_FACT, MEMORY_REFERENCE, MEMORY_DEPTH].map(entry => ({ tool: { name: 'memory_store', arguments: entry } })),
+  { text: 'done', status: true, spawn: { text: 'Start the second session.' } },
+]
+const memoryOthers = read => [[{ tool: { name: read, arguments: { file_path: join(repo, 'package.json') } } }, { text: 'second done' }]]
+const memoryGlm = runScenario('glm-memory', 'glm-5.3', memoryScript(), 'Store four memories, then reply done.', [], repo, memoryOthers('Read'))
+const memoryPlain = runScenario('non-glm-memory', 'deepseek-probe', memoryScript(), 'Store four memories, then reply done.', [], repo, memoryOthers('read'))
+const memoryIndexes = step => (step?.messages ?? []).filter(message => message.role === 'user' && message.source === MEMORY_INDEX_SOURCE)
+const memoryFace = step => (step?.tools ?? []).filter(tool => MEMORY_TOOL_NAMES.includes(tool.name))
+const learningFace = step => (step?.tools ?? []).filter(tool => LEARNING_TOOL_NAMES.includes(tool.name))
+/** The steps of the root agent that wrote the memories, and those of the one the probe provider started after it (the id is in the last request of the first). */
+const memorySessions = (scenario) => {
+  const second = scenario.steps.at(-1)?.spawn?.sessionId
+  return { first: scenario.steps.filter(step => step.sessionId !== second), second: bySession(scenario, second) }
+}
+/** The records of a memory journal of a scenario, without the learning digest record every scenario starts with (learnSeed). */
+const memoryJournalOf = (scenario, scope) => jsonl(join(runDir, scenario, ...(scope === 'all' ? ['dsh-home', 'glm-hourness', 'memory'] : ['home']), 'memory.jsonl')).filter(record => record.op !== 'learn-notified')
+/** A norm of the project already in the project journal when the scenario starts (written the way the person's /memory would). */
+const seedProjectMemory = (scenario) => {
+  const home = join(runDir, scenario, 'home')
+  mkdirSync(home, { recursive: true })
+  const data = { name: 'seeded-norm', scope: 'project', type: 'feedback', description: 'A norm of this project', body: 'Keep commits small.\n**Why:** reviews stay short.' }
+  writeFileSync(join(home, 'memory.jsonl'), `${learnSeed(1)}${JSON.stringify({ v: 1, seq: 2, at: '2026-10-31T00:00:00.000Z', actor: 'human', op: 'store', id: 'project:seeded-norm', data })}\n`)
+}
+
+// Reporting depth (M5 design §3.7, m5-5): the glm:persona section names the
+// depth the person set, read once when a session starts. The first root agent
+// stores `concise` and starts a second, which forgets it in its first step
+// and starts a third. Each prompt names the depth its session found and
+// stays the same through the session: the configured `balanced` for the
+// first, `concise` for the second, `balanced` again for the third.
+const DEPTH_FORGET = { name: 'reporting-depth', reason: 'The person asked for the default again.', relay: 'Back to the default depth, please.' }
+const memoryDepth = runScenario('glm-memory-depth', 'glm-5.3', [
+  { tool: { name: 'memory_store', arguments: MEMORY_DEPTH } },
+  { text: 'done', spawn: { text: 'Start the second session.' } },
+], 'Store the reporting depth, then reply done.', [], repo, [
+  [{ tool: { name: 'memory_forget', arguments: DEPTH_FORGET } }, { text: 'second done', status: true, spawn: { text: 'Start the third session.' } }],
+  [{ text: 'third done' }],
+])
+const depthSessions = (() => {
+  const second = memoryDepth.steps.at(-1)?.spawn?.sessionId
+  const third = memoryDepth.steps.find(step => step.sessionId === second && step.spawn !== undefined)?.spawn?.sessionId
+  return { first: memoryDepth.steps.filter(step => step.sessionId !== second && step.sessionId !== third), second: bySession(memoryDepth, second), third: bySession(memoryDepth, third) }
+})()
+/** The depth id the standing-preference sentence of the request's prompt names. */
+const depthOf = step => /The user's standing preference is [^（]+（(\w+)）/.exec(step?.system ?? '')?.[1]
+
+// Compaction: the session starts with a memory in the project, so its first
+// request has the index; the compaction removes it from the visible history
+// and the next request has it once more, and then no more.
+seedProjectMemory('glm-memory-compact')
+const memoryCompact = runScenario('glm-memory-compact', 'glm-5.3', [
+  { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } } },
+  { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } } },
+  { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } } },
+  { text: 'done', status: true },
+], 'Read package.json three times, then reply done.', ['- id: compaction-basic', '  config: { thresholdRatio: 0.02, retainTokens: 0 }'])
+const memoryCheckpointAt = step => step.messages.findLastIndex(message => message.source === 'compact-checkpoint')
+const memoryAfterCheckpoint = memoryCompact.steps.filter(step => memoryCheckpointAt(step) >= 0)
+
+// A delegated child gets no memory tools and no index, and is refused when it
+// calls the tools by name; the main agent of the same project has the index.
+seedProjectMemory('glm-worker-memory')
+const workerDir = join(runDir, 'glm-worker-memory')
+const workerWs = join(workerDir, 'ws')
+mkdirSync(join(workerWs, 'allowed'), { recursive: true })
+const memoryWorker = runScenario('glm-worker-memory', 'glm-5.3', [
+  { tool: { name: 'DeferredToolCall', arguments: { name: 'probe_dispatch', input: { task: 'T1', prompt: 'Probe task T1: try the memory tools and report.', cwd: workerWs, scope: 'allowed', model: 'glm-5.3-flash' } } } },
+  { tool: { name: 'DeferredToolCall', arguments: { name: 'learning_signals', input: {} } } },
+  { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } } },
+  { text: 'Waiting for task T1.' },
+  { text: 'done', status: true },
+], 'Dispatch task T1, then reply done.', dispatchRow(join(workerDir, 'dispatch.jsonl')), repo, [[
+  { tool: { name: 'memory_store', arguments: MEMORY_FEEDBACK } },
+  { tool: { name: 'memory_query', arguments: { focus: 'commits' } } },
+  { tool: { name: 'memory_forget', arguments: { name: 'seeded-norm', reason: 'try', scope: 'project' } } },
+  { tool: { name: 'learning_signals', arguments: {} } },
+  { tool: { name: 'DeferredToolCall', arguments: { name: 'structured_output', input: HAND_BACK } } },
+  { text: 'child done' },
+]])
+const workerChildId = dispatchRecord('glm-worker-memory').find(entry => entry.kind === 'started')?.childId
+const workerChild = bySession(memoryWorker, workerChildId)
+const workerMain = memoryWorker.steps.filter(step => step.sessionId !== workerChildId)
+
+// Lessons (docs/ORCHESTRATION.md §8.6, M5 design §10.1). The row ships
+// disabled; the overlay enables it. The project journal of the scenario
+// (<scenario>/home/lessons.jsonl, scripts/sandbox.mjs dataRows) starts with a
+// lesson and a candidate the way an earlier session would have left them. The
+// main agent merges the candidate, hands a second one to the lessons service
+// through the overlay tool probe_propose (what the dispatch of work does with
+// a worker's handback), queries, deletes and restores the lesson with the
+// person's words, is refused when it tries without them, and the person
+// deletes and restores it with /lessons.
+const LESSONS_ROW = ['- id: glm-hourness/lessons', '  disabled: false']
+const SEED_LESSON = 'L-0a1b2c'
+const SEED_CANDIDATE = 'C-aaaaaa'
+// Times are relative to the run: a candidate open for more than 30 days expires at the first notice step.
+const hoursAgo = hours => new Date(Date.now() - hours * 3_600_000).toISOString()
+const seedLessons = (scenario) => {
+  const home = join(runDir, scenario, 'home')
+  mkdirSync(home, { recursive: true })
+  const lines = [
+    { v: 1, seq: 1, at: hoursAgo(26), actor: 'llm', op: 'new', id: SEED_LESSON, reason: 'seed from the probe', evidence: ['docs/HANDOFF.md §6'], data: { situation: { files: ['probe/**'], tools: [], commands: ['probe-run'], errors: ['probe-lesson-fragment-1'] }, pitfall: 'The probe command fails with probe-lesson-fragment-1 while the sandbox is busy.', fix: 'Wait for the other run to finish, then run it again.' } },
+    { v: 1, seq: 2, at: hoursAgo(25), actor: 'harness', op: 'propose', id: SEED_CANDIDATE, evidence: ['task:task-seed', 'session:session-seed'], data: { situation: { files: [], tools: [], commands: ['probe-merge'], errors: ['probe-candidate-fragment-1'] }, pitfall: 'The merge probe candidate fails with probe-candidate-fragment-1.', fix: 'Merge the candidate with lessons_merge.' } },
+  ]
+  writeFileSync(join(home, 'lessons.jsonl'), `${lines.map(line => JSON.stringify(line)).join('\n')}\n`)
+}
+const PROBE_COMMIT = 'b'.repeat(40)
+const PROBE_CANDIDATE = { problem: 'The proposed probe candidate fails with probe-propose-fragment-1.', fix: 'Drop it or merge it.', files: [], commands: ['probe-propose'], tools: ['Bash'], errors: ['probe-propose-fragment-1'] }
+const LESSONS_QUERY = { text: 'probe command sandbox busy' }
+/** The script of the main agent: on GLM the tools that are deferred there go through DeferredToolCall. */
+const lessonsScript = (glmRoute) => {
+  const deferred = (name, input) => ({ tool: glmRoute ? { name: 'DeferredToolCall', arguments: { name, input } } : { name, arguments: input } })
+  const query = { tool: { name: 'lessons_query', arguments: LESSONS_QUERY } }
+  return [
+    deferred('lessons_merge', { action: 'new', reason: 'worth keeping', candidate: SEED_CANDIDATE }),
+    deferred('probe_propose', { candidate: PROBE_CANDIDATE, task: 'task-9', childId: 'session-probe-child', commit: PROBE_COMMIT }),
+    query,
+    deferred('lessons_merge', { action: 'delete', lesson: SEED_LESSON, reason: 'the person asked', relay: 'Delete that lesson.' }),
+    query,
+    deferred('lessons_merge', { action: 'restore', lesson: SEED_LESSON, reason: 'the person asked', relay: 'Bring it back.' }),
+    query,
+    deferred('lessons_merge', { action: 'delete', lesson: SEED_LESSON, reason: 'no words quoted' }),
+    { ...query, command: { name: 'lessons', input: `delete ${SEED_LESSON}` } },
+    { ...query, command: { name: 'lessons', input: `restore ${SEED_LESSON}` } },
+    { text: 'done', status: true },
+  ]
+}
+seedLessons('glm-lessons')
+const lessonsGlm = runScenario('glm-lessons', 'glm-5.3', lessonsScript(true), 'Merge the candidate lesson, then reply done.', [...LESSONS_ROW, ...dispatchRow(join(runDir, 'glm-lessons', 'dispatch.jsonl'))])
+seedLessons('non-glm-lessons')
+const lessonsPlain = runScenario('non-glm-lessons', 'deepseek-probe', lessonsScript(false), 'Merge the candidate lesson, then reply done.', [...LESSONS_ROW, ...dispatchRow(join(runDir, 'non-glm-lessons', 'dispatch.jsonl'))])
+const lessonsNotices = step => (step?.messages ?? []).filter(message => message.role === 'user' && message.source === LESSONS_PENDING_SOURCE)
+const lessonsFace = step => (step?.tools ?? []).filter(tool => LESSONS_TOOL_NAMES.includes(tool.name))
+const lessonsJournalOf = scenario => jsonl(join(runDir, scenario, 'home', 'lessons.jsonl'))
+
+// Failure matching (docs/ORCHESTRATION.md §8.6, M5 design §4.4, assumptions U1
+// and U2). The project journal starts with a lesson whose error fragment the
+// command below prints, and with one hit from an earlier session. The main
+// agent runs the failing command, a command that runs through, and the
+// failing one again, then dispatches a child that runs the failing command
+// too. The reminder must follow the tool result of the failed call in the next
+// request, of the main agent and of the child (the listener is on
+// tools/post-execute of the host); a command that ran through and the same
+// failure again bring nothing; the main agent's session and the child's are
+// recorded as hits, which with the earlier session make three, and the main
+// agent is told once that the lesson keeps coming back.
+const FAILURE_LESSON = 'L-0f1e2d'
+const FAILURE_FRAGMENT = 'probe-failure-fragment-1'
+const FAILURE_COMMAND = `[Console]::Error.WriteLine('${FAILURE_FRAGMENT}: simulated failure'); exit 3`
+const seedFailureLesson = (scenario) => {
+  const home = join(runDir, scenario, 'home')
+  mkdirSync(home, { recursive: true })
+  const lines = [
+    { v: 1, seq: 1, at: hoursAgo(3), actor: 'llm', op: 'new', id: FAILURE_LESSON, reason: 'seed from the probe', evidence: ['docs/HANDOFF.md §6'], data: { situation: { files: [], tools: [], commands: [], errors: [FAILURE_FRAGMENT] }, pitfall: 'The failure probe command fails with probe-failure-fragment-1.', fix: 'Run it again once the cause is fixed.' } },
+    { v: 1, seq: 2, at: hoursAgo(2), actor: 'harness', op: 'hit', id: FAILURE_LESSON, by: { session: 'session-seed', tool: 'pwsh' } },
+  ]
+  writeFileSync(join(home, 'lessons.jsonl'), `${lines.map(line => JSON.stringify(line)).join('\n')}\n`)
+}
+/** The scripts of the main agent and of its child: on GLM the shell is Bash and the tools that are deferred there go through DeferredToolCall. */
+const failureScripts = (glmRoute, ws) => {
+  const shell = command => ({ tool: glmRoute ? { name: 'Bash', arguments: { command } } : { name: 'pwsh', arguments: { command, description: 'Run the probe command' } } })
+  const call = (name, input) => ({ tool: glmRoute ? { name: 'DeferredToolCall', arguments: { name, input } } : { name, arguments: input } })
+  return {
+    main: [
+      shell(FAILURE_COMMAND),
+      shell('Write-Output probe-ran-through'),
+      shell(FAILURE_COMMAND),
+      call('probe_dispatch', { task: 'T1', prompt: 'Probe task T1: run the failing command and report.', cwd: ws, scope: 'allowed', model: glmRoute ? 'glm-5.3-flash' : 'deepseek-probe' }),
+      { tool: { name: glmRoute ? 'Read' : 'read', arguments: { file_path: join(repo, 'package.json') } } },
+      { text: 'Waiting for task T1.' },
+      { text: 'done', status: true },
+    ],
+    child: [shell(FAILURE_COMMAND), call('structured_output', HAND_BACK), { text: 'child done' }],
+  }
+}
+const runFailure = (name, model, glmRoute) => {
+  seedFailureLesson(name)
+  const ws = join(runDir, name, 'ws')
+  mkdirSync(join(ws, 'allowed'), { recursive: true })
+  const scripts = failureScripts(glmRoute, ws)
+  return runScenario(name, model, scripts.main, 'Run the failing command, a command that runs through, the failing one again, dispatch task T1, then reply done.', [...LESSONS_ROW, ...dispatchRow(join(runDir, name, 'dispatch.jsonl'))], repo, [scripts.child])
+}
+const failureGlm = runFailure('glm-lessons-failure', 'glm-5.3', true)
+const failurePlain = runFailure('non-glm-lessons-failure', 'deepseek-probe', false)
 // Main agent mode (docs/ORCHESTRATION.md §3.1, ROADMAP M3 step 3): the design
 // row ships enabled since the m3 merge (step 12b); the overlay
 // (scripts/sandbox.mjs designRows) still mounts ask_user_question, which the
@@ -1421,7 +1657,7 @@ const checkpoint = compacted.steps.at(-1)?.messages.find(message => message.sour
 const usageOf = scenario => jsonl(join(runDir, scenario, 'dsh-home', 'glm-hourness', 'audit', 'usage.jsonl'))
 const glmUsage = usageOf('glm').filter(record => record.purpose === undefined)
 const compactUsage = usageOf('glm-compact').filter(record => record.purpose === 'compaction')
-const projectUsage = ['glm', 'glm-flash', 'glm-todo', 'glm-compact', 'glm-shadow', 'glm-guard-paths', 'non-glm', 'non-glm-guard', 'glm-no-dialect', 'glm-peak', 'limits-steps', 'limits-time', 'glm-dispatch', 'glm-goal', 'goal-headless', 'glm-only', 'hourness-only', 'client-modules'].filter(scenario => existsSync(join(runDir, scenario, 'home', 'audit', 'usage.jsonl')))
+const projectUsage = ['glm', 'glm-flash', 'glm-todo', 'glm-compact', 'glm-shadow', 'glm-guard-paths', 'non-glm', 'non-glm-guard', 'glm-no-dialect', 'glm-peak', 'limits-steps', 'limits-time', 'glm-dispatch', 'glm-goal', 'goal-headless', 'glm-only', 'hourness-only', 'client-modules', 'glm-memory', 'non-glm-memory', 'glm-memory-compact', 'glm-worker-memory', 'glm-memory-depth', 'glm-lessons', 'non-glm-lessons', 'glm-lessons-failure', 'non-glm-lessons-failure'].filter(scenario => existsSync(join(runDir, scenario, 'home', 'audit', 'usage.jsonl')))
 const glmViolations = jsonl(join(glmDir, 'home', 'audit', 'violations.jsonl'))
 const stepLimits = jsonl(limitsRecord('limits-steps'))
 const timeLimits = jsonl(limitsRecord('limits-time'))
@@ -1885,6 +2121,104 @@ function designChecks() {
   ]
 }
 
+/**
+ * Memory (docs/ORCHESTRATION.md §8; scenarios glm-memory, non-glm-memory,
+ * glm-memory-compact, glm-worker-memory, glm-memory-depth): what the real
+ * runtime did with the memory tools, the index notice, the child's tool face,
+ * the reporting depth of each session's prompt and the journals.
+ */
+function memoryChecks() {
+  const results = run => run.first.slice(1, 5).map(lastToolResult)
+  const lines = (journal, op) => journal.filter(record => record.op === op)
+  const indexTexts = step => memoryIndexes(step).map(message => message.text)
+  const counts = steps => steps.map(step => memoryIndexes(step).length)
+  const route = [[memoryGlm, 'glm-memory', true, 'GLM'], [memoryPlain, 'non-glm-memory', false, 'non-GLM']]
+  const afterFirstUser = step => step !== undefined && step.messages.findIndex(message => message.source === MEMORY_INDEX_SOURCE) > step.messages.findIndex(message => message.role === 'user' && message.source === 'user')
+  const roleRefusal = step => lastToolResult(step)?.isError === true && lastToolResult(step).text.includes('"code":"role"') && lastToolResult(step).text.includes('handback')
+  const compactFirst = memoryCompact.steps[0]
+  return [
+    ...route.flatMap(([scenario, name, glmRoute, label]) => {
+      const run = memorySessions(scenario)
+      const user = memoryJournalOf(name, 'all')
+      const project = memoryJournalOf(name, 'project')
+      return [
+        [`memory (${label}): the four memory_store calls are stored, the person's two go to the user-level journal as llm records with their words (not checked yet), the project's two to the project journal`, results(run).length === 4 && results(run).every(result => result?.isError !== true && result.text.includes('"stored":true')) && isDeepStrictEqual(lines(user, 'store').map(record => record.data.name), ['lead-with-the-answer', 'reporting-depth']) && lines(user, 'store').every(record => record.actor === 'llm' && typeof record.relay === 'string' && record.data.relayChecked === false) && isDeepStrictEqual(lines(project, 'store').map(record => record.data.name), ['signing-rules-differ', 'host-surface-notes']) && user.length === 2 && project.length === 2, `${results(run).map(result => (result?.text ?? 'none').slice(0, 40)).join(' | ')}; user ${user.length} record(s), project ${project.length}`],
+        [`memory (${label}): the first root agent has no index while the memory is empty, one from the step after its first write, and the index is not repeated`, run.first.length === 5 && isDeepStrictEqual(counts(run.first), [0, 1, 1, 1, 1]), `index notices per request: ${counts(run.first).join(', ')}`],
+        [`memory (${label}): the second root agent of the workspace has the index in its first request after the first user message, with the four memories, once, and not repeated in its next request`, run.second.length === 2 && afterFirstUser(run.second[0]) && isDeepStrictEqual(counts(run.second), [1, 1]) && MEMORY_NAMES.every(entry => indexTexts(run.second[0])[0]?.includes(`- ${entry} (`) === true), run.second.length === 0 ? `no second session (exit ${scenario.status}): ${JSON.stringify(scenario.steps.at(-1)?.spawn ?? null)}` : `index notices per request: ${counts(run.second).join(', ')}; ${(indexTexts(run.second[0])[0] ?? 'none').replace(/\n/g, ' | ').slice(0, 160)}`],
+        [`memory (${label}): each root agent's system prompt is the same at every step`, new Set(run.first.map(step => step.system)).size === 1 && new Set(run.second.map(step => step.system)).size === 1, `${new Set(run.first.map(step => step.system)).size} and ${new Set(run.second.map(step => step.system)).size} distinct prompt(s)`],
+        [`memory (${label}): the three memory tools are in the face of the root agent, resident, and the glm:memory section is ${glmRoute ? 'in' : 'not in'} the prompt`, memoryFace(run.first[0]).length === 3 && memoryFace(run.first[0]).every(tool => tool.deferLoading !== true) && run.first[0].system.includes(MEMORY_SECTION_LINE) === glmRoute, `${memoryFace(run.first[0]).map(tool => tool.name).join(', ')}; section ${run.first[0]?.system.includes(MEMORY_SECTION_LINE)}`],
+        [`memory (${label}): the learning tool ${glmRoute ? 'is deferred on the GLM route: it is not in the face and tool search reaches it' : 'is in the face of the root agent'}`, glmRoute ? learningFace(run.first[0]).length === 0 : learningFace(run.first[0]).length === 1 && learningFace(run.first[0]).every(tool => tool.deferLoading !== true), `${learningFace(run.first[0]).map(tool => tool.name).join(', ') || 'none'} in the face`],
+        [`memory (${label}): the row reports itself in effect and says the session has the index; the configured home is said to be ignored`, healthOf(scenario).memory?.status === ACTED && healthOf(scenario).memory.reason.includes('本会话已带索引') && healthOf(scenario).memory.reason.includes('行配置 home 已不再使用（M5）'), JSON.stringify(healthOf(scenario).memory ?? null)],
+      ]
+    }),
+    ['memory compaction: the first request has the index; after the compaction checkpoint the index comes once more, after the checkpoint, and is not repeated', memoryCompact.compactions.length > 0 && memoryIndexes(compactFirst).length === 1 && memoryAfterCheckpoint.length > 0 && memoryAfterCheckpoint.every(step => memoryIndexes(step).length === 1 && step.messages.findIndex(message => message.source === MEMORY_INDEX_SOURCE) > memoryCheckpointAt(step)), `${memoryCompact.compactions.length} compaction(s); index notices per request: ${counts(memoryCompact.steps).join(', ')}; requests with a checkpoint: ${memoryAfterCheckpoint.length}`],
+    ['memory depth: the session that stores concise in its first step names the configured depth (balanced) in every request, with the same prompt each time', depthSessions.first.length === 2 && depthSessions.first.every(step => depthOf(step) === 'balanced') && new Set(depthSessions.first.map(step => step.system)).size === 1, `depths of the first session: ${depthSessions.first.map(depthOf).join(', ') || 'no request'} (exit ${memoryDepth.status})`],
+    ['memory depth: the session started after the store names concise from its first request on, and forgetting the preference in its first step leaves its prompt as it was', depthSessions.second.length === 2 && depthSessions.second.every(step => depthOf(step) === 'concise') && new Set(depthSessions.second.map(step => step.system)).size === 1 && lastToolResult(depthSessions.second[1])?.isError !== true && lastToolResult(depthSessions.second[1])?.text.includes('"forgotten":true') === true, depthSessions.second.length === 0 ? 'no second session' : `depths of the second session: ${depthSessions.second.map(depthOf).join(', ')}; ${(lastToolResult(depthSessions.second[1])?.text ?? 'none').slice(0, 80)}`],
+    ['memory depth: the session started after the forget names the configured depth again; the user-level journal holds the store and the forget', depthSessions.third.length === 1 && depthOf(depthSessions.third[0]) === 'balanced' && isDeepStrictEqual(memoryJournalOf('glm-memory-depth', 'all').map(record => record.op), ['store', 'forget']), `depth of the third session: ${depthSessions.third.map(depthOf).join(', ') || 'no request'}; journal ${memoryJournalOf('glm-memory-depth', 'all').map(record => record.op).join(', ')}`],
+    ['memory depth: the glm-prompt and memory rows report themselves in effect for the second session, and the run warned of nothing', healthOf(memoryDepth)['glm-prompt']?.status === ACTED && healthOf(memoryDepth).memory?.status === ACTED && quiet('glm-memory-depth'), `${healthLine(healthOf(memoryDepth), 'glm-prompt')}; ${healthLine(healthOf(memoryDepth), 'memory')}; stderr ${stderrOf('glm-memory-depth').length} byte(s)`],
+    ['memory worker: the child has no memory tool and no learning tool in its request, no glm:memory section and no index; the main agent of the project has the index and the section', workerChild.length > 0 && workerChild.every(step => memoryFace(step).length === 0 && learningFace(step).length === 0 && !step.system.includes(MEMORY_SECTION_LINE) && memoryIndexes(step).length === 0) && memoryIndexes(workerMain[0]).length === 1 && indexTexts(workerMain[0])[0]?.includes('- seeded-norm (feedback)') === true && workerMain[0].system.includes(MEMORY_SECTION_LINE), workerChild.length === 0 ? `no child request (exit ${memoryWorker.status})` : `child: ${workerChild.length} request(s), ${memoryFace(workerChild[0]).length} memory tool(s); main index notices ${counts(workerMain).join(', ')}`],
+    ['memory worker: the child calling memory_store, memory_query, memory_forget and learning_signals by name is refused with role and the way to hand back, and the journals are as they were', [1, 2, 3, 4].every(index => roleRefusal(workerChild[index])) && memoryJournalOf('glm-worker-memory', 'project').length === 1 && memoryJournalOf('glm-worker-memory', 'all').length === 0, [1, 2, 3, 4].map(index => (lastToolResult(workerChild[index])?.text ?? 'none').slice(0, 60)).join(' | ')],
+    ['memory worker: the main agent reaches learning_signals through tool search and gets the digest (the groups of the window and whether the graph could be read), and the project journal has only the seeded norm', lastToolResult(workerMain[2])?.isError !== true && lastToolResult(workerMain[2])?.text.includes('"groups":[') === true && /"graph":"(ok|unavailable)"/.test(lastToolResult(workerMain[2])?.text ?? '') && memoryJournalOf('glm-worker-memory', 'project').length === 1, (lastToolResult(workerMain[2])?.text ?? 'no result').slice(0, 120)],
+    ['memory: the probe leaves the real user-level memory journal and the journals of the project this checkout belongs to as they were, and the user-level directory has no lessons directory', isDeepStrictEqual(realMemoryFiles.map(fileStamp), realMemoryBefore) && !existsSync(join(userDataHome(), 'lessons')), `${realMemoryBefore.join(' ')} -> ${realMemoryFiles.map(fileStamp).join(' ')}`],
+  ]
+}
+
+/**
+ * Lessons (docs/ORCHESTRATION.md §8.6; scenarios glm-lessons,
+ * non-glm-lessons): what the real runtime did with the lessons row once the
+ * overlay enabled it: the candidate notices, the two tools and their
+ * permissions, `/lessons`, the face of the main agent and the journal.
+ */
+function lessonsChecks() {
+  const route = [[lessonsGlm, 'glm-lessons', true, 'GLM'], [lessonsPlain, 'non-glm-lessons', false, 'non-GLM']]
+  return route.flatMap(([scenario, name, glmRoute, label]) => {
+    const result = index => lastToolResult(scenario.steps[index])
+    const text = index => result(index)?.text ?? 'none'
+    const journal = lessonsJournalOf(name)
+    const shows = (index, id) => result(index)?.isError !== true && text(index).includes(`"id":"${id}"`)
+    const commandAt = index => scenario.steps[index]?.command
+    const face = lessonsFace(scenario.steps[0])
+    return [
+      [`lessons (${label}): the candidate the session started with is listed once, the second one handed to the service is listed once more, and merging does not bring the first back`, scenario.steps.length === 11 && isDeepStrictEqual(scenario.steps.map(step => lessonsNotices(step).length), [1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2]) && lessonsNotices(scenario.steps[0])[0].text.includes(SEED_CANDIDATE) && lessonsNotices(scenario.steps[2]).at(-1).text.includes('(1)'), scenario.steps.length === 0 ? `no request (exit ${scenario.status})` : `notices per request: ${scenario.steps.map(step => lessonsNotices(step).length).join(', ')}`],
+      [`lessons (${label}): lessons_merge makes the candidate a lesson as the agent; the service keeps the candidate of a handback with the task, the worker's session and the full commit as its evidence`, result(1)?.isError !== true && text(1).includes('"action":"new"') && text(1).includes(`"candidate":"${SEED_CANDIDATE}"`) && text(2).includes('"status":"candidate"') && isDeepStrictEqual(journal.map(record => `${record.op}:${record.actor}`).slice(0, 4), ['new:llm', 'propose:harness', 'new:llm', 'propose:harness']) && isDeepStrictEqual(journal[3].evidence, ['task:task-9', 'session:session-probe-child', `commit:${PROBE_COMMIT}`]), `${text(1).slice(0, 80)} | ${text(2).slice(0, 60)}; ${journal.map(record => record.op).join(', ')}`],
+      [`lessons (${label}): lessons_query finds the lesson and lists the open candidate as unreviewed`, shows(3, SEED_LESSON) && text(3).includes('"unreviewed":true'), text(3).slice(0, 200)],
+      [`lessons (${label}): with the person's words the lesson is deleted and restored, and a delete without them is refused with user_only`, text(4).includes('"status":"deleted"') && !shows(5, SEED_LESSON) && text(6).includes('"status":"active"') && shows(7, SEED_LESSON) && result(8)?.isError === true && text(8).includes('user_only') && isDeepStrictEqual(journal.slice(4, 6).map(record => [record.op, record.actor, record.relay]), [['delete', 'llm', 'Delete that lesson.'], ['restore', 'llm', 'Bring it back.']]), `${text(4).slice(0, 60)} | ${text(8).slice(0, 100)}`],
+      [`lessons (${label}): /lessons delete and /lessons restore act as the person: the lesson is gone from the next query and back after the next`, commandAt(8)?.kind === 'success' && commandAt(8).text.startsWith('已删除') && commandAt(9)?.kind === 'success' && commandAt(9).text.startsWith('已找回') && !shows(9, SEED_LESSON) && shows(10, SEED_LESSON) && isDeepStrictEqual(journal.slice(6, 8).map(record => [record.op, record.actor, record.by?.commandId]), [['delete', 'human', 'probe-lessons'], ['restore', 'human', 'probe-lessons']]) && journal.length === 8, `${JSON.stringify(commandAt(8) ?? null).slice(0, 100)} | ${JSON.stringify(commandAt(9) ?? null).slice(0, 100)}; ${journal.length} record(s)`],
+      [`lessons (${label}): the face of the main agent has lessons_query${glmRoute ? ', resident, and lessons_merge only deferred' : ' and lessons_merge'}`, glmRoute ? face.some(tool => tool.name === 'lessons_query' && tool.deferLoading !== true) && !face.some(tool => tool.name === 'lessons_merge' && tool.deferLoading !== true) : LESSONS_TOOL_NAMES.every(tool => face.some(entry => entry.name === tool && entry.deferLoading !== true)), `${face.map(tool => `${tool.name}${tool.deferLoading === true ? ' (deferred)' : ''}`).join(', ') || 'none'}`],
+      [`lessons (${label}): the row reports itself loaded with the project's counts, and the run warned of nothing`, healthOf(scenario).lessons?.status !== '未加载' && healthOf(scenario).lessons?.reason.includes('生效经验') === true && quiet(name), `${healthLine(healthOf(scenario), 'lessons')}; ${healthOf(scenario).lessons?.reason.slice(0, 120) ?? ''}; stderr ${stderrOf(name).length} byte(s)`],
+    ]
+  })
+}
+
+/**
+ * Lessons after a failed call (docs/ORCHESTRATION.md §8.6; scenarios
+ * glm-lessons-failure, non-glm-lessons-failure): what the real runtime did
+ * with the listener on tools/post-execute: where the reminder sits in the
+ * next request (U2), whether a child's call is seen (U1), what was recorded.
+ */
+function lessonsFailureChecks() {
+  const route = [[failureGlm, 'glm-lessons-failure', 'GLM'], [failurePlain, 'non-glm-lessons-failure', 'non-GLM']]
+  return route.flatMap(([scenario, name, label]) => {
+    const started = dispatchRecord(name).find(entry => entry.kind === 'started')
+    const main = bySession(scenario, started?.parentId)
+    const child = bySession(scenario, started?.childId)
+    const told = step => messagesOf(step, FAILURE_SOURCE)
+    const recurNotices = step => messagesOf(step, LESSONS_RECUR_SOURCE)
+    // The reminder sits right after a tool result in the request.
+    const afterResult = step => step !== undefined && step.messages.some((message, index) => message.source === FAILURE_SOURCE && step.messages[index - 1]?.role === 'tool')
+    const journal = lessonsJournalOf(name)
+    const hits = journal.filter(record => record.op === 'hit')
+    const recurred = journal.filter(record => record.op === 'recur-notified')
+    return [
+      [`lessons failure (${label}): the request after the failing command carries one reminder right after its tool result, naming the lesson and the fragment, and the result still shows the failure`, main.length >= 6 && told(main[0]).length === 0 && told(main[1]).length === 1 && afterResult(main[1]) && told(main[1])[0].text.includes(FAILURE_LESSON) && told(main[1])[0].text.includes(FAILURE_FRAGMENT) && told(main[1])[0].text.includes('advice, not a rule') && lastToolResult(main[1])?.isError !== true && lastToolResult(main[1]).text.includes(FAILURE_FRAGMENT), main.length === 0 ? `no main request (exit ${scenario.status})` : `reminders per request: ${main.map(step => told(step).length).join(', ')}; ${(told(main[1])[0]?.text ?? 'none').replace(/\n/g, ' | ').slice(0, 200)}`],
+      [`lessons failure (${label}): a command that ran through brings no reminder, and the same failure again brings no second one`, main.length >= 6 && lastToolResult(main[2])?.text.includes('probe-ran-through') === true && told(main[2]).length === 1 && told(main[3]).length === 1 && lastToolResult(main[3])?.isError !== true, main.length === 0 ? 'no main request' : `reminders per request: ${main.map(step => told(step).length).join(', ')}`],
+      [`lessons failure (${label}): the child's failing command gets its reminder right after its tool result as well, and its call was not changed`, child.length >= 2 && told(child[0]).length === 0 && told(child[1]).length === 1 && afterResult(child[1]) && told(child[1])[0].text.includes(FAILURE_LESSON) && lastToolResult(child[1])?.isError !== true && lastToolResult(child[1]).text.includes(FAILURE_FRAGMENT), child.length === 0 ? `no child request (exit ${scenario.status})` : `child reminders per request: ${child.map(step => told(step).length).join(', ')}; ${(lastToolResult(child[1])?.text ?? 'no tool result').slice(0, 80).replace(/\n/g, ' ')}`],
+      [`lessons failure (${label}): the main agent's session and the child's are recorded as hits by the harness with the native tool name, one each, and with the earlier session they make three`, hits.length === 3 && isDeepStrictEqual(new Set(hits.map(record => record.by?.session)), new Set(['session-seed', started?.parentId, started?.childId])) && hits.slice(1).every(record => record.actor === 'harness' && record.id === FAILURE_LESSON && record.by.tool === 'pwsh' && record.by.agent === record.by.session && typeof record.by.callId === 'string'), hits.map(record => JSON.stringify(record.by)).join(' | ') || 'no hit'],
+      [`lessons failure (${label}): the lesson that matched in three sessions is brought up to the main agent once, after its record; the child is not told`, recurred.length === 1 && recurred[0].id === FAILURE_LESSON && recurred[0].data?.sessions === 3 && recurNotices(main.at(-1)).length === 1 && recurNotices(main.at(-1))[0].text.includes(FAILURE_LESSON) && child.every(step => recurNotices(step).length === 0), `${recurred.length} record(s); reminders per request: ${main.map(step => recurNotices(step).length).join(', ') || 'none'}`],
+      [`lessons failure (${label}): the row reports itself loaded, and the run warned of nothing`, healthOf(scenario).lessons?.status !== '未加载' && quiet(name), `${healthLine(healthOf(scenario), 'lessons')}; ${healthOf(scenario).lessons?.reason.slice(0, 120) ?? ''}; stderr ${stderrOf(name).length} byte(s)`],
+    ]
+  })
+}
 const checks = [
   ['sandbox: the runtime booted each profile generated under the run directory (its cordis.yml rewritten by the launcher); the real profiles directory has none of them', rewritten.length === GENERATED_PROFILES.length && leaked.length === 0, `rewritten: ${rewritten.join(', ') || 'none'}; under ${realProfiles}: ${leaked.join(', ') || 'none'}`],
   ['glm-only: with only the GLM channel package the GLM request has the ZCode identity, the aliases and the search controls, and no graph or memory tool', glmOnlyFirst?.system.includes('You are ZCode, an interactive agent') === true && zcodeFace.every(name => glmOnlyTools.has(name)) && searchControls.every(name => glmOnlyTools.has(name)) && ![...glmOnlyTools].some(name => GRAPH_TOOL_NAMES.includes(name) || MEMORY_TOOL_NAMES.includes(name)) && glmOnlyRead?.isError !== true, glmOnlyFirst === undefined ? `no request (exit ${glmOnly.status})` : `${glmOnlyTools.size} tools; ${[...glmOnlyTools].filter(name => name.startsWith('graph_') || name.startsWith('memory_')).join(', ') || 'no graph or memory tool'}`],
@@ -1976,6 +2310,9 @@ const checks = [
   ['glm compact: the checkpoint carries the formatted summary', checkpoint !== undefined && checkpoint.text.includes('Summary:\nprobe summary') && !checkpoint.text.includes('<analysis>'), checkpoint === undefined ? 'no checkpoint in the next request' : checkpoint.text.slice(0, 80).replace(/\n/g, ' ')],
   ['memory usage: one record per GLM step with the request provider, model and session id', glmUsage.length === glm.steps.length && glmUsage.every(record => record.provider === 'glm-probe' && record.model === 'glm-5.3' && typeof record.sessionId === 'string' && record.sessionId.length > 0), `${glmUsage.length} record(s) for ${glm.steps.length} step(s); first: ${JSON.stringify(glmUsage[0] ?? null).slice(0, 120)}`],
   ['memory usage: the compaction call is recorded with purpose compaction', compactUsage.length === compacted.compactions.length && compactUsage.length > 0, `${compactUsage.length} compaction record(s) for ${compacted.compactions.length} request(s)`],
+  ...memoryChecks(),
+  ...lessonsChecks(),
+  ...lessonsFailureChecks(),
   ['data: usage lands only in the user-level directory, never in a project directory or the real one', projectUsage.length === 0 && realUsageBefore === realUsageAfter, `project usage files: ${projectUsage.join(', ') || 'none'}; real ${realUsage}: ${realUsageBefore} -> ${realUsageAfter}`],
   ['guard: a shell write is denied with the four-part correction naming the ZCode tools, and the file is not created', blockedResult?.isError === true && blockedResult.text.includes('Shell file writes are not permitted') && blockedResult.text.includes(RIGHT_PATH_ZCODE) && !existsSync(blocked), blockedResult === undefined ? 'no tool result' : blockedResult.text.slice(0, 100).replace(/\n/g, ' ')],
   ['guard: the denial is journaled in the scenario project directory with rule, tool and the calling agent ids', glmViolations.length === 1 && glmViolations[0].rule === 'file-tools-only' && glmViolations[0].tool === 'Bash' && typeof glmViolations[0].agentId === 'string' && glmViolations[0].agentId.length > 0 && glmViolations[0].sessionId === glmUsage[0]?.sessionId, `${glmViolations.length} record(s); first: ${JSON.stringify(glmViolations[0] ?? null).slice(0, 140)}`],

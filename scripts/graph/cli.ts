@@ -10,16 +10,9 @@
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { runCli } from '../../src/graph/cli.ts'
+import { readStdin } from '../read-stdin.ts'
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
-
-async function readStdin(): Promise<string> {
-  // An interactive terminal sends nothing until the user types; treat it as no request.
-  if (process.stdin.isTTY) return ''
-  const chunks: Buffer[] = []
-  for await (const chunk of process.stdin) chunks.push(chunk as Buffer)
-  return Buffer.concat(chunks).toString('utf8')
-}
 
 const result = await runCli(process.argv.slice(2), { dir: join(repository, 'docs', 'graph'), stdin: readStdin })
 process.stdout.write(result.text)

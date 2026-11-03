@@ -29,7 +29,9 @@ export type WatchFrame =
 
 interface WorkspaceFilesRemote {
   list(sessionId: string, path: string, signal?: AbortSignal): Promise<RemoteResult<{ readonly path: string, readonly entries: readonly DirectoryEntry[], readonly truncated: boolean }>>
-  readBytes(sessionId: string, path: string, options: Record<string, never>, signal?: AbortSignal): Promise<RemoteResult<{ readonly absolutePath: string, readonly data: Uint8Array }>>
+  /** Identity, version and size of one regular file, without content (dsh-api-workspace-files). */
+  stat(sessionId: string, path: string, signal?: AbortSignal): Promise<RemoteResult<{ readonly absolutePath: string, readonly version: string, readonly bytes?: number }>>
+  readBytes(sessionId: string, path: string, options: Record<string, never>, signal?: AbortSignal): Promise<RemoteResult<{ readonly absolutePath: string, readonly version: string, readonly bytes?: number, readonly offset: number, readonly data: Uint8Array, readonly eof: boolean }>>
   changes(sessionId: string, path: string, lifetime: AbortSignal): unknown
 }
 
@@ -106,12 +108,16 @@ export interface TokenUsage {
 /**
  * The projection values of one session this bundle reads; graphLive and
  * hournessMainAgent are this bundle's own units (the second is read through
- * mainAgentActive, which takes the table as a whole, hence the index signature).
+ * mainAgentActive, which takes the table as a whole, hence the index signature),
+ * and the two hourness keys are the wire views of the memory and lessons rows
+ * (src/memory/index.ts, src/lessons/index.ts).
  */
 export interface ProjectionValues {
   readonly graphLive?: LiveView
   readonly subagentCatalog?: readonly CatalogEntry[]
   readonly tokenUsage?: TokenUsage
+  readonly hournessLessons?: { readonly journal: string | null }
+  readonly hournessMemory?: { readonly projectJournal: string | null, readonly userJournal: string | null }
   readonly [key: string]: unknown
 }
 
