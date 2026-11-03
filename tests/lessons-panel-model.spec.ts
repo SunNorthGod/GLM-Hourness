@@ -174,6 +174,34 @@ test('without the memory journals the memory half is empty and no depth line sho
   assert.equal(memory.depth, null)
 })
 
+/** The user-level journal of the habit test: an ask, the confirming store, an update that changes the content, and a second habit the person declined. */
+const HABIT_MEMORY_TEXT = [
+  line(1, { at: '2026-10-20T09:00:00.000Z', actor: 'llm', by: { session: 's1' }, op: 'ask', id: 'all:rename-keep-date', data: { name: 'rename-keep-date', scope: 'all', question: '重命名时保留拍摄日期，好吗？', description: '重命名时保留拍摄日期', body: 'Why: 你说过照片的日期不能丢。\nHow to apply: 改名不改时间戳。' } }),
+  line(2, { at: '2026-10-22T09:00:00.000Z', actor: 'llm', relay: '好，保留拍摄日期', by: { session: 's1' }, op: 'store', id: 'all:rename-keep-date', data: { name: 'rename-keep-date', scope: 'all', type: 'feedback', description: '重命名时保留拍摄日期', body: 'Why: 你说过照片的日期不能丢。\nHow to apply: 改名不改时间戳。', source: [], ask: '重命名时保留拍摄日期，好吗？', relayChecked: true } }),
+  line(3, { at: '2026-10-26T09:00:00.000Z', actor: 'llm', relay: '只在照片库里保留', by: { session: 's1' }, op: 'store', id: 'all:rename-keep-date', data: { name: 'rename-keep-date', scope: 'all', type: 'feedback', description: '重命名时保留拍摄日期', body: 'Why: 你说过照片的日期不能丢。\nHow to apply: 照片库里改名不改时间戳，别处随意。', source: [], relayChecked: true } }),
+  line(4, { at: '2026-10-24T09:00:00.000Z', actor: 'llm', by: { session: 's1' }, op: 'ask', id: 'all:rename-prefix', data: { name: 'rename-prefix', scope: 'all', question: '重命名时都加日期前缀，好吗？', description: '重命名时加日期前缀', body: 'Why: 排序方便。\nHow to apply: 文件名前加 YYYY-MM-DD。', learnedFrom: ['edit:goal.stage'] } }),
+  line(5, { at: '2026-10-25T09:00:00.000Z', actor: 'llm', relay: '不用，前缀随意', by: { session: 's1' }, op: 'decline', id: 'all:rename-prefix', data: { name: 'rename-prefix', question: '重命名时都加日期前缀，好吗？', description: '重命名时加日期前缀', learnedFrom: ['edit:goal.stage'] } }),
+].join('\n') + '\n'
+
+test('the habit rows: a confirmed habit with its question and 要记的 line, the changed-content line, and the folded declined habits (lessons-3)', () => {
+  const user = foldJournalText(HABIT_MEMORY_TEXT, memoryFold('all'))
+  const memory = memoryRows(null, user, NOW)
+  assert.deepEqual(memory.preferences.map(row => row.name), ['rename-keep-date'])
+  const habit = memory.preferences[0]
+  assert.equal(habit.saidLine, '你 10-26 说过「只在照片库里保留」')
+  assert.deepEqual(habit.habit, {
+    questionLine: '当时问你的是：「重命名时保留拍摄日期，好吗？」',
+    memorizeLine: '要记的：重命名时保留拍摄日期',
+    changedLine: '内容在你确认之后改过，依据是你 10-26 说过「只在照片库里保留」',
+  })
+  assert.deepEqual(memory.declinedHabits.rows.map(row => row.name), ['rename-prefix'])
+  const no = memory.declinedHabits.rows[0]
+  assert.equal(no.questionLine, '当时问你的是：「重命名时都加日期前缀，好吗？」')
+  assert.equal(no.saidLine, '你 10-25 说过「不用，前缀随意」')
+  assert.equal(no.untilLine, '11-22 之前不再问')
+  assert.equal(no.changeLine, '要改：11-22 之后想记回来，跟主 Agent 再说一次')
+})
+
 // --- The page source ---------------------------------------------------------
 
 /**

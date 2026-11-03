@@ -1031,7 +1031,7 @@ LLM 爱造轮子，因为写脚本只花当前这一轮的力气，装工具却�
 
 ## 8. 记忆与学习
 
-### 8.1 现状〔M5 步骤 M1、G1 已实现，L2、L3；桌面版第一批验收未做〕
+### 8.1 现状〔M5 步骤 M1、G1、H1 已实现，L2、L3；桌面版第一批验收未做〕
 
 记忆行（`src/memory/`）按会话工作：项目目录跟会话的工作区，关于人本人的记忆在用户级目录（`d-memory-scope`），两处都是只追加的流水 `memory.jsonl`（`DESIGN.md` §2.4）；旧的 `memory.json` 在第一次写入时迁移（改名保留为 `memory.json.migrated-<毫秒>`，读不出的旧文件不被覆盖，读与写都报 `io`）。行配置 `home` 不再使用，行健康说明这一点。设计与验收在 `.agents/tasks/m5/design.md`（项目图节点 `m5`、`lessons`）。
 
@@ -1044,15 +1044,15 @@ LLM 爱造轮子，因为写脚本只花当前这一轮的力气，装工具却�
 | 事实（`project`、`reference`） | 14 天半衰期，每次被召回算一次复审（加成上限 1.5 倍）〔已实现〕；强度低于 0.1 的不进索引，`memory_query` 仍找得到 | 可被新事实覆盖；agent 可以直接删 |
 | 偏好（`user`、`feedback`） | 不衰减：这是用户定下的，不因一段时间没被想起而淡化 | 只能由用户撤销：人在输入框打 `/memory forget`；或对主 Agent 说，主 Agent 带人的原话调 `memory_forget`。同一会话里 agent 删自己刚写的误记除外 |
 
-偏好一定有凭据：人的原话（`relay`），或人亲手打的命令。没有凭据的偏好存不进去（`memory_store` 得 `ask_first`），读流水时也算坏行。原话要到习惯先问再记（步骤 H1）才对照人发的消息核对；在那之前 `llm` 写的每条偏好记 `relayChecked: false`，`/memory show` 标「原话未核对」。
+偏好一定有凭据：人的原话（`relay`），或人亲手打的命令。没有凭据的偏好存不进去（`memory_store` 得 `ask_first`，`hint` 指去 `memory_habit`），读流水时也算坏行。会话里人的消息读得到时，`llm` 写偏好的 `relay` 必须出自人最近一条消息，否则 `relay_not_said`；核对了的 `store` 记录记 `relayChecked: true`，读不到人的消息时照收、记 `relayChecked: false`，`memory_query` 与 `/memory show` 标「原话未核对」。人确认过的习惯（见 §8.5 的 `memory_habit`）再被更新时原话核对不了，整条拒收（`unavailable`）。
 
 存放〔定案 2026-10-28；`d-memory-scope` 2026-10-30〕：关于人本人的记忆（范围 `all`，只有 `user`、`feedback` 两类）放用户级目录 `$DSH_HOME/glm-hourness/memory/memory.jsonl`；项目事实与项目规范（范围 `project`）放会话所在项目的 `.llm/memory.jsonl`，项目按会话头的工作目录定（工作树回到主检出）。第一次往一个项目写之前，`.llm/` 先加进该项目的 `.git/info/exclude`，加不进去时这次写入得 `io`、不建 `.llm/`。同名条目：项目的遮住用户级的。
 
 ### 8.3 召回与工具
 
 - 会话开局的索引：根 agent 的第一步（存储里有条目时）和每次压缩之后的第一步，在对话末尾加一条来源为 `glm-hourness-memory` 的 `<system-reminder>`，偏好在前，事实按强度，淡忘的事实不列，至多 200 行与 25,000 字符。它是对话里的消息，不是系统提示词的一节，所以系统提示词逐步不变；可见历史里已经有它就不再加，开局时存储为空的会话在第一次写入之后的下一步得到一次。
-- 记忆工具 `memory_store`、`memory_query`、`memory_forget` 常驻（不进延迟目录）；只读的 `learning_signals`（§8.5）是主 Agent 的延迟工具，不并入记忆工具名单，所以 GLM 的 Memory 一节出现的条件（三个记忆工具都在）不变。`memory_query` 按关键词（命中数乘强度）或按名字取；返回的事实各算一次复审（项目流水里一条 `review` 记录），偏好不算。
-- 子 agent（委派出去的会话）不拿记忆工具和 `learning_signals`、不收索引与学习摘要提醒：行在子 agent 的 `agent/created` 上装一个不带 `prepend` 的 `system-prompt/assemble` 监听器去掉这四个工具，方言的 `prepend` 监听器因此看不到它们，不给子 agent 加 `# Memory` 一节；工具体再按会话头的 `origin` 拒绝按名直接调用（`role`，正路是交回结构）。
+- 记忆工具 `memory_store`、`memory_query`、`memory_forget` 常驻（不进延迟目录）；只读的 `learning_signals`（§8.5）与习惯问话的 `memory_habit`（§8.5）是主 Agent 的延迟工具，不并入记忆工具名单，所以 GLM 的 Memory 一节出现的条件（三个记忆工具都在）不变。`memory_query` 按关键词（命中数乘强度）或按名字取；返回的事实各算一次复审（项目流水里一条 `review` 记录），偏好不算。
+- 子 agent（委派出去的会话）不拿记忆工具、`learning_signals` 和 `memory_habit`、不收索引与学习摘要提醒：行在子 agent 的 `agent/created` 上装一个不带 `prepend` 的 `system-prompt/assemble` 监听器去掉这五个工具，方言的 `prepend` 监听器因此看不到它们，不给子 agent 加 `# Memory` 一节；工具体再按会话头的 `origin` 拒绝按名直接调用（`role`，正路是交回结构）。
 - `/memory`（输入框，身份为人）：`show` 列两处的条数与最近 10 条，`forget <名字> [project|all]`，`restore <名字> [project|all]`。
 - 服务 `glmHournessMemory`（契约 `src/shared/memory-service.ts`）：`depth(sessionId)` 给 GLM 方言读常设的汇报细度：方言在会话的 agent 创建时问一次，那一次同步读用户级流水，之后同一会话不变（§8.5）；另有 `stats`、`hygiene` 给周报与巡检（`src/memory/service.ts`）。会话投影 `hournessMemory` 把两份流水的路径交给面板。
 - 行不注册任何 `tools/pre-execute` 监听器：记忆是建议，不拦任何调用（`d-code-rules-enforce`：本行没有规则）。
@@ -1065,7 +1065,8 @@ LLM 爱造轮子，因为写脚本只花当前这一轮的力气，装工具却�
 ### 8.5 学习流水线
 
 - 信号〔已实现，M5 步骤 G1〕：harness 从项目图的历史和记忆流水里算出人对 agent 的纠正，按键分组（`src/memory/signals.ts`，纯函数，同样的输入得到同样的输出）：人改了 agent 写的字段 `edit:<节点类型>.<字段>`（人，或 `llm` 带 `relay` 转述人的话，改的字段上一次是 `llm` 或 `harness` 不带 `relay` 写的），人否决提议 `reject:<类型>`，人在对话里对方案的否掉与补充 `chat:reject`、`chat:add`（批注不带 `relay`，认开头的固定说法，`src/shared/answer-marks.ts`），人把做完的节点重开 `reopen:<类型>`，汇报细度从一档拨到另一档 `depth:up`、`depth:down`。开头是「人在对话里同意」的历史项是人对提议说可以，不算纠正。门禁以外的提交改了刚合入的文件这一类要等 M7 写的任务尾注，还没有。
-- 流程：学习摘要 → 主 Agent 为每一组选落点 → 观察是否复发。`learning_signals`（只读，主 Agent 的延迟工具，参数 `since`、`minCount`，默认近 28 天、至少 2 次）列出各组：键、一句说明、次数、至多 3 个例子、已落点数 `learned`、落点之后又出现的次数 `recurrences`、最近 4 周每周的次数 `weekly`（只看走向）；图读不出时 `graph: "unavailable"`，哪份流水读不出写进 `notes`，不报错。落点是带这个键的 `learnedFrom` 的记忆条目或经验（人删掉的、退役的不算），或节点上一条 `学自：<键>` 的批注（规则提议与候选标定题这样记）；落点的时刻取第一次写下这个键的那条记录。服务 `glmHournessMemory` 的 `learningDigest(session, {since?, until?, minCount?})` 给 M7 的周报同一份结构。
+- 流程：学习摘要 → 主 Agent 为每一组选落点 → 观察是否复发。`learning_signals`（只读，主 Agent 的延迟工具，参数 `since`、`minCount`，默认近 28 天、至少 2 次）列出各组：键、一句说明、次数、至多 3 个例子、已落点数 `learned`、这一组有没有被当作习惯问过人与结果 `asked`、落点之后又出现的次数 `recurrences`、最近 4 周每周的次数 `weekly`（只看走向）；图读不出时 `graph: "unavailable"`，哪份流水读不出写进 `notes`，不报错。落点是带这个键的 `learnedFrom` 的记忆条目或经验（人删掉的、退役的不算），或节点上一条 `学自：<键>` 的批注（规则提议与候选标定题这样记），还有习惯问话：生效的习惯偏好算落点，没回的问话 28 天内算，「不用」在 `until` 之前算；落点的时刻取第一次写下这个键的那条记录。服务 `glmHournessMemory` 的 `learningDigest(session, {since?, until?, minCount?})` 给 M7 的周报同一份结构。
+- 习惯先问再记〔已实现，M5 步骤 H1〕：agent 从改动里猜出的习惯不再直接写，也不自己开口问；先调 `memory_habit {action: "ask"}`——字段校验、换词表（`plain_words`，词与替法在 `hint`）、像密钥拒收；已是偏好得 `known`，28 天内问过没结果的同一条（按组键认，名字与说法不同也算）得 `asked_recently`，`until` 未过的「不用」得 `declined_recently`，一条回复里与 M3 已交出的提议合计超过三件得 `too_many`（问话排在提议之后，M3 不数问话，§8.5 之外披露的缺口），一个项目一周里的第四条得 `week_cap`；成功时流水里一条 `ask` 记录，返回 `text` 以圈号开头、第二行是「要记的：」加 `description`。人在同一会话、七天内、问话之后第一条消息里答了：`confirm` 带人的原话把问话时的内容存成不衰减的偏好（`store` 记录带 `data.ask`，条目带 `confirmed`，流水里总有内容相同、更早的问话）；原话不在那条消息里得 `words_not_found`，人没回得 `not_answered`，别的会话的问话得 `other_session`，过了七天得 `lapsed`，原话里有像密钥的一段得 `secret_like`（`field: words`），什么都不存、问话仍开着。`decline` 同样核对原话，记一条 `decline`，同一条习惯 28 天内不再问。读不到会话里人的消息时 ask 与 confirm 都得 `unavailable`，流水没有新行。人的消息读自会话投影 `hournessTalk`，没注册上时折叠会话日志（`src/memory/answers.ts`，本仓库里除设计行自身外唯一读 `src/design/talk.ts` 的文件）。
 - 学习摘要提醒〔已实现，M5 步骤 G1〕：给 `isMainAgentFor` 判为主 Agent 的步一条来源为 `glm-hourness-learning` 的提醒，指向 `learning_signals`；先看项目记忆流水里最近一条 `learn-notified`，满 7 天或没有才读图计算；至少有一个组没有落点或落点之后又出现，且这些组的键不是上一条提醒列的那些（摘要没变就不再发），才在项目的记忆流水里记一条 `learn-notified`（`data.keys` 是组键）并发出；记不下就不发。算出来不合条件的和写失败的，本进程一小时内不再算。提醒是建议，不拦任何调用，不在图上新增待决。
 - 汇报细度闭环〔已实现，M5 步骤 R1〕：三档滑杆（简洁 / 适中 / 详细，LLM 每次自选）的常设档，是人最近一次说定的。人的话表明长短要一直这样时，主 Agent 调 `memory_store`（`name: reporting-depth`、`type: user`、`value` 是三档之一、`relay` 写人的原话）；人只是这一次嫌长或嫌短，主 Agent 只改这一次的讲法，不写。GLM 方言的 `glm:persona` 一节在会话的 agent 创建时读 `glmHournessMemory` 的 `depth` 一次，没有时用配置的 `persona`：写入的那个会话里系统提示词不变，下一个会话带上新的档。人说「汇报细度恢复默认」，主 Agent 带原话调 `memory_forget reporting-depth`，或人打 `/memory forget reporting-depth`，下一个会话回到配置。服务不在、形状不对、读不出时用配置的档，并在行健康里说明。
 - 子 agent 各配独立记忆目录，避免互相污染。

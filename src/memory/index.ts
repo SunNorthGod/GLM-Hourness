@@ -31,6 +31,7 @@ import { graphService } from '../graph/service.ts'
 import { loadGraph } from '../graph/store.ts'
 import { rowJournal, type AuditFs, type UsageRecord } from './audit.ts'
 import { memoryCommand } from './commands.ts'
+import { answersOf } from './answers.ts'
 import { learningNotice } from './notices.ts'
 import { renderIndex, visibleEntries } from './recall.ts'
 import { memoryRowService } from './service.ts'
@@ -227,10 +228,12 @@ export function apply(ctx: MemoryContext, config: MemoryConfig = {}): () => void
     return { ...(project === undefined ? {} : { project }), ...(data === undefined ? {} : { user: join(data.userHome, 'memory') }) }
   }
   const warnOnce = warnOnceFor(name)
+  const answers = answersOf(ctx)
   const env: MemoryEnv = {
     places: session => placesFor(session?.header.cwd),
     sources: session => sourceCheckFor(ctx, session),
     graph: session => graphOf(ctx, session),
+    talk: session => answers.talkOf(session),
     now,
     note: notebook.note,
     ...(config.append === undefined ? {} : { append: config.append }),

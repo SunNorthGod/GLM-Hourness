@@ -17,7 +17,10 @@
 import { secretRefusal } from '../data/secret-shape.ts'
 import { invalid, isObject, isRefusal, refuse, type Refusal } from '../data/refusal.ts'
 import type { AgentLike, SessionLike, ToolDefinitionLike, ToolExecutionContext } from '../shared/dsh-min.ts'
-import { checkSourceKnown, checkStore, classify, judgeStore, revokeRecord, revokeRefusal, reviewRecord, storeRecord, strength, type MemoryEntry, type MemoryState, type MemoryType, type Scope } from './model.ts'
+import { MEMORY_HABIT } from '../shared/tool-names.ts'
+import { checkSourceKnown, checkStore, classify, judgeStore, revokeRecord, revokeRefusal, reviewRecord, storeRecord, strength, askRecord, declineRecord, HABIT_DECLINE_DAYS, type MemoryEntry, type MemoryState, type MemoryType, type Scope, type HabitFields } from './model.ts'
+import { firstReply, saidInReply, saidLatest, shownSinceLastPerson } from './answers.ts'
+import { askText, checkHabitAsk, checkWords, planAnswer, planAsk } from './habit.ts'
 import { readDigest } from './digest.ts'
 import { visibleEntries } from './recall.ts'
 import { dirOfScope, noteWrite, readBoth, writeScope, type MemoryEnv, type ReadOutcome, type WriteResult } from './storage.ts'
@@ -47,7 +50,7 @@ const STORE_PARAMETERS = {
     body: { type: 'string', description: 'At most 4000 characters. For feedback and project, follow the fact with **Why:** and **How to apply:** lines.' },
     scope: { type: 'string', enum: ['project', 'all'], description: '"all" for what is about the user themselves (how they talk, what they decide, how they like to work) and applies in every project; "project" for this project\'s facts, norms and references. Required for type feedback.' },
     value: { type: 'string', enum: ['concise', 'balanced', 'detailed'], description: 'Only for the entry named reporting-depth: how long your reports to the user should be from now on. Pass the user\'s own words in relay.' },
-    relay: { type: 'string', description: 'The user\'s own words, exactly as they said them. Required for type user and feedback. If you only guessed a habit from their edits, do not store it.' },
+    relay: { type: 'string', description: 'The user\'s own words from their latest message, exactly as they said them. Required for type user and feedback; the words are checked against that message. To record a habit you only guessed from their edits, ask first with memory_habit.' },
     source: { type: 'array', items: { type: 'string' }, description: 'Where the fact lives: a project graph node id, a file path (optionally with §section), a commit id, or a URL.' },
     learnedFrom: { type: 'array', items: { type: 'string' }, description: 'Keys of the learning groups this memory settles (at most 5).' },
     confirmNew: { type: 'boolean', description: 'Store a new memory even though it is close to an existing one.' },
@@ -132,7 +135,12 @@ const scoreWords = (focus: string): string[] => focus.toLowerCase().split(/\s+/)
 
 const round = (value: number): number => Math.round(value * 100) / 100
 
+const DAY_MS = 86_400_000
+
 // --- memory_store ----------------------------------------------------------
+
+/** The outcome of the check of a preference's `relay` against the person's messages (§3.2 step 4). */
+type RelayVerdict = { readonly checked: true, readonly relay: string } | { readonly checked: false }
 
 async function store(env: MemoryEnv, args: unknown, exec: unknown): Promise<unknown> {
   const caller = callerSession(exec)
@@ -147,8 +155,32 @@ async function store(env: MemoryEnv, args: unknown, exec: unknown): Promise<unkn
     if (lacking !== undefined) fail(lacking)
     unchecked = request.source.filter(ref => check.inspect(ref) === 'unchecked').map(ref => ref.text)
   }
+  // The words of a preference must be in the person's latest message in this
+  // session (§3.2). When their messages cannot be read, the store goes ahead
+  // with the words unchecked — except on a habit the person confirmed, which
+  // is refused under the lock below (§3.2 step 5).
+  let relay: RelayVerdict | undefined
+  if (classify(request.type) === 'preference') {
+    const talk = env.talk(caller.session)
+    if (talk === undefined) relay = { checked: false }
+    else {
+      const verdict = saidLatest(talk, request.relay ?? '')
+      if (!verdict.ok) {
+        fail(refuse('relay_not_said', 'the relay is not in the latest message the user sent in this session', 'relay',
+          'quote the user\'s words from their latest message; if they said it earlier, ask them to say it again'))
+      }
+      relay = { checked: true, relay: verdict.relay }
+    }
+  }
   let updated = false
   const result = await writeScope<Failure>(request.scope, dir, (state) => {
+    const existing = state.entries.get(request.name)
+    if (existing?.status === 'active' && existing.confirmed !== undefined && relay !== undefined && !relay.checked) {
+      return {
+        refused: refuse('unavailable', 'the messages of the person cannot be read in this session, so a habit they confirmed cannot be changed', 'relay',
+          'try again in a session where their messages can be read'),
+      }
+    }
     const verdict = judgeStore(state, request)
     if (isRefusal(verdict)) return { refused: verdict }
     updated = verdict.updated
@@ -156,8 +188,7 @@ async function store(env: MemoryEnv, args: unknown, exec: unknown): Promise<unkn
       records: [storeRecord(request, {
         actor: 'llm',
         by: originOf(caller, 'memory_store'),
-        // The words of a preference are not checked against the person's messages yet.
-        ...(classify(request.type) === 'preference' ? { relayChecked: false } : {}),
+        ...(relay === undefined ? {} : { relayChecked: relay.checked, ...(relay.checked ? { relay: relay.relay } : {}) }),
       })],
     }
   }, env.append)
@@ -346,7 +377,7 @@ function checkLearning(args: unknown, now: Date): LearningRequest | Refusal<'inv
 }
 
 const LEARNING_DESCRIPTION = [
-  'Read-only: lists the kinds of correction the person has made to your work, in the last 28 days or since `since`, that happened at least `minCount` times (default 2). Each group has its key, what the key means, how many times it happened, examples, how many memories, lessons and notes already settle it (learned), how many times it came back after the first of those (recurrences) and the counts of the last four weeks (weekly).',
+  'Read-only: lists the kinds of correction the person has made to your work, in the last 28 days or since `since`, that happened at least `minCount` times (default 2). Each group has its key, what the key means, how many times it happened, examples, how many memories, lessons, notes and habit questions already settle it (learned), whether the group was already put to the person as a habit question and how that went (asked), how many times it came back after the first of those (recurrences) and the counts of the last four weeks (weekly).',
   'Call it when the learning digest reminder arrives or the person asks what could be learned. It writes nothing. Settle a group with memory_store or lessons_merge and name the group key in learnedFrom, or with a graph_comment on the node that starts "学自：" and the key. Example key: edit:task.acceptance, "the person changed the acceptance the agent had set on a task".',
 ].join('\n')
 
@@ -359,7 +390,149 @@ async function signals(env: MemoryEnv, args: unknown, exec: unknown): Promise<un
 
 const render: ToolDefinitionLike['output']['render'] = (_args, value) => [{ type: 'text', text: JSON.stringify(value) }]
 
-/** The learning tool over the row's environment: the main agent's, deferred on the GLM route, hidden from a delegated child like the memory tools. */
+// --- memory_habit ----------------------------------------------------------
+
+const HABIT_ACTIONS: readonly string[] = ['ask', 'confirm', 'decline']
+
+const HABIT_DESCRIPTION = [
+  'Record a habit you would otherwise only guess from how the person works. ask puts one short question to them in the chat; it returns text with a circled number — show that text as given in your reply, after the propose_to_human calls of the same reply, never before them.',
+  'At most three questions go in one reply together with propose_to_human, and at most three habit questions to one project in a week. The person answers in their own next message: confirm quotes their words and stores the habit as a preference that never fades and only they revoke; decline records their no, and the same habit is not asked again for 28 days.',
+  'The words of confirm and decline must quote their reply in this session, within 7 days of the question. The stored content is the one the question carried; ask again (with the person\'s say-so) to change it.',
+].join('\n')
+
+const HABIT_PARAMETERS = {
+  type: 'object',
+  properties: {
+    action: { type: 'string', enum: ['ask', 'confirm', 'decline'], description: 'ask a habit question, or record the person\'s answer to one.' },
+    name: { type: 'string', description: 'kebab-case name of the habit; ask stores the question under it, confirm and decline name the question to answer.' },
+    scope: { type: 'string', enum: ['project', 'all'], description: 'ask only: "all" for a habit that holds in every project, "project" for one of this project. Required.' },
+    description: { type: 'string', description: 'ask only: one line, at most 200 characters; what the habit is. Goes to the person on a second line under the question.' },
+    body: { type: 'string', description: 'ask only: at most 4000 characters, with **Why:** and **How to apply:** lines.' },
+    question: { type: 'string', description: 'ask only: one line of 10 to 90 characters ending with ？ or ?, in the person\'s own kind of words; the plain-words list is checked.' },
+    learnedFrom: { type: 'array', items: { type: 'string' }, description: 'ask only: keys of the learning groups this habit settles (at most 5), as learning_signals shows them. A second ask about a group already asked or declined answers with that outcome.' },
+    words: { type: 'array', items: { type: 'string' }, description: 'confirm and decline only: stretches of the person\'s reply, exactly as they said them, at most 500 characters together.' },
+  },
+  required: ['action', 'name'],
+} as const
+
+/** The states both journals hold, for the checks that reach across the scopes (§3.8.1 step 7). */
+async function bothStates(env: MemoryEnv, session: SessionLike | undefined): Promise<readonly MemoryState[]> {
+  const read = await readBoth(env.places(session))
+  return [read.project, read.user].flatMap(outcome => outcome?.ok === true ? [outcome.read.state] : [])
+}
+
+const noStore = (scope: Scope): Failure => scope === 'project' ? NO_PROJECT : NO_USER_DIR
+
+async function habitAsk(env: MemoryEnv, args: Record<string, unknown>, caller: Caller): Promise<Record<string, unknown>> {
+  const { action: _action, ...ask } = args
+  const fields: HabitFields | Refusal = checkHabitAsk(ask)
+  if (isRefusal(fields)) fail(fields)
+  const dir = dirOfScope(env.places(caller.session), fields.scope)
+  if (dir === undefined) fail(noStore(fields.scope))
+  const states = await bothStates(env, caller.session)
+  const talk = env.talk(caller.session)
+  const lastPersonAt = talk?.people.at(-1)?.time
+  const plan = planAsk(states, fields, {
+    session: caller.session?.id,
+    now: env.now().toISOString(),
+    lastPersonAt,
+    shown: talk === undefined ? undefined : shownSinceLastPerson(talk),
+  })
+  if (isRefusal(plan)) fail(plan)
+  const result = await writeScope<Failure>(fields.scope, dir, () => ({
+    records: [askRecord(fields, originOf(caller, 'memory_habit'))],
+  }), env.append)
+  settle(env, caller, result)
+  return { asked: true, name: fields.name, scope: fields.scope, number: plan.number, text: askText(plan.number, fields) }
+}
+
+async function habitAnswer(env: MemoryEnv, action: 'confirm' | 'decline', args: Record<string, unknown>, caller: Caller): Promise<Record<string, unknown>> {
+  const { name } = args
+  if (typeof name !== 'string' || name.length === 0 || name.length > 64) fail(invalid('name', 'name must be the name of a question'))
+  const words = checkWords(args.words)
+  if (isRefusal(words)) fail(words)
+  const places = env.places(caller.session)
+  const read = await readBoth(places)
+  const notes: string[] = []
+  const usable = (label: string, outcome: ReadOutcome | undefined): MemoryState | undefined => {
+    if (outcome === undefined) return undefined
+    if (outcome.ok) return outcome.read.state
+    notes.push(`${label} memory could not be read: ${outcome.reason}`)
+    return undefined
+  }
+  const scopes: ReadonlyArray<readonly [Scope, MemoryState | undefined]> = [
+    ['project', usable('project', read.project)],
+    ['all', usable('user-level', read.user)],
+  ]
+  const found = scopes.find((entry): entry is readonly [Scope, MemoryState] => entry[1]?.asks.get(name) !== undefined)
+  if (found === undefined) fail(notes.length > 0 ? refuse('io', notes.join('; ')) : refuse('no_ask', `no open question named ${name}`, 'name', 'ask first with action "ask"'))
+  const [scope, state] = found
+  const verdict = planAnswer(state, name, caller.session?.id, env.now().toISOString())
+  if (isRefusal(verdict)) fail(verdict)
+  const talk = env.talk(caller.session)
+  if (talk === undefined) {
+    env.note(caller.session?.id, 'talk', '会话里人的消息读不出，问话的回答核对不了')
+    fail(refuse('unavailable', 'the messages of the person cannot be read in this session, so their answer cannot be checked', undefined,
+      'ask again in a session where the person\'s messages can be read'))
+  }
+  const askedAtMs = Date.parse(verdict.ask.at)
+  const reply = firstReply(talk, askedAtMs)
+  if (reply === undefined) fail(refuse('not_answered', `the person has not replied since the question of ${verdict.ask.at.slice(0, 10)}`, undefined,
+    'their first reply after the question is the answer; wait for it'))
+  const said = saidInReply(reply, words, askedAtMs)
+  if (!said.ok) {
+    fail(refuse('words_not_found', 'the words are not in the person\'s first message after the question', 'words',
+      'quote their reply as they wrote it, in stretches that begin and end at a punctuation mark, a space or a line break'))
+  }
+  const dir = dirOfScope(places, scope)
+  if (dir === undefined) fail(noStore(scope))
+  if (action === 'decline') {
+    const result = await writeScope<Failure>(scope, dir, (current) => {
+      const open = current.asks.get(name)
+      if (open === undefined || open.question !== verdict.ask.question) return { refused: refuse('no_ask', 'the question is gone', 'name') }
+      return { records: [declineRecord(open, said.relay, originOf(caller, 'memory_habit'))] }
+    }, env.append)
+    settle(env, caller, result)
+    return { declined: true, name, scope, until: new Date(Date.parse(env.now().toISOString()) + HABIT_DECLINE_DAYS * DAY_MS).toISOString() }
+  }
+  const request = {
+    name: verdict.ask.name,
+    type: 'feedback' as const,
+    scope: verdict.ask.scope,
+    description: verdict.ask.description,
+    body: verdict.ask.body,
+    source: [],
+    ...(verdict.ask.learnedFrom === undefined ? {} : { learnedFrom: verdict.ask.learnedFrom }),
+    relay: said.relay,
+    confirmNew: true,
+  }
+  let updated = false
+  const result = await writeScope<Failure>(scope, dir, (current) => {
+    const open = current.asks.get(name)
+    if (open === undefined || open.question !== verdict.ask.question) return { refused: refuse('no_ask', 'the question is gone', 'name') }
+    const judged = judgeStore(current, request)
+    if (isRefusal(judged)) return { refused: judged }
+    updated = judged.updated
+    return {
+      records: [storeRecord(request, { actor: 'llm', by: originOf(caller, 'memory_habit'), relayChecked: true, ask: verdict.ask.question })],
+    }
+  }, env.append)
+  settle(env, caller, result)
+  return { confirmed: true, name, scope, question: verdict.ask.question, updated }
+}
+
+async function habit(env: MemoryEnv, args: unknown, exec: unknown): Promise<unknown> {
+  const caller = callerSession(exec)
+  if (!isObject(args)) fail(invalid(undefined, 'arguments must be an object'))
+  const action = args.action
+  if (typeof action !== 'string' || !HABIT_ACTIONS.includes(action)) {
+    fail(invalid('action', `action must be one of ${HABIT_ACTIONS.join(', ')}`))
+  }
+  if (action === 'ask') return habitAsk(env, args, caller)
+  return habitAnswer(env, action as 'confirm' | 'decline', args, caller)
+}
+
+/** The learning tools over the row's environment: the main agent's, deferred on the GLM route, hidden from a delegated child like the memory tools. */
 export function learningTools(env: MemoryEnv): ToolDefinitionLike[] {
   return [
     {
@@ -375,6 +548,13 @@ export function learningTools(env: MemoryEnv): ToolDefinitionLike[] {
       output: { schema: { type: 'object', properties: { since: { type: 'string' }, until: { type: 'string' }, groups: { type: 'array', items: { type: 'object' } }, graph: { type: 'string' }, notes: { type: 'array', items: { type: 'string' } } } }, render },
       execute: (args, exec) => signals(env, args, exec),
     },
+  {
+    name: MEMORY_HABIT,
+    description: HABIT_DESCRIPTION,
+      parameters: HABIT_PARAMETERS,
+      output: { schema: { type: 'object', properties: { asked: { type: 'boolean' }, confirmed: { type: 'boolean' }, declined: { type: 'boolean' }, name: { type: 'string' }, scope: { type: 'string' }, number: { type: 'number' }, text: { type: 'string' }, question: { type: 'string' }, until: { type: 'string' }, updated: { type: 'boolean' } } }, render },
+      execute: (args, exec) => habit(env, args, exec),
+    },
   ]
 }
 
@@ -384,21 +564,21 @@ export function memoryTools(env: MemoryEnv): ToolDefinitionLike[] {
     {
       name: 'memory_store',
       description: STORE_DESCRIPTION,
-      parameters: STORE_PARAMETERS as unknown as Record<string, unknown>,
+      parameters: STORE_PARAMETERS,
       output: { schema: { type: 'object', properties: { stored: { type: 'boolean' }, name: { type: 'string' }, scope: { type: 'string' }, kind: { type: 'string' }, updated: { type: 'boolean' }, uncheckedSources: { type: 'array', items: { type: 'string' } } } }, render },
       execute: (args, exec) => store(env, args, exec),
     },
     {
       name: 'memory_query',
       description: 'Recall memories by keyword focus (strongest first), or read one in full by name. Facts fade (14-day half-life) unless they are recalled; each recalled fact counts as a review. Preferences do not fade.',
-      parameters: QUERY_PARAMETERS as unknown as Record<string, unknown>,
+      parameters: QUERY_PARAMETERS,
       output: { schema: { type: 'object', properties: { matches: { type: 'array', items: { type: 'object' } }, notes: { type: 'array', items: { type: 'string' } } } }, render },
       execute: (args, exec) => query(env, args, exec),
     },
     {
       name: 'memory_forget',
       description: 'Forget one memory by name. Only the user revokes a preference: quote their words in relay. A fact can be forgotten without them.',
-      parameters: FORGET_PARAMETERS as unknown as Record<string, unknown>,
+      parameters: FORGET_PARAMETERS,
       output: { schema: { type: 'object', properties: { forgotten: { type: 'boolean' }, name: { type: 'string' }, scope: { type: 'string' }, kind: { type: 'string' } } }, render },
       execute: (args, exec) => forget(env, args, exec),
     },
