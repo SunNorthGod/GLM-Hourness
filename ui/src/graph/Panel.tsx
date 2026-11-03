@@ -16,7 +16,7 @@ import { Button, SegmentedTabs, TextShimmer } from '@deepseek-ai/dsh-client-ui-p
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactElement } from 'react'
 import type { CommandsRemote, SessionsClient } from '../dsh.ts'
 import { useAgents, useNow } from './agents.ts'
-import { boards, type Board, type BoardState } from './boards.ts'
+import { boards, checkedBoardState, type Board, type BoardState } from './boards.ts'
 import { NowContext, PanelBoundary, ServicesContext, type PanelServices } from './common.tsx'
 import { Decisions } from './Decisions.tsx'
 import { Doing } from './Doing.tsx'
@@ -99,7 +99,7 @@ function useBoard(board: Board, sessionId: string): BoardState {
   }, [board, sessionId])
   const getSnapshot = useCallback(() => {
     try {
-      return board.snapshot(sessionId)
+      return checkedBoardState(board.id, board.snapshot(sessionId)) ?? BOARD_UNAVAILABLE
     }
     catch (error) {
       warnBoardOnce(board, error)

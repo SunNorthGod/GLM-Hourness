@@ -578,6 +578,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "12(b) 桌面版交互 L4 完成（2026-11-03 21:43-21:48，用户在 .llm/l4-glm 真人访谈）：/wish 开场、五轮问答、待决经 propose_to_human 交人、用户原话「小网页吧」经 record_human_answer 落成带 relay 的 decide——结构路全通，访谈中途把命令行聊成小网页（听人话的实证）；图全部写在临时工作区、零越界；目标停在 proposed/wish 属修复 3 的正确形状（人未确认即未批）。用户评价「这个流程非常棒，你把细节打磨一下就没问题」，细节=UI 尺寸对齐 DSH 原生（记 m8）。高峰提醒当晚谷段不适用，L3 探针已钉。M3 全部完成。"
+    },
+    {
+      "at": "2026-11-03T21:05:13.108Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "设计行桌面冒烟（L4 批次，2026-11-04）：/wish 收下（inbox splice 通知 + 流程条「主 Agent · 还没有目标」+ 档位强提醒，全程无 ask 卡），/wish off 干净退出——m3 欠的桌面过补上。同批两条装机发现：出厂桌面 overlay 用旧键 persona（已改名 reportingDepth，降级告警）；data 行桌面形态缺 projectHome 配置，guard 违规不落盘（测试 overlay 补同形覆盖后转全生效）——装机批次需给用户 profile patch 补 data 行覆盖并更新键名。"
     }
   ]
 }

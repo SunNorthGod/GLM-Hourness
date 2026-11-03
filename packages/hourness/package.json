@@ -1,12 +1,15 @@
 {
   "name": "dsh-hourness",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Orchestration layer for DeepSeek Harness: project graph and its sidebar panel, guard rails, audit journals, memory, the /wish main-agent flow, and the /hourness morning report.",
   "type": "module",
   "license": "PolyForm-Noncommercial-1.0.0",
   "keywords": [
     "dsh",
+    "dsh-plugin",
     "deepseek-harness",
+    "deepseek",
+    "cordis",
     "orchestration",
     "project-graph",
     "guard",

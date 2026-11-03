@@ -159,6 +159,8 @@ DSH 官方类型已作为 devDependency 安装（`@deepseek-ai/dsh-llm`、`@deep
 | 2026-10-31 | 11 个已推送提交（`aaab499` 到 `534b4f0` 之间的图提交与 `7c2592e`）的提交说明以 U+FEFF（字节顺序标记）开头，`git log --oneline` 在中文控制台里显示成「锘縢raph」；同一写法写出的一份图操作草稿被 `JSON.parse` 拒收 | 编排方读提交历史 | Windows PowerShell 5.1 的 `Set-Content -Encoding utf8` 写文件带字节顺序标记，`git commit -F` 原样收进提交说明；提交前没有核对 | 提交说明与 JSON 草稿用不带字节顺序标记的写法（编排方的文件工具，或 `[IO.File]::WriteAllText` 配 `UTF8Encoding($false)`），提交后核对新提交的第一字符；已推送的提交按 §9 不改写 |
 | 2026-11-04 | S12 桌面 L4 的启动脚本照搬 m3 的杀-起模式：先强杀用户正在运行的桌面实例，同一秒内重启，新实例宿主在 `installDesktopUpdateTaskControl` 处 `INACTIVE_EFFECT` 致命崩，崩溃框弹到用户屏幕 | L4 | L4 启动规程没写死「不杀运行中的实例」；`--user-data-dir` 没独立，userData 单例锁与垂死进程相撞（竞态见 `FACTS.md` §3） | 启动纪律进 §1.1 的 L4 行：不杀运行中的实例（发现就停下报告）、独立 `--user-data-dir`、等进程退出与锁文件释放再起 |
 | 2026-11-04 | `80d4612` 在 check-secrets 红着时推上 main：S12 测试夹具的编造 `ghp_` 假令牌命中 github-pat 规则（3 处），编排方门禁链用 `| tail` 截尾，管道把 `npm test` 的退出码换成 tail 的 0，链条继续跑到 probe 与 push，合并树上的完整测试套当时没跑过 | L2 | 管道接管退出码；夹具造出真规则命中的令牌形状 | 门禁链一律重定向、不用管道（退出码原样传导）；`.gitleaks.toml` 按字面+按文件放行该假串（假串在 eef34f9 历史里永存），其余 github-pat 照拦；同一树上重跑 check-secrets 与 `npm test` 全绿补验 |
+| 2026-11-04 | 桌面 L4 的 CDP 截图带 clip+scale 在分栏大图层上触发 Skia `assertf`（259200×86400 位图分配失败），渲染进程崩溃，崩溃框可能在用户屏幕闪现 | L4 | CDP 截图对合成大图层的 clip 组合没有预判 | 截图只拍全窗、本地裁剪；出现即向用户说明并记录 |
+| 2026-11-04 | 桌面 L4 的进程卫生脚本按 exe 路径 Stop-Process，把并行 lane 正在跑的探针硬杀（探针与桌面版同一 Electron exe），中断其 junction 清理；后续清理的递归删除顺着残留 junction 进了主检出，删掉 `packages/hourness` 的 32 个跟踪文件与未跟踪产物 | L3/L4 | 杀进程按 exe 路径匹配，无法区分同 exe 的探针与测试实例；删除递归不校验 junction 目标归属 | `git checkout -- packages/hourness` 全部恢复，build/preflight 重跑双绿。纪律：杀自己的进程只按命令行特征（user-data-dir 等标记）匹配；任何探针运行期间禁止按路径杀进程；清理含 junction 的目录先删 junction（校验目标归属）再删树 |
 
 ## 8. 变更检查清单
 
