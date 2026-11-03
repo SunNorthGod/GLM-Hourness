@@ -25,7 +25,7 @@ declare module '@deepseek-ai/dsh-client-ui-primitives' {
   }
   type Icon = ComponentType<IconProps>
 
-  export const Button: ComponentType<ButtonHTMLAttributes<HTMLButtonElement> & { readonly variant?: 'ghost' | 'outline' | 'primary', readonly size?: 'sm' }>
+  export const Button: ComponentType<ButtonHTMLAttributes<HTMLButtonElement> & { readonly variant?: 'ghost' | 'outline' | 'primary', readonly size?: 'sm' | 'md' }>
   export const Input: ComponentType<InputHTMLAttributes<HTMLInputElement> & RefAttributes<HTMLInputElement>>
   export const Tag: ComponentType<{ readonly tone?: 'neutral' | 'info' | 'danger' | 'success' | 'warning', readonly className?: string, readonly children?: ReactNode }>
   export const StateDot: ComponentType<{ readonly state: 'error' | 'warning' | 'ongoing' | 'idle', readonly className?: string }>

@@ -525,7 +525,7 @@ test('the write lock: a dead holder and an old lock are taken over, a live fresh
 })
 
 // Windows answers EPERM, not EEXIST, to a create that meets a lock file another process is unlinking; a deny entry on the directory gives the same EPERM for as long as the test wants.
-test('on Windows the EPERM of a lock file being deleted is waited out, and one that does not pass is reported as it is', { skip: process.platform !== 'win32' }, async () => {
+test('on Windows the EPERM of a lock file being deleted is waited out, and one that does not pass is reported as it is', { skip: process.platform !== 'win32' }, async t => {
   const dir = await mkdtemp(join(tmpdir(), 'rules-lock-'))
   const EVERYONE = '*S-1-1-0'
   const icacls = join(process.env['SystemRoot'] ?? 'C:\\Windows', 'System32', 'icacls.exe')
@@ -533,6 +533,16 @@ test('on Windows the EPERM of a lock file being deleted is waited out, and one t
   try {
     const file = join(dir, 'rules.lock')
     acl('/deny', `${EVERYONE}:(WD,AD)`)
+    // The whole case rests on the deny biting; an elevated or privileged token can bypass it, in which case the
+    // mechanism this tests with does not exist on this machine. Skip rather than report a store failure.
+    try {
+      await writeFile(join(dir, 'probe'), '')
+      t.skip('the deny ACE does not bite in this environment (an elevated or privileged token bypasses it)')
+      return
+    }
+    catch {
+      // The denial holds: the store sees EPERM below.
+    }
     await assert.rejects(acquireLock(file, impatientLock()), { code: 'EPERM' }, 'a refusal that lasts the whole wait is the error itself, not busy')
     setTimeout(() => acl('/remove:d', EVERYONE), 150)
     const lock = await acquireLock(file)

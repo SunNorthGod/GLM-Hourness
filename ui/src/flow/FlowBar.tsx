@@ -47,12 +47,25 @@ function makeBar(remote: RemoteRoot, sessions: SessionsClient): (props: BarProps
     const text = flowBarText({ main, live, graph: graph ?? LOADING, cheapModel: !wasDismissed && isCheapModel(live?.model) })
     if (text === null) return null
     const dot = text.waiting ? 'warning' : live !== undefined && live.turnSince !== null ? 'ongoing' : 'idle'
+    // The goal bar's type scale: the leading name reads at the label weight, the rest as the
+    // bar's body text. The line stays one string (the name span sits inside the text span), so
+    // the separator's spaces survive and the whole line still ellipsizes as one.
+    const separatorAt = text.line.indexOf(FLOW_TEXT.separator)
     return (
       <div className="hf-bar" role="group" aria-label={FLOW_TEXT.region}>
         <style>{FLOW_CSS}</style>
         <div className="hf-line">
           <StateDot state={dot} />
-          <span className="hf-text" title={text.line}>{text.line}</span>
+          <span className="hf-text" title={text.line}>
+            {separatorAt < 0
+              ? text.line
+              : (
+                  <>
+                    <span className="hf-name">{text.line.slice(0, separatorAt)}</span>
+                    {text.line.slice(separatorAt)}
+                  </>
+                )}
+          </span>
         </div>
         {text.modelNote === null
           ? null

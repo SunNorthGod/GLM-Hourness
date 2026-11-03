@@ -24,12 +24,12 @@ import { holdLessonsSource, type LessonsPaths, type LessonsSnapshot, type Lesson
 const LESSONS_CSS = `
 .glml{padding:4px 2px 16px;animation:glmg-fade .18s ease-out}
 .glml-head{margin:2px 0 10px}
-.glml-head h2{margin:0;font-size:15px;line-height:1.4}
+.glml-head h2{margin:0;color:var(--g-ink);font-size:15px;line-height:24px;font-weight:500}
 .glml-sub{color:var(--g-ink3);font-size:12px}
-.glml-notice{margin:0 0 10px;padding:8px 10px;border:1px solid var(--g-line-strong);border-radius:8px;color:var(--g-ink2);font-size:12px}
+.glml-notice{margin:0 0 10px;padding:8px 10px;border:.5px solid var(--dsw-alias-border-l1,rgba(127,127,127,.28));border-radius:var(--dsw-radius-md,12px);color:var(--g-ink2);font-size:12px}
 .glml-topline{margin:2px 0 8px;color:var(--g-ink2);font-size:12px}
-.glml-item{margin:0 0 10px;padding:10px 12px;border:1px solid var(--g-line);border-radius:var(--dsw-radius-lg,12px);background:var(--g-layer)}
-.glml-title{font-size:13px;font-weight:600;line-height:1.5}
+.glml-item{margin:0 0 10px;padding:10px 12px;border:.5px solid var(--dsw-alias-border-l1,rgba(127,127,127,.28));border-radius:var(--dsw-radius-lg,16px);background:var(--g-layer)}
+.glml-title{font-size:13px;font-weight:500;line-height:20px}
 .glml-state{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:2px;font-size:12px}
 .glml-tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
 .glml-grey{margin-top:3px;color:var(--g-ink3);font-size:11px}
@@ -37,7 +37,7 @@ const LESSONS_CSS = `
 .glml-fold{margin:2px 0 10px}
 .glml-fold summary{padding:4px 2px;color:var(--g-ink2);font-size:12px;cursor:pointer}
 .glml-memory{margin-top:18px;padding-top:12px;border-top:1px solid var(--g-line)}
-.glml-memory h3{margin:0 0 4px;font-size:14px}
+.glml-memory h3{margin:0 0 4px;color:var(--g-ink);font-size:14px;line-height:20px;font-weight:500}
 .glml-section{margin:12px 2px 6px;color:var(--g-ink3);font-size:11px;font-weight:600;letter-spacing:.02em}
 `
 

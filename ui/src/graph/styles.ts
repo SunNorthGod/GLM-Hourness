@@ -23,7 +23,7 @@ export const PANEL_CSS = `
 .glmg-view{animation:glmg-fade .18s ease-out}
 .glmg-section{margin:14px 2px 6px;color:var(--g-ink3);font-size:11px;font-weight:600;letter-spacing:.02em}
 .glmg-section:first-child{margin-top:4px}
-.glmg-card{position:relative;margin:0 0 10px;padding:12px 12px 10px;border:1px solid var(--g-line);border-radius:var(--dsw-radius-lg,12px);background:var(--g-layer);animation:glmg-rise .22s cubic-bezier(.2,.8,.2,1) both}
+.glmg-card{position:relative;margin:0 0 10px;padding:12px 12px 10px;border:.5px solid var(--dsw-alias-border-l1,rgba(127,127,127,.28));border-radius:var(--dsw-radius-lg,16px);background:var(--g-layer);animation:glmg-rise .22s cubic-bezier(.2,.8,.2,1) both}
 .glmg-card.wait{border-color:color-mix(in srgb,var(--g-wait) 45%,var(--g-line));box-shadow:inset 3px 0 0 var(--g-wait)}
 .glmg-card-title{margin:0 0 2px;font-size:14px;font-weight:600;line-height:1.4;color:var(--g-ink)}
 .glmg-card-link{padding:0;border:0;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}
@@ -46,7 +46,7 @@ export const PANEL_CSS = `
 .glmg .glmg-md>div>:is(h1,h2,h3,h4,h5,h6):first-child{margin-top:0}
 .glmg .glmg-md :not(pre)>code{padding:0 4px;border-radius:4px;background:var(--g-hover);color:var(--g-ink);font-size:.9em;line-height:inherit;overflow-wrap:anywhere}
 .glmg-options{display:flex;flex-direction:column;gap:6px;margin-top:10px}
-.glmg-option{display:flex;flex-direction:column;gap:2px;width:100%;padding:8px 10px;border:1px solid var(--g-line);border-radius:var(--dsw-radius-md,8px);background:transparent;color:var(--g-ink);font:inherit;text-align:left;cursor:pointer;transition:border-color .15s,background .15s,transform .15s}
+.glmg-option{display:flex;flex-direction:column;gap:2px;width:100%;padding:8px 10px;border:1px solid var(--g-line);border-radius:var(--dsw-radius-md,12px);background:transparent;color:var(--g-ink);font:inherit;text-align:left;cursor:pointer;transition:border-color .15s,background .15s,transform .15s}
 .glmg-option:hover{background:var(--g-hover);border-color:var(--g-line-strong)}
 .glmg-option:active{transform:scale(.99)}
 .glmg-option.picked{border-color:var(--g-accent);background:color-mix(in srgb,var(--g-accent) 10%,transparent)}
@@ -55,7 +55,9 @@ export const PANEL_CSS = `
 .glmg-option-key{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:5px;background:var(--g-hover);color:var(--g-ink2);font-size:11px;font-weight:600}
 .glmg-option-text{color:var(--g-ink3);font-size:12px}
 .glmg-confirm{display:flex;gap:6px;align-items:center;margin-top:8px;animation:glmg-fade .15s ease-out}
-.glmg-confirm input{flex:1;min-width:0}
+/* the answer input is the shell's own Input primitive (rc.3 Input.module.css): 34 px high, .5px l4 on the layer fill, radius-md, focus turns the border to the business color */
+.glmg-confirm input{flex:1;min-width:0;height:34px;padding:0 12px;border:.5px solid var(--dsw-alias-border-l4,rgba(255,255,255,.2));border-radius:var(--dsw-radius-md,12px);background:var(--dsw-alias-bg-layer-3,rgba(127,127,127,.1));color:var(--dsw-alias-label-primary,#e6e6e6);font:inherit;font-size:13px;line-height:1.5}
+.glmg-confirm input:focus-visible{outline:none;border-color:var(--g-accent)}
 .glmg-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
 .glmg-result{margin-top:8px;font-size:12px;color:var(--g-done);animation:glmg-fade .2s ease-out}
 .glmg-result.bad{color:var(--g-wait)}
@@ -63,7 +65,7 @@ export const PANEL_CSS = `
 .glmg-empty{display:flex;flex-direction:column;align-items:center;gap:8px;padding:44px 12px 24px;text-align:center;color:var(--g-ink3)}
 .glmg-empty-mark{display:flex;align-items:center;justify-content:center;width:46px;height:46px;border-radius:50%;background:color-mix(in srgb,var(--g-done) 16%,transparent);color:var(--g-done);animation:glmg-pop .45s cubic-bezier(.2,1.4,.4,1) both}
 .glmg-empty-title{color:var(--g-ink);font-size:14px;font-weight:600}
-.glmg-row{position:relative;display:flex;gap:10px;align-items:flex-start;padding:9px 6px;border-radius:var(--dsw-radius-md,8px);cursor:pointer;transition:background .12s}
+.glmg-row{position:relative;display:flex;gap:10px;align-items:flex-start;padding:9px 6px;border-radius:var(--dsw-radius-md,12px);cursor:pointer;transition:background .12s}
 .glmg-row:hover{background:var(--g-hover)}
 /* one straight rule between rows of any list (a border would bend with the hover radius) */
 :is(.glmg-row,.glmg-agent)+:is(.glmg-row,.glmg-agent)::before{content:"";position:absolute;top:0;left:6px;right:6px;height:1px;background:var(--g-line)}
@@ -108,7 +110,7 @@ export const PANEL_CSS = `
 .glmg-graph{position:absolute;inset:0;display:flex;flex-direction:column}
 .glmg-toolbar{display:flex;align-items:center;gap:4px;padding:0 12px 6px}
 .glmg-toolbar .grow{flex:1}
-.glmg-filter{display:inline-flex;align-items:center;gap:4px;height:26px;padding:0 8px;border:1px solid var(--g-line);border-radius:var(--dsw-radius-sm,6px);background:transparent;color:var(--g-ink2);font:inherit;font-size:12px;cursor:pointer}
+.glmg-filter{display:inline-flex;align-items:center;gap:4px;height:26px;padding:0 8px;border:1px solid var(--g-line);border-radius:var(--dsw-radius-sm,8px);background:transparent;color:var(--g-ink2);font:inherit;font-size:12px;cursor:pointer}
 .glmg-filter:hover{background:var(--g-hover)}
 .glmg-canvas{position:relative;flex:1;min-height:0;overflow:hidden;cursor:grab;touch-action:none;border-top:1px solid var(--g-line)}
 .glmg-canvas.dragging{cursor:grabbing}
@@ -148,7 +150,7 @@ export const PANEL_CSS = `
 .glmg-detail{position:absolute;inset:0;z-index:2;display:flex;flex-direction:column;background:var(--dsw-alias-bg-base,var(--dsw-specific-sidebar-fill,#1d1d1f));animation:glmg-slide .24s cubic-bezier(.2,.8,.2,1)}
 .glmg-detail-head{display:flex;align-items:center;gap:6px;padding:8px 10px;border-bottom:1px solid var(--g-line)}
 .glmg-detail-body{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:12px 14px 20px}
-.glmg-detail-body>h2{margin:6px 0 6px;font-size:16px;line-height:1.4;font-weight:600}
+.glmg-detail-body>h2{margin:6px 0 6px;font-size:16px;line-height:22px;font-weight:500;color:var(--g-ink)}
 .glmg-detail-body>.glmg-fold>.glmg-text{margin-top:12px;font-size:13px}
 .glmg-crumbs{display:flex;flex-wrap:wrap;gap:2px 4px;color:var(--g-ink3);font-size:11.5px}
 .glmg-crumbs button{padding:0;border:0;background:none;color:inherit;font:inherit;cursor:pointer}
@@ -175,10 +177,11 @@ export const PANEL_CSS = `
 .glmg-id{margin-top:16px;padding-top:12px;border-top:1px solid var(--g-line);color:var(--g-ink3);font-size:11px}
 .glmg-id code{font-family:var(--dsw-font-mono,ui-monospace,monospace)}
 .glmg-comment{display:flex;flex-direction:column;gap:6px;margin-top:6px}
-.glmg-comment textarea{min-height:56px;padding:6px 8px;border:1px solid var(--g-line);border-radius:var(--dsw-radius-md,8px);background:transparent;color:var(--g-ink);font:inherit;resize:vertical}
+/* the comment field is the shell's own multiline input (rc.3 user-questions customBlock): .5px l4 on the module-platform fill, radius-lg, focus turns the border to the business color */
+.glmg-comment textarea{min-height:56px;padding:8px 12px;border:.5px solid var(--dsw-alias-border-l4,rgba(255,255,255,.2));border-radius:var(--dsw-radius-lg,16px);background:var(--dsw-alias-bg-module-platform,rgba(127,127,127,.1));color:var(--g-ink);font:inherit;resize:vertical}
 .glmg-comment textarea:focus{outline:none;border-color:var(--g-accent)}
 /* a border like the cards: the layer fill equals the panel base in the light theme */
-.glmg-notice{padding:10px 12px;border:1px solid var(--g-line);border-radius:var(--dsw-radius-md,8px);background:var(--g-layer);color:var(--g-ink2);font-size:12.5px}
+.glmg-notice{padding:10px 12px;border:.5px solid var(--dsw-alias-border-l1,rgba(127,127,127,.28));border-radius:var(--dsw-radius-md,12px);background:var(--g-layer);color:var(--g-ink2);font-size:12.5px}
 .glmg-notice-sub{margin-top:2px;color:var(--g-ink3);font-size:12px}
 /* a problem banner's controls (Panel.tsx Problems): the toggle and the banner's own retry on one line */
 .glmg-notice-actions{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:4px}

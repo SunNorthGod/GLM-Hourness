@@ -26,6 +26,8 @@ export interface ButtonsProps {
   /** The enter buttons (start, and resume with an open goal), or the exit button. */
   readonly enter: boolean
   readonly openGoal: boolean
+  /** The native Button size: md on the opening card (the approval card's action row), sm in the popover. */
+  readonly size?: 'sm' | 'md'
   /** Called after the draft was written: the popover closes and the caret is in the input. */
   readonly onDrafted?: () => void
 }
@@ -54,7 +56,7 @@ function focusComposerEnd(sessionId: string): void {
   })
 }
 
-export function WishButtons({ services, enter, openGoal, onDrafted }: ButtonsProps): ReactElement {
+export function WishButtons({ services, enter, openGoal, size = 'sm', onDrafted }: ButtonsProps): ReactElement {
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState<Note | null>(null)
   const [fallback, setFallback] = useState(false)
@@ -99,15 +101,15 @@ export function WishButtons({ services, enter, openGoal, onDrafted }: ButtonsPro
       <div className="hw-actions">
         {enter
           ? cardActions(openGoal).map(action => action === 'start'
-              ? <Button key={action} variant="primary" size="sm" disabled={busy} onClick={start}>{WISH_TEXT.start}</Button>
-              : <Button key={action} variant="outline" size="sm" disabled={busy} onClick={() => { run(WISH_COMMAND) }}>{WISH_TEXT.resume}</Button>)
-          : <Button variant="outline" size="sm" disabled={busy} onClick={() => { run(WISH_OFF_COMMAND) }}>{WISH_TEXT.exit}</Button>}
+              ? <Button key={action} variant="primary" size={size} disabled={busy} onClick={start}>{WISH_TEXT.start}</Button>
+              : <Button key={action} variant="outline" size={size} disabled={busy} onClick={() => { run(WISH_COMMAND) }}>{WISH_TEXT.resume}</Button>)
+          : <Button variant="outline" size={size} disabled={busy} onClick={() => { run(WISH_OFF_COMMAND) }}>{WISH_TEXT.exit}</Button>}
       </div>
       {fallback
         ? (
             <div className="hw-fallback">
               <span>{WISH_TEXT.copyHelp}</span>
-              <Button variant="outline" size="sm" onClick={copy}>{WISH_TEXT.copy}</Button>
+              <Button variant="outline" size={size} onClick={copy}>{WISH_TEXT.copy}</Button>
             </div>
           )
         : null}

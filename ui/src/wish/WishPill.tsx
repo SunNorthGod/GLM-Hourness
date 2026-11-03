@@ -8,7 +8,7 @@
  * "/wish". It is quiet: no pop-up, no flicker, no badge. All wording is in
  * ./model.ts.
  */
-import { useAnchoredPosition, useDismissOnOutsidePointer } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Tag, useAnchoredPosition, useDismissOnOutsidePointer } from '@deepseek-ai/dsh-client-ui-primitives'
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
 import { createPortal } from 'react-dom'
 import { mainAgentActive } from '../../../src/graph/main-agent.ts'
@@ -85,7 +85,7 @@ function makePill(remote: RemoteRoot, sessions: SessionsClient): (props: Session
         <style>{WISH_CSS}</style>
         <p>{main ? WISH_TEXT.popoverMain : WISH_TEXT.popoverOrdinary}</p>
         {main ? null : <p>{WISH_TEXT.commandHint}</p>}
-        {main ? null : <div className="hw-strong"><WarnIcon />{WISH_TEXT.strongModel}</div>}
+        {main ? null : <Tag tone="warning" className="hw-strong"><WarnIcon />{WISH_TEXT.strongModel}</Tag>}
         <WishButtons services={services} enter={!main} openGoal={openGoal} onDrafted={() => { setOpen(false) }} />
       </div>
     )
