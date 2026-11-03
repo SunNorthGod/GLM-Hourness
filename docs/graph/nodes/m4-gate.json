@@ -46,6 +46,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "G2 落地（52a36f6 + 笔记 8a2dc4d，含滞留的合并 ba9aaf8，2026-11-04）：跟进记录器——guard 行每条拒绝在模型下一次自发调用时结算（会话日志的 tool/call 定「自发」，同回合同步的调用跳过，DeferredToolCall 按解包目标结算并双双记账），内存有界（256 待决/512 已结/512 调用事件/64 会话）；图行与规则板共用同一记录器（跨行 F5，无 rightPath）；file-tools-only 与 graph-files-only 补 rightPath，requestable 三条留 G4；ruleStats 为晨报/命令行/规则页唯一统计读口；命令行 npm run -s guard -- records|stats；晨报每规则一行含原样重试、汇总分母外不计（N30）。前任断点 WIP 已存证 g2-wip-dead-agent.patch（647 行），保留大部分、修补五处（探针场景按 §14.1 重写、晨报并回单行、汇总比例覆盖、cli 去 since 二次截断、头注节号）、补齐 rightPath。实测发现：图行与 guard 行两个 journal 实例并发追加同一文件，跨行行序不保证（拒绝与跟进的因果经 denial 键无损），探针断言按因果形状放宽并记录。门禁全绿（test 2552、probe 327/327 含新场景、棘轮 76/19/1）。G3 全量可开工；G4 开工前按 §5 重核依赖（main-agent.ts 与 git-snapshot.ts 合并后已可见，跳过理由可能过时）。"
+    },
+    {
+      "at": "2026-11-03T21:59:14.224Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "G3 落地（8010dd8，2026-11-04）：三条代码规则（suppression-only、checker-config-only 带 request_exception 编号、scratch-only）+ 撤下链（lifts.jsonl append-only、guardLift 七步对最近一条人话验词、lift-service 剥行前缀供规则板、lift-files-only 主检出与工作树都拦）+ 判定上下文（prepareContext 5 秒总限 1MiB 上限）+ fallback.ts（git mv 自 shadow，晚到拦下 late/turn-end + 每回合一条 8 深 FIFO 排队纠正 + 根 agent 第二条 hourness-guard step notice）+ 晨报撤下行与 lifts 对账（F16 不受报告期限制）。探针揭出两个真问题已修：guard 行从未声明 inject:[tools]（G1/G2 探针不注册工具故从未暴露，一暴露即整行激活失败）；scratch-only 在 tracked 清单未知时误拦（违 §4.1，修为未知即放行）。门禁全绿（test 2554、probe 337/337 含四新场景、棘轮 76/19/1）。G4 依赖核对：M3 件全在树（main-agent、git-snapshot、dispatchRoot），G4 随时可开工。探针扮演人改回合中 probe_say/probe_restore 排队（宿主在末条文本同拍拆 agentLoop，followup 不可用），G4 的 guard-request 直接复用。"
     }
   ]
 }
