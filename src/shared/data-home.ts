@@ -37,6 +37,15 @@ export interface DataHomes {
 /** The `glmHournessData` service value: the user directory is always resolved. */
 export interface DataService extends DataHomes {
   readonly userHome: string
+  /**
+   * The data directory of the project a session working directory belongs
+   * to (memory and lessons, M5 design §5.1): the configured override when
+   * there is one, else `<project root>/.llm`; undefined when there is no
+   * project. Only a path, nothing is created. Absent from a service value
+   * that predates this member; a caller then asks `projectDirOf` of
+   * src/data/project-root.ts itself.
+   */
+  readonly projectDirOf?: (cwd: string | undefined) => string | undefined
 }
 
 /**
@@ -78,7 +87,9 @@ export function credentialHome(home: string | undefined, env: Readonly<Record<st
 function isDataService(value: unknown): value is DataService {
   if (typeof value !== 'object' || value === null) return false
   const record = value as Record<string, unknown>
-  return typeof record.userHome === 'string' && (record.projectHome === undefined || typeof record.projectHome === 'string')
+  return typeof record.userHome === 'string'
+    && (record.projectHome === undefined || typeof record.projectHome === 'string')
+    && (record.projectDirOf === undefined || typeof record.projectDirOf === 'function')
 }
 
 /** Read the data service; undefined while the data row is disabled or not active yet. */

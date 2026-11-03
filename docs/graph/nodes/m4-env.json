@@ -2,13 +2,19 @@
   "id": "m4-env",
   "type": "task",
   "title": "环境分支与草稿区",
-  "status": "approved",
+  "status": "done",
   "parent": "m4",
   "body": "M4 设计 0.6 的一件活。做完条件由人 2026-11-01 定下，见本节点验收（人话版 .agents/tasks/m4/onepage-done.md）。",
   "acceptance": [
     "第 1 条：图上「环境」特性下的工具子节点，在每个 agent 的会话第一步、以及环境分支变动（工具节点或它的检查行增删改）后的下一步列出（至多 12 个、1500 字），带一行「改完哪些文件会跑检查」（指自带的检查器；循环板上人加的检查由循环板告诉主 Agent，不在这一行里）和一行草稿区在哪。",
     "第 2 条：会话所在仓库里，草稿区确实被 git 忽略；项目没忽略时，guard 行或 env 行第一次往这个项目的 `.llm/` 写东西之前，在本机的忽略文件末尾追加一行（已有就不重复加，重启多次也只一份），追加后再核对一次，仍没忽略时健康状态降级并写明原因。",
     "第 3 条：有一个办法能列出草稿区里的文件，供 M7 合入前的检查用。"
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "0855155"
+    }
   ],
   "history": [
     {
@@ -18,6 +24,20 @@
       "reason": "人 2026-11-01 读 M4 一页稿后放行，并把七件活的 35 条做完条件一起定下（人话版 .agents/tasks/m4/onepage-done.md，设计 0.6 §1.2）",
       "relay": "都没问题",
       "to": "approved"
+    },
+    {
+      "at": "2026-11-02T11:41:32.324Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "独立评审 APPROVED：三条验收全满足——环境提醒三理由双覆盖（L2+L3 探针）、ensureLlmIgnored 带复核与降级、scratchLeftovers 可用（签名偏差 {files,total} 与设计正文自洽）。env 行 disabled: true，启用随桌面批。",
+      "from": "approved",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "0855155"
+        }
+      ]
     }
   ]
 }

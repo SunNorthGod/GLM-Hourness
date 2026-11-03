@@ -37,6 +37,13 @@ export interface ViolationRecord {
   readonly call?: CallSubject | undefined
   /** The request ref this denial carried (m4-request-card); absent outside the requestable rules. */
   readonly ref?: string | undefined
+  /** A denial of a graph write that tried to move a goal on without the human (src/guard/main-agent-graph.ts): which session tried, and at what. */
+  readonly session?: { readonly id: string, readonly kind: 'subagent' | 'ordinary', readonly parent?: string | undefined } | undefined
+  readonly goal?: string | undefined
+  readonly node?: string | undefined
+  /** main-agent-graph-stage: the stage the node was in and the one the call would have put it in. */
+  readonly stageFrom?: string | undefined
+  readonly stageTo?: string | undefined
 }
 
 /** A call the rules board let through and noted (`mode: 'record'`): it ran, so there is no correction. Not a violation. */

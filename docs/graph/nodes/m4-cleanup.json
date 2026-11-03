@@ -2,11 +2,17 @@
   "id": "m4-cleanup",
   "type": "task",
   "title": "清理抓取脚本",
-  "status": "approved",
+  "status": "done",
   "parent": "m4",
   "body": "M4 设计 0.6 的一件活。做完条件由人 2026-11-01 定下，见本节点验收（人话版 .agents/tasks/m4/onepage-done.md）。",
   "acceptance": [
     "第 1 条：`.llm/docs/` 下的三个一次性抓取脚本和 `__pycache__` 删掉，抓下来的文件留着；删之前把重新抓取的办法、三个脚本里的地址和路径原样抄进一份参考文档；提交信息记下三个脚本的指纹。"
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "154ecaa"
+    }
   ],
   "history": [
     {
@@ -16,6 +22,20 @@
       "reason": "人 2026-11-01 读 M4 一页稿后放行，并把七件活的 35 条做完条件一起定下（人话版 .agents/tasks/m4/onepage-done.md，设计 0.6 §1.2）",
       "relay": "都没问题",
       "to": "approved"
+    },
+    {
+      "at": "2026-11-02T11:41:31.535Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "独立评审 APPROVED（review-first-batch.md）：唯一一条验收（删 .llm/docs 抓取脚本、digest 附节记录来源）逐项满足——三个脚本与 __pycache__ 实删、47 个资料文件保留、digest 附节字面量与设计 §8 清单一致。分支 m4，合入 main 随整支。",
+      "from": "approved",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "154ecaa"
+        }
+      ]
     }
   ]
 }

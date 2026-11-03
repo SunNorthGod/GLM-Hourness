@@ -29,7 +29,9 @@ export type WatchFrame =
 
 interface WorkspaceFilesRemote {
   list(sessionId: string, path: string, signal?: AbortSignal): Promise<RemoteResult<{ readonly path: string, readonly entries: readonly DirectoryEntry[], readonly truncated: boolean }>>
-  readBytes(sessionId: string, path: string, options: Record<string, never>, signal?: AbortSignal): Promise<RemoteResult<{ readonly absolutePath: string, readonly data: Uint8Array }>>
+  /** Identity, version and size of one regular file, without content (dsh-api-workspace-files). */
+  stat(sessionId: string, path: string, signal?: AbortSignal): Promise<RemoteResult<{ readonly absolutePath: string, readonly version: string, readonly bytes?: number }>>
+  readBytes(sessionId: string, path: string, options: Record<string, never>, signal?: AbortSignal): Promise<RemoteResult<{ readonly absolutePath: string, readonly version: string, readonly bytes?: number, readonly offset: number, readonly data: Uint8Array, readonly eof: boolean }>>
   changes(sessionId: string, path: string, lifetime: AbortSignal): unknown
 }
 
@@ -43,8 +45,15 @@ interface SupervisedStream<T> extends AsyncIterable<StreamItem<T>> {
   dispose(): Promise<void>
 }
 
+/** One command the session offers, as `remote.commands.list` returns it (dsh-client-ui-commands reads `name`; only the name is read here). */
+interface CommandDescriptor {
+  readonly name: string
+}
+
 export interface CommandsRemote {
   execute(sessionId: string, line: string, attachments: readonly never[]): Promise<RemoteResult<{ readonly result: { readonly kind: 'success' | 'error', readonly text?: string } } | undefined>>
+  /** The commands of a retained, open session (dsh-client-ui-commands lib/client.js CommandDirectory). */
+  list(sessionId: string): Promise<RemoteResult<readonly CommandDescriptor[]>>
 }
 
 export interface RemoteRoot {
@@ -96,11 +105,51 @@ export interface TokenUsage {
   readonly cacheWriteTokens: number
 }
 
-/** The projection values of one session the panel reads; graphLive is this bundle's own unit. */
-interface ProjectionValues {
+/**
+ * The projection values of one session this bundle reads; graphLive and
+ * hournessMainAgent are this bundle's own units (the second is read through
+ * mainAgentActive, which takes the table as a whole, hence the index signature),
+ * and the two hourness keys are the wire views of the memory and lessons rows
+ * (src/memory/index.ts, src/lessons/index.ts).
+ */
+export interface ProjectionValues {
   readonly graphLive?: LiveView
   readonly subagentCatalog?: readonly CatalogEntry[]
   readonly tokenUsage?: TokenUsage
+  readonly hournessLessons?: { readonly journal: string | null }
+  readonly hournessMemory?: { readonly projectJournal: string | null, readonly userJournal: string | null }
+  readonly [key: string]: unknown
+}
+
+/** The fields of a session's snapshot the /wish entry reads (dsh-api-session-controller lib/types/client/sessions/session.js:832-835). */
+interface SessionFields {
+  readonly blank: boolean
+  readonly promptAttempted: boolean
+  readonly running: boolean
+}
+
+/** The fields of the input source the /wish entry reads (dsh-client-ui-conversation lib/client.js InputBar: `input.draft`). */
+interface InputFields {
+  readonly draft: string
+}
+
+/** Standard prop of session slots: reads the slot session's snapshot through a selector (a hook; the selector returns a primitive). */
+export type UseSession = <T>(select: (snapshot: SessionFields | undefined) => T) => T
+
+/** Standard prop of session slots: reads the session's input source through a selector (a hook). */
+export type UseInput = <T>(select: (input: InputFields | undefined) => T) => T
+
+/** Standard prop `inputActions` (dsh-client-ui-conversation SessionInputShell.actions); only the draft setter is used. */
+export interface InputActions {
+  setDraft(text: string): void
+}
+
+/** What the dock slot components receive: the registration's inject result plus the standard props, which a third-party component may not get. */
+export interface SessionSlotProps {
+  readonly sessionId: string
+  readonly useSession?: UseSession
+  readonly useInput?: UseInput
+  readonly inputActions?: InputActions
 }
 
 /**
@@ -111,7 +160,11 @@ interface ProjectionValues {
  */
 export interface SessionsClient {
   readonly list: {
-    getSnapshot(): { readonly projectionsBySession: Readonly<Record<string, { readonly values: ProjectionValues, readonly state?: string } | undefined>> }
+    getSnapshot(): {
+      readonly projectionsBySession: Readonly<Record<string, { readonly values: ProjectionValues, readonly state?: string } | undefined>>
+      /** The session summaries; `blank` is true until the first prompt (api-session-controller lib/client.js:4148-4163). */
+      readonly byId: Readonly<Record<string, { readonly blank?: boolean } | undefined>>
+    }
     subscribe(listener: () => void): () => void
   }
   refreshProjections(sessionId: string): Promise<void>

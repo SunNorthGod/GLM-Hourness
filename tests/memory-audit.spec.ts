@@ -3,6 +3,7 @@ import test from 'node:test'
 import { auditJournal, auditPaths, projectJournal, rowJournal } from '../src/memory/audit.ts'
 import { apply } from '../src/memory/index.ts'
 import type { StreamChunk } from '../src/shared/lm-min.ts'
+import { LEARNING_TOOL_NAMES, MEMORY_TOOL_NAMES } from '../src/shared/tool-names.ts'
 
 function fakeFs() {
   const files = new Map<string, string>()
@@ -38,11 +39,11 @@ test('audit journal appends one JSONL line per record; a sink without a director
   const { files, fs } = fakeFs()
   const journal = auditJournal((path, line) => fs.appendFile(path, line), auditPaths({ projectHome: 'C:/ws/.llm' }))
   await journal.violation({ at: '2026-10-27T00:00:00Z', rule: 'workspace-containment', tool: 'Write', correction: 'Boundary: …' })
-  await journal.decision({ at: '2026-10-27T00:00:02Z', level: 'L1', kind: 'dispatch', subject: 'subagent a' })
+  await journal.decision({ at: '2026-10-27T00:00:02Z', kind: 'dispatch', subject: 'subagent a' })
   await assert.rejects(journal.usage({ at: '2026-10-27T00:00:01Z', provider: 'glm', model: 'glm-5.3', usage: { inputTokens: 5, outputTokens: 3 } }), /no user-level directory/)
   const lines = (files.get('C:/ws/.llm/audit/decisions.jsonl') ?? '').trim().split('\n')
   assert.equal(lines.length, 1)
-  assert.deepEqual(Object.keys(JSON.parse(lines[0])), ['at', 'level', 'kind', 'subject'])
+  assert.deepEqual(Object.keys(JSON.parse(lines[0]!)), ['at', 'kind', 'subject'])
 })
 
 test('fsAppender creates the directory before the first append', async () => {
@@ -183,16 +184,23 @@ test('projectJournal writes each project into its own journal and flushes every 
   await journal.flush()
 })
 
-/** A memory context: the llm/stream waterfall, the tools service and an optional data service. */
+
+/** A memory context: the llm/stream waterfall, the agent lifecycle, the tools service and an optional data service. */
 function memoryContext(data: unknown) {
-  const listeners: Array<(options: unknown, next: () => AsyncIterable<StreamChunk>) => AsyncIterable<StreamChunk>> = []
+  const events: Array<{ readonly event: string, readonly listener: unknown }> = []
   const registered: string[] = []
   const ctx = {
-    on: (_event: 'llm/stream', listener: typeof listeners[number]) => { listeners.push(listener); return () => {} },
+    on: (event: string, listener: unknown) => { events.push({ event, listener }); return () => {} },
     tools: { register: (tool: { name: string }) => { registered.push(tool.name); return () => {} } },
     get: (name: string) => name === 'glmHournessData' ? data : undefined,
   }
-  return { ctx, listeners, registered }
+  /** Run the row's llm/stream listener over `chunks`. */
+  const stream = (options: { provider: string, model: string }, chunks: readonly StreamChunk[]): AsyncIterable<StreamChunk> => {
+    type StreamListener = (options: unknown, next: () => AsyncIterable<StreamChunk>) => AsyncIterable<StreamChunk>
+    const listener = events.find(entry => entry.event === 'llm/stream')?.listener as StreamListener
+    return listener(options, async function* () { for (const chunk of chunks) yield chunk })
+  }
+  return { ctx, stream, registered }
 }
 
 async function drain(stream: AsyncIterable<StreamChunk>): Promise<string[]> {
@@ -210,10 +218,10 @@ const chunks: StreamChunk[] = [
 
 test('apply records usage in the user-level journal after the stream settles and passes chunks through', async () => {
   const { files, fs } = fakeFs()
-  const { ctx, listeners, registered } = memoryContext(service)
+  const { ctx, stream, registered } = memoryContext(service)
   const dispose = apply(ctx, { home: 'C:/ws/.llm', fs })
-  assert.deepEqual(registered, ['memory_store', 'memory_query', 'memory_forget'])
-  const seen = await drain(listeners[0]({ provider: 'glm', model: 'glm-5.3' }, async function* () { for (const c of chunks) yield c }))
+  assert.deepEqual(registered, [...MEMORY_TOOL_NAMES, ...LEARNING_TOOL_NAMES])
+  const seen = await drain(stream({ provider: 'glm', model: 'glm-5.3' }, chunks))
   dispose()
   assert.deepEqual(seen, ['text-delta', 'usage', 'finish'])
   const written = files.get(`${USER_HOME}/audit/usage.jsonl`) ?? ''
@@ -224,13 +232,13 @@ test('apply records usage in the user-level journal after the stream settles and
 
 test('without the data service the stream still passes through and no usage is written', async () => {
   const { files, fs } = fakeFs()
-  const { ctx, listeners, registered } = memoryContext(undefined)
+  const { ctx, stream, registered } = memoryContext(undefined)
   const warn = console.warn
   console.warn = () => {}
   try {
     apply(ctx, { home: 'C:/ws/.llm', fs })
-    assert.equal(registered.length, 3) // the memory tools work on the row home alone
-    assert.deepEqual(await drain(listeners[0]({ provider: 'glm', model: 'glm-5.3' }, async function* () { for (const c of chunks) yield c })), ['text-delta', 'usage', 'finish'])
+    assert.equal(registered.length, MEMORY_TOOL_NAMES.length + LEARNING_TOOL_NAMES.length) // the memory tools do not need the data row: the project memory follows the session
+    assert.deepEqual(await drain(stream({ provider: 'glm', model: 'glm-5.3' }, chunks)), ['text-delta', 'usage', 'finish'])
   }
   finally {
     console.warn = warn
@@ -240,16 +248,16 @@ test('without the data service the stream still passes through and no usage is w
 
 test('streams without a usage chunk write nothing', async () => {
   const { files, fs } = fakeFs()
-  const { ctx, listeners } = memoryContext(service)
+  const { ctx, stream } = memoryContext(service)
   apply(ctx, { home: 'C:/ws/.llm', fs })
-  await drain(listeners[0]({ provider: 'glm', model: 'm' }, async function* () { yield { type: 'finish', reason: { kind: 'stop' } } }))
+  await drain(stream({ provider: 'glm', model: 'm' }, [{ type: 'finish', reason: { kind: 'stop' } }]))
   assert.equal(files.get(`${USER_HOME}/audit/usage.jsonl`), undefined)
 })
 
-test('a missing home leaves the memory tools off but keeps the usage journal', async () => {
-  // Activation failures take the whole host startup down, so the row warns instead of throwing.
+test('a row without the home setting registers the memory tools too and keeps the usage journal', async () => {
+  // The project directory follows the session now; the old home setting decides nothing.
   const { files, fs } = fakeFs()
-  const { ctx, listeners, registered } = memoryContext(service)
+  const { ctx, stream, registered } = memoryContext(service)
   const warn = console.warn
   console.warn = () => {}
   let dispose: () => void
@@ -259,8 +267,8 @@ test('a missing home leaves the memory tools off but keeps the usage journal', a
   finally {
     console.warn = warn
   }
-  assert.equal(registered.length, 0)
-  await drain(listeners[0]({ provider: 'glm', model: 'glm-5.3' }, async function* () { for (const c of chunks) yield c }))
+  assert.deepEqual(registered, [...MEMORY_TOOL_NAMES, ...LEARNING_TOOL_NAMES])
+  await drain(stream({ provider: 'glm', model: 'glm-5.3' }, chunks))
   dispose()
   assert.ok((files.get(`${USER_HOME}/audit/usage.jsonl`) ?? '').includes('"inputTokens":10'))
 })

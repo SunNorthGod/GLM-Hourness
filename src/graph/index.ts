@@ -20,10 +20,10 @@ import { isAbsolute } from 'node:path'
 import { installGraphFileGuard } from '../guard/graph-files.ts'
 import { projectJournal, type AuditFs } from '../memory/audit.ts'
 import { projectHomeFor } from '../data/project-home.ts'
-import type { AgentLike, PreExecuteListener, ProvideHost, ServiceLookup, SessionEventLike, SessionLike, ToolDefinitionLike, ToolExecutionContext, ToolsLike } from '../shared/dsh-min.ts'
-import { GRAPH_SERVICE, type GraphService } from './service.ts'
+import type { AgentLike, DerivedMessage, PreExecuteListener, ProvideHost, ServiceLookup, SessionEventLike, SessionLike, ToolDefinitionLike, ToolExecutionContext, ToolsLike } from '../shared/dsh-min.ts'
+import { GRAPH_SERVICE, type GraphFocusService, type GraphService } from './service.ts'
 import { provideRowHealth, sessionIdOf, type RowHealth } from '../shared/health.ts'
-import { installProjection } from './reminder.ts'
+import { focusFromHistory, installProjection } from './reminder.ts'
 import { graphHealth, readGraph } from './row-health.ts'
 import { DEFAULT_GRAPH_DIR, graphTools, resolveGraphDir, type FocusMemory } from './tools.ts'
 
@@ -75,9 +75,13 @@ function reporting(tool: ToolDefinitionLike, dir: string, focuses: FocusMemory, 
   }
 }
 
-function provideService(ctx: GraphContext, dir: string, names: ReadonlySet<string>): () => void {
+function provideService(ctx: GraphContext, dir: string, names: ReadonlySet<string>, focuses: FocusMemory): () => void {
   if (typeof ctx.provide !== 'function') return () => {}
-  const service: GraphService = Object.freeze({ dirFor: (cwd: string | undefined) => resolveGraphDir(dir, cwd), isGraphTool: (tool: string) => names.has(tool) })
+  const service: GraphService & GraphFocusService = Object.freeze({
+    dirFor: (cwd: string | undefined) => resolveGraphDir(dir, cwd),
+    isGraphTool: (tool: string) => names.has(tool),
+    focusOf: (session: SessionLike) => focusFromHistory(session.deriveMessages() as readonly DerivedMessage[]) ?? focuses.get(session.id),
+  })
   try {
     return ctx.provide(GRAPH_SERVICE, service)
   }
@@ -120,7 +124,7 @@ export function apply(ctx: GraphContext, config: GraphConfig = {}): () => void {
   // The violation journal of the calling session's project (m4-gate G1, design §2.4).
   const journal = projectJournal(name, cwd => projectHomeFor(ctx, config.home, cwd), config.fs)
   disposers.push(installGraphFileGuard(ctx, cwd => resolveGraphDir(dir, cwd), (record, cwd) => journal.violation(record, cwd), health))
-  disposers.push(provideService(ctx, dir, new Set(tools.map(tool => tool.name))))
+  disposers.push(provideService(ctx, dir, new Set(tools.map(tool => tool.name)), focuses))
   const installed = new WeakSet<AgentLike>()
   disposers.push(ctx.on('agent/created', ({ agent }) => {
     if (installed.has(agent)) return

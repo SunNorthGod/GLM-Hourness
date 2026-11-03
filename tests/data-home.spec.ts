@@ -6,6 +6,7 @@ import test from 'node:test'
 import { projectHomeFor } from '../src/data/project-home.ts'
 import { apply, dataServiceFor } from '../src/data/index.ts'
 import { credentialHome, DATA_SERVICE, dataHomes, dataService, expandHomePath, resolveDshHome, userDataHome } from '../src/shared/data-home.ts'
+import { healthServiceName, type RowHealthView } from '../src/shared/health.ts'
 import { serviceStore } from './fake-rc3.ts'
 
 const HOME = resolve('/users/me')
@@ -40,15 +41,17 @@ test('the credential directory is a non-empty row home, else the user-level dire
 test('the data row provides both directories as the glmHournessData service and withdraws it on dispose', () => {
   const store = serviceStore()
   const dispose = apply(store, { dshHome: '/scratch/dsh-home', projectHome: 'C:/ws/.llm' })
-  assert.deepEqual(dataService(store), { userHome: join(resolve('/scratch/dsh-home'), 'glm-hourness'), projectHome: 'C:/ws/.llm' })
+  const { projectDirOf, ...directories } = dataService(store)!
+  assert.deepEqual(directories, { userHome: join(resolve('/scratch/dsh-home'), 'glm-hourness'), projectHome: 'C:/ws/.llm' })
+  assert.equal(typeof projectDirOf, 'function')
   assert.ok(Object.isFrozen(store.services.get(DATA_SERVICE)))
   dispose()
   assert.equal(dataService(store), undefined)
 })
 
-test('without projectHome the service carries only the user directory; an empty dshHome counts as unset', () => {
+test('without projectHome the service carries the user directory and projectDirOf; an empty dshHome counts as unset', () => {
   const service = dataServiceFor({ dshHome: '', projectHome: '' })
-  assert.deepEqual(Object.keys(service), ['userHome'])
+  assert.deepEqual(Object.keys(service), ['userHome', 'projectDirOf'])
   assert.equal(service.userHome, userDataHome())
 })
 
@@ -73,8 +76,31 @@ test('row directories: an explicit row home wins for the project directory; the 
   assert.deepEqual(dataHomes({}, 'C:/row/.llm'), { projectHome: 'C:/row/.llm' }) // a context without ctx.get
 })
 
+test('projectDirOf of the service: the override for every session when there is one, else the .llm of the session\'s project', () => {
+  const root = mkdtempSync(join(tmpdir(), 'data-home-'))
+  mkdirSync(join(root, '.git'))
+  mkdirSync(join(root, 'src'))
+  const plain = dataServiceFor({})
+  assert.equal(plain.projectDirOf?.(join(root, 'src')), join(root, '.llm'))
+  assert.equal(plain.projectDirOf?.(undefined), undefined, 'a session without a working directory has no project')
+  const fixed = dataServiceFor({ projectOverride: '/run/dir/home' })
+  assert.equal(fixed.projectDirOf?.(join(root, 'src')), '/run/dir/home')
+  assert.equal(fixed.projectDirOf?.(undefined), '/run/dir/home')
+  assert.equal(dataServiceFor({ projectOverride: '' }).projectDirOf?.(join(root, 'src')), join(root, '.llm'), 'an empty override counts as unset')
+})
+
+test('the data row says in its health that the project directory of memory and lessons is fixed when it is', () => {
+  const store = serviceStore()
+  apply(store, { dshHome: '/scratch', projectHome: 'C:/ws/.llm', projectOverride: 'C:/run/home' })
+  const { state, reason } = (store.get(healthServiceName('data')) as RowHealthView).activation()
+  assert.equal(state, 'active')
+  assert.ok(reason.endsWith('；记忆与经验的项目目录固定为 C:/run/home'), reason)
+})
+
 test('a malformed service value is ignored', () => {
   assert.equal(dataService({ get: () => ({ userHome: 42 }) }), undefined)
+  assert.equal(dataService({ get: () => ({ userHome: 'C:/u', projectDirOf: 'C:/p' }) }), undefined)
+  assert.equal(dataService({ get: () => ({ userHome: 'C:/u' }) })?.projectDirOf, undefined, 'a service value without projectDirOf is still a service')
   assert.equal(dataService({ get: () => 'C:/x' }), undefined)
 })
 

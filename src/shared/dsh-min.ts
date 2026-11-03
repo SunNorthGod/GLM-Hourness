@@ -44,6 +44,13 @@ export interface SessionLike {
    * test sessions may leave it out; rc.3 sessions always have it.
    */
   requestHeader?(): RequestHeaderLike | undefined
+  /**
+   * The whole log, copied (rc.3 marks it `@deprecated`, "new production calls
+   * are prohibited", session:1444–1452). Only the way back for the main
+   * agent's talk state when the session projection hournessTalk could not
+   * be registered (src/design/talk.ts `talkFold`).
+   */
+  snapshotEvents?(): readonly SessionEventLike[]
 }
 
 /** A live agent (dsh-agent-loop `ReactLoopAgent`): its id (shared with its session), scoped context and session. */
@@ -130,10 +137,42 @@ export interface PreExecuteHost {
   on(event: 'tools/pre-execute', listener: PreExecuteListener, options?: { prepend?: boolean }): () => void
 }
 
-/** A frozen session log event (dsh-session `append`: `{type, seq, time, data}`). */
+/**
+ * The `tools/post-execute` payload as far as the rows read it: the same
+ * execution `tools/pre-execute` gets, with the call id (dsh-tools
+ * `createExecution`: `callId`, `rootCallId`, `name`, `arguments`, `agent`,
+ * `parent`; tools:3229–3260).
+ */
+export interface PostExecutePayload extends ToolExecutionPayload {
+  readonly callId: string
+}
+
+/**
+ * `tools/post-execute` decision (rc.3 dsh-tools `postExecute`,
+ * tools:3598–3631; official `PostToolDecision`). `accept` keeps the result
+ * and may replace its `content` (or its `value`, never both), `block` turns
+ * it into an error result whose content is `feedback`. Either may attach
+ * `additionalContexts`, which the result carries to the next request; the
+ * contexts the tool body deferred stay with an accepted result and are
+ * dropped by a block.
+ */
+export type PostExecuteDecision =
+  | { readonly kind: 'accept', readonly content?: ToolFinalResult['content'], readonly value?: unknown, readonly additionalContexts?: readonly unknown[] }
+  | { readonly kind: 'block', readonly feedback: ToolFinalResult['content'], readonly additionalContexts?: readonly unknown[] }
+
+/** A `tools/post-execute` listener: `next()` is the decision of the listeners below it, `accept` when none decides. */
+export type PostExecuteListener = (exec: PostExecutePayload, result: ToolFinalResult, next: () => Promise<PostExecuteDecision>) => Promise<PostExecuteDecision>
+
+/** A context that sees every tool result before the call settles (the repeat-tool-reminder pattern); a host-level listener sees the calls of every agent, children included (tools:3600). */
+export interface PostExecuteHost {
+  on(event: 'tools/post-execute', listener: PostExecuteListener, options?: { prepend?: boolean }): () => void
+}
+
+/** A frozen session log event (dsh-session `append`: `{type, seq, time, data}`, `time` in whole milliseconds, session:1126–1128). */
 export interface SessionEventLike {
   readonly type: string
   readonly seq: number
+  readonly time: number
   readonly data?: unknown
 }
 
@@ -315,6 +354,7 @@ export interface InjectableServices {
   readonly sessionProjections: SessionProjectionsService
   readonly agents: AgentsService
   readonly subagents: SubagentsService
+  readonly tools: ToolsLike
   /**
    * `sessionController` (api-session-controller:2951–2952): only a process
    * that has it can reach a session, so only there does the loop board
@@ -327,6 +367,7 @@ export interface InjectableServices {
   readonly sessionController: {
     resolveAgent(sessionId: string): Promise<{ readonly agent?: AgentLike, readonly error?: { readonly code: string, readonly message?: string } }>
   }
+  readonly commands: CommandsHost<AgentCommandInvocationLike>['commands']
 }
 
 /**

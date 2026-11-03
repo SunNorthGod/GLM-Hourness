@@ -462,7 +462,7 @@ function lex(src: string, dialect: ShellDialect): Token[][] {
 }
 
 /** The command a word names: its last path segment, lower case, without `.exe`. */
-function commandName(text: string): string {
+export function commandName(text: string): string {
   const base = text.slice(Math.max(text.lastIndexOf('/'), text.lastIndexOf('\\')) + 1).toLowerCase()
   return base.endsWith('.exe') ? base.slice(0, -4) : base
 }
@@ -487,8 +487,17 @@ function scriptOf(name: string, args: readonly Word[]): { text: string, dialect:
   return undefined
 }
 
+/**
+ * What one reading of a command line collects: the file writes, and, when
+ * the caller asks for them, the words of every simple command.
+ */
+interface Findings {
+  readonly writes: ShellWrite[]
+  readonly commands: string[][] | undefined
+}
+
 /** Judge one simple command: its words between separators. */
-function inspect(words: readonly Word[], dialect: ShellDialect, depth: number, found: ShellWrite[]): void {
+function inspect(words: readonly Word[], dialect: ShellDialect, depth: number, found: Findings): void {
   let k = 0
   while (k < words.length) {
     const word = words[k]
@@ -511,10 +520,11 @@ function inspect(words: readonly Word[], dialect: ShellDialect, depth: number, f
   if (command === undefined) return
   const name = commandName(command.text)
   const args = words.slice(k + 1)
-  if (WRITE_COMMANDS.has(name)) found.push({ kind: 'command', name: command.text })
+  found.commands?.push(words.slice(k).map(word => word.text))
+  if (WRITE_COMMANDS.has(name)) found.writes.push({ kind: 'command', name: command.text })
   else if (name === 'sed') {
     const flag = args.find(arg => inPlace(arg.text))
-    if (flag !== undefined) found.push({ kind: 'command', name: `${command.text} ${flag.text}` })
+    if (flag !== undefined) found.writes.push({ kind: 'command', name: `${command.text} ${flag.text}` })
   }
   if (depth >= MAX_DEPTH) return
   if (name === 'find') {
@@ -526,7 +536,7 @@ function inspect(words: readonly Word[], dialect: ShellDialect, depth: number, f
 }
 
 /** Group one command list into simple commands and judge each; redirections are judged where they stand. */
-function analyze(tokens: readonly Token[], dialect: ShellDialect, depth: number, found: ShellWrite[]): void {
+function analyze(tokens: readonly Token[], dialect: ShellDialect, depth: number, found: Findings): void {
   let words: Word[] = []
   const flush = (): void => {
     inspect(words, dialect, depth, found)
@@ -538,7 +548,7 @@ function analyze(tokens: readonly Token[], dialect: ShellDialect, depth: number,
       continue
     }
     if (token.kind === 'redirect') {
-      if (token.writes) found.push({ kind: 'redirect', operator: token.operator, target: token.target })
+      if (token.writes) found.writes.push({ kind: 'redirect', operator: token.operator, target: token.target })
       continue
     }
     if (!token.quoted && (dialect === 'posix' ? token.text === '{' || token.text === '}' : PWSH_ASSIGN.has(token.text))) {
@@ -555,7 +565,7 @@ function analyze(tokens: readonly Token[], dialect: ShellDialect, depth: number,
   flush()
 }
 
-function collect(command: string, dialect: ShellDialect, depth: number, found: ShellWrite[]): void {
+function collect(command: string, dialect: ShellDialect, depth: number, found: Findings): void {
   for (const list of lex(command, dialect)) analyze(list, dialect, depth, found)
 }
 
@@ -564,9 +574,24 @@ function collect(command: string, dialect: ShellDialect, depth: number, found: S
  * of the command lists (top level first, then nested lists).
  */
 export function shellWrites(command: string, dialect: ShellDialect): readonly ShellWrite[] {
-  const found: ShellWrite[] = []
+  const found: Findings = { writes: [], commands: undefined }
   collect(command, dialect, 0, found)
-  return found
+  return found.writes
+}
+
+/**
+ * The simple commands one command line runs in one dialect, in the order
+ * `shellWrites` meets them: the words of each one from its command word on
+ * (variable assignment prefixes, reserved words and wrapper commands such as
+ * `sudo` and `env` skipped), quotes and escapes removed. The commands inside
+ * `bash -c`, `pwsh -Command`, `find -exec` and every subexpression are read
+ * as commands as well; quoted text is never a command, so
+ * `echo "git reset --hard"` is one `echo`.
+ */
+export function simpleCommands(command: string, dialect: ShellDialect): readonly (readonly string[])[] {
+  const found: Findings = { writes: [], commands: [] }
+  collect(command, dialect, 0, found)
+  return found.commands ?? []
 }
 
 /** A short description of one write for the corrective message and the journal. */

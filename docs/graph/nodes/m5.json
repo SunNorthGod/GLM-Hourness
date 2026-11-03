@@ -215,6 +215,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M5 可开工的实施步全部收官（2026-11-02，ZCode 续跑）：S11（21 条种子经验）实现 aef9d43 已推送，评审 APPROVED 零阻断（评审员用一次性脚本把 21 行逐格对 design §4.8，逐字一致；证据逐条实读解析；真实存储未动）；S1–S11 评审全 APPROVED（impl-review.json 11 步）。impl-plan 的可开工步用完，剩非步工作：分支合入 main（等 M3 合入后做，冲突清单在 progress.md 的 merge preview，S10 又添 src/data/record.ts 拆分与 ui 文件）、桌面两批（种子导入真实项目、DevTools 截图）、删除 .worktrees/m5 前把 lessons-seed.json 与 impl/ 拷回主检出（种子文件不入库）。S12 等 M3 的 talk.ts。分支 m5-memory-lessons 与 origin 同点（aef9d43）。"
+    },
+    {
+      "at": "2026-11-03T09:01:11.725Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "整支合入 main 完成（2026-11-03 下午，合并提交 e654b0a，父 2c99acc + aef9d43）：19 处冲突按两边意图调和；门禁全绿 build/preflight/test 2476（较 m3 合入后 +324）/probe 323/323（+49 项 m5 检查）；eslint 基线 242→220、knip 19、jscpd 1。工程调和：测试链超 Windows 8191 字符上限，拆 test:1/test:2 同序同语义；graph.svg 随合并提交重渲。桌面版于 16:23 构建后重启加载新组合。剩 S12（等 M3 talk.ts——现已在 main，解锁）与桌面两批验收。"
     }
   ]
 }

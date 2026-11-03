@@ -23,10 +23,13 @@ export interface UsageRecord {
   readonly usage: TokenUsage
 }
 
-/** One workflow decision record (grading: L1 autonomous / L2 notify / L3 ask). */
+/**
+ * One workflow decision record: a dispatch call the workflow row observed.
+ * Lines written before the grading was removed also carry a `level`; readers
+ * ignore it.
+ */
 export interface DecisionRecord {
   readonly at: string
-  readonly level: 'L1' | 'L2' | 'L3'
   readonly kind: string
   readonly subject: string
   readonly detail?: string | undefined

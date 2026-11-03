@@ -119,14 +119,16 @@ export const slash = path => path.replaceAll('\\', '/')
  * root, and a run's working directories sit in this repository, whose
  * project root would otherwise take the journals) and the DSH home
  * `<dir>/dsh-home`, so the user-level directory is
- * `<dir>/dsh-home/glm-hourness`.
+ * `<dir>/dsh-home/glm-hourness`. The data row's `projectOverride` is the
+ * same project directory: the memory and lessons rows put their project
+ * data there instead of in the `.llm` of the repository the scenario runs in.
  */
 export function dataRows(dir) {
   const home = JSON.stringify(slash(join(dir, 'home')))
   return [
     ...['memory', 'workflow', 'hourness', 'guard', 'graph', 'loops'].flatMap(row => [`- id: glm-hourness/${row}`, `  config: { home: ${home} }`]),
     '- id: glm-hourness/data',
-    `  config: { dshHome: ${JSON.stringify(slash(join(dir, 'dsh-home')))}, projectHome: ${home} }`,
+    `  config: { dshHome: ${JSON.stringify(slash(join(dir, 'dsh-home')))}, projectHome: ${home}, projectOverride: ${home} }`,
   ]
 }
 
@@ -145,16 +147,19 @@ export const limitsRow = config => [
 ]
 
 /**
- * Overlay lines for a run that exercises the design row: the row is enabled
- * (it ships disabled), the question tool of the standard presets is mounted
+ * Overlay lines for a run that exercises the design row: the row ships
+ * enabled since the m3 merge (step 12b), the overlay keeps naming it (the
+ * persona config rides on it), the question tool of the standard presets is mounted
  * (the headless template has none, and the main agent's face has to be seen
  * against a face that does), and the simulated human
  * (scripts/calibrate/simulated-human.mjs) stands in for the person with
- * `config` ({ record, wish }).
+ * `config` ({ record, wish }). `rowConfig`, when given, is the design row's
+ * own configuration (its `persona` setting).
  */
-export const designRows = config => [
+export const designRows = (config, rowConfig) => [
   '- id: glm-hourness/design',
   '  disabled: false',
+  ...rowConfig === undefined ? [] : [`  config: ${JSON.stringify(rowConfig)}`],
   '- insert:',
   '    - id: glm-hourness-probe/tool-ask-user',
   '      name: \'@deepseek-ai/dsh-tool-ask-user\'',

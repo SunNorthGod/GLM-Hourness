@@ -474,6 +474,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "要采纳（晨报/周报所有者 M7 0.6）：fourAnswers、weeklyReport 的跨视图状态节次改读 collectStatus(ctx, sid, 'agent', now)，不各自从流水/图重算高峰、额度、用量、推进停住、汇报、三个减负数字（metrics/load）、超时与撤下、两张单子；第四个（返工）仍由 M7 从图算（M7 §3.12.3）。hourness_report 传 audience='agent'，结果不含 person 条目与比率；周报只转述四个减负数字，其余比率改由面板指标板承载、末尾一行指人去看（指标 0.7 §7.3、§7.6，人已定 d-metrics-ratios-person-only）。M7 自有的任务计数、DORA 等非共享项照旧在 M7 算。"
+    },
+    {
+      "at": "2026-11-02T19:12:50.482Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "设计输入（2026-11-03，官方 dsh-superagent-prototype 实读，FACTS.md §3）：(1) 派发与 loops 投递的副作用队列照原型 stored-work 三件套——决定后动作先落库、事务提交后执行、失败退避重试（2s 起倍增至 60s）、同一任务对同一会话的消息严格保序、连续失败 3 次才升健康告警；m4-gate 的缺口补写（journal 写失败留缺口、下条记录落地前先补）已是同款语义的日志侧。(2) 派发生命周期用 stage 表（在等人答/等审查/受阻/排队/空闲/在干，自上而下首条命中；人的消息一到受阻自动释放），工单状态自带、不跟随宿主 session（原型 001 拒绝概念清单）。(3) 派发工具形状：一次收多条决定、每项独立拒绝互不挡；派发 id 由输入派生（同输入同 id），重启不重放、重复接受不双开。详见 .agents/tasks/superagent-notes/findings.md（不入库）。"
     }
   ]
 }

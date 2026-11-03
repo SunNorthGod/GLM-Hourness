@@ -11,6 +11,7 @@
     "./data": "./dist/data/index.js",
     "./guard": "./dist/guard/index.js",
     "./memory": "./dist/memory/index.js",
+    "./lessons": "./dist/lessons/index.js",
     "./workflow": "./dist/workflow/index.js",
     "./hourness": "./dist/report/index.js",
     "./graph": "./dist/graph/index.js",
@@ -22,6 +23,7 @@
     "./data/locale/*.json": "./locale/data/*.json",
     "./guard/locale/*.json": "./locale/guard/*.json",
     "./memory/locale/*.json": "./locale/memory/*.json",
+    "./lessons/locale/*.json": "./locale/lessons/*.json",
     "./workflow/locale/*.json": "./locale/workflow/*.json",
     "./hourness/locale/*.json": "./locale/hourness/*.json",
     "./graph/locale/*.json": "./locale/graph/*.json",
@@ -46,5 +48,8 @@
         "@deepseek-ai/dsh-api-remotes"
       ]
     }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cosmokit": "*"
   }
 }

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { chargedCredits, creditPricing, creditRate } from '../src/glm-llm/credits.ts'
@@ -11,13 +11,16 @@ import { READ_IMAGE_NATIVE, READ_NAME, READ_NATIVE } from '../src/glm-prompt/rea
 import { TODO_NATIVE, TODO_WRITE_NAME } from '../src/glm-prompt/todo-reminder.ts'
 import { apply as graphApply } from '../src/graph/index.ts'
 import { graphTools } from '../src/graph/tools.ts'
+import { openEngine } from '../src/graph/engine.ts'
+import { apply as designApply } from '../src/design/index.ts'
+import { plainWordsIn } from '../src/graph/plain-question.ts'
 import { GUARD_RULES } from '../src/guard/catalog.ts'
 import { isGateListener } from '../src/guard/gate.ts'
 import { graphFilesOnly } from '../src/guard/graph-files.ts'
 import { activeRules, apply as guardApply } from '../src/guard/index.ts'
-import { memoryTools, storeIo } from '../src/memory/tools.ts'
 import { installLoopsFileGuard, installLoopsScheduleGuard, loopsFilesOnly, loopsScheduleTools, LOOPS_FILES_ONLY } from '../src/loops/guard.ts'
 import { LOOPS_DECLARATION, LOOPS_SERVICE, loopsService } from '../src/loops/service.ts'
+import { MAIN_AGENT_RULES } from '../src/guard/main-agent-rules.ts'
 import { CATALOG } from '../src/rules/builtin.ts'
 import { RULES_FILES_ONLY } from '../src/rules/gate.ts'
 import { apply as rulesApply, type RulesContext } from '../src/rules/index.ts'
@@ -27,14 +30,19 @@ import { DIALECT_SERVICE, dialectNames, dialectService, toNativeTool, ZCODE_ALIA
 import { loopDefaultsOf, type ChannelLoopDefault } from '../src/shared/channel-loop.ts'
 import type { AgentLike, CommandDefinitionLike, ToolFinalResult } from '../src/shared/dsh-min.ts'
 import { healthServiceName, type HealthRow, type HealthState, type RowHealthView } from '../src/shared/health.ts'
+import { MEMORY_SERVICE, memoryService } from '../src/shared/memory-service.ts'
+import { OUTPUT_STYLE_SECTION } from '../src/shared/output-style.ts'
 import { PRICING_SERVICE, peakHoursOf, pricingService, quotaOf, type UsagePricing } from '../src/shared/pricing.ts'
 import type { QuotaView } from '../src/shared/quota.ts'
-import { DISPATCH_TOOL_NAMES, GRAPH_TOOL_NAMES, MEMORY_TOOL_NAMES, ORCHESTRATION_RESIDENT_TOOLS, RULES_TOOL_NAMES } from '../src/shared/tool-names.ts'
+import { DESIGN_TOOL_NAMES, DISPATCH_TOOL_NAMES, GRAPH_TOOL_NAMES, LEARNING_TOOL_NAMES, LESSONS_MERGE_TOOL, LESSONS_QUERY_TOOL, LESSONS_TOOL_NAMES, MEMORY_TOOL_NAMES, ORCHESTRATION_RESIDENT_TOOLS, RULES_TOOL_NAMES } from '../src/shared/tool-names.ts'
 import { RESIDENT_TOOLS } from '../src/toolsearch/exposure.ts'
 import { apply as hournessApply } from '../src/report/index.ts'
 import { DISPATCH_TOOLS } from '../src/workflow/index.ts'
 import { PACKAGES } from '../scripts/packages.mjs'
+import { designHost } from './design-host.ts'
 import { fakeRuntime, serviceStore, type FakeRuntime } from './fake-rc3.ts'
+import { lessonsFixture } from './lessons-helpers.ts'
+import { memoryFixture } from './memory-helpers.ts'
 
 // Contracts between the GLM channel package and the orchestration package
 // (docs/DESIGN.md §8): strings and service shapes no import rule sees.
@@ -54,6 +62,7 @@ const ROW_IDS = [
   'glm-hourness/data',
   'glm-hourness/guard',
   'glm-hourness/memory',
+  'glm-hourness/lessons',
   'glm-hourness/workflow',
   'glm-hourness/hourness',
   'glm-hourness/graph',
@@ -69,10 +78,35 @@ test('row ids: each package\'s host rows and its client row are the fixed list',
   assert.deepEqual(PACKAGES.flatMap(pkg => [...pkg.rows.map(row => row.id), pkg.client.row]), ROW_IDS)
 })
 
-test('tool names: the graph and memory rows register exactly the contract names', () => {
+test('tool names: the graph, memory (with its learning tool) and lessons rows register exactly the contract names', () => {
   assert.deepEqual(graphTools('docs/graph', new Map()).map(tool => tool.name), GRAPH_TOOL_NAMES)
-  const io = storeIo({ readFile: () => Promise.resolve(''), writeFile: () => Promise.resolve(), rename: () => Promise.resolve() }, 'C:/ws/.llm')
-  assert.deepEqual(memoryTools(io).map(tool => tool.name), MEMORY_TOOL_NAMES)
+  const memory = memoryFixture()
+  const lessons = lessonsFixture()
+  try {
+    assert.deepEqual([...memory.tools.keys()], [...MEMORY_TOOL_NAMES, ...LEARNING_TOOL_NAMES])
+    assert.deepEqual([...lessons.tools.keys()], LESSONS_TOOL_NAMES)
+  }
+  finally {
+    memory.dispose()
+    lessons.dispose()
+  }
+})
+
+test('memory service readers: absent and malformed services read as none; a wider one still reads', () => {
+  const problems: string[] = []
+  const problem = (message: string) => { problems.push(message) }
+  const store = serviceStore()
+  assert.equal(memoryService(store, problem), undefined)
+  assert.equal(memoryService({}, problem), undefined) // a context without get
+  assert.deepEqual(problems, [])
+  store.provide(MEMORY_SERVICE, { stats: () => ({}) })
+  assert.equal(memoryService(store, problem), undefined)
+  assert.equal(problems.length, 1)
+  const wider = { depth: () => 'concise' as const, stats: () => ({}), hygiene: () => [] }
+  const store2 = serviceStore()
+  store2.provide(MEMORY_SERVICE, wider)
+  assert.equal(memoryService(store2, problem), wider)
+  assert.equal(problems.length, 1)
 })
 
 test('tool names: the rules row registers exactly the contract names, and the dispatch names are tools the workflow row records', () => {
@@ -233,12 +267,35 @@ function repoRoot(): string {
   return join(import.meta.dirname, '..')
 }
 
+test('tool names: the design row registers exactly the contract names, and withdraws them when the tools service leaves', () => {
+  const host = designHost()
+  designApply(host.ctx)
+  assert.deepEqual([...host.tools.keys()], DESIGN_TOOL_NAMES)
+  host.injector.remove('tools')
+  assert.deepEqual([...host.tools.keys()], [])
+})
 test('tool names: every orchestration tool kept resident exists, and GLM tool search keeps it resident', () => {
-  const known = new Set([...GRAPH_TOOL_NAMES, ...MEMORY_TOOL_NAMES])
+  const known = new Set([...GRAPH_TOOL_NAMES, ...MEMORY_TOOL_NAMES, ...DESIGN_TOOL_NAMES, ...LESSONS_TOOL_NAMES])
   for (const name of ORCHESTRATION_RESIDENT_TOOLS) {
     assert.ok(known.has(name), `${name} is resident but no orchestration row registers it`)
     assert.ok(RESIDENT_TOOLS.has(name), name)
   }
+})
+
+test('persona section: the name the design row adds and the dialect places is one string in the products of both packages', async () => {
+  const names = await Promise.all(PACKAGES.map(async pkg => ((await import(`../${pkg.dir}/dist/shared/output-style.js`)) as { OUTPUT_STYLE_SECTION: string }).OUTPUT_STYLE_SECTION))
+  assert.deepEqual(names, PACKAGES.map(() => 'hourness:output-style'))
+  assert.equal(OUTPUT_STYLE_SECTION, 'hourness:output-style')
+})
+
+test('tool names: the learning tool is the main agent\'s read-only view and stays deferred in the GLM face; the memory tools stay resident', () => {
+  for (const name of LEARNING_TOOL_NAMES) assert.ok(!ORCHESTRATION_RESIDENT_TOOLS.has(name) && !RESIDENT_TOOLS.has(name), name)
+  for (const name of MEMORY_TOOL_NAMES) assert.ok(ORCHESTRATION_RESIDENT_TOOLS.has(name) && RESIDENT_TOOLS.has(name), name)
+})
+
+test('tool names: the lookup of the lessons board is resident for every agent in the GLM face, the merge tool is the main agent\'s and stays deferred', () => {
+  assert.ok(ORCHESTRATION_RESIDENT_TOOLS.has(LESSONS_QUERY_TOOL) && RESIDENT_TOOLS.has(LESSONS_QUERY_TOOL))
+  assert.ok(!ORCHESTRATION_RESIDENT_TOOLS.has(LESSONS_MERGE_TOOL) && !RESIDENT_TOOLS.has(LESSONS_MERGE_TOOL))
 })
 
 test('dialect: the static alias table is the dialect\'s own alias definitions plus Read and TodoWrite', () => {
@@ -551,4 +608,57 @@ test('pricing through the report row: a malformed service lists tokens; a throwi
     rmSync(malformed.home, { recursive: true, force: true })
     rmSync(throwingStore.home, { recursive: true, force: true })
   }
+})
+
+// The interceptions M3 puts on the main agent are a table the rules board reads (decisions d-rules-visible, d-defaults-readonly; addendum 3.11).
+// Each step adds its rows and its triggers here; the step of a row is the last step merged that may hold it.
+const MERGED_STEP = 8
+const TRIGGERS: Readonly<Record<string, (host: ReturnType<typeof designHost>, agent: AgentLike) => Promise<void>>> = {
+  'main-agent-no-write': async (host, agent) => { await host.preExecute(agent, 'write', { file_path: 'a.txt', content: 'x' }) },
+  'main-agent-ask': async (host, agent) => { await host.preExecute(agent, 'ask_user_question', {}) },
+  'git-snapshot': async (host, agent) => { await host.preExecute(agent, 'pwsh', { command: 'git clean -fdx' }) },
+  // A write by a subagent of the main agent, which has no goal in focus.
+  'design-before-release': async (host, agent) => { await host.preExecute(host.addAgent('delegated', { origin: 'subagent', parentSession: agent.id }), 'write', { file_path: 'a.txt', content: 'x' }) },
+  // A subagent sends the human's words with a graph write; the main agent proposes a question with options or touches the delegations.
+  'main-agent-graph-relay': async (host, agent) => { await host.preExecute(host.addAgent('relaying', { origin: 'subagent', parentSession: agent.id }), 'graph_edit', { id: 'goal-1', rev: 'r', set: { stage: 'release' }, reason: 'x', relay: '可以，放行' }) },
+  'main-agent-graph-options': async (host, agent) => { await host.preExecute(agent, 'graph_propose', { node: { type: 'question', title: '放哪', parent: 'goal-1', options: [{ key: 'A', label: 'a', gain: 'g', cost: 'c' }, { key: 'B', label: 'b', gain: 'g', cost: 'c' }], recommend: 'B' }, reason: 'x' }) },
+  // Any session writes the node of what the human handed over for good with a graph tool.
+  'main-agent-graph-delegations': async (host, agent) => { await host.preExecute(agent, 'graph_edit', { id: 'norm-delegations', rev: 'r', set: { acceptance: ['代码风格：主 Agent 定，只告知'] }, reason: 'x' }) },
+  // Any session approves the goal of an interview with a graph tool: only the human's agreement, recorded by record_human_answer, moves it on.
+  'main-agent-graph-stage': async (host, agent) => {
+    await openEngine(join(host.workspace('ws'), 'docs', 'graph')).apply('human', { op: 'propose', reason: '立项', node: { type: 'goal', title: '记账小工具', stage: 'interview' } })
+    await host.preExecute(agent, 'graph_approve', { id: 'goal-1', rev: 'r', reason: 'x' })
+  },
+  // Any session runs the graph's command line to write.
+  'main-agent-graph-cli': async (host, agent) => { await host.preExecute(agent, 'pwsh', { command: 'npm run -s graph -- approve \'{"id":"goal-1"}\'' }) },
+}
+
+test('main agent rules: ids are unique, titles are one short plain line, every rule steps no later than the merged step', () => {
+  const ids = MAIN_AGENT_RULES.map(rule => rule.id)
+  assert.equal(new Set(ids).size, ids.length)
+  for (const rule of MAIN_AGENT_RULES) {
+    assert.equal(rule.title, rule.title.trim())
+    assert.notEqual(rule.title, '')
+    assert.equal(rule.title.includes('\n'), false, rule.id)
+    assert.ok([...rule.title].length <= 40, rule.id)
+    assert.deepEqual(plainWordsIn(rule.title), [], rule.id)
+    assert.ok(rule.step <= MERGED_STEP, `${rule.id} is a step ${rule.step} rule`)
+  }
+  assert.deepEqual(ids, Object.keys(TRIGGERS), 'the table lists exactly the rules that have a trigger here')
+})
+
+test('main agent rules: every rule of the table denies once on the fake host, and every denial names a rule of the table', async () => {
+  const host = designHost()
+  designApply(host.ctx)
+  const agent = host.addAgent('s1')
+  await host.execute(agent, '/wish')
+  for (const rule of MAIN_AGENT_RULES) {
+    const trigger = TRIGGERS[rule.id]
+    assert.ok(trigger !== undefined, rule.id)
+    await trigger(host, agent)
+  }
+  const file = join(host.projectHome, 'audit', 'violations.jsonl')
+  for (let attempt = 0; attempt < 200 && (!existsSync(file) || readFileSync(file, 'utf8').split('\n').filter(line => line !== '').length < MAIN_AGENT_RULES.length); attempt++) await new Promise(resolve => setTimeout(resolve, 10))
+  const rules = readFileSync(file, 'utf8').split('\n').filter(line => line !== '').map(line => (JSON.parse(line) as { rule: string }).rule)
+  assert.deepEqual([...new Set(rules)].sort(), MAIN_AGENT_RULES.map(rule => rule.id).sort())
 })

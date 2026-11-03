@@ -18,6 +18,18 @@
       "reason": "人 2026-11-01 读 M4 一页稿后放行，并把七件活的 35 条做完条件一起定下（人话版 .agents/tasks/m4/onepage-done.md，设计 0.6 §1.2）",
       "relay": "都没问题",
       "to": "approved"
+    },
+    {
+      "at": "2026-11-02T20:38:59.930Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "来自 m4-gate 评审 pass1 的 MINOR（2026-11-03）：src/rules/index.ts:249 仍经 rowJournal+dataHomes 写流水，而晨报已改读 projectJournal（projectHomeFor），规则板的拒绝/排队/记录行落不进晨报例外段；本任务把 src/rules 挪到 projectJournal（设计 0.6-finish2 §3.2:376、:538 原文即如此，G1 文件清单没含 src/rules 是切分点漏记）。行未启用，今天无生产影响。"
+    },
+    {
+      "at": "2026-11-02T20:39:19.355Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "来自 m4-gate 评审 pass1 的 MINOR（2026-11-03）：src/rules/index.ts:249 仍经 rowJournal+dataHomes 写流水，而晨报已改读 projectJournal（projectHomeFor），规则板的拒绝/排队/记录行落不进晨报例外段；本任务把 src/rules 挪到 projectJournal（设计 0.6-finish2 §3.2:376、:538 原文即如此）。行未启用，今天无生产影响。"
     }
   ]
 }

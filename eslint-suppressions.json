@@ -30,6 +30,11 @@
       "count": 1
     }
   },
+  "tests/dialect-wiring.spec.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 2
+    }
+  },
   "tests/fake-rc3.ts": {
     "@typescript-eslint/require-await": {
       "count": 3
@@ -93,16 +98,19 @@
     }
   },
   "tests/memory-audit.spec.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
     "@typescript-eslint/no-unsafe-argument": {
       "count": 1
     },
     "@typescript-eslint/require-await": {
-      "count": 4
+      "count": 1
     }
   },
   "tests/s5.spec.ts": {
-    "@typescript-eslint/require-await": {
-      "count": 3
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 2
     }
   },
   "tests/todowrite.spec.ts": {
@@ -124,7 +132,7 @@
   },
   "tests/workflow.spec.ts": {
     "@typescript-eslint/require-await": {
-      "count": 11
+      "count": 9
     }
   }
 }

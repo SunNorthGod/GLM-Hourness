@@ -79,6 +79,7 @@ test('dailySuppressions appends once per repository and day; the journal of the 
 
 const input = (suppressions: SuppressionRecord[]): ReportInput => ({
   decisions: [], violations: [], usage: [], suppressions, period: '2026-11-02',
+  asks: { waiting: { count: 0 }, agentOwn: 0, decided: { person: 0, inChat: 0, agent: 0 } },
 })
 
 test('the morning report carries the suppression line with the movement of the period', () => {

@@ -1,38 +1,13 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { openEngine, type ApplyResult, type GraphEngine } from '../src/graph/engine.ts'
+import { openEngine, type ApplyResult } from '../src/graph/engine.ts'
 import { serializeNode } from '../src/graph/format.ts'
 import { renderGraph } from '../src/graph/render.ts'
-import type { Actor, GraphNode } from '../src/graph/schema.ts'
+import { ANSWER_MARKS } from '../src/shared/answer-marks.ts'
+import type { GraphNode } from '../src/graph/schema.ts'
 import { loadGraph } from '../src/graph/store.ts'
-import { fixtureTest } from './graph-helpers.ts'
-
-type Success = Extract<ApplyResult, { ok: true }>
-
-interface Fixture {
-  readonly dir: string
-  readonly engine: GraphEngine
-  rev(id: string): Promise<string>
-  node(id: string): Promise<GraphNode>
-  run(actor: Actor, mutation: Record<string, unknown>): Promise<Success>
-  /** Apply a mutation with the current rev of mutation.id filled in. */
-  act(actor: Actor, mutation: Record<string, unknown>): Promise<ApplyResult>
-}
-
-function must(result: ApplyResult): Success {
-  assert.ok(result.ok, `expected success, got ${JSON.stringify(result)}`)
-  return result
-}
-
-function refused(result: ApplyResult, code: string, field?: string): void {
-  assert.equal(result.ok, false, `expected ${code}, got success`)
-  const { error } = result
-  assert.equal(error.code, code, JSON.stringify(error))
-  if (field !== undefined) assert.equal(error.field, field, JSON.stringify(error))
-  assert.ok(error.hint.length > 0, 'every refusal names the way forward')
-}
+import { engineFixture, fixtureTest, must, refused, type EngineFixture } from './graph-helpers.ts'
 
 /**
  * goal-1 (stage design, acceptance, non-goals)
@@ -40,20 +15,15 @@ function refused(result: ApplyResult, code: string, field?: string): void {
  *     task-1 approved, with acceptance
  *     task-2 approved, without acceptance
  */
+type Fixture = EngineFixture
+
 async function fixture(): Promise<Fixture> {
-  const dir = await mkdtemp(join(tmpdir(), 'graph-engine-'))
-  let tick = 0
-  const engine = openEngine(dir, { now: () => new Date(Date.UTC(2026, 9, 28, 8, 0, tick++)) })
-  const rev = async (id: string): Promise<string> => (await loadGraph(dir)).revisions.get(id)!
-  const node = async (id: string): Promise<GraphNode> => (await loadGraph(dir)).nodes.get(id)!
-  const run = async (actor: Actor, mutation: Record<string, unknown>): Promise<Success> => must(await engine.apply(actor, mutation))
-  const act = async (actor: Actor, mutation: Record<string, unknown>): Promise<ApplyResult> =>
-    engine.apply(actor, { ...mutation, rev: await rev(mutation.id as string) })
-  await run('human', { op: 'propose', reason: '立项', node: { type: 'goal', title: '项目图引擎', stage: 'design', acceptance: ['人能看，LLM 能读写'], nonGoals: ['不接 DSH 运行时'] } })
-  await run('human', { op: 'propose', reason: '拆分', node: { type: 'feature', title: '引擎', parent: 'goal-1' } })
-  await run('human', { op: 'propose', reason: '拆分', node: { type: 'task', title: '存储', parent: 'feature-1', acceptance: ['往返逐字节一致'] } })
-  await run('human', { op: 'propose', reason: '拆分', node: { type: 'task', title: '投影', parent: 'feature-1' } })
-  return { dir, engine, rev, node, run, act }
+  return engineFixture('graph-engine-', 28, async ({ run }) => {
+    await run('human', { op: 'propose', reason: '立项', node: { type: 'goal', title: '项目图引擎', stage: 'design', acceptance: ['人能看，LLM 能读写'], nonGoals: ['不接 DSH 运行时'] } })
+    await run('human', { op: 'propose', reason: '拆分', node: { type: 'feature', title: '引擎', parent: 'goal-1' } })
+    await run('human', { op: 'propose', reason: '拆分', node: { type: 'task', title: '存储', parent: 'feature-1', acceptance: ['往返逐字节一致'] } })
+    await run('human', { op: 'propose', reason: '拆分', node: { type: 'task', title: '投影', parent: 'feature-1' } })
+  })
 }
 
 const graphTest = fixtureTest(fixture)
@@ -857,4 +827,73 @@ graphTest('an agent question in a subtree opens a decisions gate, not the human 
   const task2 = await g.engine.projection('task-2')
   assert.ok(task2.ok)
   assert.deepEqual(task2.projection.gates.map(gate => [gate.kind, gate.ids]), [['decisions', [question.id]], ['acceptance', ['task-2']], ['children', [question.id]]])
+})
+
+// Modules of a goal split in two (docs/ORCHESTRATION.md §4.9): nothing below a module that is not released is approved on its own, and a module is sent back to design without the human's words.
+/**
+ * goal-1 (stage release), split into module-a (in design) and module-b (released), with feature-1 below module-a
+ */
+const modulesTest = fixtureTest(() => engineFixture('graph-engine-modules-', 29, async ({ run }) => {
+  await run('human', { op: 'propose', reason: '立项', node: { type: 'goal', title: '项目', stage: 'release', acceptance: ['x'], nonGoals: ['y'] } })
+  await run('human', { op: 'propose', reason: '模块', node: { type: 'feature', id: 'module-a', title: '甲', parent: 'goal-1', stage: 'design' } })
+  await run('human', { op: 'propose', reason: '模块', node: { type: 'feature', id: 'module-b', title: '乙', parent: 'goal-1', stage: 'release' } })
+  await run('human', { op: 'propose', reason: '子特性', node: { type: 'feature', id: 'feature-1', title: '子特性', parent: 'module-a' } })
+}))
+
+modulesTest('a task the llm proposes below a module that is not released waits for the release, at any depth; below a released module it is plan-internal; the other types are as before', async g => {
+  const born = async (parent: string, type: string = 'task'): Promise<string> => (await g.run('llm', { op: 'propose', reason: '计划', node: { type, title: `${type}在${parent}下`, parent, ...type === 'question' ? { options: [{ key: 'A', label: '甲', gain: 'x', cost: 'y' }, { key: 'B', label: '乙', gain: 'x', cost: 'y' }], recommend: 'B', crux: '谁定？', verdict: '是 → A；否 → B', weight: 'two-way' } : {} } })).node.status
+  assert.equal(await born('module-a'), 'proposed', 'directly below a module in design')
+  assert.equal(await born('feature-1'), 'proposed', 'below a feature below it')
+  assert.equal(await born('module-b'), 'approved', 'below a released module')
+  assert.equal(await born('module-a', 'risk'), 'approved', 'a risk is for the human to read, not a part of the release')
+  assert.equal(await born('module-a', 'question'), 'approved')
+  assert.equal(await born('module-a', 'decision'), 'proposed')
+  assert.equal(await born('module-a', 'feature'), 'proposed')
+  // With the human's authority a proposal is approved wherever it is: the rule of the guard keeps the main agent from using it.
+  assert.equal((await g.run('human', { op: 'propose', reason: '人定', node: { type: 'task', title: '人提的', parent: 'module-a' } })).node.status, 'approved')
+  // The release of the module opens it: the next task is approved at once, and so is one below a module that is done.
+  await g.run('human', { op: 'edit', id: 'module-a', rev: await g.rev('module-a'), set: { stage: 'release' }, reason: '放行' })
+  assert.equal(await born('module-a'), 'approved')
+})
+
+modulesTest('a task below a node that is not in a module, and below a goal that does not split into modules, is born as it was', async g => {
+  assert.equal((await g.run('llm', { op: 'propose', reason: '计划', node: { type: 'task', title: '单层', parent: 'goal-1' } })).node.status, 'proposed', 'a goal is not open work: a proposal')
+  const small = await fixture()
+  try {
+    assert.equal((await small.run('llm', { op: 'propose', reason: '计划', node: { type: 'task', title: '子任务', parent: 'feature-1' } })).node.status, 'approved')
+  }
+  finally {
+    await rm(small.dir, { recursive: true, force: true })
+  }
+})
+
+modulesTest('the main agent sends a module back to design on its own word: the stage and nothing else, with a reason that says why and is not the words of an agreement', async g => {
+  for (const actor of ['llm', 'harness'] as const) {
+    const sent = must(await g.engine.apply(actor, { op: 'edit', id: 'module-b', rev: await g.rev('module-b'), set: { stage: 'design' }, reason: '方向要改：先记录再汇总' }))
+    const entry = sent.node.history.at(-1)!
+    assert.deepEqual([entry.op, entry.actor, entry.relay, entry.changes, sent.node.stage], ['edit', actor, undefined, { stage: { from: 'release', to: 'design' } }, 'design'])
+    must(await g.engine.apply('human', { op: 'edit', id: 'module-b', rev: await g.rev('module-b'), set: { stage: 'release' }, reason: '再放行' }))
+  }
+  // The reason may not read as the human agreeing: a return is not their agreement.
+  const mark = await g.engine.apply('llm', { op: 'edit', id: 'module-b', rev: await g.rev('module-b'), set: { stage: 'design' }, reason: `${ANSWER_MARKS.agree}（record_human_answer call-1）` })
+  refused(mark, 'invalid', 'reason')
+  assert.match(mark.ok ? '' : mark.error.hint, /not the human's agreement/)
+  assert.equal((await g.node('module-b')).stage, 'release')
+})
+
+modulesTest('nothing else is let through without the human: a module still in design, other fields with it, a forward move, a node that is not a module, a goal, a module that is done', async g => {
+  const send = async (id: string, set: Record<string, unknown>): Promise<ApplyResult> => g.engine.apply('llm', { op: 'edit', id, rev: await g.rev(id), set, reason: '改' })
+  refused(await send('module-a', { stage: 'design' }), 'forbidden', 'set.stage')
+  refused(await send('module-b', { stage: 'design', title: '乙改名' }), 'forbidden')
+  refused(await send('module-b', { stage: 'decompose' }), 'forbidden', 'set.stage')
+  refused(await send('module-a', { stage: 'release' }), 'forbidden', 'set.stage')
+  refused(await send('goal-1', { stage: 'design' }), 'forbidden')
+  // A feature below a module is an ordinary feature, whatever its stage.
+  await g.run('human', { op: 'edit', id: 'feature-1', rev: await g.rev('feature-1'), set: { stage: 'release' }, reason: '普通特性' })
+  refused(await send('feature-1', { stage: 'design' }), 'forbidden', 'set.stage')
+  // A module that is done is not sent back this way; it stays as it is.
+  await g.run('human', { op: 'edit', id: 'module-b', rev: await g.rev('module-b'), set: { acceptance: ['乙能用'] }, reason: '验收' })
+  await g.run('human', { op: 'status', id: 'module-b', rev: await g.rev('module-b'), to: 'done', evidence: [{ kind: 'commit', ref: 'abc1234' }], reason: '做完了' })
+  refused(await send('module-b', { stage: 'design' }), 'forbidden', 'set.stage')
+  assert.deepEqual([(await g.node('module-a')).stage, (await g.node('module-b')).stage, (await g.node('goal-1')).stage], ['design', 'release', 'release'])
 })

@@ -135,6 +135,7 @@ export function visibleGraph(graph: LoadedGraph, filter: GraphFilter): VisibleGr
 export function statusText(node: GraphNode): string {
   if (node.type === 'question') {
     if (node.status === 'done') {
+      if (node.conclusion !== undefined) return `定了：${node.conclusion}`
       const chosen = node.options?.find(entry => entry.key === node.decision)
       return chosen === undefined ? '已拍板' : `选了 ${chosen.key} ${chosen.label}`
     }
@@ -268,6 +269,12 @@ const FIELD_LABELS: Readonly<Record<EditableField, string>> = {
   verdict: '结论行',
   weight: '可逆性',
   decider: '决定者',
+  ask: '问句',
+  proposal: '推荐',
+  reason: '理由',
+  cost: '代价',
+  ways: '做法',
+  notTaken: '没选的',
 }
 
 /** A relayed reason that opens by naming the human repeats the 你（经对话） label; the display drops it, the stored entry keeps it. */
@@ -291,7 +298,7 @@ function actionText(entry: HistoryEntry): string {
   if (entry.op === 'supersede' && entry.edge !== undefined) return `取代 ${entry.edge.to}`
   const { changes } = entry
   const fields = changes === undefined ? '' : EDITABLE_FIELDS.filter(field => changes[field] !== undefined).map(field => FIELD_LABELS[field]).join('、')
-  return `${OP_LABELS[entry.op]}${fields}${entry.option === undefined ? '' : ` ${entry.option}`}`
+  return `${OP_LABELS[entry.op]}${fields}${entry.option === undefined ? '' : ` ${entry.option}`}${entry.conclusion === undefined ? '' : `：${entry.conclusion}`}`
 }
 
 /**

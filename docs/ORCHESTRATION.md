@@ -15,7 +15,7 @@
 2. 流程对人和 LLM 同时可见：每个阶段都有告知（给 LLM）、门禁（在执行边界检查证据）、呈现（给人看的 UI）。
 3. DSH 已有的能力尽量借用官方组件，不自创；但不因此放弃功能，没有的就自己做。
 
-现状〔已实现〕：workflow 行只记录派遣类工具调用（`spawn_teammate`、`team_task_create`、`team_task_update`、`send_message`、`subagent`、`subagent_fork`），分级恒为 L1；五键文案已定义但没有任何调用点；晨报从三条审计流水聚合，决策与违规取自项目目录、用量取自用户级目录（`DESIGN.md` §2.4）；`/hourness` 命令输出晨报与积分口径的用量面板（§11.3）；GLM 会话进入高峰时段时收到一条提醒（§11.4）。
+现状〔已实现〕：workflow 行只记录派遣类工具调用（`spawn_teammate`、`team_task_create`、`team_task_update`、`send_message`、`subagent`、`subagent_fork`），记录是 `{at, kind, subject}`，没有分级（L1/L2/L3 与五键文案已在 M3 第 10 步删去）；晨报从三条审计流水和项目图聚合，派遣记录与违规取自项目目录、用量取自用户级目录（`DESIGN.md` §2.4），要人定的事取自调用会话所在的项目图（§5）；`/hourness` 命令输出晨报与积分口径的用量面板（§11.3）；GLM 会话进入高峰时段时收到一条提醒（§11.4）。
 
 ## 2. 项目图即主 Agent
 
@@ -161,7 +161,15 @@ L3 核实〔实测 2026-10-28，派发可行性验证 (c)，`ROADMAP.md` 借用�
 | `crux` | 字符串 | 待决，人定的必填 | 「取决于」：只有人知道答案的那个关键问题 |
 | `verdict` | 字符串 | 待决，人定的必填 | 结论行「是 → X；否 → Y」，点名选项 key |
 | `weight` | 枚举 | 待决，人定的必填 | `one-way` 单向门（改目标、验收条件或非目标，或以后改起来很贵的方向，§2.9.1 第 1、5 类）、`two-way` 双向门 |
-| `decision` | 选项 key | 待决，拍板后 | 人选中的选项 |
+| `decision` | 选项 key | 带 `options` 的待决，拍板后 | 人选中的选项 |
+| `ask` | 字符串 | 提议式待决，必填 | 问句：主 Agent 对人说的那句话从开头到第一个问号（含），一行，恰好一个问号并以它结尾，不超过该问法的字数上限（`recommend` 160，其余 120） |
+| `form` | 枚举 | 提议式待决，必填，建后不能改 | 问法：`recommend` 让人同意一条推荐，`choose` 在两三条路里选，`want` 让人改正一个猜测，`look` 让人看一样东西指毛病 |
+| `proposal` | 字符串 | 提议式待决，必填 | 推荐的做法、猜测或给人看的东西的名字，一行，不超过 60 个字；`choose` 取 `ways` 的最后一项 |
+| `reason` | 字符串 | `recommend`、`choose` 必填 | 为什么，一行，不超过 60 个字 |
+| `cost` | 字符串 | `recommend`，可选 | 真有代价才写，一行，不超过 60 个字 |
+| `ways` | 字符串数组 | `choose` 必填 | 两三条路，每条一行写人会看到什么，不超过 50 个字，没有问号，互不相同，推荐的放最后 |
+| `notTaken` | 字符串 | `recommend`、`choose`，可选 | 没选的做法，留给记录，一行，不超过 60 个字 |
+| `conclusion` | 字符串 | 提议式待决，拍板后 | 人定了什么，一行，不超过 120 个字 |
 | `edges` | 数组 | 可选 | `{type, to}`：`depends` 依赖（本节点依赖 `to`）、`source` 来源（本节点因 `to` 而存在）、`supersedes` 取代（本节点取代 `to`） |
 | `evidence` | 数组 | 可选 | `{kind, ref, exit?, note?}`：`commit`（`ref` 为 7–40 位十六进制提交号）；`test` 与 `check`（`ref` 为命令或检查器名，`exit` 为退出码，必填）；`decision`（拍板时由引擎写入，`ref` 为选项 key） |
 | `history` | 数组 | 必填，至少一条 | 每次变更一条，格式见 §2.9 |
@@ -176,7 +184,7 @@ L3 核实〔实测 2026-10-28，派发可行性验证 (c)，`ROADMAP.md` 借用�
 
 - 字段类型、枚举值、必填字段，未知字段报错；id 与文件名一致。
 - `parent` 与连线目标都存在，连线不指向自己，同一节点上没有重复连线；分解与依赖都无环；目标节点没有父节点，其他节点必须有父节点，于是沿 `parent` 最终走到一个目标节点。
-- `recommend` 与 `decision` 是已有选项；`verification` 只出现在决策节点，`options`、`dimension`、`recommend`、`crux`、`verdict`、`weight`、`decider`、`decision` 只出现在待决节点，`stage` 只出现在目标与特性节点；`decision` 类证据只出现在待决节点，`ref` 是已有选项。表格卡的字段在文件里只查形状：`gain`、`cost`、`consequence`、`crux`、`verdict` 是非空字符串，`weight` 是两个取值之一，`dimension` 有非空的 `name` 与 `values`，`values` 至少一格，键是选项 key 的格式，格子是非空字符串。行文、长度与必填是写入规则（见下）。
+- `recommend` 与 `decision` 是已有选项；`verification` 只出现在决策节点，`options`、`dimension`、`recommend`、`crux`、`verdict`、`weight`、`decider`、`decision` 只出现在待决节点，`stage` 只出现在目标与特性节点；`decision` 类证据只出现在待决节点，`ref` 是已有选项（提议式待决的 `ref` 固定为 `conclusion`）。`ask`、`form`、`proposal`、`reason`、`cost`、`ways`、`notTaken`、`conclusion` 只出现在没有 `options` 的待决节点，带 `options` 的待决不带它们；没有 `options` 的待决必须有 `ask`、`form`、`proposal`，并按问法有该有的、没有不收的（见下，提议式待决）。表格卡的字段在文件里只查形状：`gain`、`cost`、`consequence`、`crux`、`verdict` 是非空字符串，`weight` 是两个取值之一，`dimension` 有非空的 `name` 与 `values`，`values` 至少一格，键是选项 key 的格式，格子是非空字符串。行文、长度与必填是写入规则（见下）。
 - 派发属性（`kind`、`tier`、`worktree`、`outputSchema`、`writeScope`）只出现在任务节点；`kind` 为 `review` 的任务 `writeScope` 为空；`writeScope` 里没有重复路径。派发属性都是可选的：缺属性的任务照样是合法节点，派发时缺什么由以后的简报门禁拦（§3.3）。
 - 状态为 `done` 的节点有至少一条通过的证据：`commit`，或 `exit` 为 0 的 `test` / `check`，或 `decision`。
 - 历史条目的字段与取值见 §2.9。
@@ -200,6 +208,8 @@ L3 核实〔实测 2026-10-28，派发可行性验证 (c)，`ROADMAP.md` 借用�
 这些不是文件校验：规则之前写下的待决照常读入、照常显示、照常拍板（已决的不迁移），改标题、正文、`decider` 也照常。改了卡面字段的那次写入要让整张卡合规：例如第一次改旧待决的 `options`，要把 `consequence` 换成 `gain` 与 `cost`，人定的还要在同一次写入里补上 `crux`、`verdict`、`weight`。只改 `decider` 的写入不核对卡面：LLM 随时可以把待决交给人（§2.9.1），而它改不了已批准待决的卡面字段，核对会让这种交还做不成；代价是这样交给人的 agent 待决可能没有「取决于」与结论行。
 
 面板（`ui/src/graph/common.tsx` 的 `Options`）按存储顺序列出选项，「推荐」只是推荐项上的一个标记；每个选项下的一行说明显示 `consequence`，没有时显示「得到 …；代价 …」。表格版式、对比列、「取决于」与结论行在面板上的显示交给 `m8-plain-language`。
+
+提议式待决〔M3 第 6 步，设计行默认启用；决策 `d-ask-three-gates`，试行，人看效果再调数〕：待决有两种形状。带 `options` 的是表格卡（上）；没有 `options` 的是提议式，由主 Agent 在对话里交给人（`propose_to_human`，§3.1），人在同一个对话里回话，主 Agent 用 `record_human_answer` 带人的原话记下，面板只看不点（`d-ui-look-not-operate`）。记录与问话分开：记录是上表的字段；问话是主 Agent 自己写的一句话，不进图，只由工具查几条硬限制（§3.1）。引擎在 `propose` 与 `edit` 时按问法核对记录（`src/graph/proposal.ts` 的 `proposalRecordRefusal`），第一条不符就拒绝（`invalid`），`field` 是要改的字段：标题（一行，不超过 40 个字）；`form` 是四种之一；问句一行、恰好一个问号并以它结尾、不超过该问法的字数上限；`choose` 的 `ways`（两条或三条，每条一行、不超过 50 个字、没有问号、互不相同）；`proposal`（一行，不超过 60 个字；`choose` 的等于 `ways` 的最后一条）；按问法该有与不收的字段：`recommend` 要 `reason`，可有 `cost`、`notTaken`，不收 `ways`；`choose` 要 `reason` 与 `ways`，可有 `notTaken`，不收 `cost`；`want`、`look` 只有 `proposal`；可选的几行不能是填充（「无」「没有」「暂无」「不适用」、n/a、none 或只有标点）。`form` 建后不能改：`edit` 带 `form` 是 `invalid`，`hint` 说明丢掉旧的（`graph_status` 改为 `dropped`，带人的原话）、再新提一张。已拍板的提议式待决，LLM 与 harness 不能再改它的记录字段（人可以）。人定的提议式待决用 `decide` 带 `conclusion` 拍板（一行，不超过 120 个字，去掉首尾空白），不带 `option`；带 `options` 的待决照旧带 `option`，两者互斥；写下 `conclusion` 的同时追加一条 `decision` 证据，`ref` 为 `conclusion`。文件校验只查形状；行文与长度是写入规则，所以规则之前写下的待决照常读入。`ask` 取那句话从开头到第一个问号，所以 `recommend` 的 `proposal` 与 `reason`、`want` 的 `proposal` 必须逐字在这个问句里（由 `propose_to_human` 查，§3.1）。`PLAIN_LIMITS` 只剩标题（`schema.ts`），其余的数在 `src/graph/proposal.ts`，改数只动这一处与 `src/design/talk.ts`。需求卡的「岔路」一项（`stage.ts`）把提议式待决的 `conclusion` 与表格卡的 `decision` 一样算人拍过板的选择，`pins.ts` 按 `conclusion ?? decision` 读结论。
 
 有错误的图照常可读：解析失败、或已知字段的类型与必填不对的文件不进节点表；其余问题（未知字段、跨字段规则、引用与环）只报告，节点照常显示。这样一个手误不会让它的整棵子树从面板里消失。只读 `nodes/` 下的 `.json` 文件；引擎写入时的临时文件名为 `.<id>.<随机串>.tmp`，读入时忽略；`nodes/` 不存在时是一张空图。
 
@@ -250,7 +260,7 @@ guard 拦截〔已实现，规则 `graph-files-only`，`src/guard/graph-files.ts
 - `projection(id)`：§2.5 的投影。含节点本身（不含历史）与修订号、历史条数与最近 5 条历史；到目标的祖先链（父节点在前，目标在末），链尾的目标节点带验收条件与非目标；子节点；它依赖的与依赖它的；来源与取代，两个方向都给；所在阶段（自身或最近祖先的 `stage`，都没有时为 `null`）；未通过的门禁。投影里引用到的每个节点都给出 id、类型、标题、状态与修订号（决策另给验证状态，待决另给拍板结果），拿到投影就能直接对这些节点发 mutation。
 - `openItems`：等人批准的提议；人的决策队列（`questions`，见下）；agent 自己的决策队列（`agentQueue`，决定者为 agent 的未拍板待决，排法同人的队列）；最近的拍板（`recentDecisions`，见下）；进行中的节点；可以开工的叶子（状态为已批准的任务，除废弃与被取代的以外没有子节点，依赖全部完成）；验证债（状态为已批准、进行中或完成，验证状态仍为 `unverified` 的决策）。
 
-决策队列就是异步决策卡（§5）〔定案 2026-10-28：自建，卡即图上的待决节点〕：已批准或进行中（拍过后重开）、决定者为人的待决，按提出时间从早到晚排（首条历史的时间，同一时刻按 id）。每张卡带节点引用、正文、选项（说法、得到与代价，表格卡之前的待决是说法与后果）、推荐项、决定者、提出它的节点（父节点）、来源连线指向的节点、提出时间与提出者。人在面板里选一个选项、写一句理由拍板（`decide`，actor 为 `human`），或在对话里告诉 LLM，由 LLM 带转述拍板（见下）；都不阻塞 agent。拍板后卡离开队列，待决转为完成并带 `decision`，LLM 下次读投影就能看到：父节点与来源节点的投影里这张卡的引用带 `decision`，待决自己的投影带 `decision` 与拍板那条历史（含理由）。
+决策队列就是异步决策卡（§5）〔定案 2026-10-28：自建，卡即图上的待决节点；提议式待决（§2.6）也在这里，带问句、问法、推荐与做法，没有选项，面板上不点，在对话里回话〕：已批准或进行中（拍过后重开）、决定者为人的待决，按提出时间从早到晚排（首条历史的时间，同一时刻按 id）。每张卡带节点引用、正文、选项（说法、得到与代价，表格卡之前的待决是说法与后果）、推荐项、决定者、提出它的节点（父节点）、来源连线指向的节点、提出时间与提出者。人在面板里选一个选项、写一句理由拍板（`decide`，actor 为 `human`），或在对话里告诉 LLM，由 LLM 带转述拍板（见下）；都不阻塞 agent。拍板后卡离开队列，待决转为完成并带 `decision`，LLM 下次读投影就能看到：父节点与来源节点的投影里这张卡的引用带 `decision`，待决自己的投影带 `decision` 与拍板那条历史（含理由）。
 
 最近的拍板：全图已完成的待决按最后一次拍板时间从新到旧，最多 20 条。每条带节点引用、选中的选项与它的说法、决定者、拍板时间、拍板者（`human`、`llm`）、转述原话与理由（有则带）、拍板次数（大于 1 表示改过）与提出它的节点。人在这里看 agent 自己定了什么，不同意就直接再拍一次（推翻）。
 
@@ -291,7 +301,7 @@ guard 拦截〔已实现，规则 `graph-files-only`，`src/guard/graph-files.ts
 | `edit` | `id`、`rev`、`set`（字段 → 新值，`null` 表示删除） | 改字段 | 可以 | 只能改 `title`、`body`、`slope`、待决的 `decider` 与任务的派发属性（`kind`、`tier`、`worktree`、`outputSchema`、`writeScope`）；`decider` 只能改为 `human` 或删掉，改为 `agent` 拒绝；不能改目标节点，自己提议且仍为 `proposed` 的目标除外。自己提议（首条历史是同一身份的 `propose`）且仍为 `proposed` 的节点可以改全部字段，`decider` 改为 `agent` 除外；对这样的目标，`acceptance`、`nonGoals`、`stage` 都在内（2026-10-29 用户选定，`question-23` A：没被人批准的目标是 LLM 的草稿，人批准时看到全部内容）。人批准之后的目标照旧不能改；`harness` 不能改 `llm` 提议的目标（首条历史的身份要相同） |
 | `link` / `unlink` | `id`、`rev`、`type`、`to` | 加 / 删 `depends` 或 `source` 连线 | 可以 | 可以，目标节点除外（自己提议的目标也一样） |
 | `comment` | `id`、`text` | 批注 | 可以 | 可以 |
-| `decide` | `id`、`rev`、`option` | 已批准、进行中或完成的待决拍板：写入 `decision`，追加 `decision` 证据，状态转为（或保持）完成；完成的待决再拍即推翻 | 可以 | 决定者为 `agent`、且人没有拍过的待决可以；其余拒绝，正路同 `approve`。这条拒绝排在修订号检查之前 |
+| `decide` | `id`、`rev`、`option`；提议式待决改带 `conclusion`，二选一 | 已批准、进行中或完成的待决拍板：写入 `decision`（提议式待决写 `conclusion`），追加 `decision` 证据，状态转为（或保持）完成；完成的待决再拍即推翻 | 可以 | 决定者为 `agent`、且人没有拍过的待决可以；其余拒绝，正路同 `approve`。这条拒绝排在修订号检查之前 |
 | `verify` | `id`、`rev`、`to`、`evidence?` | 改决策的验证状态 | 可以 | 可以 |
 | `supersede` | `id`（旧）、`rev`、`by`（新） | 新节点取代旧节点：新节点加 `supersedes` 连线，旧节点转为 `superseded`。新旧节点都须为已批准、进行中或完成 | 可以 | 拒绝，正路是提议新节点并带 `supersedes` 连线，人批准时生效；带转述的提议立即生效 |
 
@@ -486,16 +496,20 @@ SVG 只用表现属性，不含脚本、样式表、网络字体与外部引用�
 
 ### 3.1 主 Agent（项目经理）
 
-主 Agent 是一个项目里人唯一对话的那个会话的根 agent〔定案 2026-10-30，`d-one-main-agent`；M3 第 3 步已实现，设计行 `glm-hourness/design` 默认禁用〕。
+主 Agent 是一个项目里人唯一对话的那个会话的根 agent〔定案 2026-10-30，`d-one-main-agent`；M3 第 3 步已实现，设计行 `glm-hourness/design` 默认启用（第 12 步（b）合入起；此前禁用）〕。
 
 - 职责：访谈、规划、派发、验收、汇报。
 - 谁是主 Agent：会话级的状态，由人用 `/wish` 开启，模型发不出斜杠命令，所以不能自己进出这个角色。`/wish` 让当前会话当这个项目的主 Agent，后面跟一句话就从许愿开始（空闲的 agent 被唤醒，运行中的 agent 在下一步收到），`/wish off` 退出。状态从命令的 `command/run`、`command/done` 折叠成会话投影 `hournessMainAgent`，处理函数返回到 `command/done` 落盘之间由内存里的待生效状态补上，所以角色从命令之后的第一步就变（身份节、工具面各变一次）。委派出去的子会话从来不是主 Agent。
-- 一个项目一个主 Agent：项目就是图目录（同一仓库的两个工作树各有自己的 `docs/graph/`，算两个项目）。持有者记录是用户级目录里 `main-agent/<项目键的哈希前 16 位>.json`，内容是会话 id、图目录、开始时间与命令 id；写入靠独占新建（两个会话同时抢，只有一个成功）和临时文件加改名，读按文件的修改时间与大小缓存。投影为真还不够，记录要指向本会话；记录读不到时只按投影判，行健康提醒再发一次 `/wish`。已有主 Agent 时在别的会话发 `/wish`，回复说它在哪个会话、从什么时候开始、会话标题，并提示 `/wish here`（带一句话时提示「/wish here 加这句话」）；记录指向的会话已经不存在（打开着的会话里没有，存着的会话里也没有）时直接接管。`/wish here`（后面可以跟一句话）把主 Agent 从别的会话移到当前会话：记录换人，原会话如果还开着，由本行以人的身份对它执行 `/wish off`（原会话变回普通会话，收到一条说明）；原会话没开着的，下次打开时对齐，人 fork 出来的会话也一样，在它第一次空闲之后对齐，不在 `agent/created` 监听器里等。同一时刻至多一个会话是主 Agent；`mainAgentOf(userHome, dir)` 给晨报、周报与巡检找人用。
-- 身份〔定案 2026-10-28，2026-10-30 收窄〕：本项目自己的提示词文本，是系统提示词里的一节 `hourness:main-agent`，分两部分。第一部分只写角色与边界：这个项目的主 Agent、项目经理，没有写文件的工具；harness 执行的规矩只点名一句（写文件的 shell 命令被拒、放行之前子 agent 只读、图只经图工具改、转述人的话要在人发来的消息里）；git 与 shell 归主 Agent，会丢工作的 git 命令之前 harness 先存快照；设计循环的四个阶段；`/plan` 打开时 `exit_plan_mode` 只离开计划模式、不放行任何节点。第二部分写怎样跟人说话：一次至多三件事、没有选项和字母、一两个开放的问题、要人答的事用 `propose_to_human` 交四行方案、含糊的回答先复述「那我记成：……」等人点头再记，以及换词表与一道完整的好题（题材是高峰时段派出去的活怎么排，已经定了的事，只示范版式）。访谈怎么问、图上怎么写由阶段提醒与工具结果随时下发，不放在身份节里。长度上限由测试钉住：第一部分 1,500 字符，第二部分 1,400，整节 2,700。不用 DSH 的 agent preset 或 persona 行承载。
-- 工具面〔定案 2026-10-30，`question-26` C，取代 2026-10-28 的「主 Agent 的工具面不变」〕：设计行的第二个组装监听器（不带 `prepend`，所以在方言与工具检索的 `prepend` 监听器里层，它们 `next()` 之后看到的已是去掉之后的工具）按原生名去掉 `write`、`edit`（`Write`、`Edit` 经方言服务或静态别名表换算）与 `ask_user_question`（问人改成聊天，主 Agent 不出问答卡），并把装着的 `str_replace_editor` 的 `command` 收窄成只剩 `view`。这只是不让模型看见用不了的工具，不是边界：rc.3 按名执行，按名直接调用 `Write`、`write` 或 `ask_user_question` 仍会执行，拦截是 guard 的规则 `main-agent-no-write` 与 `main-agent-ask`（§6.4，M3 第 4 步，还没有）。
+- 一个项目一个主 Agent：项目就是图目录（同一仓库的两个工作树各有自己的 `docs/graph/`，算两个项目）。持有者记录是用户级目录里 `main-agent/<项目键的哈希前 16 位>.json`，内容是会话 id、图目录、开始时间与命令 id；写入靠独占新建（两个会话同时抢，只有一个成功）和临时文件加改名，读按文件的修改时间与大小缓存。投影为真还不够，记录要指向本会话；记录读不到时只按投影判，行健康提醒再发一次 `/wish`。已有主 Agent 时在别的会话发 `/wish`，回复说它在哪个会话、从什么时候开始、会话标题，并提示 `/wish here`（带一句话时提示「/wish here 加这句话」）；记录指向的会话已经不存在（打开着的会话里没有，存着的会话里也没有）时直接接管；指向一个打开着、却没有开着主 Agent 模式的会话（它的 `/wish` 在写下记录之后被取消或没有成功，会话里又没有正在进行的 `/wish`）时同样直接接管，回复开头说原来记的会话其实没有开着主 Agent 模式，被接管的会话不受影响，它被取消的说明还在它自己下一次读角色时报出来。`/wish here`（后面可以跟一句话）把主 Agent 从别的会话移到当前会话：记录换人，原会话如果还开着，由本行以人的身份对它执行 `/wish off`（原会话变回普通会话，收到一条说明）；原会话没开着的，下次打开时对齐，人 fork 出来的会话也一样，在它第一次空闲之后对齐，不在 `agent/created` 监听器里等。记录不比会话的模式活得久〔第 3 步评审 S3-1〕：指向本会话的记录，在这个会话的 `/wish` 被取消（`command/done` 记成出错）之后由这个会话下一次读自己的角色时删掉，同一个会话再发 `/wish` 则以新命令为准、不删；`/wish` 在写下记录之后出了错的（`/wish here` 里别的会话退不出、写记录后的临时文件清理失败一类），返回错误之前就把记录删掉，删不掉时该会话的行健康写明〔第 3 步评审 R1〕；会话创建时模式是关的（状态读得出）、记录又指向它，创建时就把记录删掉——不看日志里的 `/wish` 是收尾了、出错了还是没落盘〔第 3 步评审 R4〕；会话状态读不到（服务没到、状态读不出）时不判断、不删；删不掉时那个会话的行健康写「在这个会话里发一次 `/wish off`」。同一时刻至多一个会话是主 Agent；`mainAgentOf(userHome, dir)` 给晨报、周报与巡检找人用，它只读记录：`/wish` 被取消之后到该会话下一次读自己的角色之前，它仍返回那个会话；崩溃留下的记录要到那个会话重开时才删〔第 3 步评审 R1〕。接入它的步骤（M5 的晨报、M7 的派发、循环板的投递）要么先经设计行的读法核对那个会话开着且模式开着（模式关、又没有进行中的 `/wish`，按没有主 Agent 处理），要么在自己的设计里写明接受这个窗口〔第 3 步评审 R2〕。
+- 身份〔定案 2026-10-28，2026-10-30 收窄〕：本项目自己的提示词文本，是系统提示词里的一节 `hourness:main-agent`，分两部分。第一部分只写角色与边界：这个项目的主 Agent、项目经理，没有写文件的工具；harness 执行的规矩只点名一句（写文件的 shell 命令被拒、放行之前子 agent 只读、图只经图工具改、转述人的话要在人发来的消息里）；git 与 shell 归主 Agent，会丢工作的 git 命令之前 harness 先存快照；设计循环的四个阶段；`/plan` 打开时 `exit_plan_mode` 只离开计划模式、不放行任何节点。第二部分写怎样跟人说话（`TALK_GUIDE`）：只问人的事，能撤回的技术选择自己定、下一批里用一句话告知；人说「这类你定」就用 `record_human_answer` 的 `delegation` 记下；访谈留在聊天里，先猜一个让人改；要人答的事用 `propose_to_human`，原样给人看它返回的文字；回复末尾提问，一条至多三个；收不回的事得到随口的短回答（不在 `AGREE_WORDS` 里）先复述「那我记成：……」等人点头再记；加上换词表。四种问法的写法与硬限制（`TALK_SHAPES`）和每种一道例题（`PLAIN_QUESTION_EXAMPLES`，题材是虚构的图书馆系统，只示范形状）在 `propose_to_human` 的工具说明里，不在身份节里。访谈怎么问、图上怎么写由阶段提醒与工具结果随时下发。长度上限由测试钉住：第一部分 1,500 字符，第二部分 1,800，整节 3,000。身份节只写调用，不写「这类你定」存在哪里（回退时是 `norm-delegations`，M5 合入后是偏好），换存储时它不用改。不用 DSH 的 agent preset 或 persona 行承载。
+- 工具面〔定案 2026-10-30，`question-26` C，取代 2026-10-28 的「主 Agent 的工具面不变」〕：设计行的第二个组装监听器（不带 `prepend`，所以在方言与工具检索的 `prepend` 监听器里层，它们 `next()` 之后看到的已是去掉之后的工具）按原生名去掉 `write`、`edit`（`Write`、`Edit` 经方言服务或静态别名表换算）与 `ask_user_question`（问人改成聊天，主 Agent 不出问答卡），并把装着的 `str_replace_editor` 的 `command` 收窄成只剩 `view`。这只是不让模型看见用不了的工具，不是边界：rc.3 按名执行，按名直接调用 `Write`、`write` 或 `ask_user_question` 仍会执行，拦截是 guard 的规则 `main-agent-no-write` 与 `main-agent-ask`（§6.7，M3 第 4 步）。
 - 不写代码〔定案；机制于 2026-10-28 改定，工具面一半于 2026-10-30 提前〕：写文件的 shell 命令由 guard 在主 Agent 的 `tools/pre-execute` 拦下，正路是派发任务；文件工具不在主 Agent 的工具面里。
-- 说话方式〔定案 2026-10-29 `d-chat-not-cards`，取代每个问题带选项与推荐的卡片〕：聊天，不给选项和字母，少术语，给人的话先过换词表（`src/graph/plain-question.ts`）。
+- 阶段提醒与派出去的 agent 只读〔M3 第 5 步，设计行默认启用〕：主 Agent 的每一步，在本步接纳的消息之后带一条阶段提醒（`agent/pre-step` 的 notice，来源 `glm-design-stage`，不进系统提示词），写明焦点所在的目标、它的阶段、本阶段怎么做、还缺什么、下一步问人什么（§4.8）。放行之前，主 Agent 派出的子 agent 和它们再派出的各层 agent 只读；放行指目标，分了模块的目标指焦点所在的那个模块（§4.9）。拦的是 guard 规则 `design-before-release`（§6.8）。
+- 说话方式〔定案 2026-10-29 `d-chat-not-cards`，取代每个问题带选项与推荐的卡片；2026-10-31 `d-ask-three-gates` 改写怎么问，试行，人看效果再调〕：聊天，不出问答卡，少术语，给人的话先过换词表（`src/graph/plain-question.ts`）。问人分三道关：问不问（只问人的事）、什么时候问（回复末尾，报告在前、问题在后）、怎么问（四种问法：`recommend` 同意一条推荐、`choose` 在两三条路里选、`want` 改正一个猜测、`look` 看一样东西指毛病；没有统一模板，没有标签行）。
+- 把事交给人、把人的话记下来〔M3 第 6 步，设计行默认启用；`src/design/propose.ts`、`src/design/record.ts`〕：两个工具只给主 Agent（别的会话的工具面去掉它们，直接调用得 `forbidden`），在 GLM 上常驻。`propose_to_human` 把一件事交给人，记录与问话分开：记录是 `form`、`title`、`proposal`、`reason`、`cost`、`ways`、`notTaken`，进图成为一张提议式待决（§2.6），harness 核对齐不齐、合不合规则；问话是 `text`，主 Agent 自己写的一句话，一行、恰好一个问号、`recommend` 不超过 160 个字其余 120、不含换词表上的词，harness 只查这些硬限制，并查记录是不是逐字在话里（`recommend` 的 `proposal` 与 `reason`、`want` 的 `proposal` 在问句里，`cost`、`choose` 的 `reason`、`look` 的 `proposal` 在整段话里）。返回的文字要原样给人看：编号（①②③），`choose` 的几条路排成编号列表、最后一条标「（推荐）」，必须原样给人看的原文（`look` 的样稿放进代码围栏；别的组件记下的提议带的原文，`attach`，分派表 `src/design/attach.ts` 此刻是空的，由那块板合入时各加一行）接在最后。已经交过人、人还没回的，可以带 `question` 与新的话再给人看一次，或带 `form`、`title` 与记录改一次（`form` 不能变）。一条回复至多三件（`too_many`）。`confirm`〔第 8 步〕把需求交给人：只收 `goal`、`text` 和可选的 `sample`（问题的记录字段、`module`、`page` 都是 `invalid`）；目标要开着、在访谈中，需求卡 8 项都齐、没有取代旧节点的连线，否则 `gate_unmet`，说明缺哪几项、各该问哪一步、写到哪里，不返回 `text`；`text` 是一句是非问，一行、恰好一个问号、字数按 `recommend` 的上限、不含换词表上的词，需求本身在它前面的汇报里；这一步不写图，占一回复三件里的一件。`release`〔第 9 步〕把设计交给人：收 `goal`、`text`、`module`、`page` 和可选的 `sample`（问题的记录字段是 `invalid`；`page` 与 `sample` 至多一个），`text` 的限制同 `confirm`；不写图。没分模块的目标：目标开着、在设计中（访谈中的 `invalid`，提示先 `confirm`；已放行的 `invalid`），放行门禁成立（放行集合里至少一个设计决策——或目标下已经批准的一个，放行中途停下后要接着放——每个决策五栏齐、每个任务有「怎样算做完」、没有未拍板的待决、没有取代旧节点的连线），否则 `gate_unmet` 列出缺项；带 `page` 是 `invalid`（`this goal is not split into modules`）。分了模块的目标（目标下有模块或候选）放行两层（§4.9）：不带 `module` 的是框架、模块清单与方向清单的放行，门禁是框架（目标下的一个设计决策）、方向清单（`norm-directions` 至少一条）、放行集合里每个决策五栏齐、目标一级的任务有验收、模块以外没有未拍板的待决、没有取代旧节点的连线，放行集合是模块以外的全部提议加候选；带 `module` 的是这个模块的放行，要目标已到 `release`，`module` 是目标的模块（不是候选）、没放行，门禁是模块下有要放行的内容、直接挂着一个设计决策、集合里每个决策五栏齐、任务有验收、模块下没有未拍板的待决，放行集合是模块子树里的提议。两种放行的 `page` 都必填（1 至 2000 个字，`PAGE_LIMITS`），`page` 里要有每个候选与每个框架决策的标题、方向清单每条的原文（框架放行），或模块的标题（模块放行），比较前做 NFKC 与空白合一，缺哪个报哪个，不查标题与行文；`page` 原样接在 `text` 之后给人看。返回里带放行集合与每个节点此刻的修订号（`releaseSet`），`record_human_answer` 按这些修订号批准。`record_human_answer`（`question`）记人的回话（`agree`、`add`、`reject`）：主 Agent 带人的原话（1 至 3 段），harness 在写图之前核对每一段都是人在这件事交给人之后发来的消息里的整句或整段（起止在标点、空白或换行上，`personSaid`，`src/design/talk.ts`；会话投影 `hournessTalk` 折叠出人的消息与给人看过的东西，注册不上时退回读会话日志并让行健康降级，两样都没有就 `unavailable`），之后以 `llm` 加 `relay` 写图，所以带人的权限：同意是 `decide` 带 `conclusion`，补充与否掉是待决上的批注，待决仍开着。`choose` 的同意要带 `way`（人选的第几条），除非人把整件交给主 Agent 定（`recordedAs` 以「交给主 Agent 定：」开头）；带样稿的 `look`，主 Agent 的回话里没有整份样稿就 `not_shown`，图不变。`record_human_answer`（`confirm`，第 8 步）记人对需求的回话，要带 `goal`：本会话里要先给人看过这个目标的需求（没有就 `not_shown`），人的话要在最近一次给人看之后；带样稿的，整份样稿要在主 Agent 的回话里（同意时查，`not_shown`）。同意时先重查需求卡（门禁不成立 `gate_unmet`，不写），再把阶段改成 `design`，目标还是提议就批准；这两条写入出自一次调用，都以 `llm` 加人的原话写，`reason` 是「人在对话里同意（record_human_answer <调用 id>）」。先改阶段、后批准，与附录 0.6 §3.5 表里的次序相反，原因是中途停下时的样子：提议状态的目标，不论字段写什么阶段，有效阶段都是 `wish` 或 `interview`（§4.8），改完阶段停下，目标仍是提议，访谈的门禁照旧关着，用同样的话再记一次就接上；先批准的话，停在中间的是「已批准、没有阶段」，所有门禁都读成不走设计循环，同样的话也接不上（`confirmGate` 拒绝）。第二条写入失败（`stale_revision` 重试一次后仍失败，或引擎抛错，例如磁盘写不进）时，错误说明阶段已改而目标还没批准，错误的 `hint` 里是人的原话。目标由访谈进设计只有这一条路（图工具被 `main-agent-graph-stage` 拒绝，§6.9）。批准这条写入要有得写：目标得还是提议。`/wish` 的开场通知里有一句正路的嘱咐〔2026-11-02 标定 0/6 后加的〕：提议目标时不带 `relay`（带了人的原话，提议直接是已批准，§2.9.1），人对需求卡的同意才是带原话的批准，不是一次改写——那次标定里 GLM-5.3 带原话提议了目标，目标开场就 `approved`，确认时只剩改阶段一条写入，验收要的「带原话的批准」永远落空。补充与否掉在目标上写批注，目标不动，改好需求后再 `propose_to_human`（`confirm`）。`record_human_answer`（`release`，第 9 步）记人对设计的回话，要带 `goal`，放行某个模块时再带 `module`：本会话里要先给人看过这一个放行（目标一级与每个模块各是一件事，给人看了 A 记不了 B），人的话要在最近一次给人看之后；带 `page` 或样稿的，整份要在主 Agent 的回话里（同意时查，`not_shown`）。同意时先重查门禁（不成立 `gate_unmet`，不写）；写入都以 `llm` 加人的原话，`reason` 以「人在对话里同意」开头并含调用 id，按给人看时记下的修订号（改过的节点跳过，已不是提议的节点放过），次序：没分模块的目标和模块——逐个批准放行集合，全部成功且集合里不再有提议时才把阶段改成 `release`（模块与分了模块的目标的阶段写入末尾加「 · 一页放行稿 <页的摘要>」，摘要是规整后 `sha256` 的前 8 位，`pageDigest`）；分了模块的目标的框架放行——先给集合里每个阶段不是 `design` 的候选写 `design`（候选仍是提议，所以停在任何一步之后目标仍是分了模块的、不会落进单层放行），再批准集合（候选因此成为模块），最后写目标的 `release`。某个节点被改过（`stale_revision`）或被拒时进 `skipped`，`outcome` 是 `partial`，阶段不改，`message` 列出跳过的与放行之后新提的；写入中途停下（例如磁盘写不进）时错误的 `hint` 写出已经写上的与人的原话，再给人看一次、用同样的话记一次就接上，已批准的不再批准、已带 `design` 的候选不再写。补充与否掉在被放行的节点（目标或模块）上写批注，阶段不动。三种说法的字面固定在 `src/shared/answer-marks.ts`。指标事件的出口 `src/design/metrics.ts` 此刻不做事（指标流水的接口还没定）。
+- 「这类你定」〔M3 第 6 步〕：人说某一类事以后由主 Agent 定，主 Agent 调 `record_human_answer` 的 `delegation`（`scope` 写那一类，`undo: true` 收回）；harness 核对原话出自人的最后一条消息，再在工具体里直接写图上固定 id 的规范节点 `norm-delegations`（每项 `<类>：主 Agent 定，只告知`，类按规整值存，至多 20 项；M5 的偏好合入前的回退，合入后换存储）。任何会话用图工具碰这个节点都被拒（`main-agent-graph-delegations`，§6.7），所以模型不能自己给自己授权。只对能撤回的事成立，由主 Agent 在遇到同一类里收不回的事时照旧问。
 - 人设分层：用户的人设管「怎么说」，主 Agent 的身份文本管「做什么」，两层叠加互不干扰。身份节与 `glm-prompt` 的方言改写的叠加已在 L3 实测（场景 `glm-design-wish-idle`、`glm-design-main` 等，`ROADMAP.md` 借用组件核实清单第 16 项）：GLM 路由上这一节在方言节之后、`glm:guard` 之前，非 GLM 路由上在 `glm:guard` 之前。
+- 人设〔`m3-main-persona`，设计行默认启用〕：人在设计行的配置里写主 Agent 跟人说话的人设，`persona: {name, text}`（插件管理器里能改，`text` 是多行文本框，默认空）。插件不带人设内容，人设文字是人自己的配置（`docs/CHARTER.md` 非目标「人设与个人习惯不进插件」）。`text` 非空时，只给主 Agent 的系统提示词加一节 `hourness:output-style`：`# Output Style: <name>`、人写的文字、一句范围说明（人设只管回给人的话；工具调用里的文字，例如图节点和给子 agent 的简报，以及写进文件的东西保持朴素）。普通会话、子会话（派出去的子 agent 与审查者）和主 Agent 移走之后的原会话都没有这一节，所以人设用语进不了子 agent 写的代码、注释、提交信息和交回结构。只给主 Agent 的理由：主 Agent 没有写工具，人设的话落不进文件；普通会话直接写代码，人设会落进文件。`propose_to_human` 的 `text` 是主 Agent 放进工具调用的参数，保持朴素，原样放进回复，前后衔接的话是回复的一部分，人设照管。`name` 规整成一行，至多 40 码点（超出截断并告警一次，规整后为空时用「主 Agent」）；`text` 至多 4,000 码点（超过不加，行健康降级并写出原因）。节的位置、GLM 路由上身份节开头句的换法、与 3.17.1 的三处不同见 `DESIGN.md` §5.2 和 `docs/reference/zcode-verbatim.md` 的「不跟 3.17.1 的地方」；本步已随 m3 合入 main（第 12 步（b））。用户自己 `~/.dsh/AGENTS.md` 里的人设所有 agent 都读得到，那是用户配置，插件不动。`glm-prompt` 的汇报细度配置原名 `persona`，与人设不是一回事，已改名 `reportingDepth`。桌面版上的核对（设置位在插件管理器里能改；设了标记人设之后主 Agent 的回复带标记，子 agent 写的文件与交回结构里没有）要改用户的 profile，到时先问人。L2 `tests/design-persona.spec.ts`、`tests/glm-reporting-depth.spec.ts`，L3 场景 `glm-design-persona`、`non-glm-design-persona`。
 - 降级：会话状态服务没到、`/wish` 注册不上、持有者记录读不到、会话状态读不出时，设计行报告降级并说明原因，普通会话不受影响（`DESIGN.md` §2.5、§7）。
 - 分布说明：ZCode 里的 GLM 是自己写代码的单 agent，「主 Agent 只编排」在 ZCode 训练分布之外，子 agent 干活仍在分布内。用户判断后续模型会具备编排能力〔定案〕；这一层单独度量简报完整率、返工率与主 Agent 上下文占用。
 
@@ -659,6 +673,8 @@ L3 核实〔实测 2026-10-28，派发可行性验证 (a)(b)，`ROADMAP.md` 借�
 - 五栏门禁挂在 `exit_plan_mode` 的 `tools/pre-execute`：五栏缺项直接拒绝并给正路，审阅卡不出现。
 - 审阅批准时工具返回 `{ approved: true }`，这就是放行信号，对应分支由虚线变实线。
 
+主 Agent 模式下放行不走计划模式的审阅卡，走对话〔M3 第 9 步，`propose_to_human` 与 `record_human_answer` 的 `release`，设计行默认启用〕：主 Agent 把设计写进图（提议），汇报里讲清楚，再用 `propose_to_human`（`kind release`）问一句「照这一页放行，可以吗？」；人说「可以」，主 Agent 用 `record_human_answer` 带人的原话记下，harness 核对原话与门禁之后批准放行集合、把阶段改成 `release`，放行之后派出去的子 agent 才能写文件（§6.8）。没分模块的目标放行一次：集合是目标子树里的全部提议。分了模块的目标放行两层（§4.9）：先放行框架、模块清单与方向清单（目标进 `release`，各模块还在设计，没有哪个模块的开发被放行），再每个模块各放行一次（模块的集合是它子树里的提议，模块进 `release`），两次都带一页放行稿 `page`。给人看的就是人放行的：放行按给人看时记下的修订号批准，改过的节点不替他批；`page` 整页要在主 Agent 的回话里，人才能同意。主 Agent 可以自己把一个模块退回设计（第二档，不要人的原话，§4.8），把整个目标退回设计改框架要人的原话（第三档）。
+
 在 Desktop 上，计划模式在 `preset-standard` 的 `planning` 组里，`planMode` 服务隔离在组内（`dsh-web-app/presets/standard.patch.yml` 45–49 行），宿主层插件的普通查找取到的是宿主域。读写计划状态要经 `ctx.agentPresets.serviceFor(agent, 'planMode')`（`dsh-agent-preset-registry` 725 行），能否取到并生效待沙盒验证（`ROADMAP.md` 借用组件核实清单）。
 
 ### 4.6 分解与执行
@@ -683,21 +699,25 @@ L3 核实〔实测 2026-10-28，派发可行性验证 (a)(b)，`ROADMAP.md` 借�
 
 - 告知：每一步注入阶段提醒，写明当前阶段、本阶段能做什么、离开本阶段还差哪几项。
 - 门禁：在阶段切换与工具调用处检查证据，不看 LLM 自述。例：设计阶段拦下写代码的工具；五栏缺项不能离开设计阶段；「测试通过」必须有运行记录与退出码。
-- 呈现：输入框上方一条流程条，标出当前阶段与未通过的门禁（例：「设计 · 五栏 3/5 · 等待批准」）；点开是右侧边栏的流程页，含当前方案、决策队列与决策日志。
+- 呈现：主 Agent 会话里输入框上方一条流程条（普通会话没有），标出当前阶段、缺项和主 Agent 是否在等人（例：「主 Agent · 设计 · 五栏 3/5 · 等你批准」，细则见本节末）；点开是右侧边栏的流程页，含当前方案、决策队列与决策日志（随 M8，流程条本身只显示，不响应点击）。
 
-阶段的存储与转换〔2026-10-29 定，M3 设计 §2.4、§3.3.2；阶段模型已实现：`src/graph/stage.ts`，纯函数，宿主与客户端共用；转换所在的 `design_review` 随 M3 后续步骤实现〕：
+阶段的存储与转换〔2026-10-29 定，M3 设计 §2.4、§3.3.2；阶段模型已实现：`src/graph/stage.ts`，纯函数，宿主与客户端共用；转换由 `propose_to_human` 与 `record_human_answer` 的 `confirm`（第 8 步已实现）和 `release`（第 9 步已实现）承担，下表里的 `design_review` 与「卡」是 0.4 的写法，现在换成对话里的同意〕：
 
-阶段存在目标节点的 `stage` 字段（§2.6；特性上的阶段只读）。主 Agent 的当前目标是焦点节点自身或它最近的目标祖先（`goalOf`）。
+阶段存在目标与模块（目标的直接特性子节点，§4.9）的 `stage` 字段（§2.6）；模块的 `stage` 只经模块放行向前，主 Agent 可以把它退回 `design`（下）。主 Agent 的当前目标是焦点节点自身或它最近的目标祖先（`goalOf`）。
 
 | 转换 | 谁写 | 在哪 | 门禁 |
 | --- | --- | --- | --- |
 | （无）→ `wish` | 主 Agent 提议目标时带上 | `graph_propose` | 无 |
 | `wish` → `interview` | 主 Agent 改自己的提议 | `graph_edit` | 无 |
-| `wish`、`interview` → `design` | 人在确认卡上点确认，harness 以人的身份批准目标、改阶段 | `design_review` | 需求卡 8 项都齐（§4.2），目标没有 `supersedes` 连线 |
-| `design` → `release` | 人在五键卡上点批准，harness 以人的身份批准放行集合、改阶段 | `design_review` | 放行门禁（下） |
+| `wish`、`interview` → `design` | 人在对话里同意，主 Agent 带原话记下，harness 重查门禁后改阶段、批准目标（还是提议时），两条写入都带人的原话，先改阶段后批准〔已实现，第 8 步〕 | `propose_to_human`（`confirm`）与 `record_human_answer`（`confirm`） | 需求卡 8 项都齐（§4.2），目标没有 `supersedes` 连线 |
+| `design` → `release`（没分模块的目标） | 人在对话里同意，主 Agent 带原话记下，harness 重查放行门禁后批准放行集合、改阶段〔已实现，第 9 步〕 | `propose_to_human`（`release`）与 `record_human_answer`（`release`） | 放行门禁（下） |
+| `design` → `release`（分了模块的目标，框架放行） | 同上；先给集合里的模块候选写阶段 `design`，再批准集合，最后改目标的阶段，每条写入都带人的原话〔第 9 步〕 | 同上，带 `page` | 大循环放行门禁（下） |
+| 模块 `design` → `release` | 同上，批准模块子树里的提议再改模块的阶段，阶段写入的 `reason` 末尾带页的摘要〔第 9 步〕 | 同上，带 `module` 与 `page` | 模块放行门禁（下） |
+| 模块 `release` 或之后 → `design` | 主 Agent 自己决定（第二档，可逆、只影响本模块），不要人的原话，`reason` 写原因、不得以「人在对话里同意」开头〔第 9 步〕 | `graph_edit`（引擎的一处例外；子 agent 与别的会话被 `main-agent-graph-stage` 拒绝） | 无 |
+| 目标 `release` 或之后 → `design` | 人说框架要改，主 Agent 带原话（第三档） | `graph_edit` 加 `relay` | `main-agent-graph-relay` 核对原话 |
 | 任意 | 人在面板以外改，或 LLM 带原话转述 | `graph_edit` 加 `relay` | 引擎规则 |
 
-已批准的目标 LLM 与 harness 不能改（§2.9），所以 `design` 与 `release` 只能由人的动作写入。门禁读的是有效阶段（`effectiveStage`），不是字段原值：
+已批准的目标 LLM 与 harness 不能改（§2.9），所以 `design` 与 `release` 只能由人的动作写入。在 DSH 的会话里，向前改阶段和批准要人同意的节点，图工具一概不行（规则 `main-agent-graph-stage`，对所有会话，§6.9）；只有 `record_human_answer` 在核对原话、重查门禁之后直接写引擎。门禁读的是有效阶段（`effectiveStage`），不是字段原值：
 
 | 目标状态 | `stage` | 有效阶段 |
 | --- | --- | --- |
@@ -707,11 +727,72 @@ L3 核实〔实测 2026-10-28，派发可行性验证 (a)(b)，`ROADMAP.md` 借�
 | 已批准、进行中 | 没有 | 无：这个目标不走设计循环 |
 | 完成、废弃、被取代 | 任意 | 无，另报目标已关闭 |
 
-放行集合（`releaseSet`）是目标子树里除目标以外的全部提议节点，按深度、创建时间、id 排序，父节点在子节点之前。放行门禁全部成立才出五键卡：放行集合里至少有一个设计决策，每个设计决策五栏都齐（§4.3）；放行集合里每个任务都有验收条件；目标子树里没有未拍板的待决（不论决定者）；放行集合里没有带 `supersedes` 连线的提议（批准它会连带取代卡上看不到的节点，取代要人在面板上批或带原话转述）。`stageStatus` 汇总一个目标的有效阶段、是否已关闭、缺项（需求卡与确认门禁，或放行门禁）、能否离开本阶段与等人拍板的待决数，阶段提醒、流程条与 `design_review` 都读它。
+放行集合（`releaseSet`）是目标子树里除目标以外的全部提议节点，按深度、创建时间、id 排序，父节点在子节点之前。放行门禁全部成立才出五键卡：放行集合里至少有一个设计决策，每个设计决策五栏都齐（§4.3）；放行集合里每个任务都有验收条件；目标子树里没有未拍板的待决（不论决定者）；放行集合里没有带 `supersedes` 连线的提议（批准它会连带取代卡上看不到的节点，取代要人在面板上批或带原话转述）。设计决策一项也认目标下已经批准的决策：放行写了一半停下或有节点被跳过之后，再放行要从那里接着走，不能因为决策已批准就永远过不了门禁。分了模块的目标的门禁和集合见 §4.9。`stageStatus` 汇总一个目标的有效阶段、是否已关闭、缺项（需求卡与确认门禁，或放行门禁）、能否离开本阶段与等人拍板的待决数，阶段提醒、流程条与 `design_review` 都读它。
+
+阶段提醒〔M3 第 5 步，`src/design/stage-notice.ts`；L2 `tests/design-stage-notice.spec.ts`，L3 场景 `glm-design-stage`、`glm-design-stage-compact`、`glm-design-released`〕：`stageReminder(graph, focus)` 从图和焦点读出正文，英文，中文原话与标签原样；`stageNotice` 决定这一步要不要带（规则在 `src/graph/digest-notice.ts`，每步投影用同一个：历史里还没有这个目标的提醒、正文摘要变了、压缩检查点在最近一条提醒之后或提醒锚在另一个检查点上、本步接纳了目标轮消息，才注入，原因记在 notice 来源的 `designStage.reason`：`goal`、`changed`、`compaction`、`goal-round`）。焦点来自图行服务的 `focusOf`（`src/graph/service.ts`，和每步投影看到的是同一个焦点）。读图或读焦点失败时这一步不带提醒，进程里警告一次，该会话的行健康写「阶段提醒这一步没带上」。提醒只给主 Agent：本步组装时判为主 Agent 的会话。
+
+- 没有焦点、焦点不在图里、焦点上面没有目标：说主 Agent 还没有目标在焦点上，派出去的子 agent 只能读；刚许过愿就按访谈第 1 步提议目标并聚焦，否则 `graph_open` 找到目标或任务再聚焦。目标已关闭：写明状态，要聚焦一项没关闭的工作。已批准而没有阶段的目标：写「不走设计循环」。
+- `wish`、`interview`：一行访谈的做法（一两个问题一问，用人的话，猜一个供挑，答完就写进图）；需求卡几项齐了；其余缺项各一行（标签与 `hint`）；一行「下一步」：缺项里访谈步号最小的一项的问句，步号相同按表次序（`problem` 在 `audience` 之前），不按需求卡数组的次序（它把约束排在成功之前）。问句取 §4.2 表的原文；第 7 步不是一句问话，写成「用 `propose_to_human`（`kind question`，`form` 取 `recommend` 或 `choose`）把只有人能定的那个岔路交给人，再用 `record_human_answer` 记下回答；自己定的不算」。缺项只有取代旧节点的连线时没有「下一步」，只列它的标签与 `hint`。8 项齐了写「用 `propose_to_human`（`kind confirm`）把需求交给人」。对照表是 `INTERVIEW_STEPS`，键与 `requirementCard` 的 8 个键一一对应，测试钉住。
+- `design`：写图格式一行（每个设计决策正文里写「理由：」「架构：」「查过的现成方案：」，有验收和非目标；任务挂在目标下，以 `source` 连线指向决策，每个任务有验收；小项目的任务直接挂在目标下，只有各部分独立、要人一个一个放行的活才规划成目标下的特性即模块）；决策里五栏最少的那个有几栏；放行门禁的缺项各一行；门禁成立写「用 `propose_to_human`（`kind release`）把方案交给人」。目标下已有直接的特性（分了模块）时换成大循环的写法：框架写成目标下的设计决策，每个模块是目标下直接的特性并以 `source` 连线指向一个框架决策，人定的方向写成目标下 id 为 `norm-directions` 的一个规范节点的验收项；模块自己的决策和任务以后写在模块下面；这时缺项是大循环放行门禁的（§4.9），成立时「下一步」写「用 `propose_to_human`（`kind release`，`page` 列出框架、模块清单与方向）把框架、模块清单和方向交给人」，决策里五栏最少的那个有几栏只数框架的决策。两种设计阶段的提醒都多一行：决策正文可以另写一行「如果失败：<最可能的原因>」，放行给人看时在汇报里用人话说出来；这一行不是一栏，门禁不看它，缺了不拦，但解析时它结束上一节，所以空的「查过的现成方案：」后面接这一行，那一栏仍算空。
+- `release`：没分模块写「方案已放行，向人说一句；分解与派发是下一步」。分了模块的目标放行之后写：框架、模块清单和方向已放行，每个模块从设计开始，在模块下写决策和规划，对照 `norm-directions` 的每条方向，用 `propose_to_human`（`kind release`、`module`、`page`）交给人，模块放行之前下面什么都不建；派写文件的子 agent 之前先把焦点聚到那个模块或它下面的任务上。后面逐行列模块，`<标题>（<id>）：设计中 | 已放行 | 退回设计`（退回设计由阶段从 `release` 之后改回 `design` 的历史认出），至多 8 行，多的写 `and <n> more`。焦点在一个模块里：模块在设计时写模块的写图格式（决策挂在模块下、规划挂在模块下、对照每条方向，在汇报里说出它顶着的方向）、同一句聚焦提醒、「如果失败：」一行，缺项（模块放行门禁的，§4.9）各一行，门禁成立时「下一步」写「用 `propose_to_human`（`kind release`、`module <id>`、`page`：一页人话）把这个模块交给人」；模块已放行写「这个模块已放行，向人说一句」。候选（还是提议的特性）按目标一级读。
+- 其他阶段（`decompose` 起）：只写阶段名和不属于设计循环。最后一行：目标下有等人拍板的待决时写件数。
+- 每个阶段的提醒末尾，图上的 `norm-delegations`（§3.1）有项时多一行：`The human told you to decide these kinds yourself and only report them, while the matter can still be undone: <各类用「；」连接，至多 20 项>.` 加收回的办法（`record_human_answer` 的 `delegation`，`undo: true`）；节点不在、没有项、已关闭时不写；节点不是规范节点时不写并让行健康说明一句。M5 的偏好合入后这一行与它的测试删掉。
+- 访谈阶段的提醒说明访谈的问题在聊天里问、先猜一个写成「我猜你……，对吗？」让人改，不走 `propose_to_human`。
+- 所有阶段的正文不含 `ask_user_question`、`decision_card`、`design_review`、`ask_human` 与「（推荐）」类字样，测试钉住；`stage.ts` 里两条原来点名 `decision_card` 的 `hint`（岔路一项，放行门禁里人定的待决未拍板）已改写为 `propose_to_human` 与 `record_human_answer` 的说法。
+
+流程条与 `/wish` 入口〔M3 第 11 步，已实现 2026-10-30，L2：`tests/flow-bar.spec.ts`、`tests/wish-entry.spec.ts`；桌面版上的显示核对（L4）随 M3 第 12 步（b）〕：
+
+客户端源码在 `ui/src/flow/`（流程条）与 `ui/src/wish/`（入口），属编排层客户端包 `dsh-hourness`，由 `ui/src/hourness-client.tsx` 注册三个槽项。所有给人看的字串集中在 `ui/src/flow/model.ts` 与 `ui/src/wish/model.ts`，组件里没有字面文字，改字句或位置只动这两个文件和 order 常量。`tests/wish-entry.spec.ts` 对两个文件导出的全部字串（带参数的字串用示例参数调用）和流程条用的阶段名跑 `plainWordsIn`（`src/graph/plain-question.ts`，换词表 `PLAIN_WORDS`），换词表里的词出现一个就失败；新字串放进这两个表里，自动被查。
+
+| 槽项 | 槽与 id | order | 显示条件 |
+| --- | --- | --- | --- |
+| 流程条 | `conversation.input.dock`，`hourness-flow` | 30（DSH 排队条 20） | 本会话是主 Agent |
+| 开场卡片 | `conversation.input.dock`，`hourness-wish` | 40 | 会话空白且工作区有项目图。本会话不是主 Agent 且 `/wish` 已注册时是完整卡片；本会话已是主 Agent 时是一行「这个会话的 agent 是主 Agent」和退出按钮（裸 `/wish` 不开回合，会话可能仍停在开场画面）；其余不显示 |
+| 输入框下方的按钮 | `conversation.composer.dock`，`hourness-wish` | 160（DSH 统计 0、1，GLM 按钮 150） | 本会话是主 Agent；或工作区有项目图且 `/wish` 已注册 |
+
+三者读本会话的投影值 `hournessMainAgent`（经 `mainAgentActive`）与 `graphLive`；项目图经 `holdSource` 与面板共用一份数据源；`/wish` 是否注册读 `remote.commands.list`，每个会话读一次，失败后在会话快照变化时再读一次。`hournessMainAgent` 由设计行 `glm-hourness/design` 注册；投影不在时 `mainAgentActive` 为假，流程条不出现，卡片与按钮因为 `/wish` 不在命令表里也不出现。客户端不读持有者记录。
+
+流程条的文字由纯函数 `flowBarText` 算，格式 `主 Agent · <阶段> · <进度> · <等待>`。目标取焦点自身或最近的目标祖先（`goalOf`），焦点取自 `graphLive`，阶段取 `effectiveStage`：
+
+| 情形 | 文字 |
+| --- | --- |
+| 没有 `graphLive`（graph-panel 行没启用） | 读不到阶段（项目图面板 glm-hourness/graph-panel 没有启用） |
+| 图读取中、工作区没有项目图、读取失败 | 读取项目图中；这个工作区还没有项目图；读不到项目图 |
+| 没有焦点，或焦点链上没有目标 | 还没有目标 |
+| 许愿、访谈 | `许愿 · 需求卡 5/8`、`访谈 · 需求卡 5/8` |
+| 设计 | `设计 · 五栏 3/5`，取放行集合里五栏最少的那个决策；还没有设计决策时写「还没有设计决策」 |
+| 放行 | 已放行 |
+| 目标已批准、没有阶段 | 目标标题 |
+| 目标已关闭 | `<目标标题>（已关闭）` |
+| 分解、执行、汇合、运维 | 阶段名 |
+
+等待：聊天式设计里主 Agent 用 `propose_to_human` 把事交给人，没有卡片可看，流程条用现场投影判断。回合已结束（`turnSince` 为空）且最近一次工具结果是成功的 `propose_to_human`，就是主 Agent 在对话里等人回话。后缀按阶段写：许愿与访谈「等你确认」，设计「等你批准」，目标子树里有等人拍板的待决时「等你拍板」（优先于前两种）。主 Agent 没在等、而子树里有等人拍板的待决时写「待你拍板 N」。`graphLive` 的 `recent` 只留工具名与成败，不留提议的种类，所以后缀是由阶段和待决数推出的，不是读出来的；放行阶段与不走设计循环的目标没有「等你确认」「等你批准」。
+
+便宜档提醒：主 Agent 最近一步的模型 id 转小写、按 `[-_./:\s]` 切词，有一个整词是 `flash`、`mini`、`lite`、`haiku`、`small`、`nano` 之一时（`gemini-2.5-pro` 不算），流程条另起一行黄字「现在是 <模型>；主 Agent 建议换强一点的模型」和按钮「这次就用它」；按钮按会话记在页面内存里，到重载为止。认不出的模型不提醒。入口上的黄字固定为「主 Agent 用强一点的模型」，不带模型名。插件不替人换模型（`CHARTER.md` §6）。
+
+入口的按钮：「写一句你想做的」在输入框为空时经标准 prop `inputActions.setDraft` 写入 `/wish ` 并把光标放到末尾；输入框有字时不改，提示「输入框里还有没发出的字」；拿不到 `inputActions` 或 `useInput` 时不执行任何命令，换成一行做法和「复制 /wish」。「接着推进现有项目」（图上有未关闭的目标时才有）和「退出主 Agent（/wish off）」经 `remote.commands.execute` 执行 `/wish`、`/wish off`，都是人的点击。输入框下方那一排窄于 520 px（`data-composer-dock` 的宽度）时，「交给主 Agent」写「/wish」。面板设计的 `FirstVisitLine` 还不在这个包里，完整卡片没有这一行；它合入后把 `ui/src/wish/WishCard.tsx` 里的 `FIRST_VISIT_LINE` 改为 `true` 并渲染它，它是完整卡片的最后一块。
+
+限制：输入框下方的按钮要判断「有项目图」，所以对每个可见会话持有图数据源（与面板共用）；有图的工作区读全部节点文件并订阅目录变化，没有图的工作区只列一次目录。数据源遇到「没有图」不会自己重试：会话进行中才建出项目图时，按钮与卡片要等到面板的「重新读取」（数据源是共用的，面板重读它们一起跟上）或重新打开会话才出现。组件的渲染、标准 prop（`useSession`、`useInput`、`inputActions`）在第三方槽项里是否送到、弹层的定位没有单测，由 L4 在桌面版上核对。
+
+### 4.9 两层循环：模块的读法〔M3 第 5 步一半，设计行默认启用〕
+
+分了模块的目标走两层循环：先由人放行框架、模块清单和方向清单（目标一级的放行），再每个模块各放行一次（`d-design-onepage`）。图上没有新的节点类型和字段，`src/graph/modules.ts` 是纯函数（不用 Node 内置模块，宿主与客户端共用）：
+
+- 模块：目标的直接子节点，类型 `feature`，带 `stage`，状态已批准、进行中或完成（`modulesOf`，按第一条历史的时间再按 id 排）。模块下面又挂带 `stage` 的特性是普通特性。
+- 候选：目标的直接子节点，类型 `feature`，状态 `proposed`，带不带 `stage` 都算（`moduleCandidatesOf`）；目标一级放行时批准为模块。
+- 框架：目标的直接子节点，类型 `decision`，状态已批准或完成（`frameworkOf`）。方向清单：id 固定为 `norm-directions` 的规范节点，没有关闭时才算（`directionsOf`）。
+- `moduleOf(graph, node)`：节点自己或最近的、属于模块或候选的祖先；候选也返回，要用 `isReleased` 区分。`isReleased(module)`：已批准、进行中或完成，且 `stage` 是 `release` 或之后；候选和设计中的模块不算。完成的模块算已放行，所以完成的模块下面重开一个任务做返工不被挡。`isSplit(graph, goal)`：有模块或候选。
+- 目标一级的放行（`propose_to_human`/`record_human_answer` 的 `release` 不带 `module`，〔第 9 步〕）：放行集合 `bigLoopSet` 是目标子树里不在模块或候选下面的全部提议加候选自己，门禁 `releaseGate` 按 `isSplit` 分两支，分了模块的是大循环的：目标在 `design`；框架（目标下已批准的设计决策，或集合里的决策）至少一个；方向清单 `norm-directions` 至少一条；集合里每个决策五栏齐、每个任务有验收；模块以外的待决（含集合里节点 `source` 指向的）都拍了板；没有取代旧节点的连线。写入次序见 §3.1：先给候选写 `design`、再批准、最后写目标的 `release`，停在哪一步目标都还是分了模块的。目标在这一刻进 `release`，各模块还在设计。
+- 一个模块的放行（带 `module`，〔第 9 步〕）：模块集合 `moduleSet` 是模块子树里的提议，门禁 `moduleReleaseGate`：目标已到 `release`；有要放行的内容（集合不空，或下面已有批准的节点——放行停在批准之后、模块被退回设计之后；模块下的决策都已批准时也算）；模块下直接挂着一个设计决策；集合里每个决策五栏齐（规划是模块子树里连到它的节点）、每个任务有验收；模块子树里的待决都拍了板；没有取代旧节点的连线。同意之后批准集合、模块进 `release`，不动别的模块、方向清单和目标。
+- 退回（〔第 9 步〕）：主 Agent 用 `graph_edit` 把模块的 `stage` 改回 `design`（第二档），引擎只给这一个例外——`llm` 与 `harness` 不带原话时，节点是模块（目标的直接特性、已批准或进行中）、`set` 只有 `stage: design`、现在的阶段在 `release` 或之后、`reason` 非空且不以「人在对话里同意」开头（那是 `invalid`，退回不是同意），历史记 `from`、`to`；规则 `main-agent-graph-stage` 的 e 只放主 Agent，子 agent 与别的会话被拒并告警（§6.9）。模块下已批准的节点保持已批准，新的设计以提议加进模块子树，再放行时集合可以是空的。整个目标退回 `design`（第三档）要人的原话，之后目标下的子 agent 一律只读，再放行时集合可以是空的，只给这次新批准的候选写 `design`，已放行的模块不动。
+- 还没放行的模块下的任务不再出生就是已批准：引擎的 `initialStatus` 对挂在还没放行的模块或候选下（不论多深）的 `llm`、`harness` 提议的任务给 `proposed`，模块放行之后挂的任务照旧直接批准；带原话的提议（`human` 与 `relay`）一律已批准，由 `main-agent-graph-stage` 的 d 拦下。这让 M7 只派已批准的任务这一道挡得住还没放行的模块。
+- 本仓库的图〔R5b-N1，第 9 步定，**图上的改动没有做**，由编排方做〕：`hourness`（阶段 `execute`）下的 `orch` 是包一级的特性、已批准、带旧阶段 `design`，按上面的读法它是目标的一个没放行的模块，`m3`、`dogfood`、`m7` 等挂在它下面的节点都读成在那个模块里；`glm-house` 下的 `bottom`（阶段 `execute`）是已放行的模块，不受影响。不处理的后果（拿 2026-11-01 的 `docs/graph` 副本读，没改仓库的图）：焦点在 `m3` 或 `orch` 时 `design-before-release` 拒绝派出去的子 agent 写文件，越界一句点名模块 `orch`；M7 的 `releaseOf` 对 `orch` 下的任务返回「模块没放行」，派发停；`main-agent-graph-stage` 的 c、d 拒绝 DSH 会话里批准或带原话提议 `orch` 子树的节点，也拒绝在 `hourness` 下带原话提议新特性；`orch` 下新提的任务出生为 `proposed`；子树的阶段投影读成 `design`。处置是清掉 `orch` 的 `stage`：它不是两层循环意义上的模块，`hourness` 因此不再是分了模块的目标（`m0` 是没有阶段的已完成特性），子树改读 `hourness` 的 `execute`，`m2` 保持 `release`，`bottom` 不变，上面几条的判定回到今天以前的样子（放行、派发、批准、任务出生为已批准）。没选改成 `execute`：那是声称人放行过这个模块，而两层循环那时还不存在，`hourness` 也仍读成分了模块的目标；没选「方向清单存在才认模块」的代码开关：先提模块候选、后提 `norm-directions` 的次序里，分了模块的目标会落进单层放行，一次批准所有模块子树。要执行的命令（在 DSH 之外；清阶段带人的权限，`llm` 单独改不动已批准特性的阶段，所以带 `relay`，或由编排方在人同意之后以 `human` 调引擎）：`npm run -s graph -- edit '{"id":"orch","rev":"<orch 当前的 rev>","set":{"stage":null},"reason":"orch 是包一级的特性，不是两层循环意义上的模块，清掉旧的 design 阶段（R5b-N1）","relay":"<人同意清掉的原话>"}'`。主 Agent 第一次在这个仓库的 DSH 里跑之前必须做完。M7 的 `src/graph/execute-stage.ts` 里有一段标明 STAND-IN 的同签名替身（§17.2），m3 合入 main 时换成这个文件的导入。
 
 ## 5. 决策卡
 
 申报、待批、L3、设计放行本质上都是「需要人拍板的决策」，区别只在急不急，合并为一种决策卡〔定案〕。
+
+〔2026-10-29 `d-chat-not-cards`，2026-10-31 `d-ask-three-gates`；M3 第 6 步实现，设计行默认启用〕主 Agent 模式下，要人定的事不再是卡片：主 Agent 在对话里问（`propose_to_human`，§3.1），待决仍作为提议式待决留在图上、出现在决策队列里（§2.6、§2.9），人当场或之后在同一个对话里回话，主 Agent 带原话记下（`record_human_answer`）。面板对它只看不点。下面的表格卡版式仍用于 agent 自己定的待决与旧待决。
 
 | 形式 | 场景 | 行为 |
 | --- | --- | --- |
@@ -739,7 +820,9 @@ L3 核实〔实测 2026-10-28，派发可行性验证 (a)(b)，`ROADMAP.md` 借�
   - 存储：异步卡就是图上的待决节点，存在节点文件里，跨回合、跨重启都在。
   - 呈现：回合末尾卡片、右侧栏决策队列、输入框上方条显示待批数（§13）。
   - 回写：人拍板时客户端经命令通道调用本包的命令，宿主侧写回节点文件，再向 agent 送一条用户角色消息，运行中用 steer、空闲时用 followup（会开启新回合），来源用本项目自己的 `kind`。命令运行记入会话日志、不进模型（`dsh-commands/README.md` 12、88 行），同时充当审计流水。
-- 取代现有的 L1/L2/L3 分级。
+- 取代现有的 L1/L2/L3 分级〔已实现，M3 第 10 步，项目图 `m3-5`〕。代码里没有 `gradeDecision`、`DecisionLevel`、`FIVE_KEYS`（`src/workflow/decisions.ts` 整个删去）；决策流水 `<项目目录>/audit/decisions.jsonl` 的记录是 `{at, kind, subject}`（`DecisionRecord`，`src/memory/audit.ts`），旧记录里的 `level` 读入时忽略。
+
+  晨报（`/hourness`，`src/workflow/morning-report.ts`）按顺序分三块：「例外」（违规，没有分级行）、「等你定的事」、「用量」，有影子记录时另有一节。「等你定的事」四行：等你定的件数与最早一件的提出日期（本地日期）；agent 自己要定的件数；本期拍板的次数，按拍板者分为「你」「你在对话里说」「agent」；派遣类调用次数（取决策流水，只数 `kind` 为 `dispatch` 或 `dispatch:` 开头的记录）。前两项取 `openItems()` 的 `questions` 与 `agentQueue`；拍板次数不取 `recentDecisions`（它最多 20 条，每张待决只留最后一次），而是扫全部待决节点的历史里 `op` 为 `decide` 且 `at` 在本期内的每一条：`actor` 为 `human` 记「你」；`actor` 为 `llm`、`reason` 以 `ANSWER_MARKS.agree` 开头（`record_human_answer` 写的同意，`answerKindOf`）并且带 `relay`（harness 核对过的人的原话）记「你在对话里说」；其余记「agent」，包括只带 `relay`、没有标记的旧式转述（原话没经 harness 核对）和只有标记、没有 `relay` 的写入。本期是本地日历日。图由 `/hourness` 的调用会话经图行服务 `dirFor(cwd)` 找到；图行没启用、会话没有工作目录、目录不存在或读图出错时，这一节写「项目图读不到：<原因>」，其余照常（派遣类调用次数仍在，它不取自图）。验证：`tests/workflow.spec.ts`、`tests/hourness.spec.ts`（夹具里本期拍板 25 次，计数 25，不被 20 截断；读不到图的四种原因；旧记录带 `level` 照常读）；L3 场景 `glm-design-question` 的最后一步经 `/hourness` 的处理函数核对输出。
 
 ## 6. guard：门禁与正路
 
@@ -747,7 +830,7 @@ L3 核实〔实测 2026-10-28，派发可行性验证 (a)(b)，`ROADMAP.md` 借�
 
 每条规矩是一组数据：告知（提示词或阶段提醒）、探测（执行前后的判定器）、纠偏（四段式：事实 / 越界 / 正路 / 例外）、申报（走决策卡）、记录（违规审计）。
 
-现状〔已实现〕：探测与纠偏已接通；记录已接通（2026-10-28）：每次拦截写进项目目录的违规流水 `<项目目录>/audit/violations.jsonl`，项目目录按 `projectHomeFor`（`src/data/project-home.ts`）取：guard 行的 `home`，没有就取会话工作目录所在项目的 `<检出根>/.llm`（`projectOf` 把 git 工作树归到主检出），再没有取数据目录服务的（`DESIGN.md` §2.4；次序钉在 `tests/data-home.spec.ts`），L3 探针实测；告知已接通（2026-10-28，`ROADMAP.md` M1.8）：系统提示词最后一节 `glm:guard`（标题「Workspace rules」；2026-10-29 起每条路由都有，此前只有 GLM 路由，§6.2）逐条列出生效的规则，每条一行，取自规则的声明文本；会话没有工作目录时圈禁规则不生效，也不声明。规则是常驻的，所以放在系统提示词（§9.2 的提示词一级），不随每步变化，不影响提示词缓存（`DESIGN.md` §5.2、§6）；随阶段变化的规矩以后走阶段提醒。申报还没有通道（M4 的决策卡，§5）。2026-10-29 之前纠偏的例外段要模型「file a request」，系统中无处提交；现在圈禁与 file-tools-only 的例外段都写「If the task really needs …, tell the human what you need, where and why; only the human can allow it.」，事实、越界、正路三段不变（`src/guard/rules.ts`，项目图 `prompt-fixes`）。决策卡做出来后，例外段改指向它。2026-10-28 之前已知至少 3 次拦截没有留下记录，因为该行没有数据目录，回调也无法从配置传入。
+现状〔已实现〕：探测与纠偏已接通；记录已接通（2026-10-28）：每次拦截写进项目目录的违规流水 `<项目目录>/audit/violations.jsonl`，项目目录按 `projectHomeFor`（`src/data/project-home.ts`）取：guard 行的 `home`，没有就取会话工作目录所在项目的 `<检出根>/.llm`（`projectOf` 把 git 工作树归到主检出），再没有取数据目录服务的（`DESIGN.md` §2.4；次序钉在 `tests/data-home.spec.ts`），L3 探针实测；告知已接通（2026-10-28，`ROADMAP.md` M1.8）：系统提示词最后一节 `glm:guard`（标题「Workspace rules」；2026-10-29 起每条路由都有，此前只有 GLM 路由，§6.2）逐条列出生效的规则，每条一行，取自规则的声明文本；会话没有工作目录时圈禁规则不生效，也不声明；主 Agent 的会话不列 `file-tools-only` 这一行（2026-11-02 修，评审 S4-4：它的边界由身份节守着，那一行会叫它用它没有的 Write/Edit）。规则是常驻的，所以放在系统提示词（§9.2 的提示词一级），不随每步变化，不影响提示词缓存（`DESIGN.md` §5.2、§6）；随阶段变化的规矩以后走阶段提醒。申报还没有通道（M4 的决策卡，§5）。2026-10-29 之前纠偏的例外段要模型「file a request」，系统中无处提交；现在圈禁与 file-tools-only 的例外段都写「If the task really needs …, tell the human what you need, where and why; only the human can allow it.」，事实、越界、正路三段不变（`src/guard/rules.ts`，项目图 `prompt-fixes`）。决策卡做出来后，例外段改指向它。2026-10-28 之前已知至少 3 次拦截没有留下记录，因为该行没有数据目录，回调也无法从配置传入。
 
 工具名〔已实现 2026-10-29，split 第 2 步〕：规则只认 DSH 原生工具名（`write`、`edit`、`str_replace_editor`、`pwsh`、`bash`、`terminal_send`），判定之前把调用名换成它实际执行的原生工具：先问 GLM 方言提供的方言服务（`glmHournessDialect`，`src/shared/dialect.ts`，由 `glm-prompt` 行提供），服务不在、或它不认识这个名字时，查公共库里的静态别名表 `ZCODE_ALIAS_NATIVES`（`Write` → `write`、`Edit` → `edit`、`Bash` → `pwsh` 等，与 DSH 原生工具名都不重名），都没有就用原名。所以服务缺席时拦截不变，GLM 的 `Bash` 照样按 `pwsh` 判。换算在 guard 行的 `tools/pre-execute`、图文件门禁与影子兜底三处做；图工具不换算（没有别名）。违规与影子记录里的 `tool` 仍写模型调用时用的名字。纠偏与 `glm:guard` 声明里的工具名按模型看到的写：方言服务说它接管了这个 agent 在这条路由上的请求（`claims`）时用方言的名字（`write` → `Write`、`read` → `Read`），文案与之前逐字相同，提示词缓存不受影响；否则用原生名。规则接口为 `detect(call, face)`，`declare` 是字符串或按 `face` 取名的函数；`file-tools-only` 的声明与正路用函数形式，圈禁与 `graph-files-only` 不含文件工具名，仍是字符串。配置追加的规则（guard 行 `config.rules`）按旧接口写照样成立，从这一步起收到的 `call.name` 是原生名。服务的值形状不对、或某个方法抛错时，这次调用按服务缺席处理（拦截照常、文案用原生名），控制台报一次，guard 的会话健康写「方言服务不可用」。静态表不看路由：别的插件若注册了与 ZCode 别名同名的工具，也按对应的原生工具判；今天的组合里只有方言注册这些名字。验证：L2 在 `tests/guard-audit.spec.ts`（有、无服务，服务形状不对，没装上方言的 agent）、`tests/graph-guard.spec.ts`（有、无服务时 `Write` 与 `Bash` 写图文件都被拒）与 `tests/contracts.spec.ts`（静态表与方言自己的别名定义一致）；L3 探针 `glm-no-dialect`（覆盖层禁用 `glm-prompt` 的 GLM 会话：工具面是原生工具，`pwsh` 写文件被拒，纠偏与声明写 `read`、`write`、`edit`），`glm` 场景的纠偏仍写 `Read`、`Write`、`Edit`。
 
@@ -784,8 +867,10 @@ guard 跟着编排层包 `dsh-hourness` 走：包启用时，所有路由、所�
 | --- | --- |
 | 工作区圈禁：写操作只在工作区内 | 已实现 |
 | 文件修改只用专用工具：shell 不写文件 | 已实现；2026-10-28 改为识别引号（`=>`、`>>>`、`->` 误判已发生 3 次）：只看命令位置与引号外的真实重定向，git 子命令放行；漏网的 shell 写入由工作区变更兜底在回合结束时记录，事后才看得见，拦不住（§6.5.2） |
-| 设计阶段不写代码 | 规划；计划模式不拦工具，由 guard 实现（§4.5） |
-| 主 Agent 不写文件 | 一半已实现（M3 第 3 步，设计行默认禁用）：主 Agent 的工具面里没有写文件的工具，也没有 `ask_user_question`（§3.1）；按名直接调用与 shell 写入的拦截（规则 `main-agent-no-write`、`main-agent-ask`）是第 4 步，还没有，所以现在这还不是边界 |
+| 设计阶段不写代码 | 已实现（M3 第 5 步，设计行默认启用）：规则 `design-before-release`，放行之前（目标，或分了模块的目标里的那个模块）主 Agent 派出的各层子 agent 写文件被拒，拒绝进违规流水（§6.8）；计划模式不拦工具，所以不用它 |
+| 转述的人话要在人发来的消息里；不给人列选项表；「这类你定」只经记录工具写 | 已实现（M3 第 6 步，设计行默认启用）：规则 `main-agent-graph-relay`、`main-agent-graph-options`、`main-agent-graph-delegations`（§6.9），拒绝进违规流水 |
+| 目标只经确认需求与放行方案向前；会话里不用命令行写项目图 | 已实现（M3 第 8 步，设计行默认启用）：规则 `main-agent-graph-stage`、`main-agent-graph-cli`（所有会话，§6.9），拒绝进违规流水；子 agent 与普通会话的尝试还通知持有者。放行方案那一半（`release`）和模块的几支〔第 9 步已实现〕：模块和目标一样只经放行向前，模块下的批准与带原话的提议、新模块、清模块的阶段都被拒，退回设计只放主 Agent |
+| 主 Agent 不写文件 | 已实现（M3 第 3、4 步，设计行默认启用）：主 Agent 的工具面里没有写文件的工具，也没有 `ask_user_question`（§3.1）；按名直接调用与 shell 写入由规则 `main-agent-no-write`、`main-agent-ask` 拒绝（§6.7），拒绝进违规流水，带 `parent` 的嵌套子调用同样过规则（2026-11-02 修，评审 S4-1、S5-1、S6-2、S8-3）；git 不算写文件，会丢工作的 git 命令先存快照（规则 `git-snapshot`，§6.7） |
 | 图文件只经图工具修改 | 已实现（规则 `graph-files-only`，由行 `glm-hourness/graph` 注册，拒绝记入违规流水，L3、L4 后默认启用；§2.7） |
 | 临时脚本只在草稿区 | 规划 |
 | 压制注释必须写理由并挂节点 | 规划 |
@@ -829,6 +914,55 @@ guard 跟着编排层包 `dsh-hourness` 走：包启用时，所有路由、所�
 ### 6.6 惯犯升级
 
 同一会话同一规矩违规达到 N 次，发强提醒（四段式加违规史回显）。反复出现的模式进入规范阶梯（§9）。
+
+### 6.7 主 Agent 的执行边界与 git 快照〔M3 第 4 步，设计行默认启用〕
+
+主 Agent 在 `tools/pre-execute` 上被三条规矩管着，由设计行装一个监听器（`installMainAgentRules`，`src/guard/main-agent.ts`，`prepend`，不导入 `src/design/`，设计行把「是不是主 Agent」「违规流水」「行健康」「给主 Agent 发 notice」传进来）。监听器先看调用本身（工具名、shell 文本里有没有写文件、有没有 `git`），不相干的调用不查会话角色；相干的才问 `isMainAgent`。读角色抛错时放行并报行健康（fail-open）；git 快照是唯一 fail-closed 的一条。没有会话的调用不判；带 `parent` 的传输层子调用按同一套规则判（2026-11-02 修，评审 S4-1、S5-1、S6-2、S8-3：PTC 预设 `run_code` 里的子调度因此到得了这些规矩，编排方在「照判」与「预设为 `ptc` 时降级行健康」之间选了照判）；不是主 Agent 的会话不受主 Agent 自己那三条与 `design-before-release` 管（对所有会话的图规矩照管）；同一个监听器还判主 Agent 派出的子 agent 的写入，那是第四条规矩 `design-before-release`（第 5 步，§6.8）。各条规矩的 id、标题与步号是常量表 `MAIN_AGENT_RULES`（`src/guard/main-agent-rules.ts`，只有常量，规则板的代码规则目录读它；规则板 R1 还没在 main，目录映射随 R1 加）。
+
+- `main-agent-no-write`：写文件的工具（`write`、`edit`、`str_replace_editor` 除 `view`，按原生名判，所以 `Write`、`Edit` 也算）和写文件的 shell 命令（`shellWriteOf`，与 `file-tools-only` 同一个引号感知的判断）被拒；git 子命令不算写文件。`DeferredToolCall` 绕不过去：`Write` 在 GLM 上是常驻工具，`DeferredToolCall` 只收延迟工具。
+- `main-agent-ask`：按名调用 `ask_user_question`（`HIDDEN_FROM_MAIN_AGENT`）被拒，纠偏四段：事实、越界（聊天里问，不出选项卡）、正路（回复里问，或用 `propose_to_human`）、例外 `none`。
+- `git-snapshot`：主 Agent 可以用任意 git 命令；会丢掉未提交改动或改写历史的命令，执行前由 harness 存一份可恢复的快照（`src/guard/git-snapshot.ts`）。
+
+识别：`simpleCommands`（`src/guard/shell.ts`）取出每个简单命令的词（跳过变量赋值与 `sudo`、`env` 一类包装，进入 `bash -c`、`pwsh -Command`、`find -exec` 与子表达式；引号里的文字不是命令）；`gitInvocations` 跳过 git 的全局选项、跟随字面的 `cd`、`-C`；`gitRisk` 给出 `discard`（工作区或暂存区的改动会丢）、`history`（只靠被移动或删除的引用可达的提交会丢）、`both`，表在 `git-snapshot.ts`。子命令不在已知表里时读一次 `git config --get alias.<名>`：`!` 开头的别名当 `both`，普通别名按展开后的调用再判一层，对外检查与 `clean` 的拒绝也按展开后的调用再来一次（2026-11-02 修，评审 S4-3：别名 `p = push` 时 `git p --mirror` 因此被拒）。参数里有变量或命令替换时，按该子命令能做的最坏情形判（`git log --format=%H` 这样的无损命令不因 `%` 存快照）；子命令本身看不出时当 `both`；`cd` 的目标不是字面路径、又有会丢工作的 git 调用时拒绝。
+
+快照全部用 `execFile('git', …)`，不经 shell，环境带 `LC_ALL=C`，列表一律用 `-z`，整个快照 30 秒期限：已跟踪文件的改动用 `git stash create`（合并冲突没解决时改用系统临时目录里的临时暂存区建一个工作区提交）；会被写出类命令（`reset --hard`、`checkout -f`、`checkout <树> -- <路径>`、`switch --discard-changes`、`restore --source`、`read-tree -u`）盖掉的、会被 `git clean` 删掉的、被 `worktree remove` 带走的未跟踪文件存进一棵树（上限 200 MB 与 20,000 个文件，超过就拒绝）；被忽略的文件（`.env`、`node_modules/`）不存，挡路的被忽略文件让命令被拒，`worktree remove` 只记它们的路径、项数与字节数；被移动或删除的引用的原值挂成一个提交的父提交，引用是 `refs/hourness/snapshots/<id>`；改写历史会让提交只靠 reflog 可达时，另打轻量标签 `hourness-snapshot/<id>`，指向一个树为空、不含改动与文件的提交；`push` 强推或删除前把远端当前的状态取到 `refs/hourness/snapshots/<id>/remote/<分支>`。git 不能让同一个名字既是引用又是引用目录，所以有远端副本的快照，快照提交的引用是 `refs/hourness/snapshots/<id>/commit`（附录写的是 `<id>`，与 `<id>/remote/` 同时存在时无法建）。流水追加到 `<项目根>/.llm/snapshots.jsonl`：项目根取 `projectOf(会话的工作目录)`，会话不在任何仓库里时取被快照的仓库的（行里 `rootFrom` 为 `repo`），两处都没有 `.git` 时不建 `.llm/`；第一次写前 `ensureIgnored`（`src/data/project-root.ts`）并补 `.llm/.gitignore`（`*`）。写流水失败时命令照常执行，行健康 degraded「快照 <id> 已存，记录没写上：<原因>」，找回靠 `git for-each-ref refs/hourness/snapshots`。快照不自动清理。快照之后 `inject` 一条 notice（来源 `glm-git-snapshot`）给主 Agent，写明恢复命令。
+
+不存快照就拒绝（规则 `git-snapshot`，纠偏四段）：快照的任何一步失败或超时、要存的文件超限、远端取不回来、`cd` 的目标认不出、挡路的有被忽略的文件、`clean -n` 的结果与 harness 自己算的列表对不上；找不到 git 是唯一放行的失败（行健康 degraded「找不到 git，快照跳过」）。快照可能存着没提交的改动，所以另有对外检查先于快照：`push --mirror`、有快照标签时的 `push --tags`、refspec 的源是快照引用、快照标签、快照里的提交或通配能匹配到它们、`remote.<名>.mirror` 为真或 `remote.<名>.push` 带这样的 refspec，都被拒——配置连命令行 `-c` 设下的值一起读，快照自己的调用怎么读它就怎么读（2026-11-02 修，评审 S4-2；`refs/hourness/snapshots/<id>/remote/*` 是远端原来的提交，恢复远端时要推它，放行）；`git clean` 带 `-x`、`-X`（删被忽略的文件）或 `-f` 两次（删嵌套仓库）被拒；`push` 的远端或 refspec 藏在变量后面时看不出推什么，也拒绝。
+
+没做、仍是残余：脚本里调用 git、git 钩子、`git` 以外的程序改仓库认不出；合并冲突的三方版本不存；被忽略的文件不存，`worktree remove` 之后不恢复；子 agent 的 git 属于 M7；主干前进时的核对与证据属于 M7（`m7-5`）。
+
+验证：L2 `tests/design-guard.spec.ts`（拒绝、放行、角色、待生效状态、违规流水、fail-open、快照的 notice）、`tests/git-snapshot.spec.ts`、`tests/git-snapshot-files.spec.ts`、`tests/git-snapshot-history.spec.ts`（真实 git 的临时仓库：识别、各类命令的快照与恢复、拒绝、对外检查、流水位置、临时暂存区）、`tests/contracts.spec.ts`（规则表）、`tests/guard-shell.spec.ts`（`simpleCommands`）、`tests/toolsearch.spec.ts`（`DeferredToolCall` 到不了 `Write`）；L3 探针 `glm-design-main`、`non-glm-design-main` 的后半段（再次 `/wish` 之后按名调用 `Write`、shell 写入、`ask_user_question` 被拒，`git status` 不存快照，`git checkout -- README.md` 存快照并在下一步带 notice）。
+
+### 6.8 放行之前，派出去的 agent 只读（`design-before-release`）〔M3 第 5 步，设计行默认启用〕
+
+规则在 §6.7 的同一个监听器里（`installMainAgentRules`，`src/guard/main-agent.ts`），判定与沿派发链往上找根在 `src/guard/design-release.ts`。适用的调用：会话头带 `origin: 'subagent'` 的会话里写文件的调用（文件工具按原生名判，`str_replace_editor` 除 `view`，加上写文件的 shell 命令，判写同 `main-agent-no-write`；读、git、图工具不算写）。先看调用本身，不是写入的在问会话之前就放行。
+
+- 派发链的根：沿会话头的 `parentSession` 往上，每一跳到一个不同的活 agent，直到头里没有 `origin: 'subagent'` 的那个（用户 fork 的会话只带 `parentSession`，链在它那里停下，它自己是根）。孙 agent、`subagent_fork` 的子会话都按这条链走，与「最大递归深度」的设置无关。根不是主 Agent 时不判。
+- 判定读根的焦点（`focusOf`）、图和焦点所在目标的有效阶段（§4.8）：没有焦点、焦点不在图里、焦点上面没有目标、目标已关闭，拒绝（主 Agent 没有目标在焦点上，什么都还没放行）；目标在 `wish`、`interview`、`design`（提议状态的目标不论 `stage` 写什么都算访谈；分了模块的目标退回 `design` 改框架时，整个目标下包括已放行的模块），拒绝；目标在 `release` 或之后，而焦点在一个还没放行的模块或候选里（`moduleOf` 有值且 `isReleased` 为假），拒绝，越界一句写出模块；其余放行：已放行的目标、在已放行模块里的焦点、已批准而没有阶段的目标。
+- 纠偏四段：事实（`You tried to write …`，同主 Agent 的写入规则）；越界一句（按上面三种各一句，写明阶段与目标 id 或模块 id 与标题）；正路：读、搜、交回，不要把写入再转给别的子 agent；主 Agent 用 `propose_to_human` 把方案交给人，目标或模块放行之后才能再派；没有焦点时先聚焦这项活所属的目标或任务；模块那一种另加 `kind release, module <id>`；例外：为回答一个设计问题要写一下（探路）时，交回，让主 Agent 把这个问题交给人。
+- 判不出就放行并说明（fail-open，行健康 degraded，同时记在子会话和根会话上）：没有 `agents` 服务、链上有不活的 agent、会话头没有 `parentSession`、链成环、图行服务不在或不说焦点、读图抛错；读根的角色抛错时同 §6.7，放行并在根会话上报。「没有目标」是判得出的状态，不在其中。
+
+没做、仍是残余：
+- 带 `parent` 的传输层子调用按同一套规则判（2026-11-02 修，评审 S4-1、S5-1、S6-2、S8-3）：PTC 预设 `run_code` 里的嵌套写入与图写入由同一个监听器照判，主 Agent 的与派出会话的都在内。编排方在「照判」与「预设为 `ptc` 时降级行健康」之间选了照判。
+- 分了模块的目标在目标一级放行之后，所有模块都在设计，主 Agent 的焦点停在目标一级（或不属于任何模块的节点）时，规则放行，一个模块也没放行就能派出写文件的子 agent。规则只看焦点在哪个节点，不去猜活属于哪个模块。身份节、正路一句和阶段提醒里的「派写文件的子 agent 之前先聚焦到模块或它下面的任务」是提示；M7 合入后用 `releaseOf` 取代这一行的判定。
+- 判定读的是写入那一刻根的当前焦点（`focusOf` 每次写入重读），不记派发那一刻的焦点：主 Agent 派出写模块 B 的子 agent 之后把焦点移到已放行的模块 A 或目标一级，B 的子 agent 之后的写入就放行（评审 S5-2，附录 §3.14.6 第一段的那一种）。M7 的 `releaseOf` 接手这一行的判定时一并收掉。
+- 每个子 agent 的写入调用都读一次图目录（`loadGraph`）。读不重不阻塞主 Agent，但图很大时每次写入多读一遍节点文件；要缓存时按图修订号缓存，不是本步。
+
+验证：L2 `tests/design-guard.spec.ts`（无焦点、各阶段、关闭的目标、孙 agent、shell 写入与读写区分、不判的会话、违规流水、判不出的各种情形、按模块判、模块退回再放行、完成的模块）、`tests/graph-modules.spec.ts`、`tests/contracts.spec.ts`（规则表第四行）；L3 场景 `glm-design-stage`（真的子会话，无焦点与访谈中各被拒一次）、`glm-design-released`（已放行的目标一级与已放行模块里的写入执行，设计中的模块里被拒并写出模块）。
+
+### 6.9 图写入的规矩：谁的转述算人的话〔M3 第 6、8 步，设计行默认启用〕
+
+图工具对所有 agent 注册，引擎给任何带 `relay` 的 `llm` 写入人的权限（§2.9.1），所以「这段话是人说的」要在工具执行之前核对，不靠模型自觉（`d-chat-not-cards`、`d-one-main-agent`）。设计行把五条规矩装在 §6.7 的同一个监听器上（`src/guard/main-agent-graph.ts`，同样不导入 `src/design/`，核对用的 `personSaid` 由设计行传入），按会话的种类分开：
+
+- `main-agent-graph-relay`：主 Agent 的图写入带 `relay` 时，`relay` 的每一行都要是人在该节点最后一次变更（批注不算）之后发来的消息里的整句或整段；新提议的节点没有更早的状态，本会话里人的任何消息都算。读不到会话的消息时一律拒绝，不让没核对过的话把人的权限带进图。子 agent（会话头 `origin: 'subagent'`）带 `relay` 一律拒绝，它不和人说话；这种尝试还会通知持有者：违规流水一条、设计行行健康 degraded、持有者会话下一步里一条 `glm-design-bypass` 的 notice（同一会话同一目标 10 分钟内不重复发）。普通会话的 `relay` 不核对。
+- `main-agent-graph-options`（主 Agent）：`graph_propose` 提议、或 `graph_edit` 改，使一张人定的待决带上选项表被拒；正路是 `propose_to_human`（`choose` 在真有取舍时列两三条路）。agent 自己定的待决（`decider: agent`）不受影响；读不到图时放行，行健康降级。
+- `main-agent-graph-delegations`（所有会话）：写类图工具（`graph_show`、`graph_open`、`graph_focus` 之外）指向 `norm-delegations`——`graph_propose` 的节点 id 与连线任一端、`graph_link` 与 `graph_unlink` 的两端、其余工具的 `id`——一律被拒，带不带 `relay` 都一样，不告警。只看参数里的节点 id，不读图，没有失败的路。这个节点记的是人交给主 Agent 的长期授权；唯一的写路是 `record_human_answer` 的 `delegation`（§3.1），它先核对原话再直接写引擎。
+- `main-agent-graph-stage`（所有会话，第 8 步）：目标只经「把需求交给人、记下人的同意」向前（`propose_to_human` 与 `record_human_answer` 的 `confirm` 和 `release`），图工具不能替它。下面五种调用一律被拒，带不带 `relay` 都一样；阶段的先后照 `STAGES`，有效阶段照 `effectiveStage`（§4.8），节点所属的目标照 `goalOf`：(a) `graph_edit` 给目标或特性设 `stage`：它的有效阶段是 `wish` 或 `interview` 而新值在 `interview` 之后，或有效阶段是 `design` 而新值在 `design` 之后；或把 `stage` 清成空（`set: {stage: null}`）而它带着 `stage`、有效阶段是 `wish`、`interview` 或 `design`；或目标没有有效阶段（已批准而没写阶段，不走设计循环）而新值在 `interview` 之后（给没有阶段的目标写 `wish` 或 `interview` 是把它放进循环，不拦）；或给没有阶段的特性写任何阶段（那会把它变成目标的模块，或写成已放行）；或清掉模块（目标的直接特性，已批准、进行中或完成）的 `stage`，不论它在哪个阶段（已放行的模块会丢掉放行的记录）；(e) 把模块的 `stage` 从 `release` 或之后改回 `design`：只有主 Agent 放行（引擎对它不要人的原话，§4.9），子 agent 与普通会话被拒、告警，纠偏的事实是 `Only the main agent sends a module back to design.`，正路分别是 `Report back to the main agent.` 与 `Ask the main agent in its conversation.`；阶段线有两侧：循环里的目标不能向前，也不能靠清掉阶段走出循环，因为所有门禁把「已批准、没有阶段」读成人没有让它走设计循环，子 agent 随之可写，M7 也只认 `release` 及以后；(b) `graph_approve` 一个有效阶段是 `wish` 或 `interview` 的目标（确认需求）；(c) `graph_approve` 一个所属目标的有效阶段是 `wish`、`interview` 或 `design` 的节点（放行之前批准放行集合里的节点就是绕过门禁的放行），或一个在还没放行的模块或候选下面的节点（模块自己和候选除外：模块放行之前批准它子树里的节点同样是绕过），或一个目标的直接特性子节点而这个目标已放行、已经有模块（新模块，模块清单只在放行框架时定；「已有模块」不含这个节点自己，否则一个已放行目标的每个特性都读成新模块）；(d) `graph_propose` 带 `relay`，类型不是 `question`、`risk`、`retro`，挂在有效阶段是 `wish`、`interview`、`design` 的目标下（带原话的提议直接是已批准，等于 c），或带 `relay` 提议一个没有 `stage` 的目标（带原话的提议直接是已批准，等于一个不走设计循环的目标）、一个 `stage` 在 `interview` 之后的目标、一个带 `stage` 的特性（等于 a）；或带 `relay` 提议的非 `question`、`risk`、`retro` 的节点挂在还没放行的模块或候选下面（等于 c），或一个特性直接挂在已放行、已有模块的目标下（新模块）；目标只收 `wish` 与 `interview`，那是确认需求接得住的地方。不受它管的：向后改阶段（`release` 改回 `design`，要人的原话，由 `main-agent-graph-relay` 核对）、放行之后的阶段、待决的拍板，和写图的 `record_human_answer`（它直接调引擎，自己先核对原话、重查门禁）。纠偏：主 Agent 的事实写它试了什么（例 `You tried to set the stage of "记账小工具" to design while it is in interview.`），越界一句说目标或模块只在人同意主 Agent 交给他的需求或方案时向前，正路是 `propose_to_human`（`confirm` 或 `release`，模块的带 `module` 与 `page`）加 `record_human_answer`；子 agent 与普通会话的事实是「只有主 Agent 在记下人的同意时才把目标往前推」，越界一句写它试了什么，正路分别是「交回给主 Agent」与「人在主 Agent 的对话里同意；本会话的 `/wish` 说它在哪」。子 agent 与普通会话命中时告警（违规流水一行带 `session`、`goal`、`node`、`stageFrom`、`stageTo`；设计行行健康降级；持有者会话下一步里一条 `glm-design-bypass` 的 notice，同一会话同一目标 10 分钟内一次；指标事件 `design.bypass-refused`），主 Agent 自己命中只拒绝、进违规流水。只对这五种调用读图；读图抛错时拒绝（fail-closed，正路是重试，仍不行就告诉人），其余图工具调用不读图。
+- `main-agent-graph-cli`（所有会话，第 8 步）：图的命令行（`npm run graph`，`src/graph/cli.ts`）也以 `llm` 身份写、可带 `relay`，且不核对任何东西，是编排方在 DSH 之外用的（§2.6），所以会话里它的写入命令一律被拒，只放行 `show` 与 `open`。认法：shell 调用里有一个简单命令（`simpleCommands`，引号里的文字不是命令）是 `npm`、`pnpm`、`yarn` 后接（可选的 `run`、`-s`、`--silent`）`graph`，或命令名是 `node`、参数里有以 `scripts/graph/cli.ts` 结尾的路径（`\` 与 `/` 等同）；其后的第一个子命令（跳过 `--` 与 `--dir <目录>`）不是 `show`、`open` 就拒绝，没有子命令也拒绝。纠偏：事实 `Inside DSH the project graph changes through the graph tools.`，越界 `The graph tools check whose words a relay carries; the command line does not.`，正路用图工具，例外 `The orchestrator runs the command line outside DSH.`。命令文字里有 `relay` 且会话不是主 Agent 时同样告警。只看命令文字，不读图，没有失败的路。
+
+残余：五条规矩都在 §6.7 的监听器里，带 `parent` 的嵌套调用与直调一样过它们（2026-11-02 修，评审 S4-1、S5-1、S6-2、S8-3）。图的命令行在 DSH 之外不受这些规矩管。目标一级的几种绕过（清阶段、带原话提议没有阶段的目标、给没有阶段的目标写 `release`）已在 a、d 里拦住，`tests/design-graph-rules.spec.ts` 有两次调用从无到 `release`、从设计到 `release` 的端到端用例，最后断言 `releaseVerdict` 仍是拒绝。`main-agent-graph-cli` 认不出的写法（脚本或别的程序里打开图引擎、`npm --prefix` 一类前置选项、别的运行器）是残余。
+
+验证：L2 `tests/design-graph-rules.spec.ts`（五条规矩，主 Agent、子会话、普通会话，阶段线两侧的三种绕过和两次调用端到端，读不到会话与读不到图时的拒绝，通知的去重，命令行的写与读各九种写法；第 9 步的模块几支：模块下的批准与带原话的提议、新模块、清模块与给特性写阶段、退回设计只放主 Agent，读不到图时拒绝）、`tests/record-human-answer.spec.ts`（含确认的写入在第一条或第二条写入处失败后用同样的话接上）、`tests/propose-to-human.spec.ts`（`confirm`）、`tests/contracts.spec.ts`（规则表与触发）；L3 探针场景 `glm-design-question`、`glm-design-interview`、`glm-design-release`、`glm-design-modules`（`DEVELOPMENT.md` §3）。放行（§4.5、§4.9）的 L2：`tests/propose-to-human.spec.ts`、`tests/record-human-answer.spec.ts`（`release`，含大循环放行四个停下点的重放）、`tests/graph-stage.spec.ts`（门禁与集合）、`tests/graph-engine.spec.ts`（模块退回设计的例外、`initialStatus` 收窄）、`tests/design-stage-notice.spec.ts`、`tests/calibrate-interview-check.spec.ts`。
 
 ## 7. 环境与检查器
 
@@ -897,35 +1031,56 @@ LLM 爱造轮子，因为写脚本只花当前这一轮的力气，装工具却�
 
 ## 8. 记忆与学习
 
-### 8.1 现状
+### 8.1 现状〔M5 步骤 M1、G1 已实现，L2、L3；桌面版第一批验收未做〕
 
-约 800 次 GLM 请求只存进 1 条记忆，且落在被废弃的目录（`~/.dsh/profiles/desktop/.llm/memory.json`）〔实读〕；这条记忆已于 2026-10-28 复制进仓库 `.llm/memory.json`（`DESIGN.md` §2.4）。原因：只能等模型主动查询；工具检索把记忆工具收进了延迟目录；会话开局召回未实现；「git 能查到的不存」的判据过严，句子里带斜杠或文件名就被拒（例：「coding-plan/start-plan 的签名规则不同」存不进去）。
+记忆行（`src/memory/`）按会话工作：项目目录跟会话的工作区，关于人本人的记忆在用户级目录（`d-memory-scope`），两处都是只追加的流水 `memory.jsonl`（`DESIGN.md` §2.4）；旧的 `memory.json` 在第一次写入时迁移（改名保留为 `memory.json.migrated-<毫秒>`，读不出的旧文件不被覆盖，读与写都报 `io`）。行配置 `home` 不再使用，行健康说明这一点。设计与验收在 `.agents/tasks/m5/design.md`（项目图节点 `m5`、`lessons`）。
+
+原先的问题与现在的做法：约 800 次 GLM 请求只存进 1 条记忆，且落在被废弃的目录——存放跟会话走；只能等模型主动查询——会话开局与压缩之后有索引（§8.3）；工具检索把记忆工具收进延迟目录——记忆工具常驻；「git 能查到的不存」的判据过严，句子里带斜杠或文件名就被拒（「coding-plan/start-plan 的签名规则不同」存不进去）——判据取消，改为类型、Why、出处与写入前查重（§8.4）。
 
 ### 8.2 两类记忆
 
 | 类 | 衰减 | 撤销 |
 | --- | --- | --- |
-| 事实 | 14 天半衰期，每次确认复审加成（上限 1.5 倍）〔已实现〕 | 可被新事实覆盖 |
-| 偏好与规范 | 不衰减：这是用户定下的，不因一段时间没被想起而淡化 | 只能由用户撤销 |
+| 事实（`project`、`reference`） | 14 天半衰期，每次被召回算一次复审（加成上限 1.5 倍）〔已实现〕；强度低于 0.1 的不进索引，`memory_query` 仍找得到 | 可被新事实覆盖；agent 可以直接删 |
+| 偏好（`user`、`feedback`） | 不衰减：这是用户定下的，不因一段时间没被想起而淡化 | 只能由用户撤销：人在输入框打 `/memory forget`；或对主 Agent 说，主 Agent 带人的原话调 `memory_forget`。同一会话里 agent 删自己刚写的误记除外 |
 
-存放〔定案 2026-10-28〕：关于人的偏好放用户级目录 `$DSH_HOME/glm-hourness/`，项目事实与项目规范放工作区 `.llm/`（`DESIGN.md` §2.4）。偏好类记忆尚未实现，现有记忆工具只写工作区。
+偏好一定有凭据：人的原话（`relay`），或人亲手打的命令。没有凭据的偏好存不进去（`memory_store` 得 `ask_first`），读流水时也算坏行。原话要到习惯先问再记（步骤 H1）才对照人发的消息核对；在那之前 `llm` 写的每条偏好记 `relayChecked: false`，`/memory show` 标「原话未核对」。
+
+存放〔定案 2026-10-28；`d-memory-scope` 2026-10-30〕：关于人本人的记忆（范围 `all`，只有 `user`、`feedback` 两类）放用户级目录 `$DSH_HOME/glm-hourness/memory/memory.jsonl`；项目事实与项目规范（范围 `project`）放会话所在项目的 `.llm/memory.jsonl`，项目按会话头的工作目录定（工作树回到主检出）。第一次往一个项目写之前，`.llm/` 先加进该项目的 `.git/info/exclude`，加不进去时这次写入得 `io`、不建 `.llm/`。同名条目：项目的遮住用户级的。
 
 ### 8.3 召回与工具
 
-- 会话开局把强度最高的若干条放进一节（会话内不变，不影响逐步缓存）。
-- 记忆工具常驻，不进延迟目录。
+- 会话开局的索引：根 agent 的第一步（存储里有条目时）和每次压缩之后的第一步，在对话末尾加一条来源为 `glm-hourness-memory` 的 `<system-reminder>`，偏好在前，事实按强度，淡忘的事实不列，至多 200 行与 25,000 字符。它是对话里的消息，不是系统提示词的一节，所以系统提示词逐步不变；可见历史里已经有它就不再加，开局时存储为空的会话在第一次写入之后的下一步得到一次。
+- 记忆工具 `memory_store`、`memory_query`、`memory_forget` 常驻（不进延迟目录）；只读的 `learning_signals`（§8.5）是主 Agent 的延迟工具，不并入记忆工具名单，所以 GLM 的 Memory 一节出现的条件（三个记忆工具都在）不变。`memory_query` 按关键词（命中数乘强度）或按名字取；返回的事实各算一次复审（项目流水里一条 `review` 记录），偏好不算。
+- 子 agent（委派出去的会话）不拿记忆工具和 `learning_signals`、不收索引与学习摘要提醒：行在子 agent 的 `agent/created` 上装一个不带 `prepend` 的 `system-prompt/assemble` 监听器去掉这四个工具，方言的 `prepend` 监听器因此看不到它们，不给子 agent 加 `# Memory` 一节；工具体再按会话头的 `origin` 拒绝按名直接调用（`role`，正路是交回结构）。
+- `/memory`（输入框，身份为人）：`show` 列两处的条数与最近 10 条，`forget <名字> [project|all]`，`restore <名字> [project|all]`。
+- 服务 `glmHournessMemory`（契约 `src/shared/memory-service.ts`）：`depth(sessionId)` 给 GLM 方言读常设的汇报细度：方言在会话的 agent 创建时问一次，那一次同步读用户级流水，之后同一会话不变（§8.5）；另有 `stats`、`hygiene` 给周报与巡检（`src/memory/service.ts`）。会话投影 `hournessMemory` 把两份流水的路径交给面板。
+- 行不注册任何 `tools/pre-execute` 监听器：记忆是建议，不拦任何调用（`d-code-rules-enforce`：本行没有规则）。
 
 ### 8.4 写入
 
-- 取消基于路径与文件名的拒绝判据。写入时要求标明类型与 Why；重复由写入前查询与运维巡检处理。
+- 取消基于路径与文件名的拒绝判据（`defaultKnowableFromGit`、`shouldStore`、行配置 `knowableFromGit` 已删）。写入时要求标明类型，`feedback`、`project` 要有 `Why:` 一行，`project` 要有一个能认出的出处（图里的节点 id、项目里存在的文件、提交号、地址）；`feedback` 必须写明范围；`user`、`feedback` 要有人的原话；像密钥的文本（令牌形状，不是路径或长标识符）整条拒收（`secret_like`）；与同类型的已有条目相似（名字与说明的词重合 0.6 以上，或出处相同）要带 `confirmNew` 才存。同名条目是更新，`type` 不能变。
+- 并发：每份流水旁一把锁文件（`src/data/lock.ts`），锁内重读、判写、追加，写不到锁得 `busy`。
 - 分工：git 管「是什么」，记忆管「为什么」与偏好。
-
 ### 8.5 学习流水线
 
-- 信号：五键、拒绝理由、汇报细度拨档、对话中的纠正，以及最强的一种：人亲手修改了 LLM 的产出，改动本身就是偏好。
-- 流程：发现纠正 → 起草规则（写明 Why 与 How to apply）→ 人确认 → 注入 → 观察同类纠正的重复率。
-- 汇报细度闭环：现有的三档滑杆（简洁 / 适中 / 详细，LLM 每次自选，常设偏好可配）〔已实现〕接上「讲细点 / 说重点」的反馈，拨档并写入画像，下次会话自动带上。
+- 信号〔已实现，M5 步骤 G1〕：harness 从项目图的历史和记忆流水里算出人对 agent 的纠正，按键分组（`src/memory/signals.ts`，纯函数，同样的输入得到同样的输出）：人改了 agent 写的字段 `edit:<节点类型>.<字段>`（人，或 `llm` 带 `relay` 转述人的话，改的字段上一次是 `llm` 或 `harness` 不带 `relay` 写的），人否决提议 `reject:<类型>`，人在对话里对方案的否掉与补充 `chat:reject`、`chat:add`（批注不带 `relay`，认开头的固定说法，`src/shared/answer-marks.ts`），人把做完的节点重开 `reopen:<类型>`，汇报细度从一档拨到另一档 `depth:up`、`depth:down`。开头是「人在对话里同意」的历史项是人对提议说可以，不算纠正。门禁以外的提交改了刚合入的文件这一类要等 M7 写的任务尾注，还没有。
+- 流程：学习摘要 → 主 Agent 为每一组选落点 → 观察是否复发。`learning_signals`（只读，主 Agent 的延迟工具，参数 `since`、`minCount`，默认近 28 天、至少 2 次）列出各组：键、一句说明、次数、至多 3 个例子、已落点数 `learned`、落点之后又出现的次数 `recurrences`、最近 4 周每周的次数 `weekly`（只看走向）；图读不出时 `graph: "unavailable"`，哪份流水读不出写进 `notes`，不报错。落点是带这个键的 `learnedFrom` 的记忆条目或经验（人删掉的、退役的不算），或节点上一条 `学自：<键>` 的批注（规则提议与候选标定题这样记）；落点的时刻取第一次写下这个键的那条记录。服务 `glmHournessMemory` 的 `learningDigest(session, {since?, until?, minCount?})` 给 M7 的周报同一份结构。
+- 学习摘要提醒〔已实现，M5 步骤 G1〕：给 `isMainAgentFor` 判为主 Agent 的步一条来源为 `glm-hourness-learning` 的提醒，指向 `learning_signals`；先看项目记忆流水里最近一条 `learn-notified`，满 7 天或没有才读图计算；至少有一个组没有落点或落点之后又出现，且这些组的键不是上一条提醒列的那些（摘要没变就不再发），才在项目的记忆流水里记一条 `learn-notified`（`data.keys` 是组键）并发出；记不下就不发。算出来不合条件的和写失败的，本进程一小时内不再算。提醒是建议，不拦任何调用，不在图上新增待决。
+- 汇报细度闭环〔已实现，M5 步骤 R1〕：三档滑杆（简洁 / 适中 / 详细，LLM 每次自选）的常设档，是人最近一次说定的。人的话表明长短要一直这样时，主 Agent 调 `memory_store`（`name: reporting-depth`、`type: user`、`value` 是三档之一、`relay` 写人的原话）；人只是这一次嫌长或嫌短，主 Agent 只改这一次的讲法，不写。GLM 方言的 `glm:persona` 一节在会话的 agent 创建时读 `glmHournessMemory` 的 `depth` 一次，没有时用配置的 `persona`：写入的那个会话里系统提示词不变，下一个会话带上新的档。人说「汇报细度恢复默认」，主 Agent 带原话调 `memory_forget reporting-depth`，或人打 `/memory forget reporting-depth`，下一个会话回到配置。服务不在、形状不对、读不出时用配置的档，并在行健康里说明。
 - 子 agent 各配独立记忆目录，避免互相污染。
+
+### 8.6 经验板〔M5 步骤 L1、L2 已实现，验到 L2、L3 层；桌面版第一批验收未做；行默认禁用〕
+
+经验板（`src/lessons/`，行 `glm-hourness/lessons`）记「在某种情况下踩过的坑与解法」。一条经验写明情况（文件、工具、命令、报错片段）、坑、解法、证据、最近一次确认；都属于项目，存在项目的 `.llm/lessons.jsonl`，没有用户级经验（`d-memory-scope`）。设计与验收在 `.agents/tasks/m5/design.md` §4（项目图节点 `lessons`）。经验是建议，不是规则：行不注册任何 `tools/pre-execute` 监听器，不拦任何调用（`d-code-rules-enforce`：本行没有规则）；它监听工具调用的唯一处是 `tools/post-execute`，只往失败的结果里加提醒，不改调用、不拒绝。
+
+- 来源：worker 交回的候选经验，经服务 `glmHournessLessons` 的 `propose` 收下（契约 `src/lessons/service.ts`）。签名与某条生效经验相同的并入它，与人删过的相同的丢弃，其余成为候选；字段不合格或像密钥的答 `rejected`，什么都不写；服务自己写不成的答 `{error}`，派发一侧走退路批注 `[候选经验] …`，经验行在主 Agent 的下一步（距上次检查超过一分钟且图的修订变了；`propose` 失败之后不等一分钟）把图上的批注导入成候选，每条批注只试一次，被拒的也记一条 `import`。根 agent 自己遇到的坑用 `lessons_merge new` 直接写。
+- 工具：`lessons_query`（所有 agent，worker 在内；GLM 路由上常驻）按 `text`、`file`、`command`、`error` 查生效经验，其后至多两条候选，标 `status: "candidate"` 与 `unreviewed`；`lessons_merge`（根 agent；GLM 路由上延迟，候选提醒里写着它的名字）九种动作：`new`（从候选或自己写）、`into`、`revise`、`confirm`、`retire`、`drop`、`reopen`、`delete`、`restore`。`delete`、`restore` 与恢复人删掉的东西是人的决定：身份为人（输入框的 `/lessons`），或 `llm` 带人的原话（`relay`），没带得 `user_only`；删除是墓碑加快照，不抹掉。子 agent 调 `lessons_merge` 得 `role`，正路是交回结构；`lessons_merge` 的工具面过滤和记忆行的同一做法（`agent/created` 上的不带 `prepend` 的 `system-prompt/assemble` 监听器）。
+- 提醒（只给 `isMainAgentFor` 判为主 Agent 的步；`src/data/main-agent.ts` 是唯一的判断，设计行不在时所有根 agent 都算，原因写进行健康）：候选提醒（来源 `glm-hourness-lessons-pending`）在开着的候选集与可见历史里最近一条这种提醒列的不同时才来，压缩之后来一次；开了 30 天的候选在这一步记为过期，`lessons_merge reopen` 恢复，年龄从恢复算起。复发提醒（来源 `glm-hourness-lessons-recur`）：一条经验 28 天内在 3 个会话里被命中或并入，提醒主 Agent 可以向人提规则，一步一条、每个项目每周至多两条，先记 `recur-notified` 再提醒。
+- `/lessons show | delete <L-编号> | restore <L-编号> | drop <C-编号>`（输入框，身份为人）；命令行 `npm run -s lessons -- [--cwd 文件夹] show | apply [--file 文件]`（`DEVELOPMENT.md` §13），`apply` 按 `lessons_merge` 的规则以 `llm` 身份写，同签名的跳过，所以同一个文件可以再导一次；会话投影 `hournessLessons` 把项目流水的路径交给将来的经验页。
+- 服务给 M7 的另两个成员：`stats`（期间的新增、并入、丢弃、过期、人删、人恢复，开着的候选，每条经验碰到的会话数，删后复发）与 `hygiene`（读不出的行、180 天没确认的经验、超过 7 天的候选、相似的经验、被拒的批注）。
+- 失败匹配（`src/lessons/failure.ts`，`tools/post-execute` 上的 host 级监听器，所有 agent 的调用都看得到，子 agent 的也是）：shell 工具（原生名 `pwsh` 或 `bash`，GLM 路由上的 `Bash` 就是 `pwsh`）退出码不是 0 或超时，或任何工具的结果是错误（被 `tools/pre-execute` 拒绝的调用也是），而输出里有某条生效经验的报错片段（规整后的子串，片段至少 8 个字符，颜色码去掉后也要够）时，这次调用的结果多带一条提醒（来源 `glm-hourness-lessons`，至多 2 条经验，最长的片段在前），下一次请求里它紧跟在这次工具结果之后。同一会话里同一条经验不再提醒（可见历史里这种提醒列过的，加上本进程已经推给这个会话的）；成功的调用从不触发；`run_code` 的传输层子调用与没有 agent 的调用不看。每条推出去的经验追加一条 `hit`（会话、agent、调用号、原生工具名），不等写完；写失败只告警一次并进行健康。监听器自己出错时结果原样不动，告警一次，行健康写原因。任何调用都不被拦，下游监听器的决定与上下文原样保留。
+- 还没做：派发简报里带经验和交回处理调 `propose`（M7 的派发简报与交回，E1b）、周报里的经验一节（E8）、经验页（步骤 P1）、第一批经验（步骤 S1）；这些等邻居或后面的步骤，经验板自己的部分不受影响。
 
 ## 9. 规范体系
 
@@ -1007,14 +1162,16 @@ LLM 不讲人话，多半是默认在向评审汇报，想显得周全。做法�
 
 #### 10.5.1 运行器〔已实现 2026-10-28，`ROADMAP.md` M1.7〕
 
-`npm run calibrate`（`scripts/calibrate/run-calibrate.mjs`）在 `glmsandbox` 上以 headless 方式启动桌面版运行时，经按次生成的覆盖补丁启用原生通道行 `glm-hourness/glm-llm`（provider `glm-zcode`），把默认模型设为被测模型，每次运行把任务的 fixture 复制到 `.llm/calibration-runs/<时间戳>/<任务>--<模型>[--序号]/ws/` 并初始化为一个 git 仓库，以它为会话工作目录发出任务提示词，结束后运行任务的验收脚本并记分。这是真实请求，消耗积分。参数：`--tasks`、`--models`（默认 `glm-5.3,glm-5.3-flash`）、`--repeat`、`--max-steps`（默认 40）、`--minutes`（默认 15）、`--permission`。
+`npm run calibrate`（`scripts/calibrate/run-calibrate.mjs`）在 `glmsandbox` 上以 headless 方式启动桌面版运行时，经按次生成的覆盖补丁启用原生通道行 `glm-hourness/glm-llm`（provider `glm-zcode`），把默认模型设为被测模型，每次运行把任务的 fixture 复制到该次运行自己的目录（系统临时目录下，见「运行目录」一条）的 `ws/` 并初始化为一个 git 仓库，以它为会话工作目录发出任务提示词，结束后运行任务的验收脚本并记分。这是真实请求，消耗积分。参数：`--tasks`、`--models`（默认 `glm-5.3,glm-5.3-flash`）、`--repeat`、`--max-steps`、`--minutes`（命令行不给时取任务 `task.json` 里 `limits` 的值，任务也没写就是 40 步与 15 分钟）、`--permission`，另有 `--collect <时间戳>`（把没拷回的一批拷回，见「运行目录」）。
 
-- 任务目录：`fixture/`（一个很小的 Node 项目，无依赖，`npm test` 即 `node --test`）、`prompt.md`（原样发给模型的提示词）、`task.json`（类别与任务允许改动的文件）、`check.mjs`（验收脚本，在模型结束后以独立进程运行，断言不放进 fixture，模型看不到）。验收脚本的公共部分在 `tests/calibration/lib.mjs`。
-- 现有任务：`feature-parse-duration`（小功能：给 `formatDuration` 补逆运算 `parseDuration`；验收：提示词里的例子、对 `formatDuration` 所有输出的还原、12 种非法输入抛 `TypeError`、`formatDuration` 不变、工作区测试通过且新增了 `parseDuration` 的测试、README 写了说明）；`bugfix-csv-quotes`（修 bug：引号字段里的转义引号 `""` 没有跳过第二个引号；验收：报告的那一行、另外 4 种转义写法、6 项无关行为不变、工作区测试通过且新增了测试，并且把 fixture 原来的 `src/` 放回后工作区测试会失败，即新测试确实复现了 bug）。两个验收脚本都核对过：原样的 fixture 不通过，参考解通过。
+- 任务目录：`fixture/`（一个很小的 Node 项目，无依赖，`npm test` 即 `node --test`；需求访谈任务的 fixture 只有 `README.md`、一个 `.gitignore`（忽略 `__pycache__/` 与 `*.pyc`，解释器的缓存不算工作区改动）与空的 `docs/graph/nodes/.gitkeep`）、`prompt.md`（原样发给模型的提示词）、`task.json`（类别与任务允许改动的文件；可选的 `limits`：`maxSteps`、`minutes`，必须是正整数，不是时运行器在开跑之前报错退出；需求访谈任务另有 `human`，给模拟人的配置）、`check.mjs`（验收脚本，在模型结束后以独立进程运行，断言不放进 fixture，模型看不到）。验收脚本的公共部分在 `tests/calibration/lib.mjs`。
+- 现有任务：`feature-parse-duration`（小功能：给 `formatDuration` 补逆运算 `parseDuration`；验收：提示词里的例子、对 `formatDuration` 所有输出的还原、12 种非法输入抛 `TypeError`、`formatDuration` 不变、工作区测试通过且新增了 `parseDuration` 的测试、README 写了说明）；`bugfix-csv-quotes`（修 bug：引号字段里的转义引号 `""` 没有跳过第二个引号；验收：报告的那一行、另外 4 种转义写法、6 项无关行为不变、工作区测试通过且新增了测试，并且把 fixture 原来的 `src/` 放回后工作区测试会失败，即新测试确实复现了 bug）。两个验收脚本都核对过：原样的 fixture 不通过，参考解通过。`interview-expense-log`〔M3 第 8 步，类别 `interview`〕：提示词是一句话「我想要一个命令行小工具，每天记一下花了多少钱，月底能看出钱花在哪了。」，模拟人（`scripts/calibrate/simulated-human.mjs`，§3.1）先发 `/wish`、再按 `task.json` 的 `human` 在对话里回话（访谈的 7 个回答、对确认说「对，就这样」、对放行说一句补充再说「可以，放行」；放行批准后的下一个回合末尾说一句收尾「今天先到这，设计到这里就行，实现下次再说。」，此后不再回话、不再记 silent——`human` 的 `stop` 配置，回话照记进 `human.jsonl`），主 Agent 要从一句话走到放行、并在这句收尾之后停住，全在项目图上；`limits` 是 120 步、40 分钟〔2026-11-02 第 12 步（a）标定 0/6：放行之后 GLM-5.3 继续把工具实现并自测了 25 分钟、弄脏工作区，任务的边界原来没说在哪，收尾这句话就是边界〕。运行器对这类任务多挂一行设计行启用、一行问答卡工具（好看到它被去掉）和模拟人（`scripts/sandbox.mjs` 的 `designRows`，同探针），模拟人的回话写进运行目录的 `human.jsonl`。验收脚本读运行目录的 `ws/docs/graph`，查：图没有校验错误；恰好一个目标，已批准、`stage: release`、正文四个标签（需求、问题、给谁、约束）都有、有验收条件与非目标；目标下没有直接的特性（这个小工具一次放行，不分模块；分了模块的路径是第 9 步的 `interview-expense-log-modules`）；至少一个风险；至少一个做完的提议式待决，最后一次拍板带人的原话；至少一个已批准的设计决策五栏齐全、规划从它挂出；目标下没有提议，每个提议过的节点都有一条带原话、`reason` 含 `record_human_answer` 的批准；目标的历史有带原话的批准、改阶段到 `design` 与到 `release`，和一条以「人在对话里补充：」开头的批注；运行目录的 `human.jsonl` 最后一条是那句收尾、最后一次 `turn_end` 在它之后；工作区除 `docs/graph/` 外没有改动（fixture 带 `.gitignore`，`__pycache__/` 与 `*.pyc` 不算改动：跑 Python 原型掉下的字节码缓存不进这一条）。核对过：原样的 fixture 不通过，按整个流程写出的参考图通过，漏放行、没有原话的批准、目标下挂特性、工作区多出文件、模拟人最后一句不是收尾各让它失败（`tests/calibrate-interview-check.spec.ts`）。放行一支（第 9 步）已合入这条分支，仍没有真跑过：真跑要桌面版的会话和积分。`interview-expense-log-modules`〔第 9 步，基线，不是通过条件〕：同一个小工具、同一句话，访谈答案多一句「先做记账，再做月底汇总，两块分开做」，让主 Agent 分成两个模块走两层放行；模拟人对框架放行说「可以，放行」、对每个模块说「可以，放行这个模块」；`limits` 是 200 步、60 分钟（对话里多两次模块放行和每个模块的设计）。验收脚本在上面几条之外查：目标下有两个已批准、`stage: release` 的模块；`norm-directions` 已批准、至少一条方向；目标的放行写入与每个模块的放行写入都带人的原话、`reason` 含 `record_human_answer` 与一页稿的摘要；目标的放行写入不晚于任何一个模块的放行写入；没有哪个模块的放行早于它自己的设计决策被批准。两个任务共用的检查在 `tests/calibration/interview-lib.mjs`。核对过：原样的 fixture 不通过，按两层流程写出的参考图通过，缺方向清单、放行没有页的摘要、模块比框架先放行各让它失败（`tests/calibrate-interview-check.spec.ts`）。
 - 数据隔离：覆盖补丁把数据目录行、memory、workflow、hourness 的目录指向本次运行的目录，用量流水与违规流水都落在运行目录里，真实的 `~/.dsh/glm-hourness/` 不变；附件存储同样指向运行目录；另挂 `@deepseek-ai/dsh-workspace-changes`（桌面版 profile 有，沙盒模板没有），guard 的影子兜底照常记录。
 - 权限：headless 模板的沙盒策略行与审批行读环境变量 `DSH_PERMISSION_MODE`（缺省 `workspace-write`）。运行器默认传 `danger-full-access`，与用户桌面版 profile 的默认预设一致（`danger-full-access`，审批 `never`）。首次试跑用的是缺省的 `workspace-write`：Windows ACL 沙盒下 `node --test` 派生子进程报 `spawn EPERM`，模型无法确认测试通过，转而申请沙盒升级，headless 没有审批通道，申请失败（`FACTS.md` §3）。
-- 边界：覆盖层插入一行只在标定时加载的插件 `scripts/calibrate/limits.mjs`（不属于 bundle）。它对进程内全部 agent（含子 agent）的模型步数计数，第 `maxSteps + 1` 步在 `agent/pre-step` 返回 `reject`，回合以 `blocked` 结束（rc.3 `dsh-agent-loop` 961 行）；首个 agent 创建后满 `timeLimitMs`，以 `{ kind: 'hook' }` 取消所有运行中的 agent（`cancel` 815 行、取消原因 731 行），之后的步一律拒绝。运行器在时间上限之后再等 2 分钟，仍未退出就结束整个进程树。探针有两个场景验证这两道边界（`DEVELOPMENT.md` §3）。
-- 事件来源：headless 的 `--json` 输出（`dsh-headless` json-stream 172 行起：`session`、`status` 的 `step_start` / `step_end` / `turn_end`、`tool_call`、`tool_result`、`text`、`final`），任务提示词经 stdin 传入。
+- 边界：覆盖层插入一行只在标定时加载的插件 `scripts/calibrate/limits.mjs`（不属于 bundle）。它对进程内全部 agent（含子 agent）的模型步数计数，第 `maxSteps + 1` 步在 `agent/pre-step` 返回 `reject`，回合以 `blocked` 结束（rc.3 `dsh-agent-loop` 961 行）；首个 agent 创建后满 `timeLimitMs`，以 `{ kind: 'hook' }` 取消所有运行中的 agent（`cancel` 815 行、取消原因 731 行），之后的步一律拒绝。运行器在时间上限之后再等 2 分钟，仍未退出就结束整个进程树。探针有两个场景验证这两道边界（`DEVELOPMENT.md` §3）。边界按任务取：命令行的 `--max-steps`、`--minutes` 优先，其次任务 `limits`，再其次 40 步与 15 分钟；`results.json` 的 `options.bounds` 与每次运行的 `bounds` 记下实际用的值。停在步数或时间上限（`stop` 为 `step-limit`、`time-limit`）的运行记作「边界不够」（`boundaryTooTight`），不当模型的失败，汇总里单列。
+- 运行目录〔M3 第 8 步，`risk-calib-read`〕：被测模型能读它叫得出名字的任何路径，运行目录原先在仓库的 `.llm/calibration-runs/` 下，沿着工作区往上走就找得到仓库、别的运行与以前的结果。现在整批在系统临时目录里跑（`scripts/calibrate/run-dir.mjs`）：批目录（`results.json` 写在这里）和每次运行各一个目录（`glm-hourness-calib-batch-*`、`glm-hourness-calib-run-*`），互不嵌套，也不在仓库下；开跑之前把它们记进仓库一侧 `.llm/calibration-runs/<时间戳>/pending.json`（先写临时文件再改名）。整批跑完才一次拷回 `.llm/calibration-runs/<时间戳>/`（每个运行目录拷到 `<时间戳>/<运行名>/`，含 `ws/.git`，不覆盖：目标已有同名的就在拷之前停下），再逐个文件核对相对路径与字节数，全部一致才删临时目录——只删记录里的、而且是系统临时目录的直接子目录、名字以 `glm-hourness-calib-` 开头的，不合这两条的不删、报出来——最后删 `pending.json`。拷回或核对出错时什么都不删，拷了一半的拿掉，`pending.json` 留着，运行器打印「拷回没有完成：临时目录 <路径…> 保留；修好后运行 `npm run calibrate -- --collect <时间戳>`」并以退出码 1 结束；`--collect` 不跑新的运行，只按记录做同样的拷回与清理，运行器中途崩溃留下的一批也这样收。残余：被测模型仍能按绝对路径读仓库（guard 不拦读），也能列出系统临时目录找到同批其他运行；提示词与会话里不出现仓库路径与临时目录路径。
+- 事件来源：headless 的 `--json` 输出（`dsh-headless` json-stream 172 行起：`session`、`status` 的 `step_start` / `step_end` / `turn_end`、`tool_call`、`tool_result`、`text`、`final`），任务提示词经 stdin 传入。运行器另存每一行到达的时刻（`event-times.json`，与 `events.jsonl` 里能解析的行一一对应），并在运行结束时等 `events.jsonl` 写完，验收脚本才读它。
+- 需求访谈任务的指标〔M3 第 12 步（a），`tests/calibration/interview-metrics.mjs`〕：这类任务的验收脚本在检查之外打印 `metrics`，运行器把它写进 `result.json` 的 `interview`，不在 `acceptance` 里，不影响通过与否。数从运行目录里读：`events.jsonl`、`event-times.json`、`human.jsonl`、`home/audit/violations.jsonl`、`ws/.llm/snapshots.jsonl` 和 `ws/docs/graph`。指标流水的写入接口到位之前（`src/design/metrics.ts` 的 `emitMetric` 什么都不做）靠这些算，之后改从指标流水读。项：`disturbed`（模拟人回话的次数、`propose_to_human` 的 `release` 次数、问答卡请求数）；`shown.notVerbatim`（每次 `propose_to_human` 成功之后，同一回合主 Agent 最后一条消息里没有逐字含返回的完整文字的次数；结果被流的字符串上限截断时只比读得到的前半段，计入 `partialResults`）；`questions`（每种问法与 `confirm`、`release` 各问了几次，返回文字码点数的中位数与最大值，从结果返回到下一个回合开始的毫秒数，一条消息问号多于 3 的次数，不是 `choose` 的消息里的选项写法，`plainWordsIn` 命中的次数与词，「我定了：」的条数，「这类你定」存下的条数，「你定」的次数，跟随率，`propose_to_human` 被拒按原因分，访谈里每条消息的问号数）；`copiedExamples`（工具说明里四道例题的 `text` 或问句出现在给人的文字里的次数，应为 0）；`loops`（框架放行与各模块放行的次数、`page` 被拒、放行 `not_shown`、放行前被 `design-before-release` 拒绝的写入、退回设计的次数）；`records`（`record_human_answer` 被拒的次数与原因，原话不到 6 个码点又没有「我记成」的记录次数，`gate_unmet`）；`rules`（§3.11 每条规则的拒绝次数，影子记录不算）；`snapshots`（存了快照、整件跳过、`git-snapshot` 拒绝按原因码）。模拟人在回合结束时立刻回话，所以“从结果返回到下一个回合开始”量的是主 Agent 把这一回合说完的时间，不是真人的等待。原因码从工具返回的错误文字里认，`tests/calibrate-interview-metrics.spec.ts` 把认法钉在写那些文字的代码上；`git-snapshot` 的违规流水只留纠偏文字，不留原因码，`git-failed`、`timeout`、`list-mismatch` 三个共用一段文字，记成一组。
 
 记分口径（每次运行一份 `result.json`，整次调用一份 `results.json`，含日期、提交与工作区是否有未提交改动）：
 
@@ -1022,7 +1179,7 @@ LLM 不讲人话，多半是默认在向评审汇报，想显得周全。做法�
 | --- | --- |
 | 完成 | 验收脚本全部通过 |
 | 返工 | 一次成功的文件写入（`Write`、`Edit` 等）落在本次运行已写过的文件上，且两次写入之间跑过 shell 命令。即「改了、跑了、又回去改同一个文件」的次数 |
-| 打扰人 | `approval/asked` 会话事件数（`dsh-user-approval` 132 行，交互会话里这一刻会弹审批；headless 无应答方，按拒绝处理）加 `ask_user_question` 调用数。沙盒的工具面没有 `ask_user_question` |
+| 打扰人 | `approval/asked` 会话事件数（`dsh-user-approval` 132 行，交互会话里这一刻会弹审批；headless 无应答方，按拒绝处理）加模拟人回话的次数（需求访谈任务，`human.jsonl` 里 `kind` 为 `reply` 的行数：人在对话里每答一次就是被打扰一次）。`ask_user_question` 调用数不再算在里面，另记为 `forbiddenCalls`：主 Agent 不该调它（访谈在聊天里问），沙盒的工具面也没有它 |
 | 积分 | 本次运行用量流水的每条记录按 `FACTS.md` §2.4 的系数计算，非高峰按 50%；公式没有缓存写入的系数，缓存写入按输入计。用量流水含会话标题请求 |
 | 违规 | guard 违规流水里的拦截记录数；影子记录另计 |
 | 其他 | 结束原因（完成、步数上限、时间上限、被结束、错误）、步数、工具调用与失败数、改动的文件、`task.json` 之外的多余文件、各类 token 数、耗时 |
@@ -1103,7 +1260,7 @@ LLM 不讲人话，多半是默认在向评审汇报，想显得周全。做法�
 - 交付指标（DORA）：交付频率、变更失败率、恢复时长。
 - 事故：生成无责复盘节点，再变成规范进入阶梯。
 - DSH 升级：先跑标定测试集与行为探针。
-- 晨报按四答对账：目标完成了多少、哪里偏离了规划、做过哪些计划外决策及理由、待批决策卡、花费（积分、峰谷占比）、测试与知识同步状态。花费一节按积分口径写，与 `/hourness` 的面板用同一个函数（`usagePanelOf`、`usagePanelLines`），带本期遇到的缺口行（用量记录被删过的说明，§11.3）；今天的 `/hourness` 开头的晨报已是这样（标题「用量（今天）」），四答晨报沿用这两个函数与缺口规则，不另写一套。晨报遵守汇报细度，带「讲细点 / 说重点」按钮。
+- 晨报按四答对账：目标完成了多少、哪里偏离了规划、做过哪些计划外决策及理由、待批决策卡、等你定的事（`/hourness` 的晨报已有这一节，读项目图，§5）、花费（积分、峰谷占比）、测试与知识同步状态。花费一节按积分口径写，与 `/hourness` 的面板用同一个函数（`usagePanelOf`、`usagePanelLines`），带本期遇到的缺口行（用量记录被删过的说明，§11.3）；今天的 `/hourness` 开头的晨报已是这样（标题「用量（今天）」），四答晨报沿用这两个函数与缺口规则，不另写一套。晨报遵守汇报细度，带「讲细点 / 说重点」按钮。
 
 ## 13. 呈现
 
@@ -1446,13 +1603,13 @@ M7 的设计是 `.agents/tasks/m7/design.md`（不入库，版本 0.6，评审�
 - `isScopePath(text)`：文本是不是范围写法。`tests/execute-scope.spec.ts` 用一张候选表钉住它与图读入检查的结论一致。
 调用方（E4 的 `worker-scope` 与派发门禁、E1a 的 `checkPlan`）按设计 §3.2.1、§3.3.2、§3.5.1 使用这几个函数；E0 本身不接任何调用方。
 ### 17.2 模块读法与放行状态（E1a，`src/graph/execute-stage.ts`）
-M7 判一个任务此刻能不能派、能不能写，要读目标的模块结构。读法的正式出处是 M3 的 `src/graph/modules.ts`（附录 0.5 §3.14.1），它还没合入，所以 `execute-stage.ts` 里有一段标明「STAND-IN」的替身，按附录的签名实现 `modulesOf`、`moduleCandidatesOf`、`moduleOf`、`isReleased`、`isSplit`、`directionsOf`。M3 的文件合入时删掉这一段，改为从 `./modules.ts` 导入，`ModuleReaders` 留作注入类型。
+M7 判一个任务此刻能不能派、能不能写，要读目标的模块结构。读法的正式出处是 M3 的 `src/graph/modules.ts`（附录 0.5 §3.14.1），它还没合入，所以 `execute-stage.ts` 里有一段标明「STAND-IN」的替身，按附录的签名实现 `modulesOf`、`moduleCandidatesOf`、`moduleOf`、`isReleased`、`isSplit`、`directionsOf`。M3 的文件合入时删掉这一段，改为从 `./modules.ts` 导入，`ModuleReaders` 留作注入类型。m3 分支的第 5 步已经写好 `modules.ts`（§4.9），合入 main 时按这一段换。
 - `releaseOf(graph, task, readers?)`：先查任务最近的模块（任务不在模块下时跳过），再查目标；`task` 是目标时只查目标层。结果三种：`{ok: true, goal, module?}`（各带放行时刻 `at`）、`{ok: false, level, node, stage}`、`{ok: false, level: 'module', reason: 'unreadable'}`。第三种在读模块的函数抛错、而目标有带 `stage` 的直接特性（按原始图数，不经读法）时返回，派发与写入都拒绝；没有这种特性的目标不受影响。
 - `releaseAtOf(node)`：节点最近一次由 `release` 之前（或没有阶段）改到 `release` 或之后的那条历史的时刻；节点现在不在放行状态时为 `null`。模块被退回设计再放行，时刻不同，pins 因此让退回之前派出的活过期。`sentBack(node)` 认出「由 release 之后改回 design」。
 - `scopedTasks(graph, node, readers?)`：目标或模块子树里的任务，去掉模块设计的审查任务；对目标另外去掉设计中的模块下的任务。
 - `isDesignReview(graph, task, readers?)`：`kind` 为 `review`、写入范围为空、`source` 连线都指向某个模块下的决策，并且第一条历史是 `harness` 的提议。最后一项比设计多一条：普通审查任务也引用决策，没有它，挂在没放行的模块下的普通审查任务会被当成设计评审而跳过放行检查和「只收已批准」的检查。读法抛错时结果为 `false`。
 ### 17.3 pins（E1a，`src/graph/pins.ts`）
-`pinsOf(graph, task, sha256)` 对任务、它到目标的每个祖先、它的 `source` 连线指向的每个节点各算 12 位十六进制摘要，只含改变意图的字段，按节点类型：任务是验收、非目标、`kind`、是否废弃或被取代；目标、特性等祖先是验收、非目标、是否废弃或被取代，目标和读法认出的模块另带 `releaseAt`；决策是 `verification` 是否为 `overturned` 或 `superseded`、状态；待决是拍板结果或提议式的结论、状态。标题、正文、历史、写入范围不进摘要。`staleness(graph, line, sha256)` 返回变了或不在图里的节点；读不出的 pins 行返回一条 `(pins)`，不会被当成没变。哈希函数是参数，文件不导入 Node 内置模块，客户端也能导入。待决的 `conclusion` 字段在 M3 的图格式改动合入前不在 `GraphNode` 的类型里，读时按未知字段处理。
+`pinsOf(graph, task, sha256)` 对任务、它到目标的每个祖先、它的 `source` 连线指向的每个节点各算 12 位十六进制摘要，只含改变意图的字段，按节点类型：任务是验收、非目标、`kind`、是否废弃或被取代；目标、特性等祖先是验收、非目标、是否废弃或被取代，目标和读法认出的模块另带 `releaseAt`；决策是 `verification` 是否为 `overturned` 或 `superseded`、状态；待决是拍板结果或提议式的结论、状态。标题、正文、历史、写入范围不进摘要。`staleness(graph, line, sha256)` 返回变了或不在图里的节点；读不出的 pins 行返回一条 `(pins)`，不会被当成没变。哈希函数是参数，文件不导入 Node 内置模块，客户端也能导入。待决的 `conclusion` 字段由 M3 第 6 步加进 `GraphNode`（§2.6），摘要直接读它。
 ### 17.4 派发的纯函数（E1a，`src/execute/`）
 - `brief.ts`：`parseDispatchArgs`（§6.4 的形状检查）；`briefGate(graph, node, ctx)` 按设计 §3.5.1 的次序返回第一条拒绝：`invalid`、`bad_task`、`not_released`、`bad_attributes`、`no_acceptance`、`deps_open`、`waiting_human`、`busy`、`scope_busy`、`slots_full`（槽位与高峰少做上限两处）、`bad_schema`、`nothing_to_review`、`no_directions`；读不出模块结构时在这之前就以 `not_released` 拒绝。门禁读 `ctx.release`，不读阶段；模块设计的审查任务跳过模块层、目标层照查。要审查任务的交回状态、`outputSchema` 是否可解析这类要别的步骤才有的事实，门禁从 `ctx` 取，不自己造。`renderBrief` 按 §3.5.2 从图生成给 worker 的简报：英文、至多 9000 字符，超出时依次把经验、上一次的发现细节、主 Agent 的补充换成「truncated」；页脚带正文的摘要与图修订号。审查任务和模块设计评审的简报在 E6 与 E4。
 - `plan.ts`：`checkPlan` 对 worker 交来的计划做 §3.3.2 的检查（入参按 `unknown` 处理，每条问题一行）；计划一节在任务正文里的渲染、读回、替换与批准标记；批准批注；`carriedPlan` 判已批的计划能不能带到下一次派发。设计里 `checkPlan(task, plan, norm)` 有第三个参数 `norm`，文中没有任何一条检查用到它，没有实现。

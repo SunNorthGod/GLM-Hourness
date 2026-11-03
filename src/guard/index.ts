@@ -43,6 +43,7 @@
  * Relative targets resolve against the session's working directory, as the
  * file tools resolve them.
  */
+import { MAIN_AGENT_KEY } from '../graph/main-agent.ts'
 import { declarationOf, fileToolsOnly, NATIVE_FACE, workspaceContainment, type GuardRule, type ToolFace } from './rules.ts'
 import { installRuleGate, cwdOf } from './gate.ts'
 import { DECLARATION_SECTION } from './sections.ts'
@@ -58,7 +59,7 @@ import { LOOPS_DECLARATION } from '../loops/service.ts'
 import { rulesService } from '../rules/service.ts'
 import { activationState, provideRowHealth, sessionIdOf, type HealthState } from '../shared/health.ts'
 import { assemblyRoute, sessionRoute } from '../shared/route.ts'
-import type { AgentLike, AssembledSection, PluginContext, PreExecuteHost, ProvideHost, ServiceLookup, SessionEventHost, WorkingDirectoryService } from '../shared/dsh-min.ts'
+import type { AgentLike, AssembledSection, PluginContext, PreExecuteHost, ProvideHost, ServiceLookup, SessionEventHost, SessionProjectionsService, WorkingDirectoryService } from '../shared/dsh-min.ts'
 
 export type { GuardRecord, RecordedCall, ViolationRecord } from './records.ts'
 export type { ShadowRecord } from './shadow.ts'
@@ -89,6 +90,26 @@ export function rootsFor(agent: AgentLike | undefined, config: GuardConfig): rea
 function workingDirectoryService(ctx: ServiceLookup): WorkingDirectoryService | undefined {
   const value: unknown = typeof ctx.get === 'function' ? ctx.get('workingDirectory') : undefined
   return typeof value === 'object' && value !== null && typeof (value as { get?: unknown }).get === 'function' ? value as WorkingDirectoryService : undefined
+}
+
+/**
+ * Whether the session is in main-agent mode by the projection the design row
+ * registers (src/graph/main-agent.ts): its identity section then holds the
+ * boundary, and the file-tools-only line would tell it to use the Write/Edit
+ * tools it does not have (review finding S4-4). Anything unreadable counts
+ * as not, which declares the rules as before.
+ */
+function mainAgentMode(ctx: ServiceLookup, agent: AgentLike | undefined): boolean {
+  const service: unknown = typeof ctx.get === 'function' ? ctx.get('sessionProjections') : undefined
+  const stateOf = typeof service === 'object' && service !== null ? (service as { stateOf?: SessionProjectionsService['stateOf'] }).stateOf : undefined
+  if (stateOf === undefined || agent?.session === undefined) return false
+  try {
+    const state = stateOf(agent.session, MAIN_AGENT_KEY)
+    return typeof state === 'object' && state !== null && (state as { active?: unknown }).active === true
+  }
+  catch {
+    return false
+  }
 }
 
 /**
@@ -224,6 +245,8 @@ export function apply(ctx: GuardHost, config: GuardConfig = {}): () => void {
         const lifted = root === undefined ? undefined : liftedRules(root)
         const rules = activeRules({ ...config, workspaceRoots: rootsFor(agent, config) })
         const own = lifted === undefined || lifted.size === 0 ? rules : rules.filter(rule => !lifted.has(rule.id))
+        // The main agent reads its boundary in the identity section the design row assembles: the file-tools-only line would name the Write/Edit tools it does not have (S4-4).
+        const declared = mainAgentMode(ctx, agent) ? own.map(rule => rule === fileToolsOnly ? { ...rule, declare: '' } : rule) : own
         // graph-files-only is the graph row's rule, and the gates of the rules board and the loop board are their rows'; declared here so the model reads every rule in one place. A lifted rule stops declaring too.
         const board = rulesService(ctx, rulesWarn)
         // The loop board's gate is in every host process, while its service is only in the one that can reach a session (loops design §6.1), so the line follows the row, not the service.
@@ -231,7 +254,7 @@ export function apply(ctx: GuardHost, config: GuardConfig = {}): () => void {
         const graphDeclares = graphService(ctx) !== undefined && lifted?.has('graph-files-only') !== true
         const others = [...(graphDeclares ? [GRAPH_FILES_DECLARATION] : []), ...(board === undefined ? [] : [board.declaration]), ...(loops === 'absent' || loops === 'inactive' ? [] : [LOOPS_DECLARATION])]
         const face = dialectNames(dialectService(ctx, warn), agent, route, warn) ?? NATIVE_FACE
-        return { ...assembled, sections: [...assembled.sections, declarationSection(own, others, face)] }
+        return { ...assembled, sections: [...assembled.sections, declarationSection(declared, others, face)] }
       }, { prepend: true }))
     }
     catch (error) {

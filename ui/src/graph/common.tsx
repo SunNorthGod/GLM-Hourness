@@ -6,7 +6,7 @@
  * decides (or overturns) a question.
  */
 import { Button, Input, MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
-import { createContext, useContext, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactElement, type ReactNode } from 'react'
+import { Component, createContext, useContext, useLayoutEffect, useRef, useState, type ErrorInfo, type KeyboardEvent, type ReactElement, type ReactNode } from 'react'
 import { TYPE_LABELS } from '../../../src/graph/labels.ts'
 import type { LoadedGraph } from '../../../src/graph/parse.ts'
 import { ancestorsOf } from '../../../src/graph/projection.ts'
@@ -228,11 +228,35 @@ interface OptionsProps {
 }
 
 /**
+ * A question in the proposal shape: the question as the human read it, the
+ * ways when it has them (the last one is the recommended), and where to
+ * answer. The panel only looks (decision d-ui-look-not-operate): there is no
+ * button; the answer is said in the chat and recorded by the main agent.
+ */
+function ProposalView({ node }: { readonly node: GraphNode }): ReactElement {
+  const ways = node.ways ?? []
+  return (
+    <div className="glmg-options">
+      {node.ask === undefined ? null : <div className="glmg-text">{node.ask}</div>}
+      {ways.map((way, index) => <div key={way} className="glmg-text">{index + 1}. {way}{index === ways.length - 1 ? '（推荐）' : ''}</div>)}
+      {node.status === 'done' && node.conclusion !== undefined
+        ? <div className="glmg-text">定了：{node.conclusion}</div>
+        : <div className="glmg-notice">在主 Agent 的对话里回话</div>}
+    </div>
+  )
+}
+
+/** The options of a question as buttons, or the lines of a proposal without any. */
+export function Options(props: OptionsProps): ReactElement {
+  return props.node.options === undefined ? <ProposalView node={props.node} /> : <OptionButtons {...props} />
+}
+
+/**
  * The options of a question as buttons. Picking one asks for an optional
  * reason and decides as the human; on a decided question the current
  * choice is marked and the others overturn it.
  */
-export function Options({ graph, node, onDecided }: OptionsProps): ReactElement {
+function OptionButtons({ graph, node, onDecided }: OptionsProps): ReactElement {
   const writer = useWriter()
   const [picked, setPicked] = useState<string | undefined>(undefined)
   const [reason, setReason] = useState('')
@@ -296,4 +320,33 @@ export function Options({ graph, node, onDecided }: OptionsProps): ReactElement 
       <Outcome outcome={writer.outcome} />
     </div>
   )
+}
+
+/**
+ * A render error inside one view shows its message instead of retiring the
+ * tab body (the graph panel's body and each board page get their own).
+ * 重新加载 renders the children again.
+ */
+export class PanelBoundary extends Component<{ readonly label: string, readonly children: ReactNode }, { readonly error: unknown }> {
+  override state: { readonly error: unknown } = { error: undefined }
+
+  static getDerivedStateFromError(error: unknown): { readonly error: unknown } {
+    return { error }
+  }
+
+  override componentDidCatch(error: unknown, info: ErrorInfo): void {
+    console.error(`glm-hourness ${this.props.label}:`, error, info.componentStack)
+  }
+
+  override render(): ReactNode {
+    if (this.state.error === undefined) return this.props.children
+    const { error } = this.state
+    const message = error instanceof Error ? error.message : typeof error === 'string' ? error : 'unknown error'
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 8, padding: 16 }}>
+        <span style={{ color: 'var(--dsw-alias-state-error-primary)' }}>{`${this.props.label}出错了：${message}`}</span>
+        <Button variant="outline" size="sm" onClick={() => { this.setState({ error: undefined }) }}>重新加载</Button>
+      </div>
+    )
+  }
 }

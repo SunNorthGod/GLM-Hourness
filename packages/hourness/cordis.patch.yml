@@ -3,7 +3,8 @@
 # degrades gracefully (fail-open). The data row defaults its project
 # directory to this repository's `.llm` (USERPROFILE-relative); the user's
 # profile patch overrides per row (it sets `home` for memory, workflow and
-# hourness). Row ids stay `glm-hourness/<row>` across the split: profile
+# hourness; the memory row ignores `home` since M5: its project directory
+# follows the working directory of each session). Row ids stay `glm-hourness/<row>` across the split: profile
 # overrides match by id (docs/DESIGN.md §2.3).
 # Rows are named through this package (docs/DESIGN.md §2.3): a host row by
 # its export `dsh-hourness/<row>`, whose settings-page title is
@@ -24,6 +25,18 @@
       config: {}
     - id: glm-hourness/memory
       name: dsh-hourness/memory
+      inject: [tools]
+      config: {}
+    - id: glm-hourness/lessons
+      # Lessons board (docs/ORCHESTRATION.md §8.6): the pitfalls and fixes of
+      # a project, kept in its .llm/lessons.jsonl. lessons_query for every
+      # agent, lessons_merge for the main agent, the service
+      # glmHournessLessons for the dispatch of work, notices to the main agent
+      # and /lessons. Advice, not rules: blocks nothing. Ships disabled until
+      # the L3 probe (scenarios glm-lessons, non-glm-lessons) and the first
+      # desktop pass (docs/DEVELOPMENT.md §3, AGENTS.md).
+      name: dsh-hourness/lessons
+      disabled: true
       inject: [tools]
       config: {}
     - id: glm-hourness/workflow
@@ -85,12 +98,15 @@
       # the identity section, its tool face has no file-writing tool and no
       # ask_user_question, and its role is kept in a session projection and in
       # a holder record under the DSH user directory (one main agent per
-      # project). Ships disabled until the L3 probe scenarios
+      # project). The row's `persona` setting ({name, text}, empty by
+      # default, ships no persona text) is added to the main agent's system
+      # prompt only, as the section hourness:output-style. Ships enabled since
+      # the m3 merge (step 12b); the L3 probe scenarios passed on the branch
       # (glm-design-wish-idle, non-glm-design-wish-idle, glm-design-main,
-      # non-glm-design-main, glm-design-one-main) and the batch desktop pass
-      # (docs/DEVELOPMENT.md §3, AGENTS.md).
+      # non-glm-design-main, glm-design-one-main, glm-design-persona,
+      # non-glm-design-persona), the batch desktop pass
+      # (docs/DEVELOPMENT.md §3, AGENTS.md) is still owed.
       name: dsh-hourness/design
-      disabled: true
       inject: [commands]
       config: {}
     - id: glm-hourness/loops
