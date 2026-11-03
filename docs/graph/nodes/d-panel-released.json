@@ -20,6 +20,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "更正本决定正文里的遗留一项：按一页稿评审的 O9，17 条里按旧问法四行写的是第 1、6、9、17 条，不只第 6、9 条（编排方交人时也只说了第 6、9 条）。面板按 d-ask-three-gates 换新问法时，这四条都要再请人改一次；onepage-done.md 第 17 条与一页稿决定①的代价句按 O9 补全。验收已写进 m8-plain-language 与 onboarding 的那 17 条文字不变，只是这一项的范围更正。"
+    },
+    {
+      "at": "2026-11-03T23:14:07.605Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "实现线收仓（origin/panel tip b882af0，七批 P0-P7，2026-11-04）：graphLive.awaiting 投影、plain-view 模板（planOf/needsOf/changesSince/moduleStateOf/liveLine/questionView）、/graph-apply 删净面板转只读、首页五段与第二层 Frame、seen 上次看之后状态机（hidden>10 分钟算新到达、可见满 5 秒算离开，差异表记录）、主 Agent 所在行与跳转、Guide 六块与 FirstVisitLine/NoGraphCard、GLM 上手（hero 小按钮三会话收起、三步对话框、设置页重开）。每批门禁全绿 probe 326/326，棘轮 217/19/1 零上升。顺延（impl-plan 表）：条件 9 问法等人重定 1/6/9/17、条件 2 节点标题等人改图数据、条件 8 规则/循环板页等状态板块欠批、8(d) 等 M7、条件 14 分支不在 main、条件 17 真图与全部 L4 待桌面。待人定：四条问法字（建议随下次人看面板一起定）、seen 两常数可调（ui/src/graph/seen.ts）。"
     }
   ]
 }

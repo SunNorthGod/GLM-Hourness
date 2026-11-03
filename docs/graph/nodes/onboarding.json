@@ -101,6 +101,12 @@
           ]
         }
       }
+    },
+    {
+      "at": "2026-11-03T23:14:08.143Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "新手引导实现落地（panel 线 P6/P7，2026-11-04）：Guide 页六块（4/5 块随板块登记出现、peakApplies 门）、firstVisit 状态与 FirstVisitLine 进愿望卡、NoGraphCard 每工作区一次（order 41）、没有图时的一节措辞、页脚上手说明；GLM 上手三步对话框（开着的冻结、设置页可重开、未登录中文报错）。L4 桌面走查待做，随后合 main。"
     }
   ]
 }
