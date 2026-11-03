@@ -486,6 +486,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "E1b/E2 落地（18b0083 + f0210b2，分支 origin/m7，基线 236e4cc，2026-11-04）：E1b 收敛与底线——normalizeVerdict（发现压过结论字面，blocking 必须挂在验收/方向/两条不可逆准则上否则降级计数）、converge 三停因、五种问人草稿（走 M3 的 proposalRecordRefusal）、parseFloor 四写法、七种门禁行、classifyTrunkCall 六条主干操作一律拒、driveDecision 表序、九事件五动作七缺省循环条目、derivedStage/goalCompletion/acceptanceRounds（补 F22 与 R5-F4 跳过）。E2 契约——hourness-handback-v1/review-v1 限 rc.3 assertObjectJsonSchema 子集、23 个指标事件与可注入 MetricSink、EXECUTE/WORKER/OPERATE 工具名与 structured_output 常驻、dsh-min 增 goals 五操作 subagents 六成员（typert 行号进 DESIGN §2.4a）。门禁全绿：test 2527（2 环境跳过）、probe 323/323、棘轮 220/19/1 未涨。探针核对一处：structured_output 常驻后脚本化交回改直调（两场景记录五变四）。下一步 E4 起，先并 main。"
+    },
+    {
+      "at": "2026-11-03T22:05:20.110Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "E4 落地（c0bd42f，2026-11-04，含补推合并 fb62ac0）：执行行与派发——glm-hourness/execute 行（默认禁用，E9 翻转）、dispatch_task（briefGate 先行、写任务工作树+setup、模型对目录、subagents 激活、登记表、带 pins 的派发批注，批准任务同轮进 doing；模块设计评审按模块 id 幂等派发；任务与整目标的评审留 E6/E8 先拒）、八道 EXECUTE_RULES（五道装判定）、面过滤与命令记录；图读走行级修订缓存（写域判定与派发同版）、峰帽单读规则板服务只对 GLM。三处目录契约按真宿主修正（E2 读法有误，探针抓出）：agent/pre-step 是判定链监听器须回传判定；子 agent 会话头 cwd 记父目录、规则改读 workingDirectory 服务；llm.listModels/resolveModelInfo 异步按方法调——已写进 §17.9。门禁全绿（test 2561、probe 356/356 含两新场景各 14 检查、棘轮 217/19/1 三基线零改动）。下一步 E5（计划与通信）。"
     }
   ]
 }
