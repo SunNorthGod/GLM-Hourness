@@ -63,8 +63,8 @@ interface RecordOrigin {
   readonly route?: Route | undefined
 }
 
-/** The follow-up to one denial: what the model did next (design §3.3). */
-interface FollowupRecord extends RecordOrigin {
+/** The follow-up to one denial: what the model did next (design §3.3). The follow-up recorder (G2) writes it. */
+export interface FollowupRecord extends RecordOrigin {
   readonly kind: 'followup'
   /** The recordKey of the denial's journal line. */
   readonly denial: string

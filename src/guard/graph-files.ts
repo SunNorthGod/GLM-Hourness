@@ -30,6 +30,9 @@ export const GRAPH_FILES_RULE = 'graph-files-only'
 
 const ALLOW: RuleVerdict = { kind: 'allow' }
 
+/** The graph write tools the rule's correction names as the way in (design §3.3: the rule's right path is one of them). */
+const GRAPH_WRITE_TOOLS: readonly string[] = ['graph_propose', 'graph_status', 'graph_edit', 'graph_link', 'graph_unlink', 'graph_comment', 'graph_verify', 'graph_decide']
+
 /**
  * The rule for one call: `graphDir` is the absolute graph directory, `cwd`
  * the calling session's working directory, against which relative targets
@@ -45,6 +48,9 @@ export function graphFilesOnly(graphDir: string, cwd: string | undefined): Guard
       const write = writes(call)
       if (write === undefined) return ALLOW
       return deny(write.kind === 'file' ? `You tried to write "${write.target}".` : `You tried to change project graph files through the shell: "${write.command}".`)
+    },
+    rightPath(next) {
+      return GRAPH_WRITE_TOOLS.includes(next.name)
     },
   }
 }

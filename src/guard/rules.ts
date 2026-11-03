@@ -42,8 +42,8 @@ export interface GuardRule {
    * (fail-open).
    */
   detect(call: ToolCall, face: ToolFace): RuleVerdict
-  /** Whether `next` took this rule's right path after `denied` was denied (design §3.3); absent: never counted as right. */
-  rightPath?(next: ToolCall, denied: ToolCall): boolean
+  /** Whether `next` took this rule's right path after `denied` was denied (design §3.3); absent: never counted as right. A rule object carries no `this`. */
+  rightPath?(this: void, next: ToolCall, denied: ToolCall): boolean
 }
 
 /** A rule's declaration line: a string as it is, the function form rendered with `face`. */
@@ -174,6 +174,10 @@ export const fileToolsOnly: GuardRule = {
         exception: 'Build, test and git commands that write files as a side effect are allowed; only redirections and file-changing commands are denied. If this command writes no file, say so in your reply: the denial is recorded for review.',
       },
     }
+  },
+  // The follow-up recorder's right path (m4-gate G2, design §3.3): the next call writes through a file tool.
+  rightPath(next) {
+    return fileToolTargetOf(next) !== undefined
   },
 }
 

@@ -61,7 +61,7 @@ import { activationState, provideRowHealth, sessionIdOf, type HealthState } from
 import { assemblyRoute, sessionRoute } from '../shared/route.ts'
 import type { AgentLike, AssembledSection, PluginContext, PreExecuteHost, ProvideHost, ServiceLookup, SessionEventHost, SessionProjectionsService, WorkingDirectoryService } from '../shared/dsh-min.ts'
 
-export type { GuardRecord, RecordedCall, ViolationRecord } from './records.ts'
+export type { FollowupRecord, GuardRecord, RecordedCall, ViolationRecord } from './records.ts'
 export type { ShadowRecord } from './shadow.ts'
 
 export interface GuardConfig {

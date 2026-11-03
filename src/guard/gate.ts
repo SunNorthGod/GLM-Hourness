@@ -12,19 +12,23 @@
  * session and is named on the row health with `note`, so a lost record is
  * never silent; a call is denied whether or not its record landed. A rule
  * whose detector threw fails open, and the row health names it. The
- * follow-up recorder hooks in with G2 and the request grants with G4.
+ * follow-up recorder (src/guard/followup.ts, G2) settles the agent's pending
+ * follow-up as the listener's first step, notes every denial, and writes the
+ * settled records through this row's journal; the request grants hook in
+ * with G4.
  */
 import type { JsonValue } from '../shared/json.ts'
 import { dialectService, toNativeTool } from '../shared/dialect.ts'
 import type { Route } from '../shared/route.ts'
-import type { PreExecuteHost, PreExecuteListener, ServiceLookup, SessionEventHost, ToolExecutionPayload } from '../shared/dsh-min.ts'
+import type { PreExecuteHost, PreExecuteListener, ServiceLookup, SessionEventHost, SessionEventLike, SessionLike, ToolExecutionPayload } from '../shared/dsh-min.ts'
 import { sessionIdOf, type RowHealth } from '../shared/health.ts'
 import { projectRootOf } from '../data/project-home.ts'
 import type { RouteScope } from './origin.ts'
 import { liftedRules } from './lift.ts'
 import { judge, renderCorrection, type GuardRule, type ToolCall, type ToolFace } from './rules.ts'
-import type { GuardRecord, ViolationRecord } from './records.ts'
-import { subjectOf } from './records.ts'
+import { keyOf as recordKeyOf, subjectOf, type FollowupRecord, type GuardRecord, type ViolationRecord } from './records.ts'
+import * as followup from './followup.ts'
+import { emitGuardMetric } from './metrics.ts'
 
 /** The rules for one root call, and the face and origin they judge under. */
 interface GateRules {
@@ -65,7 +69,7 @@ export interface RuleGateOptions {
   readonly judgeChildren?: boolean | undefined
 }
 
-/** The row's context: pre-execute, service lookup, and the session observers. */
+/** The row's context: pre-execute, service lookup, and the two session observers the follow-up recorder needs (design §3.3). */
 export type GateHost = PreExecuteHost & ServiceLookup & SessionEventHost
 
 /** Whether this listener was installed by installRuleGate; the contracts test counts listeners by it (design §3.8). */
@@ -94,14 +98,23 @@ const cut = (text: string): string => Array.from(text).slice(0, NOTE_LIMIT).join
 
 /**
  * Install the gate for one row: the `tools/pre-execute` listener (outermost
- * or in registration order, as the row registers today) and the
- * `session/disposed` observer that flushes the row journal. The returned
- * function unsubscribes both.
+ * or in registration order, as the row registers today) and the session
+ * observers — `session/event` feeds the follow-up recorder's map of call
+ * events, `session/disposed` settles its pending denial and flushes the row
+ * journal. The returned function unsubscribes all three.
  */
 export function installRuleGate(ctx: GateHost, options: RuleGateOptions): () => void {
   const listener: PreExecuteListener = async (payload, next) => {
     if (payload.parent !== undefined && options.judgeChildren !== true) return next()
     const call: ToolCall = { name: toNativeTool(dialectService(ctx), payload.name), arguments: (payload.arguments ?? {}) as JsonValue }
+    const sessionId = sessionIdOf(payload.agent)
+    const callId = typeof payload.callId === 'string' ? payload.callId : undefined
+    // The follow-up recorder first (design §3.1 step 3): this call settles the agent's pending follow-up,
+    // whoever denies or allows it after; its journal hook carries the settled record to this row's journal.
+    followup.observe(payload.agent, call, callId ?? '')
+    if (sessionId !== undefined && callId !== undefined) {
+      followup.hookJournal(sessionId, record => { void writeFollowup(record, payload, ctx, options, sessionId) })
+    }
     let gate: GateRules | undefined
     try {
       gate = await options.rules(payload, call)
@@ -111,7 +124,6 @@ export function installRuleGate(ctx: GateHost, options: RuleGateOptions): () => 
       return next()
     }
     if (gate === undefined) return next()
-    const sessionId = sessionIdOf(payload.agent)
     const root = projectRootOf(cwdOf(payload))
     const lifted = root === undefined ? undefined : liftedRules(root)
     const active = lifted === undefined || lifted.size === 0 ? gate.rules : gate.rules.filter(rule => !lifted.has(rule.id))
@@ -131,9 +143,27 @@ export function installRuleGate(ctx: GateHost, options: RuleGateOptions): () => 
           call: subjectOf(call),
           ...(deny.ref === undefined ? {} : { ref: deny.ref }),
         }
+        if (payload.agent !== undefined && callId !== undefined) {
+          const rule = active.find(candidate => candidate.id === deny.rule)
+          const rightPath = rule?.rightPath
+          followup.noteDenial(payload.agent, callId, {
+            rule: deny.rule,
+            call,
+            key: recordKeyOf(record),
+            // The recorder calls the rule's right path with the two calls; a rule object carries no `this`.
+            ...(rightPath === undefined ? {} : { rightPath: (next: ToolCall, denied: ToolCall) => rightPath(next, denied) }),
+            origin: gate.origin,
+          })
+        }
         // The denial returns at once; the write is counted when the journal settles: an outcome of 'failed'
         // or a rejected promise (design §3.1 step 7). 'no-home' and a journal that returns nothing are not counted.
         void (async () => {
+          emitGuardMetric(ctx, {
+            kind: 'denial',
+            rule: record.rule,
+            ...(record.scope === undefined ? {} : { scope: record.scope }),
+            ...(record.sessionId === undefined ? {} : { sessionId: record.sessionId }),
+          })
           const outcome = await options.journal(record, payload)
           if (outcome === 'failed') lose(options.row, sessionId, options.health)
         })().catch(() => lose(options.row, sessionId, options.health))
@@ -146,14 +176,40 @@ export function installRuleGate(ctx: GateHost, options: RuleGateOptions): () => 
   }
   // The gate marks every listener it installs (design §3.1); the contracts test counts pre-execute listeners by it.
   ;(listener as { mark?: boolean }).mark = true
-  const dispose = () => { void options.flush?.() }
+  const dispose = (session: SessionLike): void => {
+    if (session !== undefined) followup.sessionDisposed(session)
+    void options.flush?.()
+  }
   ;(dispose as { mark?: boolean }).mark = true
+  const onEvent = (session: SessionLike, event: SessionEventLike): void => followup.sessionEvent(session, event)
+  ;(onEvent as { mark?: boolean }).mark = true
   const uninstallListener = ctx.on('tools/pre-execute', listener, { prepend: options.prepend })
+  const uninstallEvents = ctx.on('session/event', onEvent)
   const uninstallDispose = ctx.on('session/disposed', dispose)
   return () => {
     uninstallDispose()
+    uninstallEvents()
     uninstallListener()
   }
+}
+
+/**
+ * Write one settled follow-up record through the row's journal with the
+ * payload of the call that registered the hook (the same session, so the
+ * same project), counting a failed write against the session like any lost
+ * record (design §3.2) and emitting the metric with the outcome (design
+ * §3.11).
+ */
+async function writeFollowup(record: FollowupRecord, payload: ToolExecutionPayload, ctx: ServiceLookup, options: RuleGateOptions, sessionId: string | undefined): Promise<void> {
+  emitGuardMetric(ctx, {
+    kind: 'followup',
+    rule: record.rule,
+    outcome: record.outcome,
+    ...(record.scope === undefined ? {} : { scope: record.scope }),
+    sessionId: record.sessionId,
+  })
+  const outcome = await options.journal(record, payload)
+  if (outcome === 'failed') lose(options.row, sessionId, options.health)
 }
 
 /** Name the rules whose detector threw on the row health and warn once per rule and session (design §3.1 step 5). */

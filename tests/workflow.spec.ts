@@ -177,6 +177,51 @@ test('records from routes the dialect did not claim are counted apart; records w
   assert.ok(report.includes('## 例外（先看）\n- 违规 file-tools-only × 2\n- 违规 file-tools-only（其他路由） × 1\n'))
 })
 
+test('each denied rule gets one line with its count, its last denial, its right-path ratio and its verbatim retries (m4-gate G2)', () => {
+  const report = morningReport({
+    period: 'p',
+    decisions: [],
+    violations: [
+      { at: '2026-10-31T06:02:00Z', rule: 'checker-config', tool: 'edit', scope: 'dialect', correction: '…', call: { tool: 'edit', target: 'tsconfig.json' } },
+      { at: '2026-10-31T07:00:00Z', rule: 'checker-config', tool: 'edit', scope: 'dialect', correction: '…', call: { tool: 'edit', target: 'tsconfig.json' } },
+      { at: '2026-10-31T08:00:00Z', rule: 'checker-config', tool: 'edit', scope: 'dialect', correction: '…', call: { tool: 'edit', target: 'tsconfig.json' } },
+      { at: '2026-10-31T08:05:00Z', kind: 'followup', rule: 'checker-config', tool: 'edit', outcome: 'repeat', denial: 'k', scope: 'dialect' },
+      { at: '2026-10-31T08:06:00Z', kind: 'followup', rule: 'checker-config', tool: 'write', outcome: 'right-path', denial: 'k', scope: 'dialect' },
+      { at: '2026-10-31T08:07:00Z', kind: 'followup', rule: 'checker-config', tool: 'write', outcome: 'right-path', denial: 'k', scope: 'dialect' },
+    ] as GuardRecord[],
+    usage: [],
+    asks: NO_ASKS,
+    offsetMinutes: 480,
+  })
+  assert.ok(report.includes('- 拦下 checker-config × 3（最近一次：edit tsconfig.json · 10-31 16:00） · 拦截后下一步走对 2/3 · 原样重试 1 次'), report)
+  assert.ok(report.includes('- 拦截后下一步走对：checker-config 2/3'), report)
+})
+
+test('the summary counts the settled follow-ups as 走对 x/y and the stopped ones apart; the denominator holds no 「没有下一步」 (N30)', () => {
+  const violations: GuardRecord[] = []
+  for (let index = 0; index < 3; index++) {
+    violations.push({ at: `2026-11-01T0${index}:00:00Z`, rule: 'one', tool: 'Bash', scope: 'dialect', correction: '…' })
+    violations.push({ at: `2026-11-01T0${index}:10:00Z`, kind: 'followup', rule: 'one', tool: 'write', outcome: 'right-path', denial: 'k', scope: 'dialect' })
+  }
+  violations.push({ at: '2026-11-01T05:00:00Z', kind: 'followup', rule: 'one', tool: 'pwsh', outcome: 'other', denial: 'k', scope: 'dialect' })
+  violations.push({ at: '2026-11-01T06:00:00Z', kind: 'followup', rule: 'two', tool: 'read', outcome: 'none', denial: 'k', scope: 'dialect' })
+  violations.push({ at: '2026-11-01T07:00:00Z', kind: 'followup', rule: 'two', tool: 'read', outcome: 'none', denial: 'k', scope: 'dialect' })
+  const report = reportOf(violations)
+  assert.ok(report.includes('- 拦截后下一步走对：one 3/4（另有 2 次停下来交给人或上级）'), report)
+  assert.ok(!report.includes('- 拦下 two ×'), 'a rule with follow-ups but no denial in the period has no line of its own')
+})
+
+test('a rule denied with no follow-up settled yet shows its count and its last denial without a ratio; with nothing settled anywhere the summary counts the stops alone', () => {
+  const report = reportOf([{ at: '2026-11-01T02:00:00Z', rule: 'one', tool: 'Bash', scope: 'dialect', correction: '…', call: { tool: 'pwsh', command: 'Set-Content a.txt' } }])
+  assert.ok(report.includes('- 拦下 one × 1（最近一次：Bash Set-Content a.txt · 11-01 10:00）\n'), report)
+  assert.ok(!report.includes('拦截后下一步走对'), report)
+  const stopped = reportOf([
+    { at: '2026-11-01T02:00:00Z', rule: 'one', tool: 'Bash', scope: 'dialect', correction: '…' },
+    { at: '2026-11-01T03:00:00Z', kind: 'followup', rule: 'one', tool: 'read', outcome: 'none', denial: 'k', scope: 'dialect' },
+  ])
+  assert.ok(stopped.includes('- 拦截后下一步走对：无（另有 1 次停下来交给人或上级）'), stopped)
+})
+
 /** A filesystem of the given files; a file that is not in it is missing, as ENOENT. */
 function filesOf(files: ReadonlyMap<string, string>): { readFile(path: string): Promise<string> } {
   return {

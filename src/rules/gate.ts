@@ -32,14 +32,20 @@
  * hold an agent (design §11.2), but a deferral whose ticket cannot be recorded
  * still refuses, and says so. Every refusal and every recorded call is a line
  * of the project's violation journal, the file the guard writes, with the rule
- * as `rules:<id>`.
+ * as `rules:<id>`. The listener also hooks the guard framework's follow-up
+ * recorder (src/guard/followup.ts, m4-gate G2, design §3.3): as its first
+ * step it settles the agent's pending follow-up with this call, and every
+ * refusal (a block and a deferral that refuses with a ticket) is noted as
+ * the agent's next pending one. A late denial of the board's detectors is
+ * not noted: that call already ran.
  */
 import { basename, isAbsolute, join, relative, resolve } from 'node:path'
 import { cachedWorktrees, projectOf } from '../data/project-root.ts'
 import { writesInto } from '../guard/directory-writes.ts'
+import * as followup from '../guard/followup.ts'
 import { originOf } from '../guard/origin.ts'
 import { renderCorrection, type ToolCall } from '../guard/rules.ts'
-import type { GuardRecord } from '../guard/records.ts'
+import { keyOf, type GuardRecord } from '../guard/records.ts'
 import { dialectNames, dialectService, dialectWarner, toNativeTool } from '../shared/dialect.ts'
 import type { AgentLike, PreExecuteDecision, PreExecuteHost, ServiceLookup, ToolExecutionPayload } from '../shared/dsh-min.ts'
 import { sessionIdOf, type RowHealth } from '../shared/health.ts'
@@ -120,21 +126,34 @@ export function installRulesGate(deps: GateDeps): () => void {
   const warnFault = dialectWarner('rules')
   const trees = cachedWorktrees(deps.now)
 
-  /** A line for the violation journal; the journal never rejects into the call, the call does not wait for the write (the guard does not either), and a journal that cannot be reached never changes what the rules said about the call. */
-  function note(agent: AgentLike, exec: ToolExecutionPayload, claimed: boolean, line: Line): void {
+  /** A line for the violation journal; the journal never rejects into the call, the call does not wait for the write (the guard does not either), and a journal that cannot be reached never changes what the rules said about the call. Returns the line's record key, for the follow-up recorder. */
+  function note(agent: AgentLike, exec: ToolExecutionPayload, claimed: boolean, line: Line): string {
+    const record: GuardRecord = {
+      at: new Date(deps.now()).toISOString(),
+      tool: exec.name,
+      agentId: agent.id,
+      sessionId: agent.session?.id,
+      ...originOf(claimed, sessionRoute(agent.session)),
+      ...line,
+    }
     try {
-      void deps.journal.violation({
-        at: new Date(deps.now()).toISOString(),
-        tool: exec.name,
-        agentId: agent.id,
-        sessionId: agent.session?.id,
-        ...originOf(claimed, sessionRoute(agent.session)),
-        ...line,
-      })
+      void deps.journal.violation(record)
     }
     catch (error) {
       warnFault(`a violation line could not be handed to the journal: ${message(error)}`)
     }
+    return keyOf(record)
+  }
+
+  /** Note one refusal as the agent's pending follow-up (design §3.3): the rules have no right path of their own, so only a repeat, something else or no next call can settle it. The origin is the refusal line's. */
+  function noteFollowup(agent: AgentLike, exec: ToolExecutionPayload, claimed: boolean, rule: string, call: ToolCall, key: string): void {
+    if (typeof exec.callId !== 'string') return
+    followup.noteDenial(agent, exec.callId, {
+      rule,
+      call,
+      key,
+      origin: originOf(claimed, sessionRoute(agent.session)),
+    })
   }
 
   /** The row's health for the session, after the judgement; a report that fails never changes the verdict. */
@@ -163,7 +182,7 @@ export function installRulesGate(deps: GateDeps): () => void {
     const write = writesInto(boardDirs(paths, trees(project.root)), caller.workspace)(call)
     if (write !== undefined) {
       const reason = filesOnlyText(write.kind === 'file' ? `You tried to write "${write.target}".` : `You tried to change the rules board's files through the shell: "${write.command}".`)
-      note(agent, exec, claimed, { rule: RULES_FILES_ONLY, mode: 'enforce', effect: 'block', correction: reason, signals: {} })
+      noteFollowup(agent, exec, claimed, RULES_FILES_ONLY, call, note(agent, exec, claimed, { rule: RULES_FILES_ONLY, mode: 'enforce', effect: 'block', correction: reason, signals: {} }))
       return { kind: 'deny', reason }
     }
 
@@ -216,7 +235,9 @@ export function installRulesGate(deps: GateDeps): () => void {
     })
     if (verdict.effect === 'block') {
       const reason = denialText({ attempt: described.attempt, effect: 'block', rules: pairs(verdict.strongest), peak })
-      for (const hit of verdict.strongest) note(agent, exec, claimed, { rule: `rules:${hit.rule}`, mode: 'enforce', effect: 'block', correction: reason, signals: signalsOf(hit) })
+      for (const hit of verdict.strongest) {
+        noteFollowup(agent, exec, claimed, `rules:${hit.rule}`, call, note(agent, exec, claimed, { rule: `rules:${hit.rule}`, mode: 'enforce', effect: 'block', correction: reason, signals: signalsOf(hit) }))
+      }
       return { kind: 'deny', reason }
     }
     const session = agent.session
@@ -225,7 +246,9 @@ export function installRulesGate(deps: GateDeps): () => void {
     if (session !== undefined && queued.length > 0) {
       const deferral = await deps.tickets.defer({ session, caller, view, root: project.root, cwd, tool, args: exec.arguments, described, events, unreadable, nested: exec.parent !== undefined, rules: queued, peak })
       if (deferral.kind === 'deny') {
-        for (const { hit } of queued) note(agent, exec, claimed, { rule: `rules:${hit.rule}`, mode: 'enforce', effect: 'queue', correction: deferral.reason, ...(deferral.ticket === undefined ? {} : { ticket: deferral.ticket }), signals: signalsOf(hit) })
+        for (const { hit } of queued) {
+          noteFollowup(agent, exec, claimed, `rules:${hit.rule}`, call, note(agent, exec, claimed, { rule: `rules:${hit.rule}`, mode: 'enforce', effect: 'queue', correction: deferral.reason, ...(deferral.ticket === undefined ? {} : { ticket: deferral.ticket }), signals: signalsOf(hit) }))
+        }
         return { kind: 'deny', reason: deferral.reason }
       }
     }
@@ -237,9 +260,15 @@ export function installRulesGate(deps: GateDeps): () => void {
   }
 
   return deps.ctx.on('tools/pre-execute', async (exec, next) => {
+    // The follow-up recorder first (design §3.3): this call settles the agent's pending follow-up whoever refuses or allows it.
+    const agent = exec.agent
+    if (agent !== undefined && typeof exec.callId === 'string') {
+      const sessionId = agent.session?.id
+      if (sessionId !== undefined) followup.hookJournal(sessionId, record => { void deps.journal.violation(record).catch(() => {}) })
+      followup.observe(agent, { name: toNativeTool(dialectService(deps.ctx, warn), exec.name, warn), arguments: (exec.arguments ?? {}) as JsonValue }, exec.callId)
+    }
     const decision = await next()
     if (decision.kind !== 'allow') return decision
-    const agent = exec.agent
     try {
       const cwd = agent?.session?.header.cwd
       if (agent === undefined || typeof cwd !== 'string' || cwd === '') return decision

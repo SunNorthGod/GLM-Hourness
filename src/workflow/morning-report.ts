@@ -15,6 +15,7 @@
  */
 import { auditPaths, type DecisionRecord, type UsageRecord } from '../memory/audit.ts'
 import { classifyRecord, type GuardRecord } from '../guard/records.ts'
+import { ruleStats } from '../guard/measure.ts'
 import type { SuppressionRecord } from '../env/suppressions.ts'
 import type { LoadedGraph } from '../graph/parse.ts'
 import { listOpenItems } from '../graph/projection.ts'
@@ -194,6 +195,39 @@ function isDispatch(record: DecisionRecord): boolean {
   return typeof record.kind === 'string' && (record.kind === 'dispatch' || record.kind.startsWith('dispatch:'))
 }
 
+/**
+ * One line per rule the journal denied in the period, and the right-path
+ * summary (m4-gate G2, design §3.10), over the same statistics reader the
+ * command line and the rules page use. The denominator of a ratio holds
+ * right-path, verbatim retries and everything else; the follow-ups that
+ * settled as no next call are counted apart, because stopping for the human
+ * is the right path for several corrections (design §3.3). A rule whose
+ * denials all sit outside the period has no line of its own; a rule the
+ * journal only holds follow-ups for still enters the summary.
+ */
+function ruleLines(records: readonly GuardRecord[], offsetMinutes: number): string[] {
+  const stats = ruleStats(records, {})
+  const lines: string[] = []
+  const ratios: string[] = []
+  let stopped = 0
+  for (const [rule, stat] of stats.rules) {
+    // The stops count for every rule the journal holds, also for one whose denials sit outside the period.
+    stopped += stat.followups.none
+    const denominator = stat.followups['right-path'] + stat.followups.repeat + stat.followups.other
+    if (denominator > 0) ratios.push(`${rule} ${stat.followups['right-path']}/${denominator}`)
+    const denials = stat.denials.dialect + stat.denials.other
+    if (denials === 0) continue
+    const last = stat.last
+    const at = last === undefined || Number.isNaN(Date.parse(last.at)) ? '' : ` · ${renderStamp(Date.parse(last.at), offsetMinutes)}`
+    const look = last === undefined ? '' : `（最近一次：${last.tool}${last.subject === undefined ? '' : ` ${last.subject}`}${at}）`
+    lines.push(`- 拦下 ${rule} × ${denials}${look}${denominator > 0 ? ` · 拦截后下一步走对 ${stat.followups['right-path']}/${denominator}` : ''}${stat.followups.repeat > 0 ? ` · 原样重试 ${stat.followups.repeat} 次` : ''}`)
+  }
+  if (ratios.length === 0 && stopped === 0) return lines
+  const pairs = ratios.length === 0 ? '无' : ratios.join('，')
+  lines.push(`- 拦截后下一步走对：${pairs}${stopped > 0 ? `（另有 ${stopped} 次停下来交给人或上级）` : ''}`)
+  return lines
+}
+
 /** Render the morning report for one period. */
 export function morningReport(input: ReportInput): string {
   const lines: string[] = [`# 晨报 ${input.period}`]
@@ -220,10 +254,12 @@ export function morningReport(input: ReportInput): string {
   lines.push('')
   lines.push('## 例外（先看）')
   // 「无」 answers the violations; the lines below it count what the journal
-  // holds besides them (late denials, recorded calls, gaps, unreadable lines).
+  // holds besides them (late denials, recorded calls, gaps, unreadable lines)
+  // and then what the model did after each rule's denials (design §3.10).
   if (denials.length === 0) lines.push('- 无')
   lines.push(...violationLines(denials))
   lines.push(...auxiliary)
+  lines.push(...ruleLines(input.violations, offsetMinutes))
 
   // The suppression-comment total and its movement over the period (m4-suppressions §6.7):
   // rises and falls counted apart, so a net-zero period with churn still shows.
