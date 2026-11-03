@@ -15,35 +15,16 @@ import { isRefusal } from '../src/data/refusal.ts'
 import { checkStore, classify } from '../src/memory/model.ts'
 import { journalFile, readScope } from '../src/memory/storage.ts'
 import { MEMORY_STORE_EXAMPLE, memoryTools } from '../src/memory/tools.ts'
-import { agentOf, MAIN, memoryFixture, refusalOf, type FixtureOptions, type MemoryFixture } from './memory-helpers.ts'
+import { agentOf, journalRecords, MAIN, refusalOf, withFixture } from './memory-helpers.ts'
 
 const GHP = `${['ghp', '_'].join('')}${'a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8'}`
 const MIXED_TOKEN = ['aB3dE5gH7jK9mN1pQ3sT', '5vW7yZ9bD1fH3jL5nP7r'].join('')
 const PEM = ['-----BEGIN', 'RSA PRIVATE KEY-----'].join(' ')
 const SHA = '0123456789abcdef0123456789abcdef01234567'
 
-async function withMemory(body: (memory: MemoryFixture) => Promise<void>, options: FixtureOptions = {}): Promise<void> {
-  const memory = memoryFixture(options)
-  try {
-    await body(memory)
-  }
-  finally {
-    memory.dispose()
-  }
-}
+const withMemory = withFixture
 
-/** One line of a memory journal, as far as the specs read it. */
-interface Line {
-  readonly op: string
-  readonly actor: string
-  readonly relay?: string
-  readonly by?: Readonly<Record<string, string>>
-  readonly data: Readonly<Record<string, unknown>>
-}
-
-const records = (dir: string): Line[] => existsSync(journalFile(dir))
-  ? readFileSync(journalFile(dir), 'utf8').split('\n').filter(line => line !== '').map(line => JSON.parse(line) as Line)
-  : []
+const records = journalRecords
 
 const preference = (over: Record<string, unknown> = {}): Record<string, unknown> => ({ ...MEMORY_STORE_EXAMPLE, ...over })
 const fact = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
@@ -75,7 +56,7 @@ test('the example in the description goes through the same check as a real call 
   assert.equal(record?.actor, 'llm')
   assert.equal(record?.relay, 'Start with the answer, and keep jargon out.')
   assert.deepEqual(record?.by, { session: 'main-session', agent: 'main-session', tool: 'memory_store', callId: 'call-1' })
-  assert.equal(record?.data.relayChecked, false, 'the words are not checked against the person\'s messages yet')
+  assert.equal(record?.data.relayChecked, false, 'with the person\'s messages unreadable the words stay unchecked')
   assert.equal(records(memory.places.project!).length, 0, 'a preference about the person is not in the project')
 }))
 
@@ -125,13 +106,12 @@ test('the field rules of a write: Why line, a source that can be recognised, the
   assert.equal(records(memory.places.user!).length, 1)
 }, { known: KNOWN }))
 
-test('a preference without the person\'s words is refused as ask_first, and the hint tells the model not to store a guess and not to ask yet', () => withMemory(async (memory) => {
+test('a preference without the person\'s words is refused as ask_first, and the hint names memory_habit (H1)', () => withMemory(async (memory) => {
   const refused = await refusalOf(memory.call('memory_store', preference({ relay: undefined })))
   assert.deepEqual([refused.code, refused.field], ['ask_first', 'relay'])
-  assert.ok(refused.hint?.includes('Do not store a habit you only guessed') === true && refused.hint.includes('do not ask about it yet'))
-  assert.ok(!(refused.hint ?? '').includes('memory_habit'))
+  assert.ok(refused.hint?.includes('call memory_habit with action "ask"') === true && refused.hint.includes('record it with action "confirm"'))
   const relayText = (memory.tools.get('memory_store')?.parameters as { properties: { relay: { description: string } } }).properties.relay.description
-  assert.ok(relayText.includes('If you only guessed a habit from their edits, do not store it.') && !relayText.includes('memory_habit'))
+  assert.ok(relayText.includes('from their latest message') && relayText.includes('ask first with memory_habit'))
   const depth = await refusalOf(memory.call('memory_store', { name: 'reporting-depth', type: 'user', description: 'Reports', body: 'Short.', value: 'concise' }))
   assert.deepEqual([depth.code, depth.field], ['invalid', 'value'], 'reporting-depth without words is invalid before it is ask_first')
 }))

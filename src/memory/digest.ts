@@ -9,6 +9,7 @@
  */
 import { readJournal, type Fold } from '../data/journal.ts'
 import { journalFile as lessonsFile } from '../lessons/storage.ts'
+import { habitLandings, habitMarkers } from './habit.ts'
 import { buildDigest, depthWritesOf, eventsFrom, lessonLandings, LESSONS_COLLECTED, MEMORY_COLLECTED, memoryLandings, noteLandings, windowOf, type Collected, type DigestOptions, type LearningDigest } from './learning.ts'
 import { correctionSignals } from './signals.ts'
 import { journalFile, type MemoryEnv } from './storage.ts'
@@ -46,10 +47,16 @@ export async function readDigest(env: MemoryEnv, session: SessionLike | undefine
   const landings = [
     ...project === undefined ? [] : memoryLandings(project),
     ...user === undefined ? [] : memoryLandings(user),
+    ...project === undefined ? [] : habitLandings(project.state),
+    ...user === undefined ? [] : habitLandings(user.state),
     ...lessons === undefined ? [] : lessonLandings(lessons),
     ...graph.ok ? noteLandings(graph.nodes.values()) : [],
   ]
-  const digest = buildDigest({ events, landings, since, until, minCount, graph: graph.ok ? 'ok' : 'unavailable' })
+  const habits = [
+    ...project === undefined ? [] : habitMarkers(project.state),
+    ...user === undefined ? [] : habitMarkers(user.state),
+  ]
+  const digest = buildDigest({ events, landings, habits, since, until, minCount, graph: graph.ok ? 'ok' : 'unavailable' })
   env.note(session?.id, 'learning', notes.length === 0 ? undefined : `学习摘要的来源没读全：${notes.join('；')}`)
   return notes.length === 0 ? digest : { ...digest, notes }
 }

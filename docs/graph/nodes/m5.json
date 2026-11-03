@@ -221,6 +221,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "整支合入 main 完成（2026-11-03 下午，合并提交 e654b0a，父 2c99acc + aef9d43）：19 处冲突按两边意图调和；门禁全绿 build/preflight/test 2476（较 m3 合入后 +324）/probe 323/323（+49 项 m5 检查）；eslint 基线 242→220、knip 19、jscpd 1。工程调和：测试链超 Windows 8191 字符上限，拆 test:1/test:2 同序同语义；graph.svg 随合并提交重渲。桌面版于 16:23 构建后重启加载新组合。剩 S12（等 M3 talk.ts——现已在 main，解锁）与桌面两批验收。"
+    },
+    {
+      "at": "2026-11-03T17:20:20.908Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "S12 并入 main（80d4612，2026-11-04），M5 实现步骤全部落地；剩桌面批次 L4（lessons-seed 导入、S12 习惯问句、召回与提示词段）。impl-plan 与 impl 记录随本批入库 .agents/tasks/m5/。"
     }
   ]
 }

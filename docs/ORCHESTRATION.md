@@ -1031,7 +1031,7 @@ LLM 爱造轮子，因为写脚本只花当前这一轮的力气，装工具却�
 
 ## 8. 记忆与学习
 
-### 8.1 现状〔M5 步骤 M1、G1 已实现，L2、L3；桌面版第一批验收未做〕
+### 8.1 现状〔M5 步骤 M1、G1、H1 已实现，L2、L3；桌面版第一批验收未做〕
 
 记忆行（`src/memory/`）按会话工作：项目目录跟会话的工作区，关于人本人的记忆在用户级目录（`d-memory-scope`），两处都是只追加的流水 `memory.jsonl`（`DESIGN.md` §2.4）；旧的 `memory.json` 在第一次写入时迁移（改名保留为 `memory.json.migrated-<毫秒>`，读不出的旧文件不被覆盖，读与写都报 `io`）。行配置 `home` 不再使用，行健康说明这一点。设计与验收在 `.agents/tasks/m5/design.md`（项目图节点 `m5`、`lessons`）。
 
@@ -1044,15 +1044,15 @@ LLM 爱造轮子，因为写脚本只花当前这一轮的力气，装工具却�
 | 事实（`project`、`reference`） | 14 天半衰期，每次被召回算一次复审（加成上限 1.5 倍）〔已实现〕；强度低于 0.1 的不进索引，`memory_query` 仍找得到 | 可被新事实覆盖；agent 可以直接删 |
 | 偏好（`user`、`feedback`） | 不衰减：这是用户定下的，不因一段时间没被想起而淡化 | 只能由用户撤销：人在输入框打 `/memory forget`；或对主 Agent 说，主 Agent 带人的原话调 `memory_forget`。同一会话里 agent 删自己刚写的误记除外 |
 
-偏好一定有凭据：人的原话（`relay`），或人亲手打的命令。没有凭据的偏好存不进去（`memory_store` 得 `ask_first`），读流水时也算坏行。原话要到习惯先问再记（步骤 H1）才对照人发的消息核对；在那之前 `llm` 写的每条偏好记 `relayChecked: false`，`/memory show` 标「原话未核对」。
+偏好一定有凭据：人的原话（`relay`），或人亲手打的命令。没有凭据的偏好存不进去（`memory_store` 得 `ask_first`，`hint` 指去 `memory_habit`），读流水时也算坏行。会话里人的消息读得到时，`llm` 写偏好的 `relay` 必须出自人最近一条消息，否则 `relay_not_said`；核对了的 `store` 记录记 `relayChecked: true`，读不到人的消息时照收、记 `relayChecked: false`，`memory_query` 与 `/memory show` 标「原话未核对」。人确认过的习惯（见 §8.5 的 `memory_habit`）再被更新时原话核对不了，整条拒收（`unavailable`）。
 
 存放〔定案 2026-10-28；`d-memory-scope` 2026-10-30〕：关于人本人的记忆（范围 `all`，只有 `user`、`feedback` 两类）放用户级目录 `$DSH_HOME/glm-hourness/memory/memory.jsonl`；项目事实与项目规范（范围 `project`）放会话所在项目的 `.llm/memory.jsonl`，项目按会话头的工作目录定（工作树回到主检出）。第一次往一个项目写之前，`.llm/` 先加进该项目的 `.git/info/exclude`，加不进去时这次写入得 `io`、不建 `.llm/`。同名条目：项目的遮住用户级的。
 
 ### 8.3 召回与工具
 
 - 会话开局的索引：根 agent 的第一步（存储里有条目时）和每次压缩之后的第一步，在对话末尾加一条来源为 `glm-hourness-memory` 的 `<system-reminder>`，偏好在前，事实按强度，淡忘的事实不列，至多 200 行与 25,000 字符。它是对话里的消息，不是系统提示词的一节，所以系统提示词逐步不变；可见历史里已经有它就不再加，开局时存储为空的会话在第一次写入之后的下一步得到一次。
-- 记忆工具 `memory_store`、`memory_query`、`memory_forget` 常驻（不进延迟目录）；只读的 `learning_signals`（§8.5）是主 Agent 的延迟工具，不并入记忆工具名单，所以 GLM 的 Memory 一节出现的条件（三个记忆工具都在）不变。`memory_query` 按关键词（命中数乘强度）或按名字取；返回的事实各算一次复审（项目流水里一条 `review` 记录），偏好不算。
-- 子 agent（委派出去的会话）不拿记忆工具和 `learning_signals`、不收索引与学习摘要提醒：行在子 agent 的 `agent/created` 上装一个不带 `prepend` 的 `system-prompt/assemble` 监听器去掉这四个工具，方言的 `prepend` 监听器因此看不到它们，不给子 agent 加 `# Memory` 一节；工具体再按会话头的 `origin` 拒绝按名直接调用（`role`，正路是交回结构）。
+- 记忆工具 `memory_store`、`memory_query`、`memory_forget` 常驻（不进延迟目录）；只读的 `learning_signals`（§8.5）与习惯问话的 `memory_habit`（§8.5）是主 Agent 的延迟工具，不并入记忆工具名单，所以 GLM 的 Memory 一节出现的条件（三个记忆工具都在）不变。`memory_query` 按关键词（命中数乘强度）或按名字取；返回的事实各算一次复审（项目流水里一条 `review` 记录），偏好不算。
+- 子 agent（委派出去的会话）不拿记忆工具、`learning_signals` 和 `memory_habit`、不收索引与学习摘要提醒：行在子 agent 的 `agent/created` 上装一个不带 `prepend` 的 `system-prompt/assemble` 监听器去掉这五个工具，方言的 `prepend` 监听器因此看不到它们，不给子 agent 加 `# Memory` 一节；工具体再按会话头的 `origin` 拒绝按名直接调用（`role`，正路是交回结构）。
 - `/memory`（输入框，身份为人）：`show` 列两处的条数与最近 10 条，`forget <名字> [project|all]`，`restore <名字> [project|all]`。
 - 服务 `glmHournessMemory`（契约 `src/shared/memory-service.ts`）：`depth(sessionId)` 给 GLM 方言读常设的汇报细度：方言在会话的 agent 创建时问一次，那一次同步读用户级流水，之后同一会话不变（§8.5）；另有 `stats`、`hygiene` 给周报与巡检（`src/memory/service.ts`）。会话投影 `hournessMemory` 把两份流水的路径交给面板。
 - 行不注册任何 `tools/pre-execute` 监听器：记忆是建议，不拦任何调用（`d-code-rules-enforce`：本行没有规则）。
@@ -1065,7 +1065,8 @@ LLM 爱造轮子，因为写脚本只花当前这一轮的力气，装工具却�
 ### 8.5 学习流水线
 
 - 信号〔已实现，M5 步骤 G1〕：harness 从项目图的历史和记忆流水里算出人对 agent 的纠正，按键分组（`src/memory/signals.ts`，纯函数，同样的输入得到同样的输出）：人改了 agent 写的字段 `edit:<节点类型>.<字段>`（人，或 `llm` 带 `relay` 转述人的话，改的字段上一次是 `llm` 或 `harness` 不带 `relay` 写的），人否决提议 `reject:<类型>`，人在对话里对方案的否掉与补充 `chat:reject`、`chat:add`（批注不带 `relay`，认开头的固定说法，`src/shared/answer-marks.ts`），人把做完的节点重开 `reopen:<类型>`，汇报细度从一档拨到另一档 `depth:up`、`depth:down`。开头是「人在对话里同意」的历史项是人对提议说可以，不算纠正。门禁以外的提交改了刚合入的文件这一类要等 M7 写的任务尾注，还没有。
-- 流程：学习摘要 → 主 Agent 为每一组选落点 → 观察是否复发。`learning_signals`（只读，主 Agent 的延迟工具，参数 `since`、`minCount`，默认近 28 天、至少 2 次）列出各组：键、一句说明、次数、至多 3 个例子、已落点数 `learned`、落点之后又出现的次数 `recurrences`、最近 4 周每周的次数 `weekly`（只看走向）；图读不出时 `graph: "unavailable"`，哪份流水读不出写进 `notes`，不报错。落点是带这个键的 `learnedFrom` 的记忆条目或经验（人删掉的、退役的不算），或节点上一条 `学自：<键>` 的批注（规则提议与候选标定题这样记）；落点的时刻取第一次写下这个键的那条记录。服务 `glmHournessMemory` 的 `learningDigest(session, {since?, until?, minCount?})` 给 M7 的周报同一份结构。
+- 流程：学习摘要 → 主 Agent 为每一组选落点 → 观察是否复发。`learning_signals`（只读，主 Agent 的延迟工具，参数 `since`、`minCount`，默认近 28 天、至少 2 次）列出各组：键、一句说明、次数、至多 3 个例子、已落点数 `learned`、这一组有没有被当作习惯问过人与结果 `asked`、落点之后又出现的次数 `recurrences`、最近 4 周每周的次数 `weekly`（只看走向）；图读不出时 `graph: "unavailable"`，哪份流水读不出写进 `notes`，不报错。落点是带这个键的 `learnedFrom` 的记忆条目或经验（人删掉的、退役的不算），或节点上一条 `学自：<键>` 的批注（规则提议与候选标定题这样记），还有习惯问话：生效的习惯偏好算落点，没回的问话 28 天内算，「不用」在 `until` 之前算；落点的时刻取第一次写下这个键的那条记录。服务 `glmHournessMemory` 的 `learningDigest(session, {since?, until?, minCount?})` 给 M7 的周报同一份结构。
+- 习惯先问再记〔已实现，M5 步骤 H1〕：agent 从改动里猜出的习惯不再直接写，也不自己开口问；先调 `memory_habit {action: "ask"}`——字段校验、换词表（`plain_words`，词与替法在 `hint`）、像密钥拒收；已是偏好得 `known`，28 天内问过没结果的同一条（按组键认，名字与说法不同也算）得 `asked_recently`，`until` 未过的「不用」得 `declined_recently`，一条回复里与 M3 已交出的提议合计超过三件得 `too_many`（问话排在提议之后，M3 不数问话，§8.5 之外披露的缺口），一个项目一周里的第四条得 `week_cap`；成功时流水里一条 `ask` 记录，返回 `text` 以圈号开头、第二行是「要记的：」加 `description`。人在同一会话、七天内、问话之后第一条消息里答了：`confirm` 带人的原话把问话时的内容存成不衰减的偏好（`store` 记录带 `data.ask`，条目带 `confirmed`，流水里总有内容相同、更早的问话）；原话不在那条消息里得 `words_not_found`，人没回得 `not_answered`，别的会话的问话得 `other_session`，过了七天得 `lapsed`，原话里有像密钥的一段得 `secret_like`（`field: words`），什么都不存、问话仍开着。`decline` 同样核对原话，记一条 `decline`，同一条习惯 28 天内不再问。读不到会话里人的消息时 ask 与 confirm 都得 `unavailable`，流水没有新行。人的消息读自会话投影 `hournessTalk`，没注册上时折叠会话日志（`src/memory/answers.ts`，本仓库里除设计行自身外唯一读 `src/design/talk.ts` 的文件）。
 - 学习摘要提醒〔已实现，M5 步骤 G1〕：给 `isMainAgentFor` 判为主 Agent 的步一条来源为 `glm-hourness-learning` 的提醒，指向 `learning_signals`；先看项目记忆流水里最近一条 `learn-notified`，满 7 天或没有才读图计算；至少有一个组没有落点或落点之后又出现，且这些组的键不是上一条提醒列的那些（摘要没变就不再发），才在项目的记忆流水里记一条 `learn-notified`（`data.keys` 是组键）并发出；记不下就不发。算出来不合条件的和写失败的，本进程一小时内不再算。提醒是建议，不拦任何调用，不在图上新增待决。
 - 汇报细度闭环〔已实现，M5 步骤 R1〕：三档滑杆（简洁 / 适中 / 详细，LLM 每次自选）的常设档，是人最近一次说定的。人的话表明长短要一直这样时，主 Agent 调 `memory_store`（`name: reporting-depth`、`type: user`、`value` 是三档之一、`relay` 写人的原话）；人只是这一次嫌长或嫌短，主 Agent 只改这一次的讲法，不写。GLM 方言的 `glm:persona` 一节在会话的 agent 创建时读 `glmHournessMemory` 的 `depth` 一次，没有时用配置的 `persona`：写入的那个会话里系统提示词不变，下一个会话带上新的档。人说「汇报细度恢复默认」，主 Agent 带原话调 `memory_forget reporting-depth`，或人打 `/memory forget reporting-depth`，下一个会话回到配置。服务不在、形状不对、读不出时用配置的档，并在行健康里说明。
 - 子 agent 各配独立记忆目录，避免互相污染。
@@ -1351,7 +1352,7 @@ LLM 不讲人话，多半是默认在向评审汇报，想显得周全。做法�
 | 小改动简报的简化形态 | M7 设计 |
 | 审查 agent 的模型档位 | M7 设计 |
 
-## 16. 规则板（最小一片）〔已实现 2026-10-30，L2、L3；行默认禁用，桌面版首轮验收未做；纯核心 §16.8 已实现 2026-10-31，L2，调用方是 §16.10 与 §16.11；写入引擎的操作 §16.9 已实现 2026-11-01，L2，调用方是 `/rules` 与测试；`checkCall` 与命令行 §16.10 已实现 2026-11-01，L2，调用方只有命令行与测试；工具调用门、`rules_show` 与完整的 `/rules` §16.11 已实现 2026-11-01，L2、L3；等待单、唤醒、转交、每步提醒与心跳 §16.12 已实现 2026-11-02，L2、L3；高峰不做与少做的执行、goal 的暂停与恢复、主 Agent 的高峰一行 §16.13 已实现 2026-11-02，L2、L3，行仍默认禁用〕
+## 16. 规则板（最小一片）〔已实现 2026-10-30，L2、L3；行默认启用（2026-11-04 的启用提交起；此前禁用），桌面版首轮验收未做；纯核心 §16.8 已实现 2026-10-31，L2，调用方是 §16.10 与 §16.11；写入引擎的操作 §16.9 已实现 2026-11-01，L2，调用方是 `/rules` 与测试；`checkCall` 与命令行 §16.10 已实现 2026-11-01，L2，调用方只有命令行与测试；工具调用门、`rules_show` 与完整的 `/rules` §16.11 已实现 2026-11-01，L2、L3；等待单、唤醒、转交、每步提醒与心跳 §16.12 已实现 2026-11-02，L2、L3；高峰不做与少做的执行、goal 的暂停与恢复、主 Agent 的高峰一行 §16.13 已实现 2026-11-02，L2、L3〕
 
 完整设计是 `.agents/tasks/rules/design.md`（不入库，版本 0.10，评审通过、人放行）。自举之前只做其中的一片（项目图 `d-rules-peak-slice`，设计 §16.1）：每个项目一个由人选的高峰模式档位，加少做档的并发上限，经一个服务交出。这一片是整块设计的子集：整块规则板以后往同一批文件里添加，不改写、不删除这一片写下的任何东西。能这样，靠存下来的形状有一条规矩（§16.3）：为空的集合不出现在存档、流水记录的摘要和规则文件里，整块规则板添上它的集合之后，这一片写下的记录照样核对得上。发给模型的高峰提醒与它在各档下的措辞见 §11.4（GLM 通道包），规则板不碰。
 
@@ -1420,7 +1421,7 @@ LLM 不讲人话，多半是默认在向评审汇报，想显得周全。做法�
 
 ### 16.7 验证
 
-L2：`tests/peak-mode.spec.ts`（共用契约：上限与挡住的标记、读取函数、文字与少做那句里的数、`nextPeakChange`）、`tests/rules-model.spec.ts`（`effectivePeakMode`、序列化、规则文件、状态校验、完整形状的每个集合、规则文件逐项核对、`diffRepo`、`adoptRepo`、`unapprovedScripts`）、`tests/rules-store.spec.ts`（设计 §7.5 表里每一种情形、性质测试、锁、两个进程同时写、规则文件的各种情形与 git 操作、为空的集合不存、最小一片写下的文件按字节放进来仍核对得上、`changesBetween`、第一次写之前 `.git/info/exclude` 里的 `.llm/`）、`tests/rules-repo.spec.ts`（真实 git 仓库里设计 §7.5 末表的每一行：新克隆、`git checkout` 旧版、手改、`MERGE_HEAD` 期间只写流水与快照、`repo-adopt`、`repo-restore`、两者的崩溃点；没有 git 时整个文件跳过并写明原因）、`tests/rules-engine.spec.ts`（身份表的每一格、请求校验、修订号、写入的产物、`busy` 与 `io`、项目根）、`tests/rules-ops.spec.ts`（每个操作：对的身份写一条记录、重放得到状态、做不了的请求得一句话且不写任何文件；清理与到期的每一种、重放不要时钟和心跳目录；恢复的照改与忽略）、`tests/rules-property.spec.ts`（§16.9 的性质测试，5 个种子）、`tests/rules-check.spec.ts`（`checkCall` 与命令行，§16.10）、`tests/rules-metrics.spec.ts`（指标事件的出口）、`tests/rules-row.spec.ts`（假宿主上的行：命令与各子命令、服务、健康、恢复之后降级的出路、三档下主 Agent 的调用照常执行、激活期降级、补丁里默认禁用；心跳文件与每步提醒，§16.12）、`tests/rules-gate.spec.ts` 与 `tests/rules-host.ts`（门与 `rules_show`，§16.11）、`tests/rules-tickets.spec.ts`（等待单，§16.12）。L3：`npm run probe` 的场景 `glm-rules`、`non-glm-rules`（§16.11）、`rules-queue` 与 `rules-handover`（§16.12）与 `rules-peak`（GLM 与编排层两个包，平移到周三 15:00 UTC+8 的探针时钟，临时 git 工作区：出厂档位、`/rules peak 不做`、`/rules peak 无影响`，每步经真实的 `/rules` 处理函数与服务读回状态；第一步 `/wish` 使会话成为主 Agent，`rules_show` 列出默认规则，主 Agent 的请求里有高峰一行且只在变化时再出现，GLM 包的高峰提醒恰有一条、规则板的提醒不复述它，§16.13）、`rules-peak-stop` 与 `rules-peak-stop-exit`（§16.13）与 `rules-peak-hourness`（只装编排层包：没有计价服务，没有上限与挡住的标记）。L4（桌面版重启后核对）未做，行保持禁用。纯核心（§16.8）的 L2 是 `tests/rules-model.spec.ts`（规则的校验）、`tests/rules-judge.spec.ts`（事件、有效值、条件、判定、合并、未批准的脚本）、`tests/rules-builtin.spec.ts`（默认规则、三档、目录）和 `tests/contracts.spec.ts` 里的目录一条。
+L2：`tests/peak-mode.spec.ts`（共用契约：上限与挡住的标记、读取函数、文字与少做那句里的数、`nextPeakChange`）、`tests/rules-model.spec.ts`（`effectivePeakMode`、序列化、规则文件、状态校验、完整形状的每个集合、规则文件逐项核对、`diffRepo`、`adoptRepo`、`unapprovedScripts`）、`tests/rules-store.spec.ts`（设计 §7.5 表里每一种情形、性质测试、锁、两个进程同时写、规则文件的各种情形与 git 操作、为空的集合不存、最小一片写下的文件按字节放进来仍核对得上、`changesBetween`、第一次写之前 `.git/info/exclude` 里的 `.llm/`）、`tests/rules-repo.spec.ts`（真实 git 仓库里设计 §7.5 末表的每一行：新克隆、`git checkout` 旧版、手改、`MERGE_HEAD` 期间只写流水与快照、`repo-adopt`、`repo-restore`、两者的崩溃点；没有 git 时整个文件跳过并写明原因）、`tests/rules-engine.spec.ts`（身份表的每一格、请求校验、修订号、写入的产物、`busy` 与 `io`、项目根）、`tests/rules-ops.spec.ts`（每个操作：对的身份写一条记录、重放得到状态、做不了的请求得一句话且不写任何文件；清理与到期的每一种、重放不要时钟和心跳目录；恢复的照改与忽略）、`tests/rules-property.spec.ts`（§16.9 的性质测试，5 个种子）、`tests/rules-check.spec.ts`（`checkCall` 与命令行，§16.10）、`tests/rules-metrics.spec.ts`（指标事件的出口）、`tests/rules-row.spec.ts`（假宿主上的行：命令与各子命令、服务、健康、恢复之后降级的出路、三档下主 Agent 的调用照常执行、激活期降级、补丁里的出厂状态（默认启用）；心跳文件与每步提醒，§16.12）、`tests/rules-gate.spec.ts` 与 `tests/rules-host.ts`（门与 `rules_show`，§16.11）、`tests/rules-tickets.spec.ts`（等待单，§16.12）。L3：`npm run probe` 的场景 `glm-rules`、`non-glm-rules`（§16.11）、`rules-queue` 与 `rules-handover`（§16.12）与 `rules-peak`（GLM 与编排层两个包，平移到周三 15:00 UTC+8 的探针时钟，临时 git 工作区：出厂档位、`/rules peak 不做`、`/rules peak 无影响`，每步经真实的 `/rules` 处理函数与服务读回状态；第一步 `/wish` 使会话成为主 Agent，`rules_show` 列出默认规则，主 Agent 的请求里有高峰一行且只在变化时再出现，GLM 包的高峰提醒恰有一条、规则板的提醒不复述它，§16.13）、`rules-peak-stop` 与 `rules-peak-stop-exit`（§16.13）与 `rules-peak-hourness`（只装编排层包：没有计价服务，没有上限与挡住的标记）。L4（桌面版重启后核对）未做。纯核心（§16.8）的 L2 是 `tests/rules-model.spec.ts`（规则的校验）、`tests/rules-judge.spec.ts`（事件、有效值、条件、判定、合并、未批准的脚本）、`tests/rules-builtin.spec.ts`（默认规则、三档、目录）和 `tests/contracts.spec.ts` 里的目录一条。
 
 ### 16.8 纯核心（`src/rules/events.ts`、`model.ts`、`judge.ts`、`signals.ts`、`builtin.ts`，`src/guard/catalog.ts`）〔已实现 2026-10-31，L2；调用方是 `checkCall`（§16.10）与规则行的门、`rules_show`（§16.11）〕
 
@@ -1498,7 +1499,7 @@ L2：`tests/peak-mode.spec.ts`（共用契约：上限与挡住的标记、读�
 
 **心跳的读侧（`heartbeat.ts`）。** `readHeartbeats` 读 `.llm/rules/hosts/*.json`，`liveHeartbeats` 取 45 秒内的、新的在前，`hostPeak` 按上面的顺序挑 `glm-peak`。`HEARTBEAT_FRESH_MS` 也是 `plan.ts` 判宿主还在不在的数。心跳的写入见 §16.12。
 
-### 16.11 工具调用门、`rules_show` 与完整的 `/rules`（`src/rules/gate.ts`、`caller.ts`、`tool.ts`、`commands.ts`、`listing.ts`、`table.ts`、`service.ts`、`src/guard/directory-writes.ts`）〔已实现 2026-11-01，L2、L3；行默认禁用，桌面版首轮验收未做〕
+### 16.11 工具调用门、`rules_show` 与完整的 `/rules`（`src/rules/gate.ts`、`caller.ts`、`tool.ts`、`commands.ts`、`listing.ts`、`table.ts`、`service.ts`、`src/guard/directory-writes.ts`）〔已实现 2026-11-01，L2、L3；行默认启用，桌面版首轮验收未做〕
 
 设计 §6.1、§6.2、§6.4、§9.1（`rules_show` 的文字）、§9.2、§10.1、§10.3、§11。行的 `inject` 是 `['tools', 'commands']`（补丁里同写）。
 
@@ -1534,7 +1535,7 @@ L2：`tests/peak-mode.spec.ts`（共用契约：上限与挡住的标记、读�
 
 **验证。** L2：`tests/rules-gate.spec.ts`（门：先 `next()`、拦截与文字、与 `checkCall` 逐字相同、只记录、事件、目标模型、写路径、角色与模型与会话、规则文件门禁（直接、子调用、工作树、60 秒缓存、shell、行配置的目录、读不出状态时照守）、故障放行并降级、计价服务三种读不出、计价读数每分钟一次、`rules_show` 的各个部分）、`tests/rules-row.spec.ts`（行的注册与撤回、各子命令各写自己的操作、被拒回一行、`recovery`、`show`、激活期降级）、`tests/contracts.spec.ts`（工具名、目录、服务读取函数、guard 声明多一行）、`tests/peak-mode.spec.ts`（`pluginLabel`）、`tests/workflow.spec.ts`（晨报数 `enforce`）。L3：场景 `glm-rules`、`non-glm-rules`（场景工作区是临时 git 仓库，规则文件里预置一条拦命令文本 `rules-probe-blocked` 的规则和一条只告知的规则；被拦的命令不执行、违规流水有 `rules:r-probe-block`，文件工具写规则目录被 `rules:files-only` 拒绝、文件不变，没人点名的命令照常执行，请求里只有一条规则板的提醒（那条只告知的规则，没变就不再加），`/glm-status` 列出这一行，场景的用户级目录里没有 `rules/`；非 GLM 场景另用真实运行时里的 `rules_show` 读到这两条规则）。
 
-### 16.12 等待单、唤醒、转交、每步提醒与心跳（`src/rules/tickets.ts`、`wake.ts`、`reminder.ts`、`heartbeat.ts`，接线在 `gate.ts`、`index.ts`）〔已实现 2026-11-02，L2、L3；行默认禁用，桌面版首轮验收未做〕
+### 16.12 等待单、唤醒、转交、每步提醒与心跳（`src/rules/tickets.ts`、`wake.ts`、`reminder.ts`、`heartbeat.ts`，接线在 `gate.ts`、`index.ts`）〔已实现 2026-11-02，L2、L3；行默认启用，桌面版首轮验收未做〕
 
 设计 §5.4、§6.3、§6.4、§6.5、§11.2、§15 R4。
 
@@ -1564,7 +1565,7 @@ L2：`tests/peak-mode.spec.ts`（共用契约：上限与挡住的标记、读�
 
 **验证。** L2：`tests/rules-tickets.spec.ts`（开单与去重、20 张的上限、子调用、子 agent 的文字、写不成单、唤醒的几种方式与只发一次、清除的几种原因、重试后单转 `done`、转交（事件与登记两种发现、新子 agent 接手、根不在时取消、人开的会话结束取消）、过期三种与别的宿主写入时的 `host-gone`、心跳迟到时的一次唤醒、`/rules let` 与 `cancel`、非人的身份被拒、唤醒发不出、登记抛错与不在、行卸载；不做档与少做档的部分，§16.13）；`tests/rules-row.spec.ts`（心跳文件的内容、60 秒删除、1 小时的旧文件、`EPERM` 退避与告警一次、行卸载；提醒的内容、只在变化时注入、压缩之后、目标轮、等待单的几种写法、12 项的上限、同一个 agent 创建两次只装一个）；`tests/rules-gate.spec.ts`（排队的规则开单、`rules_show` 列出规则与单）。假宿主 `tests/fake-rc3.ts` 加了活 agent 的登记（`steer`、`inject`、`followup` 记录收到的消息）、`goals.get`（对已释放的 agent 抛 `GoalError`）与 `session/disposed`。L3：场景 `rules-queue`（GLM 路由，探针时钟在高峰里：规则按 `glm-peak` 排队；被拒两次是同一张单；探针 provider 在一步里经真实的 `/rules` 处理函数以人的身份解除规则；下一次请求恰有一条唤醒；调用再来执行、单转 `done`；请求里的提醒按「只告知的规则」「加上开着的单」「单已解除」「又只剩规则」的次序各出现一次）与 `rules-handover`（非 GLM 路由，探针的派发插件派一个一次性子 agent，它的调用被排队、交回、会话结束；单转给主 Agent，人解除规则之后主 Agent 的请求里恰有一条转交的唤醒；流水的次序是开单、转交、解除、已解除）。两个场景结束后用户级目录下都没有 `rules/`。核实项 V3（空闲且有 active goal 的 agent 收到 `inject`）由 §16.13 的场景 `rules-peak-stop` 验证；V11（一次性子 agent 交回之后 `session/disposed` 发出）：`rules-handover` 在真实运行时里观察到，转交那条流水的原因写「会话结束的事件」，所以事件发出了；登记里找不到的兜底仍在，单测覆盖，场景没有走到。
 
-### 16.13 高峰模式的执行：不做档的排队与 goal 的暂停和恢复、主 Agent 的高峰一行（`src/rules/tickets.ts`、`goal.ts`、`wake.ts`、`denial.ts`、`reminder.ts`，接线在 `gate.ts`、`index.ts`、`commands.ts`）〔已实现 2026-11-02，L2、L3；行默认禁用，桌面版首轮验收未做〕
+### 16.13 高峰模式的执行：不做档的排队与 goal 的暂停和恢复、主 Agent 的高峰一行（`src/rules/tickets.ts`、`goal.ts`、`wake.ts`、`denial.ts`、`reminder.ts`，接线在 `gate.ts`、`index.ts`、`commands.ts`）〔已实现 2026-11-02，L2、L3；行默认启用，桌面版首轮验收未做〕
 
 设计 §3.6、§6.3（不做档的几段）、§6.4（高峰一行、不做档的拒绝与唤醒文字）、§15 R4。
 
@@ -1652,9 +1653,9 @@ harness 自己跑的 git 都从这里走：任务与门禁的工作树、两个�
 - 释放时只删令牌还是自己的锁；被误判陈旧而被接手的持有者用 `held()` 发现，不会删接手者的锁。
 - 接手不是原子的（E3 评审 E3-8），有两个窗口。一是创建锁分两步：`wx` 打开，再写内容，等待者恰好在两步之间读到的是空文件，原先按「内容读不出就是废弃」立刻接手，创建者其实还活着。新选项 `unreadableGraceMs`（缺省 0，规则板的行为不变；门禁取 `GATE_UNREADABLE_GRACE_MS` = 2 秒，小于一次轮询）：没有 pid 也没有时间戳的内容（空文件、不是 JSON、`{}`）要同一个等待者连续看到同样的内容满这么久才算废弃，期间内容变成有效的锁就不接手，文件消失或被接手之后重新计时（上一次看到的空文件不算在后来的空文件头上）；创建者崩在两步之间留下的空文件，最多多等一次轮询。有 pid 的锁（持有者已死）照旧立即接手。二是等待者「重读、再改名」之间，接手者刚建的新锁可能被挪走，这个窗口是微秒级，没有复现，也没有在锁文件层面消除：门禁锁的持有者（E7）在写检查记录之前要调 `held()`，并按设计 §6.3 比较门禁工作树的 HEAD。
 - 测试 `tests/execute-gate-lock.spec.ts`（24 例）：门禁的值与 M5 的值（50 毫秒、2 秒、30 秒、120 秒）各对四个选项带一例，不传选项时的原有行为，`keepStale` 与 `holder`，活着的锁让后来者等到超时，陈旧（时间、开机时刻、进程已死），只删自己的令牌，同进程排队与放弃；没有 `bootTime` 的旧式环境对象，读不出内容的文件在缺省下立即接手、在宽限下等够才接手、创建者在宽限内写完就不接手、中间出现过有效的锁就重新计时、门禁锁的宽限。
-## 18. 循环板〔L1（两块板共用的条目形状）已实现 2026-10-31；L2（条目与校验、服务与登记表、循环行自己的事件和默认条目、行的骨架）已实现 2026-11-01，L2、L3；存储、`/loops`、投影与文件门 §18.7、§18.8 已实现 2026-11-02，L2、L3；运行时核心（运行锁与拍、交接、收件箱、去抖与限次、运行与记录）§18.9 已实现 2026-11-02，L2、L3；绑定主 Agent 与投递（到点的 DSH 任务、`holderState`、唤醒表、`loops:schedule-tools`）§18.10 已实现 2026-11-02，L2（L3 只验到两道门装上，见 §18.11）；高峰的开始与结束 §18.12 已实现 2026-11-02，L2、L3；行默认禁用，桌面版首轮验收未做〕
+## 18. 循环板〔L1（两块板共用的条目形状）已实现 2026-10-31；L2（条目与校验、服务与登记表、循环行自己的事件和默认条目、行的骨架）已实现 2026-11-01，L2、L3；存储、`/loops`、投影与文件门 §18.7、§18.8 已实现 2026-11-02，L2、L3；运行时核心（运行锁与拍、交接、收件箱、去抖与限次、运行与记录）§18.9 已实现 2026-11-02，L2、L3；绑定主 Agent 与投递（到点的 DSH 任务、`holderState`、唤醒表、`loops:schedule-tools`）§18.10 已实现 2026-11-02，L2（L3 只验到两道门装上，见 §18.11）；高峰的开始与结束 §18.12 已实现 2026-11-02，L2、L3；行默认启用（2026-11-04 的启用提交起；此前禁用），桌面版首轮验收未做〕
 
-完整设计是 `.agents/tasks/schedules/design.md`（不入库，版本 0.6，评审通过、人放行）。循环板放「到点了或碰到某件事，就去做一件事」，是编排层包 `dsh-hourness` 里的一块板，行是 `glm-hourness/loops`（默认禁用）。这一节随实现分步补写：两块板共用的条目形状（§18.1、§18.2）、循环板的条目与校验（§18.3）、服务与登记表（§18.4）、循环行自己的事件和默认条目（§18.5）、行（§18.6）、人的条目的存储与 `/loops`（§18.7）、文件门 `loops:files-only`（§18.8）、运行时核心（§18.9：运行锁与拍、交接、收件箱、去抖与限次、运行与记录）。源码目录 `src/loops/` 登记在 `scripts/packages.mjs` 的 `hourness.src` 和 `packages/hourness/tsconfig.json` 的 `include` 里。还没有：交给主 Agent 的投递与 DSH 定时任务的绑定（`holder.ts`、`bind.ts`、`deliver.ts`、`loops:schedule-tools`）、工具、页面、机器一级的运行者与账号一级的两个通道事件（等 M6 的契约 `src/shared/channel-loop.ts`）、脚本与检查的执行器（等人同意的那条路）。
+完整设计是 `.agents/tasks/schedules/design.md`（不入库，版本 0.6，评审通过、人放行）。循环板放「到点了或碰到某件事，就去做一件事」，是编排层包 `dsh-hourness` 里的一块板，行是 `glm-hourness/loops`（默认启用）。这一节随实现分步补写：两块板共用的条目形状（§18.1、§18.2）、循环板的条目与校验（§18.3）、服务与登记表（§18.4）、循环行自己的事件和默认条目（§18.5）、行（§18.6）、人的条目的存储与 `/loops`（§18.7）、文件门 `loops:files-only`（§18.8）、运行时核心（§18.9：运行锁与拍、交接、收件箱、去抖与限次、运行与记录）。源码目录 `src/loops/` 登记在 `scripts/packages.mjs` 的 `hourness.src` 和 `packages/hourness/tsconfig.json` 的 `include` 里。还没有：交给主 Agent 的投递与 DSH 定时任务的绑定（`holder.ts`、`bind.ts`、`deliver.ts`、`loops:schedule-tools`）、工具、页面、机器一级的运行者与账号一级的两个通道事件（等 M6 的契约 `src/shared/channel-loop.ts`）、脚本与检查的执行器（等人同意的那条路）。
 
 ### 18.1 条目的形状（`src/loops/trigger.ts`）
 
@@ -1708,13 +1709,13 @@ harness 自己跑的 git 都从这里走：任务与门禁的工作树、两个�
 
 ### 18.6 行（`src/loops/index.ts`）
 
-- 行 `glm-hourness/loops`（cordis 名 `dsh-glm-hourness/loops`，补丁里在 `design` 之后、`ui` 之前，`disabled: true`，`inject: ['commands']`）。`apply(ctx, config)` 做这些：提供行健康、把循环行自己的条目和那一个 harness 动作交给自己的登记表、注册 `/loops`（§18.7）、在 `tools/pre-execute` 上最外层装 `loops:files-only`（§18.8）、注册会话投影 `hournessLoops`，在 `agent/created` 时对着那个会话的项目对账一次（§18.7），并在 `ctx.inject(['sessionController'], …)` 里提供服务 `glmHournessLoops`、起 60 秒一拍、运行这个进程遇到的每个项目（§18.9）。
+- 行 `glm-hourness/loops`（cordis 名 `dsh-glm-hourness/loops`，补丁里在 `design` 之后、`ui` 之前，`inject: ['commands']`）。`apply(ctx, config)` 做这些：提供行健康、把循环行自己的条目和那一个 harness 动作交给自己的登记表、注册 `/loops`（§18.7）、在 `tools/pre-execute` 上最外层装 `loops:files-only`（§18.8）、注册会话投影 `hournessLoops`，在 `agent/created` 时对着那个会话的项目对账一次（§18.7），并在 `ctx.inject(['sessionController'], …)` 里提供服务 `glmHournessLoops`、起 60 秒一拍、运行这个进程遇到的每个项目（§18.9）。
 - 哪些事只在有会话控制器的进程做（设计 §3.1、§6.1、§11.1）：提供服务、运行条目、起拍。没有它的进程（headless、探针、标定）照样注册工具面以外的全部——命令、文件门、投影、步 notice——行健康写一行「这个进程不跑循环板（没有会话控制器）」，状态不降级；读不到服务的行按自己的退路执行事件条目。所以 guard 的 `glm:guard` 节那一句跟着行健康走（`activationState(ctx, 'loops')` 不是 `absent`、`inactive` 就写），不跟着服务走：门在每个进程里都装着，告知也要在每个进程里。
 - 不抛错：宿主没有 `provide`，行健康是 `inactive` 并写原因、告警一次；服务提供不上（第二个实例）只写一条降级，不动第一个实例的服务。缺一部分只降级、写明缺哪一样：没有 `commands` 服务就没有 `/loops`；没有 `on` 就装不上文件门（行健康写「没有什么拦着别人写循环板的文件」）；`sessionProjections` 还没来、注册失败，投影那一行写明；没有 `inject` 就既没有投影也没有服务与拍。登记表告诉的每一条（别的行交来的东西有几项不合、被整份拒绝、有没学过的词）、每个项目读文件时出的问题和运行时报的每一件事都进行健康：`degraded` 级进「问题」，`info` 级只写一行不降级。
 - 行健康只在激活时报（`ACTIVATION_ONLY`）：循环板属于项目，不属于某个会话。配置：`home`（违规流水的项目目录，缺省取数据目录服务的）、`io`、`lock`、`delay`、`beat`（存储的文件操作、写锁环境、一次性定时器与 60 秒的拍，测试替换）。
-- 注册：`scripts/packages.mjs` 的 `rows`，`packages/hourness/cordis.patch.yml`（`disabled: true`），`packages/hourness/package.json` 的 `exports`，`packages/hourness/locale/loops/{en,zh}.json`，`src/shared/health.ts` 的 `HOURNESS_ROWS`（与补丁同序）。
+- 注册：`scripts/packages.mjs` 的 `rows`，`packages/hourness/cordis.patch.yml`，`packages/hourness/package.json` 的 `exports`，`packages/hourness/locale/loops/{en,zh}.json`，`src/shared/health.ts` 的 `HOURNESS_ROWS`（与补丁同序）。
 
-### 18.7 人的条目的存储、`/loops`、投影与 `view.json`（`src/loops/store.ts`、`journal.ts`、`commands.ts`、`boards.ts`、`view.ts`、`projection.ts`，`src/loops/model.ts` 的条目文件）〔已实现 2026-11-02，L2、L3；行默认禁用〕
+### 18.7 人的条目的存储、`/loops`、投影与 `view.json`（`src/loops/store.ts`、`journal.ts`、`commands.ts`、`boards.ts`、`view.ts`、`projection.ts`，`src/loops/model.ts` 的条目文件）〔已实现 2026-11-02，L2、L3；行默认启用〕
 
 - 文件（设计 §9.1）。仓库里：`docs/loops/entries/<id>.json` 一项一个文件（id 是 `u-` 加 8 位小写十六进制），`docs/loops/scripts/<id>.<后缀>` 是那一项的脚本原文。项目的 `.llm/loops/` 里（不入 git）：变更记录 `journal.jsonl`（只追加，每条带写后的全文）、循环板最近一次写成了什么 `repo-written.json`、写锁 `write.lock`、写仓库文件之前的临时文件 `tmp/`、给页面的 `view.json`。`.llm/loops/` 第一次建时先经 `ensureIgnored`（`src/data/project-root.ts`）把 `.llm/` 追加进 `<git 目录>/info/exclude`，再以 `wx` 写一个内容为 `*` 的 `.gitignore`（已在就不动），所以运行时的东西不会在项目里显示成未跟踪文件，项目自己的忽略配置也不动。`.llm/` 只从项目根算，不取数据目录服务的 `projectHome`。
 - 条目文件的字节（`entryFileText`）：两格缩进的 JSON，条目自己的字段按固定次序（`id`、`title`、`why`、`when`、`filter`、`action`、`limits`、`quiet`、`scope`、`basis`、`ownRules`、`source`），里层对象的键按码点排序，末尾一个换行。一项只有一种写法，所以文件的 SHA-256 就能说明它是不是循环板写的那一份，`git diff` 也读得懂。`validatePersonEntry` 在 `validateEntry`（§18.3）之外另查 `source`（`kind`、`at`、`via`、`relay`、`question?`、`proposal`）；文件对着「人同意的那一刻」（`source.at`）检查，所以 `once` 的条目不会因为读得晚而变成过去。
@@ -1724,14 +1725,14 @@ harness 自己跑的 git 都从这里走：任务与门禁的工作树、两个�
 - 对账的时机与 `view.json`（`boards.ts`、`view.ts`）：一个项目根一个存储。会话在某个项目里开起来（`agent/created`）与每次 `/loops` 之后，对账那个项目一次并重写 `view.json`。`view.json` 只在内容变了时写，一个项目至多每 2 秒一次（提前来的那一份等满 2 秒再写；比较时不算里面的时刻），以临时文件加改名换上。里面是版本号、时刻、项目键、全部条目（插件的带登记表的状态，人的带存储判出的状态）和「要你看一眼的」几句话。`view.ts` 只有类型和纯函数、不导入 Node 内置模块，面板能直接导入。会话投影 `hournessLoops`（`projection.ts`）只给页面指路：`{projectKey, viewFile}`，从会话头的工作目录算一次，会话里的事件都不改它；工作目录不在 git 项目里时两项都是 `null`（这个会话没有循环板）。读文件出的问题不进会话，进行健康。
 - 不变量：一个项目至多 50 项人的条目、空集合不落盘（`withoutEmptyCollections` 的做法：没有值的字段不写进文件）；会跑东西的条目只有人同意过才跑，仓库里读入的没有批准记录就只标 `unadopted`；这一层防的是改过的条目照样跑（误改、合进来的改动、拉来的改动），不防有意的伪造——同时改条目文件又在变更记录里补一行的写入者要先绕过 `loops:files-only`（§18.8），它的命令文本留在会话日志里。
 
-### 18.8 文件门 `loops:files-only`（`src/loops/guard.ts`）〔已实现 2026-11-02，L2、L3；行默认禁用〕
+### 18.8 文件门 `loops:files-only`（`src/loops/guard.ts`）〔已实现 2026-11-02，L2、L3；行默认启用〕
 
 - 规则（设计 §2.4 第 16a 行、§13）：条目文件、脚本与运行时文件只由循环板写。目标在仓库任何一份检出（主检出与它的工作树，`git worktree list` 的结果，共用 `src/data/project-root.ts` 的 `cachedWorktrees`，缓存 60 秒）的 `docs/loops/` 之下，或项目的 `.llm/loops/` 之下，一律拒绝：文件工具与 `file-tools-only` 判为写文件的 shell 命令都算（共用 `src/guard/directory-writes.ts` 的 `writesInto`），带 `parent` 的子调用（`run_code` 里的工具调用）照样判，读不拦。
 - 装法同图行的 `graph-files-only`（`src/guard/graph-files.ts`）：guard 框架的 `GuardRule`，在 `tools/pre-execute` 上以 `{ prepend: true }` 最外层，所以写循环板文件的 shell 命令拿到的是这一条的四段式理由，不是 `file-tools-only` 的。不经 `installRuleGate`（M4 未放行，impl-plan Interpretations 4）。从行启用的那天起就拦，没有只记录的影子模式（`d-code-rules-enforce`）。
 - 拒绝时写一条项目违规流水（`rowJournal` 的 `violation`，规则是 `loops:files-only`、`mode: 'enforce'`，带工具名、agent 与会话 id、路由来源），流水写不进也不改变判定、不挡调用。规则不读循环板的任何状态，所以文件读不出时它照样成立；循环板写自己的文件走自己的代码（`store.ts`），这条规则看不见——它只看工具调用。判不出来时（取不到项目、取不到工作树）调用照常放行，宿主日志写一行告警。
 - 登记：`src/guard/catalog.ts` 的 `GUARD_RULES` 加 `{ id: 'files-only', row: 'loops', mode: 'enforce' }`，经规则板的 `CATALOG` 映射成 `loops:files-only` 在规则页上只读显示；契约测试核对这个 id 就是循环行装上的规则对象的 id。服务 `glmHournessLoops` 的 `declaration` 让 guard 的 `glm:guard` 节在这一行启用时多写一句（同规则板 `glmHournessRules` 的做法），这句话不随条目变，所以不动提示词缓存。
 
-### 18.9 运行时核心：运行锁与拍、交接、收件箱、去抖与限次、运行与记录（`src/loops/lock.ts`、`inbox.ts`、`run.ts`、`harness.ts`、`file-watch.ts`、`records.ts`、`channel.ts`，接线在 `index.ts`）〔已实现 2026-11-02，L2、L3；行默认禁用〕
+### 18.9 运行时核心：运行锁与拍、交接、收件箱、去抖与限次、运行与记录（`src/loops/lock.ts`、`inbox.ts`、`run.ts`、`harness.ts`、`file-watch.ts`、`records.ts`、`channel.ts`，接线在 `index.ts`）〔已实现 2026-11-02，L2、L3；行默认启用〕
 
 - 谁来跑（设计 §6.1，`lock.ts`）：一个项目一把运行锁 `<项目根>/.llm/loops/runner.lock`，以 `wx` 独占创建，内容 `{pid, boot, startedAt, at, token}`（`boot` 取到分钟）。持锁的进程每一拍以临时文件加改名刷新 `at`。别的进程看到 `at` 在 3 分钟以内、`boot` 与本机相差不超过 120 秒就不跑这个项目（页面写「另一个 DSH 进程在跑这块板」）；否则把旧锁改名为 `runner.lock.stale-<毫秒>` 留痕，再创建自己的。不按 pid 判活（Windows 会复用 pid）。行卸载与宿主退出时只删 `token` 是自己的那一把。
 - 交接（设计 §6.1，评审 F33）：投递只能在主 Agent 的会话打开着的那个进程里做，所以锁跟着那个会话走。不持锁的进程看到持有者会话在自己这里，就以临时文件加改名写 `handover.json`（`{pid, boot, session, at, token}`）并每一拍刷新；持锁的进程每一拍读它，`at` 新鲜、`boot` 对得上、它说的会话不在本进程里、而且本进程手上没有正在跑的运行时，写下状态、删锁（页面写交给了谁），写交接文件的那个进程在它的下一拍拿到锁。手上有运行时不交，锁的状态是 `handing` 并写出在等哪一项。别的进程在别人的 `handover.json` 新鲜时不抢锁，所以两个进程不会来回争。锁换手时各写一条 `loop-handover`（`release`、`take`）；单纯第一次拿到一把空锁不算换手，不记。这一步还没有持有者记录的读法（`holder.ts` 随投递那一步），所以 `holderHere` 眼下恒为「不在本进程」，交接的机制有了、生产路径上不会触发。
@@ -1746,7 +1747,7 @@ harness 自己跑的 git 都从这里走：任务与门禁的工作树、两个�
   - `script` 与 `check`：一律 `refused`，不起任何进程，原因 `unadopted`（脚本只有人看过原文、同意并钉住哈希之后才跑，那条路还没有）与 `check-missing`（检查的命令要项目图上批过的环境工具节点，M4 还没放行）；不发消息，页面与行健康从 `state.json` 的 `last` 看得到。静态检查钉住 `src/loops/` 不导入 `node:child_process`、不出现 `spawn`。
 - 什么时候开始跑一个项目（设计 §6.1）：这个进程里出现了这个项目的会话（`agent/created`），或人在它里面打了 `/loops`；之后每 60 秒一拍，10 分钟没有这两件事就放手、删锁（让给有主 Agent 会话的那个进程）。设计里的另两条入口（DSH 工作区登记表列项目、项目里有主 Agent 的持有者记录）随后面两步。一拍里的每一步都各自 `try`：读不出锁、读不出收件箱、跑出错都只报行健康，不抛进定时器。
 
-### 18.10 绑定主 Agent 与投递：到点的 DSH 任务、`holderState`、唤醒表与 `loops:schedule-tools`（`src/loops/holder.ts`、`bind.ts`、`deliver.ts`、`remove.ts`、`reminder.ts`、`guard.ts`，接线在 `run.ts`、`index.ts`）〔已实现 2026-11-02，L2；L3 见 §18.11，行默认禁用〕
+### 18.10 绑定主 Agent 与投递：到点的 DSH 任务、`holderState`、唤醒表与 `loops:schedule-tools`（`src/loops/holder.ts`、`bind.ts`、`deliver.ts`、`remove.ts`、`reminder.ts`、`guard.ts`，接线在 `run.ts`、`index.ts`）〔已实现 2026-11-02，L2；L3 见 §18.11，行默认启用〕
 
 - 主 Agent 是谁（设计 §6.4，`holder.ts`）：一个函数 `holderStateOf`，对账、每一次投递和每一拍都重新问，不缓存——`/wish here` 之后的下一次投递就投到新会话。记录的位置也收在一个函数 `holderRecordFor` 里（实施计划 Interpretations 第 5 条）：M3 眼下把它放在用户级目录，按项目的图目录定位（图行的服务给 `dirFor`，没有图行时取 `<项目根>/docs/graph`）；M3 把记录搬进项目的 `.llm/` 之后只改这一个函数。不改 `src/graph/main-agent-holder.ts`。
 - 六种结果与各自的代价（设计 §6.4 的表）：`ok` 照常投；`none`（没有记录）、`archived`（会话在 `workspaceRegistry.archivedSessionIds` 里）、`not-found`（上一次 `resolveAgent` 回 `session/not-found`）确知没有能收消息的主 Agent，消息存着、绑在那个会话上的到点任务删掉；`elsewhere`（别的进程写着新鲜的 `handover.json`，或上一次 `resolveAgent` 回 `session/writer-held` 且不到 5 分钟）要那个进程去投，这边只存着、什么任务都不动；`unknown` 分两种原因，`archive-unreadable`（读不到归档集合）照常投但一条任务都不删（偏向晨报照常来，行健康 degraded 在报），`holder-unreadable`（记录读不出）不知道投给谁，存着。`elsewhere` 连着超过 5 分钟时行健康 degraded，手上有运行时写出在等哪一项。状态每变一次写一条 `loop-holder`，所以「这段时间消息没投，是因为会话归档了」事后查得到。
@@ -1761,7 +1762,7 @@ harness 自己跑的 git 都从这里走：任务与门禁的工作树、两个�
 - `loops:schedule-tools`（设计 §6.2 末段、§2.4 第 16 行，`guard.ts`）：循环行在 `tools/pre-execute` 上以 `prepend` 装的第二道门，从行启用那天起就拦，没有影子模式。拒三种调用：提示文字去掉首尾空白后以 `Loop board: ` 开头的 `schedule_create`（否则主 Agent 建的提醒会被对账当成孤儿认下，评审 F13）；`schedule_update` 与 `schedule_delete` 的 `id` 指向循环板的任务（在 `bindings` 里，或 `schedule.catalog()` 里这条的提示文字是循环板的写法；catalog 读不出时放行，由对账第 3 条事后改回）。`schedule_list`、别的提醒的增删改、以及与提醒无关的调用都照常。拒绝文字是四段式，纠偏那一段逐字是设计给的那句；拒绝写进项目违规流水，规则 `loops:schedule-tools`、`mode: 'enforce'`。规则列在 `src/guard/catalog.ts` 里。
 - 接线（`run.ts`、`index.ts`）：运行时每一拍在读完文件与高峰之后对一次账、投一次存着的消息；`holderHere`（持有者会话在本进程里打开着）接上运行锁，所以锁真的跟着主 Agent 的会话走了（§18.9 里它恒为「不在本进程」）；`schedule/changed` 与 `workspace/session-stop` 各挂一个只读的监听器，收不到时每 60 秒一拍的对账照样做（设计 §10.2 V2、V15）；每个会话装上那一行与走步记录（哪一步是主 Agent 由记录每次重判，`/wish here` 之后跟着变）。宿主没有定时服务时到点的条目不建、不删、不报错（`scheduleOf` 返回 undefined，对账直接返回），事件条目照常。
 
-### 18.12 高峰的开始与结束（`src/loops/peak.ts`，接线在 `run.ts`、`index.ts`）〔已实现 2026-11-02，L2、L3；行默认禁用〕
+### 18.12 高峰的开始与结束（`src/loops/peak.ts`，接线在 `run.ts`、`index.ts`）〔已实现 2026-11-02，L2、L3；行默认启用〕
 
 - 两个条目、两个来源（设计 §5.2、§6.9 第 5 条）：`loops.peak-start` 是 `self` 条目，活是规则板干的（定档位与上限），循环板只做两件事——事件来了把它记进收件箱（`self` 条目不从收件箱跑，§18.9）与在边缘那一刻记一条自己的运行（`loop-fired` 加 `loop-done`，结局 `delegated`，`reason` 是规则板服务 `stateForProject` 此刻读出的档位；读不出档位就没有 `reason`），页面照列。`loops.peak-end` 是 `harness` 条目，动作 `loops.peak-end` 由 `src/loops/peak.ts` 自己执行：设计的 §6.9 第 4 条那张十行表，一次判断从第一行走到底，行内的任何读法失败都按该行的偏向落下去，整张表不抛错。
 - 表怎么读（每行一次重问，不缓存）：第 1 行，持有者状态是 `none`、`archived`、`not-found` 或读不出记录时跳过「没有能叫醒的主 Agent」，页面早已说了为什么（§18.10）；第 2 行，会话在别的 DSH 进程里时这次判断存着不走（下面第 4 条）；第 3 行，登记表里有谁把 `execute.resume-drive` 列进自己的动作就调它（M7 还不存在时没有谁列它，整行跳过，叫醒的路照走）：在本进程里活着的会话任何档位都调（评审 F48），冷的只在这次高峰里走过步（第 14 项的走步记录）且档位不是读得出的无影响时才经 `resolveAgent` 恢复了再调，60 秒不回答按 `failed` 收场；动作说 `skipped` 而会话刚恢复、goal 又是活跃的，记 `done`、原因「打开会话时 M7 接上了推进」（评审 F40）；第 4 行，规则板的服务读不出档位时跳过「读不到高峰模式」；第 5 行是落穿，少做与不做到达同样的行（`d-main-agent-peak-exempt`）；第 6 行，无影响档跳过「无影响档没有挪开的活」；第 7 行，主 Agent 正在跑时跳过「主 Agent 正在干活，它下一步的高峰一行已经变了」；第 8 行，走步记录里的会话与时刻比高峰的开始晚才算干过活——高峰的开始按分钟倒着走计价服务的 `peak(t)` 找（至多 24 小时，找不到或时钟读不出就开始不明，按干过活算，偏向多叫一次）；第 9 行，goal 暂停说「自动推进暂停着」，挡住时按原因说（`hourness-waiting-human`「主 Agent 在等你回话」、`hourness-idle-rounds`「主 Agent 没事可做，已经在问你」、其余「自动推进被挡住了（…）」），冷的会话先恢复再读 goal；第 10 行，`done`，告诉主 Agent 挪开的活可以开始。tell 的句子只有这四句（接上、在跑、没接上、开始），`{end}` 是边界时刻在本机时区的 `HH:MM`。
@@ -1774,7 +1775,7 @@ L2：`tests/loops-trigger.spec.ts`（`nextOccurrence` 在 `Asia/Shanghai` 与有
 
 L2（条目、登记表和行的骨架）：`tests/loops-model.spec.ts`（`validateEntry` 两种来源：id 与标题的边界，`why` 插件必填人可缺，不认识的字段与循环板自己写的字段，各种动作按来源收或拒，占位的各种情形，脚本引用与超时，检查的 `argv`，`to: event-session` 只配事件触发，`when` 的映射（告诉主 Agent 的 `every` 至少 600、脚本与 harness 至少 300），没有声明的事件等着，坏输入不抛错；模块不导入 Node 内置模块）；`tests/loops-registry.spec.ts`（测试里写的、形状取设计 §5.1 的 M7 条目表整份交给真实的 `contribute` 全部收下；每种不合的条目、事件、动作丢掉并带字段路径；来源与名字空间的整份拒绝；个数上限；灰显、转为生效、合不上时丢掉并告诉行健康、撤回后回到灰显；替换与撤回；`rev`；循环行自己的三个事件、参数和去重键；四项默认条目；行的激活、降级与卸载；补丁、清单、目录表和 locale；`src/loops/` 没有别的行的表和 `channel.ts`）；`tests/health.spec.ts`、`tests/contracts.spec.ts` 加了行 `loops` 与服务读取函数的用例。
 
-L3（§18.1 到 §18.6）：这一片不加场景。这一行被组装进探针的配置（补丁里 `disabled: true`，覆盖层不启用它），`client-modules` 的检查在设置页清单里认出它的 locale 标题和包的子路径（全部组合 16 行，只装编排层包 11 行）；原有场景不受影响。
+L3（§18.1 到 §18.6）：这一片不加场景。这一行被组装进探针的配置（当时补丁里还是 `disabled: true`，覆盖层不启用它），`client-modules` 的检查在设置页清单里认出它的 locale 标题和包的子路径（全部组合 16 行，只装编排层包 11 行）；原有场景不受影响。行随启用提交（2026-11-04）起默认启用，探针的场景 `loops`、`loops-peak`、`loops-peak-restart` 用覆盖层把它钉在开上。
 
 L2（存储，§18.7）：`tests/loops-store.spec.ts`，用真实的临时 git 仓库（同 `tests/rules-helpers.ts` 的做法）：条目文件对得上就跑；清零、截断、不是 JSON、不合校验的条目文件与 `/loops restore` 写回；变更记录末行截断（存进 `.journal.corrupt-<时刻>` 再截掉）；中间坏一行（跳过、整份另存、页面列行号、`/loops ack` 之后不再提示）；锁残留（`keepStale`）与两个写者只有一个写成；改名失败（注入的 `rename` 返回 `EPERM`，临时文件留下、下一次读补上）；变更记录写成而仓库文件没写成之后的补写；git 正在合并、变基、拣选、回退、二分或占着 `index.lock` 时不写 `docs/loops/`、标记消失后补上；条目文件在循环板之外被改（手改、`git revert`、检出旧版）→ 不跑、追加一条 `external`、同一个哈希只记一次；切分支或 `git stash -u` 之后文件不在 → 「不在这份检出里」、不写回、切回来照常跑；新克隆没有 `.llm/loops/` → 只告诉主 Agent 的条目认回，会跑东西的条目只标 `unadopted`；`git status` 在循环板写过之后只列出 `docs/loops/`（验收第 32 条）、`.llm/` 进了 `info/exclude` 且 `.llm/loops/.gitignore` 是 `*`；空集合不落盘；`/loops delete|restore|ack` 的每条回话与重名、插件 id、超过 7 天、没有存档几种拒绝；两个进程同时追加（锁与记录的原语）。`tests/loops-row.spec.ts` 另钉行把存储、命令、投影和门接起来的那几件事（注册与卸载、宿主缺一部分时只降级、`agent/created` 时对账一次、`view.json` 的节流与内容）。
 

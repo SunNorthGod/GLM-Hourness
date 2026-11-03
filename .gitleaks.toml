@@ -1,0 +1,14 @@
+# Secret-gate allowlist (scripts/check-secrets.mjs reads it; DEVELOPMENT.md
+# §10): entries here are the repository's known false positives, each named
+# by path and literal. Anything else that matches a rule still fails the
+# gate; adding an entry needs the reason written here.
+title = "GLM-Hourness secret-gate allowlist"
+
+# The habit refusal tests quote a fabricated github-pat-shaped string (the
+# sequential a1B2c3D4… fixture of tests/memory-habit.spec.ts, three uses) to
+# check the secret_like refusal of memory_habit. It is not a token; allowed
+# by exact literal and file so any other github-pat anywhere still fails.
+[[allowlists]]
+description = "fabricated github-pat fixture of the habit refusal tests"
+paths = ['''tests/memory-habit\.spec\.ts''']
+regexes = ['''ghp_a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8''']

@@ -23,6 +23,7 @@ import type { ParsedRef } from '../data/evidence.ts'
 import { appendJournal, readJournal, type AppendOptions, type AppendResult, type JournalRecord, type NewRecord } from '../data/journal.ts'
 import type { GraphNode } from '../graph/schema.ts'
 import type { SessionLike } from '../shared/dsh-min.ts'
+import type { TalkView } from './answers.ts'
 import { baseRecord, convertLegacy, memoryFold, type MemoryEntry, type MemoryState, type Scope } from './model.ts'
 
 /** The directories of one session's memory; either may be unknown. */
@@ -39,7 +40,7 @@ const legacyFile = (dir: string): string => join(dir, 'memory.json')
 export const dirOfScope = (places: Places, scope: Scope): string | undefined => scope === 'project' ? places.project : places.user
 
 /** What kind of problem a note to the row's health is about; a later success under the same key clears it (`depth` stays: the session read the reporting depth once). */
-export type NoteKey = 'directory' | 'lock' | 'io' | 'legacy' | 'index' | 'depth' | 'learning' | 'learn-notice' | 'main-agent'
+export type NoteKey = 'directory' | 'lock' | 'io' | 'legacy' | 'index' | 'depth' | 'learning' | 'learn-notice' | 'main-agent' | 'talk'
 
 /** Whether a source named in a memory exists, as far as the graph and the project's files say. */
 export interface SourceCheck {
@@ -58,6 +59,8 @@ export interface MemoryEnv {
   sources(session: SessionLike | undefined): Promise<SourceCheck>
   /** The project graph of the session, for the learning digest. */
   graph(session: SessionLike | undefined): Promise<GraphRead>
+  /** The talk of a session with the person, for the relay and the habit questions; `undefined` when their messages cannot be read (src/memory/answers.ts). */
+  talk(session: SessionLike | undefined): TalkView | undefined
   now(): Date
   /** Tell the row what is wrong with one session's memory (Chinese, for the row health), or `undefined` that it is fine again. */
   note(sessionId: string | undefined, key: NoteKey, text: string | undefined): void
@@ -109,7 +112,7 @@ async function present(path: string): Promise<boolean> {
   }
 }
 
-const stateOf = (entries: readonly MemoryEntry[]): MemoryState => ({ scope: 'project', entries: new Map(entries.map(entry => [entry.name, entry])) })
+const stateOf = (entries: readonly MemoryEntry[]): MemoryState => ({ scope: 'project', entries: new Map(entries.map(entry => [entry.name, entry])), asks: new Map(), declined: new Map(), askTimes: [] })
 
 /** The folded journal of one scope; for the project, the old `memory.json` stands in until the journal exists. */
 export async function readScope(scope: Scope, dir: string): Promise<ReadOutcome> {

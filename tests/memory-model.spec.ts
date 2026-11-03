@@ -163,11 +163,11 @@ test('each field rule refuses with its code and field', () => {
   assert.ok(!('code' in checkStore({ ...EXAMPLE, body: 'Open with the answer.\n  **why:** a lower-case, indented Why line counts' })))
 })
 
-test('a user or feedback write without the user\'s words is ask_first; the hint tells the model not to store a guess and not to ask yet', () => {
+test('a user or feedback write without the user\'s words is ask_first; the hint names memory_habit (H1)', () => {
   const { relay: _relay, ...withoutRelay } = EXAMPLE
   const asked = refusal(withoutRelay)
   assert.equal(asked.code, 'ask_first')
-  assert.match(asked.hint ?? '', /Only the user's own words make a preference\. Do not store a habit you only guessed from their edits, and do not ask about it yet\./)
+  assert.match(asked.hint ?? '', /Only the user's own words make a preference\. To record a habit you only guessed from their edits, call memory_habit with action "ask"; when they say yes in their own words, record it with action "confirm"\./)
   assert.match(asked.hint ?? '', /store it as a project memory with its source/)
   assert.equal(refusal({ ...withoutRelay, type: 'user' }).code, 'ask_first')
   const fact = request({ name: 'status-board', type: 'reference', description: 'The status board', body: 'See the board.' })
@@ -289,7 +289,7 @@ test('the relay check is carried on the record: false is kept on the entry, true
 test('an update keeps created, origin, confirmed and learnedFrom and replaces the six fields; reviews goes up by one', () => {
   const confirmed: MemoryEntry = {
     ...entryOf(foldAll([store({ ...EXAMPLE, scope: 'project', learnedFrom: ['edit:a'] }, LLM_A, T0)]).state, 'lead-with-the-answer'),
-    confirmed: { ask: 'H-0a1b2c', question: 'Keep answering first?' },
+    confirmed: { ask: 'project:lead-with-the-answer', question: 'Keep answering first?', body: EXAMPLE.body, at: T0 },
   }
   const start = foldAll([at(baseRecord([confirmed]))]).state
   const next = foldAll([store({
@@ -304,7 +304,7 @@ test('an update keeps created, origin, confirmed and learnedFrom and replaces th
   const updated = entryOf(next, 'lead-with-the-answer')
   assert.equal(updated.created, T0)
   assert.deepEqual(updated.origin, { actor: 'llm', session: 'session-a', agent: 'agent-1' })
-  assert.deepEqual(updated.confirmed, { ask: 'H-0a1b2c', question: 'Keep answering first?' })
+  assert.deepEqual(updated.confirmed, { ask: 'project:lead-with-the-answer', question: 'Keep answering first?', body: EXAMPLE.body, at: T0 })
   assert.deepEqual(updated.learnedFrom, ['edit:a', 'edit:b'], 'old keys first, new keys joined, no repeat')
   assert.deepEqual([updated.description, updated.body, updated.source, updated.relay], ['Open with the answer', 'Answer first.\n**Why:** said again.', ['docs/CHARTER.md §6'], 'Answer first, please.'])
   assert.deepEqual([updated.lastReviewed, updated.reviews, updated.type, updated.scope, updated.kind], [day(T0, 3), 1, 'feedback', 'project', 'preference'])
@@ -378,7 +378,7 @@ test('who may revoke a preference: the user, a record with the user\'s words, or
   assert.equal(revokeRefusal(preference, { actor: 'llm', session: 'session-a', agent: 'agent-9' }, 'forget')?.code, 'preference_owner', 'another agent of the same session')
   assert.equal(revokeRefusal(preference, { actor: 'llm', relay: '  ' }, 'forget')?.code, 'preference_owner', 'blank words are no words')
   assert.equal(revokeRefusal(preference, { actor: 'llm', session: 'session-a', agent: 'agent-1' }, 'restore')?.code, 'preference_owner', 'restoring needs the user\'s words')
-  const confirmed: MemoryEntry = { ...preference, confirmed: { ask: 'H-0a1b2c', question: 'Keep answering first?' } }
+  const confirmed: MemoryEntry = { ...preference, confirmed: { ask: "H-0a1b2c", question: "Keep answering first?", body: "", at: T0 } }
   assert.equal(revokeRefusal(confirmed, { actor: 'llm', session: 'session-a', agent: 'agent-1' }, 'forget')?.code, 'preference_owner', 'a confirmed habit has no exception')
   assert.equal(revokeRefusal(confirmed, { actor: 'human' }, 'forget'), undefined)
   const typed: MemoryEntry = { ...preference, origin: { actor: 'human' } }
@@ -396,7 +396,7 @@ test('the fold enforces the same rule: an agent without the words cannot forget 
   assert.ok('state' in applyRecord(updatedByB, forgetBy(LLM_A)), 'session a created it and may take it back')
   assert.ok('state' in applyRecord(updatedByB, forgetBy(LLM_B, 'Forget that one.')), 'with the words anyone may')
   assert.ok('state' in applyRecord(updatedByB, forgetBy(HUMAN)))
-  const confirmedState = foldAll([at(baseRecord([{ ...entry, confirmed: { ask: 'H-0a1b2c', question: 'Keep answering first?' } }]))]).state
+  const confirmedState = foldAll([at(baseRecord([{ ...entry, confirmed: { ask: "H-0a1b2c", question: "Keep answering first?", body: "", at: T0 } }]))]).state
   assert.ok('bad' in applyRecord(confirmedState, forgetBy(LLM_A)), 'a confirmed habit is the user\'s alone')
   const restoreOf = (state: MemoryState, writer: Writer): JournalRecord => at(revokeRecord('restore', entryOf(state, 'lead-with-the-answer'), 'back', writer))
   const forgotten = foldAll([forgetBy(HUMAN)], updatedByB).state

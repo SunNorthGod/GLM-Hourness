@@ -281,6 +281,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "设计输入（2026-11-03，原型 tests/model-surface.spec.ts）：模型读到的一切（工具、提示词、技能）按角色做尺寸预算门禁，内容与工具 schema 对得上，防提示词与工具面漂移；graph-tools 400 字符测试是其雏形，M7 给主 Agent 加派发工具面时升级为全工具面门禁。"
+    },
+    {
+      "at": "2026-11-03T18:07:24.744Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "批次 1（1befa38，分支 origin/metrics，基线 4c315a9）：流水核心——信封 + 每类一张闭表（90 种：本设计 26、规则板 15、循环板 11、M7 21+2、M6 4、M3/git 10、接管 1），kinds 表对 src/shared/metrics.ts 做编译期 Equal 契约（adapter 同款零漂移）；写入器（每项目队列 2000、溢出丢最旧记 gap、序号链、30 秒重试、首写 .gitignore、manifest、半行补齐、close 排 stop 带 2 秒预算）；读取（窗口/basis/去重/排序/坏行计数）与自查（缺行、链断、无 stop、时钟回拨、清单丢文件、伪造宿主种类）；library.appendEvents；build-info 构建戳进 preflight；text-units 按字按词。两处落笔解释已记录：正文独立 body 层（与信封同名键装不下两份值，§4 标题字面）；emitMetric 只补 v、by 为事件必填（rule/timeout 的 by 随种类变，包名推不出）。门禁全绿（test 2477 含新 30 例、probe 323/323、棘轮 220/19/1）。下一步：第 2 步指标行与接缝，先并 main。"
     }
   ]
 }

@@ -451,7 +451,11 @@ const expectedPeakCounts = steps => steps.map((_, index) => new Set(steps.slice(
 const peakCountsMatch = scenario => scenario.steps.length > 0 && expectedPeakCounts(scenario.steps).every((count, index) => peakNotices(scenario.steps[index]).length === count)
 const peakFirst = peakNotices(peak.steps[0])
 const wrapReminder = text => `<system-reminder>\n${text}\n</system-reminder>`
-// PEAK_NOTICE is what a session gets without the rules row (today's text); REDUCE_NOTICE and STOP_NOTICE what the project's level makes of it (the factory level with the rules board's cap of one GLM subagent, and the person's stop).
+// PEAK_NOTICE is the fallback body for a session with no readable peak mode:
+// in this run only glm-only sees it (the GLM channel package alone). The two
+// package scenarios have the rules row (shipped enabled), so the reminder is
+// worded by the project's level: REDUCE_NOTICE at the factory level with the
+// rules board's cap of one GLM subagent, STOP_NOTICE at the person's stop.
 const PEAK_NOTICE = wrapReminder(PEAK_REMINDER_TEXT)
 const REDUCE_NOTICE = wrapReminder(peakReminderText({ level: 'reduce', origin: 'default', glmWorkerCap: 1 }))
 const STOP_NOTICE = wrapReminder(peakReminderText({ level: 'stop', origin: 'human' }))
@@ -469,7 +473,7 @@ const plainTools = names(plainFirst)
 // /glm-status shows the orchestration package as one line not loaded.
 const stderrOf = scenario => existsSync(join(runDir, scenario, 'stderr.txt')) ? readFileSync(join(runDir, scenario, 'stderr.txt'), 'utf8') : ''
 // Rules board, first slice (docs/ORCHESTRATION.md §16). The row ships
-// disabled; the overlay enables it in a scratch git workspace on the peak
+// enabled; the overlay pins it on in a scratch git workspace on the peak
 // clock, so the project is the workspace: the rules file in the repository
 // and the project's .llm/rules/ land in it. The probe provider types
 // /rules peak the way the person does and reads the glmHournessPeakMode
@@ -556,8 +560,8 @@ const nonGlmRules = runScenario('non-glm-rules', 'deepseek-probe', [
 ], 'Run a command a rule blocks, write into the rules directory, read the rules, run a command no rule names, then reply done.', RULES_ROW, nonGlmRulesProject.ws)
 
 // Loop board, the storage and the gate on its own files
-// (docs/ORCHESTRATION.md §18.8, §18.9). The row ships disabled; the overlay
-// enables it in a scratch git repository that already carries a person's entry
+// (docs/ORCHESTRATION.md §18.8, §18.9). The row ships enabled; the overlay
+// pins it on in a scratch git repository that already carries a person's entry
 // file in docs/loops/ and has it committed, as a fresh clone does. The entry
 // only tells the main agent, so the board takes it in without an approval
 // record (loops design §9.3, impl-plan Interpretation 1). The scripted agent
@@ -1098,13 +1102,17 @@ const MEMORY_FACT = { name: 'signing-rules-differ', type: 'project', description
 const MEMORY_REFERENCE = { name: 'host-surface-notes', type: 'reference', description: 'where the host surface is written down', body: 'See coding-plan/start-plan and src/shared/dsh-min.ts.' }
 const MEMORY_DEPTH = { name: 'reporting-depth', type: 'user', description: 'Wants short reports', body: 'Keep reports short.\n**Why:** reads them on a phone.', value: 'concise', relay: 'From now on just the key points.' }
 const MEMORY_NAMES = [MEMORY_FEEDBACK, MEMORY_FACT, MEMORY_REFERENCE, MEMORY_DEPTH].map(entry => entry.name)
+// The task is the session's person message: the preference relays of these
+// scenarios quote it, and since H1 the harness checks the words against the
+// person's latest message.
+const MEMORY_TASK = 'Store four memories. 先记住这两句话：Start with the answer, and keep jargon out. 还有：From now on just the key points. Then reply done.'
 const memoryScript = () => [
   ...[MEMORY_FEEDBACK, MEMORY_FACT, MEMORY_REFERENCE, MEMORY_DEPTH].map(entry => ({ tool: { name: 'memory_store', arguments: entry } })),
   { text: 'done', status: true, spawn: { text: 'Start the second session.' } },
 ]
 const memoryOthers = read => [[{ tool: { name: read, arguments: { file_path: join(repo, 'package.json') } } }, { text: 'second done' }]]
-const memoryGlm = runScenario('glm-memory', 'glm-5.3', memoryScript(), 'Store four memories, then reply done.', [], repo, memoryOthers('Read'))
-const memoryPlain = runScenario('non-glm-memory', 'deepseek-probe', memoryScript(), 'Store four memories, then reply done.', [], repo, memoryOthers('read'))
+const memoryGlm = runScenario('glm-memory', 'glm-5.3', memoryScript(), MEMORY_TASK, [], repo, memoryOthers('Read'))
+const memoryPlain = runScenario('non-glm-memory', 'deepseek-probe', memoryScript(), MEMORY_TASK, [], repo, memoryOthers('read'))
 const memoryIndexes = step => (step?.messages ?? []).filter(message => message.role === 'user' && message.source === MEMORY_INDEX_SOURCE)
 const memoryFace = step => (step?.tools ?? []).filter(tool => MEMORY_TOOL_NAMES.includes(tool.name))
 const learningFace = step => (step?.tools ?? []).filter(tool => LEARNING_TOOL_NAMES.includes(tool.name))
@@ -1130,11 +1138,15 @@ const seedProjectMemory = (scenario) => {
 // stays the same through the session: the configured `balanced` for the
 // first, `concise` for the second, `balanced` again for the third.
 const DEPTH_FORGET = { name: 'reporting-depth', reason: 'The person asked for the default again.', relay: 'Back to the default depth, please.' }
+// The task and the second session's message are the person's messages the
+// relays of the store and the forget quote (checked since H1).
+const DEPTH_TASK = 'Store the reporting depth. 记住我这句话：From now on just the key points. Then reply done.'
+const DEPTH_FORGET_TASK = '忘了它，我这句话是：Back to the default depth, please.'
 const memoryDepth = runScenario('glm-memory-depth', 'glm-5.3', [
   { tool: { name: 'memory_store', arguments: MEMORY_DEPTH } },
   { text: 'done', spawn: { text: 'Start the second session.' } },
-], 'Store the reporting depth, then reply done.', [], repo, [
-  [{ tool: { name: 'memory_forget', arguments: DEPTH_FORGET } }, { text: 'second done', status: true, spawn: { text: 'Start the third session.' } }],
+], DEPTH_TASK, [], repo, [
+  [{ tool: { name: 'memory_forget', arguments: DEPTH_FORGET } }, { text: 'second done', status: true, spawn: { text: DEPTH_FORGET_TASK } }],
   [{ text: 'third done' }],
 ])
 const depthSessions = (() => {
@@ -1144,6 +1156,23 @@ const depthSessions = (() => {
 })()
 /** The depth id the standing-preference sentence of the request's prompt names. */
 const depthOf = step => /The user's standing preference is [^（]+（(\w+)）/.exec(step?.system ?? '')?.[1]
+
+// The habit questions (M5 design §3.8, m5-4 items 4 to 8): the task is the
+// person's message, so a preference quoting it is stored checked; the agent
+// asks one habit question (deferred on the GLM route), the probe sends the
+// person's reply into the same session (`tell`), the confirm records the
+// habit with their words, and a relay that only an earlier message had is
+// refused. The user-level journal holds store, ask, store and nothing else.
+const HABIT_ASK = { name: 'commit-in-english', scope: 'all', description: 'Write commit messages in English', body: 'Commit messages stay in English.\n**Why:** the person asked for it.\n**How to apply:** write the subject and the body in English.', question: '以后提交说明都写成英文，好吗？', learnedFrom: ['edit:goal.stage'] }
+const HABIT_TASK = '试一下习惯先问再记；先记住我这句话：汇报只写结论。'
+const memoryHabit = runScenario('glm-memory-habit', 'glm-5.3', [
+  { tool: { name: 'memory_store', arguments: { name: 'reports-conclusion-only', type: 'feedback', scope: 'all', description: 'Reports carry only the conclusion', body: 'The conclusion first, the rest on demand.\n**Why:** the person said so.', relay: '汇报只写结论' } } },
+  { tool: { name: 'DeferredToolCall', arguments: { name: 'memory_habit', input: { action: 'ask', ...HABIT_ASK } } } },
+  { tell: '好，都写成英文吧' },
+  { tool: { name: 'DeferredToolCall', arguments: { name: 'memory_habit', input: { action: 'confirm', name: 'commit-in-english', words: ['好，都写成英文吧'] } } } },
+  { tool: { name: 'memory_store', arguments: { name: 'from-the-task', type: 'feedback', scope: 'all', description: 'Quoting an earlier message', body: 'This must be refused.\n**Why:** the words are not in the latest message.', relay: '汇报只写结论' } } },
+  { text: 'done', status: true },
+], HABIT_TASK, [], repo)
 
 // Compaction: the session starts with a memory in the project, so its first
 // request has the index; the compaction removes it from the visible history
@@ -1657,7 +1686,7 @@ const checkpoint = compacted.steps.at(-1)?.messages.find(message => message.sour
 const usageOf = scenario => jsonl(join(runDir, scenario, 'dsh-home', 'glm-hourness', 'audit', 'usage.jsonl'))
 const glmUsage = usageOf('glm').filter(record => record.purpose === undefined)
 const compactUsage = usageOf('glm-compact').filter(record => record.purpose === 'compaction')
-const projectUsage = ['glm', 'glm-flash', 'glm-todo', 'glm-compact', 'glm-shadow', 'glm-guard-paths', 'non-glm', 'non-glm-guard', 'glm-no-dialect', 'glm-peak', 'limits-steps', 'limits-time', 'glm-dispatch', 'glm-goal', 'goal-headless', 'glm-only', 'hourness-only', 'client-modules', 'glm-memory', 'non-glm-memory', 'glm-memory-compact', 'glm-worker-memory', 'glm-memory-depth', 'glm-lessons', 'non-glm-lessons', 'glm-lessons-failure', 'non-glm-lessons-failure'].filter(scenario => existsSync(join(runDir, scenario, 'home', 'audit', 'usage.jsonl')))
+const projectUsage = ['glm', 'glm-flash', 'glm-todo', 'glm-compact', 'glm-shadow', 'glm-guard-paths', 'non-glm', 'non-glm-guard', 'glm-no-dialect', 'glm-peak', 'limits-steps', 'limits-time', 'glm-dispatch', 'glm-goal', 'goal-headless', 'glm-only', 'hourness-only', 'client-modules', 'glm-memory', 'non-glm-memory', 'glm-memory-compact', 'glm-worker-memory', 'glm-memory-depth', 'glm-memory-habit', 'glm-lessons', 'non-glm-lessons', 'glm-lessons-failure', 'non-glm-lessons-failure'].filter(scenario => existsSync(join(runDir, scenario, 'home', 'audit', 'usage.jsonl')))
 const glmViolations = jsonl(join(glmDir, 'home', 'audit', 'violations.jsonl'))
 const stepLimits = jsonl(limitsRecord('limits-steps'))
 const timeLimits = jsonl(limitsRecord('limits-time'))
@@ -2136,18 +2165,30 @@ function memoryChecks() {
   const afterFirstUser = step => step !== undefined && step.messages.findIndex(message => message.source === MEMORY_INDEX_SOURCE) > step.messages.findIndex(message => message.role === 'user' && message.source === 'user')
   const roleRefusal = step => lastToolResult(step)?.isError === true && lastToolResult(step).text.includes('"code":"role"') && lastToolResult(step).text.includes('handback')
   const compactFirst = memoryCompact.steps[0]
+
+  /** The habit scenario: the requests of its one session, what the model saw of each tool call, and the user-level journal. */
+  const habitRun = bySession(memoryHabit, memoryHabit.steps[0]?.sessionId)
+  const said = (run, at, piece) => (run[at]?.messages ?? []).some(message => message.text.includes(piece))
+  const habitJournal = memoryJournalOf('glm-memory-habit', 'all')
+  const habitChecks = [
+    ['memory habit: the preference quoting the task (the person\'s latest message in the session) is stored with the words checked', habitJournal[0]?.op === 'store' && habitJournal[0]?.data.relayChecked === true && habitJournal[0]?.relay === '汇报只写结论' && habitRun.length === 6, `journal ${habitJournal.map(record => record.op).join(', ') || 'none'}; requests ${habitRun.length} (exit ${memoryHabit.status})`],
+    ['memory habit: the ask is recorded with its question and its result reached the model as the circled text with the content on a second line', habitJournal[1]?.op === 'ask' && habitJournal[1]?.data.question === HABIT_ASK.question && isDeepStrictEqual(habitJournal[1]?.data.learnedFrom, ['edit:goal.stage']) && said(habitRun, 2, '① 以后提交说明都写成英文，好吗？') && said(habitRun, 2, `要记的：${HABIT_ASK.description}`), (habitRun[2]?.messages ?? []).map(message => message.text).find(text => text.includes('要记的：'))?.slice(0, 120) ?? 'the ask result did not reach the model'],
+    ['memory habit: the person\'s reply (`tell`) woke the session and the confirm stored what was asked, with their words as the relay, checked, and the question named', habitJournal[2]?.op === 'store' && habitJournal[2]?.data.ask === HABIT_ASK.question && habitJournal[2]?.relay === '好，都写成英文吧' && habitJournal[2]?.data.relayChecked === true && said(habitRun, 4, '"confirmed":true'), habitJournal[2] === undefined ? 'no confirm store' : (habitRun[4]?.messages ?? []).map(message => message.text).find(text => text.includes('confirmed'))?.slice(0, 120) ?? 'the confirm result did not reach the model'],
+    ['memory habit: a relay that only an earlier message had is refused as relay_not_said and nothing more was written', habitJournal.length === 3 && said(habitRun, 5, 'relay_not_said'), habitJournal.length === 3 ? (habitRun[5]?.messages ?? []).map(message => message.text).find(text => text.includes('relay_not_said'))?.slice(0, 120) ?? 'the refusal did not reach the model' : `journal ${habitJournal.map(record => record.op).join(', ')}`],
+    ['memory habit: the memory row reports itself in effect, and the run warned of nothing', healthOf(memoryHabit).memory?.status === ACTED && quiet('glm-memory-habit'), `${healthLine(healthOf(memoryHabit), 'memory')}; stderr ${stderrOf('glm-memory-habit').length} byte(s)`],
+  ]
   return [
     ...route.flatMap(([scenario, name, glmRoute, label]) => {
       const run = memorySessions(scenario)
       const user = memoryJournalOf(name, 'all')
       const project = memoryJournalOf(name, 'project')
       return [
-        [`memory (${label}): the four memory_store calls are stored, the person's two go to the user-level journal as llm records with their words (not checked yet), the project's two to the project journal`, results(run).length === 4 && results(run).every(result => result?.isError !== true && result.text.includes('"stored":true')) && isDeepStrictEqual(lines(user, 'store').map(record => record.data.name), ['lead-with-the-answer', 'reporting-depth']) && lines(user, 'store').every(record => record.actor === 'llm' && typeof record.relay === 'string' && record.data.relayChecked === false) && isDeepStrictEqual(lines(project, 'store').map(record => record.data.name), ['signing-rules-differ', 'host-surface-notes']) && user.length === 2 && project.length === 2, `${results(run).map(result => (result?.text ?? 'none').slice(0, 40)).join(' | ')}; user ${user.length} record(s), project ${project.length}`],
+        [`memory (${label}): the four memory_store calls are stored, the person's two go to the user-level journal as llm records with their words, checked against the person's latest message, the project's two to the project journal`, results(run).length === 4 && results(run).every(result => result?.isError !== true && result.text.includes('"stored":true')) && isDeepStrictEqual(lines(user, 'store').map(record => record.data.name), ['lead-with-the-answer', 'reporting-depth']) && lines(user, 'store').every(record => record.actor === 'llm' && typeof record.relay === 'string' && record.data.relayChecked === true) && isDeepStrictEqual(lines(project, 'store').map(record => record.data.name), ['signing-rules-differ', 'host-surface-notes']) && user.length === 2 && project.length === 2, `${results(run).map(result => (result?.text ?? 'none').slice(0, 40)).join(' | ')}; user ${user.length} record(s), project ${project.length}`],
         [`memory (${label}): the first root agent has no index while the memory is empty, one from the step after its first write, and the index is not repeated`, run.first.length === 5 && isDeepStrictEqual(counts(run.first), [0, 1, 1, 1, 1]), `index notices per request: ${counts(run.first).join(', ')}`],
         [`memory (${label}): the second root agent of the workspace has the index in its first request after the first user message, with the four memories, once, and not repeated in its next request`, run.second.length === 2 && afterFirstUser(run.second[0]) && isDeepStrictEqual(counts(run.second), [1, 1]) && MEMORY_NAMES.every(entry => indexTexts(run.second[0])[0]?.includes(`- ${entry} (`) === true), run.second.length === 0 ? `no second session (exit ${scenario.status}): ${JSON.stringify(scenario.steps.at(-1)?.spawn ?? null)}` : `index notices per request: ${counts(run.second).join(', ')}; ${(indexTexts(run.second[0])[0] ?? 'none').replace(/\n/g, ' | ').slice(0, 160)}`],
         [`memory (${label}): each root agent's system prompt is the same at every step`, new Set(run.first.map(step => step.system)).size === 1 && new Set(run.second.map(step => step.system)).size === 1, `${new Set(run.first.map(step => step.system)).size} and ${new Set(run.second.map(step => step.system)).size} distinct prompt(s)`],
         [`memory (${label}): the three memory tools are in the face of the root agent, resident, and the glm:memory section is ${glmRoute ? 'in' : 'not in'} the prompt`, memoryFace(run.first[0]).length === 3 && memoryFace(run.first[0]).every(tool => tool.deferLoading !== true) && run.first[0].system.includes(MEMORY_SECTION_LINE) === glmRoute, `${memoryFace(run.first[0]).map(tool => tool.name).join(', ')}; section ${run.first[0]?.system.includes(MEMORY_SECTION_LINE)}`],
-        [`memory (${label}): the learning tool ${glmRoute ? 'is deferred on the GLM route: it is not in the face and tool search reaches it' : 'is in the face of the root agent'}`, glmRoute ? learningFace(run.first[0]).length === 0 : learningFace(run.first[0]).length === 1 && learningFace(run.first[0]).every(tool => tool.deferLoading !== true), `${learningFace(run.first[0]).map(tool => tool.name).join(', ') || 'none'} in the face`],
+        [`memory (${label}): the learning tool ${glmRoute ? 'is deferred on the GLM route: it is not in the face and tool search reaches it' : 'is in the face of the root agent'}`, glmRoute ? learningFace(run.first[0]).length === 0 : learningFace(run.first[0]).length === LEARNING_TOOL_NAMES.length && learningFace(run.first[0]).every(tool => tool.deferLoading !== true && LEARNING_TOOL_NAMES.includes(tool.name)), `${learningFace(run.first[0]).map(tool => tool.name).join(', ') || 'none'} in the face`],
         [`memory (${label}): the row reports itself in effect and says the session has the index; the configured home is said to be ignored`, healthOf(scenario).memory?.status === ACTED && healthOf(scenario).memory.reason.includes('本会话已带索引') && healthOf(scenario).memory.reason.includes('行配置 home 已不再使用（M5）'), JSON.stringify(healthOf(scenario).memory ?? null)],
       ]
     }),
@@ -2159,6 +2200,7 @@ function memoryChecks() {
     ['memory worker: the child has no memory tool and no learning tool in its request, no glm:memory section and no index; the main agent of the project has the index and the section', workerChild.length > 0 && workerChild.every(step => memoryFace(step).length === 0 && learningFace(step).length === 0 && !step.system.includes(MEMORY_SECTION_LINE) && memoryIndexes(step).length === 0) && memoryIndexes(workerMain[0]).length === 1 && indexTexts(workerMain[0])[0]?.includes('- seeded-norm (feedback)') === true && workerMain[0].system.includes(MEMORY_SECTION_LINE), workerChild.length === 0 ? `no child request (exit ${memoryWorker.status})` : `child: ${workerChild.length} request(s), ${memoryFace(workerChild[0]).length} memory tool(s); main index notices ${counts(workerMain).join(', ')}`],
     ['memory worker: the child calling memory_store, memory_query, memory_forget and learning_signals by name is refused with role and the way to hand back, and the journals are as they were', [1, 2, 3, 4].every(index => roleRefusal(workerChild[index])) && memoryJournalOf('glm-worker-memory', 'project').length === 1 && memoryJournalOf('glm-worker-memory', 'all').length === 0, [1, 2, 3, 4].map(index => (lastToolResult(workerChild[index])?.text ?? 'none').slice(0, 60)).join(' | ')],
     ['memory worker: the main agent reaches learning_signals through tool search and gets the digest (the groups of the window and whether the graph could be read), and the project journal has only the seeded norm', lastToolResult(workerMain[2])?.isError !== true && lastToolResult(workerMain[2])?.text.includes('"groups":[') === true && /"graph":"(ok|unavailable)"/.test(lastToolResult(workerMain[2])?.text ?? '') && memoryJournalOf('glm-worker-memory', 'project').length === 1, (lastToolResult(workerMain[2])?.text ?? 'no result').slice(0, 120)],
+    ...habitChecks,
     ['memory: the probe leaves the real user-level memory journal and the journals of the project this checkout belongs to as they were, and the user-level directory has no lessons directory', isDeepStrictEqual(realMemoryFiles.map(fileStamp), realMemoryBefore) && !existsSync(join(userDataHome(), 'lessons')), `${realMemoryBefore.join(' ')} -> ${realMemoryFiles.map(fileStamp).join(' ')}`],
   ]
 }
@@ -2302,7 +2344,7 @@ const checks = [
   ['glm todo: a scripted turn carries two parallel tool calls', todoParallel?.length === 2, `steps: ${todo.steps.length}, calls in the first Read turn: ${todoParallel?.join(', ') ?? 'none'}`],
   ['glm todo: the reminder fires once, before the twelfth request (10 assistant turns after TodoWrite)', todo.steps.length === 12 && todoReminderSteps.length === 1 && todoReminderSteps[0] === 12, `reminder in request(s): ${todoReminderSteps.join(', ') || 'none'} of ${todo.steps.length}`],
   ['glm todo: the reminder is the wrapped ZCode text with the todo echo, after the last tool results', todoNotice !== undefined && todoNotice.text.startsWith("<system-reminder>\nThe TodoWrite tool hasn't been used recently.") && todoNotice.text.endsWith('[1. [in_progress] probe todo]\n</system-reminder>') && todoNoticeIndex > todoLastResult, todoNotice === undefined ? 'no notice' : `${todoNotice.text.slice(-60).replace(/\n/g, ' ')} (at ${todoNoticeIndex}, last tool result at ${todoLastResult})`],
-  ['glm peak: with the probe clock at Wednesday 15:00 UTC+8 the first GLM request carries the wrapped peak reminder once', peakWindowAt(peak.steps[0]?.clock) === '2026-10-28' && peakFirst.length === 1 && peakFirst[0].text === PEAK_NOTICE, peak.steps[0] === undefined ? `no request (exit ${peak.status})` : `clock ${new Date(peak.steps[0].clock).toISOString()}, ${peakFirst.length} notice(s): ${(peakFirst[0]?.text ?? '').slice(0, 60).replace(/\n/g, ' ')}`],
+  ['glm peak: with the probe clock at Wednesday 15:00 UTC+8 the first GLM request carries the wrapped peak reminder once, worded by the factory level with the cap of one GLM subagent', peakWindowAt(peak.steps[0]?.clock) === '2026-10-28' && peakFirst.length === 1 && peakFirst[0].text === REDUCE_NOTICE, peak.steps[0] === undefined ? `no request (exit ${peak.status})` : `clock ${new Date(peak.steps[0].clock).toISOString()}, ${peakFirst.length} notice(s): ${(peakFirst[0]?.text ?? '').slice(0, 60).replace(/\n/g, ' ')}`],
   ['glm peak: the reminder persists in the session and is not repeated on later steps', peak.steps.length === 3 && peakNotices(peak.steps.at(-1)).length === 1 && peakCountsMatch(peak), `notices per request: ${peak.steps.map(step => peakNotices(step).length).join(', ')}`],
   ['glm peak (real clock): the GLM scenario carries a reminder exactly for the peak windows its requests fell in', peakCountsMatch(glm), `windows: ${[...new Set(glm.steps.map(step => peakWindowAt(step.clock) ?? 'off-peak'))].join(', ')}; notices per request: ${glm.steps.map(step => peakNotices(step).length).join(', ')}`],
   ['non-glm peak: a non-GLM session in peak hours gets no peak reminder', plainFirst !== undefined && peakWindowAt(plainFirst.clock) === '2026-10-28' && peakNotices(plainFirst).length === 0, plainFirst === undefined ? 'no request' : `clock ${new Date(plainFirst.clock).toISOString()}, ${peakNotices(plainFirst).length} notice(s)`],
@@ -2352,7 +2394,7 @@ const checks = [
   ['goal (c): the driver starts round 2 after the round that carried the notice; each round carries one notice; no round 3', goalSteps.length === 5 && roundOf(goalSteps[3], 2) && projections(goalSteps[3]).length === 2 && goalSteps.every(step => !roundOf(step, 3)), `${goalSteps.length} goal-agent request(s); notices per request: ${goalSteps.map(step => projections(step).length).join(', ')}`],
   ['goal (c): with the evidence present the gate allows complete in round 2; the goal ends complete and disarmed after 2 rounds', goalGates.length === 2 && goalGates[1].decision === 'allow' && goalCompleted?.isError !== true && goalCompleted?.text.includes('"phase":"complete"') === true && goalFinal?.goal?.phase === 'complete' && goalFinal.goal.roundsStarted === 2 && goalFinal.goal.activation === 'disarmed' && goalRunResult?.text.includes('"phase":"complete"') === true, JSON.stringify(goalFinal ?? null).slice(0, 160)],
   ['goal (headless): the one-shot runner exits at its agent\'s first quiescent idle, so an armed goal created in the task turn gets no round', headlessCreated?.isError !== true && headlessCreated?.text.includes('"activation":"armed"') === true && headlessGoal.steps.length === 2 && headlessGoal.steps.every(step => roundMessages(step).length === 0), `exit ${headlessGoal.status}, ${headlessGoal.steps.length} step(s); ${(headlessCreated?.text ?? 'no tool result').slice(0, 80)}`],
-  ['rules: the row ships disabled: without the overlay /glm-status lists it as not loaded', glmHealth.rules?.status === '未加载' && plainHealth.rules?.status === '未加载', `${healthLine(glmHealth, 'rules')}; ${healthLine(plainHealth, 'rules')}`],
+  ['rules: the row ships enabled since the rules-loops merge: the boot scenarios list it in effect on both routes', glmHealth.rules?.status === ACTED && plainHealth.rules?.status === ACTED, `${healthLine(glmHealth, 'rules')}; ${healthLine(plainHealth, 'rules')}`],
   ['rules-peak: the row, enabled by the overlay in a scratch git workspace, boots on the GLM route, runs the five scripted steps and exits clean with nothing from it on stderr', rulesGlm.ready && rulesPeak.status === 0 && rulesPeak.steps.length === 5 && !rulesStderr.includes('dsh-glm-hourness/rules'), `exit ${rulesPeak.status}, ${rulesPeak.steps.length} step(s), git ${rulesGlm.ready}; ${rulesStderr.split('\n').find(line => line.includes('rules')) ?? 'no stderr line mentions rules'}`],
   ['rules-peak: without a choice the project is at the factory level reduce: the command says so, and in the peak the service gives the cap of one GLM subagent and the hold until 18:00', rulesPeak.steps[1]?.command?.kind === 'success' && rulesPeak.steps[1].command.text.startsWith(`高峰模式：少做（出厂默认）。现在是高峰，到 ${clockText(PEAK_END, rulesPeak.steps[1].clock)}。`) && isDeepStrictEqual(rulesPeak.steps[1].peakMode, { state: { level: 'reduce', origin: 'default', peak: true, until: PEAK_END, glmWorkerCap: 1 }, hold: { level: 'reduce', until: PEAK_END } }), JSON.stringify(rulesPeak.steps[1]?.peakMode ?? null)],
   ['rules-peak: /rules peak 不做 as the person: the reply names the level, the service gives the person\'s choice with no cap and the hold of the stop level', rulesPeak.steps[3]?.command?.kind === 'success' && rulesPeak.steps[3].command.text.startsWith('高峰模式改成了「不做」') && rulesPeak.steps[3].peakMode?.state?.level === 'stop' && rulesPeak.steps[3].peakMode.state.origin === 'human' && rulesPeak.steps[3].peakMode.state.peak === true && rulesPeak.steps[3].peakMode.state.glmWorkerCap === undefined && isDeepStrictEqual(rulesPeak.steps[3].peakMode.hold, { level: 'stop', until: PEAK_END }), JSON.stringify(rulesPeak.steps[3]?.peakMode ?? null)],
@@ -2404,7 +2446,7 @@ const checks = [
   ['rules-peak-stop: the goal ends complete after that round, and the ticket is done with the goal and revision the pause made and the time the goal was resumed', stopNote('stop-final')?.ok === true && stopNote('stop-final').goal?.phase === 'complete' && stopState?.tickets?.['q-1']?.state === 'done' && stopState.tickets['q-1'].signature === 'any:builtin:glm-peak-stop' && stopState.tickets['q-1'].sessionId === stopCreated?.agentId && stopState.tickets['q-1'].pausedGoal?.id === stopCreated?.goal?.id && stopState.tickets['q-1'].pausedGoal.revision === stopOps[1]?.goal?.revision && typeof stopState.tickets['q-1'].resumedAt === 'string', JSON.stringify(stopState?.tickets?.['q-1'] ?? null)],
   ['rules-peak-stop: the journal has the ticket opened by the harness, the level changed by the person, and the ticket closed by the harness with its goal resumed, in that order; nothing is written in the scenario\'s user-level directory', isDeepStrictEqual(stopJournal.map(record => [record.op, record.actor]).filter(([op]) => op === 'ticket-open' || op === 'peak-mode-set' || op === 'ticket-update'), [['ticket-open', 'harness'], ['peak-mode-set', 'human'], ['ticket-update', 'harness']]) && !existsSync(join(runDir, 'rules-peak-stop', 'dsh-home', 'glm-hourness', 'rules')), JSON.stringify(stopJournal.map(record => [record.op, record.actor]))],
   ['rules-peak-stop-exit: V13, the host exits with the goal paused at the stop level: the run is clean and the way out agrees with itself: a row that unloaded (its heartbeat file is gone) resumed the goal and wrote it on the ticket, a runner that left without unloading it left the goal and the ticket as the stop made them', stopExitProject.ready && rulesPeakStopExit.status === 0 && !stderrOf('rules-peak-stop-exit').includes('dsh-glm-hourness/rules') && stopExitNotes.some(entry => entry.kind === 'stop-held' && entry.goal?.phase === 'paused') && (stopExitUnloaded ? typeof stopExitState?.tickets?.['q-1']?.resumedAt === 'string' && stopExitOps.includes('resume') : stopExitState?.tickets?.['q-1']?.state === 'deferred' && stopExitState.tickets['q-1'].resumedAt === undefined && stopExitOps.join() === 'create,pause'), `unloaded ${stopExitUnloaded}; exit ${rulesPeakStopExit.status}; goal operations ${JSON.stringify(stopExitOps)}; ticket ${JSON.stringify(stopExitState?.tickets?.['q-1'] ?? null)}; journal ${JSON.stringify(stopExitJournal.map(record => [record.op, record.reason ?? null]).slice(-3))}; ${stderrOf('rules-peak-stop-exit').split('\n').find(line => line.includes('rules')) ?? 'no stderr line mentions rules'}`],
-  ['loops: the row ships disabled: without the overlay /glm-status lists it as not loaded', glmHealth.loops?.status === '未加载' && plainHealth.loops?.status === '未加载', `${healthLine(glmHealth, 'loops')}; ${healthLine(plainHealth, 'loops')}`],
+  ['loops: the row ships enabled since the rules-loops merge: the boot scenarios list it in effect on both routes', glmHealth.loops?.status === ACTED && plainHealth.loops?.status === ACTED, `${healthLine(glmHealth, 'loops')}; ${healthLine(plainHealth, 'loops')}`],
   ['loops: the row, enabled by the overlay in a scratch git clone that carries a person\'s entry file, boots, runs its four steps and exits clean with nothing from it on stderr', loopsBoard.ready && loops.status === 0 && loops.steps.length === 4 && !stderrOf('loops').includes('dsh-glm-hourness/loops'), `exit ${loops.status}, ${loops.steps.length} step(s), git ${loopsBoard.ready}; ${stderrOf('loops').split('\n').find(line => line.includes('loops')) ?? 'no stderr line mentions loops'}`],
   ['loops: a file tool writing into docs/loops/ is refused by loops:files-only with the four-part text, the entry file is as it was, and the refusal is journaled as enforced', lastToolResult(loops.steps[1])?.isError === true && LOOPS_DENIAL.test(lastToolResult(loops.steps[1]).text) && readFileSync(loopsBoard.entryFile, 'utf8') === LOOPS_ENTRY_TEXT && rulesRecordOf(loopsRecords, 'loops:files-only')?.mode === 'enforce', lastToolResult(loops.steps[1])?.text?.slice(0, 200) ?? 'no result'],
   ['loops: a shell command writing into the project\'s .llm/loops/ is refused by the same rule, not by file-tools-only, and the board\'s change record does not carry what it wrote', lastToolResult(loops.steps[2])?.isError === true && (lastToolResult(loops.steps[2])?.text ?? '').includes('Rule loops:files-only') && loopsJournalText !== '' && !loopsJournalText.split('\n').includes('probe') && loopsRecords.filter(record => record.rule === 'loops:files-only').length === 2, `${lastToolResult(loops.steps[2])?.text?.slice(0, 160) ?? 'no result'}; ${loopsRecords.filter(record => record.rule === 'loops:files-only').length} journal line(s)`],

@@ -44,6 +44,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "S9（G1，m5-4）第一遍实现在 m5-memory-lessons 上提交为 a5df445：build、preflight、npm test、probe 198/198 全部退出码 0，check:secrets 在该提交上干净。等评审。"
+    },
+    {
+      "at": "2026-11-03T17:20:20.267Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "S12 落地（eef34f9，2026-11-04 并入 main 80d4612）：习惯先问再记——memory_habit 的 ask/confirm/decline（known、asked_recently 28 天、declined_recently 28 天、每回复 3 问、周 3 问），confirm 7 天内同会话人话才记，memory_store 的 relay 对照人最近一条消息。探针 +5（glm-memory-habit），合并树 328/328，npm test 全绿。验收第 4–8 条核销；桌面 L4 欠着（启动事故后压着等桌面空窗，见 DEVELOPMENT §7 2026-11-04）。夹具的编造 ghp_ 假令牌曾让 check-secrets 红，.gitleaks.toml 按字面+按文件放行该假串（eef34f9 历史永存），其余 github-pat 照拦。"
     }
   ]
 }

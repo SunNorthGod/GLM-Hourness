@@ -214,6 +214,24 @@ test('the digest lists the groups with enough events, each with its meaning, its
   assert.deepEqual(buildDigest({ events, landings: [], since: iso(BASE + 5 * DAY), until, minCount: 1, graph: 'unavailable' }).groups.map(group => group.key), ['edit:task.acceptance', 'reject:feature', 'chat:add'])
 })
 
+test('an open habit question, a no whose block holds and a confirmed habit land a group; an expired one lands nothing; asked says how it went (m5-4 #8)', () => {
+  const until = iso(BASE + 30 * DAY)
+  const events = [event('edit:goal.stage', 20), event('edit:goal.stage', 26)]
+  const ask = (state: 'asked' | 'declined' | 'confirmed', at: number, untilDays?: number) =>
+    ({ key: 'edit:goal.stage', state, at: iso(BASE + at * DAY), ...(untilDays === undefined ? {} : { until: iso(BASE + untilDays * DAY) }) })
+  const digest = (landing: { readonly key: string, readonly at: string, readonly until?: string } | undefined, marker: ReturnType<typeof ask> | undefined): LearningDigest['groups'] =>
+    buildDigest({ events, landings: landing === undefined ? [] : [landing], habits: marker === undefined ? [] : [marker], since: iso(BASE + 5 * DAY), until, minCount: 2, graph: 'ok' }).groups
+  const open = digest({ key: 'edit:goal.stage', at: iso(BASE + 10 * DAY), until: iso(BASE + 38 * DAY) }, ask('asked', 10, 38))
+  assert.deepEqual(open.map(group => group.learned), [1], 'an ask younger than 28 days is a landing')
+  assert.deepEqual(open[0].asked, { key: 'edit:goal.stage', state: 'asked', at: iso(BASE + 10 * DAY), until: iso(BASE + 38 * DAY) })
+  const declined = digest({ key: 'edit:goal.stage', at: iso(BASE + 10 * DAY), until: iso(BASE + 40 * DAY) }, ask('declined', 10, 40))
+  assert.deepEqual(declined.map(group => [group.learned, group.asked?.state, group.recurrences]), [[1, 'declined', 2]], 'a no lands while its block holds')
+  const expired = digest({ key: 'edit:goal.stage', at: iso(BASE + 10 * DAY), until: iso(BASE + 12 * DAY) }, ask('declined', 10, 12))
+  assert.deepEqual(expired.map(group => [group.learned, group.asked?.state, group.asked?.until]), [[0, 'declined', iso(BASE + 12 * DAY)]], 'an expired no is no landing; asked still tells of it, with the day the block ended')
+  const confirmed = digest({ key: 'edit:goal.stage', at: iso(BASE + 10 * DAY) }, ask('confirmed', 10))
+  assert.deepEqual(confirmed.map(group => [group.learned, group.asked?.state, group.recurrences]), [[1, 'confirmed', 2]], 'a confirmed habit lands for good, and the events after it are recurrences')
+})
+
 test('the meaning of a key is one sentence for the model, and a key it does not know is named', () => {
   assert.equal(meaningOf('edit:goal.stage'), 'the person changed the stage the agent had set on a goal')
   assert.equal(meaningOf('reject:feature'), 'the person rejected a feature the agent proposed')
@@ -334,8 +352,8 @@ test('the reminder names the groups with no landing and those that came back, so
   assert.equal(sameKeys(['a', 'b'], ['a', 'c']), false)
 })
 
-test('the text of the reminder points to learning_signals and to the places a group is settled, and does not mention what is not built yet', () => {
+test('the text of the reminder points to learning_signals and to the places a group is settled, with the habit question among them (H1)', () => {
   assert.ok(LEARNING_NOTICE.startsWith('Learning digest (hourness)'))
-  for (const part of ['learning_signals', 'learnedFrom', '学自：<key>', 'propose_to_human', 'advice, not a rule']) assert.ok(LEARNING_NOTICE.includes(part), part)
-  assert.ok(!LEARNING_NOTICE.includes('memory_habit'))
+  for (const part of ['learning_signals', 'learnedFrom', '学自：<key>', 'propose_to_human', 'advice, not a rule', 'memory_habit ask']) assert.ok(LEARNING_NOTICE.includes(part), part)
+  assert.match(LEARNING_NOTICE, /Call memory_habit ask after the propose_to_human calls of the same reply, never before them\./)
 })

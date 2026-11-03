@@ -18,6 +18,7 @@ import type { Fold, JournalRecord } from '../data/journal.ts'
 import { isObject, listOf } from '../data/refusal.ts'
 import type { GraphNode } from '../graph/schema.ts'
 import { activeLessons, lessonsFold, type LessonsState } from '../lessons/model.ts'
+import type { HabitMarker } from './habit.ts'
 import { memoryFold, NOTICE_KEYS_MAX, type LearnNotice, type MemoryState, type Scope } from './model.ts'
 import { recurrences, weeklyCounts, type DepthWrite, type Landing, type SignalEvent } from './signals.ts'
 
@@ -51,8 +52,10 @@ interface DigestGroup {
   readonly count: number
   /** At most three of the group's events, the newest first. */
   readonly examples: ReadonlyArray<{ readonly ref: string, readonly at: string }>
-  /** How many entries, lessons and notes name the key. */
+  /** How many entries, lessons, notes and habit questions name the key. */
   readonly learned: number
+  /** How the group was put to the person as a habit question, and how that went; absent when it never was. */
+  readonly asked?: HabitMarker
   /** Events of the group after its earliest landing. */
   readonly recurrences: number
   /** The events of each of the last four weeks, the oldest week first. */
@@ -170,6 +173,8 @@ interface DigestInput {
   /** The events from at least four weeks before `until` (and from `since`, when that is earlier). */
   readonly events: readonly SignalEvent[]
   readonly landings: readonly Landing[]
+  /** How each group was put to the person as a habit question, from both journals (§3.8.4); none when the caller has none. */
+  readonly habits?: readonly HabitMarker[]
   readonly since: string
   readonly until: string
   readonly minCount: number
@@ -178,20 +183,29 @@ interface DigestInput {
 
 const compare = (a: string, b: string): number => a < b ? -1 : a > b ? 1 : 0
 
+/** A landing that still holds at `until`: a no whose block has not ended, an ask not yet 28 days old, and everything permanent. */
+const stillLands = (landing: Landing, untilMs: number): boolean => landing.until === undefined || Date.parse(landing.until) > untilMs
+
 /** The groups with `minCount` events or more in the window, each with where it is settled and whether it came back. */
 export function buildDigest(input: DigestInput): LearningDigest {
-  const inWindow = input.events.filter(event => Date.parse(event.at) >= Date.parse(input.since) && Date.parse(event.at) < Date.parse(input.until))
+  const untilMs = Date.parse(input.until)
+  const inWindow = input.events.filter(event => Date.parse(event.at) >= Date.parse(input.since) && Date.parse(event.at) < untilMs)
   const keys = [...new Set(inWindow.map(event => event.key))]
-  const came = recurrences(inWindow, input.landings)
+  const live = input.landings.filter(landing => stillLands(landing, untilMs))
+  const came = recurrences(inWindow, live)
   const groups = keys
     .map((key): DigestGroup => {
       const own = inWindow.filter(event => event.key === key)
+      const asked = (input.habits ?? [])
+        .filter(marker => marker.key === key)
+        .sort((a, b) => Date.parse(b.at) - Date.parse(a.at))[0]
       return {
         key,
         meaning: meaningOf(key),
         count: own.length,
         examples: own.slice(-3).reverse().map(({ ref, at }) => ({ ref, at })),
-        learned: input.landings.filter(landing => landing.key === key).length,
+        learned: live.filter(landing => landing.key === key).length,
+        ...(asked === undefined ? {} : { asked }),
         recurrences: came.get(key) ?? 0,
         weekly: weeklyCounts(input.events, key, input.until),
       }
@@ -235,7 +249,8 @@ export const sameKeys = (a: readonly string[], b: readonly string[]): boolean =>
 export const LEARNING_NOTICE = [
   'Learning digest (hourness): in the last 28 days the person corrected the same kind of thing more than once.',
   'Call learning_signals to see the groups.',
-  'For each group that has no landing yet, choose one: a preference the person has stated, a lesson, a rule proposal or a candidate exercise, and record the group key with it (learnedFrom, or a "学自：<key>" comment on the node).',
+  'For each group that has no landing yet, choose one: a preference the person has stated, a lesson, a habit question (memory_habit ask), a rule proposal or a candidate exercise, and record the group key with it (learnedFrom, or a "学自：<key>" comment on the node).',
+  'Call memory_habit ask after the propose_to_human calls of the same reply, never before them.',
   'A rule proposal goes to the person with propose_to_human.',
   'This is advice, not a rule.',
 ].join(' ')

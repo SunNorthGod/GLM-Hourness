@@ -82,12 +82,13 @@
       # told when it clears. At the stop level of the peak mode a GLM
       # subagent's tool calls are one ticket for its session and its active goal
       # is paused until the peak is over; dispatching a GLM subagent waits the
-      # same way. Holds no main agent and pauses none of its goals. Ships disabled
-      # until the L3 probe (scenarios glm-rules, non-glm-rules, rules-queue,
-      # rules-handover, rules-peak, rules-peak-stop) and the first desktop pass
-      # (docs/DEVELOPMENT.md §3, AGENTS.md).
+      # same way. Holds no main agent and pauses none of its goals. Ships
+      # enabled since the rules-loops enablement (2026-11-04): the L3 probe
+      # scenarios (glm-rules, non-glm-rules, rules-queue, rules-handover,
+      # rules-peak, rules-peak-hourness, rules-stop-notice, rules-peak-stop,
+      # rules-peak-stop-exit) passed; the first desktop pass
+      # (docs/DEVELOPMENT.md §3, AGENTS.md) is still owed.
       name: dsh-hourness/rules
-      disabled: true
       inject: [tools, commands]
       config: {}
     - id: glm-hourness/design
@@ -120,12 +121,14 @@
       # person /loops, keeps its own files to itself (loops:files-only), and in
       # a process that has a session controller it holds the project's run
       # lock, beats every 60 seconds, reads the inbox and runs what an entry
-      # says to do. Not here yet: the delivery to the main agent, the binding
-      # of DSH schedules, the tools and the pages, and the executor of a script
-      # or a check entry (those two end refused). Ships disabled until the L3
-      # probe and the first desktop pass (docs/DEVELOPMENT.md §3, AGENTS.md).
+      # says to do; entries that tell the main agent are bound to DSH schedule
+      # tasks and delivered to the holder (docs/ORCHESTRATION.md §18.10). Not
+      # here yet: the tools and the pages, and the executor of a script
+      # or a check entry (those two end refused). Ships enabled since the
+      # rules-loops enablement (2026-11-04): the L3 probe scenarios (loops,
+      # loops-peak, loops-peak-restart) passed; the first desktop pass
+      # (docs/DEVELOPMENT.md §3, AGENTS.md) is still owed.
       name: dsh-hourness/loops
-      disabled: true
       config: {}
     - id: glm-hourness/ui
       # The package's client face (dsh.client in package.json, host half
