@@ -293,6 +293,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "批次 2（61b196b，含并 main 17c378b）：指标行与接缝——glmHournessMetrics 服务、rc.3 观察者（onStream 用量/fin/ttft/credits/峰谷与重试、trackRequests 每回合每步、session 事件折叠 turn/tool/approval/command/said、问答 ask/answer 带 id 回退哈希）、项目从 dir 先于会话解析、每项目单写入器、激活后台自查昨日今日文件并向循环板交每日自查条目、行健康三处上报；guard 拒绝决定带 info.rule（rc.3 tools:3337 工具结果错误面，设计 §15 条件 2 的生产者改动）；行 disabled 交付，启用留第 10 步（等 M4 G1）。探针抓出六缺陷并修复：sid 从未盖章、写入器时钟在开表时固定导致跨日分文件、sid 追加在 body 后破坏链续算、双写入器 .gitignore wx 竞争、appendEvents 5000 在 2000 队列截断（验收 12）、denied 不可达。三个新场景 25 检查，探针 353/353；棘轮缩至 214/18/1 并入库。批次 3（guard/graph 观察者）与 M4-G3 同碰 src/guard，改为先做批次 4（计算与命令行）。"
+    },
+    {
+      "at": "2026-11-03T21:45:42.451Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "批次 4（e35a2fa，含并 main b3e580c 三冲突皆双保）：计算与命令行——calc 纯函数（factsFor 只出事实走对话路径、scoresFor 全表、compare 按 v/model/host/role 分组；§7.2 确定性：输入按读取器序、计数数值后按 ID、整毫秒偶数中位数、零分母 —、CALC_VERSION、basis 首行 F8）；CLI npm run metrics：summary/verify（checkLog 外加四核对：缺图历史、每会话 llm 对用量流水、manifest 对盘、超时账本 ±5s）/compare --by/prune --before（删前写 prune 行）/backfill-graph（src:history、时钟定最早条目、重跑零追加）；批次 1 潜伏 bug 被验收 21 的夹具暴露并修：body 字段必须按种类表规范序序列化，否则链哈希文本漂移。门禁全绿（test 0 败、probe 353/353、棘轮 214/18/1 持平）。下一步 4a 指标板；第 3 步仍等 m4 合并。"
     }
   ]
 }
