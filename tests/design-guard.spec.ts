@@ -229,7 +229,8 @@ test('a git command that cannot be saved first is denied, and so is one that wou
   denied(await host.preExecute(agent, 'Bash', { command: '"g"it clean -fdx' }))
   denied(await host.preExecute(agent, 'Bash', { command: 'git push --mirror' }))
   denied(await host.preExecute(agent, 'Bash', { command: 'cd $WHERE; git reset --hard' }))
-  const lines = await journaled(host, 4)
+  // The session's project is the repository the workspace is (projectHomeFor's order), so the journal is its `.llm`.
+  const lines = await journaled(host, 4, dir)
   assert.deepEqual(lines.map(line => line.rule), [GIT_SNAPSHOT_RULE, GIT_SNAPSHOT_RULE, GIT_SNAPSHOT_RULE, GIT_SNAPSHOT_RULE])
   // Not the main agent: nothing is judged.
   const plain = host.addAgent('plain')

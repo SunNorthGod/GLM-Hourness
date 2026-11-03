@@ -14,6 +14,7 @@ import assert from 'node:assert/strict'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { projectRootOf } from '../src/data/project-home.ts'
 import type { DesignContext } from '../src/design/index.ts'
 import type { AgentLike, AssemblePayload, AssembledSection, AssembledTool, CommandDefinitionLike, CommandExecutionLike, CommandResultLike, DesignAgentLike, DesignAgentsService, DesignInvocationLike, PreExecuteDecision, PreExecuteListener, PreStepDecision, PreStepPayload, SessionEventLike, SessionLike, SessionProjectionsService, ToolDefinitionLike, ToolExecutionContext, ToolExecutionPayload, ToolsLike, UserNotice } from '../src/shared/dsh-min.ts'
 import { healthServiceName, type RowHealthView } from '../src/shared/health.ts'
@@ -399,9 +400,10 @@ export function denied(decision: PreExecuteDecision): string {
   return (decision as { reason: string }).reason
 }
 
-/** The lines of the violation journal once there are `count` of them (the row writes them without waiting). */
-export async function journaled(host: DesignHost, count: number): Promise<Array<Record<string, unknown>>> {
-  const file = join(host.projectHome, 'audit', 'violations.jsonl')
+/** The lines of the violation journal once there are `count` of them (the row writes them without waiting). `dir`: the working directory of a session whose project journal is the repo's `.llm` (projectHomeFor's order); without it the data service's project directory is read. */
+export async function journaled(host: DesignHost, count: number, dir?: string): Promise<Array<Record<string, unknown>>> {
+  const root = dir === undefined ? undefined : projectRootOf(dir)
+  const file = join(root === undefined ? host.projectHome : join(root, '.llm'), 'audit', 'violations.jsonl')
   for (let attempt = 0; attempt < 200; attempt++) {
     const rows = existsSync(file) ? readFileSync(file, 'utf8').split('\n').filter(line => line !== '').map(line => JSON.parse(line) as Record<string, unknown>) : []
     if (rows.length >= count) return rows
