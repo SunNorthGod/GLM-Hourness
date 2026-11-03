@@ -103,6 +103,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "批次 5（f12f3eb）：面板侧与规则行——BoardState.items 与 checkedBoardState（plain-ui §8.2 快照校验在注册模块实现并按 §12 扩条目，逐条过 validateStatusItem、坏 available 整态弃用、结果按输入对象记忆化保 useSyncExternalStore 稳定）；homeLineFromItem 按条目 id 命中（答了设计开口 SH3-01：60 码点内逐字，超出为 null）；规则行经 provideRowStatus 交唯一的 rules/peak 条目（fields 带 peakMode/peakModeOrigin，时段不可读则无条目与面板一致），hourness 行在规则行视图在场时让出峰时段半条（生产输出要等行启用才变，e35c422 已启用、本分支并 main 后探针预期需对账）。偏差：循环行不交条目（LoopsService 缺 staleEntries/timeoutEntries 成员，§6.11 归日程，不猜设计）；课程行按 §12 本轮不动。门禁 test 2503、probe 323/323、棘轮 220/19/1。批次 4 等 m4 合并、批次 6 与晨报等 M7，本线待命。"
+    },
+    {
+      "at": "2026-11-03T19:45:52.162Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "核心三批并入 main（cbc90a5，2026-11-04）：集线器契约与收集器、glm/usage、glm/quota、rules/peak 条目、BoardState.items 与 checkedBoardState 面板接缝、hourness 行对峰时段半条的让渡；test 链并包（对方 test:1 + 我方 test:2，package.json 行级冲突脚本解并）。合并树门禁全绿（probe 328/328）。模块仍 doing：批次 4（env/* 与 rules/* 条目）等 m4 合并、批次 6（M7 读取者与晨报改读）等 M7 合并，届时从 main 续作。面板与新手引导线的地基就位。"
     }
   ]
 }
