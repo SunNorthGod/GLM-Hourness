@@ -1,10 +1,39 @@
 {
   "name": "dsh-hourness",
   "version": "0.3.0",
-  "private": true,
-  "description": "Hourness orchestration for DeepSeek Harness, for any model: the project graph and its panel, guard rails, the audit journal, memory and the /hourness report.",
+  "description": "Orchestration layer for DeepSeek Harness: project graph and its sidebar panel, guard rails, audit journals, memory, the /wish main-agent flow, and the /hourness morning report.",
   "type": "module",
   "license": "PolyForm-Noncommercial-1.0.0",
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "orchestration",
+    "project-graph",
+    "guard",
+    "memory",
+    "plugin"
+  ],
+  "homepage": "https://github.com/SunNorthGod/GLM-Hourness/tree/main/packages/hourness#readme",
+  "bugs": {
+    "url": "https://github.com/SunNorthGod/GLM-Hourness/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SunNorthGod/GLM-Hourness.git",
+    "directory": "packages/hourness"
+  },
+  "engines": {
+    "node": ">=22",
+    "dsh": "^0.2.1-rc.3"
+  },
+  "files": [
+    "cordis.patch.yml",
+    "icon.svg",
+    "locale",
+    "dist",
+    "ui",
+    "README.md"
+  ],
   "exports": {
     ".": "./ui/index.js",
     "./client": "./ui/client.js",

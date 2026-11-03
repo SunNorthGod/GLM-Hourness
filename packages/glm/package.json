@@ -1,10 +1,38 @@
 {
   "name": "dsh-glm-zcode",
   "version": "0.3.0",
-  "private": true,
-  "description": "GLM ZCode channel for DeepSeek Harness: runs GLM on its ZCode 3.17.1 training distribution with the native channel and login, the prompt and tool-surface mirror, lazy tool loading and compaction.",
+  "description": "ZCode-compatible GLM channel for DeepSeek Harness: native account login, identity headers, request signing, prompt and tool surface mirroring ZCode 3.17.1, lazy tool loading and compaction.",
   "type": "module",
   "license": "PolyForm-Noncommercial-1.0.0",
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "glm",
+    "zcode",
+    "llm",
+    "plugin"
+  ],
+  "homepage": "https://github.com/SunNorthGod/GLM-Hourness/tree/main/packages/glm#readme",
+  "bugs": {
+    "url": "https://github.com/SunNorthGod/GLM-Hourness/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SunNorthGod/GLM-Hourness.git",
+    "directory": "packages/glm"
+  },
+  "engines": {
+    "node": ">=22",
+    "dsh": "^0.2.1-rc.3"
+  },
+  "files": [
+    "cordis.patch.yml",
+    "icon.svg",
+    "locale",
+    "dist",
+    "ui",
+    "README.md"
+  ],
   "exports": {
     ".": "./ui/index.js",
     "./client": "./ui/client.js",
