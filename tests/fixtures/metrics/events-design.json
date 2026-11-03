@@ -1,0 +1,299 @@
+[
+  {
+    "s": 1,
+    "k": "design.proposal-shown",
+    "at": "2026-11-04T10:00:00.000Z",
+    "w": "0123abcd",
+    "n": 1,
+    "h": "000000000000",
+    "v": "0.3.0+abc1234.dirty",
+    "sid": "s-d",
+    "by": "design",
+    "body": {
+      "kind": "question",
+      "number": 1,
+      "goal": "g-d",
+      "pending": "p-00",
+      "units": 10,
+      "again": false,
+      "form": "recommend"
+    }
+  },
+  {
+    "s": 1,
+    "k": "design.answer-recorded",
+    "at": "2026-11-04T10:001:00.000Z",
+    "w": "0123abcd",
+    "n": 2,
+    "h": "000000000000",
+    "v": "0.3.0+abc1234.dirty",
+    "sid": "s-d",
+    "by": "design",
+    "body": {
+      "kind": "question",
+      "answer": "agree",
+      "outcome": "adopted",
+      "goal": "g-d",
+      "pending": "p-00",
+      "ms": 60000,
+      "units": 2,
+      "noted": true,
+      "form": "recommend"
+    }
+  },
+  {
+    "s": 1,
+    "k": "design.proposal-shown",
+    "at": "2026-11-04T10:02:00.000Z",
+    "w": "0123abcd",
+    "n": 3,
+    "h": "000000000000",
+    "v": "0.3.0+abc1234.dirty",
+    "sid": "s-d",
+    "by": "design",
+    "body": {
+      "kind": "question",
+      "number": 1,
+      "goal": "g-d",
+      "pending": "p-02",
+      "units": 10,
+      "again": false,
+      "form": "choose"
+    }
+  },
+  {
+    "s": 1,
+    "k": "design.answer-recorded",
+    "at": "2026-11-04T10:021:00.000Z",
+    "w": "0123abcd",
+    "n": 4,
+    "h": "000000000000",
+    "v": "0.3.0+abc1234.dirty",
+    "sid": "s-d",
+    "by": "design",
+    "body": {
+      "kind": "question",
+      "answer": "agree",
+      "outcome": "adopted",
+      "goal": "g-d",
+      "pending": "p-02",
+      "ms": 60000,
+      "units": 2,
+      "noted": true,
+      "form": "choose",
+      "pickedRecommended": true
+    }
+  },
+  {
+    "s": 1,
+    "k": "design.proposal-shown",
+    "at": "2026-11-04T10:04:00.000Z",
+    "w": "0123abcd",
+    "n": 5,
+    "h": "000000000000",
+    "v": "0.3.0+abc1234.dirty",
+    "sid": "s-d",
+    "by": "design",
+    "body": {
+      "kind": "question",
+      "number": 1,
+      "goal": "g-d",
+      "pending": "p-04",
+      "units": 10,
+      "again": false,
+      "form": "choose"
+    }
+  },
+  {
+    "s": 1,
+    "k": "design.answer-recorded",
+    "at": "2026-11-04T10:041:00.000Z",
+    "w": "0123abcd",
+    "n": 6,
+    "h": "000000000000",
+    "v": "0.3.0+abc1234.dirty",
+    "sid": "s-d",
+    "by": "design",
+    "body": {
+      "kind": "question",
+      "answer": "agree",
+      "outcome": "adopted",
+      "goal": "g-d",
+      "pending": "p-04",
+      "ms": 60000,
+      "units": 2,
+      "noted": true,
+      "form": "choose",
+      "pickedRecommended": false
+    }
+  },
+  {
+    "s": 1,
+    "k": "design.proposal-shown",
+    "at": "2026-11-04T10:06:00.000Z",
+    "w": "0123abcd",
+    "n": 7,
+    "h": "000000000000",
+    "v": "0.3.0+abc1234.dirty",
+    "sid": "s-d",
+    "by": "design",
+    "body": {
+      "kind": "question",
+      "number": 1,
+      "goal": "g-d",
+      "pending": "p-06",
+      "units": 10,
+      "again": false,
+      "form": "recommend"
+    }
+  },
+  {
+    "s": 1,
+    "k": "design.answer-recorded",
+    "at": "2026-11-04T10:061:00.000Z",
+    "w": "0123abcd",
+    "n": 8,
+    "h": "000000000000",
+    "v": "0.3.0+abc1234.dirty",
+    "sid": "s-d",
+    "by": "design",
+    "body": {
+      "kind": "question",
+      "answer": "reject",
+      "outcome": "dropped",
+      "goal": "g-d",
+      "pending": "p-06",
+      "ms": 60000,
+      "units": 2,
+      "noted": true,
+      "form": "recommend"
+    }
+  },
+  {
+    "s": 1,
+    "k": "design.proposal-shown",
+    "at": "2026-11-04T10:08:00.000Z",
+    "w": "0123abcd",
+    "n": 9,
+    "h": "000000000000",
+    "v": "0.3.0+abc1234.dirty",
+    "sid": "s-d",
+    "by": "design",
+    "body": {
+      "kind": "question",
+      "number": 1,
+      "goal": "g-d",
+      "pending": "p-08",
+      "units": 10,
+      "again": false,
+      "form": "choose"
+    }
+  },
+  {
+    "s": 1,
+    "k": "design.answer-recorded",
+    "at": "2026-11-04T10:081:00.000Z",
+    "w": "0123abcd",
+    "n": 10,
+    "h": "000000000000",
+    "v": "0.3.0+abc1234.dirty",
+    "sid": "s-d",
+    "by": "design",
+    "body": {
+      "kind": "question",
+      "answer": "add",
+      "outcome": "amended",
+      "goal": "g-d",
+      "pending": "p-08",
+      "ms": 60000,
+      "units": 2,
+      "noted": true,
+      "form": "choose"
+    }
+  },
+  {
+    "s": 1,
+    "k": "design.proposal-shown",
+    "at": "2026-11-04T10:10:00.000Z",
+    "w": "0123abcd",
+    "n": 11,
+    "h": "000000000000",
+    "v": "0.3.0+abc1234.dirty",
+    "sid": "s-d",
+    "by": "design",
+    "body": {
+      "kind": "question",
+      "number": 1,
+      "goal": "g-d",
+      "pending": "p-10",
+      "units": 10,
+      "again": false,
+      "form": "recommend"
+    }
+  },
+  {
+    "s": 1,
+    "k": "design.answer-recorded",
+    "at": "2026-11-04T10:101:00.000Z",
+    "w": "0123abcd",
+    "n": 12,
+    "h": "000000000000",
+    "v": "0.3.0+abc1234.dirty",
+    "sid": "s-d",
+    "by": "design",
+    "body": {
+      "kind": "question",
+      "answer": "agree",
+      "outcome": "adopted",
+      "goal": "g-d",
+      "pending": "p-10",
+      "ms": 60000,
+      "units": 2,
+      "noted": true,
+      "form": "recommend",
+      "delegated": true
+    }
+  },
+  {
+    "s": 1,
+    "k": "design.proposal-shown",
+    "at": "2026-11-04T10:12:00.000Z",
+    "w": "0123abcd",
+    "n": 13,
+    "h": "000000000000",
+    "v": "0.3.0+abc1234.dirty",
+    "sid": "s-d",
+    "by": "design",
+    "body": {
+      "kind": "question",
+      "number": 1,
+      "goal": "g-d",
+      "pending": "p-12",
+      "units": 10,
+      "again": false,
+      "form": "want"
+    }
+  },
+  {
+    "s": 1,
+    "k": "design.answer-recorded",
+    "at": "2026-11-04T10:121:00.000Z",
+    "w": "0123abcd",
+    "n": 14,
+    "h": "000000000000",
+    "v": "0.3.0+abc1234.dirty",
+    "sid": "s-d",
+    "by": "design",
+    "body": {
+      "kind": "question",
+      "answer": "agree",
+      "outcome": "adopted",
+      "goal": "g-d",
+      "pending": "p-12",
+      "ms": 60000,
+      "units": 2,
+      "noted": true,
+      "form": "want"
+    }
+  }
+]

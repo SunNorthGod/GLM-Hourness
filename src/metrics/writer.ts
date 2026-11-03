@@ -250,7 +250,17 @@ export function openWriter(options: {
     const at = event.at === undefined ? new Date(now()).toISOString() : event.at
     // The sequence and digest placeholders pass the envelope check; lineFor writes the real ones.
     // The field order is the canonical one (schema.ts `serializeEvent`): the
-    // checker recomputes the chain over that exact text, sid before body.
+    // checker recomputes the chain over that exact text, sid before body, and
+    // the body's fields in the kind table's order — a caller's key order must
+    // not change the line the chain hashes.
+    const table = METRICS_KINDS.get(typeof event.k === 'string' ? event.k : '')
+    if (table === undefined) return buildRejectLine(state, event.k, 'k')
+    const given = typeof event.body === 'object' && event.body !== null ? event.body as Record<string, unknown> : {}
+    const orderedBody: Record<string, unknown> = {}
+    for (const spec of table.fields) {
+      const value = given[spec.name]
+      if (value !== undefined) orderedBody[spec.name] = value
+    }
     const stored: Record<string, unknown> = {
       s: FORMAT_VERSION,
       k: event.k,
@@ -261,10 +271,8 @@ export function openWriter(options: {
       v: event.v ?? stampOf(),
       by: event.by,
       ...(event.sid === undefined ? {} : { sid: event.sid }),
-      body: typeof event.body === 'object' && event.body !== null ? event.body : {},
+      body: orderedBody,
     }
-    const table = METRICS_KINDS.get(typeof event.k === 'string' ? event.k : '')
-    if (table === undefined) return buildRejectLine(state, event.k, 'k')
     const check = checkEvent(stored, METRICS_KINDS)
     if (!check.ok) return buildRejectLine(state, event.k, check.field)
     delete stored.h // the chain text is the stored line without its final member
