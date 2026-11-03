@@ -232,8 +232,8 @@ export function bareImports(text) {
 
 const ICON_TYPES = ['.svg', '.png', '.jpg', '.jpeg', '.webp']
 const ICON_MAX_BYTES = 256 * 1024
-/** How many times the build output's health module was imported; a fresh URL per import defeats the module cache. */
-let healthImports = 0
+/** How many times a build-output module was imported; a fresh URL per import defeats the module cache. */
+let sharedImports = 0
 
 /**
  * Whether a row name is a path or a URL rather than a package specifier:
@@ -433,10 +433,22 @@ export async function bundleProblems(root, table) {
   const healthFiles = table.PACKAGES.map(pkg => join(root, pkg.dir, 'dist', table.SHARED_DIR, 'health.js')).filter(file => existsSync(file))
   if (healthFiles.length === 0) problems.push(`no package has dist/${table.SHARED_DIR}/health.js: run npm run build`)
   for (const file of healthFiles) {
-    healthImports += 1
-    const { HEALTH_PACKAGES } = await import(`${pathToFileURL(file).href}?preflight=${healthImports}`)
+    sharedImports += 1
+    const { HEALTH_PACKAGES } = await import(`${pathToFileURL(file).href}?preflight=${sharedImports}`)
     const built = JSON.stringify((HEALTH_PACKAGES ?? []).map(entry => ({ name: entry.name, rows: [...entry.rows] })))
     if (built !== healthTable) problems.push(`${slash(relative(root, file))}: HEALTH_PACKAGES is ${built}, the table says ${healthTable}`)
+  }
+
+  // 5: STATUS_ROWS in the built report module against the table (status hub
+  // design 0.3 §3.3): every row the collector reads is a loader row.
+  const rowNames = new Set(table.PACKAGES.flatMap(pkg => pkg.rows.map(row => rowName(row.id))))
+  const statusFiles = table.PACKAGES.map(pkg => join(root, pkg.dir, 'dist', 'report', 'status.js')).filter(file => existsSync(file))
+  if (statusFiles.length === 0) problems.push('no package has dist/report/status.js: run npm run build')
+  for (const file of statusFiles) {
+    sharedImports += 1
+    const { STATUS_ROWS } = await import(`${pathToFileURL(file).href}?preflight=${sharedImports}`)
+    const unknown = (STATUS_ROWS ?? []).filter(row => !rowNames.has(row))
+    if (unknown.length > 0 || !Array.isArray(STATUS_ROWS)) problems.push(`${slash(relative(root, file))}: STATUS_ROWS is ${JSON.stringify(STATUS_ROWS ?? null)}, the table's rows are ${[...rowNames].join(', ')}`)
   }
 
   return { problems, summary: `${counts.join(', ')}; ${expectedIds.length} rows composed; client halves of ${table.PACKAGES.map(pkg => pkg.name).join(', ')} built` }

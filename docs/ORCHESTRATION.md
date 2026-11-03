@@ -1237,6 +1237,8 @@ LLM 不讲人话，多半是默认在向评审汇报，想显得周全。做法�
 
 `/hourness` 由三部分组成：晨报，面板，额度。「面板」一节〔已实现 2026-10-28；高峰行、范围行、缺口行与额度一节是 M6 的 P1，项目图 `m6-panel`〕：范围是用量流水的全部记录；先列合计，再按模型列出调用次数、积分、高峰占比（高峰时段的积分占该行积分的比例）与缓存命中率（缓存命中 / 全部输入，全部输入含未命中、命中与写入），然后是不计积分的模型、修正前的记录数与无法读取的记录数。
 
+状态板块〔2026-11-03，`DESIGN.md` §2.6〕：这一节的清单是状态板块的一条 `glm/usage` 条目（`hourness` 行交，`src/report/panel.ts` 的 `usageStatusItems`），`renderHourness` 经收集器 `collectStatus(..., 'agent')` 读回它（`src/report/status.ts`），口径说明行、高峰行与范围、缺口行仍是这一节的版面，输出与改前逐字相同；`usagePanelOf`/`usagePanelLines` 只被条目函数一处调用。高峰行与「额度」一节也是条目〔2026-11-04〕：`rules/peak` 的高峰行（`peakStatusItems`，`/glm-status` 的高峰行同出一词）与 `glm/quota` 的额度几行（`quotaStatusItems`）由 `hourness` 行交，版面照旧；规则行启用后 `rules/peak` 整条归规则行交（`src/rules/status.ts`，`fields` 带档位），`hourness` 行的高峰半条只在规则行的状态视图不在场时交；额度的读数仍发生在人敲 `/hourness` 时（至多三秒，M6 定的时机），条目带那次读数，计价服务不在时这两条不出现、这一节照旧缺席。状态读不到时这一节写「<行> 行的状态暂时读不到：<原因>」并告警一次，不用别处的数顶替。晨报的「用量（今天）」一节仍是本期的切片，等 M7 的报告节次接状态板块时再定它与整本账的关系（状态板块设计 0.3 §10 的第 2 步后一半）。
+
 计价服务〔2026-10-29，split 第 3 步〕：面板经 cordis 服务 `glmHournessPricing` 计积分，每次 `/hourness` 调用时读。契约（`src/shared/pricing.ts`）是首行的口径说明 `basis`、套餐名 `plan`（用在「不计积分（不在 … 内）」一行）、一次调用扣的积分 `charged(model, usage, atMs)`（模型不在套餐里时没有值）与高峰判定 `peak(atMs)`。提供方是 GLM 通道包的 `glm-login` 行，值来自 `src/glm-llm/credits.ts`，所以有服务时面板与上面写的完全相同。
 
 - 没有服务（GLM 通道包没装，或 `glm-login` 禁用）：首行写「没有计价服务（GLM 通道包的 glm-login 行提供积分口径），只列调用与 token」，合计与每个模型列调用次数、未命中输入、缓存读、缓存写、输出与缓存命中率，按调用次数排序；修正前的记录与无法读取的记录照旧只报条数（这条清洗规则按 provider id 识别，与 GLM 包在不在无关）。

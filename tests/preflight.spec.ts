@@ -13,7 +13,7 @@ const GLM = {
   client: { row: 'glm-hourness/glm-ui', entry: 'ui/src/glm-client.js', sources: ['ui/src/channel.js', 'ui/src/glm-client.js'] },
 }
 const HOURNESS = {
-  key: 'hourness', name: 'pkg-hourness', dir: 'packages/hourness', src: ['graph', 'guard'],
+  key: 'hourness', name: 'pkg-hourness', dir: 'packages/hourness', src: ['graph', 'guard', 'report'],
   rows: [{ id: 'glm-hourness/graph', module: 'graph/index' }, { id: 'glm-hourness/guard', module: 'guard/index' }],
   client: { row: 'glm-hourness/ui', entry: 'ui/src/hourness-client.tsx', sources: ['ui/src/hourness-client.tsx', 'ui/src/panel/'] },
 }
@@ -38,7 +38,7 @@ function withSrc(dirs: readonly string[], check: (root: string) => void, files: 
   }
 }
 
-const LAYOUT = ['shared', 'glm-llm/auth', 'glm-prompt', 'graph', 'guard']
+const LAYOUT = ['shared', 'glm-llm/auth', 'glm-prompt', 'graph', 'guard', 'report']
 
 test('the repository table holds on the repository', () => {
   assert.deepEqual(tableProblems(REPO, { SHARED_DIR, PACKAGES }), [])
@@ -50,11 +50,11 @@ test('a table matching its src/ passes; nested directories with their own names 
 
 test('a source directory in two packages, a repeated key, name, directory or row id, or shared listed by a package fails', () => {
   withSrc(LAYOUT, (root) => {
-    const twice = { ...TABLE, PACKAGES: [GLM, { ...HOURNESS, src: ['graph', 'guard', 'glm-prompt'] }] }
+    const twice = { ...TABLE, PACKAGES: [GLM, { ...HOURNESS, src: ['graph', 'guard', 'glm-prompt', 'report'] }] }
     assert.deepEqual(tableProblems(root, twice), ['source directory src/glm-prompt belongs to both glm and hourness'])
     const repeated = { ...TABLE, PACKAGES: [GLM, { ...HOURNESS, key: 'glm', name: 'pkg-glm', dir: 'packages/glm', rows: [...HOURNESS.rows, { id: 'glm-hourness/glm-llm', module: 'graph/x' }], client: { ...HOURNESS.client, row: 'glm-hourness/glm-ui' } }] }
     assert.deepEqual(tableProblems(root, repeated), ['package key glm is registered twice', 'package name pkg-glm is registered twice', 'package directory packages/glm is registered twice', 'row id glm-hourness/glm-llm is registered twice', 'row id glm-hourness/glm-ui is registered twice'])
-    const shared = { ...TABLE, PACKAGES: [GLM, { ...HOURNESS, src: ['graph', 'guard', 'shared'] }] }
+    const shared = { ...TABLE, PACKAGES: [GLM, { ...HOURNESS, src: ['graph', 'guard', 'shared', 'report'] }] }
     assert.deepEqual(tableProblems(root, shared), ['package hourness lists the shared library shared as its own source directory'])
   })
 })
@@ -174,6 +174,7 @@ function writeLayout(root: string): void {
     for (const row of pkg.rows) write(join(dir, 'dist', `${row.module}.js`), 'import { peer } from \'@scope/peer\'\nexport const value = peer\n')
     write(join(dir, 'dist', 'build-info.json'), json({ version: '0.1.0', commit: 'abc1234', dirty: false }))
     write(join(dir, 'dist', 'shared', 'health.js'), `export const HEALTH_PACKAGES = ${JSON.stringify(health)}\n`)
+    if (pkg.src.includes('report')) write(join(dir, 'dist', 'report', 'status.js'), `export const STATUS_ROWS = ${JSON.stringify(health.flatMap(entry => entry.rows))}\n`)
     write(join(dir, 'dist', 'shared', 'types.d.ts'), 'import type { X } from \'@scope/types-only\'\nexport type Y = X\n')
     write(join(dir, 'ui', 'index.js'), 'export function apply() {}\n')
     write(join(dir, 'ui', 'client.js'), wrapped(pkg.name))
@@ -265,6 +266,13 @@ test('a dist/ directory outside the table, a tsconfig include that differs, or H
 test('a missing build stamp, or one whose version is not the manifest\'s, fails', async () => {
   assert.deepEqual(await problemsAfter(root => rmSync(join(root, 'packages/glm/dist/build-info.json'))), ['pkg-glm: dist/build-info.json is missing: run npm run build'])
   assert.deepEqual(await problemsAfter(root => write(join(root, 'packages/glm/dist/build-info.json'), json({ version: '9.9.9', commit: 'abc1234', dirty: false }))), ['pkg-glm: dist/build-info.json needs the manifest\'s version, a commit and a dirty flag'])
+})
+
+test('a STATUS_ROWS naming a row the table does not have, or no status module in the build output, fails', async () => {
+  const wrong = await problemsAfter(root => write(join(root, 'packages/hourness/dist/report/status.js'), 'export const STATUS_ROWS = ["glm-llm", "metrics"]\n'))
+  assert.deepEqual(wrong, ['packages/hourness/dist/report/status.js: STATUS_ROWS is ["glm-llm","metrics"], the table\'s rows are glm-llm, graph, guard'])
+  const missing = await problemsAfter(root => rmSync(join(root, 'packages/hourness/dist/report/status.js')))
+  assert.deepEqual(missing, ['no package has dist/report/status.js: run npm run build'])
 })
 
 test('a row not exported under its name fails; a package without locale/en.json or with a missing icon fails', async () => {

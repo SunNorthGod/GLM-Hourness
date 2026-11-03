@@ -1,14 +1,21 @@
 /**
  * The board registration table of the panel (plain-ui 0.7 §4.7, M5 design
- * §8.2): the module-level table the boards of the panel register themselves
- * in, and the order the panel lists them in. The panel only reads this
- * table: it lists the boards whose `available` is true, in BOARD_ORDER,
- * opening a board's Page on its second-layer stack. plain-ui owns the full
- * home page and footer; until then this is the one table and the panel's
- * temporary entry reads it. No React here: the specs run the table under
- * Node, so the panel-side hook lives with the panel.
+ * §8.2, status hub design 0.3 §3.4): the module-level table the boards of
+ * the panel register themselves in, and the order the panel lists them in.
+ * The panel only reads this table: it lists the boards whose `available` is
+ * true, in BOARD_ORDER, opening a board's Page on its second-layer stack.
+ * What a board's snapshot hands over is checked here (plain-ui 1.3 §8.2's
+ * table row, extended with `items` by the status hub's §12): a field that
+ * does not fit is cleaned with one warning, so a board's bug costs it a line
+ * or its entries, not the panel. A board that mirrors one of its entries on
+ * the home page derives the line through homeLineFromItem, so both faces
+ * show one value. plain-ui owns the full home page and footer; until then
+ * this is the one table and the panel's temporary entry reads it. No React
+ * here: the specs run the table under Node, so the panel-side hook lives
+ * with the panel.
  */
 import type { ComponentType } from 'react'
+import { validateStatusItem, type StatusItem } from '../../../src/shared/status.ts'
 
 /** What one board tells the panel about itself right now. */
 export interface BoardState {
@@ -19,6 +26,12 @@ export interface BoardState {
   readonly guideLine: string | null
   /** Only the rules board uses it (GLM peak pricing); every other board is false. */
   readonly peakApplies: boolean
+  /**
+   * This board's status entries (status hub 0.3 §3.4): the same items the
+   * board's row submits to the hub, for the board's page to list. A board
+   * without entries leaves it out.
+   */
+  readonly items?: readonly StatusItem[]
 }
 
 /** The known boards and their order on the footer and the onboarding page. */
@@ -55,4 +68,98 @@ export function registerBoard(board: Board): void {
 export function boards(): readonly Board[] {
   const ordered = BOARD_ORDER.flatMap(id => table.filter(board => board.id === id))
   return [...ordered, ...table.filter(board => !(BOARD_ORDER as readonly string[]).includes(board.id))]
+}
+
+/** The cap the home and guide lines share (plain-ui 1.3 §8.2). */
+const LINE_MAX = 60
+
+/** One line of at most 60 code points, or null; anything else is not a line. */
+function lineOf(value: unknown): string | null {
+  return typeof value === 'string' && !value.includes('\n') && [...value].length <= LINE_MAX ? value : null
+}
+
+const warned = new Set<string>()
+const warnOnce = (key: string, text: string): void => {
+  if (warned.has(key)) return
+  warned.add(key)
+  console.warn(`glm-hourness: ${text}`)
+}
+
+const checkedByInput = new WeakMap<object, BoardState | null>()
+
+/**
+ * The snapshot result the panel reads (plain-ui 1.3 §8.2, status hub 0.3
+ * §12): `available` is a boolean — anything else makes the whole state
+ * unusable, null, and the panel treats the board as not available;
+ * `peakApplies` is a boolean, a missing one counts as false; the lines are
+ * one line of at most 60 code points or null, a line that does not fit is
+ * hidden with one warning; and `items`, when there, is an array whose every
+ * entry passes validateStatusItem, the invalid ones dropped and the cleaned
+ * ones kept, each with one warning per reason. The checked state is
+ * remembered per input object, so a board whose snapshot is stable keeps a
+ * stable checked state (useSyncExternalStore).
+ */
+export function checkedBoardState(boardId: string, state: BoardState): BoardState | null {
+  if (typeof state !== 'object' || state === null) {
+    warnOnce(`${boardId}:state`, `board ${boardId} handed no state; the panel treats it as not available`)
+    return null
+  }
+  const known = checkedByInput.get(state)
+  if (known !== undefined) return known
+  if (typeof state.available !== 'boolean') {
+    warnOnce(`${boardId}:available`, `board ${boardId} handed no boolean available; the panel treats it as not available`)
+    checkedByInput.set(state, null)
+    return null
+  }
+  const key = (field: string): string => `${boardId}:${field}`
+  let peakApplies = state.peakApplies
+  if (typeof peakApplies !== 'boolean') {
+    warnOnce(key('peakApplies'), `board ${boardId} handed a peakApplies that is not a boolean; the panel reads false`)
+    peakApplies = false
+  }
+  const homeLine = lineOf(state.homeLine)
+  if (homeLine !== state.homeLine) warnOnce(key('homeLine'), `board ${boardId} handed a homeLine that is not one line of at most ${LINE_MAX} code points; the panel hides it`)
+  const guideLine = lineOf(state.guideLine)
+  if (guideLine !== state.guideLine) warnOnce(key('guideLine'), `board ${boardId} handed a guideLine that is not one line of at most ${LINE_MAX} code points; the panel hides it`)
+  let items: readonly StatusItem[] | undefined
+  if (state.items !== undefined) {
+    if (Array.isArray(state.items)) {
+      const kept: StatusItem[] = []
+      for (const candidate of state.items) {
+        const result = validateStatusItem(candidate)
+        if (!result.ok) {
+          warnOnce(`${boardId}:item:${result.reason}`, `board ${boardId} handed a status entry that is dropped (${result.reason})`)
+          continue
+        }
+        for (const warning of result.warnings) warnOnce(`${boardId}:item:${warning}`, `board ${boardId} handed a status entry that is cleaned: ${warning}`)
+        kept.push(result.item)
+      }
+      items = kept
+    }
+    else warnOnce(key('items'), `board ${boardId} handed items that are not an array; the panel reads none`)
+  }
+  const checked: BoardState = {
+    available: state.available,
+    homeLine,
+    guideLine,
+    peakApplies,
+    ...(items === undefined ? {} : { items }),
+  }
+  checkedByInput.set(state, checked)
+  return checked
+}
+
+/**
+ * The home line a board mirrors from one of its entries (status hub 0.3
+ * §3.4): the entry's text, verbatim, when that text fits the home line's 60
+ * code points; null otherwise, and the board falls back to its own words or
+ * hides the line. The board names the entry by id — that naming is how a
+ * mirrored line is told from a lookalike one, so the L2 assertion holds by
+ * construction: the home page's line and the board page's entry are one
+ * value. Diagnostic lines (a board's own words about itself) are not derived
+ * here and are not covered by the assertion.
+ */
+export function homeLineFromItem(items: readonly StatusItem[] | undefined, itemId: string): string | null {
+  const item = items?.find(entry => entry.id === itemId)
+  return item !== undefined && [...item.text].length <= LINE_MAX ? item.text : null
 }
