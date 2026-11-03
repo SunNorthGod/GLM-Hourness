@@ -22,7 +22,7 @@ import { createQuotaReader, QUOTA_TIMEOUT_MS, QUOTA_URL, quotaHealthText, type Q
 import { loginFingerprintOf, nodeQuotaFs, QuotaJournal, quotaJournalPath, type QuotaRecord } from '../src/glm-llm/quota-journal.ts'
 import { ZcodeAdapter, logout } from '../src/glm-llm/zcode.ts'
 import { creditPricing } from '../src/glm-llm/credits.ts'
-import { renderHourness } from '../src/report/index.ts'
+import { apply as hournessApply } from '../src/report/index.ts'
 import { healthServiceName, type RowHealthView } from '../src/shared/health.ts'
 import { PRICING_SERVICE, pricingService, quotaOf } from '../src/shared/pricing.ts'
 import { quotaLines } from '../src/shared/quota.ts'
@@ -757,7 +757,10 @@ test('/hourness, reading the quota through the service the row provides, returns
   const row = loginRow({ home, fetchImpl })
   const pricing = pricingService(row.store)
   assert.ok(pricing !== undefined)
-  const render = (): Promise<string> => renderHourness({}, { pricing, fs: { readFile: () => Promise.reject(new Error('ENOENT')) }, now: new Date(START), offsetMinutes: 480 })
+  // The hourness row reads the quota when its command runs, then renders the entry it cached.
+  const hourness = new Map<string, Handler>()
+  const dispose = hournessApply({ commands: { register: definition => { hourness.set(definition.name, invocation => definition.handler(invocation)); return () => {} } }, ...row.store }, { now: () => new Date(START), offsetMinutes: 480 })
+  const render = async (): Promise<string> => (await hourness.get('hourness')!({ agent: { id: 's1', session: { id: 's1' } }, rawInput: '' })).text
   const started = Date.now()
   const text = await render()
   assert.ok(Date.now() - started < 3500, `returned after ${Date.now() - started} ms`)
@@ -766,6 +769,7 @@ test('/hourness, reading the quota through the service the row provides, returns
   const next = await render()
   assert.ok(next.includes('## 额度\n额度（服务端读数，含 ZCode 等其他客户端，读于 17:02）：max\n- 5 小时：已用 41% · 21:30 重置 · '), next)
   assert.equal(calls.filter(call => call.includes('/api/monitor/')).length, 1, 'the second call joined the read in flight')
+  dispose()
 })
 
 test('the row health says the last reading, the reason of a failed read, and a refused login; the state stays as the row had it', async () => {

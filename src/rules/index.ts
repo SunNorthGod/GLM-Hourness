@@ -18,6 +18,10 @@
  *   and asks `peakHoldFor` whether the peak holds a session's work back;
  * - the service `glmHournessRules`, whose one member is the line the guard adds
  *   to its prompt section while this row is on;
+ * - the status view `glmHournessStatus/rules` (src/rules/status.ts): the status
+ *   hub's one `rules/peak` entry, the peak-hours line from the pricing service
+ *   with the project's level in the fields, the one source the report face and
+ *   the rules board's page read;
  * - waiting tickets (tickets.ts): a call a rule of the person queues is refused
  *   with a ticket, judged again every 5 seconds by the host that owns it, and
  *   the agent is told once when it clears; a subagent's ticket goes to the
@@ -52,6 +56,8 @@ import { dataHomes } from '../shared/data-home.ts'
 import type { AgentCommandInvocationLike, AgentLike, AgentsService, CommandDefinitionLike, CommandResultLike, CommandsHost, PreExecuteListener, ProvideHost, ServiceLookup, SessionLike, ToolsLike } from '../shared/dsh-min.ts'
 import { activationState, provideRowHealth, sessionIdOf, type HealthState, type RowHealth } from '../shared/health.ts'
 import { PEAK_MODE_SERVICE } from '../shared/peak-mode.ts'
+import { pricingService } from '../shared/pricing.ts'
+import { provideRowStatus } from '../shared/status-host.ts'
 import { RULES_TOOL_NAMES } from '../shared/tool-names.ts'
 import { CATALOG } from './builtin.ts'
 import { NOT_A_PROJECT, RULES_HINT, runRulesCommand } from './commands.ts'
@@ -64,6 +70,7 @@ import { installReminder } from './reminder.ts'
 import type { HostRef } from './request.ts'
 import { projectHealth } from './row-health.ts'
 import { RULES_DECLARATION, RULES_SERVICE, type RulesService } from './service.ts'
+import { rulesStatusItems } from './status.ts'
 import { DEFAULT_RULES_DIR, realStoreIo, type StoreIo } from './store.ts'
 import { createTicketDesk } from './tickets.ts'
 import { rulesShowTool } from './tool.ts'
@@ -270,6 +277,18 @@ export function apply(ctx: RulesContext, config: RulesConfig = {}): Unload {
       console.warn(`${name}: ${RULES_SERVICE} is not provided (the guard declares no rules board): ${message(error)}`)
       problems.push(`服务 ${RULES_SERVICE} 没提供上：${message(error)}（guard 的提示词里不写规则板那一行）`)
     }
+    // The row's status view (status hub design 0.3 §3.2, §12 rules row): the one rules/peak entry —
+    // the peak-hours line from the pricing service with the project's level in the fields — served
+    // from rulesStatusItems (src/rules/status.ts), the one source the report face and the rules
+    // board's page read. The session's project is read on demand, its files cached by the reader.
+    const status = provideRowStatus(ctx, 'rules', (sessionId) => {
+      const pricing = pricingService(ctx)
+      if (pricing === undefined) return []
+      const cwd = sessionId === undefined ? undefined : cwdOf(sessionId)
+      const view = cwd === undefined ? undefined : read(cwd)
+      return rulesStatusItems(view, reading(), pricing, now())
+    })
+    disposers.push(() => { status.dispose() })
   }
   else problems.push(`宿主没有 provide，服务 ${PEAK_MODE_SERVICE} 与 ${RULES_SERVICE} 没提供`)
 
