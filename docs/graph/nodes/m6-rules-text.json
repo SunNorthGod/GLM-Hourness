@@ -36,6 +36,12 @@
       "reason": "运行 m6-followups-s1-s3 开工（2026-11-04，人：「桌面版随便用，尽可能开多线」）",
       "from": "approved",
       "to": "doing"
+    },
+    {
+      "at": "2026-11-04T22:05:23.252Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "实现提交 965bf5b（origin/m6-followups），门禁 0/0/0/0（npm test 2950 / 0 失败，探针 376/376），评审 APPROVED（.llm/m6f/review-s1.json）。合入 main 交给 land-m6-followups（wf_4b9841cada0119dd）；合入后带证据标完成。"
     }
   ]
 }
