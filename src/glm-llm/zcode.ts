@@ -484,7 +484,8 @@ export class ZcodeAdapter {
     })
     if (credential === undefined) {
       report('inactive', '未登录：凭证为空，运行 /glm-login')
-      throw new Error('glm-zcode: not logged in — run /glm-login (the credential store is empty)')
+      // The Chinese line first (plain-ui 1.3 §6.3): a person who has not logged in reads where to click; the English text stays for the log.
+      throw new Error('还没登录 GLM：点输入框下方的 GLM 按钮登录；glm-zcode: not logged in — run /glm-login (the credential store is empty)')
     }
     const fetchImpl = this.options.fetchImpl ?? fetch
     // coding-plan: the project access token is the request credential; 3.16.3

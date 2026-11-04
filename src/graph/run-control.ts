@@ -1,8 +1,8 @@
 /**
  * The host half of the run controls (docs/ORCHESTRATION.md §2.10 运行控制,
  * m2-9): the handler of `/graph-run <start|stop|redo> <node id>`, which the
- * graph-panel row registers next to /graph-apply and the panel sends
- * through remote.commands.execute. It acts on the invoking session's live
+ * graph-panel row registers for the human (the composer; the panel sends
+ * nothing since plain-ui). It acts on the invoking session's live
  * agent (invocation.agent) and, for a direct child, through the subagents
  * service:
  *
@@ -142,7 +142,7 @@ function message(invocation: AgentCommandInvocationLike, action: RunAction, node
 }
 
 function header(action: RunAction, node: GraphNode): string {
-  return `[项目图] 人在面板上点了「${RUN_LABELS[action]}」：任务 ${node.id}「${node.title}」（${STATUS_LABELS[node.status]}）。`
+  return `[项目图] 人用 /graph-run 点了「${RUN_LABELS[action]}」：任务 ${node.id}「${node.title}」（${STATUS_LABELS[node.status]}）。`
 }
 
 function focusStep(node: GraphNode): string {
@@ -205,7 +205,7 @@ export async function runFromCommand(invocation: AgentCommandInvocationLike, con
     if (problem !== undefined) return refused(action, problem)
     if (standing.main) agent.cancel({ kind: 'user' }, { keepInbox: true })
     agent.inject(message(invocation, action, node, `暂停了「${node.title}」`, [
-      `[项目图] 人在面板上暂停了任务 ${node.id}「${node.title}」上的工作，停下了${who}。`,
+      `[项目图] 人用 /graph-run 暂停了任务 ${node.id}「${node.title}」上的工作，停下了${who}。`,
       `不要接着做这个节点，也不要重新派发它；等人再点「${RUN_LABELS.start}」，或在对话里说继续。`,
     ], stopped))
     const failures = stopChildren(standing.children)

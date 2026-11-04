@@ -78,6 +78,12 @@ export class GraphSource {
     if (!this.watching) void this.watch()
   }
 
+  /** The graph directory's absolute path, for the local record's key (seen.ts); null when the host cannot name it. */
+  async statAbsolute(): Promise<string | null> {
+    const result = await this.remote.workspaceFiles.stat(this.sessionId, this.dir, this.abort.signal)
+    return result.ok ? result.value.absolutePath : null
+  }
+
   dispose(): void {
     this.abort.abort()
     if (this.timer !== undefined) clearTimeout(this.timer)

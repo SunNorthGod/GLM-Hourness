@@ -91,13 +91,123 @@ test('the unit: schemas accept its own states and views and refuse others', () =
   assert.throws(() => liveProjection.stateSchema.parse({ ...state, inherited: 'x' }), /inherited/)
 })
 
-test('the panel row registers the unit when the registry arrives, and survives without it', async () => {
+test('the panel row registers the units when the registry arrives, and survives without it', async () => {
   const registered: string[] = []
   const commands = { register: () => () => {} }
   const snapshot = () => ({ values: {} })
   apply({ commands, inject: fakeInjector({ sessionProjections: { register: definition => { registered.push(definition.key); return () => {} }, snapshot } }).inject })
-  assert.deepEqual(registered, [LIVE_KEY])
+  assert.deepEqual(registered, [LIVE_KEY, 'hournessProject'], 'the live view and the holder-record pointer register together')
   const failing = await captureWarnings(() => apply({ commands, inject: fakeInjector({ sessionProjections: { register: () => { throw new Error('incompatible stateVersion') }, snapshot } }).inject }))
   assert.match(failing.warnings.join('\n'), /the live projection is off: incompatible stateVersion/)
   assert.equal(typeof apply({ commands }), 'function', 'no inject: the command still registers')
+})
+
+// --- awaiting (plain-ui 1.3 §4.9): what the main agent put to the human -----
+
+/** A propose_to_human call with its arguments, and its result carrying the tool's own output. */
+function askCall(id: string, args: unknown, kind: string, output: Record<string, unknown>): readonly LiveEvent[] {
+  const shown = { tool: 'propose_to_human', kind, number: 1, text: '', ...output }
+  return [
+    call(id, 'propose_to_human', typeof args === 'string' ? args : JSON.stringify(args)),
+    event('tool/result', { turn: 1, step: 1, message: { role: 'tool', isError: false, source: { callId: id }, content: [{ type: 'text', text: JSON.stringify(shown) }] } }, 9000 + seq),
+  ]
+}
+
+const confirmArgs = { kind: 'confirm', goal: 'goal-1', text: '这几条需求就这样定，可以吗？' }
+const confirmOutput = { goal: 'goal-1', text: '这几条需求就这样定，可以吗？' }
+
+test('a propose_to_human confirm that reached the human waits in awaiting', () => {
+  seq = 0
+  const state = fold(askCall('p1', confirmArgs, 'confirm', confirmOutput))
+  assert.deepEqual(state.awaiting, [{ kind: 'confirm', goal: 'goal-1', module: '', at: 9000 + 1, text: '这几条需求就这样定，可以吗？' }])
+  const view = liveView(state)
+  assert.deepEqual(view.awaiting, state.awaiting, 'the wire view carries awaiting')
+})
+
+test('an error result, a question and another tool add nothing; the human speaking and the turn ending keep the matter', () => {
+  seq = 0
+  const failed = fold([
+    call('p1', 'propose_to_human', JSON.stringify(confirmArgs)),
+    event('tool/result', { turn: 1, step: 1, message: { role: 'tool', isError: true, source: { callId: 'p1' }, content: [{ type: 'text', text: 'no' }] } }),
+  ])
+  assert.deepEqual(failed.awaiting, [])
+  const question = fold(askCall('p2', { kind: 'question', title: '高峰时段要不要提醒' }, 'question', { text: '高峰时段要不要提醒模型？' }))
+  assert.deepEqual(question.awaiting, [], 'a question lives on the graph, not in awaiting')
+  const asked = fold(askCall('p3', confirmArgs, 'confirm', confirmOutput))
+  const stillThere = fold([event('user/message', { source: { kind: 'user' }, content: [{ type: 'text', text: '为什么这样？' }] }), event('turn/end', { turn: 1 })], asked)
+  assert.equal(stillThere.awaiting.length, 1, 'only a recorded answer removes it')
+  assert.deepEqual(Object.keys(stillThere.pending), [], 'the turn end clears pending, not awaiting')
+})
+
+test('a record_human_answer success removes the matter; an error keeps it; another goal keeps it', () => {
+  seq = 0
+  const asked = fold(askCall('p1', confirmArgs, 'confirm', confirmOutput))
+  const answers = (id: string, args: Record<string, unknown>, isError = false): readonly LiveEvent[] => [
+    call(id, 'record_human_answer', JSON.stringify(args)),
+    event('tool/result', { turn: 1, step: 1, message: { role: 'tool', isError, source: { callId: id } } }),
+  ]
+  const kept = fold(answers('r1', { kind: 'confirm', goal: 'goal-1' }, true), asked)
+  assert.equal(kept.awaiting.length, 1, 'an error result records nothing')
+  for (const answer of ['agree', 'add', 'reject']) {
+    const cleared = fold(answers('r2', { kind: 'confirm', goal: 'goal-1', answer }), asked)
+    assert.deepEqual(cleared.awaiting, [], answer)
+  }
+  const other = fold(answers('r3', { kind: 'confirm', goal: 'goal-2' }), asked)
+  assert.equal(other.awaiting.length, 1, 'another goal does not clear it')
+  const module = fold(askCall('p4', { kind: 'release', goal: 'goal-1', module: 'mod-2' }, 'release', { goal: 'goal-1', module: 'mod-2', text: '照这一页放行「借阅」，可以吗？' }), asked)
+  assert.deepEqual(module.awaiting.map(entry => [entry.kind, entry.module]), [['confirm', ''], ['release', 'mod-2']])
+  const moduleDone = fold(answers('r4', { kind: 'release', goal: 'goal-1', module: 'mod-2' }), module)
+  assert.deepEqual(moduleDone.awaiting.map(entry => entry.kind), ['confirm'], 'only the recorded module goes')
+})
+
+test('a new version of the same matter replaces it; at most three, the earliest goes', () => {
+  seq = 0
+  const first = fold(askCall('p1', confirmArgs, 'confirm', confirmOutput))
+  const again = fold(askCall('p2', confirmArgs, 'confirm', { ...confirmOutput, text: '改过的问法，可以吗？' }), first)
+  assert.equal(again.awaiting.length, 1)
+  assert.equal(again.awaiting[0]?.text, '改过的问法，可以吗？')
+  const third = fold(askCall('p3', { kind: 'release', goal: 'goal-1' }, 'release', { goal: 'goal-1', text: '放行？' }), again)
+  const fourth = fold(askCall('p4', { kind: 'confirm', goal: 'goal-2' }, 'confirm', { goal: 'goal-2', text: '另一件事？' }), third)
+  const fifth = fold(askCall('p5', { kind: 'confirm', goal: 'goal-3' }, 'confirm', { goal: 'goal-3', text: '第三件？' }), fourth)
+  assert.equal(fifth.awaiting.length, 3, 'three matters at most')
+  assert.deepEqual(fifth.awaiting.map(entry => entry.goal), ['goal-1', 'goal-2', 'goal-3'], 'the earliest went')
+})
+
+test('a DeferredToolCall-wrapped propose reads its arguments through the wrapper; unreadable arguments fall back to unknown', () => {
+  seq = 0
+  const result = (id: string, text: string): LiveEvent =>
+    event('tool/result', { turn: 1, step: 1, message: { role: 'tool', isError: false, source: { callId: id }, content: [{ type: 'text', text }] } })
+  const wrapped = fold([
+    event('tool/call', { turn: 1, step: 1, callId: 'd1', name: 'DeferredToolCall', arguments: JSON.stringify({ name: 'propose_to_human', input: confirmArgs }) }),
+    result('d1', JSON.stringify({ tool: 'propose_to_human', kind: 'confirm', number: 1, ...confirmOutput })),
+  ])
+  assert.deepEqual(wrapped.awaiting.map(entry => entry.kind), ['confirm'], 'the wrapper shows the tool it runs')
+  const unreadable = fold([call('d2', 'propose_to_human', 'not json'), result('d2', '{"tool":"propose_to_human","kind":"confirm","number":1,"text":"ok?"}')])
+  assert.deepEqual(unreadable.awaiting.map(entry => [entry.kind, entry.goal]), [['confirm', '']], 'the result carries what the arguments did not')
+  const blind = fold([call('d3', 'propose_to_human', 'not json'), result('d3', 'spoken plain')])
+  assert.deepEqual(blind.awaiting.map(entry => entry.kind), ['unknown'], 'neither side readable: the fallback')
+  const cleared = fold([call('r1', 'record_human_answer', 'not json'), event('tool/result', { turn: 1, step: 1, message: { role: 'tool', isError: false, source: { callId: 'r1' } } })], blind)
+  assert.deepEqual(cleared.awaiting, [], 'an unreadable record drops the unknown fallbacks')
+  assert.equal(fold([call('r2', 'record_human_answer', '{"kind":"confirm","goal":"goal-9"}'), event('tool/result', { turn: 1, step: 1, message: { role: 'tool', isError: false, source: { callId: 'r2' } } })], blind).awaiting.length, 1, 'a readable record of another goal keeps it')
+})
+
+test('awaiting arguments are cut to 200 code points, and inherited events are skipped', () => {
+  seq = 0
+  const long = '长'.repeat(300)
+  const cut = fold(askCall('p1', { kind: 'confirm', goal: 'goal-1', text: long }, 'confirm', { goal: 'goal-1', text: long }))
+  assert.equal([...(cut.awaiting[0]?.text ?? '')].length, 200)
+  const from = initialLive(2)
+  seq = 1
+  assert.equal(foldLive(from, askCall('p0', confirmArgs, 'confirm', confirmOutput)[0]), from, 'an inherited call')
+})
+
+test('the unit: awaiting is part of the checked shapes, and an old checkpoint is refused', () => {
+  seq = 0
+  const state = fold(askCall('p1', confirmArgs, 'confirm', confirmOutput))
+  assert.equal(liveProjection.stateVersion, 3)
+  assert.equal(liveProjection.stateSchema.parse(JSON.parse(JSON.stringify(state))).awaiting.length, 1)
+  liveProjection.wire.viewSchema.parse(liveView(state))
+  assert.throws(() => liveProjection.stateSchema.parse({ ...JSON.parse(JSON.stringify(state)), awaiting: 'x' }), /awaiting/)
+  assert.throws(() => liveProjection.stateSchema.parse({ ...JSON.parse(JSON.stringify(state)), awaiting: [{ kind: 'confirm', goal: 1, module: '', at: 1 }] }), /awaiting/)
+  assert.throws(() => liveProjection.wire.viewSchema.parse({ ...liveView(state), awaiting: Array.from({ length: 4 }, () => ({ kind: 'confirm', goal: '', module: '', at: 1 })) }), /awaiting/)
 })
