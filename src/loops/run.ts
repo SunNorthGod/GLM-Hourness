@@ -32,10 +32,22 @@
  *   reports through `recordRun`; the one exception is the loop row's own
  *   peak-start entry, whose run the board records itself, `delegated`, when
  *   the channel event fires (design §6.9 item 5);
- * - `script` and `check`: refused, without starting anything. A script runs only
- *   after the person has read it and agreed, and that path does not exist on
- *   this computer yet (`unadopted`); a check needs the command of an approved
- *   environment tool node, which is not built yet (`check-missing`).
+ * - `script`: an entry the person adopted runs through the shared executor
+ *   (script.ts, design 0.6 §6.6): first the rules board's `checkCall` judges
+ *   the command (§6.9 item 1 — pass, inform or record runs; queue defers and
+ *   the beat asks again every five minutes for a day; block ends the run
+ *   `blocked` with the rule), then `runScript` verifies the bytes against the
+ *   agreed digest and runs its private copy. The result maps as design §6.6
+ *   says: exit 0 passes; another code and a crash do not; a timeout is
+ *   `unfinished` and its events wait for the next trigger. What is told to
+ *   the main agent (or to the session of the event) follows the entry's
+ *   `report` and `to`. An entry without the person's adoption record on this
+ *   machine is refused (`unadopted`) and starts nothing — the store never
+ *   hands such an entry over, so the check here is the second lock on the
+ *   same door;
+ * - `check`: the executor's check lane is wired in the same branch, but a
+ *   check needs the command of an approved environment tool node, and the
+ *   environment row is not on main yet (`check-missing` until it lands).
  *
  * Nothing here throws into a timer, a listener or a tool handler: every step is
  * caught, and what went wrong is told to the row's health.
@@ -45,8 +57,10 @@ import { openEngine } from '../graph/engine.ts'
 import { listOpenItems } from '../graph/projection.ts'
 import { DEFAULT_GRAPH_DIR } from '../graph/tools.ts'
 import { join } from 'node:path'
+import { redactSecrets } from '../data/secret-shape.ts'
+import { checkCall } from '../rules/check.ts'
+import { stamp, type StoreIo } from '../rules/store.ts'
 import { agentsOf } from '../rules/wake.ts'
-import type { StoreIo } from '../rules/store.ts'
 import type { ServiceLookup } from '../shared/dsh-min.ts'
 import { nextPeakChange } from '../shared/pricing.ts'
 import { reconcile, scheduleOf, type BindDeps, type BindOutcome } from './bind.ts'
@@ -62,11 +76,20 @@ import { watchPaths, type WatchDeps, type Watched } from './file-watch.ts'
 import { createPeakEnd, peakLevelOf, type PeakEnd } from './peak.ts'
 import { appendRun, firedRecord, runId, type LoopRecord, type RunOutcome, type RunReason } from './records.ts'
 import type { LoopsRegistry } from './registry.ts'
+import { commandText, runScript, sweepRunCopies, WORK_TIMEOUT_MS, type HookEnvelope, type ScriptResult } from './script.ts'
 import type { HarnessResult, ListedRun, LoopEventRecord } from './service.ts'
 import { ensureRuntimeDir, type LoopStore } from './store.ts'
+import type { LoopScriptAction } from './model.ts'
 
 /** How often a project's board beats (design §6.1). */
 export const BEAT_MS = 60_000
+
+/** How long a file-changed event stays one of a script's own after its run ended (design §6.7). */
+const SELF_SCRIPT_MS = 60_000
+/** How often a queued run asks the rules board again (design §6.9 item 1). */
+export const DEFER_RETRY_MS = 5 * 60_000
+/** How long a deferral may wait before its run ends `expired` (design §6.9 item 1). */
+export const DEFER_MAX_MS = 24 * 3_600_000
 
 export interface ProjectDeps {
   readonly root: string
@@ -185,7 +208,9 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
   /** Since when the holder session has read `elsewhere` without a break, for the five minutes after which the row says so (design §6.4). */
   let elsewhereSince: number | undefined
   /** The person's entries, read at most once a second: `listens` is called on a hot path (design §4.4). */
-  let read: { at: number, entries: readonly RunnableEntry[] } | undefined
+  let read: { at: number, entries: readonly RunnableEntry[], agreed: ReadonlySet<string> } | undefined
+  /** The scripts of this project that are running, or ended less than a minute ago (design §6.7 self-trigger). */
+  const scriptWindows = new Map<string, { running: boolean, until?: number }>()
 
   const iso = (): string => new Date(deps.now()).toISOString()
   const record = (line: LoopRecord): void => { void appendRun(paths, line, text => { deps.report(text, 'info') }) }
@@ -227,16 +252,35 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
       .filter(item => item.state === 'active')
       .map((item): RunnableEntry => ({ entry: item.entry, source: 'plugin', plugin: item.entry.source.plugin, row: item.entry.source.row }))
     let person: readonly RunnableEntry[] = []
+    const agreed = new Set<string>()
     try {
       person = deps.store.read().entries
-        .flatMap((item): readonly RunnableEntry[] => item.status.kind === 'ok' && item.entry !== undefined ? [{ entry: item.entry, source: 'person' }] : [])
+        .flatMap((item): readonly RunnableEntry[] => {
+          if (item.status.kind === 'ok' && item.entry !== undefined) {
+            agreed.add(item.id)
+            return [{ entry: item.entry, source: 'person' }]
+          }
+          return []
+        })
     }
     catch (error) {
       deps.report(`读人加的条目失败：${message(error)}`, 'degraded')
     }
     const all = [...plugin, ...person]
-    read = { at: deps.now(), entries: all }
+    read = { at: deps.now(), entries: all, agreed }
     return all
+  }
+
+  /**
+   * Whether an entry may run something (design §18.7: only a person's adopted
+   * entries run): the store's read is the gate and this is the second look.
+   * A plugin cannot hand a script or a check over at all, so only a person's
+   * entry asks.
+   */
+  function adopted(item: RunnableEntry): boolean {
+    if (item.source === 'plugin') return true
+    entries()
+    return read?.agreed.has(item.entry.id) === true
   }
 
   const inbox: Inbox = openInbox({
@@ -252,6 +296,11 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
     record,
     report: deps.report,
     delay: deps.delay,
+    selfTriggered: (entry, event) => {
+      if (event !== 'loops.file-changed') return false
+      const window = scriptWindows.get(entry)
+      return window !== undefined && (window.running || deps.now() < (window.until ?? 0))
+    },
   })
 
   /**
@@ -492,6 +541,245 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
     }
   }
 
+  // ------------------------------------------------------------- the scripts
+
+  /** What the rules board made of one command (design §6.9 item 1). */
+  type RulesVerdict =
+    | { readonly kind: 'run', readonly unavailable?: boolean }
+    | { readonly kind: 'blocked', readonly rule: string }
+    | { readonly kind: 'queue' }
+
+  /**
+   * The rules board's judgement of one command (design §6.9 item 1): no
+   * session, no role, no model — the board's commands are no session's, so
+   * only rules without a subject and the `glmSpend`附属 rules reach them.
+   * A fault of the rules board itself lets the command through, with one
+   * note (`rules-unavailable`), the same bias the library has.
+   */
+  async function askRules(command: string, glmSpend?: 'optional' | 'necessary'): Promise<RulesVerdict> {
+    try {
+      const peak = deps.peak?.()
+      const result = await checkCall(
+        { tool: 'pwsh', args: { command } },
+        {
+          project: deps.root,
+          ...(peak === undefined ? {} : { signals: { 'glm-peak': peak(deps.now()) } }),
+          ...(glmSpend === undefined ? {} : { glmSpend }),
+        },
+      )
+      if (result.effect === 'block') {
+        return { kind: 'blocked', rule: result.rules.find(candidate => candidate.effect === 'block')?.id ?? 'rules' }
+      }
+      if (result.effect === 'queue') return { kind: 'queue' }
+      return { kind: 'run' }
+    }
+    catch {
+      return { kind: 'run', unavailable: true }
+    }
+  }
+
+  /** What a script reads on its standard input (design §6.6): this run's events, merged by the debounce. */
+  function envelopeOf(item: RunnableEntry, run: string, batch: RunBatch): HookEnvelope {
+    return {
+      version: 1,
+      board: 'loops',
+      entry: item.entry.id,
+      run,
+      event: batch.record.event,
+      id: batch.record.id,
+      at: batch.record.at,
+      project: deps.root,
+      ...(batch.record.session === undefined ? {} : { session: batch.record.session }),
+      key: batch.record.key,
+      payload: batch.record.payload,
+      merged: batch.record.merged,
+    }
+  }
+
+  /** Seconds with one decimal, for a run's `（<用时>）` and its timeout line. */
+  const secondsOf = (ms: number): string => `${(ms / 1000).toFixed(1)}s`
+
+  /** The tail of one stream of output: at most 40 lines and 4000 characters, from the end (design §6.6). */
+  function tailOf(text: string): string {
+    const lines = text.replace(/\r/g, '').split('\n')
+    while (lines.length > 0 && lines[lines.length - 1] === '') lines.pop()
+    const picked = lines.slice(-40).join('\n')
+    return picked.length > 4000 ? picked.slice(-4000) : picked
+  }
+
+  /** What the main agent (or the event's session) reads of one run (design §6.6), secrets masked. */
+  function resultText(command: string, result: ScriptResult, note: string | undefined, logFile: string): string {
+    const head = result.kind === 'exited'
+      ? `\`${command}\` exit ${result.exitCode}（${secondsOf(result.durationMs)}）`
+      : result.kind === 'timeout'
+        ? `\`${command}\` did not finish: timed out after ${secondsOf(result.durationMs)}`
+        : result.kind === 'crashed' && result.reason === 'spawn'
+          ? `\`${command}\` could not start: ${result.message}`
+          : `\`${command}\` did not run: ${result.message}`
+    const body: string[] = []
+    if (note !== undefined && note.length > 0) body.push(note)
+    body.push(head)
+    if (result.kind === 'exited' || result.kind === 'timeout') {
+      const out = tailOf(result.stdout)
+      if (out.length > 0) body.push(out)
+      if (result.kind === 'timeout' || result.exitCode !== 0) {
+        const err = tailOf(result.stderr)
+        if (err.length > 0) body.push(err)
+      }
+    }
+    return `${redactSecrets(body.join('\n'))}\nFull output: ${logFile}`
+  }
+
+  interface RunParts {
+    readonly outcome: RunOutcome
+    readonly reason?: RunReason
+    readonly how?: 'steer' | 'inject' | 'followup'
+    readonly messageId?: string
+    readonly exits?: number[]
+    readonly outputBytes?: number
+    readonly durationMs?: number
+  }
+
+  /** Whether a result is one the entry's `report` sends on (design §2.3, §6.6): a run that did not finish always says so. */
+  function sendsOn(item: RunnableEntry, action: LoopScriptAction, passed: boolean, timedOut: boolean): boolean {
+    if (timedOut) return true
+    if (action.report === 'always') return true
+    const previous = inbox.state().passing[item.entry.id]
+    if (action.report === 'on-change') return previous === undefined || previous !== passed
+    return !passed || previous === false
+  }
+
+  /**
+   * One script run, between its `loop-fired` and its `loop-done` (design
+   * §6.6): the shared executor runs the bytes the person agreed to, the
+   * result maps onto the outcomes of §6.10, and what is told follows the
+   * entry's `report` and `to`. A run that did not finish hands its events
+   * back to the inbox, to join the next trigger.
+   */
+  async function runScriptEntry(item: RunnableEntry, run: string, batch: RunBatch, verdict: Extract<RulesVerdict, { kind: 'run' }>): Promise<RunParts> {
+    const action = item.entry.action
+    if (action.kind !== 'script') return { outcome: 'refused', reason: 'unadopted' }
+    const seconds = action.timeoutSeconds ?? WORK_TIMEOUT_MS / 1000
+    const logFile = join(paths.logsDir, item.entry.id, `${stamp(deps.now())}-${run}.log`)
+    scriptWindows.set(item.entry.id, { running: true })
+    let result: ScriptResult
+    try {
+      result = await runScript({
+        project: deps.root,
+        script: action.script,
+        envelope: envelopeOf(item, run, batch),
+        purpose: 'work',
+        timeoutMs: seconds * 1000,
+        logFile,
+      })
+    }
+    finally {
+      scriptWindows.set(item.entry.id, { running: false, until: deps.now() + SELF_SCRIPT_MS })
+    }
+    const passed = result.kind === 'exited' && result.exitCode === 0
+    const timedOut = result.kind === 'timeout'
+    inbox.state().passing[item.entry.id] = passed
+    if (result.kind === 'refused') {
+      if (result.reason === 'script-changed' || result.reason === 'script-missing') {
+        deps.report(`「${item.entry.title}」的脚本${result.reason === 'script-changed' ? '与同意时的哈希对不上' : '不在这份检出里'}，先不跑；要接着用，跟主 Agent 说「把${item.entry.title}的脚本给我看一下」`, 'degraded')
+      }
+      return { outcome: 'refused', reason: result.reason }
+    }
+    const speaks = sendsOn(item, action, passed, timedOut)
+    let told: { how?: 'steer' | 'inject' | 'followup', messageId?: string } = {}
+    if (speaks) {
+      const said = await tell(item, run, resultText(commandText(action.script), result, action.note, logFile), true, batch)
+      told = { ...(said.how === undefined ? {} : { how: said.how }), ...(said.messageId === undefined ? {} : { messageId: said.messageId }) }
+    }
+    const outcome: RunOutcome = timedOut ? 'unfinished' : speaks ? 'reported' : 'ran'
+    const reason: RunReason | undefined = timedOut
+      ? `timeout ${secondsOf(result.durationMs)}`
+      : result.kind === 'crashed'
+        ? result.reason
+        : verdict.unavailable && !speaks ? 'rules-unavailable' : undefined
+    if (timedOut) inbox.retry(batch)
+    return {
+      outcome,
+      ...(reason === undefined ? {} : { reason }),
+      ...told,
+      ...(result.kind === 'exited' ? { exits: [result.exitCode] } : {}),
+      ...(result.kind === 'exited' || result.kind === 'timeout'
+        ? { outputBytes: Buffer.byteLength(result.stdout) + Buffer.byteLength(result.stderr) }
+        : {}),
+      durationMs: result.durationMs,
+    }
+  }
+
+  /** A run the rules board has queued waits here, and the beat asks again (design §6.9 item 1). */
+  function deferRun(item: RunnableEntry, run: string, batch: RunBatch): void {
+    inbox.state().deferred[run] = {
+      entry: item.entry.id,
+      run,
+      group: batch.group,
+      record: batch.record,
+      since: iso(),
+      nextAt: deps.now() + DEFER_RETRY_MS,
+    }
+  }
+
+  /**
+   * The runs the rules board has queued, made again on every beat (design
+   * §6.9 item 1): pass and the script runs; block ends the run; a day
+   * without a verdict, or an entry that is no longer the adopted one, ends
+   * it `expired`.
+   */
+  async function rerunDeferred(): Promise<void> {
+    const state = inbox.state()
+    for (const [run, held] of Object.entries(state.deferred)) {
+      try {
+        if (deps.now() < held.nextAt) continue
+        const finish = (outcome: RunOutcome, why: RunReason | undefined, parts?: RunParts): void => {
+          delete state.deferred[run]
+          record({
+            kind: 'loop-done',
+            at: iso(),
+            project: deps.root,
+            entry: held.entry,
+            run,
+            outcome,
+            ...(why === undefined ? {} : { reason: why }),
+            ...(parts?.durationMs === undefined ? {} : { durationMs: parts.durationMs }),
+            ...(parts?.exits === undefined ? {} : { exits: parts.exits }),
+            ...(parts?.outputBytes === undefined ? {} : { outputBytes: parts.outputBytes }),
+            ...(parts?.how === undefined ? {} : { delivery: parts.how }),
+            ...(parts?.messageId === undefined ? {} : { messageId: parts.messageId }),
+          })
+          state.last[held.entry] = { run, at: iso(), outcome, ...(why === undefined ? {} : { reason: why }) }
+        }
+        if (deps.now() - Date.parse(held.since) >= DEFER_MAX_MS) {
+          finish('expired', '规则板排了一天还没放行')
+          continue
+        }
+        const item = entries().find(candidate => candidate.entry.id === held.entry)
+        const action = item?.entry.action
+        if (item === undefined || action === undefined || action.kind !== 'script' || !adopted(item)) {
+          finish('expired', '条目不在了，或不再是同意过的那一份')
+          continue
+        }
+        const verdict = await askRules(commandText(action.script), action.glmSpend)
+        if (verdict.kind === 'queue') {
+          held.nextAt = deps.now() + DEFER_RETRY_MS
+          continue
+        }
+        if (verdict.kind === 'blocked') {
+          finish('blocked', verdict.rule)
+          continue
+        }
+        const parts = await runScriptEntry(item, run, { entry: item, group: held.group, record: held.record }, verdict)
+        finish(parts.outcome, parts.reason, parts)
+      }
+      catch (error) {
+        deps.report(`规则板排队的重判出错：${message(error)}`, 'degraded')
+      }
+    }
+    await inbox.save()
+  }
+
   /** The pair of records of one run, with the execution between them (design §6.10). */
   async function execute(batch: RunBatch): Promise<void> {
     const run = runId()
@@ -514,6 +802,8 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
     let reason: RunReason | undefined
     let how: 'steer' | 'inject' | 'followup' | undefined
     let messageId: string | undefined
+    let exits: number[] | undefined
+    let outputBytes: number | undefined
     try {
       const action = item.entry.action
       if (action.kind === 'tell-main') {
@@ -562,9 +852,36 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
         }
       }
       else if (action.kind === 'script' || action.kind === 'check') {
-        // Nothing is started: the shared script executor and the approval path are not built (impl-plan section 3).
-        outcome = 'refused'
-        reason = action.kind === 'script' ? 'unadopted' : 'check-missing'
+        // Only a person's adopted entry runs anything (design §18.7); the store never hands another over, so this is the second lock on the same door.
+        if (!adopted(item)) {
+          outcome = 'refused'
+          reason = 'unadopted'
+        }
+        else if (action.kind === 'check') {
+          // A check needs the command of an approved environment tool node; the environment row is not on main yet (m4 impl-progress, E3).
+          outcome = 'refused'
+          reason = 'check-missing'
+        }
+        else {
+          const verdict = await askRules(commandText(action.script), action.glmSpend)
+          if (verdict.kind === 'blocked') {
+            outcome = 'blocked'
+            reason = verdict.rule
+          }
+          else if (verdict.kind === 'queue') {
+            deferRun(item, run, batch)
+            outcome = 'deferred'
+          }
+          else {
+            const parts = await runScriptEntry(item, run, batch, verdict)
+            outcome = parts.outcome
+            reason = parts.reason
+            how = parts.how
+            messageId = parts.messageId
+            exits = parts.exits
+            outputBytes = parts.outputBytes
+          }
+        }
       }
       else {
         // A `self` entry is run by the row that owns it; the inbox does not queue one.
@@ -588,6 +905,8 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
       outcome: outcome ?? 'failed',
       ...(reason === undefined ? {} : { reason }),
       durationMs: deps.now() - started,
+      ...(outputBytes === undefined ? {} : { outputBytes }),
+      ...(exits === undefined ? {} : { exits }),
       ...(how === undefined ? {} : { delivery: how }),
       ...(messageId === undefined ? {} : { messageId }),
     })
@@ -735,6 +1054,11 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
         return
       }
       await restarted()
+      // Private copies a crash left behind go after an hour (design §6.6); the scripts' self-trigger windows close themselves.
+      sweepRunCopies(deps.root, deps.now())
+      for (const [entry, window] of [...scriptWindows]) {
+        if (!window.running && deps.now() >= (window.until ?? 0)) scriptWindows.delete(entry)
+      }
       const now = holder()
       holderChanged(now)
       if (now.kind === 'elsewhere') {
@@ -753,6 +1077,7 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
       told(await reconcile(bindDeps))
       await delivery.flush()
       await rerunPeakEnd()
+      await rerunDeferred()
       await inbox.beat()
     }
     catch (error) {

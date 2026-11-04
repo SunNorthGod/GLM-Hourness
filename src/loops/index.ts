@@ -15,8 +15,9 @@
  *   project's run lock, beats every 60 seconds, hands the lock to the process
  *   where the main agent's session is open, reads the inbox (inbox.ts) and
  *   executes what an entry says to do. A message for the main agent waits until
- *   that side of the board is built; a script or a check entry is refused
- *   without starting anything;
+ *   that side of the board is built; a person's adopted script entry runs
+ *   through the shared executor (script.ts) after the rules board lets it
+ *   through, and a check entry waits for the environment row (run.ts);
  * - runs the end of a GLM peak itself (peak.ts): the harness action of the
  *   loop row's own hand-over takes the table of design §6.9 item 4 — the
  *   execute row's resume action when a hand-over lists it, otherwise the wake

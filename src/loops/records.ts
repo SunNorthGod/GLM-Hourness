@@ -57,6 +57,8 @@ export interface DoneRecord {
   readonly reason?: RunReason
   readonly durationMs?: number
   readonly outputBytes?: number
+  /** The exit codes of the processes the run started (design §6.10 `exits`); a run that started none has none. */
+  readonly exits?: number[]
   readonly delivery?: 'steer' | 'inject' | 'followup' | 'dsh'
   readonly messageId?: string
 }
