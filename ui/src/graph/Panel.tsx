@@ -250,7 +250,11 @@ export function GraphPanel({ source, sessions, files, workspace, sessionId }: Gr
   const goalTitles = [...graph.nodes.values()].filter(node => node.type === 'goal').map(goal => goal.title)
   const errors = graph.issues.filter(issue => issue.severity === 'error')
   const openBoard = boardId === undefined ? undefined : boards().find(board => board.id === boardId)
-  const goalTitle = useCallback((id: string) => graph.nodes.get(id)?.title, [graph])
+  // A plain closure, not useCallback: a hook here would change the panel's hook order between the
+  // not-ready early return above and this branch — React 18.3.1's error #310 on the desktop
+  // (keepMounted tab, session switch between a workspace without a graph and one with one).
+  // Its only consumer (PlanPage) re-renders whenever the panel does, so the identity never mattered.
+  const goalTitle = (id: string): string | undefined => graph.nodes.get(id)?.title
   const pageBody = page === 'needs'
     ? <NeedsPage graph={graph} needs={needs} />
     : page === 'plan'

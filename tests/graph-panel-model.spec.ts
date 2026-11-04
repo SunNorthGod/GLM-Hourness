@@ -6,14 +6,14 @@ import test from 'node:test'
 import { openEngine } from '../src/graph/engine.ts'
 import { graphRevision, loadGraph, revisionOf } from '../src/graph/store.ts'
 import type { GraphNode } from '../src/graph/schema.ts'
-import type { RemoteRoot, StreamItem, WatchFrame } from '../ui/src/dsh.ts'
 import { absoluteTime, byCreation, decidedBy, dotTone, graphRevisionOf, headlineGoals, historyText, liveGroups, nobodyRunningText, placeText, presenceText, progressOf, progressText, revisionOfBytes, statusText, tokensText, visibleGraph } from '../ui/src/graph/model.ts'
 import { holderRecordOf } from '../src/shared/holder-record.ts'
 import { firstVisit, graphHasHumanActorHistory, GUIDE_KEY, noGraphKey, readStamp, writeStamp } from '../ui/src/guide/state.ts'
 import { cwdKeyOf, mainChatOf } from '../ui/src/graph/main-chat.ts'
-import { GraphSource, type GraphSnapshot } from '../ui/src/graph/source.ts'
+import { GraphSource } from '../ui/src/graph/source.ts'
+import type { RemoteRoot } from '../ui/src/dsh.ts'
 import { initialSeen, nextSeen, seenKeyOf, seenRecordOf, writeSeenRecord } from '../ui/src/graph/seen.ts'
-import { fixtureTest, seedAsHuman } from './graph-helpers.ts'
+import { fakeRemote, fixtureTest, seedAsHuman, until } from './graph-helpers.ts'
 
 /** The table card of the seeded questions (ORCHESTRATION.md §2.6). */
 const CARD = {
@@ -199,67 +199,6 @@ test('run-control presence lines say the panel sees only its own DSH session', (
   assert.equal(presenceText('doing', []), '这个 DSH 会话里没有 agent 在做它；状态是进行中，活可能在别的会话或 DSH 之外')
   assert.equal(presenceText('done', []), undefined)
 })
-
-/** A Remote face over a directory on disk, with a change feed the test drives. */
-function fakeRemote(workspace: string): { readonly remote: RemoteRoot, readonly push: (frame: WatchFrame) => void } {
-  const queue: WatchFrame[] = []
-  let wake: (() => void) | undefined
-  const push = (frame: WatchFrame): void => {
-    queue.push(frame)
-    wake?.()
-  }
-  let disposed = false
-  const remote: RemoteRoot = {
-    workspaceFiles: {
-      list: async (_session, path) => {
-        try {
-          const entries = await readdir(join(workspace, path), { withFileTypes: true })
-          return { ok: true, value: { path, entries: entries.map(entry => ({ name: entry.name, type: entry.isFile() ? 'file' : 'directory' })), truncated: false } }
-        }
-        catch {
-          return { ok: false, error: { code: 'workspace-file/not-found', message: `no entry at "${path}"` } }
-        }
-      },
-      readBytes: async (_session, path) => {
-        try {
-          return { ok: true, value: { absolutePath: join(workspace, path), data: new Uint8Array(await readFile(join(workspace, path))) } }
-        }
-        catch {
-          return { ok: false, error: { code: 'workspace-file/not-found', message: path } }
-        }
-      },
-      changes: () => undefined,
-    },
-    commands: { execute: () => Promise.resolve({ ok: true, value: undefined }) },
-    $stream: <T>() => ({
-      async *[Symbol.asyncIterator]() {
-        while (!disposed) {
-          const frame = queue.shift()
-          if (frame === undefined) {
-            await new Promise<void>(resolve => { wake = resolve })
-            continue
-          }
-          yield { value: frame as T, accept: () => {} } satisfies StreamItem<T>
-        }
-      },
-      dispose: () => {
-        disposed = true
-        wake?.()
-        return Promise.resolve()
-      },
-    }),
-  }
-  return { remote, push }
-}
-
-async function until(source: GraphSource, check: (snapshot: GraphSnapshot) => boolean): Promise<GraphSnapshot> {
-  for (let attempt = 0; attempt < 100; attempt++) {
-    const snapshot = source.getSnapshot()
-    if (check(snapshot)) return snapshot
-    await new Promise(resolve => setTimeout(resolve, 20))
-  }
-  throw new Error(`timed out; last snapshot ${JSON.stringify(source.getSnapshot()).slice(0, 200)}`)
-}
 
 test('the source reads the graph, goes live on ready, and follows a write through the change feed', async () => {
   const workspace = await mkdtemp(join(tmpdir(), 'graph-panel-source-'))
