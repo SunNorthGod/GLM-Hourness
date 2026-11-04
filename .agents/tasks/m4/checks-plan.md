@@ -69,7 +69,7 @@ origin/main（`45ae4e8`）还不含 `8c9d74f`（`merge-base --is-ancestor` 退�
       依赖：B2（检查行的解析）。
       Verify：四道门禁退出码 0；探针含新段全绿。
 
-- [ ] 4. **B4（m4-checks）M4 自带的检查器：运行、回传、记录、交给循环板**
+- [x] 4. **B4（m4-checks）M4 自带的检查器：运行、回传、记录、交给循环板**
       范围：
       - `src/env/timeout.ts`：加 `RunLine`、`ValueLine`、`TimeoutLine`、`QueueLine`；读整份账得每个键（`check` + `argv` 摘要）的近况；取值变化时写 `ValueLine`（来源三种：估计——按 §6.3.1「来源」①②③选历史并按 `node`+`historyAt` 找 `EstimateLine` 带上 `session`，找不到不写 `session`；harness 调整——依据的运行、倍数、下限；上限）；超时那次按当时上限记 `censored` 的 `RunLine`；命令改过从预计重来；env 行激活时整理（每键留 10 条 run、20 条 value/timeout/queue、5 条 estimate；临时文件加改名，失败不整理）。账读不出按没有实测、行健康写明。
       - `src/env/runner.ts`（新）：`CHECK_SLOTS = 2`、`CHECK_FAILURE_LIMIT = 3`、`MISSING_CHECK_NOTICES = 1`；全进程名额队列；每次运行 `runCommand({queue: 'direct', project, cwd: 检出根, argv: fillCheckArgv(...).argv, timeoutMs, maxOutputBytes: 1_048_576, logFile})`（`runCommand` 作为依赖注入，测试可换假执行器）；日志 `<home>/env-checks/<会话 id 前 8 位>/<时间>-<工具 id>-<名字>.log`（执行器写参数表与程序路径为首行）；一步等待 = min(这一步最大超时, 20 秒)，没跑完的在后台续跑、结果按会话留内存下一步送；同一项还在跑时不起第二个；大小、修改时间与节点 `rev` 都没变不重跑；跑不起来或输出读不懂连续 3 次后本会话不再跑（超时不计）；排队 `CHECK_QUEUE_WAIT_MS` 仍没开始的不起进程、写 `QueueLine`；激活时删 7 天前、名为 8 位十六进制的会话目录。
@@ -136,6 +136,20 @@ origin/main（`45ae4e8`）还不含 `8c9d74f`（`merge-base --is-ancestor` 退�
 13. **B3 只导出已有调用方的常量**：`CHECK_STEP_DEADLINE_MS`、`CHECK_TIMEOUT_RAISED_MAX_MS`、`CHECK_QUEUE_WAIT_MS` 随用到它们的 B4（运行器的一步等待、排队）与 B5（`check_limit` 的硬顶）加进 `src/env/timeout.ts`，B3 不先放（knip 报未用的导出，仓库规则不留死代码）。
 14. **图写工具描述长度的测试上限 600 → 700**（`tests/graph-tools.spec.ts`）：`graph_propose` 的描述已有 M3 的提问规则 539 字符，加上 §6.3.1 第 3 条要的 `timeouts` 一句后 661 字符；这句是设计要求写进说明的，缩到 60 字符以内读不清，所以放宽上限并在测试里写明理由。
 15. **`timeouts` 的写入点与读工具无关**：只有 `graph_propose`、`graph_edit` 返回 `timeouts`，且节点必须是 `env` 下的 `tool`（任何状态）；`graph_show` 不带，人看节点时的超时由 B4 的循环板明细给。`estimate` 的写入目录在图行取 `projectHomeFor(ctx, undefined, cwd)`，写前先 `ensureLlmIgnored`，与 env 行与 guard 行第一次写项目 `.llm/` 的做法一致。
+16. **一步的等待多 1.5 秒**（B4，`KILL_SETTLE_MS`）：一步等 min(这一步最长的超时 + 1.5 秒, `CHECK_STEP_DEADLINE_MS`)。§6.3.1 第 4 条写的是 min(最长超时, 20 秒)；按原文，一项 5 秒超时的检查在第 5 秒被结束，结果与这一步的截止同时到，常常落到下一步。多等的 1.5 秒给执行器结束进程树并交回结果；上界仍是 20 秒。
+17. **整理账与删旧日志在每个项目第一次跑检查时做**（B4）：§6.3、§6.3.1 写「env 行激活时」，激活时还不知道有哪些项目；改为本进程里某个项目第一次跑检查之前做一次，整理在读账之前完成。
+18. **「没有检查覆盖的语言」按 ORCHESTRATION §7.5 表里的扩展名认**（B4，`languageOf`）：`.py`、`.go`、`.rs`、`.sh`、`.c`/`.h`、`.cpp`/`.cc`/`.hpp`、`.ts`/`.tsx`/`.mts`/`.cts`、`.js`/`.jsx`/`.mjs`/`.cjs`；`.txt`、`.md`、`.json` 之类不提醒（验收 checks #4 写的是「语言」，没有社区默认检查器的文件提醒了也没有可推荐的）。同一步里几种扩展名合成一行。
+19. **1200 字符的上限只管结果部分**（B4）：§6.6 给主 Agent 的那一行本身约 800 字符；没有检查覆盖的那一行与循环板不在的那一行排在结果之后，不计入 1200。
+20. **「连续 3 次失败后不再跑」那一句在下一次该跑时说**（B4）：第 3 次失败照常写「did not run」；之后第一次本该跑它时写「skipped for this session after 3 failures」并报一次 `skipped`，再之后不说、不报。
+21. **每一步收到结果就报一次运行，不论有没有注入提醒**（B4）：全 0 接在全 0 之后不注入，但这次检查跑了，循环板上记 `ran`。
+22. **会话所在项目之外的文件不查**（B4）：检查行来自会话所在项目的图；agent 用绝对路径改了别的项目里的文件时，那一组不跑检查（事件照交）。
+23. **超时那句的「the main agent has been told」从 B4 起就写**（§6.3.1 逐字）：让它成真的根 agent 环境提醒一行在 B5；env 行在 B6 之前出厂禁用。
+24. **没有日志时写 `no log: no project directory`**：§6.3 写的「没有日志（没有项目目录）」在英文提醒里换成英文。
+25. **循环板明细在还没有 `value` 行时写「超时 n 秒 · 写检查的 agent 估 x 秒 · 还没跑过」**；来源是人改的预计时写「你估 x 秒」（§6.8 只给了 agent 的写法）。
+26. **晨报「检查的超时」只列有 `value` 行的检查**：只有 `estimate`（提议了还没跑过）的检查不列。
+27. **环境提醒的摘要算进带检查行的工具节点的版本**（B4，§7.2「节点的 `rev` 变也算环境变化」）：命令改了而提醒正文读起来一样时也重新注入一次。
+28. **交接被拒时的标签改为 `env.checks-after-edit`**：B2 用的是事件 id；条目来了之后，条目是板上列出的那一项。
+29. **`env-checks-timeout` 第二段是同一工作区里的另一个场景 `env-checks-timeout-run`**：第一段的会话用 `graph_propose` 建节点（LLM 提议，状态 `proposed`），探针以人的身份批准之后，第二个会话改文件跑检查；这样第一条 `value` 的来源带的是第一段会话的 `session`，与图工具记下的 `estimate` 对得上。计划原写「预置一个已批准的工具节点」，那样没有 `estimate` 行，`session` 对不上。
 
 ## Digest
 

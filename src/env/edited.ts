@@ -19,21 +19,22 @@
  *
  * The files are grouped by the checkout they sit in (the nearest `.git`, a
  * work tree's own), relative to its root with forward slashes, at most 200
- * per group. Each group is one event when an entry of the board hears it.
+ * per group. Each group is one event when an entry of the board hears it;
+ * then M4's own checker (runner.ts) gets the step, with the edits' new text
+ * for the changed lines outside git, and its notice joins the step.
  */
 import { statSync } from 'node:fs'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
 import { performance } from 'node:perf_hooks'
-import type { AgentLike, DerivedMessage, ServiceLookup, SessionLike, WorkingDirectoryService } from '../shared/dsh-min.ts'
+import type { AgentLike, DerivedMessage, ServiceLookup, SessionLike, UserNotice, WorkingDirectoryService } from '../shared/dsh-min.ts'
+import type { EditMarks } from './changed-lines.ts'
 import { unwrapDeferredCall } from '../shared/deferred-call.ts'
 import { dialectService, toNativeTool } from '../shared/dialect.ts'
 import { installStepNotice, toolCallArguments, toolCallOutcomes } from '../shared/step-notice.ts'
 import { checkoutRootOf, projectOf } from '../data/project-root.ts'
 import { loopsService } from '../loops/service.ts'
+import { CHECKS_NOTICE_SOURCE } from './check-notice.ts'
 import { FILES_EDITED_EVENT } from './loop-entry.ts'
-
-/** Source kind of the checks notice (design §6.5); its `source.checks.lastCall` is the last tool call it covered. */
-export const CHECKS_NOTICE_SOURCE = 'hourness-checks'
 
 /** At most this many files in one event; the rest are dropped and the event says so (design §6.2). */
 export const EDITED_FILES_LIMIT = 200
@@ -46,14 +47,16 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 type Block = NonNullable<DerivedMessage['content']>[number]
 
-/** The files one step found: the absolute targets in call order, and the id of the last call read. */
+/** The files one step found: the absolute targets in call order, what the calls wrote into each, and the id of the last call read. */
 interface EditedSince {
   readonly last: string | undefined
   readonly targets: readonly string[]
+  /** By absolute target: a whole write, or the new text of edits (the changed lines outside git, changed-lines.ts). */
+  readonly marks: ReadonlyMap<string, EditMarks>
 }
 
 /** One checkout's share of the changed files. */
-interface EditedGroup {
+export interface EditedGroup {
   /** The checkout root: the directory holding the nearest `.git` (a work tree's own root), or the project root outside git. */
   readonly root: string
   /** Relative to `root`, forward slashes, at most EDITED_FILES_LIMIT. */
@@ -72,8 +75,8 @@ function noticeMark(history: readonly DerivedMessage[]): string | undefined {
   return mark
 }
 
-/** The path a file tool call writes, or undefined for any other call. */
-function targetOf(block: Block, native: (name: string) => string): string | undefined {
+/** The path a file tool call writes and what it put there, or undefined for any other call. */
+function targetOf(block: Block, native: (name: string) => string): { readonly path: string, readonly insert?: { readonly text: string, readonly all: boolean } } | undefined {
   let name = block.name ?? ''
   let args: unknown = toolCallArguments(block)
   const wrapped = unwrapDeferredCall(name, args)
@@ -84,7 +87,10 @@ function targetOf(block: Block, native: (name: string) => string): string | unde
   if (!isRecord(args)) return undefined
   const tool = native(name)
   const path = tool === 'write' || tool === 'edit' ? args.file_path : tool === 'str_replace_editor' && args.command !== 'view' ? args.path : undefined
-  return typeof path === 'string' && path !== '' ? path : undefined
+  if (typeof path !== 'string' || path === '') return undefined
+  // An edit's new text (replace_all may be a ZCode semantic-boolean string); any other write counts the whole file.
+  const text = tool === 'edit' ? args.new_string : tool === 'str_replace_editor' && (args.command === 'str_replace' || args.command === 'insert') ? args.new_str : undefined
+  return typeof text === 'string' ? { path, insert: { text, all: tool === 'edit' && (args.replace_all === true || args.replace_all === 'true') } } : { path }
 }
 
 /**
@@ -99,18 +105,21 @@ export function editedSince(history: readonly DerivedMessage[], watermark: strin
   const start = Math.max(position(noticeMark(history)), position(watermark))
   const { answered, failed } = toolCallOutcomes(history)
   const targets: string[] = []
+  const marks = new Map<string, EditMarks>()
   let last: string | undefined
   for (const block of calls.slice(start + 1)) {
     const id = block.id ?? ''
     if (!answered.has(id)) break
     last = id
     if (failed.has(id)) continue
-    const path = targetOf(block, native)
-    if (path === undefined || (!isAbsolute(path) && base === undefined)) continue
-    const absolute = resolve(base ?? '', path)
+    const target = targetOf(block, native)
+    if (target === undefined || (!isAbsolute(target.path) && base === undefined)) continue
+    const absolute = resolve(base ?? '', target.path)
     if (!targets.includes(absolute)) targets.push(absolute)
+    const before = marks.get(absolute) ?? { whole: false, inserts: [] }
+    marks.set(absolute, target.insert === undefined ? { whole: true, inserts: before.inserts } : { whole: before.whole, inserts: [...before.inserts, target.insert] })
   }
-  return { last, targets }
+  return { last, targets, marks }
 }
 
 const isFile = (path: string): boolean => {
@@ -165,40 +174,63 @@ function outsideGitRoot(cwd: string): string | undefined {
   return project !== undefined && !project.git ? project.root : undefined
 }
 
+/** What one step changed, for M4's own checks (runner.ts): every step gets one, with or without changed files (results of earlier steps arrive). */
+export interface EditedStep {
+  readonly session: SessionLike
+  /** The session's working directory, undefined when it has none. */
+  readonly cwd: string | undefined
+  readonly groups: readonly EditedGroup[]
+  /** By absolute target, as `editedSince` gives them. */
+  readonly marks: ReadonlyMap<string, EditMarks>
+  readonly history: readonly DerivedMessage[]
+  /** The last call read so far (this step's, else the earlier mark): the checks notice records it as `source.checks.lastCall`. */
+  readonly mark: string | undefined
+}
+
 /**
  * Install the changed-files step on one agent: at every step it reads the
  * files the agent changed since the starting point and, when an entry of the
  * loop board hears `env.files-edited` in this project, emits one event per
- * checkout without waiting for it. It injects nothing. `report` receives a
+ * checkout without waiting for it; then `checks` gets the step (M4's own
+ * checker) and its notice, if any, joins the step. `report` receives a
  * session's problem, or undefined once an event went through again. Never
  * throws into the step.
  */
-export function installFilesEdited(ctx: ServiceLookup, agent: AgentLike, report: (sessionId: string, problem: string | undefined) => void): (() => void) | undefined {
+export function installFilesEdited(ctx: ServiceLookup, agent: AgentLike, report: (sessionId: string, problem: string | undefined) => void, checks?: (step: EditedStep) => Promise<UserNotice | undefined>): (() => void) | undefined {
   let watermark: string | undefined
   let unnumbered = 0
-  const uninstall = installStepNotice(agent, 'changed-files event', () => true, (history, { session, step, turn }) => {
+  const uninstall = installStepNotice(agent, 'changed-files event', () => true, async (history, { session, step, turn }) => {
+    let edited: EditedStep = { session, cwd: undefined, groups: [], marks: new Map(), history, mark: watermark }
     try {
       const cwd = sessionDirectory(ctx, session)
-      const edited = editedSince(history, watermark, name => toNativeTool(dialectService(ctx), name), cwd)
-      if (edited.last !== undefined) watermark = edited.last
-      if (edited.targets.length === 0 || cwd === undefined) return undefined
-      const loops = loopsService(ctx, problem => { report(session.id, problem) })
-      if (loops === undefined || !loops.listens(FILES_EDITED_EVENT.id, cwd)) return undefined
-      const groups = editedGroups(edited.targets, outsideGitRoot(cwd))
-      if (groups.length === 0) return undefined
-      const stamp = turn === undefined ? `p${PROCESS_STARTED}-${++unnumbered}` : `${turn}-${step}`
-      for (const [index, group] of groups.entries()) {
-        const key = `files-edited:${session.id}:${stamp}${index === 0 ? '' : `-${index + 1}`}`
-        void loops.emit({ event: FILES_EDITED_EVENT.id, cwd, session: session.id, key, payload: { files: group.files, root: group.root, truncated: group.truncated } }).then(
-          result => { report(session.id, result.ok ? undefined : `env.files-edited 没交上（${result.code}）：${result.message}`) },
-          (error: unknown) => { report(session.id, `env.files-edited 没交上：${error instanceof Error ? error.message : String(error)}`) },
-        )
+      const since = editedSince(history, watermark, name => toNativeTool(dialectService(ctx), name), cwd)
+      if (since.last !== undefined) watermark = since.last
+      const groups = since.targets.length === 0 || cwd === undefined ? [] : editedGroups(since.targets, outsideGitRoot(cwd))
+      edited = { session, cwd, groups, marks: since.marks, history, mark: watermark }
+      const loops = groups.length === 0 || cwd === undefined ? undefined : loopsService(ctx, problem => { report(session.id, problem) })
+      if (loops !== undefined && cwd !== undefined && loops.listens(FILES_EDITED_EVENT.id, cwd)) {
+        const stamp = turn === undefined ? `p${PROCESS_STARTED}-${++unnumbered}` : `${turn}-${step}`
+        for (const [index, group] of groups.entries()) {
+          const key = `files-edited:${session.id}:${stamp}${index === 0 ? '' : `-${index + 1}`}`
+          void loops.emit({ event: FILES_EDITED_EVENT.id, cwd, session: session.id, key, payload: { files: group.files, root: group.root, truncated: group.truncated } }).then(
+            result => { report(session.id, result.ok ? undefined : `env.files-edited 没交上（${result.code}）：${result.message}`) },
+            (error: unknown) => { report(session.id, `env.files-edited 没交上：${error instanceof Error ? error.message : String(error)}`) },
+          )
+        }
       }
     }
     catch (error) {
       report(session.id, `改动文件没推出来：${error instanceof Error ? error.message : String(error)}`)
     }
-    return undefined
+    if (checks === undefined) return undefined
+    try {
+      return await checks(edited)
+    }
+    catch (error) {
+      // The checker never throws by design; a slip must still not break the step.
+      report(session.id, `检查没跑成：${error instanceof Error ? error.message : String(error)}`)
+      return undefined
+    }
   }, 'env')
   return uninstall
 }

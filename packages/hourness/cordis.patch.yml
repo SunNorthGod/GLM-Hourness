@@ -147,9 +147,13 @@
       # loop board it provides glmHournessEnv (the command of an approved
       # check line, for the board's check entries) and hands over the event
       # env.files-edited, emitted after each step that changed files
-      # (m4-checks); M4's own check runner joins later. Ships disabled until
-      # the L3 probe (scenarios env-notice, env-check-command) and the first
-      # desktop pass (docs/DEVELOPMENT.md §3, AGENTS.md).
+      # (m4-checks). With the loop board on, the same step runs M4's own
+      # checks (the check lines with `when` of the approved tool nodes)
+      # through the shared executor and hands the agent the results before
+      # its next step; the board lists them as env.checks-after-edit. Ships
+      # disabled until the L3 probe (scenarios env-notice, env-check-command,
+      # env-checks, env-checks-timeout) and the first desktop pass
+      # (docs/DEVELOPMENT.md §3, AGENTS.md).
       name: dsh-hourness/env
       disabled: true
       config: {}

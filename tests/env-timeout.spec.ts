@@ -14,7 +14,8 @@ import { join } from 'node:path'
 import test from 'node:test'
 import {
   appendTiming, argvDigest, checkKey, checkTimeout, CHECK_RECENT_RUNS, CHECK_TIMEOUT_CAP_MS, CHECK_TIMEOUT_FACTOR, CHECK_TIMEOUT_FLOOR_MS,
-  envToolTimeouts, estimateLines, timeoutText, type EstimateLine,
+  envToolTimeouts, estimateLines, estimateOrigin, nextValue, parseTiming, readTiming, tidiedLines, tidyTiming, timeoutText, valueSourceText,
+  type EstimateLine, type TimingLine,
 } from '../src/env/timeout.ts'
 import { apply } from '../src/graph/index.ts'
 import { codePointCount } from '../src/graph/proposal.ts'
@@ -233,4 +234,92 @@ test('a timing journal that cannot be written is a note on the graph row health;
     assert.match(result.report?.reason ?? '', /检查的估计没记下/)
     assert.ok(warnings.some(line => line.includes('检查的估计没记下')), 'warned')
   })
+})
+
+// ---------------------------------------------------------------- the journal the runner reads and writes (m4-checks B4)
+
+const KEY = 'tool-1/slow'
+const DIGEST = argvDigest(['node', 'slow.mjs', '{files}'])
+const at = '2026-11-05T01:00:00.000Z'
+const run = (ms: number, argv = DIGEST): TimingLine => ({ kind: 'run', at, check: KEY, argv, ms })
+
+test('parseTiming keeps the five kinds and counts what it cannot read; readTiming reads no file as an empty journal and names any other failure', async () => {
+  const text = [JSON.stringify(run(1)), 'not json', JSON.stringify({ kind: 'other', at, check: KEY, argv: DIGEST }), JSON.stringify({ kind: 'run', at, argv: DIGEST }), '', JSON.stringify({ kind: 'queue', at, check: KEY, argv: DIGEST, waitedMs: 60_000, running: 2, outcome: 'not-run' })].join('\n')
+  const book = parseTiming(text)
+  assert.deepEqual([book.lines.map(line => line.kind), book.bad], [['run', 'queue'], 3])
+  const home = await mkdtemp(join(tmpdir(), 'env-timing-'))
+  try {
+    assert.deepEqual(await readTiming(home), { lines: [], bad: 0 })
+    await mkdir(join(home, 'env-checks', 'timing.jsonl'), { recursive: true })
+    const failed = await readTiming(home)
+    assert.ok('error' in failed && failed.error.length > 0, JSON.stringify(failed))
+  }
+  finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('nextValue: the source of each value (estimate with the session the graph tools recorded, the harness, the ceiling), and no line while the value stands', () => {
+  const node: GraphNode = toolNode([SLOW], { at: '2026-11-04T10:00:00.000Z', actor: 'llm', op: 'propose', reason: 'r' })
+  const origin = estimateOrigin(node, SLOW, 'rev1')
+  assert.deepEqual(origin, { node: 'tool-1', rev: 'rev1', actor: 'llm', at: '2026-11-04T10:00:00.000Z' })
+  const estimate: EstimateLine = { kind: 'estimate', at, check: KEY, argv: DIGEST, estimateS: 1, node: 'tool-1', actor: 'llm', historyAt: '2026-11-04T10:00:00.000Z', session: 'sess-1' }
+  const first = nextValue({ lines: [estimate], bad: 0 }, { check: KEY, argv: DIGEST, estimateS: 1, origin }, new Date(at))
+  assert.deepEqual(first.line, { kind: 'value', at, check: KEY, argv: DIGEST, limitMs: 5_000, cap: { by: 'default' }, source: { by: 'estimate', node: 'tool-1', rev: 'rev1', actor: 'llm', at: '2026-11-04T10:00:00.000Z', session: 'sess-1', estimateS: 1 } })
+  assert.equal(valueSourceText(first.line), '写检查的 agent 估 1 秒')
+  assert.equal(valueSourceText(first.line, true), '写检查的 agent 估 1 秒，会话 sess-1')
+  // Without the graph tools' line (a hand-edited file) the source has no session, and the report says so.
+  const unrecorded = nextValue({ lines: [], bad: 0 }, { check: KEY, argv: DIGEST, estimateS: 1, origin }, new Date(at)).line
+  assert.ok(unrecorded?.source.by === 'estimate' && unrecorded.source.session === undefined)
+  assert.equal(valueSourceText(unrecorded, true), '写检查的 agent 估 1 秒，会话未记')
+  const standing = nextValue({ lines: [estimate, first.line], bad: 0 }, { check: KEY, argv: DIGEST, estimateS: 1, origin }, new Date(at))
+  assert.equal(standing.line, undefined, 'the same value under the same command writes nothing')
+  // A run stopped at its 5 s limit counts as 5 s: the next value is 15 s, from the harness, with the old value.
+  const after = nextValue({ lines: [first.line, { ...run(5_000), censored: true }], bad: 0 }, { check: KEY, argv: DIGEST, estimateS: 1, origin }, new Date(at))
+  assert.deepEqual([after.line?.limitMs, after.line?.previousMs, after.line?.source], [15_000, 5_000, { by: 'harness', runs: [5_000], factor: 3, floorMs: 5_000 }])
+  assert.equal(valueSourceText(after.line!), '系统按最近 1 次，最慢 5 秒')
+  const ceiling = nextValue({ lines: [], bad: 0 }, { check: KEY, argv: DIGEST }, new Date(at)).line
+  assert.deepEqual([ceiling?.limitMs, ceiling?.source], [60_000, { by: 'ceiling' }])
+  assert.equal(valueSourceText(ceiling!), '没有估计，用上限')
+  const capped = nextValue({ lines: [], bad: 0 }, { check: KEY, argv: DIGEST, estimateS: 25, origin }, new Date(at)).line
+  assert.deepEqual([capped?.limitMs, capped?.capped], [60_000, { wantedMs: 75_000 }])
+  assert.equal(valueSourceText(capped!), '想要 75 秒，被上限截在 60 秒', 'the board details say only that it is held')
+  assert.equal(valueSourceText(capped!, true), '写检查的 agent 估 25 秒，会话未记；想要 75 秒，被上限截在 60 秒', 'the report keeps the source before it')
+  // Runs under another command do not count: the value starts over from the estimate.
+  const changed = nextValue({ lines: [first.line, run(20_000)], bad: 0 }, { check: KEY, argv: argvDigest(['node', 'slow2.mjs', '{files}']), estimateS: 1, origin }, new Date(at))
+  assert.deepEqual([changed.timeout.limitMs, changed.line?.source.by], [5_000, 'estimate'])
+})
+
+test('estimateOrigin: the last edit that holds the whole line, else the propose; a human\'s edit makes it the human\'s', () => {
+  const node: GraphNode = {
+    ...toolNode([SLOW], { at: '2026-11-04T10:00:00.000Z', actor: 'llm', op: 'propose', reason: 'r' }),
+    history: [
+      { at: '2026-11-04T10:00:00.000Z', actor: 'llm', op: 'propose', reason: 'r' },
+      { at: '2026-11-04T11:00:00.000Z', actor: 'human', op: 'edit', reason: '改预计', changes: { acceptance: { from: [LINT], to: [SLOW] } } },
+      { at: '2026-11-04T12:00:00.000Z', actor: 'human', op: 'edit', reason: '改别的', changes: { title: { from: 'a', to: 'b' } } },
+    ],
+  }
+  assert.deepEqual(estimateOrigin(node, SLOW, 'r2'), { node: 'tool-1', rev: 'r2', actor: 'human', at: '2026-11-04T11:00:00.000Z' })
+  assert.deepEqual(estimateOrigin(node, LINT, 'r2'), { node: 'tool-1', rev: 'r2', actor: 'llm', at: '2026-11-04T10:00:00.000Z' })
+})
+
+test('tidying keeps per check the latest ten runs, twenty values, timeouts and queue lines, five estimates; it rewrites the file only when needed', async () => {
+  const many = (kind: TimingLine['kind'], count: number): TimingLine[] => Array.from({ length: count }, (_, index) => ({ kind, at, check: KEY, argv: DIGEST, ms: index, limitMs: index, elapsedMs: index, waitedMs: index, running: 2, estimateS: 1, node: 'tool-1', actor: 'llm', historyAt: at, cap: { by: 'default' }, source: { by: 'ceiling' }, outcome: 'not-run' } as unknown as TimingLine))
+  const lines = [...many('run', 15), ...many('value', 25), ...many('timeout', 22), ...many('queue', 21), ...many('estimate', 7), { ...run(1), check: 'tool-2/x' }]
+  const kept = tidiedLines(lines)
+  const count = (kind: string, check = KEY): number => kept.filter(line => line.kind === kind && line.check === check).length
+  assert.deepEqual([count('run'), count('value'), count('timeout'), count('queue'), count('estimate'), count('run', 'tool-2/x')], [CHECK_RECENT_RUNS, 20, 20, 20, 5, 1])
+  assert.equal((kept.find(line => line.kind === 'run') as { ms: number }).ms, 5, 'the oldest go first')
+  const home = await mkdtemp(join(tmpdir(), 'env-tidy-'))
+  try {
+    await mkdir(join(home, 'env-checks'), { recursive: true })
+    await writeFile(join(home, 'env-checks', 'timing.jsonl'), [...lines.map(line => JSON.stringify(line)), 'bad line', ''].join('\n'))
+    assert.equal(await tidyTiming(home), undefined)
+    const after = parseTiming(await readFile(join(home, 'env-checks', 'timing.jsonl'), 'utf8'))
+    assert.deepEqual([after.lines.length, after.bad], [kept.length, 0])
+    assert.equal(await tidyTiming(home), undefined, 'a tidy journal is left alone')
+  }
+  finally {
+    await rm(home, { recursive: true, force: true })
+  }
 })

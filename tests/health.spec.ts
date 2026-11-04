@@ -119,6 +119,20 @@ test('notes compose on a session without a report yet, cap at four, cut at 80 co
   health.note('', 'k', 'x')
 })
 
+test('a remark (degrades false) adds its text and leaves the state; with a degrading note the state is degraded (env check timeouts, M4 design §6.3.1)', () => {
+  const store = serviceStore()
+  const health = provideRowHealth(store, 'env', 'active', '已加载')
+  health.report('s1', 'active', '环境提醒读图 g')
+  health.note('s1', 'checks-timeout', 'tool-1/lint 没跑完：上限 60 秒，跑了 60.0 秒', false)
+  assert.deepEqual(inSession(store, 'env', 's1'), { state: 'active', reason: '环境提醒读图 g；tool-1/lint 没跑完：上限 60 秒，跑了 60.0 秒' })
+  health.note('s1', 'checks-failed', 'tool-1/tsc 没跑成：找不到 node')
+  assert.deepEqual(inSession(store, 'env', 's1'), { state: 'degraded', reason: '环境提醒读图 g；tool-1/lint 没跑完：上限 60 秒，跑了 60.0 秒；tool-1/tsc 没跑成：找不到 node' })
+  health.note('s1', 'checks-failed', undefined)
+  assert.equal(inSession(store, 'env', 's1')?.state, 'active', 'withdrawing the degrading note leaves the remark and the state it had')
+  health.note('s2', 'checks-timeout', 'x', false)
+  assert.deepEqual(inSession(store, 'env', 's2'), { state: 'active', reason: '已加载；x' }, 'a remark on the activation status before any report')
+})
+
 
 test('a second instance of a row or a context without provide never fails activation', () => {
   const store = serviceStore()

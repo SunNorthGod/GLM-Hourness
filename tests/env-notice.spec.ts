@@ -11,8 +11,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { apply as envApply } from '../src/env/index.ts'
-import { envNotice, envNoticeBody, ENV_NOTICE_SOURCE, NO_CHECKS_LINE, SCRATCH_LINE } from '../src/env/notice.ts'
+import { envNotice, envNoticeBody, ENV_NOTICE_SOURCE, NO_BOARD_LINE, NO_CHECKS_LINE, SCRATCH_LINE } from '../src/env/notice.ts'
+import { openEngine } from '../src/graph/engine.ts'
 import { serializeNode } from '../src/graph/format.ts'
+import { LOOPS_DECLARATION, LOOPS_SERVICE } from '../src/loops/service.ts'
 import { GRAPH_SERVICE } from '../src/graph/service.ts'
 import { loadGraph } from '../src/graph/store.ts'
 import type { DerivedMessage, ServiceLookup, SessionLike, UserNotice } from '../src/shared/dsh-min.ts'
@@ -28,8 +30,8 @@ const noServices = { get: () => undefined } as unknown as ServiceLookup
 test('the body for a branch: header, tools, proposals, the checks line, the scratch line', () => {
   const body = envNoticeBody({
     tools: [
-      { id: 'tool-1', title: 'ESLint', usage: 'npm run lint', configs: ['eslint.config.mjs'] },
-      { id: 'tool-2', title: 'gitleaks', usage: 'npm run check:secrets', configs: [] },
+      { id: 'tool-1', title: 'ESLint', rev: 'r1', usage: 'npm run lint', configs: ['eslint.config.mjs'], checks: [] },
+      { id: 'tool-2', title: 'gitleaks', rev: 'r2', usage: 'npm run check:secrets', configs: [], checks: [] },
     ],
     proposals: 2,
     issues: [],
@@ -46,7 +48,7 @@ test('the body for a branch: header, tools, proposals, the checks line, the scra
 })
 
 test('more than twelve tools collapse into an "N more" line; an empty branch is the scratch line alone', () => {
-  const tools = Array.from({ length: 14 }, (_, index) => ({ id: `tool-${index + 1}`, title: `T${index + 1}`, usage: 'run', configs: [] }))
+  const tools = Array.from({ length: 14 }, (_, index) => ({ id: `tool-${index + 1}`, title: `T${index + 1}`, rev: 'r', usage: 'run', configs: [], checks: [] }))
   const body = envNoticeBody({ tools, proposals: 0, issues: [] })
   const lines = body.split('\n')
   assert.equal(lines.filter(line => line.startsWith('- ')).length, 12)
@@ -56,7 +58,7 @@ test('more than twelve tools collapse into an "N more" line; an empty branch is 
 })
 
 test('the body stays within 1500 characters', () => {
-  const tools = Array.from({ length: 12 }, (_, index) => ({ id: `tool-${index + 1}`, title: `T${index + 1}`, usage: 'x'.repeat(140), configs: [] }))
+  const tools = Array.from({ length: 12 }, (_, index) => ({ id: `tool-${index + 1}`, title: `T${index + 1}`, rev: 'r', usage: 'x'.repeat(140), configs: [], checks: [] }))
   const body = envNoticeBody({ tools, proposals: 0, issues: [] })
   assert.ok(body.length <= 1500, String(body.length))
 })
@@ -133,7 +135,8 @@ test('the first step carries the notice, the second does not; a branch change br
     const text = notices[0].content[0].text
     assert.ok(text.includes('Project tools (graph node env)'), text)
     assert.ok(text.includes('- ESLint [tool-1]: npm run lint'), text)
-    assert.ok(text.includes(NO_CHECKS_LINE), text)
+    // The fake runtime has no loop board: M4's own checks do not run, and the line says why.
+    assert.ok(text.includes(NO_BOARD_LINE), text)
     assert.ok(text.includes(SCRATCH_LINE), text)
     runtime.history.push(...admitted)
     const second = await runtime.preStep({ messages: [{ id: 'm2', role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text: 'go on' }] }], step: 2 })
@@ -170,6 +173,43 @@ test('a session whose graph has no env node gets the scratch line alone, once', 
   finally {
     await rm(workspace, { recursive: true, force: true })
   }
+})
+
+test('the checks line names M4\'s own checks with the board on; a changed check command shows the notice again (design §7.2)', async () => {
+  const check = (name: string, paths?: readonly string[]) => ({ name, format: 'lines' as const, argv: ['node', `${name}.mjs`], ...(paths === undefined ? {} : { paths }) })
+  const branch = {
+    tools: [
+      { id: 'tool-1', title: 'ESLint', rev: 'r1', usage: 'npm run lint', configs: [], checks: [check('eslint', ['*.ts', '*.mts']), check('full')] },
+      { id: 'tool-2', title: 'TypeScript', rev: 'r2', usage: 'npx tsc', configs: [], checks: [check('tsc', ['*.ts'])] },
+    ],
+    proposals: 0,
+    issues: [],
+  }
+  assert.ok(envNoticeBody(branch).includes('\nChecks run after each edit (listed on the loop board): eslint on *.ts, *.mts; tsc on *.ts.\n'))
+  assert.ok(envNoticeBody(branch, false).includes(`\n${NO_BOARD_LINE}\n`))
+  assert.ok(envNoticeBody({ ...branch, tools: [{ ...branch.tools[0], checks: [check('full')] }] }).includes(`\n${NO_CHECKS_LINE}\n`), 'a line without when is no check M4 runs')
+  const many = { ...branch, tools: [{ ...branch.tools[0], checks: Array.from({ length: 30 }, (_, index) => check(`c${index}`, ['*.ts'])) }] }
+  const line = envNoticeBody(many).split('\n').find(text => text.startsWith('Checks run after each edit')) ?? ''
+  assert.ok(line.length <= 300, String(line.length))
+
+  await withGraph(async (runtime, workspace) => {
+    runtime.ctx.provide(LOOPS_SERVICE, { declaration: LOOPS_DECLARATION, contribute: () => ({ ok: true, dispose: () => {}, accepted: [], dropped: [] }), emit: () => Promise.resolve({ ok: true, id: 'ev-x', duplicate: false }), listens: () => false, recordRun: () => {} })
+    const graph = join(workspace, 'docs', 'graph')
+    const engine = openEngine(graph)
+    const set = async (acceptance: readonly string[]): Promise<void> => {
+      const loaded = await loadGraph(graph)
+      assert.ok((await engine.apply('human', { op: 'edit', id: 'tool-1', rev: loaded.revisions.get('tool-1') ?? '', reason: '改检查', set: { acceptance } })).ok)
+    }
+    await set(['`check lint lines $ node lint.mjs {files}` when *.txt'])
+    const first = await runtime.preStep({ messages: [{ id: 'm1', role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text: 'go' }] }], step: 1 })
+    const shown = envNotices((first as { messages: readonly unknown[] }).messages)
+    assert.ok(shown[0]?.content[0].text.includes('Checks run after each edit (listed on the loop board): lint on *.txt.'), shown[0]?.content[0].text)
+    runtime.history.push(...(first as { messages: readonly unknown[] }).messages)
+    // Same name and condition, another command: the body reads the same, the node's revision moved.
+    await set(['`check lint lines $ node lint2.mjs {files}` when *.txt'])
+    const again = await runtime.preStep({ messages: [{ id: 'm2', role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text: 'on' }] }], step: 2 })
+    assert.equal(envNotices((again as { messages: readonly unknown[] }).messages).length, 1)
+  })
 })
 
 test('without a graph service, or without a working directory, the notice is the scratch line', async () => {

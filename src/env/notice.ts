@@ -3,10 +3,11 @@
  * which checks run after edits, and where one-off scripts go. Injected at an
  * agent's first step and whenever the branch changes (the digest of the body
  * moves), after a compaction the same way the graph projection re-anchors
- * (src/graph/reminder.ts). The checks line stays "No checks run after edits
- * in this project yet." until m4-checks wires the check lines; a session
- * whose graph is unreadable (or has no `env` node) gets the scratch line
- * alone.
+ * (src/graph/reminder.ts). The checks line names M4's own checks (the
+ * check lines with `when` of the approved tool nodes) and where they apply;
+ * a changed check line or tool node revision counts as a change too. A
+ * session whose graph is unreadable (or has no `env` node) gets the scratch
+ * line alone.
  */
 import { createHash } from 'node:crypto'
 import type { DerivedMessage, SessionLike, UserNotice } from '../shared/dsh-min.ts'
@@ -15,6 +16,7 @@ import { wrapSystemReminder } from '../shared/zcode-notice.ts'
 import { graphService } from '../graph/service.ts'
 import { readGraph } from '../graph/row-health.ts'
 import { CHECKPOINT_SOURCE } from '../graph/reminder.ts'
+import { loopsService } from '../loops/service.ts'
 import { envBranch, type EnvBranch } from './branch.ts'
 import type { ServiceLookup } from '../shared/dsh-min.ts'
 
@@ -30,18 +32,33 @@ const BODY_LIMIT = 1500
 /** The scratch line, present in every environment notice (the one thing every session needs). */
 export const SCRATCH_LINE = 'One-off scripts go in .llm/scratch/ (git-ignored). Delete them or promote them (create them again under scripts/ with the write tool and give them a graph node) before you hand back.'
 
-/** The checks line until m4-checks wires the check lines of the approved tool nodes. */
+/** The checks line when no approved tool node has a check line with `when`. */
 export const NO_CHECKS_LINE = 'No checks run after edits in this project yet.'
 
-/** The reminder body for one branch, or for no branch at all (the scratch line alone). */
-export function envNoticeBody(branch: EnvBranch | undefined): string {
+/** The checks line when the loop board is off: M4's own checks do not run (design §6.1.2). */
+export const NO_BOARD_LINE = 'No checks run after edits: the loop board is not enabled.'
+
+/** The checks line stays within this many characters. */
+const CHECKS_LINE_LIMIT = 300
+
+/** The checks line: M4's own checks by name and conditions, or why none run. */
+function checksLine(branch: EnvBranch, board: boolean): string {
+  if (!board) return NO_BOARD_LINE
+  const own = branch.tools.flatMap(tool => tool.checks.flatMap(check => check.paths === undefined ? [] : [`${check.name} on ${check.paths.join(', ')}`]))
+  if (own.length === 0) return NO_CHECKS_LINE
+  const line = `Checks run after each edit (listed on the loop board): ${own.join('; ')}.`
+  return line.length <= CHECKS_LINE_LIMIT ? line : `${line.slice(0, CHECKS_LINE_LIMIT - 1)}…`
+}
+
+/** The reminder body for one branch, or for no branch at all (the scratch line alone); `board` says whether the loop board is on. */
+export function envNoticeBody(branch: EnvBranch | undefined, board = true): string {
   const lines: string[] = []
   if (branch !== undefined && (branch.tools.length > 0 || branch.proposals > 0)) {
     lines.push('Project tools (graph node env). Use these before writing your own.')
     for (const tool of branch.tools.slice(0, TOOL_LIMIT)) lines.push(`- ${tool.title} [${tool.id}]: ${tool.usage.slice(0, 120)}`)
     if (branch.tools.length > TOOL_LIMIT) lines.push(`${branch.tools.length - TOOL_LIMIT} more: graph_show env`)
     if (branch.proposals > 0) lines.push(`${branch.proposals} more tool node${branch.proposals === 1 ? ' waits' : 's wait'} for the human's approval.`)
-    lines.push(NO_CHECKS_LINE)
+    lines.push(checksLine(branch, board))
   }
   lines.push(SCRATCH_LINE)
   let body = lines.join('\n')
@@ -113,14 +130,20 @@ function envNoticeReason(state: EnvHistory, digest: string): EnvNoticeReason | u
   return undefined
 }
 
-/** The notice body for one session: the branch of its project graph, or the scratch line alone. */
-async function bodyForSession(ctx: ServiceLookup, session: SessionLike): Promise<string> {
+/**
+ * The notice body for one session: the branch of its project graph, or the
+ * scratch line alone; with the revisions of the tool nodes that carry checks,
+ * which the digest takes in so a changed check command shows again.
+ */
+async function bodyForSession(ctx: ServiceLookup, session: SessionLike): Promise<{ readonly body: string, readonly revisions: string }> {
   const cwd = session.header.cwd
   const dir = graphService(ctx)?.dirFor(cwd)
-  if (dir === undefined) return envNoticeBody(undefined)
+  if (dir === undefined) return { body: envNoticeBody(undefined), revisions: '' }
   const read = await readGraph(dir, cwd)
-  if ('failure' in read) return envNoticeBody(undefined)
-  return envNoticeBody(envBranch(read.graph))
+  if ('failure' in read) return { body: envNoticeBody(undefined), revisions: '' }
+  const branch = envBranch(read.graph)
+  const revisions = branch.tools.filter(tool => tool.checks.length > 0).map(tool => `${tool.id}@${tool.rev}`).join(',')
+  return { body: envNoticeBody(branch, loopsService(ctx) !== undefined), revisions }
 }
 
 /**
@@ -129,8 +152,8 @@ async function bodyForSession(ctx: ServiceLookup, session: SessionLike): Promise
  * (and a resumed or compacted session) re-derives what the model was shown.
  */
 export async function envNotice(ctx: ServiceLookup, history: readonly DerivedMessage[], session: SessionLike): Promise<UserNotice | undefined> {
-  const body = await bodyForSession(ctx, session)
-  const digest = createHash('sha256').update(body).digest('hex').slice(0, 12)
+  const { body, revisions } = await bodyForSession(ctx, session)
+  const digest = createHash('sha256').update(revisions === '' ? body : `${body}\n${revisions}`).digest('hex').slice(0, 12)
   const state = envNoticeHistory(history)
   const reason = envNoticeReason(state, digest)
   if (reason === undefined) return undefined

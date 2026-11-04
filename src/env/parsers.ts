@@ -9,7 +9,7 @@
 import type { CheckFormat } from './check-entry.ts'
 
 /** One finding of a check run. The changed-line mark is not here: it needs git and the editing session. */
-interface Finding {
+export interface Finding {
   readonly file: string
   readonly line: number
   readonly column?: number

@@ -23,15 +23,16 @@ function fakeFs() {
 const USER_HOME = 'C:/users/me/.dsh/glm-hourness'
 const service = { userHome: USER_HOME, projectHome: 'C:/ws/.llm' }
 
-test('audit paths: usage and its gaps under the user directory, violations and decisions under the project directory', () => {
+test('audit paths: usage and its gaps under the user directory, violations, decisions and the checks\' timing under the project directory', () => {
   assert.deepEqual(auditPaths({ userHome: USER_HOME, projectHome: 'C:\\ws\\.llm\\' }), {
     violations: 'C:\\ws\\.llm/audit/violations.jsonl',
     decisions: 'C:\\ws\\.llm/audit/decisions.jsonl',
     suppressions: 'C:\\ws\\.llm/audit/suppressions.jsonl',
+    timing: 'C:\\ws\\.llm/env-checks/timing.jsonl',
     usage: `${USER_HOME}/audit/usage.jsonl`,
     gaps: `${USER_HOME}/audit/usage-gaps.jsonl`,
   })
-  assert.deepEqual(auditPaths({ projectHome: 'C:/ws/.llm' }), { violations: 'C:/ws/.llm/audit/violations.jsonl', decisions: 'C:/ws/.llm/audit/decisions.jsonl', suppressions: 'C:/ws/.llm/audit/suppressions.jsonl' })
+  assert.deepEqual(auditPaths({ projectHome: 'C:/ws/.llm' }), { violations: 'C:/ws/.llm/audit/violations.jsonl', decisions: 'C:/ws/.llm/audit/decisions.jsonl', suppressions: 'C:/ws/.llm/audit/suppressions.jsonl', timing: 'C:/ws/.llm/env-checks/timing.jsonl' })
   assert.deepEqual(auditPaths({ userHome: USER_HOME }), { usage: `${USER_HOME}/audit/usage.jsonl`, gaps: `${USER_HOME}/audit/usage-gaps.jsonl` })
 })
 

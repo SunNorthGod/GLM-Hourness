@@ -519,3 +519,33 @@ test('the installer form journals decisions into the row home, else the data ser
   }
   assert.deepEqual([...files.keys()].sort(), ['C:/row/.llm/audit/decisions.jsonl', 'C:/svc/.llm/audit/decisions.jsonl'])
 })
+
+test('the checks\' timeouts: one line per check with its value and source, the timeouts of seven days, the queue drops (m4-checks, design §6.3.1)', async () => {
+  const now = Date.parse('2026-11-05T06:00:00Z')
+  const key = { argv: 'abcd1234' }
+  const lines = [
+    { kind: 'estimate', at: '2026-11-05T01:00:00Z', check: 'tool-1/slow', ...key, estimateS: 1, node: 'tool-1', actor: 'llm', historyAt: '2026-11-05T00:59:00Z', session: 'sess-123456789' },
+    { kind: 'value', at: '2026-11-05T01:00:00Z', check: 'tool-1/slow', ...key, limitMs: 5000, cap: { by: 'default' }, source: { by: 'estimate', node: 'tool-1', rev: 'r', actor: 'llm', at: '2026-11-05T00:59:00Z', session: 'sess-123456789', estimateS: 1 } },
+    { kind: 'timeout', at: '2026-10-20T01:00:00Z', check: 'tool-1/slow', ...key, limitMs: 5000, elapsedMs: 5100, outcome: 'not-finished' },
+    { kind: 'timeout', at: '2026-11-05T01:00:05Z', check: 'tool-1/slow', ...key, limitMs: 5000, elapsedMs: 5230, session: 's', outcome: 'not-finished' },
+    { kind: 'run', at: '2026-11-05T01:00:05Z', check: 'tool-1/slow', ...key, ms: 5000, censored: true },
+    { kind: 'value', at: '2026-11-05T01:01:00Z', check: 'tool-1/slow', ...key, limitMs: 15000, previousMs: 5000, cap: { by: 'default' }, source: { by: 'harness', runs: [5000], factor: 3, floorMs: 5000 } },
+    { kind: 'value', at: '2026-11-05T01:00:00Z', check: 'tool-2/eslint', ...key, limitMs: 60000, cap: { by: 'default' }, capped: { wantedMs: 75000 }, source: { by: 'estimate', node: 'tool-2', rev: 'r', estimateS: 25 } },
+    { kind: 'queue', at: '2026-11-05T02:00:00Z', check: 'tool-2/eslint', ...key, waitedMs: 60000, running: 2, outcome: 'not-run' },
+    { kind: 'value', at: '2026-11-05T01:00:00Z', check: 'tool-3/tsc', ...key, limitMs: 6000, cap: { by: 'default' }, source: { by: 'estimate', node: 'tool-3', rev: 'r', actor: 'human', estimateS: 2 } },
+    // Held at the ceiling, from a human's estimate written in an rc.3 session: the report keeps who and where before the ceiling clause.
+    { kind: 'value', at: '2026-11-05T01:00:00Z', check: 'tool-4/vitest', ...key, limitMs: 60000, cap: { by: 'default' }, capped: { wantedMs: 90000 }, source: { by: 'estimate', node: 'tool-4', rev: 'r', actor: 'human', at: '2026-11-05T00:59:00Z', session: 'session-0f3c9a7e-1111-2222-3333-444455556666', estimateS: 30 } },
+  ]
+  const files = new Map([['C:/ws/.llm/env-checks/timing.jsonl', [...lines.map(line => JSON.stringify(line)), 'bad'].join('\n')]])
+  const report = await reportFromFiles(filesOf(files), { projectHome: 'C:/ws/.llm' }, 'p', emptyGraph, undefined, { now, offsetMinutes: 480 })
+  const section = report.slice(report.indexOf('## 检查的超时')).split('\n\n')[0]?.split('\n')
+  assert.deepEqual(section, [
+    '## 检查的超时',
+    '- tool-1/slow：超时 15 秒（系统按最近 1 次，最慢 5 秒）· 近 7 天超时 1 次（最近一次：上限 5 秒，跑了 5.2 秒，11-05 09:00）',
+    '- tool-2/eslint：超时 60 秒（写检查的 agent 估 25 秒，会话未记；想要 75 秒，被上限截在 60 秒）· 近 7 天没有超时 · 排队太久没跑 1 次',
+    '- tool-3/tsc：超时 6 秒（你估 2 秒，会话未记）· 近 7 天没有超时',
+    '- tool-4/vitest：超时 60 秒（你估 30 秒，会话 0f3c9a7e；想要 90 秒，被上限截在 60 秒）· 近 7 天没有超时',
+  ])
+  assert.ok(report.indexOf('## 检查的超时') < report.indexOf('## 等你定的事'), report)
+  assert.ok(!(await reportFromFiles(filesOf(new Map()), { projectHome: 'C:/ws/.llm' }, 'p', emptyGraph)).includes('## 检查的超时'), 'no journal, no section')
+})

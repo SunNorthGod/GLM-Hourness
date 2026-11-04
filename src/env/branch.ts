@@ -22,9 +22,11 @@ const TOOL_LABELS = ['用途', '用法', '选择理由', '安装位置'] as cons
 const LISTED: readonly string[] = ['approved', 'doing', 'done']
 
 /** One tool of the environment branch. */
-interface EnvTool {
+export interface EnvTool {
   readonly id: string
   readonly title: string
+  /** The revision of the node's file: a changed check command changes it (the environment notice and the checker's cache read it). */
+  readonly rev: string
   /** The first line of the 用法 section, empty when the node has none. */
   readonly usage: string
   /** Configuration and baseline files from readable `config` lines, repository-relative, in line order. */
@@ -56,9 +58,9 @@ function parseConfigLine(line: string): readonly string[] | undefined {
   return paths
 }
 
-function toolOf(node: GraphNode): EnvTool {
+function toolOf(node: GraphNode, rev: string): EnvTool {
   const usage = labeledSections(node.body, TOOL_LABELS).get('用法')?.split(/\r?\n/).find(line => line.trim() !== '') ?? ''
-  return { id: node.id, title: node.title, usage, configs: [], checks: [] }
+  return { id: node.id, title: node.title, rev, usage, configs: [], checks: [] }
 }
 
 /** One check line of a node: the entry, or the issue line (the number is the line's place among the acceptance conditions). */
@@ -97,7 +99,7 @@ export function envBranch(graph: LoadedGraph): EnvBranch {
   for (const node of graph.nodes.values()) {
     if (!isEnvTool(node)) continue
     if (LISTED.includes(node.status)) {
-      const tool = toolOf(node)
+      const tool = toolOf(node, graph.revisions.get(node.id) ?? '')
       const configs: string[] = []
       const checks: CheckEntry[] = []
       for (const [index, line] of (node.acceptance ?? []).entries()) {

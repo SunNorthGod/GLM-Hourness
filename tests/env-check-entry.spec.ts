@@ -142,7 +142,7 @@ test('formatCheckOutput: counts, at most 20 lines of 200 characters, undefined o
 })
 
 function graphOf(nodes: readonly Partial<GraphNode>[]): LoadedGraph {
-  return { nodes: new Map(nodes.map(node => [node.id ?? '', { type: 'tool', status: 'approved', parent: 'env', body: '', history: [], ...node } as GraphNode])) } as unknown as LoadedGraph
+  return { nodes: new Map(nodes.map(node => [node.id ?? '', { type: 'tool', status: 'approved', parent: 'env', body: '', history: [], ...node } as GraphNode])), revisions: new Map() } as unknown as LoadedGraph
 }
 
 test('the branch reads check lines with and without when; an unreadable line and a repeated name are issues with their number', () => {

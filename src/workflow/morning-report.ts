@@ -19,6 +19,7 @@ import { liftStatesOf } from '../guard/lift.ts'
 import { ruleStats } from '../guard/measure.ts'
 import { runGit } from '../data/git-process.ts'
 import type { SuppressionRecord } from '../env/suppressions.ts'
+import { lastValues, parseTiming, secondsText, valueSourceText, type TimingLine } from '../env/timeout.ts'
 import type { LoadedGraph } from '../graph/parse.ts'
 import { listOpenItems } from '../graph/projection.ts'
 import type { HistoryEntry } from '../graph/schema.ts'
@@ -63,6 +64,10 @@ export interface ReportInput {
   readonly offsetMinutes?: number | undefined
   /** The lift record of the project, over the WHOLE journal and the file (m4-gate G3, design §3.10) — not period-bounded; absent when the caller read nothing. */
   readonly lifts?: LiftsInput | undefined
+  /** The whole timing journal of the project's checks (m4-checks, design §6.3.1); its section counts the seven days before `now`. */
+  readonly timing?: readonly TimingLine[] | undefined
+  /** The moment the report is made, epoch milliseconds: the seven days of the checks section end here. */
+  readonly now?: number | undefined
 }
 
 /** What the lift side of the report reads: the whole journal's lift records, the journal's earliest instant (gap records count their `since`), and the record file's text or read error. */
@@ -200,6 +205,31 @@ function renderStamp(at: number, offsetMinutes: number): string {
   const hour = `${shifted.getUTCHours()}`.padStart(2, '0')
   const minute = `${shifted.getUTCMinutes()}`.padStart(2, '0')
   return `${month}-${day} ${hour}:${minute}`
+}
+
+/** The checks' timeouts look back this far (design §6.3.1 「看得见」). */
+const TIMING_WINDOW_MS = 7 * 24 * 3600 * 1000
+
+/**
+ * The section of the checks' timeouts (design §6.3.1, §3.10): one line per
+ * check that has a value, with the value and where it came from (whose
+ * estimate, in which session, or that the session was not recorded; then
+ * what was wanted when the value is held at the ceiling), the
+ * timeouts of the last seven days and the latest one, and the runs dropped
+ * from the queue. Empty when the journal has no value line.
+ */
+function timingSection(timing: readonly TimingLine[], now: number, offsetMinutes: number): string[] {
+  const since = now - TIMING_WINDOW_MS
+  const recent = (line: TimingLine): boolean => !Number.isNaN(Date.parse(line.at)) && Date.parse(line.at) >= since && Date.parse(line.at) <= now
+  const lines: string[] = []
+  for (const [check, value] of lastValues({ lines: timing, bad: 0 })) {
+    const timeouts = timing.filter(line => line.kind === 'timeout' && line.check === check && recent(line))
+    const queued = timing.filter(line => line.kind === 'queue' && line.check === check && recent(line)).length
+    const last = timeouts.at(-1)
+    const late = last?.kind !== 'timeout' ? '近 7 天没有超时' : `近 7 天超时 ${timeouts.length} 次（最近一次：上限 ${secondsText(last.limitMs)} 秒，跑了 ${(last.elapsedMs / 1000).toFixed(1)} 秒，${renderStamp(Date.parse(last.at), offsetMinutes)}）`
+    lines.push(`- ${check}：超时 ${secondsText(value.limitMs)} 秒（${valueSourceText(value, true)}）· ${late}${queued === 0 ? '' : ` · 排队太久没跑 ${queued} 次`}`)
+  }
+  return lines.length === 0 ? [] : ['', '## 检查的超时', ...lines]
 }
 
 /** The section of the asks: what waits for the person, who settled the rest, and how many dispatch calls were made. */
@@ -380,6 +410,7 @@ export function morningReport(input: ReportInput): string {
   // rises and falls counted apart, so a net-zero period with churn still shows.
   const suppressionLine = suppressionLineOf(input.suppressions ?? [])
   if (suppressionLine !== undefined) lines.push(suppressionLine)
+  lines.push(...timingSection(input.timing ?? [], input.now ?? Date.now(), offsetMinutes))
 
   lines.push('')
   lines.push('## 等你定的事')
@@ -442,6 +473,16 @@ async function readAsks(read: GraphReader, since: string | undefined): Promise<A
  * the gaps that period meets.
  */
 export async function reportFromFiles(fs: ReportFs, homes: DataHomes, period: string, graph: GraphReader, since?: string, options: ReportOptions = {}): Promise<string> {
+  // A reader may throw before it returns a promise: both ways of failing read as an empty file.
+  const readText = async (path: string | undefined): Promise<string> => {
+    if (path === undefined) return ''
+    try {
+      return await fs.readFile(path)
+    }
+    catch {
+      return ''
+    }
+  }
   const readJsonl = async <T>(path: string | undefined): Promise<T[]> => {
     if (path === undefined) return []
     try {
@@ -497,6 +538,9 @@ export async function reportFromFiles(fs: ReportFs, homes: DataHomes, period: st
     violations: inPeriod(wholeViolations),
     usage: inPeriod(await readJsonl<UsageRecord>(paths.usage)),
     suppressions: inPeriod(await readJsonl<SuppressionRecord>(paths.suppressions)),
+    // The checks' journal is read whole: its section counts its own seven days (design §6.3.1).
+    timing: parseTiming(await readText(paths.timing)).lines,
+    now: options.now,
     period,
     pricing: options.pricing,
     problem: options.problem,

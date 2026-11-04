@@ -13,9 +13,12 @@
  * For the loop board (m4-checks, design §6.1.2, §6.2, §6.8) it provides the
  * service `glmHournessEnv` (env-service.ts: the command of one approved
  * check line, which the board's check entries run), hands the board the event
- * `env.files-edited` (loop-entry.ts), and at each step of every agent emits
- * that event for the files the agent changed (edited.ts) when an entry of the
- * board hears it. M4's own check runner joins later. Ships disabled.
+ * `env.files-edited` and the entry `env.checks-after-edit` (loop-entry.ts),
+ * and at each step of every agent emits that event for the files the agent
+ * changed (edited.ts) when an entry of the board hears it. With the board on,
+ * the same step runs M4's own checks (runner.ts: the check lines with `when`
+ * of the approved tool nodes) and hands the agent the checks notice; each
+ * delivery of results is one run of the board's entry. Ships disabled.
  */
 import { appendFile, mkdir, readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
@@ -25,11 +28,12 @@ import { projectOf } from '../data/project-root.ts'
 import { provideRowHealth, sessionIdOf, type HealthState, type RowHealth } from '../shared/health.ts'
 import type { AgentLike, ProvideHost, ServiceLookup, SessionLike } from '../shared/dsh-min.ts'
 import { graphService } from '../graph/service.ts'
-import { installContribution } from '../loops/service.ts'
+import { installContribution, loopsService } from '../loops/service.ts'
 import { installFilesEdited } from './edited.ts'
 import { createEnvService, ENV_SERVICE } from './env-service.ts'
-import { envContribution, ENV_ROW_SOURCE, FILES_EDITED_EVENT } from './loop-entry.ts'
+import { CHECKS_ENTRY_ID, envContribution, ENV_ROW_SOURCE } from './loop-entry.ts'
 import { envNotice } from './notice.ts'
+import { createChecker } from './runner.ts'
 import { dailySuppressions, type SuppressionRecord } from './suppressions.ts'
 
 /** The row's context: the agent lifecycle event, service lookup and provision, and cordis inject when the host has it. */
@@ -130,6 +134,11 @@ export function apply(ctx: EnvContext): () => void {
   const health = provideRowHealth(ctx, 'env', notProvided === undefined ? 'active' : 'degraded', notProvided === undefined ? loaded : `${loaded}；${notProvided}`)
   const disposers: Array<() => void> = [() => { health.dispose() }]
   if (typeof provided === 'function') disposers.push(provided)
+  const checker = createChecker({
+    ctx,
+    note: (sessionId, key, text, degrades) => { health.note(sessionId, key, text, degrades) },
+    recordRun: (run) => { loopsService(ctx)?.recordRun({ ...run, entry: CHECKS_ENTRY_ID }) },
+  })
   const installed = new WeakSet<AgentLike>()
   disposers.push(ctx.on('agent/created', ({ agent }) => {
     if (installed.has(agent)) return
@@ -137,7 +146,7 @@ export function apply(ctx: EnvContext): () => void {
     try {
       const notice = installEnvNotice(ctx, agent, health)
       if (notice !== undefined) disposers.push(notice)
-      const edited = installFilesEdited(ctx, agent, (sessionId, problem) => { health.note(sessionId, 'files-edited', problem) })
+      const edited = installFilesEdited(ctx, agent, (sessionId, problem) => { health.note(sessionId, 'files-edited', problem) }, step => checker.step(step))
       if (edited !== undefined) disposers.push(edited)
     }
     catch (error) {
@@ -145,8 +154,8 @@ export function apply(ctx: EnvContext): () => void {
       console.warn(`${name}: environment notice not installed for agent ${agent.id}: ${error instanceof Error ? error.message : String(error)}`)
     }
   }))
-  // The event of changed files on the loop board (design §6.8): warned once and kept on the activation line when refused.
-  disposers.push(installContribution(ctx, ENV_ROW_SOURCE, envContribution, FILES_EDITED_EVENT.id, (message) => {
+  // The event of changed files and the checker's entry on the loop board (design §6.8): warned once and kept on the activation line when refused.
+  disposers.push(installContribution(ctx, ENV_ROW_SOURCE, () => envContribution(project => checker.details(project)), CHECKS_ENTRY_ID, (message) => {
     console.warn(`${name}: ${message}`)
     health.reactivate('degraded', message)
   }))
