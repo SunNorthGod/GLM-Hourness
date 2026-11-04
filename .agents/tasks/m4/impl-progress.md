@@ -43,9 +43,9 @@
 
 ## 未完成（留下一批）与跳过（带原因）
 
-### m4-gate — 完成第一片（records 地基，`d012455`），其余留下一批
+### m4-gate — G1 完成（`d012455` 地基 + `362e66a` 安装函数，详见 gate-progress.md），G2 完成（`52a36f6`），G3/G4 留下
 
-设计上 G1–G3 都不等别的设计。G1 的剩余部分一次要删 `evaluate`，而它今天被 guard 行、`graph-files.ts`、`loops/guard.ts` 两道门使用，同一次提交必须把四处全部改经 `installRuleGate` 并改晨报过滤（换 classifyRecord）、按项目写流水（projectHomeFor/projectJournal/gap）、`RowHealth.note`、`GUARD_RULES` 目录扩充与全部 guard 探针期望（glm、non-glm-guard、hourness-only 的纠偏逐字断言）——按设计是一整步（约 15+ 文件、6+ 测试文件）。地基已就位：records.ts 的类型与分类器、记录键、subjectOf 都按 §3.2 落好并有测试钉住；下一批从 `installRuleGate`（gate.ts）开始，先做失败优先的 spec（这次的 slice 是纯新增，失败优先没有意义，G1 的门不是）。开工前重读 §3 全节、`src/loops/guard.ts` 与规则板 `src/rules/gate.ts` 的判定路径。
+G1 的安装函数与旧 `evaluate` 路径的删除已完成并推送（commit `362e66a`，记录在 `.agents/tasks/m4/gate-progress.md`，该文件在 .agents/ 里不入 git）。G2 于 2026-11-04 完成，见下节。G3（撤下：`guard_lift` 工具、`glmHournessLifts` 服务、`lift-files-only`、三条新规则 `suppression-reason`/`checker-config`/`scratch-only`、判定上下文 `context.ts`、`mention.ts` 抽出、`shadow.ts` 改名 `fallback.ts` 与事后纠正、晨报撤下行与 lifts.jsonl 对账、§6.4 表改写、ORCHESTRATION §6.4 每行写明实现与状态〔m4-rules 验收第 3 条〕）不等别的设计，可随时开工。G4 等 M3 第 4 步（`dispatchRoot`）——注意分支经主检合并后 `src/guard/main-agent.ts` 与 `src/guard/git-snapshot.ts` 已可见，G4 开工前按设计 §5 重新核对依赖到位，跳过理由（本文件下方 m4-request-card 节）可能已过时。开工前重读 §3 全节、`src/guard/lift.ts`（G1 已建）与规则板判定路径。
 
 ### m4-rules — 部分跳过
 
@@ -74,3 +74,121 @@ G4 等 M3 第 4 步：`src/guard/main-agent.ts` 的 `dispatchRoot` 与两条写�
 ## 探针结果
 
 213/213 通过（exit 0），运行时树 `07f0a4c`；其后两笔提交（d012455 类型搬移、纯函数新增）不碰探针覆盖的运行时行为。
+
+## 追加：m4-gate G2（跟进记录器批次），commit `52a36f6`（已推，2026-11-04）
+
+### 接手与 WIP 处置
+
+前任 agent 在模型配额耗尽时留下未提交的 G2 WIP（14 改 + 8 新文件）。接手后先原样捕获：`.agents/tasks/m4/g2-wip-dead-agent.patch`（647 行）与同目录 untracked tarball，处置记录随之保留。审计结论：整体连贯、按设计形状落码，大部分保留；五处修补、一处补齐后提交。逐字契约核对过三处：`ToolExecutionPayload.callId` 对 rc.3 实源（dsh-tools `lib/index.js:3230` createExecution）、`tool/call` 事件数据形状对 dsh-agent-loop `appendToolCall`（:681–686）、`:deferred` 后缀对 `src/toolsearch/index.ts` execute 与 ZCode 3.17.1 的 `DeferredToolCall` schema。
+
+### 修补（对 WIP 的改动）
+
+1. 探针场景 `guard-followup` 按设计 §14.1 重写（最大一处）：WIP 版本只测 guard 行（两次 shell 拒绝 + none），测不出设计点名要它证的「图行与 guard 行共用一个记录器」（§3.3，F5）；设计版是图副本 + 图行 overlay，三次拒绝三次跟进 `repeat`（图行结算）/`other`/`right-path`。检查断言放宽为因果形状（跟进序列 `graph-files-only:repeat,graph-files-only:other,file-tools-only:right-path` + 图拒绝 ×2 + Bash 拒绝存在 + 文件断言），不钉跨行行序：图行与 guard 行的 journal 是两个实例并发追加同一文件，实测一次 Bash 拒绝行（at .168）晚于它的跟进（at .198）落盘——guard 行 journal 实例首写冷启动所致；跟进记录引用的 `denial` 键与拒绝行的 `keyOf` 精确匹配（实测 `72b67e621922`），因果无损。
+2. 晨报每规则一行的「原样重试 n 次」并回同一行（设计 §3.10 示例格式 `- 拦下 <规则> × n（最近一次：…） · 拦截后下一步走对 x/y · 原样重试 k 次`），删去 WIP 的「另写一行」写法与 ORCHESTRATION.md §6.5 里相应的错描。
+3. 晨报汇总行的比例覆盖所有有分母的规则（含拒绝全部在当期之外的规则——它的跟进在当期结算）；WIP 版本这类规则只把 `none` 计入「停下来」、其余跟进丢弃，一半进一半不进。
+4. `src/guard/cli.ts` stats 去掉 `since` 二次过滤：CLI 已用自己的时钟截断流水，ruleStats 再按相对天数截一次会跟列表用的界不一致。
+5. `scripts/guard/cli.mjs` 头注 DEVELOPMENT 引用 §4→§15。
+6. 补齐设计 §3.3 点名、且 G2 探针场景必需的 rightPath：`fileToolsOnly`（下一次调用为文件工具写入，`fileToolTargetOf` 判）与 `graphFilesOnly`（图的写工具，纠偏文本点名的八个）；requestable 三规则（圈禁、checker-config、scratch-only）的 rightPath 随申报通道在 G4。L2 加一条真实规则测试钉住（graph 读取工具不算走对）。
+
+### 落地内容（承接 WIP 保留部分）
+
+- `src/guard/followup.ts`：模块级记录器（§3.3 逐条——observe 结算、`tool/call` 事件判模型发出、同 turn+step 跳过（N16）、DeferredToolCall 拆包结算并双 id 记账（F9）、`turn/end` 与 `session/disposed` 记 none（N15）、经 `tools.execute` 的非模型调用不结算）；内存上限 256 待判 / 512 已结算 id / 每会话 512 事件 / 64 会话。
+- `src/guard/gate.ts`：监听器第一步 observe（F5，最外层结算一次）、`hookJournal` 把结算记录经行 journal 落盘（丢盘按 §3.1 第 7 步计数）、每个拒绝经 `noteDenial` 待判并桥接规则的 rightPath、拒绝与跟进各交一条指标事件。
+- `src/rules/gate.ts`：规则板工具门接同一记录器——第一步 observe，拦下与开单拒绝 `noteDenial`（无 rightPath，`key` 是它写下的拒绝记录 `keyOf`）；晚到拦下不调（§3.3 跨行）。
+- `src/guard/measure.ts` `ruleStats`（§3.3/§3.10）：每规则按 scope 的拒绝数、跟进四类、最近一次的样子（60 字符）；全流水缺口合计 `unrecorded`。晨报、命令行、（G3 的）规则页共用。
+- `src/guard/metrics.ts` `emitGuardMetric`（§3.11）：服务名 `glmHournessMetrics` 为占位，指标设计定稿前服务不在则什么都不做。
+- `src/guard/cli.ts` + `scripts/guard/cli.mjs` + 根 `package.json` 的 `guard` 脚本（§3.9）：只读 `records [--since] [--rule] [--show] [--home]` / `stats`，退出码 0/2，用法见 `DEVELOPMENT.md` §15。
+- 晨报（§3.10 G2 部分）：每被拦规则一行 + 「拦截后下一步走对」汇总行（分母不含 none，N30；另有 n 次停下来交给人或上级）。
+- `tests/fake-rc3.ts`：根调用 `tool/call` 事件先于 pre-execute、`turn/end`、`session/disposed`、`progress`（turn/step）。
+- 测试：`tests/guard-followup.spec.ts`（14）、`tests/guard-measure.spec.ts`（5）、`tests/workflow.spec.ts` +3；全部进 npm test 脚本。
+- 文档：`docs/DEVELOPMENT.md` §15（拦截命令行）、`docs/ORCHESTRATION.md` §6.3 度量句与 §6.5 误拦看得见一行。
+
+### 门禁（最终树 `52a36f6`）
+
+- `npm run build` exit 0；`npm run preflight` exit 0（2 包、15 src 目录、18 行——数字比 G1 记录的 14/17 高，是两次 main 合并带来的，不是本批）。
+- `npm test` exit 0（136 套 TAP、2552 测试、0 败）；棘轮 eslint 76 suppressed、knip 19、jscpd 1，全部不高于现行基线（main 合并后基线本身已从 G1 时的 244/21/2 降下来；本批零新增压制）。
+- `npm run -s probe` exit 0，327/327（含新场景 guard-followup）。口径注记：探针在分支自己的基（4c315a9 合并，rules/loops 行仍 `disabled: true`）上跑，行经 overlay 启用；main 已越过本分支合并点（e35c422 起），本批按指示不再合并，探针期望不依赖行的 shipped 状态。
+
+### 与设计的偏差（agent 定，可逆）
+
+1. 探针检查不钉跨行拒绝行序（见修补 1 的实测记录）；设计 §14.1 的「第一次图写入之后 repeat」按因果读，不按文件行序读。
+2. `followupOf` 的参数摘要按键排序的 canonical JSON 比较（设计只说「参数摘要相同」）；测试钉住同参异序算 repeat。
+3. 规则板开单拒绝（`effect: 'queue'` 的 deferral 拒绝）也调 `noteDenial`：设计说「拦下与开单拒绝时」，按文面执行。
+4. 指标服务名 `glmHournessMetrics` 是占位常量，指标设计的行落地时对齐（§3.11「服务名与信封由指标设计定」）。
+5. G2 步表未列 rules.ts/graph-files.ts，rightPath 两函数随本批落地：G2 的 L3 场景（设计的 §14.1）必须它们在场才能过，且无 G3/G4 依赖。
+
+## 追加：m4-gate G3（三条规则、撤下与事后纠正），2026-11-04
+
+### 落地内容
+
+- 判定上下文（§4.1）：`src/guard/context.ts` 的 `prepareContext`（`RuleContext`、`ContextIo`、5 秒总限、1 MiB 内容上限、tracked 60 秒缓存、图按修订缓存且失败回退上次好读的一份；未知事实规则放行）；`src/guard/mention.ts` 抽出 `pathKey`/`mentionsPath`；`src/data/project-root.ts` 加 `checkoutRootOf`（最近 `.git`，不跟 commidr，N23：工作树答自己的检出）。
+- 三条规则：`src/guard/suppression.ts`（`suppressionOnly`，压制注释逐标记计数、节点 id 对图核、§4.3 纠偏原文）、`src/guard/checker-config.ts`（`checkerConfigOnly`，内建清单 + 图上 env 工具节点的 config 行按检出相对路径比对、纠偏带 `request_exception` 编号）、`src/guard/scratch.ts` 扩展（`scratchOnly`，脚本扩展名清单、`.llm/scratch/` 下放行、同扩展名已跟踪文件所在目录放行）。
+- 撤下（§3.5）：`src/guard/lift.ts`（`liftStatesOf` 共享解析、`liftedRulesOf`/`liftedRules` 按 stat 缓存、`appendLift`、原话词表与否定读取、`guardLift` 七步与拒绝码）、`src/guard/lift-service.ts`（`glmHournessLifts`：`resolveLiftRule` 先精确 id 再剥一层 `<row>:`、`setLifted`、`lifted`）、`src/guard/lift-files.ts`（规则 `lift-files-only`，`liftVia: 'board'`，主检出与 `git worktree` 工作树里那份都拦）、`guard_lift` 工具（严格三字段，`GUARD_TOOL_NAMES` 常量与 contracts 钉住）。
+- 事后纠正（§3.4）：`src/guard/shadow.ts` `git mv` 为 `src/guard/fallback.ts`，晚到的拦下（`mode: 'late'`、`via: 'turn-end'`）加每回合一条排队纠正（至多 8 条、FIFO、会话卸载即弃），`src/guard/index.ts` 的 `agent/created` 给根 agent 装第二条 step notice（来源 `hourness-guard`，system-reminder 包裹，至多 10 文件/3 命令（各 80 字符）/600 字符）。
+- 晨报（§3.10 G3 部分）：「撤下的规则」一行（对话与规则板两种写法）与 `lifts.jsonl` 对账（终态 + 逐行按 at/rule/action，换电脑的合并行，未提交一行）；`ReportOptions.root` 与 `RenderOptions.root`，`/hourness` 用 `projectOf(cwd)?.root` 填，没有 root 不对账不抛错。
+- 目录与文档：`src/guard/catalog.ts` +4 条；`docs/ORCHESTRATION.md` §6.4 表加「在哪实现/状态」两列、§6.5 撤下一条改「已实现」、§6.5.2 整节改写（兜底=晚到的拦下+下一步纠正）、§14 借用表该行更名。
+- 测试：`tests/guard-new-rules.spec.ts`（11）、`tests/guard-lift.spec.ts`（16）、`tests/guard-fallback.spec.ts`（4，真实临时仓库与工作树）；contracts 钉 `GUARD_TOOL_NAMES` 与注册、rules-builtin 目录计数 +4、hourness 加 root 对账、guard-audit/health 措辞与 fixture 更新。
+- 探针：新场景 `guard-new-rules`（GLM 与 deepseek-probe 各一）、`guard-lift`（GLM）、`guard-fallback`（GLM）；`scripts/probe/probe-lift.mjs` 覆盖插件扮演人与规则板；`glm-shadow` 的影子记录期望改为晚到拦下；共 337 检查。
+
+### 探针揭出的两个真问题（都在本批修掉）
+
+1. guard 行没有声明 `inject: [tools]`：G3 之前行不注册工具，`ctx.tools` 的访问在 cordis 里抛「cannot get property without inject」，整行激活失败——探针第一跑每个场景都报「1 entry did not activate」。修：`packages/hourness/cordis.patch.yml` guard 行加 `inject: [tools]`，模块导出 `inject`。G1/G2 的探针绿不暴露它（行没碰过 tools 面）。
+2. `scratchOnly` 在 tracked 清单未知时误拦（实现把未知当「没有同扩展名文件」），违背 §4.1「事实未知放行」——graph-guard 的临时目录 fixture 抓到。修：tracked 未知或目标不在任何检出里都放行；guard-new-rules 加显式用例钉住。
+
+### 探针扮演人的机制注记（G4 的 `guard-request` 直接复用）
+
+turn/end 之后 `agent.followup` 打不进去：模型最后一次文本回复后宿主同拍拆掉 agentLoop，inbox 投影注销，followup 抛「cannot read inbox state: its projection registration is not active」。probe-lift 改为注册两个探针工具，让脚本化的模型在回合中调用：`probe_say {text, rpcId?}`（`agent.followup` 排队下一条人的消息，回合结束即开新回合，`guard_lift` 从它读原话）与 `probe_restore {rule}`（经 `glmHournessLifts.setLifted` 走规则板那一路再排队板子的话）。G4 的申报场景按同一形状扮演人。
+
+### 与设计的偏差（agent 定，可逆）
+
+1. 契约测试的第三条断言（图上每个带「规则：」标签的规范节点 ↔ 目录一条）没有加：五条规范节点不带「规则：」标签，节点是编排人的泳道（§18 第 3 条）——保持单向测试（目录每条都能对上实装的规则），本文件记录在案。
+2. 探针检查断言的是「三规则的拒绝都在流水里、没有别的规则、scope 全对」，不是设计行文的「恰好三条拒绝」：`judge` 保留全部拒绝（G1 定案），一次 bare 压制注释同时留下 suppression-reason 与 scratch-only 两条拒绝记录；设计行文按每调用一条写。
+3. 撤下场景的流水断言不钉「拒绝与其跟进」的相邻行序（G2 已确立跨实例行序不钉），改为计数与因果断言：两条 lift 记录（chat 带原话、board 带命令）、lift-files-only 拒绝恰两条（工作树那份的 F14 证据）、工作树写伴随一条圈禁拒绝、每条拒绝有跟进结算。
+4. guard-fallback 的「再下一步没有」按「不再新增」断言：纠正一经投递就进会话历史，后续请求按历史重放它，不是消失。
+5. `guard-rules.spec.ts` 的事故表没有为三条新规则加种子：它们的表驱动用例（应拦与相邻不该拦，§3.7）整表落在 `tests/guard-new-rules.spec.ts`，真实临时仓库跑 tracked 清单与图读取。
+6. `probe-lift` 的 restore 走 `guard:scratch-only`（带行前缀），顺带钉住服务的一层剥前缀解析。
+
+### 门禁（最终树，2026-11-04）
+
+- `npm run build` exit 0；`npm run preflight` exit 0（2 包、15 src、18 行）。
+- `npm test` exit 0（2554 测试全过）；棘轮 eslint 76 suppressed、knip 19、jscpd 1，与基线持平，零新增。
+- `npm run -s probe` exit 0，337/337（G2 时 327；净增来自三个新场景与 glm-shadow/health 期望更新）。探针口径同 G2：分支自己的基（rules/loops 行仍出厂禁用），行经 overlay 启用。
+
+### G4 的依赖核对（用户要求在 G3 末尾做）
+
+设计 §5 依赖的 M3 件已全部在树上：`src/guard/main-agent.ts`（`installMainAgentRules`）、`src/guard/git-snapshot.ts`、派发链的根 `dispatchRoot` 在 `src/guard/design-release.ts`（沿 `parentSession` 上溯，`origin: 'subagent'` 链，M3 §3.3.3 的实现）；`plain-question.ts`、`proposal.ts` 的渲染也在。结论：G4 不必等，随 G3 合入后即可开工。
+
+## 追加：m4-gate G4（申报通道 `m4-request-card`），2026-11-04
+
+### 落地内容
+
+- 申报通道的内存与常量（§5.2-§5.3）：`src/guard/request.ts`（`REQUESTABLE` 三规则、`APPROVAL_WORDS`/`DECLINE_WORDS` 整句词表、`exceptionOf` 三种调用方的例外句（根/子/worker，§5.2 表）、`signatureOf`（SHA-256 前 16 位，目标按 `normalizePath(resolve(base,…))` 换算）、`normalizeShown`/`normalizeWords`、`GrantBook`（`find` 跳过使用中与过期、`markInUse`/`consume`/`release`、`void`）、`RefusalBook`（64 条 FIFO）、`REQUEST_EXAMPLE` + `REQUEST_DESCRIPTION`（§5.3 逐字，F20）、`GRANT_TTL_MS`/`REQUEST_TTL_MS`/`REFUSAL_LIMIT`、`GrantEntry`（带可变 `backupPath`）。
+- 申报台（§5.3-§5.6、§5.9）：`src/guard/request-service.ts` 的 `createRequestDesk`——`registerDenied`（编号可外部给入，拒绝表 + 被拒 agent 记忆）、`requestException`（§5.3 检查顺序：subagent forbidden → 四字段 strict → 拒绝表/派发链根/2 小时 → 未用放行直接 `approved`（带工具与参数与 `expires`）→ 本会话忙/同编号重放 → 5a `propose_to_human` 已出示则 busy → 目标事实（ENOENT 记不存在，其余 `unavailable` 带错误码）→ `buildPlan`（抛错降级 `unavailable`，F18，行健康 note））、`buildPlan`（§5.4 表逐处换事实：存在/大小/mtime、备份可得性、edit 的改动前后、规则各自的题目与疑问行、三句原话加引号转义、内容预览、2000 字符先截预览再截原话；`lines` 带 `title` 给面板）、`readReply`（§5.5：时钟过期→关；客户端消息（kind user + rpcId）→ 展示核对（末条助手消息无工具调用块、文本规范化后以 tail 结尾、中间无人话）→ 词表判定（放行写 `GrantEntry` + 说明带被拒调用逐字参数、4 KiB 以上写 `requests/<ref>.call.json`；不放行词 declined；其余 unclear，tail 换确认句、第三次关闭）→ not-client / 首步 still-waits / not-shown）、2 小时 `unref` 定时器 + 时钟兜底、`lapseOrphans`（每 agent 一次扫描 ask 结果，F15）、`prepareGrant`（使用时核对：事实变→`void`；一致→`copyFile` 备份到 `requests/<ref>.before`，失败 `backup-failed` 不作废）、`service`（`outsideDenial` F19 按项目判：目标与调用方同项目或在行配置圈内→undefined；否则登记编号、给 worker 句）、`peekGrant`、`openRequests`、`requestsService` 读取器（形状不对报一次）。
+- 接线：`src/guard/rules.ts` 的 `workspaceContainment(roots, base, exception?, ref?)`（拒绝带 `ref`，例外句按调用方；带编号时 rightPath = 下一次是 `request_exception`）；`checker-config.ts`/`scratch.ts` 的拒绝带 `ref`；`src/guard/gate.ts` 加 `registerRequestableDenial` 与 `grants` 钩子（匹配→使用时核对→`carried` 去掉该规则拒绝、`markInUse`/`consume`/`release`、`void`/`backup-failed` 各按 §5.6 的英文拒绝句，`GrantRecord`/`GrantVoidRecord` 记流水）；`src/guard/index.ts` 建 books + desk、`rules()` 每调用预生成编号并按调用方给例外句、`request_exception` 工具（逐字描述 + 示范、严格四字段、输出 `{outcome, ref, text?, lines?, tool?, arguments?, expires?, message}`）、根 agent 的 `hourness-request` 步 notice（`lapseOrphans` + `readReply`，首步仍等）、`ctx.provide(REQUESTS_SERVICE)`；`src/shared/step-notice.ts` 的 builder 参数加 `step`；`src/shared/tool-names.ts` 的 `GUARD_TOOL_NAMES` 加 `request_exception`；`src/guard/design-release.ts` 导出 `dispatchRoot`；`src/guard/records.ts` 导出三个申报记录类型。
+- 四行规则的落点（§5.4 与 M3 附录 0.6 的裁定）：`src/graph/plan-text.ts`（`PROPOSAL_LABELS`、`splitBold`、`proposalLineRefusal`、`displayPath`、`personTitle`、`renderPlan`——只查 harness 常量，路径与焦点标题经转换后原样进文，F18；`schema.ts` 的 `PLAIN_LIMITS` 加 `background: 60`，上限归 plain-ui）。
+- 晨报（§5.8）：「申报 n 次：放行 a（已用 u、作废 v）、不放行 d、没答 q」一行，数字取 `classifyRecord` 分出的 request/grant/grant-void 三类。
+- 测试：`tests/plan-text.spec.ts`（7）、`tests/guard-request.spec.ts`（18：检查顺序逐码、六种申报文字变体、回话各认法、放行一次性、备份、`outsideDenial` F19、`peekGrant`、lapsed、F20 示范过真检查、晨报一行）；`tests/contracts.spec.ts` 的 `GUARD_TOOL_NAMES` 钉两个名字。
+- 探针：`scripts/probe/probe-llm.mjs` 加 `{ref}` 替换（会话里最近命名的一个编号）与 `echoToolText` 步（true=以申报文字收尾；字符串=文字后再补一句，not-shown 用）；`scripts/probe/run-probe.mjs` 加场景 `guard-request`（GLM 与 deepseek-probe 各一）、`guard-request-refuse`（四个回合：无 rpcId 的 可以→not-client、可以吗→unclear+确认句、确认句后 可以→approved 且写入、文字后再补一句→not-shown 仍拒）、`guard-request-goal`（probe_goal_run 的目标 agent 是第二根 agent，goal 驱动下每回合首步无人的消息有 still-waits、放行后写入、F15 配对）；共 7 条新检查。
+- 文档：`docs/ORCHESTRATION.md` §5 加申报通道段（同步卡行的出工作区写入改指申报通道）、§6.1 头一行与现状段改写（申报已接通、圈禁补 str_replace_editor、file-tools-only 不可申报）、§6.4 圈禁行状态补两笔。
+
+### 探针的第二处环境事实（不改代码，写进断言）
+
+1. 探针宿主跑在 rc.3 的 workspace-write 沙箱下：放行后的写入过了 guard 门的核对与备份（`GrantRecord` 落流水、`requests/<ref>.before` 落盘、放行簿用掉），真正写文件那一下被 rc.3 自己的沙箱拒（`[sandbox: file access denied under workspace-write mode]`）。这不是门的缺陷——设计 §5.1 第 6 步的「写执行」在无沙箱的会话里成立；探针断言改为「放行的调用越过门禁、错误是沙箱而非圈禁、第三次同调用被新编号拒绝」，文件落地交给无沙箱环境。
+
+2. 探针的步表与场景请求错一位（首个自举请求不在步表里）：检查的下标以实跑步表为准；`guard-request`/`guard-request-refuse` 不再先 `LocalToolSearch`——`DeferredToolCall` 不要求先检索（设计 §5.3），删去后拒绝的跟进恰好按 §5.1 结算为 `right-path`。
+### 门禁（最终树）
+
+- `npm run build` exit 0；`npm run preflight` exit 0（2 包、15 src、18 行）；`npm test` exit 0（2579 测试，136 套 TAP）；棘轮 eslint 76 suppressed、knip 19、jscpd 1，与基线持平，零新增（spec 文件经 package.json 的 test 脚本进 knip 入口）。
+- `npm run -s probe` exit 0，344/344（G3 时 337；净增 7 条来自四个新场景）。跑到全绿共七跑：第一跑 337/344（{ref} 替换拿到示范编号）、二跑 337/344（检查下标与实跑步表错一位）、三跑 339/344（放行后的写入被探针宿主的 workspace-write 沙箱拦下）、四跑 342/344（refuse 的第三次人的话误用确认句本身——只有「可以」算数，正是设计的行为）、五跑 343/344、六跑 343/344（批准说明里的工具名是原生 `write`，检查误期 `Write`）、七跑全绿。前两跑是探针自身的问题，后五跑每一条都是真实行为与断言对齐的过程；探针宿主沙箱的限制已写进断言（见上节）。
+
+### 探针揭出的一个真问题（本批修掉）
+
+1. `{ref}` 替换的第一版取「会话里最后一个 r-xxxxxxxx」：`request_exception` 的工具描述里带着 F20 示范自己的编号 `r-3k9d2m7q`，检索结果又紧跟在拒绝错误之后——第一次申报拿到的是示范编号，工具答 `not_found`（第一跑 337/344，七条新检查全红的根因）。修：锚定拒绝句的两种拼法（圈禁的 `request_exception {"ref": "r-…"}` 与新规则的 `call request_exception with ref "r-…"`），只从工具结果消息里取。
+### 与设计的偏差（agent 定，可逆）
+
+1. 四行规则与标签落在 `src/graph/plan-text.ts`，不在设计的 `proposal.ts`：M3 附录 0.6 已把 proposal.ts 的四行机制整段取消（`PROPOSAL_FIELDS` 名被占），0.6-finish2 §18 让 M4 自建；格式与上限逐字照 §5.4 与附录 §3.3，M3 侧后续改成从这里导入。
+2. 申报推荐行的「改 1 处」是每调用一处（edit/str_replace 一次一处；str_replace 的 replace_all 不数），设计 §5.4 表写「改 <n> 处」；不读目标内容，n 无法在申报时求真，取 1。
+3. `readReply` 的批准说明第二行（普通子 agent 句）写死在申报台：设计 §5.5 表的三种第二行里，worker 句按 §5.2 表的句子（无任务 id——M7 未合入，`RefusalEntry` 不带 task 字段；M7 合入时由它的 `OutsideCall.task` 补）。
+4. `expireDue` 留在申报台 API 上（定时器丢失时按下一步时刻兜底的入口），guard 行的步 notice 路径由 `readReply` 的时钟检查覆盖；M7 的停等读 `openRequests`，不经它。
+5. 探针的 `guard-request-goal` 用 `probe_goal_run` 的第二根 agent 扮演带 goal 的申报者：DSH 里人自己 `/goal` 是主 agent 的 goal，探针没有 `/goal` 通道；goal 驱动的轮次时机（§5.9 F14 的停等属 M7）不在此场景覆盖。
+6. `guard-request` 与 `guard-request-plain` 共用一个工作区与目标文件（guard-new-rules 两场景的既有做法），断言只看各自场景的流水与最终内容。

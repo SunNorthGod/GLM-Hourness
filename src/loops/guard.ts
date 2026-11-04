@@ -13,27 +13,31 @@
  * the repository (the main checkout and each work tree, as `git worktree list`
  * gives them, read at most once a minute) and `.llm/loops/`; reads pass.
  *
- * The rule is the guard framework's (src/guard/rules.ts), installed on
- * `tools/pre-execute` outermost the way the graph row installs graph-files-only
- * (src/guard/graph-files.ts), so a shell write into the board's files gets this
- * correction and not file-tools-only's. It denies from the day the row is
- * enabled; there is no mode that only records. It differs from the graph's gate in
+ * Both are the guard framework's rules (src/guard/rules.ts), installed through
+ * its one gate (src/guard/gate.ts) outermost on `tools/pre-execute`, the way
+ * the graph row installs graph-files-only (src/guard/graph-files.ts), so a
+ * shell write into the board's files gets this correction and not
+ * file-tools-only's. They deny from the day the row is enabled; there is no
+ * mode that only records. `loops:files-only` differs from the graph's gate in
  * one place: a call made from inside another (a `run_code` program's tool call,
- * which carries `parent`) is judged like a direct one. The rule needs no state
- * of the board, so it holds when the board's files cannot be read. The board
- * writes its own files with its own code (store.ts), which the rule never sees:
- * it inspects tool calls only.
+ * which carries `parent`) is judged like a direct one — the gate judges
+ * children for this row (`judgeChildren`, ORCHESTRATION.md §18.8). Neither
+ * rule needs state of the board,
+ * so both hold when the board's files cannot be read. The board writes its own
+ * files with its own code (store.ts), which the rules never see: they inspect
+ * tool calls only.
  */
 import { join } from 'node:path'
 import { cachedWorktrees, projectOf } from '../data/project-root.ts'
+import { cwdOf, installRuleGate, type GateHost } from '../guard/gate.ts'
 import { writesInto } from '../guard/directory-writes.ts'
-import { baseFor, type ViolationRecord } from '../guard/index.ts'
+import { baseFor } from '../guard/index.ts'
+import type { GuardRecord } from '../guard/records.ts'
 import { originOf } from '../guard/origin.ts'
-import { evaluate, renderCorrection, type Correction, type GuardRule, type RuleVerdict, type ToolCall } from '../guard/rules.ts'
-import { dialectNames, dialectService, dialectWarner, toNativeTool, type DialectService } from '../shared/dialect.ts'
-import type { PreExecuteDecision, PreExecuteHost, ServiceLookup, ToolExecutionPayload } from '../shared/dsh-min.ts'
-import type { JsonValue } from '../shared/json.ts'
+import { NATIVE_FACE, type Correction, type GuardRule, type RuleVerdict } from '../guard/rules.ts'
+import { dialectNames, dialectService, dialectWarner, type DialectProblem } from '../shared/dialect.ts'
 import { sessionRoute } from '../shared/route.ts'
+import type { ToolExecutionPayload } from '../shared/dsh-min.ts'
 import { TASK_PROMPT_PREFIX } from './remove.ts'
 import { LOOPS_DECLARATION } from './service.ts'
 
@@ -71,27 +75,25 @@ export function loopsFilesOnly(checkouts: readonly string[], cwd: string | undef
 }
 
 export interface LoopsGuardDeps {
-  readonly ctx: PreExecuteHost & ServiceLookup
+  readonly ctx: GateHost
   readonly now: () => number
-  /** Journal a denial in the project's violation journal; it never rejects into the call. */
-  readonly journal: (record: ViolationRecord) => void
+  /** Journal a denial into the project of the call's session; it never rejects into the call. */
+  readonly journal: (record: GuardRecord, cwd: string | undefined) => void
 }
 
-/** What both gates answer a denied call with: the four-part text, and one line of the project's violation journal (the same shape the guard row writes). */
-function denial(deps: LoopsGuardDeps, payload: ToolExecutionPayload, verdict: Extract<RuleVerdict, { kind: 'deny' }>, dialect: DialectService | undefined, warn: (text: string) => void): PreExecuteDecision {
-  const reason = renderCorrection(verdict.correction)
+/** The rules of one call with the face the model reads and the origin of where it ran: the same reading in both gates (ORCHESTRATION.md §6.2). */
+function rulesOf(deps: LoopsGuardDeps, warn: DialectProblem, payload: ToolExecutionPayload, rules: readonly GuardRule[]) {
   const route = sessionRoute(payload.agent?.session)
-  deps.journal({
-    at: new Date(deps.now()).toISOString(),
-    rule: verdict.rule,
-    tool: payload.name,
-    agentId: payload.agent?.id,
-    sessionId: payload.agent?.session?.id,
-    ...originOf(dialectNames(dialect, payload.agent, route, warn) !== undefined, route),
-    mode: 'enforce',
-    correction: reason,
-  })
-  return { kind: 'deny', reason }
+  return {
+    rules,
+    face: NATIVE_FACE,
+    origin: originOf(dialectNames(dialectService(deps.ctx, warn), payload.agent, route, warn) !== undefined, route),
+  }
+}
+
+/** The gate's journal call: the record goes to the project of the call's session. */
+function journalOf(deps: LoopsGuardDeps): (record: GuardRecord, payload: ToolExecutionPayload) => void {
+  return (record, payload) => { deps.journal(record, cwdOf(payload)) }
 }
 
 /** The id the schedule gate carries in the violation journal and the rules board's catalog. */
@@ -145,26 +147,24 @@ export interface ScheduleGuardDeps extends LoopsGuardDeps {
 }
 
 /**
- * Install the gate on the three schedule tools, outermost on
- * `tools/pre-execute`. The catalog is only read for a call that names an id the
- * board's own state does not, so an ordinary call pays nothing. Throws only
- * when the host refuses the registration.
+ * Install the gate on the three schedule tools through the guard framework's
+ * one gate, outermost on `tools/pre-execute`. The catalog is only read for a
+ * call that names an id the board's own state does not, so an ordinary call
+ * pays nothing. Throws only when the host refuses the registration.
  */
 export function installLoopsScheduleGuard(deps: ScheduleGuardDeps): () => void {
   const warn = dialectWarner('loops')
-  const warnFault = dialectWarner('loops')
-  return deps.ctx.on('tools/pre-execute', async (payload, next) => {
-    try {
-      const dialect = dialectService(deps.ctx, warn)
-      const name = toNativeTool(dialect, payload.name, warn)
-      if (!SCHEDULE_TOOL_NAMES.includes(name as typeof SCHEDULE_TOOL_NAMES[number])) return next()
-      const header = payload.agent?.session?.header.cwd
-      const cwd = typeof header === 'string' && header.length > 0 ? header : undefined
+  return installRuleGate(deps.ctx, {
+    row: 'loops',
+    prepend: true,
+    rules: async (payload, call) => {
+      if (!SCHEDULE_TOOL_NAMES.includes(call.name as typeof SCHEDULE_TOOL_NAMES[number])) return undefined
+      const cwd = cwdOf(payload)
       const project = cwd === undefined ? undefined : projectOf(cwd)
       const args = (payload.arguments ?? {}) as Record<string, unknown>
       const id = typeof args.id === 'string' ? args.id : undefined
       let ours: boolean | undefined
-      if (name !== 'schedule_create' && id !== undefined) {
+      if (call.name !== 'schedule_create' && id !== undefined) {
         ours = project !== undefined && deps.bindings(project.root).has(id)
         if (!ours) {
           // A task the board's state does not name can still be one of its own (the state was lost): the host's own copy decides.
@@ -172,41 +172,28 @@ export function installLoopsScheduleGuard(deps: ScheduleGuardDeps): () => void {
           ours = task === undefined ? undefined : task.prompt.trim().startsWith(TASK_PROMPT_PREFIX)
         }
       }
-      const call: ToolCall = { name, arguments: (payload.arguments ?? {}) as JsonValue }
-      const verdict = evaluate([loopsScheduleTools(ours)], call)
-      if (verdict.kind !== 'deny') return next()
-      return denial(deps, payload, verdict, dialect, warn)
-    }
-    catch (error) {
-      // The gate cannot tell whose reminder the call names: the call goes on, and the host log says the gate failed.
-      warnFault(`the loop board's schedule gate could not judge a call: ${error instanceof Error ? error.message : String(error)}`)
-      return next()
-    }
-  }, { prepend: true })
+      return rulesOf(deps, warn, payload, [loopsScheduleTools(ours)])
+    },
+    journal: journalOf(deps),
+  })
 }
 
 /** Install the gate on `tools/pre-execute`, outermost; the disposer takes it out. Throws only when the host refuses the registration. */
 export function installLoopsFileGuard(deps: LoopsGuardDeps): () => void {
   const warn = dialectWarner('loops')
-  const warnFault = dialectWarner('loops')
   const checkouts = cachedWorktrees(deps.now)
-  return deps.ctx.on('tools/pre-execute', (payload, next) => {
-    try {
-      const header = payload.agent?.session?.header.cwd
-      const cwd = typeof header === 'string' && header.length > 0 ? header : undefined
+  return installRuleGate(deps.ctx, {
+    row: 'loops',
+    prepend: true,
+    // A run_code program's tool call (it carries `parent`) is judged like a direct one (ORCHESTRATION.md §18.8).
+    judgeChildren: true,
+    rules: (payload) => {
+      const cwd = cwdOf(payload)
       const project = cwd === undefined ? undefined : projectOf(cwd)
-      if (project === undefined) return next()
+      if (project === undefined) return undefined
       // Every route, like the guard row (ORCHESTRATION.md §6.2): the rule judges the DSH native the call runs.
-      const dialect = dialectService(deps.ctx, warn)
-      const call: ToolCall = { name: toNativeTool(dialect, payload.name, warn), arguments: (payload.arguments ?? {}) as JsonValue }
-      const verdict = evaluate([loopsFilesOnly(checkouts(project.root), baseFor(deps.ctx, payload.agent) ?? cwd)], call)
-      if (verdict.kind !== 'deny') return next()
-      return Promise.resolve(denial(deps, payload, verdict, dialect, warn))
-    }
-    catch (error) {
-      // The gate cannot tell what the call writes: the call goes on, and the host log says the gate failed.
-      warnFault(`the loop board's file gate could not judge a call: ${error instanceof Error ? error.message : String(error)}`)
-      return next()
-    }
-  }, { prepend: true })
+      return rulesOf(deps, warn, payload, [loopsFilesOnly(checkouts(project.root), baseFor(deps.ctx, payload.agent) ?? cwd)])
+    },
+    journal: journalOf(deps),
+  })
 }

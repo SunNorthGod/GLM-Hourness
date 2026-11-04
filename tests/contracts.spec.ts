@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { chargedCredits, creditPricing, creditRate } from '../src/glm-llm/credits.ts'
@@ -9,30 +9,32 @@ import { aliasSpecs } from '../src/glm-prompt/aliases.ts'
 import { apply as glmPromptApply, dialectServiceFor } from '../src/glm-prompt/index.ts'
 import { READ_IMAGE_NATIVE, READ_NAME, READ_NATIVE } from '../src/glm-prompt/read-alias.ts'
 import { TODO_NATIVE, TODO_WRITE_NAME } from '../src/glm-prompt/todo-reminder.ts'
+import { apply as graphApply } from '../src/graph/index.ts'
 import { graphTools } from '../src/graph/tools.ts'
 import { openEngine } from '../src/graph/engine.ts'
 import { apply as designApply } from '../src/design/index.ts'
 import { plainWordsIn } from '../src/graph/plain-question.ts'
 import { GUARD_RULES } from '../src/guard/catalog.ts'
+import { isGateListener } from '../src/guard/gate.ts'
 import { graphFilesOnly } from '../src/guard/graph-files.ts'
 import { activeRules, apply as guardApply } from '../src/guard/index.ts'
+import { installLoopsFileGuard, installLoopsScheduleGuard, loopsFilesOnly, loopsScheduleTools, LOOPS_FILES_ONLY } from '../src/loops/guard.ts'
+import { LOOPS_DECLARATION, LOOPS_SERVICE, loopsService } from '../src/loops/service.ts'
 import { MAIN_AGENT_RULES } from '../src/guard/main-agent-rules.ts'
-import { loopDefaultsOf, type ChannelLoopDefault } from '../src/shared/channel-loop.ts'
 import { CATALOG } from '../src/rules/builtin.ts'
 import { RULES_FILES_ONLY } from '../src/rules/gate.ts'
 import { apply as rulesApply, type RulesContext } from '../src/rules/index.ts'
 import { RULES_DECLARATION, RULES_SERVICE, rulesService } from '../src/rules/service.ts'
-import { loopsFilesOnly, loopsScheduleTools, LOOPS_FILES_ONLY } from '../src/loops/guard.ts'
-import { LOOPS_DECLARATION, LOOPS_SERVICE, loopsService } from '../src/loops/service.ts'
 import { DECLARATION_SECTION } from '../src/guard/sections.ts'
 import { DIALECT_SERVICE, dialectNames, dialectService, toNativeTool, ZCODE_ALIAS_NATIVES, type DialectService } from '../src/shared/dialect.ts'
+import { loopDefaultsOf, type ChannelLoopDefault } from '../src/shared/channel-loop.ts'
 import type { AgentLike, CommandDefinitionLike, ToolFinalResult } from '../src/shared/dsh-min.ts'
 import { healthServiceName, type HealthRow, type HealthState, type RowHealthView } from '../src/shared/health.ts'
 import { MEMORY_SERVICE, memoryService } from '../src/shared/memory-service.ts'
 import { OUTPUT_STYLE_SECTION } from '../src/shared/output-style.ts'
 import { PRICING_SERVICE, peakHoursOf, pricingService, quotaOf, type UsagePricing } from '../src/shared/pricing.ts'
 import type { QuotaView } from '../src/shared/quota.ts'
-import { DESIGN_TOOL_NAMES, DISPATCH_TOOL_NAMES, GRAPH_TOOL_NAMES, LEARNING_TOOL_NAMES, LESSONS_MERGE_TOOL, LESSONS_QUERY_TOOL, LESSONS_TOOL_NAMES, MEMORY_TOOL_NAMES, ORCHESTRATION_RESIDENT_TOOLS, RULES_TOOL_NAMES } from '../src/shared/tool-names.ts'
+import { DESIGN_TOOL_NAMES, DISPATCH_TOOL_NAMES, GRAPH_TOOL_NAMES, GUARD_TOOL_NAMES, LEARNING_TOOL_NAMES, LESSONS_MERGE_TOOL, LESSONS_QUERY_TOOL, LESSONS_TOOL_NAMES, MEMORY_TOOL_NAMES, ORCHESTRATION_RESIDENT_TOOLS, RULES_TOOL_NAMES } from '../src/shared/tool-names.ts'
 import { RESIDENT_TOOLS } from '../src/toolsearch/exposure.ts'
 import { apply as hournessApply } from '../src/report/index.ts'
 import { DISPATCH_TOOLS } from '../src/workflow/index.ts'
@@ -69,6 +71,7 @@ const ROW_IDS = [
   'glm-hourness/design',
   'glm-hourness/loops',
   'glm-hourness/metrics',
+  'glm-hourness/env',
   'glm-hourness/ui',
 ]
 
@@ -231,8 +234,49 @@ test('guard catalog: each listed rule is the id of a rule object its row install
   assert.deepEqual(listed('graph'), installed.graph)
   assert.deepEqual(listed('loops'), installed.loops)
   assert.deepEqual([...new Set(GUARD_RULES.map(rule => rule.row))].sort(), ['graph', 'guard', 'loops'], 'only rows that exist on main')
-  assert.ok(GUARD_RULES.every(rule => rule.mode === 'enforce'), 'a rule that is in the catalog denies: there is no shadow mode')
+  // No mode column: a rule of the catalog denies from the day its row is enabled (d-code-rules-enforce).
+  for (const entry of GUARD_RULES) {
+    assert.deepEqual(Object.keys(entry).sort(), ['blocks', 'id', 'liftVia', 'row', 'title'], JSON.stringify(entry))
+    assert.ok(entry.liftVia === 'any' || entry.liftVia === 'board', entry.id)
+    assert.ok(entry.title.length > 0 && entry.blocks.length > 0, entry.id)
+  }
+  assert.equal(new Set(GUARD_RULES.map(rule => rule.id)).size, GUARD_RULES.length, 'ids are unique across the table')
 })
+
+test('guard catalog: the rows with rules install their pre-execute listeners through installRuleGate', () => {
+  const rt = fakeRuntime({ route: GLM })
+  guardApply(rt.ctx as never, { home: 'C:/ws/.llm', fs: { mkdir: () => Promise.resolve(undefined), appendFile: () => Promise.resolve() } })
+  assert.deepEqual(rt.scoped.map(tool => tool.name), [...GUARD_TOOL_NAMES], 'the guard row registers exactly the contract tool names')
+  graphApply(rt.ctx as never, { dir: 'C:/work/app/docs/graph' })
+  const guardListener = rt.listeners.filter(entry => entry.event === 'tools/pre-execute')
+  assert.equal(guardListener.length, 2, 'the guard row and the graph row each install one listener')
+  assert.ok(guardListener.every(entry => isGateListener(entry.listener)), 'every tools/pre-execute listener of these rows comes from the gate')
+  const loops: Array<{ event: string, listener: unknown }> = []
+  const bare = { on: (event: string, listener: unknown) => { loops.push({ event, listener }); return () => {} }, get: () => undefined }
+  installLoopsFileGuard({ ctx: bare, now: () => 0, journal: () => {} })
+  installLoopsScheduleGuard({ ctx: bare, now: () => 0, journal: () => {}, bindings: () => new Set(), taskOf: () => Promise.resolve(undefined) })
+  assert.equal(loops.filter(entry => entry.event === 'tools/pre-execute').length, 2)
+  assert.ok(loops.every(entry => isGateListener(entry.listener)), 'the loop board\'s two gates come from the gate as well')
+})
+
+test('guard catalog: every graph norm node naming a code rule names one the catalog lists', () => {
+  const dir = join(repoRoot(), 'docs', 'graph', 'nodes')
+  const named: string[] = []
+  for (const file of readdirSync(dir)) {
+    if (!file.startsWith('norm-') || !file.endsWith('.json')) continue
+    const node = JSON.parse(readFileSync(join(dir, file), 'utf8')) as { body?: unknown }
+    const body = typeof node.body === 'string' ? node.body : ''
+    for (const [, id] of body.matchAll(/规则：([a-z][a-z0-9:-]*)/g)) named.push(id)
+  }
+  const listed = new Set(GUARD_RULES.map(rule => rule.id))
+  const unknown = named.filter(id => !listed.has(id))
+  assert.deepEqual(unknown, [], `norm nodes name rules outside the catalog: ${unknown.join(', ')}`)
+})
+
+/** The repository root, from this file's location. */
+function repoRoot(): string {
+  return join(import.meta.dirname, '..')
+}
 
 test('tool names: the design row registers exactly the contract names, and withdraws them when the tools service leaves', () => {
   const host = designHost()
@@ -241,7 +285,6 @@ test('tool names: the design row registers exactly the contract names, and withd
   host.injector.remove('tools')
   assert.deepEqual([...host.tools.keys()], [])
 })
-
 test('tool names: every orchestration tool kept resident exists, and GLM tool search keeps it resident', () => {
   const known = new Set([...GRAPH_TOOL_NAMES, ...MEMORY_TOOL_NAMES, ...DESIGN_TOOL_NAMES, ...LESSONS_TOOL_NAMES])
   for (const name of ORCHESTRATION_RESIDENT_TOOLS) {

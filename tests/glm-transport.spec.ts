@@ -383,7 +383,7 @@ test('offloaded images send the DSH placeholder text, with the read-only path wh
   ]
   const images = await prepareRequestImages(messages, store, hostPath => hostPath.replace('C:/dsh', 'D:/world'), undefined)
   assert.deepEqual(store.calls, []) // offloaded occurrences read no bytes
-  const encoded = encodeMessage(messages[0]!, images)
+  const encoded = encodeMessage(messages[0], images)
   assert.deepEqual(encoded, { role: 'user', content: [
     { type: 'text', text: offloadedImageText(png, 'D:/world/attachments/v1/aa.png') },
     { type: 'text', text: offloadedImageText(jpeg, undefined) },
@@ -415,7 +415,7 @@ test('image blocks reach the request body as Anthropic base64 image blocks, insi
     ] }] },
   ])
   // Encoding an image without prepared versions is a programming error, not a silent drop.
-  assert.throws(() => encodeMessage(messages[0]!), /not prepared/)
+  assert.throws(() => encodeMessage(messages[0]), /not prepared/)
 })
 
 test('decodeFrame maps the wire events to seam chunks', () => {
@@ -483,7 +483,7 @@ test('decodeSse merges cache counters and emits usage once, right before finish'
     },
   })
   const chunks: Array<{ type: string }> = []
-  for await (const chunk of decodeSse(stream)) chunks.push(chunk as { type: string })
+  for await (const chunk of decodeSse(stream)) chunks.push(chunk)
   const kinds = chunks.map(chunk => chunk.type)
   assert.deepEqual(kinds.slice(-2), ['usage', 'finish'])
   assert.equal(kinds.filter(kind => kind === 'usage').length, 1)

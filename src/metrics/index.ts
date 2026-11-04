@@ -19,7 +19,7 @@ import { join } from 'node:path'
 import { ensureIgnored, projectOf } from '../data/project-root.ts'
 import { LOOPS_SERVICE, loopsService, type Contribution, type HarnessResult, type LoopEventRecord, type LoopsService } from '../loops/service.ts'
 import { realStoreIo, renameWithRetry, type StoreIo } from '../rules/store.ts'
-import type { AgentsService, AgentLike, InjectHost, LlmStreamListener, ProvideHost, ServiceLookup, SessionEventLike, SessionLike, SessionProjectionsService, UserQuestionsListener } from '../shared/dsh-min.ts'
+import type { AgentsService, AgentLike, InjectHost, LlmStreamListener, ProvideHost, ServiceLookup, SessionEventOn, SessionProjectionsService, UserQuestionsListener } from '../shared/dsh-min.ts'
 import { provideRowHealth, type HealthState, type RowHealth } from '../shared/health.ts'
 import { pricingService, type UsagePricing } from '../shared/pricing.ts'
 import { METRICS_SERVICE, type MetricsService, type QueuedEvent } from '../shared/metrics.ts'
@@ -40,10 +40,8 @@ export interface MetricsContext extends ServiceLookup, Partial<ProvideHost> {
   readonly on?: {
     (event: 'agent/created', listener: (payload: { agent: AgentLike }) => Promise<void> | void): () => void
     (event: 'llm/stream', listener: LlmStreamListener, options?: { global?: boolean, prepend?: boolean }): () => void
-    (event: 'session/event', listener: (session: SessionLike, event: SessionEventLike) => void): () => void
-    (event: 'session/disposed', listener: (session: SessionLike) => void): () => void
     (event: 'user-questions/request', listener: UserQuestionsListener, options?: { prepend?: boolean }): () => void
-  }
+  } & SessionEventOn
   readonly inject?: InjectHost['inject']
 }
 

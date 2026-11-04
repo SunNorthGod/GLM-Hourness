@@ -8,8 +8,8 @@ test('apply registers the native adapter under the configured provider route', (
   const dispose = apply({
     registerAdapter: (providers, adapter) => { registered.push({ providers, adapter }); return () => {} },
   }, { home: 'C:/ws/.llm' })
-  assert.deepEqual(registered[0]!.providers, ['glm-zcode'])
-  assert.ok(registered[0]!.adapter instanceof ZcodeAdapter)
+  assert.deepEqual(registered[0].providers, ['glm-zcode'])
+  assert.ok(registered[0].adapter instanceof ZcodeAdapter)
   assert.equal(typeof dispose, 'function')
   dispose()
 })
@@ -17,7 +17,7 @@ test('apply registers the native adapter under the configured provider route', (
 test('apply honors a custom provider id and plan', () => {
   const registered: Array<{ providers: readonly string[] }> = []
   apply({ registerAdapter: (providers, adapter) => { registered.push({ providers }); void adapter; return () => {} } }, { home: 'C:/ws/.llm', provider: 'glm', plan: 'start-plan' })
-  assert.deepEqual(registered[0]!.providers, ['glm'])
+  assert.deepEqual(registered[0].providers, ['glm'])
 })
 
 test('image services come from ctx.get lazily and are absent without the services', () => {

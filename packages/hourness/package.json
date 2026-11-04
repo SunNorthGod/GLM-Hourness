@@ -54,6 +54,7 @@
     "./design": "./dist/design/index.js",
     "./loops": "./dist/loops/index.js",
     "./metrics": "./dist/metrics/index.js",
+    "./env": "./dist/env/index.js",
     "./data/locale/*.json": "./locale/data/*.json",
     "./guard/locale/*.json": "./locale/guard/*.json",
     "./memory/locale/*.json": "./locale/memory/*.json",
@@ -66,6 +67,7 @@
     "./design/locale/*.json": "./locale/design/*.json",
     "./loops/locale/*.json": "./locale/loops/*.json",
     "./metrics/locale/*.json": "./locale/metrics/*.json",
+    "./env/locale/*.json": "./locale/env/*.json",
     "./locale/*.json": "./locale/*.json",
     "./icon": "./icon.svg"
   },

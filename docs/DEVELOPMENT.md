@@ -279,3 +279,17 @@ DSH 官方类型已作为 devDependency 安装（`@deepseek-ai/dsh-llm`、`@deep
 3. Windows PowerShell 5.1 下请求文件用 UTF-8 存，一律用 `--file`；读 JSON 输出用 `npm run -s`。
 4. 试写不要对本仓库：对本工作树的路径，项目根会解析到主检出，写进主检出的 `.llm/`。在一个带自己 `.git` 的临时文件夹里用 `--cwd`，或让规格用临时目录。
 5. 改命令行或经验的纯函数层只需过 `npm run build`、`npm run preflight`、`npm test`；改经验行（`src/lessons/index.ts`、`tools.ts`、`service.ts`、`notices.ts`、`import.ts`、`commands.ts`）要再跑 `npm run probe`：L3 场景是 `glm-lessons`、`non-glm-lessons`。
+
+## 15. 拦截命令行
+
+拦截与撤下（`ORCHESTRATION.md` §6.5）的命令行，用来在 DSH 会话之外读一个项目的违规流水：晨报、命令行与规则板读同一份统计 `ruleStats`（`src/guard/measure.ts`），数字不会分叉。库入口是 `src/guard/cli.ts`，入口脚本是 `scripts/guard/cli.mjs`，经 `--experimental-strip-types` 直接从源码运行，不用先 build，只用 Node 内置模块。只读：没有撤下命令，撤下只经 `guard_lift` 与规则板的 `/rules lift`（m4-gate G3）。项目目录按 `--home`，否则当前目录的 `.llm`。
+
+| 命令 | 作用 |
+| --- | --- |
+| `npm run -s guard -- records [--since 14d] [--rule <id>] [--show] [--home <目录>]` | 列出流水里的记录：键（`recordKey`，跟进记录引用的就是它）、时刻、规则、类别（`classifyRecord`）、来源 `scope` 与工具的 JSON；`--show` 才带命令与目标，`--rule <id> --show` 列出这条规则每次拦下的完整记录。退出码 0 |
+| `npm run -s guard -- stats [--since 14d] [--home <目录>]` | `ruleStats` 的表：每条规则的拦下次数（按 `scope` 分）、跟进四类计数、最近一次拦下的样子；整个项目的缺口合计 `unrecorded`。JSON 输出，退出码 0 |
+
+退出码 2 是用法或目录不对（标准错误一行写哪一项、为什么，标准输出为空）。`--since` 接 ISO 时刻或 `14d` 这样的天数。
+规则：
+1. 流水文件缺了按空的读：只有 `--home` 指到的目录不存在或不是目录才算目录不对。
+2. 命令行不写任何文件，不取锁，不碰 DSH；改它只需过 `npm run build`、`npm run preflight`、`npm test`。L2 是 `tests/guard-measure.spec.ts`（`ruleStats`）与 `tests/guard-followup.spec.ts`；L3 场景 `guard-followup`。

@@ -36,18 +36,18 @@ import { localDay, reportFromFiles, type GraphReader, type ReportOptions } from 
 import { gapLines, NO_PRICING_LINE, parseGaps, peakStatusItems, quotaSection, quotaStatusItems, rangeLine, usagePanel, usageStatusItems } from './panel.ts'
 import { collectStatus, statusPlaceholders, statusViewOf } from './status.ts'
 import { dataHomes, type DataHomes } from '../shared/data-home.ts'
+import { projectHomeFor } from '../data/project-home.ts'
 import { collectHealth, provideRowHealth, renderHealthTable, sessionIdOf, type HealthState } from '../shared/health.ts'
 import { provideRowStatus } from '../shared/status-host.ts'
+import { projectOf } from '../data/project-root.ts'
+import { metricsOf, type MetricsCoverage } from '../shared/metrics.ts'
 import { pricingService, quotaOf, type UsagePricing } from '../shared/pricing.ts'
 import type { MomentZone } from '../shared/quota.ts'
-import type { MetricsCoverage } from '../shared/metrics.ts'
-import { metricsOf } from '../shared/metrics.ts'
-import { projectOf } from '../data/project-root.ts'
 import type { StatusItem } from '../shared/status.ts'
 import type { CommandDefinitionLike, CommandsHost, ProvideHost, ServiceLookup } from '../shared/dsh-min.ts'
 
 export interface HournessConfig {
-  /** The project directory (workspace `.llm`); decisions and violations live under `<home>/audit`. Defaults to the data service's. */
+  /** The project directory (workspace `.llm`); decisions and violations live under `<home>/audit`. Defaults to the calling session's project, else the data service's. */
   readonly home?: string
   /** Reads one file's text for the usage item's journal (the status view is synchronous); tests inject it, the host reads from disk. */
   readonly readFile?: (path: string) => string
@@ -55,6 +55,11 @@ export interface HournessConfig {
   readonly now?: () => Date
   /** The display zone, minutes east of UTC, for the entries' times; tests set it, the host's offset otherwise. The peak hours do not follow it. */
   readonly offsetMinutes?: number
+}
+
+/** The homes with the project directory of one session: a resolved project home wins over the data service's. */
+function withProjectHome(homes: DataHomes, projectHome: string | undefined): DataHomes {
+  return projectHome === undefined ? homes : { ...homes, projectHome }
 }
 
 export interface RenderOptions {
@@ -71,7 +76,9 @@ export interface RenderOptions {
   readonly graph?: GraphReader | undefined
   /** Reads the status services of the invoking session; without it the report has no 面板 section (nothing computes the usage entry). */
   readonly status?: { readonly lookup: ServiceLookup, readonly sessionId: string | undefined }
-  /** The metrics journal of the calling session's project, with the metrics row's coverage state; or why there is no project. */
+  /** The project root (m4-gate G3): the lift record is read there and reconciled; absent, the report derives the lifts from the journal alone. */
+  readonly root?: string | undefined
+  /** The metrics journal of the calling session's project (metrics design §7.3), with the metrics row's coverage state; or why there is no project. */
   readonly metrics?: { readonly root: string, readonly coverage?: MetricsCoverage } | { readonly reason: string }
 }
 
@@ -84,13 +91,7 @@ export async function renderHourness(homes: DataHomes, options: RenderOptions = 
   const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
   const zone: MomentZone = options.offsetMinutes === undefined ? {} : { offsetMinutes: options.offsetMinutes }
   const graph = options.graph ?? (() => Promise.reject(new Error('这次调用没有给出项目图的位置')))
-  const reportOptions: ReportOptions = {
-    pricing: options.pricing,
-    problem: options.problem,
-    now: nowMs,
-    offsetMinutes: options.offsetMinutes,
-    ...(options.metrics === undefined ? {} : { metrics: options.metrics }),
-  }
+  const reportOptions: ReportOptions = { pricing: options.pricing, problem: options.problem, now: nowMs, offsetMinutes: options.offsetMinutes, ...(options.root === undefined ? {} : { root: options.root }), ...(options.metrics === undefined ? {} : { metrics: options.metrics }) }
   const report = await reportFromFiles(fs, homes, localDay(dayStart), graph, dayStart.toISOString(), reportOptions)
   const missing = [
     ...(homes.projectHome === undefined ? ['- 项目目录未配置（行配置 home 或数据目录行的 projectHome），决策与违规流水读不到'] : []),
@@ -247,30 +248,27 @@ export function apply(ctx: CommandsHost & ServiceLookup & Partial<ProvideHost>, 
       if (invocation.rawInput.trim().length > 0) {
         return { kind: 'error', text: '用法：/hourness（无需参数）' }
       }
-      const homes = dataHomes(ctx, config.home)
+      // The report reads the calling session's project journal (m4-gate G1, design §2.4): the row home wins, then the project of the session's working directory, then the data row's projectHome.
+      const header = invocation.agent?.session?.header?.cwd
+      const homes = withProjectHome(dataHomes(ctx, undefined), projectHomeFor(ctx, config.home, typeof header === 'string' && header.length > 0 ? header : undefined))
       const pricing = pricingService(ctx, problem)
       // The quota member is judged again where it is read, which reports a wrong shape; the status only says whether it is there.
       health.report(sessionIdOf(invocation.agent), ...hournessHealth(homes, pricing !== undefined, pricing !== undefined && quotaOf(pricing) !== undefined))
       if (pricing !== undefined) await refreshQuota(pricing)
-      const cwd = invocation.agent?.session?.header?.cwd
-      const metricsRoot = cwd === undefined ? undefined : projectOf(cwd)?.root
-      const liveCoverage = metricsRoot === undefined ? undefined : metricsOf(ctx)?.coverage?.(metricsRoot)
-      const metrics: NonNullable<RenderOptions['metrics']> = metricsRoot === undefined || liveCoverage === undefined
-        ? metricsRoot === undefined ? { reason: '这个会话没有可归的项目' } : { root: metricsRoot }
-        : { root: metricsRoot, coverage: liveCoverage }
-      const started = clock().getTime()
       try {
-        const text = await renderHourness(homes, {
-          pricing,
-          problem,
-          graph: graphReader(ctx, cwd),
-          ...(config.offsetMinutes === undefined ? {} : { offsetMinutes: config.offsetMinutes }),
-          status: { lookup: ctx, sessionId: sessionIdOf(invocation.agent) },
-          metrics,
-        })
-        // The report itself is one `report` event of the project it was made for (§7.3).
+        // The lift record lives in the project root of the session's working directory (design §3.10); without one there is no reconciliation, by the same reading the journal home takes.
+        const headerCwd = invocation.agent?.session?.header?.cwd
+        const root = typeof headerCwd === 'string' && headerCwd.length > 0 ? projectOf(headerCwd)?.root : undefined
+        // The metrics journal of the same project (metrics design §7.3); the row's coverage member carries the process-local pieces when it is on.
+        const coverage = root === undefined ? undefined : metricsOf(ctx)?.coverage?.(root)
+        const metrics: NonNullable<RenderOptions['metrics']> = root === undefined
+          ? { reason: '这个会话没有可归的项目' }
+          : coverage === undefined ? { root } : { root, coverage }
+        const started = clock().getTime()
+        const text = await renderHourness(homes, { pricing, problem, graph: graphReader(ctx, headerCwd), ...(config.offsetMinutes === undefined ? {} : { offsetMinutes: config.offsetMinutes }), status: { lookup: ctx, sessionId: sessionIdOf(invocation.agent) }, ...(root === undefined ? {} : { root }), metrics })
+        // The report itself is one report event of the project it was made for (§7.3).
         const sessionId = sessionIdOf(invocation.agent)
-        if (metricsRoot !== undefined && cwd !== undefined && sessionId !== undefined) metricsOf(ctx)?.emit({ k: 'report', by: 'host', body: { kind: 'status', units: [...text].length, ms: clock().getTime() - started } }, { sessionId, dir: cwd })
+        if (root !== undefined && typeof headerCwd === 'string' && sessionId !== undefined) metricsOf(ctx)?.emit({ k: 'report', by: 'host', body: { kind: 'status', units: [...text].length, ms: clock().getTime() - started } }, { sessionId, dir: headerCwd })
         return { kind: 'success', text }
       }
       catch (error) {

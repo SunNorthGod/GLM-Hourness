@@ -492,6 +492,10 @@ export interface FakeRuntime {
   create(target?: AgentLike): Promise<void>
   /** Fire `session/disposed` for a session (session:1925–1936): observers run synchronously, as in rc.3. */
   disposeSession(session: SessionLike): void
+  /** Append one session log event; the session/event observers run synchronously inside it, as dsh-session's append does (session:1574–1593). */
+  sessionEvent(session: SessionLike, type: string, data: unknown): void
+  /** The turn and step the `tool/call` events of executed calls carry; a spec moves it as the agent loop advances. */
+  readonly progress: { turn: number, step: number }
   /** Run `agent/pre-step` for one step; the runtime's default decision admits the claimed messages. */
   preStep(options?: { messages?: readonly unknown[], step?: number, turn?: number }): Promise<PreStepDecision>
   /** Run the `agent/request` waterfall for the fake agent (rc.3 agent-loop:1191): the default proposes the route given at `fakeRuntime`. */
@@ -717,6 +721,15 @@ export function fakeRuntime(options: { natives?: readonly string[], calls?: Arra
     return { ...result, ...(decision.content === undefined ? {} : { content: decision.content }), ...(additionalContexts.length > 0 ? { additionalContexts } : {}) }
   }
   const store = serviceStore()
+  let seq = 0
+  const fireSession = (session: SessionLike | undefined, type: string, data: unknown): void => {
+    if (session === undefined) return
+    for (const entry of listeners) {
+      if (entry.event !== 'session/event') continue
+      ;(entry.listener as unknown as (s: SessionLike, e: { readonly type: string, readonly seq: number, readonly time: number, readonly data?: unknown }) => void)(session, { type, seq: ++seq, time: Date.now(), data })
+    }
+  }
+  const progress = { turn: 1, step: 1 }
   const ctx: FakeRuntime['ctx'] = {
     get: store.get,
     provide: store.provide,
@@ -731,6 +744,12 @@ export function fakeRuntime(options: { natives?: readonly string[], calls?: Arra
       // Pipeline order of ToolRuntime.execute: pre-execute gate, body, output render, deferred contexts, post-execute.
       async execute(input): Promise<ToolFinalResult> {
         executed.push(input)
+        // startCall appends the durable call before prepare (agent-loop:578–582), so the model's call is in
+        // the log when the pre-execute waterfall runs. A call a body issues — a run_code program's, or a
+        // DeferredToolCall's target, `<callId>:deferred` (toolsearch:167) — has no event.
+        if (input.parent === undefined && !String(input.callId).endsWith(':deferred')) {
+          fireSession(input.agent?.session, 'tool/call', { turn: progress.turn, step: progress.step, callId: input.callId, name: input.name, arguments: input.arguments })
+        }
         // prepareExecution (tools:3320–3321, 3337–3353): the waterfall defaults to allow; a deny reason
         // becomes the error result and the body never runs, but the result still goes through post-execute
         // (prepareExecution hands it on as a post-result). ask and cancel are not modeled.
@@ -796,6 +815,10 @@ export function fakeRuntime(options: { natives?: readonly string[], calls?: Arra
     disposeSession(session) {
       for (const listener of of('session/disposed')) (listener as unknown as (session: SessionLike) => unknown)(session)
     },
+    sessionEvent(session, type, data) {
+      fireSession(session, type, data)
+    },
+    progress,
     async preStep({ messages = [], step = 1, turn = 1 } = {}) {
       const payload: PreStepPayload = { agent, messages, signal: new AbortController().signal, step, turn }
       const chain = of('agent/pre-step').reduceRight<() => Promise<PreStepDecision>>(

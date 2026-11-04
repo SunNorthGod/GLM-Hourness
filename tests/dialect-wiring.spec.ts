@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { evaluate, fileToolsOnly, renderCorrection, workspaceContainment } from '../src/guard/rules.ts'
+import { fileToolsOnly, judge, NATIVE_FACE, renderCorrection, workspaceContainment } from '../src/guard/rules.ts'
 import { apply as glmPromptApply, dialectSections, installDialect } from '../src/glm-prompt/index.ts'
 import { REPORTING_DEPTH_SECTION } from '../src/glm-prompt/reporting-depth.ts'
 import { DYNAMIC_BEHAVIOR } from '../src/glm-prompt/verbatim.ts'
@@ -12,12 +12,12 @@ const rule = workspaceContainment(['C:\\ws\\proj'])
 const write = (path: string) => ({ name: 'write', arguments: { file_path: path } })
 
 test('containment allows writes inside the workspace (case and separator insensitive)', () => {
-  assert.equal(evaluate([rule], write('C:\\WS\\PROJ\\src\\a.ts')).kind, 'allow')
-  assert.equal(evaluate([rule], write('C:/ws/proj/.llm/memory/a.md')).kind, 'allow')
+  assert.equal(rule.detect(write('C:\\WS\\PROJ\\src\\a.ts')).kind, 'allow')
+  assert.equal(rule.detect(write('C:/ws/proj/.llm/memory/a.md')).kind, 'allow')
 })
 
 test('containment denies writes outside the workspace with a four-part correction', () => {
-  const verdict = evaluate([rule], write('C:\\Windows\\system32\\evil.dll'))
+  const verdict = rule.detect(write('C:\\Windows\\system32\\evil.dll'))
   assert.equal(verdict.kind, 'deny')
   if (verdict.kind === 'deny') {
     assert.ok(verdict.correction.fact.includes('evil.dll'))
@@ -31,38 +31,42 @@ test('containment denies writes outside the workspace with a four-part correctio
   }
 })
 
-test('both exceptions send the model to the human, not to a request channel that does not exist', () => {
-  const verdicts = [evaluate([rule], write('C:\\Windows\\system32\\evil.dll')), evaluate([fileToolsOnly], { name: 'pwsh', arguments: { command: 'echo x > out.txt' } })]
-  for (const verdict of verdicts) {
+test('both exceptions name no request channel; containment still sends the model to the human (file-tools-only is not requestable, design 0.6-finish2 §5.2)', () => {
+  const [containment, shellWrite] = [rule.detect(write('C:\\Windows\\system32\\evil.dll')), fileToolsOnly.detect({ name: 'pwsh', arguments: { command: 'echo x > out.txt' } }, NATIVE_FACE)]
+  for (const verdict of [containment, shellWrite]) {
     assert.equal(verdict.kind, 'deny')
     if (verdict.kind !== 'deny') continue
-    // No tool or channel takes a filed request until the M4 decision card exists.
+    // No tool or channel takes a filed request until the M4 decision card exists (G4).
     assert.doesNotMatch(verdict.correction.exception, /file a request|application protocol|approves each request/i)
-    assert.match(verdict.correction.exception, /tell the human what you need, where and why; only the human can allow it\.$/)
   }
+  // Containment still sends the model to the human; file-tools-only governs habit, so its G1 exception
+  // names the build-and-git allowance instead of the human sentence.
+  assert.ok(containment.kind === 'deny' && containment.correction.exception.endsWith('tell the human what you need, where and why; only the human can allow it.'))
+  assert.ok(shellWrite.kind === 'deny' && shellWrite.correction.exception.startsWith('Build, test and git commands that write files as a side effect are allowed'))
 })
 
 test('containment ignores sibling prefixes like proj-evil', () => {
-  assert.equal(evaluate([rule], write('C:\\ws\\proj-evil\\a.ts')).kind, 'deny')
+  assert.equal(rule.detect(write('C:\\ws\\proj-evil\\a.ts')).kind, 'deny')
 })
 
 const bash = (command: string) => ({ name: 'pwsh', arguments: { command } })
 
 test('file-tools-only denies shell write patterns inside the workspace too', () => {
   for (const command of ['sed -i s/a/b/ f.txt', 'Set-Content f.txt hi', 'echo x > out.txt', 'ls >> log.txt']) {
-    assert.equal(evaluate([fileToolsOnly], bash(command)).kind, 'deny', command)
+    assert.equal(fileToolsOnly.detect(bash(command), NATIVE_FACE).kind, 'deny', command)
   }
 })
 
 test('file-tools-only allows execution-style shell commands, quoted arrows and git subcommands', () => {
   for (const command of ['npm test', 'git status', 'ls -la', 'node server.js &', 'git commit -m "a -> b => c"', 'git rm old.ts', 'npm test 2>&1']) {
-    assert.equal(evaluate([fileToolsOnly], bash(command)).kind, 'allow', command)
+    assert.equal(fileToolsOnly.detect(bash(command), NATIVE_FACE).kind, 'allow', command)
   }
 })
 
-test('a throwing detector fails open', () => {
+test('a throwing detector fails open: the broken rule does not deny, the healthy one still does', () => {
   const broken = { id: 'broken', declare: '', detect(): never { throw new Error('boom') } }
-  assert.equal(evaluate([broken, rule], write('C:\\Windows\\x')).kind, 'deny')
+  const verdict = judge([broken, rule], write('C:\\Windows\\x'))
+  assert.deepEqual([verdict.denies.length, verdict.errors], [1, ['broken']])
 })
 
 
@@ -77,9 +81,9 @@ test('dialect sections mirror order anchors and carry verbatim content', () => {
     'glm:memory', // ledger ⑧: memory home is .llm
     'glm:context-management', // ledger ⑦
   ])
-  assert.equal(sections[1]!.order, -1000)
-  assert.ok(sections[1]!.text.includes('reverse-engineering')) // coding-plan default carries the user notice
-  assert.ok(sections[1]!.text.includes('DeepSeek Harness Web GUI')) // ledger ①: host-fact rewrite
+  assert.equal(sections[1].order, -1000)
+  assert.ok(sections[1].text.includes('reverse-engineering')) // coding-plan default carries the user notice
+  assert.ok(sections[1].text.includes('DeepSeek Harness Web GUI')) // ledger ①: host-fact rewrite
   assert.equal(sections[2]?.text, DYNAMIC_BEHAVIOR)
   assert.equal(DYNAMIC_BEHAVIOR.split('\n').length, 3)
   // ZCode announces deferred names in <system-reminder> notices; its system prompt has no deferred section.
@@ -145,7 +149,7 @@ test('installDialect registers the aliases and search controls in scope and one 
   assert.deepEqual(rt.scoped.map(tool => tool.name), [...ZCODE_FACE, ...CONTROLS])
   const assemble = rt.listeners.filter(entry => entry.event === 'system-prompt/assemble')
   assert.equal(assemble.length, 1)
-  assert.deepEqual(assemble[0]!.options, { prepend: true })
+  assert.deepEqual(assemble[0].options, { prepend: true })
 })
 
 test('toolSearchMode off registers the aliases only and leaves deferrable tools in the face', async () => {
@@ -161,11 +165,11 @@ test('a GLM request gets the ZCode identity and resident face; deferred tools an
   const rt = fakeRuntime()
   installDialect(rt.agent)
   const assembled = await rt.assemble({ provider: 'glm-zcode', model: 'glm-5.3' })
-  assert.equal(assembled.sections[0]!.name, 'glm:cli-prefix')
+  assert.equal(assembled.sections[0].name, 'glm:cli-prefix')
   assert.equal(assembled.sections[0]?.text, 'You are ZCode, an interactive agent')
-  assert.equal(assembled.sections[1]!.name, 'harness:identity')
+  assert.equal(assembled.sections[1].name, 'harness:identity')
   // The 3.17.1 identity names no product; ZCode is in the CLI prefix only.
-  assert.ok(assembled.sections[1]!.text.startsWith('You are an agent working with the user toward their goals'))
+  assert.ok(assembled.sections[1].text.startsWith('You are an agent working with the user toward their goals'))
   assert.ok(!assembled.sections.some(section => section.text.includes('powered by DeepSeek Harness')))
   const names = assembled.tools.map(tool => tool.name)
   assert.deepEqual(names, [...RESIDENT_FACE, ...CONTROLS])
@@ -177,7 +181,7 @@ test('a non-GLM request keeps the DSH prompt and natives and never sees the alia
   installDialect(rt.agent)
   const assembled = await rt.assemble({ provider: 'deepseek-official', model: 'deepseek-flash' })
   assert.deepEqual(assembled.sections.map(section => section.name), ['harness:identity'])
-  assert.ok(assembled.sections[0]!.text.includes('powered by DeepSeek Harness'))
+  assert.ok(assembled.sections[0].text.includes('powered by DeepSeek Harness'))
   const names = assembled.tools.map(tool => tool.name)
   for (const name of [...ZCODE_FACE, ...CONTROLS]) assert.ok(!names.includes(name), name)
   for (const name of [...COVERED, 'web_fetch']) assert.ok(names.includes(name), name)
@@ -197,7 +201,7 @@ test('a provider id alone does not light the dialect (model family decides)', as
   const rt = fakeRuntime()
   installDialect(rt.agent)
   const assembled = await rt.assemble({ provider: 'glm' })
-  assert.ok(assembled.sections[0]!.text.includes('powered by DeepSeek Harness'))
+  assert.ok(assembled.sections[0].text.includes('powered by DeepSeek Harness'))
 })
 
 test('aliases execute the captured natives with mapped arguments', async () => {

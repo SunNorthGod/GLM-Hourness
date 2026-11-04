@@ -118,6 +118,23 @@ export function gitDirOf(root: string): string | undefined {
 }
 
 /**
+ * The checkout a path sits in (m4-gate G3, design §3.5, review finish2 round
+ * N23): the nearest `.git` entry above it — a directory, or the file a work
+ * tree carries — and the directory holding it. Unlike `projectOf` it does not
+ * follow `commondir`, so a work tree answers with its own root, not the main
+ * checkout's: the caller asks "which checkout is this file in", not "which
+ * project does it belong to". Directories that do not exist yet walk on
+ * (statSync misses, the walk continues); nothing spawns git. undefined when
+ * no `.git` sits above the path (a project outside git).
+ */
+export function checkoutRootOf(path: string): string | undefined {
+  for (let dir = resolve(path); ; dir = dirname(dir)) {
+    if (gitEntry(dir) !== undefined) return dir
+    if (dirname(dir) === dir) return undefined
+  }
+}
+
+/**
  * The directories of a repository's work trees, as `git worktree list` gives
  * them, read from the git directory without a process: the project root (the
  * main checkout) first, then the work tree each `worktrees/<name>/gitdir` file
@@ -170,12 +187,26 @@ export function cachedWorktrees(now: () => number): (root: string) => readonly s
  * is never committed. Nothing happens outside a git repository, and a line
  * that already ignores the directory (`.llm`, `.llm/`, `/.llm`, `/.llm/`) is
  * not repeated. Throws when the file cannot be written; the caller then does
- * not create the directory.
+ * not create the directory. Resolves to true when a line was appended, false
+ * when the directory was already ignored (or there is no git directory).
+ * Runs for one file at a time: several rows ensure the same project's
+ * `.llm/` at startup, and a plain check-then-append would race each of them
+ * into appending its own line.
  */
-export async function ensureIgnored(root: string, directory: string): Promise<void> {
+const ignoreWrites = new Map<string, Promise<boolean>>()
+
+export function ensureIgnored(root: string, directory: string): Promise<boolean> {
   const gitDir = gitDirOf(root)
-  if (gitDir === undefined || !isDirectory(gitDir)) return
+  if (gitDir === undefined || !isDirectory(gitDir)) return Promise.resolve(false)
   const file = join(gitDir, 'info', 'exclude')
+  const key = `${file}\u0000${directory}`
+  const previous = ignoreWrites.get(key) ?? Promise.resolve(false)
+  const run = previous.catch(() => {}).then(() => appendOnce(file, directory))
+  ignoreWrites.set(key, run)
+  return run
+}
+
+async function appendOnce(file: string, directory: string): Promise<boolean> {
   let text = ''
   try {
     text = await readFile(file, 'utf8')
@@ -184,9 +215,10 @@ export async function ensureIgnored(root: string, directory: string): Promise<vo
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
   }
   const present = [directory, `${directory}/`, `/${directory}`, `/${directory}/`]
-  if (text.split(/\r?\n/).some(line => present.includes(line.trim()))) return
+  if (text.split(/\r?\n/).some(line => present.includes(line.trim()))) return false
   await mkdir(dirname(file), { recursive: true })
   await appendFile(file, `${text === '' || text.endsWith('\n') ? '' : '\n'}${directory}/\n`)
+  return true
 }
 
 /**

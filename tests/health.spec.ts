@@ -84,6 +84,42 @@ test('a row remembers the 64 most recent sessions', () => {
   assert.notEqual(view(store, 'memory').session('s64'), undefined)
 })
 
+// Lasting notes (m4-gate G1, F13): the gate attaches its two lasting problems
+// per session, and a plain report never wipes them.
+
+test('a note rides on the session report, raises its state to degraded, and survives later reports', () => {
+  const store = serviceStore()
+  let clock = 0
+  const health = provideRowHealth(store, 'guard', 'active', 'loaded', () => new Date(Date.UTC(2026, 10, 2, 0, 0, clock++)))
+  health.report('s1', 'active', '门禁生效')
+  health.note('s1', 'violations-lost', '3 条违规没有落盘')
+  assert.deepEqual(inSession(store, 'guard', 's1'), { state: 'degraded', reason: '门禁生效；3 条违规没有落盘' })
+  const withNote = view(store, 'guard').session('s1')
+  health.report('s1', 'active', '门禁生效')
+  assert.equal(view(store, 'guard').session('s1'), withNote, 'the same base and note keep the first timestamp')
+  health.report('s1', 'active', '其他说明')
+  assert.deepEqual(inSession(store, 'guard', 's1'), { state: 'degraded', reason: '其他说明；3 条违规没有落盘' })
+  health.note('s1', 'violations-lost', undefined)
+  assert.deepEqual(inSession(store, 'guard', 's1'), { state: 'active', reason: '其他说明' }, 'an undefined text withdraws the note')
+})
+
+test('notes compose on a session without a report yet, cap at four, cut at 80 code points, and leave with the session', () => {
+  const store = serviceStore()
+  const health = provideRowHealth(store, 'guard', 'active', '已加载')
+  health.note('s1', 'rule-errors', '规则 a 判定出错')
+  assert.deepEqual(inSession(store, 'guard', 's1'), { state: 'degraded', reason: '已加载；规则 a 判定出错' }, 'the activation status is the base before any report')
+  for (const key of ['a', 'b', 'c', 'd']) health.note('s1', `k-${key}`, 'x')
+  const long = '长'.repeat(90)
+  health.note('s1', 'k-a', long)
+  assert.equal(view(store, 'guard').session('s1')!.reason, `已加载；规则 a 判定出错；${'长'.repeat(80)}；x；x`, 'four notes at most, each cut to 80 code points, a fifth key dropped')
+  health.report('s2', 'active', 'x')
+  for (let index = 0; index < 63; index += 1) health.report(`t${index}`, 'active', 'x')
+  assert.equal(view(store, 'guard').session('s1'), undefined, 'eviction takes the notes with the session')
+  health.note(undefined, 'k', 'x')
+  health.note('', 'k', 'x')
+})
+
+
 test('a second instance of a row or a context without provide never fails activation', () => {
   const store = serviceStore()
   provideRowHealth(store, 'guard', 'active', 'first')
@@ -99,7 +135,7 @@ test('a second instance of a row or a context without provide never fails activa
     console.warn = warn
   }
   assert.equal(warnings.length, 1)
-  assert.ok(warnings[0]!.startsWith('dsh-glm-hourness/guard: row health not provided'))
+  assert.ok(warnings[0].startsWith('dsh-glm-hourness/guard: row health not provided'))
   assert.deepEqual(activation(store, 'guard'), { state: 'active', reason: 'first' }) // the first view stays
   const local = provideRowHealth({}, 'guard', 'active', 'no provide')
   local.report('s1', 'active', 'x')
@@ -123,7 +159,7 @@ test('the table: absent rows, inactive activation wins, activation-only rows, se
   assert.deepEqual(byRow['memory'], ['degraded', 'home 未配置，记忆工具关闭'])
   assert.deepEqual(byRow['workflow'], ['idle', '已加载'])
   assert.equal(collectHealth(store, undefined).find(entry => entry.row === 'guard')!.status, 'idle') // no session to read
-  assert.equal(collectHealth({ get: () => ({ unrelated: true }) }, 's1')[0]!.status, 'absent') // a foreign value is not a view
+  assert.equal(collectHealth({ get: () => ({ unrelated: true }) }, 's1')[0].status, 'absent') // a foreign value is not a view
 })
 
 test('the rendered table names the session, labels each status and escapes cells', () => {
@@ -150,7 +186,7 @@ test('the rendered table names the session, labels each status and escapes cells
 test('the table groups rows by package; a package with no row loaded takes one line', () => {
   assert.deepEqual(HEALTH_PACKAGES.map(entry => [entry.name, [...entry.rows]]), [
     ['dsh-glm-zcode', ['glm-llm', 'glm-login', 'glm-prompt', 'glm-compact']],
-    ['dsh-hourness', ['data', 'guard', 'memory', 'lessons', 'workflow', 'hourness', 'graph', 'graph-panel', 'rules', 'design', 'loops', 'metrics']],
+    ['dsh-hourness', ['data', 'guard', 'memory', 'lessons', 'workflow', 'hourness', 'graph', 'graph-panel', 'rules', 'design', 'loops', 'metrics', 'env']],
   ])
   assert.deepEqual([...HEALTH_ROWS], HEALTH_PACKAGES.flatMap(entry => [...entry.rows]))
   const lines = (text: string): string[] => text.split('\n').slice(4)
@@ -223,8 +259,8 @@ test('glm-llm: the registered route and the credential directory at activation; 
 test('glm-llm: a request without a credential reports the session inactive with the login instruction', async () => {
   const store = serviceStore()
   const adapters: Array<{ stream(options: unknown): AsyncIterable<unknown> }> = []
-  llmApply({ registerAdapter: (_providers, adapter) => { adapters.push(adapter as never); return () => {} }, ...store }, { home: 'C:/definitely-missing-glm-hourness-health-home' })
-  await assert.rejects(async () => { for await (const chunk of adapters[0]!.stream({ provider: 'glm-zcode', model: 'glm-5.3', sessionId: 's1', messages: [] })) void chunk }, /\/glm-login/)
+  llmApply({ registerAdapter: (_providers, adapter) => { adapters.push(adapter); return () => {} }, ...store }, { home: 'C:/definitely-missing-glm-hourness-health-home' })
+  await assert.rejects(async () => { for await (const chunk of adapters[0].stream({ provider: 'glm-zcode', model: 'glm-5.3', sessionId: 's1', messages: [] })) void chunk }, /\/glm-login/)
   assert.deepEqual(inSession(store, 'glm-llm', 's1'), { state: 'inactive', reason: '未登录：凭证为空，运行 /glm-login' })
 })
 
@@ -282,11 +318,11 @@ test('/glm-status prints the credential line, then the health table of the invok
   const table = result.text.slice(result.text.indexOf('## 行健康'))
   assert.equal(credential, 'glm-zcode：未登录（套餐 coding-plan）。运行 /glm-login 开始登录')
   assert.equal(result.text.slice(credential.length, result.text.length - table.length), `\n\n${PEAK_LINE}\n${NO_LOGIN_LINE}\n\n`, 'the peak line and the quota section sit between the credential line and the table')
-  assert.ok(table!.startsWith('## 行健康（会话 s1）\n\n| 包 | 行 | 状态 | 说明 |'))
-  assert.deepEqual(table!.split('\n').slice(4).map(line => line.split(' | ')[1]), [...HEALTH_ROWS]) // one line per row, in patch order
-  assert.ok(table!.includes('| dsh-glm-zcode | glm-login | 生效 | /glm-login、/glm-status、/glm-logout 已注册；额度：读不到（not-logged-in） |'), 'the row health carries the quota note')
-  assert.ok(table!.includes('| dsh-hourness | guard | 生效 | 门禁生效 |'))
-  assert.ok(table!.includes('| dsh-glm-zcode | glm-prompt | 未加载 | 行未启用，或激活未完成 |'))
+  assert.ok(table.startsWith('## 行健康（会话 s1）\n\n| 包 | 行 | 状态 | 说明 |'))
+  assert.deepEqual(table.split('\n').slice(4).map(line => line.split(' | ')[1]), [...HEALTH_ROWS]) // one line per row, in patch order
+  assert.ok(table.includes('| dsh-glm-zcode | glm-login | 生效 | /glm-login、/glm-status、/glm-logout 已注册；额度：读不到（not-logged-in） |'), 'the row health carries the quota note')
+  assert.ok(table.includes('| dsh-hourness | guard | 生效 | 门禁生效 |'))
+  assert.ok(table.includes('| dsh-glm-zcode | glm-prompt | 未加载 | 行未启用，或激活未完成 |'))
   const other = await quietly(() => run('glm-status', 's2'))
   assert.ok(other.text.includes('| dsh-hourness | guard | 已加载，本会话未触发 | 已加载 |')) // another session: the guard has not acted there
 })
@@ -443,30 +479,30 @@ function preExecuteRow(applyRow: (ctx: never, config: never) => () => void, conf
 const memoryFs = { mkdir: async () => undefined, appendFile: async () => {} }
 
 test('guard: in effect with a session directory and a project directory, degraded with the gap named', async () => {
-  const { store, call } = preExecuteRow(guardApply as never, { fs: memoryFs }, { userHome: 'C:/u/glm-hourness', projectHome: 'C:/ws/.llm' })
+  const { store, call } = preExecuteRow(guardApply, { fs: memoryFs }, { userHome: 'C:/u/glm-hourness', projectHome: 'C:/ws/.llm' })
   await call({ name: 'Read', arguments: { file_path: 'C:\\ws\\a.ts' }, agent: agentIn('s1', 'C:\\ws') })
-  assert.deepEqual(inSession(store, 'guard', 's1'), { state: 'active', reason: '门禁生效（file-tools-only，圈禁根 C:\\ws）；违规记入 C:/ws/.llm；影子兜底未启用（组合里没有 workspace-changes）' })
+  assert.deepEqual(inSession(store, 'guard', 's1'), { state: 'active', reason: '门禁生效（file-tools-only，圈禁根 C:\\ws）；违规记入 C:/ws/.llm；事后纠正未启用（组合里没有 workspace-changes）' })
   await call({ name: 'Read', arguments: {}, agent: agentIn('s2') })
-  assert.deepEqual(inSession(store, 'guard', 's2'), { state: 'degraded', reason: '门禁生效（file-tools-only）；会话没有工作目录，圈禁规则跳过；影子兜底未启用（组合里没有 workspace-changes）' })
+  assert.deepEqual(inSession(store, 'guard', 's2'), { state: 'degraded', reason: '门禁生效（file-tools-only）；会话没有工作目录，圈禁规则跳过；事后纠正未启用（组合里没有 workspace-changes）' })
   store.services.set('workspaceChanges', { summary: () => undefined })
   await call({ name: 'Read', arguments: {}, agent: agentIn('s4', 'C:\\ws') })
-  assert.ok(inSession(store, 'guard', 's4')!.reason.endsWith('；影子兜底：工作区变更记录'))
+  assert.ok(inSession(store, 'guard', 's4')!.reason.endsWith('；事后纠正启用：工作区变更记录'))
   await call({ name: 'Read', arguments: {}, agent: agentIn('s3'), parent: 'token' })
   assert.equal(view(store, 'guard').session('s3'), undefined) // transport sub-calls are not the row acting
   await call({ name: 'Read', arguments: {}, agent: agentIn('s5', 'C:\\ws', 'deepseek-account', 'deepseek-flash') })
   // Every route (docs/ORCHESTRATION.md §6.2): a DeepSeek session reports the guard in effect too.
-  assert.deepEqual(inSession(store, 'guard', 's5'), { state: 'active', reason: '门禁生效（file-tools-only，圈禁根 C:\\ws）；违规记入 C:/ws/.llm；影子兜底：工作区变更记录' })
-  const bare = preExecuteRow(guardApply as never, { fs: memoryFs })
+  assert.deepEqual(inSession(store, 'guard', 's5'), { state: 'active', reason: '门禁生效（file-tools-only，圈禁根 C:\\ws）；违规记入 C:/ws/.llm；事后纠正启用：工作区变更记录' })
+  const bare = preExecuteRow(guardApply, { fs: memoryFs })
   await bare.call({ name: 'Read', arguments: {}, agent: agentIn('s1', 'C:\\ws') })
   assert.ok(inSession(bare.store, 'guard', 's1')!.reason.includes('；无项目目录，违规不落盘；'))
 })
 
 test('workflow: in effect with a project directory, inactive without one', async () => {
-  const { store, call } = preExecuteRow(workflowApply as never, { fs: memoryFs }, { userHome: 'C:/u/glm-hourness', projectHome: 'C:/ws/.llm' })
+  const { store, call } = preExecuteRow(workflowApply, { fs: memoryFs }, { userHome: 'C:/u/glm-hourness', projectHome: 'C:/ws/.llm' })
   assert.equal(activation(store, 'workflow').state, 'active')
   await call({ name: 'Read', arguments: {}, agent: agentIn('s1') })
   assert.deepEqual(inSession(store, 'workflow', 's1'), { state: 'active', reason: '派遣决策记入 C:/ws/.llm' })
-  const bare = preExecuteRow(workflowApply as never, { fs: memoryFs })
+  const bare = preExecuteRow(workflowApply, { fs: memoryFs })
   await bare.call({ name: 'subagent', arguments: {}, agent: agentIn('s1') })
   assert.equal(inSession(bare.store, 'workflow', 's1')!.state, 'inactive')
 })
@@ -500,7 +536,7 @@ test('hourness: an invocation reports which journals the report can read and tha
     const store = serviceStore()
     const commands: Command[] = []
     hournessApply({ commands: { register: definition => { commands.push(definition); return () => {} } }, ...store, get: (name: string) => name === 'glmHournessData' ? data : store.get(name) }, config)
-    await commands[0]!.handler({ agent: agentIn('s1'), rawInput: '' })
+    await commands[0].handler({ agent: agentIn('s1'), rawInput: '' })
     return inSession(store, 'hourness', 's1')
   }
   assert.deepEqual(await run({ home: 'C:/definitely-empty-hourness-home' }, { userHome: 'C:/definitely-empty-hourness-user' }), { state: 'active', reason: '报告读取项目目录与用户级目录；积分口径：未提供，按 token 列；额度：未提供' })

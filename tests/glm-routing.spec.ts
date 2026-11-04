@@ -25,7 +25,7 @@ function makeService(fetchImpl: typeof fetch, now: () => number = Date.now): End
 }
 
 test('resolve rewrites mapped URLs and preserves the query string', async () => {
-  const service = makeService((async () => jsonRespond(200, mappingBody)) as typeof fetch)
+  const service = makeService((async () => jsonRespond(200, mappingBody)))
   const routed = await service.resolve('https://open.bigmodel.cn/api/anthropic/v1/messages?beta=1')
   assert.equal(routed.routed, true)
   assert.equal(routed.url, 'https://zcode.z.ai/api/v1/ultra/v1/messages?beta=1')
@@ -84,7 +84,7 @@ test('the config request carries the 3.16.3 FGs header set in its order: x-api-k
 })
 
 test('request-verification switch parses from the same snapshot', async () => {
-  const service = makeService((async () => jsonRespond(200, mappingBody)) as typeof fetch)
+  const service = makeService((async () => jsonRespond(200, mappingBody)))
   const config = await service.getRequestVerificationConfig()
   assert.deepEqual(config, { enabled: false, skipModelRequest: true })
   assert.equal(requiresClaimCaptcha(config), false)
@@ -95,7 +95,7 @@ test('unsafe zcode-authorization targets reject the whole snapshot (fail-closed 
   const service = makeService((async () => jsonRespond(200, {
     code: 0,
     data: { proxyEndpoint: { mapping: [{ from: 'https://open.bigmodel.cn/api/anthropic/v1/messages', to: 'https://evil.example/v1/messages', zcodeAuthorizationHeader: 'X-ZCode-Authorization' }] } },
-  })) as typeof fetch)
+  })))
   const routed = await service.resolve('https://open.bigmodel.cn/api/anthropic/v1/messages')
   assert.equal(routed.routed, false) // snapshot rejected: no routing
 })
@@ -104,7 +104,7 @@ test('flagged ultra targets inject the X-ZCode-Authorization bearer', async () =
   const service = makeService((async () => jsonRespond(200, {
     code: 0,
     data: { proxyEndpoint: { mapping: [{ from: 'https://open.bigmodel.cn/api/anthropic/v1/messages', to: 'https://zcode.z.ai/api/v1/ultra/v1/messages', zcodeAuthorizationHeader: 'X-ZCode-Authorization' }] } },
-  })) as typeof fetch)
+  })))
   const routed = await service.resolve('https://open.bigmodel.cn/api/anthropic/v1/messages', { zcodeJwt: 'raw-jwt' })
   assert.equal(routed.routed, true)
   assert.deepEqual(routed.headers, { 'X-ZCode-Authorization': 'Bearer raw-jwt' })

@@ -119,6 +119,8 @@ export interface ToolFinalResult {
 export interface ToolExecutionPayload {
   readonly name: string
   readonly arguments: unknown
+  /** The call id createExecution builds (tools:3229–3260, one object for pre-execute, the body and post-execute); the follow-up recorder settles by it. */
+  readonly callId?: string
   readonly agent?: AgentLike
   /** Opaque token set on transport sub-dispatches (e.g. a run_code binding call). */
   readonly parent?: unknown
@@ -184,6 +186,12 @@ export interface SessionEventLike {
 export interface SessionEventHost {
   on(event: 'session/event', listener: (session: SessionLike, event: SessionEventLike) => void): () => void
   on(event: 'session/disposed', listener: (session: SessionLike) => void): () => void
+}
+
+/** The two session-lifecycle listeners of SessionEventHost, for rows whose `on` is optional and carries more events beside them. */
+export type SessionEventOn = {
+  (event: 'session/event', listener: (session: SessionLike, event: SessionEventLike) => void): () => void
+  (event: 'session/disposed', listener: (session: SessionLike) => void): () => void
 }
 
 /** One changed file of a workspace-changes summary: `path` relative to the session directory inside it, absolute elsewhere. */

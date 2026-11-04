@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
+import { projectHomeFor } from '../src/data/project-home.ts'
 import { apply, dataServiceFor } from '../src/data/index.ts'
 import { credentialHome, DATA_SERVICE, dataHomes, dataService, expandHomePath, resolveDshHome, userDataHome } from '../src/shared/data-home.ts'
 import { healthServiceName, type RowHealthView } from '../src/shared/health.ts'
@@ -101,4 +102,35 @@ test('a malformed service value is ignored', () => {
   assert.equal(dataService({ get: () => ({ userHome: 'C:/u', projectDirOf: 'C:/p' }) }), undefined)
   assert.equal(dataService({ get: () => ({ userHome: 'C:/u' }) })?.projectDirOf, undefined, 'a service value without projectDirOf is still a service')
   assert.equal(dataService({ get: () => 'C:/x' }), undefined)
+})
+
+// The project home of one session (m4-gate G1, design §2.4): the row's own
+// `home` first, then the `.llm` of the project the working directory is in,
+// then the data service's project directory.
+
+test('projectHomeFor: the row home wins, then the project of the working directory, then the data service', () => {
+  const root = mkdtempSync(join(tmpdir(), 'proj-home-'))
+  try {
+    mkdirSync(join(root, '.llm'), { recursive: true }) // a directory with a .llm counts as a project outside git
+    const store = serviceStore()
+    store.provide(DATA_SERVICE, { userHome: '/u', projectHome: 'C:/svc/.llm' })
+    const flat = `${root.replace(/[\\/]+$/, '')}/.llm`
+    assert.equal(projectHomeFor(store, 'C:/row/.llm', root), 'C:/row/.llm')
+    assert.equal(projectHomeFor(store, '', root), flat)
+    assert.equal(projectHomeFor(store, undefined, root), flat)
+    assert.equal(projectHomeFor(store, undefined, undefined), 'C:/svc/.llm')
+    assert.equal(projectHomeFor(store, undefined, ''), 'C:/svc/.llm')
+    const outside = mkdtempSync(join(tmpdir(), 'proj-home-none-'))
+    try {
+      assert.equal(projectHomeFor(store, undefined, outside), 'C:/svc/.llm', 'no project to name: the service decides')
+    }
+    finally {
+      rmSync(outside, { recursive: true, force: true })
+    }
+    assert.equal(projectHomeFor({ get: () => undefined }, undefined, root), flat, 'no service at all')
+    assert.equal(projectHomeFor({ get: () => undefined }, undefined, undefined), undefined)
+  }
+  finally {
+    rmSync(root, { recursive: true, force: true })
+  }
 })

@@ -23,7 +23,7 @@ export interface ToolCall {
 
 export type RuleVerdict =
   | { readonly kind: 'allow' }
-  | { readonly kind: 'deny', readonly rule: string, readonly correction: Correction }
+  | { readonly kind: 'deny', readonly rule: string, readonly correction: Correction, readonly ref?: string }
 
 /** DSH native tool name → the name the model sees for it on the route of this call or assembly. */
 export type ToolFace = (native: string) => string
@@ -36,11 +36,14 @@ export interface GuardRule {
   /** The rule as the model is told it: one line of the guard section in every route's system prompt (src/guard/index.ts); the function form names tools through the face. */
   readonly declare: string | ((face: ToolFace) => string)
   /**
-   * Decide for one tool call. `call.name` is already the DSH native the
-   * call runs (src/shared/dialect.ts toNativeTool); tool names in the
-   * correction come from `face`. Throwing counts as allow (fail-open).
+   * Decide for one tool call. `call.name` is the DSH native the call runs
+   * (src/shared/dialect.ts toNativeTool); tool names in the correction come
+   * from `face` (default: the natives' own). Throwing counts as allow
+   * (fail-open).
    */
   detect(call: ToolCall, face: ToolFace): RuleVerdict
+  /** Whether `next` took this rule's right path after `denied` was denied (design §3.3); absent: never counted as right. A rule object carries no `this`. */
+  rightPath?(this: void, next: ToolCall, denied: ToolCall): boolean
 }
 
 /** A rule's declaration line: a string as it is, the function form rendered with `face`. */
@@ -61,13 +64,33 @@ export function normalizePath(path: string): string {
 }
 
 /**
+ * The path a file tool writes (`call.name` is the DSH native the call runs;
+ * the gate maps the model's spelling there): `write` and `edit` take
+ * `file_path`; `str_replace_editor` writes on every command but `view`,
+ * which reads, and takes `path`. Undefined for a call that writes no file.
+ */
+export function fileToolTargetOf(call: ToolCall): string | undefined {
+  if (call.name !== 'write' && call.name !== 'edit' && call.name !== 'str_replace_editor') return undefined
+  const args = typeof call.arguments === 'object' && call.arguments !== null && !Array.isArray(call.arguments) ? call.arguments as Record<string, JsonValue> : undefined
+  if (call.name === 'str_replace_editor') return args?.command !== 'view' && typeof args?.path === 'string' ? args.path : undefined
+  return typeof args?.file_path === 'string' ? args.file_path : undefined
+}
+
+/**
  * Rule 1: writes stay inside the workspace roots. A relative target resolves
  * against `base` (the session's working directory; default the first root),
  * as the rc.3 file tools resolve it (dsh-fs-local `localDisplayPath`:
  * `resolve(cwd, path)` on win32); resolving also folds `..` segments, so a
- * target cannot climb out of a root by spelling.
+ * target cannot climb out of a root by spelling. The roots themselves do not
+ * move with `cd`: the base only decides what a relative spelling names.
+ *
+ * `exception` and `ref` come from the guard row per call (design §5.2): the
+ * caller-appropriate request-channel sentence replaces the default one, and
+ * the pre-generated ref rides on the denial (the gate registers the refusal
+ * only when this rule denied). With them, the follow-up's right path is the
+ * request tool; without them the rule is not requestable and has none.
  */
-export function workspaceContainment(roots: readonly string[], base: string | undefined = roots[0]): GuardRule {
+export function workspaceContainment(roots: readonly string[], base: string | undefined = roots[0], exception?: string, ref?: string): GuardRule {
   const normalizedRoots = roots.map(root => normalizePath(resolve(root)).replace(/\/+$/, ''))
   const inside = (absolute: string): boolean => {
     const p = normalizePath(absolute)
@@ -77,11 +100,8 @@ export function workspaceContainment(roots: readonly string[], base: string | un
     id: 'workspace-containment',
     declare: 'You may only create and modify files inside the user\'s workspace. Writes anywhere else are rejected.',
     detect(call) {
-      if (call.name !== 'write' && call.name !== 'edit') return { kind: 'allow' }
-      const target = typeof call.arguments === 'object' && call.arguments !== null && !Array.isArray(call.arguments)
-        ? (call.arguments as Record<string, JsonValue>).file_path
-        : undefined
-      if (typeof target !== 'string') return { kind: 'allow' }
+      const target = fileToolTargetOf(call)
+      if (target === undefined) return { kind: 'allow' }
       const absolute = base === undefined ? resolve(target) : resolve(base, target)
       if (inside(absolute)) return { kind: 'allow' }
       return {
@@ -91,10 +111,12 @@ export function workspaceContainment(roots: readonly string[], base: string | un
           fact: normalizePath(absolute) === normalizePath(target) ? `You tried to write "${target}".` : `You tried to write "${target}" (resolves to "${absolute}").`,
           violation: 'That path is outside the workspace; writes are confined to the workspace.',
           rightPath: 'Recreate this change under the workspace root (project files in place, agent-private artifacts under .llm/).',
-          exception: `If the task really needs to write outside the workspace, ${ASK_THE_HUMAN}`,
+          exception: exception ?? `If the task really needs to write outside the workspace, ${ASK_THE_HUMAN}`,
         },
+        ...(ref === undefined ? {} : { ref }),
       }
     },
+    ...(ref === undefined ? {} : { rightPath(next: ToolCall): boolean { return next.name === 'request_exception' } }),
   }
 }
 
@@ -135,19 +157,6 @@ export function isFileWrite(call: ToolCall): boolean {
   return call.name === 'write' || call.name === 'edit' || (call.name === 'str_replace_editor' && argsOf(call)?.command !== 'view')
 }
 
-/** The path a file tool writes (`call.name` is the DSH native): write and edit take file_path; str_replace_editor writes on every command but view. */
-export function fileWriteTarget(call: ToolCall): string | undefined {
-  const args = argsOf(call)
-  switch (call.name) {
-    case 'write': case 'edit':
-      return typeof args?.file_path === 'string' ? args.file_path : undefined
-    case 'str_replace_editor':
-      return args?.command !== 'view' && typeof args?.path === 'string' ? args.path : undefined
-    default:
-      return undefined
-  }
-}
-
 /**
  * Rule 2: file modification goes through the dedicated tools. Shell commands
  * that write files are denied even inside the workspace — a successful
@@ -159,7 +168,7 @@ export function fileWriteTarget(call: ToolCall): string | undefined {
 export const fileToolsOnly: GuardRule = {
   id: 'file-tools-only',
   declare: face => `Modify files and code only with the dedicated ${face('write')}/${face('edit')} tools. The shell is for execution (tests, builds, git), not for writing files: a redirection into a file (\`>\`, \`>>\`) or a file-changing command (Set-Content, Add-Content, Clear-Content, Out-File, Tee-Object, New-Item, Copy-Item, Move-Item, Remove-Item, rm, rmdir, mv, cp, dd, touch, truncate, tee, sed -i) is denied.`,
-  detect(call, face) {
+  detect(call, face = NATIVE_FACE) {
     const shell = shellWriteOf(call)
     if (shell === undefined) return { kind: 'allow' }
     const write = shell.write
@@ -170,24 +179,44 @@ export const fileToolsOnly: GuardRule = {
         fact: `You tried to modify files through the shell: "${shell.command}" (${describeWrite(write)}).`,
         violation: 'Shell file writes are not permitted; file changes go through the dedicated tools.',
         rightPath: `Read the target with ${face('read')}, then apply the change with ${face('write')} or ${face('edit')}.`,
-        exception: `If the task really needs shell-side file generation (e.g. a build tool), ${ASK_THE_HUMAN}`,
+        exception: 'Build, test and git commands that write files as a side effect are allowed; only redirections and file-changing commands are denied. If this command writes no file, say so in your reply: the denial is recorded for review.',
       },
     }
   },
+  // The follow-up recorder's right path (m4-gate G2, design §3.3): the next call writes through a file tool.
+  rightPath(next) {
+    return fileToolTargetOf(next) !== undefined
+  },
 }
 
-/** Compose rules: first deny wins; a throwing detector fails open. `face` names tools in corrections (default: native names). */
-export function evaluate(rules: readonly GuardRule[], call: ToolCall, face: ToolFace = NATIVE_FACE): RuleVerdict {
+/** One rule's denial, as the gate keeps it: the request ref arrives with the requestable rules (m4-request-card). */
+export interface RuleDeny {
+  readonly rule: string
+  readonly correction: Correction
+  readonly ref?: string
+}
+
+/** What one call's judgement came to: every rule that denies, in rule order, and the rules whose detector threw (fail-open). */
+export interface Judgement {
+  readonly denies: readonly RuleDeny[]
+  readonly errors: readonly string[]
+}
+
+/** Judge one call against every rule: all denials are kept, not only the first. `face` names tools in corrections (default: native names). */
+export function judge(rules: readonly GuardRule[], call: ToolCall, face: ToolFace = NATIVE_FACE): Judgement {
+  const denies: RuleDeny[] = []
+  const errors: string[] = []
   for (const rule of rules) {
     try {
       const verdict = rule.detect(call, face)
-      if (verdict.kind === 'deny') return verdict
+      if (verdict.kind === 'deny') denies.push({ rule: verdict.rule, correction: verdict.correction, ...(verdict.ref === undefined ? {} : { ref: verdict.ref }) })
     } catch {
-      // fail-open: a broken detector must not break the session
+      errors.push(rule.id)
     }
   }
-  return { kind: 'allow' }
+  return { denies, errors }
 }
+
 /** Render a four-part correction as the model-facing denial text. */
 export function renderCorrection(correction: Correction): string {
   return [correction.fact, `Boundary: ${correction.violation}`, `Right path: ${correction.rightPath}`, `Exception: ${correction.exception}`].join('\n')

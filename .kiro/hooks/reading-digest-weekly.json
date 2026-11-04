@@ -1,0 +1,14 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Weekly reading digest reminder",
+      "trigger": "SessionStart",
+      "description": "At session start, check whether the weekly Anthropic/OpenAI reading digest (graph task reading-digest) is due and offer to run it.",
+      "action": {
+        "type": "agent",
+        "prompt": "Weekly reading check: read the latest comment on docs/graph/nodes/reading-digest.json (npm run -s graph -- show reading-digest). If the last recorded reading date is 7 or more days before today, tell the user the weekly Anthropic/OpenAI agent-engineering digest is due and offer to start it (bundled://investigate with the brief pattern of .agents/tasks/reading-2026-10-29, starting from the last date read). Do not start it without the user's go."
+      }
+    }
+  ]
+}

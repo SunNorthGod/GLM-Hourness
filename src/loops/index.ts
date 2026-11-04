@@ -48,11 +48,12 @@
  * ships disabled (packages/hourness/cordis.patch.yml).
  */
 import { projectOf } from '../data/project-root.ts'
+import { projectHomeFor } from '../data/project-home.ts'
 import type { LockEnvironment } from '../data/lock.ts'
 import { projectKey } from '../graph/main-agent-holder.ts'
-import { rowJournal } from '../memory/audit.ts'
+import { projectJournal } from '../memory/audit.ts'
 import { dataHomes } from '../shared/data-home.ts'
-import type { AgentCommandInvocationLike, AgentLike, CommandDefinitionLike, CommandResultLike, CommandsHost, InjectHost, PreExecuteHost, PreExecuteListener, ProvideHost, ServiceLookup, WorkspaceRegistryService } from '../shared/dsh-min.ts'
+import type { AgentCommandInvocationLike, AgentLike, CommandDefinitionLike, CommandResultLike, CommandsHost, InjectHost, PreExecuteHost, PreExecuteListener, ProvideHost, ServiceLookup, SessionEventHost, SessionEventOn, WorkspaceRegistryService } from '../shared/dsh-min.ts'
 import { provideRowHealth, type HealthState, type RowHealth } from '../shared/health.ts'
 import type { StoreIo } from '../rules/store.ts'
 import { realStoreIo } from '../rules/store.ts'
@@ -140,7 +141,8 @@ export interface LoopsContext extends Partial<ProvideHost>, Partial<InjectHost>,
     (event: 'schedule/changed', listener: () => Promise<void> | void): () => void
     /** `workspace/session-stop` is sent only when a session is archived with `stopActivity` (dsh-workspace:540, 623). */
     (event: 'workspace/session-stop', listener: (payload: { sessionId: string }) => Promise<void> | void): () => void
-  }
+    // The gate's row journal flushes on a disposed session (m4-gate G1) — the SessionEventOn pair.
+  } & SessionEventOn
 }
 
 function message(error: unknown): string {
@@ -463,9 +465,10 @@ export function apply(ctx: LoopsContext, config: LoopsConfig = {}): () => void {
 
   if (typeof ctx.on === 'function') {
     try {
-      const journal = rowJournal(name, () => dataHomes(ctx, config.home))
-      const guardCtx = ctx as PreExecuteHost & ServiceLookup
-      const report = (record: Parameters<typeof journal.violation>[0]): void => { void journal.violation(record) }
+      // The violation journal of the calling session's project (m4-gate G1, design §2.4).
+      const journal = projectJournal(name, cwd => projectHomeFor(ctx, config.home, cwd))
+      const guardCtx = ctx as PreExecuteHost & ServiceLookup & SessionEventHost
+      const report = (record: Parameters<typeof journal.violation>[0], cwd: string | undefined): void => { void journal.violation(record, cwd) }
       disposers.push(installLoopsFileGuard({ ctx: guardCtx, now: io.now, journal: report }))
       disposers.push(installLoopsScheduleGuard({
         ctx: guardCtx,

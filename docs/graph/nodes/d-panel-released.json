@@ -26,6 +26,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "实现线收仓（origin/panel tip b882af0，七批 P0-P7，2026-11-04）：graphLive.awaiting 投影、plain-view 模板（planOf/needsOf/changesSince/moduleStateOf/liveLine/questionView）、/graph-apply 删净面板转只读、首页五段与第二层 Frame、seen 上次看之后状态机（hidden>10 分钟算新到达、可见满 5 秒算离开，差异表记录）、主 Agent 所在行与跳转、Guide 六块与 FirstVisitLine/NoGraphCard、GLM 上手（hero 小按钮三会话收起、三步对话框、设置页重开）。每批门禁全绿 probe 326/326，棘轮 217/19/1 零上升。顺延（impl-plan 表）：条件 9 问法等人重定 1/6/9/17、条件 2 节点标题等人改图数据、条件 8 规则/循环板页等状态板块欠批、8(d) 等 M7、条件 14 分支不在 main、条件 17 真图与全部 L4 待桌面。待人定：四条问法字（建议随下次人看面板一起定）、seen 两常数可调（ui/src/graph/seen.ts）。"
+    },
+    {
+      "at": "2026-11-04T00:44:48.513Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "桌面 L4 走查（2026-11-04，panel 分支 b882af0）：A/B/E/F 过——B 首页五节与 plain-view 对种图实算逐字一致（无 id/路由号/引擎词）、E 上手全链路过（含设计 §6.3〔未核实〕注记得肯定答案：点登录发起授权且会话不离开开场画面）、F 只读零写控件。判定不合并，两阻断：①跨工作区会话切换 GraphPanel 抛 React #310（渲染期经 useCallback 更新他组件；PanelBoundary 兜住、重载恢复，但每次切换弹错误页）——修复批已排（渲染路径快照读移入 effect + 门禁 + 切换场景复验）。②宿主页面 visibilityState 恒 hidden（三方实证进 FACTS §3，2026-10-29 观察同源），seen 状态机与 useMainAgent 的可见门整体失效——设计 §6.8 押在该信号上，换源（拟：挂载/卸载 + window focus/blur，IO 作加强）属语义变更，待人定后一并修 C/D。措辞小项随字句重定批：「等你拍板」与「等你回话」统一。宿主侧观察：plugins/events 端点约 5 分钟一次 ERR_FAILED（非本包，FACTS §3）。"
     }
   ]
 }

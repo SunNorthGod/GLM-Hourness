@@ -38,8 +38,8 @@ import { holderFile, holderHome, projectKey, readHolder, releaseHolder } from '.
 import { graphFocus, graphService } from '../graph/service.ts'
 import { installMainAgentRules, type BypassAlert } from '../guard/main-agent.ts'
 import { insertHournessSection } from '../guard/sections.ts'
-import { rowJournal } from '../memory/audit.ts'
-import { dataHomes } from '../shared/data-home.ts'
+import { projectJournal } from '../memory/audit.ts'
+import { projectHomeFor } from '../data/project-home.ts'
 import { dialectService, dialectWarner, toNativeTool } from '../shared/dialect.ts'
 import { createUserNotice, type AgentLike, type CommandDefinitionLike, type CommandsExecutor, type DesignAgentLike, type DesignAgentsService, type DesignInvocationLike, type InjectHost, type PreExecuteListener, type ProvideHost, type ServiceLookup, type SessionLike, type SessionPersistenceLike, type SessionProjectionsService } from '../shared/dsh-min.ts'
 import { provideRowHealth, sessionIdOf, type HealthState } from '../shared/health.ts'
@@ -55,9 +55,10 @@ import { mainAgentFace, ordinaryFace } from './role-face.ts'
 import { installStageNotice } from './stage-notice.ts'
 import { HIDDEN_FROM_MAIN_AGENT, TALK_PROJECTION, parseTalkState, personSaid, talkApply, talkFold, talkInit, type TalkState } from './talk.ts'
 
-/** Row config: the persona of the main agent (persona.ts). */
+/** Row config: the persona of the main agent (persona.ts) and the project directory (workspace `.llm`) for the violation journal; defaults to the calling session's project. */
 export interface DesignConfig {
   readonly persona?: { readonly name?: string, readonly text?: string }
+  readonly home?: string | undefined
 }
 
 /** Runtime Config schema: the persona of the main agent as settings in the DSH plugin manager. Empty `text` adds nothing. */
@@ -540,7 +541,7 @@ export function apply(ctx: DesignContext, config: DesignConfig = {}): () => void
 
   // The main agent has no tool that writes files, but the runtime executes by name: the rules deny a write, a question card and a git command that cannot be saved first (src/guard/main-agent.ts).
   try {
-    const journal = rowJournal(name, () => dataHomes(ctx, undefined))
+    const journal = projectJournal(name, cwd => projectHomeFor(ctx, config.home, cwd))
     disposers.push(installMainAgentRules(ctx, {
       agents,
       graph: () => graphFocus(ctx),
@@ -554,7 +555,7 @@ export function apply(ctx: DesignContext, config: DesignConfig = {}): () => void
       bypass: onBypass,
       metric: emitMetric,
       hiddenTools: HIDDEN_FROM_MAIN_AGENT,
-      journal: (record) => { void journal.violation(record) },
+      journal: (record, cwd) => { void journal.violation(record, cwd) },
       report: (agent, state, reason) => { health.report(sessionIdOf(agent), state, reason) },
       tell: (agent, notice) => {
         const live = agents()?.get(agent.id)

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -162,6 +163,26 @@ test('a missing directory is named in the report', async () => {
   assert.ok(none.includes('- 用户级目录不可用'))
 })
 
+test('a project root reads the lift record and reconciles it against the journal; without a root nothing is reconciled (m4-gate G3)', async () => {
+  const files = new Map<string, string>([
+    ['C:/ws/.llm/audit/violations.jsonl', `${JSON.stringify({ at: '2026-10-27T03:00:00+08:00', kind: 'lift', rule: 'scratch-only', action: 'lift', via: 'chat', words: '新建脚本那条先别拦了' })}\n`],
+    // The file lifts scratch-only too, plus loops:files-only the journal has never heard of.
+    ['C:/ws/docs/guard/lifts.jsonl', [
+      JSON.stringify({ at: '2026-10-27T03:00:00+08:00', rule: 'scratch-only', action: 'lift', via: 'chat', words: '新建脚本那条先别拦了' }),
+      JSON.stringify({ at: '2026-10-27T04:00:00+08:00', rule: 'loops:files-only', action: 'lift', via: 'board', words: '/rules lift loops:files-only' }),
+    ].join('\n')],
+  ])
+  const now = new Date('2026-10-27T20:00:00+08:00')
+  const base = { fs: fakeFs(files), now, offsetMinutes: 480 }
+  const withRoot = await renderHourness({ projectHome: 'C:/ws/.llm' }, { ...base, root: 'C:/ws' })
+  assert.ok(withRoot.includes('- 撤下的规则：'), withRoot)
+  assert.ok(withRoot.includes('loops:files-only'), withRoot)
+  assert.ok(withRoot.includes('lifts.jsonl 与流水对不上'), 'the journal has no line for the board lift')
+  const plain = await renderHourness({ projectHome: 'C:/ws/.llm' }, base)
+  assert.ok(plain.includes('- 撤下的规则：'), 'the journal alone still names the lifted rules')
+  assert.ok(!plain.includes('与流水对不上'), 'no root, no reconciliation')
+})
+
 type Invocation = { rawInput: string, agent?: { id: string, session: { id: string, header: { id: string, cwd?: string } } } }
 type Registered = { name: string, handler: (invocation: Invocation) => Promise<{ kind: string, text: string }> }
 
@@ -242,10 +263,10 @@ askedFixture('/hourness counts the asks of the graph the graph row points the se
 test('apply registers /hourness and /hourness-status; /hourness reports from the real directories', async () => {
   const { registered, dispose } = register({ home: 'C:/definitely-empty-hourness-home' }, { userHome: 'C:/definitely-empty-hourness-user' })
   assert.deepEqual(registered.map(definition => definition.name), ['hourness', 'hourness-status'])
-  assert.equal(registered[0]!.name, 'hourness')
-  const withArgs = await registered[0]!.handler({ rawInput: 'x' })
+  assert.equal(registered[0].name, 'hourness')
+  const withArgs = await registered[0].handler({ rawInput: 'x' })
   assert.equal(withArgs.kind, 'error')
-  const clean = await registered[0]!.handler({ rawInput: '' })
+  const clean = await registered[0].handler({ rawInput: '' })
   assert.equal(clean.kind, 'success')
   assert.ok(clean.text.includes('# 晨报'))
   assert.ok(!clean.text.includes('## 数据目录'))
@@ -254,11 +275,29 @@ test('apply registers /hourness and /hourness-status; /hourness reports from the
 
 test('without a home or the data service the command still registers and names what is missing', async () => {
   const { registered, dispose } = register({}, undefined)
-  const result = await registered[0]!.handler({ rawInput: '' })
+  const result = await registered[0].handler({ rawInput: '' })
   assert.equal(result.kind, 'success')
   assert.ok(result.text.includes('- 项目目录未配置'))
   assert.ok(result.text.includes('- 用户级目录不可用'))
   dispose()
+})
+
+test('the report reads the journal of the calling session\'s project (m4-gate G1, §2.4)', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'hourness-proj-'))
+  try {
+    mkdirSync(join(root, '.llm', 'audit'), { recursive: true })
+    writeFileSync(join(root, '.llm', 'audit', 'violations.jsonl'), `${JSON.stringify({ at: new Date().toISOString(), rule: 'file-tools-only', tool: 'pwsh', scope: 'other', correction: 'Boundary: …' })}\n`)
+    const { registered, dispose } = register({}, { userHome: join(root, 'user') })
+    const agent = { id: 's1', session: { id: 's1', header: { id: 's1', cwd: root }, deriveMessages: () => [] } }
+    const result = await registered[0].handler({ rawInput: '', agent })
+    assert.equal(result.kind, 'success')
+    assert.ok(result.text.includes('- 违规 file-tools-only（其他路由） × 1'), result.text)
+    assert.ok(!result.text.includes('项目目录未配置'))
+    dispose()
+  }
+  finally {
+    rmSync(root, { recursive: true, force: true })
+  }
 })
 
 // --- the panel of the usage journal: one function for both sections, the peak line, the scope of the records, the gaps and the quota ---
