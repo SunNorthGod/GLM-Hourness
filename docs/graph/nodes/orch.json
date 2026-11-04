@@ -395,6 +395,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "人 2026-11-04：「加到八路试试？」。同时在跑的上限从 5 改为 8，按队列补 3 条：video-restyle-less-ai-look（视频改风格，先出三套样张给人挑）、investigate-compaction-recall（DSH 压缩后查原文的只读调查，报告写 .agents/tasks/compaction-recall/report.md）、loops-machine-runner-channel-events（恢复）。在跑 8 条：merge-loops-runner-l4、m7-seam-and-e7、user-graph-ug3-ug7、m4-checks-and-rules、metrics-s6-s7-land-review 与上述 3 条。排队：panel-2、status-hub、m6-followups、m5-rest、bootstrap。限流若仍频繁暂停，编排方按实际情况降回去并告诉人。"
+    },
+    {
+      "at": "2026-11-04T13:44:44.310Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "八路的结果（2026-11-04 人问「8路都在吗？」时核对）：8 条里 7 条因模型服务限流（5xx/throttling）处于暂停，只有 metrics-reason-codes-and-merge 在跑；此前 5 条时也反复被停。结论：并行上限卡在服务限流，开得越多停得越勤，总进度不升反降。编排方改为同时在跑 4 条：merge-loops-runner-l4（只剩循环板 L4）、user-graph-ug3-ug7（只剩 UG7 评审与收尾）、video-restyle-less-ai-look（出样张）、metrics-reason-codes-and-merge；其余暂停的按序补位：m7-seam-and-e7（E7 第二轮评审）、investigate-compaction-recall、m4-checks-and-rules（B2 起）、loops-machine，之后是 panel-2、status-hub、m6-followups、m5-rest、bootstrap。限流退了再往上加。"
     }
   ]
 }
