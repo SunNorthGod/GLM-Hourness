@@ -2,7 +2,7 @@
 
 验收来源：项目图节点 `m5-1`、`m5-4`、`lessons-3` 的 `acceptance`（`origin/main` `035f8b5` 上只读）。每条对到「规格文件 + 用例名」与探针检查；用例名写到能在文件里唯一找到为止，过长的以「…」截断。探针检查名是 `npm run -s probe` 输出里 `PASS` 之后的前缀。
 
-「状态」一栏：已钉 = 第 2 批之前就有测试；本批补 = 第 2 批加的断言或用例；L4 = 只能在桌面版看（第 4 批）。
+「状态」一栏：已钉 = 第 2 批之前就有测试；本批补 = 第 2 批加的断言或用例；L4 = 只能在桌面版看（第 4 批，在隔离实例上做，记录在 `.agents/tasks/m5/l4-2026-11-05.md`；在人的真实 profile 上的 L4 等经验行出厂启用）。
 
 ## `m5-1` 记忆的存取（验证层 L2、L3）
 
@@ -39,9 +39,9 @@
 
 | 条 | 要点 | 状态 | L2 | L4 |
 | --- | --- | --- | --- | --- |
-| 1 | 经验一半与记忆一半的全部行、两个默认折起的组、确认习惯三行、折起的「你说过不用记的习惯」、每条一行「要改」 | 已钉 | `lessons-panel-model.spec.ts`：「the lessons half: counts, rows newest confirmed first, collapsed groups with restore lines」「an empty lessons journal reads as no lessons yet…」「the memory half: relay with the 原话未核对 tag, one reporting-depth line, facts with source and strength」「without the memory journals the memory half is empty…」「the habit rows: a confirmed habit with its question and 要记的 line, the changed-content line, and the folded declined habits (lessons-3)」 | 第 4 批 |
-| 2 | 无按钮、开关、表单，不调 `commands.execute` | 已钉 | 同文件：「no file under ui/src/lessons/ calls commands.execute or renders a write control」「the static check finds a planted command call or button」 | 第 4 批（数页面区域内的控件） |
-| 3 | 流水追加后 15 秒内更新 | 本批补 | 同文件：「the source folds the three journals, follows an append through the change feed…」「the poll re-reads only what the stat says changed…」；本批新例「an append shows within 15 seconds without a change feed: the source polls every POLL_MS by default, and POLL_MS is at most 15 000 ms (lessons-3 #3)」（假时钟：不传间隔的源在 `POLL_MS - 1` 毫秒时还没读到，到 `POLL_MS` 读到；`POLL_MS` 不超过 15 000） | 第 4 批（量秒数） |
-| 4 | 两行装上之前页脚不显示「经验」 | 已钉 | 同文件：「the lessons board is available when either projection is there, with no home or guide line」；页脚由 `ui/src/graph/Panel.tsx` 的 `BoardLine` 在 `available` 为假时不渲染 | 不关行看不了 |
+| 1 | 经验一半与记忆一半的全部行、两个默认折起的组、确认习惯三行、折起的「你说过不用记的习惯」、每条一行「要改」 | 已钉 | `lessons-panel-model.spec.ts`：「the lessons half: counts, rows newest confirmed first, collapsed groups with restore lines」「an empty lessons journal reads as no lessons yet…」「the memory half: relay with the 原话未核对 tag, one reporting-depth line, facts with source and strength」「without the memory journals the memory half is empty…」「the habit rows: a confirmed habit with its question and 要记的 line, the changed-content line, and the folded declined habits (lessons-3)」 | 第 4 批通过（隔离实例，`l4-2026-11-05.md`） |
+| 2 | 无按钮、开关、表单，不调 `commands.execute` | 已钉 | 同文件：「no file under ui/src/lessons/ calls commands.execute or renders a write control」「the static check finds a planted command call or button」 | 第 4 批通过：页面区域里按钮、输入框、开关与表单都是 0 个 |
+| 3 | 流水追加后 15 秒内更新 | 本批补 | 同文件：「the source folds the three journals, follows an append through the change feed…」「the poll re-reads only what the stat says changed…」；本批新例「an append shows within 15 seconds without a change feed: the source polls every POLL_MS by default, and POLL_MS is at most 15 000 ms (lessons-3 #3)」（假时钟：不传间隔的源在 `POLL_MS - 1` 毫秒时还没读到，到 `POLL_MS` 读到；`POLL_MS` 不超过 15 000） | 第 4 批通过：追加后 0.254 秒出现（走变化推送） |
+| 4 | 两行装上之前页脚不显示「经验」 | 已钉 | 同文件：「the lessons board is available when either projection is there, with no home or guide line」；页脚由 `ui/src/graph/Panel.tsx` 的 `BoardLine` 在 `available` 为假时不渲染 | 第 4 批未看：要关掉两行才能看 |
 
 L3（经验行）：`lessons (GLM)`、`lessons (non-GLM)`、`lessons failure (GLM)`、`lessons failure (non-GLM)` 各检查，属 `lessons-1`、`lessons-2`，随全量探针跑。

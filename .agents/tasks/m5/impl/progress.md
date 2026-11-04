@@ -250,3 +250,8 @@ Worktree `.worktrees/m5`, branch `m5-memory-lessons`. Not tracked by git (`.agen
 ## m5-rest batch 3 (docs): the M5 status follows main
 - ORCHESTRATION.md §8.1 and §8.6 headings say merged into main and the 2026-11-04 desktop batch; §8.5 names the `glm:reporting-depth` section and the `reportingDepth` key; §8.6 points the CLI at DEVELOPMENT.md §14 and the projection at the panel page, and its not-done line keeps only M7 E1b and E8. HANDOFF.md §3 rewrites the `memory` row and adds a `lessons` row; §8 rewrites the M5 row. The probe comment names `glm:reporting-depth`.
 - Gates: see the commit message of this batch.
+- Batch 3 commit `b9a066e`: build 0, preflight 0, npm test 0 (2957 pass, 0 fail, 1 skipped), probe 0 (382/382). Ratchet eslint 73, knip 18, jscpd 1. Merge `d612914` of `origin/main` `bd0c0f1` before it, same numbers.
+## m5-rest batch 4 (docs): lessons page L4 on an isolated desktop instance
+- The person's desktop profile does not enable the lessons row (it ships disabled); the orchestrator chose an isolated instance: own `--user-data-dir` and `DSH_HOME` under `.llm/m5r-l4/`, CDP 9341, a profile linked to this worktree's packages (`b9a066e` build) with `glm-hourness/lessons` enabled in that profile only. Desktop lock held 06:47:18 to 06:55:27.
+- lessons-3 #1, #2, #3 pass on the desktop (#3: the appended lesson showed 0.254 s after the command returned); #4 stays pinned at L2 (seeing it needs both rows off). Record: `.agents/tasks/m5/l4-2026-11-05.md`. L4 on the person's real profile waits until the lessons row ships enabled.
+- Gates: see the commit message of this batch.

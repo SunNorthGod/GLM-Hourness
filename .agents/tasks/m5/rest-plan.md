@@ -130,7 +130,8 @@
       提交：`docs(m5): the M5 status in ORCHESTRATION and HANDOFF follows main; reporting-depth section name`
       验证：§4 全量门禁四道 0；`git diff HEAD~1 --stat` 只列这三个文件。
 
-- [ ] **第 4 批：经验页的桌面验收（`lessons-3` L4）**（docs，记录）
+- [x] **第 4 批：经验页的桌面验收（`lessons-3` L4）**（docs，记录）
+      实际做法（2026-11-05，编排方选方案 A）：人的 desktop profile 没有打开经验行，按前置条件停下问过；改在隔离实例上做（`--user-data-dir` 与 `DSH_HOME` 都在 `.llm/m5r-l4/` 下，CDP 9341，profile 链到本工作树的包，只在这份 profile 里打开经验行），临时项目不变。记录在 `.agents/tasks/m5/l4-2026-11-05.md`。在人的真实 profile 上的 L4 等经验行在出厂包里启用之后再做。
       依赖：第 3 批。只读代码，不改代码。
       前置（任一不满足就停下，用 `send_message` 的 `warning` 问编排方，等回话）：
       - 桌面锁：`New-Item -ItemType Directory C:\Users\29596\Desktop\Project\GLM-Hourness\.llm\desktop-lock`，建得了才用；`owner.txt` 写 `wf_65d23b8072019258 build-loop/code 第 4 批` 与时刻，持有期间每 10 分钟内至少重写一次，用完删掉整个目录。建不了：看 `owner.txt` 的修改时刻，超过 30 分钟没重写才算残留，删掉时在本批记录里写明删了谁的锁；否则每 60 秒重试。
