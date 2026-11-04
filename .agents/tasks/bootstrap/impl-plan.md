@@ -35,7 +35,7 @@
 | 编号 | 内容 | 设计 §1.4 验收 | 设计 §16 | 状态 | 提交 | 门禁 |
 | --- | --- | --- | --- | --- | --- | --- |
 | B0 | 本计划入库 | — | — | 已推 | `4bd7328` | build 0、preflight 0、test 0（2939 通过 / 0 失败 / 1 跳过）、probe 0（376/376）；棘轮 73 / 18 / 1；首轮的两处计时失败见第 9 节 |
-| B1 | 设计稿收尾：D1、D3 的人答写进 §0、§0.1、§18、§20 | — | — | 已推 | 随下一批回填 | build 0、preflight 0、test 0（2955 通过 / 0 失败 / 1 跳过）、probe 0（382/382）；棘轮 73 / 18 / 1 |
+| B1 | 设计稿收尾：D1、D3 的人答写进 §0、§0.1、§18、§20 | — | — | 已推 | `7c851db`；评审 F1 的修复随下一批回填 | build 0、preflight 0、test 0（2955 通过 / 0 失败 / 1 跳过）、probe 0（382/382）；棘轮 73 / 18 / 1；F1 修复的门禁见第 9 节 |
 | B2 | 扫描、判路、危险命令、底线清单草稿、「不许碰」路径 | scan #1–#4；scan #5 的格式部分（`parseFloor` 往返核对在 B7） | B1 | 待做 | | |
 | B3 | `/graph-run start` 把已批准的任务转进行中 | run-start #1 | B2 | 待做 | | |
 | B4 | 接管行、服务（`prepare`、`holds`）、接管流水、共用的确定性部分、三个规范模板、`/hourness-init`、登记文件；只走过渡路 | row #1、#3–#8（#1、#4、#7 按过渡路的写法，见第 4 节 B4） | B3（不含 M3 的两处接缝） | 待做 | | |
@@ -167,6 +167,8 @@
 - B0（`4bd7328`）：`npm test` 首轮 1 败，在 `tests/loops-run.spec.ts`「a run that did not finish hands its events back」（脚本超时 1 秒，事件还没回到组里就读了状态）；单独重跑 6 次 1 败 5 过，整套重跑绿。这一批只改 markdown，不在它的路径上，记作 main 上已有的计时抖动，交循环板线。探针首轮 374/376，红的是 `rules-peak-stop` 的两条（m5-rest 基线那一轮红的也是这两条），重跑 376/376。主检出 `.llm\loops\view.json` 在两次探针期间都变了（别的线也在跑），不当失败。
 - 合入 `origin/main` `7fc5da5`（合并提交 `8ff0b62`，已推）：main 带来 GLM 压缩记录行（`src/data/transcript*`、`src/glm-prompt/compact-row.ts`、行与 locale、探针场景），没有冲突；共用文件（`package.json`、`scripts/packages.mjs`、`cordis.patch.yml`、`src/shared/health.ts`、`src/shared/dsh-min.ts`、`tests/contracts.spec.ts`、`scripts/probe/run-probe.mjs`）照 main。门禁：build 0、preflight 0、test 0（2955 通过 / 0 失败 / 1 跳过）、probe 0（382/382）；棘轮 73 / 18 / 1。`HOURNESS_ROWS` 与契约清单里现在多了 `transcript` 一行，B4 加 `bootstrap` 时按合入后的现状排。
 - B1：门禁结果见第 3 节 B1 一行（提交号随下一批回填）。第一次跑 `npm test` 时与 build 同时起跑，preflight 读到正被清空的 `dist/` 报 40 处缺文件，是操作失误，不是代码问题；build 完成后整套重跑，结果即表中数字。
+- 合入 `origin/main` `5eaddd4`（合并提交 `b6411ef`，已推）：main 只带来 `docs/graph/` 的记录，没有冲突。门禁：build 0、preflight 0、test 0（2955 通过 / 0 失败 / 1 跳过）；探针首轮 1（380/382，红的又是 `rules-peak-stop` 那两条），重跑 0（382/382）；棘轮 73 / 18 / 1。日志 `bs-M2-*`、`bs-M2r2-probe.log`。
+- B0–B1 评审（`.llm/wf/review-B0-B1.md`）F1：`design.md` 版本行仍写「要人定的仍是 D1、D3」，与 §0、§18 相反。改成「D1、D3 人 2026-11-02 已定（§18）」，§20「0.6（人定 D1、D3 的收尾）」一行的改动处补上版本行。单独一个提交，提交号随下一批回填。门禁：build 0、preflight 0；`npm test` 首轮 1，败的又是 `tests/loops-run.spec.ts`「a run that did not finish hands its events back」（B0 首轮同一条），单独重跑 3 次全绿，整套重跑 0（2955 通过 / 0 失败 / 1 跳过）；probe 0（382/382）；棘轮 73 / 18 / 1。日志 `bs-B1F1-*`。
 - 记图：会话钩子要求把状态记进 `docs/graph`；任务书写明不编辑 `docs/graph`、记录归编排方，照任务书，各批状态只写在本计划与报告里。
 
 ## Digest
