@@ -335,6 +335,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "发现（2026-11-04，M7 探针）：违规流水的 fsAppender 对同一文件的追加不串行。guard 行的拒绝是不等待的写，跟进晚一回合写，磁盘慢时跟进先落盘（at 较晚的一行在前），探针 guard scope、guard paths 各红一次。修正在主检出工作区，未提交：src/memory/audit.ts 按文件路径串行追加（模块级，同包各行共用）；tests/memory-audit.spec.ts 加一例；tests/rules-host.ts 删除临时目录加重试（串行后夹具拆除时可能还有在落盘的追加，rules-gate.spec 不加重试 5 次红 4 次）。build、preflight、npm test 退出码 0，棘轮 76/19/1 不变；探针在跑，绿后单独一个提交推 main，四条线合并后带上。四条线的续作运行已派出，探针按 .llm/probe-lock 全机串行。"
+    },
+    {
+      "at": "2026-11-04T07:11:06.657Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "违规流水追加顺序的修正已进 main：bc25baa「fix(audit): appends to one journal file land in the order they were made」。门禁：build 0、preflight 0、npm test 0（棘轮 76/19/1 不变）、探针 347/347 退出码 0。四条线的续作运行计划均已确认：m7-seam-and-e7（收接缝批、E7 规划、实现与评审循环）、metrics-s6-s7-land-review（落第 6+7 步、第 7 步评审循环）、loopsr-batch2-batch3（Batch 2、Batch 3 实现与评审循环）、user-graph-ug3-ug7（UG3 至 UG7 每批实现与评审）。各线合并 bc25baa 后再跑探针；探针按 .llm/probe-lock 全机串行。user-graph 基线步：HEAD 23bbd6b 的干净导出 build/preflight/test 全绿（2730 过、0 败、1 跳过）。"
     }
   ]
 }

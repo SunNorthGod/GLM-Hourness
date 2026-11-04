@@ -155,7 +155,9 @@ export async function withRow(body: (fixture: Fixture) => Promise<void>, options
     await dispose()
   }
   finally {
-    await rm(root, { recursive: true, force: true })
+    // The row journals its records without awaiting them, one file's appends in order (src/memory/audit.ts):
+    // a write still landing while the tree goes is ENOTEMPTY on Windows, so the removal tries again.
+    await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 20 })
   }
 }
 
