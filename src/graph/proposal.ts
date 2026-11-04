@@ -139,8 +139,8 @@ export function pageRefusal(page: string, wanted: ReadonlyArray<{ readonly text:
   return missing === undefined ? undefined : { message: `page does not have ${missing.label}`, hint: `the page must name ${missing.label} word for word: ${missing.text}` }
 }
 
-/** A fence of backticks longer than any run in `text`, at least three. */
-function fenced(text: string): string {
+/** `text` in a fence of backticks longer than any run in it, at least three: shown as drawn. */
+export function fenced(text: string): string {
   const longest = Math.max(0, ...(text.match(/`+/g) ?? []).map(run => run.length))
   const fence = '`'.repeat(Math.max(3, longest + 1))
   return `${fence}\n${text}\n${fence}`

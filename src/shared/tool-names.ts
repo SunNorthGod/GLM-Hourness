@@ -62,6 +62,8 @@ export interface ShownProposal {
   readonly number: 1 | 2 | 3
   readonly text: string
   readonly releaseSet?: ReadonlyArray<{ readonly id: string, readonly rev: string }>
+  /** kind confirm and release of a goal with a user graph (user graph design 0.4.1 §5.1–§5.3): the page the harness appended to text, what the human agrees to (stable) and the state as of the showing. */
+  readonly userPage?: { readonly stable: string, readonly state: string }
 }
 
 /**
@@ -86,6 +88,8 @@ export function shownProposalOf(isError: boolean, text: string): ShownProposal |
   if (result.kind !== 'question' && result.kind !== 'confirm' && result.kind !== 'release') return undefined
   if (result.number !== 1 && result.number !== 2 && result.number !== 3) return undefined
   if (result.form !== undefined && !(['recommend', 'choose', 'want', 'look'] as readonly unknown[]).includes(result.form)) return undefined
+  const page = result.userPage as Record<string, unknown> | null | undefined
+  if (page !== undefined && (typeof page !== 'object' || page === null || typeof page.stable !== 'string' || typeof page.state !== 'string')) return undefined
   return result as unknown as ShownProposal
 }
 

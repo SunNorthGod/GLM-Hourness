@@ -550,6 +550,20 @@ export function userGraphOf(graph: LoadedGraph, goal: GraphNode): UserGraph {
   return readUserGraph(graph, goal).ug
 }
 
+/**
+ * The requirement card's item 用户怎么用 (§5.1): a live role under the goal
+ * with a live flow under it and a live step under that; or, while the goal
+ * has no live role, a line 用户流程：无，<reason> in its body. A live role
+ * makes that line void, so a role without a flow with a step is missing
+ * however the body reads.
+ */
+export function userFlowsAnswered(graph: LoadedGraph, goal: GraphNode): boolean {
+  const index = buildIndex(graph)
+  const roles = liveChildren(index, goal, 'role')
+  if (roles.length === 0) return noneReason(goal, '用户流程') !== undefined
+  return roles.some(role => liveChildren(index, role, 'flow').some(flow => liveChildren(index, flow, 'step').length > 0))
+}
+
 /** The live steps one feature or task serves by its own serves edges (§3.6 stepsServedBy): what a brief names as the work's steps. */
 export function stepsServedBy(graph: LoadedGraph, work: GraphNode): readonly GraphNode[] {
   return (work.edges ?? []).filter(edge => edge.type === 'serves').flatMap((edge) => {
@@ -604,19 +618,24 @@ function ownerOf(graph: LoadedGraph, server: GraphNode): GraphNode {
   return ancestorsOf(graph, server).find(node => node.type === 'feature') ?? server
 }
 
+/**
+ * The titles of the owners of some servers, each once, by the owner's
+ * creation time, then id. Not in the order the servers are read (their file
+ * names): a task added under an owner, its id sorting first, would reorder
+ * an unchanged ownership and void an agreement to it (§1.4 item 29).
+ */
+function ownerTitles(graph: LoadedGraph, servers: readonly GraphNode[]): string[] {
+  const owners = new Map(servers.map(server => ownerOf(graph, server)).map(owner => [owner.id, owner]))
+  return [...owners.values()].sort(byCreation).map(owner => owner.title)
+}
+
 /** The big-loop release page's first section (§5.2): the owners of each flow, and the modules that declared they serve no step. */
 function ownersPage(ug: UserGraph): string {
   const lines = ['每条流程由谁负责']
   for (const { role, flows } of ug.roles) {
     for (const { flow, steps } of flows) {
-      const owners = new Map<string, string>()
-      for (const view of steps) {
-        for (const server of view.servers) {
-          const owner = ownerOf(ug.graph, server)
-          owners.set(owner.id, owner.title)
-        }
-      }
-      lines.push(` ${role.title} › ${flow.title}：${owners.size === 0 ? '还没人负责' : [...owners.values()].join('、')}`)
+      const owners = ownerTitles(ug.graph, steps.flatMap(view => view.servers))
+      lines.push(` ${role.title} › ${flow.title}：${owners.length === 0 ? '还没人负责' : owners.join('、')}`)
     }
   }
   const declared = modulesAndCandidates(ug.graph, ug.goal).flatMap((module) => {
@@ -647,14 +666,8 @@ function modulePage(ug: UserGraph, module: GraphNode): UserPage {
   const states = new Set(words).size === 1
     ? `这 ${served.length} 步现在都是「${words[0]}」`
     : `这 ${served.length} 步现在：${served.map((view, position) => `「${view.step.title}」${words[position]}`).join('、')}`
-  const others = new Map<string, string>()
-  for (const view of served) {
-    for (const server of view.servers.filter(entry => !inModule(entry))) {
-      const owner = ownerOf(ug.graph, server)
-      others.set(owner.id, owner.title)
-    }
-  }
-  const elsewhere = others.size === 0 ? '这些步骤没有别的模块在做' : `这些步骤还有别的模块也在做：${[...others.values()].join('、')}`
+  const others = ownerTitles(ug.graph, served.flatMap(view => view.servers.filter(entry => !inModule(entry))))
+  const elsewhere = others.length === 0 ? '这些步骤没有别的模块在做' : `这些步骤还有别的模块也在做：${others.join('、')}`
   const orphans = ug.gaps.filter(gap => gap.key === 'work:orphan' && gap.nodes.some(id => {
     const node = ug.graph.nodes.get(id)
     return node !== undefined && node.type === 'task' && inModule(node)
@@ -704,14 +717,38 @@ export function renderUserGraph(ug: UserGraph, level: 'confirm' | 'serves' | 'wa
 }
 
 /**
- * The release gate's user items (§5.2), for a present goal: shape, what
- * each step looks like done, who serves each step, the walk of each flow,
- * the size of the appended page; and, for a goal split into modules, that
- * each module serves a step or says why not.
+ * The user page a release appends (§5.2, §5.3): for the goal, who owns each
+ * flow and how each flow is walked (stable) and the timeout caps (state);
+ * with `module`, the steps that module serves and, as of the showing, their
+ * state. Both parts are empty for a goal without a user graph.
  */
-export function userReleaseItems(graph: LoadedGraph, goal: GraphNode): readonly GateItem[] {
+export function releaseUserPage(ug: UserGraph, module?: GraphNode): UserPage {
+  if (module !== undefined) return renderUserGraph(ug, 'serves', module)
+  const walks = renderUserGraph(ug, 'walks')
+  return { stable: [renderUserGraph(ug, 'serves').stable, walks.stable].filter(text => text.length > 0).join('\n'), state: walks.state }
+}
+
+/** A module serves a live step by its own serves edges or by those of the work below it, or its body says why it serves none (§5.2 flows:modules, §5.3 module:serves). */
+function moduleServes(index: Index, module: GraphNode): boolean {
+  return servesLive(index, module) || workBelow(index, module).some(node => servesLive(index, node)) || noneReason(module, '服务') !== undefined
+}
+
+const MODULE_SERVES_HINT = 'connect the module or its tasks to a step with serves, or add a line "服务：无，<reason>" to'
+
+/**
+ * The release gate's user items (§5.2, §5.3), for a present goal. Without
+ * `module`, the release of the goal: shape, what each step looks like done,
+ * who serves each step, the walk of each flow, the size of the appended page;
+ * and, for a goal split into modules, that each module serves a step or says
+ * why not. With `module`, the release of that module: it serves a step or
+ * says why not (module:serves).
+ */
+export function userReleaseItems(graph: LoadedGraph, goal: GraphNode, module?: GraphNode): readonly GateItem[] {
   const { ug, index } = readUserGraph(graph, goal)
   if (!ug.present) return []
+  if (module !== undefined) {
+    return [{ key: 'module:serves', label: '这个模块服务至少一步，或写明为什么不服务', ok: moduleServes(index, module), hint: `${MODULE_SERVES_HINT} the module body` }]
+  }
   const first = (keys: readonly GapKey[]): Gap | undefined => ug.gaps.find(gap => keys.includes(gap.key))
   const shape = first(SHAPE_KEYS)
   const expect = first(['step:no-expect'])
@@ -719,9 +756,7 @@ export function userReleaseItems(graph: LoadedGraph, goal: GraphNode): readonly 
   const walk = first(['flow:no-walk'])
   const walks = renderUserGraph(ug, 'walks')
   const size = [renderUserGraph(ug, 'serves').stable, walks.stable, walks.state].reduce((sum, text) => sum + [...text].length, 0)
-  const modules = isSplit(graph, goal)
-    ? [modulesAndCandidates(graph, goal).filter(module => !servesLive(index, module) && !workBelow(index, module).some(node => servesLive(index, node)) && noneReason(module, '服务') === undefined)]
-    : []
+  const modules = isSplit(graph, goal) ? [modulesAndCandidates(graph, goal).filter(entry => !moduleServes(index, entry))] : []
   return [
     {
       key: 'flows:shape',
@@ -745,7 +780,7 @@ export function userReleaseItems(graph: LoadedGraph, goal: GraphNode): readonly 
       key: 'flows:modules',
       label: '每个模块至少服务一步，或写明为什么不服务',
       ok: unserving.length === 0,
-      hint: `connect the module or its tasks to a step with serves, or add a line "服务：无，<reason>" to its body${unserving.length === 0 ? '' : ` (${unserving.map(module => module.id).join(', ')})`}`,
+      hint: `${MODULE_SERVES_HINT} its body${unserving.length === 0 ? '' : ` (${unserving.map(entry => entry.id).join(', ')})`}`,
     })),
     {
       key: 'flows:walk',

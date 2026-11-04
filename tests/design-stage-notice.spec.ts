@@ -31,7 +31,7 @@ test('interview: the method line, the count of the card, the missing items and t
   const reminder = stageReminder(graph, 'goal-1')
   assert.deepEqual([reminder.goal, reminder.stage], ['goal-1', 'interview'])
   assert.ok(lines(reminder).includes(INTERVIEW_METHOD))
-  assert.ok(reminder.text.includes('Requirement card: 7 of 8 filled.'))
+  assert.ok(reminder.text.includes('Requirement card: 8 of 9 filled.'))
   assert.ok(reminder.text.includes('做成以后，你的日子会有什么不一样'), reminder.text)
   assert.match(nextLine(reminder) ?? '', /^Next: ask 「做成以后，你的日子会有什么不一样」, then interview step 2 /)
   assert.equal(lines(reminder).filter(line => line.startsWith('Next: ')).length, 1)
@@ -78,7 +78,7 @@ test('interview: only a superseding goal missing means no Next line, only the la
 test('interview: a complete card asks the human to confirm the requirement', () => {
   const reminder = stageReminder(interview().graph, 'goal-1')
   assert.equal(nextLine(reminder), 'Next: put the requirement to the human with propose_to_human (kind confirm).')
-  assert.ok(reminder.text.includes('Requirement card: 8 of 8 filled.'))
+  assert.ok(reminder.text.includes('Requirement card: 9 of 9 filled.'))
   const wish = stageReminder(interview({ stage: 'wish' }).graph, 'goal-1')
   assert.equal(wish.stage, 'wish')
 })

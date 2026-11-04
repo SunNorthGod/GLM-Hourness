@@ -118,13 +118,17 @@ export async function frameworkReleased(fixture: Pick<MainAgentFixture, 'engine'
   await send({ op: 'edit', id: 'goal-1', set: { stage: 'release' }, reason: '放行框架' })
 }
 
-/** The eight items of the requirement card, by the key of the gate item. */
-export type CardItem = 'need' | 'problem' | 'audience' | 'constraints' | 'acceptance' | 'non-goals' | 'risks' | 'choice'
+/** The nine items of the requirement card, by the key of the gate item. */
+export type CardItem = 'need' | 'problem' | 'audience' | 'flows' | 'constraints' | 'acceptance' | 'non-goals' | 'risks' | 'choice'
+
+/** The goal's answer to 用户怎么用 when it draws no user graph (user graph design 0.4.1 §5.1). */
+export const NO_END_USER = '练习用的目标，不画用户图'
 
 /**
- * The requirement card of goal-1 filled in as the interview would, all eight
- * items or all but those named in `leave` (the goal's body labels, its
- * acceptance and non-goals, a risk, and a question the human decided).
+ * The requirement card of goal-1 filled in as the interview would, all nine
+ * items or all but those named in `leave` (the goal's body labels, the line
+ * that it has no end user, its acceptance and non-goals, a risk, and a
+ * question the human decided).
  */
 export async function fillRequirementCard(fixture: Pick<MainAgentFixture, 'engine'>, leave: readonly CardItem[] = []): Promise<void> {
   const { engine } = fixture
@@ -134,7 +138,7 @@ export async function fillRequirementCard(fixture: Pick<MainAgentFixture, 'engin
     return done.id
   }
   const revOf = async (id: string): Promise<string> => (await engine.load()).revisions.get(id)!
-  const lines: Array<[CardItem, string]> = [['need', '需求：记一下每天花了多少钱'], ['problem', '问题：月底不知道钱花在哪'], ['audience', '给谁：我自己'], ['constraints', '约束：数据只存在本机']]
+  const lines: Array<[CardItem, string]> = [['need', '需求：记一下每天花了多少钱'], ['problem', '问题：月底不知道钱花在哪'], ['audience', '给谁：我自己'], ['flows', `用户流程：无，${NO_END_USER}`], ['constraints', '约束：数据只存在本机']]
   await apply('human', {
     op: 'edit',
     id: 'goal-1',

@@ -14,9 +14,10 @@ import {
   releaseSet,
   requirementCard,
   stageStatus,
+  type GateItem,
   type StageStatus,
 } from '../src/graph/stage.ts'
-import { decide, design, failing, GOAL_BODY, graphOf, interview, node, question, splitDesign } from './graph-memory.ts'
+import { decide, design, failing, GOAL_BODY, graphOf, interview, node, question, splitDesign, userNodes } from './graph-memory.ts'
 import { stageEdit } from './execute-helpers.ts'
 
 test('labeledSections: full-width and ASCII colons, multi-line sections, the first of a repeated label, text before the first label', () => {
@@ -70,10 +71,10 @@ test('goalOf: the goal itself, the goal above a deep task, nothing for a missing
   assert.equal(goalOf(graph, 'task-a'), undefined, 'a decomposition cycle is cut')
 })
 
-test('requirementCard: 8 items, each one missing on its own', () => {
+test('requirementCard: 9 items, each one missing on its own', () => {
   const complete = interview()
   assert.deepEqual(requirementCard(complete.graph, complete.goal).map(item => [item.key, item.ok]), [
-    ['need', true], ['problem', true], ['audience', true], ['constraints', true], ['acceptance', true], ['non-goals', true], ['risks', true], ['choice', true],
+    ['need', true], ['problem', true], ['audience', true], ['flows', true], ['constraints', true], ['acceptance', true], ['non-goals', true], ['risks', true], ['choice', true],
   ])
   for (const item of requirementCard(complete.graph, complete.goal)) {
     assert.ok(item.label.length > 0 && item.hint.length > 0, item.key)
@@ -83,6 +84,7 @@ test('requirementCard: 8 items, each one missing on its own', () => {
     ['need', { body: without('需求') }],
     ['problem', { body: without('问题') }],
     ['audience', { body: without('给谁') }],
+    ['flows', { body: without('用户流程') }],
     ['constraints', { body: without('约束') }],
     ['acceptance', { acceptance: [] }],
     ['non-goals', { nonGoals: [] }],
@@ -101,6 +103,69 @@ test('requirementCard: 8 items, each one missing on its own', () => {
   assert.deepEqual(risks('dropped'), ['risks'])
   assert.deepEqual(risks('superseded'), ['risks'])
   assert.deepEqual(risks('proposed'), [])
+})
+
+/** The node `id` with serves edges to `steps` added. */
+const serving = (id: string, steps: readonly string[]) => (entry: GraphNode): GraphNode =>
+  entry.id === id ? { ...entry, edges: [...(entry.edges ?? []), ...steps.map(to => ({ type: 'serves' as const, to }))] } : entry
+
+test('requirementCard: 用户怎么用 is a live role with a live flow and step, or, while the goal has no live role, a line 用户流程：无 with its reason (user graph design 0.4.1 §5.1, §1.4 item 27)', () => {
+  const body = GOAL_BODY.split('\n').filter(line => !line.startsWith('用户流程')).join('\n')
+  const flows = (line: string | undefined, others: readonly GraphNode[] = []): boolean => {
+    const { graph, goal } = interview({ body: line === undefined ? body : `${body}\n${line}` }, others)
+    return requirementCard(graph, goal).find(item => item.key === 'flows')!.ok
+  }
+  const drawn = userNodes()
+  const without = (...ids: readonly string[]): GraphNode[] => drawn.filter(entry => !ids.includes(entry.id))
+  const dropped = (...ids: readonly string[]): GraphNode[] => drawn.map(entry => ids.includes(entry.id) ? { ...entry, status: 'dropped' as const } : entry)
+  const NONE = '用户流程：无，内部重构，用户看不到变化'
+  assert.equal(flows(undefined), false, 'neither a user graph nor the line')
+  assert.equal(flows(NONE), true)
+  assert.equal(flows('用户流程：无'), false, 'no reason')
+  assert.equal(flows('用户流程：无，'), false, 'an empty reason')
+  assert.equal(flows('用户流程：有'), false, 'not 无')
+  assert.equal(flows(undefined, drawn), true, 'drawn')
+  assert.equal(flows(NONE, drawn), true, 'both: the drawing holds')
+  assert.equal(flows(NONE, without('flow-1', 'step-1', 'step-2')), false, 'a live role makes the line void')
+  assert.equal(flows(undefined, without('step-1', 'step-2')), false, 'a flow without a step')
+  assert.equal(flows(undefined, dropped('step-1')), true, 'one live step is enough')
+  assert.equal(flows(undefined, dropped('flow-1')), false, 'the steps of a dropped flow are not live')
+  assert.equal(flows(NONE, dropped('role-1')), true, 'a dropped role is no role: the line counts again')
+  assert.equal(flows(undefined, dropped('role-1')), false)
+  const item = requirementCard(interview({ body }).graph, interview({ body }).goal).find(entry => entry.key === 'flows')!
+  assert.equal(item.label, '用户怎么用（谁来用、一步步做什么）')
+  assert.match(item.hint, /^interview step 2b \(who uses it and what they do first; offer your guess\): graph_propose the roles under the goal, .* a line "用户流程：无，<reason>" in the goal body$/)
+})
+
+test('the release gates carry the user graph\'s items when the goal has one: five on a goal not split, six on the framework, module:serves on a module (user graph design 0.4.1 §5.2, §5.3, §1.4 items 29, 30)', () => {
+  const userItems = (items: readonly GateItem[]): Array<[string, boolean]> => items.filter(item => item.key.startsWith('flows:') || item.key === 'module:serves').map(item => [item.key, item.ok])
+  // Not split: the five items come last; a step nobody builds blocks the release.
+  const single = design({}, userNodes())
+  const served = graphOf([...single.graph.nodes.values()].map(serving('task-1', ['step-1', 'step-2'])))
+  const gate = releaseGate(served, served.nodes.get('goal-1')!)
+  assert.deepEqual(userItems(gate), [['flows:shape', true], ['flows:expect', true], ['flows:served', true], ['flows:walk', true], ['flows:page', true]])
+  assert.deepEqual(gate.slice(-5).map(item => item.key), ['flows:shape', 'flows:expect', 'flows:served', 'flows:walk', 'flows:page'])
+  assert.deepEqual(failing(releaseGate(single.graph, single.goal)), ['flows:served'])
+  assert.equal(stageStatus(single.graph, single.goal).exitReady, false, 'the design cannot leave its stage while a step has nobody')
+  // The framework of a split goal: six, flows:modules among them; a module that serves no step blocks it.
+  const split = splitDesign(userNodes())
+  const both = graphOf([...split.graph.nodes.values()].map(serving('task-a', ['step-1'])).map(serving('task-b', ['step-2'])))
+  assert.deepEqual(userItems(releaseGate(both, both.nodes.get('goal-1')!)), [['flows:shape', true], ['flows:expect', true], ['flows:served', true], ['flows:modules', true], ['flows:walk', true], ['flows:page', true]])
+  const idle = graphOf([...split.graph.nodes.values()].map(serving('task-a', ['step-1', 'step-2'])))
+  assert.deepEqual(failing(releaseGate(idle, idle.nodes.get('goal-1')!)), ['flows:modules'])
+  // A module: module:serves last; its task serves a step, or its body says why it serves none.
+  const released = (nodes: readonly GraphNode[]): ReturnType<typeof graphOf> => graphOf(nodes.map((entry): GraphNode => {
+    if (entry.id === 'goal-1') return { ...entry, stage: 'release' }
+    if (entry.id === 'module-a' || entry.id === 'module-b') return { ...entry, status: 'approved', stage: 'design' }
+    return (['role', 'flow', 'step', 'norm'] as const).some(type => entry.type === type) ? { ...entry, status: 'approved' } : entry
+  }))
+  const moduleGate = (graph: ReturnType<typeof graphOf>): readonly GateItem[] => moduleReleaseGate(graph, graph.nodes.get('goal-1')!, graph.nodes.get('module-b')!)
+  assert.deepEqual(moduleGate(released([...both.nodes.values()])).at(-1), { key: 'module:serves', label: '这个模块服务至少一步，或写明为什么不服务', ok: true, hint: 'connect the module or its tasks to a step with serves, or add a line "服务：无，<reason>" to the module body' })
+  assert.deepEqual(failing(moduleGate(released([...idle.nodes.values()]))), ['module:serves'])
+  const declared = released([...idle.nodes.values()].map(entry => entry.id === 'module-b' ? { ...entry, body: '服务：无，月底汇总只读别的模块记下的账' } : entry))
+  assert.deepEqual(failing(moduleGate(declared)), [])
+  // A goal without a user graph has none of them (the gates of the tests above are unchanged).
+  assert.deepEqual(userItems([...releaseGate(design().graph, design().goal), ...releaseGate(splitDesign().graph, splitDesign().goal)]), [])
 })
 
 test('requirementCard: the choice counts only a question whose last decide was the human\'s, in the panel or relayed', () => {
@@ -224,7 +289,7 @@ test('the hints that send the model to the human name the chat tools, not a ques
 test('stageStatus in wish and interview: the requirement card plus the confirmation gate on a superseding goal', () => {
   const complete = interview()
   const status = stageStatus(complete.graph, complete.goal)
-  assert.deepEqual([status.stage, status.exitReady, status.items.length], ['interview', true, 8])
+  assert.deepEqual([status.stage, status.exitReady, status.items.length], ['interview', true, 9])
   const early = interview({ stage: 'wish', acceptance: [] })
   const wish = stageStatus(early.graph, early.goal)
   assert.deepEqual([wish.stage, wish.exitReady, failing(wish.items)], ['wish', false, ['acceptance']])
