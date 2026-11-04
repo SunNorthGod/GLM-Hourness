@@ -5,12 +5,15 @@
  */
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { writeFileSync } from 'node:fs'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { openEngine } from '../src/graph/engine.ts'
+import { claimHolder, holderFileOf, type HolderRecord } from '../src/graph/main-agent-holder.ts'
 import { MODULE_READERS, releaseOf, type ModuleReaders } from '../src/graph/execute-stage.ts'
 import type { LoadedGraph } from '../src/graph/parse.ts'
 import type { Actor, GraphNode, HistoryEntry, Stage, Status } from '../src/graph/schema.ts'
 import type { BriefContext, GateResult } from '../src/execute/brief.ts'
+import type { ServiceLookup, UserNotice } from '../src/shared/dsh-min.ts'
 
 export type Fields = Omit<Partial<GraphNode>, 'history'> & Pick<GraphNode, 'id' | 'type'>
 
@@ -19,6 +22,34 @@ export function gitSeed(root: string): void {
   const inRoot = (args: readonly string[]): boolean => spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.invalid', '-c', 'commit.gpgsign=false', ...args], { cwd: root, encoding: 'utf8' }).status === 0
   writeFileSync(join(root, 'README.md'), 'probe workspace\n')
   if (!inRoot(['init', '-q', '-b', 'main']) || !inRoot(['add', 'README.md']) || !inRoot(['commit', '-q', '-m', 'seed'])) throw new Error('git seed failed')
+}
+
+/** Seed a released goal over one task, the way the execution specs start; `task` carries the task's own fields. */
+export async function seedGoalTask(graphDir: string, task: Record<string, unknown>): Promise<void> {
+  const engine = openEngine(graphDir)
+  for (const seed of [
+    { type: 'goal', id: 'goal-1', title: 'Static blog', stage: 'release', acceptance: ['the blog builds'] },
+    { type: 'task', id: 'task-1', parent: 'goal-1', kind: 'implement', ...task },
+  ]) {
+    const seeded = await engine.apply('human', { op: 'propose', reason: 'test seed', node: seed })
+    if (!seeded.ok) throw new Error(`seeding ${String(seed.id)} failed: ${JSON.stringify(seeded.error)}`)
+  }
+}
+
+/** The holder record and the agent registry the notices go through; sent notices are captured. `extra` adds services by name. */
+export function noticeHost(project: { readonly root: string, readonly graphDir: string }, extra: Record<string, unknown> = {}): { readonly lookup: ServiceLookup, readonly sent: UserNotice[] } {
+  const home = join(project.root, 'dsh-home')
+  mkdirSync(home, { recursive: true })
+  const record: HolderRecord = { version: 1, sessionId: 'main-1', graphDir: project.graphDir, since: '2026-11-04T08:00:00.000Z', commandId: 'cmd-1' }
+  claimHolder(holderFileOf(home, project.graphDir), record)
+  const sent: UserNotice[] = []
+  const deliver = (notice: UserNotice): void => { sent.push(notice) }
+  const mainAgent = { id: 'main-1', status: 'idle', followup: deliver, steer: deliver }
+  const agents = { get: (id: string): unknown => id === 'main-1' ? mainAgent : undefined }
+  const lookup: ServiceLookup = {
+    get: (name: string) => name === 'agents' ? agents : name === 'glmHournessData' ? { userHome: home } : extra[name],
+  }
+  return { lookup, sent }
 }
 
 /** A history time: second `n` after 2026-10-30T08:00:00Z. */

@@ -1,14 +1,18 @@
 /**
  * glm-hourness/execute row entry (M7 design 0.6 §2.1, §3.1, §2.3.2, §6.7):
  * the execution line of the orchestration package. It registers
- * `dispatch_task` for the main agent, the worker's `submit_plan` and
+ * `dispatch_task` for the main agent — write tasks and task reviews
+ * (§3.7.1) — the worker's `submit_plan` and
  * `ask_main` and the main agent's `answer_worker` (src/execute/requests.ts),
- * installs the dispatched chain's
+ * runs the handback processing of every settled activation
+ * (src/execute/handback.ts: the summary comment, the effective review depth
+ * and the review task, the reviewer's rounds, convergence and the stop
+ * draft, the module design review's record), installs the dispatched chain's
  * execution-boundary rules (src/guard/execute-rules.ts), filters every
  * agent's tool face by its role (src/execute/faces.ts), provides the
  * `glmHournessExecute` service whose `isWorker` tells M3's guard rules who a
  * dispatch carries, and reports the row health of the sessions it acts in.
- * The gate provider, the drive and the loop-board seam arrive with E6–E8 on
+ * The gate provider, the drive and the loop-board seam arrive with E7–E8 on
  * this same entry.
  *
  * The row keeps the dispatch register (src/execute/attempts.ts) and the
@@ -34,9 +38,12 @@ import { provideRowHealth, sessionIdOf, type HealthState } from '../shared/healt
 import { disposerList } from '../shared/row-support.ts'
 import Schema from '../shared/schemastery.ts'
 import { installExecuteRules } from '../guard/execute-rules.ts'
-import { registeredAttempt } from './attempts.ts'
-import { createGraphCache, dispatchTool, type GraphCache } from './dispatch.ts'
+import { registeredAttempt, recordCommunication, reviewTargetOf } from './attempts.ts'
+import { createGraphCache, dispatchTool, realCommandRunner, type DispatchDeps, type GraphCache } from './dispatch.ts'
 import { answerWorkerTool, askMainTool, submitPlanTool, type RequestsDeps } from './requests.ts'
+import { sha256Hex } from './digest.ts'
+import { startHandback, stoppedInMemory, type HandbackDeps } from './handback.ts'
+import { createGit } from './git.ts'
 import { faceOfRole, roleOfAgent, type FaceDeps } from './faces.ts'
 
 /** Row config: the parallel write slots. */
@@ -136,7 +143,7 @@ export function apply(ctx: ExecuteContext, config: ExecuteConfig = {}): () => vo
     rulesNote = `服务 ${EXECUTE_SERVICE} 没提供上：${error instanceof Error ? error.message : String(error)}`
   }
 
-  const dispatch = dispatchTool({
+  const dispatchDeps: DispatchDeps = {
     lookup: ctx,
     graphDir: graphDirOf,
     cache,
@@ -145,7 +152,36 @@ export function apply(ctx: ExecuteContext, config: ExecuteConfig = {}): () => vo
     slots,
     execDir,
     report,
-  })
+    stoppedInMemory,
+    reviewTarget: (graph, reviewTask) => reviewTargetOf(graph, reviewTask, sha256Hex),
+    onHandback: (attempt, settlement) => startHandback(handbackDeps, attempt, settlement),
+  }
+  const dispatch = dispatchTool(dispatchDeps)
+
+  // The handback processing (§3.6): the settled activations of this row's dispatches. A voided review round re-dispatches with the same model and reason, attached to the same main agent session (§3.7.1).
+  const handbackDeps: HandbackDeps = {
+    lookup: ctx,
+    cache,
+    execDir,
+    report,
+    git: createGit(),
+    runCommand: realCommandRunner,
+    redispatch: async (reviewTaskId, attempt) => {
+      const agents = agentsService()
+      const parent = attempt.parentSession === undefined || agents === undefined ? undefined : agents.get(attempt.parentSession)
+      if (parent === undefined || parent.session === undefined) return false
+      try {
+        await dispatchTool(dispatchDeps).execute(
+          { id: reviewTaskId, model: attempt.model, why: attempt.why, ...(attempt.depth === undefined ? {} : { depth: attempt.depth }) },
+          { callId: `redispatch-${attempt.childId}`, signal: new AbortController().signal, agent: parent as unknown as AgentLike, deferContext: () => {}, concludeTurn: () => {} },
+        )
+        return true
+      }
+      catch {
+        return false
+      }
+    },
+  }
 
   // The plan and communication tools (§3.3, §3.4): the worker's two and the main agent's one.
   const requestDeps: RequestsDeps = {
@@ -223,6 +259,7 @@ export function apply(ctx: ExecuteContext, config: ExecuteConfig = {}): () => vo
           return session.header.cwd
         }
       },
+      recordIncoming: childId => recordCommunication(childId, 'incoming'),
     }))
   }
   catch (error) {

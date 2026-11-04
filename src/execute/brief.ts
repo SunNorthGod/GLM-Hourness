@@ -548,3 +548,63 @@ export function renderDesignReviewBrief(input: DesignReviewInput): Brief {
   const digest = digest12(text)
   return { text: `${text}\n\nbrief ${digest} · graph ${input.graph.revision}`, digest, truncated: [] }
 }
+
+// ---- the task review's brief (§3.7.1) ----
+
+export interface ReviewBriefInput {
+  readonly graph: LoadedGraph
+  /** The review task. */
+  readonly task: GraphNode
+  /** The reviewed task, the parent of the review task. */
+  readonly reviewed: GraphNode
+  readonly childId: string
+  readonly depth: 'full' | 'light'
+  /** The done handback under review, as the task's comment carries it. */
+  readonly handback?: { readonly head?: string, readonly base?: string, readonly status: string }
+  /** The previous round's blocking findings, one line each (§3.7.3). */
+  readonly findings?: readonly string[]
+  /** The commands of `norm-merge-gate`, for context. */
+  readonly gateCommands: readonly string[]
+}
+
+/**
+ * The text a task reviewer starts from (§3.7.1): the reviewed commit and
+ * base, the handback's facts, the previous round's findings, and the depth's
+ * own instruction. The reviewer writes nothing but the verdict.
+ */
+export function renderReviewBrief(input: ReviewBriefInput): Brief {
+  const { graph, reviewed } = input
+  const chain = [...ancestorsOf(graph, reviewed)].reverse().map(node => `"${node.title}"`)
+  const base = input.handback?.base ?? 'unknown'
+  const head = input.handback?.head ?? 'unknown'
+  const depthLine = input.depth === 'full'
+    ? 'Check every acceptance item; "checked" must list every acceptance:<i> with the evidence you looked at.'
+    : 'Read the change; report only findings that meet one of the three blocking criteria, the rest as non-blocking.'
+  const lines: string[] = [
+    `# Task ${input.task.id}: ${input.task.title}`,
+    `You are a reviewer dispatched by the main agent for exactly one review (dispatch id "${input.childId}").`,
+    '',
+    '## Goal',
+    `Review the work of task ${reviewed.id} "${reviewed.title}" at the declared depth: ${input.depth === 'full' ? 'full — against every acceptance item' : 'light — a scan of the change'}. Why the task exists: ${[...chain, 'this task'].join(' > ')}.`,
+    '',
+    '## Context',
+    `- Reviewed: commit ${head}, made from base ${base}. Read the change with git diff ${base}..${head} in the worktree.`,
+    `- The handback status was ${input.handback?.status ?? 'unknown'}; the task body carries its summary comment and the plan section.`,
+    ...(input.findings === undefined || input.findings.length === 0 ? [] : ['- Findings of the previous round (these come first):', ...input.findings.map(finding => `  - ${finding}`)]),
+    `- Project checks for context: ${input.gateCommands.length === 0 ? 'none recorded' : input.gateCommands.join(' ; ')}.`,
+    '',
+    '## Constraints',
+    `- You write nothing: the worktree is read-only for you. Long notes go to ".hourness/${input.childId}.md"; only the verdict comes back.`,
+    '- Questions that need the main agent: ask_main (state the assumption you will use if no answer comes).',
+    '- Blocking criteria (docs/DEVELOPMENT.md §1.1): acceptance:<i> names the unmet acceptance item of the reviewed task; irreversible-loss; failure-plan. A finding that names none of the three does not block.',
+    `- How far this round goes: ${depthLine}`,
+    '',
+    '## Done when',
+    '1. verdict APPROVED only when nothing blocks; CHANGES_REQUESTED with the blocking findings otherwise (the verdict follows the findings).',
+    '2. commit names the reviewed commit; every finding carries id, blocking, criterion, where, what and fix; checked lists what you looked at.',
+    '- Hand back by calling structured_output once with the hourness-review-v1 verdict.',
+  ]
+  const text = lines.join('\n')
+  const digest = digest12(text)
+  return { text: `${text}\n\nbrief ${digest} · graph ${input.graph.revision}`, digest, truncated: [] }
+}

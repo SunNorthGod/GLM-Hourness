@@ -16,7 +16,6 @@ import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { openEngine } from '../src/graph/engine.ts'
-import { claimHolder, holderFileOf, type HolderRecord } from '../src/graph/main-agent-holder.ts'
 import { parsePins, pinsOf, renderPins } from '../src/graph/pins.ts'
 import type { AgentLike, ServiceLookup, ToolExecutionContext, UserNotice } from '../src/shared/dsh-min.ts'
 import { createGraphCache, dispatchTool, type DispatchDeps } from '../src/execute/dispatch.ts'
@@ -24,7 +23,7 @@ import { answerWorkerTool, askMainTool, oldestPending, submitPlanTool, type Requ
 import { forgetAttempt, registerAttempt, registeredAttempt } from '../src/execute/attempts.ts'
 import { parseApprovalComment, readPlanSection, renderApprovalComment } from '../src/execute/plan.ts'
 import { sha256Hex } from '../src/execute/digest.ts'
-import { gitSeed } from './execute-helpers.ts'
+import { gitSeed, noticeHost, seedGoalTask } from './execute-helpers.ts'
 
 // ---- fixtures ----
 
@@ -49,36 +48,18 @@ async function presetProject(): Promise<Project> {
   const root = mkdtempSync(join(tmpdir(), 'glm-hourness-requests-'))
   mkdirSync(join(root, 'docs', 'graph'), { recursive: true })
   const graphDir = join(root, 'docs', 'graph')
-  const engine = openEngine(graphDir)
-  for (const seed of [
-    { type: 'goal', id: 'goal-1', title: 'Static blog', stage: 'release', acceptance: ['the blog builds'] },
-    { type: 'task', id: 'task-1', title: 'Add the feed', parent: 'goal-1', kind: 'implement', writeScope: ['site/'], acceptance: ['the feed builds', 'every item has a title'], worktree: true },
-  ]) {
-    const seeded = await engine.apply('human', { op: 'propose', reason: 'test seed', node: seed })
-    if (!seeded.ok) throw new Error(`seeding ${String(seed.id)} failed: ${JSON.stringify(seeded.error)}`)
-  }
+  await seedGoalTask(graphDir, { title: 'Add the feed', writeScope: ['site/'], acceptance: ['the feed builds', 'every item has a title'], worktree: true })
   gitSeed(root)
   return { root, graphDir }
 }
 
-/** The holder record, the agent registry a notice goes through, and the subagents stub a dispatch needs; sent notices are captured. */
-function noticeHost(project: Project): { readonly lookup: ServiceLookup, readonly sent: UserNotice[] } {
-  const home = join(project.root, 'dsh-home')
-  mkdirSync(home, { recursive: true })
-  const record: HolderRecord = { version: 1, sessionId: 'main-1', graphDir: project.graphDir, since: '2026-11-04T08:00:00.000Z', commandId: 'cmd-1' }
-  claimHolder(holderFileOf(home, project.graphDir), record)
-  const sent: UserNotice[] = []
-  const deliver = (notice: UserNotice): void => { sent.push(notice) }
-  const mainAgent = { id: 'main-1', status: 'idle', followup: deliver, steer: deliver }
-  const agents = { get: (id: string): unknown => id === 'main-1' ? mainAgent : undefined }
+/** The holder and registry host, plus the subagents stub a dispatch needs. */
+function noticeHostWithSubagents(project: Project): { readonly lookup: ServiceLookup, readonly sent: UserNotice[] } {
   const subagents = {
     startActivation: (spec: Record<string, unknown>) => ({ childId: spec.childId, result: Promise.resolve({ output: [], stopReason: 'completed' }), dispose: async () => {} }),
     resolveMaxDepth: () => 1,
   }
-  const lookup: ServiceLookup = {
-    get: (name: string) => name === 'agents' ? agents : name === 'glmHournessData' ? { userHome: home } : name === 'subagents' ? subagents : undefined,
-  }
-  return { lookup, sent }
+  return noticeHost(project, { subagents })
 }
 
 type Exec = (args: unknown, exec: ToolExecutionContext) => Promise<unknown>
@@ -102,7 +83,7 @@ const settled = (ms = 80): Promise<void> => new Promise(done => { setTimeout(don
 /** A project, a registered worker dispatch, the three tools over them. */
 async function rig(over: Partial<RequestsDeps> = {}, childId = 'hz-task-1-a1-aaaaaa'): Promise<Rig> {
   const project = await presetProject()
-  const { lookup, sent } = noticeHost(project)
+  const { lookup, sent } = noticeHostWithSubagents(project)
   const cache = createGraphCache(() => {})
   const deps: RequestsDeps = {
     lookup,

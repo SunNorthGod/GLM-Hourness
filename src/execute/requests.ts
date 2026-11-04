@@ -25,9 +25,9 @@ import type { AgentLike, ServiceLookup, ToolDefinitionLike, ToolExecutionContext
 import { createUserNotice } from '../shared/dsh-min.ts'
 import { deliver } from '../rules/wake.ts'
 import type { Attempt } from './attempts.ts'
-import { registeredAttempt, updateAttempt } from './attempts.ts'
+import { recordCommunication, registeredAttempt, updateAttempt } from './attempts.ts'
 import type { GraphCache } from './dispatch.ts'
-import { writeWithRetry } from './dispatch.ts'
+import { writeWithRetry } from './retry.ts'
 import { sha256Hex } from './digest.ts'
 import { checkPlan, planDigest, planPathsOfSection, readPlanSection, approvePlanSection, renderPlanSection, withPlanSection, renderApprovalComment, type Plan } from './plan.ts'
 
@@ -260,6 +260,7 @@ export function submitPlanTool(deps: RequestsDeps): ToolDefinitionLike {
       const plan: Plan = checked.plan
       const version = (readPlanSection(node.body)?.version ?? 0) + 1
       const digest = planDigest(plan)
+      recordCommunication(attempt.childId, 'plan')
       const id = requestId(random)
       const request: ExecuteRequest = {
         id,
@@ -336,6 +337,7 @@ export function askMainTool(deps: RequestsDeps): ToolDefinitionLike {
       const assumption = oneLine(parsed.assumption)
       if (question === undefined) refuse('invalid', 'question must be one non-empty line of at most 2000 characters', 'shorten it and send the call again', 'question')
       if (assumption === undefined) refuse('invalid', 'assumption must be one non-empty line of at most 2000 characters: what you will do when nobody answers', 'state it and send the call again', 'assumption')
+      recordCommunication(attempt.childId, 'asked')
       const options = Array.isArray(parsed.options) && parsed.options.every(entry => typeof entry === 'string' && entry.trim() !== '') ? parsed.options as string[] : undefined
       const request: ExecuteRequest = {
         id: requestId(random),
@@ -356,7 +358,11 @@ export function askMainTool(deps: RequestsDeps): ToolDefinitionLike {
         agent.session?.id,
       )
       const outcome = await awaitAnswer<QuestionOutcome>(request, undefined, deps.askWaitMs ?? ASK_WAIT_MS, { status: 'timeout', hint: ASK_TIMEOUT_HINT }, exec.signal)
-      if (outcome.status === 'answered') return { status: 'answered', text: outcome.text }
+      if (outcome.status === 'answered') {
+        recordCommunication(attempt.childId, 'answered')
+        return { status: 'answered', text: outcome.text }
+      }
+      recordCommunication(attempt.childId, 'timeout')
       return { status: 'timeout', hint: outcome.hint }
     },
   }

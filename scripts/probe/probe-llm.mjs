@@ -48,6 +48,7 @@
  */
 import { randomUUID } from 'node:crypto'
 import { appendFileSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
 import { GLM_MODELS, glmInputModalities } from '../../packages/glm/dist/glm-llm/models.js'
 import { asAttachments, glmImageRequestTarget, prepareRequestImages } from '../../packages/glm/dist/glm-llm/images.js'
 import { encodeRequest, splitSystemPrompt } from '../../packages/glm/dist/glm-llm/anthropic.js'
@@ -80,20 +81,40 @@ function checkedScript(script) {
  *   agent's script can answer a request whose id only exists at runtime;
  * - `{worker:<task id>}` is the child id of the dispatch of that task that
  *   is not the calling session itself, so a script can address a worker by
- *   its runtime id (send_message).
+ *   its runtime id (send_message);
+ * - `{review:<task id>}` is the id of that task's open review task and
+ *   `{question:<task id>}` the id of the oldest open question under it
+ *   (M7 E6), so the main agent's script can dispatch the review and answer
+ *   the person's question by ids that only exist at runtime;
+ * - `{head:<task id>}` is the 12-hex head of that task's latest done
+ *   handback, what a reviewer names as the commit it reviews;
+ * - `{git-head}` is the 12-hex HEAD of the calling session's repository, so
+ *   a worker can name its own commit in its handback.
  * A value that is not there leaves the text as it was.
  */
 async function withRevisions(ctx, request, call) {
   const original = JSON.stringify(call.arguments ?? {})
-  if (!/\{(rev|plan-request|ask-request|worker):/.test(original)) return call
+  if (!/\{(rev|plan-request|ask-request|worker|review|question|head|git-head):?/.test(original)) return call
   const agent = ctx.get('agents')?.get(request.sessionId)
   const cwd = agent?.session?.header?.cwd
   const dir = ctx.get('glmHournessGraph')?.dirFor?.(cwd)
   if (dir === undefined) return call
   let text = original
-  if (text.includes('{rev:')) {
+  if (text.includes('{rev:') || text.includes('{review:') || text.includes('{question:') || text.includes('{head:')) {
     const graph = await loadGraph(dir)
     text = text.replace(/\{rev:([A-Za-z0-9._-]+)\}/g, (whole, id) => graph.revisions.get(id) ?? whole)
+    const open = id => graph.nodes.get(id)?.status !== 'dropped' && graph.nodes.get(id)?.status !== 'superseded'
+    text = text.replace(/\{review:([A-Za-z0-9._-]+)\}/g, (whole, task) => [...graph.nodes.values()].find(node => node.parent === task && node.kind === 'review' && open(node.id))?.id ?? whole)
+    text = text.replace(/\{question:([A-Za-z0-9._-]+)\}/g, (whole, task) => [...graph.nodes.values()].filter(node => node.parent === task && node.type === 'question' && open(node.id)).sort((a, b) => String(a.history[0]?.at ?? '').localeCompare(String(b.history[0]?.at ?? '')))[0]?.id ?? whole)
+    text = text.replace(/\{head:([A-Za-z0-9._-]+)\}/g, (whole, task) => [...(graph.nodes.get(task)?.history ?? [])].reverse().map(entry => /（最新 ([0-9a-f]{12})）/.exec(String(entry.text ?? ''))?.[1]).find(sha => sha !== undefined) ?? whole)
+  }
+  if (text.includes('{git-head}')) {
+    // The dispatched worker commits in its worktree, which is not the session cwd: the register holds the worktree the dispatch created.
+    const repo = registeredDispatches().find(entry => entry.childId === request.sessionId)?.worktree ?? cwd
+    if (repo !== undefined) {
+      const head = spawnSync('git', ['rev-parse', '--short=12', 'HEAD'], { cwd: repo, encoding: 'utf8' })
+      if (head.status === 0) text = text.replace(/\{git-head\}/g, head.stdout.trim())
+    }
   }
   text = text.replace(/\{plan-request:([A-Za-z0-9._-]+)\}/g, (whole, task) => oldestPending('plan', dir, task)?.id ?? whole)
   text = text.replace(/\{ask-request:([A-Za-z0-9._-]+)\}/g, (whole, task) => oldestPending('question', dir, task)?.id ?? whole)
@@ -324,13 +345,18 @@ class ProbeAdapter {
     }
   }
 
-  /** Send `text` to the request's own session as a message of the user, the way the second session's `say` does; the queued followup wakes the agent and it follows its script's next step. Not awaited: the agent is mid-turn here. */
+  /** Send `text` to the request's own session as a message of the user, the way the second session's `say` does: `steer` when the agent is mid-turn (the message lands in the running turn, which stays open), `followup` when it is idle (the queued message wakes it). Not awaited. */
   async tellOwn(request, text) {
     const agents = this.ctx.get('agents')
     const own = agents?.get(request.sessionId)
     if (own === undefined) return { kind: 'no-agent' }
+    const message = { id: randomUUID(), role: 'user', content: [{ type: 'text', text }], source: { kind: 'user' } }
     try {
-      own.followup({ id: randomUUID(), role: 'user', content: [{ type: 'text', text }], source: { kind: 'user' } })
+      if (typeof own.steer === 'function') {
+        own.steer(message)
+        return { kind: 'steered' }
+      }
+      own.followup(message)
       return { kind: 'sent' }
     }
     catch (error) {

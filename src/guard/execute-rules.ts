@@ -373,6 +373,8 @@ export interface ExecuteRulesDeps {
   readonly record: (task: string, childId: string, line: CommandRecordLine) => Promise<boolean>
   /** The caller's effective working directory (rc.3 `workingDirectory.get`): a subagent's session header keeps its parent's, and the write targets and the git commands resolve against this one. */
   readonly effectiveDir: (session: SessionLike) => string | undefined
+  /** Count one allowed `send_message` delivery to a live dispatch; the handback's communication counts read it (§3.4.4). */
+  readonly recordIncoming?: (childId: string) => void
   /** The machine the snapshot runs on; tests replace the parts they control. */
   readonly snapshots?: SnapshotEnvironment
 }
@@ -391,6 +393,12 @@ export function installExecuteRules(ctx: PreExecuteHost, deps: ExecuteRulesDeps)
     // worker-message-live-only (§3.2.5): the main agent's messages to the dispatched chain.
     const message = messageVerdict(call, { register: deps.register, live: deps.live })
     if (message !== undefined) return refuse('worker-message-live-only', message, payload, agent.id, session.id, deps)
+    // An allowed delivery to a live dispatch is a communication fact the handback's counts read (§3.4.4).
+    const args = call.arguments
+    const target = typeof args === 'object' && args !== null && !Array.isArray(args) && typeof (args as Record<string, unknown>).agent_id === 'string' ? (args as Record<string, unknown>).agent_id as string : undefined
+    if (call.name === 'send_message' && target !== undefined && deps.register(target) !== undefined && deps.live(target)) {
+      deps.recordIncoming?.(target)
+    }
 
     const attempt = deps.register(agent.id)
     const delegated = attempt === undefined && session.header.origin === 'subagent'

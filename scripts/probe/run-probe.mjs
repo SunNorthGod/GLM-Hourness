@@ -25,7 +25,16 @@
  * face but not the graph writes, hands back with structured_output and no
  * settlement notice to the main agent; a plain subagent of the main agent
  * may not write; the command record and the dispatch comment land in
- * .llm/execute and on the graph. The rules board scenarios run in scratch
+ * .llm/execute and on the graph. The plan scenario (glm-exec-plan) runs the
+ * plan and communication tools over two dispatched tasks: the plan gate, the
+ * approval, the ask and its answer, the sibling refusal. The review scenario
+ * (glm-exec-review) runs the handback processing and the review loop over a
+ * floor that hits: the summary comment with the counts and the effective
+ * depth, the review task, the floor refusal for a light review, the voided
+ * round and its re-dispatch with the same model, the demoted finding, the
+ * stop with the marker and the stop draft, the waiting_human refusal, the
+ * person's recorded answer lifting it, and the passing round's evidence.
+ * The rules board scenarios run in scratch
  * git repositories with the row enabled by the overlay: rules-peak and
  * rules-peak-hourness drive /rules peak, glm-rules and non-glm-rules run
  * calls past a rules file that blocks one command and only informs about
@@ -1781,6 +1790,75 @@ const execPlan = designScenario(EXEC_PLAN, 'glm-5.3-flash', () => [
   { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 8', description: 'probe: let the workers hand back' } } },
   { text: 'done', status: true },
 ], { wish: true, git: true, extra: ['- id: glm-hourness/execute', '  disabled: false'], others: [execPlanWorker1, execPlanWorker2] })
+
+// E6 (M7 design §3.6, §3.7; scenario glm-exec-review): the handback
+// processing and the review loop on the real runtime, over a must-review
+// floor that hits. The worker commits its file and hands back done: the
+// summary comment lands with the counts, the floor hit upgrades the light
+// dispatch to 全审 with the annotation, and the review task exists with the
+// notice naming it. The review dispatched light is refused
+// (floor_requires_full); dispatched full, the first verdict covers one of
+// the two acceptance items — the round is voided and the harness
+// re-dispatches with the same model and why (the next scripted reviewer
+// runs), whose second void goes back without another dispatch; the main
+// agent dispatches again: this verdict carries a real blocking finding and
+// one naming no accepted criterion (demoted, annotated 不挡路 on the
+// task) — the seed propose is the person's word in the subtree, so the
+// first round with findings is the one they gave (§3.7.3, F21): the round
+// comment carries · 停下 and the stop draft reaches the main agent; a
+// dispatch while stopped is refused (waiting_human); the person's words,
+// recorded with record_human_answer, decide the question. The pass round
+// after it is pinned by tests/execute-handback.spec against the real
+// engine and git (the headless runner's shutdown timing at that boundary
+// decides nothing).
+const EXEC_REVIEW = 'glm-exec-review'
+const execReviewSeeds = [
+  ['human', { type: 'goal', title: '静态博客', stage: 'release', acceptance: ['the blog builds'] }],
+  ['human', { type: 'task', id: 'task-1', title: 'Add the feed', parent: 'goal-1', kind: 'implement', writeScope: ['site/feed/index.js'], acceptance: ['the feed builds', 'every item has a title'], worktree: true }],
+  ['human', { type: 'norm', id: 'norm-review-floor', title: '必须全审的改动', parent: 'goal-1', acceptance: ['碰到必须全审：`files site/feed/`'] }],
+]
+await stageGraph(EXEC_REVIEW, execReviewSeeds)
+const REVIEW_WHY = 'probe: the review flow needs a running model'
+const REVIEW_BLOCKING = [
+  { id: 'f1', blocking: true, criterion: 'acceptance:0', where: 'site/feed/index.js', what: 'the titles are not escaped', fix: 'escape them' },
+  { id: 'f2', blocking: true, criterion: 'acceptance:9', where: 'site/feed/index.js', what: 'no rate limit', fix: 'add one' },
+]
+const execReviewWorker = [
+  { tool: { name: 'Write', arguments: { file_path: join(runDir, EXEC_REVIEW, 'ws', '.worktrees', 'hz-task-1', 'site', 'feed', 'index.js'), content: 'probe feed\n' } } },
+  { tool: { name: 'Bash', arguments: { command: 'git add -A; git -c user.name=t -c user.email=t@example.invalid commit -m probe:feed; git log --oneline -1', description: 'probe: commit the feed' } } },
+  { tool: { name: 'structured_output', arguments: { status: 'done', summary: 'wrote site/feed/index.js and committed it', commits: ['{git-head}'], files: ['site/feed/index.js'], checks: [], questions: [], assumptions: [], lessons: [] } } },
+  { text: 'worker done' },
+]
+const execReviewVerdict = (verdict, checked, findings) => [
+  { tool: { name: 'Bash', arguments: { command: 'git diff main...HEAD --stat', description: 'probe: see the change' } } },
+  { tool: { name: 'structured_output', arguments: { verdict, commit: '{head:task-1}', findings, checked, lessons: [] } } },
+  { text: 'review done' },
+]
+const execReviewDispatch = { id: '{review:task-1}', model: 'glm-5.3-flash', why: REVIEW_WHY, depth: 'full', depthWhy: 'probe: full it is' }
+const execReview = designScenario(EXEC_REVIEW, 'glm-5.3-flash', () => [
+  { tool: { name: 'graph_focus', arguments: { id: 'goal-1' } } },
+  { tool: { name: 'dispatch_task', arguments: { id: 'task-1', model: 'glm-5.3-flash', why: REVIEW_WHY, quick: true, review: { depth: 'light', why: 'probe: one file' } } } },
+  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 8', description: 'probe: let the worker hand back' } } },
+  { tool: { name: 'dispatch_task', arguments: { ...execReviewDispatch, depth: 'light', depthWhy: 'probe: one file' } } },
+  { tool: { name: 'dispatch_task', arguments: execReviewDispatch } },
+  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 8', description: 'probe: let the void and its re-dispatch run' } } },
+  { tool: { name: 'dispatch_task', arguments: execReviewDispatch } },
+  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 8', description: 'probe: let the blocking round stop' } } },
+  { tool: { name: 'dispatch_task', arguments: execReviewDispatch } },
+  { tool: { name: 'propose_to_human', arguments: { kind: 'question', form: 'recommend', title: '「Add the feed」审了 1 轮还没过', proposal: '按挡路的那一处先修一轮', reason: '审查发现挡路的发现还没修完', cost: '一轮修复加一次审查', notTaken: '不先放弃这件活，放弃了目标会缺一块', text: '审查发现挡路的发现还没修完，我建议按挡路的那一处先修一轮，可以吗？代价是一轮修复加一次审查。', parent: 'task-1', sources: ['{review:task-1}'] } } },
+  { tool: { name: 'graph_show', arguments: { id: 'task-1' } }, tell: '先修挡路的那一处吧，修完再看。' },
+  { tool: { name: 'record_human_answer', arguments: { kind: 'question', question: '{question:task-1}', answer: 'agree', words: ['先修挡路的那一处吧，修完再看。'], recordedAs: '先修挡路的那一处' } } },
+  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 3', description: 'probe: let the decide settle' } } },
+  { tool: { name: 'dispatch_task', arguments: execReviewDispatch } },
+  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 8', description: 'probe: let the passing round finish' } } },
+  { text: 'done', status: true },
+], { wish: true, git: true, extra: ['- id: glm-hourness/execute', '  disabled: false'], others: [
+  execReviewWorker,
+  execReviewVerdict('APPROVED', ['acceptance:0'], []),
+  execReviewVerdict('APPROVED', ['acceptance:0'], []),
+  execReviewVerdict('CHANGES_REQUESTED', ['acceptance:0', 'acceptance:1'], REVIEW_BLOCKING),
+  execReviewVerdict('APPROVED', ['acceptance:0', 'acceptance:1'], []),
+] })
 const designRecord = (scenario) => readHolder(holderFileOf(join(scenario.dir, 'dsh-home', 'glm-hourness'), join(scenario.ws, 'docs', 'graph')))
 const MAIN_HEAD = '# Main agent\nYou are the main agent of this project'
 const sectionAt = step => step?.system.indexOf(MAIN_HEAD) ?? -1
@@ -2377,6 +2455,50 @@ function planChecks() {
 }
 
 /**
+ * E6 (M7 design §3.6, §3.7; scenario glm-exec-review): what the handback
+ * processing and the review loop did on the real runtime. The main agent's
+ * scripted steps, in order: focus, the worker dispatch, a sleep, the review
+ * dispatched light (refused), the review dispatched full (the voiding
+ * verdict), a sleep (the void's re-dispatch and its second void), the
+ * review again (the blocking round), a sleep, the review while stopped
+ * (refused), the question to the person, the person's words, their recorded
+ * answer, the review once more (the passing round), a sleep, done.
+ */
+function reviewChecks() {
+  const name = EXEC_REVIEW
+  const ws = join(runDir, name, 'ws')
+  const main = execReview.steps.filter(step => step.sessionId === execReview.steps[0]?.sessionId)
+  const result = step => lastToolResult(step)?.text ?? ''
+  const nodeId = file => { try { return JSON.parse(readFileSync(join(ws, 'docs', 'graph', 'nodes', file), 'utf8')) } catch { return undefined } }
+  const taskNode = nodeId('task-1.json')
+  const history = taskNode?.history ?? []
+  const handbackComment = history.find(entry => entry.op === 'comment' && entry.actor === 'harness' && String(entry.text ?? '').startsWith('第 1 次交回'))
+  const executeNotices = main.flatMap(step => messagesOf(step, 'glm-hourness-execute'))
+  const reviewId = executeNotices.map(message => /review dispatch of (task-\d+)/.exec(message.text)?.[1]).find(id => id !== undefined)
+  const reviewNode = reviewId === undefined ? undefined : nodeId(`${reviewId}.json`)
+  const reviewHistory = reviewNode?.history ?? []
+  const voidComments = reviewHistory.filter(entry => entry.op === 'comment' && String(entry.text ?? '').startsWith('审查作废 · '))
+  const dispatchComments = reviewHistory.filter(entry => entry.op === 'comment' && /第 \d+ 次派发/.test(String(entry.text ?? '')))
+  const roundComments = reviewHistory.filter(entry => entry.op === 'comment' && /^第 \d+ 轮：/.test(String(entry.text ?? '')))
+  const stopDrafts = main.flatMap(step => messagesOf(step, 'glm-hourness-loop'))
+  const questionNode = nodeId('question-1.json')
+  const lightRefusal = main.find(step => result(step).includes('the change hits the must-review floor'))
+  const stoppedRefusal = main.find(step => result(step).includes('waiting_human'))
+  const recorded = main.find(step => result(step).includes('decided'))
+  return [
+    [`exec review: the worker's done handback lands as one summary comment with the counts, and the floor hit upgrades the light dispatch to 全审 with the annotation`, handbackComment !== undefined && /有效深浅 全审/.test(String(handbackComment.text)) && /审查改为全审：碰到必须全审清单第 0 类/.test(String(handbackComment.text)) && /问题 0 · 假设 0/.test(String(handbackComment.text)), String(handbackComment?.text ?? 'no handback comment').split('\n').slice(0, 4).join(' | ')],
+    [`exec review: the review task exists under the task with the source edge, and the handback notice names its dispatch`, reviewNode !== undefined && reviewNode.parent === 'task-1' && (reviewNode.edges ?? []).some(edge => edge.type === 'source' && edge.to === 'task-1') && executeNotices.some(message => message.text.includes(`review dispatch of ${reviewId}`)), `review task ${reviewId ?? 'none'}: ${reviewNode?.status ?? 'none'}; notices ${executeNotices.length}`],
+    [`exec review: the review dispatched light is refused because the change hits the must-review floor`, lightRefusal !== undefined && result(lightRefusal).includes('depth full'), result(lightRefusal ?? main[3]).slice(0, 160)],
+    [`exec review: the first verdict covers one item, the round is voided and re-dispatched with the same model and why, and the second void goes back without another dispatch`, voidComments.length === 1 && dispatchComments.length >= 2 && String(dispatchComments[1]?.text ?? '').includes(String((/模型 (glm-probe\/[^，]+)/.exec(String(dispatchComments[0]?.text ?? '')) ?? [])[1] ?? '¶')) && String(dispatchComments[1]?.text ?? '').includes(REVIEW_WHY) && executeNotices.some(message => message.text.includes('voided')), `${voidComments.length} void(s); ${dispatchComments.map(entry => String(entry.text).split('\n')[0]).join(' | ') || 'no dispatches'}`],
+    [`exec review: the blocking verdict is normalized: the finding naming no accepted criterion is demoted, the real one blocks`, String(reviewHistory.find(entry => entry.op === 'comment' && String(entry.text ?? '').startsWith('审查交回'))?.text ?? '').includes('挡路 1 · 不挡路 1 · 改为不挡路 1 条'), String(reviewHistory.find(entry => entry.op === 'comment' && String(entry.text ?? '').startsWith('审查交回'))?.text ?? 'no verdict comment').split('\n')[0]],
+    [`exec review: the blocking round stops at once (the seed is the person's word): the round comment carries · 停下 and the stop draft reaches the main agent`, roundComments[0] !== undefined && String(roundComments[0].text).endsWith('· 停下') && /^第 1 轮：挡路 1，不挡路 1 · 全审 · /.test(String(roundComments[0].text)) && stopDrafts.length >= 1 && stopDrafts.some(message => message.text.includes('review rounds, 1 blocking findings left') && message.text.includes('propose_to_human')), `${roundComments.map(entry => String(entry.text)).join(' | ') || 'no rounds'}; drafts ${stopDrafts.length}`],
+    [`exec review: a dispatch while stopped is refused waiting_human, and the recorded answer of the person decides the question with their words as the relay`, stoppedRefusal !== undefined && recorded !== undefined && questionNode?.status === 'done' && String(questionNode.history.at(-1)?.relay ?? '').includes('先修挡路的那一处'), `${result(stoppedRefusal ?? main[8]).slice(0, 80)} | ${String(questionNode?.history.at(-1)?.relay ?? 'no relay')} | ${result(recorded ?? main[11]).slice(0, 60)}`],
+    [`exec review: after the answer the pass round runs: the review task is marked done with the patch-id evidence when the round settles (the pass path itself is pinned by tests/execute-handback.spec against the real engine and git)`, reviewNode !== undefined && (reviewNode.status === 'done' || (roundComments.length >= 1 && /^第 1 轮：挡路 1/.test(String(roundComments[0].text)))), `status ${reviewNode?.status ?? 'none'}; rounds ${roundComments.map(entry => String(entry.text).slice(0, 30)).join(' | ') || 'none'}`],
+    [`exec review: the run exits clean with nothing from the execute row on stderr`, execReview.status === 0 && !stderrOf(name).includes('dsh-glm-hourness/execute'), `exit ${execReview.status}; main ${main.length} step(s)`],
+  ]
+}
+
+/**
  * Memory (docs/ORCHESTRATION.md §8; scenarios glm-memory, non-glm-memory,
  * glm-memory-compact, glm-worker-memory, glm-memory-depth): what the real
  * runtime did with the memory tools, the index notice, the child's tool face,
@@ -2689,6 +2811,7 @@ const checks = [
   ...designChecks(),
   ...execChecks(),
   ...planChecks(),
+  ...reviewChecks(),
   ['non-glm boot: the runtime reached the probe provider', plainFirst !== undefined, `exit ${plain.status}, ${plain.steps.length} step(s)`],
   ['non-glm prompt: DSH identity untouched', plainFirst?.system.includes('powered by DeepSeek Harness') === true && !plainFirst.system.includes('You are ZCode'), ''],
   ['non-glm tools: natives present, no aliases', plainFirst !== undefined && nativeFace.every(name => plainTools.has(name)) && zcodeFace.every(name => !plainTools.has(name)), zcodeFace.filter(name => plainTools.has(name)).join(', ') || ''],

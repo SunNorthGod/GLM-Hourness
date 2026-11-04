@@ -19,9 +19,9 @@
  * never undoes the dispatch (step 10).
  */
 import { exec } from 'node:child_process'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { dirname, join, relative, resolve } from 'node:path'
-import { openEngine, type ApplyResult } from '../graph/engine.ts'
+import { openEngine } from '../graph/engine.ts'
 import { DESIGN_REVIEW_ACCEPTANCE, isDesignReview, releaseOf } from '../graph/execute-stage.ts'
 import type { LoadedGraph } from '../graph/parse.ts'
 import type { GraphNode } from '../graph/schema.ts'
@@ -30,23 +30,26 @@ import { projectOf } from '../data/project-root.ts'
 import { peakModeService } from '../shared/peak-mode.ts'
 import { isGlmModel } from '../shared/route.ts'
 import type { AgentLike, LiveAgentLike, ServiceLookup, ToolDefinitionLike, ToolExecutionContext } from '../shared/dsh-min.ts'
-import { briefGate, renderBrief, renderDesignReviewBrief, type Brief, type BriefContext, type GateResult } from './brief.ts'
-import { makeChildId, nextAttempt, registerAttempt, registeredDispatches, renderDispatchComment, type DispatchSummary } from './attempts.ts'
+import { briefGate, renderBrief, renderDesignReviewBrief, renderReviewBrief, type Brief, type BriefContext, type GateResult } from './brief.ts'
+import { makeChildId, nextAttempt, parseHandbackComment, registerAttempt, registeredDispatches, renderDispatchComment, type Attempt, type DispatchSummary, type HandbackComment, type PlanStatus } from './attempts.ts'
 import { sha256Hex } from './digest.ts'
 import { dispatchDescription } from './examples.ts'
 import { agentOptionsOf, checkModelChoice, CATALOG_UNCHECKED_NOTE, type CatalogEntry, type ModelChoice } from './models.ts'
 import { carriedPlan, planPathsOfSection, planStatusOf, readPlanSection } from './plan.ts'
+import { changeOf, readCalls, type Settlement } from './handback.ts'
+import { floorHits, parseFloor } from './floor.ts'
+import { writeWithRetry } from './retry.ts'
 import { HANDBACK_SCHEMA, REVIEW_SCHEMA, mergeHandbackSchema } from './schemas.ts'
 import { DEFAULT_WATCHED, parseGateNorm } from './gate-norm.ts'
 import { createGit, watchedDigest, type Git } from './git.ts'
 import { emitMetric } from './metrics.ts'
 import { isRecord, refuse, toolShell } from '../design/tool-support.ts'
 
-/** A shell command run in a directory, with its own cap; tests inject it. */
-type CommandRunner = (cwd: string, command: string, timeoutMs: number) => Promise<{ readonly code: number | undefined, readonly stdout: string, readonly stderr: string }>
+/** A shell command run in a directory, with its own cap; tests inject it. The handback processing takes one through the row's deps. */
+export type CommandRunner = (cwd: string, command: string, timeoutMs: number) => Promise<{ readonly code: number | undefined, readonly stdout: string, readonly stderr: string }>
 
 /** The real runner: a shell line through `exec`, the way the gate commands are written. */
-const realCommandRunner: CommandRunner = (cwd, command, timeoutMs) => new Promise((done) => {
+export const realCommandRunner: CommandRunner = (cwd, command, timeoutMs) => new Promise((done) => {
   exec(command, { cwd, timeout: timeoutMs, encoding: 'utf8', windowsHide: true, maxBuffer: 64 * 1024 * 1024, env: { ...process.env, LC_ALL: 'C', LANGUAGE: 'C' } }, (error, stdout, stderr) => {
     const code = error === null ? 0 : typeof error.code === 'number' ? error.code : undefined
     done({ code, stdout: String(stdout), stderr: stderr === '' && error !== null ? error.message : String(stderr) })
@@ -54,9 +57,6 @@ const realCommandRunner: CommandRunner = (cwd, command, timeoutMs) => new Promis
 })
 
 const SETUP_TIMEOUT_MS = 10 * 60_000
-const WRITE_RETRY_DELAYS_MS = [200, 800, 2000] as const
-
-/** The row's revision-keyed graph cache (§3.2.1): a read that fails answers the last good graph and says so. */
 export interface GraphCache {
   load(dir: string): Promise<LoadedGraph>
   get(dir: string): LoadedGraph | undefined
@@ -160,6 +160,12 @@ export interface DispatchDeps {
   readonly execDir: (projectRoot: string) => string
   /** Report the row health of a session. */
   readonly report: (sessionId: string | undefined, state: 'active' | 'degraded', reason: string) => void
+  /** Whether the row remembers an unwritable stop marker for the node (§3.7.3); the brief gate refuses the dispatch then. */
+  readonly stoppedInMemory?: (nodeId: string) => boolean
+  /** Whether the reviewed task of a review dispatch has a current finished handback (§3.5.1); the row reads the handback comment shapes. */
+  readonly reviewTarget?: (graph: LoadedGraph, reviewTask: GraphNode) => { readonly handedBack: boolean, readonly stale: boolean }
+  /** Run the handback processing of one settled activation (§3.6.2); the row wires it to the handback module. */
+  readonly onHandback?: (attempt: Attempt, settlement: Settlement) => void
   /** The runner of the setup commands; tests inject failures. */
   readonly runCommand?: CommandRunner
   /** The clock of history timestamps; tests pin it. */
@@ -232,18 +238,6 @@ function hhmm(iso: string): string | undefined {
 
 function lastLines(text: string, count: number): string[] {
   return text.split(/\r?\n/).filter(line => line !== '').slice(-count)
-}
-
-const sleep = (ms: number): Promise<void> => new Promise(done => { setTimeout(done, ms) })
-
-/** One engine write, retried three times with fresh revisions (§3.1.2 step 10); the thrown error is the last refusal. The plan tools share it. */
-export async function writeWithRetry(run: () => Promise<ApplyResult>): Promise<ApplyResult> {
-  for (let attempt = 0; ; attempt++) {
-    const result = await run()
-    if (result.ok) return result
-    if (attempt >= WRITE_RETRY_DELAYS_MS.length) return result
-    await sleep(WRITE_RETRY_DELAYS_MS[attempt])
-  }
 }
 
 /** The project root a graph directory belongs to: the session's project, else two levels above the graph directory. */
@@ -425,20 +419,21 @@ export function dispatchTool(deps: DispatchDeps): ToolDefinitionLike {
       const services = readServices(deps.lookup)
       if (services === undefined) refuse('inactive', 'the subagents service is not available', 'the host needs the subagents row to start a dispatch')
       const hintCatalog = hintProvider === undefined ? undefined : await services.catalog(hintProvider)
+      const reviewTask = node.kind === 'review' && !isDesignReview(graph, node)
       const verdict: GateResult = briefGate(graph, node, {
         args,
         running: registeredDispatches(),
         slots: deps.slots,
         release: releaseOf(graph, node),
-        stopped: false,
+        stopped: deps.stoppedInMemory?.(node.id) === true,
         ...(glmWorkerCap === undefined ? {} : { glmWorkerCap }),
         outputSchemaOk,
         ...(hintCatalog === undefined ? {} : { catalog: hintCatalog }),
+        ...(reviewTask && deps.reviewTarget !== undefined ? { reviewTarget: deps.reviewTarget(graph, node) } : {}),
       })
       if (!verdict.ok) refuse(verdict.code, verdict.message, verdict.hint)
-      // The review of a task and the acceptance review of a goal are E6's and E8's; the gate has judged what it can.
+      // The acceptance review of a goal is the drive's (E8); the review of a task dispatches from here on (E6).
       if (verdict.subject === 'goal') refuse('invalid', 'the acceptance review of a goal is dispatched by the drive (step E8), not yet by hand', 'close the tasks of the goal; the loop board entry reminds you')
-      if (verdict.subject === 'review') refuse('invalid', 'the review of a task is dispatched by the handback step (E6), not yet by hand', 'let the worker hand back first; the loop board entry reminds you')
 
       const { args: parsed } = verdict
       const provider = parsed.provider ?? routeOf(agent)
@@ -450,11 +445,12 @@ export function dispatchTool(deps: DispatchDeps): ToolDefinitionLike {
       const checked = checkModelChoice(choice, catalog, efforts)
       if (!checked.ok) refuse(checked.code, checked.message, checked.hint)
 
-      // The design review of a module: propose the review task, then dispatch it (§3.7.5).
+      // The design review of a module: propose the review task, then dispatch it (§3.7.5). The review of a task runs in the reviewed task's worktree (§3.7.1).
       const designReview = verdict.subject === 'module'
+      const taskReview = verdict.subject === 'review'
       const targetGraph = designReview ? await proposeDesignReview(deps, dir, graph, node, now) : graph
       const target = designReview ? findDesignReview(targetGraph, id) ?? node : node
-      const isWorkerRole = !designReview
+      const isWorkerRole = !designReview && !taskReview
 
       // Worktree and setup commands: write tasks only (§3.1.2 step 4).
       let worktree: WorktreeOutcome | undefined
@@ -464,9 +460,38 @@ export function dispatchTool(deps: DispatchDeps): ToolDefinitionLike {
         worktree = outcome
       }
 
+      // The review of a task (§3.7.1): the reviewer's worktree is the reviewed task's, read-only, and the floor is judged as it stands now.
+      let reviewed: GraphNode | undefined
+      let reviewedWorktree: string | undefined
+      let reviewHandback: HandbackComment | undefined
+      let depth: 'full' | 'light' = 'full'
+      if (taskReview) {
+        reviewed = target.parent === undefined ? undefined : targetGraph.nodes.get(target.parent)
+        if (reviewed === undefined) refuse('nothing_to_review', `Review task ${target.id} has no reviewed task.`, 'the reviewed task is the parent of the review task')
+        reviewHandback = reviewed.history.flatMap(entry => entry.op === 'comment' && entry.actor === 'harness' && entry.text !== undefined ? [parseHandbackComment(entry.text)] : []).filter(entry => entry !== undefined && entry.status === 'done').at(-1)
+        depth = parsed.depth ?? (reviewHandback?.depth === '轻审' ? 'light' : 'full')
+        reviewedWorktree = join(project, '.worktrees', `hz-${reviewed.id}`)
+        if (!(await stat(reviewedWorktree).then(() => true, () => false))) {
+          refuse('worktree_failed', `the worktree of the reviewed task ${reviewed.id} is gone`, 'dispatch the reviewed task again to recreate it, then dispatch its review')
+        }
+        const floor = parseFloor(targetGraph.nodes.get('norm-review-floor'))
+        const change = await changeOf(git, reviewedWorktree, reviewHandback?.base, reviewHandback?.head)
+        const calls = await readCalls(join(deps.execDir(project), 'tasks', reviewed.id, `${reviewHandback?.childId ?? ''}.commands.jsonl`))
+        const hits = floorHits(floor, change, calls, reviewedWorktree)
+        if (depth === 'light') {
+          if (floor.unparsed.length > 0) {
+            const text = floor.entries.filter(entry => floor.unparsed.includes(entry.index)).map(entry => `"${entry.text}"`).join('; ')
+            refuse('floor_unparsed', `the must-review floor has ${floor.unparsed.length} line(s) the harness cannot judge: ${text}`, 'the person has not given these lines a form the harness can judge; every task is fully reviewed until they do')
+          }
+          if (hits.length > 0) {
+            refuse('floor_requires_full', `the change hits the must-review floor: ${hits.map(hit => `#${hit.index} (${hit.reason})`).join(', ')}`, 'dispatch the review with depth full, or ask the person to narrow the floor')
+          }
+        }
+      }
+
       const attempt = nextAttempt(target)
       const childId = makeChildId(target.id, attempt, random)
-      const plan = planStatusOf(target, parsed.quick)
+      const plan: PlanStatus = isWorkerRole ? planStatusOf(target, parsed.quick) : 'none'
       const approved = plan === 'approved' ? carriedPlan(target) : undefined
       const section = readPlanSection(target.body)
       const brief: Brief = isWorkerRole
@@ -484,21 +509,33 @@ export function dispatchTool(deps: DispatchDeps): ToolDefinitionLike {
             ...(parsed.quick === true ? { quick: true } : {}),
             gateCommands,
           })
-        : renderDesignReviewBrief({ graph: targetGraph, childId, parent: agent.id, task: target })
+        : taskReview
+          ? renderReviewBrief({
+              graph: targetGraph,
+              task: target,
+              reviewed: reviewed!,
+              childId,
+              depth,
+              ...(reviewHandback === undefined ? {} : { handback: { ...(reviewHandback.head === undefined ? {} : { head: reviewHandback.head }), ...(reviewHandback.base === undefined ? {} : { base: reviewHandback.base }), status: reviewHandback.status } }),
+              gateCommands,
+            })
+          : renderDesignReviewBrief({ graph: targetGraph, childId, parent: agent.id, task: target })
 
       // The activation (§3.1.2 step 8); a full activation budget is slots_full like any other full slot.
       const outputSchema = isWorkerRole ? await schemaFor(target, project) : REVIEW_SCHEMA
+      const cwdOf = taskReview && reviewedWorktree !== undefined ? resolve(project, reviewedWorktree) : worktree === undefined ? project : resolve(project, worktree.path)
       const maxDepth = services.maxDepth()
+      let activation: unknown
       try {
-        await services.start({
+        activation = await services.start({
           provider: 'spawn',
-          label: `hourness task ${target.id} attempt ${attempt}`,
+          label: `hourness ${taskReview ? 'review' : 'task'} ${target.id} attempt ${attempt}`,
           childId,
           request: {
             // The child's working directory is absolute: the session header
             // keeps it, and the chain's git judge compares it with the
             // register's worktree regardless of the host's process cwd.
-            cwd: worktree === undefined ? project : resolve(project, worktree.path),
+            cwd: cwdOf,
             prompt: [{ type: 'text', text: brief.text }],
             parent: agent as unknown as LiveAgentLike,
             agentOptions: agentOptionsOf(choice),
@@ -517,15 +554,19 @@ export function dispatchTool(deps: DispatchDeps): ToolDefinitionLike {
         refuse('invalid', `the subagent could not be started: ${message}`, 'fix what the message names and send the call again')
       }
       const pins = renderPins(pinsOf(targetGraph, target, sha256Hex))
-      registerAttempt({
+      const record: Attempt = {
         childId,
         role: isWorkerRole ? 'worker' : 'review',
         node: target.id,
         attempt,
+        graphDir: dir,
         // The register carries the absolute worktree path: the guards compare
         // it against the caller's session directory, whatever the host's
-        // process cwd is (the summary shows the repository-relative form).
-        ...(worktree === undefined ? {} : { worktree: resolve(project, worktree.path), branch: worktree.branch }),
+        // process cwd is (the summary shows the repository-relative form). A
+        // reviewer's worktree is the reviewed task's, read-only (§3.7.1).
+        ...(taskReview && reviewedWorktree !== undefined ? { worktree: resolve(project, reviewedWorktree), depth } : {}),
+        ...(worktree === undefined ? {} : { worktree: resolve(project, worktree.path), branch: worktree.branch, baseSha: worktree.baseSha, ...(parsed.review === undefined ? {} : { review: parsed.review.depth }) }),
+        ...(agent.session?.id === undefined ? {} : { parentSession: agent.session.id }),
         provider,
         model: parsed.model,
         ...(parsed.reasoningEffort === undefined ? {} : { reasoningEffort: parsed.reasoningEffort }),
@@ -536,7 +577,18 @@ export function dispatchTool(deps: DispatchDeps): ToolDefinitionLike {
         // union — the worker can write nothing, the strict side.
         ...(plan === 'approved' ? { planPaths: section === undefined ? [] : planPathsOfSection(section.steps) } : {}),
         pins,
-      })
+      }
+      registerAttempt(record)
+      // The handback processing runs when the activation settles (§3.6.2); a settlement that rejects is an error handback, never an unhandled rejection.
+      if (deps.onHandback !== undefined && activation !== null && typeof activation === 'object') {
+        const result = (activation as { result?: unknown }).result
+        if (result !== null && typeof result === 'object' && typeof (result as { then?: unknown }).then === 'function') {
+          void (result as Promise<unknown>).then(
+            settlement => deps.onHandback?.(record, isRecord(settlement) ? settlement : {}),
+            () => deps.onHandback?.(record, { stopReason: 'error' }),
+          )
+        }
+      }
 
       // The dispatch comment and the doing status, retried; a failed write never undoes the dispatch (§3.1.2 step 10).
       const notes = [
@@ -551,7 +603,7 @@ export function dispatchTool(deps: DispatchDeps): ToolDefinitionLike {
         model: parsed.model,
         ...(parsed.reasoningEffort === undefined ? {} : { reasoningEffort: parsed.reasoningEffort }),
         why: parsed.why,
-        ...(isWorkerRole && parsed.review !== undefined ? { review: parsed.review } : {}),
+        ...(isWorkerRole && parsed.review !== undefined ? { review: parsed.review } : taskReview ? { review: { depth, ...(parsed.depthWhy === undefined ? {} : { why: parsed.depthWhy }) } } : {}),
         brief: brief.digest,
         ...(notes.length > 0 ? { note: notes.join('；') } : {}),
         pins,
