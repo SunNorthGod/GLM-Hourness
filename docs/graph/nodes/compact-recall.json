@@ -39,6 +39,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "代码评审 APPROVED，无阻塞（验收 1–4 与约束逐条核过；review.json、review.md 已写）。评审指出提交说明里点名的跳过测试名字不对，合入步骤要写出真实的那一条。下一步：合入 main。"
+    },
+    {
+      "at": "2026-11-04T20:17:36.730Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "合入步骤：feat/compact-recall 已变基到 e8d57a4（7fca018、91f091a、a6fe748），门禁全绿：build 0、preflight 0、npm test 0（2955 通过 / 0 失败）、探针 0（382/382，跑在 3601080 上，与最终树只差 docs/graph），日志 .agents/tasks/compact-recall/land-*.log。合入改了包的行组合（packages/hourness/cordis.patch.yml 多一行），按 DEVELOPMENT.md §1 要先关桌面版；桌面版正在运行（PID 58784，02:09 由 metrics 桌面步骤用人的 userData 启动）。编排方按 d-parallel-lanes-desktop-free 让本步骤自己重启：取 .llm/desktop-lock，经 CDP 的 Browser.close 正常关闭，60 秒不退出就停下报告、不杀进程；快进合入、在主检出 build、推两个远端；用人的 userData 带 --remote-debugging-port=9333 重新启动，经 CDP 核对两个包在跑、行健康无失败行、transcript 行显示为停用、无新 crash log 与新控制台错误；删锁、清理工作树与分支。"
+    },
+    {
+      "at": "2026-11-04T20:28:18.972Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "已合入 main：main = origin = github = c0676b6（cd6e383、347b296、c0676b6）。合入树门禁 build 0、preflight 0、npm test 0（2955 / 0 失败）、探针 0（382/382）。桌面经 CDP 关闭后重启：dsh-glm-zcode 5/5 运行；dsh-hourness 12 个运行、3 个停用（lessons、env、transcript），transcript 行按设计停用；无新 crash log，控制台只有已知的 ingest 噪声。分支已删，工作树已注销；空目录 .worktrees/compact-recall 仍被某个进程占着，留待之后清理。workflow compaction-recall-zcode-transcript（wf_9e0ca88a3e82813a）完成。节点保持进行中，待 L4：桌面上打开 transcript 行、跑一次压缩，核对摘要结尾的句子与 Read 读导出文件；之后由人定是否默认启用。"
     }
   ]
 }

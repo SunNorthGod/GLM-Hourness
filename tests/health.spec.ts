@@ -186,7 +186,7 @@ test('the rendered table names the session, labels each status and escapes cells
 test('the table groups rows by package; a package with no row loaded takes one line', () => {
   assert.deepEqual(HEALTH_PACKAGES.map(entry => [entry.name, [...entry.rows]]), [
     ['dsh-glm-zcode', ['glm-llm', 'glm-login', 'glm-prompt', 'glm-compact']],
-    ['dsh-hourness', ['data', 'guard', 'memory', 'lessons', 'workflow', 'hourness', 'graph', 'graph-panel', 'rules', 'design', 'loops', 'metrics', 'env']],
+    ['dsh-hourness', ['data', 'guard', 'memory', 'lessons', 'workflow', 'hourness', 'graph', 'graph-panel', 'rules', 'design', 'loops', 'metrics', 'env', 'transcript']],
   ])
   assert.deepEqual([...HEALTH_ROWS], HEALTH_PACKAGES.flatMap(entry => [...entry.rows]))
   const lines = (text: string): string[] => text.split('\n').slice(4)

@@ -139,6 +139,24 @@
       "actor": "llm",
       "op": "comment",
       "text": "第 7 批已推 origin/status-hub-2（3edd58a）：metrics/load，板块的负担数作为一条条目交给状态板块。下一步：第 8 批 L3。"
+    },
+    {
+      "at": "2026-11-04T20:35:22.352Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "第 7、8 批已推 origin/status-hub-2：3edd58a（第 7 批 metrics/load，探针 376/376）、f285d2b（第 8 批报告路 L3，探针 380/380）。两批四道门禁退出码均为 0，npm test 2956 通过 / 0 失败，棘轮 73/18/1 未上升。下一步：本轮评审。"
+    },
+    {
+      "at": "2026-11-04T20:37:47.787Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "第 7、8 批（3edd58a、f285d2b）评审 APPROVED，无阻塞（.worktrees/status-hub-run/review.json、review.md）。剩下的批次仍在等：第 6 批等 M7 运维行 P3；超时条目等 m4-checks B5；循环板清单等 staleEntries/timeoutEntries；规则板条目等规则板页面（rules-board-page 在做）。下一步：本运行的报告步骤。"
+    },
+    {
+      "at": "2026-11-04T20:41:34.709Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "workflow status-hub-remaining（wf_2226ae6097427667）完成：第 7、8 批（3edd58a、f285d2b）在 origin/status-hub-2，四道门禁为 0，探针 380/380，评审 APPROVED、0 条发现。做完条件第 4、5 条已完成，第 1、2、3、6 条剩 M7 那一半。status-hub-2 未合入 main：编排方让 rules-board-page 在开工时合入 origin/status-hub-2，两者一起合入 main（规则板页面要读的 rules/denials、rules/lifts 条目就在 status-hub-2 的第 4 批里）。"
     }
   ]
 }
