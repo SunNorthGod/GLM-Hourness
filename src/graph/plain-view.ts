@@ -20,7 +20,7 @@ import type { AwaitingEntry } from './live.ts'
 import type { LoadedGraph } from './parse.ts'
 import { ancestorsOf, blockersOf, childrenIndex, deciderOf, askFieldsOf, OPEN_STATUSES, subtreeOf, waitsForHuman } from './projection.ts'
 import { directionsOf, frameworkOf, isSplit, moduleCandidatesOf, modulesOf, moduleOf } from './modules.ts'
-import { effectiveStage, goalOf, isClosed } from './stage.ts'
+import { CARD_LABELS, effectiveStage, goalOf, isClosed, labeledSections } from './stage.ts'
 import type { GraphNode, HistoryEntry } from './schema.ts'
 import { isUserNode } from './user-graph.ts'
 import { liveOf } from './user-live.ts'
@@ -33,6 +33,19 @@ const MERGE_MS = 5 * 60 * 1000
 /** 「text」 — every title a template puts inside a sentence travels through here. */
 export function quote(text: string): string {
   return `「${text}」`
+}
+
+/**
+ * 为什么 of a node page (plain-ui 1.3 §4.5, §12 item 26): the node's why;
+ * a goal without one reads the 问题： section of its body (the interview's
+ * requirement card, the same parser as the card gate). Undefined when there
+ * is neither.
+ */
+export function whyOf(node: GraphNode): string | undefined {
+  if (node.why !== undefined) return node.why
+  if (node.type !== 'goal') return undefined
+  const problem = labeledSections(node.body, CARD_LABELS).get('问题')
+  return problem === undefined || problem === '' ? undefined : problem
 }
 
 /** The title up to the first full-width colon, when that part is long enough to stand alone; only the live line shortens titles. */

@@ -280,6 +280,7 @@ export function headlineGoals(graph: LoadedGraph): readonly GraphNode[] {
 /** Display names of the fields an edit changes (docs/ORCHESTRATION.md §2.6 field table). */
 const FIELD_LABELS: Readonly<Record<EditableField, string>> = {
   title: '标题',
+  why: '为什么',
   parent: '父节点',
   slope: '坡向',
   stage: '阶段',

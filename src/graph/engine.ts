@@ -3,8 +3,10 @@
  * client uses. Reads load the node files fresh, so changes made by other
  * processes show up. Every write goes through apply: request shape, actor
  * permissions, state rules, revision check, one history entry per changed
- * node, validation of the would-be graph, then the store's atomic write.
- * Writes to one graph directory are serialized within the process.
+ * node, validation of the would-be graph, the writing check on what the
+ * human reads (plain.ts: warnings in the first phase, refusals in the
+ * second), then the store's atomic write. Writes to one graph directory are
+ * serialized within the process.
  */
 import { resolve } from 'node:path'
 import { ANSWER_MARKS } from '../shared/answer-marks.ts'
@@ -12,6 +14,7 @@ import { CONCLUSION_REF, checkNode, nodeFile, type GraphIssue } from './format.t
 import { isReleased, moduleOf } from './modules.ts'
 import { PROPOSE_FIELDS, failure, parseMutation, type Failure, type Mutation, type ProposedNode } from './mutation.ts'
 import { PROPOSAL_FIELDS, PROPOSAL_LIMITS, codePointCount, proposalRecordRefusal } from './proposal.ts'
+import { PLAIN_PHASE, nodePlainIssues } from './plain.ts'
 import { OPEN_STATUSES, deciderOf, listOpenItems, projectNode, type OpenItems, type Projection } from './projection.ts'
 import {
   CARD_FIELDS,
@@ -44,6 +47,8 @@ import { validateGraph } from './validate.ts'
 export interface EngineOptions {
   /** Clock for history timestamps; tests pin it. */
   readonly now?: () => Date
+  /** Phase of the writing check (plain.ts PLAIN_PHASE by default); tests pin the second phase before it is switched on. */
+  readonly plainPhase?: 1 | 2
 }
 
 export type ApplyResult =
@@ -57,6 +62,13 @@ export type ApplyResult =
     readonly node: GraphNode
     /** Every node file the mutation wrote, target first. */
     readonly changed: readonly string[]
+    /**
+     * The writing check of an llm or harness write in the first phase
+     * (plain-ui 1.3 §5.3), and the reminder of an edit that changed the
+     * body or acceptance and left title and why: what to rewrite, in
+     * English. Absent when there is nothing to say.
+     */
+    readonly warnings?: readonly string[]
   }
   | Failure
 
@@ -126,13 +138,14 @@ export interface GraphEngine {
 
 export function openEngine(dir: string, options: EngineOptions = {}): GraphEngine {
   const now = options.now ?? (() => new Date())
+  const phase = options.plainPhase ?? PLAIN_PHASE
   return {
     dir,
     load: () => loadGraph(dir),
     projection: async id => projectNode(await loadGraph(dir), id),
     openItems: async () => listOpenItems(await loadGraph(dir)),
     apply: async (actor, mutation) => {
-      const result = await apply(dir, actor, mutation, now)
+      const result = await apply(dir, actor, mutation, now, phase)
       // Every failing return passes here, the early ones of the parse and
       // the checks included (§6.3): a `graph-fail` with the code, the op
       // and the node the request named, the field when the error has one.
@@ -176,12 +189,14 @@ const HUMAN_ONLY = new Set<Mutation['op']>(['approve', 'reject', 'decide', 'supe
 
 /**
  * Fields llm and harness may edit on nodes other than their own open
- * proposals: wording, slope, the task dispatch attributes the main agent
- * sets when it hands a task out, and the decider of a question (handing a
- * question to the human is always allowed; taking one from the human needs
- * a relay). Acceptance criteria stay the human's.
+ * proposals: wording (title, why, body), slope, the task dispatch
+ * attributes the main agent sets when it hands a task out, and the decider
+ * of a question (handing a question to the human is always allowed; taking
+ * one from the human needs a relay). Acceptance criteria stay the human's,
+ * and so does a goal's wording: an adopted goal is refused before this set
+ * is read.
  */
-const LLM_EDITABLE = new Set<string>(['title', 'body', 'slope', 'decider', ...DISPATCH_FIELDS])
+const LLM_EDITABLE = new Set<string>(['title', 'why', 'body', 'slope', 'decider', ...DISPATCH_FIELDS])
 
 /** Types an llm or harness proposal may open directly under any open parent. */
 const OPEN_PARENT_TYPES = new Set<NodeType>(['risk', 'question', 'retro'])
@@ -222,6 +237,24 @@ interface Plan {
    * request, not the graph.
    */
   readonly writeRules?: (next: ReadonlyMap<string, GraphNode>) => Failure | undefined
+  /** What the writing check reads of an llm or harness write; a human write has none (§5.3). */
+  readonly plain?: PlainCheck
+}
+
+/**
+ * The writing check of one write (plain-ui 1.3 §5.3) on the target node:
+ * the fields the write set (all of them for a propose), reported under the
+ * request path that set them.
+ */
+interface PlainCheck {
+  /** The request path of the fields: node (propose), set (edit), or none for a decide's conclusion. */
+  readonly base: 'node' | 'set' | ''
+  /** The fields the write set; absent reads every field the check knows. */
+  readonly fields?: readonly string[]
+  /** A recorded conclusion warns in both phases: the human's decision is not held up by its wording. */
+  readonly warnOnly?: boolean
+  /** Warnings that never refuse. */
+  readonly reminders?: readonly string[]
 }
 
 /** Whether a node type is one of the user graph's (design 0.4.1 §2.2). */
@@ -264,7 +297,7 @@ interface Context {
   readonly privileged: boolean
 }
 
-async function apply(dir: string, actor: Actor, input: unknown, now: () => Date): Promise<ApplyResult> {
+async function apply(dir: string, actor: Actor, input: unknown, now: () => Date, phase: 1 | 2): Promise<ApplyResult> {
   const parsed = parseMutation(input)
   if (!parsed.ok) return parsed
   const mutation = parsed.mutation
@@ -287,7 +320,7 @@ async function apply(dir: string, actor: Actor, input: unknown, now: () => Date)
     const context: Context = { graph, actor, at: now().toISOString(), relay, privileged }
     const plan = mutation.op === 'propose' ? planPropose(context, mutation.node, mutation.reason) : planChange(context, mutation)
     if (!plan.ok) return plan
-    return commit(dir, graph, plan)
+    return commit(dir, graph, plan, phase)
   })
 }
 
@@ -309,7 +342,24 @@ function requestFields(file: string, base: string, settable: readonly string[]):
   }
 }
 
-async function commit(dir: string, graph: LoadedGraph, plan: Plan): Promise<ApplyResult> {
+/**
+ * The writing check of a planned write (§5.3), after the graph-wide
+ * validation: the warnings to return, or in the second phase the refusal
+ * of the first rule broken. Reminders and a conclusion only warn.
+ */
+function plainCheck(plan: Plan, next: ReadonlyMap<string, GraphNode>, phase: 1 | 2): readonly string[] | Failure {
+  const check = plan.plain
+  if (check === undefined) return []
+  const found = nodePlainIssues(next.get(plan.target)!, new Set(next.keys()), check.fields)
+  const path = (field: string): string => check.base === '' ? field : `${check.base}.${field}`
+  const first = found[0]
+  if (phase === 2 && check.warnOnly !== true && first !== undefined) {
+    return failure('invalid', `${path(first.field)} breaks the writing rule ${first.rule}: ${first.message}`, `${first.hint}; the human reads ${path(first.field)} (writing rules: docs/ORCHESTRATION.md §2.6)`, path(first.field))
+  }
+  return [...found.map(issue => `${issue.rule} in ${path(issue.field)}: ${issue.message}; ${issue.hint}`), ...check.reminders ?? []]
+}
+
+async function commit(dir: string, graph: LoadedGraph, plan: Plan, phase: 1 | 2): Promise<ApplyResult> {
   const next = new Map(graph.nodes)
   const writes: NodeWrite[] = []
   for (const draft of plan.drafts) {
@@ -328,6 +378,8 @@ async function commit(dir: string, graph: LoadedGraph, plan: Plan): Promise<Appl
   }
   const graphError = validateGraph(next).find(issue => issue.severity === 'error')
   if (graphError !== undefined) return issueFailure(graphError, plan)
+  const warnings = plainCheck(plan, next, phase)
+  if (!Array.isArray(warnings)) return warnings as Failure
   const outcome = await writeNodes(dir, writes)
   if (!outcome.ok) {
     if (outcome.current !== null && plan.drafts.find(draft => draft.id === outcome.id)?.expected === null) {
@@ -366,6 +418,7 @@ async function commit(dir: string, graph: LoadedGraph, plan: Plan): Promise<Appl
     revision: graphRevision(revisions),
     node: next.get(plan.target)!,
     changed: writes.map(write => write.node.id),
+    ...(warnings.length === 0 ? {} : { warnings }),
   }
 }
 
@@ -673,7 +726,7 @@ function planPropose(context: Context, node: ProposedNode, reason: string): Plan
   if (status === 'approved') drafts.push(...supersedeTargets(context, id, node.edges, reason))
   // The edges a new node carries are all new to the graph: W1 to W3, W5 judge them (§3.4).
   const newEdges = node.edges ?? []
-  return plan(id, drafts, requestFields(nodeFile(id), 'node', PROPOSE_FIELDS), (next) => {
+  const planned = plan(id, drafts, requestFields(nodeFile(id), 'node', PROPOSE_FIELDS), (next) => {
     for (const [index, edge] of newEdges.entries()) {
       const field = `node.edges[${index}]`
       const refusal = edge.type === 'serves' ? servesRefusal(next, id, edge.to, field)
@@ -683,6 +736,8 @@ function planPropose(context: Context, node: ProposedNode, reason: string): Plan
     }
     return undefined
   })
+  // The writing check reads every field of the new node the human reads (plain-ui 1.3 §5.3); the human's own writes are not checked.
+  return context.actor === 'human' ? planned : { ...planned, plain: { base: 'node' } }
 }
 
 type Change = Exclude<Mutation, { readonly op: 'propose' }>
@@ -809,9 +864,11 @@ function planConclude(context: Context, node: GraphNode, option: string | undefi
   }
   if (node.status === 'done' && node.conclusion === text) return failure('bad_transition', `"${node.id}" is already decided this way`, 'nothing to change', 'conclusion')
   const evidence: Evidence[] = [{ kind: 'decision', ref: CONCLUSION_REF }]
-  return plan(node.id, [change(context, node, { status: 'done', conclusion: text, ...withEvidence(node, evidence) }, {
+  const planned = plan(node.id, [change(context, node, { status: 'done', conclusion: text, ...withEvidence(node, evidence) }, {
     at, actor, op: 'decide', reason, from: node.status, to: 'done', conclusion: text, evidence,
   })])
+  // The conclusion records the human's decision: its wording warns in both phases, never holds the decision up (§5.3).
+  return actor === 'human' ? planned : { ...planned, plain: { base: '', fields: ['conclusion'], warnOnly: true } }
 }
 
 function planStatus(context: Context, node: GraphNode, to: Status, evidence: readonly Evidence[] | undefined, reason: string): Plan | Failure {
@@ -940,8 +997,16 @@ function planEdit(context: Context, node: GraphNode, set: Readonly<Partial<Recor
     if (review !== undefined) return review
   }
   const patch = Object.fromEntries(fields.map(field => [field, set[field]]))
-  return plan(node.id, [change(context, node, patch, { at, actor, op: 'edit', reason, changes })], fieldOf)
+  const planned = plan(node.id, [change(context, node, patch, { at, actor, op: 'edit', reason, changes })], fieldOf)
+  if (actor === 'human') return planned
+  // The writing check reads what the edit changed; a new body or acceptance under an unchanged title and why gets a reminder, never a refusal (§5.3).
+  const changed = Object.keys(changes)
+  const stale = (changed.includes('body') || changed.includes('acceptance')) && !changed.includes('title') && !changed.includes('why')
+  return { ...planned, plain: { base: 'set', fields: changed, ...(stale ? { reminders: [STALE_WORDING] } : {}) } }
 }
+
+/** The reminder of an edit that changed what a node says and left the words the human reads (§5.3). */
+const STALE_WORDING = 'the body or acceptance changed and title and why did not: do title and why still say it? If not, edit set.title or set.why'
 
 /**
  * One write replacing the outgoing next edges of a step, or the entry of a

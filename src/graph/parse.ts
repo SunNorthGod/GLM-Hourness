@@ -6,6 +6,7 @@
  * the panel with Web Crypto.
  */
 import { checkNode, compareText, serializeNode, type GraphIssue } from './format.ts'
+import { plainNotices } from './plain.ts'
 import { ID_PATTERN, type GraphNode } from './schema.ts'
 import { validateGraph } from './validate.ts'
 
@@ -46,7 +47,8 @@ export function nodeFileNames(names: readonly string[]): string[] {
 /**
  * Parse and validate the node files; `revision` is the revision of
  * revisionInput over their revisions. Files that fail to parse keep their
- * revision and an error; a node not in canonical form gets a notice.
+ * revision and an error; a node not in canonical form gets a notice, and
+ * so does every writing rule an open node breaks (with its `rule`).
  */
 export function parseGraph(files: readonly NodeFile[], revision: string): LoadedGraph {
   const nodes = new Map<string, GraphNode>()
@@ -80,5 +82,7 @@ export function parseGraph(files: readonly NodeFile[], revision: string): Loaded
     }
   }
   issues.push(...validateGraph(nodes))
+  // The writing check on open nodes, as notices with their rule (plain-ui 1.3 §5.3): they never block a write.
+  issues.push(...plainNotices(nodes))
   return { nodes, revisions, revision, issues }
 }

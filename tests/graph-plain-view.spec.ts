@@ -15,27 +15,26 @@ import type { LoadedGraph } from '../src/graph/parse.ts'
 import { blockersOf } from '../src/graph/projection.ts'
 import {
   agoText, changesSince, frameworkChanging, liveLine, moduleRowText, moduleStateOf, modulesView,
-  needsOf, planOf, progressLine, questionView, quote, remainingOf, shortTitle, statusPhrase, toolWords,
+  needsOf, planOf, progressLine, questionView, quote, remainingOf, shortTitle, statusPhrase, toolWords, whyOf,
   type ModulesGoalView, type NeedEntry, type Plan,
 } from '../src/graph/plain-view.ts'
 import { DIRECTIONS_ID } from '../src/graph/modules.ts'
+import { plainIssues } from '../src/graph/plain.ts'
 import type { GraphNode, HistoryEntry } from '../src/graph/schema.ts'
 import { at } from './execute-helpers.ts'
 import { graphOf, node } from './graph-memory.ts'
 
 const NOW = Date.parse(at(10_000))
 
-/** The words a template writes on its own (plain-ui 1.3 §5.3's rules, the part L2 can pin before the engine's check lands). */
-function plainIssues(text: string): readonly string[] {
-  const issues: string[] = []
-  if (/(?<![A-Za-z0-9])M\d+/.test(text)) issues.push('code')
-  if (/\b(proposed|approved|doing|dropped|superseded|unverified|sandbox|device)\b/i.test(text)) issues.push('enum')
-  if (/[待决]|里程碑编号|写入范围/.test(text)) issues.push('term')
-  if (/[特性]|任务/.test(text)) issues.push('typeWord')
-  return issues
+/**
+ * The words a template writes on its own pass the writing check
+ * (src/graph/plain.ts, plain-ui 1.3 §5.3) as generated text; the titles it
+ * quotes are someone else's words and are taken out first (§5.4 quote).
+ */
+const clean = (text: string, graph: LoadedGraph): void => {
+  const own = text.replace(/「[^」]*」/gu, '「」')
+  assert.deepEqual(plainIssues(own, 'generated', new Set(graph.nodes.keys())), [], text)
 }
-
-const clean = (text: string): void => assert.deepEqual(plainIssues(text), [], text)
 
 /** A depends edge on a node. */
 const depends = (to: string) => ({ type: 'depends' as const, to })
@@ -60,6 +59,15 @@ function project(): { readonly graph: LoadedGraph, readonly goal: GraphNode } {
   ])
   return { graph, goal: graph.nodes.get('goal-1')! }
 }
+
+test('whyOf: the node\'s why; a goal without one reads the 问题 section of its body; otherwise nothing', () => {
+  assert.equal(whyOf(node({ id: 'task-1', type: 'task', parent: 'goal-1', why: '月底能看出钱花在哪' })), '月底能看出钱花在哪')
+  const goal = node({ id: 'goal-1', type: 'goal', body: '需求：记账\n问题：月底不知道钱花在哪\n给谁：本人' })
+  assert.equal(whyOf(goal), '月底不知道钱花在哪', 'the section ends at the next label of the card')
+  assert.equal(whyOf({ ...goal, why: '自己写的一句' }), '自己写的一句')
+  assert.equal(whyOf(node({ id: 'goal-2', type: 'goal', body: '没有标签的正文' })), undefined)
+  assert.equal(whyOf(node({ id: 'task-2', type: 'task', parent: 'goal-1', body: '问题：任务正文里的问题不算' })), undefined)
+})
 
 test('quote and shortTitle', () => {
   assert.equal(quote('记账'), '「记账」')
@@ -122,8 +130,8 @@ test('planOf: the four groups, numbering, the focus first, and the waiting order
   assert.deepEqual([plan.doing[0]?.number, plan.ready[0]?.number, plan.waiting[0]?.number, plan.unsplit[0]?.number], [1, 2, 3, 4], 'the page numbers run through the groups in display order')
   assert.equal(plan.total, 4)
   assert.deepEqual(plan.goals, ['goal-1'])
-  clean(plan.doing[0]?.status ?? '')
-  clean(plan.waiting[0]?.status ?? '')
+  clean(plan.doing[0]?.status ?? '', graph)
+  clean(plan.waiting[0]?.status ?? '', graph)
 })
 
 test('planOf: a waiting item held by an off-page blocker names it; three quiet days read as such', () => {

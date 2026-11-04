@@ -23,6 +23,7 @@ import { openEngine, type ApplyResult } from './engine.ts'
 import { FOCUS_TOOL } from './live.ts'
 import { ASK_FORMS } from './proposal.ts'
 import { failure, type Failure } from './mutation.ts'
+import { PLAIN_WRITING_GUIDE } from './plain.ts'
 import { listOpenItems, projectNode } from './projection.ts'
 import { REOPEN_LIMIT, reopenNotice, reopenNoticeFailed, reopenNoticeForSubagent, reopenQuestion, reopensAfter, thirdReworkState } from './reopen.ts'
 import { NODE_TYPES, SLOPES, STAGES, TASK_KINDS, TIERS, WEIGHTS, type Evidence, type GraphNode } from './schema.ts'
@@ -154,7 +155,8 @@ const NODE: JsonSchema = {
   properties: {
     id: { type: 'string', description: 'Leave out to get <type>-<n>.' },
     type: { type: 'string', enum: [...NODE_TYPES] },
-    title: { type: 'string', description: 'One line.' },
+    title: { type: 'string', description: `One line, at most 40 characters. ${PLAIN_WRITING_GUIDE}` },
+    why: { type: 'string', description: 'One sentence, at most 80 characters: why it is done and what changes once it is. Not on a question. The rules of title apply.' },
     parent: { type: 'string', description: 'Parent node id; every type but goal has one.' },
     body: { type: 'string' },
     acceptance: { ...STRINGS, description: 'How to tell it is done.' },
@@ -265,6 +267,7 @@ const WRITE_OUTPUT: JsonSchema = {
     revision: { type: 'string' },
     node: { type: 'object', description: 'The node after the write, without its history.' },
     changed: { type: 'array', items: { type: 'string' } },
+    warnings: { type: 'array', items: { type: 'string' }, description: 'Present when what the human reads breaks a writing rule, or when the body or acceptance changed and title and why did not: the write went through; rewrite what is named (graph_edit).' },
     notice: { type: 'string', description: 'Present on a reopen of a node that is heading for its third fix: what the caller does with the question filed for the human.' },
   },
   required: ['ok', 'id', 'rev', 'revision', 'node', 'changed'],
@@ -283,11 +286,11 @@ const WRITES: ReadonlyArray<{ readonly op: LlmOp, readonly description: string, 
   },
   {
     op: 'edit',
-    description: 'Change a node\'s title, body, slope, a question\'s decider, a task\'s dispatch attributes (kind, tier, worktree, outputSchema, writeScope); any field of your own open proposal, goals included. Decider human is always allowed; decider agent, an adopted goal, acceptance criteria and non-goals need the human\'s words as relay. Questions keep the table card rules (recommended option last).',
+    description: 'Change a node\'s title, why, body, slope, a question\'s decider, a task\'s dispatch attributes (kind, tier, worktree, outputSchema, writeScope); any field of your own open proposal, goals included. Decider human is always allowed; decider agent, an adopted goal, acceptance criteria and non-goals need the human\'s words as relay. Questions keep the table card rules (recommended option last).',
     parameters: object({
       id: ID,
       rev: REV,
-      set: { type: 'object', description: 'Field name to new value; null removes the field.' },
+      set: { type: 'object', description: `Field name to new value; null removes the field. ${PLAIN_WRITING_GUIDE}` },
       reason: REASON,
       relay: RELAY,
     }, ['id', 'rev', 'set', 'reason']),
@@ -585,7 +588,7 @@ function writeTool(dir: string, op: LlmOp, description: string, parameters: Json
       if (!result.ok) refuse(result)
       const { history, ...node } = result.node
       const notice = op === 'status' ? await thirdReworkAfter(resolved, args, exec, result, report) : undefined
-      return { ok: true, id: result.id, rev: result.rev, revision: result.revision, node, changed: result.changed, ...(notice === undefined ? {} : { notice }) }
+      return { ok: true, id: result.id, rev: result.rev, revision: result.revision, node, changed: result.changed, ...(result.warnings === undefined ? {} : { warnings: result.warnings }), ...(notice === undefined ? {} : { notice }) }
     },
   }
 }
