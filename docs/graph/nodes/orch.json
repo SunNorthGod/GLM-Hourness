@@ -329,6 +329,24 @@
       "actor": "llm",
       "op": "comment",
       "text": "归位收尾（人 2026-11-01 同意）：根目录 package-lock.json 已删（误跑 npm install 的残渣，2026-10-30T16:58 批注留待人定的一件至此关闭）；msg-refdir-gate.txt（M3 附录 0.2 的重复副本）已删，内容在 .agents/tasks/m3/design-addendum-0.2.md。"
+    },
+    {
+      "at": "2026-11-04T06:45:01.147Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "发现（2026-11-04，M7 探针）：违规流水的 fsAppender 对同一文件的追加不串行。guard 行的拒绝是不等待的写，跟进晚一回合写，磁盘慢时跟进先落盘（at 较晚的一行在前），探针 guard scope、guard paths 各红一次。修正在主检出工作区，未提交：src/memory/audit.ts 按文件路径串行追加（模块级，同包各行共用）；tests/memory-audit.spec.ts 加一例；tests/rules-host.ts 删除临时目录加重试（串行后夹具拆除时可能还有在落盘的追加，rules-gate.spec 不加重试 5 次红 4 次）。build、preflight、npm test 退出码 0，棘轮 76/19/1 不变；探针在跑，绿后单独一个提交推 main，四条线合并后带上。四条线的续作运行已派出，探针按 .llm/probe-lock 全机串行。"
+    },
+    {
+      "at": "2026-11-04T07:11:06.657Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "违规流水追加顺序的修正已进 main：bc25baa「fix(audit): appends to one journal file land in the order they were made」。门禁：build 0、preflight 0、npm test 0（棘轮 76/19/1 不变）、探针 347/347 退出码 0。四条线的续作运行计划均已确认：m7-seam-and-e7（收接缝批、E7 规划、实现与评审循环）、metrics-s6-s7-land-review（落第 6+7 步、第 7 步评审循环）、loopsr-batch2-batch3（Batch 2、Batch 3 实现与评审循环）、user-graph-ug3-ug7（UG3 至 UG7 每批实现与评审）。各线合并 bc25baa 后再跑探针；探针按 .llm/probe-lock 全机串行。user-graph 基线步：HEAD 23bbd6b 的干净导出 build/preflight/test 全绿（2730 过、0 败、1 跳过）。"
+    },
+    {
+      "at": "2026-11-04T07:14:06.816Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "发布渠道现状（2026-11-04 编排方核对，人问 GitHub、Gitee、npm 要不要他管）：Gitee origin 是唯一按 AGENTS.md 推送的远端，四条线与 main 都推到这里。第二个远端 github（github.com/SunNorthGod/GLM-Hourness）的 main 停在 4c315a9（2026-11-03 23:25），比 origin/main 落后 73 个提交。npm 上 dsh-glm-zcode 与 dsh-hourness 是 0.3.0，本地两包是 0.3.1，根包 private。文档里没有 GitHub 镜像与 npm 发版的约定，两件都待人定（同步方式与时机；发版要人的 npm 凭证）。"
     }
   ]
 }

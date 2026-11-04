@@ -1,0 +1,25 @@
+{
+  "id": "d-github-mirror-main",
+  "type": "decision",
+  "title": "GitHub 镜像只跟 main：每次推 Gitee 的 main 之后同一个 main 推到 GitHub，工作分支不推",
+  "status": "approved",
+  "parent": "orch",
+  "verification": "unverified",
+  "body": "人 2026-11-04：「同意。npm等彻底做好了再发吧」（回编排方的两问：GitHub 要不要一直跟着、npm 什么时候发）。定下：远端 github（SunNorthGod/GLM-Hourness）作 main 的镜像，每次推 origin/main 之后推同一个 main；工作分支只在 Gitee。不强推，落后时按快进补齐（定下时落后 73 个提交，随本决定一并补齐）。写进 AGENTS.md 第 7 条与 DEVELOPMENT.md §9。",
+  "history": [
+    {
+      "at": "2026-11-04T07:17:20.255Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "人同意 GitHub 镜像只跟 main、每次推 Gitee 后同步",
+      "relay": "同意。npm等彻底做好了再发吧",
+      "to": "approved"
+    },
+    {
+      "at": "2026-11-04T07:18:22.551Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "已补齐（2026-11-04）：github 的 main 从 4c315a9 快进到 7c25661，与 origin/main 相同。此后每次推 origin/main 后同步。"
+    }
+  ]
+}

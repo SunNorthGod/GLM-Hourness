@@ -54,6 +54,35 @@ test('fsAppender creates the directory before the first append', async () => {
   assert.equal(files.get('C:/ws/.llm/audit/usage.jsonl'), '{"x":1}\n')
 })
 
+// A denial is journaled without being awaited and its follow-up a turn later:
+// on a slow disk the second append finished first and the follow-up stood
+// before its denial in the file (probe guard scope and guard paths, 2026-11-04).
+test('fsAppender lands appends to one file in the order they were asked for, and a failed one does not hold up the next', async () => {
+  const order: string[] = []
+  let releaseFirst = (): void => {}
+  const fs = {
+    mkdir: () => Promise.resolve(),
+    appendFile: (_path: string, data: string): Promise<void> => {
+      if (data.startsWith('{"n":1')) return new Promise<void>(resolve => { releaseFirst = () => { order.push(data.trim()); resolve() } })
+      if (data.startsWith('{"n":3')) return Promise.reject(new Error('disk full'))
+      order.push(data.trim())
+      return Promise.resolve()
+    },
+  }
+  const append = (await import('../src/memory/audit.ts')).fsAppender(fs)
+  const file = 'C:/ws/.llm/audit/violations.jsonl'
+  const first = append(file, '{"n":1}')
+  const second = append(file, '{"n":2}')
+  await new Promise(resolve => setImmediate(resolve))
+  assert.deepEqual(order, [], 'the second append waits for the first')
+  releaseFirst()
+  await Promise.all([first, second])
+  assert.deepEqual(order, ['{"n":1}', '{"n":2}'])
+  await assert.rejects(append(file, '{"n":3}'), /disk full/)
+  await append(file, '{"n":4}')
+  assert.deepEqual(order, ['{"n":1}', '{"n":2}', '{"n":4}'])
+})
+
 test('a row journal resolves directories per write and never rejects into the caller', async () => {
   const { files, fs } = fakeFs()
   let homes: { userHome?: string } = {}

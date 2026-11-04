@@ -86,12 +86,32 @@ const nodeAuditFs: AuditFs = {
   appendFile: (path, data) => appendFile(path, data),
 }
 
-/** Node fs-backed appender (mkdir -p then append with trailing newline). */
+/**
+ * The write in flight per journal file, shared by every appender of the
+ * package: the rows write their records without awaiting them (a denial is
+ * journaled fire-and-forget, its follow-up a turn later), and two unchained
+ * appends to one file land in whichever order the filesystem finishes them.
+ */
+const inFlight = new Map<string, Promise<void>>()
+
+/**
+ * Node fs-backed appender (mkdir -p then append with trailing newline).
+ * Appends to the same file run one after the other, in the order they were
+ * asked for, so a follow-up never lands before the denial it settles; a failed
+ * append rejects its own caller and does not hold up the next one.
+ */
 export function fsAppender(fs: AuditFs): AppendLine {
-  return async (path, line) => {
-    const dir = path.slice(0, Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')))
-    await fs.mkdir(dir, { recursive: true })
-    await fs.appendFile(path, `${line}\n`)
+  return (path, line) => {
+    const write = async (): Promise<void> => {
+      const dir = path.slice(0, Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')))
+      await fs.mkdir(dir, { recursive: true })
+      await fs.appendFile(path, `${line}\n`)
+    }
+    const run = (inFlight.get(path) ?? Promise.resolve()).then(write)
+    const settled = run.catch(() => {})
+    inFlight.set(path, settled)
+    void settled.then(() => { if (inFlight.get(path) === settled) inFlight.delete(path) })
+    return run
   }
 }
 
