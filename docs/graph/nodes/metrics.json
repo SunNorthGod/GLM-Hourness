@@ -305,6 +305,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "批次 4a（ffebb7d，含并 main 5110cc4）：指标板——boardView 纯函数（复用 factsFor/scoresFor，最近 7 天与前 7 天同构成对，一处格式化客户端逐字拷贝，比例括号带 samples 机器可读分母 F69，板面组名与 /hourness 事实名刻意区分），tmp+rename 原子写 view.json（调度：自检后/每小时/日期变更/每项目一次，compute 失败保旧值只更新 tried/problem，写失败降级健康带码），hournessMetrics 投影交 {viewFile}，ui 侧 board.ts（无 React 工厂+读取，Node 规格可测）+ board.tsx（60 秒静默计时、homeLine 三句、38 码点 guideLine、只读）；lessons 板重构复用同一 boardSessions/listenedWith（jscpd 克隆在根上消除，基线不变）。行健康期望随 §9.1 更新（无投影服务即降级「指标板没有登记」）。门禁全绿（test:2 环境性一次过载失败清理后全过、棘轮 214/18/1 持平、verbatim 500 零偏）。下一步第 5 步 /hourness 改读；第 3 步仍等 m4 合并。"
+    },
+    {
+      "at": "2026-11-04T03:28:34.452Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "批次 5 + 合并 + 第 3 步（87b5bd4、029fac6、f892048，2026-11-04）：第 5 步 /hourness 改读指标流水——整本 readLog 取最早、factsFor 自己按本地日切、删多余 checkLog 链重算、coverage 可选读成员（偏离记录：进程本地计数流水重建不出只能读行）、命令生成后发 report 事件；合并 14 文件保双方语义（guard 取 m4 重写、info 发射重落 gate.ts 拒绝处、HOURNESS_ROWS 为 …loops, metrics, env、ensureIgnored 串行化修多行启动竞往 info/exclude 重复追加的真实碰撞）；第 3 步 guard 与图引擎交事件——violation 唯一写入点经 metricEventOf（拒绝/晚到带 ref=行键、跟进、申报、撤下）、setEngineObserver 模块作用域集合 + commit/apply 两处通知 + 纯映射、cli 自开写入者、graph 的 rev 改 id（批 1 的 int 是猜错，偏离记录）。探针 374/374、test 全绿、棘轮持平。裁定：m4 G3 欠的撤下板侧/服务侧与 rules.judged 发射点按设计归第 6-7 步启用批（ORCHESTRATION §10.6 未做行写明）。下一步第 6 步接线。"
     }
   ]
 }
