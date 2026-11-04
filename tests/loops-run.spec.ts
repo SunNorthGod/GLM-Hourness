@@ -38,7 +38,7 @@ import type { ServiceLookup } from '../src/shared/dsh-min.ts'
 import type { EmittedEvent } from '../src/shared/metrics.ts'
 import { METRICS_SERVICE } from '../src/shared/metrics.ts'
 import { DATA_SERVICE } from '../src/shared/data-home.ts'
-import { gitProjectTest, quickIo, scriptEntry, seedAgreed, sha256, SCRIPT_TEXT, tellEntry } from './loops-helpers.ts'
+import { gitProjectTest, journalTakes, quickIo, scriptEntry, seedAgreed, sha256, SCRIPT_TEXT, tellEntry } from './loops-helpers.ts'
 import { injectRecord } from './rules-helpers.ts'
 import { ruleOf } from './rules-fixtures.ts'
 
@@ -96,15 +96,16 @@ async function worldOf(root: string, options: WorldOptions = {}): Promise<World>
   const delivered: DeliverRequest[] = []
   const timers: World['timers'] = []
   const store = openLoopStore(root, { io: quickIo({ now: () => clock }) })
-  // The board hands its records to the metrics journal; this fake is the journal, keeping the events for
-  // the assertions. The data service points the holder reads at the fixture's own directories, like the
-  // loop-peak fixture does, so nothing outside the temporary root is read.
+  // The board hands its records to the metrics journal; this fake is the journal, keeping for the
+  // assertions the events the journal's field tables take (a refused one is lost, as in the real one).
+  // The data service points the holder reads at the fixture's own directories, like the loop-peak
+  // fixture does, so nothing outside the temporary root is read.
   const ctx: ServiceLookup = {
     get: (name: string): unknown => {
       if (name === METRICS_SERVICE) {
         return {
           emit: (event: EmittedEvent): void => {
-            records.push({ ...event.body, kind: event.k } as LoopRecord)
+            if (journalTakes(event)) records.push({ ...event.body, kind: event.k } as LoopRecord)
           },
         }
       }
@@ -358,7 +359,8 @@ gitProjectTest('a harness action: done with a tell is delivered, skipped and fai
   const runs = runsOf(world)
   const done = runs.filter((record): record is DoneRecord => record.kind === 'loop-done')
   assert.deepEqual(done.map(record => record.outcome), ['delivered', 'skipped', 'failed'])
-  assert.deepEqual(done.map(record => record.reason), [undefined, '这次不用跑', '起不来'])
+  // Another plugin's reason is its words: the record keeps a code, so the journal takes the run (records.ts).
+  assert.deepEqual(done.map(record => record.reason), [undefined, 'plugin-reason', 'plugin-reason'])
   // The holder reads its directories from the fixture's data service and finds no record: no fault of the board's, so of the three actions only the one that could not run degrades the row.
   assert.deepEqual(world.told.filter(line => line.level === 'degraded').map(line => line.text.replace(/：.*$/, '')), [`${EXECUTE.row.split('/')[1]}.trunk 的 harness 动作失败`])
   const fired = runs.filter((record): record is FiredRecord => record.kind === 'loop-fired')
@@ -509,7 +511,7 @@ gitProjectTest('a rule of the person blocks the script: the run ends blocked wit
   waited.move(DEFER_MAX_MS + 6 * 60_000)
   await waited.tick()
   const expired = runsOf(waited).filter((record): record is DoneRecord => record.kind === 'loop-done' && record.entry === third.id)
-  assert.deepEqual(expired.map(record => [record.outcome, record.reason]), [['deferred', undefined], ['expired', '规则板排了一天还没放行']])
+  assert.deepEqual(expired.map(record => [record.outcome, record.reason]), [['deferred', undefined], ['expired', 'rules-queue-expired']])
   await waited.runtime.stop()
 })
 
@@ -798,9 +800,11 @@ gitProjectTest('a self entry is not run here: the row that owns it reports its r
   world.runtime.recordRun({ cwd: root, entry: 'execute.listed', outcome: 'ran', durationMs: 12 })
   world.runtime.recordRun({ cwd: root, entry: 'execute.handback', outcome: 'ran' })
   world.runtime.recordRun({ cwd: root, entry: 'nobody.here', outcome: 'ran' })
+  // A row's reason is a line of its words (graph.third-rework sends one): the run still lands, with a code.
+  world.runtime.recordRun({ cwd: root, entry: 'execute.listed', outcome: 'failed', reason: 'graph/invalid：节点不在' })
   await world.tick()
-  const listed = runsOf(world).filter(record => record.kind === 'loop-done' && record.entry === 'execute.listed')
-  assert.equal(listed.length, 1, 'the row that ran it reported one run')
+  const listed = runsOf(world).filter((record): record is DoneRecord => record.kind === 'loop-done' && record.entry === 'execute.listed')
+  assert.deepEqual(listed.map(record => [record.outcome, record.reason]), [['ran', undefined], ['failed', 'plugin-reason']], 'the row that ran it reported two runs')
   assert.equal(runsOf(world).filter(record => record.entry === 'nobody.here').length, 0)
   assert.equal(runsOf(world).filter(record => record.kind === 'loop-done' && record.entry === 'execute.handback').length, 1, 'only a listed entry can be reported')
   await world.runtime.stop()

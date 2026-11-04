@@ -22,7 +22,7 @@ import { ensureRuntimeDir, loopsPaths, openLoopStore, type LoopsPaths } from '..
 import { appendLine } from '../src/rules/store.ts'
 import type { LoopEntryDefinition } from '../src/loops/model.ts'
 import type { LoopEventDeclaration } from '../src/loops/trigger.ts'
-import { gitProjectTest, heldTimers, quickIo } from './loops-helpers.ts'
+import { gitProjectTest, heldTimers, journalTakesRecord, quickIo } from './loops-helpers.ts'
 
 const WRITER = '--writer'
 
@@ -121,7 +121,8 @@ async function harnessOf(root: string, at: number, options: HarnessOptions = {})
     running: options.running ?? ((): boolean => true),
     locked: options.locked ?? (body => store.locked(body)),
     start: options.start ?? ((batch) => { batches.push(batch); return Promise.resolve() }),
-    record: (record) => { records.push(record) },
+    // The records the metrics journal would take (a refused one is lost, as in the real one).
+    record: (record) => { if (journalTakesRecord(record)) records.push(record) },
     report: (text, level) => { told.push({ text, level }) },
     delay,
   })
@@ -307,5 +308,10 @@ gitProjectTest('events a stopped host left in the inbox are run after the start,
   await stale.advance(5_000)
   assert.equal(stale.batches.length, 0)
   const expired = stale.records.filter(record => record.kind === 'loop-done' && record.outcome === 'expired')
-  assert.equal(expired.length, 1, 'an event that waited longer than seven days is not run')
+  assert.deepEqual(expired.map(record => record.kind === 'loop-done' && record.reason), ['event-stale'], 'an event that waited longer than seven days is not run')
+  // A line whose event nobody declares now ends expired as well, and the journal takes the record.
+  await appendLine(stale.paths.events, { id: 'ev-0000000000000002', at: new Date(AT + 4 * 60_000).toISOString(), event: 'nobody.declared', key: 'declared:x:1', payload: {}, from: 'glm-hourness/execute' })
+  await stale.advance(5_000)
+  const undeclared = stale.records.filter(record => record.kind === 'loop-done' && record.entry === 'nobody.declared')
+  assert.deepEqual(undeclared.map(record => record.kind === 'loop-done' && [record.outcome, record.reason]), [['expired', 'undeclared-event']])
 })

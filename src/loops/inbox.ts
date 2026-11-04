@@ -456,12 +456,12 @@ export function openInbox(deps: InboxDeps): Inbox {
   function handle(line: InboxLine): { readonly duplicate: boolean } {
     const declared = deps.table().get(line.event)
     if (declared === undefined) {
-      deps.record({ kind: 'loop-done', at: iso(), project: deps.paths.projectRoot, entry: line.event, run: line.id, outcome: 'expired', reason: '这个事件现在没有声明' })
+      deps.record({ kind: 'loop-done', at: iso(), project: deps.paths.projectRoot, entry: line.event, run: line.id, outcome: 'expired', reason: 'undeclared-event' })
       return { duplicate: false }
     }
     const age = deps.now() - Date.parse(line.at)
     if (Number.isFinite(age) && age > EVENT_STALE_MS) {
-      deps.record({ kind: 'loop-done', at: iso(), project: deps.paths.projectRoot, entry: line.event, run: line.id, outcome: 'expired', reason: '事件在收件箱里超过 7 天' })
+      deps.record({ kind: 'loop-done', at: iso(), project: deps.paths.projectRoot, entry: line.event, run: line.id, outcome: 'expired', reason: 'event-stale' })
       return { duplicate: false }
     }
     const seen = remember(line.event, line.key, line.at)
@@ -525,7 +525,7 @@ export function openInbox(deps: InboxDeps): Inbox {
   }
 
   /** A run that did not happen: the pair of records the design asks for, with no execution between them (design §6.10). */
-  function told(item: RunnableEntry, line: InboxLine, outcome: 'suppressed', reason: string): void {
+  function told(item: RunnableEntry, line: InboxLine, outcome: 'suppressed', reason: 'rate' | 'groups' | 'self-loop'): void {
     const run = `run-${line.id.slice(3)}`
     const fired: FiredRecord = firedRecord({
       at: iso(),

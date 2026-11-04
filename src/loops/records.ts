@@ -22,14 +22,69 @@ export type RunOutcome =
   | 'deferred' | 'blocked' | 'refused' | 'unfinished' | 'held' | 'failed' | 'expired'
 
 /**
- * Why a run ended as it did. The design names these (§6.7, §6.10):
- * `rate`, `groups`, `self-loop` for a suppressed run; `unadopted`,
- * `check-missing`, `entry-changed`, `not-in-checkout` for a refused one;
- * `timeout`, `action-missing` for a harness action; the `holderState` of a
- * held message. A harness action's own `reason` is its words, so this is a
- * string and not a closed union.
+ * Why a run ended as it did (design §6.7, §6.9 item 4, §6.10 `reason`): a code
+ * of this closed table, never words. The journal's field tables take only
+ * id-shaped strings (metrics design §4.4; §1.6, counts and references, not
+ * text) and refuse a whole event that holds anything else, so a reason in
+ * words would lose the run, and the page's last runs with it. Where the page
+ * says a reason it maps the code back to words beside the outcome words
+ * (view.ts: `REFUSED_WORDS` and `self-loop`; design §8.5 has the other
+ * outcomes in their outcome's words); the message to the main agent and the
+ * row's health keep their own text. What
+ * another plugin says about its own action or run is its words, so it is
+ * recorded as `plugin-reason` (`reasonCode`).
  */
-export type RunReason = string
+export const RUN_REASONS = [
+  // held: the holder state's reason (holder.ts) and the ways this process cannot reach the session now (deliver.ts)
+  'no-record', 'mode-off', 'holder-archived', 'holder-not-found', 'handover', 'writer-held', 'archive-unreadable', 'holder-unreadable',
+  'session-cold', 'no-session-controller', 'row-unloaded',
+  // failed: a delivery the host did not take; its words go to the row's health
+  'deliver-failed',
+  // delivered: DSH did not deliver a due reminder and the board did (bind.ts)
+  'board-delivered',
+  // suppressed (inbox.ts)
+  'rate', 'groups', 'self-loop',
+  // refused (run.ts, and the executor's refusals in script.ts)
+  'unadopted', 'script-changed', 'script-missing', 'too-large', 'aborted', 'outside-project', 'check-missing', 'check-changed',
+  // the end of a script or a check (run.ts; the executor's crashes in script.ts); `timeout` is also a harness action's limit (harness.ts)
+  'timeout', 'spawn', 'signal', 'io', 'rules-unavailable',
+  // blocked by the rules board without a rule named (run.ts); a named one records the rule's id (`ruleReason`)
+  'rules',
+  // a run the rules board queued (run.ts)
+  'rules-queue-expired', 'entry-not-adopted',
+  // a harness action or a reported run (run.ts)
+  'action-missing', 'plugin-reason', 'board-error',
+  // the board's own peak-end action, by the rows of design §6.9 item 4 (peak.ts, run.ts)
+  'peak-no-holder', 'peak-level-unreadable', 'peak-level-inform', 'peak-holder-running', 'peak-holder-idle',
+  'peak-drive-paused', 'peak-waiting-human', 'peak-idle-rounds', 'peak-drive-blocked', 'peak-drive-caught-up', 'peak-rerun-expired',
+  // an event that cannot run (inbox.ts)
+  'undeclared-event', 'event-stale',
+  // delegated: the level the rules board reads when a peak starts (run.ts)
+  'inform', 'reduce', 'stop',
+] as const
+
+export type RunReasonCode = typeof RUN_REASONS[number]
+
+/** The id of a rule that blocked a run, in the rules board's grammar (src/rules/model.ts): `r-…` for a person's rule, `builtin:…` for the code's. */
+type RuleRef = `r-${string}` | `builtin:${string}`
+
+/** A run's `reason`: a code of the table, or the id of the rule that blocked it (a reference, id-shaped). */
+export type RunReason = RunReasonCode | RuleRef
+
+const CODES: ReadonlySet<string> = new Set(RUN_REASONS)
+
+/** A reason given as text (another plugin's action or reported run): kept when it is a code of the table, else `otherwise`. */
+export function reasonCode(text: string | undefined, otherwise: RunReasonCode): RunReasonCode {
+  return text !== undefined && CODES.has(text) ? text as RunReasonCode : otherwise
+}
+
+/** The rule ids of the rules board (src/rules/model.ts `RULE_ID`, `BUILTIN_ID`). */
+const RULE_REF = /^(?:r-[a-z0-9][a-z0-9-]{0,45}|builtin:[a-z0-9][a-z0-9-]{0,40})$/
+
+/** The reason of a blocked run: the rule's id when it is one, else `rules`. */
+export function ruleReason(id: string | undefined): RunReason {
+  return id !== undefined && RULE_REF.test(id) ? id as RuleRef : 'rules'
+}
 
 export interface FiredRecord {
   readonly kind: 'loop-fired'

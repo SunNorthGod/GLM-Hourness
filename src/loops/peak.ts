@@ -28,6 +28,7 @@ import { runAction, currentRun } from './harness.ts'
 import type { HolderMemory, HolderState } from './holder.ts'
 import { reviveSession, type Revival } from './deliver.ts'
 import { PEAK_END_ACTION } from './defaults.ts'
+import { reasonCode, type RunReasonCode } from './records.ts'
 import type { HarnessResult, LoopEventRecord } from './service.ts'
 
 /** The execute row's action that resumes a drive that waited out the peak (design §17 M7 item 6). It exists only while a hand-over lists it. */
@@ -60,12 +61,17 @@ export interface PeakEndDeps {
   readonly report: (text: string, level: 'info' | 'degraded') => void
 }
 
-/** How one judgement of the table ends. `held` is row 2: the runner records the run held and makes the judgement again later. */
+/**
+ * How one judgement of the table ends. `held` is row 2: the runner records
+ * the run held and makes the judgement again later. The reason is a code of
+ * the run reasons (records.ts); the words of each row are the page's
+ * (view.ts), and what the main agent reads is the `tell`.
+ */
 type PeakEndJudgement =
-  | { readonly outcome: 'done', readonly tell: string, readonly reason?: string }
-  | { readonly outcome: 'skipped', readonly reason: string }
-  | { readonly outcome: 'failed', readonly reason: string, readonly tell: string }
-  | { readonly outcome: 'held', readonly reason: string }
+  | { readonly outcome: 'done', readonly tell: string, readonly reason?: RunReasonCode }
+  | { readonly outcome: 'skipped', readonly reason: RunReasonCode }
+  | { readonly outcome: 'failed', readonly reason: RunReasonCode, readonly tell: string }
+  | { readonly outcome: 'held', readonly reason: RunReasonCode }
 
 /**
  * What the board's own peak-end action returns: the HarnessResult contract
@@ -179,7 +185,7 @@ function goalOf(ctx: ServiceLookup, agent: MessageableAgentLike): GoalView | und
  */
 function revivalOf(revival: Revival): PeakEndJudgement | undefined {
   if (!('wait' in revival)) return undefined
-  if (revival.wait === 'holder-not-found' || revival.wait === 'no-session-controller') return { outcome: 'skipped', reason: '没有能叫醒的主 Agent' }
+  if (revival.wait === 'holder-not-found' || revival.wait === 'no-session-controller') return { outcome: 'skipped', reason: 'peak-no-holder' }
   if (revival.wait === 'writer-held') return { outcome: 'held', reason: 'writer-held' }
   return undefined
 }
@@ -193,14 +199,15 @@ async function resumeDrive(deps: PeakEndDeps, resume: ActionRun, event: LoopEven
   if (result.outcome === 'skipped') {
     // The session this row just revived: M7 may have caught the drive up on `agent/created` (design §6.9 item 4 row 3, review F40).
     if (revived !== undefined && goalOf(deps.ctx, revived)?.phase === 'active') {
-      return { outcome: 'done', reason: '打开会话时 M7 接上了推进', tell: `GLM peak hours ended at ${end}. The drive is running again; continue with the work you moved.` }
+      return { outcome: 'done', reason: 'peak-drive-caught-up', tell: `GLM peak hours ended at ${end}. The drive is running again; continue with the work you moved.` }
     }
     return undefined
   }
+  // The execute row's words go into the main agent's message; the record keeps a code (`timeout` when the limit fired).
   const why = result.reason ?? '没有给出原因'
   return {
     outcome: 'failed',
-    reason: why,
+    reason: reasonCode(result.reason, 'plugin-reason'),
     tell: result.tell ?? `GLM peak hours ended at ${end}. The harness could not resume the drive that waited out the peak (${why}). Tell the human in one line that the moved work can start and the drive resumes when they say so.`,
   }
 }
@@ -216,7 +223,7 @@ async function judgePeakEnd(deps: PeakEndDeps, event: LoopEventRecord, run: stri
   // Row 1: nobody to wake. The reason is already on the page (§6.4).
   const nobody = holder.kind === 'none' || holder.kind === 'archived' || holder.kind === 'not-found'
     || (holder.kind === 'unknown' && holder.reason === 'holder-unreadable')
-  if (nobody || session === undefined) return { outcome: 'skipped', reason: '没有能叫醒的主 Agent' }
+  if (nobody || session === undefined) return { outcome: 'skipped', reason: 'peak-no-holder' }
   // Row 2: the session is open in another DSH process; the run lock goes there, and the holder of it judges again.
   if (holder.kind === 'elsewhere') return { outcome: 'held', reason: 'writer-held' }
 
@@ -251,15 +258,15 @@ async function judgePeakEnd(deps: PeakEndDeps, event: LoopEventRecord, run: stri
   }
 
   // Row 4.
-  if (level === undefined) return { outcome: 'skipped', reason: '读不到高峰模式' }
+  if (level === undefined) return { outcome: 'skipped', reason: 'peak-level-unreadable' }
   // Row 5 is the fall-through: 少做 and 不做 reach the same rows (d-main-agent-peak-exempt).
   // Row 6.
-  if (level.level === 'inform') return { outcome: 'skipped', reason: '无影响档没有挪开的活' }
+  if (level.level === 'inform') return { outcome: 'skipped', reason: 'peak-level-inform' }
   // Row 7.
   const live = agentsOf(deps.ctx)?.get(session)
-  if (live !== undefined && live.status === 'running') return { outcome: 'skipped', reason: '主 Agent 正在干活，它下一步的高峰一行已经变了' }
+  if (live !== undefined && live.status === 'running') return { outcome: 'skipped', reason: 'peak-holder-running' }
   // Row 8.
-  if (!worked) return { outcome: 'skipped', reason: '高峰里主 Agent 没干活，没有挪开的活' }
+  if (!worked) return { outcome: 'skipped', reason: 'peak-holder-idle' }
   // Row 9: the goal, revived into this process first when the session is cold (the delivery below needs it anyway).
   let agent = live
   if (agent === undefined) {
@@ -273,12 +280,12 @@ async function judgePeakEnd(deps: PeakEndDeps, event: LoopEventRecord, run: stri
   }
   if (agent !== undefined) {
     const goal = goalOf(deps.ctx, agent)
-    if (goal?.phase === 'paused') return { outcome: 'skipped', reason: '自动推进暂停着' }
+    if (goal?.phase === 'paused') return { outcome: 'skipped', reason: 'peak-drive-paused' }
     if (goal?.phase === 'blocked') {
       const code = goal.blockedReason?.code
-      if (code === 'hourness-waiting-human') return { outcome: 'skipped', reason: '主 Agent 在等你回话' }
-      if (code === 'hourness-idle-rounds') return { outcome: 'skipped', reason: '主 Agent 没事可做，已经在问你' }
-      return { outcome: 'skipped', reason: `自动推进被挡住了（${code ?? '不知道原因'}）` }
+      if (code === 'hourness-waiting-human') return { outcome: 'skipped', reason: 'peak-waiting-human' }
+      if (code === 'hourness-idle-rounds') return { outcome: 'skipped', reason: 'peak-idle-rounds' }
+      return { outcome: 'skipped', reason: 'peak-drive-blocked' }
     }
   }
   // Row 10.
@@ -296,7 +303,7 @@ export interface PeakEnd {
 export function createPeakEnd(deps: PeakEndDeps): PeakEnd {
   return {
     async run(action, event): Promise<OwnActionResult> {
-      if (action !== PEAK_END_ACTION) return { outcome: 'failed', reason: `${action} 不是循环行的动作` }
+      if (action !== PEAK_END_ACTION) return { outcome: 'failed', reason: 'action-missing' }
       const run = currentRun() ?? 'run-000000000000'
       try {
         const judgement = await judgePeakEnd(deps, event, run)
@@ -313,11 +320,11 @@ export function createPeakEnd(deps: PeakEndDeps): PeakEnd {
         const end = endOf(event)
         return {
           outcome: 'failed',
-          reason: message(error),
+          reason: 'board-error',
           tell: `GLM peak hours ended at ${end}. The harness could not resume the drive that waited out the peak (${message(error)}). Tell the human in one line that the moved work can start and the drive resumes when they say so.`,
         }
       }
     },
-    judge: (event, run) => judgePeakEnd(deps, event, run).catch((error): PeakEndJudgement => ({ outcome: 'failed', reason: message(error), tell: `GLM peak hours ended at ${endOf(event)}. The harness could not judge the end of the peak (${message(error)}). Tell the human in one line that the moved work can start.` })),
+    judge: (event, run) => judgePeakEnd(deps, event, run).catch((error): PeakEndJudgement => ({ outcome: 'failed', reason: 'board-error', tell: `GLM peak hours ended at ${endOf(event)}. The harness could not judge the end of the peak (${message(error)}). Tell the human in one line that the moved work can start.` })),
   }
 }

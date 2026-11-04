@@ -79,7 +79,7 @@ import { createRunLock, type LockStand } from './lock.ts'
 import { watchPaths, type WatchDeps, type Watched } from './file-watch.ts'
 import { metricEventOf } from './metrics.ts'
 import { createPeakEnd, peakLevelOf, type PeakEnd } from './peak.ts'
-import { firedRecord, runId, type LoopRecord, type RunOutcome, type RunReason } from './records.ts'
+import { firedRecord, reasonCode, ruleReason, runId, type LoopRecord, type RunOutcome, type RunReason } from './records.ts'
 import type { LoopsRegistry } from './registry.ts'
 import { commandText, runCommand, runScript, sweepRunCopies, WORK_TIMEOUT_MS, type HookEnvelope, type ScriptResult } from './script.ts'
 import { matchesFilter } from './trigger.ts'
@@ -381,8 +381,8 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
       try {
         if (deps.now() - Date.parse(held.at) >= HELD_MS) {
           state.held.splice(state.held.indexOf(held), 1)
-          record({ kind: 'loop-done', at: iso(), project: deps.root, entry: held.entry, run: held.run, outcome: 'expired', reason: '高峰结束的再判等了一天还没判成' })
-          inbox.state().last[held.entry] = { run: held.run, at: iso(), outcome: 'expired', reason: '高峰结束的再判等了一天还没判成' }
+          record({ kind: 'loop-done', at: iso(), project: deps.root, entry: held.entry, run: held.run, outcome: 'expired', reason: 'peak-rerun-expired' })
+          inbox.state().last[held.entry] = { run: held.run, at: iso(), outcome: 'expired', reason: 'peak-rerun-expired' }
           continue
         }
         const judgement = await peakEnd.judge(held.event!, held.run)
@@ -399,7 +399,7 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
           else if (result.kind === 'held') outcome = 'held'
           else {
             outcome = 'failed'
-            why = result.reason
+            why = 'deliver-failed'
             deps.report(`没能把「${title}」交给主 Agent：${result.reason.slice(0, 80)}`, 'degraded')
           }
         }
@@ -585,7 +585,7 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
   /** What the rules board made of one command (design §6.9 item 1). */
   type RulesVerdict =
     | { readonly kind: 'run', readonly unavailable?: boolean }
-    | { readonly kind: 'blocked', readonly rule: string }
+    | { readonly kind: 'blocked', readonly rule: RunReason }
     | { readonly kind: 'queue' }
 
   /**
@@ -607,7 +607,7 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
         },
       )
       if (result.effect === 'block') {
-        return { kind: 'blocked', rule: result.rules.find(candidate => candidate.effect === 'block')?.id ?? 'rules' }
+        return { kind: 'blocked', rule: ruleReason(result.rules.find(candidate => candidate.effect === 'block')?.id) }
       }
       if (result.effect === 'queue') return { kind: 'queue' }
       return { kind: 'run' }
@@ -799,8 +799,9 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
       told = { ...(said.how === undefined ? {} : { how: said.how }), ...(said.messageId === undefined ? {} : { messageId: said.messageId }) }
     }
     const outcome: RunOutcome = timedOut ? 'unfinished' : speaks ? 'reported' : 'ran'
+    // How long it ran is the record's durationMs; the reason is the code alone.
     const reason: RunReason | undefined = timedOut
-      ? `timeout ${secondsOf(result.durationMs)}`
+      ? 'timeout'
       : result.kind === 'crashed'
         ? result.reason
         : verdict.unavailable && !speaks ? 'rules-unavailable' : undefined
@@ -859,13 +860,13 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
           state.last[held.entry] = { run, at: iso(), outcome, ...(why === undefined ? {} : { reason: why }) }
         }
         if (deps.now() - Date.parse(held.since) >= DEFER_MAX_MS) {
-          finish('expired', '规则板排了一天还没放行')
+          finish('expired', 'rules-queue-expired')
           continue
         }
         const item = entries().find(candidate => candidate.entry.id === held.entry)
         const action = item?.entry.action
         if (item === undefined || action === undefined || (action.kind !== 'script' && action.kind !== 'check') || !adopted(item)) {
-          finish('expired', '条目不在了，或不再是同意过的那一份')
+          finish('expired', 'entry-not-adopted')
           continue
         }
         const verdict = await askRules(commandLineOf(action), action.glmSpend)
@@ -930,29 +931,31 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
         else {
           const result = await runAction(action.action, batch.record, run, { run: listed.run, now: deps.now, delay: deps.delay })
           const text = result.tell ?? action.tell?.text
+          // The board's own peak-end action answers codes of the table; another plugin's reason is its words (records.ts).
+          const said = result.reason === undefined ? undefined : reasonCode(result.reason, 'plugin-reason')
           if (result.held !== undefined) {
             // Row 2 of the peak-end table: the judgement waits in the held list and the beat makes it again (design §6.9 item 4 row 2).
             outcome = 'held'
-            reason = result.held
+            reason = reasonCode(result.held, 'plugin-reason')
           }
           else if (result.outcome === 'skipped') {
             outcome = 'skipped'
-            reason = result.reason
+            reason = said
           }
           else if (result.outcome === 'done') {
-            reason = result.reason
+            reason = said
             if (text === undefined) outcome = 'ran'
             else {
               const told = await tell(item, run, text, action.tell?.wake ?? true, batch)
               outcome = told.outcome
-              reason = told.reason ?? result.reason
+              reason = told.reason ?? said
               how = told.how
               messageId = told.messageId
             }
           }
           else {
             outcome = 'failed'
-            reason = result.reason
+            reason = said
             deps.report(`${item.entry.id} 的 harness 动作失败：${(result.reason ?? '').slice(0, 80)}`, 'degraded')
             if (text !== undefined) await tell(item, run, text, action.tell?.wake ?? true, batch)
           }
@@ -993,8 +996,8 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
     }
     catch (error) {
       outcome = 'failed'
-      reason = message(error)
-      deps.report(`「${item.entry.title}」这一次跑出错：${reason.slice(0, 80)}`, 'degraded')
+      reason = 'board-error'
+      deps.report(`「${item.entry.title}」这一次跑出错：${message(error).slice(0, 80)}`, 'degraded')
     }
     finally {
       flight.delete(run)
@@ -1033,7 +1036,7 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
     if (result.kind === 'delivered') return { outcome: 'delivered', how: result.how, ...(result.messageId === undefined ? {} : { messageId: result.messageId }) }
     if (result.kind === 'held') return { outcome: 'held', reason: result.reason }
     deps.report(`没能把「${item.entry.title}」交给主 Agent：${result.reason.slice(0, 80)}`, 'degraded')
-    return { outcome: 'failed', reason: result.reason }
+    return { outcome: 'failed', reason: 'deliver-failed' }
   }
 
   /**
@@ -1209,6 +1212,8 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
         const item = entries().find(candidate => candidate.entry.id === run.entry)
         if (item === undefined || item.entry.action.kind !== 'self') return
         const id = runId()
+        // The row's reason is its words (design §3.1, one line); the record keeps a code (records.ts).
+        const reason = run.reason === undefined ? undefined : reasonCode(run.reason, 'plugin-reason')
         record(firedRecord({ at: iso(), project: deps.root, run: id, entry: item.entry, from: item, events: 1 }))
         record({
           kind: 'loop-done',
@@ -1217,10 +1222,10 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
           entry: item.entry.id,
           run: id,
           outcome: run.outcome,
-          ...(run.reason === undefined ? {} : { reason: run.reason }),
+          ...(reason === undefined ? {} : { reason }),
           ...(run.durationMs === undefined ? {} : { durationMs: run.durationMs }),
         })
-        inbox.state().last[item.entry.id] = { run: id, at: iso(), outcome: run.outcome, ...(run.reason === undefined ? {} : { reason: run.reason }) }
+        inbox.state().last[item.entry.id] = { run: id, at: iso(), outcome: run.outcome, ...(reason === undefined ? {} : { reason }) }
       }
       catch (error) {
         deps.report(`记一次 ${run.entry} 的运行失败：${message(error)}`, 'info')

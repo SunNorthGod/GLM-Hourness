@@ -446,7 +446,7 @@ async function afterDue(
     entry: item.entry.id,
     run,
     outcome: told.kind === 'delivered' ? 'delivered' : told.kind === 'held' ? 'held' : 'failed',
-    reason: told.kind === 'delivered' ? 'DSH 没投出去，循环板补投了' : told.reason,
+    reason: told.kind === 'delivered' ? 'board-delivered' : told.kind === 'held' ? told.reason : 'deliver-failed',
     ...(told.kind === 'delivered' ? { delivery: told.how } : {}),
   })
   state.last[item.entry.id] = { run, at: iso(), outcome: told.kind === 'delivered' ? 'delivered' : told.kind }

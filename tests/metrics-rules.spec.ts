@@ -153,6 +153,16 @@ test('a shell command that mentions the journal and deletes, moves or writes is 
   }
   // The accepted cost (ORCHESTRATION.md §10.6): a cmd-wrapped read whose text holds a delete word is refused.
   assert.equal(verdictOf(shell('cmd /c "type .llm\\metrics\\view.json | findstr del"')).kind, 'deny')
+  // A command name with .exe, at the end of a path, or running into a switch is an action word (review S7R4-1, S7R4-2).
+  for (const command of [
+    'cmd /c rm.exe -rf .llm\\metrics',
+    'cmd /c "rm.exe -rf .llm\\metrics"',
+    'cmd /c "C:\\Git\\usr\\bin\\rm -rf .llm\\metrics"',
+    'cmd /c "C:\\Git\\usr\\bin\\rm.exe -rf .llm\\metrics"',
+    'cmd /c "del/q .llm\\metrics\\view.json"',
+  ]) {
+    for (const rule of [RULE, AT_ROOT]) assert.equal(verdictOf(shell(command), rule).kind, 'deny', command)
+  }
 })
 
 test('neither correction points the model at the summary or at reading the journal (§15.42, §7.6.4)', () => {
@@ -177,6 +187,12 @@ test('a shell command that only reads or only mentions the journal passes, whate
     'cmd /c "if exist .llm\\metrics\\view.json type .llm\\metrics\\view.json"',
     'cmd /d /s /c "type .llm\\metrics\\view.json 2>&1"',
     'cmd /c type .llm\\metrics\\view.json 2>nul',
+    // A switch that spells an action word, and a directory on a path that does, are not actions (review S7R4-1).
+    'cmd /c "findstr /ni rule .llm\\metrics\\events-2026-11-04.jsonl"',
+    'cmd /c "findstr /mi deny .llm\\metrics\\*.jsonl"',
+    'cmd /c "findstr /ri rule .llm\\metrics\\events-2026-11-04.jsonl"',
+    'cmd /c "type C:\\Users\\mi\\app\\.llm\\metrics\\view.json"',
+    'cmd /c "dir D:\\cp\\app\\.llm\\metrics"',
     'find .llm/metrics -name "*.jsonl"',
     'git clean -n -X .llm/metrics',
     'git clean --dry-run -fdX .llm/metrics',

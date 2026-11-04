@@ -64,13 +64,20 @@ const DELETES_OR_MOVES: ReadonlySet<string> = new Set([
  */
 const WRITES: ReadonlySet<string> = new Set(['copy', 'xcopy', 'cpi', 'ni', 'clc', 'ac'])
 
+const CMD_WORDS = [...DELETES_OR_MOVES, ...WRITES, ...WRITE_COMMANDS].join('|')
+
 /**
  * The action words of the whole-text reading of what cmd runs: the rule's
- * two tables and file-tools-only's write commands, each as a whole word
- * (the delimiters of 3f59b61's reading; the text is lower case, with `/`
- * for `\`).
+ * two tables and file-tools-only's write commands, each as a whole word,
+ * with an optional `.exe` (the text is lower case, with `/` for `\`). A
+ * word after a space, the start or `;"'|&(` may run into a switch
+ * (`del/q`); a word after a `/` that follows another character is the last
+ * part of a path (`c:/git/usr/bin/rm`). A word after a `/` that follows a
+ * space is a switch (`findstr /ni`), and one with a `/` on both sides is a
+ * directory on a path (`c:/users/mi/…`): neither is an action (review
+ * S7R4-1, S7R4-2).
  */
-const CMD_ACTION = new RegExp(`(?:^|[\\s/;"'|&(])(?:${[...DELETES_OR_MOVES, ...WRITES, ...WRITE_COMMANDS].join('|')})(?=$|[\\s/"')>])`)
+const CMD_ACTION = new RegExp(`(?:(?:^|[\\s;"'|&(])(?:${CMD_WORDS})(?:\\.exe)?(?=$|[\\s/"')>])|(?<=\\S)/(?:${CMD_WORDS})(?:\\.exe)?(?=$|[\\s"')>]))`)
 
 /** A redirection that writes a file: not one onto another handle (`2>&1`) and not one to `nul`. */
 const CMD_REDIRECT = /(?<!>)>+(?!>)(?!\s*&\d)(?!\s*nul\b)/

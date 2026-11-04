@@ -37,7 +37,7 @@
 import { agentsOf, wayTo as wakeWay } from '../rules/wake.ts'
 import { createUserNotice, type MessageableAgentLike, type ServiceLookup, type SessionLike, type UserNotice } from '../shared/dsh-min.ts'
 import { wrapSystemReminder } from '../shared/zcode-notice.ts'
-import { canDeliver, type HolderMemory, type HolderState } from './holder.ts'
+import { canDeliver, type HolderMemory, type HolderReason, type HolderState } from './holder.ts'
 import type { HeldMessage, RuntimeState } from './inbox.ts'
 
 /** One message the board has for the main agent, or for the session an event came from. */
@@ -52,10 +52,14 @@ export interface DeliverRequest {
   readonly session?: string
 }
 
+/** Why a message waits (design §6.4): the holder state's reason, or one of the ways this process cannot reach the session now. Codes of the run reasons (records.ts). */
+type HeldReason = HolderReason | 'session-cold' | 'no-session-controller' | 'row-unloaded'
+
 export type DeliverResult =
   | { readonly kind: 'delivered', readonly how: 'steer' | 'inject' | 'followup', readonly messageId?: string }
   /** Nobody can be told now; the message is kept and told later, with the reason the design names (design §6.4). */
-  | { readonly kind: 'held', readonly reason: string }
+  | { readonly kind: 'held', readonly reason: HeldReason }
+  /** The host did not take it; `reason` is the words for the row's health. */
   | { readonly kind: 'failed', readonly reason: string }
 
 export type Deliver = (request: DeliverRequest) => Promise<DeliverResult>
@@ -229,7 +233,8 @@ export function createDelivery(deps: DeliverDeps): LoopDelivery {
 
   async function toHolder(parts: readonly DeliverRequest[], wake: boolean): Promise<DeliverResult> {
     const holder = deps.holder()
-    if (!canDeliver(holder)) return { kind: 'held', reason: holder.reason ?? holder.kind }
+    // holderStateOf gives every state that cannot be told its reason; one without is a holder this process cannot read.
+    if (!canDeliver(holder)) return { kind: 'held', reason: holder.reason ?? 'holder-unreadable' }
     if (holder.session === undefined) return { kind: 'held', reason: 'no-record' }
     const reached = await reach(holder.session, wake)
     if (!('agent' in reached)) return reached
@@ -246,7 +251,7 @@ export function createDelivery(deps: DeliverDeps): LoopDelivery {
   }
 
   /** Keep a message that nobody can be told now (design §6.4). */
-  function hold(request: DeliverRequest, reason: string): void {
+  function hold(request: DeliverRequest, reason: HeldReason): void {
     const state = deps.state()
     const held: HeldMessage = { at: iso(), entry: request.entry, run: request.run, title: request.title, text: request.text, wake: request.wake, reason, ...(request.session === undefined ? {} : { session: request.session }) }
     state.held.push(held)

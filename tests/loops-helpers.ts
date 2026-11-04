@@ -16,9 +16,14 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import test from 'node:test'
 import type { EntryImage, JournalRecord } from '../src/loops/journal.ts'
+import { metricEventOf } from '../src/loops/metrics.ts'
 import { entryFileText, type PersonEntry } from '../src/loops/model.ts'
+import type { LoopRecord } from '../src/loops/records.ts'
 import { appendJournal, ensureRuntimeDir, openLoopStore, type LoopStore, type LoopStoreOptions } from '../src/loops/store.ts'
+import { METRICS_KINDS } from '../src/metrics/kinds/index.ts'
+import { checkEvent, FORMAT_VERSION } from '../src/metrics/schema.ts'
 import type { StoreIo } from '../src/rules/store.ts'
+import type { EmittedEvent } from '../src/shared/metrics.ts'
 import { quickIo as quickStoreIo } from './rules-helpers.ts'
 
 /** The moment the person agreed to the entries these specs seed. */
@@ -155,6 +160,28 @@ export async function recordsOf(project: Pick<GitProject, 'store'>): Promise<Jou
 /** The state of one entry now. */
 export function statusOf(project: Pick<GitProject, 'store'>, id: string): string {
   return project.store.read().entries.find(entry => entry.id === id)?.status.kind ?? 'missing'
+}
+
+/**
+ * Whether the metrics journal takes one event, checked as the writer checks
+ * it (src/metrics/writer.ts: the body's fields of the kind's table, the
+ * stored envelope, `checkEvent`; metrics design §4.4). The specs' fake
+ * journals keep only what this takes, as the real one does: an event its
+ * field tables refuse is lost whole, and a run with it drops off the page.
+ */
+export function journalTakes(event: EmittedEvent): boolean {
+  const table = METRICS_KINDS.get(event.k)
+  if (table === undefined) return false
+  const given = event.body as Readonly<Record<string, unknown>>
+  const body = Object.fromEntries(table.fields.flatMap(spec => given[spec.name] === undefined ? [] : [[spec.name, given[spec.name]]]))
+  const stored = { s: FORMAT_VERSION, k: event.k, at: event.at ?? '2026-11-02T01:00:00.000Z', w: '0123abcd', n: 1, h: '000000000000', v: 'spec', by: event.by, body }
+  return checkEvent(stored, METRICS_KINDS).ok
+}
+
+/** Whether the journal takes the event one board record maps to (src/loops/metrics.ts). */
+export function journalTakesRecord(record: LoopRecord): boolean {
+  const event = metricEventOf(record)
+  return event !== undefined && journalTakes(event)
 }
 
 /** The names in a directory, or none when it is not there. */
