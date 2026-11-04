@@ -3,26 +3,20 @@
  * temporary directories: the work happens in git, so the cases run git. The
  * process wrapper is run against `node -e` for exit codes, timeouts and a
  * missing program. Global git configuration is replaced by a fixed one
- * (a user, no autocrlf, no signing) so the cases do not depend on the machine.
+ * (a user, no autocrlf, no signing; the sandbox of tests/execute-repo.ts)
+ * so the cases do not depend on the machine.
  */
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import test, { describe, it, type TestContext } from 'node:test'
 import {
   createGit, DEFAULT_WATCHED, execRunner, parseNameStatus, parseTaskTrailers, parseWorktrees, realGitRunner, reflogKind, watchedDigest,
   type Git, type GitResult, type GitRunner, type Outcome, type Refusal, type SnapshotSaver,
 } from '../src/execute/git.ts'
+import { sandbox } from './execute-repo.ts'
 import { skipIfTempInsideGit } from './temp-outside-git.ts'
-
-const sandbox = realpathSync.native(mkdtempSync(join(tmpdir(), 'execute-git-')))
-const globalConfig = join(sandbox, 'gitconfig')
-writeFileSync(globalConfig, '[user]\n\tname = Test\n\temail = test@example.invalid\n[init]\n\tdefaultBranch = main\n[core]\n\tautocrlf = false\n[commit]\n\tgpgsign = false\n')
-process.env.GIT_CONFIG_GLOBAL = globalConfig
-process.env.GIT_CONFIG_NOSYSTEM = '1'
-process.on('exit', () => rmSync(sandbox, { recursive: true, force: true, maxRetries: 3 }))
 
 const sameFile = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCase()
 
@@ -159,8 +153,8 @@ test('a git that fails, hangs or is missing is an outcome with a reason, never a
 
 test('the executor is a closed set of named operations: no entry point takes git arguments from the caller (E3 review, E3-3)', () => {
   assert.deepEqual(Object.keys(createGit()).sort(), [
-    'branchTip', 'changedFiles', 'currentBranch', 'discardWorktree', 'ensureWorktree', 'entryAt', 'isAncestor', 'lastTaskCommit', 'listWorktrees', 'lsRemote', 'mergeBase',
-    'prepareGateWorktree', 'reflogSubject', 'removeWorktree', 'resolveCommit', 'sameContent', 'taskTrailers', 'toplevel', 'trunkRefs', 'trunkUpstream',
+    'branchTip', 'changedFiles', 'commitsBetween', 'currentBranch', 'discardWorktree', 'ensureWorktree', 'entryAt', 'isAncestor', 'lastTaskCommit', 'listWorktrees', 'lsRemote', 'mergeBase',
+    'prepareGateWorktree', 'reflogSubject', 'remoteHeadBranch', 'remoteUrl', 'removeWorktree', 'resolveCommit', 'sameContent', 'stagedPaths', 'taskTrailers', 'toplevel', 'treeOf', 'trunkRefs', 'trunkUpstream',
   ], 'a new operation is added here on purpose, with its argument checks, after review')
 })
 
@@ -189,7 +183,13 @@ withRepo('every git process the executor starts begins with --no-replace-objects
   await git.trunkRefs(repo.dir, 'main', 'origin')
   await git.reflogSubject(repo.dir, 'refs/remotes/origin/main')
   await git.lsRemote(repo.dir, 'origin', 'main')
-  assert.ok(calls.length >= 25, `the cases ran ${calls.length} git processes`)
+  // E7's five operations (M7 design §3.8.3, §3.8.4, §3.11.1).
+  await git.treeOf(repo.dir, tip)
+  await git.remoteUrl(repo.dir, 'origin')
+  await git.remoteHeadBranch(repo.dir, 'origin')
+  await git.stagedPaths(repo.dir, true)
+  await git.commitsBetween(repo.dir, base, tip)
+  assert.ok(calls.length >= 30, `the cases ran ${calls.length} git processes`)
   assert.deepEqual(calls.filter(args => args[0] !== '--no-replace-objects'), [])
   // Behind it, the options that keep programs the repository's configuration names out of the executor's calls (E3 review, E3-6; E3 follow-up review, FU-4):
   // the hooks directory and the fsmonitor command, then the hooks defined in configuration for the three events these calls start.
@@ -1114,6 +1114,64 @@ withRepo('ls-remote asks the remote itself where its trunk is', async (repo, git
   const unreachable = await git.lsRemote(repo.dir, 'ghost', 'main')
   assert.equal(unreachable.ok, false)
   assert.match(unreachable.ok ? '' : unreachable.reason, /git ls-remote exited/)
+})
+
+withRepo('the tree of a commit is the same for two commits with the same content and changes with the content (§3.11.1)', async (repo, git) => {
+  const first = repo.commit({ 'a.txt': '1' }, 'first')
+  const empty = repo.commit({}, 'nothing changed')
+  const second = repo.commit({ 'a.txt': '2' }, 'second')
+  const tree = good(await git.treeOf(repo.dir, first))
+  assert.match(tree ?? '', /^[0-9a-f]{40,64}$/)
+  assert.equal(tree, repo.git('rev-parse', `${first}^{tree}`))
+  assert.equal(good(await git.treeOf(repo.dir, empty)), tree, 'an empty commit keeps the tree')
+  assert.notEqual(good(await git.treeOf(repo.dir, second)), tree)
+  assert.equal(good(await git.treeOf(repo.dir, 'no-such-branch')), undefined)
+  assert.equal((await git.treeOf(repo.dir, '--all')).ok, false)
+})
+
+withRepo('a remote\'s URL is read by its name, and a missing remote has none', async (repo, git) => {
+  repo.commit({ 'a.txt': '1' }, 'first')
+  assert.equal(good(await git.remoteUrl(repo.dir, 'origin')), undefined, 'no remote yet')
+  const remote = repo.withRemote()
+  assert.ok(sameFile(good(await git.remoteUrl(repo.dir, 'origin')) ?? '', remote), 'the URL remote add stored')
+  assert.equal((await git.remoteUrl(repo.dir, 'ext::sh')).ok, false, 'a URL is not a remote name')
+  assert.equal((await git.remoteUrl(repo.dir, '--push')).ok, false)
+})
+
+withRepo('the remote\'s default branch is the branch refs/remotes/<remote>/HEAD names', async (repo, git) => {
+  repo.commit({ 'a.txt': '1' }, 'first')
+  assert.equal(good(await git.remoteHeadBranch(repo.dir, 'origin')), undefined, 'no remote, no default branch')
+  repo.withRemote()
+  repo.git('branch', 'trunk')
+  repo.git('push', '--quiet', 'origin', 'trunk')
+  repo.git('remote', 'set-head', 'origin', 'trunk')
+  assert.equal(good(await git.remoteHeadBranch(repo.dir, 'origin')), 'trunk')
+  repo.git('remote', 'set-head', 'origin', '--delete')
+  assert.equal(good(await git.remoteHeadBranch(repo.dir, 'origin')), undefined)
+  assert.equal((await git.remoteHeadBranch(repo.dir, '-x')).ok, false)
+})
+
+withRepo('the paths a commit would record: the staged ones, with -a also the changed tracked files, a rename as both paths', async (repo, git) => {
+  repo.commit({ 'a.txt': '1', 'b.txt': '1', 'old.txt': 'kept\n' }, 'first')
+  assert.deepEqual(good(await git.stagedPaths(repo.dir, false)), [])
+  writeFileSync(join(repo.dir, 'a.txt'), '2')
+  writeFileSync(join(repo.dir, 'b.txt'), '2')
+  writeFileSync(join(repo.dir, 'untracked.txt'), 'new')
+  repo.git('add', 'a.txt')
+  repo.git('mv', 'old.txt', 'new.txt')
+  assert.deepEqual(good(await git.stagedPaths(repo.dir, false)).sort(), ['a.txt', 'new.txt', 'old.txt'])
+  assert.deepEqual(good(await git.stagedPaths(repo.dir, true)).sort(), ['a.txt', 'b.txt', 'new.txt', 'old.txt'], 'commit -a takes the changed tracked file, never the untracked one')
+})
+
+withRepo('the commits between two revisions come newest first, and none from a commit to itself', async (repo, git) => {
+  const first = repo.commit({ 'a.txt': '1' }, 'first')
+  const second = repo.commit({ 'a.txt': '2' }, 'second')
+  const third = repo.commit({ 'a.txt': '3' }, 'third')
+  assert.deepEqual(good(await git.commitsBetween(repo.dir, first, third)), [third, second])
+  assert.deepEqual(good(await git.commitsBetween(repo.dir, third, third)), [])
+  assert.deepEqual(good(await git.commitsBetween(repo.dir, third, first)), [], 'backwards brings nothing in')
+  assert.equal((await git.commitsBetween(repo.dir, '-x', third)).ok, false)
+  assert.equal((await git.commitsBetween(repo.dir, first, 'no-such-branch')).ok, false)
 })
 
 describe('git executor on real repositories', { concurrency: 8 }, () => {

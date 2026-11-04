@@ -12,8 +12,19 @@
  * agent's tool face by its role (src/execute/faces.ts), provides the
  * `glmHournessExecute` service whose `isWorker` tells M3's guard rules who a
  * dispatch carries, and reports the row health of the sessions it acts in.
- * The gate provider, the drive and the loop-board seam arrive with E7–E8 on
- * this same entry.
+ * It registers the main agent's `check_commit` (src/execute/check.ts: the
+ * merge checks of §3.8.2–§3.8.3 and their records) and the check backend
+ * `hourness-gate` with the `subagents` service (src/execute/
+ * gate-provider.ts); without the backend a check runs inside its call and
+ * the row health says so. It installs the trunk-advance check
+ * (src/execute/advance.ts, §3.8.4) before the dispatched chain's rules, so
+ * those stay outermost; the service's `trunkAdvanceFor` reads it (R4-F4), a
+ * passing check writes the evidence a move made before it was waiting for,
+ * and a review that passes after the advance completes the task with that
+ * evidence. The two trunk events run the `execute.trunk` entry's full trunk
+ * check in this process, once per event key, and a failure goes to the
+ * holder as a loop notice (D4). The drive and the loop-board seam arrive
+ * with E8 on this same entry.
  *
  * The row keeps the dispatch register (src/execute/attempts.ts) and the
  * revision-keyed graph cache the rules read; the graph of a project is
@@ -25,26 +36,32 @@
  * and says why in the row health. It ships disabled
  * (packages/hourness/cordis.patch.yml); the E9 verification turns it on.
  */
+import { randomBytes } from 'node:crypto'
 import { appendFile, mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { graphService } from '../graph/service.ts'
+import type { LoadedGraph } from '../graph/parse.ts'
 import { projectOf } from '../data/project-root.ts'
 import { isMainAgentFor } from '../data/main-agent.ts'
 import { rowJournal } from '../memory/audit.ts'
 import { dataHomes } from '../shared/data-home.ts'
-import type { AgentsService, AgentLike, InjectHost, PreExecuteListener, ProvideHost, ServiceLookup, SessionLike } from '../shared/dsh-min.ts'
+import { createUserNotice, type AgentsService, type AgentLike, type InjectHost, type PostExecuteListener, type PreExecuteListener, type ProvideHost, type ServiceLookup, type SessionLike } from '../shared/dsh-min.ts'
 import { EXECUTE_SERVICE, type ExecuteService } from '../shared/execute-service.ts'
 import { provideRowHealth, sessionIdOf, type HealthState } from '../shared/health.ts'
 import { disposerList } from '../shared/row-support.ts'
 import Schema from '../shared/schemastery.ts'
-import { installExecuteRules } from '../guard/execute-rules.ts'
-import { registeredAttempt, recordCommunication, reviewTargetOf } from './attempts.ts'
+import { installExecuteRules, type ExecuteRulesDeps } from '../guard/execute-rules.ts'
+import { latestDispatch, registeredAttempt, recordCommunication, reviewTargetOf } from './attempts.ts'
 import { createGraphCache, dispatchTool, realCommandRunner, type DispatchDeps, type GraphCache } from './dispatch.ts'
 import { answerWorkerTool, askMainTool, submitPlanTool, type RequestsDeps } from './requests.ts'
 import { sha256Hex } from './digest.ts'
-import { startHandback, stoppedInMemory, type HandbackDeps } from './handback.ts'
+import { readCalls, startHandback, stoppedInMemory, type HandbackDeps } from './handback.ts'
 import { createGit } from './git.ts'
 import { faceOfRole, roleOfAgent, type FaceDeps } from './faces.ts'
+import { checkCommitTool, toHolder, trunkCheck, type CheckDeps } from './check.ts'
+import { createGateLauncher, GATE_PROVIDER } from './gate-provider.ts'
+import { installTrunkGate } from './advance.ts'
+import { floorHits, parseFloor } from './floor.ts'
 
 /** Row config: the parallel write slots. */
 export interface ExecuteConfig {
@@ -65,6 +82,8 @@ export interface ExecuteContext extends ServiceLookup, Partial<InjectHost>, Part
   on(event: 'agent/created', listener: (payload: { agent: AgentLike }) => Promise<void> | void): () => void
   /** The pre-step is a decision chain: the listener installs the face and passes the decision through. */
   on(event: 'agent/pre-step', listener: (payload: { readonly agent: AgentLike }, next: () => Promise<unknown>) => Promise<unknown>): () => void
+  /** Every tool result before the call settles; the trunk-advance check compares the trunk here (§3.8.4). */
+  on(event: 'tools/post-execute', listener: PostExecuteListener, options?: { prepend?: boolean }): () => void
 }
 
 /** What a main agent session's row health says while dispatch works. */
@@ -78,13 +97,15 @@ export function apply(ctx: ExecuteContext, config: ExecuteConfig = {}): () => vo
 
   let toolsNote: string | undefined = '执行行的工具要工具服务（tools）'
   let rulesNote: string | undefined
+  let gateNote: string | undefined
+  let trunkNote: string | undefined
   const health = provideRowHealth(ctx, 'execute', 'active', '已加载；派发与派发链的写入边界在本行的会话里生效')
   disposers.push(() => { health.dispose() })
   const report = (sessionId: string | undefined, state: HealthState, reason: string): void => {
     health.report(sessionId, state, reason)
   }
   const reactivate = (): void => {
-    const notes = [toolsNote, rulesNote].filter(note => note !== undefined)
+    const notes = [toolsNote, rulesNote, gateNote, trunkNote].filter(note => note !== undefined)
     health.reactivate(notes.length > 0 ? 'degraded' : 'active', notes.length > 0 ? notes.join('；') : '已加载；派发与派发链的写入边界在本行的会话里生效')
   }
   const warnOnce = (() => {
@@ -129,12 +150,16 @@ export function apply(ctx: ExecuteContext, config: ExecuteConfig = {}): () => vo
     }
   }
 
-  // The service M3's guard rules judge with (§3.2.2): who a dispatch carries, live check included.
+  // The trunk-advance check (§3.8.4), installed below before the dispatched chain's rules; the service, the check records and the review pass read it.
+  let trunkGate: ReturnType<typeof installTrunkGate> | undefined
+
+  // The service M3's guard rules judge with (§3.2.2): who a dispatch carries, live check included; and the trunk advance a running call may make (R4-F4).
   const service: ExecuteService = {
     isWorker: (agentId) => {
       const attempt = registeredAttempt(agentId)
       return attempt !== undefined && agentsService()?.get(agentId) !== undefined
     },
+    trunkAdvanceFor: callId => trunkGate?.trunkAdvanceFor(callId),
   }
   try {
     ctx.provide?.(EXECUTE_SERVICE, service)
@@ -166,6 +191,7 @@ export function apply(ctx: ExecuteContext, config: ExecuteConfig = {}): () => vo
     report,
     git: createGit(),
     runCommand: realCommandRunner,
+    trunkEvidence: (projectRoot, task) => trunkGate?.trunkEvidenceOf(projectRoot, task) ?? Promise.resolve(undefined),
     redispatch: async (reviewTaskId, attempt) => {
       const agents = agentsService()
       const parent = attempt.parentSession === undefined || agents === undefined ? undefined : agents.get(attempt.parentSession)
@@ -193,7 +219,21 @@ export function apply(ctx: ExecuteContext, config: ExecuteConfig = {}): () => vo
     report,
   }
   const requestTools = [submitPlanTool(requestDeps), askMainTool(requestDeps), answerWorkerTool(requestDeps)]
-  const tools = [dispatch, ...requestTools]
+
+  // The merge checks (§3.8.2–§3.8.3): check_commit, its jobs on the check backend; a pass writes the evidence an earlier unchecked move waits for.
+  const launcher = createGateLauncher()
+  const checkDeps: CheckDeps = {
+    lookup: ctx,
+    cache,
+    graphDirOf,
+    execDir,
+    isMain,
+    report,
+    git: createGit(),
+    launcher,
+    onPassed: (project, commit, _record, sessionId) => trunkGate?.checkedAfter(project, commit, sessionId) ?? Promise.resolve(),
+  }
+  const tools = [dispatch, ...requestTools, checkCommitTool(checkDeps)]
 
   if (typeof ctx.inject === 'function') {
     try {
@@ -223,42 +263,127 @@ export function apply(ctx: ExecuteContext, config: ExecuteConfig = {}): () => vo
   }
   else toolsNote = '宿主没有 inject，执行行的工具拿不到工具服务'
 
+  // The check backend (§3.8.2): registered with subagents once it is there; a failed registration runs the checks inside their calls (U2).
+  if (typeof ctx.inject === 'function') {
+    const gateFailed = (error: unknown): void => {
+      gateNote = `检查以同步方式运行：检查后端 ${GATE_PROVIDER} 没注册上（${error instanceof Error ? error.message : String(error)}）`
+    }
+    try {
+      ctx.inject(['subagents'], subagentsCtx => {
+        try {
+          const undo = launcher.attach(subagentsCtx.subagents)
+          gateNote = undefined
+          reactivate()
+          return undo
+        }
+        catch (error) {
+          gateFailed(error)
+          reactivate()
+          return undefined
+        }
+      })
+    }
+    catch (error) {
+      gateFailed(error)
+    }
+  }
+
+  // Who a delegated caller works for, its effective directory, the violation journal: the chain's rules and the trunk-advance check share them.
+  const owning: ExecuteRulesDeps['owning'] = (caller) => {
+    const agents = agentsService()
+    if (agents === undefined) return undefined
+    let header = caller.session.header
+    for (;;) {
+      const up = header.parentSession
+      if (up === undefined) return undefined
+      const attempt = registeredAttempt(up)
+      if (attempt !== undefined) return attempt
+      const parent = agents.get(up)
+      if (parent === undefined || parent.session === undefined) return undefined
+      header = parent.session.header
+      if (header.origin !== 'subagent') return undefined
+    }
+  }
+  const effectiveDir: ExecuteRulesDeps['effectiveDir'] = (session) => {
+    const value: unknown = typeof ctx.get === 'function' ? ctx.get('workingDirectory') : undefined
+    const get = (value as { get?: (s: SessionLike) => string } | undefined)?.get
+    if (typeof get !== 'function') return session.header.cwd
+    try {
+      return get.call(value, session)
+    }
+    catch {
+      return session.header.cwd
+    }
+  }
+  const journalViolation: ExecuteRulesDeps['journal'] = violation => { void journal.violation(violation) }
+
+  // The full trunk check of the `execute.trunk` entry, run here once per event key until E8 hands the events to the loop board (D4). What goes wrong is said in the row health of the session whose call or step saw the move.
+  const trunkEvents = new Set<string>()
+  const runTrunkEntry = (project: string, trunk: string, event: { readonly event: string, readonly key: string, readonly payload: Readonly<Record<string, unknown>> }, sessionId: string | undefined): void => {
+    if (trunkEvents.has(event.key)) return
+    trunkEvents.add(event.key)
+    const graphDir = graphDirOfRoot(project)
+    void trunkCheck(checkDeps, { id: `ev-${randomBytes(8).toString('hex')}`, event: event.event, at: new Date().toISOString(), project, ...(sessionId === undefined ? {} : { session: sessionId }), key: event.key, payload: event.payload, merged: [] }).then((result) => {
+      if (result.outcome === 'failed') {
+        report(sessionId, 'degraded', `主干上的完整检查没跑完（${event.key}）：${result.reason}`)
+        return
+      }
+      if (result.outcome !== 'done' || result.tell === undefined) return
+      const why = toHolder(ctx, graphDir, createUserNotice('glm-hourness-loop', `${trunk} full check failed`, result.tell, { hournessLoop: { entry: 'execute.trunk', key: event.key } }))
+      if (why !== undefined) report(sessionId, 'degraded', `主干完整检查的提醒送不到当前主 Agent：${why}`)
+    }).catch((error: unknown) => {
+      report(sessionId, 'degraded', `主干完整检查的提醒没送出（${event.key}）：${error instanceof Error ? error.message : String(error)}`)
+    })
+  }
+
+  // Whether a trailer task's latest dispatch's command record hit a commands or outside line of the floor (§3.8.4).
+  const taskHit = async (project: string, graph: LoadedGraph, task: string): Promise<boolean> => {
+    const node = graph.nodes.get(task)
+    const dispatched = node === undefined ? undefined : latestDispatch(node)
+    if (dispatched === undefined) return false
+    const calls = await readCalls(join(execDir(project), 'tasks', task, `${dispatched.childId}.commands.jsonl`))
+    return floorHits(parseFloor(graph.nodes.get('norm-review-floor')), { paths: [], deleted: [] }, calls, join(project, '.worktrees', `hz-${task}`)).length > 0
+  }
+
+  // The trunk-advance check (§3.8.4), prepend, installed before the chain's rules so those stay outermost (worker-git answers a worker's trunk move first).
+  try {
+    trunkGate = installTrunkGate(ctx, {
+      lookup: ctx,
+      register: registeredAttempt,
+      owning,
+      effectiveDir,
+      journal: journalViolation,
+      git: createGit(),
+      cache,
+      graphDirOfRoot,
+      execDir,
+      isMain,
+      report,
+      taskHit,
+      onTrunkEvent: runTrunkEntry,
+    })
+    const installed = trunkGate
+    disposers.push(() => {
+      installed.dispose()
+      if (trunkGate === installed) trunkGate = undefined
+    })
+  }
+  catch (error) {
+    trunkNote = `主干前进的核对没装上：${error instanceof Error ? error.message : String(error)}`
+  }
+
   // The dispatched chain's execution-boundary rules (§3.2), prepend.
   try {
     disposers.push(installExecuteRules(ctx, {
       lookup: ctx,
       register: registeredAttempt,
-      owning: (caller) => {
-        const agents = agentsService()
-        if (agents === undefined) return undefined
-        let header = caller.session.header
-        for (;;) {
-          const up = header.parentSession
-          if (up === undefined) return undefined
-          const attempt = registeredAttempt(up)
-          if (attempt !== undefined) return attempt
-          const parent = agents.get(up)
-          if (parent === undefined || parent.session === undefined) return undefined
-          header = parent.session.header
-          if (header.origin !== 'subagent') return undefined
-        }
-      },
+      owning,
       live: agentId => agentsService()?.get(agentId) !== undefined,
       graphOf: projectRoot => cache.get(graphDirOfRoot(projectRoot)),
-      journal: violation => { void journal.violation(violation) },
+      journal: journalViolation,
       report,
       record,
-      effectiveDir: session => {
-        const value: unknown = typeof ctx.get === 'function' ? ctx.get('workingDirectory') : undefined
-        const get = (value as { get?: (s: SessionLike) => string } | undefined)?.get
-        if (typeof get !== 'function') return session.header.cwd
-        try {
-          return get.call(value, session)
-        }
-        catch {
-          return session.header.cwd
-        }
-      },
+      effectiveDir,
       recordIncoming: childId => recordCommunication(childId, 'incoming'),
     }))
   }

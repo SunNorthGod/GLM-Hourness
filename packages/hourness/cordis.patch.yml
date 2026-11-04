@@ -116,8 +116,11 @@
       # for the main agent, the dispatched chain's execution-boundary rules
       # (worker-scope, worker-graph-readonly, worker-git, worker-message-live-only;
       # dispatch-chain-readonly is the change to M3's design-before-release), the
-      # tool faces of the chain, and the glmHournessExecute service. The worker
-      # tools, the merge gate, the drive and the loop-board seam arrive with E5–E8.
+      # tool faces of the chain, the plan and communication tools, the handback
+      # processing and the review loop, the merge gate (check_commit on the
+      # external check provider hourness-gate, trunk-advance-checked before and
+      # after a call, the full trunk check) and the glmHournessExecute service.
+      # The drive and the loop-board seam arrive with E8.
       # Ships disabled until the E9 verification (L3 skeleton scenario, one real
       # model run, the first L4 batch); AGENTS.md turns it on then.
       name: dsh-hourness/execute

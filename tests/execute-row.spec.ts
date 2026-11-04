@@ -170,7 +170,7 @@ function rulesOver(project: Project, cache: ReturnType<typeof createGraphCache>,
 
 // ---- the row wiring ----
 
-test('the execute row registers dispatch_task, its description is the example constant\u2019s text, and glmHournessExecute is provided', () => {
+test('the execute row registers dispatch_task and check_commit, dispatch_task\u2019s description is the example constant\u2019s text, and glmHournessExecute is provided', () => {
   const runtime = fakeRuntime({ natives: [] })
   // The host's tools service, as inject would hand it over.
   runtime.ctx.provide('tools', {
@@ -187,8 +187,11 @@ test('the execute row registers dispatch_task, its description is the example co
   const registered = runtime.scoped.find<ToolDefinitionLike>(tool => tool.name === 'dispatch_task')
   assert.ok(registered !== undefined, 'the row did not register dispatch_task')
   assert.equal(registered.description, dispatchDescription())
+  assert.ok(runtime.scoped.some(tool => tool.name === 'check_commit'), 'the row did not register check_commit')
   const service = runtime.ctx.get(EXECUTE_SERVICE) as ExecuteService | undefined
   assert.ok(service !== undefined && service.isWorker('nobody') === false, 'glmHournessExecute.isWorker is provided')
+  assert.equal(typeof service.trunkAdvanceFor, 'function', 'glmHournessExecute.trunkAdvanceFor is provided (R4-F4)')
+  assert.equal(service.trunkAdvanceFor('no-such-call'), undefined)
 })
 
 test('EXECUTE_RULES carries the eight code gates, all enforce on day one (§12.1)', () => {
@@ -387,7 +390,7 @@ test('the GLM peak cap limits a second GLM dispatch to slots_full; a non-GLM mod
 
 test('with the execute service on, the main agent\u2019s no-write denial points at dispatch_task; without it, at the subagent tool', async () => {
   const withExecute = designHost()
-  ;withExecute.services.set(EXECUTE_SERVICE, { isWorker: () => false } satisfies ExecuteService)
+  ;withExecute.services.set(EXECUTE_SERVICE, { isWorker: () => false, trunkAdvanceFor: () => undefined } satisfies ExecuteService)
   designApply(withExecute.ctx)
   const agent = withExecute.addAgent('s1')
   assert.equal((await withExecute.execute(agent, '/wish'))?.result.kind, 'success')

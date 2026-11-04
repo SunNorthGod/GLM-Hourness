@@ -37,6 +37,13 @@ export interface ViolationRecord {
   readonly call?: CallSubject | undefined
   /** The request ref this denial carried (m4-request-card); absent outside the requestable rules. */
   readonly ref?: string | undefined
+  /**
+   * What the line's rule did with the call: the rules board writes `block`,
+   * `queue` (a deferral) and `record` (src/rules/gate.ts); M7's
+   * trunk-advance-checked writes `detected-after` for a trunk move found
+   * after the call ran, which nothing blocked (§3.8.4). A guard denial has none.
+   */
+  readonly effect?: 'block' | 'queue' | 'record' | 'detected-after' | undefined
   /** A denial of a graph write that tried to move a goal on without the human (src/guard/main-agent-graph.ts): which session tried, and at what. */
   readonly session?: { readonly id: string, readonly kind: 'subagent' | 'ordinary', readonly parent?: string | undefined } | undefined
   readonly goal?: string | undefined

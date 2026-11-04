@@ -10,8 +10,11 @@
  * stops being a pass for everyone else. The ids and first-day modes of all
  * eight code gates are EXECUTE_RULES, the constant table the full rules
  * board maps into its code-rules catalog (§12.1, like M3's
- * MAIN_AGENT_RULES); trunk-advance-checked, completion-gate and stopped are
- * rows of the table from here, their rules arrive with E7, E8 and E6.
+ * MAIN_AGENT_RULES). trunk-advance-checked lives in src/execute/advance.ts
+ * (E7): the row installs its listeners before this one, so this listener
+ * stays outermost and worker-git refuses a worker's trunk move first.
+ * completion-gate and stopped are rows of the table from here, their rules
+ * arrive with E8 and E6.
  *
  * Every call of a dispatched chain — the registered workers and reviewers,
  * and the subagents they started — that is a shell call or a file-tool call

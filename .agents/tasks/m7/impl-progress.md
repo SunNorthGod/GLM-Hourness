@@ -1,5 +1,17 @@
 # M7 实施进度（E7 批）
 
+## E7 本体 2026-11-04
+
+落地（细节见 `docs/ORCHESTRATION.md` §4.7、§17.12）：`check_commit` 与检查后端 `hourness-gate`（`src/execute/check.ts`、`src/execute/gate-provider.ts`）、检查记录 `checks.jsonl` 与 `result.json`（按 SHA-256 核实）、`trunkCheck`（覆盖规则、草稿区一步）、`trunk-advance-checked` 执行前与执行后与主 Agent 每步的比对（`src/execute/advance.ts` 的 `installTrunkGate`）、`advances.jsonl`、证据与完成（审查了结才完成）、`hourness.trunk-advanced` 与 `hourness.outside-advance` 在本进程里经 `trunkCheck` 处理、`glmHournessExecute.trunkAdvanceFor`（R4-F4）、交回处理在审查后补证据。git 执行器多五个操作，`gate-lock.ts` 导出 `ensureExecDir`，`ViolationRecord.effect` 加 `detected-after`。
+
+偏离（编号同实施计划）：D1 `tests/execute-advance.spec.ts` 原有，扩写不新建；D2 证据落在 `done` 那次写入，审查之后才过的由 `handback.ts` 按 `advances.jsonl` 重建（顺带修掉 E6 按 `op === 'verify'` 认进主干、写无证据 done 的接缝）；D3 工作树只在任务完成时删（进主干时完成，或审查后补完成）；D4 两个事件照 §2.5 的形状建，E7 在本进程里直接跑 `trunkCheck`（按键去重，不去抖），E8 换成 `emit`；D5 `trunkCheck` 在本进程异步跑，只有 `check_commit` 走外部激活；D6 草稿区一步只在 guard 行在时生效，`check_commit` 在第 3 步之后拒 `scratch_left`，`trunkCheck` 第一步查、不写记录；D7 §8.1 清单外的文件（git.ts、gate-lock.ts、execute-service.ts、handback.ts、records.ts、execute-rules.ts 注释、几份测试、package.json、DESIGN.md、cordis.patch.yml、本目录两份文档）；D8 违规流水的规则 id 不带 `execute:`；D9 不写复盘节点；D10 同步退路仍答 `started`，行健康报「检查以同步方式运行」；D11 按路径比的记录至多 50 条；D12 时刻目录名里 `:`、`.` 换成 `-`；D13 推送的拒绝有自己的事实句；D14 主干名的三个来源；D15 第 3 次没过的停下草稿以 `glm-hourness-loop` 通知送达；D16 没跑到记录的不计失败；D17 上游一半是第二个场景 `glm-exec-merge-upstream`。实现中另有的差别见 `docs/ORCHESTRATION.md` §17.12：主干已含的提交不按 `only` 记、`when` 全跑；回退不发事件；主干与上游每 30 秒读一次；别名不能与内置命令同名，探针用 `alias.tm`；L3 里会话的 shell 沙箱起不了 git 本地传输，拉取一行与真推送钉在 L2。
+
+评审修正（同批）：主 Agent 用普通 subagent 起的子 agent 也在主干门内（会话链经 `agents` 服务走到主 Agent）；交回处理只认任务最近一次派发之后的前进当证据，重开再派后返工的审查先过时任务留在进行中；`when` 的覆盖按条目序号比，清单前面有文字行时不再错位；一次前进只由最先比对到的调用记一次；断了 post-execute 的调用从最早的基线比；证据优先用跑过命令的覆盖记录，没跑命令的主干记录照实写；审查后补完成时同样删掉干净的工作树。第三轮：审查是否了结按这次派发的交回算，返工沿用的上一次已完成的审查任务不算（任务完成与底线清单的任务全审都是）；拉取挪动的远端跟踪引用先被别的调用比对到时仍记为拉取，前进记在跑过 git 的调用名下。
+
+门禁（`.llm/logs/m7-e7-*.log`，同一棵树依次跑）：build exit 0、preflight exit 0、test exit 0（2834 tests / 2833 pass / 0 fail / 1 skipped；eslint 76 / knip 19 / jscpd 1）、probe 412/412 exit 0（新 `glm-exec-merge` 13 条、`glm-exec-merge-upstream` 4 条）。
+
+下一步：E8（自动推进、循环板接缝：`contribute`、`emit`、`runAction`、退路执行者；`trunkCheck` 改由 `execute.trunk` 条目经循环板调用；`openRequests` 的停等）。
+
 ## 接缝批收口 2026-11-04
 
 接缝批（下面「进行中未提交」一节的六个文件）连同编排方审查时的探针修正一个提交收掉。编排方的修正：`run-probe.mjs` 加 `OFF_PEAK_AT`（2026-10-28T10:00+08:00），`glm-exec-plan` 与 `guard-request-worker` 的 extra 行加 `clockRow(OFF_PEAK_AT)`（真实时钟落在 GLM 高峰时规则板 reduce 档把 GLM 子 agent 限为 1，第二次派发 `slots_full`）；`guard-request-worker` 场景改三处（任务 writeScope 改为 `['site/feed.xml']`，`quick` 派发只收至多 2 个文件、不收目录；extra 加 `probeRow(lift.jsonl)` 供 `probe_say`；检查改为 worker-scope 拒绝带编号与 `give ref "`、人「可以」批准记录、grant 记录、worker 第二次写停在 rc.3 的 workspace-write 沙箱、`requests/<ref>.before` 为 `old content\n`）；`probe-llm.mjs` 的 `withRef` 在 user 消息里只认 `give ref "r-…"`（主 Agent 读到的编号在 worker 问题通知里，role user）。`docs/ORCHESTRATION.md` §17.9 补 L3 场景与 `{ref}` 新拼写一句，§17.10 补 `glm-exec-plan` 钉非高峰时钟一句。

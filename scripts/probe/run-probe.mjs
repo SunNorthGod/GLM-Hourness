@@ -34,6 +34,13 @@
  * round and its re-dispatch with the same model, the demoted finding, the
  * stop with the marker and the stop draft, the waiting_human refusal, the
  * person's recorded answer lifting it, and the passing round's evidence.
+ * The merge scenarios (glm-exec-merge, glm-exec-merge-upstream) run the
+ * merge gate: check_commit on the external check provider, the refused and
+ * the checked trunk advances with their advances.jsonl lines, the task's
+ * evidence and completion, the trunk check records, a failing check, the
+ * rework's renamed branch, an alias move and an alias push found after the
+ * call, a graph-only commit passing by paths, and the pull, the hand-set
+ * remote-tracking reference and the fetch against a bare origin.
  * The rules board scenarios run in scratch
  * git repositories with the row enabled by the overlay: rules-peak and
  * rules-peak-hourness drive /rules peak, glm-rules and non-glm-rules run
@@ -125,6 +132,7 @@ import { IDENTITY_OPENING_PLAIN, IDENTITY_OPENING_WITH_STYLE } from '../../packa
 import { EXECUTE_TOOL_NAMES, OPERATE_TOOL_NAMES, WORKER_TOOL_NAMES } from '../../packages/hourness/dist/shared/tool-names.js'
 import { GRAPH_WRITE_TOOLS } from '../../packages/hourness/dist/execute/faces.js'
 import { handbackProblems } from '../../packages/hourness/dist/execute/schemas.js'
+import { readChecks } from '../../packages/hourness/dist/execute/check.js'
 import { PERSONA_SCOPE } from '../../packages/hourness/dist/design/persona.js'
 import { peakWindowAt } from '../../packages/glm/dist/glm-llm/credits.js'
 import { GLM_LOOP_DEFAULTS } from '../../packages/glm/dist/glm-llm/loop-defaults.js'
@@ -2140,6 +2148,156 @@ const execReview = designScenario(EXEC_REVIEW, 'glm-5.3-flash', () => [
   execReviewVerdict('APPROVED', ['acceptance:0', 'acceptance:1'], []),
 ] })
 
+// E7 (M7 design §3.8, §3.11.1, §9.1 glm-exec-merge): the merge gate on the
+// real runtime. First a docs/graph-only commit on the main branch passes by
+// paths (no check record exists yet, so the advance is the only paths' own)
+// and its trunk check runs the commands. The worker writes a data file (the
+// scratch-only rule refuses a new script in a directory with none of its
+// kind), commits it and hands back with the review skipped; the main agent
+// squashes the task branch in the task worktree into one commit with the
+// `Hourness-Task: task-1` trailer (on a branch of its own, merge/task-1, so
+// the task branch stays the worker's), check_commit starts the job on the
+// external provider hourness-gate (U2) and the main agent waits for the
+// verdict notice; `git merge --no-ff hz/task-1` is refused with the right
+// path, `git merge --ff-only merge/task-1` runs: the task is done with the
+// harness's commit and test evidence, its worktree is gone, advances.jsonl
+// has the line and the in-process trunk check writes a `kind: 'trunk'`
+// record. A commit carrying FAIL (planted before the run) fails its check and
+// its fast-forward is refused. The task is reopened and dispatched again: the
+// branch the squash left behind becomes hz/task-1@1. The rework is squashed
+// the same way and moved onto the trunk by a script-level form the table
+// cannot read, `git -c "alias.tm=update-ref refs/heads/main <branch>" tm`
+// (git is not a file write for the main agent's rules, and the alias hides
+// update-ref from the trunk table): it is found after the call (violation,
+// no evidence), and the later check_commit on it writes the evidence with
+// 检查在前进之后. The goal half of §9.1's row (the drive waits with a goal)
+// is E8's; the second dispatch reusing the new branch (F17) is pinned by
+// tests/execute-git.spec.ts.
+const EXEC_MERGE = 'glm-exec-merge'
+const EXEC_MERGE_UPSTREAM = 'glm-exec-merge-upstream'
+const MERGE_WHY = 'probe: the merge gate needs a running model'
+const MERGE_GATE = { type: 'norm', id: 'norm-merge-gate', title: '合入前的检查', parent: 'goal-1', acceptance: ['`$ node -e "process.exit(require(\'fs\').existsSync(\'FAIL\') ? 1 : 0)"`', '`$ node -e "process.exit(0)" when src/`', '`only docs/graph/`'] }
+const mergeSeeds = [
+  ['human', { type: 'goal', title: '静态博客', stage: 'release', acceptance: ['the blog builds'] }],
+  ['human', { type: 'task', id: 'task-1', title: 'Add the feed', parent: 'goal-1', kind: 'implement', writeScope: ['src/feed.json', 'src/feed2.json'], acceptance: ['the feed builds'], worktree: true }],
+  ['human', MERGE_GATE],
+  ['human', { type: 'norm', id: 'norm-review-floor', title: '必须全审的改动', parent: 'goal-1', acceptance: ['碰到必须全审：`files src/guarded/`'] }],
+]
+await stageGraph(EXEC_MERGE, mergeSeeds)
+await stageGraph(EXEC_MERGE_UPSTREAM, mergeSeeds.slice(0, 3))
+/** Git in `cwd` with the probe's identity; throws on a failure, returns the trimmed output. */
+const probeGit = (cwd, args, options = {}) => {
+  const result = spawnSync('git', ['-c', 'user.name=probe', '-c', 'user.email=probe@example.invalid', '-c', 'commit.gpgsign=false', ...args], { cwd, encoding: 'utf8', ...options })
+  if (result.status !== 0) throw new Error(`probe: git ${args.join(' ')} failed in ${cwd}: ${result.stderr}`)
+  return result.stdout.trim()
+}
+/** A commit of `files` on top of `parent`, made with plumbing and a scratch index: the checkout, its index and the person's edit stay as they are. */
+function plantCommit(ws, parent, files, message) {
+  const env = { ...process.env, GIT_INDEX_FILE: join(ws, '.git', 'probe-plant.index') }
+  probeGit(ws, ['read-tree', parent], { env })
+  for (const [path, content] of Object.entries(files)) probeGit(ws, ['update-index', '--add', '--cacheinfo', `100644,${probeGit(ws, ['hash-object', '-w', '--stdin'], { input: content })},${path}`], { env })
+  const tree = probeGit(ws, ['write-tree'], { env })
+  return probeGit(ws, ['commit-tree', tree, '-p', parent, '-m', message])
+}
+const mergeWt = join(runDir, EXEC_MERGE, 'ws', '.worktrees', 'hz-task-1')
+const mergeBash = (command, description) => ({ tool: { name: 'Bash', arguments: { command, description } } })
+const mergeSleep = (seconds, why) => mergeBash(`Start-Sleep -Seconds ${seconds}`, `probe: ${why}`)
+const mergeSquash = (branch, subject) => mergeBash([
+  `git -C '${mergeWt}' checkout -q -b ${branch}`,
+  `git -C '${mergeWt}' reset -q --soft main`,
+  `git -C '${mergeWt}' -c user.name=probe -c user.email=probe@example.invalid -c commit.gpgsign=false commit -q -m '${subject}' -m 'Hourness-Task: task-1'`,
+  `git -C '${mergeWt}' log --oneline -1`,
+].join('; '), 'probe: squash the task branch into one commit for the main branch')
+const mergeDispatch = { tool: { name: 'dispatch_task', arguments: { id: 'task-1', model: 'glm-5.3-flash', why: MERGE_WHY, quick: true, review: { depth: 'skip', why: 'probe: one data file' } } } }
+const mergeWorker = (file, message) => [
+  { tool: { name: 'Write', arguments: { file_path: join(mergeWt, 'src', file), content: `${JSON.stringify({ message })}\n` } } },
+  { tool: { name: 'Bash', arguments: { command: `git add -A; git -c user.name=t -c user.email=t@example.invalid commit -m ${message}; git log --oneline -1`, description: 'probe: commit the work' } } },
+  { tool: { name: 'structured_output', arguments: { status: 'done', summary: `wrote src/${file} and committed it`, commits: ['{git-head}'], files: [`src/${file}`], checks: [], questions: [], assumptions: [], lessons: [] } } },
+  { text: 'worker done' },
+]
+const execMerge = designScenario(EXEC_MERGE, 'glm-5.3-flash', (ws) => {
+  // The failing commit is planted before the run: one commit on the first commit of main, with the FAIL file the gate's first command looks for.
+  const root = probeGit(ws, ['rev-parse', 'HEAD'])
+  probeGit(ws, ['update-ref', 'refs/heads/probe/fail', plantCommit(ws, root, { 'FAIL': 'probe\n', 'src/fail.js': 'fail\n' }, 'Break the build\n\nHourness-Task: task-1')])
+  return [
+    { tool: { name: 'graph_focus', arguments: { id: 'goal-1' } } },
+    mergeBash('git add docs/graph; git -c user.name=probe -c user.email=probe@example.invalid -c commit.gpgsign=false commit -q -m "Record the graph"', 'probe: commit the graph on the main branch'),
+    mergeDispatch,
+    mergeSleep(8, 'let the worker hand back'),
+    mergeSquash('merge/task-1', 'Add the feed'),
+    { tool: { name: 'check_commit', arguments: { commit: 'merge/task-1' } } },
+    mergeSleep(5, 'let the merge check run'),
+    mergeBash('git merge --no-ff hz/task-1', 'probe: a merge commit onto the main branch'),
+    mergeBash('git merge --ff-only merge/task-1', 'probe: fast-forward the main branch'),
+    mergeBash(`Test-Path '${mergeWt}'`, 'probe: is the task worktree still there'),
+    mergeSleep(3, 'let the trunk check run'),
+    { tool: { name: 'check_commit', arguments: { commit: 'probe/fail' } } },
+    mergeSleep(5, 'let the failing check run'),
+    mergeBash('git merge --ff-only probe/fail', 'probe: fast-forward to the failed commit'),
+    { tool: { name: 'graph_status', arguments: { id: 'task-1', rev: '{rev:task-1}', to: 'doing', reason: 'probe: rework the feed' } } },
+    mergeDispatch,
+    mergeSleep(8, 'let the second worker hand back'),
+    mergeSquash('merge/task-1-r2', 'Rework the feed'),
+    mergeBash('git -c "alias.tm=update-ref refs/heads/main merge/task-1-r2" tm', 'probe: move the main branch through an alias'),
+    { tool: { name: 'check_commit', arguments: { commit: 'merge/task-1-r2' } } },
+    mergeSleep(5, 'let the check after the move run'),
+    { text: 'done', status: true },
+  ]
+}, { wish: true, git: true, extra: ['- id: glm-hourness/execute', '  disabled: false', ...clockRow(OFF_PEAK_AT)], others: [mergeWorker('feed.json', 'probe:feed'), mergeWorker('feed2.json', 'probe:rework')] })
+
+// The upstream half of §9.1's glm-exec-merge (D17: a second run). A bare
+// origin in the run directory; another clone pushed one unchecked commit
+// with the trailer onto its main and one more commit onto a side branch, and
+// the workspace fetched both, before the run: git's local transport starts
+// an MSYS sh that the headless runner's shell sandbox cannot start ("couldn't
+// create signal pipe, Win32 error 5"), so no fetch or push to the bare
+// origin can run inside the session. In the session `git pull --ff-only` and
+// `git fetch . <commit>:refs/remotes/origin/main` are refused; `git merge
+// --ff-only origin/main` is refused before check_commit origin/main and runs
+// after it; a script-level move of origin/main to the side commit, `git -c
+// "alias.up=update-ref refs/remotes/origin/main <commit>" up`, is found after
+// the call the way a push is (a remote line with ok false, the violation, the
+// notice) and the outside-advance event runs the trunk check on that commit.
+// The fetch line and the real push are pinned by
+// tests/execute-upstream.spec.ts.
+const upstreamDir = join(runDir, EXEC_MERGE_UPSTREAM)
+const upstreamCommits = {}
+const execMergeUpstream = designScenario(EXEC_MERGE_UPSTREAM, 'glm-5.3-flash', (ws) => {
+  const bare = join(upstreamDir, 'origin.git')
+  const elsewhere = join(upstreamDir, 'elsewhere')
+  probeGit(upstreamDir, ['init', '-q', '--bare', '-b', 'main', bare])
+  probeGit(ws, ['remote', 'add', 'origin', bare])
+  probeGit(ws, ['push', '-q', '-u', 'origin', 'main'])
+  probeGit(upstreamDir, ['clone', '-q', bare, elsewhere])
+  mkdirSync(join(elsewhere, 'src'), { recursive: true })
+  writeFileSync(join(elsewhere, 'src', 'up.json'), '{"up":true}\n')
+  probeGit(elsewhere, ['add', 'src/up.json'])
+  probeGit(elsewhere, ['commit', '-q', '-m', 'Add the upstream data', '-m', 'Hourness-Task: task-1'])
+  probeGit(elsewhere, ['push', '-q', 'origin', 'main'])
+  upstreamCommits.pushed = probeGit(elsewhere, ['rev-parse', 'HEAD'])
+  writeFileSync(join(elsewhere, 'src', 'side.json'), '{"side":true}\n')
+  probeGit(elsewhere, ['add', 'src/side.json'])
+  probeGit(elsewhere, ['commit', '-q', '-m', 'Add the side data'])
+  probeGit(elsewhere, ['push', '-q', 'origin', 'HEAD:refs/heads/side'])
+  upstreamCommits.side = probeGit(elsewhere, ['rev-parse', 'HEAD'])
+  probeGit(ws, ['fetch', '-q', 'origin'])
+  return [
+    { tool: { name: 'graph_focus', arguments: { id: 'goal-1' } } },
+    mergeBash('git pull --ff-only', 'probe: pull the main branch'),
+    mergeBash(`git fetch . ${upstreamCommits.pushed}:refs/remotes/origin/main`, 'probe: set the remote-tracking reference by hand'),
+    mergeBash('git merge --ff-only origin/main', 'probe: fast-forward to the upstream before its check'),
+    { tool: { name: 'check_commit', arguments: { commit: 'origin/main' } } },
+    mergeSleep(5, 'let the merge check run'),
+    mergeBash('git merge --ff-only origin/main', 'probe: fast-forward to the upstream after its check'),
+    mergeSleep(3, 'let the trunk check run'),
+    mergeBash(`git -c "alias.up=update-ref refs/remotes/origin/main ${upstreamCommits.side}" up`, 'probe: move origin/main to an unchecked commit through an alias'),
+    mergeSleep(6, 'let the trunk check on the moved commit run'),
+    { text: 'done', status: true },
+  ]
+}, { wish: true, git: true, extra: ['- id: glm-hourness/execute', '  disabled: false', ...clockRow(OFF_PEAK_AT)] })
+const mergeChecksOf = name => readChecks(join(runDir, name, 'ws', '.llm', 'execute'))
+const mergeRecords = { [EXEC_MERGE]: await mergeChecksOf(EXEC_MERGE), [EXEC_MERGE_UPSTREAM]: await mergeChecksOf(EXEC_MERGE_UPSTREAM) }
+
 // The request seam over a dispatched worker (m4 design 0.6 §5.9; M7 design
 // 0.6 §3.2.1's 申报接缝; m4 §14.1's `guard-request-worker`): the worker's
 // write outside the project is refused by worker-scope with the request ref
@@ -2824,6 +2982,96 @@ function reviewChecks() {
   ]
 }
 
+/** What `git` prints in `cwd`, trimmed; empty when it fails. */
+const gitOut = (cwd, ...args) => {
+  const result = spawnSync('git', args, { cwd, encoding: 'utf8' })
+  return result.status === 0 ? result.stdout.trim() : ''
+}
+
+/** The pieces both merge scenarios read: the main agent's requests, the result of the scripted step at an index, the check records, the advances, the trunk-advance violations and the execute notices. */
+function mergeRun(scenario, name) {
+  const ws = join(runDir, name, 'ws')
+  const main = scenario.steps.filter(step => step.sessionId === scenario.steps[0]?.sessionId)
+  // The request after scripted step `index` carries that step's tool result.
+  const resultOf = index => lastToolResult(main[index + 1])
+  return {
+    ws,
+    main,
+    text: index => resultOf(index)?.text ?? '',
+    refused: index => resultOf(index)?.isError === true,
+    records: mergeRecords[name],
+    advances: jsonl(join(ws, '.llm', 'execute', 'advances.jsonl')),
+    violations: jsonl(join(runDir, name, 'home', 'audit', 'violations.jsonl')).filter(record => record.rule === 'trunk-advance-checked'),
+    notices: main.flatMap(step => messagesOf(step, 'glm-hourness-execute')),
+  }
+}
+
+/**
+ * E7 (M7 design §3.8, §3.11.1; scenario glm-exec-merge): what the merge
+ * gate did on the real runtime. The main agent's scripted steps, in order:
+ * focus, the graph commit, the dispatch, a sleep, the squash, check_commit,
+ * a sleep, the --no-ff merge, the fast-forward, the worktree test, a sleep,
+ * the check of the FAIL commit, a sleep, its fast-forward, the reopen, the
+ * second dispatch, a sleep, the second squash, the alias move, check_commit
+ * after it, a sleep, done.
+ */
+function mergeChecks() {
+  const { ws, text, refused, records, advances, violations, notices } = mergeRun(execMerge, EXEC_MERGE)
+  const rev = ref => gitOut(ws, 'rev-parse', '--verify', '--quiet', ref)
+  const root = gitOut(ws, 'rev-list', '--max-parents=0', 'main')
+  const squash = rev('refs/heads/merge/task-1')
+  const graphCommit = squash === '' ? '' : rev(`${squash}^`)
+  const rework = rev('refs/heads/merge/task-1-r2')
+  const fail = rev('refs/heads/probe/fail')
+  const archived = rev('refs/heads/hz/task-1@1')
+  const short = commit => commit.slice(0, 12)
+  const taskNode = (() => { try { return JSON.parse(readFileSync(join(ws, 'docs', 'graph', 'nodes', 'task-1.json'), 'utf8')) } catch { return undefined } })()
+  const history = taskNode?.history ?? []
+  const comments = history.filter(entry => entry.op === 'comment' && entry.actor === 'harness').map(entry => String(entry.text ?? ''))
+  const dones = history.filter(entry => entry.op === 'status' && entry.to === 'done')
+  const evidenceOf = entry => entry?.evidence ?? []
+  const hasEvidence = (entry, commit) => entry?.actor === 'harness' && evidenceOf(entry).some(item => item.kind === 'commit' && item.ref === commit) && evidenceOf(entry).some(item => item.kind === 'test' && item.exit === 0)
+  const passedOf = commit => records.find(record => record.kind === 'commands' && record.commit === commit && record.passed)
+  const unchecked = advances.find(line => line.ref === 'local' && line.to === rework && line.ok === false)
+  const after = advances.find(line => line.ref === 'local' && line.checkedAfter === true && line.check === rework)
+  const health = healthOf(execMerge).execute
+  const graphPaths = graphCommit === '' ? [] : gitOut(ws, 'diff', '--name-only', root, graphCommit).split('\n').filter(line => line !== '')
+  const line = entry => entry === undefined ? 'none' : `${entry.ref} ${short(entry.from ?? '')}..${short(entry.to ?? '')} ok ${entry.ok}`
+  return [
+    [`exec merge: a docs/graph-only commit on the main branch passes by paths (only: true, no check), and its trunk check writes a trunk record`, !refused(1) && graphPaths.length > 0 && graphPaths.every(path => path.startsWith('docs/graph/')) && advances.some(entry => entry.ref === 'local' && entry.from === root && entry.to === graphCommit && entry.ok === true && entry.only === true && entry.check === null) && records.some(record => record.kind === 'trunk' && record.commit === graphCommit && record.passed), `${text(1).slice(0, 60)} | ${graphPaths.length} path(s) | ${advances.filter(entry => entry.only === true).map(line).join('; ') || 'no only line'}`],
+    [`exec merge: the main agent squashes the task branch in the task worktree into one commit on main with the Hourness-Task: task-1 trailer`, !refused(4) && squash !== '' && graphCommit !== '' && gitOut(ws, 'rev-parse', `${graphCommit}^`) === root && gitOut(ws, 'log', '-1', '--format=%(trailers:key=Hourness-Task,valueonly)', squash) === 'task-1' && gitOut(ws, 'diff', '--name-only', graphCommit, squash) === 'src/feed.json', `${short(squash) || 'no squash commit'}: ${text(4).slice(0, 100)}`],
+    [`exec merge: check_commit starts the job on the external provider hourness-gate (U2): status started, the row has no sync note, and the pass notice names git merge --ff-only`, text(5).includes('"status":"started"') && health !== undefined && !health.reason.includes('检查以同步方式运行') && notices.some(message => message.text.includes(`${short(squash)} passed the merge checks`) && message.text.includes(`git merge --ff-only ${squash}`)), `${text(5).slice(0, 120)} | ${JSON.stringify(health ?? null).slice(0, 160)}`],
+    [`exec merge: checks.jsonl has a verified passed record of the squash commit with both commands and the task`, passedOf(squash) !== undefined && passedOf(squash).ran.length === 2 && isDeepStrictEqual(passedOf(squash).tasks, ['task-1']), records.map(record => `${record.kind}:${short(record.commit)}:${record.passed}`).join(', ') || 'no verified record'],
+    [`exec merge: git merge --no-ff hz/task-1 is refused with the right path and journaled trunk-advance-checked`, refused(7) && text(7).includes('Right path:') && text(7).includes('check_commit') && violations.some(record => record.effect === undefined), text(7).split('\n')[0]?.slice(0, 160) ?? 'no result'],
+    [`exec merge: git merge --ff-only merge/task-1 runs and advances.jsonl has the checked local line`, !refused(8) && advances.some(entry => entry.ref === 'local' && entry.from === graphCommit && entry.to === squash && entry.ok === true && entry.check === squash && (entry.tasks ?? []).includes('task-1')), `${text(8).slice(0, 80)} | ${advances.map(line).join('; ') || 'no advance'}`],
+    [`exec merge: the task is done with the harness's commit and test evidence and the 进主干 comment, and its worktree is gone`, hasEvidence(dones[0], squash) && comments.some(comment => comment.startsWith(`进主干 ${short(squash)}`)) && text(9).trim() === 'False', `${JSON.stringify(evidenceOf(dones[0])).slice(0, 160)} | worktree ${text(9).trim() || 'unknown'}`],
+    [`exec merge: the trunk check after the advance writes a kind trunk record for the new main`, records.some(record => record.kind === 'trunk' && record.commit === squash), records.filter(record => record.kind === 'trunk').map(record => `${short(record.commit)}${record.skipped === true ? ' (covered)' : ''}`).join(', ') || 'no trunk record'],
+    [`exec merge: the commit carrying FAIL fails its check (no passed record, 检查第 1 次没过 on the task) and its fast-forward is refused`, fail !== '' && records.some(record => record.commit === fail && !record.passed) && !records.some(record => record.commit === fail && record.passed) && comments.some(comment => comment.startsWith('检查第 1 次没过：')) && refused(13) && text(13).includes('without a passed merge check') && !advances.some(entry => entry.to === fail), `${comments.find(comment => comment.startsWith('检查第')) ?? 'no failure comment'} | ${text(13).split('\n')[0]?.slice(0, 120) ?? ''}`],
+    [`exec merge: the task reopened and dispatched again renames the branch the squash left behind to hz/task-1@1 (the reuse on a second rework is pinned by tests/execute-git.spec.ts)`, !refused(14) && !refused(15) && archived !== '' && archived !== squash && gitOut(ws, 'rev-parse', `${archived}^`) === graphCommit && comments.some(comment => comment.startsWith('第 2 次派发')), `hz/task-1@1 ${short(archived) || 'missing'} | ${text(14).slice(0, 60)} | ${text(15).slice(0, 80)}`],
+    [`exec merge: the alias move of the main branch is found after the call: an unchecked local line, a detected-after violation and the notice, and no evidence then`, !refused(18) && unchecked !== undefined && violations.some(record => record.effect === 'detected-after') && notices.some(message => message.text.includes(short(rework)) && message.text.includes('No evidence was recorded')) && !dones.some(entry => hasEvidence(entry, rework) && Date.parse(entry.at) < Date.parse(unchecked.at)), `${line(unchecked)} | ${violations.map(record => record.effect ?? 'refused').join(', ') || 'no violation'}`],
+    [`exec merge: check_commit after the move passes and writes the evidence with 检查在前进之后 and the checkedAfter line, and the rework's worktree is gone`, passedOf(rework) !== undefined && after !== undefined && hasEvidence(dones.at(-1), rework) && taskNode?.status === 'done' && comments.some(comment => comment.startsWith(`进主干 ${short(rework)}`) && comment.includes('检查在前进之后')) && !existsSync(mergeWt), `${line(after)} | ${comments.find(comment => comment.includes('检查在前进之后'))?.slice(0, 100) ?? 'no comment'} | status ${taskNode?.status ?? 'none'}`],
+    [`exec merge: the run exits clean with nothing from the execute row on stderr`, execMerge.status === 0 && !stderrOf(EXEC_MERGE).includes('dsh-glm-hourness/execute'), `exit ${execMerge.status}`],
+  ]
+}
+
+/**
+ * E7 (M7 design §3.8.4; scenario glm-exec-merge-upstream): the upstream
+ * half. The main agent's scripted steps, in order: focus, the pull, the
+ * hand-set fetch, the fast-forward before the check, check_commit
+ * origin/main, a sleep, the fast-forward after it, a sleep, the alias move
+ * of origin/main, a sleep, done.
+ */
+function mergeUpstreamChecks() {
+  const { text, refused, records, advances, violations, notices } = mergeRun(execMergeUpstream, EXEC_MERGE_UPSTREAM)
+  const { pushed = '', side = '' } = upstreamCommits
+  const line = entry => entry === undefined ? 'none' : `${entry.ref}${entry.by === undefined ? '' : ` ${entry.by}`} ${(entry.from ?? '').slice(0, 12)}..${(entry.to ?? '').slice(0, 12)} ok ${entry.ok}`
+  return [
+    [`exec merge upstream: git pull --ff-only is refused with the three steps, and git fetch . <commit>:refs/remotes/origin/main is refused`, refused(1) && text(1).includes('Pull in three steps') && refused(2) && text(2).includes('only git fetch updates it'), `${text(1).split('\n')[0]?.slice(0, 100) ?? ''} | ${text(2).split('\n')[0]?.slice(0, 100) ?? ''}`],
+    [`exec merge upstream: git merge --ff-only origin/main is refused before check_commit origin/main and runs after it, and the trunk check records the new main (the fetch line itself is pinned by tests/execute-upstream.spec.ts: the session sandbox cannot run git's local transport)`, refused(3) && text(3).includes('without a passed merge check') && text(4).includes('"status":"started"') && records.some(record => record.kind === 'commands' && record.commit === pushed && record.passed) && !refused(6) && advances.some(entry => entry.ref === 'local' && entry.to === pushed && entry.ok === true && entry.check === pushed) && records.some(record => record.kind === 'trunk' && record.commit === pushed), `${text(3).split('\n')[0]?.slice(0, 100) ?? ''} | ${text(6).slice(0, 60)} | ${advances.map(line).join('; ') || 'no advance'}`],
+    [`exec merge upstream: a script-level move of origin/main to an unchecked commit is found after the call like a push (remote line ok false, violation, notice) and the trunk check runs on that commit (the real push is pinned by tests/execute-upstream.spec.ts)`, !refused(8) && advances.some(entry => entry.ref === 'remote' && entry.by === 'push' && entry.ok === false && entry.to === side) && violations.some(record => record.effect === 'detected-after') && notices.some(message => message.text.includes('was pushed from')) && records.some(record => record.kind === 'trunk' && record.commit === side && record.passed && record.skipped !== true), `${advances.filter(entry => entry.ref === 'remote').map(line).join('; ') || 'no remote line'} | ${records.filter(record => record.kind === 'trunk').map(record => `${record.commit.slice(0, 12)}:${record.passed}`).join(', ') || 'no trunk record'}`],
+    [`exec merge upstream: the run exits clean with nothing from the execute row on stderr`, execMergeUpstream.status === 0 && !stderrOf(EXEC_MERGE_UPSTREAM).includes('dsh-glm-hourness/execute'), `exit ${execMergeUpstream.status}`],
+  ]
+}
 /**
  * Memory (docs/ORCHESTRATION.md §8; scenarios glm-memory, non-glm-memory,
  * glm-memory-compact, glm-worker-memory, glm-memory-depth): what the real
@@ -3161,6 +3409,8 @@ const checks = [
   ...execChecks(),
   ...planChecks(),
   ...reviewChecks(),
+  ...mergeChecks(),
+  ...mergeUpstreamChecks(),
   ['non-glm boot: the runtime reached the probe provider', plainFirst !== undefined, `exit ${plain.status}, ${plain.steps.length} step(s)`],
   ['non-glm prompt: DSH identity untouched', plainFirst?.system.includes('powered by DeepSeek Harness') === true && !plainFirst.system.includes('You are ZCode'), ''],
   ['non-glm tools: natives present, no aliases', plainFirst !== undefined && nativeFace.every(name => plainTools.has(name)) && zcodeFace.every(name => !plainTools.has(name)), zcodeFace.filter(name => plainTools.has(name)).join(', ') || ''],

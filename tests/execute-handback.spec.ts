@@ -14,7 +14,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { openEngine } from '../src/graph/engine.ts'
@@ -25,10 +25,11 @@ import { createGraphCache, realCommandRunner, type GraphCache } from '../src/exe
 import { startHandback, type HandbackDeps } from '../src/execute/handback.ts'
 import { createGit } from '../src/execute/git.ts'
 import { sha256Hex } from '../src/execute/digest.ts'
-import { forgetAttempt, parseHandbackComment, recordCommunication, registerAttempt, registeredAttempt, REVIEW_TASK_ACCEPTANCE, type Attempt } from '../src/execute/attempts.ts'
+import { forgetAttempt, parseHandbackComment, recordCommunication, registerAttempt, registeredAttempt, renderDispatchComment, REVIEW_TASK_ACCEPTANCE, type Attempt } from '../src/execute/attempts.ts'
 import { roundsOf } from '../src/execute/review.ts'
 import { briefGate } from '../src/execute/brief.ts'
 import { gitSeed, noticeHost, seedGoalTask } from './execute-helpers.ts'
+import { doneEvidence, withTrunkRig, type TrunkRig } from './execute-trunk.ts'
 
 // ---- fixtures ----
 
@@ -373,6 +374,158 @@ test('a full review that misses an acceptance item is voided once and re-dispatc
     forgetAttempt('hz-task-1-r2-ssssss')
     rmSync(project.root, { recursive: true, force: true })
   }
+})
+
+/** The handback deps over the trunk rig's repository, the review-pass seam wired to the rig's gate. */
+function trunkHandbackDeps(trunk: TrunkRig): HandbackDeps {
+  return {
+    lookup: trunk.checkDeps.lookup,
+    cache: createGraphCache(() => {}),
+    execDir: root => join(root, '.llm', 'execute'),
+    report: () => {},
+    git: createGit(),
+    runCommand: realCommandRunner,
+    trunkEvidence: (root, task) => trunk.gate.trunkEvidenceOf(root, task),
+  }
+}
+
+/** Attempt `n` of the rig's task-1 dispatched at full depth and handed back done with `commit`: the review task appears. */
+async function handedBack(trunk: TrunkRig, deps: HandbackDeps, n: number, commit: string, worktree: string): Promise<void> {
+  const workerId = `hz-task-1-a${n}-tttttt`
+  const dispatched = await openEngine(trunk.repo.graphDir).apply('harness', { op: 'comment', id: 'task-1', text: renderDispatchComment({ attempt: n, childId: workerId, provider: 'probe', model: 'probe-model', why: 'one directory', review: { depth: 'full' }, brief: '000000000000', pins: 'pins: task-1@000000000000' }) })
+  assert.ok(dispatched.ok, 'the dispatch comment fixture was refused')
+  const graph = await deps.cache.load(trunk.repo.graphDir)
+  const worker: Attempt = { childId: workerId, role: 'worker', node: 'task-1', attempt: n, graphDir: trunk.repo.graphDir, worktree, branch: 'hz/task-1', baseSha: trunk.repo.git('rev-parse', 'main'), review: 'full', parentSession: 'main-1', provider: 'probe', model: 'probe-model', why: 'one directory', plan: 'skipped', pins: renderPins(pinsOf(graph, graph.nodes.get('task-1')!, sha256Hex)) }
+  registerAttempt(worker)
+  try {
+    startHandback(deps, worker, { stopReason: 'completed', structured: { status: 'done', summary: 'added the feed', commits: [commit], files: ['src/feed.js'], checks: [{ command: 'node --test', exit: 0 }], questions: [], assumptions: [], lessons: [] } })
+    await processed(workerId)
+  }
+  finally {
+    forgetAttempt(workerId)
+  }
+}
+
+/** The first review round of the rig's task-1 passes `commit` at full depth; returns the review task's id. */
+async function reviewPasses(trunk: TrunkRig, deps: HandbackDeps, commit: string, worktree: string): Promise<string> {
+  const reviewerId = 'hz-task-1-r1-tttttt'
+  const graph = await deps.cache.load(trunk.repo.graphDir)
+  const reviewTask = reviewTaskOf(graph)
+  const reviewer: Attempt = { childId: reviewerId, role: 'review', node: reviewTask.id, attempt: 1, graphDir: trunk.repo.graphDir, worktree, depth: 'full', parentSession: 'main-1', provider: 'probe', model: 'probe-review', why: 'the change is small', plan: 'none', pins: renderPins(pinsOf(graph, reviewTask, sha256Hex)) }
+  registerAttempt(reviewer)
+  try {
+    startHandback(deps, reviewer, { stopReason: 'completed', structured: { verdict: 'APPROVED', commit, findings: [], checked: ['acceptance:0'] } })
+    await processed(reviewerId)
+  }
+  finally {
+    forgetAttempt(reviewerId)
+  }
+  return reviewTask.id
+}
+
+test('a review that passes after the task reached the trunk marks the reviewed task done with the commit and test evidence of that advance and removes its clean worktree (D2, D3)', async () => {
+  await withTrunkRig({}, async (trunk) => {
+    const { commit, worktree } = trunk.taskBranch({ 'src/feed.js': 'feed\n' })
+    const deps = trunkHandbackDeps(trunk)
+    // The worker's done handback: the full-depth review task appears.
+    await handedBack(trunk, deps, 1, commit, worktree)
+    // The trunk advances before the review: the task waits in progress.
+    await trunk.check(commit)
+    assert.equal((await trunk.run(`git merge --ff-only ${commit}`)).result.isError, false)
+    assert.notEqual((await trunk.node('task-1')).status, 'done')
+    assert.ok((await trunk.comments('task-1')).some(text => text.endsWith(' · 审查还没过，过了再记完成')))
+    assert.equal(existsSync(worktree), true, 'the reviewer still needs the worktree')
+    // The review passes: the reviewed task goes done with the evidence of its advance.
+    // today: the pass looked for a verify entry no task carries and left the reviewed task in progress.
+    const reviewTask = await reviewPasses(trunk, deps, commit, worktree)
+    const task = await trunk.node('task-1')
+    assert.equal(task.status, 'done')
+    const evidence = doneEvidence(task)
+    assert.deepEqual(evidence[0], { kind: 'commit', ref: commit })
+    assert.deepEqual(evidence.slice(1).map(item => [item.kind, item.exit]), [['test', 0], ['test', 0], ['test', 0]])
+    assert.equal((await trunk.node(reviewTask)).status, 'done')
+    assert.equal(existsSync(worktree), false, 'the clean worktree of the completed task is removed')
+  })
+})
+
+/** The main agent reopens the rig's done task-1; the worktree comes back on the task branch with one rework commit carrying the trailer, which is returned. */
+async function reopenWithRework(trunk: TrunkRig, worktree: string): Promise<string> {
+  const engine = openEngine(trunk.repo.graphDir)
+  const reopened = await engine.apply('llm', { op: 'status', id: 'task-1', rev: (await engine.load()).revisions.get('task-1')!, to: 'doing', reason: 'rework the feed' })
+  assert.ok(reopened.ok, 'the reopen was refused')
+  trunk.repo.git('worktree', 'add', '--quiet', worktree, 'hz/task-1')
+  writeFileSync(join(worktree, 'src', 'feed.js'), 'feed 2\n')
+  trunk.repo.git('-C', worktree, 'commit', '--quiet', '-am', 'task-1: rework the feed\n\nHourness-Task: task-1')
+  return trunk.repo.git('-C', worktree, 'rev-parse', 'HEAD')
+}
+
+test('a reopened task whose rework review passes before the rework reaches the trunk stays in progress: the earlier attempt\'s advance is no evidence for it', async () => {
+  await withTrunkRig({}, async (trunk) => {
+    const { commit, worktree } = trunk.taskBranch({ 'src/feed.js': 'feed\n' })
+    await trunk.dispatched('skip', commit)
+    await trunk.check(commit)
+    assert.equal((await trunk.run(`git merge --ff-only ${commit}`)).result.isError, false)
+    assert.equal((await trunk.node('task-1')).status, 'done')
+    const rework = await reopenWithRework(trunk, worktree)
+    const deps = trunkHandbackDeps(trunk)
+    await handedBack(trunk, deps, 2, rework, worktree)
+    // today: the pass took the first attempt's advance line and completed the rework with the old commit's evidence.
+    const reviewTask = await reviewPasses(trunk, deps, rework, worktree)
+    assert.equal((await trunk.node(reviewTask)).status, 'done')
+    const task = await trunk.node('task-1')
+    assert.equal(task.status, 'doing')
+    assert.equal(task.history.filter(entry => entry.op === 'status' && entry.to === 'done').length, 1, 'only the first attempt\'s completion')
+    assert.equal(existsSync(worktree), true, 'the rework\'s worktree stays until it reaches the trunk')
+  })
+})
+
+/**
+ * Attempt 1 of the rig's task-1 dispatched at full depth, reviewed, merged and
+ * done; the task reopened and attempt 2 dispatched at full depth and handed
+ * back done, its rework checked. The review task stays done from attempt 1:
+ * the handback reuses it.
+ */
+async function reworkAfterReview(trunk: TrunkRig): Promise<{ readonly rework: string, readonly worktree: string, readonly reviewTask: string }> {
+  const { commit, worktree } = trunk.taskBranch({ 'src/feed.js': 'feed\n' })
+  const deps = trunkHandbackDeps(trunk)
+  await handedBack(trunk, deps, 1, commit, worktree)
+  const reviewTask = await reviewPasses(trunk, deps, commit, worktree)
+  await trunk.check(commit)
+  const first = await trunk.run(`git merge --ff-only ${commit}`)
+  assert.equal(first.result.isError, false, first.text)
+  assert.equal((await trunk.node('task-1')).status, 'done', 'the reviewed first attempt completes at its advance')
+  const rework = await reopenWithRework(trunk, worktree)
+  await handedBack(trunk, deps, 2, rework, worktree)
+  assert.equal((await trunk.node(reviewTask)).status, 'done', 'the rework reuses the review task attempt 1 finished')
+  await trunk.check(rework)
+  return { rework, worktree, reviewTask }
+}
+
+test('a reopened, reviewed task whose rework reaches the trunk before its review stays in progress with 审查还没过: the earlier attempt\'s review does not settle the rework (review N4)', async () => {
+  await withTrunkRig({}, async (trunk) => {
+    const { rework, worktree } = await reworkAfterReview(trunk)
+    const advanced = await trunk.run(`git merge --ff-only ${rework}`)
+    assert.equal(advanced.result.isError, false, advanced.text)
+    // today: the done review task of attempt 1 counted as the rework's review, and the task completed with no review of the rework.
+    const task = await trunk.node('task-1')
+    assert.equal(task.status, 'doing')
+    assert.equal(task.history.filter(entry => entry.op === 'status' && entry.to === 'done').length, 1, 'only the first attempt\'s completion')
+    assert.ok((await trunk.comments('task-1')).some(text => text.startsWith(`进主干 ${rework.slice(0, 12)}`) && text.endsWith(' · 审查还没过，过了再记完成')))
+    assert.equal(existsSync(worktree), true, 'the rework\'s reviewer still needs the worktree')
+  })
+})
+
+test('the floor clause asks for a full review of the rework: a reopened task whose commands hit the floor cannot reach the trunk on the earlier attempt\'s full review', async () => {
+  await withTrunkRig({ taskHit: true }, async (trunk) => {
+    const { rework } = await reworkAfterReview(trunk)
+    const before = trunk.repo.git('rev-parse', 'main')
+    // today: the floor clause read the done review task of attempt 1 as the rework's full review and let the advance through.
+    const { result, text } = await trunk.run(`git merge --ff-only ${rework}`)
+    assert.equal(result.isError, true)
+    assert.match(text, /the task of the task-1 trailer has no passed full review \(the must-review floor binds the trunk\)/)
+    assert.ok(text.endsWith('Exception: dispatch a full review of task-1'), text)
+    assert.equal(trunk.repo.git('rev-parse', 'main'), before)
+  })
 })
 
 // ---- the module's design review record (§3.7.5) ----

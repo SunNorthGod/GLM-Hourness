@@ -14,7 +14,11 @@
  * re-dispatched once with the same model and reason), one round comment is
  * written per round (§3.7.3) and the convergence table decides pass, stop
  * (the marker the brief gate reads, plus the stop draft to the person,
- * §3.7.4) or a factual notice. A module's design review writes the record
+ * §3.7.4) or a factual notice. A pass on a task whose current attempt
+ * already reached the trunk completes the task with the evidence of that
+ * advance and removes its clean worktree (§3.8.4: the trunk-advance check
+ * left it in progress while the review was pending).
+ * A module's design review writes the record
  * the module release gate reads (§3.7.5). Every step checks the graph for
  * the same childId first, so a restart's reconciliation can rerun it
  * (§3.6.2).
@@ -24,14 +28,14 @@
  * `{output, stopReason, structured?}` (subagent:1098–1117); the caller
  * (`dispatch.ts`, through the row's `onHandback` hook) hands it here.
  */
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
 import { openEngine } from '../graph/engine.ts'
 import { DIRECTIONS_ID } from '../graph/modules.ts'
 import { holderHome, mainAgentOf } from '../graph/main-agent-holder.ts'
 import { staleness } from '../graph/pins.ts'
 import type { LoadedGraph } from '../graph/parse.ts'
-import type { GraphNode } from '../graph/schema.ts'
+import type { Evidence, GraphNode } from '../graph/schema.ts'
 import { errorText, isRecord } from '../design/tool-support.ts'
 import type { ServiceLookup, UserNotice } from '../shared/dsh-min.ts'
 import { createUserNotice } from '../shared/dsh-min.ts'
@@ -76,6 +80,8 @@ export interface HandbackDeps {
   readonly now?: () => Date
   /** Re-dispatch a voided review round with the same model and reason (§3.7.1); false when the row cannot (the parent is gone). */
   readonly redispatch?: (reviewTaskId: string, attempt: Attempt) => Promise<boolean>
+  /** The evidence of the task's newest checked trunk advance since its latest dispatch (src/execute/advance.ts): the trailer commit and the check's commands; `undefined` while this attempt has not reached the trunk. */
+  readonly trunkEvidence?: (projectRoot: string, task: string) => Promise<readonly Evidence[] | undefined>
 }
 
 /** The stop markers this process wrote itself when the graph refused the comment (§3.7.3); the brief gate reads them through the row. */
@@ -560,13 +566,25 @@ async function taskReviewHandback(deps: HandbackDeps, attempt: Attempt, graph: L
       return engine.apply('harness', { op: 'status', id: node.id, rev: current.revisions.get(node.id)!, to: 'done', evidence: [{ kind: 'check', ref: `review ${attempt.childId}`, exit: 0, note: `${commitShort} · ${depth} · patch ${patchId} · ${attempt.provider}/${attempt.model}` }], reason: `review passed (${attempt.childId})` })
     })
     if (!finished.ok) deps.report(attempt.parentSession, 'degraded', `审查任务的完成写不进图（${node.id}）：${finished.error.message}`)
-    const reachedTrunk = reviewed.history.some(entry => entry.op === 'verify' && Array.isArray(entry.evidence) && entry.evidence.some(item => (item as { kind?: string })?.kind === 'commit'))
-    if (reachedTrunk) {
+    // A reviewed task already on the trunk waited for this pass (§3.8.4, D2): it goes done with the evidence of its trunk advance.
+    const projectRoot = (attempt.worktree === undefined ? undefined : projectOf(attempt.worktree)?.root) ?? dirname(dirname(attempt.graphDir))
+    const trunkEvidence = reviewed.status === 'done' || deps.trunkEvidence === undefined
+      ? undefined
+      : await deps.trunkEvidence(projectRoot, reviewed.id).catch((error: unknown) => {
+          deps.report(attempt.parentSession, 'degraded', `被审任务的进主干证据读不出（${reviewed.id}）：${errorText(error)}`)
+          return undefined
+        })
+    if (trunkEvidence !== undefined && trunkEvidence.length > 0) {
       const doneReviewed = await writeWithRetry(async () => {
         const current = await engine.load()
-        return engine.apply('harness', { op: 'status', id: reviewed.id, rev: current.revisions.get(reviewed.id)!, to: 'done', reason: `review passed (${attempt.childId})` })
+        return engine.apply('harness', { op: 'status', id: reviewed.id, rev: current.revisions.get(reviewed.id)!, to: 'done', evidence: trunkEvidence, reason: `review passed (${attempt.childId}) after the trunk advance` })
       })
       if (!doneReviewed.ok) deps.report(attempt.parentSession, 'degraded', `被审任务的完成写不进图（${reviewed.id}）：${doneReviewed.error.message}`)
+      else {
+        // The task is done: its clean worktree goes as at a trunk advance (D3); git refuses an unclean one and it stays.
+        const worktree = join(projectRoot, '.worktrees', `hz-${reviewed.id}`)
+        if (await stat(worktree).then(() => true, () => false)) await deps.git.removeWorktree(projectRoot, worktree)
+      }
     }
     notify(deps, attempt.graphDir, 'review', attempt, `Task ${reviewed.id} round ${k}: APPROVED.`, `The review of ${reviewed.id} passed in round ${k} (${depth}); the review task ${node.id} is done. Continue with the merge checks.`)
     emitMetric({ event: 'execute.review', task: reviewed.id, round: k, depth: depth === '全审' ? 'full' : 'light', model: attempt.model, blocking: 0, nonBlocking: nonBlocking.length, demoted: normalized.demoted })
