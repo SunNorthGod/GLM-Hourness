@@ -227,7 +227,7 @@ L3 核实〔实测 2026-10-28，派发可行性验证 (c)，`ROADMAP.md` 借用�
 | --- | --- |
 | 人 | 在 UI 上看图、给节点写批注、在决策卡上拍板；可直接改目标与验收条件。人的改动优先级最高，也是最强的学习信号 |
 | LLM | 只通过一组图工具读写，不直接改图文件（guard 拦截） |
-| harness | harness 代码自动发起的变更（例：已关闭节点的关联文件被改动后重开），权限与 LLM 相同 |
+| harness | harness 代码自动发起的变更（例：已关闭节点的关联文件被改动后重开；用户图走一遍的命令、截图与终端证据，§5.5），权限与 LLM 相同，另有 `walk`（§2.9） |
 
 这三种身份在引擎里是 `actor` 的三个取值：`human`、`llm`、`harness`。actor 由客户端入口决定，不从请求数据里读：人自己打的命令（`/graph-run`）记为 `human`，命令行与 DSH 图工具一律记为 `llm`，以后的 DSH 钩子记为 `harness`；面板不写图（plain-ui，`d-ui-look-not-operate`），不再有经面板的 `human` 写入。每种操作对各身份的限制见 §2.9。
 
@@ -305,7 +305,9 @@ guard 拦截〔已实现，规则 `graph-files-only`，`src/guard/graph-files.ts
 | `reject` | `id`、`rev` | 提议 → 废弃 | 可以 | 拒绝，同上 |
 | `status` | `id`、`rev`、`to`、`evidence?` | 已批准 → 进行中 / 完成 / 废弃；进行中 → 完成 / 废弃；完成 → 进行中（重开，记一次返工）；废弃 → 已批准（恢复）。提议节点不经 `status` | 可以 | 不能废弃或恢复目标与特性（计划外，正路是提议一个待决）；不能废弃待决 |
 | `edit` | `id`、`rev`、`set`（字段 → 新值，`null` 表示删除） | 改字段 | 可以 | 只能改 `title`、`body`、`slope`、待决的 `decider` 与任务的派发属性（`kind`、`tier`、`worktree`、`outputSchema`、`writeScope`）；`decider` 只能改为 `human` 或删掉，改为 `agent` 拒绝；不能改目标节点，自己提议且仍为 `proposed` 的目标除外。自己提议（首条历史是同一身份的 `propose`）且仍为 `proposed` 的节点可以改全部字段，`decider` 改为 `agent` 除外；对这样的目标，`acceptance`、`nonGoals`、`stage` 都在内（2026-10-29 用户选定，`question-23` A：没被人批准的目标是 LLM 的草稿，人批准时看到全部内容）。人批准之后的目标照旧不能改；`harness` 不能改 `llm` 提议的目标（首条历史的身份要相同） |
-| `link` / `unlink` | `id`、`rev`、`type`、`to` | 加 / 删 `depends` 或 `source` 连线 | 可以 | 可以，目标节点除外（自己提议的目标也一样） |
+| `link` / `unlink` | `id`、`rev`、`type`、`to`（`link` 另带可选 `when`，只许步骤的 `next` 带） | 加 / 删 `depends`、`source`、`serves` 或 `next` 连线 | 可以 | 可以，目标节点除外（自己提议的目标也一样）。用户节点上的 `next`：不带转述拒绝（步骤的先后是人定的，`d-user-graph-released`），`serves` 是开发那一侧的账，照旧可以 |
+| `relink` | `id`、`rev`、`next`（`{to, when?}` 的数组，至多 8 项，流程至多 1 项） | 一次替换一个步骤的全部出边，或一条流程的入口连线。历史对被摘掉或改了条件的连线各记一条 `unlink`（取节点上原有的那条，含 `when`）、对新加或改了条件的各记一条 `link`，时间、理由与转述相同；原样保留的不记；前后相同拒绝（`conflict`）。列表里新出现的（原有 `next` 里没有这个目标的）目标必须是不被废弃的步骤 | 可以 | 用户节点上不带转述拒绝；自己提议且仍为 `proposed` 的可以。落成「同一句原话对每个节点只写一次」（§4.2 的对话式改动次序靠它） |
+| `walk` | `id`、`rev`、`reason`、`evidence`（1–5 条 `walk` 类，`note` 以 `@提交号` 开头） | 在步骤上记走一遍（§5.5）：证据追加到节点（只保留最近 10 条，历史全留），历史追加一条 `op: walk`，状态不动 | 可以，`ref` 任意 | `harness` 写它跑的命令、截图、终端三种（`ref` 不得以 `person:` 开头）；`llm` 不带转述拒绝，带转述只写 `person:conversation`（人亲自走的由主 Agent 经 `graph_walk` 记，提交号由工具取项目根 `HEAD`，不由模型填） |
 | `comment` | `id`、`text` | 批注 | 可以 | 可以 |
 | `decide` | `id`、`rev`、`option`；提议式待决改带 `conclusion`，二选一 | 已批准、进行中或完成的待决拍板：写入 `decision`（提议式待决写 `conclusion`），追加 `decision` 证据，状态转为（或保持）完成；完成的待决再拍即推翻 | 可以 | 决定者为 `agent`、且人没有拍过的待决可以；其余拒绝，正路同 `approve`。这条拒绝排在修订号检查之前 |
 | `verify` | `id`、`rev`、`to`、`evidence?` | 改决策的验证状态 | 可以 | 可以 |
@@ -318,6 +320,8 @@ guard 拦截〔已实现，规则 `graph-files-only`，`src/guard/graph-files.ts
 - 被取代只能经 `supersede` 或批准带 `supersedes` 的节点产生。取代生效时，处于已批准、进行中或完成的目标转为 `superseded`；已关闭或仍是提议的目标不动（提议用 `reject` 处理），这样旧节点先被关掉也不会让新节点无法批准。被取代的决策，验证状态同时转为 `superseded`，此后不能再 `verify`。
 - `verify` 转为 `sandbox` 或 `device` 要带 `exit` 为 0 的 `test` 或 `check` 证据；`verify` 不能直接设为 `superseded`。
 - `edit` 的新值与原值全部相同时拒绝（`invalid`），历史里不留空改动。
+- 用户图的写入规则 W1 至 W5〔用户图设计 0.4.1 §3.4，`d-user-graph-released`〕，只查本次写入新增或改动的部分——新加的 `serves` 与 `next`（`relink` 列表里原有 `next` 中没有的 `to`）、本次设置的 `kind`、本次写的 `walk` 证据；节点上原有的连线与这次没动的字段不查，所以收尾（`graph_status done`）、改正文、摘线、恢复节点一律不因存量连线被拒，存量的坏连线（服务的步骤被废弃、`next` 指向被废弃的步骤）作为缺口由推导标出（§2.5）。W1：新增 `serves` 后，步骤的未被废弃服务者不超过 8，任务自己指向未废弃步骤的 `serves` 不超过 3，特性不超过 20（数字是 agent 定的，`schema.ts` 的 `USER_LIMITS` 一处）。W2：新增 `serves` 的目标是未被废弃、未被取代的步骤。W3：`serves` 的起点是特性或任务且 `kind` 不是 `review`；本次写入把任务的 `kind` 设成 `review` 时它不能还带着 `serves`。W4：`walk` 的目标是不被废弃的已批准步骤，证据 1–5 条全为 `walk` 类，`note` 合 `@提交号` 的格式，`harness` 不写 `person:`，带转述的 `llm` 只写 `person:conversation`。W5：新增 `next` 的目标是不被废弃的步骤，`relink` 的列表 `to` 不重复、至多 8 项、流程至多 1 项。缺项时拒绝（`invalid`），`field` 与 `hint` 写明正路。
+- 用户节点的状态：只存 `proposed`、`approved`、`dropped`、`superseded`；`status` 到 `doing` 或 `done` 一律 `bad_transition`（它的进度由连着的活与走一遍推出，§2.5）。废弃与恢复用户节点要人的权限，同目标与特性。
 
 `edit` 能改的字段：`title`、`parent`、`slope`、`stage`、`kind`、`tier`、`worktree`、`outputSchema`、`body`、`acceptance`、`nonGoals`、`writeScope`、`options`、`dimension`、`recommend`、`crux`、`verdict`、`weight`、`decider`。状态、连线、证据、拍板与验证状态各有专门的操作，不经 `edit`。`parent` 在其中，人可以把节点挪到别的父节点下，挪完的图同样要通过校验（不成环）。
 
@@ -340,9 +344,9 @@ guard 拦截〔已实现，规则 `graph-files-only`，`src/guard/graph-files.ts
 
 `approve` 连带改动的被取代节点也各追加一条。重开次数（返工）从历史中数出来，不另存字段。
 
-拒绝返回 `{ok: false, error}`，`error` 是结构化错误 `{code, message, field?, hint}`，`hint` 写正路（`CHARTER.md` §6）。错误码：`invalid`（请求或字段不合法，含写后的节点或整图通不过 §2.6 的校验）、`not_found`、`conflict`（id 或连线已存在）、`stale_revision`、`forbidden`（身份无权）、`evidence_required`、`bad_transition`（状态转换不允许）、`graph_invalid`。`field` 是请求里的字段路径，例 `node.parent`、`set.acceptance`、`evidence[0].ref`。
+拒绝返回 `{ok: false, error}`，`error` 是结构化错误 `{code, message, field?, hint}`，`hint` 写正路（`CHARTER.md` §6）。错误码：`invalid`（请求或字段不合法，含写后的节点或整图通不过 §2.6 的校验）、`not_found`、`conflict`（id 或连线已存在）、`stale_revision`、`forbidden`（身份无权）、`evidence_required`、`bad_transition`（状态转换不允许）、`graph_invalid`、`unavailable`（此刻写不了，例 `graph_walk` 读不到项目根的提交）。`field` 是请求里的字段路径，例 `node.parent`、`set.acceptance`、`evidence[0].ref`、`next[2]`。
 
-检查顺序：请求结构（含只有 `llm` 能转述）→ 要人权限的操作（`approve`、`reject`、`supersede`，不带转述时）→ 图有无校验错误 → 节点是否存在 → `decide` 的决定者 → 修订号 → 按节点判断的权限 → 状态转换 → 证据 → 写后的节点校验 → 待决的写入规则（§2.6）→ 整图校验 → 写入。只看身份的拒绝排在修订号之前，LLM 不会先被要求重读、重读后才被告知无权。被拒绝的请求不写任何文件。
+检查顺序：请求结构（含只有 `llm` 能转述）→ 要人权限的操作（`approve`、`reject`、`supersede`，不带转述时）→ 图有无校验错误 → 节点是否存在 → `decide` 的决定者 → 修订号 → 按节点判断的权限 → 状态转换 → 证据 → 写后的节点校验 → 待决的写入规则（§2.6）→ 用户图的写入规则 W1 至 W5（只查本次新增或改动的部分，读写后的整图）→ 整图校验 → 写入。只看身份的拒绝排在修订号之前，LLM 不会先被要求重读、重读后才被告知无权。被拒绝的请求不写任何文件。
 
 ### 2.10 三个客户端与交互〔已实现，2026-10-28 用户批准原型；人的客户端改为 DSH 原生面板，见下〕
 
@@ -414,7 +418,8 @@ DSH 图工具〔已实现，`src/graph/tools.ts`，行入口 `src/graph/index.ts
 | `graph_show` | `{id}` | `projection(id)` | `{ok: true, projection, invalid?}` |
 | `graph_open` | 无 | `openItems()`，`items.questions` 是决策队列 | `{ok: true, items, invalid?}` |
 | `graph_focus` | `{id}` | `load()`，确认节点存在，记下本会话的焦点（§2.5） | `{ok: true, focus: {id, type, title, status}, invalid?}` |
-| `graph_propose`、`graph_status`、`graph_edit`、`graph_link`、`graph_unlink`、`graph_comment`、`graph_verify`、`graph_decide`、`graph_approve`、`graph_reject` | 该操作除 `op` 以外的字段，同命令行；除 `graph_comment` 外都有可选的 `relay` | `apply('llm', {...参数, op})` | `{ok: true, id, rev, revision, node, changed}` |
+| `graph_propose`、`graph_status`、`graph_edit`、`graph_link`、`graph_unlink`、`graph_relink`、`graph_comment`、`graph_verify`、`graph_decide`、`graph_approve`、`graph_reject` | 该操作除 `op` 以外的字段，同命令行；除 `graph_comment` 外都有可选的 `relay` | `apply('llm', {...参数, op})` | `{ok: true, id, rev, revision, node, changed}` |
+| `graph_walk` | `id`（流程）、`rev`、`steps`（这条流程每个未被废弃的已批准步骤一项 `{id, ok}`，不多不少；流程里还有提议的步骤时整个调用拒绝）、`reason`、`relay`（必填） | 逐步骤各调一次 `apply('llm', {op: 'walk', ...})`；证据与 `@提交号` 由工具生成，提交取项目根此刻的 `HEAD`，读不到时整个调用 `unavailable`、一个都不写。说明要求主 Agent 请人走一遍时先告诉他走的是哪一个提交，他走的不是它就先重新部署 | `{ok: true, id, rev, revision, node, changed, commit, unwritten?}` |
 
 - 〔2026-10-28 起，§2.9.1〕`graph_decide` 拍决定者为 `agent` 的待决，或带人的原话拍人的待决；`graph_approve`、`graph_reject` 的 schema 把 `relay` 列为必填，不带转述时引擎照样拒绝（rc.3 不校验工具参数）。`supersede` 不做成工具：带 `supersedes` 连线的提议做同一件事，带转述时立即生效。`relay` 的参数说明要求逐字引用、不许改写或编造。此前只认人的四个操作都不做成工具，人只能在查看器里点，这正是负担的来源。
 - `graph_focus` 是命令行没有的工具：焦点属于会话，不属于图，所以它不写节点文件，图修订号不变（§2.5）。节点不存在时报 `not_found`；调用方没有会话时报 `invalid`。

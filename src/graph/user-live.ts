@@ -16,7 +16,10 @@
 import type { LoadedGraph } from './parse.ts'
 import type { GraphNode } from './schema.ts'
 
-export function liveOf(graph: LoadedGraph, node: GraphNode): boolean {
+/** What liveOf reads of a graph: the node table alone. A LoadedGraph, or any would-be graph the engine builds for a write. */
+export type NodeTable = Pick<LoadedGraph, 'nodes'>
+
+export function liveOf(graph: NodeTable, node: GraphNode): boolean {
   const gone = (entry: GraphNode): boolean => entry.status === 'dropped' || entry.status === 'superseded'
   if (gone(node)) return false
   const seen = new Set<string>([node.id])

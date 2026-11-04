@@ -18,6 +18,9 @@ import {
   CARD_LIMITS,
   DISPATCH_FIELDS,
   EDITABLE_FIELDS,
+  USER_LIMITS,
+  USER_TYPES,
+  WALK_NOTE_PATTERN,
   isPassingEvidence,
   STAGES,
   type Actor,
@@ -34,6 +37,8 @@ import {
 } from './schema.ts'
 import { effectiveStage } from './stage.ts'
 import { graphRevision, hasErrors, loadGraph, writeNodes, type LoadedGraph, type NodeWrite } from './store.ts'
+import { liveOf } from './user-live.ts'
+import { parseWalkLine } from './walk-spec.ts'
 import { validateGraph } from './validate.ts'
 
 export interface EngineOptions {
@@ -136,6 +141,44 @@ interface Plan {
   readonly drafts: readonly Draft[]
   /** Maps an issue on the would-be graph back to a request field. */
   readonly fieldOf: (issue: GraphIssue) => string | undefined
+  /**
+   * The write rules W1 to W5 of the user graph (design 0.4.1 §3.4), over the
+   * would-be graph: only the parts this write adds or sets are judged, never
+   * what the node already carried. Run in commit() after the node checks and
+   * before the graph-wide validation, so a write-rule refusal names the
+   * request, not the graph.
+   */
+  readonly writeRules?: (next: ReadonlyMap<string, GraphNode>) => Failure | undefined
+}
+
+/** Whether a node type is one of the user graph's (design 0.4.1 §2.2). */
+function isUserType(type: NodeType): boolean {
+  return (USER_TYPES as readonly string[]).includes(type)
+}
+
+/** The node is a proposal this actor opened itself: an llm may edit any field of it and replace its next edges (§2.9 ownProposal). */
+function ownDraft(node: GraphNode, actor: Actor): boolean {
+  const first = node.history[0]
+  return node.status === 'proposed' && first?.op === 'propose' && first.actor === actor
+}
+
+/** The walk kind of a body, or undefined when none parses; the kind of a flow's 走法 line is what the human agreed to (§3.4). */
+function walkKindOf(body: string | undefined): string | undefined {
+  const parsed = parseWalkLine(body)
+  return 'kind' in parsed ? parsed.kind : undefined
+}
+
+/** Live servers of one step: features and tasks with a serves edge to it, reviews excluded (design §2.5 serversOf, W1). */
+function servesTo(graph: ReadonlyMap<string, GraphNode>, stepId: string): GraphNode[] {
+  return [...graph.values()].filter(node =>
+    (node.type === 'feature' || node.type === 'task')
+    && node.kind !== 'review'
+    && (node.edges ?? []).some(edge => edge.type === 'serves' && edge.to === stepId))
+}
+
+/** Live serves edges a work node holds, counting only those whose target is a live step (§2.4). */
+function liveServes(graph: ReadonlyMap<string, GraphNode>, node: GraphNode): number {
+  return (node.edges ?? []).filter(edge => edge.type === 'serves' && liveOf({ nodes: graph }, graph.get(edge.to)!)).length
 }
 
 interface Context {
@@ -205,6 +248,11 @@ async function commit(dir: string, graph: LoadedGraph, plan: Plan): Promise<Appl
     next.set(draft.id, node!)
     writes.push({ node: node!, expected: draft.expected })
   }
+  // The user graph's write rules judge only what this write adds or sets (§3.4), after the node checks and before the graph-wide validation.
+  if (plan.writeRules !== undefined) {
+    const refusal = plan.writeRules(next)
+    if (refusal !== undefined) return refusal
+  }
   const graphError = validateGraph(next).find(issue => issue.severity === 'error')
   if (graphError !== undefined) return issueFailure(graphError, plan)
   const outcome = await writeNodes(dir, writes)
@@ -259,8 +307,52 @@ function decideRefusal(context: Context, node: GraphNode): Failure | undefined {
   return undefined
 }
 
-function plan(target: string, drafts: readonly Draft[], fieldOf: Plan['fieldOf'] = issue => issue.field): Plan {
-  return { ok: true, target, drafts, fieldOf }
+function plan(target: string, drafts: readonly Draft[], fieldOf: Plan['fieldOf'] = issue => issue.field, writeRules?: Plan['writeRules']): Plan {
+  return writeRules === undefined ? { ok: true, target, drafts, fieldOf } : { ok: true, target, drafts, fieldOf, writeRules }
+}
+
+const LIVE_HINT = 'restore the step first, or link to the step that replaced it'
+
+/** W2 and W1 for one newly added serves edge (design 0.4.1 §3.4): the target is a live step of the graph, the source is work, and the counts of live serves stay within USER_LIMITS. */
+function servesRefusal(graph: ReadonlyMap<string, GraphNode>, sourceId: string, targetId: string, field: string): Failure | undefined {
+  const target = graph.get(targetId)
+  if (target === undefined) return failure('not_found', `no node "${targetId}"`, 'link to an existing step', field)
+  if (target.type !== 'step') return failure('invalid', `"${targetId}" is a ${target.type}, not a step`, 'a serves edge points from the work at the step it builds', field)
+  if (!liveOf({ nodes: graph }, target)) return failure('invalid', `"${targetId}" was dropped or replaced`, LIVE_HINT, field)
+  const source = graph.get(sourceId)
+  if (source === undefined) return failure('not_found', `no node "${sourceId}"`, 'link from an existing feature or task', field)
+  if (source.type !== 'feature' && source.type !== 'task') return failure('invalid', `"${sourceId}" is a ${source.type}, not work`, 'a serves edge sits on the feature or task that builds the step', field)
+  if (source.kind === 'review') return failure('invalid', `"${sourceId}" is a review, and reviews build nothing a user sees`, 'design reviews and overall reviews make no user-visible step', field)
+  const servers = servesTo(graph, targetId)
+  if (servers.length > USER_LIMITS.servesPerStep) {
+    return failure('invalid', `"${targetId}" has ${servers.length} live servers, at most ${USER_LIMITS.servesPerStep}`, 'this step is too big: split it into smaller steps', field)
+  }
+  const own = liveServes(graph, source)
+  if (source.type === 'task' && own > USER_LIMITS.servesPerTask) {
+    return failure('invalid', `"${sourceId}" serves ${own} live steps, at most ${USER_LIMITS.servesPerTask}`, 'a task serves a few steps; if it serves more, split the task', field)
+  }
+  if (source.type === 'feature' && own > USER_LIMITS.servesPerFeature) {
+    return failure('invalid', `"${sourceId}" serves ${own} live steps by its own links, at most ${USER_LIMITS.servesPerFeature}`, 'a feature owns at most 20 steps by its own links; connect the tasks that build the steps instead (task links give the progress), or, before the big-loop release, split the module', field)
+  }
+  return undefined
+}
+
+/** W3, second half: a write that sets a task's kind to review leaves it no serves (design §3.4). */
+function reviewServesRefusal(node: GraphNode, field: string): Failure | undefined {
+  const serves = (node.edges ?? []).filter(edge => edge.type === 'serves').length
+  if (node.type === 'task' && node.kind === 'review' && serves > 0) {
+    return failure('invalid', `"${node.id}" is a review and still serves ${serves} step(s)`, 'design reviews and overall reviews build nothing a user sees; unlink its serves edges first', field)
+  }
+  return undefined
+}
+
+/** W5 for one newly added next target (design §3.4): it is a live step; the same-flow rules are graph-wide validation. */
+function nextTargetRefusal(graph: ReadonlyMap<string, GraphNode>, to: string, field: string): Failure | undefined {
+  const target = graph.get(to)
+  if (target === undefined) return failure('not_found', `no node "${to}"`, 'link to an existing step', field)
+  if (target.type !== 'step') return failure('invalid', `"${to}" is a ${target.type}, not a step`, 'a next edge points at a step of the same flow', field)
+  if (!liveOf({ nodes: graph }, target)) return failure('invalid', `"${to}" was dropped or replaced`, LIVE_HINT, field)
+  return undefined
 }
 
 function withEvidence(node: GraphNode, evidence: readonly Evidence[] | undefined): Record<string, unknown> {
@@ -484,7 +576,18 @@ function planPropose(context: Context, node: ProposedNode, reason: string): Plan
   }
   const drafts: Draft[] = [{ id, raw, expected: null }]
   if (status === 'approved') drafts.push(...supersedeTargets(context, id, node.edges, reason))
-  return plan(id, drafts, requestFields(nodeFile(id), 'node', PROPOSE_FIELDS))
+  // The edges a new node carries are all new to the graph: W1 to W3, W5 judge them (§3.4).
+  const newEdges = node.edges ?? []
+  return plan(id, drafts, requestFields(nodeFile(id), 'node', PROPOSE_FIELDS), (next) => {
+    for (const [index, edge] of newEdges.entries()) {
+      const field = `node.edges[${index}]`
+      const refusal = edge.type === 'serves' ? servesRefusal(next, id, edge.to, field)
+        : edge.type === 'next' ? nextTargetRefusal(next, edge.to, field)
+        : undefined
+      if (refusal !== undefined) return refusal
+    }
+    return undefined
+  })
 }
 
 type Change = Exclude<Mutation, { readonly op: 'propose' }>
@@ -520,18 +623,36 @@ function planChange(context: Context, mutation: Change): Plan | Failure {
       return planEdit(context, node, mutation.set, reason)
     case 'link':
     case 'unlink': {
-      if (!context.privileged && node.type === 'goal') return failure('forbidden', `${actor} cannot change the edges of the goal`, HUMAN_HINT)
-      const edge: GraphEdge = { type: mutation.type, to: mutation.to }
+      if (!context.privileged && node.type === 'goal') return failure('forbidden', `${actor} cannot change the edges of the goal`, HUMAN_HINT, 'id')
+      // The order of the user graph is the person's once the node is approved; the work's own bookkeeping (serves) stays with the development side (§3.4).
+      if (!context.privileged && mutation.type === 'next' && isUserType(node.type) && !ownDraft(node, actor)) {
+        return failure('forbidden', `${actor} cannot change the steps after "${node.id}"`, `${HUMAN_HINT}; while the node is your own open proposal, you may`, 'id')
+      }
+      if (mutation.op === 'link' && mutation.when !== undefined && mutation.type !== 'next') {
+        return failure('invalid', 'only a step\'s next edge carries a when', 'a when names a branch of one step; a flow\'s entry and every other edge take none', 'when')
+      }
+      const edge: GraphEdge = { type: mutation.type, to: mutation.to, ...(mutation.when === undefined || mutation.op === 'unlink' ? {} : { when: mutation.when }) }
       const edges = node.edges ?? []
       const exists = edges.some(entry => entry.type === edge.type && entry.to === edge.to)
       if (mutation.op === 'unlink') {
         if (!exists) return failure('not_found', `"${node.id}" has no ${edge.type} edge to "${edge.to}"`, 'read the projection for the current edges', 'to')
-        return plan(node.id, [change(context, node, { edges: edges.filter(entry => entry.type !== edge.type || entry.to !== edge.to) }, { at, actor, op: 'unlink', reason, edge })])
+        // The history keeps the edge as the node held it, with its when, so the condition the human agreed to is recoverable from the graph (§2.7).
+        const removed = edges.find(entry => entry.type === edge.type && entry.to === edge.to)!
+        return plan(node.id, [change(context, node, { edges: edges.filter(entry => entry.type !== edge.type || entry.to !== edge.to) }, { at, actor, op: 'unlink', reason, edge: removed })], issue => issue.field === 'edges' ? 'to' : issue.field)
       }
       if (!graph.nodes.has(edge.to)) return failure('not_found', `no node "${edge.to}"`, 'link to an existing node', 'to')
-      if (exists) return failure('conflict', `"${node.id}" already has a ${edge.type} edge to "${edge.to}"`, 'the edge is already there; nothing to do')
-      return plan(node.id, [change(context, node, { edges: [...edges, edge] }, { at, actor, op: 'link', reason, edge })], issue => issue.field === 'edges' ? 'to' : issue.field)
+      if (exists) return failure('conflict', `"${node.id}" already has a ${edge.type} edge to "${edge.to}"`, 'the edge is already there; nothing to do', 'to')
+      const writeRules: Plan['writeRules'] = edge.type === 'serves'
+        ? next => servesRefusal(next, node.id, edge.to, 'to')
+        : edge.type === 'next'
+          ? next => nextTargetRefusal(next, edge.to, 'to')
+          : undefined
+      return plan(node.id, [change(context, node, { edges: [...edges, edge] }, { at, actor, op: 'link', reason, edge })], issue => issue.field === 'edges' ? 'to' : issue.field, writeRules)
     }
+    case 'relink':
+      return planRelink(context, node, mutation.next, reason)
+    case 'walk':
+      return planWalk(context, node, mutation.evidence, reason)
     case 'decide': {
       if (node.type !== 'question') return failure('invalid', `"${node.id}" is a ${node.type} node; decide applies to question nodes`, 'decide a question node', 'id')
       // A done question is decided again in place: the human overturns a decision without reopening it first.
@@ -606,11 +727,15 @@ function planStatus(context: Context, node: GraphNode, to: Status, evidence: rea
   if (to === 'proposed') return failure('bad_transition', 'a node does not return to proposed', 'propose a new node instead', 'to')
   if (to === 'superseded') return failure('bad_transition', 'superseded is set only by supersession', 'propose the replacement with a supersedes edge', 'to')
   if (node.type === 'question' && to === 'done') return failure('bad_transition', 'a question closes only through decide', HUMAN_HINT, 'to')
+  // A user node is never doing or done: its progress is derived from the work that serves it (§2.2).
+  if (isUserType(node.type) && (to === 'doing' || to === 'done')) {
+    return failure('bad_transition', `a ${node.type} is never ${to}`, 'a user step is walked, not finished: its state comes from the work that serves it and from walk evidence', 'to')
+  }
   if (!TRANSITIONS[from].includes(to)) {
     return failure('bad_transition', `"${node.id}" cannot go from ${from} to ${to}`, `from ${from} the status can go to ${TRANSITIONS[from].join(', ')}`, 'to')
   }
   if (!context.privileged) {
-    if ((node.type === 'goal' || node.type === 'feature') && (to === 'dropped' || from === 'dropped')) {
+    if ((node.type === 'goal' || node.type === 'feature' || isUserType(node.type)) && (to === 'dropped' || from === 'dropped')) {
       return failure('forbidden', `${actor} cannot drop or restore a ${node.type}`, 'dropping or restoring a branch is plan-external: propose a question node under it for a human')
     }
     if (node.type === 'question' && to === 'dropped') return failure('forbidden', `${actor} cannot drop a question`, 'comment why it no longer matters; a human decides or drops it')
@@ -664,8 +789,17 @@ function planEdit(context: Context, node: GraphNode, set: Readonly<Partial<Recor
   if (sendBack !== undefined && sendBack !== 'allowed') return sendBack
   if (!context.privileged && sendBack === undefined) {
     const relayHint = 'if the human asked for it in the chat, send their words verbatim as relay'
-    const first = node.history[0]
-    const ownProposal = node.status === 'proposed' && first?.op === 'propose' && first.actor === actor
+    const ownProposal = ownDraft(node, actor)
+    // A user node's shape is the person's once it is theirs (design 0.4.1 §3.4): title, acceptance, parent and the walk kind change with their words; the body's wording, notes and estimate stay the agent's. Their own open proposal is theirs to write.
+    if (isUserType(node.type) && !ownProposal) {
+      const bodyOnly = fields.every(field => field === 'body')
+      const after = set.body === null || typeof set.body !== 'string' ? undefined : set.body
+      const walkChanged = bodyOnly && walkKindOf(node.body) !== walkKindOf(after)
+      if (!bodyOnly || walkChanged) {
+        const denied = fields.find(field => field !== 'body') ?? 'body'
+        return failure('forbidden', `${actor} cannot edit ${denied === 'body' && walkChanged ? 'the walk kind of' : denied + ' of'} "${node.id}"`, `${HUMAN_HINT}; the steps, how to tell one is done and the kind of walk are the person's; the wording, notes and estimate in the body you may edit`, `set.${denied}`)
+      }
+    }
     // A goal the actor proposed itself is its draft until the human approves it (decision question-23 A); an adopted goal is the human's.
     if (node.type === 'goal' && !ownProposal) return failure('forbidden', `${actor} cannot edit the goal`, `goals, acceptance criteria and non-goals are the human's: propose a question node under the goal; ${relayHint}`)
     // A proposal the human decided stays as they agreed to it: their words stand for that version (§3.3).
@@ -706,6 +840,112 @@ function planEdit(context: Context, node: GraphNode, set: Readonly<Partial<Recor
   if (Object.keys(changes).length === 0) return failure('invalid', 'set changes nothing', 'send only fields whose value differs', 'set')
   const refusal = questionRefusal(checked!, field => (fields as readonly string[]).includes(field), 'set')
   if (refusal !== undefined) return refusal
+  if (fields.includes('kind')) {
+    const review = reviewServesRefusal(checked!, 'set.kind')
+    if (review !== undefined) return review
+  }
   const patch = Object.fromEntries(fields.map(field => [field, set[field]]))
   return plan(node.id, [change(context, node, patch, { at, actor, op: 'edit', reason, changes })], fieldOf)
+}
+
+/**
+ * One write replacing the outgoing next edges of a step, or the entry of a
+ * flow (design 0.4.1 §3.5): the transcribe check holds for each node once
+ * per sentence of the human's, so a step's order and branches must land in
+ * a single write. The history keeps one unlink per edge that went away or
+ * changed (as the node held it, with its when) and one link per edge that
+ * arrived or changed, all with this time, reason and relay; an edge that
+ * stays exactly as it was is not recorded. W5 judges the list entries that
+ * are new to the node by (type, target); a kept entry whose when changed is
+ * not new, so a step whose next went stale can still be rewritten.
+ */
+function planRelink(context: Context, node: GraphNode, list: readonly { readonly to: string, readonly when?: string }[], reason: string): Plan | Failure {
+  const { graph, at, actor, relay } = context
+  if (node.type !== 'step' && node.type !== 'flow') {
+    return failure('invalid', `"${node.id}" is a ${node.type}; relink writes the next edges of a step or the entry of a flow`, 'relink a step or a flow node', 'id')
+  }
+  if (!context.privileged && !ownDraft(node, actor)) {
+    return failure('forbidden', `${actor} cannot change the steps after "${node.id}"`, `${HUMAN_HINT}; while the node is your own open proposal, you may`, 'id')
+  }
+  if (list.length > USER_LIMITS.relinkEdges) {
+    return failure('invalid', `the list holds ${list.length} entries, at most ${USER_LIMITS.relinkEdges}`, 'one step has a few ways onward at most: split the step', 'next')
+  }
+  if (node.type === 'flow' && list.length > 1) {
+    return failure('invalid', 'a flow has one entry', 'the list of a flow takes at most one entry; relink the steps for the order inside it', 'next')
+  }
+  const at2 = list.findIndex((entry, index) => list.some((other, otherIndex) => otherIndex !== index && other.to === entry.to))
+  if (at2 >= 0) {
+    return failure('invalid', `the list names "${list[at2].to}" twice`, 'one relink names a target once', `next[${at2}]`)
+  }
+  const old = (node.edges ?? []).filter(edge => edge.type === 'next')
+  const after: readonly GraphEdge[] = list.map(entry => ({ type: 'next', to: entry.to, ...(entry.when === undefined ? {} : { when: entry.when }) }))
+  const unchanged = (edge: GraphEdge): boolean => {
+    const fresh = after.find(entry => entry.to === edge.to)
+    return fresh !== undefined && fresh.when === edge.when
+  }
+  const removed = old.filter(edge => !unchanged(edge))
+  const added = after.filter(entry => !old.some(edge => edge.to === entry.to && edge.when === entry.when))
+  if (removed.length === 0 && added.length === 0) {
+    return failure('conflict', `"${node.id}" already has these next edges`, 'nothing to change', 'next')
+  }
+  const entries: HistoryEntry[] = [...removed, ...added].map(edge => ({
+    at,
+    actor,
+    op: removed.includes(edge) ? 'unlink' : 'link',
+    reason,
+    ...(relay === undefined ? {} : { relay }),
+    edge,
+  }))
+  const rest = (node.edges ?? []).filter(edge => edge.type !== 'next')
+  const raw: Record<string, unknown> = { ...node, edges: [...rest, ...after], history: [...node.history, ...entries] }
+  const draft: Draft = { id: node.id, raw, expected: graph.revisions.get(node.id)! }
+  const oldTos = new Set(old.map(edge => edge.to))
+  const writeRules: Plan['writeRules'] = (next) => {
+    for (const [index, entry] of list.entries()) {
+      if (oldTos.has(entry.to)) continue
+      const refusal = nextTargetRefusal(next, entry.to, `next[${index}]`)
+      if (refusal !== undefined) return refusal
+    }
+    return undefined
+  }
+  return plan(node.id, [draft], issue => issue.field === 'edges' ? 'next' : issue.field, writeRules)
+}
+
+const WALK_NOTE_HINT = 'note is "@<7-40 lowercase hex digits> what happened"; the commit is the one the walk ran on'
+
+/**
+ * Walk evidence on a step (design 0.4.1 §2.7, §3.4 W4): the harness records
+ * the walks it runs, the human records any walk, and an llm only relays the
+ * person's own words about a walk they made themselves (ref
+ * person:conversation) — the person's own walk is the only one whose truth
+ * the main agent can vouch for. The step keeps the most recent
+ * USER_LIMITS.walkKept walk entries on the node; its history keeps them all,
+ * and the derived state (user-graph.ts) reads the history. The status of the
+ * step is not touched: walked is derived, never stored.
+ */
+function planWalk(context: Context, node: GraphNode, evidence: readonly Evidence[], reason: string): Plan | Failure {
+  const { actor, at, graph, privileged, relay } = context
+  if (!privileged && actor !== 'harness') {
+    return failure('forbidden', `${actor} cannot record a walk`, 'the harness records the walks it runs; the person\'s own walk is recorded with their words as relay', 'evidence')
+  }
+  if (actor === 'harness' && evidence.some(entry => entry.ref.startsWith('person:'))) {
+    return failure('invalid', 'the harness writes no person: walk', 'only a person\'s own walk is recorded with their words', 'evidence')
+  }
+  if (privileged && actor === 'llm' && evidence.some(entry => entry.ref !== 'person:conversation')) {
+    return failure('invalid', 'a relayed walk records the person\'s own walk only', 'the ref of a person\'s walk is person:conversation; command, screenshot and transcript walks are the harness\'s', 'evidence')
+  }
+  if (node.type !== 'step') return failure('invalid', `"${node.id}" is a ${node.type}`, 'a walk is recorded on the step it walked', 'id')
+  if (node.status !== 'approved' || !liveOf(graph, node)) {
+    return failure('bad_transition', `"${node.id}" is ${node.status}, not an approved step`, node.status === 'proposed' ? 'a human approves or rejects proposals before their steps are walked' : 'only a live approved step is walked', 'id')
+  }
+  if (evidence.length < 1 || evidence.length > USER_LIMITS.walkEvidence) {
+    return failure('invalid', `a walk carries 1 to ${USER_LIMITS.walkEvidence} entries, this one ${evidence.length}`, 'one entry per step the walk covered', 'evidence')
+  }
+  const bad = evidence.find(entry => entry.kind !== 'walk' || !WALK_NOTE_PATTERN.test(entry.note ?? ''))
+  if (bad !== undefined) return failure('invalid', 'a walk records walk evidence whose note starts with @ and the commit it ran at', WALK_NOTE_HINT, 'evidence')
+  const walks = [...(node.evidence ?? []).filter(entry => entry.kind === 'walk'), ...evidence]
+  const kept = walks.slice(Math.max(0, walks.length - USER_LIMITS.walkKept))
+  const rest = (node.evidence ?? []).filter(entry => entry.kind !== 'walk')
+  const entry: HistoryEntry = { at, actor, op: 'walk', reason, ...(relay === undefined ? {} : { relay }), evidence }
+  return plan(node.id, [change(context, node, { evidence: [...rest, ...kept] }, entry)])
 }

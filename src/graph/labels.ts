@@ -89,6 +89,8 @@ export const OP_LABELS: Readonly<Record<Op, string>> = {
   decide: '拍板',
   verify: '验证',
   supersede: '取代',
+  walk: '走了一遍',
+  relink: '改了后面的步骤',
 }
 
 /**
@@ -110,6 +112,7 @@ export function refusalForHuman(error: Pick<EngineError, 'code' | 'message'>, st
     forbidden: `没有这样改的权限（${error.message}）`,
     conflict: `与图里已有的内容冲突（${error.message}）`,
     evidence_required: `缺少证据（${error.message}）`,
+    unavailable: '现在写不进去（读到图或提交的时候出了问题），稍后再试一次',
   }
   return `图没有写入（${error.code}）：${reason[error.code]}`
 }

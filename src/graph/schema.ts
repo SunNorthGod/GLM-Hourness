@@ -136,8 +136,13 @@ export const WALK_NOTE_PATTERN = /^@[0-9a-f]{7,40} .+$/u
  */
 export const PLAIN_LIMITS = { title: 40, background: 60 } as const
 
-/** Mutation operations (§2.9); every history entry names one. */
-export const OPS = ['propose', 'approve', 'reject', 'status', 'edit', 'link', 'unlink', 'comment', 'decide', 'verify', 'supersede'] as const
+/**
+ * Mutation operations (§2.9; user graph: design 0.4.1 §3.5); every history
+ * entry names one. `walk` writes walk evidence on a step and appears in
+ * history; `relink` is a request-level operation only — its history reads
+ * as link and unlink entries of the real edges it replaced.
+ */
+export const OPS = ['propose', 'approve', 'reject', 'status', 'edit', 'link', 'unlink', 'comment', 'decide', 'verify', 'supersede', 'walk', 'relink'] as const
 export type Op = typeof OPS[number]
 
 /** One row of a question's table card. */

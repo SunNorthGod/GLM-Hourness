@@ -7,10 +7,10 @@
  * to the registrations: a tool added without its name here fails there.
  */
 
-/** The graph row's tools, in registration order. */
+/** The graph row's tools, in registration order. graph_relink and graph_walk arrive with the user graph (design 0.4.1 §3.5); a subagent's tool face keeps them out (the M7 list grows to match when that line lands). */
 export const GRAPH_TOOL_NAMES: readonly string[] = [
   'graph_show', 'graph_open', 'graph_focus', 'graph_propose', 'graph_status', 'graph_edit', 'graph_link',
-  'graph_unlink', 'graph_comment', 'graph_verify', 'graph_decide', 'graph_approve', 'graph_reject',
+  'graph_unlink', 'graph_relink', 'graph_walk', 'graph_comment', 'graph_verify', 'graph_decide', 'graph_approve', 'graph_reject',
 ]
 
 /**
@@ -132,7 +132,7 @@ export const ORCHESTRATION_RESIDENT_TOOLS: ReadonlySet<string> = new Set([
   LESSONS_QUERY_TOOL,
   // project graph
   'graph_show', 'graph_open', 'graph_focus', 'graph_propose', 'graph_status', 'graph_edit',
-  'graph_link', 'graph_unlink', 'graph_comment', 'graph_verify', 'graph_decide', 'graph_approve', 'graph_reject',
+  'graph_link', 'graph_unlink', 'graph_relink', 'graph_walk', 'graph_comment', 'graph_verify', 'graph_decide', 'graph_approve', 'graph_reject',
   // design row (main agent)
   ...DESIGN_TOOL_NAMES,
 ])
