@@ -260,7 +260,7 @@ test('guard catalog: the rows with rules install their pre-execute listeners thr
   installLoopsScheduleGuard({ ctx: bare, now: () => 0, journal: () => {}, bindings: () => new Set(), taskOf: () => Promise.resolve(undefined) })
   const metricsListener: Array<{ event: string, listener: unknown }> = []
   const metricsBare = { on: (event: string, listener: unknown) => { metricsListener.push({ event, listener }); return () => {} }, get: () => undefined }
-  installMetricsFileGuard({ ctx: metricsBare, now: () => 0, journal: () => {} })
+  installMetricsFileGuard({ ctx: metricsBare, journal: () => {} })
   assert.equal(metricsListener.filter(entry => entry.event === 'tools/pre-execute').length, 1)
   assert.ok(metricsListener.every(entry => isGateListener(entry.listener)), 'the metrics row\'s gate comes from the gate as well')
   assert.equal(loops.filter(entry => entry.event === 'tools/pre-execute').length, 2)

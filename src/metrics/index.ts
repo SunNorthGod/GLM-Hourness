@@ -18,7 +18,9 @@ import { mkdir, open, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import { ensureIgnored, projectOf } from '../data/project-root.ts'
 import { projectHomeFor } from '../data/project-home.ts'
-import { projectJournal } from '../memory/audit.ts'
+import { metricEventOf } from '../guard/metrics.ts'
+import type { GuardRecord } from '../guard/records.ts'
+import { projectJournal, type JournalOutcome } from '../memory/audit.ts'
 import { LOOPS_SERVICE, loopsService, type Contribution, type HarnessResult, type LoopEventRecord, type LoopsService } from '../loops/service.ts'
 import { realStoreIo, renameWithRetry, type StoreIo } from '../rules/store.ts'
 import type { AgentsService, AgentLike, InjectHost, LlmStreamListener, PreExecuteHost, ProvideHost, ServiceLookup, SessionEventHost, SessionEventOn, SessionProjectionsService, UserQuestionsListener } from '../shared/dsh-min.ts'
@@ -436,15 +438,28 @@ export function apply(ctx: MetricsContext, config: MetricsConfig = {}): () => vo
 
   // The code rule over the journal itself (§3.4): a write, delete or move of
   // the journal's files, or npm run metrics -- prune, is denied like every
-  // framework rule, the denial a line of the violation journal (whose wrapper
-  // hands the metrics row its `rule` event). A host without the tool seam
-  // judges nothing and the health says so (§9.1).
+  // framework rule, the denial a line of the violation journal. The same
+  // record is mapped as the guard row maps its own (src/guard/metrics.ts,
+  // §6.2): a denial is a `rule` event whose `ref` is the violation line's
+  // key, a settled follow-up a `followup`. The row is the journal's writer,
+  // so the event goes straight to the sink. The journal's outcome and the
+  // row health reach the gate, so a lost record and a detector that threw
+  // are named on the health. A host without the tool seam judges nothing
+  // and the health says so (§9.1).
   const preExecute = ctx.on as unknown as PreExecuteHost['on'] | undefined
   if (typeof preExecute === 'function') {
     try {
       const journal = projectJournal(name, cwd => projectHomeFor(ctx, undefined, cwd))
-      const report = (record: Parameters<typeof journal.violation>[0], cwd: string | undefined): void => { void journal.violation(record, cwd) }
-      disposers.push(installMetricsFileGuard({ ctx: ctx as MetricsContext & PreExecuteHost & SessionEventHost, now, journal: report }))
+      const report = (record: GuardRecord, cwd: string | undefined): Promise<JournalOutcome> => {
+        const outcome = journal.violation(record, cwd)
+        const event = metricEventOf(record)
+        if (event !== undefined) {
+          const sessionId = 'sessionId' in record && typeof record.sessionId === 'string' ? record.sessionId : undefined
+          sink(event, { ...(sessionId === undefined ? {} : { sessionId }), ...(cwd === undefined ? {} : { dir: cwd }) })
+        }
+        return outcome
+      }
+      disposers.push(installMetricsFileGuard({ ctx: ctx as MetricsContext & PreExecuteHost & SessionEventHost, journal: report, health }))
     }
     catch (error) {
       say(`${METRICS_FILES_ONLY} 没装上，没有什么拦着别人写、删、移指标流水的文件：${message(error)}`, true)
