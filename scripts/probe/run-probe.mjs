@@ -1967,10 +1967,15 @@ const designPersonaPlain = designScenario(PERSONA_PLAIN, 'deepseek-probe', () =>
 const EXEC_GLM = 'glm-exec-dispatch'
 const EXEC_PLAIN = 'non-glm-exec-dispatch'
 const EXEC_WHY = 'probe: the flash model is enough for this file'
-const EXEC_HAND_BACK = { status: 'done', summary: 'wrote site/feed/index.js; the probe refusals are the checks', commits: [], files: ['site/feed/index.js'], checks: [], questions: [], assumptions: [], lessons: [] }
+// The scripted in-scope target is a data file on purpose: the scratch-only
+// code rule (m4-gate G3, shipped enabled) denies a new script created in a
+// directory that holds no files of its kind, which is m4's own scenarios'
+// coverage (guard-new-rules); these scenarios pin the write boundary of the
+// dispatched chain.
+const EXEC_HAND_BACK = { status: 'done', summary: 'wrote site/feed/feed.json; the probe refusals are the checks', commits: [], files: ['site/feed/feed.json'], checks: [], questions: [], assumptions: [], lessons: [] }
 const execSeeds = [
   ['human', { type: 'goal', title: '静态博客', stage: 'release', acceptance: ['the blog builds'] }],
-  ['human', { type: 'task', id: 'task-1', title: 'Add the feed', parent: 'goal-1', kind: 'implement', writeScope: ['site/feed/index.js'], acceptance: ['the feed builds'], nonGoals: ['no RSS yet'], worktree: true }],
+  ['human', { type: 'task', id: 'task-1', title: 'Add the feed', parent: 'goal-1', kind: 'implement', writeScope: ['site/feed/feed.json'], acceptance: ['the feed builds'], nonGoals: ['no RSS yet'], worktree: true }],
 ]
 await stageGraph(EXEC_GLM, execSeeds)
 await stageGraph(EXEC_PLAIN, execSeeds)
@@ -1992,7 +1997,7 @@ const execScenario = (name, model, glmRoute) => {
   ]
   const worker = [
     shellCall('(Get-Location).Path', 'probe: show the working directory'),
-    writeCall(join(wt, 'site', 'feed', 'index.js'), 'probe\n'),
+    writeCall(join(wt, 'site', 'feed', 'feed.json'), 'probe\n'),
     writeCall(join(wt, 'notes.txt'), 'no\n'),
     writeCall(join(ws, 'README.md'), 'no\n'),
     writeCall(join(wt, '.hourness', 'report.md'), 'report\n'),
@@ -2023,18 +2028,18 @@ const execPlain = execScenario(EXEC_PLAIN, 'deepseek-probe', false)
 const EXEC_PLAN = 'glm-exec-plan'
 const execPlanSeeds = [
   ['human', { type: 'goal', title: '静态博客', stage: 'release', acceptance: ['the blog builds'] }],
-  ['human', { type: 'task', id: 'task-1', title: 'Add the feed', parent: 'goal-1', kind: 'implement', writeScope: ['site/feed/index.js'], acceptance: ['the feed builds', 'every item has a title'], nonGoals: ['no RSS yet'], worktree: true }],
+  ['human', { type: 'task', id: 'task-1', title: 'Add the feed', parent: 'goal-1', kind: 'implement', writeScope: ['site/feed/feed.json'], acceptance: ['the feed builds', 'every item has a title'], nonGoals: ['no RSS yet'], worktree: true }],
   ['human', { type: 'task', id: 'task-2', title: 'Add the atom feed', parent: 'goal-1', kind: 'implement', writeScope: ['site/rss/atom.js'], acceptance: ['the atom feed is valid'], worktree: true }],
 ]
 await stageGraph(EXEC_PLAN, execPlanSeeds)
 const PLAN_WHY = 'probe: the plan flow needs a running model'
-const PLAN_HAND_BACK_1 = { status: 'done', summary: 'wrote site/feed/index.js; the plan was approved and the question answered', commits: [], files: ['site/feed/index.js'], checks: [], questions: [], assumptions: ['Cap at 20.'], lessons: [] }
+const PLAN_HAND_BACK_1 = { status: 'done', summary: 'wrote site/feed/feed.json; the plan was approved and the question answered', commits: [], files: ['site/feed/feed.json'], checks: [], questions: [], assumptions: ['Cap at 20.'], lessons: [] }
 const PLAN_HAND_BACK_2 = { status: 'done', summary: 'wrote site/rss/atom.js; the plan was approved', commits: [], files: ['site/rss/atom.js'], checks: [], questions: [], assumptions: [], lessons: [] }
 const execPlanWorker1 = [
-  { tool: { name: 'Write', arguments: { file_path: join(runDir, EXEC_PLAN, 'ws', '.worktrees', 'hz-task-1', 'site', 'feed', 'index.js'), content: 'too early\n' } } },
-  { tool: { name: 'submit_plan', arguments: { steps: [{ title: 'Write the feed builder', paths: ['site/feed/index.js'], acceptance: ['it lists the posts'], covers: [], verify: 'L1', commands: [] }] } } },
-  { tool: { name: 'submit_plan', arguments: { steps: [{ title: 'Write the feed builder', paths: ['site/feed/index.js'], acceptance: ['it lists the posts'], covers: [0, 1], verify: 'L2', commands: ['node --test'] }], notes: 'probe: one file' } } },
-  { tool: { name: 'Write', arguments: { file_path: join(runDir, EXEC_PLAN, 'ws', '.worktrees', 'hz-task-1', 'site', 'feed', 'index.js'), content: 'probe feed\n' } } },
+  { tool: { name: 'Write', arguments: { file_path: join(runDir, EXEC_PLAN, 'ws', '.worktrees', 'hz-task-1', 'site', 'feed', 'feed.json'), content: 'too early\n' } } },
+  { tool: { name: 'submit_plan', arguments: { steps: [{ title: 'Write the feed builder', paths: ['site/feed/feed.json'], acceptance: ['it lists the posts'], covers: [], verify: 'L1', commands: [] }] } } },
+  { tool: { name: 'submit_plan', arguments: { steps: [{ title: 'Write the feed builder', paths: ['site/feed/feed.json'], acceptance: ['it lists the posts'], covers: [0, 1], verify: 'L2', commands: ['node --test'] }], notes: 'probe: one file' } } },
+  { tool: { name: 'Write', arguments: { file_path: join(runDir, EXEC_PLAN, 'ws', '.worktrees', 'hz-task-1', 'site', 'feed', 'feed.json'), content: 'probe feed\n' } } },
   { tool: { name: 'send_message', arguments: { agent_id: '{worker:task-2}', message: 'probe: sibling talk' } } },
   { tool: { name: 'ask_main', arguments: { question: 'Cap the feed at how many items?', assumption: 'Cap at 20.', options: ['10', '20', '50'] } } },
   { tool: { name: 'structured_output', arguments: PLAN_HAND_BACK_1 } },
@@ -2082,19 +2087,19 @@ const execPlan = designScenario(EXEC_PLAN, 'glm-5.3-flash', () => [
 const EXEC_REVIEW = 'glm-exec-review'
 const execReviewSeeds = [
   ['human', { type: 'goal', title: '静态博客', stage: 'release', acceptance: ['the blog builds'] }],
-  ['human', { type: 'task', id: 'task-1', title: 'Add the feed', parent: 'goal-1', kind: 'implement', writeScope: ['site/feed/index.js'], acceptance: ['the feed builds', 'every item has a title'], worktree: true }],
+  ['human', { type: 'task', id: 'task-1', title: 'Add the feed', parent: 'goal-1', kind: 'implement', writeScope: ['site/feed/feed.json'], acceptance: ['the feed builds', 'every item has a title'], worktree: true }],
   ['human', { type: 'norm', id: 'norm-review-floor', title: '必须全审的改动', parent: 'goal-1', acceptance: ['碰到必须全审：`files site/feed/`'] }],
 ]
 await stageGraph(EXEC_REVIEW, execReviewSeeds)
 const REVIEW_WHY = 'probe: the review flow needs a running model'
 const REVIEW_BLOCKING = [
-  { id: 'f1', blocking: true, criterion: 'acceptance:0', where: 'site/feed/index.js', what: 'the titles are not escaped', fix: 'escape them' },
-  { id: 'f2', blocking: true, criterion: 'acceptance:9', where: 'site/feed/index.js', what: 'no rate limit', fix: 'add one' },
+  { id: 'f1', blocking: true, criterion: 'acceptance:0', where: 'site/feed/feed.json', what: 'the titles are not escaped', fix: 'escape them' },
+  { id: 'f2', blocking: true, criterion: 'acceptance:9', where: 'site/feed/feed.json', what: 'no rate limit', fix: 'add one' },
 ]
 const execReviewWorker = [
-  { tool: { name: 'Write', arguments: { file_path: join(runDir, EXEC_REVIEW, 'ws', '.worktrees', 'hz-task-1', 'site', 'feed', 'index.js'), content: 'probe feed\n' } } },
+  { tool: { name: 'Write', arguments: { file_path: join(runDir, EXEC_REVIEW, 'ws', '.worktrees', 'hz-task-1', 'site', 'feed', 'feed.json'), content: 'probe feed\n' } } },
   { tool: { name: 'Bash', arguments: { command: 'git add -A; git -c user.name=t -c user.email=t@example.invalid commit -m probe:feed; git log --oneline -1', description: 'probe: commit the feed' } } },
-  { tool: { name: 'structured_output', arguments: { status: 'done', summary: 'wrote site/feed/index.js and committed it', commits: ['{git-head}'], files: ['site/feed/index.js'], checks: [], questions: [], assumptions: [], lessons: [] } } },
+  { tool: { name: 'structured_output', arguments: { status: 'done', summary: 'wrote site/feed/feed.json and committed it', commits: ['{git-head}'], files: ['site/feed/feed.json'], checks: [], questions: [], assumptions: [], lessons: [] } } },
   { text: 'worker done' },
 ]
 const execReviewVerdict = (verdict, checked, findings) => [
@@ -2667,7 +2672,7 @@ function execChecks() {
       [`exec dispatch (${label}): the worker runs on the dispatched model in its own worktree`, worker.length >= 10 && worker.every(step => step.model === model) && (lastToolResult(worker[1])?.text ?? '').trim() === wt, `${worker.length} request(s) on ${[...new Set(worker.map(step => step.model))].join(', ') || 'none'}; cwd ${(lastToolResult(worker[1])?.text ?? '').trim() || 'no output'}`],
       [`exec dispatch (${label}): the worker's first message is the brief, with no DSH return guidance in it (U1), and the handback the probe scripted passes the harness's own shape check`, brief.startsWith('# Task task-1: Add the feed') && brief.includes('You are a worker dispatched by the main agent') && brief.includes('brief ') && !brief.includes('Your parent agent id is') && isDeepStrictEqual(handbackProblems(EXEC_HAND_BACK), []), `brief ${brief.length} chars, head ${(brief.split('\n')[0] ?? '').slice(0, 60)}; guidance ${brief.includes('Your parent agent id is')}; problems ${JSON.stringify(handbackProblems(EXEC_HAND_BACK))}`],
       [`exec dispatch (${label}): the worker's face keeps the write and shell tools and the graph reads, loses the nine graph writes and the execute and operate tools; the main agent's face has no worker tools`, GRAPH_WRITE_TOOLS.every(name => !workerFace.includes(name)) && ['graph_show', 'graph_open', 'graph_focus', 'graph_comment'].every(name => workerFace.includes(name)) && [...EXECUTE_TOOL_NAMES, ...OPERATE_TOOL_NAMES].every(name => !workerFace.includes(name)) && workerFace.includes(write) && workerFace.includes(shell) && WORKER_TOOL_NAMES.every(name => !mainFace.includes(name)), `worker face ${workerFace.length}, lost ${[...GRAPH_WRITE_TOOLS, ...EXECUTE_TOOL_NAMES, ...OPERATE_TOOL_NAMES].filter(name => workerFace.includes(name)).join(', ') || 'none'}; main face worker tools ${WORKER_TOOL_NAMES.filter(name => mainFace.includes(name)).join(', ') || 'none'}`],
-      [`exec dispatch (${label}): writes: in scope and the .hourness report run, out of scope and outside the worktree are refused and journaled`, lastToolResult(worker[2])?.isError !== true && existsSync(join(wt, 'site', 'feed', 'index.js')) && lastToolResult(worker[3])?.isError === true && !existsSync(join(wt, 'notes.txt')) && lastToolResult(worker[4])?.isError === true && readFileSync(join(ws, 'README.md'), 'utf8') !== 'no\n' && lastToolResult(worker[5])?.isError !== true && existsSync(join(wt, '.hourness', 'report.md')) && violations.some(record => record.rule === 'worker-scope' && record.agentId === childId), `results ${[2, 3, 4, 5].map(at => `${lastToolResult(worker[at])?.isError ?? '-'}`).join(' ')}; worker-scope records ${violations.filter(record => record.rule === 'worker-scope').length}`],
+      [`exec dispatch (${label}): writes: in scope and the .hourness report run, out of scope and outside the worktree are refused and journaled`, lastToolResult(worker[2])?.isError !== true && existsSync(join(wt, 'site', 'feed', 'feed.json')) && lastToolResult(worker[3])?.isError === true && !existsSync(join(wt, 'notes.txt')) && lastToolResult(worker[4])?.isError === true && readFileSync(join(ws, 'README.md'), 'utf8') !== 'no\n' && lastToolResult(worker[5])?.isError !== true && existsSync(join(wt, '.hourness', 'report.md')) && violations.some(record => record.rule === 'worker-scope' && record.agentId === childId), `results ${[2, 3, 4, 5].map(at => `${lastToolResult(worker[at])?.isError ?? '-'}`).join(' ')}; worker-scope records ${violations.filter(record => record.rule === 'worker-scope').length}`],
       [`exec dispatch (${label}): the graph: status refused by name, the comment runs and lands in the task history as the worker's`, lastToolResult(worker[6])?.isError === true && lastToolResult(worker[7])?.isError !== true && history.some(entry => entry.actor === 'llm' && entry.text === 'probe worker comment'), `${lastToolResult(worker[6])?.isError}/${lastToolResult(worker[7])?.isError}; history ${JSON.stringify(history.map(entry => [entry.actor, entry.op]))}`],
       [`exec dispatch (${label}): git: the push is refused with the branch correction and journaled; reset --hard runs after the harness's snapshot, whose ref and journal line are there`, lastToolResult(worker[8])?.isError === true && result(worker[8]).includes('use git only on your branch') && lastToolResult(worker[9])?.isError !== true && snapshots.length === 1 && snapshots[0]?.subcommand === 'reset' && String(snapshots[0]?.ref ?? '').startsWith('refs/hourness/snapshots/') && gitRefs.length === 1 && violations.some(record => record.rule === 'worker-git' && record.agentId === childId), `push ${result(worker[8]).slice(0, 60)}; reset ${lastToolResult(worker[9])?.isError}; snapshot ${JSON.stringify(snapshots[0] ?? null).slice(0, 140)}; refs ${gitRefs.join(', ')}`],
       [`exec dispatch (${label}): the plain subagent's write is refused with the dispatch correction and the file is untouched`, plainWrite?.isError === true && result(plain[1]).includes('plain subagent tool') && readFileSync(join(ws, 'README.md'), 'utf8') !== 'plain\n', `${plainWrite?.isError}:${result(plain[1]).slice(0, 90)}`],
@@ -2715,7 +2720,7 @@ function planChecks() {
     [`exec plan: a plan that fails the checks comes back to the worker at once and nobody is notified`, lastToolResult(worker1[2])?.isError === true && result(worker1[2]).includes('not covered by any step') && noticeIds(planNoticeTexts).size === 2, `${result(worker1[2]).slice(0, 100)}; plan notice ids ${noticeIds(planNoticeTexts).size}`],
     [`exec plan: the passing plan lands on the task body as version 1 pending review, the notices name their requests, and the submit returns approved`, String(task1?.body ?? '').includes('第 1 版 · 主 Agent 已批') && history1.some(entry => entry.op === 'edit' && String(entry.reason ?? '').includes('submit_plan')) && noticeIds(planNoticeTexts).size === 2 && lastToolResult(worker1[3])?.isError !== true && result(worker1[3]).includes('"status":"approved"') && result(worker1[3]).includes('"version":1'), `body ${(task1?.body ?? '').split('\n').find(line => line.startsWith('第 1 版')) ?? 'no section'}; submit ${result(worker1[3]).slice(0, 60)}; plan notice ids ${noticeIds(planNoticeTexts).size}`],
     [`exec plan: the approval writes the approval comment with the worker's child id, and the section's digest matches it`, approval !== undefined && /^计划第 1 版已批 · 摘要 [0-9a-f]{12} · hz-task-1-a1-[0-9a-z]{6} · .+$/.test(approval.text) && approval.text.includes(child1 ?? ''), approval?.text ?? 'no approval comment'],
-    [`exec plan: the write inside the approved paths runs after the approval, and the send_message the main agent made during the wait arrived at that step (U3)`, lastToolResult(worker1[4])?.isError !== true && existsSync(join(ws, '.worktrees', 'hz-task-1', 'site', 'feed', 'index.js')) && messagesOf(worker1[4], 'agent-message').some(message => message.text.includes('twenty items')), `write ${lastToolResult(worker1[4])?.isError}; relay ${messagesOf(worker1[4], 'agent-message').length}`],
+    [`exec plan: the write inside the approved paths runs after the approval, and the send_message the main agent made during the wait arrived at that step (U3)`, lastToolResult(worker1[4])?.isError !== true && existsSync(join(ws, '.worktrees', 'hz-task-1', 'site', 'feed', 'feed.json')) && messagesOf(worker1[4], 'agent-message').some(message => message.text.includes('twenty items')), `write ${lastToolResult(worker1[4])?.isError}; relay ${messagesOf(worker1[4], 'agent-message').length}`],
     [`exec plan: send_message between siblings is refused by the lineage check`, lastToolResult(worker1[5])?.isError === true && /belongs to another parent session|UNAUTHORIZED/.test(result(worker1[5])), result(worker1[5]).slice(0, 100)],
     [`exec plan: the answer to ask_main returns inside the same call, and the question notice carried the request id`, lastToolResult(worker1[6])?.isError !== true && result(worker1[6]).includes('"status":"answered"') && result(worker1[6]).includes('Twenty items, then stop.') && noticeIds(questionNoticeTexts).size === 1 && questionNoticeTexts.some(text => text.includes('Cap the feed at how many items?')), `${result(worker1[6]).slice(0, 80)}; question notice ids ${noticeIds(questionNoticeTexts).size}`],
     [`exec plan: every answer_worker of the main agent delivered, the second worker's plan was approved in its own call, and both workers ended with the structured handback`, result(main[6]).includes('"delivered":true') && result(main[7]).includes('"delivered":true') && result(main[9]).includes('"delivered":true') && worker1.length === 7 && result(worker1.at(-1)).includes('"status":"answered"') && worker2.length === 2 && result(worker2.at(-1)).includes('"status":"approved"'), `approves ${[6, 7, 9].map(index => result(main[index]).slice(0, 20)).join(' | ')}; worker1 ${worker1.length}, worker2 ${worker2.length}`],
