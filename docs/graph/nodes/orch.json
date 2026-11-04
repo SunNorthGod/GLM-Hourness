@@ -347,6 +347,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "发布渠道现状（2026-11-04 编排方核对，人问 GitHub、Gitee、npm 要不要他管）：Gitee origin 是唯一按 AGENTS.md 推送的远端，四条线与 main 都推到这里。第二个远端 github（github.com/SunNorthGod/GLM-Hourness）的 main 停在 4c315a9（2026-11-03 23:25），比 origin/main 落后 73 个提交。npm 上 dsh-glm-zcode 与 dsh-hourness 是 0.3.0，本地两包是 0.3.1，根包 private。文档里没有 GitHub 镜像与 npm 发版的约定，两件都待人定（同步方式与时机；发版要人的 npm 凭证）。"
+    },
+    {
+      "at": "2026-11-04T08:58:25.667Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "发现（2026-11-04 15:5x）：主检出出现未跟踪文件 src/graph/user-graph.ts（101 KB，15:26:39 创建），内容是一份探针输出（PASS sandbox… 起头），不是代码；时间对得上 user-graph 线 UG3 第一轮实现步的探针。某个工作步把探针输出重定向到了主检出的源码路径。它会让主检出的 tsc 失败；已删除（未跟踪、无人工作在内），主检出恢复干净。工作树 .worktrees/ug 里的同名文件是真正的 UG3 代码（已在 563c10e），未受影响。"
     }
   ]
 }

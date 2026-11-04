@@ -317,6 +317,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "编排方审查 ZCode 接手期（2026-11-04）：第 6+7 步接线批与设计一致；指标行默认启用符合设计验收第 15 条（探针通过后启用，桌面 pass 随第 9 步）。交接所说 tests/loops-peak.spec.ts 稳定 37 败的根因查明：src/loops/store.ts 删了 LoopsPaths.runs，测试仍读 store.paths.runs（测试不经 tsc，读 undefined 被 catch 成空，runs() 恒空，quiesce 也按它等）。已在 .worktrees/metrics 改：world 收假指标服务事件，quiesce 等无定时器、无未结束运行、state.json 已落下最新 loop-done，真实时间上限 1 秒；连跑 5 次 40/40。ORCHESTRATION §18「运行一项」仍写 runs.jsonl，已整条改写。跨线：loops-runner 的 DoneRecord 加了 exits 且仍用 appendRun，后合入 main 的一方负责在 metricEventOf 映射 exits 并去掉 appendRun。续作：运行 metrics-steps-6-7-close（wf_0db13f91575d5d0b）。"
+    },
+    {
+      "at": "2026-11-04T08:01:56.616Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "第 6+7 步落地：3f59b61 已推 origin/metrics（合并 origin/main acd2f14 为 63023f7）。门禁：build 0、preflight 0、npm test 2806 过 0 败、探针 372/372，四道退出码 0；loops-peak 再修一处 quiesce 竞态（只改测试），连跑 3 次 40/0。backfill-graph 在主检出补录 1584 条（写入者 bf-4d171ad），主检出无受跟踪改动。第 7 步独立评审（metrics-files-only）：CHANGES_REQUESTED，4 条阻断、5 条非阻断（.worktrees/metrics/.agents/tasks/metrics/review-s7.md），运行 metrics-s6-s7-land-review 进入修正与复审。"
+    },
+    {
+      "at": "2026-11-04T08:56:59.116Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "第 7 步评审两轮：第一轮 9 条（4 阻断）由 5975658 修完并推 origin/metrics（npm test 2807/0、探针 372/372，四道退出码 0）。第二轮 CHANGES_REQUESTED，阻断 2 条：S7R2-1 回退——删除改按简单命令判之后，cmd /c \"del|rd|rmdir|move …\\.llm\\metrics…\" 这类引号整段的删除放行（3f59b61 是拦的，file-tools-only 也不拦，默认安装下没有门挡）；S7R2-2 纠偏文字的 Right path 让模型去读流水、跑 npm run metrics -- summary，与 §15.42、§7.6.4 及 d-metrics-ratios-person-only 相反（summary 打印只给人看的打分）。非阻断 5 条：写入别名 copy/cpi/ni 与 find -delete 不算写删、§10.6 代价句补「把流水拷出去」、第 7 步 L3 探针场景仍欠、门级缺 run_code 子调用与无项目会话两例、两处注释节号与规则名不准。评审循环用满 2 轮暂停，待人定是否再给一轮。另：修正步报告的跨线发现——图文件门与循环板门的拒绝也不交 rule 事件，不属本规则，归编排方跟进。"
     }
   ]
 }
