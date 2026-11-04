@@ -85,7 +85,7 @@ import { commandText, runCommand, runScript, sweepRunCopies, WORK_TIMEOUT_MS, ty
 import { matchesFilter } from './trigger.ts'
 import type { HarnessResult, ListedRun, LoopEventRecord } from './service.ts'
 import { ensureRuntimeDir, type LoopStore } from './store.ts'
-import type { LoopCheckAction, LoopScriptAction } from './model.ts'
+import { fillPlaceholders, type LoopCheckAction, type LoopScriptAction } from './model.ts'
 
 /** How often a project's board beats (design §6.1). */
 export const BEAT_MS = 60_000
@@ -918,7 +918,8 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
     try {
       const action = item.entry.action
       if (action.kind === 'tell-main') {
-        const told = await tell(item, run, action.text, action.wake, batch)
+        // A `{name}` of the entry's text takes the event's field of that name (design §2.3); a time entry has none.
+        const told = await tell(item, run, fillPlaceholders(action.text, batch.record.payload), action.wake, batch)
         outcome = told.outcome
         reason = told.reason
         how = told.how
@@ -933,7 +934,8 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
         }
         else {
           const result = await runAction(action.action, batch.record, run, { run: listed.run, now: deps.now, delay: deps.delay })
-          const text = result.tell ?? action.tell?.text
+          // The action's own words are the row's to word; the entry's text fills its placeholders from the event (design §2.3).
+          const text = result.tell ?? (action.tell === undefined ? undefined : fillPlaceholders(action.tell.text, batch.record.payload))
           // The board's own peak-end action answers codes of the table; another plugin's reason is its words (records.ts).
           const said = result.reason === undefined ? undefined : reasonCode(result.reason, 'plugin-reason')
           if (result.held !== undefined) {

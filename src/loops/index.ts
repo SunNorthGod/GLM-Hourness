@@ -66,7 +66,7 @@ import { nextPeakChange, pricingService } from '../shared/pricing.ts'
 import { PEAK_LEVEL_WORDS, PEAK_REDUCE_GLM_WORKERS, peakModeService, type PeakModeState } from '../shared/peak-mode.ts'
 import { scheduleOf } from './bind.ts'
 import { createBoards, realDelay, type Delay } from './boards.ts'
-import { CHANNEL_EVENTS, CHANNEL_PEAK_CHANGED } from './channel.ts'
+import { CHANNEL_EVENTS, CHANNEL_PEAK_CHANGED, channelEntries } from './channel.ts'
 import { LOOPS_HINT, NOT_A_PROJECT, runLoopsCommand } from './commands.ts'
 import { LOOP_ACTIONS, LOOP_DEFAULTS } from './defaults.ts'
 import { installLoopsFileGuard, installLoopsScheduleGuard, LOOPS_FILES_ONLY, LOOPS_SCHEDULE_TOOLS } from './guard.ts'
@@ -220,7 +220,15 @@ export function apply(ctx: LoopsContext, config: LoopsConfig = {}): () => void {
     health.reactivate(...activation())
   }
   const hasPricing = (): boolean => pricingService(ctx, text => { say(text, 'info') }) !== undefined
-  const registry = createRegistry({ report: (text) => { say(text, 'degraded') }, channel: () => hasPricing() ? CHANNEL_EVENTS : [] })
+  const registry = createRegistry({
+    report: (text) => { say(text, 'degraded') },
+    channel: () => hasPricing() ? CHANNEL_EVENTS : [],
+    // The channel's own entries come with the same service, as data (design §3.4): listed while it is there, gone with it.
+    channelEntries: () => {
+      const pricing = pricingService(ctx)
+      return pricing === undefined ? [] : channelEntries(pricing, (text) => { say(text, 'degraded') })
+    },
+  })
 
   /**
    * The projects this process runs, by project root. A project is met when a

@@ -37,6 +37,7 @@
 - `src/loops/index.ts`：登记表接 `channelEntries`（计价服务在时）。
 - 验收（L2）：`tests/loops-registry.spec.ts`（三个通道事件的声明；`channelEntries` 的四种 `when` 与两种 `runBy`、不合的搭配丢掉；登记表列出通道条目、计价服务不在时不列；静态检查改为只有 `channel.ts` 导入 `channel-loop`）、`tests/loops-model.spec.ts`（`escapeForPrompt`、`fillPlaceholders`）、`tests/loops-run.spec.ts`（一条 `channel.quota-low` 进项目收件箱，`glm:quota-low` 恰好投一次，`{line}` 填好且转义）。
 - 文档：ORCHESTRATION §18 头、§18.3（占位的填法）、§18.4（通道条目）、§18.5（通道事件）。
+- 同批顺手修的测试竞态：`tests/loops-run.spec.ts`「a run that did not finish hands its events back」在看到内存里的 `loop-done` 之后立刻读 `state.json`，而运行状态是记录之后才异步存的；改前在没有本批改动的树上单独跑 5 次败 2 次，改后等存好再读。
 
 ### Batch 4：机器一级的运行者（一个提交）
 
