@@ -286,6 +286,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "B0–B1 复审 APPROVED，无阻塞：合并 b6411ef 与 F1 修复 14e9f64 的四道门禁证据齐全，F1 关闭。B2–B6 待做。"
+    },
+    {
+      "at": "2026-11-04T23:58:09.716Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "B2（bootstrap-scan）提交 d63416b，已推 origin/bootstrap；之前合入 origin/main 113b93f（合并提交 b3b9ae6），也已推。两个提交四道门禁为 0：B2 上 npm test 3001 通过 / 0 失败 / 1 跳过，探针 388/388；棘轮 73/18/1。剩 B3–B6；B7–B10 照计划顺延。"
     }
   ]
 }
