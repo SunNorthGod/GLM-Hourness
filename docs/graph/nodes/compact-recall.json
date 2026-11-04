@@ -1,0 +1,26 @@
+{
+  "id": "compact-recall",
+  "type": "task",
+  "title": "压缩后能查原文：照 ZCode 3.17.1 的续接原句加明文会话文件",
+  "status": "doing",
+  "parent": "bottom",
+  "body": "GLM 会话压缩时，在摘要末尾追加 ZCode 3.17.1 续接文本里 transcriptPath 那一句的原文（reference/zcode-3.17.1/zcode.cjs，Bxt 的 transcriptPath 分支），路径指向把当前会话导出的明文文件；文件放在项目 .llm/ 下，不进 git，有清理规则；模型用 Read 分页读。不另造工具，不读其他会话。新行默认 disabled: true，L3 沙盒验证后再定是否启用；L4 随下一批桌面验收。调查报告：.agents/tasks/compaction-recall/report.md（§6 选项 C、§7 拍板前要答的问题、§8 未核实项）。",
+  "history": [
+    {
+      "at": "2026-11-04T16:37:39.095Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "人 2026-11-04 选定压缩后查原文按 ZCode 3.17.1 的做法（orch 节点两条批注），排在队首；loops-runner 的 L4 完成腾出一个并行位，现在派工。",
+      "relay": "人：「行」；「给一轮，压缩查询依旧参考zcode的实现」",
+      "to": "approved"
+    },
+    {
+      "at": "2026-11-04T16:52:43.570Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "已派工：workflow compaction-recall-zcode-transcript（wf_9e0ca88a3e82813a），工作树实现，四道门禁与 L3 沙盒后合入 main；L4 随下一批桌面验收。",
+      "from": "approved",
+      "to": "doing"
+    }
+  ]
+}
