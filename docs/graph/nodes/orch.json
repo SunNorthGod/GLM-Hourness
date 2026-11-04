@@ -377,6 +377,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "人 2026-11-04：「减到五条吧」。核对时在跑的正好 5 条：merge-loops-runner-l4（重启桌面版）、m7-seam-and-e7（E7 收敛第二轮）、user-graph-ug3-ug7（UG6）、m4-checks-and-rules（B1）、metrics-s6-s7-land-review（第 7 步最后一轮）；其余 6 条都已暂停（panel-2 由编排方暂停，loops-machine、status-hub 被限流暂停后未再恢复，m6-followups、m5-rest、bootstrap 排队）。定下：同时在跑的运行至多 5 条；有一条结束才按队列补一条，队列次序 loops-machine、panel-2、status-hub、m6-followups、m5-rest、bootstrap。"
+    },
+    {
+      "at": "2026-11-04T11:58:51.430Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "队列调整（2026-11-04）：视频改风格排到队首，次序变为 视频改风格、loops-machine、panel-2、status-hub、m6-followups、m5-rest、bootstrap。merge-loops-runner-l4 在重启桌面版那一步再次被限流暂停，已恢复。"
     }
   ]
 }
