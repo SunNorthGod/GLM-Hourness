@@ -6,7 +6,9 @@
  * points at those tools, and journals its denials in the violation journal
  * of the project directory (the row's home, else the data service's); and
  * at agent creation installs the step projection (reminder.ts) for the
- * focus node an agent sets with graph_focus. It provides its row health
+ * focus node an agent sets with graph_focus. It hands the loop board its
+ * third-rework entry (loop-entry.ts, m4 design §6.8) and reports the
+ * questions filed under it to the board. It provides its row health
  * (row-health.ts, reported after every graph tool call and projection
  * read) and the service other rows read (src/graph/service.ts: the
  * guard's shadow fallback and rule declaration). Activation never throws:
@@ -25,6 +27,8 @@ import { GRAPH_SERVICE, type GraphFocusService, type GraphService } from './serv
 import { provideRowHealth, sessionIdOf, type RowHealth } from '../shared/health.ts'
 import { focusFromHistory, installProjection } from './reminder.ts'
 import { graphHealth, readGraph } from './row-health.ts'
+import { installLoopEntry } from './loop-entry.ts'
+import { loopsService, type LoopsService } from '../loops/service.ts'
 import { DEFAULT_GRAPH_DIR, graphTools, resolveGraphDir, type FocusMemory } from './tools.ts'
 
 export interface GraphConfig {
@@ -39,6 +43,12 @@ export interface GraphConfig {
 /** The row's context: the injected tools service, the agent lifecycle event, the session observers, the tool-call gate and service provision. */
 export interface GraphContext extends ServiceLookup, Partial<ProvideHost> {
   readonly tools: Pick<ToolsLike, 'register'>
+  /**
+   * cordis inject, when the host has it. The loop board's service is
+   * package-provided, so the row reaches it by name, not through the host's
+   * typed service table (m4 design §6.8).
+   */
+  inject?(names: readonly string[], callback: (sub: ServiceLookup) => (() => void) | void): unknown
   /** Awaited serially before agent creation resolves; the first step sees the effects. */
   on(event: 'agent/created', listener: (payload: { agent: AgentLike }) => Promise<void> | void): () => void
   on(event: 'tools/pre-execute', listener: PreExecuteListener, options?: { prepend?: boolean }): () => void
@@ -108,8 +118,21 @@ export function apply(ctx: GraphContext, config: GraphConfig = {}): () => void {
     for (const disposer of disposers.splice(0).reverse()) disposer()
   }
   const focuses: FocusMemory = new Map()
-  const tools = graphTools(dir, focuses)
   const where = isAbsolute(dir) ? dir : `${dir}（按会话工作目录解析）`
+  const toldBoard = new Set<string>()
+  /** Warn once and keep it on the row health: the board refuses, or a run could not be recorded. Asking goes on either way (m4 design §6.8). */
+  const boardProblem = (message: string, sessionId?: string): void => {
+    console.warn(`${name}: ${message}`)
+    if (sessionId === undefined) health.reactivate('degraded', message)
+    else health.note(sessionId, 'graph-loop-entry', message)
+  }
+  /** The loop board's service by name, read per use; a wrong shape is a board problem, not a graph one. */
+  const loops = (): LoopsService | undefined => loopsService(ctx, message => {
+    if (toldBoard.has(message)) return
+    toldBoard.add(message)
+    boardProblem(message)
+  })
+  const tools = graphTools(dir, focuses, { loops, problem: boardProblem })
   const health = provideRowHealth(ctx, 'graph', missing ? 'degraded' : 'active', missing ? `图工具已注册（${tools.length} 个）；图目录 ${dir} 还不存在` : `图工具已注册（${tools.length} 个）；图目录 ${where}`)
   disposers.push(() => { health.dispose() })
   try {
@@ -138,5 +161,7 @@ export function apply(ctx: GraphContext, config: GraphConfig = {}): () => void {
       console.warn(`${name}: step projection not installed for agent ${agent.id}: ${error instanceof Error ? error.message : String(error)}`)
     }
   }))
+  // The third-rework entry on the loop board (m4 design §6.8): through inject when the host has it, else per agent/created — after the projection's listener, which stays the first.
+  disposers.push(installLoopEntry(ctx, boardProblem))
   return dispose
 }
