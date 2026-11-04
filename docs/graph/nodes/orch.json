@@ -425,6 +425,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "调查 investigate-compaction-recall 完成（报告 .agents/tasks/compaction-recall/report.md）。结论（实读到文件:行）：DSH 有给模型用的会话历史工具，但默认不开——实验包 @deepseek-ai/dsh-tool-session-query 的 session_event_search（surfaces 选 shadowed）与 session_event_read 能搜、能读当前会话被压缩遮蔽的原始事件，开关是官方实验 bundle dsh-experimental-session-search（桌面「插件 → Official → Session search」），它同时能读同 cwd 的其他会话；专为压缩后召回设计的 history_read/history_search 只在 DSH 的 proposed 笔记里，没有代码；给人用的已经有：聊天界面往上翻仍是原文、会话菜单 Copy Session as Markdown / Download session log、/export。压缩后模型只看到摘要 checkpoint，里面没有指向原文的指针；原始事件在只追加日志 ~/.dsh/sessions/<项目键>/session-<uuid>/session.v4.jsonl.zstd。ZCode 3.17.1 也没有历史检索工具，只有一句续接文本「read the full transcript at: <path>」，生产调用不传路径。编排方此前「没找到面向模型的工具」的说法不成立，已更正。三个做法待人定：A 人在插件页开官方实验 bundle（零代码，模型能读同工作区所有会话，工具在 ZCode 分布外）；B 本仓库加一个只读当前会话被遮蔽事件的窄工具（隐私最窄，分布外）；C 压缩时追加 ZCode 3.17.1 原句并把会话导出成明文文件让模型用 Read 分页读（最贴近 ZCode 分布，代价是磁盘上多一份明文副本，要放在 .llm/ 下并定清理）。"
+    },
+    {
+      "at": "2026-11-04T15:03:37.794Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-11-04 对压缩后查原文的做法答「行」（编排方建议第 3 种）：压缩时在摘要末尾追加 ZCode 3.17.1 原句「If you need specific details from before compaction … read the full transcript at: <path>」，把会话导出成明文文件放在项目 .llm/ 下（不进 git、定清理），模型用 Read 分页读；新行默认 disabled: true。排进队首，有空位就派。"
     }
   ]
 }
