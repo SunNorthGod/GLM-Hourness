@@ -188,6 +188,7 @@ test('collectStatus: agent keeps only agent entries, all keeps both, and the abs
     { row: 'rules', outcome: 'absent' },
     { row: 'design', outcome: 'absent' },
     { row: 'loops', outcome: 'absent' },
+    { row: 'env', outcome: 'absent' },
   ])
   const all = collectStatus(lookup, 's1', 'all', 0)
   assert.deepEqual(all.items.map(item => item.id), ['glm/usage', 'guard/one', 'panel/note']) // sorted by owner and id
