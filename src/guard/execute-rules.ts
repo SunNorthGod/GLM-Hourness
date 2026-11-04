@@ -26,6 +26,14 @@
  * Judging is fail-open where the role cannot be read (the row health says
  * so); the write-scope check of a registered worker fails closed when the
  * project graph has never been read (§3.2.1: refuse rather than guess).
+ *
+ * A worker's write that leaves its worktree consults the guard row's request
+ * service (m4 design 0.6 §5.9, `glmHournessRequests`): an approved grant
+ * passes the call through (the guard row verifies and consumes it at use
+ * time), and a refusal outside the project carries the request ref with the
+ * worker's exception sentence, so the worker can ask the main agent and the
+ * main agent can file `request_exception`. Without the service the refusal is
+ * §3.2.1 unchanged; `openRequests` stays the drive's (E8).
  */
 import { isAbsolute, resolve } from 'node:path'
 import type { LoadedGraph } from '../graph/parse.ts'
@@ -40,6 +48,7 @@ import type { Attempt } from '../execute/attempts.ts'
 import { takeSnapshot, gitInvocations, gitRisk, snapshotCorrection, type GitInvocation, type GitRisk, type SnapshotEnvironment, type SnapshotWho } from './git-snapshot.ts'
 import { commandName, shellWrites, simpleCommands, type ShellDialect } from './shell.ts'
 import { fileToolTargetOf, isFileWrite, renderCorrection, shellCommandOf, type Correction, type ToolCall } from './rules.ts'
+import { requestsService } from './request-service.ts'
 import type { ViolationRecord } from './index.ts'
 
 /** The eight code gates with their first-day modes (§12.1): data for the rules board's catalog; the rules themselves are the four below, M3's changed judge, and the later steps' gates. */
@@ -429,17 +438,47 @@ export function installExecuteRules(ctx: PreExecuteHost, deps: ExecuteRulesDeps)
       const project = projectOf(root)?.root
       const graph = project === undefined ? undefined : deps.graphOf(project)
       const node = graph?.nodes.get(attempt.node)
+      const spelled = fileToolTargetOf(call)
+      const target = spelled === undefined ? undefined : repoRelative(root, cwd ?? root, spelled)
       const refusal = workerScopeVerdict({
         task: attempt.node,
         worktree: root,
-        target: fileToolTargetOf(call) === undefined ? undefined : repoRelative(root, cwd ?? root, fileToolTargetOf(call)!),
+        target,
         reviewer: attempt.role !== 'worker',
         scope: node?.writeScope ?? [],
         release: graph !== undefined && node !== undefined ? releaseOf(graph, node) : undefined,
         planPaths: attempt.plan === 'approved' ? attempt.planPaths ?? [] : undefined,
         needsPlan: attempt.role === 'worker' && attempt.plan !== 'skipped',
       })
-      if (refusal !== undefined) { await record('refused'); return refuse('worker-scope', refusal, payload, agent.id, session.id, deps) }
+      if (refusal !== undefined) {
+        // The request seam (m4 design 0.6 §5.9, the who-merges-later wiring of
+        // R4-F10): a worker's write that leaves the worktree first checks the
+        // grant book — an approved grant lets the call through to the guard
+        // row, which verifies and consumes it at use time (§5.6). A refusal
+        // asks the service for a ref: outside the project the correction's
+        // exception names the ref and the record carries it; inside the project
+        // (or with the guard row off) the correction stays as §3.2.1 wrote it.
+        // No service, no grant, no ref: the behaviour is §3.2.1 unchanged.
+        const outside = attempt.role === 'worker' && spelled !== undefined && target === undefined
+        const requests = outside ? requestsService(deps.lookup, message => deps.report(agent.id, 'degraded', message)) : undefined
+        // A file write's arguments are an object (isFileWrite); the seam's args are the same record.
+        const argsRecord = typeof call.arguments === 'object' && call.arguments !== null && !Array.isArray(call.arguments) ? call.arguments as Readonly<Record<string, unknown>> : {}
+        if (requests !== undefined && requests.peekGrant({ agent, tool: call.name, args: argsRecord, base: cwd ?? root })) {
+          await record('allowed')
+          return next()
+        }
+        let journaled = refusal
+        let ref: string | undefined
+        if (requests !== undefined) {
+          const denial = requests.outsideDenial({ agent, tool: call.name, args: argsRecord, base: cwd ?? root, task: attempt.node })
+          if (denial !== undefined) {
+            journaled = { ...refusal, exception: denial.exception }
+            ref = denial.ref
+          }
+        }
+        await record('refused')
+        return refuse('worker-scope', journaled, payload, agent.id, session.id, deps, ref)
+      }
     }
 
     // worker-git (§3.2.4): the shell calls of the dispatched chain.
@@ -468,7 +507,7 @@ export function installExecuteRules(ctx: PreExecuteHost, deps: ExecuteRulesDeps)
   return ctx.on('tools/pre-execute', listener, { prepend: true })
 }
 
-/** Deny with the rendered correction, journaled; the optional record runs first with `refused`. */
+/** Deny with the rendered correction, journaled; the optional record runs first with `refused`. A request ref (m4 design 0.6 §5.9) lands in the journal line. */
 function refuse(
   rule: string,
   correction: Correction,
@@ -476,8 +515,9 @@ function refuse(
   agentId: string,
   sessionId: string,
   deps: Pick<ExecuteRulesDeps, 'journal'>,
+  ref?: string,
 ): PreExecuteDecision {
   const reason = renderCorrection(correction)
-  deps.journal({ at: new Date().toISOString(), rule, tool: payload.name, agentId, sessionId, correction: reason })
+  deps.journal({ at: new Date().toISOString(), rule, tool: payload.name, agentId, sessionId, correction: reason, ...(ref === undefined ? {} : { ref }) })
   return { kind: 'deny', reason }
 }

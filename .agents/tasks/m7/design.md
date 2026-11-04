@@ -30,7 +30,7 @@ M7 在编排层包 `dsh-hourness` 里加两行，都默认禁用：`glm-hourness
 - 规则板最小一片进了开始条件与验证（R4-F6，`d-rules-peak-slice`，§9.1、§9.2、§10.1、§10.3）：E4 与 E8 的两处读对着 `src/shared/peak-mode.ts` 写，不再「没合入就不写」；片子晚于 E4 时由 E4 之后的第一个提交补上；开始条件多一条。
 - 八道代码里的门写了首日模式（R4-F7，`docs/CHARTER.md` 0.7，§12.1）：全部首日 `enforce`，是对「写在代码里的新门禁先影子」的例外，agent 定、人可推翻，理由与推翻后的办法（先影子，按 M4 的 `PROMOTION` 转生效）逐道写在表里，放行稿「替你定了的方向」里让人看到。
 - 运行时文件进项目的 `.llm/`（R4-N1，`d-rules-in-repo`，§2.1）；harness 条目的 `tell` 是 `{text, wake}`，表里补 `wake`（R4-N2，§3.11.1）。
-- 评审里其余的发现不在本稿改，一条不丢，何时改见 §18.2：R4-F4（`trunkAdvanceFor`）在 E7 合入之前；R4-F5（周报晨报加规则板与循环板的几节、每周至多三件的排序）在 P2 开工之前；R4-F10（M4 0.4 的几条）中的 `PROMOTION` 一条在 P2 之前，其余在实现中；R4-N3 到 R4-N10 各有时间。
+- 评审里其余的发现不在本稿改，一条不丢，何时改见 §18.2：R4-F4（`trunkAdvanceFor`）在 E7 合入之前；R4-F5（周报晨报加规则板与循环板的几节、每周至多三件的排序）在 P2 开工之前；R4-F10（M4 0.4 的几条）中的 `PROMOTION` 一条在 P2 之前，申报接缝一条已在 2026-11-04 接上（§3.2.1），「草稿区为空」随 E7 的 `trunkCheck`，其余在实现中；R4-N3 到 R4-N10 各有时间。
 
 0.4 与 0.3 不同的地方（评审第 1 轮与接缝裁定，§17）：
 
@@ -414,6 +414,8 @@ Returns {"task":"task-12","attempt":1,"childId":"hz-task-12-a1-k3x9ab","role":"w
 写入范围取当前的图，不取派发时的快照：主 Agent 中途把范围改大，worker 重新提交计划（§3.3.3）即可写新路径；改小立即生效。范围读图按图修订号缓存。
 
 纠偏的正路：`If the task needs this file, ask the main agent with ask_main; it can widen the write scope, then resubmit your plan.`；例外：`If the file belongs to another task, report it in your handback under questions.`
+
+**申报接缝（0.6 修订，2026-11-04；m4 设计 0.6 §5.9 的 worker 一侧，R4-F10「谁后合入谁接」在 E6 合入批接上）。** worker 的写被判到工作树之外（§3.2.1 第 2 条的拒绝支）时，先问 guard 行的服务 `glmHournessRequests`（`requestsService(ctx)`，`src/guard/request-service.ts`；行不在或成员形状不对时读不到，行为照旧，行健康报一次）：`peekGrant({agent, tool, args, base})` 为真就不拒，调 `next()` 放行给 guard 行——圈禁判拒、放行簿按派发链的根匹配、使用时核对与备份、消耗放行、写 `GrantRecord`（m4 §5.6），`worker-scope` 的命令记录记 `allowed`。`peekGrant` 为假则照拒，并问 `outsideDenial({agent, tool, args, base, task})`：返回 `{ref, exception}`（目标出了项目；判法按 F19 用目标最近存在目录的项目根，不用圈禁根，worker 写主检出拿不到编号）时，纠偏的「例外」一句换成返回的 `exception`，违规记录带 `ref`；返回 `undefined`（目标在项目里、只是出了工作树，或 guard 行不在）时纠偏照上面的原样，不发编号。worker 照例外一句调 `ask_main`，问题里带编号与目标，`assumption` 写明没回答就交回并把编号写进 questions；主 Agent 拿编号调 `request_exception`（编号登记的派发链的根就是它）、把申报文字放在回复末尾，人回「可以」之后主 Agent 用 `answer_worker` 回那条 `ask_main`，worker 原样再调一次，`peekGrant` 命中、guard 行消耗放行；30 分钟内第二次同样的调用又被拒时拿新编号（m4 §5.9 第 5 步）。时限照 m4：`ask_main` 等 20 分钟（`ASK_WAIT_MS`），申报等 2 小时，放行 30 分钟。`openRequests` 不在此处：它是自动推进的停等（§3.9.5，E8 接 `goals.block`，原因码 `hourness-waiting-human`）。跟进记录器的结算（带编号的 `ask_main` 记 `right-path`）随四道门改经 `installRuleGate` 一起接（m4 §18 第 5 条的谁后合入谁改；接之前按 m4 写明的「改之前」状态，结算记 `other`）。L2：`tests/execute-row.spec.ts` 的申报接缝一例（放行命中不拒、出项目带编号与申报句、项目内原样不带编号、服务不在照旧——已有的工作树外一例兼作对照）；L3：`guard-request-worker`（m4 §14.1）。
 
 #### 3.2.2 `dispatch-chain-readonly`：派发链里不在登记表的 agent 只读
 
@@ -1959,7 +1961,7 @@ git 在 L2 用临时目录里的真实 git 仓库测：建工作树与分支、�
 | --- | --- | --- | --- |
 | R4-F4（MEDIUM）缺 `glmHournessExecute.trunkAdvanceFor`，且与规则板的门谁在外层没说 | 实现中，E7 合入之前 | 规则板的整块门不在自举路径上（最小一片没有门） | `glmHournessExecute` 加第三个成员 `trunkAdvanceFor(callId): {branch, from, to} \| undefined`；§3.8.4 执行前一节加「`advanceOk` 成立、结果可预知时，调用 `next()` 之前按 `exec.callId` 记在内存里，`post-execute` 或 60 秒后删」；L2 三例（放行的 `merge --ff-only` 之后假规则门读得到、被拒绝的读不到、脚本里的前进读不到）。§2.5 的接口一条已指向这里 |
 | R4-F5（MEDIUM）周报与晨报没有加规则板、循环板要的几节，每周至多三件没有排序 | 实现中，P2 开工之前 | 周报晨报在骨架之后（P2） | §3.12.4 加一张表（节名、读什么、至多几项、服务不在时的话、对应的 `askDraft` 种类 `stale-rules`、`stale-loops`、`fix-script`）；写定优先序（建议：修脚本 > 加类 > 升降 > 删规则 > 删循环板条目；合计至多 3 件）；`operate.weekly` 提醒文字、m7-8 第 3 条、§3.10 晨报的规则板一节同批改；`d-script-timeout` 的「反复超时」一节随此。0.5 已在 §1.1 的 `d-script-timeout` 行写明 |
-| R4-F10（MEDIUM）M4 0.4 写给 M7 的几条没有处置 | 第 2 条（`PROMOTION`）在 P2 开工之前；第 1、3、4 条实现中，M4 的 G1/G4 合入时「谁后合入谁改」 | M4 不在自举路径上 | §7 的 M4 一行已加（指向这里）；E4 照 main 上现有的 guard 框架写；§3.12.2 引用 `PROMOTION` 并采用 M4 的含义，`ladderProposals` 经 `classifyRecord` 读；写明 `requestsService(ctx)?.peekGrant`、`outsideDenial`、`openRequests` 与服务不在时行为不变；汇合门禁在服务在时多「草稿区为空」一步。§12.1 已按 M4 的 `RuleMode`、`PROMOTION` 写了代码里的门的转生效 |
+| R4-F10（MEDIUM）M4 0.4 写给 M7 的几条没有处置 | 第 2 条（`PROMOTION`）在 P2 开工之前；第 3 条（`peekGrant`/`outsideDenial`）已在 E6 合入批接上（2026-11-04，§3.2.1 的申报接缝）；第 4 条（汇合门禁的「草稿区为空」）随 E7 的 `trunkCheck`；第 1 条（`installRuleGate` 取代各装各的监听器）随四道门的迁移，接之前的「改之前」状态按 m4 写明 tolerated | M4 不在自举路径上 | §7 的 M4 一行已加（指向这里）；E4 照 main 上现有的 guard 框架写；§3.12.2 引用 `PROMOTION` 并采用 M4 的含义，`ladderProposals` 经 `classifyRecord` 读；§3.2.1 已写明 `requestsService(ctx)?.peekGrant`、`outsideDenial` 与服务不在时行为不变，`openRequests` 归 §3.9.5（E8）；汇合门禁在服务在时多「草稿区为空」一步。§12.1 已按 M4 的 `RuleMode`、`PROMOTION` 写了代码里的门的转生效 |
 | R4-N3（NIT）几处旧引用 | 下一次改这些行时；不挡任何步 | 只是引用 | 0.5 改 E1b 与 §7 时已把循环板、规则板、M3、plain-ui 的版本换成当前的；版本说明里 0.4 与 0.3 的原文保留作历史，不改；「依据：main」已换成 `ee726c3` |
 | R4-N4（NIT）`mainAgentOf(userHome, graphDir)` 的参数会变 | E4 开工之前，M3 0.5 定稿后 | M7 只按名字引用 | §7 的 M3 一行已写「参数以 M3 0.5 为准」；§3.4.3 里的旧签名在 M3 0.5 定稿时改 |
 | R4-N5（NIT）M3 附录 §9 第 7 条的两件小事 | （a）0.5 顺带做了：§2.1 的 `git-snapshot.ts` 一行补上 `gitRisk`。（b）E4 开工之前 | 一句话 | （b）在 §3.1.3 加一句：M7 走 `startActivation` 加 `agentOptions`（subagent:293–303、315–329），不经 `subagent` 工具的 `modelSelectionSettings`，没有允许清单，所以不评估它 |

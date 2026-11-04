@@ -462,6 +462,8 @@ const plainShellResult = lastToolResult(plainGuard.steps[2])
 // requests carry it once because it persists, and the non-GLM scenario runs
 // on the same clock and gets none. Each request records the runtime clock.
 const PEAK_AT = '2026-10-28T15:00:00+08:00'
+/** A Wednesday morning: the scenarios that run more than one GLM worker at a time pin it, since a real clock inside the peak caps them at one (rules board, reduce). */
+const OFF_PEAK_AT = '2026-10-28T10:00:00+08:00'
 const clockRow = (at, shiftWith) => [
   '- insert:',
   '    - id: glm-hourness-probe/clock',
@@ -2067,7 +2069,7 @@ const execPlan = designScenario(EXEC_PLAN, 'glm-5.3-flash', () => [
   { tool: { name: 'answer_worker', arguments: { request: '{ask-request:task-1}', text: 'Twenty items, then stop.' } } },
   { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 8', description: 'probe: let the workers hand back' } } },
   { text: 'done', status: true },
-], { wish: true, git: true, extra: ['- id: glm-hourness/execute', '  disabled: false'], others: [execPlanWorker2, execPlanWorker1] })
+], { wish: true, git: true, extra: ['- id: glm-hourness/execute', '  disabled: false', ...clockRow(OFF_PEAK_AT)], others: [execPlanWorker2, execPlanWorker1] })
 
 // E6 (M7 design §3.6, §3.7; scenario glm-exec-review): the handback
 // processing and the review loop on the real runtime, over a must-review
@@ -2137,6 +2139,49 @@ const execReview = designScenario(EXEC_REVIEW, 'glm-5.3-flash', () => [
   execReviewVerdict('CHANGES_REQUESTED', ['acceptance:0', 'acceptance:1'], REVIEW_BLOCKING),
   execReviewVerdict('APPROVED', ['acceptance:0', 'acceptance:1'], []),
 ] })
+
+// The request seam over a dispatched worker (m4 design 0.6 §5.9; M7 design
+// 0.6 §3.2.1's 申报接缝; m4 §14.1's `guard-request-worker`): the worker's
+// write outside the project is refused by worker-scope with the request ref
+// and the worker's sentence, its ask_main carries the ref to the main agent,
+// the main agent files request_exception, the human's 可以 (probe_say with an
+// rpcId is the client's own message) grants it, the answer_worker returns to
+// the worker, and the identical write passes worker-scope's peekGrant and the
+// guard row's use-time check. The outside target sits in the run directory,
+// which is not a project: the nearest git root above it is this checkout, not
+// the scenario workspace, so the F19 judgment asks.
+const requestWorkerDir = join(runDir, 'guard-request-worker')
+const requestWorkerOutside = join(requestWorkerDir, 'outside', 'todo.md')
+mkdirSync(dirname(requestWorkerOutside), { recursive: true })
+writeFileSync(requestWorkerOutside, 'old content\n')
+await stageGraph('guard-request-worker', [
+  ['human', { type: 'goal', title: '静态博客', stage: 'release', acceptance: ['the blog builds'] }],
+  ['human', { type: 'task', id: 'task-1', title: 'Add the feed', parent: 'goal-1', kind: 'implement', writeScope: ['site/feed.xml'], acceptance: ['the feed builds'], worktree: true }],
+])
+const REQUEST_WORKER_WHY = 'probe: the seam needs a running model'
+const requestWorkerScript = [
+  { tool: { name: 'Write', arguments: { file_path: requestWorkerOutside, content: 'probe content\n' } } },
+  { tool: { name: 'ask_main', arguments: { question: `The task needs ${slash(requestWorkerOutside)} outside the workspace. The harness refused the write and says: give ref "{ref}" — please file request_exception with ref "{ref}" and answer me.`, assumption: 'Hand back and put the ref and the target under questions.', options: ['file it', 'not now'] } } },
+  { tool: { name: 'Write', arguments: { file_path: requestWorkerOutside, content: 'probe content\n' } } },
+  { tool: { name: 'structured_output', arguments: { status: 'done', summary: 'the outside write ran on the human approval', commits: [], files: [], checks: [], questions: [], assumptions: [], lessons: [] } } },
+  { text: 'worker done' },
+]
+const requestWorkerRun = designScenario('guard-request-worker', 'glm-5.3', () => [
+  { tool: { name: 'graph_focus', arguments: { id: 'goal-1' } } },
+  { tool: { name: 'dispatch_task', arguments: { id: 'task-1', model: 'glm-5.3-flash', why: REQUEST_WORKER_WHY, quick: true } } },
+  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 8', description: 'probe: let the worker hit the denial and ask' } } },
+  requestExceptionCall(true),
+  probeSay(true, '可以', 'probe-request-worker-1'),
+  { echoToolText: true },
+  { tool: { name: 'answer_worker', arguments: { request: '{ask-request:task-1}', text: 'The human approved the request: make the identical call once now.' } } },
+  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 8', description: 'probe: let the worker hand back' } } },
+  { text: 'done', status: true },
+], { wish: true, git: true, extra: ['- id: glm-hourness/execute', '  disabled: false', ...probeRow(join(requestWorkerDir, 'lift.jsonl')), ...clockRow(OFF_PEAK_AT)], others: [requestWorkerScript] })
+const requestWorkerViolations = jsonl(join(requestWorkerDir, 'home', 'audit', 'violations.jsonl'))
+const requestWorkerRef = requestWorkerViolations.find(record => record.rule === 'worker-scope' && typeof record.ref === 'string')?.ref
+// The worker's steps: every request that is not the main agent's session. Its second write is the step after the ask_main answer.
+const requestWorkerSteps = requestWorkerRun.steps.filter(step => step.sessionId !== requestWorkerRun.steps[0]?.sessionId)
+const requestWorkerGranted = requestWorkerSteps.map(step => lastToolResult(step)).find(result => result?.text.includes('sandbox') === true)
 const designRecord = (scenario) => readHolder(holderFileOf(join(scenario.dir, 'dsh-home', 'glm-hourness'), join(scenario.ws, 'docs', 'graph')))
 const MAIN_HEAD = '# Main agent\nYou are the main agent of this project'
 const sectionAt = step => step?.system.indexOf(MAIN_HEAD) ?? -1
@@ -3016,6 +3061,7 @@ const checks = [
   ['guard request (GLM): the plan text the reply echoed carries the title, the four labelled lines, the 附 attachments and the question last; the goal-focus half-sentence is absent without a focus', guardRequest.steps[4]?.messages.filter(message => message.role === 'assistant').at(-1)?.text.includes('背景：agent 要**改工作区外的文件**，系统先拦下了') === true && guardRequest.steps[4]?.messages.filter(message => message.role === 'assistant').at(-1)?.text.includes('推荐：**放行这一次**，旧内容先备份，改坏了能找回') === true && guardRequest.steps[4]?.messages.filter(message => message.role === 'assistant').at(-1)?.text.includes('不做：**不放行**，文件不动，agent 换在工作区里做') === true && guardRequest.steps[4]?.messages.filter(message => message.role === 'assistant').at(-1)?.text.includes('- 将写入的内容') === true, `${(guardRequest.steps[4]?.messages.filter(message => message.role === 'assistant').at(-1)?.text ?? 'no reply').slice(0, 160).replace(/\n/g, ' | ')}`],
   ['guard request (GLM): the human 可以 approves at the next turn\'s first step; the note carries the tool and the arguments; the granted write runs past the gate and stops at rc.3\'s own workspace-write sandbox, the old content is backed up under requests/, and the third write is denied by containment with a fresh ref', guardRequest.steps[4]?.messages.some(message => message.source === 'hourness-request' && typeof message.text === 'string' && message.text.includes(`The human approved request ${requestAsked?.ref ?? ''}`) && message.text.includes(JSON.stringify({ tool: 'write', arguments: { file_path: requestTarget, content: 'probe content\n' } }))) === true && guardRequest.steps.some(step => lastToolResult(step)?.text.includes('sandbox') === true) && lastToolResult(guardRequest.steps.at(-1))?.text.includes('sandbox') === false && requestAsked !== undefined && existsSync(join(requestDir, 'home', 'requests', `${requestAsked.ref}.before`)) && readFileSync(join(requestDir, 'home', 'requests', `${requestAsked.ref}.before`), 'utf8') === 'old content\n' && lastToolResult(guardRequest.steps.at(-1))?.isError === true && lastToolResult(guardRequest.steps.at(-1)).text.includes('You tried to write') === true && lastToolResult(guardRequest.steps.at(-1)).text.includes(`"ref": "${requestAsked?.ref ?? ''}"`) === false, `write#2 ${(lastToolResult(guardRequest.steps[4])?.text ?? '').includes('sandbox') ? 'stopped by sandbox' : (lastToolResult(guardRequest.steps[4])?.text ?? 'none').slice(0, 50)}; write#3 containment ${lastToolResult(guardRequest.steps[6])?.text.includes('You tried to write') === true}; backup ${requestAsked === undefined ? 'no asked ref' : existsSync(join(requestDir, 'home', 'requests', `${requestAsked.ref}.before`))}`],
   ['guard request (GLM): the journal holds denial → followup right-path → asked → approved (with the human\'s words) → grant → denial, the ref riding on the requestable denials', requestViolations.length >= 6 && requestViolations.some(record => record.kind === undefined && record.rule === 'workspace-containment' && typeof record.ref === 'string') && requestViolations.some(record => record.kind === 'followup' && record.outcome === 'right-path') && requestViolations.filter(record => record.kind === 'request').map(record => record.outcome).join(',') === 'asked,approved' && requestViolations.some(record => record.kind === 'request' && record.outcome === 'approved' && record.by === 'human' && record.via === 'chat' && record.words === '可以') && requestViolations.some(record => record.kind === 'grant') && requestViolations.filter(record => record.kind === undefined && record.rule === 'workspace-containment').length === 2, `${requestViolations.length} record(s): ${JSON.stringify(requestViolations.map(record => [record.kind ?? 'denial', record.rule ?? '', record.outcome ?? '']))}`],
+  ['guard request worker (m4 §5.9, M7 §3.2.1): the worker-scope refusal carries the ref and the worker\'s sentence, the human 可以 grants the main agent\'s exception, and the identical write of the dispatched worker passes worker-scope and the guard row (the grant spent, the old content backed up under requests/) and stops at rc.3\'s own workspace-write sandbox', requestWorkerRun.status === 0 && requestWorkerViolations.some(record => record.rule === 'worker-scope' && /^r-[0-9a-z]{8}$/.test(record.ref ?? '') && String(record.correction).includes('give ref "')) && requestWorkerViolations.some(record => record.kind === 'request' && record.outcome === 'approved' && record.by === 'human' && record.via === 'chat' && record.words === '可以') && requestWorkerViolations.some(record => record.kind === 'grant') && requestWorkerGranted !== undefined && requestWorkerRef !== undefined && existsSync(join(requestWorkerDir, 'home', 'requests', `${requestWorkerRef}.before`)) && readFileSync(join(requestWorkerDir, 'home', 'requests', `${requestWorkerRef}.before`), 'utf8') === 'old content\n', `exit ${requestWorkerRun.status}; worker steps ${requestWorkerSteps.length}; granted write ${requestWorkerGranted === undefined ? 'not seen' : 'stopped by sandbox'}; backup ${requestWorkerRef === undefined ? 'no ref' : existsSync(join(requestWorkerDir, 'home', 'requests', `${requestWorkerRef}.before`))}; ${JSON.stringify(requestWorkerViolations.map(record => [record.kind ?? 'denial', record.rule ?? '', record.outcome ?? '', record.ref ?? '']))}`],
   ['guard request (native): the same channel without the GLM face — request_exception and probe_say called directly, the granted write passes the gate and stops at rc.3\'s sandbox, the third is denied by containment', guardRequestPlain.status === 0 && lastToolResult(guardRequestPlain.steps[2])?.isError !== true && lastToolResult(guardRequestPlain.steps[2]).text.includes('"outcome":"ask"') && lastToolResult(guardRequestPlain.steps[5])?.text.includes('sandbox') === true && lastToolResult(guardRequestPlain.steps[6])?.isError === true && lastToolResult(guardRequestPlain.steps[6]).text.includes('You tried to write') === true && jsonl(join(runDir, 'guard-request-plain', 'home', 'audit', 'violations.jsonl')).some(record => record.kind === 'request' && record.outcome === 'approved'), `exit ${guardRequestPlain.status}; ask ${(lastToolResult(guardRequestPlain.steps[2])?.text ?? 'none').slice(0, 50).replace(/\n/g, ' ')}; write#2 ${(lastToolResult(guardRequestPlain.steps[5])?.text ?? '').includes('sandbox') ? 'stopped by sandbox' : 'other'}`],
   ['guard request refuse: a headless 可以 reads not-client, 可以吗 reads unclear with the confirmation sentence as the new tail, the approval after it grants (its write stops at rc.3\'s sandbox), and a reply with one sentence more is not-shown with the write denied by containment', guardRequestRefuse.status === 0 && refuseGitReady && refuseNotice(5, 'did not come through the DSH client') && refuseNotice(7, 'not a plain yes or no') && refuseNotice(7, REFUSE_CONFIRM) && refuseNotice(9, 'The human approved request') && refuseNotice(14, 'was not approved') && lastToolResult(guardRequestRefuse.steps[9])?.text.includes('sandbox') === true && lastToolResult(guardRequestRefuse.steps[14])?.isError === true && lastToolResult(guardRequestRefuse.steps[14]).text.includes('You tried to write') === true && refuseViolations.filter(record => record.kind === 'request').map(record => record.outcome).join(',') === 'asked,not-client,unclear,approved,asked,not-shown', `exit ${guardRequestRefuse.status}; outcomes ${JSON.stringify(refuseViolations.filter(record => record.kind === 'request').map(record => record.outcome))}; write#4 containment ${lastToolResult(guardRequestRefuse.steps[14])?.text.includes('You tried to write') === true}`],
   ['guard request goal: the goal agent files with a live goal, a round\'s first step without the human carries still waits, and the approval pairs with its ask result and a spent grant in the journal', guardRequestGoal.status === 0 && requestGoalGitReady && requestGoalAsked && requestGoalStill && requestGoalApproval !== undefined && requestGoalSteps.length >= 4 && requestGoalViolations.some(record => record.kind === 'request' && record.outcome === 'approved') && requestGoalViolations.some(record => record.kind === 'grant') && requestGoalViolations.some(record => record.kind === undefined && record.rule === 'workspace-containment' && typeof record.ref === 'string'), `exit ${guardRequestGoal.status}; still ${requestGoalStill}; approval ${requestGoalApproval === undefined ? 'none' : requestGoalApproval.text.slice(0, 50)}; rounds ${requestGoalSteps.length}`],

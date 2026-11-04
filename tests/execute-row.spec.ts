@@ -9,6 +9,7 @@ import { EXECUTE_TOOL_NAMES, GRAPH_TOOL_NAMES, WORKER_TOOL_NAMES } from '../src/
 import { PEAK_MODE_SERVICE, peakModeService, type PeakModeService } from '../src/shared/peak-mode.ts'
 import { EXECUTE_SERVICE, type ExecuteService } from '../src/shared/execute-service.ts'
 import { EXECUTE_RULES, installExecuteRules, type CommandRecordLine } from '../src/guard/execute-rules.ts'
+import { REQUESTS_SERVICE, type RequestsService } from '../src/guard/request-service.ts'
 import type { AgentLike, AssembledTool, InjectableServices, ServiceLookup, SessionLike, ToolDefinitionLike } from '../src/shared/dsh-min.ts'
 import { faceOfRole } from '../src/execute/faces.ts'
 import { dispatchTool, createGraphCache, type DispatchDeps } from '../src/execute/dispatch.ts'
@@ -139,10 +140,10 @@ function childAgent(childId: string, cwd: string, parentSession: string): AgentL
 }
 
 /** The four rules over a test project, with journal and command records under the project's `.llm`. */
-function rulesOver(project: Project, cache: ReturnType<typeof createGraphCache>): (runtime: FakeRuntime) => void {
+function rulesOver(project: Project, cache: ReturnType<typeof createGraphCache>, extra: Partial<Record<string, unknown>> = {}): (runtime: FakeRuntime) => void {
   return (runtime) => {
     installExecuteRules(runtime.ctx, {
-      lookup: runtime.ctx,
+      lookup: { get: (name: string) => extra[name] !== undefined ? extra[name] : runtime.ctx.get(name) },
       register: registeredAttempt,
       owning: () => undefined,
       live: () => false,
@@ -199,20 +200,31 @@ test('EXECUTE_RULES carries the eight code gates, all enforce on day one (§12.1
 
 // ---- the dispatched chain's rules on the fake host ----
 
+/** One dispatched no-plan task over a preset project with the four rules installed; `extra` adds services the rules' lookup reads (the request seam's fake desk). */
+async function dispatchedWorker(natives: readonly string[], extra?: (project: Project) => Partial<Record<string, unknown>>): Promise<{
+  readonly project: Project
+  readonly cleanup: (childId: string) => void
+  readonly childId: string
+  readonly worktreeRel: string
+  readonly worktree: string
+  readonly child: AgentLike
+  readonly exec: ReturnType<typeof execTool>
+}> {
+  const project = await presetProject([{ ...WORK_TASK, id: 'task-1', writeScope: ['site/index.md'] }])
+  const { deps, cleanup } = depsFor(project, fakeSubagents().service)
+  const runtime = fakeRuntime({ natives: [...natives] })
+  rulesOver(project, deps.cache, extra?.(project) ?? {})(runtime)
+  const summary = await dispatch(deps, project.root, { id: 'task-1', model: 'probe-model', why: 'one file, no plan needed', quick: true }) as { childId: string, worktree: string }
+  const childId = summary.childId
+  const worktree = join(project.root, '.worktrees', 'hz-task-1')
+  return { project, cleanup, childId, worktreeRel: summary.worktree.replaceAll('\\', '/'), worktree, child: childAgent(childId, worktree, 'main-1'), exec: execTool(runtime) }
+}
+
 test('a registered worker writes inside its file scope and its .hourness/; outside, the worktree and a git push are refused and journaled; reset --hard runs after its snapshot', async () => {
-  const task = { ...WORK_TASK, id: 'task-1', writeScope: ['site/index.md'] }
-  const project = await presetProject([task])
+  const seam = await dispatchedWorker(['write', 'pwsh'])
+  const { project, cleanup, childId, worktree, child, exec } = seam
   try {
-    const { deps, cleanup } = depsFor(project, fakeSubagents().service)
-    const cache = deps.cache
-    const runtime = fakeRuntime({ natives: ['write', 'pwsh'] })
-    rulesOver(project, cache)(runtime)
-    const summary = await dispatch(deps, project.root, { id: 'task-1', model: 'probe-model', why: 'one file, no plan needed', quick: true }) as { childId: string, worktree: string }
-    const childId = summary.childId
-    const worktree = join(project.root, '.worktrees', `hz-task-1`)
-    assert.equal(summary.worktree.replaceAll('\\', '/'), '.worktrees/hz-task-1')
-    const child = childAgent(childId, worktree, 'main-1')
-    const exec = execTool(runtime)
+    assert.equal(seam.worktreeRel, '.worktrees/hz-task-1')
     // Inside the file scope: runs.
     const inside = await exec('write', { file_path: join(worktree, 'site', 'index.md'), content: '# feed\n' }, { agent: child })
     assert.ok(!inside.isError, `the in-scope write was refused: ${inside.content.map(part => part.text ?? '').join('')}`)
@@ -242,6 +254,53 @@ test('a registered worker writes inside its file scope and its .hourness/; outsi
     // The command record carries the allowed and the refused calls (§3.8.5).
     const records = readFileSync(join(project.root, '.llm', 'execute', 'tasks', 'task-1', `${childId}.commands.jsonl`), 'utf8')
     assert.ok(records.includes('"verdict":"refused"') && records.includes('"verdict":"allowed"'), `the command record is missing verdicts: ${records.slice(0, 200)}`)
+    cleanup(childId)
+  }
+  finally {
+    dispose(project)
+  }
+})
+
+test('the request seam (m4 design 0.6 \u00a75.9): an approved grant passes an out-of-worktree write through, a denial outside the project carries the ref and the worker\u2019s exception sentence, one inside the project keeps the \u00a73.2.1 correction', async () => {
+  // The fake desk: grants match one exact call; the ref is given for targets
+  // outside the project (here: another drive's directory), undefined for
+  // targets inside it (the main checkout).
+  const outside = 'Z:\\elsewhere\\notes.md'
+  let grants = 0
+  let grantedPath = ''
+  const seam = await dispatchedWorker(['write'], project => {
+    grantedPath = join(project.root, 'granted.md')
+    const desk: RequestsService = {
+      outsideDenial: call => String((call.args as { file_path?: string }).file_path ?? '').toLowerCase().startsWith('z:') === true
+        ? { ref: 'r-seamtest', exception: 'To write outside the workspace, ask the main agent with ask_main: give ref "r-seamtest" and the target path. When it answers that the human approved, make this identical call again.' }
+        : undefined,
+      peekGrant: call => {
+        const path = String((call.args as { file_path?: string }).file_path ?? '')
+        if (path !== grantedPath) return false
+        grants += 1
+        return true
+      },
+      openRequests: () => [],
+    }
+    return { [REQUESTS_SERVICE]: desk }
+  })
+  const { project, cleanup, childId, worktree, child, exec } = seam
+  try {
+    // The grant matches this one call: worker-scope lets it through (the guard
+    // row's containment would verify and consume it at use time).
+    const grantedWrite = await exec('write', { file_path: grantedPath, content: 'via grant\n' }, { agent: child })
+    assert.ok(!grantedWrite.isError, `the granted write was refused: ${grantedWrite.content.map(part => part.text ?? '').join('')}`)
+    assert.equal(grants, 1, 'peekGrant was not consulted for the out-of-worktree write')
+    // A different call has no grant: refused, the journal line carries the ref and the returned exception sentence.
+    const asked = await exec('write', { file_path: outside, content: 'no\n' }, { agent: child })
+    assert.ok(asked.isError && asked.content.map(part => part.text ?? '').join('').includes('r-seamtest'), `the outside-project refusal lost the ref: ${asked.content.map(part => part.text ?? '').join('')}`)
+    // Inside the project but outside the worktree (the main checkout): undefined from the desk, the §3.2.1 correction, no ref.
+    const inside = await exec('write', { file_path: join(worktree, '..', 'escaped.txt'), content: 'no\n' }, { agent: child })
+    assert.ok(inside.isError && inside.content.map(part => part.text ?? '').join('').includes('you write only inside your worktree'), `the in-project refusal changed: ${inside.content.map(part => part.text ?? '').join('')}`)
+    const violations = readFileSync(join(project.root, '.llm', 'audit', 'violations.jsonl'), 'utf8').split('\n').filter(line => line.includes('"rule":"worker-scope"')).map(line => JSON.parse(line) as { ref?: string })
+    assert.equal(violations.length, 2, `expected two worker-scope records, got ${violations.length}`)
+    assert.equal(violations[0]?.ref, 'r-seamtest', 'the outside-project denial did not journal the ref')
+    assert.equal(violations[1]?.ref, undefined, 'the in-project denial must not carry a ref')
     cleanup(childId)
   }
   finally {

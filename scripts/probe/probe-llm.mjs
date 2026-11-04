@@ -147,11 +147,14 @@ function withGoal(call, goal) {
 /**
  * `{ref}` in the arguments of a scripted call becomes the request reference
  * the conversation last named by a denial — the exception sentence names it,
- * in either the containment spelling (`request_exception {"ref": "r-…"}`) or
- * the new-rules spelling (`call request_exception with ref "r-…"`) — so the
- * script files and retries without knowing the generated ref
- * (m4-request-card §5.3). Anchored on those sentences because the
- * `request_exception` tool description carries the F20 example's own ref.
+ * in the containment spelling (`request_exception {"ref": "r-…"}`), the
+ * new-rules spelling (`call request_exception with ref "r-…"`) or the
+ * worker sentence's spelling (`give ref "r-…"`, m4-request-card §5.2's third
+ * case) — so the script files and retries without knowing the generated ref
+ * (m4-request-card §5.3). The worker's denial is a tool result; the main
+ * agent reads the same sentence relayed in the worker's question notice, a
+ * user message, so both roles are read. Anchored on those sentences because
+ * the `request_exception` tool description carries the F20 example's own ref.
  * No denial in the conversation leaves the text as it was.
  */
 function withRef(request, call) {
@@ -159,11 +162,16 @@ function withRef(request, call) {
   if (!text.includes('{ref}')) return call
   let found
   for (const message of request.messages ?? []) {
-    if (message.role !== 'tool') continue
-    for (const part of Array.isArray(message.content) ? message.content : []) {
+    // A user message is read only for the relayed worker sentence: the other notices repeat older refs in the denial spellings.
+    const spelled = message.role === 'tool'
+      ? /(?:request_exception \{"ref": "|request_exception with ref "|give ref ")(r-[0-9a-z]{8})/
+      : message.role === 'user' ? /give ref "(r-[0-9a-z]{8})/ : undefined
+    if (spelled === undefined) continue
+    const parts = typeof message.content === 'string' ? [{ text: message.content }] : Array.isArray(message.content) ? message.content : []
+    for (const part of parts) {
       for (const piece of Array.isArray(part.content) ? part.content : [part]) {
         if (typeof piece.text !== 'string') continue
-        const named = /(?:request_exception \{"ref": "|request_exception with ref ")(r-[0-9a-z]{8})/.exec(piece.text)
+        const named = spelled.exec(piece.text)
         if (named !== null) found = named[1]
       }
     }
