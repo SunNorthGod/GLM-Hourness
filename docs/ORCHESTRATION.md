@@ -1413,7 +1413,7 @@ LLM 不讲人话，多半是默认在向评审汇报，想显得周全。做法�
 | 小改动简报的简化形态 | M7 设计 |
 | 审查 agent 的模型档位 | M7 设计 |
 
-## 16. 规则板（最小一片）〔已实现 2026-10-30，L2、L3；行默认启用（2026-11-04 的启用提交起；此前禁用），桌面版首轮验收未做；纯核心 §16.8 已实现 2026-10-31，L2，调用方是 §16.10 与 §16.11；写入引擎的操作 §16.9 已实现 2026-11-01，L2，调用方是 `/rules` 与测试；`checkCall` 与命令行 §16.10 已实现 2026-11-01，L2，调用方只有命令行与测试；工具调用门、`rules_show` 与完整的 `/rules` §16.11 已实现 2026-11-01，L2、L3；等待单、唤醒、转交、每步提醒与心跳 §16.12 已实现 2026-11-02，L2、L3；高峰不做与少做的执行、goal 的暂停与恢复、主 Agent 的高峰一行 §16.13 已实现 2026-11-02，L2、L3〕
+## 16. 规则板（最小一片）〔已实现 2026-10-30，L2、L3；行默认启用（2026-11-04 的启用提交起；此前禁用），桌面版首轮验收未做；纯核心 §16.8 已实现 2026-10-31，L2，调用方是 §16.10 与 §16.11；写入引擎的操作 §16.9 已实现 2026-11-01，L2，调用方是 `/rules` 与测试；`checkCall` 与命令行 §16.10 已实现 2026-11-01，L2，调用方只有命令行与测试；工具调用门、`rules_show` 与完整的 `/rules` §16.11 已实现 2026-11-01，L2、L3；等待单、唤醒、转交、每步提醒与心跳 §16.12 已实现 2026-11-02，L2、L3；高峰不做与少做的执行、goal 的暂停与恢复、主 Agent 的高峰一行 §16.13 已实现 2026-11-02，L2、L3；规则页的数据 `view.json` 与会话投影 `hournessRules` §16.14 已实现 2026-11-05，L2、L3，读它的规则板页面在面板一侧随后〕
 
 完整设计是 `.agents/tasks/rules/design.md`（不入库，版本 0.10，评审通过、人放行）。自举之前只做其中的一片（项目图 `d-rules-peak-slice`，设计 §16.1）：每个项目一个由人选的高峰模式档位，加少做档的并发上限，经一个服务交出。这一片是整块设计的子集：整块规则板以后往同一批文件里添加，不改写、不删除这一片写下的任何东西。能这样，靠存下来的形状有一条规矩（§16.3）：为空的集合不出现在存档、流水记录的摘要和规则文件里，整块规则板添上它的集合之后，这一片写下的记录照样核对得上。发给模型的高峰提醒与它在各档下的措辞见 §11.4（GLM 通道包），规则板不碰。
 
@@ -1667,6 +1667,29 @@ L2：`tests/peak-mode.spec.ts`（共用契约：上限与挡住的标记、读�
 - V3（空闲且有 active goal 的 agent 收到 `inject`）：L3 没有走到。恢复之后驱动器立刻开了下一轮，唤醒发出时子 agent 已在 `running`，走的是 `steer`，消息在它再下一步的请求里；`inject` 一路仍只有假宿主的测试。
 - V13（宿主正常退出时卸载函数会跑、`goals.resume` 那时成功）：一次性的无头运行器退出时不卸载规则行：退出后心跳文件还在，goal 仍是 `paused`，单仍是 `deferred`、没有 `resumedAt`，流水里没有卸载的那条 `ticket-update`，stderr 没有告警。所以对这种宿主走的是设计写的「不跑」那一支：下一次激活时接手（`adopt` 与 `adoptLive`，L2 测过）。桌面版正常退出时卸载函数跑不跑没有核实（桌面版不动），代码两种情形都照做：卸载跑了就恢复，没跑就靠接手。探针场景钉的是两者自洽：心跳文件不在则 goal 已恢复且单上有 `resumedAt`，在则 goal 与单都是暂停时的样子。
 - 场景还核对：主 Agent 与非 GLM 子 agent 的调用照常执行、没有单；被拒的调用不执行，拒绝文字是设计 §6.4 的那一段（含「Your goal is paused.」）；流水依次是 `ticket-open`（harness）、`peak-mode-set`（人）、`ticket-update`（harness，单转 `done`，带 `resumedAt`）；用户级目录下没有 `rules/`。
+
+### 16.14 规则页的数据：`view.json` 与投影 `hournessRules`（`src/rules/view.ts`、`view-build.ts`、`view-writer.ts`、`projection.ts`，`src/guard/records.ts` 的 `journalRecords`，接线在 `index.ts`）〔已实现 2026-11-05，L2、L3；读它的规则板页面在面板一侧随后〕
+
+规则行在宿主侧把规则页要的数据算好，写进项目的 `<项目根>/.llm/rules/view.json`（`RulesPaths.view`）；会话投影 `hournessRules` 只交 `{projectKey, viewFile}`，客户端按 `viewFile` 读这一个文件，经 `changes` 与定时重读跟进。投影与循环板的 `hournessLoops` 是同一个定义（`src/loops/projection.ts` 的 `viewFileProjection`）：状态在会话开始时按会话头的 `cwd` 算出，会话里的事件不改它；没有工作目录或不在 git 项目里时两项都是 `null`。投影经 `ctx.inject(['sessionProjections'], …)` 注册（`src/shared/row-support.ts` 的 `whenPresent`），不进行的 `inject` 名单、不改补丁；宿主没有 `inject` 或服务不在时行健康部分生效，原因写「宿主没有 inject，没有注册会话投影 hournessRules」或「会话投影 hournessRules 等 sessionProjections 服务」，门与命令照常。
+
+**形状（`view.ts`）。** 客户端也导入这个文件，所以它只导入类型。`RULES_VIEW_VERSION` 是 1，形状变了就加一。`RulesView` 的字段：`version`、`at`（宿主算出的时刻）、`host.pid`；`peak`（`applies` 是有没有计价服务、`now`、`until`、读不出时的 `problem`、`hoursZh`、档位 `level` 与来源 `origin`、人选的时刻 `setAt` 与 `via`（`command` 是人自己打的 `/rules peak`，`agent` 是经主 Agent 转述人的话）、`waiting`（不做档的条目开着的 `deferred` 单数，与其中暂停着 goal 的数））；`rows`（页面要说的各行在写它的宿主上的状态，`execute` 恒为 `absent`：main 上没有执行行）；`builtins`（默认规则与四条附属条目：哪几档启用、此刻启用没有、告诉模型的那一行与它的状态、最近 7 天的次数）；`rules`（人设的规则：页面要写成人话的原始字段、条件此刻成不成立、在不在生效、最近 7 天真挡（拦下与排队）与只记下的次数分开；带脚本的另有路径与语言、`standing`（`approved`，或 `unapprovedScripts` 的 `no-pin`、`not-approved`、`changed`）、文件在不在、超时与它来自条目还是设计的固定值、超时或出错时放行还是拦下与是不是缺省）；`code`（代码规则目录去掉默认规则那五条：所在行与状态、最近 7 天拦下次数、整本流水里最近 5 条拦下（新的在前：时刻、拦下了什么、`block` 或 `late`、流水里的规则 id）、撤下一行）；`signals`；`tickets`（另有拥有它的宿主心跳是否还在、是不是不做档的单、goal 是否暂停着）；`notices`；`recovery`（`stateNotes` 的说明、`recovered`、`unresolved`、仓库规则文件的核对结果）；`items` 与 `statusProblems`（见下）。`parseRulesView(text)` 对版本不对、顶层几个对象与数组的形状不对、不是 JSON 的文本返回 `undefined`；探针与客户端用同一个。
+
+**谁的数。**
+
+- 7 天次数都经 M4 的统计函数与分类器：代码规则的次数是 `ruleStats(records, {since: '7d', now})`（`src/guard/measure.ts`）的 `denials.dialect + denials.other`，晚到的拦下也算；规则板自己的条目与人设的规则另把 `classifyRecord` 判为 `deferral` 的排队算进真挡，`rule-record` 算作只记下。目录 id 到流水里规则 id 的对应只在 `journalRuleOf` 一处：guard 框架与 M3 主 Agent 的规则记的是不带行前缀的 id（`loops:files-only` 记作 `files-only`），规则板写 `rules:<id>`（`rules:files-only`、`rules:builtin:…`、`rules:r-…`），所以 `loops:files-only` 与 `rules:files-only` 不串。
+- 流水是规则行的门写的那一本（`dataHomes(ctx, config.home)` 下的 `auditPaths(...).violations`，与 `rowJournal` 同一个目录），按行解析经 `journalRecords`（`src/guard/records.ts`），guard 行的状态视图也调它。
+- 撤下一行：`GUARD_RULES` 里 `liftVia: 'any'` 的条目写「跟主 Agent 说「撤下<标题>」」（这些行都经 `installRuleGate` 装门，门读撤下记录，`guard_lift` 撤下对它们真生效）；`guard:lift-files-only` 没有撤法，原因「它护着撤下记录本身，只能在规则板上撤，规则板还没接上」；`design:*` 与 `rules:files-only` 没有撤法，原因「这一条不在撤下的办法里，现在撤不了」（`resolveLiftRule` 只认 `GUARD_RULES`）；`glmHournessLifts` 的 `lifted(cwd)` 里有的另写撤下时刻与「要恢复：跟主 Agent 说「恢复<标题>」」。代码规则不写 `/rules lift`：main 上它只写规则板自己的 `rule-lift`。
+- `items` 是 `collectStatus(ctx, sessionId, 'all', now)` 里 `owner === 'rules'` 的全部条目，原样放进来（今天是 `rules/peak`、`rules/denials`、`rules/lifts`；状态板块设计 §3.1 的一件事一处算）；同一次收集里 `rules`、`guard` 两行 `outcome === 'error'` 的原因进 `statusProblems`。同一项目的几个会话只取其中一个去问收集器。
+
+**何时写。** 会话的 `agent/created` 处理完（`settle` 与接手等待单之后）、每次 `/rules` 之后（命令等写完再回话）、门的一条流水写入落定之后安静 1 秒（`VIEW_DEBOUNCE_MS`）、每 15 秒（`BEAT_MS`，跟进 guard 的拦下、撤下与时钟）。对每个有已知会话的项目算一份；内容（不计 `at` 与条目的 `asOf`）与上次写的相同时不写；写法是同目录的临时文件加改名（`writeAtomic`，经行的 `config.io`），写入依次进行。行卸载时先把还欠着的那一次算好（这时各行的状态视图还在）再撤其余部分，卸载函数等它写完。一次性的无头运行器退出时不卸载规则行（§16.13 的 V13），而探针的场景比 1 秒的去抖跑得快，所以探针在 `glm-rules` 与 `non-glm-rules` 的最后一步打一次 `/rules show`，让行写出那时的样子。
+
+**写不出时。** 告警一次（一串失败一次，成功之后再失败才再告警），行健康部分生效「规则页的数据写不出：<原因>」（激活状态与每个已知会话的说明都写），下一次写成功后换回；门、命令和服务不受影响，激活期不抛错。某个项目的数据算不出（读状态或流水抛错）时跳过这个项目并告警，别的项目照写。收集器对抛错的状态视图每次调用都告警，所以那种情形下每 15 秒有一行。
+
+**读不到时。** 文件还不在不是失败（会话刚开始，或行没启用）；`parseRulesView` 不认的内容当作读不出，客户端保留上一次读到的内容并在页顶写原因（随面板一侧的规则板页面）。
+
+**与规则设计 0.10 §9.1「读」一段的出入。** 设计写的是客户端直接读快照、流水、心跳目录与 `hits.json`。这里改成宿主算好、写一个文件，理由：(a) 状态板块 §3.1 要页面上的 `items` 与报告路是同一个函数的结果，`rules/denials`、`rules/lifts` 由 guard 行在宿主侧算，客户端调不到宿主函数；(b) 7 天拦下次数要读违规流水，`hits.json` 在 main 上不存在（§16.6）；(c) 循环板与指标板已是同一种做法（`src/loops/view.ts`、`ui/src/metrics/board.ts`）。页面上看到的内容不因此改变。推翻的办法：保留 `view.json` 的形状，把计算挪到客户端（只有 `items` 一项做不到）。
+
+**验证。** L2：`tests/rules-view.spec.ts`（每组的数据：几种档位与来源、没有计价服务、`peak` 抛错与不在高峰、附属条目按档启用、不做档的单与暂停的 goal、人设规则的条件值与 7 天真挡和只记下分开数、带脚本规则的四种 `standing` 与失败做法的缺省、代码规则只数 7 天内的、最近 5 条新的在前且至多 5 条、晚到的拦下、撤下的三种写法与已撤下、`journalRuleOf` 逐条与 `loops:files-only`/`rules:files-only` 不串、`items` 原样、`statusProblems`、空项目；`parseRulesView` 对坏版本与坏形状返回 `undefined`）、`tests/rules-row.spec.ts`（有注册表时注册投影与 `init` 的三种值、没有 `inject` 时的行健康、`agent/created` 与 `/rules peak 不做` 之后写出且 `items` 深等于同一时刻收集器的 `rules` 条目、内容不变不重写、门的流水写入一秒后上页、卸载前写完欠着的一次、注入的改名失败告警一次且行健康部分生效而门照常判、下一次写成功后换回）。L3：探针步骤标记 `rulesView`（`scripts/probe/probe-llm.mjs`）记下该步命令之后会话项目的 `view.json`，`rules-page:` 开头的检查用 `packages/hourness/dist/rules/view.js` 的 `parseRulesView` 读它（`DEVELOPMENT.md` §3）。
 
 ## 17. 执行层（M7）〔骨架进行中：E0、E1a、E3 已实现，只有纯函数、git 执行器、门禁锁和测试，没有行〕
 M7 的设计是 `.agents/tasks/m7/design.md`（不入库，版本 0.6，评审通过、人放行）。执行层的源码在编排层包的 `src/execute/`，目录登记在 `scripts/packages.mjs` 的 `hourness.src`，`packages/hourness/tsconfig.json` 的 `include` 同步加一项（preflight 比对二者）。骨架按设计 §8.1 的步骤实现：E0、E1a、E3 之后没有行、没有监听器，`cordis.patch.yml` 不变；`glm-hourness/execute` 行从 E4 起出现，默认禁用，E9 验证通过后才启用。

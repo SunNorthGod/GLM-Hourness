@@ -114,7 +114,8 @@ export const GLM_PEAK_STOP_SCRIPTS: BuiltinRule = {
 /** The signature of the ticket the stop entry opens for a whole session: not by the call, since every call of the session is the same wait (design §6.2 step 6). */
 export const PEAK_STOP_SIGNATURE = `any:${GLM_PEAK_STOP.id}`
 
-const BUILTIN_RULES: readonly BuiltinRule[] = [GLM_PEAK_PRICING, GLM_PEAK_REDUCE, GLM_PEAK_STOP, GLM_PEAK_STOP_DISPATCH, GLM_PEAK_STOP_SCRIPTS]
+/** The default rule and the four entries of the peak levels, the default rule first. */
+export const BUILTIN_RULES: readonly BuiltinRule[] = [GLM_PEAK_PRICING, GLM_PEAK_REDUCE, GLM_PEAK_STOP, GLM_PEAK_STOP_DISPATCH, GLM_PEAK_STOP_SCRIPTS]
 
 /** The entries in force at a level: the default rule always, and the entries the level enables. */
 export function builtinRulesFor(level: PeakLevel): readonly BuiltinRule[] {

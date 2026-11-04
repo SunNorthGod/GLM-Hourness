@@ -67,7 +67,7 @@ import { metricEventOf } from './metrics.ts'
 import { REQUESTABLE, REQUEST_DESCRIPTION, signatureOf, exceptionOf, GrantBook, RefusalBook, type RefusalVia } from './request.ts'
 import { REQUESTS_SERVICE, createRequestDesk, type RequestDesk, type RequestDeskFs } from './request-service.ts'
 import { guardStatusItems } from './status.ts'
-import { classifyRecord, journalEarliest, type GuardRecord, type LiftRecord } from './records.ts'
+import { classifyRecord, journalEarliest, journalRecords, type GuardRecord, type LiftRecord } from './records.ts'
 import { projectJournal, auditPaths, type AuditFs } from '../memory/audit.ts'
 import { ensureLlmIgnored, type LlmIgnoreOutcome } from '../data/llm-ignore.ts'
 import { projectHomeFor, projectRootOf } from '../data/project-home.ts'
@@ -381,14 +381,7 @@ export function apply(ctx: GuardHost, config: GuardConfig = {}): () => void {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') raw = ''
       else throw error
     }
-    const violations = raw.split('\n').filter(line => line.trim().length > 0).flatMap(line => {
-      try {
-        return [JSON.parse(line) as GuardRecord]
-      }
-      catch {
-        return []
-      }
-    })
+    const violations = journalRecords(raw)
     const liftRecords = violations.flatMap(record => classifyRecord(record as unknown as Readonly<Record<string, unknown>>) === 'lift' ? [record as unknown as LiftRecord] : [])
     const earliest = journalEarliest(violations)
     let file: { readonly text: string } | { readonly error: string }

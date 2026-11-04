@@ -217,6 +217,23 @@ export function journalEarliest(records: readonly GuardRecord[]): string | undef
   return earliest
 }
 
+/**
+ * The records a violation journal's text holds, in file order: one per line
+ * that parses as JSON; a blank line or one that does not parse is skipped.
+ * The guard row's status view and the rules row's page data read the journal
+ * through this one function; the classes are classifyRecord's.
+ */
+export function journalRecords(text: string): GuardRecord[] {
+  return text.split('\n').filter(line => line.trim().length > 0).flatMap((line) => {
+    try {
+      return [JSON.parse(line) as GuardRecord]
+    }
+    catch {
+      return []
+    }
+  })
+}
+
 /** The key of one journal line: the first 12 hex digits of the SHA-256 of its JSON text. */
 export function recordKey(line: string): string {
   return createHash('sha256').update(line).digest('hex').slice(0, 12)

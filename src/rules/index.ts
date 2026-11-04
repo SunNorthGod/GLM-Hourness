@@ -29,7 +29,12 @@
  * - the heartbeat (heartbeat.ts) every 15 seconds in each project the host has
  *   a live session in, which is how a ticket's host is known to be there;
  * - the per-step reminder (reminder.ts) of the rules that only inform and of
- *   the agent's own tickets.
+ *   the agent's own tickets;
+ * - the rules page's data (view-build.ts, view-writer.ts): each known
+ *   project's `.llm/rules/view.json`, written after a session starts, after
+ *   `/rules`, a second after a journal line of the gate and every 15 seconds,
+ *   and the session projection `hournessRules` (projection.ts) the panel
+ *   finds it with.
  *
  * - the stop level (goal.ts, tickets.ts): in a GLM peak the tool calls of a GLM
  *   subagent are one ticket for its session and its active goal is paused;
@@ -49,31 +54,40 @@
  * makes the row inactive; a problem the storage finds is reported per session
  * (row-health.ts). The row ships disabled (packages/hourness/cordis.patch.yml).
  */
-import { basename } from 'node:path'
+import { existsSync } from 'node:fs'
+import { basename, join } from 'node:path'
 import { projectOf } from '../data/project-root.ts'
-import { rowJournal } from '../memory/audit.ts'
+import { liftService } from '../guard/lift-service.ts'
+import { journalRecords } from '../guard/records.ts'
+import { auditPaths, rowJournal, type RowJournal } from '../memory/audit.ts'
+import { collectStatus } from '../report/status.ts'
 import { dataHomes } from '../shared/data-home.ts'
-import type { AgentCommandInvocationLike, AgentLike, AgentsService, CommandDefinitionLike, CommandResultLike, CommandsHost, PreExecuteListener, ProvideHost, ServiceLookup, SessionLike, ToolsLike } from '../shared/dsh-min.ts'
+import type { AgentCommandInvocationLike, AgentLike, AgentsService, CommandDefinitionLike, CommandResultLike, CommandsHost, InjectHost, PreExecuteListener, ProvideHost, ServiceLookup, SessionLike, ToolsLike } from '../shared/dsh-min.ts'
 import { activationState, provideRowHealth, sessionIdOf, type HealthState, type RowHealth } from '../shared/health.ts'
 import { PEAK_MODE_SERVICE } from '../shared/peak-mode.ts'
-import { pricingService } from '../shared/pricing.ts'
+import { peakHoursOf, pricingService } from '../shared/pricing.ts'
+import { whenPresent } from '../shared/row-support.ts'
 import { provideRowStatus } from '../shared/status-host.ts'
 import { RULES_TOOL_NAMES } from '../shared/tool-names.ts'
 import { CATALOG } from './builtin.ts'
 import { NOT_A_PROJECT, RULES_HINT, runRulesCommand } from './commands.ts'
 import { openRulesBoard } from './engine.ts'
 import { installRulesGate } from './gate.ts'
-import { createHeartbeat, type HostHeartbeat } from './heartbeat.ts'
+import { createHeartbeat, liveHeartbeats, readHeartbeats, type HostHeartbeat } from './heartbeat.ts'
 import { peakModeServiceFor, peakReader, projectReader, type ProjectView } from './peak.ts'
+import { RULES_KEY, rulesProjection } from './projection.ts'
 import { gitOperationIn, readProject } from './repo.ts'
 import { installReminder } from './reminder.ts'
 import type { HostRef } from './request.ts'
 import { projectHealth } from './row-health.ts'
 import { RULES_DECLARATION, RULES_SERVICE, type RulesService } from './service.ts'
 import { rulesStatusItems } from './status.ts'
-import { DEFAULT_RULES_DIR, realStoreIo, type StoreIo } from './store.ts'
+import { DEFAULT_RULES_DIR, readText, realStoreIo, type RulesPaths, type StoreIo } from './store.ts'
 import { createTicketDesk } from './tickets.ts'
 import { rulesShowTool } from './tool.ts'
+import { buildRulesView, VIEW_ROWS } from './view-build.ts'
+import { createViewWriter } from './view-writer.ts'
+import type { RulesView } from './view.ts'
 
 export { clockText } from './commands.ts'
 
@@ -111,8 +125,10 @@ export const inject = ['tools', 'commands']
 /** The command name; its definition id is `dsh-glm-hourness/rules`. */
 export const RULES_COMMAND = 'rules'
 
-/** The row's context: the tools and commands services, the tool-call gate, the agent lifecycle and session end events, optional service provision and lookup. */
-export interface RulesContext extends CommandsHost<AgentCommandInvocationLike>, ServiceLookup, Partial<ProvideHost> {
+const WAITING_PROJECTION = `会话投影 ${RULES_KEY} 等 sessionProjections 服务`
+
+/** The row's context: the tools and commands services, the tool-call gate, the agent lifecycle and session end events, optional service provision, lookup and injection (the session projections). */
+export interface RulesContext extends CommandsHost<AgentCommandInvocationLike>, ServiceLookup, Partial<ProvideHost>, Partial<InjectHost> {
   readonly tools: ToolsLike
   on(event: 'agent/created', listener: (payload: { agent: AgentLike }) => Promise<void> | void): () => void
   on(event: 'session/disposed', listener: (session: SessionLike) => void): () => void
@@ -154,6 +170,10 @@ export function apply(ctx: RulesContext, config: RulesConfig = {}): Unload {
   const read = projectReader(rulesDir)
   const disposers: Array<() => void> = []
   const problems: string[] = []
+  /** What the optional services are waiting for (whenPresent): the session projection the rules page finds its data with. */
+  const waiting: Record<string, string | undefined> = { projection: WAITING_PROJECTION }
+  /** Why the rules page's data cannot be written, until the next write succeeds. */
+  let viewProblem: string | undefined
   let gateInstalled = false
 
   // A session this host has not seen is looked up in the host's agent registry, so a row enabled mid-run still answers.
@@ -164,10 +184,13 @@ export function apply(ctx: RulesContext, config: RulesConfig = {}): Unload {
     return typeof agents?.get === 'function' ? agents.get(sessionId)?.session.header.cwd : undefined
   }
 
-  const activation = (): readonly [HealthState, string] => [
-    !gateInstalled ? 'inactive' : problems.length === 0 ? 'active' : 'degraded',
-    [`命令 /${RULES_COMMAND}、工具 ${RULES_TOOL_NAMES.join('、')} 与高峰模式服务 ${PEAK_MODE_SERVICE} 已就绪`, ...problems].join('；'),
-  ]
+  const activation = (): [HealthState, string] => {
+    const faults = [...problems, ...Object.values(waiting).flatMap(text => text ?? []), ...(viewProblem === undefined ? [] : [viewProblem])]
+    return [
+      !gateInstalled ? 'inactive' : faults.length === 0 ? 'active' : 'degraded',
+      [`命令 /${RULES_COMMAND}、工具 ${RULES_TOOL_NAMES.join('、')} 与高峰模式服务 ${PEAK_MODE_SERVICE} 已就绪`, ...faults].join('；'),
+    ]
+  }
   const health: RowHealth = provideRowHealth(ctx, 'rules', ...activation())
   disposers.push(() => { health.dispose() })
 
@@ -192,6 +215,63 @@ export function apply(ctx: RulesContext, config: RulesConfig = {}): Unload {
     for (const off of reminders.values()) off()
     reminders.clear()
   }
+
+  /**
+   * The rules page's data of each project a known session works in (§16.14), or of the project of `only`:
+   * the project's state, the violation journal of the home the row's own journal writes to, the lifts,
+   * the heartbeats, the row states and the collector's items with owner `rules`, asked with one session
+   * of the project. Computed on the spot; a project whose data cannot be read is left out with a warning.
+   */
+  function composeViews(only?: string): Array<{ readonly paths: RulesPaths, readonly view: RulesView }> {
+    const target = only === undefined ? undefined : projectOf(only)?.root
+    const projects = new Map<string, { readonly sessionId: string, readonly cwd: string }>()
+    for (const [sessionId, cwd] of sessions) {
+      const root = projectOf(cwd)?.root
+      if (root !== undefined && (only === undefined || root === target) && !projects.has(root)) projects.set(root, { sessionId, cwd })
+    }
+    const views: Array<{ readonly paths: RulesPaths, readonly view: RulesView }> = []
+    for (const [root, { sessionId, cwd }] of projects) {
+      try {
+        const project = read(cwd)
+        if (project === undefined) continue
+        const at = now()
+        const journal = auditPaths(dataHomes(ctx, config.home)).violations
+        const pricing = pricingService(ctx)
+        const collected = collectStatus(ctx, sessionId, 'all', at)
+        const scripts = Object.values(project.read.state.rules ?? {}).flatMap(rule => rule.action.kind === 'script' ? [{ id: rule.id, file: rule.action.script.file }] : [])
+        const view = buildRulesView({
+          root,
+          read: project.read,
+          reading: reading(),
+          hoursZh: pricing === undefined ? undefined : peakHoursOf(pricing)?.zh,
+          rows: Object.fromEntries(VIEW_ROWS.map(row => [row, activationState(ctx, row)])),
+          records: journal === undefined ? [] : journalRecords(readText(journal) ?? ''),
+          lifted: liftService(ctx)?.lifted(cwd) ?? [],
+          liveHosts: liveHeartbeats(readHeartbeats(project.paths).heartbeats, at).map(heartbeat => heartbeat.host),
+          missingScripts: new Set(scripts.filter(script => !existsSync(join(root, script.file))).map(script => script.id)),
+          items: collected.items.filter(item => item.owner === 'rules'),
+          statusProblems: collected.rows.flatMap(row => row.outcome === 'error' && (row.row === 'rules' || row.row === 'guard') ? [{ row: row.row, reason: row.reason ?? '' }] : []),
+          host: { pid: host.pid },
+        }, at)
+        views.push({ paths: project.paths, view })
+      }
+      catch (error) {
+        warn(`the rules page's data of ${root} cannot be computed: ${message(error)}`)
+      }
+    }
+    return views
+  }
+  const pageView = createViewWriter({
+    compose: composeViews,
+    io: config.io ?? realStoreIo,
+    failed: (reason) => {
+      viewProblem = reason === undefined ? undefined : `规则页的数据写不出：${reason}`
+      // The row's line of every known session says it too, not only the activation a session without a report shows.
+      for (const sessionId of sessions.keys()) health.note(sessionId, 'view', viewProblem)
+      health.reactivate(...activation())
+    },
+    warn: (text) => { console.warn(`${name}: ${text}`) },
+  })
 
   /** Persist what the project's files need (a recovery, the start from the rules file, an owed write), then report the session's health. Never throws. */
   async function settle(sessionId: string | undefined, cwd: string | undefined): Promise<ProjectView | undefined> {
@@ -226,6 +306,8 @@ export function apply(ctx: RulesContext, config: RulesConfig = {}): Unload {
     })
     // What the person changed may clear a ticket now; the period would find it in five seconds.
     await tickets.reconcile()
+    // The rules page shows what the command changed (the writer never rejects).
+    if (cwd !== undefined) await pageView.write(cwd)
     return result
   }
 
@@ -252,8 +334,17 @@ export function apply(ctx: RulesContext, config: RulesConfig = {}): Unload {
     problems.push(`工具 ${RULES_TOOL_NAMES.join('、')} 没注册上：${message(error)}`)
   }
 
+  // The gate's journal; once a line has landed (or failed), the rules page is written again after a quiet second.
+  const journal: RowJournal = rowJournal(name, () => dataHomes(ctx, config.home))
+  const gateJournal = {
+    violation: (record: Parameters<RowJournal['violation']>[0]) => {
+      const written = journal.violation(record)
+      void written.then(() => { pageView.soon() }, () => { pageView.soon() })
+      return written
+    },
+  }
   try {
-    disposers.push(installRulesGate({ ctx, rulesDir, now, project: read, peak: reading, journal: rowJournal(name, () => dataHomes(ctx, config.home)), health, tickets }))
+    disposers.push(installRulesGate({ ctx, rulesDir, now, project: read, peak: reading, journal: gateJournal, health, tickets }))
     gateInstalled = true
   }
   catch (error) {
@@ -305,6 +396,7 @@ export function apply(ctx: RulesContext, config: RulesConfig = {}): Unload {
       await settle(sessionId, cwd)
       // A session that appears after a restart may have a goal an earlier host paused for the stop level.
       await tickets.adopt(agent)
+      if (cwd !== undefined) await pageView.write(cwd)
     }))
     disposers.push(ctx.on('session/disposed', (session) => {
       sessions.delete(session.id)
@@ -328,7 +420,16 @@ export function apply(ctx: RulesContext, config: RulesConfig = {}): Unload {
       warn(`a period of the row failed: ${message(error)}`)
     }
   }
-  disposers.push(every(guarded(() => tickets.reconcile()), PASS_MS), every(guarded(() => heartbeat.beat()), BEAT_MS))
+  disposers.push(
+    every(guarded(() => tickets.reconcile()), PASS_MS),
+    every(guarded(() => heartbeat.beat()), BEAT_MS),
+    // The rules page's data follows what no event of this row announces: the guard's denials, the lifts, the clock.
+    every(guarded(() => pageView.write()), BEAT_MS),
+  )
+
+  // The rules page finds its data through the session projection hournessRules; without the registry the
+  // row works all the same and its health says the projection waits (the loop board's way, §18.7).
+  whenPresent({ name, ctx, waiting, health, activation }, 'sessionProjections', 'projection', WAITING_PROJECTION, `会话投影 ${RULES_KEY}`, ({ sessionProjections }) => sessionProjections.register(rulesProjection))
 
   health.reactivate(...activation())
   // The sessions that are live when the row starts: the same takeover as for a session that appears.
@@ -336,11 +437,13 @@ export function apply(ctx: RulesContext, config: RulesConfig = {}): Unload {
   return () => {
     // Goals the stop level paused are put back first, while the heartbeat still says this host is there, and everything else goes without waiting for them.
     const resuming = tickets.release()
+    // The page write the journal still owes is computed now, while the status views are there, and lands before the row is gone.
+    const writing = pageView.close()
     for (const dispose of disposers.splice(0).reverse()) dispose()
-    if (resuming === undefined) {
+    if (resuming === undefined && writing === undefined) {
       finish()
       return undefined
     }
-    return resuming.finally(finish)
+    return Promise.all([resuming, writing]).then(() => undefined).finally(finish)
   }
 }
