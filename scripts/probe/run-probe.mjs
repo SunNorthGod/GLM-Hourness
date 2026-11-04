@@ -2067,7 +2067,7 @@ const execPlan = designScenario(EXEC_PLAN, 'glm-5.3-flash', () => [
   { tool: { name: 'answer_worker', arguments: { request: '{ask-request:task-1}', text: 'Twenty items, then stop.' } } },
   { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 8', description: 'probe: let the workers hand back' } } },
   { text: 'done', status: true },
-], { wish: true, git: true, extra: ['- id: glm-hourness/execute', '  disabled: false'], others: [execPlanWorker1, execPlanWorker2] })
+], { wish: true, git: true, extra: ['- id: glm-hourness/execute', '  disabled: false'], others: [execPlanWorker2, execPlanWorker1] })
 
 // E6 (M7 design §3.6, §3.7; scenario glm-exec-review): the handback
 // processing and the review loop on the real runtime, over a must-review
