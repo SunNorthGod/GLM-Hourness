@@ -21,6 +21,7 @@ import { readLog } from '../src/metrics/read.ts'
 import { METRICS_KINDS } from '../src/metrics/kinds/index.ts'
 import type { MetricsEvent } from '../src/metrics/schema.ts'
 import { userDataHome } from '../src/shared/data-home.ts'
+import { emptyFindings } from './metrics-helpers.ts'
 import { nodeMetricsFs, openWriter } from '../src/metrics/writer.ts'
 import { serializeNode } from '../src/graph/format.ts'
 import type { GraphNode } from '../src/graph/schema.ts'
@@ -28,19 +29,6 @@ import type { GraphNode } from '../src/graph/schema.ts'
 const FROM = '2026-11-04T00:00:00.000Z'
 const TO = '2026-11-05T00:00:00.000Z'
 const TODAY = '2026-11-04'
-
-const emptyFindings = () => ({
-  events: 0,
-  unreadable: [],
-  missing: [],
-  chainBreaks: [],
-  noStop: [],
-  clockRollbacks: [],
-  duplicates: 0,
-  lostFiles: [] as readonly string[],
-  forgeries: [],
-  bytes: 0,
-})
 
 const inputOf = (events: readonly MetricsEvent[], overrides: Partial<Parameters<typeof factsFor>[0]> = {}) => ({
   events,

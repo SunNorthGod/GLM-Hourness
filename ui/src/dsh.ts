@@ -118,6 +118,8 @@ export interface ProjectionValues {
   readonly tokenUsage?: TokenUsage
   readonly hournessLessons?: { readonly journal: string | null }
   readonly hournessMemory?: { readonly projectJournal: string | null, readonly userJournal: string | null }
+  /** The metrics row's wire view (src/metrics/index.ts): where the board's `view.json` is, or why there is none. */
+  readonly hournessMetrics?: { readonly viewFile: string | null, readonly reason?: string }
   readonly [key: string]: unknown
 }
 

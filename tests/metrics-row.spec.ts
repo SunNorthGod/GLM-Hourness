@@ -435,7 +435,8 @@ test('the daily self-check entry goes to the loop board when it is there, with i
     assert.deepEqual(await loops.run('metrics.selfcheck', record(`${root}-lost`)), { outcome: 'done' }, 'findings say done, and the board delivers the entry\'s tell')
     assert.deepEqual(await loops.run('metrics.selfcheck', record('C:/nowhere/at-all')), { outcome: 'skipped', reason: 'EACCES' }, 'a project that cannot be read is skipped with the reason')
     assert.match(health()?.activation().reason ?? '', /自查条目已交给循环板/)
-    assert.equal(health()?.activation().state, 'active', 'the loops hand-off is not a fault')
+    assert.match(health()?.activation().reason ?? '', /指标板没有登记/, 'the board waits for the projections service (§9.1), a designed partial effect')
+    assert.equal(health()?.activation().state, 'degraded', 'the loops hand-off is not a fault; the board wait is the only degradation')
   }
   finally {
     rmSync(base, { recursive: true, force: true })
@@ -452,7 +453,8 @@ test('without the loop board the row stays healthy, notes it, and still checks i
     await emitCount(fx)
     for (let waited = 0; waited < 3000 && !(fx.health()?.session(fx.rt.agent.id)?.reason ?? '').includes('上次自查干净'); waited += 20) await new Promise(resolve => setTimeout(resolve, 20))
     const activation = fx.health()?.activation()
-    assert.equal(activation?.state, 'active')
+    assert.equal(activation?.state, 'degraded', 'the board waits for the projections service (§9.1)')
+    assert.match(activation?.reason ?? '', /指标板没有登记/)
     assert.match(activation?.reason ?? '', /积分口径：未提供/)
     const report = fx.health()?.session(fx.rt.agent.id)
     assert.match(report?.reason ?? '', /上次自查干净/)

@@ -14,17 +14,21 @@
  * behavior (§9.5).
  */
 import { randomBytes } from 'node:crypto'
-import { mkdir } from 'node:fs/promises'
+import { mkdir, open, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import { ensureIgnored, projectOf } from '../data/project-root.ts'
 import { LOOPS_SERVICE, loopsService, type Contribution, type HarnessResult, type LoopEventRecord, type LoopsService } from '../loops/service.ts'
-import type { AgentsService, AgentLike, InjectHost, LlmStreamListener, ProvideHost, ServiceLookup, SessionEventLike, SessionLike, UserQuestionsListener } from '../shared/dsh-min.ts'
+import { realStoreIo, renameWithRetry, type StoreIo } from '../rules/store.ts'
+import type { AgentsService, AgentLike, InjectHost, LlmStreamListener, ProvideHost, ServiceLookup, SessionEventLike, SessionLike, SessionProjectionsService, UserQuestionsListener } from '../shared/dsh-min.ts'
 import { provideRowHealth, type HealthState, type RowHealth } from '../shared/health.ts'
 import { pricingService, type UsagePricing } from '../shared/pricing.ts'
 import { METRICS_SERVICE, type MetricsService, type QueuedEvent } from '../shared/metrics.ts'
-import { warnOnceFor } from '../shared/row-support.ts'
-import { checkLog, type LogFindings } from './read.ts'
-import { ID_PATTERN } from './schema.ts'
+import type { MetricsBoardView } from '../shared/metrics-board.ts'
+import { warnOnceFor, whenPresent } from '../shared/row-support.ts'
+import { localDate } from './calc.ts'
+import { boardView, boardWindows, capView } from './board-view.ts'
+import { checkLog, readLog, type LogFindings } from './read.ts'
+import { ID_PATTERN, type MetricsEvent } from './schema.ts'
 import { createObserve, type MetricsObserver, type ObservedWhere, type ObservedSink } from './observe.ts'
 import { nodeMetricsFs, openWriter, type MetricsFs } from './writer.ts'
 
@@ -41,6 +45,13 @@ export interface MetricsContext extends ServiceLookup, Partial<ProvideHost> {
     (event: 'user-questions/request', listener: UserQuestionsListener, options?: { prepend?: boolean }): () => void
   }
   readonly inject?: InjectHost['inject']
+}
+
+/** What the board's compute reads (§7.6.2): the window's events with their basis, and the checker's findings over the same window. */
+export interface BoardRead {
+  readonly events: readonly MetricsEvent[]
+  readonly basis: ReadonlyMap<string, number>
+  readonly findings: LogFindings
 }
 
 /** What tests replace; everything defaults to the real thing (§5.1's injectable `MetricsFs`, the repository's `projectOf`). */
@@ -61,6 +72,10 @@ export interface MetricsConfig {
   readonly timer?: (body: () => void, ms: number) => () => void
   /** Which kind of process this is (`start.host`, §4.2); default `headless` outside the desktop runtime, `desktop` in it. */
   readonly host?: 'desktop' | 'headless' | 'cli'
+  /** The board view's read (§7.6.2); default `readLog` and `checkLog` over the last 14 local days. */
+  readonly boardRead?: (root: string, window: { readonly from: string, readonly to: string }) => Promise<BoardRead>
+  /** The rename the view's `view.json.tmp` takes; default the Node rename. Tests fail it like a full disk would. */
+  readonly rename?: (from: string, to: string) => Promise<void>
 }
 
 /** The `metrics` namespace's own self-check entry and action (§6.4), the first time-triggered factory `harness` entry. */
@@ -72,6 +87,67 @@ export const METRICS_SELF_CHECK_ENTRY = {
   action: { kind: 'harness', action: 'metrics.selfcheck', tell: { text: 'The metrics log self-check found something; see the coverage line of /hourness.', wake: false } },
   basis: '依据指标记录的链式摘要与文件清单',
 } as const
+
+/** The session projection that tells the client page where the board's `view.json` is (§7.6.3). */
+export const METRICS_PROJECTION = 'hournessMetrics'
+
+/** What the projection slot says while the `sessionProjections` service is not there (§9.1). */
+const WAITING_PROJECTION = '指标板没有登记：等 sessionProjections 服务'
+
+/** How often a project's board view is recomputed because events arrived (§7.6.2). */
+const BOARD_EVERY_MS = 3_600_000
+
+/** The board's `view.json` of a project (§7.6.2). */
+const viewFileOf = (root: string): string => join(root, '.llm', 'metrics', 'view.json')
+
+/** The host's system offset as `±HH:MM`, the `tz` the calculations take (§7.6.2). */
+function tzOffset(now: () => number): string {
+  const minutes = -new Date(now()).getTimezoneOffset()
+  const abs = Math.abs(minutes)
+  return `${minutes < 0 ? '-' : '+'}${String(Math.floor(abs / 60)).padStart(2, '0')}:${String(abs % 60).padStart(2, '0')}`
+}
+
+/** One line of at most 60 code points: what the view's `problem` carries (§7.6.2). */
+function oneLine(text: string): string {
+  const line = text.replace(/\s+/g, ' ').trim()
+  const points = [...line]
+  return points.length <= 60 ? line : `${points.slice(0, 59).join('')}…`
+}
+
+/**
+ * The projection that hands the client page the view file's path of a
+ * session's project, or why there is none (§7.6.3): its values carry a path
+ * or a reason and never a number. The state does not change after the
+ * session is created.
+ */
+function metricsProjection(rootOf: (cwd: string | undefined) => string | undefined): Parameters<SessionProjectionsService['register']>[0] {
+  const parse = (value: unknown): MetricsProjectionView => {
+    if (typeof value !== 'object' || value === null) throw new TypeError('the metrics projection value must be an object')
+    const record = value as Record<string, unknown>
+    const viewFile = record.viewFile
+    if (viewFile !== null && typeof viewFile !== 'string') throw new TypeError('viewFile must be a path or null')
+    const reason = record.reason
+    if (reason !== undefined && typeof reason !== 'string') throw new TypeError('reason must be a string')
+    return { viewFile, ...(reason === undefined ? {} : { reason }) }
+  }
+  return {
+    key: METRICS_PROJECTION,
+    stateVersion: 1,
+    stateSchema: { parse },
+    init: (header: unknown): MetricsProjectionView => {
+      const root = rootOf((header as { readonly cwd?: unknown } | null)?.cwd as string | undefined)
+      return root === undefined ? { viewFile: null, reason: 'no-project' } : { viewFile: viewFileOf(root) }
+    },
+    apply: (state: MetricsProjectionView): MetricsProjectionView => state,
+    wire: { viewSchema: { parse }, view: (state: MetricsProjectionView): MetricsProjectionView => state },
+  }
+}
+
+/** What the `hournessMetrics` projection tells the client (§7.6.3). */
+export interface MetricsProjectionView {
+  readonly viewFile: string | null
+  readonly reason?: string
+}
 
 /** The default one-shot timer: `setTimeout`, which never holds the host process open. */
 const realTimer = (body: () => void, ms: number): (() => void) => {
@@ -127,15 +203,28 @@ export function apply(ctx: MetricsContext, config: MetricsConfig = {}): () => vo
   const scheduled = new Set<string>()
   /** The sessions each project's report went to, so a later self-check refreshes them (§9.6's 后台自查完成). */
   const reported = new Map<string, Set<string>>()
+  /** What waits for a service that may still arrive, by slot (§9.1's 指标板没有登记). */
+  const waiting: Record<string, string | undefined> = { projection: WAITING_PROJECTION }
+  /** The board's last good groups per project, kept for the next failed attempt to carry (§7.6.5). */
+  const lastGood = new Map<string, { readonly basis: string, readonly groups: MetricsBoardView['groups'] }>()
+  /** When a project's board was last computed successfully (ISO), for the view's `at` (§7.6.2). */
+  const atGood = new Map<string, string>()
+  /** When a project's board was last computed, for the hourly throttle (§7.6.2). */
+  const lastBoardAt = new Map<string, number>()
+  /** The local day a project's board belongs to, for the date-change trigger (§7.6.2). */
+  const boardDay = new Map<string, string>()
+  /** Projects whose board is being computed right now (§7.6.2: 同一项目同时只算一次). */
+  const boardBusy = new Set<string>()
   const disposers: Array<() => void> = []
 
   const health: RowHealth = provideRowHealth(ctx, 'metrics', 'inactive', '指标行还在起')
 
   const activation = (): [HealthState, string] => [
-    problems.length === 0 ? 'active' : 'degraded',
+    problems.length === 0 && Object.values(waiting).every(value => value === undefined) ? 'active' : 'degraded',
     [
       ...notes,
       ...(missing.length > 0 ? [`接缝没装上：${missing.join('、')}`] : []),
+      ...Object.values(waiting).filter((text): text is string => text !== undefined),
       ...problems,
     ].join('；'),
   ]
@@ -299,6 +388,7 @@ export function apply(ctx: MetricsContext, config: MetricsConfig = {}): () => vo
       scheduled.add(root)
       scheduleSelfcheck(root)
     }
+    scheduleBoard(root)
     reportSession(where.sessionId, root)
   }
 
@@ -379,6 +469,7 @@ export function apply(ctx: MetricsContext, config: MetricsConfig = {}): () => vo
         const found = await (config.selfcheck ?? defaultSelfcheck)(event.project)
         const findings = findingsOf(found)
         checked.set(event.project, found)
+        void refreshBoard(event.project)
         return findings === undefined ? { outcome: 'skipped', reason: 'clean' } : { outcome: 'done' }
       }
       catch (error) {
@@ -418,6 +509,9 @@ export function apply(ctx: MetricsContext, config: MetricsConfig = {}): () => vo
     catch (error) {
       say(`循环板的接不上：${message(error)}`, false)
     }
+    // The client page reads the board through this projection (§7.6.3); without the service the view.json is still computed and written.
+    whenPresent({ name, ctx, waiting, health, activation }, 'sessionProjections', 'projection', WAITING_PROJECTION, '指标板（hournessMetrics）',
+      ({ sessionProjections }) => sessionProjections.register(metricsProjection(cwd => cwd === undefined ? undefined : projectOf(cwd)?.root)))
   }
   if (agents() === undefined) say('没有 agents 服务，模型调用与问人的事件只计数', true)
   if (pricingService(ctx) === undefined) say('积分口径：未提供', false)
@@ -445,12 +539,120 @@ export function apply(ctx: MetricsContext, config: MetricsConfig = {}): () => vo
           if (findings !== undefined) say(`自查有发现：${findings}`, true)
           health.reactivate(...activation())
           for (const sessionId of reported.get(root) ?? []) reportSession(sessionId, root)
+          void refreshBoard(root)
         }
         catch (error) {
           problem(`the self-check of ${root} failed: ${message(error)}`)
         }
       })()
     }, attempt === 0 ? config.checkDelay ?? 30_000 : 250)
+  }
+
+  /** The board view's read (§7.6.2): the 14 days' events with their basis, and the checker's findings over the same window. */
+  async function defaultBoardRead(root: string, window: { readonly from: string, readonly to: string }): Promise<BoardRead> {
+    const [read, findings] = await Promise.all([
+      readLog(root, { from: window.from, to: window.to }),
+      checkLog(root, { from: window.from, to: window.to, now }),
+    ])
+    return { events: read.events, basis: read.basis, findings }
+  }
+
+  /**
+   * Write the view atomically (§7.6.2): the fixed `view.json.tmp` first,
+   * then the rename; a failed rename leaves the old file and surfaces its
+   * code. A fresh directory's first file can transiently fail to open on
+   * Windows (the same class the writer's retry answers), so the whole
+   * write tries three times before it counts as failed.
+   */
+  async function writeAtomicView(file: string, text: string, io: StoreIo): Promise<void> {
+    let lastError: unknown = undefined
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        const temporary = `${file}.tmp`
+        const handle = await open(temporary, 'w')
+        try {
+          await handle.writeFile(text)
+          await handle.sync()
+        }
+        finally {
+          await handle.close()
+        }
+        if (await renameWithRetry(io, temporary, file)) return
+        try {
+          await io.rename(temporary, file)
+          return
+        }
+        catch (error) {
+          await unlink(temporary).catch(() => {})
+          throw error
+        }
+      }
+      catch (error) {
+        lastError = error
+        await new Promise(resolve => setTimeout(resolve, 50))
+      }
+    }
+    throw lastError
+  }
+
+  /** One project's board view (§7.6.2): compute from the last 14 local days, keep the last good content on a failure, write atomically. */
+  async function refreshBoard(root: string): Promise<void> {
+    if (boardBusy.has(root)) return
+    boardBusy.add(root)
+    try {
+      const tz = tzOffset(now)
+      const windows = boardWindows(new Date(now()).toISOString(), tz)
+      const tried = new Date(now()).toISOString()
+      let view: MetricsBoardView
+      try {
+        const read = await (config.boardRead ?? defaultBoardRead)(root, { from: windows.from, to: windows.to })
+        const shaped = boardView({ events: read.events, current: windows.current, previous: windows.previous, tz, findings: read.findings, basis: read.basis })
+        atGood.set(root, tried)
+        lastGood.set(root, shaped)
+        view = { version: 1, at: tried, tried, problem: null, basis: shaped.basis, windows: windows.labels, groups: shaped.groups }
+      }
+      catch (error) {
+        const reason = oneLine(message(error))
+        const good = lastGood.get(root)
+        view = {
+          version: 1,
+          at: atGood.get(root) ?? null,
+          tried,
+          problem: reason,
+          basis: good?.basis ?? '',
+          windows: windows.labels,
+          groups: good?.groups ?? [],
+        }
+        warn('board-compute', `the board view of ${root} failed: ${reason}`)
+        say(`指标板没能更新：${reason}`, true)
+      }
+      boardDay.set(root, windows.day)
+      lastBoardAt.set(root, now())
+      const io: StoreIo = { rename: config.rename ?? realStoreIo.rename, sleep: realStoreIo.sleep, now }
+      try {
+        // The view is runtime state beside the journal: the exclude line comes first, like the writer's prepare (§9.1).
+        await ensureIgnoredOf(root, '.llm')
+        await mkdir(join(root, '.llm', 'metrics'), { recursive: true })
+        await writeAtomicView(viewFileOf(root), `${JSON.stringify(capView(view), null, 2)}\n`, io)
+      }
+      catch (error) {
+        const code = (error as { readonly code?: unknown }).code
+        const reason = typeof code === 'string' ? code : oneLine(message(error))
+        warn('board-write', `writing the board view of ${root} failed: ${reason}`)
+        say(`指标板写不进：${reason}`, true)
+      }
+    }
+    finally {
+      boardBusy.delete(root)
+    }
+  }
+
+  /** The board's next compute for a project (§7.6.2): at most hourly while events arrive, sooner when the local day changed. */
+  function scheduleBoard(root: string): void {
+    if (boardBusy.has(root)) return
+    const day = localDate(new Date(now()).toISOString(), tzOffset(now))
+    if (boardDay.get(root) === day && now() - (lastBoardAt.get(root) ?? 0) < BOARD_EVERY_MS) return
+    ;(config.timer ?? realTimer)(() => { void refreshBoard(root) }, 0)
   }
 
   return () => {

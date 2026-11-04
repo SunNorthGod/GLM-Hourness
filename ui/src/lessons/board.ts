@@ -9,7 +9,7 @@
  */
 import type { ComponentType } from 'react'
 import type { ProjectionValues, SessionsClient } from '../dsh.ts'
-import { BOARD_ORDER, type Board, type BoardState } from '../graph/boards.ts'
+import { BOARD_ORDER, boardSessions, type Board, type BoardState } from '../graph/boards.ts'
 
 export interface LessonsBoardDeps {
   readonly sessions: SessionsClient
@@ -29,29 +29,14 @@ const stateOf = (values: ProjectionValues | undefined): BoardState =>
  * session that has none yet. The returned disposer stops the following.
  */
 export function lessonsBoard(page: ComponentType<{ readonly sessionId: string }>, deps: LessonsBoardDeps): { readonly board: Board, readonly dispose: () => void } {
-  const listeners = new Map<string, Set<() => void>>()
-  const states = new Map<string, BoardState>()
-  const asked = new Set<string>()
+  const sessions = boardSessions()
 
   const recompute = (): void => {
-    const projections = deps.sessions.list.getSnapshot().projectionsBySession
-    for (const sessionId of [...listeners.keys()]) {
-      const entry = projections[sessionId]
-      if (entry === undefined) {
-        // A cold session: ask once, the list's next change brings the values.
-        if (!asked.has(sessionId)) {
-          asked.add(sessionId)
-          void deps.sessions.refreshProjections(sessionId).catch(() => {})
-        }
-        continue
-      }
-      const next = stateOf(entry.values)
-      const current = states.get(sessionId)
+    for (const { sessionId, values } of sessions.listenedWith(deps.sessions.list.getSnapshot().projectionsBySession, id => { void deps.sessions.refreshProjections(id).catch(() => {}) })) {
+      const next = stateOf(values)
+      const current = sessions.state(sessionId)
       // Only `available` ever moves; keeping the same object until it does is what useSyncExternalStore requires.
-      if (current === undefined || current.available !== next.available) {
-        states.set(sessionId, next)
-        for (const listener of listeners.get(sessionId) ?? []) listener()
-      }
+      if (current === undefined || current.available !== next.available) sessions.remember(sessionId, next)
     }
   }
 
@@ -62,22 +47,11 @@ export function lessonsBoard(page: ComponentType<{ readonly sessionId: string }>
       id: BOARD_ORDER[2],
       label: '经验',
       subscribe: (sessionId, listener) => {
-        let set = listeners.get(sessionId)
-        if (set === undefined) {
-          set = new Set()
-          listeners.set(sessionId, set)
-        }
-        set.add(listener)
+        const off = sessions.subscribe(sessionId, listener)
         recompute()
-        return () => {
-          set.delete(listener)
-          if (set.size === 0) {
-            listeners.delete(sessionId)
-            states.delete(sessionId)
-          }
-        }
+        return off
       },
-      snapshot: sessionId => states.get(sessionId) ?? UNAVAILABLE,
+      snapshot: sessionId => sessions.state(sessionId) ?? UNAVAILABLE,
       Page: page,
     },
     dispose: unsubscribeList,

@@ -15,7 +15,7 @@ import type { MetricsEvent } from './schema.ts'
 export const CALC_VERSION = 1
 
 /** One rendered line: the label, the value (already `—` where a denominator is zero) and the machine-readable sample count where one exists. */
-interface CalcRow {
+export interface CalcRow {
   readonly label: string
   readonly value: string
   readonly samples?: number
