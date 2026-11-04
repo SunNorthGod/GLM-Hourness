@@ -50,9 +50,9 @@
  * (row-health.ts). The row ships disabled (packages/hourness/cordis.patch.yml).
  */
 import { basename } from 'node:path'
+import { projectHomeFor } from '../data/project-home.ts'
 import { projectOf } from '../data/project-root.ts'
-import { rowJournal } from '../memory/audit.ts'
-import { dataHomes } from '../shared/data-home.ts'
+import { projectJournal } from '../memory/audit.ts'
 import type { AgentCommandInvocationLike, AgentLike, AgentsService, CommandDefinitionLike, CommandResultLike, CommandsHost, PreExecuteListener, ProvideHost, ServiceLookup, SessionLike, ToolsLike } from '../shared/dsh-min.ts'
 import { activationState, provideRowHealth, sessionIdOf, type HealthState, type RowHealth } from '../shared/health.ts'
 import { PEAK_MODE_SERVICE } from '../shared/peak-mode.ts'
@@ -94,7 +94,7 @@ const realTimer: IntervalTimer = (tick, everyMs) => {
 export interface RulesConfig {
   /** The rules directory in the repository: relative to the project root, or absolute (the probe and tests). Default docs/rules. */
   readonly dir?: string
-  /** The project directory (workspace `.llm`) for the violation journal; defaults to the data service's. */
+  /** The project directory (workspace `.llm`) for the violation journal; without it each record goes to the `.llm` of the session's project, else to the data service's (projectHomeFor). */
   readonly home?: string
   /** The clock, for tests; default `Date.now`. */
   readonly now?: () => number
@@ -253,7 +253,7 @@ export function apply(ctx: RulesContext, config: RulesConfig = {}): Unload {
   }
 
   try {
-    disposers.push(installRulesGate({ ctx, rulesDir, now, project: read, peak: reading, journal: rowJournal(name, () => dataHomes(ctx, config.home)), health, tickets }))
+    disposers.push(installRulesGate({ ctx, rulesDir, now, project: read, peak: reading, journal: projectJournal(name, cwd => projectHomeFor(ctx, config.home, cwd)), health, tickets }))
     gateInstalled = true
   }
   catch (error) {

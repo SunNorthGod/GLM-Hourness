@@ -31,7 +31,7 @@ origin/main（`45ae4e8`）还不含 `8c9d74f`（`merge-base --is-ancestor` 退�
 
 ## 2. 批次
 
-- [ ] 1. **B1（m4-rules 余项）规则板的流水按项目写**
+- [x] 1. **B1（m4-rules 余项）规则板的流水按项目写**
       范围：规则板门（`installRulesGate`）的流水改用 `projectJournal(name, cwd => projectHomeFor(ctx, config.home, cwd))`，记录写进调用会话所在项目的 `.llm/audit/violations.jsonl`（行配置 `home` 仍优先，没有项目时退回数据行的 `projectHome`）。`GateDeps.journal` 的签名改为 `violation(record, cwd)`，`note()` 与跟进的 `hookJournal` 闭包传会话的 `header.cwd`。不加 `flush` 调用（与改动前行为一致）。
       文件：`src/rules/gate.ts`（`GateDeps.journal`、`note()`、`tools/pre-execute` 监听器里的 `hookJournal`）；`src/rules/index.ts`（`:256`，删掉不再用的 `rowJournal`、`dataHomes` 导入）；`tests/rules-gate.spec.ts`（新增一例：两个临时 git 仓库里的会话各被一条规则拦一次，各自的 `<仓库>/.llm/audit/violations.jsonl` 恰有自己那条，数据行的 `projectHome` 下没有）；`docs/ORCHESTRATION.md` §18 的「违规流水」一句（约 :1514，「行配置 `home`，否则数据目录服务的 `projectHome`」改成 `projectHomeFor` 的三级次序）；随本提交带上 `.agents/tasks/m4/impl-progress.md` 的较新改动与本文件。
       验收：rules #1–#3 已在树上；本批关掉节点批注点名的余项（设计 §3.2 规则板记录按项目落盘）。
@@ -130,6 +130,7 @@ origin/main（`45ae4e8`）还不含 `8c9d74f`（`merge-base --is-ancestor` 退�
 7. **L3 里命令改一个字之后 `checkCommandOf` 随之变**（§14.1 `env-checks` 末尾）放在 L2：探针里改已批准节点的验收条件要人的原话，探针扮演人走不到；L2 用真实引擎以人的身份改。
 8. **晨报「检查的超时」一节的 L3 核对放在 L2**（§14.1 `env-checks-timeout` 末句）：探针读的是 `timing.jsonl` 的行序列，报告的拼法由 `tests/workflow.spec.ts` 钉。
 9. **B1 不给规则板门加 `flush`**：与改动前一致，缺口行在下一次写成功时落盘。
+10. **B1 的 L3 给规则行一个行 `home`，不改探针的读取路径**：探针的覆盖层（`scripts/sandbox.mjs` 的 `dataRows`）本来就给 guard、graph、loops、design 行配 `home` 指向运行目录，理由是没有场景工作区的会话（cwd 是本检出）按项目取会落进主检出的 `.llm`。规则行默认启用，改成按项目取之后同样会这样，所以把 `rules` 加进同一张表；现有规则板场景照旧从运行目录读记录，检查不改。按会话项目落盘由 L2 的新例覆盖。
 
 ## Digest
 
