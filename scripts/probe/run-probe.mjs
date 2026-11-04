@@ -2036,11 +2036,13 @@ const PLAN_WHY = 'probe: the plan flow needs a running model'
 const PLAN_HAND_BACK_1 = { status: 'done', summary: 'wrote site/feed/feed.json; the plan was approved and the question answered', commits: [], files: ['site/feed/feed.json'], checks: [], questions: [], assumptions: ['Cap at 20.'], lessons: [] }
 const PLAN_HAND_BACK_2 = { status: 'done', summary: 'wrote site/rss/atom.js; the plan was approved', commits: [], files: ['site/rss/atom.js'], checks: [], questions: [], assumptions: [], lessons: [] }
 const execPlanWorker1 = [
-  // The sibling talk comes first on purpose: worker two ends when its plan is
-  // approved, and a later send_message races that end - the refusal then
-  // names the ended worker instead of the lineage check.
-  { tool: { name: 'send_message', arguments: { agent_id: '{worker:task-2}', message: 'probe: sibling talk' } } },
   { tool: { name: 'Write', arguments: { file_path: join(runDir, EXEC_PLAN, 'ws', '.worktrees', 'hz-task-1', 'site', 'feed', 'feed.json'), content: 'too early\n' } } },
+  // The sibling talk runs second, on purpose: the main agent dispatches
+  // task-2 before task-1, so the register holds task-2's child id before
+  // this worker starts (the {worker:} placeholder resolves), and worker two
+  // cannot end until its plan is approved several rounds from here - a later
+  // send_message raced that end and the refusal named the ended worker.
+  { tool: { name: 'send_message', arguments: { agent_id: '{worker:task-2}', message: 'probe: sibling talk' } } },
   { tool: { name: 'submit_plan', arguments: { steps: [{ title: 'Write the feed builder', paths: ['site/feed/feed.json'], acceptance: ['it lists the posts'], covers: [], verify: 'L1', commands: [] }] } } },
   { tool: { name: 'submit_plan', arguments: { steps: [{ title: 'Write the feed builder', paths: ['site/feed/feed.json'], acceptance: ['it lists the posts'], covers: [0, 1], verify: 'L2', commands: ['node --test'] }], notes: 'probe: one file' } } },
   { tool: { name: 'Write', arguments: { file_path: join(runDir, EXEC_PLAN, 'ws', '.worktrees', 'hz-task-1', 'site', 'feed', 'feed.json'), content: 'probe feed\n' } } },
@@ -2055,8 +2057,8 @@ const execPlanWorker2 = [
 ]
 const execPlan = designScenario(EXEC_PLAN, 'glm-5.3-flash', () => [
   { tool: { name: 'graph_focus', arguments: { id: 'goal-1' } } },
-  { tool: { name: 'dispatch_task', arguments: { id: 'task-1', model: 'glm-5.3-flash', why: PLAN_WHY } } },
   { tool: { name: 'dispatch_task', arguments: { id: 'task-2', model: 'glm-5.3-flash', why: PLAN_WHY } } },
+  { tool: { name: 'dispatch_task', arguments: { id: 'task-1', model: 'glm-5.3-flash', why: PLAN_WHY } } },
   { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 8', description: 'probe: let both workers submit their plans' } } },
   { tool: { name: 'send_message', arguments: { agent_id: '{worker:task-1}', message: 'probe: keep the feed to twenty items' } } },
   { tool: { name: 'answer_worker', arguments: { request: '{plan-request:task-1}', verdict: 'approve' } } },
@@ -2699,8 +2701,10 @@ function planChecks() {
   const main = execPlan.steps.filter(step => step.sessionId === execPlan.steps[0]?.sessionId)
   const result = step => lastToolResult(step)?.text ?? ''
   const summary = index => { try { return JSON.parse(result(main[index])) } catch { return undefined } }
-  const child1 = summary(2)?.childId
-  const child2 = summary(3)?.childId
+  // The main agent dispatches task-2 first (so worker one's early sibling
+  // talk finds the register filled), the dispatch summaries swap with it.
+  const child1 = summary(3)?.childId
+  const child2 = summary(2)?.childId
   const worker1 = child1 === undefined ? [] : bySession(execPlan, child1)
   const worker2 = child2 === undefined ? [] : bySession(execPlan, child2)
   const face = step => (step?.tools ?? []).map(tool => tool.name)
@@ -2719,12 +2723,12 @@ function planChecks() {
   const requestIdOf = text => /"request": "(R-[0-9a-z]{6})"/.exec(text)?.[1]
   return [
     [`exec plan: the worker's face has submit_plan and ask_main, none of the main agent's tools; the main agent's face has answer_worker`, ['submit_plan', 'ask_main'].every(tool => face(worker1[0]).includes(tool)) && ['answer_worker', 'dispatch_task'].every(tool => !face(worker1[0]).includes(tool)) && face(main[0]).includes('answer_worker') && WORKER_TOOL_NAMES.every(tool => !face(main[0]).includes(tool)), `worker face ${face(worker1[0]).length}; answer_worker in main ${face(main[0]).includes('answer_worker')}`],
-    [`exec plan: the write before an approved plan is refused by the plan gate with the way out`, lastToolResult(worker1[2])?.isError === true && result(worker1[2]).includes('needs an approved plan') && result(worker1[2]).includes('submit_plan'), result(worker1[2]).slice(0, 140)],
+    [`exec plan: the write before an approved plan is refused by the plan gate with the way out`, lastToolResult(worker1[1])?.isError === true && result(worker1[1]).includes('needs an approved plan') && result(worker1[1]).includes('submit_plan'), result(worker1[1]).slice(0, 140)],
+    [`exec plan: send_message between siblings is refused by the lineage check`, lastToolResult(worker1[2])?.isError === true && /belongs to another parent session|UNAUTHORIZED/.test(result(worker1[2])), result(worker1[2]).slice(0, 100)],
     [`exec plan: a plan that fails the checks comes back to the worker at once and nobody is notified`, lastToolResult(worker1[3])?.isError === true && result(worker1[3]).includes('not covered by any step') && noticeIds(planNoticeTexts).size === 2, `${result(worker1[3]).slice(0, 100)}; plan notice ids ${noticeIds(planNoticeTexts).size}`],
     [`exec plan: the passing plan lands on the task body as version 1 pending review, the notices name their requests, and the submit returns approved`, String(task1?.body ?? '').includes('第 1 版 · 主 Agent 已批') && history1.some(entry => entry.op === 'edit' && String(entry.reason ?? '').includes('submit_plan')) && noticeIds(planNoticeTexts).size === 2 && lastToolResult(worker1[4])?.isError !== true && result(worker1[4]).includes('"status":"approved"') && result(worker1[4]).includes('"version":1'), `body ${(task1?.body ?? '').split('\n').find(line => line.startsWith('第 1 版')) ?? 'no section'}; submit ${result(worker1[4]).slice(0, 60)}; plan notice ids ${noticeIds(planNoticeTexts).size}`],
     [`exec plan: the approval writes the approval comment with the worker's child id, and the section's digest matches it`, approval !== undefined && /^计划第 1 版已批 · 摘要 [0-9a-f]{12} · hz-task-1-a1-[0-9a-z]{6} · .+$/.test(approval.text) && approval.text.includes(child1 ?? ''), approval?.text ?? 'no approval comment'],
     [`exec plan: the write inside the approved paths runs after the approval, and the send_message the main agent made during the wait arrived at that step (U3)`, lastToolResult(worker1[5])?.isError !== true && existsSync(join(ws, '.worktrees', 'hz-task-1', 'site', 'feed', 'feed.json')) && messagesOf(worker1[5], 'agent-message').some(message => message.text.includes('twenty items')), `write ${lastToolResult(worker1[5])?.isError}; relay ${messagesOf(worker1[5], 'agent-message').length}`],
-    [`exec plan: send_message between siblings is refused by the lineage check`, lastToolResult(worker1[1])?.isError === true && /belongs to another parent session|UNAUTHORIZED/.test(result(worker1[1])), result(worker1[1]).slice(0, 100)],
     [`exec plan: the answer to ask_main returns inside the same call, and the question notice carried the request id`, lastToolResult(worker1[6])?.isError !== true && result(worker1[6]).includes('"status":"answered"') && result(worker1[6]).includes('Twenty items, then stop.') && noticeIds(questionNoticeTexts).size === 1 && questionNoticeTexts.some(text => text.includes('Cap the feed at how many items?')), `${result(worker1[6]).slice(0, 80)}; question notice ids ${noticeIds(questionNoticeTexts).size}`],
     [`exec plan: every answer_worker of the main agent delivered, the second worker's plan was approved in its own call, and both workers ended with the structured handback`, result(main[6]).includes('"delivered":true') && result(main[7]).includes('"delivered":true') && result(main[9]).includes('"delivered":true') && worker1.length === 7 && result(worker1.at(-1)).includes('"status":"answered"') && worker2.length === 2 && result(worker2.at(-1)).includes('"status":"approved"'), `approves ${[6, 7, 9].map(index => result(main[index]).slice(0, 20)).join(' | ')}; worker1 ${worker1.length}, worker2 ${worker2.length}`],
     [`exec plan: the run exits clean with nothing from the execute row on stderr`, execPlan.status === 0 && !stderrOf(name).includes('dsh-glm-hourness/execute'), `exit ${execPlan.status}; main ${main.length} step(s); worker1 ${worker1.length}, worker2 ${worker2.length}`],
