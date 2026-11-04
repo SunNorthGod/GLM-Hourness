@@ -26,6 +26,7 @@ import { failure, type Failure } from './mutation.ts'
 import { listOpenItems, projectNode } from './projection.ts'
 import { REOPEN_LIMIT, reopenNotice, reopenNoticeFailed, reopenNoticeForSubagent, reopenQuestion, reopensAfter, thirdReworkState } from './reopen.ts'
 import { NODE_TYPES, SLOPES, STAGES, TASK_KINDS, TIERS, WEIGHTS, type Evidence, type GraphNode } from './schema.ts'
+import { isUserNode } from './user-graph.ts'
 import { liveOf } from './user-live.ts'
 import type { LoadedGraph } from './parse.ts'
 import { loadGraph } from './store.ts'
@@ -621,7 +622,13 @@ export function graphTools(dir: string, focuses: FocusMemory, report: ThirdRewor
       async execute(args, exec) {
         readRequest('graph_open', args, [])
         const graph = await openEngine(await graphDir(dir, exec)).load()
-        return { ok: true, items: listOpenItems(graph), ...invalidOf(graph) }
+        const items = listOpenItems(graph)
+        // reject does not cascade: a proposed user node under a rejected or dropped flow or role is no longer waiting for the person (user graph design 0.4.1 §3.7).
+        const proposals = items.proposals.filter((ref) => {
+          const node = graph.nodes.get(ref.id)
+          return node === undefined || !isUserNode(node) || liveOf(graph, node)
+        })
+        return { ok: true, items: { ...items, proposals }, ...invalidOf(graph) }
       },
     },
     {

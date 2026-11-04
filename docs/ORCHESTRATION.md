@@ -105,7 +105,7 @@ L3 核实〔实测 2026-10-28，派发可行性验证 (c)，`ROADMAP.md` 借用�
 
 - 当前节点：agent 用图工具 `graph_focus {id}` 设定自己的焦点节点（一般是正在做的任务），每个会话一个，再调一次就移走。`graph_focus` 不写图，只确认节点存在，返回它的类型、标题与状态；投影从下一步起送到。
 - 注入：行在 `agent/created` 时给每个 agent 装一个 `agent/pre-step` 监听器，把投影追加在本步已接纳的消息之后；监听器用 todo 提醒与高峰提醒的同一个接缝（公共库的 `src/shared/step-notice.ts`，`DESIGN.md` §5.5）。投影是 `createUserNotice` 生成的 notice（来源 `glm-graph-projection`），正文用 `<system-reminder>` 包装（与工具检索公告共用 `wrapSystemReminder`，在公共库的镜像文件 `src/shared/zcode-notice.ts`），不进系统提示词（`DESIGN.md` §6）。不会变成请求的空决策不加。
-- 内容：焦点节点与它的验收条件；到目标的祖先链（父节点在前）；阶段；子节点；来源（它因哪些节点而存在）；它依赖的节点与依赖它的节点；未通过的门禁；图有校验错误时另加一行「写入一律被拒，告诉人」。每个节点一行：类型、id、状态（决策另带验证状态，拍过板的待决带 `decided <选项>`）、标题。不带修订号、历史、正文，也不带目标的验收条件与非目标：修订号与历史每次写入都变，带上就要每次重注；正文与目标的条件太长。这些用 `graph_show` 读。
+- 内容：焦点节点与它的验收条件；到目标的祖先链（父节点在前）；阶段；子节点；来源（它因哪些节点而存在）；它依赖的节点与依赖它的节点；用户图的四项（特性与任务「Serves the steps」，步骤「Served by」「Next steps」「Previous steps」，流程「Starts at」，见下）；未通过的门禁；图有校验错误时另加一行「写入一律被拒，告诉人」。每个节点一行：类型、id、状态（决策另带验证状态，拍过板的待决带 `decided <选项>`）、标题；`next` 带条件时行末写 `(when: <条件>)`。列表为空的一项不写，所以开发图节点的投影正文不因用户图而变。不带修订号、历史、正文，也不带目标的验收条件与非目标：修订号与历史每次写入都变，带上就要每次重注；正文与目标的条件太长。这些用 `graph_show` 读。
 - 何时注入：每步从 `session.deriveMessages()`（请求可见的历史）重新推出，按下面的顺序取第一条成立的规则，规则名记在 notice 来源的 `graphProjection.reason`：
   1. `compaction`：历史里最近的压缩检查点（来源 `compact-checkpoint`，带 `compactionId`）在最近一条投影之后，或最近一条投影记下的 `anchor`（注入时可见的最近检查点的 `compactionId`）不是这个检查点。旧投影留在压缩的保留区间里也算没锚过，所以每次压缩之后都重注一次。
   2. `goal-round`：本步接纳的消息里有目标轮消息（来源 `goal`，goal-round-driver 每拍一条），每拍都带投影（§2.1）。
@@ -116,6 +116,15 @@ L3 核实〔实测 2026-10-28，派发可行性验证 (c)，`ROADMAP.md` 借用�
 - 出错：焦点节点不在图里、图目录不存在时，注入一条说明（同样只在变化时注入）；读图时抛出异常则告警，本步原样放行。
 - 路由：与图工具一样不分路由，GLM 与非 GLM 都注入，只有调过 `graph_focus` 的 agent 收到投影。`agent/pre-step` 的载荷里没有路由（`DESIGN.md` §2.4a），要按路由区分就得另挂组装监听器；图是项目状态，不是方言，不需要区分。
 - 没做：重锚时的规范摘要与本会话违规计数（等 guard 的违规记录与规范体系，M4）；todo 视图。
+- 用户图的投影〔用户图设计 0.4.1 §3.7，UG3〕：`projectNode`（`graph_show` 与每步投影共用）对特性与任务多 `serves`（它自己的 `serves` 连线指向的步骤，被废弃的也列，模型据此改连线），对步骤多 `servedBy`（`live` 的服务者，审查任务不算）、`next`（`{to, when?}`）与 `previous`（`next` 指向它的 `live` 步骤），对流程多 `next`（就是它的入口）；引用都带 `rev`。门禁多两种，只报告：步骤没有服务者是 `serving`，目标下有没人负责的步骤是 `steps`（列出 id）。「子节点未全部关闭」不数用户节点：已批准的角色、流程、步骤永远不是完成，数进去会让目标一直开着。
+
+用户图的推导〔用户图设计 0.4.1 §2.5、§2.6、§3.6，`src/graph/user-graph.ts`，UG3；L2：`tests/graph-user-state.spec.ts`、`tests/graph-user-render.spec.ts`，夹具是设计 §2.9 的图书管理系统，`tests/graph-user-helpers.ts`〕：
+
+- 纯函数，不读文件、不用 Node 内置模块，宿主、图工具与面板读同一份推导。导出 `isUserNode`、`userGraphOf`（目标下 `live` 的角色、流程、步骤的状态与缺口；`present` 是目标下至少有一个 `live` 的角色）、`stepsServedBy`、`renderUserGraph`、`userReleaseItems`、`userCompletionItems`。`live` 取 `liveOf`（`user-live.ts`）：本身与到目标为止的祖先都不是废弃、被取代。
+- 步骤的状态按表取第一条成立的：`proposed`（待你定）、`unserved`（没有 `live` 的服务者）、`planned`（叶子都没开始）、`building`（叶子没有全部完成）、`built`（全部完成，从没走过，或最近一次走一遍之后这条流程连着的活动过，此时 `outdated`）、`walked`、`failed`。叶子：任务服务者是它自己；特性服务者下面有任务连到这一步时只取这些任务，否则取它的全部叶子。「动过」是流程、它的 `live` 步骤、服务者与叶子上任何不是批注与走一遍的历史，时间不早于那次走一遍；`serves` 的增删只算指向这条流程的步骤的。走一遍只认 `harness`、`human` 与带转述的 `llm` 写的记录，每条证据 `exit` 都是 0 才算通过。流程按已批准的步骤折叠（有 `failed` 是 `failed`，全部 `walked` 是 `walked`，其余取 `unserved`、`planned`、`building`、`built` 里最靠前的），角色再按流程折叠；显示顺序从流程的入口深度优先，走不到的按创建时间排在最后。
+- 缺口按设计 §2.6 表的次序列出，同一种按角色、流程、步骤的显示顺序：没人负责、不服务任何步骤（`work:orphan`，`reason` 区分从没服务过与服务的步骤都不要了；带合格「服务：无，<原因>」的模块和它下面没有 `serves` 的活不标）、没写怎样算做成、走不通（与 `failed` 状态一致）、形状（没有流程、没有步骤、入口不是恰好一条、走不到、分支缺条件或重复、`next` 指向不 `live` 的步骤）、没写走法或合入前检查清单 `norm-merge-gate` 里没有对应的 `walk` 命令、每一步都拆成了任务却没有测试任务（`flow:no-test`）、过大。
+- 给人看的页：`confirm` 是角色、流程与步骤的样稿（只有稳定部分）；`serves` 在大循环页上写每条流程由哪个特性负责（服务者的最近特性祖先），带模块时写这个模块服务的步骤，现状部分写每步的状态、别的模块、不服务任何步骤的任务数；`walks` 写每条流程的走法、命令原文与预计秒数，现状部分写超时上限。`userReleaseItems` 给出放行项 `flows:shape`、`flows:expect`、`flows:served`、`flows:walk`、`flows:page`，分了模块的目标另有 `flows:modules`；接进放行门禁是 UG4 的事。
+- 不数用户节点的地方：`releaseSet`、`bigLoopSet`、`moduleSet` 只收 `live` 的用户提议（`reject` 不级联，被拒绝的流程下面的提议不随放行批准）；`graph_open` 的 `items.proposals` 与面板「需要你」（`needsOf`）不列本身或祖先不 `live` 的用户提议，`listOpenItems` 本身不变；面板图视图（`visibleGraph`）不把用户节点算作开着，也不数进被藏的已关闭子节点；节点的状态字对用户节点写推出的状态（§2.10，`statusText` 带图时）。
 - 验证：`tests/graph-reminder.spec.ts` 在假宿主 `tests/fake-rc3.ts` 上（L2）覆盖设定焦点后的首次注入、不变不重注、投影内外的改动、焦点移动与被拒的调用、压缩重锚（检查点替换整段历史，以及旧投影留在保留区间）、目标轮、续跑与崩溃后从历史找回焦点、坏图与焦点节点消失、空决策、每个 agent 只装一次、没有会话的 agent 与读图失败。真实请求里的投影与压缩后的重锚（L3）按 `ROADMAP.md` M2 2.11 的检查清单做。
 
 ### 2.6 存储与文件格式〔已实现，2026-10-28 用户批准原型〕
@@ -444,6 +453,8 @@ DSH 图工具〔已实现，`src/graph/tools.ts`，行入口 `src/graph/index.ts
 布局在 `src/graph/layout.ts`，绘制在 `src/graph/render.ts`。布局只输出坐标与折好的标题行，绘制只认坐标。
 
 视图有三种：整张图；子树（`root`，一个节点及其全部后代）；投影（`focus`，节点本身、它到目标的祖先链、它的子节点，以及经依赖、来源、取代连线与它相连的节点连同这些节点的祖先链；焦点节点外加蓝色描边）。三种视图都可以另外指定折叠的节点。
+
+图片是开发图〔用户图设计 0.4.1 §3.8〕：三种视图都不画用户图的角色、流程、步骤，也不画 `serves`、`next` 两种连线（`layout.ts` 选节点时去掉用户节点，排交叉的拉力与连线都只取依赖、来源、取代），图例与样式里没有这两种连线。所以没有用户节点的图字节不变，加上用户节点的图与去掉它们的图逐字节相同（`tests/graph-store.spec.ts` 钉住）。用户图的图片不做，它的页面在面板里。
 
 自建分层布局，从左到右：
 

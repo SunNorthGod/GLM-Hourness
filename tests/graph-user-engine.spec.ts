@@ -222,12 +222,17 @@ userTest('walk: the evidence shapes and the ten kept on the node (design §1.4 i
   assert.equal(node.history.filter(entry => entry.op === 'walk').length, USER_LIMITS.walkKept + 2, 'the history keeps them all')
 })
 
-userTest('the propose and relink of the example pass the real transcribe check, once per node (design §1.4 item 13)', async g => {
-  const words = '借书前要先交押金'
-  // The fixture clock ticks one second per write; the seed has spent 18. The person speaks after step-1's proposal (:07) and before the relink below (:19).
-  const at = Date.UTC(2026, 9, 28, 8, 0, 15)
+/** The main agent's session over the fixture's directory. */
+type MainSession = { readonly id: string, readonly session: { readonly header: { readonly cwd: string }, readonly id: string } }
+
+/**
+ * The real relay check (main-agent-graph-relay over talk.ts personSaid) for
+ * a main agent's session in which the assistant spoke at `at` and the person
+ * said `words` one millisecond later.
+ */
+function personSays(g: EngineFixture, words: string, at: number): { readonly deps: GraphRuleDeps, readonly agent: MainSession } {
   const events: SessionEventLike[] = [
-    { type: 'assistant/message', seq: 0, time: at, data: { message: { role: 'assistant', content: [{ type: 'text', text: '我建议加一步' }], source: { kind: 'model' } }, turn: 1 } },
+    { type: 'assistant/message', seq: 0, time: at, data: { message: { role: 'assistant', content: [{ type: 'text', text: '你看哪里不对' }], source: { kind: 'model' } }, turn: 1 } },
     { type: 'user/message', seq: 1, time: at + 1, data: { id: 'u1', role: 'user', content: [{ type: 'text', text: words }], source: { kind: 'user' } } },
   ]
   const state: TalkState = talkFold({}, events)
@@ -238,7 +243,13 @@ userTest('the propose and relink of the example pass the real transcribe check, 
       return said.ok ? { ok: true } : { ok: false, reason: said.reason, offBoundary: said.offBoundary }
     },
   }
-  const agent = { id: 'main', session: { header: { cwd: g.dir }, id: 's1' } }
+  return { deps, agent: { id: 'main', session: { header: { cwd: g.dir }, id: 's1' } } }
+}
+
+userTest('the propose and relink of the example pass the real transcribe check, once per node (design §1.4 item 13)', async g => {
+  const words = '借书前要先交押金'
+  // The fixture clock ticks one second per write; the seed has spent 18. The person speaks after step-1's proposal (:07) and before the relink below (:19).
+  const { deps, agent } = personSays(g, words, Date.UTC(2026, 9, 28, 8, 0, 15))
   // The person's words came after the flow's last change but the new step has no history: the propose passes with the words as relay.
   const propose = await judgeMainAgentGraph(deps, agent, {
     name: 'graph_propose',
@@ -262,6 +273,52 @@ userTest('the propose and relink of the example pass the real transcribe check, 
   assert.equal(again.kind === 'deny' && again.rule, 'main-agent-graph-relay')
 })
 
+/** The ids graph_open lists under `items.proposals` for the fixture's directory. */
+async function openProposals(dir: string): Promise<readonly string[]> {
+  const open = graphTools(dir, new Map()).find(tool => tool.name === 'graph_open')!
+  const result = await open.execute({}, { agent: { session: { header: { cwd: dir }, id: 's' } } }) as { readonly items: { readonly proposals: readonly { readonly id: string }[] } }
+  return result.items.proposals.map(ref => ref.id)
+}
+
+userTest('withdrawing an unapproved flow: one graph_reject per node with the same sentence, through the real relay check (design §4.2, §1.4 item 26)', async g => {
+  // The main agent drafts a flow and its three steps without the person's words: all four are proposed.
+  const flow = await g.run('llm', { op: 'propose', reason: '访谈草稿', node: { type: 'flow', title: '预约', parent: 'role-1', body: '走法：你来走' } })
+  const steps: string[] = []
+  for (const title of ['选书', '选日期', '确认预约']) {
+    steps.push((await g.run('llm', { op: 'propose', reason: '访谈草稿', node: { type: 'step', title, parent: flow.id, acceptance: [`看到${title}`] } })).id)
+  }
+  const drafted = [flow.id, ...steps]
+  for (const id of drafted) assert.equal((await g.node(id)).status, 'proposed')
+  assert.deepEqual((await openProposals(g.dir)).filter(id => drafted.includes(id)).sort(), [...drafted].sort(), 'live proposals are listed before the withdrawal')
+  // The llm cannot reject without the person's words.
+  refused(await g.engine.apply('llm', { op: 'reject', id: flow.id, rev: await g.rev(flow.id), reason: '自己撤' }), 'forbidden')
+  // The person speaks after the last change of every drafted node.
+  const words = '预约这条流程不要了'
+  const lastChange = Math.max(...await Promise.all(drafted.map(async id => Date.parse((await g.node(id)).history.at(-1)!.at))))
+  const { deps, agent } = personSays(g, words, lastChange + 1)
+  // status is no way out for a proposal, with the words or from the person: bad_transition.
+  refused(await g.act('llm', { op: 'status', id: flow.id, to: 'dropped', reason: words, relay: words }), 'bad_transition')
+  refused(await g.act('human', { op: 'status', id: steps[0], to: 'dropped', reason: '不要了' }), 'bad_transition')
+  // One graph_reject per node, each judged with the same sentence and its own fresh rev. The flow goes first: reject does not cascade.
+  for (const id of drafted) {
+    const args = { id, rev: await g.rev(id), reason: words, relay: words }
+    const verdict = await judgeMainAgentGraph(deps, agent, { name: 'graph_reject', arguments: args })
+    assert.equal(verdict.kind, 'allow', `${id}: ${JSON.stringify(verdict)}`)
+    await g.run('llm', { op: 'reject', ...args })
+    if (id === flow.id) {
+      for (const step of steps) assert.equal((await g.node(step)).status, 'proposed', 'the steps stay proposed after their flow is rejected')
+    }
+  }
+  for (const id of drafted) assert.equal((await g.node(id)).status, 'dropped')
+  // A second write to one of them with the same sentence is denied: the words are older than its reject.
+  const again = await judgeMainAgentGraph(deps, agent, {
+    name: 'graph_edit',
+    arguments: { id: steps[1], rev: await g.rev(steps[1]), reason: words, set: { body: '不要了' }, relay: words },
+  })
+  assert.equal(again.kind, 'deny', 'the same sentence does not cover a second write to the node')
+  assert.equal(again.kind === 'deny' && again.rule, 'main-agent-graph-relay')
+  assert.deepEqual((await openProposals(g.dir)).filter(id => drafted.includes(id)), [], 'graph_open no longer lists them')
+})
 
 /** The graph_walk tool over the fixture's directory. */
 function walkToolOf(dir: string): { readonly walk: { readonly execute: (args: unknown, exec: unknown) => Promise<unknown> }, readonly exec: unknown } {

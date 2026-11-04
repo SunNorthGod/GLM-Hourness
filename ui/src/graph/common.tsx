@@ -120,7 +120,7 @@ export function NodeRow({ graph, node, tone, path, status }: { readonly graph: L
         <div className="glmg-row-title">{node.title}</div>
         <div className="glmg-meta">
           <span>{TYPE_LABELS[node.type]}</span>
-          {status === true ? <span>{statusText(node)}</span> : null}
+          {status === true ? <span>{statusText(node, graph)}</span> : null}
           {trail.length === 0 ? null : <span>{trail.join(' › ')}</span>}
           {text.work === undefined
             ? null

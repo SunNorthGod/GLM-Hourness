@@ -18,7 +18,8 @@ import { compareText } from './format.ts'
 import { DIRECTIONS_ID, directionsOf, frameworkOf, isSplit, moduleOf } from './modules.ts'
 import type { LoadedGraph } from './parse.ts'
 import { ancestorsOf, childrenIndex, subtreeOf, waitsForHuman } from './projection.ts'
-import { STAGES, type GraphNode, type Stage, type Status } from './schema.ts'
+import { STAGES, USER_TYPES, type GraphNode, type Stage, type Status } from './schema.ts'
+import { liveOf } from './user-live.ts'
 
 export interface GateItem {
   /** Stable key, for example acceptance or decision-3:architecture. */
@@ -199,7 +200,17 @@ function inReleaseOrder(graph: LoadedGraph, nodes: readonly GraphNode[]): readon
  * first and each module its `moduleSet`.
  */
 export function releaseSet(graph: LoadedGraph, goal: GraphNode): readonly GraphNode[] {
-  return inReleaseOrder(graph, descendants(graph, goal).filter(node => node.status === 'proposed'))
+  return inReleaseOrder(graph, descendants(graph, goal).filter(node => releasable(graph, node)))
+}
+
+/**
+ * A proposal a release approves. A user node counts only while it is live
+ * (user graph design 0.4.1 §3.7): reject does not cascade, so a proposed step
+ * under a rejected or dropped flow is still proposed, and a release must not
+ * approve it.
+ */
+function releasable(graph: LoadedGraph, node: GraphNode): boolean {
+  return node.status === 'proposed' && (!(USER_TYPES as readonly string[]).includes(node.type) || liveOf(graph, node))
 }
 
 /** Whether a node is below a module or a module candidate (the module itself is not): a part of that module's own release. */
@@ -214,12 +225,12 @@ function belowModule(graph: LoadedGraph, node: GraphNode): boolean {
  * module or a candidate, and the candidates themselves. In release order.
  */
 export function bigLoopSet(graph: LoadedGraph, goal: GraphNode): readonly GraphNode[] {
-  return inReleaseOrder(graph, descendants(graph, goal).filter(node => node.status === 'proposed' && !belowModule(graph, node)))
+  return inReleaseOrder(graph, descendants(graph, goal).filter(node => releasable(graph, node) && !belowModule(graph, node)))
 }
 
 /** What the release of one module approves (§3.14.3): the proposed nodes below the module, in release order. */
 export function moduleSet(graph: LoadedGraph, module: GraphNode): readonly GraphNode[] {
-  return inReleaseOrder(graph, descendants(graph, module).filter(node => node.status === 'proposed'))
+  return inReleaseOrder(graph, descendants(graph, module).filter(node => releasable(graph, node)))
 }
 
 /** A proposal with a supersedes edge blocks: approving it would supersede nodes the card does not show (design §3.3.2 item 6). */

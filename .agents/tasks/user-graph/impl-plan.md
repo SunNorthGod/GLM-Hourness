@@ -49,3 +49,44 @@
 - U1/U2 的边界按编译耦合调整：`OPS` 加 `walk`/`relink` 会强迫 `mutation.ts` 的 `OP_FIELDS`、`labels.ts` 的 `OP_LABELS` 和 `engine.ts` 的 `planChange` 同批可编译，所以操作与历史条目的格式检查放 UG1/UG2 如上表；UG1 不含 `OPS`（黄金测试不需要它），`walk` 历史条目的校验用例随 UG2。
 - `walk` 证据的 `exit` 字段：读入时 `exit` 必填（V7），写出的 canonical 顺序沿用 `canonicalEvidence`（kind、ref、exit、note）。
 - 面板 1.1 的页签与 `trail` 已在 main（面板线 P4 合入），UG6 直接用现有第 2 层页机制，不等面板 1.1。
+- UG3：`UserGraph` 多带一个字段 `graph`（读出它的那张图）。`renderUserGraph` 保持 §3.6 的签名 `(ug, level, module?)`，而 `serves` 一级要找服务者的最近特性祖先、模块的子树，只靠 `UserGraph` 里的视图做不到（交接清单第 3 条的两个选项取后者）。
+- UG3：`flows:modules` 只在分了模块的目标上出现（§5.2「只对分了模块的目标出现」、验收第 29 条「没分模块的目标的单次放行没有 `flows:modules`」）；分了模块时恒在，没有不服务的模块时为真。交接清单第 8 条写的「恒在，六项门面齐」与设计不符，按设计。
+- UG3：投影里流程的入口放在 `next` 字段（§3.7 的四个字段之一，「流程上是入口」），没有另设验收第 24 条字面上的 `entry` 字段；每步投影的提醒把流程的这一项写成「Starts at」。
+- UG3：`截图` 走法在目录里没有支持图片输入的模型时判为 `flow:no-walk`，这一条没有做：§3.6 的 `userGraphOf(graph, goal)` 不带模型目录，判据要等 A6 核实与 U5b 一起落。
+- UG3：缺口的次序取 §2.6 表的次序，同一种按角色、流程、步骤的显示顺序，孤儿按目标子树的广度优先次序；§2.9 预期表里缺口的列法不是排序规则。
+- UG3：「连着的活动过」里 `serves` 增删的例外对集合 X(S) 里的每个节点都适用（叶子任务给别的流程的步骤连线同样不算），不只对服务者。
+- UG3：面板 `visibleGraph` 对用户节点既不保留、也不数进被藏的已关闭子节点（图上从来不画它们）；`statusText(node, graph?)` 带图时对用户节点写 §6.5 的状态字，不 `live` 的写它自己或带走它的祖先的「废弃」「被取代」，不带图时（「需要你」卡片，只会遇到提议中的用户节点）照提议写。
+- UG3：`layout.ts`、`render.ts` 的排除在 UG1 已经落地，UG3 不再改代码，只补 `docs/ORCHESTRATION.md` §2.12 与 `tests/graph-store.spec.ts` 的钉子。`graph_open` 过滤的用例放在 `tests/graph-user-state.spec.ts`（用同一份夹具），不在 `tests/graph-tools.spec.ts`。
+- UG3：大循环页的超时上限一律写「都是预计的 3 倍，还没有跑过」：实测值来自 `walk-limits.jsonl`，随 U5b 顺延。
+
+## 暂停交接 2026-11-04（用户指令暂停；UG3 进行中，未提交）
+
+分支 `user-graph`，tip `bddbd05`（UG2），三个提交全部已推 `origin/user-graph`：`03d9213`（UG0 批次图）、`af530c9`（UG1）、`bddbd05`（UG2）。UG2 收官门禁全绿：build/preflight/test exit 0（0 not-ok），ratchet 恰在基线（eslint 76 / knip 19 / jscpd 1），probe 347/347 exit 0。分支对 `origin/main` behind 1（其他车道新落点，恢复后按计划先合并再继续，合并后跑全量门禁）。暂停时无任何命令在跑。
+
+### 未提交的工作
+
+仅一个未跟踪文件：`src/graph/user-graph.ts`（UG3 核心推导的初稿，未过任何门禁）。写完后已核对过真实签名，与初稿不符或初稿有占位错误，恢复时先修这份文件再写测试：
+
+- 已核对无误的 API：`projection.ts` 导出 `childrenIndex(graph)`、`ancestorsOf(graph, node)`、`subtreeOf(index, node)`（index 是 childrenIndex 的返回）；`stage.ts` 导出 `labeledSections(body, labels): ReadonlyMap<string,string>`、`GateItem`；`modules.ts` 导出 `moduleCandidatesOf(graph, goal)`；`schema.ts` 的 `HistoryEntry` 带 `edge?`（link/unlink/supersede 的实际边）与 `evidence?`；`walk-spec.ts` 导出 `WALK_KINDS`/`WalkKind`/`parseWalkLine`/`walkCommandsOf`/`WALK_SECONDS_LIMIT`；`format.ts` 导出 `compareText(a, b)`。
+- 初稿待修清单（按行修，不重写）：
+  1. 本地 `interface GraphEdge` 遮蔽 schema 的 `GraphEdge`——删本地定义，节点边直接用 `node.edges`（元素类型即 schema `GraphEdge`）；随之删掉死助手 `nextOf`/`servesFromEdges`。
+  2. `confirmFlowLines` 有运算符优先级错误：`step.step.acceptance?.length ?? 0 > 0` 必须加括号；同函数里那处 `.replace(\`： ${...}\`, '')` 的补丁写法整行重写成直接拼。
+  3. `renderUserGraph` 的 `'serves'` 层有一段占位垃圾（`ancestorsOf({ nodes: ug.goal ? ... })`）：重写为 `ancestorsOf`（需传 LoadedGraph——UserGraph 里存 goal 引用不够，考虑让 renderUserGraph 接收 graph 或在 UserGraph 里带 index/祖先查找；实现时定，但接口要贴设计 §3.6 签名）。`void module` 占位同理：带 `module` 时按设计 §3.6 列该模块服务的步骤。
+  4. `outdatedSince` 里 `void leaves` 残留删除；其 `liveSteps` 参数应传流程全部 live 步骤（含 proposed），调用点 `flowViewOf` 现在传的是 approved——改。
+  5. `gapsOf` 以私有 `Index` 类型出现在导出签名上——按设计 §3.6 把 `gapsOf` 收为模块内私有（userGraphOf 内部调用）。
+  6. `step:failed` 缺口必须镜像 failed 状态：加「!outdatedSince」条件（现在只看 last.ok）。
+  7. `stepStateOf` 的嵌套三元重写为平铺 if。
+  8. `userReleaseItems` 的 `flows:modules` 项改为恒在（无候选时 vacuous ok），六项门面齐。
+  9. `USER_LIMITS.appended` 未核实存在（schema.ts 只读到 `branches` 行）——用前先查；没有就补字段或用设计值 8000 并在 schema 注明出处。
+  10. `walkRecordsOf` 依赖历史条目带 `evidence`——确认 engine 的 walk 落历史路径确实写 evidence（UG2 实现过，读 `engine.ts` planWalk/commit 处再定）。
+
+恢复后的处理（UG3 提交）：分支先合入 origin/main（含 `bc25baa` fix(audit)），合并提交单独。10 条清单逐条处理：1 删本地 `GraphEdge` 与两个死助手；2 样稿一行整段重写（`stepsLine`）；3 `UserGraph` 带 `graph`，`serves` 一级按服务者的最近特性祖先、带模块时按模块子树；4 `outdatedSince` 的步骤集取全部 `live` 步骤，残留删除；5 `gapsOf` 收为模块内私有；6 `step:failed` 取自 `failed` 状态；7 平铺 if；8 按设计（见上面差异）；9 `USER_LIMITS.appended` 已在 `schema.ts`（8000）；10 `planWalk` 的历史条目带 `evidence`，已核实。清单之外按设计改正：孤儿第 4 条看祖先自己的 `serves`、孤儿只在目标子树里找、`服务：无` 的模块与它下面没有 `serves` 的活不标（评审 5 发现 5）、`flow:no-test` 对全部 `live` 步骤判、`featureLeaves` 只数 `live` 的活。
+
+### 恢复后的确切下一步（impl-plan UG3 行 + 验收 16–26）
+
+1. 按上面清单修 `src/graph/user-graph.ts`；导出面贴设计 §3.6：`isUserNode`/`userGraphOf`/`stepsServedBy`/`renderUserGraph`/`userReleaseItems`/`userCompletionItems`（+内部 `stepStateOf`/`flowStateOf` 折叠/`gapsOf`/`walkSpecOf`/`estimatedTimeoutMs`）。
+2. 新建 `tests/graph-user-helpers.ts`：按设计 §2.9 节点表造库夹具（含 feat-legacy/task-15/task-16 非 live 例、指定时刻的 walk 历史、norm-merge-gate 的 acceptance walk 行）。
+3. 新建 `tests/graph-user-state.spec.ts`、`tests/graph-user-render.spec.ts`，对 §2.9 期望输出逐条断言（gaps 恰为 step:unserved(step-11)、step:failed(step-21)、work:orphan(feat-export)、flow:no-test(flow-2, flow-4)；各状态/counts/显示顺序）。
+4. 接线四处小改：`projection.ts`（gatesOf 的 serving/steps 门、projectNode 的 serves/servedBy/next/previous）、`stage.ts`（releaseSet/bigLoopSet/moduleSet 滤非 live 用户节点）、`tools.ts`（graph_open 的 items.proposals 过 liveOf）、`plain-view.ts`（needsOf 滤「本身或祖先不 live 的用户提议」）、`reminder.ts`（行文）。
+5. 既有测试小钉：`tests/execute-brief.spec.ts` 钉用户节点 bad_task；`tests/graph-stage.spec.ts` 加「用户节点 source 不让规划列过」；`tests/graph-store.spec.ts` 钉 dev-graph 计数不变。
+6. 文档 §2.5、§2.12 同批；门禁串行、日志 `.llm/logs/ug-u3-*.log`、退出码不吞；绿后一个提交推送，提交信息形如 `feat(user-graph): states, gaps and the user pages derive from the graph (U3)`。

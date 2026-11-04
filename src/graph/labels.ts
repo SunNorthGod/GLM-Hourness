@@ -5,6 +5,7 @@
  */
 import type { EngineError, ErrorCode } from './mutation.ts'
 import type { Actor, EvidenceKind, NodeType, Op, Stage, Status, TaskKind, Tier, Verification } from './schema.ts'
+import type { FlowState } from './user-graph.ts'
 
 export const TYPE_LABELS: Readonly<Record<NodeType, string>> = {
   goal: '目标',
@@ -29,6 +30,21 @@ export const STATUS_LABELS: Readonly<Record<Status, string>> = {
   dropped: '废弃',
   superseded: '被取代',
 }
+
+/** The derived state of a step, a flow or a role (user graph design 0.4.1 §6.5): one set of words for all three. */
+export const USER_STATE_LABELS: Readonly<Record<FlowState, string>> = {
+  proposed: '待你定',
+  unserved: '没人负责',
+  planned: '排上了',
+  building: '在做',
+  built: '做完了，等走一遍',
+  walked: '走通',
+  failed: '走不通',
+  empty: '还没有步骤',
+}
+
+/** A built step whose flow's work moved after its last walk (§6.5). */
+export const OUTDATED_LABEL = '做完了，要重走'
 
 export const VERIFICATION_LABELS: Readonly<Record<Verification, string>> = {
   unverified: '未验证',

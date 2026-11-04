@@ -102,7 +102,7 @@ export function NodeDetail({ graph, id, agents, onBack, onClose }: DetailProps):
         <h2>{node.title}</h2>
         <div className="glmg-meta">
           <Tag tone="neutral">{TYPE_LABELS[node.type]}</Tag>
-          <Tag tone={needsHuman(node) ? 'danger' : done ? 'success' : node.status === 'doing' ? 'warning' : 'neutral'}>{node.type === 'question' && done ? STATUS_LABELS[node.status] : statusText(node)}</Tag>
+          <Tag tone={needsHuman(node) ? 'danger' : done ? 'success' : node.status === 'doing' ? 'warning' : 'neutral'}>{node.type === 'question' && done ? STATUS_LABELS[node.status] : statusText(node, graph)}</Tag>
           {node.verification === undefined ? null : <Tag tone={VERIFICATION_TONES[node.verification]}>{VERIFICATION_LABELS[node.verification]}</Tag>}
           {node.stage === undefined ? null : <Tag tone="neutral">阶段：{STAGE_LABELS[node.stage]}</Tag>}
           {node.kind === undefined ? null : <Tag tone="neutral">{KIND_LABELS[node.kind]}</Tag>}

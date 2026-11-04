@@ -108,6 +108,20 @@ test('row 2, bad_task: only approved or doing nodes, with a hint that fits the s
   assert.equal(refused(gate(withNode(graph, { ...get(graph, 'goal-1'), status: 'done' }), 'goal-1')).code, 'bad_task')
 })
 
+test('row 2, bad_task: a role, flow or step of the user graph is never dispatched (user graph design 0.4.1 §3.7)', () => {
+  const graph = graphOf([
+    ...plain().nodes.values(),
+    node({ id: 'role-1', type: 'role', parent: 'goal-1', title: 'Reader' }),
+    node({ id: 'flow-1', type: 'flow', parent: 'role-1', title: 'Read a post', body: '走法：命令 · 预计 30 秒' }),
+    node({ id: 'step-1', type: 'step', parent: 'flow-1', title: 'Open the feed', acceptance: ['the newest post is first'] }),
+  ])
+  for (const id of ['role-1', 'flow-1', 'step-1']) {
+    const refusal = refused(gate(graph, id))
+    assert.equal(refusal.code, 'bad_task', id)
+    assert.match(refusal.message, /cannot be dispatched/, id)
+  }
+})
+
 test('row 3, not_released: the goal in design stops everything; the first failing row wins over later ones', () => {
   const inDesign = withNode(plain(), node({ id: 'goal-1', type: 'goal', stage: 'design', acceptance: ['the blog builds'] }))
   const result = refused(gate(inDesign, 'task-1'))

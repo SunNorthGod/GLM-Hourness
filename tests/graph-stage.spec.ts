@@ -145,6 +145,35 @@ test('designColumns: five columns, each one missing on its own; the plan counts 
   assert.deepEqual(unplanned({ parent: 'goal-2' }), ['decision-1:plan'], 'a node outside the goal is not its plan')
 })
 
+test('designColumns: a step\'s source edge to a question does not make the plan (user graph design 0.4.1 §2.3, §1.4 item 25)', () => {
+  const { graph, goal } = design({}, [
+    node({ id: 'role-1', type: 'role', parent: 'goal-1' }, 3),
+    node({ id: 'flow-1', type: 'flow', parent: 'role-1' }, 3),
+    node({ id: 'step-1', type: 'step', parent: 'flow-1', acceptance: ['看到押金已收'], edges: [{ type: 'source', to: 'question-1' }] }, 3),
+  ])
+  const unplanned = graphOf([...graph.nodes.values()].map(entry => entry.id === 'task-1' ? { ...entry, edges: [] } : entry))
+  assert.deepEqual(failing(designColumns(unplanned, goal, unplanned.nodes.get('decision-1')!)), ['decision-1:plan'], 'only planned work makes the plan, not a step that grew from a question')
+})
+
+test('releaseSet: a proposed user node counts only while it is live, the rest of the set unchanged (user graph design 0.4.1 §3.7)', () => {
+  const { graph, goal } = design({}, [
+    node({ id: 'role-1', type: 'role', parent: 'goal-1', status: 'proposed' }, 3),
+    node({ id: 'flow-1', type: 'flow', parent: 'role-1', status: 'proposed' }, 4),
+    node({ id: 'step-1', type: 'step', parent: 'flow-1', status: 'proposed' }, 5),
+    // Rejected (reject does not cascade): its proposed step stays proposed and must not be approved by the release.
+    node({ id: 'flow-2', type: 'flow', parent: 'role-1', status: 'dropped' }, 4),
+    node({ id: 'step-2', type: 'step', parent: 'flow-2', status: 'proposed' }, 5),
+    // An approved flow dropped later, with a proposed step under it.
+    node({ id: 'flow-3', type: 'flow', parent: 'role-1', status: 'dropped' }, 4),
+    node({ id: 'step-3', type: 'step', parent: 'flow-3', status: 'proposed' }, 5),
+  ])
+  const plain = design()
+  const before = releaseSet(plain.graph, plain.goal).map(entry => entry.id)
+  const ids = releaseSet(graph, goal).map(entry => entry.id)
+  assert.deepEqual(ids.filter(id => !before.includes(id)), ['role-1', 'flow-1', 'step-1'])
+  assert.deepEqual(ids.filter(id => before.includes(id)), before)
+})
+
 test('releaseSet: the proposed nodes under the goal by depth, creation time and id; parents before children', () => {
   const { graph, goal } = design({}, [
     node({ id: 'task-0', type: 'task', status: 'proposed', parent: 'task-1', acceptance: ['x'] }, 5),
