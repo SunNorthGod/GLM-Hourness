@@ -498,6 +498,36 @@
       "actor": "llm",
       "op": "comment",
       "text": "E5 落地（f1c137c，含并 main 1800f56，2026-11-04）：计划审批与主 Agent 通信——submit_plan/ask_main/answer_worker 三工具（等待活在一次工具调用内：带 outputSchema 的子 agent 停回合等答会被结算成 error）；answer_worker 过 mainAgentCall 门、批准前重跑 checkPlan 与 pins 新鲜度（brief_stale/plan_invalid 不动调用）、过门才翻节写批注并把登记项 approved 带路径并集；通知送前重取持有者、投递复用 rules/wake 的 deliver。顺线修掉 E4 潜伏缺陷：dispatch 存 pins 双写前缀（renderPins 自带 pins: 前缀），审批 staleness 一接上会对一切派发改 brief_stale。兄弟 send_message 拒绝文案实测 belongs to another parent session（§9.1 的 UNAUTHORIZED 即此道），§17.10 注明。门禁全绿（探针 366/366 含 glm-exec-plan 十检查、棘轮 217/19/1）。流程两课立规进 DEVELOPMENT §5：合并后即跑全量门禁（这次合并只跑 build+棘轮，status.spec 期望表缺 execute 全量才暴露）；探针运行中不重建检出（自伤一次）。下一步 E6 交回处理。"
+    },
+    {
+      "at": "2026-11-04T05:06:57.917Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "E6 落地（cffcad4，2026-11-04）：交回处理——语义校验、报告出树、经验接缝含密钥略去、通信计数、stale 停步；有效深浅与底线命中（floorHits/parseFloor）、审查任务确保、verdict 规整与覆盖缺项作废同模型重派、轮次收敛与停下（内存顶替 stoppedInMemory）、停下的四行草稿经 glm-hourness-loop、模块设计审查记录（方向清单 digest、派出时刻）。插曲：重启前的死会话已完成 E6 主体（12c564b）未推未跑探针，续作代理审计逐项对设计后采认；三个探针红皆死会话合入 m4 八条代码规则后未跑探针的陈账（scratch-only 拦新脚本→目标改数据文件、glm-exec-plan 时序竞态→派发顺序对调、others 绑定随对调）。合并 c29ee08 并解 package.json 并集。门禁全绿（test 2785、probe 394/394、棘轮 76/19/1）。遗留归属已核：R4-F10 的 M4 接缝（worker-scope 查 requestsService 的 outsideDenial/peekGrant）随 E7 接；openRequests 归 E8 推进（goals.block 原因码 hourness-waiting-human）——§18.2 谁后合入谁改。"
+    },
+    {
+      "at": "2026-11-04T06:45:00.258Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "编排方审查 ZCode 接手期（2026-11-04）：申报接缝批（src/guard/execute-rules.ts 的 peekGrant/outsideDenial、execute-row.spec 第 9 例、ORCHESTRATION §17.9、设计 §3.2.1 与 §18.2）对得上 m4 设计 0.6 §5.9 与 M7 §3.2.1，没有偏离。探针两次 384/395、393/395，红项与接缝代码无关，修正已在 .worktrees/m3 工作区、待探针确认：(1) glm-exec-plan 在真实时钟落入 GLM 高峰时第二次派发 slots_full，场景改钉非高峰时钟 OFF_PEAK_AT；(2) 新场景 guard-request-worker 写错三处（quick 配目录写入范围、缺 probe_say 所需的行、检查要求写穿 rc.3 沙箱），已按既有 guard-request 场景改；(3) probe-llm 的 {ref} 替换只扫 tool 消息，主 Agent 看到的编号在 worker 问题通知（user 消息）里，已补 give ref 一种拼写。guard 两条检查的流水倒序另见 orch。续作：运行 m7-seam-close-and-e7（wf_8fb7162b2246ddc9），先收接缝批再做 E7。"
+    },
+    {
+      "at": "2026-11-04T08:01:56.178Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "申报接缝批落地：223f8d3 已推 origin/m7（cffcad4..223f8d3，不强推），带合并 1cb814e、6b14a4d、8b8ab92（后者为 origin/main bc25baa）。合并后门禁：build 0、preflight 0、npm test 0（2787 个、2786 过、0 败、1 跳过；eslint 76、knip 19、jscpd 1）、探针 395/395 退出码 0；guard-request-worker 与 glm-exec-plan 用编排方的探针修正即通过，无需再改。E7 规划已写（.worktrees/m3/.llm/wf/m7-e7/plan.md：13 项、偏离 D1–D17；FEAT-001 检查、FEAT-002 主干门、FEAT-003 L3 与文档及全量门禁），运行 m7-seam-and-e7 转入 E7 实现与评审循环。"
+    },
+    {
+      "at": "2026-11-04T08:56:59.740Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "E7 进行中：规划替换后的尾段已确认（feat-001、feat-002、feat-003、e7-converge 至多 2 轮、e7-squash 合成一个 E7 提交、push-report 改读新评审路径）。FEAT-001 本地提交 1ca491a（未推）：check_commit、hourness-gate provider、检查记录与 trunkCheck；build 0、execute-check 15/15、execute-git 46/46、execute-row 9/9、lint 0（76/19/1）。"
+    },
+    {
+      "at": "2026-11-04T10:48:31.813Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "E7 三块实现完：FEAT-002 3619247（trunk-advance-checked 执行前后、advances.jsonl 等；execute-advance 23/23、execute-upstream 7/7 新增、execute-handback 10/10、execute-row 9/9、execute-check 15/15，lint 76/19/1）；FEAT-003 1ca003f（L3 场景 glm-exec-merge、glm-exec-merge-upstream，文档，全量门禁：build 0、preflight 0、npm test 0（2829 个、2828 过、0 败、1 跳过）、探针 412/412、棘轮 76/19/1）。三个提交均在本地未推，进入 e7-converge 评审循环，过后合成一个 E7 提交再推。"
     }
   ]
 }

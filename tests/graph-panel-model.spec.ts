@@ -6,10 +6,14 @@ import test from 'node:test'
 import { openEngine } from '../src/graph/engine.ts'
 import { graphRevision, loadGraph, revisionOf } from '../src/graph/store.ts'
 import type { GraphNode } from '../src/graph/schema.ts'
-import type { RemoteRoot, StreamItem, WatchFrame } from '../ui/src/dsh.ts'
 import { absoluteTime, byCreation, decidedBy, dotTone, graphRevisionOf, headlineGoals, historyText, liveGroups, nobodyRunningText, placeText, presenceText, progressOf, progressText, revisionOfBytes, statusText, tokensText, visibleGraph } from '../ui/src/graph/model.ts'
-import { GraphSource, type GraphSnapshot } from '../ui/src/graph/source.ts'
-import { fixtureTest, seedAsHuman } from './graph-helpers.ts'
+import { holderRecordOf } from '../src/shared/holder-record.ts'
+import { firstVisit, graphHasHumanActorHistory, GUIDE_KEY, noGraphKey, readStamp, writeStamp } from '../ui/src/guide/state.ts'
+import { cwdKeyOf, mainChatOf } from '../ui/src/graph/main-chat.ts'
+import { GraphSource } from '../ui/src/graph/source.ts'
+import type { RemoteRoot } from '../ui/src/dsh.ts'
+import { initialSeen, nextSeen, seenKeyOf, seenRecordOf, writeSeenRecord } from '../ui/src/graph/seen.ts'
+import { fakeRemote, fixtureTest, seedAsHuman, until } from './graph-helpers.ts'
 
 /** The table card of the seeded questions (ORCHESTRATION.md §2.6). */
 const CARD = {
@@ -196,67 +200,6 @@ test('run-control presence lines say the panel sees only its own DSH session', (
   assert.equal(presenceText('done', []), undefined)
 })
 
-/** A Remote face over a directory on disk, with a change feed the test drives. */
-function fakeRemote(workspace: string): { readonly remote: RemoteRoot, readonly push: (frame: WatchFrame) => void } {
-  const queue: WatchFrame[] = []
-  let wake: (() => void) | undefined
-  const push = (frame: WatchFrame): void => {
-    queue.push(frame)
-    wake?.()
-  }
-  let disposed = false
-  const remote: RemoteRoot = {
-    workspaceFiles: {
-      list: async (_session, path) => {
-        try {
-          const entries = await readdir(join(workspace, path), { withFileTypes: true })
-          return { ok: true, value: { path, entries: entries.map(entry => ({ name: entry.name, type: entry.isFile() ? 'file' : 'directory' })), truncated: false } }
-        }
-        catch {
-          return { ok: false, error: { code: 'workspace-file/not-found', message: `no entry at "${path}"` } }
-        }
-      },
-      readBytes: async (_session, path) => {
-        try {
-          return { ok: true, value: { absolutePath: join(workspace, path), data: new Uint8Array(await readFile(join(workspace, path))) } }
-        }
-        catch {
-          return { ok: false, error: { code: 'workspace-file/not-found', message: path } }
-        }
-      },
-      changes: () => undefined,
-    },
-    commands: { execute: () => Promise.resolve({ ok: true, value: undefined }) },
-    $stream: <T>() => ({
-      async *[Symbol.asyncIterator]() {
-        while (!disposed) {
-          const frame = queue.shift()
-          if (frame === undefined) {
-            await new Promise<void>(resolve => { wake = resolve })
-            continue
-          }
-          yield { value: frame as T, accept: () => {} } satisfies StreamItem<T>
-        }
-      },
-      dispose: () => {
-        disposed = true
-        wake?.()
-        return Promise.resolve()
-      },
-    }),
-  }
-  return { remote, push }
-}
-
-async function until(source: GraphSource, check: (snapshot: GraphSnapshot) => boolean): Promise<GraphSnapshot> {
-  for (let attempt = 0; attempt < 100; attempt++) {
-    const snapshot = source.getSnapshot()
-    if (check(snapshot)) return snapshot
-    await new Promise(resolve => setTimeout(resolve, 20))
-  }
-  throw new Error(`timed out; last snapshot ${JSON.stringify(source.getSnapshot()).slice(0, 200)}`)
-}
-
 test('the source reads the graph, goes live on ready, and follows a write through the change feed', async () => {
   const workspace = await mkdtemp(join(tmpdir(), 'graph-panel-source-'))
   const graphDir = join(workspace, 'docs', 'graph')
@@ -353,4 +296,109 @@ test('a workspace without a graph is reported missing, and retry finds one creat
   finally {
     await rm(workspace, { recursive: true, force: true })
   }
+})
+
+test('the panel sources carry no write path: no commands.execute and no apply import under ui/src/graph', async () => {
+  const dir = new URL('../ui/src/graph/', import.meta.url)
+  const names = (await readdir(dir)).filter(name => name.endsWith('.ts') || name.endsWith('.tsx'))
+  assert.ok(names.length > 0)
+  for (const name of names) {
+    const text = await readFile(new URL(name, dir), 'utf8')
+    assert.doesNotMatch(text, /commands\.execute/, name)
+    assert.doesNotMatch(text, /from '\.\/apply\.ts'/, name)
+  }
+})
+
+test('上次看之后 (seen.ts): arrivals and departures follow the ten-minute and five-second rules', () => {
+  const t = (minutes: number, seconds = 0): number => minutes * 60_000 + seconds * 1000
+  let state = initialSeen
+  let step = nextSeen(state, 'mount', t(0), t(-50))
+  state = step.state
+  assert.equal(state.since, t(-50), 'the arrival reads the record')
+  step = nextSeen(state, 'visible', t(0, 1), undefined)
+  state = step.state
+  assert.equal(state.visibleSince, t(0, 1))
+  step = nextSeen(state, 'hidden', t(0, 7), undefined)
+  assert.equal(step.departure, t(0, 7), 'six visible seconds are a departure')
+  state = step.state
+  step = nextSeen(state, 'visible', t(0, 9), t(0, 7))
+  state = step.state
+  assert.equal(state.since, t(-50), 'back within ten minutes: the same arrival, the same since')
+  assert.equal(state.visibleSince, t(0, 9))
+  step = nextSeen(state, 'hidden', t(0, 10), undefined)
+  assert.equal(step.departure, undefined, 'two visible seconds are not a departure')
+  state = step.state
+  step = nextSeen(state, 'visible', t(12), t(0, 7))
+  state = step.state
+  assert.equal(state.since, t(0, 7), 'hidden longer than ten minutes (the last write was t(0,7)): a new arrival reads the record again')
+  const brief = nextSeen(nextSeen(initialSeen, 'mount', t(0), undefined).state, 'visible', t(0, 1), undefined)
+  assert.equal(nextSeen(brief.state, 'hidden', t(0, 2), undefined).departure, undefined, 'a glance writes nothing')
+})
+
+test('上次看之后 (seen.ts): the local record reads, writes and fails quietly, and the key follows the graph directory', () => {
+  const backing = new Map<string, string>()
+  const storage = { getItem: (key: string) => backing.get(key) ?? null, setItem: (key: string, value: string) => { backing.set(key, value) } } as Storage
+  const windows = ['D:', 'Repo', 'docs', 'graph', 'nodes'].join('\\')
+  assert.equal(seenRecordOf(storage, seenKeyOf(windows)), undefined)
+  writeSeenRecord(storage, seenKeyOf(windows), 1_000)
+  assert.equal(seenRecordOf(storage, seenKeyOf(windows)), 1_000, 'the key folds separators and case like the design says')
+  assert.equal(seenRecordOf(undefined, 'x'), undefined, 'no storage: no record')
+  const broken = { getItem: () => { throw new Error('full') }, setItem: () => { throw new Error('full') } } as unknown as Storage
+  assert.equal(seenRecordOf(broken, 'x'), undefined, 'a broken read is no record')
+  writeSeenRecord(broken, 'x', 1_000)
+  assert.equal(backing.size, 1, 'a broken write stays quiet')
+})
+
+test('主 Agent 的对话 (MainChat): a readable record decides by itself, an absent one says so, an unreadable one falls back', () => {
+  const here = { kind: 'held', sessionId: 's-1' } as const
+  assert.deepEqual(mainChatOf(here, 's-1', ['s-1']), { kind: 'here' }, 'the fallback is not consulted when the record reads')
+  assert.deepEqual(mainChatOf(here, 's-2', []), { kind: 'there', sessionId: 's-1', guessed: false })
+  assert.deepEqual(mainChatOf({ kind: 'absent' } as const, 's-1', ['s-2']), { kind: 'absent' }, 'a readable none stays none')
+  const unreadable = { kind: 'unreadable', reason: 'denied' } as const
+  assert.deepEqual(mainChatOf(unreadable, 's-1', ['s-2']), { kind: 'there', sessionId: 's-2', guessed: true })
+  assert.deepEqual(mainChatOf(unreadable, 's-1', ['s-1']), { kind: 'here' }, 'the fallback finding this session makes it the main chat')
+  const lost = mainChatOf(unreadable, 's-1', [])
+  assert.equal(lost.kind, 'lost')
+  assert.match(lost.kind === 'lost' ? lost.reason : '', /记录读不出来/)
+  assert.match(lost.kind === 'lost' ? lost.reason : '', /没有哪个对话在主 Agent 模式/)
+  const many = mainChatOf(unreadable, 's-1', ['s-2', 's-3', 's-2'])
+  assert.equal(many.kind, 'lost')
+  assert.match(many.kind === 'lost' ? many.reason : '', /有 2 个对话在主 Agent 模式/, 'duplicates fold')
+})
+
+test('主 Agent 的对话 (MainChat): the record shape and the working-directory key follow M3', () => {
+  const record = holderRecordOf({ version: 1, sessionId: 's-9', graphDir: 'D:/R/docs/graph', since: '2026-11-04T00:00:00.000Z', commandId: 'c-1' })
+  assert.deepEqual(record, { version: 1, sessionId: 's-9', graphDir: 'D:/R/docs/graph', since: '2026-11-04T00:00:00.000Z', commandId: 'c-1' })
+  for (const bad of [undefined, null, 3, {}, { version: 2, sessionId: 's', graphDir: 'd', since: 'x', commandId: 'y' }, { version: 1, graphDir: 'd', since: 'x', commandId: 'y' }, { version: 1, sessionId: '', graphDir: 'd', since: 'x', commandId: 'y' }]) {
+    assert.equal(holderRecordOf(bad), undefined, JSON.stringify(bad) ?? 'undefined')
+  }
+  assert.equal(cwdKeyOf('D:\\Repo\\ws\\', true), 'd:/repo/ws', 'backslashes, trailing slash, Windows lower case')
+  assert.equal(cwdKeyOf('/home/r/ws/', false), '/home/r/ws', 'no lower case off Windows')
+})
+
+graphTest('上手页 (guide state): first visit ends at a record or at human history, and the records fail quietly', async ({ dir }) => {
+  const backing = new Map<string, string>()
+  const storage = { getItem: (key: string) => backing.get(key) ?? null, setItem: (key: string, value: string) => { backing.set(key, value) } } as Storage
+  assert.equal(firstVisit(storage, false), true, 'no record, no human history: the first visit')
+  writeStamp(storage, GUIDE_KEY, '2026-11-04T00:00:00.000Z')
+  assert.equal(firstVisit(storage, false), false, 'a record ends it')
+  assert.equal(firstVisit(undefined, false), true, 'no storage behaves like no record')
+  assert.equal(firstVisit(storage, true), false, 'human history on the graph ends it, record or not')
+  const graph = await loadGraph(dir)
+  assert.equal(graphHasHumanActorHistory(graph), true, 'the seed writes human history (seedAsHuman)')
+  const fresh = await mkdtemp(join(tmpdir(), 'guide-fresh-'))
+  try {
+    await openEngine(fresh).apply('llm', { op: 'propose', reason: '建图', node: { type: 'goal', title: '项目图' } })
+    assert.equal(graphHasHumanActorHistory(await loadGraph(fresh)), false, 'an llm-only graph is a new user')
+    const relayed = await openEngine(fresh).apply('llm', { op: 'propose', reason: '建图', node: { type: 'task', title: '带原话', parent: 'goal-1' }, relay: '人随口说的一句话' })
+    assert.ok(relayed.ok, JSON.stringify(relayed))
+    assert.equal(graphHasHumanActorHistory(await loadGraph(fresh)), false, 'a relayed llm entry does not count (P5-02)')
+  }
+  finally {
+    await rm(fresh, { recursive: true, force: true })
+  }
+  const broken = { getItem: () => { throw new Error('full') }, setItem: () => { throw new Error('full') } } as unknown as Storage
+  assert.equal(readStamp(broken, GUIDE_KEY), undefined, 'a broken read is no record')
+  writeStamp(broken, GUIDE_KEY, '2026-11-04T00:00:00.000Z')
+  assert.equal(noGraphKey('D:\\Repo\\ws'), 'glm-hourness.nograph.v1:d:/repo/ws')
 })

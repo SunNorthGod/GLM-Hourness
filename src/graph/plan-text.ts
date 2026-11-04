@@ -61,8 +61,12 @@ export function proposalLineRefusal(field: ProposalLineField, value: unknown): {
 /** The characters that would break the Markdown of a verbatim string, escaped with a backslash. */
 const FORMAT_CHARS = /[*`[\]<>]/g
 
-/** Escape the characters that would turn a verbatim string into Markdown structure. */
-const escapeText = (text: string): string => text.replace(FORMAT_CHARS, found => `\\${found}`)
+/**
+ * Escape the characters that would turn a verbatim string into Markdown
+ * structure. Shared with the third-rework question's 附 lines (design §4.6):
+ * the same characters break the same places, so there is one escape.
+ */
+export const escapeText = (text: string): string => text.replace(FORMAT_CHARS, found => `\\${found}`)
 
 /** How long a path may read in the title, in characters, before the middle collapses. */
 const PATH_LIMIT = 60

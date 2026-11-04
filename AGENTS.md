@@ -10,7 +10,7 @@
 4. 新行默认 `disabled: true`，验证通过后才启用。
 5. 装后验证：`plugin_manager` 的 `application: applied` 只是 loader 接受行，不等于启动成功；必须刷新/重启后确认无新错误，或明确告知用户需要重启。
 6. 不改用户的 `~/.dsh` profile 配置（除用户明确要求）；改前备份。
-7. 一件事一个提交，推送到 Gitee `origin/main`；不强推（DEVELOPMENT.md §9）。
+7. 一件事一个提交，推送到 Gitee `origin/main`，随后把同一个 `main` 推到 GitHub 镜像 `github`（只推 `main`）；不强推（DEVELOPMENT.md §9）。npm 等整体做完再由人发版。
 
 ## 基线
 

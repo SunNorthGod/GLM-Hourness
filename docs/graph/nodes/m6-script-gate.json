@@ -2,7 +2,7 @@
   "id": "m6-script-gate",
   "type": "task",
   "title": "M6 S2：仓库脚本启动前按项目规则与高峰模式自查，拦下要留带规则 id 的记录",
-  "status": "approved",
+  "status": "doing",
   "parent": "m6",
   "kind": "implement",
   "tier": "standard",
@@ -35,6 +35,14 @@
       "actor": "llm",
       "op": "comment",
       "text": "给在跑的 S2 实现（运行 wf_2c498acb17c89ff4）：拦下记录的位置与形状已在 M6 设计 0.6 定下（决定评审第 2 轮 F7 的回应），不再等修订稿。读 .agents/tasks/m6/design.md：§7.2「拦下记录」一条（文件、一行的形状、命中的规则怎么取、次数、顺序与失败）、§1.4 第 26 条（tests/rules-gate.spec.ts，假追加器加真文件各一例）、§12 与 §13 与 §14.1 各一行、§16 的 S2 一格。要点：checkCall 返回退出码 4 或 5 时，gateOnRules 为每个命中的规则向 <项目根>/.llm/audit/violations.jsonl 追加一行 {at, rule: 'rules:<规则 id>', mode: 'enforce', effect: 'block' 或 'queue', tool: 'pwsh', command, peakMode, signals, correction}。这个文件在本仓库就是 impl-plan.md 缺省写的 <projectHome>/audit/violations.jsonl（profile 把 projectHome 钉在仓库的 .llm），但脚本没有 profile，路径不取 projectHome：用 projectOf(仓库根).root 加 .llm，路径与追加取 packages/hourness/dist/memory/audit.js 的 auditPaths({projectHome})、auditJournal、fsAppender，项目根与 ensureIgnored 取 packages/hourness/dist/data/project-root.js，这两个模块只在要追加时动态导入；gateOnRules 多一个只给测试注入的 appendLine（类型同 AppendLine）；不改 src/。一次运行同一（规则 id，effect）一行，--wait 的重判不重复；先写标准错误，再 await 追加，最后 process.exit；追加失败（仓库根不是项目、ensureIgnored 或写入抛错、模块导入失败）不改退出码，标准错误多写一行 rules gate: violation journal not written (<原因前 80 字符>)，同一进程只写一次。S2 不再等位置，仍等整块规则板 R1 与 R3；超时不变：S2 不设超时，也不写超时的数。第 3 轮评审的结论见 .agents/tasks/m6/decisions-review.json，评审要求改动时以通过的版本为准。"
+    },
+    {
+      "at": "2026-11-04T10:57:45.020Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "运行 m6-followups-s1-s3 开工（2026-11-04，人：「桌面版随便用，尽可能开多线」）",
+      "from": "approved",
+      "to": "doing"
     }
   ]
 }

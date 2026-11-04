@@ -86,3 +86,75 @@ export function restOf(text: string): string[] {
     : NOT_LOGGED.test(line) || (status.loginError !== undefined && line.startsWith(LOGIN_ERROR_PREFIX)))
   return text.split('\n').filter(line => line.trim().length > 0 && !isTableLine(line) && !isField(line))
 }
+
+/** The local record naming when the GLM onboarding ended (plain-ui 1.3 §6.3, §6.8). */
+const GLM_ONBOARDING_KEY = 'glm-hourness.onboarding.glm.v1'
+
+/** The local record of the sessions the hero button appeared in, at most three ids (§6.3, §6.8). */
+const GLM_ONBOARDING_SEEN_KEY = 'glm-hourness.onboarding.glm.seen.v1'
+
+/** When the onboarding ended (done, skipped, or the third session), or undefined while it still shows. */
+export function glmOnboardingDone(storage: Storage | undefined): string | undefined {
+  try {
+    const value = storage?.getItem(GLM_ONBOARDING_KEY)
+    return typeof value === 'string' && value !== '' ? value : undefined
+  }
+  catch {
+    return undefined
+  }
+}
+
+/** Write the end of the onboarding; a broken storage stays quiet (§6.8). */
+export function recordGlmOnboardingDone(storage: Storage | undefined, at: string): void {
+  try {
+    storage?.setItem(GLM_ONBOARDING_KEY, at)
+  }
+  catch {
+    // the record is best effort
+  }
+}
+
+/** Forget the end of the onboarding: 设置页「重新看上手说明」(§6.3, §6.7). */
+export function forgetGlmOnboarding(storage: Storage | undefined): void {
+  try {
+    storage?.removeItem(GLM_ONBOARDING_KEY)
+  }
+  catch {
+    // the reset is best effort
+  }
+}
+
+/** The session ids the hero button has appeared in, deduplicated, at most three; unreadable reads as empty (§6.8). */
+export function seenSessions(storage: Storage | undefined): readonly string[] {
+  try {
+    const parsed: unknown = JSON.parse(storage?.getItem(GLM_ONBOARDING_SEEN_KEY) ?? '')
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter((id): id is string => typeof id === 'string').slice(0, 3)
+  }
+  catch {
+    return []
+  }
+}
+
+/**
+ * One appearance of the hero button in one session (§6.3): the id joins
+ * the seen list, deduplicated and capped at three; the third distinct
+ * session ends the onboarding without a click, and the caller writes the
+ * record. Pure: nothing writes here.
+ */
+export function noteSessionSeen(storage: Storage | undefined, sessionId: string): { readonly seen: readonly string[], readonly done: boolean } {
+  const seen = seenSessions(storage)
+  if (seen.includes(sessionId)) return { seen, done: false }
+  const next = [...seen, sessionId].slice(0, 3)
+  return { seen: next, done: next.length >= 3 }
+}
+
+/** Persist the seen list; a broken storage stays quiet (§6.8). */
+export function writeSeenSessions(storage: Storage | undefined, seen: readonly string[]): void {
+  try {
+    storage?.setItem(GLM_ONBOARDING_SEEN_KEY, JSON.stringify(seen))
+  }
+  catch {
+    // the record is best effort
+  }
+}

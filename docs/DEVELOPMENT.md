@@ -181,6 +181,8 @@ DSH 官方类型已作为 devDependency 安装（`@deepseek-ai/dsh-llm`、`@deep
 ## 9. 版本控制
 
 - 仓库：git，远端为 Gitee 私有仓库 `NorthGod_BFDG/GLM-Hourness`（`origin`），主分支 `main`。仓库由 Kiro 管理。
+- GitHub 镜像（`github`，`SunNorthGod/GLM-Hourness`，项目图 `d-github-mirror-main`）：每次推 `origin/main` 之后把同一个 `main` 推到 `github`，只推 `main`，工作分支不推；不强推，镜像落后时按快进补齐。
+- npm 发版（`dsh-glm-zcode`、`dsh-hourness`，项目图 `d-npm-after-done`）：等整体彻底做完再发，由人用自己的 npm 账号执行；在此之前不发版。
 - 一件事一个提交；提交信息用技术话术写清改了什么、为什么、怎么验证的（干净区）。项目图上线后，提交信息带节点 id。
 - 不强推，不改写已推送的历史，不跳过钩子。
 - 不入库：`.llm/`（凭证、记忆、审计、原始资料）、`/reference/`（审计用参考源码）、`dist/`、`node_modules/`、`.pnpm-store/`。提交前扫描密钥（`npm test` 含密钥扫描，§10）。git worktree 里因此没有 `reference/`：读参考源的门禁与测试（逐字门禁 `scripts/check-verbatim.mjs` 读 `reference/zcode-3.17.1/zcode.cjs`；`tests/glm-startplan.spec.ts` 拿 start-plan 文本比对 `reference/zcode-api` 的 `zcode_system.json`）经 `scripts/reference-dir.mjs` 读主检出的 `reference/`，worktree 里不复制、不链接，也不设环境变量。
