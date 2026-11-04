@@ -485,6 +485,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "loops-machine 评审 CHANGES_REQUESTED，1 条阻塞 F1：GLM 登录被拒持续存在时，运行器按键判断是否已告诉过人，但 LoginView.since 在变，于是大约每 10 分钟重复告诉一次（.worktrees/loops-machine/.llm/wf/review.json）。四批与合并的门禁按记录都是绿的。下一步：修 F1 后复审。"
+    },
+    {
+      "at": "2026-11-04T23:21:59.079Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "loops-machine 评审 F1（登录被拒持续时每 10 分钟重复告诉人）已修并推：origin/loops-machine = f4a4743（先合入 origin/main 749b525，合并提交 8ace200，再修）。两个提交上四道门禁为 0：npm test 3003 个、0 失败，探针 388/388；棘轮 eslint 73 / knip 18 / jscpd 1。下一步：复审。"
     }
   ]
 }
