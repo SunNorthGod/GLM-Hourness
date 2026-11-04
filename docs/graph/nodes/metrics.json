@@ -371,6 +371,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "metrics 合入 main：合并提交 31c9e0f，最终 main ab3f26a，origin/main 与 github/main 均为 ab3f26a；合并树四道门禁退出码均为 0（npm test 2940 个、0 失败，探针 376/376，棘轮 eslint 73 / knip 18 / jscpd 1）；merge-metrics 工作树与分支已删除。下一步：桌面重启确认（按 §1.1 新锁规则排队用桌面版）；第 9 步循环板 L4 随后。"
+    },
+    {
+      "at": "2026-11-04T18:21:42.280Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "workflow metrics-reason-codes-and-merge（wf_8900afc21ad56fa3）完成。桌面重启确认：主检出 f3f0efc（相对 ab3f26a 只多 docs/graph）build 退出码 0；重启后两个包都在运行（dsh-glm-zcode 5/5；dsh-hourness 14 个组件 12 个运行、2 个出厂停用），指标行在运行；行健康无失败行，无新 crash log，控制台错误仍是已知两类。不阻塞：指标行设置页说明仍写「默认关闭」（合入后已默认启用，文案需改）；行健康里「积分口径：未提供」是激活时的旧快照。节点保持进行中：剩设计第 9 步的指标板桌面核对（批次 L4）。桌面锁已交还，现由 user-graph L4 持有。"
     }
   ]
 }
