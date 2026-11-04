@@ -335,6 +335,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "第 7 步评审第三轮的修正：91d64a1 已推 origin/metrics，修完第二轮的两条阻断（S7R2-1：cmd /c、cmd /k 开关后的整段按命令行再读一层，删除移动表、写入别名、find -delete、git clean -x/-X 与 shellWrites 都判，评审列的五条重新被拦，cmd /c \"type …\" 放行；S7R2-2：纠偏文字不再提读流水与 summary）以及非阻断 S7R2-3、4、6、7。门禁：npm test 2808 过 0 败、探针 372/372，四道退出码 0；棘轮 eslint 73、knip 18、jscpd 1。S7R2-5（第 7 步的 L3 场景）仍欠。第三轮复审进行中。"
+    },
+    {
+      "at": "2026-11-04T11:40:34.526Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "第 7 步评审第三轮 CHANGES_REQUESTED：阻断 1 条 S7R3-1——cmd 在 /c、/k 之前带别的开关（cmd /s /c、cmd /d /s /c、cmd /q /c、cmd /v:on /c），或整段以 if exist / if not exist 开头时，删除仍放行；3f59b61 的整条子串判法都拦，相对它是回退。非阻断 3 条：isPruneCall 不跳过 cmd 的其他开关（与设计 §3.4 原文一致）、写入别名表外的写法（ac、Invoke-WebRequest -OutFile、curl -o、tar -C）、第 7 步 L3 场景仍欠。三轮的走向：按命令名判法每轮修一种 cmd 包装又露出下一种，第一轮的子串判法则误拦读命令参数里的删除词（S7-3）。评审循环用满 3 轮暂停，待人定。"
     }
   ]
 }

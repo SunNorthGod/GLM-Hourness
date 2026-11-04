@@ -111,6 +111,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "UG5（简报写出任务服务的用户步骤）：7dbd5d7（未推）——派活简报的 Context 多一行「这件活服务的步骤」，写成「流程名 › 步骤名」，取 stepsServedBy，只收 live 步骤；execute-brief.spec 加一例。门禁：npm test 2778 个、2777 过、0 败、1 跳过，探针 347/347，76/19/1。等评审。"
+    },
+    {
+      "at": "2026-11-04T11:40:34.260Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "UG5 评审 APPROVED（无阻断），已推：origin/user-graph 5a0b2cc..7dbd5d7（快进）。走一遍约定段照计划顺延。UG6（面板「用户怎么用」页）开始。"
     }
   ]
 }
