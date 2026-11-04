@@ -353,6 +353,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "第 7 步评审第四轮 APPROVED（无阻断）：49449b4 已推 origin/metrics（合并 origin/main a9adca8 为 2dc368e）。修法照人同意的最后一轮：命令名是 cmd/cmd.exe 时其后整段按 3f59b61 的整条文字判，/c 前的开关、引号包整段、if exist 一次全覆盖；isPruneCall 跳过 cmd 开关；写入别名加 ac；第 7 步 L3 场景 metrics-rule 补上。门禁：build 0、preflight 0、npm test 0（2851、0 败、1 跳过）、探针 376/376、棘轮 eslint 73 / knip 18 / jscpd 1。非阻断 3 条：S7R4-1 交给 cmd 的读命令里开关与路径段被当动作词（findstr /ni 等误拦）、S7R4-2 cmd /c rm.exe 放行等写法、S7R4-3 2dc368e 的循环板读侧未评审。另一个真问题：loop-done 的 reason 带中文时被写入器按 §4.4 整条拒收，2dc368e 之后循环板页面「最近跑过的」读流水，这类运行会从页面上消失。编排方裁定（依据设计 §4.4、§1.6「记数与引用，不记文字」）：不放宽字段类型，reason 改为闭合的原因码表，人话原因留在循环板自己的状态与给主 Agent 的文字里、页面经映射显示。派 metrics-reason-codes-and-merge：原因码修正与 S7R4-1/2、评审 2dc368e 读侧、合入 main（指标行随之默认启用）、重启桌面版检查；第 9 步指标板 L4 之后再做。"
+    },
+    {
+      "at": "2026-11-04T15:53:42.997Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "loop-done 原因码改造提交：metrics 分支先合入 origin/main 05ac19f（合并提交 442e6f3），再提交 c1be407。loop-done.reason 改为封闭的 id 形原因码表（页面侧映射回中文），并修复 S7R4-1、S7R4-2。origin/metrics = c1be407。门禁：build 0，preflight 0，npm test 0（2854 测试，2853 通过 / 0 失败 / 1 跳过），探针 376/376，棘轮 eslint 73 / knip 18 / jscpd 1。下一步：评审 2dc368e 起的改动，合入 main，桌面重启确认。"
     }
   ]
 }
