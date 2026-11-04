@@ -431,6 +431,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "人 2026-11-04 对压缩后查原文的做法答「行」（编排方建议第 3 种）：压缩时在摘要末尾追加 ZCode 3.17.1 原句「If you need specific details from before compaction … read the full transcript at: <path>」，把会话导出成明文文件放在项目 .llm/ 下（不进 git、定清理），模型用 Read 分页读；新行默认 disabled: true。排进队首，有空位就派。"
+    },
+    {
+      "at": "2026-11-04T15:05:05.059Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-11-04 再确认：「给一轮，压缩查询依旧参考zcode的实现」。与上一条一致：E7 收敛已加一轮；压缩后查原文照 ZCode 3.17.1 的做法（续接文本里 transcriptPath 那一句的原文、ZCode 给 hook 写 transcript.jsonl 的形状作参考，模型用 Read 读），派工时以 reference/zcode-3.17.1/zcode.cjs 与 reference/ZCode 为准，不另造工具。排在队首。"
     }
   ]
 }
