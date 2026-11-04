@@ -359,6 +359,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "loop-done 原因码改造提交：metrics 分支先合入 origin/main 05ac19f（合并提交 442e6f3），再提交 c1be407。loop-done.reason 改为封闭的 id 形原因码表（页面侧映射回中文），并修复 S7R4-1、S7R4-2。origin/metrics = c1be407。门禁：build 0，preflight 0，npm test 0（2854 测试，2853 通过 / 0 失败 / 1 跳过），探针 376/376，棘轮 eslint 73 / knip 18 / jscpd 1。下一步：评审 2dc368e 起的改动，合入 main，桌面重启确认。"
+    },
+    {
+      "at": "2026-11-04T16:34:22.281Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "收尾评审第 1 轮 APPROVED，无阻塞（.worktrees/metrics/.agents/tasks/metrics/review-close.json，findings 为空）：2dc368e 的循环板读侧按 F33 改读指标流水；c1be407 后写 loop-done 的 11 处在类型上只能写闭表里的 51 个 id 形原因码或拦下运行的规则 id，L2 钉住每种结局配每个码都被流水收下；S7R4-1、S7R4-2 已解决。下一步：合入 main，桌面重启确认。"
     }
   ]
 }
