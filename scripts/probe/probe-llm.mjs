@@ -14,7 +14,9 @@
  * health table); a step marked `live` records the graph panel's live view
  * of the session (the graphLive projection, src/graph/live.ts); a step
  * marked `peakMode` records the rules row's glmHournessPeakMode state and
- * hold for the session; a step
+ * hold for the session; a step marked `hub` records what the status hub's
+ * collector reads for the session after the step's command, at the agent
+ * and the all audience (status hub design 0.3 §11 L3); a step
  * marked `modules` records the package ids of the client-modules graph; a
  * step marked `meta` records, for each project row of the Loader, the
  * display information the settings page's plugin inventory shows for it. A
@@ -55,6 +57,7 @@ import { GLM_MODELS, glmInputModalities } from '../../packages/glm/dist/glm-llm/
 import { asAttachments, glmImageRequestTarget, prepareRequestImages } from '../../packages/glm/dist/glm-llm/images.js'
 import { encodeRequest, splitSystemPrompt } from '../../packages/glm/dist/glm-llm/anthropic.js'
 import { loadGraph } from '../../packages/hourness/dist/graph/store.js'
+import { collectStatus } from '../../packages/hourness/dist/report/status.js'
 
 export const name = 'glm-hourness-probe/llm'
 export const inject = ['llm']
@@ -505,6 +508,19 @@ class ProbeAdapter {
         peakMode = { error: error instanceof Error ? error.message : String(error) }
       }
     }
+    // A step marked `hub` records what the status hub's collector
+    // (src/report/status.ts) reads for the request's session once the step's
+    // command ran: the entries and per-row outcomes at both audiences.
+    let hub
+    if (step.hub === true) {
+      try {
+        const now = Date.now()
+        hub = { agent: collectStatus(this.ctx, request.sessionId, 'agent', now), all: collectStatus(this.ctx, request.sessionId, 'all', now) }
+      }
+      catch (error) {
+        hub = { error: error instanceof Error ? error.message : String(error) }
+      }
+    }
     // A step marked `modules` records the client packages the client-modules
     // service composed (when the overlay mounts it).
     let modules
@@ -557,6 +573,7 @@ class ProbeAdapter {
         ...(tell === undefined ? {} : { tell }),
         ...(spawn === undefined ? {} : { spawn }),
         ...(peakMode === undefined ? {} : { peakMode }),
+        ...(hub === undefined ? {} : { hub }),
         ...(live === undefined ? {} : { live }),
         ...(modules === undefined ? {} : { modules }),
         ...(meta === undefined ? {} : { meta }),
