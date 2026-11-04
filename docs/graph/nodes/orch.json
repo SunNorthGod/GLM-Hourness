@@ -365,6 +365,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "11 条运行同时开工后，8 条在同一时段因模型服务限流（5xx/throttling）暂停（m7、user-graph、loops-machine、m4-checks、panel-2、status-hub、m6-followups、bootstrap、m5-rest 中除 metrics 与 merge-loops 外的各条）。编排方分两批恢复：先恢复 merge-loops（关键路径）、m7、user-graph、loops-machine、m4-checks、panel-2，同时在跑约 7 条；status-hub、m6-followups、bootstrap、m5-rest 等前一批有运行结束再恢复。并行上限以服务限流为准，不以机器为准。"
+    },
+    {
+      "at": "2026-11-04T11:51:24.241Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-11-04：「开的线还是有点多了，再减一条」。编排方暂停 panel-2-next-batches（规划步刚开始；面板剩下的大项里条件 8 等状态板块、条件 14 等接管，现在做收益最小）。在跑的 5 条：merge-loops-runner-l4（循环板桌面 L4）、m7-seam-and-e7、user-graph-ug3-ug7、m4-checks-and-rules、metrics-s6-s7-land-review。排队的 6 条，按序补位：loops-machine（被限流暂停）、panel-2、status-hub（被限流暂停）、m6-followups、m5-rest、bootstrap。在跑的有一条结束才补下一条。"
     }
   ]
 }

@@ -31,6 +31,12 @@
       "reason": "运行 m4-checks-and-rules 开工（2026-11-04，人：「桌面版随便用，尽可能开多线」）",
       "from": "approved",
       "to": "doing"
+    },
+    {
+      "at": "2026-11-04T11:49:52.602Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m4-checks 运行的计划（.worktrees/m4-checks/.agents/tasks/m4/checks-plan.md）：6 批——B1 规则板流水按项目写，B2–B5 是 E3（改完就跑的检查）拆成的四批，B6 env 行出厂启用。逐批实现与评审循环接着跑。"
     }
   ]
 }

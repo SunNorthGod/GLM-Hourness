@@ -437,6 +437,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "loops-runner 合入 main 的合并提交 fe6342f（工作树 .worktrees/merge-loops，无冲突、无修正提交）。合并树门禁：build 0、preflight 0、npm test 0（2745 过、0 败）、探针 347/347、棘轮 76/19/1。下一步：并入 main 新增的 docs/graph 提交后快进 main、推两个远端，再重启桌面版做循环板 L4。状态板块的续作运行在指标评审暂停后补上并行位。"
+    },
+    {
+      "at": "2026-11-04T11:49:52.426Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "loops-runner 已进 main：main 快进到 a9adca8 并推两个远端（origin/main 与 github/main 均为 a9adca8，ls-remote 核对）；其间 origin/main 新增的 5 个仅 docs/graph 的提交并入，未重跑门禁。merge-loops 工作树与分支已删。下一步：重启桌面版加载新 dist，做循环板 L4。M4 检查（m4-checks）、机器一级运行者（loops-machine）两条线由此可以基于含执行器的 main 推送。"
     }
   ]
 }
