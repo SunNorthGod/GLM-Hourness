@@ -425,6 +425,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "loops-runner Batch 3 实现：52f0bcc（未推）——/loops 列表、view.json 运行部分、ui/src/loops/ 循环板页；四道门禁全绿（2745 过、0 败、1 跳过，探针 347/347，76/19/1）。评审 CHANGES_REQUESTED 两条：F1（MEDIUM）每隔 N 的条目「下次」总显示 现在+N，应取 DSH 的 scheduledAt；F2（LOW）cordis.patch.yml 循环行注释仍说页面不在。进入第二轮修正。"
+    },
+    {
+      "at": "2026-11-04T09:06:42.142Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "loops-runner 线批次图（Batch 1–3）做完：Batch 3 第二轮评审 APPROVED，8c9d74f 已推 origin/loops-runner（7823103..8c9d74f，不强推）。修正：every 条目与 cron 一样不写「下次」（DSH 按锚点对齐，真实下次在任务记录的 scheduledAt）；循环行注释重写。门禁：build 0、preflight 0、npm test 0（2745 过、0 败、1 跳过）、探针 347/347、棘轮 76/19/1。Sequenced-later 五项对代码核对：1（gate 一路与 late）、2（scriptDetail/commandDetail）、3（clock.ts）、5（staleEntries/timeoutEntries 与周报）照原理由仍顺延；4（机器一级运行者与账号级两个通道事件）的理由已过时——M6 的契约与 quota/loopDefaults 已在 main，可以排期。分支比 origin/main 落后 8 个提交（仅 docs/graph）。合入 main 待人定：合入会让人同意过的脚本与检查条目真的起进程，且与 metrics 分支在 src/loops/run.ts、records.ts 冲突（exits 映射与 appendRun），后合入的一方对齐。"
     }
   ]
 }
