@@ -207,6 +207,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "视频改风格第 2 轮语义评审 APPROVED：第 1 轮的阻塞项（「子 Agent A」徽标）与三处遮挡都已修好；已通过的卡为绿框配绿色进度条；36 帧里没有 samples/README.md 列出的 AI 味元素；改动只在 video/ 下 17 个文件。3 条不阻塞：分支落后 origin/main 68 个提交，提交前先快进；任务目录 15.4 MB 图片；横版片尾 dsh-hourness 的字体与 video/README.md 的说法不符。编排方给合入步骤的答复：先快进到最新 main；图片不入库（.gitignore 在 .agents/tasks 下只收 .md 与 .svg，不强制加入），只提交文字记录与 video/ 源码；字体以 choice.md 为准，渲染符合就改 README 的说法，不符合就报告、不重渲。下一步：合入 main。"
+    },
+    {
+      "at": "2026-11-04T18:41:01.719Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "视频改风格合入 main：文档提交 91ac40f（远端随后为 b6fc4ae）；工作树提交前已变基到 origin/main，video lint 退出码 0；新成片已拷到主检出的 video/out，旧成片保留为 *-v3.mp4；video-restyle 工作树与分支已删除。编排方的「图片不入库」答复在合入之后才到，91ac40f 已强制加入任务目录的 66 张 PNG（样张 30、抽帧 36，约 15.4 MB）与 review.json，两个远端都已有。原因是编排方最初的任务书要求提交图片，与 .gitignore 在 .agents/tasks 下只收 .md、.svg 的规矩不一致，是编排方的错。处理：选 (a)，在 main 上追加一个提交，对这 66 张 PNG 与 review.json 做 git rm --cached（留在磁盘与历史里，树上不再跟踪），不改写历史、不强推；未选 (b) 原样保留（树上与 .gitignore 的规矩长期不一致）。另：choice.md 定 dsh-hourness 用 Cascadia Mono，横版片尾实际渲染为正文无衬线体；按 choice.md 改渲染并只重渲受影响的成片。"
     }
   ]
 }
