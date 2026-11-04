@@ -141,6 +141,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "合入进展：合并提交 ab00eaf（.worktrees/merge-ug，基于 origin/main d8761d5），唯一冲突 package.json 的测试链 test:1/test:2，按两边 spec 列表有序并集解决；接着跑门禁。"
+    },
+    {
+      "at": "2026-11-04T15:30:09.707Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "合并树门禁（.worktrees/merge-ug，HEAD ab00eaf）：build、preflight、npm test、探针四道退出码 0；测试 2832 个、2831 过、0 败、1 跳过；探针 347/347；棘轮 76/19/1，与 main、分支两边相同。下一步快进 main、推两个远端，再按 d-desktop-cdp-only 重启桌面版做 L4。"
     }
   ]
 }
