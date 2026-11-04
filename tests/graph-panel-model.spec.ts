@@ -9,7 +9,7 @@ import type { GraphNode } from '../src/graph/schema.ts'
 import { absoluteTime, byCreation, decidedBy, dotTone, graphRevisionOf, headlineGoals, historyText, liveGroups, nobodyRunningText, placeText, presenceText, progressOf, progressText, revisionOfBytes, statusText, tokensText, visibleGraph } from '../ui/src/graph/model.ts'
 import { holderRecordOf } from '../src/shared/holder-record.ts'
 import { firstVisit, graphHasHumanActorHistory, GUIDE_KEY, noGraphKey, readStamp, writeStamp } from '../ui/src/guide/state.ts'
-import { cwdKeyOf, mainChatOf, recordReads } from '../ui/src/graph/main-chat.ts'
+import { cwdKeyOf, mainChatOf, openerOf, recordReads } from '../ui/src/graph/main-chat.ts'
 import { GraphSource } from '../ui/src/graph/source.ts'
 import type { RemoteRoot } from '../ui/src/dsh.ts'
 import { initialSeen, nextSeen, seenKeyOf, seenRecordOf, watchVisibility, writeSeenRecord, type VisibilityHost } from '../ui/src/graph/seen.ts'
@@ -212,6 +212,8 @@ test('the source reads the graph, goes live on ready, and follows a write throug
     const first = await until(source, snapshot => snapshot.status === 'ready')
     assert.equal(first.status === 'ready' && first.graph.revision, (await loadGraph(graphDir)).revision)
     assert.deepEqual(first.status === 'ready' && first.items.questions.map(entry => entry.id), ['question-1'])
+    // The local record's key (seen.ts) comes from a node file's absolute path, never from stat on the directory (the host refuses it).
+    assert.equal(source.nodesDirAbsolute(), join(graphDir, 'nodes'))
     push({ kind: 'ready' })
     await until(source, snapshot => snapshot.status === 'ready' && snapshot.live)
 
@@ -438,6 +440,25 @@ test('主 Agent 的对话 (main-chat.ts recordReads): one read at the start, vis
   assert.deepEqual([reads, timers.filter(entry => entry.live).length], [1, 1], 'a visible mount reads once and polls, no second read')
   visible.stop()
   assert.equal(timers.filter(entry => entry.live).length, 0, 'stop ends the poll')
+})
+
+test('主 Agent 的对话 (main-chat.ts openerOf): the jump calls openSession on the service, so a method that reads this still works; no service, no jump', () => {
+  class Workspace {
+    readonly lifetime = { signal: 'alive' }
+    opened: string[] = []
+    openSession(target: string): void {
+      // The desktop's uiWorkspace reads this.lifetime.signal here; a detached call would throw.
+      void this.lifetime.signal
+      this.opened.push(target)
+    }
+  }
+  const workspace = new Workspace()
+  const open = openerOf(workspace)
+  assert.ok(open !== undefined)
+  open('session-2')
+  assert.deepEqual(workspace.opened, ['session-2'])
+  assert.equal(openerOf(undefined), undefined)
+  assert.equal(openerOf({}), undefined)
 })
 
 test('主 Agent 的对话 (MainChat): a readable record decides by itself, an absent one says so, an unreadable one falls back', () => {

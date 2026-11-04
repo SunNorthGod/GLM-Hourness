@@ -30,6 +30,7 @@ import { Decisions } from './Decisions.tsx'
 import { GraphCanvas } from './GraphCanvas.tsx'
 import { GuidePage } from './Guide.tsx'
 import { Home } from './Home.tsx'
+import { openerOf } from './main-chat.ts'
 import { MainChatContext, useMainAgent } from './MainChat.tsx'
 import { NeedsPage } from './NeedsYou.tsx'
 import { LiveSection } from './Live.tsx'
@@ -128,8 +129,6 @@ export function GraphPanel({ source, sessions, files, workspace, sessionId }: Gr
   const [boardId, setBoardId] = useState<string | undefined>(undefined)
   /** The goal whose 用户怎么用 page is open (user graph design 0.4.1 §6.1). */
   const [userGoal, setUserGoal] = useState<string | undefined>(undefined)
-  /** The absolute graph directory, for the local record's key; read once. */
-  const [graphDirAbs, setGraphDirAbs] = useState<string | undefined>(undefined)
   const [seen, setSeen] = useState(initialSeen)
   const selected = trail.at(-1)
   const depth = useRef(0)
@@ -158,7 +157,7 @@ export function GraphPanel({ source, sessions, files, workspace, sessionId }: Gr
     () => sessions.list.getSnapshot().projectionsBySession,
   )
   const values = projections[sessionId]?.values
-  const main = useMainAgent(sessionId, { sessions, files, openSession: workspace.openSession }, bodyVisible)
+  const main = useMainAgent(sessionId, { sessions, files, openSession: openerOf(workspace) }, bodyVisible)
   // The main agent's awaiting lives in its session's graphLive; when it is another session, ask the host once for its values.
   const holderId = main.chat?.kind === 'there' ? main.chat.sessionId : undefined
   const holderAsked = useRef<string | undefined>(undefined)
@@ -185,13 +184,9 @@ export function GraphPanel({ source, sessions, files, workspace, sessionId }: Gr
   )
   const modules = useMemo(() => graph === undefined ? null : modulesView(graph, awaiting), [graph, awaiting])
 
-  // The absolute path of the graph directory, once: the local record's key follows it.
-  useEffect(() => {
-    let live = true
-    void source.statAbsolute().then(path => { if (live && path !== null) setGraphDirAbs(path) }).catch(() => {})
-    return () => { live = false }
-  }, [source])
-  const seenKey = graphDirAbs === undefined ? undefined : seenKeyOf(`${graphDirAbs}/nodes`)
+  // The local record's key follows the absolute nodes directory the reads came from (seen.ts, plain-ui 1.3 §6.8).
+  const nodesAbsolute = snapshot.status === 'ready' ? source.nodesDirAbsolute() : undefined
+  const seenKey = nodesAbsolute === undefined ? undefined : seenKeyOf(nodesAbsolute)
 
   // Visible (seen.ts watchVisibility): the window's focus, the observer on the body as a veto; it also bounds the main chat's reads.
   const ready = snapshot.status === 'ready'

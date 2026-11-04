@@ -18,6 +18,18 @@ export function cwdKeyOf(path: string, windows: boolean): string {
   return windows ? slashed.toLowerCase() : slashed
 }
 
+/**
+ * The jump to a session through uiWorkspace.openSession, called on the
+ * service so the method keeps its `this` (dsh-client-ui-workspace's
+ * openSession reads `this.lifetime`; a detached reference throws "reading
+ * 'signal'" on the desktop, 2026-11-05 L4). Undefined when the client host
+ * did not inject the service.
+ */
+export function openerOf(workspace: { readonly openSession?: (target: string) => void } | undefined): ((sessionId: string) => void) | undefined {
+  if (typeof workspace?.openSession !== 'function') return undefined
+  return sessionId => { workspace.openSession?.(sessionId) }
+}
+
 /** How often the holder record is read again while the panel is visible (plain-ui 1.3 §4.9 step 2). */
 const POLL_MS = 30_000
 

@@ -217,6 +217,11 @@
 | DSH 桌面宿主 0.2.1-rc.3 启动竞态：旧实例退出未完成（userData 单例锁仍被垂死进程持有）时启动新实例，宿主子进程 main() 走到 `installDesktopUpdateTaskControl` 时上下文已停活，`CordisError` `INACTIVE_EFFECT` 未捕获，startup 阶段致命崩并弹崩溃框（按钮含「禁用第三方插件并重启」，堆栈里无第三方行）。强杀全部进程后同一秒内重启复现一次 | 本机 `crash-2026-11-03T16-46-59-757Z-host.log`〔实读 2026-11-04〕；`dsh-desktop-host` lib index.js:112、electron main.js:3831 |
 | DSH 桌面宿主页面的 `document.visibilityState` 恒为 `hidden`：窗口最小化与还原都不改变；IntersectionObserver 在 hidden document 里对视口内元素连初始回调都不派发。面板类的可见性逻辑不能依赖它；项目图面板 2026-11-05 起改用挂载/卸载加 window focus/blur，观察器只作否决（`ui/src/graph/seen.ts` 的 `watchVisibility`）；2026-10-29 的桌面版观察与此一致 | 面板线 L4 走查〔实证 2026-11-04〕：visibilityState 两态实测、IO 三秒零回调、localStorage 键零写入 |
 | DSH 桌面宿主 `dsh-app://app/plugins/events` 端点周期性 `net::ERR_FAILED`（约每 5 分钟一次），非第三方包的文件或行引起 | 面板线 L4 走查控制台采集〔2026-11-04，三采集段共 5 条〕 |
+| 桌面宿主里 `window` 的 `focus`/`blur` 与 `document.hasFocus()` 跟着窗口走：隔离实例的窗口在前台时 `hasFocus()` 为真，`visibilityState` 同时仍是 `hidden` | panel-2 Q4 隔离实例（`--remote-debugging-port=9339`，独立 user-data-dir 与 DSH_HOME）〔实证 2026-11-05〕 |
+| `remote.workspaceFiles.stat` 对目录报错：它只描述普通文件（README 的方法表「one regular file」，每次先 `lstat` 拒收错的文件种类）；要目录的绝对路径，取目录里一个文件的 `readBytes` 返回的 `absolutePath` 的上一级 | `reference/dsh-desktop-0.2.1-rc.3/dsh-api-workspace-files/README.md`:32、54〔实读〕；panel-2 Q4 走查里面板的本机记录键从没算出来〔实证 2026-11-05〕 |
+| 第三方客户端包 inject `uiWorkspace` 能拿到服务；`uiWorkspace.openSession` 是类方法，读 `this.lifetime.signal`，拆成独立函数再调会抛 `TypeError: Cannot read properties of undefined (reading 'signal')` | `dsh-client-ui-workspace/lib/client.js`:1471〔实读〕；panel-2 Q4 走查控制台〔实证 2026-11-05〕 |
+| 开场画面上点「第一次用？看看项目图怎么用 ›」，`sidebarRight.openTab` 打开了项目图页签，没有抛错 | panel-2 Q4 隔离实例〔实证 2026-11-05〕 |
+| 隔离实例窗口不在前台时，CDP `Page.captureScreenshot` 不返回（30 秒超时），`--disable-renderer-backgrounding` 与 `--disable-backgrounding-occluded-windows` 也不改变；DOM 读取与 `Input.dispatch*` 照常 | panel-2 Q4 隔离实例〔实证 2026-11-05〕 |
 
 ## 4. 许可与来源
 
