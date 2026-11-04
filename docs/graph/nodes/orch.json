@@ -353,6 +353,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "发现（2026-11-04 15:5x）：主检出出现未跟踪文件 src/graph/user-graph.ts（101 KB，15:26:39 创建），内容是一份探针输出（PASS sandbox… 起头），不是代码；时间对得上 user-graph 线 UG3 第一轮实现步的探针。某个工作步把探针输出重定向到了主检出的源码路径。它会让主检出的 tsc 失败；已删除（未跟踪、无人工作在内），主检出恢复干净。工作树 .worktrees/ug 里的同名文件是真正的 UG3 代码（已在 563c10e），未受影响。"
+    },
+    {
+      "at": "2026-11-04T10:58:32.022Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "并行中的运行（2026-11-04）：m7-seam-and-e7（E7 评审收敛）、metrics-s6-s7-land-review（第 7 步评审加一轮）、user-graph-ug3-ug7（UG5 起）、merge-loops-runner-l4（循环板合入 main 与桌面 L4）、loops-machine-runner-channel-events（顺延项第 4 条）、m4-checks-and-rules（改完就跑的检查与规划规矩余项）、panel-2-next-batches（面板与上手下一批）、status-hub-remaining（状态板块余批）、m6-followups-s1-s3（M6 三个跟进）、bootstrap-implementation（接管）、m5-rest-learning-lessons-page（M5 余项与经验页）。对应节点已置 doing。探针两把锁，工作步除锁目录外不写主检出。"
     }
   ]
 }
