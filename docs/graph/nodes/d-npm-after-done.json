@@ -1,0 +1,19 @@
+{
+  "id": "d-npm-after-done",
+  "type": "decision",
+  "title": "npm 等整体彻底做完再发版，由人执行",
+  "status": "approved",
+  "parent": "orch",
+  "verification": "unverified",
+  "body": "人 2026-11-04：「同意。npm等彻底做好了再发吧」。编排方原先建议这一轮四条线合入 main、桌面版走一遍之后发；人改为整体彻底做完再发。在此之前 npm 上保持 0.3.0（dsh-glm-zcode、dsh-hourness），本地版本号照常前进；发版用人自己的 npm 账号，编排方不持凭证、不代发。写进 AGENTS.md 第 7 条与 DEVELOPMENT.md §9。",
+  "history": [
+    {
+      "at": "2026-11-04T07:17:20.518Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "人定 npm 等整体彻底做完再发",
+      "relay": "同意。npm等彻底做好了再发吧",
+      "to": "approved"
+    }
+  ]
+}
