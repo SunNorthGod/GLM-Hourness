@@ -438,9 +438,12 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
     const previous = state.host
     const boot = Math.round(deps.boot() / 60_000) * 60_000
     const appStamp = deps.appStamp?.()
-    state.host = { pid: deps.pid, boot, startedAt, ...(appStamp === undefined ? {} : { appStamp }) }
+    state.host = { pid: deps.pid, boot, startedAt, aliveAt: startedAt, ...(appStamp === undefined ? {} : { appStamp }) }
     if (previous === undefined) return
-    const downMinutes = Math.max(0, Math.round((Date.parse(startedAt) - Date.parse(previous.startedAt)) / 60_000))
+    // Down from the last moment the board was seen running (its last beat, or its clean exit) to this start; a state written before that moment was kept has only the start.
+    const lastAlive = Date.parse(previous.aliveAt ?? '')
+    const downFrom = Number.isFinite(lastAlive) ? lastAlive : Date.parse(previous.startedAt)
+    const downMinutes = Math.max(0, Math.round((Date.parse(startedAt) - downFrom) / 60_000))
     await own('loops.host-restarted', hostRestartedKey(key, startedAt), {
       previousStart: previous.startedAt,
       downMinutes,
@@ -1160,6 +1163,9 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
         return
       }
       await restarted()
+      // The board is alive at this beat: a crash after it is down from here, which the next start's downMinutes counts from.
+      const host = inbox.state().host
+      if (host !== undefined) host.aliveAt = iso()
       // Private copies a crash left behind go after an hour (design §6.6); the scripts' self-trigger windows close themselves.
       sweepRunCopies(deps.root, deps.now())
       for (const [entry, window] of [...scriptWindows]) {
@@ -1240,7 +1246,7 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
       try {
         const state = inbox.state()
         // A clean exit is what tells the next start that the host did not crash (design §6.8).
-        if (state.host !== undefined) state.host = { ...state.host, cleanExit: true }
+        if (state.host !== undefined) state.host = { ...state.host, cleanExit: true, aliveAt: iso() }
         if (stand.kind === 'held') await inbox.save()
       }
       catch {

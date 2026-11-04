@@ -18,7 +18,7 @@
  */
 import assert from 'node:assert/strict'
 import { mkdtempSync, rmSync } from 'node:fs'
-import { readFile, readdir } from 'node:fs/promises'
+import { readFile, readdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -275,6 +275,37 @@ gitProjectTest('loops.host-restarted: once for this start, with the start in its
   await after.tick(60_000)
   assert.equal((await eventsOf(after.store)).length, 1, 'one start, one event')
   await after.runtime.stop()
+})
+
+gitProjectTest('downMinutes is how long the board was down: from its clean exit or its last beat, not from its last start; a state without that moment counts from the start', async ({ root }) => {
+  const hearing = entryHearing('execute.restart', { when: { kind: 'event', events: ['loops.host-restarted'] } })
+  const downOf = async (store: LoopStore): Promise<unknown> => (await eventsOf(store)).at(-1)?.payload.downMinutes
+  // Ran for half an hour, exited cleanly, started again a minute later (the L4 of 2026-11-04 saw 30 here).
+  const ran = await worldOf(root, { pid: 7201, entries: [hearing] })
+  await ran.tick()
+  await ran.tick(30 * 60_000)
+  await ran.runtime.stop()
+  const back = await worldOf(root, { pid: 7202, at: AT + 31 * 60_000, entries: [hearing] })
+  await back.tick()
+  assert.equal(await downOf(back.store), 1)
+  // Its last beat is at 31 minutes; nothing stops it, and the next start five minutes on takes the lock over.
+  const crash = await worldOf(root, { pid: 7203, at: AT + 36 * 60_000, entries: [hearing] })
+  await crash.tick()
+  assert.equal(crash.runtime.stand().kind, 'held')
+  const crashed = (await eventsOf(crash.store)).at(-1)?.payload
+  assert.deepEqual([crashed?.downMinutes, crashed?.crashed], [5, true])
+  // The process that lost the lock stops first, so the state file is the last holder's.
+  await back.runtime.stop()
+  await crash.runtime.stop()
+  // A state file from before the last-alive moment was kept: the gap from the last start, as it was.
+  const file = crash.store.paths.state
+  const state = JSON.parse(await readFile(file, 'utf8')) as { host: Record<string, unknown> }
+  delete state.host.aliveAt
+  await writeFile(file, `${JSON.stringify(state, null, 2)}\n`)
+  const old = await worldOf(root, { pid: 7204, at: AT + 56 * 60_000, entries: [hearing] })
+  await old.tick()
+  assert.equal(await downOf(old.store), 20)
+  await old.runtime.stop()
 })
 
 gitProjectTest('a host that did not exit cleanly says so, and the beat after a crash still runs what waited', async ({ root }) => {
