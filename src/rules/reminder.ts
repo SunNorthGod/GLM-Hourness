@@ -30,9 +30,10 @@ import { localClock } from './denial.ts'
 import { stepEvent } from './events.ts'
 import { judge, judgeInput } from './judge.ts'
 import { openTickets } from './listing.ts'
-import { effectivePeakMode, type PeakLevel, type Ticket } from './model.ts'
+import { effectivePeakMode, type PeakLevel, type ProjectState, type Ticket } from './model.ts'
 import type { PeakReading, ProjectView } from './peak.ts'
-import { clockReadings, tableOf } from './table.ts'
+import { GLM_PEAK } from './signals.ts'
+import { clockReadings, signalsRead, tableOf } from './table.ts'
 import { isStopTicket } from './wake.ts'
 
 /** Source kind of the persisted reminder notice. */
@@ -111,14 +112,23 @@ function reasonFor(seen: History, digest: string, goalRound: boolean, empty: boo
 
 const isGoalRound = (message: unknown): boolean => isRecord(message) && isRecord(message.source) && message.source.kind === GOAL_ROUND_SOURCE
 
-function ticketItem(ticket: Ticket, subagent: boolean): string {
+/** `until` is the end of the GLM peak that is on now, for a ticket held by a rule of the person that reads `glm-peak` (M6 design §7.2). */
+function ticketItem(ticket: Ticket, subagent: boolean, until: string | undefined): string {
   const call = `${ticket.tool} "${ticket.summary}"`
   if (ticket.handedFrom !== undefined && !subagent) {
     return `${ticket.id} handed over from subagent "${ticket.handedFrom.agentLabel}": ${call}${ticket.state === 'cleared' ? ' (cleared, dispatch it again or run it)' : ''}`
   }
   return ticket.state === 'cleared'
     ? `${ticket.id} ${call} (cleared at ${localClock(ticket.clearedAt ?? ticket.since)}, run it again)`
-    : `${ticket.id} ${call} (deferred since ${localClock(ticket.since)})`
+    : `${ticket.id} ${call} (deferred since ${localClock(ticket.since)}${until === undefined ? '' : `, until ${localClock(until)}`})`
+}
+
+/** Whether a rule of the person that holds the ticket reads `glm-peak`; the entries of the code are not in the state and say when the peak ends in their own words. */
+function heldByPeak(ticket: Ticket, state: ProjectState): boolean {
+  return ticket.rules.some((id) => {
+    const rule = state.rules !== undefined && Object.hasOwn(state.rules, id) ? state.rules[id] : undefined
+    return rule !== undefined && signalsRead(rule).includes(GLM_PEAK)
+  })
 }
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -178,7 +188,8 @@ function textFor(deps: ReminderDeps, agent: AgentLike, session: SessionLike): st
   const rules = informing.slice(0, room).map(rule => `- [inform, not checked] ${rule.id}: "${rule.title}" (set by ${rule.origin.actor === 'human' ? 'the human' : 'an agent, with the human\'s agreement'})`)
   const more = informing.length - rules.length
   const handedOver = tickets.some(ticket => ticket.handedFrom !== undefined && !subagent)
-  const ticketLine = tickets.length === 0 ? [] : [`Your open tickets: ${tickets.map(ticket => ticketItem(ticket, subagent)).join('; ')}.${handedOver ? ` ${HANDED_OVER_ADVICE}` : ''}`]
+  const peakUntil = reading.peak === true ? reading.until : undefined
+  const ticketLine = tickets.length === 0 ? [] : [`Your open tickets: ${tickets.map(ticket => ticketItem(ticket, subagent, heldByPeak(ticket, state) ? peakUntil : undefined)).join('; ')}.${handedOver ? ` ${HANDED_OVER_ADVICE}` : ''}`]
   const items = [...rules, ...(more > 0 ? [`and ${more} more: call rules_show`] : []), ...ticketLine]
   return peakLine === undefined && items.length === 0 ? '' : [...(peakLine === undefined ? [] : [peakLine]), ...(informing.length > 0 ? [HEADING] : []), ...items].join('\n')
 }

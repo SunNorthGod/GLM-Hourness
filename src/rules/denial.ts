@@ -13,6 +13,7 @@
 import { renderCorrection } from '../guard/rules.ts'
 import type { RuleHit } from './judge.ts'
 import type { BuiltinRule, Condition, PeakLevel, Rule } from './model.ts'
+import { GLM_PEAK } from './signals.ts'
 
 /** The peak level in force and where it comes from. */
 export interface PeakSetting {
@@ -64,23 +65,31 @@ function clockPhrase(clock: Extract<Condition, { readonly clock: unknown }>['clo
   return `the clock is ${outside ? 'outside' : 'within'} ${clock.from}-${clock.to} ${clock.tz ?? 'local time'}${days}`
 }
 
-function signalPhrase(condition: Extract<Condition, { readonly signal: string }>): string {
+function signalPhrase(condition: Extract<Condition, { readonly signal: string }>, peakUntil: string | undefined): string {
   const name = condition.signal
   if ('known' in condition) return `${name} has a value`
-  if ('is' in condition) return `${name} is ${typeof condition.is === 'boolean' ? (condition.is ? 'on' : 'off') : String(condition.is)}`
+  if ('is' in condition) {
+    if (name === GLM_PEAK && condition.is === true && peakUntil !== undefined) return `${name} is true until ${localClock(peakUntil)}`
+    return `${name} is ${typeof condition.is === 'boolean' ? (condition.is ? 'on' : 'off') : String(condition.is)}`
+  }
   if ('in' in condition) return `${name} is one of ${condition.in.join(', ')}`
   if ('above' in condition) return `${name} is above ${condition.above}`
   return `${name} is below ${condition.below}`
 }
 
-/** A condition as a plain statement: `code-freeze is on`, `the clock is outside 09:00-21:00 +08:00`. */
-export function conditionPhrase(condition: Condition): string {
-  if ('signal' in condition) return signalPhrase(condition)
+/**
+ * A condition as a plain statement: `code-freeze is on`, `the clock is
+ * outside 09:00-21:00 +08:00`. `peakUntil` is the end of the GLM peak that is
+ * on now (ISO 8601): a `glm-peak` is `true` in the condition, outside a `not`,
+ * then says until when (`glm-peak is true until 18:00`, M6 design §7.2).
+ */
+export function conditionPhrase(condition: Condition, peakUntil?: string): string {
+  if ('signal' in condition) return signalPhrase(condition, peakUntil)
   if ('clock' in condition) return clockPhrase(condition.clock, false)
   if ('stage' in condition) return `the goal stage is ${condition.stage.join(' or ')}`
   if ('not' in condition) return 'clock' in condition.not ? clockPhrase(condition.not.clock, true) : `it is not so that ${conditionPhrase(condition.not)}`
   const [items, joiner] = 'all' in condition ? [condition.all, ' and '] as const : [condition.any, ' or '] as const
-  return items.length === 1 ? conditionPhrase(items[0]) : items.map(item => `(${conditionPhrase(item)})`).join(joiner)
+  return items.length === 1 ? conditionPhrase(items[0], peakUntil) : items.map(item => `(${conditionPhrase(item, peakUntil)})`).join(joiner)
 }
 
 function lifetimePhrase(rule: Rule): string {
@@ -122,20 +131,21 @@ export function modeSentence(peak: PeakSetting): string {
 
 type Entry = DenialInput['rules'][number]
 
-function clauseOf(entry: Entry, effect: 'block' | 'queue'): string {
+/** The sentence of one rule. A rule of the person whose condition asks for `glm-peak` true says when the peak ends; an entry of the code says it in its own words. */
+function clauseOf(entry: Entry, effect: 'block' | 'queue', peakUntil: string | undefined): string {
   const { rule, hit } = entry
   if (rule.scope === 'builtin') return `Rule ${rule.id} defers ${builtinDeferral(rule.id) ?? 'it'}.`
   const head = `Rule ${rule.id} "${rule.title}" (${setByPhrase(rule)})`
   const reason = hit.reason === undefined ? '' : ` ${hit.reason}`
-  if (effect === 'block') return `${head} blocks it now${rule.condition === undefined ? '' : `: ${conditionPhrase(rule.condition)}`}.${reason}`
-  return `${head} defers it${rule.condition === undefined ? '' : ` while ${conditionPhrase(rule.condition)}`}.${reason}`
+  if (effect === 'block') return `${head} blocks it now${rule.condition === undefined ? '' : `: ${conditionPhrase(rule.condition, peakUntil)}`}.${reason}`
+  return `${head} defers it${rule.condition === undefined ? '' : ` while ${conditionPhrase(rule.condition, peakUntil)}`}.${reason}`
 }
 
 function boundaryOf(input: DenialInput, codeEntries: readonly Entry[]): string {
   const parts: string[] = []
   if (input.effect === 'queue') parts.push(input.ticket !== undefined ? `Deferred as ticket ${input.ticket}.` : input.unrecorded === true ? 'Deferred, but the board could not record a waiting ticket for it.' : 'Would be deferred; the command line opens no ticket.')
   if (codeEntries.length > 0) parts.push(`GLM peak hours now${input.peak.until === undefined ? '' : ` until ${localClock(input.peak.until)}`}.`, modeSentence(input.peak))
-  parts.push(...input.rules.map(entry => clauseOf(entry, input.effect)))
+  parts.push(...input.rules.map(entry => clauseOf(entry, input.effect, input.peak.until)))
   if (input.nested === true) parts.push('Your program received this as an error.')
   return parts.join(' ')
 }
