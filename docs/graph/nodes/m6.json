@@ -356,6 +356,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "m6-followups S1（m6-rules-text）提交 965bf5b，已推 origin/m6-followups，计划单独一个文档提交 93ee541。门禁：build 0、preflight 0、npm test 0（2950 通过 / 0 失败）、探针 0（376/376）；棘轮 eslint 73 / knip 18 / jscpd 1。两条验收由 L2 测试与 rules-queue 探针覆盖。下一步：S1 评审，然后 S3 m6-rules-probe。"
+    },
+    {
+      "at": "2026-11-04T20:28:19.395Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m6-followups S1（m6-rules-text，965bf5b）评审 APPROVED，无阻塞（.llm/m6f/review-s1.json、review-s1.md）。下一步：S3 m6-rules-probe。"
     }
   ]
 }

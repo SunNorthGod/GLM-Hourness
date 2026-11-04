@@ -621,6 +621,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "桌面首趟（L4 批次，2026-11-04）：/rules show 高峰行（「少做（出厂默认）· 下一次 14:00」）与两条生效规则可见；rules/peak 条目经 hub 上面板面。/loops 列表面尚无（commands.ts 头注：列表随 runner 里程碑），四条缺省条目与灰显语义在行侧就绪——「灰显」验收延到 runner 交付列表面后关闭。"
+    },
+    {
+      "at": "2026-11-04T20:28:19.611Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "压缩后查原文那条合入腾出并行位，编排方派 workflow rules-board-page-and-r4d（wf_a34e9ff57206a017）：做面板里的规则板页面（按规则设计 §9.1 与 plain-ui 设计 §4.7、§11，只看不写，高峰模式只显示与改法），并在规则设计把 R4d（checkCall 执行已批准的门禁脚本）归给规则行且没人做时一并做。依据：panel-2（第 8 条与上手页第 4 块）、status-hub-remaining（规则板条目）、m6-followups S2（验收第 24 条的真实 checkCall 用例）三条运行都在等它，此前没有运行在做；编排方此前向人提出用空出的并行位补这一项，人未反对。"
     }
   ]
 }
