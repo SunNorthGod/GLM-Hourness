@@ -99,6 +99,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "UG3 已推：origin/user-graph bddbd05..563c10e（快进）。UG4（M3 一侧的放行门禁接用户图）开始。"
+    },
+    {
+      "at": "2026-11-04T10:48:32.064Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "UG4（M3 一侧的放行门禁接用户图）落地：第一轮评审 2 条阻断（放行页上的负责人顺序随服务器文件名顺序变、会误判同意作废；缺验收 29、30 的 L2 用例），修后并入 5a0b2cc，第二轮 APPROVED；已推 origin/user-graph（563c10e..5a0b2cc，快进）。门禁：build 0、preflight 0、npm test 0（2776 过、0 败、1 跳过）、探针 347/347、棘轮 76/19/1。UG5（简报的步骤段）开始。"
     }
   ]
 }

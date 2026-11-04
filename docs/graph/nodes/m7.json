@@ -522,6 +522,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "E7 进行中：规划替换后的尾段已确认（feat-001、feat-002、feat-003、e7-converge 至多 2 轮、e7-squash 合成一个 E7 提交、push-report 改读新评审路径）。FEAT-001 本地提交 1ca491a（未推）：check_commit、hourness-gate provider、检查记录与 trunkCheck；build 0、execute-check 15/15、execute-git 46/46、execute-row 9/9、lint 0（76/19/1）。"
+    },
+    {
+      "at": "2026-11-04T10:48:31.813Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "E7 三块实现完：FEAT-002 3619247（trunk-advance-checked 执行前后、advances.jsonl 等；execute-advance 23/23、execute-upstream 7/7 新增、execute-handback 10/10、execute-row 9/9、execute-check 15/15，lint 76/19/1）；FEAT-003 1ca003f（L3 场景 glm-exec-merge、glm-exec-merge-upstream，文档，全量门禁：build 0、preflight 0、npm test 0（2829 个、2828 过、0 败、1 跳过）、探针 412/412、棘轮 76/19/1）。三个提交均在本地未推，进入 e7-converge 评审循环，过后合成一个 E7 提交再推。"
     }
   ]
 }
