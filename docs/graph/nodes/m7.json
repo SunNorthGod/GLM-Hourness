@@ -498,6 +498,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "E5 落地（f1c137c，含并 main 1800f56，2026-11-04）：计划审批与主 Agent 通信——submit_plan/ask_main/answer_worker 三工具（等待活在一次工具调用内：带 outputSchema 的子 agent 停回合等答会被结算成 error）；answer_worker 过 mainAgentCall 门、批准前重跑 checkPlan 与 pins 新鲜度（brief_stale/plan_invalid 不动调用）、过门才翻节写批注并把登记项 approved 带路径并集；通知送前重取持有者、投递复用 rules/wake 的 deliver。顺线修掉 E4 潜伏缺陷：dispatch 存 pins 双写前缀（renderPins 自带 pins: 前缀），审批 staleness 一接上会对一切派发改 brief_stale。兄弟 send_message 拒绝文案实测 belongs to another parent session（§9.1 的 UNAUTHORIZED 即此道），§17.10 注明。门禁全绿（探针 366/366 含 glm-exec-plan 十检查、棘轮 217/19/1）。流程两课立规进 DEVELOPMENT §5：合并后即跑全量门禁（这次合并只跑 build+棘轮，status.spec 期望表缺 execute 全量才暴露）；探针运行中不重建检出（自伤一次）。下一步 E6 交回处理。"
+    },
+    {
+      "at": "2026-11-04T05:06:57.917Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "E6 落地（cffcad4，2026-11-04）：交回处理——语义校验、报告出树、经验接缝含密钥略去、通信计数、stale 停步；有效深浅与底线命中（floorHits/parseFloor）、审查任务确保、verdict 规整与覆盖缺项作废同模型重派、轮次收敛与停下（内存顶替 stoppedInMemory）、停下的四行草稿经 glm-hourness-loop、模块设计审查记录（方向清单 digest、派出时刻）。插曲：重启前的死会话已完成 E6 主体（12c564b）未推未跑探针，续作代理审计逐项对设计后采认；三个探针红皆死会话合入 m4 八条代码规则后未跑探针的陈账（scratch-only 拦新脚本→目标改数据文件、glm-exec-plan 时序竞态→派发顺序对调、others 绑定随对调）。合并 c29ee08 并解 package.json 并集。门禁全绿（test 2785、probe 394/394、棘轮 76/19/1）。遗留归属已核：R4-F10 的 M4 接缝（worker-scope 查 requestsService 的 outsideDenial/peekGrant）随 E7 接；openRequests 归 E8 推进（goals.block 原因码 hourness-waiting-human）——§18.2 谁后合入谁改。"
     }
   ]
 }
