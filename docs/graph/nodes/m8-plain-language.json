@@ -448,6 +448,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "panel-2 计划步骤：已快进合入 origin/main c48e421，build 退出码 0。计划提出的两处与任务书「主检出只写 .llm/probe-lock*」的冲突，编排方答复：一、loops-machine 的探针修复合入 main 之前，在工作树里跑探针会改写主检出被忽略的 .llm/loops/view.json；每次跑探针前先合 main，修复还没到就照跑，并记录该文件前后的修改时间与 SHA-256，有变化就报告，不当失败。二、L4 用从本分支构建的独立桌面实例（独立 user-data-dir、DSH_HOME、CDP 端口），在主检出建 .llm/desktop-lock 不必先问，与 probe-lock 同属例外，按 DEVELOPMENT.md §1.1 续写 owner.txt、用完删除、只走 CDP、输入前核对是自己的临时会话，不停也不杀人正在用的桌面实例。"
+    },
+    {
+      "at": "2026-11-04T19:14:15.670Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "panel-2 计划写好：.worktrees/panel-2/.agents/tasks/panel/impl-plan-2.md，计划提交 95f10df（本地，未推送），工作树已快进到 origin/main c48e421；基线 build 0、preflight 0、npm test 0（2939 通过 / 1 跳过），棘轮 73/18/1。本轮可做 Q1–Q4：Q1 状态字统一为「等你回话」；Q2 写法检查第一阶段（src/graph/plain.ts、why 字段、引擎对 llm/harness 写入给 warnings）；Q3 现有未关闭节点的标题改写对照表（交人，不写图）；Q4 隔离实例桌面 L4。其余 11 项在等。其中要人定的：一、阻断②：「上次看之后」的本机记录与 useMainAgent 的可见门在桌面版上失效，设计 §6.8 押在 visibilityState 上，换成挂载/卸载加 window focus/blur 属语义变更；二、做完条件第 1、6、9、17 条按旧问法（背景、推荐、疑问、不做四行）写，main 上已是 d-ask-three-gates 的问法，计划 §5 列了要改的字句，条件归人改；三、流程条的「等你拍板」要不要随 Q1 统一成「等你回话」。编排方已把这三件交人。"
     }
   ]
 }
