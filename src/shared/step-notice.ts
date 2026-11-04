@@ -10,10 +10,12 @@
  */
 import type { AgentLike, DerivedMessage, SessionLike, UserNotice } from './dsh-min.ts'
 
-/** What a builder may read besides the history: the messages this step admits and the agent's session. */
+/** What a builder may read besides the history: the messages this step admits, the agent's session, and the step number within the turn. */
 interface StepInput {
-  readonly admitted: readonly unknown[]
+  readonly admitted: readonly DerivedMessage[]
   readonly session: SessionLike
+  /** 1 is the turn's first step (the request channel's still-waits reminder rides it, m4-request-card §5.5). */
+  readonly step: number
 }
 
 type StepNoticeBuilder = (history: readonly DerivedMessage[], step: StepInput) => UserNotice | undefined | Promise<UserNotice | undefined>
@@ -36,7 +38,7 @@ export function installStepNotice(agent: AgentLike, what: string, eligible: () =
     if (decision.kind === 'reject' || signal.aborted || !eligible()) return decision
     // installModelSelection's guard: an empty decision never turns into a step.
     if (decision.messages.length === 0 && (step === 1 || messages.length > 0)) return decision
-    const notice = await build(session.deriveMessages() as readonly DerivedMessage[], { admitted: decision.messages, session })
+    const notice = await build(session.deriveMessages() as readonly DerivedMessage[], { admitted: decision.messages as readonly DerivedMessage[], session, step })
     return notice === undefined ? decision : { ...decision, messages: [...decision.messages, notice] }
   })
 }

@@ -9,6 +9,7 @@ import { ANSWER_MARKS, answerCallMark } from '../src/shared/answer-marks.ts'
 import { askSummary, localDay, morningReport, reportFromFiles, type AskSummary, type ReportFs, type ReportOptions } from '../src/workflow/morning-report.ts'
 import { apply } from '../src/workflow/index.ts'
 import type { AuditJournal, DecisionRecord, UsageRecord } from '../src/memory/audit.ts'
+import type { GuardRecord } from '../src/guard/records.ts'
 import { engineFixture, fixtureTest, must, type EngineFixture } from './graph-helpers.ts'
 import { exampleRecord } from './proposal-examples.ts'
 
@@ -111,54 +112,114 @@ test('clean period reports 无 exceptions and empty usage', () => {
   assert.ok(!report.includes('影子记录'))
 })
 
-test('shadow records are counted apart from denials: never blocked, not exceptions', () => {
-  const report = morningReport({
-    period: 'p',
-    decisions: [],
-    violations: [
-      { at: 't1', rule: 'file-tools-only', mode: 'shadow', sessionId: 's1', turn: 1, paths: ['gen.txt'], calls: [{ tool: 'Bash', command: '[IO.File]::WriteAllText(…)' }] },
-      { at: 't2', rule: 'file-tools-only', mode: 'shadow', sessionId: 's1', turn: 2, paths: ['b.txt'], calls: [{ tool: 'Bash', command: 'cmd /c …' }] },
-    ],
-    usage: [],
-    asks: NO_ASKS,
-  })
-  assert.ok(report.includes('## 例外（先看）\n- 无'))
-  assert.ok(!report.includes('违规 file-tools-only'))
-  assert.ok(report.includes('## 影子记录（只记录，未拦截）\n- file-tools-only × 2'))
+/** The report over one period's journal records alone: no decisions, no usage (the tests below read the exception section). */
+const reportOf = (violations: readonly GuardRecord[]): string => morningReport({ period: 'p', decisions: [], violations: [...violations], usage: [], asks: NO_ASKS })
+
+test('denials and late denials are the violations; a late denial is counted on its own line', () => {
+  const report = reportOf([
+      { at: 't1', rule: 'file-tools-only', tool: 'Bash', correction: '…' },
+      // A shadow record of the pre-0.6 fallback and a rules-board late block: both are late denials.
+      { at: 't2', rule: 'file-tools-only', mode: 'shadow', sessionId: 's1', turn: 1, paths: ['gen.txt'], calls: [{ tool: 'Bash', command: '[IO.File]::WriteAllText(…)' }] },
+      { at: 't3', rule: 'rules:r-no-push', mode: 'late', tool: 'pwsh', scope: 'other' },
+  ])
+  assert.ok(report.includes('## 例外（先看）\n- 违规 file-tools-only × 2\n- 违规 rules:r-no-push（其他路由） × 1\n- 其中晚到的拦下 2 条\n'), report)
+  assert.ok(!report.includes('## 影子记录'), 'the shadow section is gone')
 })
 
-test('a denial of the rules board (mode enforce) is a violation like the guard\'s; a call it only recorded is neither a violation nor a shadow record', () => {
+test('a denial of the rules board (mode enforce, effect block) is a violation like the guard\'s', () => {
   const report = morningReport({
     period: 'p',
     decisions: [],
     violations: [
-      { at: 't1', rule: 'rules:r-no-push', mode: 'enforce', tool: 'pwsh', scope: 'other', correction: '…' },
-      { at: 't2', rule: 'rules:r-no-push', mode: 'enforce', tool: 'pwsh', scope: 'other', correction: '…' },
-      { at: 't3', rule: 'rules:r-note-npm', mode: 'record', tool: 'pwsh', scope: 'other', correction: '…' },
+      { at: 't1', rule: 'rules:r-no-push', mode: 'enforce', effect: 'block', tool: 'pwsh', scope: 'other', correction: '…' },
     ],
     usage: [],
     asks: NO_ASKS,
   })
-  assert.ok(report.includes('## 例外（先看）\n- 违规 rules:r-no-push（其他路由） × 2\n'), report)
-  assert.ok(!report.includes('r-note-npm'), 'recorded calls are not violations')
-  assert.ok(!report.includes('## 影子记录'), 'and not shadow records')
+  assert.ok(report.includes('- 违规 rules:r-no-push（其他路由） × 1'), report)
+})
+
+test('follow-up, request, grant, void, lift and gap records are not violations; a queued call, a recorded call and an unreadable line are counted apart', () => {
+  const report = morningReport({
+    period: 'p',
+    decisions: [],
+    violations: [
+      { at: 't1', rule: 'rules:r-note', mode: 'record', effect: 'record', tool: 'pwsh', scope: 'other' },
+      { at: 't2', rule: 'rules:r-queue', mode: 'enforce', effect: 'queue', tool: 'pwsh', scope: 'other', correction: '…' },
+      { at: 't3', kind: 'followup', rule: 'file-tools-only', tool: 'pwsh', outcome: 'repeat', denial: 'k', scope: 'dialect' },
+      { at: 't4', kind: 'request', rule: 'workspace-containment', tool: 'write', ref: 'r-1', outcome: 'approved', by: 'human', words: '可以', scope: 'dialect' },
+      { at: 't5', kind: 'grant', rule: 'workspace-containment', tool: 'write', ref: 'r-1', signature: 's', call: { tool: 'write', target: 'x' }, scope: 'dialect' },
+      { at: 't6', kind: 'grant-void', rule: 'workspace-containment', tool: 'write', ref: 'r-1', reason: 'changed', scope: 'dialect' },
+      { at: 't7', kind: 'lift', rule: 'scratch-only', action: 'lift', via: 'chat', words: '新建脚本那条先别拦了' },
+      { at: 't8', rule: 'x', mode: 'late' },
+      { at: 't9', kind: 'gap', row: 'guard', lost: 3, classes: { denial: 2, followup: 1 }, since: '2026-11-01T01:00:00Z', until: '2026-11-01T02:10:00Z' },
+    ],
+    usage: [],
+    asks: NO_ASKS,
+    offsetMinutes: 480,
+  })
+  assert.ok(report.includes('## 例外（先看）\n- 无\n'), report)
+  assert.ok(!report.includes('违规 rules:r-queue'), 'a queued call is not a violation')
+  assert.ok(!report.includes('违规 file-tools-only'), 'a follow-up record is not a violation')
+  assert.ok(!report.includes('违规 workspace-containment'), 'a request, a grant or a void is not a violation')
+  assert.ok(!report.includes('违规 scratch-only'), 'a lift record is not a violation')
+  assert.ok(report.includes('- 只记录 1 条（规则板上人选的做法）'), report)
+  assert.ok(report.includes('- 流水有缺口：这段时间有 3 条记录没写进来（拦下 2、跟进 1），最近一处到 11-01 10:10；当时的拦截都照常生效'), report)
+  assert.ok(report.includes('- 1 行记录读不懂'), report)
 })
 
 test('records from routes the dialect did not claim are counted apart; records without a scope count as before', () => {
+  const report = reportOf([
+      { at: 't1', rule: 'file-tools-only', tool: 'Bash', correction: '…' }, // written before split step 7
+      { at: 't2', rule: 'file-tools-only', tool: 'Bash', scope: 'dialect', route: { provider: 'glm-zcode', model: 'glm-5.3' }, correction: '…' },
+      { at: 't3', rule: 'file-tools-only', tool: 'pwsh', scope: 'other', route: { provider: 'deepseek-account', model: 'deepseek-flash' }, correction: '…' },
+  ])
+  assert.ok(report.includes('## 例外（先看）\n- 违规 file-tools-only × 2\n- 违规 file-tools-only（其他路由） × 1\n'))
+})
+
+test('each denied rule gets one line with its count, its last denial, its right-path ratio and its verbatim retries (m4-gate G2)', () => {
   const report = morningReport({
     period: 'p',
     decisions: [],
     violations: [
-      { at: 't1', rule: 'file-tools-only', tool: 'Bash', correction: '…' }, // written before split step 7
-      { at: 't2', rule: 'file-tools-only', tool: 'Bash', scope: 'dialect', route: { provider: 'glm-zcode', model: 'glm-5.3' }, correction: '…' },
-      { at: 't3', rule: 'file-tools-only', tool: 'pwsh', scope: 'other', route: { provider: 'deepseek-account', model: 'deepseek-flash' }, correction: '…' },
-      { at: 't4', rule: 'file-tools-only', mode: 'shadow', sessionId: 's1', scope: 'other', route: { provider: 'deepseek-account', model: 'deepseek-flash' }, turn: 1, paths: ['gen.txt'], calls: [{ tool: 'pwsh', command: 'cmd /c …' }] },
-    ],
+      { at: '2026-10-31T06:02:00Z', rule: 'checker-config', tool: 'edit', scope: 'dialect', correction: '…', call: { tool: 'edit', target: 'tsconfig.json' } },
+      { at: '2026-10-31T07:00:00Z', rule: 'checker-config', tool: 'edit', scope: 'dialect', correction: '…', call: { tool: 'edit', target: 'tsconfig.json' } },
+      { at: '2026-10-31T08:00:00Z', rule: 'checker-config', tool: 'edit', scope: 'dialect', correction: '…', call: { tool: 'edit', target: 'tsconfig.json' } },
+      { at: '2026-10-31T08:05:00Z', kind: 'followup', rule: 'checker-config', tool: 'edit', outcome: 'repeat', denial: 'k', scope: 'dialect' },
+      { at: '2026-10-31T08:06:00Z', kind: 'followup', rule: 'checker-config', tool: 'write', outcome: 'right-path', denial: 'k', scope: 'dialect' },
+      { at: '2026-10-31T08:07:00Z', kind: 'followup', rule: 'checker-config', tool: 'write', outcome: 'right-path', denial: 'k', scope: 'dialect' },
+    ] as GuardRecord[],
     usage: [],
     asks: NO_ASKS,
+    offsetMinutes: 480,
   })
-  assert.ok(report.includes('## 例外（先看）\n- 违规 file-tools-only × 2\n- 违规 file-tools-only（其他路由） × 1\n'))
-  assert.ok(report.includes('## 影子记录（只记录，未拦截）\n- file-tools-only（其他路由） × 1'))
+  assert.ok(report.includes('- 拦下 checker-config × 3（最近一次：edit tsconfig.json · 10-31 16:00） · 拦截后下一步走对 2/3 · 原样重试 1 次'), report)
+  assert.ok(report.includes('- 拦截后下一步走对：checker-config 2/3'), report)
+})
+
+test('the summary counts the settled follow-ups as 走对 x/y and the stopped ones apart; the denominator holds no 「没有下一步」 (N30)', () => {
+  const violations: GuardRecord[] = []
+  for (let index = 0; index < 3; index++) {
+    violations.push({ at: `2026-11-01T0${index}:00:00Z`, rule: 'one', tool: 'Bash', scope: 'dialect', correction: '…' })
+    violations.push({ at: `2026-11-01T0${index}:10:00Z`, kind: 'followup', rule: 'one', tool: 'write', outcome: 'right-path', denial: 'k', scope: 'dialect' })
+  }
+  violations.push({ at: '2026-11-01T05:00:00Z', kind: 'followup', rule: 'one', tool: 'pwsh', outcome: 'other', denial: 'k', scope: 'dialect' })
+  violations.push({ at: '2026-11-01T06:00:00Z', kind: 'followup', rule: 'two', tool: 'read', outcome: 'none', denial: 'k', scope: 'dialect' })
+  violations.push({ at: '2026-11-01T07:00:00Z', kind: 'followup', rule: 'two', tool: 'read', outcome: 'none', denial: 'k', scope: 'dialect' })
+  const report = reportOf(violations)
+  assert.ok(report.includes('- 拦截后下一步走对：one 3/4（另有 2 次停下来交给人或上级）'), report)
+  assert.ok(!report.includes('- 拦下 two ×'), 'a rule with follow-ups but no denial in the period has no line of its own')
+})
+
+test('a rule denied with no follow-up settled yet shows its count and its last denial without a ratio; with nothing settled anywhere the summary counts the stops alone', () => {
+  const report = reportOf([{ at: '2026-11-01T02:00:00Z', rule: 'one', tool: 'Bash', scope: 'dialect', correction: '…', call: { tool: 'pwsh', command: 'Set-Content a.txt' } }])
+  assert.ok(report.includes('- 拦下 one × 1（最近一次：Bash Set-Content a.txt · 11-01 10:00）\n'), report)
+  assert.ok(!report.includes('拦截后下一步走对'), report)
+  const stopped = reportOf([
+    { at: '2026-11-01T02:00:00Z', rule: 'one', tool: 'Bash', scope: 'dialect', correction: '…' },
+    { at: '2026-11-01T03:00:00Z', kind: 'followup', rule: 'one', tool: 'read', outcome: 'none', denial: 'k', scope: 'dialect' },
+  ])
+  assert.ok(stopped.includes('- 拦截后下一步走对：无（另有 1 次停下来交给人或上级）'), stopped)
 })
 
 /** A filesystem of the given files; a file that is not in it is missing, as ENOENT. */
@@ -410,10 +471,10 @@ test('apply journals dispatch decisions and always delegates', async () => {
     on: (_event, listener) => { listeners.push(listener as typeof listeners[number]); return () => {} },
   }, journal)
   let delegated = false
-  const result = await listeners[0]!({ name: 'spawn_teammate', arguments: { name: 'researcher' } }, async () => { delegated = true; return { kind: 'allow' } })
+  const result = await listeners[0]({ name: 'spawn_teammate', arguments: { name: 'researcher' } }, async () => { delegated = true; return { kind: 'allow' } })
   await new Promise(resolve => setImmediate(resolve))
-  await listeners[0]!({ name: 'read', arguments: {} }, async () => { delegated = true; return { kind: 'allow' } })
-  await listeners[0]!({ name: 'spawn_teammate', arguments: {}, parent: 'token' }, async () => { delegated = true; return { kind: 'allow' } })
+  await listeners[0]({ name: 'read', arguments: {} }, async () => { delegated = true; return { kind: 'allow' } })
+  await listeners[0]({ name: 'spawn_teammate', arguments: {}, parent: 'token' }, async () => { delegated = true; return { kind: 'allow' } })
   dispose()
   assert.equal(delegated, true)
   assert.deepEqual(result, { kind: 'allow' })
@@ -431,7 +492,7 @@ test('both subagent tools of the rc.3 base profile are dispatches', async () => 
   const listeners: Array<(payload: unknown, next: () => Promise<unknown>) => Promise<unknown>> = []
   apply({ on: (_event, listener) => { listeners.push(listener as typeof listeners[number]); return () => {} } }, journal)
   for (const name of ['subagent', 'subagent_fork']) {
-    await listeners[0]!({ name, arguments: { description: `${name} task` } }, async () => ({ kind: 'allow' }))
+    await listeners[0]({ name, arguments: { description: `${name} task` } }, async () => ({ kind: 'allow' }))
   }
   await new Promise(resolve => setImmediate(resolve))
   assert.deepEqual(decisions.map(record => [record.kind, record.subject]), [['dispatch:subagent', 'subagent task'], ['dispatch:subagent_fork', 'subagent_fork task']])
@@ -443,7 +504,7 @@ test('the installer form journals decisions into the row home, else the data ser
   const run = async (config: { home?: string }, data: unknown) => {
     const listeners: Array<(payload: unknown, next: () => Promise<unknown>) => Promise<unknown>> = []
     apply({ on: (_event, listener) => { listeners.push(listener as typeof listeners[number]); return () => {} }, get: name => name === 'glmHournessData' ? data : undefined }, { ...config, fs })
-    await listeners[0]!({ name: 'subagent', arguments: { description: 'task' } }, async () => ({ kind: 'allow' }))
+    await listeners[0]({ name: 'subagent', arguments: { description: 'task' } }, async () => ({ kind: 'allow' }))
     await new Promise(resolve => setImmediate(resolve))
   }
   await run({}, { userHome: 'C:/u/glm-hourness', projectHome: 'C:/svc/.llm' })

@@ -16,3 +16,6 @@ dist/
 .worktrees/
 # Built by scripts/build-ui.mjs from ui/src (npm run build).
 /packages/*/ui/client.js
+
+# npms lockfile: the repository keeps pnpm-lock.yaml only.
+package-lock.json

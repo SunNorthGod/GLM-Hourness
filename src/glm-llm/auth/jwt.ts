@@ -18,7 +18,7 @@ export function inspectJwt(jwt: string): JwtInfo | null {
   const parts = jwt.split('.')
   if (parts.length !== 3) return null
   try {
-    const b64 = parts[1]!.replace(/-/g, '+').replace(/_/g, '/')
+    const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/')
     const pad = b64.length % 4 === 0 ? '' : '='.repeat(4 - (b64.length % 4))
     const payload = JSON.parse(Buffer.from(b64 + pad, 'base64').toString('utf8')) as { iat?: unknown, user_id?: unknown }
     if (typeof payload.iat !== 'number') return null

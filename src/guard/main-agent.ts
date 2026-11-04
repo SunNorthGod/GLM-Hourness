@@ -53,7 +53,7 @@ import { judgeDispatchedWrite, releaseCorrection, type ReleaseDeps } from './des
 import { attemptOf, DELEGATIONS_CORRECTION, GRAPH_CLI_CORRECTION, graphCliWrite, judgeGraphStage, judgeMainAgentGraph, relayOf, stageCandidate, SUBAGENT_RELAY_CORRECTION, writesDelegations, type GraphRuleDeps, type SessionKind, type StageAttempt } from './main-agent-graph.ts'
 import { ASK_RULE, DESIGN_RELEASE_RULE, GIT_SNAPSHOT_RULE, GRAPH_CLI_RULE, GRAPH_DELEGATIONS_RULE, GRAPH_RELAY_RULE, GRAPH_STAGE_RULE, NO_WRITE_RULE } from './main-agent-rules.ts'
 import { originOf } from './origin.ts'
-import { evaluate, fileWriteTarget, isFileWrite, NATIVE_FACE, renderCorrection, shellCommandOf, shellWriteOf, type Correction, type GuardRule, type RuleVerdict, type ToolCall } from './rules.ts'
+import { fileToolTargetOf, isFileWrite, judge, NATIVE_FACE, renderCorrection, shellCommandOf, shellWriteOf, type Correction, type GuardRule, type RuleVerdict, type ToolCall } from './rules.ts'
 import { describeWrite } from './shell.ts'
 
 const ALLOW: RuleVerdict = { kind: 'allow' }
@@ -67,7 +67,7 @@ const NO_WRITE_EXCEPTION = 'If the human wants this session to edit files direct
 
 /** What a call does that writes files, as the first line of a correction; undefined when it writes nothing. `call.name` is the DSH native. */
 function writeFactOf(call: ToolCall): string | undefined {
-  const target = fileWriteTarget(call)
+  const target = fileToolTargetOf(call)
   if (target !== undefined) return `You tried to write "${target}".`
   // A file tool with no path in its arguments still writes (the runtime refuses it later); the rules do not wait for that.
   if (isFileWrite(call)) return `You called ${call.name}, which writes files.`
@@ -129,8 +129,8 @@ export interface MainAgentRulesDeps extends Pick<ReleaseDeps, 'agents' | 'graph'
   readonly isMainAgent: (agent: Subject) => boolean
   /** DSH natives of the tools the main agent does not get (ask_user_question). */
   readonly hiddenTools: readonly string[]
-  /** Write one denial to the violation journal; never rejects into the call. */
-  readonly journal: (record: ViolationRecord) => void
+  /** Write one denial to the violation journal of the session's project; never rejects into the call. */
+  readonly journal: (record: ViolationRecord, cwd: string | undefined) => void
   /** Report the row health of the agent's session. */
   readonly report: (agent: Subject, state: HealthState, reason: string) => void
   /** Put a notice before the agent's next step; false when the agent could not be reached. */
@@ -171,7 +171,8 @@ export function installMainAgentRules(ctx: PreExecuteHost & ServiceLookup, deps:
       const route = sessionRoute(session)
       const origin = originOf(dialectNames(dialect, agent, route, warn) !== undefined, route)
       const reason = renderCorrection(correction)
-      deps.journal({ at: new Date().toISOString(), rule, tool: payload.name, agentId: agent.id, sessionId: session.id, ...origin, correction: reason, ...extra })
+      const cwd = typeof session.header.cwd === 'string' && session.header.cwd.length > 0 ? session.header.cwd : undefined
+      deps.journal({ at: new Date().toISOString(), rule, tool: payload.name, agentId: agent.id, sessionId: session.id, ...origin, correction: reason, ...extra }, cwd)
       deps.metric({ event: 'design.rule-denied', rule, tool: call.name, session: who })
       return { kind: 'deny' as const, reason }
     }
@@ -238,8 +239,8 @@ export function installMainAgentRules(ctx: PreExecuteHost & ServiceLookup, deps:
     }
     const route = sessionRoute(session)
     const face = dialectNames(dialect, agent, route, warn) ?? NATIVE_FACE
-    const verdict = evaluate([ask, mainAgentNoWrite], call, face)
-    if (verdict.kind === 'deny') return denial(verdict.rule, verdict.correction)
+    const denied = judge([ask, mainAgentNoWrite], call, face).denies[0]
+    if (denied !== undefined) return denial(denied.rule, denied.correction)
     if (shell === undefined) return next()
     const cli = cliRefusal()
     if (cli !== undefined) return cli

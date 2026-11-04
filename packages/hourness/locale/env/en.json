@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Dev environment",
+    "description": "The project's tools from the graph's env branch, the checks that run after edits, and the scratch area for one-off scripts, reminded at an agent's first step and whenever the branch changes. Off by default."
+  }
+}

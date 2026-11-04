@@ -144,7 +144,7 @@ test('Glob maps pattern (trimmed) and path, and renders ZCode\'s list: newest fi
   const rec = recorder()
   const alias = buildAlias(spec('Glob'), native('glob', rec, () => ({ root: '.', paths: [['src', 'old.ts'].join(sep), ['src', 'new.ts'].join(sep)] })))
   const value = await alias.execute({ pattern: ' **/*.ts ', path: 'src', ip: '.git' }, undefined)
-  assert.deepEqual(rec.calls[0]!.args, { pattern: '**/*.ts', path: 'src' })
+  assert.deepEqual(rec.calls[0].args, { pattern: '**/*.ts', path: 'src' })
   assert.deepEqual(alias.output.render({ pattern: '**/*.ts' }, value), [{ type: 'text', text: 'src/new.ts\nsrc/old.ts' }])
   assert.equal(globResultText([]), 'No files found')
   const many = Array.from({ length: 101 }, (_, index) => `f${index}.ts`)
@@ -207,7 +207,7 @@ test('Write maps file_path and content and drops everything else when the native
   const alias = buildAlias(spec('Write'), native('write', rec, () => ({})))
   assert.equal(alias.parameters, spec('Write').schema)
   await alias.execute({ file_path: 'C:/ws/a.ts', content: '', extra: 1, sandbox_permissions: 'workspace-write' }, undefined)
-  assert.deepEqual(rec.calls[0]!.args, { file_path: 'C:/ws/a.ts', content: '' })
+  assert.deepEqual(rec.calls[0].args, { file_path: 'C:/ws/a.ts', content: '' })
 })
 
 test('Write and Edit declare and forward the native\'s sandbox escalation fields', async () => {
@@ -219,7 +219,7 @@ test('Write and Edit declare and forward the native\'s sandbox escalation fields
     assert.deepEqual(properties.sandbox_permissions, ESCALATION.sandbox_permissions)
     assert.deepEqual((alias.parameters as { required: unknown }).required, (spec(name).schema as { required: unknown }).required)
     await alias.execute({ file_path: 'f', content: 'x', old_string: 'a', new_string: 'b', sandbox_permissions: 'workspace-write', justification: 'needed' }, undefined)
-    const args = rec.calls[0]!.args as Record<string, unknown>
+    const args = rec.calls[0].args as Record<string, unknown>
     assert.equal(args.sandbox_permissions, 'workspace-write', name)
     assert.equal(args.justification, 'needed', name)
   }
@@ -250,7 +250,7 @@ test('Write and Edit results use ZCode\'s texts; presentationMeta sees the mappe
   edit.output.presentationMeta!({ file_path: 'f', old_string: 'a', new_string: 'b', replace_all: 'no' }, value)
   assert.deepEqual(rec.metaArgs, [{ file_path: 'f', old_string: 'a', new_string: 'b', replace_all: false }])
   // A value of an unexpected shape falls back to the native render with the mapped call.
-  assert.match(write.output.render({ file_path: 'f', content: 'x', extra: 1 }, { path: 'f' })[0]!.text!, /^native write \{"file_path":"f","content":"x"\}/)
+  assert.match(write.output.render({ file_path: 'f', content: 'x', extra: 1 }, { path: 'f' })[0].text!, /^native write \{"file_path":"f","content":"x"\}/)
 })
 
 // Read over the rc.3 natives `read` and `read_image`.
@@ -285,7 +285,7 @@ test('Read sends image paths to read_image and text paths to read, and projects 
     { name: 'read_image', args: { file_path: 'C:/ws/Shot.PNG' } },
     { name: 'read', args: { file_path: 'C:/ws/a.json', offset: 1 } },
   ])
-  assert.match(alias.output.render({ file_path: 'C:/ws/Shot.PNG', offset: 4 }, image)[0]!.text!, /^native read_image \{"file_path":"C:\/ws\/Shot.PNG"\}/)
+  assert.match(alias.output.render({ file_path: 'C:/ws/Shot.PNG', offset: 4 }, image)[0].text!, /^native read_image \{"file_path":"C:\/ws\/Shot.PNG"\}/)
   assert.deepEqual(alias.output.render({ file_path: 'C:/ws/a.json', offset: 0 }, text), [{ type: 'text', text: '1\t{\n2\t}' }])
   assert.deepEqual(alias.output.presentationMeta!({ file_path: 'C:/ws/Shot.PNG' }, image), { from: 'read_image' })
   assert.deepEqual(alias.output.presentationMeta!({ file_path: 'C:/ws/a.json', offset: 0 }, text), { from: 'read' })

@@ -119,6 +119,8 @@ export interface ToolFinalResult {
 export interface ToolExecutionPayload {
   readonly name: string
   readonly arguments: unknown
+  /** The call id createExecution builds (tools:3229–3260, one object for pre-execute, the body and post-execute); the follow-up recorder settles by it. */
+  readonly callId?: string
   readonly agent?: AgentLike
   /** Opaque token set on transport sub-dispatches (e.g. a run_code binding call). */
   readonly parent?: unknown

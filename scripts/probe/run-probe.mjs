@@ -29,7 +29,11 @@
  * entry in, loops:files-only refuses a file tool and a shell command that
  * write into the board's own files, and both of the row's gates are installed
  * (the three calls loops:schedule-tools judges cannot be made in a headless
- * host, which mounts no schedule service). The loop board's peak scenario
+ * host, which mounts no schedule service). The environment-notice scenario
+ * (env-notice) runs in a git workspace whose graph has an approved tool node
+ * under env, with the env row enabled by the overlay: the first request ends
+ * with the wrapped environment notice, the next does not repeat it, and the
+ * project's .llm/ is git-ignored through .git/info/exclude. The loop board's peak scenario
  * (loops-peak) runs on the GLM route at the probe clock inside a peak, with
  * the loop row and the rules row (少做) enabled and no contribution listing
  * execute.resume-drive: the scripted agent becomes the main agent with /wish,
@@ -96,6 +100,7 @@ import { RULES_DECLARATION } from '../../packages/hourness/dist/rules/service.js
 import { entryFileText } from '../../packages/hourness/dist/loops/model.js'
 import { LOOP_NOTICE_SOURCE } from '../../packages/hourness/dist/loops/deliver.js'
 import { LOOPS_DECLARATION } from '../../packages/hourness/dist/loops/service.js'
+import { NO_CHECKS_LINE, SCRATCH_LINE } from '../../packages/hourness/dist/env/notice.js'
 import { PEAK_REMINDER_SOURCE, PEAK_REMINDER_TEXT, peakReminderText } from '../../packages/glm/dist/glm-prompt/peak-reminder.js'
 import { IDENTITY_OPENING_PLAIN, IDENTITY_OPENING_WITH_STYLE } from '../../packages/glm/dist/glm-prompt/verbatim.js'
 import { PERSONA_SCOPE } from '../../packages/hourness/dist/design/persona.js'
@@ -112,6 +117,7 @@ import { runNote } from '../../packages/hourness/dist/graph/run.js'
 import { projectDirOf } from '../../packages/hourness/dist/data/project-root.js'
 import { loadGraph } from '../../packages/hourness/dist/graph/store.js'
 import { FAILURE_SOURCE } from '../../packages/hourness/dist/lessons/failure.js'
+import { GUARD_CORRECTION_SOURCE, GUARD_LIFT_LINE } from '../../packages/hourness/dist/guard/index.js'
 import { PENDING_SOURCE as LESSONS_PENDING_SOURCE, RECUR_SOURCE as LESSONS_RECUR_SOURCE } from '../../packages/hourness/dist/lessons/notices.js'
 import { INDEX_SOURCE as MEMORY_INDEX_SOURCE } from '../../packages/hourness/dist/memory/index.js'
 import { compareShapes, describeDifference, isProjectDifference, profileShape } from '../profile-shape.mjs'
@@ -641,6 +647,44 @@ const hournessOnlyPwsh = lastToolResult(hournessOnly.steps[3])
 const hournessOnlyStatus = hournessOnly.steps[1]?.command
 const hournessOnlyReport = hournessOnly.steps[3]?.command
 
+// Environment notice (M4 design §7.2, scenario env-notice): the env row
+// enabled by the overlay, a git workspace whose graph carries an approved
+// tool node under env. The first request ends with the wrapped environment
+// notice — the tool line, the no-checks line, the scratch line — the next
+// request does not repeat it, and the project's .llm/ is git-ignored (the
+// exclude line the row appended) before the notice goes out.
+const envNoticeDir = join(runDir, 'env-notice')
+const envNoticeWs = join(envNoticeDir, 'ws')
+const envNoticeGraph = join(envNoticeWs, 'docs', 'graph')
+mkdirSync(envNoticeGraph, { recursive: true })
+writeFileSync(join(envNoticeWs, 'a.txt'), 'probe\n')
+if (!initRepo(envNoticeWs)) throw new Error('probe: git init for env-notice failed')
+const envNoticeEngine = openEngine(envNoticeGraph)
+for (const node of [
+  { type: 'goal', title: '探针目标' },
+  { id: 'env', type: 'feature', title: '环境', parent: 'goal-1' },
+  { id: 'tool-1', type: 'tool', title: 'ESLint', parent: 'env', body: '用法：npm run lint' },
+]) {
+  const seeded = await envNoticeEngine.apply('human', { op: 'propose', reason: 'probe seed', node })
+  if (!seeded.ok) throw new Error(`probe: seeding the env-notice graph failed: ${JSON.stringify(seeded.error)}`)
+  // A human proposal under an approved parent lands approved; a waiting one is approved here.
+  if (seeded.node?.status === 'proposed' && !(await envNoticeEngine.apply('human', { op: 'status', id: seeded.id, rev: seeded.rev, to: 'approved', reason: 'probe' })).ok) {
+    throw new Error(`probe: approving the env-notice node ${seeded.id} failed`)
+  }
+}
+const envNoticeRun = runScenario('env-notice', 'deepseek-probe', [
+  { tool: { name: 'read', arguments: { file_path: join(envNoticeWs, 'a.txt') } } },
+  { text: 'done' },
+], 'Read a.txt, then reply done.', [
+  '- id: glm-hourness/env',
+  '  disabled: false',
+], envNoticeWs, [], profiles['probe-hourness'])
+const envNoticeFirst = (envNoticeRun.steps[0]?.messages ?? []).find(message => message.source === 'hourness-env')
+const envNoticeRepeat = (envNoticeRun.steps[1]?.messages ?? []).filter(message => message.source === 'hourness-env').length
+const envNoticeLast = envNoticeRun.steps[1]?.messages.at(-1)
+const envExclude = existsSync(join(envNoticeWs, '.git', 'info', 'exclude')) ? readFileSync(join(envNoticeWs, '.git', 'info', 'exclude'), 'utf8') : ''
+const envIgnored = spawnSync('git', ['-C', envNoticeWs, 'check-ignore', '-q', '.llm/scratch/x'], { stdio: 'ignore' }).status
+
 // Client composition (split design §5.6, U3): the headless template has no
 // client-modules row, so the overlay mounts @deepseek-ai/dsh-client-modules
 // on probe-full and enables glm-hourness/glm-ui. Its construction scans
@@ -991,7 +1035,7 @@ const graphCopy = join(graphWs, 'docs', 'graph')
 cpSync(join(repoGraph, 'nodes'), join(graphCopy, 'nodes'), { recursive: true })
 writeFileSync(join(graphWs, 'README.md'), 'probe workspace\n')
 const graphGitReady = initRepo(graphWs)
-const graphRow = dir => ['- id: glm-hourness/graph', '  disabled: false', `  config: { dir: ${JSON.stringify(slash(dir))} }`]
+const graphRow = (dir, home) => ['- id: glm-hourness/graph', '  disabled: false', `  config: { dir: ${JSON.stringify(slash(dir))}, home: ${JSON.stringify(slash(home))} }`]
 const copyBefore = await loadGraph(graphCopy)
 const parents = new Set([...copyBefore.nodes.values()].flatMap(node => node.parent === undefined ? [] : [node.parent]))
 const leafTask = status => [...copyBefore.nodes.values()].find(node => node.type === 'task' && node.status === status && !parents.has(node.id))
@@ -1012,19 +1056,257 @@ const graphRun = runScenario('glm-graph', 'glm-5.3', [
   { tool: { name: 'Bash', arguments: { command: `Set-Content -Path '${graphNodeFile}' -Value x` } } },
   { tool: { name: 'Write', arguments: { file_path: graphNotes, content: 'notes\n' } } },
   { text: 'done', status: true },
-], 'Work on the project graph, then reply done.', [...graphRow(graphCopy), ...workspaceChangesRow('glm-hourness-probe/workspace-changes')], graphWs)
+], 'Work on the project graph, then reply done.', [...graphRow(graphCopy, join(graphRowDir, 'home')), ...workspaceChangesRow('glm-hourness-probe/workspace-changes')], graphWs)
 const graphSteps = graphRun.steps
 const graphResult = index => lastToolResult(graphSteps[index])
 const graphNotices = step => (step?.messages ?? []).filter(message => message.role === 'user' && message.source === 'glm-graph-projection')
 const copyAfter = await loadGraph(graphCopy)
 const graphViolations = jsonl(join(graphRowDir, 'home', 'audit', 'violations.jsonl'))
 const graphStderr = existsSync(join(graphRowDir, 'stderr.txt')) ? readFileSync(join(graphRowDir, 'stderr.txt'), 'utf8') : ''
+
+// The follow-up recorder (m4-gate G2, design §3.3, §14.1) over a copy of the
+// repository graph: the verbatim retry settles the first graph denial as
+// repeat, the shell write the graph row never sees settles the second as
+// other, and the write-tool call after the shell denial is file-tools-only's
+// right path and settles it as right-path. Three denials and three follow-ups
+// in one journal, the graph row's and the guard row's gates settling through
+// the one module-level recorder (§3.3).
+const followupDir = join(runDir, 'guard-followup')
+const followupWs = join(followupDir, 'ws')
+const followupGraph = join(followupWs, 'docs', 'graph')
+mkdirSync(join(followupGraph, 'nodes'), { recursive: true })
+cpSync(join(repoGraph, 'nodes'), join(followupGraph, 'nodes'), { recursive: true })
+const followupNodeFile = join(followupGraph, 'nodes', 'probe-followup.json')
+const followupFile = join(followupWs, 'x.txt')
+const followupWrite = { tool: { name: 'Write', arguments: { file_path: followupNodeFile, content: '{}\n' } } }
+const guardFollowup = runScenario('guard-followup', 'glm-5.3', [
+  followupWrite,
+  followupWrite,
+  { tool: { name: 'Bash', arguments: { command: `Set-Content -Path '${followupFile}' -Value 1` } } },
+  { tool: { name: 'Write', arguments: { file_path: followupFile, content: '1\n' } } },
+  { text: 'done', status: true },
+], 'Write a graph node file twice, then write a file through the shell, then write x.txt with the write tool, and reply done.', [...graphRow(followupGraph, join(followupDir, 'home'))], followupWs)
 const graphFace = step => (step?.tools ?? []).filter(tool => GRAPH_TOOL_NAMES.includes(tool.name))
+
+// The three rules of §4 (m4-gate G3, design §14.1 `guard-new-rules`, GLM and
+// native faces): reading the fake credential file is not judged and leaves no
+// record; the bare suppression, the checker-config edit and the root-level
+// script are denied by their rules, the last two with a request ref in the
+// correction. The temp repo holds no project graph, so checker-config's
+// env-config half is unknown and only the builtin list judges (which covers
+// tsconfig.json).
+const newRulesDir = join(runDir, 'guard-new-rules')
+const newRulesWs = join(newRulesDir, 'ws')
+mkdirSync(newRulesWs, { recursive: true })
+writeFileSync(join(newRulesWs, 'tsconfig.json'), '{\n  "compilerOptions": {}\n}\n')
+const newRulesGitReady = initRepo(newRulesWs)
+const newRulesCredentials = join(newRulesDir, 'dsh-home', 'glm-hourness', 'credentials.json')
+mkdirSync(dirname(newRulesCredentials), { recursive: true })
+writeFileSync(newRulesCredentials, '{"token": "probe-credential-shape-only"}\n')
+const newRulesScript = zcode => [
+  { tool: { name: zcode ? 'Read' : 'read', arguments: { file_path: newRulesCredentials } } },
+  { tool: { name: zcode ? 'Write' : 'write', arguments: { file_path: join(newRulesWs, 'bare.ts'), content: '// eslint-disable-next-line\nexport const bare = 1\n' } } },
+  { tool: { name: zcode ? 'Edit' : 'edit', arguments: { file_path: join(newRulesWs, 'tsconfig.json'), old_string: '"compilerOptions"', new_string: '"compilerOptions": {\n    "strict": false' } } },
+  { tool: { name: zcode ? 'Write' : 'write', arguments: { file_path: join(newRulesWs, 'fix.py'), content: 'print(1)\n' } } },
+  { text: 'done', status: true },
+]
+const newRulesTask = 'Read the credentials file once; create a TypeScript file with an ESLint suppression; loosen tsconfig.json; create fix.py at the root; reply done.'
+const guardNewRules = runScenario('guard-new-rules', 'glm-5.3', newRulesScript(true), newRulesTask, [], newRulesWs)
+const guardNewRulesPlain = runScenario('guard-new-rules-plain', 'deepseek-probe', newRulesScript(false), newRulesTask, [], newRulesWs)
+const newRulesResult = (scenario, index) => lastToolResult(scenario.steps[index])
+const newRulesViolations = scenario => jsonl(join(runDir, scenario, 'home', 'audit', 'violations.jsonl'))
+
+// The lift path (m4-gate G3, design §14.1 `guard-lift`): the probe-lift
+// overlay plays the human (first turn end) and the rules board (second), the
+// worktree exists before the session starts. The lift writes the record into
+// docs/guard/lifts.jsonl, the record itself and its worktree copy are
+// off-limits, the restore puts the rule back.
+const liftDir = join(runDir, 'guard-lift')
+const liftWs = join(liftDir, 'ws')
+mkdirSync(liftWs, { recursive: true })
+writeFileSync(join(liftWs, 'README.md'), 'probe workspace\n')
+const liftGitReady = initRepo(liftWs)
+const liftWorktree = join(liftDir, 'wt')
+const liftWorktreeReady = liftGitReady && spawnSync('git', ['-c', 'user.name=glm-hourness', 'worktree', 'add', '--quiet', slash(liftWorktree)], { cwd: liftWs, encoding: 'utf8' }).status === 0
+const liftFix = join(liftWs, 'fix.py')
+const liftFix2 = join(liftWs, 'fix2.py')
+const liftRecordMain = join(liftWs, 'docs', 'guard', 'lifts.jsonl')
+const liftRecordWorktree = join(liftWorktree, 'docs', 'guard', 'lifts.jsonl')
+const liftLog = join(liftDir, 'lift.jsonl')
+const LIFT_HUMAN_WORDS = '新建脚本那条先别拦了。另外记得周五开会。'
+const liftRow = [
+  '- insert:',
+  '    - id: glm-hourness-probe/lift',
+  `      name: ${JSON.stringify(slash(join(repo, 'scripts', 'probe', 'probe-lift.mjs')))}`,
+  '      inject: [tools]',
+  `      config: { out: ${JSON.stringify(slash(liftLog))}, cwd: ${JSON.stringify(slash(liftWs))}, rule: 'guard:scratch-only', restore: true }`,
+]
+const guardLiftRun = runScenario('guard-lift', 'glm-5.3', [
+  { tool: { name: 'Write', arguments: { file_path: liftFix, content: 'print(1)\n' } } },
+  { tool: { name: 'DeferredToolCall', arguments: { name: 'probe_say', input: { text: LIFT_HUMAN_WORDS, rpcId: 'probe-lift-1' } } } },
+  { text: 'The script rule blocked me; I asked the human.' },
+  { tool: { name: 'LocalToolSearch', arguments: { query: 'select:guard_lift', max_results: 5 } } },
+  { tool: { name: 'DeferredToolCall', arguments: { name: 'guard_lift', input: { rule: 'scratch-only', words: '新建脚本那条先别拦了', action: 'lift' } } } },
+  { tool: { name: 'DeferredToolCall', arguments: { name: 'guard_lift', input: { rule: 'workspace-containment', words: '把圈禁也一起撤了吧' } } } },
+  { tool: { name: 'DeferredToolCall', arguments: { name: 'guard_lift', input: { rule: 'workspace-containment', words: '另外记得周五开会' } } } },
+  { tool: { name: 'Write', arguments: { file_path: liftFix, content: 'print(1)\n' } } },
+  { tool: { name: 'Write', arguments: { file_path: liftRecordMain, content: '{}\n' } } },
+  { tool: { name: 'Write', arguments: { file_path: liftRecordWorktree, content: '{}\n' } } },
+  { tool: { name: 'DeferredToolCall', arguments: { name: 'probe_restore', input: { rule: 'guard:scratch-only' } } } },
+  { text: 'The human lifted the rule; the script ran; then the board put it back.' },
+  { tool: { name: 'Write', arguments: { file_path: liftFix2, content: 'print(2)\n' } } },
+  { text: 'done', status: true },
+], 'Create fix.py at the root. When the human allows it, lift the rule with guard_lift and retry; never edit the lift record yourself. Then try another script.', liftRow, liftWs)
+const liftResult = index => lastToolResult(guardLiftRun.steps[index])
+const liftViolations = jsonl(join(liftDir, 'home', 'audit', 'violations.jsonl'))
+const liftLogEntries = jsonl(liftLog)
+
+// The post-hoc correction (m4-gate G3, design §14.1 `guard-fallback`): the
+// .NET write the reader cannot see runs in turn 1; the probe companion
+// queues the human's words mid-turn, so the turn ends, the workspace summary
+// lands as one late denial, and the correction reaches the first step of
+// turn 2 (the queued message opens it) and no later step.
+const fallbackDir = join(runDir, 'guard-fallback')
+const fallbackWs = join(fallbackDir, 'ws')
+mkdirSync(fallbackWs, { recursive: true })
+writeFileSync(join(fallbackWs, 'README.md'), 'probe workspace\n')
+const fallbackGitReady = initRepo(fallbackWs)
+const fallbackFile = join(fallbackWs, 'fallback.txt')
+const fallbackWrite = `[System.IO.File]::WriteAllText('${slash(fallbackFile)}', 'probe')`
+const fallbackRow = [
+  '- insert:',
+  '    - id: glm-hourness-probe/lift',
+  `      name: ${JSON.stringify(slash(join(repo, 'scripts', 'probe', 'probe-lift.mjs')))}`,
+  '      inject: [tools]',
+  `      config: { out: ${JSON.stringify(slash(join(fallbackDir, 'lift.jsonl')))} }`,
+]
+const guardFallbackRun = runScenario('guard-fallback', 'glm-5.3', [
+  { tool: { name: 'Bash', arguments: { command: fallbackWrite } } },
+  { tool: { name: 'DeferredToolCall', arguments: { name: 'probe_say', input: { text: '（人：知道了，继续。）' } } } },
+  { text: 'The shell wrote the file; moving on.' },
+  { tool: { name: 'Read', arguments: { file_path: join(fallbackWs, 'README.md') } } },
+  { text: 'done', status: true },
+], 'Write a file through the shell, then carry on and reply done.', [...workspaceChangesRow('glm-hourness-probe/workspace-changes'), ...fallbackRow], fallbackWs)
+const fallbackViolations = jsonl(join(fallbackDir, 'home', 'audit', 'violations.jsonl'))
+
+// The request channel (m4-request-card G4, design §14.1 `guard-request`): the
+// probe companion queues the human's words mid-turn (probe_say; an rpcId makes
+// them the DSH client's own), the scripted reply ends with the plan text
+// (`echoToolText`, reading it out of the ask result), and `{ref}` in the
+// scripted arguments is the reference the conversation last named. The
+// identical write runs once on the grant and is denied after; the old content
+// sits in the project's requests/ directory. The GLM face files through
+// DeferredToolCall; the native face calls request_exception directly.
+const probeRow = out => [
+  '- insert:',
+  '    - id: glm-hourness-probe/lift',
+  `      name: ${JSON.stringify(slash(join(repo, 'scripts', 'probe', 'probe-lift.mjs')))}`,
+  '      inject: [tools]',
+  `      config: { out: ${JSON.stringify(slash(out))} }`,
+]
+const REQUEST_PURPOSE = '把探针的待办追加到工作区外的待办文件'
+const REQUEST_REVERSIBILITY = '旧内容先备份，改坏了能找回'
+const requestExceptionCall = zcode => zcode
+  ? { tool: { name: 'DeferredToolCall', arguments: { name: 'request_exception', input: { ref: '{ref}', purpose: REQUEST_PURPOSE, reversibility: REQUEST_REVERSIBILITY, alternatives: 'none' } } } }
+  : { tool: { name: 'request_exception', arguments: { ref: '{ref}', purpose: REQUEST_PURPOSE, reversibility: REQUEST_REVERSIBILITY, alternatives: 'none' } } }
+const probeSay = (zcode, text, rpcId) => zcode
+  ? { tool: { name: 'DeferredToolCall', arguments: { name: 'probe_say', input: { text, ...(rpcId === undefined ? {} : { rpcId }) } } } }
+  : { tool: { name: 'probe_say', arguments: { text, ...(rpcId === undefined ? {} : { rpcId }) } } }
+const writeOf = (target, zcode) => ({ tool: { name: zcode ? 'Write' : 'write', arguments: { file_path: target, content: 'probe content\n' } } })
+const requestDir = join(runDir, 'guard-request')
+const requestWs = join(requestDir, 'ws')
+mkdirSync(requestWs, { recursive: true })
+writeFileSync(join(requestWs, 'README.md'), 'probe workspace\n')
+const requestGitReady = initRepo(requestWs)
+const requestTarget = join(requestDir, 'outside', 'todo.md')
+mkdirSync(dirname(requestTarget), { recursive: true })
+writeFileSync(requestTarget, 'old content\n')
+const requestTask = `Overwrite ${slash(requestTarget)} with the write tool and follow the harness's instructions; put its text at the very end of your reply; once the human answers, make the identical write twice more, then reply done.`
+const requestScript = zcode => [
+  writeOf(requestTarget, zcode),
+  requestExceptionCall(zcode),
+  probeSay(zcode, '可以', 'probe-request-1'),
+  { echoToolText: true },
+  writeOf(requestTarget, zcode),
+  writeOf(requestTarget, zcode),
+  { text: 'done', status: true },
+]
+const guardRequest = runScenario('guard-request', 'glm-5.3', requestScript(true), requestTask, probeRow(join(requestDir, 'lift.jsonl')), requestWs)
+const guardRequestPlain = runScenario('guard-request-plain', 'deepseek-probe', requestScript(false), requestTask, probeRow(join(requestDir, 'plain-lift.jsonl')), requestWs)
+const requestViolations = jsonl(join(requestDir, 'home', 'audit', 'violations.jsonl'))
+const requestAsked = requestViolations.find(record => record.kind === 'request' && record.outcome === 'asked')
+
+// The refusal paths (design §14.1 `guard-request-refuse`): a headless 可以
+// cannot approve (not-client), 可以吗 reads unclear and the confirmation
+// sentence becomes the tail, the approval after it grants once, and a reply
+// that says one thing more after the plan text is not-shown — the request
+// stays, the write is denied.
+const refuseDir = join(runDir, 'guard-request-refuse')
+const refuseWs = join(refuseDir, 'ws')
+mkdirSync(refuseWs, { recursive: true })
+writeFileSync(join(refuseWs, 'README.md'), 'probe workspace\n')
+const refuseGitReady = initRepo(refuseWs)
+const refuseTarget = join(refuseDir, 'outside', 'todo.md')
+mkdirSync(dirname(refuseTarget), { recursive: true })
+writeFileSync(refuseTarget, 'old content\n')
+const REFUSE_CONFIRM = '放行这一次写 todo.md，可以吗？（回「可以」才算数）'
+const guardRequestRefuse = runScenario('guard-request-refuse', 'glm-5.3', [
+  writeOf(refuseTarget, true),
+  requestExceptionCall(true),
+  probeSay(true, '可以'),
+  { echoToolText: true },
+  probeSay(true, '可以吗', 'probe-refuse-2'),
+  { echoToolText: true },
+  probeSay(true, '可以', 'probe-refuse-3'),
+  { text: `收到。${REFUSE_CONFIRM}` },
+  writeOf(refuseTarget, true),
+  writeOf(refuseTarget, true),
+  requestExceptionCall(true),
+  probeSay(true, '可以', 'probe-refuse-5'),
+  { echoToolText: '另外提醒一句。' },
+  writeOf(refuseTarget, true),
+  { text: 'done', status: true },
+], `Overwrite ${slash(refuseTarget)} with the write tool and follow the harness's instructions; put its text at the very end of your replies; once an approval lands, make the identical write once more, then file the request again; after the next answer try the write once more; reply done.`, probeRow(join(refuseDir, 'lift.jsonl')), refuseWs)
+const refuseViolations = jsonl(join(refuseDir, 'home', 'audit', 'violations.jsonl'))
+const refuseNotice = (index, marker) => (guardRequestRefuse.steps[index]?.messages ?? []).some(message => message.source === 'hourness-request' && typeof message.text === 'string' && message.text.includes(marker))
+
+// The goal round (design §14.1 `guard-request-goal`, F14): the goal agent is
+// a second root agent with a live goal, so a round's first step without a
+// human message carries the still-waits reminder, and the approval pairs with
+// its ask result (F15).
+const requestGoalDir = join(runDir, 'guard-request-goal')
+const requestGoalWs = join(requestGoalDir, 'ws')
+mkdirSync(requestGoalWs, { recursive: true })
+writeFileSync(join(requestGoalWs, 'README.md'), 'probe workspace\n')
+const requestGoalGitReady = initRepo(requestGoalWs)
+const requestGoalTarget = join(requestGoalDir, 'outside', 'todo.md')
+mkdirSync(dirname(requestGoalTarget), { recursive: true })
+writeFileSync(requestGoalTarget, 'old content\n')
+const guardRequestGoal = runScenario('guard-request-goal', 'glm-5.3', [
+  { tool: { name: 'DeferredToolCall', arguments: { name: 'probe_goal_run', input: { objective: 'Overwrite the outside todo file through the harness\'s request channel, then mark the goal complete.', cwd: requestGoalWs, evidence: 'README.md', maxGoalRounds: 6 } } } },
+  { text: 'done', status: true },
+], 'Run the goal probe, then reply done.', [...dispatchRow(join(requestGoalDir, 'dispatch.jsonl')), ...probeRow(join(requestGoalDir, 'lift.jsonl'))], requestGoalWs, [[
+  writeOf(requestGoalTarget, true),
+  requestExceptionCall(true),
+  { echoToolText: true },
+  probeSay(true, '可以', 'probe-request-goal-1'),
+  { echoToolText: true },
+  writeOf(requestGoalTarget, true),
+  { text: 'The write ran on the human approval.' },
+  completeGoal,
+  { text: 'Goal complete.', status: true },
+]])
+const requestGoalSteps = bySession(guardRequestGoal, dispatchRecord('guard-request-goal').find(entry => entry.kind === 'goal-created')?.agentId)
+const requestGoalNotices = step => (step?.messages ?? []).filter(message => message.source === 'hourness-request')
+const requestGoalStill = requestGoalSteps.some(step => requestGoalNotices(step).some(notice => typeof notice.text === 'string' && notice.text.includes('still waits')))
+const requestGoalApproval = requestGoalSteps.map(step => requestGoalNotices(step).find(notice => typeof notice.text === 'string' && notice.text.includes('The human approved request'))).find(notice => notice !== undefined)
+const requestGoalAsked = requestGoalSteps.some(step => (step?.messages ?? []).some(message => message.role === 'tool' && typeof message.text === 'string' && message.text.includes('"outcome":"ask"')))
+const requestGoalViolations = jsonl(join(requestGoalDir, 'home', 'audit', 'violations.jsonl'))
 
 const plainGraph = runScenario('non-glm-graph', 'deepseek-probe', [
   { tool: { name: 'graph_open', arguments: {} } },
   { text: 'done' },
-], 'List the open work, then reply done.', graphRow(graphCopy), graphWs)
+], 'List the open work, then reply done.', graphRow(graphCopy, join(runDir, 'non-glm-graph', 'home')), graphWs)
 const plainGraphOpen = lastToolResult(plainGraph.steps[1])
 
 const compactGraph = runScenario('glm-graph-compact', 'glm-5.3', [
@@ -1032,7 +1314,7 @@ const compactGraph = runScenario('glm-graph-compact', 'glm-5.3', [
   { tool: { name: 'Read', arguments: { file_path: join(graphWs, 'README.md') } } },
   { tool: { name: 'Read', arguments: { file_path: join(graphWs, 'README.md') } } },
   { text: 'done' },
-], 'Set the focus, read the README twice, then reply done.', [...graphRow(graphCopy), '- id: compaction-basic', '  config: { thresholdRatio: 0.02, retainTokens: 0 }'], graphWs)
+], 'Set the focus, read the README twice, then reply done.', [...graphRow(graphCopy, join(runDir, 'glm-graph-compact', 'home')), '- id: compaction-basic', '  config: { thresholdRatio: 0.02, retainTokens: 0 }'], graphWs)
 /** Requests that carry a compaction checkpoint, and the projection reasons that follow it in each. */
 const reanchored = compactGraph.steps.flatMap((step) => {
   const at = step.messages.findLastIndex(message => message.source === 'compact-checkpoint')
@@ -1046,7 +1328,7 @@ writeFileSync(join(graphGoalWs, 'evidence.txt'), 'evidence\n')
 const graphGoal = runScenario('glm-graph-goal', 'glm-5.3', [
   { tool: { name: 'DeferredToolCall', arguments: { name: 'probe_goal_run', input: { objective: 'Set the graph focus, then mark the goal complete in the next round.', cwd: graphGoalWs, evidence: 'evidence.txt', maxGoalRounds: 2 } } } },
   { text: 'done' },
-], 'Run the goal probe, then reply done.', [...dispatchRow(join(graphGoalDir, 'dispatch.jsonl')), ...graphRow(graphCopy)], repo, [[
+], 'Run the goal probe, then reply done.', [...dispatchRow(join(graphGoalDir, 'dispatch.jsonl')), ...graphRow(graphCopy, join(graphGoalDir, 'home'))], repo, [[
   { tool: { name: 'graph_focus', arguments: { id: focusTask?.id } } },
   { text: 'Focus set; the goal stays active for the next round.' },
   completeGoal,
@@ -1082,7 +1364,7 @@ const graphControl = runScenario('glm-graph-run', 'glm-5.3', [
   { tool: { name: 'graph_focus', arguments: { id: 'task-1' } }, status: true },
   { tool: { name: 'Bash', arguments: { command: 'Write-Output probe-after-stop' } }, live: true, command: { name: 'graph-run', input: 'stop task-1' } },
   { text: 'after stop' },
-], 'Reply done.', [...PANEL_ROW, ...graphRow(controlGraph)], controlWs)
+], 'Reply done.', [...PANEL_ROW, ...graphRow(controlGraph, join(runDir, 'glm-graph-run', 'home'))], controlWs)
 const controlSteps = bySession(graphControl, graphControl.steps[0]?.sessionId)
 const controlCommands = controlSteps.flatMap(step => step.command === undefined ? [] : [step.command])
 const controlHistory = ((await loadGraph(controlGraph)).nodes.get('task-1')?.history ?? []).filter(entry => entry.actor === 'human' && entry.op === 'comment').map(entry => entry.text)
@@ -1718,6 +2000,7 @@ const shadowHealth = healthOf(shadow)
 const shadowRecords = jsonl(join(shadowDir, 'home', 'audit', 'violations.jsonl'))
 const pathsViolations = jsonl(join(pathsDir, 'home', 'audit', 'violations.jsonl'))
 const plainGuardViolations = jsonl(join(plainGuardDir, 'home', 'audit', 'violations.jsonl'))
+const followupViolations = jsonl(join(followupDir, 'home', 'audit', 'violations.jsonl'))
 const plainGuardHealth = healthOf(plainGuard)
 const GUARD_SECTION = '# Workspace rules\nThe harness checks every tool call against these rules before it runs;'
 const glmStatusText = statusStep(glm)?.status ?? ''
@@ -2271,9 +2554,12 @@ const checks = [
   ['glm-only: without the orchestration package the system prompt declares no workspace rules (the guard is that package\'s)', glmOnlyFirst !== undefined && !glmOnlyFirst.system.includes('# Workspace rules'), ''],
   ['hourness-only: with only the orchestration package the face has the graph, memory and native tools, no ZCode alias and no tool search', hournessOnlyFirst !== undefined && [...GRAPH_TOOL_NAMES, ...MEMORY_TOOL_NAMES, 'write', 'pwsh'].every(name => hournessOnlyTools.has(name)) && !['Write', 'Bash', 'LocalToolSearch', 'DeferredToolCall'].some(name => hournessOnlyTools.has(name)), hournessOnlyFirst === undefined ? `no request (exit ${hournessOnly.status})` : `${hournessOnlyTools.size} tools`],
   ['hourness-only: after graph_focus the next request ends with the projection notice (focus)', hournessOnlyProjection?.source === 'glm-graph-projection' && hournessOnlyProjection.projection === 'focus', JSON.stringify({ source: hournessOnlyProjection?.source, projection: hournessOnlyProjection?.projection })],
-  ['hourness-only: a native write into the graph is denied by graph-files-only, a shell write by file-tools-only in native names; neither file is written and both records are tagged other', hournessOnlyWrite?.isError === true && hournessOnlyWrite.text.includes('inside the project graph') && !existsSync(hournessOnlyNode) && hournessOnlyPwsh?.isError === true && hournessOnlyPwsh.text.includes(RIGHT_PATH_NATIVE) && !existsSync(hournessOnlyShell) && hournessOnlyViolations.map(record => `${record.rule}:${record.tool}:${record.scope}`).join(',') === 'graph-files-only:write:other,file-tools-only:pwsh:other', `records: ${hournessOnlyViolations.map(record => `${record.rule}:${record.tool ?? ''}:${record.scope ?? ''}`).join(', ') || 'none'}; shell file ${existsSync(hournessOnlyShell)}`],
+  ['hourness-only: a native write into the graph is denied by graph-files-only, a shell write by file-tools-only in native names; neither file is written and both denial records are tagged other (the follow-up records the recorder adds carry a kind)', hournessOnlyWrite?.isError === true && hournessOnlyWrite.text.includes('inside the project graph') && !existsSync(hournessOnlyNode) && hournessOnlyPwsh?.isError === true && hournessOnlyPwsh.text.includes(RIGHT_PATH_NATIVE) && !existsSync(hournessOnlyShell) && hournessOnlyViolations.filter(record => record.kind === undefined).map(record => `${record.rule}:${record.tool}:${record.scope}`).join(',') === 'graph-files-only:write:other,file-tools-only:pwsh:other', `records: ${hournessOnlyViolations.map(record => `${record.kind ?? 'denial'}:${record.rule}:${record.tool ?? ''}:${record.scope ?? ''}`).join(', ') || 'none'}; shell file ${existsSync(hournessOnlyShell)}`],
   ['hourness-only: the system prompt declares the workspace rules in native names, graph-files-only included', hournessOnlyFirst?.system.includes(GUARD_SECTION) === true && hournessOnlyFirst.system.includes('\n- Modify files and code only with the dedicated write/edit tools.') && hournessOnlyFirst.system.includes(GRAPH_FILES_LINE), hournessOnlyFirst === undefined ? 'no request' : `section at ${hournessOnlyFirst.system.indexOf(GUARD_SECTION)}`],
   ['hourness-only: /hourness-status lists the orchestration rows and the GLM package as one line not loaded', hournessOnlyStatus?.kind === 'success' && onlyOneLoaded(hournessOnlyHealth, 'hourness', 'glm'), `${hournessOnlyStatus?.kind ?? 'not run'}; ${JSON.stringify(hournessOnlyHealth[WHOLE] ?? null)}`],
+  ['env-notice: the first request carries the wrapped environment notice — the tool line, the no-checks line, the scratch line', envNoticeFirst !== undefined && typeof envNoticeFirst.text === 'string' && envNoticeFirst.text.startsWith('<system-reminder>\nProject tools (graph node env). Use these before writing your own.\n- ESLint [tool-1]: npm run lint\n') && envNoticeFirst.text.includes(NO_CHECKS_LINE) && envNoticeFirst.text.includes(SCRATCH_LINE) && envNoticeFirst.text.endsWith('\n</system-reminder>'), envNoticeFirst === undefined ? 'no notice in request 1' : envNoticeFirst.text.slice(0, 140).replace(/\n/g, ' | ')],
+  ['env-notice: the second request does not repeat the notice (the first one persists in the session)', envNoticeRun.steps.length === 2 && envNoticeRepeat === 1 && envNoticeLast?.source !== 'hourness-env', `hourness-env messages in request 2: ${envNoticeRepeat}; last: ${JSON.stringify({ source: envNoticeLast?.source, text: String(envNoticeLast?.text ?? '').slice(0, 60) })}`],
+  ['env-notice: the row appended .llm/ to the clone\'s .git/info/exclude and check-ignore verifies it', envIgnored === 0 && envExclude.split('\n').filter(line => line.trim() === '.llm/').length === 1, `check-ignore exit ${envIgnored}; exclude lines: ${envExclude.split('\n').filter(line => line.trim() === '.llm/').length}`],
   titleCheck('client-modules (probe-full)', clientModules.steps[0]?.meta, ['glm', 'hourness']),
   titleCheck('glm-only', glmOnly.steps[1]?.meta, ['glm']),
   titleCheck('hourness-only', hournessOnly.steps[3]?.meta, ['hourness']),
@@ -2298,8 +2584,8 @@ const checks = [
   ['graph row: after graph_focus the next request ends with the projection notice (focus); unchanged steps add none; a title edit adds one (changed)', graphNotices(graphSteps[4]).length === 1 && graphSteps[4]?.messages.at(-1)?.source === 'glm-graph-projection' && graphNotices(graphSteps[4])[0]?.projection === 'focus' && graphNotices(graphSteps[5]).length === 1 && graphNotices(graphSteps[6]).length === 1 && graphNotices(graphSteps[7]).length === 2 && graphSteps[7]?.messages.at(-1)?.projection === 'changed' && graphSteps[7]?.messages.at(-1)?.text.includes('probe title') === true, `notices per request: ${graphSteps.map(step => graphNotices(step).map(notice => notice.projection).join('+') || '0').join(', ')}`],
   ['graph row: after a compaction checkpoint the first request carries the projection again (compaction)', reanchored.some(reasons => reasons.includes('compaction')), `${compactGraph.compactions.length} compaction(s); after checkpoints: ${JSON.stringify(reanchored)}`],
   ['graph row: a goal round carries the projection (goal-round)', graphNotices(graphRoundTwo).some(notice => notice.projection === 'goal-round'), graphRoundTwo === undefined ? `no round 2 request (${graphGoalSteps.length} goal-agent request(s), exit ${graphGoal.status})` : graphNotices(graphRoundTwo).map(notice => notice.projection).join(', ')],
-  ['graph row: Write and Bash into the copy\'s node files are denied by graph-files-only and journaled; a write elsewhere runs', [8, 9].every(index => graphResult(index)?.isError === true && graphResult(index)?.text.includes('inside the project graph') === true) && graphResult(10)?.isError !== true && !existsSync(graphNodeFile) && existsSync(graphNotes) && graphViolations.filter(record => record.rule === 'graph-files-only').map(record => record.tool).join(',') === 'Write,Bash', `records: ${graphViolations.map(record => `${record.rule}${record.mode === 'shadow' ? '(shadow)' : ''}:${record.tool ?? ''}`).join(', ')}`],
-  ['graph row: the shadow fallback runs and counts the graph tool writes as known (no shadow record names a node file)', healthOf(graphRun).guard?.reason.includes('影子兜底：工作区变更记录') === true && graphViolations.filter(record => record.mode === 'shadow').every(record => record.paths.every(path => !path.startsWith('docs/graph/'))), JSON.stringify(graphViolations.filter(record => record.mode === 'shadow').map(record => record.paths))],
+  ['graph row: Write and Bash into the copy\'s node files are denied by graph-files-only and journaled; a write elsewhere runs (the recorder\'s follow-up records carry a kind)', [8, 9].every(index => graphResult(index)?.isError === true && graphResult(index)?.text.includes('inside the project graph') === true) && graphResult(10)?.isError !== true && !existsSync(graphNodeFile) && existsSync(graphNotes) && graphViolations.filter(record => record.rule === 'graph-files-only' && record.kind === undefined).map(record => record.tool).join(',') === 'Write,Bash', `records: ${graphViolations.map(record => `${record.kind ?? 'denial'}${record.rule.startsWith('graph-files-only') ? '' : `(${record.rule})`}${record.mode === 'shadow' ? '(shadow)' : ''}:${record.tool ?? ''}`).join(', ')}`],
+  ['graph row: the workspace-change fallback runs and counts the graph tool writes as known (no late record names a node file)', healthOf(graphRun).guard?.reason.includes('事后纠正启用：工作区变更记录') === true && graphViolations.filter(record => record.mode === 'late').every(record => record.paths.every(path => !path.startsWith('docs/graph/'))), JSON.stringify(graphViolations.filter(record => record.mode === 'late').map(record => record.paths))],
   ['graph row: the GLM rule section declares graph-files-only; /glm-status reports the graph row with the focus and the panel row in effect', graphSteps[0]?.system.includes(GRAPH_FILES_LINE) === true && healthOf(graphRun).graph?.status === ACTED && healthOf(graphRun).graph.reason.includes(`焦点 ${focusTask?.id}`) && healthOf(graphRun)['graph-panel']?.status === ACTED, `${healthLine(healthOf(graphRun), 'graph')} (${healthOf(graphRun).graph?.reason ?? ''}); ${healthLine(healthOf(graphRun), 'graph-panel')}`],
   ['graph run: /graph-run start mid-turn answers that the busy agent takes it next; the node history keeps the click as the human', controlCommands[0]?.kind === 'success' && controlCommands[0].text === '已让主 Agent 从「探针任务」开始做（它正忙，这一轮做完就接着做）' && controlHistory.includes(runNote('start')), `${JSON.stringify(controlCommands[0] ?? null)}; human comments ${JSON.stringify(controlHistory)}`],
   ['graph run: the start message opens the next turn as a glm-graph-run notice asking for graph_focus on the node', controlSteps[0]?.messages.every(message => message.source !== 'glm-graph-run') === true && controlStart?.text.includes('graph_focus {"id":"task-1"}') === true, controlStart === undefined ? `no notice in request 2 (${controlSteps.length} request(s), exit ${graphControl.status})` : controlStart.text.slice(0, 120).replace(/\n/g, ' ')],
@@ -2357,21 +2643,42 @@ const checks = [
   ...lessonsFailureChecks(),
   ['data: usage lands only in the user-level directory, never in a project directory or the real one', projectUsage.length === 0 && realUsageBefore === realUsageAfter, `project usage files: ${projectUsage.join(', ') || 'none'}; real ${realUsage}: ${realUsageBefore} -> ${realUsageAfter}`],
   ['guard: a shell write is denied with the four-part correction naming the ZCode tools, and the file is not created', blockedResult?.isError === true && blockedResult.text.includes('Shell file writes are not permitted') && blockedResult.text.includes(RIGHT_PATH_ZCODE) && !existsSync(blocked), blockedResult === undefined ? 'no tool result' : blockedResult.text.slice(0, 100).replace(/\n/g, ' ')],
-  ['guard: the denial is journaled in the scenario project directory with rule, tool and the calling agent ids', glmViolations.length === 1 && glmViolations[0].rule === 'file-tools-only' && glmViolations[0].tool === 'Bash' && typeof glmViolations[0].agentId === 'string' && glmViolations[0].agentId.length > 0 && glmViolations[0].sessionId === glmUsage[0]?.sessionId, `${glmViolations.length} record(s); first: ${JSON.stringify(glmViolations[0] ?? null).slice(0, 140)}`],
+  ['guard: the denial is journaled in the scenario project directory with rule, tool and the calling agent ids, and the turn end after the reply settles one follow-up as none (m4-gate G2)', glmViolations.length === 2 && glmViolations[0].rule === 'file-tools-only' && glmViolations[0].tool === 'Bash' && typeof glmViolations[0].agentId === 'string' && glmViolations[0].agentId.length > 0 && glmViolations[0].sessionId === glmUsage[0]?.sessionId && glmViolations[1].kind === 'followup' && glmViolations[1].outcome === 'none' && glmViolations[1].rule === 'file-tools-only' && typeof glmViolations[1].denial === 'string' && glmViolations[1].denial.length === 12, `${glmViolations.length} record(s); first: ${JSON.stringify(glmViolations[0] ?? null).slice(0, 140)}`],
   ['guard: the GLM denial is tagged dialect with the route of the step (the dialect claims the agent)', glmViolations[0]?.scope === 'dialect' && glmViolations[0].route?.provider === 'glm-probe' && glmViolations[0].route.model === 'glm-5.3', JSON.stringify({ scope: glmViolations[0]?.scope, route: glmViolations[0]?.route })],
   ['guard: the GLM system prompt declares the active rules (containment and file-tools-only) after the dialect sections', glmFirst?.system.includes(GUARD_SECTION) === true && glmFirst.system.includes('\n- You may only create and modify files inside the user\'s workspace.') && glmFirst.system.includes('\n- Modify files and code only with the dedicated Write/Edit tools.') && glmFirst.system.indexOf(GUARD_SECTION) > glmFirst.system.indexOf('# Context management'), glmFirst === undefined ? 'no request' : `section at ${glmFirst.system.indexOf(GUARD_SECTION)} of ${glmFirst.system.length}`],
   ['guard: the non-GLM system prompt ends with the same rules in native names', plainFirst?.system.includes(GUARD_SECTION) === true && plainFirst.system.includes('\n- You may only create and modify files inside the user\'s workspace.') && plainFirst.system.includes('\n- Modify files and code only with the dedicated write/edit tools.') && !plainFirst.system.slice(plainFirst.system.indexOf(GUARD_SECTION)).includes('\n\n'), plainFirst === undefined ? 'no request' : `section at ${plainFirst.system.indexOf(GUARD_SECTION)} of ${plainFirst.system.length}`],
   ['guard: quoted =>, -> and >>> and a git subcommand with a quoted arrow run through Bash', arrowsResult !== undefined && arrowsResult.isError !== true && arrowsResult.text.includes('a => b -> c >>> d') && gitResult !== undefined && gitResult.isError !== true && gitResult.text.includes('init => '), `${(arrowsResult?.text ?? 'no tool result').slice(0, 60).replace(/\n/g, ' ')} | ${(gitResult?.text ?? 'no tool result').slice(0, 60).replace(/\n/g, ' ')}`],
-  ['guard shadow: a .NET file write the reader cannot see runs, and Write creates its file (shadow mode never blocks)', gitReady && dotnetResult !== undefined && dotnetResult.isError !== true && existsSync(shadowFile) && existsSync(toolFile), `git repo: ${gitReady}; ${(dotnetResult?.text ?? 'no tool result').slice(0, 80).replace(/\n/g, ' ')}`],
-  ['guard shadow: one shadow record names the shell-written file, not the Write target, with the turn, the session and the three shell calls', shadowRecords.length === 1 && shadowRecords[0].mode === 'shadow' && shadowRecords[0].rule === 'file-tools-only' && JSON.stringify(shadowRecords[0].paths) === '["shadow.txt"]' && typeof shadowRecords[0].turn === 'number' && shadowRecords[0].calls?.length === 3 && shadowRecords[0].calls.some(call => call.tool === 'Bash' && call.command === dotnetWrite) && shadowRecords[0].sessionId === statusStep(shadow)?.sessionId && shadowRecords[0].scope === 'dialect', `${shadowRecords.length} record(s); first: ${JSON.stringify(shadowRecords[0] ?? null).slice(0, 200)}`],
+  ['guard fallback: a .NET file write the reader cannot see runs, and Write creates its file (the fallback never blocks)', gitReady && dotnetResult !== undefined && dotnetResult.isError !== true && existsSync(shadowFile) && existsSync(toolFile), `git repo: ${gitReady}; ${(dotnetResult?.text ?? 'no tool result').slice(0, 80).replace(/\n/g, ' ')}`],
+  ['guard fallback: one late denial names the shell-written file, not the Write target, with the turn, the session and the three shell calls', shadowRecords.length === 1 && shadowRecords[0].mode === 'late' && shadowRecords[0].via === 'turn-end' && shadowRecords[0].rule === 'file-tools-only' && JSON.stringify(shadowRecords[0].paths) === '["shadow.txt"]' && typeof shadowRecords[0].turn === 'number' && shadowRecords[0].calls?.length === 3 && shadowRecords[0].calls.some(call => call.tool === 'Bash' && call.command === dotnetWrite) && shadowRecords[0].sessionId === statusStep(shadow)?.sessionId && shadowRecords[0].scope === 'dialect', `${shadowRecords.length} record(s); first: ${JSON.stringify(shadowRecords[0] ?? null).slice(0, 200)}`],
   ['guard paths: on GLM a relative Write inside the workspace resolves against the session directory and runs', relativeResult !== undefined && relativeResult.isError !== true && existsSync(relativeFile), relativeResult === undefined ? `no tool result (exit ${guardPaths.status})` : relativeResult.text.slice(0, 100).replace(/\n/g, ' ')],
-  ['guard paths: on GLM a relative target climbing out with .. is denied by workspace-containment, journaled, and not written', escapeResult?.isError === true && escapeResult.text.includes('That path is outside the workspace') && escapeResult.text.includes(`(resolves to "${escapedFile}")`) && !existsSync(escapedFile) && pathsViolations.length === 1 && pathsViolations[0].rule === 'workspace-containment', `${(escapeResult?.text ?? 'no tool result').slice(0, 120).replace(/\n/g, ' ')}; ${pathsViolations.length} record(s)`],
-  ['guard scope: on a non-GLM route a relative write inside the workspace runs; a shell write is denied in native names, not written, and journaled once as other with the route', plainWriteResult !== undefined && plainWriteResult.isError !== true && existsSync(join(plainGuardWs, 'rel.txt')) && plainShellResult?.isError === true && plainShellResult.text.includes('Shell file writes are not permitted') && plainShellResult.text.includes(RIGHT_PATH_NATIVE) && !existsSync(plainShellFile) && plainGuardViolations.length === 1 && plainGuardViolations[0].rule === 'file-tools-only' && plainGuardViolations[0].tool === 'pwsh' && plainGuardViolations[0].scope === 'other' && plainGuardViolations[0].route?.provider === 'glm-probe' && plainGuardViolations[0].route.model === 'deepseek-probe', `write: ${(plainWriteResult?.text ?? 'no tool result').slice(0, 60).replace(/\n/g, ' ')} | pwsh: ${(plainShellResult?.text ?? 'no tool result').split('\n')[2] ?? ''}; records: ${JSON.stringify(plainGuardViolations.map(record => [record.rule, record.tool, record.scope, record.route]))}`],
+  ['guard paths: on GLM a relative target climbing out with .. is denied by workspace-containment, journaled, not written, and the turn end settles its follow-up as none', escapeResult?.isError === true && escapeResult.text.includes('That path is outside the workspace') && escapeResult.text.includes(`(resolves to "${escapedFile}")`) && !existsSync(escapedFile) && pathsViolations.length === 2 && pathsViolations[0].rule === 'workspace-containment' && pathsViolations[1].kind === 'followup' && pathsViolations[1].outcome === 'none', `${(escapeResult?.text ?? 'no tool result').slice(0, 120).replace(/\n/g, ' ')}; ${pathsViolations.length} record(s)`],
+  ['guard scope: on a non-GLM route a relative write inside the workspace runs; a shell write is denied in native names, not written, journaled once as other with the route, and the turn end settles its follow-up as none (m4-gate G2)', plainWriteResult !== undefined && plainWriteResult.isError !== true && existsSync(join(plainGuardWs, 'rel.txt')) && plainShellResult?.isError === true && plainShellResult.text.includes('Shell file writes are not permitted') && plainShellResult.text.includes(RIGHT_PATH_NATIVE) && !existsSync(plainShellFile) && plainGuardViolations.length === 2 && plainGuardViolations[0].rule === 'file-tools-only' && plainGuardViolations[0].tool === 'pwsh' && plainGuardViolations[0].scope === 'other' && plainGuardViolations[0].route?.provider === 'glm-probe' && plainGuardViolations[0].route.model === 'deepseek-probe' && plainGuardViolations[1].kind === 'followup' && plainGuardViolations[1].outcome === 'none' && plainGuardViolations[1].scope === 'other', `write: ${(plainWriteResult?.text ?? 'no tool result').slice(0, 60).replace(/\n/g, ' ')} | pwsh: ${(plainShellResult?.text ?? 'no tool result').split('\n')[2] ?? ''}; records: ${JSON.stringify(plainGuardViolations.map(record => [record.kind ?? 'denial', record.rule, record.tool, record.scope, record.route]))}`],
   ['guard scope: the non-GLM session reports the guard in effect', plainGuardHealth.guard?.status === ACTED && plainGuardHealth.guard.reason.startsWith('门禁生效（file-tools-only，圈禁根 '), JSON.stringify(plainGuardHealth.guard ?? null)],
+  // The follow-ups settle causally and cite their denial's record key, but the denial lines themselves
+  // reach the journal through the denying row's own journal instance, so the file order across rows
+  // (guard row versus graph row) is not pinned — only the follow-up sequence and the denial counts are.
+  ['guard followup: the graph row and the guard row share one follow-up recorder — the verbatim retry settles the first graph denial as repeat, the shell write the graph row never sees settles the second as other, the write-tool call after the shell denial is file-tools-only\'s right path, the node file stays unwritten and x.txt is written (m4-gate G2, design §14.1)', guardFollowup.status === 0 && followupViolations.length === 6 && followupViolations.filter(record => record.kind === 'followup').map(record => `${record.rule}:${record.outcome}`).join(',') === 'graph-files-only:repeat,graph-files-only:other,file-tools-only:right-path' && followupViolations.filter(record => record.kind === undefined && record.rule === 'graph-files-only').length === 2 && followupViolations.some(record => record.kind === undefined && record.rule === 'file-tools-only' && record.tool === 'Bash') && !existsSync(followupNodeFile) && existsSync(followupFile), `exit ${guardFollowup.status}; records: ${JSON.stringify(followupViolations.map(record => [record.kind ?? 'denial', record.rule, record.outcome ?? record.tool]))}`],
+  ['guard new rules (GLM): the credential read is not judged, the three writes are denied by their rules and nothing lands', guardNewRules.status === 0 && newRulesGitReady && newRulesResult(guardNewRules, 1)?.isError !== true && [2, 3, 4].every(index => newRulesResult(guardNewRules, index)?.isError === true) && newRulesResult(guardNewRules, 2).text.includes('without a reason') && newRulesResult(guardNewRules, 3).text.includes('request_exception with ref "r-') && newRulesResult(guardNewRules, 4).text.includes('request_exception with ref "r-') && newRulesResult(guardNewRules, 4).text.includes('.llm/scratch') && !existsSync(join(newRulesWs, 'bare.ts')) && !existsSync(join(newRulesWs, 'fix.py')) && readFileSync(join(newRulesWs, 'tsconfig.json'), 'utf8') === '{\n  "compilerOptions": {}\n}\n' && existsSync(newRulesCredentials), `exit ${guardNewRules.status}; ${(newRulesResult(guardNewRules, 2)?.text ?? 'no result').slice(0, 110).replace(/\n/g, ' ')}`],
+  ['guard new rules (GLM): the journal holds only the three rules\' rejections (the judge keeps every rejecting rule per call, so the bare suppression carries a scratch-only rejection beside its denial), all dialect', newRulesViolations('guard-new-rules').length >= 3 && [...new Set(newRulesViolations('guard-new-rules').map(record => record.rule))].sort().join(',') === 'checker-config,scratch-only,suppression-reason' && newRulesViolations('guard-new-rules').every(record => record.scope === 'dialect') && ['suppression-reason', 'checker-config', 'scratch-only'].every(rule => newRulesViolations('guard-new-rules').some(record => record.rule === rule)), JSON.stringify(newRulesViolations('guard-new-rules').map(record => [record.rule, record.scope, record.tool]))],
+  ['guard new rules (GLM): the declaration lists the three rules alongside the older two', guardNewRules.steps[0]?.system.includes(GUARD_SECTION) === true && ['- New suppressions carry a reason and a graph node id on the same line.', '- Checker configuration and baselines change only through the request channel.', '- New one-off scripts go in .llm/scratch/.', '- You may only create and modify files inside the user\'s workspace.'].every(line => guardNewRules.steps[0].system.includes(line)), guardNewRules.steps[0] === undefined ? 'no request' : `section at ${guardNewRules.steps[0].system.indexOf(GUARD_SECTION)}`],
+  ['guard new rules (native): the same three denials on a non-GLM route, scoped other, corrections in native names', guardNewRulesPlain.status === 0 && [2, 3, 4].every(index => newRulesResult(guardNewRulesPlain, index)?.isError === true) && newRulesViolations('guard-new-rules-plain').length >= 3 && [...new Set(newRulesViolations('guard-new-rules-plain').map(record => record.rule))].sort().join(',') === 'checker-config,scratch-only,suppression-reason' && newRulesViolations('guard-new-rules-plain').every(record => record.scope === 'other') && newRulesResult(guardNewRulesPlain, 3).text.includes('request_exception with ref "r-') && newRulesResult(guardNewRulesPlain, 4).text.includes('.llm/scratch'), `exit ${guardNewRulesPlain.status}; ${JSON.stringify(newRulesViolations('guard-new-rules-plain').map(record => [record.rule, record.scope]))}`],
+  ['guard lift: the overlay plays the human and the board; guard_lift lifts, the retry runs, the record copies are denied in both checkouts, the restore re-arms the rule (m4-gate G3, design §14.1)', guardLiftRun.status === 0 && liftGitReady && liftWorktreeReady && liftResult(5)?.isError !== true && liftResult(5)?.text.includes('"outcome":"lifted"') === true && liftResult(6)?.isError === true && liftResult(6)?.text.includes('"code":"not_said"') === true && liftResult(7)?.isError === true && liftResult(7)?.text.includes('"code":"not_said"') === true && liftResult(8)?.isError !== true && existsSync(liftFix) && liftResult(9)?.isError === true && liftResult(9)?.text.includes('lift record') === true && liftResult(10)?.isError === true && !existsSync(liftRecordWorktree) && liftResult(13)?.isError === true && liftResult(13)?.text.includes('.llm/scratch') === true && !existsSync(liftFix2), `exit ${guardLiftRun.status}; wt ${liftWorktreeReady}; lift ${(liftResult(5)?.text ?? 'no result').slice(0, 60).replace(/\n/g, ' ')}; not_said ${liftResult(6)?.text.includes('"code":"not_said"') === true}, ${liftResult(7)?.text.includes('"code":"not_said"') === true}`],
+  ['guard lift: the journal carries both lifts and the denials (the judge keeps every rejecting rule: the worktree copy carries a containment rejection beside its lift-files-only one, and each denial settles as a follow-up; the file order of a denial and its follow-up is not pinned across journal instances)', liftViolations.length === 11 && liftViolations.filter(record => record.kind === 'lift').map(record => `${record.via}:${record.words}`).join('|') === 'chat:新建脚本那条先别拦了|board:/rules lift guard:scratch-only' && liftViolations.filter(record => record.kind === undefined && record.rule === 'lift-files-only').length === 2 && liftViolations.filter(record => record.kind === undefined && record.rule === 'lift-files-only').every(record => record.tool === 'Write') && liftViolations.filter(record => record.kind === undefined && record.rule === 'scratch-only').length === 2 && liftViolations.some(record => record.kind === undefined && record.rule === 'workspace-containment') && liftViolations.every(record => ['scratch-only', 'lift-files-only', 'workspace-containment'].includes(record.rule)), JSON.stringify(liftViolations.map(record => [record.kind ?? 'denial', record.rule, record.via ?? record.tool]))],
+  ['guard lift: the record file has the chat line and the board line; the overlay log has the say and the restore', readFileSync(liftRecordMain, 'utf8').split('\n').filter(line => line.length > 0).map(line => JSON.parse(line)).map(line => `${line.via}:${line.words}`).join('|') === 'chat:新建脚本那条先别拦了|board:/rules lift guard:scratch-only' && liftLogEntries.map(entry => entry.kind).join(',') === 'said,restore' && liftLogEntries.find(entry => entry.kind === 'restore')?.result?.ok === true && liftLogEntries.find(entry => entry.kind === 'restore')?.result.outcome === 'restored', `${liftLogEntries.length} log line(s): ${JSON.stringify(liftLogEntries.map(entry => [entry.kind, entry.result?.outcome ?? entry.result?.code ?? null]))}`],
+  ['guard lift: the declaration loses the lifted rule after the lift and regains it after the restore, and the head names guard_lift for the root agent', guardLiftRun.steps[0]?.system.includes(GUARD_LIFT_LINE) === true && guardLiftRun.steps[0].system.includes('- New one-off scripts go in .llm/scratch/.') && guardLiftRun.steps.slice(5, 11).every(step => !step.system.includes('- New one-off scripts go in .llm/scratch/.')) && guardLiftRun.steps.slice(11).every(step => step.system.includes('- New one-off scripts go in .llm/scratch/.')), `head ${guardLiftRun.steps[0]?.system.includes(GUARD_LIFT_LINE) === true}; lifted-out at ${guardLiftRun.steps[5]?.system.includes('- New one-off scripts go in .llm/scratch/.') === true}; back at ${guardLiftRun.steps[11]?.system.includes('- New one-off scripts go in .llm/scratch/.') === true}`],
+  ['guard fallback: the invisible shell write runs in turn 1 and lands as one late denial with the file and the call (m4-gate G3, design §14.1)', guardFallbackRun.status === 0 && fallbackGitReady && existsSync(fallbackFile) && fallbackViolations.length === 1 && fallbackViolations[0].mode === 'late' && fallbackViolations[0].via === 'turn-end' && fallbackViolations[0].rule === 'file-tools-only' && JSON.stringify(fallbackViolations[0].paths) === '["fallback.txt"]' && fallbackViolations[0].calls?.length === 1 && fallbackViolations[0].calls[0].command === fallbackWrite && fallbackViolations[0].scope === 'dialect', `exit ${guardFallbackRun.status}; ${JSON.stringify(fallbackViolations.map(record => [record.mode, record.via, record.paths]))}`],
+  ['guard fallback: the first step of turn 2 carries the hourness-guard correction naming the file, and no second one is added on the next step (the delivered notice stays in history)', guardFallbackRun.steps[3]?.messages.filter(message => message.source === GUARD_CORRECTION_SOURCE && message.text.includes('fallback.txt')).length === 1 && guardFallbackRun.steps[4]?.messages.filter(message => message.source === GUARD_CORRECTION_SOURCE).length === 1, `turn-2 first request notices: ${JSON.stringify(guardFallbackRun.steps[3]?.messages.filter(message => message.source === GUARD_CORRECTION_SOURCE).map(message => message.text.slice(0, 90))) ?? 'no request'}`],
+  ['guard request (GLM): the denial carries the ref and the request tool with its four fields; the ask result answers with the plan text and the end-of-reply instruction', guardRequest.status === 0 && requestGitReady && lastToolResult(guardRequest.steps[1])?.isError === true && lastToolResult(guardRequest.steps[1]).text.includes('call request_exception {"ref": "r-') && lastToolResult(guardRequest.steps[1]).text.includes('"purpose":') && lastToolResult(guardRequest.steps[2])?.isError !== true && lastToolResult(guardRequest.steps[2]).text.includes('"outcome":"ask"') && lastToolResult(guardRequest.steps[2]).text.includes('放行这一次，可以吗？（回「可以」才算数）') && lastToolResult(guardRequest.steps[2]).text.includes('Put `text` at the very end of your reply'), `exit ${guardRequest.status}; denial ${(lastToolResult(guardRequest.steps[1])?.text ?? 'none').slice(0, 70).replace(/\n/g, ' ')}; ask ${(lastToolResult(guardRequest.steps[2])?.text ?? 'none').slice(0, 60).replace(/\n/g, ' ')}`],
+  ['guard request (GLM): the plan text the reply echoed carries the title, the four labelled lines, the 附 attachments and the question last; the goal-focus half-sentence is absent without a focus', guardRequest.steps[4]?.messages.filter(message => message.role === 'assistant').at(-1)?.text.includes('背景：agent 要**改工作区外的文件**，系统先拦下了') === true && guardRequest.steps[4]?.messages.filter(message => message.role === 'assistant').at(-1)?.text.includes('推荐：**放行这一次**，旧内容先备份，改坏了能找回') === true && guardRequest.steps[4]?.messages.filter(message => message.role === 'assistant').at(-1)?.text.includes('不做：**不放行**，文件不动，agent 换在工作区里做') === true && guardRequest.steps[4]?.messages.filter(message => message.role === 'assistant').at(-1)?.text.includes('- 将写入的内容') === true, `${(guardRequest.steps[4]?.messages.filter(message => message.role === 'assistant').at(-1)?.text ?? 'no reply').slice(0, 160).replace(/\n/g, ' | ')}`],
+  ['guard request (GLM): the human 可以 approves at the next turn\'s first step; the note carries the tool and the arguments; the granted write runs past the gate and stops at rc.3\'s own workspace-write sandbox, the old content is backed up under requests/, and the third write is denied by containment with a fresh ref', guardRequest.steps[4]?.messages.some(message => message.source === 'hourness-request' && typeof message.text === 'string' && message.text.includes(`The human approved request ${requestAsked?.ref ?? ''}`) && message.text.includes(JSON.stringify({ tool: 'write', arguments: { file_path: requestTarget, content: 'probe content\n' } }))) === true && guardRequest.steps.some(step => lastToolResult(step)?.text.includes('sandbox') === true) && lastToolResult(guardRequest.steps.at(-1))?.text.includes('sandbox') === false && requestAsked !== undefined && existsSync(join(requestDir, 'home', 'requests', `${requestAsked.ref}.before`)) && readFileSync(join(requestDir, 'home', 'requests', `${requestAsked.ref}.before`), 'utf8') === 'old content\n' && lastToolResult(guardRequest.steps.at(-1))?.isError === true && lastToolResult(guardRequest.steps.at(-1)).text.includes('You tried to write') === true && lastToolResult(guardRequest.steps.at(-1)).text.includes(`"ref": "${requestAsked?.ref ?? ''}"`) === false, `write#2 ${(lastToolResult(guardRequest.steps[4])?.text ?? '').includes('sandbox') ? 'stopped by sandbox' : (lastToolResult(guardRequest.steps[4])?.text ?? 'none').slice(0, 50)}; write#3 containment ${lastToolResult(guardRequest.steps[6])?.text.includes('You tried to write') === true}; backup ${requestAsked === undefined ? 'no asked ref' : existsSync(join(requestDir, 'home', 'requests', `${requestAsked.ref}.before`))}`],
+  ['guard request (GLM): the journal holds denial → followup right-path → asked → approved (with the human\'s words) → grant → denial, the ref riding on the requestable denials', requestViolations.length >= 6 && requestViolations.some(record => record.kind === undefined && record.rule === 'workspace-containment' && typeof record.ref === 'string') && requestViolations.some(record => record.kind === 'followup' && record.outcome === 'right-path') && requestViolations.filter(record => record.kind === 'request').map(record => record.outcome).join(',') === 'asked,approved' && requestViolations.some(record => record.kind === 'request' && record.outcome === 'approved' && record.by === 'human' && record.via === 'chat' && record.words === '可以') && requestViolations.some(record => record.kind === 'grant') && requestViolations.filter(record => record.kind === undefined && record.rule === 'workspace-containment').length === 2, `${requestViolations.length} record(s): ${JSON.stringify(requestViolations.map(record => [record.kind ?? 'denial', record.rule ?? '', record.outcome ?? '']))}`],
+  ['guard request (native): the same channel without the GLM face — request_exception and probe_say called directly, the granted write passes the gate and stops at rc.3\'s sandbox, the third is denied by containment', guardRequestPlain.status === 0 && lastToolResult(guardRequestPlain.steps[2])?.isError !== true && lastToolResult(guardRequestPlain.steps[2]).text.includes('"outcome":"ask"') && lastToolResult(guardRequestPlain.steps[5])?.text.includes('sandbox') === true && lastToolResult(guardRequestPlain.steps[6])?.isError === true && lastToolResult(guardRequestPlain.steps[6]).text.includes('You tried to write') === true && jsonl(join(runDir, 'guard-request-plain', 'home', 'audit', 'violations.jsonl')).some(record => record.kind === 'request' && record.outcome === 'approved'), `exit ${guardRequestPlain.status}; ask ${(lastToolResult(guardRequestPlain.steps[2])?.text ?? 'none').slice(0, 50).replace(/\n/g, ' ')}; write#2 ${(lastToolResult(guardRequestPlain.steps[5])?.text ?? '').includes('sandbox') ? 'stopped by sandbox' : 'other'}`],
+  ['guard request refuse: a headless 可以 reads not-client, 可以吗 reads unclear with the confirmation sentence as the new tail, the approval after it grants (its write stops at rc.3\'s sandbox), and a reply with one sentence more is not-shown with the write denied by containment', guardRequestRefuse.status === 0 && refuseGitReady && refuseNotice(5, 'did not come through the DSH client') && refuseNotice(7, 'not a plain yes or no') && refuseNotice(7, REFUSE_CONFIRM) && refuseNotice(9, 'The human approved request') && refuseNotice(14, 'was not approved') && lastToolResult(guardRequestRefuse.steps[9])?.text.includes('sandbox') === true && lastToolResult(guardRequestRefuse.steps[14])?.isError === true && lastToolResult(guardRequestRefuse.steps[14]).text.includes('You tried to write') === true && refuseViolations.filter(record => record.kind === 'request').map(record => record.outcome).join(',') === 'asked,not-client,unclear,approved,asked,not-shown', `exit ${guardRequestRefuse.status}; outcomes ${JSON.stringify(refuseViolations.filter(record => record.kind === 'request').map(record => record.outcome))}; write#4 containment ${lastToolResult(guardRequestRefuse.steps[14])?.text.includes('You tried to write') === true}`],
+  ['guard request goal: the goal agent files with a live goal, a round\'s first step without the human carries still waits, and the approval pairs with its ask result and a spent grant in the journal', guardRequestGoal.status === 0 && requestGoalGitReady && requestGoalAsked && requestGoalStill && requestGoalApproval !== undefined && requestGoalSteps.length >= 4 && requestGoalViolations.some(record => record.kind === 'request' && record.outcome === 'approved') && requestGoalViolations.some(record => record.kind === 'grant') && requestGoalViolations.some(record => record.kind === undefined && record.rule === 'workspace-containment' && typeof record.ref === 'string'), `exit ${guardRequestGoal.status}; still ${requestGoalStill}; approval ${requestGoalApproval === undefined ? 'none' : requestGoalApproval.text.slice(0, 50)}; rounds ${requestGoalSteps.length}`],
   ['glm-no-dialect: with glm-prompt disabled the GLM face is the natives (pwsh, no Bash)', noDialectFirst !== undefined && names(noDialectFirst).has('pwsh') && !names(noDialectFirst).has('Bash') && !names(noDialectFirst).has('Write'), noDialectFirst === undefined ? `no request (exit ${noDialect.status})` : [...names(noDialectFirst)].filter(name => ['pwsh', 'Bash', 'write', 'Write'].includes(name)).join(', ')],
-  ['glm-no-dialect: the guard still denies a pwsh shell write on GLM, journals it under the called name, and corrects in native names', noDialectResult?.isError === true && noDialectResult.text.includes('Shell file writes are not permitted') && noDialectResult.text.includes(RIGHT_PATH_NATIVE) && !existsSync(noDialectFile) && noDialectViolations.length === 1 && noDialectViolations[0].rule === 'file-tools-only' && noDialectViolations[0].tool === 'pwsh' && noDialectViolations[0].scope === 'other', `${(noDialectResult?.text ?? 'no tool result').split('\n')[2] ?? ''}; ${noDialectViolations.length} record(s), scope ${noDialectViolations[0]?.scope ?? 'none'}`],
+  ['glm-no-dialect: the guard still denies a pwsh shell write on GLM, journals it under the called name, corrects in native names, and the turn end settles its follow-up as none', noDialectResult?.isError === true && noDialectResult.text.includes('Shell file writes are not permitted') && noDialectResult.text.includes(RIGHT_PATH_NATIVE) && !existsSync(noDialectFile) && noDialectViolations.length === 2 && noDialectViolations[0].rule === 'file-tools-only' && noDialectViolations[0].tool === 'pwsh' && noDialectViolations[0].scope === 'other' && noDialectViolations[1].kind === 'followup' && noDialectViolations[1].outcome === 'none', `${(noDialectResult?.text ?? 'no tool result').split('\n')[2] ?? ''}; ${noDialectViolations.length} record(s), scope ${noDialectViolations[0]?.scope ?? 'none'}`],
   ['glm-no-dialect: the GLM rule declaration names the native file tools', noDialectFirst?.system.includes(GUARD_SECTION) === true && noDialectFirst.system.includes('\n- Modify files and code only with the dedicated write/edit tools.'), noDialectFirst === undefined ? 'no request' : `section at ${noDialectFirst.system.indexOf(GUARD_SECTION)}`],
-  ['health: the guard names the shadow fallback: on with workspace-changes mounted, off without it', shadowHealth.guard?.status === ACTED && shadowHealth.guard.reason.endsWith('影子兜底：工作区变更记录') && glmHealth.guard?.reason.endsWith('影子兜底未启用（组合里没有 workspace-changes）') === true, `${JSON.stringify(shadowHealth.guard ?? null)} | ${JSON.stringify(glmHealth.guard ?? null)}`],
+  ['health: the guard names the shadow fallback: on with workspace-changes mounted, off without it', shadowHealth.guard?.status === ACTED && shadowHealth.guard.reason.endsWith('事后纠正启用：工作区变更记录') && glmHealth.guard?.reason.endsWith('事后纠正未启用（组合里没有 workspace-changes）') === true, `${JSON.stringify(shadowHealth.guard ?? null)} | ${JSON.stringify(glmHealth.guard ?? null)}`],
   ['workflow: the runtime subagent tools are journaled dispatch names', plainSubagentTools.length === 2 && plainSubagentTools.every(name => DISPATCH_TOOLS.includes(name)), `runtime subagent tools: ${plainSubagentTools.join(', ') || 'none'}`],
   ['health: /glm-status prints the credential line and the health table of the session, one line per bundle row with its package', glmStatusText.startsWith('glm-zcode：未登录（套餐 coding-plan）') && glmStatusText.includes(`## 行健康（会话 ${statusStep(glm)?.sessionId}）\n\n${TABLE_HEAD}`) && HEALTH_ROWS.every(row => glmHealth[row] !== undefined) && Object.keys(glmHealth).length === HEALTH_ROWS.length && grouped(glmHealth), `${Object.keys(glmHealth).length} row(s), grouped ${grouped(glmHealth)}; ${glmStatusText.split('\n')[0]}`],
   ['health: /hourness-status prints the same table as /glm-status for the session, without the credential line', plainHourness?.kind === 'success' && plainHourness.text.startsWith(`## 行健康（会话 ${statusStep(plain)?.sessionId}）\n\n${TABLE_HEAD}`) && plainHourness.text === plainStatusText.slice(plainStatusText.indexOf('## 行健康')) && grouped(plainHealth), `${plainHourness?.kind ?? 'not run'}; ${(plainHourness?.text ?? '').split('\n').length} line(s); same as /glm-status: ${plainHourness?.text === plainStatusText.slice(plainStatusText.indexOf('\n\n') + 2)}`],
@@ -2448,8 +2755,8 @@ const checks = [
   ['rules-peak-stop-exit: V13, the host exits with the goal paused at the stop level: the run is clean and the way out agrees with itself: a row that unloaded (its heartbeat file is gone) resumed the goal and wrote it on the ticket, a runner that left without unloading it left the goal and the ticket as the stop made them', stopExitProject.ready && rulesPeakStopExit.status === 0 && !stderrOf('rules-peak-stop-exit').includes('dsh-glm-hourness/rules') && stopExitNotes.some(entry => entry.kind === 'stop-held' && entry.goal?.phase === 'paused') && (stopExitUnloaded ? typeof stopExitState?.tickets?.['q-1']?.resumedAt === 'string' && stopExitOps.includes('resume') : stopExitState?.tickets?.['q-1']?.state === 'deferred' && stopExitState.tickets['q-1'].resumedAt === undefined && stopExitOps.join() === 'create,pause'), `unloaded ${stopExitUnloaded}; exit ${rulesPeakStopExit.status}; goal operations ${JSON.stringify(stopExitOps)}; ticket ${JSON.stringify(stopExitState?.tickets?.['q-1'] ?? null)}; journal ${JSON.stringify(stopExitJournal.map(record => [record.op, record.reason ?? null]).slice(-3))}; ${stderrOf('rules-peak-stop-exit').split('\n').find(line => line.includes('rules')) ?? 'no stderr line mentions rules'}`],
   ['loops: the row ships enabled since the rules-loops merge: the boot scenarios list it in effect on both routes', glmHealth.loops?.status === ACTED && plainHealth.loops?.status === ACTED, `${healthLine(glmHealth, 'loops')}; ${healthLine(plainHealth, 'loops')}`],
   ['loops: the row, enabled by the overlay in a scratch git clone that carries a person\'s entry file, boots, runs its four steps and exits clean with nothing from it on stderr', loopsBoard.ready && loops.status === 0 && loops.steps.length === 4 && !stderrOf('loops').includes('dsh-glm-hourness/loops'), `exit ${loops.status}, ${loops.steps.length} step(s), git ${loopsBoard.ready}; ${stderrOf('loops').split('\n').find(line => line.includes('loops')) ?? 'no stderr line mentions loops'}`],
-  ['loops: a file tool writing into docs/loops/ is refused by loops:files-only with the four-part text, the entry file is as it was, and the refusal is journaled as enforced', lastToolResult(loops.steps[1])?.isError === true && LOOPS_DENIAL.test(lastToolResult(loops.steps[1]).text) && readFileSync(loopsBoard.entryFile, 'utf8') === LOOPS_ENTRY_TEXT && rulesRecordOf(loopsRecords, 'loops:files-only')?.mode === 'enforce', lastToolResult(loops.steps[1])?.text?.slice(0, 200) ?? 'no result'],
-  ['loops: a shell command writing into the project\'s .llm/loops/ is refused by the same rule, not by file-tools-only, and the board\'s change record does not carry what it wrote', lastToolResult(loops.steps[2])?.isError === true && (lastToolResult(loops.steps[2])?.text ?? '').includes('Rule loops:files-only') && loopsJournalText !== '' && !loopsJournalText.split('\n').includes('probe') && loopsRecords.filter(record => record.rule === 'loops:files-only').length === 2, `${lastToolResult(loops.steps[2])?.text?.slice(0, 160) ?? 'no result'}; ${loopsRecords.filter(record => record.rule === 'loops:files-only').length} journal line(s)`],
+  ['loops: a file tool writing into docs/loops/ is refused by loops:files-only with the four-part text, the entry file is as it was, and the refusal is journaled as a plain denial (the gate\'s records carry no mode, G1)', lastToolResult(loops.steps[1])?.isError === true && LOOPS_DENIAL.test(lastToolResult(loops.steps[1]).text) && readFileSync(loopsBoard.entryFile, 'utf8') === LOOPS_ENTRY_TEXT && rulesRecordOf(loopsRecords, 'loops:files-only') !== undefined && rulesRecordOf(loopsRecords, 'loops:files-only')?.mode === undefined, lastToolResult(loops.steps[1])?.text?.slice(0, 200) ?? 'no result'],
+  ['loops: a shell command writing into the project\'s .llm/loops/ is refused by the same rule, not by file-tools-only, and the board\'s change record does not carry what it wrote (the recorder\'s follow-up records carry a kind)', lastToolResult(loops.steps[2])?.isError === true && (lastToolResult(loops.steps[2])?.text ?? '').includes('Rule loops:files-only') && loopsJournalText !== '' && !loopsJournalText.split('\n').includes('probe') && loopsRecords.filter(record => record.rule === 'loops:files-only' && record.kind === undefined).length === 2, `${lastToolResult(loops.steps[2])?.text?.slice(0, 160) ?? 'no result'}; ${loopsRecords.filter(record => record.rule === 'loops:files-only').length} journal line(s) for the rule`],
   ['loops: the entry that only tells the main agent is taken in without an approval record: one adopt line by the harness, the file noted in repo-written.json, and view.json showing it as the agreed one', loopsAdopted.length === 1 && loopsAdopted[0].actor === 'harness' && loopsAdopted[0].via === 'repo' && /^[0-9a-f]{64}$/.test(loopsWritten?.[LOOPS_ENTRY_ID]?.fileSha256 ?? '') && loopsViewEntry?.source === 'person' && loopsViewEntry.state === 'ok' && (loopsView?.attention ?? ['none']).length === 0, `${loopsJournal.map(record => record.op).join(' > ') || 'no record'}; view ${JSON.stringify(loopsViewEntry ?? null)}; attention ${JSON.stringify(loopsView?.attention ?? null)}`],
   ['loops: the runtime directory stays out of git (.llm/ in the exclude file, its own .gitignore) and git status lists nothing after the board wrote', loopsIgnore === '*\n' && loopsExclude.split('\n').includes('.llm/') && loopsGitStatus === '', `ignore ${JSON.stringify(loopsIgnore)}; exclude ${JSON.stringify(loopsExclude.split('\n').filter(line => line.includes('llm')))}; status ${JSON.stringify(loopsGitStatus)}`],
   ['loops: the read of the entry file passes, /glm-status lists the row in effect, and every request declares the loop board in the guard section', lastToolResult(loops.steps[3])?.isError !== true && (lastToolResult(loops.steps[3])?.text ?? '').includes(LOOPS_ENTRY_ID) && loopsHealth.loops?.status === ACTED && loops.steps.every(step => step.system.includes(LOOPS_DECLARATION)), `${healthLine(loopsHealth, 'loops')} (${loopsHealth.loops?.reason ?? ''}); declared ${loops.steps.filter(step => step.system.includes(LOOPS_DECLARATION)).length}/${loops.steps.length}`],

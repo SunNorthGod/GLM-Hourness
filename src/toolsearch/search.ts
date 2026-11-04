@@ -26,13 +26,13 @@ const MCP_NAME = /^mcp__(.+?)__(.+)$/
 /** Derive the MCP presentation ZCode keeps as metadata from a DSH MCP tool name. */
 export function mcpPresentation(name: string): ToolSearchCandidate['mcp'] {
   const match = MCP_NAME.exec(name)
-  return match === null ? undefined : { serverName: match[1]!, toolName: match[2]! }
+  return match === null ? undefined : { serverName: match[1], toolName: match[2] }
 }
 
 function tokenize(tool: ToolSearchCandidate): { coarse: string[], parts: string[], full: string, mcp: boolean } {
   const name = tool.name
   const mcp = tool.mcp !== undefined ? [name, tool.mcp.serverName, tool.mcp.toolName] : MCP_NAME.exec(name)
-  const coarse = mcp !== null ? [mcp[1]!, mcp[2]!].map(part => part.toLowerCase()) : [name.toLowerCase()]
+  const coarse = mcp !== null ? [mcp[1], mcp[2]].map(part => part.toLowerCase()) : [name.toLowerCase()]
   const parts = mcp !== null
     ? coarse.flatMap(part => part.split(/[\s_.]+/)).filter(Boolean)
     : name.replace(/([a-z])([A-Z])/g, '$1 $2').replaceAll('_', ' ').toLowerCase().split(/\s+/).filter(Boolean)
@@ -51,7 +51,7 @@ export function searchTools(query: string, catalog: readonly ToolSearchCandidate
   const deferred = catalog.filter(tool => tool.deferred)
   const select = /^select:(.+)$/i.exec(query)
   if (select !== null) {
-    return [...new Set(select[1]!.split(',').flatMap((value) => {
+    return [...new Set(select[1].split(',').flatMap((value) => {
       const name = value.trim()
       const exact = resolveName(name, deferred) ?? resolveName(name, catalog)
       if (exact !== undefined) return [exact.name]

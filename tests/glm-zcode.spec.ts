@@ -83,7 +83,7 @@ test('stream sends image blocks through the attachment service; without it an im
   for await (const _chunk of adapter.stream(options as never)) { void _chunk }
   assert.deepEqual(reads, ['sha256:cccc'])
   const messages = captured.body!.messages as Array<{ content: unknown[] }>
-  assert.deepEqual(messages[0]!.content[1], { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'iVBORw==' }, cache_control: { type: 'ephemeral' } })
+  assert.deepEqual(messages[0].content[1], { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'iVBORw==' }, cache_control: { type: 'ephemeral' } })
   const bare = new ZcodeAdapter({ home: 'C:/ws/.llm', journal: memoryJournal(), fetchImpl: makeUpstream(), storeFs: fs, env: isolatedEnv() })
   await assert.rejects(async () => { for await (const chunk of bare.stream(options as never)) void chunk }, /attachment service/)
 })
@@ -166,7 +166,7 @@ test('coding-plan stream walks the full chain: store → headers → unsigned si
   // ZCode's attribution set: request, session type and trace ids on every request.
   assert.deepEqual(['x-request-id', 'x-zcode-session-type', 'x-zcode-trace-id', 'x-session-id'].map(name => headerIn(captured.headers, name) !== undefined), [true, true, true, true])
   assert.equal(headerIn(captured.headers, 'x-zcode-session-type'), 'main')
-  assert.deepEqual((captured.body!.system as unknown[]), [{ type: 'text', text: 'be brief' }])
+  assert.deepEqual((captured.body!.system), [{ type: 'text', text: 'be brief' }])
   // metadata.user_id names the deviceMid and the same session id as the header.
   const userId = JSON.parse((captured.body!.metadata as { user_id: string }).user_id) as Record<string, string>
   assert.deepEqual(Object.keys(userId), ['device_id', 'account_uuid', 'session_id'])
@@ -397,7 +397,7 @@ test('a login stored before m1-parity keeps working: migrated on first read, the
   const wire: WireRequest[] = []
   const adapter = new ZcodeAdapter({ home: 'C:/ws/.llm', journal: memoryJournal(), fetchImpl: gatewayFetch(wire, {}), storeFs: store.fs, env: isolatedEnv() })
   for await (const chunk of adapter.stream({ ...request(), sessionId: 'session-s1' } as never)) void chunk
-  assert.equal(headerOf(wire.filter(isModelRequest)[0]!, 'authorization'), `Bearer ${FIRST_PAT}`)
+  assert.equal(headerOf(wire.filter(isModelRequest)[0], 'authorization'), `Bearer ${FIRST_PAT}`)
   assert.ok(wire.every(entry => Object.values(entry.headers).every(value => !value.includes('fakesecretvalue'))))
   const { loadCredential } = await import('../src/glm-llm/auth/store.ts')
   const stored = await loadCredential(store.fs, 'C:/ws/.llm/credentials.json') as Record<string, unknown>
@@ -721,10 +721,10 @@ test('the DSH system prompt arrives as leading system messages and lands in the 
   for await (const _chunk of adapter.stream(options)) { void _chunk }
   assert.deepEqual(captured.body!.system, [{ type: 'text', text: 'You are ZCode, an interactive coding agent' }])
   const messages = captured.body!.messages as Array<{ role: string, content: Array<{ type: string, text?: string }> }>
-  assert.equal(messages[0]!.role, 'user') // the leading system message left the history
+  assert.equal(messages[0].role, 'user') // the leading system message left the history
   // The later developer notice rides the same user turn as a system reminder.
   assert.equal(messages.length, 1)
-  assert.equal(messages[0]!.content.at(-1)!.text, '<system-reminder>\nharness notice\n</system-reminder>')
+  assert.equal(messages[0].content.at(-1)!.text, '<system-reminder>\nharness notice\n</system-reminder>')
 })
 
 test('start-plan wraps the system in the 3-block assembly and pins the currentDate prefix once', async () => {
@@ -736,12 +736,12 @@ test('start-plan wraps the system in the 3-block assembly and pins the currentDa
   for await (const _chunk of adapter.stream(options)) { void _chunk }
   const system = captured.body!.system as Array<{ type: string, text: string, cache_control?: unknown }>
   assert.equal(system.length, 3)
-  assert.equal(system[0]!.text, 'You are ZCode, an interactive agent')
-  assert.ok(system[1]!.text.includes('be brief'))
-  assert.ok(system[2]!.text.includes('# Environment'))
+  assert.equal(system[0].text, 'You are ZCode, an interactive agent')
+  assert.ok(system[1].text.includes('be brief'))
+  assert.ok(system[2].text.includes('# Environment'))
   const messages = captured.body!.messages as Array<{ role: string, content: Array<{ type: string, text?: string }> }>
-  assert.equal(messages[0]!.role, 'user')
-  assert.ok(messages[0]!.content[0]!.text!.includes('# currentDate'))
+  assert.equal(messages[0].role, 'user')
+  assert.ok(messages[0].content[0].text!.includes('# currentDate'))
   // A conversation already carrying the prefix is not pinned twice.
   const again: Array<{ role: 'user', content: Array<{ type: string, text?: string }> }> = [
     { role: 'user', content: [{ type: 'text', text: '<system-reminder>\n# currentDate\nToday\u0027s date is 2026-10-27.\n</system-reminder>' }] },

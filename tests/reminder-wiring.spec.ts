@@ -45,7 +45,7 @@ test('a GLM step after 10 multi-call turns gets one wrapped reminder notice with
   const { decision } = await step('glm-5.3', history)
   const [notice, extra] = reminders(decision)
   assert.ok(notice !== undefined && extra === undefined)
-  const text = notice.content[0]!.text
+  const text = notice.content[0].text
   assert.ok(text.startsWith("<system-reminder>\nThe TodoWrite tool hasn't been used recently."))
   assert.ok(text.endsWith('Here are the existing contents of your todo list:\n\n[1. [in_progress] a]\n</system-reminder>'))
   // The createUserMessage identity the inbox keys on.

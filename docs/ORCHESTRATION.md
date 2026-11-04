@@ -233,7 +233,7 @@ guard 拦截〔已实现，规则 `graph-files-only`，`src/guard/graph-files.ts
 - 注册：图行在 `tools/pre-execute` 上以 `prepend` 注册（排在最外层），先于 guard 行判断：shell 写图目录拿到的是图工具这条正路，而不是 file-tools-only 的「改用 Write 或 Edit」，否则模型照做后还要再被拦一次。guard 行的规则不变，图目录以外的调用照旧由它判断。与 guard 行一样，带 `parent` 令牌的传输层子调用直接放行（`DESIGN.md` §2.4a）。规则跟图行走：图行禁用时没有图工具，也就没有这道门禁，被拦的一方手边总有正路。
 - 图目录不存在时同样拦：手写节点文件也是绕过引擎。开始一张新图的正路是建一个空目录（图工具报 `not_found` 时的提示里写着）；`mkdir docs/graph` 不在 file-tools-only 的写文件模式里，本规则也就不拦。
 - 直接拦截，与所有规则一样从所在插件行启用起就拦（§6.5）。M1.8 的影子兜底只记 file-tools-only 看不见的 shell 写入，回合结束才发现，拦不住（§6.5.2），与本规则无关。本规则只看图目录里的目标，误伤面小；2026-10-28 经 L3、L4 后随图行默认启用。
-- 拒绝进违规审计〔已实现 2026-10-28〕：图行像 guard 行一样经数据目录服务取项目目录（行配置 `home` 优先），每次拒绝写一条与 guard 同形的记录（`rule: "graph-files-only"`、工具名、调用方 agent 与会话、来源 `scope` 与 `route`（§6.2）、纠偏全文）到同一份 `audit/violations.jsonl`（`CHARTER.md` §7.1 条款 11）。写入失败不影响拦截，第一次失败在控制台报一次。
+- 拒绝进违规审计〔已实现 2026-10-28〕：图行像 guard 行一样按 `projectHomeFor` 取项目目录（行配置 `home` 优先，次序见 §6.1），每次拒绝写一条与 guard 同形的记录（`rule: "graph-files-only"`、工具名、调用方 agent 与会话、来源 `scope` 与 `route`（§6.2）、纠偏全文）到同一份 `audit/violations.jsonl`（`CHARTER.md` §7.1 条款 11）。写入失败不影响拦截，第一次失败在控制台报一次。
 - 声明〔已实现 2026-10-28，agent 定：列进 `glm:guard`〕：图行启用时它提供服务 `glmHournessGraph`（`src/graph/service.ts`），guard 行在系统提示词的 `glm:guard` 一节末尾加一行 `graph-files-only` 的声明，模型在一处读到全部规矩；图行卸载时这一行随之消失。2026-10-29 起这一节在所有路由上都有（§6.2），此前只在 GLM 路由上。理由：门禁生效的地方，提示词里应当有对应的告知（§6.1），图工具的描述只在模型想到用图工具时才读到。
 - 与 guard 影子兜底的交互〔已实现 2026-10-28〕：图工具经引擎写节点文件，不经文件工具，`workspace-changes` 的回合摘要会列出这些文件。影子兜底经同一个服务认出图工具调用：一个回合里只要调用过图工具，这个会话的图目录下的改动就算已知来源，不记影子。代价是同一回合里 shell 绕过门禁写进图目录的改动也不记（门禁看得见的写法照样拦下）。L3 探针（场景 `glm-graph`）在临时 git 仓库里核对过：同一回合有 shell 调用与图工具写入，影子记录为空。
 
@@ -796,8 +796,10 @@ L3 核实〔实测 2026-10-28，派发可行性验证 (a)(b)，`ROADMAP.md` 借�
 
 | 形式 | 场景 | 行为 |
 | --- | --- | --- |
-| 同步 | 出工作区操作、往工作区外装工具 | 阻断当次操作，等人批 |
+| 同步 | 出工作区操作（写文件的那一类走下面的申报通道）、往工作区外装工具 | 阻断当次操作，等人批 |
 | 异步 | 计划外决策、规范升降级提议、放宽检查配置、第三次修复停下查根因 | 不阻断，agent 转做计划内工作；进入队列 |
+
+guard 的申报不走卡（`d-chat-not-cards`；2026-11-04，m4 任务 `m4-request-card`，设计与状态见该任务的设计 §5）。圈禁、`checker-config`、`scratch-only` 拦下一次写入时，纠偏带一个申报编号；agent 调 `request_exception`（guard 行注册，GLM 路由上经检索延迟、`DeferredToolCall` 调用）换出一段由 harness 写好的四行方案——题目带解析后的路径，背景、推荐、疑问、不做四行，「附」里是文件事实与 agent 的三句原话，问话在最后——原样放在回复末尾，结束回合。人的下一句话就是回答：它要同时满足来自 DSH 客户端（`source.kind: 'user'` 且带 `rpcId`）、紧跟在以这段文字结尾的助手消息之后、恰是「可以」一类的整句同意词，才放行——同一个调用（同工具、同参数，按派发链的根匹配）在 30 分钟内放行一次；使用时重新核对目标的事实，变了就作废；目标存在且不大于 10 MiB 时先把旧内容备份到项目的 `requests/`。其余回话——不明确的、不是客户端送来的、人没有刚读过文字的——都不放行，只计数。放行只存在内存里，由 harness 读人的消息之后写入，违规流水只留痕，进程重启即丢，agent 重新申报。申报的开与关写成会话日志里看得见的形状（`ask` 结果与带 `request: {ref, outcome}` 的提醒），面板「需要你」从日志列出开着的申报，只看不批。
 
 - 卡面是一张表〔定案 2026-10-29，决策 `d-option-card`；人：「就改成表格，用「取决于」加一行条件，替换掉「为什么」和「反方」两行」〕，从上到下：
 
@@ -828,9 +830,9 @@ L3 核实〔实测 2026-10-28，派发可行性验证 (a)(b)，`ROADMAP.md` 借�
 
 ### 6.1 规矩即数据
 
-每条规矩是一组数据：告知（提示词或阶段提醒）、探测（执行前后的判定器）、纠偏（四段式：事实 / 越界 / 正路 / 例外）、申报（走决策卡）、记录（违规审计）。
+每条规矩是一组数据：告知（提示词或阶段提醒）、探测（执行前后的判定器）、纠偏（四段式：事实 / 越界 / 正路 / 例外）、申报（编号与申报通道，§5）、记录（违规审计）。
 
-现状〔已实现〕：探测与纠偏已接通；记录已接通（2026-10-28）：每次拦截写进项目目录的违规流水 `<项目目录>/audit/violations.jsonl`，项目目录取 guard 行的 `home`，没有就取数据目录服务的（`DESIGN.md` §2.4），L3 探针实测；告知已接通（2026-10-28，`ROADMAP.md` M1.8）：系统提示词最后一节 `glm:guard`（标题「Workspace rules」；2026-10-29 起每条路由都有，此前只有 GLM 路由，§6.2）逐条列出生效的规则，每条一行，取自规则的声明文本；会话没有工作目录时圈禁规则不生效，也不声明；主 Agent 的会话不列 `file-tools-only` 这一行（2026-11-02 修，评审 S4-4：它的边界由身份节守着，那一行会叫它用它没有的 Write/Edit）。规则是常驻的，所以放在系统提示词（§9.2 的提示词一级），不随每步变化，不影响提示词缓存（`DESIGN.md` §5.2、§6）；随阶段变化的规矩以后走阶段提醒。申报还没有通道（M4 的决策卡，§5）。2026-10-29 之前纠偏的例外段要模型「file a request」，系统中无处提交；现在圈禁与 file-tools-only 的例外段都写「If the task really needs …, tell the human what you need, where and why; only the human can allow it.」，事实、越界、正路三段不变（`src/guard/rules.ts`，项目图 `prompt-fixes`）。决策卡做出来后，例外段改指向它。2026-10-28 之前已知至少 3 次拦截没有留下记录，因为该行没有数据目录，回调也无法从配置传入。
+现状〔已实现〕：探测与纠偏已接通；记录已接通（2026-10-28）：每次拦截写进项目目录的违规流水 `<项目目录>/audit/violations.jsonl`，项目目录按 `projectHomeFor`（`src/data/project-home.ts`）取：guard 行的 `home`，没有就取会话工作目录所在项目的 `<检出根>/.llm`（`projectOf` 把 git 工作树归到主检出），再没有取数据目录服务的（`DESIGN.md` §2.4；次序钉在 `tests/data-home.spec.ts`），L3 探针实测；告知已接通（2026-10-28，`ROADMAP.md` M1.8）：系统提示词最后一节 `glm:guard`（标题「Workspace rules」；2026-10-29 起每条路由都有，此前只有 GLM 路由，§6.2）逐条列出生效的规则，每条一行，取自规则的声明文本；会话没有工作目录时圈禁规则不生效，也不声明；主 Agent 的会话不列 `file-tools-only` 这一行（2026-11-02 修，评审 S4-4：它的边界由身份节守着，那一行会叫它用它没有的 Write/Edit）。规则是常驻的，所以放在系统提示词（§9.2 的提示词一级），不随每步变化，不影响提示词缓存（`DESIGN.md` §5.2、§6）；随阶段变化的规矩以后走阶段提醒。申报已接通（2026-11-04，m4-request-card G4）：圈禁、`checker-config`、`scratch-only` 的拒绝带申报编号——编号在 guard 行的 `rules()` 里为每次文件工具写入预先生成（8 位 base36），被拒时才登记进内存的拒绝表，违规记录带 `ref`；例外段按调用方给写法：根 agent 是 `request_exception` 的调用写法（§5），普通子 agent 把编号交回派发它的 agent，M7 的 worker 由它的外层门经 `glmHournessRequests` 的 `outsideDenial` 取句。圈禁顺带补上 `str_replace_editor` 的写入判定（`create`、`str_replace`、`insert` 的 `path`，`view` 仍放行）。`file-tools-only` 管的是习惯，不可申报，例外段仍是 2026-10-29 的「Build, test and git commands … If this command writes no file, say so in your reply: the denial is recorded for review.」那句；`suppression-reason` 的出路是它的正路。2026-10-29 之前纠偏的例外段要模型「file a request」，系统中无处提交；圈禁与 file-tools-only 曾都写「tell the human what you need, where and why; only the human can allow it.」，圈禁那句已被申报句取代（git 历史可查）。2026-10-28 之前已知至少 3 次拦截没有留下记录，因为该行没有数据目录，回调也无法从配置传入。
 
 工具名〔已实现 2026-10-29，split 第 2 步〕：规则只认 DSH 原生工具名（`write`、`edit`、`str_replace_editor`、`pwsh`、`bash`、`terminal_send`），判定之前把调用名换成它实际执行的原生工具：先问 GLM 方言提供的方言服务（`glmHournessDialect`，`src/shared/dialect.ts`，由 `glm-prompt` 行提供），服务不在、或它不认识这个名字时，查公共库里的静态别名表 `ZCODE_ALIAS_NATIVES`（`Write` → `write`、`Edit` → `edit`、`Bash` → `pwsh` 等，与 DSH 原生工具名都不重名），都没有就用原名。所以服务缺席时拦截不变，GLM 的 `Bash` 照样按 `pwsh` 判。换算在 guard 行的 `tools/pre-execute`、图文件门禁与影子兜底三处做；图工具不换算（没有别名）。违规与影子记录里的 `tool` 仍写模型调用时用的名字。纠偏与 `glm:guard` 声明里的工具名按模型看到的写：方言服务说它接管了这个 agent 在这条路由上的请求（`claims`）时用方言的名字（`write` → `Write`、`read` → `Read`），文案与之前逐字相同，提示词缓存不受影响；否则用原生名。规则接口为 `detect(call, face)`，`declare` 是字符串或按 `face` 取名的函数；`file-tools-only` 的声明与正路用函数形式，圈禁与 `graph-files-only` 不含文件工具名，仍是字符串。配置追加的规则（guard 行 `config.rules`）按旧接口写照样成立，从这一步起收到的 `call.name` 是原生名。服务的值形状不对、或某个方法抛错时，这次调用按服务缺席处理（拦截照常、文案用原生名），控制台报一次，guard 的会话健康写「方言服务不可用」。静态表不看路由：别的插件若注册了与 ZCode 别名同名的工具，也按对应的原生工具判；今天的组合里只有方言注册这些名字。验证：L2 在 `tests/guard-audit.spec.ts`（有、无服务，服务形状不对，没装上方言的 agent）、`tests/graph-guard.spec.ts`（有、无服务时 `Write` 与 `Bash` 写图文件都被拒）与 `tests/contracts.spec.ts`（静态表与方言自己的别名定义一致）；L3 探针 `glm-no-dialect`（覆盖层禁用 `glm-prompt` 的 GLM 会话：工具面是原生工具，`pwsh` 写文件被拒，纠偏与声明写 `read`、`write`、`edit`），`glm` 场景的纠偏仍写 `Read`、`Write`、`Edit`。
 
@@ -859,24 +861,26 @@ guard 跟着编排层包 `dsh-hourness` 走：包启用时，所有路由、所�
 - 设计阶段拦写代码时，给出「提议节点」的工具。
 - 简报门禁从节点自动预填。
 
-度量：拦截后下一步走对的比例，量的是门禁有没有教会模型。
+度量：拦截后下一步走对的比例，量的是门禁有没有教会模型。每次拦截之后，同一 agent 下一步里模型发出的第一次调用记一条跟进，分走对了正路、原样重试、做了别的、没有下一步四种：GLM 上经 `DeferredToolCall` 包装的调用先拆开再比，和被拦调用同一步发出的不算，回合结束或会话卸载时还没有下一步的记「没有下一步」，跟进、申报、放行、撤下这些记录不算进晨报的违规数〔已实现 2026-11-04，m4-gate G2；`src/guard/followup.ts`，探针场景 `guard-followup`〕。晨报按规则写「拦截后下一步走对 x/y（另有 n 次停下来交给人或上级）」，分母不含「没有下一步」，因为停下交人有几种拒绝的正路就是它（§6.5）。
 
 ### 6.4 规矩清单
 
-| 规矩 | 状态 |
-| --- | --- |
-| 工作区圈禁：写操作只在工作区内 | 已实现 |
-| 文件修改只用专用工具：shell 不写文件 | 已实现；2026-10-28 改为识别引号（`=>`、`>>>`、`->` 误判已发生 3 次）：只看命令位置与引号外的真实重定向，git 子命令放行；漏网的 shell 写入由工作区变更兜底在回合结束时记录，事后才看得见，拦不住（§6.5.2） |
-| 设计阶段不写代码 | 已实现（M3 第 5 步，设计行默认启用）：规则 `design-before-release`，放行之前（目标，或分了模块的目标里的那个模块）主 Agent 派出的各层子 agent 写文件被拒，拒绝进违规流水（§6.8）；计划模式不拦工具，所以不用它 |
-| 转述的人话要在人发来的消息里；不给人列选项表；「这类你定」只经记录工具写 | 已实现（M3 第 6 步，设计行默认启用）：规则 `main-agent-graph-relay`、`main-agent-graph-options`、`main-agent-graph-delegations`（§6.9），拒绝进违规流水 |
-| 目标只经确认需求与放行方案向前；会话里不用命令行写项目图 | 已实现（M3 第 8 步，设计行默认启用）：规则 `main-agent-graph-stage`、`main-agent-graph-cli`（所有会话，§6.9），拒绝进违规流水；子 agent 与普通会话的尝试还通知持有者。放行方案那一半（`release`）和模块的几支〔第 9 步已实现〕：模块和目标一样只经放行向前，模块下的批准与带原话的提议、新模块、清模块的阶段都被拒，退回设计只放主 Agent |
-| 主 Agent 不写文件 | 已实现（M3 第 3、4 步，设计行默认启用）：主 Agent 的工具面里没有写文件的工具，也没有 `ask_user_question`（§3.1）；按名直接调用与 shell 写入由规则 `main-agent-no-write`、`main-agent-ask` 拒绝（§6.7），拒绝进违规流水，带 `parent` 的嵌套子调用同样过规则（2026-11-02 修，评审 S4-1、S5-1、S6-2、S8-3）；git 不算写文件，会丢工作的 git 命令先存快照（规则 `git-snapshot`，§6.7） |
-| 图文件只经图工具修改 | 已实现（规则 `graph-files-only`，由行 `glm-hourness/graph` 注册，拒绝记入违规流水，L3、L4 后默认启用；§2.7） |
-| 临时脚本只在草稿区 | 规划 |
-| 压制注释必须写理由并挂节点 | 规划 |
-| 放宽检查配置走决策卡 | 规划 |
-| 同一处第三次修复走决策卡 | 规划 |
-| 子 agent 只写任务节点的写入范围 | 规划；接缝已经 L3 核实（2026-10-28，§3.2） |
+| 规矩 | 在哪实现 | 状态 |
+| --- | --- | --- |
+| 工作区圈禁：写操作只在工作区内 | guard 行 `workspace-containment` | 已实现，随行拦；2026-11-04 补上 `str_replace_editor` 的写入判定；可申报（拒绝带编号，§5 的申报通道） |
+| 文件修改只用专用工具：shell 不写文件 | guard 行 `file-tools-only` | 已实现，随行拦；2026-10-28 改为识别引号（`=>`、`>>>`、`->` 误判已发生 3 次）：只看命令位置与引号外的真实重定向，git 子命令放行；漏网的 shell 写入由工作区变更兜底在回合结束时记晚到的拦下并在下一步纠正（§6.5.2） |
+| 设计阶段不写代码 | M3 `design-before-release`（`src/guard/design-release.ts`，§6.8） | 生效（`question-25`）；计划模式不拦工具，所以不用它 |
+| 转述的人话要在人发来的消息里；不给人列选项表；「这类你定」只经记录工具写 | M3 `main-agent-graph-relay`、`main-agent-graph-options`、`main-agent-graph-delegations`（§6.9） | 生效（设计行默认启用） |
+| 目标只经确认需求与放行方案向前；会话里不用命令行写项目图 | M3 `main-agent-graph-stage`、`main-agent-graph-cli`（§6.9） | 生效（设计行默认启用）；放行方案那一半与模块的几支随第 9 步生效：模块和目标一样只经放行向前，模块下的批准与带原话的提议、新模块、清模块的阶段都被拒，退回设计只放主 Agent |
+| 主 Agent 不写文件 | M3 `main-agent-no-write`、`main-agent-ask`、`git-snapshot`（§6.7） | 生效（`question-25`）；带 `parent` 的嵌套子调用同样过规则（2026-11-02 修，评审 S4-1、S5-1、S6-2、S8-3） |
+| 图文件只经图工具修改 | 图行 `graph-files-only`（§2.7） | 已实现，随行拦（L3、L4 后默认启用） |
+| 临时脚本只在草稿区 | M4 `scratch-only`（`src/guard/scratch.ts`） | 启用即拦；可申报 |
+| 压制注释必须写理由并挂节点 | M4 `suppression-reason`（`src/guard/suppression.ts`） | 启用即拦 |
+| 放宽检查配置走决策卡 | M4 `checker-config`（`src/guard/checker-config.ts`）；被拒的写入经 `request_exception` 申报 | 启用即拦；可申报 |
+| 同一处第三次修复走决策卡 | M4 图工具：第 3 次重开（第 3 次修复开始）时提一张提议式的人定待决，主 Agent 放进下一批问人；循环板列出 `graph.third-rework`（§6.8） | 只问人，不拦 |
+| 子 agent 只写任务节点的写入范围 | M7 `worker-scope` | M7 定；接缝已经 L3 核实（2026-10-28，§3.2） |
+
+读凭证文件不在表里，也没有规则（m4 设计 §4.2：读不拦，M4 只拦写检查器配置）。
 
 ### 6.5 新规矩直接拦截
 
@@ -885,10 +889,11 @@ guard 跟着编排层包 `dsh-hourness` 走：包启用时，所有路由、所�
 错拦靠看得见和撤得快来发现与纠正：
 
 - 每次拦截带规则 id 与来源 `scope`、`route`（2026-10-29 起，§6.2）写进违规流水〔已实现〕；晨报按规则列出，并把 `scope: other` 的拒绝另行计数，规则名后加「（其他路由）」，没有 `scope` 的旧记录照原来的写法计〔已实现〕。规则页列出同一份记录，属于整块规则板，今天只有最小一片（§16），还没有规则页〔规划〕。
-- 用户对主 Agent 说一句话，或敲一条命令，就能撤下一条规则；撤下的动作按宪章 §7.1 条款 11 留痕，记下时间与原话〔规划，M4 设计这条路径〕。今天写在代码里的规则只能随所在插件行一起禁用（插件管理器里禁用 `guard` 行，§6.2；`graph-files-only` 跟着图行走），没有按规则撤下的办法。
+- 误拦看得见：晨报每条被拦过的规则一行——拦下几次、最近一次拦下的样子（工具、命令或目标的前 60 个字符、时刻）、拦截后下一步走对的比例，原样重试过的把次数列在同一行；命令行 `npm run -s guard -- records`（按规则列出每次拦下的完整记录）与 `stats` 读同一份统计 `ruleStats`〔已实现 2026-11-04，m4-gate G2；`src/guard/measure.ts`、`src/guard/cli.ts`，命令行见 `DEVELOPMENT.md` §15〕。
+- 用户对主 Agent 说一句话，或敲一条命令，就能撤下一条规则；撤下的动作按宪章 §7.1 条款 11 留痕，记下时间与原话〔已实现 2026-11-04，m4-gate G3〕。两条路：对话里人对主 Agent 说一句话，主 Agent 调 `guard_lift`（工具核原话确在人最新一条消息里，一条消息至多撤一条，拒绝时给出不说这个就别再问的话术）；规则板的 `/rules lift <行>:<规则>` 直接改（经服务 `glmHournessLifts`，不核原话）。两条路都往项目的 `docs/guard/lifts.jsonl` 追加一行 JSON（时刻、规则、动作、经哪条路、原话或命令），文件在每次检出里各有一份，规则 `lift-files-only` 拦人手与 agent 对它的改写（它只能经规则板撤下），缓存按文件 stat 失效。撤下按文件的最后一行算：恢复一行就拦回来；文件不在等于没有撤下。哪条规则只能经哪条路撤由目录的 `liftVia` 定（`any` 两路都行，`board` 只认规则板，现在是 `lift-files-only` 自己）。
 - 新插件行默认禁用，验证通过后才启用（`AGENTS.md`）。这一条管插件行，不管行里的规则：行一启用，行里的规则就拦。
 
-只能在事后发现违规的检查拦不住调用，不能当规则用。今天只有一个，§6.5.2 的工作区变更兜底：它在回合结束时才看得见 shell 写入，那时调用早已执行。它改成什么由 M4 的设计定（例如在 agent 的下一步立刻纠正），结果写在 M4 的设计里。
+只能在事后发现违规的检查拦不住调用，不能当规则用。今天只有一个，§6.5.2 的工作区变更兜底：它在回合结束时才看得见 shell 写入，那时调用早已执行。M4 把它定成「晚到的拦下加下一步之前的纠正提醒」（§6.5.2）：记录照写，纠正交给 agent 的下一步，不假装拦住了。
 
 #### 6.5.1 file-tools-only 的引号感知探测〔已实现 2026-10-28，`ROADMAP.md` M1.8〕
 
@@ -901,15 +906,15 @@ guard 跟着编排层包 `dsh-hourness` 走：包启用时，所有路由、所�
 
 与改造前相比：引号里的箭头与运算符、`> $null` 不再误拦；`echo hi>out.txt`、`2> err.txt` 这类贴着写或带流编号的真实重定向改为拦截（原正则漏掉）；参数位置上的 `rm` 等（`git rm`、`echo rm`）不再拦截，`find -exec` 后面的命令照样拦。命令集没有扩充：PowerShell 别名（`del`、`ri`、`ni` 等）、`Rename-Item`、.NET 写文件调用、`cmd /c`、解释器一行脚本都看不见，只有下面的工作区变更兜底在回合结束时记下它们，拦不住（§6.5.2）。把这些写法加进探测就是加规则，加进去的那一版起就拦（§6.5 开头）。
 
-#### 6.5.2 工作区变更兜底〔已实现 2026-10-28，只记录，拦不住〕
+#### 6.5.2 工作区变更兜底：晚到的拦下与下一步之前的纠正〔已实现 2026-11-04，m4-gate G3；前身为 2026-10-28 的影子兜底〕
 
-`src/guard/shadow.ts`。DSH 的 `workspace-changes` 在每个顶层回合结束时，用回合首尾的 git 工作树快照加文件工具改动前后的整文件副本，算出本回合改了哪些文件，并在会话日志里追加一条 `workspace/changes` 事件（`DESIGN.md` §2.4a）。guard 按会话与回合记下文件工具的目标与放行的 shell 调用，所有路由都记（2026-10-29 起，§6.2）：调用名先按 §6.1 换成原生名，`write`、`edit`、`str_replace_editor` 算文件工具（GLM 的 `Write`、`Edit` 换算后在其中，方言服务缺席时同样），影子记录里的 `calls` 仍写模型调用时的名字；收到该回合的事件后读摘要，本回合跑过 shell、且有文件不是任何文件工具的目标时，写一条影子记录：会话、agent、来源（本回合只要有一次 shell 调用在方言接管的路由上就是 `dialect`，否则 `other`；`route` 取本回合最后一次 shell 调用的路由）、回合、这些文件的显示路径、本回合放行的 shell 调用，摘要截断时另记未列出的文件数。从不拦截：这些调用在回合结束时早已执行，兜底只能事后发现。按 §6.5 开头的定案，它改成什么由 M4 的设计定；定下来之前，本节写的是现状。
+`src/guard/fallback.ts`（`git mv` 自 `shadow.ts`）。DSH 的 `workspace-changes` 在每个顶层回合结束时，用回合首尾的 git 工作树快照加文件工具改动前后的整文件副本，算出本回合改了哪些文件，并在会话日志里追加一条 `workspace/changes` 事件（`DESIGN.md` §2.4a）。guard 按会话与回合记下文件工具的目标与放行的 shell 调用，所有路由都记（2026-10-29 起，§6.2）：调用名先按 §6.1 换成原生名，`write`、`edit`、`str_replace_editor` 算文件工具（GLM 的 `Write`、`Edit` 换算后在其中，方言服务缺席时同样）。收到该回合的事件后读摘要，本回合跑过 shell、且有文件不是任何文件工具的目标时，写一条晚到的拦下（`mode: "late"`，`via: "turn-end"`，其余字段同影子时代：会话、agent、来源 `scope` 与 `route`、回合、文件显示路径、本回合放行的 shell 调用，摘要截断时另记未列出的文件数），进违规流水，晨报计进「违规」与「其中晚到的拦下」。这些调用在回合结束时早已执行，兜底从不假装拦住了它们。
 
-影子记录与拦截记录写在同一条违规流水里，带 `mode: "shadow"` 区分；晨报把影子记录单列一节「影子记录（只记录，未拦截）」，不算违规，也不进「例外」。影子记录也带来源 `scope` 与 `route`（2026-10-29 起，§6.2），晨报在「影子记录」一节里同样把 `scope: other` 的记录另行计数，规则名后加「（其他路由）」，没有 `scope` 的旧记录照原来的写法计。这些名字与记录格式今天照代码；M4 改定兜底之后，随之改写本节。
+纠正走到 agent 的下一步之前：每个回合至多排一条纠正，按会话存着（至多八条，满了丢最旧的），会话卸载即弃。`file-tools-only` 与 `main-agent-no-write` 管得到的会话（主 Agent、子 agent），guard 在 `agent/pre-step` 上发第二条 step notice（来源 `hourness-guard`，包在 system-reminder 里），列出至多十个文件、最近三条 shell 调用（每条截到 80 字符），整条至多 600 字符；事实、越界、正路三段照纠偏的写法，措辞随 `scope` 换方言名或原生名。纠正是提醒不是拦截：同一步里模型再发一次 shell 写入，规则面照判，兜底只管上一回合已经发生的。
 
-已知边界：只覆盖有工作目录的顶层会话；工作目录不在 git 仓库里、或主机没有 git 时，摘要只列文件工具的改动，shell 写入看不见；被 `.gitignore` 忽略的文件只有文件工具碰过才看得见；同一回合里用户自己改的文件也会算进来；构建、测试、`git checkout` 这类放行的命令产生的改动同样会被记下，这是它的误报来源。`workspace-changes` 只在 `dsh-web-app` 的组合里，桌面版 profile 有，沙盒模板没有；缺这个服务时只少影子记录，guard 的行健康写明「影子兜底未启用」。
+已知边界：只覆盖有工作目录的顶层会话；工作目录不在 git 仓库里、或主机没有 git 时，摘要只列文件工具的改动，shell 写入看不见；被 `.gitignore` 忽略的文件只有文件工具碰过才看得见；同一回合里用户自己改的文件也会算进来；构建、测试、`git checkout` 这类放行的命令产生的改动同样会被记下，这是它的误报来源。`workspace-changes` 只在 `dsh-web-app` 的组合里，桌面版 profile 有，沙盒模板没有；缺这个服务时只少晚到的拦下与纠正，guard 的行健康写明「事后纠正未启用（组合里没有 workspace-changes）」。
 
-验证：L2 覆盖两种方言下引号与代码体内的 `=>`、`>>>`、`->`，真实重定向，`Set-Content` / `Out-File` / `Add-Content` 等命令，git 子命令，嵌套脚本，以及影子记录的触发与不触发条件（`tests/guard-shell.spec.ts`、`tests/guard-audit.spec.ts`）。L3 探针：GLM 与非 GLM 的系统提示词都带规则声明（GLM 用方言名，非 GLM 用原生名，§6.2）；`Bash` 跑引号里带箭头的命令与带引号箭头的 git 子命令都放行；在临时 git 仓库里挂上 `workspace-changes`，一条 .NET 写文件调用照常执行，留下恰好一条影子记录，只列 shell 写的文件，不列 `Write` 写的文件。
+验证：L2 覆盖两种方言下引号与代码体内的 `=>`、`>>>`、`->`，真实重定向，`Set-Content` / `Out-File` / `Add-Content` 等命令，git 子命令，嵌套脚本，以及晚到记录的触发与不触发条件（`tests/guard-shell.spec.ts`、`tests/guard-audit.spec.ts`）与纠正的排队、上限、丢弃（`tests/guard-fallback.spec.ts`）。L3 探针：GLM 与非 GLM 的系统提示词都带规则声明（GLM 用方言名，非 GLM 用原生名，§6.2）；`Bash` 跑引号里带箭头的命令与带引号箭头的 git 子命令都放行；在临时 git 仓库里挂上 `workspace-changes`，一条 .NET 写文件调用照常执行，下一回合的 step notice 里点名那个文件（场景 `guard-fallback`），再下一步没有。
 
 ### 6.6 惯犯升级
 
@@ -970,7 +975,7 @@ guard 跟着编排层包 `dsh-hourness` 走：包启用时，所有路由、所�
 
 LLM 爱造轮子，因为写脚本只花当前这一轮的力气，装工具却要停下来问人；代价由后面几十轮来付，到那时它已不记得写过什么，结果是散落全盘的文件与脚本〔定案，用户经验〕。所以正路要在当下就最省力：
 
-- 环境是项目图上的一个分支，每个工具一个节点：用途、用法、选择理由、安装位置。会话开始时与记忆一起放到模型手边。
+- 环境是项目图上的一个分支，每个工具一个节点：用途、用法、选择理由、安装位置。会话开始时与记忆一起放到模型手边。实现：图上 id 为 `env` 的特性节点（挂在一个目标下），env 行（`src/env/`）在每个 agent 的会话第一步与分支变化后的下一步注入提醒，带「改完哪些文件会跑检查」与草稿区两行（M4 设计 §7.1、§7.2）。
 - 执行限制在工作区内，与此配合。
 
 ### 7.2 查找顺序
@@ -983,7 +988,7 @@ LLM 爱造轮子，因为写脚本只花当前这一轮的力气，装工具却�
 
 ### 7.4 草稿区
 
-一次性脚本只允许放在约定的草稿目录；汇合时要么删除，要么转正（挂上节点、移入 `scripts/`、写明用途），放着不管的过不了汇合门禁〔定案〕。位置待定（§15）。`.llm/docs/` 下的三个抓取脚本就属于这一类，待清理。
+一次性脚本只允许放在约定的草稿目录；汇合时要么删除，要么转正（挂上节点、移入 `scripts/`、写明用途），放着不管的过不了汇合门禁〔定案〕。位置：工作区根下的 `.llm/scratch/`（M4 设计 §7.3）；`.llm/` 的 git 忽略由 env 行与 guard 行在第一次往项目的 `.llm/` 写东西之前经 `src/data/llm-ignore.ts` 的 `ensureLlmIgnored` 保证（追加 `<git 目录>/info/exclude` 一行并用 `git check-ignore` 复核）。`.llm/docs/` 下曾有的三个抓取脚本属于这一类，已删除（`m4-cleanup`），地址与重新抓取的办法见 `docs/reference/bigmodel-guide-digest.md` 的附。
 
 ### 7.5 检查器
 
@@ -1007,7 +1012,7 @@ LLM 爱造轮子，因为写脚本只花当前这一轮的力气，装工具却�
 - 新项目从第一天起零告警；存量告警按棘轮处理：记下基线，新增告警一律拦下，基线只减不增〔定案〕。
 - 压制注释（忽略注释、降级、关严格模式）必须写理由并挂节点，没写理由的新增压制直接拦下〔定案〕。
 - 把检查配置改松属于计划外决策，走决策卡〔定案〕。
-- 压制注释总数单独作为一项指标。
+- 压制注释总数单独作为一项指标。实现：env 行每天第一次给某个仓库的会话装环境提醒时，对仓库的已跟踪文件按标记表（`src/shared/suppression-markers.ts`）计数，追加进项目的 `.llm/audit/suppressions.jsonl`（`src/env/suppressions.ts`；同一仓库同一天至多一条，计数在后台跑，失败只进行健康），晨报写「压制注释 N 处（本期 +a / −b）」（M4 设计 §6.7）。
 
 ### 7.7 本仓库
 
@@ -1304,7 +1309,7 @@ LLM 不讲人话，多半是默认在向评审汇报，想显得周全。做法�
 | 分解与并行 | subagent（spawn 后端，后台派发；不用 Agent Team 与工作流引擎，§3.6） | 任务节点的派发属性与写入范围门禁（§3.2）、难度对应档位、补位提醒、简报门禁 |
 | 驱动循环 | 会话目标 `goal`、`goal-round-driver`（不用 `tool-ralph`，§2.1） | 由人发起、每拍注入投影、完成门禁；项目图与每拍动作 |
 | 汇合门禁 | 工作区文件变更记录 `workspace-changes`（数据只在宿主进程内存里，会话释放或宿主重启后没有） | 测试证据检查、知识同步检查；要跨重启保留的证据写进图 |
-| guard 影子兜底 | `workspace-changes` 的回合摘要（已接入 2026-10-28，接口见 `DESIGN.md` §2.4a） | 与文件工具目标比对、影子记录（§6.5.2） |
+| guard 兜底（晚到的拦下与纠正） | `workspace-changes` 的回合摘要（已接入 2026-10-28，接口见 `DESIGN.md` §2.4a） | 与文件工具目标比对、晚到的拦下、下一步之前的纠正提醒（§6.5.2） |
 | 运维与晨报 | 定时提醒 `schedule`（只投递到创建它的会话，§11.4） | 固定运维会话、巡检内容、四答对账 |
 | 用量底座 | `token-meter`、`session-stats` | 积分与峰谷口径、额度 |
 | 外部工具 | MCP 客户端 | 环境分支 |
@@ -1425,7 +1430,7 @@ L2：`tests/peak-mode.spec.ts`（共用契约：上限与挡住的标记、读�
 - 脚本不在这里跑：`judge` 对带脚本的规则只做两件事。规则在 `options.approved` 里（这台机器上有人看过原文同意）且存下来的超时与失败做法合法时，把它连同超时和失败做法放进 `pending` 交给调用方去跑；这次调用已被别的规则的自带动作拦下时不交。其余（没有批准，或存下来的超时越界）不跑，按失败做法判：条目写的 `onError`，没写取事件声明的缺省（`gate.trunk-advance` 为拦下，其余放行），拦下时 `hits` 里的理由（英文，给模型看）写脚本 is not approved on this machine，放行时只列在 `refused` 里。批准记录由同意的路产生，那条路还没有，所以今天所有带脚本的规则都落在这一支。
 - 信号的有效值（`signals.ts`）：`effectiveSignal(名字, 状态, 现在, 检测器状态?)`：人手值没到期就取它，其次是检测器的值（检测器的状态说它在运行才取），其余读不出，原因写明；检测器失败、超时或没有宿主时读不出，不会变成「否」。`glm-peak` 不在项目状态里，由调用方按计价服务（`source: 'clock'`）或命令行的来源给读数。
 - 默认规则与附属条目（`builtin.ts`）：`GLM_PEAK_PRICING`（`rules.step`，筛选 GLM 家族的模型 `^[^/]*/glm`，条件 `glm-peak` 为真，只告知，`toldBy: 'glm-prompt'`）总在；`builtinRulesFor(档位)` 在无影响档只给它，少做档加 `GLM_PEAK_REDUCE`（高峰里自报 `glmSpend: optional` 的脚本排队），不做档加 `GLM_PEAK_STOP`（高峰里 GLM 子 agent 的每次工具调用排队，一个会话一张单）、`GLM_PEAK_STOP_DISPATCH`（派 GLM 子 agent 的调用排队，不论谁派）和 `GLM_PEAK_STOP_SCRIPTS`（自报花 GLM 积分的脚本排队）。四条附属条目的条件是高峰且 `onUnknown: 'skip'`：读不出是不是高峰时什么都不拦。主 Agent 不受高峰模式管：没有一条条目筛选它，只有它派 GLM 子 agent 的那一次调用被 `GLM_PEAK_STOP_DISPATCH` 排队，因为被停下的是被派的子 agent。出厂档位由 `effectivePeakMode` 一处给出。
-- 代码规则目录（`builtin.ts` 的 `CATALOG`，设计 §10.1）：guard 框架的规则只在 `src/guard/catalog.ts` 的 `GUARD_RULES` 里写一份（`guard:workspace-containment`、`guard:file-tools-only`、`graph:graph-files-only`、`loops:files-only`、`loops:schedule-tools`，`mode` 恒为 `enforce`：代码里的规则从所在行启用那天起就拦，没有影子模式），`CATALOG` 把它映射成 `<行>:<id>`；M3 主 Agent 的九条只在 `src/guard/main-agent-rules.ts` 的 `MAIN_AGENT_RULES` 里写一份，`CATALOG` 映射成 `design:<id>`（`design` 行，两种执行方式都是拦截，`effect` 恒为 `block`，没有 `toldBy`，标题照抄）；再加规则板自己的 `rules:files-only`（只有目录项，门随规则行）和默认规则与它的四条附属条目。`tests/contracts.spec.ts` 核对 `GUARD_RULES` 里每个 id 都是对应行实际装上的规则对象的 id，`MAIN_AGENT_RULES` 去 `design:` 前缀后与目录条目一一对应。
+- 代码规则目录（`builtin.ts` 的 `CATALOG`，设计 §10.1）：guard 框架的规则只在 `src/guard/catalog.ts` 的 `GUARD_RULES` 里写一份（`guard:workspace-containment`、`guard:file-tools-only`、`graph:graph-files-only`、`loops:files-only`、`loops:schedule-tools`，没有 `mode` 列：代码里的规则从所在行启用那天起就拦，没有影子模式），`CATALOG` 把它映射成 `<行>:<id>`；M3 主 Agent 的九条只在 `src/guard/main-agent-rules.ts` 的 `MAIN_AGENT_RULES` 里写一份，`CATALOG` 映射成 `design:<id>`（`design` 行，两种执行方式都是拦截，`effect` 恒为 `block`，没有 `toldBy`，标题照抄）；再加规则板自己的 `rules:files-only`（只有目录项，门随规则行）和默认规则与它的四条附属条目。`tests/contracts.spec.ts` 核对 `GUARD_RULES` 里每个 id 都是对应行实际装上的规则对象的 id，`MAIN_AGENT_RULES` 去 `design:` 前缀后与目录条目一一对应。
 
 ### 16.9 写入引擎的操作（`src/rules/permissions.ts`、`request.ts`、`plan.ts`、`engine.ts`、`store.ts`）〔已实现 2026-11-01，L2；调用方只有测试，命令与规则行随后〕
 
@@ -1703,7 +1708,7 @@ harness 自己跑的 git 都从这里走：任务与门禁的工作树、两个�
 - 行 `glm-hourness/loops`（cordis 名 `dsh-glm-hourness/loops`，补丁里在 `design` 之后、`ui` 之前，`inject: ['commands']`）。`apply(ctx, config)` 做这些：提供行健康、把循环行自己的条目和那一个 harness 动作交给自己的登记表、注册 `/loops`（§18.7）、在 `tools/pre-execute` 上最外层装 `loops:files-only`（§18.8）、注册会话投影 `hournessLoops`，在 `agent/created` 时对着那个会话的项目对账一次（§18.7），并在 `ctx.inject(['sessionController'], …)` 里提供服务 `glmHournessLoops`、起 60 秒一拍、运行这个进程遇到的每个项目（§18.9）。
 - 哪些事只在有会话控制器的进程做（设计 §3.1、§6.1、§11.1）：提供服务、运行条目、起拍。没有它的进程（headless、探针、标定）照样注册工具面以外的全部——命令、文件门、投影、步 notice——行健康写一行「这个进程不跑循环板（没有会话控制器）」，状态不降级；读不到服务的行按自己的退路执行事件条目。所以 guard 的 `glm:guard` 节那一句跟着行健康走（`activationState(ctx, 'loops')` 不是 `absent`、`inactive` 就写），不跟着服务走：门在每个进程里都装着，告知也要在每个进程里。
 - 不抛错：宿主没有 `provide`，行健康是 `inactive` 并写原因、告警一次；服务提供不上（第二个实例）只写一条降级，不动第一个实例的服务。缺一部分只降级、写明缺哪一样：没有 `commands` 服务就没有 `/loops`；没有 `on` 就装不上文件门（行健康写「没有什么拦着别人写循环板的文件」）；`sessionProjections` 还没来、注册失败，投影那一行写明；没有 `inject` 就既没有投影也没有服务与拍。登记表告诉的每一条（别的行交来的东西有几项不合、被整份拒绝、有没学过的词）、每个项目读文件时出的问题和运行时报的每一件事都进行健康：`degraded` 级进「问题」，`info` 级只写一行不降级。
-- 行健康只在激活时报（`ACTIVATION_ONLY`）：循环板属于项目，不属于某个会话。配置：`home`（违规流水的项目目录，缺省取数据目录服务的）、`io`、`lock`、`delay`、`beat`（存储的文件操作、写锁环境、一次性定时器与 60 秒的拍，测试替换）。
+- 行健康只在激活时报（`ACTIVATION_ONLY`）：循环板属于项目，不属于某个会话。配置：`home`（违规流水的项目目录，不设时按 `projectHomeFor` 取，§6.1）、`io`、`lock`、`delay`、`beat`（存储的文件操作、写锁环境、一次性定时器与 60 秒的拍，测试替换）。
 - 注册：`scripts/packages.mjs` 的 `rows`，`packages/hourness/cordis.patch.yml`，`packages/hourness/package.json` 的 `exports`，`packages/hourness/locale/loops/{en,zh}.json`，`src/shared/health.ts` 的 `HOURNESS_ROWS`（与补丁同序）。
 
 ### 18.7 人的条目的存储、`/loops`、投影与 `view.json`（`src/loops/store.ts`、`journal.ts`、`commands.ts`、`boards.ts`、`view.ts`、`projection.ts`，`src/loops/model.ts` 的条目文件）〔已实现 2026-11-02，L2、L3；行默认启用〕
@@ -1719,9 +1724,9 @@ harness 自己跑的 git 都从这里走：任务与门禁的工作树、两个�
 ### 18.8 文件门 `loops:files-only`（`src/loops/guard.ts`）〔已实现 2026-11-02，L2、L3；行默认启用〕
 
 - 规则（设计 §2.4 第 16a 行、§13）：条目文件、脚本与运行时文件只由循环板写。目标在仓库任何一份检出（主检出与它的工作树，`git worktree list` 的结果，共用 `src/data/project-root.ts` 的 `cachedWorktrees`，缓存 60 秒）的 `docs/loops/` 之下，或项目的 `.llm/loops/` 之下，一律拒绝：文件工具与 `file-tools-only` 判为写文件的 shell 命令都算（共用 `src/guard/directory-writes.ts` 的 `writesInto`），带 `parent` 的子调用（`run_code` 里的工具调用）照样判，读不拦。
-- 装法同图行的 `graph-files-only`（`src/guard/graph-files.ts`）：guard 框架的 `GuardRule`，在 `tools/pre-execute` 上以 `{ prepend: true }` 最外层，所以写循环板文件的 shell 命令拿到的是这一条的四段式理由，不是 `file-tools-only` 的。不经 `installRuleGate`（M4 未放行，impl-plan Interpretations 4）。从行启用的那天起就拦，没有只记录的影子模式（`d-code-rules-enforce`）。
-- 拒绝时写一条项目违规流水（`rowJournal` 的 `violation`，规则是 `loops:files-only`、`mode: 'enforce'`，带工具名、agent 与会话 id、路由来源），流水写不进也不改变判定、不挡调用。规则不读循环板的任何状态，所以文件读不出时它照样成立；循环板写自己的文件走自己的代码（`store.ts`），这条规则看不见——它只看工具调用。判不出来时（取不到项目、取不到工作树）调用照常放行，宿主日志写一行告警。
-- 登记：`src/guard/catalog.ts` 的 `GUARD_RULES` 加 `{ id: 'files-only', row: 'loops', mode: 'enforce' }`，经规则板的 `CATALOG` 映射成 `loops:files-only` 在规则页上只读显示；契约测试核对这个 id 就是循环行装上的规则对象的 id。服务 `glmHournessLoops` 的 `declaration` 让 guard 的 `glm:guard` 节在这一行启用时多写一句（同规则板 `glmHournessRules` 的做法），这句话不随条目变，所以不动提示词缓存。
+- 装法同图行的 `graph-files-only`（`src/guard/graph-files.ts`）：guard 框架的 `GuardRule`，在 `tools/pre-execute` 上以 `{ prepend: true }` 最外层，所以写循环板文件的 shell 命令拿到的是这一条的四段式理由，不是 `file-tools-only` 的。这条与 `loops:schedule-tools`（§18.10）两道门都经 guard 框架唯一的 `installRuleGate`（`src/guard/gate.ts`）装上（`src/loops/guard.ts`）。从行启用的那天起就拦，没有只记录的影子模式（`d-code-rules-enforce`）。
+- 拒绝时写一条项目违规流水（`projectJournal` 的 `violation`，规则是 `loops:files-only`，带工具名、agent 与会话 id、路由来源），记录由 `installRuleGate` 写（`src/guard/gate.ts`），不带 `mode` 字段；流水写不进也不改变判定、不挡调用。规则不读循环板的任何状态，所以文件读不出时它照样成立；循环板写自己的文件走自己的代码（`store.ts`），这条规则看不见——它只看工具调用。判不出来时（取不到项目、取不到工作树）调用照常放行，宿主日志写一行告警。
+- 登记：`src/guard/catalog.ts` 的 `GUARD_RULES` 加 `{ id: 'files-only', row: 'loops' }`（另有 `title`、`blocks` 与 `liftVia`，没有 `mode` 列），经规则板的 `CATALOG` 映射成 `loops:files-only` 在规则页上只读显示；契约测试核对这个 id 就是循环行装上的规则对象的 id。服务 `glmHournessLoops` 的 `declaration` 让 guard 的 `glm:guard` 节在这一行启用时多写一句（同规则板 `glmHournessRules` 的做法），这句话不随条目变，所以不动提示词缓存。
 
 ### 18.9 运行时核心：运行锁与拍、交接、收件箱、去抖与限次、运行与记录（`src/loops/lock.ts`、`inbox.ts`、`run.ts`、`harness.ts`、`file-watch.ts`、`records.ts`、`channel.ts`，接线在 `index.ts`）〔已实现 2026-11-02，L2、L3；行默认启用〕
 
@@ -1750,7 +1755,7 @@ harness 自己跑的 git 都从这里走：任务与门禁的工作树、两个�
 - 到点之后（设计 §6.2 末段）：DSH 投出去就更新这条任务的 `lastDelivery` 并发 `schedule/changed`；对账看到 `messageId` 变了就记这一次运行（`loop-fired` 加 `loop-done`，结局 `delivered`、投递方式 `dsh`）。`lastDelivery` 没变、而离「到点时刻与本进程开始跑这个项目两者中较晚的那个」已过 5 分钟时（评审 F25），记一条 `loop-drift`（`not-delivered`）、由循环板自己投这一次，`ok` 状态下把这条任务删掉重建（宿主因此从现在重新算下一次），别的状态下任务原样留着。
 - 投递（设计 §6.4，`deliver.ts`）：消息是一条 user 角色的合成 notice（来源 `glm-hourness-loop`，正文裹 `<system-reminder>`），所以模型读它是 harness 的提醒，不是人的话（没写来源的 `followup`、`steer` 会被当成人的授权，tool-goal:44–52）。同一个目标 2 秒内要投的几条合成一条，每段写出自己的标题与运行号。先问 `holderState`：不能投就按上面的表存着（每个项目至多 50 条，满了丢最早的，存了 24 小时作废，回到能投的状态之后按先后投）。能投时取活 agent：`agents.get(会话 id)`，没有（会话是冷的）且这条要叫醒它时调 `sessionController.resolveAgent`（宿主自己的定时投递用的同一个调用）；不叫醒的条目不去恢复冷会话，留着等它下一次 `agent/created`。`resolveAgent` 的两种答复不算失败：`session/not-found` 让 `holderState` 从此为 `not-found`（要人指定新的主 Agent），`session/writer-held` 记下这一刻、5 分钟内读作 `elsewhere`（等运行锁交过去），两者都只是存着；别的错误码按失败重试。唤醒方式与规则板的同一张表：要叫醒且在跑用 `steer`，空闲且有 active 的 goal 用 `inject`（`followup` 会被 goal 驱动器当作竞争输入作废这一轮的预约），其余空闲用 `followup`，不叫醒的一律 `inject`。整个投递放在 `agents.withoutInitiator` 里，投完要 `sessions.flush` 说收下了才算投出；`flush` 说没有或任何一步抛错时按 1、5、15 分钟重试三次，每次重试之前重问 `holderState`，三次都不成记 `failed` 并报行健康 degraded。结果要交给事件来的那个会话（`to: 'event-session'`）时：那个会话在本进程里且正在跑就 `inject` 给它（不叫醒一个做完了的子 agent），否则交给主 Agent 并在文字后加一句 `For session <id>, which is not running now.`。
 - 主 Agent 那一步的一行与两份走步记录（设计 §6.1、§6.4，`reminder.ts`）：到点的消息由 DSH 投，循环行只在主 Agent 领到它的那一步、`next()` 之后追加一行。那一步领到的消息里有来源 `schedule` 且 `schedule_id_json`（或批次的 `reminders_json`）指向 `bindings` 里的任务时，先做一次对账（于是这一次已经成了一次运行），再写 `Loop run <run> for <entry>.`；运行号还没有时写 `Loop board reminder for <entry>.`。同一个监听器写两份记录：`<项目根>/.llm/loops/main-step.json`（`{session, at}`，第 14 项用它判「这段高峰里主 Agent 走过步」）与 `<userHome>/loops/machine/last-step.json`（`{projectKey, project, session, at}`，账号一级的条目用它找最近有活动的项目），都以临时文件加改名写，至多每 60 秒一次，但这一步跨进或跨出高峰时当场写，所以每段高峰里的第一步一定留下。
-- `loops:schedule-tools`（设计 §6.2 末段、§2.4 第 16 行，`guard.ts`）：循环行在 `tools/pre-execute` 上以 `prepend` 装的第二道门，从行启用那天起就拦，没有影子模式。拒三种调用：提示文字去掉首尾空白后以 `Loop board: ` 开头的 `schedule_create`（否则主 Agent 建的提醒会被对账当成孤儿认下，评审 F13）；`schedule_update` 与 `schedule_delete` 的 `id` 指向循环板的任务（在 `bindings` 里，或 `schedule.catalog()` 里这条的提示文字是循环板的写法；catalog 读不出时放行，由对账第 3 条事后改回）。`schedule_list`、别的提醒的增删改、以及与提醒无关的调用都照常。拒绝文字是四段式，纠偏那一段逐字是设计给的那句；拒绝写进项目违规流水，规则 `loops:schedule-tools`、`mode: 'enforce'`。规则列在 `src/guard/catalog.ts` 里。
+- `loops:schedule-tools`（设计 §6.2 末段、§2.4 第 16 行，`guard.ts`）：循环行在 `tools/pre-execute` 上以 `prepend` 装的第二道门，从行启用那天起就拦，没有影子模式。拒三种调用：提示文字去掉首尾空白后以 `Loop board: ` 开头的 `schedule_create`（否则主 Agent 建的提醒会被对账当成孤儿认下，评审 F13）；`schedule_update` 与 `schedule_delete` 的 `id` 指向循环板的任务（在 `bindings` 里，或 `schedule.catalog()` 里这条的提示文字是循环板的写法；catalog 读不出时放行，由对账第 3 条事后改回）。`schedule_list`、别的提醒的增删改、以及与提醒无关的调用都照常。拒绝文字是四段式，纠偏那一段逐字是设计给的那句；拒绝写进项目违规流水，规则 `loops:schedule-tools`，记录不带 `mode` 字段。规则列在 `src/guard/catalog.ts` 里。
 - 接线（`run.ts`、`index.ts`）：运行时每一拍在读完文件与高峰之后对一次账、投一次存着的消息；`holderHere`（持有者会话在本进程里打开着）接上运行锁，所以锁真的跟着主 Agent 的会话走了（§18.9 里它恒为「不在本进程」）；`schedule/changed` 与 `workspace/session-stop` 各挂一个只读的监听器，收不到时每 60 秒一拍的对账照样做（设计 §10.2 V2、V15）；每个会话装上那一行与走步记录（哪一步是主 Agent 由记录每次重判，`/wish here` 之后跟着变）。宿主没有定时服务时到点的条目不建、不删、不报错（`scheduleOf` 返回 undefined，对账直接返回），事件条目照常。
 
 ### 18.12 高峰的开始与结束（`src/loops/peak.ts`，接线在 `run.ts`、`index.ts`）〔已实现 2026-11-02，L2、L3；行默认启用〕
@@ -1770,7 +1775,7 @@ L3（§18.1 到 §18.6）：这一片不加场景。这一行被组装进探针�
 
 L2（存储，§18.7）：`tests/loops-store.spec.ts`，用真实的临时 git 仓库（同 `tests/rules-helpers.ts` 的做法）：条目文件对得上就跑；清零、截断、不是 JSON、不合校验的条目文件与 `/loops restore` 写回；变更记录末行截断（存进 `.journal.corrupt-<时刻>` 再截掉）；中间坏一行（跳过、整份另存、页面列行号、`/loops ack` 之后不再提示）；锁残留（`keepStale`）与两个写者只有一个写成；改名失败（注入的 `rename` 返回 `EPERM`，临时文件留下、下一次读补上）；变更记录写成而仓库文件没写成之后的补写；git 正在合并、变基、拣选、回退、二分或占着 `index.lock` 时不写 `docs/loops/`、标记消失后补上；条目文件在循环板之外被改（手改、`git revert`、检出旧版）→ 不跑、追加一条 `external`、同一个哈希只记一次；切分支或 `git stash -u` 之后文件不在 → 「不在这份检出里」、不写回、切回来照常跑；新克隆没有 `.llm/loops/` → 只告诉主 Agent 的条目认回，会跑东西的条目只标 `unadopted`；`git status` 在循环板写过之后只列出 `docs/loops/`（验收第 32 条）、`.llm/` 进了 `info/exclude` 且 `.llm/loops/.gitignore` 是 `*`；空集合不落盘；`/loops delete|restore|ack` 的每条回话与重名、插件 id、超过 7 天、没有存档几种拒绝；两个进程同时追加（锁与记录的原语）。`tests/loops-row.spec.ts` 另钉行把存储、命令、投影和门接起来的那几件事（注册与卸载、宿主缺一部分时只降级、`agent/created` 时对账一次、`view.json` 的节流与内容）。
 
-L2（文件门，§18.8）：`tests/loops-guard.spec.ts`，先在没有这一行的代码上失败：写 `docs/loops/` 与 `.llm/loops/` 的文件工具与 shell 命令被拒（直接调用与带 `parent` 的子调用，各工作树的同一相对路径，`git worktree list` 的结果缓存 60 秒），读不拦，拒绝文字是 `renderCorrection` 的四段式，违规流水里规则是 `loops:files-only`、`mode: 'enforce'`；行启用起就拦、卸载后不留；会话不在 git 项目里时没有要守的板；`src/loops/` 里没有只记录的模式。`tests/contracts.spec.ts` 加一条：`GUARD_RULES` 里 `loops:files-only` 的 id 就是循环行装上的规则对象的 id。
+L2（文件门，§18.8）：`tests/loops-guard.spec.ts`，先在没有这一行的代码上失败：写 `docs/loops/` 与 `.llm/loops/` 的文件工具与 shell 命令被拒（直接调用与带 `parent` 的子调用，各工作树的同一相对路径，`git worktree list` 的结果缓存 60 秒），读不拦，拒绝文字是 `renderCorrection` 的四段式，违规流水里规则是 `loops:files-only`，记录不带 `mode` 字段；行启用起就拦、卸载后不留；会话不在 git 项目里时没有要守的板；`src/loops/` 里没有只记录的模式。`tests/contracts.spec.ts` 加一条：`GUARD_RULES` 里 `loops:files-only` 的 id 就是循环行装上的规则对象的 id。
 
 L2（运行时核心，§18.9）：`tests/loops-inbox.spec.ts`（键与载荷的校验；不认识的事件、拦路的事件、没人听的事件各自的回答；写不进时的三次重试与 1、3、6 秒；同一个键第二次来只写 `loop-duplicate`、第 4 次来降级；去抖把两个事件合成一次运行；每小时限次超出时记 `suppressed`、事件攒到下一个整点一起跑；一次运行自己引起的事件 10 分钟内不再触发同一项；两个子进程各追加 200 行，400 行全在、每行都读得完整，持锁的一方把每一件各跑一次、第二次读从上次的位置接着；停机期间留下的事件起来后跑一次并标 `late`，躺了 8 天的记 `expired`；安静时段的算法）；`tests/loops-run.spec.ts`（第一个进程拿到锁、第二个不跑、三分钟没人刷新的锁被接管并留痕；主 Agent 的会话在另一个进程里时的交接与两条 `loop-handover`；手上有运行时锁不交；`loops.host-restarted` 一个进程一次、键里带启动时刻、崩溃与否；`channel.peak-changed` 有无计价服务两种、键是边界时刻；`loops.waiting-on-human` 的门槛、每小时一次、同一件一天一次；harness 动作的 `done`/`skipped`/`failed` 与只有 `failed` 降级、运行号进得了异步上下文、动作不在表里、动作不回答时按 6 小时的限收场；脚本与检查的条目 `refused`、原因 `unadopted`/`check-missing`、不发消息、`state.json` 的 `last` 写明；投递接缝眼下 `held` 且记录里没有消息原文；`self` 条目不从收件箱跑、`recordRun` 只认它、别的 id 丢掉；静态检查 `src/loops/` 不碰子进程）；`tests/loops-watch.spec.ts`（第一次读到的不算变化；连写三次是一次、取它停下来的那个状态；文件没了也算一次、键里写 `gone`、再写回来是另一次；平台不给 `fs.watch` 时每一拍照样发现；跟着条目改要看的路径；真实文件上的一次改与一次删）。`tests/loops-row.spec.ts` 另加两条：没有 `inject` 时不提供服务但门照装；会话控制器来了才提供服务与起拍、走了就一起收回。
 L2（绑定与投递，§18.10）：`tests/loops-bind.spec.ts`（人的每周条目建成一条提醒、写法与选择器逐字比、再对一次账什么都不动；五种时间触发各自的选择器，事件与命令触发不建；主 Agent 换会话时先建后删、原因 `moved`、`removed-tasks.jsonl` 里有整条；外面改过的改回来（`expected` 取自 `list`）、一条 `loop-drift`、一天一句；丢了 `state.json` 之后认回而不是多建一条，同一项多出来的那条记 `duplicate`；条目不在表里时的 5 分钟与两次对账，人删了的当拍删；没有主 Agent 要连着两次才删，归档与找不到各自的原因，`elsewhere` 与 `unknown`（`holder-unreadable`）时连 catalog 都不读、`unknown`（`archive-unreadable`）时照常建却一条不删；`removed-tasks.jsonl` 写不进时不删、行健康 degraded；DSH 投出去的那一次记成运行，五分钟没投出去时补投并换一条新的；一次性条目跑过之后不再建；`removeTask` 对证明不了是自己的任务一律 `kept`、八种原因各删一次各写一行、`elsewhere`/`unknown` 下绑在持有者会话上的一律 `kept`），用 `tests/fake-rc3.ts` 新加的假定时服务（标题与选择器的拒绝、整键解码、`schedule_conflict`、规范化后等价的 `updated: false`、硬删除、catalog 的排序与 `lastDelivery`、每次写入后的 `schedule/changed`，都按 rc.3 的行为）。`tests/loops-deliver.spec.ts`（`holderState` 的六种结果与各自允许的事，真实的临时用户目录里 M3 写法的记录，模式为假读作 `none`、未结的 `/wish` 读作「还是」、读不出模式时记录说什么是什么；归档集合来自假的工作区登记表，服务没启动时读作 `archive-unreadable`；唤醒表四种走法与 `goals.get` 抛错时按没有 goal；冷会话只为要叫醒的消息恢复，`session/not-found` 与 `session/writer-held` 存着并改变后面的 `holderState`，别的错误码算失败；存着的消息按先后投、满 50 丢最早、过 24 小时作废；2 秒合成一条；`flush` 说没收下时按 1 分钟重试并投出；结果给事件会话时在跑就 `inject`、不在跑就转给主 Agent 并加那一句）。`tests/loops-guard.spec.ts` 加 `loops:schedule-tools` 的用例（三种调用各一例、`schedule_list` 与别人的提醒放行、catalog 读不出时放行、四段式文字逐字比、违规流水的规则与 `mode`，以及真实宿主上 `schedule_create` 被拒而另一条提醒照常建）。`tests/contracts.spec.ts` 的 guard 目录用例加这条规则。 L2（高峰的开始与结束，§18.12）：`tests/loops-peak.spec.ts`，四十例，十行表一行至少一例、两档都到的行两档各一例：第 1 行的三种「没有人」（没有记录、归档、上一次 resolveAgent 说不在这）；第 2 行存着重判标记、跨进程接管的那一方再判且动作至多跑一次、24 小时没有判成记 `expired`；第 3 行 done/skipped/failed/抛错/60 秒不回答各一例、热会话任何档位都调（评审 F48）、恢复后动作说 skipped 而 goal 活跃记 done（评审 F40）、冷会话只在高峰里走过步才恢复、无影响档不恢复冷会话；M7 不存在（没有谁列那个动作）时整行跳过、叫醒照走；第 4 行读不到高峰模式；第 5 行少做与不做同一路径同一句话（`d-main-agent-peak-exempt`）；第 6 行无影响档、且列了动作时热会话照样调；第 7 行正在跑的不叫醒、列了动作时照样调；第 8 行高峰的第一分钟算走过、之前一分钟不算、别的会话不算、读不出按走过算（偏向叫醒）；第 9 行 paused、等回话、没事可做、别的挡住原因，冷的先恢复再读；`loops.peak-start` 记 `delegated` 带档位、无档位时不带、不是变化不记、高峰结束不再记；`view.json` 的 peak 一节三种（有档位、只有「档位在规则板上看」、没有计价服务整节不写）；登记表认下的项目在会话出现之前就跑起来、读不出登记表只是一句 info 而项目照跑。
