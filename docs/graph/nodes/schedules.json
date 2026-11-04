@@ -407,6 +407,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "分支合入完成（2026-11-02，ZCode 派出）：rules-loops-impl 以合并提交 c6e9bed 进 main（origin 已同步，远端分支与工作树已删；13 份 FEAT 任务书与门禁结果入库 122e322）。合并树门禁全绿：build 0、preflight 0、test 1696/1696、probe 210/210（双方场景并集）；eslint 压制 249 在基线。冲突 8 文件：测试清单并集、探针场景并集（main 的简单停档场景改名 rules-stop-notice 让给分支的 rules-peak-stop）、docs/graph 整取 main。两件合并发现：① main 尖端的 graph.svg 失真是 506bb83 记账时漏渲染（编排方操作，已在合并提交修正重绘）；② src/rules/builtin.ts 不映射 MAIN_AGENT_RULES（该文件在 m3 上），随 M3 合并追加（附录 §9 第 12 条）。两行保持 disabled: true；启用前按 DEVELOPMENT §3 走临时 profile 验证。计划 13 项与合入全部完成。"
+    },
+    {
+      "at": "2026-11-04T06:45:00.707Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "编排方审查 loops-runner 线（2026-11-04）：Batch 1（13ffb58，已推）与 Batch 2（未提交：src/loops/run.ts 的 LoopChecks 接缝与 check 支路、loops-run.spec 23/23、ORCHESTRATION §18.9）与 .agents/tasks/loops-runner/impl-plan.md 及设计 0.6 §6.6、§6.9 一致，没有偏离。停止时唯一红 rules-tickets.spec:852 卸载时限待复核。跨线：metrics 分支删除 runs.jsonl 与 appendRun，后合入 main 的一方对齐 exits 映射。续作：运行 loops-runner-batch-2-3（wf_365cb9939d825f4c），收 Batch 2 后做 Batch 3（/loops 列表与循环板页面）。"
     }
   ]
 }
