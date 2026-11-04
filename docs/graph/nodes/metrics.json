@@ -365,6 +365,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "收尾评审第 1 轮 APPROVED，无阻塞（.worktrees/metrics/.agents/tasks/metrics/review-close.json，findings 为空）：2dc368e 的循环板读侧按 F33 改读指标流水；c1be407 后写 loop-done 的 11 处在类型上只能写闭表里的 51 个 id 形原因码或拦下运行的规则 id，L2 钉住每种结局配每个码都被流水收下；S7R4-1、S7R4-2 已解决。下一步：合入 main，桌面重启确认。"
+    },
+    {
+      "at": "2026-11-04T17:10:19.603Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "metrics 合入 main：合并提交 31c9e0f，最终 main ab3f26a，origin/main 与 github/main 均为 ab3f26a；合并树四道门禁退出码均为 0（npm test 2940 个、0 失败，探针 376/376，棘轮 eslint 73 / knip 18 / jscpd 1）；merge-metrics 工作树与分支已删除。下一步：桌面重启确认（按 §1.1 新锁规则排队用桌面版）；第 9 步循环板 L4 随后。"
     }
   ]
 }
