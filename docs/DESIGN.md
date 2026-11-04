@@ -744,7 +744,7 @@ ZCode compact 提示词（`<analysis>` 先行、9 节摘要、安全指令保留
 L3 探针：沙盒里把压缩阈值调低，摘要请求末条是 ZCode 提示词，下一次请求里的检查点内容为「Summary:\nprobe summary」，不含 `<analysis>`。外框仍是 DSH 的检查点前言加 `<compacted-summary>` 标签，与 ZCode 续接消息的写法不同，属于已知差异。ZCode 的 autoCompact 阈值（166k）与 microcompact 公式记录在 `reference/zcode-capabilities.md` §11.2，未接入。
 
 压缩后的重新锚定属于编排层（`ORCHESTRATION.md` §2.5，图行 `src/graph/reminder.ts` 按检查点重注投影）。
-压缩后读原文〔已实现 2026-11-05，任务 `compact-recall`，调查报告方案 C；依赖默认禁用的 `glm-hourness/transcript` 行〕：`glm-compact` 行经 `ctx.get` 读服务 `glmHournessTranscript`（契约 `src/shared/transcript.ts`，不写进 `inject`）。GLM 压缩副本的摘要流结束、格式化后的摘要不为空时，行请服务导出这个会话（请求的 `sessionId`，`compaction-basic` 设为压缩中的 agent 自己的会话），服务写成文件就在摘要末尾接 ZCode 3.17.1 `Bxt` 的原文路径一句（镜像文件 `src/glm-prompt/zcode-compact-text.ts`，`reference/zcode-verbatim.md` §7），句末是导出文件的绝对路径；模型用 Read 按 `offset`/`limit` 读，不加工具（导出的格式、位置与清理见 §2.4「会话原文」）。服务不在（行禁用，或只装了 GLM 包）、导出被跳过，或服务违约拒绝（行健康降级）时摘要与没有这一行时逐字相同；格式化后为空的摘要不请服务，照旧不发文本，让 `compaction-basic` 报错。这一句在 `<compacted-summary>` 外框里面，ZCode 把它放在自己的续接消息里，属于已知差异（§5.8 第 21 项）。L3 探针场景 `glm-compact-transcript` 在覆盖层里启用这一行：检查点以这一句结尾、文件在场景目录、模型用 Read 读到它；场景 `glm-compact`（行禁用，出厂形态）的检查点没有这一句。
+压缩后读原文〔已实现 2026-11-05，任务 `compact-recall`，调查报告方案 C；依赖默认禁用的 `glm-hourness/transcript` 行〕：`glm-compact` 行经 `ctx.get` 读服务 `glmHournessTranscript`（契约 `src/shared/transcript.ts`，不写进 `inject`）。GLM 压缩副本的摘要流结束、格式化后的摘要不为空时，行请服务导出这个会话（请求的 `sessionId`，`compaction-basic` 设为压缩中的 agent 自己的会话），服务写成文件就在摘要末尾接 ZCode 3.17.1 `Bxt` 的原文路径一句（镜像文件 `src/glm-prompt/zcode-compact-text.ts`，`reference/zcode-verbatim.md` §7），句末是导出文件的绝对路径；模型用 Read 按 `offset`/`limit` 读，不加工具（导出的格式、位置与清理见 §2.4「会话原文」）。服务不在（行禁用，或只装了 GLM 包）、导出被跳过，或服务违约拒绝（行健康降级）时摘要与没有这一行时逐字相同；格式化后为空的摘要不请服务，照旧不发文本，让 `compaction-basic` 报错。这一句在 `<compacted-summary>` 外框里面，ZCode 把它放在自己的续接消息里，属于已知差异（§5.8 第 21 项）。L3 探针场景 `glm-compact-transcript`（2026-11-05 通过）在覆盖层里启用这一行：检查点以这一句结尾、文件在场景目录、模型用 Read 读到它；场景 `glm-compact`（行禁用，出厂形态）的检查点没有这一句。L3 探针场景 `glm-compact-transcript` 在覆盖层里启用这一行：检查点以这一句结尾、文件在场景目录、模型用 Read 读到它；场景 `glm-compact`（行禁用，出厂形态）的检查点没有这一句。
 
 ### 5.7 工具检索〔已实现 2026-10-27〕
 
@@ -789,7 +789,7 @@ L3 探针：沙盒里把压缩阈值调低，摘要请求末条是 ZCode 提示�
 | 18 | 请求归因：会话 id、会话类型、请求与追踪 id、query id 与来源、`metadata.user_id` | 通道 | 按 3.16.3：会话级 trace id、回合级 query id、`main_turn` / `compact` / `session_title` / `subagent` 来源；委派子会话经 `agents` 服务的会话头判定；3.17.1 的 `x-zcode-session-features`（§4.5b） | 已实现 2026-10-28（m1-parity）；会话特征 2026-10-30 |
 | 19 | Dynamic Behavior 节 | 方言 | 3.17.1 原文，coding-plan 与 start-plan 都发（§5.3） | 已实现 2026-10-30 |
 | 20 | Memory 节 | 方言 | 3.17.1 `buildMemorySection` 的十行放进镜像文件，两句改写、两句新增，白名单测试钉住只改了这几处（§5.3 ⑧） | 已实现 2026-11-01（m5-3） |
-| 21 | 压缩后读原文 | 方言 | 3.17.1 `Bxt` 的原文路径一句逐字接在 GLM 压缩摘要末尾，路径指向编排层导出的纯文本（§5.6、§2.4「会话原文」）；位置在 DSH 的 `<compacted-summary>` 外框里，不在 ZCode 的续接消息里；3.17.1 的正式调用不传 `transcriptPath`，ZCode 正式流量里没有这一句 | 已实现 2026-11-05，行默认禁用，真机未验收 |
+| 21 | 压缩后读原文 | 方言 | 3.17.1 `Bxt` 的原文路径一句逐字接在 GLM 压缩摘要末尾，路径指向编排层导出的纯文本（§5.6、§2.4「会话原文」）；位置在 DSH 的 `<compacted-summary>` 外框里，不在 ZCode 的续接消息里；3.17.1 的正式调用不传 `transcriptPath`，ZCode 正式流量里没有这一句 | 已实现 2026-11-05，行默认禁用，L3 探针通过，真机未验收 |
 
 第 1、2、4、6、8 项的文本对齐状态以 §5.9 为准。
 
