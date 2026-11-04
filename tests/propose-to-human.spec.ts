@@ -12,10 +12,10 @@ import { ordinaryFace } from '../src/design/role-face.ts'
 import { proposeTool } from '../src/design/propose.ts'
 import { TALK_PROJECTION, TALK_SHAPES, type TalkState } from '../src/design/talk.ts'
 import { PLAIN_QUESTION_EXAMPLES, PLAIN_QUESTION_GUIDE, plainWordsIn } from '../src/graph/plain-question.ts'
-import { ASK_FORMS, PAGE_LIMITS, PROPOSAL_LIMITS, TALK_LIMITS, askOf, renderAsk } from '../src/graph/proposal.ts'
+import { ASK_FORMS, PAGE_LIMITS, PROPOSAL_LIMITS, TALK_LIMITS, askOf, fenced, renderAsk } from '../src/graph/proposal.ts'
 import { PLAIN_LIMITS } from '../src/graph/schema.ts'
 import { BASE_TOOLS, hostWithoutTalkProjection, type DesignHost, type FakeAgent } from './design-host.ts'
-import { FRAMEWORK_PAGE, SPLIT_NAMES, fakeBoard, fillRequirementCard, frameworkReleased, mainAgentWithGoal, modulePage, toolDeps, writeDesign } from './design-tools-helpers.ts'
+import { FRAMEWORK_PAGE, NO_END_USER, SPLIT_NAMES, fakeBoard, fillRequirementCard, frameworkReleased, mainAgentWithGoal, modulePage, toolDeps, writeDesign } from './design-tools-helpers.ts'
 import { exampleArgs } from './proposal-examples.ts'
 
 type Outcome = Awaited<ReturnType<DesignHost['callTool']>>
@@ -507,6 +507,10 @@ test('without the talk projection the tool reads the session log, the count is r
 
 const CONFIRM = { kind: 'confirm', goal: 'goal-1', text: '需求就按上面这样定，可以吗？' }
 
+/** The line the confirm of a goal without end users carries (user graph design 0.4.1 §5.1). */
+const NO_END_USER_PAGE = `这个目标没有终端用户：${NO_END_USER}`
+const PAGE_MESSAGE = 'Everything after the question, down to the user page in the fenced block at the end, is the exact text the human must see before agreeing: keep it verbatim in your reply.'
+
 test('kind confirm puts the requirement of a goal to the human once its card is complete: the text is the main agent\'s own question, nothing is written, and the showing is kept for the answer', async () => {
   const fixture = await mainAgentWithGoal()
   await fillRequirementCard(fixture)
@@ -514,11 +518,13 @@ test('kind confirm puts the requirement of a goal to the human once its card is 
   const before = (await engine.load()).revision
   const value = valueOf(await host.callTool(agent, PROPOSE_TO_HUMAN, CONFIRM))
   assert.deepEqual([value.tool, value.kind, value.goal, value.number, value.form, value.question], [PROPOSE_TO_HUMAN, 'confirm', 'goal-1', 1, undefined, undefined])
-  assert.equal(value.text, renderAsk(CONFIRM.text, 1))
-  assert.match(String(value.message), /^Show text to the human exactly as given; .* then call record_human_answer with kind confirm and their exact words\. The requirement itself goes in your report before the question; text is only the question\.$/)
+  // The goal draws no user graph: the line that says so is the user page, under the question.
+  assert.equal(value.text, `${renderAsk(CONFIRM.text, 1)}\n\n${fenced(NO_END_USER_PAGE)}`)
+  assert.deepEqual(value.userPage, { stable: NO_END_USER_PAGE, state: '' })
+  assert.match(String(value.message), /^Show text to the human exactly as given; .* then call record_human_answer with kind confirm and their exact words\. The requirement itself goes in your report before the question; text is only the question\. Everything after the question/)
   assert.equal((await engine.load()).revision, before, 'the graph did not change')
   const talk = host.projections.stateOf(agent.session, TALK_PROJECTION) as TalkState
-  assert.deepEqual(talk.shown.map(entry => [entry.kind, entry.goal, entry.module, entry.number, entry.form, entry.exact]), [['confirm', 'goal-1', undefined, 1, undefined, undefined]])
+  assert.deepEqual(talk.shown.map(entry => [entry.kind, entry.goal, entry.module, entry.number, entry.form, entry.exact, entry.userPage]), [['confirm', 'goal-1', undefined, 1, undefined, undefined, { stable: NO_END_USER_PAGE, state: '' }]])
 })
 
 test('kind confirm is refused until the card is complete: gate_unmet says what is missing and where to write it, and nothing is shown', async () => {
@@ -613,18 +619,22 @@ test('a confirm can carry the original text the human must see: it is laid under
   const { host, agent } = fixture
   const sample = '需求：记一下每天花了多少钱\n问题：月底不知道钱花在哪'
   const value = valueOf(await host.callTool(agent, PROPOSE_TO_HUMAN, { ...CONFIRM, sample }))
-  assert.equal(value.text, renderAsk(CONFIRM.text, 1, undefined, sample, false))
-  assert.ok(String(value.message).endsWith('The last paragraph is the exact text the human must see before agreeing: keep it verbatim in your reply.'))
+  // The sample is laid under the question, the user page after it (user graph design 0.4.1 §5.1).
+  assert.equal(value.text, `${renderAsk(CONFIRM.text, 1, undefined, sample, false)}\n\n${fenced(NO_END_USER_PAGE)}`)
+  assert.ok(String(value.message).endsWith(PAGE_MESSAGE))
   const talk = host.projections.stateOf(agent.session, TALK_PROJECTION) as TalkState
   assert.equal(talk.shown[0]?.exact, sample)
-  assert.ok(String(valueOf(await host.callTool(agent, PROPOSE_TO_HUMAN, CONFIRM)).message).includes('keep it verbatim') === false, 'no original text, no such sentence')
+  const bare = String(valueOf(await host.callTool(agent, PROPOSE_TO_HUMAN, CONFIRM)).message)
+  assert.ok(!bare.includes('The last paragraph'), 'no original text of its own, no sentence for it: only the one of the user page')
+  assert.ok(bare.endsWith(PAGE_MESSAGE))
 })
 
 test('the description of propose_to_human says what a confirm is and what it takes', async () => {
   const { host } = await mainAgentWithGoal()
   const description = host.tools.get(PROPOSE_TO_HUMAN)?.description ?? ''
   assert.match(description, /kind confirm: the interview is over, put the requirements to the human; pass goal and text/)
-  assert.match(description, /It is refused until the 8 items of the requirement card are filled\./)
+  assert.match(description, /It is refused until the 9 items of the requirement card are filled\./)
+  assert.match(description, /the harness appends the user page to the text of a confirm and a release \(userPage in the result\): the human agrees to it, so show it whole\./)
 })
 
 // ---------------------------------------------------------------- kind release (M3 step 9)

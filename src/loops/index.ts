@@ -15,8 +15,9 @@
  *   project's run lock, beats every 60 seconds, hands the lock to the process
  *   where the main agent's session is open, reads the inbox (inbox.ts) and
  *   executes what an entry says to do. A message for the main agent waits until
- *   that side of the board is built; a script or a check entry is refused
- *   without starting anything;
+ *   that side of the board is built; a person's adopted script entry runs
+ *   through the shared executor (script.ts) after the rules board lets it
+ *   through, and a check entry waits for the environment row (run.ts);
  * - runs the end of a GLM peak itself (peak.ts): the harness action of the
  *   loop row's own hand-over takes the table of design §6.9 item 4 — the
  *   execute row's resume action when a hand-over lists it, otherwise the wake
@@ -30,9 +31,11 @@
  *   `docs/loops/`, the change record in the project's `.llm/loops/`; settles what
  *   git or an editor changed behind its back whenever a session starts in a
  *   project (boards.ts) and writes the project's `view.json` (view.ts), whose
- *   peak line reads the level from the rules board's service;
- * - `/loops` (commands.ts): the person deletes an entry, gets one back, or
- *   acknowledges a damaged change record;
+ *   peak line reads the level from the rules board's service, and writes it
+ *   again after every beat of a project it runs, so the page shows the last
+ *   runs;
+ * - `/loops` (commands.ts): the person lists every entry, deletes one of
+ *   theirs, gets one back, or acknowledges a damaged change record;
  * - the gate `loops:files-only` (guard.ts), outermost on `tools/pre-execute`: a
  *   file tool or a shell command that writes into the board's files is denied
  *   from the day the row is enabled;
@@ -53,7 +56,7 @@ import type { LockEnvironment } from '../data/lock.ts'
 import { projectKey } from '../graph/main-agent-holder.ts'
 import { projectJournal } from '../memory/audit.ts'
 import { dataHomes } from '../shared/data-home.ts'
-import type { AgentCommandInvocationLike, AgentLike, CommandDefinitionLike, CommandResultLike, CommandsHost, InjectHost, PreExecuteHost, PreExecuteListener, ProvideHost, ServiceLookup, SessionEventHost, SessionEventLike, SessionLike, WorkspaceRegistryService } from '../shared/dsh-min.ts'
+import type { AgentCommandInvocationLike, AgentLike, CommandDefinitionLike, CommandResultLike, CommandsHost, InjectHost, PreExecuteHost, PreExecuteListener, ProvideHost, ServiceLookup, SessionEventHost, SessionEventOn, WorkspaceRegistryService } from '../shared/dsh-min.ts'
 import { provideRowHealth, type HealthState, type RowHealth } from '../shared/health.ts'
 import type { StoreIo } from '../rules/store.ts'
 import { realStoreIo } from '../rules/store.ts'
@@ -137,14 +140,12 @@ export interface LoopsContext extends Partial<ProvideHost>, Partial<InjectHost>,
   readonly on?: {
     (event: 'agent/created', listener: (payload: { agent: AgentLike }) => Promise<void> | void): () => void
     (event: 'tools/pre-execute', listener: PreExecuteListener, options?: { prepend?: boolean }): () => void
-    /** The gate's row journal flushes on a disposed session (m4-gate G1). */
-    (event: 'session/event', listener: (session: SessionLike, event: SessionEventLike) => void): () => void
-    (event: 'session/disposed', listener: (session: SessionLike) => void): () => void
     /** `schedule/changed` has no payload and is sent after a task write landed (schedule:2231–2237). */
     (event: 'schedule/changed', listener: () => Promise<void> | void): () => void
     /** `workspace/session-stop` is sent only when a session is archived with `stopActivity` (dsh-workspace:540, 623). */
     (event: 'workspace/session-stop', listener: (payload: { sessionId: string }) => Promise<void> | void): () => void
-  }
+    // The gate's row journal flushes on a disposed session (m4-gate G1) — the SessionEventOn pair.
+  } & SessionEventOn
 }
 
 function message(error: unknown): string {
@@ -433,6 +434,8 @@ export function apply(ctx: LoopsContext, config: LoopsConfig = {}): () => void {
         continue
       }
       await held.runtime.beat()
+      // What the beat ran, held or recorded goes on the page (design §8.4).
+      await boards.rewrite(root)
     }
     health.reactivate(...activation())
   }
@@ -440,13 +443,14 @@ export function apply(ctx: LoopsContext, config: LoopsConfig = {}): () => void {
   const command: CommandDefinitionLike<AgentCommandInvocationLike> = {
     definitionId: name,
     name: LOOPS_COMMAND,
-    description: '循环板：删掉你的一项、把读不出的一项恢复、确认存档恢复的提示',
+    description: '循环板：列出全部条目、删掉你的一项、把读不出的一项恢复、确认存档恢复的提示',
     input: { hint: LOOPS_HINT },
     async handler(invocation): Promise<CommandResultLike> {
       const cwd = invocation.agent.session.header.cwd
       const project = typeof cwd === 'string' && cwd !== '' ? projectOf(cwd) : undefined
       if (project === undefined) return { kind: 'error', text: NOT_A_PROJECT }
-      const result = await runLoopsCommand(invocation.rawInput, { store: boards.storeOf(project.root), pluginIds: () => new Set(registry.entries().map(item => item.entry.id)), now: io.now })
+      const root = project.root
+      const result = await runLoopsCommand(invocation.rawInput, { store: boards.storeOf(root), pluginIds: () => new Set(registry.entries().map(item => item.entry.id)), now: io.now, view: () => boards.refresh(root) })
       await boards.refresh(project.root)
       // The person touched this project: this process runs it from here on, if it can.
       await runtimeOf(project.root)?.beat()

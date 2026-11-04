@@ -10,6 +10,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import { GRAPH_TOOL_NAMES } from '../src/shared/tool-names.ts'
 import { openEngine } from '../src/graph/engine.ts'
 import { apply } from '../src/graph/index.ts'
 import { holderFileOf, holderHome } from '../src/graph/main-agent-holder.ts'
@@ -122,7 +123,7 @@ test('the graph service says what a session has in focus: the history first, as 
 test('row health: tools registered at activation; after a call the session reports the graph, its size and the focus', async () => {
   await withRow(async ({ graph, runtime, call }) => {
     const view = runtime.services.get(healthServiceName('graph')) as RowHealthView
-    assert.deepEqual([view.activation().state, view.activation().reason], ['active', '图工具已注册（13 个）；图目录 docs/graph（按会话工作目录解析）'])
+    assert.deepEqual([view.activation().state, view.activation().reason], ['active', `图工具已注册（${GRAPH_TOOL_NAMES.length} 个）；图目录 docs/graph（按会话工作目录解析）`])
     assert.equal(entry(runtime, 'graph').status, 'idle')
     await call('graph_open', {})
     assert.deepEqual([entry(runtime, 'graph').status, entry(runtime, 'graph').reason], ['active', `图 ${graph}，1 个节点；还没设焦点（graph_focus）`])
@@ -144,7 +145,7 @@ test('row health: a missing graph directory degrades the activation and the sess
     const { warnings } = await captureWarnings(() => { apply(runtime.ctx, { dir: missing }) })
     assert.match(warnings.join('\n'), /does not exist/)
     const view = runtime.services.get(healthServiceName('graph')) as RowHealthView
-    assert.deepEqual([view.activation().state, view.activation().reason], ['degraded', `图工具已注册（13 个）；图目录 ${missing} 还不存在`])
+    assert.deepEqual([view.activation().state, view.activation().reason], ['degraded', `图工具已注册（${GRAPH_TOOL_NAMES.length} 个）；图目录 ${missing} 还不存在`])
     await runtime.ctx.tools.execute({ callId: 'c1', name: 'graph_open', arguments: {}, agent: runtime.agent, signal: new AbortController().signal })
     const session = entry(runtime, 'graph')
     assert.equal(session.status, 'degraded')

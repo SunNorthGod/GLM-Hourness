@@ -16,6 +16,7 @@ import { serializeNode } from '../src/graph/format.ts'
 import { GRAPH_SERVICE } from '../src/graph/service.ts'
 import { loadGraph } from '../src/graph/store.ts'
 import type { DerivedMessage, ServiceLookup, SessionLike, UserNotice } from '../src/shared/dsh-min.ts'
+import { METRICS_SERVICE, type EmittedEvent } from '../src/shared/metrics.ts'
 import { fakeRuntime, type FakeRuntime } from './fake-rc3.ts'
 import { seedAsHuman } from './graph-helpers.ts'
 
@@ -176,4 +177,28 @@ test('without a graph service, or without a working directory, the notice is the
   const notice = await envNotice(noServices, [], { id: 's', header: {} } as unknown as SessionLike)
   assert.ok(notice !== undefined)
   assert.equal(notice.content[0].text, `<system-reminder>\n${SCRATCH_LINE}\n</system-reminder>`)
+})
+
+test('the daily suppression count hands the metrics service one count event for the workspace (m4 §3.11)', async () => {
+  const workspace = await mkdtemp(join(tmpdir(), 'env-notice-count-'))
+  try {
+    // A project to the row is a git checkout or a directory with .llm/; the bare .llm keeps the fixture off git.
+    await mkdir(join(workspace, '.llm'), { recursive: true })
+    const runtime = fakeRuntime({ natives: [], cwd: workspace })
+    const events: EmittedEvent[] = []
+    runtime.services.set(METRICS_SERVICE, { emit: (event: EmittedEvent): void => { events.push(event) } })
+    envApply(runtime.ctx)
+    await runtime.create()
+    await runtime.preStep({ messages: [{ id: 'm1', role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text: 'go' }] }], step: 1 })
+    // The count runs in the background after the first install; wait for it to settle.
+    for (let waited = 0; events.length === 0 && waited < 100; waited += 1) await new Promise(resolve => setTimeout(resolve, 10))
+    const counts = events.filter((event): event is Extract<EmittedEvent, { k: 'count' }> => event.k === 'count')
+    assert.equal(counts.length, 1)
+    assert.equal(counts[0]?.by, 'env')
+    assert.equal(counts[0]?.body.what, 'suppression-comments')
+    assert.equal(typeof counts[0]?.body.value, 'number')
+  }
+  finally {
+    await rm(workspace, { recursive: true, force: true })
+  }
 })

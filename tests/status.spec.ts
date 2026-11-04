@@ -188,6 +188,7 @@ test('collectStatus: agent keeps only agent entries, all keeps both, and the abs
     { row: 'rules', outcome: 'absent' },
     { row: 'design', outcome: 'absent' },
     { row: 'loops', outcome: 'absent' },
+    { row: 'metrics', outcome: 'absent' },
     { row: 'env', outcome: 'absent' },
   ])
   const all = collectStatus(lookup, 's1', 'all', 0)

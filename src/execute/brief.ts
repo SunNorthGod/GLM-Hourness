@@ -19,6 +19,7 @@ import type { LoadedGraph } from '../graph/parse.ts'
 import { ancestorsOf, childrenIndex, subtreeOf, waitsForHuman } from '../graph/projection.ts'
 import { ID_PATTERN, type GraphNode } from '../graph/schema.ts'
 import { effectiveStage, goalOf } from '../graph/stage.ts'
+import { stepsServedBy } from '../graph/user-graph.ts'
 import { isGlmModel } from '../shared/route.ts'
 import { runningGlm, runningOn, runningWorkers, type Attempt } from './attempts.ts'
 import { digest12 } from './digest.ts'
@@ -404,10 +405,19 @@ function sourcesOf(graph: LoadedGraph, task: GraphNode): GraphNode[] {
   })
 }
 
+/** The user steps the task serves, as `flow › step` (user graph design 0.4.1 §5.4): the live steps of its own serves edges, in edge order. */
+function servedSteps(graph: LoadedGraph, task: GraphNode): string[] {
+  return stepsServedBy(graph, task).map((step) => {
+    const flow = step.parent === undefined ? undefined : graph.nodes.get(step.parent)
+    return flow === undefined ? step.title : `${flow.title} › ${step.title}`
+  })
+}
+
 function body(input: BriefInput, cut: ReadonlySet<Truncation>): string {
   const { graph, task } = input
   const chain = [...ancestorsOf(graph, task)].reverse().map(node => `"${node.title}"`)
   const sources = sourcesOf(graph, task).map(decisionLine)
+  const steps = servedSteps(graph, task)
   const notIn = [...new Set([...(task.nonGoals ?? []), ...ancestorsOf(graph, task).flatMap(node => node.nonGoals ?? [])])]
   const lessons = (input.lessons ?? []).slice(0, LESSON_LIMIT)
   const lines: string[] = [
@@ -425,6 +435,7 @@ function body(input: BriefInput, cut: ReadonlySet<Truncation>): string {
     `- Workspace: your worktree "${input.worktree}" on branch "${input.branch}", created from "${input.base.branch}" at ${input.base.sha}. Paths below are relative to it.`,
     `- Project graph: read with graph_show / graph_open; graph_focus "${task.id}" first so the panel shows you on this task. You may only graph_comment.`,
   )
+  if (steps.length > 0) lines.push(`- User steps this task serves (flow › step): ${steps.join('; ')}. This is how the user meets what you build.`)
   if (input.earlier.length > 0) {
     lines.push('- Earlier attempts:')
     for (const [index, attempt] of input.earlier.entries()) {

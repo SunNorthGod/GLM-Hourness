@@ -33,7 +33,8 @@ function created(node: GraphNode): string {
   return node.history[0]?.at ?? ''
 }
 
-function byCreation(a: GraphNode, b: GraphNode): number {
+/** Creation order (first history entry), then id: the order of module lists, and of a goal's roles, flows and steps (user-graph.ts). */
+export function byCreation(a: GraphNode, b: GraphNode): number {
   return compareText(created(a), created(b)) || compareText(a.id, b.id)
 }
 

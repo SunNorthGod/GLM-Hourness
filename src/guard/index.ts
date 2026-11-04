@@ -63,6 +63,7 @@ import { liftFilesOnly } from './lift-files.ts'
 import { scratchOnly } from './scratch.ts'
 import { suppressionOnly } from './suppression.ts'
 import { dispatchRoot } from './design-release.ts'
+import { metricEventOf } from './metrics.ts'
 import { REQUESTABLE, REQUEST_DESCRIPTION, signatureOf, exceptionOf, GrantBook, RefusalBook, type RefusalVia } from './request.ts'
 import { REQUESTS_SERVICE, createRequestDesk, type RequestDesk, type RequestDeskFs } from './request-service.ts'
 import { guardStatusItems } from './status.ts'
@@ -79,6 +80,7 @@ import { assemblyRoute, sessionRoute } from '../shared/route.ts'
 import { createUserNotice, type AgentsService, type ToolExecutionContext } from '../shared/dsh-min.ts'
 import { wrapSystemReminder } from '../shared/zcode-notice.ts'
 import { installStepNotice } from '../shared/step-notice.ts'
+import { emitMetric } from '../shared/metrics.ts'
 import type { AgentLike, AssembledSection, PluginContext, PreExecuteHost, ProvideHost, ServiceLookup, SessionEventHost, SessionProjectionsService, WorkingDirectoryService } from '../shared/dsh-min.ts'
 
 export type { FollowupRecord, GuardRecord, RecordedCall, ViolationRecord } from './records.ts'
@@ -273,8 +275,22 @@ const GUARD_LIFT_PARAMETERS = {
 export function apply(ctx: GuardHost, config: GuardConfig = {}): () => void {
   const health = provideRowHealth(ctx, 'guard', 'active', config.workspaceRoots === undefined ? '已加载，圈禁根取会话目录' : '已加载，圈禁根取配置')
   const journals = projectJournal(name, cwd => projectHomeFor(ctx, config.home, cwd), config.fs)
+  // The metrics journal rides along at the one write every record passes
+  // (metrics design §6.2, m4 §3.11): the gate's denials and follow-ups, the
+  // fallback's late denial, both lift paths and the request desk. The event
+  // is a pure mapping of the record; a metrics row that is absent or
+  // throwing changes nothing.
+  const violation = (record: GuardRecord, cwd: string | undefined): ReturnType<typeof journals.violation> => {
+    const outcome = journals.violation(record, cwd)
+    const event = metricEventOf(record)
+    if (event !== undefined) {
+      const sessionId = 'sessionId' in record && typeof record.sessionId === 'string' ? record.sessionId : undefined
+      emitMetric(ctx, event, { ...(sessionId === undefined ? {} : { sessionId }), ...(cwd === undefined ? {} : { dir: cwd }) })
+    }
+    return outcome
+  }
   const ignored = new Map<string, LlmIgnoreOutcome>()
-  const fallback = workspaceFallback(ctx, (record, cwd) => { void journals.violation(record, cwd) })
+  const fallback = workspaceFallback(ctx, (record, cwd) => { void violation(record, cwd) })
   const warn = dialectWarner('guard')
   const rulesWarn = dialectWarner('guard')
   const installed = new WeakSet<AgentLike>()
@@ -319,7 +335,7 @@ export function apply(ctx: GuardHost, config: GuardConfig = {}): () => void {
     refusals,
     grants,
     now: () => new Date(),
-    journal: (record, cwd) => { void journals.violation(record, cwd) },
+    journal: (record, cwd) => { void violation(record, cwd) },
     dispatchRootOf,
     projectHomeOf: cwd => projectHomeFor(ctx, config.home, cwd),
     rootsOf: agent => rootsFor(agent, config),
@@ -459,7 +475,7 @@ export function apply(ctx: GuardHost, config: GuardConfig = {}): () => void {
       const cwd = cwdOf(payload)
       const root = projectRootOf(cwd)
       if (root !== undefined) ignored.set(root, await ensureLlmIgnored(root))
-      return journals.violation(record, cwd)
+      return violation(record, cwd)
     },
     allowed: (payload, origin) => fallback.observe(payload, origin),
     health,
@@ -473,7 +489,7 @@ export function apply(ctx: GuardHost, config: GuardConfig = {}): () => void {
   if (ctx.provide !== undefined) {
     const withdraw = ctx.provide(LIFT_SERVICE, liftServiceOver({
       rootOf: cwd => projectRootOf(cwd),
-      record: (record, cwd) => journals.violation(record, cwd),
+      record: (record, cwd) => violation(record, cwd),
       now: () => new Date(),
     }))
     if (withdraw !== undefined) disposers.push(withdraw)
@@ -495,7 +511,7 @@ export function apply(ctx: GuardHost, config: GuardConfig = {}): () => void {
         return guardLift(args as Parameters<typeof guardLift>[0], {
           agent,
           root: projectRootOf(cwd),
-          record: record => journals.violation(record, cwd),
+          record: record => violation(record, cwd),
           now: () => new Date(),
         })
       },

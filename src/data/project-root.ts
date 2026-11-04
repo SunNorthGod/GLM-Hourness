@@ -189,11 +189,24 @@ export function cachedWorktrees(now: () => number): (root: string) => readonly s
  * not repeated. Throws when the file cannot be written; the caller then does
  * not create the directory. Resolves to true when a line was appended, false
  * when the directory was already ignored (or there is no git directory).
+ * Runs for one file at a time: several rows ensure the same project's
+ * `.llm/` at startup, and a plain check-then-append would race each of them
+ * into appending its own line.
  */
-export async function ensureIgnored(root: string, directory: string): Promise<boolean> {
+const ignoreWrites = new Map<string, Promise<boolean>>()
+
+export function ensureIgnored(root: string, directory: string): Promise<boolean> {
   const gitDir = gitDirOf(root)
-  if (gitDir === undefined || !isDirectory(gitDir)) return false
+  if (gitDir === undefined || !isDirectory(gitDir)) return Promise.resolve(false)
   const file = join(gitDir, 'info', 'exclude')
+  const key = `${file}\u0000${directory}`
+  const previous = ignoreWrites.get(key) ?? Promise.resolve(false)
+  const run = previous.catch(() => {}).then(() => appendOnce(file, directory))
+  ignoreWrites.set(key, run)
+  return run
+}
+
+async function appendOnce(file: string, directory: string): Promise<boolean> {
   let text = ''
   try {
     text = await readFile(file, 'utf8')

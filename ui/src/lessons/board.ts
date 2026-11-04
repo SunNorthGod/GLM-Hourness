@@ -8,78 +8,20 @@
  * handed in, the specs run this file under Node.
  */
 import type { ComponentType } from 'react'
-import type { ProjectionValues, SessionsClient } from '../dsh.ts'
-import { BOARD_ORDER, type Board, type BoardState } from '../graph/boards.ts'
+import type { SessionsClient } from '../dsh.ts'
+import { BOARD_ORDER, projectionBoard, type Board } from '../graph/boards.ts'
 
 export interface LessonsBoardDeps {
   readonly sessions: SessionsClient
 }
 
-const UNAVAILABLE: BoardState = { available: false, homeLine: null, guideLine: null, peakApplies: false }
-
-/** The board state of one session: the projections of the two rows are there or not. */
-const stateOf = (values: ProjectionValues | undefined): BoardState =>
-  values?.hournessLessons !== undefined || values?.hournessMemory !== undefined
-    ? { available: true, homeLine: null, guideLine: null, peakApplies: false }
-    : UNAVAILABLE
-
-/**
- * The board over the client's session list: it follows the projections of
- * every session someone listens to and asks once for the values of a
- * session that has none yet. The returned disposer stops the following.
- */
+/** The board over the client's session list; the returned disposer stops following it. */
 export function lessonsBoard(page: ComponentType<{ readonly sessionId: string }>, deps: LessonsBoardDeps): { readonly board: Board, readonly dispose: () => void } {
-  const listeners = new Map<string, Set<() => void>>()
-  const states = new Map<string, BoardState>()
-  const asked = new Set<string>()
-
-  const recompute = (): void => {
-    const projections = deps.sessions.list.getSnapshot().projectionsBySession
-    for (const sessionId of [...listeners.keys()]) {
-      const entry = projections[sessionId]
-      if (entry === undefined) {
-        // A cold session: ask once, the list's next change brings the values.
-        if (!asked.has(sessionId)) {
-          asked.add(sessionId)
-          void deps.sessions.refreshProjections(sessionId).catch(() => {})
-        }
-        continue
-      }
-      const next = stateOf(entry.values)
-      const current = states.get(sessionId)
-      // Only `available` ever moves; keeping the same object until it does is what useSyncExternalStore requires.
-      if (current === undefined || current.available !== next.available) {
-        states.set(sessionId, next)
-        for (const listener of listeners.get(sessionId) ?? []) listener()
-      }
-    }
-  }
-
-  const unsubscribeList = deps.sessions.list.subscribe(recompute)
-
-  return {
-    board: {
-      id: BOARD_ORDER[2],
-      label: '经验',
-      subscribe: (sessionId, listener) => {
-        let set = listeners.get(sessionId)
-        if (set === undefined) {
-          set = new Set()
-          listeners.set(sessionId, set)
-        }
-        set.add(listener)
-        recompute()
-        return () => {
-          set.delete(listener)
-          if (set.size === 0) {
-            listeners.delete(sessionId)
-            states.delete(sessionId)
-          }
-        }
-      },
-      snapshot: sessionId => states.get(sessionId) ?? UNAVAILABLE,
-      Page: page,
-    },
-    dispose: unsubscribeList,
-  }
+  return projectionBoard({
+    id: BOARD_ORDER[2],
+    label: '经验',
+    page,
+    sessions: deps.sessions,
+    available: values => values?.hournessLessons !== undefined || values?.hournessMemory !== undefined,
+  })
 }

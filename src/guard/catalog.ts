@@ -38,4 +38,5 @@ export const GUARD_RULES: readonly GuardRuleEntry[] = [
   { id: 'graph-files-only', row: 'graph', title: '项目图的文件只经图工具改', blocks: 'writes into the project graph', liftVia: 'any' },
   { id: 'files-only', row: 'loops', title: '循环板的条目、脚本和运行时文件只由循环板自己写：写这些文件的调用会被拒', blocks: 'writes under the loop board\'s files', liftVia: 'any' },
   { id: 'schedule-tools', row: 'loops', title: '循环板自己的 DSH 提醒不经定时工具改，也不许冒充循环板建提醒', blocks: 'changes to the loop board\'s reminders through the schedule tools', liftVia: 'any' },
+  { id: 'metrics-files-only', row: 'metrics', title: '指标流水只由 harness 写：写、删、移流水文件与 npm run metrics -- prune 都会被拒', blocks: 'writes, deletes and moves under the metrics journal, and npm run metrics -- prune', liftVia: 'any' },
 ]

@@ -97,6 +97,8 @@ export interface Shown {
   readonly form?: AskForm
   /** The original text the human must see before agreeing: the `sample` or the `page` of the call; `record_human_answer` finds it in `after`. */
   readonly exact?: string
+  /** The user page the harness appended to a confirm or a release, from the result (user graph design 0.4.1 §5.2): `record_human_answer` finds both parts in `after` and renders the stable part again to compare. */
+  readonly userPage?: { readonly stable: string, readonly state: string }
   /** At most AFTER_LIMIT code points. */
   readonly after: string
   readonly afterTruncated: boolean
@@ -228,6 +230,7 @@ export function talkApply(state: TalkState, event: SessionEventLike): TalkState 
       ...result.releaseSet === undefined ? {} : { releaseSet: result.releaseSet },
       ...result.form === undefined ? {} : { form: result.form },
       ...call.exact === undefined ? {} : { exact: call.exact },
+      ...result.userPage === undefined ? {} : { userPage: { stable: result.userPage.stable, state: result.userPage.state } },
       after: '',
       afterTruncated: false,
     }

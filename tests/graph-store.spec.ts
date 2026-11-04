@@ -5,8 +5,15 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { serializeNode, type GraphIssue } from '../src/graph/format.ts'
+import type { LoadedGraph } from '../src/graph/parse.ts'
+import { remainingOf } from '../src/graph/plain-view.ts'
+import { listOpenItems, projectNode } from '../src/graph/projection.ts'
+import { renderGraph } from '../src/graph/render.ts'
 import type { GraphNode, HistoryEntry } from '../src/graph/schema.ts'
 import { graphRevision, hasErrors, loadGraph, revisionOf, writeNodes } from '../src/graph/store.ts'
+import { isUserNode } from '../src/graph/user-graph.ts'
+import { progressOf } from '../ui/src/graph/model.ts'
+import { libraryGraph, libraryNodes, loaded } from './graph-user-helpers.ts'
 
 const AT = '2026-10-28T08:00:00.000Z'
 const born: HistoryEntry = { at: AT, actor: 'human', op: 'propose', reason: '建图', to: 'approved' }
@@ -184,6 +191,32 @@ function scrambledTask(): GraphNode {
 
 test('canonical serialization: schema field order, sorted edges, empty arrays omitted, Chinese unescaped', () => {
   assert.equal(serializeNode(scrambledTask()), FULL_TASK)
+})
+
+test('user nodes leave the development graph\'s numbers and picture as they were (user graph design 0.4.1 §1.4 item 23)', () => {
+  const full = libraryGraph()
+  // The same graph without the user graph: no roles, flows or steps, no serves or next edges.
+  const work = loaded(libraryNodes().filter(node => !isUserNode(node)).map(node => ({ ...node, edges: (node.edges ?? []).filter(edge => edge.type !== 'serves' && edge.type !== 'next') })))
+  assert.deepEqual([full.issues, work.issues], [[], []])
+  const numbers = (graph: LoadedGraph): unknown => {
+    const children = projectNode(graph, 'goal-1')
+    assert.ok(children.ok)
+    const items = listOpenItems(graph)
+    return {
+      remaining: remainingOf(graph, 'goal-1'),
+      progress: [...graph.nodes.values()].filter(node => node.type === 'goal' || node.type === 'feature').map(node => [node.id, progressOf(graph, node.id)]),
+      children: children.projection.gates.find(gate => gate.kind === 'children'),
+      ready: items.ready.map(ref => ref.id),
+      doing: items.doing.map(ref => ref.id),
+    }
+  }
+  assert.deepEqual(numbers(full), numbers(work))
+  const svg = (graph: LoadedGraph): string => {
+    const rendered = renderGraph(graph)
+    assert.ok(rendered.ok)
+    return rendered.svg
+  }
+  assert.equal(svg(full), svg(work))
 })
 
 test('a canonical graph round-trips byte-identical through load and write', async () => {

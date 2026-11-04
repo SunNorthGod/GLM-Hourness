@@ -51,7 +51,7 @@ export const PACKAGES = [
     key: 'hourness',
     name: 'dsh-hourness',
     dir: 'packages/hourness',
-    src: ['data', 'guard', 'memory', 'workflow', 'report', 'graph', 'rules', 'execute', 'design', 'loops', 'lessons', 'env'],
+    src: ['data', 'guard', 'memory', 'workflow', 'report', 'graph', 'rules', 'execute', 'design', 'loops', 'lessons', 'metrics', 'env'],
     rows: [
       { id: 'glm-hourness/data', module: 'data/index' },
       { id: 'glm-hourness/guard', module: 'guard/index' },
@@ -64,12 +64,13 @@ export const PACKAGES = [
       { id: 'glm-hourness/rules', module: 'rules/index' },
       { id: 'glm-hourness/design', module: 'design/index' },
       { id: 'glm-hourness/loops', module: 'loops/index' },
+      { id: 'glm-hourness/metrics', module: 'metrics/index' },
       { id: 'glm-hourness/env', module: 'env/index' },
     ],
     client: {
       row: 'glm-hourness/ui',
       entry: 'ui/src/hourness-client.tsx',
-      sources: ['ui/src/hourness-client.tsx', 'ui/src/dsh.ts', 'ui/src/primitives.d.ts', 'ui/src/graph/', 'ui/src/guide/', 'ui/src/lessons/', 'ui/src/flow/', 'ui/src/wish/'],
+      sources: ['ui/src/hourness-client.tsx', 'ui/src/dsh.ts', 'ui/src/primitives.d.ts', 'ui/src/graph/', 'ui/src/guide/', 'ui/src/lessons/', 'ui/src/loops/', 'ui/src/metrics/', 'ui/src/flow/', 'ui/src/wish/'],
     },
   },
 ]

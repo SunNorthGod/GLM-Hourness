@@ -397,6 +397,10 @@ export async function bundleProblems(root, table) {
     const include = pkg.src.map(src => slash(relative(dir, join(root, 'src', src))))
     if (tsconfig.error !== undefined) problems.push(`${label}: tsconfig.json ${tsconfig.error}`)
     else if (JSON.stringify(tsconfig.value.include) !== JSON.stringify(include)) problems.push(`${label}: tsconfig.json include is ${JSON.stringify(tsconfig.value.include)}, the table says ${JSON.stringify(include)}`)
+    // The build stamp (metrics design §4.1): src/shared/build-info.ts reads it for the envelope's `v`.
+    const stamp = readJson(join(dir, 'dist', 'build-info.json'))
+    if (stamp.error !== undefined) problems.push(`${label}: dist/build-info.json ${stamp.error}: run npm run build`)
+    else if (stamp.value.version !== manifest.version || typeof stamp.value.commit !== 'string' || typeof stamp.value.dirty !== 'boolean') problems.push(`${label}: dist/build-info.json needs the manifest's version, a commit and a dirty flag`)
     if (exports['./locale/*.json'] !== './locale/*.json') problems.push(`${label}: exports["./locale/*.json"] is not ./locale/*.json (the plugin page and the client row read the title from it)`)
     problems.push(...localeProblems(label, dir, 'locale'))
     const icon = exports['./icon']

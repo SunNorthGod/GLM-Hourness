@@ -1,7 +1,7 @@
 import React from "react";
 import { AbsoluteFill, interpolate, useCurrentFrame } from "remotion";
-import { GLASS, Pill, Reveal } from "../parts";
-import { CLAMP, COLORS, EASE } from "../theme";
+import { CARD, Pill, Reveal, USER_BUBBLE } from "../parts";
+import { CLAMP, COLORS, EASE, tint } from "../theme";
 import { Avatar, MODEL } from "./Avatar";
 import { BAR, BEAT } from "./timeline";
 
@@ -48,16 +48,14 @@ const UserBubble: React.FC<{ goal: boolean; children: React.ReactNode }> = ({ go
         gap: 18,
         height: USER_H,
         boxSizing: "border-box",
-        background: "linear-gradient(135deg, rgba(142,162,255,0.32), rgba(195,166,255,0.22))",
-        border: "2px solid rgba(195,166,255,0.38)",
-        borderRadius: 30,
+        ...USER_BUBBLE,
         padding: "0 32px",
         fontSize: 40,
         maxWidth: 840,
       }}
     >
       {goal ? (
-        <Pill color={COLORS.apricot} style={{ fontSize: 28 }}>
+        <Pill color={COLORS.text} style={{ fontSize: 28 }}>
           目标
         </Pill>
       ) : null}
@@ -69,9 +67,9 @@ const UserBubble: React.FC<{ goal: boolean; children: React.ReactNode }> = ({ go
 const ModelBubble: React.FC<{ lines: number[] }> = ({ lines }) => (
   <div style={{ display: "flex", gap: 18, alignItems: "flex-start" }}>
     <Avatar {...MODEL} size={56} />
-    <div style={{ ...GLASS, padding: "22px 30px", display: "flex", flexDirection: "column", gap: 12 }}>
+    <div style={{ ...CARD, padding: "22px 30px", display: "flex", flexDirection: "column", gap: 12 }}>
       {lines.map((w, i) => (
-        <div key={i} style={{ width: w, height: 16, borderRadius: 8, background: "rgba(255,255,255,0.16)" }} />
+        <div key={i} style={{ width: w, height: 16, borderRadius: 8, background: tint(COLORS.text, 0.16) }} />
       ))}
     </div>
   </div>
@@ -125,17 +123,7 @@ export const Drift: React.FC = () => {
       <div style={{ position: "absolute", left: 45, top: 1190, width: 900 }}>
         <Reveal at={TESTED_AT} style={{ display: "flex", gap: 20, alignItems: "flex-start" }}>
           <Avatar {...MODEL} size={72} />
-          <div
-            style={{
-              ...GLASS,
-              background: "linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03)), #0B0D18",
-              padding: "22px 40px",
-              fontSize: 60,
-              fontWeight: 700,
-            }}
-          >
-            ✓ 测过了
-          </div>
+          <div style={{ ...CARD, padding: "22px 40px", fontSize: 60, fontWeight: 700 }}>✓ 测过了</div>
         </Reveal>
         <Reveal
           at={TESTED_AT + BEAT}
@@ -143,9 +131,9 @@ export const Drift: React.FC = () => {
             marginTop: 16,
             marginLeft: 92,
             width: "fit-content",
-            background: "#0B0D18",
+            background: COLORS.sheet,
             border: `2.5px dashed ${COLORS.faint}`,
-            borderRadius: 20,
+            borderRadius: CARD.borderRadius,
             padding: "14px 30px",
             fontSize: 40,
             color: COLORS.dim,
