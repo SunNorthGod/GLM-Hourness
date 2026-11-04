@@ -45,9 +45,12 @@
  *   machine is refused (`unadopted`) and starts nothing — the store never
  *   hands such an entry over, so the check here is the second lock on the
  *   same door;
- * - `check`: the executor's check lane is wired in the same branch, but a
- *   check needs the command of an approved environment tool node, and the
- *   environment row is not on main yet (`check-missing` until it lands).
+ * - `check`: the same road (design §6.6): the rules board judges first, then
+ *   the environment row's reading of the approved tool node decides — the
+ *   command gone or changed is `refused` (`check-missing` / `check-changed`)
+ *   — and the executor's check lane starts the filled argv in the checkout
+ *   the events name. The seam (`deps.checks`) arrives with the environment
+ *   row; until it lands on main the answer is `check-missing`.
  *
  * Nothing here throws into a timer, a listener or a tool handler: every step is
  * caught, and what went wrong is told to the row's health.
@@ -76,10 +79,11 @@ import { watchPaths, type WatchDeps, type Watched } from './file-watch.ts'
 import { createPeakEnd, peakLevelOf, type PeakEnd } from './peak.ts'
 import { appendRun, firedRecord, runId, type LoopRecord, type RunOutcome, type RunReason } from './records.ts'
 import type { LoopsRegistry } from './registry.ts'
-import { commandText, runScript, sweepRunCopies, WORK_TIMEOUT_MS, type HookEnvelope, type ScriptResult } from './script.ts'
+import { commandText, runCommand, runScript, sweepRunCopies, WORK_TIMEOUT_MS, type HookEnvelope, type ScriptResult } from './script.ts'
+import { matchesFilter } from './trigger.ts'
 import type { HarnessResult, ListedRun, LoopEventRecord } from './service.ts'
 import { ensureRuntimeDir, type LoopStore } from './store.ts'
-import type { LoopScriptAction } from './model.ts'
+import type { LoopCheckAction, LoopScriptAction } from './model.ts'
 
 /** How often a project's board beats (design §6.1). */
 export const BEAT_MS = 60_000
@@ -126,8 +130,36 @@ export interface ProjectDeps {
   readonly waiting?: () => Promise<readonly WaitingItem[]>
   /** The size and modification time of the DSH program file, for `appChanged` (design §10.2 V6). */
   readonly appStamp?: () => string | undefined
+  /**
+   * What the environment row hands the board for check entries (m4 design
+   * §6.1.2, one seam until `src/env/env-service.ts` lands and index.ts wires
+   * it): the command of an approved tool node, the filler of `{files}` and
+   * the reader of the output. Absent — the state of main until that row
+   * lands — a check entry is refused (`check-missing`). Tests hand a fake.
+   */
+  readonly checks?: () => LoopChecks | undefined
   readonly watch?: WatchDeps['watch']
   readonly read?: WatchDeps['read']
+}
+
+/** The command of one approved check line, as the check entry needs it (m4 design §6.1.2 `CheckCommand`, narrowed to what the board uses). */
+interface LoopCheckCommand {
+  /** The command as the node holds it, placeholders still in (the entry's `argv` must be the same). */
+  readonly argv: readonly string[]
+  /** Opaque to the board; the seam reads it back in `present`. */
+  readonly format: unknown
+  /** The line carries a `when`: the environment row's own checker runs it too, and the page says so. */
+  readonly own: boolean
+}
+
+/** What the board needs of the environment row to run a check entry (m4 design §6.1.2). Never throws; an absent command is `check-missing`. */
+export interface LoopChecks {
+  /** One check line of an approved tool node of the project of `cwd`, read now. */
+  commandOf(cwd: string, tool: string, check?: string): Promise<LoopCheckCommand | undefined>
+  /** Fill `{files}` of an argv from the changed files of the run (M4's `fillCheckArgv`). */
+  fill(argv: readonly string[], files: readonly string[]): { readonly argv: readonly string[], readonly used: number, readonly dropped: number }
+  /** The output as findings (at most 20 lines); undefined when the output is not readable in that format and the exit code is not 0. */
+  present(format: unknown, run: { readonly stdout: string, readonly stderr: string, readonly exitCode: number }): { readonly findings: number, readonly lines: readonly string[] } | undefined
 }
 
 /** One thing the graph has waiting for the human (design §4.1). */
@@ -607,8 +639,8 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
     return picked.length > 4000 ? picked.slice(-4000) : picked
   }
 
-  /** What the main agent (or the event's session) reads of one run (design §6.6), secrets masked. */
-  function resultText(command: string, result: ScriptResult, note: string | undefined, logFile: string): string {
+  /** What the main agent (or the event's session) reads of one run (design §6.6), secrets masked; a check whose output the seam can read gets the findings instead of the raw tail. */
+  function resultText(command: string, result: ScriptResult, note: string | undefined, logFile: string, found?: { readonly findings: number, readonly lines: readonly string[] }): string {
     const head = result.kind === 'exited'
       ? `\`${command}\` exit ${result.exitCode}（${secondsOf(result.durationMs)}）`
       : result.kind === 'timeout'
@@ -619,13 +651,17 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
     const body: string[] = []
     if (note !== undefined && note.length > 0) body.push(note)
     body.push(head)
-    if (result.kind === 'exited' || result.kind === 'timeout') {
+    if (found !== undefined && result.kind === 'exited') {
+      body.push(`发现 ${found.findings} 处：`)
+      body.push(...found.lines.slice(0, 20))
+    }
+    else if (result.kind === 'exited' || result.kind === 'timeout') {
       const out = tailOf(result.stdout)
       if (out.length > 0) body.push(out)
-      if (result.kind === 'timeout' || result.exitCode !== 0) {
-        const err = tailOf(result.stderr)
-        if (err.length > 0) body.push(err)
-      }
+    }
+    if (result.kind === 'timeout' || (result.kind === 'exited' && result.exitCode !== 0)) {
+      const err = tailOf(result.stderr)
+      if (err.length > 0) body.push(err)
     }
     return `${redactSecrets(body.join('\n'))}\nFull output: ${logFile}`
   }
@@ -641,7 +677,7 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
   }
 
   /** Whether a result is one the entry's `report` sends on (design §2.3, §6.6): a run that did not finish always says so. */
-  function sendsOn(item: RunnableEntry, action: LoopScriptAction, passed: boolean, timedOut: boolean): boolean {
+  function sendsOn(item: RunnableEntry, action: LoopScriptAction | LoopCheckAction, passed: boolean, timedOut: boolean): boolean {
     if (timedOut) return true
     if (action.report === 'always') return true
     const previous = inbox.state().passing[item.entry.id]
@@ -649,46 +685,110 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
     return !passed || previous === false
   }
 
+  /** The command line the rules board judges and the person reads: the interpreter's line, or the check's argv. */
+  function commandLineOf(action: LoopScriptAction | LoopCheckAction): string {
+    return action.kind === 'script' ? commandText(action.script) : commandText(action.argv)
+  }
+
   /**
-   * One script run, between its `loop-fired` and its `loop-done` (design
-   * §6.6): the shared executor runs the bytes the person agreed to, the
-   * result maps onto the outcomes of §6.10, and what is told follows the
-   * entry's `report` and `to`. A run that did not finish hands its events
-   * back to the inbox, to join the next trigger.
+   * The changed files of one run (design §6.6, §6.7): the union of the run's
+   * events' `files`, each judged against the entry's filter on its own, per
+   * file — the filler of `{files}` takes this list.
    */
-  async function runScriptEntry(item: RunnableEntry, run: string, batch: RunBatch, verdict: Extract<RulesVerdict, { kind: 'run' }>): Promise<RunParts> {
+  function filesOf(batch: RunBatch, item: RunnableEntry, root: string): readonly string[] {
+    const payloads = [batch.record.payload, ...batch.record.merged.map(merged => merged.payload)]
+    const files: string[] = []
+    for (const payload of payloads) {
+      const named = payload.files
+      if (!Array.isArray(named)) continue
+      for (const file of named) {
+        if (typeof file !== 'string' || files.includes(file)) continue
+        if (item.entry.filter !== undefined && !matchesFilter(item.entry.filter, { ...payload, files: [file] }, root)) continue
+        files.push(file)
+      }
+    }
+    return files
+  }
+
+  const sameArgv = (a: readonly string[], b: readonly string[]): boolean => a.length === b.length && a.every((part, index) => part === b[index])
+
+  /** The checkout a grouped run works in: the root its events name, or the project (design §6.7). */
+  const rootOf = (batch: RunBatch): string =>
+    typeof batch.record.payload.root === 'string' && batch.record.payload.root.length > 0 ? batch.record.payload.root : deps.root
+
+  /**
+   * One run of a script or a check, between its `loop-fired` and its
+   * `loop-done` (design §6.6): the shared executor runs the person's bytes or
+   * the approved command, the result maps onto the outcomes of §6.10, and
+   * what is told follows the entry's `report` and `to`. A run that did not
+   * finish hands its events back to the inbox, to join the next trigger.
+   */
+  async function runWorkEntry(item: RunnableEntry, run: string, batch: RunBatch, verdict: Extract<RulesVerdict, { kind: 'run' }>): Promise<RunParts> {
     const action = item.entry.action
-    if (action.kind !== 'script') return { outcome: 'refused', reason: 'unadopted' }
+    if (action.kind !== 'script' && action.kind !== 'check') return { outcome: 'refused', reason: 'unadopted' }
     const seconds = action.timeoutSeconds ?? WORK_TIMEOUT_MS / 1000
     const logFile = join(paths.logsDir, item.entry.id, `${stamp(deps.now())}-${run}.log`)
-    scriptWindows.set(item.entry.id, { running: true })
     let result: ScriptResult
-    try {
-      result = await runScript({
+    let found: { readonly findings: number, readonly lines: readonly string[] } | undefined
+    if (action.kind === 'script') {
+      scriptWindows.set(item.entry.id, { running: true })
+      try {
+        result = await runScript({
+          project: deps.root,
+          script: action.script,
+          envelope: envelopeOf(item, run, batch),
+          purpose: 'work',
+          timeoutMs: seconds * 1000,
+          logFile,
+        })
+      }
+      finally {
+        scriptWindows.set(item.entry.id, { running: false, until: deps.now() + SELF_SCRIPT_MS })
+      }
+    }
+    else {
+      // A check runs the command of an approved tool node, read now (m4 design §6.1.2): a different argv than
+      // the one the person agreed to is check-changed, nothing to read is check-missing (design §6.6).
+      // Both refusals leave before the result mapping: a refused run is neither a pass nor a failure.
+      const seam = deps.checks?.()
+      const command = seam === undefined ? undefined : await seam.commandOf(rootOf(batch), action.tool, action.check).catch(() => undefined)
+      if (seam === undefined) return { outcome: 'refused', reason: 'check-missing' }
+      if (command === undefined) {
+        deps.report(`「${item.entry.title}」的检查取不到命令（图上没有批过的工具节点，或它没有这一条检查），先不跑`, 'degraded')
+        return { outcome: 'refused', reason: 'check-missing' }
+      }
+      if (!sameArgv(command.argv, action.argv)) {
+        deps.report(`「${item.entry.title}」的检查命令在项目图上改过了，先不跑；要接着用，跟主 Agent 说「把${item.entry.title}的检查再看一眼，同意一次」`, 'degraded')
+        return { outcome: 'refused', reason: 'check-changed' }
+      }
+      const filled = seam.fill(action.argv, filesOf(batch, item, rootOf(batch)))
+      result = await runCommand({
+        queue: 'check',
         project: deps.root,
-        script: action.script,
+        ...(rootOf(batch) !== deps.root ? { cwd: rootOf(batch) } : {}),
+        argv: filled.argv,
         envelope: envelopeOf(item, run, batch),
-        purpose: 'work',
         timeoutMs: seconds * 1000,
         logFile,
       })
+      found = result.kind === 'exited'
+        ? seam.present(command.format, { stdout: result.stdout, stderr: result.stderr, exitCode: result.exitCode })
+        : undefined
     }
-    finally {
-      scriptWindows.set(item.entry.id, { running: false, until: deps.now() + SELF_SCRIPT_MS })
-    }
-    const passed = result.kind === 'exited' && result.exitCode === 0
-    const timedOut = result.kind === 'timeout'
-    inbox.state().passing[item.entry.id] = passed
+    // A refused run is neither a pass nor a failure: it does not touch the passing flag.
     if (result.kind === 'refused') {
       if (result.reason === 'script-changed' || result.reason === 'script-missing') {
         deps.report(`「${item.entry.title}」的脚本${result.reason === 'script-changed' ? '与同意时的哈希对不上' : '不在这份检出里'}，先不跑；要接着用，跟主 Agent 说「把${item.entry.title}的脚本给我看一下」`, 'degraded')
       }
       return { outcome: 'refused', reason: result.reason }
     }
+    const passed = result.kind === 'exited' && result.exitCode === 0
+    const timedOut = result.kind === 'timeout'
+    inbox.state().passing[item.entry.id] = passed
     const speaks = sendsOn(item, action, passed, timedOut)
     let told: { how?: 'steer' | 'inject' | 'followup', messageId?: string } = {}
     if (speaks) {
-      const said = await tell(item, run, resultText(commandText(action.script), result, action.note, logFile), true, batch)
+      const said = await tell(item, run, resultText(commandLineOf(action), result, action.note, logFile, found), true, batch)
       told = { ...(said.how === undefined ? {} : { how: said.how }), ...(said.messageId === undefined ? {} : { messageId: said.messageId }) }
     }
     const outcome: RunOutcome = timedOut ? 'unfinished' : speaks ? 'reported' : 'ran'
@@ -757,11 +857,11 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
         }
         const item = entries().find(candidate => candidate.entry.id === held.entry)
         const action = item?.entry.action
-        if (item === undefined || action === undefined || action.kind !== 'script' || !adopted(item)) {
+        if (item === undefined || action === undefined || (action.kind !== 'script' && action.kind !== 'check') || !adopted(item)) {
           finish('expired', '条目不在了，或不再是同意过的那一份')
           continue
         }
-        const verdict = await askRules(commandText(action.script), action.glmSpend)
+        const verdict = await askRules(commandLineOf(action), action.glmSpend)
         if (verdict.kind === 'queue') {
           held.nextAt = deps.now() + DEFER_RETRY_MS
           continue
@@ -770,7 +870,7 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
           finish('blocked', verdict.rule)
           continue
         }
-        const parts = await runScriptEntry(item, run, { entry: item, group: held.group, record: held.record }, verdict)
+        const parts = await runWorkEntry(item, run, { entry: item, group: held.group, record: held.record }, verdict)
         finish(parts.outcome, parts.reason, parts)
       }
       catch (error) {
@@ -857,13 +957,9 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
           outcome = 'refused'
           reason = 'unadopted'
         }
-        else if (action.kind === 'check') {
-          // A check needs the command of an approved environment tool node; the environment row is not on main yet (m4 impl-progress, E3).
-          outcome = 'refused'
-          reason = 'check-missing'
-        }
         else {
-          const verdict = await askRules(commandText(action.script), action.glmSpend)
+          // The rules board judges before anything reads a node or starts a process (design §6.9 item 1).
+          const verdict = await askRules(commandLineOf(action), action.glmSpend)
           if (verdict.kind === 'blocked') {
             outcome = 'blocked'
             reason = verdict.rule
@@ -873,7 +969,7 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
             outcome = 'deferred'
           }
           else {
-            const parts = await runScriptEntry(item, run, batch, verdict)
+            const parts = await runWorkEntry(item, run, batch, verdict)
             outcome = parts.outcome
             reason = parts.reason
             how = parts.how

@@ -17,7 +17,9 @@
  * to settle instead of assuming the beat waited for it.
  */
 import assert from 'node:assert/strict'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { readFile, readdir } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { rulesPaths } from '../src/rules/store.ts'
@@ -25,11 +27,11 @@ import { projectKey } from '../src/graph/main-agent-holder.ts'
 import { CHANNEL_EVENTS, peakChangedKey } from '../src/loops/channel.ts'
 import { hostRestartedKey } from '../src/loops/events.ts'
 import { currentRun } from '../src/loops/harness.ts'
-import type { LoopEntryDefinition } from '../src/loops/model.ts'
+import type { LoopEntryDefinition, PersonEntry } from '../src/loops/model.ts'
 import type { DoneRecord, FiredRecord, HandoverRecord, HolderRecord as LoopHolderRecord, LoopRecord } from '../src/loops/records.ts'
 import { createRegistry } from '../src/loops/registry.ts'
 import type { DeliverRequest, DeliverResult } from '../src/loops/deliver.ts'
-import { createProjectRuntime, DEFER_MAX_MS, DEFER_RETRY_MS, type ProjectDeps, type ProjectRuntime, type WaitingItem } from '../src/loops/run.ts'
+import { createProjectRuntime, DEFER_MAX_MS, DEFER_RETRY_MS, type LoopChecks, type ProjectDeps, type ProjectRuntime, type WaitingItem } from '../src/loops/run.ts'
 import type { Contribution, ContributionSource, HarnessResult, LoopEventDeclaration } from '../src/loops/service.ts'
 import { ensureRuntimeDir, openLoopStore, type LoopStore } from '../src/loops/store.ts'
 import { gitProjectTest, quickIo, scriptEntry, seedAgreed, sha256, SCRIPT_TEXT, tellEntry } from './loops-helpers.ts'
@@ -75,6 +77,10 @@ interface WorldOptions {
   readonly holderHere?: () => string | undefined
   readonly peak?: () => ((atMs: number) => boolean) | undefined
   readonly waiting?: () => Promise<readonly WaitingItem[]>
+  /** More events the world's rows declare, besides the handback one. */
+  readonly events?: readonly LoopEventDeclaration[]
+  /** The environment row's seam, faked; absent is the state of main, where a check is refused check-missing. */
+  readonly checks?: () => LoopChecks | undefined
   readonly at?: number
 }
 
@@ -90,7 +96,7 @@ async function worldOf(root: string, options: WorldOptions = {}): Promise<World>
   // The channel events are in the table while a pricing service is there, as the row's registry has them.
   const registry = createRegistry({ now: () => new Date(clock), report: (text) => { told.push({ text, level: 'degraded' }) }, channel: () => options.peak === undefined ? [] : CHANNEL_EVENTS })
   const contribution: Contribution = {
-    events: [HANDBACK],
+    events: [HANDBACK, ...(options.events ?? [])],
     entries: options.entries ?? [],
     ...(options.actions === undefined ? {} : { actions: options.actions }),
     ...(options.run === undefined ? {} : { run: options.run }),
@@ -121,6 +127,7 @@ async function worldOf(root: string, options: WorldOptions = {}): Promise<World>
     // No real file is watched unless a case asks for one.
     watch: () => undefined,
     read: (_path, previous) => Promise.resolve({ size: 'gone', mtimeMs: previous?.mtimeMs ?? 0 }),
+    ...(options.checks === undefined ? {} : { checks: options.checks }),
     ...(options.holderHere === undefined ? {} : { holderHere: options.holderHere }),
     ...(options.peak === undefined ? {} : { peak: options.peak }),
     ...(options.waiting === undefined ? {} : { waiting: options.waiting }),
@@ -383,16 +390,16 @@ async function emitAndSettle(world: World, store: LoopStore, entry: string, outc
   await untilDone(store, entry, outcome)
 }
 
-/** A rule of the person that judges the loop board's script commands, seeded active or lifted the way the board's own writer leaves it. */
-async function seedRule(root: string, action: 'block' | 'queue', at: string, seq: number, status: 'active' | 'lifted' = 'active'): Promise<string> {
+/** A rule of the person that judges the loop board's commands, seeded active or lifted the way the board's own writer leaves it. */
+async function seedRule(root: string, action: 'block' | 'queue', at: string, seq: number, status: 'active' | 'lifted' = 'active', matches = 'docs/loops/scripts'): Promise<string> {
   const id = `r-${action === 'block' ? 'freeze' : 'hold'}-scripts-${seq}`
   await injectRecord(
     rulesPaths(root),
     [{ path: ['rules', id], value: ruleOf({
       id,
-      title: action === 'block' ? '代码冻结期不跑脚本' : '脚本先排队',
+      title: action === 'block' ? '代码冻结期不跑脚本' : '先排队',
       action: { kind: action },
-      filter: { command: { matches: 'docs/loops/scripts' } },
+      filter: { command: { matches } },
       status,
     }) }],
     at,
@@ -553,6 +560,72 @@ gitProjectTest('report always tells the main agent what the run did: the command
   await world.runtime.stop()
 })
 
+/** The event the environment row hands over for check entries (m4 design §6.8), declared the way it declares it. */
+const EDITED: LoopEventDeclaration = {
+  id: 'env.files-edited',
+  title: '一个 agent 改了文件',
+  fields: [
+    { name: 'files', type: 'strings', title: '改到的文件', filter: 'paths' },
+    { name: 'root', type: 'string', title: '所在检出' },
+    { name: 'truncated', type: 'boolean', title: '是否截断' },
+  ],
+  personSelectable: true,
+}
+
+/** Each call is its own occurrence, so the dedupe key differs. */
+let editedSeq = 0
+
+/** Hand one files-edited event over, as the environment row would. */
+async function emitEdited(world: World, files: readonly string[], root: string, session?: string): Promise<void> {
+  editedSeq += 1
+  await world.runtime.emit({
+    event: EDITED.id,
+    key: `files-edited:${session ?? 's-none'}:occ-${editedSeq}`,
+    payload: { files: [...files], root, truncated: false },
+    ...(session === undefined ? {} : { session }),
+    from: 'glm-hourness/env',
+  })
+}
+
+/** A checker of Node that prints the files it was given; `{files}` sits at the end of the entry's argv. */
+const CHECKER = 'process.stdout.write("checked " + process.argv.slice(1).join(","))'
+
+/** What a case may bend in the fake of the environment row's seam. */
+interface FakeChecksOver {
+  readonly commandless?: boolean
+  readonly argv?: readonly string[]
+  readonly present?: (format: unknown, run: { readonly stdout: string, readonly stderr: string, readonly exitCode: number }) => { readonly findings: number, readonly lines: readonly string[] } | undefined
+}
+
+/** A fake of the environment row's seam (m4 design §6.1.2): the command the node holds, the filler of {files}, the findings. */
+function fakeChecks(entryArgv: readonly string[], over: FakeChecksOver = {}): { readonly checks: () => LoopChecks, readonly asked: { cwd: string, tool: string }[] } {
+  const asked: { cwd: string, tool: string }[] = []
+  const seam: LoopChecks = {
+    commandOf(cwd, tool) {
+      asked.push({ cwd, tool })
+      return Promise.resolve(over.commandless === true ? undefined : { argv: over.argv ?? entryArgv, format: 'eslint-json', own: false })
+    },
+    fill(argv, files) {
+      const at = argv.indexOf('{files}')
+      const filled = at < 0 ? [...argv] : [...argv.slice(0, at), ...files, ...argv.slice(at + 1)]
+      return { argv: filled, used: at < 0 ? 0 : files.length, dropped: 0 }
+    },
+    present: over.present ?? (() => ({ findings: 2, lines: ['src/a.ts:1:1 oops', 'src/b.ts:2:2 more'] })),
+  }
+  return { checks: () => seam, asked }
+}
+
+/** The check entry these cases hear the files-edited event with. */
+function checkEntry(id: string, argv: readonly string[], over: Partial<LoopEntryDefinition> = {}): PersonEntry {
+  return tellEntry(id, {
+    title: '改了 ts 之后跑一遍检查',
+    when: { kind: 'event', events: [EDITED.id] },
+    limits: { debounceSeconds: 1, maxPerHour: 30 },
+    action: { kind: 'check', tool: 'n-lint', argv, report: 'always' },
+    ...over,
+  })
+}
+
 gitProjectTest('a check entry is refused with check-missing while the environment row is not on main, and nothing in the row can start a process', async ({ root, store }) => {
   const check = tellEntry('u-22222222', {
     title: '改了 ts 之后跑一遍类型检查',
@@ -568,6 +641,108 @@ gitProjectTest('a check entry is refused with check-missing while the environmen
   assert.deepEqual(done.map(record => [record.outcome, record.reason]), [['refused', 'check-missing']])
   assert.equal(world.delivered.length, 0)
   await world.runtime.stop()
+})
+
+gitProjectTest('a check entry runs the approved command with the run\'s files filled in, in the checkout the events name, and the findings go to the session', async ({ root, store }) => {
+  const argv = ['node', '-e', CHECKER, '{files}']
+  const check = checkEntry('u-88888888', argv, { filter: { files: { paths: ['*.ts'] } }, action: { kind: 'check', tool: 'n-lint', argv, report: 'always', to: 'event-session', note: 'Fix what the check found before you finish.' } })
+  await seedAgreed({ root, store }, check)
+  const seam = fakeChecks(argv)
+  const world = await worldOf(root, { pid: 9402, checks: seam.checks, events: [EDITED] })
+  await world.tick()
+  await emitEdited(world, ['src/a.ts', 'src/b.ts', 'docs/x.md'], root, 's-sub')
+  await world.tick(2_000)
+  await untilDone(store, check.id, 'reported')
+  const done = (await runsOf(world.store)).filter((record): record is DoneRecord => record.kind === 'loop-done')
+  assert.deepEqual(done.map(record => [record.outcome, record.reason]), [['reported', undefined]])
+  assert.deepEqual(done.find(record => record.entry === check.id)?.exits, [0], 'the check\'s exit is on the record')
+  assert.deepEqual(seam.asked, [{ cwd: root, tool: 'n-lint' }], 'the command was read in the events\' checkout')
+  assert.equal(world.delivered.length, 1, 'report always tells')
+  const said = world.delivered[0] ?? { text: '', session: undefined }
+  assert.equal(said.session, 's-sub', 'the result went to the session the event came from')
+  assert.equal(said.text.includes('`node -e') && said.text.includes('exit 0（'), true, 'the first line names the command')
+  assert.equal(said.text.includes('发现 2 处：'), true, 'the seam\'s findings replace the raw tail')
+  assert.equal(said.text.includes('src/a.ts:1:1 oops'), true, 'the findings lines are there')
+  assert.equal(said.text.includes('Fix what the check found before you finish.'), true, 'the note goes first')
+  assert.equal(said.text.includes('Full output: '), true)
+  await world.runtime.stop()
+})
+
+gitProjectTest('a check whose command moved on the tool node is refused check-changed, and one the node no longer has is check-missing; both leave the passing flag alone', async ({ root, store }) => {
+  const argv = ['node', '-e', CHECKER, '{files}']
+  const make = (id: string): PersonEntry => checkEntry(id, argv)
+  const changed = make('u-99999999')
+  await seedAgreed({ root, store }, changed)
+  const moved = fakeChecks(argv, { argv: ['node', 'tsc', '--noEmit'] })
+  const first = await worldOf(root, { pid: 9403, checks: moved.checks, events: [EDITED] })
+  await first.tick()
+  await emitEdited(first, ['src/a.ts'], root)
+  await first.tick(2_000)
+  await untilDone(store, changed.id, 'refused')
+  let done = (await runsOf(first.store)).filter((record): record is DoneRecord => record.kind === 'loop-done')
+  assert.deepEqual(done.map(record => [record.outcome, record.reason]), [['refused', 'check-changed']])
+  assert.equal(first.told.some(line => line.level === 'degraded' && line.text.includes('改过')), true)
+  const state = JSON.parse(await readFile(first.store.paths.state, 'utf8')) as { passing: Record<string, boolean> }
+  assert.equal(state.passing[changed.id], undefined, 'a refused run is neither a pass nor a failure')
+  await first.runtime.stop()
+
+  const gone = make('u-9a9a9a9a')
+  await seedAgreed({ root, store }, gone)
+  const missing = fakeChecks(argv, { commandless: true })
+  const second = await worldOf(root, { pid: 9404, checks: missing.checks, events: [EDITED] })
+  await second.tick()
+  await emitEdited(second, ['src/a.ts'], root)
+  await second.tick(2_000)
+  await untilDone(store, gone.id, 'refused')
+  done = (await runsOf(second.store)).filter((record): record is DoneRecord => record.kind === 'loop-done' && record.entry === gone.id)
+  assert.deepEqual(done.map(record => [record.outcome, record.reason]), [['refused', 'check-missing']])
+  assert.equal(second.told.some(line => line.level === 'degraded' && line.text.includes('取不到命令')), true)
+  await second.runtime.stop()
+})
+
+gitProjectTest('a check the rules board queues defers, and runs when the rule is lifted', async ({ root, store }) => {
+  const argv = ['node', '-e', CHECKER]
+  const check = checkEntry('u-9c9c9c9c', argv)
+  await seedAgreed({ root, store }, check)
+  const seam = fakeChecks(argv, { present: () => ({ findings: 1, lines: ['src/a.ts:1:1 oops'] }) })
+  const world = await worldOf(root, { pid: 9406, checks: seam.checks, events: [EDITED] })
+  await world.tick()
+  await seedRule(root, 'queue', new Date(world.now()).toISOString(), 4, 'active', 'checked ')
+  await emitEdited(world, ['src/a.ts'], root)
+  await world.tick(2_000)
+  await untilDone(store, check.id, 'deferred')
+  let done = (await runsOf(world.store)).filter((record): record is DoneRecord => record.kind === 'loop-done' && record.entry === check.id)
+  assert.deepEqual(done.map(record => record.outcome), ['deferred'], 'the queueing rule defers the check')
+  await seedRule(root, 'queue', new Date(world.now()).toISOString(), 4, 'lifted', 'checked ')
+  world.move(DEFER_RETRY_MS + 1_000)
+  await world.tick()
+  await untilDone(store, check.id, 'reported')
+  done = (await runsOf(world.store)).filter((record): record is DoneRecord => record.kind === 'loop-done' && record.entry === check.id)
+  assert.deepEqual(done.map(record => record.outcome), ['deferred', 'reported'], 'the same run reaches its outcome when the rules board lets go')
+  assert.equal(world.delivered.length, 1, 'the result went out after the wait')
+  await world.runtime.stop()
+})
+
+gitProjectTest('a check whose events name another checkout is refused outside-project by the executor', async ({ root, store }) => {
+  const argv = ['node', '-e', CHECKER]
+  const check = checkEntry('u-9b9b9b9b', argv)
+  await seedAgreed({ root, store }, check)
+  const elsewhere = mkdtempSync(join(tmpdir(), 'loops-run-not-a-checkout-'))
+  try {
+    const seam = fakeChecks(argv)
+    const world = await worldOf(root, { pid: 9405, checks: seam.checks, events: [EDITED] })
+    await world.tick()
+    await emitEdited(world, ['src/a.ts'], elsewhere)
+    await world.tick(2_000)
+    await untilDone(store, check.id, 'refused')
+    const done = (await runsOf(world.store)).filter((record): record is DoneRecord => record.kind === 'loop-done')
+    assert.deepEqual(done.map(record => [record.outcome, record.reason]), [['refused', 'outside-project']], 'the executor refuses a working directory outside the checkouts')
+    assert.equal(world.delivered.length, 0)
+    await world.runtime.stop()
+  }
+  finally {
+    rmSync(elsewhere, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
+  }
 })
 
 gitProjectTest('a process that cannot read which session is the main agent holds the message: the run is held with the reason, and nothing is lost', async ({ root }) => {
