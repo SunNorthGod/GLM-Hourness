@@ -145,7 +145,8 @@ test('the main agent is never held at any level: every call but a GLM dispatch g
 
 test('the catalog lists the guard framework\'s rules, the main agent\'s, the rules board\'s own gate and the default rule with its entries, each as <row>:<id>', () => {
   assert.deepEqual(CATALOG.map(entry => entry.id), [
-    'guard:workspace-containment', 'guard:file-tools-only', 'graph:graph-files-only', 'loops:files-only', 'loops:schedule-tools',
+    'guard:workspace-containment', 'guard:file-tools-only', 'guard:suppression-reason', 'guard:checker-config', 'guard:scratch-only', 'guard:lift-files-only',
+    'graph:graph-files-only', 'loops:files-only', 'loops:schedule-tools',
     ...MAIN_AGENT_RULES.map(rule => `design:${rule.id}`),
     'rules:files-only',
     'builtin:glm-peak-pricing', 'builtin:glm-peak-reduce', 'builtin:glm-peak-stop', 'builtin:glm-peak-stop-dispatch', 'builtin:glm-peak-stop-scripts',

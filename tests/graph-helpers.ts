@@ -13,6 +13,9 @@ import type { EngineError } from '../src/graph/mutation.ts'
 import type { OpenItems, Projection } from '../src/graph/projection.ts'
 import type { Actor, GraphNode } from '../src/graph/schema.ts'
 import { loadGraph } from '../src/graph/store.ts'
+import { readdir, readFile } from 'node:fs/promises'
+import type { RemoteRoot, StreamItem, WatchFrame } from '../ui/src/dsh.ts'
+import { GraphSource, type GraphSnapshot } from '../ui/src/graph/source.ts'
 
 /**
  * A JSON answer of the command line or a graph tool: one
@@ -107,4 +110,65 @@ export async function engineFixture(prefix: string, day: number, seed: (fixture:
   const fixture = { dir, engine, rev, node, run, act }
   await seed(fixture)
   return fixture
+}
+
+/** A Remote face over a directory on disk, with a change feed the test drives. */
+export function fakeRemote(workspace: string): { readonly remote: RemoteRoot, readonly push: (frame: WatchFrame) => void } {
+  const queue: WatchFrame[] = []
+  let wake: (() => void) | undefined
+  const push = (frame: WatchFrame): void => {
+    queue.push(frame)
+    wake?.()
+  }
+  let disposed = false
+  const remote: RemoteRoot = {
+    workspaceFiles: {
+      list: async (_session, path) => {
+        try {
+          const entries = await readdir(join(workspace, path), { withFileTypes: true })
+          return { ok: true, value: { path, entries: entries.map(entry => ({ name: entry.name, type: entry.isFile() ? 'file' : 'directory' })), truncated: false } }
+        }
+        catch {
+          return { ok: false, error: { code: 'workspace-file/not-found', message: `no entry at "${path}"` } }
+        }
+      },
+      readBytes: async (_session, path) => {
+        try {
+          return { ok: true, value: { absolutePath: join(workspace, path), data: new Uint8Array(await readFile(join(workspace, path))) } }
+        }
+        catch {
+          return { ok: false, error: { code: 'workspace-file/not-found', message: path } }
+        }
+      },
+      changes: () => undefined,
+    },
+    commands: { execute: () => Promise.resolve({ ok: true, value: undefined }) },
+    $stream: <T>() => ({
+      async *[Symbol.asyncIterator]() {
+        while (!disposed) {
+          const frame = queue.shift()
+          if (frame === undefined) {
+            await new Promise<void>(resolve => { wake = resolve })
+            continue
+          }
+          yield { value: frame as T, accept: () => {} } satisfies StreamItem<T>
+        }
+      },
+      dispose: () => {
+        disposed = true
+        wake?.()
+        return Promise.resolve()
+      },
+    }),
+  }
+  return { remote, push }
+}
+
+export async function until(source: GraphSource, check: (snapshot: GraphSnapshot) => boolean): Promise<GraphSnapshot> {
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const snapshot = source.getSnapshot()
+    if (check(snapshot)) return snapshot
+    await new Promise(resolve => setTimeout(resolve, 20))
+  }
+  throw new Error(`timed out; last snapshot ${JSON.stringify(source.getSnapshot()).slice(0, 200)}`)
 }

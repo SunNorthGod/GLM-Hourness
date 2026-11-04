@@ -144,6 +144,59 @@ function withGoal(call, goal) {
   return call
 }
 
+/**
+ * `{ref}` in the arguments of a scripted call becomes the request reference
+ * the conversation last named by a denial — the exception sentence names it,
+ * in either the containment spelling (`request_exception {"ref": "r-…"}`) or
+ * the new-rules spelling (`call request_exception with ref "r-…"`) — so the
+ * script files and retries without knowing the generated ref
+ * (m4-request-card §5.3). Anchored on those sentences because the
+ * `request_exception` tool description carries the F20 example's own ref.
+ * No denial in the conversation leaves the text as it was.
+ */
+function withRef(request, call) {
+  const text = JSON.stringify(call.arguments ?? {})
+  if (!text.includes('{ref}')) return call
+  let found
+  for (const message of request.messages ?? []) {
+    if (message.role !== 'tool') continue
+    for (const part of Array.isArray(message.content) ? message.content : []) {
+      for (const piece of Array.isArray(part.content) ? part.content : [part]) {
+        if (typeof piece.text !== 'string') continue
+        const named = /(?:request_exception \{"ref": "|request_exception with ref ")(r-[0-9a-z]{8})/.exec(piece.text)
+        if (named !== null) found = named[1]
+      }
+    }
+  }
+  return found === undefined ? call : { ...call, arguments: JSON.parse(text.replaceAll('{ref}', found)) }
+}
+
+/**
+ * The plan text of the last `request_exception` ask result in the
+ * conversation (m4-request-card §5.3): the reply a step with `echoToolText`
+ * gives carries it at the very end, unchanged, as the tool's message
+ * instructs. A string `echoToolText` rides after it — the not-shown case,
+ * where the agent deliberately says one thing more.
+ */
+function lastAskText(messages) {
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index]
+    if (message.role !== 'tool') continue
+    for (const part of Array.isArray(message.content) ? message.content : []) {
+      for (const piece of Array.isArray(part.content) ? part.content : [part]) {
+        if (typeof piece.text !== 'string' || !piece.text.includes('"outcome":"ask"')) continue
+        try {
+          const parsed = JSON.parse(piece.text)
+          if (parsed.outcome === 'ask' && typeof parsed.text === 'string') return parsed.text
+        } catch {
+          // Not the ask result's JSON; keep looking.
+        }
+      }
+    }
+  }
+  return undefined
+}
+
 function leadingSystem(messages) {
   const texts = []
   for (const message of messages) {
@@ -523,6 +576,7 @@ class ProbeAdapter {
         ...(status === undefined ? {} : { status }),
         ...(command === undefined ? {} : { command }),
         ...(line === undefined ? {} : { line }),
+        ...(step.echoToolText === undefined ? {} : { echoToolText: step.echoToolText }),
         ...(other === undefined ? {} : { other }),
         ...(fork === undefined ? {} : { fork }),
         ...(tell === undefined ? {} : { tell }),
@@ -541,7 +595,7 @@ class ProbeAdapter {
     // A step calls one tool (`tool`) or several in one assistant turn (`tools`).
     const scriptedCalls = step.tools ?? (step.tool === undefined ? [] : [step.tool])
     const goal = step.goal === true ? this.goalOf(request) : undefined
-    const calls = await Promise.all(scriptedCalls.map(call => withRevisions(this.ctx, request, withGoal(call, goal))))
+    const calls = await Promise.all(scriptedCalls.map(call => withRevisions(this.ctx, request, withRef(request, withGoal(call, goal)))))
     if (calls.length > 0) {
       for (const [index, call] of calls.entries()) {
         const id = `probe-call-${this.requests}-${index}`
@@ -554,7 +608,8 @@ class ProbeAdapter {
       yield { type: 'finish', reason: { kind: 'tool-calls' } }
       return
     }
-    const text = step.text ?? 'ok'
+    const echo = step.echoToolText === undefined ? undefined : lastAskText(request.messages ?? [])
+    const text = echo === undefined ? step.text ?? 'ok' : typeof step.echoToolText === 'string' ? `${echo}\n\n${step.echoToolText}` : echo
     yield { type: 'block-start', index: 0, blockType: 'text' }
     yield { type: 'text-delta', index: 0, text }
     yield { type: 'block-end', index: 0, block: { type: 'text', text } }

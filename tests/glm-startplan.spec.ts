@@ -9,7 +9,7 @@ const env = { cwd: 'C:/ws/proj', platform: 'win32', shell: 'pwsh', osVersion: 'w
 
 test('vendored texts parse with every expected section', () => {
   assert.equal(ZCODE_SYSTEM.cliPrefix, 'You are ZCode, an interactive agent')
-  assert.ok(ZCODE_SYSTEM.stableSections[0]!.includes('# Harness'))
+  assert.ok(ZCODE_SYSTEM.stableSections[0].includes('# Harness'))
   assert.ok(ZCODE_SYSTEM.stableSections[0]?.includes(' - The system may send updates')) // the desktop default branch
   assert.ok(ZCODE_SYSTEM.dynamicSections.beforeEnvironment.startsWith('Write code that reads like the surrounding code')) // 3.17.1 Dynamic Behavior, no heading
   assert.ok(ZCODE_SYSTEM.dynamicSections.afterEnvironment.includes('# Context management'))
@@ -28,15 +28,15 @@ test('vendored texts stay byte-identical to the reference sidecar', async () => 
 test('start-plan system is exactly 3 blocks with the gateway-fingerprinted shapes', () => {
   const blocks = buildStartPlanSystem('my own guidance', env, 'bigmodel', 'glm-5.3', 'C:/viz/dir')
   assert.equal(blocks.length, 3)
-  assert.equal(blocks[0]!.text, ZCODE_SYSTEM.cliPrefix)
-  assert.equal(blocks[0]!.cache_control, undefined) // no cache_control since 3.15.1
-  assert.ok(blocks[1]!.text.includes('# Harness'))
-  assert.ok(blocks[1]!.text.includes('my own guidance')) // custom text appends to stable
-  assert.ok(blocks[1]!.cache_control !== undefined)
-  assert.ok(blocks[2]!.text.startsWith('\n\n')) // dynamic block carries the explicit prefix
-  assert.ok(blocks[2]!.text.includes('- Primary working directory: C:/ws/proj'))
-  assert.ok(blocks[2]!.text.includes('- You are powered by the model named bigmodel-api/glm-5.3.'))
-  assert.ok(blocks[2]!.cache_control !== undefined)
+  assert.equal(blocks[0].text, ZCODE_SYSTEM.cliPrefix)
+  assert.equal(blocks[0].cache_control, undefined) // no cache_control since 3.15.1
+  assert.ok(blocks[1].text.includes('# Harness'))
+  assert.ok(blocks[1].text.includes('my own guidance')) // custom text appends to stable
+  assert.ok(blocks[1].cache_control !== undefined)
+  assert.ok(blocks[2].text.startsWith('\n\n')) // dynamic block carries the explicit prefix
+  assert.ok(blocks[2].text.includes('- Primary working directory: C:/ws/proj'))
+  assert.ok(blocks[2].text.includes('- You are powered by the model named bigmodel-api/glm-5.3.'))
+  assert.ok(blocks[2].cache_control !== undefined)
 })
 
 test('environment section reflects runtime values; provider label maps', () => {
@@ -67,7 +67,7 @@ test('custom system text: strings, block arrays, and noise handling', () => {
 test('context prefix wraps the currentDate block in system-reminder tags', () => {
   const message = buildContextPrefixMessage(new Date('2026-10-27T09:00:00+08:00'))
   assert.equal(message.role, 'user')
-  const text = message.content[0]!.text
+  const text = message.content[0].text
   assert.ok(text.startsWith('<system-reminder>'))
   assert.ok(text.endsWith('</system-reminder>'))
   assert.ok(text.includes('# currentDate\nToday\u0027s date is 2026-10-27.'.replace('\\u0027', '\u0027')) || text.includes("Today's date is 2026-10-27."))

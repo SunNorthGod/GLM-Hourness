@@ -109,6 +109,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "核心三批并入 main（cbc90a5，2026-11-04）：集线器契约与收集器、glm/usage、glm/quota、rules/peak 条目、BoardState.items 与 checkedBoardState 面板接缝、hourness 行对峰时段半条的让渡；test 链并包（对方 test:1 + 我方 test:2，package.json 行级冲突脚本解并）。合并树门禁全绿（probe 328/328）。模块仍 doing：批次 4（env/* 与 rules/* 条目）等 m4 合并、批次 6（M7 读取者与晨报改读）等 M7 合并，届时从 main 续作。面板与新手引导线的地基就位。"
+    },
+    {
+      "at": "2026-11-04T02:09:45.258Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "批次 4（b459692，新分支 status-hub-2 基 main cdbcdff，2026-11-04，原线代理撞配额后个人套餐续作）：m4 条目——guard 行交 rules/denials（第一条拦下行为 text、其余与走对汇总进 detail，整本口径 F16）与 rules/lifts（含「撤下的规则：无」恒显）；env 行交 env/suppressions（最新计数、staleAfterMs 48h）；ruleLines/liftLines 所有权移入 guard 模块（晨报改导入，净删 171 行，禁 guard→workflow 反向依赖）。偏差记录：未提交撤下行需 git 不进同步条目；缺 lifts.jsonl 镜像报告读出口径；超时条目等 m4-checks；metrics/load 仍 BLOCKED；规则板页面留后续。门禁全绿（test 2670、probe 349/349、棘轮 76/19/1）。批次 6（M7 读取者与晨报改读）仍等 M7 合入。"
     }
   ]
 }

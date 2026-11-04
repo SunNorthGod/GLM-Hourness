@@ -38,8 +38,9 @@ export type RootLookup =
  * `parentSession` only, so the walk stops at it). Every hop goes to a
  * different live agent, so the walk ends in at most as many hops as there
  * are agents; a chain that loops, loses its `parentSession` or reaches an
- * agent that is gone is `unknown`. The execute row's face filter walks the
- * same chain (M7 design 0.6 §2.3.2), so the walk is shared here.
+ * agent that is gone is `unknown`. The request channel reads it too: a
+ * grant matches calls of the same dispatch-chain root (m4-request-card
+ * §5.6).
  */
 export function dispatchRoot(agents: Pick<AgentsService, 'get'>, caller: { readonly id: string, readonly session: SessionLike }): RootLookup {
   if (caller.session.header.origin !== 'subagent') return { kind: 'self' }

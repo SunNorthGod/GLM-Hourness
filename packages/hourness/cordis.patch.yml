@@ -21,6 +21,7 @@
       config: {}
     - id: glm-hourness/guard
       name: dsh-hourness/guard
+      inject: [tools]
       config: {}
     - id: glm-hourness/memory
       name: dsh-hourness/memory
@@ -60,11 +61,12 @@
       inject: [tools]
       config: {}
     - id: glm-hourness/graph-panel
-      # Write path of the project graph panel (docs/ORCHESTRATION.md §2.10,
-      # §13): the /graph-apply command applies one mutation as the human to
-      # docs/graph under the invoking session's working directory (or
-      # config.dir). Registers nothing model-facing. Enabled after the L3
-      # probe (scenario glm-graph-panel) passed on 2026-10-28.
+      # The human's command for the project graph panel (docs/
+      # ORCHESTRATION.md §2.10, §13): /graph-run starts, stops or redoes a
+      # task under the invoking session's working directory (or config.dir);
+      # the panel itself only reads (plain-ui). Registers nothing
+      # model-facing. Enabled after the L3 probe (scenario glm-graph-panel)
+      # passed on 2026-10-28.
       name: dsh-hourness/graph-panel
       inject: [commands]
       config: {}
@@ -142,6 +144,21 @@
       # loops-peak, loops-peak-restart) passed; the first desktop pass
       # (docs/DEVELOPMENT.md §3, AGENTS.md) is still owed.
       name: dsh-hourness/loops
+      config: {}
+    - id: glm-hourness/env
+      # Environment branch and scratch area (docs/ORCHESTRATION.md §7.1, §7.4;
+      # M4 design §7): at an agent's first step, and again whenever the env
+      # branch changes, a reminder of the project's tools (the graph's env
+      # node and its tool children), the checks that run after edits, and the
+      # scratch area for one-off scripts (.llm/scratch/). Before the first
+      # notice for a repository it appends .llm/ to the clone's
+      # .git/info/exclude and verifies with git check-ignore. The check
+      # runner and the suppression count join with their tasks (m4-checks,
+      # m4-suppressions). Ships disabled until the L3 probe (scenario
+      # env-notice) and the first desktop pass (docs/DEVELOPMENT.md §3,
+      # AGENTS.md).
+      name: dsh-hourness/env
+      disabled: true
       config: {}
     - id: glm-hourness/ui
       # The package's client face (dsh.client in package.json, host half

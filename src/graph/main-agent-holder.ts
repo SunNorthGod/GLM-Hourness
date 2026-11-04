@@ -20,19 +20,9 @@ import { linkSync, mkdirSync, readFileSync, realpathSync, renameSync, statSync, 
 import { dirname, join, resolve } from 'node:path'
 import { dataService, userDataHome } from '../shared/data-home.ts'
 import type { ServiceLookup } from '../shared/dsh-min.ts'
+import { holderRecordOf, type HolderRecord } from '../shared/holder-record.ts'
 
-/** What the record file holds. */
-export interface HolderRecord {
-  readonly version: 1
-  /** The session that is the main agent. */
-  readonly sessionId: string
-  /** The graph directory the project is named by, as the session saw it. */
-  readonly graphDir: string
-  /** When the session became the main agent (ISO time). */
-  readonly since: string
-  /** The /wish command that made it so. */
-  readonly commandId: string
-}
+export type { HolderRecord }
 
 export type HolderReading =
   | { readonly kind: 'none' }
@@ -71,14 +61,6 @@ export function holderHome(ctx: ServiceLookup): string {
   return dataService(ctx)?.userHome ?? userDataHome()
 }
 
-function recordOf(value: unknown): HolderRecord | undefined {
-  if (typeof value !== 'object' || value === null) return undefined
-  const record = value as Record<string, unknown>
-  const { version, sessionId, graphDir, since, commandId } = record
-  if (version !== 1 || typeof sessionId !== 'string' || sessionId.length === 0 || typeof graphDir !== 'string' || typeof since !== 'string' || typeof commandId !== 'string') return undefined
-  return { version, sessionId, graphDir, since, commandId }
-}
-
 const cache = new Map<string, { readonly stamp: string, readonly reading: HolderReading }>()
 
 /** Read a record file; a missing file is `none`, a file that is not a record is `unreadable` with the reason. */
@@ -96,7 +78,7 @@ export function readHolder(file: string): HolderReading {
   if (cached?.stamp === stamp) return cached.reading
   let reading: HolderReading
   try {
-    const record = recordOf(JSON.parse(readFileSync(file, 'utf8')))
+    const record = holderRecordOf(JSON.parse(readFileSync(file, 'utf8')))
     reading = record === undefined ? { kind: 'unreadable', reason: '记录的内容不是主 Agent 记录' } : { kind: 'held', record }
   }
   catch (error) {

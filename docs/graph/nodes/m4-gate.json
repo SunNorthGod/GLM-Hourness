@@ -52,6 +52,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "G3 落地（8010dd8，2026-11-04）：三条代码规则（suppression-only、checker-config-only 带 request_exception 编号、scratch-only）+ 撤下链（lifts.jsonl append-only、guardLift 七步对最近一条人话验词、lift-service 剥行前缀供规则板、lift-files-only 主检出与工作树都拦）+ 判定上下文（prepareContext 5 秒总限 1MiB 上限）+ fallback.ts（git mv 自 shadow，晚到拦下 late/turn-end + 每回合一条 8 深 FIFO 排队纠正 + 根 agent 第二条 hourness-guard step notice）+ 晨报撤下行与 lifts 对账（F16 不受报告期限制）。探针揭出两个真问题已修：guard 行从未声明 inject:[tools]（G1/G2 探针不注册工具故从未暴露，一暴露即整行激活失败）；scratch-only 在 tracked 清单未知时误拦（违 §4.1，修为未知即放行）。门禁全绿（test 2554、probe 337/337 含四新场景、棘轮 76/19/1）。G4 依赖核对：M3 件全在树（main-agent、git-snapshot、dispatchRoot），G4 随时可开工。探针扮演人改回合中 probe_say/probe_restore 排队（宿主在末条文本同拍拆 agentLoop，followup 不可用），G4 的 guard-request 直接复用。"
+    },
+    {
+      "at": "2026-11-04T00:55:19.368Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "G4 落地（11306b6，2026-11-04）：申报通道——REQUESTABLE 词表与 exceptionOf 三种调用方句、createRequestDesk（requestException §5.3 逐条、buildPlan §5.4 四行表、readReply 认法+确认句+2h 定时器+lapseOrphans F15、prepareGrant 使用时核对+备份、outsideDenial F19 按项目、peekGrant/openRequests 读口）、gate 的 grants 钩子（carried/void/backup-failed 三裁决）、四行规则 plan-text.ts（设计写的 proposal.ts 已被 M3 附录 0.6 取消占名，格式逐字照 §5.4，偏差记录）、根 agent 的 hourness-request 步 notice 与晨报申报行。探针再立功：{ref} 替换第一版取会话最后编号拿到 F20 示范里的编号（not_found），修为锚定拒绝句。门禁全绿（test 2579、probe 344/344 含四新场景、棘轮 76/19/1）。**G1-G4 批次清单全部完成，无遗留**；m4→main 合并随即执行，解锁 metrics 第 3 步与 status-hub 批次 4。M7 合并方需按 §5.9 接 outsideDenial/peekGrant/openRequests 三接缝；guard-request-worker L3 场景属 M7 之后。"
+    },
+    {
+      "at": "2026-11-04T01:12:46.657Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m4→main 合并完成（0553cd4，2026-11-04）：G1-G4 全量并树，五处冲突手工解（package.json test 链并集、report/index 双方参数合一、suppressions 取 m4 删侧、DESIGN/ORCH 保 m4 技术内容换启用态尾）。§5.9 当场验证价值：status.spec 的期望行清单因 env 行入树过期（合并前 main 自身测试全绿），补 db26fa7 一行修复后全绿，合并树 probe 349/349。解锁 metrics 第 3 步与 status-hub 批次 4。"
     }
   ]
 }

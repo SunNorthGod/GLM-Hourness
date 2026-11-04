@@ -82,7 +82,7 @@ export async function prepareRequestImages(
   const prepared = attachments === undefined ? [] : await Promise.all(refs.map(ref => attachments.readImageRequest(ref, glmImageRequestTarget(ref), signal)))
   const versions = new Map<string, WireImage>()
   for (const [index, ref] of refs.entries()) {
-    const version = prepared[index]!
+    const version = prepared[index]
     versions.set(ref.attachmentId, { mediaType: version.mediaType, data: Buffer.from(version.data).toString('base64') })
   }
   return { versions, offloadedText: ref => offloadedImageText(ref, readonlyPath(attachments, mapHostPath, ref)) }

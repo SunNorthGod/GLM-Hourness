@@ -74,12 +74,12 @@ test('a GLM compaction request reaches the adapter with the ZCode instruction as
   apply(ctx)
   const chunks = await collect(ctx.llm.stream(compaction('glm-5.3')))
   assert.equal(dispatched.length, 1)
-  const sent = dispatched[0]!
+  const sent = dispatched[0]
   assert.equal(sent.maxTokens, 4096)
   assert.deepEqual(sent.messages.slice(0, -1), prefix) // the replayed prefix is kept for cache reuse
   const final = sent.messages.at(-1) as { role: string, content: Array<{ text: string }> }
   assert.equal(final.role, 'user')
-  assert.ok(final.content[0]!.text.startsWith('CRITICAL: Respond with TEXT ONLY.'))
+  assert.ok(final.content[0].text.startsWith('CRITICAL: Respond with TEXT ONLY.'))
   assert.deepEqual(textOf(chunks), ['Summary:\ncheckpoint body'])
   assert.deepEqual(chunks.at(-2), { type: 'usage', usage: { inputTokens: 7, outputTokens: 3 } })
 })

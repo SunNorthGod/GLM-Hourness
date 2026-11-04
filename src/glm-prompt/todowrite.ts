@@ -7,7 +7,7 @@
  * replaces the whole list per call and the DSH UI renders it as the todo
  * panel, as the description says (dsh-tool-todo, dsh-client-ui-conversation).
  */
-import type { JsonRecord, JsonValue } from '../shared/json.ts'
+import type { JsonValue } from '../shared/json.ts'
 
 const TODO_STATUSES = new Set(['pending', 'in_progress', 'completed'])
 const TODO_PRIORITIES = new Set(['high', 'medium', 'low'])
@@ -23,7 +23,7 @@ export interface ZcodeTodo {
 export function validateZcodeTodos(value: JsonValue): string[] {
   const violations: string[] = []
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return ['todos: expected an object']
-  const todos = (value as JsonRecord).todos
+  const todos = (value).todos
   if (!Array.isArray(todos)) return ['todos: required and must be an array']
   todos.forEach((todo, index) => {
     const at = `todos[${index}]`
@@ -31,7 +31,7 @@ export function validateZcodeTodos(value: JsonValue): string[] {
       violations.push(`${at}: expected an object`)
       return
     }
-    const { content, status, priority } = todo as JsonRecord
+    const { content, status, priority } = todo
     if (typeof content !== 'string') violations.push(`${at}.content: required string`)
     if (typeof status !== 'string' || !TODO_STATUSES.has(status)) violations.push(`${at}.status: required, one of pending/in_progress/completed`)
     if (typeof priority !== 'string' || !TODO_PRIORITIES.has(priority)) violations.push(`${at}.priority: required, one of high/medium/low`)

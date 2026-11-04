@@ -39,7 +39,7 @@ import { repoRelative, within } from '../execute/scope.ts'
 import type { Attempt } from '../execute/attempts.ts'
 import { takeSnapshot, gitInvocations, gitRisk, snapshotCorrection, type GitInvocation, type GitRisk, type SnapshotEnvironment, type SnapshotWho } from './git-snapshot.ts'
 import { commandName, shellWrites, simpleCommands, type ShellDialect } from './shell.ts'
-import { fileWriteTarget, isFileWrite, renderCorrection, shellCommandOf, type Correction, type ToolCall } from './rules.ts'
+import { fileToolTargetOf, isFileWrite, renderCorrection, shellCommandOf, type Correction, type ToolCall } from './rules.ts'
 import type { ViolationRecord } from './index.ts'
 
 /** The eight code gates with their first-day modes (§12.1): data for the rules board's catalog; the rules themselves are the four below, M3's changed judge, and the later steps' gates. */
@@ -432,7 +432,7 @@ export function installExecuteRules(ctx: PreExecuteHost, deps: ExecuteRulesDeps)
       const refusal = workerScopeVerdict({
         task: attempt.node,
         worktree: root,
-        target: fileWriteTarget(call) === undefined ? undefined : repoRelative(root, cwd ?? root, fileWriteTarget(call)!),
+        target: fileToolTargetOf(call) === undefined ? undefined : repoRelative(root, cwd ?? root, fileToolTargetOf(call)!),
         reviewer: attempt.role !== 'worker',
         scope: node?.writeScope ?? [],
         release: graph !== undefined && node !== undefined ? releaseOf(graph, node) : undefined,

@@ -14,19 +14,24 @@
  * call's origin (src/guard/origin.ts).
  */
 import { resolve } from 'node:path'
-import type { JsonValue } from '../shared/json.ts'
-import type { PreExecuteHost, ServiceLookup } from '../shared/dsh-min.ts'
 import { GRAPH_FILES_DECLARATION } from '../graph/service.ts'
-import { dialectNames, dialectService, dialectWarner, toNativeTool } from '../shared/dialect.ts'
+import { dialectNames, dialectService, dialectWarner } from '../shared/dialect.ts'
 import { sessionRoute } from '../shared/route.ts'
+import type { JournalOutcome } from '../memory/audit.ts'
+import type { RowHealth } from '../shared/health.ts'
+import { cwdOf, installRuleGate, type GateHost } from './gate.ts'
 import { writesInto } from './directory-writes.ts'
-import { baseFor, type ViolationRecord } from './index.ts'
+import { baseFor } from './index.ts'
 import { originOf } from './origin.ts'
-import { evaluate, renderCorrection, type Correction, type GuardRule, type RuleVerdict, type ToolCall } from './rules.ts'
+import type { GuardRecord } from './records.ts'
+import { NATIVE_FACE, type Correction, type GuardRule, type RuleVerdict } from './rules.ts'
 
 export const GRAPH_FILES_RULE = 'graph-files-only'
 
 const ALLOW: RuleVerdict = { kind: 'allow' }
+
+/** The graph write tools the rule's correction names as the way in (design §3.3: the rule's right path is one of them). */
+const GRAPH_WRITE_TOOLS: readonly string[] = ['graph_propose', 'graph_status', 'graph_edit', 'graph_link', 'graph_unlink', 'graph_comment', 'graph_verify', 'graph_decide']
 
 /**
  * The rule for one call: `graphDir` is the absolute graph directory, `cwd`
@@ -44,6 +49,9 @@ export function graphFilesOnly(graphDir: string, cwd: string | undefined): Guard
       if (write === undefined) return ALLOW
       return deny(write.kind === 'file' ? `You tried to write "${write.target}".` : `You tried to change project graph files through the shell: "${write.command}".`)
     },
+    rightPath(next) {
+      return GRAPH_WRITE_TOOLS.includes(next.name)
+    },
   }
 }
 
@@ -57,33 +65,44 @@ function correction(fact: string, graphDir: string): Correction {
 }
 
 /**
- * Install the rule on `tools/pre-execute`, outermost so that a shell write
- * into the graph gets this correction instead of file-tools-only's.
- * `graphDirFor` maps the calling session's working directory to the graph
- * directory, or undefined when there is none to protect. Every denial goes
- * to `journal` in the guard's record shape (the violation journal,
- * CHARTER.md §7.1 clause 11); the journal never rejects into the call.
- * Nested transport calls pass, as in the guard row.
+ * Install the rule through the guard framework's one gate
+ * (src/guard/gate.ts), outermost so that a shell write into the graph gets
+ * this correction instead of file-tools-only's. `graphDirFor` maps the
+ * calling session's working directory to the graph directory, or undefined
+ * when there is none to protect. Every denial goes to `journal` with the
+ * session's working directory, so the row's project journal writes it into
+ * the project of the session (the violation journal, CHARTER.md §7.1
+ * clause 11); the journal never rejects into the call. Nested transport
+ * calls pass, as in the guard row. `health` is the row's own, for the
+ * gate's lasting notes.
  */
-export function installGraphFileGuard(ctx: PreExecuteHost & ServiceLookup, graphDirFor: (cwd: string | undefined) => string | undefined, journal: (record: ViolationRecord) => void): () => void {
+export function installGraphFileGuard(
+  ctx: GateHost,
+  graphDirFor: (cwd: string | undefined) => string | undefined,
+  journal: (record: GuardRecord, cwd: string | undefined) => Promise<JournalOutcome> | void,
+  health?: Pick<RowHealth, 'note'>  ,
+): () => void {
   const warn = dialectWarner('graph')
-  return ctx.on('tools/pre-execute', async (payload, next) => {
-    if (payload.parent !== undefined) return next()
-    const header = payload.agent?.session?.header.cwd
-    const cwd = typeof header === 'string' && header.length > 0 ? header : undefined
-    const dir = graphDirFor(cwd)
-    if (dir === undefined) return next()
-    // Every route, like the guard row (ORCHESTRATION.md §6.2). Relative targets
-    // resolve as the file tools resolve them; the rule judges the DSH native the
-    // call runs (a GLM Write is a write).
-    const dialect = dialectService(ctx, warn)
-    const call: ToolCall = { name: toNativeTool(dialect, payload.name, warn), arguments: (payload.arguments ?? {}) as JsonValue }
-    const verdict = evaluate([graphFilesOnly(dir, baseFor(ctx, payload.agent) ?? cwd)], call)
-    if (verdict.kind !== 'deny') return next()
-    const reason = renderCorrection(verdict.correction)
-    const route = sessionRoute(payload.agent?.session)
-    const origin = originOf(dialectNames(dialect, payload.agent, route, warn) !== undefined, route)
-    journal({ at: new Date().toISOString(), rule: verdict.rule, tool: payload.name, agentId: payload.agent?.id, sessionId: payload.agent?.session?.id, ...origin, correction: reason })
-    return { kind: 'deny', reason }
-  }, { prepend: true })
+  return installRuleGate(ctx, {
+    row: 'graph',
+    prepend: true,
+    rules: (payload) => {
+      const cwd = cwdOf(payload)
+      const dir = graphDirFor(cwd)
+      if (dir === undefined) return undefined
+      // Every route, like the guard row (ORCHESTRATION.md §6.2). Relative targets
+      // resolve as the file tools resolve them; the rule judges the DSH native the
+      // call runs (a GLM Write is a write).
+      const dialect = dialectService(ctx, warn)
+      const route = sessionRoute(payload.agent?.session)
+      return {
+        rules: [graphFilesOnly(dir, baseFor(ctx, payload.agent) ?? cwd)],
+        face: NATIVE_FACE,
+        origin: originOf(dialectNames(dialect, payload.agent, route, warn) !== undefined, route),
+      }
+    },
+    // The outcome reaches the gate, so a lost record is named on the row health (design §3.1 step 7).
+    journal: (record, payload) => journal(record, cwdOf(payload)),
+    ...(health === undefined ? {} : { health }),
+  })
 }

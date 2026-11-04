@@ -208,7 +208,7 @@ export class EndpointRoutingService {
       if (resp.status < 200 || resp.status >= 300) throw new Error(`agent_configs_http_${resp.status}`)
       const envelope = await resp.json() as { code?: unknown, data?: { proxyEndpoint?: { mapping?: unknown }, configs?: unknown } }
       if (typeof envelope !== 'object' || envelope.code !== 0) throw new Error('agent_configs_nonzero_code')
-      const list = Array.isArray(envelope.data?.proxyEndpoint?.mapping) ? envelope.data!.proxyEndpoint!.mapping as unknown[] : []
+      const list = Array.isArray(envelope.data?.proxyEndpoint?.mapping) ? envelope.data.proxyEndpoint.mapping as unknown[] : []
       if (list.length > MAX_MAPPING_ENTRIES) throw new Error('agent_configs_too_many_mappings')
       const mapping = new Map<string, RoutingTarget>()
       for (const entry of list) {

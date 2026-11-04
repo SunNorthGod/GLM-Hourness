@@ -92,7 +92,7 @@ export function todoReminderTurnCounts(history: readonly DerivedMessage[]): Todo
   let sinceWrite: number | undefined
   let sinceReminder: number | undefined
   for (let index = history.length - 1; index >= 0; index--) {
-    const message = history[index]!
+    const message = history[index]
     if (sinceReminder === undefined && message.role === 'user' && message.source?.kind === TODO_REMINDER_SOURCE) sinceReminder = turns
     if (sinceWrite !== undefined && sinceReminder !== undefined) break
     if (message.role !== 'assistant' || reasoningOnly(message)) continue
@@ -114,11 +114,11 @@ export function shouldBuildTodoReminder(history: readonly DerivedMessage[]): boo
 export function latestTodos(history: readonly DerivedMessage[]): TodoItem[] {
   const { answered, failed } = toolCallOutcomes(history)
   for (let index = history.length - 1; index >= 0; index--) {
-    const message = history[index]!
+    const message = history[index]
     if (message.role !== 'assistant') continue
     const blocks = message.content ?? []
     for (let position = blocks.length - 1; position >= 0; position--) {
-      const block = blocks[position]!
+      const block = blocks[position]
       const args = todoWriteArguments(block)
       if (args === undefined || typeof block.id !== 'string' || !answered.has(block.id) || failed.has(block.id)) continue
       const todos = Array.isArray(args.todos) ? args.todos : []
