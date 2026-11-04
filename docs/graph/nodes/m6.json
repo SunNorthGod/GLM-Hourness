@@ -386,6 +386,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "m6-followups S2（m6-script-gate，e72a25e）评审 APPROVED，无阻塞（.llm/m6f/review-s2.json）。设计第 24 条里真实 checkCall 执行已批准脚本的用例仍等规则板 R4d，该项保持未关。下一步：本运行的报告步骤。"
+    },
+    {
+      "at": "2026-11-04T22:04:36.742Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "workflow m6-followups-s1-s3（wf_8dc79e18061b32fc）完成，报告 .llm/m6f/report.md：S1 965bf5b、S3 57c0902、S2 e72a25e 都已推 origin/m6-followups，三步门禁均为 0，探针 376/388/388，评审都 APPROVED。S2 的设计第 24 条一半未关（真实 checkCall 执行已批准脚本的用例等规则板 R4d）。分支落后 origin/main 约 5 个提交，尚未合入 main；编排方派 land-m6-followups（agent://wf-coder）合入 main、跑门禁、推两个远端，行组合有变就按 CDP 规矩重启桌面版。"
     }
   ]
 }
