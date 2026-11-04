@@ -38,6 +38,12 @@ import type { QuotaView } from '../src/shared/quota.ts'
 import { DESIGN_TOOL_NAMES, DISPATCH_TOOL_NAMES, GRAPH_TOOL_NAMES, GUARD_TOOL_NAMES, LEARNING_TOOL_NAMES, LESSONS_MERGE_TOOL, LESSONS_QUERY_TOOL, LESSONS_TOOL_NAMES, MEMORY_TOOL_NAMES, ORCHESTRATION_RESIDENT_TOOLS, RULES_TOOL_NAMES } from '../src/shared/tool-names.ts'
 import { RESIDENT_TOOLS } from '../src/toolsearch/exposure.ts'
 import { apply as hournessApply } from '../src/report/index.ts'
+import { apply as compactApply } from '../src/glm-prompt/compact-row.ts'
+import { transcriptNote } from '../src/glm-prompt/zcode-compact-text.ts'
+import { renderTranscript } from '../src/data/transcript.ts'
+import { apply as transcriptApply } from '../src/data/transcript-row.ts'
+import type { LlmStreamOptions } from '../src/shared/dsh-min.ts'
+import type { StreamChunk } from '../src/shared/lm-min.ts'
 import { DISPATCH_TOOLS } from '../src/workflow/index.ts'
 import { PACKAGES } from '../scripts/packages.mjs'
 import { designHost } from './design-host.ts'
@@ -681,4 +687,56 @@ test('main agent rules: every rule of the table denies once on the fake host, an
   for (let attempt = 0; attempt < 200 && (!existsSync(file) || readFileSync(file, 'utf8').split('\n').filter(line => line !== '').length < MAIN_AGENT_RULES.length); attempt++) await new Promise(resolve => setTimeout(resolve, 10))
   const rules = readFileSync(file, 'utf8').split('\n').filter(line => line !== '').map(line => (JSON.parse(line) as { rule: string }).rule)
   assert.deepEqual([...new Set(rules)].sort(), MAIN_AGENT_RULES.map(rule => rule.id).sort())
+})
+
+test('glm-compact and the transcript row: a GLM compaction summary ends with the sentence naming the file the row wrote', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'contracts-transcript-'))
+  try {
+    const store = serviceStore()
+    const documents = [
+      { seq: 1, type: 'user/message', time: 1_000, surface: 'current' as const, text: 'Read package.json' },
+      { seq: 3, type: 'tool/result', time: 2_000, surface: 'current' as const, text: '1\t{\n2\t}' },
+    ]
+    store.provide('sessionQuery', { filterEvents: () => Promise.resolve(documents) })
+    const stopTranscript = transcriptApply(store, { home })
+    // The rc.3 llm/stream waterfall: prepend registers outermost; the adapter answers with one summary block.
+    type Listener = (options: LlmStreamOptions, next: () => AsyncIterable<StreamChunk>) => AsyncIterable<StreamChunk>
+    const listeners: Listener[] = []
+    const summary = '<analysis>a</analysis><summary>body</summary>'
+    const chunks: StreamChunk[] = [
+      { type: 'block-start', index: 0, blockType: 'text' },
+      { type: 'text-delta', index: 0, text: summary },
+      { type: 'block-end', index: 0, block: { type: 'text', text: summary } },
+      { type: 'finish', reason: { kind: 'stop' } },
+    ]
+    const reply = (): AsyncIterable<StreamChunk> => ({
+      [Symbol.asyncIterator]: () => {
+        let at = 0
+        return { next: (): Promise<IteratorResult<StreamChunk>> => Promise.resolve(at < chunks.length ? { done: false, value: chunks[at++] } : { done: true, value: undefined }) }
+      },
+    })
+    const llm = {
+      stream(options: LlmStreamOptions): AsyncIterable<StreamChunk> {
+        const chain = [...listeners]
+        const next = (): AsyncIterable<StreamChunk> => chain.shift()?.(options, next) ?? reply()
+        return next()
+      },
+    }
+    const stopCompact = compactApply({ ...store, llm, on: (_event, listener) => { listeners.unshift(listener); return () => {} } })
+    const instruction = { role: 'user', content: [{ type: 'text', text: 'You are now acting as a compaction engine for this AI coding assistant.' }] }
+    const texts: string[] = []
+    for await (const chunk of llm.stream({ ...GLM, purpose: 'compaction', sessionId: 'S1', messages: [instruction] })) {
+      if (chunk.type === 'block-end' && chunk.block.type === 'text') texts.push(chunk.block.text)
+    }
+    const path = join(home, 'transcripts', 'S1.txt')
+    assert.deepEqual(texts, [`Summary:\nbody${transcriptNote(path)}`])
+    const written = readFileSync(path, 'utf8').split('\n')
+    assert.ok(written[0]?.startsWith('Transcript of session S1, exported '), written[0])
+    assert.deepEqual(written.slice(1), renderTranscript('S1', documents, new Date(0)).split('\n').slice(1))
+    stopCompact()
+    stopTranscript()
+  }
+  finally {
+    rmSync(home, { recursive: true, force: true })
+  }
 })

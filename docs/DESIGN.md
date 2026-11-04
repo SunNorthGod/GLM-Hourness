@@ -744,6 +744,7 @@ ZCode compact 提示词（`<analysis>` 先行、9 节摘要、安全指令保留
 L3 探针：沙盒里把压缩阈值调低，摘要请求末条是 ZCode 提示词，下一次请求里的检查点内容为「Summary:\nprobe summary」，不含 `<analysis>`。外框仍是 DSH 的检查点前言加 `<compacted-summary>` 标签，与 ZCode 续接消息的写法不同，属于已知差异。ZCode 的 autoCompact 阈值（166k）与 microcompact 公式记录在 `reference/zcode-capabilities.md` §11.2，未接入。
 
 压缩后的重新锚定属于编排层（`ORCHESTRATION.md` §2.5，图行 `src/graph/reminder.ts` 按检查点重注投影）。
+压缩后读原文〔已实现 2026-11-05，任务 `compact-recall`，调查报告方案 C；依赖默认禁用的 `glm-hourness/transcript` 行〕：`glm-compact` 行经 `ctx.get` 读服务 `glmHournessTranscript`（契约 `src/shared/transcript.ts`，不写进 `inject`）。GLM 压缩副本的摘要流结束、格式化后的摘要不为空时，行请服务导出这个会话（请求的 `sessionId`，`compaction-basic` 设为压缩中的 agent 自己的会话），服务写成文件就在摘要末尾接 ZCode 3.17.1 `Bxt` 的原文路径一句（镜像文件 `src/glm-prompt/zcode-compact-text.ts`，`reference/zcode-verbatim.md` §7），句末是导出文件的绝对路径；模型用 Read 按 `offset`/`limit` 读，不加工具（导出的格式、位置与清理见 §2.4「会话原文」）。服务不在（行禁用，或只装了 GLM 包）、导出被跳过，或服务违约拒绝（行健康降级）时摘要与没有这一行时逐字相同；格式化后为空的摘要不请服务，照旧不发文本，让 `compaction-basic` 报错。这一句在 `<compacted-summary>` 外框里面，ZCode 把它放在自己的续接消息里，属于已知差异（§5.8 第 21 项）。L3 探针场景 `glm-compact-transcript` 在覆盖层里启用这一行：检查点以这一句结尾、文件在场景目录、模型用 Read 读到它；场景 `glm-compact`（行禁用，出厂形态）的检查点没有这一句。
 
 ### 5.7 工具检索〔已实现 2026-10-27〕
 
@@ -788,6 +789,7 @@ L3 探针：沙盒里把压缩阈值调低，摘要请求末条是 ZCode 提示�
 | 18 | 请求归因：会话 id、会话类型、请求与追踪 id、query id 与来源、`metadata.user_id` | 通道 | 按 3.16.3：会话级 trace id、回合级 query id、`main_turn` / `compact` / `session_title` / `subagent` 来源；委派子会话经 `agents` 服务的会话头判定；3.17.1 的 `x-zcode-session-features`（§4.5b） | 已实现 2026-10-28（m1-parity）；会话特征 2026-10-30 |
 | 19 | Dynamic Behavior 节 | 方言 | 3.17.1 原文，coding-plan 与 start-plan 都发（§5.3） | 已实现 2026-10-30 |
 | 20 | Memory 节 | 方言 | 3.17.1 `buildMemorySection` 的十行放进镜像文件，两句改写、两句新增，白名单测试钉住只改了这几处（§5.3 ⑧） | 已实现 2026-11-01（m5-3） |
+| 21 | 压缩后读原文 | 方言 | 3.17.1 `Bxt` 的原文路径一句逐字接在 GLM 压缩摘要末尾，路径指向编排层导出的纯文本（§5.6、§2.4「会话原文」）；位置在 DSH 的 `<compacted-summary>` 外框里，不在 ZCode 的续接消息里；3.17.1 的正式调用不传 `transcriptPath`，ZCode 正式流量里没有这一句 | 已实现 2026-11-05，行默认禁用，真机未验收 |
 
 第 1、2、4、6、8 项的文本对齐状态以 §5.9 为准。
 
@@ -806,6 +808,7 @@ L3 探针：沙盒里把压缩阈值调低，摘要请求末条是 ZCode 提示�
 | Context management | `localize.ts` `CONTEXT_MANAGEMENT_DSH` | 与 3.17.1 一致（2026-10-30：两段，删去 3.16.3 的后四段） | 3.17.1 包 `IBo` |
 | Dynamic Behavior | `verbatim.ts` `DYNAMIC_BEHAVIOR` | 3.17.1 原文（2026-10-30 新增） | 3.17.1 包 `TBo` |
 | Memory 节 | 镜像文件 `zcode-memory-text.ts` `ZCODE_MEMORY_LINES`（十行） | 与 3.17.1 一致（2026-11-01 新增）；`description:` 行 summary 后是逗号，四类定义写作 `` `user`: who … ``，Z7 与 Z9 在句号处断开，三处与 3.16.2 源码不同，取 3.17.1。另有 Z2、Z6、L1、L2 四句本地文字不在镜像里 | 3.17.1 包 `buildMemoryContent`（`default-index` 一支） |
+| 压缩后的原文路径一句 | 镜像文件 `zcode-compact-text.ts` `transcriptNote` | 与 3.17.1 一致（2026-11-05 新增）；`tests/compact-row.spec.ts` 另从副本抽出模板正文逐字节比对 | 3.17.1 包 `Bxt` 的 `transcriptPath` 一支 |
 | compact 提示词 | `compact.ts` | 曾有 3 行不一致（第 4、8、9 节漏词），已按原文修正。结尾的 `REMINDER` 行与 3.16.3 安装包、pristine 一致，与源码不同，按安装包保留；第 6 条 2026-10-30 按 3.17.1 补一句 | `compact/prompt.ts` |
 | ToolSearch 描述 | 旧 `toolsearch/index.ts` | 首句一致，之后不一致。已按 3.16.3 安装包重建为 `LocalToolSearch` 描述（2026-10-27） | 安装包；源码 `tool/search/description.ts` 是 3.16.2 版本 |
 | Deferred 声明段 | 旧 `verbatim.ts` `DEFERRED_DECLARATION` | 任何来源中都找不到；ZCode 系统提示词没有这一段，已删除（2026-10-27） | — |
@@ -820,7 +823,7 @@ L3 探针：沙盒里把压缩阈值调低，摘要请求末条是 ZCode 提示�
 
 - 来源：3.17.1 pristine 副本为准（2026-10-30 起；此前以 3.16.3 安装包为准，用户补丁的安全声明以源码与 pristine 为准）。源码（3.16.2）只作可读参考；它与发布包的已知差异都按包：compact 结尾 `REMINDER` 行；工具检索的 local 模式（§5.10）；Read 部分视图提醒与正文之间、Grep 结果的分页行与计数汇总行之前，包用一个换行，源码用两个；工具检索增删公告的段落之间，包用一个换行，源码用空行（本项目此前按源码，2026-10-30 改正）。
 - 逐字门禁 `scripts/check-verbatim.mjs`（`npm test` 的一道）：每段号称逐字的文本逐行必须出现在 3.17.1 pristine 副本 `reference/zcode-3.17.1/zcode.cjs` 中〔2026-10-30 起，项目图 `zcode-3171-follow`〕；尚未重建的条目列为已知偏差，只许减少，某条一旦对上而未从名单删除也会失败，名单里的条目不再被检查时同样失败；机器上没有这份副本时跳过文本检查〔已实现〕。门禁不读本机桌面版的安装包（随自动更新变化，用户打过补丁），也不读 `reference/ZCode` 源码：此前两者命中其一即算通过，3.16.2 源码仍含 3.16.3 的身份、Harness、Context management、工具检索与 Read 文本，会让 3.17.1 已删的行继续通过。start-plan 的系统提示文本全部受检：`ZCODE_SYSTEM` 的 `cliPrefix`、`stableSections` 与 `dynamicSections`（Dynamic Behavior 与 Context management 两节，2026-10-29 补上，项目图 `prompt-fixes`；此前只查前两项，补上时条目 442 → 444、受检行 269 → 285）；`tests/check-verbatim.spec.ts` 断言这三项的每段文本都在受检条目里。3.17.1 的 Harness 系统轮 bullet 由三元分支与尾句在模板插值点拼成，渲染后的整行不是包里的连续子串；门禁把 start-plan 身份节里渲染出的这一行拆成分支句与尾句分别比对（`systemTurnPieces`，两个分支取自镜像文件 `zcode-harness-text.ts`），只对这两种渲染行生效。2026-10-30 门禁对照 3.17.1 副本：489 段、292 行受检，已知偏差 0。`reference/` 不入库，git worktree 里没有：门禁经 `scripts/reference-dir.mjs` 先找检出自己的 `reference/`，没有就读主检出的（仓库公共 git 目录的上一级），所以 worktree 与主检出比对同一份副本，不需要复制、链接或环境变量。
-- 镜像文件：整份文件都是逐字声明的源文件（`src/toolsearch/zcode-text.ts`、`src/glm-prompt/zcode-tool-text.ts`、`src/glm-prompt/zcode-harness-text.ts`、`src/glm-llm/zcode-wire.ts`、`src/shared/zcode-notice.ts`），门禁抽出其中每个字符串与模板字面量片段逐行比对，模板按插值点切开。这样带插值的模板也能逐片检查。镜像文件里不能出现正则字面量和除法，扫描器不解析它们。
+- 镜像文件：整份文件都是逐字声明的源文件（`src/toolsearch/zcode-text.ts`、`src/glm-prompt/zcode-tool-text.ts`、`src/glm-prompt/zcode-harness-text.ts`、`src/glm-prompt/zcode-compact-text.ts`、`src/glm-llm/zcode-wire.ts`、`src/shared/zcode-notice.ts`），门禁抽出其中每个字符串与模板字面量片段逐行比对，模板按插值点切开。这样带插值的模板也能逐片检查。镜像文件里不能出现正则字面量和除法，扫描器不解析它们。
 - 镜像文件的导入〔已实现 2026-10-29，split 第 1 步〕：文件开头（头注释之后）可以有一段单行导入语句（`import …`、`export … from …`），即导入块。切字面量之前只去掉导入块里的语句行，模块路径不算逐字声明，导入块之后的内容一个字符都不去，所以模板里以 `import ` 开头的原文行、`zcode-tool-text.ts` 里 `"… from the user's profile."` 这种句子照常受检。值导入只许来自其他镜像文件，`import type` 只许来自 `src/shared/`，导入带不进没有检查过的文本。导入块之后再出现导入或再导出语句就失败（写成多行的导入让导入块在它的第一行结束，同样失败）；这一条在去掉注释、字面量内容换成空白的代码文本上判定，字面量里的文字不会被当成语句。门禁通过时报告受检行数（不短于 13 个字符的行）。上线时（2026-10-29）条目从 443 变为 442：少的是 `zcode-tool-text.ts` 里从未受检的模块路径 `'./json.ts'`；受检行数前后都是 269，没有放宽任何文本的检查。用例在 `tests/check-verbatim.spec.ts`。本地化的组合（删去哪几行、改写哪几行、删去或追加哪些字段）写在镜像文件之外；标 `localized` 的别名规格（Grep、Bash）不再整段比对描述，由镜像文件的逐片检查覆盖其原文部分。
 - 已知偏差：无（2026-10-28 起名单为空）。名单机制保留，以后出现新的待重建文本时仍按只减不增处理。
 
