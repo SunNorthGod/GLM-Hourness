@@ -13,7 +13,8 @@
  */
 import type { ClientContext } from './dsh.ts'
 import { installFlowBar } from './flow/FlowBar.tsx'
-import { installGraphTab } from './graph/tab.tsx'
+import { GRAPH_TAB_KIND, installGraphTab } from './graph/tab.tsx'
+import { installNoGraphCard } from './guide/NoGraphCard.tsx'
 import { installLessonsBoard } from './lessons/LessonsPage.tsx'
 import { installMetricsBoard } from './metrics/board.tsx'
 import { installWishCard } from './wish/WishCard.tsx'
@@ -21,13 +22,18 @@ import { installWishPill } from './wish/WishPill.tsx'
 /**
  * Client services the tab, the bar and the entry use; nested Remote
  * namespaces are declared with their root (docs/DEVELOPMENT.md §5.7).
+ * `uiWorkspace` (dsh-client-ui-workspace) opens the main agent's
+ * conversation from the panel's jump lines (plain-ui 1.3 §4.9);
+ * `sidebarRight` (dsh-client-ui-sidebar-right) is the「第一次用？」line's
+ * way into the panel tab (§6.5).
  */
-export const inject = ['slots', 'sidebarRightTabs', 'remote', 'remote.commands', 'remote.workspaceFiles', 'sessions']
+export const inject = ['slots', 'sidebarRightTabs', 'sidebarRight', 'remote', 'remote.commands', 'remote.workspaceFiles', 'sessions', 'uiWorkspace']
 export function apply(ctx: ClientContext): void {
   installGraphTab(ctx)
   installFlowBar(ctx)
-  installWishCard(ctx)
+  installWishCard(ctx, () => { ctx.sidebarRight.openTab(GRAPH_TAB_KIND) })
   installWishPill(ctx)
+  installNoGraphCard(ctx)
   ctx.effect(() => installLessonsBoard(ctx), 'glm-hourness-ui: lessons board')
   ctx.effect(() => installMetricsBoard(ctx), 'glm-hourness-ui: metrics board')
 }

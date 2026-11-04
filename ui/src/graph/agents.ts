@@ -7,6 +7,7 @@
  * a session without values yet is read once through refreshProjections.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { spanText } from '../../../src/graph/plain-view.ts'
 import { placeOf, type LiveView } from '../../../src/graph/live.ts'
 import type { SessionsClient, TokenUsage } from '../dsh.ts'
 
@@ -67,13 +68,7 @@ export function useNow(running: boolean): number {
   return now
 }
 
-function elapsedText(ms: number): string {
-  const seconds = Math.max(0, Math.floor(ms / 1000))
-  if (seconds < 60) return `${seconds} 秒`
-  const minutes = Math.floor(seconds / 60)
-  if (minutes < 60) return `${minutes} 分 ${seconds % 60} 秒`
-  return `${Math.floor(minutes / 60)} 小时 ${minutes % 60} 分`
-}
+const elapsedText = spanText
 
 /** One line of what the agent does now. */
 export function doingText(agent: AgentLive, now: number): string {

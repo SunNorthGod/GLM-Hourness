@@ -30,6 +30,31 @@ export function waitsForHuman(node: GraphNode): boolean {
   return node.type === 'question' && OPEN_STATUSES.has(node.status) && deciderOf(node) === 'human'
 }
 
+/**
+ * What blocks a node (plain-ui 1.3 §5.4 blockersOf): the depends edges of
+ * the node and of its ancestors, nearest ancestor first and in edge order,
+ * whose target is not done — a dropped or superseded dependency still
+ * blocks. The panel's plan and the open items' ready list read this one
+ * walk, so the model and the human see the same answer; with it the
+ * dependency gate and graph_open's ready list count ancestors too.
+ */
+export function blockersOf(graph: LoadedGraph, id: string): GraphNode[] {
+  const blockers: GraphNode[] = []
+  const seen = new Set<string>()
+  for (let node: GraphNode | undefined = graph.nodes.get(id); node !== undefined; node = node.parent === undefined ? undefined : graph.nodes.get(node.parent)) {
+    if (seen.has(node.id)) break
+    seen.add(node.id)
+    for (const edge of node.edges ?? []) {
+      if (edge.type !== 'depends' || seen.has(edge.to)) continue
+      const target = graph.nodes.get(edge.to)
+      if (target === undefined || target.status === 'done') continue
+      seen.add(edge.to)
+      blockers.push(target)
+    }
+  }
+  return blockers
+}
+
 export interface NodeRef {
   readonly id: string
   readonly type: NodeType
@@ -205,10 +230,9 @@ function ids(nodes: readonly GraphNode[]): string[] {
   return nodes.map(node => node.id)
 }
 
-function gatesOf(node: GraphNode, dependsOn: readonly GraphNode[], children: readonly GraphNode[], subtree: readonly GraphNode[]): Gate[] {
+function gatesOf(node: GraphNode, blockers: readonly GraphNode[], children: readonly GraphNode[], subtree: readonly GraphNode[]): Gate[] {
   const gates: Gate[] = []
-  const openDependencies = dependsOn.filter(target => target.status !== 'done')
-  if (openDependencies.length > 0) gates.push({ kind: 'dependencies', message: 'depends on nodes that are not done', ids: ids(openDependencies) })
+  if (blockers.length > 0) gates.push({ kind: 'dependencies', message: 'depends on nodes that are not done', ids: ids(blockers) })
   if (node.status === 'proposed') gates.push({ kind: 'approval', message: 'waits for a human to approve or reject it', ids: [node.id] })
   const humanQuestions = subtree.filter(waitsForHuman)
   if (humanQuestions.length > 0) gates.push({ kind: 'questions', message: 'questions in this subtree wait for a human decision', ids: ids(humanQuestions) })
@@ -251,8 +275,27 @@ export function projectNode(graph: LoadedGraph, id: string): { readonly ok: true
       supersedes: targets(graph, node, 'supersedes').map(ref),
       supersededBy: referrers(graph, id, 'supersedes').map(ref),
       stage,
-      gates: gatesOf(node, dependsOn, children, subtreeOf(index, node)),
+      gates: gatesOf(node, blockersOf(graph, node.id), children, subtreeOf(index, node)),
     },
+  }
+}
+
+/**
+ * The ask-form fields a question carries, as far as they are set: the
+ * projection's queue entry and the panel's question view read one shape
+ * (plain-ui 1.3 §5.4 questionView). The form is part of the shape — a
+ * proposal question is asked in one of the forms, set once.
+ */
+export function askFieldsOf(node: GraphNode): Pick<GraphNode, 'ask' | 'form' | 'proposal' | 'reason' | 'cost' | 'ways' | 'notTaken'> {
+  if (node.ask === undefined || node.form === undefined || node.proposal === undefined) return {}
+  return {
+    ask: node.ask,
+    form: node.form,
+    proposal: node.proposal,
+    ...(node.reason === undefined ? {} : { reason: node.reason }),
+    ...(node.cost === undefined ? {} : { cost: node.cost }),
+    ...(node.ways === undefined ? {} : { ways: node.ways }),
+    ...(node.notTaken === undefined ? {} : { notTaken: node.notTaken }),
   }
 }
 
@@ -264,15 +307,7 @@ function queueEntry(graph: LoadedGraph, node: GraphNode): QueueEntry {
     ...(node.body === undefined ? {} : { body: node.body }),
     options: node.options ?? [],
     ...(node.recommend === undefined ? {} : { recommend: node.recommend }),
-    ...(node.options !== undefined || node.ask === undefined || node.form === undefined || node.proposal === undefined ? {} : {
-      ask: node.ask,
-      form: node.form,
-      proposal: node.proposal,
-      ...(node.reason === undefined ? {} : { reason: node.reason }),
-      ...(node.cost === undefined ? {} : { cost: node.cost }),
-      ...(node.ways === undefined ? {} : { ways: node.ways }),
-      ...(node.notTaken === undefined ? {} : { notTaken: node.notTaken }),
-    }),
+    ...(node.options === undefined ? askFieldsOf(node) : {}),
     decider: deciderOf(node),
     raisedBy: parent === undefined ? null : nodeRef(graph, parent),
     sources: targets(graph, node, 'source').map(entry => nodeRef(graph, entry)),
@@ -321,7 +356,7 @@ export function listOpenItems(graph: LoadedGraph): OpenItems {
     node.type === 'task'
     && node.status === 'approved'
     && (index.get(node.id) ?? []).every(child => child.status === 'dropped' || child.status === 'superseded')
-    && targets(graph, node, 'depends').every(target => target.status === 'done'))
+    && blockersOf(graph, node.id).length === 0)
   const open = all.filter(node => node.type === 'question' && (node.status === 'approved' || node.status === 'doing'))
   const queue = (decider: Decider): QueueEntry[] => open.filter(node => deciderOf(node) === decider)
     .map(node => queueEntry(graph, node))

@@ -15,21 +15,20 @@ import { mainAgentActive } from '../../../src/graph/main-agent.ts'
 import type { ClientContext, RemoteRoot, SessionSlotProps, SessionsClient } from '../dsh.ts'
 import { useGraph, useSessionValues } from '../flow/session.ts'
 import { RenderGuard, WarnIcon } from '../flow/shared.tsx'
+import { FirstVisitLine } from '../guide/FirstVisitLine.tsx'
 import { WishButtons, type EntryServices } from './Buttons.tsx'
 import { useBlank, useDraft, useWishRegistered } from './hooks.ts'
 import { CARD_ORDER, ENTRY_ID, WISH_TEXT, cardMode, fullCardBlocks, hasGraph, hasOpenGoal, type CardBlock } from './model.ts'
 import { WISH_CSS } from './styles.ts'
 
 /**
- * Whether ui/src/guide/FirstVisitLine.tsx (plain-ui 0.7 §6.5) is part of this
- * build. It is not: the panel design's guide step lands it. That step sets
- * this to true and renders the component for the 'first-visit-line' block
- * below; the block then closes the full card, and the component decides by
- * itself whether it shows.
+ * The「第一次用？」line of plain-ui 1.3 §6.5 is part of the full card's
+ * blocks: the component decides by itself whether it shows (state.ts
+ * firstVisit), and the openTab it is handed is the sidebar's navigation.
  */
-const FIRST_VISIT_LINE = false
+const FIRST_VISIT_LINE = true
 
-function makeCard(remote: RemoteRoot, sessions: SessionsClient): (props: SessionSlotProps) => ReactElement {
+function makeCard(remote: RemoteRoot, sessions: SessionsClient, openPanel: () => void): (props: SessionSlotProps) => ReactElement {
   function Card({ sessionId, useSession, useInput, inputActions }: SessionSlotProps): ReactElement | null {
     const values = useSessionValues(sessions, sessionId)
     const main = mainAgentActive(values)
@@ -57,7 +56,7 @@ function makeCard(remote: RemoteRoot, sessions: SessionsClient): (props: Session
         case 'actions': return <WishButtons key={name} services={services} enter openGoal={openGoal} size="md" />
         case 'strong': return <Tag key={name} tone="warning" className="hw-strong"><WarnIcon />{WISH_TEXT.strongModel}</Tag>
         case 'hint': return <div key={name} className="hw-hint">{WISH_TEXT.commandHint}</div>
-        case 'first-visit-line': return null
+        case 'first-visit-line': return <FirstVisitLine key={name} graph={graph?.status === 'ready' ? graph.graph : undefined} openTab={openPanel} />
       }
     }
     return (
@@ -73,8 +72,8 @@ function makeCard(remote: RemoteRoot, sessions: SessionsClient): (props: Session
 }
 
 /** Register the card in the stack above the input, behind the flow bar. */
-export function installWishCard(ctx: ClientContext): void {
-  const WishCard = makeCard(ctx.remote, ctx.sessions)
+export function installWishCard(ctx: ClientContext, openPanel: () => void): void {
+  const WishCard = makeCard(ctx.remote, ctx.sessions, openPanel)
   ctx.effect(() => ctx.slots.inject('conversation.input.dock', () => ctx.slots.register<{ readonly sessionId: string }>({
     name: 'conversation.input.dock',
     id: ENTRY_ID,

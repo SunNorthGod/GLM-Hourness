@@ -42,7 +42,7 @@
  * once with the end-of-peak reminder; loops-peak-restart opens the same
  * project again across the same boundary, whose key is consumed, so no second
  * reminder goes out. The graph panel scenarios run the
- * bundle's /graph-apply and /graph-run handlers mid-step for the session;
+ * bundle's /graph-run handler mid-step for the session;
  * the GLM and non-GLM scenarios run /hourness and /hourness-status at their
  * last step, after /glm-status is recorded. Every scenario also mounts the
  * probe net log (scripts/probe/probe-net.mjs), which records the origin and
@@ -1002,32 +1002,18 @@ const headlessGoal = runScenario('goal-headless', 'glm-5.3', [
 ], 'Create a goal for the probe objective.')
 const headlessCreated = lastToolResult(headlessGoal.steps[1])
 
-// Graph panel write path (docs/ORCHESTRATION.md §2.10, §13): the overlay
-// enables glm-hourness/graph-panel and disables the graph row, so the face
-// check sees what the panel row alone adds; the probe provider runs its
-// /graph-apply handler for the session the way the panel's
-// remote.commands.execute does: a comment, then a decide with the
-// question's rev, both into the graph under the session working directory.
+// Graph panel row (docs/ORCHESTRATION.md §2.10, §13): the overlay enables
+// glm-hourness/graph-panel and disables the graph row, so the face check
+// sees what the panel row alone adds. The panel writes nothing since
+// plain-ui (d-ui-look-not-operate): the scenario boots the row alone and
+// reads the live view; /graph-run has its own scenario (glm-graph-run).
 const panelDir = join(runDir, 'glm-graph-panel')
 const panelWs = join(panelDir, 'ws')
-const panelGraph = join(panelWs, 'docs', 'graph')
-mkdirSync(panelGraph, { recursive: true })
-const panelEngine = openEngine(panelGraph)
-for (const node of [
-  { type: 'goal', title: '探针目标' },
-  { type: 'question', title: '探针问题', parent: 'goal-1', options: [{ key: 'A', label: '甲', gain: '快', cost: '要返工一次' }, { key: 'B', label: '乙', gain: '稳', cost: '多两天' }], recommend: 'B', crux: '这周要交付吗？', verdict: '是 → A；否 → B', weight: 'two-way' },
-]) {
-  const seeded = await panelEngine.apply('human', { op: 'propose', reason: 'probe seed', node })
-  if (!seeded.ok) throw new Error(`probe: seeding the panel graph failed: ${JSON.stringify(seeded.error)}`)
-}
-const panelQuestionRev = (await loadGraph(panelGraph)).revisions.get('question-1')
+mkdirSync(panelWs, { recursive: true })
 const graphPanel = runScenario('glm-graph-panel', 'glm-5.3', [
-  { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } }, command: { name: 'graph-apply', input: JSON.stringify({ op: 'comment', id: 'goal-1', text: 'probe comment' }) } },
-  { text: 'done', live: true, command: { name: 'graph-apply', input: JSON.stringify({ op: 'decide', id: 'question-1', rev: panelQuestionRev, option: 'A', reason: 'probe decide' }) } },
+  { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } } },
+  { text: 'done', live: true },
 ], 'Read package.json, then reply done.', [...PANEL_ROW, '- id: glm-hourness/graph', '  disabled: true'], panelWs)
-const panelCommands = graphPanel.steps.flatMap(step => step.command === undefined ? [] : [step.command])
-const panelAfter = await loadGraph(panelGraph)
-const panelLast = id => panelAfter.nodes.get(id)?.history.at(-1)
 const panelStderr = existsSync(join(panelDir, 'stderr.txt')) ? readFileSync(join(panelDir, 'stderr.txt'), 'utf8') : ''
 
 // Graph row (ROADMAP M2 2.11, docs/ORCHESTRATION.md §2.5, §2.7, §2.10): the
@@ -2704,8 +2690,6 @@ const checks = [
   ['both packages: /hourness ends in the quota section and it says not logged in', glmHourness?.kind === 'success' && isDeepStrictEqual(glmQuotaSection, [NOT_LOGGED_IN_LINE]), JSON.stringify(glmQuotaSection)],
   [`quota: none of the ${quotaTextBodies.length} model requests of the ${scenarioNames.length} scenarios (system prompt, tools, messages) contains the quota section text`, quotaTextBodies.length > 0 && quotaTextHits.length === 0, quotaTextHits.length === 0 ? `markers ${QUOTA_TEXT_MARKERS.join(' ')}` : `in: ${[...new Set(quotaTextHits)].join(', ')}`],
   ['glm boot: the runtime reached the probe provider', glmFirst !== undefined, `exit ${glm.status}, ${glm.steps.length} step(s)`],
-  ['graph panel: /graph-apply comments as the human in the graph under the session working directory', panelCommands[0]?.kind === 'success' && panelCommands[0].text === '已批注「探针目标」' && panelLast('goal-1')?.actor === 'human' && panelLast('goal-1')?.text === 'probe comment', JSON.stringify(panelCommands[0] ?? null)],
-  ['graph panel: /graph-apply decides with the question rev as the human', panelCommands[1]?.kind === 'success' && panelCommands[1].text === '已拍板「探针问题」：A 甲' && panelAfter.nodes.get('question-1')?.status === 'done' && panelLast('question-1')?.actor === 'human' && panelLast('question-1')?.op === 'decide', JSON.stringify(panelCommands[1] ?? null)],
   ['graph live: the session view has the model, the steps of the open turn and the finished Read, nothing running, no focus', panelLive?.model === 'glm-5.3' && panelLive.steps >= 2 && typeof panelLive.turnSince === 'number' && panelLive.tool === null && panelLive.focus === null && liveCalls(panelLive).includes('Read:ok'), JSON.stringify(panelLive)],
   ['graph live: the dispatch parent\'s subagentCatalog names the child; the child view has its own model, the scope-denied Write as an error, and token usage', parentCatalog?.some(entry => entry.id === started?.childId) === true && childLive?.model === 'glm-5.3-flash' && liveCalls(childLive).includes('Write:error') && liveCalls(childLive).includes('Write:ok') && childRead?.tokenUsage !== null, `catalog ${JSON.stringify(parentCatalog)}; child ${childLive?.model ?? 'none'} ${liveCalls(childLive).join(', ')}; tokens ${tokens(childRead?.tokenUsage)} ${JSON.stringify(childRead?.tokenUsage ?? null)}`],
   ['graph row: the copy has a doing leaf task and an approved one; the workspace is a git repository', doingTask !== undefined && focusTask !== undefined && graphGitReady, `doing ${doingTask?.id ?? 'none'}, focus ${focusTask?.id ?? 'none'}, git ${graphGitReady}`],

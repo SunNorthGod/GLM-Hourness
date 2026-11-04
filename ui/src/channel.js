@@ -23,7 +23,11 @@
 import * as React from 'react'
 import { createPortal } from 'react-dom'
 import { Button, useAnchoredPosition, useDismissOnOutsidePointer, writeClipboard } from '@deepseek-ai/dsh-client-ui-primitives'
-import { parseHealth, restOf, statusOf } from './channel-model.ts'
+import {
+  forgetGlmOnboarding, glmOnboardingDone, noteSessionSeen,
+  parseHealth, recordGlmOnboardingDone, restOf, statusOf,
+  writeSeenSessions,
+} from './channel-model.ts'
 
 /** Register the settings section and the composer pill; `ctx` carries slots and remote.commands. */
 export function installChannel(ctx) {
@@ -47,6 +51,28 @@ export function installChannel(ctx) {
   const keepStatus = status => {
     statusRead = { status, at: Date.now() }
     for (const listener of statusListeners) listener()
+    // 上手完成的一半（plain-ui 1.3 §6.3）：读到已登录就记下；已开着的那次对话框照旧显示上手块，关上之后恢复原样。
+    if (status !== null && status.logged === true && glmOnboardingDone(window.localStorage) === undefined) keepObDone(new Date().toISOString())
+  }
+
+  // The onboarding record, shared by the pill, the hero button and the settings page (§6.3, §6.8).
+  let obDone = glmOnboardingDone(window.localStorage) ?? null
+  const obListeners = new Set()
+  const subscribeOb = listener => {
+    obListeners.add(listener)
+    return () => { obListeners.delete(listener) }
+  }
+  const readOb = () => obDone
+  const keepObDone = at => {
+    if (obDone !== null) return
+    obDone = at
+    recordGlmOnboardingDone(window.localStorage, at)
+    for (const listener of obListeners) listener()
+  }
+  const forgetOb = () => {
+    obDone = null
+    forgetGlmOnboarding(window.localStorage)
+    for (const listener of obListeners) listener()
   }
 
   /**
@@ -130,6 +156,19 @@ export function installChannel(ctx) {
     '.glmh-mono{font-family:var(--dsw-font-mono,ui-monospace,monospace)}',
     '.glmh-strong{color:var(--dsw-alias-label-primary,#e8e8e8);font-weight:500;font-size:14px;line-height:20px}',
     '.glmh-list{margin:0;padding-left:18px;color:var(--dsw-alias-label-secondary,#b5b5b5);font-size:13px;line-height:1.7}',
+    /* Onboarding block (第一次用 GLM 通道) */
+    '.glmh-ob{margin-bottom:10px;padding-bottom:10px;border-bottom:0.5px solid var(--dsw-alias-border-l2,rgba(255,255,255,.08))}',
+    '.glmh-ob-title{margin-bottom:6px;color:var(--dsw-alias-label-primary,#e8e8e8);font-weight:500}',
+    '.glmh-ob-step{display:flex;align-items:baseline;gap:8px;padding-top:3px}',
+    '.glmh-ob-tick{flex:none;width:16px;height:16px;box-sizing:border-box;border:1px solid var(--dsw-alias-border-l2,rgba(255,255,255,.14));border-radius:50%;color:var(--dsw-alias-label-tertiary,#8a8a8a);font-size:11px;line-height:14px;text-align:center}',
+    '.glmh-ob-tick.glmh-ob-ok{border-color:var(--dsw-alias-state-success-primary,#3fb950);color:var(--dsw-alias-state-success-primary,#3fb950)}',
+    '.glmh-ob-text{min-width:0;color:var(--dsw-alias-label-secondary,#b5b5b5);overflow-wrap:anywhere}',
+    '.glmh-ob-hint{margin-top:6px;color:var(--dsw-alias-label-tertiary,#8a8a8a)}',
+    '.glmh-ob-skip{margin-top:4px}',
+    /* Hero option: the small「GLM · 上手」button at the workspace row's end (plain-ui 1.3 §6.3) */
+    '.glmh-hero{display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 10px;border:none;border-radius:var(--dsw-radius-sm,6px);background:var(--dsw-alias-interactive-bg-rest,rgba(255,255,255,.05));color:var(--dsw-alias-label-secondary,#b5b5b5);font:inherit;font-size:12px;line-height:1;cursor:pointer}',
+    '.glmh-hero:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(255,255,255,.09));color:var(--dsw-alias-label-primary,#e8e8e8)}',
+    '.glmh-hero svg{width:13px;height:13px;flex:none}',
   ].join('\n')
 
   /** Render command output lines, turning http(s) URLs into links. */
@@ -155,6 +194,27 @@ export function installChannel(ctx) {
   }
 
   const STATE_TONES = { 生效: 'ok', 部分生效: 'part', 未生效: 'off' }
+
+  /**
+   * The「第一次用 GLM 通道」block (plain-ui 1.3 §6.3): three steps, the
+   * first ticked once a status read says logged in. `logged` is what the
+   * last status read said; the block's own 登录 button is the pill's usual
+   * action, and 跳过 records the end just the same.
+   */
+  function OnboardingBlock(props) {
+    const step = (index, text, done, action) => h('div', { key: index, className: 'glmh-ob-step' },
+      h('span', { className: done ? 'glmh-ob-tick glmh-ob-ok' : 'glmh-ob-tick' }, done ? '✓' : `${index}`),
+      h('span', { className: 'glmh-ob-text' }, text),
+      action === undefined ? null : h('button', { type: 'button', className: 'glmh-btn glmh-btn-primary', disabled: props.busy, onClick: props.login }, action))
+    return h('div', { className: 'glmh-ob' },
+      h('div', { className: 'glmh-ob-title' }, '第一次用 GLM 通道'),
+      step(1, '登录 ZCode 账号：在浏览器里授权，链接 5 分钟内有效。', props.logged, '登录'),
+      step(2, '在输入框右下角的模型选择器里，选「GLM（ZCode 原生通道）」下的模型。', false),
+      step(3, '发一句话试试。', false),
+      h('div', { className: 'glmh-ob-hint' }, '登录好以后这一块自己收起；设置 → GLM-Hourness 里能再打开'),
+      h('div', { className: 'glmh-ob-skip' },
+        h('button', { type: 'button', className: 'glmh-btn', disabled: props.busy, onClick: props.skip }, '跳过')))
+  }
 
   /** The health rows as a list: name and state on a line, the reason under it. */
   function HealthList(props) {
@@ -237,11 +297,22 @@ export function installChannel(ctx) {
       if (open && readStatus() === null) run('/glm-status')
     }, [open])
 
-    const toggle = () => { setOpen(!open) }
+    const toggle = () => {
+      if (!open) setObOpen(obDoneValue === null)
+      setOpen(!open)
+    }
+    const skipOb = () => {
+      keepObDone(new Date().toISOString())
+      setObOpen(false)
+      if (triggerRef.current !== null) triggerRef.current.focus()
+    }
     const detail = (label, value, className) => [
       h('dt', { key: `d${label}` }, label),
       h('dd', { key: `v${label}`, className }, value),
     ]
+    // The onboarding decision freezes at open: a 登录 that completes while the dialog is open keeps the block visible with its first step ticked, until the dialog closes (plain-ui 1.3 §6.3).
+    const [obOpen, setObOpen] = React.useState(null)
+    const obDoneValue = React.useSyncExternalStore(subscribeOb, readOb)
     const status = read === null ? null : read.status
     const stateText = status === null ? (busy ? '检查中…' : '未知') : status.unknown !== undefined ? '未知' : status.logged ? '已登录' : '未登录'
     const reason = status === null ? undefined : status.unknown ?? (status.incomplete === undefined ? undefined : `登录不完整：${status.incomplete}`)
@@ -257,6 +328,9 @@ export function installChannel(ctx) {
       h('span', { className: 'glmh-dialog-titlelabel' }, h(ChannelIcon), 'GLM 通道'),
       h('span', { className: 'glmh-dialog-titlevalue' }, stateText),
     ),
+    obOpen === true
+      ? h(OnboardingBlock, { logged: status !== null && status.logged === true, busy, login: () => { run('/glm-login') }, skip: skipOb })
+      : null,
     h('div', { className: 'glmh-rule' }),
     h('dl', { className: 'glmh-details' },
       ...detail('状态', stateText),
@@ -290,8 +364,58 @@ export function installChannel(ctx) {
       h('button', {
         ref: triggerRef, type: 'button', className: 'glmh-pill', 'aria-haspopup': 'dialog', 'aria-expanded': open ? 'true' : 'false',
         onClick: toggle,
-      }, h(ChannelIcon), h('span', { className: 'glmh-pill-label' }, 'GLM')),
+      }, h(ChannelIcon), h('span', { className: 'glmh-pill-label' }, obDoneValue === null ? 'GLM · 上手' : 'GLM')),
       open ? createPortal(dialog, document.body) : null,
+    )
+  }
+
+  /** The opening screen's「GLM · 上手」(§6.3): its own dialog; no automatic /glm-status read - only the 登录 click runs a command. */
+  /** noteSessionSeen plus the done write: the third distinct session ends the onboarding (§6.3). */
+  function noteSessionSeenDone(storage, sessionId) {
+    const { seen, done } = noteSessionSeen(storage, sessionId)
+    return { seen, finished: done }
+  }
+
+  function HeroOnboarding(props) {
+    const [open, setOpen] = React.useState(false)
+    const [busy, setBusy] = React.useState(false)
+    const [output, setOutput] = React.useState(null)
+    const done = React.useSyncExternalStore(subscribeOb, readOb)
+    const sessionId = props.sessionId
+    // 每次出现记下这个会话；第 3 个不同的会话之后自动收起（§6.3）。
+    React.useEffect(() => {
+      if (done !== null) return undefined
+      const { seen, finished } = noteSessionSeenDone(window.localStorage, sessionId)
+      if (seen.length > 0) writeSeenSessions(window.localStorage, seen)
+      if (finished) keepObDone(new Date().toISOString())
+      return undefined
+    }, [sessionId, done])
+    if (done !== null) return null
+    const run = line => {
+      if (runCommand === null) { setOutput({ text: '命令通道不可用', failed: true }); return }
+      setBusy(true)
+      setOutput(null)
+      runCommand(sessionId, line).then(
+        reply => {
+          setBusy(false)
+          setOutput({ text: reply.text, failed: !reply.ok })
+          if (reply.ok && line === '/glm-login') setOutput({ text: reply.text + '\n授权完成后回到会话，点输入框下方的 GLM 按钮看状态。', failed: false })
+        },
+        error => { setBusy(false); setOutput({ text: String(error && error.message ? error.message : error).slice(0, 240), failed: true }) },
+      )
+    }
+    const status = readStatus()
+    const logged = status !== null && status.status !== null && status.status.logged === true
+    return h('span', { className: 'glmh-anchor' },
+      h('style', null, CSS),
+      h('button', { type: 'button', className: 'glmh-hero', onClick: () => { setOpen(true) } }, h(ChannelIcon), 'GLM · 上手'),
+      open ? createPortal(h('div', { className: 'glmh-dialog', role: 'dialog', 'aria-label': 'GLM · 上手', tabIndex: -1, style: { position: 'fixed', left: '50%', top: '38%', transform: 'translate(-50%, -50%)' } },
+        h('div', { className: 'glmh-dialog-title' }, h('span', { className: 'glmh-dialog-titlelabel' }, h(ChannelIcon), 'GLM · 上手')),
+        h(OnboardingBlock, { logged, busy, login: () => { run('/glm-login') }, skip: () => { keepObDone(new Date().toISOString()); setOpen(false) } }),
+        output === null ? null : h(OutputLines, { text: output.text, failed: output.failed }),
+        h('div', { className: 'glmh-actions' },
+          h('button', { type: 'button', className: 'glmh-btn', onClick: () => { setOpen(false) } }, '关上')),
+      ), document.body) : null,
     )
   }
 
@@ -331,6 +455,11 @@ export function installChannel(ctx) {
         h(Button, { variant: 'primary', size: 'sm', onClick: copyCommand }, copy === 'copied' ? '已复制 /glm-login' : '复制 /glm-login'),
         copy === 'failed' ? h('p', { className: 'glmh-desc glmh-err', role: 'status' }, '复制失败，请在会话输入框里手动输入 /glm-login。') : null,
       ),
+      h('div', { className: 'glmh-card' },
+        h('div', { className: 'glmh-strong' }, '上手'),
+        h('p', { className: 'glmh-desc' }, '「GLM · 上手」的说明看过一次就不再自动出现；要再看一遍，点这里，输入框下方的按钮与开场画面的小按钮会重新出现。'),
+        h(Button, { variant: 'secondary', size: 'sm', onClick: () => { forgetOb() } }, '重新看上手说明'),
+      ),
       h('p', { className: 'glmh-desc' }, `模型选择：在会话的模型选择器里选「${PROVIDER_NAME}」下的 GLM-5.3 或 GLM-5.3-Flash。`),
     )
   }
@@ -350,4 +479,9 @@ export function installChannel(ctx) {
   ctx.slots.inject('conversation.composer.dock', () => ctx.slots.register({
     name: 'conversation.composer.dock', id: 'glm-channel', order: 150, label: 'GLM 通道',
   }, props => h(PillBoundary, null, h(ChannelPill, props))))
+  // 开场画面的小按钮（plain-ui 1.3 §6.3）：本机没有上手记录时出现；读到已登录、跳过或第 3 个会话之后记录写下，槽位返回 null，容器不再占位。
+  ctx.slots.inject('conversation.hero.options', () => ctx.slots.register({
+    name: 'conversation.hero.options', id: 'glm-onboarding', order: 150, label: 'GLM · 上手',
+    inject: sessionId => ({ sessionId }),
+  }, props => h(HeroOnboarding, props)))
 }

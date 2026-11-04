@@ -5,5 +5,5 @@
     "rootDir": "../../src",
     "outDir": "./dist"
   },
-  "include": ["../../src/data", "../../src/guard", "../../src/memory", "../../src/workflow", "../../src/report", "../../src/graph", "../../src/rules", "../../src/execute", "../../src/design", "../../src/loops", "../../src/lessons", "../../src/env", "../../src/metrics"]
+  "include": ["../../src/data", "../../src/guard", "../../src/memory", "../../src/workflow", "../../src/report", "../../src/graph", "../../src/rules", "../../src/execute", "../../src/design", "../../src/loops", "../../src/lessons", "../../src/metrics", "../../src/env"]
 }

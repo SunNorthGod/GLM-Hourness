@@ -3,6 +3,7 @@
  * node filters of the graph view, and the labels the views show. No DOM
  * and no DSH service, so the specs run them under Node.
  */
+import { agoText } from '../../../src/graph/plain-view.ts'
 import { compareText } from '../../../src/graph/format.ts'
 import { ACTOR_LABELS, OP_LABELS, STATUS_LABELS, VERIFICATION_LABELS } from '../../../src/graph/labels.ts'
 import { revisionInput, type LoadedGraph } from '../../../src/graph/parse.ts'
@@ -370,15 +371,7 @@ export function absoluteTime(at: string): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
-/** "3 分钟前" style time for the lists; absolute date beyond a week. */
+/** "3 分钟前" style time for the lists; absolute date beyond a week (plain-view's agoText). */
 export function timeAgo(at: string, now: number = Date.now()): string {
-  const seconds = Math.max(0, Math.round((now - Date.parse(at)) / 1000))
-  if (seconds < 60) return '刚刚'
-  const minutes = Math.round(seconds / 60)
-  if (minutes < 60) return `${minutes} 分钟前`
-  const hours = Math.round(minutes / 60)
-  if (hours < 24) return `${hours} 小时前`
-  const days = Math.round(hours / 24)
-  if (days < 7) return `${days} 天前`
-  return at.slice(0, 10)
+  return agoText(at, now)
 }
