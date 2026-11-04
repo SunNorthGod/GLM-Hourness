@@ -380,6 +380,24 @@
       "actor": "llm",
       "op": "comment",
       "text": "m6-followups S2（m6-script-gate）提交 e72a25e，在合并 1bbb770（origin/main 9f94f49）之上，已推 origin/m6-followups。门禁：build 0、preflight 0、npm test 0（2982 通过 / 0 失败）、探针 0（388/388）；棘轮 eslint 73 / knip 18 / jscpd 1。验收第 24 条还剩一部分：真实 checkCall 执行已批准脚本的用例，等规则板的 R4d；R4d 要规则的批准路径（R3-proposal，需 M3 0.6 请求的 §9.3 改稿，排在自举之后）与 M7 E7 的 trunkAdvanceFor，rules-board-page 本轮不做。下一步：S2 评审。"
+    },
+    {
+      "at": "2026-11-04T22:02:35.029Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m6-followups S2（m6-script-gate，e72a25e）评审 APPROVED，无阻塞（.llm/m6f/review-s2.json）。设计第 24 条里真实 checkCall 执行已批准脚本的用例仍等规则板 R4d，该项保持未关。下一步：本运行的报告步骤。"
+    },
+    {
+      "at": "2026-11-04T22:04:36.742Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "workflow m6-followups-s1-s3（wf_8dc79e18061b32fc）完成，报告 .llm/m6f/report.md：S1 965bf5b、S3 57c0902、S2 e72a25e 都已推 origin/m6-followups，三步门禁均为 0，探针 376/388/388，评审都 APPROVED。S2 的设计第 24 条一半未关（真实 checkCall 执行已批准脚本的用例等规则板 R4d）。分支落后 origin/main 约 5 个提交，尚未合入 main；编排方派 land-m6-followups（agent://wf-coder）合入 main、跑门禁、推两个远端，行组合有变就按 CDP 规矩重启桌面版。"
+    },
+    {
+      "at": "2026-11-04T22:33:08.363Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "workflow land-m6-followups（wf_4b9841cada0119dd）完成：main 快进到 e95df6e，origin 与 github 经 ls-remote 核对一致；合入树门禁全为 0（npm test 2983 个，2982 通过 / 0 失败 / 1 跳过；探针 388/388）；行组合未变，没有重启桌面版；分支已推，工作树与本地分支已删除。m6-rules-text、m6-rules-probe 已带证据标完成；m6-script-gate 等 R4d 保持进行中。"
     }
   ]
 }

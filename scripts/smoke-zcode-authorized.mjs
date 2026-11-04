@@ -5,10 +5,20 @@
  * user-level directory `<DSH home>/glm-hourness`, docs/DESIGN.md §2.4).
  * Reading the store migrates a version-1 record (docs/DESIGN.md §4.1): do
  * not run this while the desktop still runs a pre-m1-parity build.
- * Run: node --experimental-strip-types scripts/smoke-zcode-authorized.mjs
+ * Run: node --experimental-strip-types scripts/smoke-zcode-authorized.mjs [--wait]
+ * Before anything else it asks the rules board (scripts/rules-gate.mjs, M6
+ * design §7.2 item 2), saying its GLM spending is necessary: the reduce level
+ * lets it run in the GLM peak, the stop level and the project's rules defer
+ * it (exit 5) or block it (exit 4); --wait waits until the board lets it run.
+ * The board's check needs `npm run build`; without it the smoke starts with
+ * one line saying so.
  */
+import { creditPricing } from '../src/glm-llm/credits.ts'
 import { ZcodeAdapter } from '../src/glm-llm/zcode.ts'
 import { credentialHome } from '../src/shared/data-home.ts'
+import { gateOnRules } from './rules-gate.mjs'
+
+await gateOnRules({ glmSpend: 'necessary', peakAt: at => creditPricing.peak(at) })
 
 const home = credentialHome(undefined)
 const adapter = new ZcodeAdapter({ home, onEvent: message => console.log(`[signing] ${message}`) })

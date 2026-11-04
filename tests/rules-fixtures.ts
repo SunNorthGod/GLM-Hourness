@@ -48,6 +48,16 @@ export function ruleOf(over: Partial<Rule> = {}): Rule {
   }
 }
 
+/** The rule of M6 design §7.3 that defers the runs that spend GLM credit while glm-peak is true. */
+export const OFFPEAK_CREDIT_RUNS = ruleOf({
+  id: 'r-offpeak-credit-runs',
+  title: '高峰时积分重活排到高峰结束以后',
+  filter: { command: { matches: String.raw`^\s*npm\s+run\s+(calibrate|smoke:authorized)\b|^\s*node\s+scripts[\\/](calibrate[\\/]run-calibrate|smoke-zcode-authorized)\.mjs\b` } },
+  condition: { signal: 'glm-peak', is: true },
+  action: { kind: 'queue' },
+  reason: '（人写）高峰时 GLM 按全价计积分，练习题、对照实验与真网冒烟等到高峰结束',
+})
+
 /** A rule as a person writes it, before the engine adds origin and status; a plain record so a spec can add a field the type refuses. */
 export function draftOf(over: Record<string, unknown> = {}): Record<string, unknown> {
   return {
