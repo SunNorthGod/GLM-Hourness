@@ -341,6 +341,30 @@
       "actor": "llm",
       "op": "comment",
       "text": "违规流水追加顺序的修正已进 main：bc25baa「fix(audit): appends to one journal file land in the order they were made」。门禁：build 0、preflight 0、npm test 0（棘轮 76/19/1 不变）、探针 347/347 退出码 0。四条线的续作运行计划均已确认：m7-seam-and-e7（收接缝批、E7 规划、实现与评审循环）、metrics-s6-s7-land-review（落第 6+7 步、第 7 步评审循环）、loopsr-batch2-batch3（Batch 2、Batch 3 实现与评审循环）、user-graph-ug3-ug7（UG3 至 UG7 每批实现与评审）。各线合并 bc25baa 后再跑探针；探针按 .llm/probe-lock 全机串行。user-graph 基线步：HEAD 23bbd6b 的干净导出 build/preflight/test 全绿（2730 过、0 败、1 跳过）。"
+    },
+    {
+      "at": "2026-11-04T07:14:06.816Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "发布渠道现状（2026-11-04 编排方核对，人问 GitHub、Gitee、npm 要不要他管）：Gitee origin 是唯一按 AGENTS.md 推送的远端，四条线与 main 都推到这里。第二个远端 github（github.com/SunNorthGod/GLM-Hourness）的 main 停在 4c315a9（2026-11-03 23:25），比 origin/main 落后 73 个提交。npm 上 dsh-glm-zcode 与 dsh-hourness 是 0.3.0，本地两包是 0.3.1，根包 private。文档里没有 GitHub 镜像与 npm 发版的约定，两件都待人定（同步方式与时机；发版要人的 npm 凭证）。"
+    },
+    {
+      "at": "2026-11-04T08:58:25.667Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "发现（2026-11-04 15:5x）：主检出出现未跟踪文件 src/graph/user-graph.ts（101 KB，15:26:39 创建），内容是一份探针输出（PASS sandbox… 起头），不是代码；时间对得上 user-graph 线 UG3 第一轮实现步的探针。某个工作步把探针输出重定向到了主检出的源码路径。它会让主检出的 tsc 失败；已删除（未跟踪、无人工作在内），主检出恢复干净。工作树 .worktrees/ug 里的同名文件是真正的 UG3 代码（已在 563c10e），未受影响。"
+    },
+    {
+      "at": "2026-11-04T10:58:32.022Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "并行中的运行（2026-11-04）：m7-seam-and-e7（E7 评审收敛）、metrics-s6-s7-land-review（第 7 步评审加一轮）、user-graph-ug3-ug7（UG5 起）、merge-loops-runner-l4（循环板合入 main 与桌面 L4）、loops-machine-runner-channel-events（顺延项第 4 条）、m4-checks-and-rules（改完就跑的检查与规划规矩余项）、panel-2-next-batches（面板与上手下一批）、status-hub-remaining（状态板块余批）、m6-followups-s1-s3（M6 三个跟进）、bootstrap-implementation（接管）、m5-rest-learning-lessons-page（M5 余项与经验页）。对应节点已置 doing。探针两把锁，工作步除锁目录外不写主检出。"
+    },
+    {
+      "at": "2026-11-04T11:35:07.491Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "11 条运行同时开工后，8 条在同一时段因模型服务限流（5xx/throttling）暂停（m7、user-graph、loops-machine、m4-checks、panel-2、status-hub、m6-followups、bootstrap、m5-rest 中除 metrics 与 merge-loops 外的各条）。编排方分两批恢复：先恢复 merge-loops（关键路径）、m7、user-graph、loops-machine、m4-checks、panel-2，同时在跑约 7 条；status-hub、m6-followups、bootstrap、m5-rest 等前一批有运行结束再恢复。并行上限以服务限流为准，不以机器为准。"
     }
   ]
 }

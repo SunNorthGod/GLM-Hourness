@@ -81,6 +81,42 @@
       "actor": "llm",
       "op": "comment",
       "text": "编排方审查 user-graph 线（2026-11-04）：UG0–UG2（03d9213、af530c9、bddbd05，已推，门禁全绿）与批次图一致，没有偏离；UG3 只有未跟踪初稿 src/graph/user-graph.ts，交接列了 10 条待修。续作：运行 user-graph-ug3-onward（wf_fd19ec92a8818fea），UG3 起逐批提交。"
+    },
+    {
+      "at": "2026-11-04T08:56:59.330Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "UG3 实现：提交 9357671（合并 2a49ab2 带入 bc25baa），四道门禁退出码 0（2760 过、0 败、1 跳过；探针 347/347；76/19/1）。评审 CHANGES_REQUESTED 一条阻断：验收第 26 条撤掉没批准的流程那条路缺真实转述核对的用例；已补，并入 UG3 提交 563c10e（未推），门禁仍全绿（2761 过、0 败、1 跳过，探针 347/347）。等第二轮评审。"
+    },
+    {
+      "at": "2026-11-04T08:59:18.205Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "UG3 第二轮评审 APPROVED，无阻断：563c10e 的新用例覆盖验收第 26 条的撤回路径，上一轮的阻断关闭；门禁日志与 HEAD 一致（build、preflight、test 2761 过 0 败、棘轮在基线、探针 347/347）。运行 user-graph-ug3-ug7 转入推送 UG3 与 UG4。"
+    },
+    {
+      "at": "2026-11-04T09:00:18.046Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "UG3 已推：origin/user-graph bddbd05..563c10e（快进）。UG4（M3 一侧的放行门禁接用户图）开始。"
+    },
+    {
+      "at": "2026-11-04T10:48:32.064Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "UG4（M3 一侧的放行门禁接用户图）落地：第一轮评审 2 条阻断（放行页上的负责人顺序随服务器文件名顺序变、会误判同意作废；缺验收 29、30 的 L2 用例），修后并入 5a0b2cc，第二轮 APPROVED；已推 origin/user-graph（563c10e..5a0b2cc，快进）。门禁：build 0、preflight 0、npm test 0（2776 过、0 败、1 跳过）、探针 347/347、棘轮 76/19/1。UG5（简报的步骤段）开始。"
+    },
+    {
+      "at": "2026-11-04T11:35:06.966Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "UG5（简报写出任务服务的用户步骤）：7dbd5d7（未推）——派活简报的 Context 多一行「这件活服务的步骤」，写成「流程名 › 步骤名」，取 stepsServedBy，只收 live 步骤；execute-brief.spec 加一例。门禁：npm test 2778 个、2777 过、0 败、1 跳过，探针 347/347，76/19/1。等评审。"
+    },
+    {
+      "at": "2026-11-04T11:40:34.260Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "UG5 评审 APPROVED（无阻断），已推：origin/user-graph 5a0b2cc..7dbd5d7（快进）。走一遍约定段照计划顺延。UG6（面板「用户怎么用」页）开始。"
     }
   ]
 }
