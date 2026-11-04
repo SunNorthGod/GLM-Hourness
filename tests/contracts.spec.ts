@@ -73,6 +73,7 @@ const ROW_IDS = [
   'glm-hourness/loops',
   'glm-hourness/metrics',
   'glm-hourness/env',
+  'glm-hourness/transcript',
   'glm-hourness/ui',
 ]
 

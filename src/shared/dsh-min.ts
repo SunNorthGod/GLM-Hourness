@@ -563,6 +563,33 @@ export interface SessionPersistenceLike {
 }
 
 /**
+ * One semantic event document of a session log (official
+ * `@deepseek-ai/dsh-session-query@0.2.1-rc.3` `SessionEventSearchDocument`
+ * extends `SessionEventRecord`, lib/types/types.d.ts:45–55, 210–212; rc.3
+ * session-query:614–631): one per event whose extracted text is not empty,
+ * `time` in epoch milliseconds. `SessionId`, `SessionSeq` and
+ * `SessionEventType` are branded or keyed types there; read here as their
+ * base types.
+ */
+export interface SessionEventDocumentLike {
+  readonly seq: number
+  readonly type: string
+  readonly time: number
+  readonly surface: 'current' | 'shadowed' | 'log-only'
+  readonly text: string
+}
+
+/**
+ * The `sessionQuery` member the transcript row calls (official
+ * lib/types/index.d.ts:118; rc.3 session-query:1152–1163): every document
+ * of one live-preferred session log in ascending seq order; an empty filter
+ * list keeps every document (session-query:669).
+ */
+export interface SessionQueryLike {
+  filterEvents(sessionId: string, filters: readonly []): Promise<readonly SessionEventDocumentLike[]>
+}
+
+/**
  * The `subagents` service member the run controls call (rc.3 dsh-subagent
  * `interrupt`, subagent:3105; the manager, subagent:1258–1277): under a
  * `user` authority it cancels the current turn of a live direct child of
