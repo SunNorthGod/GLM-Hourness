@@ -12,8 +12,7 @@
  * - `channel.quota-low` and `channel.login-rejected`, which are the account's:
  *   the machine-level runner derives them once for the whole machine and
  *   writes them into the inbox of the project the main agent last worked in
- *   (design §6.1, §6.4). That runner is the next step; until it lands the two
- *   are declared and their entries listed, and nothing puts them out.
+ *   (design §6.1, §6.4; machine.ts).
  *
  * `channelEntries` is the one place the channel's `ChannelLoopDefault` items
  * (src/shared/channel-loop.ts) become entries of the board (design §3.4): the
