@@ -49,6 +49,36 @@
       "actor": "llm",
       "op": "comment",
       "text": "M7 那条线完成腾出并行位，按队列恢复 workflow m4-checks（wf_10dc22064b5c2c1b）：B1 已在 origin/m4-checks（4da6f93），从 B2（检查行格式、glmHournessEnv 服务、循环板接缝、改完文件事件）继续；B2–B6 待做。分支基点早于 loops-runner、user-graph、metrics 合入 main，后续批次须先合 main。"
+    },
+    {
+      "at": "2026-11-04T18:47:32.281Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "B2 提交 1e71d10（m4-checks 分支，未推送，待本批评审）：检查行格式、glmHournessEnv 服务、循环板接缝、改完文件事件。四道门禁退出码均为 0：npm test 2773 个、0 失败，探针 351/351，棘轮 eslint 76 / knip 19 / jscpd 1 未上升；mainMerged 仍为 true。"
+    },
+    {
+      "at": "2026-11-04T18:59:54.963Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "B2（1e71d10）评审 CHANGES_REQUESTED，1 条阻塞：文档写读不出的检查行进 env 行的行健康，但代码里没有任何地方读 EnvBranch.issues（.worktrees/m4-checks/.llm/m4c/review.json）。本批进入修复轮。"
+    },
+    {
+      "at": "2026-11-04T19:28:48.781Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "B2 第 1 轮评审的阻塞 B2-1 已修，方式是改文档说法（读不出的检查行进 env 行行健康一句与代码对齐），修复并进 B2 提交，现为 9af4567（未推送）。门禁：build 0、preflight 0、npm test 0（2772 通过 / 0 失败 / 1 跳过），探针 351/351，棘轮 eslint 76 / knip 19 / jscpd 1。下一步：B2 第 2 轮评审，核对改文档而不接线是否满足设计。"
+    },
+    {
+      "at": "2026-11-04T19:34:33.594Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "B2（9af4567）第 2 轮评审 APPROVED：B2-1 已修，两处文档都写读不出的检查行进 envBranch().issues，与代码一致；无阻塞。下一步：推送 B2，然后 B3。"
+    },
+    {
+      "at": "2026-11-04T19:35:01.250Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "B2 已推：origin/m4-checks = 9af4567，mainMerged 为 true（4516ec6）。B3–B6 待做。"
     }
   ]
 }

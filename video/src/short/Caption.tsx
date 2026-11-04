@@ -1,6 +1,6 @@
 import React from "react";
 import { AbsoluteFill, interpolate, useCurrentFrame } from "remotion";
-import { CLAMP, COLORS, EASE } from "../theme";
+import { CLAMP, COLORS, EASE, SERIF } from "../theme";
 
 /**
  * One caption, burnt in so the video reads with the sound off. It sits in the
@@ -15,13 +15,12 @@ export const Caption: React.FC<{ title: string; sub?: string }> = ({ title, sub 
     <AbsoluteFill style={{ alignItems: "center", paddingTop: 230, paddingLeft: 45, paddingRight: 135 }}>
       <div
         style={{
+          fontFamily: SERIF,
           fontSize: 88,
           fontWeight: 700,
           lineHeight: 1.2,
           textAlign: "center",
-          textShadow: "0 6px 30px rgba(0,0,0,0.6)",
           opacity: enter,
-          scale: interpolate(enter, [0.35, 1], [1.06, 1], { ...CLAMP, output: "perceptual-scale" }),
         }}
       >
         {title}
@@ -29,6 +28,7 @@ export const Caption: React.FC<{ title: string; sub?: string }> = ({ title, sub 
       {sub ? (
         <div
           style={{
+            fontFamily: SERIF,
             marginTop: 26,
             fontSize: 50,
             color: COLORS.dim,

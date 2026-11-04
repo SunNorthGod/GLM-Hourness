@@ -1,80 +1,25 @@
 import React from "react";
-import {
-  AbsoluteFill,
-  interpolate,
-  useCurrentFrame,
-  useVideoConfig,
-} from "remotion";
-import { ACCENT, CLAMP, COLORS, EASE, FONT } from "./theme";
+import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig } from "remotion";
+import { CLAMP, COLORS, EASE, FONT, MONO, tint } from "./theme";
 
-/** A soft colour glow that drifts slowly across the whole video. */
-const Glow: React.FC<{
-  size: number;
-  color: string;
-  from: string;
-  to: string;
-}> = ({ size, color, from, to }) => {
-  const frame = useCurrentFrame();
-  const { durationInFrames } = useVideoConfig();
-  return (
+/** Background shared by every scene: flat paper with a hairline page frame. */
+export const Backdrop: React.FC = () => (
+  <AbsoluteFill style={{ background: COLORS.bg }}>
     <div
       style={{
         position: "absolute",
-        left: 0,
-        top: 0,
-        width: size,
-        height: size,
-        borderRadius: "50%",
-        background: `radial-gradient(circle, ${color} 0%, rgba(0,0,0,0) 62%)`,
-        translate: interpolate(frame, [0, durationInFrames], [from, to], CLAMP),
+        left: 32,
+        top: 32,
+        right: 32,
+        bottom: 32,
+        border: `1.5px solid ${tint(COLORS.text, 0.35)}`,
       }}
     />
-  );
-};
-
-/**
- * Background shared by every scene: dark ground, three drifting glows, a faint
- * grid, grain and a vignette. Positions are laid out for 1920x1080 and scaled
- * to the composition, so the vertical video gets the same look.
- */
-export const Backdrop: React.FC = () => {
-  const { width, height } = useVideoConfig();
-  const sx = width / 1920;
-  const sy = height / 1080;
-  const s = Math.max(sx, sy);
-  const at = (x: number, y: number) => `${x * sx}px ${y * sy}px`;
-  return (
-    <AbsoluteFill style={{ background: COLORS.bg, overflow: "hidden" }}>
-      <Glow size={1500 * s} color="rgba(110, 126, 255, 0.20)" from={at(-520, -760)} to={at(-300, -640)} />
-      <Glow size={1300 * s} color="rgba(186, 140, 255, 0.13)" from={at(1050, 360)} to={at(880, 300)} />
-      <Glow size={900 * s} color="rgba(110, 210, 240, 0.07)" from={at(300, 620)} to={at(420, 560)} />
-      <AbsoluteFill
-        style={{
-          backgroundImage:
-            "linear-gradient(rgba(255,255,255,0.028) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.028) 1px, transparent 1px)",
-          backgroundSize: "80px 80px",
-          maskImage: "radial-gradient(ellipse at 50% 45%, black 0%, transparent 72%)",
-        }}
-      />
-      <svg width={width} height={height} style={{ position: "absolute", opacity: 0.06 }}>
-        <filter id="grain">
-          <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves={2} stitchTiles="stitch" />
-        </filter>
-        <rect width="100%" height="100%" filter="url(#grain)" />
-      </svg>
-      <AbsoluteFill
-        style={{
-          background: "radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,0.6) 100%)",
-        }}
-      />
-    </AbsoluteFill>
-  );
-};
+  </AbsoluteFill>
+);
 
 /** Fades a whole scene in at its start and out at its end. */
-export const SceneFade: React.FC<{ children: React.ReactNode }> = ({
-  children,
-}) => {
+export const SceneFade: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const frame = useCurrentFrame();
   const { durationInFrames } = useVideoConfig();
   return (
@@ -82,12 +27,7 @@ export const SceneFade: React.FC<{ children: React.ReactNode }> = ({
       style={{
         fontFamily: FONT,
         color: COLORS.text,
-        opacity: interpolate(
-          frame,
-          [0, 10, durationInFrames - 12, durationInFrames],
-          [0, 1, 1, 0],
-          CLAMP,
-        ),
+        opacity: interpolate(frame, [0, 10, durationInFrames - 12, durationInFrames], [0, 1, 1, 0], CLAMP),
       }}
     >
       {children}
@@ -95,7 +35,7 @@ export const SceneFade: React.FC<{ children: React.ReactNode }> = ({
   );
 };
 
-/** Rises and fades in from `at` (frames). */
+/** Rises 12 px and fades in from `at` (frames). */
 export const Reveal: React.FC<{
   at: number;
   children: React.ReactNode;
@@ -107,10 +47,7 @@ export const Reveal: React.FC<{
       style={{
         ...style,
         opacity: interpolate(frame, [at, at + 14], [0, 1], { ...CLAMP, easing: EASE }),
-        translate: interpolate(frame, [at, at + 20], ["0px 24px", "0px 0px"], {
-          ...CLAMP,
-          easing: EASE,
-        }),
+        translate: interpolate(frame, [at, at + 20], ["0px 12px", "0px 0px"], { ...CLAMP, easing: EASE }),
       }}
     >
       {children}
@@ -118,46 +55,50 @@ export const Reveal: React.FC<{
   );
 };
 
-/** Text painted with a gradient. */
-export const GradientText: React.FC<{
-  children: React.ReactNode;
-  gradient?: string;
-  style?: React.CSSProperties;
-}> = ({ children, gradient = ACCENT, style }) => (
-  <span
+/** A thick and a thin rule under a title, as under a printed heading, `width` px wide. */
+export const Rule: React.FC<{ width: number; style?: React.CSSProperties }> = ({ width, style }) => (
+  <div
     style={{
-      backgroundImage: gradient,
-      WebkitBackgroundClip: "text",
-      backgroundClip: "text",
-      color: "transparent",
       ...style,
+      height: 8,
+      boxSizing: "border-box",
+      borderTop: `3px solid ${COLORS.text}`,
+      borderBottom: `1px solid ${COLORS.text}`,
+      width,
     }}
-  >
-    {children}
-  </span>
+  />
 );
 
 /** Scene number and name in the top-left corner. */
 export const SceneLabel: React.FC<{ index: string; text: string }> = ({ index, text }) => (
-  <Reveal
-    at={4}
-    style={{ position: "absolute", left: 110, top: 84, display: "flex", alignItems: "center", gap: 22 }}
-  >
-    <GradientText style={{ fontSize: 34, fontWeight: 700, letterSpacing: 2 }}>{index}</GradientText>
-    <div style={{ width: 56, height: 2, background: "rgba(255,255,255,0.16)" }} />
+  <Reveal at={4} style={{ position: "absolute", left: 110, top: 84, display: "flex", alignItems: "center", gap: 22 }}>
+    <span style={{ color: COLORS.red, fontFamily: MONO, fontSize: 34, fontWeight: 700, letterSpacing: 2 }}>
+      {index}
+    </span>
+    <div style={{ width: 56, height: 2, background: tint(COLORS.text, 0.16) }} />
     <div style={{ fontSize: 38, letterSpacing: 2, color: COLORS.text }}>{text}</div>
   </Reveal>
 );
 
-/** Translucent card with a hairline border and a soft shadow. */
-export const GLASS: React.CSSProperties = {
-  background: "linear-gradient(180deg, rgba(255,255,255,0.065), rgba(255,255,255,0.025))",
-  border: "1.5px solid rgba(255,255,255,0.10)",
-  borderRadius: 24,
-  boxShadow: "0 24px 70px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.07)",
+/** Card on the page: a near-white ground in a black hairline box. */
+export const CARD: React.CSSProperties = {
+  background: COLORS.sheet,
+  border: `1.5px solid ${COLORS.text}`,
+  borderRadius: 3,
 };
 
-/** Small outlined label tinted with one colour (a six-digit hex). */
+/** The person's chat bubble: light grey, no edge. */
+export const USER_BUBBLE: React.CSSProperties = { background: COLORS.bubble, borderRadius: 3 };
+
+/** Ground, edge and text colour of a small label drawn in one colour (a six-digit hex). */
+export const pill = (color: string): React.CSSProperties => ({
+  background: COLORS.sheet,
+  border: `1.5px solid ${color}`,
+  color,
+  borderRadius: 3,
+});
+
+/** Small label drawn in one colour. */
 export const Pill: React.FC<{
   color: string;
   children: React.ReactNode;
@@ -165,10 +106,7 @@ export const Pill: React.FC<{
 }> = ({ color, children, style }) => (
   <div
     style={{
-      background: `${color}1F`,
-      border: `1.5px solid ${color}70`,
-      color,
-      borderRadius: 999,
+      ...pill(color),
       padding: "4px 16px",
       fontSize: 24,
       fontWeight: 600,
@@ -181,14 +119,42 @@ export const Pill: React.FC<{
   </div>
 );
 
-/** Renders text where **phrase** is drawn in the emphasis colour, as in the four-line proposals. */
+/** What a card on the project graph stands for: the goal, a task being worked on, a task that passed review. */
+export type CardState = "plain" | "goal" | "working" | "done";
+
+/**
+ * The edge of a card that carries a state, over a card edge `width` px wide:
+ * the goal in red, a task being worked on in a dashed amber line, a task that
+ * passed review in a heavier green one. Line and colour both tell the states
+ * apart.
+ */
+export const stateEdge = (kind: CardState, width: number): React.CSSProperties => {
+  switch (kind) {
+    case "plain":
+      return {};
+    case "goal":
+      return { border: `${width + 0.5}px solid ${COLORS.red}` };
+    case "working":
+      return { border: `${width + 0.5}px dashed ${COLORS.amber}` };
+    case "done":
+      return { border: `${width + 1.5}px solid ${COLORS.green}` };
+  }
+};
+
+/** A right-angled line from (x1, y1) down to (x2, y2), turning half-way down. */
+export const edgePath = (x1: number, y1: number, x2: number, y2: number) => {
+  const mid = (y1 + y2) / 2;
+  return `M ${x1} ${y1} L ${x1} ${mid} L ${x2} ${mid} L ${x2} ${y2}`;
+};
+
+/** Renders text where **phrase** is drawn in bold red, as in the four-line proposals. */
 export const Bold: React.FC<{ text: string }> = ({ text }) => {
   const parts = text.split("**");
   return (
     <>
       {parts.map((part, i) =>
         i % 2 === 1 ? (
-          <span key={i} style={{ color: COLORS.apricot, fontWeight: 600 }}>
+          <span key={i} style={{ color: COLORS.red, fontWeight: 700 }}>
             {part}
           </span>
         ) : (

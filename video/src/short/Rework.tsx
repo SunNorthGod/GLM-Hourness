@@ -1,7 +1,7 @@
 import React from "react";
 import { AbsoluteFill, Easing, interpolate, interpolateColors, useCurrentFrame } from "remotion";
-import { Pill, Reveal } from "../parts";
-import { CLAMP, COLORS } from "../theme";
+import { pill, Pill, Reveal } from "../parts";
+import { CLAMP, COLORS, tint } from "../theme";
 import { BAR, BEAT } from "./timeline";
 
 // Bars 4-5, under the bubble of Claim.tsx. In bar 4 a clock turns from night
@@ -14,6 +14,8 @@ const TURN = [BEAT, BAR - 3] as const;
 // the label says morning only after that.
 const MORNING = 0.8;
 const FACE = 320;
+/** The clock face at night (grey) and in the morning (white). */
+const FACE_COLORS = ["#DCD6CA", COLORS.sheet];
 const PILE_ROWS = [
   [260, 170],
   [200, 260],
@@ -26,16 +28,15 @@ const Clock: React.FC = () => {
   const dawn = interpolate(frame, [TURN[0], TURN[1]], [0, 1], { ...CLAMP, easing: Easing.inOut(Easing.quad) });
   // The hour hand goes from 11 at night round to 8 in the morning; the minute hand turns twelve times as fast.
   const hour = 330 + 270 * dawn;
-  const face = interpolateColors(dawn, [0, 1], ["rgba(76, 90, 190, 0.34)", "rgba(255, 208, 138, 0.30)"]);
-  const ring = interpolateColors(dawn, [0, 1], ["rgba(142, 162, 255, 0.75)", "rgba(255, 208, 138, 0.95)"]);
+  const face = interpolateColors(dawn, [0, 1], FACE_COLORS);
   const c = FACE / 2;
   return (
     <Reveal at={0} style={{ position: "absolute", left: 70, top: 1090 }}>
-      <Pill color={dawn < MORNING ? COLORS.indigo : COLORS.apricot} style={{ fontSize: 34, width: "fit-content" }}>
+      <Pill color={dawn < MORNING ? COLORS.dim : COLORS.text} style={{ fontSize: 34, width: "fit-content" }}>
         {dawn < MORNING ? "深夜" : "早上"}
       </Pill>
       <svg width={FACE} height={FACE} style={{ marginTop: 16 }}>
-        <circle cx={c} cy={c} r={c - 6} fill={face} stroke={ring} strokeWidth={6} />
+        <circle cx={c} cy={c} r={c - 6} fill={face} stroke={COLORS.text} strokeWidth={6} />
         {Array.from({ length: 12 }, (_, i) => (
           <line
             key={i}
@@ -43,7 +44,7 @@ const Clock: React.FC = () => {
             y1={20}
             x2={c}
             y2={i % 3 === 0 ? 40 : 32}
-            stroke="rgba(255,255,255,0.55)"
+            stroke={tint(COLORS.text, 0.55)}
             strokeWidth={i % 3 === 0 ? 5 : 3}
             strokeLinecap="round"
             transform={`rotate(${i * 30} ${c} ${c})`}
@@ -84,15 +85,13 @@ const PileRow: React.FC<{ at: number; widths: readonly [number, number] }> = ({ 
       gap: 18,
       height: 66,
       padding: "0 20px",
-      borderRadius: 14,
-      background: `${COLORS.rose}1F`,
-      border: `1.5px solid ${COLORS.rose}70`,
+      ...pill(COLORS.red),
     }}
   >
-    <span style={{ color: COLORS.rose, fontSize: 30, fontWeight: 700 }}>✗</span>
+    <span style={{ color: COLORS.red, fontSize: 30, fontWeight: 700 }}>✗</span>
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       {widths.map((w, i) => (
-        <div key={i} style={{ width: w, height: 9, borderRadius: 5, background: `${COLORS.rose}80` }} />
+        <div key={i} style={{ width: w, height: 9, borderRadius: 5, background: `${COLORS.red}80` }} />
       ))}
     </div>
   </Reveal>
@@ -101,7 +100,7 @@ const PileRow: React.FC<{ at: number; widths: readonly [number, number] }> = ({ 
 const Pile: React.FC = () => (
   <>
     <Reveal at={BAR - BEAT} style={{ position: "absolute", left: 470, top: 1090 }}>
-      <Pill color={COLORS.rose} style={{ fontSize: 34 }}>
+      <Pill color={COLORS.red} style={{ fontSize: 34 }}>
         待返工
       </Pill>
     </Reveal>

@@ -98,7 +98,7 @@
  */
 import { spawn, spawnSync } from 'node:child_process'
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
-import { dirname, join, relative } from 'node:path'
+import { dirname, join, relative, resolve, sep } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import { crc32, deflateSync } from 'node:zlib'
 import { DISPATCH_TOOLS } from '../../packages/hourness/dist/workflow/index.js'
@@ -112,6 +112,7 @@ import { LOOPS_DECLARATION } from '../../packages/hourness/dist/loops/service.js
 import { NO_CHECKS_LINE, SCRATCH_LINE } from '../../packages/hourness/dist/env/notice.js'
 import { PEAK_REMINDER_SOURCE, PEAK_REMINDER_TEXT, peakReminderText } from '../../packages/glm/dist/glm-prompt/peak-reminder.js'
 import { IDENTITY_OPENING_PLAIN, IDENTITY_OPENING_WITH_STYLE } from '../../packages/glm/dist/glm-prompt/verbatim.js'
+import { transcriptNote } from '../../packages/glm/dist/glm-prompt/zcode-compact-text.js'
 import { PERSONA_SCOPE } from '../../packages/hourness/dist/design/persona.js'
 import { peakWindowAt } from '../../packages/glm/dist/glm-llm/credits.js'
 import { GLM_LOOP_DEFAULTS } from '../../packages/glm/dist/glm-llm/loop-defaults.js'
@@ -399,6 +400,22 @@ const compacted = runScenario('glm-compact', 'glm-5.3', [
 ], 'Read package.json and reply done.', [
   '- id: compaction-basic',
   '  config: { thresholdRatio: 0.02, retainTokens: 0 }',
+])
+// GLM compaction with the transcript row enabled through the overlay (it
+// ships disabled): the checkpoint ends with ZCode's transcript sentence
+// naming the plaintext export under the scenario home, and the model reads
+// that file with Read ({transcript}, scripts/probe/probe-llm.mjs).
+const transcriptHome = join(runDir, 'glm-compact-transcript', 'home')
+const compactTranscript = runScenario('glm-compact-transcript', 'glm-5.3', [
+  { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } } },
+  { tool: { name: 'Read', arguments: { file_path: '{transcript}' } } },
+  { text: 'done', status: true },
+], 'Read package.json, read the transcript the summary names, then reply done.', [
+  '- id: compaction-basic',
+  '  config: { thresholdRatio: 0.02, retainTokens: 0 }',
+  '- id: glm-hourness/transcript',
+  '  disabled: false',
+  `  config: { home: ${JSON.stringify(slash(transcriptHome))} }`,
 ])
 // Guard, quote-aware reading and the workspace-change fallback (shadow
 // mode): the session runs in a scratch git repository with
@@ -1982,6 +1999,17 @@ const liveCalls = live => (live?.recent ?? []).map(call => `${call.name}:${call.
 const compactRequest = compacted.compactions[0]
 const compactInstruction = compactRequest?.messages.at(-1)
 const checkpoint = compacted.steps.at(-1)?.messages.find(message => message.source === 'compact-checkpoint')
+// The transcript scenario: the first checkpoint, the path its sentence names, the exported file, and the tool result of the scripted Read of it.
+const TRANSCRIPT_MARK = 'read the full transcript at: '
+const checkpointsOf = scenario => scenario.steps.flatMap(step => step.messages.filter(message => message.source === 'compact-checkpoint'))
+const transcriptCheckpoint = checkpointsOf(compactTranscript)[0]
+const transcriptPath = transcriptCheckpoint?.text.includes(TRANSCRIPT_MARK) === true ? transcriptCheckpoint.text.slice(transcriptCheckpoint.text.lastIndexOf(TRANSCRIPT_MARK) + TRANSCRIPT_MARK.length).split('\n')[0] : undefined
+const transcriptSession = compactTranscript.steps[0]?.sessionId
+const transcriptText = transcriptPath !== undefined && existsSync(transcriptPath) ? readFileSync(transcriptPath, 'utf8') : ''
+const transcriptLines = transcriptText.split('\n')
+const transcriptLong = transcriptLines.filter(line => Array.from(line).length > 1000)
+const transcriptSplit = transcriptLines.some(line => Array.from(line).length === 1000 && line.includes('"test:1"'))
+const transcriptRead = [...compactTranscript.steps, ...compactTranscript.compactions].flatMap(request => request.messages).find(message => message.role === 'tool' && message.text.includes('Transcript of session'))
 
 // The memory row journals one usage record per model call from the
 // llm/stream request fields (rc.3 GenerateOptions: provider, model,
@@ -2828,6 +2856,12 @@ const checks = [
   ['non-glm peak: a non-GLM session in peak hours gets no peak reminder', plainFirst !== undefined && peakWindowAt(plainFirst.clock) === '2026-10-28' && peakNotices(plainFirst).length === 0, plainFirst === undefined ? 'no request' : `clock ${new Date(plainFirst.clock).toISOString()}, ${peakNotices(plainFirst).length} notice(s)`],
   ['glm compact: the summarization request ends with the ZCode compact prompt', compactInstruction?.role === 'user' && compactInstruction.text.startsWith('CRITICAL: Respond with TEXT ONLY.'), compactRequest === undefined ? `no compaction request (exit ${compacted.status})` : compactInstruction?.text.slice(0, 60).replace(/\n/g, ' ')],
   ['glm compact: the checkpoint carries the formatted summary', checkpoint !== undefined && checkpoint.text.includes('Summary:\nprobe summary') && !checkpoint.text.includes('<analysis>'), checkpoint === undefined ? 'no checkpoint in the next request' : checkpoint.text.slice(0, 80).replace(/\n/g, ' ')],
+  ['glm compact transcript: with the transcript row enabled the checkpoint\'s summary ends with the ZCode 3.17.1 transcript sentence, right before the closing frame', transcriptPath !== undefined && transcriptCheckpoint.text.includes(`Summary:\nprobe summary${transcriptNote(transcriptPath)}\n</compacted-summary>`), transcriptCheckpoint === undefined ? `no checkpoint (exit ${compactTranscript.status}, ${compactTranscript.compactions.length} compaction(s))` : transcriptCheckpoint.text.slice(-300).replace(/\n/g, ' ')],
+  ['glm compact transcript: the sentence names <scenario home>/transcripts/<session id>.txt, which starts with the header line for that session', transcriptPath !== undefined && resolve(transcriptPath) === resolve(transcriptHome, 'transcripts', `${transcriptSession}.txt`) && resolve(transcriptPath).startsWith(`${resolve(transcriptHome, 'transcripts')}${sep}`) && transcriptLines[0]?.startsWith(`Transcript of session ${transcriptSession}, exported `) === true, `${transcriptPath ?? 'no path'}; ${transcriptLines[0]?.slice(0, 120) ?? ''}`],
+  ['glm compact transcript: the model\'s Read of the named file returns the export (a recorded request carries that tool result)', transcriptRead !== undefined && transcriptRead.isError !== true, transcriptRead === undefined ? `no tool result with the export text in ${compactTranscript.steps.length} step(s) and ${compactTranscript.compactions.length} compaction(s)` : transcriptRead.text.slice(0, 160).replace(/\n/g, ' | ')],
+  ['glm compact transcript: no line of the export is longer than 1000 code points, and the long test:1 line of package.json is split', transcriptText.length > 0 && transcriptLong.length === 0 && transcriptSplit, `${transcriptLines.length} line(s); ${transcriptLong.length} over 1000; split test:1 line ${transcriptSplit}`],
+  ['glm compact transcript: in glm-compact (transcript row disabled, the shipped default) no checkpoint names a transcript', checkpointsOf(compacted).length > 0 && checkpointsOf(compacted).every(message => !message.text.includes(TRANSCRIPT_MARK)), `${checkpointsOf(compacted).length} checkpoint(s)`],
+  ['glm compact transcript: /glm-status of the session lists the transcript row in effect with the export it wrote', healthOf(compactTranscript).transcript?.status === ACTED && healthOf(compactTranscript).transcript.reason.startsWith('压缩前导出'), JSON.stringify(healthOf(compactTranscript).transcript ?? null)],
   ['memory usage: one record per GLM step with the request provider, model and session id', glmUsage.length === glm.steps.length && glmUsage.every(record => record.provider === 'glm-probe' && record.model === 'glm-5.3' && typeof record.sessionId === 'string' && record.sessionId.length > 0), `${glmUsage.length} record(s) for ${glm.steps.length} step(s); first: ${JSON.stringify(glmUsage[0] ?? null).slice(0, 120)}`],
   ['memory usage: the compaction call is recorded with purpose compaction', compactUsage.length === compacted.compactions.length && compactUsage.length > 0, `${compactUsage.length} compaction record(s) for ${compacted.compactions.length} request(s)`],
   ...memoryChecks(),
