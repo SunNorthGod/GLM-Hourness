@@ -78,6 +78,8 @@ export interface MemoryEntry {
   readonly reviews: number
   readonly origin: MemoryOrigin
   readonly status: 'active' | 'forgotten'
+  /** When the `forget` record took the entry back; a `restore` removes it. Only in the fold, never written to the journal. */
+  readonly forgottenAt?: string
 }
 
 /** The last learning digest reminder (§3.6): when it was sent and the keys of the groups it listed. */
@@ -652,7 +654,10 @@ function applyRevoke(state: MemoryState, record: JournalRecord, op: 'forget' | '
   }
   const refusal = entry === undefined ? undefined : revokeRefusal(entry, whoOf(record), op)
   if (refusal !== undefined) return { bad: refusal.hint ?? refusal.message }
-  return withEntries(state, entry === undefined ? [] : [{ ...entry, status: op === 'forget' ? 'forgotten' : 'active' }])
+  if (entry === undefined) return withEntries(state, [])
+  if (op === 'forget') return withEntries(state, [{ ...entry, status: 'forgotten', forgottenAt: record.at }])
+  const { forgottenAt: _forgottenAt, ...kept } = entry
+  return withEntries(state, [{ ...kept, status: 'active' }])
 }
 
 /** The most group keys one learning digest reminder records; the reminder lists no more. */

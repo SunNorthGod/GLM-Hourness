@@ -236,3 +236,13 @@ Worktree `.worktrees/m5`, branch `m5-memory-lessons`. Not tracked by git (`.agen
 - Left for later steps:
   - Desktop batch 1 (with S4, S5, S7, S8): import this file into the main checkout's real `.llm/lessons.jsonl` and query once there (impl-plan §7).
   - The file must be copied back to the main checkout's `.agents/tasks/m5/` before the worktree is deleted (impl-plan §7).
+## m5-rest batch 1 (docs): the 0.7 reviews and the rest plan
+- Commit `f5e12b3` on branch `m5-rest` (base `origin/main` `035f8b5`). The fourteen review records under `reviews/` copied from `.worktrees/m5`, and `rest-plan.md`.
+- Gates: build 0, preflight 0, npm test 0 (2939 pass, 0 fail, 1 skipped), probe 0 (376/376). Ratchet eslint 73, knip 18, jscpd 1.
+- Baseline before it: npm test needed the ignored operations file `.agents/tasks/m5/lessons-seed.json` copied in from the main checkout; probe 374/376 with both failures in `rules-peak-stop` (load-timing candidate, passed in every later run).
+- Merge `877fc7d` of `origin/main` `93a66ec` after it: install 0, build 0, preflight 0, npm test 0 (2955 pass, 0 fail, 1 skipped), probe 0 (382/382).
+## m5-rest batch 2 (m5-4): the withdrawal of a confirmed habit, the untested acceptance clauses
+- D1 fixed: a confirmed habit the person withdrew (`memory_forget` with their words) answers `known` for 28 days from the withdrawal. The fold keeps `forgottenAt` (the time of the `forget` record; `restore` removes it; never written to the journal) and `earlierOutcome` counts from it. Failing first: the new spec case failed at day 30 (`asked`) before the fix.
+- Pinned: the same session cannot forget the confirmed habit without words (also after an update, which keeps `origin`); an unanswered question still holds on day 27 and not on day 29; confirm stores the asked content even when given other fields; the reminder and `learning_signals` leave the graph directory unchanged; the default poll of the lessons page is `POLL_MS` and `POLL_MS` is at most 15 000 ms.
+- Evidence of every acceptance clause of m5-1, m5-4 and lessons-3: `rest-acceptance.md`. ORCHESTRATION.md §8.5 says the withdrawal rule.
+- Gates: see the commit message of this batch.

@@ -96,14 +96,14 @@
       验证：四个退出码为 0。
       结果（2026-11-05，树已快进到 `origin/main` `035f8b5`，比规划时多 4 个只改 `docs/graph` 的提交）：build 0、preflight 0。`npm test` 首跑 1：`tests/lessons-seed.spec.ts` 3 败，原因是本检出没有被 `.gitignore` 挡住的操作文件 `.agents/tasks/m5/lessons-seed.json`（规格的 setup error 要求它在检出里）；从主检出只读拷来（SHA256 与各检出的同名文件相同）后重跑 0，2939 过、0 败、1 跳过。棘轮实测 eslint 73 / knip 18 / jscpd 1（低于任务给的 76 / 19 / 1，以后各批以 73 / 18 / 1 为上限）。探针 1：374/376，两条败都在 `rules-peak-stop`（子 agent 多了第 5 个请求：解除等待单的唤醒在目标完成之后才以 followup 到达，而不是在第 4 个请求里），当时另有两个检出的探针在并行；同一 main 代码在别的检出 03:40、03:45 的探针都是 376/376。按 §4 第 5 条当作负载下的计时失败候选：探针不能单跑一个场景，就把第 1 批的全量探针（第 1 批只加 `.agents/tasks/` 下的 `.md`，探针不读）及之后各批的探针当作重跑，`rules-peak-stop` 连过 3 次才算抖动，结果写进各批的提交信息。
 
-- [ ] **第 1 批：带入 0.7 的评审记录与本计划**（docs）
+- [x] **第 1 批：带入 0.7 的评审记录与本计划**（docs）
       做什么：提交 `.agents/tasks/m5/reviews/` 下已拷好的 14 个 `.md`（§1）与本文件。不改别的。
       文件：`.agents/tasks/m5/reviews/*.md`（14 个，新）、`.agents/tasks/m5/rest-plan.md`（新）。
       L2：无新增。L3：无新增场景，跑全量探针作门禁。文档：本批就是文档。
       提交：`docs(m5): carry the 0.7 amendment and step reviews over from the s12 worktree; plan the rest of M5`
       验证：§4 全量门禁四道退出码 0；`git show --stat HEAD` 只列这 15 个文件。
 
-- [ ] **第 2 批：`m5-4` 撤掉确认习惯的 28 天按撤掉那天算，补齐没钉住的验收字句，写验收证据**（fix + test + docs）
+- [x] **第 2 批：`m5-4` 撤掉确认习惯的 28 天按撤掉那天算，补齐没钉住的验收字句，写验收证据**（fix + test + docs）
       依赖：第 1 批。
       做什么，失败在先：
       1. 先在 `tests/memory-habit.spec.ts` 加 G1 用例（放在第 112 行「a no blocks the same habit for 28 days…」之后）：`ask`（带 `learnedFrom: ['edit:goal.stage']`）→ 人回话 → `confirm` → 时钟拨到第 20 天 → 带人原话 `memory_forget`（会话里人的消息含这句话，用 `talkOf([...])` 给）→ 第 27 天同组键、换名字换说法再 `ask` 被拒（码 `known`）→ 第 30 天仍被拒 → 第 47 天仍被拒 → 第 49 天能问（`asked: true`）。在改代码前跑这个规格，记下第 30 天那一断言失败（今天第 28 天起就能问）。
