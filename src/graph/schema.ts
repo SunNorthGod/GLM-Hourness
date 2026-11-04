@@ -7,8 +7,17 @@
 
 import type { AskForm } from './proposal.ts'
 
-export const NODE_TYPES = ['goal', 'feature', 'decision', 'task', 'risk', 'question', 'norm', 'tool', 'retro'] as const
+export const NODE_TYPES = ['goal', 'feature', 'decision', 'task', 'risk', 'question', 'norm', 'tool', 'retro', 'role', 'flow', 'step'] as const
 export type NodeType = typeof NODE_TYPES[number]
+
+/**
+ * The user-graph node types (design 0.4.1 §2.2, d-user-graph-one-graph): a
+ * role of the project's real user, a flow the role carries out, and a step
+ * of that flow. They live under a goal in the same graph as the work
+ * (goal > role > flow > step) and never store doing or done: their state
+ * is derived from the work that serves them (user-graph.ts).
+ */
+export const USER_TYPES = ['role', 'flow', 'step'] as const
 
 export const STATUSES = ['proposed', 'approved', 'doing', 'done', 'dropped', 'superseded'] as const
 export type Status = typeof STATUSES[number]
@@ -32,10 +41,16 @@ export type TaskKind = typeof TASK_KINDS[number]
 export const TIERS = ['hard', 'standard', 'simple'] as const
 export type Tier = typeof TIERS[number]
 
-export const EDGE_TYPES = ['depends', 'source', 'supersedes'] as const
+/**
+ * Edge types (design 0.4.1 §2.3). `serves` sits on the work that builds a
+ * step (feature or task, pointing at it); `next` sits on a step or a flow
+ * and orders the steps (a flow's own `next` is its entry). `when` carries
+ * the condition of a branch, in the user's words.
+ */
+export const EDGE_TYPES = ['depends', 'source', 'supersedes', 'serves', 'next'] as const
 export type EdgeType = typeof EDGE_TYPES[number]
 
-export const EVIDENCE_KINDS = ['commit', 'test', 'check', 'decision'] as const
+export const EVIDENCE_KINDS = ['commit', 'test', 'check', 'decision', 'walk'] as const
 export type EvidenceKind = typeof EVIDENCE_KINDS[number]
 
 export const ACTORS = ['human', 'llm', 'harness'] as const
@@ -55,6 +70,61 @@ type Weight = typeof WEIGHTS[number]
 
 /** Longest texts of a question's table card, in code points (§2.6 table card). */
 export const CARD_LIMITS = { label: 20, gain: 60, cost: 60, dimensionName: 12, cell: 20, crux: 60, verdict: 120 } as const
+
+/**
+ * Longest texts and counts of the user graph (design 0.4.1 §2.4, §2.7): the
+ * serve limits are write-time gates on the new edges of one write (W1), the
+ * rest bound the shapes a user graph may take. The numbers are the agent's
+ * (design §12 D5) and live here alone.
+ */
+export const USER_LIMITS = {
+  /** Live serves a step may take. */
+  servesPerStep: 8,
+  /** Live serves a task may hold. */
+  servesPerTask: 3,
+  /** Live serves a feature may hold by its own links. */
+  servesPerFeature: 20,
+  /** Longest `when` of a step's next edge, in code points. */
+  when: 40,
+  /** Suggested step count of a flow; beyond it the gap flow:too-long is marked, not refused. */
+  flowSteps: 12,
+  /** Outgoing next edges of a step before the gap step:too-many-branches is marked. */
+  branches: 4,
+  /** Entries of one graph_relink list. */
+  relinkEdges: 8,
+  /** Evidence entries of one walk operation. */
+  walkEvidence: 5,
+  /** Walk evidence entries kept on a step node; history keeps them all. */
+  walkKept: 10,
+  /** Longest `said` of a walk report step, in code points. */
+  said: 120,
+  /** Longest ref of a walk evidence entry, in code points. */
+  ref: 200,
+  /** Longest note of a walk evidence entry, in code points. */
+  note: 300,
+  /** Longest harness-appended user page of a release or confirm, in code points. */
+  appended: 8000,
+} as const
+
+/**
+ * The statuses a user node stores (design 0.4.1 §2.2): a user node is never
+ * doing or done — its progress is derived from the work that serves it
+ * (CHARTER.md §10.1 single source of truth). `doing` and `done` are read
+ * errors (format.ts) and write refusals (engine.ts).
+ */
+export const USER_STATUSES = ['proposed', 'approved', 'dropped', 'superseded'] as const
+export type UserStatus = typeof USER_STATUSES[number]
+
+/** The ref of a walk evidence entry: the walk kind, then the command, the artifact path or the fixed person marker. */
+export const WALK_REF_PATTERN = /^(command|screenshot|transcript|person):\S.*$/u
+
+/**
+ * The note of a walk evidence entry: `@<commit>` (7 to 40 lowercase hex
+ * digits, the commit the walk ran at) then one line of result. The pattern
+ * is a write rule (engine.ts); a hand-edited file whose note does not match
+ * still loads, so the whole graph does not go unreadable.
+ */
+export const WALK_NOTE_PATTERN = /^@[0-9a-f]{7,40} .+$/u
 
 /**
  * Longest texts of what the person reads, in code points (panel design,
@@ -92,6 +162,8 @@ export interface CardDimension {
 export interface GraphEdge {
   readonly type: EdgeType
   readonly to: string
+  /** The condition of a branch (design 0.4.1 §2.3): only a step's next edge carries one, one line, in the user's words. */
+  readonly when?: string
 }
 
 export interface Evidence {
@@ -227,8 +299,15 @@ export const OPTION_KEY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9-]{0,31}$/
 export const COMMIT_PATTERN = /^[0-9a-f]{7,40}$/
 export const TIMESTAMP_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z$/
 
-/** Passing evidence closes a node: a commit, a test or check that exited 0, or a recorded decision. */
+/**
+ * Passing evidence closes a node: a commit, a test or check that exited 0,
+ * or a recorded decision. Walk evidence never closes a node: whether a walk
+ * passed is another kind of fact, read from the step's walk records by
+ * user-graph.ts from each entry's exit, and a user node cannot be done at
+ * all (design 0.4.1 §3.2).
+ */
 export function isPassingEvidence(evidence: Evidence): boolean {
   if (evidence.kind === 'commit' || evidence.kind === 'decision') return true
+  if (evidence.kind === 'walk') return false
   return evidence.exit === 0
 }

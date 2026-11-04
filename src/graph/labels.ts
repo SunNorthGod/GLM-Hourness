@@ -16,6 +16,9 @@ export const TYPE_LABELS: Readonly<Record<NodeType, string>> = {
   norm: '规范',
   tool: '工具',
   retro: '复盘',
+  role: '用户',
+  flow: '流程',
+  step: '步骤',
 }
 
 export const STATUS_LABELS: Readonly<Record<Status, string>> = {
@@ -65,6 +68,7 @@ export const EVIDENCE_LABELS: Readonly<Record<EvidenceKind, string>> = {
   test: '测试',
   check: '检查',
   decision: '拍板',
+  walk: '走一遍',
 }
 
 export const ACTOR_LABELS: Readonly<Record<Actor, string>> = {

@@ -285,6 +285,8 @@ const EDGE_LABELS: Readonly<Record<EdgeType, string>> = {
   depends: '依赖',
   source: '来源',
   supersedes: '取代',
+  serves: '服务',
+  next: '下一步',
 }
 
 /** What one history entry did, with its result where the entry carries one. */
