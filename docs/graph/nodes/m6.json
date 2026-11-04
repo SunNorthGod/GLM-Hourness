@@ -374,6 +374,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "m6-followups S3（m6-rules-probe，57c0902）评审 APPROVED，无阻塞（.llm/m6f/review-s3.json、review-s3.md）。下一步：S2 m6-script-gate；验收第 24 条里真实 checkCall 的用例等规则板的 R4d（rules-board-page 在做）。"
+    },
+    {
+      "at": "2026-11-04T21:56:18.717Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m6-followups S2（m6-script-gate）提交 e72a25e，在合并 1bbb770（origin/main 9f94f49）之上，已推 origin/m6-followups。门禁：build 0、preflight 0、npm test 0（2982 通过 / 0 失败）、探针 0（388/388）；棘轮 eslint 73 / knip 18 / jscpd 1。验收第 24 条还剩一部分：真实 checkCall 执行已批准脚本的用例，等规则板的 R4d；R4d 要规则的批准路径（R3-proposal，需 M3 0.6 请求的 §9.3 改稿，排在自举之后）与 M7 E7 的 trunkAdvanceFor，rules-board-page 本轮不做。下一步：S2 评审。"
     }
   ]
 }
