@@ -570,6 +570,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "workflow m7-seam-and-e7（wf_8fb7162b2246ddc9）完成：E7 压缩提交 77a0c87 已推 origin/m7（223f8d3..77a0c87，快进，非强推），origin/m7 == 77a0c87。m7 分支尚未合入 main；剩余 E8、E9 与合入 main 后的 L4。"
+    },
+    {
+      "at": "2026-11-04T20:41:34.452Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "派 workflow m7-e8-e9-and-merge（wf_36d1d690c7e1de90）：在 .worktrees/m3 的 m7 分支上先合入最新 origin/main，再做 E8 与 E9（L3 glm-exec-skeleton、真实模型跑一次、合入 main 后单独一个提交把 execute 改为默认启用、批次 L4）。M7 合入 main 后能解开的等待项：状态板块第 6 批、面板第 17 条与第 8 条 (d)、用户图延后项、接管 B7。"
     }
   ]
 }
