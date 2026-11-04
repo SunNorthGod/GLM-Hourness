@@ -341,6 +341,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "违规流水追加顺序的修正已进 main：bc25baa「fix(audit): appends to one journal file land in the order they were made」。门禁：build 0、preflight 0、npm test 0（棘轮 76/19/1 不变）、探针 347/347 退出码 0。四条线的续作运行计划均已确认：m7-seam-and-e7（收接缝批、E7 规划、实现与评审循环）、metrics-s6-s7-land-review（落第 6+7 步、第 7 步评审循环）、loopsr-batch2-batch3（Batch 2、Batch 3 实现与评审循环）、user-graph-ug3-ug7（UG3 至 UG7 每批实现与评审）。各线合并 bc25baa 后再跑探针；探针按 .llm/probe-lock 全机串行。user-graph 基线步：HEAD 23bbd6b 的干净导出 build/preflight/test 全绿（2730 过、0 败、1 跳过）。"
+    },
+    {
+      "at": "2026-11-04T07:14:06.816Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "发布渠道现状（2026-11-04 编排方核对，人问 GitHub、Gitee、npm 要不要他管）：Gitee origin 是唯一按 AGENTS.md 推送的远端，四条线与 main 都推到这里。第二个远端 github（github.com/SunNorthGod/GLM-Hourness）的 main 停在 4c315a9（2026-11-03 23:25），比 origin/main 落后 73 个提交。npm 上 dsh-glm-zcode 与 dsh-hourness 是 0.3.0，本地两包是 0.3.1，根包 private。文档里没有 GitHub 镜像与 npm 发版的约定，两件都待人定（同步方式与时机；发版要人的 npm 凭证）。"
     }
   ]
 }
