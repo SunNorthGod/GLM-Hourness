@@ -491,6 +491,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "loops-machine 评审 F1（登录被拒持续时每 10 分钟重复告诉人）已修并推：origin/loops-machine = f4a4743（先合入 origin/main 749b525，合并提交 8ace200，再修）。两个提交上四道门禁为 0：npm test 3003 个、0 失败，探针 388/388；棘轮 eslint 73 / knip 18 / jscpd 1。下一步：复审。"
+    },
+    {
+      "at": "2026-11-04T23:25:21.638Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "workflow loops-machine（wf_ad93a3251d59f33a）完成：第 2 轮评审 APPROVED，无阻塞。F1 由 f4a4743 修好：同一次被拒在整段 rejected 期间固定 since 与 path，新 L2 用例在旧代码上失败、新代码上通过；8ace200 的合并核对无误；门禁记录全绿（npm test 3003 个、0 失败，探针 388/388，棘轮 73/18/1）。origin/loops-machine = f4a4743，尚未合入 main；编排方派 land-loops-machine（agent://wf-coder）合入 main、跑门禁、推两个远端，行组合或循环行运行行为有变就按 CDP 规矩重启桌面版。"
     }
   ]
 }
