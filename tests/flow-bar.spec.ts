@@ -124,12 +124,12 @@ test('the main agent waits for the human when it handed something over and its t
   assert.deepEqual(barOf(design, liveAt({ recent: HANDED_OVER })), { line: '主 Agent · 设计 · 五栏 2/5 · 等你批准', waiting: true, modelNote: null })
 })
 
-test('a question waiting for the human turns the wait into 等你拍板, whatever the stage', () => {
+test('a question waiting for the human turns the wait into 等你回话 (the panel\'s word for it), whatever the stage', () => {
   const question = node('question-1', 'question', { parent: 'goal-1' })
   const interview = readySnapshot(goal({ status: 'proposed', stage: 'interview' }), question)
   const design = readySnapshot(goal({ stage: 'design' }), question)
-  assert.equal(lineOf(interview, liveAt({ recent: HANDED_OVER })), '主 Agent · 访谈 · 需求卡 0/9 · 等你拍板')
-  assert.equal(lineOf(design, liveAt({ recent: HANDED_OVER })), '主 Agent · 设计 · 还没有设计决策 · 等你拍板')
+  assert.equal(lineOf(interview, liveAt({ recent: HANDED_OVER })), '主 Agent · 访谈 · 需求卡 0/9 · 等你回话')
+  assert.equal(lineOf(design, liveAt({ recent: HANDED_OVER })), '主 Agent · 设计 · 还没有设计决策 · 等你回话')
 })
 
 test('no wait while the turn is open, when the last tool result is another tool\'s or a failed hand-over, or when nothing came back yet', () => {

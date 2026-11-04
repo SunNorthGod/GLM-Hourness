@@ -155,7 +155,7 @@ test('token counts and times read like DSH\'s: 282K tok, tooltips with the local
 test('status lines say what a node waits for', () => {
   const base = { history: [], options: [{ key: 'A', label: '甲案', consequence: '快' }, { key: 'B', label: '乙案', consequence: '稳' }], recommend: 'A' }
   const question = (fields: Partial<GraphNode>): GraphNode => ({ id: 'q', type: 'question', title: 'q', status: 'approved', parent: 'g', ...base, ...fields })
-  assert.equal(statusText(question({})), '等你拍板')
+  assert.equal(statusText(question({})), '等你回话', 'the same words as statusPhrase and the flow bar')
   assert.equal(statusText(question({ decider: 'agent' })), 'agent 来定')
   assert.equal(statusText(question({ status: 'done', decision: 'B' })), '选了 B 乙案')
   assert.equal(statusText(question({ status: 'proposed' })), '等你批准')

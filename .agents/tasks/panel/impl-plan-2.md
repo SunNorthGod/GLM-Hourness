@@ -19,26 +19,28 @@
 
 ## 2. 这一轮能做的批次
 
-每批一个提交，文档同批；每批跑全量门禁（§4），四道退出码为 0、探针全绿后推 `origin/panel-2`。
+每批一个提交，文档同批；每批跑全量门禁（§4），四道退出码为 0、探针全绿后推 `origin/panel-2`。执行顺序 Q1、Q2、Q3、Q5、Q4（L4 在最后，核对的是最后的构建）。`提交与落地`一列：每批在下一批的提交里补记上一批的提交号，本批写「本批」。
 
-| 批 | 内容 | 覆盖的做完条件 | L2 / L3 | 同批改的文档 | 桌面 L4 | L4 能否只用本分支产物 |
-| --- | --- | --- | --- | --- | --- | --- |
-| Q0 | 本计划 | — | — | 本文件 | — | — |
-| Q1 | 状态字统一：`statusText` 对人定的待决写「等你回话」，与设计 §5.4 和 `statusPhrase` 同字；文档同步：§2.10「上手」一条改写登记表现状（经验板、循环板、指标板在，第 5 块随循环板出现，第 4 块等规则板页面），HANDOFF 面板一行改成合入后的状态并指向本计划 | 6（状态字与「等你回话」同字） | L2：`tests/graph-panel-model.spec.ts` 的 `statusText` 断言改字；L3 不涉及 | `docs/ORCHESTRATION.md` §2.10、`docs/HANDOFF.md` 面板一行 | 随 Q4 看首页与节点页的状态字 | 能 |
-| Q2 | 写法检查第一阶段（设计 §5.2、§5.3、§9.2 第 1 步）：新文件 `src/graph/plain.ts`（`plainIssues`、按节点的检查、阶段常量 `PLAIN_PHASE = 1`）；`why` 字段（schema、读写校验、写出顺序紧跟 `title`、`LLM_EDITABLE` 加 `why`；目标的 `why` 沿用「目标 llm 不能改」的现有分支）；引擎对 `llm`、`harness` 的写入算 `warnings`（第一阶段照常写入；第二阶段的拒绝路径也写好，只经引擎选项 `plainPhase` 在测试里打开）；只改正文时的提醒；读入时未关闭节点的提示；图工具 schema 加 `why`、写结果加 `warnings`、`title`/`why` 说明加人话一段与换词表；节点页「为什么」一节与写法提示；`graph-plain-view.spec.ts` 的替身换成真检查；去掉 M3 留的契约测试跳过 | 9（第一阶段，标题与一句话理由；问话那几行见 §5）；2（给改写提供检查） | L2：新 `tests/graph-plain.spec.ts`（进 `npm test` 列表），改 `graph-engine`、`graph-tools`、`graph-plain-view`、`propose-to-human`、`graph-render` 几个 spec；L3：探针 `glm-graph` 场景加两步（工具 schema 带人话一段；标题含 `M3` 的提议拿到 `warnings`） | `docs/ORCHESTRATION.md` §2.6（`why` 字段与写法规则，编排方经命令行写图照它写）、§2.9（检查顺序、`warnings`、阶段常量）、§2.10（命令行与图工具的写结果、节点页「为什么」）、`docs/HANDOFF.md` | 随 Q4 看节点页「为什么」与写法提示 | 能 |
-| Q3 | 现有节点改写的对照表（设计 §5.5 的 agent 一半）：`.agents/tasks/panel/title-rewrite.md`，每个未关闭节点一行（id、旧标题、新标题或「不改」、`why`），新标题与 `why` 全部过 Q2 的 `plainIssues`；末尾一段按 `d-ask-three-gates` 的 `recommend` 问法写好交给人的话（问话、推荐、理由、不选的那种），附件即表。不写图 | 2（agent 一半；人回话与写图在等） | 无代码；核对用一次性脚本跑 `plainIssues`（不入库） | 本文件 §3 的等待表、`docs/HANDOFF.md` 面板一行 | 无 | — |
-| Q4 | 桌面 L4（本分支 Q3 之后的构建）：隔离实例（独立 `--user-data-dir`、独立 `DSH_HOME`、独立 CDP 端口、命令行标记，两个包经 junction 指向本工作树的 `packages/`），按设计 §10.3 第 1、3、4、5（部分）、7、8、9、10、11 项核对，另记阻断②的现状；报告 `.agents/tasks/panel/l4-<日期>.md` | 1（首屏不滚动）、11、12（第 4 块除外）、13（未登录一支）、14（接管行不在的一支）、15、16；5、6、7 复核 | 无新 L2/L3 | `.agents/tasks/panel/l4-<日期>.md`、`docs/HANDOFF.md`、`docs/ORCHESTRATION.md` §2.10 验证一条、`docs/FACTS.md` §3（新的宿主事实，例如 `sidebarRight.openTab` 在开场画面的结果、`uiWorkspace` 是否注入） | 本批就是 | 能：实例只加载本工作树的产物；锁目录 `.llm/desktop-lock` 建在主检出（编排方 2026-11-05 准许，同 probe-lock 的例外） |
+人 2026-11-05 的答复（编排方转达，原话「没问题就把线全开吧」，同意编排方的三条建议）：一、可见信号换源（原 §3 第一行）照建议做，新增 Q5；二、第 1、6、9、17 条按 §5 改字，意思不变，新字写进 `.agents/tasks/plain-ui/onepage-done.md`，逐条对照写进 `.agents/tasks/panel/conditions-rewrite.md`，写进图归编排方；三、流程条的「等你拍板」随 Q1 统一为「等你回话」。
 
-顺序依赖：Q3 要 Q2 的 `plainIssues` 与 `PLAIN_LIMITS.why`；Q4 在 Q1–Q3 之后，核对的是最后的构建。Q1 与 Q2 互不依赖，Q1 先做是因为它小，先把 HANDOFF 改到合入后的状态。
+| 批 | 内容 | 覆盖的做完条件 | L2 / L3 | 同批改的文档 | 桌面 L4 | L4 能否只用本分支产物 | 提交与落地 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Q0 | 本计划 | — | — | 本文件 | — | — | `95f10df`（规划步提交，随 Q1 推送） |
+| Q1 | 状态字统一：`statusText` 对人定的待决写「等你回话」，与设计 §5.4 和 `statusPhrase` 同字；文档同步：§2.10「上手」一条改写登记表现状（经验板、循环板、指标板在，第 5 块随循环板出现，第 4 块等规则板页面），HANDOFF 面板一行改成合入后的状态并指向本计划 | 6（状态字与「等你回话」同字） | L2：`tests/graph-panel-model.spec.ts` 的 `statusText` 断言改字；L3 不涉及 | `docs/ORCHESTRATION.md` §2.10、`docs/HANDOFF.md` 面板一行 | 随 Q4 看首页与节点页的状态字 | 能 | 本批。另含人 2026-11-05 答复的二、三两条：流程条 `waitDecide` 改「等你回话」（`tests/flow-bar.spec.ts` 同改，ORCHESTRATION 流程条一节同改；「待你拍板 N」不在答复里，没改）；第 1、6、9、17 条改字（`onepage-done.md`、`conditions-rewrite.md`）。第 9 条按 main 上的实际写：问话与那几行的换词表与长度从第一天起拒绝，其余规则先警告后拒绝，理由在 `conditions-rewrite.md` |
+| Q2 | 写法检查第一阶段（设计 §5.2、§5.3、§9.2 第 1 步）：新文件 `src/graph/plain.ts`（`plainIssues`、按节点的检查、阶段常量 `PLAIN_PHASE = 1`）；`why` 字段（schema、读写校验、写出顺序紧跟 `title`、`LLM_EDITABLE` 加 `why`；目标的 `why` 沿用「目标 llm 不能改」的现有分支）；引擎对 `llm`、`harness` 的写入算 `warnings`（第一阶段照常写入；第二阶段的拒绝路径也写好，只经引擎选项 `plainPhase` 在测试里打开）；只改正文时的提醒；读入时未关闭节点的提示；图工具 schema 加 `why`、写结果加 `warnings`、`title`/`why` 说明加人话一段与换词表；节点页「为什么」一节与写法提示；`graph-plain-view.spec.ts` 的替身换成真检查；去掉 M3 留的契约测试跳过 | 9（第一阶段，标题与一句话理由；问话那几行见 §5）；2（给改写提供检查） | L2：新 `tests/graph-plain.spec.ts`（进 `npm test` 列表），改 `graph-engine`、`graph-tools`、`graph-plain-view`、`propose-to-human`、`graph-render` 几个 spec；L3：探针 `glm-graph` 场景加两步（工具 schema 带人话一段；标题含 `M3` 的提议拿到 `warnings`） | `docs/ORCHESTRATION.md` §2.6（`why` 字段与写法规则，编排方经命令行写图照它写）、§2.9（检查顺序、`warnings`、阶段常量）、§2.10（命令行与图工具的写结果、节点页「为什么」）、`docs/HANDOFF.md` | 随 Q4 看节点页「为什么」与写法提示 | 能 | — |
+| Q3 | 现有节点改写的对照表（设计 §5.5 的 agent 一半）：`.agents/tasks/panel/title-rewrite.md`，每个未关闭节点一行（id、旧标题、新标题或「不改」、`why`），新标题与 `why` 全部过 Q2 的 `plainIssues`；末尾一段按 `d-ask-three-gates` 的 `recommend` 问法写好交给人的话（问话、推荐、理由、不选的那种），附件即表。不写图 | 2（agent 一半；人回话与写图在等） | 无代码；核对用一次性脚本跑 `plainIssues`（不入库） | 本文件 §3 的等待表、`docs/HANDOFF.md` 面板一行 | 无 | — | — |
+| Q5 | 可见信号换源（人 2026-11-05 同意）：面板可见改为「挂载着、窗口有焦点，且 `IntersectionObserver` 没有报不相交」（观察器只作加强：桌面宿主里它连初始回调都不派发，`docs/FACTS.md` §3），不再读 `document.visibilityState`；`seen.ts` 加 `watchVisibility`（注入窗口焦点与观察器，纯逻辑）；`Panel.tsx` 的到达与离开改用它，挂载时补发 `mount`（此前从不发，第一次到达读不到本机记录）；`MainChat.tsx` 的读取时机抽成 `main-chat.ts` 的 `recordReads`：挂载时读一次（不管可见与否），变为可见时读，可见期间每 30 秒读 | 4（「上次看之后」在桌面版上能记下）；6 的「去哪回话」一行在桌面版上读得到主 Agent 记录 | L2：`tests/graph-panel-model.spec.ts` 加 `watchVisibility`（初值、焦点、观察器否决、只在变化时报、停止后不报）、`recordReads`（挂载读一次、变可见读并轮询、隐藏停轮询、可见挂载不重复读）与挂载到达读记录；L3 不涉及（客户端没有 L3） | 设计 §6.8 可见的定义、`docs/ORCHESTRATION.md` §2.10 版面一条的「上次看之后」与「主 Agent 的位置」一条、`docs/FACTS.md` §3 那一行的「可改用」改成已改 | Q4 里做走查 C/D（离开与回来后「上次看之后」的窗口、主 Agent 记录的读取） | 能 | — |
+| Q4 | 桌面 L4（本分支 Q3 之后的构建）：隔离实例（独立 `--user-data-dir`、独立 `DSH_HOME`、独立 CDP 端口、命令行标记，两个包经 junction 指向本工作树的 `packages/`），按设计 §10.3 第 1、3、4、5（部分）、7、8、9、10、11 项核对，另记阻断②的现状；报告 `.agents/tasks/panel/l4-<日期>.md` | 1（首屏不滚动）、11、12（第 4 块除外）、13（未登录一支）、14（接管行不在的一支）、15、16；5、6、7 复核 | 无新 L2/L3 | `.agents/tasks/panel/l4-<日期>.md`、`docs/HANDOFF.md`、`docs/ORCHESTRATION.md` §2.10 验证一条、`docs/FACTS.md` §3（新的宿主事实，例如 `sidebarRight.openTab` 在开场画面的结果、`uiWorkspace` 是否注入） | 本批就是 | 能：实例只加载本工作树的产物；锁目录 `.llm/desktop-lock` 建在主检出（编排方 2026-11-05 准许，同 probe-lock 的例外） | — |
+
+顺序依赖：Q3 要 Q2 的 `plainIssues` 与 `PLAIN_LIMITS.why`；Q5 只改客户端，与 Q2、Q3 互不依赖；Q4 在 Q1–Q3 与 Q5 之后，核对的是最后的构建。Q1 与 Q2 互不依赖，Q1 先做是因为它小，先把 HANDOFF 改到合入后的状态。
 
 ## 3. 仍要等的项
 
 | 项 | 等什么 | 等谁 |
 | --- | --- | --- |
-| 可见信号换源（阻断②）：「上次看之后」的本机记录与 `useMainAgent` 的可见门在桌面版上失效，第 4 条在桌面版上不成立 | 设计 §6.8 押在 `visibilityState` 上，换成挂载/卸载加 `window` focus/blur（`IntersectionObserver` 作加强）属语义变更 | 人定（经编排方）；定了以后本线一批修 `Panel.tsx` 的到达/离开与 `MainChat.tsx` 的可见门，再做走查 C/D |
-| 第 1、6、9、17 条的字句 | 这四条按旧问法（背景、推荐、疑问、不做四行）写，main 上是 `d-ask-three-gates` 的问法；要改的地方见 §5 | 人改字（编排方交人） |
-| 第 9 条第二阶段（拒绝）与 `graph_propose` 引用 `PLAIN_QUESTION_GUIDE`（§9.2 第 8 步） | 前提 (a) 现有节点改写已写入图；(b)(c) 每个以 `llm`/`harness` 写人要读的字段的入口各有契约测试，含接管的三个规范模板；问话那几行查哪些字段要等第 9 条改字 | 人回 Q3 的对照表、编排方带原话写图；接管线（bootstrap-implementation）；人改第 9 条 |
-| `background` 字段与 `background` 规则（§5.2、§5.3） | main 上没有任何写入方写 `background`（`propose_to_human` 的字段是 `ask`、`proposal`、`reason`、`cost`、`ways`、`notTaken`），加这条规则会让每道 M3 的题都报警；随第 9 条改字一起定 | 人改第 9 条 |
+| 第 1、6、9、17 条的新字写进图上的验收 | 新字已在 `onepage-done.md` 与 `conditions-rewrite.md`（Q1）；`docs/graph` 归编排方 | 编排方带人的原话写图 |
+| 第 9 条第二阶段（拒绝）与 `graph_propose` 引用 `PLAIN_QUESTION_GUIDE`（§9.2 第 8 步） | 前提 (a) 现有节点改写已写入图；(b)(c) 每个以 `llm`/`harness` 写人要读的字段的入口各有契约测试，含接管的三个规范模板；第 9 条已按新问法改字（Q1）：问话与那几行的换词表与长度归 M3，从第一天起拒绝，写法检查在两个阶段里查 `proposal`、`notTaken`、`conclusion` 的其余规则 | 人回 Q3 的对照表、编排方带原话写图；接管线（bootstrap-implementation） |
+| `background` 字段与 `background` 规则（§5.2、§5.3） | main 上没有任何写入方写 `background`（`propose_to_human` 的字段是 `ask`、`proposal`、`reason`、`cost`、`ways`、`notTaken`），加这条规则会让每道 M3 的题都报警。第 9 条按新问法改字（Q1）之后，没有哪条做完条件要求背景一行，这一字段与规则不做 | 编排方定要不要在设计稿 §5.2、§5.3 上划掉它（本线不改设计稿的这两节） |
 | 第 2 条：现有节点的新标题与 `why` 写进图 | Q3 的对照表交人、人同意或改、带原话写入；`docs/graph` 归编排方 | 编排方交人并写图 |
 | 第 8 条：规则板页面（会挡住动作的门、写在代码里的规则的拦下记录与撤下一行、你定的规则、只记下不挡）与上手页第 4 块 | 规则板没有客户端页面，也没有哪条线在做；拦下与撤下的条目（`rules/denials`、`rules/lifts`）在 `origin/status-hub-2`，没进 main | 编排方排规则板页面；状态板块余批（status-hub-remaining 线） |
 | 第 8 条：循环板条目的脚本原文、超时来源四种、来历与超时记录 | 循环板的页面数据还没有这些字段（loops-runner 顺延第 2、5 项：`scriptDetail`/`commandDetail`、`staleEntries`/`timeoutEntries`） | 循环板线（loops-machine 之后排） |
@@ -59,7 +61,7 @@
 - 除 `.llm/probe-lock*` 与 Q4 的 `.llm/desktop-lock` 外不往主检出写任何东西；不编辑 `docs/graph`；不动 `~/.dsh`；不强推；一批一个提交，推 `origin/panel-2`，不推 GitHub（GitHub 只跟 main）。
 - 提交信息照前一轮的样子：`feat(panel): …（plain-ui 1.3 Q2）` 一类，正文列改了什么、门禁数字。
 
-## 5. 第 1、6、9、17 条换新问法时要改的地方（只列，不改人的条件）
+## 5. 第 1、6、9、17 条换新问法时要改的地方（规划时只列；人 2026-11-05 同意改字，Q1 按下面几条改了，新字见 `conditions-rewrite.md`）
 
 main 上的问法是 `d-ask-three-gates`：一句问话（`ask`），按四种问法 `recommend`、`choose`、`want`、`look` 带几行——推荐或猜测（`proposal`）、理由（`reason`）、代价（`cost`）、几种做法（`ways`）、不选的那种（`notTaken`）；主 Agent 在对话里交的还有 `confirm`（确认需求）与 `release`（放行方案）。面板按这个落地（P2、P4 的落地记录）。四条里写着旧问法的地方：
 
@@ -76,7 +78,7 @@ main 上的问法是 `d-ask-three-gates`：一句问话（`ask`），按四种�
       Files: `.agents/tasks/panel/impl-plan-2.md`
       Verify: `git -C <工作树> show --stat HEAD~0` 在第 2 项之前只有这一个文件。
 
-- [ ] 2. （Q1）`ui/src/graph/model.ts` 的 `statusText`：人定的未拍板待决返回「等你回话」（与 `plain-view.ts` 的 `statusPhrase`、设计 §5.4 状态短语表同字），agent 定的仍是「agent 来定」；`tests/graph-panel-model.spec.ts` 的断言跟着改。同一个提交改两处文档：`docs/ORCHESTRATION.md` §2.10「上手」一条把「此刻登记表里只有经验板」改成现状（登记的是经验板、循环板、指标板；第 5 块在循环板对这个会话可用时出现；第 4 块等规则板页面）；`docs/HANDOFF.md` 第 155 行面板一行改成：P0–P8 已随 `51ca652` 进 main，第二轮在分支 `panel-2`（工作树 `.worktrees/panel-2`），批次图 `.agents/tasks/panel/impl-plan-2.md`，排期在后的项按本计划 §3 写（去掉已过时的「GLM 上手在下一批」）。
+- [x] 2. （Q1）`ui/src/graph/model.ts` 的 `statusText`：人定的未拍板待决返回「等你回话」（与 `plain-view.ts` 的 `statusPhrase`、设计 §5.4 状态短语表同字），agent 定的仍是「agent 来定」；`tests/graph-panel-model.spec.ts` 的断言跟着改。同一个提交改两处文档：`docs/ORCHESTRATION.md` §2.10「上手」一条把「此刻登记表里只有经验板」改成现状（登记的是经验板、循环板、指标板；第 5 块在循环板对这个会话可用时出现；第 4 块等规则板页面）；`docs/HANDOFF.md` 第 155 行面板一行改成：P0–P8 已随 `51ca652` 进 main，第二轮在分支 `panel-2`（工作树 `.worktrees/panel-2`），批次图 `.agents/tasks/panel/impl-plan-2.md`，排期在后的项按本计划 §3 写（去掉已过时的「GLM 上手在下一批」）。
       Files: `ui/src/graph/model.ts`、`tests/graph-panel-model.spec.ts`、`docs/ORCHESTRATION.md`、`docs/HANDOFF.md`
       Verify: §4 四道门禁退出码 0；`node --experimental-strip-types tests/graph-panel-model.spec.ts` 全过；棘轮不升。
 
@@ -96,6 +98,9 @@ main 上的问法是 `d-ask-three-gates`：一句问话（`ask`），按四种�
       Files: `.agents/tasks/panel/title-rewrite.md`（新）、`docs/HANDOFF.md`（面板一行加「对照表已写，等人回话」）
       Verify: 一次性脚本（放 `.llm/panel-2/`，不入库，用完删）读表，对每个「新标题」（「不改」的取旧标题）与 `why` 跑 `plainIssues` 与 `PLAIN_LIMITS`，输出为空；表的行数等于取图时未关闭节点数（规划时 126）；§4 四道门禁退出码 0（只改文档，仍跑全量）。一个提交推 `origin/panel-2`。
 
+- [ ] 8. （Q5，人 2026-11-05 同意；在第 6 项之后、第 7 项之前做）可见信号换源。`ui/src/graph/seen.ts` 加 `watchVisibility(host, onChange)`：`host` 给出 `hasFocus()`、窗口 focus/blur 的订阅与可选的相交观察；可见 = 窗口有焦点，且观察器没有报过不相交（观察器从不回调时不否决）；开始时报一次初值，之后只在变化时报，停止后不再报。`ui/src/graph/Panel.tsx`：到达与离开的效果改用它（真实窗口与 `IntersectionObserver` 的薄适配），开始时先发 `mount`（`since` 读本机记录），卸载或换键时发 `unmount`；`bodyVisible` 跟着它。`ui/src/graph/main-chat.ts` 加 `recordReads(read, visible, timers)`：开始时读一次，可见时每 30 秒读，变为可见时立刻读一次并开始轮询，变为不可见时停；`MainChat.tsx` 的 `useMainAgent` 用它（换记录路径时重建，可见变化时通知）。文档：设计 §6.8 可见的定义改写（旧文本留在 git 历史里），`docs/ORCHESTRATION.md` §2.10「主 Agent 的位置」与版面一条的「上次看之后」、`docs/FACTS.md` §3 那一行。
+      Files: `ui/src/graph/seen.ts`、`ui/src/graph/Panel.tsx`、`ui/src/graph/main-chat.ts`、`ui/src/graph/MainChat.tsx`、`tests/graph-panel-model.spec.ts`、`.agents/tasks/plain-ui/design.md`、`docs/ORCHESTRATION.md`、`docs/FACTS.md`、`docs/HANDOFF.md`
+      Verify: §4 四道门禁退出码 0；`node --experimental-strip-types tests/graph-panel-model.spec.ts` 全过；`ui/src/graph` 下不再出现 `visibilityState`；棘轮不升。一个提交推 `origin/panel-2`。Q4 里做走查 C/D。
 - [ ] 7. （Q4，依赖第 6 项）桌面 L4，只用本工作树第 6 项之后的构建：
       - 准备：把 `C:\Users\29596\Desktop\Project\GLM-Hourness\.worktrees\panel\.llm\panel-310-l4\` 里的 `launch.ps1`、`install-bundles.mjs`、`cdp.mjs`、`drive.mjs` 等脚本只读拷到 `.worktrees\panel-2\.llm\panel-2\l4\`（不改旧工作树），改：标记 `glm-hourness-panel2-l4`、CDP 端口取一个空闲的（先查 `Get-NetTCPConnection -LocalPort`，9333、9336 不用）、`user-data-dir` 与 `dsh-home` 在新目录下、`install-bundles.mjs` 的仓库根改成从 `.llm/panel-2/l4` 往上三层（本工作树根）。装后核验 junction 指向本工作树的 `packages/glm`、`packages/hourness`。
       - 锁：主检出没有 `.llm\desktop-lock` 时才建，`owner.txt` 写 workflow id、步骤名与时间，至少每 10 分钟重写一次，用完删掉；`owner.txt` 超过 30 分钟没有重写才算残留，删时写进报告。不杀、不停人正在跑的桌面实例，只按标记结束自己的进程树；等旧进程退出与 userData 锁释放再起。

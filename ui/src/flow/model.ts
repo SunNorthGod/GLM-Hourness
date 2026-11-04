@@ -37,7 +37,7 @@ export const FLOW_TEXT = {
   noDecision: '还没有设计决策',
   waitConfirm: '等你确认',
   waitApprove: '等你批准',
-  waitDecide: '等你拍板',
+  waitDecide: '等你回话',
   dismiss: '这次就用它',
   closed: (title: string): string => `${title}（已关闭）`,
   requirementCard: (ok: number, total: number): string => `需求卡 ${ok}/${total}`,

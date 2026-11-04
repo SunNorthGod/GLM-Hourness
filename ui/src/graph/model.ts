@@ -152,7 +152,7 @@ export function statusText(node: GraphNode, graph?: LoadedGraph): string {
       const chosen = node.options?.find(entry => entry.key === node.decision)
       return chosen === undefined ? '已拍板' : `选了 ${chosen.key} ${chosen.label}`
     }
-    if (OPEN_STATUSES.has(node.status) && node.status !== 'proposed') return deciderOf(node) === 'agent' ? 'agent 来定' : '等你拍板'
+    if (OPEN_STATUSES.has(node.status) && node.status !== 'proposed') return deciderOf(node) === 'agent' ? 'agent 来定' : '等你回话'
   }
   if (graph !== undefined && isUserNode(node)) return userStatusText(graph, node)
   if (node.status === 'proposed') return '等你批准'
