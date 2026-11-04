@@ -365,6 +365,42 @@
       "actor": "llm",
       "op": "comment",
       "text": "11 条运行同时开工后，8 条在同一时段因模型服务限流（5xx/throttling）暂停（m7、user-graph、loops-machine、m4-checks、panel-2、status-hub、m6-followups、bootstrap、m5-rest 中除 metrics 与 merge-loops 外的各条）。编排方分两批恢复：先恢复 merge-loops（关键路径）、m7、user-graph、loops-machine、m4-checks、panel-2，同时在跑约 7 条；status-hub、m6-followups、bootstrap、m5-rest 等前一批有运行结束再恢复。并行上限以服务限流为准，不以机器为准。"
+    },
+    {
+      "at": "2026-11-04T11:51:24.241Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-11-04：「开的线还是有点多了，再减一条」。编排方暂停 panel-2-next-batches（规划步刚开始；面板剩下的大项里条件 8 等状态板块、条件 14 等接管，现在做收益最小）。在跑的 5 条：merge-loops-runner-l4（循环板桌面 L4）、m7-seam-and-e7、user-graph-ug3-ug7、m4-checks-and-rules、metrics-s6-s7-land-review。排队的 6 条，按序补位：loops-machine（被限流暂停）、panel-2、status-hub（被限流暂停）、m6-followups、m5-rest、bootstrap。在跑的有一条结束才补下一条。"
+    },
+    {
+      "at": "2026-11-04T11:53:36.836Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-11-04：「减到五条吧」。核对时在跑的正好 5 条：merge-loops-runner-l4（重启桌面版）、m7-seam-and-e7（E7 收敛第二轮）、user-graph-ug3-ug7（UG6）、m4-checks-and-rules（B1）、metrics-s6-s7-land-review（第 7 步最后一轮）；其余 6 条都已暂停（panel-2 由编排方暂停，loops-machine、status-hub 被限流暂停后未再恢复，m6-followups、m5-rest、bootstrap 排队）。定下：同时在跑的运行至多 5 条；有一条结束才按队列补一条，队列次序 loops-machine、panel-2、status-hub、m6-followups、m5-rest、bootstrap。"
+    },
+    {
+      "at": "2026-11-04T11:58:51.430Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "队列调整（2026-11-04）：视频改风格排到队首，次序变为 视频改风格、loops-machine、panel-2、status-hub、m6-followups、m5-rest、bootstrap。merge-loops-runner-l4 在重启桌面版那一步再次被限流暂停，已恢复。"
+    },
+    {
+      "at": "2026-11-04T12:19:36.836Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-11-04 问「dsh 有压缩后会话上下文查询功能吗」。编排方已知：DSH 的会话记录只追加、写下的事件不重写（DSH 架构笔记 2026-06-14 session-persistence，实读），压缩后原文仍在会话文件里；压缩后模型看到的是摘要。DSH 有没有给模型或人「查压缩前原文」的工具、插件从哪个接口能读原始记录，快速检索未找到，未核实。人答「继续」，按编排方提议排一条只读调查，次序在视频改风格之后。队列：视频改风格、压缩后查原文的调查、loops-machine、panel-2、status-hub、m6-followups、m5-rest、bootstrap。另：限流仍在，在跑的 5 条里 merge-loops 与 metrics 又各被暂停一次，已恢复。"
+    },
+    {
+      "at": "2026-11-04T12:36:39.251Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-11-04：「加到八路试试？」。同时在跑的上限从 5 改为 8，按队列补 3 条：video-restyle-less-ai-look（视频改风格，先出三套样张给人挑）、investigate-compaction-recall（DSH 压缩后查原文的只读调查，报告写 .agents/tasks/compaction-recall/report.md）、loops-machine-runner-channel-events（恢复）。在跑 8 条：merge-loops-runner-l4、m7-seam-and-e7、user-graph-ug3-ug7、m4-checks-and-rules、metrics-s6-s7-land-review 与上述 3 条。排队：panel-2、status-hub、m6-followups、m5-rest、bootstrap。限流若仍频繁暂停，编排方按实际情况降回去并告诉人。"
+    },
+    {
+      "at": "2026-11-04T13:44:44.310Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "八路的结果（2026-11-04 人问「8路都在吗？」时核对）：8 条里 7 条因模型服务限流（5xx/throttling）处于暂停，只有 metrics-reason-codes-and-merge 在跑；此前 5 条时也反复被停。结论：并行上限卡在服务限流，开得越多停得越勤，总进度不升反降。编排方改为同时在跑 4 条：merge-loops-runner-l4（只剩循环板 L4）、user-graph-ug3-ug7（只剩 UG7 评审与收尾）、video-restyle-less-ai-look（出样张）、metrics-reason-codes-and-merge；其余暂停的按序补位：m7-seam-and-e7（E7 第二轮评审）、investigate-compaction-recall、m4-checks-and-rules（B2 起）、loops-machine，之后是 panel-2、status-hub、m6-followups、m5-rest、bootstrap。限流退了再往上加。"
     }
   ]
 }

@@ -117,6 +117,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "UG5 评审 APPROVED（无阻断），已推：origin/user-graph 5a0b2cc..7dbd5d7（快进）。走一遍约定段照计划顺延。UG6（面板「用户怎么用」页）开始。"
+    },
+    {
+      "at": "2026-11-04T13:38:22.512Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "UG6（面板「用户怎么用」页）：dced5bd 评审 APPROVED，已推 origin/user-graph（7dbd5d7..dced5bd 快进）；门禁 2788 过、0 败、1 跳过，探针 347/347，76/19/1；验收 41–43 在 L2 满足，41 的 L4 按设计 §10.2 顺延到桌面批次。UG7（文档收尾）：e56373c 本地提交，门禁 2789 个、2788 过、0 败、1 跳过，探针 347/347；等评审。"
     }
   ]
 }

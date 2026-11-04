@@ -31,6 +31,18 @@
       "reason": "运行 m4-checks-and-rules 开工（2026-11-04，人：「桌面版随便用，尽可能开多线」）",
       "from": "approved",
       "to": "doing"
+    },
+    {
+      "at": "2026-11-04T11:49:52.602Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m4-checks 运行的计划（.worktrees/m4-checks/.agents/tasks/m4/checks-plan.md）：6 批——B1 规则板流水按项目写，B2–B5 是 E3（改完就跑的检查）拆成的四批，B6 env 行出厂启用。逐批实现与评审循环接着跑。"
+    },
+    {
+      "at": "2026-11-04T13:38:22.694Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "B1（规则板违规流水按会话所在项目落盘，m4-rules 余项）：4da6f93 评审 APPROVED，已推 origin/m4-checks（新分支）；基于含 loops-runner 的 main（合并 4516ec6）。门禁：build 0、preflight 0、npm test 0（2747、0 败）、探针 347/347、76/19/1。剩 B2–B6（E3 四批与 env 行出厂启用）。"
     }
   ]
 }

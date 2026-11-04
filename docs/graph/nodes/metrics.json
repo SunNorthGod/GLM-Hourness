@@ -341,6 +341,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "第 7 步评审第三轮 CHANGES_REQUESTED：阻断 1 条 S7R3-1——cmd 在 /c、/k 之前带别的开关（cmd /s /c、cmd /d /s /c、cmd /q /c、cmd /v:on /c），或整段以 if exist / if not exist 开头时，删除仍放行；3f59b61 的整条子串判法都拦，相对它是回退。非阻断 3 条：isPruneCall 不跳过 cmd 的其他开关（与设计 §3.4 原文一致）、写入别名表外的写法（ac、Invoke-WebRequest -OutFile、curl -o、tar -C）、第 7 步 L3 场景仍欠。三轮的走向：按命令名判法每轮修一种 cmd 包装又露出下一种，第一轮的子串判法则误拦读命令参数里的删除词（S7-3）。评审循环用满 3 轮暂停，待人定。"
+    },
+    {
+      "at": "2026-11-04T11:49:52.249Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-11-04 对第 7 步评审的去留答「行」（编排方提议：再给最后一轮并换修法）。定下：第四轮是最后一轮；修法改为凡 cmd/cmd.exe 包着的命令（/c、/k 之前带任何开关），其后整段退回 3f59b61 的整条文字判法（点名 .llm/metrics、清单或密钥，且带写、删、移动词或重定向），一次兜住所有 cmd 包装；其余命令仍按命令名判，S7-3 的修正在 cmd 之外照旧成立；代价（cmd 包着的读命令文字里碰巧有删除词会被拒）写进 §10.6。isPruneCall 同样跳过 cmd 的开关并在 §10.6 记偏离；ac 进写入别名表；本轮补上第 7 步的 L3 场景。这一轮之后评审再找出的包装写法一律记进 §10.6 认不出的写法，不再开新一轮。已把这些写给第四轮修正步。"
+    },
+    {
+      "at": "2026-11-04T13:38:22.326Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "第 7 步评审第四轮 APPROVED（无阻断）：49449b4 已推 origin/metrics（合并 origin/main a9adca8 为 2dc368e）。修法照人同意的最后一轮：命令名是 cmd/cmd.exe 时其后整段按 3f59b61 的整条文字判，/c 前的开关、引号包整段、if exist 一次全覆盖；isPruneCall 跳过 cmd 开关；写入别名加 ac；第 7 步 L3 场景 metrics-rule 补上。门禁：build 0、preflight 0、npm test 0（2851、0 败、1 跳过）、探针 376/376、棘轮 eslint 73 / knip 18 / jscpd 1。非阻断 3 条：S7R4-1 交给 cmd 的读命令里开关与路径段被当动作词（findstr /ni 等误拦）、S7R4-2 cmd /c rm.exe 放行等写法、S7R4-3 2dc368e 的循环板读侧未评审。另一个真问题：loop-done 的 reason 带中文时被写入器按 §4.4 整条拒收，2dc368e 之后循环板页面「最近跑过的」读流水，这类运行会从页面上消失。编排方裁定（依据设计 §4.4、§1.6「记数与引用，不记文字」）：不放宽字段类型，reason 改为闭合的原因码表，人话原因留在循环板自己的状态与给主 Agent 的文字里、页面经映射显示。派 metrics-reason-codes-and-merge：原因码修正与 S7R4-1/2、评审 2dc368e 读侧、合入 main（指标行随之默认启用）、重启桌面版检查；第 9 步指标板 L4 之后再做。"
     }
   ]
 }
