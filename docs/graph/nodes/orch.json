@@ -407,6 +407,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "user-graph-ug3-ug7 完成，空出的位置给 m7-seam-and-e7（E7 收敛第二轮评审），已恢复。在跑 4 条：merge-loops-runner-l4（循环板 L4）、video-restyle-less-ai-look（样张）、metrics-reason-codes-and-merge（计划已确认：修正与评审循环、合入、桌面）、m7-seam-and-e7。队列：user-graph 合入 main 与桌面 L4、investigate-compaction-recall、m4-checks-and-rules（B2 起）、loops-machine、panel-2、status-hub、m6-followups、m5-rest、bootstrap。"
+    },
+    {
+      "at": "2026-11-04T14:14:14.868Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "限流核对（2026-11-04，人问「在跑还是又限流了？」）：4 条里 3 条又被限流暂停（merge-loops-runner-l4、metrics-reason-codes-and-merge、m7-seam-and-e7），只有 video-restyle-less-ai-look 在跑。限流下多开只会轮流被停、重试。编排方改为同时只跑 2 条：video-restyle-less-ai-look 与 merge-loops-runner-l4（已恢复，只剩循环板 L4）；其余按队列一条结束补一条：metrics-reason-codes-and-merge、m7-seam-and-e7、user-graph 合入、investigate-compaction-recall、m4-checks-and-rules、loops-machine、panel-2、status-hub、m6-followups、m5-rest、bootstrap。"
     }
   ]
 }
