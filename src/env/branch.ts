@@ -4,7 +4,8 @@
  * use it, which checker configuration files belong to it, and its check
  * lines (check-entry.ts). Pure over a loaded graph; the env row renders it
  * into the environment notice, and `checkCommandOf` (env-service.ts) reads a
- * tool's check lines from it.
+ * tool's check lines from it; the graph tools read one written node's check
+ * lines through `nodeChecks` (timeout.ts).
  */
 import { labeledSections } from '../graph/stage.ts'
 import type { LoadedGraph } from '../graph/parse.ts'
@@ -61,11 +62,31 @@ function toolOf(node: GraphNode): EnvTool {
 }
 
 /** One check line of a node: the entry, or the issue line (the number is the line's place among the acceptance conditions). */
-function checkOf(node: GraphNode, index: number, line: string, names: ReadonlySet<string>): CheckEntry | string {
+function checkOf(node: Pick<GraphNode, 'id'>, index: number, line: string, names: ReadonlySet<string>): CheckEntry | string {
   const issue = (reason: string): string => `${node.id} 第 ${index + 1} 条检查行读不懂：${reason}`
   const entry = parseCheckLine(line)
   if (entry === undefined) return issue(checkLineRefusal(line) ?? '读不出')
   return names.has(entry.name) ? issue(`名字 ${entry.name} 在这个节点里重复了`) : entry
+}
+
+/** Whether a node is a tool of the environment branch, whatever its status. */
+export function isEnvTool(node: Pick<GraphNode, 'parent' | 'type'>): boolean {
+  return node.parent === ENV_NODE_ID && node.type === 'tool'
+}
+
+/**
+ * The readable check lines of one node whatever its status, in line order,
+ * each with its acceptance line as written: the lines `envBranch` lists for
+ * an approved tool (a repeated name is left out as it does).
+ */
+export function nodeChecks(node: Pick<GraphNode, 'id' | 'acceptance'>): ReadonlyArray<{ readonly line: string, readonly entry: CheckEntry }> {
+  const checks: Array<{ readonly line: string, readonly entry: CheckEntry }> = []
+  for (const [index, line] of (node.acceptance ?? []).entries()) {
+    if (!isCheckLine(line)) continue
+    const entry = checkOf(node, index, line, new Set(checks.map(check => check.entry.name)))
+    if (typeof entry !== 'string') checks.push({ line, entry })
+  }
+  return checks
 }
 
 /** The environment branch of one loaded graph: approved tools, waiting proposals, unreadable lines. */
@@ -74,7 +95,7 @@ export function envBranch(graph: LoadedGraph): EnvBranch {
   const issues: string[] = []
   let proposals = 0
   for (const node of graph.nodes.values()) {
-    if (node.parent !== ENV_NODE_ID || node.type !== 'tool') continue
+    if (!isEnvTool(node)) continue
     if (LISTED.includes(node.status)) {
       const tool = toolOf(node)
       const configs: string[] = []

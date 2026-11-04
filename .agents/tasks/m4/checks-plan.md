@@ -58,7 +58,7 @@ origin/main（`45ae4e8`）还不含 `8c9d74f`（`merge-base --is-ancestor` 退�
       依赖：B1 之后（只为提交顺序）；代码依赖 loops-runner 的 `run.ts`/`registry.ts`（本分支已有）。**推送依赖 origin/main 含 loops-runner 合并。**
       Verify：四道门禁退出码 0；新 spec 全过；探针含 `env-check-command` 全绿。
 
-- [ ] 3. **B3（m4-checks）人批准工具节点时看到的超时**
+- [x] 3. **B3（m4-checks）人批准工具节点时看到的超时**
       范围：
       - `src/env/timeout.ts`（新）：§6.3.1 常量（`CHECK_TIMEOUT_FACTOR = 3`、`CHECK_RECENT_RUNS = 10`、`CHECK_TIMEOUT_FLOOR_MS = 5_000`、`CHECK_TIMEOUT_CAP_MS = 60_000`、`CHECK_STEP_DEADLINE_MS = 20_000`、`CHECK_TIMEOUT_RAISED_MAX_MS = 600_000`、`CHECK_QUEUE_WAIT_MS = 3 * CHECK_STEP_DEADLINE_MS`）、`checkTimeout({estimateS?, recentMs, factor?, floorMs?, capMs?}) → {limitMs, basis, capped?}`、`timeoutText(estimateS?)`（四种句子，§6.3.1 第 3 条逐字）、`checkKey(tool, name)`（`<节点 id>/<名字>`）、`argvDigest(argv)`（SHA-256 前 8 位）、`EstimateLine` 类型与 `appendTiming(home, line)`（`<home>/env-checks/timing.jsonl` 追加一行）。其余四种行在 B4 加。
       - `src/graph/tools.ts`：`graph_propose`、`graph_edit` 写的节点是 `env` 下的工具节点时，结果加 `timeouts: [{check, text}]`（每条读得懂的检查行一项，`text` = `timeoutText(estimateSeconds)`）；`WRITE_OUTPUT` 加可选 `timeouts`；两个工具的描述各加一句「环境工具节点的结果带 `timeouts`：把每条 `text` 原样放在给人看的方案里、那条检查行旁边」。同时为每条带预计、且是新写或改过的检查行（propose：全部；edit：新验收条件里有、旧验收条件里没有同一整行的）交一条 `EstimateLine`（`actor`、`historyAt` 抄引擎刚写的那条历史，`session` 取调用方会话 id，`node` 为节点 id）。`graphTools` 加第 4 个可选参数 `estimates?: (line: EstimateLine, cwd: string | undefined) => void`，`src/graph/index.ts:135` 传一个写到 `projectHomeFor(ctx, undefined, cwd)` 下的实现（与 env 行读 `timing.jsonl` 的目录同一取法，见差异 2）；写失败只进图行的行健康，不影响工具结果。
@@ -133,6 +133,9 @@ origin/main（`45ae4e8`）还不含 `8c9d74f`（`merge-base --is-ancestor` 退�
 10. **B1 的 L3 给规则行一个行 `home`，不改探针的读取路径**：探针的覆盖层（`scripts/sandbox.mjs` 的 `dataRows`）本来就给 guard、graph、loops、design 行配 `home` 指向运行目录，理由是没有场景工作区的会话（cwd 是本检出）按项目取会落进主检出的 `.llm`。规则行默认启用，改成按项目取之后同样会这样，所以把 `rules` 加进同一张表；现有规则板场景照旧从运行目录读记录，检查不改。按会话项目落盘由 L2 的新例覆盖。
 11. **共用的步 notice 给构建函数多带一个 `turn`**（`src/shared/step-notice.ts` 的 `StepInput`）：B2 的事件键要 `agent/pre-step` 载荷里的 `turn`，载荷没有时不带、env 行退回 `p<进程启动毫秒>-<序号>`；别的步 notice 不读它，行为不变。
 12. **`EnvServiceContractCheck` 钉的是循环板的接缝**：`checkCommandOf` 与 `fillCheckArgv` 的类型对 `src/loops/run.ts` 的 `LoopChecks['commandOf']`、`LoopChecks['fill']` 编译期检查，接缝两边改了一边另一边编不过；设计只写「钉住服务的类型」。
+13. **B3 只导出已有调用方的常量**：`CHECK_STEP_DEADLINE_MS`、`CHECK_TIMEOUT_RAISED_MAX_MS`、`CHECK_QUEUE_WAIT_MS` 随用到它们的 B4（运行器的一步等待、排队）与 B5（`check_limit` 的硬顶）加进 `src/env/timeout.ts`，B3 不先放（knip 报未用的导出，仓库规则不留死代码）。
+14. **图写工具描述长度的测试上限 600 → 700**（`tests/graph-tools.spec.ts`）：`graph_propose` 的描述已有 M3 的提问规则 539 字符，加上 §6.3.1 第 3 条要的 `timeouts` 一句后 661 字符；这句是设计要求写进说明的，缩到 60 字符以内读不清，所以放宽上限并在测试里写明理由。
+15. **`timeouts` 的写入点与读工具无关**：只有 `graph_propose`、`graph_edit` 返回 `timeouts`，且节点必须是 `env` 下的 `tool`（任何状态）；`graph_show` 不带，人看节点时的超时由 B4 的循环板明细给。`estimate` 的写入目录在图行取 `projectHomeFor(ctx, undefined, cwd)`，写前先 `ensureLlmIgnored`，与 env 行与 guard 行第一次写项目 `.llm/` 的做法一致。
 
 ## Digest
 

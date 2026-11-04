@@ -99,7 +99,8 @@ test('the row registers one tool per llm operation with schemas inside the rc.3 
   assert.deepEqual(runtime.scoped.map(tool => tool.name), GRAPH_TOOL_NAMES)
   for (const tool of runtime.scoped) {
     assert.deepEqual(schemaViolations(tool.parameters, `${tool.name}.parameters`), [])
-    assert.ok(tool.description.length > 0 && tool.description.length < 600, tool.name)
+    // 700: graph_propose carries the question rules (M3) and the sentence on the timeouts of a tool node under env (m4 design §6.3.1 item 3).
+    assert.ok(tool.description.length > 0 && tool.description.length < 700, tool.name)
   }
   // A supersession is a proposal with a supersedes edge (ORCHESTRATION.md §2.9); it has no tool of its own.
   assert.equal(runtime.ctx.tools.get('graph_supersede'), undefined)

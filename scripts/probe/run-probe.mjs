@@ -37,7 +37,10 @@
  * env-check-command scenario mounts probe-env.mjs in place of the loop board
  * (the loop row pinned off): the env row's service reads a check line of the
  * graph's tool node back, the row hands the board env.files-edited and emits
- * it once per step that wrote a file. The loop board's peak scenario
+ * it once per step that wrote a file. The env-checks-timeout scenario (its
+ * first part) proposes a tool node under env through graph_propose: the
+ * result carries the timeout sentence of its check line, and the workspace's
+ * timing journal has the estimate with the session. The loop board's peak scenario
  * (loops-peak) runs on the GLM route at the probe clock inside a peak, with
  * the loop row and the rules row (少做) enabled and no contribution listing
  * execute.resume-drive: the scripted agent becomes the main agent with /wish,
@@ -740,6 +743,39 @@ const envCheckContribute = envCheckRecords.find(record => record.kind === 'contr
 const envCheckEmits = envCheckRecords.filter(record => record.kind === 'emit' && record.event?.event === 'env.files-edited').map(record => record.event)
 const sameDir = (a, b) => typeof a === 'string' && slash(a).toLowerCase().replace(/\/+$/, '') === slash(b).toLowerCase().replace(/\/+$/, '')
 const envCheckReminders = envCheckRun.steps.reduce((count, step) => count + step.messages.filter(message => message.source === 'hourness-checks').length, 0)
+
+// The timeout the human sees when approving a tool node (M4 design §6.3.1
+// item 3, §14.1 env-checks-timeout, the first part): the graph row on, a git
+// workspace whose graph has the env feature. The scripted agent proposes a
+// tool node under env with a check line estimated at 1 s; the result carries
+// the sentence of its timeout, and the workspace's timing journal has the
+// estimate with this session and the history entry the engine wrote.
+const ENV_TIMEOUT_LINE = '`check slow lines 1s $ node slow.mjs {files}` when *.txt'
+const envTimeoutWs = join(runDir, 'env-checks-timeout', 'ws')
+const envTimeoutGraph = join(envTimeoutWs, 'docs', 'graph')
+const envTimeoutJournal = join(envTimeoutWs, '.llm', 'env-checks', 'timing.jsonl')
+mkdirSync(envTimeoutGraph, { recursive: true })
+writeFileSync(join(envTimeoutWs, 'README.md'), 'probe workspace\n')
+if (!initRepo(envTimeoutWs)) throw new Error('probe: git init for env-checks-timeout failed')
+const envTimeoutEngine = openEngine(envTimeoutGraph)
+for (const node of [
+  { type: 'goal', title: '探针目标' },
+  { id: 'env', type: 'feature', title: '环境', parent: 'goal-1' },
+]) {
+  const seeded = await envTimeoutEngine.apply('human', { op: 'propose', reason: 'probe seed', node })
+  if (!seeded.ok) throw new Error(`probe: seeding the env-checks-timeout graph failed: ${JSON.stringify(seeded.error)}`)
+  if (seeded.node?.status === 'proposed' && !(await envTimeoutEngine.apply('human', { op: 'status', id: seeded.id, rev: seeded.rev, to: 'approved', reason: 'probe' })).ok) {
+    throw new Error(`probe: approving the env-checks-timeout node ${seeded.id} failed`)
+  }
+}
+const envTimeoutRun = runScenario('env-checks-timeout', 'deepseek-probe', [
+  { tool: { name: 'graph_propose', arguments: { node: { id: 'tool-1', type: 'tool', title: 'Slow', parent: 'env', acceptance: [ENV_TIMEOUT_LINE] }, reason: 'probe: a check that runs after edits' } } },
+  { text: 'done' },
+], 'Propose a tool node with a check line, then reply done.', [], envTimeoutWs, [], profiles['probe-hourness'])
+const envTimeoutText = envTimeoutRun.steps[1]?.messages.filter(message => message.role === 'tool').at(-1)?.text ?? ''
+const envTimeoutResult = (() => { try { return JSON.parse(envTimeoutText) } catch { return undefined } })()
+const envTimeoutLines = existsSync(envTimeoutJournal) ? readFileSync(envTimeoutJournal, 'utf8').split('\n').filter(line => line.length > 0).map(line => JSON.parse(line)) : []
+const envTimeoutProposed = (await loadGraph(envTimeoutGraph)).nodes.get('tool-1')?.history.at(-1)
 
 // Client composition (split design §5.6, U3): the headless template has no
 // client-modules row, so the overlay mounts @deepseek-ai/dsh-client-modules
@@ -2605,6 +2641,8 @@ const checks = [
   ['env-check-command: the env row hands the board the event env.files-edited', envCheckContribute !== undefined && envCheckContribute.source.plugin === 'dsh-hourness' && isDeepStrictEqual(envCheckContribute.events, ['env.files-edited']), JSON.stringify(envCheckContribute ?? null)],
   ['env-check-command: each step after a write emits env.files-edited once, the file relative to the checkout root, keyed files-edited:<session>:<turn>-<step>', envCheckRun.steps.length === 4 && envCheckEmits.length === 2 && isDeepStrictEqual(envCheckEmits.map(event => event.payload?.files), [['a.txt'], ['-c.txt']]) && envCheckEmits.every(event => sameDir(event.payload?.root, envCheckWs) && event.payload?.truncated === false && sameDir(event.cwd, envCheckWs) && typeof event.session === 'string' && new RegExp(`^files-edited:${event.session}:\\d+-\\d+$`).test(event.key)) && new Set(envCheckEmits.map(event => event.key)).size === 2, `${envCheckRun.steps.length} requests; ${JSON.stringify(envCheckEmits.map(event => ({ key: event.key, files: event.payload?.files, root: event.payload?.root })))}`],
   ['env-check-command: no checks reminder is injected (M4\'s runner is not on yet)', envCheckRun.steps.length > 0 && envCheckReminders === 0, `hourness-checks messages: ${envCheckReminders}`],
+  ['env-checks-timeout: graph_propose of a tool node under env returns the sentence of its timeout for the check line', envTimeoutResult?.ok === true && isDeepStrictEqual(envTimeoutResult.timeouts, [{ check: 'slow', text: '超时 5 秒（估 1 秒，乘 3 不足 5 秒）' }]), `exit ${envTimeoutRun.status}; ${JSON.stringify(envTimeoutResult?.timeouts ?? envTimeoutText.slice(0, 200))}`],
+  ['env-checks-timeout: the workspace timing journal has one estimate with this session, the llm and the time of the propose the engine wrote', envTimeoutLines.length === 1 && envTimeoutLines[0].kind === 'estimate' && envTimeoutLines[0].check === 'tool-1/slow' && envTimeoutLines[0].estimateS === 1 && envTimeoutLines[0].node === 'tool-1' && envTimeoutLines[0].actor === 'llm' && typeof envTimeoutLines[0].session === 'string' && envTimeoutLines[0].session === envTimeoutRun.steps[0]?.sessionId && envTimeoutProposed?.op === 'propose' && envTimeoutLines[0].historyAt === envTimeoutProposed.at && /^[0-9a-f]{8}$/.test(envTimeoutLines[0].argv), `${JSON.stringify(envTimeoutLines)}; session ${envTimeoutRun.steps[0]?.sessionId}; history ${JSON.stringify(envTimeoutProposed ?? null)}`],
   ['env-notice: the row appended .llm/ to the clone\'s .git/info/exclude and check-ignore verifies it', envIgnored === 0 && envExclude.split('\n').filter(line => line.trim() === '.llm/').length === 1, `check-ignore exit ${envIgnored}; exclude lines: ${envExclude.split('\n').filter(line => line.trim() === '.llm/').length}`],
   titleCheck('client-modules (probe-full)', clientModules.steps[0]?.meta, ['glm', 'hourness']),
   titleCheck('glm-only', glmOnly.steps[1]?.meta, ['glm']),
