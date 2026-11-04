@@ -9,7 +9,9 @@
  * there it hands the board one daily self-check entry whose harness action
  * runs the same check (§6.4). The row reports its health at activation, for
  * every session a model call or a session event happens in, and after a
- * self-check (§9.6). Activation never throws: a missing part degrades the
+ * self-check (§9.6). It hands the status hub the board's burden numbers as
+ * the one `metrics/load` entry (src/metrics/status.ts, status hub design 0.3
+ * §4.2). Activation never throws: a missing part degrades the
  * row and says which (§9.1), and the observation never changes the host's
  * behavior (§9.5).
  */
@@ -25,6 +27,7 @@ import { LOOPS_SERVICE, loopsService, type Contribution, type HarnessResult, typ
 import { realStoreIo, renameWithRetry, type StoreIo } from '../rules/store.ts'
 import type { AgentsService, AgentLike, InjectHost, LlmStreamListener, PreExecuteHost, ProvideHost, ServiceLookup, SessionEventHost, SessionEventOn, SessionProjectionsService, UserQuestionsListener } from '../shared/dsh-min.ts'
 import { provideRowHealth, type HealthState, type RowHealth } from '../shared/health.ts'
+import { provideRowStatus } from '../shared/status-host.ts'
 import { pricingService, type UsagePricing } from '../shared/pricing.ts'
 import { METRICS_SERVICE, type MetricsService, type QueuedEvent } from '../shared/metrics.ts'
 import type { MetricsBoardView } from '../shared/metrics-board.ts'
@@ -35,6 +38,7 @@ import { localDate } from './calc.ts'
 import { boardView, boardWindows, capView } from './board-view.ts'
 import { checkLog, readLog, type LogFindings } from './read.ts'
 import { installMetricsFileGuard, METRICS_FILES_ONLY } from './rules.ts'
+import { metricsStatusItems } from './status.ts'
 import { ID_PATTERN, type MetricsEvent } from './schema.ts'
 import { createObserve, type MetricsObserver, type ObservedWhere, type ObservedSink } from './observe.ts'
 import { nodeMetricsFs, openWriter, type MetricsFs } from './writer.ts'
@@ -212,6 +216,8 @@ export function apply(ctx: MetricsContext, config: MetricsConfig = {}): () => vo
   const waiting: Record<string, string | undefined> = { projection: WAITING_PROJECTION }
   /** The board's last good groups per project, kept for the next failed attempt to carry (§7.6.5). */
   const lastGood = new Map<string, { readonly basis: string, readonly groups: MetricsBoardView['groups'] }>()
+  /** The view each project's `view.json` was last written from, for the status entry (status hub design 0.3 §4.2). */
+  const boardViews = new Map<string, MetricsBoardView>()
   /** When a project's board was last computed successfully (ISO), for the view's `at` (§7.6.2). */
   const atGood = new Map<string, string>()
   /** When a project's board was last computed, for the hourly throttle (§7.6.2). */
@@ -223,6 +229,17 @@ export function apply(ctx: MetricsContext, config: MetricsConfig = {}): () => vo
   const disposers: Array<() => void> = []
 
   const health: RowHealth = provideRowHealth(ctx, 'metrics', 'inactive', '指标行还在起')
+
+  // The row's status view (status hub design 0.3 §3.2, §4.2): the one `metrics/load` entry, the
+  // board's relayed `load` group read from the same view object the row writes to `view.json`.
+  // Before the board's first compute, and for a session with no project, there is no entry. The
+  // ratio groups are never handed (§4.3); they stay on the board for the person.
+  const status = provideRowStatus(ctx, 'metrics', sessionId => {
+    const root = sessionId === undefined ? undefined : projectOfWhere({ sessionId })
+    const view = root === undefined ? undefined : boardViews.get(root)
+    return root === undefined || view === undefined ? [] : metricsStatusItems(view, viewFileOf(root))
+  })
+  disposers.push(() => { status.dispose() })
 
   const activation = (): [HealthState, string] => [
     problems.length === 0 && Object.values(waiting).every(value => value === undefined) ? 'active' : 'degraded',
@@ -687,12 +704,14 @@ export function apply(ctx: MetricsContext, config: MetricsConfig = {}): () => vo
       }
       boardDay.set(root, windows.day)
       lastBoardAt.set(root, now())
+      const capped = capView(view)
+      boardViews.set(root, capped)
       const io: StoreIo = { rename: config.rename ?? realStoreIo.rename, sleep: realStoreIo.sleep, now }
       try {
         // The view is runtime state beside the journal: the exclude line comes first, like the writer's prepare (§9.1).
         await ensureIgnoredOf(root, '.llm')
         await mkdir(join(root, '.llm', 'metrics'), { recursive: true })
-        await writeAtomicView(viewFileOf(root), `${JSON.stringify(capView(view), null, 2)}\n`, io)
+        await writeAtomicView(viewFileOf(root), `${JSON.stringify(capped, null, 2)}\n`, io)
       }
       catch (error) {
         const code = (error as { readonly code?: unknown }).code
