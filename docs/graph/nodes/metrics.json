@@ -329,6 +329,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "第 7 步评审两轮：第一轮 9 条（4 阻断）由 5975658 修完并推 origin/metrics（npm test 2807/0、探针 372/372，四道退出码 0）。第二轮 CHANGES_REQUESTED，阻断 2 条：S7R2-1 回退——删除改按简单命令判之后，cmd /c \"del|rd|rmdir|move …\\.llm\\metrics…\" 这类引号整段的删除放行（3f59b61 是拦的，file-tools-only 也不拦，默认安装下没有门挡）；S7R2-2 纠偏文字的 Right path 让模型去读流水、跑 npm run metrics -- summary，与 §15.42、§7.6.4 及 d-metrics-ratios-person-only 相反（summary 打印只给人看的打分）。非阻断 5 条：写入别名 copy/cpi/ni 与 find -delete 不算写删、§10.6 代价句补「把流水拷出去」、第 7 步 L3 探针场景仍欠、门级缺 run_code 子调用与无项目会话两例、两处注释节号与规则名不准。评审循环用满 2 轮暂停，待人定是否再给一轮。另：修正步报告的跨线发现——图文件门与循环板门的拒绝也不交 rule 事件，不属本规则，归编排方跟进。"
+    },
+    {
+      "at": "2026-11-04T11:35:06.693Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "第 7 步评审第三轮的修正：91d64a1 已推 origin/metrics，修完第二轮的两条阻断（S7R2-1：cmd /c、cmd /k 开关后的整段按命令行再读一层，删除移动表、写入别名、find -delete、git clean -x/-X 与 shellWrites 都判，评审列的五条重新被拦，cmd /c \"type …\" 放行；S7R2-2：纠偏文字不再提读流水与 summary）以及非阻断 S7R2-3、4、6、7。门禁：npm test 2808 过 0 败、探针 372/372，四道退出码 0；棘轮 eslint 73、knip 18、jscpd 1。S7R2-5（第 7 步的 L3 场景）仍欠。第三轮复审进行中。"
     }
   ]
 }
