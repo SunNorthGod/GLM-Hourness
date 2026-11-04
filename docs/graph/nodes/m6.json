@@ -392,6 +392,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "workflow m6-followups-s1-s3（wf_8dc79e18061b32fc）完成，报告 .llm/m6f/report.md：S1 965bf5b、S3 57c0902、S2 e72a25e 都已推 origin/m6-followups，三步门禁均为 0，探针 376/388/388，评审都 APPROVED。S2 的设计第 24 条一半未关（真实 checkCall 执行已批准脚本的用例等规则板 R4d）。分支落后 origin/main 约 5 个提交，尚未合入 main；编排方派 land-m6-followups（agent://wf-coder）合入 main、跑门禁、推两个远端，行组合有变就按 CDP 规矩重启桌面版。"
+    },
+    {
+      "at": "2026-11-04T22:33:08.363Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "workflow land-m6-followups（wf_4b9841cada0119dd）完成：main 快进到 e95df6e，origin 与 github 经 ls-remote 核对一致；合入树门禁全为 0（npm test 2983 个，2982 通过 / 0 失败 / 1 跳过；探针 388/388）；行组合未变，没有重启桌面版；分支已推，工作树与本地分支已删除。m6-rules-text、m6-rules-probe 已带证据标完成；m6-script-gate 等 R4d 保持进行中。"
     }
   ]
 }
