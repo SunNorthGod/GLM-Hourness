@@ -389,6 +389,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "人 2026-11-04 问「dsh 有压缩后会话上下文查询功能吗」。编排方已知：DSH 的会话记录只追加、写下的事件不重写（DSH 架构笔记 2026-06-14 session-persistence，实读），压缩后原文仍在会话文件里；压缩后模型看到的是摘要。DSH 有没有给模型或人「查压缩前原文」的工具、插件从哪个接口能读原始记录，快速检索未找到，未核实。人答「继续」，按编排方提议排一条只读调查，次序在视频改风格之后。队列：视频改风格、压缩后查原文的调查、loops-machine、panel-2、status-hub、m6-followups、m5-rest、bootstrap。另：限流仍在，在跑的 5 条里 merge-loops 与 metrics 又各被暂停一次，已恢复。"
+    },
+    {
+      "at": "2026-11-04T12:36:39.251Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-11-04：「加到八路试试？」。同时在跑的上限从 5 改为 8，按队列补 3 条：video-restyle-less-ai-look（视频改风格，先出三套样张给人挑）、investigate-compaction-recall（DSH 压缩后查原文的只读调查，报告写 .agents/tasks/compaction-recall/report.md）、loops-machine-runner-channel-events（恢复）。在跑 8 条：merge-loops-runner-l4、m7-seam-and-e7、user-graph-ug3-ug7、m4-checks-and-rules、metrics-s6-s7-land-review 与上述 3 条。排队：panel-2、status-hub、m6-followups、m5-rest、bootstrap。限流若仍频繁暂停，编排方按实际情况降回去并告诉人。"
     }
   ]
 }

@@ -443,6 +443,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "loops-runner 已进 main：main 快进到 a9adca8 并推两个远端（origin/main 与 github/main 均为 a9adca8，ls-remote 核对）；其间 origin/main 新增的 5 个仅 docs/graph 的提交并入，未重跑门禁。merge-loops 工作树与分支已删。下一步：重启桌面版加载新 dist，做循环板 L4。M4 检查（m4-checks）、机器一级运行者（loops-machine）两条线由此可以基于含执行器的 main 推送。"
+    },
+    {
+      "at": "2026-11-04T12:36:39.475Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "循环板合入后的桌面重启（merge-loops-runner-l4 第 4 步）：主检出 npm run build 退出码 0；桌面版原本关着，build 后以 --remote-debugging-port=9333 启动；插件页两个包的行都在运行，只有 lessons、env 两行按出厂默认停用；行健康没有失败行；启动后没有新的 crash log，也没有新的控制台错误类别。结论：重启后无新错误。接着做循环板 L4。"
     }
   ]
 }
