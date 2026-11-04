@@ -105,6 +105,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "UG4（M3 一侧的放行门禁接用户图）落地：第一轮评审 2 条阻断（放行页上的负责人顺序随服务器文件名顺序变、会误判同意作废；缺验收 29、30 的 L2 用例），修后并入 5a0b2cc，第二轮 APPROVED；已推 origin/user-graph（563c10e..5a0b2cc，快进）。门禁：build 0、preflight 0、npm test 0（2776 过、0 败、1 跳过）、探针 347/347、棘轮 76/19/1。UG5（简报的步骤段）开始。"
+    },
+    {
+      "at": "2026-11-04T11:35:06.966Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "UG5（简报写出任务服务的用户步骤）：7dbd5d7（未推）——派活简报的 Context 多一行「这件活服务的步骤」，写成「流程名 › 步骤名」，取 stepsServedBy，只收 live 步骤；execute-brief.spec 加一例。门禁：npm test 2778 个、2777 过、0 败、1 跳过，探针 347/347，76/19/1。等评审。"
+    },
+    {
+      "at": "2026-11-04T11:40:34.260Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "UG5 评审 APPROVED（无阻断），已推：origin/user-graph 5a0b2cc..7dbd5d7（快进）。走一遍约定段照计划顺延。UG6（面板「用户怎么用」页）开始。"
     }
   ]
 }

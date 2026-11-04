@@ -2,7 +2,7 @@
   "id": "m4-checks",
   "type": "task",
   "title": "改完就跑的检查",
-  "status": "approved",
+  "status": "doing",
   "parent": "m4",
   "body": "M4 设计 0.6 的一件活。做完条件由人 2026-11-01 定下，见本节点验收（人话版 .agents/tasks/m4/onepage-done.md）。",
   "acceptance": [
@@ -23,6 +23,14 @@
       "reason": "人 2026-11-01 读 M4 一页稿后放行，并把七件活的 35 条做完条件一起定下（人话版 .agents/tasks/m4/onepage-done.md，设计 0.6 §1.2）",
       "relay": "都没问题",
       "to": "approved"
+    },
+    {
+      "at": "2026-11-04T10:57:44.313Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "运行 m4-checks-and-rules 开工（2026-11-04，人：「桌面版随便用，尽可能开多线」）",
+      "from": "approved",
+      "to": "doing"
     }
   ]
 }
