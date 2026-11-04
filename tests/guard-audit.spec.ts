@@ -6,6 +6,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { apply, guardHealth, type GuardRecord, type ViolationRecord } from '../src/guard/index.ts'
+import { keyOf } from '../src/guard/records.ts'
 import { DECLARATION_SECTION } from '../src/guard/sections.ts'
 import { apply as glmPromptApply, dialectServiceFor } from '../src/glm-prompt/index.ts'
 import type { ShadowRecord } from '../src/guard/fallback.ts'
@@ -54,12 +55,14 @@ type Listener = (...args: never[]) => unknown
  * A host for the guard row: listeners by event (the pre-execute waterfall
  * ends in the runtime's default `allow`, or in `inner` when given), the
  * session observers, and cordis `get` with the data service and any extra
- * service (workspaceChanges).
+ * service (workspaceChanges). A `metrics` service in the options hears the
+ * metric event every journal write hands over (metrics design §6.2).
  */
-function harness(roots: readonly string[] | undefined, options: { home?: string, service?: unknown, inner?: PreExecuteDecision } = { home: 'C:/ws/.llm' }) {
+function harness(roots: readonly string[] | undefined, options: { home?: string, service?: unknown, inner?: PreExecuteDecision, metrics?: (event: unknown, where: unknown) => void } = { home: 'C:/ws/.llm' }) {
   const decisions: PreExecuteDecision[] = []
   const store = memoryFs()
   const services = new Map<string, unknown>()
+  if (options.metrics !== undefined) services.set('glmHournessMetrics', { emit: options.metrics })
   const listeners = new Map<string, Listener>()
   const ctx = {
     on: (event: string, listener: Listener) => {
@@ -98,6 +101,20 @@ test('out-of-workspace write is denied and journaled under <home>/audit with rul
   assert.ok(record.correction.includes('Right path:'))
   assert.deepEqual(record.call, { tool: 'write', target: 'C:\\Windows\\x.dll' }) // the subject keeps the DSH native the call ran; the record's tool keeps the model's spelling
   assert.ok(!Number.isNaN(Date.parse(record.at)))
+})
+
+test('the denial hands one rule metric for the record it wrote, with the record as its ref (metrics design §6.2, acceptance 2)', async () => {
+  const events: Array<{ event: { readonly k: string, readonly by: string, readonly body: Record<string, unknown> }, where: Record<string, unknown> }> = []
+  const h = harness(['C:\\ws'], { home: 'C:/ws/.llm', metrics: (event, where) => { events.push({ event: event as typeof events[number]['event'], where: where as Record<string, unknown> }) } })
+  await h.run({ name: 'Write', arguments: { file_path: 'C:\\Windows\\x.dll' }, agent: agentAt(undefined, 'a1', 's1') })
+  const record = h.violations()[0]
+  assert.equal(events.length, 1)
+  const { event, where } = events[0]
+  assert.deepEqual({ k: event.k, by: event.by }, { k: 'rule', by: 'guard' })
+  assert.equal(event.body.rule, 'workspace-containment')
+  assert.equal(event.body.effect, 'deny')
+  assert.equal(event.body.ref, keyOf(record), 'the metric names the violation line it rode on')
+  assert.deepEqual(where, { sessionId: 's1' }, 'no working directory, so the session id alone resolves the project')
 })
 
 test('shell write inside the workspace is still denied by file-tools-only', async () => {

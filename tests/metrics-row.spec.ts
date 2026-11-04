@@ -16,6 +16,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { apply, METRICS_SELF_CHECK_ENTRY, name, type MetricsConfig } from '../src/metrics/index.ts'
+import { openEngine } from '../src/graph/engine.ts'
 import { readLog } from '../src/metrics/read.ts'
 import { METRICS_SERVICE, type MetricsService } from '../src/shared/metrics.ts'
 import { healthServiceName, type RowHealthView } from '../src/shared/health.ts'
@@ -93,6 +94,36 @@ async function emitCount(fx: Fixture): Promise<Array<Record<string, unknown>>> {
   fx.service()?.emit({ k: 'count', by: 'guard', at: DAY_AT, body: { what: 'w', value: 1 } }, { sessionId: fx.rt.agent.id, dir: fx.root })
   return untilEvents(fx, 2)
 }
+
+test('the engine\'s writes land in the journal as graph events through the row\'s observer (§6.3)', async () => {
+  const fx = fixture()
+  try {
+    const graphDir = join(fx.root, 'docs', 'graph')
+    mkdirSync(graphDir, { recursive: true })
+    const engine = openEngine(graphDir)
+    const seeded = await engine.apply('human', { op: 'propose', reason: 'seed', node: { type: 'goal', title: '目标' } })
+    assert.ok(seeded.ok, JSON.stringify(seeded))
+    const events = await untilEvents(fx, 2)
+    const graphs = events.filter(event => event.k === 'graph')
+    assert.equal(graphs.length, 1, 'one propose, one history entry, one graph event')
+    const body = graphs[0]?.body as { node?: string, type?: string, op?: string, hi?: number, actor?: string, rev?: string }
+    assert.equal(body.node, 'goal-1')
+    assert.equal(body.type, 'goal')
+    assert.equal(body.op, 'propose')
+    assert.equal(body.actor, 'human')
+    assert.equal(typeof body.rev, 'string')
+    assert.ok(body.rev !== '')
+    const commented = await engine.apply('human', { op: 'comment', id: 'goal-1', text: 'x' })
+    assert.ok(commented.ok, JSON.stringify(commented))
+    const after = await untilEvents(fx, 3)
+    const second = after.filter(event => event.k === 'graph').at(-1)?.body as { op?: string, hi?: number }
+    assert.equal(second.op, 'comment')
+    assert.equal(second.hi, 1, 'the history index the comment took')
+  }
+  finally {
+    rm(fx)
+  }
+})
 
 /** The stream a scripted step sends: one text block, one tool call, a usage block and a finish. */
 function chunksOf(): StreamChunk[] {

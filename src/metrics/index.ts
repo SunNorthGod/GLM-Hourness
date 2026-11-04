@@ -24,6 +24,8 @@ import { provideRowHealth, type HealthState, type RowHealth } from '../shared/he
 import { pricingService, type UsagePricing } from '../shared/pricing.ts'
 import { METRICS_SERVICE, type MetricsService, type QueuedEvent } from '../shared/metrics.ts'
 import type { MetricsBoardView } from '../shared/metrics-board.ts'
+import { setEngineObserver } from '../graph/engine.ts'
+import { engineEventsOf } from '../graph/metrics-events.ts'
 import { warnOnceFor, whenPresent } from '../shared/row-support.ts'
 import { localDate } from './calc.ts'
 import { boardView, boardWindows, capView } from './board-view.ts'
@@ -419,6 +421,15 @@ export function apply(ctx: MetricsContext, config: MetricsConfig = {}): () => vo
   else {
     say(`宿主没有 provide，服务 ${METRICS_SERVICE} 提供不了`, true)
   }
+
+  // The graph engine's writes arrive through the process's observer set
+  // (§6.3): every appended history entry a `graph` event, a failed apply a
+  // `graph-fail`, recorded for the project the graph directory belongs to.
+  // The row is the set's only resident while it is enabled; the dispose
+  // below withdraws it.
+  disposers.push(setEngineObserver(note => {
+    for (const event of engineEventsOf(note)) sink(event, { dir: note.dir })
+  }))
 
   const observe: MetricsObserver = createObserve({
     record: sink,

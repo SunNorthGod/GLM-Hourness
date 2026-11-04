@@ -29,7 +29,6 @@ import { judge, renderCorrection, type GuardRule, type RuleDeny, type ToolCall, 
 import { keyOf as recordKeyOf, subjectOf, type FollowupRecord, type GrantRecord, type GrantVoidRecord, type GuardRecord, type ViolationRecord } from './records.ts'
 import type { GrantEntry } from './request.ts'
 import * as followup from './followup.ts'
-import { emitGuardMetric } from './metrics.ts'
 
 /** The rules for one root call, and the face and origin they judge under. */
 interface GateRules {
@@ -148,7 +147,7 @@ export function installRuleGate(ctx: GateHost, options: RuleGateOptions): () => 
     // whoever denies or allows it after; its journal hook carries the settled record to this row's journal.
     followup.observe(payload.agent, call, callId ?? '')
     if (sessionId !== undefined && callId !== undefined) {
-      followup.hookJournal(sessionId, record => { writeFollowup(record, payload, ctx, options, sessionId) })
+      followup.hookJournal(sessionId, record => { writeFollowup(record, payload, options, sessionId) })
     }
     let gate: GateRules | undefined
     try {
@@ -240,12 +239,6 @@ export function installRuleGate(ctx: GateHost, options: RuleGateOptions): () => 
         // The denial returns at once; the write is counted when the journal settles: an outcome of 'failed'
         // or a rejected promise (design §3.1 step 7). 'no-home' and a journal that returns nothing are not counted.
         void (async () => {
-          emitGuardMetric(ctx, {
-            kind: 'denial',
-            rule: record.rule,
-            ...(record.scope === undefined ? {} : { scope: record.scope }),
-            ...(record.sessionId === undefined ? {} : { sessionId: record.sessionId }),
-          })
           const outcome = await options.journal(record, payload)
           if (outcome === 'failed') lose(options.row, sessionId, options.health)
         })().catch(() => lose(options.row, sessionId, options.health))
@@ -287,14 +280,7 @@ export function installRuleGate(ctx: GateHost, options: RuleGateOptions): () => 
  * record (design §3.2) and emitting the metric with the outcome (design
  * §3.11).
  */
-function writeFollowup(record: FollowupRecord, payload: ToolExecutionPayload, ctx: ServiceLookup, options: RuleGateOptions, sessionId: string | undefined): void {
-  emitGuardMetric(ctx, {
-    kind: 'followup',
-    rule: record.rule,
-    outcome: record.outcome,
-    ...(record.scope === undefined ? {} : { scope: record.scope }),
-    ...(record.sessionId === undefined ? {} : { sessionId: record.sessionId }),
-  })
+function writeFollowup(record: FollowupRecord, payload: ToolExecutionPayload, options: RuleGateOptions, sessionId: string | undefined): void {
   writeJournaled(record, payload, options, sessionId)
 }
 

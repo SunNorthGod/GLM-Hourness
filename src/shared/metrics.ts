@@ -111,7 +111,8 @@ export interface HostBodies {
     readonly op: string
     readonly hi: number
     readonly actor: 'human' | 'llm' | 'harness'
-    readonly rev?: number
+    /** The node's revision after the write; the backfilled entries have none (F23). */
+    readonly rev?: string
     readonly relay?: boolean
     readonly from?: string
     readonly to?: string

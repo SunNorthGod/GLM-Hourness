@@ -138,7 +138,7 @@ const TABLES = [
     { name: 'op', type: 'id' },
     { name: 'hi', type: 'int' },
     { name: 'actor', type: ['human', 'llm', 'harness'] },
-    { name: 'rev', type: 'int', optional: true },
+    { name: 'rev', type: 'id', optional: true },
     { name: 'relay', type: 'bool', optional: true },
     { name: 'from', type: 'id', optional: true },
     { name: 'to', type: 'id', optional: true },
