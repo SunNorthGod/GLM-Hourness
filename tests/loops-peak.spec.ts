@@ -28,6 +28,7 @@ import type { ContributionSource, HarnessResult, LoopEventRecord } from '../src/
 import { ensureRuntimeDir, openLoopStore, type LoopStore } from '../src/loops/store.ts'
 import type { HolderState } from '../src/loops/holder.ts'
 import { DATA_SERVICE } from '../src/shared/data-home.ts'
+import { METRICS_SERVICE, type EmittedEvent } from '../src/shared/metrics.ts'
 import { PEAK_MODE_SERVICE, peakHoldOf, peakModeState, type PeakModeService } from '../src/shared/peak-mode.ts'
 import { PRICING_SERVICE } from '../src/shared/pricing.ts'
 import type { AgentLike, SessionLike } from '../src/shared/dsh-min.ts'
@@ -49,6 +50,8 @@ const PEAK_ENTRIES = LOOP_DEFAULTS.filter(entry => entry.id.startsWith('loops.pe
 
 const settle = (): Promise<void> => new Promise(resolve => setImmediate(resolve))
 const wait = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms))
+/** The real time one quiet turn of `quiesce` lasts. */
+const QUIET_MS = 10
 
 /** A session as the host's registry holds it, and an agent over it. */
 const agentOf = (id: string): AgentLike => ({ id, session: { id, header: {}, deriveMessages: () => [] } as unknown as SessionLike } as unknown as AgentLike)
@@ -114,6 +117,8 @@ async function worldOf(root: string, options: WorldOptions = {}): Promise<World>
   const order: string[] = []
   const resumeCalls: World['resumeCalls'] = []
   const told: World['told'] = []
+  // The board hands its records to the metrics journal (metrics design §12 step 6); this fake is the journal.
+  const records: Array<Record<string, unknown>> = []
   const level = { level: options.level ?? 'reduce' }
   const resolve: World['resolve'] = {
     asked: [],
@@ -165,6 +170,7 @@ async function worldOf(root: string, options: WorldOptions = {}): Promise<World>
       if (name === 'workspaceRegistry') return registryService.service
       if (name === 'sessions') return { flush: () => Promise.resolve(true) }
       if (name === DATA_SERVICE) return { userHome: home, projectHome: join(root, '.llm') }
+      if (name === METRICS_SERVICE) return { emit: (event: EmittedEvent): void => { records.push({ ...event.body, kind: event.k }) } }
       if (name === PEAK_MODE_SERVICE && level.level !== 'absent') return peakMode
       return undefined
     },
@@ -222,24 +228,65 @@ async function worldOf(root: string, options: WorldOptions = {}): Promise<World>
   }
 
   /**
+   * Whether state.json already holds what the latest `loop-done` of every entry
+   * set: the journal takes a record at once, and the row writes `last` (and the
+   * held list beside it) to disk only afterwards, so a quiet journal alone does
+   * not mean the state the cases read has landed.
+   */
+  const persisted = async (): Promise<boolean> => {
+    const latest = new Map<unknown, Record<string, unknown>>()
+    for (const line of records) if (line.kind === 'loop-done') latest.set(line.entry, line)
+    if (latest.size === 0) return true
+    const text = await readFile(store.paths.state, 'utf8').catch(() => '')
+    let last: Record<string, { readonly run?: unknown, readonly outcome?: unknown }>
+    try {
+      last = (JSON.parse(text) as { last?: typeof last }).last ?? {}
+    }
+    catch {
+      return false
+    }
+    return [...latest.values()].every(line => last[String(line.entry)]?.run === line.run && last[String(line.entry)]?.outcome === line.outcome)
+  }
+
+  /** Whether a run has its `loop-fired` and not yet a `loop-done`: it is still working on the real event loop. */
+  const running = (): boolean => {
+    const done = new Set(records.filter(line => line.kind === 'loop-done').map(line => line.run))
+    return records.some(line => line.kind === 'loop-fired' && !done.has(line.run))
+  }
+
+  /**
    * Wait for the row to be quiet: a run that a debounce timer started floats
    * on the real event loop (the stubbed delay only moves when drained), so the
-   * wait goes on until no timers are left and the run records have not grown
-   * for two turns.
+   * wait goes on until no timers are left, no run is between its two records,
+   * the records have not grown for two turns and the state they imply is on
+   * disk. A record whose run never sets `last` (an event expiring in the
+   * inbox) only makes the wait run to its bound.
    */
   const quiesce = async (): Promise<void> => {
-    const count = async (): Promise<number> => {
-      const text = await readFile(store.paths.runs, 'utf8').catch(() => '')
-      return text.split('\n').filter(line => line !== '').length
-    }
+    // Turns of the event loop pass in well under a millisecond while a file write is still on the thread
+    // pool, so the work that can be named is waited for in real time, up to a second (a run that hangs on
+    // purpose stays in flight until a later tick fires its timeout).
+    const until = Date.now() + 1_000
     let last = -1
     let stable = 0
-    for (let round = 0; round < 40 && stable < 2; round++) {
+    let turns = 0
+    while (stable < 2 && turns < 40) {
       await settle()
-      const now = await count()
-      if (now === last && timers.length === 0) stable += 1
+      const now = records.length
+      const pending = running() || !(await persisted())
+      if (pending && Date.now() < until) {
+        stable = 0
+        last = now
+        await wait(1)
+        continue
+      }
+      turns += 1
+      if (now === last && timers.length === 0 && !pending) stable += 1
       else stable = 0
       last = now
+      // A timer that drain ran starts an inbox beat that stats the inbox file on the thread pool before the
+      // run records its loop-fired, so nothing names that work: a quiet turn lasts a few milliseconds of real time.
+      if (timers.length === 0 && !pending) await wait(QUIET_MS)
     }
   }
 
@@ -276,10 +323,7 @@ async function worldOf(root: string, options: WorldOptions = {}): Promise<World>
       await drain()
       await quiesce()
     },
-    runs: async () => {
-      const text = await readFile(store.paths.runs, 'utf8').catch(() => '')
-      return text.split('\n').filter(line => line !== '').map(line => JSON.parse(line) as Record<string, unknown>)
-    },
+    runs: async () => await Promise.resolve([...records]),
     state: async () => {
       const text = await readFile(store.paths.state, 'utf8').catch(() => '{}')
       const read = JSON.parse(text) as { held?: Array<Record<string, unknown>>, last?: Record<string, { run: string, outcome: string, reason?: string }> }

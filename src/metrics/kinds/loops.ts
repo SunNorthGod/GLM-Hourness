@@ -77,7 +77,7 @@ const TABLES = [
   { name: 'loop-handover', fields: [
     { name: 'op', type: 'id' },
     { name: 'pid', type: 'int' },
-    { name: 'session', type: 'id' },
+    { name: 'session', type: 'id', optional: true },
   ] },
   { name: 'loop-task-delete', fields: [
     { name: 'entry', type: 'id', optional: true },

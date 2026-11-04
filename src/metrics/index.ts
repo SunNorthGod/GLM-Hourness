@@ -17,9 +17,11 @@ import { randomBytes } from 'node:crypto'
 import { mkdir, open, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import { ensureIgnored, projectOf } from '../data/project-root.ts'
+import { projectHomeFor } from '../data/project-home.ts'
+import { projectJournal } from '../memory/audit.ts'
 import { LOOPS_SERVICE, loopsService, type Contribution, type HarnessResult, type LoopEventRecord, type LoopsService } from '../loops/service.ts'
 import { realStoreIo, renameWithRetry, type StoreIo } from '../rules/store.ts'
-import type { AgentsService, AgentLike, InjectHost, LlmStreamListener, ProvideHost, ServiceLookup, SessionEventOn, SessionProjectionsService, UserQuestionsListener } from '../shared/dsh-min.ts'
+import type { AgentsService, AgentLike, InjectHost, LlmStreamListener, PreExecuteHost, ProvideHost, ServiceLookup, SessionEventHost, SessionEventOn, SessionProjectionsService, UserQuestionsListener } from '../shared/dsh-min.ts'
 import { provideRowHealth, type HealthState, type RowHealth } from '../shared/health.ts'
 import { pricingService, type UsagePricing } from '../shared/pricing.ts'
 import { METRICS_SERVICE, type MetricsService, type QueuedEvent } from '../shared/metrics.ts'
@@ -30,6 +32,7 @@ import { warnOnceFor, whenPresent } from '../shared/row-support.ts'
 import { localDate } from './calc.ts'
 import { boardView, boardWindows, capView } from './board-view.ts'
 import { checkLog, readLog, type LogFindings } from './read.ts'
+import { installMetricsFileGuard, METRICS_FILES_ONLY } from './rules.ts'
 import { ID_PATTERN, type MetricsEvent } from './schema.ts'
 import { createObserve, type MetricsObserver, type ObservedWhere, type ObservedSink } from './observe.ts'
 import { nodeMetricsFs, openWriter, type MetricsFs } from './writer.ts'
@@ -430,6 +433,24 @@ export function apply(ctx: MetricsContext, config: MetricsConfig = {}): () => vo
   disposers.push(setEngineObserver(note => {
     for (const event of engineEventsOf(note)) sink(event, { dir: note.dir })
   }))
+
+  // The code rule over the journal itself (§3.4): a write, delete or move of
+  // the journal's files, or npm run metrics -- prune, is denied like every
+  // framework rule, the denial a line of the violation journal (whose wrapper
+  // hands the metrics row its `rule` event). A host without the tool seam
+  // judges nothing and the health says so (§9.1).
+  const preExecute = ctx.on as unknown as PreExecuteHost['on'] | undefined
+  if (typeof preExecute === 'function') {
+    try {
+      const journal = projectJournal(name, cwd => projectHomeFor(ctx, undefined, cwd))
+      const report = (record: Parameters<typeof journal.violation>[0], cwd: string | undefined): void => { void journal.violation(record, cwd) }
+      disposers.push(installMetricsFileGuard({ ctx: ctx as MetricsContext & PreExecuteHost & SessionEventHost, now, journal: report }))
+    }
+    catch (error) {
+      say(`${METRICS_FILES_ONLY} 没装上，没有什么拦着别人写、删、移指标流水的文件：${message(error)}`, true)
+    }
+  }
+  else say(`${METRICS_FILES_ONLY} 没装上：宿主没有 tools/pre-execute 接缝`, true)
 
   const observe: MetricsObserver = createObserve({
     record: sink,

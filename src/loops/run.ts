@@ -48,6 +48,7 @@ import { join } from 'node:path'
 import { agentsOf } from '../rules/wake.ts'
 import type { StoreIo } from '../rules/store.ts'
 import type { ServiceLookup } from '../shared/dsh-min.ts'
+import { emitMetric } from '../shared/metrics.ts'
 import { nextPeakChange } from '../shared/pricing.ts'
 import { reconcile, scheduleOf, type BindDeps, type BindOutcome } from './bind.ts'
 import { CHANNEL_PEAK_CHANGED, peakChangedKey } from './channel.ts'
@@ -59,8 +60,9 @@ import { holderFault, holderLine, holderRecordFor, holderStateOf, WRITER_HELD_MS
 import { openInbox, type EmitInput, type EmitResult, type Inbox, type RunBatch, type RunnableEntry } from './inbox.ts'
 import { createRunLock, type LockStand } from './lock.ts'
 import { watchPaths, type WatchDeps, type Watched } from './file-watch.ts'
+import { metricEventOf } from './metrics.ts'
 import { createPeakEnd, peakLevelOf, type PeakEnd } from './peak.ts'
-import { appendRun, firedRecord, runId, type LoopRecord, type RunOutcome, type RunReason } from './records.ts'
+import { firedRecord, runId, type LoopRecord, type RunOutcome, type RunReason } from './records.ts'
 import type { LoopsRegistry } from './registry.ts'
 import type { HarnessResult, ListedRun, LoopEventRecord } from './service.ts'
 import { ensureRuntimeDir, type LoopStore } from './store.ts'
@@ -188,7 +190,12 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
   let read: { at: number, entries: readonly RunnableEntry[] } | undefined
 
   const iso = (): string => new Date(deps.now()).toISOString()
-  const record = (line: LoopRecord): void => { void appendRun(paths, line, text => { deps.report(text, 'info') }) }
+  // One metrics event per record, at the same moment (metrics design §12 step 6): a metrics row that is
+  // absent or failing is the journal's loss to count, never the run's.
+  const record = (line: LoopRecord): void => {
+    const event = metricEventOf(line)
+    if (event !== undefined) emitMetric(ctx, event, { dir: line.project })
+  }
 
   /**
    * How the main agent's session reads, asked again every time (design §6.4):

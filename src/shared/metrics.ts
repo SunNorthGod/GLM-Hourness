@@ -20,7 +20,7 @@ import { buildStamp } from './build-info.ts'
 export const METRICS_SERVICE = 'glmHournessMetrics'
 
 /** A key-to-count map (`map` in the field grammar): id keys, integer, boolean or id values. */
-type MetricsMap = Readonly<Record<string, number | boolean | string>>
+export type MetricsMap = Readonly<Record<string, number | boolean | string>>
 
 /** Who handed an event in: the metrics row, or the row that emitted it through the service (§4.1 `by`). */
 export type MetricsBy = 'host' | 'graph' | 'guard' | 'rules' | 'loops' | 'execute' | 'operate' | 'glm' | 'design' | 'bootstrap' | 'env'
@@ -201,7 +201,7 @@ export interface LoopBodies {
   'loop-contribution': { readonly plugin: string, readonly row: string, readonly op: string, readonly accepted: number, readonly dropped: number }
   'loop-duplicate': { readonly event: string, readonly key: string, readonly from: string, readonly firstSeen: string }
   'loop-holder': { readonly session?: string, readonly state: string, readonly reason?: string }
-  'loop-handover': { readonly op: string, readonly pid: number, readonly session: string }
+  'loop-handover': { readonly op: string, readonly pid: number, readonly session?: string }
   'loop-task-delete': { readonly entry?: string, readonly scheduleId: string, readonly why: string, readonly deleted: boolean }
 }
 
@@ -288,7 +288,7 @@ export type EmittedEvent =
 export type QueuedEvent = EmittedEvent & { readonly v?: string, readonly sid?: string }
 
 /** Where an event belongs: the session it happened in, or any directory of its project; an event with neither resolvable to a project is counted, not written (§3.5). */
-interface MetricsWhere {
+export interface MetricsWhere {
   readonly sessionId?: string
   readonly dir?: string
 }

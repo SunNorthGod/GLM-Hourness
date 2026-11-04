@@ -5,15 +5,12 @@
  * (a duplicate event, the run lock changing hands) write one record each. The
  * loop row writes them; what a model says is not a record.
  *
- * They go to `<project>/.llm/loops/runs.jsonl`, rotated at 8 MiB, until the
- * metrics stream lands; the step that lands it changes this file only (same
- * agreement as the rules board's metrics.ts). No output text of a run is ever
- * written here: a record carries how many bytes, not what they said.
+ * They go to the project's metrics journal as their `loop-*` events, mapped in
+ * metrics.ts (loop board design 0.6 §6.10; metrics design §12 step 6 — the
+ * board's own runs.jsonl is gone). No output text of a run is ever written:
+ * a record carries how many bytes, not what they said.
  */
-import { rename, stat } from 'node:fs/promises'
 import { randomBytes } from 'node:crypto'
-import { appendLine, ROTATE_BYTES, stamp } from '../rules/store.ts'
-import type { LoopsPaths } from './store.ts'
 
 /** How a run ended (design §6.10). `held` and `deferred` are told again later with the outcome they reach. */
 export type RunOutcome =
@@ -151,20 +148,4 @@ export function firedRecord(input: {
 /** `ev-<16 hex digits>`: one line of the inbox. */
 export function eventId(): string {
   return `ev-${randomBytes(8).toString('hex')}`
-}
-
-/**
- * Append one record, rotating the file first when it has reached 8 MiB. A
- * failure to write never reaches the run: the caller is told through `problem`
- * and the run goes on, since a record is evidence and not a step of the work.
- */
-export async function appendRun(paths: LoopsPaths, record: LoopRecord, problem?: (message: string) => void): Promise<void> {
-  try {
-    const size = await stat(paths.runs).then(found => found.size).catch(() => 0)
-    if (size >= ROTATE_BYTES) await rename(paths.runs, paths.runs.replace(/\.jsonl$/, `-${stamp(Date.parse(record.at))}.jsonl`)).catch(() => {})
-    await appendLine(paths.runs, record)
-  }
-  catch (error) {
-    problem?.(`运行记录写不进：${error instanceof Error ? error.message : String(error)}`)
-  }
 }

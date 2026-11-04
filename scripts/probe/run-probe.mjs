@@ -982,7 +982,12 @@ const loopsPeak = runScenario('loops-peak', 'glm-5.3', [
 ]])
 const loopNotices = step => (step?.messages ?? []).filter(message => message.role === 'user' && message.source === LOOP_NOTICE_SOURCE)
 const loopsPeakNoticeSteps = loopsPeak.steps.filter(step => loopNotices(step).length > 0)
-const loopsPeakRuns = () => jsonl(join(loopsPeakProject.ws, '.llm', 'loops', 'runs.jsonl'))
+const loopsPeakRuns = () => {
+  const dir = join(loopsPeakProject.ws, '.llm', 'metrics')
+  return existsSync(dir)
+    ? readdirSync(dir).filter(name => /^events-.+\.jsonl$/.test(name)).flatMap(name => jsonl(join(dir, name))).map(line => ({ ...line.body, kind: line.k }))
+    : []
+}
 const loopsPeakRestart = runScenario('loops-peak-restart', 'glm-5.3', [
   { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } } },
   { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 62', timeout: 120000 } } },
@@ -2061,7 +2066,7 @@ const loopsHealth = healthOf(loops)
 const loopsViewEntry = (loopsView?.entries ?? []).find(entry => entry.id === LOOPS_ENTRY_ID)
 const loopsAdopted = loopsJournal.filter(record => record.op === 'adopt' && record.id === LOOPS_ENTRY_ID)
 // A headless host has no session controller, so the board hands out no service and runs no entry (loops design 6.1, 11.1): nothing of the runtime is written.
-const loopsRanNothing = ['runner.lock', 'handover.json', 'events.jsonl', 'runs.jsonl', 'state.json'].filter(name => existsSync(join(loopsRuntime, name)))
+const loopsRanNothing = ['runner.lock', 'handover.json', 'events.jsonl', 'state.json'].filter(name => existsSync(join(loopsRuntime, name)))
 const LOOPS_DENIAL = new RegExp(`^Error: You tried to write "[^"]+"\\.\\nBoundary: Rule loops:files-only blocks writes under the loop board's files [^\\n]+\\nRight path: .+\\nException: `)
 // rules-peak: what the board told the main agent, at the wall clock of this machine (the model-facing lines write HH:MM in it).
 const localHm = iso => new Date(iso).toLocaleString('sv-SE').slice(11, 16)

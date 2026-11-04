@@ -31,7 +31,7 @@ import type { GrantEntry } from './request.ts'
 import * as followup from './followup.ts'
 
 /** The rules for one root call, and the face and origin they judge under. */
-interface GateRules {
+export interface GateRules {
   readonly rules: readonly GuardRule[]
   readonly face: ToolFace
   /** Where the call ran (src/guard/origin.ts); every record carries it. */

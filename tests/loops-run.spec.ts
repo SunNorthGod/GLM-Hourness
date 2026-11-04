@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Running one project's board (src/loops/run.ts, src/loops/lock.ts,
  * src/loops/harness.ts; loop board design 0.6 §6.1, §6.5, §6.8, §6.10): who
  * holds the run lock and how it changes hands, the events the loop row puts out
@@ -25,6 +25,10 @@ import type { DeliverRequest, DeliverResult } from '../src/loops/deliver.ts'
 import { createProjectRuntime, type ProjectDeps, type ProjectRuntime, type WaitingItem } from '../src/loops/run.ts'
 import type { Contribution, ContributionSource, HarnessResult, LoopEventDeclaration } from '../src/loops/service.ts'
 import { ensureRuntimeDir, openLoopStore, type LoopStore } from '../src/loops/store.ts'
+import type { ServiceLookup } from '../src/shared/dsh-min.ts'
+import type { EmittedEvent } from '../src/shared/metrics.ts'
+import { METRICS_SERVICE } from '../src/shared/metrics.ts'
+import { DATA_SERVICE } from '../src/shared/data-home.ts'
 import { gitProjectTest, quickIo, scriptEntry, seedAgreed, SCRIPT_TEXT, tellEntry } from './loops-helpers.ts'
 
 const EXECUTE: ContributionSource = { plugin: 'dsh-hourness', row: 'glm-hourness/execute' }
@@ -77,6 +81,22 @@ async function worldOf(root: string, options: WorldOptions = {}): Promise<World>
   const delivered: DeliverRequest[] = []
   const timers: World['timers'] = []
   const store = openLoopStore(root, { io: quickIo({ now: () => clock }) })
+  // The board hands its records to the metrics journal; this fake is the journal, keeping the events for
+  // the assertions. The data service points the holder reads at the fixture's own directories, like the
+  // loop-peak fixture does, so nothing outside the temporary root is read.
+  const ctx: ServiceLookup = {
+    get: (name: string): unknown => {
+      if (name === METRICS_SERVICE) {
+        return {
+          emit: (event: EmittedEvent): void => {
+            records.push({ ...event.body, kind: event.k } as LoopRecord)
+          },
+        }
+      }
+      if (name === DATA_SERVICE) return { userHome: join(root, 'user'), projectHome: join(root, '.llm') }
+      return undefined
+    },
+  }
   await ensureRuntimeDir(store.paths)
   // The channel events are in the table while a pricing service is there, as the row's registry has them.
   const registry = createRegistry({ now: () => new Date(clock), report: (text) => { told.push({ text, level: 'degraded' }) }, channel: () => options.peak === undefined ? [] : CHANNEL_EVENTS })
@@ -91,6 +111,7 @@ async function worldOf(root: string, options: WorldOptions = {}): Promise<World>
     root,
     store,
     registry,
+    ctx,
     io: quickIo({ now: () => clock }),
     now: () => clock,
     delay: (run, ms) => {
@@ -117,7 +138,7 @@ async function worldOf(root: string, options: WorldOptions = {}): Promise<World>
     ...(options.waiting === undefined ? {} : { waiting: options.waiting }),
   }
   const runtime = createProjectRuntime({ ...deps, report: (text, level) => { told.push({ text, level }) } })
-  // Every record of this process is kept for the assertions as well as written to runs.jsonl.
+  // Every record of this process is kept for the assertions as well as handed to the metrics journal.
   return {
     runtime,
     store,
@@ -137,10 +158,9 @@ async function worldOf(root: string, options: WorldOptions = {}): Promise<World>
   }
 }
 
-/** The records of runs.jsonl. */
-async function runsOf(store: LoopStore): Promise<LoopRecord[]> {
-  const text = await readFile(store.paths.runs, 'utf8').catch(() => '')
-  return text.split('\n').filter(line => line !== '').map(line => JSON.parse(line) as LoopRecord)
+/** The records this process handed the metrics journal. */
+function runsOf(world: World): LoopRecord[] {
+  return world.records
 }
 
 /** The events of the inbox. */
@@ -191,7 +211,8 @@ gitProjectTest('the run lock follows the main agent\'s session: the process it i
   assert.equal(holder.runtime.stand().kind, 'elsewhere', 'the holder let the lock go')
   await withSession.tick()
   assert.deepEqual(withSession.runtime.stand(), { kind: 'held' })
-  const hands = (await runsOf(holder.store)).filter((record): record is HandoverRecord => record.kind === 'loop-handover')
+  // Both processes write their own hand-over; the journal of the project holds both.
+  const hands = [...runsOf(holder), ...runsOf(withSession)].filter((record): record is HandoverRecord => record.kind === 'loop-handover')
   assert.deepEqual(hands.map(record => [record.op, record.pid]), [['release', 5001], ['take', 5002]])
   assert.equal(await readFile(holder.store.paths.handover, 'utf8').catch(() => 'gone'), 'gone', 'the request is taken back once the lock is held')
   await holder.runtime.stop()
@@ -318,12 +339,12 @@ gitProjectTest('a harness action: done with a tell is delivered, skipped and fai
   assert.equal(world.delivered.length, 1, 'a skip says nothing to the main agent')
   result = { outcome: 'failed', reason: '起不来' }
   await fire(3)
-  const runs = await runsOf(world.store)
+  const runs = runsOf(world)
   const done = runs.filter((record): record is DoneRecord => record.kind === 'loop-done')
   assert.deepEqual(done.map(record => record.outcome), ['delivered', 'skipped', 'failed'])
   assert.deepEqual(done.map(record => record.reason), [undefined, '这次不用跑', '起不来'])
-  // This runtime was given no host, so it also says it cannot read who the main agent is (design §6.4); of the three actions only the one that could not run degrades the row.
-  assert.deepEqual(world.told.filter(line => line.level === 'degraded').map(line => line.text.replace(/：.*$/, '')), ['读不出主 Agent 的记录', `${EXECUTE.row.split('/')[1]}.trunk 的 harness 动作失败`])
+  // The holder reads its directories from the fixture's data service and finds no record: no fault of the board's, so of the three actions only the one that could not run degrades the row.
+  assert.deepEqual(world.told.filter(line => line.level === 'degraded').map(line => line.text.replace(/：.*$/, '')), [`${EXECUTE.row.split('/')[1]}.trunk 的 harness 动作失败`])
   const fired = runs.filter((record): record is FiredRecord => record.kind === 'loop-fired')
   assert.deepEqual(fired.map(record => [record.source, record.plugin, record.row]), [['plugin', 'dsh-hourness', EXECUTE.row], ['plugin', 'dsh-hourness', EXECUTE.row], ['plugin', 'dsh-hourness', EXECUTE.row]])
   assert.deepEqual(fired.map(record => record.trigger.event), [HANDBACK.id, HANDBACK.id, HANDBACK.id])
@@ -344,7 +365,7 @@ gitProjectTest('a harness entry whose action nobody provides fails and says so, 
   for (const timer of world.timers.splice(0)) timer.run()
   await new Promise(resolve => setImmediate(resolve))
   await world.tick()
-  const done = (await runsOf(world.store)).filter((record): record is DoneRecord => record.kind === 'loop-done')
+  const done = runsOf(world).filter((record): record is DoneRecord => record.kind === 'loop-done')
   assert.deepEqual(done.map(record => [record.outcome, record.reason]), [['failed', 'timeout']])
   assert.equal(world.delivered.length, 0, 'an action that never answered says nothing to the main agent')
   await world.runtime.stop()
@@ -358,7 +379,7 @@ gitProjectTest('a person\'s entry that would run a script or a check is refused 
   assert.equal(world.store.read().entries.find(entry => entry.id === script.id)?.status.kind, 'ok', 'the entry stands: what follows is about running it')
   await world.runtime.emit({ event: 'loops.host-restarted', key: `host-restarted:${projectKey(root)}:${new Date(world.now()).toISOString()}`, payload: { previousStart: new Date(AT - 60_000).toISOString(), downMinutes: 1, crashed: false, rebooted: false, appChanged: false }, from: 'glm-hourness/loops' })
   await world.tick(31_000)
-  const done = (await runsOf(world.store)).filter((record): record is DoneRecord => record.kind === 'loop-done')
+  const done = runsOf(world).filter((record): record is DoneRecord => record.kind === 'loop-done')
   assert.deepEqual(done.map(record => [record.outcome, record.reason]), [['refused', 'unadopted']])
   assert.equal(world.delivered.length, 0, 'a refused run tells nobody anything')
   const state = JSON.parse(await readFile(world.store.paths.state, 'utf8')) as { last: Record<string, { run: string, at: string, outcome: string, reason?: string }> }
@@ -377,7 +398,7 @@ gitProjectTest('a check entry is refused with check-missing, and nothing in the 
   await world.tick()
   await world.runtime.emit({ event: 'loops.file-changed', key: `file-changed:${join(root, 'package.json')}:12-${AT}`, payload: { path: join(root, 'package.json'), size: 12, mtime: new Date(AT).toISOString() }, from: 'glm-hourness/loops' })
   await world.tick(31_000)
-  const done = (await runsOf(world.store)).filter((record): record is DoneRecord => record.kind === 'loop-done')
+  const done = runsOf(world).filter((record): record is DoneRecord => record.kind === 'loop-done')
   assert.deepEqual(done.map(record => [record.outcome, record.reason]), [['refused', 'check-missing']])
   assert.equal(world.delivered.length, 0)
   await world.runtime.stop()
@@ -388,13 +409,13 @@ gitProjectTest('a process that cannot read which session is the main agent holds
   await world.tick()
   await world.runtime.emit({ event: HANDBACK.id, key: 'handback:t-1:c-1', payload: { task: 't-1' }, from: EXECUTE.row })
   await world.tick(2_000)
-  const written = await runsOf(world.store)
+  const written = runsOf(world)
   const done = written.filter((record): record is DoneRecord => record.kind === 'loop-done')
   assert.deepEqual(done.map(record => [record.outcome, record.reason]), [['held', 'holder-unreadable']])
   // Why it waited is a record of its own, so it can be looked up afterwards (design §6.10).
   const holder = written.filter((record): record is LoopHolderRecord => record.kind === 'loop-holder')
-  assert.deepEqual(holder.map(record => [record.state, record.reason]), [['unknown', 'holder-unreadable']])
-  const records = await runsOf(world.store)
+  assert.deepEqual(holder.map(record => [record.state, record.reason]), [['none', 'no-record']], 'the holder reads its directories from the fixture and finds no record; the message waits either way')
+  const records = runsOf(world)
   assert.equal(records.every(record => !JSON.stringify(record).includes(TELL)), true, 'no record carries what was said')
   await world.runtime.stop()
 })
@@ -410,16 +431,16 @@ gitProjectTest('a self entry is not run here: the row that owns it reports its r
   await world.tick()
   await world.runtime.emit({ event: HANDBACK.id, key: 'handback:t-1:c-1', payload: { task: 't-1' }, from: EXECUTE.row })
   await world.tick(2_000)
-  const ran = (await runsOf(world.store)).filter(record => record.kind === 'loop-fired')
+  const ran = runsOf(world).filter(record => record.kind === 'loop-fired')
   assert.deepEqual(ran.map(record => record.kind === 'loop-fired' && record.entry), ['execute.handback'], 'the listed entry does not run from the inbox')
   world.runtime.recordRun({ cwd: root, entry: 'execute.listed', outcome: 'ran', durationMs: 12 })
   world.runtime.recordRun({ cwd: root, entry: 'execute.handback', outcome: 'ran' })
   world.runtime.recordRun({ cwd: root, entry: 'nobody.here', outcome: 'ran' })
   await world.tick()
-  const listed = (await runsOf(world.store)).filter(record => record.kind === 'loop-done' && record.entry === 'execute.listed')
+  const listed = runsOf(world).filter(record => record.kind === 'loop-done' && record.entry === 'execute.listed')
   assert.equal(listed.length, 1, 'the row that ran it reported one run')
-  assert.equal((await runsOf(world.store)).filter(record => record.entry === 'nobody.here').length, 0)
-  assert.equal((await runsOf(world.store)).filter(record => record.kind === 'loop-done' && record.entry === 'execute.handback').length, 1, 'only a listed entry can be reported')
+  assert.equal(runsOf(world).filter(record => record.entry === 'nobody.here').length, 0)
+  assert.equal(runsOf(world).filter(record => record.kind === 'loop-done' && record.entry === 'execute.handback').length, 1, 'only a listed entry can be reported')
   await world.runtime.stop()
 })
 
