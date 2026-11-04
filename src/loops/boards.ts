@@ -6,6 +6,13 @@
  * what is wrong to the row's health. Nothing here throws: a project whose files
  * cannot be read is a problem for the health, not for the session.
  *
+ * The view carries what the runtime keeps (design §8.4): the last run of every
+ * entry, what waits and the main agent's state from the project's
+ * `state.json`, and the last runs from the tail of the run records
+ * (records.ts `recentRecords`, the one reader of them). The runtime itself is
+ * not asked: whichever process runs the project writes those files, so every
+ * process makes the same view of it.
+ *
  * `view.json` is written when its content changes, at most once every 2
  * seconds for a project; a change that comes sooner is written when the 2
  * seconds are over. The moment it was made is not part of the comparison.
@@ -15,12 +22,46 @@ import { basename } from 'node:path'
 import type { LockEnvironment } from '../data/lock.ts'
 import { projectKey } from '../graph/main-agent-holder.ts'
 import { writeAtomic, type StoreIo } from '../rules/store.ts'
+import { holderLine, WRITER_HELD_MS, type HolderReason, type HolderStateKind } from './holder.ts'
+import { readState, type RuntimeState } from './inbox.ts'
+import { recentRecords } from './records.ts'
 import type { LoopsRegistry } from './registry.ts'
-import { ensureRuntimeDir, openLoopStore, type LoopStore } from './store.ts'
-import { attentionOf, buildView, type LoopsView, type PeakView } from './view.ts'
+import { ensureRuntimeDir, openLoopStore, type BoardRead, type LoopStore } from './store.ts'
+import { attentionOf, buildView, type HolderView, type LoopsView, type PeakView, type ViewRuntime } from './view.ts'
 
 /** How often `view.json` of one project is written at most. */
 const VIEW_EVERY_MS = 2_000
+
+/** How many runs the page lists (design §8.2 item 7). */
+const RECENT_RUNS = 20
+
+/**
+ * The main agent's line of the page head (design §8.2 item 1), from what the
+ * runtime last read about the holder session: the words of holder.ts for a
+ * state nobody can be told in, and for the first five minutes of `elsewhere`
+ * the hand-over that is still going on.
+ */
+function holderViewOf(known: RuntimeState['holder'], nowMs: number): HolderView | undefined {
+  if (known === undefined) return undefined
+  const session = known.session === undefined ? {} : { session: known.session }
+  if (known.state === 'ok') return { line: '主 Agent 收得到这块板的消息', ...session }
+  if (known.state === 'elsewhere' && nowMs - Date.parse(known.at) < WRITER_HELD_MS) return { line: '这块板正交给主 Agent 所在的 DSH 进程', ...session }
+  const line = holderLine({ kind: known.state as HolderStateKind, ...(known.reason === undefined ? {} : { reason: known.reason as HolderReason }) })
+  return line === undefined ? undefined : { line, ...session }
+}
+
+/** What the runtime of a project has kept and recorded, as the view reads it. */
+async function runtimeOf(store: LoopStore, nowMs: number): Promise<ViewRuntime> {
+  const state = readState(store.paths, nowMs)
+  const holder = holderViewOf(state.holder, nowMs)
+  return {
+    last: state.last,
+    passing: state.passing,
+    waiting: Object.keys(state.pending).length + state.held.length + Object.keys(state.deferred).length,
+    records: await recentRecords(store.paths, RECENT_RUNS),
+    ...(holder === undefined ? {} : { holder }),
+  }
+}
 
 /** A timer that runs `run` once after `ms` and returns the function that cancels it. */
 export type Delay = (run: () => void, ms: number) => () => void
@@ -50,8 +91,10 @@ interface BoardsDeps {
 export interface Boards {
   /** The store of a project root, made once. */
   storeOf(root: string): LoopStore
-  /** Settle the project's files, write its `view.json` and note what is wrong. Never throws. */
-  refresh(root: string): Promise<void>
+  /** Settle the project's files, write its `view.json` and note what is wrong; the view made, or undefined when the files could not be read. Never throws. */
+  refresh(root: string): Promise<LoopsView | undefined>
+  /** Write `view.json` again from the files as they read now and from what the runtime kept, without settling: a beat's change of the runtime (design §8.4). Never throws. */
+  rewrite(root: string): Promise<void>
   /** What is wrong with the projects now, one sentence each, naming the project. */
   problems(): readonly string[]
   /** Cancel the writes still waiting. */
@@ -130,15 +173,41 @@ export function createBoards(deps: BoardsDeps): Boards {
     }, wait) }
   }
 
-  async function refresh(root: string): Promise<void> {
+  /** Make the view from a read of the files and write it; note what is wrong with the files. */
+  async function show(root: string, store: LoopStore, board: BoardRead): Promise<LoopsView> {
+    const nowMs = deps.io.now()
+    const peak = deps.peakOf?.(root)
+    const view = buildView({
+      at: new Date(nowMs).toISOString(),
+      project: projectKey(root),
+      plugin: deps.registry.entries(),
+      board,
+      events: deps.registry.events(),
+      runtime: await runtimeOf(store, nowMs),
+      ...(peak === undefined ? {} : { peak }),
+    })
+    await request(root, store, view)
+    note(root, 'files', attentionOf(board).filter(item => item.degrades).map(item => item.text))
+    return view
+  }
+
+  async function refresh(root: string): Promise<LoopsView | undefined> {
     try {
       const store = storeOf(root)
       const settled = await store.settle()
       // A busy lock leaves the files as they are: the read shows them as they are.
-      const board = settled === 'busy' ? store.read() : settled
-      const peak = deps.peakOf?.(root)
-      await request(root, store, buildView({ at: new Date(deps.io.now()).toISOString(), project: projectKey(root), plugin: deps.registry.entries(), board, ...(peak === undefined ? {} : { peak }) }))
-      note(root, 'files', attentionOf(board).filter(item => item.degrades).map(item => item.text))
+      return await show(root, store, settled === 'busy' ? store.read() : settled)
+    }
+    catch (error) {
+      note(root, 'files', [`读循环板的文件失败：${message(error)}`])
+      return undefined
+    }
+  }
+
+  async function rewrite(root: string): Promise<void> {
+    try {
+      const store = storeOf(root)
+      await show(root, store, store.read())
     }
     catch (error) {
       note(root, 'files', [`读循环板的文件失败：${message(error)}`])
@@ -148,6 +217,7 @@ export function createBoards(deps: BoardsDeps): Boards {
   return {
     storeOf,
     refresh,
+    rewrite,
     problems: () => [...problems.values()].flat(),
     dispose() {
       for (const item of written.values()) item.waiting?.cancel()

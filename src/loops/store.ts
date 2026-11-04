@@ -77,6 +77,8 @@ export interface LoopsPaths {
   readonly removedTasks: string
   /** The last step of the main agent's session of this project, written by every process (design §6.1). */
   readonly mainStep: string
+  /** Where a run's log goes, one folder per entry (design §6.6); the executor appends the file. */
+  readonly logsDir: string
 }
 
 export function loopsPaths(projectRoot: string): LoopsPaths {
@@ -97,6 +99,7 @@ export function loopsPaths(projectRoot: string): LoopsPaths {
     runs: join(runtimeDir, 'runs.jsonl'),
     removedTasks: join(runtimeDir, 'removed-tasks.jsonl'),
     mainStep: join(runtimeDir, 'main-step.json'),
+    logsDir: join(runtimeDir, 'logs'),
   }
 }
 

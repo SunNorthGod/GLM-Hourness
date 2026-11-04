@@ -7,10 +7,12 @@
  *
  * They go to `<project>/.llm/loops/runs.jsonl`, rotated at 8 MiB, until the
  * metrics stream lands; the step that lands it changes this file only (same
- * agreement as the rules board's metrics.ts). No output text of a run is ever
- * written here: a record carries how many bytes, not what they said.
+ * agreement as the rules board's metrics.ts): `appendRun` writes them and
+ * `recentRecords` is the one place that reads them back, for the page's
+ * last runs. No output text of a run is ever written here: a record carries
+ * how many bytes, not what they said.
  */
-import { rename, stat } from 'node:fs/promises'
+import { open, rename, stat } from 'node:fs/promises'
 import { randomBytes } from 'node:crypto'
 import { appendLine, ROTATE_BYTES, stamp } from '../rules/store.ts'
 import type { LoopsPaths } from './store.ts'
@@ -57,6 +59,8 @@ export interface DoneRecord {
   readonly reason?: RunReason
   readonly durationMs?: number
   readonly outputBytes?: number
+  /** The exit codes of the processes the run started (design §6.10 `exits`); a run that started none has none. */
+  readonly exits?: number[]
   readonly delivery?: 'steer' | 'inject' | 'followup' | 'dsh'
   readonly messageId?: string
 }
@@ -166,5 +170,51 @@ export async function appendRun(paths: LoopsPaths, record: LoopRecord, problem?:
   }
   catch (error) {
     problem?.(`运行记录写不进：${error instanceof Error ? error.message : String(error)}`)
+  }
+}
+
+/** The records the page's last runs list (design §8.2 item 7): the runs, the events reported again, the DSH reminders the board deleted. */
+type RecentRecord = DoneRecord | DuplicateRecord | TaskDeleteRecord
+
+const RECENT_KINDS: ReadonlySet<string> = new Set<RecentRecord['kind']>(['loop-done', 'loop-duplicate', 'loop-task-delete'])
+
+/** How far back from the end of the file the last runs are looked for: far more than 20 lines of records. */
+const RECENT_TAIL_BYTES = 256 * 1024
+
+/**
+ * The latest records the page lists, oldest first, at most `limit`: read
+ * from the last 256 KiB of the current file (a first line cut by that start
+ * and a last line still being written are skipped, and so is a line that is
+ * not a record). Never throws: a file that is not there or cannot be read
+ * has no recent runs.
+ */
+export async function recentRecords(paths: LoopsPaths, limit: number): Promise<RecentRecord[]> {
+  let handle: Awaited<ReturnType<typeof open>> | undefined
+  try {
+    handle = await open(paths.runs, 'r')
+    const { size } = await handle.stat()
+    const start = Math.max(0, size - RECENT_TAIL_BYTES)
+    const bytes = Buffer.alloc(size - start)
+    await handle.read(bytes, 0, bytes.length, start)
+    const lines = bytes.toString('utf8').split('\n')
+    if (start > 0) lines.shift()
+    lines.pop()
+    const found: RecentRecord[] = []
+    for (const line of lines) {
+      try {
+        const value = JSON.parse(line) as { readonly kind?: unknown, readonly at?: unknown } | null
+        if (typeof value?.kind === 'string' && RECENT_KINDS.has(value.kind) && typeof value.at === 'string') found.push(value as unknown as RecentRecord)
+      }
+      catch {
+        // Not a record: skipped, as the reader of the inbox does.
+      }
+    }
+    return found.slice(-limit)
+  }
+  catch {
+    return []
+  }
+  finally {
+    await handle?.close().catch(() => {})
   }
 }
