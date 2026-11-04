@@ -783,8 +783,8 @@ function pruneKeys(keys: RuntimeState['keys'], nowMs: number): void {
   }
 }
 
-/** The state as it was left, or an empty one; a file that cannot be read is rebuilt, as design §6.8 says. */
-function readState(paths: LoopsPaths, nowMs: number): RuntimeState {
+/** The state as it was left, or an empty one; a file that cannot be read is rebuilt, as design §6.8 says. Only reads; boards.ts reads it for the view. */
+export function readState(paths: LoopsPaths, nowMs: number): RuntimeState {
   const text = readText(paths.state)
   if (text === undefined) return emptyState()
   try {

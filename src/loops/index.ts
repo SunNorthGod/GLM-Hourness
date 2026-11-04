@@ -31,9 +31,11 @@
  *   `docs/loops/`, the change record in the project's `.llm/loops/`; settles what
  *   git or an editor changed behind its back whenever a session starts in a
  *   project (boards.ts) and writes the project's `view.json` (view.ts), whose
- *   peak line reads the level from the rules board's service;
- * - `/loops` (commands.ts): the person deletes an entry, gets one back, or
- *   acknowledges a damaged change record;
+ *   peak line reads the level from the rules board's service, and writes it
+ *   again after every beat of a project it runs, so the page shows the last
+ *   runs;
+ * - `/loops` (commands.ts): the person lists every entry, deletes one of
+ *   theirs, gets one back, or acknowledges a damaged change record;
  * - the gate `loops:files-only` (guard.ts), outermost on `tools/pre-execute`: a
  *   file tool or a shell command that writes into the board's files is denied
  *   from the day the row is enabled;
@@ -434,6 +436,8 @@ export function apply(ctx: LoopsContext, config: LoopsConfig = {}): () => void {
         continue
       }
       await held.runtime.beat()
+      // What the beat ran, held or recorded goes on the page (design §8.4).
+      await boards.rewrite(root)
     }
     health.reactivate(...activation())
   }
@@ -441,13 +445,14 @@ export function apply(ctx: LoopsContext, config: LoopsConfig = {}): () => void {
   const command: CommandDefinitionLike<AgentCommandInvocationLike> = {
     definitionId: name,
     name: LOOPS_COMMAND,
-    description: '循环板：删掉你的一项、把读不出的一项恢复、确认存档恢复的提示',
+    description: '循环板：列出全部条目、删掉你的一项、把读不出的一项恢复、确认存档恢复的提示',
     input: { hint: LOOPS_HINT },
     async handler(invocation): Promise<CommandResultLike> {
       const cwd = invocation.agent.session.header.cwd
       const project = typeof cwd === 'string' && cwd !== '' ? projectOf(cwd) : undefined
       if (project === undefined) return { kind: 'error', text: NOT_A_PROJECT }
-      const result = await runLoopsCommand(invocation.rawInput, { store: boards.storeOf(project.root), pluginIds: () => new Set(registry.entries().map(item => item.entry.id)), now: io.now })
+      const root = project.root
+      const result = await runLoopsCommand(invocation.rawInput, { store: boards.storeOf(root), pluginIds: () => new Set(registry.entries().map(item => item.entry.id)), now: io.now, view: () => boards.refresh(root) })
       await boards.refresh(project.root)
       // The person touched this project: this process runs it from here on, if it can.
       await runtimeOf(project.root)?.beat()

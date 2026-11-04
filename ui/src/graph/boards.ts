@@ -10,12 +10,14 @@
  * or its entries, not the panel. A board that mirrors one of its entries on
  * the home page derives the line through homeLineFromItem, so both faces
  * show one value. plain-ui owns the full home page and footer; until then
- * this is the one table and the panel's temporary entry reads it. No React
- * here: the specs run the table under Node, so the panel-side hook lives
- * with the panel.
+ * this is the one table and the panel's temporary entry reads it. The
+ * boards whose availability follows a session projection (lessons, loops)
+ * share projectionBoard. No React here: the specs run the table under Node,
+ * so the panel-side hook lives with the panel.
  */
 import type { ComponentType } from 'react'
 import { validateStatusItem, type StatusItem } from '../../../src/shared/status.ts'
+import type { ProjectionValues, SessionsClient } from '../dsh.ts'
 
 /** What one board tells the panel about itself right now. */
 export interface BoardState {
@@ -68,6 +70,78 @@ export function registerBoard(board: Board): void {
 export function boards(): readonly Board[] {
   const ordered = BOARD_ORDER.flatMap(id => table.filter(board => board.id === id))
   return [...ordered, ...table.filter(board => !(BOARD_ORDER as readonly string[]).includes(board.id))]
+}
+
+const UNAVAILABLE: BoardState = { available: false, homeLine: null, guideLine: null, peakApplies: false }
+const AVAILABLE: BoardState = { available: true, homeLine: null, guideLine: null, peakApplies: false }
+
+/**
+ * A board whose availability follows a session's projections and that has
+ * no home or guide line (the lessons board, the loop board): it follows the
+ * projections of every session someone listens to, and asks once for the
+ * values of a session that has none yet. The returned disposer stops the
+ * following.
+ */
+export function projectionBoard(spec: {
+  readonly id: string
+  readonly label: string
+  readonly page: ComponentType<{ readonly sessionId: string }>
+  readonly sessions: SessionsClient
+  /** Whether the board has something for a session with these values. */
+  readonly available: (values: ProjectionValues | undefined) => boolean
+}): { readonly board: Board, readonly dispose: () => void } {
+  const listeners = new Map<string, Set<() => void>>()
+  const states = new Map<string, BoardState>()
+  const asked = new Set<string>()
+
+  const recompute = (): void => {
+    const projections = spec.sessions.list.getSnapshot().projectionsBySession
+    for (const sessionId of [...listeners.keys()]) {
+      const entry = projections[sessionId]
+      if (entry === undefined) {
+        // A cold session: ask once, the list's next change brings the values.
+        if (!asked.has(sessionId)) {
+          asked.add(sessionId)
+          void spec.sessions.refreshProjections(sessionId).catch(() => {})
+        }
+        continue
+      }
+      const next = spec.available(entry.values) ? AVAILABLE : UNAVAILABLE
+      // Only `available` ever moves; keeping the same object until it does is what useSyncExternalStore requires.
+      if (states.get(sessionId) !== next) {
+        states.set(sessionId, next)
+        for (const listener of listeners.get(sessionId) ?? []) listener()
+      }
+    }
+  }
+
+  const unsubscribeList = spec.sessions.list.subscribe(recompute)
+
+  return {
+    board: {
+      id: spec.id,
+      label: spec.label,
+      subscribe: (sessionId, listener) => {
+        let set = listeners.get(sessionId)
+        if (set === undefined) {
+          set = new Set()
+          listeners.set(sessionId, set)
+        }
+        set.add(listener)
+        recompute()
+        return () => {
+          set.delete(listener)
+          if (set.size === 0) {
+            listeners.delete(sessionId)
+            states.delete(sessionId)
+          }
+        }
+      },
+      snapshot: sessionId => states.get(sessionId) ?? UNAVAILABLE,
+      Page: spec.page,
+    },
+    dispose: unsubscribeList,
+  }
 }
 
 /** The cap the home and guide lines share (plain-ui 1.3 §8.2). */

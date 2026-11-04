@@ -72,8 +72,18 @@
 
 - 分支 `loops-runner`，worktree `.worktrees/loopsr`。已合并 origin/main 到 `acd2f14`（合并提交 `cc2ab36`，含 `bc25baa` fix(audit)：同一流水文件的追加按发出顺序落盘，`tests/rules-host.ts` 删临时项目带重试）。
 - **Batch 1 已推送**：`13ffb58`（src/loops/script.ts 执行器 + run.ts 采纳脚本条目执行 + inbox retry/selfTriggered + 静态检查翻转 + tests/loops-script.spec.ts + loops-run.spec.ts 改写 + ORCHESTRATION §18/§18.2/§18.9）。
-- **Batch 2 随本文件同一提交**：src/loops/run.ts（LoopChecks 接缝类型 + check 支路：commandOf → argv 比对 check-changed → filesOf 并集 → fill → runCommand queue:'check' → present 发现块；refused 一律不碰 passing；rerunDeferred 同时接 script 与 check；execute() 的 script/check 分支统一先过 askRules）；tests/loops-run.spec.ts（新增 5 条检查用例：present/files/会话投递、check-changed+check-missing、outside-project、规则排队后放行、默认 check-missing 保留）；docs/ORCHESTRATION.md（§18 头部、§18.9 check 行、§18 尾）。
-- **Batch 3 未动**：/loops list 命令 + view.json 扩展（每条目 whenText/actionText/last/next、holder 行、最近 20 次运行、结局人话）+ ui/src/loops/ 页面（照 ui/src/lessons/ 的做法读 view.json）+ hourness-client.tsx 注册 `id: 'loops'` 板。批次图见上文。
+- **Batch 2 已推送**：`7823103`（src/loops/run.ts 的 LoopChecks 接缝与 check 支路；tests/loops-run.spec.ts 新增 5 条检查用例；ORCHESTRATION §18 头部、§18.9 check 行、§18 尾）。
+- **Batch 3 随本文件同一提交**：
+  - `src/loops/view.ts`：输入形状在文件里自己写出（不再 import store.ts / registry.ts，页面能导入）；每条目加 `trigger`（time/event）、`action`、`when`/`does`/`from` 三句人话、`why`、`last`（时刻 + 结局 + 结局人话）、`next`；视图加 `holder`、`waiting`、`recent`（至多 20，新的在前）；导出 `momentText`、`runLine`（`/loops` 与页面共用）。
+  - `src/loops/records.ts`：`recentRecords(paths, limit)`，读运行记录的唯一一处（runs.jsonl 末尾 256 KiB）；指标线把运行记录改写进指标流水时只换这个函数。
+  - `src/loops/inbox.ts`：`readState` 导出（只读）。
+  - `src/loops/boards.ts`：`buildView` 读 state.json（last、passing、holder、待跑/存着/排队件数）与 `recentRecords`；`refresh` 返回视图；新 `rewrite`（不对账，只按文件此刻的样子重写）。`index.ts` 每一拍之后对跑着的项目 `rewrite`；`/loops` 的 deps 加 `view`。
+  - `src/loops/commands.ts`：不带参数列全部条目；`LOOPS_HINT`、USAGE、命令描述同步；`momentText` 移到 view.ts。
+  - `ui/src/loops/`：`board.ts`（`id: 'loops'`，available = 投影 `projectKey` 为字符串）、`model.ts`、`source.ts`、`LoopsPage.tsx`；`hourness-client.tsx` 注册；`scripts/packages.mjs` 的 hourness 客户端 sources 加 `ui/src/loops/`；`ui/src/dsh.ts` 加 `hournessLoops` 投影类型。
+  - 与经验页共用而抽出的两处（避免 jscpd 新增克隆）：`ui/src/graph/watched-files.ts`（readBytes + changes + 15 秒轮询），`ui/src/graph/boards.ts` 的 `projectionBoard`；`ui/src/lessons/source.ts`、`board.ts` 改为用它们，行为不变（lessons-panel-model 17/17）。
+  - 测试：新 `tests/loops-panel-model.spec.ts`（16 例：view 的人话、下次、结局映射、最近 20 条、runLine、页面模型、高峰行、plainWordsIn 固定字串、source 读/失败/读不懂/没有/轮询、held source、板的可用性、静态不写检查），接进 test:2；`tests/panel-helpers.ts`（fakeRemote/fakeSessions/until，从 lessons-panel-model.spec 移出共用）；`tests/loops-row.spec.ts`（空参数改为列表：列表全文、无人的条目、view.json 的运行部分、拍后重写）。
+  - 文档：ORCHESTRATION §18 头部、§18 「还没有」、§18.7 标题与 `/loops`、`view.json`、页面三条；`packages/hourness/locale/loops/{en,zh}.json` 的描述（去掉「投递与页面还没有」「默认关闭」两句过时说法）；`packages/hourness/cordis.patch.yml` 循环行的注释（同口径重写「还没有」一句，评审 F2）。
+- 判读（本批）：「id 只在删除提示与底账行出现」落成两行：人的一组后「你加的各项的 id：…」一行、7 天内删掉的每项一行恢复提示；标题行不带 id。页面不写「现在没有 DSH 进程在跑这块板」：`view.json` 只在内容变了时写，修改时间说明不了有没有进程在跑；首页一行、主 Agent 自己设的提醒、每天叫醒次数、循环板自己的规矩、讲细点里的触发原文与最近 5 次运行留到后面（ORCHESTRATION §18.7 页面一条已记）。`every` 条目不写下次（评审 F1，改法 a）：DSH 的 every 任务按锚点对齐，真值是任务记录的 `scheduledAt`，「此刻加间隔」与它对不上；从 `schedule.catalog()` 取 `scheduledAt` 留到后面。
 
 ### Batch 2 门禁（合并 acd2f14 之后，Batch 2 工作树）
 
@@ -83,5 +93,5 @@
 
 ### 下一步（按顺序）
 
-1. 开工 Batch 3（上文批次图），完成后同样门禁 + 提交推送。
+1. Batch 3 评审通过后推送 origin/loops-runner。
 2. 最后把本文件的「Sequenced-later」核对一遍（gate 一路、scriptDetail/commandDetail、clock.ts、机器一级运行者、staleEntries/timeoutEntries）并写最终报告。
