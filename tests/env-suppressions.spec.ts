@@ -1,6 +1,7 @@
 /**
- * The daily suppression-comment count (src/env/suppressions.ts) and the
- * morning-report line (src/workflow/morning-report.ts): what counts on a
+ * The daily suppression-comment count (src/env/suppressions.ts), the
+ * suppression line the env module owns (src/env/status.ts) and the morning
+ * report that shows it (src/workflow/morning-report.ts): what counts on a
  * real repository, what is skipped (untracked, oversized, binary), the
  * once-per-repository-and-day gate, and the 「压制注释 N 处（本期 +a / −b）」
  * line over a period.
@@ -12,7 +13,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { countMarkers, countRepository, dailySuppressions, suppressionDay, type SuppressionRecord } from '../src/env/suppressions.ts'
-import { morningReport, suppressionLineOf, type ReportInput } from '../src/workflow/morning-report.ts'
+import { morningReport, type ReportInput } from '../src/workflow/morning-report.ts'
+import { suppressionLineOf } from '../src/env/status.ts'
 
 function git(dir: string, args: readonly string[]): void {
   execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@localhost', '-c', 'commit.gpgsign=false', ...args], { cwd: dir, stdio: 'ignore' })

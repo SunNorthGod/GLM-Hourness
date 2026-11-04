@@ -13,20 +13,29 @@
  * model-facing until then.
  */
 import { appendFile, mkdir, readFile } from 'node:fs/promises'
+import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { installStepNotice } from '../shared/step-notice.ts'
 import { ensureLlmIgnored } from '../data/llm-ignore.ts'
 import { projectOf } from '../data/project-root.ts'
 import { provideRowHealth, sessionIdOf, type HealthState, type RowHealth } from '../shared/health.ts'
+import { provideRowStatus } from '../shared/status-host.ts'
 import type { AgentLike, ProvideHost, ServiceLookup, SessionLike } from '../shared/dsh-min.ts'
 import { graphService } from '../graph/service.ts'
 import { envNotice } from './notice.ts'
 import { dailySuppressions, type SuppressionRecord } from './suppressions.ts'
+import { envStatusItems } from './status.ts'
 
 /** The row's context: the agent lifecycle event and service lookup. */
 export interface EnvContext extends ServiceLookup, Partial<ProvideHost> {
   /** Awaited serially before agent creation resolves; the first step sees the effects. */
   on(event: 'agent/created', listener: (payload: { agent: AgentLike }) => Promise<void> | void): () => void
+}
+
+/** Row settings: the status view's injected read (tests); nothing else reads it. */
+export interface EnvConfig {
+  /** Reads one file's text for the status entry's journal (the status view is synchronous); tests inject it, the host reads from disk. */
+  readonly readFile?: ((path: string) => string) | undefined
 }
 
 /** cordis plugin identity. */
@@ -81,10 +90,13 @@ function installWork(ctx: EnvContext, session: SessionLike, health: RowHealth, s
   })()
 }
 
+/** The repository's suppression journal: the one file the daily count appends to and the status entry reads. */
+const suppressionsPath = (root: string): string => join(root, '.llm', 'audit', 'suppressions.jsonl')
+
 /** The last record of the repository's suppression journal, undefined when there is none. */
 async function lastSuppression(root: string): Promise<SuppressionRecord | undefined> {
   try {
-    const lines = (await readFile(join(root, '.llm', 'audit', 'suppressions.jsonl'), 'utf8')).split('\n').filter(line => line.trim() !== '')
+    const lines = (await readFile(suppressionsPath(root), 'utf8')).split('\n').filter(line => line.trim() !== '')
     return lines.at(-1) === undefined ? undefined : JSON.parse(lines.at(-1)!) as SuppressionRecord
   }
   catch {
@@ -94,19 +106,56 @@ async function lastSuppression(root: string): Promise<SuppressionRecord | undefi
 
 /** Append one count record to the repository's `.llm/audit/suppressions.jsonl`. */
 async function appendSuppression(root: string, record: SuppressionRecord): Promise<void> {
-  const file = join(root, '.llm', 'audit', 'suppressions.jsonl')
+  const file = suppressionsPath(root)
   await mkdir(dirname(file), { recursive: true })
   await appendFile(file, `${JSON.stringify(record)}\n`)
 }
 
 /** cordis plugin entry. */
-export function apply(ctx: EnvContext): () => void {
+export function apply(ctx: EnvContext, config: EnvConfig = {}): () => void {
   const health = provideRowHealth(ctx, 'env', 'active', '已加载；环境提醒在会话第一步与环境分支变化后的下一步注入')
   const disposers: Array<() => void> = [() => { health.dispose() }]
   const installed = new WeakSet<AgentLike>()
+  // The row's status view (status hub design 0.3 §3.2, §12 M4 row): the one `env/suppressions`
+  // entry, the latest daily count, computed when the collector asks. The session's repository is
+  // the working directory seen at agent creation; a session the row does not know, or one outside
+  // a project, has no entry. A journal that is not there yet is no entry, not an error; one that
+  // cannot be read is, and the collector takes the placeholder.
+  const readFile = config.readFile ?? ((path: string) => readFileSync(path, 'utf8'))
+  const sessions = new Map<string, string>()
+  const status = provideRowStatus(ctx, 'env', (sessionId) => {
+    const cwd = sessionId === undefined ? undefined : sessions.get(sessionId)
+    const root = typeof cwd === 'string' && cwd.length > 0 ? projectOf(cwd)?.root : undefined
+    if (root === undefined) return []
+    let raw: string
+    try {
+      raw = readFile(suppressionsPath(root))
+    }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []
+      throw error
+    }
+    const records = raw.split('\n').filter(line => line.trim().length > 0).flatMap(line => {
+      try {
+        const parsed: unknown = JSON.parse(line)
+        if (typeof parsed !== 'object' || parsed === null) return []
+        const record = parsed as Partial<SuppressionRecord>
+        return typeof record.at === 'string' && typeof record.total === 'number' ? [parsed as SuppressionRecord] : []
+      }
+      catch {
+        return []
+      }
+    })
+    return envStatusItems(records, suppressionsPath(root))
+  })
+  disposers.push(() => { status.dispose() })
   disposers.push(ctx.on('agent/created', ({ agent }) => {
     if (installed.has(agent)) return
     installed.add(agent)
+    // The status view resolves the session's repository through the directory seen here (the view is synchronous; the notice's install work cannot serve it).
+    const seenSession = sessionIdOf(agent)
+    const seenCwd = agent.session?.header.cwd
+    if (seenSession !== undefined && typeof seenCwd === 'string' && seenCwd.length > 0) sessions.set(seenSession, seenCwd)
     try {
       const uninstall = installEnvNotice(ctx, agent, health)
       if (uninstall !== undefined) disposers.push(uninstall)
