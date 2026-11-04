@@ -3,12 +3,15 @@
  * §15.32, §15.42): `isPruneCall` recognizes the metrics command line's
  * `prune` across the shell spellings the design lists and stays quiet on the
  * commands it lists as passing; `metricsFilesOnly` denies a file tool or a
- * shell command that writes, deletes or moves into the journal's files,
- * denies the prune, and lets every read and every other command through. On
- * the fake rc.3 host with the guard row (acceptance 22, the M4 half): every
- * denial through the gate is one violation line and one `rule` event whose
- * `ref` is that line's key, and after `guard_lift` the same calls no longer
- * meet the rule while the lift is one `lift` event.
+ * shell command that writes, deletes or moves into the journal's files
+ * (what `cmd /c` or `cmd /k` runs included, quoted whole or not), denies the
+ * prune, and lets every read and every other command through; neither of its
+ * corrections points the model at the summary. On the fake rc.3 host with the
+ * guard row (acceptance 22, the M4 half): every denial through the gate, a
+ * `run_code` program's call among them, is one violation line and one `rule`
+ * event whose `ref` is that line's key; a session with no project meets no
+ * rule; and after `guard_lift` the same calls no longer meet the rule while
+ * the lift is one `lift` event.
  */
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
@@ -22,7 +25,7 @@ import { keyOf } from '../src/guard/records.ts'
 import { apply as metricsApply } from '../src/metrics/index.ts'
 import { readLog } from '../src/metrics/read.ts'
 import { installMetricsFileGuard, isPruneCall, metricsFilesOnly, METRICS_DECLARATION, METRICS_FILES_ONLY } from '../src/metrics/rules.ts'
-import { NATIVE_FACE, type RuleVerdict, type ToolCall } from '../src/guard/rules.ts'
+import { NATIVE_FACE, renderCorrection, type RuleVerdict, type ToolCall } from '../src/guard/rules.ts'
 import type { ToolFinalResult } from '../src/shared/dsh-min.ts'
 import { METRICS_SERVICE, type MetricsService } from '../src/shared/metrics.ts'
 import { execTool, fakeRuntime, readViolations } from './fake-rc3.ts'
@@ -96,8 +99,22 @@ test('a shell command that mentions the journal and deletes, moves or writes is 
     'Remove-Item .llm/metrics-manifest.jsonl',
     'mv .llm/metrics .llm/metrics-old',
     'cmd /c del .llm\\metrics\\view.json',
+    // cmd takes its command line quoted whole as one word; what follows the switch is read again.
+    'cmd /c "del .llm\\metrics\\view.json"',
+    'cmd /c "del /q .llm\\metrics\\*"',
+    'cmd /c "rd /s /q .llm\\metrics"',
+    'cmd /k "rmdir /s /q .llm\\metrics"',
+    'cmd.exe /c "move .llm\\metrics\\view.json x.json"',
+    'cmd /c "echo x > .llm\\metrics\\view.json"',
     'bash -c "rm -rf .llm/metrics"',
     'Get-ChildItem .llm/metrics | Remove-Item',
+    // Writes by cmd and PowerShell aliases file-tools-only does not name, and find's own delete.
+    'copy NUL .llm\\metrics\\view.json',
+    'xcopy x.json .llm\\metrics\\',
+    'cpi x .llm/metrics/view.json',
+    'ni -Force .llm/metrics/view.json',
+    'clc .llm/metrics/view.json',
+    'find .llm/metrics -name "*.jsonl" -delete',
     // git clean that deletes ignored files is a delete (§5.3).
     'git clean -fdX .llm/metrics',
     'git -C . clean -x -f .llm/metrics',
@@ -114,6 +131,16 @@ test('a shell command that mentions the journal and deletes, moves or writes is 
   assert.match(prune.kind === 'deny' ? prune.correction.violation : '', /the human's own command/)
 })
 
+test('neither correction points the model at the summary or at reading the journal (§15.42, §7.6.4)', () => {
+  for (const call of [fileWrite(join(ROOT, '.llm', 'metrics', 'view.json')), shell('Remove-Item .llm/metrics/view.json'), shell('npm run metrics -- prune')]) {
+    const verdict = verdictOf(call)
+    assert.equal(verdict.kind, 'deny', JSON.stringify(call))
+    const text = verdict.kind === 'deny' ? renderCorrection(verdict.correction) : ''
+    assert.doesNotMatch(text, /summary/i, text)
+    assert.doesNotMatch(text, /\bread/i, text)
+  }
+})
+
 test('a shell command that only reads or only mentions the journal passes, whatever words its arguments hold (§15.42)', () => {
   for (const command of [
     'npm run metrics -- summary',
@@ -122,6 +149,8 @@ test('a shell command that only reads or only mentions the journal passes, whate
     'echo "rm .llm/metrics"',
     'Select-String -Path .llm/metrics/events-2026-11-04.jsonl -Pattern \'remove\'',
     'rg -n "del" .llm/metrics',
+    'cmd /c "type .llm\\metrics\\view.json"',
+    'find .llm/metrics -name "*.jsonl"',
     'git clean -n -X .llm/metrics',
     'git clean --dry-run -fdX .llm/metrics',
     'npm run build',
@@ -168,7 +197,7 @@ async function denialsUntil(root: string, count: number): Promise<Array<Record<s
   return lines
 }
 
-test('through the gate each denial is one violation line and one rule event that points at it; after guard_lift the rule judges nothing and the lift is one lift event (acceptance 22)', async () => {
+test('through the gate each denial, a run_code program\'s call among them, is one violation line and one rule event that points at it; a session with no project meets no rule; after guard_lift the rule judges nothing and the lift is one lift event (acceptance 22)', async () => {
   const base = mkdtempSync(join(tmpdir(), 'metrics-rules-'))
   const root = join(base, 'ws')
   mkdirSync(root, { recursive: true })
@@ -191,7 +220,13 @@ test('through the gate each denial is one violation line and one rule event that
     ['&& prune', () => pwsh('npm run build && npm run metrics -- prune --before 2026-01-01')],
     ['& prune', () => pwsh('& npm run metrics -- prune')],
     ['cmd /c prune', () => pwsh('cmd /c npm run metrics -- prune')],
+    // A run_code program's call carries parent; the gate judges it like a direct one (judgeChildren).
+    ['run_code write', () => exec('write', { file_path: join(root, '.llm', 'metrics', 'y'), content: 'y\n' }, { parent: { callId: 'outer' } })],
   ]
+  // A session with no project (outside git, no .llm) has no journal to guard.
+  const elsewhere = join(base, 'none')
+  mkdirSync(elsewhere)
+  const noProject = { ...rt.agent, session: { ...rt.agent.session!, header: { ...rt.agent.session!.header, cwd: elsewhere } } }
   const isRuleEvent = (event: Record<string, unknown>): boolean => event.k === 'rule' && (event.body as { rule?: unknown }).rule === METRICS_FILES_ONLY
   try {
     for (const [what, call] of denied) {
@@ -202,6 +237,8 @@ test('through the gate each denial is one violation line and one rule event that
       const result = await pwsh(command)
       assert.equal(result.isError, false, `${command}: ${textOf(result)}`)
     }
+    const outside = await exec('pwsh', { command: 'npm run metrics -- prune' }, { agent: noProject })
+    assert.equal(outside.isError, false, `no project: ${textOf(outside)}`)
     const lines = await denialsUntil(root, denied.length)
     assert.equal(lines.length, denied.length, 'one violation line per denial')
     const rules = await eventsUntil(root, isRuleEvent, denied.length)

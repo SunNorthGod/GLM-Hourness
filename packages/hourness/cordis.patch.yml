@@ -140,7 +140,7 @@
       # host's own seams for llm, tool, turn, approval, command and said,
       # checks yesterday and today in the background, handing the loop board
       # a daily self-check entry when it is there, and installs the code rule
-      # metrics:metrics-files-only over the journal's files (and over
+      # metrics-files-only over the journal's files (and over
       # `npm run metrics -- prune`). The sibling rows' senders hand their
       # events through the service: the rules gate's rules.judged, the rules
       # command line's rules.check, the env row's daily suppression count,

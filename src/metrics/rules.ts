@@ -1,6 +1,6 @@
 /**
  * The metrics row's code rule, `metrics-files-only` (metrics design §3.4,
- * §15.32; docs/ORCHESTRATION.md §16.10): the journal is the harness's
+ * §15.32; docs/ORCHESTRATION.md §10.6): the journal is the harness's
  * record, so a file tool or a shell command that writes, deletes or moves
  * into it is denied, and so is `npm run metrics -- prune` — pruning old day
  * files is the human's own command, run in their terminal. Reads pass
@@ -24,7 +24,7 @@ import { cleansIgnored, gitInvocations } from '../guard/git-snapshot.ts'
 import type { GuardRecord } from '../guard/records.ts'
 import { originOf } from '../guard/origin.ts'
 import { fileToolsOnly, NATIVE_FACE, shellCommandOf, type Correction, type GuardRule, type RuleVerdict, type ToolCall } from '../guard/rules.ts'
-import { commandName, simpleCommands, type ShellDialect } from '../guard/shell.ts'
+import { commandName, shellWrites, simpleCommands, type ShellDialect } from '../guard/shell.ts'
 import type { JournalOutcome } from '../memory/audit.ts'
 import { dialectNames, dialectService, dialectWarner, type DialectProblem } from '../shared/dialect.ts'
 import type { RowHealth } from '../shared/health.ts'
@@ -54,29 +54,50 @@ const DELETES_OR_MOVES: ReadonlySet<string> = new Set([
   'mv', 'move', 'move-item', 'mi', 'rename', 'rename-item', 'ren', 'rni',
 ])
 
-/** The command name of one simple command's words, through `cmd /c` and `cmd /k`. */
-function commandOf(words: readonly string[]): string {
+/**
+ * Command names that write a file and that file-tools-only's table
+ * (src/guard/shell.ts) does not hold: cmd's `copy` and `xcopy`, the
+ * PowerShell aliases `cpi` (Copy-Item), `ni` (New-Item) and `clc`
+ * (Clear-Content). The rule keeps its own table, so the guard row's reading
+ * of every other shell write stays as it is.
+ */
+const WRITES: ReadonlySet<string> = new Set(['copy', 'xcopy', 'cpi', 'ni', 'clc'])
+
+/** Where the command word of one simple command's words is, past `cmd /c` and `cmd /k`. */
+function headOf(words: readonly string[]): number {
   let head = 0
   while (commandName(words[head] ?? '') === 'cmd' && /^\/[ck]$/i.test(words[head + 1] ?? '')) head += 2
-  return commandName(words[head] ?? '')
+  return head
 }
 
 /**
- * Whether one shell text deletes, moves or renames (§3.4, §5.3): some simple
- * command of it (quote-aware, src/guard/shell.ts) is named in the table, or
- * is a `git clean` that deletes ignored files (`-x`, `-X`, not a dry run).
- * A word inside quotes or among the arguments is not an action.
+ * Whether one shell text changes files by a command the rule judges itself
+ * (§3.4, §5.3): some simple command of it (quote-aware, src/guard/shell.ts)
+ * is named in one of the two tables, is a `find` with `-delete`, or is a
+ * `git clean` that deletes ignored files (`-x`, `-X`, not a dry run). A word
+ * inside quotes or among the arguments is not an action. What follows
+ * `cmd /c` or `cmd /k` is read once more as a command line, file writes
+ * included, since `cmd /c "del …"` hands cmd its whole command line as one
+ * quoted word; `nested` is that second reading, which goes no deeper.
  */
-function deletesOrMoves(command: string, dialects: readonly ShellDialect[]): boolean {
+function changesFiles(command: string, dialects: readonly ShellDialect[], nested = false): boolean {
   return dialects.some(dialect =>
-    simpleCommands(command, dialect).some(words => DELETES_OR_MOVES.has(commandOf(words)))
-    || gitInvocations(command, dialect, undefined).some(cleansIgnored))
+    gitInvocations(command, dialect, undefined).some(cleansIgnored)
+    || simpleCommands(command, dialect).some((words) => {
+      const head = headOf(words)
+      if (head > 0 && !nested) {
+        const script = words.slice(head).join(' ')
+        return shellWrites(script, dialect).length > 0 || changesFiles(script, [dialect], true)
+      }
+      const name = commandName(words[head] ?? '')
+      return DELETES_OR_MOVES.has(name) || WRITES.has(name) || (name === 'find' && words.slice(head + 1).includes('-delete'))
+    }))
 }
 
 const filesCorrection = (fact: string): Correction => ({
   fact,
   violation: `Rule ${METRICS_FILES_ONLY} blocks writes, deletes and moves under the metrics journal (.llm/metrics/, .llm/metrics-manifest.jsonl, .llm/metrics-key); only the harness writes there.`,
-  rightPath: 'Reading the journal and npm run metrics -- summary or verify are allowed; tell the human what you need and why.',
+  rightPath: 'Tell the human what you need and why; the harness alone writes these files.',
   exception: 'Only the human can lift this rule, by saying so to the main agent.',
 })
 
@@ -207,7 +228,7 @@ export function metricsFilesOnly(root: string, cwd: string | undefined): GuardRu
       }
       // The mention is a substring of the whole text (§3.4), so `cd .llm/metrics; rm *` and a pipe into Remove-Item count; the action is a command's own.
       const mentions = shell.command.replace(/\\/g, '/').toLowerCase().includes('.llm/metrics')
-      if (mentions && (fileToolsOnly.detect(call, NATIVE_FACE).kind === 'deny' || deletesOrMoves(shell.command, shell.dialects))) {
+      if (mentions && (fileToolsOnly.detect(call, NATIVE_FACE).kind === 'deny' || changesFiles(shell.command, shell.dialects))) {
         return { kind: 'deny', rule: METRICS_FILES_ONLY, correction: filesCorrection(`You tried to change the metrics journal through the shell: "${shell.command}".`) }
       }
       return ALLOW
