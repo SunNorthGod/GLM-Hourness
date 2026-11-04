@@ -338,6 +338,12 @@
           "ref": "3bc5d98"
         }
       ]
+    },
+    {
+      "at": "2026-11-04T19:17:43.397Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "按人「把线全开」恢复 workflow m6-followups（wf_8dc79e18061b32fc），停在 plan 步骤；分支基点 7f6d743 早于 loops-runner、user-graph、metrics、视频改风格合入 main，编排方已让它先合入 origin/main、重跑 build 再写计划。节点保持完成，跟进项随该运行的报告另记。"
     }
   ]
 }
