@@ -534,6 +534,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "E7 收敛第一轮：集成修正 838d595（行健康接缝：trunk-event 与 checked-after 的报告带上会话，不再被丢；文档与代码对齐；门禁 2829/2828/0/1、探针 412/412）。语义评审 CHANGES_REQUESTED，阻断 3 条、非阻断 4 条（.worktrees/m3/.llm/wf/m7-e7/feats/task-m7-e7/review.md）；记录的门禁成立（gate.json 的树等于 HEAD 的树，四道退出码 0，76/19/1）。进入第二轮修正。"
+    },
+    {
+      "at": "2026-11-04T13:38:22.883Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "E7 收敛第二轮修正：30269ae（本地）修完第一轮评审的 F1–F7（3 阻断、4 非阻断）；树 432b55f6 上全量门禁：build 0、preflight 0、npm test 0（2834 个、2833 过、0 败、1 跳过）、探针 412/412、76/19/1。等第二轮评审。"
     }
   ]
 }
