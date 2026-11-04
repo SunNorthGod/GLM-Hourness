@@ -43,6 +43,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "B1（规则板违规流水按会话所在项目落盘，m4-rules 余项）：4da6f93 评审 APPROVED，已推 origin/m4-checks（新分支）；基于含 loops-runner 的 main（合并 4516ec6）。门禁：build 0、preflight 0、npm test 0（2747、0 败）、探针 347/347、76/19/1。剩 B2–B6（E3 四批与 env 行出厂启用）。"
+    },
+    {
+      "at": "2026-11-04T17:25:14.653Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M7 那条线完成腾出并行位，按队列恢复 workflow m4-checks（wf_10dc22064b5c2c1b）：B1 已在 origin/m4-checks（4da6f93），从 B2（检查行格式、glmHournessEnv 服务、循环板接缝、改完文件事件）继续；B2–B6 待做。分支基点早于 loops-runner、user-graph、metrics 合入 main，后续批次须先合 main。"
     }
   ]
 }
