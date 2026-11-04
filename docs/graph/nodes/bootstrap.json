@@ -250,6 +250,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "人 2026-11-02 对 §18 两问的答复（人原话「按你推荐的来吧」，对着编排方端上来的建议）：D1——接管的 41 条做完条件照草稿算数，哪条不合适做到那件活时再改；D3——不改默认：接管读出的待做清单经人批准后随时可派，待做活开工前不出一页放行稿（答「要」所需的 M3 支持本就排在自举之后）。设计稿 §18 与一页稿的对应两行由接管的实现运行照此收尾。"
+    },
+    {
+      "at": "2026-11-04T19:17:43.920Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "按人「把线全开」恢复 workflow bootstrap-impl（wf_f008ac0c87ec6943），停在 bs-plan 步骤；分支基点 7f6d743，编排方已让它先合入 origin/main、按需 pnpm install、重跑 build 再写计划，并在计划里写明空图一节与「建一张项目图」入口怎样接上 /hourness-init（panel-2 的第 14 条等它）。"
+    },
+    {
+      "at": "2026-11-04T20:08:16.247Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "bootstrap-impl 计划写好：.worktrees/bootstrap/.agents/tasks/bootstrap/impl-plan.md，B0–B10 共十一批，B7–B10 顺延（B7 等 M7 的 gate-norm.ts、floor.ts 与 M4 检查线的 check-entry.ts 合入 main）。两处待定：Q1 默认门禁表里测试命令的条件，编排方答选项 A，依据是人 11-01 定的 d-tests-required-gate（模块的测试命令必须在同意过的检查里，否则挡住合入）：每个认得出的生态都带测试命令，去掉「项目已有测试才带」，清单写明代价，没有测试时主 Agent 提「补上测试」任务，Shell 与认不出的生态不编命令，设计 0.6 同批改。Q2 面板第 14 条在接管的 /wish 接缝（B8）做好之前怎样带人，编排方交人定，建议过渡路三步；本线先做 B0–B6。"
     }
   ]
 }

@@ -27,7 +27,10 @@
  * sent `say` as a message of the user, which wakes it, and it then follows the
  * next script of `others`. Both record the result and the events the session
  * logged meanwhile; `{rev:<node id>}` in the arguments of a scripted call is
- * the current revision of that node on the session's project graph; a step
+ * the current revision of that node on the session's project graph;
+ * `{transcript}` in the arguments of a scripted call is the path that ends the
+ * transcript sentence (`read the full transcript at: <path>`) in the last
+ * request message carrying one, the GLM compaction checkpoint; a step
  * marked `fork` forks the session at its first finished command into a new
  * root session and records it; a step marked `spawn: { text }` starts a new
  * root session in the working directory of the calling session, sends it
@@ -82,6 +85,27 @@ async function withRevisions(ctx, request, call) {
   if (dir === undefined) return call
   const graph = await loadGraph(dir)
   return { ...call, arguments: JSON.parse(text.replace(/\{rev:([A-Za-z0-9._-]+)\}/g, (whole, id) => graph.revisions.get(id) ?? whole)) }
+}
+
+const TRANSCRIPT_MARK = 'read the full transcript at: '
+
+/**
+ * `{transcript}` in the arguments of a scripted call becomes the path the
+ * transcript sentence names (the text after TRANSCRIPT_MARK to the end of that
+ * line) in the last request message that carries one; without such a message
+ * the text stays as it was.
+ */
+function withTranscript(request, call) {
+  const text = JSON.stringify(call.arguments ?? {})
+  if (!text.includes('{transcript}')) return call
+  let found
+  for (const message of request.messages ?? []) {
+    for (const part of Array.isArray(message.content) ? message.content : []) {
+      const at = typeof part.text === 'string' ? part.text.lastIndexOf(TRANSCRIPT_MARK) : -1
+      if (at >= 0) found = part.text.slice(at + TRANSCRIPT_MARK.length).split('\n')[0]
+    }
+  }
+  return found === undefined ? call : { ...call, arguments: JSON.parse(text.replaceAll('{transcript}', JSON.stringify(found).slice(1, -1))) }
 }
 
 /** One scripted reply per request, in order; the last entry repeats. Entries: `{ tool }`, `{ tools: [...] }` or `{ text }`, optionally with `status: true` or `goal: true`. */
@@ -546,7 +570,7 @@ class ProbeAdapter {
     // A step calls one tool (`tool`) or several in one assistant turn (`tools`).
     const scriptedCalls = step.tools ?? (step.tool === undefined ? [] : [step.tool])
     const goal = step.goal === true ? this.goalOf(request) : undefined
-    const calls = await Promise.all(scriptedCalls.map(call => withRevisions(this.ctx, request, withRef(request, withGoal(call, goal)))))
+    const calls = await Promise.all(scriptedCalls.map(call => withRevisions(this.ctx, request, withTranscript(request, withRef(request, withGoal(call, goal))))))
     if (calls.length > 0) {
       for (const [index, call] of calls.entries()) {
         const id = `probe-call-${this.requests}-${index}`

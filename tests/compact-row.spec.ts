@@ -1,8 +1,13 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import test from 'node:test'
+import { referenceDir } from '../scripts/reference-dir.mjs'
 import { apply, formatSummaryStream, withZcodeInstruction, type CompactRowContext } from '../src/glm-prompt/compact-row.ts'
+import { transcriptNote } from '../src/glm-prompt/zcode-compact-text.ts'
 import type { LlmStreamOptions } from '../src/shared/dsh-min.ts'
 import type { StreamChunk } from '../src/shared/lm-min.ts'
+import { TRANSCRIPT_SERVICE } from '../src/shared/transcript.ts'
 
 /** A request with one field the row does not read, which must survive the rewrite. */
 type StreamOptions = LlmStreamOptions & { readonly maxTokens?: number }
@@ -105,6 +110,63 @@ test('an analysis-only reply lands no text, so compaction-basic fails loud', asy
   const chunks = await collect(formatSummaryStream(adapter(['<analysis>only analysis</analysis>'])()))
   assert.deepEqual(textOf(chunks), [])
   assert.deepEqual(chunks.map(chunk => chunk.type), ['usage', 'finish'])
+})
+
+const EXPORT_PATH = 'C:\\work\\app\\.llm\\transcripts\\S1.txt'
+
+test('the transcript sentence is the 3.17.1 Bxt transcriptPath text, byte for byte, with the path at its end', () => {
+  const bundle = readFileSync(join(referenceDir(), 'zcode-3.17.1', 'zcode.cjs'), 'utf8')
+  const match = /return t\.transcriptPath&&\(n\+=`([^`]*)\$\{t\.transcriptPath\}`\)/.exec(bundle)
+  assert.ok(match !== null, 'the Bxt transcriptPath branch is in the reference bundle')
+  assert.equal(transcriptNote(EXPORT_PATH), `${match[1]}${EXPORT_PATH}`)
+  assert.ok(transcriptNote(EXPORT_PATH).startsWith('\n\nIf you need specific details from before compaction'))
+})
+
+test('with a transcript path the formatted summary ends with the sentence naming it, in the one text block', async () => {
+  let calls = 0
+  const transcript = (): Promise<string | undefined> => { calls += 1; return Promise.resolve(EXPORT_PATH) }
+  const chunks = await collect(formatSummaryStream(adapter(['<analysis>a</analysis><summary>kept</summary>'])(), transcript))
+  assert.deepEqual(textOf(chunks), [`Summary:\nkept${transcriptNote(EXPORT_PATH)}`])
+  assert.equal(chunks.filter(chunk => chunk.type === 'block-start').length, 1)
+  assert.equal(calls, 1)
+  const none = await collect(formatSummaryStream(adapter(['<summary>kept</summary>'])(), () => Promise.resolve(undefined)))
+  assert.deepEqual(textOf(none), ['Summary:\nkept'])
+})
+
+test('an analysis-only reply lands no text and never asks for the transcript', async () => {
+  let calls = 0
+  const chunks = await collect(formatSummaryStream(adapter(['<analysis>only analysis</analysis>'])(), () => { calls += 1; return Promise.resolve(EXPORT_PATH) }))
+  assert.deepEqual(textOf(chunks), [])
+  assert.equal(calls, 0)
+})
+
+test('the row asks the transcript service for the compacting session and appends the sentence only for a written file', async () => {
+  for (const [answer, expected] of [
+    [{ kind: 'written', path: EXPORT_PATH, entries: 3 }, `Summary:\nbody${transcriptNote(EXPORT_PATH)}`],
+    [{ kind: 'skipped', reason: 'no project' }, 'Summary:\nbody'],
+  ] as const) {
+    const fake = fakeLlm(['<analysis>x</analysis><summary>body</summary>'])
+    const asked: string[] = []
+    const service = { exportBeforeCompaction: (sessionId: string) => { asked.push(sessionId); return Promise.resolve(answer) } }
+    apply({ ...fake.ctx, get: name => name === TRANSCRIPT_SERVICE ? service : undefined })
+    const chunks = await collect(fake.ctx.llm.stream({ ...compaction('glm-5.3'), sessionId: 'S1' }))
+    assert.deepEqual(asked, ['S1'])
+    assert.deepEqual(textOf(chunks), [expected])
+  }
+  // A non-GLM compaction passes through and never reaches the service.
+  const fake = fakeLlm(['<summary>raw</summary>'])
+  const asked: string[] = []
+  apply({ ...fake.ctx, get: () => ({ exportBeforeCompaction: (sessionId: string) => { asked.push(sessionId); return Promise.resolve({ kind: 'written', path: EXPORT_PATH, entries: 1 }) } }) })
+  const chunks = await collect(fake.ctx.llm.stream({ ...compaction('deepseek-flash'), sessionId: 'S2' }))
+  assert.deepEqual(asked, [])
+  assert.deepEqual(textOf(chunks), ['<summary>raw</summary>'])
+})
+
+test('a transcript service that rejects (a broken contract) leaves the summary as it is', async () => {
+  const fake = fakeLlm(['<summary>body</summary>'])
+  apply({ ...fake.ctx, get: () => ({ exportBeforeCompaction: () => Promise.reject(new Error('broken')) }) })
+  const chunks = await collect(fake.ctx.llm.stream({ ...compaction('glm-5.3'), sessionId: 'S1' }))
+  assert.deepEqual(textOf(chunks), ['Summary:\nbody'])
 })
 
 test('the row registers one outermost global llm/stream listener', () => {
