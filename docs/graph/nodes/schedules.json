@@ -419,6 +419,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "loops-runner Batch 2 落地：7823103 已推 origin/loops-runner（合并 origin/main acd2f14 为 cc2ab36，含 bc25baa）。门禁：build 0、preflight 0、npm test 0（2725 过、0 败、1 跳过；76/19/1 持平）、探针 347/347 退出码 0。rules-tickets.spec:852 的红不是计时超界，是夹具删临时目录的 ENOTEMPTY，bc25baa 已覆盖，合并前后单独重跑各 3 次全绿，rules 行未改。运行 loopsr-batch2-batch3 转入 Batch 3（/loops 列表与循环板页面）。"
+    },
+    {
+      "at": "2026-11-04T08:56:59.530Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "loops-runner Batch 3 实现：52f0bcc（未推）——/loops 列表、view.json 运行部分、ui/src/loops/ 循环板页；四道门禁全绿（2745 过、0 败、1 跳过，探针 347/347，76/19/1）。评审 CHANGES_REQUESTED 两条：F1（MEDIUM）每隔 N 的条目「下次」总显示 现在+N，应取 DSH 的 scheduledAt；F2（LOW）cordis.patch.yml 循环行注释仍说页面不在。进入第二轮修正。"
     }
   ]
 }
