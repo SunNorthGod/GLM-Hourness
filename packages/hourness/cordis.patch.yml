@@ -135,6 +135,26 @@
       # (docs/DEVELOPMENT.md §3, AGENTS.md) is still owed.
       name: dsh-hourness/loops
       config: {}
+    - id: glm-hourness/metrics
+      # Metrics journal (metrics design 0.7, docs/ORCHESTRATION.md §10.6):
+      # one journal per project at .llm/metrics/ (envelope plus namespace
+      # body, SHA-256 chained, only harness writes). The row provides the
+      # glmHournessMetrics service for the other rows' events, observes the
+      # host's own seams for llm, tool, turn, approval, command and said,
+      # checks yesterday and today in the background, handing the loop board
+      # a daily self-check entry when it is there, and installs the code rule
+      # metrics-files-only over the journal's files (and over
+      # `npm run metrics -- prune`). The sibling rows' senders hand their
+      # events through the service: the rules gate's rules.judged, the rules
+      # command line's rules.check, the env row's daily suppression count,
+      # the loop board's records (its runs.jsonl is gone). Ships enabled
+      # since the metrics wiring (2026-11-04); the L3 probe scenarios
+      # (metrics, non-glm-metrics, metrics-concurrent) pass on the branch,
+      # and the first desktop pass (docs/DEVELOPMENT.md §3, AGENTS.md) is
+      # still owed — the enablement merge closes the desktop first and
+      # restarts into it (DEVELOPMENT.md §5.4).
+      name: dsh-hourness/metrics
+      config: {}
     - id: glm-hourness/env
       # Environment branch and scratch area (docs/ORCHESTRATION.md §7.1, §7.4;
       # M4 design §7): at an agent's first step, and again whenever the env

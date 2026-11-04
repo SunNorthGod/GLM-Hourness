@@ -25,7 +25,7 @@ import type { DriftRecord, LoopRecord, TaskDeleteRecord } from '../src/loops/rec
 import { entryIdOfPrompt, isOurs, keptLines, REMOVED_KEPT_MS, removeTask, TASK_PROMPT_PREFIX, TASK_TITLE_PREFIX, type RemoveDeps, type RemovedTaskLine } from '../src/loops/remove.ts'
 import { ensureRuntimeDir, loopsPaths } from '../src/loops/store.ts'
 import { fakeSchedule, type FakeSchedule, type ScheduleCall } from './fake-rc3.ts'
-import { NOW, quickIo, tellEntry } from './loops-helpers.ts'
+import { journalTakesRecord, NOW, quickIo, tellEntry } from './loops-helpers.ts'
 
 const ZONE = 'Asia/Shanghai'
 const HOLDER = 'session-main'
@@ -81,7 +81,8 @@ async function bench(body: (it: Bench) => Promise<void>, options: { readonly sta
         entries: () => it.entries,
         deleted: entry => it.deleted.has(entry),
         startedAt: new Date(NOW - (options.startedAgo ?? 10 * 60_000)).toISOString(),
-        record: record => void records.push(record),
+        // The records the metrics journal would take (a refused one is lost, as in the real one).
+        record: (record) => { if (journalTakesRecord(record)) records.push(record) },
         report: (text, level) => void said.push({ text, level }),
         deliver: (request) => {
           delivered.push(request)

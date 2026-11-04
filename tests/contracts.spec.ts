@@ -18,6 +18,7 @@ import { GUARD_RULES } from '../src/guard/catalog.ts'
 import { isGateListener } from '../src/guard/gate.ts'
 import { graphFilesOnly } from '../src/guard/graph-files.ts'
 import { activeRules, apply as guardApply } from '../src/guard/index.ts'
+import { installMetricsFileGuard, metricsFilesOnly } from '../src/metrics/rules.ts'
 import { installLoopsFileGuard, installLoopsScheduleGuard, loopsFilesOnly, loopsScheduleTools, LOOPS_FILES_ONLY } from '../src/loops/guard.ts'
 import { LOOPS_DECLARATION, LOOPS_SERVICE, loopsService } from '../src/loops/service.ts'
 import { MAIN_AGENT_RULES } from '../src/guard/main-agent-rules.ts'
@@ -70,6 +71,7 @@ const ROW_IDS = [
   'glm-hourness/rules',
   'glm-hourness/design',
   'glm-hourness/loops',
+  'glm-hourness/metrics',
   'glm-hourness/env',
   'glm-hourness/ui',
 ]
@@ -227,12 +229,14 @@ test('guard catalog: each listed rule is the id of a rule object its row install
     guard: activeRules({ workspaceRoots: ['C:/work/app'], base: 'C:/work/app' }).map(rule => rule.id),
     graph: [graphFilesOnly('C:/work/app/docs/graph', 'C:/work/app').id],
     loops: [loopsFilesOnly(['C:/work/app'], 'C:/work/app').id, loopsScheduleTools(true).id],
+    metrics: [metricsFilesOnly('C:/work/app', 'C:/work/app').id],
   }
   const listed = (row: string): string[] => GUARD_RULES.filter(rule => rule.row === row).map(rule => rule.id)
   assert.deepEqual(listed('guard').sort(), [...installed.guard].sort())
   assert.deepEqual(listed('graph'), installed.graph)
   assert.deepEqual(listed('loops'), installed.loops)
-  assert.deepEqual([...new Set(GUARD_RULES.map(rule => rule.row))].sort(), ['graph', 'guard', 'loops'], 'only rows that exist on main')
+  assert.deepEqual(listed('metrics'), installed.metrics)
+  assert.deepEqual([...new Set(GUARD_RULES.map(rule => rule.row))].sort(), ['graph', 'guard', 'loops', 'metrics'], 'only rows that exist on main')
   // No mode column: a rule of the catalog denies from the day its row is enabled (d-code-rules-enforce).
   for (const entry of GUARD_RULES) {
     assert.deepEqual(Object.keys(entry).sort(), ['blocks', 'id', 'liftVia', 'row', 'title'], JSON.stringify(entry))
@@ -254,6 +258,11 @@ test('guard catalog: the rows with rules install their pre-execute listeners thr
   const bare = { on: (event: string, listener: unknown) => { loops.push({ event, listener }); return () => {} }, get: () => undefined }
   installLoopsFileGuard({ ctx: bare, now: () => 0, journal: () => {} })
   installLoopsScheduleGuard({ ctx: bare, now: () => 0, journal: () => {}, bindings: () => new Set(), taskOf: () => Promise.resolve(undefined) })
+  const metricsListener: Array<{ event: string, listener: unknown }> = []
+  const metricsBare = { on: (event: string, listener: unknown) => { metricsListener.push({ event, listener }); return () => {} }, get: () => undefined }
+  installMetricsFileGuard({ ctx: metricsBare, journal: () => {} })
+  assert.equal(metricsListener.filter(entry => entry.event === 'tools/pre-execute').length, 1)
+  assert.ok(metricsListener.every(entry => isGateListener(entry.listener)), 'the metrics row\'s gate comes from the gate as well')
   assert.equal(loops.filter(entry => entry.event === 'tools/pre-execute').length, 2)
   assert.ok(loops.every(entry => isGateListener(entry.listener)), 'the loop board\'s two gates come from the gate as well')
 })

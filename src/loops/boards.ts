@@ -8,8 +8,8 @@
  *
  * The view carries what the runtime keeps (design §8.4): the last run of every
  * entry, what waits and the main agent's state from the project's
- * `state.json`, and the last runs from the tail of the run records
- * (records.ts `recentRecords`, the one reader of them). The runtime itself is
+ * `state.json`, and the last runs from the run events of the project's
+ * metrics journal (records.ts `recentRecords`, the one reader of them). The runtime itself is
  * not asked: whichever process runs the project writes those files, so every
  * process makes the same view of it.
  *
@@ -58,7 +58,7 @@ async function runtimeOf(store: LoopStore, nowMs: number): Promise<ViewRuntime> 
     last: state.last,
     passing: state.passing,
     waiting: Object.keys(state.pending).length + state.held.length + Object.keys(state.deferred).length,
-    records: await recentRecords(store.paths, RECENT_RUNS),
+    records: await recentRecords(store.paths.projectRoot, nowMs, RECENT_RUNS),
     ...(holder === undefined ? {} : { holder }),
   }
 }

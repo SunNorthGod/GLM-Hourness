@@ -56,7 +56,7 @@ import type { LockEnvironment } from '../data/lock.ts'
 import { projectKey } from '../graph/main-agent-holder.ts'
 import { projectJournal } from '../memory/audit.ts'
 import { dataHomes } from '../shared/data-home.ts'
-import type { AgentCommandInvocationLike, AgentLike, CommandDefinitionLike, CommandResultLike, CommandsHost, InjectHost, PreExecuteHost, PreExecuteListener, ProvideHost, ServiceLookup, SessionEventHost, SessionEventLike, SessionLike, WorkspaceRegistryService } from '../shared/dsh-min.ts'
+import type { AgentCommandInvocationLike, AgentLike, CommandDefinitionLike, CommandResultLike, CommandsHost, InjectHost, PreExecuteHost, PreExecuteListener, ProvideHost, ServiceLookup, SessionEventHost, SessionEventOn, WorkspaceRegistryService } from '../shared/dsh-min.ts'
 import { provideRowHealth, type HealthState, type RowHealth } from '../shared/health.ts'
 import type { StoreIo } from '../rules/store.ts'
 import { realStoreIo } from '../rules/store.ts'
@@ -140,14 +140,12 @@ export interface LoopsContext extends Partial<ProvideHost>, Partial<InjectHost>,
   readonly on?: {
     (event: 'agent/created', listener: (payload: { agent: AgentLike }) => Promise<void> | void): () => void
     (event: 'tools/pre-execute', listener: PreExecuteListener, options?: { prepend?: boolean }): () => void
-    /** The gate's row journal flushes on a disposed session (m4-gate G1). */
-    (event: 'session/event', listener: (session: SessionLike, event: SessionEventLike) => void): () => void
-    (event: 'session/disposed', listener: (session: SessionLike) => void): () => void
     /** `schedule/changed` has no payload and is sent after a task write landed (schedule:2231–2237). */
     (event: 'schedule/changed', listener: () => Promise<void> | void): () => void
     /** `workspace/session-stop` is sent only when a session is archived with `stopActivity` (dsh-workspace:540, 623). */
     (event: 'workspace/session-stop', listener: (payload: { sessionId: string }) => Promise<void> | void): () => void
-  }
+    // The gate's row journal flushes on a disposed session (m4-gate G1) — the SessionEventOn pair.
+  } & SessionEventOn
 }
 
 function message(error: unknown): string {

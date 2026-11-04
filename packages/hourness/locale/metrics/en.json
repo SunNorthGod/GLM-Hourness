@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Metrics journal",
+    "description": "One journal per project at .llm/metrics/ that records what the system can see in one record shape: every model call with its tokens and credits, every tool call and its outcome, turns, approvals, commands, the human's messages, and the events other rows hand in. Append-only and chained, so a dropped or edited line shows. The row checks yesterday and today in the background, and hands the loop board a daily self-check entry when it is there. Off by default."
+  }
+}

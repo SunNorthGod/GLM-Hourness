@@ -60,6 +60,61 @@ export type ApplyResult =
   }
   | Failure
 
+/** One appended history entry a successful write left behind (metrics design §6.3): what a `graph` event carries before the mapping. */
+export interface EngineEntry {
+  readonly node: string
+  readonly type: string
+  readonly op: string
+  /** The entry's zero-based index in the node's history, the same number `backfill-graph` writes. */
+  readonly hi: number
+  /** The node's revision after the write. */
+  readonly rev: string
+  readonly actor: Actor
+  readonly relay: boolean
+  readonly from?: string
+  readonly to?: string
+}
+
+/** What the engine tells the observers of this process (§6.3): one note per `apply`, success entries or the failure's code. */
+export type EngineNote =
+  | { readonly kind: 'written', readonly dir: string, readonly entries: readonly EngineEntry[] }
+  | {
+    readonly kind: 'failed'
+    readonly dir: string
+    readonly actor: Actor
+    /** The failure code (`src/graph/mutation.ts` ErrorCode). */
+    readonly err: string
+    /** The request's op and target node when the request named them. */
+    readonly op?: string
+    readonly node?: string
+    readonly field?: string
+  }
+
+const observers = new Set<(note: EngineNote) => void>()
+
+/**
+ * Hear every `apply` outcome of this process (metrics design §6.3): the set
+ * is one per module instance, and the two packages compile the same source
+ * to the same `dist/graph/engine.js` path, so one package's rows share one
+ * set. Returns the unsubscribe; unsubscribing twice is harmless.
+ */
+export function setEngineObserver(observer: (note: EngineNote) => void): () => void {
+  observers.add(observer)
+  return () => { observers.delete(observer) }
+}
+
+/** Hand one note to every observer; an observer that throws never takes a write down (§6.3). */
+function notify(note: EngineNote): void {
+  for (const observer of observers) {
+    try {
+      observer(note)
+    }
+    catch {
+      // The observer's business is the metrics row's to report.
+    }
+  }
+}
+
 export interface GraphEngine {
   readonly dir: string
   load(): Promise<LoadedGraph>
@@ -76,8 +131,26 @@ export function openEngine(dir: string, options: EngineOptions = {}): GraphEngin
     load: () => loadGraph(dir),
     projection: async id => projectNode(await loadGraph(dir), id),
     openItems: async () => listOpenItems(await loadGraph(dir)),
-    apply: (actor, mutation) => apply(dir, actor, mutation, now),
+    apply: async (actor, mutation) => {
+      const result = await apply(dir, actor, mutation, now)
+      // Every failing return passes here, the early ones of the parse and
+      // the checks included (§6.3): a `graph-fail` with the code, the op
+      // and the node the request named, the field when the error has one.
+      if (!result.ok) notify({ kind: 'failed', dir, actor, err: result.error.code, ...requestedOf(mutation), ...(result.error.field === undefined ? {} : { field: result.error.field }) })
+      return result
+    },
   }
+}
+
+/** The op and node id a request named, as far as a raw request tells (§4.2 `graph-fail`: 有才记). */
+function requestedOf(mutation: unknown): { readonly op?: string, readonly node?: string } {
+  if (typeof mutation !== 'object' || mutation === null) return {}
+  const request = mutation as Record<string, unknown>
+  const op = typeof request.op === 'string' ? request.op : undefined
+  const id = typeof request.id === 'string' ? request.id : undefined
+  const nested = typeof request.node === 'object' && request.node !== null ? (request.node as Record<string, unknown>).id : undefined
+  const node = id ?? (typeof nested === 'string' ? nested : undefined)
+  return { ...(op === undefined ? {} : { op }), ...(node === undefined ? {} : { node }) }
 }
 
 const queues = new Map<string, Promise<void>>()
@@ -264,6 +337,28 @@ async function commit(dir: string, graph: LoadedGraph, plan: Plan): Promise<Appl
   }
   const revisions = new Map(graph.revisions)
   for (const [id, rev] of outcome.revisions) revisions.set(id, rev)
+  // Only commit knows each draft's appended history and the new revisions
+  // (§6.3): one note with an entry per changed node, the observers mapping
+  // each to its `graph` event.
+  notify({
+    kind: 'written',
+    dir,
+    entries: writes.map(write => {
+      const entry = write.node.history.at(-1)
+      const rev = outcome.revisions.get(write.node.id) ?? ''
+      return {
+        node: write.node.id,
+        type: write.node.type,
+        op: entry?.op ?? '',
+        hi: write.node.history.length - 1,
+        rev,
+        actor: entry?.actor ?? 'harness',
+        relay: entry?.relay !== undefined,
+        ...(entry?.from === undefined ? {} : { from: entry.from }),
+        ...(entry?.to === undefined ? {} : { to: entry.to }),
+      }
+    }),
+  })
   return {
     ok: true,
     id: plan.target,

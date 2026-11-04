@@ -1,0 +1,262 @@
+[
+  {
+    "s": 1,
+    "k": "start",
+    "at": "2026-11-04T08:00:00.000Z",
+    "w": "aaaa1111",
+    "n": 1,
+    "h": "000000000000",
+    "v": "0.3.0+v1.dirty",
+    "by": "host",
+    "body": {
+      "host": "desktop",
+      "pid": 1,
+      "node": "v22"
+    }
+  },
+  {
+    "s": 1,
+    "k": "llm",
+    "at": "2026-11-04T08:01:00.000Z",
+    "w": "aaaa1111",
+    "n": 3,
+    "h": "000000000000",
+    "v": "0.3.0+v1.dirty",
+    "sid": "s-a",
+    "by": "host",
+    "body": {
+      "turn": 1,
+      "step": 1,
+      "provider": "glm-probe",
+      "model": "glm-5.3",
+      "input": 10,
+      "output": 4,
+      "total": 14,
+      "ms": 8000,
+      "ttft": 500,
+      "fin": "stop",
+      "calls": 0,
+      "text": 0,
+      "credits": 1,
+      "peak": false
+    }
+  },
+  {
+    "s": 1,
+    "k": "execute.dispatch",
+    "at": "2026-11-04T08:01:00.000Z",
+    "w": "aaaa1111",
+    "n": 5,
+    "h": "000000000000",
+    "v": "0.3.0+v1.dirty",
+    "sid": "s-a",
+    "by": "execute",
+    "body": {
+      "role": "worker",
+      "target": "task-v1",
+      "n": 1,
+      "child": "s-a-w",
+      "provider": "glm-probe",
+      "model": "glm-5.3",
+      "think": "off",
+      "sameAsMain": true
+    }
+  },
+  {
+    "s": 1,
+    "k": "llm",
+    "at": "2026-11-04T08:02:00.000Z",
+    "w": "aaaa1111",
+    "n": 7,
+    "h": "000000000000",
+    "v": "0.3.0+v1.dirty",
+    "sid": "s-a-w",
+    "by": "host",
+    "body": {
+      "turn": 1,
+      "step": 1,
+      "provider": "glm-probe",
+      "model": "glm-5.3",
+      "input": 10,
+      "output": 2,
+      "total": 12,
+      "ms": 4000,
+      "ttft": 200,
+      "fin": "stop",
+      "calls": 0,
+      "text": 0,
+      "credits": 0.5,
+      "peak": false
+    }
+  },
+  {
+    "s": 1,
+    "k": "design.proposal-shown",
+    "at": "2026-11-04T08:03:00.000Z",
+    "w": "aaaa1111",
+    "n": 9,
+    "h": "000000000000",
+    "v": "0.3.0+v1.dirty",
+    "sid": "s-a",
+    "by": "design",
+    "body": {
+      "kind": "confirm",
+      "number": 1,
+      "goal": "g-9",
+      "pending": "p-9",
+      "units": 10,
+      "again": false
+    }
+  },
+  {
+    "s": 1,
+    "k": "design.answer-recorded",
+    "at": "2026-11-04T08:04:00.000Z",
+    "w": "aaaa1111",
+    "n": 11,
+    "h": "000000000000",
+    "v": "0.3.0+v1.dirty",
+    "sid": "s-a",
+    "by": "design",
+    "body": {
+      "kind": "confirm",
+      "answer": "agree",
+      "outcome": "ok",
+      "goal": "g-9",
+      "pending": "p-9",
+      "ms": 60000,
+      "units": 3,
+      "noted": true
+    }
+  },
+  {
+    "s": 1,
+    "k": "start",
+    "at": "2026-11-04T09:00:00.000Z",
+    "w": "bbbb2222",
+    "n": 13,
+    "h": "000000000000",
+    "v": "0.3.0+v2.dirty",
+    "by": "host",
+    "body": {
+      "host": "desktop",
+      "pid": 2,
+      "node": "v22"
+    }
+  },
+  {
+    "s": 1,
+    "k": "llm",
+    "at": "2026-11-04T09:01:00.000Z",
+    "w": "bbbb2222",
+    "n": 15,
+    "h": "000000000000",
+    "v": "0.3.0+v2.dirty",
+    "sid": "s-b",
+    "by": "host",
+    "body": {
+      "turn": 1,
+      "step": 1,
+      "provider": "glm-probe",
+      "model": "glm-5.3",
+      "input": 10,
+      "output": 4,
+      "total": 14,
+      "ms": 12000,
+      "ttft": 500,
+      "fin": "stop",
+      "calls": 0,
+      "text": 0,
+      "credits": 1,
+      "peak": false
+    }
+  },
+  {
+    "s": 1,
+    "k": "execute.dispatch",
+    "at": "2026-11-04T09:01:00.000Z",
+    "w": "bbbb2222",
+    "n": 17,
+    "h": "000000000000",
+    "v": "0.3.0+v2.dirty",
+    "sid": "s-b",
+    "by": "execute",
+    "body": {
+      "role": "worker",
+      "target": "task-v2",
+      "n": 1,
+      "child": "s-b-w",
+      "provider": "glm-probe",
+      "model": "glm-5.3",
+      "think": "off",
+      "sameAsMain": true
+    }
+  },
+  {
+    "s": 1,
+    "k": "llm",
+    "at": "2026-11-04T09:02:00.000Z",
+    "w": "bbbb2222",
+    "n": 19,
+    "h": "000000000000",
+    "v": "0.3.0+v2.dirty",
+    "sid": "s-b-w",
+    "by": "host",
+    "body": {
+      "turn": 1,
+      "step": 1,
+      "provider": "glm-probe",
+      "model": "glm-5.3",
+      "input": 10,
+      "output": 2,
+      "total": 12,
+      "ms": 4000,
+      "ttft": 200,
+      "fin": "stop",
+      "calls": 0,
+      "text": 0,
+      "credits": 1.5,
+      "peak": false
+    }
+  },
+  {
+    "s": 1,
+    "k": "design.proposal-shown",
+    "at": "2026-11-04T09:03:00.000Z",
+    "w": "bbbb2222",
+    "n": 21,
+    "h": "000000000000",
+    "v": "0.3.0+v2.dirty",
+    "sid": "s-b",
+    "by": "design",
+    "body": {
+      "kind": "confirm",
+      "number": 1,
+      "goal": "g-9",
+      "pending": "p-9",
+      "units": 10,
+      "again": false
+    }
+  },
+  {
+    "s": 1,
+    "k": "design.answer-recorded",
+    "at": "2026-11-04T09:04:00.000Z",
+    "w": "bbbb2222",
+    "n": 23,
+    "h": "000000000000",
+    "v": "0.3.0+v2.dirty",
+    "sid": "s-b",
+    "by": "design",
+    "body": {
+      "kind": "confirm",
+      "answer": "reject",
+      "outcome": "ok",
+      "goal": "g-9",
+      "pending": "p-9",
+      "ms": 60000,
+      "units": 3,
+      "noted": true
+    }
+  }
+]

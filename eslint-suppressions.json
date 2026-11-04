@@ -36,9 +36,6 @@
     }
   },
   "tests/fake-rc3.ts": {
-    "@typescript-eslint/require-await": {
-      "count": 3
-    },
     "@typescript-eslint/unbound-method": {
       "count": 2
     }

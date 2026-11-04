@@ -11,7 +11,8 @@
  */
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { AgentLike, AssemblePayload, AssembledTool, InjectHost, InjectableServices, PluginContext, PostExecuteDecision, PostExecuteListener, PostExecutePayload, PreExecuteDecision, PreExecuteListener, PreStepDecision, PreStepPayload, ProvideHost, ScheduleCatalogEntry, ScheduleRecordLike, ScheduleSelector, ScheduleService, ScheduleUpdateResult, ServiceLookup, SessionLike, ToolDefinitionLike, ToolExecuteInput, ToolFinalResult, UserNotice, WorkspaceRegistryService } from '../src/shared/dsh-min.ts'
+import type { AgentRequestErrorPayload, AgentRequestPayload, AgentLike, AssemblePayload, AssembledTool, InjectHost, InjectableServices, LlmStreamListener, LlmStreamOptions, PluginContext, PostExecuteDecision, PostExecuteListener, PostExecutePayload, PreExecuteDecision, PreExecuteListener, PreStepDecision, PreStepPayload, ProvideHost, ScheduleCatalogEntry, ScheduleRecordLike, ScheduleSelector, ScheduleService, ScheduleUpdateResult, ServiceLookup, SessionEventLike, SessionLike, ToolDefinitionLike, ToolExecuteInput, ToolFinalResult, UserNotice, UserQuestionsAnswer, UserQuestionsListener, UserQuestionsRequest, WorkspaceRegistryService } from '../src/shared/dsh-min.ts'
+import type { StreamChunk } from '../src/shared/lm-min.ts'
 
 type Listener = (...args: never[]) => unknown
 
@@ -497,6 +498,16 @@ export interface FakeRuntime {
   readonly progress: { turn: number, step: number }
   /** Run `agent/pre-step` for one step; the runtime's default decision admits the claimed messages. */
   preStep(options?: { messages?: readonly unknown[], step?: number, turn?: number }): Promise<PreStepDecision>
+  /** Run the `agent/request` waterfall for the fake agent (rc.3 agent-loop:1191): the default proposes the route given at `fakeRuntime`. */
+  request(turn: number, step: number): Promise<unknown>
+  /** Run the `agent/request-error` waterfall (rc.3 agent-loop:1136): the default decides nothing. */
+  requestError(turn: number, step: number): Promise<unknown>
+  /** Run the `llm/stream` waterfall (rc.3 llm:2393): `inner` is the adapter's stream. */
+  stream(options: LlmStreamOptions, inner: () => AsyncIterable<StreamChunk>): AsyncIterable<StreamChunk>
+  /** Fire `session/event` for a session (session:1517–1536): observers run synchronously, as in rc.3. */
+  event(session: SessionLike, event: SessionEventLike): void
+  /** Run the `user-questions/request` waterfall (user-questions:668): the default is the no-answerer rejection (`NO_PROVIDER`). */
+  ask(request: UserQuestionsRequest): Promise<UserQuestionsAnswer>
   /** Execute a visible tool by name the way the runtime resolves calls (scoped shadows global); returns the body's value. */
   execute(name: string, args: unknown): Promise<unknown>
 }
@@ -507,7 +518,7 @@ function native(name: string, calls: Array<{ name: string, args: unknown }>): To
     description: `native ${name}`,
     parameters: { type: 'object', properties: {} },
     output: { schema: { type: 'object' }, render: () => [{ type: 'text', text: name }] },
-    async execute(args) { calls.push({ name, args }); return { ok: name } },
+    execute(args) { calls.push({ name, args }); return Promise.resolve({ ok: name }) },
   }
 }
 
@@ -791,7 +802,7 @@ export function fakeRuntime(options: { natives?: readonly string[], calls?: Arra
       const tools: AssembledTool[] = visible().map(tool => ({ name: tool.name, description: tool.description, parameters: tool.parameters }))
       headerRoute = route
       // The model-selection listener (innermost) injects the route after its own next().
-      const base = async (): Promise<AssemblePayload> => ({ sections, contexts: [], tools, variables: { ...route } })
+      const base = (): Promise<AssemblePayload> => Promise.resolve({ sections, contexts: [], tools, variables: { ...route } })
       const chain = of('system-prompt/assemble').reduceRight<() => Promise<AssemblePayload>>(
         (next, listener) => async () => (listener as unknown as (a: AssemblePayload, c: unknown, n: () => Promise<AssemblePayload>) => Promise<AssemblePayload>)({ sections, contexts: [], tools, variables: {} }, undefined, next),
         base,
@@ -812,7 +823,40 @@ export function fakeRuntime(options: { natives?: readonly string[], calls?: Arra
       const payload: PreStepPayload = { agent, messages, signal: new AbortController().signal, step, turn }
       const chain = of('agent/pre-step').reduceRight<() => Promise<PreStepDecision>>(
         (next, listener) => async () => (listener as unknown as (p: PreStepPayload, n: () => Promise<PreStepDecision>) => Promise<PreStepDecision>)(payload, next),
-        async () => ({ kind: 'enter', messages }),
+        () => Promise.resolve({ kind: 'enter', messages }),
+      )
+      return chain()
+    },
+    async request(turn, step) {
+      const payload: AgentRequestPayload = { turn, step, signal: new AbortController().signal }
+      const chain = of('agent/request').reduceRight<() => Promise<unknown>>(
+        (next, listener) => async () => (listener as unknown as (p: AgentRequestPayload, n: () => Promise<unknown>) => Promise<unknown>)(payload, next),
+        () => Promise.resolve({ provider: headerRoute?.provider, model: headerRoute?.model }),
+      )
+      return chain()
+    },
+    async requestError(turn, step) {
+      const payload: AgentRequestErrorPayload = { turn, step, provider: 'glm-probe', failure: { message: 'probe failure' }, signal: new AbortController().signal }
+      const chain = of('agent/request-error').reduceRight<() => Promise<unknown>>(
+        (next, listener) => async () => (listener as unknown as (p: AgentRequestErrorPayload, n: () => Promise<unknown>) => Promise<unknown>)(payload, next),
+        () => Promise.resolve(undefined),
+      )
+      return chain()
+    },
+    stream(options, inner) {
+      const chain = of('llm/stream').reduceRight<() => AsyncIterable<StreamChunk>>(
+        (next, listener) => () => (listener as unknown as LlmStreamListener)(options, next),
+        inner,
+      )
+      return chain()
+    },
+    event(session, event) {
+      for (const listener of of('session/event')) (listener as unknown as (session: SessionLike, event: SessionEventLike) => void)(session, event)
+    },
+    async ask(request) {
+      const chain = of('user-questions/request').reduceRight<() => Promise<UserQuestionsAnswer>>(
+        (next, listener) => async () => (listener as unknown as UserQuestionsListener)(request, next),
+        () => Promise.reject(Object.assign(new Error('no user-questions answerer accepted the request'), { code: 'NO_PROVIDER' })),
       )
       return chain()
     },

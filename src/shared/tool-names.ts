@@ -140,3 +140,38 @@ export const ORCHESTRATION_RESIDENT_TOOLS: ReadonlySet<string> = new Set([
   // design row (main agent)
   ...DESIGN_TOOL_NAMES,
 ])
+
+/**
+ * The metrics journal's tool categories (metrics design §4.3), a closed
+ * enum: the `tool` event's `cat` field takes one of these. The table covers
+ * the rc.3 native names (docs/DESIGN.md §2.4a: dsh-tool-fs, dsh-tool-fs-search,
+ * dsh-tool-bash, dsh-tool-pwsh, dsh-tool-terminal, dsh-tool-todo, dsh-tool-web,
+ * dsh-tool-ask-user, dsh-tool-str-replace-editor, dsh-tool-subagent,
+ * dsh-tool-subagent-control, dsh-tool-workflow) and the ZCode aliases
+ * (src/glm-prompt/aliases.ts and src/shared/dialect.ts); the graph, dispatch
+ * and memory categories are the orchestration rows' own tools. `mcp__`
+ * prefixed names are the MCP tools' convention; everything else, including
+ * the tool-search controls and the goals/jobs/schedule/session tools, is
+ * `other`.
+ */
+export type ToolCategory = 'read' | 'write' | 'search' | 'shell' | 'graph' | 'dispatch' | 'memory' | 'web' | 'todo' | 'question' | 'mcp' | 'other'
+
+const WRITE_NAMES: readonly string[] = ['write', 'edit', 'str_replace_editor', 'Write', 'Edit']
+const SEARCH_NAMES: readonly string[] = ['glob', 'grep', 'Glob', 'Grep']
+const SHELL_NAMES: readonly string[] = ['pwsh', 'bash', 'Bash']
+
+/** The category of one tool call: `mcp__` prefixed names are MCP tools, the table decides the rest, unknown names are `other`. */
+export function toolCategory(name: string): ToolCategory {
+  if (name.startsWith('mcp__')) return 'mcp'
+  if (name === 'read' || name === 'read_image' || name === 'Read') return 'read'
+  if (WRITE_NAMES.includes(name)) return 'write'
+  if (SEARCH_NAMES.includes(name)) return 'search'
+  if (SHELL_NAMES.includes(name) || name.startsWith('terminal_')) return 'shell'
+  if (GRAPH_TOOL_NAMES.includes(name)) return 'graph'
+  if (DISPATCH_TOOL_NAMES.includes(name)) return 'dispatch'
+  if (MEMORY_TOOL_NAMES.includes(name) || LEARNING_TOOL_NAMES.includes(name)) return 'memory'
+  if (name === 'web_fetch' || name === 'web_search') return 'web'
+  if (name === 'todo_write' || name === 'TodoWrite') return 'todo'
+  if (name === 'ask_user_question') return 'question'
+  return 'other'
+}

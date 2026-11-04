@@ -40,6 +40,7 @@ import { projectHomeFor } from '../data/project-home.ts'
 import { collectHealth, provideRowHealth, renderHealthTable, sessionIdOf, type HealthState } from '../shared/health.ts'
 import { provideRowStatus } from '../shared/status-host.ts'
 import { projectOf } from '../data/project-root.ts'
+import { metricsOf, type MetricsCoverage } from '../shared/metrics.ts'
 import { pricingService, quotaOf, type UsagePricing } from '../shared/pricing.ts'
 import type { MomentZone } from '../shared/quota.ts'
 import type { StatusItem } from '../shared/status.ts'
@@ -77,6 +78,8 @@ export interface RenderOptions {
   readonly status?: { readonly lookup: ServiceLookup, readonly sessionId: string | undefined }
   /** The project root (m4-gate G3): the lift record is read there and reconciled; absent, the report derives the lifts from the journal alone. */
   readonly root?: string | undefined
+  /** The metrics journal of the calling session's project (metrics design §7.3), with the metrics row's coverage state; or why there is no project. */
+  readonly metrics?: { readonly root: string, readonly coverage?: MetricsCoverage } | { readonly reason: string }
 }
 
 /** Render the report text for the resolved directories. */
@@ -88,7 +91,7 @@ export async function renderHourness(homes: DataHomes, options: RenderOptions = 
   const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
   const zone: MomentZone = options.offsetMinutes === undefined ? {} : { offsetMinutes: options.offsetMinutes }
   const graph = options.graph ?? (() => Promise.reject(new Error('这次调用没有给出项目图的位置')))
-  const reportOptions: ReportOptions = { pricing: options.pricing, problem: options.problem, now: nowMs, offsetMinutes: options.offsetMinutes, ...(options.root === undefined ? {} : { root: options.root }) }
+  const reportOptions: ReportOptions = { pricing: options.pricing, problem: options.problem, now: nowMs, offsetMinutes: options.offsetMinutes, ...(options.root === undefined ? {} : { root: options.root }), ...(options.metrics === undefined ? {} : { metrics: options.metrics }) }
   const report = await reportFromFiles(fs, homes, localDay(dayStart), graph, dayStart.toISOString(), reportOptions)
   const missing = [
     ...(homes.projectHome === undefined ? ['- 项目目录未配置（行配置 home 或数据目录行的 projectHome），决策与违规流水读不到'] : []),
@@ -256,7 +259,17 @@ export function apply(ctx: CommandsHost & ServiceLookup & Partial<ProvideHost>, 
         // The lift record lives in the project root of the session's working directory (design §3.10); without one there is no reconciliation, by the same reading the journal home takes.
         const headerCwd = invocation.agent?.session?.header?.cwd
         const root = typeof headerCwd === 'string' && headerCwd.length > 0 ? projectOf(headerCwd)?.root : undefined
-        return { kind: 'success', text: await renderHourness(homes, { pricing, problem, graph: graphReader(ctx, headerCwd), ...(config.offsetMinutes === undefined ? {} : { offsetMinutes: config.offsetMinutes }), status: { lookup: ctx, sessionId: sessionIdOf(invocation.agent) }, ...(root === undefined ? {} : { root }) }) }
+        // The metrics journal of the same project (metrics design §7.3); the row's coverage member carries the process-local pieces when it is on.
+        const coverage = root === undefined ? undefined : metricsOf(ctx)?.coverage?.(root)
+        const metrics: NonNullable<RenderOptions['metrics']> = root === undefined
+          ? { reason: '这个会话没有可归的项目' }
+          : coverage === undefined ? { root } : { root, coverage }
+        const started = clock().getTime()
+        const text = await renderHourness(homes, { pricing, problem, graph: graphReader(ctx, headerCwd), ...(config.offsetMinutes === undefined ? {} : { offsetMinutes: config.offsetMinutes }), status: { lookup: ctx, sessionId: sessionIdOf(invocation.agent) }, ...(root === undefined ? {} : { root }), metrics })
+        // The report itself is one report event of the project it was made for (§7.3).
+        const sessionId = sessionIdOf(invocation.agent)
+        if (root !== undefined && typeof headerCwd === 'string' && sessionId !== undefined) metricsOf(ctx)?.emit({ k: 'report', by: 'host', body: { kind: 'status', units: [...text].length, ms: clock().getTime() - started } }, { sessionId, dir: headerCwd })
+        return { kind: 'success', text }
       }
       catch (error) {
         return { kind: 'error', text: `晨报生成失败：${(error as Error).message}` }

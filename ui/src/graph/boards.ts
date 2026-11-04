@@ -237,3 +237,76 @@ export function homeLineFromItem(items: readonly StatusItem[] | undefined, itemI
   const item = items?.find(entry => entry.id === itemId)
   return item !== undefined && [...item.text].length <= LINE_MAX ? item.text : null
 }
+
+/**
+ * The per-session bookkeeping every board factory needs (plain-ui 1.3 §4.7):
+ * listeners and the last handed state per session, an ask-once marker for
+ * cold sessions, and the fan-out to a session's listeners. `remember` keeps
+ * the very object it was given, so a factory that re-hands the same object
+ * while nothing moved keeps useSyncExternalStore stable.
+ */
+export interface BoardSessions {
+  /** Add a listener; the unsubscribe drops the session's state when the last listener leaves. */
+  subscribe(sessionId: string, listener: () => void): () => void
+  /** Wake the session's listeners. */
+  changed(sessionId: string): void
+  /** The remembered state, or undefined before the first one. */
+  state(sessionId: string): BoardState | undefined
+  /** Keep `state` for the session and wake its listeners. */
+  remember(sessionId: string, state: BoardState): void
+  /** The sessions someone currently listens to. */
+  listened(): readonly string[]
+  /**
+   * The listened sessions and their projection values; a session whose
+   * values are not there yet asks once (through `ask`) and is left out of
+   * the answer, the list's next change bringing them.
+   */
+  listenedWith<V>(projections: Readonly<Record<string, { readonly values: V } | undefined>>, ask: (sessionId: string) => void): ReadonlyArray<{ readonly sessionId: string, readonly values: V }>
+}
+
+export function boardSessions(): BoardSessions {
+  const listeners = new Map<string, Set<() => void>>()
+  const states = new Map<string, BoardState>()
+  const asked = new Set<string>()
+  return {
+    subscribe(sessionId, listener) {
+      let set = listeners.get(sessionId)
+      if (set === undefined) {
+        set = new Set()
+        listeners.set(sessionId, set)
+      }
+      set.add(listener)
+      return () => {
+        set.delete(listener)
+        if (set.size === 0) {
+          listeners.delete(sessionId)
+          states.delete(sessionId)
+        }
+      }
+    },
+    changed(sessionId) {
+      for (const listener of listeners.get(sessionId) ?? []) listener()
+    },
+    state: sessionId => states.get(sessionId),
+    remember(sessionId, state) {
+      states.set(sessionId, state)
+      for (const listener of listeners.get(sessionId) ?? []) listener()
+    },
+    listened: () => [...listeners.keys()],
+    listenedWith<V>(projections: Readonly<Record<string, { readonly values: V } | undefined>>, ask: (sessionId: string) => void) {
+      const out: Array<{ readonly sessionId: string, readonly values: V }> = []
+      for (const sessionId of [...listeners.keys()]) {
+        const entry = projections[sessionId]
+        if (entry === undefined) {
+          if (!asked.has(sessionId)) {
+            asked.add(sessionId)
+            ask(sessionId)
+          }
+          continue
+        }
+        out.push({ sessionId, values: entry.values })
+      }
+      return out
+    },
+  }
+}

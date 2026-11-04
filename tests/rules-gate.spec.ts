@@ -23,6 +23,7 @@ import { checkCall } from '../src/rules/check.ts'
 import { RULES_FILES_ONLY } from '../src/rules/gate.ts'
 import type { RepoRules } from '../src/rules/model.ts'
 import { rulesPaths } from '../src/rules/store.ts'
+import { METRICS_SERVICE, type EmittedEvent, type RulesBodies } from '../src/shared/metrics.ts'
 import { ruleOf } from './rules-fixtures.ts'
 import { injectRecord } from './rules-helpers.ts'
 import { health, PEAK_NOW, rowTest, subagentOf, textOf, type Fixture } from './rules-host.ts'
@@ -524,3 +525,35 @@ rowTest('rules_show lists the open waiting calls of the caller\'s session and no
   assert.ok(text.includes('- q-1: pwsh "run q-1" is deferred since '), text)
   assert.ok(!text.includes('q-2'), text)
 })
+
+// ------------------------------------------------------------------ rules.judged
+
+// ------------------------------------------------------------------ rules.judged
+
+/** The metrics service the fixtures register; the events the rules gate hands it stay here for the assertions. */
+const judged: EmittedEvent[] = []
+const JUDGED_SERVICES: Record<string, unknown> = { [METRICS_SERVICE]: { emit: (event: EmittedEvent): void => { judged.push(event) } } }
+
+/** The `rules.judged` bodies of the collected events, typed by the closed table. */
+const judgedBodies = (): RulesBodies['rules.judged'][] => judged.flatMap(event => (event.k === 'rules.judged' ? [event.body] : []))
+
+rowTest('a block judgement hands the metrics service one rules.judged with the rule, the native tool and the signals', async ({ exec }) => {
+  judged.length = 0
+  const result = await exec('pwsh', shell('echo rules-probe-blocked'))
+  assert.equal(result.isError, true)
+  const events = judgedBodies()
+  assert.equal(events.length, 1)
+  const [body] = events
+  assert.deepEqual([body.rule, body.how, body.tool, body.sub], ['r-no-probe', 'block', 'pwsh', false])
+  assert.equal(typeof body.ms, 'number')
+  assert.ok(body.ms >= 0)
+  assert.deepEqual(body.signals, {})
+}, { rules: file([BLOCK_PROBE]), services: JUDGED_SERVICES })
+
+rowTest('a record judgement hands rule-record, and the files-only block names files-only with the write tool', async ({ exec, root }) => {
+  judged.length = 0
+  assert.equal((await exec('pwsh', shell('npm test'))).isError, false)
+  assert.equal((await exec('write', { file_path: `${root}/docs/rules/entries.json`, content: '{}' })).isError, true)
+  const byRule = new Map(judgedBodies().map(body => [body.rule, body]))
+  assert.deepEqual([byRule.get('r-note-npm')?.how, byRule.get('files-only')?.how, byRule.get('files-only')?.tool], ['rule-record', 'block', 'write'])
+}, { rules: file([RECORD_NPM]), services: JUDGED_SERVICES })

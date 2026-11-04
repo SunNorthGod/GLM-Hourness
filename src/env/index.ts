@@ -21,6 +21,7 @@ import { provideRowHealth, sessionIdOf, type HealthState, type RowHealth } from 
 import type { AgentLike, ProvideHost, ServiceLookup, SessionLike } from '../shared/dsh-min.ts'
 import { graphService } from '../graph/service.ts'
 import { envNotice } from './notice.ts'
+import { emitSuppressionCount } from './metrics.ts'
 import { dailySuppressions, type SuppressionRecord } from './suppressions.ts'
 
 /** The row's context: the agent lifecycle event and service lookup. */
@@ -71,7 +72,7 @@ function installWork(ctx: EnvContext, session: SessionLike, health: RowHealth, s
     const outcome = root === undefined ? undefined : await ensureLlmIgnored(root)
     if (sessionId !== undefined) health.report(sessionId, ...envHealth(graphService(ctx)?.dirFor(cwd), outcome))
     if (root === undefined) return
-    void dailySuppressions(root, record => appendSuppression(root, record), {
+    void dailySuppressions(root, record => appendSuppression(root, record).then(() => emitSuppressionCount(ctx, record)), {
       lastRecord: () => lastSuppression(root),
       problem: (message) => {
         if (sessionId !== undefined) health.report(sessionId, 'degraded', `压制注释计数失败：${message}`)

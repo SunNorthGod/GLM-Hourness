@@ -188,6 +188,12 @@ export interface SessionEventHost {
   on(event: 'session/disposed', listener: (session: SessionLike) => void): () => void
 }
 
+/** The two session-lifecycle listeners of SessionEventHost, for rows whose `on` is optional and carries more events beside them. */
+export type SessionEventOn = {
+  (event: 'session/event', listener: (session: SessionLike, event: SessionEventLike) => void): () => void
+  (event: 'session/disposed', listener: (session: SessionLike) => void): () => void
+}
+
 /** One changed file of a workspace-changes summary: `path` relative to the session directory inside it, absolute elsewhere. */
 export interface WorkspaceChangedFile {
   readonly path: string
@@ -227,6 +233,49 @@ export interface PreStepPayload {
   readonly turn: number
   readonly step: number
 }
+
+/**
+ * The `agent/request` waterfall payload (rc.3 dsh-agent-loop
+ * agent-loop:1191–1194, before every model call): the step's turn and step.
+ * A listener proposes the request config; an observer returns `next()`'s
+ * unchanged.
+ */
+export interface AgentRequestPayload {
+  readonly turn: number
+  readonly step: number
+  readonly signal: AbortSignal
+}
+
+/**
+ * The `agent/request-error` waterfall payload (rc.3 agent-loop:1136–1146,
+ * when the stream ended aborted or in error): the failed step, the route and
+ * the failure, with the retry policy a caller may answer with
+ * `{kind: 'retry'}`.
+ */
+export interface AgentRequestErrorPayload extends AgentRequestPayload {
+  readonly provider: string
+  readonly failure: { readonly message: string }
+  readonly retryPolicy?: unknown
+}
+
+/**
+ * The `user-questions/request` waterfall (rc.3 dsh-user-questions
+ * user-questions:668–691): one DSH native question request, with its
+ * questions and the live owner agent. The default `next()` is the
+ * no-answerer rejection (`UserQuestionError` code `NO_PROVIDER`); a listener
+ * answers or passes it on. The answer is a batch of per-question answers
+ * (`{answers: [{id, label, …}]}`), a pending result
+ * (`{pending: true, callId}`) when the foreground wait timed out.
+ */
+export interface UserQuestionsRequest {
+  readonly questions: readonly unknown[]
+  readonly agent?: AgentLike
+  readonly signal?: AbortSignal
+}
+
+export type UserQuestionsAnswer = { readonly answers: readonly { readonly id?: unknown, readonly label?: unknown }[] } | { readonly pending: true, readonly callId?: unknown }
+
+export type UserQuestionsListener = (request: UserQuestionsRequest, next: () => Promise<UserQuestionsAnswer>) => Promise<UserQuestionsAnswer>
 
 /** `agent/pre-step` decision; unknown fields pass through. */
 export type PreStepDecision =
@@ -303,6 +352,10 @@ export interface PluginContext {
   on(event: 'system-prompt/assemble', listener: (assembly: AssemblePayload, context: unknown, next: () => Promise<AssemblePayload>) => Promise<AssemblePayload>, options?: { prepend?: boolean }): () => void
   /** Step admission (agent-scoped): runs after the step's assembly, before the request. */
   on(event: 'agent/pre-step', listener: (payload: PreStepPayload, next: () => Promise<PreStepDecision>) => Promise<PreStepDecision>, options?: { prepend?: boolean }): () => void
+  /** The model call of a step (agent-scoped dispatch; rc.3 agent-loop:1191): observes or proposes the request config. */
+  on(event: 'agent/request', listener: (payload: AgentRequestPayload, next: () => Promise<unknown>) => Promise<unknown>): () => void
+  /** A step's stream ended aborted or in error (rc.3 agent-loop:1136); the decision may be `{kind: 'retry'}`. */
+  on(event: 'agent/request-error', listener: (payload: AgentRequestErrorPayload, next: () => Promise<unknown>) => Promise<unknown>): () => void
 }
 
 /**

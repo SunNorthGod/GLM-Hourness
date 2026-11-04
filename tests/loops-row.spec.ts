@@ -22,6 +22,8 @@ import { entryFileText } from '../src/loops/model.ts'
 import { openLoopStore } from '../src/loops/store.ts'
 import { nextOccurrence } from '../src/loops/trigger.ts'
 import { momentText, type LoopsView } from '../src/loops/view.ts'
+import { appendEvents } from '../src/metrics/library.ts'
+import type { EmittedEvent } from '../src/shared/metrics.ts'
 import { entryFileOf, NOW, quickIo, recordsOf, scriptEntry, SCRIPT_TEXT, seedAgreed, tellEntry, writeFiles } from './loops-helpers.ts'
 import { withLoopsRow, type LoopsFixture } from './loops-host.ts'
 
@@ -205,9 +207,9 @@ rowTest('view.json is written when its content changes and at most every 2 secon
   assert.equal(await readFile(join(fixture.root, '.llm', 'loops', 'view.json'), 'utf8'), written)
 })
 
-/** A `loop-done` line of the run records. */
-const doneLine = (entry: string, run: string, at: string, outcome: string, more: Record<string, unknown> = {}): string =>
-  JSON.stringify({ kind: 'loop-done', at, project: 'p', entry, run, outcome, ...more })
+/** A `loop-done` event of the project's metrics journal, where the run records are. */
+const doneEvent = (entry: string, run: string, at: string, outcome: string, more: { readonly reason?: string, readonly exits?: readonly number[] } = {}): EmittedEvent =>
+  ({ k: 'loop-done', by: 'loops', at, body: { entry, run, outcome, ...more } })
 
 rowTest('view.json carries what the runtime kept: each entry\'s last run in the page\'s words, the main agent\'s line, how many things wait, and the last runs newest first', async (fixture) => {
   await agreed(fixture, tellEntry(A), scriptEntry(B))
@@ -221,15 +223,14 @@ rowTest('view.json carries what the runtime kept: each entry\'s last run in the 
     holder: { state: 'archived', reason: 'holder-archived', session: 'sess-main', at: '2026-11-01T08:00:00.000Z' },
     held: [{ at: '2026-11-01T09:00:00.000Z', entry: A, run: 'run-0000000000a1', title: '每周五看一眼没合入的分支', text: 'Weekly.', wake: true, reason: 'holder-archived' }],
   }))
-  await writeFile(join(runtimeDir, 'runs.jsonl'), [
-    doneLine(A, 'run-0000000000a1', '2026-11-01T09:00:00.000Z', 'held', { reason: 'holder-archived' }),
-    JSON.stringify({ kind: 'loop-holder', at: '2026-11-01T09:00:00.000Z', project: 'p', state: 'archived' }),
-    JSON.stringify({ kind: 'loop-duplicate', at: '2026-11-01T09:30:00.000Z', project: 'p', event: 'loops.host-restarted', key: 'host-restarted:p:1', from: 'loops', firstSeen: '2026-11-01T09:29:00.000Z' }),
-    doneLine(B, 'run-0000000000b1', '2026-11-01T10:00:00.000Z', 'reported', { exits: [1] }),
-    JSON.stringify({ kind: 'loop-task-delete', at: '2026-11-01T10:30:00.000Z', project: 'p', entry: A, scheduleId: 'task-1', why: 'holder-archived', deleted: true }),
-    'not a record',
-    '{"kind":"loop-done","at":"2026-11-01T11:00:00.000Z","entry":"',
-  ].join('\n'))
+  const written = await appendEvents(fixture.root, [
+    doneEvent(A, 'run-0000000000a1', '2026-11-01T09:00:00.000Z', 'held', { reason: 'holder-archived' }),
+    { k: 'loop-holder', by: 'loops', at: '2026-11-01T09:00:00.000Z', body: { state: 'archived' } },
+    { k: 'loop-duplicate', by: 'loops', at: '2026-11-01T09:30:00.000Z', body: { event: 'loops.host-restarted', key: 'host-restarted:p:1', from: 'loops', firstSeen: '2026-11-01T09:29:00.000Z' } },
+    doneEvent(B, 'run-0000000000b1', '2026-11-01T10:00:00.000Z', 'reported', { exits: [1] }),
+    { k: 'loop-task-delete', by: 'loops', at: '2026-11-01T10:30:00.000Z', body: { entry: A, scheduleId: 'task-1', why: 'holder-archived', deleted: true } },
+  ])
+  assert.equal(written.rejected, 0, 'the journal takes every fixture event')
   await fixture.runtime.create()
   const view = await viewOf(fixture.root)
   const entry = (id: string) => view.entries.find(item => item.id === id)
@@ -252,7 +253,7 @@ rowTest('after every beat of a project it runs the row writes view.json again, s
   await agreed(fixture, tellEntry(A))
   await fixture.runtime.create()
   assert.deepEqual((await viewOf(fixture.root)).recent, [])
-  await appendFile(join(fixture.root, '.llm', 'loops', 'runs.jsonl'), `${doneLine(A, 'run-0000000000a2', '2026-11-02T00:30:00.000Z', 'delivered')}\n`)
+  await appendEvents(fixture.root, [doneEvent(A, 'run-0000000000a2', '2026-11-02T00:30:00.000Z', 'delivered')])
   fixture.beats[0]?.run()
   // The beat's write comes less than 2 seconds after the last one on this fixed clock: it waits for its timer.
   for (let tries = 0; tries < 100 && !fixture.delayed.some(entry => entry.ms === 2_000); tries++) await new Promise(resolve => setTimeout(resolve, 20))

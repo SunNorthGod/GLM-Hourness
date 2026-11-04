@@ -1,0 +1,358 @@
+[
+  {
+    "s": 1,
+    "k": "start",
+    "at": "2026-11-04T00:30:00.000Z",
+    "w": "0123abcd",
+    "n": 1,
+    "h": "000000000000",
+    "v": "0.3.0+abc1234.dirty",
+    "by": "host",
+    "body": {
+      "host": "desktop",
+      "pid": 1,
+      "node": "v22"
+    }
+  },
+  {
+    "s": 1,
+    "k": "llm",
+    "at": "2026-11-04T01:00:00.000Z",
+    "w": "0123abcd",
+    "n": 2,
+    "h": "000000000000",
+    "v": "0.3.0+abc1234.dirty",
+    "sid": "s-main",
+    "by": "host",
+    "body": {
+      "turn": 1,
+      "step": 1,
+      "provider": "glm-probe",
+      "model": "glm-5.3",
+      "input": 100,
+      "output": 20,
+      "total": 120,
+      "ms": 9000,
+      "ttft": 1200,
+      "fin": "tool-calls",
+      "calls": 1,
+      "text": 0,
+      "credits": 2.5,
+      "peak": true
+    }
+  },
+  {
+    "s": 1,
+    "k": "tool",
+    "at": "2026-11-04T01:00:05.000Z",
+    "w": "0123abcd",
+    "n": 3,
+    "h": "000000000000",
+    "v": "0.3.0+abc1234.dirty",
+    "sid": "s-main",
+    "by": "host",
+    "body": {
+      "turn": 1,
+      "step": 1,
+      "call": "c-1",
+      "name": "Read",
+      "cat": "read",
+      "out": "ok",
+      "ms": 12,
+      "chars": 51,
+      "target": "17f4600d8dce"
+    }
+  },
+  {
+    "s": 1,
+    "k": "tool",
+    "at": "2026-11-04T01:00:06.000Z",
+    "w": "0123abcd",
+    "n": 4,
+    "h": "000000000000",
+    "v": "0.3.0+abc1234.dirty",
+    "sid": "s-main",
+    "by": "host",
+    "body": {
+      "turn": 1,
+      "step": 2,
+      "call": "c-2",
+      "name": "Bash",
+      "cat": "shell",
+      "out": "denied",
+      "ms": 2,
+      "cmd": "set-content"
+    }
+  },
+  {
+    "s": 1,
+    "k": "llm",
+    "at": "2026-11-04T01:00:10.000Z",
+    "w": "0123abcd",
+    "n": 5,
+    "h": "000000000000",
+    "v": "0.3.0+abc1234.dirty",
+    "sid": "s-main",
+    "by": "host",
+    "body": {
+      "turn": 1,
+      "step": 2,
+      "provider": "glm-probe",
+      "model": "glm-5.3",
+      "input": 200,
+      "output": 40,
+      "total": 240,
+      "ms": 11000,
+      "ttft": 1800,
+      "fin": "stop",
+      "calls": 0,
+      "text": 60,
+      "credits": 3.5,
+      "peak": true
+    }
+  },
+  {
+    "s": 1,
+    "k": "said",
+    "at": "2026-11-04T01:00:00.500Z",
+    "w": "0123abcd",
+    "n": 6,
+    "h": "000000000000",
+    "v": "0.3.0+abc1234.dirty",
+    "sid": "s-main",
+    "by": "host",
+    "body": {
+      "units": 19,
+      "attachments": 0,
+      "source": "user"
+    }
+  },
+  {
+    "s": 1,
+    "k": "design.proposal-shown",
+    "at": "2026-11-04T02:00:00.000Z",
+    "w": "0123abcd",
+    "n": 7,
+    "h": "000000000000",
+    "v": "0.3.0+abc1234.dirty",
+    "sid": "s-main",
+    "by": "design",
+    "body": {
+      "kind": "question",
+      "form": "recommend",
+      "number": 1,
+      "goal": "g-1",
+      "pending": "p-1",
+      "units": 40,
+      "again": false
+    }
+  },
+  {
+    "s": 1,
+    "k": "design.answer-recorded",
+    "at": "2026-11-04T02:12:00.000Z",
+    "w": "0123abcd",
+    "n": 8,
+    "h": "000000000000",
+    "v": "0.3.0+abc1234.dirty",
+    "sid": "s-main",
+    "by": "design",
+    "body": {
+      "kind": "question",
+      "form": "recommend",
+      "answer": "agree",
+      "outcome": "adopted",
+      "goal": "g-1",
+      "pending": "p-1",
+      "ms": 720000,
+      "units": 5,
+      "noted": true
+    }
+  },
+  {
+    "s": 1,
+    "k": "design.proposal-shown",
+    "at": "2026-11-04T03:00:00.000Z",
+    "w": "0123abcd",
+    "n": 9,
+    "h": "000000000000",
+    "v": "0.3.0+abc1234.dirty",
+    "sid": "s-main",
+    "by": "design",
+    "body": {
+      "kind": "confirm",
+      "number": 1,
+      "goal": "g-1",
+      "pending": "p-2",
+      "units": 90,
+      "again": false
+    }
+  },
+  {
+    "s": 1,
+    "k": "design.answer-recorded",
+    "at": "2026-11-04T03:30:00.000Z",
+    "w": "0123abcd",
+    "n": 10,
+    "h": "000000000000",
+    "v": "0.3.0+abc1234.dirty",
+    "sid": "s-main",
+    "by": "design",
+    "body": {
+      "kind": "confirm",
+      "answer": "add",
+      "outcome": "amended",
+      "goal": "g-1",
+      "pending": "p-2",
+      "ms": 1800000,
+      "units": 12,
+      "noted": false
+    }
+  },
+  {
+    "s": 1,
+    "k": "followup",
+    "at": "2026-11-04T01:01:00.000Z",
+    "w": "0123abcd",
+    "n": 11,
+    "h": "000000000000",
+    "v": "0.3.0+abc1234.dirty",
+    "sid": "s-main",
+    "by": "guard",
+    "body": {
+      "rule": "file-tools-only",
+      "denial": "d-1",
+      "outcome": "right-path"
+    }
+  },
+  {
+    "s": 1,
+    "k": "lift",
+    "at": "2026-11-04T04:00:00.000Z",
+    "w": "0123abcd",
+    "n": 12,
+    "h": "000000000000",
+    "v": "0.3.0+abc1234.dirty",
+    "sid": "s-main",
+    "by": "guard",
+    "body": {
+      "rule": "file-tools-only",
+      "action": "lift",
+      "via": "chat",
+      "units": 8
+    }
+  },
+  {
+    "s": 1,
+    "k": "timeout.set",
+    "at": "2026-11-04T05:00:00.000Z",
+    "w": "0123abcd",
+    "n": 13,
+    "h": "000000000000",
+    "v": "0.3.0+abc1234.dirty",
+    "by": "rules",
+    "body": {
+      "entry": "e-check",
+      "kind": "script",
+      "limitMs": 9000,
+      "source": "estimate",
+      "estMs": 3000
+    }
+  },
+  {
+    "s": 1,
+    "k": "timeout.hit",
+    "at": "2026-11-04T05:01:00.000Z",
+    "w": "0123abcd",
+    "n": 14,
+    "h": "000000000000",
+    "v": "0.3.0+abc1234.dirty",
+    "by": "rules",
+    "body": {
+      "entry": "e-check",
+      "kind": "script",
+      "limitMs": 9000,
+      "elapsedMs": 9001,
+      "outcome": "killed",
+      "source": "estimate",
+      "told": true
+    }
+  },
+  {
+    "s": 1,
+    "k": "execute.dispatch",
+    "at": "2026-11-04T06:00:00.000Z",
+    "w": "0123abcd",
+    "n": 15,
+    "h": "000000000000",
+    "v": "0.3.0+abc1234.dirty",
+    "sid": "s-main",
+    "by": "execute",
+    "body": {
+      "role": "worker",
+      "target": "task-1",
+      "n": 1,
+      "child": "s-worker",
+      "provider": "glm-probe",
+      "model": "glm-5.3",
+      "think": "off",
+      "sameAsMain": true
+    }
+  },
+  {
+    "s": 1,
+    "k": "llm",
+    "at": "2026-11-04T06:05:00.000Z",
+    "w": "0123abcd",
+    "n": 16,
+    "h": "000000000000",
+    "v": "0.3.0+abc1234.dirty",
+    "sid": "s-worker",
+    "by": "host",
+    "body": {
+      "turn": 1,
+      "step": 1,
+      "provider": "glm-probe",
+      "model": "glm-5.3",
+      "input": 50,
+      "output": 10,
+      "total": 60,
+      "ms": 5000,
+      "ttft": 400,
+      "fin": "stop",
+      "calls": 0,
+      "text": 30,
+      "credits": 1,
+      "peak": false
+    }
+  },
+  {
+    "s": 1,
+    "k": "stop",
+    "at": "2026-11-04T07:00:00.000Z",
+    "w": "0123abcd",
+    "n": 17,
+    "h": "000000000000",
+    "v": "0.3.0+abc1234.dirty",
+    "by": "host",
+    "body": {
+      "written": 15,
+      "dropped": 0,
+      "rejected": 0
+    }
+  },
+  {
+    "s": 1,
+    "k": "design.holder-moved",
+    "at": "2026-11-04T00:31:00.000Z",
+    "w": "0123abcd",
+    "n": 18,
+    "h": "000000000000",
+    "v": "0.3.0+abc1234.dirty",
+    "by": "design",
+    "body": {
+      "how": "wish",
+      "to": "s-main"
+    }
+  }
+]
