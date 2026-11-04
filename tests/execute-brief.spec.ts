@@ -395,6 +395,28 @@ test('renderBrief: nothing is reported as truncated that was not there to cut', 
   assert.ok(brief.text.length > BRIEF_LIMIT)
 })
 
+test('renderBrief: the Context names the user steps the task serves as flow › step, live steps only, in edge order (user graph design 0.4.1 §5.4)', () => {
+  const base = plain()
+  const task = get(base, 'task-1')
+  const graph = graphOf([
+    ...[...base.nodes.values()].filter(entry => entry.id !== 'task-1'),
+    node({ id: 'role-1', type: 'role', parent: 'goal-1', title: 'Reader' }),
+    node({ id: 'flow-1', type: 'flow', parent: 'role-1', title: 'Read a post' }),
+    node({ id: 'step-1', type: 'step', parent: 'flow-1', title: 'Open the feed' }),
+    node({ id: 'step-2', type: 'step', parent: 'flow-1', title: 'Open a post', status: 'dropped' }),
+    node({ id: 'flow-2', type: 'flow', parent: 'role-1', title: 'Subscribe' }),
+    node({ id: 'step-3', type: 'step', parent: 'flow-2', title: 'Copy the feed address' }),
+    node({ id: 'flow-3', type: 'flow', parent: 'role-1', title: 'Old archive', status: 'dropped' }),
+    node({ id: 'step-4', type: 'step', parent: 'flow-3', title: 'Open the archive' }),
+    { ...task, edges: [...task.edges ?? [], ...['step-3', 'step-2', 'step-1', 'step-4'].map(to => ({ type: 'serves' as const, to }))] },
+  ])
+  const lines = renderBrief(briefInput({ graph, task: get(graph, 'task-1') })).text.split('\n')
+  const line = '- User steps this task serves (flow › step): Subscribe › Copy the feed address; Read a post › Open the feed. This is how the user meets what you build.'
+  assert.ok(lines.includes(line), 'the dropped step and the step under the dropped flow are left out')
+  assert.ok(lines.indexOf('## Context') < lines.indexOf(line) && lines.indexOf(line) < lines.indexOf('## Constraints'))
+  assert.ok(!renderBrief(briefInput({ graph, task: get(graph, 'task-2') })).text.includes('User steps'), 'a task that serves no step has no such line')
+})
+
 test('renderBrief: a task with no source decisions, no non-goals and no write scope says so in words', () => {
   const graph = graphOf([node({ id: 'goal-1', type: 'goal' }), node({ id: 'task-1', type: 'task', parent: 'goal-1', title: 'Bare', kind: 'docs', acceptance: ['done'] })])
   const text = renderBrief(briefInput({ graph, task: must(graph.nodes.get('task-1')) })).text
