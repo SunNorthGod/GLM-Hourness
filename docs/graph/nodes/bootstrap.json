@@ -280,6 +280,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "bootstrap-impl 第二轮：合入 origin/main 5eaddd4（合并提交 b6411ef），修 B0–B1 评审的 F1（design.md 版本行，14e9f64），都已推 origin/bootstrap。四道门禁退出码 0：npm test 2955 通过 / 0 失败 / 1 跳过，探针 382/382，棘轮 73/18/1。下一步：复审，然后 B2。"
+    },
+    {
+      "at": "2026-11-04T22:46:02.623Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "B0–B1 复审 APPROVED，无阻塞：合并 b6411ef 与 F1 修复 14e9f64 的四道门禁证据齐全，F1 关闭。B2–B6 待做。"
     }
   ]
 }
