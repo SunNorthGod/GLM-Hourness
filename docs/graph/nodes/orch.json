@@ -401,6 +401,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "八路的结果（2026-11-04 人问「8路都在吗？」时核对）：8 条里 7 条因模型服务限流（5xx/throttling）处于暂停，只有 metrics-reason-codes-and-merge 在跑；此前 5 条时也反复被停。结论：并行上限卡在服务限流，开得越多停得越勤，总进度不升反降。编排方改为同时在跑 4 条：merge-loops-runner-l4（只剩循环板 L4）、user-graph-ug3-ug7（只剩 UG7 评审与收尾）、video-restyle-less-ai-look（出样张）、metrics-reason-codes-and-merge；其余暂停的按序补位：m7-seam-and-e7（E7 第二轮评审）、investigate-compaction-recall、m4-checks-and-rules（B2 起）、loops-machine，之后是 panel-2、status-hub、m6-followups、m5-rest、bootstrap。限流退了再往上加。"
+    },
+    {
+      "at": "2026-11-04T13:58:01.766Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "user-graph-ug3-ug7 完成，空出的位置给 m7-seam-and-e7（E7 收敛第二轮评审），已恢复。在跑 4 条：merge-loops-runner-l4（循环板 L4）、video-restyle-less-ai-look（样张）、metrics-reason-codes-and-merge（计划已确认：修正与评审循环、合入、桌面）、m7-seam-and-e7。队列：user-graph 合入 main 与桌面 L4、investigate-compaction-recall、m4-checks-and-rules（B2 起）、loops-machine、panel-2、status-hub、m6-followups、m5-rest、bootstrap。"
     }
   ]
 }

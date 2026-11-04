@@ -123,6 +123,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "UG6（面板「用户怎么用」页）：dced5bd 评审 APPROVED，已推 origin/user-graph（7dbd5d7..dced5bd 快进）；门禁 2788 过、0 败、1 跳过，探针 347/347，76/19/1；验收 41–43 在 L2 满足，41 的 L4 按设计 §10.2 顺延到桌面批次。UG7（文档收尾）：e56373c 本地提交，门禁 2789 个、2788 过、0 败、1 跳过，探针 347/347；等评审。"
+    },
+    {
+      "at": "2026-11-04T13:58:01.606Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "user-graph 线批次图 UG3–UG7 做完：UG7（文档收尾，HANDOFF 用户图一行等）e56373c 评审 APPROVED，已推 origin/user-graph（dced5bd..e56373c 快进）。五个提交 563c10e、5a0b2cc、7dbd5d7、dced5bd、e56373c 各自四道门禁退出码 0、探针 347/347、棘轮在基线，评审全部 APPROVED，工作树干净。分支比 origin/main 落后约 24 个提交（多为 docs/graph）。还没做的：合入 main 与桌面批次 L4（验收 41 的面板部分等，设计 §10.2）；顺延表里等 M7 E6+ 合入的项（U5b 走一遍作业、glm-user-graph 探针链、简报的走一遍约定段等）照旧顺延。合入排进队列，在 m7 之后。"
     }
   ]
 }
