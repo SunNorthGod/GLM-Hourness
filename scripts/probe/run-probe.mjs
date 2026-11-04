@@ -134,7 +134,7 @@ import { checkLog, readLog } from '../../packages/hourness/dist/metrics/read.js'
 import { METRICS_FILES_ONLY } from '../../packages/hourness/dist/metrics/rules.js'
 import { keyOf } from '../../packages/hourness/dist/guard/records.js'
 import { PACKAGES } from '../packages.mjs'
-import { attachmentsIn, dataRows, designRows, generateProfile, initRepo, limitsRow, PROBE_PROFILES, repo, requireDesktop, sandboxCommand, slash, unlinkProfile, workspaceChangesRow } from '../sandbox.mjs'
+import { attachmentsIn, dataRows, designRows, generateProfile, initRepo, limitsRow, PROBE_PROFILES, repo, requireDesktop, sandboxCommand, scenarioWorkspace, slash, unlinkProfile, workspaceChangesRow } from '../sandbox.mjs'
 import { GOAL_GATE_DENIAL, PROJECTION_SOURCE, SCOPE_DENIAL } from './probe-dispatch.mjs'
 import { CANARY } from './probe-net.mjs'
 
@@ -245,6 +245,10 @@ const netLogOf = name => join(runDir, name, 'net.jsonl')
  * requests are in `steps` too, under their own session id. `on` is the
  * generated profile to boot; the overlay patches only rows of the packages
  * it lists, so a single-package run has no override without a target.
+ * `cwd` is where the sessions work: a scenario that names none (or this
+ * checkout) works in its scenario directory, and every one works in a git
+ * repository of its own (scripts/sandbox.mjs scenarioWorkspace); the result's
+ * `cwd` is that directory.
  */
 function runScenario(name, model, script, task, overlay = [], cwd = repo, others = [], on = profiles['probe-full']) {
   scenarioNames.push(name)
@@ -276,8 +280,10 @@ function runScenario(name, model, script, task, overlay = [], cwd = repo, others
     '',
   ].join('\n'))
   const { exe, args, env } = sandboxCommand(patch, [task], on)
+  // Every scenario's sessions run in a repository of its own, so no row keeps project state in this checkout's project.
+  const workspace = scenarioWorkspace(dir, cwd)
   const started = Date.now()
-  const result = spawnSync(exe, args, { cwd, encoding: 'utf8', timeout: 180_000, env })
+  const result = spawnSync(exe, args, { cwd: workspace, encoding: 'utf8', timeout: 180_000, env })
   const elapsedMs = Date.now() - started
   writeFileSync(join(dir, 'stdout.txt'), result.stdout ?? '')
   writeFileSync(join(dir, 'stderr.txt'), result.stderr ?? '')
@@ -285,6 +291,7 @@ function runScenario(name, model, script, task, overlay = [], cwd = repo, others
   return {
     status: result.status,
     elapsedMs,
+    cwd: workspace,
     steps: requests.filter(request => request.tools.length > 0 && request.purpose !== 'compaction'),
     compactions: requests.filter(request => request.purpose === 'compaction'),
   }
@@ -307,9 +314,11 @@ const announcements = step => (step?.messages ?? []).filter(message => message.r
 // command through Bash (timeout in milliseconds, no description), read a
 // PNG (GLM-5.3 is text-only, so read_image refuses), write a file through
 // the shell (the guard denies it and journals the violation), finish.
-// The scratch files live in the scenario directory inside the workspace.
+// The scenario directory is the workspace, with the scratch files and a copy
+// of package.json for Grep to find under its display path.
 const glmDir = join(runDir, 'glm')
 mkdirSync(glmDir, { recursive: true })
+cpSync(join(repo, 'package.json'), join(glmDir, 'package.json'))
 const scratch = join(glmDir, 'scratch.txt')
 const unread = join(glmDir, 'unread.txt')
 const blocked = join(glmDir, 'blocked.txt')
@@ -325,7 +334,7 @@ const glm = runScenario('glm', 'glm-5.3', [
   { tool: { name: 'Read', arguments: { file_path: scratch, offset: 0 } } },
   { tool: { name: 'Write', arguments: { file_path: unread, content: 'clobbered\n' } } },
   { tool: { name: 'Glob', arguments: { pattern: '{scratch,unread}.txt', path: glmDir } } },
-  { tool: { name: 'Grep', arguments: { 'pattern': 'DSH-GLM-HOURNESS', 'path': join(repo, 'package.json'), 'output_mode': 'content', '-i': true } } },
+  { tool: { name: 'Grep', arguments: { 'pattern': 'DSH-GLM-HOURNESS', 'path': join(glmDir, 'package.json'), 'output_mode': 'content', '-i': true } } },
   { tool: { name: 'Bash', arguments: { command: 'Write-Output probe-bash', timeout: 30000 } } },
   { tool: { name: 'Read', arguments: { file_path: png } } },
   { tool: { name: 'Bash', arguments: { command: `Set-Content -Path '${blocked}' -Value probe` } } },
@@ -1396,6 +1405,11 @@ const memoryScript = () => [
   { text: 'done', status: true, spawn: { text: 'Start the second session.' } },
 ]
 const memoryOthers = read => [[{ tool: { name: read, arguments: { file_path: join(repo, 'package.json') } } }, { text: 'second done' }]]
+// The project fact's source is a file of the project, and the scenario directory is the project.
+for (const scenario of ['glm-memory', 'non-glm-memory']) {
+  mkdirSync(join(runDir, scenario), { recursive: true })
+  cpSync(join(repo, 'package.json'), join(runDir, scenario, 'package.json'))
+}
 const memoryGlm = runScenario('glm-memory', 'glm-5.3', memoryScript(), MEMORY_TASK, [], repo, memoryOthers('Read'))
 const memoryPlain = runScenario('non-glm-memory', 'deepseek-probe', memoryScript(), MEMORY_TASK, [], repo, memoryOthers('read'))
 const memoryIndexes = step => (step?.messages ?? []).filter(message => message.role === 'user' && message.source === MEMORY_INDEX_SOURCE)
@@ -2798,7 +2812,7 @@ const checks = [
     && ['Glob', 'Grep', 'Bash'].every(name => glmTool(name)?.parameters.$schema === zcodeSchema)
     && searchResult?.text.includes('Create and update a task list for the current session.') === true, ['Glob', 'Grep', 'Bash'].map(name => `${name}: ${(glmTool(name)?.description ?? 'missing').slice(0, 30)}`).join('; ')],
   ['glm tools: Bash declares run_in_background and the escalation fields exactly when pwsh does', ['run_in_background', 'sandbox_permissions', 'justification'].every(field => plainFirst !== undefined && properties(plainToolOf(plainFirst, 'pwsh')).includes(field) === properties(glmTool('Bash')).includes(field)), `Bash: ${properties(glmTool('Bash')).join(', ')}`],
-  ['glm execution: Glob lists both scratch files newest first with ZCode display paths', globResult !== undefined && globResult.isError !== true && /\/glm\/scratch\.txt\n.*\/glm\/unread\.txt$/.test(globResult.text) && !globResult.text.includes('\\'), globResult === undefined ? 'no tool result' : globResult.text.slice(0, 160).replace(/\n/g, ' | ')],
+  ['glm execution: Glob lists both scratch files newest first with ZCode display paths', globResult !== undefined && globResult.isError !== true && globResult.text === 'scratch.txt\nunread.txt', globResult === undefined ? 'no tool result' : globResult.text.slice(0, 160).replace(/\n/g, ' | ')],
   ['glm execution: Grep -i in content mode returns the package name line', grepResult !== undefined && grepResult.isError !== true && grepResult.text === 'package.json:2:  "name": "dsh-glm-hourness",', grepResult === undefined ? 'no tool result' : grepResult.text.slice(0, 100).replace(/\n/g, ' | ')],
   ['glm execution: Bash ran the command through pwsh without a description', bashResult !== undefined && bashResult.isError !== true && bashResult.text.includes('probe-bash'), bashResult === undefined ? 'no tool result' : bashResult.text.slice(0, 100).replace(/\n/g, ' | ')],
   ['glm image: Read keeps the ZCode image line on both models (ZCode does not condition it on image input)', glmTool('Read')?.description.includes(READ_IMAGE_LINE) === true && (flash.steps[0]?.tools ?? []).find(tool => tool.name === 'Read')?.description.includes(READ_IMAGE_LINE) === true, `flash steps: ${flash.steps.length}`],
@@ -2873,7 +2887,7 @@ const checks = [
   ['dispatch (a): the completion notice reaches the parent with the structured result; the activation result carries it too', settled.length === 1 && settled[0].text.includes(`Structured result: ${JSON.stringify(HAND_BACK)}`) && childResult?.stopReason === 'completed' && JSON.stringify(childResult.structured) === JSON.stringify(HAND_BACK), `${(settled[0]?.text ?? 'no notice').slice(-120).replace(/\n/g, ' | ')}; result: ${JSON.stringify(childResult ?? null).slice(0, 120)}`],
   ['dispatch (b): tools/pre-execute sees each child call with the child agent, whose id maps to the task; the parent\'s calls do not map', childCalls.length === 5 && childCalls.every(entry => entry.task === 'T1' && entry.agentId === started?.childId && entry.sessionId === started.childId && entry.nested === false) && JSON.stringify(childCalls.map(entry => entry.tool)) === JSON.stringify(['Bash', 'Write', 'Write', 'DeferredToolCall', 'structured_output']), childCalls.map(entry => entry.tool).join(', ') || 'no calls recorded'],
   ['dispatch (b): a write outside the task scope is denied and reaches the child as a tool error; the write inside the scope runs', scopeDenied?.isError === true && scopeDenied.text.includes(SCOPE_DENIAL) && !existsSync(outsideFile) && existsSync(insideFile) && readFileSync(insideFile, 'utf8') === 'inside\n' && dispatchNotes.filter(entry => entry.kind === 'scope-deny').length === 1, scopeDenied === undefined ? 'no tool result' : scopeDenied.text.slice(0, 100).replace(/\n/g, ' ')],
-  ['dispatch (b): the child session header keeps the parent directory; the requested cwd is only the child working directory', childCalls.length > 0 && childCalls.every(entry => entry.headerCwd === repo) && childBash?.text.trim() === dispatchWs, `header cwd ${childCalls[0]?.headerCwd ?? 'none'}`],
+  ['dispatch (b): the child session header keeps the parent directory; the requested cwd is only the child working directory', childCalls.length > 0 && childCalls.every(entry => entry.headerCwd === dispatch.cwd) && childBash?.text.trim() === dispatchWs, `header cwd ${childCalls[0]?.headerCwd ?? 'none'}`],
   ['goal (c): a plugin-created goal on a second root agent gets round 1 from the driver, and the notice appended in agent/pre-step enters with it', goalCreated?.root === true && goalCreated.goal?.activation === 'armed' && roundOf(goalSteps[0], 1) && projections(goalSteps[0]).length === 1 && firstRoundOrder[0] >= 0 && firstRoundOrder[1] > firstRoundOrder[0], goalSteps[0] === undefined ? `no goal-agent request (exit ${goalRun.status})` : `sources: ${goalSteps[0].messages.map(message => message.source ?? message.role).slice(-6).join(', ')}`],
   ['goal (c): update_goal complete through DeferredToolCall is denied in tools/pre-execute and the goal stays active', gateDenied?.isError === true && gateDenied.text.includes(GOAL_GATE_DENIAL) && goalGates[0]?.decision === 'deny' && goalGates[0].goal?.phase === 'active' && goalGates[0].goal.roundsStarted === 1, gateDenied === undefined ? 'no tool result' : gateDenied.text.slice(0, 100).replace(/\n/g, ' ')],
   ['goal (c): the driver starts round 2 after the round that carried the notice; each round carries one notice; no round 3', goalSteps.length === 5 && roundOf(goalSteps[3], 2) && projections(goalSteps[3]).length === 2 && goalSteps.every(step => !roundOf(step, 3)), `${goalSteps.length} goal-agent request(s); notices per request: ${goalSteps.map(step => projections(step).length).join(', ')}`],
