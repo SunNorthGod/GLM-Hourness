@@ -246,3 +246,7 @@ Worktree `.worktrees/m5`, branch `m5-memory-lessons`. Not tracked by git (`.agen
 - Pinned: the same session cannot forget the confirmed habit without words (also after an update, which keeps `origin`); an unanswered question still holds on day 27 and not on day 29; confirm stores the asked content even when given other fields; the reminder and `learning_signals` leave the graph directory unchanged; the default poll of the lessons page is `POLL_MS` and `POLL_MS` is at most 15 000 ms.
 - Evidence of every acceptance clause of m5-1, m5-4 and lessons-3: `rest-acceptance.md`. ORCHESTRATION.md §8.5 says the withdrawal rule.
 - Gates: see the commit message of this batch.
+- Batch 2 commit `17c7b15`: build 0, preflight 0, npm test 0 (2957 pass, 0 fail, 1 skipped), probe 0 (382/382). Ratchet eslint 73, knip 18, jscpd 1. `rules-peak-stop` passed in three runs after the baseline, so its baseline failures count as load timing.
+## m5-rest batch 3 (docs): the M5 status follows main
+- ORCHESTRATION.md §8.1 and §8.6 headings say merged into main and the 2026-11-04 desktop batch; §8.5 names the `glm:reporting-depth` section and the `reportingDepth` key; §8.6 points the CLI at DEVELOPMENT.md §14 and the projection at the panel page, and its not-done line keeps only M7 E1b and E8. HANDOFF.md §3 rewrites the `memory` row and adds a `lessons` row; §8 rewrites the M5 row. The probe comment names `glm:reporting-depth`.
+- Gates: see the commit message of this batch.

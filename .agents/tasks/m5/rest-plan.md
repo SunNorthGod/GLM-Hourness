@@ -117,7 +117,7 @@
       提交：`fix(m5-4): a confirmed habit the person withdrew is not asked again for 28 days from the withdrawal; pin the untested acceptance clauses`
       验证：单跑 `node --experimental-strip-types tests/memory-habit.spec.ts` 新用例改前失败、改后通过；`tests/memory-learning.spec.ts`、`tests/lessons-panel-model.spec.ts`、`tests/memory-model.spec.ts` 单跑通过；§4 全量门禁四道 0，棘轮不升。
 
-- [ ] **第 3 批：M5 的现状文字对齐 main**（docs）
+- [x] **第 3 批：M5 的现状文字对齐 main**（docs）
       依赖：第 2 批（同改 ORCHESTRATION §8.5，避免同段两次冲突）。
       做什么（被取代的句子整句重写，不留旧文）：
       1. `docs/ORCHESTRATION.md` §8.1 标题括注改为：M5 步骤 M1、G1、H1 已实现并合入 main，验到 L2、L3；2026-11-04 的桌面批次走过习惯流与种子导入，留两件待人定（项目图 `m5` 节点）。
