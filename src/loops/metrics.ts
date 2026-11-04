@@ -45,6 +45,7 @@ export function metricEventOf(record: LoopRecord): EmittedEvent | undefined {
           run: record.run,
           outcome: record.outcome,
           ...(record.reason === undefined ? {} : { reason: record.reason }),
+          ...(record.exits === undefined ? {} : { exits: record.exits }),
           ...(record.durationMs === undefined ? {} : { durationMs: record.durationMs }),
           ...(record.outputBytes === undefined ? {} : { outputBytes: record.outputBytes }),
           ...(record.delivery === undefined ? {} : { delivery: record.delivery }),

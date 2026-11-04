@@ -158,6 +158,24 @@ export interface RuntimeState {
   said: Record<string, string>
   /** The day the 30-day trim of `removed-tasks.jsonl` last ran. */
   trimmedDay?: string
+  /** The runs the rules board has queued (design §6.9 item 1), asked again every five minutes, a day at the most. */
+  deferred: Record<string, DeferredRun>
+  /** Whether each entry's last script or check passed, for the `on-failure` and `on-change` reports (design §2.3). */
+  passing: Record<string, boolean>
+}
+
+/** One run the rules board has queued (design §6.9 item 1): the runner asks again every five minutes, a day at the most. */
+interface DeferredRun {
+  readonly entry: string
+  readonly run: string
+  /** The group the run belongs to, for the events an unfinished re-run hands back. */
+  readonly group: string
+  /** The event that triggered the run, as the inbox read it, with what the debounce merged in. */
+  readonly record: LoopEventRecord
+  /** When the deferral was made; a day without a verdict ends the run `expired`. */
+  readonly since: string
+  /** When to ask the rules board again. */
+  nextAt: number
 }
 
 /** One DSH reminder the board holds for one entry (design §6.2). */
@@ -200,7 +218,7 @@ export interface HeldMessage {
 
 /** The state a project starts from, and the one a state file that cannot be read is rebuilt as (design §6.8). */
 export function emptyState(): RuntimeState {
-  return { position: { bytes: 0 }, keys: {}, pending: {}, last: {}, files: {}, waiting: {}, causes: {}, bindings: {}, held: [], holderMemory: {}, missing: {}, said: {} }
+  return { position: { bytes: 0 }, keys: {}, pending: {}, last: {}, files: {}, waiting: {}, causes: {}, bindings: {}, held: [], holderMemory: {}, missing: {}, said: {}, deferred: {}, passing: {} }
 }
 
 export interface InboxDeps {
@@ -213,6 +231,13 @@ export interface InboxDeps {
   readonly entries: () => readonly RunnableEntry[]
   /** Whether this process runs the project: it holds the run lock and has read the entries. */
   readonly running: () => boolean
+  /**
+   * Whether an event is one this entry's own execution just caused (design
+   * §6.7): the runner answers for a script that is running, or ran less than
+   * a minute ago, when the event is `loops.file-changed`. Absent: nothing of
+   * this kind is running, which is what a board without scripts is.
+   */
+  readonly selfTriggered?: (entry: string, event: string) => boolean
   /** Run the write lock around a write of the inbox (shared with the storage, design §9.1). */
   readonly locked: <T>(body: () => Promise<T>) => Promise<T | 'busy'>
   /** Start one run; the inbox waits for it before it starts the next of that group. */
@@ -232,6 +257,8 @@ export interface Inbox {
   listens(event: string): boolean
   /** Read what is new in the inbox, start what is due, and persist the state. */
   beat(): Promise<void>
+  /** Put one run's events back to wait: they join the next trigger (design §6.6, an unfinished run). */
+  retry(batch: RunBatch): void
   /** The state as it stands; the runner reads and changes the parts that are its own (the host, the files, the peak). */
   state(): RuntimeState
   /** Write the state now. */
@@ -461,9 +488,15 @@ export function openInbox(deps: InboxDeps): Inbox {
       told(item, line, 'suppressed', 'self-loop')
       return
     }
+    if (deps.selfTriggered?.(item.entry.id, line.event) === true) {
+      told(item, line, 'suppressed', 'self-loop')
+      return
+    }
     const waiting = state.pending[group.key]
     if (waiting !== undefined) {
       waiting.events.push(line)
+      // A group whose wait is over (an unfinished run put its events back) runs with the next trigger (design §6.6).
+      if (waiting.dueAt <= deps.now()) waiting.dueAt = deps.now() + limitsOf(item).debounceMs
       if (late) waiting.late = true
       if (line.cause !== undefined) waiting.cause = line.cause
       arm()
@@ -591,6 +624,47 @@ export function openInbox(deps: InboxDeps): Inbox {
   }
 
   /** Read what is new in the inbox from the position remembered. */
+  /** Put a run's events back: an unfinished run's events wait for the next trigger (design §6.6), in the group they came in with. */
+  function retry(batch: RunBatch): void {
+    const lines: InboxLine[] = [
+      {
+        id: batch.record.id,
+        at: batch.record.at,
+        event: batch.record.event,
+        key: batch.record.key,
+        payload: batch.record.payload,
+        ...(batch.record.session === undefined ? {} : { session: batch.record.session }),
+        from: 'requeued',
+      },
+      ...batch.record.merged.map(merged => ({
+        id: merged.id,
+        at: batch.record.at,
+        event: batch.record.event,
+        key: merged.key,
+        payload: merged.payload,
+        from: 'requeued' as const,
+      })),
+    ]
+    const group = state.pending[batch.group]
+    if (group !== undefined) {
+      group.events = [...lines, ...group.events]
+      // They do not run of their own accord: the next trigger arms the group (design §6.6).
+      if (group.dueAt <= deps.now()) group.dueAt = Number.MAX_SAFE_INTEGER
+    }
+    else {
+      state.pending[batch.group] = {
+        entry: batch.entry.entry.id,
+        ...(batch.record.session === undefined ? {} : { session: batch.record.session }),
+        events: lines,
+        dueAt: Number.MAX_SAFE_INTEGER,
+        hour: hourOf(deps.now()),
+        runs: 0,
+        surplus: [],
+      }
+    }
+    arm()
+  }
+
   async function take(): Promise<void> {
     const size = await sizeOf()
     if (size < state.position.bytes) state.position = { bytes: 0 }
@@ -681,6 +755,7 @@ export function openInbox(deps: InboxDeps): Inbox {
     emit,
     listens,
     beat,
+    retry,
     state: () => state,
     save,
     dispose() {
@@ -708,8 +783,8 @@ function pruneKeys(keys: RuntimeState['keys'], nowMs: number): void {
   }
 }
 
-/** The state as it was left, or an empty one; a file that cannot be read is rebuilt, as design §6.8 says. */
-function readState(paths: LoopsPaths, nowMs: number): RuntimeState {
+/** The state as it was left, or an empty one; a file that cannot be read is rebuilt, as design §6.8 says. Only reads; boards.ts reads it for the view. */
+export function readState(paths: LoopsPaths, nowMs: number): RuntimeState {
   const text = readText(paths.state)
   if (text === undefined) return emptyState()
   try {
@@ -729,6 +804,8 @@ function readState(paths: LoopsPaths, nowMs: number): RuntimeState {
       holderMemory: value.holderMemory ?? {},
       missing: value.missing ?? {},
       said: value.said ?? {},
+      deferred: value.deferred ?? {},
+      passing: value.passing ?? {},
     }
   }
   catch {

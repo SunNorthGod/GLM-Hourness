@@ -110,8 +110,10 @@ export interface TokenUsage {
  * hournessMainAgent are this bundle's own units (the second is read through
  * mainAgentActive, which takes the table as a whole, hence the index signature),
  * hournessProject is the graph-panel row's holder-record pointer (plain-ui
- * 1.3 §4.9), and the two hourness keys are the wire views of the memory and
- * lessons rows (src/memory/index.ts, src/lessons/index.ts).
+ * 1.3 §4.9), the two hourness keys after it are the wire views of the memory
+ * and lessons rows (src/memory/index.ts, src/lessons/index.ts), and
+ * hournessLoops is where the loop row's page finds the project's view.json
+ * (src/loops/projection.ts).
  */
 export interface ProjectionValues {
   readonly graphLive?: LiveView
@@ -120,6 +122,7 @@ export interface ProjectionValues {
   readonly hournessProject?: { readonly holderFile: string | null, readonly reason?: string }
   readonly hournessLessons?: { readonly journal: string | null }
   readonly hournessMemory?: { readonly projectJournal: string | null, readonly userJournal: string | null }
+  readonly hournessLoops?: { readonly projectKey: string | null, readonly viewFile: string | null }
   /** The metrics row's wire view (src/metrics/index.ts): where the board's `view.json` is, or why there is none. */
   readonly hournessMetrics?: { readonly viewFile: string | null, readonly reason?: string }
   readonly [key: string]: unknown

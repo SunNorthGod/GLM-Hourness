@@ -7,10 +7,14 @@
  *
  * They go to the project's metrics journal as their `loop-*` events, mapped in
  * metrics.ts (loop board design 0.6 §6.10; metrics design §12 step 6 — the
- * board's own runs.jsonl is gone). No output text of a run is ever written:
- * a record carries how many bytes, not what they said.
+ * board's own runs.jsonl is gone), and `recentRecords` is the one place that
+ * reads them back, for the page's last runs (F33). No output text of a run
+ * is ever written: a record carries how many bytes, not what they said.
  */
 import { randomBytes } from 'node:crypto'
+import { projectOf } from '../data/project-root.ts'
+import { readLog } from '../metrics/read.ts'
+import type { ViewRecord } from './view.ts'
 
 /** How a run ended (design §6.10). `held` and `deferred` are told again later with the outcome they reach. */
 export type RunOutcome =
@@ -54,6 +58,8 @@ export interface DoneRecord {
   readonly reason?: RunReason
   readonly durationMs?: number
   readonly outputBytes?: number
+  /** The exit codes of the processes the run started (design §6.10 `exits`); a run that started none has none. */
+  readonly exits?: number[]
   readonly delivery?: 'steer' | 'inject' | 'followup' | 'dsh'
   readonly messageId?: string
 }
@@ -148,4 +154,64 @@ export function firedRecord(input: {
 /** `ev-<16 hex digits>`: one line of the inbox. */
 export function eventId(): string {
   return `ev-${randomBytes(8).toString('hex')}`
+}
+
+/** The records the page's last runs list (design §8.2 item 7): the runs, the events reported again, the DSH reminders the board deleted, in the view's shape. */
+type RecentRecord = ViewRecord
+
+/** How far back the last runs are looked for (metrics design F33: the board's readers take a 28-day window). */
+const RECENT_DAYS = 28
+
+const DAY_MS = 86_400_000
+
+const text = (value: unknown): string | undefined => typeof value === 'string' ? value : undefined
+
+/** One journal event as a record the page lists, or undefined for every other kind. */
+function recentOf(kind: string, at: string, body: Readonly<Record<string, unknown>>): RecentRecord | undefined {
+  const entry = text(body['entry'])
+  if (kind === 'loop-done') {
+    const outcome = text(body['outcome'])
+    if (entry === undefined || outcome === undefined) return undefined
+    const reason = text(body['reason'])
+    const exits = Array.isArray(body['exits']) ? body['exits'].filter((code): code is number => typeof code === 'number') : undefined
+    return { kind, at, entry, outcome, ...(reason === undefined ? {} : { reason }), ...(exits === undefined ? {} : { exits }) }
+  }
+  if (kind === 'loop-duplicate') {
+    const event = text(body['event'])
+    return event === undefined ? undefined : { kind, at, event }
+  }
+  if (kind === 'loop-task-delete') {
+    const why = text(body['why'])
+    if (why === undefined || typeof body['deleted'] !== 'boolean') return undefined
+    return { kind, at, ...(entry === undefined ? {} : { entry }), why, deleted: body['deleted'] }
+  }
+  return undefined
+}
+
+/**
+ * The latest records the page lists, oldest first, at most `limit`, from the
+ * project's metrics journal (`readLog`, so the lines are the ones the
+ * journal's own tables accept): one UTC day file at a time, newest first,
+ * back at most 28 days, stopping once `limit` are found. Never throws: a
+ * journal that is not there or cannot be read has no recent runs.
+ */
+export async function recentRecords(root: string, nowMs: number, limit: number): Promise<RecentRecord[]> {
+  const journal = projectOf(root)?.root ?? root
+  const found: RecentRecord[] = []
+  try {
+    for (let back = 0; back < RECENT_DAYS && found.length < limit; back += 1) {
+      const day = new Date(nowMs - back * DAY_MS).toISOString().slice(0, 10)
+      const next = new Date(Date.parse(day) + DAY_MS).toISOString().slice(0, 10)
+      const { events } = await readLog(journal, { from: day, to: next })
+      const ofDay = events.flatMap((event) => {
+        const record = recentOf(event.k, event.at, event.body)
+        return record === undefined ? [] : [record]
+      })
+      found.unshift(...ofDay)
+    }
+  }
+  catch {
+    // A day file that cannot be read ends the look back; what was found stands.
+  }
+  return found.slice(-limit)
 }

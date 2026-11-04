@@ -2,7 +2,7 @@
   "id": "lessons-3",
   "type": "task",
   "title": "经验页",
-  "status": "approved",
+  "status": "doing",
   "parent": "lessons",
   "kind": "implement",
   "body": "M5 设计 0.7（.agents/tasks/m5/design.md）§1.2 的 lessons-3。实现步骤见 .agents/tasks/m5/impl-plan.md 的 S10（习惯相关的几节在 S12）。验证层：L2（视图模型与静态检查）；L4（DevTools 截图）。",
@@ -30,6 +30,14 @@
       "reason": "按 M5 设计 0.7（.agents/tasks/m5/design.md）§13 第 2 条建任务节点，怎样算做完取自 §1.2。人 2026-10-31 放行时说「没问题，不过习惯最好问一嘴再记」，0.7 照办。",
       "relay": "没问题，不过习惯最好问一嘴再记",
       "to": "approved"
+    },
+    {
+      "at": "2026-11-04T10:57:45.688Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "运行 m5-rest-learning-lessons-page 开工（2026-11-04，人：「桌面版随便用，尽可能开多线」）",
+      "from": "approved",
+      "to": "doing"
     }
   ]
 }

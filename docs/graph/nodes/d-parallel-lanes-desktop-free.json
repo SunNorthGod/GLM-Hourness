@@ -1,0 +1,19 @@
+{
+  "id": "d-parallel-lanes-desktop-free",
+  "type": "decision",
+  "title": "桌面版由编排方直接关开与核对；能并行的线尽量都开",
+  "status": "approved",
+  "parent": "orch",
+  "verification": "unverified",
+  "body": "人 2026-11-04 先答编排方的三问「都可以，按你说的来」（指标第 7 步评审再给一轮；循环板与指标合入 main 的安排；顺延项第 4 条现在派出），随后说「桌面版随便用，尽可能开多线」。定下：（1）合入、重建、L4 核对需要关开桌面版时，编排方与工作流直接做，不再先问人（延续 d-desktop-direct-use）；（2）依赖已满足的线都开工作流并行；探针由全机一把锁改为两把（.llm/probe-lock、.llm/probe-lock-2），其余门禁不加锁，负载下的纯计时失败先单独重跑三次再归因。编排方据此改了一处已答的安排：循环板不再等指标线收尾一起合，先单独合入 main，因为 M4 的改完就跑检查与顺延项第 4 条都要在 main 上用到它的共用执行器；指标线后合入时负责对齐 exits 映射与 appendRun。",
+  "history": [
+    {
+      "at": "2026-11-04T10:58:31.736Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "人放开桌面版并要求尽可能多线并行",
+      "relay": "桌面版随便用，尽可能开多线",
+      "to": "approved"
+    }
+  ]
+}

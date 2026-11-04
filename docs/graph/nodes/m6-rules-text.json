@@ -2,7 +2,7 @@
   "id": "m6-rules-text",
   "type": "task",
   "title": "M6 S1：规则板的排队、提醒与唤醒文字写出高峰结束的时刻",
-  "status": "approved",
+  "status": "doing",
   "parent": "m6",
   "kind": "implement",
   "tier": "standard",
@@ -28,6 +28,14 @@
       "op": "propose",
       "reason": "按实现计划建节点，标明被挡",
       "to": "approved"
+    },
+    {
+      "at": "2026-11-04T10:57:44.784Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "运行 m6-followups-s1-s3 开工（2026-11-04，人：「桌面版随便用，尽可能开多线」）",
+      "from": "approved",
+      "to": "doing"
     }
   ]
 }
