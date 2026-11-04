@@ -121,6 +121,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "B4（010d85c）第 2 轮评审 APPROVED：第 1 轮的 F1（行健康）与 F2（晨报来源）已修；门禁退出码 0，探针 362/362；无阻塞。下一步：推送 B4，然后 B5、B6。"
+    },
+    {
+      "at": "2026-11-04T23:16:42.810Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "B4 已推：origin/m4-checks = 010d85c，mainMerged 为 true（4516ec6）。剩 B5、B6（状态板块的超时条目等 B5）。"
     }
   ]
 }
