@@ -11,8 +11,14 @@
  * Usage: npm run calibrate -- [--tasks <id,...>] [--models glm-5.3,glm-5.3-flash]
  *        [--repeat 1] [--max-steps <n>] [--minutes <n>] [--permission danger-full-access]
  *        npm run calibrate -- --collect <timestamp>
+ *        add --wait to any of them to wait for the rules board instead of stopping
  * Run `npm run build` first: the sandbox loads the build output under
  * packages/<package>/dist/ of the checkout its profile links.
+ * Before it reads its arguments the runner asks the rules board
+ * (scripts/rules-gate.mjs, M6 design §7.2 item 2), saying its GLM spending is
+ * optional: in the GLM peak the reduce and stop levels and the project's
+ * rules defer it (exit 5) or block it (exit 4) before any sandbox is made;
+ * --wait waits until the board lets it run.
  * The bounds of a run are the task's (`limits` in its task.json: maxSteps,
  * minutes), else 40 steps and 15 minutes; --max-steps and --minutes win over
  * both. A run that stops on a bound is counted apart as "boundary too tight",
@@ -38,7 +44,8 @@ import { cpSync, createWriteStream, existsSync, mkdirSync, readdirSync, readFile
 import { join } from 'node:path'
 import { parseArgs } from 'node:util'
 // The GLM credit plan (docs/FACTS.md §2.4) the glm-login row serves to the usage panel.
-import { chargedCredits, CREDIT_RATES, fullCredits, peakWindowAt } from '../../packages/glm/dist/glm-llm/credits.js'
+import { chargedCredits, CREDIT_RATES, creditPricing, fullCredits, peakWindowAt } from '../../packages/glm/dist/glm-llm/credits.js'
+import { gateOnRules } from '../rules-gate.mjs'
 import { attachmentsIn, dataRows, designRows, initRepo, limitsRow, repo, requireDesktop, sandboxCommand, slash, workspaceChangesRow } from '../sandbox.mjs'
 import { closeBatch, collectBatch, openBatch, openRun } from './run-dir.mjs'
 
@@ -54,6 +61,9 @@ const HARD_KILL_GRACE_MS = 120_000
 /** The bounds of a run whose task names none and whose command line gives none. */
 const DEFAULT_MAX_STEPS = 40
 const DEFAULT_MINUTES = 15
+
+// The rules board first: a deferred or blocked run ends here, before the arguments, the desktop and the sandbox.
+await gateOnRules({ glmSpend: 'optional', peakAt: at => creditPricing.peak(at) })
 
 const { values: options } = parseArgs({
   options: {

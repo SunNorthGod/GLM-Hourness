@@ -2,7 +2,7 @@
   "id": "m7-3",
   "type": "task",
   "title": "自动推进与「目标做完了」的检查",
-  "status": "approved",
+  "status": "doing",
   "parent": "m7",
   "kind": "implement",
   "body": "M7 设计 0.6（.agents/tasks/m7/design.md）§1.2 的 m7-3。验证层：L2、L3；L4。实现顺序与接口见设计 §8 与 §2.5、§3.9。",
@@ -66,6 +66,20 @@
       "actor": "llm",
       "op": "comment",
       "text": "设计输入（2026-11-03，原型 docs/002 accept 模式）：任何自动推进先走 observe 梯子——只记录「本会做什么」不执行（would accept），人审记录后转 auto 才生效；与新行默认 disabled、标定后才启用同构，M7 若做自动推进照此部署。"
+    },
+    {
+      "at": "2026-11-04T20:41:34.223Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "已派工：workflow m7-e8-e9-and-merge（wf_36d1d690c7e1de90），按 M7 设计 0.6 §8.1 做 E8（自动推进、三档后果、完成门禁、目标整体审查、await_human、对账、循环板接缝、drive.jsonl），再做 E9 并把 m7 合入 main。",
+      "from": "approved",
+      "to": "doing"
+    },
+    {
+      "at": "2026-11-04T22:53:47.346Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "E8 计划写好：.worktrees/m3/.llm/wf/m7-e8/plan.md，24 项分 5 个 FEAT（FEAT 产物在 .llm/wf/m7-e8/task-m7-e8），偏差 D1–D16，另列自举之后再办的请求清单。运行的步骤改为 feat-001 到 feat-005 加 e8-converge 循环，e8-commit 到 report 不变；E8 在 bd9a625 之上合成一个提交。"
     }
   ]
 }

@@ -87,10 +87,10 @@ rowTest('a block rule refuses the call with the four-part text, the call never r
 rowTest('the gate and checkCall give the same refusal for the same rules and signals', async ({ root, exec }) => {
   const call = { tool: 'pwsh', args: { command: 'npm run deploy' } }
   const gate = reasonOf(await exec(call.tool, call.args))
-  const library = await checkCall(call, { project: root, now: PEAK_NOW, signals: { 'glm-peak': true } })
+  const library = await checkCall(call, { project: root, now: PEAK_NOW, signals: { 'glm-peak': true }, peakUntil: PEAK_END })
   assert.equal(library.exitCode, 4)
   assert.equal(gate, library.text)
-  assert.match(gate, /blocks it now: glm-peak is on\./)
+  assert.ok(gate.includes(`blocks it now: glm-peak is true until ${clockHm(PEAK_END)}.`), gate)
 }, { rules: file([PEAK_DEPLOY]) })
 
 rowTest('a rule whose condition does not hold lets the call run', async ({ exec }) => {
@@ -107,6 +107,12 @@ rowTest('without a pricing service glm-peak cannot be read: a rule that says onU
     ruleOf({ id: 'r-lenient', title: 'Lenient', filter: { command: { matches: 'build' } }, condition: { signal: 'glm-peak', is: true } }),
   ]),
 })
+
+rowTest('a rule on glm-peak true that holds while the peak cannot be read names no time: there is no peak to end', async ({ exec }) => {
+  const reason = reasonOf(await exec('pwsh', shell('npm run deploy')))
+  assert.ok(reason.includes('blocks it now: glm-peak is on.'), reason)
+  assert.doesNotMatch(reason, /glm-peak is true until/)
+}, { pricing: 'none', rules: file([{ ...PEAK_DEPLOY, onUnknown: 'apply' }]) })
 
 // ------------------------------------------------------------ record, inform
 

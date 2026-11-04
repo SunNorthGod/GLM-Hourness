@@ -81,6 +81,26 @@ export function peakReader(ctx: ServiceLookup, now: () => number, warn: (message
   }
 }
 
+/**
+ * The end of the GLM peak `fromMs` falls in (ISO 8601), from the pricing
+ * service as it is at the call: what a wake says the peak ended at (M6 design
+ * §7.2). Undefined when `fromMs` is not in a peak, there is no usable service,
+ * or its `peak` fails; a service of the wrong shape is warned about by
+ * `peakReader`, not here.
+ */
+export function peakEndAfter(ctx: ServiceLookup, fromMs: number): string | undefined {
+  const pricing = pricingService(ctx)
+  if (pricing === undefined || Number.isNaN(fromMs)) return undefined
+  try {
+    if (pricing.peak(fromMs) !== true) return undefined
+    const end = nextPeakChange(atMs => pricing.peak(atMs), fromMs)
+    return end === undefined ? undefined : new Date(end).toISOString()
+  }
+  catch {
+    return undefined
+  }
+}
+
 /** A project as the row reads it: where its files are and what they hold. */
 export interface ProjectView {
   readonly paths: RulesPaths
