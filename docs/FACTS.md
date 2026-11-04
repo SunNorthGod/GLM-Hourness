@@ -212,6 +212,8 @@
 | 原型的 bundle 集成同款机制：cordis.patch.yml insert 三个插件（主插件、`./github-watch`、`./feishu-watch` 默认 disabled）并插入两个自定义 `@deepseek-ai/dsh-agent-preset` 行（worker/router 专用）；patch 用 `disabled: !!js process.platform === 'win32'` 按平台切换 bash/pwsh 行；用 `cordis:group` 组行加 `isolate: {shell: true}`（及 compaction、workflowEngine 组）隔离。worker 预设前台命令 5 秒转后台 job、job 等待上限 5 秒；router 预设同 5 秒且 tool-fs 关写、无子代理/web/todo。patch 插 preset 行、`!!js` 表达式、`cordis:group` isolate 都是本仓库 bundle 行可用的同款机制 | 原型 cordis.patch.yml 1–193 行〔实读 2026-11-03〕 |
 | 原型的模型面：全部业务规则在代码（Engine、gate、stage 表、Mandate 授权），提示词极薄（主路由 16 行、worker 10 行、shared 7 行）；文本优先级序为工具与宿主强制 > 内置与生成段 > Ticket 匹配规则 > 团队段 > 外部文本（外部文本是数据，永远改不了规则与授权）；主 Session 14 个 `orchestrator_*` 工具、Executor 6 个；提示词按编号版本存储，会话每次模型请求读最新版；模型面漂移由 `tests/model-surface.spec.ts` 按角色尺寸预算检查，另有 class-docs.spec（每类必有 JSDoc）与 docs.spec（编号文档只引用先前的、模块表测试表必须列全） | 原型 docs/004、007 与 prompts/〔实读 2026-11-03〕 |
 | DSH 桌面宿主 0.2.1-rc.3 启动竞态：旧实例退出未完成（userData 单例锁仍被垂死进程持有）时启动新实例，宿主子进程 main() 走到 `installDesktopUpdateTaskControl` 时上下文已停活，`CordisError` `INACTIVE_EFFECT` 未捕获，startup 阶段致命崩并弹崩溃框（按钮含「禁用第三方插件并重启」，堆栈里无第三方行）。强杀全部进程后同一秒内重启复现一次 | 本机 `crash-2026-11-03T16-46-59-757Z-host.log`〔实读 2026-11-04〕；`dsh-desktop-host` lib index.js:112、electron main.js:3831 |
+| DSH 桌面宿主页面的 `document.visibilityState` 恒为 `hidden`：窗口最小化与还原都不改变；IntersectionObserver 在 hidden document 里对视口内元素连初始回调都不派发。面板类的可见性逻辑不能依赖它（可见信号可改用挂载/卸载 + window focus/blur）；2026-10-29 的桌面版观察与此一致 | 面板线 L4 走查〔实证 2026-11-04〕：visibilityState 两态实测、IO 三秒零回调、localStorage 键零写入 |
+| DSH 桌面宿主 `dsh-app://app/plugins/events` 端点周期性 `net::ERR_FAILED`（约每 5 分钟一次），非第三方包的文件或行引起 | 面板线 L4 走查控制台采集〔2026-11-04，三采集段共 5 条〕 |
 
 ## 4. 许可与来源
 
