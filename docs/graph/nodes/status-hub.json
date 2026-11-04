@@ -121,6 +121,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "状态板块续作基线：在 .worktrees/status-hub（分支 status-hub-2）上继续。领先的 b459692 是第 4 批（M4 条目：guard 行经 src/guard/status.ts 交 rules/denials 与 rules/lifts，env 行经 src/env/status.ts 交 env/suppressions），已推 origin/status-hub-2，main 上只有图上的记录、没有代码。合并 origin/main 为 c482ac0 已推；基线 build/preflight/test/probe 退出码 0（test 2717 过 0 败、探针 347/347、76/19/1）。"
+    },
+    {
+      "at": "2026-11-04T18:48:19.745Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "user-graph 那条线完成腾出并行位，按队列恢复 workflow status-hub-remaining-batches（wf_2226ae6097427667），停在 plan 步骤；分支 status-hub-2 基点 c482ac0，领先 1 个提交 b459692（batch 4）。编排方已让它先合入 origin/main（之后合入了 loops-runner、user-graph、metrics、视频改风格）、重跑 build，再按当前代码写计划。"
     }
   ]
 }

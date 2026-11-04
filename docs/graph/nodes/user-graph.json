@@ -153,6 +153,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "user-graph 合入 main：91f1dbd（快进 41e31da..91f1dbd，非强推）。期间 main 前进到 5862391，merge-ug 再合一次 origin/main 后重跑四道门禁，退出码均为 0（2832 测试 / 0 失败 / 1 预设跳过，探针 347/347，棘轮 76/19/1）。origin/main 与 github/main 经 ls-remote 核对均为 91f1dbd，merge-ug 工作树与分支已删除。剩余：桌面重启确认与 L4 验证（只走调试端口）。"
+    },
+    {
+      "at": "2026-11-04T18:48:19.511Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "workflow merge-user-graph-l4（wf_a6c5725b04b81cb2）完成。合入后的桌面验收（L4）记录 9372a85，origin/main = github/main = 9372a85，.llm/desktop-lock 已删除。结果：验收第 41 条的面板部分在真机上全部通过（两次 build；桌面锁中途被 metrics 接管后重取锁并重跑）；§9 的访谈与全链路几行无法核对（没有跑模型，U5b 延后）。没有阻塞，3 条不阻塞发现在 9372a85 的记录里。节点保持进行中：访谈与全链路的核对、以及延后项等 M7 E6 之后合入 main 再做。"
     }
   ]
 }
