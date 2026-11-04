@@ -33,6 +33,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "实现完成，在 feat/compact-recall 分支（223929c、9a5d844、0022395，未合入 main）：transcript 行默认 disabled；glm-compact 逐字追加 ZCode 3.17.1 的续接句；加了探针场景。分支树上门禁：build 0、preflight 0、npm test 0（2847 通过 / 1 跳过）、探针 0（353/353）。L3：压缩检查点以该句结尾，Read 能读出导出的会话文件。下一步：代码评审，然后合入 main。"
+    },
+    {
+      "at": "2026-11-04T19:34:33.029Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "代码评审 APPROVED，无阻塞（验收 1–4 与约束逐条核过；review.json、review.md 已写）。评审指出提交说明里点名的跳过测试名字不对，合入步骤要写出真实的那一条。下一步：合入 main。"
     }
   ]
 }
