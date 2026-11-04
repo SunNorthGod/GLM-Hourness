@@ -479,6 +479,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "loops-machine 写代码步骤完成：4 批加 1 个合并提交已推 origin/loops-machine = 80712bb（基于已含 loops-runner 合并的 main）。每批四道门禁退出码为 0，探针 376/376 或 382/382，棘轮 eslint 73 / knip 18 / jscpd 1 未上升。loops-runner L4 的不阻塞发现 (a) downMinutes 与 (b) 工作树探针改写主检出 view.json 都已修，(b) 按选项 A 修在探针一侧（场景目录各自成为 git 仓库）。下一步：评审。"
+    },
+    {
+      "at": "2026-11-04T22:33:39.376Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "loops-machine 评审 CHANGES_REQUESTED，1 条阻塞 F1：GLM 登录被拒持续存在时，运行器按键判断是否已告诉过人，但 LoginView.since 在变，于是大约每 10 分钟重复告诉一次（.worktrees/loops-machine/.llm/wf/review.json）。四批与合并的门禁按记录都是绿的。下一步：修 F1 后复审。"
     }
   ]
 }
