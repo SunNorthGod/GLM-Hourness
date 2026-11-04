@@ -299,6 +299,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "批次 4（e35a2fa，含并 main b3e580c 三冲突皆双保）：计算与命令行——calc 纯函数（factsFor 只出事实走对话路径、scoresFor 全表、compare 按 v/model/host/role 分组；§7.2 确定性：输入按读取器序、计数数值后按 ID、整毫秒偶数中位数、零分母 —、CALC_VERSION、basis 首行 F8）；CLI npm run metrics：summary/verify（checkLog 外加四核对：缺图历史、每会话 llm 对用量流水、manifest 对盘、超时账本 ±5s）/compare --by/prune --before（删前写 prune 行）/backfill-graph（src:history、时钟定最早条目、重跑零追加）；批次 1 潜伏 bug 被验收 21 的夹具暴露并修：body 字段必须按种类表规范序序列化，否则链哈希文本漂移。门禁全绿（test 0 败、probe 353/353、棘轮 214/18/1 持平）。下一步 4a 指标板；第 3 步仍等 m4 合并。"
+    },
+    {
+      "at": "2026-11-04T00:19:52.134Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "批次 4a（ffebb7d，含并 main 5110cc4）：指标板——boardView 纯函数（复用 factsFor/scoresFor，最近 7 天与前 7 天同构成对，一处格式化客户端逐字拷贝，比例括号带 samples 机器可读分母 F69，板面组名与 /hourness 事实名刻意区分），tmp+rename 原子写 view.json（调度：自检后/每小时/日期变更/每项目一次，compute 失败保旧值只更新 tried/problem，写失败降级健康带码），hournessMetrics 投影交 {viewFile}，ui 侧 board.ts（无 React 工厂+读取，Node 规格可测）+ board.tsx（60 秒静默计时、homeLine 三句、38 码点 guideLine、只读）；lessons 板重构复用同一 boardSessions/listenedWith（jscpd 克隆在根上消除，基线不变）。行健康期望随 §9.1 更新（无投影服务即降级「指标板没有登记」）。门禁全绿（test:2 环境性一次过载失败清理后全过、棘轮 214/18/1 持平、verbatim 500 零偏）。下一步第 5 步 /hourness 改读；第 3 步仍等 m4 合并。"
     }
   ]
 }
