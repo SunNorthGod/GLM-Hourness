@@ -11,18 +11,23 @@
  * graph directory is resolved per call: an absolute dir from the row
  * config as is, a relative one (default docs/graph) under the calling
  * agent's session working directory. A missing directory is reported,
- * never created.
+ * never created. A third reopen of a node files the third-rework question
+ * for the human and returns a notice with the write (reopen.ts, design
+ * §4.6), reported to the loop board through `report`.
  */
 import { stat } from 'node:fs/promises'
 import { isAbsolute, resolve } from 'node:path'
 import type { ToolDefinitionLike, ToolExecutionContext } from '../shared/dsh-min.ts'
-import { openEngine } from './engine.ts'
+import { openEngine, type ApplyResult } from './engine.ts'
 import { FOCUS_TOOL } from './live.ts'
 import { ASK_FORMS } from './proposal.ts'
 import { failure, type Failure } from './mutation.ts'
 import { listOpenItems, projectNode } from './projection.ts'
-import { NODE_TYPES, SLOPES, STAGES, TASK_KINDS, TIERS, WEIGHTS } from './schema.ts'
+import { REOPEN_LIMIT, reopenNotice, reopenNoticeFailed, reopenNoticeForSubagent, reopenQuestion, reopensAfter, thirdReworkState } from './reopen.ts'
+import { NODE_TYPES, SLOPES, STAGES, TASK_KINDS, TIERS, WEIGHTS, type GraphNode } from './schema.ts'
 import type { LoadedGraph } from './parse.ts'
+import { loadGraph } from './store.ts'
+import type { ListedRun, LoopsService } from '../loops/service.ts'
 
 /** Loader row id, named in hints so the model can point the human at the config. */
 const GRAPH_ROW_ID = 'glm-hourness/graph'
@@ -253,6 +258,7 @@ const WRITE_OUTPUT: JsonSchema = {
     revision: { type: 'string' },
     node: { type: 'object', description: 'The node after the write, without its history.' },
     changed: { type: 'array', items: { type: 'string' } },
+    notice: { type: 'string', description: 'Present on a reopen of a node that is heading for its third fix: what the caller does with the question filed for the human.' },
   },
   required: ['ok', 'id', 'rev', 'revision', 'node', 'changed'],
 }
@@ -323,7 +329,82 @@ const WRITES: ReadonlyArray<{ readonly op: LlmOp, readonly description: string, 
   },
 ]
 
-function writeTool(dir: string, op: LlmOp, description: string, parameters: JsonSchema): ToolDefinitionLike {
+/**
+ * What the loops reader and the row health offer the third-rework question:
+ * the board is told of every filed question and the row's health keeps a
+ * problem when the board refuses; asking goes on either way (design §6.8).
+ */
+export interface ThirdReworkReport {
+  /** The loop board's service, undefined while the loops row is off. */
+  readonly loops: (() => LoopsService | undefined) | undefined
+  /** A lasting problem for the row health, with the message and the session it happened in. */
+  readonly problem?: (message: string, sessionId: string | undefined) => void
+}
+
+/** The session working directory of the caller, for the run the board records. */
+function cwdOf(exec: ToolExecutionContext | undefined): string | undefined {
+  const cwd = exec?.agent?.session?.header.cwd
+  return typeof cwd === 'string' && cwd.length > 0 ? cwd : undefined
+}
+
+/** One run of the board entry, reported per filed question; a throw is a row-health problem, never a tool failure. */
+function recordRun(loops: LoopsService | undefined, run: ListedRun, sessionId: string | undefined, problem: ThirdReworkReport['problem']): void {
+  if (loops === undefined) return
+  try {
+    loops.recordRun(run)
+  }
+  catch (error) {
+    problem?.(`交给循环板的 ${run.entry} 没被收下：${error instanceof Error ? error.message : String(error)}`, sessionId)
+  }
+}
+
+/**
+ * After a successful done→doing reopen by the tool (m4 design §4.6): count
+ * the reopens since the last closed question of this kind; at the third,
+ * file the proposal-style question under the node as the harness and return
+ * the notice for the caller. `dir` is the graph directory the call already
+ * resolved against the caller's session. A relayed reopen is the human's
+ * own decision and asks nobody; a question already waiting stops another
+ * one; a failed filing leaves the reopen standing and is tried again on the
+ * next reopen. Never throws: the notice says what went wrong instead.
+ */
+async function thirdReworkAfter(dir: string, args: unknown, exec: unknown, result: Extract<ApplyResult, { ok: true }>, report: ThirdReworkReport): Promise<string | undefined> {
+  if (!isRecord(args) || args.to !== 'doing' || args.relay !== undefined) return undefined
+  try {
+    const graph = await loadGraph(dir)
+    const node: GraphNode | undefined = graph.nodes.get(result.id)
+    const last = node?.history.at(-1)
+    if (node === undefined || last?.op !== 'status' || last.from !== 'done' || last.to !== 'doing') return undefined
+    const state = thirdReworkState(graph, node.id)
+    if (state.open !== undefined) return undefined
+    const reopens = reopensAfter(node, state.closedAt)
+    if (reopens.length < REOPEN_LIMIT) return undefined
+    const question = reopenQuestion(node, reopens)
+    const engine = openEngine(dir)
+    let filed = await engine.apply('harness', { op: 'propose', reason: question.reason, node: question.node })
+    if (!filed.ok && filed.error.code === 'stale_revision') filed = await engine.apply('harness', { op: 'propose', reason: question.reason, node: question.node })
+    const context = exec as ToolExecutionContext | undefined
+    const sessionId = context?.agent?.session?.id
+    if (!filed.ok) {
+      recordRun(report.loops?.(), { cwd: cwdOf(context) ?? '', entry: 'graph.third-rework', outcome: 'failed', reason: cut(`${filed.error.code}: ${filed.error.message}`) }, sessionId, report.problem)
+      return reopenNoticeFailed(filed.error)
+    }
+    recordRun(report.loops?.(), { cwd: cwdOf(context) ?? '', entry: 'graph.third-rework', outcome: 'reported' }, sessionId, report.problem)
+    return context?.agent?.session?.header.origin === 'subagent'
+      ? reopenNoticeForSubagent(filed.id)
+      : reopenNotice(question, filed.id)
+  }
+  catch (error) {
+    return reopenNoticeFailed({ code: 'io', message: error instanceof Error ? error.message : String(error) })
+  }
+}
+
+/** One line of at most 120 code points, the limit the board puts on a run's reason. */
+function cut(text: string): string {
+  return [...text].slice(0, 120).join('')
+}
+
+function writeTool(dir: string, op: LlmOp, description: string, parameters: JsonSchema, report: ThirdReworkReport): ToolDefinitionLike {
   return {
     name: `graph_${op}`,
     description,
@@ -333,12 +414,14 @@ function writeTool(dir: string, op: LlmOp, description: string, parameters: Json
       if (isRecord(args) && args.op !== undefined && args.op !== op) {
         refuse(failure('invalid', `graph_${op} performs ${op}, not ${typeof args.op === 'string' ? args.op : JSON.stringify(args.op)}`, 'call the tool named after the operation; a supersession is a proposal with a supersedes edge', 'op'))
       }
-      const engine = openEngine(await graphDir(dir, exec))
+      const resolved = await graphDir(dir, exec)
+      const engine = openEngine(resolved)
       // The actor is this entry point's, never the request's: an actor field is refused as an extra field.
       const result = await engine.apply('llm', isRecord(args) ? { ...args, op } : args)
       if (!result.ok) refuse(result)
       const { history, ...node } = result.node
-      return { ok: true, id: result.id, rev: result.rev, revision: result.revision, node, changed: result.changed }
+      const notice = op === 'status' ? await thirdReworkAfter(resolved, args, exec, result, report) : undefined
+      return { ok: true, id: result.id, rev: result.rev, revision: result.revision, node, changed: result.changed, ...(notice === undefined ? {} : { notice }) }
     },
   }
 }
@@ -347,9 +430,11 @@ function writeTool(dir: string, op: LlmOp, description: string, parameters: Json
  * The graph tools over one configured directory (absolute, or relative to
  * the session working directory), reads and the focus first; graph_focus
  * records the focus in `focuses`. src/toolsearch/exposure.ts keeps every
- * one of them resident on GLM requests.
+ * one of them resident on GLM requests. `report` reaches the loop board's
+ * service and the row health for the third-rework question (m4 design §6.8);
+ * without it the question is still filed, only not reported.
  */
-export function graphTools(dir: string, focuses: FocusMemory): ToolDefinitionLike[] {
+export function graphTools(dir: string, focuses: FocusMemory, report: ThirdReworkReport = { loops: undefined }): ToolDefinitionLike[] {
   return [
     {
       name: 'graph_show',
@@ -393,6 +478,6 @@ export function graphTools(dir: string, focuses: FocusMemory): ToolDefinitionLik
         return { ok: true, focus: { id, type: node.type, title: node.title, status: node.status }, ...invalidOf(graph) }
       },
     },
-    ...WRITES.map(write => writeTool(dir, write.op, write.description, write.parameters)),
+    ...WRITES.map(write => writeTool(dir, write.op, write.description, write.parameters, report)),
   ]
 }

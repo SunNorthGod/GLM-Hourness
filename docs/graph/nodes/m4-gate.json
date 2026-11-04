@@ -64,6 +64,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "m4→main 合并完成（0553cd4，2026-11-04）：G1-G4 全量并树，五处冲突手工解（package.json test 链并集、report/index 双方参数合一、suppressions 取 m4 删侧、DESIGN/ORCH 保 m4 技术内容换启用态尾）。§5.9 当场验证价值：status.spec 的期望行清单因 env 行入树过期（合并前 main 自身测试全绿），补 db26fa7 一行修复后全绿，合并树 probe 349/349。解锁 metrics 第 3 步与 status-hub 批次 4。"
+    },
+    {
+      "at": "2026-11-04T03:28:04.156Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "剩余线收尾（e4ef64d，分支 m4-rest，2026-11-04）：R1 第三次修复先问人落地——reopenCount/thirdReworkState（认法=首条历史为 harness propose 且 reason 恰为「第三次修复：<id>」）、graph_status 的 done→doing 无 relay 重开之后数满 3 且无未关闭待决才提（harness 身份 propose、stale 重试一次、任何失败进 notice 不抛）、四行记录落在今日引擎形状（reason/proposal/cost/notTaken，§16 N22 裁定，M3 附录 0.6 已废 background/doubt 字段）、notice 带 showText 适配今日 propose_to_human 的 textCoversRecord 契约、graph.third-rework 上循环板（self 条目 + listedOnly 事件）。偏差三条记录在案（含重开时刻 UTC+8、超 3 取窗口内最近三次）。核实更正：E4 压制计数与 C1 清理在第一批（e85daf0/154ecaa）已交付合入，本线未重复实现。E3 检查器 BLOCKED 不变：只等循环板共用执行器 src/loops/script.ts（run.ts 现把 script/check 一律 refused）。门禁全绿（test 2673、probe 349/349、棘轮 76/19/1）。"
     }
   ]
 }
