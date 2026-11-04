@@ -329,6 +329,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "归位收尾（人 2026-11-01 同意）：根目录 package-lock.json 已删（误跑 npm install 的残渣，2026-10-30T16:58 批注留待人定的一件至此关闭）；msg-refdir-gate.txt（M3 附录 0.2 的重复副本）已删，内容在 .agents/tasks/m3/design-addendum-0.2.md。"
+    },
+    {
+      "at": "2026-11-04T06:45:01.147Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "发现（2026-11-04，M7 探针）：违规流水的 fsAppender 对同一文件的追加不串行。guard 行的拒绝是不等待的写，跟进晚一回合写，磁盘慢时跟进先落盘（at 较晚的一行在前），探针 guard scope、guard paths 各红一次。修正在主检出工作区，未提交：src/memory/audit.ts 按文件路径串行追加（模块级，同包各行共用）；tests/memory-audit.spec.ts 加一例；tests/rules-host.ts 删除临时目录加重试（串行后夹具拆除时可能还有在落盘的追加，rules-gate.spec 不加重试 5 次红 4 次）。build、preflight、npm test 退出码 0，棘轮 76/19/1 不变；探针在跑，绿后单独一个提交推 main，四条线合并后带上。四条线的续作运行已派出，探针按 .llm/probe-lock 全机串行。"
     }
   ]
 }
