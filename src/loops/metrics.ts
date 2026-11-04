@@ -76,6 +76,8 @@ export function metricEventOf(record: LoopRecord): EmittedEvent | undefined {
           ...(record.reason === undefined ? {} : { reason: record.reason }),
         },
       }
+    case 'loop-read':
+      return { k: 'loop-read', by: 'loops', body: { entry: record.entry, ok: record.ok, ms: record.ms, hit: record.hit } }
     case 'loop-task-delete':
       return {
         k: 'loop-task-delete',
