@@ -239,6 +239,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "按人「把线全开」恢复 workflow m5-rest（wf_65d23b8072019258），停在 plan 步骤；分支基点 3276d0e，编排方已让它先合入 origin/main、重跑 build 再写计划。"
+    },
+    {
+      "at": "2026-11-04T19:34:33.331Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m5-rest 规划完成：rest-plan.md 在 m5-rest 工作树（未提交），从 .worktrees/m5 带入 14 份评审记录；排第 0 步基线加 4 批；等 M7、人与编排方的项已在计划里列明。"
     }
   ]
 }
