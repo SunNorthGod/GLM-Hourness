@@ -413,6 +413,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "编排方审查 loops-runner 线（2026-11-04）：Batch 1（13ffb58，已推）与 Batch 2（未提交：src/loops/run.ts 的 LoopChecks 接缝与 check 支路、loops-run.spec 23/23、ORCHESTRATION §18.9）与 .agents/tasks/loops-runner/impl-plan.md 及设计 0.6 §6.6、§6.9 一致，没有偏离。停止时唯一红 rules-tickets.spec:852 卸载时限待复核。跨线：metrics 分支删除 runs.jsonl 与 appendRun，后合入 main 的一方对齐 exits 映射。续作：运行 loops-runner-batch-2-3（wf_365cb9939d825f4c），收 Batch 2 后做 Batch 3（/loops 列表与循环板页面）。"
+    },
+    {
+      "at": "2026-11-04T08:01:56.409Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "loops-runner Batch 2 落地：7823103 已推 origin/loops-runner（合并 origin/main acd2f14 为 cc2ab36，含 bc25baa）。门禁：build 0、preflight 0、npm test 0（2725 过、0 败、1 跳过；76/19/1 持平）、探针 347/347 退出码 0。rules-tickets.spec:852 的红不是计时超界，是夹具删临时目录的 ENOTEMPTY，bc25baa 已覆盖，合并前后单独重跑各 3 次全绿，rules 行未改。运行 loopsr-batch2-batch3 转入 Batch 3（/loops 列表与循环板页面）。"
     }
   ]
 }

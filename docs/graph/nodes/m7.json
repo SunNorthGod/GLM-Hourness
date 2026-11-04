@@ -510,6 +510,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "编排方审查 ZCode 接手期（2026-11-04）：申报接缝批（src/guard/execute-rules.ts 的 peekGrant/outsideDenial、execute-row.spec 第 9 例、ORCHESTRATION §17.9、设计 §3.2.1 与 §18.2）对得上 m4 设计 0.6 §5.9 与 M7 §3.2.1，没有偏离。探针两次 384/395、393/395，红项与接缝代码无关，修正已在 .worktrees/m3 工作区、待探针确认：(1) glm-exec-plan 在真实时钟落入 GLM 高峰时第二次派发 slots_full，场景改钉非高峰时钟 OFF_PEAK_AT；(2) 新场景 guard-request-worker 写错三处（quick 配目录写入范围、缺 probe_say 所需的行、检查要求写穿 rc.3 沙箱），已按既有 guard-request 场景改；(3) probe-llm 的 {ref} 替换只扫 tool 消息，主 Agent 看到的编号在 worker 问题通知（user 消息）里，已补 give ref 一种拼写。guard 两条检查的流水倒序另见 orch。续作：运行 m7-seam-close-and-e7（wf_8fb7162b2246ddc9），先收接缝批再做 E7。"
+    },
+    {
+      "at": "2026-11-04T08:01:56.178Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "申报接缝批落地：223f8d3 已推 origin/m7（cffcad4..223f8d3，不强推），带合并 1cb814e、6b14a4d、8b8ab92（后者为 origin/main bc25baa）。合并后门禁：build 0、preflight 0、npm test 0（2787 个、2786 过、0 败、1 跳过；eslint 76、knip 19、jscpd 1）、探针 395/395 退出码 0；guard-request-worker 与 glm-exec-plan 用编排方的探针修正即通过，无需再改。E7 规划已写（.worktrees/m3/.llm/wf/m7-e7/plan.md：13 项、偏离 D1–D17；FEAT-001 检查、FEAT-002 主干门、FEAT-003 L3 与文档及全量门禁），运行 m7-seam-and-e7 转入 E7 实现与评审循环。"
     }
   ]
 }
