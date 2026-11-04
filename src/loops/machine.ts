@@ -12,10 +12,14 @@
  * go otherwise. Each beat:
  *
  * - the login (M6-L3): one `quota({waitMs: 0, read: false})`, which sends no
- *   request; a rejection not told yet becomes `channel.login-rejected`, its
- *   `since` the channel's or, without one, the beat that first saw it (kept in
- *   `state.json` as `loginRejectedSince` until the state leaves `rejected`);
- *   back to `ok`, the told rejection is forgotten, so the next one is told;
+ *   request; the state turning `rejected` becomes one `channel.login-rejected`.
+ *   The beat that first sees the rejection fixes its `since` (the channel's,
+ *   or that beat without one) and `path` in `state.json` (`loginRejectedSince`,
+ *   `loginRejectedPath`) until the state leaves `rejected`: the channel
+ *   journals a newer rejection record every 10 minutes while requests keep
+ *   failing, and a key that followed it would tell one rejection six times an
+ *   hour. Back to `ok`, the told rejection is forgotten, so the next one is
+ *   told;
  * - the quota (M6-L2): the lines the user-level usage journal gained since the
  *   last beat; a GLM record among them, with the last reading and the last read
  *   this runner started both at least `afterUsageMinutes` old, starts exactly
@@ -91,8 +95,10 @@ type ToldMark =
 interface MachineState {
   /** The login state of the last beat. */
   login?: LoginView['state']
-  /** The beat that first saw this rejection, when the channel gives no `since` (design §4.3, review F38). */
+  /** This rejection's `since`, fixed by the beat that first saw it: the channel's, or that beat when the channel gives none (design §4.3, review F38). */
   loginRejectedSince?: string
+  /** This rejection's `path`, fixed by the same beat (empty when the channel names none). */
+  loginRejectedPath?: string
   /** How far the usage journal has been read, in bytes. */
   usageBytes?: number
   /** When this runner last started a quota read. */
@@ -156,10 +162,11 @@ function stateOf(value: unknown): MachineState {
   if (!isRecord(value)) return { held: [] }
   const login = value.login === 'ok' || value.login === 'rejected' || value.login === 'absent' ? value.login : undefined
   const since = text(value.loginRejectedSince)
+  const path = typeof value.loginRejectedPath === 'string' ? value.loginRejectedPath : undefined
   const bytes = finite(value.usageBytes)
   const readAt = finite(value.quotaReadAt)
   const held = Array.isArray(value.held) ? value.held.filter((item): item is HeldEvent => isRecord(item) && typeof item.event === 'string' && typeof item.key === 'string' && isRecord(item.payload) && isRecord(item.mark) && typeof item.at === 'string') : []
-  return { ...(login === undefined ? {} : { login }), ...(since === undefined ? {} : { loginRejectedSince: since }), ...(bytes === undefined ? {} : { usageBytes: bytes }), ...(readAt === undefined ? {} : { quotaReadAt: readAt }), held }
+  return { ...(login === undefined ? {} : { login }), ...(since === undefined ? {} : { loginRejectedSince: since }), ...(path === undefined ? {} : { loginRejectedPath: path }), ...(bytes === undefined ? {} : { usageBytes: bytes }), ...(readAt === undefined ? {} : { quotaReadAt: readAt }), held }
 }
 
 function toldOf(value: unknown): ToldFile {
@@ -277,21 +284,29 @@ export function createMachineRunner(deps: MachineDeps): MachineRunner {
     if (state === undefined || told === undefined) return
     const now = deps.now()
     const login = view.login
+    const before = state.login
     state.login = login.state
     if (login.state !== 'rejected') {
       delete state.loginRejectedSince
+      delete state.loginRejectedPath
       // Back to ok: the rejection told is forgotten, so the next one is told again (design §3.4 M6-L3).
       if (login.state === 'ok') delete told.login
       return
     }
-    state.loginRejectedSince ??= iso(now)
-    const since = login.since === undefined ? state.loginRejectedSince : iso(login.since)
-    const key = loginRejectedKey(login.path ?? '', since)
+    // The state turned rejected: this beat fixes the rejection's since and path for as long as it stays rejected (design §3.4 M6-L3, §4.3).
+    if (before !== 'rejected' || state.loginRejectedSince === undefined || state.loginRejectedPath === undefined) {
+      state.loginRejectedSince = login.since === undefined ? iso(now) : iso(login.since)
+      state.loginRejectedPath = login.path ?? ''
+    }
+    const since = state.loginRejectedSince
+    const path = state.loginRejectedPath
+    const key = loginRejectedKey(path, since)
     await put({
       at: iso(now),
       event: CHANNEL_LOGIN_REJECTED,
       key,
-      payload: { since, path: login.path ?? '', line: loginLine(login, now) },
+      // The line names the rejection's own moment when the channel gives one, the same as the payload's since.
+      payload: { since, path, line: loginLine(login.since === undefined ? login : { ...login, since: Date.parse(since) }, now) },
       mark: { kind: 'login', key, since },
     }, project)
   }

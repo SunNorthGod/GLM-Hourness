@@ -202,6 +202,44 @@ withHome('a rejected login is told once to the project the main agent last walke
   await machine.runner.stop()
 })
 
+withHome('a rejection that goes on is told once: the channel journals a newer since every 10 minutes and the path flips, and the key, the payload and told.json keep what the first beat saw (design §3.4 M6-L3, review F1)', async (home) => {
+  const machine = machineOf({ home })
+  await walkedIn(home, PROJECT_A)
+  await machine.runner.beat()
+  const first = AT + 30_000
+  const firstIso = new Date(first).toISOString()
+  machine.view = { login: { state: 'rejected', since: first, path: 'model' }, pending: false }
+  machine.move(MINUTE)
+  await machine.runner.beat()
+  // Half an hour of the same rejection: the channel's newest rejection record moves every 10 minutes (src/glm-llm/zcode.ts), and the other path is refused too.
+  for (let beat = 1; beat <= 30; beat++) {
+    machine.move(MINUTE)
+    if (beat % 10 === 0) machine.view = { login: { state: 'rejected', since: machine.now(), path: beat % 20 === 0 ? 'model' : 'mint' }, pending: false }
+    await machine.runner.beat()
+  }
+  assert.deepEqual(machine.emitted.map(item => item.key), [loginRejectedKey('model', firstIso)], 'one rejection, one message')
+  assert.deepEqual([machine.emitted[0]?.payload.since, machine.emitted[0]?.payload.path], [firstIso, 'model'])
+  assert.deepEqual((await toldFile(home)).login, { key: loginRejectedKey('model', firstIso), since: firstIso })
+  await machine.runner.stop()
+  // A runner that starts while the same rejection goes on reads its since and path from state.json and tells nothing more.
+  const next = machineOf({ home, clock: { at: machine.now() + MINUTE } })
+  next.view = { login: { state: 'rejected', since: machine.now(), path: 'mint' }, pending: false }
+  await next.runner.beat()
+  next.move(MINUTE)
+  await next.runner.beat()
+  assert.equal(next.emitted.length, 0)
+  // Back to ok, then rejected again: a new rejection, with its own since and path.
+  next.view = { login: okLogin, pending: false }
+  next.move(MINUTE)
+  await next.runner.beat()
+  const again = next.now() + 5_000
+  next.view = { login: { state: 'rejected', since: again, path: 'mint' }, pending: false }
+  next.move(MINUTE)
+  await next.runner.beat()
+  assert.deepEqual(next.emitted.map(item => item.key), [loginRejectedKey('mint', new Date(again).toISOString())])
+  await next.runner.stop()
+})
+
 withHome('a rejection the channel gives no since for: the key, the payload and told.json carry the first beat that saw it; a cleared state.json tells it at most once more', async (home) => {
   const machine = machineOf({ home })
   await walkedIn(home, PROJECT_A)
