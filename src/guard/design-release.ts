@@ -27,7 +27,7 @@ import type { AgentsService, LiveAgentLike, SessionLike } from '../shared/dsh-mi
 import type { Correction } from './rules.ts'
 
 /** Where a dispatched call's chain ends. */
-type RootLookup =
+export type RootLookup =
   | { readonly kind: 'self' }
   | { readonly kind: 'root', readonly root: LiveAgentLike }
   | { readonly kind: 'unknown', readonly why: string }
@@ -38,9 +38,11 @@ type RootLookup =
  * `parentSession` only, so the walk stops at it). Every hop goes to a
  * different live agent, so the walk ends in at most as many hops as there
  * are agents; a chain that loops, loses its `parentSession` or reaches an
- * agent that is gone is `unknown`.
+ * agent that is gone is `unknown`. The request channel reads it too: a
+ * grant matches calls of the same dispatch-chain root (m4-request-card
+ * §5.6).
  */
-function dispatchRoot(agents: Pick<AgentsService, 'get'>, caller: { readonly id: string, readonly session: SessionLike }): RootLookup {
+export function dispatchRoot(agents: Pick<AgentsService, 'get'>, caller: { readonly id: string, readonly session: SessionLike }): RootLookup {
   if (caller.session.header.origin !== 'subagent') return { kind: 'self' }
   const seen = new Set<string>([caller.id])
   let header = caller.session.header

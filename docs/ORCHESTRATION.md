@@ -796,8 +796,10 @@ L3 核实〔实测 2026-10-28，派发可行性验证 (a)(b)，`ROADMAP.md` 借�
 
 | 形式 | 场景 | 行为 |
 | --- | --- | --- |
-| 同步 | 出工作区操作、往工作区外装工具 | 阻断当次操作，等人批 |
+| 同步 | 出工作区操作（写文件的那一类走下面的申报通道）、往工作区外装工具 | 阻断当次操作，等人批 |
 | 异步 | 计划外决策、规范升降级提议、放宽检查配置、第三次修复停下查根因 | 不阻断，agent 转做计划内工作；进入队列 |
+
+guard 的申报不走卡（`d-chat-not-cards`；2026-11-04，m4 任务 `m4-request-card`，设计与状态见该任务的设计 §5）。圈禁、`checker-config`、`scratch-only` 拦下一次写入时，纠偏带一个申报编号；agent 调 `request_exception`（guard 行注册，GLM 路由上经检索延迟、`DeferredToolCall` 调用）换出一段由 harness 写好的四行方案——题目带解析后的路径，背景、推荐、疑问、不做四行，「附」里是文件事实与 agent 的三句原话，问话在最后——原样放在回复末尾，结束回合。人的下一句话就是回答：它要同时满足来自 DSH 客户端（`source.kind: 'user'` 且带 `rpcId`）、紧跟在以这段文字结尾的助手消息之后、恰是「可以」一类的整句同意词，才放行——同一个调用（同工具、同参数，按派发链的根匹配）在 30 分钟内放行一次；使用时重新核对目标的事实，变了就作废；目标存在且不大于 10 MiB 时先把旧内容备份到项目的 `requests/`。其余回话——不明确的、不是客户端送来的、人没有刚读过文字的——都不放行，只计数。放行只存在内存里，由 harness 读人的消息之后写入，违规流水只留痕，进程重启即丢，agent 重新申报。申报的开与关写成会话日志里看得见的形状（`ask` 结果与带 `request: {ref, outcome}` 的提醒），面板「需要你」从日志列出开着的申报，只看不批。
 
 - 卡面是一张表〔定案 2026-10-29，决策 `d-option-card`；人：「就改成表格，用「取决于」加一行条件，替换掉「为什么」和「反方」两行」〕，从上到下：
 
@@ -828,9 +830,9 @@ L3 核实〔实测 2026-10-28，派发可行性验证 (a)(b)，`ROADMAP.md` 借�
 
 ### 6.1 规矩即数据
 
-每条规矩是一组数据：告知（提示词或阶段提醒）、探测（执行前后的判定器）、纠偏（四段式：事实 / 越界 / 正路 / 例外）、申报（走决策卡）、记录（违规审计）。
+每条规矩是一组数据：告知（提示词或阶段提醒）、探测（执行前后的判定器）、纠偏（四段式：事实 / 越界 / 正路 / 例外）、申报（编号与申报通道，§5）、记录（违规审计）。
 
-现状〔已实现〕：探测与纠偏已接通；记录已接通（2026-10-28）：每次拦截写进项目目录的违规流水 `<项目目录>/audit/violations.jsonl`，项目目录按 `projectHomeFor`（`src/data/project-home.ts`）取：guard 行的 `home`，没有就取会话工作目录所在项目的 `<检出根>/.llm`（`projectOf` 把 git 工作树归到主检出），再没有取数据目录服务的（`DESIGN.md` §2.4；次序钉在 `tests/data-home.spec.ts`），L3 探针实测；告知已接通（2026-10-28，`ROADMAP.md` M1.8）：系统提示词最后一节 `glm:guard`（标题「Workspace rules」；2026-10-29 起每条路由都有，此前只有 GLM 路由，§6.2）逐条列出生效的规则，每条一行，取自规则的声明文本；会话没有工作目录时圈禁规则不生效，也不声明；主 Agent 的会话不列 `file-tools-only` 这一行（2026-11-02 修，评审 S4-4：它的边界由身份节守着，那一行会叫它用它没有的 Write/Edit）。规则是常驻的，所以放在系统提示词（§9.2 的提示词一级），不随每步变化，不影响提示词缓存（`DESIGN.md` §5.2、§6）；随阶段变化的规矩以后走阶段提醒。申报还没有通道（M4 的决策卡，§5）。2026-10-29 之前纠偏的例外段要模型「file a request」，系统中无处提交；现在圈禁与 file-tools-only 的例外段都写「If the task really needs …, tell the human what you need, where and why; only the human can allow it.」，事实、越界、正路三段不变（`src/guard/rules.ts`，项目图 `prompt-fixes`）。决策卡做出来后，例外段改指向它。2026-10-28 之前已知至少 3 次拦截没有留下记录，因为该行没有数据目录，回调也无法从配置传入。
+现状〔已实现〕：探测与纠偏已接通；记录已接通（2026-10-28）：每次拦截写进项目目录的违规流水 `<项目目录>/audit/violations.jsonl`，项目目录按 `projectHomeFor`（`src/data/project-home.ts`）取：guard 行的 `home`，没有就取会话工作目录所在项目的 `<检出根>/.llm`（`projectOf` 把 git 工作树归到主检出），再没有取数据目录服务的（`DESIGN.md` §2.4；次序钉在 `tests/data-home.spec.ts`），L3 探针实测；告知已接通（2026-10-28，`ROADMAP.md` M1.8）：系统提示词最后一节 `glm:guard`（标题「Workspace rules」；2026-10-29 起每条路由都有，此前只有 GLM 路由，§6.2）逐条列出生效的规则，每条一行，取自规则的声明文本；会话没有工作目录时圈禁规则不生效，也不声明；主 Agent 的会话不列 `file-tools-only` 这一行（2026-11-02 修，评审 S4-4：它的边界由身份节守着，那一行会叫它用它没有的 Write/Edit）。规则是常驻的，所以放在系统提示词（§9.2 的提示词一级），不随每步变化，不影响提示词缓存（`DESIGN.md` §5.2、§6）；随阶段变化的规矩以后走阶段提醒。申报已接通（2026-11-04，m4-request-card G4）：圈禁、`checker-config`、`scratch-only` 的拒绝带申报编号——编号在 guard 行的 `rules()` 里为每次文件工具写入预先生成（8 位 base36），被拒时才登记进内存的拒绝表，违规记录带 `ref`；例外段按调用方给写法：根 agent 是 `request_exception` 的调用写法（§5），普通子 agent 把编号交回派发它的 agent，M7 的 worker 由它的外层门经 `glmHournessRequests` 的 `outsideDenial` 取句。圈禁顺带补上 `str_replace_editor` 的写入判定（`create`、`str_replace`、`insert` 的 `path`，`view` 仍放行）。`file-tools-only` 管的是习惯，不可申报，例外段仍是 2026-10-29 的「Build, test and git commands … If this command writes no file, say so in your reply: the denial is recorded for review.」那句；`suppression-reason` 的出路是它的正路。2026-10-29 之前纠偏的例外段要模型「file a request」，系统中无处提交；圈禁与 file-tools-only 曾都写「tell the human what you need, where and why; only the human can allow it.」，圈禁那句已被申报句取代（git 历史可查）。2026-10-28 之前已知至少 3 次拦截没有留下记录，因为该行没有数据目录，回调也无法从配置传入。
 
 工具名〔已实现 2026-10-29，split 第 2 步〕：规则只认 DSH 原生工具名（`write`、`edit`、`str_replace_editor`、`pwsh`、`bash`、`terminal_send`），判定之前把调用名换成它实际执行的原生工具：先问 GLM 方言提供的方言服务（`glmHournessDialect`，`src/shared/dialect.ts`，由 `glm-prompt` 行提供），服务不在、或它不认识这个名字时，查公共库里的静态别名表 `ZCODE_ALIAS_NATIVES`（`Write` → `write`、`Edit` → `edit`、`Bash` → `pwsh` 等，与 DSH 原生工具名都不重名），都没有就用原名。所以服务缺席时拦截不变，GLM 的 `Bash` 照样按 `pwsh` 判。换算在 guard 行的 `tools/pre-execute`、图文件门禁与影子兜底三处做；图工具不换算（没有别名）。违规与影子记录里的 `tool` 仍写模型调用时用的名字。纠偏与 `glm:guard` 声明里的工具名按模型看到的写：方言服务说它接管了这个 agent 在这条路由上的请求（`claims`）时用方言的名字（`write` → `Write`、`read` → `Read`），文案与之前逐字相同，提示词缓存不受影响；否则用原生名。规则接口为 `detect(call, face)`，`declare` 是字符串或按 `face` 取名的函数；`file-tools-only` 的声明与正路用函数形式，圈禁与 `graph-files-only` 不含文件工具名，仍是字符串。配置追加的规则（guard 行 `config.rules`）按旧接口写照样成立，从这一步起收到的 `call.name` 是原生名。服务的值形状不对、或某个方法抛错时，这次调用按服务缺席处理（拦截照常、文案用原生名），控制台报一次，guard 的会话健康写「方言服务不可用」。静态表不看路由：别的插件若注册了与 ZCode 别名同名的工具，也按对应的原生工具判；今天的组合里只有方言注册这些名字。验证：L2 在 `tests/guard-audit.spec.ts`（有、无服务，服务形状不对，没装上方言的 agent）、`tests/graph-guard.spec.ts`（有、无服务时 `Write` 与 `Bash` 写图文件都被拒）与 `tests/contracts.spec.ts`（静态表与方言自己的别名定义一致）；L3 探针 `glm-no-dialect`（覆盖层禁用 `glm-prompt` 的 GLM 会话：工具面是原生工具，`pwsh` 写文件被拒，纠偏与声明写 `read`、`write`、`edit`），`glm` 场景的纠偏仍写 `Read`、`Write`、`Edit`。
 
@@ -865,7 +867,7 @@ guard 跟着编排层包 `dsh-hourness` 走：包启用时，所有路由、所�
 
 | 规矩 | 在哪实现 | 状态 |
 | --- | --- | --- |
-| 工作区圈禁：写操作只在工作区内 | guard 行 `workspace-containment` | 已实现，随行拦 |
+| 工作区圈禁：写操作只在工作区内 | guard 行 `workspace-containment` | 已实现，随行拦；2026-11-04 补上 `str_replace_editor` 的写入判定；可申报（拒绝带编号，§5 的申报通道） |
 | 文件修改只用专用工具：shell 不写文件 | guard 行 `file-tools-only` | 已实现，随行拦；2026-10-28 改为识别引号（`=>`、`>>>`、`->` 误判已发生 3 次）：只看命令位置与引号外的真实重定向，git 子命令放行；漏网的 shell 写入由工作区变更兜底在回合结束时记晚到的拦下并在下一步纠正（§6.5.2） |
 | 设计阶段不写代码 | M3 `design-before-release`（`src/guard/design-release.ts`，§6.8） | 生效（`question-25`）；计划模式不拦工具，所以不用它 |
 | 转述的人话要在人发来的消息里；不给人列选项表；「这类你定」只经记录工具写 | M3 `main-agent-graph-relay`、`main-agent-graph-options`、`main-agent-graph-delegations`（§6.9） | 生效（设计行默认启用） |

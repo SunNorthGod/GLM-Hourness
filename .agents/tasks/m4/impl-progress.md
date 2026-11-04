@@ -157,3 +157,38 @@ turn/end 之后 `agent.followup` 打不进去：模型最后一次文本回复�
 ### G4 的依赖核对（用户要求在 G3 末尾做）
 
 设计 §5 依赖的 M3 件已全部在树上：`src/guard/main-agent.ts`（`installMainAgentRules`）、`src/guard/git-snapshot.ts`、派发链的根 `dispatchRoot` 在 `src/guard/design-release.ts`（沿 `parentSession` 上溯，`origin: 'subagent'` 链，M3 §3.3.3 的实现）；`plain-question.ts`、`proposal.ts` 的渲染也在。结论：G4 不必等，随 G3 合入后即可开工。
+
+## 追加：m4-gate G4（申报通道 `m4-request-card`），2026-11-04
+
+### 落地内容
+
+- 申报通道的内存与常量（§5.2-§5.3）：`src/guard/request.ts`（`REQUESTABLE` 三规则、`APPROVAL_WORDS`/`DECLINE_WORDS` 整句词表、`exceptionOf` 三种调用方的例外句（根/子/worker，§5.2 表）、`signatureOf`（SHA-256 前 16 位，目标按 `normalizePath(resolve(base,…))` 换算）、`normalizeShown`/`normalizeWords`、`GrantBook`（`find` 跳过使用中与过期、`markInUse`/`consume`/`release`、`void`）、`RefusalBook`（64 条 FIFO）、`REQUEST_EXAMPLE` + `REQUEST_DESCRIPTION`（§5.3 逐字，F20）、`GRANT_TTL_MS`/`REQUEST_TTL_MS`/`REFUSAL_LIMIT`、`GrantEntry`（带可变 `backupPath`）。
+- 申报台（§5.3-§5.6、§5.9）：`src/guard/request-service.ts` 的 `createRequestDesk`——`registerDenied`（编号可外部给入，拒绝表 + 被拒 agent 记忆）、`requestException`（§5.3 检查顺序：subagent forbidden → 四字段 strict → 拒绝表/派发链根/2 小时 → 未用放行直接 `approved`（带工具与参数与 `expires`）→ 本会话忙/同编号重放 → 5a `propose_to_human` 已出示则 busy → 目标事实（ENOENT 记不存在，其余 `unavailable` 带错误码）→ `buildPlan`（抛错降级 `unavailable`，F18，行健康 note））、`buildPlan`（§5.4 表逐处换事实：存在/大小/mtime、备份可得性、edit 的改动前后、规则各自的题目与疑问行、三句原话加引号转义、内容预览、2000 字符先截预览再截原话；`lines` 带 `title` 给面板）、`readReply`（§5.5：时钟过期→关；客户端消息（kind user + rpcId）→ 展示核对（末条助手消息无工具调用块、文本规范化后以 tail 结尾、中间无人话）→ 词表判定（放行写 `GrantEntry` + 说明带被拒调用逐字参数、4 KiB 以上写 `requests/<ref>.call.json`；不放行词 declined；其余 unclear，tail 换确认句、第三次关闭）→ not-client / 首步 still-waits / not-shown）、2 小时 `unref` 定时器 + 时钟兜底、`lapseOrphans`（每 agent 一次扫描 ask 结果，F15）、`prepareGrant`（使用时核对：事实变→`void`；一致→`copyFile` 备份到 `requests/<ref>.before`，失败 `backup-failed` 不作废）、`service`（`outsideDenial` F19 按项目判：目标与调用方同项目或在行配置圈内→undefined；否则登记编号、给 worker 句）、`peekGrant`、`openRequests`、`requestsService` 读取器（形状不对报一次）。
+- 接线：`src/guard/rules.ts` 的 `workspaceContainment(roots, base, exception?, ref?)`（拒绝带 `ref`，例外句按调用方；带编号时 rightPath = 下一次是 `request_exception`）；`checker-config.ts`/`scratch.ts` 的拒绝带 `ref`；`src/guard/gate.ts` 加 `registerRequestableDenial` 与 `grants` 钩子（匹配→使用时核对→`carried` 去掉该规则拒绝、`markInUse`/`consume`/`release`、`void`/`backup-failed` 各按 §5.6 的英文拒绝句，`GrantRecord`/`GrantVoidRecord` 记流水）；`src/guard/index.ts` 建 books + desk、`rules()` 每调用预生成编号并按调用方给例外句、`request_exception` 工具（逐字描述 + 示范、严格四字段、输出 `{outcome, ref, text?, lines?, tool?, arguments?, expires?, message}`）、根 agent 的 `hourness-request` 步 notice（`lapseOrphans` + `readReply`，首步仍等）、`ctx.provide(REQUESTS_SERVICE)`；`src/shared/step-notice.ts` 的 builder 参数加 `step`；`src/shared/tool-names.ts` 的 `GUARD_TOOL_NAMES` 加 `request_exception`；`src/guard/design-release.ts` 导出 `dispatchRoot`；`src/guard/records.ts` 导出三个申报记录类型。
+- 四行规则的落点（§5.4 与 M3 附录 0.6 的裁定）：`src/graph/plan-text.ts`（`PROPOSAL_LABELS`、`splitBold`、`proposalLineRefusal`、`displayPath`、`personTitle`、`renderPlan`——只查 harness 常量，路径与焦点标题经转换后原样进文，F18；`schema.ts` 的 `PLAIN_LIMITS` 加 `background: 60`，上限归 plain-ui）。
+- 晨报（§5.8）：「申报 n 次：放行 a（已用 u、作废 v）、不放行 d、没答 q」一行，数字取 `classifyRecord` 分出的 request/grant/grant-void 三类。
+- 测试：`tests/plan-text.spec.ts`（7）、`tests/guard-request.spec.ts`（18：检查顺序逐码、六种申报文字变体、回话各认法、放行一次性、备份、`outsideDenial` F19、`peekGrant`、lapsed、F20 示范过真检查、晨报一行）；`tests/contracts.spec.ts` 的 `GUARD_TOOL_NAMES` 钉两个名字。
+- 探针：`scripts/probe/probe-llm.mjs` 加 `{ref}` 替换（会话里最近命名的一个编号）与 `echoToolText` 步（true=以申报文字收尾；字符串=文字后再补一句，not-shown 用）；`scripts/probe/run-probe.mjs` 加场景 `guard-request`（GLM 与 deepseek-probe 各一）、`guard-request-refuse`（四个回合：无 rpcId 的 可以→not-client、可以吗→unclear+确认句、确认句后 可以→approved 且写入、文字后再补一句→not-shown 仍拒）、`guard-request-goal`（probe_goal_run 的目标 agent 是第二根 agent，goal 驱动下每回合首步无人的消息有 still-waits、放行后写入、F15 配对）；共 7 条新检查。
+- 文档：`docs/ORCHESTRATION.md` §5 加申报通道段（同步卡行的出工作区写入改指申报通道）、§6.1 头一行与现状段改写（申报已接通、圈禁补 str_replace_editor、file-tools-only 不可申报）、§6.4 圈禁行状态补两笔。
+
+### 探针的第二处环境事实（不改代码，写进断言）
+
+1. 探针宿主跑在 rc.3 的 workspace-write 沙箱下：放行后的写入过了 guard 门的核对与备份（`GrantRecord` 落流水、`requests/<ref>.before` 落盘、放行簿用掉），真正写文件那一下被 rc.3 自己的沙箱拒（`[sandbox: file access denied under workspace-write mode]`）。这不是门的缺陷——设计 §5.1 第 6 步的「写执行」在无沙箱的会话里成立；探针断言改为「放行的调用越过门禁、错误是沙箱而非圈禁、第三次同调用被新编号拒绝」，文件落地交给无沙箱环境。
+
+2. 探针的步表与场景请求错一位（首个自举请求不在步表里）：检查的下标以实跑步表为准；`guard-request`/`guard-request-refuse` 不再先 `LocalToolSearch`——`DeferredToolCall` 不要求先检索（设计 §5.3），删去后拒绝的跟进恰好按 §5.1 结算为 `right-path`。
+### 门禁（最终树）
+
+- `npm run build` exit 0；`npm run preflight` exit 0（2 包、15 src、18 行）；`npm test` exit 0（2579 测试，136 套 TAP）；棘轮 eslint 76 suppressed、knip 19、jscpd 1，与基线持平，零新增（spec 文件经 package.json 的 test 脚本进 knip 入口）。
+- `npm run -s probe` exit 0，344/344（G3 时 337；净增 7 条来自四个新场景）。跑到全绿共七跑：第一跑 337/344（{ref} 替换拿到示范编号）、二跑 337/344（检查下标与实跑步表错一位）、三跑 339/344（放行后的写入被探针宿主的 workspace-write 沙箱拦下）、四跑 342/344（refuse 的第三次人的话误用确认句本身——只有「可以」算数，正是设计的行为）、五跑 343/344、六跑 343/344（批准说明里的工具名是原生 `write`，检查误期 `Write`）、七跑全绿。前两跑是探针自身的问题，后五跑每一条都是真实行为与断言对齐的过程；探针宿主沙箱的限制已写进断言（见上节）。
+
+### 探针揭出的一个真问题（本批修掉）
+
+1. `{ref}` 替换的第一版取「会话里最后一个 r-xxxxxxxx」：`request_exception` 的工具描述里带着 F20 示范自己的编号 `r-3k9d2m7q`，检索结果又紧跟在拒绝错误之后——第一次申报拿到的是示范编号，工具答 `not_found`（第一跑 337/344，七条新检查全红的根因）。修：锚定拒绝句的两种拼法（圈禁的 `request_exception {"ref": "r-…"}` 与新规则的 `call request_exception with ref "r-…"`），只从工具结果消息里取。
+### 与设计的偏差（agent 定，可逆）
+
+1. 四行规则与标签落在 `src/graph/plan-text.ts`，不在设计的 `proposal.ts`：M3 附录 0.6 已把 proposal.ts 的四行机制整段取消（`PROPOSAL_FIELDS` 名被占），0.6-finish2 §18 让 M4 自建；格式与上限逐字照 §5.4 与附录 §3.3，M3 侧后续改成从这里导入。
+2. 申报推荐行的「改 1 处」是每调用一处（edit/str_replace 一次一处；str_replace 的 replace_all 不数），设计 §5.4 表写「改 <n> 处」；不读目标内容，n 无法在申报时求真，取 1。
+3. `readReply` 的批准说明第二行（普通子 agent 句）写死在申报台：设计 §5.5 表的三种第二行里，worker 句按 §5.2 表的句子（无任务 id——M7 未合入，`RefusalEntry` 不带 task 字段；M7 合入时由它的 `OutsideCall.task` 补）。
+4. `expireDue` 留在申报台 API 上（定时器丢失时按下一步时刻兜底的入口），guard 行的步 notice 路径由 `readReply` 的时钟检查覆盖；M7 的停等读 `openRequests`，不经它。
+5. 探针的 `guard-request-goal` 用 `probe_goal_run` 的第二根 agent 扮演带 goal 的申报者：DSH 里人自己 `/goal` 是主 agent 的 goal，探针没有 `/goal` 通道；goal 驱动的轮次时机（§5.9 F14 的停等属 M7）不在此场景覆盖。
+6. `guard-request` 与 `guard-request-plain` 共用一个工作区与目标文件（guard-new-rules 两场景的既有做法），断言只看各自场景的流水与最终内容。

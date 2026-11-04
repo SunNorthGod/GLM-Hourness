@@ -51,7 +51,7 @@ export function checkerConfigOnly(context: RuleContext, ref: string): GuardRule 
       const target = fileToolTargetOf(call)
       if (target === undefined) return ALLOW
       const name = basename(target)
-      if (isBuiltinConfig(name)) return { kind: 'deny', rule: 'checker-config', correction: correctionOf(target, ref) }
+      if (isBuiltinConfig(name)) return { kind: 'deny', rule: 'checker-config', correction: correctionOf(target, ref), ref }
       // The env tool nodes' config lines are repository-relative: the target
       // is compared relative to the checkout it sits in, and only when the
       // graph was readable (design §4.1: the graph unreadable, built-ins
@@ -61,7 +61,7 @@ export function checkerConfigOnly(context: RuleContext, ref: string): GuardRule 
         const root = checkoutRootOf(target)
         const rel = root === undefined ? undefined : relativeToRoot(root, target)
         if (rel !== undefined && envConfigs.some(path => pathKey(path) === pathKey(rel))) {
-          return { kind: 'deny', rule: 'checker-config', correction: correctionOf(target, ref) }
+          return { kind: 'deny', rule: 'checker-config', correction: correctionOf(target, ref), ref }
         }
       }
       return ALLOW

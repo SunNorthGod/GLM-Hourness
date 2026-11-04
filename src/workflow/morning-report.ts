@@ -182,6 +182,16 @@ function gapLineOf(records: readonly Record<string, unknown>[], offsetMinutes: n
   return `- 流水有缺口：这段时间有 ${lost} 条记录没写进来（${parts}），最近一处到 ${at}；当时的拦截都照常生效`
 }
 
+/** The 申报 line of the 例外 section (m4-request-card, design §5.8): the period's filings by outcome, with the grants spent and voided beside them; undefined when the period filed none. The journal only counts — it never authorizes. */
+function requestLineOf(records: readonly { ref: string, outcome: string }[], grants: number, voids: number): Auxiliary | undefined {
+  if (records.length === 0) return undefined
+  const asked = new Set(records.filter(record => record.outcome === 'asked').map(record => record.ref))
+  const approved = records.filter(record => record.outcome === 'approved').length
+  const declined = records.filter(record => record.outcome === 'declined').length
+  const unanswered = records.filter(record => record.outcome === 'expired' || record.outcome === 'closed').length
+  return `- 申报 ${asked.size} 次：放行 ${approved}（已用 ${grants}、作废 ${voids}）、不放行 ${declined}、没答 ${unanswered}`
+}
+
 /** A journal timestamp as the report writes clock times: `MM-DD HH:mm` in the display zone. */
 function renderStamp(at: number, offsetMinutes: number): string {
   const shifted = new Date(at + offsetMinutes * 60_000)
@@ -342,10 +352,16 @@ export function morningReport(input: ReportInput): string {
   const unreadable = denial('unknown').length
   const gaps = classes.filter(entry => entry.klass === 'gap').map(entry => entry.record as unknown as Record<string, unknown>)
   const gapLine = gapLineOf(gaps, offsetMinutes)
+  // The request channel's period counts (m4-request-card, design §5.8): filings by outcome, grants and voids beside them.
+  const requests = classes.filter(entry => entry.klass === 'request').map(entry => entry.record as unknown as { ref: string, outcome: string })
+  const grants = classes.filter(entry => entry.klass === 'grant').length
+  const voids = classes.filter(entry => entry.klass === 'grant-void').length
+  const requestLine = requestLineOf(requests, grants, voids)
   const auxiliary: Auxiliary[] = [
     ...(late > 0 ? [`- 其中晚到的拦下 ${late} 条`] : []),
     ...(recorded > 0 ? [`- 只记录 ${recorded} 条（规则板上人选的做法）`] : []),
     ...(gapLine === undefined ? [] : [gapLine]),
+    ...(requestLine === undefined ? [] : [requestLine]),
     ...(unreadable > 0 ? [`- ${unreadable} 行记录读不懂`] : []),
   ]
 

@@ -23,7 +23,7 @@ export interface ToolCall {
 
 export type RuleVerdict =
   | { readonly kind: 'allow' }
-  | { readonly kind: 'deny', readonly rule: string, readonly correction: Correction }
+  | { readonly kind: 'deny', readonly rule: string, readonly correction: Correction, readonly ref?: string }
 
 /** DSH native tool name → the name the model sees for it on the route of this call or assembly. */
 export type ToolFace = (native: string) => string
@@ -83,8 +83,14 @@ export function fileToolTargetOf(call: ToolCall): string | undefined {
  * `resolve(cwd, path)` on win32); resolving also folds `..` segments, so a
  * target cannot climb out of a root by spelling. The roots themselves do not
  * move with `cd`: the base only decides what a relative spelling names.
+ *
+ * `exception` and `ref` come from the guard row per call (design §5.2): the
+ * caller-appropriate request-channel sentence replaces the default one, and
+ * the pre-generated ref rides on the denial (the gate registers the refusal
+ * only when this rule denied). With them, the follow-up's right path is the
+ * request tool; without them the rule is not requestable and has none.
  */
-export function workspaceContainment(roots: readonly string[], base: string | undefined = roots[0]): GuardRule {
+export function workspaceContainment(roots: readonly string[], base: string | undefined = roots[0], exception?: string, ref?: string): GuardRule {
   const normalizedRoots = roots.map(root => normalizePath(resolve(root)).replace(/\/+$/, ''))
   const inside = (absolute: string): boolean => {
     const p = normalizePath(absolute)
@@ -105,10 +111,12 @@ export function workspaceContainment(roots: readonly string[], base: string | un
           fact: normalizePath(absolute) === normalizePath(target) ? `You tried to write "${target}".` : `You tried to write "${target}" (resolves to "${absolute}").`,
           violation: 'That path is outside the workspace; writes are confined to the workspace.',
           rightPath: 'Recreate this change under the workspace root (project files in place, agent-private artifacts under .llm/).',
-          exception: `If the task really needs to write outside the workspace, ${ASK_THE_HUMAN}`,
+          exception: exception ?? `If the task really needs to write outside the workspace, ${ASK_THE_HUMAN}`,
         },
+        ...(ref === undefined ? {} : { ref }),
       }
     },
+    ...(ref === undefined ? {} : { rightPath(next: ToolCall): boolean { return next.name === 'request_exception' } }),
   }
 }
 
@@ -182,7 +190,7 @@ export const fileToolsOnly: GuardRule = {
 }
 
 /** One rule's denial, as the gate keeps it: the request ref arrives with the requestable rules (m4-request-card). */
-interface RuleDeny {
+export interface RuleDeny {
   readonly rule: string
   readonly correction: Correction
   readonly ref?: string
@@ -201,7 +209,7 @@ export function judge(rules: readonly GuardRule[], call: ToolCall, face: ToolFac
   for (const rule of rules) {
     try {
       const verdict = rule.detect(call, face)
-      if (verdict.kind === 'deny') denies.push({ rule: verdict.rule, correction: verdict.correction })
+      if (verdict.kind === 'deny') denies.push({ rule: verdict.rule, correction: verdict.correction, ...(verdict.ref === undefined ? {} : { ref: verdict.ref }) })
     } catch {
       errors.push(rule.id)
     }

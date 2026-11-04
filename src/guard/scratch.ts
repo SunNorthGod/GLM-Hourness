@@ -122,7 +122,7 @@ export function scratchOnly(roots: readonly string[], context: RuleContext, ref:
         return keyed.startsWith(`${dir === '' ? '' : `${dir}/`}`) && keyed.endsWith(extension)
       })
       if (sameKind) return ALLOW
-      return { kind: 'deny', rule: 'scratch-only', correction: correctionOf(target, ref) }
+      return { kind: 'deny', rule: 'scratch-only', correction: correctionOf(target, ref), ref }
     },
   }
 }

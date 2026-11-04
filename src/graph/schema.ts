@@ -58,11 +58,13 @@ export const CARD_LIMITS = { label: 20, gain: 60, cost: 60, dimensionName: 12, c
 
 /**
  * Longest texts of what the person reads, in code points (panel design,
- * docs/ORCHESTRATION.md §2.6 proposal shape): the title of a question. The
- * value belongs to the panel design; code and tests read this constant, and
- * the panel design adds its other limits when its writing check arrives.
+ * docs/ORCHESTRATION.md §2.6 proposal shape): the title of a question, and a
+ * background line minus its `**` marks (plain-ui's ruling: one line, at most
+ * 60 code points after removing the bold marks). The values belong to the
+ * panel design; code and tests read this constant, and the panel design adds
+ * its other limits when its writing check arrives.
  */
-export const PLAIN_LIMITS = { title: 40 } as const
+export const PLAIN_LIMITS = { title: 40, background: 60 } as const
 
 /** Mutation operations (§2.9); every history entry names one. */
 export const OPS = ['propose', 'approve', 'reject', 'status', 'edit', 'link', 'unlink', 'comment', 'decide', 'verify', 'supersede'] as const

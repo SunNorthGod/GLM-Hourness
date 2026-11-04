@@ -45,7 +45,10 @@
  */
 import { randomBytes } from 'node:crypto'
 import { isAbsolute, resolve } from 'node:path'
+import { stat, mkdir, copyFile, writeFile } from 'node:fs/promises'
 import { MAIN_AGENT_KEY } from '../graph/main-agent.ts'
+import { loadGraph } from '../graph/store.ts'
+import { GRAPH_FILES_DECLARATION, graphFocus, graphService } from '../graph/service.ts'
 import { declarationOf, fileToolTargetOf, fileToolsOnly, NATIVE_FACE, workspaceContainment, type GuardRule, type ToolCall, type ToolFace } from './rules.ts'
 import { installRuleGate, cwdOf } from './gate.ts'
 import { DECLARATION_SECTION } from './sections.ts'
@@ -58,16 +61,18 @@ import { prepareContext, type RuleContext } from './context.ts'
 import { liftFilesOnly } from './lift-files.ts'
 import { scratchOnly } from './scratch.ts'
 import { suppressionOnly } from './suppression.ts'
+import { dispatchRoot } from './design-release.ts'
+import { REQUESTABLE, REQUEST_DESCRIPTION, signatureOf, exceptionOf, GrantBook, RefusalBook, type RefusalVia } from './request.ts'
+import { REQUESTS_SERVICE, createRequestDesk, type RequestDesk, type RequestDeskFs } from './request-service.ts'
 import { projectJournal, type AuditFs } from '../memory/audit.ts'
 import { ensureLlmIgnored, type LlmIgnoreOutcome } from '../data/llm-ignore.ts'
 import { projectHomeFor, projectRootOf } from '../data/project-home.ts'
 import { dialectNames, dialectService, dialectWarner, type DialectProblem } from '../shared/dialect.ts'
-import { GRAPH_FILES_DECLARATION, graphService } from '../graph/service.ts'
 import { LOOPS_DECLARATION } from '../loops/service.ts'
 import { rulesService } from '../rules/service.ts'
 import { activationState, provideRowHealth, sessionIdOf, type HealthState } from '../shared/health.ts'
 import { assemblyRoute, sessionRoute } from '../shared/route.ts'
-import { createUserNotice, type ToolExecutionContext } from '../shared/dsh-min.ts'
+import { createUserNotice, type AgentsService, type ToolExecutionContext } from '../shared/dsh-min.ts'
 import { wrapSystemReminder } from '../shared/zcode-notice.ts'
 import { installStepNotice } from '../shared/step-notice.ts'
 import type { AgentLike, AssembledSection, PluginContext, PreExecuteHost, ProvideHost, ServiceLookup, SessionEventHost, SessionProjectionsService, WorkingDirectoryService } from '../shared/dsh-min.ts'
@@ -100,11 +105,12 @@ export interface GuardConfig {
  * where every fact is unknown and the fact-needing rules would pass — the
  * ids are what those callers read.
  */
-export function activeRules(config: GuardConfig & { workspaceRoots: readonly string[] | undefined, base?: string | undefined }, per?: { readonly context?: RuleContext, readonly ref?: string, readonly cwd?: string | undefined }): readonly GuardRule[] {
+export function activeRules(config: GuardConfig & { workspaceRoots: readonly string[] | undefined, base?: string | undefined }, per?: { readonly context?: RuleContext, readonly ref?: string, readonly cwd?: string | undefined, readonly ask?: { readonly exception: string, readonly ref: string } }): readonly GuardRule[] {
   const context = per?.context ?? {}
   const ref = per?.ref ?? ''
   return [
-    ...(config.workspaceRoots === undefined ? [] : [workspaceContainment(config.workspaceRoots, config.base)]),
+    // The per-call exception sentence and ref (design §5.2): the requestable reading of the rule. Without them (the declaration, the static callers) the rule keeps its not-requestable form.
+    ...(config.workspaceRoots === undefined ? [] : [workspaceContainment(config.workspaceRoots, config.base, per?.ask?.exception, per?.ask?.ref)]),
     fileToolsOnly,
     suppressionOnly(context),
     checkerConfigOnly(context, ref),
@@ -121,6 +127,9 @@ function refOf(): string {
   for (const byte of randomBytes(8)) ref += alphabet[byte % 36]
   return ref
 }
+
+/** Who is being denied, as the exception sentence and the refusal record read it (design §5.2); the M7 worker's sentence arrives through outsideDenial, not from here. */
+const viaOf = (agent: AgentLike | undefined): RefusalVia => agent?.session?.header.origin === 'subagent' ? 'subagent' : 'root'
 
 /** Where one file-tool write target resolves absolutely: the way containment reads a relative spelling. */
 function absoluteTargetOf(call: ToolCall, base: string | undefined, roots: readonly string[] | undefined): string | undefined {
@@ -263,6 +272,65 @@ export function apply(ctx: GuardHost, config: GuardConfig = {}): () => void {
   const installed = new WeakSet<AgentLike>()
   const disposers: Array<() => void> = [() => health.dispose()]
 
+  // The request channel's memory and desk (m4-request-card, design §5): the
+  // refusal and grant books are this process's memory; everything else reads
+  // the row's own seams (the agents walk, the graph focus, the journals).
+  const refusals = new RefusalBook()
+  const grants = new GrantBook()
+  const agentsOf = (): Pick<AgentsService, 'get'> | undefined => {
+    try {
+      const service: unknown = typeof ctx.get === 'function' ? ctx.get('agents') : undefined
+      return typeof service === 'object' && service !== null && typeof (service as { get?: unknown }).get === 'function' ? service as Pick<AgentsService, 'get'> : undefined
+    }
+    catch {
+      return undefined
+    }
+  }
+  const dispatchRootOf = (agent: AgentLike | undefined): string | undefined => {
+    if (agent?.session === undefined) return undefined
+    const agents = agentsOf()
+    if (agents === undefined) return undefined
+    const lookup = dispatchRoot(agents, { id: agent.id, session: agent.session })
+    return lookup.kind === 'self' ? agent.id : lookup.kind === 'root' ? lookup.root.id : undefined
+  }
+  const focusTitleOf = async (agent: AgentLike | undefined): Promise<string | undefined> => {
+    try {
+      const focus = graphFocus(ctx)
+      const cwd = typeof agent?.session?.header.cwd === 'string' && agent.session.header.cwd.length > 0 ? agent.session.header.cwd : undefined
+      const dir = focus === undefined || agent?.session === undefined ? undefined : focus.dirFor(cwd)
+      const id = focus === undefined || agent?.session === undefined ? undefined : focus.focusOf(agent.session)
+      if (dir === undefined || id === undefined) return undefined
+      return (await loadGraph(dir)).nodes.get(id)?.title
+    }
+    catch {
+      return undefined
+    }
+  }
+  const requestFs: RequestDeskFs = { stat, mkdir, copyFile, writeFile }
+  const desk: RequestDesk = createRequestDesk({
+    refusals,
+    grants,
+    now: () => new Date(),
+    journal: (record, cwd) => { void journals.violation(record, cwd) },
+    dispatchRootOf,
+    projectHomeOf: cwd => projectHomeFor(ctx, config.home, cwd),
+    rootsOf: agent => rootsFor(agent, config),
+    focusTitleOf,
+    wake: (agent, notice) => {
+      if (agent.session === undefined) return
+      try {
+        agentsOf()?.get(agent.session.id)?.followup(notice)
+      }
+      catch {
+        // The live agent may be gone; the expired record is written either way.
+      }
+    },
+    note: (sessionId, key, text) => health.note(sessionId, key, text),
+    warn: message => { console.warn(`${name}: ${message}`) },
+    fs: requestFs,
+  })
+  disposers.push(() => desk.dispose())
+
   disposers.push(installRuleGate(ctx, {
     row: 'guard',
     prepend: false,
@@ -282,15 +350,49 @@ export function apply(ctx: GuardHost, config: GuardConfig = {}): () => void {
       const root = projectRootOf(cwd)
       const lifts = root === undefined ? undefined : liftedRulesOf(root)
       health.report(sessionIdOf(payload.agent), ...guardHealth(roots, projectHomeFor(ctx, config.home, cwd), fallback.available(), dialectUnusable, ignoreProblem(ignored, root), lifts?.unreadable ?? 0))
-      // The judgment context (design §4.1): only a file-tool write prepares facts; the ref rides on every call's denials (design §5.2, the book arrives with G4).
+      // The judgment context (design §4.1): only a file-tool write prepares facts. The ref is pre-generated
+      // per file-tool call (design §5.2) and rides on the requestable denials; registered only when denied.
       const base = baseFor(ctx, payload.agent)
       const ref = refOf()
       const target = absoluteTargetOf(call, base, roots)
       const context = await prepareContext(target, cwd)
+      const via = viaOf(payload.agent)
       return {
-        rules: activeRules({ ...config, workspaceRoots: roots, base }, { context, ref, cwd }),
+        rules: activeRules({ ...config, workspaceRoots: roots, base }, { context, ref, cwd, ask: { exception: exceptionOf(via, ref), ref } }),
         face: names ?? NATIVE_FACE,
         origin: originOf(names !== undefined, route),
+      }
+    },
+    registerRequestableDenial: ({ payload, call, deny }) => {
+      if (deny.ref === undefined) return
+      const base = baseFor(ctx, payload.agent)
+      const target = absoluteTargetOf(call, base, rootsFor(payload.agent, config))
+      if (target === undefined) return
+      desk.registerDenied({ agent: payload.agent, call, base, target, rule: deny.rule, via: viaOf(payload.agent), ref: deny.ref })
+    },
+    grants: async ({ payload, call, denies }) => {
+      const deny = denies.find(candidate => candidate.ref !== undefined && REQUESTABLE.has(candidate.rule))
+      if (deny === undefined || deny.ref === undefined) return undefined
+      const base = baseFor(ctx, payload.agent)
+      const root = dispatchRootOf(payload.agent)
+      if (root === undefined || root === '') return undefined
+      const grant = grants.find(signatureOf(call.name, call.arguments, base), root)
+      if (grant === undefined) return undefined
+      const target = absoluteTargetOf(call, base, rootsFor(payload.agent, config))
+      if (target === undefined) return undefined
+      const preparation = await desk.prepareGrant(call, base, grant, cwdOf(payload))
+      if (preparation.kind === 'void') return { kind: 'void', rule: deny.rule, ref: grant.ref, reason: preparation.reason }
+      if (preparation.kind === 'backup-failed') return { kind: 'backup-failed', rule: deny.rule, ref: grant.ref, target, reason: preparation.reason }
+      return {
+        kind: 'carried',
+        rule: deny.rule,
+        grant,
+        markInUse: () => grants.markInUse(grant.ref),
+        consume: () => {
+          grants.consume(grant.ref)
+          return grant.backupPath
+        },
+        release: () => grants.release(grant.ref),
       }
     },
     journal: async (record, payload) => {
@@ -315,6 +417,9 @@ export function apply(ctx: GuardHost, config: GuardConfig = {}): () => void {
       now: () => new Date(),
     }))
     if (withdraw !== undefined) disposers.push(withdraw)
+    // The requests service (design §5.9): M7's outer gates read a ref and the grants through it; M3's propose_to_human reads openRequests.
+    const requests = ctx.provide(REQUESTS_SERVICE, desk.service)
+    if (requests !== undefined) disposers.push(requests)
   }
 
   // The lift tool (design §3.5): the main agent's way to stop enforcing a rule because the human said so.
@@ -333,6 +438,32 @@ export function apply(ctx: GuardHost, config: GuardConfig = {}): () => void {
           record: record => journals.violation(record, cwd),
           now: () => new Date(),
         })
+      },
+    }))
+  }
+
+  // The request tool (design §5.3): global registration, every route and
+  // agent; deferred on GLM like guard_lift. Its body answers with the plan
+  // text, or with the {code, message, hint} JSON of the failed check.
+  if (ctx.tools !== undefined) {
+    disposers.push(ctx.tools.register({
+      name: 'request_exception',
+      description: REQUEST_DESCRIPTION,
+      parameters: {
+        type: 'object',
+        properties: {
+          ref: { type: 'string', description: 'The reference a denial named, r- plus eight lowercase letters or digits.' },
+          purpose: { type: 'string', description: 'Why the call is needed, one short sentence, at most 80 characters.' },
+          reversibility: { type: 'string', description: 'Whether it can be undone and what else it touches, one short sentence, at most 60 characters.' },
+          alternatives: { type: 'string', description: 'What you tried instead, one short sentence, at most 60 characters; `none` is allowed.' },
+        },
+        required: ['ref', 'purpose', 'reversibility', 'alternatives'],
+        additionalProperties: false,
+      } as const,
+      output: { schema: { type: 'object', properties: { outcome: { type: 'string' }, ref: { type: 'string' }, text: { type: 'string' }, lines: { type: 'object' }, tool: { type: 'string' }, arguments: { type: 'object' }, expires: { type: 'string' }, message: { type: 'string' } } }, render: (_args, value) => [{ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value) }] },
+      execute: (args, exec) => {
+        const { agent } = (exec ?? {}) as ToolExecutionContext
+        return desk.requestException(args as Record<string, unknown>, agent, typeof agent?.session?.header.cwd === 'string' && agent.session.header.cwd.length > 0 ? agent.session.header.cwd : undefined)
       },
     }))
   }
@@ -385,6 +516,23 @@ export function apply(ctx: GuardHost, config: GuardConfig = {}): () => void {
     }
     catch (error) {
       console.warn(`${name}: correction notice not installed for agent ${agent.id}: ${(error as Error).message}`)
+    }
+    try {
+      // The request channel's reply reading (m4-request-card, design §5.5):
+      // every step of a root agent reads what the step admitted against the
+      // open request, and the first install names the asks a restart lapsed.
+      // A subagent files no request, so it reads none.
+      if (isRoot) {
+        const notice = installStepNotice(agent, 'request replies', () => true, async (history, { admitted, session, step }) => {
+          const lapsed = desk.lapseOrphans(agent, history)
+          const reply = await desk.readReply({ history, admitted, step, session, agent })
+          return reply ?? lapsed
+        }, 'guard')
+        if (notice !== undefined) disposers.push(notice)
+      }
+    }
+    catch (error) {
+      console.warn(`${name}: request notice not installed for agent ${agent.id}: ${(error as Error).message}`)
     }
   }))
 

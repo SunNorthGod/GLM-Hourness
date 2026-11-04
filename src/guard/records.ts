@@ -72,7 +72,7 @@ export interface FollowupRecord extends RecordOrigin {
 }
 
 /** One step of a request (design §5.3, §5.5). `tool` is the denied call's tool. */
-interface RequestRecord extends RecordOrigin {
+export interface RequestRecord extends RecordOrigin {
   readonly kind: 'request'
   readonly ref: string
   readonly outcome: 'asked' | 'approved' | 'declined' | 'unclear' | 'not-shown' | 'not-client' | 'closed' | 'expired'
@@ -87,7 +87,7 @@ interface RequestRecord extends RecordOrigin {
 }
 
 /** An approval was used (design §5.6). */
-interface GrantRecord extends RecordOrigin {
+export interface GrantRecord extends RecordOrigin {
   readonly kind: 'grant'
   readonly ref: string
   readonly signature: string
@@ -97,7 +97,7 @@ interface GrantRecord extends RecordOrigin {
 }
 
 /** An approval was voided at use time (design §5.6). */
-interface GrantVoidRecord extends RecordOrigin {
+export interface GrantVoidRecord extends RecordOrigin {
   readonly kind: 'grant-void'
   readonly ref: string
   /** What changed, or the stat error code. */

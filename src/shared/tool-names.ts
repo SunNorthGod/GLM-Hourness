@@ -33,12 +33,13 @@ export const RULES_TOOL_NAMES: readonly string[] = ['rules_show']
 export const DISPATCH_TOOL_NAMES: readonly string[] = ['subagent', 'subagent_fork']
 
 /**
- * The guard row's tools (m4-gate, design §2.2): not resident — an
- * orchestration tool without a ZCode counterpart is deferred on the GLM
- * route like any DSH tool, and the guard declaration names the lookup for
- * guard_lift. tests/contracts.spec.ts pins the registration to this list.
+ * The guard row's tools (m4-gate design §2.2; the request tool arrives with
+ * m4-request-card design §5.3): not resident — an orchestration tool without
+ * a ZCode counterpart is deferred on the GLM route like any DSH tool, and
+ * the guard declaration names the lookup for guard_lift.
+ * tests/contracts.spec.ts pins the registration to this list.
  */
-export const GUARD_TOOL_NAMES: readonly string[] = ['guard_lift']
+export const GUARD_TOOL_NAMES: readonly string[] = ['guard_lift', 'request_exception']
 
 /**
  * The design row's tools (src/design/propose.ts, src/design/record.ts), only
