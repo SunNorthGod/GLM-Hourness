@@ -6,7 +6,7 @@
 
 ## 1. 基线
 
-- 工作树 `C:\Users\29596\Desktop\Project\GLM-Hourness\.worktrees\bootstrap`，分支 `bootstrap`，已快进到 `origin/main` `78f45e3`（`1a6eb15..78f45e3` 只改了 `docs/graph/`）。计划写完时 `origin/main` 又前进到 `e8d57a4`，也只改了 `docs/graph/`；B0 开工前按第 2 节第 1 条合入。
+- 工作树 `C:\Users\29596\Desktop\Project\GLM-Hourness\.worktrees\bootstrap`，分支 `bootstrap`，已快进到 `origin/main` `78f45e3`（`1a6eb15..78f45e3` 只改了 `docs/graph/`）。计划写完时 `origin/main` 又前进到 `e8d57a4`，也只改了 `docs/graph/`；B0 开工前已快进到 `e8d57a4`（没有合并提交）。
 - 计划步在该提交上跑过：`npm run build` 0、`npm run preflight` 0、`npm test` 0（2939 通过、0 失败、1 跳过），棘轮 eslint 73 / knip 18 / jscpd 1。任务书写的 76 / 19 / 1 是旧数；不许上升指的是不超过现值 73 / 18 / 1。探针在计划步没有跑。
 - `tests/lessons-seed.spec.ts` 要读被 `.gitignore` 忽略的 `.agents/tasks/m5/lessons-seed.json`。新工作树里没有这个文件，计划步从主检出把它复制进本工作树（只读主检出，SHA-256 前 12 位 `E10A3247BBA0`，与其他工作树相同）。以后新建检出要照做。
 - 日志：`.llm\logs\bs-plan-{install,build,preflight,test}.log`。
@@ -34,8 +34,8 @@
 
 | 编号 | 内容 | 设计 §1.4 验收 | 设计 §16 | 状态 | 提交 | 门禁 |
 | --- | --- | --- | --- | --- | --- | --- |
-| B0 | 本计划入库 | — | — | 待做 | | |
-| B1 | 设计稿收尾：D1、D3 的人答写进 §0、§0.1、§18、§20 | — | — | 待做 | | |
+| B0 | 本计划入库 | — | — | 已推 | `4bd7328` | build 0、preflight 0、test 0（2939 通过 / 0 失败 / 1 跳过）、probe 0（376/376）；棘轮 73 / 18 / 1；首轮的两处计时失败见第 9 节 |
+| B1 | 设计稿收尾：D1、D3 的人答写进 §0、§0.1、§18、§20 | — | — | 已推 | 随下一批回填 | build 0、preflight 0、test 0（2955 通过 / 0 失败 / 1 跳过）、probe 0（382/382）；棘轮 73 / 18 / 1 |
 | B2 | 扫描、判路、危险命令、底线清单草稿、「不许碰」路径 | scan #1–#4；scan #5 的格式部分（`parseFloor` 往返核对在 B7） | B1 | 待做 | | |
 | B3 | `/graph-run start` 把已批准的任务转进行中 | run-start #1 | B2 | 待做 | | |
 | B4 | 接管行、服务（`prepare`、`holds`）、接管流水、共用的确定性部分、三个规范模板、`/hourness-init`、登记文件；只走过渡路 | row #1、#3–#8（#1、#4、#7 按过渡路的写法，见第 4 节 B4） | B3（不含 M3 的两处接缝） | 待做 | | |
@@ -48,13 +48,14 @@
 
 ## 4. 各批要做什么
 
-- [ ] B0. 计划入库。
+- [x] B0. 计划入库。
       只提交本文件，一个提交 `docs(bootstrap): implementation plan`。
       Files: `.agents/tasks/bootstrap/impl-plan.md`
       Verify: 第 2 节四道门禁全 0。
 
-- [ ] B1. 设计稿收尾：把 D1、D3 的人答写进 `design.md`。
+- [x] B1. 设计稿收尾：把 D1、D3 的人答写进 `design.md`。
       §0「要人定的（§18）」一段、§0.1「接管来的待做活要不要看一页放行稿，等你定（§18 的 D3）」一条、§18 标题与正文改成已定（人 2026-11-02 原话「按你推荐的来吧」，结论同 `bootstrap` 节点 2026-11-02T06:59Z 批注）；§20 加一行修订记录。版本号仍是 0.6。一页稿 `onepage.md` 已写成「你定了的」，不改。
+      实做时另有三处正文仍写着「等人定」，同批改成已定的写法：§1.1 `d-design-onepage` 一行、§2.5 已有项目一条的末段（「D3 问人是不是要改成……答「要」也按默认做法执行」改成问过、不改、以后要改时要 M3 先支持什么）、§17「已有项目接管来的特性」一行。§18 下面的问法与记录字段留作记录（§19 第 1 条引用）；§1.4 的 41 条、§19、§21–§25 不改。
       Files: `.agents/tasks/bootstrap/design.md`
       Verify: 四道门禁全 0。
 
@@ -160,6 +161,13 @@
 ## 8. 与并行线共用的文件
 
 按 main 上的现状写，冲突留给后合入的一方，冲突写进报告：`package.json`（测试链）、`scripts/packages.mjs`、`packages/hourness/cordis.patch.yml`、`packages/hourness/tsconfig.json`、`src/shared/health.ts`、`src/shared/tool-names.ts`、`src/shared/dsh-min.ts`（`origin/m7` 在这里加了 183 行）、`tests/contracts.spec.ts`、`tests/fake-rc3.ts`、`src/design/attach.ts`（规则板、循环板合入时也各加一行）、`scripts/probe/run-probe.mjs`、`docs/{ORCHESTRATION,DESIGN,DEVELOPMENT,HANDOFF}.md`。
+
+## 9. 运行记录（计时失败、主检出的变化）
+
+- B0（`4bd7328`）：`npm test` 首轮 1 败，在 `tests/loops-run.spec.ts`「a run that did not finish hands its events back」（脚本超时 1 秒，事件还没回到组里就读了状态）；单独重跑 6 次 1 败 5 过，整套重跑绿。这一批只改 markdown，不在它的路径上，记作 main 上已有的计时抖动，交循环板线。探针首轮 374/376，红的是 `rules-peak-stop` 的两条（m5-rest 基线那一轮红的也是这两条），重跑 376/376。主检出 `.llm\loops\view.json` 在两次探针期间都变了（别的线也在跑），不当失败。
+- 合入 `origin/main` `7fc5da5`（合并提交 `8ff0b62`，已推）：main 带来 GLM 压缩记录行（`src/data/transcript*`、`src/glm-prompt/compact-row.ts`、行与 locale、探针场景），没有冲突；共用文件（`package.json`、`scripts/packages.mjs`、`cordis.patch.yml`、`src/shared/health.ts`、`src/shared/dsh-min.ts`、`tests/contracts.spec.ts`、`scripts/probe/run-probe.mjs`）照 main。门禁：build 0、preflight 0、test 0（2955 通过 / 0 失败 / 1 跳过）、probe 0（382/382）；棘轮 73 / 18 / 1。`HOURNESS_ROWS` 与契约清单里现在多了 `transcript` 一行，B4 加 `bootstrap` 时按合入后的现状排。
+- B1：门禁结果见第 3 节 B1 一行（提交号随下一批回填）。第一次跑 `npm test` 时与 build 同时起跑，preflight 读到正被清空的 `dist/` 报 40 处缺文件，是操作失误，不是代码问题；build 完成后整套重跑，结果即表中数字。
+- 记图：会话钩子要求把状态记进 `docs/graph`；任务书写明不编辑 `docs/graph`、记录归编排方，照任务书，各批状态只写在本计划与报告里。
 
 ## Digest
 
