@@ -44,6 +44,7 @@
 import { basename, isAbsolute, join, relative, resolve } from 'node:path'
 import { cachedWorktrees, projectOf } from '../data/project-root.ts'
 import { writesInto } from '../guard/directory-writes.ts'
+import { ID_PATTERN } from '../metrics/schema.ts'
 import * as followup from '../guard/followup.ts'
 import { originOf } from '../guard/origin.ts'
 import { renderCorrection, type ToolCall } from '../guard/rules.ts'
@@ -59,6 +60,7 @@ import { describeCall } from './call.ts'
 import { denialText } from './denial.ts'
 import { gateEvents, type GateCall } from './events.ts'
 import { judge, judgeInput, type RuleHit } from './judge.ts'
+import { emitJudged, type RulesJudgedEvent } from './metrics.ts'
 import { effectivePeakMode, type BuiltinRule, type Rule } from './model.ts'
 import type { PeakReading, ProjectView } from './peak.ts'
 import { gitOperationIn } from './repo.ts'
@@ -180,11 +182,37 @@ export function installRulesGate(deps: GateDeps): () => void {
     const call: ToolCall = { name: tool, arguments: (exec.arguments ?? {}) as JsonValue }
     const sessionId = sessionIdOf(agent)
 
+    // One `rules.judged` per non-allow judgement (design §10.5, metrics §6.2), handed to the metrics
+    // row's service; the signal values the journal's `map` cannot hold (unreadable is null) go into
+    // `unread` by name, so the closed table rejects nothing.
+    const sub = exec.parent !== undefined
+    const judgeEvent = (rule: string, how: RulesJudgedEvent['how'], values: SignalValues, ms: number, ticket?: string): void => {
+      const signals: Record<string, number | boolean | string> = {}
+      const unread: string[] = []
+      for (const [name, value] of Object.entries(values)) {
+        if (typeof value === 'boolean' || (typeof value === 'number' && Number.isInteger(value)) || (typeof value === 'string' && ID_PATTERN.test(value))) signals[name] = value
+        else unread.push(name)
+      }
+      emitJudged(deps.ctx, {
+        event: 'rules.judged',
+        rule,
+        how,
+        tool,
+        sub,
+        signals,
+        ...(unread.length === 0 ? {} : { unread }),
+        ...(ticket === undefined ? {} : { ticket }),
+        ms,
+      }, { dir: project.root, ...(sessionId === undefined ? {} : { sessionId }) })
+    }
+
     // 2. rules:files-only, before anything is read from the state.
+    const filesJudgedAt = deps.now()
     const write = writesInto(boardDirs(paths, trees(project.root)), caller.workspace)(call)
     if (write !== undefined) {
       const reason = filesOnlyText(write.kind === 'file' ? `You tried to write "${write.target}".` : `You tried to change the rules board's files through the shell: "${write.command}".`)
       noteFollowup(agent, exec, claimed, RULES_FILES_ONLY, call, note(agent, exec, claimed, { rule: RULES_FILES_ONLY, mode: 'enforce', effect: 'block', correction: reason, signals: {} }))
+      judgeEvent('files-only', 'block', {}, deps.now() - filesJudgedAt)
       return { kind: 'deny', reason }
     }
 
@@ -221,7 +249,9 @@ export function installRulesGate(deps: GateDeps): () => void {
       nested: exec.parent !== undefined,
       ...(DISPATCH_TOOL_NAMES.includes(tool) ? { dispatch: dispatchOf(exec.arguments) } : {}),
     })
+    const judgedAt = deps.now()
     const verdict = judge(judgeInput({ now, project: project.root, events, signals: [...readings.values()], unreadable }), table)
+    const judgedMs = deps.now() - judgedAt
     report(sessionId, basename(project.root), view, reading, project.root)
 
     // 4. What the strongest effect makes of the call.
@@ -239,6 +269,7 @@ export function installRulesGate(deps: GateDeps): () => void {
       const reason = denialText({ attempt: described.attempt, effect: 'block', rules: pairs(verdict.strongest), peak })
       for (const hit of verdict.strongest) {
         noteFollowup(agent, exec, claimed, `rules:${hit.rule}`, call, note(agent, exec, claimed, { rule: `rules:${hit.rule}`, mode: 'enforce', effect: 'block', correction: reason, signals: signalsOf(hit) }))
+        judgeEvent(hit.rule, 'block', signalsOf(hit), judgedMs)
       }
       return { kind: 'deny', reason }
     }
@@ -250,12 +281,16 @@ export function installRulesGate(deps: GateDeps): () => void {
       if (deferral.kind === 'deny') {
         for (const { hit } of queued) {
           noteFollowup(agent, exec, claimed, `rules:${hit.rule}`, call, note(agent, exec, claimed, { rule: `rules:${hit.rule}`, mode: 'enforce', effect: 'queue', correction: deferral.reason, ...(deferral.ticket === undefined ? {} : { ticket: deferral.ticket }), signals: signalsOf(hit) }))
+          judgeEvent(hit.rule, 'deferral', signalsOf(hit), judgedMs, deferral.ticket)
         }
         return { kind: 'deny', reason: deferral.reason }
       }
     }
     for (const hit of verdict.hits) {
-      if (hit.effect === 'record') note(agent, exec, claimed, { rule: `rules:${hit.rule}`, mode: 'record', effect: 'record', signals: signalsOf(hit) })
+      if (hit.effect === 'record') {
+        note(agent, exec, claimed, { rule: `rules:${hit.rule}`, mode: 'record', effect: 'record', signals: signalsOf(hit) })
+        judgeEvent(hit.rule, 'rule-record', signalsOf(hit), judgedMs)
+      }
     }
     if (session !== undefined) await deps.tickets.passed({ session, view, root: project.root, cwd, tool, args: exec.arguments })
     return undefined

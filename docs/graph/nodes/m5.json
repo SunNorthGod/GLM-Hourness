@@ -233,6 +233,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "桌面批次 L4（2026-11-04，main 1d54cb5）：S12 习惯流与 lessons 过——直述带原话直接 memory_store（现设计如此，探针断言亦然）；间接提议真先问了人但走 DSH 通用问答卡、未走 memory_habit（工具延迟未加载，S12 提示只写在 relay 描述里）；relay 闸门真实生效（两次 relay_not_said 后凭人原话入库）；decline 会话内生效（28 天保证只在 memory_habit decline 上）。lessons-seed 导入 21 条幂等，/lessons 与面板「经验」页可见。待人定两件：①直述的习惯要不要也必须先问（要则改设计/提示词）；②memory_habit 提示要不要升级为显式规则（flash 走了通用卡没碰工具，对话式 decline 也因此只有会话内约束）。"
+    },
+    {
+      "at": "2026-11-04T19:17:43.649Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "按人「把线全开」恢复 workflow m5-rest（wf_65d23b8072019258），停在 plan 步骤；分支基点 3276d0e，编排方已让它先合入 origin/main、重跑 build 再写计划。"
+    },
+    {
+      "at": "2026-11-04T19:34:33.331Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m5-rest 规划完成：rest-plan.md 在 m5-rest 工作树（未提交），从 .worktrees/m5 带入 14 份评审记录；排第 0 步基线加 4 批；等 M7、人与编排方的项已在计划里列明。"
     }
   ]
 }

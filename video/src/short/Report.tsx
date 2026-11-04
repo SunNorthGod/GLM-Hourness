@@ -1,7 +1,7 @@
 import React from "react";
 import { AbsoluteFill, interpolate, useCurrentFrame } from "remotion";
-import { GLASS, GradientText, Pill, Reveal } from "../parts";
-import { CLAMP, COLORS, EASE } from "../theme";
+import { CARD, Pill, Reveal } from "../parts";
+import { CLAMP, COLORS, EASE, SERIF, tint } from "../theme";
 import { BAR, BEAT } from "./timeline";
 
 // Bars 21-22: the weekly report card. The four rows are the numbers
@@ -36,7 +36,8 @@ const Trend: React.FC<{ row: number; bars: number[] }> = ({ row, bars }) => {
               width: 26,
               height: GHOST + (h - GHOST) * k,
               borderRadius: 6,
-              background: k === 0 ? "rgba(255, 255, 255, 0.12)" : j === bars.length - 1 ? COLORS.mint : "rgba(142, 162, 255, 0.5)",
+              background:
+                k === 0 ? tint(COLORS.text, 0.12) : j === bars.length - 1 ? COLORS.green : tint(COLORS.text, 0.5),
             }}
           />
         );
@@ -45,7 +46,7 @@ const Trend: React.FC<{ row: number; bars: number[] }> = ({ row, bars }) => {
         <path
           d="M8 10 L36 34 M36 34 L36 18 M36 34 L20 34"
           fill="none"
-          stroke={COLORS.mint}
+          stroke={COLORS.green}
           strokeWidth={5}
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -55,49 +56,49 @@ const Trend: React.FC<{ row: number; bars: number[] }> = ({ row, bars }) => {
   );
 };
 
-export const Report: React.FC = () => (
-  <AbsoluteFill>
-    <Reveal
-      at={0}
-      style={{
-        ...GLASS,
-        position: "absolute",
-        left: 45,
-        top: 600,
-        width: 900,
-        boxSizing: "border-box",
-        padding: "36px 40px 30px",
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-        <GradientText style={{ fontSize: 60, fontWeight: 700 }}>周报</GradientText>
-        <Pill color={COLORS.dim} style={{ fontSize: 30 }}>
-          示意，暂无真实数据
-        </Pill>
-      </div>
-      {ROWS.map((row, i) => (
-        <Reveal
-          key={row.label}
-          at={6 + i * BEAT}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            height: 120,
-            borderTop: "1.5px solid rgba(255,255,255,0.08)",
-            fontSize: 40,
-          }}
-        >
-          <span>{row.label}</span>
-          <Trend row={i} bars={row.bars} />
-        </Reveal>
-      ))}
+export const Report: React.FC = () => {
+  const line = `1.5px solid ${tint(COLORS.text, 0.08)}`;
+  return (
+    <AbsoluteFill>
       <Reveal
-        at={BAR + 40}
-        style={{ borderTop: "1.5px solid rgba(255,255,255,0.08)", paddingTop: 22, fontSize: 38, color: COLORS.dim }}
+        at={0}
+        style={{
+          ...CARD,
+          position: "absolute",
+          left: 45,
+          top: 600,
+          width: 900,
+          boxSizing: "border-box",
+          padding: "36px 40px 30px",
+        }}
       >
-        对照：测试、评审发现、返工率
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+          <span style={{ fontFamily: SERIF, fontSize: 60, fontWeight: 700, color: COLORS.red }}>周报</span>
+          <Pill color={COLORS.dim} style={{ fontSize: 30 }}>
+            示意，暂无真实数据
+          </Pill>
+        </div>
+        {ROWS.map((row, i) => (
+          <Reveal
+            key={row.label}
+            at={6 + i * BEAT}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              height: 120,
+              borderTop: line,
+              fontSize: 40,
+            }}
+          >
+            <span>{row.label}</span>
+            <Trend row={i} bars={row.bars} />
+          </Reveal>
+        ))}
+        <Reveal at={BAR + 40} style={{ borderTop: line, paddingTop: 22, fontSize: 38, color: COLORS.dim }}>
+          对照：测试、评审发现、返工率
+        </Reveal>
       </Reveal>
-    </Reveal>
-  </AbsoluteFill>
-);
+    </AbsoluteFill>
+  );
+};

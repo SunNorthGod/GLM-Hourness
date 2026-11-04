@@ -1,7 +1,7 @@
 import React from "react";
 import { AbsoluteFill, interpolate, useCurrentFrame } from "remotion";
-import { GradientText, Reveal } from "../parts";
-import { CLAMP, COLORS, EASE, SILVER } from "../theme";
+import { Reveal } from "../parts";
+import { CLAMP, COLORS, EASE, SERIF } from "../theme";
 import { BAR, BEAT } from "./timeline";
 import { Wordmark } from "./Title";
 
@@ -10,7 +10,7 @@ import { Wordmark } from "./Title";
 // the start of bar 9.
 
 const Part: React.FC<{ at: number; plus?: boolean; children: React.ReactNode }> = ({ at, plus = false, children }) => (
-  <Reveal at={at} style={{ fontSize: 112, fontWeight: 700, letterSpacing: 2 }}>
+  <Reveal at={at} style={{ fontFamily: SERIF, fontSize: 112, fontWeight: 700, letterSpacing: 2 }}>
     {plus ? <span style={{ color: COLORS.faint, marginRight: 28 }}>+</span> : null}
     {children}
   </Reveal>
@@ -25,24 +25,15 @@ export const Name: React.FC = () => {
       style={{ alignItems: "center", justifyContent: "center", paddingTop: 60, paddingLeft: 45, paddingRight: 135 }}
     >
       <div style={{ position: "absolute", opacity: parts, textAlign: "center" }}>
-        <Part at={BEAT}>
-          <GradientText gradient={SILVER}>GLM</GradientText>
-        </Part>
+        <Part at={BEAT}>GLM</Part>
         <Part at={2 * BEAT} plus>
-          <GradientText>House</GradientText>
+          <span style={{ color: COLORS.red }}>House</span>
         </Part>
         <Part at={3 * BEAT} plus>
-          <GradientText>Harness</GradientText>
+          <span style={{ color: COLORS.red }}>Harness</span>
         </Part>
       </div>
-      <div
-        style={{
-          position: "absolute",
-          textAlign: "center",
-          opacity: whole,
-          scale: interpolate(whole, [0, 1], [0.92, 1], { output: "perceptual-scale" }),
-        }}
-      >
+      <div style={{ position: "absolute", textAlign: "center", opacity: whole }}>
         <Wordmark />
       </div>
       <Reveal at={BAR + 2 * BEAT} style={{ position: "absolute", top: 1090, fontSize: 46, color: COLORS.dim }}>

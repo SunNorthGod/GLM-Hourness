@@ -413,6 +413,66 @@
       "actor": "llm",
       "op": "comment",
       "text": "编排方审查 loops-runner 线（2026-11-04）：Batch 1（13ffb58，已推）与 Batch 2（未提交：src/loops/run.ts 的 LoopChecks 接缝与 check 支路、loops-run.spec 23/23、ORCHESTRATION §18.9）与 .agents/tasks/loops-runner/impl-plan.md 及设计 0.6 §6.6、§6.9 一致，没有偏离。停止时唯一红 rules-tickets.spec:852 卸载时限待复核。跨线：metrics 分支删除 runs.jsonl 与 appendRun，后合入 main 的一方对齐 exits 映射。续作：运行 loops-runner-batch-2-3（wf_365cb9939d825f4c），收 Batch 2 后做 Batch 3（/loops 列表与循环板页面）。"
+    },
+    {
+      "at": "2026-11-04T08:01:56.409Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "loops-runner Batch 2 落地：7823103 已推 origin/loops-runner（合并 origin/main acd2f14 为 cc2ab36，含 bc25baa）。门禁：build 0、preflight 0、npm test 0（2725 过、0 败、1 跳过；76/19/1 持平）、探针 347/347 退出码 0。rules-tickets.spec:852 的红不是计时超界，是夹具删临时目录的 ENOTEMPTY，bc25baa 已覆盖，合并前后单独重跑各 3 次全绿，rules 行未改。运行 loopsr-batch2-batch3 转入 Batch 3（/loops 列表与循环板页面）。"
+    },
+    {
+      "at": "2026-11-04T08:56:59.530Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "loops-runner Batch 3 实现：52f0bcc（未推）——/loops 列表、view.json 运行部分、ui/src/loops/ 循环板页；四道门禁全绿（2745 过、0 败、1 跳过，探针 347/347，76/19/1）。评审 CHANGES_REQUESTED 两条：F1（MEDIUM）每隔 N 的条目「下次」总显示 现在+N，应取 DSH 的 scheduledAt；F2（LOW）cordis.patch.yml 循环行注释仍说页面不在。进入第二轮修正。"
+    },
+    {
+      "at": "2026-11-04T09:06:42.142Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "loops-runner 线批次图（Batch 1–3）做完：Batch 3 第二轮评审 APPROVED，8c9d74f 已推 origin/loops-runner（7823103..8c9d74f，不强推）。修正：every 条目与 cron 一样不写「下次」（DSH 按锚点对齐，真实下次在任务记录的 scheduledAt）；循环行注释重写。门禁：build 0、preflight 0、npm test 0（2745 过、0 败、1 跳过）、探针 347/347、棘轮 76/19/1。Sequenced-later 五项对代码核对：1（gate 一路与 late）、2（scriptDetail/commandDetail）、3（clock.ts）、5（staleEntries/timeoutEntries 与周报）照原理由仍顺延；4（机器一级运行者与账号级两个通道事件）的理由已过时——M6 的契约与 quota/loopDefaults 已在 main，可以排期。分支比 origin/main 落后 8 个提交（仅 docs/graph）。合入 main 待人定：合入会让人同意过的脚本与检查条目真的起进程，且与 metrics 分支在 src/loops/run.ts、records.ts 冲突（exits 映射与 appendRun），后合入的一方对齐。"
+    },
+    {
+      "at": "2026-11-04T11:42:37.378Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "loops-runner 合入 main 的合并提交 fe6342f（工作树 .worktrees/merge-loops，无冲突、无修正提交）。合并树门禁：build 0、preflight 0、npm test 0（2745 过、0 败）、探针 347/347、棘轮 76/19/1。下一步：并入 main 新增的 docs/graph 提交后快进 main、推两个远端，再重启桌面版做循环板 L4。状态板块的续作运行在指标评审暂停后补上并行位。"
+    },
+    {
+      "at": "2026-11-04T11:49:52.426Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "loops-runner 已进 main：main 快进到 a9adca8 并推两个远端（origin/main 与 github/main 均为 a9adca8，ls-remote 核对）；其间 origin/main 新增的 5 个仅 docs/graph 的提交并入，未重跑门禁。merge-loops 工作树与分支已删。下一步：重启桌面版加载新 dist，做循环板 L4。M4 检查（m4-checks）、机器一级运行者（loops-machine）两条线由此可以基于含执行器的 main 推送。"
+    },
+    {
+      "at": "2026-11-04T12:36:39.475Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "循环板合入后的桌面重启（merge-loops-runner-l4 第 4 步）：主检出 npm run build 退出码 0；桌面版原本关着，build 后以 --remote-debugging-port=9333 启动；插件页两个包的行都在运行，只有 lessons、env 两行按出厂默认停用；行健康没有失败行；启动后没有新的 crash log，也没有新的控制台错误类别。结论：重启后无新错误。接着做循环板 L4。"
+    },
+    {
+      "at": "2026-11-04T16:34:22.083Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "loops-runner 合入后的首轮桌面验收（L4）通过：没有阻塞发现，9 条不阻塞发现。记录 .agents/tasks/loops-runner/l4-2026-11-04.md，提交 fbbdf78，合并为 b3c4e47；origin/main = github/main = b3c4e47；l4-loops 工作树与分支已删除。走通的项：列表、页面、主 Agent 一行、事件投递（loops.file-changed 投递 inject）、等人太久（loops.waiting-on-human）、到点条目与 DSH 自动化任务、删除恢复、停机与重启事件、最近跑过的。不阻塞发现中较重的两条：一、loops.host-restarted 的 downMinutes 算的是两次开跑之间的间隔，不是停机时长（本次停约 1 分钟，值为 30），用 downMinutes atLeast N 筛选的条目会误触发；二、在工作树里跑探针时，场景目录不是 git 仓库，循环行把它认到主检出项目上，改写主检出被忽略的 .llm/loops/view.json（见到两回）。节点保持进行中：loops-machine 仍在排队。"
+    },
+    {
+      "at": "2026-11-04T18:21:42.542Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "metrics 那条线完成腾出并行位，按队列恢复 workflow loops-machine（wf_ad93a3251d59f33a）。编排方追加到它的范围：先合入 origin/main（已含 loops-runner、user-graph、metrics）；修 loops-runner L4 的两条不阻塞发现，各带测试：loops.host-restarted 的 downMinutes 按停机时长计算；工作树里跑探针时循环行按场景目录自身解析项目根，不再改写主检出的 .llm/loops/view.json。与设计冲突时停下来问。"
+    },
+    {
+      "at": "2026-11-04T18:26:53.802Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "loops-machine 的 worker 指出：编排方转去的 L4 发现 (b)「循环行按场景目录自身解析项目根」与设计相抵。设计 §2.1 / §9.1 定的项目根是往上找 .git、主检出与工作树是同一个项目、取主检出的根，所以工作树里的会话落在主检出的 .llm/loops/ 是设计行为；偏离设计的是探针：55 个场景里约 10 个不给 cwd（run-probe.mjs 默认 cwd = 检出本身），另有几个场景目录没有 git init，而 §9.1 末段要求每个场景是新初始化的 git 仓库。编排方定选项 A：改探针一侧，不给 cwd 的场景与未初始化的场景目录都改成运行目录下各自 initRepo 的临时仓库，循环行不改；L2 加静态检查钉住「场景目录是 git 仓库」。未选 B（基础覆盖层关掉循环行、只在 loops 场景打开：其余场景不再同场验循环行）与 C（循环行加例外：与 §2.1 冲突）。编排方先前给的说法有误，已撤回。修好之前该运行不在工作树里跑探针。发现 (a) downMinutes 按上次干净退出或最后一次存活时刻计算，与设计不冲突，照做。"
+    },
+    {
+      "at": "2026-11-04T20:08:15.750Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "loops-machine 已推 origin/loops-machine（c93b9a9）：loops.host-restarted 的 downMinutes 改为按循环板停下的时长计算（L4 不阻塞发现 a）。探针一侧让场景目录各自成为 git 仓库的修复（发现 b，编排方定的选项 A）还在本运行里。"
     }
   ]
 }

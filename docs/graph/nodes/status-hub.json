@@ -115,6 +115,48 @@
       "actor": "llm",
       "op": "comment",
       "text": "批次 4（b459692，新分支 status-hub-2 基 main cdbcdff，2026-11-04，原线代理撞配额后个人套餐续作）：m4 条目——guard 行交 rules/denials（第一条拦下行为 text、其余与走对汇总进 detail，整本口径 F16）与 rules/lifts（含「撤下的规则：无」恒显）；env 行交 env/suppressions（最新计数、staleAfterMs 48h）；ruleLines/liftLines 所有权移入 guard 模块（晨报改导入，净删 171 行，禁 guard→workflow 反向依赖）。偏差记录：未提交撤下行需 git 不进同步条目；缺 lifts.jsonl 镜像报告读出口径；超时条目等 m4-checks；metrics/load 仍 BLOCKED；规则板页面留后续。门禁全绿（test 2670、probe 349/349、棘轮 76/19/1）。批次 6（M7 读取者与晨报改读）仍等 M7 合入。"
+    },
+    {
+      "at": "2026-11-04T11:35:07.235Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "状态板块续作基线：在 .worktrees/status-hub（分支 status-hub-2）上继续。领先的 b459692 是第 4 批（M4 条目：guard 行经 src/guard/status.ts 交 rules/denials 与 rules/lifts，env 行经 src/env/status.ts 交 env/suppressions），已推 origin/status-hub-2，main 上只有图上的记录、没有代码。合并 origin/main 为 c482ac0 已推；基线 build/preflight/test/probe 退出码 0（test 2717 过 0 败、探针 347/347、76/19/1）。"
+    },
+    {
+      "at": "2026-11-04T18:48:19.745Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "user-graph 那条线完成腾出并行位，按队列恢复 workflow status-hub-remaining-batches（wf_2226ae6097427667），停在 plan 步骤；分支 status-hub-2 基点 c482ac0，领先 1 个提交 b459692（batch 4）。编排方已让它先合入 origin/main（之后合入了 loops-runner、user-graph、metrics、视频改风格）、重跑 build，再按当前代码写计划。"
+    },
+    {
+      "at": "2026-11-04T19:34:32.736Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "status-hub-remaining 规划完成：合入 origin/main 07b3356（合并提交 bac6e16），门禁全绿（npm test 2954 个 / 0 失败，探针 376/376，棘轮 73/18/1）；impl-plan.md 已推 origin/status-hub-2（8702cf1）。现在能做：第 7 批 metrics/load、第 8 批 L3。在等：第 6 批等 M7 运维行 P3；超时条目等 m4-checks B5；循环板清单等 staleEntries/timeoutEntries；规则板 items 等规则板页面（目前没有运行在做规则板页面）。"
+    },
+    {
+      "at": "2026-11-04T20:08:15.989Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "第 7 批已推 origin/status-hub-2（3edd58a）：metrics/load，板块的负担数作为一条条目交给状态板块。下一步：第 8 批 L3。"
+    },
+    {
+      "at": "2026-11-04T20:35:22.352Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "第 7、8 批已推 origin/status-hub-2：3edd58a（第 7 批 metrics/load，探针 376/376）、f285d2b（第 8 批报告路 L3，探针 380/380）。两批四道门禁退出码均为 0，npm test 2956 通过 / 0 失败，棘轮 73/18/1 未上升。下一步：本轮评审。"
+    },
+    {
+      "at": "2026-11-04T20:37:47.787Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "第 7、8 批（3edd58a、f285d2b）评审 APPROVED，无阻塞（.worktrees/status-hub-run/review.json、review.md）。剩下的批次仍在等：第 6 批等 M7 运维行 P3；超时条目等 m4-checks B5；循环板清单等 staleEntries/timeoutEntries；规则板条目等规则板页面（rules-board-page 在做）。下一步：本运行的报告步骤。"
+    },
+    {
+      "at": "2026-11-04T20:41:34.709Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "workflow status-hub-remaining（wf_2226ae6097427667）完成：第 7、8 批（3edd58a、f285d2b）在 origin/status-hub-2，四道门禁为 0，探针 380/380，评审 APPROVED、0 条发现。做完条件第 4、5 条已完成，第 1、2、3、6 条剩 M7 那一半。status-hub-2 未合入 main：编排方让 rules-board-page 在开工时合入 origin/status-hub-2，两者一起合入 main（规则板页面要读的 rules/denials、rules/lifts 条目就在 status-hub-2 的第 4 批里）。"
     }
   ]
 }

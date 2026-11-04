@@ -1,6 +1,6 @@
 import React from "react";
 import { AbsoluteFill, interpolate, useCurrentFrame } from "remotion";
-import { Bold, GLASS, Reveal, SceneFade, SceneLabel } from "../parts";
+import { Bold, CARD, Reveal, SceneFade, SceneLabel, USER_BUBBLE } from "../parts";
 import { CLAMP, COLORS } from "../theme";
 
 const WISH = "/wish 给团队做一个订会议室的小工具";
@@ -25,25 +25,14 @@ const Typed: React.FC<{ text: string; from: number; to: number }> = ({ text, fro
   return (
     <span>
       {text.slice(0, shown)}
-      <span style={{ opacity: caret ? 1 : 0, color: COLORS.indigo }}>▍</span>
+      <span style={{ opacity: caret ? 1 : 0, color: COLORS.text }}>▍</span>
     </span>
   );
 };
 
 const UserBubble: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <div style={{ display: "flex", justifyContent: "flex-end" }}>
-    <div
-      style={{
-        background: "linear-gradient(135deg, rgba(142,162,255,0.30), rgba(195,166,255,0.20))",
-        border: "1.5px solid rgba(195,166,255,0.35)",
-        boxShadow: "0 18px 50px rgba(60, 70, 160, 0.30)",
-        borderRadius: 28,
-        padding: "20px 34px",
-        fontSize: 44,
-      }}
-    >
-      {children}
-    </div>
+    <div style={{ ...USER_BUBBLE, padding: "20px 34px", fontSize: 44 }}>{children}</div>
   </div>
 );
 
@@ -53,10 +42,11 @@ const Avatar: React.FC = () => (
       flex: "0 0 auto",
       width: 62,
       height: 62,
+      boxSizing: "border-box",
       borderRadius: 31,
-      background: `linear-gradient(135deg, ${COLORS.indigo}, ${COLORS.lilac})`,
-      boxShadow: "0 0 28px rgba(160, 150, 255, 0.45)",
-      color: COLORS.bg,
+      background: COLORS.sheet,
+      color: COLORS.text,
+      border: `2px solid ${COLORS.text}`,
       fontSize: 28,
       fontWeight: 700,
       display: "flex",
@@ -71,16 +61,14 @@ const Avatar: React.FC = () => (
 const AgentBubble: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <div style={{ display: "flex", gap: 22, alignItems: "flex-start" }}>
     <Avatar />
-    <div style={{ ...GLASS, padding: "24px 36px", fontSize: 40, lineHeight: 1.6 }}>{children}</div>
+    <div style={{ ...CARD, padding: "24px 36px", fontSize: 40, lineHeight: 1.6 }}>{children}</div>
   </div>
 );
 
 export const Wish: React.FC = () => (
   <SceneFade>
     <SceneLabel index="01" text="一句话许愿" />
-    <AbsoluteFill
-      style={{ padding: "190px 260px 90px", gap: 30, display: "flex", flexDirection: "column" }}
-    >
+    <AbsoluteFill style={{ padding: "190px 260px 90px", gap: 30, display: "flex", flexDirection: "column" }}>
       <Reveal at={4}>
         <UserBubble>
           <Typed text={WISH} from={6} to={36} />
@@ -106,7 +94,7 @@ export const Wish: React.FC = () => (
       </Reveal>
       <Reveal at={175}>
         <AgentBubble>
-          <span style={{ color: COLORS.mint }}>那我记成：</span>
+          <span style={{ color: COLORS.green }}>那我记成：</span>
           后订的人当场提示冲突、改订别的时段，不做候补。
         </AgentBubble>
       </Reveal>

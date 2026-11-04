@@ -2,7 +2,7 @@
   "id": "m4-checks",
   "type": "task",
   "title": "改完就跑的检查",
-  "status": "approved",
+  "status": "doing",
   "parent": "m4",
   "body": "M4 设计 0.6 的一件活。做完条件由人 2026-11-01 定下，见本节点验收（人话版 .agents/tasks/m4/onepage-done.md）。",
   "acceptance": [
@@ -23,6 +23,80 @@
       "reason": "人 2026-11-01 读 M4 一页稿后放行，并把七件活的 35 条做完条件一起定下（人话版 .agents/tasks/m4/onepage-done.md，设计 0.6 §1.2）",
       "relay": "都没问题",
       "to": "approved"
+    },
+    {
+      "at": "2026-11-04T10:57:44.313Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "运行 m4-checks-and-rules 开工（2026-11-04，人：「桌面版随便用，尽可能开多线」）",
+      "from": "approved",
+      "to": "doing"
+    },
+    {
+      "at": "2026-11-04T11:49:52.602Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m4-checks 运行的计划（.worktrees/m4-checks/.agents/tasks/m4/checks-plan.md）：6 批——B1 规则板流水按项目写，B2–B5 是 E3（改完就跑的检查）拆成的四批，B6 env 行出厂启用。逐批实现与评审循环接着跑。"
+    },
+    {
+      "at": "2026-11-04T13:38:22.694Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "B1（规则板违规流水按会话所在项目落盘，m4-rules 余项）：4da6f93 评审 APPROVED，已推 origin/m4-checks（新分支）；基于含 loops-runner 的 main（合并 4516ec6）。门禁：build 0、preflight 0、npm test 0（2747、0 败）、探针 347/347、76/19/1。剩 B2–B6（E3 四批与 env 行出厂启用）。"
+    },
+    {
+      "at": "2026-11-04T17:25:14.653Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M7 那条线完成腾出并行位，按队列恢复 workflow m4-checks（wf_10dc22064b5c2c1b）：B1 已在 origin/m4-checks（4da6f93），从 B2（检查行格式、glmHournessEnv 服务、循环板接缝、改完文件事件）继续；B2–B6 待做。分支基点早于 loops-runner、user-graph、metrics 合入 main，后续批次须先合 main。"
+    },
+    {
+      "at": "2026-11-04T18:47:32.281Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "B2 提交 1e71d10（m4-checks 分支，未推送，待本批评审）：检查行格式、glmHournessEnv 服务、循环板接缝、改完文件事件。四道门禁退出码均为 0：npm test 2773 个、0 失败，探针 351/351，棘轮 eslint 76 / knip 19 / jscpd 1 未上升；mainMerged 仍为 true。"
+    },
+    {
+      "at": "2026-11-04T18:59:54.963Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "B2（1e71d10）评审 CHANGES_REQUESTED，1 条阻塞：文档写读不出的检查行进 env 行的行健康，但代码里没有任何地方读 EnvBranch.issues（.worktrees/m4-checks/.llm/m4c/review.json）。本批进入修复轮。"
+    },
+    {
+      "at": "2026-11-04T19:28:48.781Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "B2 第 1 轮评审的阻塞 B2-1 已修，方式是改文档说法（读不出的检查行进 env 行行健康一句与代码对齐），修复并进 B2 提交，现为 9af4567（未推送）。门禁：build 0、preflight 0、npm test 0（2772 通过 / 0 失败 / 1 跳过），探针 351/351，棘轮 eslint 76 / knip 19 / jscpd 1。下一步：B2 第 2 轮评审，核对改文档而不接线是否满足设计。"
+    },
+    {
+      "at": "2026-11-04T19:34:33.594Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "B2（9af4567）第 2 轮评审 APPROVED：B2-1 已修，两处文档都写读不出的检查行进 envBranch().issues，与代码一致；无阻塞。下一步：推送 B2，然后 B3。"
+    },
+    {
+      "at": "2026-11-04T19:35:01.250Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "B2 已推：origin/m4-checks = 9af4567，mainMerged 为 true（4516ec6）。B3–B6 待做。"
+    },
+    {
+      "at": "2026-11-04T20:28:19.180Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "B3 提交 7f9697b（未推送，待本批评审）：人批准工具节点时看到的超时。四道门禁退出码均为 0：npm test 2784 个 / 0 失败，探针 353/353，棘轮 eslint 76 / knip 19 / jscpd 1；mainMerged 为 true。"
+    },
+    {
+      "at": "2026-11-04T20:30:23.292Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "B3（7f9697b）评审 APPROVED，无阻塞（.llm/m4c/review.md、review.json）。下一步：推送 B3，然后 B4。"
+    },
+    {
+      "at": "2026-11-04T20:30:58.571Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "B3 已推：origin/m4-checks = 7f9697b，mainMerged 为 true（4516ec6）。剩 B4、B5、B6。"
     }
   ]
 }

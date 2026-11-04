@@ -51,7 +51,7 @@ const SEPARATOR: Separator = Object.freeze({ kind: 'op' })
  * File-changing commands (the rule's command set, unchanged from the
  * pattern list it replaces): POSIX utilities and PowerShell cmdlets.
  */
-const WRITE_COMMANDS: ReadonlySet<string> = new Set([
+export const WRITE_COMMANDS: ReadonlySet<string> = new Set([
   'mv', 'cp', 'rm', 'rmdir', 'dd', 'touch', 'truncate', 'tee',
   'set-content', 'add-content', 'clear-content', 'out-file', 'tee-object', 'move-item', 'copy-item', 'remove-item', 'new-item',
 ])

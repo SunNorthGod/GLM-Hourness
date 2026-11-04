@@ -1,6 +1,6 @@
 import React from "react";
 import { AbsoluteFill } from "remotion";
-import { GLASS, Pill, Reveal } from "../parts";
+import { CARD, Pill, Reveal } from "../parts";
 import { COLORS } from "../theme";
 import { Avatar, MODEL } from "./Avatar";
 import { BEAT } from "./timeline";
@@ -18,7 +18,7 @@ export const Claim: React.FC = () => (
   <AbsoluteFill style={{ padding: "620px 135px 0 60px" }}>
     <Reveal at={0} style={{ display: "flex", alignItems: "center", gap: 20 }}>
       <Avatar {...MODEL} size={88} />
-      <div style={{ ...GLASS, padding: "26px 44px", fontSize: 84, fontWeight: 700, whiteSpace: "nowrap" }}>
+      <div style={{ ...CARD, padding: "26px 44px", fontSize: 84, fontWeight: 700, whiteSpace: "nowrap" }}>
         ✓ 全部完成
       </div>
     </Reveal>
@@ -32,10 +32,10 @@ export const Claim: React.FC = () => (
             marginLeft: 42,
             paddingLeft: 61,
             paddingTop: 16,
-            borderLeft: `3px solid ${COLORS.rose}55`,
+            borderLeft: `3px solid ${COLORS.red}55`,
           }}
         >
-          <Pill color={COLORS.rose} style={{ fontSize: 50, padding: "14px 30px", borderRadius: 24 }}>
+          <Pill color={COLORS.red} style={{ fontSize: 50, padding: "14px 30px" }}>
             {e.text}
           </Pill>
         </Reveal>

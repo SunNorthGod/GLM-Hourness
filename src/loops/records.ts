@@ -5,15 +5,16 @@
  * (a duplicate event, the run lock changing hands) write one record each. The
  * loop row writes them; what a model says is not a record.
  *
- * They go to `<project>/.llm/loops/runs.jsonl`, rotated at 8 MiB, until the
- * metrics stream lands; the step that lands it changes this file only (same
- * agreement as the rules board's metrics.ts). No output text of a run is ever
- * written here: a record carries how many bytes, not what they said.
+ * They go to the project's metrics journal as their `loop-*` events, mapped in
+ * metrics.ts (loop board design 0.6 §6.10; metrics design §12 step 6 — the
+ * board's own runs.jsonl is gone), and `recentRecords` is the one place that
+ * reads them back, for the page's last runs (F33). No output text of a run
+ * is ever written: a record carries how many bytes, not what they said.
  */
-import { rename, stat } from 'node:fs/promises'
 import { randomBytes } from 'node:crypto'
-import { appendLine, ROTATE_BYTES, stamp } from '../rules/store.ts'
-import type { LoopsPaths } from './store.ts'
+import { projectOf } from '../data/project-root.ts'
+import { readLog } from '../metrics/read.ts'
+import type { ViewRecord } from './view.ts'
 
 /** How a run ended (design §6.10). `held` and `deferred` are told again later with the outcome they reach. */
 export type RunOutcome =
@@ -21,14 +22,69 @@ export type RunOutcome =
   | 'deferred' | 'blocked' | 'refused' | 'unfinished' | 'held' | 'failed' | 'expired'
 
 /**
- * Why a run ended as it did. The design names these (§6.7, §6.10):
- * `rate`, `groups`, `self-loop` for a suppressed run; `unadopted`,
- * `check-missing`, `entry-changed`, `not-in-checkout` for a refused one;
- * `timeout`, `action-missing` for a harness action; the `holderState` of a
- * held message. A harness action's own `reason` is its words, so this is a
- * string and not a closed union.
+ * Why a run ended as it did (design §6.7, §6.9 item 4, §6.10 `reason`): a code
+ * of this closed table, never words. The journal's field tables take only
+ * id-shaped strings (metrics design §4.4; §1.6, counts and references, not
+ * text) and refuse a whole event that holds anything else, so a reason in
+ * words would lose the run, and the page's last runs with it. Where the page
+ * says a reason it maps the code back to words beside the outcome words
+ * (view.ts: `REFUSED_WORDS` and `self-loop`; design §8.5 has the other
+ * outcomes in their outcome's words); the message to the main agent and the
+ * row's health keep their own text. What
+ * another plugin says about its own action or run is its words, so it is
+ * recorded as `plugin-reason` (`reasonCode`).
  */
-export type RunReason = string
+export const RUN_REASONS = [
+  // held: the holder state's reason (holder.ts) and the ways this process cannot reach the session now (deliver.ts)
+  'no-record', 'mode-off', 'holder-archived', 'holder-not-found', 'handover', 'writer-held', 'archive-unreadable', 'holder-unreadable',
+  'session-cold', 'no-session-controller', 'row-unloaded',
+  // failed: a delivery the host did not take; its words go to the row's health
+  'deliver-failed',
+  // delivered: DSH did not deliver a due reminder and the board did (bind.ts)
+  'board-delivered',
+  // suppressed (inbox.ts)
+  'rate', 'groups', 'self-loop',
+  // refused (run.ts, and the executor's refusals in script.ts)
+  'unadopted', 'script-changed', 'script-missing', 'too-large', 'aborted', 'outside-project', 'check-missing', 'check-changed',
+  // the end of a script or a check (run.ts; the executor's crashes in script.ts); `timeout` is also a harness action's limit (harness.ts)
+  'timeout', 'spawn', 'signal', 'io', 'rules-unavailable',
+  // blocked by the rules board without a rule named (run.ts); a named one records the rule's id (`ruleReason`)
+  'rules',
+  // a run the rules board queued (run.ts)
+  'rules-queue-expired', 'entry-not-adopted',
+  // a harness action or a reported run (run.ts)
+  'action-missing', 'plugin-reason', 'board-error',
+  // the board's own peak-end action, by the rows of design §6.9 item 4 (peak.ts, run.ts)
+  'peak-no-holder', 'peak-level-unreadable', 'peak-level-inform', 'peak-holder-running', 'peak-holder-idle',
+  'peak-drive-paused', 'peak-waiting-human', 'peak-idle-rounds', 'peak-drive-blocked', 'peak-drive-caught-up', 'peak-rerun-expired',
+  // an event that cannot run (inbox.ts)
+  'undeclared-event', 'event-stale',
+  // delegated: the level the rules board reads when a peak starts (run.ts)
+  'inform', 'reduce', 'stop',
+] as const
+
+export type RunReasonCode = typeof RUN_REASONS[number]
+
+/** The id of a rule that blocked a run, in the rules board's grammar (src/rules/model.ts): `r-…` for a person's rule, `builtin:…` for the code's. */
+type RuleRef = `r-${string}` | `builtin:${string}`
+
+/** A run's `reason`: a code of the table, or the id of the rule that blocked it (a reference, id-shaped). */
+export type RunReason = RunReasonCode | RuleRef
+
+const CODES: ReadonlySet<string> = new Set(RUN_REASONS)
+
+/** A reason given as text (another plugin's action or reported run): kept when it is a code of the table, else `otherwise`. */
+export function reasonCode(text: string | undefined, otherwise: RunReasonCode): RunReasonCode {
+  return text !== undefined && CODES.has(text) ? text as RunReasonCode : otherwise
+}
+
+/** The rule ids of the rules board (src/rules/model.ts `RULE_ID`, `BUILTIN_ID`). */
+const RULE_REF = /^(?:r-[a-z0-9][a-z0-9-]{0,45}|builtin:[a-z0-9][a-z0-9-]{0,40})$/
+
+/** The reason of a blocked run: the rule's id when it is one, else `rules`. */
+export function ruleReason(id: string | undefined): RunReason {
+  return id !== undefined && RULE_REF.test(id) ? id as RuleRef : 'rules'
+}
 
 export interface FiredRecord {
   readonly kind: 'loop-fired'
@@ -57,6 +113,8 @@ export interface DoneRecord {
   readonly reason?: RunReason
   readonly durationMs?: number
   readonly outputBytes?: number
+  /** The exit codes of the processes the run started (design §6.10 `exits`); a run that started none has none. */
+  readonly exits?: number[]
   readonly delivery?: 'steer' | 'inject' | 'followup' | 'dsh'
   readonly messageId?: string
 }
@@ -153,18 +211,62 @@ export function eventId(): string {
   return `ev-${randomBytes(8).toString('hex')}`
 }
 
+/** The records the page's last runs list (design §8.2 item 7): the runs, the events reported again, the DSH reminders the board deleted, in the view's shape. */
+type RecentRecord = ViewRecord
+
+/** How far back the last runs are looked for (metrics design F33: the board's readers take a 28-day window). */
+const RECENT_DAYS = 28
+
+const DAY_MS = 86_400_000
+
+const text = (value: unknown): string | undefined => typeof value === 'string' ? value : undefined
+
+/** One journal event as a record the page lists, or undefined for every other kind. */
+function recentOf(kind: string, at: string, body: Readonly<Record<string, unknown>>): RecentRecord | undefined {
+  const entry = text(body['entry'])
+  if (kind === 'loop-done') {
+    const outcome = text(body['outcome'])
+    if (entry === undefined || outcome === undefined) return undefined
+    const reason = text(body['reason'])
+    const exits = Array.isArray(body['exits']) ? body['exits'].filter((code): code is number => typeof code === 'number') : undefined
+    return { kind, at, entry, outcome, ...(reason === undefined ? {} : { reason }), ...(exits === undefined ? {} : { exits }) }
+  }
+  if (kind === 'loop-duplicate') {
+    const event = text(body['event'])
+    return event === undefined ? undefined : { kind, at, event }
+  }
+  if (kind === 'loop-task-delete') {
+    const why = text(body['why'])
+    if (why === undefined || typeof body['deleted'] !== 'boolean') return undefined
+    return { kind, at, ...(entry === undefined ? {} : { entry }), why, deleted: body['deleted'] }
+  }
+  return undefined
+}
+
 /**
- * Append one record, rotating the file first when it has reached 8 MiB. A
- * failure to write never reaches the run: the caller is told through `problem`
- * and the run goes on, since a record is evidence and not a step of the work.
+ * The latest records the page lists, oldest first, at most `limit`, from the
+ * project's metrics journal (`readLog`, so the lines are the ones the
+ * journal's own tables accept): one UTC day file at a time, newest first,
+ * back at most 28 days, stopping once `limit` are found. Never throws: a
+ * journal that is not there or cannot be read has no recent runs.
  */
-export async function appendRun(paths: LoopsPaths, record: LoopRecord, problem?: (message: string) => void): Promise<void> {
+export async function recentRecords(root: string, nowMs: number, limit: number): Promise<RecentRecord[]> {
+  const journal = projectOf(root)?.root ?? root
+  const found: RecentRecord[] = []
   try {
-    const size = await stat(paths.runs).then(found => found.size).catch(() => 0)
-    if (size >= ROTATE_BYTES) await rename(paths.runs, paths.runs.replace(/\.jsonl$/, `-${stamp(Date.parse(record.at))}.jsonl`)).catch(() => {})
-    await appendLine(paths.runs, record)
+    for (let back = 0; back < RECENT_DAYS && found.length < limit; back += 1) {
+      const day = new Date(nowMs - back * DAY_MS).toISOString().slice(0, 10)
+      const next = new Date(Date.parse(day) + DAY_MS).toISOString().slice(0, 10)
+      const { events } = await readLog(journal, { from: day, to: next })
+      const ofDay = events.flatMap((event) => {
+        const record = recentOf(event.k, event.at, event.body)
+        return record === undefined ? [] : [record]
+      })
+      found.unshift(...ofDay)
+    }
   }
-  catch (error) {
-    problem?.(`运行记录写不进：${error instanceof Error ? error.message : String(error)}`)
+  catch {
+    // A day file that cannot be read ends the look back; what was found stands.
   }
+  return found.slice(-limit)
 }

@@ -99,7 +99,9 @@ test('the row registers one tool per llm operation with schemas inside the rc.3 
   assert.deepEqual(runtime.scoped.map(tool => tool.name), GRAPH_TOOL_NAMES)
   for (const tool of runtime.scoped) {
     assert.deepEqual(schemaViolations(tool.parameters, `${tool.name}.parameters`), [])
-    assert.ok(tool.description.length > 0 && tool.description.length < 600, tool.name)
+    // graph_relink's description carries the whole two-call example the main agent follows (user-graph design 0.4.1 §3.5); the rest stay short.
+    const cap = tool.name === 'graph_relink' ? 1600 : 600
+    assert.ok(tool.description.length > 0 && tool.description.length < cap, tool.name)
   }
   // A supersession is a proposal with a supersedes edge (ORCHESTRATION.md §2.9); it has no tool of its own.
   assert.equal(runtime.ctx.tools.get('graph_supersede'), undefined)

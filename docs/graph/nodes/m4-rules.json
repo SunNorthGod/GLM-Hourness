@@ -2,7 +2,7 @@
   "id": "m4-rules",
   "type": "task",
   "title": "三条规划规矩",
-  "status": "approved",
+  "status": "doing",
   "parent": "m4",
   "body": "M4 设计 0.6 的一件活。做完条件由人 2026-11-01 定下，见本节点验收（人话版 .agents/tasks/m4/onepage-done.md）。",
   "acceptance": [
@@ -30,6 +30,14 @@
       "actor": "llm",
       "op": "comment",
       "text": "来自 m4-gate 评审 pass1 的 MINOR（2026-11-03）：src/rules/index.ts:249 仍经 rowJournal+dataHomes 写流水，而晨报已改读 projectJournal（projectHomeFor），规则板的拒绝/排队/记录行落不进晨报例外段；本任务把 src/rules 挪到 projectJournal（设计 0.6-finish2 §3.2:376、:538 原文即如此）。行未启用，今天无生产影响。"
+    },
+    {
+      "at": "2026-11-04T10:57:44.564Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "运行 m4-checks-and-rules 开工（2026-11-04，人：「桌面版随便用，尽可能开多线」）",
+      "from": "approved",
+      "to": "doing"
     }
   ]
 }

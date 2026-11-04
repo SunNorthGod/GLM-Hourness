@@ -1,7 +1,7 @@
 import React from "react";
 import { AbsoluteFill, interpolate, useCurrentFrame } from "remotion";
-import { GLASS, GradientText, Pill, Reveal, SceneFade, SceneLabel } from "../parts";
-import { CLAMP, COLORS, EASE, PASSED } from "../theme";
+import { CARD, edgePath, Pill, Reveal, SceneFade, SceneLabel, stateEdge, type CardState } from "../parts";
+import { CLAMP, COLORS, EASE, MONO, tint } from "../theme";
 
 type Box = { id: string; label: string; x: number; y: number; w: number };
 
@@ -26,34 +26,31 @@ const boxOf = (id: string) => {
   return box;
 };
 
-/** A smooth curve from the bottom of one box to the top of another, drawn in over 18 frames. */
+/** A line from the bottom of one box to the top of another, drawn in over 18 frames. */
 const Edge: React.FC<{ from: string; to: string; at: number }> = ({ from, to, at }) => {
   const frame = useCurrentFrame();
   const a = boxOf(from);
   const b = boxOf(to);
-  const y1 = a.y + BOX_H / 2;
-  const y2 = b.y - BOX_H / 2;
-  const mid = (y1 + y2) / 2;
+  const drawn = interpolate(frame, [at, at + 18], [0, 1], { ...CLAMP, easing: EASE });
   return (
     <path
-      d={`M ${a.x} ${y1} C ${a.x} ${mid}, ${b.x} ${mid}, ${b.x} ${y2}`}
+      d={edgePath(a.x, a.y + BOX_H / 2, b.x, b.y - BOX_H / 2)}
       fill="none"
-      stroke="url(#edge)"
-      strokeWidth={2.5}
+      stroke={COLORS.text}
+      strokeWidth={2}
       pathLength={1}
       strokeDasharray={1}
-      strokeDashoffset={interpolate(frame, [at, at + 18], [1, 0], { ...CLAMP, easing: EASE })}
+      strokeDashoffset={1 - drawn}
     />
   );
 };
 
-const Card: React.FC<{
-  box: Box;
-  at: number;
-  border?: string;
-  glow?: string;
-  badge?: React.ReactNode;
-}> = ({ box, at, border, glow, badge }) => (
+const Card: React.FC<{ box: Box; at: number; kind?: CardState; badge?: React.ReactNode }> = ({
+  box,
+  at,
+  kind = "plain",
+  badge,
+}) => (
   <Reveal
     at={at}
     style={{
@@ -66,18 +63,16 @@ const Card: React.FC<{
   >
     <div
       style={{
-        ...GLASS,
+        ...CARD,
         width: "100%",
         height: "100%",
         boxSizing: "border-box",
-        borderRadius: 22,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
         fontSize: 38,
         position: "relative",
-        ...(border ? { border: `1.5px solid ${border}` } : {}),
-        ...(glow ? { boxShadow: `0 0 42px ${glow}, 0 24px 70px rgba(0,0,0,0.45)` } : {}),
+        ...stateEdge(kind, 1.5),
       }}
     >
       {box.label}
@@ -86,6 +81,7 @@ const Card: React.FC<{
   </Reveal>
 );
 
+/** A label pinned to the top-right corner of a card, its left edge clear of the card's centre, where the connector lands. */
 const Badge: React.FC<{ at: number; color: string; children: React.ReactNode }> = ({ at, color, children }) => {
   const frame = useCurrentFrame();
   return (
@@ -93,12 +89,11 @@ const Badge: React.FC<{ at: number; color: string; children: React.ReactNode }> 
       style={{
         position: "absolute",
         top: -20,
-        right: 18,
+        right: 0,
         opacity: interpolate(frame, [at, at + 8], [0, 1], CLAMP),
-        scale: interpolate(frame, [at, at + 12], [0.7, 1], { ...CLAMP, easing: EASE, output: "perceptual-scale" }),
       }}
     >
-      <Pill color={color} style={{ background: "rgba(10, 12, 22, 0.92)" }}>
+      <Pill color={color} style={{ background: tint(COLORS.sheet, 0.92) }}>
         {children}
       </Pill>
     </div>
@@ -108,26 +103,14 @@ const Badge: React.FC<{ at: number; color: string; children: React.ReactNode }> 
 const TaskCard: React.FC<{ task: (typeof TASKS)[number] }> = ({ task }) => {
   const frame = useCurrentFrame();
   const done = frame >= task.reviewed;
-  const working = frame >= task.start && !done;
-  const pulse = working ? 0.5 + 0.5 * Math.sin((frame - task.start) / 4) : 0;
-  const border = done
-    ? "rgba(134, 227, 192, 0.75)"
-    : working
-      ? `rgba(125, 216, 240, ${0.4 + 0.5 * pulse})`
-      : undefined;
-  const glow = done
-    ? "rgba(134, 227, 192, 0.28)"
-    : working
-      ? `rgba(125, 216, 240, ${0.12 + 0.22 * pulse})`
-      : undefined;
+  const busy = frame >= task.start && !done;
   return (
     <Card
       box={task}
       at={40}
-      {...(border ? { border } : {})}
-      {...(glow ? { glow } : {})}
+      kind={done ? "done" : busy ? "working" : "plain"}
       badge={
-        <Badge at={task.reviewed} color={COLORS.mint}>
+        <Badge at={task.reviewed} color={COLORS.green}>
           审查 ✓
         </Badge>
       }
@@ -154,7 +137,7 @@ const Worker: React.FC<{ task: (typeof TASKS)[number]; name: string }> = ({ task
         ),
       }}
     >
-      <Pill color={COLORS.cyan} style={{ background: "rgba(10, 12, 22, 0.92)" }}>
+      <Pill color={COLORS.amber} style={{ background: tint(COLORS.sheet, 0.92) }}>
         ● {name}
       </Pill>
     </div>
@@ -173,10 +156,20 @@ const Trunk: React.FC = () => {
           right: 0,
           top: 44,
           height: 2,
-          background: "linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,0.18) 12%, rgba(255,255,255,0.18) 88%, rgba(255,255,255,0))",
+          background: COLORS.text,
         }}
       />
-      <div style={{ position: "absolute", left: -118, top: 24, fontSize: 30, color: COLORS.faint, letterSpacing: 2 }}>
+      <div
+        style={{
+          position: "absolute",
+          left: -118,
+          top: 24,
+          fontFamily: MONO,
+          fontSize: 30,
+          color: COLORS.faint,
+          letterSpacing: 2,
+        }}
+      >
         main
       </div>
       {TASKS.map((task, i) => {
@@ -195,7 +188,7 @@ const Trunk: React.FC = () => {
               opacity: interpolate(frame, [at, at + 8], [0, 1], CLAMP),
             }}
           >
-            <div style={{ fontSize: 22, color: COLORS.mint, marginBottom: 6, whiteSpace: "nowrap" }}>
+            <div style={{ fontSize: 22, color: COLORS.green, marginBottom: 6, whiteSpace: "nowrap" }}>
               合入前的检查 ✓
             </div>
             <div
@@ -204,9 +197,7 @@ const Trunk: React.FC = () => {
                 height: 22,
                 borderRadius: 11,
                 background: COLORS.bg,
-                border: `3px solid ${COLORS.mint}`,
-                boxShadow: "0 0 18px rgba(134, 227, 192, 0.6)",
-                scale: interpolate(frame, [at, at + 12], [0.4, 1], { ...CLAMP, easing: EASE, output: "perceptual-scale" }),
+                border: `3px solid ${COLORS.green}`,
               }}
             />
           </div>
@@ -221,12 +212,6 @@ export const Drive: React.FC = () => (
     <SceneLabel index="02" text="放行以后，它自己往下做" />
     <AbsoluteFill>
       <svg width={1920} height={1080} style={{ position: "absolute" }}>
-        <defs>
-          <linearGradient id="edge" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="rgba(142,162,255,0.55)" />
-            <stop offset="100%" stopColor="rgba(195,166,255,0.25)" />
-          </linearGradient>
-        </defs>
         {MODULES.map((m, i) => (
           <Edge key={m.id} from="goal" to={m.id} at={16 + i * 4} />
         ))}
@@ -234,12 +219,7 @@ export const Drive: React.FC = () => (
           <Edge key={t.id} from={t.parent} to={t.id} at={36} />
         ))}
       </svg>
-      <Card
-        box={GOAL}
-        at={8}
-        border="rgba(195, 166, 255, 0.55)"
-        glow="rgba(142, 162, 255, 0.25)"
-      />
+      <Card box={GOAL} at={8} kind="goal" />
       {MODULES.map((m, i) => (
         <Card
           key={m.id}
@@ -247,7 +227,7 @@ export const Drive: React.FC = () => (
           at={20 + i * 4}
           badge={
             i < 2 ? (
-              <Badge at={32 + i * 6} color={COLORS.apricot}>
+              <Badge at={32 + i * 6} color={COLORS.text}>
                 已放行
               </Badge>
             ) : (
@@ -267,7 +247,17 @@ export const Drive: React.FC = () => (
       <Trunk />
       <Reveal at={185} style={{ position: "absolute", right: 110, top: 84 }}>
         <div style={{ fontSize: 42 }}>
-          主干只前进到<GradientText gradient={PASSED}>检查过的提交</GradientText>
+          主干只前进到
+          <span
+            style={{
+              textDecorationLine: "underline",
+              textDecorationColor: COLORS.green,
+              textDecorationThickness: "4px",
+              textUnderlineOffset: "10px",
+            }}
+          >
+            检查过的提交
+          </span>
         </div>
       </Reveal>
     </AbsoluteFill>

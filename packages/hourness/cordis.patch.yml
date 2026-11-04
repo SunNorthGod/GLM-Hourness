@@ -140,13 +140,36 @@
       # a process that has a session controller it holds the project's run
       # lock, beats every 60 seconds, reads the inbox and runs what an entry
       # says to do; entries that tell the main agent are bound to DSH schedule
-      # tasks and delivered to the holder (docs/ORCHESTRATION.md §18.10). Not
-      # here yet: the tools and the pages, and the executor of a script
-      # or a check entry (those two end refused). Ships enabled since the
+      # tasks and delivered to the holder (docs/ORCHESTRATION.md §18.10);
+      # script and check entries a person adopted run through the shared
+      # executor (§18.9), and /loops and the loop board page of the panel list
+      # every entry (§18.7). Not here yet: the tools through which a person
+      # agrees to a new entry; check entries end refused (check-missing) until
+      # the env row lands. Ships enabled since the
       # rules-loops enablement (2026-11-04): the L3 probe scenarios (loops,
       # loops-peak, loops-peak-restart) passed; the first desktop pass
       # (docs/DEVELOPMENT.md §3, AGENTS.md) is still owed.
       name: dsh-hourness/loops
+      config: {}
+    - id: glm-hourness/metrics
+      # Metrics journal (metrics design 0.7, docs/ORCHESTRATION.md §10.6):
+      # one journal per project at .llm/metrics/ (envelope plus namespace
+      # body, SHA-256 chained, only harness writes). The row provides the
+      # glmHournessMetrics service for the other rows' events, observes the
+      # host's own seams for llm, tool, turn, approval, command and said,
+      # checks yesterday and today in the background, handing the loop board
+      # a daily self-check entry when it is there, and installs the code rule
+      # metrics-files-only over the journal's files (and over
+      # `npm run metrics -- prune`). The sibling rows' senders hand their
+      # events through the service: the rules gate's rules.judged, the rules
+      # command line's rules.check, the env row's daily suppression count,
+      # the loop board's records (its runs.jsonl is gone). Ships enabled
+      # since the metrics wiring (2026-11-04); the L3 probe scenarios
+      # (metrics, non-glm-metrics, metrics-concurrent) pass on the branch,
+      # and the first desktop pass (docs/DEVELOPMENT.md §3, AGENTS.md) is
+      # still owed — the enablement merge closes the desktop first and
+      # restarts into it (DEVELOPMENT.md §5.4).
+      name: dsh-hourness/metrics
       config: {}
     - id: glm-hourness/env
       # Environment branch and scratch area (docs/ORCHESTRATION.md §7.1, §7.4;
@@ -161,6 +184,21 @@
       # env-notice) and the first desktop pass (docs/DEVELOPMENT.md §3,
       # AGENTS.md).
       name: dsh-hourness/env
+      disabled: true
+      config: {}
+    - id: glm-hourness/transcript
+      # Session transcript (docs/DESIGN.md §2.4, §5.6): when a GLM compaction
+      # summary is done, the glm-compact row asks this row's service
+      # glmHournessTranscript to write the session's whole log as plain text
+      # to <project>/.llm/transcripts/<session id>.txt (made git-ignored
+      # first; not written while git still sees .llm/), and ends the summary
+      # with ZCode 3.17.1's sentence pointing at that file, which the model
+      # reads with Read. Each write rewrites the session's file and deletes
+      # the other sessions' files not written for 14 days. config.home
+      # overrides the project data directory. Ships disabled until the L3
+      # probe (scenario glm-compact-transcript) and the first desktop pass
+      # (docs/DEVELOPMENT.md §3, AGENTS.md rule 4).
+      name: dsh-hourness/transcript
       disabled: true
       config: {}
     - id: glm-hourness/ui

@@ -1,0 +1,25 @@
+{
+  "id": "d-video-paper-style",
+  "type": "decision",
+  "title": "宣传视频改为纸面排版风，状态色借工程图纸风（进行中琥珀、通过绿）",
+  "status": "approved",
+  "parent": "field-trial",
+  "verification": "unverified",
+  "body": "人 2026-11-04 先说「视频背景配色主题之类的能不能改一下？现在AI味太浓了」；看过三套样张（纸面排版、工程图纸、手绘白板）与编排方的建议「① 纸面，再借 ② 的状态色」后答「行」。定下：两支片（Short、Sample）改为纸面排版风（米白底、黑字、一种强调色、无渐变无发光），进行中与通过两种状态用图纸风的琥珀与绿；去掉深蓝底与漂移光晕、渐变字、毛玻璃卡片、发光头像与卡片、呼吸灯、弹出缩放动效。内容、字幕、时长、配乐不动。",
+  "history": [
+    {
+      "at": "2026-11-04T15:03:37.466Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "人同意视频改用纸面排版风并借图纸风的状态色",
+      "relay": "行",
+      "to": "approved"
+    },
+    {
+      "at": "2026-11-04T15:10:06.518Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "落地取舍（视频运行记在 .worktrees/video-restyle/.agents/tasks/video-restyle/choice.md）：状态色进行中琥珀 #9A6700、通过绿 #287538；主题层在 video/src/theme/ 与 video/src/parts.tsx。"
+    }
+  ]
+}

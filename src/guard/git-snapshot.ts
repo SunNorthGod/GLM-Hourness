@@ -314,6 +314,11 @@ function cleanRefusal(invocation: GitInvocation): Refusal | undefined {
   return forced >= 2 ? refuse('nested-repos', 'git clean with -f twice deletes nested repositories') : undefined
 }
 
+/** Whether a git call is a `git clean` that deletes ignored files (`-x` or `-X`) and is not a dry run: the metrics row's rule counts it as a delete (metrics design §5.3). */
+export function cleansIgnored(invocation: GitInvocation): boolean {
+  return cleanRefusal(invocation)?.code === 'ignored-files'
+}
+
 // ---------------------------------------------------------------------------
 // Process, environment, limits
 

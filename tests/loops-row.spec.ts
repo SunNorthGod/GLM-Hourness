@@ -1,10 +1,12 @@
 /**
  * The loop row on the fake rc.3 host (docs/ORCHESTRATION.md §18; loop board
- * design §7.2, §8.4, §11.1): `/loops delete`, `restore` and `ack` as the person
- * types them and what they answer, the settling of a project's files when a
- * session starts in it, the project's `view.json`, the row's health, the
- * session projection `hournessLoops`, and what the row says when the host lacks
- * a part. The storage under it is in loops-store.spec.ts.
+ * design §7.2, §8.4, §11.1): `/loops` and its `delete`, `restore` and `ack`
+ * as the person types them and what they answer, the settling of a project's
+ * files when a session starts in it, the project's `view.json` with what the
+ * runtime kept and recorded, the row's health, the session projection
+ * `hournessLoops`, and what the row says when the host lacks a part. The
+ * storage under it is in loops-store.spec.ts; the view's words and the page
+ * in loops-panel-model.spec.ts.
  */
 import assert from 'node:assert/strict'
 import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises'
@@ -18,7 +20,10 @@ import { LOOPS_DECLARATION, loopsService } from '../src/loops/service.ts'
 import { NOT_A_PROJECT } from '../src/loops/commands.ts'
 import { entryFileText } from '../src/loops/model.ts'
 import { openLoopStore } from '../src/loops/store.ts'
-import type { LoopsView } from '../src/loops/view.ts'
+import { nextOccurrence } from '../src/loops/trigger.ts'
+import { momentText, type LoopsView } from '../src/loops/view.ts'
+import { appendEvents } from '../src/metrics/library.ts'
+import type { EmittedEvent } from '../src/shared/metrics.ts'
 import { entryFileOf, NOW, quickIo, recordsOf, scriptEntry, SCRIPT_TEXT, seedAgreed, tellEntry, writeFiles } from './loops-helpers.ts'
 import { withLoopsRow, type LoopsFixture } from './loops-host.ts'
 
@@ -54,14 +59,49 @@ rowTest('the service the row provides carries the line the guard adds to its pro
 
 // ------------------------------------------------------------------ /loops
 
-rowTest('/loops with nothing, or with a word it does not know, or without its argument, answers the usage and writes nothing', async (fixture) => {
+rowTest('/loops with a word it does not know, or without its argument, answers the usage and writes nothing', async (fixture) => {
   await agreed(fixture, tellEntry(A))
   const before = await readFile(join(fixture.root, '.llm', 'loops', 'journal.jsonl'), 'utf8')
-  for (const input of ['', 'frobnicate', 'delete', 'delete   ', 'restore', 'restore not-an-id', 'ack now', 'accept lp-0123abcd']) {
+  for (const input of ['frobnicate', 'delete', 'delete   ', 'restore', 'restore not-an-id', 'ack now', 'accept lp-0123abcd']) {
     const result = await fixture.run(input)
-    assert.deepEqual([input, result.kind, result.text], [input, 'error', '用法：/loops delete <名字或 id>、/loops restore <id>、/loops ack'])
+    assert.deepEqual([input, result.kind, result.text], [input, 'error', '用法：/loops（列出全部）、/loops delete <名字或 id>、/loops restore <id>、/loops ack'])
   }
   assert.equal(await readFile(join(fixture.root, '.llm', 'loops', 'journal.jsonl'), 'utf8'), before)
+})
+
+/** The machine's words for a time written in a zone: none when the zone is this machine's. */
+const zoneOf = (timeZone: string): string => timeZone === Intl.DateTimeFormat().resolvedOptions().timeZone ? '' : `（${timeZone}）`
+
+rowTest('/loops with nothing lists every entry: the plugins\' first, then the person\'s with how to change and delete them and their ids, the deleted ones with their restore line, and what waits; it writes nothing', async (fixture) => {
+  await agreed(fixture, tellEntry(A), scriptEntry(B), tellEntry(C, { title: '第三项' }))
+  await fixture.run(`delete ${C}`)
+  const before = await readFile(join(fixture.root, '.llm', 'loops', 'journal.jsonl'), 'utf8')
+  const result = await fixture.run('')
+  assert.equal(result.kind, 'success')
+  const lines = result.text.split('\n')
+  const next = momentText(nextOccurrence(tellEntry(A).when, new Date(NOW), Intl.DateTimeFormat().resolvedOptions().timeZone)!)
+  const mine = lines.indexOf('你自己加的（2 项）：')
+  // Without a pricing service the loop row hands over its two entries that are not about the peak; the one whose events nobody declares does not run now.
+  assert.deepEqual(lines.slice(0, mine), [
+    '插件带来的（2 项，只能看）：',
+    '· 依赖文件变了之后：查依赖 · 碰到「hourness.trunk-advanced」或「hourness.outside-advance」 · 还没跑过 · 现在不跑',
+    '· 有事等你太久时：再跟你说一次 · 碰到「有事等你超过一段时间」 · 还没跑过',
+  ])
+  assert.deepEqual(lines.slice(mine + 1), [
+    `· 每周五看一眼没合入的分支 · 每周五 17:00${zoneOf('Asia/Shanghai')} · 还没跑过 · 下次 ${next}`,
+    '· 重启之后查一下服务 · 碰到「DSH 重新启动了」 · 还没跑过',
+    '要改：跟主 Agent 说「把<名字>改成……」；要删：在输入框打 /loops delete <名字或 id>',
+    `你加的各项的 id：${A}「每周五看一眼没合入的分支」、${B}「重启之后查一下服务」`,
+    `7 天内删掉的「第三项」：打 /loops restore ${C} 能恢复`,
+    '在等的 0 件',
+  ])
+  assert.equal(await readFile(join(fixture.root, '.llm', 'loops', 'journal.jsonl'), 'utf8'), before)
+})
+
+rowTest('/loops with nothing in a project without entries of the person\'s says how to add one', async (fixture) => {
+  const result = await fixture.run('')
+  assert.equal(result.kind, 'success')
+  assert.deepEqual(result.text.split('\n').slice(-3), ['你自己加的（0 项）：', '还没有你加的。要加：跟主 Agent 说「每 30 分钟查一下服务器，挂了告诉我」', '在等的 0 件'])
 })
 
 rowTest('/loops delete by id deletes the person\'s entry in one line that says how to get it back; the change is the person\'s in the record and git sees the file go', async (fixture) => {
@@ -165,6 +205,61 @@ rowTest('view.json is written when its content changes and at most every 2 secon
   await fixture.runtime.create()
   assert.deepEqual(fixture.delayed, [], 'the same content: nothing to write, nothing to wait for')
   assert.equal(await readFile(join(fixture.root, '.llm', 'loops', 'view.json'), 'utf8'), written)
+})
+
+/** A `loop-done` event of the project's metrics journal, where the run records are. */
+const doneEvent = (entry: string, run: string, at: string, outcome: string, more: { readonly reason?: string, readonly exits?: readonly number[] } = {}): EmittedEvent =>
+  ({ k: 'loop-done', by: 'loops', at, body: { entry, run, outcome, ...more } })
+
+rowTest('view.json carries what the runtime kept: each entry\'s last run in the page\'s words, the main agent\'s line, how many things wait, and the last runs newest first', async (fixture) => {
+  await agreed(fixture, tellEntry(A), scriptEntry(B))
+  const runtimeDir = join(fixture.root, '.llm', 'loops')
+  await writeFile(join(runtimeDir, 'state.json'), JSON.stringify({
+    last: {
+      [A]: { run: 'run-0000000000a1', at: '2026-11-01T09:00:00.000Z', outcome: 'delivered' },
+      [B]: { run: 'run-0000000000b1', at: '2026-11-01T10:00:00.000Z', outcome: 'reported' },
+    },
+    passing: { [B]: false },
+    holder: { state: 'archived', reason: 'holder-archived', session: 'sess-main', at: '2026-11-01T08:00:00.000Z' },
+    held: [{ at: '2026-11-01T09:00:00.000Z', entry: A, run: 'run-0000000000a1', title: '每周五看一眼没合入的分支', text: 'Weekly.', wake: true, reason: 'holder-archived' }],
+  }))
+  const written = await appendEvents(fixture.root, [
+    doneEvent(A, 'run-0000000000a1', '2026-11-01T09:00:00.000Z', 'held', { reason: 'holder-archived' }),
+    { k: 'loop-holder', by: 'loops', at: '2026-11-01T09:00:00.000Z', body: { state: 'archived' } },
+    { k: 'loop-duplicate', by: 'loops', at: '2026-11-01T09:30:00.000Z', body: { event: 'loops.host-restarted', key: 'host-restarted:p:1', from: 'loops', firstSeen: '2026-11-01T09:29:00.000Z' } },
+    doneEvent(B, 'run-0000000000b1', '2026-11-01T10:00:00.000Z', 'reported', { exits: [1] }),
+    { k: 'loop-task-delete', by: 'loops', at: '2026-11-01T10:30:00.000Z', body: { entry: A, scheduleId: 'task-1', why: 'holder-archived', deleted: true } },
+  ])
+  assert.equal(written.rejected, 0, 'the journal takes every fixture event')
+  await fixture.runtime.create()
+  const view = await viewOf(fixture.root)
+  const entry = (id: string) => view.entries.find(item => item.id === id)
+  assert.deepEqual(entry(A)?.last, { at: '2026-11-01T09:00:00.000Z', outcome: 'delivered', text: '已交给主 Agent' })
+  assert.deepEqual(entry(B)?.last, { at: '2026-11-01T10:00:00.000Z', outcome: 'reported', text: '没过，已告诉主 Agent' })
+  assert.deepEqual([entry(A)?.trigger, entry(A)?.when, entry(A)?.does, entry(A)?.from], ['time', `每周五 17:00${zoneOf('Asia/Shanghai')}`, '告诉主 Agent', '你在对话里加的：「好，每周五提醒我看一眼」'])
+  assert.equal(entry(A)?.next, nextOccurrence(tellEntry(A).when, new Date(NOW), Intl.DateTimeFormat().resolvedOptions().timeZone)?.toISOString())
+  assert.deepEqual([entry(B)?.trigger, entry(B)?.does, entry(B)?.next], ['event', `跑脚本 docs/loops/scripts/${B}.mjs，没过才告诉主 Agent`, undefined])
+  assert.deepEqual(view.holder, { line: '主 Agent 的会话已归档：在一个会话里打 /wish here', session: 'sess-main' })
+  assert.equal(view.waiting, 1)
+  assert.deepEqual(view.recent, [
+    { at: '2026-11-01T10:30:00.000Z', title: '每周五看一眼没合入的分支', text: '删掉了 DSH 里的旧提醒（主 Agent 的会话已归档）' },
+    { at: '2026-11-01T10:00:00.000Z', title: '重启之后查一下服务', text: '没过，已告诉主 Agent' },
+    { at: '2026-11-01T09:30:00.000Z', title: 'DSH 重新启动了', text: '同一件事又报了一次，没再跑' },
+    { at: '2026-11-01T09:00:00.000Z', title: '每周五看一眼没合入的分支', text: '先存着' },
+  ])
+})
+
+rowTest('after every beat of a project it runs the row writes view.json again, so a run recorded since shows among the last runs', async (fixture) => {
+  await agreed(fixture, tellEntry(A))
+  await fixture.runtime.create()
+  assert.deepEqual((await viewOf(fixture.root)).recent, [])
+  await appendEvents(fixture.root, [doneEvent(A, 'run-0000000000a2', '2026-11-02T00:30:00.000Z', 'delivered')])
+  fixture.beats[0]?.run()
+  // The beat's write comes less than 2 seconds after the last one on this fixed clock: it waits for its timer.
+  for (let tries = 0; tries < 100 && !fixture.delayed.some(entry => entry.ms === 2_000); tries++) await new Promise(resolve => setTimeout(resolve, 20))
+  fixture.delayed.find(entry => entry.ms === 2_000)?.run()
+  await new Promise(resolve => setTimeout(resolve, 100))
+  assert.deepEqual((await viewOf(fixture.root)).recent, [{ at: '2026-11-02T00:30:00.000Z', title: '每周五看一眼没合入的分支', text: '已交给主 Agent' }])
 })
 
 // ---------------------------------------------------------------- health

@@ -1,53 +1,45 @@
 /**
- * The guard's metric events (m4-gate G2, design §3.11): the metrics design
- * (0.1 §14, m4 request) asks for one `rule` event per denial with the
- * follow-up's outcome alongside, and the gap counter as its own count. Only
- * the rule id, the kind, the outcome, the origin's scope and the session id
- * travel — never a command or a path (the metrics design keeps hashes and
- * first words only). The service's name and envelope are the metrics
- * design's to fix; until its row provides the service this is a no-op, and
- * a service that throws is swallowed: the metric never takes a call down.
- *
- * Emission sites (design §3.11): the gate emits a denial after every
- * violation write it hands to the journal, and its follow-up journal hook
- * emits the follow-up with its outcome. The remaining sites wire with their
- * writers — the late denial and the lift records with G3, the request and
- * grant records with G4, and the gap line with the journal that writes it.
+ * The guard framework's metric events (metrics design §4.2, §6.2; m4 §3.11):
+ * every record class the violation journal holds hands one event to the
+ * metrics journal at the same write. The mapping is pure — the row calls it
+ * from its journal choke point, where every writer's record passes once:
+ * the gate's denials and follow-ups, the fallback's late denial,
+ * `guard_lift` and the lift service, the request desk. Only ids, keys and
+ * counts travel — never a command, a path or the human's words (the lift's
+ * `units` is the words' code-point count, §4.3). The `rule`'s `ref` is the
+ * record's own journal key (`keyOf` over the same JSON text the write
+ * serializes), so a metrics line and its violation line point at each other.
  */
-import type { ServiceLookup } from '../shared/dsh-min.ts'
-
-/** The service the metrics row will provide; the metrics design fixes the name and the envelope (design §3.11). */
-export const METRICS_SERVICE = 'glmHournessMetrics'
-
-/** One metric event: only ids and outcomes, never a command or a path (design §3.11). */
-export interface GuardMetricEvent {
-  readonly kind: 'denial' | 'followup' | 'late' | 'lift' | 'request' | 'grant' | 'grant-void' | 'gap'
-  readonly rule?: string
-  /** followup: the outcome (right-path, repeat, other, none). */
-  readonly outcome?: string
-  readonly scope?: string
-  readonly sessionId?: string | undefined
-  /** gap only: the row whose journal lost the records, and how many. */
-  readonly row?: string
-  readonly lost?: number
-}
-
-/** The one member the metrics service exposes; the metrics design fixes the envelope. */
-interface GuardMetricsService {
-  readonly emit: (event: GuardMetricEvent) => void
-}
+import type { EmittedEvent } from '../shared/metrics.ts'
+import { keyOf, type GuardRecord } from './records.ts'
 
 /**
- * Hand one event to the metrics service through `ctx`, and do nothing when
- * the service is absent, malformed or throwing (design §3.11).
+ * The event a journal record hands to the metrics journal, or undefined for
+ * the classes that carry no metric: a recorded call (`mode: 'record'`, the
+ * rules row's `rules.judged` will carry it), a shadow record (not written
+ * since `d-code-rules-enforce`) and a gap line (the metrics journal's own
+ * `gap` is the writer's, §5.4 — the violation journal's lost records stay
+ * on the row health).
  */
-export function emitGuardMetric(ctx: ServiceLookup | undefined, event: GuardMetricEvent): void {
-  try {
-    const value: unknown = typeof ctx?.get === 'function' ? ctx.get(METRICS_SERVICE) : undefined
-    const service = value as GuardMetricsService | undefined
-    if (typeof service?.emit === 'function') service.emit(event)
+export function metricEventOf(record: GuardRecord): EmittedEvent | undefined {
+  if (!('kind' in record)) {
+    if (record.mode === 'late') return { k: 'rule', by: 'guard', body: { rule: record.rule, effect: 'late', ref: keyOf(record) } }
+    // A guard denial carries no mode at all; the rules board's enforced denials say `enforce` and the recorded calls `record`.
+    if (record.mode === undefined) return { k: 'rule', by: 'guard', body: { rule: record.rule, effect: 'deny', ref: keyOf(record) } }
+    return undefined
   }
-  catch {
-    // A metric is never worth a call: the pipeline is the metrics design's to build (design §3.11).
+  switch (record.kind) {
+    case 'followup':
+      return { k: 'followup', by: 'guard', body: { rule: record.rule, denial: record.denial, outcome: record.outcome } }
+    case 'request':
+      return { k: 'request', by: 'guard', body: { rule: record.rule, ref: record.ref, step: record.outcome } }
+    case 'grant':
+      return { k: 'request', by: 'guard', body: { rule: record.rule, ref: record.ref, step: 'used' } }
+    case 'grant-void':
+      return { k: 'request', by: 'guard', body: { rule: record.rule, ref: record.ref, step: 'void' } }
+    case 'lift':
+      return { k: 'lift', by: 'guard', body: { rule: record.rule, action: record.action, via: record.via, units: [...record.words].length } }
+    default:
+      return undefined
   }
 }
