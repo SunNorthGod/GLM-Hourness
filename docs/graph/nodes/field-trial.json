@@ -213,6 +213,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "视频改风格合入 main：文档提交 91ac40f（远端随后为 b6fc4ae）；工作树提交前已变基到 origin/main，video lint 退出码 0；新成片已拷到主检出的 video/out，旧成片保留为 *-v3.mp4；video-restyle 工作树与分支已删除。编排方的「图片不入库」答复在合入之后才到，91ac40f 已强制加入任务目录的 66 张 PNG（样张 30、抽帧 36，约 15.4 MB）与 review.json，两个远端都已有。原因是编排方最初的任务书要求提交图片，与 .gitignore 在 .agents/tasks 下只收 .md、.svg 的规矩不一致，是编排方的错。处理：选 (a)，在 main 上追加一个提交，对这 66 张 PNG 与 review.json 做 git rm --cached（留在磁盘与历史里，树上不再跟踪），不改写历史、不强推；未选 (b) 原样保留（树上与 .gitignore 的规矩长期不一致）。另：choice.md 定 dsh-hourness 用 Cascadia Mono，横版片尾实际渲染为正文无衬线体；按 choice.md 改渲染并只重渲受影响的成片。"
+    },
+    {
+      "at": "2026-11-04T18:45:03.128Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "workflow video-restyle-less-ai-look（wf_f88af02477d53322）完成。e49ecc3：横版片尾的 dsh-hourness 按 choice.md 改用等宽字体，Sample 以 2K 重渲，video lint 退出码 0，片尾第 700 帧核对过；c48e421：取消跟踪任务目录的 66 张 PNG 与 review.json（文件留在磁盘与历史里）。main c48e421 在 origin 与 github，ls-remote 核对一致。成片：video/out/Short-2k.mp4、Sample-2k.mp4（新），旧版保留为 Short-2k-v3.mp4、Sample-2k-v3.mp4；成片不入库。宣传视频的改风格到此结束；整片定稿与发布等人看过再说。"
     }
   ]
 }
