@@ -356,6 +356,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "m6-followups S1（m6-rules-text）提交 965bf5b，已推 origin/m6-followups，计划单独一个文档提交 93ee541。门禁：build 0、preflight 0、npm test 0（2950 通过 / 0 失败）、探针 0（376/376）；棘轮 eslint 73 / knip 18 / jscpd 1。两条验收由 L2 测试与 rules-queue 探针覆盖。下一步：S1 评审，然后 S3 m6-rules-probe。"
+    },
+    {
+      "at": "2026-11-04T20:28:19.395Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m6-followups S1（m6-rules-text，965bf5b）评审 APPROVED，无阻塞（.llm/m6f/review-s1.json、review-s1.md）。下一步：S3 m6-rules-probe。"
+    },
+    {
+      "at": "2026-11-04T20:58:47.078Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m6-followups S3（m6-rules-probe）提交 57c0902，已推 origin/m6-followups；之前合入 origin/main db16dc0（合并提交 4d51253）。门禁：build 0、preflight 0、npm test 0（2966 通过 / 0 失败）、探针 0（388/388，新增 6 条全过）；棘轮 eslint 73 / knip 18 / jscpd 1。下一步：S3 评审，然后 S2 m6-script-gate（真实 checkCall 的用例等规则板的 R4d，rules-board-page 在做）。"
     }
   ]
 }
