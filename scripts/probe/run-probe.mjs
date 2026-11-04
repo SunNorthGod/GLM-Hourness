@@ -131,6 +131,8 @@ import { PENDING_SOURCE as LESSONS_PENDING_SOURCE, RECUR_SOURCE as LESSONS_RECUR
 import { INDEX_SOURCE as MEMORY_INDEX_SOURCE } from '../../packages/hourness/dist/memory/index.js'
 import { compareShapes, describeDifference, isProjectDifference, profileShape } from '../profile-shape.mjs'
 import { checkLog, readLog } from '../../packages/hourness/dist/metrics/read.js'
+import { METRICS_FILES_ONLY } from '../../packages/hourness/dist/metrics/rules.js'
+import { keyOf } from '../../packages/hourness/dist/guard/records.js'
 import { PACKAGES } from '../packages.mjs'
 import { attachmentsIn, dataRows, designRows, generateProfile, initRepo, limitsRow, PROBE_PROFILES, repo, requireDesktop, sandboxCommand, slash, unlinkProfile, workspaceChangesRow } from '../sandbox.mjs'
 import { GOAL_GATE_DENIAL, PROJECTION_SOURCE, SCOPE_DENIAL } from './probe-dispatch.mjs'
@@ -2667,6 +2669,55 @@ const metricsConcurrentChecks = [
   ['metrics-concurrent: all 10004 lines parse (10000 events plus the start and stop of both writers), every writer sequence is complete, the chain recomputes and no writer is lost (acceptance 12)', concurrentJournal.problems.length === 0 && concurrentJournal.events.length === 10_004 && concurrentFindings.missing.length === 0 && concurrentFindings.chainBreaks.length === 0 && concurrentFindings.duplicates === 0 && concurrentFindings.noStop.length === 0 && concurrentFindings.unreadable.length === 0, `events ${concurrentJournal.events.length}; problems ${JSON.stringify(concurrentJournal.problems)}; writers ${concurrentJournal.events.filter(event => event.k === 'start').length} start / ${concurrentJournal.events.filter(event => event.k === 'stop').length} stop; findings missing ${concurrentFindings.missing.length} chain ${concurrentFindings.chainBreaks.length} noStop ${concurrentFindings.noStop.length}`],
 ]
 
+// The journal's own rule on the real host (metrics design §12 step 7's L3,
+// acceptance 22's M4 half; docs/ORCHESTRATION.md §10.6): in a scratch git
+// workspace the scripted GLM turn writes a note into .llm/metrics/ with the
+// file tool and clears the journal through `cmd /d /s /c`, the way Node
+// starts cmd; metrics-files-only refuses both (what cmd runs is judged as
+// text), each refusal one violation line and one `rule` event pointing at
+// it. The probe-lift overlay plays the human; the next turn lifts the rule
+// with guard_lift on those words (one `lift` event), and the same note is
+// written.
+const metricsRuleDir = join(runDir, 'metrics-rule')
+const metricsRuleWs = join(metricsRuleDir, 'ws')
+mkdirSync(metricsRuleWs, { recursive: true })
+writeFileSync(join(metricsRuleWs, 'README.md'), 'probe workspace\n')
+const metricsRuleGitReady = initRepo(metricsRuleWs)
+const metricsRuleNote = join(metricsRuleWs, '.llm', 'metrics', 'probe-note.txt')
+const METRICS_RULE_WORDS = '指标那条先别拦了'
+const metricsRuleRow = [
+  '- insert:',
+  '    - id: glm-hourness-probe/lift',
+  `      name: ${JSON.stringify(slash(join(repo, 'scripts', 'probe', 'probe-lift.mjs')))}`,
+  '      inject: [tools]',
+  `      config: { out: ${JSON.stringify(slash(join(metricsRuleDir, 'lift.jsonl')))} }`,
+]
+const metricsRuleRun = runScenario('metrics-rule', 'glm-5.3', [
+  { tool: { name: 'Write', arguments: { file_path: metricsRuleNote, content: 'probe\n' } } },
+  { tool: { name: 'Bash', arguments: { command: 'cmd /d /s /c "rd /s /q .llm\\metrics"', timeout: 30000 } } },
+  { tool: { name: 'DeferredToolCall', arguments: { name: 'probe_say', input: { text: METRICS_RULE_WORDS, rpcId: 'probe-metrics-lift' } } } },
+  { text: 'The metrics rule blocked me; I asked the human.' },
+  { tool: { name: 'LocalToolSearch', arguments: { query: 'select:guard_lift', max_results: 5 } } },
+  { tool: { name: 'DeferredToolCall', arguments: { name: 'guard_lift', input: { rule: METRICS_FILES_ONLY, words: METRICS_RULE_WORDS } } } },
+  { tool: { name: 'Write', arguments: { file_path: metricsRuleNote, content: 'probe\n' } } },
+  { text: 'done', status: true },
+], 'Write a note into the metrics journal directory, then clear the journal through cmd. When the human allows it, lift the rule with guard_lift and write the note again.', [...METRICS_ROW_ENABLED, ...metricsRuleRow], metricsRuleWs)
+const metricsRuleResult = index => lastToolResult(metricsRuleRun.steps[index])
+// The metrics row writes its denials into the project's own violation journal; the overlay's data rows move only
+// the other rows' journals under home/, so the guard row's follow-ups of these denials are there.
+const metricsRuleDenials = jsonl(join(metricsRuleWs, '.llm', 'audit', 'violations.jsonl')).filter(record => record.kind === undefined && record.rule === METRICS_FILES_ONLY)
+const metricsRuleJournal = await readLog(metricsRuleWs)
+const metricsRuleEvents = metricsRuleJournal.events.filter(event => event.k === 'rule' && event.body.rule === METRICS_FILES_ONLY)
+const metricsRuleLifts = metricsRuleJournal.events.filter(event => event.k === 'lift')
+const metricsRuleBlocked = result => result?.isError === true && result.text.includes(`Rule ${METRICS_FILES_ONLY} blocks`)
+const metricsRuleStderr = stderrOf('metrics-rule')
+const metricsRuleChecks = [
+  ['metrics-rule: the run in its scratch git workspace exits clean with nothing from the metrics or guard rows on stderr', metricsRuleGitReady && metricsRuleRun.status === 0 && metricsRuleRun.steps.length === 8 && !metricsRuleStderr.includes('dsh-glm-hourness/metrics') && !metricsRuleStderr.includes('dsh-glm-hourness/guard'), `exit ${metricsRuleRun.status}, git ${metricsRuleGitReady}, ${metricsRuleRun.steps.length} step(s); ${metricsRuleStderr.split('\n').find(line => line.includes('dsh-glm-hourness/')) ?? 'no stderr line from the packages'}`],
+  ['metrics-rule: the file write into .llm/metrics/ and the journal delete through cmd /d /s /c are both refused by metrics-files-only, and the journal directory is still there', metricsRuleBlocked(metricsRuleResult(1)) && metricsRuleBlocked(metricsRuleResult(2)) && existsSync(join(metricsRuleWs, '.llm', 'metrics')), `write ${(metricsRuleResult(1)?.text ?? 'no result').slice(0, 70).replace(/\n/g, ' ')}; cmd ${(metricsRuleResult(2)?.text ?? 'no result').slice(0, 70).replace(/\n/g, ' ')}`],
+  ['metrics-rule: each refusal is one violation line and one rule event by guard with effect deny whose ref is that line\'s key', metricsRuleDenials.length === 2 && metricsRuleEvents.length === 2 && metricsRuleEvents.every(event => event.by === 'guard' && event.body.effect === 'deny') && isDeepStrictEqual(new Set(metricsRuleEvents.map(event => event.body.ref)), new Set(metricsRuleDenials.map(record => keyOf(record)))), `${metricsRuleDenials.length} line(s), ${metricsRuleEvents.length} rule event(s); refs ${JSON.stringify(metricsRuleEvents.map(event => event.body.ref))}`],
+  ['metrics-rule: guard_lift lifts the rule on the human\'s words, one lift event via chat counts them, and the same note is then written with no third refusal', metricsRuleResult(6)?.isError !== true && metricsRuleResult(6)?.text.includes('"outcome":"lifted"') === true && metricsRuleLifts.length === 1 && isDeepStrictEqual(metricsRuleLifts[0]?.body, { rule: METRICS_FILES_ONLY, action: 'lift', via: 'chat', units: [...METRICS_RULE_WORDS].length }) && metricsRuleResult(7)?.isError !== true && existsSync(metricsRuleNote) && metricsRuleEvents.length === 2, `lift ${(metricsRuleResult(6)?.text ?? 'no result').slice(0, 70).replace(/\n/g, ' ')}; lift events ${JSON.stringify(metricsRuleLifts.map(event => event.body))}; note ${existsSync(metricsRuleNote)}`],
+]
+
 const checks = [
   ['sandbox: the runtime booted each profile generated under the run directory (its cordis.yml rewritten by the launcher); the real profiles directory has none of them', rewritten.length === GENERATED_PROFILES.length && leaked.length === 0, `rewritten: ${rewritten.join(', ') || 'none'}; under ${realProfiles}: ${leaked.join(', ') || 'none'}`],
   ['glm-only: with only the GLM channel package the GLM request has the ZCode identity, the aliases and the search controls, and no graph or memory tool', glmOnlyFirst?.system.includes('You are ZCode, an interactive agent') === true && zcodeFace.every(name => glmOnlyTools.has(name)) && searchControls.every(name => glmOnlyTools.has(name)) && ![...glmOnlyTools].some(name => GRAPH_TOOL_NAMES.includes(name) || MEMORY_TOOL_NAMES.includes(name)) && glmOnlyRead?.isError !== true, glmOnlyFirst === undefined ? `no request (exit ${glmOnly.status})` : `${glmOnlyTools.size} tools; ${[...glmOnlyTools].filter(name => name.startsWith('graph_') || name.startsWith('memory_')).join(', ') || 'no graph or memory tool'}`],
@@ -2890,6 +2941,7 @@ const checks = [
   ['rules-peak-hourness: the row is in effect without the pricing service (a supported combination) and the main agent\'s tool call ran', aloneHealth.rules?.status === ACTED && aloneHealth.rules.reason.includes('读不出是不是高峰') && lastToolResult(rulesPeakAlone.steps[1])?.isError !== true && !stderrOf('rules-peak-hourness').includes('dsh-glm-hourness/rules'), `${healthLine(aloneHealth, 'rules')} (${aloneHealth.rules?.reason ?? ''})`],
   ...metricsCheckList,
   ...metricsConcurrentChecks,
+  ...metricsRuleChecks,
   ...designChecks(),
   ['non-glm boot: the runtime reached the probe provider', plainFirst !== undefined, `exit ${plain.status}, ${plain.steps.length} step(s)`],
   ['non-glm prompt: DSH identity untouched', plainFirst?.system.includes('powered by DeepSeek Harness') === true && !plainFirst.system.includes('You are ZCode'), ''],

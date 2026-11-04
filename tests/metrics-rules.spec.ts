@@ -4,7 +4,8 @@
  * `prune` across the shell spellings the design lists and stays quiet on the
  * commands it lists as passing; `metricsFilesOnly` denies a file tool or a
  * shell command that writes, deletes or moves into the journal's files
- * (what `cmd /c` or `cmd /k` runs included, quoted whole or not), denies the
+ * (what a `cmd` command runs is judged as text: quoted whole or not, with
+ * switches before `/c` or `/k`, or behind `if exist`), denies the
  * prune, and lets every read and every other command through; neither of its
  * corrections points the model at the summary. On the fake rc.3 host with the
  * guard row (acceptance 22, the M4 half): every denial through the gate, a
@@ -48,6 +49,10 @@ test('isPruneCall recognizes the prune spellings the design lists (§15.32)', ()
     'npm run build && npm run metrics -- prune --before 2026-01-01',
     '& npm run metrics -- prune',
     'cmd /c npm run metrics -- prune',
+    // cmd's other switches before /c or /k are skipped as well (ORCHESTRATION.md §10.6 records the departure from §3.4).
+    'cmd /s /c npm run metrics -- prune',
+    'cmd.exe /d /s /c npm run metrics -- prune',
+    'cmd /v:on /k npm run metrics -- prune',
     'env CI=1 npm run metrics -- prune',
     'git status & npm run metrics -- prune',
     'npm.EXE run metrics -- prune',
@@ -106,6 +111,19 @@ test('a shell command that mentions the journal and deletes, moves or writes is 
     'cmd /k "rmdir /s /q .llm\\metrics"',
     'cmd.exe /c "move .llm\\metrics\\view.json x.json"',
     'cmd /c "echo x > .llm\\metrics\\view.json"',
+    // What cmd runs is judged as text, so its switches before /c and the if exist form are covered too (review S7R3-1).
+    'cmd /s /c "del .llm\\metrics\\view.json"',
+    'cmd /d /s /c "rd /s /q .llm\\metrics"',
+    'cmd /q /c "del .llm\\metrics\\view.json"',
+    'cmd /v:on /c "del .llm\\metrics\\view.json"',
+    'cmd /s /c del .llm\\metrics\\view.json',
+    'cmd /d /c rd /s /q .llm\\metrics',
+    'cmd /c "if exist .llm\\metrics rd /s /q .llm\\metrics"',
+    'cmd /c "if exist .llm\\metrics\\view.json del .llm\\metrics\\view.json"',
+    'cmd /c "if not exist x.txt del .llm\\metrics\\view.json"',
+    'cmd /c if exist .llm\\metrics rd /s /q .llm\\metrics',
+    'cmd.exe /s /c "del .llm\\metrics\\view.json"',
+    'ac .llm/metrics/view.json x',
     'bash -c "rm -rf .llm/metrics"',
     'Get-ChildItem .llm/metrics | Remove-Item',
     // Writes by cmd and PowerShell aliases file-tools-only does not name, and find's own delete.
@@ -129,6 +147,12 @@ test('a shell command that mentions the journal and deletes, moves or writes is 
   }
   const prune = verdictOf(shell('npm run metrics -- prune'))
   assert.match(prune.kind === 'deny' ? prune.correction.violation : '', /the human's own command/)
+  // The bash tool reads the text as POSIX; what cmd runs is judged the same way.
+  for (const command of ['cmd.exe /s /c "del .llm\\metrics\\view.json"', 'cmd /d /s /c "rd /s /q .llm\\metrics"']) {
+    assert.equal(verdictOf({ name: 'bash', arguments: { command } }).kind, 'deny', `bash: ${command}`)
+  }
+  // The accepted cost (ORCHESTRATION.md §10.6): a cmd-wrapped read whose text holds a delete word is refused.
+  assert.equal(verdictOf(shell('cmd /c "type .llm\\metrics\\view.json | findstr del"')).kind, 'deny')
 })
 
 test('neither correction points the model at the summary or at reading the journal (§15.42, §7.6.4)', () => {
@@ -150,6 +174,9 @@ test('a shell command that only reads or only mentions the journal passes, whate
     'Select-String -Path .llm/metrics/events-2026-11-04.jsonl -Pattern \'remove\'',
     'rg -n "del" .llm/metrics',
     'cmd /c "type .llm\\metrics\\view.json"',
+    'cmd /c "if exist .llm\\metrics\\view.json type .llm\\metrics\\view.json"',
+    'cmd /d /s /c "type .llm\\metrics\\view.json 2>&1"',
+    'cmd /c type .llm\\metrics\\view.json 2>nul',
     'find .llm/metrics -name "*.jsonl"',
     'git clean -n -X .llm/metrics',
     'git clean --dry-run -fdX .llm/metrics',

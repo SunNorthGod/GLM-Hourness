@@ -24,7 +24,7 @@ import { cleansIgnored, gitInvocations } from '../guard/git-snapshot.ts'
 import type { GuardRecord } from '../guard/records.ts'
 import { originOf } from '../guard/origin.ts'
 import { fileToolsOnly, NATIVE_FACE, shellCommandOf, type Correction, type GuardRule, type RuleVerdict, type ToolCall } from '../guard/rules.ts'
-import { commandName, shellWrites, simpleCommands, type ShellDialect } from '../guard/shell.ts'
+import { commandName, simpleCommands, WRITE_COMMANDS, type ShellDialect } from '../guard/shell.ts'
 import type { JournalOutcome } from '../memory/audit.ts'
 import { dialectNames, dialectService, dialectWarner, type DialectProblem } from '../shared/dialect.ts'
 import type { RowHealth } from '../shared/health.ts'
@@ -57,17 +57,36 @@ const DELETES_OR_MOVES: ReadonlySet<string> = new Set([
 /**
  * Command names that write a file and that file-tools-only's table
  * (src/guard/shell.ts) does not hold: cmd's `copy` and `xcopy`, the
- * PowerShell aliases `cpi` (Copy-Item), `ni` (New-Item) and `clc`
- * (Clear-Content). The rule keeps its own table, so the guard row's reading
- * of every other shell write stays as it is.
+ * PowerShell aliases `cpi` (Copy-Item), `ni` (New-Item), `clc`
+ * (Clear-Content) and `ac` (Add-Content). The common spellings, not all of
+ * them. The rule keeps its own table, so the guard row's reading of every
+ * other shell write stays as it is.
  */
-const WRITES: ReadonlySet<string> = new Set(['copy', 'xcopy', 'cpi', 'ni', 'clc'])
+const WRITES: ReadonlySet<string> = new Set(['copy', 'xcopy', 'cpi', 'ni', 'clc', 'ac'])
 
-/** Where the command word of one simple command's words is, past `cmd /c` and `cmd /k`. */
-function headOf(words: readonly string[]): number {
-  let head = 0
-  while (commandName(words[head] ?? '') === 'cmd' && /^\/[ck]$/i.test(words[head + 1] ?? '')) head += 2
-  return head
+/**
+ * The action words of the whole-text reading of what cmd runs: the rule's
+ * two tables and file-tools-only's write commands, each as a whole word
+ * (the delimiters of 3f59b61's reading; the text is lower case, with `/`
+ * for `\`).
+ */
+const CMD_ACTION = new RegExp(`(?:^|[\\s/;"'|&(])(?:${[...DELETES_OR_MOVES, ...WRITES, ...WRITE_COMMANDS].join('|')})(?=$|[\\s/"')>])`)
+
+/** A redirection that writes a file: not one onto another handle (`2>&1`) and not one to `nul`. */
+const CMD_REDIRECT = /(?<!>)>+(?!>)(?!\s*&\d)(?!\s*nul\b)/
+
+/**
+ * Whether the text a `cmd` (or `cmd.exe`) command runs changes files, read
+ * as a whole the way 3f59b61 read every shell text (§3.4): it holds one of
+ * the action words or a redirection that writes. cmd's own grammar (its
+ * switches before `/c` or `/k`, quoting the whole command line, `if exist`,
+ * `&` inside the quotes) is not parsed, so every way of wrapping a command
+ * in cmd is judged at once; a cmd-wrapped read whose text holds one of the
+ * words is refused as well (the cost in docs/ORCHESTRATION.md §10.6).
+ */
+const cmdChanges = (words: readonly string[]): boolean => {
+  const text = words.join(' ').replace(/\\/g, '/').toLowerCase()
+  return CMD_ACTION.test(text) || CMD_REDIRECT.test(text)
 }
 
 /**
@@ -75,22 +94,16 @@ function headOf(words: readonly string[]): number {
  * (§3.4, §5.3): some simple command of it (quote-aware, src/guard/shell.ts)
  * is named in one of the two tables, is a `find` with `-delete`, or is a
  * `git clean` that deletes ignored files (`-x`, `-X`, not a dry run). A word
- * inside quotes or among the arguments is not an action. What follows
- * `cmd /c` or `cmd /k` is read once more as a command line, file writes
- * included, since `cmd /c "del …"` hands cmd its whole command line as one
- * quoted word; `nested` is that second reading, which goes no deeper.
+ * inside quotes or among the arguments is not an action, except in what a
+ * `cmd` command runs, which is judged as text (`cmdChanges`).
  */
-function changesFiles(command: string, dialects: readonly ShellDialect[], nested = false): boolean {
+function changesFiles(command: string, dialects: readonly ShellDialect[]): boolean {
   return dialects.some(dialect =>
     gitInvocations(command, dialect, undefined).some(cleansIgnored)
     || simpleCommands(command, dialect).some((words) => {
-      const head = headOf(words)
-      if (head > 0 && !nested) {
-        const script = words.slice(head).join(' ')
-        return shellWrites(script, dialect).length > 0 || changesFiles(script, [dialect], true)
-      }
-      const name = commandName(words[head] ?? '')
-      return DELETES_OR_MOVES.has(name) || WRITES.has(name) || (name === 'find' && words.slice(head + 1).includes('-delete'))
+      const name = commandName(words[0] ?? '')
+      if (name === 'cmd') return cmdChanges(words.slice(1))
+      return DELETES_OR_MOVES.has(name) || WRITES.has(name) || (name === 'find' && words.slice(1).includes('-delete'))
     }))
 }
 
@@ -115,6 +128,9 @@ const HEADS: ReadonlySet<string> = new Set(['npm', 'npx', 'node', 'tsx'])
 
 /** Words a prune call may hide behind, skipped repeatedly before the head word (F64). */
 const PREFIXES: ReadonlySet<string> = new Set(['call', 'start', 'time', 'env'])
+
+/** One switch of cmd, lower case: a letter, maybe with a `:value` (`/s`, `/v:on`). */
+const CMD_SWITCH = /^\/[a-z](?::\S*)?$/
 
 /** `NAME=value` environment words are skipped like the named prefixes (F64); tested on the whole word, since the value may hold a path. */
 const NAME_VALUE = /^[a-z_][a-z0-9_]*=/
@@ -188,9 +204,14 @@ export function isPruneCall(command: string): boolean {
         head += 1
         continue
       }
-      if (bare(word) === 'cmd' && (words[head + 1] === '/c' || words[head + 1] === '/k')) {
-        head += 2
-        continue
+      if (bare(word) === 'cmd') {
+        // cmd's other switches (`/d`, `/s`, `/q`, `/v:on`) may stand before `/c` or `/k`; §3.4 has `/c` or `/k` right after cmd, and ORCHESTRATION.md §10.6 records the departure.
+        let next = head + 1
+        while (CMD_SWITCH.test(words[next] ?? '') && words[next] !== '/c' && words[next] !== '/k') next += 1
+        if (words[next] === '/c' || words[next] === '/k') {
+          head = next + 1
+          continue
+        }
       }
       break
     }
