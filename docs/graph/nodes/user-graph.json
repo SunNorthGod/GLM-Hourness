@@ -93,6 +93,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "UG3 第二轮评审 APPROVED，无阻断：563c10e 的新用例覆盖验收第 26 条的撤回路径，上一轮的阻断关闭；门禁日志与 HEAD 一致（build、preflight、test 2761 过 0 败、棘轮在基线、探针 347/347）。运行 user-graph-ug3-ug7 转入推送 UG3 与 UG4。"
+    },
+    {
+      "at": "2026-11-04T09:00:18.046Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "UG3 已推：origin/user-graph bddbd05..563c10e（快进）。UG4（M3 一侧的放行门禁接用户图）开始。"
     }
   ]
 }
