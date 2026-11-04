@@ -245,6 +245,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "m5-rest 规划完成：rest-plan.md 在 m5-rest 工作树（未提交），从 .worktrees/m5 带入 14 份评审记录；排第 0 步基线加 4 批；等 M7、人与编排方的项已在计划里列明。"
+    },
+    {
+      "at": "2026-11-04T22:39:30.233Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m5-rest 第 0–3 批完成并推 origin/m5-rest：f5e12b3（文档）、877fc7d（合并）、17c7b15（修复加测试）、d612914（合并）、b9a066e（文档）；每批四道门禁为 0，探针 382/382。第 4 批（经验页 L4）的前置：人的桌面 profile 里 glm-hourness/lessons 行出厂为 disabled: true，真桌面上经验页不出现。编排方选 A：起隔离实例（独立 --user-data-dir 与 DSH_HOME，放在 .worktrees/m5-rest/.llm/m5r-l4/，profile 链到本工作树的包，只在这份 profile 里打开 lessons 行，独立 CDP 端口），不碰 ~/.dsh、人的记忆与人正在用的实例；按 §1.1 取桌面锁、只走 CDP、只在自己建的临时会话里输入。未选 B（改人的 desktop profile，要人点头）与 C（跳过）。人真实 profile 上的 L4 要等 lessons 行在交付的 bundle 里启用之后。"
     }
   ]
 }

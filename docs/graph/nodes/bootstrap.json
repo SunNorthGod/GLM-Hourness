@@ -268,6 +268,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "bootstrap-impl 第一轮：B0 计划 4bd7328；合入 origin/main 7fc5da5（合并提交 8ff0b62）；B1 设计 D1/D3 收尾 7c851db。都已推 origin/bootstrap，四道门禁退出码均为 0（B1：npm test 2955 通过 / 0 失败 / 1 跳过，探针 382/382，棘轮 73/18/1）。下一批 B2；面板第 14 条那一支仍等人答 Q2。"
+    },
+    {
+      "at": "2026-11-04T21:36:56.484Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "B0–B1 评审 CHANGES_REQUESTED，1 条阻塞 F1：design.md 第 3 行的版本行仍写 D1、D3 等人定，与 B1 之后的 §0、§18 矛盾。门禁与合并核对无误。下一轮先修 F1（.worktrees/bootstrap/.llm/wf/review.json）。"
+    },
+    {
+      "at": "2026-11-04T22:43:31.728Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "bootstrap-impl 第二轮：合入 origin/main 5eaddd4（合并提交 b6411ef），修 B0–B1 评审的 F1（design.md 版本行，14e9f64），都已推 origin/bootstrap。四道门禁退出码 0：npm test 2955 通过 / 0 失败 / 1 跳过，探针 382/382，棘轮 73/18/1。下一步：复审，然后 B2。"
     }
   ]
 }

@@ -43,6 +43,18 @@
       "reason": "运行 m6-followups-s1-s3 开工（2026-11-04，人：「桌面版随便用，尽可能开多线」）",
       "from": "approved",
       "to": "doing"
+    },
+    {
+      "at": "2026-11-04T22:05:23.744Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "实现提交 e72a25e（origin/m6-followups），门禁 0/0/0/0（npm test 2982 / 0 失败，探针 388/388），评审 APPROVED（.llm/m6f/review-s2.json）。设计第 24 条里真实 checkCall 执行已批准脚本的用例未做，等规则板 R4d（要规则的批准路径 R3-proposal 与 M7 E7 的 trunkAdvanceFor），所以合入 main 后本节点仍保持进行中。合入交给 land-m6-followups（wf_4b9841cada0119dd）。"
+    },
+    {
+      "at": "2026-11-04T22:33:08.112Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "S2 已随 m6-followups 合入 main（e95df6e，合入树门禁全绿：npm test 2982 通过 / 0 失败，探针 388/388；行组合未变，没有重启桌面版）。设计第 24 条里真实 checkCall 执行已批准脚本的用例仍等规则板 R4d，本节点保持进行中。"
     }
   ]
 }
