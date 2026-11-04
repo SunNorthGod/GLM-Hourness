@@ -257,6 +257,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "m5-rest 计划的批次全部做完并推 origin/m5-rest = 11715b9。第 4 批按选项 A 在隔离实例上做经验页 L4：lessons-3 第 1–3 条通过，第 4 条仍只有 L2 钉住。每个提交四道门禁为 0，最后一次探针 388/388，棘轮 73/18/1。桌面锁已放，只停了自己起的隔离实例，人的实例与 ~/.dsh 未动。下一步：评审，然后合入 main；人真实 profile 上的 L4 等 lessons 行在交付 bundle 里启用之后。"
+    },
+    {
+      "at": "2026-11-04T23:51:18.215Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m5-rest 评审 CHANGES_REQUESTED，1 条阻塞 B1：/memory restore 的记录把只该存在于折叠结果里的字段 forgottenAt 写进了流水，违反已批准的「只在折叠里，不写进流水」（.llm/m5r-review/review.json）。门禁、推送与验收条目对应都核对无误。下一步：修 B1 后复审。"
     }
   ]
 }
