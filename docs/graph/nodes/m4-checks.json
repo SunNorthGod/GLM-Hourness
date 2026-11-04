@@ -73,6 +73,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "B2（9af4567）第 2 轮评审 APPROVED：B2-1 已修，两处文档都写读不出的检查行进 envBranch().issues，与代码一致；无阻塞。下一步：推送 B2，然后 B3。"
+    },
+    {
+      "at": "2026-11-04T19:35:01.250Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "B2 已推：origin/m4-checks = 9af4567，mainMerged 为 true（4516ec6）。B3–B6 待做。"
     }
   ]
 }
