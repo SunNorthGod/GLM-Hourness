@@ -73,3 +73,18 @@ IMPORTANT: Assist with authorized security testing, defensive security, CTF chal
 - (1) 风格正文放在系统提示词的一节里（GLM 路由上在 `glm:context-management` 之前；3.17.1 在这里没有节，选这里是因为 3.16.3 在这里，且这一节在会话内不变，放在动态内容之前不破坏提示词缓存），不作为主回合的上下文条目 `output_style_instructions`。理由：验收要求主 Agent 会话的系统提示词带人设一节，DSH 的节在每一步都在，不只主回合。
 - (2) 不加 `r8o` 的每回合提醒。理由：正文每一步都在系统提示词里，3.17.1 的提醒是为只在主回合下发的条目补的，这里加它只多花每回合的 token。
 - (3) 正文后面多一句范围说明：`This style applies to your replies to the human only. Text you put into tool calls (graph nodes, briefs for subagents) and anything written to files stays plain.` 理由：只让人设管对人说的话，子 agent 的简报、图节点与写进文件的东西保持朴素（验收第 2 条）。这一句是本项目的文字，不是 ZCode 的。
+
+## 7. 压缩续接的原文路径一句（3.17.1 `Bxt`，2026-11-05 录入，任务 `compact-recall`）
+
+`Bxt(e, t = {})`（pristine `zcode.cjs` 14380–14389 行）组压缩后的续接消息：开头一句「This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.」，空一行接摘要 `e`，再按选项依次追加：`t.transcriptPath`、`t.replStateCleared`、`t.suppressFollowup`、`t.preservedMessagesKept`。`transcriptPath` 一支在 14382–14384 行，追加的是两个换行加下面这一句，`${t.transcriptPath}` 换成路径：
+
+```
+If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: ${t.transcriptPath}
+```
+
+镜像文件 `src/glm-prompt/zcode-compact-text.ts` 的 `transcriptNote(路径)` 返回这两个换行加这一句，逐字门禁按片段检查它；`tests/compact-row.spec.ts` 从副本里按 `return t.transcriptPath&&(n+=` 那一段抽出模板正文，断言两者逐字节相同。
+
+两处与 3.17.1 不同：
+
+- 位置：本项目把这一句接在 GLM 压缩摘要（「Summary:」之后的正文）末尾，落在 DSH 检查点外框 `<compacted-summary>` 里面、`</compacted-summary>` 之前；ZCode 接在它自己的续接消息里，那条消息的开头句与另外三个选项本项目不用（检查点外框归 `compaction-basic`，`../DESIGN.md` §5.6）。
+- 生产路径：3.17.1 包里 `Bxt` 只有一个调用处，14730 行 `Bxt(Oe,{preservedMessagesKept:k.length>0,suppressFollowup:!0})`，不传 `transcriptPath`。所以这句文本是原文，但在 3.17.1 的正式流量里不出现；ZCode 给 hooks 写的 `transcript.jsonl` 只作导出文件形状的参照，本项目的导出格式是自己的（`../DESIGN.md` §2.4「会话原文」）。
