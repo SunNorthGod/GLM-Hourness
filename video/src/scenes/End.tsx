@@ -1,7 +1,7 @@
 import React from "react";
 import { AbsoluteFill } from "remotion";
 import { Reveal, SceneFade } from "../parts";
-import { COLORS, SERIF } from "../theme";
+import { COLORS, MONO, SERIF } from "../theme";
 
 export const End: React.FC = () => (
   <SceneFade>
@@ -16,7 +16,7 @@ export const End: React.FC = () => (
       </Reveal>
       <Reveal at={45} style={{ marginTop: 84 }}>
         <div style={{ fontSize: 40, color: COLORS.text, letterSpacing: 1 }}>
-          dsh-hourness · DeepSeek Harness 编排层插件
+          <span style={{ fontFamily: MONO }}>dsh-hourness</span> · DeepSeek Harness 编排层插件
         </div>
       </Reveal>
       <Reveal at={57} style={{ marginTop: 16 }}>
