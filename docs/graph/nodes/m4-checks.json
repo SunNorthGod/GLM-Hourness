@@ -61,6 +61,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "B2（1e71d10）评审 CHANGES_REQUESTED，1 条阻塞：文档写读不出的检查行进 env 行的行健康，但代码里没有任何地方读 EnvBranch.issues（.worktrees/m4-checks/.llm/m4c/review.json）。本批进入修复轮。"
+    },
+    {
+      "at": "2026-11-04T19:28:48.781Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "B2 第 1 轮评审的阻塞 B2-1 已修，方式是改文档说法（读不出的检查行进 env 行行健康一句与代码对齐），修复并进 B2 提交，现为 9af4567（未推送）。门禁：build 0、preflight 0、npm test 0（2772 通过 / 0 失败 / 1 跳过），探针 351/351，棘轮 eslint 76 / knip 19 / jscpd 1。下一步：B2 第 2 轮评审，核对改文档而不接线是否满足设计。"
     }
   ]
 }
