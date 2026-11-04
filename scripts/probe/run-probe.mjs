@@ -44,7 +44,11 @@
  * reminder goes out. The graph panel scenarios run the
  * bundle's /graph-run handler mid-step for the session;
  * the GLM and non-GLM scenarios run /hourness and /hourness-status at their
- * last step, after /glm-status is recorded. Every scenario also mounts the
+ * last step, after /glm-status is recorded. The GLM scenario's /hourness step
+ * also records what the status hub's collector reads for the session: the
+ * checks hold the 面板 and 额度 sections to those entries word for word, the
+ * agent audience to no person entry, and the metrics row to the one
+ * metrics/load entry (status hub design 0.3 §11 L3). Every scenario also mounts the
  * probe net log (scripts/probe/probe-net.mjs), which records the origin and
  * path of each request the host process sends; the quota checks read it
  * (no request to /api/monitor anywhere) together with the quota output of the
@@ -330,7 +334,8 @@ const glm = runScenario('glm', 'glm-5.3', [
   { tool: { name: 'Read', arguments: { file_path: png } } },
   { tool: { name: 'Bash', arguments: { command: `Set-Content -Path '${blocked}' -Value probe` } } },
   // The health table is recorded before /hourness runs, so the hourness row is still idle in it.
-  { text: 'done', status: true, command: { name: 'hourness' } },
+  // `hub` records what the status hub's collector reads for the session after /hourness ran.
+  { text: 'done', status: true, command: { name: 'hourness' }, hub: true },
 ], 'Load TodoWrite, record one todo, read package.json, write, edit and re-read a scratch file, list, search, run a command, read an image, write a file through the shell, then reply done.', attachmentsIn(glmDir))
 const glmFirst = glm.steps[0]
 const glmTools = names(glmFirst)
@@ -2137,6 +2142,21 @@ const sectionOf = (text, heading) => (text.split(`\n## ${heading}\n`)[1] ?? '').
 const [glmOnlyCredential = '', glmOnlyQuota = '', glmOnlyTable = ''] = (statusStep(glmOnly)?.status ?? '').split('\n\n')
 const hournessOnlyText = hournessOnlyReport?.text ?? ''
 const glmQuotaSection = sectionOf(glmHourness?.text ?? '', '额度')
+// The status hub in the real runtime (status hub design 0.3 §11 L3): what the
+// collector read for the glm session right after its /hourness ran, at the
+// agent and the all audience (the provider's `hub` step).
+const glmHub = statusStep(glm)?.hub
+const glmHubItem = id => glmHub?.agent?.items.find(item => item.id === id)
+const glmHubLines = item => item === undefined ? undefined : [item.text, ...(item.detail ?? [])]
+const glmHubPanel = sectionOf(glmHourness?.text ?? '', '面板')
+const glmHubUsage = glmHubLines(glmHubItem('glm/usage'))
+const glmHubQuota = glmHubLines(glmHubItem('glm/quota'))
+const glmHubPeak = glmHubItem('rules/peak')
+const glmHubMetrics = sectionOf(glmHourness?.text ?? '', '指标（流水，今天）')
+// The fact groups /hourness's metrics section prints, as FACT_GROUP_TITLES in
+// src/workflow/morning-report.ts lists them (§7.3 of the metrics design: no
+// scores, no burden numbers, no coverage group in the conversation).
+const HOURNESS_FACT_HEADINGS = ['### 任务', '### 拦截', '### 撤下', '### 超时', '### 额度停住', '### 汇报']
 const quotaTextBodies = scenarioNames.flatMap(name => jsonl(join(runDir, name, 'requests.jsonl')).map(request => ({ name, body: JSON.stringify({ system: request.system, tools: request.tools, messages: request.messages }) })))
 const quotaTextHits = quotaTextBodies.filter(({ body }) => QUOTA_TEXT_MARKERS.some(marker => body.includes(marker))).map(({ name }) => name)
 const hournessOnlyViolations = jsonl(join(hournessOnlyDir, 'home', 'audit', 'violations.jsonl'))
@@ -2862,6 +2882,10 @@ const checks = [
   ['health: /hourness-status prints the same table as /glm-status for the session, without the credential line', plainHourness?.kind === 'success' && plainHourness.text.startsWith(`## 行健康（会话 ${statusStep(plain)?.sessionId}）\n\n${TABLE_HEAD}`) && plainHourness.text === plainStatusText.slice(plainStatusText.indexOf('## 行健康')) && grouped(plainHealth), `${plainHourness?.kind ?? 'not run'}; ${(plainHourness?.text ?? '').split('\n').length} line(s); same as /glm-status: ${plainHourness?.text === plainStatusText.slice(plainStatusText.indexOf('\n\n') + 2)}`],
   ['health: on the GLM route glm-prompt, guard, memory, workflow, data and glm-login report in effect; glm-compact and hourness have not acted', glmHealth['glm-prompt']?.status === ACTED && glmHealth['glm-prompt'].reason.startsWith('GLM 路由 glm-probe/glm-5.3：') && ['guard', 'memory', 'workflow', 'data', 'glm-login'].every(row => glmHealth[row]?.status === ACTED) && ['glm-compact', 'hourness'].every(row => glmHealth[row]?.status === IDLE), HEALTH_ROWS.map(row => healthLine(glmHealth, row)).join('; ')],
   ['pricing: /hourness on the GLM route prices the usage journal through the pricing service glm-login provides', glmHourness?.kind === 'success' && glmPanel.startsWith('- 高峰：') && glmPanel.split('\n')[1]?.startsWith('- 全部用量记录；高峰为工作日 14:00–18:00（UTC+8）') === true && /^- glm-5\.3：\d+ 次 · 积分 \d+\.\d\d/m.test(glmPanel), `${glmHourness?.kind ?? 'not run'}; ${JSON.stringify(glmPanel.split('\n').slice(0, 3))}`],
+  ['status hub: the collector reads the real runtime\'s rows without a failure, and the agent audience carries no person entry', glmHub?.agent !== undefined && glmHub.agent.rows.length > 0 && glmHub.agent.rows.every(row => row.outcome !== 'error') && glmHub.agent.items.every(item => item.audience === 'agent') && isDeepStrictEqual(glmHub.agent.items.map(item => item.id), glmHub.all.items.filter(item => item.audience === 'agent').map(item => item.id)), glmHub === undefined ? 'no hub recorded' : glmHub.error ?? `read: ${glmHub.agent.rows.filter(row => row.outcome === 'ok').map(row => row.row).join(', ')}; failed: ${glmHub.agent.rows.filter(row => row.outcome === 'error').map(row => `${row.row} (${row.reason})`).join(', ') || 'none'}; agent: ${glmHub.agent.items.map(item => item.id).join(', ')}; all: ${glmHub.all.items.length}`],
+  ['status hub: /hourness 面板 is the entries (the peak line first, the usage entry\'s text and detail last) and 额度 is the quota entry', glmHourness?.kind === 'success' && glmHubPeak !== undefined && glmHubPanel[0] === glmHubPeak.text && glmHubUsage !== undefined && isDeepStrictEqual(glmHubPanel.slice(-glmHubUsage.length), glmHubUsage) && glmHubQuota !== undefined && isDeepStrictEqual(glmQuotaSection, glmHubQuota), `peak ${JSON.stringify(glmHubPeak?.text ?? null)}; usage ${JSON.stringify(glmHubUsage ?? null)}; quota ${JSON.stringify(glmHubQuota ?? null)}; 面板 ${JSON.stringify(glmHubPanel)}`],
+  ['status hub: one rules/peak entry for the session (the hourness row\'s half yields to the rules row)', glmHub?.all !== undefined && glmHub.all.items.filter(item => item.id === 'rules/peak').length === 1, glmHub?.all === undefined ? 'no hub recorded' : `${glmHub.all.items.filter(item => item.id === 'rules/peak').length} rules/peak entr(ies)`],
+  ['status hub: no metrics ratio on the agent path: the metrics row hands only metrics/load, and /hourness\'s metrics section heads only the fact groups', glmHub?.all !== undefined && glmHub.all.items.filter(item => item.owner === 'metrics').every(item => item.id === 'metrics/load') && glmHubMetrics.length > 0 && glmHubMetrics.filter(line => line.startsWith('### ')).every(line => HOURNESS_FACT_HEADINGS.includes(line)), `metrics entries: ${glmHub?.all?.items.filter(item => item.owner === 'metrics').map(item => item.id).join(', ') || 'none'}; headings: ${glmHubMetrics.filter(line => line.startsWith('### ')).join(', ') || (glmHubMetrics.length === 0 ? 'no section' : 'none')}`],
   ['health: on the non-GLM route glm-prompt reports why it is not in effect', plainHealth['glm-prompt']?.status === '未生效' && plainHealth['glm-prompt'].reason.startsWith('非 GLM 路由 glm-probe/deepseek-probe'), JSON.stringify(plainHealth['glm-prompt'] ?? null)],
   ['health: after a GLM compaction glm-compact reports the mirror in effect', compactHealth['glm-compact']?.status === ACTED && compactHealth['glm-compact'].reason.startsWith('GLM 压缩请求改用 ZCode 指令'), JSON.stringify(compactHealth['glm-compact'] ?? null)],
   ['health: the reports stay out of the model-visible conversation', conversationTexts.length > 0 && conversationTexts.every(text => !text.includes('行健康') && !text.includes('glmHournessHealth')), `${conversationTexts.length} text(s) checked`],

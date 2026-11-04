@@ -87,11 +87,11 @@ HANDOFF 状态板块一行「还缺什么」栏里的「面板与额度两节经
       Files: `docs/DESIGN.md`、`docs/ORCHESTRATION.md`、`docs/HANDOFF.md`
       Verify: 四道门禁退出码 0、探针全绿；`git log origin/status-hub-2 -1` 是该提交。
 
-- [ ] 5. 第 8 批探针采集：`scripts/probe/probe-llm.mjs` 加 `import { collectStatus } from '../../packages/hourness/dist/report/status.js'`；在 `peakMode` 那一块之后（命令已跑完）加步骤标记 `hub`：`step.hub === true` 时 `const now = Date.now()`，`hub = { agent: collectStatus(this.ctx, request.sessionId, 'agent', now), all: collectStatus(this.ctx, request.sessionId, 'all', now) }`，抛错记 `{ error }`；dump 里照 `peakMode` 的写法加 `...(hub === undefined ? {} : { hub })`；文件头注释加一句「a step marked `hub` records what the status hub's collector reads for the session after the step's command, at the agent and the all audience (status hub design 0.3 §11 L3)」。
+- [x] 5. 第 8 批探针采集：`scripts/probe/probe-llm.mjs` 加 `import { collectStatus } from '../../packages/hourness/dist/report/status.js'`；在 `peakMode` 那一块之后（命令已跑完）加步骤标记 `hub`：`step.hub === true` 时 `const now = Date.now()`，`hub = { agent: collectStatus(this.ctx, request.sessionId, 'agent', now), all: collectStatus(this.ctx, request.sessionId, 'all', now) }`，抛错记 `{ error }`；dump 里照 `peakMode` 的写法加 `...(hub === undefined ? {} : { hub })`；文件头注释加一句「a step marked `hub` records what the status hub's collector reads for the session after the step's command, at the agent and the all audience (status hub design 0.3 §11 L3)」。
       Files: `scripts/probe/probe-llm.mjs`
       Verify: `npm run build` 退出码 0（探针在第 7 步跑）。
 
-- [ ] 6. 第 8 批检查：`scripts/probe/run-probe.mjs` 的 glm 场景最后一步改为 `{ text: 'done', status: true, command: { name: 'hourness' }, hub: true }`；在 `glmPanel` 定义之后加 `const glmHub = statusStep(glm)?.hub` 与按 id 取 `glmHub.agent.items` 的小函数；在 `pricing:` 那条检查之后加 4 条：
+- [x] 6. 第 8 批检查：`scripts/probe/run-probe.mjs` 的 glm 场景最后一步改为 `{ text: 'done', status: true, command: { name: 'hourness' }, hub: true }`；在 `glmPanel` 定义之后加 `const glmHub = statusStep(glm)?.hub` 与按 id 取 `glmHub.agent.items` 的小函数；在 `pricing:` 那条检查之后加 4 条：
       (a) `status hub: the collector reads the real runtime's rows without a failure, and the agent audience carries no person entry`：`agent.rows` 非空且没有 `outcome === 'error'`；`agent.items` 全是 `audience === 'agent'`；`agent.items` 的 id 序列等于 `all.items` 过滤 `audience === 'agent'` 之后的 id 序列。
       (b) `status hub: /hourness 面板 is the entries — the peak line first, the usage entry's text and detail last — and 额度 is the quota entry`：`sectionOf(glmHourness.text, '面板')` 第一行等于 `rules/peak` 的 `text`，末尾 `1 + detail.length` 行等于 `[glm/usage.text, ...glm/usage.detail]`；已有的 `glmQuotaSection` 等于 `[glm/quota.text, ...(glm/quota.detail ?? [])]`。
       (c) `status hub: one rules/peak entry for the session (the hourness row's half yields to the rules row)`：`rules/peak` 恰一条。
@@ -100,7 +100,7 @@ HANDOFF 状态板块一行「还缺什么」栏里的「面板与额度两节经
       Files: `scripts/probe/run-probe.mjs`
       Verify: 取锁后 `npm run -s probe`，退出码 0，总数比基线多 4 且全绿。
 
-- [ ] 7. 第 8 批文档、门禁、提交：`docs/DESIGN.md` §2.6 标题加第 8 批、验证段加「L3：探针 glm 场景……」一句（四条检查各一句话）；`docs/ORCHESTRATION.md` §11.3「状态板块〔2026-11-03…〕」一段末尾加 L3 一句；`docs/HANDOFF.md` 状态板块行代码栏加第 8 批与 L3。全量门禁同第 4 步（日志 `sh-b8-*.log`）。提交 `test(status-hub): batch 8 — the hub in the real runtime (L3)`，推 `origin/status-hub-2`。
+- [x] 7. 第 8 批文档、门禁、提交：`docs/DESIGN.md` §2.6 标题加第 8 批、验证段加「L3：探针 glm 场景……」一句（四条检查各一句话）；`docs/ORCHESTRATION.md` §11.3「状态板块〔2026-11-03…〕」一段末尾加 L3 一句；`docs/HANDOFF.md` 状态板块行代码栏加第 8 批与 L3。全量门禁同第 4 步（日志 `sh-b8-*.log`）。提交 `test(status-hub): batch 8 — the hub in the real runtime (L3)`，推 `origin/status-hub-2`。
       Files: `docs/DESIGN.md`、`docs/ORCHESTRATION.md`、`docs/HANDOFF.md`
       Verify: 四道门禁退出码 0、探针全绿；`origin/status-hub-2` 指向该提交。
 
