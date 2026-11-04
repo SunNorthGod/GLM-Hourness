@@ -133,6 +133,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "status-hub-remaining 规划完成：合入 origin/main 07b3356（合并提交 bac6e16），门禁全绿（npm test 2954 个 / 0 失败，探针 376/376，棘轮 73/18/1）；impl-plan.md 已推 origin/status-hub-2（8702cf1）。现在能做：第 7 批 metrics/load、第 8 批 L3。在等：第 6 批等 M7 运维行 P3；超时条目等 m4-checks B5；循环板清单等 staleEntries/timeoutEntries；规则板 items 等规则板页面（目前没有运行在做规则板页面）。"
+    },
+    {
+      "at": "2026-11-04T20:08:15.989Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "第 7 批已推 origin/status-hub-2（3edd58a）：metrics/load，板块的负担数作为一条条目交给状态板块。下一步：第 8 批 L3。"
     }
   ]
 }
