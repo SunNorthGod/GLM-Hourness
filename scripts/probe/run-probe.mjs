@@ -2054,7 +2054,10 @@ const handoverChild = bySession(rulesHandover, handoverStarted?.childId)
 const handoverMain = bySession(rulesHandover, handoverStarted?.parentId)
 const handoverJournal = journalOfProject(handoverProject)
 const handoverTicket = handoverState?.tickets?.['q-1']
-const QUEUE_REFUSAL = /^Error: You tried to run "Write-Output rules-probe-queued"\.\nBoundary: Deferred as ticket q-1\. Rule r-probe-queue "Probe word, deferred" \(set by the human at [^)]+, until lifted\) defers it while glm-peak is on\.\nRight path: The call did not run\. Continue with other planned work; the harness sends you a message when q-1 clears, then run the same call again\. Running it again before that returns this message and does not queue it twice\.\nException: The human can let it through once \(\/rules let q-1\), or change the rule\.$/
+// rules-queue and rules-peak: what the board tells a model, at the wall clock of this machine (the model-facing lines write HH:MM in it).
+const localHm = iso => new Date(iso).toLocaleString('sv-SE').slice(11, 16)
+const PEAK_END_HM = localHm(PEAK_END)
+const QUEUE_REFUSAL = new RegExp(String.raw`^Error: You tried to run "Write-Output rules-probe-queued"\.\nBoundary: Deferred as ticket q-1\. Rule r-probe-queue "Probe word, deferred" \(set by the human at [^)]+, until lifted\) defers it while glm-peak is true until ${PEAK_END_HM}\.\nRight path: The call did not run\. Continue with other planned work; the harness sends you a message when q-1 clears, then run the same call again\. Running it again before that returns this message and does not queue it twice\.\nException: The human can let it through once \(\/rules let q-1\), or change the rule\.$`)
 const queueWake = /^\[rules board\] Ticket q-1 cleared: rule r-probe-queue was lifted by the human\. You may run the deferred call again: pwsh "Write-Output rules-probe-queued"\.$/
 const consecutiveDiffer = texts => texts.every((text, index) => index === 0 || text !== texts[index - 1])
 const rulesRecordOf = (records, rule) => records.find(record => record.rule === rule)
@@ -2076,9 +2079,6 @@ const loopsAdopted = loopsJournal.filter(record => record.op === 'adopt' && reco
 // A headless host has no session controller, so the board hands out no service and runs no entry (loops design 6.1, 11.1): nothing of the runtime is written.
 const loopsRanNothing = ['runner.lock', 'handover.json', 'events.jsonl', 'state.json'].filter(name => existsSync(join(loopsRuntime, name)))
 const LOOPS_DENIAL = new RegExp(`^Error: You tried to write "[^"]+"\\.\\nBoundary: Rule loops:files-only blocks writes under the loop board's files [^\\n]+\\nRight path: .+\\nException: `)
-// rules-peak: what the board told the main agent, at the wall clock of this machine (the model-facing lines write HH:MM in it).
-const localHm = iso => new Date(iso).toLocaleString('sv-SE').slice(11, 16)
-const PEAK_END_HM = localHm(PEAK_END)
 const peakTexts = boardTexts(rulesPeak.steps[1])
 const peakShown = lastToolResult(rulesPeak.steps[3])
 const REDUCE_LINE = `<system-reminder>\nGLM peak: now until ${PEAK_END_HM}. Peak mode: reduce (the default; the human can change it). Run at most 1 GLM subagent at a time until ${PEAK_END_HM}. Move optional work that spends many GLM credits (calibration runs, ablations, large reviews) to after ${PEAK_END_HM}, including work you dispatch; keep necessary work going.\n</system-reminder>`
