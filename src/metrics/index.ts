@@ -392,7 +392,21 @@ export function apply(ctx: MetricsContext, config: MetricsConfig = {}): () => vo
     reportSession(where.sessionId, root)
   }
 
-  const service: MetricsService = { emit: sink }
+  // The report's coverage line reads this host's writer, self-check and no-project state (§7.3); all synchronous, no journal round-trip.
+  const service: MetricsService = {
+    emit: sink,
+    coverage: root => {
+      const status = writers.status().get(root)
+      const checkedFindings = checked.get(root)
+      const findings = checkedFindings === undefined ? undefined : findingsOf(checkedFindings)
+      return {
+        dropped: status?.dropped ?? 0,
+        reason: status?.error,
+        selfcheck: findings === undefined ? (checkedFindings === undefined ? '还没跑' : '干净') : `有发现：${findings}`,
+        noProject: [...noProject.values()].reduce((sum, count) => sum + count, 0),
+      }
+    },
+  }
 
   // A provide failure leaves the seams working but nothing handed in (§9.1).
   if (typeof ctx.provide === 'function') {

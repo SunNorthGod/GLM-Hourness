@@ -18,6 +18,9 @@ import { gapLines, parseGaps, usagePanelLines, usagePanelOf, type PanelLineOptio
 import type { DataHomes } from '../shared/data-home.ts'
 import type { UsagePricing } from '../shared/pricing.ts'
 import type { MomentZone } from '../shared/quota.ts'
+import { readLog, type LogFindings } from '../metrics/read.ts'
+import { factsFor, localDate } from '../metrics/calc.ts'
+import type { MetricsCoverage } from '../shared/metrics.ts'
 
 /** Why the project graph could not be read; the report names it in place of the numbers. */
 interface GraphUnreadable {
@@ -48,6 +51,8 @@ export interface ReportInput {
   readonly usageScope?: readonly string[] | undefined
   /** The asks on the project graph, or why they could not be read. */
   readonly asks: AskSummary | GraphUnreadable
+  /** The metrics journal's facts and its 记录 coverage line, ready-made lines; absent when the caller passed no project. */
+  readonly metrics?: readonly string[]
 }
 
 /** The local calendar day of an instant, as 2026-10-27. */
@@ -150,6 +155,11 @@ export function morningReport(input: ReportInput): string {
     for (const [rule, count] of countByRule(shadows)) lines.push(`- ${rule} × ${count}`)
   }
 
+  if (input.metrics !== undefined && input.metrics.length > 0) {
+    lines.push('')
+    lines.push(...input.metrics)
+  }
+
   lines.push('')
   lines.push('## 用量（今天）')
   // The panel's own list, minus its basis line (the panel section writes that once).
@@ -179,6 +189,12 @@ export interface ReportOptions {
   readonly now?: number | undefined
   /** The display zone, minutes east of UTC; tests set it, the host's offset otherwise. */
   readonly offsetMinutes?: number | undefined
+  /**
+   * The metrics journal of the calling session's project (metrics design
+   * §7.3): the root to read, with the metrics row's process-local coverage
+   * state when the row is on; or why there is no project at all.
+   */
+  readonly metrics?: { readonly root: string, readonly coverage?: MetricsCoverage } | { readonly reason: string }
 }
 
 /** Reads the project graph of the session that asked for the report; rejects with the reason when it cannot. */
@@ -232,6 +248,8 @@ export async function reportFromFiles(fs: ReportFs, homes: DataHomes, period: st
   const gapRaw = paths.gaps === undefined ? '' : await fs.readFile(paths.gaps).catch(() => '')
   const periodStart = sinceMs === undefined || Number.isNaN(sinceMs) ? undefined : sinceMs
   const zone: MomentZone = options.offsetMinutes === undefined ? {} : { offsetMinutes: options.offsetMinutes }
+  const nowAt = options.now ?? Date.now()
+  const metricsLinesOut = options.metrics === undefined ? undefined : await metricsLines(options.metrics, nowAt, options.offsetMinutes, graph)
   return morningReport({
     decisions: inPeriod(await readJsonl(paths.decisions)) as DecisionRecord[],
     violations: inPeriod(await readJsonl(paths.violations)) as GuardRecord[],
@@ -239,7 +257,97 @@ export async function reportFromFiles(fs: ReportFs, homes: DataHomes, period: st
     period,
     pricing: options.pricing,
     problem: options.problem,
-    usageScope: gapLines(parseGaps(gapRaw), options.now ?? Date.now(), zone, periodStart),
+    usageScope: gapLines(parseGaps(gapRaw), nowAt, zone, periodStart),
     asks: await readAsks(graph, since),
+    ...(metricsLinesOut === undefined ? {} : { metrics: metricsLinesOut }),
   })
+}
+
+/** The facts groups the conversation-facing report carries (§7.3): the task, interception, lift, timeout, stall and report groups, no scores, no burden numbers, no coverage group. */
+const FACT_GROUP_TITLES = ['任务', '拦截', '撤下', '超时', '额度停住', '汇报']
+
+/** The checker findings the printed groups never read (the 覆盖 group is the CLI's). */
+const NO_FINDINGS: LogFindings = { events: 0, unreadable: [], missing: [], chainBreaks: [], noStop: [], clockRollbacks: [], duplicates: 0, lostFiles: [], forgeries: [], bytes: 0 }
+
+/**
+ * The metrics journal's lines for the report (§7.3): the facts of the
+ * calling session's project over the report's local day, then the 记录
+ * coverage line — earliest entry, today's count, what this host's writer
+ * dropped (with the code), the last background self-check, the events no
+ * project could take, and the note that the graph has older history when
+ * it does. A project with no journal yet names why, the rest of the
+ * report unchanged.
+ */
+async function metricsLines(
+  metrics: NonNullable<ReportOptions['metrics']>,
+  nowMs: number,
+  offsetMinutes: number | undefined,
+  graph: GraphReader,
+): Promise<string[]> {
+  if (!('root' in metrics)) return [`## 指标（流水）`, `- 指标流水读不到：${metrics.reason}`]
+  const zoneMinutes = offsetMinutes ?? -new Date(nowMs).getTimezoneOffset()
+  const sign = zoneMinutes < 0 ? '-' : '+'
+  const abs = Math.abs(zoneMinutes)
+  const tz = `${sign}${String(Math.floor(abs / 60)).padStart(2, '0')}:${String(abs % 60).padStart(2, '0')}`
+  const dayStart = new Date(nowMs); dayStart.setHours(0, 0, 0, 0)
+  const from = dayStart.toISOString()
+  const to = new Date(dayStart.getTime() + 86_400_000).toISOString()
+  const today = localDate(new Date(nowMs).toISOString(), tz)
+  try {
+    // The whole journal, not just today: the 记录 line's 最早 is the journal's
+    // first entry (§5.5), and factsFor windows the facts to the day itself.
+    const read = await readLog(metrics.root)
+    const lines: string[] = ['## 指标（流水，今天）']
+    if (read.events.length === 0) {
+      lines.push('- 指标流水还没有：指标行没启用，或这个项目还没有记录')
+      return lines
+    }
+    // The printed groups never read the checker's findings or the basis (the
+    // 覆盖 group and the basis line are the CLI's), so the empty findings are
+    // never rendered.
+    const { groups } = factsFor({ events: read.events, basis: new Map(), from, to, tz, findings: NO_FINDINGS, today })
+    for (const group of groups) {
+      if (!FACT_GROUP_TITLES.includes(group.title)) continue
+      lines.push(`### ${group.title}`)
+      for (const row of group.rows) lines.push(`- ${row.label}：${row.value}`)
+    }
+    const earliest = read.events[0]?.at
+    const earliestDay = earliest === undefined ? undefined : localDate(earliest, tz)
+    const pieces = [`最早 ${earliestDay ?? '—'}`, `今天 ${read.events.filter(event => localDate(event.at, tz) === today).length} 条`]
+    const coverage = metrics.coverage
+    if (coverage === undefined) {
+      pieces.push('本进程的丢失与自查：指标行不在')
+    }
+    else {
+      pieces.push(coverage.dropped === 0 ? '本进程丢了 0 条' : `本进程丢了 ${coverage.dropped} 条（${coverage.reason ?? '原因未知'}）`)
+      pieces.push(`上次自查${coverage.selfcheck}`)
+      pieces.push(`无项目的事件 ${coverage.noProject} 条`)
+    }
+    if (earliest !== undefined) {
+      const graphEarliest = await earliestGraphEntry(graph)
+      if (graphEarliest !== undefined && Date.parse(graphEarliest) < Date.parse(earliest)) pieces.push(`图上有更早的记录，流水从 ${earliest.slice(0, 10)} 起`)
+    }
+    lines.push(`- 记录：${pieces.join('，')}`)
+    return lines
+  }
+  catch (error) {
+    return ['## 指标（流水）', `- 指标流水读不到：${error instanceof Error ? error.message : String(error)}`]
+  }
+}
+
+/** The earliest history instant the project graph remembers, or undefined when it cannot be read (the report already names that in its own section). */
+async function earliestGraphEntry(graph: GraphReader): Promise<string | undefined> {
+  try {
+    const loaded = await graph()
+    let earliest: string | undefined = undefined
+    for (const node of loaded.nodes.values()) {
+      for (const entry of node.history) {
+        if (earliest === undefined || entry.at < earliest) earliest = entry.at
+      }
+    }
+    return earliest
+  }
+  catch {
+    return undefined
+  }
 }

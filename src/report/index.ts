@@ -40,6 +40,9 @@ import { collectHealth, provideRowHealth, renderHealthTable, sessionIdOf, type H
 import { provideRowStatus } from '../shared/status-host.ts'
 import { pricingService, quotaOf, type UsagePricing } from '../shared/pricing.ts'
 import type { MomentZone } from '../shared/quota.ts'
+import type { MetricsCoverage } from '../shared/metrics.ts'
+import { metricsOf } from '../shared/metrics.ts'
+import { projectOf } from '../data/project-root.ts'
 import type { StatusItem } from '../shared/status.ts'
 import type { CommandDefinitionLike, CommandsHost, ProvideHost, ServiceLookup } from '../shared/dsh-min.ts'
 
@@ -68,6 +71,8 @@ export interface RenderOptions {
   readonly graph?: GraphReader | undefined
   /** Reads the status services of the invoking session; without it the report has no 面板 section (nothing computes the usage entry). */
   readonly status?: { readonly lookup: ServiceLookup, readonly sessionId: string | undefined }
+  /** The metrics journal of the calling session's project, with the metrics row's coverage state; or why there is no project. */
+  readonly metrics?: { readonly root: string, readonly coverage?: MetricsCoverage } | { readonly reason: string }
 }
 
 /** Render the report text for the resolved directories. */
@@ -79,7 +84,13 @@ export async function renderHourness(homes: DataHomes, options: RenderOptions = 
   const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
   const zone: MomentZone = options.offsetMinutes === undefined ? {} : { offsetMinutes: options.offsetMinutes }
   const graph = options.graph ?? (() => Promise.reject(new Error('这次调用没有给出项目图的位置')))
-  const reportOptions: ReportOptions = { pricing: options.pricing, problem: options.problem, now: nowMs, offsetMinutes: options.offsetMinutes }
+  const reportOptions: ReportOptions = {
+    pricing: options.pricing,
+    problem: options.problem,
+    now: nowMs,
+    offsetMinutes: options.offsetMinutes,
+    ...(options.metrics === undefined ? {} : { metrics: options.metrics }),
+  }
   const report = await reportFromFiles(fs, homes, localDay(dayStart), graph, dayStart.toISOString(), reportOptions)
   const missing = [
     ...(homes.projectHome === undefined ? ['- 项目目录未配置（行配置 home 或数据目录行的 projectHome），决策与违规流水读不到'] : []),
@@ -241,8 +252,26 @@ export function apply(ctx: CommandsHost & ServiceLookup & Partial<ProvideHost>, 
       // The quota member is judged again where it is read, which reports a wrong shape; the status only says whether it is there.
       health.report(sessionIdOf(invocation.agent), ...hournessHealth(homes, pricing !== undefined, pricing !== undefined && quotaOf(pricing) !== undefined))
       if (pricing !== undefined) await refreshQuota(pricing)
+      const cwd = invocation.agent?.session?.header?.cwd
+      const metricsRoot = cwd === undefined ? undefined : projectOf(cwd)?.root
+      const liveCoverage = metricsRoot === undefined ? undefined : metricsOf(ctx)?.coverage?.(metricsRoot)
+      const metrics: NonNullable<RenderOptions['metrics']> = metricsRoot === undefined || liveCoverage === undefined
+        ? metricsRoot === undefined ? { reason: '这个会话没有可归的项目' } : { root: metricsRoot }
+        : { root: metricsRoot, coverage: liveCoverage }
+      const started = clock().getTime()
       try {
-        return { kind: 'success', text: await renderHourness(homes, { pricing, problem, graph: graphReader(ctx, invocation.agent?.session?.header?.cwd), ...(config.offsetMinutes === undefined ? {} : { offsetMinutes: config.offsetMinutes }), status: { lookup: ctx, sessionId: sessionIdOf(invocation.agent) } }) }
+        const text = await renderHourness(homes, {
+          pricing,
+          problem,
+          graph: graphReader(ctx, cwd),
+          ...(config.offsetMinutes === undefined ? {} : { offsetMinutes: config.offsetMinutes }),
+          status: { lookup: ctx, sessionId: sessionIdOf(invocation.agent) },
+          metrics,
+        })
+        // The report itself is one `report` event of the project it was made for (§7.3).
+        const sessionId = sessionIdOf(invocation.agent)
+        if (metricsRoot !== undefined && cwd !== undefined && sessionId !== undefined) metricsOf(ctx)?.emit({ k: 'report', by: 'host', body: { kind: 'status', units: [...text].length, ms: clock().getTime() - started } }, { sessionId, dir: cwd })
+        return { kind: 'success', text }
       }
       catch (error) {
         return { kind: 'error', text: `晨报生成失败：${(error as Error).message}` }

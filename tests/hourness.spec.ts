@@ -4,15 +4,19 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { creditPricing } from '../src/glm-llm/credits.ts'
+import { loadGraph } from '../src/graph/store.ts'
+import { appendEvents } from '../src/metrics/library.ts'
 import { apply, renderHourness } from '../src/report/index.ts'
 import { cacheHitRate, parseGaps, peakStatusItems, usagePanel, usagePanelLines, usagePanelOf, usageStatusItems, type PanelLineOptions } from '../src/report/panel.ts'
 import { collectStatus } from '../src/report/status.ts'
+import { METRICS_SERVICE } from '../src/shared/metrics.ts'
 import { statusServiceName, provideRowStatus } from '../src/shared/status-host.ts'
 import type { ServiceLookup } from '../src/shared/dsh-min.ts'
 import type { UsagePricing } from '../src/shared/pricing.ts'
 import { quotaLines, type QuotaView } from '../src/shared/quota.ts'
 import { serviceStore } from './fake-rc3.ts'
 import { engineFixture, fixtureTest } from './graph-helpers.ts'
+import { scratchGitProject } from './metrics-helpers.ts'
 import { exampleRecord } from './proposal-examples.ts'
 
 // The usage panel with the pricing service the GLM channel package provides
@@ -161,11 +165,11 @@ test('a missing directory is named in the report', async () => {
 type Invocation = { rawInput: string, agent?: { id: string, session: { id: string, header: { id: string, cwd?: string } } } }
 type Registered = { name: string, handler: (invocation: Invocation) => Promise<{ kind: string, text: string }> }
 
-function register(config: { home?: string }, data: unknown, graph?: unknown): { registered: Registered[], dispose: () => void } {
+function register(config: { home?: string }, data: unknown, graph?: unknown, metrics?: unknown): { registered: Registered[], dispose: () => void } {
   const registered: Registered[] = []
   const dispose = apply({
     commands: { register: definition => { registered.push(definition as Registered); return () => {} } },
-    get: name => name === 'glmHournessData' ? data : name === 'glmHournessGraph' ? graph : undefined,
+    get: name => name === 'glmHournessData' ? data : name === 'glmHournessGraph' ? graph : name === METRICS_SERVICE ? metrics : undefined,
   }, config)
   return { registered, dispose }
 }
@@ -622,5 +626,159 @@ test('the hourness row yields its peak half while the rules row status view is t
   finally {
     provide.dispose()
     row.dispose()
+  }
+})
+
+// --- the metrics journal section (metrics design §7.3, acceptance 11) ---
+
+/** The metrics section of a rendered report: from its heading to the next blank line. */
+const metricsSectionOf = (text: string, heading: string): string => text.split(`${heading}\n`)[1]?.split('\n\n')[0] ?? ''
+
+test('the /hourness report reads the metrics journal: the facts of the local day, the 记录 line, no scores and no burden numbers (acceptance 11)', async () => {
+  const root = scratchGitProject('glmh-report-metrics-')
+  try {
+    const at = (h: number, m: number) => `2026-11-04T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00.000Z`
+    const wrote = await appendEvents(root, [
+      { k: 'execute.dispatch', by: 'execute', at: at(1, 0), body: { role: 'worker', target: 'task-1', n: 1, child: 's-worker', provider: 'glm-probe', model: 'glm-5.3', think: 'off', sameAsMain: false, whyRef: { node: 'goal-1', hi: 1 } } },
+      { k: 'execute.handback', by: 'execute', at: at(1, 10), body: { task: 'task-1', n: 1, status: 'done', stopReason: 'goal-done', commits: 1, files: 2, ms: 1000, outside: 0 } },
+      { k: 'execute.ask', by: 'execute', at: at(1, 20), body: { task: 'task-1', waitedMs: 60_000, result: 'answered' } },
+      { k: 'execute.check', by: 'execute', at: at(1, 30), body: { commit: 'abc123', ok: false, kind: 'build', cmds: [1], exits: [2], ms: [10], setup: false, lockMs: 0 } },
+      { k: 'rule', by: 'guard', at: at(2, 0), body: { call: 'c-1', rule: 'file-tools-only', effect: 'deny' } },
+      { k: 'rule', by: 'guard', at: at(2, 1), body: { rule: 'file-tools-only', effect: 'deny' } },
+      { k: 'rule', by: 'guard', at: at(2, 2), body: { rule: 'git-snapshot', effect: 'deny' } },
+      { k: 'lift', by: 'guard', at: at(2, 3), body: { rule: 'file-tools-only', action: 'lift', via: 'board', units: 4 } },
+      { k: 'timeout.set', by: 'rules', at: at(2, 4), body: { entry: 'git-snapshot', kind: 'cmd', limitMs: 3000, source: 'measured' } },
+      { k: 'timeout.hit', by: 'rules', at: at(2, 5), body: { entry: 'git-snapshot', kind: 'cmd', limitMs: 3000, elapsedMs: 3100, outcome: 'killed', source: 'measured', told: true } },
+      { k: 'progress.due', by: 'execute', at: at(2, 6), body: { goal: 'g-1', scope: 'goal', away: false } },
+      { k: 'progress.handover', by: 'execute', at: at(2, 7), body: { n: 1, waitedMs: 120_000, goalDone: true } },
+    ], 'cli', { now: () => Date.parse('2026-11-04T01:00:00.000Z') })
+    assert.deepEqual({ written: wrote.written, rejected: wrote.rejected, error: wrote.error ?? null }, { written: 14, rejected: 0, error: null })
+    const text = await renderHourness(homes, {
+      fs: fakeFs(new Map()),
+      now: new Date('2026-11-04T20:00:00+08:00'),
+      offsetMinutes: 480,
+      metrics: { root, coverage: { dropped: 0, reason: undefined, selfcheck: '干净', noProject: 2 } },
+    })
+    const section = metricsSectionOf(text, '## 指标（流水，今天）')
+    assert.equal(section, [
+      '### 任务',
+      '- 派出：1 件',
+      '- 交付：done 1',
+      '- 等人：answered 1',
+      '- 检查没过：abc123',
+      '### 拦截',
+      '- 近 7 天拦下：file-tools-only 2、git-snapshot 1',
+      '- 按日：2026-11-04 3',
+      '- 晚到的拦下：0 次；判定 0',
+      '- 排队：0',
+      '- 只记录：0',
+      '- 判定其他：0',
+      '### 撤下',
+      '- 近 7 天：file-tools-only 1',
+      '- 现在撤下：file-tools-only',
+      '### 超时',
+      '- git-snapshot：超时 1 次；最近限 3000ms／用时 3100ms／结局 killed；来源 measured；告知 是',
+      '### 额度停住',
+      '- 停住：—',
+      '### 汇报',
+      '- 到期：整目标 1；一块 0',
+      '- 交付：1 次',
+      '- 最长等了：2 分钟',
+      '- 目标做完的交了：交了',
+      '- 记录：最早 2026-11-04，今天 14 条，本进程丢了 0 条，上次自查干净，无项目的事件 2 条',
+    ].join('\n'), text)
+    // The section sits between 等你定的事 and 用量（今天), and carries no scores, no burden numbers, no basis line.
+    assert.ok(text.indexOf('## 等你定的事') < text.indexOf('## 指标（流水，今天）') && text.indexOf('## 指标（流水，今天）') < text.indexOf('## 用量（今天）'), text)
+    assert.ok(!text.includes('问你几次'), text)
+    assert.ok(!text.includes('打分'), text)
+    assert.ok(!text.includes('依据：'), text)
+    assert.ok(!text.includes('图上有更早的记录'), text)
+  }
+  finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+const metricsGraphFixture = fixtureTest(() => engineFixture('glmh-report-metrics-graph-', 27, async ({ run }) => {
+  await run('human', { op: 'propose', reason: '立项', node: { type: 'goal', title: '记账小工具', stage: 'interview', body: '需求：记一下每天花了多少钱' } })
+}))
+
+metricsGraphFixture('the 记录 line names the writer drops with the code, the self-check, and the graph\'s older history (§5.5)', async g => {
+  const root = scratchGitProject('glmh-report-metrics-drop-')
+  try {
+    const wrote = await appendEvents(root, [
+      { k: 'count', by: 'guard', at: '2026-11-04T02:00:00.000Z', body: { what: 'seed', value: 1 } },
+    ], 'cli', { now: () => Date.parse('2026-11-04T02:00:00.000Z') })
+    assert.equal(wrote.error, undefined)
+    const text = await renderHourness(homes, {
+      fs: fakeFs(new Map()),
+      now: new Date('2026-11-04T20:00:00+08:00'),
+      offsetMinutes: 480,
+      graph: () => loadGraph(g.dir),
+      metrics: { root, coverage: { dropped: 3, reason: 'EACCES', selfcheck: '有发现：链断 aaaa1111 序号 3', noProject: 0 } },
+    })
+    const record = metricsSectionOf(text, '## 指标（流水，今天）').split('\n- 记录：')[1] ?? ''
+    assert.equal(record, '最早 2026-11-04，今天 3 条，本进程丢了 3 条（EACCES），上次自查有发现：链断 aaaa1111 序号 3，无项目的事件 0 条，图上有更早的记录，流水从 2026-11-04 起', text)
+  }
+  finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('a project with no journal yet says so, and a session with no project says why (acceptance 11)', async () => {
+  const root = scratchGitProject('glmh-report-metrics-empty-')
+  try {
+    const none = await renderHourness(homes, { fs: fakeFs(new Map()), metrics: { root } })
+    assert.ok(none.includes('## 指标（流水，今天）\n- 指标流水还没有：指标行没启用，或这个项目还没有记录'), none)
+  }
+  finally {
+    await rm(root, { recursive: true, force: true })
+  }
+  const { registered, dispose } = register({ home: 'C:/definitely-empty-hourness-home' }, { userHome: 'C:/definitely-empty-hourness-user' })
+  try {
+    const result = await registered[0].handler({ rawInput: '' })
+    assert.equal(result.kind, 'success')
+    assert.ok(result.text.includes('## 指标（流水）\n- 指标流水读不到：这个会话没有可归的项目'), result.text)
+  }
+  finally {
+    dispose()
+  }
+})
+
+test('/hourness emits one report event for its project, and names the row is off when the metrics service carries no coverage', async () => {
+  const root = scratchGitProject('glmh-report-metrics-emit-')
+  try {
+    const wrote = await appendEvents(root, [
+      { k: 'count', by: 'guard', at: '2026-11-04T03:00:00.000Z', body: { what: 'seed', value: 1 } },
+    ], 'cli', { now: () => Date.parse('2026-11-04T03:00:00.000Z') })
+    assert.equal(wrote.error, undefined)
+    const emitted: Array<{ event: Record<string, unknown>, where: Record<string, unknown> }> = []
+    const metrics = { emit: (event: Record<string, unknown>, where: Record<string, unknown>): void => { emitted.push({ event, where }) } }
+    const { registered, dispose } = register({ home: 'C:/definitely-empty-hourness-home' }, { userHome: 'C:/definitely-empty-hourness-user' }, undefined, metrics)
+    try {
+      const result = await registered[0].handler(inSession(root))
+      assert.equal(result.kind, 'success')
+      assert.ok(result.text.includes('，本进程的丢失与自查：指标行不在'), result.text)
+      assert.equal(emitted.length, 1)
+      const { event, where } = emitted[0]
+      assert.equal(event.k, 'report')
+      assert.equal(event.by, 'host')
+      const body = event.body as { kind: string, units: number, ms: number }
+      assert.equal(body.kind, 'status')
+      assert.equal(body.units, [...result.text].length)
+      assert.ok(typeof body.ms === 'number')
+      assert.equal(where.sessionId, 's1')
+      assert.equal(where.dir, root)
+      // Without a working directory there is no project and no event.
+      const again = await registered[0].handler({ rawInput: '' })
+      assert.equal(again.kind, 'success')
+      assert.equal(emitted.length, 1)
+    }
+    finally {
+      dispose()
+    }
+  }
+  finally {
+    await rm(root, { recursive: true, force: true })
   }
 })

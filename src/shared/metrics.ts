@@ -292,9 +292,23 @@ interface MetricsWhere {
   readonly dir?: string
 }
 
+/** The process-local state the /hourness coverage line reads (metrics design §7.3): what this host's writer dropped, the last background self-check's finding, and the events no project could take. */
+export interface MetricsCoverage {
+  /** Events queued for the project and dropped by the writer (the queue cap and failed writes). */
+  readonly dropped: number
+  /** The writer's last error code, when writes are failing. */
+  readonly reason: string | undefined
+  /** The last background self-check in words: 还没跑, 干净, or 有发现：<发现>. */
+  readonly selfcheck: string
+  /** Events with no project, counted since activation. */
+  readonly noProject: number
+}
+
 export interface MetricsService {
   /** Record one event for the project of a session or directory. Never throws. */
   emit(event: QueuedEvent, where: MetricsWhere): void
+  /** The coverage state for one project root, or undefined when the row has nothing for it. Optional: rows before the report step do not carry it. */
+  coverage?(root: string): MetricsCoverage | undefined
 }
 
 /** Read the service; undefined while the metrics row is not active, or when `emit` is not a function. */
