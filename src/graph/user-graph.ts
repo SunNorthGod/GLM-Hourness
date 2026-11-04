@@ -262,8 +262,8 @@ function walkRecordsOf(step: GraphNode): WalkRecord[] {
   return out
 }
 
-/** The result line of a walk note: the @<commit> and the harness's sha256 digest left out. */
-function walkResult(note: string): string {
+/** The result line of a walk note: the @<commit> and the harness's sha256 digest left out; the gaps and the panel's walk line (ui/src/graph/user-view.ts) say it. */
+export function walkResult(note: string): string {
   return note.replace(/^@[0-9a-f]{7,40} /u, '').replace(/^sha256:(?:[0-9a-f]{8}|-) /u, '')
 }
 
@@ -572,8 +572,8 @@ export function stepsServedBy(graph: LoadedGraph, work: GraphNode): readonly Gra
   })
 }
 
-/** The timeout cap of a flow before the harness has measured it: three times the estimate, within the bounds (§2.7). */
-function estimatedTimeoutMs(seconds: number): number {
+/** The timeout cap of a flow before the harness has measured it: three times the estimate, within the bounds (§2.7); the release page and the panel's flow lines state it. */
+export function estimatedTimeoutMs(seconds: number): number {
   return Math.min(TIMEOUT_MAX_MS, Math.max(TIMEOUT_MIN_MS, seconds * 3 * 1000))
 }
 

@@ -13,10 +13,13 @@ import type { LoadedGraph } from '../../../src/graph/parse.ts'
 import { ancestorsOf } from '../../../src/graph/projection.ts'
 import { RUN_COMMAND } from '../../../src/graph/run.ts'
 import type { GraphNode, Verification } from '../../../src/graph/schema.ts'
+import { goalOf } from '../../../src/graph/stage.ts'
+import { isUserNode } from '../../../src/graph/user-graph.ts'
 import { placements, runningOn, type AgentLive } from './agents.ts'
 import { Folded, Markdown, NodeRow, Options, Part, When, useServices } from './common.tsx'
 import { MainChatLine } from './MainChat.tsx'
 import { byCreation, dotTone, historyText, needsHuman, presenceText, progressOf, progressText, statusText } from './model.ts'
+import { hasUserPage, whoBuilds } from './user-view.ts'
 
 const HISTORY_SHOWN = 6
 
@@ -54,6 +57,8 @@ interface DetailProps {
   readonly onBack: () => void
   /** Escape: back to the list. */
   readonly onClose: () => void
+  /** 用户怎么用 of a goal (user graph design 0.4.1 §6.1: the goal's and the user nodes' pages lead there). */
+  readonly onUserPage: (goalId: string) => void
 }
 
 /**
@@ -77,7 +82,22 @@ export function Frame({ onBack, onClose, children }: Pick<DetailProps, 'onBack' 
   )
 }
 
-export function NodeDetail({ graph, id, agents, onBack, onClose }: DetailProps): ReactElement {
+/**
+ * 谁在做它 (user graph design 0.4.1 §3.7): a step has no children; its page
+ * lists the features and tasks that serve it, with their status.
+ */
+function Builders({ graph, step }: { readonly graph: LoadedGraph, readonly step: GraphNode }): ReactElement {
+  const builders = whoBuilds(graph, step)
+  return (
+    <Part title="谁在做它">
+      {builders.length === 0
+        ? <div className="glmg-meta">还没人负责</div>
+        : builders.map(builder => <NodeRow key={builder.id} graph={graph} node={builder} tone={dotTone(builder)} path status />)}
+    </Part>
+  )
+}
+
+export function NodeDetail({ graph, id, agents, onBack, onClose, onUserPage }: DetailProps): ReactElement {
   const { open } = useServices()
   const node = graph.nodes.get(id)
   if (node === undefined) {
@@ -89,6 +109,8 @@ export function NodeDetail({ graph, id, agents, onBack, onClose }: DetailProps):
   const progress = progressText(progressOf(graph, node.id))
   const history = node.history.slice(-HISTORY_SHOWN).reverse()
   const done = node.status === 'done'
+  const userGoal = node.type === 'goal' || isUserNode(node) ? goalOf(graph, node.id) : undefined
+  const userEntry = userGoal !== undefined && hasUserPage(graph, userGoal) ? userGoal : undefined
   return (
     <Frame onBack={onBack} onClose={onClose}>
         {ancestors.length === 0
@@ -108,6 +130,7 @@ export function NodeDetail({ graph, id, agents, onBack, onClose }: DetailProps):
           {node.kind === undefined ? null : <Tag tone="neutral">{KIND_LABELS[node.kind]}</Tag>}
           {node.tier === undefined ? null : <Tag tone="neutral">{TIER_LABELS[node.tier]}</Tag>}
         </div>
+        {userEntry === undefined ? null : <button type="button" className="glmg-more" onClick={() => { onUserPage(userEntry.id) }}>用户怎么用 ›</button>}
         {node.body === undefined ? null : <Folded lines={10} className="glmg-text"><Markdown text={node.body} /></Folded>}
         {node.type === 'question' ? <Part title="选项"><Options node={node} /><MainChatLine /></Part> : null}
         {node.status === 'proposed' && node.type !== 'question' ? <><div className="glmg-notice">要批准或不要</div><MainChatLine /></> : null}
@@ -118,6 +141,7 @@ export function NodeDetail({ graph, id, agents, onBack, onClose }: DetailProps):
         {(node.nonGoals ?? []).length === 0
           ? null
           : <Part title="不做什么"><ul className="glmg-list">{(node.nonGoals ?? []).map(item => <li key={item}>{item}</li>)}</ul></Part>}
+        {node.type === 'step' ? <Builders graph={graph} step={node} /> : null}
         {children.length === 0
           ? null
           : (
