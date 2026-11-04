@@ -41,6 +41,35 @@
 - 有意不进本提交的：followup/request/grant/grant-void/lift/gap 六种记录类型——写入方（G1 的门、G2-G4）不在，留着就是死代码（knip 也拦）；G1 的门提交随写入方一起加，设计 G1 一行本来就是这么做的。
 - 门禁：build OK；preflight OK；test fail 0（eslint 244、knip 21、jscpd 2）。类型搬移与新增纯函数，不碰探针覆盖的运行时行为。
 
+## 追加：m4-rules R1（第三次修复问人）与 m4-rest 收尾，2026-11-04
+
+分支 `m4-rest`（worktree `.worktrees/m4`，起点 main@4ee9d11）。本批先核实了两条线的完成度，再落地 R1：
+
+- **E4 已在 main**（`e85daf0`，第一批 m4-suppressions）：标记表、每日计数、晨报一行、`suppression-reason` 的数据、`tests/env-suppressions.spec.ts`、ORCHESTRATION §7.6 实现注逐件核对在场。指标计数事件仍按 §3.11「服务不在则什么都不做」（main 上只有 G2 的占位 `METRICS_SERVICE`，指标设计的行未落地）。status-hub 批 4 在 origin/status-hub-2 上的 `src/env/status.ts` 读取的正是这份计数，本批不重复实现。
+- **C1 已在 main**（`154ecaa`，第一批 m4-cleanup）：主检出 `.llm/docs/` 只剩 `_bigmodel_md/`，digest 的附逐字列了三个脚本的字面量与重抓办法，ORCHESTRATION §7.4 末句已改写。
+- **R1 本批落地**：`src/graph/reopen.ts`（`REOPEN_LIMIT`、`reopenCount`/`reopensAfter`、`thirdReworkState`（认法：首条历史是 harness 的 propose 且 `reason` 恰为 `第三次修复：<节点 id>`，正文被改照样认得；`since` 取最近一张已关闭待决的最后一条状态历史时刻）、`reopenQuestion`（题目与四行逐字照 §4.6，附里三次重开的时刻（UTC+8）与理由截 40 码点并转义，F18 退路写法）、三种 notice）；`src/graph/tools.ts`（`graph_status` 的 done→doing 且未带 relay 的重开之后走钩子：数满 3、节点下无未关闭的这类待决才提；`harness` 身份 propose，stale_revision 重试一次；输出 schema 加可选 `notice`；`graphTools` 加 `ThirdReworkReport`（loops 读取器 + 行健康 problem））；`src/graph/loop-entry.ts`（`graph.third-reopen` 事件（listedOnly，不 emit）与 `graph.third-rework` 条目（self），ownRules 一行由常量拼；`installLoopEntry`：有 inject 走 inject（回调返回 dispose 作撤回），否则每 agent/created 重交，问题告警一次并行健康）；`src/graph/index.ts` 接线；`src/graph/plan-text.ts` 导出 `escapeText`（附行与路径共用同一份转义）。
+- 测试：`tests/graph-reopen.spec.ts`（8：计数与认法、since 重置、逐字钉题目与四行、F12 真实引擎提一次、附的转义与截断、F18 三个标题（plain-ui 第二阶段未合入，`M<数字>` 例按 plainWordsIn 走题目路径并在测试里写明）、notice 三种）、`tests/graph-loop-entry.spec.ts`（10：validateContribution 契约、ownRules 一行由常量拼、工具路径的第三次重开交 notice 与 recordRun、relay 不问、决定后重数、子 agent 短 notice、板不在照常问、contribute 拒绝告警一次并行健康、recordRun 抛错是行健康 note、inject 路径交接）。两个 spec 进 `package.json` 的 test:1。
+- 文档：ORCHESTRATION §2.4 第三次修复一条整句改写（数法、问法、认法、实现注）、§2.9 异步行把第三次修复移出卡队列、§6.4 目录行的「走决策卡」改「问人」并补实现状态。
+
+### 与设计的偏差（agent 定，可逆）
+
+1. **记录的字段落在今天的引擎形状上**：§4.6 的表列 `background`/`doubt` 字段，但 M3 附录 0.6 已把这两个图字段取消（G4 的偏差 1 同源）；今天引擎的 proposal 形状是 `form/ask/proposal/reason/cost/ways/notTaken`。四行内容按 §16 的 N22 裁定（「M4 只给记录的字段，版式在 M3」）落在 `reason`（背景）/`proposal`（推荐）/`cost`（疑问）/`notTaken`（不做），每行仍过 `proposalLineRefusal` 的加粗与行长规则；`ask` 是问话「先停下查原因，可以吗？」。与 G4 的 plan-text.ts（四行格式）一致。
+2. **showText 与 notice**：今天的 `propose_to_human` 必带 agent 自己的 `text` 且 `textCoversRecord` 要求推荐与理由逐字在句子里（带加粗记号），所以 notice 给出由四行拼成的一句 showText 让主 Agent 原样传给工具；设计 §4.6 的「M3 原样渲染、不带题目与四行」是按 0.5 渲染器写的，今天的渲染器正是「不带四行」的那种。
+3. `since` 的「最后一条状态历史」取该待决历史里最后一条带 `to` 的记录（propose/approve/reject/status/decide），edit 与 comment 不算。
+4. 附的重开时刻按 UTC+8 格式化（与压制计数的日键同一时区惯例），设计只给了 `10-29 14:02` 的样子；计满超过 3 次（上一次提问失败）时引用窗口内最近三次、序号按窗口内的位次。
+5. `graphTools` 的第三参 `ThirdReworkReport` 是本批加的接口（loops 读取器与行健康 problem），不传时提问照常、只是不报板上。
+6. graph 行的 agent/created 监听器注册顺序：installLoopEntry 的 fallback 排在投影监听器之后（graph-reminder.spec 取第一个监听器的既有约定）。
+
+### 门禁（最终树）
+
+- `npm run build` exit 0；`npm run preflight` exit 0（2 包、15 src、18 行）。
+- `npm test` exit 0（2673 测试，0 败）；棘轮 eslint 76 suppressed、knip 19、jscpd 1，与基线持平，零新增。
+- `npm run -s probe` exit 0，349/349（比 G4 的 344 多 5 条来自 main 侧合并带进的其他批次的检查，非本批新增场景；现有图场景照旧通过）。
+
+### E3（m4-checks）仍然 BLOCKED，等循环板
+
+等的是：循环板里 M4 要导入的几样合入——`src/loops/script.ts`（共用执行器：`runCommand` 的 `queue: 'direct'`、`resolveProgram`；循环板 S1/S3）。main 上没有这个模块，`src/loops/run.ts` 明确写着脚本与检查条目一律 refused（`unadopted`/`check-missing`），共用执行器与同意路径「not built」。其余依赖（`src/loops/trigger.ts` 的 `matchesFilter`、`model.ts`、`service.ts` 的 contribute/emit/listens/recordRun）已在 main。不为 M4 另写第二套执行器（设计 §2.2「不加的东西」）。E3 合入时同时补 `src/env/loop-entry.ts` 与 env 侧的循环板契约测试（§6.8 由后合入的一方加）。
+
 ## 未完成（留下一批）与跳过（带原因）
 
 ### m4-gate — G1 完成（`d012455` 地基 + `362e66a` 安装函数，详见 gate-progress.md），G2 完成（`52a36f6`），G3/G4 留下
