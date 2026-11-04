@@ -419,6 +419,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "人 2026-11-04：「能不能开五条线啊，然后你设置一个定时的，五分钟提醒你一次，你检查一下断没断断了就踹醒」。编排方：恢复到 5 条在跑——video-restyle-less-ai-look、merge-loops-runner-l4、metrics-reason-codes-and-merge、m7-seam-and-e7、investigate-compaction-recall。编排方自己没有定时器，只在收到消息时醒来；做法是另开一条只发心跳的运行 heartbeat-5min-wake-orchestrator（agent://wf-coder，每 5 分钟 Start-Sleep 300 后给编排方发一条 info，最多 96 次约 8 小时，编排方发 STOP 即停；不读写任何文件），编排方每次被唤醒就逐条检查，限流暂停的就恢复。已知局限：心跳运行自己也可能被限流停住，停住时就没有唤醒；它每次唤醒也占一点模型调用。队列：user-graph 合入、m4-checks-and-rules、loops-machine、panel-2、status-hub、m6-followups、m5-rest、bootstrap。"
+    },
+    {
+      "at": "2026-11-04T14:38:14.010Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "调查 investigate-compaction-recall 完成（报告 .agents/tasks/compaction-recall/report.md）。结论（实读到文件:行）：DSH 有给模型用的会话历史工具，但默认不开——实验包 @deepseek-ai/dsh-tool-session-query 的 session_event_search（surfaces 选 shadowed）与 session_event_read 能搜、能读当前会话被压缩遮蔽的原始事件，开关是官方实验 bundle dsh-experimental-session-search（桌面「插件 → Official → Session search」），它同时能读同 cwd 的其他会话；专为压缩后召回设计的 history_read/history_search 只在 DSH 的 proposed 笔记里，没有代码；给人用的已经有：聊天界面往上翻仍是原文、会话菜单 Copy Session as Markdown / Download session log、/export。压缩后模型只看到摘要 checkpoint，里面没有指向原文的指针；原始事件在只追加日志 ~/.dsh/sessions/<项目键>/session-<uuid>/session.v4.jsonl.zstd。ZCode 3.17.1 也没有历史检索工具，只有一句续接文本「read the full transcript at: <path>」，生产调用不传路径。编排方此前「没找到面向模型的工具」的说法不成立，已更正。三个做法待人定：A 人在插件页开官方实验 bundle（零代码，模型能读同工作区所有会话，工具在 ZCode 分布外）；B 本仓库加一个只读当前会话被遮蔽事件的窄工具（隐私最窄，分布外）；C 压缩时追加 ZCode 3.17.1 原句并把会话导出成明文文件让模型用 Read 分页读（最贴近 ZCode 分布，代价是磁盘上多一份明文副本，要放在 .llm/ 下并定清理）。"
     }
   ]
 }
