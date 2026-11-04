@@ -449,6 +449,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "循环板合入后的桌面重启（merge-loops-runner-l4 第 4 步）：主检出 npm run build 退出码 0；桌面版原本关着，build 后以 --remote-debugging-port=9333 启动；插件页两个包的行都在运行，只有 lessons、env 两行按出厂默认停用；行健康没有失败行；启动后没有新的 crash log，也没有新的控制台错误类别。结论：重启后无新错误。接着做循环板 L4。"
+    },
+    {
+      "at": "2026-11-04T16:34:22.083Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "loops-runner 合入后的首轮桌面验收（L4）通过：没有阻塞发现，9 条不阻塞发现。记录 .agents/tasks/loops-runner/l4-2026-11-04.md，提交 fbbdf78，合并为 b3c4e47；origin/main = github/main = b3c4e47；l4-loops 工作树与分支已删除。走通的项：列表、页面、主 Agent 一行、事件投递（loops.file-changed 投递 inject）、等人太久（loops.waiting-on-human）、到点条目与 DSH 自动化任务、删除恢复、停机与重启事件、最近跑过的。不阻塞发现中较重的两条：一、loops.host-restarted 的 downMinutes 算的是两次开跑之间的间隔，不是停机时长（本次停约 1 分钟，值为 30），用 downMinutes atLeast N 筛选的条目会误触发；二、在工作树里跑探针时，场景目录不是 git 仓库，循环行把它认到主检出项目上，改写主检出被忽略的 .llm/loops/view.json（见到两回）。节点保持进行中：loops-machine 仍在排队。"
     }
   ]
 }
