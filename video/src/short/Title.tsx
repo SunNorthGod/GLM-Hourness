@@ -1,7 +1,7 @@
 import React from "react";
 import { AbsoluteFill, interpolate, useCurrentFrame } from "remotion";
-import { GradientText, Reveal } from "../parts";
-import { CLAMP, COLORS, EASE, SILVER } from "../theme";
+import { Reveal, Rule } from "../parts";
+import { CLAMP, COLORS, EASE, SERIF } from "../theme";
 import { BAR, BEAT } from "./timeline";
 
 // The title (bars 1-2) and the end card (bars 23-24). Both show the name and
@@ -13,19 +13,18 @@ import { BAR, BEAT } from "./timeline";
 /** The name, in the column the content keeps to; fades in from part-way so no frame is empty. */
 export const Wordmark: React.FC<{ at?: number }> = ({ at = 0 }) => {
   const frame = useCurrentFrame();
-  const shown = interpolate(frame, [at, at + 20], [0.35, 1], { ...CLAMP, easing: EASE });
   return (
     <div
       style={{
+        fontFamily: SERIF,
         fontSize: 112,
         fontWeight: 700,
         letterSpacing: 2,
         whiteSpace: "nowrap",
-        opacity: shown,
-        scale: interpolate(frame, [at, at + 40], [0.96, 1], { ...CLAMP, easing: EASE, output: "perceptual-scale" }),
+        opacity: interpolate(frame, [at, at + 20], [0.35, 1], { ...CLAMP, easing: EASE }),
       }}
     >
-      <GradientText gradient={SILVER}>GLM-Hourness</GradientText>
+      GLM-Hourness
     </div>
   );
 };
@@ -36,11 +35,7 @@ const Plugin: React.FC<{ at: number }> = ({ at }) => (
   </Reveal>
 );
 
-const Centered: React.FC<{ opacity: number; scale?: number; children: React.ReactNode }> = ({
-  opacity,
-  scale = 1,
-  children,
-}) => (
+const Centered: React.FC<{ opacity: number; children: React.ReactNode }> = ({ opacity, children }) => (
   <AbsoluteFill
     style={{
       alignItems: "center",
@@ -50,7 +45,6 @@ const Centered: React.FC<{ opacity: number; scale?: number; children: React.Reac
       paddingRight: 135,
       paddingBottom: 120,
       opacity,
-      scale,
     }}
   >
     {children}
@@ -61,17 +55,10 @@ const Centered: React.FC<{ opacity: number; scale?: number; children: React.Reac
 export const Opening: React.FC = () => {
   const frame = useCurrentFrame();
   return (
-    <Centered opacity={1} scale={interpolate(frame, [0, 2 * BAR], [1, 1.04], CLAMP)}>
+    <Centered opacity={1}>
       <Wordmark />
       <Plugin at={2 * BEAT} />
-      <div
-        style={{
-          marginTop: 44,
-          height: 2,
-          width: interpolate(frame, [BAR, BAR + 24], [0, 560], { ...CLAMP, easing: EASE }),
-          background: "linear-gradient(90deg, rgba(142,162,255,0), rgba(195,166,255,0.8), rgba(142,162,255,0))",
-        }}
-      />
+      <Rule style={{ marginTop: 44 }} width={interpolate(frame, [BAR, BAR + 24], [0, 560], { ...CLAMP, easing: EASE })} />
     </Centered>
   );
 };
