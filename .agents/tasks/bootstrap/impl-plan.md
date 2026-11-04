@@ -35,8 +35,8 @@
 | 编号 | 内容 | 设计 §1.4 验收 | 设计 §16 | 状态 | 提交 | 门禁 |
 | --- | --- | --- | --- | --- | --- | --- |
 | B0 | 本计划入库 | — | — | 已推 | `4bd7328` | build 0、preflight 0、test 0（2939 通过 / 0 失败 / 1 跳过）、probe 0（376/376）；棘轮 73 / 18 / 1；首轮的两处计时失败见第 9 节 |
-| B1 | 设计稿收尾：D1、D3 的人答写进 §0、§0.1、§18、§20 | — | — | 已推 | `7c851db`；评审 F1 的修复随下一批回填 | build 0、preflight 0、test 0（2955 通过 / 0 失败 / 1 跳过）、probe 0（382/382）；棘轮 73 / 18 / 1；F1 修复的门禁见第 9 节 |
-| B2 | 扫描、判路、危险命令、底线清单草稿、「不许碰」路径 | scan #1–#4；scan #5 的格式部分（`parseFloor` 往返核对在 B7） | B1 | 待做 | | |
+| B1 | 设计稿收尾：D1、D3 的人答写进 §0、§0.1、§18、§20 | — | — | 已推 | `7c851db`；评审 F1 的修复 `14e9f64`（评审 B1F1 APPROVED） | build 0、preflight 0、test 0（2955 通过 / 0 失败 / 1 跳过）、probe 0（382/382）；棘轮 73 / 18 / 1；F1 修复的门禁见第 9 节 |
+| B2 | 扫描、判路、危险命令、底线清单草稿、「不许碰」路径 | scan #1–#4；scan #5 的格式部分（`parseFloor` 往返核对在 B7） | B1 | 已推 | 随下一批回填 | build 0、preflight 0、test 0（3001 通过 / 0 失败 / 1 跳过，首轮 1 败为 `loops-run` 计时，见第 9 节）、probe 0（388/388）；棘轮 73 / 18 / 1 |
 | B3 | `/graph-run start` 把已批准的任务转进行中 | run-start #1 | B2 | 待做 | | |
 | B4 | 接管行、服务（`prepare`、`holds`）、接管流水、共用的确定性部分、三个规范模板、`/hourness-init`、登记文件；只走过渡路 | row #1、#3–#8（#1、#4、#7 按过渡路的写法，见第 4 节 B4） | B3（不含 M3 的两处接缝） | 待做 | | |
 | B5 | 两条路的提醒、默认表（按 Q1 的答复带测试命令）、两件事的草稿与 `cost`、`touch` 的 `attach`、`floor.md`、`rule-draft.json`、`ATTACH_BOARDS` 的 `bootstrap:` 一行；设计稿按 Q1 同批改 | paths #1、#2、#3（M4、M7 往返核对除外，在 B7）、#5、#6、#7、#9 | B4 | 待做 | | |
@@ -59,11 +59,12 @@
       Files: `.agents/tasks/bootstrap/design.md`
       Verify: 四道门禁全 0。
 
-- [ ] B2. 扫描与判路（任务 `bootstrap-scan`）。
+- [x] B2. 扫描与判路（任务 `bootstrap-scan`）。
       新建 `src/bootstrap/extract.ts`（纯函数：清单、锁文件、CI、Makefile 一类按行抽命令，带文件与行号，多行标「多行」）、`scan.ts`（只读的 git 与文件读取，`git` 调用都带 `-c core.fsmonitor=false`，远端地址去掉用户名与口令，15 秒上限交部分结果，写 `scan.json`；像密钥的文字用 `src/data/secret-shape.ts` 的 `redactSecrets` 遮盖）、`path.ts`（`decidePath` 与唯一的 `hasProjectGraph`；另导出纯谓词 `isProjectGraph(nodeFileNames)` 供面板用，见第 5 节）、`danger.ts`、`floor.ts`（`floorDraft`，每行末尾带 M7 §3.8.5 的判定写法 `files`、`deletes`、`commands`、`outside`）、`touch.ts`（`touchPaths`）。`scripts/packages.mjs` 的 `hourness.src` 加 `bootstrap`，`packages/hourness/tsconfig.json` 的 `include` 加 `../../src/bootstrap`。这一批没有行：纯模块只被测试导入，先例是 `src/execute/` 的 E0–E3（knip 接受）。
       L2：`tests/bootstrap-scan.spec.ts`，夹具仓库在临时目录里 `git init`，覆盖 §1.4 scan #1–#4 与 §15.1 列的纯函数边界（3 个与 4 个提交、没有提交、只有空 `nodes/`、只有空 `docs/graph/` 的非 git 目录）。`floor.md` 的往返核对（交给 M7 的 `parseFloor`）按设计 §15.1 先对着 M7 §3.8.5 的写法表断言，B7 换成真函数。
       Files: `src/bootstrap/{extract,scan,path,danger,floor,touch}.ts`、`tests/bootstrap-scan.spec.ts`、`scripts/packages.mjs`、`packages/hourness/tsconfig.json`、`package.json`（`test:2` 加新 spec）
       Verify: `node --experimental-strip-types tests/bootstrap-scan.spec.ts` 全过；四道门禁全 0，knip 不升。
+      实做：文档同批改 `docs/ORCHESTRATION.md` 新增 §19 与 §19.1（B4 在这一节下接着写行与过渡路）、`docs/HANDOFF.md` 接管一行。只在本模块内用的名字不导出（knip 把 `test:2` 里的 spec 当入口，只在本文件用的导出也算没用上）；B4 起要用的再导出。与设计的差异见第 6 节 B2 实做时加的几行，issue 一事见第 7 节 Q3。
 
 - [ ] B3. 开始即进行中（任务 `bootstrap-run-start`）。
       `src/graph/run-control.ts`：`start` 对已批准的任务写 `status`（approved → doing，身份 `human`，`reason` 为 `runNote('start')`），与 `redo` 重开同一写法；已在进行中时照旧只批注；`startLines` 去掉「开工时用 graph_status 把它标为 doing。」。`docs/ORCHESTRATION.md` §2.10 写 `/graph-run` 的那几句同批改。
@@ -133,6 +134,15 @@
 | 用户图设计 0.4.1 对接管的请求（扫描列用户入口、对上步骤、建议 `walk` 行） | 接管 0.6 里没有 | 不做；新项目走 M3 访谈时用户图的门照常生效（大循环放行要每个模块服务一步或写明不服务，`env` 模块也在内），主 Agent 按阶段提醒补，接管不加规则；记给编排方 |
 | `d-tests-required-gate`（人 2026-11-01 定）要先在接管的默认表落实（`docs/HANDOFF.md` 第 161 行） | 设计 0.6 一处没写，默认表里 Node、Python 的测试命令以「项目已有测试」为条件 | 第 7 节 Q1 已答 A：B5 落实，设计稿同批改（§1.1、§5.5、§5.6 第 4 条、§7.3 的 `cost` 候选、§20）。`go test`、`cargo test` 在没有测试时照常退出 0，这两个生态的合入不会因此被挡，命令在门禁里就满足这条定案 |
 | 提醒每批把状态记进图（会话钩子） | 任务书：不编辑 `docs/graph`，记录归编排方 | 照任务书，状态写在本表与报告里 |
+| §3.3 的 issue 一行经 `gh issue list` 读 | 验收 bootstrap-scan #3 写扫描不起 git 以外的程序 | B2 不起 `gh`，`issues: {read: false, reason}`（U5 的「不成立时」那一栏就是这样）；两处要不要改成一致，见第 7 节 Q3 |
+| §3.3 的首个提交时间用 `git log --reverse --format=%cI --max-count=1` | git 先按 `--max-count` 截再倒序，这条命令给的是最新一个提交 | B2 用 `git log --max-parents=0 --format=%cI HEAD` 取根提交里最早的一个 |
+| 像密钥的文字换成 `‹已遮盖›` | M5 共用的 `redactSecrets` 换成 `[redacted]` | 用共用函数，不另写一张表；提交主题之外的提交号与日期不遮（40 位十六进制会被 hex 一类遮掉，`history.tsv` 要留着它） |
+| 候选形状 `{id, text, source: {file, line}, origin, kind, multiline, danger, longRunning}`；块标量「只留起止行号」 | §12 要候选的命令文字是一行 | 多行脚本的 `text` 是它的第一行，`source` 加 `endLine`，危险判别读全部行；另加可选的 `name`（脚本、目标、钩子名）与 `expanded`（npm 系展开文字），B5 的「花钱或独占」候选要读它们；`danger` 是命中的词或 `null` |
+| npm 系的 `test` 写成 `<包管理器> test` | `bun test` 跑的是 bun 自带的测试运行器，不是 `test` 脚本 | bun 写 `bun run test`，其余照设计 |
+| 清单表「只看根与 `workspaces`/`members` 声明的一层子目录」 | 子目录里的脚本写成 `<包管理器> run <名字>` 在根上跑的是根的脚本 | 子目录的清单只用来认生态、列进 `sources.manifests`（底线清单的依赖一类读它）；命令只从根清单、CI、任务文件与钩子工具取 |
+| `floorDraft(scan, answers)` | 路径类要读已跟踪的文件名，`scan.json` 只有计数 | 签名是 `floorDraft(scan, files, answers?)`，`files` 是 `files.txt` 的那份列表 |
+| `CODE_EXTENSIONS` 只有名字 | — | 表在 `src/bootstrap/scan.ts`（常见语言与脚本的扩展名，不含 `.json`、`.md`、`.sql`） |
+| 底线清单的路径类按「路径里有 auth…」判 | 按子串判会把 `tests/guard-*.spec.ts`、`docs/security.md` 也列进去 | 取名字里有一段以这些词开头的最浅目录与代码文件；`tests/`、`docs/` 一类与 `vendor/` 一类目录下的不算；§5.7 末段「本仓库按扫描会得到的草稿」是核对用的样子，B2 对本仓库多列出 `scripts/guard/`、`src/data/secret-shape.ts` 等几处，留给主 Agent 删改 |
 
 ## 7. 要人定的点
 
@@ -156,7 +166,16 @@
 
 答复（编排方 2026-11-04T20Z，原话）：「Q2: the orchestrator is asking the person now, with option A as the recommendation; do not wait for it. Proceed with B0-B6 in plan order, leaving only the panel's condition-14 branch for the answer, and keep B7-B10 deferred as planned.」
 
-处理：人还没答。接管这边没有一批等它：`/hourness-init` 的回话照设计 §3.2 原文，`isProjectGraph` 照第 5 节导出。只有面板线条件 14 的「接管行在」一支等人的答复；人答了，编排方转给面板线，答复原话补记在这里。
+处理（Q2）：人还没答。接管这边没有一批等它：`/hourness-init` 的回话照设计 §3.2 原文，`isProjectGraph` 照第 5 节导出。只有面板线条件 14 的「接管行在」一支等人的答复；人答了，编排方转给面板线，答复原话补记在这里。
+
+### Q3 扫描读不读 issue（B2 实做时发现，设计内部两处不一致；不挡任何一批）
+
+依据：设计 §3.3 读什么的表有一行 issue：`gh` 在 PATH 上、`gh auth status` 退出 0、远端是 `github.com` 时跑 `gh issue list`；同一节第一段与 §1.4 bootstrap-scan #3 的验收却写扫描「不起任何非 git 的进程」，外部进程只有 `git`。两处不能同时成立。U5 的「不成立时」一栏写的是不读 issue、`issues: {read: false}`。
+
+- 选项 A（建议，B2 已按它做）：扫描不起 `gh`，`scan.json` 写 `issues: {read: false, reason}`，原因一句告诉主 Agent issue 要读就自己读（主 Agent 照常有命令行）；设计 §3.3 的 issue 一行在下次改稿时改成这样。理由：守住验收 #3 这条更硬的边界（扫描在人同意之前跑，只起 git 一种程序最好核对），issue 是读项目的辅料，主 Agent 读得到。
+- 选项 B：照 §3.3 的表起 `gh`，验收 #3 改成「不起 git 与 `gh` 以外的进程」。代价：扫描多一种外部程序要核对（`gh` 的扩展与别名会执行用户装的代码），U5 要在装了 `gh` 的机器上手动核一次。
+
+处理（Q3）：B2 按 A 做，不等答复；答 B 时在 B6 之前补上 `gh` 一步与它的 L2。
 
 ## 8. 与并行线共用的文件
 
@@ -169,6 +188,8 @@
 - B1：门禁结果见第 3 节 B1 一行（提交号随下一批回填）。第一次跑 `npm test` 时与 build 同时起跑，preflight 读到正被清空的 `dist/` 报 40 处缺文件，是操作失误，不是代码问题；build 完成后整套重跑，结果即表中数字。
 - 合入 `origin/main` `5eaddd4`（合并提交 `b6411ef`，已推）：main 只带来 `docs/graph/` 的记录，没有冲突。门禁：build 0、preflight 0、test 0（2955 通过 / 0 失败 / 1 跳过）；探针首轮 1（380/382，红的又是 `rules-peak-stop` 那两条），重跑 0（382/382）；棘轮 73 / 18 / 1。日志 `bs-M2-*`、`bs-M2r2-probe.log`。
 - B0–B1 评审（`.llm/wf/review-B0-B1.md`）F1：`design.md` 版本行仍写「要人定的仍是 D1、D3」，与 §0、§18 相反。改成「D1、D3 人 2026-11-02 已定（§18）」，§20「0.6（人定 D1、D3 的收尾）」一行的改动处补上版本行。单独一个提交，提交号随下一批回填。门禁：build 0、preflight 0；`npm test` 首轮 1，败的又是 `tests/loops-run.spec.ts`「a run that did not finish hands its events back」（B0 首轮同一条），单独重跑 3 次全绿，整套重跑 0（2955 通过 / 0 失败 / 1 跳过）；probe 0（382/382）；棘轮 73 / 18 / 1。日志 `bs-B1F1-*`。
+- 合入 `origin/main` `113b93f`（合并提交 `b3b9ae6`，已推）：main 带来 m6 跟进三项（规则板的高峰结束文字、`scripts/rules-gate.mjs` 与 `tests/script-gate.spec.ts`、探针场景）与 `docs/graph/` 的记录，没有冲突；`package.json` 的测试链照 main。门禁：build 0、preflight 0、test 0（2982 通过 / 0 失败 / 1 跳过）、probe 0（388/388）；棘轮 73 / 18 / 1。日志 `bs-M3-*`。主检出 `view.json` 在探针期间变了，不当失败。
+- B2：门禁 build 0、preflight 0；`npm test` 首轮 1（1 败，又是 `tests/loops-run.spec.ts`，这次是「a person's adopted script entry runs through the shared executor…」第 451 行读到的结局为空），单独重跑 3 次全绿（23/23），整套重跑 0（3001 通过 / 0 失败 / 1 跳过）；新 spec `tests/bootstrap-scan.spec.ts` 19/19；probe 0（388/388）；棘轮 73 / 18 / 1（knip 不升：只在模块内用的名字没有导出）。日志 `bs-B2-*`（首轮 `bs-B2-test-run1.log`）。主检出 `view.json` 在探针期间变了，不当失败。`loops-run` 这一组计时失败已在 B0、B1F1、B2 三批出现，都不在接管的路径上，交循环板线。
 - 记图：会话钩子要求把状态记进 `docs/graph`；任务书写明不编辑 `docs/graph`、记录归编排方，照任务书，各批状态只写在本计划与报告里。
 
 ## Digest
