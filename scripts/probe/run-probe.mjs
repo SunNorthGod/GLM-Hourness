@@ -33,7 +33,11 @@
  * (env-notice) runs in a git workspace whose graph has an approved tool node
  * under env, with the env row enabled by the overlay: the first request ends
  * with the wrapped environment notice, the next does not repeat it, and the
- * project's .llm/ is git-ignored through .git/info/exclude. The loop board's peak scenario
+ * project's .llm/ is git-ignored through .git/info/exclude. The
+ * env-check-command scenario mounts probe-env.mjs in place of the loop board
+ * (the loop row pinned off): the env row's service reads a check line of the
+ * graph's tool node back, the row hands the board env.files-edited and emits
+ * it once per step that wrote a file. The loop board's peak scenario
  * (loops-peak) runs on the GLM route at the probe clock inside a peak, with
  * the loop row and the rules row (少做) enabled and no contribution listing
  * execute.resume-drive: the scripted agent becomes the main agent with /wish,
@@ -684,6 +688,58 @@ const envNoticeRepeat = (envNoticeRun.steps[1]?.messages ?? []).filter(message =
 const envNoticeLast = envNoticeRun.steps[1]?.messages.at(-1)
 const envExclude = existsSync(join(envNoticeWs, '.git', 'info', 'exclude')) ? readFileSync(join(envNoticeWs, '.git', 'info', 'exclude'), 'utf8') : ''
 const envIgnored = spawnSync('git', ['-C', envNoticeWs, 'check-ignore', '-q', '.llm/scratch/x'], { stdio: 'ignore' }).status
+
+// The env row and the loop board (M4 design §6.1.2, §6.2, §14.1 env-checks,
+// the part without when; scenario env-check-command): the env row and the
+// graph row on, the loop row pinned off, and the probe-env overlay standing
+// in for the loop board (the headless runtime has no session controller, so
+// the real board provides no service). A tool node's check line without
+// `when` reads back through glmHournessEnv as it stands on the node and is
+// not M4's own; each step after a file write emits env.files-edited with
+// the file relative to the checkout root; the row hands the board the event,
+// and no checks reminder appears (the runner joins later).
+const envCheckDir = join(runDir, 'env-check-command')
+const envCheckWs = join(envCheckDir, 'ws')
+const envCheckGraph = join(envCheckWs, 'docs', 'graph')
+const envCheckLog = join(envCheckDir, 'env.jsonl')
+mkdirSync(envCheckGraph, { recursive: true })
+writeFileSync(join(envCheckWs, 'README.md'), 'probe workspace\n')
+if (!initRepo(envCheckWs)) throw new Error('probe: git init for env-check-command failed')
+const envCheckEngine = openEngine(envCheckGraph)
+for (const node of [
+  { type: 'goal', title: '探针目标' },
+  { id: 'env', type: 'feature', title: '环境', parent: 'goal-1' },
+  { id: 'tool-1', type: 'tool', title: 'Lint', parent: 'env', body: '用法：node lint.mjs', acceptance: ['`check lint lines $ node lint.mjs {files}`'] },
+]) {
+  const seeded = await envCheckEngine.apply('human', { op: 'propose', reason: 'probe seed', node })
+  if (!seeded.ok) throw new Error(`probe: seeding the env-check-command graph failed: ${JSON.stringify(seeded.error)}`)
+  if (seeded.node?.status === 'proposed' && !(await envCheckEngine.apply('human', { op: 'status', id: seeded.id, rev: seeded.rev, to: 'approved', reason: 'probe' })).ok) {
+    throw new Error(`probe: approving the env-check-command node ${seeded.id} failed`)
+  }
+}
+const envCheckRun = runScenario('env-check-command', 'deepseek-probe', [
+  { tool: { name: 'probe_check_command', arguments: { tool: 'tool-1' } } },
+  { tool: { name: 'write', arguments: { file_path: join(envCheckWs, 'a.txt'), content: 'a\n' } } },
+  { tool: { name: 'write', arguments: { file_path: join(envCheckWs, '-c.txt'), content: 'c\n' } } },
+  { text: 'done' },
+], 'Read the check command, write two files, then reply done.', [
+  '- id: glm-hourness/env',
+  '  disabled: false',
+  '- id: glm-hourness/loops',
+  '  disabled: true',
+  '- insert:',
+  '    - id: glm-hourness-probe/env',
+  `      name: ${JSON.stringify(slash(join(repo, 'scripts', 'probe', 'probe-env.mjs')))}`,
+  '      inject: [tools]',
+  `      config: { out: ${JSON.stringify(slash(envCheckLog))} }`,
+], envCheckWs, [], profiles['probe-hourness'])
+// jsonl() is defined further down; this scenario reads its log the same way.
+const envCheckRecords = existsSync(envCheckLog) ? readFileSync(envCheckLog, 'utf8').split('\n').filter(line => line.length > 0).map(line => JSON.parse(line)) : []
+const envCheckCommand = envCheckRecords.find(record => record.kind === 'check-command')
+const envCheckContribute = envCheckRecords.find(record => record.kind === 'contribute' && record.source?.row === 'glm-hourness/env')
+const envCheckEmits = envCheckRecords.filter(record => record.kind === 'emit' && record.event?.event === 'env.files-edited').map(record => record.event)
+const sameDir = (a, b) => typeof a === 'string' && slash(a).toLowerCase().replace(/\/+$/, '') === slash(b).toLowerCase().replace(/\/+$/, '')
+const envCheckReminders = envCheckRun.steps.reduce((count, step) => count + step.messages.filter(message => message.source === 'hourness-checks').length, 0)
 
 // Client composition (split design §5.6, U3): the headless template has no
 // client-modules row, so the overlay mounts @deepseek-ai/dsh-client-modules
@@ -2545,6 +2601,10 @@ const checks = [
   ['hourness-only: /hourness-status lists the orchestration rows and the GLM package as one line not loaded', hournessOnlyStatus?.kind === 'success' && onlyOneLoaded(hournessOnlyHealth, 'hourness', 'glm'), `${hournessOnlyStatus?.kind ?? 'not run'}; ${JSON.stringify(hournessOnlyHealth[WHOLE] ?? null)}`],
   ['env-notice: the first request carries the wrapped environment notice — the tool line, the no-checks line, the scratch line', envNoticeFirst !== undefined && typeof envNoticeFirst.text === 'string' && envNoticeFirst.text.startsWith('<system-reminder>\nProject tools (graph node env). Use these before writing your own.\n- ESLint [tool-1]: npm run lint\n') && envNoticeFirst.text.includes(NO_CHECKS_LINE) && envNoticeFirst.text.includes(SCRATCH_LINE) && envNoticeFirst.text.endsWith('\n</system-reminder>'), envNoticeFirst === undefined ? 'no notice in request 1' : envNoticeFirst.text.slice(0, 140).replace(/\n/g, ' | ')],
   ['env-notice: the second request does not repeat the notice (the first one persists in the session)', envNoticeRun.steps.length === 2 && envNoticeRepeat === 1 && envNoticeLast?.source !== 'hourness-env', `hourness-env messages in request 2: ${envNoticeRepeat}; last: ${JSON.stringify({ source: envNoticeLast?.source, text: String(envNoticeLast?.text ?? '').slice(0, 60) })}`],
+  ['env-check-command: glmHournessEnv reads the check line without when as it stands on the approved node, and it is not M4\'s own', envCheckCommand?.service === true && isDeepStrictEqual(envCheckCommand.command, { tool: 'tool-1', check: 'lint', title: 'Lint：lint', argv: ['node', 'lint.mjs', '{files}'], format: 'lines', own: false }), `exit ${envCheckRun.status}; ${JSON.stringify(envCheckCommand ?? null)}`],
+  ['env-check-command: the env row hands the board the event env.files-edited', envCheckContribute !== undefined && envCheckContribute.source.plugin === 'dsh-hourness' && isDeepStrictEqual(envCheckContribute.events, ['env.files-edited']), JSON.stringify(envCheckContribute ?? null)],
+  ['env-check-command: each step after a write emits env.files-edited once, the file relative to the checkout root, keyed files-edited:<session>:<turn>-<step>', envCheckRun.steps.length === 4 && envCheckEmits.length === 2 && isDeepStrictEqual(envCheckEmits.map(event => event.payload?.files), [['a.txt'], ['-c.txt']]) && envCheckEmits.every(event => sameDir(event.payload?.root, envCheckWs) && event.payload?.truncated === false && sameDir(event.cwd, envCheckWs) && typeof event.session === 'string' && new RegExp(`^files-edited:${event.session}:\\d+-\\d+$`).test(event.key)) && new Set(envCheckEmits.map(event => event.key)).size === 2, `${envCheckRun.steps.length} requests; ${JSON.stringify(envCheckEmits.map(event => ({ key: event.key, files: event.payload?.files, root: event.payload?.root })))}`],
+  ['env-check-command: no checks reminder is injected (M4\'s runner is not on yet)', envCheckRun.steps.length > 0 && envCheckReminders === 0, `hourness-checks messages: ${envCheckReminders}`],
   ['env-notice: the row appended .llm/ to the clone\'s .git/info/exclude and check-ignore verifies it', envIgnored === 0 && envExclude.split('\n').filter(line => line.trim() === '.llm/').length === 1, `check-ignore exit ${envIgnored}; exclude lines: ${envExclude.split('\n').filter(line => line.trim() === '.llm/').length}`],
   titleCheck('client-modules (probe-full)', clientModules.steps[0]?.meta, ['glm', 'hourness']),
   titleCheck('glm-only', glmOnly.steps[1]?.meta, ['glm']),

@@ -17,7 +17,9 @@
  *   executes what an entry says to do. A message for the main agent waits until
  *   that side of the board is built; a person's adopted script entry runs
  *   through the shared executor (script.ts) after the rules board lets it
- *   through, and a check entry waits for the environment row (run.ts);
+ *   through, and so does a check entry, whose command the environment row's
+ *   service reads from the tool node (`checksSeam`; refused while that row
+ *   is off);
  * - runs the end of a GLM peak itself (peak.ts): the harness action of the
  *   loop row's own hand-over takes the table of design §6.9 item 4 — the
  *   execute row's resume action when a hand-over lists it, otherwise the wake
@@ -74,7 +76,8 @@ import { holderRecordFor } from './holder.ts'
 import { LOOPS_KEY, loopsProjection } from './projection.ts'
 import { createRegistry, LOOPS_SOURCE } from './registry.ts'
 import { installLoopStepNotice, machineStepFile } from './reminder.ts'
-import { BEAT_MS, createProjectRuntime, type ProjectRuntime } from './run.ts'
+import { BEAT_MS, createProjectRuntime, type LoopChecks, type ProjectRuntime } from './run.ts'
+import { envService, fillCheckArgv, formatCheckOutput, isCheckFormat } from '../env/env-service.ts'
 import { LOOPS_DECLARATION, LOOPS_SERVICE, type Contribution, type LoopEventInput, type LoopsService } from './service.ts'
 import type { PeakView } from './view.ts'
 
@@ -182,6 +185,28 @@ function installProjection(ctx: Partial<InjectHost>, settled: (problem: string |
   catch (error) {
     console.warn(`${name}: the projection ${LOOPS_KEY} is off: ${message(error)}`)
     settled(`会话投影未注册：${message(error)}`)
+  }
+}
+
+/**
+ * The board's seam for check entries (run.ts `LoopChecks`) over the environment row's service (m4 design §6.1.2):
+ * `checkCommandOf`, `fillCheckArgv` and `formatCheckOutput` of src/env/env-service.ts. undefined while that row is
+ * off, so a check entry is refused (`check-missing`). A format the row does not know reads as unreadable output.
+ */
+export function checksSeam(ctx: ServiceLookup, problem?: (message: string) => void): LoopChecks | undefined {
+  const env = envService(ctx, problem)
+  if (env === undefined) return undefined
+  return {
+    commandOf: async (cwd, tool, check) => {
+      try {
+        return await env.checkCommandOf(cwd, tool, check)
+      }
+      catch {
+        return undefined
+      }
+    },
+    fill: fillCheckArgv,
+    present: (format, run) => isCheckFormat(format) ? formatCheckOutput(format, run) : undefined,
   }
 }
 
@@ -313,6 +338,8 @@ export function apply(ctx: LoopsContext, config: LoopsConfig = {}): () => void {
       // A peak began or ended: the view's peak line is written again, so the page does not show the level of yesterday (design §6.9 item 3).
       onPeakEdge: () => { void boards.refresh(root) },
       appStamp,
+      // The environment row's command of a check entry, read per run (m4 design §6.1.2); absent while that row is off.
+      checks: () => checksSeam(ctx, message => { say(message, 'degraded') }),
     })
     running.set(root, { runtime, touchedAt: io.now() })
     return runtime

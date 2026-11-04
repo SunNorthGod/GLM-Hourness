@@ -142,11 +142,14 @@
       # node and its tool children), the checks that run after edits, and the
       # scratch area for one-off scripts (.llm/scratch/). Before the first
       # notice for a repository it appends .llm/ to the clone's
-      # .git/info/exclude and verifies with git check-ignore. The check
-      # runner and the suppression count join with their tasks (m4-checks,
-      # m4-suppressions). Ships disabled until the L3 probe (scenario
-      # env-notice) and the first desktop pass (docs/DEVELOPMENT.md §3,
-      # AGENTS.md).
+      # .git/info/exclude and verifies with git check-ignore; once a day per
+      # repository it counts suppression comments (m4-suppressions). For the
+      # loop board it provides glmHournessEnv (the command of an approved
+      # check line, for the board's check entries) and hands over the event
+      # env.files-edited, emitted after each step that changed files
+      # (m4-checks); M4's own check runner joins later. Ships disabled until
+      # the L3 probe (scenarios env-notice, env-check-command) and the first
+      # desktop pass (docs/DEVELOPMENT.md §3, AGENTS.md).
       name: dsh-hourness/env
       disabled: true
       config: {}

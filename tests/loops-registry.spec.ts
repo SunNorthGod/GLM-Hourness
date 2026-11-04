@@ -734,7 +734,7 @@ test('the row ships enabled in the orchestration patch (no disabled key), is reg
 
 // ------------------------------------------------------------ what src/loops/ is not
 
-test('src/loops/ holds no other row\'s table and no channel file: nothing imports the execution, operation, env or GLM rows, or the channel contract', () => {
+test('src/loops/ holds no other row\'s table and no channel file: nothing imports the execution, operation, env or GLM rows, or the channel contract, but index.ts the env row\'s seam file', () => {
   const directory = new URL('../src/loops/', import.meta.url)
   const files = readdirSync(directory).filter(file => file.endsWith('.ts'))
   assert.ok(files.includes('registry.ts') && files.includes('defaults.ts'))
@@ -743,7 +743,9 @@ test('src/loops/ holds no other row\'s table and no channel file: nothing import
   for (const file of files) {
     const text = readFileSync(new URL(file, directory), 'utf8')
     const specifiers = [...text.matchAll(/(?:^|\n)\s*(?:import|export)\s[^;]*?\sfrom\s+['"]([^'"]+)['"]/g)].map(match => match[1] ?? '')
-    for (const specifier of specifiers) assert.doesNotMatch(specifier, /(?:^|\/)(execute|operate|env|glm-llm|channel-loop)(?:\/|\.|$)/, `${file} imports ${specifier}`)
+    // The board's check entries read the env row through the one file m4 design §6.1.2 names for it, wired in index.ts (checksSeam).
+    const seam = (specifier: string): boolean => file === 'index.ts' && specifier === '../env/env-service.ts'
+    for (const specifier of specifiers.filter(found => !seam(found))) assert.doesNotMatch(specifier, /(?:^|\/)(execute|operate|env|glm-llm|channel-loop)(?:\/|\.|$)/, `${file} imports ${specifier}`)
     // The one id of another row the board may name is the execute row's resume-drive, which design §6.9 item 4 row 3 (with §17 M7 item 6) makes the board call by id; peak.ts is the only file that names it.
     const withoutResume = text.replace(/['"`]execute\.resume-drive['"`]/g, '')
     assert.doesNotMatch(withoutResume, /['"`](?:execute|operate|env)\.[a-z]/, `${file} writes an id of another row`)

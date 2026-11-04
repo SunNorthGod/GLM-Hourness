@@ -399,6 +399,15 @@ function checkEvents(
   return declared
 }
 
+/**
+ * Why a value is not a list the `paths` comparison takes, or undefined: at most 20 non-empty strings. The environment
+ * row reads the `when` of its check lines with it (m4 design §6.1.1), so both boards accept one way of writing paths.
+ */
+export function pathsRefusal(value: unknown): string | undefined {
+  if (!Array.isArray(value) || !value.every(item => typeof item === 'string' && item !== '') || value.length > 20) return '“paths”要写成路径写法的列表，至多 20 个'
+  return undefined
+}
+
 const COMPARISONS = ['in', 'is', 'atLeast', 'paths', 'matches'] as const
 type Comparison = (typeof COMPARISONS)[number]
 
@@ -422,7 +431,8 @@ function checkValue(path: string, comparison: Comparison, value: unknown, add: A
     if (typeof value !== 'number' || !Number.isFinite(value)) add(path, '“atLeast”要写成数字')
   }
   else if (comparison === 'paths') {
-    if (!Array.isArray(value) || !value.every(item => typeof item === 'string' && item !== '') || value.length > 20) add(path, '“paths”要写成路径写法的列表，至多 20 个')
+    const problem = pathsRefusal(value)
+    if (problem !== undefined) add(path, problem)
   }
   else if (typeof value !== 'string' || value === '' || value.length > MATCH_PATTERN_MAX) {
     add(path, `“matches”要写成 1 到 ${MATCH_PATTERN_MAX} 个字符的正则`)

@@ -40,7 +40,7 @@ origin/main（`45ae4e8`）还不含 `8c9d74f`（`merge-base --is-ancestor` 退�
       依赖：无。开工前先在未改动的树上跑一遍 build、preflight、`npm test` 记下基线测试数（日志 `m4c-B0-*.log`）。
       Verify：四道门禁退出码 0；新例在改动前的父提交上失败（记录落在数据行目录）、改动后通过。
 
-- [ ] 2. **B2（m4-checks）检查行、`glmHournessEnv` 与循环板接缝，`env.files-edited` 事件**
+- [x] 2. **B2（m4-checks）检查行、`glmHournessEnv` 与循环板接缝，`env.files-edited` 事件**
       范围：
       - `src/env/check-entry.ts`（新）：`CheckFormat`（`'eslint-json' | 'tsc' | 'lines'`）、`CheckEntry {name, format, argv, estimateSeconds?, paths?}`（`paths` 为 `undefined` 即不带 `when`）、`splitArgs`、`parseCheckLine`、`checkLineRefusal`（§6.1.1 全部规则：名字正则、格式、`<预计>` `^[1-9][0-9]{0,2}s$`、1–64 项、每项 1–2000 字符、无 NUL 与换行、`{files}` 单独一项且至多一处、`.cmd`/`.bat` 拒、shell 名单 `pwsh powershell cmd sh bash zsh fish dash` 不收 `{files}`、`when` 非空且每个条件过循环板的 `paths` 写法校验）、`SHELL_PROGRAMS`、`COMMAND_LINE_LIMIT = 28_000`、`fillCheckArgv`（§6.1.2 注释的语义）。`when` 条件的写法校验复用 `src/loops/trigger.ts` 里校验筛选 `paths` 的那段：它没导出就加一个导出，不改它的行为，不另写一份。
       - `src/env/parsers.ts`（新）：三种解析器产出 `{file, line, column?, source, rule?, message}`；`formatCheckOutput(format, run)`（至多 20 行、每行至多 200 字符；读不出任何一行且退出码非 0 时 `undefined`）。
@@ -131,6 +131,8 @@ origin/main（`45ae4e8`）还不含 `8c9d74f`（`merge-base --is-ancestor` 退�
 8. **晨报「检查的超时」一节的 L3 核对放在 L2**（§14.1 `env-checks-timeout` 末句）：探针读的是 `timing.jsonl` 的行序列，报告的拼法由 `tests/workflow.spec.ts` 钉。
 9. **B1 不给规则板门加 `flush`**：与改动前一致，缺口行在下一次写成功时落盘。
 10. **B1 的 L3 给规则行一个行 `home`，不改探针的读取路径**：探针的覆盖层（`scripts/sandbox.mjs` 的 `dataRows`）本来就给 guard、graph、loops、design 行配 `home` 指向运行目录，理由是没有场景工作区的会话（cwd 是本检出）按项目取会落进主检出的 `.llm`。规则行默认启用，改成按项目取之后同样会这样，所以把 `rules` 加进同一张表；现有规则板场景照旧从运行目录读记录，检查不改。按会话项目落盘由 L2 的新例覆盖。
+11. **共用的步 notice 给构建函数多带一个 `turn`**（`src/shared/step-notice.ts` 的 `StepInput`）：B2 的事件键要 `agent/pre-step` 载荷里的 `turn`，载荷没有时不带、env 行退回 `p<进程启动毫秒>-<序号>`；别的步 notice 不读它，行为不变。
+12. **`EnvServiceContractCheck` 钉的是循环板的接缝**：`checkCommandOf` 与 `fillCheckArgv` 的类型对 `src/loops/run.ts` 的 `LoopChecks['commandOf']`、`LoopChecks['fill']` 编译期检查，接缝两边改了一边另一边编不过；设计只写「钉住服务的类型」。
 
 ## Digest
 
