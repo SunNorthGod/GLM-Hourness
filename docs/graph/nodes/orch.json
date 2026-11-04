@@ -413,6 +413,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "限流核对（2026-11-04，人问「在跑还是又限流了？」）：4 条里 3 条又被限流暂停（merge-loops-runner-l4、metrics-reason-codes-and-merge、m7-seam-and-e7），只有 video-restyle-less-ai-look 在跑。限流下多开只会轮流被停、重试。编排方改为同时只跑 2 条：video-restyle-less-ai-look 与 merge-loops-runner-l4（已恢复，只剩循环板 L4）；其余按队列一条结束补一条：metrics-reason-codes-and-merge、m7-seam-and-e7、user-graph 合入、investigate-compaction-recall、m4-checks-and-rules、loops-machine、panel-2、status-hub、m6-followups、m5-rest、bootstrap。"
+    },
+    {
+      "at": "2026-11-04T14:17:53.663Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-11-04：「能不能开五条线啊，然后你设置一个定时的，五分钟提醒你一次，你检查一下断没断断了就踹醒」。编排方：恢复到 5 条在跑——video-restyle-less-ai-look、merge-loops-runner-l4、metrics-reason-codes-and-merge、m7-seam-and-e7、investigate-compaction-recall。编排方自己没有定时器，只在收到消息时醒来；做法是另开一条只发心跳的运行 heartbeat-5min-wake-orchestrator（agent://wf-coder，每 5 分钟 Start-Sleep 300 后给编排方发一条 info，最多 96 次约 8 小时，编排方发 STOP 即停；不读写任何文件），编排方每次被唤醒就逐条检查，限流暂停的就恢复。已知局限：心跳运行自己也可能被限流停住，停住时就没有唤醒；它每次唤醒也占一点模型调用。队列：user-graph 合入、m4-checks-and-rules、loops-machine、panel-2、status-hub、m6-followups、m5-rest、bootstrap。"
     }
   ]
 }
