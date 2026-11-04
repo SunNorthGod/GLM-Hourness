@@ -383,6 +383,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "队列调整（2026-11-04）：视频改风格排到队首，次序变为 视频改风格、loops-machine、panel-2、status-hub、m6-followups、m5-rest、bootstrap。merge-loops-runner-l4 在重启桌面版那一步再次被限流暂停，已恢复。"
+    },
+    {
+      "at": "2026-11-04T12:19:36.836Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-11-04 问「dsh 有压缩后会话上下文查询功能吗」。编排方已知：DSH 的会话记录只追加、写下的事件不重写（DSH 架构笔记 2026-06-14 session-persistence，实读），压缩后原文仍在会话文件里；压缩后模型看到的是摘要。DSH 有没有给模型或人「查压缩前原文」的工具、插件从哪个接口能读原始记录，快速检索未找到，未核实。人答「继续」，按编排方提议排一条只读调查，次序在视频改风格之后。队列：视频改风格、压缩后查原文的调查、loops-machine、panel-2、status-hub、m6-followups、m5-rest、bootstrap。另：限流仍在，在跑的 5 条里 merge-loops 与 metrics 又各被暂停一次，已恢复。"
     }
   ]
 }
