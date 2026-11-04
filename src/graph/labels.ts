@@ -5,6 +5,7 @@
  */
 import type { EngineError, ErrorCode } from './mutation.ts'
 import type { Actor, EvidenceKind, NodeType, Op, Stage, Status, TaskKind, Tier, Verification } from './schema.ts'
+import type { FlowState } from './user-graph.ts'
 
 export const TYPE_LABELS: Readonly<Record<NodeType, string>> = {
   goal: '目标',
@@ -16,6 +17,9 @@ export const TYPE_LABELS: Readonly<Record<NodeType, string>> = {
   norm: '规范',
   tool: '工具',
   retro: '复盘',
+  role: '用户',
+  flow: '流程',
+  step: '步骤',
 }
 
 export const STATUS_LABELS: Readonly<Record<Status, string>> = {
@@ -26,6 +30,21 @@ export const STATUS_LABELS: Readonly<Record<Status, string>> = {
   dropped: '废弃',
   superseded: '被取代',
 }
+
+/** The derived state of a step, a flow or a role (user graph design 0.4.1 §6.5): one set of words for all three. */
+export const USER_STATE_LABELS: Readonly<Record<FlowState, string>> = {
+  proposed: '待你定',
+  unserved: '没人负责',
+  planned: '排上了',
+  building: '在做',
+  built: '做完了，等走一遍',
+  walked: '走通',
+  failed: '走不通',
+  empty: '还没有步骤',
+}
+
+/** A built step whose flow's work moved after its last walk (§6.5). */
+export const OUTDATED_LABEL = '做完了，要重走'
 
 export const VERIFICATION_LABELS: Readonly<Record<Verification, string>> = {
   unverified: '未验证',
@@ -65,6 +84,7 @@ export const EVIDENCE_LABELS: Readonly<Record<EvidenceKind, string>> = {
   test: '测试',
   check: '检查',
   decision: '拍板',
+  walk: '走一遍',
 }
 
 export const ACTOR_LABELS: Readonly<Record<Actor, string>> = {
@@ -85,6 +105,8 @@ export const OP_LABELS: Readonly<Record<Op, string>> = {
   decide: '拍板',
   verify: '验证',
   supersede: '取代',
+  walk: '走了一遍',
+  relink: '改了后面的步骤',
 }
 
 /**
@@ -106,6 +128,7 @@ export function refusalForHuman(error: Pick<EngineError, 'code' | 'message'>, st
     forbidden: `没有这样改的权限（${error.message}）`,
     conflict: `与图里已有的内容冲突（${error.message}）`,
     evidence_required: `缺少证据（${error.message}）`,
+    unavailable: '现在写不进去（读到图或提交的时候出了问题），稍后再试一次',
   }
   return `图没有写入（${error.code}）：${reason[error.code]}`
 }

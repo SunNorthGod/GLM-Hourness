@@ -5,10 +5,12 @@
  */
 import { agoText } from '../../../src/graph/plain-view.ts'
 import { compareText } from '../../../src/graph/format.ts'
-import { ACTOR_LABELS, OP_LABELS, STATUS_LABELS, VERIFICATION_LABELS } from '../../../src/graph/labels.ts'
+import { ACTOR_LABELS, OP_LABELS, OUTDATED_LABEL, STATUS_LABELS, USER_STATE_LABELS, VERIFICATION_LABELS } from '../../../src/graph/labels.ts'
 import { revisionInput, type LoadedGraph } from '../../../src/graph/parse.ts'
-import { OPEN_STATUSES, deciderOf, waitsForHuman, type DecisionRecord } from '../../../src/graph/projection.ts'
+import { OPEN_STATUSES, ancestorsOf, deciderOf, waitsForHuman, type DecisionRecord } from '../../../src/graph/projection.ts'
 import { EDITABLE_FIELDS, type EdgeType, type EditableField, type GraphNode, type HistoryEntry } from '../../../src/graph/schema.ts'
+import { goalOf } from '../../../src/graph/stage.ts'
+import { isUserNode, userGraphOf } from '../../../src/graph/user-graph.ts'
 
 /**
  * First 12 hex digits of the SHA-256 of some bytes: the revision store.ts
@@ -97,7 +99,11 @@ function withAncestors(nodes: ReadonlyMap<string, GraphNode>, kept: Set<string>)
  * The nodes one filter draws. open: nodes that are open or have an open
  * descendant, and the goals; mine: what waits for the human and its
  * ancestors; all: everything. Closed children a filter hides are counted
- * on their parent.
+ * on their parent. The picture is the development graph (user graph design
+ * 0.4.1 §3.7, §3.8): an approved role, flow or step is never done, so it
+ * would count as open forever; the user nodes keep nothing open, are not
+ * kept by open or mine, and are not counted as hidden closed children (the
+ * layout never draws them; their page is the user graph's own).
  */
 export function visibleGraph(graph: LoadedGraph, filter: GraphFilter): VisibleGraph {
   const { nodes } = graph
@@ -111,29 +117,35 @@ export function visibleGraph(graph: LoadedGraph, filter: GraphFilter): VisibleGr
       if (known !== undefined) return known
       if (seen.has(node.id)) return false
       seen.add(node.id)
-      const result = OPEN_STATUSES.has(node.status) || (index.get(node.id) ?? []).some(child => open(child, seen))
+      const result = OPEN_STATUSES.has(node.status) || (index.get(node.id) ?? []).some(child => !isUserNode(child) && open(child, seen))
       openBelow.set(node.id, result)
       return result
     }
     for (const node of nodes.values()) {
-      if (node.type === 'goal' || open(node, new Set())) kept.add(node.id)
+      if (!isUserNode(node) && (node.type === 'goal' || open(node, new Set()))) kept.add(node.id)
     }
   }
   else {
-    for (const node of nodes.values()) if (needsHuman(node)) kept.add(node.id)
+    for (const node of nodes.values()) if (!isUserNode(node) && needsHuman(node)) kept.add(node.id)
   }
   withAncestors(nodes, kept)
   const visible = new Map([...nodes].filter(([id]) => kept.has(id)))
   const hiddenClosed = new Map<string, number>()
   for (const node of nodes.values()) {
-    if (kept.has(node.id) || node.parent === undefined || !kept.has(node.parent) || OPEN_STATUSES.has(node.status)) continue
+    if (isUserNode(node) || kept.has(node.id) || node.parent === undefined || !kept.has(node.parent) || OPEN_STATUSES.has(node.status)) continue
     hiddenClosed.set(node.parent, (hiddenClosed.get(node.parent) ?? 0) + 1)
   }
   return { nodes: visible, hiddenClosed }
 }
 
-/** The status line of a node in the graph and the lists: what it is waiting for, or how it ended. */
-export function statusText(node: GraphNode): string {
+/**
+ * The status line of a node in the graph and the lists: what it is waiting
+ * for, or how it ended. A role, flow or step read with its graph says its
+ * derived state in the words of user graph design 0.4.1 §6.5, never
+ * 「已批准」; without the graph (the needs list, which only shows a user node
+ * while it is proposed) it reads like any proposal.
+ */
+export function statusText(node: GraphNode, graph?: LoadedGraph): string {
   if (node.type === 'question') {
     if (node.status === 'done') {
       if (node.conclusion !== undefined) return `定了：${node.conclusion}`
@@ -142,9 +154,25 @@ export function statusText(node: GraphNode): string {
     }
     if (OPEN_STATUSES.has(node.status) && node.status !== 'proposed') return deciderOf(node) === 'agent' ? 'agent 来定' : '等你拍板'
   }
+  if (graph !== undefined && isUserNode(node)) return userStatusText(graph, node)
   if (node.status === 'proposed') return '等你批准'
   if (node.status === 'approved') return APPROVED_LABELS[node.type] ?? '未开始'
   return STATUS_LABELS[node.status]
+}
+
+/** A user node's derived state (§6.5); one that is not live says how it, or the parent that took it along, ended. */
+function userStatusText(graph: LoadedGraph, node: GraphNode): string {
+  const goal = goalOf(graph, node.id)
+  for (const { role, state, flows } of goal === undefined ? [] : userGraphOf(graph, goal).roles) {
+    if (role.id === node.id) return USER_STATE_LABELS[state]
+    for (const flow of flows) {
+      if (flow.flow.id === node.id) return USER_STATE_LABELS[flow.state]
+      const step = flow.steps.find(view => view.step.id === node.id)
+      if (step !== undefined) return step.outdated ? OUTDATED_LABEL : USER_STATE_LABELS[step.state]
+    }
+  }
+  const gone = [node, ...ancestorsOf(graph, node)].find(entry => entry.status === 'dropped' || entry.status === 'superseded')
+  return STATUS_LABELS[gone?.status ?? node.status]
 }
 
 /** What an approved node is, by type: approved work has not started, an approved decision or norm is in force. */
@@ -285,6 +313,8 @@ const EDGE_LABELS: Readonly<Record<EdgeType, string>> = {
   depends: '依赖',
   source: '来源',
   supersedes: '取代',
+  serves: '服务',
+  next: '下一步',
 }
 
 /** What one history entry did, with its result where the entry carries one. */

@@ -187,6 +187,32 @@ export const PANEL_CSS = `
 .glmg-notice-actions{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:4px}
 .glmg-notice-actions .glmg-more{margin-top:0}
 .glmg-notice-actions .glmg-more:disabled{color:var(--g-ink3);cursor:default}
+/* 用户怎么用 (UserView.tsx): the band, two columns from 760 px (55 : 45), rows as buttons; a selection is a border and a word (选中, 相连), the rest of the other side fades */
+.glmg-uv-band{display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:10px 12px;border:.5px solid var(--g-line-strong);border-radius:var(--dsw-radius-md,12px);background:var(--g-layer)}
+.glmg-uv-band .glmg-text{margin:0 0 2px;color:var(--g-ink)}
+.glmg-uv-band .glmg-more{text-align:left}
+.glmg-uv-picked{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:center;margin-top:8px;color:var(--g-ink2);font-size:12px}
+.glmg-uv-picked .glmg-more{margin-top:0}
+.glmg-uv-switch{display:flex;gap:6px;margin-top:10px}
+.glmg-uv-switch [aria-pressed="true"]{border-color:var(--g-accent);color:var(--g-ink)}
+.glmg-uv-cols{display:grid;grid-template-columns:55fr 45fr;gap:14px}
+.glmg-uv-col{min-width:0}
+.glmg-uv-head{display:flex;flex-wrap:wrap;gap:2px 8px;align-items:baseline;margin:10px 0 2px;padding:2px 6px;border:1px solid transparent;border-radius:var(--dsw-radius-sm,8px);font-weight:600}
+.glmg-uv-flow{margin-left:8px}
+.glmg-uv-row{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px;width:100%;padding:5px 6px;border:1px solid transparent;border-radius:var(--dsw-radius-sm,8px);background:none;color:var(--g-ink);font:inherit;font-size:12.5px;text-align:left;cursor:pointer}
+.glmg-uv-row:hover{background:var(--g-hover)}
+.glmg-uv-row:focus-visible{outline:none;border-color:var(--g-accent)}
+.glmg-uv-row.flow{font-weight:500}
+.glmg-uv-num{flex:none;min-width:1.4em;color:var(--g-ink3);font-variant-numeric:tabular-nums}
+.glmg-uv-title{flex:1 1 auto;min-width:0;overflow-wrap:anywhere}
+.glmg-uv-state{color:var(--g-ink2);font-size:12px}
+.glmg-uv-tag{color:var(--g-ink3);font-size:11px}
+.glmg-uv-orphan{padding:0 6px;border-left:3px solid var(--g-wait);color:var(--g-ink);font-size:11.5px}
+.glmg-uv-mark{padding:0 6px;border-radius:5px;background:var(--g-hover);color:var(--g-ink);font-size:11px}
+.glmg-uv-sub{padding:0 6px 2px 2.4em;color:var(--g-ink3);font-size:11.5px;overflow-wrap:anywhere}
+:is(.glmg-uv-step,.glmg-uv-flow).selected>.glmg-uv-row,.glmg-uv-head.selected{border:2px solid var(--g-accent)}
+.glmg-uv-step.linked>.glmg-uv-row{border-color:var(--g-accent)}
+.glmg-uv-step.faded>.glmg-uv-row{opacity:.5}
 /* the temporary board entry (Panel.tsx footer): one line of board links under the stage, until plain-ui builds the real footer */
 .glmg-foot{display:flex;flex-wrap:wrap;gap:4px 14px;padding:8px 16px 10px;border-top:1px solid var(--g-line)}
 .glmg-foot .glmg-more{margin-top:0}

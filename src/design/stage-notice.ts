@@ -18,7 +18,9 @@
  * propose_to_human and record_human_answer. A goal split into modules is
  * designed twice (docs/ORCHESTRATION.md §4.9): the reminder says which loop
  * the focus is in, what is missing before the framework or the module can be
- * put to the human, and the release that comes next.
+ * put to the human, and the release that comes next. The user graph (user
+ * graph design 0.4.1 §5.1–§5.4) adds a line at the interview, the design and
+ * after the release, and one line that sums up its gaps while it has any.
  *
  * Reading the graph can fail; the step then goes without the reminder, the
  * failure is warned once per process and the session's row health says so.
@@ -31,6 +33,7 @@ import type { GraphNode } from '../graph/schema.ts'
 import type { GraphFocusService } from '../graph/service.ts'
 import { bigLoopSet, goalOf, moduleReleaseGate, releaseSet, stageStatus, type GateItem } from '../graph/stage.ts'
 import { loadGraph } from '../graph/store.ts'
+import { userGraphOf, type Gap, type GapKey } from '../graph/user-graph.ts'
 import { createUserNotice, type AgentLike, type DerivedMessage, type UserNotice } from '../shared/dsh-min.ts'
 import { DELEGATIONS_ID, DELEGATION_LIMIT, delegationKindOf } from '../shared/answer-marks.ts'
 import type { HealthState } from '../shared/health.ts'
@@ -88,6 +91,8 @@ export const INTERVIEW_STEPS: readonly InterviewStep[] = [
   { key: 'need', step: 1, next: askLine('你想要什么', ' as an open question') },
   { key: 'problem', step: 2, next: askLine('做成以后，你的日子会有什么不一样') },
   { key: 'audience', step: 2, next: askLine('做成以后，你的日子会有什么不一样') },
+  // Step 2b (user graph design 0.4.1 §5.1): after the problem and the audience, the same step number, the table's order.
+  { key: 'flows', step: 2, next: askLine('谁会用它，他们进来先做什么', ' with your guess of who uses it, written as 「我猜用它的有……，对吗？」') },
   { key: 'acceptance', step: 3, next: askLine('你会怎么检查它真的做成了') },
   { key: 'non-goals', step: 4, next: askLine('有没有你明确不想要的', ' with your guesses in one line') },
   { key: 'constraints', step: 5, next: askLine('有没有不能改、不能花、不能冒的险') },
@@ -119,6 +124,37 @@ const MODULE_RELEASED_LINE = 'This module is released. Tell the human in one lin
 
 /** The module lines the reminder lists at most. */
 const MODULE_LINES = 8
+
+/** The interview's line on the user graph (user graph design 0.4.1 §5.1): how to draw it, how many, in whose words. */
+export const USER_INTERVIEW_LINE = 'Interview step 2b draws who uses it and what they do, as your own proposals without relay and in the human\'s words: 1 to 4 roles under the goal (graph_propose type role), 2 to 8 flows under each role (type flow, acceptance: what the user has when it is done), 3 to 10 steps under each flow (type step, acceptance: what the user sees when the step is done); graph_link type next from each flow to its first step and from each step to the next, with when on every branch. A step is something a user does or sees at the edge of the product, never an internal module. A goal with no end user gets a line "用户流程：无，<reason>" in its body instead.'
+
+/** The design's line on the user graph (§5.2, §5.3): what its release asks of it. */
+export const USER_DESIGN_LINE = 'The user graph is released with this design: every step needs acceptance and a module, feature or task that builds it (graph_link type serves from that work to the step); every flow a line "走法：<命令|截图|终端> · 预计 <N> 秒" or "走法：你来走" in its body, and norm-merge-gate a line walk <kind> $ <command with {flow}> for each automatic kind; a module serves at least one step or says "服务：无，<reason>" in its body. The harness appends who owns each flow and the walk commands to the release page.'
+
+/** The line after a release on the user graph (§5.4, §11 M3 request ⑤): how the decomposition links to the steps. */
+export const USER_RELEASE_LINE = 'When you decompose, link each task to the steps it builds with graph_link type serves; a flow walked by 命令, 截图 or 终端 needs a task of kind test, linked only to steps that already have task-level serves.'
+
+/** The gaps the interview itself closes (§2.6): the shape of the flows and what each step looks like done. Who builds a step and how a flow is walked wait for the design. */
+const INTERVIEW_GAPS: ReadonlySet<GapKey> = new Set(['role:no-flow', 'flow:empty', 'flow:entry', 'flow:unreachable', 'step:branch', 'step:next-dropped', 'step:no-expect', 'flow:too-long', 'step:too-many-branches'])
+
+/** One line that sums the gaps up: how many, and the first with its way forward. */
+function gapLine(gaps: readonly Gap[]): string[] {
+  const first = gaps[0]
+  return first === undefined ? [] : [`User graph: ${gaps.length} gap(s); the first, ${first.key} on ${first.nodes.join(', ')} (${first.text}): ${first.hint}.`]
+}
+
+/**
+ * The user graph's lines of a stage (§1.4 item 31): the interview's line
+ * always, with the gaps it closes; the design's and the release's only for a
+ * goal with a user graph, with all its gaps. Read from the graph, so a
+ * reminder whose gaps did not change is the same text and is not added again.
+ */
+function userGraphLines(graph: LoadedGraph, goal: GraphNode, at: 'interview' | 'design' | 'release'): string[] {
+  const ug = userGraphOf(graph, goal)
+  if (at === 'interview') return [USER_INTERVIEW_LINE, ...gapLine(ug.gaps.filter(gap => INTERVIEW_GAPS.has(gap.key)))]
+  if (!ug.present) return []
+  return [at === 'design' ? USER_DESIGN_LINE : USER_RELEASE_LINE, ...gapLine(ug.gaps)]
+}
 
 /** The missing item to ask about next: the smallest interview step, the table's order inside a step; undefined when no missing item has a step. */
 export function nextInterviewItem(missing: readonly GateItem[]): { readonly item: GateItem, readonly line: string } | undefined {
@@ -240,20 +276,21 @@ function reminderFor(graph: LoadedGraph, focus: string | undefined): StageRemind
   const stage = status.stage
   if (stage === null) return done('none', [`${head} does not run the design loop (it has no stage), so nothing here waits for a release.`])
   if (stage === 'wish' || stage === 'interview') {
-    return done(stage, [`${head} is at stage ${stage}: the requirement is not confirmed yet.`, ...interviewLines(status.items)])
+    return done(stage, [`${head} is at stage ${stage}: the requirement is not confirmed yet.`, ...interviewLines(status.items), ...userGraphLines(graph, goal, 'interview')])
   }
   const split = isSplit(graph, goal)
   if (stage === 'design') {
-    return done(stage, [`${head} is at stage design.`, ...designLines(graph, goal, status.items, status.exitReady, split)])
+    return done(stage, [`${head} is at stage design.`, ...designLines(graph, goal, status.items, status.exitReady, split), ...userGraphLines(graph, goal, 'design')])
   }
   if (stage === 'release') {
     const module = moduleOf(graph, node)
+    const user = userGraphLines(graph, goal, 'release')
     if (module !== undefined && modulesOf(graph, goal).includes(module)) {
       const lines = isReleased(module) ? [MODULE_RELEASED_LINE] : moduleDesignLines(graph, goal, module)
-      return done(stage, [`${head} is released; you work in module ${module.id} ${quoted(module.title)}, which is ${isReleased(module) ? 'released' : 'in design'}.`, ...lines])
+      return done(stage, [`${head} is released; you work in module ${module.id} ${quoted(module.title)}, which is ${isReleased(module) ? 'released' : 'in design'}.`, ...lines, ...user])
     }
-    if (split) return done(stage, [`${head} is at stage release.`, MODULES_RELEASED_LINE, ...moduleLines(modulesOf(graph, goal))])
-    return done(stage, [`${head} is at stage release.`, RELEASED_LINE])
+    if (split) return done(stage, [`${head} is at stage release.`, MODULES_RELEASED_LINE, ...moduleLines(modulesOf(graph, goal)), ...user])
+    return done(stage, [`${head} is at stage release.`, RELEASED_LINE, ...user])
   }
   return done(stage, [`${head} is at stage ${stage}, which does not belong to the design loop.`])
 }

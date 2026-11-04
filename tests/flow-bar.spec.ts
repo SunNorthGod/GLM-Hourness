@@ -78,15 +78,15 @@ test('no focus, a focus that is not on the graph, or a focus with no goal above 
 
 test('the goal is the focus itself or the nearest goal above it', () => {
   const graph = readySnapshot(goal({ status: 'proposed', stage: 'interview', body: INTERVIEW_BODY }), node('feature-1', 'feature', { parent: 'goal-1' }), node('task-1', 'task', { parent: 'feature-1' }))
-  for (const focus of ['goal-1', 'feature-1', 'task-1']) assert.equal(lineOf(graph, liveAt({ focus })), '主 Agent · 访谈 · 需求卡 4/8', focus)
+  for (const focus of ['goal-1', 'feature-1', 'task-1']) assert.equal(lineOf(graph, liveAt({ focus })), '主 Agent · 访谈 · 需求卡 4/9', focus)
 })
 
-test('wish and interview show the requirement card: items filled of 8', () => {
-  assert.equal(lineOf(readySnapshot(goal({ status: 'proposed' }))), '主 Agent · 许愿 · 需求卡 0/8')
+test('wish and interview show the requirement card: items filled of 9', () => {
+  assert.equal(lineOf(readySnapshot(goal({ status: 'proposed' }))), '主 Agent · 许愿 · 需求卡 0/9')
   const interview = goal({ status: 'proposed', stage: 'interview', body: INTERVIEW_BODY, acceptance: ['月底能看出钱花在哪'] })
-  assert.equal(lineOf(readySnapshot(interview)), '主 Agent · 访谈 · 需求卡 5/8')
+  assert.equal(lineOf(readySnapshot(interview)), '主 Agent · 访谈 · 需求卡 5/9')
   // A stage the LLM wrote on its own proposal does not count: the proposal is in the interview whatever it names.
-  assert.equal(lineOf(readySnapshot(goal({ status: 'proposed', stage: 'release' }))), '主 Agent · 访谈 · 需求卡 0/8')
+  assert.equal(lineOf(readySnapshot(goal({ status: 'proposed', stage: 'release' }))), '主 Agent · 访谈 · 需求卡 0/9')
 })
 
 test('design shows the five columns of the decision that has the fewest filled, whatever the order of the decisions', () => {
@@ -119,8 +119,8 @@ test('a closed goal shows its title and says closed, for done, dropped and super
 test('the main agent waits for the human when it handed something over and its turn is over: the stage says for what', () => {
   const interview = readySnapshot(goal({ status: 'proposed', stage: 'interview', body: INTERVIEW_BODY }))
   const design = readySnapshot(goal({ stage: 'design' }), decision('decision-1', { body: COLUMNS_BODY }))
-  assert.deepEqual(barOf(interview, liveAt({ recent: HANDED_OVER })), { line: '主 Agent · 访谈 · 需求卡 4/8 · 等你确认', waiting: true, modelNote: null })
-  assert.equal(lineOf(readySnapshot(goal({ status: 'proposed' })), liveAt({ recent: HANDED_OVER })), '主 Agent · 许愿 · 需求卡 0/8 · 等你确认')
+  assert.deepEqual(barOf(interview, liveAt({ recent: HANDED_OVER })), { line: '主 Agent · 访谈 · 需求卡 4/9 · 等你确认', waiting: true, modelNote: null })
+  assert.equal(lineOf(readySnapshot(goal({ status: 'proposed' })), liveAt({ recent: HANDED_OVER })), '主 Agent · 许愿 · 需求卡 0/9 · 等你确认')
   assert.deepEqual(barOf(design, liveAt({ recent: HANDED_OVER })), { line: '主 Agent · 设计 · 五栏 2/5 · 等你批准', waiting: true, modelNote: null })
 })
 
@@ -128,13 +128,13 @@ test('a question waiting for the human turns the wait into 等你拍板, whateve
   const question = node('question-1', 'question', { parent: 'goal-1' })
   const interview = readySnapshot(goal({ status: 'proposed', stage: 'interview' }), question)
   const design = readySnapshot(goal({ stage: 'design' }), question)
-  assert.equal(lineOf(interview, liveAt({ recent: HANDED_OVER })), '主 Agent · 访谈 · 需求卡 0/8 · 等你拍板')
+  assert.equal(lineOf(interview, liveAt({ recent: HANDED_OVER })), '主 Agent · 访谈 · 需求卡 0/9 · 等你拍板')
   assert.equal(lineOf(design, liveAt({ recent: HANDED_OVER })), '主 Agent · 设计 · 还没有设计决策 · 等你拍板')
 })
 
 test('no wait while the turn is open, when the last tool result is another tool\'s or a failed hand-over, or when nothing came back yet', () => {
   const graph = readySnapshot(goal({ status: 'proposed', stage: 'interview' }))
-  const quiet = '主 Agent · 访谈 · 需求卡 0/8'
+  const quiet = '主 Agent · 访谈 · 需求卡 0/9'
   assert.equal(lineOf(graph, liveAt({ recent: HANDED_OVER, turnSince: 5 })), quiet, 'the turn is open')
   assert.equal(lineOf(graph, liveAt({ recent: [...HANDED_OVER, { name: 'record_human_answer', at: 2, ok: true }] })), quiet, 'the human answered and it recorded it')
   assert.equal(lineOf(graph, liveAt({ recent: [{ name: 'propose_to_human', at: 1, ok: false }] })), quiet, 'the hand-over was refused')

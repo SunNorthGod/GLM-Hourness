@@ -25,7 +25,11 @@ import {
   TASK_KINDS,
   TIERS,
   TIMESTAMP_PATTERN,
+  USER_LIMITS,
+  USER_STATUSES,
+  USER_TYPES,
   VERIFICATIONS,
+  WALK_REF_PATTERN,
   WEIGHTS,
   isPassingEvidence,
   type CardDimension,
@@ -35,8 +39,10 @@ import {
   type GraphEdge,
   type GraphNode,
   type HistoryEntry,
+  type NodeType,
+  type UserStatus,
 } from './schema.ts'
-import { ASK_FORMS, PROPOSAL_FIELDS, type AskForm } from './proposal.ts'
+import { ASK_FORMS, PROPOSAL_FIELDS, codePointCount, type AskForm } from './proposal.ts'
 
 export interface GraphIssue {
   /** Errors block every write; notices are informational. */
@@ -245,7 +251,19 @@ const dimension: Checker = (value, path, report) => record(value, path, [
 const edge: Checker = (value, path, report) => record(value, path, [
   ['type', oneOf(EDGE_TYPES), true],
   ['to', nodeId, true],
+  ['when', edgeWhen, false],
 ], report)
+
+/** The `when` of a step's next edge (design 0.4.1 §2.3 V5): one line, 1 to USER_LIMITS.when code points. Placement rules (only a step's next carries one) are node rules. */
+const edgeWhen: Checker = (value, path, report) => {
+  const checked = line(value, path, report)
+  if (checked === INVALID) return INVALID
+  if (codePointCount(checked as string) > USER_LIMITS.when) {
+    report(path, `must be at most ${USER_LIMITS.when} code points`)
+    return INVALID
+  }
+  return checked
+}
 
 const evidenceItem: Checker = (value, path, report) => {
   const out = record(value, path, [
@@ -259,6 +277,16 @@ const evidenceItem: Checker = (value, path, report) => {
   if (kind === 'commit' && !COMMIT_PATTERN.test(out.ref as string)) report(`${path}.ref`, 'must be a commit hash of 7 to 40 lowercase hex digits')
   if ((kind === 'test' || kind === 'check') && out.exit === undefined) report(`${path}.exit`, 'is required for test and check evidence')
   if ((kind === 'commit' || kind === 'decision') && out.exit !== undefined) report(`${path}.exit`, 'only test and check evidence carry an exit code')
+  if (kind === 'walk') {
+    // The note's `@<commit>` shape is a write rule (engine.ts), not a read rule: a hand-edited file must still load (§3.3 V7).
+    if (!WALK_REF_PATTERN.test(out.ref as string) || codePointCount(out.ref as string) > USER_LIMITS.ref) {
+      report(`${path}.ref`, `must start with command:, screenshot:, transcript: or person:, then the command or artifact path, one line of at most ${USER_LIMITS.ref} code points`)
+    }
+    if (out.exit === undefined) report(`${path}.exit`, 'is required for walk evidence')
+    const note = out.note
+    if (note === undefined) report(`${path}.note`, 'is required for walk evidence')
+    else if (/[\r\n]/.test(note as string) || codePointCount(note as string) > USER_LIMITS.note) report(`${path}.note`, `must be a single line of at most ${USER_LIMITS.note} code points`)
+  }
   return out
 }
 
@@ -425,10 +453,16 @@ function questionShapeIssues(node: GraphNode, keys: ReadonlySet<string>, report:
   }
 }
 
-/** Cross-field rules of one node (§2.6 validation list). */
+/** Whether a node type is one of the user graph's (design 0.4.1 §2.2). */
+function isUserType(type: NodeType): boolean {
+  return (USER_TYPES as readonly string[]).includes(type)
+}
+
+/** Cross-field rules of one node (§2.6 validation list; user-graph rules V2, V5, V7 and the start-side halves of V3, V4, V6 from design 0.4.1 §3.3). */
 function nodeRuleIssues(node: GraphNode, file: string): GraphIssue[] {
   const issues: GraphIssue[] = []
   const report = reporter(file, issues)
+  const user = isUserType(node.type)
   if (node.type === 'goal') {
     if (node.parent !== undefined) report('parent', 'a goal node has no parent')
   }
@@ -462,16 +496,36 @@ function nodeRuleIssues(node: GraphNode, file: string): GraphIssue[] {
       if (node[field] !== undefined) report(field, `only question nodes carry ${QUESTION_ONLY_FIELDS.join(', ')}`)
     }
   }
+  // V2: a user node stores four statuses only; its progress is derived, never done (§2.2).
+  if (user && !USER_STATUSES.includes(node.status as UserStatus)) {
+    report('status', `a ${node.type} node is proposed, approved, dropped or superseded; its progress comes from the work that serves it`)
+  }
   node.edges?.forEach((entry, index) => {
     if (node.edges!.findIndex(other => other.type === entry.type && other.to === entry.to) !== index) report(`edges[${index}]`, `duplicate ${entry.type} edge to "${entry.to}"`)
+    // V3, start side: only work carries serves (the target-side rules are graph-wide, validate.ts).
+    if (entry.type === 'serves' && node.type !== 'feature' && node.type !== 'task') report(`edges[${index}].type`, `a ${node.type} node carries no serves edge`)
+    // V4, start side: only a step or a flow orders steps with next.
+    if (entry.type === 'next' && !user) report(`edges[${index}].type`, `a ${node.type} node carries no next edge`)
+    // V5: a when names a branch, and only a step branches; a flow's entry has no condition.
+    if (entry.when !== undefined && !(node.type === 'step' && entry.type === 'next')) report(`edges[${index}].when`, 'only a step\'s next edge carries a when')
   })
+  // V6, start side: a user node depends on nothing; what it exists because of is a question only (validate.ts checks the target sides).
+  if (user) {
+    node.edges?.forEach((entry, index) => {
+      if (entry.type === 'depends') report(`edges[${index}].type`, `a ${node.type} node carries no depends edge`)
+    })
+  }
+
   node.evidence?.forEach((entry, index) => {
-    if (entry.kind !== 'decision') return
-    if (node.type !== 'question') report(`evidence[${index}].kind`, 'decision evidence belongs to question nodes')
-    else if (node.options === undefined) {
-      if (entry.ref !== CONCLUSION_REF) report(`evidence[${index}].ref`, `a proposal's decision evidence has the ref "${CONCLUSION_REF}"`)
+    if (entry.kind === 'decision') {
+      if (node.type !== 'question') report(`evidence[${index}].kind`, 'decision evidence belongs to question nodes')
+      else if (node.options === undefined) {
+        if (entry.ref !== CONCLUSION_REF) report(`evidence[${index}].ref`, `a proposal's decision evidence has the ref "${CONCLUSION_REF}"`)
+      }
+      else if (!keys.has(entry.ref)) report(`evidence[${index}].ref`, `"${entry.ref}" is not an option key`)
     }
-    else if (!keys.has(entry.ref)) report(`evidence[${index}].ref`, `"${entry.ref}" is not an option key`)
+    // V7: a walk record sits on the step it walked.
+    if (entry.kind === 'walk' && node.type !== 'step') report(`evidence[${index}].kind`, 'walk evidence belongs to step nodes')
   })
   if (node.status === 'done' && !(node.evidence ?? []).some(isPassingEvidence)) {
     report('evidence', 'a done node needs passing evidence: a commit, a test or check with exit 0, or a decision')
@@ -481,7 +535,7 @@ function nodeRuleIssues(node: GraphNode, file: string): GraphIssue[] {
 }
 
 function canonicalEdge(entry: GraphEdge): GraphEdge {
-  return { type: entry.type, to: entry.to }
+  return entry.when === undefined ? { type: entry.type, to: entry.to } : { type: entry.type, to: entry.to, when: entry.when }
 }
 
 function compareEdges(a: GraphEdge, b: GraphEdge): number {

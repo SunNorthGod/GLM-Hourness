@@ -2,7 +2,8 @@
  * The home page (plain-ui 1.3 §4.2, mockup-home.svg): five sections from
  * top to bottom — 效果是, 需要你, 现在, 怎么做 · 接下来, 上次看之后 — no
  * tabs, every section at most five rows, the rest behind a 讲细点 that
- * opens the second-layer page. Everything is computed by plain-view.ts
+ * opens the second-layer page. A goal with a user graph leads 效果是 with
+ * its flow progress (user-view.ts). Everything else is computed by plain-view.ts
  * from the current graph and the session's live views; the boards' lines
  * come from the registration table. The panel only looks.
  */
@@ -20,13 +21,20 @@ import type { AgentLive } from './agents.ts'
 import { NowContext, Part, When, useServices } from './common.tsx'
 import { MainChatLine } from './MainChat.tsx'
 import { headlineGoals, statusText } from './model.ts'
+import { homeFlowLine } from './user-view.ts'
 
-/** The home rows of one goal: the progress line, and the module line when the two-level loop is on. */
-function GoalRow({ graph, goal, awaiting, onModules }: { readonly graph: LoadedGraph, readonly goal: GraphNode, readonly awaiting: readonly AwaitingEntry[], readonly onModules: () => void }): ReactElement {
+/**
+ * The home rows of one goal: for a goal with a user graph its flow progress
+ * first, opening 用户怎么用 (user graph design 0.4.1 §6.1); the progress of
+ * the work; the module line when the two-level loop is on.
+ */
+function GoalRow({ graph, goal, awaiting, onModules, onUser }: { readonly graph: LoadedGraph, readonly goal: GraphNode, readonly awaiting: readonly AwaitingEntry[], readonly onModules: () => void, readonly onUser: () => void }): ReactElement {
   const row = moduleRowText(graph, goal, awaiting)
+  const flows = homeFlowLine(graph, goal)
   return (
     <div className="glmg-goalrow">
       <div className="glmg-row-title">{goal.title}</div>
+      {flows === null ? null : <button type="button" className="glmg-more" onClick={onUser}>{flows} ›</button>}
       <div className="glmg-meta"><span>{progressLine(graph, goal.id)}</span></div>
       {row === null ? null : <button type="button" className="glmg-more" onClick={onModules}>{row} ›</button>}
     </div>
@@ -78,11 +86,13 @@ export interface HomeProps {
   readonly onLive: () => void
   readonly onNeeds: () => void
   readonly onModules: (goalId: string) => void
+  /** 用户怎么用 of one goal. */
+  readonly onUser: (goalId: string) => void
   readonly onBoard: (id: string) => void
 }
 
 /** The home page's body. */
-export function Home({ graph, agents, awaiting, since, quiet, sessionId, mainHere, onPlan, onChanges, onLive, onNeeds, onModules, onBoard }: HomeProps): ReactElement {
+export function Home({ graph, agents, awaiting, since, quiet, sessionId, mainHere, onPlan, onChanges, onLive, onNeeds, onModules, onUser, onBoard }: HomeProps): ReactElement {
   const now = useContext(NowContext)
   const goals = headlineGoals(graph)
   const needs = needsOf(graph, awaiting)
@@ -94,7 +104,7 @@ export function Home({ graph, agents, awaiting, since, quiet, sessionId, mainHer
   return (
     <div className="glmg-view">
       <Part title="效果是">
-        {goals.slice(0, 3).map(goal => <GoalRow key={goal.id} graph={graph} goal={goal} awaiting={awaiting} onModules={() => { onModules(goal.id) }} />)}
+        {goals.slice(0, 3).map(goal => <GoalRow key={goal.id} graph={graph} goal={goal} awaiting={awaiting} onModules={() => { onModules(goal.id) }} onUser={() => { onUser(goal.id) }} />)}
         {goals.length > 3 ? <div className="glmg-meta">还有 {goals.length - 3} 个目标</div> : null}
         {goals.length === 0 ? <div className="glmg-meta">这张图还是空的</div> : null}
       </Part>

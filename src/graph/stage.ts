@@ -9,8 +9,9 @@
  * a loop.
  *
  * Gate items come in two kinds: checks that are always listed with their
- * ok flag (the 8 card items, the decision item, the five columns of each
- * design decision, the acceptance of each proposed task), and offenders
+ * ok flag (the 9 card items, the decision item, the five columns of each
+ * design decision, the acceptance of each proposed task, the user graph's
+ * release items of a goal that has one), and offenders
  * that are listed only while they block (an undecided question, a
  * proposal with a supersedes edge).
  */
@@ -18,7 +19,9 @@ import { compareText } from './format.ts'
 import { DIRECTIONS_ID, directionsOf, frameworkOf, isSplit, moduleOf } from './modules.ts'
 import type { LoadedGraph } from './parse.ts'
 import { ancestorsOf, childrenIndex, subtreeOf, waitsForHuman } from './projection.ts'
-import { STAGES, type GraphNode, type Stage, type Status } from './schema.ts'
+import { STAGES, USER_TYPES, type GraphNode, type Stage, type Status } from './schema.ts'
+import { userFlowsAnswered, userReleaseItems } from './user-graph.ts'
+import { liveOf } from './user-live.ts'
 
 export interface GateItem {
   /** Stable key, for example acceptance or decision-3:architecture. */
@@ -121,9 +124,14 @@ function lastDecidedByHuman(node: GraphNode): boolean {
   return last !== undefined && (last.actor === 'human' || last.relay !== undefined)
 }
 
-const CARD_LABELS = ['需求', '问题', '给谁', '约束']
+const CARD_LABELS = ['需求', '问题', '给谁', '约束', '用户流程']
 
-/** The 8 items of the requirement card (§4.2), read from the goal and its subtree. */
+/**
+ * The 9 items of the requirement card (§4.2), read from the goal and its
+ * subtree. The item 用户怎么用 comes after 给谁 (user graph design 0.4.1
+ * §5.1): a live role, flow and step under the goal, or the goal's line
+ * 用户流程：无，<reason> (src/graph/user-graph.ts userFlowsAnswered).
+ */
 export function requirementCard(graph: LoadedGraph, goal: GraphNode): readonly GateItem[] {
   const sections = labeledSections(goal.body, CARD_LABELS)
   const below = descendants(graph, goal)
@@ -131,6 +139,12 @@ export function requirementCard(graph: LoadedGraph, goal: GraphNode): readonly G
     { key: 'need', label: '需求', ok: filled(sections, '需求'), hint: 'interview step 1 (what they want): a line "需求：" with the human\'s words verbatim in the goal body' },
     { key: 'problem', label: '问题', ok: filled(sections, '问题'), hint: 'interview step 2 (how their days change once it is done): a line "问题：" with the real problem in the goal body' },
     { key: 'audience', label: '给谁', ok: filled(sections, '给谁'), hint: 'interview step 2: a line "给谁：" with who uses it in the goal body' },
+    {
+      key: 'flows',
+      label: '用户怎么用（谁来用、一步步做什么）',
+      ok: userFlowsAnswered(graph, goal),
+      hint: 'interview step 2b (who uses it and what they do first; offer your guess): graph_propose the roles under the goal, the flows under each role and the steps under each flow (types role, flow and step, in the human\'s words), or, for a goal with no end user, a line "用户流程：无，<reason>" in the goal body',
+    },
     { key: 'constraints', label: '约束', ok: filled(sections, '约束'), hint: 'interview step 5 (what must not change, cost or be risked): a line "约束：" in the goal body, "约束：无" when there are none' },
     { key: 'acceptance', label: '成功（怎样算做成）', ok: (goal.acceptance ?? []).length > 0, hint: 'interview step 3 (how they will check it is done): set acceptance on the goal' },
     { key: 'non-goals', label: '非目标（明确不做的）', ok: (goal.nonGoals ?? []).length > 0, hint: 'interview step 4 (what they clearly do not want; offer guesses): set nonGoals on the goal' },
@@ -199,7 +213,17 @@ function inReleaseOrder(graph: LoadedGraph, nodes: readonly GraphNode[]): readon
  * first and each module its `moduleSet`.
  */
 export function releaseSet(graph: LoadedGraph, goal: GraphNode): readonly GraphNode[] {
-  return inReleaseOrder(graph, descendants(graph, goal).filter(node => node.status === 'proposed'))
+  return inReleaseOrder(graph, descendants(graph, goal).filter(node => releasable(graph, node)))
+}
+
+/**
+ * A proposal a release approves. A user node counts only while it is live
+ * (user graph design 0.4.1 §3.7): reject does not cascade, so a proposed step
+ * under a rejected or dropped flow is still proposed, and a release must not
+ * approve it.
+ */
+function releasable(graph: LoadedGraph, node: GraphNode): boolean {
+  return node.status === 'proposed' && (!(USER_TYPES as readonly string[]).includes(node.type) || liveOf(graph, node))
 }
 
 /** Whether a node is below a module or a module candidate (the module itself is not): a part of that module's own release. */
@@ -214,12 +238,12 @@ function belowModule(graph: LoadedGraph, node: GraphNode): boolean {
  * module or a candidate, and the candidates themselves. In release order.
  */
 export function bigLoopSet(graph: LoadedGraph, goal: GraphNode): readonly GraphNode[] {
-  return inReleaseOrder(graph, descendants(graph, goal).filter(node => node.status === 'proposed' && !belowModule(graph, node)))
+  return inReleaseOrder(graph, descendants(graph, goal).filter(node => releasable(graph, node) && !belowModule(graph, node)))
 }
 
 /** What the release of one module approves (§3.14.3): the proposed nodes below the module, in release order. */
 export function moduleSet(graph: LoadedGraph, module: GraphNode): readonly GraphNode[] {
-  return inReleaseOrder(graph, descendants(graph, module).filter(node => node.status === 'proposed'))
+  return inReleaseOrder(graph, descendants(graph, module).filter(node => releasable(graph, node)))
 }
 
 /** A proposal with a supersedes edge blocks: approving it would supersede nodes the card does not show (design §3.3.2 item 6). */
@@ -265,7 +289,8 @@ function adopted(node: GraphNode): boolean {
  * The release gate of a goal that is not split (§3.3.2). The design decision
  * is one in the set, or one that is approved already: a release that stopped
  * or skipped a node has approved the decision, and the design put to the
- * human again has to be released from there.
+ * human again has to be released from there. A goal with a user graph has its
+ * five user items last (user graph design 0.4.1 §5.2: no flows:modules).
  */
 function singleGate(graph: LoadedGraph, goal: GraphNode): GateItem[] {
   const set = releaseSet(graph, goal)
@@ -273,6 +298,7 @@ function singleGate(graph: LoadedGraph, goal: GraphNode): GateItem[] {
   return [
     { key: 'decision', label: '设计决策', ok: set.some(node => node.type === 'decision') || below.some(node => node.type === 'decision' && adopted(node)), hint: DECISION_HINT },
     ...setItems(graph, goal, set, waitingQuestions(graph, below, [])),
+    ...userReleaseItems(graph, goal),
   ]
 }
 
@@ -281,10 +307,11 @@ function singleGate(graph: LoadedGraph, goal: GraphNode): GateItem[] {
  * a framework (a decision already approved under the goal, or one in the
  * set), the five columns of each decision in the set, the acceptance of each
  * task in the set, no question left open outside the modules, no
- * superseding proposal, and a list of directions with at least one item. The
- * set cannot be empty here: a split goal has a candidate, which is in it, or
- * a module, which is the case of a release put again after the framework was
- * sent back to design.
+ * superseding proposal, and a list of directions with at least one item; for
+ * a goal with a user graph its six user items last (user graph design 0.4.1
+ * §5.2). The set cannot be empty here: a split goal has a candidate, which is
+ * in it, or a module, which is the case of a release put again after the
+ * framework was sent back to design.
  */
 function bigLoopGate(graph: LoadedGraph, goal: GraphNode): GateItem[] {
   const set = bigLoopSet(graph, goal)
@@ -303,6 +330,7 @@ function bigLoopGate(graph: LoadedGraph, goal: GraphNode): GateItem[] {
       hint: `propose a norm node with the id ${DIRECTIONS_ID} under the goal; each acceptance item is a product direction the human decided`,
     },
     ...setItems(graph, goal, set, waitingQuestions(graph, descendants(graph, goal).filter(node => !belowModule(graph, node)), set)),
+    ...userReleaseItems(graph, goal),
   ]
 }
 
@@ -313,7 +341,8 @@ function bigLoopGate(graph: LoadedGraph, goal: GraphNode): GateItem[] {
  * one proposed design decision, which also makes the release set non-empty;
  * five columns on every proposed decision; acceptance on every proposed task;
  * no undecided question in the subtree, whoever decides it; no proposal with a
- * supersedes edge.
+ * supersedes edge. Either gate ends with the user graph's items when the goal
+ * has one (src/graph/user-graph.ts userReleaseItems).
  */
 export function releaseGate(graph: LoadedGraph, goal: GraphNode): GateItem[] {
   return isSplit(graph, goal) ? bigLoopGate(graph, goal) : singleGate(graph, goal)
@@ -337,7 +366,8 @@ function sentBackToDesign(node: GraphNode): boolean {
  * release or later). Something to release is a proposal below the module, or
  * a design that is approved already and waits for the stage only: a module
  * sent back to design, whose change is on the graph, or one whose release
- * stopped after the approvals.
+ * stopped after the approvals. When the goal has a user graph, the last item
+ * is module:serves (user graph design 0.4.1 §5.3).
  */
 export function moduleReleaseGate(graph: LoadedGraph, goal: GraphNode, module: GraphNode): GateItem[] {
   const set = moduleSet(graph, module)
@@ -363,6 +393,7 @@ export function moduleReleaseGate(graph: LoadedGraph, goal: GraphNode, module: G
       hint: DECISION_HINT.replace('under the goal', `directly under ${module.id}`),
     },
     ...setItems(graph, module, set, waitingQuestions(graph, below, set)),
+    ...userReleaseItems(graph, goal, module),
   ]
 }
 /** Where a goal stands in the design loop and what keeps it from leaving its stage. */

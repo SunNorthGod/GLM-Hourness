@@ -117,6 +117,11 @@ function renderProjection(projection: Projection, errors: number): string {
   list('Exists because of', projection.sources.map(refLine))
   list('Depends on', projection.dependsOn.map(refLine))
   list('Needed by', projection.dependents.map(refLine))
+  // User graph (design 0.4.1 §3.7, §5.4): these lists are empty on the development graph's nodes, so their reminders stay as they were.
+  list('Serves the steps', (projection.serves ?? []).map(refLine))
+  list('Served by', (projection.servedBy ?? []).map(refLine))
+  list(projection.node.type === 'flow' ? 'Starts at' : 'Next steps', (projection.next ?? []).map(edge => `${refLine(edge.to)}${edge.when === undefined ? '' : ` (when: ${edge.when})`}`))
+  list('Previous steps', (projection.previous ?? []).map(refLine))
   list('Open gates', projection.gates.map(gate => `${gate.kind}: ${gate.message} (${gate.ids.join(', ')})`))
   if (errors > 0) lines.push(`The graph has ${errors} validation error(s): every write is refused until the node files are fixed; tell the human.`)
   return lines.join('\n')

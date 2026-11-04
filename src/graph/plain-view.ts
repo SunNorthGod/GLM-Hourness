@@ -22,6 +22,8 @@ import { ancestorsOf, blockersOf, childrenIndex, deciderOf, askFieldsOf, OPEN_ST
 import { directionsOf, frameworkOf, isSplit, moduleCandidatesOf, modulesOf, moduleOf } from './modules.ts'
 import { effectiveStage, goalOf, isClosed } from './stage.ts'
 import type { GraphNode, HistoryEntry } from './schema.ts'
+import { isUserNode } from './user-graph.ts'
+import { liveOf } from './user-live.ts'
 
 /** Minutes of graph history that fold into one row of the same kind. */
 const MERGE_MS = 5 * 60 * 1000
@@ -466,6 +468,8 @@ export function needsOf(graph: LoadedGraph, awaiting: readonly AwaitingEntry[]):
     if (node.status === 'proposed' && node.type !== 'question') {
       const parent = node.parent === undefined ? undefined : graph.nodes.get(node.parent)
       if (parent !== undefined && parent.status === 'proposed') continue
+      // reject does not cascade: a proposed user node under a rejected or dropped flow or role waits for nobody (user graph design 0.4.1 §3.7, §6.6).
+      if (isUserNode(node) && !liveOf(graph, node)) continue
       if (inDesignPhase(graph, node)) continue
       if (isFreshCandidate(graph, node)) continue
       const below = [...graph.nodes.values()].filter(other =>

@@ -3,7 +3,8 @@
  * home page of plain-ui 1.3 (§4.1, §4.2): one page, five sections — 效果是,
  * 需要你, 现在, 怎么做 · 接下来, 上次看之后 — no tabs. The second layer
  * opens over it in a frame with 返回 and Escape: the pages (需要你全部,
- * 怎么做, 现场, 上次看之后, 框架与模块, 整张图), the node pages stacked as
+ * 怎么做, 现场, 上次看之后, 框架与模块, 整张图, and a goal's 用户怎么用 from
+ * its home line, its node page or the footer), the node pages stacked as
  * the trail, and the registered boards' pages (M5 §8.2), each board
  * bounded by its own error boundary. The panel only looks (plain-ui,
  * d-ui-look-not-operate); 展开 and navigation are its only clicks.
@@ -31,16 +32,19 @@ import { Home } from './Home.tsx'
 import { MainChatContext, useMainAgent } from './MainChat.tsx'
 import { NeedsPage } from './NeedsYou.tsx'
 import { LiveSection } from './Live.tsx'
+import { headlineGoals } from './model.ts'
 import { ModulesPage } from './Modules.tsx'
 import { Frame, NodeDetail } from './NodeDetail.tsx'
 import { PlanPage } from './Plan.tsx'
 import { GRAPH_DIR, type GraphSource } from './source.ts'
 import { initialSeen, nextSeen, seenKeyOf, seenRecordOf, writeSeenRecord } from './seen.ts'
 import { PANEL_CSS } from './styles.ts'
+import { hasUserPage } from './user-view.ts'
+import { UserPage } from './UserView.tsx'
 import { firstVisit, graphHasHumanActorHistory } from '../guide/state.ts'
 
 /** A second-layer page, or the home when undefined. */
-type PageId = 'needs' | 'plan' | 'live' | 'changes' | 'decided' | 'modules' | 'graph'
+type PageId = 'needs' | 'plan' | 'live' | 'changes' | 'decided' | 'modules' | 'graph' | 'user'
 
 /**
  * A problem banner: what it means, the first case by file, the others
@@ -98,6 +102,8 @@ export function GraphPanel({ source, sessions, files, workspace, sessionId }: Gr
   const [trail, setTrail] = useState<readonly string[]>([])
   /** The board whose page is open. */
   const [boardId, setBoardId] = useState<string | undefined>(undefined)
+  /** The goal whose 用户怎么用 page is open (user graph design 0.4.1 §6.1). */
+  const [userGoal, setUserGoal] = useState<string | undefined>(undefined)
   /** The absolute graph directory, for the local record's key; read once. */
   const [graphDirAbs, setGraphDirAbs] = useState<string | undefined>(undefined)
   const [seen, setSeen] = useState(initialSeen)
@@ -255,7 +261,17 @@ export function GraphPanel({ source, sessions, files, workspace, sessionId }: Gr
   // (keepMounted tab, session switch between a workspace without a graph and one with one).
   // Its only consumer (PlanPage) re-renders whenever the panel does, so the identity never mattered.
   const goalTitle = (id: string): string | undefined => graph.nodes.get(id)?.title
-  const pageBody = page === 'needs'
+  // 用户怎么用 opens over whatever is open, the node trail included (a node page leads there); plain closures, as above.
+  const openUser = (goalId: string): void => {
+    setTrail([])
+    setBoardId(undefined)
+    setUserGoal(goalId)
+    setPage('user')
+  }
+  const footUser = headlineGoals(graph).find(goal => hasUserPage(graph, goal))
+  const pageBody = page === 'user' && userGoal !== undefined
+    ? <UserPage graph={graph} goalId={userGoal} />
+    : page === 'needs'
     ? <NeedsPage graph={graph} needs={needs} />
     : page === 'plan'
       ? <PlanPage graph={graph} plan={planOf(graph, now, agents.find(agent => agent.main && agent.running)?.view?.focus ?? undefined)} goalTitle={goalTitle} />
@@ -301,6 +317,7 @@ export function GraphPanel({ source, sessions, files, workspace, sessionId }: Gr
                       onLive={() => { setPage('live') }}
                       onNeeds={() => { setPage('needs') }}
                       onModules={() => { setPage('modules') }}
+                      onUser={openUser}
                       onBoard={id => { setBoardId(id) }}
                     />
                   )}
@@ -308,7 +325,7 @@ export function GraphPanel({ source, sessions, files, workspace, sessionId }: Gr
             {selected !== undefined
               ? (
                   <Frame onBack={() => { setTrail(current => current.slice(0, -1)) }} onClose={closeLayer}>
-                    <NodeDetail key={selected} graph={graph} id={selected} agents={agents} onBack={() => { setTrail(current => current.slice(0, -1)) }} onClose={closeLayer} />
+                    <NodeDetail key={selected} graph={graph} id={selected} agents={agents} onBack={() => { setTrail(current => current.slice(0, -1)) }} onClose={closeLayer} onUserPage={openUser} />
                   </Frame>
                 )
               : null}
@@ -334,6 +351,7 @@ export function GraphPanel({ source, sessions, files, workspace, sessionId }: Gr
           <div className="glmg-foot">
             {boards().map(board => <BoardLine key={board.id} board={board} sessionId={sessionId} onOpen={() => { setBoardId(board.id) }} />)}
             <button type="button" className="glmg-more" onClick={() => { setGuide(true) }}>上手说明 ›</button>
+            {footUser === undefined ? null : <button type="button" className="glmg-more" onClick={() => { openUser(footUser.id) }}>用户怎么用 ›</button>}
             <button type="button" className="glmg-more" onClick={() => { setPage('graph') }}>整张图 ›</button>
           </div>
         </div>
