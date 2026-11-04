@@ -442,6 +442,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "视频那条线完成腾出并行位，按队列恢复 workflow panel-2（wf_b1e731fe9f954391），停在 plan 步骤。分支基点 3276d0e 远早于现在的 main（之后合入 loops-runner、user-graph UG3–UG7、metrics、视频改风格），编排方已让它先合入 origin/main、重跑 build，再按当前 ui/src/graph 代码与 ORCHESTRATION.md §2.10 写计划。"
+    },
+    {
+      "at": "2026-11-04T18:56:55.759Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "panel-2 计划步骤：已快进合入 origin/main c48e421，build 退出码 0。计划提出的两处与任务书「主检出只写 .llm/probe-lock*」的冲突，编排方答复：一、loops-machine 的探针修复合入 main 之前，在工作树里跑探针会改写主检出被忽略的 .llm/loops/view.json；每次跑探针前先合 main，修复还没到就照跑，并记录该文件前后的修改时间与 SHA-256，有变化就报告，不当失败。二、L4 用从本分支构建的独立桌面实例（独立 user-data-dir、DSH_HOME、CDP 端口），在主检出建 .llm/desktop-lock 不必先问，与 probe-lock 同属例外，按 DEVELOPMENT.md §1.1 续写 owner.txt、用完删除、只走 CDP、输入前核对是自己的临时会话，不停也不杀人正在用的桌面实例。"
     }
   ]
 }
