@@ -12,6 +12,13 @@
  * memory, so clicking into a second-layer page and back does not move the
  * list. Reads and writes that fail are treated as no record — the changes
  * read 「最近一天」, nothing breaks.
+ *
+ * Visible (2026-11-05, the person's answer to the panel-2 plan): mounted,
+ * the window has focus, and the intersection observer has not said the
+ * body is off screen. document.visibilityState is not read: the desktop
+ * host keeps it at hidden, and in a hidden document the observer never
+ * calls back at all (docs/FACTS.md §3), so an observer that has not
+ * answered does not veto.
  */
 
 /** Longer than this hidden, and the return is a new arrival. */
@@ -67,6 +74,49 @@ export function nextSeen(state: SeenState, event: SeenEvent, now: number, record
       }
       return { state: { ...state, visibleSince: undefined, hiddenAt: now }, departure: undefined }
     }
+  }
+}
+
+/** What watchVisibility reads: the window's focus and, when there is one, the observer on the panel body. */
+export interface VisibilityHost {
+  hasFocus(): boolean
+  /** Call `listener` on every window focus and blur; returns the unsubscribe. */
+  onFocusChange(listener: () => void): () => void
+  /** Call `listener` with whether the body intersects the viewport; absent without an observer. Returns the unsubscribe. */
+  observe?: (listener: (intersecting: boolean) => void) => () => void
+}
+
+/**
+ * Whether the panel is in front of the human, as it changes: `onChange`
+ * gets the value once at the start and then only when it changes, never
+ * after the returned stop. Visible is focus and no "off screen" from the
+ * observer; an observer that never called back does not veto.
+ */
+export function watchVisibility(host: VisibilityHost, onChange: (visible: boolean) => void): () => void {
+  let focused = host.hasFocus()
+  let intersecting: boolean | undefined
+  let last: boolean | undefined
+  let stopped = false
+  const report = (): void => {
+    if (stopped) return
+    const visible = focused && intersecting !== false
+    if (visible === last) return
+    last = visible
+    onChange(visible)
+  }
+  const offFocus = host.onFocusChange(() => {
+    focused = host.hasFocus()
+    report()
+  })
+  const offObserve = host.observe?.(value => {
+    intersecting = value
+    report()
+  })
+  report()
+  return () => {
+    stopped = true
+    offFocus()
+    offObserve?.()
   }
 }
 
