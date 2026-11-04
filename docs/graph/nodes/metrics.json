@@ -311,6 +311,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "批次 5 + 合并 + 第 3 步（87b5bd4、029fac6、f892048，2026-11-04）：第 5 步 /hourness 改读指标流水——整本 readLog 取最早、factsFor 自己按本地日切、删多余 checkLog 链重算、coverage 可选读成员（偏离记录：进程本地计数流水重建不出只能读行）、命令生成后发 report 事件；合并 14 文件保双方语义（guard 取 m4 重写、info 发射重落 gate.ts 拒绝处、HOURNESS_ROWS 为 …loops, metrics, env、ensureIgnored 串行化修多行启动竞往 info/exclude 重复追加的真实碰撞）；第 3 步 guard 与图引擎交事件——violation 唯一写入点经 metricEventOf（拒绝/晚到带 ref=行键、跟进、申报、撤下）、setEngineObserver 模块作用域集合 + commit/apply 两处通知 + 纯映射、cli 自开写入者、graph 的 rev 改 id（批 1 的 int 是猜错，偏离记录）。探针 374/374、test 全绿、棘轮持平。裁定：m4 G3 欠的撤下板侧/服务侧与 rules.judged 发射点按设计归第 6-7 步启用批（ORCHESTRATION §10.6 未做行写明）。下一步第 6 步接线。"
+    },
+    {
+      "at": "2026-11-04T06:45:00.481Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "编排方审查 ZCode 接手期（2026-11-04）：第 6+7 步接线批与设计一致；指标行默认启用符合设计验收第 15 条（探针通过后启用，桌面 pass 随第 9 步）。交接所说 tests/loops-peak.spec.ts 稳定 37 败的根因查明：src/loops/store.ts 删了 LoopsPaths.runs，测试仍读 store.paths.runs（测试不经 tsc，读 undefined 被 catch 成空，runs() 恒空，quiesce 也按它等）。已在 .worktrees/metrics 改：world 收假指标服务事件，quiesce 等无定时器、无未结束运行、state.json 已落下最新 loop-done，真实时间上限 1 秒；连跑 5 次 40/40。ORCHESTRATION §18「运行一项」仍写 runs.jsonl，已整条改写。跨线：loops-runner 的 DoneRecord 加了 exits 且仍用 appendRun，后合入 main 的一方负责在 metricEventOf 映射 exits 并去掉 appendRun。续作：运行 metrics-steps-6-7-close（wf_0db13f91575d5d0b）。"
     }
   ]
 }
