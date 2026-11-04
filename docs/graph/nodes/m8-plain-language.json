@@ -460,6 +460,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "人 2026-11-05 对编排方交的 panel-2 三件事答：「没问题就把线全开吧」，编排方按同意三条建议执行：一、阻断② 可见信号换源，设计 §6.8 的 visibilityState 换成挂载/卸载加 window focus/blur（IntersectionObserver 作加强），本线加一批修 Panel.tsx 的到达/离开与 MainChat.tsx 的可见门，同批改设计与 ORCHESTRATION.md §2.10，随 Q4 做走查 C/D；二、做完条件第 1、6、9、17 条按 d-ask-three-gates 的问法改字，意思不变，本线把逐条新旧原文写进 .agents/tasks/plain-ui/onepage-done.md 与 .agents/tasks/panel/conditions-rewrite.md，编排方再带人的原话改本节点的验收条件；第 9 条写明问话那几行从第一天起就拒绝，先警告后拒绝只对标题与 why；三、流程条的「等你拍板」随 Q1 统一为「等你回话」。"
+    },
+    {
+      "at": "2026-11-04T19:18:42.505Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-11-05 再确认：「上面的也都按你说的来」。即上一条批注里的三件（可见信号换源、第 1、6、9、17 条改字、「等你拍板」统一为「等你回话」）都照编排方的建议做；新的条件原文由 panel-2 写出后，编排方带这两句原话改本节点的验收条件。"
     }
   ]
 }
