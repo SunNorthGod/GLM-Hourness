@@ -2,6 +2,7 @@
   "id": "d-ui-look-not-operate",
   "type": "decision",
   "title": "项目图给人看、少给人用；底层细节下沉，界面说人话",
+  "why": "人一眼看懂在做什么、要自己做什么，细节在追问时才展开",
   "status": "approved",
   "parent": "m8",
   "verification": "unverified",
@@ -14,6 +15,19 @@
       "reason": "用户同意 M8 的界面原则，并补充第一眼的认知负担问题",
       "relay": "同意",
       "to": "approved"
+    },
+    {
+      "at": "2026-11-05T05:26:05.245Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "人一眼看懂在做什么、要自己做什么，细节在追问时才展开"
+        }
+      }
     }
   ]
 }

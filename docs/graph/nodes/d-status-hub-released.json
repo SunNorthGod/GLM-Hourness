@@ -2,6 +2,7 @@
   "id": "d-status-hub-released",
   "type": "decision",
   "title": "状态板块设计 0.3 放行；6 条做完条件由人定下",
+  "why": "状态板块照设计开工；6 条做完条件定下之后，改要人出手",
   "status": "approved",
   "parent": "status-hub",
   "verification": "unverified",
@@ -14,6 +15,19 @@
       "reason": "人放行状态板块设计 0.3 并定下 6 条做完条件",
       "relay": "其余没问题",
       "to": "approved"
+    },
+    {
+      "at": "2026-11-05T05:26:01.738Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "状态板块照设计开工；6 条做完条件定下之后，改要人出手"
+        }
+      }
     }
   ]
 }

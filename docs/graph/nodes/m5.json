@@ -1,7 +1,8 @@
 {
   "id": "m5",
   "type": "feature",
-  "title": "M5 记忆与学习",
+  "title": "记忆与学习",
+  "why": "主 Agent 记得住人的习惯和项目的事实，人不用反复交代",
   "status": "doing",
   "parent": "orch",
   "body": "事实与偏好分类；会话开局召回；记忆工具常驻；取消路径判据；学习流水线；汇报细度闭环（ROADMAP.md M5）。",
@@ -287,6 +288,23 @@
       "actor": "llm",
       "op": "comment",
       "text": "land-m5-rest（wf_8db46311828ea944）完成：m5-rest 已合入 main。合并 02fe834，再合一次 67c3c5d，main 快进到 67c3c5d 并推 origin 与 github（ls-remote 核对；之后别的 lane 推进到 2d5a42f，仍包含 67c3c5d）。门禁：build 0、preflight 0、npm test 0（3005 个，3004 通过、0 失败、1 跳过）、探针 388/388。本步没有重启桌面版：m4-checks 那条 lane 11:20 的重启已经载入包含本合并的 main e88da27，CDP 核对无报错。工作树与分支已删，留下一个被别的进程占着的空目录。人真实 profile 上的经验页 L4 仍等 lessons 行在交付 bundle 里启用，本节点保持进行中。"
+    },
+    {
+      "at": "2026-11-05T05:26:23.447Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "title": {
+          "from": "M5 记忆与学习",
+          "to": "记忆与学习"
+        },
+        "why": {
+          "from": null,
+          "to": "主 Agent 记得住人的习惯和项目的事实，人不用反复交代"
+        }
+      }
     }
   ]
 }

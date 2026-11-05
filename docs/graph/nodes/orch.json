@@ -2,6 +2,7 @@
   "id": "orch",
   "type": "feature",
   "title": "编排层：LLM 之上的工作流",
+  "why": "决定模型怎么干活，以及人怎样看见并管住它",
   "status": "approved",
   "parent": "hourness",
   "slope": "uphill",
@@ -443,6 +444,19 @@
       "actor": "llm",
       "op": "comment",
       "text": "人 2026-11-04 23:06 问「还有子代理在控制我的鼠标吗？」。核对：唯一在操作桌面版的是 merge-loops-runner-l4 的 l4-accept 步（桌面版 23:05:58 以 --remote-debugging-port=9333 重启，持 .llm/desktop-lock）；编排方已暂停这条运行。其余运行此刻都不在桌面步骤：metrics-reason-codes-and-merge 在写代码、merge-user-graph-l4 在跑门禁、视频在改样式、m7 在修评审发现；它们的桌面步骤要先拿桌面锁，锁仍由暂停的 L4 持有，所以都会等。此刻没有找到驱动鼠标或键盘的脚本进程；在跑的 playwright-mcp 是编排方会话自带的浏览器工具服务，不是子代理。桌面操作方式待人定（人此前说「桌面版随便用」）。"
+    },
+    {
+      "at": "2026-11-05T05:26:40.001Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "决定模型怎么干活，以及人怎样看见并管住它"
+        }
+      }
     }
   ]
 }

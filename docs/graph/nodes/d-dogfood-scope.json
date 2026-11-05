@@ -1,7 +1,8 @@
 {
   "id": "d-dogfood-scope",
   "type": "decision",
-  "title": "自举前只做 M3 与 M7 的最薄骨架，其余模块搬进 DSH 之后由主 Agent 自己做",
+  "title": "自举前只做主 Agent 与执行线的最薄骨架",
+  "why": "先让最小的一条链跑通，其余模块搬进 DSH 之后由主 Agent 自己做",
   "status": "approved",
   "parent": "dogfood",
   "verification": "unverified",
@@ -20,6 +21,23 @@
       "actor": "llm",
       "op": "comment",
       "text": "人 2026-10-31 定 d-build-all-released（「现在不用省积分了，能开工的都开开」），本条「自举之前只做 M3 与 M7 骨架」的限制由它取代；M3 与 M7 骨架仍是自举的关键路径。"
+    },
+    {
+      "at": "2026-11-05T05:25:36.789Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "title": {
+          "from": "自举前只做 M3 与 M7 的最薄骨架，其余模块搬进 DSH 之后由主 Agent 自己做",
+          "to": "自举前只做主 Agent 与执行线的最薄骨架"
+        },
+        "why": {
+          "from": null,
+          "to": "先让最小的一条链跑通，其余模块搬进 DSH 之后由主 Agent 自己做"
+        }
+      }
     }
   ]
 }

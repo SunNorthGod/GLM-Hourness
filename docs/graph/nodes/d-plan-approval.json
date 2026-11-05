@@ -2,6 +2,7 @@
   "id": "d-plan-approval",
   "type": "decision",
   "title": "派发计划由主 Agent 批，人只在需求确认、设计放行与必须问人的岔路出场",
+  "why": "人只在需求、放行与真正的岔路出场，其余计划由主 Agent 按核对得了的条件批",
   "status": "approved",
   "parent": "m7",
   "verification": "unverified",
@@ -14,6 +15,19 @@
       "reason": "用户定方向：派发前的计划审批由主 Agent 做，不交给人",
       "relay": "先批计划，再开工要做也是让主Agent做吧，我们设计这套循环目标就是减轻人的负担，可以让LLM自行开发大项目",
       "to": "approved"
+    },
+    {
+      "at": "2026-11-05T05:25:54.523Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "人只在需求、放行与真正的岔路出场，其余计划由主 Agent 按核对得了的条件批"
+        }
+      }
     }
   ]
 }

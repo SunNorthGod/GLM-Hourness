@@ -2,6 +2,7 @@
   "id": "ablation",
   "type": "task",
   "title": "注入文字的消融对比",
+  "why": "逐段去掉注入给模型的文字再比结果，知道哪段真有用、哪段可以删",
   "status": "approved",
   "parent": "orch",
   "kind": "test",
@@ -45,6 +46,19 @@
       "actor": "llm",
       "op": "comment",
       "text": "M5 设计 0.5 §8.7 记一条要求：标定运行的 dataRows 要带 projectOverride（M5 的 A1 做），这样标定会话读不到真实的记忆与经验；记忆索引、经验的三种提醒、学习摘要提醒和改写后的 Memory 节在 M5 的 L4 批次各做一次消融，不能用禁用记忆行代替关掉索引（记忆行还写用量流水）。"
+    },
+    {
+      "at": "2026-11-05T05:25:24.001Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "逐段去掉注入给模型的文字再比结果，知道哪段真有用、哪段可以删"
+        }
+      }
     }
   ]
 }

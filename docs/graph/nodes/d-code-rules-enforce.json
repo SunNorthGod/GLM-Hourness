@@ -2,6 +2,7 @@
   "id": "d-code-rules-enforce",
   "type": "decision",
   "title": "写在代码里的规则启用即拦，不设试运行期",
+  "why": "规则一启用就拦，有问题马上暴露，不会在试运行期里悄悄放过",
   "status": "approved",
   "parent": "orch",
   "verification": "unverified",
@@ -38,6 +39,19 @@
       "actor": "llm",
       "op": "comment",
       "text": "M4 设计 0.6 对 d-one-lift-path 细化裁定（12:56Z）的落点：LiftRecord 与 lifts.jsonl 的 via 只有 chat 与 board；guard_lift 照 M3 核对人的回话的办法核对原话，另要含撤下意图词、至少 4 个码点、一条人的消息至多换一次撤下（原话与规则 id 之间不做绑定，剩余风险是人说放开某条、模型撤了另一条，靠返回里写明撤了哪条、晨报、一句话恢复兜住）；bootstrap-read-no-shell 登进 GUARD_RULES；lift-files-only 只走规则板（liftVia board），guard_lift 返回 forbidden，拦下时的提示不再指点手改文件；规则板接线之前这一条没有撤下的路，这是有意留的缺口，请裁定是否接受，或改为 guard_lift 也能撤它。"
+    },
+    {
+      "at": "2026-11-05T05:25:31.603Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "规则一启用就拦，有问题马上暴露，不会在试运行期里悄悄放过"
+        }
+      }
     }
   ]
 }

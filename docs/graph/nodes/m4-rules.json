@@ -2,6 +2,7 @@
   "id": "m4-rules",
   "type": "task",
   "title": "三条规划规矩",
+  "why": "跳过检查不写理由、改检查工具的配置、在草稿区外放脚本，三种做法一启用就拦",
   "status": "doing",
   "parent": "m4",
   "body": "M4 设计 0.6 的一件活。做完条件由人 2026-11-01 定下，见本节点验收（人话版 .agents/tasks/m4/onepage-done.md）。",
@@ -38,6 +39,19 @@
       "reason": "运行 m4-checks-and-rules 开工（2026-11-04，人：「桌面版随便用，尽可能开多线」）",
       "from": "approved",
       "to": "doing"
+    },
+    {
+      "at": "2026-11-05T05:26:21.148Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "跳过检查不写理由、改检查工具的配置、在草稿区外放脚本，三种做法一启用就拦"
+        }
+      }
     }
   ]
 }

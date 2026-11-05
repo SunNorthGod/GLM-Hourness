@@ -2,6 +2,7 @@
   "id": "d-graph-programming",
   "type": "decision",
   "title": "第一理念：在图上编程",
+  "why": "人改项目图就是在写程序，图下面的活交给系统；成不成立按交付和返工来衡量",
   "status": "approved",
   "parent": "hourness",
   "verification": "unverified",
@@ -14,6 +15,19 @@
       "reason": "章程 0.4 的第一理念",
       "relay": "以后在图上改就相当于写程序！…… 立马把它也变成我们的第一理念",
       "to": "approved"
+    },
+    {
+      "at": "2026-11-05T05:25:40.942Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "人改项目图就是在写程序，图下面的活交给系统；成不成立按交付和返工来衡量"
+        }
+      }
     }
   ]
 }

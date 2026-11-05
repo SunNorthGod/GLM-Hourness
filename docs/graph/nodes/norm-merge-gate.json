@@ -2,6 +2,7 @@
   "id": "norm-merge-gate",
   "type": "norm",
   "title": "合入主干前必须全部通过的命令",
+  "why": "合入主干前一组命令全部跑过，主干不会被坏改动弄坏",
   "status": "approved",
   "parent": "hourness",
   "body": "M7 的汇合门禁在压缩后的提交上逐条运行这些命令，全部退出 0 才合入；写法见 .agents/tasks/m7/design.md §3.8.1（`$` 总是跑，`when` 只在改动碰到这些路径时跑，`setup` 在新建工作树后跑，`patrol` 只在夜间巡检跑，`push` 合入后推送、不强推）。每条上限 30 分钟，日志写项目目录。改松这份清单要人同意（ORCHESTRATION.md §7.6）。探针要用沙盒，由规则板的沙盒租约排队。",
@@ -100,6 +101,19 @@
             "`only docs/graph/`",
             "`push`"
           ]
+        }
+      }
+    },
+    {
+      "at": "2026-11-05T05:26:37.390Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "合入主干前一组命令全部跑过，主干不会被坏改动弄坏"
         }
       }
     }

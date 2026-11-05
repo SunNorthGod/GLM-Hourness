@@ -2,6 +2,7 @@
   "id": "risk-orch-distribution",
   "type": "risk",
   "title": "「主 Agent 只编排」在 ZCode 训练分布之外",
+  "why": "模型习惯自己写代码，只编排不动手未必做得好，要单独量",
   "status": "approved",
   "parent": "orch",
   "body": "ZCode 里的 GLM 是自己写代码的单 agent；主 Agent 只编排不在这个分布里，子 agent 干活仍在分布内。用户判断后续模型会具备编排能力（ORCHESTRATION.md §3.1，定案）；这一层单独度量简报完整率、返工率与主 Agent 上下文占用。",
@@ -12,6 +13,19 @@
       "op": "propose",
       "reason": "迁移：ORCHESTRATION.md §3.1",
       "to": "approved"
+    },
+    {
+      "at": "2026-11-05T05:26:43.069Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "模型习惯自己写代码，只编排不动手未必做得好，要单独量"
+        }
+      }
     }
   ]
 }

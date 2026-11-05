@@ -2,6 +2,7 @@
   "id": "status-hub",
   "type": "feature",
   "title": "状态板块：各模块的状态只交一次，面板、晨报、周报与主 Agent 都从这里读",
+  "why": "各处显示的状态出自同一份，数字不会对不上",
   "status": "doing",
   "parent": "orch",
   "body": "依据 d-status-hub。设计放在 .agents/tasks/status-hub/。范围：状态条目的形状（谁交的、给谁看、何时的、来源）、与面板板块登记表的关系（复用，不另起）、晨报周报怎样成为它的显示、主 Agent 怎样读（只读 Agent 也能读的条目）、取不到时怎样降级并出声；以及面板、M4、晨报、指标等设计各自要改的对接部分。",
@@ -157,6 +158,19 @@
       "actor": "llm",
       "op": "comment",
       "text": "workflow status-hub-remaining（wf_2226ae6097427667）完成：第 7、8 批（3edd58a、f285d2b）在 origin/status-hub-2，四道门禁为 0，探针 380/380，评审 APPROVED、0 条发现。做完条件第 4、5 条已完成，第 1、2、3、6 条剩 M7 那一半。status-hub-2 未合入 main：编排方让 rules-board-page 在开工时合入 origin/status-hub-2，两者一起合入 main（规则板页面要读的 rules/denials、rules/lifts 条目就在 status-hub-2 的第 4 批里）。"
+    },
+    {
+      "at": "2026-11-05T05:26:48.527Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "各处显示的状态出自同一份，数字不会对不上"
+        }
+      }
     }
   ]
 }

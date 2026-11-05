@@ -1,7 +1,8 @@
 {
   "id": "d-metrics-steps-by-checks",
   "type": "decision",
-  "title": "指标记录的十步，每步是否做完照设计 §1.4 的 24 条检查判",
+  "title": "指标记录分十步做，每步照设计里的检查清单判做完",
+  "why": "每一步做没做完由系统自己跑检查判，人不用逐条读",
   "status": "approved",
   "parent": "metrics",
   "verification": "unverified",
@@ -14,6 +15,23 @@
       "reason": "人同意指标实现十步按设计里系统自己跑的 24 条检查判做完",
       "relay": "可以",
       "to": "approved"
+    },
+    {
+      "at": "2026-11-05T05:25:49.800Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "title": {
+          "from": "指标记录的十步，每步是否做完照设计 §1.4 的 24 条检查判",
+          "to": "指标记录分十步做，每步照设计里的检查清单判做完"
+        },
+        "why": {
+          "from": null,
+          "to": "每一步做没做完由系统自己跑检查判，人不用逐条读"
+        }
+      }
     }
   ]
 }

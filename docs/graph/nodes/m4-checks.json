@@ -2,6 +2,7 @@
   "id": "m4-checks",
   "type": "task",
   "title": "改完就跑的检查",
+  "why": "agent 改完文件马上跑对应的检查，问题在当步就提醒",
   "status": "doing",
   "parent": "m4",
   "body": "M4 设计 0.6 的一件活。做完条件由人 2026-11-01 定下，见本节点验收（人话版 .agents/tasks/m4/onepage-done.md）。",
@@ -175,6 +176,19 @@
       "actor": "llm",
       "op": "comment",
       "text": "land-m4-checks（wf_5cfba7fb7a7158d7）完成：m4-checks 已合入 main，main = e88da27（origin 与 github 经 ls-remote 核对）。冲突合并 8718902 合入 origin/main 9af24eb，实际冲突 11 个文件（试合并时是 7 个），都按两边意图保留；期间 main 又合入 m5-rest（67c3c5d）与探针锁规矩（b25b81c），由 2700c92 再合一次。2700c92 上 build、preflight、npm test 退出码为 0（3077 个测试、0 失败），探针 407/407。按 CDP 规矩重启桌面版：两个包都在跑，env 行运行中（B6 去掉了 disabled），没有组件失败，没有新的崩溃日志与控制台报错。工作树登记与本地分支已删，空的工作树目录被别的进程占着、未删。验收第 1–8 条里只在真机上看得到的（循环板页的检查一项、给 agent 的提醒）随批次 L4 核对，本节点保持进行中，待 L4。"
+    },
+    {
+      "at": "2026-11-05T05:26:19.296Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "agent 改完文件马上跑对应的检查，问题在当步就提醒"
+        }
+      }
     }
   ]
 }

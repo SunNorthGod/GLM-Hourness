@@ -2,6 +2,7 @@
   "id": "lessons-3",
   "type": "task",
   "title": "经验页",
+  "why": "人在一页上看到本项目生效的经验，也能删掉不对的",
   "status": "doing",
   "parent": "lessons",
   "kind": "implement",
@@ -38,6 +39,19 @@
       "reason": "运行 m5-rest-learning-lessons-page 开工（2026-11-04，人：「桌面版随便用，尽可能开多线」）",
       "from": "approved",
       "to": "doing"
+    },
+    {
+      "at": "2026-11-05T05:26:12.380Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "人在一页上看到本项目生效的经验，也能删掉不对的"
+        }
+      }
     }
   ]
 }

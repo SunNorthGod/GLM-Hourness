@@ -1,7 +1,8 @@
 {
   "id": "m6-metrics-events",
   "type": "task",
-  "title": "M6：GLM 包的四类指标事件交给指标流水",
+  "title": "GLM 包的四类事件交给指标流水",
+  "why": "额度读取、上游限额、登录被拒与高峰提醒都记进同一份流水，便于对账",
   "status": "approved",
   "parent": "m6",
   "kind": "implement",
@@ -28,6 +29,23 @@
       "op": "propose",
       "reason": "按实现计划建节点，标明被挡",
       "to": "approved"
+    },
+    {
+      "at": "2026-11-05T05:26:24.039Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "title": {
+          "from": "M6：GLM 包的四类指标事件交给指标流水",
+          "to": "GLM 包的四类事件交给指标流水"
+        },
+        "why": {
+          "from": null,
+          "to": "额度读取、上游限额、登录被拒与高峰提醒都记进同一份流水，便于对账"
+        }
+      }
     }
   ]
 }

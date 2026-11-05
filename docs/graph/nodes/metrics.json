@@ -2,6 +2,7 @@
   "id": "metrics",
   "type": "feature",
   "title": "把系统里看得到的数都按同一种格式记下来",
+  "why": "能看到的数都用同一种格式记下，周报和面板从同一份流水算",
   "status": "doing",
   "parent": "orch",
   "body": "现状：数散在几处（用量流水、违规流水、项目图历史、M7 设计里的交付指标与人的负担四项、先想后看的跟随率、M4 的规则命中率），格式各不相同，有的还只在设计里。做法：每个项目一份只追加的事件流水，固定格式，只记数与引用、不记对话正文；每一步的模型、token 与积分、用时、工具调用与被拦次数、派活、审查发现、返工、合入、失败与重试、问人的次数、人读了多少字、拍板等了多久、是否跟了推荐，都由 harness 写，模型写的数不算；晨报、周报、各种指标都从这一份算，同样的输入算出同样的数。量不到的照实写：人在系统外花的精力、做出来的东西好不好用，只能靠真实项目试用与人的反馈（field-trial）。",
@@ -395,6 +396,19 @@
       "actor": "llm",
       "op": "comment",
       "text": "workflow fix-date-dependent-metrics-test（wf_d46fef4a0b30bf32）完成：2bd13f6「test(metrics): pin the writer clock in the specs that write fixed-date journals」已在 main，origin 与 github 经 ls-remote 核对均为 2bd13f6。最终代码上门禁：build 0、preflight 0、npm test 0（3003 个，3002 通过 / 0 失败 / 1 跳过）、探针 388/388。工作树与分支已删除。只改测试、不改产品代码。等它的 rules-board-page、m5-rest、panel-2 已通知合并 main 后跑一次四道门禁再推；bootstrap 合 main 时该测试的冲突取 main 的版本。从 UTC 午夜到修复合入，main 上 npm test 红了约 2 小时。"
+    },
+    {
+      "at": "2026-11-05T05:26:35.657Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "能看到的数都用同一种格式记下，周报和面板从同一份流水算"
+        }
+      }
     }
   ]
 }

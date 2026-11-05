@@ -1,7 +1,8 @@
 {
   "id": "d-docs-tracked-for-handover",
   "type": "decision",
-  "title": ".agents/tasks 下的文稿纳入 git；docs/HANDOFF.md 写成完整交接状态",
+  "title": "设计文稿纳入版本库，交接说明写成完整的现状",
+  "why": "换工具或换人时，设计、放行稿和评审记录都在仓库里，接手的人看交接说明就能继续",
   "status": "approved",
   "parent": "orch",
   "verification": "unverified",
@@ -14,6 +15,23 @@
       "reason": "人同意把设计文稿纳入 git 并先写全交接文档",
       "relay": "行",
       "to": "approved"
+    },
+    {
+      "at": "2026-11-05T05:25:36.205Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "title": {
+          "from": ".agents/tasks 下的文稿纳入 git；docs/HANDOFF.md 写成完整交接状态",
+          "to": "设计文稿纳入版本库，交接说明写成完整的现状"
+        },
+        "why": {
+          "from": null,
+          "to": "换工具或换人时，设计、放行稿和评审记录都在仓库里，接手的人看交接说明就能继续"
+        }
+      }
     }
   ]
 }

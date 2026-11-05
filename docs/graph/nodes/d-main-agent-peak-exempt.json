@@ -2,6 +2,7 @@
   "id": "d-main-agent-peak-exempt",
   "type": "decision",
   "title": "主 Agent 不受高峰模式影响，任何一档都随时回话",
+  "why": "人任何时候找主 Agent 都能马上得到回话，高峰只管派出去的子 agent",
   "status": "approved",
   "parent": "rules",
   "verification": "sandbox",
@@ -42,6 +43,19 @@
           "exit": 0
         }
       ]
+    },
+    {
+      "at": "2026-11-05T05:25:47.323Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "人任何时候找主 Agent 都能马上得到回话，高峰只管派出去的子 agent"
+        }
+      }
     }
   ]
 }

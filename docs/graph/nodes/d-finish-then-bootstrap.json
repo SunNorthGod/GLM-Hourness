@@ -2,6 +2,7 @@
   "id": "d-finish-then-bootstrap",
   "type": "decision",
   "title": "先彻底做完再进自举",
+  "why": "各块都彻底做完再开始自举，自举时不会被半成品卡住",
   "status": "approved",
   "parent": "orch",
   "verification": "unverified",
@@ -22,6 +23,19 @@
       "relay": "先不用按自举算了，干脆直接在我们这边彻底做完再进自举吧",
       "from": "proposed",
       "to": "approved"
+    },
+    {
+      "at": "2026-11-05T05:25:38.666Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "各块都彻底做完再开始自举，自举时不会被半成品卡住"
+        }
+      }
     }
   ]
 }

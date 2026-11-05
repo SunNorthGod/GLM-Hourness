@@ -2,6 +2,7 @@
   "id": "d-handover-on-request",
   "type": "decision",
   "title": "换工具的交接等人开口再做，照固定三步收尾",
+  "why": "平时不为换工具停活；人开口要换时按固定三步收尾，不丢做到一半的改动",
   "status": "approved",
   "parent": "orch",
   "verification": "unverified",
@@ -14,6 +15,19 @@
       "reason": "人决定现在不做交接准备，换工具时再叫编排方收尾",
       "relay": "没事你接着做，到时候我要换的话找你收尾",
       "to": "approved"
+    },
+    {
+      "at": "2026-11-05T05:25:43.370Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "平时不为换工具停活；人开口要换时按固定三步收尾，不丢做到一半的改动"
+        }
+      }
     }
   ]
 }
