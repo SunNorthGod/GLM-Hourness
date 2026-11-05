@@ -139,6 +139,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "B5（f1b518f）评审 APPROVED，无阻塞（.worktrees/m4-checks/.llm/m4c/review.json、review.md）。下一步：推送 B5，然后 B6。状态板块的超时条目等的就是 B5。"
+    },
+    {
+      "at": "2026-11-05T00:32:33.540Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "B5 已推：origin/m4-checks = f1b518f，mainMerged 为 true（4516ec6），评审归档为 review-B5.*。剩 B6。"
     }
   ]
 }
