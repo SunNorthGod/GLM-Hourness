@@ -12,7 +12,7 @@
  * declared enums only; unknown keys, wrong types, arrays or maps beyond 32
  * entries and lines above 4096 bytes reject the whole event.
  */
-import type { MetricsBy } from '../shared/metrics.ts'
+import { METRICS_ID_PATTERN, type MetricsBy } from '../shared/metrics.ts'
 
 /** The envelope's format version; raised only when a kind's fields change meaning (§4.1). */
 export const FORMAT_VERSION = 1
@@ -88,8 +88,8 @@ type BodyOf<F extends readonly FieldSpec[]> = PickedBody<F, RequiredKeys<F>> & P
 /** A namespace's derived bodies, keyed by kind name; the kinds files check it against src/shared/metrics.ts. */
 export type BodiesOf<K extends readonly KindTable[]> = { [T in K[number] as T['name']]: BodyOf<T['fields']> }
 
-/** An id: no whitespace, no backslash, no non-ASCII (§4.4). */
-export const ID_PATTERN = /^[A-Za-z0-9_.:@+/-]{1,120}$/
+/** An id: no whitespace, no backslash, no non-ASCII (§4.4); the pattern is the shared contract's, so the sender rows shape their ids by the same one. */
+export const ID_PATTERN = METRICS_ID_PATTERN
 /** A writer id: the writer's own 8 hex digits, or a graph backfill's `bf-` plus the commit's first 7 (§4.1). */
 export const WRITER_ID_PATTERN = /^(?:[0-9a-f]{8}|bf-[0-9a-f]{7})$/
 /** A chain digest: the first 12 hex digits of a SHA-256 (§4.1). */

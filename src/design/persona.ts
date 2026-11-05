@@ -2,9 +2,9 @@
  * The persona of the main agent (docs/ORCHESTRATION.md §3.1; task
  * m3-main-persona): one setting of the design row, `persona: {name, text}`,
  * that the person writes in the plugin manager. The plugin ships no persona;
- * `text` is the person's own configuration (docs/CHARTER.md, non-goal 「人设与
- * 个人习惯不进插件」). It becomes a system prompt section for the main agent
- * only, so what the person's persona says never reaches the code, comments
+ * `text` is the person's own configuration (docs/CHARTER.md §9: persona and
+ * speaking style stay out of the plugin). It becomes a system prompt section
+ * for the main agent only, so what the person's persona says never reaches the code, comments
  * and commit messages of an ordinary session or a subagent.
  *
  * The section reads as ZCode 3.17.1 builds an output style (`n8o`, pristine

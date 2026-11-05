@@ -27,6 +27,24 @@
       "reason": "运行 compact-recall-redact（wf_f32235c26051667e）开工：先核实导出文件里实际有哪些像凭证的内容，再复用现有识别办法遮掉",
       "from": "approved",
       "to": "doing"
+    },
+    {
+      "at": "2026-11-05T15:15:13.236Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "compact-recall-redact（wf_f32235c26051667e）第 1 轮 code 步完成：分支 compact-recall-redact 头 7a5553d，已推 origin；build、preflight、npm test 退出码 0，棘轮 eslint 73 / knip 18 / jscpd 1 不变，探针 421/421，新加的遮掉核对通过；两条验收的证据写在提交说明与 DESIGN.md §2.4。下一步评审。合入后 compact-recall 的 L4 在隔离实例里做，不改人的 profile。"
+    },
+    {
+      "at": "2026-11-05T16:00:55.824Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "评审 APPROVED，没有挡路发现（.agents/tasks/compact-recall-redact/review.json、review.md，不挡路 5 条）。改动前的探针核实了导出确实原样带出两个假凭证（420/421），改动后为 0 个、行计数 2（421/421）。合入步在跑（wf_f32235c26051667e merge）。"
+    },
+    {
+      "at": "2026-11-05T16:34:29.422Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "合入步（wf_f32235c26051667e merge）失败，main 没动：合入 origin/main 55e6cb2 得本地合并提交 9807003（没有推），build 与 preflight 绿，npm test 连跑三次都败在 tests/loops-run.spec.ts 第 12 项（state.json 的 last[...].outcome 读到 undefined，预期 ran），单独跑该 spec 25/25；探针与棘轮没跑。这一项不在本分支的改动里。原因已由 habits-prompts 的提交 4598fa7 查明并修在测试上：src/loops/run.ts 先写 loop-done 记录再 await inbox.save()，测试只等到记录出现就去读 state.json；修法是第 12 项像第 15 项一样经 savedState 等 last[entry] 写出（5 秒上限）。编排方定：不另开修测试的线，等 habits-prompts 合入 main 后重派本节点的合入步，合入最新 origin/main 再跑全量门禁。"
     }
   ]
 }

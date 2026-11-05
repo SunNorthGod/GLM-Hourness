@@ -23,6 +23,7 @@ import { creditPricing } from './credits.ts'
 import { GLM_LOOP_DEFAULTS } from './loop-defaults.ts'
 import { createQuotaReader, quotaHealthText } from './quota.ts'
 import { QuotaJournal } from './quota-journal.ts'
+import { glmMetricSink } from './metrics.ts'
 import { credentialHome } from '../shared/data-home.ts'
 import { collectHealth, provideRowHealth, renderHealthTable, sessionIdOf, type HealthState } from '../shared/health.ts'
 import { PRICING_SERVICE, type UsagePricing } from '../shared/pricing.ts'
@@ -80,8 +81,9 @@ export function apply(ctx: CommandsHost & ServiceLookup & Partial<ProvideHost>, 
   const transport = config.fetchImpl === undefined ? {} : { fetchImpl: config.fetchImpl }
   const journal = new QuotaJournal({ home })
   const login = new ZcodeLogin({ home, ...transport })
-  const adapter = new ZcodeAdapter({ home, journal, ...(config.plan === undefined ? {} : { plan: config.plan }), ...(config.now === undefined ? {} : { now: config.now }), ...transport })
-  const reader = createQuotaReader({ adapter, journal, now, zone, ...transport })
+  const metric = glmMetricSink(ctx)
+  const adapter = new ZcodeAdapter({ home, journal, metric, ...(config.plan === undefined ? {} : { plan: config.plan }), ...(config.now === undefined ? {} : { now: config.now }), ...transport })
+  const reader = createQuotaReader({ adapter, journal, now, zone, metric, ...transport })
   const commands = '/glm-login、/glm-status、/glm-logout 已注册'
   const quota = async (request?: QuotaRequest): Promise<QuotaView> => {
     const view = await reader.view(request)
@@ -105,9 +107,11 @@ export function apply(ctx: CommandsHost & ServiceLookup & Partial<ProvideHost>, 
     }
     return `glm-zcode：已登录（套餐 ${status.plan}，Key ${status.keyPreview}${status.userId === undefined ? '' : `，账号 ${status.userId}`}${status.jwtAgeHours === undefined ? '' : `，JWT 已用 ${status.jwtAgeHours} 小时`}）`
   }
-  /** The peak line and the quota lines, the section between the credential line and the health table. */
-  const quotaSection = async (): Promise<string> => {
-    const view = await quota({ waitMs: STATUS_WAIT_MS })
+  /** The peak line and the quota lines, the section between the credential line and the health table; a read it starts is the command's, in the session it ran in. */
+  const quotaSection = async (invocation: CommandInvocationLike): Promise<string> => {
+    const sessionId = sessionIdOf(invocation.agent)
+    const cwd = invocation.agent.session?.header?.cwd
+    const view = await quota({ waitMs: STATUS_WAIT_MS, asker: { kind: 'command', ...(sessionId === undefined ? {} : { sessionId }), ...(cwd === undefined || cwd === '' ? {} : { dir: cwd }) } })
     const at = now()
     return [peakLine(creditPricing.plan, atMs => creditPricing.peak(atMs), at, zone), ...quotaLines(view, at, zone)].join('\n')
   }
@@ -128,7 +132,7 @@ export function apply(ctx: CommandsHost & ServiceLookup & Partial<ProvideHost>, 
     }),
     ctx.commands.register(statusCommand(async invocation => {
       const credential = await credentialText()
-      const section = await quotaSection()
+      const section = await quotaSection(invocation)
       return `${credential}\n\n${section}\n\n${healthText(ctx, invocation)}`
     })),
     ctx.commands.register({

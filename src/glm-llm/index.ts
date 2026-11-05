@@ -5,12 +5,16 @@
  * /glm-login), signs like the desktop client, and speaks Anthropic Messages
  * to the ZCode backend. The credential directory defaults to the user-level
  * directory `<DSH home>/glm-hourness` (docs/DESIGN.md §2.4); a missing
- * credential fails the stream with the re-login instruction.
+ * credential fails the stream with the re-login instruction. A spent quota
+ * or a refused login the stream meets also goes to the metrics journal of
+ * the request's session when the orchestration package's metrics row is on
+ * (src/glm-llm/metrics.ts).
  */
 import { ZcodeAdapter } from './zcode.ts'
 import { credentialHome } from '../shared/data-home.ts'
 import { homeField, planField } from './config-fields.ts'
 import { asAttachments } from './images.ts'
+import { glmMetricSink } from './metrics.ts'
 import { GLM_CONTEXT_WINDOW } from './models.ts'
 import Schema from '../shared/schemastery.ts'
 import { provideRowHealth } from '../shared/health.ts'
@@ -77,6 +81,7 @@ export function apply(ctx: (LlmContextLike | { llm?: LlmContextLike }) & Service
     report: (sessionId, state, reason) => window.refused === undefined
       ? health.report(sessionId, state, reason)
       : health.report(sessionId, state === 'active' ? 'degraded' : state, `${reason}；${window.refused}`),
+    metric: glmMetricSink(ctx),
   }))
   return () => {
     unregister()
