@@ -1,0 +1,23 @@
+{
+  "id": "data-journal-lock-flake",
+  "type": "task",
+  "title": "两个进程同时写流水时，锁偶尔被误当成过期接管",
+  "why": "机器忙的时候流水的锁会被抢走，测试偶发失败挡住合入，真用的时候也可能写坏记录",
+  "status": "approved",
+  "parent": "orch",
+  "kind": "implement",
+  "body": "tests/data-journal.spec.ts 的两进程各追加 200 条一例偶发失败，临时目录留下 .lock.stale-<ms>（m3-metrics-wiring 第 2 轮门禁记录）。先查 src/data 的流水锁：持锁时是否续写时间戳、STALE_LOCK_MS 与负载下的持锁时长、接管过期锁时与原持有者的竞态；确认是产品代码的竞态还是测试夹具的问题，修在原因上。是产品竞态的话，流水在负载下不丢、不重、不交错的保证要有 L2 钉住。",
+  "acceptance": [
+    "原因写明（产品锁的竞态还是测试夹具），修在原因上；两进程追加一例在负载下（与另一套 npm test 并行）连跑 20 次全绿",
+    "是产品竞态时，L2 钉住持锁者活着时锁不会被接管；DESIGN 或 ORCHESTRATION 讲流水锁的一段同批改；门禁全绿，改动在 main 上"
+  ],
+  "history": [
+    {
+      "at": "2026-11-05T22:24:45.137Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "m3-metrics-wiring 第 2 轮门禁（.agents/tasks/m3-metrics-wiring-2026-11-05/report.md Round 2）与评审 N8：tests/data-journal.spec.ts「two processes appending 200 records each」一次失败，临时目录里留下 .lock.stale-<ms>，重跑通过；推断是负载下写入者接管了超过 STALE_LOCK_MS 的锁。同一类偶发失败已挡过几条线的合入，按修根因的习惯单独查。agent 定。",
+      "to": "approved"
+    }
+  ]
+}
