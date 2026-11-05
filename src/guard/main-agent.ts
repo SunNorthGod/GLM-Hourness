@@ -154,7 +154,7 @@ export interface MainAgentRulesDeps extends Pick<ReleaseDeps, 'agents' | 'graph'
  * a removed work tree), whether a tag was set, the ignored files of a removed
  * work tree and how long it took. Counts and flags only, no path.
  */
-export function snapshotEvent(snapshot: SavedSnapshot): BodyEventOf<DesignBodies> {
+function snapshotEvent(snapshot: SavedSnapshot): BodyEventOf<DesignBodies> {
   const { entry } = snapshot
   const files = entry.files
   return {
