@@ -18,6 +18,22 @@ export interface QuotaRequest {
   readonly waitMs?: number
   /** false: start no read, return the cached or journalled view; default true. */
   readonly read?: boolean
+  /**
+   * Who asks and for whom: a command a person typed (`/glm-status`,
+   * `/hourness`) with the session it ran in, or a service (the loop board)
+   * with a directory of the project the read is for. The channel files the
+   * metric event of a read it starts by this (metrics design §3.5); without
+   * it the read counts as a service's and its event has no project, so it is
+   * only counted. A read the call joins keeps its starter's.
+   */
+  readonly asker?: QuotaAsker
+}
+
+/** The asker of a quota read (`QuotaRequest.asker`). */
+export interface QuotaAsker {
+  readonly kind: 'command' | 'service'
+  readonly sessionId?: string
+  readonly dir?: string
 }
 
 export type QuotaWindowName = 'five-hour' | 'weekly' | 'mcp' | 'window' | 'other'

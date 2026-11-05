@@ -515,10 +515,10 @@ async function quotaSectionOf(pricing: UsagePricing | undefined, usage: string =
   }
 }
 
-test('the quota section is what the service\'s quota member returns, asked for at most three seconds; the panel keeps its numbers', async () => {
+test('the quota section is what the service\'s quota member returns, asked for at most three seconds by the command in its session; the panel keeps its numbers', async () => {
   const asked: unknown[] = []
   const { text, lines } = await quotaSectionOf(withQuota((request: unknown) => { asked.push(request); return Promise.resolve(VIEW) }))
-  assert.deepEqual(asked, [{ waitMs: 3000 }])
+  assert.deepEqual(asked, [{ waitMs: 3000, asker: { kind: 'command', sessionId: 's1' } }])
   assert.deepEqual(lines, quotaLines(VIEW, QUOTA_NOW.getTime(), ZONE))
   assert.equal(lines[0], '额度（服务端读数，含 ZCode 等其他客户端，读于 19:40）：max')
   assert.equal(lines[1], '- 5 小时：已用 41% · 21:30 重置 · 不预估：读数不足')
