@@ -47,7 +47,8 @@ interface HandoverFile {
 }
 
 export interface RunLockDeps {
-  readonly paths: LoopsPaths
+  /** The lock file and the hand-over request: a project's (`.llm/loops/`) or the machine's (`<userHome>/loops/machine/`, machine.ts). */
+  readonly paths: Pick<LoopsPaths, 'runner' | 'handover'>
   readonly io: StoreIo
   readonly now: () => number
   readonly pid: number

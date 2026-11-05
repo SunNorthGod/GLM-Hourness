@@ -74,6 +74,18 @@
       "reason": "已派工：workflow m7-e8-e9-and-merge（wf_36d1d690c7e1de90），按 M7 设计 0.6 §8.1 做 E8（自动推进、三档后果、完成门禁、目标整体审查、await_human、对账、循环板接缝、drive.jsonl），再做 E9 并把 m7 合入 main。",
       "from": "approved",
       "to": "doing"
+    },
+    {
+      "at": "2026-11-04T22:53:47.346Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "E8 计划写好：.worktrees/m3/.llm/wf/m7-e8/plan.md，24 项分 5 个 FEAT（FEAT 产物在 .llm/wf/m7-e8/task-m7-e8），偏差 D1–D16，另列自举之后再办的请求清单。运行的步骤改为 feat-001 到 feat-005 加 e8-converge 循环，e8-commit 到 report 不变；E8 在 bd9a625 之上合成一个提交。"
+    },
+    {
+      "at": "2026-11-04T23:44:11.263Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "E8 FEAT-001（与循环板的接缝）本地提交 6bca977（m7 分支，wip，未推送）：build、preflight 与棘轮（73/18/1）退出码为 0，FEAT-001 的各 spec 全过；npm test 全量与探针留到 FEAT 收尾的全量门禁。下一步：FEAT-002。"
     }
   ]
 }

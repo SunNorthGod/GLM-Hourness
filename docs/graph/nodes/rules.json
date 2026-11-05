@@ -639,6 +639,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "rules-board-page 计划草稿：.agents/tasks/rules-board-page/plan.md（按规则设计 0.10）。批次：B0 合入 origin/status-hub-2（随本分支一起合入 main）；B1 宿主写 .llm/rules/view.json 与投影 hournessRules {projectKey, viewFile}（同循环板、指标板的做法；客户端调不到 guardStatusItems，hits.json 不存在），探针 glm-rules、non-glm-rules、rules-peak 加检查；B2 客户端页面模型（L2）；B3 登记板块、页面与数据源。棘轮上限 eslint 73 / knip 18 / jscpd 1。两处设计不一致，编排方定：Q1「会挡住动作的门」一组在 M7 的门禁还不在 main 时选 B，从图上列出 norm-merge-gate 与 norm-review-floor 两张清单（标题、灰色来源行、每条验收原文），结尾写由派活与合入那一块执行、它还没装上，M7 合入前不写底线说明；依据是人定的做完条件第 8 条与 d-rules-visible 都要两张清单看得见，偏离规则 0.10 §9.1 的一句话写法，在计划里写明。Q2 首页「现在」一行选 A，按规则 0.10 §9.1 与 plain-ui 1.3 §4.7、§11 第 5 条（高峰时一行写到几点与档名，有工单等放行时写「N 件事在等规则放行」，否则不出现）；状态板块的 rules/peak 条目原文仍只用作报告里的一条。不做高峰档位单选（人在 d-panel-released ③ 接受过）。R4d 本运行不做：它要规则的批准路径（R3-proposal），后者要 M3 0.6 请求的 §9.3 改稿，还要 M7 E7 的 trunkAdvanceFor；现在做只有测试能走到。m6-followups S2 里真实 checkCall 的用例因此继续等。"
+    },
+    {
+      "at": "2026-11-04T23:16:00.168Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "rules-board-page FEAT-001 完成：5576815 合入 status-hub-2（随本分支一起合入 main），d1e1337 加 .llm/rules/view.json 与投影 hournessRules。两个提交上四道门禁退出码为 0（npm test 2992 个，2991 通过 / 1 跳过；探针 393/393），棘轮 73/18/1。origin/rules-board-page = d1e1337。下一步：FEAT-002 客户端页面。"
     }
   ]
 }
