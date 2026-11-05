@@ -151,6 +151,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "B6（env 行去掉 disabled 交付）提交 63388d5（未推送，待本批评审）。四道门禁退出码为 0：npm test 2818 个、0 失败，棘轮 eslint 76 / knip 19 / jscpd 1，探针 366/366；mainMerged 为 true。这是 m4-checks 的最后一批；合入 main 前要合最新 main（会带上 metrics 与日期相关测试的修复），因为改了行组合，合入时要按 CDP 规矩重启桌面版。"
+    },
+    {
+      "at": "2026-11-05T01:45:37.969Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "B6（63388d5）评审 APPROVED，无阻塞：env 行去掉 disabled 交付，文档与契约测试同一提交，压制计数目录的修法不改生产行为，门禁全绿（npm test 0 失败，棘轮 76/19/1，探针 366/366）。已推 origin/m4-checks = 63388d5。checks-plan.md 的 B1–B6 全部提交、评审通过、推送，status.json allDone=true。下一步：本运行的 finalize 步骤；合入 main 前要合最新 main 并按 CDP 规矩重启桌面版（行组合有变）。"
     }
   ]
 }
