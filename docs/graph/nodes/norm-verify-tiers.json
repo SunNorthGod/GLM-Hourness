@@ -33,6 +33,12 @@
           "to": "按风险决定验到哪一层，真机核对攒成一批做，省人力又不漏"
         }
       }
+    },
+    {
+      "at": "2026-11-05T07:37:39.245Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "桌面批次 L4（l4-batch-2026-11-05，wf_be2ff3a8b7d83155）的发现：15:08 与 15:10 两次经 CDP 发 Browser.close，人的桌面版 60 秒内都没有退出；该步按 §1.1 的 L4 行在 15:15 停下，没有杀进程、没有重建。约 15:20:52 桌面版自己退出，userData 锁文件已释放，没有新的崩溃日志。之后该步在 main 2d4600d（含 rules-board-page 3b24f1e 与 status-hub-2）上 build，用人自己的 userData 带 --remote-debugging-port=9333 重新启动，继续核对。关闭要几分钟才生效这一点记进 .agents/tasks/l4-batch-2026-11-05/l4.md 的发现；60 秒的等待上限要不要放宽，等该记录出来后再定。"
     }
   ]
 }
