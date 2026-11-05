@@ -31,6 +31,10 @@ export interface LoopItem {
   readonly changeLine: string | null
   /** The timeout of each check a plugin entry runs: the number and its source, a raised ceiling, the seven days (./timeouts.ts). */
   readonly checkLines: readonly string[]
+  /** A person's script or check entry: the version agreed to, a check's command, the timeout (loop board design §8.2 item 5). */
+  readonly workLines: readonly string[]
+  /** A person's script entry: its file from the project root, read when 讲细点 opens; null for the others. */
+  readonly script: string | null
   /** 讲细点: why it is there, the hand-over's lines, the history and last timeouts of its checks, its own rules, the id and its state, in small print. */
   readonly details: readonly string[]
 }
@@ -111,6 +115,8 @@ function itemOf(entry: ViewEntry, nowMs: number, tell: PageTell): LoopItem {
     greyed: !runs(entry),
     changeLine: mine && entry.state !== 'deleted' ? `要改：跟主 Agent 说「把${entry.title}改成……」；要删：在输入框打 /loops delete ${entry.title}` : null,
     checkLines: cells.flatMap(cell => cell.lines),
+    workLines: textsOf(entry.work),
+    script: typeof entry.script === 'string' && entry.script !== '' ? entry.script : null,
     details: [
       ...(entry.why === undefined ? [] : [`为什么有它：${entry.why}`]),
       ...textsOf(entry.details),

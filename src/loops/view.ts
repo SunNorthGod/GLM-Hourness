@@ -16,6 +16,7 @@
  * which boards.ts reads; a view without it lists the entries alone.
  */
 import { pluginLabel } from '../shared/plugin-labels.ts'
+import { commandText, WORK_TIMEOUT_MS } from './command-text.ts'
 import type { Action, LoopEntry, PersonEntry } from './model.ts'
 import { nextOccurrence, type LoopEventDeclaration, type Trigger } from './trigger.ts'
 
@@ -58,6 +59,10 @@ export interface ViewEntry {
   readonly details?: readonly string[]
   /** The checks a plugin entry runs in this project with their timeouts, from its hand-over's `checks` (plain-ui 1.3 §4.7, §8.2). */
   readonly checks?: readonly ViewCheck[]
+  /** A person's script or check entry: the line of the version agreed to, a check's command line, and the timeout line (design §8.2 item 5, plain-ui 1.3 §4.7). */
+  readonly work?: readonly string[]
+  /** A person's script entry: its file from the project root, which the page reads when 讲细点 opens (design §8.2 item 5). */
+  readonly script?: string
 }
 /**
  * Where a timeout's number came from (plain-ui 1.3 §4.7 「数与来源」, §8.2):
@@ -271,6 +276,56 @@ function doesText(action: Action, label: string): string {
   }
 }
 
+/** Whether a person's script file is the one they agreed to, as the host reads it now (boards.ts): the same bytes, other bytes, no file, or too large to read. */
+export type ScriptStanding = 'agreed' | 'changed' | 'missing' | 'too-large'
+
+/** `10 月 31 日` on the clock of this machine, as the timeout cell writes a day (ui/src/loops/timeouts.ts); the text itself when it is not a time. */
+function dayText(at: string): string {
+  const moment = new Date(at)
+  return Number.isNaN(moment.getTime()) ? at : `${moment.getMonth() + 1} 月 ${moment.getDate()} 日`
+}
+
+/**
+ * The lines under a person's script or check entry (design §8.2 item 5,
+ * plain-ui 1.3 §4.7 「带脚本或检查的条目」): whether the script is the version
+ * the person agreed to — or the check the command they agreed to, with the
+ * command line —, and the timeout with where its number came from and what a
+ * timeout or a crash does. A check whose command changed on the graph or
+ * could not be read is known from its last run, since the view reads no
+ * graph; a script's standing is the host's read of the file now.
+ */
+function workLines(entry: PersonEntry, state: string, standing: ScriptStanding | undefined, last: { readonly outcome: string, readonly reason?: string } | undefined): string[] | undefined {
+  const action = entry.action
+  if (action.kind !== 'script' && action.kind !== 'check') return undefined
+  const day = dayText(entry.source.at)
+  const unadopted = state === 'unadopted'
+  const refused = last?.outcome === 'refused' ? last.reason : undefined
+  const who = action.to === 'event-session' ? '事件来的那个会话' : '主 Agent'
+  const seconds = action.timeoutSeconds ?? WORK_TIMEOUT_MS / 1000
+  const timeout = `超时 ${seconds} 秒（${action.timeoutSeconds === undefined ? '设计里定的固定值' : '条目里写明的'}）：超时算没跑完，告诉${who}，这次的事件下次再跑；崩溃算没过`
+  if (action.kind === 'script') {
+    const again = `要接着用，跟主 Agent 说「把${entry.title}的脚本给我看一下」`
+    const version = unadopted
+      ? '脚本：这台电脑上没有你同意的记录，先不跑'
+      : standing === 'changed'
+        ? `脚本 ${action.script.file} 和你同意的那一版不一样，先不跑；${again}`
+        : standing === 'missing'
+          ? `脚本文件不见了：${action.script.file}，先不跑`
+          : standing === 'too-large'
+            ? '脚本太大，先不跑'
+            : `脚本：你 ${day} 同意的那一版`
+    return [version, timeout]
+  }
+  const version = unadopted
+    ? `检查：项目图上「${action.tool}」的命令，这台电脑上没有你同意的记录，先不跑`
+    : refused === 'check-changed'
+      ? `检查：项目图上「${action.tool}」的命令改过了，和你 ${day} 同意的那一条不一样，先不跑；要接着用，跟主 Agent 说「把${entry.title}的检查再看一眼，同意一次」`
+      : refused === 'check-missing'
+        ? `检查：取不到项目图上「${action.tool}」的命令，先不跑`
+        : `检查：项目图上「${action.tool}」的命令，你 ${day} 同意的那一条`
+  return [version, `命令：${commandText(action.argv)}`, timeout]
+}
+
 /** 谁带来的 (design §8.2 items 3 and 5). */
 function pluginFrom(entry: LoopEntry): string {
   return `${pluginLabel(entry.source.plugin)}带来的 · 只能看${entry.basis === undefined ? '' : ` · 依据 ${entry.basis}`}`
@@ -416,6 +471,8 @@ export function buildView(input: {
   readonly runtime?: ViewRuntime
   /** What a plugin entry's hand-over gives the page for this project (registry.ts `pageOf`): its detail lines and its checks with their timeouts. */
   readonly page?: (entry: string) => { readonly details?: readonly string[], readonly checks?: readonly ViewCheck[] }
+  /** Whether a person's script file is the one agreed to, as the host reads it now (boards.ts); absent: taken as agreed. */
+  readonly scriptStanding?: (entry: PersonEntry) => ScriptStanding | undefined
 }): LoopsView {
   const runtime = input.runtime ?? NO_RUNTIME
   const now = new Date(input.at)
@@ -450,6 +507,13 @@ export function buildView(input: {
       ...(page.checks === undefined || page.checks.length === 0 ? {} : { checks: page.checks }),
     }
   })
+  /** A person's script or check entry's lines, and a script's file for 讲细点; nothing for the others or a deleted one. */
+  const workOf = (entry: PersonEntry | undefined, state: string): Pick<ViewEntry, 'work' | 'script'> => {
+    if (entry === undefined || state === 'deleted') return {}
+    const work = workLines(entry, state, entry.action.kind === 'script' ? input.scriptStanding?.(entry) : undefined, runtime.last[entry.id])
+    if (work === undefined) return {}
+    return { work, ...(entry.action.kind === 'script' ? { script: entry.action.script.file } : {}) }
+  }
   const person = (input.board?.entries ?? []).map((board): ViewEntry => {
     const note = board.status.kind === 'deleted' && board.restorable ? `要恢复：在输入框打 /loops restore ${board.id}` : undefined
     const entry = board.entry
@@ -465,6 +529,7 @@ export function buildView(input: {
       does: entry === undefined ? '读不出' : doesText(entry.action, '你'),
       from: personFrom(entry),
       ...(entry?.why === undefined ? {} : { why: entry.why }),
+      ...workOf(entry, board.status.kind),
     }
   })
   const entries = [...plugin, ...person]

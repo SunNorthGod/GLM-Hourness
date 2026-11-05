@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { readFile, readdir } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { plainWordsIn } from '../src/graph/plain-question.ts'
@@ -7,7 +10,8 @@ import { LOOP_DEFAULTS } from '../src/loops/defaults.ts'
 import { LOOP_EVENT_TABLE } from '../src/loops/events.ts'
 import type { LoopEntry, LoopEntryDefinition, PersonEntry } from '../src/loops/model.ts'
 import { nextOccurrence } from '../src/loops/trigger.ts'
-import { buildView, momentText, runLine, type LoopsView, type ViewRuntime } from '../src/loops/view.ts'
+import { buildView, momentText, runLine, type LoopsView, type ScriptStanding, type ViewRuntime } from '../src/loops/view.ts'
+import { scriptStandingOf } from '../src/loops/boards.ts'
 import { loopsBoard } from '../ui/src/loops/board.ts'
 import { buildLoopsPage, type LoopItem } from '../ui/src/loops/model.ts'
 import { holdLoopsSource, LoopsSource } from '../ui/src/loops/source.ts'
@@ -48,7 +52,7 @@ const SCRIPT = { kind: 'script', script: { file: 'docs/loops/scripts/u-00000001.
 const CHECK = { kind: 'check', tool: 'tsc', argv: ['node', 'tsc', '--noEmit'], report: 'on-change' } as const
 
 /** A view with one entry of every kind of trigger and action, plus the runtime given. */
-function richView(runtime?: ViewRuntime): LoopsView {
+function richView(runtime?: ViewRuntime, scriptStanding?: (entry: PersonEntry) => ScriptStanding | undefined): LoopsView {
   const plugin = [
     pluginEntry(tell('loops.once', { kind: 'once', at: '2026-11-05T02:30:00.000Z' })),
     pluginEntry(tell('loops.every-half-hour', { kind: 'every', seconds: 1800 }, { action: { kind: 'tell-main', text: 'Hi.', wake: false } })),
@@ -69,7 +73,7 @@ function richView(runtime?: ViewRuntime): LoopsView {
     journal: { unacknowledged: [] },
     git: undefined,
   }
-  return buildView({ at: AT, project: 'p', plugin, board, events: LOOP_EVENT_TABLE, ...(runtime === undefined ? {} : { runtime }) })
+  return buildView({ at: AT, project: 'p', plugin, board, events: LOOP_EVENT_TABLE, ...(runtime === undefined ? {} : { runtime }), ...(scriptStanding === undefined ? {} : { scriptStanding }) })
 }
 
 const entryOf = (view: LoopsView, id: string) => view.entries.find(entry => entry.id === id)!
@@ -222,6 +226,76 @@ test('a project without a view yet, or without entries of the person\'s, says ho
   const page = buildLoopsPage(null)
   assert.deepEqual([page.holderLine, page.waitingLine, page.peakLine, page.events.rows, page.timed.rows, page.mine.rows, page.recent], [null, null, null, [], [], [], []])
   assert.equal(page.mineEmpty, '还没有你加的。要加：跟主 Agent 说「每 30 分钟查一下服务器，挂了告诉我」')
+})
+
+// --- A person's script or check entry (design §8.2 item 5, plain-ui 1.3 §4.7) ---
+
+const AGREED_DAY = `${new Date('2026-11-01T01:00:00.000Z').getMonth() + 1} 月 ${new Date('2026-11-01T01:00:00.000Z').getDate()} 日`
+
+test('a person\'s script entry says it is the version agreed to and its timeout with where the number came from; a check entry its command too; a deleted or a telling entry has no such lines', () => {
+  const view = richView()
+  assert.deepEqual(entryOf(view, 'u-00000001').work, [
+    `脚本：你 ${AGREED_DAY} 同意的那一版`,
+    '超时 30 秒（条目里写明的）：超时算没跑完，告诉事件来的那个会话，这次的事件下次再跑；崩溃算没过',
+  ])
+  assert.equal(entryOf(view, 'u-00000001').script, 'docs/loops/scripts/u-00000001.mjs')
+  assert.deepEqual(entryOf(view, 'u-00000002').work, [
+    `检查：项目图上「tsc」的命令，你 ${AGREED_DAY} 同意的那一条`,
+    '命令：node tsc --noEmit',
+    '超时 60 秒（设计里定的固定值）：超时算没跑完，告诉主 Agent，这次的事件下次再跑；崩溃算没过',
+  ])
+  assert.equal(entryOf(view, 'u-00000002').script, undefined, 'a check has no script to open')
+  assert.equal(entryOf(view, 'u-00000004').work?.[0], '脚本：这台电脑上没有你同意的记录，先不跑')
+  assert.deepEqual([entryOf(view, 'u-00000003').work, entryOf(view, 'u-00000003').script], [undefined, undefined])
+  assert.equal(entryOf(view, 'loops.daily').work, undefined)
+})
+
+test('a script that is not the agreed bytes, gone or too large reads so before the next run; an unadopted entry stays unadopted whatever the file is', () => {
+  const lineOf = (standing: ScriptStanding, id = 'u-00000001'): string | undefined => entryOf(richView(undefined, () => standing), id).work?.[0]
+  assert.equal(lineOf('changed'), '脚本 docs/loops/scripts/u-00000001.mjs 和你同意的那一版不一样，先不跑；要接着用，跟主 Agent 说「把重启之后查一下服务的脚本给我看一下」')
+  assert.equal(lineOf('missing'), '脚本文件不见了：docs/loops/scripts/u-00000001.mjs，先不跑')
+  assert.equal(lineOf('too-large'), '脚本太大，先不跑')
+  assert.equal(lineOf('agreed'), `脚本：你 ${AGREED_DAY} 同意的那一版`)
+  assert.equal(lineOf('changed', 'u-00000004'), '脚本：这台电脑上没有你同意的记录，先不跑')
+  const asked: string[] = []
+  richView(undefined, (entry) => { asked.push(entry.id); return 'agreed' })
+  assert.deepEqual(asked, ['u-00000001', 'u-00000004'], 'only a script entry that is not deleted is read')
+})
+
+test('a check whose last run was refused for a changed or unreadable command says so; the command line stays', () => {
+  const linesOf = (reason: string): readonly string[] | undefined => entryOf(richView({ last: { 'u-00000002': { at: '2026-11-01T09:00:00.000Z', outcome: 'refused', reason } }, passing: {}, waiting: 0, records: [] }), 'u-00000002').work
+  assert.deepEqual(linesOf('check-changed')?.slice(0, 2), [`检查：项目图上「tsc」的命令改过了，和你 ${AGREED_DAY} 同意的那一条不一样，先不跑；要接着用，跟主 Agent 说「把改了 ts 就跑检查的检查再看一眼，同意一次」`, '命令：node tsc --noEmit'])
+  assert.equal(linesOf('check-missing')?.[0], '检查：取不到项目图上「tsc」的命令，先不跑')
+  assert.equal(linesOf('outside-project')?.[0], `检查：项目图上「tsc」的命令，你 ${AGREED_DAY} 同意的那一条`)
+})
+
+test('the page model carries the work lines and the script\'s file; a plugin entry has none', () => {
+  const page = buildLoopsPage(richView())
+  const [script, checker, unadopted] = page.mine.rows
+  assert.deepEqual([script.workLines.length, script.script], [2, 'docs/loops/scripts/u-00000001.mjs'])
+  assert.deepEqual([checker.workLines[1], checker.script], ['命令：node tsc --noEmit', null])
+  assert.equal(unadopted.workLines[0], '脚本：这台电脑上没有你同意的记录，先不跑')
+  assert.deepEqual([page.timed.rows[0].workLines, page.timed.rows[0].script], [[], null])
+  assert.deepEqual(plainWordsIn(page.mine.rows.flatMap(row => row.workLines).join('\n')), [])
+})
+
+test('the host reads a script\'s standing with the executor\'s test: the agreed bytes, other bytes, no file, over 64 KiB', () => {
+  const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'loops-standing-')))
+  try {
+    const text = 'console.log(1)\n'
+    const entry = (file: string, sha = createHash('sha256').update(text).digest('hex')): PersonEntry => ({ id: 'u-00000001', title: 't', when: { kind: 'event', events: ['loops.host-restarted'] }, action: { kind: 'script', script: { file, sha256: sha, lang: 'node' }, report: 'always' }, source: { kind: 'person', at: AT, via: 'chat', relay: '好', proposal: 'lp-0123abcd' } })
+    mkdirSync(join(root, 'docs', 'loops', 'scripts'), { recursive: true })
+    writeFileSync(join(root, 'docs', 'loops', 'scripts', 'a.mjs'), text)
+    writeFileSync(join(root, 'docs', 'loops', 'scripts', 'big.mjs'), 'x'.repeat(65_537))
+    assert.equal(scriptStandingOf(root, entry('docs/loops/scripts/a.mjs')), 'agreed')
+    assert.equal(scriptStandingOf(root, entry('docs/loops/scripts/a.mjs', 'b'.repeat(64))), 'changed')
+    assert.equal(scriptStandingOf(root, entry('docs/loops/scripts/gone.mjs')), 'missing')
+    assert.equal(scriptStandingOf(root, entry('docs/loops/scripts/big.mjs')), 'too-large')
+    assert.equal(scriptStandingOf(root, { ...entry('x'), action: CHECK }), undefined, 'a check runs no script')
+  }
+  finally {
+    rmSync(root, { recursive: true, force: true })
+  }
 })
 
 // --- The timeout cell of a plugin entry's checks (plain-ui 1.3 §4.7, §8.2) ---

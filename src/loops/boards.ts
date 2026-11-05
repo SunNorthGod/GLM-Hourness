@@ -17,17 +17,21 @@
  * seconds for a project; a change that comes sooner is written when the 2
  * seconds are over. The moment it was made is not part of the comparison.
  */
+import { createHash } from 'node:crypto'
+import { readFileSync } from 'node:fs'
 import { unlink } from 'node:fs/promises'
-import { basename } from 'node:path'
+import { basename, join } from 'node:path'
 import type { LockEnvironment } from '../data/lock.ts'
 import { projectKey } from '../graph/main-agent-holder.ts'
 import { writeAtomic, type StoreIo } from '../rules/store.ts'
+import { SCRIPT_MAX_BYTES } from './command-text.ts'
 import { holderLine, WRITER_HELD_MS, type HolderReason, type HolderStateKind } from './holder.ts'
 import { readState, type RuntimeState } from './inbox.ts'
+import type { PersonEntry } from './model.ts'
 import { recentRecords } from './records.ts'
 import type { LoopsRegistry } from './registry.ts'
 import { ensureRuntimeDir, openLoopStore, type BoardRead, type LoopStore } from './store.ts'
-import { attentionOf, buildView, type HolderView, type LoopsView, type PeakView, type ViewRuntime } from './view.ts'
+import { attentionOf, buildView, type HolderView, type LoopsView, type PeakView, type ScriptStanding, type ViewRuntime } from './view.ts'
 
 /** How often `view.json` of one project is written at most. */
 const VIEW_EVERY_MS = 2_000
@@ -61,6 +65,26 @@ async function runtimeOf(store: LoopStore, nowMs: number): Promise<ViewRuntime> 
     records: await recentRecords(store.paths.projectRoot, nowMs, RECENT_RUNS),
     ...(holder === undefined ? {} : { holder }),
   }
+}
+
+/**
+ * Whether a person's script file is the one they agreed to, read now (design
+ * §8.2 item 5, §6.6): the executor's own test — the bytes' SHA-256 against
+ * the digest in the entry, a file over 64 KiB not read at all — so the page
+ * says before the next run what the run would find. Undefined for an entry
+ * that runs no script.
+ */
+export function scriptStandingOf(root: string, entry: PersonEntry): ScriptStanding | undefined {
+  if (entry.action.kind !== 'script') return undefined
+  let bytes: Buffer
+  try {
+    bytes = readFileSync(join(root, ...entry.action.script.file.split('/')))
+  }
+  catch {
+    return 'missing'
+  }
+  if (bytes.length > SCRIPT_MAX_BYTES) return 'too-large'
+  return createHash('sha256').update(bytes).digest('hex') === entry.action.script.sha256 ? 'agreed' : 'changed'
 }
 
 /** A timer that runs `run` once after `ms` and returns the function that cancels it. */
@@ -186,6 +210,7 @@ export function createBoards(deps: BoardsDeps): Boards {
       runtime: await runtimeOf(store, nowMs),
       ...(peak === undefined ? {} : { peak }),
       page: entry => deps.registry.pageOf(entry, root),
+      scriptStanding: entry => scriptStandingOf(root, entry),
     })
     await request(root, store, view)
     note(root, 'files', attentionOf(board).filter(item => item.degrades).map(item => item.text))
