@@ -1,6 +1,6 @@
 /**
  * The memory row's code rule `habit-ask-first` (project graph node
- * m5-habit-rule; M5 design §3.8.6): a habit the agent only guessed is put to
+ * m5-habit-rule; M5 design §3.8): a habit the agent only guessed is put to
  * the person with memory_habit, so the question, their answer and a no are
  * on record and a no keeps the same habit unasked for 28 days. Two ways
  * around memory_habit are denied at the call:
@@ -17,14 +17,15 @@
  * before (the relay check of memory_store is unchanged), and so is the
  * reporting depth (§3.7: memory_habit cannot carry its `value`). A question
  * asked in plain chat cannot be seen at the call boundary; that gap is
- * written down in the design (§3.8.6), and the second item above keeps it
+ * written down in the design (§3.8), and the second item above keeps it
  * from storing anything.
  *
  * Installed through the guard framework's one gate (src/guard/gate.ts): it
  * denies from the day the memory row is enabled (`d-code-rules-enforce`), a
  * denial is a line of the violation journal with the rule id, and the rule
  * is lifted only the one M4 way (`d-one-lift-path`: the human tells the main
- * agent, which calls guard_lift, or /rules lift memory:habit-ask-first). The
+ * agent, which calls guard_lift with their words; the board's /rules lift
+ * does not reach code rules yet, src/guard/lift-service.ts). The
  * catalog entry is in src/guard/catalog.ts. Only root sessions are judged:
  * a delegated child has neither memory_store nor memory_habit.
  */
@@ -137,7 +138,7 @@ const cut = (text: string, limit = 120): string => {
   return points.length <= limit ? points.join('') : `${points.slice(0, limit).join('')}…`
 }
 
-const LIFT_PATH = `The human can lift the rule: they tell you and you call guard_lift ${HABIT_ASK_FIRST} with their words, or they type /rules lift memory:${HABIT_ASK_FIRST}.`
+const LIFT_PATH = `Only the human can lift this rule: they tell you, and you call guard_lift ${HABIT_ASK_FIRST} with their words.`
 
 const deny = (correction: Correction): RuleVerdict => ({ kind: 'deny', rule: HABIT_ASK_FIRST, correction })
 

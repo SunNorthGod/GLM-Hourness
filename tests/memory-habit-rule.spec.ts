@@ -1,6 +1,6 @@
 /**
  * The memory row's code rule habit-ask-first (project graph node
- * m5-habit-rule; M5 design §3.8.6): a habit put to the person on a question
+ * m5-habit-rule; M5 design §3.8): a habit put to the person on a question
  * card and a preference whose relay only agrees to the agent's question are
  * denied through the gate, each denial a line of the violation journal of
  * the session's project with the rule id and a correction that names

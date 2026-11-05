@@ -38,7 +38,7 @@
 ## 3. 实施（照 §2）
 
 - 规则：`src/memory/habit-rule.ts`（判定、纠正提醒、经 `installRuleGate` 安装）；记忆行 `src/memory/index.ts` 安装它，违规写会话项目的 `.llm/audit/violations.jsonl`（与记忆的项目目录同一处）。
-- 规则总表：`src/guard/catalog.ts` 的 `GUARD_RULES` 加一条，行 `memory`，`liftVia: 'any'`（`guard_lift` 与 `/rules lift memory:habit-ask-first` 两条入口都走现有的撤下记录）。总数 10 → 11：guard 行六条、图行一条、循环板两条、指标流水一条、记忆行一条；主 Agent 的九条不变。
+- 规则总表：`src/guard/catalog.ts` 的 `GUARD_RULES` 加一条，行 `memory`，`liftVia: 'any'`（撤下经 `guard_lift` 带人的原话写现有的撤下记录；规则板的 `/rules lift` 还没接到代码规则，不写它）。总数 10 → 11：guard 行六条、图行一条、循环板两条、指标流水一条、记忆行一条；主 Agent 的九条不变。
 - 规则声明：guard 行的 `glm:guard` 一节在记忆行生效且规则没撤下时多一行。
 - 常驻：`memory_habit` 进 `ORCHESTRATION_RESIDENT_TOOLS`；`learning_signals` 仍延迟。`# Memory` 一节加一句（`MEMORY_L3`）。
 - L2：拦下（光秃秃的同意、复述 agent 的问、卡上问习惯）、放行（直述、与问话无关的回答、汇报细度、卡上问别的事）、撤下（撤下记录在时规则不拦）、违规流水带规则编号、纠正提醒写正路。
@@ -51,7 +51,7 @@
 - d2eb6c3：规则 `habit-ask-first`（`src/memory/habit-rule.ts`，记忆行经 `installRuleGate` 安装，违规写会话项目目录的 `audit/violations.jsonl`）；`GUARD_RULES` 加 `memory` 行一条（10 → 11）；guard 行的 `glm:guard` 一节在记忆行生效、规则没撤下时多一行；`memory_habit` 常驻；`# Memory` 一节加 `MEMORY_L3`。build 0。
 - ff3604f：L2 `tests/memory-habit-rule.spec.ts`（卡上问习惯、光秃秃的同意、复述 agent 的问被拦；直述、无关回答、汇报细度、卡上问别的事、子 agent 放行；撤下之后不拦；违规流水带规则编号；纠正提醒写正路），并改 contracts、rules-builtin、memory-row、glm-prompt 的计数与文字。
 - eafc98b：探针 `glm-memory-habit` 直接调常驻的 `memory_habit`，加卡上问习惯与「好」入库两步被拦，核对违规流水两条；lint 修正。`npm test` 0。
-- 82e7b58：M5 设计 §3.8.6 写进根因、取舍与规则（验收第 2 条的「写进 M5 设计」）。
+- 82e7b58：M5 设计 §3.8（习惯先问：从提示词升成规则）写进根因、取舍与规则（验收第 2 条的「写进 M5 设计」）。
 - a1e01ba：并入 origin/main（c254b91）。build 0、`npm test` 0、`npm run probe` 426/426（并入前 420/424，挂的 4 条都是 `env-checks`，main 上已修）。
 
 未做：
