@@ -4,11 +4,13 @@
  * buildRulesView, written out and read back through parseRulesView the way
  * the client reads view.json, then made into the page's head, status entries
  * and seven groups and into the board's home and guide lines; the plain-words
- * check over every fixed string and sample line. The pure functions run
- * without React.
+ * check over every fixed string and sample line; the board's registration
+ * and what it hands the panel, the view.json reader over the fake remote
+ * (panel-helpers.ts), and the static check that ui/src/rules/ never writes.
+ * The pure functions run without React.
  */
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
+import { readFile, readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import test from 'node:test'
 import ts from 'typescript'
@@ -21,7 +23,12 @@ import { emptyState, type ProjectState, type Rule, type Ticket } from '../src/ru
 import { buildRulesView, LIFT_BOARD_ONLY, LIFT_NOT_OFFERED, type RulesViewInput } from '../src/rules/view-build.ts'
 import { parseRulesView, type RulesView } from '../src/rules/view.ts'
 import type { StatusItem } from '../src/shared/status.ts'
+import { BOARD_ORDER, boards, checkedBoardState, registerBoard, type BoardState } from '../ui/src/graph/boards.ts'
+import { loopsBoard } from '../ui/src/loops/board.ts'
+import { rulesBoard } from '../ui/src/rules/board.ts'
 import { buildRulesPage, rulesGuideLine, rulesHomeLine } from '../ui/src/rules/model.ts'
+import { holdRulesSource, RulesSource } from '../ui/src/rules/source.ts'
+import { fakeRemote, fakeSessions, until } from './panel-helpers.ts'
 import { projectReadOf, ruleOf, scriptRef, SHA_OTHER, VIEW_PEAK_END, viewInputOf } from './rules-fixtures.ts'
 
 /** Wednesday 15:00 in UTC+8, inside GLM's peak hours, which end at VIEW_PEAK_END. */
@@ -324,8 +331,8 @@ test('the status entries are the view\'s items with their detail; a status row t
 
 // --- Plain words -----------------------------------------------------------
 
-/** The files whose strings the person reads on the rules page: the page model and the host's lift sentences. */
-const PAGE_FILES = ['ui/src/rules/model.ts', 'src/rules/view-build.ts']
+/** The files whose strings the person reads on the rules page: the client's page files and the host's lift sentences. */
+const PAGE_FILES = ['ui/src/rules/model.ts', 'ui/src/rules/source.ts', 'ui/src/rules/board.ts', 'ui/src/rules/RulesPage.tsx', 'src/rules/view-build.ts']
 
 /**
  * The string literals, template parts and JSX text with Chinese in them of
@@ -378,4 +385,149 @@ test('every fixed string of the page and every line of a full page is in plain w
   assert.ok(shown.includes('主 Agent 下次走步时会收到') && shown.includes(LIFT_BOARD_ONLY) && shown.includes(LIFT_NOT_OFFERED), 'the full page has every group and the host\'s lift sentences')
   assert.deepEqual(plainWordsIn(shown), [])
   assert.equal(shown.includes('credential'), false)
+})
+
+// --- The board ---------------------------------------------------------------
+
+const VIEW_JSON = 'C:/work/app/.llm/rules/view.json'
+const IN_PROJECT = { hournessRules: { projectKey: 'C:/work/app', viewFile: VIEW_JSON } }
+const NO_PROJECT_VALUE = { hournessRules: { projectKey: null, viewFile: null } }
+const NOTHING: BoardState = { available: true, homeLine: null, guideLine: null, peakApplies: false }
+const viewText = (view: RulesView): string => `${JSON.stringify(view, null, 2)}\n`
+/** The change frame the host's write of view.json brings. */
+const rewritten = (fake: ReturnType<typeof fakeRemote>): void => { fake.push({ kind: 'change', change: { absolutePath: VIEW_JSON } }) }
+
+const BOARD_ITEMS: StatusItem[] = [
+  { id: 'rules/peak', owner: 'rules', audience: 'agent', asOf: minutesAgo(0), source: 'glmHournessPricing', text: '- 高峰：高峰中，到 18:00（工作日 14:00–18:00）', fields: { peakMode: 'reduce', peakModeOrigin: 'default' } },
+  { id: 'rules/lifts', owner: 'rules', audience: 'agent', asOf: minutesAgo(0), source: 'docs/guard/lifts.jsonl', text: '- 撤下的规则：无' },
+]
+
+test('the rules board registers as 规则板 under BOARD_ORDER[0] and comes first on the footer, before a board registered earlier', () => {
+  const { sessions } = fakeSessions({}, {})
+  const loops = loopsBoard(() => null, sessions)
+  const rules = rulesBoard(() => null, { remote: fakeRemote({}).remote, sessions })
+  try {
+    registerBoard(loops.board)
+    registerBoard(rules.board)
+    assert.deepEqual([rules.board.id, rules.board.label, BOARD_ORDER[0]], ['rules', '规则板', 'rules'])
+    assert.deepEqual(boards().map(board => board.id), ['rules', 'loops'])
+  }
+  finally {
+    loops.dispose()
+    rules.dispose()
+  }
+})
+
+test('the board is there while the projection value is, also outside a project with nothing to hand over; a cold session asks once', async () => {
+  const fake = fakeRemote({})
+  const { sessions, setProjections, refreshCountOf } = fakeSessions({}, IN_PROJECT)
+  const { board, dispose } = rulesBoard(() => null, { remote: fake.remote, sessions })
+  try {
+    const stop = board.subscribe('s1', () => {})
+    setProjections('s1', {})
+    assert.equal(board.snapshot('s1').available, false, 'without the rules row there is no board')
+    setProjections('s1', NO_PROJECT_VALUE)
+    assert.deepEqual(board.snapshot('s1'), NOTHING, 'a session outside any project still opens the page')
+    setProjections('s1', {})
+    assert.equal(board.snapshot('s1').available, false)
+    stop()
+    const stopCold = board.subscribe('cold', () => {})
+    await until(() => board.snapshot('cold').available, 'the cold session\'s values')
+    assert.equal(refreshCountOf('cold'), 1)
+    assert.deepEqual(board.snapshot('cold'), NOTHING, 'no view.json yet: there, nothing to hand over')
+    stopCold()
+  }
+  finally {
+    dispose()
+  }
+})
+
+test('once view.json is read the board hands over its home line, guide line, peakApplies and items; the same object while nothing moved; checkedBoardState keeps it without a warning', async () => {
+  const built = buildRulesView(viewInputOf({ items: BOARD_ITEMS }), NOW_MS)
+  const fake = fakeRemote({ [VIEW_JSON]: viewText(built) })
+  const { sessions } = fakeSessions({ s1: IN_PROJECT }, IN_PROJECT)
+  const { board, dispose } = rulesBoard(() => null, { remote: fake.remote, sessions })
+  const warn = console.warn
+  const warnings: string[] = []
+  try {
+    const stop = board.subscribe('s1', () => {})
+    await until(() => board.snapshot('s1').homeLine !== null, 'the view read')
+    const state = board.snapshot('s1')
+    const fileItems = (JSON.parse(viewText(built)) as RulesView).items
+    assert.deepEqual(state, { available: true, homeLine: `GLM 高峰中，到 ${momentText(VIEW_PEAK_END)} · 高峰模式：少做`, guideLine: '现在是：少做（出厂默认）', peakApplies: true, items: fileItems })
+    assert.deepEqual(state.items, fileItems, 'the items are the file\'s, verbatim')
+    console.warn = (...args: unknown[]) => { warnings.push(args.join(' ')) }
+    assert.deepEqual(checkedBoardState('rules', state), state)
+    assert.deepEqual(warnings, [])
+    const reads = fake.readsOf(VIEW_JSON)
+    await fake.write(VIEW_JSON, viewText({ ...built, at: new Date(NOW_MS + 60_000).toISOString() }))
+    rewritten(fake)
+    await until(() => fake.readsOf(VIEW_JSON) > reads, 'the rewrite read')
+    await new Promise(resolve => { setTimeout(resolve, 20) })
+    assert.equal(board.snapshot('s1'), state, 'only the moment moved: the same object')
+    const off = buildRulesView(viewInputOf({ reading: { peak: false, until: '2026-10-29T06:00:00.000Z' }, read: projectReadOf(stateWith({ tickets: { 'q-1': waitingTicket('q-1', { rules: ['r-hold'] }) } })) }), NOW_MS)
+    await fake.write(VIEW_JSON, viewText(off))
+    rewritten(fake)
+    await until(() => board.snapshot('s1').homeLine === '1 件事在等规则放行', 'the moved view')
+    assert.deepEqual(board.snapshot('s1').items, [])
+    stop()
+  }
+  finally {
+    console.warn = warn
+    dispose()
+  }
+})
+
+// --- The reader of view.json -------------------------------------------------
+
+test('the reader keeps the last view on a failed read and says why, refuses a text that is not a view, and follows a rewrite through the change feed and the poll', async () => {
+  const built = buildRulesView(viewInputOf(), NOW_MS)
+  const fake = fakeRemote({ [VIEW_JSON]: viewText(built) })
+  const source = new RulesSource(fake.remote, 's1', VIEW_JSON, 25)
+  const stop = source.subscribe(() => {})
+  try {
+    await until(() => !source.getSnapshot().loading, 'the first read')
+    assert.deepEqual([source.getSnapshot().problem, source.getSnapshot().missing, source.getSnapshot().model], [null, false, built])
+    fake.fail(VIEW_JSON, 'boom')
+    rewritten(fake)
+    await until(() => source.getSnapshot().problem === '规则板读不出：boom', 'the failed read')
+    assert.deepEqual(source.getSnapshot().model, built, 'the last view stays')
+    fake.fail(VIEW_JSON, undefined)
+    await fake.write(VIEW_JSON, JSON.stringify({ ...built, version: 2 }))
+    rewritten(fake)
+    await until(() => source.getSnapshot().problem === '规则板的 view.json 读不懂，下面是上一次读到的样子', 'the text that is not a view')
+    assert.deepEqual(source.getSnapshot().model, built)
+    const later = buildRulesView(viewInputOf({ reading: { peak: false, until: '2026-10-29T06:00:00.000Z' } }), NOW_MS)
+    await fake.write(VIEW_JSON, viewText(later))
+    await until(() => source.getSnapshot().model?.peak.now === false, 'the polled rewrite, without a change frame')
+    assert.equal(source.getSnapshot().problem, null)
+  }
+  finally {
+    stop()
+  }
+  const empty = new RulesSource(fakeRemote({}).remote, 's1', VIEW_JSON)
+  const stopEmpty = empty.subscribe(() => {})
+  try {
+    await until(() => !empty.getSnapshot().loading, 'the read of a file that is not there')
+    assert.deepEqual([empty.getSnapshot().missing, empty.getSnapshot().problem, empty.getSnapshot().model], [true, null, null], 'a view.json not there yet is no view, not a failure')
+  }
+  finally {
+    stopEmpty()
+  }
+  const first = holdRulesSource(fake.remote, 's1', VIEW_JSON)
+  const second = holdRulesSource(fake.remote, 's1', VIEW_JSON)
+  assert.equal(first.source, second.source, 'one reader per session and file')
+  first.release()
+  second.release()
+})
+
+// --- The page never writes ----------------------------------------------------
+
+const WRITE_MARK = /remote\.commands|commands\.execute|\.write(?:File|Bytes)?\(|radio|<(?:button|input|textarea|select|form)[\s/>]/i
+
+test('no file under ui/src/rules/ calls remote.commands, writes a file or renders a button, an input or a radio', async () => {
+  const dir = join(import.meta.dirname, '..', 'ui', 'src', 'rules')
+  const files = (await readdir(dir)).filter(name => /\.(ts|tsx)$/.test(name))
+  assert.deepEqual(files.sort(), ['RulesPage.tsx', 'board.ts', 'model.ts', 'source.ts'])
+  for (const file of files) assert.equal(WRITE_MARK.test(await readFile(join(dir, file), 'utf8')), false, `${file} must not write: no command call, no file write, no button, input or radio`)
 })
