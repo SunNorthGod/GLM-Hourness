@@ -36,6 +36,12 @@
           "to": "被测的模型能偷看答案时，练习题的结果就不可信"
         }
       }
+    },
+    {
+      "at": "2026-11-05T09:59:14.741Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "ablation 的 code 步核对（2026-11-05）：本风险修了一半。M3 第 8 步起标定运行已放在 %TEMP% 下的批次目录（scripts/calibrate/run-dir.mjs，3fbc1e9），被测会话读不到前几次的解；但验收脚本 check.mjs 仍在仓库里，标定 profile 又链接主检出，被测模型仍够得着验收脚本。剩下的这一半由 ablation-calibration（wf_5f5345b05e5c4e89）先修。"
     }
   ]
 }
