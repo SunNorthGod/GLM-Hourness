@@ -143,6 +143,52 @@ function placeholdersIn(value: string): readonly string[] {
   return [...new Set([...value.matchAll(PLACEHOLDER)].map(match => match[1] ?? ''))]
 }
 
+/** How much of one value goes into a text for the model (design §2.3). */
+const ESCAPE_MAX_POINTS = 200
+const ESCAPE_MAX_ITEMS = 20
+
+/** One string as the model reads it inside a sentence: no control character, `\n` for a line break, `"` and `\` escaped, at most 200 code points. */
+function escapeString(value: string): string {
+  const points = [...value.replace(/\r\n?/g, '\n')]
+  const kept = points.length > ESCAPE_MAX_POINTS ? [...points.slice(0, ESCAPE_MAX_POINTS), '…'] : points
+  return kept.map((point) => {
+    if (point === '\n') return '\\n'
+    if (point === '"' || point === '\\') return `\\${point}`
+    // Every other control character (C0, DEL, C1, the line and paragraph separators) is left out.
+    const code = point.codePointAt(0) ?? 0
+    return code < 0x20 || (code >= 0x7f && code <= 0x9f) || code === 0x2028 || code === 0x2029 ? '' : point
+  }).join('')
+}
+
+/**
+ * A payload value as it goes into a text for the model (design §2.3
+ * `escapeForPrompt`): a string escaped so that it cannot end a sentence or
+ * start a line that reads as an instruction; a list of strings each escaped,
+ * joined with `, `, at most 20 (`and N more` for the rest); a number or a
+ * boolean as it is. Anything else, and a missing value, is the empty string.
+ */
+export function escapeForPrompt(value: unknown): string {
+  if (typeof value === 'string') return escapeString(value)
+  if (typeof value === 'number') return Number.isFinite(value) ? String(value) : ''
+  if (typeof value === 'boolean') return String(value)
+  if (Array.isArray(value)) {
+    const items = value.filter((item): item is string => typeof item === 'string').map(escapeString)
+    const shown = items.slice(0, ESCAPE_MAX_ITEMS).join(', ')
+    return items.length > ESCAPE_MAX_ITEMS ? `${shown} and ${items.length - ESCAPE_MAX_ITEMS} more` : shown
+  }
+  return ''
+}
+
+/**
+ * A text for the model with every `{name}` replaced by the payload's field of
+ * that name, through `escapeForPrompt` (design §2.3); a field the payload does
+ * not have becomes the empty string. Braces around anything else stay as they
+ * are, as the check of the entry reads them.
+ */
+export function fillPlaceholders(text: string, payload: Readonly<Record<string, unknown>>): string {
+  return text.replace(PLACEHOLDER, (_match, name: string) => escapeForPrompt(Object.hasOwn(payload, name) ? payload[name] : undefined))
+}
+
 /** Every `{name}` of a text is a field every event of the trigger declares; a time trigger has no payload, so no `{name}`. */
 function checkPlaceholders(value: string, path: string, when: unknown, table: ReadonlyMap<string, LoopEventDeclaration>, add: Add): void {
   const names = placeholdersIn(value)
