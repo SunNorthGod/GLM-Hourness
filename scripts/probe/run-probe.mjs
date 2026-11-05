@@ -1719,7 +1719,7 @@ const seedProjectMemory = (scenario) => {
   writeFileSync(join(home, 'memory.jsonl'), `${learnSeed(1)}${JSON.stringify({ v: 1, seq: 2, at: '2026-10-31T00:00:00.000Z', actor: 'human', op: 'store', id: 'project:seeded-norm', data })}\n`)
 }
 
-// Reporting depth (M5 design §3.7, m5-5): the glm:persona section names the
+// Reporting depth (M5 design §3.7, m5-5): the glm:reporting-depth section names the
 // depth the person set, read once when a session starts. The first root agent
 // stores `concise` and starts a second, which forgets it in its first step
 // and starts a third. Each prompt names the depth its session found and

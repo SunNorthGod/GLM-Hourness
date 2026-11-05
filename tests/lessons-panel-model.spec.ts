@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import test from 'node:test'
 import type { ProjectionValues } from '../ui/src/dsh.ts'
 import { BOARD_ORDER, boards, checkedBoardState, homeLineFromItem, registerBoard, type Board, type BoardState } from '../ui/src/graph/boards.ts'
+import { POLL_MS } from '../ui/src/graph/watched-files.ts'
 import { buildLessonsPage, memoryRows } from '../ui/src/lessons/model.ts'
 import { foldJournalText, holdLessonsSource, LessonsSource, type LessonsPaths } from '../ui/src/lessons/source.ts'
 import { lessonsBoard } from '../ui/src/lessons/board.ts'
@@ -320,6 +321,19 @@ test('the poll re-reads only what the stat says changed, and picks up an append 
     await fake.write(LESSONS_PATH, `${LESSONS_TEXT}${THIRD()}\n`)
     await until(() => source.getSnapshot().model.rows.length === 3, 'the polled append')
   }, 25)
+})
+test('an append shows within 15 seconds without a change feed: the source polls every POLL_MS by default, and POLL_MS is at most 15 000 ms (lessons-3 #3)', async (t) => {
+  assert.ok(POLL_MS <= 15_000, `POLL_MS is ${POLL_MS}`)
+  t.mock.timers.enable({ apis: ['setInterval'] })
+  const fake = fakeRemote({ [LESSONS_PATH]: LESSONS_TEXT })
+  await withSource(fake, { lessons: LESSONS_PATH, project: null, user: null }, async (source) => {
+    await fake.write(LESSONS_PATH, `${LESSONS_TEXT}${THIRD()}\n`)
+    t.mock.timers.tick(POLL_MS - 1)
+    await new Promise(resolve => { setTimeout(resolve, 100) })
+    assert.equal(source.getSnapshot().model.rows.length, 2, 'no poll before POLL_MS')
+    t.mock.timers.tick(1)
+    await until(() => source.getSnapshot().model.rows.length === 3, 'the append the default poll picked up')
+  })
 })
 
 test('a journal that is not there yet is an empty state, not a failure', async () => {
