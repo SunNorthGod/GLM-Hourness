@@ -547,6 +547,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "2026-11-06 约 02:00 人重启了 Kiro，在跑的运行都被暂停（Interrupted by agent restart）。编排方逐条恢复：habits-prompts、M7、m4-checks-loop-details、glm-context-window-check-b、desktop-close-docs 及其余在跑的线，各步保留自己的会话从断点接着做；分支上已推的提交不受影响。"
+    },
+    {
+      "at": "2026-11-05T18:36:58.101Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-11-06 02:35 人问在跑几条、能开的是否都开了。编排方对过图上可开工的清单：除刚开的 inject-via-prestep 外，m7-1、m7-2、m7-4、m7-6..m7-9、m7-habits、m7-handback-path-check、rules-r4d 都等 M7 合入 main；m4-reanchor-norms 等 m4-reanchor-violations 合入（评审已 APPROVED，合入步在跑）；m4-request-card 的验收第 10 条要人的原话，还没问。在跑 14 条：M7、bootstrap、ablation、status-hub-3、m3-metrics-wiring、m5-habit-rule、m5-rule-expected-effect、m4-reanchor-violations（合入）、m4-checks-loop-details（合入）、habits-prompts（清 cookie 后重启桌面版）、desktop-close-docs、guide-metrics-line、compact-recall-redact-land、inject-via-prestep。"
     }
   ]
 }
