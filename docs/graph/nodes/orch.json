@@ -469,6 +469,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "人 2026-11-05 问「你作为主Agent在自己做什么呢？还有能不能把能开的线都开起来？」。编排方核对：今天 m4-checks、m5-rest、panel-2 合入后空出的并行位没有补线，只剩 M7（wf_36d1d690c7e1de90）、rules-board-page 合入（wf_a34e9ff57206a017）、bootstrap（wf_f008ac0c87ec6943）三条在做。当即补开六条：m6-metrics-events（wf_2bf0ad146e8238b2）、lessons-4-first-batch（wf_cc148081d07c2798）、ablation-calibration（wf_5f5345b05e5c4e89）、l4-batch-2026-11-05（wf_be2ff3a8b7d83155，桌面批次 L4，覆盖 m4-checks、m8-plain-language、onboarding、m5、lessons-3、m5-1、m5-4、compact-recall、metrics、schedules，规则板与状态板块等 rules-board-page 合入后做）、investigate-reading-digest-1105（wf_f8a7db34778f087b）、investigate-graph-reconcile-1105（wf_fe96517713b134d8，只读对账 approved 与 doing 的 46 个节点：哪些可关、哪些只差 L4、哪些等线或等人、哪些能开线、哪些过时；报告 .agents/tasks/graph-reconcile-2026-11-05/report.md）。对账结果出来后按 (e) 类继续补线。"
+    },
+    {
+      "at": "2026-11-05T06:04:26.066Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-11-05：「那就先停掉心跳吧，每次喊你起来的时候你顺手检查一遍就行」。编排方停掉 heartbeat-d（wf_db9c27fb76263cc3），不再留心跳。之后每次被通知或被人叫起时，顺手检查所有在跑的运行，把被限流暂停的恢复。在跑的九条：M7（wf_36d1d690c7e1de90）、rules-board-page 合入（wf_a34e9ff57206a017）、bootstrap（wf_f008ac0c87ec6943）、m6-metrics-events（wf_2bf0ad146e8238b2）、lessons-4-first-batch（wf_cc148081d07c2798）、ablation-calibration（wf_5f5345b05e5c4e89）、l4-batch-2026-11-05（wf_be2ff3a8b7d83155）、investigate-reading-digest-1105（wf_f8a7db34778f087b）、investigate-graph-reconcile-1105（wf_fe96517713b134d8）。代价：没有通知进来时，被限流暂停的运行要等到下一次有人叫醒编排方才恢复。"
     }
   ]
 }
