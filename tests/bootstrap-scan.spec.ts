@@ -92,6 +92,17 @@ test('scan #1: each fixture workspace gets its path and the sentence behind it',
   expectPath(noCommitPath, 'new', 4)
   assert.equal(noCommitPath.ok && noCommitPath.note, '仓库里还没有提交：工作区里的文件不当已有的代码读')
 
+  // `git init && git add .` before the first commit: the index lists the staged code, but nothing is tracked yet (review B2 F1).
+  const staged = fixture({ 'index.js': 'console.log(1)\n' }, 0)
+  git(staged, 'add', '-A')
+  const stagedScan = (await scanOf(staged)).scan
+  assert.equal(stagedScan.git.state === 'repo' && stagedScan.git.head, undefined)
+  assert.equal(stagedScan.files.code, 1, 'the scan still records the staged file')
+  const stagedPath = decidePath(stagedScan)
+  expectPath(stagedPath, 'new', 4)
+  assert.equal(stagedPath.ok && stagedPath.reason, 'git 仓库里还没有代码（0 个提交）：当新项目')
+  assert.equal(stagedPath.ok && stagedPath.note, '仓库里还没有提交：工作区里的文件不当已有的代码读')
+
   const node = fixture({ 'package.json': NODE_PACKAGE, 'package-lock.json': '{}\n', 'src/index.js': 'export const a = 1\n', 'vendor/lib.js': 'x\n' }, 2)
   const nodeScan = (await scanOf(node)).scan
   const nodePath = decidePath(nodeScan)

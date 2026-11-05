@@ -64,7 +64,8 @@ export function decidePath(scan: ScanResult): PathDecision {
     return { ok: false, rule: 3, reason: '这个目录有文件但不是 git 仓库：先在终端里 git init 并提交一次，再发 /wish' }
   }
   const commits = git.commits
-  const code = scan.files.code
+  // Without HEAD, `git ls-files` lists the index: staged files are not tracked code yet, so rule 4 reads 0 (§3.4, last paragraph).
+  const code = git.head === undefined ? 0 : scan.files.code
   if (code === 0 && commits <= NEW_PROJECT_MAX_COMMITS) {
     const note = git.head === undefined ? { note: '仓库里还没有提交：工作区里的文件不当已有的代码读' } : {}
     return { ok: true, path: 'new', rule: 4, init: false, reason: `git 仓库里还没有代码（${commits} 个提交）：当新项目`, ...note }
