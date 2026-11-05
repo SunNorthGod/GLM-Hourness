@@ -54,6 +54,9 @@
 - 82e7b58：M5 设计 §3.8（习惯先问：从提示词升成规则）写进根因、取舍与规则（验收第 2 条的「写进 M5 设计」）。
 - a1e01ba：并入 origin/main（c254b91）。build 0、`npm test` 0、`npm run probe` 426/426（并入前 420/424，挂的 4 条都是 `env-checks`，main 上已修）。
 
+- 60619ab：评审 B2 与 N1、N2：ORCHESTRATION.md §8.1、§8.3、§8.5、§16.8 目录、§16.14 流水，DESIGN.md 记忆行与行健康，HANDOFF.md 记忆行与 M5 一行；纠正提醒、文件头与设计只留 `guard_lift` 一条撤下路；`§3.8.6` 改为 `§3.8`。build 0、preflight 0、check-lint 0（eslint 73 / knip 18 / jscpd 1）、`npm test` 0（3191/3191）。
+- 两档模型的真实运行（评审 B1）：记录在 `habit-rule-runs.md`。两档模型都用常驻的 `memory_habit` 问、没出问答卡、回绝进了 `decline`；但会话 2 里两档模型都换了名字与说法再问同一条习惯，`memory_habit ask` 没认出（`earlierOutcome` 只认组键或名字加说明的词集 Jaccard ≥ 0.6），验收第 2 条的「28 天内不再问」没有满足。缺口在 `memory_habit` 的匹配与召回（会话索引、`memory_query` 都不列「不用」），不在 `habit-ask-first`。改法会改变人看到的东西或 m5-4 的行为，交编排方与人定。
+
 未做：
-- 两档模型的真实运行（第 3 节最后一条，GLM-5.3 与 GLM-5.3-Flash 各两个会话、共用用户级记忆，核对「不用」之后 28 天不再问）。它走原生通道发真实请求、花积分，留给编排方决定何时跑；L2 已钉住 `decline` 之后 28 天内 `declined_recently`（`tests/memory-habit.spec.ts`）与两条绕路被拦，模型会不会在对话里直接问（§2 做法 D 的已知缺口）只有真实运行能看出。
+- 验收第 2 条的「28 天内不再问」：等上面一条的决定。
 - 合入 main、批次 L4：归落地步骤。没有写 `docs/graph`（编排方要求）。
