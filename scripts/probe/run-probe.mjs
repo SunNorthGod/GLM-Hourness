@@ -145,6 +145,9 @@ import { HEALTH_PACKAGES, HEALTH_ROWS } from '../../packages/hourness/dist/share
 import { DESIGN_TOOL_NAMES, GRAPH_TOOL_NAMES, LEARNING_TOOL_NAMES, LESSONS_TOOL_NAMES, MEMORY_TOOL_NAMES } from '../../packages/glm/dist/shared/tool-names.js'
 import { openEngine } from '../../packages/hourness/dist/graph/engine.js'
 import { PLAIN_QUESTION_EXAMPLES } from '../../packages/hourness/dist/graph/plain-question.js'
+import { questionsDraft } from '../../packages/hourness/dist/bootstrap/present.js'
+import { scanWorkspace } from '../../packages/hourness/dist/bootstrap/scan.js'
+import { takeoverAttachLine } from '../../packages/hourness/dist/bootstrap/service.js'
 import { askOf, fenced, renderAsk } from '../../packages/hourness/dist/graph/proposal.js'
 import { holderFileOf, readHolder } from '../../packages/hourness/dist/graph/main-agent-holder.js'
 import { runNote } from '../../packages/hourness/dist/graph/run.js'
@@ -2128,6 +2131,37 @@ const bootstrapGaps = designScenario(BOOTSTRAP_GAPS, 'glm-5.3', ws => [
   { tool: bsRead(ws) },
   { text: 'done', status: true },
 ], { wish: true, extra: BOOTSTRAP_ROW })
+// An existing project, committed before the run (a test that costs money, a vendored directory): /hourness-init opens it as existing,
+// the main agent proposes the anchor goal, the harness puts the three norms under it, the two drafted questions go to the human with
+// propose_to_human and attach bootstrap:{takeover}:cost and :touch, the simulated human agrees once, and record_human_answer hands
+// each agreement back to the takeover. The questions are drafted here from the same HEAD the run scans (src/bootstrap/present.ts).
+const BOOTSTRAP_EXISTING = 'bootstrap-existing'
+const bsExistingWs = join(runDir, BOOTSTRAP_EXISTING, 'ws')
+for (const [path, text] of Object.entries({
+  'README.md': 'probe workspace\n',
+  'package.json': `${JSON.stringify({ name: 'probe', scripts: { test: 'node --test', 'test:e2e': 'playwright test' } }, null, 2)}\n`,
+  'src/index.js': 'export const one = 1\n',
+  'vendor/lib.js': 'export const two = 2\n',
+})) {
+  mkdirSync(dirname(join(bsExistingWs, path)), { recursive: true })
+  writeFileSync(join(bsExistingWs, path), text)
+}
+mkdirSync(join(bsExistingWs, 'docs', 'graph'), { recursive: true })
+if (!initRepo(bsExistingWs)) throw new Error(`probe: git init failed in ${bsExistingWs}`)
+const bsExistingScan = await scanWorkspace(bsExistingWs, { graphDir: join(bsExistingWs, 'docs', 'graph') })
+const bsAsks = questionsDraft(bsExistingScan.scan, bsExistingScan.files, false).map(thing => ({ which: thing.which, ask: thing.ask }))
+if (bsAsks.some(thing => thing.ask === undefined)) throw new Error(`probe: the takeover drafted no question for ${bsAsks.filter(thing => thing.ask === undefined).map(thing => thing.which).join(', ')}`)
+const BS_AGREE = '可以，都按你说的来'
+const bootstrapExisting = designScenario(BOOTSTRAP_EXISTING, 'glm-5.3', ws => [
+  { tool: bsRead(ws), line: '/hourness-init' },
+  { tool: { name: 'graph_propose', arguments: { node: { type: 'goal', title: '探针项目要做成什么' }, reason: 'probe: the anchor of the takeover' } } },
+  { tool: bsRead(ws) },
+  ...bsAsks.map(({ which, ask }) => ({ tool: { name: 'propose_to_human', arguments: { kind: 'question', form: 'recommend', parent: 'goal-1', ...ask, attach: `bootstrap:{takeover}:${which}` } } })),
+  { text: bsAsks.map(({ ask }, index) => renderAsk(ask.text, index + 1)).join('\n\n') },
+  ...bsAsks.map(({ ask }, index) => ({ tool: { name: 'record_human_answer', arguments: { kind: 'question', question: `question-${index + 1}`, answer: 'agree', words: [BS_AGREE], recordedAs: ask.proposal } } })),
+  { tool: bsRead(ws), line: '/hourness-init status' },
+  { text: 'done' },
+], { wish: true, extra: BOOTSTRAP_ROW, human: { replies: { question: [BS_AGREE] }, maxReplies: 1 } })
 
 // The interview as a conversation, from the first answer to the confirmed requirement (docs/ORCHESTRATION.md §3.1, §6.9; M3 step 8). The simulated human has the
 // answers and the replies of the calibration task interview-expense-log (tests/calibration/interview-expense-log/task.json), so that task's setting is run here
@@ -3141,7 +3175,20 @@ const bsReopenOpens = bsJournal(bootstrapReopen).filter(record => record.op === 
 const bsReopenClosed = bsJournal(bootstrapReopen).filter(record => record.op === 'takeover-closed')
 const bsGapsAfter = (await loadGraph(bootstrapGapsGraph)).revisions
 const bsGapsStart = bsNotices(bootstrapGaps).find(message => message.text.includes('The human started a takeover of this project; begin now.'))
+const bsExistingOpen = bsJournal(bootstrapExisting).find(record => record.op === 'takeover-open')
+const bsExistingAsked = bsJournal(bootstrapExisting).filter(record => record.op === 'asked').map(record => record.data)
+const bsExistingGraph = await loadGraph(join(bootstrapExisting.ws, 'docs', 'graph'))
+const bsExistingQuestions = ['question-1', 'question-2'].map(id => bsExistingGraph.nodes.get(id))
+// The result of the tool a step called is the last tool message of the next request.
+const bsResultOf = index => { try { return JSON.parse(lastToolResult(bootstrapExisting.steps[index + 1])?.text ?? '') } catch { return undefined } }
+const bsPutAt = 3
+const bsRecordAt = bsPutAt + bsAsks.length + 1
+const bsStatusStep = bootstrapExisting.steps[bsRecordAt + bsAsks.length]
+const bsExistingReplies = bootstrapExisting.human.filter(entry => entry.kind === 'reply')
 const bootstrapChecks = [
+  ['bootstrap-existing: /hourness-init opens a committed project as existing, the harness writes questions.md, defaults.md and floor.md, and puts the three norms under the anchor goal-1', bsLine(bootstrapExisting.steps[0], 'success', '（已有项目）') && bsExistingOpen?.data?.path === 'existing' && ['questions.md', 'defaults.md', 'floor.md'].every(file => existsSync(join(bootstrapExisting.ws, '.llm', 'bootstrap', bsExistingOpen.id, file))) && ['norm-decision-tiers', 'norm-audit-trail', 'norm-verify-tiers'].every(id => bsExistingGraph.nodes.get(id)?.parent === 'goal-1') && bsQuiet(bootstrapExisting), `line ${(bootstrapExisting.steps[0]?.line?.resultText ?? '').slice(0, 60).replace(/\n/g, ' ')}; open ${bsExistingOpen?.data?.path ?? 'none'}`],
+  ['bootstrap-existing: the two drafted questions go through propose_to_human with attach bootstrap:<id>:cost and :touch, each question ends with the takeover\'s attach line, the simulated human agrees once', bsAsks.every((_, index) => bsResultOf(bsPutAt + index)?.attach === `bootstrap:${bsExistingOpen?.id}:${bsAsks[index].which}`) && bsExistingQuestions.every((node, index) => (node?.body ?? '').endsWith(takeoverAttachLine(`bootstrap:${bsExistingOpen?.id}:${bsAsks[index].which}`))) && bsExistingReplies.length === 1, `attach ${JSON.stringify(bsAsks.map((_, index) => bsResultOf(bsPutAt + index)?.attach ?? null))}; ${bsExistingReplies.length} reply(ies)`],
+  ['bootstrap-existing: record_human_answer decides both with the human\'s words and hands each back: the takeover journal has asked cost and touch once each, and /hourness-init status says the human agreed', bsExistingQuestions.every(node => node?.status === 'done' && node.history.at(-1)?.relay !== undefined) && bsAsks.every((_, index) => String(bsResultOf(bsRecordAt + index)?.handedBack ?? '').startsWith(`Takeover ${bsExistingOpen?.id}`)) && isDeepStrictEqual(bsExistingAsked, [{ which: 'cost', questionId: 'question-1' }, { which: 'touch', questionId: 'question-2' }]) && bsLine(bsStatusStep, 'success', '花钱或独占：你说了，主 Agent 还没记进规范'), `asked ${JSON.stringify(bsExistingAsked)}; handed back ${JSON.stringify(bsAsks.map((_, index) => String(bsResultOf(bsRecordAt + index)?.handedBack ?? '').slice(0, 40)))}; status ${(bsStatusStep?.line?.resultText ?? '').replace(/\n/g, ' ').slice(0, 120)}`],
   ['bootstrap-new: on the transition path (/wish without words, then /hourness-init typed by the main agent\'s session) the takeover opens as a new project, .llm/ is git-ignored, the journal\'s first record is takeover-open without a wish, and the row is in effect', bsLine(bootstrapNew.steps[0], 'success', '（新项目）') && bsNewOpen?.data?.path === 'new' && bsNewOpen.data.trigger === 'init' && bsNewOpen.data.wish === undefined && spawnSync('git', ['check-ignore', '-q', '.llm/x'], { cwd: bootstrapNew.ws }).status === 0 && healthOf(bootstrapNew).bootstrap?.status === ACTED && bsQuiet(bootstrapNew), `line ${bootstrapNew.steps[0]?.line?.kind} ${(bootstrapNew.steps[0]?.line?.resultText ?? '').slice(0, 60).replace(/\n/g, ' ')}; open ${JSON.stringify(bsNewOpen?.data ?? null).slice(0, 120)}; ${healthLine(healthOf(bootstrapNew), 'bootstrap')}`],
   ['bootstrap-new: once the goal is on the graph the three norm templates are harness proposals under it, and the step reminders carry the new-project text, then the anchor', bsNorms.every(node => node?.status === 'proposed' && node.parent === 'goal-1' && node.history[0]?.actor === 'harness') && bsNotices(bootstrapNew).some(message => message.text.includes('New project (bootstrap')) && bsNotices(bootstrapNew).some(message => message.text.includes('under the anchor goal-1')), `norms ${JSON.stringify(bsNorms.map(node => node === undefined ? null : [node.status, node.parent, node.history[0]?.actor]))}; ${bsNotices(bootstrapNew).length} reminder(s)`],
   ['bootstrap-reopen: /hourness-init off before the first node, then /hourness-init again, opens a second takeover; the first is closed as abandoned', bsLine(bootstrapReopen.steps[0], 'success', '开了接管') && bsLine(bootstrapReopen.steps[1], 'success', '已放弃这次接管') && bsLine(bootstrapReopen.steps[2], 'success', '开了接管') && bsReopenOpens.length === 2 && bsReopenOpens[0].id !== bsReopenOpens[1].id && bsReopenClosed.length === 1 && bsReopenClosed[0].id === bsReopenOpens[0].id && bsReopenClosed[0].data?.reason === 'abandoned' && bsQuiet(bootstrapReopen), `${bsReopenOpens.length} open(s), closed ${JSON.stringify(bsReopenClosed.map(record => [record.id, record.data?.reason]))}`],
