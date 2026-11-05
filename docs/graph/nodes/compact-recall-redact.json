@@ -51,6 +51,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "habits-prompts 已合入 main（51af510），带进 tests/loops-run.spec.ts 第 12 项的根因修法。编排方重派合入 compact-recall-redact-land（wf_3dc7f998ae602870）：在原工作树合入最新 origin/main 后重跑全量门禁，绿了快进 main、推两个远端、在主检出重建 dist。transcript 行出厂停用，本次合入不做桌面核对；桌面版因 cookie 超限起不来（见 norm-verify-tiers），等人批准修复，这一步不启动桌面版。记录 .agents/tasks/compact-recall-redact/land.md。"
+    },
+    {
+      "at": "2026-11-05T21:29:38.437Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "合入步（wf_3dc7f998ae602870）在 830a903（合入 origin/main c254b91）上 build、preflight、npm test、棘轮 73/18/1 绿，探针 421/423：glm 的 Edit 别名（ReplaceFileW 返回 Win32 1175）与它之后的 Read 两项，837f7be 上同样两项。原因：仓库树下刚写的文件被 DSH 之外的某个进程占住；在工作树 .llm/probe-runs 下 PowerShell 写文件、等 40 ms、ReplaceFileW 循环 500 次败 6–10 次，在 %TEMP% 下 0/500；历史 82 次 glm 运行有 4 次撞上，同一份 main 代码的别的分支通过。不是本分支引起。另：npm test 一次撞上 main 上额度读取的竞态（glm-metrics 第 7 项，来自 m6-metrics-events），重跑 3190/3190。编排方定 (a)：重新合入最新 main 后重跑全量门禁与探针，绿就合入；同样两项再败只再跑一次，仍败就停下报告，不带红探针合入。根因另开 probe-run-dir-outside-repo。"
     }
   ]
 }

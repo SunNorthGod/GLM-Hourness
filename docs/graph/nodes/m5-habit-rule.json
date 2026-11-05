@@ -34,6 +34,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "m5-habit-rule（wf_b5171bd117c811ba）的 root-cause 步被上游 503「No available accounts」打断，没有留下根因报告；code 步已在没有根因报告的情况下开跑。编排方告知 code 步先补做根因分析并写进任务目录的报告，再改代码。"
+    },
+    {
+      "at": "2026-11-05T21:29:40.157Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m5-habit-rule（wf_b5171bd117c811ba）code 步完成：b90e47a，规则 habit-ask-first（记忆行，经 installRuleGate，目录 memory:habit-ask-first，可撤）、memory_habit 常驻、记忆一段加一行、L2 与探针 glm-memory-habit；合入 origin/main 后 build、npm test 绿，探针 426/426。根因写在 .agents/tasks/m5/habit-rule-plan.md 与设计 §3.8.6。第 1 轮评审 CHANGES_REQUESTED 2 条挡路：B1 没有 GLM-5.3 与 GLM-5.3-Flash 的真实运行记录（验收要的，花真实积分，按规矩只披露），B2 ORCHESTRATION.md 与 HANDOFF.md 没改（还写着 memory_habit 推迟）。循环第 2 轮接着做。"
     }
   ]
 }

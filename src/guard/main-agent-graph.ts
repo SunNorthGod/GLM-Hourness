@@ -518,16 +518,18 @@ export async function judgeMainAgentGraph(deps: GraphRuleDeps, agent: Pick<Agent
 }
 
 /** What a blocked attempt of a delegated session was at, for the notice and the row health: an edit that sets a stage, an approval, or any other write. */
-export async function attemptOf(deps: GraphRuleDeps, agent: Pick<AgentLike, 'session'>, call: ToolCall): Promise<{ readonly what: string, readonly goal?: string, readonly node?: string }> {
+export async function attemptOf(deps: GraphRuleDeps, agent: Pick<AgentLike, 'session'>, call: ToolCall): Promise<{ readonly what: string, readonly goal?: string, readonly node?: string, readonly stageFrom?: Stage, readonly stageTo?: Stage }> {
   const args = recordOf(call.arguments)
   const id = typeof args?.id === 'string' ? args.id : undefined
   let title = id
   let goal: string | undefined
+  let stageFrom: Stage | undefined
   try {
     const dir = deps.graph()?.dirFor(agent.session?.header.cwd)
     const graph = dir === undefined || id === undefined ? undefined : await loadGraph(dir)
     const node = id === undefined ? undefined : graph?.nodes.get(id)
     if (node !== undefined) title = node.title
+    if (node !== undefined && isStage(node.stage)) stageFrom = node.stage
     goal = graph === undefined || id === undefined ? undefined : goalOf(graph, id)?.id
   }
   catch {
@@ -537,5 +539,7 @@ export async function attemptOf(deps: GraphRuleDeps, agent: Pick<AgentLike, 'ses
   const what = call.name === 'graph_approve' ? `批准「${title ?? '一个节点'}」`
     : call.name === 'graph_edit' && typeof stage === 'string' ? `把「${title ?? '一个节点'}」推到 ${stage}`
       : `用转述的话改「${title ?? '一个节点'}」（${call.name}）`
-  return { what, ...goal === undefined ? {} : { goal }, ...id === undefined ? {} : { node: id } }
+  // The stage the write would move, for the bypass metric: the node's own and the one the edit sets.
+  const moves = call.name === 'graph_edit' && isStage(stage)
+  return { what, ...goal === undefined ? {} : { goal }, ...id === undefined ? {} : { node: id }, ...moves && stageFrom !== undefined ? { stageFrom } : {}, ...moves ? { stageTo: stage } : {} }
 }

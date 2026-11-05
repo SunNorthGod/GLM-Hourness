@@ -27,6 +27,18 @@
       "reason": "运行 inject-via-prestep（wf_d93b6a094e3f5503）开工：先写设计短文并评审，再把不叫醒的注入改走 agent/pre-step，收件箱保持为空；合入后在桌面版核对 /wish off 之后 Browser.close 不弹退出确认框",
       "from": "approved",
       "to": "doing"
+    },
+    {
+      "at": "2026-11-05T21:29:39.856Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "inject-via-prestep（wf_d93b6a094e3f5503）设计稿写好：.agents/tasks/inject-via-prestep/design.md，七处调用点、每行一个步前信箱（在 agent/pre-step 交出，对应的 user/message 追加后清掉）、会话不再有下一步与宿主重启两种情形、失败表、L2/L3 计划、文档章节与 m7 的重叠。下一步设计评审。"
+    },
+    {
+      "at": "2026-11-05T21:50:37.765Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "设计 .agents/tasks/inject-via-prestep/design.md 评审 APPROVED，8 条 NIT，没有挡路项（design-review.md）。下一步写代码。"
     }
   ]
 }

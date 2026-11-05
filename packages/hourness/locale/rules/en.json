@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Rules board",
-    "description": "The rules of each project (block, record, inform) and its peak mode (no effect, do less, do none): a gate on every tool call, the rules_show tool for agents, the /rules command for you, and the service that dispatch and reminders read. Off by default."
+    "description": "The rules of each project (block, record, inform) and its peak mode (no effect, do less, do none): a gate on every tool call, the rules_show tool for agents, the /rules command for you, and the service that dispatch and reminders read. On by default."
   }
 }

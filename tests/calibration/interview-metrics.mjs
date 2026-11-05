@@ -7,9 +7,9 @@
  * judged by), copied worked examples, the two-level loop, the records of the
  * person's words, the denials of the main agent's rules and the git snapshots.
  *
- * Until the metrics stream has a write interface (src/design/metrics.ts
- * `emitMetric` does nothing), the numbers are read back from what a run leaves
- * in its directory: the --json event stream (events.jsonl, with the arrival time
+ * The design row hands its events to the metrics journal too (src/design/
+ * metrics.ts); until this reader moves to it, the numbers are read back from
+ * what a run leaves in its directory: the --json event stream (events.jsonl, with the arrival time
  * of each line in event-times.json), what the simulated human did (human.jsonl),
  * the violation journal (home/audit/violations.jsonl), the snapshot journal
  * (ws/.llm/snapshots.jsonl) and the project graph of the workspace. The
