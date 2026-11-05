@@ -38,7 +38,7 @@
 | B1 | 设计稿收尾：D1、D3 的人答写进 §0、§0.1、§18、§20 | — | — | 已推 | `7c851db`；评审 F1 的修复 `14e9f64`（评审 B1F1 APPROVED） | build 0、preflight 0、test 0（2955 通过 / 0 失败 / 1 跳过）、probe 0（382/382）；棘轮 73 / 18 / 1；F1 修复的门禁见第 9 节 |
 | B2 | 扫描、判路、危险命令、底线清单草稿、「不许碰」路径 | scan #1–#4；scan #5 的格式部分（`parseFloor` 往返核对在 B7） | B1 | 已推 | `d63416b`；评审 B2 F1 的修复 `62096dd`（评审 B2F1 APPROVED） | build 0、preflight 0、test 0（3001 通过 / 0 失败 / 1 跳过，首轮 1 败为 `loops-run` 计时，见第 9 节）、probe 0（388/388）；棘轮 73 / 18 / 1；F1 修复的门禁见第 9 节 |
 | B3 | `/graph-run start` 把已批准的任务转进行中 | run-start #1 | B2 | 已推 | `fb876ce`（评审 B3 APPROVED） | build 0、preflight 0、test 0（3021 通过 / 0 失败 / 1 跳过，`graph-run` 8/8）、probe 0（388/388）；棘轮 73 / 18 / 1 |
-| B4 | 接管行、服务（`prepare`、`holds`）、接管流水、共用的确定性部分、三个规范模板、`/hourness-init`、登记文件；只走过渡路 | row #1、#3–#8（#1、#4、#7 按过渡路的写法，见第 4 节 B4；#5 的检查器一项移到 B5） | B3（不含 M3 的两处接缝） | 已推 | 提交号随下一批回填 | build 0、preflight 0、test 0（3105 通过 / 0 失败 / 1 跳过，`bootstrap-row` 10/10）、probe 0（411/411）；棘轮 73 / 18 / 1；见第 9 节 B4 一条 |
+| B4 | 接管行、服务（`prepare`、`holds`）、接管流水、共用的确定性部分、三个规范模板、`/hourness-init`、登记文件；只走过渡路 | row #1、#3–#8（#1、#4、#7 按过渡路的写法，见第 4 节 B4；#5 的检查器一项移到 B5） | B3（不含 M3 的两处接缝） | 已推 | `403f080`；评审 B4 F1 的修复提交号随下一批回填（门禁见第 9 节 B4F1 一条） | build 0、preflight 0、test 0（3105 通过 / 0 失败 / 1 跳过，`bootstrap-row` 10/10）、probe 0（411/411）；棘轮 73 / 18 / 1；见第 9 节 B4 一条 |
 | B5 | 两条路的提醒、默认表（按 Q1 的答复带测试命令）、两件事的草稿与 `cost`、`touch` 的 `attach`、`floor.md`、`rule-draft.json`、`ATTACH_BOARDS` 的 `bootstrap:` 一行；设计稿按 Q1 同批改；补缺的检查器一项（§5.8，用 M4 的 `parseCheckLine`） | paths #1、#2、#3（M7 往返核对除外，在 B7）、#5、#6、#7、#9；row #5 的检查器一项 | B4 | 待做 | | |
 | B6 | 试跑：克隆、白名单环境、沙盒包装、限时、残留清扫、`matchedLine`、`bootstrap.trial` 指标 | trial #1–#7；paths #4 | B5 | 待做 | | |
 | B7 | `bootstrap_review`、清单的 `attach`、同意之后的写入与续做、规则的结局、项目图进 git 的核对、示范 | review #1–#8；paths #8；B2、B5 欠的往返核对 | B6 | 顺延-等 M7 线把 `src/execute/gate-norm.ts`、`floor.ts` 合入 main（M4 检查线的 `src/env/check-entry.ts` 已随 `2d5a42f` 合入 main，本分支合并提交 `f7413b7`） | | |
@@ -114,7 +114,7 @@
 
 - 「接管行在」的判据：命令 `/hourness-init` 已注册，`definitionId` 为 `dsh-glm-hourness/bootstrap`（B4）。面板经 `remote.commands.list(sessionId)` 看得到；接管行 B10 之前默认禁用，所以这一支在 B10 之前只在探针与开了这一行的组合里出现。
 - 有没有项目图的判法：接管行在时以 `nodes/` 下有没有 `.json` 为准，空的 `nodes/` 算没有。B2 的 `src/bootstrap/path.ts` 导出纯谓词 `isProjectGraph(nodeFileNames: readonly string[])`（不碰文件系统，`hasProjectGraph(dir)` 只是它加一次读目录），面板的 `ui/src/graph/source.ts` 一侧可以导入它，判法只有一处。接管行不在时照面板现状：目录在即是图。
-- 没有图一节与开场卡片 `ui/src/guide/NoGraphCard.tsx`：卡片的按钮「建一张项目图」在 B8 合入之前执行不带话的 `/wish` 会遇到两种情形：工作区连 `docs/graph/` 都没有时 M3 报「这个工作区还没有项目图：先建空目录」（`src/design/mode.ts:342`）；目录在时 `/wish` 只开主 Agent，不开始读项目，人还要再发 `/hourness-init`。面板「接管行在」那一支的文字怎么写，见第 7 节 Q2（在问人，面板线等它；接管各批不等）。面板线改这两个 UI 文件，接管各批不碰 `ui/src/`。
+- 没有图一节与开场卡片 `ui/src/guide/NoGraphCard.tsx`：卡片的按钮「建一张项目图」在 B8 合入之前执行不带话的 `/wish` 会遇到两种情形：工作区连 `docs/graph/` 都没有时 M3 报「这个工作区还没有项目图：先建空目录」（`src/design/mode.ts:342`）；目录在时 `/wish` 只开主 Agent，不开始读项目，人还要再发 `/hourness-init`。面板「接管行在」那一支的文字怎么写，见第 7 节 Q2（人 2026-11-05 答了选项 A：过渡路三步，按钮只填输入框）。面板线改这两个 UI 文件，接管各批不碰 `ui/src/`。
 - `/hourness-init` 在没有图、不是主 Agent 的会话里返回 success（设计 §3.2 的 F46 那句），按钮不会显示成失败。
 
 ## 6. 设计与现状不符之处（按计划的读法处理，不改方向）
@@ -173,7 +173,9 @@
 
 答复（编排方 2026-11-04T20Z，原话）：「Q2: the orchestrator is asking the person now, with option A as the recommendation; do not wait for it. Proceed with B0-B6 in plan order, leaving only the panel's condition-14 branch for the answer, and keep B7-B10 deferred as planned.」
 
-处理（Q2）：人还没答。接管这边没有一批等它：`/hourness-init` 的回话照设计 §3.2 原文，`isProjectGraph` 照第 5 节导出。只有面板线条件 14 的「接管行在」一支等人的答复；人答了，编排方转给面板线，答复原话补记在这里。
+答复（人 2026-11-05，编排方转达，原话）：「就按你上面说的来，心跳一个就行了」，即选项 A：B8 之前面板「接管行在」一支写过渡路三步（建空目录 `docs/graph/`、发不带话的 `/wish`、再发 `/hourness-init`），按钮只把内容填进输入框，不替人发送。
+
+处理（Q2）：接管这边的字不变：`/hourness-init` 的回话照设计 §3.2 原文（F46 那句），过渡路照第 4 节 B4 与 ORCHESTRATION §19.2，`isProjectGraph` 照第 5 节导出；面板的两个 UI 文件归面板线。A 不改面板第 14 条与 bootstrap 任何一条验收的字面（编排方在 `onboarding` 节点的批注写明「验收原文不改」，B8 做好之后照第 14 条原文指向 `/wish`）。
 
 ### Q3 扫描读不读 issue（B2 实做时发现，设计内部两处不一致；不挡任何一批）
 
@@ -186,7 +188,7 @@
 
 ## 8. 与并行线共用的文件
 
-按 main 上的现状写，冲突留给后合入的一方，冲突写进报告：`package.json`（测试链）、`scripts/packages.mjs`、`packages/hourness/cordis.patch.yml`、`packages/hourness/tsconfig.json`、`src/shared/health.ts`、`src/shared/tool-names.ts`、`src/shared/dsh-min.ts`（`origin/m7` 在这里加了 183 行）、`tests/contracts.spec.ts`、`tests/fake-rc3.ts`、`src/design/attach.ts`（规则板、循环板合入时也各加一行）、`scripts/probe/run-probe.mjs`、`docs/{ORCHESTRATION,DESIGN,DEVELOPMENT,HANDOFF}.md`。
+按 main 上的现状写，冲突留给后合入的一方，冲突写进报告：`package.json`（测试链）、`scripts/packages.mjs`、`packages/hourness/cordis.patch.yml`、`packages/hourness/tsconfig.json`、`src/shared/health.ts`、`src/shared/tool-names.ts`、`src/shared/dsh-min.ts`（`origin/m7` 在这里加了 183 行）、`tests/contracts.spec.ts`、`tests/fake-rc3.ts`、`src/design/attach.ts`（规则板、循环板合入时也各加一行）、`scripts/probe/run-probe.mjs`、`src/data/llm-ignore.ts`（M4 检查线的文件，评审 B4 F1 在这里改了 `no-git` 不记）、`tests/env-ignore.spec.ts`、`docs/{ORCHESTRATION,DESIGN,DEVELOPMENT,HANDOFF}.md`。
 
 ## 9. 运行记录（计时失败、主检出的变化）
 
@@ -205,6 +207,8 @@
 - 合入 `origin/main` `b25b81c`（合并提交 `7b06896`，已推）：main 带来 m5-rest 与探针锁轮用的规则（DEVELOPMENT §1.1 的 L3 行：`owner.txt`、续写前核对、用完先停续写再删锁、30 分钟没续写才算残留）。冲突一处：`tests/metrics-calc.spec.ts`，main 的 `2bd13f6` 自己修了同一处时钟（本分支的 `f47aa95` 被它取代），照 main 取。门禁：build 0、preflight 0、test 0（3023 通过 / 0 失败 / 1 跳过）、probe 0（388/388）；棘轮 73 / 18 / 1。日志 `bs-M7-*`。这一次起探针照新规则取锁（`owner.txt` 写 workflow 与步骤，每 5 分钟核对后续写）；主检出 `view.json` 前后没变（`C8B0E72D8DC5`）。B4 的未提交改动在合并期间存进 stash，合并推送之后取回。
 - 合入 `origin/main` `2d5a42f`（合并提交 `f7413b7`）：main 带来 M4 检查线（`src/env/` 的检查器、`check-entry.ts`、`timeout.ts`、`parsers.ts`，`env` 行默认启用）与规则板页面的记录。冲突一处：`package.json` 的测试链，照 main 取（`test:1` 多了七个 `env-*` spec），再把 `tests/bootstrap-scan.spec.ts` 加回 `test:2`。门禁：build 0、preflight 0、test 0（3095 通过 / 0 失败 / 1 跳过）、probe 0（407/407）；棘轮 73 / 18 / 1；已推。日志 `bs-M8-*`。B7 与 B9 的开工条件里 M4 的部分因此已满足，只剩 M7（第 3 节）。
 - B4：第一次 `npm test` 退出 1，knip 报三个新发现（`service.ts` 的 `PrepareRequest`、`PrepareResult`、`BootstrapService` 导出了却只在本文件用），改成不导出后整套重跑 0。第一轮探针（`bs-B4-probe.log`，411/411）跑完之后又去掉了 `prepare` 结果里没有读者的 `holdWish`（随 B8 和 M3 的调用方一起加），所以四道在最后的树上重跑：build 0、preflight 0、test 0（3105 通过 / 0 失败 / 1 跳过，`bootstrap-row` 10/10）、probe 0（411/411，新场景 `bootstrap-new` 两条、`bootstrap-reopen`、`bootstrap-gaps` 各一条）；棘轮 73 / 18 / 1。日志 `bs-B4b-*`。主检出 `view.json` 在两次探针前后都没变（`20023FE1F0FC`）。探针照 DEVELOPMENT §1.1 的 L3 行取锁：`owner.txt` 写 workflow 与步骤，每 5 分钟核对仍是自己再续写，跑完核对后删锁。
+- 合入 `origin/main` `9f7b5f3`（合并提交 `478bc6c`）：main 带来 panel-2（`src/graph/plain.ts`、`engine.ts`、`plain-view.ts` 等与 `ui/src/graph/`）、规则板页面的记录与 `scripts/probe/run-probe.mjs` 的场景。冲突一处：`package.json` 的测试链，照 main 取（`test:1` 多了 `tests/graph-panel-render.spec.ts`、`tests/graph-plain.spec.ts`），再把 `tests/bootstrap-scan.spec.ts`、`tests/bootstrap-row.spec.ts` 加回 `test:2`。门禁：build 0、preflight 0、test 0（3132 通过 / 0 失败 / 0 跳过；B4 的 1 个跳过是 main 上那一条，main 已去掉）；探针 413/413（`bs-M9-probe.log`），包装脚本在探针跑完之后退出，退出码没取到，锁由本步 13:50 手动删掉（`owner.txt` 仍写本步）；合并提交与下面 F1 的修复一起推，以修复那一次的全量门禁为准。棘轮 73 / 18 / 1。主检出 `view.json` 前后没变（`20023FE1F0FC`）。
+- 评审 B4（`.llm/wf/review-B4.md`）F1：已有 `.llm/` 的非 git 文件夹里接管开不了。env 行在 `agent/created` 时对这个文件夹（`projectOf` 把有 `.llm/` 的非 git 目录算项目）调 `ensureLlmIgnored`，按进程与根目录记住了 `no-git`；`/hourness-init` 判为新项目、`git init` 之后再调拿到的仍是它，宿主重启之前一直拒绝。改法取评审给的第二种：`src/data/llm-ignore.ts` 不记 `no-git`（这个结果会随 `git init` 变），`setup.ts` 不动；这是 M4 检查线的共用文件，冲突留给后合入的一方。L2：`tests/bootstrap-row.spec.ts` 加一例（只有 `.llm/` 与 `docs/graph/` 的非 git 文件夹，先跑一次 env 行那一步得 `no-git`，再走过渡路：成功、新项目、建了 git 仓库、exclude 有 `.llm/`、`check-ignore` 退出 0，之后各行再调得到 `ignored`）；`tests/env-ignore.spec.ts` 的非 git 一例加「`git init` 之后再调就追加」。ORCHESTRATION §7.4、§19.2 同批改。两个 spec 单独连跑 3 次都绿。全量门禁（合并之后的树加这个修复）：build 0、preflight 0、test 0（3133 通过 / 0 失败 / 0 跳过，`bootstrap-row` 11/11）、probe 0（413/413）；棘轮 73 / 18 / 1。日志 `bs-B4F1-*`。主检出 `view.json` 前后没变（`20023FE1F0FC`）。提交号随下一批回填。
 - 记图：会话钩子要求把状态记进 `docs/graph`；任务书写明不编辑 `docs/graph`、记录归编排方，照任务书，各批状态只写在本计划与报告里。
 
 ## Digest

@@ -19,6 +19,7 @@ import { BOOTSTRAP_SERVICE, STAGE_NOTE } from '../src/bootstrap/service.ts'
 import { settleWorkspace } from '../src/bootstrap/setup.ts'
 import { journalPath } from '../src/bootstrap/takeover.ts'
 import { NORM_TEMPLATES, PLACEHOLDERS } from '../src/bootstrap/templates.ts'
+import { ensureLlmIgnored } from '../src/data/llm-ignore.ts'
 import { projectOf } from '../src/data/project-root.ts'
 import { apply as applyDesign } from '../src/design/index.ts'
 import { STAGE_SOURCE } from '../src/design/stage-notice.ts'
@@ -95,6 +96,24 @@ test('transition path, new project: an empty folder with only docs/graph is git-
   assert.deepEqual(records.filter(record => record.op === 'setup').map(record => [record.data?.item, record.data?.action]), [['git-init', 'created'], ['exclude', 'created'], ['llm-dir', 'created'], ['graph-dir', 'created']])
   assert.equal(agent.sent.filter(sent => sent.message.source.kind === BOOTSTRAP_SOURCE).length, 0, 'a new project starts the interview: no takeover-start notice')
   assert.equal(health(made, agent), 'active')
+})
+
+test('transition path, new project: a folder outside git with only .llm/ and docs/graph opens even after the env row found no git there (row #1, #8; review B4 F1)', async () => {
+  const made = host()
+  const ws = made.workspace('llm-only')
+  mkdirSync(join(ws, '.llm'))
+  assert.equal(projectOf(ws)?.root, ws, 'a folder with .llm/ counts as a project before git init')
+  // What the env row does at agent/created for that project root.
+  assert.equal((await ensureLlmIgnored(ws)).kind, 'no-git')
+  const agent = await rootAgent(made, 's-llm-only', 'llm-only')
+  const result = await init(made, agent)
+  assert.equal(result.kind, 'success', result.text)
+  assert.match(result.text, /（新项目）/)
+  assert.match(result.text, /建了 git 仓库/)
+  assert.match(readFileSync(join(ws, '.git', 'info', 'exclude'), 'utf8'), /^\.llm\/$/m)
+  assert.equal(spawnSync('git', ['check-ignore', '-q', '.llm/x'], { cwd: ws }).status, 0)
+  assert.equal(journal(ws)[0]?.data?.path, 'new')
+  assert.equal((await ensureLlmIgnored(ws)).kind, 'ignored', 'the rows see the repository too')
 })
 
 test('transition path, existing project: the takeover-start notice wakes the idle main agent; the anchor gets the three norms as harness proposals, once (row #2, #3, #7)', async () => {
