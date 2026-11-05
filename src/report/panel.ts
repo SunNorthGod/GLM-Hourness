@@ -23,7 +23,7 @@
  */
 import type { DecisionRecord, UsageRecord } from '../memory/audit.ts'
 import { PRICING_SERVICE, quotaOf, type UsagePricing } from '../shared/pricing.ts'
-import { formatMoment, peakLine, quotaLines, type MomentZone, type QuotaView } from '../shared/quota.ts'
+import { formatMoment, peakLine, quotaLines, type MomentZone, type QuotaAsker, type QuotaView } from '../shared/quota.ts'
 import type { StatusItem } from '../shared/status.ts'
 
 /** The native channel's provider id at the time of the usage-chunk defect (src/glm-llm/index.ts default). */
@@ -495,13 +495,14 @@ export function quotaStatusItems(lines: readonly string[], asOfMs: number): Stat
  * asked for with a wait of three seconds at most; when the service has no
  * such member, one line says so. A member that throws, rejects or answers
  * with something the lines cannot be made from becomes one line with the
- * reason, reported to `problem`.
+ * reason, reported to `problem`. `asker` says who asks (the command and its
+ * session), so the channel files the read's metric event under that project.
  */
-export async function quotaSection(pricing: UsagePricing, now: number, zone?: MomentZone, problem?: (message: string) => void): Promise<string[]> {
+export async function quotaSection(pricing: UsagePricing, now: number, zone?: MomentZone, problem?: (message: string) => void, asker?: QuotaAsker): Promise<string[]> {
   const read = quotaOf(pricing, problem)
   if (read === undefined) return ['额度：GLM 通道包没有提供额度数据']
   try {
-    const view: unknown = await read({ waitMs: QUOTA_WAIT_MS })
+    const view: unknown = await read({ waitMs: QUOTA_WAIT_MS, ...(asker === undefined ? {} : { asker }) })
     if (typeof view !== 'object' || view === null) throw new Error('返回的不是对象')
     return quotaLines(view as QuotaView, now, zone)
   }

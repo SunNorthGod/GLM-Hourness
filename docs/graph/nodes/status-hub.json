@@ -189,6 +189,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "更正「第 1、2、3、6 条剩 M7 那一半」（对账 B 半，report-b.md (c)）：要的是 M7 的 P2（晨报与周报的读者）与 P3（第 6 批的运维行、第 2、3 条点名的 hourness_report），当前 M7 运行 wf_36d1d690c7e1de90 只做到 E9 与第一批 L4，不含 P2、P3。M7 合入后状态板块仍要等 P2、P3 开线。"
+    },
+    {
+      "at": "2026-11-05T11:57:23.928Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "桌面批次 L4（wf_be2ff3a8b7d83155，记录 .agents/tasks/l4-batch-2026-11-05/l4.md）：status-hub-2 合入 main 后在人的桌面版上，规则板页头的 rules/denials、rules/lifts、rules/peak 与 /hourness 晨报同一份数（拦下 file-tools-only 1 次、面板的高峰行逐字相同）；/hourness 输出没有指标比率组，比率只在指标板上。做完条件 1、3 的面板与报告路一半在桌面版上成立；hourness_report、周报一半仍等 M7。"
+    },
+    {
+      "at": "2026-11-05T19:30:47.847Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "status-hub-3（wf_992ec82f32e990c0）code 步完成并推 origin/status-hub-3：批 9 4c16928、面板 8-1 65e1324、面板 8-2 b6eab12 与 7ba29e0；7ba29e0 上门禁绿（npm test 3176/0，棘轮 73/18/1，探针 422/422）。评审 APPROVED，没有挡路项，不挡路 5 条（8-2 分成两个提交、文档在第二个；8-2 的探针结果只在工作树日志里）。下一步合入。"
     }
   ]
 }

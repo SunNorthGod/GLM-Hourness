@@ -19,6 +19,13 @@ import { buildStamp } from './build-info.ts'
 /** The cordis service name the metrics row provides. */
 export const METRICS_SERVICE = 'glmHournessMetrics'
 
+/**
+ * The shape of an id in an event (§4.4): no whitespace, no backslash, no
+ * non-ASCII, at most 120 characters. The journal's validator uses it, and a
+ * sender shapes the ids it builds from outside text with it.
+ */
+export const METRICS_ID_PATTERN = /^[A-Za-z0-9_.:@+/-]{1,120}$/
+
 /** A key-to-count map (`map` in the field grammar): id keys, integer, boolean or id values. */
 export type MetricsMap = Readonly<Record<string, number | boolean | string>>
 

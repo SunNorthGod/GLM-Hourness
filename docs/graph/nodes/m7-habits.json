@@ -1,0 +1,25 @@
+{
+  "id": "m7-habits",
+  "type": "task",
+  "title": "返工的活先查原因再改，交回写明原因",
+  "why": "同一处反复打补丁的活被挡在交回，不靠审查者自觉；任务书里常驻删净与不长工具目录的规矩",
+  "status": "approved",
+  "parent": "m7",
+  "kind": "implement",
+  "body": "依据报告 .agents/tasks/habits-framework/report.md 3.1 的 H4b、H3/H5 与 H1。任务书（renderBrief）：节点重开过时 Constraints 加一句先找原因、交回写明原因以及这次为什么修的是原因，附上一次重开的理由；常驻一句删掉这次改动之后没人用的代码与不再成立的文字、条款过时整条重写、不往仓库里加 IDE 或工具专用的目录与配置（项目已经提交的照旧）。交回：schema 加可选 cause；节点重开过而 cause 为空时拒收，提示写出原因再交回；这条登进 EXECUTE_RULES（enforce），拦下带规则 id 进违规流水，一句话或 /rules lift 能撤；收下的 cause 以批注写到节点上。审查：重开过的活，审查任务书带上 cause，只修了表现时记不挡路的发现，不改 d-failure-plans 的三类。等 M7 合入 main 后开工。",
+  "acceptance": [
+    "重开过的节点的任务书有先查原因那句与上一次重开的理由，没重开过的没有；常驻那句在；任务书长度在上限之内",
+    "重开过、没写原因的交回被拒并带规则 id 记进违规流水，写了的收下并把原因批注到节点上；首次建造不要求；这条规则在规则板上能撤",
+    "审查任务书带上原因，只修了表现记为不挡路的发现，不改变判定；ORCHESTRATION.md 与 M7 设计同批改；L2 钉住，L3 执行探针有重开过的节点的场景，改动在 main 上"
+  ],
+  "history": [
+    {
+      "at": "2026-11-05T13:48:49.654Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "d-habits-into-framework 里落在 M7 任务书、交回与审查上的部分（报告 3.1 的 H4b、H3/H5 与 H1 的任务书句）。代码在 m7 分支，按 d-freeze-until-dogfood 不往在跑的实现里塞，M7 合入 main 后另开一件；按 d-finish-then-bootstrap 在自举之前做完。",
+      "relay": "其余是\n哦，ide那条也加进去吧",
+      "to": "approved"
+    }
+  ]
+}

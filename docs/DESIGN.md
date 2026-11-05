@@ -283,7 +283,7 @@ GLM-Hourness（同仓两包，§2.3）
 
 | 行 | 何时上报 | 生效 | 部分生效或未生效的原因 |
 | --- | --- | --- | --- |
-| glm-llm | 激活；每次请求 | 已注册路由，写明套餐与凭证目录；上游已应答（设备 ID 未能写入 ZCode 状态文件时注明本进程用临时 ID，状态不降级） | 未登录（凭证为空）；凭证不可读；未拿到项目令牌（写明 3.16.3 的原因，§4.1）；上游返回非 2xx 状态码 |
+| glm-llm | 激活；每次请求 | 已注册路由，写明套餐、凭证目录与上下文窗口；上游已应答（设备 ID 未能写入 ZCode 状态文件时注明本进程用临时 ID，状态不降级） | 未登录（凭证为空）；凭证不可读；未拿到项目令牌（写明 3.16.3 的原因，§4.1）；上游返回非 2xx 状态码；上下文窗口配置不是 128000 到 1000000 之间的整数（部分生效，按缺省 512000，激活与每次会话上报都带这句，§4.6） |
 | glm-login | 激活 | 三个命令已注册，计价服务已提供 | 计价服务未提供（部分生效，写明原因，例如同名服务已在；面板按 token 列）。凭证目录总能解析（§2.4） |
 | glm-prompt | 激活；每步组装 | GLM 路由，ZCode 提示词与工具面，工具检索 local 或关闭 | 非 GLM 路由；工具检索未安装（会话历史不可读，部分生效）；记忆服务给出的汇报细度用不了（形状不对、抛错、不认识的档，部分生效）；方言安装失败 |
 | glm-compact | 激活；每次压缩请求 | GLM 压缩请求改用 ZCode 指令与摘要格式 | 非 GLM 路由；未识别 compaction-basic 的指令（原样放行） |
@@ -539,8 +539,9 @@ BigModel 的思考文档写明：保留式思考在 Coding Plan 端点默认开�
 
 ### 4.6 模型目录与思考档位
 
-- 目录：`glm-5.3`（GLM-5.3）、`glm-5.3-flash`（GLM-5.3-Flash）；向 DSH 声明的上下文窗口 512,000、默认 `max_tokens` 32000（DSH 用它们做自己的压缩与预算，属于 DSH 控制的行为，§4.8）。线上 `model` 用官方大小写（§4.5）。
-- ZCode 目录规则〔m1-parity，`src/glm-llm/models.ts` `zcodeModelRule`〕：取开源 3.16.2 树的内置目录（`reference/ZCode/config/provider/zcode-builtin.json`，revision 33）里 GLM-5.3 系的两条规则：模型规则 `.*glm-5\.3.*`（`contextWindow` 1,000,000，`maxOutputTokens.max` 128000，`reasoningLevel.values` `["low", "high", "max"]`）与 anthropic-messages 规则（选项映射 `thinking` enabled、`output_config.effort`）。3.16.3 按锚定、忽略大小写匹配（`wYt` @557708，调用 @563982），后命中的规则覆盖前面的 `.*glm-5.*`，`.*glm-5\.3-flash.*` 只改输入格式。3.16.3 实际运行的目录由桌面壳下发，pristine 副本里没有；若活动目录不同，这两条要跟着改（§4.8）。
+- 目录：`glm-5.3`（GLM-5.3）、`glm-5.3-flash`（GLM-5.3-Flash）；向 DSH 声明上下文窗口（下一条）与默认 `max_tokens` 32000（DSH 用它们做自己的压缩与预算，属于 DSH 控制的行为，§4.8）。线上 `model` 用官方大小写（§4.5）。
+- 上下文窗口〔已实现 2026-11-05，项目图 `glm-context-window`；人：「就用512k，能改最好，写死也行」〕：`glm-llm` 行配置 `contextWindow`，缺省 512000，只收 128000 到 1000000 之间的整数（`src/glm-llm/models.ts` `GLM_CONTEXT_WINDOW`）。上限是目录的 `contextWindow`；下限是目录的单步输出上限 `maxOutputTokens.max`，也让 DSH compaction-basic 扣去默认 `max_tokens` 32000 与缺省余量 65536 之后仍有压缩预算（`resolveCompactSpec`，窗口小于两者之和时它对这条路由抛错）。向 DSH 声明的 `context.contextWindow` 取这个值，每个模型 id 都一样；coding-plan 主步的 `max_tokens` 按 `min(这个值, 目录的 contextWindow)` 算窗口（下面 `max_tokens` 一条）。不配置时声明与此前相同（512000）。不是范围内整数的值，Loader 不拒收整行（schema 是整数与任意值的并，`src/glm-llm/index.ts`），行激活时改用缺省 512000，激活状态与此后每次会话上报都降为部分生效、写出原值与原因（§2.5），控制台告警一次。
+- ZCode 目录规则〔m1-parity，`src/glm-llm/models.ts` `zcodeModelRule`〕：取开源 3.16.2 树的内置目录（`reference/ZCode/config/provider/zcode-builtin.json`，revision 33）里 GLM-5.3 系的两条规则：模型规则 `.*glm-5\.3.*`（`contextWindow` 1,000,000，`maxOutputTokens.max` 128000，`reasoningLevel.values` `["low", "high", "max"]`）与 anthropic-messages 规则（选项映射 `thinking` enabled、`output_config.effort`）。3.16.3 按锚定、忽略大小写匹配（`wYt` @557708，调用 @563982），后命中的规则覆盖前面的 `.*glm-5.*`，`.*glm-5\.3-flash.*` 只改输入格式。3.16.3 实际运行的目录由桌面壳下发，pristine 副本里没有；若活动目录不同，这两条要跟着改（§4.8）。本机 3.17.2 安装目录（revision 43）里这两条与 revision 33 相同；3.17.1 的目录没有导出过，未核（`FACTS.md` §1）。
 - 输入模态按模型如实声明（`src/glm-llm/models.ts` `GLM_MODELS`）：GLM-5.3 没有视觉塔，只声明文本；GLM-5.3-Flash 声明文本与图像〔用户提供的事实 2026-10-28〕。目录外的模型 id 只声明文本。此前两个模型都声明图像。只声明文本的路由上，DSH 在适配器之前把请求里的图片换成文字占位（`dsh-llm` `projectImagesForTextModel`：「[image omitted because this model accepts text only; attachment sha256:…]」），`read_image` 拒读（「… does not declare image input; switch to an image-capable model to read images」），会话控制器拒收用户附图。
 - 思考：GLM-5.3 系强制思考；effort 三档 `low` / `high` / `max`，默认 `high`〔定案 2026-10-27，五档词汇 API 接受但 GLM 不用〕。
 - `max_tokens`〔已实现 2026-10-28，m1-parity 第 5 项，定案 2026-10-28 用户选 B，项目图 `question-7`；`src/glm-llm/token-budget.ts`〕：coding-plan 对目录内的模型不再用 DSH 给的 `maxTokens`，按 3.16.3 取值：
@@ -549,7 +550,8 @@ BigModel 的思考文档写明：保留式思考在 Coding Plan 端点默认开�
   - 会话标题等辅助请求：`min(5000, max)`（`auxiliaryModelOptions` `PP` @7759001），为 5000。
   - 当前用量估算（`estimateCurrentContextUsage` `uzo` @13313841）：从后往前找第一条带服务端用量的助手消息作基线（`CDn` @13313415、`d5o` @13260048）；用量按 `Xgt` @4979924 换算（输入取 `input`，否则 `total − output`，否则缓存读写之和；输出大于 0 时上下文用量为输入加输出，否则取不小于输入的 `total`）；有上下文用量时只估算基线之后的消息，没有时从基线那条起估算；没有基线时整段估算。估算按 `estimateMessageTokens`（`TP` @5067698）：每条消息的块文本（文本与 reasoning 原样，图片记 `[Attached <类型>]`）以换行连接，加每个工具调用的名称与输入 JSON，三个字符一 token（`ere` @814022），向上取整；系统消息也计入。
   - 用量基线的来源：ZCode 从会话条目读用量。DSH 的请求不带历史响应的用量，本包的解码器在每个响应的回放信封（`finish.replayState.response`）里记下 ZCode 口径的用量 `usage: {input, output, total, cache: {read, write}}`（`input` 含缓存读写，与 AI SDK Anthropic provider 的口径相同，`EZr` @3549441），信封 `version` 仍为 1；DSH 组装助手消息时把信封存进 `source.replayState`，下一次请求从这里读。为此信封改为只要知道模型就发，不再只在有 reasoning 时发（§4.5c）。
-  - 与 3.16.3 的差异（§4.8）：只有本适配器产出、运行时仍把回放状态交回本适配器的助手消息有基线，别的路由的历史与 m1-parity 之前的历史只能整段估算；ZCode 按会话条目与消息对齐取下标，DSH 只有一份消息列表，按它取；工具调用参数先解析再序列化，解析失败计 `{}`，工具结果计其文本块与图片占位（ZCode 的消息模型与 DSH 块不完全一一对应）。窗口取目录的 1,000,000，而 DSH 按声明的 512,000 先压缩，所以实际上主步恒为 128000；公式照移植。
+  - 与 3.16.3 的差异（§4.8）：只有本适配器产出、运行时仍把回放状态交回本适配器的助手消息有基线，别的路由的历史与 m1-parity 之前的历史只能整段估算；ZCode 按会话条目与消息对齐取下标，DSH 只有一份消息列表，按它取；工具调用参数先解析再序列化，解析失败计 `{}`，工具结果计其文本块与图片占位（ZCode 的消息模型与 DSH 块不完全一一对应）。
+  - 主步的窗口（有意的偏离，2026-11-05，项目图 `glm-context-window`）：本包取 `min(行配置的上下文窗口, 目录的 1,000,000)`，缺省为 512,000。对照的版本是基线 3.17.1：pristine 3.17.1 包的主步（`runModelBackedTurnStepImpl` `W9a`）把模型的 `properties.contextWindow` 交给 `resolveModelStepMaxOutputTokens`（`P9o`），基线 `resolveNormalRequestMaxOutputTokens`（`LY`，缺省 `Rqa` 32000），公式与 3.16.3 `aUo` 相同，窗口是目录值；3.17.1 运行时 GLM-5.3 的目录值未核到（pristine 包里没有这条规则，3.17.1 的目录没有导出；revision 33 与本机 3.17.2 的 revision 43 都是 1,000,000，`FACTS.md` §1）。原因：人定窗口 512k，DSH 按声明的窗口压缩，单步输出预算与压缩于是按同一个窗口算；此前请求侧按 1,000,000 算、DSH 按 512,000 先压缩，主步实际恒为 128000。差别：缺省下用量估算超过 383,000（512,000 − 128,000 − 1000）时主步的 `max_tokens` 小于 128000，同样用量下 3.17.1 仍是 128000；用量估算达到 511,000（窗口减 1000）及以上时取基线 128000（`aUo` 的规则）。配成 1,000,000 时与 3.16.3、3.17.1 的取值相同。压缩与辅助请求的上限不受窗口影响。
 
 ### 4.6a 用量块
 
@@ -573,14 +575,15 @@ DSH 的 `TokenUsage` 各计数互不重叠：`inputTokens` 只算未命中缓存
 - 登录状态（`QuotaView.login`）：`absent`（凭证文件不存在、为空——`/glm-logout` 写空串、解不开或没有登录令牌；解不开时行健康另写一句）、`rejected`、`ok`。适配器在三种情形写 `login-rejected`，同一路径与同一登录 10 分钟一条：模型请求带被拒指纹重铸令牌、重试之后仍被拒（`path: model`）；定位 Key 或铸造令牌时 PAT 平面回 401 或 403（`project_token_http_401`、`project_token_http_403`，在 `projectToken` 里认码，原错误原样抛出）；登录令牌为空（`project_token_login_required`）；后两种的 `path` 是 `mint`。网络错误、超时、429、5xx、账号或项目状态、额度路径的 401 都不算。记录带登录令牌的指纹（去掉 `Bearer ` 前缀与空白后 SHA-256 的前 16 位十六进制）。状态为 `rejected`：最新一条 `login-rejected` 的指纹等于当前凭证里登录令牌的指纹，且晚于最新一条成功读数。项目 Key 的位置记录会写回同一个凭证文件，所以不按文件的修改时刻判重新登录，按指纹判；凭证文件的大小与修改时刻没变就不解密。
 - `/glm-status`（`login-row.ts`）：凭证行（设置页解析它，格式不变）、空行、高峰行、额度一段、空行、行健康表。高峰行的「到几点」用 `nextPeakChange`，时刻按本机时区写（`formatMoment`，高峰的判定仍按 UTC+8）。`glm-login` 行健康的说明在原文后加「额度：读于 HH:MM」或「额度：读不到（原因码）」，登录被拒时再加「登录被拒」；额度从不使行降级。`LoginConfig` 的 `now` 与 `offsetMinutes` 只给测试，不在 `Config` 里。
 - 循环板条目：`src/glm-llm/loop-defaults.ts` 导出冻结的四条（`glm:peak-reminder`、`glm:quota-on-command`、`glm:quota-low`、`glm:login-rejected`），经计价服务的 `loopDefaults` 交出，只是数据；GLM 包自己做的两条（高峰提醒、看状态时读额度）只被列出。`creditPricing` 常量仍不带 `quota` 与 `loopDefaults`，标定与探针用它。
-- 不做：不按额度或积分拦截、推迟、限速、换模型或换套餐，本节没有在 `tools/pre-execute` 与 `agent/pre-step` 上注册任何监听器。四类指标事件（`glm.quota-read` 等）等指标服务的设计定了名字与信封再交（项目图 `m6-metrics-events`）。
+- 不做：不按额度或积分拦截、推迟、限速、换模型或换套餐，本节没有在 `tools/pre-execute` 与 `agent/pre-step` 上注册任何监听器。
+- 指标事件〔已实现 2026-11-05，项目图 `m6-metrics-events`〕（M6 设计 §14.2，指标设计 §3.5、§4.5）：编排层包的指标行在时（服务 `glmHournessMetrics`），`glm-llm`、`glm-login`、`glm-prompt` 三行经 `src/glm-llm/metrics.ts` 的 `glmMetricSink`（每个事件经 `emitMetric` 按名字找服务，`by: glm`）交四种事件；服务不在时什么都不交、不告警，服务抛错也不改变读取、请求、抛出的错误与提醒。`glm.quota-read`：读取器每发起一次读取在它结束时交一条，`ok`、失败的原因码 `why`（不是 id 形状的，例如 ZCode 的凭证缺失原文，取冒号前的前缀加 `:other`，即 `credential:other`）、耗时 `ms`、发起方 `by`（`command` 或 `service`）、`windows`（窗口名到已用百分比的整数，名字重复的第二个起加 `-2`、`-3`，失败时为空）、`dropped`；60 秒内的复用、`read: false` 与加入进行中的读取都不交，体验套餐不发请求，也不交。发起方与归属由 `QuotaRequest.asker`（`src/shared/quota.ts`）给：`/glm-status` 与 `/hourness` 写 `{kind: 'command', sessionId}`，循环板写 `{kind: 'service', dir}`，`dir` 是它这次的事件要去的项目；加入的读取沿用发起它的那一方；没有 `asker` 的读取算服务的、没有项目，指标行只计数不写。`glm.upstream-limit`（`code`、`hasReset`）与 `glm.login-rejected`（`path`，`status` 或 `code`，不带指纹）由适配器写完对应的额度流水记录之后交，去重与流水相同（登录被拒同一路径同一登录 10 分钟一条）；模型请求遇到的归请求的会话，额度读取铸令牌时被拒的归读取的发起方。`glm.peak-reminder`：每发出一条高峰提醒交一条，`window`、`mode`（档位，读不到时 `none` 并带 `note`）、`cap`（正文写了的子 agent 并发上限），归 agent 的会话与工作目录。事件里只有码、数与窗口名，没有令牌、指纹、请求头与响应正文（L2：`tests/glm-metrics.spec.ts`）。
 - 未核实：V4、V5、V6 命令处理函数等 3 秒在客户端一侧不被打断、V8 登录被拒的三种判据在真实的登录失效时够用。V3 已核（2026-11-01 一次真实读取，`FACTS.md` §2.4）：积分套餐的读数是两行 `CREDIT_LIMIT`（5 小时与每周），不是 `TOKENS_LIMIT`，命名函数已认两种类型；没有 `TIME_LIMIT` 行。V7 已核（`FACTS.md` §1）。
 
 ### 4.8 与 ZCode 的一致性与已知差异〔m1-parity 2026-10-28 按 3.16.3；2026-10-30 跟到 3.17.1〕
 
 验收口径〔定案 2026-10-28，用户：「看量或者扣减看不出来的。你就代码级别一样就行」〕：coding-plan 请求中本包能控制的部分与基线代码级一致（2026-10-30 起为 3.17.1），不做额度或扣减测量。
 
-已一致（细节与偏移见各节）：模型请求凭证是项目令牌，拿不到即失败（§4.1）；配置请求只带 `x-api-key-id`，凭证不再含 secret（§4.1、§4.4）；`X-Title` 与 User-Agent（§4.2）；头的组装链与线上顺序（§4.3）；归因头（§4.5b）；`metadata.user_id` 的 deviceMid：读取，缺失时生成并在锁内写回 ZCode 状态文件（§4.5b）；请求体键序、`model` 大小写、`thinking` 与 `output_config`、会话标题非流式（§4.5）；`max_tokens` 规则（§4.6）。3.17.1 跟进补上的：版本号（§4.2）、`x-zcode-session-features`（§4.5b）、项目令牌请求失败的细分错误码（§4.1）。额度读取（§4.7，`m6-quota-read`）已一致：地址与 15 秒超时、头恰好 `authorization`（项目令牌原样）与 `x-request-id`（每次新的 UUID）、不加 ZCode 身份头、失败只是一个原因（不重试，401 不重铸）、读取结果 60 秒内复用；偏移按 3.17.1，见 `FACTS.md` §1。
+已一致（细节与偏移见各节）：模型请求凭证是项目令牌，拿不到即失败（§4.1）；配置请求只带 `x-api-key-id`，凭证不再含 secret（§4.1、§4.4）；`X-Title` 与 User-Agent（§4.2）；头的组装链与线上顺序（§4.3）；归因头（§4.5b）；`metadata.user_id` 的 deviceMid：读取，缺失时生成并在锁内写回 ZCode 状态文件（§4.5b）；请求体键序、`model` 大小写、`thinking` 与 `output_config`、会话标题非流式（§4.5）；`max_tokens` 规则（§4.6），只有主步的窗口是有意的偏离：取 `min(行配置的上下文窗口, 目录窗口)`，3.17.1 取目录窗口（§4.6，人定 512k，2026-11-05）。3.17.1 跟进补上的：版本号（§4.2）、`x-zcode-session-features`（§4.5b）、项目令牌请求失败的细分错误码（§4.1）。额度读取（§4.7，`m6-quota-read`）已一致：地址与 15 秒超时、头恰好 `authorization`（项目令牌原样）与 `x-request-id`（每次新的 UUID）、不加 ZCode 身份头、失败只是一个原因（不重试，401 不重铸）、读取结果 60 秒内复用；偏移按 3.17.1，见 `FACTS.md` §1。
 
 额度读取的已知差异〔2026-10-31，项目图 `m6-quota-read`〕：
 
@@ -601,7 +604,7 @@ DSH 的 `TokenUsage` 各计数互不重叠：`inputTokens` 只算未命中缓存
 
 - 会话标题的时机与提示词：3.16.3 在回合开始时尝试，账号模式推迟到回合完成后发（@13367458、@13370395），提示词是 `y4a`（首条输入截 1200 字符）；DSH 与第一步并发发标题，提示词是 DSH 的。
 - 压缩的触发时机与提示词：由 DSH 与方言（§5.6）决定。
-- 向 DSH 声明的上下文窗口 512,000 与默认 `max_tokens` 32000：DSH 用它们做自己的预算与压缩，线上 `max_tokens` 不受影响（§4.6）。
+- 向 DSH 声明的上下文窗口（行配置，缺省 512,000）与默认 `max_tokens` 32000：DSH 用它们做自己的预算与压缩。声明的 `max_tokens` 不进线上请求；声明的窗口经 `min` 进主步的 `max_tokens`（§4.6）。
 - `temperature`：DSH 给就按 AI SDK 的位置发，3.16.3 的这类请求不设温度。
 - 工具集与系统提示内容：由 DSH 与方言决定（§5）。
 - 回合边界：DSH 不给回合 id，goal 轮次或不以用户输入消息开头的跟进沿用上一回合的 query id（3.16.3 每个输入换新）；DSH 对空闲会话的手动压缩也沿用上一回合的 query id，3.16.3 的 `/compact` 是独立输入，有自己的 query id；3.16.3 的 query id 是桌面命令 id，本包是 UUID，结构相同、值域不同；3.16.3 的 `workflow_child` 来源在 DSH 里没有对应的会话标记，不映射；`agents` 服务取不到会话头时按主会话处理（§4.5b）。
