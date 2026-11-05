@@ -304,6 +304,24 @@
       "actor": "llm",
       "op": "comment",
       "text": "B2 评审 F1（有暂存代码但没有提交的仓库判为新项目）已修并推 62096dd。之前合入 origin/main 9980946（b6d78a4），并在本分支上自行修了 main 上依赖日期的 metrics-calc 测试（f47aa95）。62096dd 上门禁：build 0、preflight 0、npm test 0（3021 通过 / 0 失败 / 1 跳过）、探针 388/388、棘轮 73/18/1。B3–B6 待做。编排方已告诉它：main 上的正式修复（fix-date-dependent-metrics-test）合入后，下次合 main 时该测试的冲突一律取 main 的版本，分支上不留重复的测试改动。"
+    },
+    {
+      "at": "2026-11-05T00:58:26.559Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "B2 复审 APPROVED，无阻塞：F1 已按设计 §3.4 修好；合并 9980946 与 metrics-calc 测试修复都核过；四道门禁为 0，探针 388/388。B3–B6 待做。"
+    },
+    {
+      "at": "2026-11-05T01:52:27.753Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "B3（bootstrap-run-start）已推 fb876ce；合入 origin/main c8200f0（合并提交 fb3f3d6）。两者四道门禁为 0：npm test 3021 通过 / 0 失败 / 1 跳过，探针 388/388，棘轮 73/18/1。剩 B4、B5、B6；B7–B10 顺延。"
+    },
+    {
+      "at": "2026-11-05T01:55:42.865Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "B3（fb876ce，bootstrap-run-start）评审 APPROVED，无阻塞（.llm/wf/review-B3.md）。门禁按日志：build、preflight 通过，npm test 3021 / 0 失败 / 1 跳过，探针 388/388，棘轮 73/18/1。剩 B4–B6。"
     }
   ]
 }

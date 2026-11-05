@@ -521,6 +521,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "panel-2 评审 CHANGES_REQUESTED，4 条阻塞即编排方定为必修的 L4 发现 F1、F2、F4、F5（.worktrees/panel-2/.llm/panel-2/review.json）。提交、门禁、棘轮 73/18/1、文档同批、未改 docs/graph、主检出纪律都核对无误。下一步：修复轮。"
+    },
+    {
+      "at": "2026-11-05T01:51:45.723Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "panel-2 Q6（评审的四处必修 F1、F2、F4、F5）本地提交 8021ae7，未推送。门禁：build 0、preflight 0、探针 390/390、棘轮 73/18/1；npm test 退出码 1，唯一失败是 main 上那条依赖日期的 metrics-calc 测试，链上其后 46 个 spec 单跑 872 个测试 0 失败。编排方答 (a)：等 main 上的正式修复（test(metrics): pin the writer clock…，最后一轮探针 09:39 开始）合入后合并 main、跑一次四道门禁，再一起推送。"
     }
   ]
 }
