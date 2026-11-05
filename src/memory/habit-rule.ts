@@ -63,7 +63,7 @@ const ECHO_SHARE = 0.5
  * too; the correction says to ask it in plain chat, and the human can lift
  * the rule.
  */
-export const HABIT_CARD_WORDS: readonly string[] = ['习惯', '偏好', '记住', '记下', '以后都', '以后每次', '每次都', '今后都', 'habit', 'preference', 'remember', 'from now on']
+const HABIT_CARD_WORDS: readonly string[] = ['习惯', '偏好', '记住', '记下', '以后都', '以后每次', '每次都', '今后都', 'habit', 'preference', 'remember', 'from now on']
 
 const ALLOW: RuleVerdict = { kind: 'allow' }
 
@@ -94,14 +94,15 @@ const isPerson = (message: DerivedMessage): boolean =>
 export function habitTalkOf(messages: readonly DerivedMessage[]): HabitTalk {
   let person = -1
   for (let index = messages.length - 1; index >= 0; index--) {
-    if (isPerson(messages[index] as DerivedMessage)) {
+    const candidate = messages[index]
+    if (candidate !== undefined && isPerson(candidate)) {
       person = index
       break
     }
   }
   for (let index = person - 1; index >= 0; index--) {
-    const message = messages[index] as DerivedMessage
-    if (message.role !== 'assistant') continue
+    const message = messages[index]
+    if (message === undefined || message.role !== 'assistant') continue
     const text = textOf(message)
     if (text.trim() === '') continue
     return /[?？]/u.test(text) ? { asked: text } : {}
