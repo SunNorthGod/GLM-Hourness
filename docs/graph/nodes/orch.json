@@ -529,6 +529,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "人 2026-11-05 答编排方「全开照旧，还是先停消融与状态页两条中等的线让小活先收」：原话「先全开吧，你盯着点就行，任务也是做完一点就落盘一点」。照此：十三条线都不停，编排方每次被叫醒时查一遍、恢复被限流暂停的运行；编排方已逐条通知在跑的步骤，每做完一块就提交并推到自己的分支、报告边做边写，上游 503 打断时不丢已做的部分。"
+    },
+    {
+      "at": "2026-11-05T16:44:29.370Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-11-06 00:45 巡检：13 条线。上游限流把 bootstrap（wf_f008ac0c87ec6943）、m4-reanchor-violations（wf_b007fba3eafafeec）、status-hub-3（wf_992ec82f32e990c0）、m5-rule-expected-effect（wf_24a77ef57c68c12c）四条暂停，编排方已全部恢复。按人的「做完一点就落盘一点」，各线阶段提交照常推到自己的分支：bootstrap 56f578a（B5 第 2 部分 L2）、m4-checks-loop-details e667fe8、m3-metrics-wiring cb4c442。ablation 第 3 轮 code 步在跑（加的 3 轮里的第 1 轮）。"
     }
   ]
 }
