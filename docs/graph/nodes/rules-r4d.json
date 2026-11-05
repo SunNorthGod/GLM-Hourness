@@ -1,0 +1,25 @@
+{
+  "id": "rules-r4d",
+  "type": "task",
+  "title": "人同意过的拦路脚本真的跑起来",
+  "why": "人在板上同意的检查脚本到点就跑、该拦就拦，不再只是一行写着的规矩",
+  "status": "approved",
+  "parent": "rules",
+  "kind": "implement",
+  "body": "一路四段：规则板设计 §9.3 按 M3 附录 0.6 的请求改稿；R3 人批准规则提议的路（rules_propose、acceptProposal 等）；R4d 由 checkCall 执行人同意过的拦路脚本，超时与出错按条目写明的后果放行或拦下，拦下带规则编号记下；m6-script-gate 设计第 24 条的用例。依据：规则板设计 0.10（.agents/tasks/rules/design.md）、docs/ORCHESTRATION.md §16 的余项、m6-script-gate 节点。R4d 还要 M7 E7 的 trunkAdvanceFor（只在 m7 分支），那一段等 M7 合入 main 后接上。",
+  "acceptance": [
+    "规则板设计 §9.3 改稿经设计评审通过；改到人定过的做完条件时先交人",
+    "人加的规则经主 Agent 提议、人在对话里同意后生效，同意的原话记下",
+    "人同意过的拦路脚本由 checkCall 真的执行，超时与出错按条目写明的后果放行或拦下，拦下带规则编号进违规流水；m6-script-gate 设计第 24 条的用例通过，改动在 main 上"
+  ],
+  "history": [
+    {
+      "at": "2026-11-05T10:32:39.283Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "人 2026-11-05 定 d-freeze-until-dogfood 与 d-finish-then-bootstrap 冲突处按后者办：规则板这一路提到自举之前在这边做。m6-script-gate 与 rules 都卡在这里",
+      "relay": "都按你说的来",
+      "to": "approved"
+    }
+  ]
+}

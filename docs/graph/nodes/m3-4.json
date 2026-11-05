@@ -3,7 +3,7 @@
   "type": "task",
   "title": "人在对话里对提议怎么说",
   "why": "人同意、否掉、补充、讲细点、说重点，五种话都有确定的去处",
-  "status": "doing",
+  "status": "done",
   "parent": "m3",
   "kind": "implement",
   "body": "主 Agent 在对话里提提议（propose_to_human），人对提议说的五种话由 record_human_answer 记录（M3 附录 0.6 §3.5；d-chat-not-cards 之后不再出卡）。",
@@ -11,6 +11,29 @@
     "人在对话里对提议说的五种话（同意、否掉并说理由、补充、讲细点、说重点）都有确定的去向：前三种由主 Agent 带人的原话记进图，后两种只改主 Agent 这一次怎么讲",
     "否掉的理由与补充的话记成目标或待决上的批注，带人的原话与主 Agent 记成的那一句；harness 核对这段话确实是人在提议之后发来的",
     "桌面版上主 Agent 把要你定的事按四种问法之一问你：确认建议是一句是非问，推荐与理由在句子里；有真取舍时才列两三条路，每条一行、推荐的标出；问你要什么时先给一个猜测；看样子时给样稿；汇报在前，问题在最后，一条消息至多三个问题；没有按钮"
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "05d524a",
+      "note": "M3 第 6 步：人在对话里怎么说"
+    },
+    {
+      "kind": "commit",
+      "ref": "e58d1ae",
+      "note": "M3 第 9 步"
+    },
+    {
+      "kind": "commit",
+      "ref": "2bf2b16",
+      "note": "m3 合入 main"
+    },
+    {
+      "kind": "test",
+      "ref": "tests/record-human-answer.spec.ts",
+      "exit": 0,
+      "note": "同意、补充与否掉、没说过的话被拒；2026-11-03 桌面交互 L4 五轮问答"
+    }
   ],
   "history": [
     {
@@ -107,6 +130,37 @@
           "to": "人同意、否掉、补充、讲细点、说重点，五种话都有确定的去处"
         }
       }
+    },
+    {
+      "at": "2026-11-05T10:05:48.447Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "项目图对账 A 半（.agents/tasks/graph-reconcile-2026-11-05/report-a.md，investigate-graph-reconcile-1105-a，wf_354a8b952020a5fa）核实：验收逐条有证据，提交都在 origin/main（merge-base --is-ancestor 退出码 0），验证层不要求 L4 或 L4 已做过",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "05d524a",
+          "note": "M3 第 6 步：人在对话里怎么说"
+        },
+        {
+          "kind": "commit",
+          "ref": "e58d1ae",
+          "note": "M3 第 9 步"
+        },
+        {
+          "kind": "commit",
+          "ref": "2bf2b16",
+          "note": "m3 合入 main"
+        },
+        {
+          "kind": "test",
+          "ref": "tests/record-human-answer.spec.ts",
+          "exit": 0,
+          "note": "同意、补充与否掉、没说过的话被拒；2026-11-03 桌面交互 L4 五轮问答"
+        }
+      ]
     }
   ]
 }

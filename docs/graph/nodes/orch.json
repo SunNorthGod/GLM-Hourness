@@ -499,6 +499,30 @@
       "actor": "llm",
       "op": "comment",
       "text": "对账 B 半（investigate-graph-reconcile-1105-b，wf_32fe351dc919a679）完成，报告 .agents/tasks/graph-reconcile-2026-11-05/report-b.md。22 个节点（M7 与十个子任务、m8、m8-plain-language、onboarding、status-hub、user-graph、bootstrap、dogfood、field-trial、orch、ablation、reading-digest、glm-context-window）今天都关不了，也没有现在就能开的新线，几乎都卡在 M7 运行 wf_36d1d690c7e1de90 合入 main。M7 合入之后建议的开线先后：P2（m7-6、m7-8、m7-9 的主体）→ P1 加 P6（m7-2 的补位提醒与简报读经验服务）→ user-graph 延后项 → 面板第 17 条接 derivedStage → P3（m7-7、状态板块第 6 批、hourness_report）→ bootstrap B7、B9、B10。M7 合入后 m7-4 在 main 上探针 glm-exec-review 绿即可关，m7-1 再等第一批 L4。编排方处理：一、ablation 运行的 plan 步被上游错误（No available accounts）截断，plan.md 不存在，code 步照样在跑、分支没有新提交；已告诉该 code 步计划缺失。二、bootstrap-impl 没有合入 main 的步骤：照 m4-checks、panel-2、m5-rest 的做法，运行结束后另派 land-bootstrap。三、几处图上文字与现状不符，已分别批注到 m8-plain-language、status-hub、dogfood、m7、m7-5、glm-context-window。要人定的两件已交给人：宣传视频的去向；P2 在 Kiro 这边做还是留给自举做第一件活。今天第三次上游错误截断运行（对账、阅读之后是 ablation 的计划步）。"
+    },
+    {
+      "at": "2026-11-05T10:05:02.781Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "项目图对账 A 半完成（.agents/tasks/graph-reconcile-2026-11-05/report-a.md，wf_354a8b952020a5fa）：22 个节点，可关 9（m3-1 到 m3-5、m4-rules、m5-1 已由编排方带证据关闭；m4-gate 等人改验收第 6 条一句；m3 等子决定 d-interview-cards 被取代），只差批次 L4 4（m4-checks、metrics、compact-recall、lessons-3），等别的线 7，等人 2（m5、m5-4，11-04 两问）。图上没有节点、现在就能开的活：M3 指标事件接线（src/design/metrics.ts 的 emitMetric 仍是空函数，指标流水已在 main）、四行设置页说明仍写「默认关闭」。结构问题：approved 的决定子节点挡着特性关闭，全图 67 个已采纳决定里只有 d-option-card 转过 done，决定怎样关没有成例。另有排期冲突要人定：d-freeze-until-dogfood（自举之后再改已放行的设计）与 d-finish-then-bootstrap（在这边彻底做完再进自举）在 R4d 一路上方向相反（规则板 §9.3 改稿 → R3 提议路 → R4d → m6-script-gate 第 24 条）。"
+    },
+    {
+      "at": "2026-11-05T10:32:40.468Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-11-05 对编排方交的四件答「都按你说的来」：一、记忆两问按建议（m5-4 关，m5-habit-rule 建）；二、m4-gate 验收第 6 条按建议改字后带证据关闭，M7 那半句挪进 m7 的验收；三、d-interview-cards 由 d-main-agent-no-ask-card 替掉；四、d-freeze-until-dogfood 与 d-finish-then-bootstrap 冲突处按后者办，规则板一路建 rules-r4d。"
+    },
+    {
+      "at": "2026-11-05T10:40:48.243Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "习惯融进框架的调查重派 investigate-habits-into-framework-retry（wf_6ff0de9e869c0de0）：上一次 wf_502bec1b9882532c 被上游返回截断，没有留下报告。这次要求边查边写，报告 .agents/tasks/habits-framework/report.md。另开 m5-habit-rule（wf_b5171bd117c811ba）与 m4-reanchor-violations（wf_b007fba3eafafeec）；m7-handback-path-check 等 M7 合入 main 后开。"
+    },
+    {
+      "at": "2026-11-05T11:33:01.873Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "习惯融进框架的调查完成（investigate-habits-into-framework-retry，wf_6ff0de9e869c0de0；首次运行 wf_502bec1b9882532c 被上游截断未留报告），报告 .agents/tasks/habits-framework/report.md。习惯全文在 ~/.zcode/AGENTS.md 第四、五节（另有同文一份 ~/.dsh/AGENTS.md，DSH 的 dsh-agent-instructions 把它送进本机每个会话，靠的是人的用户级配置，别人装插件拿不到）。录 9 条：已在框架里 5 条（规则重读、第三次修交人、汇报粒度、如实汇报的门禁一半、干净区，其中 3 条只有一部分）；只在本仓库 4 条（不长 IDE 目录、不留死代码、条款整条重写、写规则说意图）；框架完全没有 1 条：遇到问题查根因、修在根上。方案：修根因挂在重开过的节点上（框架认不出修 bug，认得出重开）——任务书加一句并附上次重开理由，交回加 cause 字段、没写由交回门禁拦下，审查看到只修表现记不挡路的发现，第二次重开时先提醒一次；不留死代码与条款整条重写合成任务书里常驻一句，接管默认表按 ORCHESTRATION §7.5 补回 knip、jscpd、vulture。任务书、交回、审查的改动在 m7 分支，等 M7 合入后另开一件小活；第二次重开的提醒、重锚补规范摘要、接管默认表现在就能做。四件交人定：Q1 工程习惯进插件（宪章 §9 与 hourness 目标的非目标要改写），Q2 没写原因由交回门禁挡、只修了表现不挡路，Q3 主 Agent 身份段上限 3000 抬到 3200 放一句汇报可靠度，Q4 IDE 目录这条不进框架；四件都推荐可以。"
     }
   ]
 }

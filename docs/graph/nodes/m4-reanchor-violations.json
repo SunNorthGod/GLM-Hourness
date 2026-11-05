@@ -1,0 +1,43 @@
+{
+  "id": "m4-reanchor-violations",
+  "type": "task",
+  "title": "压缩之后，提醒模型这个会话被拦过哪些规则",
+  "why": "压缩后的摘要会主导模型下一段做什么；把本会话被拦过的规则一并交给它，压缩后少犯同样的错",
+  "status": "doing",
+  "parent": "m4",
+  "kind": "implement",
+  "body": "ORCHESTRATION.md §2.5 的重锚写明「规范摘要与本会话违规计数」没做，等 M4 的违规记录；违规流水已在 main（记录带 sessionId）。做法：压缩之后的那一次投影附上本会话被拦的规则 id 与次数，只在压缩后注入一次，平时不加，不破坏缓存；评估是否同时附焦点所在目标的非目标。依据见每周阅读 2026-11-05 报告 B2、D1。",
+  "acceptance": [
+    "会话压缩之后的那一步，注入里列出本会话被拦过的规则 id 与次数；没有被拦过时不加这一段；平时的步不加",
+    "ORCHESTRATION.md §2.5 写明已做；L2 钉住有、无违规两种情形，L3 探针在压缩后的一步核对注入，改动在 main 上"
+  ],
+  "history": [
+    {
+      "at": "2026-11-05T10:37:20.171Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "每周阅读 2026-11-05（.agents/tasks/reading-digest/2026-11-05.md 结论 1 第 1 件）：Anthropic 2026-10-23 AISI 事件评估说压缩笔记主导下一段的方向，arXiv 2611.03223 说规则留在压缩后的历史里违规仍是完整历史的两倍以上；ORCHESTRATION.md §2.5 写明重锚时的规范摘要与本会话违规计数没做，前提违规流水已在 main。已设计、未做完，agent 定。",
+      "to": "approved"
+    },
+    {
+      "at": "2026-11-05T10:40:47.985Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "运行 m4-reanchor-violations（wf_b007fba3eafafeec）开工",
+      "from": "approved",
+      "to": "doing"
+    },
+    {
+      "at": "2026-11-05T11:33:02.410Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m4-reanchor-violations（wf_b007fba3eafafeec）第一轮代码步撞上上游「No available accounts」，没有任何提交；评审在空 diff 上 CHANGES_REQUESTED（两条验收都没满足，.agents/tasks/m4-reanchor-violations/review.json）。第二轮代码步在跑。"
+    },
+    {
+      "at": "2026-11-05T11:39:19.327Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m4-reanchor-violations（wf_b007fba3eafafeec）的写代码与评审循环用完 2 轮，停在等人。两轮代码步都撞上上游「No available accounts」，分支上一个提交都没有；两轮评审都在空 diff 上 CHANGES_REQUESTED（.agents/tasks/m4-reanchor-violations/review.json，3 条挡路发现都是「验收没做」）。原因在上游账号，不在任务本身。编排方建议再给 2 轮；结束循环会直接进合入步，而分支上没有改动，不可取。等人回话。"
+    }
+  ]
+}

@@ -1,0 +1,70 @@
+{
+  "id": "d-main-agent-no-ask-card",
+  "type": "decision",
+  "title": "主 Agent 不带原生问答工具，访谈在对话里商量",
+  "why": "原生问答卡把推荐放第一并预选，和推荐放最后的规矩冲突；问人改成聊天之后也用不上卡",
+  "status": "done",
+  "parent": "m3",
+  "verification": "unverified",
+  "body": "主 Agent 的工具面在组装时去掉 DSH 原生的 ask_user_question（规则 main-agent-ask，按名拒绝）；访谈与要人定的事按 d-chat-not-cards 在对话里提几点和一个方案，人同意、补充或否掉，主 Agent 带人的原话记图（d-ask-three-gates 的三道关）。不出问答卡，不经 userQuestions.ask。替掉 d-interview-cards：它定的「harness 出卡」（src/design/cards.ts，已删）不再做，「主 Agent 不带 ask_user_question」一半照旧。",
+  "edges": [
+    {
+      "type": "supersedes",
+      "to": "d-interview-cards"
+    }
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "bd91f2c",
+      "note": "M3 第 4 步：主 Agent 拒写与工具面"
+    },
+    {
+      "kind": "commit",
+      "ref": "2bf2b16",
+      "note": "m3 合入 main"
+    },
+    {
+      "kind": "test",
+      "ref": "tests/design-guard.spec.ts",
+      "exit": 0,
+      "note": "asking through a card is denied by name（规则 main-agent-ask）"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-11-05T10:33:57.196Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "d-interview-cards 定的「harness 出卡」已被 d-chat-not-cards 与 d-ask-three-gates 取代，只剩主 Agent 不带 ask_user_question 一半在用（.agents/tasks/graph-reconcile-2026-11-05/report-a.md (f)）；写下现在的做法替掉它",
+      "relay": "都按你说的来",
+      "to": "approved"
+    },
+    {
+      "at": "2026-11-05T10:34:50.539Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "做法已在 main：主 Agent 的工具面去掉 ask_user_question，按名拒绝有 L2 与 L3；2026-11-04 桌面冒烟访谈全程没有问答卡",
+      "from": "approved",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "bd91f2c",
+          "note": "M3 第 4 步：主 Agent 拒写与工具面"
+        },
+        {
+          "kind": "commit",
+          "ref": "2bf2b16",
+          "note": "m3 合入 main"
+        },
+        {
+          "kind": "test",
+          "ref": "tests/design-guard.spec.ts",
+          "exit": 0,
+          "note": "asking through a card is denied by name（规则 main-agent-ask）"
+        }
+      ]
+    }
+  ]
+}
