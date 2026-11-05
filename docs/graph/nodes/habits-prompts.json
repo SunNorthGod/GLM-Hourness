@@ -29,6 +29,12 @@
       "reason": "运行 habits-prompts（wf_7bd410e5bb88654f）开工，工作树 .worktrees/habits-prompts，基点 cf0ed57",
       "from": "approved",
       "to": "doing"
+    },
+    {
+      "at": "2026-11-05T16:08:34.624Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "habits-prompts（wf_7bd410e5bb88654f）code 步完成：提交 4598fa7 推到 origin/habits-prompts，build、preflight、npm test、check-lint（eslint 73 / knip 18 / jscpd 1）、探针 420/420 全部退出 0；报告 .agents/tasks/habits-prompts/code-report.md。下一步评审。"
     }
   ]
 }
