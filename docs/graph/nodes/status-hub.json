@@ -177,6 +177,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "status-hub-2（第 4、7、8 批：3edd58a、f285d2b 等）随 rules-board-page 合入 main（3b24f1e），门禁全绿：npm test 3156 / 0 失败，探针 420/420。规则板条目（rules/denials、rules/lifts）现在在 main 上有读者。剩下的：第 6 批等 M7 运维行 P3，做完条件第 1、2、3、6 条剩 M7 那一半；面板上的真机核对随批次 L4。节点保持进行中。"
+    },
+    {
+      "at": "2026-11-05T06:31:53.288Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "rules-board-page 合入腾出并行位，编排方派 status-hub-3-and-panel-8（wf_992ec82f32e990c0，工作树 .worktrees/status-hub-3）：做状态板块剩下批次里已经解开的几批。超时条目原等 m4-checks B5（e88da27 已在 main），规则板条目原等规则板页面（3b24f1e 已在 main），循环板清单先核对 staleEntries 与 timeoutEntries 在 main 上有没有提供方。第 6 批与等 M7 的部分不做。计划写进 .agents/tasks/status-hub/impl-plan-3.md，逐批归类并给证据。"
     }
   ]
 }
