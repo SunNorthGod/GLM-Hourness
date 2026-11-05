@@ -52,6 +52,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "实现提交 a2019c3 经合并提交 c452b17（merge: origin/main (d22057f) into glm-context-window）进了 main，origin 与 github 一致于 177bc66。合入步（wf_d964b9e854bc29a0 merge）持 .llm/desktop-lock 做 CDP 重启桌面版的核对，锁 20:47 刷新过。合入步报告桌面无新错误后关节点，证据写 a2019c3、c452b17、L2 测试、探针与桌面核对。"
+    },
+    {
+      "at": "2026-11-05T13:16:32.197Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "合入步（wf_d964b9e854bc29a0 merge）报告：c452b17 在 main 上，origin 与 github 一致，四道门禁与棘轮绿，工作树与分支已删。桌面核对没做成：20:23 经 CDP 9333 发 Browser.close，人的桌面版（主进程 72104，15:41 启动）到 21:12 仍在，窗口仍开，9333 的 /json/version 仍回 200，关闭请求没有生效；按规程没杀进程，桌面锁已释放。编排方定：不再等它自己退出，请人手动重启桌面版，之后另派一步做本节点的桌面核对（缺省 512000 下行加载无新错误，改 contextWindow 后声明值随之变化）。核对之前本节点不关。"
     }
   ]
 }
