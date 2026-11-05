@@ -66,6 +66,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "编排方补记：上一条批注（main b6bbbf7）是 m6-metrics-events 的代码步自己写进 docs/graph 并推 main 的，违反任务书「不动 docs/graph」。内容属实，保留不回退；已告诉该步之后不再写图或推 main。下一步评审。"
+    },
+    {
+      "at": "2026-11-05T12:41:09.483Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m6-metrics-events（wf_2bf0ad146e8238b2）评审 APPROVED，没有挡路发现（工作树 .agents/tasks/m6-metrics-events-review/review.json、review.md）。不挡路 3 条，其中 N1：m4-suppressions 第 1 条的指标事件已由 3f59b61 交过，合入时在 m4 一侧补一条批注写明。下一步合入 main。"
     }
   ]
 }
