@@ -189,6 +189,12 @@
           "to": "agent 改完文件马上跑对应的检查，问题在当步就提醒"
         }
       }
+    },
+    {
+      "at": "2026-11-05T11:57:22.038Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "桌面批次 L4（wf_be2ff3a8b7d83155，记录 .agents/tasks/l4-batch-2026-11-05/l4.md）：在人的桌面版（main 3a835b7 构建）临时工作区里，GLM 会话 Write 一个带 TODO 的 .txt 之后，下一步带 hourness-checks 提醒（lint 1 finding、notes.txt:2:1 [changed]、日志路径），日志第一行是 argv 与解析出的 node.EXE；timing.jsonl 有估计与一次运行；Bash 的 Set-Content 被 file-tools-only 拒，违规流水写在临时项目的 .llm/audit；env 行生效、插件页显示标题。不合（挡路 B1，第 5 条）：循环板页「改完文件就跑检查」的讲细点只有为什么、状态、id，没有本项目的检查行与五条规矩——src/loops/view.ts 写 view.json 时不带条目的 ownRules，也从不调交来者的 details(entry, project)，ui/src/loops/model.ts 只拼三行。M4 §13.4 第 1–4、10–13 项要人在场或专门夹具，没做。节点保持进行中。"
     }
   ]
 }
