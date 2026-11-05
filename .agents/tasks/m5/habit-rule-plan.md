@@ -44,3 +44,16 @@
 - L2：拦下（光秃秃的同意、复述 agent 的问、卡上问习惯）、放行（直述、与问话无关的回答、汇报细度、卡上问别的事）、撤下（撤下记录在时规则不拦）、违规流水带规则编号、纠正提醒写正路。
 - L3：探针场景 `glm-memory-habit` 改为直接调用常驻的 `memory_habit`，加卡上问习惯被拦、答应的「好」被拦两步，核对违规流水。
 - 真实运行：GLM-5.3 与 GLM-5.3-Flash 各两个会话，共用同一份用户级记忆：第一个会话人回绝一条习惯，第二个会话再让模型看同样的改动，核对没有再问。记录写进 `.agents/tasks/m5/habit-rule-runs.md`。
+
+## 4. 实施记录（code 步骤）
+
+- 177aa29：本文件第 1–3 节（根因、取舍、计划）。
+- d2eb6c3：规则 `habit-ask-first`（`src/memory/habit-rule.ts`，记忆行经 `installRuleGate` 安装，违规写会话项目目录的 `audit/violations.jsonl`）；`GUARD_RULES` 加 `memory` 行一条（10 → 11）；guard 行的 `glm:guard` 一节在记忆行生效、规则没撤下时多一行；`memory_habit` 常驻；`# Memory` 一节加 `MEMORY_L3`。build 0。
+- ff3604f：L2 `tests/memory-habit-rule.spec.ts`（卡上问习惯、光秃秃的同意、复述 agent 的问被拦；直述、无关回答、汇报细度、卡上问别的事、子 agent 放行；撤下之后不拦；违规流水带规则编号；纠正提醒写正路），并改 contracts、rules-builtin、memory-row、glm-prompt 的计数与文字。
+- eafc98b：探针 `glm-memory-habit` 直接调常驻的 `memory_habit`，加卡上问习惯与「好」入库两步被拦，核对违规流水两条；lint 修正。`npm test` 0。
+- 82e7b58：M5 设计 §3.8.6 写进根因、取舍与规则（验收第 2 条的「写进 M5 设计」）。
+- a1e01ba：并入 origin/main（c254b91）。build 0、`npm test` 0、`npm run probe` 426/426（并入前 420/424，挂的 4 条都是 `env-checks`，main 上已修）。
+
+未做：
+- 两档模型的真实运行（第 3 节最后一条，GLM-5.3 与 GLM-5.3-Flash 各两个会话、共用用户级记忆，核对「不用」之后 28 天不再问）。它走原生通道发真实请求、花积分，留给编排方决定何时跑；L2 已钉住 `decline` 之后 28 天内 `declined_recently`（`tests/memory-habit.spec.ts`）与两条绕路被拦，模型会不会在对话里直接问（§2 做法 D 的已知缺口）只有真实运行能看出。
+- 合入 main、批次 L4：归落地步骤。没有写 `docs/graph`（编排方要求）。
