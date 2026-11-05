@@ -36,8 +36,8 @@
 | --- | --- | --- | --- | --- | --- | --- |
 | B0 | 本计划入库 | — | — | 已推 | `4bd7328` | build 0、preflight 0、test 0（2939 通过 / 0 失败 / 1 跳过）、probe 0（376/376）；棘轮 73 / 18 / 1；首轮的两处计时失败见第 9 节 |
 | B1 | 设计稿收尾：D1、D3 的人答写进 §0、§0.1、§18、§20 | — | — | 已推 | `7c851db`；评审 F1 的修复 `14e9f64`（评审 B1F1 APPROVED） | build 0、preflight 0、test 0（2955 通过 / 0 失败 / 1 跳过）、probe 0（382/382）；棘轮 73 / 18 / 1；F1 修复的门禁见第 9 节 |
-| B2 | 扫描、判路、危险命令、底线清单草稿、「不许碰」路径 | scan #1–#4；scan #5 的格式部分（`parseFloor` 往返核对在 B7） | B1 | 已推 | `d63416b`；评审 B2 F1 的修复随下一批回填 | build 0、preflight 0、test 0（3001 通过 / 0 失败 / 1 跳过，首轮 1 败为 `loops-run` 计时，见第 9 节）、probe 0（388/388）；棘轮 73 / 18 / 1；F1 修复的门禁见第 9 节 |
-| B3 | `/graph-run start` 把已批准的任务转进行中 | run-start #1 | B2 | 待做 | | |
+| B2 | 扫描、判路、危险命令、底线清单草稿、「不许碰」路径 | scan #1–#4；scan #5 的格式部分（`parseFloor` 往返核对在 B7） | B1 | 已推 | `d63416b`；评审 B2 F1 的修复 `62096dd`（评审 B2F1 APPROVED） | build 0、preflight 0、test 0（3001 通过 / 0 失败 / 1 跳过，首轮 1 败为 `loops-run` 计时，见第 9 节）、probe 0（388/388）；棘轮 73 / 18 / 1；F1 修复的门禁见第 9 节 |
+| B3 | `/graph-run start` 把已批准的任务转进行中 | run-start #1 | B2 | 已推 | 提交号随下一批回填 | build 0、preflight 0、test 0（3021 通过 / 0 失败 / 1 跳过，`graph-run` 8/8）、probe 0（388/388）；棘轮 73 / 18 / 1 |
 | B4 | 接管行、服务（`prepare`、`holds`）、接管流水、共用的确定性部分、三个规范模板、`/hourness-init`、登记文件；只走过渡路 | row #1、#3–#8（#1、#4、#7 按过渡路的写法，见第 4 节 B4） | B3（不含 M3 的两处接缝） | 待做 | | |
 | B5 | 两条路的提醒、默认表（按 Q1 的答复带测试命令）、两件事的草稿与 `cost`、`touch` 的 `attach`、`floor.md`、`rule-draft.json`、`ATTACH_BOARDS` 的 `bootstrap:` 一行；设计稿按 Q1 同批改 | paths #1、#2、#3（M4、M7 往返核对除外，在 B7）、#5、#6、#7、#9 | B4 | 待做 | | |
 | B6 | 试跑：克隆、白名单环境、沙盒包装、限时、残留清扫、`matchedLine`、`bootstrap.trial` 指标 | trial #1–#7；paths #4 | B5 | 待做 | | |
@@ -66,7 +66,7 @@
       Verify: `node --experimental-strip-types tests/bootstrap-scan.spec.ts` 全过；四道门禁全 0，knip 不升。
       实做：文档同批改 `docs/ORCHESTRATION.md` 新增 §19 与 §19.1（B4 在这一节下接着写行与过渡路）、`docs/HANDOFF.md` 接管一行。只在本模块内用的名字不导出（knip 把 `test:2` 里的 spec 当入口，只在本文件用的导出也算没用上）；B4 起要用的再导出。与设计的差异见第 6 节 B2 实做时加的几行，issue 一事见第 7 节 Q3。
 
-- [ ] B3. 开始即进行中（任务 `bootstrap-run-start`）。
+- [x] B3. 开始即进行中（任务 `bootstrap-run-start`）。
       `src/graph/run-control.ts`：`start` 对已批准的任务写 `status`（approved → doing，身份 `human`，`reason` 为 `runNote('start')`），与 `redo` 重开同一写法；已在进行中时照旧只批注；`startLines` 去掉「开工时用 graph_status 把它标为 doing。」。`docs/ORCHESTRATION.md` §2.10 写 `/graph-run` 的那几句同批改。
       Files: `src/graph/run-control.ts`、`tests/graph-run.spec.ts`（第 131–147 行的用例现在断言 `comment` 与 `graph_status` 字样，改成断言 `status` 历史与没有这句）、`scripts/probe/run-probe.mjs`（第 2768 行断言 `controlHistory` 里有 `runNote('start')`，按新的历史条目改读法）、`docs/ORCHESTRATION.md`
       Verify: `node --experimental-strip-types tests/graph-run.spec.ts` 全过；四道门禁全 0，探针场景 `glm-graph-panel` 绿。
@@ -191,7 +191,9 @@
 - 合入 `origin/main` `113b93f`（合并提交 `b3b9ae6`，已推）：main 带来 m6 跟进三项（规则板的高峰结束文字、`scripts/rules-gate.mjs` 与 `tests/script-gate.spec.ts`、探针场景）与 `docs/graph/` 的记录，没有冲突；`package.json` 的测试链照 main。门禁：build 0、preflight 0、test 0（2982 通过 / 0 失败 / 1 跳过）、probe 0（388/388）；棘轮 73 / 18 / 1。日志 `bs-M3-*`。主检出 `view.json` 在探针期间变了，不当失败。
 - B2：门禁 build 0、preflight 0；`npm test` 首轮 1（1 败，又是 `tests/loops-run.spec.ts`，这次是「a person's adopted script entry runs through the shared executor…」第 451 行读到的结局为空），单独重跑 3 次全绿（23/23），整套重跑 0（3001 通过 / 0 失败 / 1 跳过）；新 spec `tests/bootstrap-scan.spec.ts` 19/19；probe 0（388/388）；棘轮 73 / 18 / 1（knip 不升：只在模块内用的名字没有导出）。日志 `bs-B2-*`（首轮 `bs-B2-test-run1.log`）。主检出 `view.json` 在探针期间变了，不当失败。`loops-run` 这一组计时失败已在 B0、B1F1、B2 三批出现，都不在接管的路径上，交循环板线。
 - 合入 `origin/main` `9980946`（合并提交 `b6d78a4`）：main 带来机器一级的循环运行者（`src/loops/machine.ts` 等）、探针每个场景各用一个 git 仓库（`scripts/probe/run-probe.mjs`、`scripts/sandbox.mjs`）与 `docs/graph/` 的记录。冲突一处：`package.json` 的两条测试链，照 main 取（多了 `tests/loops-machine.spec.ts`、`tests/probe-workspace.spec.ts`），再把 `tests/bootstrap-scan.spec.ts` 加回 `test:2`。合并后第一次 `npm test` 退出 1（`bs-M4-test.log`）：`tests/metrics-calc.spec.ts`「an in-window append changes the output…（acceptance 8）」，单独重跑 3 次 3 次都败，不是计时抖动。原因是测试把事件写在 2026-11-04，`appendEvents` 的 `start`、`stop` 却用真时钟；2026-11-05T00:00Z 之后这两行落进第二天的文件、在窗口外，窗口里的写入者都没有正常退出，追加之后的重跑多数一个，逐字比对失败。`origin/main` 上同一个 spec 与 `src/metrics/` 跟本分支逐字相同，main 自己现在也是红的。单独一个提交 `f47aa95`（`fix(test)`）：两次 `appendEvents` 传 `now`，钉在各自第一条事件的时刻（回填就是这样做的），产品代码不动；这一处要交给指标线或编排方带回 main，冲突留给后合入的一方。合并加这个修复的门禁：build 0、preflight 0、test 0（3021 通过 / 0 失败 / 1 跳过）、probe 0（388/388）；棘轮 73 / 18 / 1；已推。日志 `bs-M4-*`、`bs-M4b-*`。主检出 `view.json` 在探针期间变了，不当失败。
-- 评审 B2（`.llm/wf/review-B2.md`）F1：没有提交、`git add` 过代码的仓库被判为已有项目（`git ls-files` 在没有 HEAD 时列的是索引）。`decidePath` 在没有 HEAD 时第 4 条按已跟踪代码为 0 判，扫描照旧把暂存的文件记进 `files`；`tests/bootstrap-scan.spec.ts` 加暂存一个代码文件、不提交的夹具（`new`、`rule: 4`、带那句 note）；ORCHESTRATION §19.1 判路一条补一句。单独一个提交，提交号随下一批回填。门禁见该提交的提交信息，日志 `bs-B2F1-*`。
+- 评审 B2（`.llm/wf/review-B2.md`）F1：没有提交、`git add` 过代码的仓库被判为已有项目（`git ls-files` 在没有 HEAD 时列的是索引）。`decidePath` 在没有 HEAD 时第 4 条按已跟踪代码为 0 判，扫描照旧把暂存的文件记进 `files`；`tests/bootstrap-scan.spec.ts` 加暂存一个代码文件、不提交的夹具（`new`、`rule: 4`、带那句 note）；ORCHESTRATION §19.1 判路一条补一句。单独一个提交 `62096dd`（评审 B2F1 APPROVED）。门禁：build 0、preflight 0、test 0（3021 通过 / 0 失败 / 1 跳过，`bootstrap-scan` 19/19）、probe 0（388/388）；棘轮 73 / 18 / 1。日志 `bs-B2F1-*`。
+- 合入 `origin/main` `c8200f0`（合并提交 `fb3f3d6`，已推）：main 只带来 `docs/graph/` 的记录，没有冲突。门禁：build 0、preflight 0、test 0（3021 通过 / 0 失败 / 1 跳过）、probe 0（388/388）；棘轮 73 / 18 / 1。日志 `bs-M5-*`。主检出 `view.json` 在探针前后没变（`AB8F43CEE1EC`）。
+- B3：`tests/graph-run.spec.ts` 在 `graph-run` 那一组里，计划写的「第 131–147 行」那一例改成断言状态历史；同文件「the panel offers a redo…」一例原来用 `llm` 把任务标进行中，现在开始之后已在进行中，这一步删掉、改成断言状态。设计 §16 的 B2 一行写 `tests/graph-panel.spec.ts` 加用例，`/graph-run` 的用例在 `tests/graph-run.spec.ts`，加在那里。探针 `glm-graph-run` 的开始一条改读状态历史（`from` 已批准、`to` 进行中、`reason` 为 `runNote('start')`）与节点最后的状态。门禁见第 3 节 B3 一行，日志 `bs-B3-*`。
 - 记图：会话钩子要求把状态记进 `docs/graph`；任务书写明不编辑 `docs/graph`、记录归编排方，照任务书，各批状态只写在本计划与报告里。
 
 ## Digest
