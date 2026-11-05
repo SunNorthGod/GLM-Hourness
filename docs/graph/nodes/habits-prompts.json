@@ -41,6 +41,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "评审（wf_7bd410e5bb88654f review）APPROVED，没有挡路项，记录 .agents/tasks/habits-prompts/review.md。不挡路 2 条：一是主 Agent 对话一段的上限 1800 抬到 2000、graph_propose 说明的上限 700 抬到 900，超出 Q3 原话只说的整段 3200，两处都是加句子所需，理由写在断言旁，提交说明写明；二是与本节点无关的 tests/loops-run.spec.ts 第 12 项修复放在了功能提交里（AGENTS.md 第 7 条一件事一个提交）。编排方保留现状：这项修复是那条偶发失败的根因修法，也正挡着 compact-recall-redact 的合入；提交已推，拆开要改写已推的历史。合入步在跑。"
+    },
+    {
+      "at": "2026-11-05T18:25:37.607Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "合入步（wf_7bd410e5bb88654f land）报告：5b42f28 合入 main（51af510），origin 与 github 一致，门禁绿，工作树与分支已删。桌面版没有重启成功：01:28 与 02:03 两次启动都报 desktop welcome: Web authentication failed，与本节点代码无关（失败在桌面壳里，插件还没应答）。记录 .agents/tasks/habits-prompts/desktop-start-failure.md。桌面重启后的核对等 cookie 清理之后补做。"
     }
   ]
 }
