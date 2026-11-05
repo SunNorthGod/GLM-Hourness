@@ -251,7 +251,7 @@ export function apply(ctx: EnvContext, config: EnvConfig = {}): () => void {
     }))
   }
   // The event of changed files and the checker's entry on the loop board (design §6.8): warned once and kept on the activation line when refused.
-  disposers.push(installContribution(ctx, ENV_ROW_SOURCE, () => envContribution(project => checker.details(project)), CHECKS_ENTRY_ID, (message) => {
+  disposers.push(installContribution(ctx, ENV_ROW_SOURCE, () => envContribution(checker), CHECKS_ENTRY_ID, (message) => {
     console.warn(`${name}: ${message}`)
     health.reactivate('degraded', message)
   }))

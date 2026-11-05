@@ -5,11 +5,12 @@
  * that changed files, edited.ts), and the row's own entry for M4's checker,
  * `env.checks-after-edit`: a `self` entry the board lists and the row runs
  * (runner.ts), with the checker's five own rules built from the constants
- * and, when opened, two lines per check from the row's memory.
+ * and, when opened, one line per check from the row's memory and the
+ * checks with their timeouts in the page's shape (status.ts `pageChecks`).
  */
 import type { LoopEntryDefinition } from '../loops/model.ts'
 import type { Contribution, ContributionSource, LoopEventDeclaration } from '../loops/service.ts'
-import { CHECK_FAILURE_LIMIT, CHECK_SLOTS, MISSING_CHECK_NOTICES } from './runner.ts'
+import { CHECK_FAILURE_LIMIT, CHECK_SLOTS, MISSING_CHECK_NOTICES, type Checker } from './runner.ts'
 import { CHECK_QUEUE_WAIT_MS, CHECK_STEP_DEADLINE_MS, CHECK_TIMEOUT_CAP_MS, CHECK_TIMEOUT_FACTOR, CHECK_TIMEOUT_FLOOR_MS } from './timeout.ts'
 
 /** The source line of the env row's hand-over (design §6.8's table). */
@@ -55,11 +56,14 @@ function checksEntry(): LoopEntryDefinition {
   }
 }
 
-/** The env row's whole hand-over; `details` gives the opened entry's lines for one project (the checker's memory). */
-export function envContribution(details?: (project: string) => readonly string[]): Contribution {
+/** The env row's whole hand-over; `page` gives the opened entry's lines and its checks with their timeouts for one project (the checker's memory and journals). */
+export function envContribution(page?: Pick<Checker, 'details' | 'checks'>): Contribution {
   return {
     events: [FILES_EDITED_EVENT],
     entries: [checksEntry()],
-    ...(details === undefined ? {} : { details: (entry: string, project: string) => entry === CHECKS_ENTRY_ID ? details(project) : [] }),
+    ...(page === undefined ? {} : {
+      details: (entry: string, project: string) => entry === CHECKS_ENTRY_ID ? page.details(project) : [],
+      checks: (entry: string, project: string) => entry === CHECKS_ENTRY_ID ? page.checks(project) : [],
+    }),
   }
 }

@@ -18,9 +18,10 @@
  * lines as the one `env/timeouts` entry.
  */
 import { renderStamp } from '../guard/status.ts'
+import type { ViewCheck, ViewTimeout, ViewTimeoutChange, ViewTimeoutSource } from '../loops/view.ts'
 import { limitSetting, type LimitLine } from './limit-tool.ts'
 import type { SuppressionRecord } from './suppressions.ts'
-import { lastValues, secondsText, valueSourceText, type CapSetting, type TimingLine, type ValueLine } from './timeout.ts'
+import { capMsOf, checkTimeout, CHECK_TIMEOUT_FACTOR, lastValues, secondsText, valueSourceText, type CapSetting, type EstimateLine, type EstimateOrigin, type TimingLine, type ValueLine } from './timeout.ts'
 import { STATUS_TEXT_MAX, type StatusItem } from '../shared/status.ts'
 
 /** The count line without a movement: what the entry states and the report's no-churn line reads. */
@@ -176,4 +177,131 @@ export function envTimeoutItems(facts: readonly CheckTimeoutFacts[], source: str
     ...(rest.length === 0 ? {} : { detail: rest.map(entryLine) }),
     fields: { checks: facts.length, timeouts7d: facts.reduce((sum, fact) => sum + fact.timeouts.length, 0) },
   }]
+}
+
+/** What the checker knows of one check line for the loop board's page: its key, its tool's title, its estimate and the history entry that wrote it. */
+interface PageCheckLine {
+  readonly key: string
+  /** The tool node's title. */
+  readonly title: string
+  readonly estimateS?: number
+  /** The node's history entry that wrote the line as it stands (timeout.ts `estimateOrigin`). */
+  readonly origin?: EstimateOrigin
+}
+
+/** The last timeouts the page lists of one check (plain-ui 1.3 §4.7 「超时记录」). */
+const PAGE_TIMEOUTS = 5
+/** What a check stopped at its limit comes to, the checker's own rule (loop-entry.ts checksOwnRules). */
+const TIMEOUT_OUTCOME = '算没跑完，下一次改动照常再跑'
+
+const inSeconds = (ms: number): number => ms / 1000
+const shortSession = (session: string): string => session.replace(/^session-/, '').slice(0, 8)
+
+/** The estimate as the page's source: E, the day it was written and the session, and that a person wrote it. */
+function estimateSource(estimateS: number, at: string | undefined, session: string | undefined, actor: string | undefined): ViewTimeoutSource {
+  return {
+    kind: 'agent-estimate',
+    estimateS,
+    ...(at === undefined ? {} : { at }),
+    ...(session === undefined ? {} : { session: shortSession(session) }),
+    ...(actor === 'human' ? { who: 'human' as const } : {}),
+  }
+}
+
+/**
+ * The page's source of one value line (plain-ui 1.3 §11 「1.0 的对接」第 2
+ * 条 (a)): `harness` is `measured` (N runs, the slowest X), `estimate` is
+ * `agent-estimate` (E), `ceiling` is `ceiling`; `capped` is `held` by the
+ * cap, and three times the run time under the value is `held` by the floor
+ * (the value line has no floor mark of its own). A source the line does not
+ * hold readably gives none.
+ */
+function lineSource(line: ValueLine): Pick<ViewTimeout, 'source' | 'held'> {
+  const source: unknown = line.source
+  if (typeof source !== 'object' || source === null) return {}
+  const capped = line.capped === undefined ? undefined : { by: 'cap' as const, wantedS: inSeconds(line.capped.wantedMs) }
+  const floored = (wantedMs: number): ViewTimeout['held'] => capped ?? (wantedMs < line.limitMs ? { by: 'floor', wantedS: inSeconds(wantedMs) } : undefined)
+  const read = source as ValueLine['source']
+  if (read.by === 'ceiling') return { source: { kind: 'ceiling' } }
+  const runs: readonly unknown[] = read.by === 'harness' && Array.isArray(read.runs) ? read.runs : []
+  if (read.by === 'harness' && runs.length > 0 && runs.every((ms): ms is number => typeof ms === 'number') && typeof read.factor === 'number') {
+    const slowestMs = Math.max(...runs)
+    const held = floored(read.factor * slowestMs)
+    return { source: { kind: 'measured', runs: runs.length, slowestS: inSeconds(slowestMs) }, ...(held === undefined ? {} : { held }) }
+  }
+  if (read.by === 'estimate' && typeof read.estimateS === 'number') {
+    const held = floored(CHECK_TIMEOUT_FACTOR * read.estimateS * 1000)
+    return { source: estimateSource(read.estimateS, read.at, read.session, read.actor), ...(held === undefined ? {} : { held }) }
+  }
+  return {}
+}
+
+/** The source sentence of a value line for its history; a line it cannot word says so. */
+function historySource(line: ValueLine): string {
+  try {
+    return valueSourceText(line, true)
+  }
+  catch {
+    return '来源读不出'
+  }
+}
+
+/**
+ * The checks of M4's checker as the loop board's page shows them (plain-ui
+ * 1.3 §4.7 「超时的数与超时记录」, §8.2, §11 「1.0 的对接」第 2 条 (a)): for
+ * each check line, the timeout in force with where it came from, the
+ * ceiling the main agent raised while that is the setting in force (the
+ * check's last line in limits.jsonl, P13-01), its values newest first, its
+ * last five timeouts and its timeouts of the seven days — out of the same
+ * facts the morning report and `env/timeouts` read (`checkTimeouts`). A
+ * check that has not run yet is what its check line gives: the ceiling
+ * without an estimate, else three times the estimate, with the estimate the
+ * graph tools recorded as its history. Every number is in seconds, not
+ * rounded. Pure.
+ */
+export function pageChecks(checks: readonly PageCheckLine[], timing: readonly TimingLine[], limits: readonly LimitLine[], nowMs: number): ViewCheck[] {
+  const facts = new Map(checkTimeouts(timing, limits, nowMs).map(fact => [fact.check, fact]))
+  const book = { lines: limits, bad: 0 }
+  return checks.map((check): ViewCheck => {
+    const name = check.key.slice(check.key.indexOf('/') + 1)
+    const title = check.title === '' ? check.key : `${check.title}：${name}`
+    const setting = limitSetting(book, check.key)
+    const capRaised = setting === undefined ? {} : { capRaised: { capS: setting.capS, at: setting.at, reason: setting.reason } }
+    const fact = facts.get(check.key)
+    if (fact !== undefined) {
+      const history = timing.filter((line): line is ValueLine => line.kind === 'value' && line.check === check.key && typeof line.limitMs === 'number').reverse().map((line): ViewTimeoutChange => ({
+        at: line.at,
+        seconds: inSeconds(line.limitMs),
+        ...(typeof line.previousMs === 'number' ? { previousS: inSeconds(line.previousMs) } : {}),
+        source: historySource(line),
+      }))
+      const timeouts = timing.filter((line): line is TimeoutLine => line.kind === 'timeout' && line.check === check.key).slice(-PAGE_TIMEOUTS).reverse()
+        .map(line => ({ at: line.at, limitS: inSeconds(line.limitMs), elapsedS: inSeconds(line.elapsedMs), outcome: TIMEOUT_OUTCOME }))
+      return { key: check.key, title, timeout: { seconds: inSeconds(fact.value.limitMs), ...lineSource(fact.value), ...capRaised, history, timeouts, timeouts7d: fact.timeouts.length } }
+    }
+    // Not run yet: the first value is the check line's (M4 design §6.3.1 item 2).
+    const first = checkTimeout({ estimateS: check.estimateS, recentMs: [], capMs: capMsOf(setting) })
+    if (check.estimateS === undefined) return { key: check.key, title, timeout: { seconds: inSeconds(first.limitMs), source: { kind: 'ceiling' }, ...capRaised } }
+    const estimateS = check.estimateS
+    const origin = check.origin
+    // The session is the one the graph tools recorded for the same history entry, as nextValue finds it; else the latest estimate of the same seconds.
+    const written = [...timing].reverse().find((line): line is EstimateLine => line.kind === 'estimate' && line.check === check.key && (origin?.at === undefined ? line.estimateS === estimateS : line.node === origin.node && line.historyAt === origin.at))
+    const at = origin?.at ?? written?.historyAt
+    const actor = origin?.actor ?? written?.actor
+    const wantedMs = CHECK_TIMEOUT_FACTOR * estimateS * 1000
+    const held = first.capped === undefined ? (wantedMs < first.limitMs ? { held: { by: 'floor' as const, wantedS: inSeconds(wantedMs) } } : {}) : { held: { by: 'cap' as const, wantedS: inSeconds(first.capped.wantedMs) } }
+    return {
+      key: check.key,
+      title,
+      timeout: {
+        seconds: inSeconds(first.limitMs),
+        source: estimateSource(estimateS, at, written?.session, actor),
+        ...held,
+        ...capRaised,
+        history: at === undefined ? [] : [{ at, seconds: inSeconds(first.limitMs), source: `${actor === 'human' ? '你' : '写检查的 agent '}估 ${estimateS} 秒，还没跑过` }],
+        timeouts: [],
+        timeouts7d: 0,
+      },
+    }
+  })
 }

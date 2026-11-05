@@ -25,6 +25,7 @@ import { LOOP_EVENT_TABLE } from './events.ts'
 import { validateEntry, type LoopEntry, type LoopEntryDefinition } from './model.ts'
 import type { ContributeResult, Contribution, ContributionSource } from './service.ts'
 import type { LoopEventDeclaration } from './trigger.ts'
+import type { ViewCheck } from './view.ts'
 
 /** Who the loop row is when it hands its own entries over. */
 export const LOOPS_SOURCE: ContributionSource = { plugin: 'dsh-hourness', row: 'glm-hourness/loops' }
@@ -48,6 +49,16 @@ const PARAM_TYPES: readonly unknown[] = ['string', 'number', 'boolean']
 const COMPARES: Readonly<Record<string, string>> = { in: 'string', is: 'boolean', atLeast: 'number', paths: 'strings' }
 /** The package that brings the events of a namespace, for the sentence about an event nobody declares. */
 const EVENT_HOMES: ReadonlyMap<string, string> = new Map([['hourness', 'dsh-hourness'], ['env', 'dsh-hourness'], ['graph', 'dsh-hourness'], ['channel', 'dsh-glm-zcode']])
+/** What a hand-over gives the page of one entry at most (service.ts `details`, `checks`). */
+const PAGE_DETAIL_LINES = 20
+const PAGE_DETAIL_WIDTH = 160
+const PAGE_CHECKS = 10
+/** The outer shape of one check the page lists: a key, a title and a timeout with a positive number; the page checks the rest of the timeout itself (plain-ui 1.3 §8.2). */
+function isViewCheck(value: unknown): value is ViewCheck {
+  if (!isRecord(value) || typeof value.key !== 'string' || typeof value.title !== 'string' || !isRecord(value.timeout)) return false
+  const seconds = value.timeout.seconds
+  return typeof seconds === 'number' && Number.isFinite(seconds) && seconds > 0
+}
 
 type Rec = Readonly<Record<string, unknown>>
 
@@ -346,6 +357,15 @@ export interface LoopsRegistry {
   runOfAction(action: string): NonNullable<Contribution['run']> | undefined
   /** The row that declared this event (`<row>` of its hand-over), for the record of what handed an event over; undefined for an event nobody declares. */
   declarerOf(event: string): string | undefined
+  /**
+   * What the hand-over that brought this entry gives the page for one project
+   * (design §8.2 讲细点, plain-ui 1.3 §8.2): its `details` lines, at most 20 of
+   * 160 code points, and its `checks`, at most 10 of the page's shape. A
+   * member that is absent, throws or hands something that is not a list
+   * gives nothing, and the reason is told once; the page checks the inside
+   * of each timeout itself.
+   */
+  pageOf(entry: string, project: string): { readonly details?: readonly string[], readonly checks?: readonly ViewCheck[] }
 }
 
 /** "Event X is nobody's now (the part of <package> is off); this entry does not run." */
@@ -475,6 +495,34 @@ export function createRegistry(options: RegistryOptions = {}): LoopsRegistry {
         return { run: (action, event) => source.run?.(action, event) ?? Promise.resolve({ outcome: 'failed', reason: 'run 不在了' }), actions: held.check.actions.map(action => action.id) }
       }
       return undefined
+    },
+    pageOf(entry, project) {
+      for (const held of holders.values()) {
+        if (!held.check.entries.some(item => item.definition.id === entry)) continue
+        const source = held.contribution
+        const who = `${held.source.plugin} 的 ${held.source.row} 给「${entry}」的`
+        const read = (member: 'details' | 'checks'): unknown => {
+          if (typeof source[member] !== 'function') return undefined
+          try {
+            // Called through the hand-over, so the row's own `this` is its own object.
+            return member === 'details' ? source.details?.(entry, project) : source.checks?.(entry, project)
+          }
+          catch (error) {
+            say(`${who} ${member} 抛错：${error instanceof Error ? error.message : String(error)}`)
+            return undefined
+          }
+        }
+        const details = read('details')
+        const checks = read('checks')
+        if (details !== undefined && !Array.isArray(details)) say(`${who} details 不是一列字，页面上不列`)
+        if (checks !== undefined && !Array.isArray(checks)) say(`${who} checks 不是一列，页面上不列`)
+        const lines = Array.isArray(details) ? details.filter((line): line is string => typeof line === 'string').slice(0, PAGE_DETAIL_LINES).map(line => [...line].slice(0, PAGE_DETAIL_WIDTH).join('')) : undefined
+        const first = Array.isArray(checks) ? (checks as readonly unknown[]).slice(0, PAGE_CHECKS) : []
+        const listed = first.filter(isViewCheck)
+        if (listed.length !== first.length) say(`${who} checks 有读不懂的项，页面上不列那几项`)
+        return { ...(lines === undefined ? {} : { details: lines }), ...(Array.isArray(checks) ? { checks: listed } : {}) }
+      }
+      return {}
     },
     runOfAction(action) {
       for (const held of holders.values()) {

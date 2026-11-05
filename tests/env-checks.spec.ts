@@ -290,9 +290,11 @@ test('a raised ceiling: the next limit is three times the run under it, its valu
     const [value] = await journalOf(fixture.root)
     assert.ok(value?.kind === 'value')
     assert.deepEqual([value.limitMs, value.capped, value.cap], [75_000, undefined, { by: 'setting', capS: 120, at: '2026-11-05T01:00:00.000Z', reason }])
-    assert.deepEqual(checker.details(fixture.root)[1], `超时 75 秒 · 你估 25 秒 · 上限已调高到 120 秒：${reason}`)
+    const [raised] = checker.checks(fixture.root)
+    assert.deepEqual([raised?.key, raised?.title, raised?.timeout.seconds, raised?.timeout.source?.kind, raised?.timeout.held, raised?.timeout.capRaised], ['tool-1/full', 'Lint：full', 75, 'agent-estimate', undefined, { capS: 120, at: '2026-11-05T01:00:00.000Z', reason }])
     await writeFile(limits, `${JSON.stringify({ at: '2026-11-05T02:00:00.000Z', check: 'tool-1/full', action: 'reset', capS: 60, previousCapS: 120, reason: '' })}\n`, { flag: 'a' })
-    assert.deepEqual(checker.details(fixture.root)[1], '超时 75 秒 · 你估 25 秒', 'a reset shows before the check runs again, though the latest value line was computed under the setting')
+    const [reset] = checker.checks(fixture.root)
+    assert.deepEqual([reset?.timeout.seconds, reset?.timeout.capRaised], [75, undefined], 'a reset shows before the check runs again, though the latest value line was computed under the setting')
   })
 })
 
@@ -469,15 +471,23 @@ test('without the loop board no check runs: the session hears it once and the ro
   })
 })
 
-test('the loop board\'s details: two lines per check, the value and where it came from', async () => {
+test('the loop board\'s page: one detail line per check with its command, and the checks with their timeouts from the journals (plain-ui 1.3 §11 「1.0 的对接」第 2、4 条)', async () => {
   await withProject(['check slow lines 1s $ node slow.mjs {files} when *.txt'], async (fixture) => {
     const outcomes: ScriptResult[] = [{ kind: 'timeout', stdout: '', stderr: '', durationMs: 5_004 }, exited('', 40)]
     const { checker, step } = fakeChecker(fixture, () => Promise.resolve(outcomes.shift() ?? exited('')))
-    assert.deepEqual(checker.details(fixture.root), [], 'nothing before a step in the project')
+    assert.deepEqual([checker.details(fixture.root), checker.checks(fixture.root)], [[], []], 'nothing before a step in the project')
     await step(['a.txt'])
-    assert.deepEqual(checker.details(fixture.root), ['Lint：改了 *.txt 之后跑 · node slow.mjs {files}', '超时 5 秒 · 你估 1 秒'])
+    assert.deepEqual(checker.details(fixture.root), ['Lint：改了 *.txt 之后跑 · node slow.mjs {files}'], 'the timeout is not in the details any more')
+    const [first] = checker.checks(fixture.root)
+    assert.deepEqual([first?.key, first?.title, first?.timeout.seconds, first?.timeout.held], ['tool-1/slow', 'Lint：slow', 5, { by: 'floor', wantedS: 3 }], 'three times the estimate of 1 s is under the 5 s floor')
+    assert.ok(first?.timeout.source?.kind === 'agent-estimate' && first.timeout.source.estimateS === 1 && first.timeout.source.who === 'human' && typeof first.timeout.source.at === 'string')
+    assert.deepEqual(first?.timeout.history?.map(change => [change.seconds, change.previousS]), [[5, undefined]])
+    assert.deepEqual([first?.timeout.timeouts, first?.timeout.timeouts7d], [[{ at: first?.timeout.timeouts?.[0]?.at, limitS: 5, elapsedS: 5.004, outcome: '算没跑完，下一次改动照常再跑' }], 1])
     await step(['a.txt'])
-    assert.deepEqual(checker.details(fixture.root), ['Lint：改了 *.txt 之后跑 · node slow.mjs {files}', '超时 15 秒 · 系统按最近 1 次，最慢 5 秒 · 原 5 秒'])
+    const [second] = checker.checks(fixture.root)
+    assert.deepEqual([second?.timeout.seconds, second?.timeout.source, second?.timeout.held], [15, { kind: 'measured', runs: 1, slowestS: 5 }, undefined], 'the run stopped at 5 s counts as 5 s; three times it is 15 s')
+    assert.deepEqual(second?.timeout.history?.map(change => [change.seconds, change.previousS]), [[15, 5], [5, undefined]], 'the history, newest first')
+    assert.equal(second?.timeout.timeouts7d, 1)
   })
 })
 

@@ -43,6 +43,7 @@ import { commandText, runCommand, type CommandRequest, type ScriptResult } from 
 import type { ListedRun } from '../loops/service.ts'
 import { loopsService } from '../loops/service.ts'
 import { matchesFilter } from '../loops/trigger.ts'
+import type { ViewCheck } from '../loops/view.ts'
 import type { DerivedMessage, ServiceLookup, UserNotice } from '../shared/dsh-min.ts'
 import { createUserNotice } from '../shared/dsh-min.ts'
 import { wrapSystemReminder } from '../shared/zcode-notice.ts'
@@ -53,9 +54,10 @@ import { CHECKS_NOTICE_SOURCE, checkNoticeBody, languageOf, limitBasis, missingC
 import type { EditedStep } from './edited.ts'
 import { limitSetting, readLimits, readLimitsSync, type LimitBook } from './limit-tool.ts'
 import { parseCheckOutput } from './parsers.ts'
+import { pageChecks } from './status.ts'
 import {
-  appendTiming, argvDigest, capMsOf, checkKey, checkTimeout, CHECK_QUEUE_WAIT_MS, CHECK_STEP_DEADLINE_MS, CHECK_TIMEOUT_CAP_MS, estimateOrigin, lastValues,
-  nextValue, readTiming, secondsText, tidyTiming, valueSourceText, type CheckTimeout, type TimingBook, type TimingLine, type ValueLine,
+  appendTiming, argvDigest, capMsOf, checkKey, checkTimeout, CHECK_QUEUE_WAIT_MS, CHECK_STEP_DEADLINE_MS, CHECK_TIMEOUT_CAP_MS, estimateOrigin,
+  nextValue, readTiming, readTimingSync, secondsText, tidyTiming, type CheckTimeout, type EstimateOrigin, type TimingBook, type TimingLine,
 } from './timeout.ts'
 
 /** At most this many checks run at once in the whole process. */
@@ -259,9 +261,8 @@ interface SessionChecks {
 
 /** What the loop board's page reads of one project (design §6.8 details). */
 interface ProjectSnapshot {
-  readonly checks: ReadonlyArray<{ readonly title: string, readonly key: string, readonly paths: readonly string[], readonly argv: readonly string[], readonly estimateS?: number }>
-  readonly values: Map<string, ValueLine>
-  /** The project directory: the page reads limits.jsonl there every time, so a raise or a reset shows before the check runs again. */
+  readonly checks: ReadonlyArray<{ readonly title: string, readonly key: string, readonly paths: readonly string[], readonly argv: readonly string[], readonly estimateS?: number, readonly origin: EstimateOrigin }>
+  /** The project directory: the page reads timing.jsonl and limits.jsonl there every time, so a new value, a raise or a reset shows at once. */
   readonly home?: string
 }
 
@@ -282,8 +283,10 @@ export interface CheckerOptions {
 export interface Checker {
   /** The checks notice of one step, or undefined. Never rejects. */
   step(step: EditedStep): Promise<UserNotice | undefined>
-  /** The loop board's lines for `env.checks-after-edit` in one project: synchronous, from memory, empty before any step there. */
+  /** The loop board's lines for `env.checks-after-edit` in one project, one per check with its command: synchronous, from memory, empty before any step there. */
   details(project: string): readonly string[]
+  /** The checks of that entry with their timeouts in the page's shape (status.ts `pageChecks`): the checks from memory, the journals read now; empty before any step there. */
+  checks(project: string): readonly ViewCheck[]
 }
 
 /** The findings counts the latest checks notice recorded, by check key. */
@@ -381,7 +384,6 @@ export function createChecker(options: CheckerOptions): Checker {
 
   const write = async (job: Job, line: TimingLine): Promise<void> => {
     if (job.home === undefined) return
-    if (line.kind === 'value') snapshots.get(fold(projectRootOf(job.cwd) ?? job.root))?.values.set(line.check, line)
     try {
       await appendTiming(job.home, line)
     }
@@ -501,8 +503,7 @@ export function createChecker(options: CheckerOptions): Checker {
     const lines = [...book.lines]
     if (project !== undefined) {
       snapshots.set(fold(project), {
-        checks: checks.map(check => ({ title: check.tool.title, key: check.key, paths: check.entry.paths, argv: check.entry.argv, ...(check.entry.estimateSeconds === undefined ? {} : { estimateS: check.entry.estimateSeconds }) })),
-        values: new Map(lastValues(book)),
+        checks: checks.map(check => ({ title: check.tool.title, key: check.key, paths: check.entry.paths, argv: check.entry.argv, ...(check.entry.estimateSeconds === undefined ? {} : { estimateS: check.entry.estimateSeconds }), origin: estimateOrigin(check.node, check.line, check.tool.rev) })),
         ...(home === undefined ? {} : { home }),
       })
     }
@@ -623,20 +624,19 @@ export function createChecker(options: CheckerOptions): Checker {
     details(project) {
       const snapshot = snapshots.get(fold(project))
       if (snapshot === undefined) return []
-      const lines: string[] = []
-      // A raised ceiling is the check's last line in limits.jsonl now (P13-01), never a value line's cap.
-      const limits = snapshot.home === undefined ? undefined : readLimitsSync(snapshot.home)
-      for (const check of snapshot.checks.slice(0, DETAIL_CHECKS)) {
+      // One line per check, the check and its command: the timeout is the page's own cell now (`checks`, plain-ui 1.3 §11 「1.0 的对接」第 4 条).
+      return snapshot.checks.slice(0, DETAIL_CHECKS).map((check) => {
         const title = check.title === '' ? check.key : check.title
-        lines.push(codePoints(`${title}：改了 ${check.paths.join('、')} 之后跑 · ${codePoints(commandText(check.argv), 40)}`, DETAIL_WIDTH))
-        const value = snapshot.values.get(check.key)
-        const setting = limits === undefined ? undefined : limitSetting(limits, check.key)
-        const raised = setting === undefined ? '' : ` · 上限已调高到 ${setting.capS} 秒：${setting.reason}`
-        lines.push(codePoints(value === undefined
-          ? `超时 ${secondsText(checkTimeout({ estimateS: check.estimateS, recentMs: [], capMs: capMsOf(setting) }).limitMs)} 秒 · ${check.estimateS === undefined ? '没有估计，用上限' : `写检查的 agent 估 ${check.estimateS} 秒`} · 还没跑过${raised}`
-          : `超时 ${secondsText(value.limitMs)} 秒 · ${valueSourceText(value)}${value.previousMs === undefined ? '' : ` · 原 ${secondsText(value.previousMs)} 秒`}${raised}`, DETAIL_WIDTH))
-      }
-      return lines.slice(0, DETAIL_LINES)
+        return codePoints(`${title}：改了 ${check.paths.join('、')} 之后跑 · ${codePoints(commandText(check.argv), 40)}`, DETAIL_WIDTH)
+      }).slice(0, DETAIL_LINES)
+    },
+    checks(project) {
+      const snapshot = snapshots.get(fold(project))
+      if (snapshot === undefined) return []
+      // The journals are read at every call, so a raise or a reset of the ceiling shows before the check runs again (P13-01).
+      const timing = snapshot.home === undefined ? [] : readTimingSync(snapshot.home).lines
+      const limits = snapshot.home === undefined ? [] : readLimitsSync(snapshot.home).lines
+      return pageChecks(snapshot.checks.slice(0, DETAIL_CHECKS), timing, limits, now().getTime())
     },
   }
 }

@@ -17,7 +17,7 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { apply as envApply } from '../src/env/index.ts'
 import { parseLimits } from '../src/env/limit-tool.ts'
-import { checkTimeouts, envStatusItems, envTimeoutItems, suppressionLineOf, suppressionTotalLine, timeoutLines } from '../src/env/status.ts'
+import { checkTimeouts, envStatusItems, envTimeoutItems, pageChecks, suppressionLineOf, suppressionTotalLine, timeoutLines } from '../src/env/status.ts'
 import type { SuppressionRecord } from '../src/env/suppressions.ts'
 import { parseTiming } from '../src/env/timeout.ts'
 import { collectStatus } from '../src/report/status.ts'
@@ -202,4 +202,56 @@ test('the env row hands env/timeouts from the project\'s timing journal and limi
     const after = view.items('agent-1').find(entry => entry.id === 'env/timeouts')
     assert.ok(after !== undefined && !(after.detail ?? []).some(line => line.includes('上限已由主 Agent 调高')), JSON.stringify(after))
   }, { timing: `${TIMING}\nnot json\n`, limits: RAISED })
+})
+
+test('pageChecks maps the same facts to the loop board page\'s shape: runs are measured, an estimate is agent-estimate, capped is held by the cap, three times under the value is held by the floor, the raise is the check\'s last line in limits.jsonl (plain-ui 1.3 §11 「1.0 的对接」第 2 条)', () => {
+  const timing = parseTiming(TIMING).lines
+  const [slow, eslint] = pageChecks([{ key: 'tool-1/slow', title: 'Slow' }, { key: 'tool-2/eslint', title: 'ESLint', estimateS: 25 }], timing, parseLimits(RAISED).lines, NOW)
+  assert.deepEqual(slow, {
+    key: 'tool-1/slow',
+    title: 'Slow：slow',
+    timeout: {
+      seconds: 15,
+      source: { kind: 'measured', runs: 1, slowestS: 5 },
+      history: [
+        { at: '2026-11-05T01:01:00Z', seconds: 15, previousS: 5, source: '系统按最近 1 次，最慢 5 秒' },
+        { at: '2026-11-05T01:00:00Z', seconds: 5, source: '写检查的 agent 估 1 秒，会话 sess-123' },
+      ],
+      timeouts: [{ at: '2026-11-05T01:00:05Z', limitS: 5, elapsedS: 5.23, outcome: '算没跑完，下一次改动照常再跑' }],
+      timeouts7d: 1,
+    },
+  }, 'three times the slowest run is the value: no held')
+  assert.deepEqual(eslint?.timeout, {
+    seconds: 60,
+    source: { kind: 'agent-estimate', estimateS: 25 },
+    held: { by: 'cap', wantedS: 75 },
+    capRaised: { capS: 120, at: '2026-11-04T20:00:00Z', reason: REASON },
+    history: [{ at: '2026-11-05T01:00:00Z', seconds: 60, source: '写检查的 agent 估 25 秒，会话未记；想要 75 秒，被上限截在 60 秒' }],
+    timeouts: [],
+    timeouts7d: 0,
+  }, 'raised, but the value is still the one computed under the old ceiling until the check runs again')
+  const reset = pageChecks([{ key: 'tool-2/eslint', title: 'ESLint', estimateS: 25 }], timing, parseLimits(`${RAISED}${limitLine('2026-11-05T03:00:00Z', 'tool-2/eslint', 'reset', 60, '')}\n`).lines, NOW)
+  assert.equal(reset[0]?.timeout.capRaised, undefined, 'a reset takes the raise away at once')
+  const floored = pageChecks([{ key: 'tool-1/slow', title: 'Slow' }], parseTiming(JSON.stringify({ kind: 'value', at: '2026-11-05T01:00:00Z', check: 'tool-1/slow', ...KEY, limitMs: 5000, cap: { by: 'default' }, source: { by: 'harness', runs: [400, 1000], factor: 3, floorMs: 5000 } })).lines, [], NOW)
+  assert.deepEqual([floored[0]?.timeout.source, floored[0]?.timeout.held], [{ kind: 'measured', runs: 2, slowestS: 1 }, { by: 'floor', wantedS: 3 }])
+})
+
+test('pageChecks of a check that has not run yet: no estimate is the ceiling (raised when raised), an estimate is three times it with the history entry and session the graph tools recorded', () => {
+  const written = { kind: 'estimate', at: '2026-11-05T00:30:00Z', check: 'tool-3/new', ...KEY, estimateS: 1, node: 'tool-3', actor: 'human', historyAt: '2026-11-05T00:29:59Z', session: 'session-abcdef123456' }
+  const raise = parseLimits(`${limitLine('2026-11-05T02:00:00Z', 'tool-3/bare', 'raise', 120, REASON)}\n`).lines
+  const [fresh, bare, unknown] = pageChecks([
+    { key: 'tool-3/new', title: 'New', estimateS: 1, origin: { node: 'tool-3', rev: 'r', actor: 'human', at: '2026-11-05T00:29:59Z' } },
+    { key: 'tool-3/bare', title: 'Bare' },
+    { key: 'tool-3/quick', title: '', estimateS: 30 },
+  ], parseTiming(JSON.stringify(written)).lines, raise, NOW)
+  assert.deepEqual(fresh?.timeout, {
+    seconds: 5,
+    source: { kind: 'agent-estimate', estimateS: 1, at: '2026-11-05T00:29:59Z', session: 'abcdef12', who: 'human' },
+    held: { by: 'floor', wantedS: 3 },
+    history: [{ at: '2026-11-05T00:29:59Z', seconds: 5, source: '你估 1 秒，还没跑过' }],
+    timeouts: [],
+    timeouts7d: 0,
+  })
+  assert.deepEqual(bare?.timeout, { seconds: 120, source: { kind: 'ceiling' }, capRaised: { capS: 120, at: '2026-11-05T02:00:00Z', reason: REASON } }, 'no history and no timeouts owed by the ceiling')
+  assert.deepEqual([unknown?.title, unknown?.timeout.seconds, unknown?.timeout.held, unknown?.timeout.history], ['tool-3/quick', 60, { by: 'cap', wantedS: 90 }, []], 'an estimate with no history entry known has no history line')
 })

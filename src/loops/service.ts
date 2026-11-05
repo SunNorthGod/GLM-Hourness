@@ -27,6 +27,7 @@
 import type { ServiceLookup } from '../shared/dsh-min.ts'
 import type { LoopEntryDefinition } from './model.ts'
 import type { LoopEventDeclaration } from './trigger.ts'
+import type { ViewCheck } from './view.ts'
 
 export type { LoopEventDeclaration, LoopEventField, LoopEventParam } from './trigger.ts'
 
@@ -105,6 +106,8 @@ export interface Contribution {
   run?(action: string, event: LoopEventRecord): Promise<HarnessResult>
   /** For the page only: the lines shown when an entry is opened. Synchronous, does not throw, at most 20 lines of 160 code points. */
   details?(entry: string, project: string): readonly string[]
+  /** For the page only: the checks the entry runs in the project, each with its timeout in the shape the page words (plain-ui 1.3 §8.2). Synchronous, does not throw, at most 10. */
+  checks?(entry: string, project: string): readonly ViewCheck[]
 }
 
 export type ContributeResult =

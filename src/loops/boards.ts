@@ -185,6 +185,7 @@ export function createBoards(deps: BoardsDeps): Boards {
       events: deps.registry.events(),
       runtime: await runtimeOf(store, nowMs),
       ...(peak === undefined ? {} : { peak }),
+      page: entry => deps.registry.pageOf(entry, root),
     })
     await request(root, store, view)
     note(root, 'files', attentionOf(board).filter(item => item.degrades).map(item => item.text))

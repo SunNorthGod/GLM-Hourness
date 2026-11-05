@@ -52,6 +52,63 @@ export interface ViewEntry {
   readonly last?: OutcomeView
   /** ISO time of the next run of a `once`, `daily` or `weekly` entry that runs now; none for `every` (DSH aligns it to its task's anchor) and cron (DSH computes it). */
   readonly next?: string
+  /** A plugin entry's own rules, as its hand-over lists them (design §8.2 讲细点). */
+  readonly ownRules?: readonly string[]
+  /** A plugin entry's detail lines for this project, from its hand-over's `details` (design §8.2 讲细点). */
+  readonly details?: readonly string[]
+  /** The checks a plugin entry runs in this project with their timeouts, from its hand-over's `checks` (plain-ui 1.3 §4.7, §8.2). */
+  readonly checks?: readonly ViewCheck[]
+}
+/**
+ * Where a timeout's number came from (plain-ui 1.3 §4.7 「数与来源」, §8.2):
+ * the estimate of the agent that wrote the check (E seconds, the day and
+ * session it was written), the slowest of the last N runs (X seconds), the
+ * ceiling (no estimate, no run), or a fixed number of the design.
+ */
+export type ViewTimeoutSource =
+  | { readonly kind: 'agent-estimate', readonly estimateS: number, readonly at?: string, readonly session?: string, readonly who?: 'human' }
+  | { readonly kind: 'measured', readonly runs: number, readonly slowestS: number }
+  | { readonly kind: 'ceiling' }
+  | { readonly kind: 'fixed-by-design' }
+/** One earlier value of a timeout, for its history (plain-ui 1.3 §4.7 「来历」). */
+export interface ViewTimeoutChange {
+  readonly at: string
+  readonly seconds: number
+  /** The value before; only the oldest change kept may lack it. */
+  readonly previousS?: number
+  /** Where this value came from, in the page's words. */
+  readonly source: string
+}
+/** One run stopped at its limit (plain-ui 1.3 §4.7 「超时记录」). */
+interface ViewTimeoutRecord {
+  readonly at: string
+  readonly limitS: number
+  readonly elapsedS: number
+  /** What the entry does with it, in the page's words. */
+  readonly outcome: string
+}
+/** The timeout of one check as the page words it (plain-ui 1.3 §8.2, the row of the boards' timeouts). Every number is in seconds, as computed, not rounded. */
+export interface ViewTimeout {
+  readonly seconds: number
+  readonly source?: ViewTimeoutSource
+  /** Three times the run time was under the floor or over the ceiling: what it would have been. Only with an estimate or runs. */
+  readonly held?: { readonly by: 'cap' | 'floor', readonly wantedS: number }
+  /** The ceiling the main agent raised, while that is the setting in force. */
+  readonly capRaised?: { readonly capS: number, readonly at: string, readonly reason: string }
+  /** The values it had, newest first. */
+  readonly history?: readonly ViewTimeoutChange[]
+  /** Its last timeouts, newest first, at most five. */
+  readonly timeouts?: readonly ViewTimeoutRecord[]
+  /** Its timeouts in the seven days before the view. */
+  readonly timeouts7d?: number
+}
+/** One check a plugin entry runs, with its timeout. */
+export interface ViewCheck {
+  /** The check's key, for the small print. */
+  readonly key: string
+  /** Its name in the page's words. */
+  readonly title: string
+  readonly timeout: ViewTimeout
 }
 
 /**
@@ -357,6 +414,8 @@ export function buildView(input: {
   readonly events: ReadonlyMap<string, LoopEventDeclaration>
   readonly peak?: PeakView
   readonly runtime?: ViewRuntime
+  /** What a plugin entry's hand-over gives the page for this project (registry.ts `pageOf`): its detail lines and its checks with their timeouts. */
+  readonly page?: (entry: string) => { readonly details?: readonly string[], readonly checks?: readonly ViewCheck[] }
 }): LoopsView {
   const runtime = input.runtime ?? NO_RUNTIME
   const now = new Date(input.at)
@@ -373,6 +432,7 @@ export function buildView(input: {
   }
   const plugin = input.plugin.map((item): ViewEntry => {
     const label = labels.get(item.entry.id) ?? item.entry.source.plugin
+    const page = input.page?.(item.entry.id) ?? {}
     return {
       id: item.entry.id,
       title: item.entry.title,
@@ -385,6 +445,9 @@ export function buildView(input: {
       does: doesText(item.entry.action, label),
       from: pluginFrom(item.entry),
       ...(item.entry.why === undefined ? {} : { why: item.entry.why }),
+      ...(item.entry.ownRules === undefined || item.entry.ownRules.length === 0 ? {} : { ownRules: item.entry.ownRules }),
+      ...(page.details === undefined || page.details.length === 0 ? {} : { details: page.details }),
+      ...(page.checks === undefined || page.checks.length === 0 ? {} : { checks: page.checks }),
     }
   })
   const person = (input.board?.entries ?? []).map((board): ViewEntry => {
