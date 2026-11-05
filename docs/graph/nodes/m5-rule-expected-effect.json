@@ -28,6 +28,12 @@
       "reason": "运行 m5-rule-expected-effect（wf_24a77ef57c68c12c）开工：先写计划，逐条验收分清现在能做与等 M7 P2、rules-r4d 的部分",
       "from": "approved",
       "to": "doing"
+    },
+    {
+      "at": "2026-11-05T12:55:22.323Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "plan 步被上游 503「No available accounts」截断，.agents/tasks/m5/rule-effect-plan.md 没有写出来；code 步已经开跑，工作树仍在 8560d80、没有改动。编排方已发消息给 code 步：先按节点与任务书补写计划文件，边写边落盘，再按计划实现，其余规矩不变。"
     }
   ]
 }
