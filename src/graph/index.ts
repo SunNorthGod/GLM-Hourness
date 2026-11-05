@@ -8,7 +8,9 @@
  * at agent creation installs the step projection (reminder.ts) for the
  * focus node an agent sets with graph_focus. It hands the loop board its
  * third-rework entry (loop-entry.ts, m4 design §6.8) and reports the
- * questions filed under it to the board. It provides its row health
+ * questions filed under it to the board. The estimates the graph tools
+ * write on the check lines of a tool node under env go to the timing journal
+ * of the caller's project (src/env/timeout.ts, m4 design §6.3.1). It provides its row health
  * (row-health.ts, reported after every graph tool call and projection
  * read) and the service other rows read (src/graph/service.ts: the
  * guard's shadow fallback and rule declaration). Activation never throws:
@@ -21,7 +23,9 @@ import { existsSync } from 'node:fs'
 import { isAbsolute } from 'node:path'
 import { installGraphFileGuard } from '../guard/graph-files.ts'
 import { projectJournal, type AuditFs } from '../memory/audit.ts'
-import { projectHomeFor } from '../data/project-home.ts'
+import { projectHomeFor, projectRootOf } from '../data/project-home.ts'
+import { ensureLlmIgnored } from '../data/llm-ignore.ts'
+import { appendTiming } from '../env/timeout.ts'
 import type { AgentLike, DerivedMessage, PreExecuteListener, ProvideHost, ServiceLookup, SessionEventLike, SessionLike, ToolDefinitionLike, ToolExecutionContext, ToolsLike } from '../shared/dsh-min.ts'
 import { GRAPH_SERVICE, type GraphFocusService, type GraphService } from './service.ts'
 import { provideRowHealth, sessionIdOf, type RowHealth } from '../shared/health.ts'
@@ -29,7 +33,7 @@ import { focusFromHistory, installProjection } from './reminder.ts'
 import { graphHealth, readGraph } from './row-health.ts'
 import { installLoopEntry } from './loop-entry.ts'
 import { loopsService, type LoopsService } from '../loops/service.ts'
-import { DEFAULT_GRAPH_DIR, graphTools, resolveGraphDir, type FocusMemory } from './tools.ts'
+import { DEFAULT_GRAPH_DIR, graphTools, resolveGraphDir, type EstimateSink, type FocusMemory } from './tools.ts'
 
 export interface GraphConfig {
   /** Graph directory: absolute, or relative to the session working directory. Default docs/graph. */
@@ -132,7 +136,25 @@ export function apply(ctx: GraphContext, config: GraphConfig = {}): () => void {
     toldBoard.add(message)
     boardProblem(message)
   })
-  const tools = graphTools(dir, focuses, { loops, problem: boardProblem })
+  /**
+   * The estimates a propose or edit of a tool node under env wrote go to the timing journal of the caller's project, the
+   * one the env row reads (m4 design §6.3.1; not the row's `home`, so both rows keep one journal). A failed write is a
+   * row-health note of the session; the tool result does not wait for it.
+   */
+  const estimates: EstimateSink = (line, cwd) => {
+    void (async () => {
+      const home = projectHomeFor(ctx, undefined, cwd)
+      if (home === undefined) throw new Error('这个会话没有项目目录')
+      const root = projectRootOf(cwd)
+      if (root !== undefined) await ensureLlmIgnored(root)
+      await appendTiming(home, line)
+    })().catch((error: unknown) => {
+      const message = `检查的估计没记下：${error instanceof Error ? error.message : String(error)}`
+      console.warn(`${name}: ${message}`)
+      health.note(line.session, 'graph-timing', message)
+    })
+  }
+  const tools = graphTools(dir, focuses, { loops, problem: boardProblem }, estimates)
   const health = provideRowHealth(ctx, 'graph', missing ? 'degraded' : 'active', missing ? `图工具已注册（${tools.length} 个）；图目录 ${dir} 还不存在` : `图工具已注册（${tools.length} 个）；图目录 ${where}`)
   disposers.push(() => { health.dispose() })
   try {

@@ -13,7 +13,10 @@
  * agent's session working directory. A missing directory is reported,
  * never created. A third reopen of a node files the third-rework question
  * for the human and returns a notice with the write (reopen.ts, design
- * §4.6), reported to the loop board through `report`.
+ * §4.6), reported to the loop board through `report`. A propose or edit of a
+ * tool node under env returns the timeout of each readable check line for
+ * the plan the human reads, and hands every estimate it wrote to `estimates`
+ * (src/env/timeout.ts, m4 design §6.3.1 item 3).
  */
 import { spawnSync } from 'node:child_process'
 import { stat } from 'node:fs/promises'
@@ -32,6 +35,7 @@ import { liveOf } from './user-live.ts'
 import type { LoadedGraph } from './parse.ts'
 import { loadGraph } from './store.ts'
 import type { ListedRun, LoopsService } from '../loops/service.ts'
+import { envToolTimeouts, estimateLines, type CheckTimeoutText, type EstimateLine } from '../env/timeout.ts'
 
 /** Loader row id, named in hints so the model can point the human at the config. */
 const GRAPH_ROW_ID = 'glm-hourness/graph'
@@ -269,14 +273,27 @@ const WRITE_OUTPUT: JsonSchema = {
     changed: { type: 'array', items: { type: 'string' } },
     warnings: { type: 'array', items: { type: 'string' }, description: 'Present when what the human reads breaks a writing rule, or when the body or acceptance changed and title and why did not: the write went through; rewrite what is named (graph_edit).' },
     notice: { type: 'string', description: 'Present on a reopen of a node that is heading for its third fix: what the caller does with the question filed for the human.' },
+    timeouts: {
+      type: 'array',
+      description: 'Present when the node is a tool under env: the time limit of each readable check line, the sentence the human reads next to that line.',
+      items: {
+        type: 'object',
+        properties: { check: { type: 'string', description: 'The check line\'s name.' }, text: { type: 'string' } },
+        required: ['check', 'text'],
+        additionalProperties: false,
+      },
+    },
   },
   required: ['ok', 'id', 'rev', 'revision', 'node', 'changed'],
 }
 
+/** What graph_propose and graph_edit tell the caller to do with the timeouts (m4 design §6.3.1 item 3). */
+const TIMEOUTS_NOTE = ' A tool node under env comes back with timeouts: put each text verbatim next to its check line in the plan you show the human.'
+
 const WRITES: ReadonlyArray<{ readonly op: LlmOp, readonly description: string, readonly parameters: JsonSchema }> = [
   {
     op: 'propose',
-    description: 'Add a node. Planned work starts approved: a task under an approved or in-progress feature or task; a risk, question or retro under an open node. Else (new branch, decision, norm, tool, goal, supersedes edge) it waits for the human unless relayed. A question for the human is a proposal: ask (the question), form (recommend, choose, want or look), proposal and, by form, reason, cost, ways; the main agent puts one with propose_to_human. A question you decide yourself (decider agent) is a table of options, the recommended option last.',
+    description: `Add a node. Planned work starts approved: a task under an approved or in-progress feature or task; a risk, question or retro under an open node. Else (new branch, decision, norm, tool, goal, supersedes edge) it waits for the human unless relayed. A question for the human is a proposal: ask (the question), form (recommend, choose, want or look), proposal and, by form, reason, cost, ways; the main agent puts one with propose_to_human. A question you decide yourself (decider agent) is a table of options, the recommended option last.${TIMEOUTS_NOTE}`,
     parameters: object({ node: NODE, reason: REASON, relay: RELAY }, ['node', 'reason']),
   },
   {
@@ -286,7 +303,7 @@ const WRITES: ReadonlyArray<{ readonly op: LlmOp, readonly description: string, 
   },
   {
     op: 'edit',
-    description: 'Change a node\'s title, why, body, slope, a question\'s decider, a task\'s dispatch attributes (kind, tier, worktree, outputSchema, writeScope); any field of your own open proposal, goals included. Decider human is always allowed; decider agent, an adopted goal, acceptance criteria and non-goals need the human\'s words as relay. Questions keep the table card rules (recommended option last).',
+    description: 'Change a node\'s title, why, body, slope, a question\'s decider, a task\'s dispatch attributes (kind, tier, worktree, outputSchema, writeScope); any field of your own open proposal, goals included. Decider human is always allowed; decider agent, an adopted goal, acceptance criteria and non-goals need the human\'s words as relay. Questions keep the table card rules (recommended option last).' + TIMEOUTS_NOTE,
     parameters: object({
       id: ID,
       rev: REV,
@@ -434,6 +451,25 @@ function cut(text: string): string {
   return [...text].slice(0, 120).join('')
 }
 
+/** Where the graph tools hand an estimate a propose or edit wrote, with the caller's session working directory; never throws into the tool. */
+export type EstimateSink = (line: EstimateLine, cwd: string | undefined) => void
+
+/**
+ * The timeouts of a written tool node under env (m4 design §6.3.1 item 3),
+ * and its estimates handed to `estimates`, which reports its own failures.
+ * Any other node, and any other operation, comes back without them.
+ */
+function envTimeoutsAfter(op: LlmOp, node: GraphNode, exec: unknown, estimates: EstimateSink | undefined): { timeouts?: readonly CheckTimeoutText[] } {
+  if (op !== 'propose' && op !== 'edit') return {}
+  const timeouts = envToolTimeouts(node)
+  if (timeouts === undefined) return {}
+  const context = exec as ToolExecutionContext | undefined
+  if (estimates !== undefined) {
+    for (const line of estimateLines(node, context?.agent?.session?.id, new Date())) estimates(line, cwdOf(context))
+  }
+  return { timeouts }
+}
+
 /** The project root's HEAD, short; undefined when git cannot read it (the caller refuses before writing anything). */
 function headOf(cwd: string | undefined): string | undefined {
   if (cwd === undefined) return undefined
@@ -571,7 +607,7 @@ function withoutHistory(node: GraphNode): Omit<GraphNode, 'history'> {
   return rest
 }
 
-function writeTool(dir: string, op: LlmOp, description: string, parameters: JsonSchema, report: ThirdReworkReport): ToolDefinitionLike {
+function writeTool(dir: string, op: LlmOp, description: string, parameters: JsonSchema, report: ThirdReworkReport, estimates: EstimateSink | undefined): ToolDefinitionLike {
   return {
     name: `graph_${op}`,
     description,
@@ -588,7 +624,7 @@ function writeTool(dir: string, op: LlmOp, description: string, parameters: Json
       if (!result.ok) refuse(result)
       const { history, ...node } = result.node
       const notice = op === 'status' ? await thirdReworkAfter(resolved, args, exec, result, report) : undefined
-      return { ok: true, id: result.id, rev: result.rev, revision: result.revision, node, changed: result.changed, ...(result.warnings === undefined ? {} : { warnings: result.warnings }), ...(notice === undefined ? {} : { notice }) }
+      return { ok: true, id: result.id, rev: result.rev, revision: result.revision, node, changed: result.changed, ...(result.warnings === undefined ? {} : { warnings: result.warnings }), ...(notice === undefined ? {} : { notice }), ...envTimeoutsAfter(op, result.node, exec, estimates) }
     },
   }
 }
@@ -599,9 +635,11 @@ function writeTool(dir: string, op: LlmOp, description: string, parameters: Json
  * records the focus in `focuses`. src/toolsearch/exposure.ts keeps every
  * one of them resident on GLM requests. `report` reaches the loop board's
  * service and the row health for the third-rework question (m4 design §6.8);
- * without it the question is still filed, only not reported.
+ * without it the question is still filed, only not reported. `estimates`
+ * receives the estimates a propose or edit of a tool node under env wrote
+ * (m4 design §6.3.1); without it the timeouts still come back.
  */
-export function graphTools(dir: string, focuses: FocusMemory, report: ThirdReworkReport = { loops: undefined }): ToolDefinitionLike[] {
+export function graphTools(dir: string, focuses: FocusMemory, report: ThirdReworkReport = { loops: undefined }, estimates?: EstimateSink): ToolDefinitionLike[] {
   return [
     {
       name: 'graph_show',
@@ -652,7 +690,7 @@ export function graphTools(dir: string, focuses: FocusMemory, report: ThirdRewor
       },
     },
     ...WRITES.flatMap(write => {
-      const tool = writeTool(dir, write.op, write.description, write.parameters, report)
+      const tool = writeTool(dir, write.op, write.description, write.parameters, report, estimates)
       return write.op === 'relink' ? [tool, walkTool(dir)] : [tool]
     }),
   ]

@@ -13,6 +13,12 @@
       "reason": "用户在提速的三个方案里选了 B（按风险分级）：A 维持现状，B 按风险分级，C 连探针也攒批",
       "relay": "b吧那就",
       "to": "approved"
+    },
+    {
+      "at": "2026-11-05T02:55:33.989Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-11-05 探针锁事故：land-m4-checks 删了自己的 .llm/probe-lock 后续写没有停，把随后建锁的 land-panel-2 的 owner.txt 改写成自己，panel-2 以为锁归别人、准备让出。DEVELOPMENT.md §1.1 改两处：L3 行写明探针按 .llm/probe-lock、.llm/probe-lock-2 两个目录轮流用，规则同桌面锁；L4 行的锁规则加「每次重写 owner.txt 前先核对文件里写的仍是自己，用完先停续写再删锁」。§7 加事故行。编排方已分别告诉两条 lane。"
     }
   ]
 }

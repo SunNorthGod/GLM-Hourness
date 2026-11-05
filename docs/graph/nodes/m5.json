@@ -269,6 +269,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "m5-rest 评审 B1 已修并推：修复 02a2bec（/memory restore 的记录不再把 forgottenAt 写进流水），合并 56d4959（并入带时钟修复的 origin/main 2bd13f6），都在 origin/m5-rest。56d4959 上四道门禁为 0：npm test 3004 通过 / 0 失败 / 1 跳过，探针 388/388，棘轮 73/18/1。下一步：复审。"
+    },
+    {
+      "at": "2026-11-05T02:35:17.851Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m5-rest 第 2 轮评审 APPROVED，无阻塞：B1 已修，snapshot 去掉 forgottenAt，并有一条先失败后通过的 L2 断言钉住（.llm/m5r-review/review.json）。origin/m5-rest = 56d4959，四道门禁为 0（npm test 3004 通过 / 0 失败 / 1 跳过，探针 388/388），棘轮 73/18/1。下一步：本运行的报告步骤，然后合入 main。"
+    },
+    {
+      "at": "2026-11-05T02:36:17.388Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "workflow m5-rest（wf_65d23b8072019258）完成，终报已写：origin/m5-rest = 56d4959，四批与 B1 修复都已推，第 2 轮评审 APPROVED，末端四道门禁为 0、探针 388/388。尚未合入 main；编排方派 land-m5-rest（agent://wf-coder）合 main、跑门禁、快进 main 推两个远端，行组合、行运行行为或客户端半有变就按 CDP 规矩重启桌面版。人真实 profile 上的经验页 L4 仍等 lessons 行在交付 bundle 里启用。"
     }
   ]
 }

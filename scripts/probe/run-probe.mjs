@@ -33,7 +33,23 @@
  * (env-notice) runs in a git workspace whose graph has an approved tool node
  * under env, with the env row enabled by the overlay: the first request ends
  * with the wrapped environment notice, the next does not repeat it, and the
- * project's .llm/ is git-ignored through .git/info/exclude. The loop board's peak scenario
+ * project's .llm/ is git-ignored through .git/info/exclude. The
+ * env-check-command scenario mounts probe-env.mjs in place of the loop board
+ * (the loop row pinned off): the env row's service reads a check line of the
+ * graph's tool node back, the row hands the board env.files-edited and emits
+ * it once per step that wrote a file. The env-checks scenario runs M4's own
+ * check after each edit through the shared executor: the finding on the
+ * changed line, the line of zeros after the fix, the file names as they are,
+ * the entry with its five own rules and one run record per delivery. The
+ * env-checks-timeout scenario proposes a tool node under env through
+ * graph_propose (the result carries the timeout sentence of its check line,
+ * the workspace's timing journal the estimate with the session); after the
+ * human approves it, env-checks-timeout-run edits a file twice: the first run
+ * stops at its 5 s limit, the second ends inside the next one, 15 s, and the
+ * journal holds every line in between. In env-checks-ceiling a check held at
+ * its ceiling is one line in the root agent's environment notice, which
+ * check_limit takes away by raising the ceiling, and a dispatched subagent
+ * never hears of it. The loop board's peak scenario
  * (loops-peak) runs on the GLM route at the probe clock inside a peak, with
  * the loop row and the rules row (少做) enabled and no contribution listing
  * execute.resume-drive: the scripted agent becomes the main agent with /wish,
@@ -109,7 +125,8 @@ import { RULES_DECLARATION } from '../../packages/hourness/dist/rules/service.js
 import { entryFileText } from '../../packages/hourness/dist/loops/model.js'
 import { LOOP_NOTICE_SOURCE } from '../../packages/hourness/dist/loops/deliver.js'
 import { LOOPS_DECLARATION } from '../../packages/hourness/dist/loops/service.js'
-import { NO_CHECKS_LINE, SCRATCH_LINE } from '../../packages/hourness/dist/env/notice.js'
+import { NO_BOARD_LINE, SCRATCH_LINE } from '../../packages/hourness/dist/env/notice.js'
+import { checksOwnRules } from '../../packages/hourness/dist/env/loop-entry.js'
 import { PEAK_REMINDER_SOURCE, PEAK_REMINDER_TEXT, peakReminderText } from '../../packages/glm/dist/glm-prompt/peak-reminder.js'
 import { IDENTITY_OPENING_PLAIN, IDENTITY_OPENING_WITH_STYLE } from '../../packages/glm/dist/glm-prompt/verbatim.js'
 import { transcriptNote } from '../../packages/glm/dist/glm-prompt/zcode-compact-text.js'
@@ -688,7 +705,7 @@ const hournessOnlyStatus = hournessOnly.steps[1]?.command
 const hournessOnlyReport = hournessOnly.steps[3]?.command
 
 // Environment notice (M4 design §7.2, scenario env-notice): the env row
-// enabled by the overlay, a git workspace whose graph carries an approved
+// (shipped enabled since m4-checks B6; the overlay still pins it on), a git workspace whose graph carries an approved
 // tool node under env. The first request ends with the wrapped environment
 // notice — the tool line, the no-checks line, the scratch line — the next
 // request does not repeat it, and the project's .llm/ is git-ignored (the
@@ -724,6 +741,174 @@ const envNoticeRepeat = (envNoticeRun.steps[1]?.messages ?? []).filter(message =
 const envNoticeLast = envNoticeRun.steps[1]?.messages.at(-1)
 const envExclude = existsSync(join(envNoticeWs, '.git', 'info', 'exclude')) ? readFileSync(join(envNoticeWs, '.git', 'info', 'exclude'), 'utf8') : ''
 const envIgnored = spawnSync('git', ['-C', envNoticeWs, 'check-ignore', '-q', '.llm/scratch/x'], { stdio: 'ignore' }).status
+
+/** The probe-env overlay: the env row on, the loop row pinned off, the stand-in loop board logging to `out`. */
+const envBoardOverlay = out => [
+  '- id: glm-hourness/env',
+  '  disabled: false',
+  '- id: glm-hourness/loops',
+  '  disabled: true',
+  '- insert:',
+  '    - id: glm-hourness-probe/env',
+  `      name: ${JSON.stringify(slash(join(repo, 'scripts', 'probe', 'probe-env.mjs')))}`,
+  '      inject: [tools]',
+  `      config: { out: ${JSON.stringify(slash(out))} }`,
+]
+const readEnvLog = log => existsSync(log) ? readFileSync(log, 'utf8').split('\n').filter(line => line.length > 0).map(line => JSON.parse(line)) : []
+const checksNoticesIn = step => (step?.messages ?? []).filter(message => message.source === 'hourness-checks')
+/** The checks notice each request added: a request carries the whole history, so a notice is new where the count grows. */
+const newChecksNotices = run => run.steps.map((step, index) => checksNoticesIn(step).length > (index === 0 ? 0 : checksNoticesIn(run.steps[index - 1]).length) ? checksNoticesIn(step).at(-1) : undefined)
+
+// The env row and the loop board (M4 design §6.1.2, §6.2, §14.1 env-checks,
+// the part without when; scenario env-check-command): the env row and the
+// graph row on, the loop row pinned off, and the probe-env overlay standing
+// in for the loop board (the headless runtime has no session controller, so
+// the real board provides no service). A tool node's check line without
+// `when` reads back through glmHournessEnv as it stands on the node and is
+// not M4's own; each step after a file write emits env.files-edited with
+// the file relative to the checkout root; the row hands the board the event,
+// and no checks reminder appears (M4 does not run a line without `when`).
+const envCheckDir = join(runDir, 'env-check-command')
+const envCheckWs = join(envCheckDir, 'ws')
+const envCheckGraph = join(envCheckWs, 'docs', 'graph')
+const envCheckLog = join(envCheckDir, 'env.jsonl')
+mkdirSync(envCheckGraph, { recursive: true })
+writeFileSync(join(envCheckWs, 'README.md'), 'probe workspace\n')
+if (!initRepo(envCheckWs)) throw new Error('probe: git init for env-check-command failed')
+const envCheckEngine = openEngine(envCheckGraph)
+for (const node of [
+  { type: 'goal', title: '探针目标' },
+  { id: 'env', type: 'feature', title: '环境', parent: 'goal-1' },
+  { id: 'tool-1', type: 'tool', title: 'Lint', parent: 'env', body: '用法：node lint.mjs', acceptance: ['`check lint lines $ node lint.mjs {files}`'] },
+]) {
+  const seeded = await envCheckEngine.apply('human', { op: 'propose', reason: 'probe seed', node })
+  if (!seeded.ok) throw new Error(`probe: seeding the env-check-command graph failed: ${JSON.stringify(seeded.error)}`)
+  if (seeded.node?.status === 'proposed' && !(await envCheckEngine.apply('human', { op: 'status', id: seeded.id, rev: seeded.rev, to: 'approved', reason: 'probe' })).ok) {
+    throw new Error(`probe: approving the env-check-command node ${seeded.id} failed`)
+  }
+}
+const envCheckRun = runScenario('env-check-command', 'deepseek-probe', [
+  { tool: { name: 'probe_check_command', arguments: { tool: 'tool-1' } } },
+  { tool: { name: 'write', arguments: { file_path: join(envCheckWs, 'a.txt'), content: 'a\n' } } },
+  { tool: { name: 'write', arguments: { file_path: join(envCheckWs, '-c.txt'), content: 'c\n' } } },
+  { text: 'done' },
+], 'Read the check command, write two files, then reply done.', envBoardOverlay(envCheckLog), envCheckWs, [], profiles['probe-hourness'])
+const envCheckRecords = readEnvLog(envCheckLog)
+const envCheckCommand = envCheckRecords.find(record => record.kind === 'check-command')
+const envCheckContribute = envCheckRecords.find(record => record.kind === 'contribute' && record.source?.row === 'glm-hourness/env')
+const envCheckEmits = envCheckRecords.filter(record => record.kind === 'emit' && record.event?.event === 'env.files-edited').map(record => record.event)
+const sameDir = (a, b) => typeof a === 'string' && slash(a).toLowerCase().replace(/\/+$/, '') === slash(b).toLowerCase().replace(/\/+$/, '')
+const envCheckReminders = envCheckRun.steps.reduce((count, step) => count + step.messages.filter(message => message.source === 'hourness-checks').length, 0)
+
+// M4's own checker (M4 design §6.2-§6.5, §6.8, §14.1 env-checks): the env
+// row on with the probe-env stand-in for the loop board, a git workspace
+// whose graph has an approved tool node with a check line with `when`. The
+// checks run through the shared executor after each edit: a TODO is one
+// finding on a changed line with its log, the fix is one line of zeros, a
+// step without edits and edits without findings after zeros say nothing,
+// lint.mjs receives `b$(echo x).txt` as it is and `-c.txt` as `./-c.txt`, the
+// row hands the board env.checks-after-edit with its five own rules and
+// records one run per delivery.
+const envChecksDir = join(runDir, 'env-checks')
+const envChecksWs = join(envChecksDir, 'ws')
+const envChecksGraph = join(envChecksWs, 'docs', 'graph')
+const envChecksLog = join(envChecksDir, 'env.jsonl')
+mkdirSync(envChecksGraph, { recursive: true })
+writeFileSync(join(envChecksWs, 'README.md'), 'probe workspace\n')
+writeFileSync(join(envChecksWs, 'lint.mjs'), [
+  "import { appendFileSync, readFileSync } from 'node:fs'",
+  'const files = process.argv.slice(2)',
+  "appendFileSync('args.jsonl', JSON.stringify(files) + '\\n')",
+  "for (const file of files) readFileSync(file, 'utf8').split('\\n').forEach((line, index) => { if (line.includes('TODO')) console.log(`${file}:${index + 1}:1: todo found`) })",
+  '',
+].join('\n'))
+if (!initRepo(envChecksWs)) throw new Error('probe: git init for env-checks failed')
+const envChecksEngine = openEngine(envChecksGraph)
+for (const node of [
+  { type: 'goal', title: '探针目标' },
+  { id: 'env', type: 'feature', title: '环境', parent: 'goal-1' },
+  { id: 'tool-1', type: 'tool', title: 'Lint', parent: 'env', body: '用法：node lint.mjs', acceptance: ['`check lint lines $ node lint.mjs {files}` when *.txt'] },
+]) {
+  const seeded = await envChecksEngine.apply('human', { op: 'propose', reason: 'probe seed', node })
+  if (!seeded.ok) throw new Error(`probe: seeding the env-checks graph failed: ${JSON.stringify(seeded.error)}`)
+  if (seeded.node?.status === 'proposed' && !(await envChecksEngine.apply('human', { op: 'status', id: seeded.id, rev: seeded.rev, to: 'approved', reason: 'probe' })).ok) {
+    throw new Error(`probe: approving the env-checks node ${seeded.id} failed`)
+  }
+}
+const envChecksRun = runScenario('env-checks', 'deepseek-probe', [
+  { tool: { name: 'write', arguments: { file_path: join(envChecksWs, 'a.txt'), content: 'one\nTODO two\n' } } },
+  { tool: { name: 'edit', arguments: { file_path: join(envChecksWs, 'a.txt'), old_string: 'TODO two', new_string: 'two' } } },
+  { tool: { name: 'read', arguments: { file_path: join(envChecksWs, 'a.txt') } } },
+  { tool: { name: 'write', arguments: { file_path: join(envChecksWs, 'b$(echo x).txt'), content: 'clean\n' } } },
+  { tool: { name: 'write', arguments: { file_path: join(envChecksWs, '-c.txt'), content: 'clean\n' } } },
+  { text: 'done' },
+], 'Write, fix and read a file, write two more, then reply done.', envBoardOverlay(envChecksLog), envChecksWs, [], profiles['probe-hourness'])
+const envChecksRecords = readEnvLog(envChecksLog)
+const envChecksNotices = newChecksNotices(envChecksRun)
+const envChecksFound = envChecksNotices[1]?.text ?? ''
+const envChecksLogPath = /\nFull output: (\S+)\n/.exec(envChecksFound)?.[1]
+const envChecksArgs = existsSync(join(envChecksWs, 'args.jsonl')) ? readFileSync(join(envChecksWs, 'args.jsonl'), 'utf8').split('\n').filter(line => line.length > 0).map(line => JSON.parse(line)) : []
+const envChecksContribute = envChecksRecords.find(record => record.kind === 'contribute' && record.source?.row === 'glm-hourness/env')
+const envChecksRuns = envChecksRecords.filter(record => record.kind === 'run').map(record => record.run)
+const envChecksEmits = envChecksRecords.filter(record => record.kind === 'emit' && record.event?.event === 'env.files-edited').map(record => record.event)
+const envChecksEnvNotice = (envChecksRun.steps[0]?.messages ?? []).find(message => message.source === 'hourness-env')
+
+// The timeout the human sees when approving a tool node (M4 design §6.3.1
+// item 3, §14.1 env-checks-timeout, the first part): the graph row on, a git
+// workspace whose graph has the env feature. The scripted agent proposes a
+// tool node under env with a check line estimated at 1 s; the result carries
+// the sentence of its timeout, and the workspace's timing journal has the
+// estimate with this session and the history entry the engine wrote.
+const ENV_TIMEOUT_LINE = '`check slow lines 1s $ node slow.mjs {files}` when *.txt'
+const envTimeoutWs = join(runDir, 'env-checks-timeout', 'ws')
+const envTimeoutGraph = join(envTimeoutWs, 'docs', 'graph')
+const envTimeoutJournal = join(envTimeoutWs, '.llm', 'env-checks', 'timing.jsonl')
+mkdirSync(envTimeoutGraph, { recursive: true })
+writeFileSync(join(envTimeoutWs, 'README.md'), 'probe workspace\n')
+if (!initRepo(envTimeoutWs)) throw new Error('probe: git init for env-checks-timeout failed')
+const envTimeoutEngine = openEngine(envTimeoutGraph)
+for (const node of [
+  { type: 'goal', title: '探针目标' },
+  { id: 'env', type: 'feature', title: '环境', parent: 'goal-1' },
+]) {
+  const seeded = await envTimeoutEngine.apply('human', { op: 'propose', reason: 'probe seed', node })
+  if (!seeded.ok) throw new Error(`probe: seeding the env-checks-timeout graph failed: ${JSON.stringify(seeded.error)}`)
+  if (seeded.node?.status === 'proposed' && !(await envTimeoutEngine.apply('human', { op: 'status', id: seeded.id, rev: seeded.rev, to: 'approved', reason: 'probe' })).ok) {
+    throw new Error(`probe: approving the env-checks-timeout node ${seeded.id} failed`)
+  }
+}
+const envTimeoutRun = runScenario('env-checks-timeout', 'deepseek-probe', [
+  { tool: { name: 'graph_propose', arguments: { node: { id: 'tool-1', type: 'tool', title: 'Slow', parent: 'env', acceptance: [ENV_TIMEOUT_LINE] }, reason: 'probe: a check that runs after edits' } } },
+  { text: 'done' },
+], 'Propose a tool node with a check line, then reply done.', [], envTimeoutWs, [], profiles['probe-hourness'])
+const envTimeoutText = envTimeoutRun.steps[1]?.messages.filter(message => message.role === 'tool').at(-1)?.text ?? ''
+const envTimeoutResult = (() => { try { return JSON.parse(envTimeoutText) } catch { return undefined } })()
+const envTimeoutLines = existsSync(envTimeoutJournal) ? readFileSync(envTimeoutJournal, 'utf8').split('\n').filter(line => line.length > 0).map(line => JSON.parse(line)) : []
+const envTimeoutProposed = (await loadGraph(envTimeoutGraph)).nodes.get('tool-1')?.history.at(-1)
+
+// The second part (M4 design §6.3.1, §14.1 env-checks-timeout): the human
+// approves the node the first part proposed, and a new session with the env
+// row and the probe-env board edits a .txt twice; slow.mjs sleeps 7 s. The
+// first run is stopped at 5 s (three times the estimate of 1 s, raised to the
+// floor) and the notice names the next limit, 15 s; the second run ends by
+// itself inside it. The timing journal holds, in order, the estimate of the
+// first part, the value from it (with that session and the llm), the
+// timeout, the censored run, the harness's 15 s value and the 7 s run.
+const envTimeoutApproved = await envTimeoutEngine.apply('human', { op: 'approve', id: 'tool-1', rev: (await loadGraph(envTimeoutGraph)).revisions.get('tool-1'), reason: 'probe: the human approves the check' })
+if (!envTimeoutApproved.ok) throw new Error(`probe: approving the env-checks-timeout tool node failed: ${JSON.stringify(envTimeoutApproved.error)}`)
+writeFileSync(join(envTimeoutWs, 'slow.mjs'), "setTimeout(() => { console.log('slow done') }, 7000)\n")
+const envTimeoutRunLog = join(runDir, 'env-checks-timeout-run', 'env.jsonl')
+const envTimeoutRun2 = runScenario('env-checks-timeout-run', 'deepseek-probe', [
+  { tool: { name: 'write', arguments: { file_path: join(envTimeoutWs, 't.txt'), content: 'a\n' } } },
+  { tool: { name: 'edit', arguments: { file_path: join(envTimeoutWs, 't.txt'), old_string: 'a', new_string: 'bb' } } },
+  { text: 'done' },
+], 'Write a file and edit it, then reply done.', envBoardOverlay(envTimeoutRunLog), envTimeoutWs, [], profiles['probe-hourness'])
+const envTimeoutNotices = newChecksNotices(envTimeoutRun2)
+const envTimeoutStopped = envTimeoutNotices[1]?.text ?? ''
+const envTimeoutJournal2 = existsSync(envTimeoutJournal) ? readFileSync(envTimeoutJournal, 'utf8').split('\n').filter(line => line.length > 0).map(line => JSON.parse(line)) : []
+const envTimeoutRuns = readEnvLog(envTimeoutRunLog).filter(record => record.kind === 'run').map(record => record.run)
+const envTimeoutKinds = envTimeoutJournal2.map(line => line.kind)
+const [, envTimeoutFirstValue, envTimeoutStop, envTimeoutCensored, envTimeoutHarness, envTimeoutFinished] = envTimeoutJournal2
 
 // Client composition (split design §5.6, U3): the headless template has no
 // client-modules row, so the overlay mounts @deepseek-ai/dsh-client-modules
@@ -925,6 +1110,61 @@ const rulesHandover = runScenario('rules-handover', 'deepseek-probe', [
   { tool: { name: 'structured_output', arguments: HAND_BACK } },
   { text: 'child done' },
 ]])
+
+// The third part (M4 design §6.3.1 items 6 and 「调高上限」, §14.1
+// env-checks-timeout; scenario env-checks-ceiling): an approved tool node
+// whose check line estimates 25 s (three times is 75 s, over the 60 s
+// ceiling) for a check that is quick. After the write the value is held at
+// 60 s with capped 75 s; the root agent's next environment notice has the
+// held-at-its-ceiling line with the full key, and check_limit is in its tool
+// face. It raises the ceiling to 120 s with a reason (limits.jsonl gets the
+// line, the held line goes from the next notice), then dispatches a subagent
+// through probe-dispatch.mjs, whose environment notice has the checks line
+// and no held line.
+const envCeilingDir = join(runDir, 'env-checks-ceiling')
+const envCeilingWs = join(envCeilingDir, 'ws')
+const envCeilingGraph = join(envCeilingWs, 'docs', 'graph')
+const envCeilingLog = join(envCeilingDir, 'env.jsonl')
+const envCeilingLimits = join(envCeilingWs, '.llm', 'env-checks', 'limits.jsonl')
+const ENV_CEILING_HELD = 'Check full is held at its ceiling of 60 s: three times your estimate (25 s) would be 75 s. Raising this check\'s ceiling is your decision and needs no approval from the human: call check_limit with check "tool-1/full", seconds (61 to 600) and a reason. Making the check cheaper or narrower means changing its check line, which is a tool-node change and needs the human\'s approval as usual.'
+const ENV_CEILING_REASON = '整个项目要跑一分多钟'
+mkdirSync(join(envCeilingWs, 'allowed'), { recursive: true })
+mkdirSync(envCeilingGraph, { recursive: true })
+writeFileSync(join(envCeilingWs, 'README.md'), 'probe workspace\n')
+writeFileSync(join(envCeilingWs, 'fast.mjs'), '\n')
+if (!initRepo(envCeilingWs)) throw new Error('probe: git init for env-checks-ceiling failed')
+const envCeilingEngine = openEngine(envCeilingGraph)
+for (const node of [
+  { type: 'goal', title: '探针目标' },
+  { id: 'env', type: 'feature', title: '环境', parent: 'goal-1' },
+  { id: 'tool-1', type: 'tool', title: 'Full', parent: 'env', body: '用法：node fast.mjs', acceptance: ['`check full lines 25s $ node fast.mjs {files}` when *.txt'] },
+]) {
+  const seeded = await envCeilingEngine.apply('human', { op: 'propose', reason: 'probe seed', node })
+  if (!seeded.ok) throw new Error(`probe: seeding the env-checks-ceiling graph failed: ${JSON.stringify(seeded.error)}`)
+  if (seeded.node?.status === 'proposed' && !(await envCeilingEngine.apply('human', { op: 'status', id: seeded.id, rev: seeded.rev, to: 'approved', reason: 'probe' })).ok) {
+    throw new Error(`probe: approving the env-checks-ceiling node ${seeded.id} failed`)
+  }
+}
+const envCeilingRun = runScenario('env-checks-ceiling', 'deepseek-probe', [
+  { tool: { name: 'write', arguments: { file_path: join(envCeilingWs, 't.txt'), content: 'a\n' } } },
+  { tool: { name: 'read', arguments: { file_path: join(envCeilingWs, 't.txt') } } },
+  { tool: { name: 'check_limit', arguments: { check: 'tool-1/full', seconds: 120, reason: ENV_CEILING_REASON } } },
+  { tool: { name: 'probe_dispatch', arguments: { task: 'T1', prompt: 'Probe task T1: report.', cwd: envCeilingWs, scope: 'allowed', model: 'deepseek-probe' } } },
+  { text: 'Waiting for task T1.' },
+  { text: 'done' },
+], 'Write a file, read it, raise the check\'s ceiling, dispatch task T1, then reply done.', [...envBoardOverlay(envCeilingLog), ...dispatchRow(join(envCeilingDir, 'dispatch.jsonl'))], envCeilingWs, [[
+  { tool: { name: 'structured_output', arguments: HAND_BACK } },
+  { text: 'child done' },
+]], profiles['probe-hourness'])
+const envCeilingStarted = dispatchRecord('env-checks-ceiling').find(entry => entry.kind === 'started')
+const envCeilingMain = bySession(envCeilingRun, envCeilingStarted?.parentId)
+const envCeilingChild = bySession(envCeilingRun, envCeilingStarted?.childId)
+const envNoticesOf = steps => steps.flatMap(step => step.messages.filter(message => message.source === 'hourness-env').map(message => message.text))
+const envCeilingMainNotices = [...new Set(envNoticesOf(envCeilingMain))]
+const envCeilingChildNotices = envNoticesOf(envCeilingChild)
+const envCeilingLimitResult = (() => { try { return JSON.parse(lastToolResult(envCeilingMain[3])?.text ?? '') } catch { return undefined } })()
+const envCeilingLimitLines = existsSync(envCeilingLimits) ? readFileSync(envCeilingLimits, 'utf8').split('\n').filter(line => line.length > 0).map(line => JSON.parse(line)) : []
+const envCeilingJournal = jsonl(join(envCeilingWs, '.llm', 'env-checks', 'timing.jsonl'))
 
 // Rules board, a rule of the person across the end of a peak (M6 S3, M6
 // design §16 S3, §7.3, docs/ORCHESTRATION.md §16.12). The clone's rules file
@@ -1489,7 +1729,7 @@ const seedProjectMemory = (scenario) => {
   writeFileSync(join(home, 'memory.jsonl'), `${learnSeed(1)}${JSON.stringify({ v: 1, seq: 2, at: '2026-10-31T00:00:00.000Z', actor: 'human', op: 'store', id: 'project:seeded-norm', data })}\n`)
 }
 
-// Reporting depth (M5 design §3.7, m5-5): the glm:persona section names the
+// Reporting depth (M5 design §3.7, m5-5): the glm:reporting-depth section names the
 // depth the person set, read once when a session starts. The first root agent
 // stores `concise` and starts a second, which forgets it in its first step
 // and starts a third. Each prompt names the depth its session found and
@@ -2830,8 +3070,27 @@ const checks = [
   ['hourness-only: a native write into the graph is denied by graph-files-only, a shell write by file-tools-only in native names; neither file is written and both denial records are tagged other (the follow-up records the recorder adds carry a kind)', hournessOnlyWrite?.isError === true && hournessOnlyWrite.text.includes('inside the project graph') && !existsSync(hournessOnlyNode) && hournessOnlyPwsh?.isError === true && hournessOnlyPwsh.text.includes(RIGHT_PATH_NATIVE) && !existsSync(hournessOnlyShell) && hournessOnlyViolations.filter(record => record.kind === undefined).map(record => `${record.rule}:${record.tool}:${record.scope}`).join(',') === 'graph-files-only:write:other,file-tools-only:pwsh:other', `records: ${hournessOnlyViolations.map(record => `${record.kind ?? 'denial'}:${record.rule}:${record.tool ?? ''}:${record.scope ?? ''}`).join(', ') || 'none'}; shell file ${existsSync(hournessOnlyShell)}`],
   ['hourness-only: the system prompt declares the workspace rules in native names, graph-files-only included', hournessOnlyFirst?.system.includes(GUARD_SECTION) === true && hournessOnlyFirst.system.includes('\n- Modify files and code only with the dedicated write/edit tools.') && hournessOnlyFirst.system.includes(GRAPH_FILES_LINE), hournessOnlyFirst === undefined ? 'no request' : `section at ${hournessOnlyFirst.system.indexOf(GUARD_SECTION)}`],
   ['hourness-only: /hourness-status lists the orchestration rows and the GLM package as one line not loaded', hournessOnlyStatus?.kind === 'success' && onlyOneLoaded(hournessOnlyHealth, 'hourness', 'glm'), `${hournessOnlyStatus?.kind ?? 'not run'}; ${JSON.stringify(hournessOnlyHealth[WHOLE] ?? null)}`],
-  ['env-notice: the first request carries the wrapped environment notice — the tool line, the no-checks line, the scratch line', envNoticeFirst !== undefined && typeof envNoticeFirst.text === 'string' && envNoticeFirst.text.startsWith('<system-reminder>\nProject tools (graph node env). Use these before writing your own.\n- ESLint [tool-1]: npm run lint\n') && envNoticeFirst.text.includes(NO_CHECKS_LINE) && envNoticeFirst.text.includes(SCRATCH_LINE) && envNoticeFirst.text.endsWith('\n</system-reminder>'), envNoticeFirst === undefined ? 'no notice in request 1' : envNoticeFirst.text.slice(0, 140).replace(/\n/g, ' | ')],
+  ['env-notice: the first request carries the wrapped environment notice — the tool line, the checks line of a headless host (no loop board), the scratch line', envNoticeFirst !== undefined && typeof envNoticeFirst.text === 'string' && envNoticeFirst.text.startsWith('<system-reminder>\nProject tools (graph node env). Use these before writing your own.\n- ESLint [tool-1]: npm run lint\n') && envNoticeFirst.text.includes(NO_BOARD_LINE) && envNoticeFirst.text.includes(SCRATCH_LINE) && envNoticeFirst.text.endsWith('\n</system-reminder>'), envNoticeFirst === undefined ? 'no notice in request 1' : envNoticeFirst.text.slice(0, 140).replace(/\n/g, ' | ')],
   ['env-notice: the second request does not repeat the notice (the first one persists in the session)', envNoticeRun.steps.length === 2 && envNoticeRepeat === 1 && envNoticeLast?.source !== 'hourness-env', `hourness-env messages in request 2: ${envNoticeRepeat}; last: ${JSON.stringify({ source: envNoticeLast?.source, text: String(envNoticeLast?.text ?? '').slice(0, 60) })}`],
+  ['env-check-command: glmHournessEnv reads the check line without when as it stands on the approved node, and it is not M4\'s own', envCheckCommand?.service === true && isDeepStrictEqual(envCheckCommand.command, { tool: 'tool-1', check: 'lint', title: 'Lint：lint', argv: ['node', 'lint.mjs', '{files}'], format: 'lines', own: false }), `exit ${envCheckRun.status}; ${JSON.stringify(envCheckCommand ?? null)}`],
+  ['env-check-command: the env row hands the board the event env.files-edited', envCheckContribute !== undefined && envCheckContribute.source.plugin === 'dsh-hourness' && isDeepStrictEqual(envCheckContribute.events, ['env.files-edited']), JSON.stringify(envCheckContribute ?? null)],
+  ['env-check-command: each step after a write emits env.files-edited once, the file relative to the checkout root, keyed files-edited:<session>:<turn>-<step>', envCheckRun.steps.length === 4 && envCheckEmits.length === 2 && isDeepStrictEqual(envCheckEmits.map(event => event.payload?.files), [['a.txt'], ['-c.txt']]) && envCheckEmits.every(event => sameDir(event.payload?.root, envCheckWs) && event.payload?.truncated === false && sameDir(event.cwd, envCheckWs) && typeof event.session === 'string' && new RegExp(`^files-edited:${event.session}:\\d+-\\d+$`).test(event.key)) && new Set(envCheckEmits.map(event => event.key)).size === 2, `${envCheckRun.steps.length} requests; ${JSON.stringify(envCheckEmits.map(event => ({ key: event.key, files: event.payload?.files, root: event.payload?.root })))}`],
+  ['env-check-command: no checks reminder is injected (M4 does not run a check line without when)', envCheckRun.steps.length > 0 && envCheckReminders === 0, `hourness-checks messages: ${envCheckReminders}`],
+  ['env-checks-timeout: graph_propose of a tool node under env returns the sentence of its timeout for the check line', envTimeoutResult?.ok === true && isDeepStrictEqual(envTimeoutResult.timeouts, [{ check: 'slow', text: '超时 5 秒（估 1 秒，乘 3 不足 5 秒）' }]), `exit ${envTimeoutRun.status}; ${JSON.stringify(envTimeoutResult?.timeouts ?? envTimeoutText.slice(0, 200))}`],
+  ['env-checks-timeout: the workspace timing journal has one estimate with this session, the llm and the time of the propose the engine wrote', envTimeoutLines.length === 1 && envTimeoutLines[0].kind === 'estimate' && envTimeoutLines[0].check === 'tool-1/slow' && envTimeoutLines[0].estimateS === 1 && envTimeoutLines[0].node === 'tool-1' && envTimeoutLines[0].actor === 'llm' && typeof envTimeoutLines[0].session === 'string' && envTimeoutLines[0].session === envTimeoutRun.steps[0]?.sessionId && envTimeoutProposed?.op === 'propose' && envTimeoutLines[0].historyAt === envTimeoutProposed.at && /^[0-9a-f]{8}$/.test(envTimeoutLines[0].argv), `${JSON.stringify(envTimeoutLines)}; session ${envTimeoutRun.steps[0]?.sessionId}; history ${JSON.stringify(envTimeoutProposed ?? null)}`],
+  ['env-checks: the environment notice names the check that runs after edits (the board is on)', envChecksEnvNotice?.text?.includes('\nChecks run after each edit (listed on the loop board): lint on *.txt.\n') === true, String(envChecksEnvNotice?.text ?? 'no notice').slice(0, 240).replace(/\n/g, ' | ')],
+  ['env-checks: the second request carries the checks notice — one finding on the changed line, the log whose first line is the argument vector, the fix line', envChecksFound.startsWith('<system-reminder>\nChecks after your edits: lint 1 finding.\na.txt:2:1 lint todo found [changed]\nFull output: ') && envChecksFound.endsWith('\nFix the findings on changed lines before you finish; new warnings fail the merge gate.\n</system-reminder>') && envChecksLogPath !== undefined && existsSync(join(envChecksWs, envChecksLogPath)) && readFileSync(join(envChecksWs, envChecksLogPath), 'utf8').startsWith('$ node lint.mjs a.txt · program '), `exit ${envChecksRun.status}; ${envChecksFound.slice(0, 300).replace(/\n/g, ' | ')}`],
+  ['env-checks: the fix is one line of zeros in the third request; the step without edits and the clean edits after zeros carry none', envChecksRun.steps.length === 6 && envChecksNotices[0] === undefined && envChecksNotices[2]?.text === '<system-reminder>\nChecks after your edits: lint 0.\n</system-reminder>' && envChecksNotices.slice(3).every(notice => notice === undefined), JSON.stringify(envChecksNotices.map(notice => notice?.text ?? null))],
+  ['env-checks: lint.mjs receives each file as one argument, b$(echo x).txt as it is and -c.txt as ./-c.txt, and nothing ran the $(…)', isDeepStrictEqual(envChecksArgs, [['a.txt'], ['a.txt'], ['b$(echo x).txt'], ['./-c.txt']]) && !existsSync(join(envChecksWs, 'x')), JSON.stringify(envChecksArgs)],
+  ['env-checks: the env row hands the board env.checks-after-edit with its five own rules and records one run per delivery', envChecksContribute !== undefined && isDeepStrictEqual(envChecksContribute.entries, [{ id: 'env.checks-after-edit', ownRules: checksOwnRules() }]) && isDeepStrictEqual(envChecksRuns.map(run => [run.entry, run.outcome]), [['env.checks-after-edit', 'reported'], ['env.checks-after-edit', 'ran'], ['env.checks-after-edit', 'ran'], ['env.checks-after-edit', 'ran']]), JSON.stringify({ entries: envChecksContribute?.entries ?? null, runs: envChecksRuns })],
+  ['env-checks: each step with an edit emits env.files-edited once, the files relative to the checkout root', isDeepStrictEqual(envChecksEmits.map(event => event.payload?.files), [['a.txt'], ['a.txt'], ['b$(echo x).txt'], ['-c.txt']]) && envChecksEmits.every(event => sameDir(event.payload?.root, envChecksWs) && new RegExp(`^files-edited:${event.session}:\\d+-\\d+$`).test(event.key)), JSON.stringify(envChecksEmits.map(event => ({ key: event.key, files: event.payload?.files })))],
+  ['env-checks-timeout: the first run is stopped at 5 s; the notice names the floor, the log and the next limit of 15 s', /^<system-reminder>\nslow did not finish: stopped after 5\.\d s \(limit 5 s, the floor: three times its estimate of 1 s is less; log \S+\)\. It runs again after your next edit, with a limit of 15 s\.\n<\/system-reminder>$/.test(envTimeoutStopped), `exit ${envTimeoutRun2.status}; ${envTimeoutStopped.slice(0, 300)}`],
+  ['env-checks-timeout: the journal holds the estimate, the value from it (that session, the llm), the timeout, the censored run, the harness\'s 15 s and the finished run', isDeepStrictEqual(envTimeoutKinds, ['estimate', 'value', 'timeout', 'run', 'value', 'run']) && envTimeoutFirstValue?.limitMs === 5000 && envTimeoutFirstValue.source?.by === 'estimate' && envTimeoutFirstValue.source.actor === 'llm' && envTimeoutFirstValue.source.session === envTimeoutRun.steps[0]?.sessionId && envTimeoutFirstValue.source.at === envTimeoutProposed?.at && envTimeoutStop?.limitMs === 5000 && envTimeoutStop.elapsedMs >= 5000 && envTimeoutCensored?.ms === 5000 && envTimeoutCensored.censored === true && envTimeoutHarness?.limitMs === 15000 && envTimeoutHarness.previousMs === 5000 && envTimeoutHarness.source?.by === 'harness' && envTimeoutHarness.source.runs.includes(5000) && envTimeoutFinished?.kind === 'run' && envTimeoutFinished.ms >= 6500 && envTimeoutFinished.ms < 15000 && envTimeoutFinished.censored === undefined, JSON.stringify(envTimeoutJournal2)],
+  ['env-checks-timeout: the board records the timeout as failed with its limit and time, then the run that finished', envTimeoutRuns.length === 2 && envTimeoutRuns[0]?.outcome === 'failed' && /^slow: timeout 5s\/5\.\ds$/.test(envTimeoutRuns[0]?.reason ?? '') && envTimeoutRuns[1]?.outcome === 'ran', JSON.stringify(envTimeoutRuns)],
+  ['env-checks-ceiling: an estimate of 25 s is held at the 60 s ceiling: the value line records the 75 s wanted', envCeilingRun.status === 0 && envCeilingJournal[0]?.kind === 'value' && envCeilingJournal[0].limitMs === 60000 && envCeilingJournal[0].capped?.wantedMs === 75000 && envCeilingJournal[0].cap?.by === 'default', `exit ${envCeilingRun.status}; ${JSON.stringify(envCeilingJournal.slice(0, 2))}`],
+  ['env-checks-ceiling: the root agent\'s environment notice gets the held-at-its-ceiling line with the full key, and check_limit is in its tool face', envCeilingMainNotices.some(text => text.split('\n').includes(ENV_CEILING_HELD)) && names(envCeilingMain[0]).has('check_limit'), envCeilingMainNotices.map(text => text.slice(0, 400).replace(/\n/g, ' | ')).join(' || ')],
+  ['env-checks-ceiling: check_limit raises the ceiling to 120 s and limits.jsonl has the raise with the reason and the session; the next notice has no held line', envCeilingLimitResult?.outcome === 'raised' && envCeilingLimitResult.capS === 120 && envCeilingLimitResult.previousCapS === 60 && envCeilingLimitLines.length === 1 && envCeilingLimitLines[0].action === 'raise' && envCeilingLimitLines[0].check === 'tool-1/full' && envCeilingLimitLines[0].reason === ENV_CEILING_REASON && envCeilingLimitLines[0].session === envCeilingStarted?.parentId && !(envNoticesOf(envCeilingMain.slice(-1)).at(-1) ?? '').includes('held at its ceiling'), `${JSON.stringify(envCeilingLimitResult ?? lastToolResult(envCeilingMain[3])?.text ?? null)}; ${JSON.stringify(envCeilingLimitLines)}`],
+  ['env-checks-ceiling: a subagent\'s environment notice has the checks line and no held line', envCeilingStarted !== undefined && envCeilingChild.length > 0 && envCeilingChildNotices.length > 0 && envCeilingChildNotices.every(text => text.includes('Checks run after each edit (listed on the loop board): full on *.txt.') && !text.includes('held at its ceiling')), `${envCeilingChild.length} child request(s); ${envCeilingChildNotices.map(text => text.slice(0, 300).replace(/\n/g, ' | ')).join(' || ')}`],
   ['env-notice: the row appended .llm/ to the clone\'s .git/info/exclude and check-ignore verifies it', envIgnored === 0 && envExclude.split('\n').filter(line => line.trim() === '.llm/').length === 1, `check-ignore exit ${envIgnored}; exclude lines: ${envExclude.split('\n').filter(line => line.trim() === '.llm/').length}`],
   titleCheck('client-modules (probe-full)', clientModules.steps[0]?.meta, ['glm', 'hourness']),
   titleCheck('glm-only', glmOnly.steps[1]?.meta, ['glm']),

@@ -657,6 +657,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "rules-board-page FEAT-002 第 3 批本地提交 cfdb8f1（未推送，没动 tests/metrics-calc.spec.ts）。cfdb8f1 上 build 0、preflight 0、npm test 1（只有那条依赖日期的 metrics 测试），探针未跑。origin/rules-board-page 仍为 fa3cd4a（第 2 批，四道全绿，3003 个测试，探针 393/393）。它按约定等到 09:04 没等到 main 上的修复，回报。编排方查到修复已提交为 30cbd3b（fix-date-dependent-metrics-test 的本地分支 metrics-clock-pin，正在跑门禁），让它再等至多 40 分钟，main 一有该提交就合并、跑一次四道门禁、推送。"
+    },
+    {
+      "at": "2026-11-05T02:39:21.543Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "rules-board-page FEAT-002 完成并推：fa3cd4a（第 2 批，页面模型）、cfdb8f1（第 3 批，规则板、数据源、页面与文档）、9b16c20（合入带时钟修复 2bd13f6 的 origin/main）；origin/rules-board-page = 9b16c20。合并树上四道门禁为 0：npm test 3055 个，3054 通过 / 0 失败 / 1 跳过；探针 399/399，含 7 条规则页检查；棘轮 eslint 73 / knip 18 / jscpd 1。FEAT-002.json 记了发现与 L4 清单。下一步：修复加评审循环，然后合入 main（status-hub-2 随之一起合入）。"
+    },
+    {
+      "at": "2026-11-05T03:09:51.317Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "rules-board-page（wf_a34e9ff57206a017）收敛循环第 1 轮集成复核：在 9b16c20 上 build 0、preflight 0、npm test 0（3055 个测试，3054 通过、0 失败、1 跳过）、探针 399/399（规则页 7 项检查全过）、棘轮 73/18/1；没有发现接缝缺陷，没有新提交，origin/rules-board-page = 9b16c20。下一步：本轮评审。"
     }
   ]
 }

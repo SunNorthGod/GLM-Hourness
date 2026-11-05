@@ -6,7 +6,7 @@
  * graph written by the real engine and the journals real files.
  */
 import assert from 'node:assert/strict'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import test from 'node:test'
 import { openEngine } from '../src/graph/engine.ts'
@@ -55,12 +55,19 @@ const journalLines = (dir: string): Array<Record<string, unknown>> => {
   return existsSync(file) ? readFileSync(file, 'utf8').split('\n').filter(line => line !== '').map(line => JSON.parse(line) as Record<string, unknown>) : []
 }
 
+/** Every file under the graph directory with its content: equal before and after means the graph got no new node and no new revision. */
+const graphFiles = (dir: string): Array<readonly [string, string]> => existsSync(dir)
+  ? readdirSync(dir, { recursive: true, encoding: 'utf8' }).filter(name => statSync(join(dir, name)).isFile()).sort().map(name => [name, readFileSync(join(dir, name), 'utf8')] as const)
+  : []
+
 const reminders = (notices: readonly UserNotice[]): UserNotice[] => notices.filter(notice => notice.source.kind === LEARNING_SOURCE)
 const KEY = 'edit:task.acceptance'
 
 test('the reminder reaches the main agent once, after its record; the next step, a compaction and the health find nothing to repeat', { skip }, async () => {
   await withRow(async (row) => {
     await personActs(row.graphDir, FIVE_DAYS_BEFORE, { edits: 2 })
+    const graph = graphFiles(row.graphDir)
+    assert.ok(graph.length > 0)
     const first = await row.step()
     assert.deepEqual(first.map(notice => notice.source.kind), [LEARNING_SOURCE])
     const text = first[0].content[0].text
@@ -73,6 +80,7 @@ test('the reminder reaches the main agent once, after its record; the next step,
     row.runtime.history.length = 0 // a compaction replaced the history
     assert.deepEqual(await row.step(), [], 'the record says it was sent')
     assert.ok(!rowHealth(row).reason.includes('行读不出'), rowHealth(row).reason)
+    assert.deepEqual(graphFiles(row.graphDir), graph, 'the reminder added no node and no revision to the graph: nothing is put to the person there')
   }, { clock: T0, graph: 'plain' })
 })
 
@@ -185,6 +193,7 @@ const refusedWith = async (row: Row, args: unknown) => (await refusalOf(row.tool
 test('learning_signals answers with the groups of the window, each with where it is settled; the arguments narrow it', { skip }, async () => {
   await withRow(async (row) => {
     await personActs(row.graphDir, FIVE_DAYS_BEFORE, { edits: 2, rejects: 1 })
+    const graph = graphFiles(row.graphDir)
     const digest = await row.tool('learning_signals', {})
     assert.deepEqual(Object.keys(digest).sort(), ['graph', 'groups', 'since', 'until'])
     assert.deepEqual([digest.until, digest.since, digest.graph], [T0.toISOString(), later(-28 * DAY).toISOString(), 'ok'])
@@ -199,6 +208,7 @@ test('learning_signals answers with the groups of the window, each with where it
     assert.deepEqual(await row.service.learningDigest(row.runtime.agent.session, {}), digest)
     assert.deepEqual(await row.service.learningDigest(row.runtime.agent.session, { minCount: 1 }), wide)
     assert.deepEqual(journalLines(row.project), [], 'the tool writes nothing')
+    assert.deepEqual(graphFiles(row.graphDir), graph, 'the graph got no new node and no new revision')
   }, { clock: T0, graph: 'plain' })
 })
 
