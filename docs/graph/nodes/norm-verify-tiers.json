@@ -51,6 +51,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "桌面批次 L4（wf_be2ff3a8b7d83155）完成，记录 .agents/tasks/l4-batch-2026-11-05/l4.md（d22057f，origin 与 github 一致）；挡路 1 条（B1，m4-checks 第 5 条），已派 m4-checks-loop-details 修。B3 的处理由编排方定：经 CDP 发 Browser.close 之后每 30 秒看一次，至多等 15 分钟，仍不杀进程，15 分钟还没退出就停下报告；DEVELOPMENT.md §1.1 的 L4 行由 m4-checks-loop-details 同批改。另记：本批的步骤自己在主检出写了十个节点的批注（违反任务书「不改 docs/graph」），这些改动被编排方的提交 40e014f 一并带进 main；内容与 l4.md 一致，保留不回退。"
+    },
+    {
+      "at": "2026-11-05T13:16:32.454Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "B3 新数据：wf_d964b9e854bc29a0 合入步 20:23 发 Browser.close，49 分钟后主进程 72104 仍在、CDP 仍应答。批次 L4 那次是 12 分钟后退出，这次是请求没被处理，不是慢。15 分钟上限、不杀进程、到时停下报告的做法照旧。没生效的原因未查，派只读调查 desktop-close-2026-11-05 查桌面版的退出路径和可靠的重启办法。"
     }
   ]
 }
