@@ -2,6 +2,7 @@
   "id": "d-ask-three-gates",
   "type": "decision",
   "title": "问人改成三道关：该不该问、什么时候问、按种类怎么问；记录与问话分开（试行）",
+  "why": "问人之前先过三道关，人被问得少、每次读得轻松；记下的内容和问话分开存",
   "status": "approved",
   "parent": "orch",
   "verification": "unverified",
@@ -14,6 +15,19 @@
       "reason": "人定：主 Agent 问人改成三道关（该不该问、什么时候问、按种类怎么问），记录与问话分开；先试行",
       "relay": "都没问题。先这样改和试行吧，我看看效果",
       "to": "approved"
+    },
+    {
+      "at": "2026-11-05T05:25:26.813Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "问人之前先过三道关，人被问得少、每次读得轻松；记下的内容和问话分开存"
+        }
+      }
     }
   ]
 }

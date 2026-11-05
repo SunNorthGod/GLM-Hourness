@@ -2,6 +2,7 @@
   "id": "m7-7",
   "type": "task",
   "title": "夜间巡检",
+  "why": "每晚自动打扫工作目录与分支、跑一遍完整检查，问题第二天一早就知道",
   "status": "approved",
   "parent": "m7",
   "kind": "implement",
@@ -47,6 +48,19 @@
             "漏跑的一次在下一次巡检时报出来",
             "巡检是循环板上的一条默认条目，只能看"
           ]
+        }
+      }
+    },
+    {
+      "at": "2026-11-05T05:26:31.890Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "每晚自动打扫工作目录与分支、跑一遍完整检查，问题第二天一早就知道"
         }
       }
     }

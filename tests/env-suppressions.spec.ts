@@ -3,18 +3,22 @@
  * suppression line the env module owns (src/env/status.ts) and the morning
  * report that shows it (src/workflow/morning-report.ts): what counts on a
  * real repository, what is skipped (untracked, oversized, binary), the
- * once-per-repository-and-day gate, and the 「压制注释 N 处（本期 +a / −b）」
- * line over a period.
+ * once-per-repository-and-day gate, where the env row journals the count,
+ * and the 「压制注释 N 处（本期 +a / −b）」 line over a period.
  */
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { mkdtemp, readFile, rm, writeFile, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import { apply as envApply } from '../src/env/index.ts'
 import { countMarkers, countRepository, dailySuppressions, suppressionDay, type SuppressionRecord } from '../src/env/suppressions.ts'
+import { DATA_SERVICE } from '../src/shared/data-home.ts'
 import { morningReport, type ReportInput } from '../src/workflow/morning-report.ts'
 import { suppressionLineOf } from '../src/env/status.ts'
+import { fakeRuntime } from './fake-rc3.ts'
 
 function git(dir: string, args: readonly string[]): void {
   execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@localhost', '-c', 'commit.gpgsign=false', ...args], { cwd: dir, stdio: 'ignore' })
@@ -93,4 +97,28 @@ test('the morning report carries the suppression line with the movement of the p
   assert.ok(report.includes('压制注释 5 处（本期 +2 / −0）'), report)
   assert.ok(report.indexOf('压制注释') > report.indexOf('## 例外（先看）'), report)
   assert.ok(!morningReport(input([])).includes('压制注释'))
+})
+
+test('the env row journals the count in the data service\'s project directory of the session: the override a probe sets, never the repository\'s .llm', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'env-supp-row-'))
+  const override = await mkdtemp(join(tmpdir(), 'env-supp-home-'))
+  try {
+    git(dir, ['init'])
+    await writeFile(join(dir, 'a.ts'), '// eslint-disable no-console\n')
+    git(dir, ['add', 'a.ts'])
+    const runtime = fakeRuntime({ natives: [], cwd: dir })
+    runtime.ctx.provide(DATA_SERVICE, { userHome: join(override, 'user'), projectDirOf: () => override })
+    const dispose = envApply(runtime.ctx)
+    await runtime.create()
+    const journal = join(override, 'audit', 'suppressions.jsonl')
+    for (let tries = 0; tries < 50 && !existsSync(journal); tries++) await new Promise(resolve => setTimeout(resolve, 100))
+    const records = (await readFile(journal, 'utf8')).split('\n').filter(line => line.length > 0).map(line => JSON.parse(line) as SuppressionRecord)
+    assert.deepEqual(records.map(record => [record.total, record.byMarker]), [[1, { 'eslint-disable': 1 }]])
+    assert.ok(!existsSync(join(dir, '.llm', 'audit')), 'nothing in the repository\'s .llm/audit')
+    dispose()
+  }
+  finally {
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 })
+    await rm(override, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 })
+  }
 })

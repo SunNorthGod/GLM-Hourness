@@ -8,9 +8,10 @@
  * the trail, and the registered boards' pages (M5 §8.2), each board
  * bounded by its own error boundary. The panel only looks (plain-ui,
  * d-ui-look-not-operate); 展开 and navigation are its only clicks.
- * 上次看之后 runs on seen.ts: the arrival reads the last departure from
- * the browser's local storage, keyed by the graph's absolute nodes
- * directory. The main chat's result (MainChat.tsx) is computed once here
+ * 上次看之后 runs on seen.ts: the mount is the arrival and reads the last
+ * departure from the browser's local storage, keyed by the graph's
+ * absolute nodes directory; visible is the window's focus, with the
+ * intersection observer as a veto (seen.ts watchVisibility). The main chat's result (MainChat.tsx) is computed once here
  * and handed to every view through its context; it also decides the
  * 「现在」line's subject (mainHere) and whose session's awaiting the needs
  * read (plain-ui 1.3 §4.9).
@@ -29,6 +30,7 @@ import { Decisions } from './Decisions.tsx'
 import { GraphCanvas } from './GraphCanvas.tsx'
 import { GuidePage } from './Guide.tsx'
 import { Home } from './Home.tsx'
+import { openerOf } from './main-chat.ts'
 import { MainChatContext, useMainAgent } from './MainChat.tsx'
 import { NeedsPage } from './NeedsYou.tsx'
 import { LiveSection } from './Live.tsx'
@@ -37,7 +39,7 @@ import { ModulesPage } from './Modules.tsx'
 import { Frame, NodeDetail } from './NodeDetail.tsx'
 import { PlanPage } from './Plan.tsx'
 import { GRAPH_DIR, type GraphSource } from './source.ts'
-import { initialSeen, nextSeen, seenKeyOf, seenRecordOf, writeSeenRecord } from './seen.ts'
+import { initialSeen, nextSeen, seenKeyOf, seenRecordOf, watchVisibility, writeSeenRecord, type SeenEvent, type VisibilityHost } from './seen.ts'
 import { PANEL_CSS } from './styles.ts'
 import { hasUserPage } from './user-view.ts'
 import { UserPage } from './UserView.tsx'
@@ -92,6 +94,29 @@ export interface GraphPanelProps {
   readonly sessionId: string
 }
 
+/** The real window and body for watchVisibility: focus and blur on the window, an IntersectionObserver on the body when it is there. */
+function windowVisibility(element: HTMLElement | null): VisibilityHost {
+  return {
+    hasFocus: () => document.hasFocus(),
+    onFocusChange: (listener) => {
+      window.addEventListener('focus', listener)
+      window.addEventListener('blur', listener)
+      return () => {
+        window.removeEventListener('focus', listener)
+        window.removeEventListener('blur', listener)
+      }
+    },
+    ...(element === null || typeof IntersectionObserver !== 'function'
+      ? {}
+      : {
+          observe: (listener: (intersecting: boolean) => void) => {
+            const observer = new IntersectionObserver(entries => { listener(entries.at(-1)?.isIntersecting === true) })
+            observer.observe(element)
+            return () => { observer.disconnect() }
+          },
+        }),
+  }
+}
 export function GraphPanel({ source, sessions, files, workspace, sessionId }: GraphPanelProps): ReactElement {
   const snapshot = useSyncExternalStore(source.subscribe, source.getSnapshot)
   const agents = useAgents(sessions, sessionId)
@@ -104,8 +129,6 @@ export function GraphPanel({ source, sessions, files, workspace, sessionId }: Gr
   const [boardId, setBoardId] = useState<string | undefined>(undefined)
   /** The goal whose 用户怎么用 page is open (user graph design 0.4.1 §6.1). */
   const [userGoal, setUserGoal] = useState<string | undefined>(undefined)
-  /** The absolute graph directory, for the local record's key; read once. */
-  const [graphDirAbs, setGraphDirAbs] = useState<string | undefined>(undefined)
   const [seen, setSeen] = useState(initialSeen)
   const selected = trail.at(-1)
   const depth = useRef(0)
@@ -113,8 +136,8 @@ export function GraphPanel({ source, sessions, files, workspace, sessionId }: Gr
   /** What had focus when a layer opened; it gets focus back when everything closed. */
   const opener = useRef<HTMLElement | SVGElement | null>(null)
   const body = useRef<HTMLDivElement>(null)
-  /** Whether the body intersects the viewport, as the observer last said. */
-  const shown = useRef(false)
+  /** The seen machine's state as the events left it: an unmount writes its departure from here, where a state update would be dropped. */
+  const seenNow = useRef(initialSeen)
   /** The body's visibility as state: it bounds the main chat's read window. */
   const [bodyVisible, setBodyVisible] = useState(false)
   /**
@@ -134,7 +157,7 @@ export function GraphPanel({ source, sessions, files, workspace, sessionId }: Gr
     () => sessions.list.getSnapshot().projectionsBySession,
   )
   const values = projections[sessionId]?.values
-  const main = useMainAgent(sessionId, { sessions, files, openSession: workspace.openSession }, bodyVisible)
+  const main = useMainAgent(sessionId, { sessions, files, openSession: openerOf(workspace) }, bodyVisible)
   // The main agent's awaiting lives in its session's graphLive; when it is another session, ask the host once for its values.
   const holderId = main.chat?.kind === 'there' ? main.chat.sessionId : undefined
   const holderAsked = useRef<string | undefined>(undefined)
@@ -161,46 +184,32 @@ export function GraphPanel({ source, sessions, files, workspace, sessionId }: Gr
   )
   const modules = useMemo(() => graph === undefined ? null : modulesView(graph, awaiting), [graph, awaiting])
 
-  // The absolute path of the graph directory, once: the local record's key follows it.
-  useEffect(() => {
-    let live = true
-    void source.statAbsolute().then(path => { if (live && path !== null) setGraphDirAbs(path) }).catch(() => {})
-    return () => { live = false }
-  }, [source])
-  const seenKey = graphDirAbs === undefined ? undefined : seenKeyOf(`${graphDirAbs}/nodes`)
+  // The local record's key follows the absolute nodes directory the reads came from (seen.ts, plain-ui 1.3 §6.8).
+  const nodesAbsolute = snapshot.status === 'ready' ? source.nodesDirAbsolute() : undefined
+  const seenKey = nodesAbsolute === undefined ? undefined : seenKeyOf(nodesAbsolute)
 
-  // The panel body's visibility decides both the seen window (seen.ts) and the main chat's read timing.
+  // Visible (seen.ts watchVisibility): the window's focus, the observer on the body as a veto; it also bounds the main chat's reads.
+  const ready = snapshot.status === 'ready'
+  useEffect(() => watchVisibility(windowVisibility(body.current), setBodyVisible), [ready])
+  // 上次看之后 (seen.ts): the mount is an arrival, visibility moves the window, the unmount may be a departure.
   useEffect(() => {
-    const apply = (intersecting: boolean): void => {
-      const event = intersecting && document.visibilityState === 'visible' ? 'visible' : 'hidden'
-      setBodyVisible(event === 'visible')
-      if (seenKey === undefined) return
-      const at = Date.now()
-      setSeen(current => {
-        const { state, departure } = nextSeen(current, event, at, seenRecordOf(window.localStorage, seenKey))
-        if (departure !== undefined) writeSeenRecord(window.localStorage, seenKey, departure)
-        return state
-      })
+    if (seenKey === undefined) return undefined
+    const step = (event: SeenEvent): void => {
+      const { state, departure } = nextSeen(seenNow.current, event, Date.now(), seenRecordOf(window.localStorage, seenKey))
+      if (departure !== undefined) writeSeenRecord(window.localStorage, seenKey, departure)
+      seenNow.current = state
+      setSeen(state)
     }
-    const observer = new IntersectionObserver(entries => {
-      const intersecting = entries[0]?.isIntersecting === true
-      if (intersecting === shown.current) return
-      shown.current = intersecting
-      apply(intersecting)
-    })
-    if (body.current !== null) observer.observe(body.current)
-    const onVisibility = (): void => {
-      if (document.visibilityState === 'visible') apply(shown.current)
-      else apply(false)
-    }
-    document.addEventListener('visibilitychange', onVisibility)
-    return () => {
-      observer.disconnect()
-      document.removeEventListener('visibilitychange', onVisibility)
-      apply(false)
-    }
+    step('mount')
+    return () => { step('unmount') }
   }, [seenKey])
-
+  useEffect(() => {
+    if (seenKey === undefined) return
+    const { state, departure } = nextSeen(seenNow.current, bodyVisible ? 'visible' : 'hidden', Date.now(), seenRecordOf(window.localStorage, seenKey))
+    if (departure !== undefined) writeSeenRecord(window.localStorage, seenKey, departure)
+    seenNow.current = state
+    setSeen(state)
+  }, [seenKey, bodyVisible])
   const closeLayer = useCallback((): void => {
     setPage(undefined)
     setBoardId(undefined)

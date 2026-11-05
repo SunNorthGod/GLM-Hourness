@@ -35,7 +35,23 @@
  * (env-notice) runs in a git workspace whose graph has an approved tool node
  * under env, with the env row enabled by the overlay: the first request ends
  * with the wrapped environment notice, the next does not repeat it, and the
- * project's .llm/ is git-ignored through .git/info/exclude. The loop board's peak scenario
+ * project's .llm/ is git-ignored through .git/info/exclude. The
+ * env-check-command scenario mounts probe-env.mjs in place of the loop board
+ * (the loop row pinned off): the env row's service reads a check line of the
+ * graph's tool node back, the row hands the board env.files-edited and emits
+ * it once per step that wrote a file. The env-checks scenario runs M4's own
+ * check after each edit through the shared executor: the finding on the
+ * changed line, the line of zeros after the fix, the file names as they are,
+ * the entry with its five own rules and one run record per delivery. The
+ * env-checks-timeout scenario proposes a tool node under env through
+ * graph_propose (the result carries the timeout sentence of its check line,
+ * the workspace's timing journal the estimate with the session); after the
+ * human approves it, env-checks-timeout-run edits a file twice: the first run
+ * stops at its 5 s limit, the second ends inside the next one, 15 s, and the
+ * journal holds every line in between. In env-checks-ceiling a check held at
+ * its ceiling is one line in the root agent's environment notice, which
+ * check_limit takes away by raising the ceiling, and a dispatched subagent
+ * never hears of it. The loop board's peak scenario
  * (loops-peak) runs on the GLM route at the probe clock inside a peak, with
  * the loop row and the rules row (少做) enabled and no contribution listing
  * execute.resume-drive: the scripted agent becomes the main agent with /wish,
@@ -116,7 +132,8 @@ import { parseRulesView } from '../../packages/hourness/dist/rules/view.js'
 import { entryFileText } from '../../packages/hourness/dist/loops/model.js'
 import { LOOP_NOTICE_SOURCE } from '../../packages/hourness/dist/loops/deliver.js'
 import { LOOPS_DECLARATION } from '../../packages/hourness/dist/loops/service.js'
-import { NO_CHECKS_LINE, SCRATCH_LINE } from '../../packages/hourness/dist/env/notice.js'
+import { NO_BOARD_LINE, SCRATCH_LINE } from '../../packages/hourness/dist/env/notice.js'
+import { checksOwnRules } from '../../packages/hourness/dist/env/loop-entry.js'
 import { PEAK_REMINDER_SOURCE, PEAK_REMINDER_TEXT, peakReminderText } from '../../packages/glm/dist/glm-prompt/peak-reminder.js'
 import { IDENTITY_OPENING_PLAIN, IDENTITY_OPENING_WITH_STYLE } from '../../packages/glm/dist/glm-prompt/verbatim.js'
 import { transcriptNote } from '../../packages/glm/dist/glm-prompt/zcode-compact-text.js'
@@ -142,7 +159,7 @@ import { checkLog, readLog } from '../../packages/hourness/dist/metrics/read.js'
 import { METRICS_FILES_ONLY } from '../../packages/hourness/dist/metrics/rules.js'
 import { keyOf } from '../../packages/hourness/dist/guard/records.js'
 import { PACKAGES } from '../packages.mjs'
-import { attachmentsIn, dataRows, designRows, generateProfile, initRepo, limitsRow, PROBE_PROFILES, repo, requireDesktop, sandboxCommand, slash, unlinkProfile, workspaceChangesRow } from '../sandbox.mjs'
+import { attachmentsIn, dataRows, designRows, generateProfile, initRepo, limitsRow, PROBE_PROFILES, repo, requireDesktop, sandboxCommand, scenarioWorkspace, slash, unlinkProfile, workspaceChangesRow } from '../sandbox.mjs'
 import { GOAL_GATE_DENIAL, PROJECTION_SOURCE, SCOPE_DENIAL } from './probe-dispatch.mjs'
 import { CANARY } from './probe-net.mjs'
 
@@ -253,6 +270,10 @@ const netLogOf = name => join(runDir, name, 'net.jsonl')
  * requests are in `steps` too, under their own session id. `on` is the
  * generated profile to boot; the overlay patches only rows of the packages
  * it lists, so a single-package run has no override without a target.
+ * `cwd` is where the sessions work: a scenario that names none (or this
+ * checkout) works in its scenario directory, and every one works in a git
+ * repository of its own (scripts/sandbox.mjs scenarioWorkspace); the result's
+ * `cwd` is that directory.
  */
 function runScenario(name, model, script, task, overlay = [], cwd = repo, others = [], on = profiles['probe-full']) {
   scenarioNames.push(name)
@@ -284,8 +305,10 @@ function runScenario(name, model, script, task, overlay = [], cwd = repo, others
     '',
   ].join('\n'))
   const { exe, args, env } = sandboxCommand(patch, [task], on)
+  // Every scenario's sessions run in a repository of its own, so no row keeps project state in this checkout's project.
+  const workspace = scenarioWorkspace(dir, cwd)
   const started = Date.now()
-  const result = spawnSync(exe, args, { cwd, encoding: 'utf8', timeout: 180_000, env })
+  const result = spawnSync(exe, args, { cwd: workspace, encoding: 'utf8', timeout: 180_000, env })
   const elapsedMs = Date.now() - started
   writeFileSync(join(dir, 'stdout.txt'), result.stdout ?? '')
   writeFileSync(join(dir, 'stderr.txt'), result.stderr ?? '')
@@ -293,6 +316,7 @@ function runScenario(name, model, script, task, overlay = [], cwd = repo, others
   return {
     status: result.status,
     elapsedMs,
+    cwd: workspace,
     steps: requests.filter(request => request.tools.length > 0 && request.purpose !== 'compaction'),
     compactions: requests.filter(request => request.purpose === 'compaction'),
   }
@@ -315,9 +339,11 @@ const announcements = step => (step?.messages ?? []).filter(message => message.r
 // command through Bash (timeout in milliseconds, no description), read a
 // PNG (GLM-5.3 is text-only, so read_image refuses), write a file through
 // the shell (the guard denies it and journals the violation), finish.
-// The scratch files live in the scenario directory inside the workspace.
+// The scenario directory is the workspace, with the scratch files and a copy
+// of package.json for Grep to find under its display path.
 const glmDir = join(runDir, 'glm')
 mkdirSync(glmDir, { recursive: true })
+cpSync(join(repo, 'package.json'), join(glmDir, 'package.json'))
 const scratch = join(glmDir, 'scratch.txt')
 const unread = join(glmDir, 'unread.txt')
 const blocked = join(glmDir, 'blocked.txt')
@@ -333,7 +359,7 @@ const glm = runScenario('glm', 'glm-5.3', [
   { tool: { name: 'Read', arguments: { file_path: scratch, offset: 0 } } },
   { tool: { name: 'Write', arguments: { file_path: unread, content: 'clobbered\n' } } },
   { tool: { name: 'Glob', arguments: { pattern: '{scratch,unread}.txt', path: glmDir } } },
-  { tool: { name: 'Grep', arguments: { 'pattern': 'DSH-GLM-HOURNESS', 'path': join(repo, 'package.json'), 'output_mode': 'content', '-i': true } } },
+  { tool: { name: 'Grep', arguments: { 'pattern': 'DSH-GLM-HOURNESS', 'path': join(glmDir, 'package.json'), 'output_mode': 'content', '-i': true } } },
   { tool: { name: 'Bash', arguments: { command: 'Write-Output probe-bash', timeout: 30000 } } },
   { tool: { name: 'Read', arguments: { file_path: png } } },
   { tool: { name: 'Bash', arguments: { command: `Set-Content -Path '${blocked}' -Value probe` } } },
@@ -483,6 +509,8 @@ const clockRow = (at, shiftWith) => [
   `      name: ${JSON.stringify(slash(join(repo, 'scripts', 'probe', 'probe-clock.mjs')))}`,
   `      config: { at: ${JSON.stringify(at)}${shiftWith === undefined ? '' : `, shiftWith: ${JSON.stringify(shiftWith)}`} }`,
 ]
+// The tool a scenario's clock row registers when the scenario moves the clock mid-run (rules-peak-wake, loops-peak).
+const SHIFT_TOOL = 'probe_shift_clock'
 const peak = runScenario('glm-peak', 'glm-5.3', [
   { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } } },
   { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } } },
@@ -686,7 +714,7 @@ const hournessOnlyStatus = hournessOnly.steps[1]?.command
 const hournessOnlyReport = hournessOnly.steps[3]?.command
 
 // Environment notice (M4 design §7.2, scenario env-notice): the env row
-// enabled by the overlay, a git workspace whose graph carries an approved
+// (shipped enabled since m4-checks B6; the overlay still pins it on), a git workspace whose graph carries an approved
 // tool node under env. The first request ends with the wrapped environment
 // notice — the tool line, the no-checks line, the scratch line — the next
 // request does not repeat it, and the project's .llm/ is git-ignored (the
@@ -722,6 +750,174 @@ const envNoticeRepeat = (envNoticeRun.steps[1]?.messages ?? []).filter(message =
 const envNoticeLast = envNoticeRun.steps[1]?.messages.at(-1)
 const envExclude = existsSync(join(envNoticeWs, '.git', 'info', 'exclude')) ? readFileSync(join(envNoticeWs, '.git', 'info', 'exclude'), 'utf8') : ''
 const envIgnored = spawnSync('git', ['-C', envNoticeWs, 'check-ignore', '-q', '.llm/scratch/x'], { stdio: 'ignore' }).status
+
+/** The probe-env overlay: the env row on, the loop row pinned off, the stand-in loop board logging to `out`. */
+const envBoardOverlay = out => [
+  '- id: glm-hourness/env',
+  '  disabled: false',
+  '- id: glm-hourness/loops',
+  '  disabled: true',
+  '- insert:',
+  '    - id: glm-hourness-probe/env',
+  `      name: ${JSON.stringify(slash(join(repo, 'scripts', 'probe', 'probe-env.mjs')))}`,
+  '      inject: [tools]',
+  `      config: { out: ${JSON.stringify(slash(out))} }`,
+]
+const readEnvLog = log => existsSync(log) ? readFileSync(log, 'utf8').split('\n').filter(line => line.length > 0).map(line => JSON.parse(line)) : []
+const checksNoticesIn = step => (step?.messages ?? []).filter(message => message.source === 'hourness-checks')
+/** The checks notice each request added: a request carries the whole history, so a notice is new where the count grows. */
+const newChecksNotices = run => run.steps.map((step, index) => checksNoticesIn(step).length > (index === 0 ? 0 : checksNoticesIn(run.steps[index - 1]).length) ? checksNoticesIn(step).at(-1) : undefined)
+
+// The env row and the loop board (M4 design §6.1.2, §6.2, §14.1 env-checks,
+// the part without when; scenario env-check-command): the env row and the
+// graph row on, the loop row pinned off, and the probe-env overlay standing
+// in for the loop board (the headless runtime has no session controller, so
+// the real board provides no service). A tool node's check line without
+// `when` reads back through glmHournessEnv as it stands on the node and is
+// not M4's own; each step after a file write emits env.files-edited with
+// the file relative to the checkout root; the row hands the board the event,
+// and no checks reminder appears (M4 does not run a line without `when`).
+const envCheckDir = join(runDir, 'env-check-command')
+const envCheckWs = join(envCheckDir, 'ws')
+const envCheckGraph = join(envCheckWs, 'docs', 'graph')
+const envCheckLog = join(envCheckDir, 'env.jsonl')
+mkdirSync(envCheckGraph, { recursive: true })
+writeFileSync(join(envCheckWs, 'README.md'), 'probe workspace\n')
+if (!initRepo(envCheckWs)) throw new Error('probe: git init for env-check-command failed')
+const envCheckEngine = openEngine(envCheckGraph)
+for (const node of [
+  { type: 'goal', title: '探针目标' },
+  { id: 'env', type: 'feature', title: '环境', parent: 'goal-1' },
+  { id: 'tool-1', type: 'tool', title: 'Lint', parent: 'env', body: '用法：node lint.mjs', acceptance: ['`check lint lines $ node lint.mjs {files}`'] },
+]) {
+  const seeded = await envCheckEngine.apply('human', { op: 'propose', reason: 'probe seed', node })
+  if (!seeded.ok) throw new Error(`probe: seeding the env-check-command graph failed: ${JSON.stringify(seeded.error)}`)
+  if (seeded.node?.status === 'proposed' && !(await envCheckEngine.apply('human', { op: 'status', id: seeded.id, rev: seeded.rev, to: 'approved', reason: 'probe' })).ok) {
+    throw new Error(`probe: approving the env-check-command node ${seeded.id} failed`)
+  }
+}
+const envCheckRun = runScenario('env-check-command', 'deepseek-probe', [
+  { tool: { name: 'probe_check_command', arguments: { tool: 'tool-1' } } },
+  { tool: { name: 'write', arguments: { file_path: join(envCheckWs, 'a.txt'), content: 'a\n' } } },
+  { tool: { name: 'write', arguments: { file_path: join(envCheckWs, '-c.txt'), content: 'c\n' } } },
+  { text: 'done' },
+], 'Read the check command, write two files, then reply done.', envBoardOverlay(envCheckLog), envCheckWs, [], profiles['probe-hourness'])
+const envCheckRecords = readEnvLog(envCheckLog)
+const envCheckCommand = envCheckRecords.find(record => record.kind === 'check-command')
+const envCheckContribute = envCheckRecords.find(record => record.kind === 'contribute' && record.source?.row === 'glm-hourness/env')
+const envCheckEmits = envCheckRecords.filter(record => record.kind === 'emit' && record.event?.event === 'env.files-edited').map(record => record.event)
+const sameDir = (a, b) => typeof a === 'string' && slash(a).toLowerCase().replace(/\/+$/, '') === slash(b).toLowerCase().replace(/\/+$/, '')
+const envCheckReminders = envCheckRun.steps.reduce((count, step) => count + step.messages.filter(message => message.source === 'hourness-checks').length, 0)
+
+// M4's own checker (M4 design §6.2-§6.5, §6.8, §14.1 env-checks): the env
+// row on with the probe-env stand-in for the loop board, a git workspace
+// whose graph has an approved tool node with a check line with `when`. The
+// checks run through the shared executor after each edit: a TODO is one
+// finding on a changed line with its log, the fix is one line of zeros, a
+// step without edits and edits without findings after zeros say nothing,
+// lint.mjs receives `b$(echo x).txt` as it is and `-c.txt` as `./-c.txt`, the
+// row hands the board env.checks-after-edit with its five own rules and
+// records one run per delivery.
+const envChecksDir = join(runDir, 'env-checks')
+const envChecksWs = join(envChecksDir, 'ws')
+const envChecksGraph = join(envChecksWs, 'docs', 'graph')
+const envChecksLog = join(envChecksDir, 'env.jsonl')
+mkdirSync(envChecksGraph, { recursive: true })
+writeFileSync(join(envChecksWs, 'README.md'), 'probe workspace\n')
+writeFileSync(join(envChecksWs, 'lint.mjs'), [
+  "import { appendFileSync, readFileSync } from 'node:fs'",
+  'const files = process.argv.slice(2)',
+  "appendFileSync('args.jsonl', JSON.stringify(files) + '\\n')",
+  "for (const file of files) readFileSync(file, 'utf8').split('\\n').forEach((line, index) => { if (line.includes('TODO')) console.log(`${file}:${index + 1}:1: todo found`) })",
+  '',
+].join('\n'))
+if (!initRepo(envChecksWs)) throw new Error('probe: git init for env-checks failed')
+const envChecksEngine = openEngine(envChecksGraph)
+for (const node of [
+  { type: 'goal', title: '探针目标' },
+  { id: 'env', type: 'feature', title: '环境', parent: 'goal-1' },
+  { id: 'tool-1', type: 'tool', title: 'Lint', parent: 'env', body: '用法：node lint.mjs', acceptance: ['`check lint lines $ node lint.mjs {files}` when *.txt'] },
+]) {
+  const seeded = await envChecksEngine.apply('human', { op: 'propose', reason: 'probe seed', node })
+  if (!seeded.ok) throw new Error(`probe: seeding the env-checks graph failed: ${JSON.stringify(seeded.error)}`)
+  if (seeded.node?.status === 'proposed' && !(await envChecksEngine.apply('human', { op: 'status', id: seeded.id, rev: seeded.rev, to: 'approved', reason: 'probe' })).ok) {
+    throw new Error(`probe: approving the env-checks node ${seeded.id} failed`)
+  }
+}
+const envChecksRun = runScenario('env-checks', 'deepseek-probe', [
+  { tool: { name: 'write', arguments: { file_path: join(envChecksWs, 'a.txt'), content: 'one\nTODO two\n' } } },
+  { tool: { name: 'edit', arguments: { file_path: join(envChecksWs, 'a.txt'), old_string: 'TODO two', new_string: 'two' } } },
+  { tool: { name: 'read', arguments: { file_path: join(envChecksWs, 'a.txt') } } },
+  { tool: { name: 'write', arguments: { file_path: join(envChecksWs, 'b$(echo x).txt'), content: 'clean\n' } } },
+  { tool: { name: 'write', arguments: { file_path: join(envChecksWs, '-c.txt'), content: 'clean\n' } } },
+  { text: 'done' },
+], 'Write, fix and read a file, write two more, then reply done.', envBoardOverlay(envChecksLog), envChecksWs, [], profiles['probe-hourness'])
+const envChecksRecords = readEnvLog(envChecksLog)
+const envChecksNotices = newChecksNotices(envChecksRun)
+const envChecksFound = envChecksNotices[1]?.text ?? ''
+const envChecksLogPath = /\nFull output: (\S+)\n/.exec(envChecksFound)?.[1]
+const envChecksArgs = existsSync(join(envChecksWs, 'args.jsonl')) ? readFileSync(join(envChecksWs, 'args.jsonl'), 'utf8').split('\n').filter(line => line.length > 0).map(line => JSON.parse(line)) : []
+const envChecksContribute = envChecksRecords.find(record => record.kind === 'contribute' && record.source?.row === 'glm-hourness/env')
+const envChecksRuns = envChecksRecords.filter(record => record.kind === 'run').map(record => record.run)
+const envChecksEmits = envChecksRecords.filter(record => record.kind === 'emit' && record.event?.event === 'env.files-edited').map(record => record.event)
+const envChecksEnvNotice = (envChecksRun.steps[0]?.messages ?? []).find(message => message.source === 'hourness-env')
+
+// The timeout the human sees when approving a tool node (M4 design §6.3.1
+// item 3, §14.1 env-checks-timeout, the first part): the graph row on, a git
+// workspace whose graph has the env feature. The scripted agent proposes a
+// tool node under env with a check line estimated at 1 s; the result carries
+// the sentence of its timeout, and the workspace's timing journal has the
+// estimate with this session and the history entry the engine wrote.
+const ENV_TIMEOUT_LINE = '`check slow lines 1s $ node slow.mjs {files}` when *.txt'
+const envTimeoutWs = join(runDir, 'env-checks-timeout', 'ws')
+const envTimeoutGraph = join(envTimeoutWs, 'docs', 'graph')
+const envTimeoutJournal = join(envTimeoutWs, '.llm', 'env-checks', 'timing.jsonl')
+mkdirSync(envTimeoutGraph, { recursive: true })
+writeFileSync(join(envTimeoutWs, 'README.md'), 'probe workspace\n')
+if (!initRepo(envTimeoutWs)) throw new Error('probe: git init for env-checks-timeout failed')
+const envTimeoutEngine = openEngine(envTimeoutGraph)
+for (const node of [
+  { type: 'goal', title: '探针目标' },
+  { id: 'env', type: 'feature', title: '环境', parent: 'goal-1' },
+]) {
+  const seeded = await envTimeoutEngine.apply('human', { op: 'propose', reason: 'probe seed', node })
+  if (!seeded.ok) throw new Error(`probe: seeding the env-checks-timeout graph failed: ${JSON.stringify(seeded.error)}`)
+  if (seeded.node?.status === 'proposed' && !(await envTimeoutEngine.apply('human', { op: 'status', id: seeded.id, rev: seeded.rev, to: 'approved', reason: 'probe' })).ok) {
+    throw new Error(`probe: approving the env-checks-timeout node ${seeded.id} failed`)
+  }
+}
+const envTimeoutRun = runScenario('env-checks-timeout', 'deepseek-probe', [
+  { tool: { name: 'graph_propose', arguments: { node: { id: 'tool-1', type: 'tool', title: 'Slow', parent: 'env', acceptance: [ENV_TIMEOUT_LINE] }, reason: 'probe: a check that runs after edits' } } },
+  { text: 'done' },
+], 'Propose a tool node with a check line, then reply done.', [], envTimeoutWs, [], profiles['probe-hourness'])
+const envTimeoutText = envTimeoutRun.steps[1]?.messages.filter(message => message.role === 'tool').at(-1)?.text ?? ''
+const envTimeoutResult = (() => { try { return JSON.parse(envTimeoutText) } catch { return undefined } })()
+const envTimeoutLines = existsSync(envTimeoutJournal) ? readFileSync(envTimeoutJournal, 'utf8').split('\n').filter(line => line.length > 0).map(line => JSON.parse(line)) : []
+const envTimeoutProposed = (await loadGraph(envTimeoutGraph)).nodes.get('tool-1')?.history.at(-1)
+
+// The second part (M4 design §6.3.1, §14.1 env-checks-timeout): the human
+// approves the node the first part proposed, and a new session with the env
+// row and the probe-env board edits a .txt twice; slow.mjs sleeps 7 s. The
+// first run is stopped at 5 s (three times the estimate of 1 s, raised to the
+// floor) and the notice names the next limit, 15 s; the second run ends by
+// itself inside it. The timing journal holds, in order, the estimate of the
+// first part, the value from it (with that session and the llm), the
+// timeout, the censored run, the harness's 15 s value and the 7 s run.
+const envTimeoutApproved = await envTimeoutEngine.apply('human', { op: 'approve', id: 'tool-1', rev: (await loadGraph(envTimeoutGraph)).revisions.get('tool-1'), reason: 'probe: the human approves the check' })
+if (!envTimeoutApproved.ok) throw new Error(`probe: approving the env-checks-timeout tool node failed: ${JSON.stringify(envTimeoutApproved.error)}`)
+writeFileSync(join(envTimeoutWs, 'slow.mjs'), "setTimeout(() => { console.log('slow done') }, 7000)\n")
+const envTimeoutRunLog = join(runDir, 'env-checks-timeout-run', 'env.jsonl')
+const envTimeoutRun2 = runScenario('env-checks-timeout-run', 'deepseek-probe', [
+  { tool: { name: 'write', arguments: { file_path: join(envTimeoutWs, 't.txt'), content: 'a\n' } } },
+  { tool: { name: 'edit', arguments: { file_path: join(envTimeoutWs, 't.txt'), old_string: 'a', new_string: 'bb' } } },
+  { text: 'done' },
+], 'Write a file and edit it, then reply done.', envBoardOverlay(envTimeoutRunLog), envTimeoutWs, [], profiles['probe-hourness'])
+const envTimeoutNotices = newChecksNotices(envTimeoutRun2)
+const envTimeoutStopped = envTimeoutNotices[1]?.text ?? ''
+const envTimeoutJournal2 = existsSync(envTimeoutJournal) ? readFileSync(envTimeoutJournal, 'utf8').split('\n').filter(line => line.length > 0).map(line => JSON.parse(line)) : []
+const envTimeoutRuns = readEnvLog(envTimeoutRunLog).filter(record => record.kind === 'run').map(record => record.run)
+const envTimeoutKinds = envTimeoutJournal2.map(line => line.kind)
+const [, envTimeoutFirstValue, envTimeoutStop, envTimeoutCensored, envTimeoutHarness, envTimeoutFinished] = envTimeoutJournal2
 
 // Client composition (split design §5.6, U3): the headless template has no
 // client-modules row, so the overlay mounts @deepseek-ai/dsh-client-modules
@@ -924,6 +1120,92 @@ const rulesHandover = runScenario('rules-handover', 'deepseek-probe', [
   { text: 'child done' },
 ]])
 
+// The third part (M4 design §6.3.1 items 6 and 「调高上限」, §14.1
+// env-checks-timeout; scenario env-checks-ceiling): an approved tool node
+// whose check line estimates 25 s (three times is 75 s, over the 60 s
+// ceiling) for a check that is quick. After the write the value is held at
+// 60 s with capped 75 s; the root agent's next environment notice has the
+// held-at-its-ceiling line with the full key, and check_limit is in its tool
+// face. It raises the ceiling to 120 s with a reason (limits.jsonl gets the
+// line, the held line goes from the next notice), then dispatches a subagent
+// through probe-dispatch.mjs, whose environment notice has the checks line
+// and no held line.
+const envCeilingDir = join(runDir, 'env-checks-ceiling')
+const envCeilingWs = join(envCeilingDir, 'ws')
+const envCeilingGraph = join(envCeilingWs, 'docs', 'graph')
+const envCeilingLog = join(envCeilingDir, 'env.jsonl')
+const envCeilingLimits = join(envCeilingWs, '.llm', 'env-checks', 'limits.jsonl')
+const ENV_CEILING_HELD = 'Check full is held at its ceiling of 60 s: three times your estimate (25 s) would be 75 s. Raising this check\'s ceiling is your decision and needs no approval from the human: call check_limit with check "tool-1/full", seconds (61 to 600) and a reason. Making the check cheaper or narrower means changing its check line, which is a tool-node change and needs the human\'s approval as usual.'
+const ENV_CEILING_REASON = '整个项目要跑一分多钟'
+mkdirSync(join(envCeilingWs, 'allowed'), { recursive: true })
+mkdirSync(envCeilingGraph, { recursive: true })
+writeFileSync(join(envCeilingWs, 'README.md'), 'probe workspace\n')
+writeFileSync(join(envCeilingWs, 'fast.mjs'), '\n')
+if (!initRepo(envCeilingWs)) throw new Error('probe: git init for env-checks-ceiling failed')
+const envCeilingEngine = openEngine(envCeilingGraph)
+for (const node of [
+  { type: 'goal', title: '探针目标' },
+  { id: 'env', type: 'feature', title: '环境', parent: 'goal-1' },
+  { id: 'tool-1', type: 'tool', title: 'Full', parent: 'env', body: '用法：node fast.mjs', acceptance: ['`check full lines 25s $ node fast.mjs {files}` when *.txt'] },
+]) {
+  const seeded = await envCeilingEngine.apply('human', { op: 'propose', reason: 'probe seed', node })
+  if (!seeded.ok) throw new Error(`probe: seeding the env-checks-ceiling graph failed: ${JSON.stringify(seeded.error)}`)
+  if (seeded.node?.status === 'proposed' && !(await envCeilingEngine.apply('human', { op: 'status', id: seeded.id, rev: seeded.rev, to: 'approved', reason: 'probe' })).ok) {
+    throw new Error(`probe: approving the env-checks-ceiling node ${seeded.id} failed`)
+  }
+}
+const envCeilingRun = runScenario('env-checks-ceiling', 'deepseek-probe', [
+  { tool: { name: 'write', arguments: { file_path: join(envCeilingWs, 't.txt'), content: 'a\n' } } },
+  { tool: { name: 'read', arguments: { file_path: join(envCeilingWs, 't.txt') } } },
+  { tool: { name: 'check_limit', arguments: { check: 'tool-1/full', seconds: 120, reason: ENV_CEILING_REASON } } },
+  { tool: { name: 'probe_dispatch', arguments: { task: 'T1', prompt: 'Probe task T1: report.', cwd: envCeilingWs, scope: 'allowed', model: 'deepseek-probe' } } },
+  { text: 'Waiting for task T1.' },
+  { text: 'done' },
+], 'Write a file, read it, raise the check\'s ceiling, dispatch task T1, then reply done.', [...envBoardOverlay(envCeilingLog), ...dispatchRow(join(envCeilingDir, 'dispatch.jsonl'))], envCeilingWs, [[
+  { tool: { name: 'structured_output', arguments: HAND_BACK } },
+  { text: 'child done' },
+]], profiles['probe-hourness'])
+const envCeilingStarted = dispatchRecord('env-checks-ceiling').find(entry => entry.kind === 'started')
+const envCeilingMain = bySession(envCeilingRun, envCeilingStarted?.parentId)
+const envCeilingChild = bySession(envCeilingRun, envCeilingStarted?.childId)
+const envNoticesOf = steps => steps.flatMap(step => step.messages.filter(message => message.source === 'hourness-env').map(message => message.text))
+const envCeilingMainNotices = [...new Set(envNoticesOf(envCeilingMain))]
+const envCeilingChildNotices = envNoticesOf(envCeilingChild)
+const envCeilingLimitResult = (() => { try { return JSON.parse(lastToolResult(envCeilingMain[3])?.text ?? '') } catch { return undefined } })()
+const envCeilingLimitLines = existsSync(envCeilingLimits) ? readFileSync(envCeilingLimits, 'utf8').split('\n').filter(line => line.length > 0).map(line => JSON.parse(line)) : []
+const envCeilingJournal = jsonl(join(envCeilingWs, '.llm', 'env-checks', 'timing.jsonl'))
+
+// Rules board, a rule of the person across the end of a peak (M6 S3, M6
+// design §16 S3, §7.3, docs/ORCHESTRATION.md §16.12). The clone's rules file
+// holds the first rule of M6 design §7.3, which queues the GLM credit runs
+// while glm-peak is true, at the factory level on the GLM route. The clock
+// row starts at 15:00 and the first step shifts it to Wednesday 17:59:30
+// UTC+8 (a start that close to 18:00 would leave a slow boot no slack):
+// `npm run calibrate` is queued, and the refusal and the per-step reminder
+// say the peak ends at 18:00; the next call sleeps across 18:00 while the
+// row's 5-second pass judges the ticket again and steers the running agent
+// with the wake that says when the peak ended. The workspace has its own
+// package.json whose calibrate script only prints a word, so npm, which
+// looks upward for the nearest one, never finds the repository's real
+// calibration script.
+const OFFPEAK_CREDIT_RUNS = gateRule('r-offpeak-credit-runs', '高峰时积分重活排到高峰结束以后', {
+  filter: { command: { matches: String.raw`^\s*npm\s+run\s+(calibrate|smoke:authorized)\b|^\s*node\s+scripts[\\/](calibrate[\\/]run-calibrate|smoke-zcode-authorized)\.mjs\b` } },
+  condition: { signal: 'glm-peak', is: true },
+  action: { kind: 'queue' },
+  reason: '（人写）高峰时 GLM 按全价计积分，练习题、对照实验与真网冒烟等到高峰结束',
+})
+const PEAK_WAKE_RULES_FILE = repoJson({ version: 2, rules: { [OFFPEAK_CREDIT_RUNS.id]: OFFPEAK_CREDIT_RUNS } })
+const PEAK_WAKE_CALIBRATE_WORD = 'probe-calibrate-ran'
+const PEAK_WAKE_SHIFT = '2026-10-28T09:59:30.000Z'
+const wakeProject = rulesGateProject('rules-peak-wake', PEAK_WAKE_RULES_FILE)
+writeFileSync(join(wakeProject.ws, 'package.json'), `${JSON.stringify({ name: 'probe-ws', private: true, scripts: { calibrate: `node -e "console.log('${PEAK_WAKE_CALIBRATE_WORD}')"` } }, null, 2)}\n`)
+const rulesPeakWake = runScenario('rules-peak-wake', 'glm-5.3', [
+  { tool: { name: 'DeferredToolCall', arguments: { name: SHIFT_TOOL, input: { at: PEAK_WAKE_SHIFT } } } },
+  { tool: { name: 'Bash', arguments: { command: 'npm run calibrate', timeout: 30000 } } },
+  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 45', timeout: 120000 } } },
+  { text: 'done', status: true },
+], 'Shift the clock to just before the peak ends, run the calibration, wait past the end of the peak, then reply done.', [...RULES_ROW, ...clockRow(PEAK_AT, SHIFT_TOOL)], wakeProject.ws)
+
 // Rules board, the stop level (docs/ORCHESTRATION.md §16.13). The project's rules
 // file holds the person's choice 不做, and the probe clock is in the GLM peak.
 // The GLM main agent runs the dispatch row's tool probe_stop_goal, which makes a
@@ -985,7 +1267,6 @@ const rulesStopNotice = runScenario('rules-stop-notice', 'glm-5.3', [
 const LOOPS_PEAK_END = '2026-10-28T10:00:00.000Z'
 // The same moment as a number: the step clock is a number, and a number compared with the string would coerce it to NaN (the check below reads this one).
 const LOOPS_PEAK_END_MS = Date.parse(LOOPS_PEAK_END)
-const SHIFT_TOOL = 'probe_shift_clock'
 // The headless runtime mounts no session controller, which is what lets the loop board's running half activate; the probe row stands in for it.
 const SESSIONS_ROW = [
   '- insert:',
@@ -1084,11 +1365,21 @@ const graphRun = runScenario('glm-graph', 'glm-5.3', [
   { tool: { name: 'Write', arguments: { file_path: graphNodeFile, content: '{}\n' } } },
   { tool: { name: 'Bash', arguments: { command: `Set-Content -Path '${graphNodeFile}' -Value x` } } },
   { tool: { name: 'Write', arguments: { file_path: graphNotes, content: 'notes\n' } } },
+  { tool: { name: 'graph_propose', arguments: { node: { type: 'task', title: 'M3 探针的小步', parent: focusTask?.id }, reason: 'probe: a title the writing check warns about' } } },
   { text: 'done', status: true },
 ], 'Work on the project graph, then reply done.', [...graphRow(graphCopy, join(graphRowDir, 'home')), ...workspaceChangesRow('glm-hourness-probe/workspace-changes')], graphWs)
 const graphSteps = graphRun.steps
 const graphResult = index => lastToolResult(graphSteps[index])
 const graphNotices = step => (step?.messages ?? []).filter(message => message.role === 'user' && message.source === 'glm-graph-projection')
+const graphProposeTitle = (graphSteps[0]?.tools ?? []).find(tool => tool.name === 'graph_propose')?.parameters.properties?.node?.properties?.title?.description ?? ''
+const graphProposeWarnings = (() => {
+  try {
+    return JSON.parse(graphResult(11)?.text ?? '{}').warnings ?? []
+  }
+  catch {
+    return []
+  }
+})()
 const copyAfter = await loadGraph(graphCopy)
 const graphViolations = jsonl(join(graphRowDir, 'home', 'audit', 'violations.jsonl'))
 const graphStderr = existsSync(join(graphRowDir, 'stderr.txt')) ? readFileSync(join(graphRowDir, 'stderr.txt'), 'utf8') : ''
@@ -1422,6 +1713,11 @@ const memoryScript = () => [
   { text: 'done', status: true, spawn: { text: 'Start the second session.' } },
 ]
 const memoryOthers = read => [[{ tool: { name: read, arguments: { file_path: join(repo, 'package.json') } } }, { text: 'second done' }]]
+// The project fact's source is a file of the project, and the scenario directory is the project.
+for (const scenario of ['glm-memory', 'non-glm-memory']) {
+  mkdirSync(join(runDir, scenario), { recursive: true })
+  cpSync(join(repo, 'package.json'), join(runDir, scenario, 'package.json'))
+}
 const memoryGlm = runScenario('glm-memory', 'glm-5.3', memoryScript(), MEMORY_TASK, [], repo, memoryOthers('Read'))
 const memoryPlain = runScenario('non-glm-memory', 'deepseek-probe', memoryScript(), MEMORY_TASK, [], repo, memoryOthers('read'))
 const memoryIndexes = step => (step?.messages ?? []).filter(message => message.role === 'user' && message.source === MEMORY_INDEX_SOURCE)
@@ -1442,7 +1738,7 @@ const seedProjectMemory = (scenario) => {
   writeFileSync(join(home, 'memory.jsonl'), `${learnSeed(1)}${JSON.stringify({ v: 1, seq: 2, at: '2026-10-31T00:00:00.000Z', actor: 'human', op: 'store', id: 'project:seeded-norm', data })}\n`)
 }
 
-// Reporting depth (M5 design §3.7, m5-5): the glm:persona section names the
+// Reporting depth (M5 design §3.7, m5-5): the glm:reporting-depth section names the
 // depth the person set, read once when a session starts. The first root agent
 // stores `concise` and starts a second, which forgets it in its first step
 // and starts a third. Each prompt names the depth its session found and
@@ -2100,7 +2396,10 @@ const handoverChild = bySession(rulesHandover, handoverStarted?.childId)
 const handoverMain = bySession(rulesHandover, handoverStarted?.parentId)
 const handoverJournal = journalOfProject(handoverProject)
 const handoverTicket = handoverState?.tickets?.['q-1']
-const QUEUE_REFUSAL = /^Error: You tried to run "Write-Output rules-probe-queued"\.\nBoundary: Deferred as ticket q-1\. Rule r-probe-queue "Probe word, deferred" \(set by the human at [^)]+, until lifted\) defers it while glm-peak is on\.\nRight path: The call did not run\. Continue with other planned work; the harness sends you a message when q-1 clears, then run the same call again\. Running it again before that returns this message and does not queue it twice\.\nException: The human can let it through once \(\/rules let q-1\), or change the rule\.$/
+// rules-queue and rules-peak: what the board tells a model, at the wall clock of this machine (the model-facing lines write HH:MM in it).
+const localHm = iso => new Date(iso).toLocaleString('sv-SE').slice(11, 16)
+const PEAK_END_HM = localHm(PEAK_END)
+const QUEUE_REFUSAL = new RegExp(String.raw`^Error: You tried to run "Write-Output rules-probe-queued"\.\nBoundary: Deferred as ticket q-1\. Rule r-probe-queue "Probe word, deferred" \(set by the human at [^)]+, until lifted\) defers it while glm-peak is true until ${PEAK_END_HM}\.\nRight path: The call did not run\. Continue with other planned work; the harness sends you a message when q-1 clears, then run the same call again\. Running it again before that returns this message and does not queue it twice\.\nException: The human can let it through once \(\/rules let q-1\), or change the rule\.$`)
 const queueWake = /^\[rules board\] Ticket q-1 cleared: rule r-probe-queue was lifted by the human\. You may run the deferred call again: pwsh "Write-Output rules-probe-queued"\.$/
 const consecutiveDiffer = texts => texts.every((text, index) => index === 0 || text !== texts[index - 1])
 const rulesRecordOf = (records, rule) => records.find(record => record.rule === rule)
@@ -2122,14 +2421,20 @@ const loopsAdopted = loopsJournal.filter(record => record.op === 'adopt' && reco
 // A headless host has no session controller, so the board hands out no service and runs no entry (loops design 6.1, 11.1): nothing of the runtime is written.
 const loopsRanNothing = ['runner.lock', 'handover.json', 'events.jsonl', 'state.json'].filter(name => existsSync(join(loopsRuntime, name)))
 const LOOPS_DENIAL = new RegExp(`^Error: You tried to write "[^"]+"\\.\\nBoundary: Rule loops:files-only blocks writes under the loop board's files [^\\n]+\\nRight path: .+\\nException: `)
-// rules-peak: what the board told the main agent, at the wall clock of this machine (the model-facing lines write HH:MM in it).
-const localHm = iso => new Date(iso).toLocaleString('sv-SE').slice(11, 16)
-const PEAK_END_HM = localHm(PEAK_END)
 const peakTexts = boardTexts(rulesPeak.steps[1])
 const peakShown = lastToolResult(rulesPeak.steps[3])
 const REDUCE_LINE = `<system-reminder>\nGLM peak: now until ${PEAK_END_HM}. Peak mode: reduce (the default; the human can change it). Run at most 1 GLM subagent at a time until ${PEAK_END_HM}. Move optional work that spends many GLM credits (calibration runs, ablations, large reviews) to after ${PEAK_END_HM}, including work you dispatch; keep necessary work going.\n</system-reminder>`
 const STOP_LINE_START = `<system-reminder>\nGLM peak: now until ${PEAK_END_HM}. Peak mode set by the human: stop. `
 const peakSentences = PEAK_REMINDER_TEXT.split(/(?<=[.:])\s+/).filter(sentence => sentence.length > 20)
+// rules-peak at the factory level, 15:00, the main agent's request after /wish: the GLM package's reminder and the board's, read together (M6 design §1.4 item 13, S3).
+const reduceRequest = rulesPeak.steps[1]
+const reduceReminders = peakNotices(reduceRequest)
+const reduceBoard = boardTexts(reduceRequest)
+// rules-peak-wake: the refusal, the reminder before 18:00, the wake after it, and the ticket the board kept.
+const wakeRefusal = lastToolResult(rulesPeakWake.steps[2])
+const wakeTicketItem = boardTexts(rulesPeakWake.steps[2]).find(text => text.includes('q-1 pwsh "npm run calibrate" (deferred since '))
+const PEAK_WAKE_TEXT = `[rules board] Ticket q-1 cleared: glm-peak ended at ${PEAK_END_HM}. You may run the deferred call again: pwsh "npm run calibrate".`
+const peakWakeTicket = readStateOf(wakeProject)?.tickets?.['q-1']
 // rules-peak-stop and -exit: the subagent's requests, what the dispatch row saw of its goal, and the ticket the board kept.
 const stopNotes = dispatchRecord('rules-peak-stop')
 const stopCreated = stopNotes.find(entry => entry.kind === 'stop-created')
@@ -2798,8 +3103,27 @@ const checks = [
   ['hourness-only: a native write into the graph is denied by graph-files-only, a shell write by file-tools-only in native names; neither file is written and both denial records are tagged other (the follow-up records the recorder adds carry a kind)', hournessOnlyWrite?.isError === true && hournessOnlyWrite.text.includes('inside the project graph') && !existsSync(hournessOnlyNode) && hournessOnlyPwsh?.isError === true && hournessOnlyPwsh.text.includes(RIGHT_PATH_NATIVE) && !existsSync(hournessOnlyShell) && hournessOnlyViolations.filter(record => record.kind === undefined).map(record => `${record.rule}:${record.tool}:${record.scope}`).join(',') === 'graph-files-only:write:other,file-tools-only:pwsh:other', `records: ${hournessOnlyViolations.map(record => `${record.kind ?? 'denial'}:${record.rule}:${record.tool ?? ''}:${record.scope ?? ''}`).join(', ') || 'none'}; shell file ${existsSync(hournessOnlyShell)}`],
   ['hourness-only: the system prompt declares the workspace rules in native names, graph-files-only included', hournessOnlyFirst?.system.includes(GUARD_SECTION) === true && hournessOnlyFirst.system.includes('\n- Modify files and code only with the dedicated write/edit tools.') && hournessOnlyFirst.system.includes(GRAPH_FILES_LINE), hournessOnlyFirst === undefined ? 'no request' : `section at ${hournessOnlyFirst.system.indexOf(GUARD_SECTION)}`],
   ['hourness-only: /hourness-status lists the orchestration rows and the GLM package as one line not loaded', hournessOnlyStatus?.kind === 'success' && onlyOneLoaded(hournessOnlyHealth, 'hourness', 'glm'), `${hournessOnlyStatus?.kind ?? 'not run'}; ${JSON.stringify(hournessOnlyHealth[WHOLE] ?? null)}`],
-  ['env-notice: the first request carries the wrapped environment notice — the tool line, the no-checks line, the scratch line', envNoticeFirst !== undefined && typeof envNoticeFirst.text === 'string' && envNoticeFirst.text.startsWith('<system-reminder>\nProject tools (graph node env). Use these before writing your own.\n- ESLint [tool-1]: npm run lint\n') && envNoticeFirst.text.includes(NO_CHECKS_LINE) && envNoticeFirst.text.includes(SCRATCH_LINE) && envNoticeFirst.text.endsWith('\n</system-reminder>'), envNoticeFirst === undefined ? 'no notice in request 1' : envNoticeFirst.text.slice(0, 140).replace(/\n/g, ' | ')],
+  ['env-notice: the first request carries the wrapped environment notice — the tool line, the checks line of a headless host (no loop board), the scratch line', envNoticeFirst !== undefined && typeof envNoticeFirst.text === 'string' && envNoticeFirst.text.startsWith('<system-reminder>\nProject tools (graph node env). Use these before writing your own.\n- ESLint [tool-1]: npm run lint\n') && envNoticeFirst.text.includes(NO_BOARD_LINE) && envNoticeFirst.text.includes(SCRATCH_LINE) && envNoticeFirst.text.endsWith('\n</system-reminder>'), envNoticeFirst === undefined ? 'no notice in request 1' : envNoticeFirst.text.slice(0, 140).replace(/\n/g, ' | ')],
   ['env-notice: the second request does not repeat the notice (the first one persists in the session)', envNoticeRun.steps.length === 2 && envNoticeRepeat === 1 && envNoticeLast?.source !== 'hourness-env', `hourness-env messages in request 2: ${envNoticeRepeat}; last: ${JSON.stringify({ source: envNoticeLast?.source, text: String(envNoticeLast?.text ?? '').slice(0, 60) })}`],
+  ['env-check-command: glmHournessEnv reads the check line without when as it stands on the approved node, and it is not M4\'s own', envCheckCommand?.service === true && isDeepStrictEqual(envCheckCommand.command, { tool: 'tool-1', check: 'lint', title: 'Lint：lint', argv: ['node', 'lint.mjs', '{files}'], format: 'lines', own: false }), `exit ${envCheckRun.status}; ${JSON.stringify(envCheckCommand ?? null)}`],
+  ['env-check-command: the env row hands the board the event env.files-edited', envCheckContribute !== undefined && envCheckContribute.source.plugin === 'dsh-hourness' && isDeepStrictEqual(envCheckContribute.events, ['env.files-edited']), JSON.stringify(envCheckContribute ?? null)],
+  ['env-check-command: each step after a write emits env.files-edited once, the file relative to the checkout root, keyed files-edited:<session>:<turn>-<step>', envCheckRun.steps.length === 4 && envCheckEmits.length === 2 && isDeepStrictEqual(envCheckEmits.map(event => event.payload?.files), [['a.txt'], ['-c.txt']]) && envCheckEmits.every(event => sameDir(event.payload?.root, envCheckWs) && event.payload?.truncated === false && sameDir(event.cwd, envCheckWs) && typeof event.session === 'string' && new RegExp(`^files-edited:${event.session}:\\d+-\\d+$`).test(event.key)) && new Set(envCheckEmits.map(event => event.key)).size === 2, `${envCheckRun.steps.length} requests; ${JSON.stringify(envCheckEmits.map(event => ({ key: event.key, files: event.payload?.files, root: event.payload?.root })))}`],
+  ['env-check-command: no checks reminder is injected (M4 does not run a check line without when)', envCheckRun.steps.length > 0 && envCheckReminders === 0, `hourness-checks messages: ${envCheckReminders}`],
+  ['env-checks-timeout: graph_propose of a tool node under env returns the sentence of its timeout for the check line', envTimeoutResult?.ok === true && isDeepStrictEqual(envTimeoutResult.timeouts, [{ check: 'slow', text: '超时 5 秒（估 1 秒，乘 3 不足 5 秒）' }]), `exit ${envTimeoutRun.status}; ${JSON.stringify(envTimeoutResult?.timeouts ?? envTimeoutText.slice(0, 200))}`],
+  ['env-checks-timeout: the workspace timing journal has one estimate with this session, the llm and the time of the propose the engine wrote', envTimeoutLines.length === 1 && envTimeoutLines[0].kind === 'estimate' && envTimeoutLines[0].check === 'tool-1/slow' && envTimeoutLines[0].estimateS === 1 && envTimeoutLines[0].node === 'tool-1' && envTimeoutLines[0].actor === 'llm' && typeof envTimeoutLines[0].session === 'string' && envTimeoutLines[0].session === envTimeoutRun.steps[0]?.sessionId && envTimeoutProposed?.op === 'propose' && envTimeoutLines[0].historyAt === envTimeoutProposed.at && /^[0-9a-f]{8}$/.test(envTimeoutLines[0].argv), `${JSON.stringify(envTimeoutLines)}; session ${envTimeoutRun.steps[0]?.sessionId}; history ${JSON.stringify(envTimeoutProposed ?? null)}`],
+  ['env-checks: the environment notice names the check that runs after edits (the board is on)', envChecksEnvNotice?.text?.includes('\nChecks run after each edit (listed on the loop board): lint on *.txt.\n') === true, String(envChecksEnvNotice?.text ?? 'no notice').slice(0, 240).replace(/\n/g, ' | ')],
+  ['env-checks: the second request carries the checks notice — one finding on the changed line, the log whose first line is the argument vector, the fix line', envChecksFound.startsWith('<system-reminder>\nChecks after your edits: lint 1 finding.\na.txt:2:1 lint todo found [changed]\nFull output: ') && envChecksFound.endsWith('\nFix the findings on changed lines before you finish; new warnings fail the merge gate.\n</system-reminder>') && envChecksLogPath !== undefined && existsSync(join(envChecksWs, envChecksLogPath)) && readFileSync(join(envChecksWs, envChecksLogPath), 'utf8').startsWith('$ node lint.mjs a.txt · program '), `exit ${envChecksRun.status}; ${envChecksFound.slice(0, 300).replace(/\n/g, ' | ')}`],
+  ['env-checks: the fix is one line of zeros in the third request; the step without edits and the clean edits after zeros carry none', envChecksRun.steps.length === 6 && envChecksNotices[0] === undefined && envChecksNotices[2]?.text === '<system-reminder>\nChecks after your edits: lint 0.\n</system-reminder>' && envChecksNotices.slice(3).every(notice => notice === undefined), JSON.stringify(envChecksNotices.map(notice => notice?.text ?? null))],
+  ['env-checks: lint.mjs receives each file as one argument, b$(echo x).txt as it is and -c.txt as ./-c.txt, and nothing ran the $(…)', isDeepStrictEqual(envChecksArgs, [['a.txt'], ['a.txt'], ['b$(echo x).txt'], ['./-c.txt']]) && !existsSync(join(envChecksWs, 'x')), JSON.stringify(envChecksArgs)],
+  ['env-checks: the env row hands the board env.checks-after-edit with its five own rules and records one run per delivery', envChecksContribute !== undefined && isDeepStrictEqual(envChecksContribute.entries, [{ id: 'env.checks-after-edit', ownRules: checksOwnRules() }]) && isDeepStrictEqual(envChecksRuns.map(run => [run.entry, run.outcome]), [['env.checks-after-edit', 'reported'], ['env.checks-after-edit', 'ran'], ['env.checks-after-edit', 'ran'], ['env.checks-after-edit', 'ran']]), JSON.stringify({ entries: envChecksContribute?.entries ?? null, runs: envChecksRuns })],
+  ['env-checks: each step with an edit emits env.files-edited once, the files relative to the checkout root', isDeepStrictEqual(envChecksEmits.map(event => event.payload?.files), [['a.txt'], ['a.txt'], ['b$(echo x).txt'], ['-c.txt']]) && envChecksEmits.every(event => sameDir(event.payload?.root, envChecksWs) && new RegExp(`^files-edited:${event.session}:\\d+-\\d+$`).test(event.key)), JSON.stringify(envChecksEmits.map(event => ({ key: event.key, files: event.payload?.files })))],
+  ['env-checks-timeout: the first run is stopped at 5 s; the notice names the floor, the log and the next limit of 15 s', /^<system-reminder>\nslow did not finish: stopped after 5\.\d s \(limit 5 s, the floor: three times its estimate of 1 s is less; log \S+\)\. It runs again after your next edit, with a limit of 15 s\.\n<\/system-reminder>$/.test(envTimeoutStopped), `exit ${envTimeoutRun2.status}; ${envTimeoutStopped.slice(0, 300)}`],
+  ['env-checks-timeout: the journal holds the estimate, the value from it (that session, the llm), the timeout, the censored run, the harness\'s 15 s and the finished run', isDeepStrictEqual(envTimeoutKinds, ['estimate', 'value', 'timeout', 'run', 'value', 'run']) && envTimeoutFirstValue?.limitMs === 5000 && envTimeoutFirstValue.source?.by === 'estimate' && envTimeoutFirstValue.source.actor === 'llm' && envTimeoutFirstValue.source.session === envTimeoutRun.steps[0]?.sessionId && envTimeoutFirstValue.source.at === envTimeoutProposed?.at && envTimeoutStop?.limitMs === 5000 && envTimeoutStop.elapsedMs >= 5000 && envTimeoutCensored?.ms === 5000 && envTimeoutCensored.censored === true && envTimeoutHarness?.limitMs === 15000 && envTimeoutHarness.previousMs === 5000 && envTimeoutHarness.source?.by === 'harness' && envTimeoutHarness.source.runs.includes(5000) && envTimeoutFinished?.kind === 'run' && envTimeoutFinished.ms >= 6500 && envTimeoutFinished.ms < 15000 && envTimeoutFinished.censored === undefined, JSON.stringify(envTimeoutJournal2)],
+  ['env-checks-timeout: the board records the timeout as failed with its limit and time, then the run that finished', envTimeoutRuns.length === 2 && envTimeoutRuns[0]?.outcome === 'failed' && /^slow: timeout 5s\/5\.\ds$/.test(envTimeoutRuns[0]?.reason ?? '') && envTimeoutRuns[1]?.outcome === 'ran', JSON.stringify(envTimeoutRuns)],
+  ['env-checks-ceiling: an estimate of 25 s is held at the 60 s ceiling: the value line records the 75 s wanted', envCeilingRun.status === 0 && envCeilingJournal[0]?.kind === 'value' && envCeilingJournal[0].limitMs === 60000 && envCeilingJournal[0].capped?.wantedMs === 75000 && envCeilingJournal[0].cap?.by === 'default', `exit ${envCeilingRun.status}; ${JSON.stringify(envCeilingJournal.slice(0, 2))}`],
+  ['env-checks-ceiling: the root agent\'s environment notice gets the held-at-its-ceiling line with the full key, and check_limit is in its tool face', envCeilingMainNotices.some(text => text.split('\n').includes(ENV_CEILING_HELD)) && names(envCeilingMain[0]).has('check_limit'), envCeilingMainNotices.map(text => text.slice(0, 400).replace(/\n/g, ' | ')).join(' || ')],
+  ['env-checks-ceiling: check_limit raises the ceiling to 120 s and limits.jsonl has the raise with the reason and the session; the next notice has no held line', envCeilingLimitResult?.outcome === 'raised' && envCeilingLimitResult.capS === 120 && envCeilingLimitResult.previousCapS === 60 && envCeilingLimitLines.length === 1 && envCeilingLimitLines[0].action === 'raise' && envCeilingLimitLines[0].check === 'tool-1/full' && envCeilingLimitLines[0].reason === ENV_CEILING_REASON && envCeilingLimitLines[0].session === envCeilingStarted?.parentId && !(envNoticesOf(envCeilingMain.slice(-1)).at(-1) ?? '').includes('held at its ceiling'), `${JSON.stringify(envCeilingLimitResult ?? lastToolResult(envCeilingMain[3])?.text ?? null)}; ${JSON.stringify(envCeilingLimitLines)}`],
+  ['env-checks-ceiling: a subagent\'s environment notice has the checks line and no held line', envCeilingStarted !== undefined && envCeilingChild.length > 0 && envCeilingChildNotices.length > 0 && envCeilingChildNotices.every(text => text.includes('Checks run after each edit (listed on the loop board): full on *.txt.') && !text.includes('held at its ceiling')), `${envCeilingChild.length} child request(s); ${envCeilingChildNotices.map(text => text.slice(0, 300).replace(/\n/g, ' | ')).join(' || ')}`],
   ['env-notice: the row appended .llm/ to the clone\'s .git/info/exclude and check-ignore verifies it', envIgnored === 0 && envExclude.split('\n').filter(line => line.trim() === '.llm/').length === 1, `check-ignore exit ${envIgnored}; exclude lines: ${envExclude.split('\n').filter(line => line.trim() === '.llm/').length}`],
   titleCheck('client-modules (probe-full)', clientModules.steps[0]?.meta, ['glm', 'hourness']),
   titleCheck('glm-only', glmOnly.steps[1]?.meta, ['glm']),
@@ -2819,6 +3143,8 @@ const checks = [
   ['graph row: activates without warnings; rc.3 takes all 13 graph tools, resident in the GLM face (not deferred)', graphSteps.length > 0 && !graphStderr.includes('dsh-glm-hourness/graph:') && graphFace(graphSteps[0]).length === GRAPH_TOOL_NAMES.length && graphFace(graphSteps[0]).every(tool => tool.deferLoading !== true), `${graphFace(graphSteps[0]).length} graph tool(s); stderr mentions the row: ${graphStderr.includes('dsh-glm-hourness/graph:')}`],
   ['graph row: on a non-GLM route the graph tools are in the face and graph_open answers', GRAPH_TOOL_NAMES.every(name => names(plainGraph.steps[0]).has(name)) && plainGraphOpen?.isError !== true && plainGraphOpen?.text.includes('"items"') === true, `exit ${plainGraph.status}; ${plainGraphOpen?.text.slice(0, 80) ?? 'no result'}`],
   ['graph row: graph_show returns the projection; graph_status done without evidence gets evidence_required', graphResult(1)?.isError !== true && graphResult(1)?.text.includes('"projection"') === true && graphResult(2)?.isError === true && graphResult(2)?.text.includes('evidence_required') === true, `${graphResult(1)?.text.slice(0, 60) ?? 'none'} | ${graphResult(2)?.text.slice(0, 120) ?? 'none'}`],
+  ['graph row: the graph_propose schema carries the writing rules and the plain words on title (plain-ui 1.3 §5.3)', graphProposeTitle.includes('title and why are read by the human') && graphProposeTitle.includes('验收 or acceptance -> 怎样算做完'), graphProposeTitle.slice(0, 160) || 'no description'],
+  ['graph row: a proposal titled with M3 is written in the first phase and comes back with a code warning', graphResult(11)?.isError !== true && graphProposeWarnings.some(line => line.startsWith('code in node.title')), `${graphResult(11)?.text.slice(0, 200) ?? 'none'}`],
   ['graph row: graph_comment leaves an llm history entry in the copy; the repository graph is unchanged', graphResult(3)?.isError !== true && copyAfter.nodes.get(doingTask?.id ?? '')?.history.at(-1)?.actor === 'llm' && copyAfter.nodes.get(doingTask?.id ?? '')?.history.at(-1)?.text === 'probe comment' && repoGraphBefore === repoGraphAfter, `repo graph ${repoGraphBefore} -> ${repoGraphAfter}`],
   ['graph row: after graph_focus the next request ends with the projection notice (focus); unchanged steps add none; a title edit adds one (changed)', graphNotices(graphSteps[4]).length === 1 && graphSteps[4]?.messages.at(-1)?.source === 'glm-graph-projection' && graphNotices(graphSteps[4])[0]?.projection === 'focus' && graphNotices(graphSteps[5]).length === 1 && graphNotices(graphSteps[6]).length === 1 && graphNotices(graphSteps[7]).length === 2 && graphSteps[7]?.messages.at(-1)?.projection === 'changed' && graphSteps[7]?.messages.at(-1)?.text.includes('probe title') === true, `notices per request: ${graphSteps.map(step => graphNotices(step).map(notice => notice.projection).join('+') || '0').join(', ')}`],
   ['graph row: after a compaction checkpoint the first request carries the projection again (compaction)', reanchored.some(reasons => reasons.includes('compaction')), `${compactGraph.compactions.length} compaction(s); after checkpoints: ${JSON.stringify(reanchored)}`],
@@ -2859,7 +3185,7 @@ const checks = [
     && ['Glob', 'Grep', 'Bash'].every(name => glmTool(name)?.parameters.$schema === zcodeSchema)
     && searchResult?.text.includes('Create and update a task list for the current session.') === true, ['Glob', 'Grep', 'Bash'].map(name => `${name}: ${(glmTool(name)?.description ?? 'missing').slice(0, 30)}`).join('; ')],
   ['glm tools: Bash declares run_in_background and the escalation fields exactly when pwsh does', ['run_in_background', 'sandbox_permissions', 'justification'].every(field => plainFirst !== undefined && properties(plainToolOf(plainFirst, 'pwsh')).includes(field) === properties(glmTool('Bash')).includes(field)), `Bash: ${properties(glmTool('Bash')).join(', ')}`],
-  ['glm execution: Glob lists both scratch files newest first with ZCode display paths', globResult !== undefined && globResult.isError !== true && /\/glm\/scratch\.txt\n.*\/glm\/unread\.txt$/.test(globResult.text) && !globResult.text.includes('\\'), globResult === undefined ? 'no tool result' : globResult.text.slice(0, 160).replace(/\n/g, ' | ')],
+  ['glm execution: Glob lists both scratch files newest first with ZCode display paths', globResult !== undefined && globResult.isError !== true && globResult.text === 'scratch.txt\nunread.txt', globResult === undefined ? 'no tool result' : globResult.text.slice(0, 160).replace(/\n/g, ' | ')],
   ['glm execution: Grep -i in content mode returns the package name line', grepResult !== undefined && grepResult.isError !== true && grepResult.text === 'package.json:2:  "name": "dsh-glm-hourness",', grepResult === undefined ? 'no tool result' : grepResult.text.slice(0, 100).replace(/\n/g, ' | ')],
   ['glm execution: Bash ran the command through pwsh without a description', bashResult !== undefined && bashResult.isError !== true && bashResult.text.includes('probe-bash'), bashResult === undefined ? 'no tool result' : bashResult.text.slice(0, 100).replace(/\n/g, ' | ')],
   ['glm image: Read keeps the ZCode image line on both models (ZCode does not condition it on image input)', glmTool('Read')?.description.includes(READ_IMAGE_LINE) === true && (flash.steps[0]?.tools ?? []).find(tool => tool.name === 'Read')?.description.includes(READ_IMAGE_LINE) === true, `flash steps: ${flash.steps.length}`],
@@ -2944,7 +3270,7 @@ const checks = [
   ['dispatch (a): the completion notice reaches the parent with the structured result; the activation result carries it too', settled.length === 1 && settled[0].text.includes(`Structured result: ${JSON.stringify(HAND_BACK)}`) && childResult?.stopReason === 'completed' && JSON.stringify(childResult.structured) === JSON.stringify(HAND_BACK), `${(settled[0]?.text ?? 'no notice').slice(-120).replace(/\n/g, ' | ')}; result: ${JSON.stringify(childResult ?? null).slice(0, 120)}`],
   ['dispatch (b): tools/pre-execute sees each child call with the child agent, whose id maps to the task; the parent\'s calls do not map', childCalls.length === 5 && childCalls.every(entry => entry.task === 'T1' && entry.agentId === started?.childId && entry.sessionId === started.childId && entry.nested === false) && JSON.stringify(childCalls.map(entry => entry.tool)) === JSON.stringify(['Bash', 'Write', 'Write', 'DeferredToolCall', 'structured_output']), childCalls.map(entry => entry.tool).join(', ') || 'no calls recorded'],
   ['dispatch (b): a write outside the task scope is denied and reaches the child as a tool error; the write inside the scope runs', scopeDenied?.isError === true && scopeDenied.text.includes(SCOPE_DENIAL) && !existsSync(outsideFile) && existsSync(insideFile) && readFileSync(insideFile, 'utf8') === 'inside\n' && dispatchNotes.filter(entry => entry.kind === 'scope-deny').length === 1, scopeDenied === undefined ? 'no tool result' : scopeDenied.text.slice(0, 100).replace(/\n/g, ' ')],
-  ['dispatch (b): the child session header keeps the parent directory; the requested cwd is only the child working directory', childCalls.length > 0 && childCalls.every(entry => entry.headerCwd === repo) && childBash?.text.trim() === dispatchWs, `header cwd ${childCalls[0]?.headerCwd ?? 'none'}`],
+  ['dispatch (b): the child session header keeps the parent directory; the requested cwd is only the child working directory', childCalls.length > 0 && childCalls.every(entry => entry.headerCwd === dispatch.cwd) && childBash?.text.trim() === dispatchWs, `header cwd ${childCalls[0]?.headerCwd ?? 'none'}`],
   ['goal (c): a plugin-created goal on a second root agent gets round 1 from the driver, and the notice appended in agent/pre-step enters with it', goalCreated?.root === true && goalCreated.goal?.activation === 'armed' && roundOf(goalSteps[0], 1) && projections(goalSteps[0]).length === 1 && firstRoundOrder[0] >= 0 && firstRoundOrder[1] > firstRoundOrder[0], goalSteps[0] === undefined ? `no goal-agent request (exit ${goalRun.status})` : `sources: ${goalSteps[0].messages.map(message => message.source ?? message.role).slice(-6).join(', ')}`],
   ['goal (c): update_goal complete through DeferredToolCall is denied in tools/pre-execute and the goal stays active', gateDenied?.isError === true && gateDenied.text.includes(GOAL_GATE_DENIAL) && goalGates[0]?.decision === 'deny' && goalGates[0].goal?.phase === 'active' && goalGates[0].goal.roundsStarted === 1, gateDenied === undefined ? 'no tool result' : gateDenied.text.slice(0, 100).replace(/\n/g, ' ')],
   ['goal (c): the driver starts round 2 after the round that carried the notice; each round carries one notice; no round 3', goalSteps.length === 5 && roundOf(goalSteps[3], 2) && projections(goalSteps[3]).length === 2 && goalSteps.every(step => !roundOf(step, 3)), `${goalSteps.length} goal-agent request(s); notices per request: ${goalSteps.map(step => projections(step).length).join(', ')}`],
@@ -2964,6 +3290,7 @@ const checks = [
   ['rules-peak: the main agent\'s first request after /wish starts the board\'s reminder with the peak line of the factory level: reduce, the default, one GLM subagent', peakTexts[0] === REDUCE_LINE, JSON.stringify(peakTexts)],
   ['rules-peak: the line is said once while nothing changes, and again with the new level after 不做', rulesPeak.steps.slice(1, 4).every(step => boardTexts(step).length === 1) && boardTexts(rulesPeak.steps[4]).length === 2 && boardTexts(rulesPeak.steps[4])[1].startsWith(STOP_LINE_START), rulesPeak.steps.map(step => boardTexts(step).length).join(', ')],
   ['rules-peak: the first GLM request carries exactly one peak reminder, worded by the factory level with the cap of one GLM subagent, and the two level changes leave that one notice as it was', REDUCE_NOTICE.includes('at most 1 GLM subagent') && rulesPeak.steps.length === 5 && rulesPeak.steps.every(step => peakNotices(step).length === 1 && peakNotices(step)[0].text === REDUCE_NOTICE), `${rulesPeak.steps.map(step => peakNotices(step).length).join('/')} notice(s): ${(peakNotices(rulesPeak.steps[0])[0]?.text ?? '').slice(0, 100).replace(/\n/g, ' ')}`],
+  ['rules-peak: at the factory level at 15:00 the main agent\'s request after /wish carries both notices, and they do not contradict each other: the GLM package\'s is the reduce text without information only, keep working or postpone; the board\'s says neither keep working nor postpone and repeats no sentence of PEAK_REMINDER_TEXT', reduceReminders.length === 1 && reduceReminders[0].text === REDUCE_NOTICE && !/information only|keep working|postpone/i.test(reduceReminders[0].text) && reduceBoard.length >= 1 && reduceBoard.every(text => !/keep working|postpone/i.test(text) && peakSentences.every(sentence => !text.includes(sentence))), `${reduceReminders.length} reminder(s), ${reduceBoard.length} board notice(s): ${(reduceReminders[0]?.text ?? '').slice(0, 80).replace(/\n/g, ' ')} // ${(reduceBoard[0] ?? '').slice(0, 80).replace(/\n/g, ' ')}`],
   ['rules-stop-notice: with the level set to 不做 by the person before the run, the row boots on the GLM route, runs both scripted steps and exits clean with nothing from the packages on stderr', rulesStopNoticeProject.ready && rulesStopNoticeSet?.ok === true && rulesStopNotice.status === 0 && rulesStopNotice.steps.length === 2 && quiet('rules-stop-notice'), `exit ${rulesStopNotice.status}, ${rulesStopNotice.steps.length} step(s), git ${rulesStopNoticeProject.ready}, write ${rulesStopNoticeSet?.ok === true ? 'ok' : JSON.stringify(rulesStopNoticeSet ?? null)}`],
   ['rules-stop-notice: at the first request the service gives the person\'s stop in the peak, with no cap and the hold of the stop level', rulesStopNotice.steps[0]?.peakMode?.state?.level === 'stop' && rulesStopNotice.steps[0].peakMode.state.origin === 'human' && rulesStopNotice.steps[0].peakMode.state.peak === true && rulesStopNotice.steps[0].peakMode.state.glmWorkerCap === undefined && isDeepStrictEqual(rulesStopNotice.steps[0].peakMode.hold, { level: 'stop', until: PEAK_END }), JSON.stringify(rulesStopNotice.steps[0]?.peakMode ?? null)],
   ['rules-stop-notice: the first GLM request carries exactly one peak reminder with the stop text, and the next request carries that one again', rulesStopNotice.steps.length === 2 && rulesStopNotice.steps.every(step => peakNotices(step).length === 1 && peakNotices(step)[0].text === STOP_NOTICE), `${rulesStopNotice.steps.map(step => peakNotices(step).length).join('/')} notice(s): ${(peakNotices(rulesStopNotice.steps[0])[0]?.text ?? '').slice(0, 100).replace(/\n/g, ' ')}`],
@@ -2995,6 +3322,11 @@ const checks = [
   ['rules-queue: the call again runs, and the ticket it waited on is done', lastToolResult(rulesQueue.steps[4])?.isError !== true && (lastToolResult(rulesQueue.steps[4])?.text ?? '').includes('rules-probe-queued') && queueState?.tickets?.['q-1']?.state === 'done', `${lastToolResult(rulesQueue.steps[4])?.text?.slice(0, 80) ?? 'no result'}; ticket ${queueState?.tickets?.['q-1']?.state ?? 'missing'}`],
   ['rules-queue: the request carries the reminder exactly when something changed: the rule that informs, then with the open ticket, then with it cleared, then the rule alone again', isDeepStrictEqual(rulesQueue.steps.map(step => boardTexts(step).length), [1, 2, 2, 3, 4]) && consecutiveDiffer(boardTexts(rulesQueue.steps.at(-1))) && boardTexts(rulesQueue.steps.at(-1))[1].includes('Your open tickets: q-1 pwsh "Write-Output rules-probe-queued" (deferred since') && boardTexts(rulesQueue.steps.at(-1))[2].includes('(cleared at') && boardTexts(rulesQueue.steps.at(-1))[3] === boardTexts(rulesQueue.steps.at(-1))[0], rulesQueue.steps.map(step => boardTexts(step).length).join(', ')],
   ['rules-queue: nothing is written in the scenario\'s user-level directory', !existsSync(join(runDir, 'rules-queue', 'dsh-home', 'glm-hourness', 'rules')), ''],
+  ['rules-peak-wake: the row boots on the GLM route with the first rule of M6 design 7.3 in the clone\'s rules file, runs its four steps and exits clean with nothing from it on stderr', wakeProject.ready && rulesPeakWake.status === 0 && rulesPeakWake.steps.length === 4 && !stderrOf('rules-peak-wake').includes('dsh-glm-hourness/rules'), `exit ${rulesPeakWake.status}, ${rulesPeakWake.steps.length} step(s), git ${wakeProject.ready}; ${stderrOf('rules-peak-wake').split('\n').find(line => line.includes('rules')) ?? 'no stderr line mentions rules'}`],
+  ['rules-peak-wake: after the shift to 17:59:30, npm run calibrate is refused before 18:00 with ticket q-1 and the end of the peak, so the calibrate script never ran', wakeRefusal?.isError === true && wakeRefusal.text.startsWith('Error: You tried to run "npm run calibrate".') && wakeRefusal.text.includes('Deferred as ticket q-1.') && wakeRefusal.text.includes(`defers it while glm-peak is true until ${PEAK_END_HM}.`) && !wakeRefusal.text.includes(PEAK_WAKE_CALIBRATE_WORD) && rulesPeakWake.steps[1]?.clock >= Date.parse(PEAK_WAKE_SHIFT) && rulesPeakWake.steps[2]?.clock < LOOPS_PEAK_END_MS, `clocks ${rulesPeakWake.steps.map(step => Number.isFinite(step.clock) ? new Date(step.clock).toISOString() : 'none').join(', ')}; ${wakeRefusal?.text?.slice(0, 240) ?? 'no result'}`],
+  ['rules-peak-wake: the request after the refusal carries the board\'s reminder with the open ticket and the end of the peak', wakeTicketItem?.includes(`, until ${PEAK_END_HM})`) === true, JSON.stringify(boardTexts(rulesPeakWake.steps[2]))],
+  ['rules-peak-wake: after 18:00 the re-judgement clears the ticket and the running agent is told once, with the time the peak ended', wakeMessages(rulesPeakWake.steps[2]).length === 0 && wakeMessages(rulesPeakWake.steps[3]).length === 1 && wakeMessages(rulesPeakWake.steps[3])[0].text === PEAK_WAKE_TEXT && rulesPeakWake.steps[3]?.clock >= LOOPS_PEAK_END_MS && peakWakeTicket?.state === 'cleared' && peakWakeTicket.rules.join() === OFFPEAK_CREDIT_RUNS.id, `${wakeMessages(rulesPeakWake.steps[3])[0]?.text ?? 'no wake in request 4'}; ticket ${JSON.stringify(peakWakeTicket ?? null).slice(0, 160)}`],
+  ['rules-peak-wake: nothing is written in the scenario\'s user-level directory', !existsSync(join(runDir, 'rules-peak-wake', 'dsh-home', 'glm-hourness', 'rules')), ''],
   ['rules-handover: a one-off subagent makes the call the rule names, is refused with the ticket and the text for a subagent, hands back and ends', handoverProject.ready && rulesHandover.status === 0 && handoverStarted !== undefined && handoverMain.length === 6 && handoverChild.length === 2 && lastToolResult(handoverChild[1])?.isError === true && (lastToolResult(handoverChild[1])?.text ?? '').includes('Deferred as ticket q-1.') && (lastToolResult(handoverChild[1])?.text ?? '').includes('stop and report ticket q-1 in your handoff; the agent that dispatched you is told when it clears.'), `exit ${rulesHandover.status}, main ${handoverMain.length} request(s), child ${handoverChild.length}; ${lastToolResult(handoverChild[1])?.text?.slice(0, 120) ?? 'no refusal'}`],
   ['rules-handover: the ticket went to the agent that dispatched the subagent (the subagent kept in handedFrom), before the person lifted the rule', handoverTicket?.sessionId === handoverStarted?.parentId && handoverTicket?.handedFrom?.sessionId === handoverStarted?.childId && isDeepStrictEqual(handoverJournal.filter(record => record.op !== 'base').map(record => [record.op, record.actor]), [['ticket-open', 'harness'], ['ticket-handover', 'harness'], ['rule-lift', 'human'], ['ticket-update', 'harness']]), `${JSON.stringify(handoverTicket ?? null).slice(0, 200)}; ${handoverJournal.map(record => record.op).join(' > ')}; ${handoverJournal.find(record => record.op === 'ticket-handover')?.reason ?? 'no hand-over'}`],
   ['rules-handover: after the person lifts the rule the main agent is told once, with the text for a ticket handed over from a subagent that has ended', handoverMain.length === 6 && wakeMessages(handoverMain[4]).length === 0 && wakeMessages(handoverMain[5]).length === 1 && new RegExp(`^\\[rules board\\] Ticket q-1 cleared: rule r-probe-queue was lifted by the human\\. Subagent "${handoverStarted?.childId.slice(-8)}" was deferred on pwsh "Write-Output rules-probe-queued" and has ended\\. Dispatch the task again or run the call yourself; a new dispatch of the same call reuses q-1\\.$`).test(wakeMessages(handoverMain[5])[0].text) && handoverTicket?.state === 'cleared', wakeMessages(handoverMain[5])[0]?.text ?? 'no wake in the last request'],

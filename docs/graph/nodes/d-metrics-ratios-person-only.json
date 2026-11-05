@@ -1,7 +1,8 @@
 {
   "id": "d-metrics-ratios-person-only",
   "type": "decision",
-  "title": "周报里主 Agent 只转述四个减负数字；其余比率只给人看，做进面板，新手引导里写明在哪看",
+  "title": "周报里主 Agent 只说四个减负数字，其余比率只给人看",
+  "why": "模型不看指标，免得为了数字好看而改做法；人在面板上看得到全部比率",
   "status": "approved",
   "parent": "metrics",
   "verification": "unverified",
@@ -14,6 +15,23 @@
       "reason": "人同意周报只转述四个减负数字，并要求比率不靠手敲命令也能看到",
       "relay": "都按你说的来就行。不过如果不给主Agent这些数据的话，自己手敲命令也比较麻烦。要么做成UI要么就在新手教程里写明白",
       "to": "approved"
+    },
+    {
+      "at": "2026-11-05T05:25:49.207Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "title": {
+          "from": "周报里主 Agent 只转述四个减负数字；其余比率只给人看，做进面板，新手引导里写明在哪看",
+          "to": "周报里主 Agent 只说四个减负数字，其余比率只给人看"
+        },
+        "why": {
+          "from": null,
+          "to": "模型不看指标，免得为了数字好看而改做法；人在面板上看得到全部比率"
+        }
+      }
     }
   ]
 }

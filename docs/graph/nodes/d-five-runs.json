@@ -2,6 +2,7 @@
   "id": "d-five-runs",
   "type": "decision",
   "title": "同时只跑五个运行，按关键路径排先后",
+  "why": "限流时开得越多空等越多；五条按关键路径排，实际更快",
   "status": "approved",
   "parent": "orch",
   "verification": "unverified",
@@ -32,6 +33,25 @@
       "actor": "llm",
       "op": "comment",
       "text": "人 2026-11-05：「没问题就把线全开吧」。队列里剩下的三条（m6-followups、m5-rest、bootstrap-impl）全部恢复，代码运行由 5 个增到 8 个；两个心跳照旧，不计入。上次 8 个并行时 7 个被限流暂停；这次限流再大面积出现时，编排方向人报告再定是否减。"
+    },
+    {
+      "at": "2026-11-05T00:15:36.716Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "7 分钟心跳 heartbeat-7min-wake-orchestrator-b（wf_507e2c2250d11b30）后来不再等满 7 分钟：08:07 到 08:14 之间发了 85 到 93 共 9 条，约 45 秒一条，白白占模型调用、加重限流。编排方已停掉它，换成 heartbeat-7min-wake-orchestrator-c（wf_4205184038b445ad）：一条命令里按墙钟循环等满 420 秒并打印实际秒数，不足 400 秒不发消息。5 分钟心跳 wf_9460cdc54c33e519 照旧。"
+    },
+    {
+      "at": "2026-11-05T05:25:39.231Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "限流时开得越多空等越多；五条按关键路径排，实际更快"
+        }
+      }
     }
   ]
 }

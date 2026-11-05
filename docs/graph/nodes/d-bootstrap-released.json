@@ -2,6 +2,7 @@
   "id": "d-bootstrap-released",
   "type": "decision",
   "title": "接管设计 0.6 放行；读别人的项目时不停主 Agent 的命令行",
+  "why": "接管项目的设计定稿，可以开工；读别人的项目时主 Agent 照常能用命令行",
   "status": "approved",
   "parent": "bootstrap",
   "verification": "unverified",
@@ -14,6 +15,19 @@
       "reason": "人读接管一页稿后定下三件，其中②被否",
       "relay": "读别人的项目时那个权限不用，放开就行。Agent没那么容易被骗。其余都没问题",
       "to": "approved"
+    },
+    {
+      "at": "2026-11-05T05:25:29.777Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "接管项目的设计定稿，可以开工；读别人的项目时主 Agent 照常能用命令行"
+        }
+      }
     }
   ]
 }

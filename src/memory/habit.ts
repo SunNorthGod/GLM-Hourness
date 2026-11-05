@@ -34,7 +34,7 @@ const PER_REPLY_LIMIT = 3
 const DAY_MS = 86_400_000
 const WORDS_MAX = 500
 const ASK_RECENT_DAYS = 28
-/** How far back a forgotten confirmed habit still says the habit is known. */
+/** For how many days after the person withdrew a confirmed habit (its `forget` record) the habit still answers known. */
 const KNOWN_FORGOTTEN_DAYS = 28
 
 /** The word-list hits of the question and the description, each with what to say instead (the forms of src/graph/plain-question.ts). */
@@ -97,7 +97,7 @@ function earlierOutcome(
   const matches = (of: { readonly name: string, readonly description: string, readonly learnedFrom?: readonly string[] }): boolean => byKey(of) || sameText(of, request)
   for (const state of states) {
     const confirmed = [...state.entries.values()].find(entry =>
-      entry.confirmed !== undefined && (entry.status === 'active' || fresh(entry.lastReviewed, nowMs, KNOWN_FORGOTTEN_DAYS)) && matches(entry))
+      entry.confirmed !== undefined && (entry.status === 'active' || fresh(entry.forgottenAt ?? entry.lastReviewed, nowMs, KNOWN_FORGOTTEN_DAYS)) && matches(entry))
     if (confirmed !== undefined) {
       return refuse('known', `the person confirmed this habit before; it is on record as ${confirmed.name}`, 'name',
         'memory_query shows the entry; store an update under its name instead of asking again')

@@ -1,7 +1,8 @@
 {
   "id": "d-async-cards",
   "type": "decision",
-  "title": "异步决策卡自建：卡即项目图上的待决节点",
+  "title": "异步决策卡自建：卡就是项目图上等人定的题",
+  "why": "人不用当场回话，agent 照常干活；人定了之后，agent 下一步就能看到",
   "status": "approved",
   "parent": "orch",
   "verification": "unverified",
@@ -24,6 +25,23 @@
         "body": {
           "from": "待决节点进决策队列，先提的在前；人在界面上选一个选项拍板，不阻塞 agent；拍板经引擎写回，LLM 下次读投影就能看到（ORCHESTRATION.md §2.9）。同步决策卡借用 DSH user-approval（ORCHESTRATION.md §5）。",
           "to": "待决节点进决策队列，先提的在前；人在界面上选一个选项拍板，不阻塞 agent；拍板经引擎写回，LLM 下次读投影就能看到（ORCHESTRATION.md §2.9）。同步决策卡是本项目的 decision_card，经 userQuestions.ask 出卡，人关掉卡片即转为异步（question-20 B）。"
+        }
+      }
+    },
+    {
+      "at": "2026-11-05T05:25:27.407Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "title": {
+          "from": "异步决策卡自建：卡即项目图上的待决节点",
+          "to": "异步决策卡自建：卡就是项目图上等人定的题"
+        },
+        "why": {
+          "from": null,
+          "to": "人不用当场回话，agent 照常干活；人定了之后，agent 下一步就能看到"
         }
       }
     }

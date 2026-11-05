@@ -2,6 +2,7 @@
   "id": "compact-recall",
   "type": "task",
   "title": "压缩后能查原文：照 ZCode 3.17.1 的续接原句加明文会话文件",
+  "why": "会话压缩之后模型还能翻回原文，不会因为摘要丢了细节而重做或做错",
   "status": "doing",
   "parent": "bottom",
   "body": "GLM 会话压缩时，在摘要末尾追加 ZCode 3.17.1 续接文本里 transcriptPath 那一句的原文（reference/zcode-3.17.1/zcode.cjs，Bxt 的 transcriptPath 分支），路径指向把当前会话导出的明文文件；文件放在项目 .llm/ 下，不进 git，有清理规则；模型用 Read 分页读。不另造工具，不读其他会话。新行默认 disabled: true，L3 沙盒验证后再定是否启用；L4 随下一批桌面验收。调查报告：.agents/tasks/compaction-recall/report.md（§6 选项 C、§7 拍板前要答的问题、§8 未核实项）。",
@@ -51,6 +52,19 @@
       "actor": "llm",
       "op": "comment",
       "text": "已合入 main：main = origin = github = c0676b6（cd6e383、347b296、c0676b6）。合入树门禁 build 0、preflight 0、npm test 0（2955 / 0 失败）、探针 0（382/382）。桌面经 CDP 关闭后重启：dsh-glm-zcode 5/5 运行；dsh-hourness 12 个运行、3 个停用（lessons、env、transcript），transcript 行按设计停用；无新 crash log，控制台只有已知的 ingest 噪声。分支已删，工作树已注销；空目录 .worktrees/compact-recall 仍被某个进程占着，留待之后清理。workflow compaction-recall-zcode-transcript（wf_9e0ca88a3e82813a）完成。节点保持进行中，待 L4：桌面上打开 transcript 行、跑一次压缩，核对摘要结尾的句子与 Read 读导出文件；之后由人定是否默认启用。"
+    },
+    {
+      "at": "2026-11-05T05:25:25.129Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "会话压缩之后模型还能翻回原文，不会因为摘要丢了细节而重做或做错"
+        }
+      }
     }
   ]
 }

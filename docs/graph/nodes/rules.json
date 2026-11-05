@@ -2,6 +2,7 @@
   "id": "rules",
   "type": "feature",
   "title": "规则板块：实时生效的规则与资源管理",
+  "why": "每条规则写明管什么、对谁生效、谁设的、怎么执行，人在板上看得到哪些在生效",
   "status": "doing",
   "parent": "orch",
   "body": "一块可以实时更新的规则：每条规则写明管什么、对谁生效、谁设的（人、自动检测、时间表）、怎么执行（拦截、等人、只记录、只告知）、什么时候失效。agent 每步看到当前生效的规则，harness 在执行边界执行，人在面板上看到哪些规则在生效、哪些工作在等它们。第一批是资源类：独占资源的租约（桌面版正在被人用、沙盒一次只给一个运行），以及资源预算（人在用电脑时 LLM 不许占太多 CPU 与内存，重活排队等到人不用时再跑）；范围是整台机器，跨项目、跨会话。已有的 guard 规则、高峰时段、一次只跑一个探针等都可以收进来。先做设计并过设计评审，待人定的事项提给人；实现在 split 之后、编排层包里。",
@@ -627,6 +628,79 @@
       "actor": "llm",
       "op": "comment",
       "text": "压缩后查原文那条合入腾出并行位，编排方派 workflow rules-board-page-and-r4d（wf_a34e9ff57206a017）：做面板里的规则板页面（按规则设计 §9.1 与 plain-ui 设计 §4.7、§11，只看不写，高峰模式只显示与改法），并在规则设计把 R4d（checkCall 执行已批准的门禁脚本）归给规则行且没人做时一并做。依据：panel-2（第 8 条与上手页第 4 块）、status-hub-remaining（规则板条目）、m6-followups S2（验收第 24 条的真实 checkCall 用例）三条运行都在等它，此前没有运行在做；编排方此前向人提出用空出的并行位补这一项，人未反对。"
+    },
+    {
+      "at": "2026-11-04T20:35:22.588Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "rules-board-page 的工作树 .worktrees/rules-board-page 已建，分支 rules-board-page，基点 97dd7ba（与 origin/main 同点），依赖已装。下一步：计划。"
+    },
+    {
+      "at": "2026-11-04T21:09:59.324Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "rules-board-page 计划草稿：.agents/tasks/rules-board-page/plan.md（按规则设计 0.10）。批次：B0 合入 origin/status-hub-2（随本分支一起合入 main）；B1 宿主写 .llm/rules/view.json 与投影 hournessRules {projectKey, viewFile}（同循环板、指标板的做法；客户端调不到 guardStatusItems，hits.json 不存在），探针 glm-rules、non-glm-rules、rules-peak 加检查；B2 客户端页面模型（L2）；B3 登记板块、页面与数据源。棘轮上限 eslint 73 / knip 18 / jscpd 1。两处设计不一致，编排方定：Q1「会挡住动作的门」一组在 M7 的门禁还不在 main 时选 B，从图上列出 norm-merge-gate 与 norm-review-floor 两张清单（标题、灰色来源行、每条验收原文），结尾写由派活与合入那一块执行、它还没装上，M7 合入前不写底线说明；依据是人定的做完条件第 8 条与 d-rules-visible 都要两张清单看得见，偏离规则 0.10 §9.1 的一句话写法，在计划里写明。Q2 首页「现在」一行选 A，按规则 0.10 §9.1 与 plain-ui 1.3 §4.7、§11 第 5 条（高峰时一行写到几点与档名，有工单等放行时写「N 件事在等规则放行」，否则不出现）；状态板块的 rules/peak 条目原文仍只用作报告里的一条。不做高峰档位单选（人在 d-panel-released ③ 接受过）。R4d 本运行不做：它要规则的批准路径（R3-proposal），后者要 M3 0.6 请求的 §9.3 改稿，还要 M7 E7 的 trunkAdvanceFor；现在做只有测试能走到。m6-followups S2 里真实 checkCall 的用例因此继续等。"
+    },
+    {
+      "at": "2026-11-04T23:16:00.168Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "rules-board-page FEAT-001 完成：5576815 合入 status-hub-2（随本分支一起合入 main），d1e1337 加 .llm/rules/view.json 与投影 hournessRules。两个提交上四道门禁退出码为 0（npm test 2992 个，2991 通过 / 1 跳过；探针 393/393），棘轮 73/18/1。origin/rules-board-page = d1e1337。下一步：FEAT-002 客户端页面。"
+    },
+    {
+      "at": "2026-11-05T00:32:33.788Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "rules-board-page FEAT-002 第 2 批 fa3cd4a 已推（页面模型与首页、上手页那一行，07:50 门禁全绿）；第 3 批代码与文档写完（build 0、preflight 0、三个页面 spec 全过，棘轮 73/18/1），被 main 上那条依赖日期的 metrics 测试挡在 npm test。编排方让它先本地提交、不在本分支改该测试，等 main 上的修复（fix-date-dependent-metrics-test）合入后合并再跑一次四道门禁。"
+    },
+    {
+      "at": "2026-11-05T01:08:48.040Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "rules-board-page FEAT-002 第 3 批本地提交 cfdb8f1（未推送，没动 tests/metrics-calc.spec.ts）。cfdb8f1 上 build 0、preflight 0、npm test 1（只有那条依赖日期的 metrics 测试），探针未跑。origin/rules-board-page 仍为 fa3cd4a（第 2 批，四道全绿，3003 个测试，探针 393/393）。它按约定等到 09:04 没等到 main 上的修复，回报。编排方查到修复已提交为 30cbd3b（fix-date-dependent-metrics-test 的本地分支 metrics-clock-pin，正在跑门禁），让它再等至多 40 分钟，main 一有该提交就合并、跑一次四道门禁、推送。"
+    },
+    {
+      "at": "2026-11-05T02:39:21.543Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "rules-board-page FEAT-002 完成并推：fa3cd4a（第 2 批，页面模型）、cfdb8f1（第 3 批，规则板、数据源、页面与文档）、9b16c20（合入带时钟修复 2bd13f6 的 origin/main）；origin/rules-board-page = 9b16c20。合并树上四道门禁为 0：npm test 3055 个，3054 通过 / 0 失败 / 1 跳过；探针 399/399，含 7 条规则页检查；棘轮 eslint 73 / knip 18 / jscpd 1。FEAT-002.json 记了发现与 L4 清单。下一步：修复加评审循环，然后合入 main（status-hub-2 随之一起合入）。"
+    },
+    {
+      "at": "2026-11-05T03:09:51.317Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "rules-board-page（wf_a34e9ff57206a017）收敛循环第 1 轮集成复核：在 9b16c20 上 build 0、preflight 0、npm test 0（3055 个测试，3054 通过、0 失败、1 跳过）、探针 399/399（规则页 7 项检查全过）、棘轮 73/18/1；没有发现接缝缺陷，没有新提交，origin/rules-board-page = 9b16c20。下一步：本轮评审。"
+    },
+    {
+      "at": "2026-11-05T03:31:02.358Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "rules-board-page 第 1 轮评审 CHANGES_REQUESTED（评审文档 2026-11-05-112043-review.md）。F1（HIGH）：页面第 4 组读的是规则行自己的门禁流水，不是代码规则各行写的按项目流水，7 天计数恒为 0。F2（LOW）：每 15 秒重读整份流水。下一步：收敛循环的修复轮。"
+    },
+    {
+      "at": "2026-11-05T04:12:12.442Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "rules-board-page 收敛循环第 2 轮修复：提交 6ae1157 已推 origin/rules-board-page。F1：规则页的 7 天计数改为合计按项目流水与门禁流水，去掉重复行；ORCHESTRATION.md §16.14 同批改，加一条 L2 用例。F2：流水记录按文件大小与修改时间缓存。build 0、preflight 0、npm test 0（3055 个、0 失败）、探针 399/399、棘轮 73/18/1。下一步：第 2 轮评审。"
+    },
+    {
+      "at": "2026-11-05T04:17:23.546Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "rules-board-page 第 2 轮评审 APPROVED（.agents/tasks/rules-board-page/2026-11-05-121118-review.md）：6ae1157 修好上一轮的 HIGH（页面计入按项目流水），另有两条 LOW 不挡路。下一步：本运行的合入步骤（status-hub-2 随它一起合入）。"
+    },
+    {
+      "at": "2026-11-05T05:26:47.414Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "每条规则写明管什么、对谁生效、谁设的、怎么执行，人在板上看得到哪些在生效"
+        }
+      }
     }
   ]
 }

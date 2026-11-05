@@ -1,7 +1,8 @@
 {
   "id": "m5",
   "type": "feature",
-  "title": "M5 记忆与学习",
+  "title": "记忆与学习",
+  "why": "主 Agent 记得住人的习惯和项目的事实，人不用反复交代",
   "status": "doing",
   "parent": "orch",
   "body": "事实与偏好分类；会话开局召回；记忆工具常驻；取消路径判据；学习流水线；汇报细度闭环（ROADMAP.md M5）。",
@@ -245,6 +246,65 @@
       "actor": "llm",
       "op": "comment",
       "text": "m5-rest 规划完成：rest-plan.md 在 m5-rest 工作树（未提交），从 .worktrees/m5 带入 14 份评审记录；排第 0 步基线加 4 批；等 M7、人与编排方的项已在计划里列明。"
+    },
+    {
+      "at": "2026-11-04T22:39:30.233Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m5-rest 第 0–3 批完成并推 origin/m5-rest：f5e12b3（文档）、877fc7d（合并）、17c7b15（修复加测试）、d612914（合并）、b9a066e（文档）；每批四道门禁为 0，探针 382/382。第 4 批（经验页 L4）的前置：人的桌面 profile 里 glm-hourness/lessons 行出厂为 disabled: true，真桌面上经验页不出现。编排方选 A：起隔离实例（独立 --user-data-dir 与 DSH_HOME，放在 .worktrees/m5-rest/.llm/m5r-l4/，profile 链到本工作树的包，只在这份 profile 里打开 lessons 行，独立 CDP 端口），不碰 ~/.dsh、人的记忆与人正在用的实例；按 §1.1 取桌面锁、只走 CDP、只在自己建的临时会话里输入。未选 B（改人的 desktop profile，要人点头）与 C（跳过）。人真实 profile 上的 L4 要等 lessons 行在交付的 bundle 里启用之后。"
+    },
+    {
+      "at": "2026-11-04T23:37:06.169Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m5-rest 计划的批次全部做完并推 origin/m5-rest = 11715b9。第 4 批按选项 A 在隔离实例上做经验页 L4：lessons-3 第 1–3 条通过，第 4 条仍只有 L2 钉住。每个提交四道门禁为 0，最后一次探针 388/388，棘轮 73/18/1。桌面锁已放，只停了自己起的隔离实例，人的实例与 ~/.dsh 未动。下一步：评审，然后合入 main；人真实 profile 上的 L4 等 lessons 行在交付 bundle 里启用之后。"
+    },
+    {
+      "at": "2026-11-04T23:51:18.215Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m5-rest 评审 CHANGES_REQUESTED，1 条阻塞 B1：/memory restore 的记录把只该存在于折叠结果里的字段 forgottenAt 写进了流水，违反已批准的「只在折叠里，不写进流水」（.llm/m5r-review/review.json）。门禁、推送与验收条目对应都核对无误。下一步：修 B1 后复审。"
+    },
+    {
+      "at": "2026-11-05T02:33:58.761Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m5-rest 评审 B1 已修并推：修复 02a2bec（/memory restore 的记录不再把 forgottenAt 写进流水），合并 56d4959（并入带时钟修复的 origin/main 2bd13f6），都在 origin/m5-rest。56d4959 上四道门禁为 0：npm test 3004 通过 / 0 失败 / 1 跳过，探针 388/388，棘轮 73/18/1。下一步：复审。"
+    },
+    {
+      "at": "2026-11-05T02:35:17.851Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m5-rest 第 2 轮评审 APPROVED，无阻塞：B1 已修，snapshot 去掉 forgottenAt，并有一条先失败后通过的 L2 断言钉住（.llm/m5r-review/review.json）。origin/m5-rest = 56d4959，四道门禁为 0（npm test 3004 通过 / 0 失败 / 1 跳过，探针 388/388），棘轮 73/18/1。下一步：本运行的报告步骤，然后合入 main。"
+    },
+    {
+      "at": "2026-11-05T02:36:17.388Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "workflow m5-rest（wf_65d23b8072019258）完成，终报已写：origin/m5-rest = 56d4959，四批与 B1 修复都已推，第 2 轮评审 APPROVED，末端四道门禁为 0、探针 388/388。尚未合入 main；编排方派 land-m5-rest（agent://wf-coder）合 main、跑门禁、快进 main 推两个远端，行组合、行运行行为或客户端半有变就按 CDP 规矩重启桌面版。人真实 profile 上的经验页 L4 仍等 lessons 行在交付 bundle 里启用。"
+    },
+    {
+      "at": "2026-11-05T03:41:43.536Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "land-m5-rest（wf_8db46311828ea944）完成：m5-rest 已合入 main。合并 02fe834，再合一次 67c3c5d，main 快进到 67c3c5d 并推 origin 与 github（ls-remote 核对；之后别的 lane 推进到 2d5a42f，仍包含 67c3c5d）。门禁：build 0、preflight 0、npm test 0（3005 个，3004 通过、0 失败、1 跳过）、探针 388/388。本步没有重启桌面版：m4-checks 那条 lane 11:20 的重启已经载入包含本合并的 main e88da27，CDP 核对无报错。工作树与分支已删，留下一个被别的进程占着的空目录。人真实 profile 上的经验页 L4 仍等 lessons 行在交付 bundle 里启用，本节点保持进行中。"
+    },
+    {
+      "at": "2026-11-05T05:26:23.447Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "title": {
+          "from": "M5 记忆与学习",
+          "to": "记忆与学习"
+        },
+        "why": {
+          "from": null,
+          "to": "主 Agent 记得住人的习惯和项目的事实，人不用反复交代"
+        }
+      }
     }
   ]
 }

@@ -1,7 +1,8 @@
 {
   "id": "d-interview-cards",
   "type": "decision",
-  "title": "访谈里的选择题由 harness 出卡，主 Agent 不带 ask_user_question",
+  "title": "访谈里的选择题由系统出卡，不用 DSH 原生的问答工具",
+  "why": "原生问答工具把推荐放第一并预选，和推荐放最后的规矩冲突，所以自己出卡",
   "status": "approved",
   "parent": "m3",
   "verification": "unverified",
@@ -20,6 +21,23 @@
       "actor": "llm",
       "op": "comment",
       "text": "m8-plain-language 设计 0.4 §3.8.4 与 §12 M3 第 1 条的落法：decision_card 与访谈选择题都经 src/design/cards.ts 与 userQuestions.ask 出卡，detail 依次是背景、单向门提示、取决于与结论行，按钮「A · label」，说明「得到：…；代价：…」，推荐在最后、不加 (Recommended)、不预选；访谈卡片工具推荐不在最后时 invalid（与引擎 recommend-last 同一句提示），不替模型重排；主 Agent 的工具面在组装时去掉 ask_user_question（M3 设计第 226 行那个监听器）；访谈题不进图、不算跟随率、没有先想后看；模拟人在待决卡上按 recommend 选、访谈卡片选最后一项，收到带 (Recommended) 的卡记一次违反。DSH 问题卡的两处宿主限制记下：按钮 aria-label 只是说法（client-ui-user-questions client.js:1096），说法字重 500。"
+    },
+    {
+      "at": "2026-11-05T05:25:44.479Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "title": {
+          "from": "访谈里的选择题由 harness 出卡，主 Agent 不带 ask_user_question",
+          "to": "访谈里的选择题由系统出卡，不用 DSH 原生的问答工具"
+        },
+        "why": {
+          "from": null,
+          "to": "原生问答工具把推荐放第一并预选，和推荐放最后的规矩冲突，所以自己出卡"
+        }
+      }
     }
   ]
 }

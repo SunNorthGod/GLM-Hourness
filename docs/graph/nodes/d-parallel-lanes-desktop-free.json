@@ -2,6 +2,7 @@
   "id": "d-parallel-lanes-desktop-free",
   "type": "decision",
   "title": "桌面版由编排方直接关开与核对；能并行的线尽量都开",
+  "why": "关开与核对桌面版不再先问人，能并行的线都开，整体做得更快",
   "status": "approved",
   "parent": "orch",
   "verification": "unverified",
@@ -14,6 +15,19 @@
       "reason": "人放开桌面版并要求尽可能多线并行",
       "relay": "桌面版随便用，尽可能开多线",
       "to": "approved"
+    },
+    {
+      "at": "2026-11-05T05:25:52.742Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "关开与核对桌面版不再先问人，能并行的线都开，整体做得更快"
+        }
+      }
     }
   ]
 }

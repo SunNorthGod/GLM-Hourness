@@ -1,7 +1,8 @@
 {
   "id": "d-user-graph-one-graph",
   "type": "decision",
-  "title": "项目用户图与项目图存成一张图、看成两面，实现排在 M3 与 M7 骨架之后",
+  "title": "用户图与项目图存成一张、看成两面，排在两块骨架之后",
+  "why": "开发的活与用户的流程连在一起，看得出哪一步没人做、哪件活不服务谁",
   "status": "approved",
   "parent": "orch",
   "verification": "unverified",
@@ -14,6 +15,23 @@
       "reason": "人定：项目用户图与项目图存成一张、看成两面；现在写设计，实现排在 M3 与 M7 骨架合入之后",
       "relay": "都没问题。继续吧",
       "to": "approved"
+    },
+    {
+      "at": "2026-11-05T05:26:05.820Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "title": {
+          "from": "项目用户图与项目图存成一张图、看成两面，实现排在 M3 与 M7 骨架之后",
+          "to": "用户图与项目图存成一张、看成两面，排在两块骨架之后"
+        },
+        "why": {
+          "from": null,
+          "to": "开发的活与用户的流程连在一起，看得出哪一步没人做、哪件活不服务谁"
+        }
+      }
     }
   ]
 }

@@ -1,7 +1,8 @@
 {
   "id": "d-m4-released",
   "type": "decision",
-  "title": "M4 放行：七件活的 35 条做完条件由人定下，可以开工",
+  "title": "拦截与环境这一块放行：35 条做完条件由人定下",
+  "why": "七件活怎样算做完由人定了，可以开工；之后改这些条件要人出手",
   "status": "approved",
   "parent": "m4",
   "verification": "unverified",
@@ -14,6 +15,23 @@
       "reason": "人 2026-11-01 读 M4 一页稿后放行，并把七件活的 35 条做完条件一起定下（人话版 .agents/tasks/m4/onepage-done.md，设计 0.6 §1.2）",
       "relay": "都没问题",
       "to": "approved"
+    },
+    {
+      "at": "2026-11-05T05:25:45.654Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "title": {
+          "from": "M4 放行：七件活的 35 条做完条件由人定下，可以开工",
+          "to": "拦截与环境这一块放行：35 条做完条件由人定下"
+        },
+        "why": {
+          "from": null,
+          "to": "七件活怎样算做完由人定了，可以开工；之后改这些条件要人出手"
+        }
+      }
     }
   ]
 }

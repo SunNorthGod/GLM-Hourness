@@ -31,7 +31,7 @@ import { loadState, rulesPaths } from '../src/rules/store.ts'
 import { parseRulesView, type RulesView } from '../src/rules/view.ts'
 import { fakeRuntime, type FakeRuntime } from './fake-rc3.ts'
 import { captureWarnings } from './graph-helpers.ts'
-import { FULL_RULES_FILE, ruleOf } from './rules-fixtures.ts'
+import { FULL_RULES_FILE, OFFPEAK_CREDIT_RUNS, ruleOf } from './rules-fixtures.ts'
 import { fakeClock, MINUTE, quickIo, writeHeartbeat } from './rules-helpers.ts'
 import { health, PEAK_NOW, rowTest, withRow, type Fixture } from './rules-host.ts'
 import { skipIfTempInsideGit } from './temp-outside-git.ts'
@@ -906,6 +906,27 @@ rowTest('the line counts as one of the 12 items', async (fixture) => {
   assert.equal(lines.filter(line => line.startsWith('- [inform')).length, 11)
   assert.equal(lines.at(-2), 'and 4 more: call rules_show')
 }, { services: MAIN_AGENT, rules: reminderFile(...Array.from({ length: 15 }, (_, index) => ruleOf({ id: `r-note-${String(index).padStart(2, '0')}`, title: `Note ${index}`, when: { kind: 'event', events: ['rules.step'] }, action: { kind: 'inform' } }))) })
+
+// --- the end of the peak in a ticket of the reminder (M6 design §7.2) ---
+
+const OPENED = '2026-10-28T07:00:00.000Z'
+const calibrateTicket = (until: string): RegExp => new RegExp(`\\nYour open tickets: q-1 pwsh "npm run calibrate" \\(deferred since ${clockHm(OPENED)}${until}\\)\\.\\n</system-reminder>$`)
+
+test('a ticket a rule of the person on glm-peak true holds says until when the peak lasts', async () => {
+  await withRow(async (fixture) => {
+    await fixture.runtime.create()
+    await fixture.exec('pwsh', { command: 'npm run calibrate' })
+    assert.match(bodyOf((await stepOf(fixture))[0]), calibrateTicket(`, until ${END}`))
+  }, { clock: fakeClock(OPENED), live: true, rules: reminderFile(OFFPEAK_CREDIT_RUNS) })
+})
+
+test('without a pricing service the ticket of the same rule has no time in the reminder', async () => {
+  await withRow(async (fixture) => {
+    await fixture.runtime.create()
+    await fixture.exec('pwsh', { command: 'npm run calibrate' })
+    assert.match(bodyOf((await stepOf(fixture))[0]), calibrateTicket(''))
+  }, { clock: fakeClock(OPENED), live: true, pricing: 'none', rules: reminderFile({ ...OFFPEAK_CREDIT_RUNS, onUnknown: 'apply' }) })
+})
 
 // --- the row's status view: the one rules/peak entry (status hub design 0.3 §3.2, §12 rules row) ---
 

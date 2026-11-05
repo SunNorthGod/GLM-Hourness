@@ -31,6 +31,7 @@ interface ToolValue extends Omit<GraphAnswer, 'node'> {
   readonly node: Partial<GraphNode>
   readonly focus: Pick<GraphNode, 'id' | 'type' | 'title' | 'status'>
   readonly invalid?: { readonly errors: number, readonly first: readonly { readonly file: string, readonly field?: string, readonly message: string }[] }
+  readonly warnings?: readonly string[]
 }
 
 /**
@@ -100,7 +101,8 @@ test('the row registers one tool per llm operation with schemas inside the rc.3 
   for (const tool of runtime.scoped) {
     assert.deepEqual(schemaViolations(tool.parameters, `${tool.name}.parameters`), [])
     // graph_relink's description carries the whole two-call example the main agent follows (user-graph design 0.4.1 §3.5); the rest stay short.
-    const cap = tool.name === 'graph_relink' ? 1600 : 600
+    // 700: graph_propose carries the question rules (M3) and the sentence on the timeouts of a tool node under env (m4 design §6.3.1 item 3).
+    const cap = tool.name === 'graph_relink' ? 1600 : 700
     assert.ok(tool.description.length > 0 && tool.description.length < cap, tool.name)
   }
   // A supersession is a proposal with a supersedes edge (ORCHESTRATION.md §2.9); it has no tool of its own.
@@ -137,7 +139,7 @@ toolTest('graph_propose explains the table card next to recommend-last; a questi
   assert.match(node.crux.description, /required when the human decides\. 取决于: one line, at most 60 characters/)
   assert.match(node.verdict.description, /是 → <key>；否 → <key>; every key after → must exist and the recommended key must appear/)
   assert.deepEqual(node.weight.enum, ['one-way', 'two-way'])
-  assert.equal(node.why, undefined)
+  assert.match(node.why.description, /Not on a question/, 'why is the reason of other nodes; a question has its own lines')
   assert.equal(node.counter, undefined)
   const bare = { type: 'question', title: '缓存放哪', parent: 'feature-1', options: [{ key: 'A', label: '.cache', gain: '工具都认', cost: '要加进 .gitignore' }, { key: 'B', label: 'tmp', gain: '系统会清', cost: '重启后要重建' }], recommend: 'B' }
   const error = refused(await call('graph_propose', { node: bare, reason: '问人' }), 'invalid', 'node.crux')
@@ -229,6 +231,23 @@ toolTest('graph_propose writes as llm: planned work starts approved, a new branc
   const branch = ok(await call('graph_propose', { node: { type: 'feature', title: '新分支', parent: 'goal-1' }, reason: '计划外' }))
   assert.equal(branch.node.status, 'proposed')
   refused(await call('graph_propose', { node: { type: 'task', title: '缺父节点' }, reason: '试' }), 'invalid')
+})
+
+toolTest('graph_propose and graph_edit describe the writing rules and the plain words; a write that breaks one comes back with warnings (plain-ui 1.3 §5.3)', async ({ runtime, call, rev }) => {
+  const schemaOf = (name: string): Record<string, { description?: string, properties?: Record<string, { description?: string }> }> =>
+    runtime.scoped.find(tool => tool.name === name)!.parameters.properties as Record<string, { description?: string, properties?: Record<string, { description?: string }> }>
+  const node = schemaOf('graph_propose').node.properties!
+  for (const text of [node.title.description!, schemaOf('graph_edit').set.description!]) {
+    assert.match(text, /title and why are read by the human/)
+    assert.match(text, /No milestone or section numbers \(M3, 3\.1, §4\)/)
+    assert.match(text, /验收 or acceptance -> 怎样算做完/)
+  }
+  assert.match(node.why.description!, /at most 80 characters/)
+  const warned = ok(await call('graph_propose', { node: { type: 'task', title: 'M3 写工具', why: '读 graphLive', parent: 'feature-1' }, reason: '拆分' }))
+  assert.deepEqual(warned.warnings?.map(line => line.split(':')[0]), ['code in node.title', 'identifier in node.why'])
+  const edited = ok(await call('graph_edit', { id: 'task-1', rev: await rev('task-1'), set: { body: '换个读法' }, reason: '改正文' }))
+  assert.equal(edited.warnings?.length, 1, 'the reminder of a body changed under the same title')
+  assert.equal(ok(await call('graph_comment', { id: 'task-1', text: '记一笔' })).warnings, undefined)
 })
 
 toolTest('graph_status needs passing evidence to mark a node done', async ({ call, rev }) => {

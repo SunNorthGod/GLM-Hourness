@@ -19,6 +19,7 @@ import {
   OPS,
   OPTION_KEY_PATTERN,
   DISPATCH_FIELDS,
+  PLAIN_LIMITS,
   SLOPES,
   STAGES,
   STATUSES,
@@ -51,6 +52,8 @@ export interface GraphIssue {
   readonly file: string
   /** Field path inside the node, for example history[2].actor. */
   readonly field?: string
+  /** The writing rule a reading notice reports (plain.ts, plain-ui 1.3 §5.3); shape issues carry none. */
+  readonly rule?: string
   readonly message: string
 }
 
@@ -294,6 +297,7 @@ const FIELD_CHECKERS: Record<typeof NODE_FIELDS[number], Checker> = {
   id: nodeId,
   type: oneOf(NODE_TYPES),
   title: line,
+  why: line,
   ask: line,
   form: oneOf(ASK_FORMS),
   status: oneOf(STATUSES),
@@ -470,6 +474,11 @@ function nodeRuleIssues(node: GraphNode, file: string): GraphIssue[] {
     report('parent', `is required for a ${node.type} node`)
   }
   if (node.stage !== undefined && node.type !== 'goal' && node.type !== 'feature') report('stage', 'only goal and feature nodes carry a stage')
+  // why (plain-ui 1.3 §5.2): one sentence on every type but a question, whose reasons are its own lines.
+  if (node.why !== undefined) {
+    if (node.type === 'question') report('why', 'a question carries no why: its reason is in its own lines')
+    else if (codePointCount(node.why) > PLAIN_LIMITS.why) report('why', `must be at most ${PLAIN_LIMITS.why} code points`)
+  }
   if (node.type === 'task') {
     if (node.kind === 'review' && (node.writeScope ?? []).length > 0) report('writeScope', 'a review task writes nothing: its write scope stays empty')
     node.writeScope?.forEach((entry, index) => {

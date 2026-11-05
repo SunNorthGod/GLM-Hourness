@@ -1,7 +1,8 @@
 {
   "id": "d-reporting-depth-keep",
   "type": "decision",
-  "title": "汇报细度这一档保留，按 m5-5 原计划做完",
+  "title": "汇报细度这一档保留，按原计划做完",
+  "why": "问法与放行稿的规矩都不管平时汇报的长短，这一块仍要自己做完",
   "status": "approved",
   "parent": "m5",
   "verification": "unverified",
@@ -14,6 +15,23 @@
       "reason": "人决定保留汇报细度这一档，按原计划做完",
       "relay": "行那就留着",
       "to": "approved"
+    },
+    {
+      "at": "2026-11-05T05:25:56.373Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "title": {
+          "from": "汇报细度这一档保留，按 m5-5 原计划做完",
+          "to": "汇报细度这一档保留，按原计划做完"
+        },
+        "why": {
+          "from": null,
+          "to": "问法与放行稿的规矩都不管平时汇报的长短，这一块仍要自己做完"
+        }
+      }
     }
   ]
 }

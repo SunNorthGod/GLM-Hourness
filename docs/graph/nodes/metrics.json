@@ -2,6 +2,7 @@
   "id": "metrics",
   "type": "feature",
   "title": "把系统里看得到的数都按同一种格式记下来",
+  "why": "能看到的数都用同一种格式记下，周报和面板从同一份流水算",
   "status": "doing",
   "parent": "orch",
   "body": "现状：数散在几处（用量流水、违规流水、项目图历史、M7 设计里的交付指标与人的负担四项、先想后看的跟随率、M4 的规则命中率），格式各不相同，有的还只在设计里。做法：每个项目一份只追加的事件流水，固定格式，只记数与引用、不记对话正文；每一步的模型、token 与积分、用时、工具调用与被拦次数、派活、审查发现、返工、合入、失败与重试、问人的次数、人读了多少字、拍板等了多久、是否跟了推荐，都由 harness 写，模型写的数不算；晨报、周报、各种指标都从这一份算，同样的输入算出同样的数。量不到的照实写：人在系统外花的精力、做出来的东西好不好用，只能靠真实项目试用与人的反馈（field-trial）。",
@@ -377,6 +378,37 @@
       "actor": "llm",
       "op": "comment",
       "text": "workflow metrics-reason-codes-and-merge（wf_8900afc21ad56fa3）完成。桌面重启确认：主检出 f3f0efc（相对 ab3f26a 只多 docs/graph）build 退出码 0；重启后两个包都在运行（dsh-glm-zcode 5/5；dsh-hourness 14 个组件 12 个运行、2 个出厂停用），指标行在运行；行健康无失败行，无新 crash log，控制台错误仍是已知两类。不阻塞：指标行设置页说明仍写「默认关闭」（合入后已默认启用，文案需改）；行健康里「积分口径：未提供」是激活时的旧快照。节点保持进行中：剩设计第 9 步的指标板桌面核对（批次 L4）。桌面锁已交还，现由 user-graph L4 持有。"
+    },
+    {
+      "at": "2026-11-05T00:23:09.471Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "发现（m5-rest 的 worker 报）：自 2026-11-05T00:00Z 起，main 上 npm test 在 tests/metrics-calc.spec.ts 约第 422 行「an in-window append changes the output, and the basis rerun reproduces the first report verbatim」失败，单跑 3 次都失败，与负载无关。原因：该用例的 appendEvents 没有固定写入者时钟，start/stop 事件用真实时间，而日文件按事件 at 的 UTC 日期分；UTC 午夜之后这两条落进 events-2026-11-05.jsonl，在用例窗口 2026-11-04 之外，于是第一次报告「未正常退出」是 1，按依据重跑是 2。07:59:55 结束的门禁里它还是过的。所有基于含 metrics 的 main 的分支都会撞上。编排方派 fix-date-dependent-metrics-test（wf_d46fef4a0b30bf32）在 main 上修：按同文件第 217 行一带与 tests/hourness.spec.ts 的做法固定时钟，并排查其他依赖当天日期的测试。m5-rest 的 B1 修复先本地提交，等 main 修好后合并再跑全量门禁。"
+    },
+    {
+      "at": "2026-11-05T01:51:45.939Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "日期相关测试的正式修复：fix-date-dependent-metrics-test 的提交（变基后为 26df84c，subject「test(metrics): pin the writer clock in the specs that write fixed-date journals」）在本地分支 metrics-clock-pin 上，09:39 开始最后一轮探针，预计 10:00 前后进 main。被限流拖慢。等它的有 rules-board-page、m5-rest、panel-2；bootstrap 在自己分支上另修了一份（f47aa95），合 main 时冲突取 main 的版本。"
+    },
+    {
+      "at": "2026-11-05T02:06:17.461Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "workflow fix-date-dependent-metrics-test（wf_d46fef4a0b30bf32）完成：2bd13f6「test(metrics): pin the writer clock in the specs that write fixed-date journals」已在 main，origin 与 github 经 ls-remote 核对均为 2bd13f6。最终代码上门禁：build 0、preflight 0、npm test 0（3003 个，3002 通过 / 0 失败 / 1 跳过）、探针 388/388。工作树与分支已删除。只改测试、不改产品代码。等它的 rules-board-page、m5-rest、panel-2 已通知合并 main 后跑一次四道门禁再推；bootstrap 合 main 时该测试的冲突取 main 的版本。从 UTC 午夜到修复合入，main 上 npm test 红了约 2 小时。"
+    },
+    {
+      "at": "2026-11-05T05:26:35.657Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "能看到的数都用同一种格式记下，周报和面板从同一份流水算"
+        }
+      }
     }
   ]
 }

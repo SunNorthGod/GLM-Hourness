@@ -56,10 +56,11 @@
  */
 import { existsSync } from 'node:fs'
 import { basename, join } from 'node:path'
+import { projectHomeFor } from '../data/project-home.ts'
 import { projectOf } from '../data/project-root.ts'
 import { liftService } from '../guard/lift-service.ts'
 import { journalRecords } from '../guard/records.ts'
-import { auditPaths, rowJournal, type RowJournal } from '../memory/audit.ts'
+import { auditPaths, projectJournal, type ProjectJournal } from '../memory/audit.ts'
 import { collectStatus } from '../report/status.ts'
 import { dataHomes } from '../shared/data-home.ts'
 import type { AgentCommandInvocationLike, AgentLike, AgentsService, CommandDefinitionLike, CommandResultLike, CommandsHost, InjectHost, PreExecuteListener, ProvideHost, ServiceLookup, SessionLike, ToolsLike } from '../shared/dsh-min.ts'
@@ -108,7 +109,7 @@ const realTimer: IntervalTimer = (tick, everyMs) => {
 export interface RulesConfig {
   /** The rules directory in the repository: relative to the project root, or absolute (the probe and tests). Default docs/rules. */
   readonly dir?: string
-  /** The project directory (workspace `.llm`) for the violation journal; defaults to the data service's. */
+  /** The project directory (workspace `.llm`) for the violation journal; without it each record goes to the `.llm` of the session's project, else to the data service's (projectHomeFor). */
   readonly home?: string
   /** The clock, for tests; default `Date.now`. */
   readonly now?: () => number
@@ -335,10 +336,10 @@ export function apply(ctx: RulesContext, config: RulesConfig = {}): Unload {
   }
 
   // The gate's journal; once a line has landed (or failed), the rules page is written again after a quiet second.
-  const journal: RowJournal = rowJournal(name, () => dataHomes(ctx, config.home))
+  const journal: ProjectJournal = projectJournal(name, cwd => projectHomeFor(ctx, config.home, cwd))
   const gateJournal = {
-    violation: (record: Parameters<RowJournal['violation']>[0]) => {
-      const written = journal.violation(record)
+    violation: (record: Parameters<ProjectJournal['violation']>[0], cwd: string | undefined) => {
+      const written = journal.violation(record, cwd)
       void written.then(() => { pageView.soon() }, () => { pageView.soon() })
       return written
     },

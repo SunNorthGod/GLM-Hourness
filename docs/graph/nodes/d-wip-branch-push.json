@@ -2,6 +2,7 @@
   "id": "d-wip-branch-push",
   "type": "decision",
   "title": "进行中的分支每轮改完就推，允许改写；只有 main 坚决不强推",
+  "why": "进行中的分支随时推上去，不丢改动；主干绝不改写历史",
   "status": "approved",
   "parent": "orch",
   "verification": "unverified",
@@ -14,6 +15,19 @@
       "reason": "人同意强推 m3 备份并定下进行中分支的推送规矩",
       "relay": "其余都没问题",
       "to": "approved"
+    },
+    {
+      "at": "2026-11-05T05:26:07.575Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "进行中的分支随时推上去，不丢改动；主干绝不改写历史"
+        }
+      }
     }
   ]
 }

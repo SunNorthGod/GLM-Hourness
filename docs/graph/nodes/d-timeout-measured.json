@@ -2,6 +2,7 @@
   "id": "d-timeout-measured",
   "type": "decision",
   "title": "超时先由写脚本的 agent 估，跑过之后由 harness 按实测定",
+  "why": "超时一开始有个估计，跑过之后按实测改，既不卡活也不误判",
   "status": "approved",
   "parent": "orch",
   "verification": "unverified",
@@ -44,6 +45,19 @@
       "actor": "llm",
       "op": "comment",
       "text": "M4 设计 0.6 对 12:56Z 细化裁定的一处读法，请裁定（决定评审第 2 轮 N10，可逆）：裁定写「3 倍超过上限时保持上限，只告诉主 Agent，由它自己处理（拆小或收窄，或调高上限），不问人」。M4 里调高上限（工具 check_limit）确实不用人批准；但拆小或收窄检查要改工具节点上的检查行，验收条件批准之后只有人能改，所以这一条路在机制上仍要人批准。设计的做法：上限提醒的原文写明调高上限是主 Agent 的决定、不用人批准，改检查行要人批准如常；「不问人」只落在调高上限上。如果裁定的本意是主 Agent 在任何办法下都不该去问人，则只剩调高上限这一条路，请改写裁定或说明。另：check_limit 的 seconds 必须高于现在生效的上限，reason 要过 plainWordsIn（它原样出现在循环板页和晨报上），raise 只在这一项被当前生效的上限截住时可用，这三处是设计者定的，同样可推翻。"
+    },
+    {
+      "at": "2026-11-05T05:26:04.079Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "超时一开始有个估计，跑过之后按实测改，既不卡活也不误判"
+        }
+      }
     }
   ]
 }

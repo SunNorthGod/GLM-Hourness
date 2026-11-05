@@ -2,6 +2,7 @@
   "id": "d-video-paper-style",
   "type": "decision",
   "title": "宣传视频改为纸面排版风，状态色借工程图纸风（进行中琥珀、通过绿）",
+  "why": "去掉深蓝底和发光，宣传片看起来更朴素可信",
   "status": "approved",
   "parent": "field-trial",
   "verification": "unverified",
@@ -20,6 +21,19 @@
       "actor": "llm",
       "op": "comment",
       "text": "落地取舍（视频运行记在 .worktrees/video-restyle/.agents/tasks/video-restyle/choice.md）：状态色进行中琥珀 #9A6700、通过绿 #287538；主题层在 video/src/theme/ 与 video/src/parts.tsx。"
+    },
+    {
+      "at": "2026-11-05T05:26:06.965Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "去掉深蓝底和发光，宣传片看起来更朴素可信"
+        }
+      }
     }
   ]
 }
