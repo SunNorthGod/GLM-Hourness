@@ -21,9 +21,11 @@ import { worktreesOf } from '../src/data/project-root.ts'
 import { MAIN_AGENT_KEY } from '../src/graph/main-agent.ts'
 import { checkCall } from '../src/rules/check.ts'
 import { RULES_FILES_ONLY } from '../src/rules/gate.ts'
-import type { RepoRules } from '../src/rules/model.ts'
+import { repoJson, type RepoRules } from '../src/rules/model.ts'
 import { rulesPaths } from '../src/rules/store.ts'
+import { DATA_SERVICE } from '../src/shared/data-home.ts'
 import { METRICS_SERVICE, type EmittedEvent, type RulesBodies } from '../src/shared/metrics.ts'
+import { readViolations } from './fake-rc3.ts'
 import { ruleOf } from './rules-fixtures.ts'
 import { injectRecord } from './rules-helpers.ts'
 import { health, PEAK_NOW, rowTest, subagentOf, textOf, type Fixture } from './rules-host.ts'
@@ -127,6 +129,35 @@ rowTest('a record rule lets the call run and leaves a mode record line; an infor
   assert.equal((await exec('pwsh', shell('echo other'))).isError, false)
   assert.equal((await violations()).length, 1, 'a call no record rule names leaves no line')
 }, { rules: file([RECORD_NPM, INFORM_FRIDAY]) })
+
+// ------------------------------------------------------------------- journal
+
+rowTest('a refusal is journaled in the project the session works in: sessions in two repositories each find their own line there, and the data service\'s directory gets none', async ({ root, runtime, exec, violations }) => {
+  const other = await mkdtemp(join(tmpdir(), 'rules-other-'))
+  try {
+    await mkdir(join(other, '.git'))
+    await mkdir(join(other, 'docs', 'rules'), { recursive: true })
+    await writeFile(join(other, 'docs', 'rules', 'rules.json'), repoJson(file([BLOCK_PROBE])))
+    const session = runtime.agent.session!
+    const elsewhere = { ...runtime.agent, id: 'agent-2', session: { ...session, id: 'agent-2', header: { ...session.header, id: 'agent-2', cwd: other } } }
+    assert.equal((await exec('pwsh', shell('echo rules-probe-blocked'))).isError, true, 'the session in the first repository')
+    assert.equal((await exec('pwsh', shell('echo rules-probe-blocked'), { agent: elsewhere })).isError, true, 'the session in the second')
+    const line = (record: Record<string, unknown>): string => `${String(record.rule)} ${String(record.sessionId)}`
+    assert.deepEqual((await violations(1)).map(line), ['rules:r-no-probe agent-1'])
+    assert.deepEqual((await readViolations(other)(1)).map(line), ['rules:r-no-probe agent-2'])
+    assert.deepEqual(await readViolations(join(root, 'data'))(), [], 'the data service names a project directory of its own, and nothing goes there')
+  }
+  finally {
+    await rm(other, { recursive: true, force: true, maxRetries: 10, retryDelay: 20 })
+  }
+}, {
+  rules: file([BLOCK_PROBE]),
+  data: false,
+  setup: ({ root, runtime }) => {
+    runtime.services.set(DATA_SERVICE, { userHome: join(root, 'user'), projectHome: join(root, 'data', '.llm') })
+    return Promise.resolve()
+  },
+})
 
 // -------------------------------------------------------------------- events
 

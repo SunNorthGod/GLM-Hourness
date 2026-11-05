@@ -78,14 +78,25 @@ export interface GateDeps {
   /** The project of a working directory, as the row reads it; it throws when the files cannot be read. */
   readonly project: (cwd: string) => ProjectView | undefined
   readonly peak: () => PeakReading
-  /** Where the gate hands its record: the row journal (which reports how the write came out) or the raw audit journal; the gate does not read the outcome (design §3.2). */
-  readonly journal: { readonly violation: (record: GuardRecord) => Promise<unknown> }
+  /** Where the gate hands its record, with the working directory of the session it is about: the row's per-project journal (projectJournal), which writes it into that session's project; the gate does not read the outcome (design §3.2). */
+  readonly journal: { readonly violation: (record: GuardRecord, cwd: string | undefined) => Promise<unknown> }
   readonly health: RowHealth
   /** The waiting tickets of the calls a rule queues. */
   readonly tickets: TicketDesk
 }
 
 const message = (error: unknown): string => (error instanceof Error ? error.message : String(error)).slice(0, 80)
+
+/** The working directory of the agent's session, which picks the project whose journal a record goes to; a header that cannot be read gives none, since the listener never throws (projectHomeFor then falls back to the data service's directory). */
+function cwdOf(agent: AgentLike): string | undefined {
+  try {
+    const cwd = agent.session?.header.cwd
+    return typeof cwd === 'string' && cwd !== '' ? cwd : undefined
+  }
+  catch {
+    return undefined
+  }
+}
 
 /** The directories only the rules board writes in: the rules directory, the same relative path in every other work tree, and the runtime directory. */
 function boardDirs(paths: RulesPaths, trees: readonly string[]): readonly string[] {
@@ -139,7 +150,7 @@ export function installRulesGate(deps: GateDeps): () => void {
       ...line,
     }
     try {
-      void deps.journal.violation(record)
+      void deps.journal.violation(record, cwdOf(agent))
     }
     catch (error) {
       warnFault(`a violation line could not be handed to the journal: ${message(error)}`)
@@ -299,7 +310,8 @@ export function installRulesGate(deps: GateDeps): () => void {
     const agent = exec.agent
     if (agent !== undefined && typeof exec.callId === 'string') {
       const sessionId = agent.session?.id
-      if (sessionId !== undefined) followup.hookJournal(sessionId, record => { void deps.journal.violation(record).catch(() => {}) })
+      const sessionCwd = cwdOf(agent)
+      if (sessionId !== undefined) followup.hookJournal(sessionId, record => { void deps.journal.violation(record, sessionCwd).catch(() => {}) })
       followup.observe(agent, { name: toNativeTool(dialectService(deps.ctx, warn), exec.name, warn), arguments: (exec.arguments ?? {}) as JsonValue }, exec.callId)
     }
     const decision = await next()

@@ -169,6 +169,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "workflow m4-checks（wf_10dc22064b5c2c1b）收尾完成：B1–B6、文档与合并 main 的提交都在 origin/m4-checks（头 63388d5），各批四道门禁为 0，最终 npm test 2817 通过 / 0 失败，探针 366/366，棘轮 76/19/1 未上升。与当前 origin/main 试合并有 7 个文件冲突（分支上次合 main 在 4516ec6，之后 main 合入了 loops-runner、user-graph、metrics、compact-recall、loops-machine、m6 跟进与时钟修复）。编排方派 land-m4-checks（agent://wf-coder）合 main、按两边意图解冲突并在合并提交里逐个写明、跑四道门禁、快进 main 推两个远端；B6 让 env 行默认启用，行组合有变，合入后按 CDP 规矩重启桌面版。"
+    },
+    {
+      "at": "2026-11-05T03:32:53.240Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "land-m4-checks（wf_5cfba7fb7a7158d7）完成：m4-checks 已合入 main，main = e88da27（origin 与 github 经 ls-remote 核对）。冲突合并 8718902 合入 origin/main 9af24eb，实际冲突 11 个文件（试合并时是 7 个），都按两边意图保留；期间 main 又合入 m5-rest（67c3c5d）与探针锁规矩（b25b81c），由 2700c92 再合一次。2700c92 上 build、preflight、npm test 退出码为 0（3077 个测试、0 失败），探针 407/407。按 CDP 规矩重启桌面版：两个包都在跑，env 行运行中（B6 去掉了 disabled），没有组件失败，没有新的崩溃日志与控制台报错。工作树登记与本地分支已删，空的工作树目录被别的进程占着、未删。验收第 1–8 条里只在真机上看得到的（循环板页的检查一项、给 agent 的提醒）随批次 L4 核对，本节点保持进行中，待 L4。"
     }
   ]
 }

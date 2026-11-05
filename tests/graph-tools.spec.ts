@@ -100,7 +100,8 @@ test('the row registers one tool per llm operation with schemas inside the rc.3 
   for (const tool of runtime.scoped) {
     assert.deepEqual(schemaViolations(tool.parameters, `${tool.name}.parameters`), [])
     // graph_relink's description carries the whole two-call example the main agent follows (user-graph design 0.4.1 §3.5); the rest stay short.
-    const cap = tool.name === 'graph_relink' ? 1600 : 600
+    // 700: graph_propose carries the question rules (M3) and the sentence on the timeouts of a tool node under env (m4 design §6.3.1 item 3).
+    const cap = tool.name === 'graph_relink' ? 1600 : 700
     assert.ok(tool.description.length > 0 && tool.description.length < cap, tool.name)
   }
   // A supersession is a proposal with a supersedes edge (ORCHESTRATION.md §2.9); it has no tool of its own.

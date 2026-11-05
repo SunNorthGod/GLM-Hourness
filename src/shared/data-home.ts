@@ -39,7 +39,8 @@ export interface DataService extends DataHomes {
   readonly userHome: string
   /**
    * The data directory of the project a session working directory belongs
-   * to (memory and lessons, M5 design §5.1): the configured override when
+   * to (memory and lessons, M5 design §5.1; the env row's suppression
+   * count, M4 design §6.7): the configured override when
    * there is one, else `<project root>/.llm`; undefined when there is no
    * project. Only a path, nothing is created. Absent from a service value
    * that predates this member; a caller then asks `projectDirOf` of

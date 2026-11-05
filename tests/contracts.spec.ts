@@ -13,6 +13,7 @@ import { apply as graphApply } from '../src/graph/index.ts'
 import { graphTools } from '../src/graph/tools.ts'
 import { openEngine } from '../src/graph/engine.ts'
 import { apply as designApply } from '../src/design/index.ts'
+import { apply as envApply, inject as envInject } from '../src/env/index.ts'
 import { plainWordsIn } from '../src/graph/plain-question.ts'
 import { GUARD_RULES } from '../src/guard/catalog.ts'
 import { isGateListener } from '../src/guard/gate.ts'
@@ -35,7 +36,7 @@ import { MEMORY_SERVICE, memoryService } from '../src/shared/memory-service.ts'
 import { OUTPUT_STYLE_SECTION } from '../src/shared/output-style.ts'
 import { PRICING_SERVICE, peakHoursOf, pricingService, quotaOf, type UsagePricing } from '../src/shared/pricing.ts'
 import type { QuotaView } from '../src/shared/quota.ts'
-import { DESIGN_TOOL_NAMES, DISPATCH_TOOL_NAMES, GRAPH_TOOL_NAMES, GUARD_TOOL_NAMES, LEARNING_TOOL_NAMES, LESSONS_MERGE_TOOL, LESSONS_QUERY_TOOL, LESSONS_TOOL_NAMES, MEMORY_TOOL_NAMES, ORCHESTRATION_RESIDENT_TOOLS, RULES_TOOL_NAMES } from '../src/shared/tool-names.ts'
+import { DESIGN_TOOL_NAMES, DISPATCH_TOOL_NAMES, ENV_TOOL_NAMES, GRAPH_TOOL_NAMES, GUARD_TOOL_NAMES, LEARNING_TOOL_NAMES, LESSONS_MERGE_TOOL, LESSONS_QUERY_TOOL, LESSONS_TOOL_NAMES, MEMORY_TOOL_NAMES, ORCHESTRATION_RESIDENT_TOOLS, RULES_TOOL_NAMES } from '../src/shared/tool-names.ts'
 import { RESIDENT_TOOLS } from '../src/toolsearch/exposure.ts'
 import { apply as hournessApply } from '../src/report/index.ts'
 import { apply as compactApply } from '../src/glm-prompt/compact-row.ts'
@@ -317,6 +318,20 @@ test('persona section: the name the design row adds and the dialect places is on
 test('tool names: the learning tool is the main agent\'s read-only view and stays deferred in the GLM face; the memory tools stay resident', () => {
   for (const name of LEARNING_TOOL_NAMES) assert.ok(!ORCHESTRATION_RESIDENT_TOOLS.has(name) && !RESIDENT_TOOLS.has(name), name)
   for (const name of MEMORY_TOOL_NAMES) assert.ok(ORCHESTRATION_RESIDENT_TOOLS.has(name) && RESIDENT_TOOLS.has(name), name)
+})
+
+test('tool names: the env row registers exactly the contract names, check_limit stays deferred in the GLM face (m4-checks design §6.3.1), and the row ships enabled', () => {
+  const rt = fakeRuntime({ natives: [] })
+  const stop = envApply(rt.ctx)
+  assert.deepEqual(rt.scoped.map(tool => tool.name), [...ENV_TOOL_NAMES])
+  for (const name of ENV_TOOL_NAMES) assert.ok(!ORCHESTRATION_RESIDENT_TOOLS.has(name) && !RESIDENT_TOOLS.has(name), name)
+  stop()
+  assert.deepEqual(rt.scoped, [])
+  assert.deepEqual(envInject, ['tools'], 'the row injects the tools service, and its patch row says so')
+  const patch = readFileSync(join(import.meta.dirname, '..', 'packages', 'hourness', 'cordis.patch.yml'), 'utf8')
+  const envRow = patch.split('- id: glm-hourness/env')[1]?.split('- id: ')[0] ?? ''
+  assert.match(envRow, /^\s+inject: \[tools\]\s*$/m, 'a row that does not declare the injected service fails to activate (G3)')
+  assert.doesNotMatch(envRow, /^\s+disabled:/m, 'enabled after the L3 probe passed with the row on (m4-checks B6)')
 })
 
 test('tool names: the lookup of the lessons board is resident for every agent in the GLM face, the merge tool is the main agent\'s and stays deferred', () => {

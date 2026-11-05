@@ -71,13 +71,15 @@ export interface RowHealth extends RowHealthView {
    * stored report is always the latest `report` call (the row's activation
    * status if there has been none) with every note of the session appended
    * to its reason, joined by '；', and its state raised to at least
-   * 'degraded' ('inactive' stays). A later `report` keeps the notes.
-   * `text` undefined withdraws the note. Like `report`, a call without a
-   * session id is dropped. At most 4 notes per session (a fifth key is
-   * dropped), each cut to 80 code points. Notes leave with the session's
-   * report when the 64-session limit evicts it.
+   * 'degraded' ('inactive' stays) while one of them degrades. `degrades`
+   * false attaches a remark that only adds its text (env's check timeouts,
+   * M4 design §6.3.1). A later `report` keeps the notes. `text` undefined
+   * withdraws the note. Like `report`, a call without a session id is
+   * dropped. At most 4 notes per session (a fifth key is dropped), each cut
+   * to 80 code points. Notes leave with the session's report when the
+   * 64-session limit evicts it.
    */
-  note(sessionId: string | undefined, key: string, text: string | undefined): void
+  note(sessionId: string | undefined, key: string, text: string | undefined, degrades?: boolean): void
   /** Replace the activation status: a service the row waits for arrived or failed after activation. */
   reactivate(state: HealthState, reason: string): void
   /** Withdraw the health service. */
@@ -103,10 +105,17 @@ export function sessionIdOf(agent: { readonly id: string, readonly session?: { r
   return agent?.session?.id ?? agent?.id
 }
 
-/** A status composed of a base and the session's notes: the reason grows, the state rises to at least degraded ('inactive' stays). */
-function compose(state: HealthState, reason: string, notes: ReadonlyMap<string, string> | undefined): { state: HealthState, reason: string } {
+/** One note of a session: its text, and whether it lowers the row's state. */
+interface Note {
+  readonly text: string
+  readonly degrades: boolean
+}
+
+/** A status composed of a base and the session's notes: the reason grows, the state rises to at least degraded while a note degrades ('inactive' stays). */
+function compose(state: HealthState, reason: string, notes: ReadonlyMap<string, Note> | undefined): { state: HealthState, reason: string } {
   if (notes === undefined || notes.size === 0) return { state, reason }
-  return { state: state === 'inactive' ? 'inactive' : 'degraded', reason: [reason, ...notes.values()].join('；') }
+  const degraded = state !== 'inactive' && [...notes.values()].some(note => note.degrades)
+  return { state: degraded ? 'degraded' : state, reason: [reason, ...[...notes.values()].map(note => note.text)].join('；') }
 }
 
 /**
@@ -119,7 +128,7 @@ export function provideRowHealth(ctx: Partial<ProvideHost>, row: HealthRow, stat
   let activation = stamp(state, reason)
   /** The base the notes compose onto: the latest raw report call per session. */
   const bases = new Map<string, { state: HealthState, reason: string }>()
-  const notes = new Map<string, Map<string, string>>()
+  const notes = new Map<string, Map<string, Note>>()
   const sessions = new Map<string, HealthReport>()
   /** The sessions the row has reported on or noted, first touch first: the 64-session cap covers notes without a report too, and the oldest report leaves first. */
   const touched = new Map<string, true>()
@@ -169,7 +178,7 @@ export function provideRowHealth(ctx: Partial<ProvideHost>, row: HealthRow, stat
       store(sessionId, compose(state, reason, notes.get(sessionId)))
       touch(sessionId)
     },
-    note(sessionId, key, text) {
+    note(sessionId, key, text, degrades = true) {
       if (sessionId === undefined || sessionId.length === 0) return
       touch(sessionId)
       let ofSession = notes.get(sessionId)
@@ -185,7 +194,7 @@ export function provideRowHealth(ctx: Partial<ProvideHost>, row: HealthRow, stat
         }
         if (!ofSession.has(key) && ofSession.size >= NOTE_LIMIT) return
         // Map.set keeps the key's position: a note keeps the place it first took.
-        ofSession.set(key, Array.from(text).slice(0, NOTE_LENGTH).join(''))
+        ofSession.set(key, { text: Array.from(text).slice(0, NOTE_LENGTH).join(''), degrades })
       }
       const base = bases.get(sessionId)
       if (base === undefined) return // a session without a report composes on read; nothing is stored yet
