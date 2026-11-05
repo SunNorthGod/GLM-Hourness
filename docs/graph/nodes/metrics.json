@@ -383,6 +383,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "发现（m5-rest 的 worker 报）：自 2026-11-05T00:00Z 起，main 上 npm test 在 tests/metrics-calc.spec.ts 约第 422 行「an in-window append changes the output, and the basis rerun reproduces the first report verbatim」失败，单跑 3 次都失败，与负载无关。原因：该用例的 appendEvents 没有固定写入者时钟，start/stop 事件用真实时间，而日文件按事件 at 的 UTC 日期分；UTC 午夜之后这两条落进 events-2026-11-05.jsonl，在用例窗口 2026-11-04 之外，于是第一次报告「未正常退出」是 1，按依据重跑是 2。07:59:55 结束的门禁里它还是过的。所有基于含 metrics 的 main 的分支都会撞上。编排方派 fix-date-dependent-metrics-test（wf_d46fef4a0b30bf32）在 main 上修：按同文件第 217 行一带与 tests/hourness.spec.ts 的做法固定时钟，并排查其他依赖当天日期的测试。m5-rest 的 B1 修复先本地提交，等 main 修好后合并再跑全量门禁。"
+    },
+    {
+      "at": "2026-11-05T01:51:45.939Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "日期相关测试的正式修复：fix-date-dependent-metrics-test 的提交（变基后为 26df84c，subject「test(metrics): pin the writer clock in the specs that write fixed-date journals」）在本地分支 metrics-clock-pin 上，09:39 开始最后一轮探针，预计 10:00 前后进 main。被限流拖慢。等它的有 rules-board-page、m5-rest、panel-2；bootstrap 在自己分支上另修了一份（f47aa95），合 main 时冲突取 main 的版本。"
     }
   ]
 }
