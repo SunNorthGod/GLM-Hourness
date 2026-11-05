@@ -298,3 +298,17 @@ export function personSaid(state: TalkState, quotes: readonly string[], afterMs:
   }
   return { ok: true, relay: quotes.join('\n') }
 }
+
+/**
+ * The first message the human sent after `afterMs` that has `quote` as a
+ * whole phrase, as personSaid finds it: its time, and whether the main
+ * agent's message before it said it would record the answer. For the
+ * metrics of a recorded answer (the wait, `noted`); undefined when no
+ * message has it.
+ */
+export function quotedMessage(state: TalkState, quote: string, afterMs: number): { readonly time: number, readonly restated: boolean } | undefined {
+  const needle = normalizeTalk(quote)
+  if (needle.length === 0) return undefined
+  const message = state.people.find(entry => entry.time > afterMs && onBoundaries(normalizeTalk(entry.text), needle) === 'found')
+  return message === undefined ? undefined : { time: message.time, restated: message.restated }
+}
