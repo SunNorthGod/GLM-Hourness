@@ -2074,6 +2074,42 @@ const designQuestion = designScenario(QUESTION, 'glm-5.3', () => [
   others: [[{ tool: { name: 'graph_edit', arguments: { id: 'goal-1', rev: questionRev, set: { stage: 'release' }, reason: 'probe: the child moves the goal on', relay: '可以，放行' } } }, { text: 'child done' }]],
 })
 
+// Takeover (docs/ORCHESTRATION.md §19; takeover design 0.6 §15.2), on the
+// transition path while the design row's /wish does not call the takeover:
+// the simulated human types /wish without words in agent/created, and the
+// scripted main agent types /hourness-init mid-step through the commands
+// service. The row ships disabled; the overlay enables it. Each workspace is
+// a repository of its own (scenarioWorkspace), so an empty one is a new
+// project by path rule 4 and the git init of rule 2 is left to L2.
+const BOOTSTRAP_ROW = ['- id: glm-hourness/bootstrap', '  disabled: false']
+const bsRead = ws => ({ name: 'Read', arguments: { file_path: join(ws, 'README.md') } })
+const bootstrapNew = designScenario('bootstrap-new', 'glm-5.3', ws => [
+  { tool: bsRead(ws), line: '/hourness-init' },
+  { tool: { name: 'graph_propose', arguments: { node: { type: 'goal', title: '读气象站数据画图的小工具', stage: 'interview', body: '需求：读气象站数据画图' }, reason: 'probe: interview step 1' } } },
+  { tool: bsRead(ws) },
+  { text: 'done', status: true },
+], { wish: true, extra: BOOTSTRAP_ROW })
+const bootstrapReopen = designScenario('bootstrap-reopen', 'glm-5.3', ws => [
+  { tool: bsRead(ws), line: '/hourness-init' },
+  { tool: bsRead(ws), line: '/hourness-init off' },
+  { tool: bsRead(ws), line: '/hourness-init' },
+  { text: 'done' },
+], { wish: true, extra: BOOTSTRAP_ROW })
+// An existing graph that lacks env: the three norm templates, the merge gate and the floor are there, approved.
+const BOOTSTRAP_GAPS = 'bootstrap-gaps'
+const bootstrapGapsGraph = await stageGraph(BOOTSTRAP_GAPS, [
+  ['human', { type: 'goal', title: '探针目标' }],
+  ...['norm-decision-tiers', 'norm-audit-trail', 'norm-verify-tiers', 'norm-merge-gate', 'norm-review-floor'].map(id => ['human', { type: 'norm', id, title: id, parent: 'goal-1' }]),
+])
+const bootstrapGapsBefore = (await loadGraph(bootstrapGapsGraph)).revisions
+const bootstrapGaps = designScenario(BOOTSTRAP_GAPS, 'glm-5.3', ws => [
+  { tool: bsRead(ws), line: '/hourness-init' },
+  { tool: bsRead(ws) },
+  { tool: bsRead(ws) },
+  { tool: bsRead(ws) },
+  { text: 'done', status: true },
+], { wish: true, extra: BOOTSTRAP_ROW })
+
 // The interview as a conversation, from the first answer to the confirmed requirement (docs/ORCHESTRATION.md §3.1, §6.9; M3 step 8). The simulated human has the
 // answers and the replies of the calibration task interview-expense-log (tests/calibration/interview-expense-log/task.json), so that task's setting is run here
 // once with a scripted model: the main agent's own goal-1 waits in the interview; the model asks, the human answers one of the nine items of the requirement
@@ -3050,6 +3086,24 @@ const metricsRuleChecks = [
   ['metrics-rule: guard_lift lifts the rule on the human\'s words, one lift event via chat counts them, and the same note is then written with no third refusal', metricsRuleResult(6)?.isError !== true && metricsRuleResult(6)?.text.includes('"outcome":"lifted"') === true && metricsRuleLifts.length === 1 && isDeepStrictEqual(metricsRuleLifts[0]?.body, { rule: METRICS_FILES_ONLY, action: 'lift', via: 'chat', units: [...METRICS_RULE_WORDS].length }) && metricsRuleResult(7)?.isError !== true && existsSync(metricsRuleNote) && metricsRuleEvents.length === 2, `lift ${(metricsRuleResult(6)?.text ?? 'no result').slice(0, 70).replace(/\n/g, ' ')}; lift events ${JSON.stringify(metricsRuleLifts.map(event => event.body))}; note ${existsSync(metricsRuleNote)}`],
 ]
 
+// Takeover (bootstrap-new, bootstrap-reopen, bootstrap-gaps): what the typed /hourness-init lines came to, the takeover journal, the graph and the reminders.
+const bsJournal = scenario => jsonl(join(scenario.ws, '.llm', 'bootstrap', 'journal.jsonl'))
+const bsNotices = scenario => scenario.steps.flatMap(step => messagesOf(step, 'hourness-bootstrap'))
+const bsLine = (step, kind, part) => step?.line?.kind === kind && (step.line.resultText ?? '').includes(part)
+const bsQuiet = scenario => !stderrOf(scenario.name).includes('dsh-glm-hourness/bootstrap')
+const bsNewOpen = bsJournal(bootstrapNew).find(record => record.op === 'takeover-open')
+const bsNewGraph = await loadGraph(join(bootstrapNew.ws, 'docs', 'graph'))
+const bsNorms = ['norm-decision-tiers', 'norm-audit-trail', 'norm-verify-tiers'].map(id => bsNewGraph.nodes.get(id))
+const bsReopenOpens = bsJournal(bootstrapReopen).filter(record => record.op === 'takeover-open')
+const bsReopenClosed = bsJournal(bootstrapReopen).filter(record => record.op === 'takeover-closed')
+const bsGapsAfter = (await loadGraph(bootstrapGapsGraph)).revisions
+const bsGapsStart = bsNotices(bootstrapGaps).find(message => message.text.includes('The human started a takeover of this project; begin now.'))
+const bootstrapChecks = [
+  ['bootstrap-new: on the transition path (/wish without words, then /hourness-init typed by the main agent\'s session) the takeover opens as a new project, .llm/ is git-ignored, the journal\'s first record is takeover-open without a wish, and the row is in effect', bsLine(bootstrapNew.steps[0], 'success', '（新项目）') && bsNewOpen?.data?.path === 'new' && bsNewOpen.data.trigger === 'init' && bsNewOpen.data.wish === undefined && spawnSync('git', ['check-ignore', '-q', '.llm/x'], { cwd: bootstrapNew.ws }).status === 0 && healthOf(bootstrapNew).bootstrap?.status === ACTED && bsQuiet(bootstrapNew), `line ${bootstrapNew.steps[0]?.line?.kind} ${(bootstrapNew.steps[0]?.line?.resultText ?? '').slice(0, 60).replace(/\n/g, ' ')}; open ${JSON.stringify(bsNewOpen?.data ?? null).slice(0, 120)}; ${healthLine(healthOf(bootstrapNew), 'bootstrap')}`],
+  ['bootstrap-new: once the goal is on the graph the three norm templates are harness proposals under it, and the step reminders carry the new-project text, then the anchor', bsNorms.every(node => node?.status === 'proposed' && node.parent === 'goal-1' && node.history[0]?.actor === 'harness') && bsNotices(bootstrapNew).some(message => message.text.includes('New project (bootstrap')) && bsNotices(bootstrapNew).some(message => message.text.includes('under the anchor goal-1')), `norms ${JSON.stringify(bsNorms.map(node => node === undefined ? null : [node.status, node.parent, node.history[0]?.actor]))}; ${bsNotices(bootstrapNew).length} reminder(s)`],
+  ['bootstrap-reopen: /hourness-init off before the first node, then /hourness-init again, opens a second takeover; the first is closed as abandoned', bsLine(bootstrapReopen.steps[0], 'success', '开了接管') && bsLine(bootstrapReopen.steps[1], 'success', '已放弃这次接管') && bsLine(bootstrapReopen.steps[2], 'success', '开了接管') && bsReopenOpens.length === 2 && bsReopenOpens[0].id !== bsReopenOpens[1].id && bsReopenClosed.length === 1 && bsReopenClosed[0].id === bsReopenOpens[0].id && bsReopenClosed[0].data?.reason === 'abandoned' && bsQuiet(bootstrapReopen), `${bsReopenOpens.length} open(s), closed ${JSON.stringify(bsReopenClosed.map(record => [record.id, record.data?.reason]))}`],
+  ['bootstrap-gaps: on a graph that lacks env, /hourness-init opens a gaps takeover naming env, the takeover-start notice is in the session once (the last request carries one), and no node that was there changed', bsLine(bootstrapGaps.steps[0], 'success', '（补缺）') && bsLine(bootstrapGaps.steps[0], 'success', '缺：env。') && bsGapsStart !== undefined && messagesOf(bootstrapGaps.steps.at(-1), 'hourness-bootstrap').filter(message => message.text.includes('Filling the gaps')).length === 1 && isDeepStrictEqual([...bsGapsAfter], [...bootstrapGapsBefore]) && healthOf(bootstrapGaps).bootstrap?.status === ACTED && bsQuiet(bootstrapGaps), `line ${(bootstrapGaps.steps[0]?.line?.resultText ?? '').slice(0, 80).replace(/\n/g, ' ')}; ${messagesOf(bootstrapGaps.steps.at(-1), 'hourness-bootstrap').length} notice(s) in the last request; revisions ${isDeepStrictEqual([...bsGapsAfter], [...bootstrapGapsBefore]) ? 'unchanged' : 'changed'}`],
+]
 const checks = [
   ['sandbox: the runtime booted each profile generated under the run directory (its cordis.yml rewritten by the launcher); the real profiles directory has none of them', rewritten.length === GENERATED_PROFILES.length && leaked.length === 0, `rewritten: ${rewritten.join(', ') || 'none'}; under ${realProfiles}: ${leaked.join(', ') || 'none'}`],
   ['glm-only: with only the GLM channel package the GLM request has the ZCode identity, the aliases and the search controls, and no graph or memory tool', glmOnlyFirst?.system.includes('You are ZCode, an interactive agent') === true && zcodeFace.every(name => glmOnlyTools.has(name)) && searchControls.every(name => glmOnlyTools.has(name)) && ![...glmOnlyTools].some(name => GRAPH_TOOL_NAMES.includes(name) || MEMORY_TOOL_NAMES.includes(name)) && glmOnlyRead?.isError !== true, glmOnlyFirst === undefined ? `no request (exit ${glmOnly.status})` : `${glmOnlyTools.size} tools; ${[...glmOnlyTools].filter(name => name.startsWith('graph_') || name.startsWith('memory_')).join(', ') || 'no graph or memory tool'}`],
@@ -3306,6 +3360,7 @@ const checks = [
   ...metricsConcurrentChecks,
   ...metricsRuleChecks,
   ...designChecks(),
+  ...bootstrapChecks,
   ['non-glm boot: the runtime reached the probe provider', plainFirst !== undefined, `exit ${plain.status}, ${plain.steps.length} step(s)`],
   ['non-glm prompt: DSH identity untouched', plainFirst?.system.includes('powered by DeepSeek Harness') === true && !plainFirst.system.includes('You are ZCode'), ''],
   ['non-glm tools: natives present, no aliases', plainFirst !== undefined && nativeFace.every(name => plainTools.has(name)) && zcodeFace.every(name => !plainTools.has(name)), zcodeFace.filter(name => plainTools.has(name)).join(', ') || ''],

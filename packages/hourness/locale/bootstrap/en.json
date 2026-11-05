@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Project takeover",
+    "description": "/hourness-init turns a folder into a project with a graph and norms: a read-only look first, a new project, an existing one or the gaps of a graph, then the main agent reads on and proposes the nodes. Off by default."
+  }
+}

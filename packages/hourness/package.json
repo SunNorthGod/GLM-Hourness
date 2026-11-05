@@ -56,6 +56,7 @@
     "./metrics": "./dist/metrics/index.js",
     "./env": "./dist/env/index.js",
     "./transcript": "./dist/data/transcript-row.js",
+    "./bootstrap": "./dist/bootstrap/index.js",
     "./data/locale/*.json": "./locale/data/*.json",
     "./guard/locale/*.json": "./locale/guard/*.json",
     "./memory/locale/*.json": "./locale/memory/*.json",
@@ -70,6 +71,7 @@
     "./metrics/locale/*.json": "./locale/metrics/*.json",
     "./env/locale/*.json": "./locale/env/*.json",
     "./transcript/locale/*.json": "./locale/transcript/*.json",
+    "./bootstrap/locale/*.json": "./locale/bootstrap/*.json",
     "./locale/*.json": "./locale/*.json",
     "./icon": "./icon.svg"
   },
