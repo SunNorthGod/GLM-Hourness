@@ -75,6 +75,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "glm-context-window 的核对 B 改在 headless 沙盒里做并通过（wf_4f1c79fb27ec66d5）：只验宿主行行为的核对用沙盒即可，不必开隔离的桌面实例。隔离实例两次在启动后几分钟内自己退出，推断是欢迎窗口弹到人的屏幕上被关掉，未证实。人的桌面版 39012 于 01:15:25 由 habits-prompts 合入步在桌面锁下关闭，用于重启加载新构建。"
+    },
+    {
+      "at": "2026-11-05T18:08:58.197Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-11-06 02:0x 人截图：桌面版启动失败的原生错误框「DeepSeek Harness is unavailable / desktop welcome: Web authentication failed」，按钮 Exit、Restart、Disable third-party plugins, back up profile patch, and restart。userData logs 下两份启动期崩溃：crash-2026-11-05T17-28-43-544Z-host.log（01:28:43）与 crash-2026-11-05T18-03-27-746Z-host.log（02:03:27），phase startup，错误在 app.asar lib/main.js:8886 的 connectDesktopWelcome；两次都在 habits-prompts 合入步（wf_7bd410e5bb88654f land）持桌面锁期间。原因未查。编排方已告知该步：查明原因前不再启动桌面版；只读查两份崩溃日志、各次启动的输出、旧实例与隔离实例的残留进程、lockfile、启动时的环境变量（尤其隔离实例 launch.ps1 可能留下的 DSH_HOME）、connectDesktopWelcome 的源码；不杀进程、不点错误框、不按「Disable third-party plugins」（会改人的 profile）；结论与拟用的启动命令交编排方转人之后再启动。"
     }
   ]
 }
