@@ -107,8 +107,12 @@
  * both packages' client faces. These three also read each project row's
  * settings-page title in their profile. The main checkout and a
  * worktree are tested the same way and ~/.dsh/profiles is never used. Each
- * run writes the DSH home, overlays, request dumps and logs under
- * .llm/probe-runs/<timestamp>/ (gitignored).
+ * run writes the DSH home, overlays, request dumps and logs into a directory
+ * of its own under the system temporary directory
+ * (glm-hourness-probe-<timestamp>-*, scripts/sandbox.mjs openRunDir), outside
+ * the repository tree, where freshly written files are briefly held by
+ * another process (docs/FACTS.md §3). A run that passes deletes it; any other
+ * exit keeps it and prints its path.
  *
  * Guard (exit 2, no conclusion): a profile of that name already exists
  * under the real profiles directory, a profile cannot be generated, or the
@@ -120,7 +124,8 @@
  */
 import { spawn, spawnSync } from 'node:child_process'
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
-import { dirname, join, relative, resolve, sep } from 'node:path'
+import { dirname, join, resolve, sep } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { isDeepStrictEqual } from 'node:util'
 import { crc32, deflateSync } from 'node:zlib'
 import { DISPATCH_TOOLS } from '../../packages/hourness/dist/workflow/index.js'
@@ -159,13 +164,11 @@ import { checkLog, readLog } from '../../packages/hourness/dist/metrics/read.js'
 import { METRICS_FILES_ONLY } from '../../packages/hourness/dist/metrics/rules.js'
 import { keyOf } from '../../packages/hourness/dist/guard/records.js'
 import { PACKAGES } from '../packages.mjs'
-import { attachmentsIn, dataRows, designRows, generateProfile, initRepo, limitsRow, PROBE_PROFILES, repo, requireDesktop, sandboxCommand, scenarioWorkspace, slash, unlinkProfile, workspaceChangesRow } from '../sandbox.mjs'
+import { attachmentsIn, dataRows, designRows, generateProfile, initRepo, limitsRow, openRunDir, PROBE_PROFILES, removeRunDir, repo, requireDesktop, sandboxCommand, scenarioWorkspace, slash, unlinkProfile, workspaceChangesRow } from '../sandbox.mjs'
 import { GOAL_GATE_DENIAL, PROJECTION_SOURCE, SCOPE_DENIAL } from './probe-dispatch.mjs'
 import { CANARY } from './probe-net.mjs'
 
 requireDesktop('probe')
-
-const runDir = join(repo, '.llm', 'probe-runs', new Date().toISOString().replace(/[:.]/g, '-'))
 
 // The run boots profiles generated under its own DSH home; the user's
 // profiles directory must not gain them, and the profiles there must keep
@@ -193,9 +196,13 @@ for (const [name, shape] of shapesBefore) {
     process.exit(2)
   }
 }
+const runDir = openRunDir(new Date().toISOString().replace(/[:.]/g, '-'))
 /** The generated profiles by name; every one generated is unlinked on exit, a failed run included. */
 const profiles = {}
-process.on('exit', () => Object.values(profiles).forEach(unlinkProfile))
+process.on('exit', (code) => {
+  Object.values(profiles).forEach(unlinkProfile)
+  if (code !== 0 && existsSync(runDir)) console.error(`probe: run artifacts kept in ${runDir}`)
+})
 for (const [name, packages] of Object.entries(PROBE_PROFILES)) {
   try {
     profiles[name] = generateProfile(join(runDir, 'dsh-root'), name, packages)
@@ -2976,7 +2983,8 @@ const concurrentDir = join(runDir, 'metrics-concurrent', 'ws')
 mkdirSync(concurrentDir, { recursive: true })
 if (spawnSync('git', ['init', '-q', '-b', 'main'], { cwd: concurrentDir }).status !== 0) throw new Error('probe: metrics-concurrent git init failed')
 const concurrentScript = join(runDir, 'metrics-concurrent', 'append.mjs')
-const concurrentLibrary = './' + slash(relative(join(runDir, 'metrics-concurrent'), join(repo, 'packages', 'hourness', 'dist', 'metrics', 'library.js')))
+// A file URL: the run directory is under the temporary directory, which need not share a drive with the checkout.
+const concurrentLibrary = pathToFileURL(join(repo, 'packages', 'hourness', 'dist', 'metrics', 'library.js')).href
 writeFileSync(concurrentScript, `import { appendEvents } from ${JSON.stringify(concurrentLibrary)}
 const events = Array.from({ length: 5000 }, (_, i) => ({ k: 'count', by: 'guard', body: { what: \`w-\${process.pid}-\${i}\`, value: i } }))
 const result = await appendEvents(process.argv[2], events)
@@ -3394,7 +3402,7 @@ for (const [label, ok, detail] of checks) {
   if (!ok) failed += 1
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${label}${detail ? `  (${detail})` : ''}`)
 }
-console.log(`probe: ${checks.length - failed}/${checks.length} passed; run artifacts in ${runDir}`)
+console.log(`probe: ${checks.length - failed}/${checks.length} passed`)
 
 // Profile guard: a change to the project part of a user profile voids the
 // run (the probe may have written there, or someone changed this project's
@@ -3411,4 +3419,12 @@ if (voiding.length > 0) {
   console.error('probe: the project part of a user profile changed during the run; the result is void, rerun (a second occurrence is a probe defect)')
   process.exit(2)
 }
-process.exit(failed === 0 ? 0 : 1)
+if (failed > 0) process.exit(1)
+// A run that passed leaves nothing behind; a directory that cannot be deleted is named and the result stands.
+try {
+  removeRunDir(runDir)
+}
+catch (error) {
+  console.warn(`probe: the run directory was not deleted (${error instanceof Error ? error.message : String(error)}): ${runDir}`)
+}
+process.exit(0)

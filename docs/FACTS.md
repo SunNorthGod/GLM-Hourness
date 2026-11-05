@@ -232,6 +232,7 @@
 | 开场画面上点「第一次用？看看项目图怎么用 ›」，`sidebarRight.openTab` 打开了项目图页签，没有抛错 | panel-2 Q4 隔离实例〔实证 2026-11-05〕 |
 | DSH 桌面宿主的浅色主题：`body` 上没有 `data-ds-dark-theme`（宿主 CSS 里的深色覆盖写在 `body[data-ds-dark-theme]` 下；外观为跟随系统时，系统切到浅色这个属性就去掉），`html` 的 `color-scheme` 为 `light`。浅色 token：正文 `#0f1115`、次级文字 `#61666b`、三级文字 `#81858c`、强调色 `#4176e6`；三级文字与强调色在白底上 3.71:1 与 4.23:1，不到 4.5:1，次级文字 5.80:1 | `reference/dsh-desktop-0.2.1-rc.3/dsh-web-frontend/dist/assets/index-BNyAYEM7.css` 的 `body[data-ds-dark-theme]` 规则与 boot token〔实读 2026-11-05〕；`.agents/tasks/ui-audit/findings.md` Q-07〔实证 2026-10-29〕；panel-2 Q4 隔离实例的浅色测量〔实证 2026-11-05〕 |
 | 隔离实例窗口不在前台时，CDP `Page.captureScreenshot` 不返回（30 秒超时），`--disable-renderer-backgrounding` 与 `--disable-backgrounding-occluded-windows` 也不改变；DOM 读取与 `Input.dispatch*` 照常 | panel-2 Q4 隔离实例〔实证 2026-11-05〕 |
+| DSH fs-local 发布一次编辑是先写暂存文件再对目标调 `ReplaceFileW`；目标上另有一个不带删除共享的句柄时返回 Win32 1175（`ERROR_UNABLE_TO_REMOVE_REPLACED`），工具结果是 `ReplaceFileW EIO (Win32 1175)`。本机上本仓库树内（主检出与工作树、`.llm/` 下、是不是 git 仓库、在不在 `node_modules` 下都一样）写文件、等 40 ms、`ReplaceFileW`，500 次败 6–19 次；`%TEMP%`、用户目录、仓库的上一级目录与另一个没在编辑器里打开的 git 仓库都是 0/500。失败时 Restart Manager 查不到持有者（句柄已关）。Defender 实时保护关闭，Windows Search 索引里没有仓库下的行，OneDrive 不管桌面；与数据相合的是打开着本仓库的 Kiro 工作区的文件监视或代码索引，属推断，没有用句柄工具证实。探针运行目录因此放在系统临时目录下（`DEVELOPMENT.md` §3） | `reference/deepseek-harness` `packages/fs/fs-local/src/win32.ts`、`fsio.ts`〔实读〕；`.agents/tasks/compact-recall-redact/land.md`、`.agents/tasks/probe-run-dir-outside-repo/report.md` 的 PowerShell 循环〔实测 2026-11-06〕 |
 
 ## 4. 许可与来源
 
