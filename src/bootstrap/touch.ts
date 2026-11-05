@@ -60,3 +60,57 @@ export function touchPaths(value: string): TouchPaths {
   }
   return { inside, outside, normOnly, unrecognized }
 }
+
+/** The most paths one rule's `filter.writes.paths` takes (the loop board's `pathsRefusal`, which the rules board's check uses). */
+const RULE_PATH_LIMIT = 20
+/** The most paths the rule's title names. */
+const TITLE_PATHS = 6
+
+/** The arguments of `rules_propose` for the repository paths of `不许碰：` (§5.4 step 1); the rules board's check reads `{...body, reason}`. */
+export interface RuleDraft {
+  readonly kind: 'rule'
+  readonly body: {
+    readonly id: string
+    readonly title: string
+    readonly scope: 'project'
+    readonly when: { readonly kind: 'event', readonly events: readonly ['gate.tool-call'] }
+    readonly filter: { readonly writes: { readonly paths: readonly string[] } }
+    readonly action: { readonly kind: 'block' }
+    readonly lifetime: { readonly kind: 'until-lifted' }
+    readonly source: 'norm-decision-tiers'
+  }
+  readonly reason: string
+}
+
+/**
+ * The rule draft of one takeover over the repository paths of `不许碰：`
+ * (touchPaths' `inside`). A path is written as the board writes paths
+ * (forward slashes, `*` and `**` only); a path the board would refuse (a
+ * backslash, `?`, brackets, braces) and the paths past twenty are left out
+ * and listed in `left`, for the main agent to put to the human by hand.
+ */
+export function ruleDraft(takeoverId: string, inside: readonly string[]): { readonly draft?: RuleDraft, readonly left: readonly string[] } {
+  const sound = (path: string): boolean => path !== '' && !/[\\?[\]{}]/.test(path) && !path.startsWith('/') && !/^[A-Za-z]:/.test(path) && !path.split('/').includes('..')
+  const paths = [...new Set(inside)].filter(sound).slice(0, RULE_PATH_LIMIT)
+  const left = inside.filter(path => !paths.includes(path))
+  if (paths.length === 0) return { left }
+  const named = paths.slice(0, TITLE_PATHS).join('、')
+  const title = `不许改这些地方：${named}${paths.length > TITLE_PATHS ? ` 等 ${paths.length} 处` : ''}`
+  return {
+    draft: {
+      kind: 'rule',
+      body: {
+        id: `r-no-touch-${takeoverId}`,
+        title: [...title].length > 120 ? `${[...title].slice(0, 119).join('')}…` : title,
+        scope: 'project',
+        when: { kind: 'event', events: ['gate.tool-call'] },
+        filter: { writes: { paths } },
+        action: { kind: 'block' },
+        lifetime: { kind: 'until-lifted' },
+        source: 'norm-decision-tiers',
+      },
+      reason: `接管 ${takeoverId} 时你说这些地方不许碰（norm-decision-tiers 的「不许碰」）`,
+    },
+    left,
+  }
+}

@@ -64,6 +64,12 @@ export async function untrackedNodeFiles(root: string, graphDir: string): Promis
   return graphNodeFiles(graphDir).filter(name => !tracked.has(name)).length
 }
 
+/** The files git tracks under the root, repository-relative; none when git cannot say (the checker gap of §5.8 reads them). */
+export async function trackedFiles(root: string): Promise<readonly string[]> {
+  const listed = await runGit(root, ['ls-files', '-z'])
+  return listed.code === 0 ? listed.out.split('\0').filter(path => path !== '') : []
+}
+
 /**
  * Scan the workspace of `cwd` and settle its directories (§4.1).
  * @param graphDir - the graph row's `dirFor(cwd)`.

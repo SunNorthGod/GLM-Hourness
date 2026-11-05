@@ -30,6 +30,8 @@ export interface OpenTakeover {
   readonly wish?: string
   /** The `note` codes this takeover already recorded. */
   readonly noted: readonly string[]
+  /** The two things the human agreed to, by question (`asked` records, §7.4). */
+  readonly asked: readonly { readonly which: 'cost' | 'touch', readonly questionId: string }[]
 }
 
 interface TakeoverState {
@@ -50,7 +52,7 @@ function opened(record: JournalRecord): OpenTakeover | string {
   if (typeof path !== 'string' || !PATHS.includes(path)) return 'takeover-open without a path'
   if (trigger !== 'init' && trigger !== 'wish') return 'takeover-open without a trigger'
   if (typeof graphDir !== 'string') return 'takeover-open without a graph directory'
-  return { id: record.id, path: path as TakeoverPath, openedAt: record.at, trigger, graphDir, ...typeof wish === 'string' ? { wish } : {}, noted: [] }
+  return { id: record.id, path: path as TakeoverPath, openedAt: record.at, trigger, graphDir, ...typeof wish === 'string' ? { wish } : {}, noted: [], asked: [] }
 }
 
 const TAKEOVER_FOLD: Fold<TakeoverState> = {
@@ -68,6 +70,10 @@ const TAKEOVER_FOLD: Fold<TakeoverState> = {
     if (record.op === 'takeover-closed') return { state: {} }
     if (record.op === 'takeover-path') return typeof data.to === 'string' && PATHS.includes(data.to) ? { state: { open: { ...open, path: data.to as TakeoverPath } } } : { bad: 'takeover-path without a path' }
     if (record.op === 'note' && typeof data.code === 'string') return { state: { open: { ...open, noted: [...open.noted, data.code] } } }
+    if (record.op === 'asked') {
+      const { which, questionId } = data
+      return (which === 'cost' || which === 'touch') && typeof questionId === 'string' ? { state: { open: { ...open, asked: [...open.asked, { which, questionId }] } } } : { bad: 'asked without which and questionId' }
+    }
     return { state }
   },
 }
@@ -117,7 +123,7 @@ export async function openTakeover(root: string, request: OpenRequest): Promise<
 
 /** One record about a takeover, as the row hands it over. */
 export interface TakeoverRecord {
-  readonly op: 'setup' | 'scan' | 'takeover-path' | 'takeover-closed' | 'note'
+  readonly op: 'setup' | 'scan' | 'takeover-path' | 'takeover-closed' | 'note' | 'asked'
   readonly data: Readonly<Record<string, JsonValue>>
 }
 
@@ -134,4 +140,27 @@ export async function appendTakeover(root: string, id: string, records: readonly
   if (written.status === 'ok') return true
   if (written.status === 'refused') return false
   throw new Error(written.status === 'io' ? `${written.stage}: ${written.message}` : written.status === 'busy' ? 'the takeover journal is locked by another writer' : written.message)
+}
+
+/** How recording one of the two things went: written, written before, the takeover is no longer open, or the journal could not take it. */
+export type AskedOutcome =
+  | { readonly kind: 'written' | 'already' | 'closed' }
+  | { readonly kind: 'busy' | 'io', readonly message: string }
+
+/**
+ * Append `asked {which, questionId}` for the open takeover `id` (§7.4),
+ * under the journal's lock: once per question, so a second hand-back of the
+ * same agreement writes nothing more.
+ */
+export async function recordAsked(root: string, id: string, which: 'cost' | 'touch', questionId: string, by?: NewRecord['by']): Promise<AskedOutcome> {
+  const written = await appendJournal<TakeoverState, 'already' | 'closed'>(journalPath(root), TAKEOVER_FOLD, (reading) => {
+    const open = reading.state.open
+    if (open?.id !== id) return { refused: 'closed' }
+    if (open.asked.some(entry => entry.questionId === questionId)) return { refused: 'already' }
+    return { records: [{ actor: 'harness', op: 'asked', id, data: { which, questionId }, ...by === undefined ? {} : { by } }] }
+  }, { directory: 'project', row: 'bootstrap' })
+  if (written.status === 'ok') return { kind: 'written' }
+  if (written.status === 'refused') return { kind: written.refused }
+  if (written.status === 'busy') return { kind: 'busy', message: 'the takeover journal is locked by another writer' }
+  return { kind: 'io', message: written.status === 'io' ? `${written.stage}: ${written.message}` : written.message }
 }

@@ -22,6 +22,7 @@ import { FLOOR_BODY, FLOOR_GENERAL, floorDraft, floorMarkdown, mergeToLimit } fr
 import { decidePath, hasProjectGraph, isProjectGraph, type PathDecision } from '../src/bootstrap/path.ts'
 import { SCAN_GIT_FLAGS, scanWorkspace, withoutUserInfo, writeScan, type ScanOutput, type ScanResult } from '../src/bootstrap/scan.ts'
 import { touchPaths } from '../src/bootstrap/touch.ts'
+import { scanFixture } from './bootstrap-host.ts'
 
 const temp = mkdtempSync(join(tmpdir(), 'bs-scan-'))
 test.after(() => rmSync(temp, { recursive: true, force: true }))
@@ -167,28 +168,6 @@ test('scan #1: three commits without code are still a new project, four are an e
 })
 
 // ---------------------------------------------------------------- path.ts as pure functions
-
-function scanFixture(overrides: Partial<ScanResult>): ScanResult {
-  return {
-    version: 1,
-    root: '/r',
-    at: '2026-11-05T00:00:00.000Z',
-    ms: 0,
-    git: { state: 'repo', toplevel: '/r', head: 'abc', commits: 1, remotes: [], tags: [], submodules: [], lfs: [] },
-    files: { tracked: 0, code: 0, byExtension: {}, topDirs: [] },
-    workspace: { loose: [] },
-    stacks: [],
-    sources: { from: 'head', manifests: [], ci: [], taskFiles: [], hookTools: [] },
-    candidates: [],
-    unreadable: [],
-    checkers: { configs: [], pyprojectTools: [] },
-    docs: { root: [], files: [], adr: [] },
-    issues: { read: false, reason: 'x' },
-    graph: { dir: '/r/docs/graph', rel: 'docs/graph', present: false, nodes: 0 },
-    truncated: [],
-    ...overrides,
-  }
-}
 
 test('decidePath: the five rules in order, with the refusals for git that cannot be read', () => {
   assert.equal(decidePath(scanFixture({ graph: { dir: '/g', present: true, nodes: 3 }, git: { state: 'missing' } })).rule, 1)

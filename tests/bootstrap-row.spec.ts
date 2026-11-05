@@ -8,16 +8,16 @@
  * the transition path: /wish without words, then /hourness-init.
  */
 import assert from 'node:assert/strict'
-import { execFileSync, spawnSync } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, parse } from 'node:path'
 import test from 'node:test'
 import { apply as applyBootstrap, NOT_MAIN_REPLY } from '../src/bootstrap/index.ts'
 import { BOOTSTRAP_SOURCE, INTERVIEW_YIELD, reminderText, type ReminderFacts } from '../src/bootstrap/notice.ts'
-import { BOOTSTRAP_SERVICE, STAGE_NOTE } from '../src/bootstrap/service.ts'
+import { STAGE_NOTE } from '../src/bootstrap/runtime.ts'
+import { BOOTSTRAP_SERVICE } from '../src/bootstrap/service.ts'
 import { settleWorkspace } from '../src/bootstrap/setup.ts'
-import { journalPath } from '../src/bootstrap/takeover.ts'
 import { NORM_TEMPLATES, PLACEHOLDERS } from '../src/bootstrap/templates.ts'
 import { ensureLlmIgnored } from '../src/data/llm-ignore.ts'
 import { projectOf } from '../src/data/project-root.ts'
@@ -28,37 +28,9 @@ import { labeledSections } from '../src/graph/stage.ts'
 import { loadGraph } from '../src/graph/store.ts'
 import type { UserNotice } from '../src/shared/dsh-min.ts'
 import { healthServiceName, type RowHealthView } from '../src/shared/health.ts'
+import { git, init, journal, rootAgent, takeoverHost as host } from './bootstrap-host.ts'
 import { designHost, type DesignHost, type FakeAgent } from './design-host.ts'
 import { serviceStore } from './fake-rc3.ts'
-
-const git = (cwd: string, ...args: string[]): string => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.invalid', '-c', 'commit.gpgsign=false', ...args], { cwd, encoding: 'utf8' })
-
-/** A host with the design row and the takeover row, the takeover row loaded second (its order in the patch). */
-function host(): DesignHost {
-  const made = designHost()
-  // rc.3 serves sessionProjections through ctx.get as well (src/data/main-agent.ts reads it there); the design host only injects it.
-  made.ctx.provide?.('sessionProjections', made.projections)
-  applyDesign(made.ctx)
-  applyBootstrap(made.ctx)
-  return made
-}
-
-/** A root agent of `workspace`, announced to the rows; with `wish` the person makes it the main agent with /wish (no words). */
-async function rootAgent(made: DesignHost, id: string, workspace: string, wish = true): Promise<FakeAgent> {
-  const agent = made.addAgent(id, { workspace })
-  await made.created(agent)
-  if (wish) assert.equal((await made.execute(agent, '/wish'))?.result.kind, 'success')
-  return agent
-}
-
-async function init(made: DesignHost, agent: FakeAgent, input = ''): Promise<{ readonly kind: string, readonly text: string }> {
-  const run = await made.execute(agent, input === '' ? '/hourness-init' : `/hourness-init ${input}`)
-  assert.ok(run !== undefined, '/hourness-init is registered')
-  return run.result
-}
-
-const journal = (root: string): Array<{ op: string, id: string, data?: Record<string, unknown> }> =>
-  existsSync(journalPath(root)) ? readFileSync(journalPath(root), 'utf8').split('\n').filter(line => line !== '').map(line => JSON.parse(line) as { op: string, id: string, data?: Record<string, unknown> }) : []
 
 const kinds = (messages: readonly unknown[]): string[] => messages.map(message => String((message as UserNotice).source.kind))
 
@@ -235,14 +207,16 @@ test('a graph: nothing missing says so and writes nothing; gaps open a gaps take
       { type: 'norm', id: 'norm-merge-gate', title: '合入门禁', parent: 'goal-1' },
       { type: 'feature', id: 'env', title: '环境', parent: 'goal-1' },
       { type: 'norm', id: 'norm-review-floor', title: '底线清单', parent: 'goal-1' },
-    ].filter(node => !skip.includes(node.id))) assert.ok((await engine.apply('human', { op: 'propose', reason: '种子', node })).ok, node.id)
+      // A check line on *.js: the most used code extension of the project is covered (§5.8's checker gap).
+      { type: 'tool', id: 'tool-eslint', title: 'ESLint', parent: 'env', acceptance: ['`check eslint eslint-json $ node node_modules/eslint/bin/eslint.js --format json {files}` when *.js'] },
+    ].filter(node => !skip.includes(node.id) && !(node.parent === 'env' && skip.includes('env')))) assert.ok((await engine.apply('human', { op: 'propose', reason: '种子', node })).ok, node.id)
   }
   await seed(join(full, 'docs', 'graph'), [])
   const agent = await rootAgent(made, 's-full', 'full')
   const revision = (await loadGraph(join(full, 'docs', 'graph'))).revision
   const already = await init(made, agent)
   assert.equal(already.kind, 'success')
-  assert.match(already.text, /^这个项目已经接管过了\n项目图还有 7 个节点文件没进 git$/)
+  assert.match(already.text, /^这个项目已经接管过了\n项目图还有 8 个节点文件没进 git$/)
   assert.equal((await loadGraph(join(full, 'docs', 'graph'))).revision, revision)
   assert.equal(journal(full).length, 0)
   assert.equal((await init(made, agent, 'new')).text, '这里已经有项目图：/hourness-init 只补缺，不改判')
@@ -260,6 +234,7 @@ test('a graph: nothing missing says so and writes nothing; gaps open a gaps take
   assert.equal(opened.kind, 'success', opened.text)
   assert.match(opened.text, /（补缺）/)
   assert.match(opened.text, /缺：env。/)
+  assert.match(opened.text, /改这些文件时没有检查：\*\.js/, 'without env no check line covers the project\'s .js files')
   assert.match(main.sent.at(-1)?.message.content[0]?.text ?? '', /Filling the gaps of this project's graph/)
   await main.assemble()
   await main.step()
@@ -312,10 +287,12 @@ test('the row installs no gate, registers /hourness-init and provides its servic
 
 test('the reminder texts carry the interview sentence on the existing and gaps paths and never ask to wait or stop', () => {
   for (const path of ['new', 'existing', 'gaps'] as const) {
-    const facts: ReminderFacts = { takeover: { id: 'tk-abcdefgh', path }, history: 2, anchor: 'goal-1', proposed: { total: 1, byType: { goal: 1 } }, missing: ['env'] }
-    const text = reminderText(facts)
-    assert.equal(text.includes(INTERVIEW_YIELD), path !== 'new', path)
-    assert.doesNotMatch(text, /peak|pause|hold/i, path)
-    assert.ok(text.length <= 2500, path)
+    for (const state of ['wait', 'ask', 'pending', 'write', 'done'] as const) {
+      const facts: ReminderFacts = { takeover: { id: 'tk-abcdefgh', path }, history: 2, anchor: 'goal-1', proposed: { total: 1, byType: { goal: 1 } }, missing: ['env'], unchecked: ['.py'], things: { cost: state, touch: state }, touchInside: state === 'done' ? ['vendor/'] : [], rulesWhole: false, testsMissing: true }
+      const text = reminderText(facts)
+      assert.equal(text.includes(INTERVIEW_YIELD), path !== 'new', path)
+      assert.doesNotMatch(text, /peak|pause|hold|\bwait\b/i, `${path} ${state}`)
+      assert.ok(text.length <= 3500, `${path} ${state}: ${text.length}`)
+    }
   }
 })

@@ -2,8 +2,8 @@
  * glm-hourness/bootstrap row entry (takeover design 0.6 §2.1, §3.2, §5.1;
  * docs/ORCHESTRATION.md §19): the command /hourness-init, the service
  * `glmHournessBootstrap`, and on every root agent a step notice that
- * reminds the main agent of the open takeover (src/bootstrap/service.ts
- * does the work). Until M3's /wish calls the takeover, a takeover opens on
+ * reminds the main agent of the open takeover (src/bootstrap/runtime.ts
+ * does the work; src/bootstrap/service.ts is the contract M3 reads). Until M3's /wish calls the takeover, a takeover opens on
  * the transition path: an empty graph directory, /wish without words, then
  * /hourness-init in the same session (§3.1). The row injects `commands`;
  * activation never throws: a registration that fails is a warning. Ships
@@ -18,12 +18,15 @@ import { loadGraph } from '../graph/store.ts'
 import type { AgentLike, CommandDefinitionLike, CommandResultLike, DesignInvocationLike, ProvideHost, ServiceLookup, SessionLike, UserNotice } from '../shared/dsh-min.ts'
 import { activationState, provideRowHealth, sessionIdOf, type HealthState } from '../shared/health.ts'
 import { installStepNotice } from '../shared/step-notice.ts'
-import { anchorOf, gapsOf, proposedSince } from './gaps.ts'
+import { rulesService } from '../rules/service.ts'
+import { anchorOf, gapsOf, lacksAnything, proposedSince } from './gaps.ts'
 import { pathNotice } from './notice.ts'
 import { hasProjectGraph } from './path.ts'
-import { BOOTSTRAP_SERVICE, PATH_LABELS, STAGE_NOTE, bootstrapRuntime, type BootstrapRuntime } from './service.ts'
-import { settleWorkspace, untrackedNodeFiles } from './setup.ts'
+import { PATH_LABELS, STAGE_NOTE, bootstrapRuntime, type BootstrapRuntime } from './runtime.ts'
+import { BOOTSTRAP_SERVICE } from './service.ts'
+import { settleWorkspace, trackedFiles, untrackedNodeFiles } from './setup.ts'
 import { appendTakeover, openTakeoverOf, type OpenTakeover } from './takeover.ts'
+import { thingLines, thingStates } from './things.ts'
 
 /** cordis plugin identity: needs the commands service. */
 export const name = 'dsh-glm-hourness/bootstrap'
@@ -74,6 +77,7 @@ async function openStatus(takeover: OpenTakeover): Promise<string> {
   return [
     `接管 ${takeover.id} 开着（${PATH_LABELS[takeover.path]}）：这次接管已提 ${total} 个节点${total === 0 ? '' : `（${counts}）`}。`,
     anchor === undefined ? '还没有锚点：主 Agent 提的第一个目标就是锚点，三个规范挂在它下面。' : `锚点 ${anchor}：三个规范挂在它下面。`,
+    ...thingLines(thingStates(graph, takeover)),
     ...takeover.noted.includes(STAGE_NOTE.code) ? ['设计行的阶段提醒还没有对接管让位：主 Agent 照接管的提醒走。'] : [],
     takeover.path === 'new' ? '下一步：主 Agent 在访谈里问你。' : '下一步：主 Agent 读项目、提节点。',
   ].join('\n')
@@ -145,12 +149,12 @@ export function initCommand(ctx: BootstrapContext, runtime: BootstrapRuntime, ho
       return start(invocation, input === 'new' || input === 'existing' ? input : undefined)
     }
     if (input === 'new' || input === 'existing') return fail('这里已经有项目图：/hourness-init 只补缺，不改判')
-    const gaps = gapsOf(await loadGraph(graphDir))
+    const gaps = gapsOf(await loadGraph(graphDir), root === undefined ? [] : await trackedFiles(root))
     const untracked = root === undefined ? undefined : await untrackedNodeFiles(root, graphDir)
     const untrackedLine = untracked !== undefined && untracked > 0 ? [`项目图还有 ${untracked} 个节点文件没进 git`] : []
-    const missing = gaps.missing.map(gap => gap.id).join('、')
-    if (input === 'status') return done([gaps.missing.length === 0 ? '已经接管过' : `缺：${missing}`, ...untrackedLine].join('\n'))
-    if (gaps.missing.length === 0) return done(['这个项目已经接管过了', ...untrackedLine].join('\n'))
+    const lacking = [...gaps.missing.map(gap => gap.id), ...gaps.unchecked.length === 0 ? [] : [`${gaps.unchecked.map(extension => `*${extension}`).join('、')} 的检查`]].join('、')
+    if (input === 'status') return done([lacksAnything(gaps) ? `缺：${lacking}` : '已经接管过', ...untrackedLine].join('\n'))
+    if (!lacksAnything(gaps)) return done(['这个项目已经接管过了', ...untrackedLine].join('\n'))
     if (!main) {
       const holder = mainAgentOf(holderHome(ctx), graphDir)
       return holder !== undefined && holder.sessionId !== session.id
@@ -198,7 +202,12 @@ export function apply(ctx: BootstrapContext): () => void {
       console.warn(`${name}: takeover reminder not installed for agent ${agent.id}: ${message(error)}`)
     }
   }
-  const runtime = bootstrapRuntime({ graphDir: cwd => graphService(ctx)?.dirFor(cwd), home: homedir, install, report })
+  // The rules board can take a rule through the human's agreement once its service has the members of that path (src/rules/service.ts); today it has only `declaration`.
+  const rulesWhole = (): boolean => {
+    const service = rulesService(ctx) as unknown as Partial<Record<'attachable' | 'acceptProposal', unknown>> | undefined
+    return typeof service?.attachable === 'function' && typeof service.acceptProposal === 'function'
+  }
+  const runtime = bootstrapRuntime({ graphDir: cwd => graphService(ctx)?.dirFor(cwd), home: homedir, install, report, rulesWhole })
   try {
     if (typeof ctx.provide === 'function') disposers.push(ctx.provide(BOOTSTRAP_SERVICE, runtime.service))
     disposers.push(ctx.on('agent/created', ({ agent }) => { install(agent) }))

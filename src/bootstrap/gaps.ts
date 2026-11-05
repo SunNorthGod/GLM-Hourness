@@ -1,12 +1,16 @@
 /**
  * What a takeover reads from the project graph (takeover design 0.6 §4.2,
  * §5.8, §7.1), all pure: the anchor goal the norms hang under, what an
- * existing graph lacks, and the nodes proposed since the takeover opened.
- * The checker gap of §5.8 (a top code extension no check line covers) needs
- * M4's check line parser and joins with it.
+ * existing graph lacks (the fixed nodes, and checks for its most used code
+ * extensions: a check line with `when` of a tool node under `env`, read
+ * with M4's parser and matched with the loop board's path matcher, as the
+ * checker does), and the nodes proposed since the takeover opened.
  */
+import { isEnvTool, nodeChecks } from '../env/branch.ts'
 import type { LoadedGraph } from '../graph/parse.ts'
 import type { GraphNode, NodeType } from '../graph/schema.ts'
+import { matchesFilter } from '../loops/trigger.ts'
+import { CODE_EXTENSIONS, extensionOf } from './scan.ts'
 import { NORM_TEMPLATES } from './templates.ts'
 
 const MERGE_GATE_ID = 'norm-merge-gate'
@@ -30,14 +34,47 @@ const FIXED: readonly Gap[] = [
 
 export interface Gaps {
   readonly missing: readonly Gap[]
+  /** The most used code extensions (at most three) that no check line covers: the main agent proposes tool nodes for them. */
+  readonly unchecked: readonly string[]
   /** Fixed ids the human dropped or that were superseded: not a gap (proposing again conflicts), named in the result. */
   readonly rejected: readonly { readonly id: string, readonly title: string }[]
   /** Fixed ids of another type: left alone, named in the result. */
   readonly wrongType: readonly { readonly id: string, readonly type: NodeType }[]
 }
 
-/** What an existing graph lacks of the fixed nodes (§5.8). */
-export function gapsOf(graph: LoadedGraph): Gaps {
+/** How many of the most used code extensions the checker gap looks at (§5.8). */
+const TOP_EXTENSIONS = 3
+
+/** The code extensions of the tracked files, most used first (ties by name), at most TOP_EXTENSIONS. */
+function topExtensions(files: readonly string[]): string[] {
+  const counts = new Map<string, number>()
+  for (const file of files) {
+    const extension = extensionOf(file)
+    if (CODE_EXTENSIONS.has(extension)) counts.set(extension, (counts.get(extension) ?? 0) + 1)
+  }
+  return [...counts.entries()].sort(([a, countA], [b, countB]) => countB - countA || a.localeCompare(b)).slice(0, TOP_EXTENSIONS).map(([extension]) => extension)
+}
+
+/**
+ * The top code extensions no check line covers: an extension is covered
+ * when a check line with `when` on a tool node under `env` that is not
+ * dropped or superseded matches one of the tracked files with it (§5.8).
+ */
+export function uncheckedExtensions(graph: LoadedGraph, files: readonly string[]): string[] {
+  const conditions = [...graph.nodes.values()]
+    .filter(node => isEnvTool(node) && node.status !== 'dropped' && node.status !== 'superseded')
+    .flatMap(node => nodeChecks(node).flatMap(({ entry }) => entry.paths === undefined ? [] : [entry.paths]))
+  return topExtensions(files).filter((extension) => {
+    const sample = files.filter(file => extensionOf(file) === extension)
+    return !conditions.some(paths => matchesFilter({ files: { paths } }, { files: sample }, ''))
+  })
+}
+
+/**
+ * What an existing graph lacks (§5.8): the fixed nodes, and with the tracked
+ * files the checks for the most used code extensions.
+ */
+export function gapsOf(graph: LoadedGraph, files: readonly string[] = []): Gaps {
   const missing: Gap[] = []
   const rejected: Array<{ id: string, title: string }> = []
   const wrongType: Array<{ id: string, type: NodeType }> = []
@@ -47,8 +84,11 @@ export function gapsOf(graph: LoadedGraph): Gaps {
     else if (node.type !== gap.type) wrongType.push({ id: gap.id, type: node.type })
     else if (node.status === 'dropped' || node.status === 'superseded') rejected.push({ id: gap.id, title: node.title })
   }
-  return { missing, rejected, wrongType }
+  return { missing, unchecked: uncheckedExtensions(graph, files), rejected, wrongType }
 }
+
+/** Whether a graph lacks anything a gaps takeover fills. */
+export const lacksAnything = (gaps: Gaps): boolean => gaps.missing.length > 0 || gaps.unchecked.length > 0
 
 /** When a node was first proposed: its first history entry, when that is a `propose`. */
 function proposedAt(node: GraphNode): string | undefined {

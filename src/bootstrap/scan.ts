@@ -57,8 +57,8 @@ export const CODE_EXTENSIONS: ReadonlySet<string> = new Set([
   '.sh', '.bash', '.zsh', '.ps1', '.psm1', '.bat', '.cmd',
 ])
 
-/** The ecosystems a scan recognises from its manifests (the default table in B5 is keyed by them). */
-type Stack =
+/** The ecosystems a scan recognises from its manifests (the default table, defaults.ts, is keyed by them). */
+export type Stack =
   | 'node-npm' | 'node-pnpm' | 'node-yarn' | 'node-bun' | 'deno'
   | 'python-uv' | 'python-poetry' | 'python' | 'go' | 'rust' | 'shell'
   | 'cmake' | 'meson' | 'java-maven' | 'java-gradle' | 'ruby' | 'php' | 'dotnet'

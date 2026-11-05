@@ -1,15 +1,16 @@
 /**
  * What another component hands the main agent to put to the human, and takes
  * back once they agreed (docs/ORCHESTRATION.md §3.5; the orchestrator's
- * seam ruling "attach"): a proposal the rules board or the loops board
- * recorded, named by `attach` on propose_to_human, shown as the question's
- * last paragraph and handed back to its board by record_human_answer after
- * the human agreed. Each board adds one row to ATTACH_BOARDS when it is
+ * seam ruling "attach"): a proposal the rules board, the loops board or the
+ * takeover recorded, named by `attach` on propose_to_human, shown as the
+ * question's last paragraph and handed back to its board by
+ * record_human_answer after the human agreed. Each board adds one row to ATTACH_BOARDS when it is
  * merged and imports only its own service module; M3 imports nothing else of
  * a board. Until then the table is empty and every attach is refused with
  * the reason.
  */
 import { createHash } from 'node:crypto'
+import { ATTACH_PATTERN, TAKEOVER_ATTACH_PREFIX, bootstrapService, takeoverAttachOf } from '../bootstrap/service.ts'
 import type { ServiceLookup } from '../shared/dsh-min.ts'
 import { normalizeTalk } from './talk.ts'
 
@@ -47,8 +48,20 @@ export interface AttachBoard {
   idOf(body: string): string | undefined
 }
 
-/** The boards that take `attach`; a board adds its row when it merges. */
-export const ATTACH_BOARDS: readonly AttachBoard[] = []
+/**
+ * The boards that take `attach`; a board adds its row when it merges. The
+ * takeover's row (takeover design 0.6 §7.4, M3 appendix §3.13): the two
+ * things only the human can say, `bootstrap:tk-<8>:cost` and `:touch`.
+ */
+export const ATTACH_BOARDS: readonly AttachBoard[] = [
+  {
+    prefix: TAKEOVER_ATTACH_PREFIX,
+    format: ATTACH_PATTERN,
+    board: 'the takeover',
+    service: lookup => bootstrapService(lookup),
+    idOf: body => takeoverAttachOf(body)?.slice(TAKEOVER_ATTACH_PREFIX.length),
+  },
+]
 
 const MARKDOWN_LIMIT = 6000
 const MUST_SHOW_PIECES = 8
