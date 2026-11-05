@@ -559,6 +559,18 @@
           "to": "人打开面板一眼看懂在做什么、接下来做什么、要自己做什么"
         }
       }
+    },
+    {
+      "at": "2026-11-05T05:38:28.474Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "land-panel-2（wf_ea31cd006756ebfc）完成：panel-2 已合入 main。合并提交 59e267e（合入 273fb03，只有图文件）、7bef428（合入 e88da27，带进 m4-checks 与 m5-rest；package.json 的 test:1 与 src/graph/tools.ts 两处冲突两边都保留）、ce9de4d（合入 77a5a7e，只有图文件）；main 快进到 ce9de4d，记录提交 9f7b5f3（.agents/tasks/panel/l4-merge-2026-11-05.md）在 origin 与 github，ls-remote 一致。7bef428 上门禁：build 0、preflight 0、npm test 3103 个 0 失败、探针 409/409。59e267e 上第一次探针 388/390，两项失败在 glm 执行的 Edit 别名（ReplaceFileW EIO，当时三个探针同时在跑），之后三次重跑都是 390/390。桌面版经 CDP 重启：两个包都在跑（GLM 5/5；Hourness 13 个运行、lessons 与 transcript 两行出厂停用，env 运行中），首页五段、没有页签，F1、F4、F6 在桌面上通过，没有新的崩溃记录与控制台报错，~/.dsh 未改。没做的留给批次 L4：桌面上的行健康表（要在本任务建的临时会话里跑命令）、F2 与 F5 的桌面复核、F3 要先在临时会话里 /wish、第 11 条单装组合、第 13 条已登录一支（要人的凭证）。节点保持进行中。"
+    },
+    {
+      "at": "2026-11-05T05:38:29.477Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-11-05 同意现有节点的标题改写对照表（.agents/tasks/panel/title-rewrite.md，plain-ui 1.3 §5.5，做完条件第 2 条），原话「就按你上面说的来，心跳一个就行了」，含表里最没把握的几行（目标 hourness 的标题、m3/m4/m5/m7/m8 去掉路线编号、d-boards-as-hooks 与 d-driver 的换词、m6-rules-probe）。编排方逐节点以当时修订号做 edit，带人的原话作 relay：126 个未关闭节点，改标题 37 个、加 why 126 个，0 个被拒，写法检查 0 条警告；复核一遍读回，标题与 why 都与表一致。图提交 c7d238c。"
     }
   ]
 }
