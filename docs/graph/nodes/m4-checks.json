@@ -157,6 +157,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "B6（63388d5）评审 APPROVED，无阻塞：env 行去掉 disabled 交付，文档与契约测试同一提交，压制计数目录的修法不改生产行为，门禁全绿（npm test 0 失败，棘轮 76/19/1，探针 366/366）。已推 origin/m4-checks = 63388d5。checks-plan.md 的 B1–B6 全部提交、评审通过、推送，status.json allDone=true。下一步：本运行的 finalize 步骤；合入 main 前要合最新 main 并按 CDP 规矩重启桌面版（行组合有变）。"
+    },
+    {
+      "at": "2026-11-05T01:55:43.079Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m4-checks 的 batches 循环在 B1–B6 全部完成后还在空转（第 8 轮仍在跑，每轮 code、review、push 都只核对一遍没有新批次）。原因：.llm/m4c/status.json 以 UTF-8 字节顺序标记开头，工作流的停止条件读不出 allDone=true。编排方已把该文件改写成不带字节顺序标记的 UTF-8（allDone 照旧为 true），下一次检查条件时循环应停下并进入 finalize。"
     }
   ]
 }

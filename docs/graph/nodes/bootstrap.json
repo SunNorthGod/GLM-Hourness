@@ -316,6 +316,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "B3（bootstrap-run-start）已推 fb876ce；合入 origin/main c8200f0（合并提交 fb3f3d6）。两者四道门禁为 0：npm test 3021 通过 / 0 失败 / 1 跳过，探针 388/388，棘轮 73/18/1。剩 B4、B5、B6；B7–B10 顺延。"
+    },
+    {
+      "at": "2026-11-05T01:55:42.865Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "B3（fb876ce，bootstrap-run-start）评审 APPROVED，无阻塞（.llm/wf/review-B3.md）。门禁按日志：build、preflight 通过，npm test 3021 / 0 失败 / 1 跳过，探针 388/388，棘轮 73/18/1。剩 B4–B6。"
     }
   ]
 }
