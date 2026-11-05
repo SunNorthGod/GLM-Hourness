@@ -583,6 +583,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "第 8 条由 status-hub-3-and-panel-8（wf_992ec82f32e990c0）接着做：先逐样对照 main 上的代码，写明哪几样已由 rules-board-page 或更早的批做完（给证据），再做剩下且不等 M7 的几样；(d) 等 M7，本线不做。"
+    },
+    {
+      "at": "2026-11-05T09:49:41.225Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "更正 06:30 前后批注里「第 8 条 (d) 与第 17 条仍等 M7」（对账 B 半，report-b.md (f)）：(d)「额度用完、推进停住」要的停住原因 execute/stopped-quota 在 main 与 m7 分支上都没有，M7 E8 计划的延后清单把 G15 列为自举之后再做，所以这次 M7 合入不解开 (d)。第 17 条的「在开发」读 derivedStage，它只在 m7 分支的 src/graph/execute-stage.ts；M7 合入后还要有人把 src/graph/plain-view.ts 接上它（main 上 plain-view.ts 约 341 行的注释写明等 E1b），目前没有线认领，排进 M7 合入后的开线清单。本仓库图上没有方向清单节点，第 17 条在真图上按验收不出现，核对要用临时图。"
     }
   ]
 }

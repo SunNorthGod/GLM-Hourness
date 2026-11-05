@@ -52,6 +52,12 @@
           "to": "人在一页上看到本项目生效的经验，也能删掉不对的"
         }
       }
+    },
+    {
+      "at": "2026-11-05T10:05:02.543Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "对账 A 半（.agents/tasks/graph-reconcile-2026-11-05/report-a.md）：第 1–3 条已在隔离实例上过（.agents/tasks/m5/l4-2026-11-05.md），第 4 条只有 L2。人的 profile 里 lessons 行出厂 disabled，今天的批次 L4 在人的桌面版上看不到经验页；依赖 m5-1 已关。"
     }
   ]
 }

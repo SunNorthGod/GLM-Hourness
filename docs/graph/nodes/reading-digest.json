@@ -81,6 +81,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "本周（2026-11-05 周四）的阅读派 investigate-reading-digest-1105（wf_f8a7db34778f087b，只读）：读 2026-10-29 至 11-05 Anthropic 与 OpenAI 的 agent 工程文章与 harness engineering 新论文，先查 orch 2026-10-30T17:20 批注里六篇的后续，每篇写讲了什么、对本项目有什么用、建议。报告 .agents/tasks/reading-digest/2026-11-05.md。"
+    },
+    {
+      "at": "2026-11-05T09:27:21.083Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "本周阅读的第一次运行 investigate-reading-digest-1105（wf_f8a7db34778f087b）因上游额度错误（quota exhausted）中断，状态显示完成，但报告 .agents/tasks/reading-digest/2026-11-05.md 没有写出。编排方重派 investigate-reading-digest-1105-retry（wf_e4e22f8e78f0b14b），范围不变，改为每读完一篇就追加进报告，中途断了也留得下已读的部分。"
     }
   ]
 }

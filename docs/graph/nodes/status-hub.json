@@ -183,6 +183,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "rules-board-page 合入腾出并行位，编排方派 status-hub-3-and-panel-8（wf_992ec82f32e990c0，工作树 .worktrees/status-hub-3）：做状态板块剩下批次里已经解开的几批。超时条目原等 m4-checks B5（e88da27 已在 main），规则板条目原等规则板页面（3b24f1e 已在 main），循环板清单先核对 staleEntries 与 timeoutEntries 在 main 上有没有提供方。第 6 批与等 M7 的部分不做。计划写进 .agents/tasks/status-hub/impl-plan-3.md，逐批归类并给证据。"
+    },
+    {
+      "at": "2026-11-05T09:49:41.445Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "更正「第 1、2、3、6 条剩 M7 那一半」（对账 B 半，report-b.md (c)）：要的是 M7 的 P2（晨报与周报的读者）与 P3（第 6 批的运维行、第 2、3 条点名的 hourness_report），当前 M7 运行 wf_36d1d690c7e1de90 只做到 E9 与第一批 L4，不含 P2、P3。M7 合入后状态板块仍要等 P2、P3 开线。"
     }
   ]
 }

@@ -1,0 +1,39 @@
+{
+  "id": "glm-context-window",
+  "type": "task",
+  "title": "GLM 通道的上下文窗口可以配置，缺省 512k",
+  "why": "压缩时机和每步输出预算按同一个窗口算，人想改窗口时改一个数就行",
+  "status": "doing",
+  "parent": "bottom",
+  "kind": "implement",
+  "body": "现状：src/glm-llm/zcode.ts 向 DSH 声明 contextWindow 512000（DSH 用它做压缩与预算，DESIGN.md §4.8）；请求侧 maxOutputTokensFor 用 src/glm-llm/models.ts GLM_53_RULE 的 contextWindow 1000000（ZCode 3.16.2 内置目录规则）。做法：glm-llm 行的配置 schema 加上下文窗口一项，缺省 512000，只收正整数，上限不超过目录规则；声明取配置值；请求侧窗口取 min(配置值, 目录规则)，偏离 3.16.3 处在 DESIGN.md §4 写明原因。配置缺失或非法时激活期不抛错，降级用缺省值并在行健康写明。不新增插件行，不加开关。",
+  "acceptance": [
+    "glm-llm 行的配置有上下文窗口一项，缺省 512000；不配置时向 DSH 声明的窗口与改动前相同",
+    "配了合法的值，向 DSH 声明的窗口与请求侧单步输出预算都按这个值算（请求侧取它与目录规则的较小者）；非法值降级为缺省值，行健康写明",
+    "L2 测试钉住以上三种情形，L3 探针通过，合入 main 后桌面版重启 GLM 包正常"
+  ],
+  "history": [
+    {
+      "at": "2026-11-05T08:18:48.795Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "人 2026-11-05 问 GLM 通道能不能设置模型上下文长度；编排方答现在写死（向 DSH 声明 512000，请求侧单步输出预算按 ZCode 目录规则的 1000000 算，两处不一致），问目的。人答用 512k，能改最好。编排方派 glm-context-window-config（wf_d964b9e854bc29a0）。",
+      "relay": "就用512k，能改最好，写死也行",
+      "to": "approved"
+    },
+    {
+      "at": "2026-11-05T08:20:17.476Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "运行 glm-context-window-config（wf_d964b9e854bc29a0）开工",
+      "from": "approved",
+      "to": "doing"
+    },
+    {
+      "at": "2026-11-05T09:49:42.320Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "对账 B 半（report-b.md (c)(f)）：正文写目录规则来自 ZCode 3.16.2/3.16.3，仓库基线是 3.17.1（AGENTS.md）；在 reference/zcode-3.17.1/zcode.cjs 里只做了字面搜索，没确认 3.17.1 给 glm-5.3 的窗口。编排方已转给 glm-context-window-config 的 code 步：偏离说明按 3.17.1 核一次再写进 DESIGN.md。"
+    }
+  ]
+}

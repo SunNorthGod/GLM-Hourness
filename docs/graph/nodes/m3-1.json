@@ -3,7 +3,7 @@
   "type": "task",
   "title": "主 Agent 的身份与不写代码",
   "why": "主 Agent 只编排不动手，写代码交给子 agent，系统拦它写文件",
-  "status": "doing",
+  "status": "done",
   "parent": "m3",
   "kind": "implement",
   "body": "ROADMAP.md 原文：主 Agent 角色卡；主 Agent 工具面去掉写文件工具。2026-10-28 用户决定之后：主 Agent 的身份是本项目自己的提示词（三问四答、五键、架构师访谈），不用预设；主 Agent 不写代码由 guard 拦（见 d-dispatch）。",
@@ -12,6 +12,34 @@
     "主 Agent 的文件工具写入（write、edit、str_replace_editor 除 view 外）与 file-tools-only 判为写文件的 shell 命令，在 GLM 与非 GLM 路由上都被拒，拒绝带正路并进违规流水；/wish off 之后同一会话照常写",
     "主 Agent 的工具面等于同一组合下普通会话的工具面去掉写文件的工具（Write、Edit 及其别名、str_replace_editor 的写操作）与 ask_user_question，加上 propose_to_human、record_human_answer；由编排层插件在组装时去掉，不用 preset；shell 写入由 guard 兜底",
     "/wish 的入口放在醒目处：没有开启主 Agent 的会话里，桌面版界面上有显眼的提示说明可以用 /wish 开启主 Agent，人不用记命令；开启后看得到当前是主 Agent 以及怎样 /wish off 退出；位置与样式经设计评审，L4 截图核对"
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "9c346fb",
+      "note": "M3 第 3 步：主 Agent 身份节"
+    },
+    {
+      "kind": "commit",
+      "ref": "bd91f2c",
+      "note": "M3 第 4 步：主 Agent 拒写与工具面"
+    },
+    {
+      "kind": "commit",
+      "ref": "2bf2b16",
+      "note": "m3 合入 main"
+    },
+    {
+      "kind": "commit",
+      "ref": "d6a2c26",
+      "note": "设计行默认启用"
+    },
+    {
+      "kind": "test",
+      "ref": "tests/design-guard.spec.ts",
+      "exit": 0,
+      "note": "文件工具与 shell 写入按名拒绝、/wish off 后照常写、拒绝进违规流水；L3 glm-design-main、non-glm-design-main"
+    }
   ],
   "history": [
     {
@@ -147,6 +175,42 @@
           "to": "主 Agent 只编排不动手，写代码交给子 agent，系统拦它写文件"
         }
       }
+    },
+    {
+      "at": "2026-11-05T10:05:47.102Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "项目图对账 A 半（.agents/tasks/graph-reconcile-2026-11-05/report-a.md，investigate-graph-reconcile-1105-a，wf_354a8b952020a5fa）核实：验收逐条有证据，提交都在 origin/main（merge-base --is-ancestor 退出码 0），验证层不要求 L4 或 L4 已做过",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "9c346fb",
+          "note": "M3 第 3 步：主 Agent 身份节"
+        },
+        {
+          "kind": "commit",
+          "ref": "bd91f2c",
+          "note": "M3 第 4 步：主 Agent 拒写与工具面"
+        },
+        {
+          "kind": "commit",
+          "ref": "2bf2b16",
+          "note": "m3 合入 main"
+        },
+        {
+          "kind": "commit",
+          "ref": "d6a2c26",
+          "note": "设计行默认启用"
+        },
+        {
+          "kind": "test",
+          "ref": "tests/design-guard.spec.ts",
+          "exit": 0,
+          "note": "文件工具与 shell 写入按名拒绝、/wish off 后照常写、拒绝进违规流水；L3 glm-design-main、non-glm-design-main"
+        }
+      ]
     }
   ]
 }
