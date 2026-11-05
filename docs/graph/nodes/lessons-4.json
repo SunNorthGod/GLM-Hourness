@@ -58,6 +58,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "lessons-4-first-batch（wf_cc148081d07c2798）代码步完成：第一批 21 条经验导入主检出本项目的 .llm/lessons.jsonl（第一次 21 新增 / 0 已有 / 0 失败，再跑一次 0 / 21 / 0，幂等），在真实存储上的查询记录写进 .agents/tasks/lessons-4/check.md 与 check.json，两条验收各有证据。文档提交 a4b2f8e 已推 origin/lessons-4，尚未合入 main。门禁：npm test 3156 个 0 失败，棘轮 73/18/1，探针重跑 420/420。下一步：评审。"
+    },
+    {
+      "at": "2026-11-05T07:38:38.360Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "lessons-4 评审 APPROVED，无阻断（.agents/tasks/lessons-4/review.md、review.json）：两条验收按实读的经验存储、导入与查询日志、测试日志核过。下一步：本运行的合入步骤（合最新 origin/main、门禁、快进 main、推两个远端）。"
     }
   ]
 }
