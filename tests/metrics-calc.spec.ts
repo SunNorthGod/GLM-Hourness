@@ -424,13 +424,17 @@ test('an in-window append changes the output, and the basis rerun reproduces the
   try {
     const { io } = cliIo(root)
     const args = ['summary', '--project', root, '--from', FROM, '--to', TO, '--tz', '+08:00']
+    // The writers' clocks are pinned inside the window: with the real clock their
+    // start/stop land in today's file, outside the window, and the window reads
+    // writers that never stopped, so the report depends on the date the test runs.
+    const at = (iso: string) => ({ now: () => Date.parse(iso) })
     await appendEvents(root, [
       { k: 'count', by: 'guard', at: '2026-11-04T20:00:00.000Z', body: { what: 'a', value: 1 } },
       { k: 'count', by: 'guard', at: '2026-11-04T20:01:00.000Z', body: { what: 'b', value: 2 } },
-    ])
+    ], 'cli', at('2026-11-04T20:00:00.000Z'))
     const first = await runCli(args, io)
     assert.equal(first.exitCode, 0)
-    const appended = await appendEvents(root, [{ k: 'count', by: 'guard', at: '2026-11-04T20:02:00.000Z', body: { what: 'c', value: 3 } }])
+    const appended = await appendEvents(root, [{ k: 'count', by: 'guard', at: '2026-11-04T20:02:00.000Z', body: { what: 'c', value: 3 } }], 'cli', at('2026-11-04T20:02:00.000Z'))
     assert.equal(appended.error, undefined)
     // The rerun reads by the FIRST report's basis line: the file it named, to the line it read.
     const read = (first.stdout.split('\n')[0] ?? '').match(/(events-[^ ]+\.jsonl) 1–(\d+) 行/)
