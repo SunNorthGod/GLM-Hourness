@@ -171,6 +171,12 @@
           "to": "各处显示的状态出自同一份，数字不会对不上"
         }
       }
+    },
+    {
+      "at": "2026-11-05T06:30:13.268Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "status-hub-2（第 4、7、8 批：3edd58a、f285d2b 等）随 rules-board-page 合入 main（3b24f1e），门禁全绿：npm test 3156 / 0 失败，探针 420/420。规则板条目（rules/denials、rules/lifts）现在在 main 上有读者。剩下的：第 6 批等 M7 运维行 P3，做完条件第 1、2、3、6 条剩 M7 那一半；面板上的真机核对随批次 L4。节点保持进行中。"
     }
   ]
 }

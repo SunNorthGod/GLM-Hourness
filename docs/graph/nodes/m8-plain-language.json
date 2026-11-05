@@ -571,6 +571,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "人 2026-11-05 同意现有节点的标题改写对照表（.agents/tasks/panel/title-rewrite.md，plain-ui 1.3 §5.5，做完条件第 2 条），原话「就按你上面说的来，心跳一个就行了」，含表里最没把握的几行（目标 hourness 的标题、m3/m4/m5/m7/m8 去掉路线编号、d-boards-as-hooks 与 d-driver 的换词、m6-rules-probe）。编排方逐节点以当时修订号做 edit，带人的原话作 relay：126 个未关闭节点，改标题 37 个、加 why 126 个，0 个被拒，写法检查 0 条警告；复核一遍读回，标题与 why 都与表一致。图提交 c7d238c。"
+    },
+    {
+      "at": "2026-11-05T06:30:13.587Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "规则板页面与 status-hub-2 已合入 main（3b24f1e），第 8 条里规则板一侧所需的页面与条目都在 main 上；真机核对随批次 L4（wf_be2ff3a8b7d83155）。第 8 条 (d) 与第 17 条仍等 M7。"
     }
   ]
 }
