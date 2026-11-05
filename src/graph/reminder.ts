@@ -16,13 +16,16 @@
  * (one beat of the goal driver). Compaction removes the call and the
  * notices from the visible history, so the focus is also kept in memory
  * per session; a process restart between a compaction and the next step
- * loses it until graph_focus is called again.
+ * loses it until graph_focus is called again. The re-anchoring notice also
+ * carries the goal's non-goals and the rules denied in this session
+ * (reanchor.ts); they stay out of the digest, so no other step carries them.
  */
 import { createUserNotice, type AgentLike, type DerivedMessage, type UserNotice } from '../shared/dsh-min.ts'
 import { installStepNotice, toolCallArguments, toolCallOutcomes } from '../shared/step-notice.ts'
 import { wrapSystemReminder } from '../shared/zcode-notice.ts'
 import { changeReason, digestOf, isGoalRound, noticeHistory, type DigestFacts } from './digest-notice.ts'
 import { projectNode, type NodeRef, type Projection } from './projection.ts'
+import { reanchorLines, sessionDenials } from './reanchor.ts'
 import { FOCUS_TOOL } from './live.ts'
 import { readGraph, type GraphRead } from './row-health.ts'
 import type { FocusMemory } from './tools.ts'
@@ -127,12 +130,20 @@ function renderProjection(projection: Projection, errors: number): string {
   return lines.join('\n')
 }
 
-/** The reminder body for the focus, or the problem that keeps it from being projected. */
-function reminderBody(read: GraphRead, focus: string): string {
-  if ('failure' in read) return `Project graph: your focus node ${focus} cannot be read: ${read.failure.error.message} (${read.failure.error.hint}).`
+/** The reminder body for the focus with the projection it renders, or the problem that keeps it from being projected. */
+function reminderBody(read: GraphRead, focus: string): { readonly body: string, readonly projection?: Projection } {
+  if ('failure' in read) return { body: `Project graph: your focus node ${focus} cannot be read: ${read.failure.error.message} (${read.failure.error.hint}).` }
   const result = projectNode(read.graph, focus)
-  if (!result.ok) return `Project graph: your focus node ${focus} is not in the graph at ${read.dir}. graph_open lists the open nodes; ${FOCUS_TOOL} moves the focus.`
-  return renderProjection(result.projection, read.graph.issues.filter(issue => issue.severity === 'error').length)
+  if (!result.ok) return { body: `Project graph: your focus node ${focus} is not in the graph at ${read.dir}. graph_open lists the open nodes; ${FOCUS_TOOL} moves the focus.` }
+  return { body: renderProjection(result.projection, read.graph.issues.filter(issue => issue.severity === 'error').length), projection: result.projection }
+}
+
+/** Where a re-anchoring reads the session's denials, and whom it tells how the read came out. */
+export interface ReanchorSource {
+  /** The violation journal of the project a working directory belongs to; undefined without a project directory. */
+  readonly journal: (cwd: string | undefined) => string | undefined
+  /** Told after every re-anchoring: undefined when the journal was read, else why the denials were left out. */
+  readonly told: (sessionId: string, problem: string | undefined) => void
 }
 
 interface ProjectionInput {
@@ -148,6 +159,7 @@ interface ProjectionInput {
   readonly focuses: FocusMemory
   /** Told what the read of the graph found, for the row health. */
   readonly onRead: (read: GraphRead, focus: string) => void
+  readonly reanchor: ReanchorSource
 }
 
 /** The notice this step needs, or undefined; keeps the focus it used in `focuses`. */
@@ -158,13 +170,23 @@ async function projectionNotice(input: ProjectionInput): Promise<UserNotice | un
   input.focuses.set(input.sessionId, focus)
   const read = await readGraph(input.dir, input.cwd)
   input.onRead(read, focus)
-  const body = reminderBody(read, focus)
+  const { body, projection } = reminderBody(read, focus)
   const digest = digestOf(body)
   const reason = changeReason(state, { digest, goalRound: input.admitted.some(isGoalRound), sameSubject: notice => notice.focus === focus }, 'focus')
   if (reason === undefined) return undefined
   const anchor = state.checkpoint?.id
   const facts: ProjectionFacts = { focus, digest, ...(anchor === undefined ? {} : { anchor }), reason }
-  return createUserNotice(PROJECTION_SOURCE, `project graph projection of ${focus} (${reason})`, wrapSystemReminder(body), { graphProjection: facts })
+  // Only the re-anchoring carries the extra lines; the digest stays the projection's, so the next step adds nothing.
+  const extra = reason === 'compaction' ? await reanchorExtra(input, projection) : []
+  const text = extra.length === 0 ? body : [body, ...extra].join('\n')
+  return createUserNotice(PROJECTION_SOURCE, `project graph projection of ${focus} (${reason})`, wrapSystemReminder(text), { graphProjection: facts })
+}
+
+/** The re-anchoring's lines; the journal's read is told to the row health, and a failed read only leaves the denials out. */
+async function reanchorExtra(input: ProjectionInput, projection: Projection | undefined): Promise<string[]> {
+  const denials = await sessionDenials(input.reanchor.journal(input.cwd), input.sessionId)
+  input.reanchor.told(input.sessionId, 'problem' in denials ? denials.problem : undefined)
+  return reanchorLines(projection, denials)
 }
 
 /**
@@ -172,13 +194,14 @@ async function projectionNotice(input: ProjectionInput): Promise<UserNotice | un
  * seam (src/shared/step-notice.ts), on every route: a step that needs
  * the notice gets it after its admitted messages. A failure while reading
  * the graph warns and leaves the step as it was. `onRead` hears what each
- * read of the graph found (the row health). Returns undefined, installing
+ * read of the graph found (the row health); `reanchor` is where a
+ * re-anchoring reads the session's denials. Returns undefined, installing
  * nothing, when the agent has no session history.
  */
-export function installProjection(agent: AgentLike, dir: string, focuses: FocusMemory, onRead: (sessionId: string, read: GraphRead, focus: string) => void = () => {}): (() => void) | undefined {
+export function installProjection(agent: AgentLike, dir: string, focuses: FocusMemory, onRead: (sessionId: string, read: GraphRead, focus: string) => void, reanchor: ReanchorSource): (() => void) | undefined {
   return installStepNotice(agent, 'step projection', () => true, async (history, { admitted, session }) => {
     try {
-      return await projectionNotice({ history, admitted, sessionId: session.id, cwd: session.header.cwd, dir, focuses, onRead: (read, focus) => { onRead(session.id, read, focus) } })
+      return await projectionNotice({ history, admitted, sessionId: session.id, cwd: session.header.cwd, dir, focuses, onRead: (read, focus) => { onRead(session.id, read, focus) }, reanchor })
     }
     catch (error) {
       console.warn(`dsh-glm-hourness/graph: step projection skipped for agent ${agent.id}: ${error instanceof Error ? error.message : String(error)}`)

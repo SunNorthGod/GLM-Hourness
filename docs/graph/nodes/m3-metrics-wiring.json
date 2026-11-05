@@ -40,6 +40,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "m3-metrics-wiring（wf_4a9f7c0523d33a93）code 步完成：b79bf69 推到 origin，十类 design.* / git.* 事件交给 glmHournessMetrics，字段在封闭表内；新 spec design-metrics 11/11；build、preflight、npm test 0，探针 420/420；文档与四行本地化同批。报告 .agents/tasks/m3-metrics-wiring-2026-11-05/report.md。验收第 3 条要合入 main，下一步评审。"
+    },
+    {
+      "at": "2026-11-05T20:16:58.049Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m3-metrics-wiring（wf_4a9f7c0523d33a93）：实现 b79bf69，第 1 轮评审 1 条挡路（HANDOFF 的 M3 一行写成「在分支上等合入」，合入后就不对）在 35556ee 修好；第 2 轮评审 APPROVED，不挡路 N1–N8，其中 N7 是 HANDOFF.md 与当前 origin/main 有合并冲突、N8 是本分支之外 data-journal 一条偶发失败的测试，合入步处理冲突并查 N8 的原因。下一步合入。"
     }
   ]
 }
