@@ -40,6 +40,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "第 1 轮 code 步以上游 503「No available accounts」结束，分支 origin/m5-rule-expected-effect 仍只有计划提交 118158f；review 步随后因限流暂停，编排方 01:1x 恢复。这一轮的评审多半打回空改动，循环预算 2 轮。"
+    },
+    {
+      "at": "2026-11-05T17:17:22.130Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "第 1 轮评审（wf_24a77ef57c68c12c review）CHANGES_REQUESTED，挡路 3 条：分支上只有计划提交 118158f，计划 §3 的两批实现、三份文档与四条 L2 都没做（code 步被上游 503 打断，工作树里留有未提交的 src/memory/effect.ts）；没有门禁记录；计划缺冲突清单。第 2 轮 code 步在跑，这是循环预算的最后一轮；编排方已告知该步先读未提交的 effect.ts、按计划两批各一个提交并随做随推、补冲突清单。"
     }
   ]
 }
