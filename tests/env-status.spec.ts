@@ -4,18 +4,26 @@
  * daily counts, and the row providing it as glmHournessStatus/env for the
  * collector — withdrawn with the row, no entry without a journal or a
  * session the row knows, a journal that cannot be read into the collector's
- * placeholder, a line that cannot be parsed skipped.
+ * placeholder, a line that cannot be parsed skipped. The checks' timeouts
+ * (batch 9, §12 M4 row): checkTimeouts and timeoutLines are the morning
+ * report's 检查的超时 section line for line, env/timeouts hands the same
+ * lines, a raise or a reset of limits.jsonl shows at the next read.
  */
 import assert from 'node:assert/strict'
+import { writeFileSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { apply as envApply } from '../src/env/index.ts'
-import { envStatusItems, suppressionLineOf, suppressionTotalLine } from '../src/env/status.ts'
+import { parseLimits } from '../src/env/limit-tool.ts'
+import { checkTimeouts, envStatusItems, envTimeoutItems, suppressionLineOf, suppressionTotalLine, timeoutLines } from '../src/env/status.ts'
 import type { SuppressionRecord } from '../src/env/suppressions.ts'
+import { parseTiming } from '../src/env/timeout.ts'
 import { collectStatus } from '../src/report/status.ts'
+import { validateStatusItem } from '../src/shared/status.ts'
 import { statusServiceName, type RowStatusView } from '../src/shared/status-host.ts'
+import { morningReport } from '../src/workflow/morning-report.ts'
 import { fakeRuntime, type FakeRuntime } from './fake-rc3.ts'
 
 const record = (at: string, total: number): SuppressionRecord => ({ at, repo: 'r', total, byMarker: {} })
@@ -46,11 +54,14 @@ test('the count line is one wording for the entry and the report\'s no-churn lin
  */
 const settledJournal = (): string => `${JSON.stringify(record(`${new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10)}T00:00:00Z`, 7))}\n`
 
-async function withRow(body: (view: RowStatusView, workspace: string, rt: FakeRuntime) => void, options: { readFile?: (path: string) => string, journal?: string } = {}): Promise<void> {
+async function withRow(body: (view: RowStatusView, workspace: string, rt: FakeRuntime) => void, options: { readFile?: (path: string) => string, journal?: string, timing?: string, limits?: string } = {}): Promise<void> {
   const workspace = await mkdtemp(join(tmpdir(), 'env-status-'))
   try {
     await mkdir(join(workspace, '.llm', 'audit'), { recursive: true })
     await writeFile(join(workspace, '.llm', 'audit', 'suppressions.jsonl'), options.journal ?? settledJournal())
+    if (options.timing !== undefined || options.limits !== undefined) await mkdir(join(workspace, '.llm', 'env-checks'), { recursive: true })
+    if (options.timing !== undefined) await writeFile(join(workspace, '.llm', 'env-checks', 'timing.jsonl'), options.timing)
+    if (options.limits !== undefined) await writeFile(join(workspace, '.llm', 'env-checks', 'limits.jsonl'), options.limits)
     const rt = fakeRuntime({ cwd: workspace })
     const dispose = envApply(rt.ctx, options.readFile === undefined ? {} : { readFile: options.readFile })
     await rt.create()
@@ -74,6 +85,7 @@ test('the env row provides glmHournessStatus/env: the latest count as the one en
     assert.equal(item?.source, join(workspace, '.llm', 'audit', 'suppressions.jsonl'))
     const collected = collectStatus(rt.services, 'agent-1', 'agent', Date.now())
     assert.equal(collected.items.some(entry => entry.id === 'env/suppressions'), true)
+    assert.deepEqual(view.items('agent-1').map(entry => entry.id), ['env/suppressions'], 'no timing journal, no timeouts entry')
   })
 })
 
@@ -108,4 +120,86 @@ test('a line the journal cannot parse is skipped, the rest counted', async () =>
     const [item] = view.items('agent-1')
     assert.equal(item?.text, '压制注释 7 处')
   }, { journal: corrupt })
+})
+
+// --- The checks' timeouts: one set of facts for the morning report and the env/timeouts entry ---
+
+const NOW = Date.parse('2026-11-05T06:00:00Z')
+const KEY = { argv: 'abcd1234' }
+const NO_ASKS = { waiting: { count: 0 }, agentOwn: 0, decided: { person: 0, inChat: 0, agent: 0 } }
+/** Two checks: one stopped at its estimate's limit and raised by the harness, one held at the ceiling with a queue drop. */
+const TIMING = [
+  { kind: 'value', at: '2026-11-05T01:00:00Z', check: 'tool-1/slow', ...KEY, limitMs: 5000, cap: { by: 'default' }, source: { by: 'estimate', node: 'tool-1', rev: 'r', actor: 'llm', at: '2026-11-05T00:59:00Z', session: 'sess-123456789', estimateS: 1 } },
+  { kind: 'timeout', at: '2026-11-05T01:00:05Z', check: 'tool-1/slow', ...KEY, limitMs: 5000, elapsedMs: 5230, session: 's', outcome: 'not-finished' },
+  { kind: 'run', at: '2026-11-05T01:00:05Z', check: 'tool-1/slow', ...KEY, ms: 5000, censored: true },
+  { kind: 'value', at: '2026-11-05T01:01:00Z', check: 'tool-1/slow', ...KEY, limitMs: 15000, previousMs: 5000, cap: { by: 'default' }, source: { by: 'harness', runs: [5000], factor: 3, floorMs: 5000 } },
+  { kind: 'value', at: '2026-11-05T01:00:00Z', check: 'tool-2/eslint', ...KEY, limitMs: 60000, cap: { by: 'default' }, capped: { wantedMs: 75000 }, source: { by: 'estimate', node: 'tool-2', rev: 'r', estimateS: 25 } },
+  { kind: 'queue', at: '2026-11-05T02:00:00Z', check: 'tool-2/eslint', ...KEY, waitedMs: 60000, running: 2, outcome: 'not-run' },
+].map(line => JSON.stringify(line)).join('\n')
+const REASON = '整个项目跑带类型信息的规则，要 40 秒左右'
+const limitLine = (at: string, check: string, action: 'raise' | 'reset', capS: number, reason: string): string => JSON.stringify({ at, check, action, capS, previousCapS: 60, reason })
+const RAISED = `${limitLine('2026-11-04T20:00:00Z', 'tool-2/eslint', 'raise', 120, REASON)}\n`
+
+test('the morning report\'s 检查的超时 section is timeoutLines over checkTimeouts, line for line (one computation)', () => {
+  const timing = parseTiming(TIMING).lines
+  const limits = parseLimits(RAISED).lines
+  const lines = timeoutLines(checkTimeouts(timing, limits, NOW), 480)
+  const report = morningReport({ period: 'p', decisions: [], violations: [], usage: [], asks: NO_ASKS, timing, limits, now: NOW, offsetMinutes: 480 })
+  const section = report.slice(report.indexOf('## 检查的超时')).split('\n\n')[0]?.split('\n')
+  assert.deepEqual(section, ['## 检查的超时', ...lines])
+  assert.equal(lines.length, 3)
+  assert.equal(lines[2], `  - 上限已由主 Agent 调高到 120 秒 · 2026-11-05：${REASON}；要改回，跟主 Agent 说`, 'plain-ui §4.7\'s words, from the check\'s last line in limits.jsonl')
+  const facts = checkTimeouts(timing, limits, NOW)
+  assert.deepEqual(facts.map(fact => [fact.check, fact.value.limitMs, fact.timeouts.length, fact.queued, fact.setting?.capS]), [['tool-1/slow', 15000, 1, 0, undefined], ['tool-2/eslint', 60000, 0, 1, 120]])
+  const reset = parseLimits(`${RAISED}${limitLine('2026-11-05T03:00:00Z', 'tool-2/eslint', 'reset', 60, '')}\n`).lines
+  assert.equal(checkTimeouts(timing, reset, NOW)[1]?.setting, undefined, 'a reset takes the raise away though the latest value line is the same')
+  assert.deepEqual(checkTimeouts(timing, limits, Date.parse('2026-11-20T00:00:00Z')).map(fact => [fact.timeouts.length, fact.queued]), [[0, 0], [0, 0]], 'the counts look back seven days')
+})
+
+test('env/timeouts: the same lines, the first as the text and the rest as the detail; it passes the entry check without a warning; no value line, no entry', () => {
+  const facts = checkTimeouts(parseTiming(TIMING).lines, parseLimits(RAISED).lines, NOW)
+  const lines = timeoutLines(facts, 480)
+  const [item, ...more] = envTimeoutItems(facts, 'timing.jsonl', NOW)
+  assert.equal(more.length, 0)
+  assert.equal(item?.id, 'env/timeouts')
+  assert.equal(item?.owner, 'env')
+  assert.equal(item?.audience, 'agent')
+  assert.equal(item?.asOf, new Date(NOW).toISOString())
+  assert.equal(item?.source, 'timing.jsonl')
+  assert.equal(item?.text, lines[0])
+  assert.deepEqual(item?.detail, lines.slice(1))
+  assert.deepEqual(item?.fields, { checks: 2, timeouts7d: 1 })
+  const checked = validateStatusItem(item)
+  assert.ok(checked.ok && checked.warnings.length === 0, JSON.stringify(checked))
+  assert.deepEqual(envTimeoutItems([], 'timing.jsonl', NOW), [])
+  assert.deepEqual(envTimeoutItems(checkTimeouts(parseTiming(TIMING).lines.filter(line => line.kind !== 'value'), [], NOW), 'timing.jsonl', NOW), [], 'runs without a value line give no entry')
+})
+
+test('env/timeouts: a reason with a line break or past 200 code points stays one line, cut with an ellipsis, and the collector keeps it without a warning', () => {
+  const long = `第一行\n${'很'.repeat(250)}`
+  const facts = checkTimeouts(parseTiming(TIMING).lines, parseLimits(`${limitLine('2026-11-04T20:00:00Z', 'tool-2/eslint', 'raise', 120, long)}\n`).lines, NOW)
+  const [item] = envTimeoutItems(facts, 'timing.jsonl', NOW)
+  const raised = item?.detail?.at(-1) ?? ''
+  assert.equal([...raised].length, 200)
+  assert.ok(raised.endsWith('…') && !raised.includes('\n') && raised.includes('第一行 很'), raised)
+  const checked = validateStatusItem(item)
+  assert.ok(checked.ok && checked.warnings.length === 0, JSON.stringify(checked))
+})
+
+test('the env row hands env/timeouts from the project\'s timing journal and limits.jsonl; a raise and a reset show at the next read, before the check runs again', async () => {
+  await withRow((view, workspace, rt) => {
+    const items = view.items('agent-1')
+    assert.deepEqual(items.map(entry => entry.id), ['env/suppressions', 'env/timeouts'])
+    const timeouts = items[1]
+    assert.equal(timeouts?.source, join(`${workspace}/.llm`, 'env-checks', 'timing.jsonl'), 'the journal the runner writes (projectHomeFor)')
+    assert.ok(timeouts?.text.startsWith('- tool-1/slow：超时 15 秒（'), timeouts?.text)
+    assert.ok(timeouts?.detail?.includes(`  - 上限已由主 Agent 调高到 120 秒 · 2026-11-05：${REASON}；要改回，跟主 Agent 说`), JSON.stringify(timeouts?.detail))
+    const collected = collectStatus(rt.services, 'agent-1', 'agent', Date.now())
+    // Two reads a millisecond apart: everything but the read moment is the same entry.
+    const withoutAsOf = (entry: typeof timeouts): object | undefined => entry === undefined ? undefined : { ...entry, asOf: undefined }
+    assert.deepEqual(withoutAsOf(collected.items.find(entry => entry.id === 'env/timeouts')), withoutAsOf(timeouts), 'the collector reads the same entry')
+    writeFileSync(join(workspace, '.llm', 'env-checks', 'limits.jsonl'), `${RAISED}${limitLine('2026-11-05T03:00:00Z', 'tool-2/eslint', 'reset', 60, '')}\n`)
+    const after = view.items('agent-1').find(entry => entry.id === 'env/timeouts')
+    assert.ok(after !== undefined && !(after.detail ?? []).some(line => line.includes('上限已由主 Agent 调高')), JSON.stringify(after))
+  }, { timing: `${TIMING}\nnot json\n`, limits: RAISED })
 })

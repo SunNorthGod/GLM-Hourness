@@ -251,7 +251,7 @@ export interface TimingBook {
 }
 
 /** The journal file of a project directory. */
-function timingFile(home: string): string {
+export function timingFile(home: string): string {
   return join(home, 'env-checks', 'timing.jsonl')
 }
 
